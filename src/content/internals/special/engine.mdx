@@ -62,7 +62,7 @@ import Tree from '../../../components/fig/Tree.astro';
 </Fig>
 
 ```cpp
-// run_nary (array/ops/ufunc.cpp, 줄인 발췌)
+// run_nary (csrc/array/ops/ufunc.cpp, 줄인 발췌)
 nb::object run_nary(
     const LoopTable& table,
     int nout,
@@ -72,14 +72,14 @@ nb::object run_nary(
     std::int64_t weight
 ) {
     const size_t nin = objs.size();
-    std::array<DType, kMaxInputs> dtypes;                      // 고정 배열: 할당 없음
+    std::array<DType, kMaxInputs> dtypes;
     for (size_t k = 0; k < nin; ++k) dtypes[k] = operand_dtype(objs[k], names[k]);
     DType promoted = dtypes[0];
     for (size_t k = 1; k < nin; ++k) promoted = promote(promoted, dtypes[k]);
     const DType loop = select(table, promoted, std::span(dtypes.data(), nin), nullptr);
-    check_int_scalars(objs, promoted);                         // 아래 참고
+    check_int_scalars(objs, promoted);
     std::array<DType, kMaxInputs> types;
-    types.fill(loop);                                          // 모든 입력을 루프 dtype으로
+    types.fill(loop);
     const LoopEntry& e = table[static_cast<int>(loop)];
     return launch(objs, std::span(types.data(), nin), e.out, e.loop, out, nout, weight);
 }
@@ -95,11 +95,11 @@ nb::object run_nary(
 `nary_loop`은 레이아웃을 두 가지만 구분해요. **모두 연속**이면 원소 인덱스로 접근하고, 그 밖에는 바이트 stride를 따라가요.
 
 ```cpp
-// nary_loop<Op, T> (array/kernels/elementwise.hpp, 줄인 발췌)
+// nary_loop<Op, T> (csrc/array/kernels/elementwise.hpp)
 template <typename Op, typename T>
 void nary_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, void*) {
     constexpr int nin = Op::nin;
-    using Ret = nary_result_t<Op, T>;                    // double 또는 std::array<double, nout>
+    using Ret = nary_result_t<Op, T>;
     using R = typename detail::NaryOut<Ret>::type;
     constexpr int nout = detail::NaryOut<Ret>::n;
     static_assert(nout == Op::nout, "Op::f returns nout results");
@@ -107,9 +107,13 @@ void nary_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, vo
     bool contiguous = true;
     for (int k = 0; k < nin; ++k) contiguous = contiguous && s[k] == sizeof(T);
     for (int j = 0; j < nout; ++j) contiguous = contiguous && s[nin + j] == sizeof(R);
-    // store(out_at, r): 결과 하나나 nout개를 출력 자리에 써요
+    auto store = [&](auto&& out_at, const Ret& r) {
+        if constexpr (nout == 1) out_at(0) = r;
+        else
+            for (int j = 0; j < nout; ++j) out_at(j) = r[static_cast<std::size_t>(j)];
+    };
     if (contiguous) {
-        [&]<std::size_t... I>(std::index_sequence<I...>) {          // I = 0, 1, ..., nin-1 차례로
+        [&]<std::size_t... I>(std::index_sequence<I...>) {
             const T* const x[] = {reinterpret_cast<const T*>(args[I])...};
             R* o[nout];
             for (int j = 0; j < nout; ++j) o[j] = reinterpret_cast<R*>(args[nin + j]);
@@ -117,7 +121,17 @@ void nary_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, vo
         }(std::make_index_sequence<nin>{});
         return;
     }
-    // 그 밖: 포인터 nin + nout개를 원소마다 s[k]씩 옮기며 Op::f(load_as<T>(p[I])...)
+    [&]<std::size_t... I>(std::index_sequence<I...>) {
+        std::array<std::byte*, nin + nout> p;
+        for (int k = 0; k < nin + nout; ++k) p[static_cast<std::size_t>(k)] = args[k];
+        for (std::int64_t i = 0; i < n; ++i) {
+            store(
+                [&](int j) -> R& { return *reinterpret_cast<R*>(p[static_cast<std::size_t>(nin + j)]); },
+                Op::f(load_as<T>(p[I])...)
+            );
+            for (int k = 0; k < nin + nout; ++k) p[static_cast<std::size_t>(k)] += s[k];
+        }
+    }(std::make_index_sequence<nin>{});
 }
 ```
 
@@ -167,15 +181,19 @@ struct Erf : Real {                                          // Real::ok<T>: T�
 `f`와 `chunk` 중 무엇이 있느냐는 C++20의 `requires` 식으로 컴파일할 때 봐요.
 
 ```cpp
-// bind/nary_bind.hpp (발췌)
+// csrc/bind/nary_bind.hpp (발췌)
 template <typename Op>
 constexpr const LoopTable& table_of() {
-    if constexpr (requires { &Op::chunk; }) return special::chunked_table<Op>;   // NEON 청크 커널
-    else return nary_table<Op>;                                                   // 원소마다 f
+    if constexpr (requires { &Op::chunk; }) return special::chunked_table<Op>;
+    else if constexpr (requires { Op::table; })
+        return Op::table != nullptr ? *Op::table : nary_table<Op>;  // stats' chunk kernels
+    else return nary_table<Op>;
 }
 
+// ...
 template <typename Op>
 nb::object call(std::span<const nb::handle> objs, nb::handle out) {
+    // ...
     return run_nary(table_of<Op>(), Op::nout, Op::args, objs, out, weight_for<Op>(objs, out));
 }
 ```
@@ -185,7 +203,7 @@ nb::object call(std::span<const nb::handle> objs, nb::handle out) {
 **스칼라 호출의 짧은 길.** 출력이 하나인 함수에 Python `float`만 넘기고 `out=`이 없으면, `call`은 `run_nary`를 거치지 않아요. 표에서 float64 루프를 꺼내 스택 위의 원소 하나에 부르고 Python `float`를 바로 돌려줘요. 인자 처리와 0차원 배열을 만드는 비용이 스칼라 호출 시간의 큰 몫이었기 때문이에요. `run_nary`가 그 입력에 고를 루프와 같은 루프라 결과의 비트도 같아요. 정수, 복소수, 배열, `out=`은 그대로 `run_nary`예요.
 
 ```cpp
-            // bind/nary_bind.hpp, call (발췌)
+            // csrc/bind/nary_bind.hpp, call (발췌)
             if (floats) {
                 std::byte* args[Op::nin + 1];
                 std::int64_t st[Op::nin + 1];
@@ -215,8 +233,9 @@ nb::object call(std::span<const nb::handle> objs, nb::handle out) {
 배열의 반복자는 원래 "원소 하나가 덧셈 몇 번 분량인가"를 뜻하는 **가중치** `weight`를 받아요. 레인 하나를 통째로 처리하는 커널(정렬, 누적 합)이 쓰는 장치예요. 특수함수도 이 장치를 써요. 함수마다 원소당 비용 `cost_ns`를 두고, 같은 표에서 잰 덧셈 한 번의 비용 `kAddNs`로 나눈 값을 가중치로 넘겨요.
 
 ```cpp
-// special/cost.hpp (발췌)
-inline constexpr double kAddNs = cost_table::ns("_add");   // 연속 float64 add의 원소당 비용
+// csrc/special/cost.hpp (발췌)
+inline constexpr double kAddNs = cost_table::ns("_add");
+// ...
 inline constexpr std::int64_t kMaxWeight = 256;
 constexpr std::int64_t weight_of(double ns) {
     const double w = ns / kAddNs;
@@ -255,13 +274,13 @@ $$
 상한 256은 작업 하나의 크기를 정하려고 둔 것이라, 그것으로 GIL까지 정하면 무거운 함수의 작은 호출이 문제가 돼요. 가중치 256이면 원소 128개 미만은 기준 아래인데, 원소 하나에 아주 오래 걸리는 입력(차수가 아주 큰 `jv` 등)이면 원소 127개로도 오래 걸리고 그동안 다른 Python 스레드가 멈춰요. 그래서 바인딩의 `weight_for`는 브로드캐스트한 모양의 원소 수 $n$을 보고, 상한 걸린 가중치로는 기준 아래인데 상한 전의 비용 `cost_ns / kAddNs` $\cdot\, n$이 $2^{15}$ 이상이면 기준에 딱 닿는 가중치 $\lceil 2^{15}/n \rceil$을 넘겨요. 그 호출은 GIL 없이 원소 약 $n/8$개씩의 작업으로 돌아요.
 
 ```cpp
-// bind/nary_bind.hpp (발췌)
+// csrc/bind/nary_bind.hpp (발췌)
 template <typename Op>
 std::int64_t weight_for(std::span<const nb::handle> objs, nb::handle out) {
     const double ns = cost_for<Op>(objs);
     const std::int64_t w = special::weight_of(ns);
     if (w < special::kMaxWeight) return w;
-    const std::int64_t n = broadcast_size(objs, out);              // 브로드캐스트한 모양의 원소 수
+    const std::int64_t n = broadcast_size(objs, out);
     if (n == 0 || n * w >= kParallelThreshold) return w;
     if (ns / special::kAddNs * static_cast<double>(n) < static_cast<double>(kParallelThreshold)) return w;
     return (kParallelThreshold + n - 1) / n;
@@ -299,19 +318,22 @@ std::int64_t weight_for(std::span<const nb::handle> objs, nb::handle out) {
 `exp`/`log`를 원소마다 libm으로 부르지 않고 묶는 이유는 속도예요. vForce는 배열 하나를 통째로 받아 이 칩에 맞춘 SIMD 코드로 계산해서, 원소마다 libm을 부르는 것보다 여러 배 빨라요([원소별 커널](/internals/array/elementwise/)의 vForce 절). 정확도는 libm 대비 몇 ULP 안이라 특수함수의 계약(상대 $10^{-14}$, 45–90 ULP)에 넉넉히 들어가요.
 
 ```cpp
-// chunked_loop<Op> (special/kernels/chunked.hpp, 줄인 발췌)
-inline constexpr int kChunk = static_cast<int>(vforce_detail::kChunk);  // 1024: 스택 버퍼, 원소 단위 (8KB)
+// chunked_loop<Op> (csrc/special/kernels/chunked.hpp)
+inline constexpr int kChunk = static_cast<int>(vforce_detail::kChunk);  // 1024
 
+// One input, one output. Op::chunk may write out[i] only after it has read
+// x[i] for the last time (out may be x: the very same view, ufunc.cpp).
 template <typename Op>
 void chunked_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, void*) {
+    using namespace vforce_detail;
     double in[kChunk], out[kChunk];
     for (std::int64_t off = 0; off < n; off += kChunk) {
         const int m = static_cast<int>(std::min<std::int64_t>(kChunk, n - off));
-        const double* src = gather(args[0] + off * s[0], s[0], m, in);   // 연속이면 그대로, 아니면 모으기
+        const double* src = gather(args[0] + off * s[0], s[0], m, in);
         const bool direct = s[1] == sizeof(double);
         double* dst = direct ? reinterpret_cast<double*>(args[1] + off * s[1]) : out;
         Op::chunk(src, dst, m);
-        if (!direct) scatter(out, args[1] + off * s[1], s[1], m);       // 연속이 아니면 흩기
+        if (!direct) scatter(out, args[1] + off * s[1], s[1], m);
     }
 }
 ```
@@ -323,37 +345,40 @@ void chunked_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s,
 ### `erf`의 커널
 
 ```cpp
-// special/ops/erf.hpp (줄인 발췌): 1·2패스
+// csrc/special/ops/erf.hpp (줄인 발췌): 1·2패스와 Erf::chunk
 template <class V>
 void square_split(const double* x, double* arg, double* lo, int i) {
     const V v = simd::load(x + i, V{});
-    const V hi = v * v;                                //    x² = hi + lo (lo는 정확)
+    const V hi = v * v;
     simd::store(arg + i, -hi);
     simd::store(lo + i, simd::fma(v, v, -hi));
 }
+
+// Passes 1 and 2 of erf and erfc: e = exp(-hi), lo.
 inline void exp_minus_square(const double* x, double* e, double* lo, int n) {
     alignas(16) double arg[kChunk];
-    for_lanes(n, [&]<class V>(int i) { square_split<V>(x, arg, lo, i); });   // 1. 두 원소씩 NEON, 홀수 끝은 double
-    vvexp(e, arg, &n);                                 // 2. e = exp(-hi), vForce 한 번
+    for_lanes(n, [&]<class V>(int i) { square_split<V>(x, arg, lo, i); });
+    vvexp(e, arg, &n);
 }
-
-// Erf::chunk: 3패스
-static void chunk(const double* x, double* o, int n) {
-    using namespace erf_detail;
-    alignas(16) double lo[kChunk], e[kChunk];
-    exp_minus_square(x, e, lo, n);
-    for (int i = 0; i < n; ++i) {                      // 3. 원소마다 자기 구간만
-        const double a = std::fabs(x[i]);
-        if (a < 1.0) {
-            o[i] = erf_small(x[i]);                    //    x T(x²) / U(x²) 꼴
-        } else if (a != a) {
-            o[i] = x[i];                               //    NaN은 입력 그대로
-        } else {
-            const double v = 1.0 - erfc_tail(a, e[i], lo[i]);   // e (P - P lo) / Q 꼴
-            o[i] = x[i] < 0.0 ? -v : v;
+    // ...
+    static void chunk(const double* x, double* o, int n) {
+        using namespace erf_detail;
+        alignas(16) double lo[kChunk], e[kChunk];
+        exp_minus_square(x, e, lo, n);
+        for (int i = 0; i < n; ++i) {
+            const double a = std::fabs(x[i]);
+            if (a < 1.0) {
+                o[i] = erf_small(x[i]);
+            } else if (a != a) {
+                // the NaN itself (the tail's arithmetic made it -NaN on one path: erf(nan) was
+                // 0xfff8... for a scalar and 0x7ff8... in an array; ndtr and scipy keep the input)
+                o[i] = x[i];
+            } else {
+                const double v = 1.0 - erfc_tail(a, e[i], lo[i]);
+                o[i] = x[i] < 0.0 ? -v : v;
+            }
         }
     }
-}
 ```
 
 NaN은 3패스의 꼬리 식을 거치지 않고 입력의 NaN을 그대로 내요. 꼬리 식을 거치면 경로에 따라 부호 비트가 다른 NaN이 나올 수 있어서, `ndtr`과 scipy처럼 입력을 그대로 둬요.
@@ -367,22 +392,25 @@ NEON 레지스터 하나에는 float64가 두 개 들어가요. 묶음의 원소
 `special/kernels/simd.hpp`는 이 문제를 **코드 하나**로 풀어요. 커널 단계를 타입 `V`에 대한 템플릿으로 한 번만 적고, `V = double`(원소 하나)과 `V = F2`(NEON 레인 둘)로 두 번 인스턴스화해요.
 
 ```cpp
-// special/kernels/simd.hpp (발췌)
+// csrc/special/kernels/simd.hpp (발췌)
 struct F2 {
-    float64x2_t v;                               // NEON 레지스터 하나 = float64 둘
+    float64x2_t v;
 };
 struct M2 {
-    uint64x2_t m;                                // 비교 결과 마스크
+    uint64x2_t m;
 };
 
 inline F2 operator+(F2 a, F2 b) { return {vaddq_f64(a.v, b.v)}; }
+inline F2 operator-(F2 a, F2 b) { return {vsubq_f64(a.v, b.v)}; }
 inline F2 operator*(F2 a, F2 b) { return {vmulq_f64(a.v, b.v)}; }
 inline F2 operator/(F2 a, F2 b) { return {vdivq_f64(a.v, b.v)}; }
+inline F2 operator-(F2 a) { return {vnegq_f64(a.v)}; }
 inline M2 operator<(F2 a, F2 b) { return {vcltq_f64(a.v, b.v)}; }
+// ...
 inline double fma(double a, double b, double c) { return std::fma(a, b, c); }  // a * b + c, one rounding
-inline F2 fma(F2 a, F2 b, F2 c) { return {vfmaq_f64(c.v, a.v, b.v)}; }          // 같은 반올림
+inline F2 fma(F2 a, F2 b, F2 c) { return {vfmaq_f64(c.v, a.v, b.v)}; }
 inline double select(bool m, double a, double b) { return m ? a : b; }
-inline F2 select(M2 m, F2 a, F2 b) { return {vbslq_f64(m.m, a.v, b.v)}; }      // 비트 선택
+inline F2 select(M2 m, F2 a, F2 b) { return {vbslq_f64(m.m, a.v, b.v)}; }
 ```
 
 NEON의 덧셈, 곱셈, 나눗셈, 제곱근, FMA는 레인마다 IEEE 754 연산 그대로라서, 스칼라 연산과 반올림이 같아요. 그래서 같은 식을 `double`과 `F2`로 적으면 같은 비트가 나와요. 남은 조건은 **컴파일러가 식을 바꾸지 않는 것**이에요. 전체 빌드가 `-ffp-contract=off`라서, 스칼라 쪽 `a * b + c`가 컴파일러의 판단으로 FMA 하나로 합쳐지지 않아요(한쪽만 합쳐지면 반올림이 한 번 줄어 레인과 달라져요). FMA는 두 판 모두 `fma(...)`로 적은 곳에서만 생겨요. 아래의 Horner도 그렇게 적은 곳이에요.
@@ -390,12 +418,12 @@ NEON의 덧셈, 곱셈, 나눗셈, 제곱근, FMA는 레인마다 IEEE 754 연�
 `for_lanes`는 묶음을 앞에서부터 두 원소씩 `F2`로, 홀수 끝 하나를 `double`로 처리해요.
 
 ```cpp
-// special/ops/erf.hpp (발췌)
+// csrc/special/ops/erf.hpp (발췌)
 template <class F>
 void for_lanes(int n, F&& f) {
     int i = 0;
-    for (; i + 2 <= n; i += 2) f.template operator()<F2>(i);      // 레인 둘
-    for (; i < n; ++i) f.template operator()<double>(i);          // 끝 하나
+    for (; i + 2 <= n; i += 2) f.template operator()<F2>(i);
+    for (; i < n; ++i) f.template operator()<double>(i);
 }
 ```
 
@@ -433,11 +461,11 @@ $$
 stardust의 Horner는 단계마다 FMA 하나예요. $r x + c_i$를 반올림 한 번으로 계산하므로, 곱셈과 덧셈을 따로 할 때보다 단계마다 반올림이 하나 적고 의존 사슬도 약 1.6배 짧아요. 빌드가 `-ffp-contract=off`라서 FMA는 이렇게 코드에 적은 곳에서만 생기고, 레인의 `simd::horner`도 같은 식(`fma(r, x, cst<V>(c[i]))`, 레인에서는 `vfmaq_f64`)이라 스칼라와 레인의 비트가 같아요.
 
 ```cpp
-// special/common.hpp (발췌): Cephes polevl과 같은 계수 순서
+// csrc/special/common.hpp (발췌): Cephes polevl과 같은 계수 순서
 template <std::size_t N>
 inline double horner(double x, const std::array<double, N>& c) {
     double r = c[0];
-    for (std::size_t i = 1; i < N; ++i) r = std::fma(r, x, c[i]);   // r x + c[i], 반올림 한 번
+    for (std::size_t i = 1; i < N; ++i) r = std::fma(r, x, c[i]);
     return r;
 }
 ```
@@ -508,7 +536,7 @@ $x_i - m$은 두 float64의 차라서 반올림돼요. 이 오차는 작아 보�
 그래서 차를 **TwoSum**으로 정확히 만들어요. TwoSum은 $a + b$를 $s + e$로 나누는 알고리즘이에요. $s$는 반올림한 합이고, $e$는 반올림으로 버린 부분을 정확히 담은 float64예요 [3].
 
 ```cpp
-        // ExpDiff::chunk2 (special/reduce.cpp, 발췌)
+        // ExpDiff::chunk2 (csrc/special/reduce.cpp, 발췌)
         for (; i + 2 <= n; i += 2) {
             const float64x2_t a = vld1q_f64(x + i), b = vnegq_f64(vld1q_f64(m + i));
             const float64x2_t sv = vaddq_f64(a, b), bb = vsubq_f64(sv, a);

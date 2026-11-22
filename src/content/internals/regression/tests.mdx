@@ -734,6 +734,7 @@ Type III의 분모 자유도만 `df_resid_inference`인 것은 그 값이 `wald_
     # src/stardust/regression/_tests.py (_anova_terms)
     mean = [_div(s, d) if d else math.nan for s, d in zip(ss_out, df_out)]
     if glm:
+        # ...
         mean[-1] = float(r.scale)
 ```
 

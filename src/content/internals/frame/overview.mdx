@@ -145,20 +145,26 @@ TypeError: to_numpy(): na_value=1.5 does not fit an array of dtype int64; pass d
 그래서 이런 질문은 루프에 들어가기 전에 한 번만 답하고, 그 답을 C++ 템플릿 인자로 넘겨 질문마다 따로 컴파일된 루프를 골라요. 스칼라 피연산자가 좋은 예예요.
 
 ```cpp
-// csrc/frame/ops/elementwise.cpp (발췌)
+// csrc/frame/ops/elementwise.cpp
+// One input of a kernel: a column, or a one-row scalar read at every row.
+// The scalar case is a template parameter so the loop body has no branch.
 template <class T, bool Scalar>
-struct In {                       // 커널의 입력 하나: 컬럼이거나, 모든 행에서 읽는 1행 스칼라
+struct In {
     const T* p;
     T operator[](std::int64_t i) const {
-        if constexpr (Scalar) return p[0];   // 컴파일 시점에 결정돼요
+        if constexpr (Scalar) return p[0];
         else return p[i];
     }
 };
 
-// scalar_side에 따라 세 가지 루프 중 하나를 고른다 (루프 밖의 분기 한 번)
-if (scalar_side == 1)      f(In<A, true>{pa},  In<B, false>{pb});
-else if (scalar_side == 2) f(In<A, false>{pa}, In<B, true>{pb});
-else                       f(In<A, false>{pa}, In<B, false>{pb});
+template <class A, class B, class F>
+void visit_inputs(const Column& a, const Column& b, int scalar_side, F&& f) {
+    const A* pa = a.data<A>();
+    const B* pb = b.data<B>();
+    if (scalar_side == 1) f(In<A, true>{pa}, In<B, false>{pb});
+    else if (scalar_side == 2) f(In<A, false>{pa}, In<B, true>{pb});
+    else f(In<A, false>{pa}, In<B, false>{pb});
+}
 ```
 
 `if constexpr`는 컴파일할 때 한쪽 가지만 남기므로, 만들어진 세 루프 어디에도 "스칼라인가"를 묻는 분기가 없어요. 컬럼⊕컬럼, 컬럼⊕스칼라, 스칼라⊕컬럼이 각각 따로 벡터화돼요.

@@ -151,14 +151,14 @@ export const envNegPts = [[0.25, -1.355], [0.5, -1.038], [0.75, -0.8751], [1, -0
 함수 하나는 이런 모양이에요. 두 입력을 받는 `xlogy`예요.
 
 ```cpp
-// special/ops/logistic.hpp (발췌)
-struct Xlogy : Real {                                     // Real: float64 루프만 있음
+// csrc/special/ops/logistic.hpp (발췌)
+struct Xlogy : Real {
     static constexpr const char* name = "xlogy";
-    static constexpr int nin = 2, nout = 1;               // 입력 둘, 출력 하나
-    static constexpr std::array<const char*, 2> args{"x", "y"};   // 에러 메시지의 인자 이름
-    static constexpr double cost_ns = cost::kXlogy;       // 원소당 비용 (special/cost.hpp의 상수)
-    static double f(double x, double y) {                 // 원소 하나: 순수 함수
-        if (x == 0.0 && !std::isnan(y)) return 0.0;       // scipy의 규약: x = 0이면 0
+    static constexpr int nin = 2, nout = 1;
+    static constexpr std::array<const char*, 2> args{"x", "y"};
+    static constexpr double cost_ns = cost::kXlogy;
+    static double f(double x, double y) {
+        if (x == 0.0 && !std::isnan(y)) return 0.0;
         return x * std::log(y);
     }
 };
@@ -349,7 +349,7 @@ Boost.Math [6]는 C++ 특수함수 라이브러리예요. stardust는 계수만�
 Boost를 부르는 모양은 함수마다 같아요.
 
 ```cpp
-    // Gamma::general (special/ops/gamma.hpp)
+    // Gamma::general (csrc/special/ops/gamma.hpp)
     [[gnu::noinline]] static double general(double x) {
         using namespace gamma_detail;
         if (std::isnan(x)) return x;

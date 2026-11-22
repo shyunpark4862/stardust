@@ -134,6 +134,7 @@ $$
 먼저 $\mu = 0$의 방향(예측, affine)을 구하고, 경계까지 가는 걸음 길이를 재요. 주 변수($a$, $s$)와 쌍대 변수($z$, $w$)의 걸음은 따로예요.
 
 ```cpp
+            // csrc/regression/quantile.cpp
             fp = std::min(kStep * std::min(f[0], f[1]), 1.0);
             fd = std::min(kStep * std::min(f[2], f[3]), 1.0);
 ```
@@ -141,6 +142,7 @@ $$
 `kStep`은 0.99995(`rq.fit.fnb`의 `beta`)예요. 변수가 경계에 닿기 직전에서 멈춰 내부에 머물러요. 예측 걸음이 끝까지(1) 가지 못하면 Mehrotra(1992)의 보정을 해요. 예측 걸음 뒤의 곱의 합 $g$와 지금의 합 $\mu = \sum(z_ia_i + w_is_i)$의 비로 중심화의 정도를 정하고,
 
 ```cpp
+            // csrc/regression/quantile.cpp
             mu = mu * std::pow(gs[0] / mu, 3.0) / (2.0 * static_cast<double>(n));
 ```
 
@@ -152,6 +154,7 @@ $$
 2. **쌍대 여유의 바닥.** 시작의 쌍대 여유를 $z = \max(r, 0) + \delta$, $w = \max(-r, 0) + \delta$, $\delta = 10^{-3}\cdot\operatorname{mean}\lvert r\rvert$로 둬요($r = X\beta - y$). $z - w = r$이라 시작이 쌍대 실행 가능해요.
 
     ```cpp
+                // csrc/regression/quantile.cpp
                 x[i] = (1.0 - tau) * m[i];
                 s[i] = tau * m[i];
                 z[i] = (ri > 0.0 ? ri : 0.0) + delta;
@@ -202,6 +205,7 @@ True
 그 반올림은 참값이 정확히 0인 꼭짓점 좌표에 흔적을 남겨요. 상수 $y$의 기울기처럼 0이어야 할 성분이 $10^{-63}$ 같은 값으로 나와요. 그래서 끝에 $u\lVert v\rVert_\infty$ 아래의 성분을 0으로 둔 해를 만들어, 기저 행의 잔차의 최댓값이 늘지 않으면 그것을 써요. 기저 행을 지나는 정도가 나빠지지 않을 때만 0으로 두므로, 참값이 0이 아닌 작은 성분은 그대로 남아요.
 
 ```cpp
+        // csrc/regression/quantile.cpp
         double vmax = 0.0;
         for (lint r = 0; r < k; ++r) vmax = std::max(vmax, std::fabs(v[r]));
         std::vector<double> w(v, v + k);
@@ -231,6 +235,7 @@ $$
 예요($g^{\mathsf T}d = -\sigma\lambda_a$를 써서). 이것이 축소 비용이고, 모두 0 이상이면 어느 모서리로 가도 목적함수가 줄지 않으니 최적이에요. 위 증명서 조건 $\lambda_a \in [m_a(q - 1), m_aq]$와 같은 말이에요.
 
 ```cpp
+// csrc/regression/quantile.cpp
 inline double rcost(const QP& P, double tau, const Work& W, const State& S, lint a, int sigma) {
     const double ma = P.m[S.B[a]];
     return sigma > 0 ? W.lam[a] + ma * (1.0 - tau) : ma * tau - W.lam[a];
@@ -256,6 +261,7 @@ $$
 잔차는 double이라 기저 행이 아닌데 해에서 정확히 0이어야 할 잔차(예: 완전 적합의 점들)가 $\pm10^{-17}$로 나와요. 그 부호를 믿으면 쓸데없는 피벗이 생겨요. 그래서 아래 기준 안의 잔차는 0으로 보고 그 행의 쪽을 그대로 둬요.
 
 ```cpp
+// csrc/regression/quantile.cpp
 // The snapping tolerance of a residual: (k + 16) u (|y_i| + sum_c |x_ic| |beta_c|), the
 // size by which rounding beta moves x_i beta. A residual within it is taken as exactly 0 and
 // keeps its side (residuals are plain double; they decide signs only beyond it). The bound
@@ -281,6 +287,7 @@ $\lvert x_i^{\mathsf T}d\rvert$는 $(k + 16)u\cdot\min\bigl(\lVert x_i\rVert_1\l
 잔차가 0인 행이 막아 길이 0의 피벗이 될 때도 같은 규칙으로 피벗해요. 길이 0의 피벗을 되풀이하면 같은 기저로 돌아올 수 있어요(순환). 그래서 길이 0의 피벗마다 기저와 쪽들의 해시를 적어 두고, 같은 상태가 다시 나오면 목적함수가 줄 때까지 Bland 규칙(1977)으로 가요. 들어갈 변수와 나갈 행을 모두 가장 작은 번호로 고르는 규칙이라 순환하지 않는다는 것이 증명되어 있어요.
 
 ```cpp
+            // csrc/regression/quantile.cpp
             const std::uint64_t hs = state_hash(S);
             if (std::find(seen.begin(), seen.end(), hs) != seen.end()) bland = true;
             seen.push_back(hs);
@@ -356,6 +363,7 @@ True
 `summary.rq`는 0으로 볼 잔차의 크기와 희소도의 분모에 $\epsilon = 2^{-26}$(R의 기계 엡실론의 제곱근)을 $y$의 단위 그대로 써요. 그러면 $y$를 작은 단위로 적은 자료($y\times10^{-9}$)에서 'nid'의 $f_i$가 0으로 잘리고 'iid'가 모든 잔차를 0으로 세요. sd는 $\epsilon = 2^{-26}\max_i\lvert y_i\rvert$를 써요($y$가 모두 0이면 $2^{-26}$).
 
 ```cpp
+    // csrc/regression/quantile.cpp
     const double eps_y = kSqrtEps * (ymax > 0.0 ? ymax : 1.0);
 ```
 

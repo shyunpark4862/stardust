@@ -78,15 +78,15 @@ $$
 대신 레인을 작업 버퍼로 읽어 올 때 NaN과 나머지를 따로 채워요.
 
 ```cpp
-// csrc/array/ops/sort.cpp, load_split_nans (줄인 발췌)
-std::int64_t nans = 0;
-for (std::int64_t i = 0; i < n; ++i) nans += is_nan(load_as<T>(x + i * stride));   // 1차: 세기
-std::int64_t rest = nans_first ? nans : 0, nan = nans_first ? 0 : n - nans;
-for (std::int64_t i = 0; i < n; ++i) {                                              // 2차: 나눠 담기
-    const T v = load_as<T>(x + i * stride);
-    buf[is_nan(v) ? nan++ : rest++] = make(i, v);   // make: 값 그대로, 또는 (값, 인덱스) 쌍
-}
-return nans;
+        // csrc/array/ops/sort.cpp, load_split_nans (줄인 발췌)
+        std::int64_t nans = 0;
+        for (std::int64_t i = 0; i < n; ++i) nans += is_nan(load_as<T>(x + i * stride));
+        std::int64_t rest = nans_first ? nans : 0, nan = nans_first ? 0 : n - nans;
+        for (std::int64_t i = 0; i < n; ++i) {
+            const T v = load_as<T>(x + i * stride);
+            buf[is_nan(v) ? nan++ : rest++] = make(i, v);
+        }
+        return nans;
 ```
 
 <Fig caption="오름차순의 NaN 분리. NaN이 아닌 값은 앞쪽에, NaN은 뒤쪽에 각자 원래 순서로 담아요. 정렬할 구간은 앞쪽 4개뿐이에요. 내림차순이면 NaN을 앞에 두고 뒤쪽 구간을 정렬해요.">
@@ -128,14 +128,19 @@ int64·float64 쌍이 17–127개이거나, 기수 정렬도 NEON 정렬도 없�
 // csrc/array/kernels/sort.hpp, merge_sort (줄인 발췌)
 template <typename T, typename Less>
 void merge_sort(T* a, T* tmp, std::int64_t n, Less less) {
-    if (n <= kSmall) { insertion_sort(a, n, less); return; }   // kSmall = 16
+    if (n <= kSmall) {
+        insertion_sort(a, n, less);
+        return;
+    }
     const std::int64_t m = n / 2;
     merge_sort(a, tmp, m, less);
     merge_sort(a + m, tmp, n - m, less);
-    if (!less(a[m], a[m - 1])) return;          // 두 반이 이미 순서대로: 병합 생략
-    std::copy(a, a + m, tmp);                   // 왼쪽 반만 복사
+    if (!less(a[m], a[m - 1])) return;  // the halves are already in order
+    std::copy(a, a + m, tmp);
+    // Merge tmp[0, m) and a[m, n) into a. Take from the right half only when
+    // strictly smaller: equal keys keep their original order (stability).
     std::int64_t i = 0, j = m, k = 0;
-    while (i < m && j < n) a[k++] = less(a[j], tmp[i]) ? a[j++] : tmp[i++];  // 오른쪽이 엄격히 작을 때만 오른쪽
+    while (i < m && j < n) a[k++] = less(a[j], tmp[i]) ? a[j++] : tmp[i++];
     while (i < m) a[k++] = tmp[i++];
 }
 ```
@@ -186,19 +191,19 @@ constexpr auto network_pairs() {
 - **분기 없는 비교-교환.** 비교 하나와 선택 둘이에요. 조건을 `||`, `&&`로 쓰면 컴파일러가 분기를 넣어서, 비트 연산 `|`, `&`로 써요.
 
 ```cpp
-// csrc/array/ops/sort.cpp (network_run의 비교-교환, argsort)
-auto cas = [&](int p, int q) {
-    const T vp = v[p], vq = v[q];
-    const std::int64_t ip = ix[p], iq = ix[q];
-    // q goes first: strictly before in the order, or equal and earlier in the
-    // input. Bitwise, not ||/&&: no branch (the values are never NaN here).
-    const bool lt = Descending ? vp < vq : vq < vp;
-    const bool swap = lt | ((vp == vq) & (iq < ip));
-    v[p] = swap ? vq : vp;
-    v[q] = swap ? vp : vq;
-    ix[p] = swap ? iq : ip;
-    ix[q] = swap ? ip : iq;
-};
+    // csrc/array/ops/sort.cpp (network_run의 비교-교환, argsort)
+    auto cas = [&](int p, int q) {
+        const T vp = v[p], vq = v[q];
+        const std::int64_t ip = ix[p], iq = ix[q];
+        // q goes first: strictly before in the order, or equal and earlier in the
+        // input. Bitwise, not ||/&&: no branch (the values are never NaN here).
+        const bool lt = Descending ? vp < vq : vq < vp;
+        const bool swap = lt | ((vp == vq) & (iq < ip));
+        v[p] = swap ? vq : vp;
+        v[q] = swap ? vp : vq;
+        ix[p] = swap ? iq : ip;
+        ix[q] = swap ? ip : iq;
+    };
 ```
 
 - **`argsort`**: 값과 원래 인덱스를 함께 옮기고, 같은 값이면 인덱스가 작은 쪽이 앞이에요. 그래서 결과는 안정 정렬과 같아요. `stable=False`도 같은 경로이고, 그것도 올바른 불안정 결과예요.
@@ -218,13 +223,16 @@ NEON에서는 비교-교환 하나가 명령어 두 개예요. 두 레지스터�
 ```cpp
 // csrc/array/kernels/simd_sort.hpp (줄인 발췌)
 struct F64 {
+    using T = double;
     using V = float64x2_t;
+    // ...
     static V min(V a, V b) { return vminq_f64(a, b); }
     static V max(V a, V b) { return vmaxq_f64(a, b); }
     // ...
 };
+
 template <typename Tr>
-inline void cmpx(typename Tr::V& a, typename Tr::V& b) {   // a <- min, b <- max
+inline void cmpx(typename Tr::V& a, typename Tr::V& b) {  // compare-exchange: a <- min, b <- max
     const typename Tr::V lo = Tr::min(a, b);
     b = Tr::max(a, b);
     a = lo;
@@ -259,9 +267,9 @@ inline void cmpx(typename Tr::V& a, typename Tr::V& b) {   // a <- min, b <- max
 int64에는 문제가 하나 있어요. NEON에는 64비트 정수 min/max 명령이 없어서, 비교(`vcgtq_s64`)와 비트 선택(`vbslq_s64`)으로 대신해요.
 
 ```cpp
-// csrc/array/kernels/simd_sort.hpp, I64 (줄인 발췌)
-static V min(V a, V b) { return vbslq_s64(vcgtq_s64(a, b), b, a); }  // a > b인 레인은 b, 아니면 a
-static V max(V a, V b) { return vbslq_s64(vcgtq_s64(a, b), a, b); }
+    // csrc/array/kernels/simd_sort.hpp, I64 (줄인 발췌)
+    static V min(V a, V b) { return vbslq_s64(vcgtq_s64(a, b), b, a); }
+    static V max(V a, V b) { return vbslq_s64(vcgtq_s64(a, b), a, b); }
 ```
 
 `F64`, `I64`처럼 dtype마다 "두 레인 벡터 연산"을 묶은 traits 구조체를 템플릿 인자 `Tr`로 넘겨서, 네트워크와 병합 코드는 한 벌만 써요.
@@ -287,13 +295,15 @@ $$
 </Fig>
 
 ```cpp
-// csrc/array/kernels/simd_sort.hpp, merge4x4 (줄인 발췌). a = (a0, a1), b = (b0, b1)은 각각 정렬된 4개
-typename Tr::V r0 = Tr::swap(b1), r1 = Tr::swap(b0);           // b를 뒤집는다: (b3, b2), (b1, b0)
-const typename Tr::V l0 = Tr::min(a0, r0), l1 = Tr::min(a1, r1); // 반 정리기
-b0 = Tr::max(a0, r0); b1 = Tr::max(a1, r1);
-a0 = l0; a1 = l1;
-bitonic_clean4<Tr>(a0, a1);   // 아래 4개 정렬
-bitonic_clean4<Tr>(b0, b1);   // 위 4개 정렬
+    // csrc/array/kernels/simd_sort.hpp, merge4x4 (줄인 발췌). a = (a0, a1), b = (b0, b1)은 각각 정렬된 4개
+    typename Tr::V r0 = Tr::swap(b1), r1 = Tr::swap(b0);
+    const typename Tr::V l0 = Tr::min(a0, r0), l1 = Tr::min(a1, r1);
+    b0 = Tr::max(a0, r0);
+    b1 = Tr::max(a1, r1);
+    a0 = l0;
+    a1 = l1;
+    bitonic_clean4<Tr>(a0, a1);
+    bitonic_clean4<Tr>(b0, b1);
 ```
 
 긴 런 두 개의 병합(`merge_runs`)은 이 블록을 반복해요.
@@ -310,21 +320,25 @@ bitonic_clean4<Tr>(b0, b1);   // 위 4개 정렬
 ### 전체 구조와 세부 사항
 
 ```cpp
-// csrc/array/kernels/simd_sort.hpp, sort (줄인 발췌)
-const std::int64_t padded = (n + 15) / 16 * 16;          // 16의 배수로
-T stack[2 * 256];                                         // 작으면 스택
-std::unique_ptr<T[]> heap;
-if (padded > 256) heap = std::make_unique_for_overwrite<T[]>(2 * padded);
-T* src = heap ? heap.get() : stack;
-T* dst = src + padded;
-std::copy(data, data + n, src);
-std::fill(src + n, src + padded, Tr::kMax);               // 채움값은 맨 끝으로 간다
-for (i = 0; i < padded; i += 16) sort_block16<Tr>(src + i);
-for (width = 8; width < padded; width *= 2) {             // 병합 패스, 두 버퍼를 번갈아
-    for (i = 0; i < padded; i += 2 * width) merge_runs<Tr>(src + i, na, src + i + na, nb, dst + i);
-    std::swap(src, dst);
-}
-std::copy(src, src + n, data);
+    // csrc/array/kernels/simd_sort.hpp, sort (줄인 발췌)
+    const std::int64_t padded = (n + 15) / 16 * 16;  // whole blocks; the padding (kMax) sorts to the end
+    // ...
+    T stack[2 * kStack];
+    std::unique_ptr<T[]> heap;
+    if (padded > kStack) heap = std::make_unique_for_overwrite<T[]>(static_cast<size_t>(2 * padded));
+    T* src = heap ? heap.get() : stack;
+    T* dst = src + padded;
+    std::copy(data, data + n, src);
+    std::fill(src + n, src + padded, Tr::kMax);
+    for (std::int64_t i = 0; i < padded; i += 16) sort_block16<Tr>(src + i);
+    for (std::int64_t width = 8; width < padded; width *= 2) {  // merge passes, ping-pong between buffers
+        for (std::int64_t i = 0; i < padded; i += 2 * width) {
+            const std::int64_t na = std::min(width, padded - i), nb = std::min(width, padded - i - na);
+            merge_runs<Tr>(src + i, na, src + i + na, nb, dst + i);
+        }
+        std::swap(src, dst);
+    }
+    std::copy(src, src + n, data);
 ```
 
 - 길이를 16의 배수로 맞추려고 남는 칸에 `+inf`(float64)나 `INT64_MAX`(int64)를 채워요. 이 값들은 정렬하면 맨 끝으로 가고, 마지막에 앞의 $n$개만 복사하니 사라져요. 입력에 원래 `+inf`가 있어도 같은 값끼리는 구별되지 않으니 상관없어요.
@@ -380,8 +394,8 @@ IEEE 754의 float64는 부호 비트 1개, 지수 11비트, 가수 52비트를 �
 ```cpp
 // csrc/array/ops/sort.cpp, radix_key (float64)
 inline std::uint64_t radix_key(double v, bool descending) {
-    const std::uint64_t b = std::bit_cast<std::uint64_t>(v == 0.0 ? 0.0 : v);   // -0.0은 +0.0으로
-    const std::uint64_t u = (b >> 63) ? ~b : b | (std::uint64_t{1} << 63);      // 음수: 전부 반전, 양수: 부호 비트만 세움
+    const std::uint64_t b = std::bit_cast<std::uint64_t>(v == 0.0 ? 0.0 : v);
+    const std::uint64_t u = (b >> 63) ? ~b : b | (std::uint64_t{1} << 63);
     return descending ? ~u : u;
 }
 ```
@@ -423,22 +437,24 @@ float64 키에도 같은 코드가 그대로 적용되지만, 실수에서는 �
 그리고 센 개수를 보아 모든 키가 그 자리에서 같은 바이트면(`c[digit(a[0])] == n`) 그 자리를 건너뛰어요. 옮길 것이 없기 때문이에요.
 
 ```cpp
-// csrc/array/ops/sort.cpp, radix_sort (줄인 발췌)
-// lo, hi: 한 번 훑어 구한 키의 최솟값·최댓값.  digits: (hi - lo)의 바이트 수
-std::array<std::array<std::int64_t, 256>, 8> count;
-for (std::int64_t i = 0; i < n; ++i) {                      // 모든 자리의 개수를 한 패스에
-    const std::uint64_t k = key(a[i]) - lo;
-    for (int d = 0; d < digits; ++d) ++count[d][(k >> (8 * d)) & 255];
-}
-for (int d = 0; d < digits; ++d) {
-    auto& c = count[d];
-    if (c[digit(a[0])] == n) continue;                       // 모두 같은 바이트: 건너뜀
-    std::int64_t sum = 0;
-    for (std::int64_t& v : c) sum += std::exchange(v, sum);  // 개수 → 시작 위치
-    for (std::int64_t i = 0; i < n; ++i) dst[c[digit(src[i])]++] = src[i];
-    std::swap(src, dst);
-}
-if (src != a) std::copy(src, src + n, a);                    // 홀수 번 옮겼으면 되돌려 놓기
+    // csrc/array/ops/sort.cpp, radix_sort (줄인 발췌)
+    std::array<std::array<std::int64_t, 256>, 8> count;
+    for (int d = 0; d < digits; ++d) count[d].fill(0);
+    for (std::int64_t i = 0; i < n; ++i) {
+        const std::uint64_t k = key(a[i]) - lo;
+        for (int d = 0; d < digits; ++d) ++count[d][(k >> (8 * d)) & 255];
+    }
+    // ...
+    for (int d = 0; d < digits; ++d) {
+        std::array<std::int64_t, 256>& c = count[d];
+        auto digit = [&](const E& e) { return ((key(e) - lo) >> (8 * d)) & 255; };
+        if (c[digit(a[0])] == n) continue;  // one byte value for all keys
+        std::int64_t sum = 0;
+        for (std::int64_t& v : c) sum += std::exchange(v, sum);  // counts -> first slots
+        for (std::int64_t i = 0; i < n; ++i) dst[c[digit(src[i])]++] = src[i];
+        std::swap(src, dst);
+    }
+    if (src != a) std::copy(src, src + n, a);
 ```
 
 - 모든 자리의 개수를 한 패스에 세요. 자리별 개수는 키의 집합에만 달려 있고 순서와 무관하니, 흩뿌리기 전에 한꺼번에 셀 수 있어요. 자리마다 세기 패스를 따로 하면 읽기가 $2d$번이지만, 한 번에 세면 세기 1번 + 흩뿌리기 $d$번이에요(최소·최대를 구하는 패스는 따로).
@@ -511,27 +527,26 @@ $$
 $i$에 대해 단조로운 조건이라 이진 탐색으로 $O(\log k)$에 찾아요.
 
 ```cpp
-// csrc/array/ops/sort.cpp, co_rank (줄인 발췌)
-// merge(A, B)의 첫 k개 중 A에서 온 것의 수 (동점은 A 먼저)
-std::int64_t lo = std::max<std::int64_t>(0, k - nb), hi = std::min(k, na);
-while (lo < hi) {
-    const std::int64_t i = lo + (hi - lo) / 2, j = k - i;
-    if (j > 0 && i < na && !less(B[j - 1], A[i])) lo = i + 1;  // A[i]가 B[j-1]보다 먼저: A를 더 쓴다
-    else hi = i;
-}
-return lo;
+    // csrc/array/ops/sort.cpp, co_rank (줄인 발췌)
+    std::int64_t lo = std::max<std::int64_t>(0, k - nb), hi = std::min(k, na);
+    while (lo < hi) {
+        const std::int64_t i = lo + (hi - lo) / 2, j = k - i;
+        if (j > 0 && i < na && !less(B[j - 1], A[i])) lo = i + 1;  // A[i] goes before B[j-1]: take more of A
+        else hi = i;
+    }
+    return lo;
 ```
 
 태스크마다 구간의 시작 $k_0$과 끝 $k_1$에서 `co_rank`를 구해, 그 사이를 평범하게 병합해요. 모든 태스크가 서로 다른 출력 구간을 쓰니 동기화가 필요 없어요. 병합 루프에는 분기가 없어요.
 
 ```cpp
-// csrc/array/ops/sort.cpp, sort_long의 병합 루프 (줄인 발췌)
-while (i < i1 && j < j1) {          // 분기 없음: 무작위 데이터에서는 절반이 예측 실패
-    const bool take_b = less(B[j], A[i]);
-    *out++ = take_b ? B[j] : A[i];
-    j += take_b;
-    i += !take_b;
-}
+            // csrc/array/ops/sort.cpp, sort_long의 병합 루프 (줄인 발췌)
+            while (i < i1 && j < j1) {  // branch-free: random data mispredicts half the time
+                const bool take_b = less(B[j], A[i]);
+                *out++ = take_b ? B[j] : A[i];
+                j += take_b;
+                i += !take_b;
+            }
 ```
 
 동점이면 왼쪽 런이 먼저예요(`less(B[j], A[i])`가 엄격). 왼쪽 런은 원래 배열에서 앞에 있던 원소이니, 안정 정렬된 런을 이렇게 병합하면 직렬 안정 정렬과 비트까지 같은 결과가 나와요.
@@ -597,47 +612,49 @@ $$
 ```cpp
 // csrc/array/ops/sort.cpp (줄인 발췌)
 struct ZeroSigns {
-    std::vector<std::uint64_t> bits;      // z번째 0의 부호가 z번째 비트
-    std::int64_t count = 0, negative = 0; // 0의 개수, 그 가운데 -0.0의 개수
+    std::vector<std::uint64_t> bits;
+    std::int64_t count = 0, negative = 0;
 };
-
-ZeroSigns zero_signs(const double* a, std::int64_t n) {
+inline ZeroSigns zero_signs(const double* a, std::int64_t n) {
     ZeroSigns z;
-    z.bits.assign(n / 64 + 1, 0);         // 0이 n개여도 들어가는 크기
+    z.bits.assign(static_cast<std::size_t>(n / 64 + 1), 0);
     std::uint64_t* w = z.bits.data();
     std::int64_t c = 0, neg = 0;
     for (std::int64_t i = 0; i < n; ++i) {
-        const std::uint64_t is_zero = a[i] == 0.0;              // 0 또는 1
+        const std::uint64_t is_zero = a[i] == 0.0;
         const std::uint64_t sign = std::signbit(a[i]) ? 1 : 0;
-        w[c >> 6] |= (sign & is_zero) << (c & 63);              // 0이 아니면 0을 OR: 아무 일도 없다
-        c += is_zero;                                           // 0일 때만 다음 비트로
-        neg += sign & is_zero;
+        w[c >> 6] |= (sign & is_zero) << (c & 63);
+        c += static_cast<std::int64_t>(is_zero);
+        neg += static_cast<std::int64_t>(sign & is_zero);
     }
     z.count = c, z.negative = neg;
     return z;
 }
-
-// sort_values_serial의 float64 경로
-if (n >= kSimdMin) {
-    ZeroSigns zeros;
-    bool rewrite = false;
-    if (stable) {
-        zeros = zero_signs(a, n);
-        rewrite = zeros.negative > 0 && zeros.negative < zeros.count;   // 두 부호가 다 있을 때만
-    }
-    simd_sort::sort<simd_sort::F64>(a, n);      // 0 구간의 부호 순서는 뒤섞일 수 있다
-    if (descending) std::reverse(a, a + n);
-    if (rewrite) {
-        T* z0 = descending ? std::partition_point(a, a + n, [](T v) { return v > 0; })
-                           : std::partition_point(a, a + n, [](T v) { return v < 0; });
-        const std::uint64_t* w = zeros.bits.data();
-        for (std::int64_t k = 0; k < zeros.count; ++k) {
-            const std::uint64_t bit = (w[k >> 6] >> (k & 63)) & 1;
-            z0[k] = std::bit_cast<T>(bit << 63);    // +0.0 또는 -0.0
+        // ...
+        if (n >= kSimdMin) {
+            ZeroSigns zeros;  // when a stable sort could tell the zeros apart
+            bool rewrite = false;
+            if constexpr (ops::is_float<T>) {
+                if (stable) {
+                    zeros = zero_signs(a, n);
+                    rewrite = zeros.negative > 0 && zeros.negative < zeros.count;
+                }
+            }
+            simd_sort::sort<std::conditional_t<ops::is_float<T>, simd_sort::F64, simd_sort::I64>>(a, n);
+            if (descending) std::reverse(a, a + n);  // ties are indistinguishable here
+            if constexpr (ops::is_float<T>) {
+                if (rewrite) {
+                    T* z0 = descending ? std::partition_point(a, a + n, [](T v) { return v > 0; })
+                                       : std::partition_point(a, a + n, [](T v) { return v < 0; });
+                    const std::uint64_t* w = zeros.bits.data();
+                    for (std::int64_t k = 0; k < zeros.count; ++k) {
+                        const std::uint64_t bit = (w[k >> 6] >> (k & 63)) & 1;
+                        z0[k] = std::bit_cast<T>(bit << 63);  // +0.0 or -0.0
+                    }
+                }
+            }
+            return;
         }
-    }
-    return;
-}
 ```
 
 코드의 `stable`은 float64면 언제나 참이에요. 값 정렬의 입구(`sort_values`)가 float64의 `stable=False`를 참으로 바꿔 넘기기 때문이에요.
@@ -718,21 +735,21 @@ numpy 2.5.4의 `np.unique`는 정렬된 결과의 첫 원소를 보여 줘요. `
 `unique_values`는 위치도 개수도 필요 없어요. `unique_counts`도 위치는 필요 없고, 개수는 정렬된 값에서 같은 값 구간의 길이예요. 그래서 둘 다 쌍이 아니라 값만 안정 정렬하고, 제자리에서 압축해요(`sorted_groups`).
 
 ```cpp
-// csrc/array/ops/sort.cpp, sorted_groups (발췌)
-sort_values(buf.get(), m, /*stable=*/true, /*descending=*/false);
-// Compact in place: keep the first of every run of equal values.
-for (std::int64_t i = 0; i < m; ++i) {
-    if (i == 0 || !same(buf[groups - 1], buf[i])) {
-        buf[groups++] = buf[i];
-        if constexpr (Counts) counts.push_back(1);
-    } else if constexpr (Counts) {
-        ++counts.back();
-    }
-}
-if (m < n) {  // the NaNs: one value, the first NaN of x
-    buf[groups++] = buf[m];
-    if constexpr (Counts) counts.push_back(n - m);
-}
+            // csrc/array/ops/sort.cpp, sorted_groups (발췌)
+            sort_values(buf.get(), m, /*stable=*/true, /*descending=*/false);
+            // Compact in place: keep the first of every run of equal values.
+            for (std::int64_t i = 0; i < m; ++i) {
+                if (i == 0 || !same(buf[groups - 1], buf[i])) {
+                    buf[groups++] = buf[i];
+                    if constexpr (Counts) counts.push_back(1);
+                } else if constexpr (Counts) {
+                    ++counts.back();
+                }
+            }
+            if (m < n) {  // the NaNs: one value, the first NaN of x
+                buf[groups++] = buf[m];
+                if constexpr (Counts) counts.push_back(n - m);
+            }
 ```
 
 옮길 데이터가 절반(8바이트 대 16바이트)이에요. 값만 정렬하니 위에서 본 빠른 경로도 쓸 수 있어요. int64와 float64는 1024개 이상에서 기수 정렬, 그보다 짧으면 NEON 정렬이에요($\pm 0$이 섞여 있으면 0 구간을 입력 순서로 되써요). 둘 다 결과가 안정 정렬과 같으니 "처음 나온 값" 규칙이 그대로 지켜져요. `unique_counts`도 쌍을 정렬해 쓰지 않는 `inverse`까지 만들면 `unique_values`의 약 5배가 걸려요(int64 $10^7$개, 1000종, 10스레드: 48.8ms 대 9.2ms).
@@ -756,21 +773,26 @@ $[0, 1000)$의 int64라면 범위가 1000이라 기수 정렬이 두 자리로 �
 `(100000, 32)` 배열을 `sort(axis=1)`하면 길이 32인 레인을 10만 번 정렬해요. 레인마다 작업 버퍼를 `malloc`하면 할당 비용이 정렬 비용보다 커져요. 그래서 17개 이상, 64KB(`kScratchBytes`) 이하의 레인은 **스레드별 scratch**를 써요. 16개 이하의 레인은 버퍼 없이 스택에서 정렬 네트워크로 정렬해요(위).
 
 ```cpp
-// csrc/array/ops/sort.cpp, LaneBuffer (줄인 발췌)
+// csrc/array/ops/sort.cpp, LaneBuffer
 template <typename T>
 class LaneBuffer {
 public:
     LaneBuffer(std::int64_t n, int slot) {
-        if (n * sizeof(T) <= kScratchBytes) {
+        if (n * static_cast<std::int64_t>(sizeof(T)) <= kScratchBytes) {
             thread_local std::unique_ptr<std::byte[]> mem =
-                std::make_unique_for_overwrite<std::byte[]>(2 * kScratchBytes);
+                std::make_unique_for_overwrite<std::byte[]>(static_cast<size_t>(2 * kScratchBytes));
             ptr_ = reinterpret_cast<T*>(mem.get() + slot * kScratchBytes);
         } else {
-            heap_ = buffer<T>(n);     // 긴 레인은 할당
+            heap_ = buffer<T>(n);
             ptr_ = heap_.get();
         }
     }
-    // ...
+    T* get() const { return ptr_; }
+    T& operator[](std::int64_t i) const { return ptr_[i]; }
+
+private:
+    std::unique_ptr<T[]> heap_;
+    T* ptr_;
 };
 ```
 
@@ -802,17 +824,17 @@ NEON 정렬은 자기 버퍼를 따로 가져요(채운 길이 256 이하면 스
 **분기 없는 이진 탐색을 8개씩 나란히** 해요.
 
 ```cpp
-// csrc/array/ops/searching.cpp (searchsorted의 group)
-auto group = [&]<int L>(std::int64_t j) {
-    std::int64_t base[L] = {};
-    for (std::int64_t len = n; len > 1;) {
-        const std::int64_t half = len / 2;
-        for (int l = 0; l < L; ++l)
-            base[l] = below(key(base[l] + half), v[j + l]) ? base[l] + half : base[l];
-        len -= half;
-    }
-    for (int l = 0; l < L; ++l) o[j + l] = base[l] + below(key(base[l]), v[j + l]);
-};
+                    // csrc/array/ops/searching.cpp (searchsorted의 group)
+                    auto group = [&]<int L>(std::int64_t j) {
+                        std::int64_t base[L] = {};
+                        for (std::int64_t len = n; len > 1;) {
+                            const std::int64_t half = len / 2;
+                            for (int l = 0; l < L; ++l)
+                                base[l] = below(key(base[l] + half), v[j + l]) ? base[l] + half : base[l];
+                            len -= half;
+                        }
+                        for (int l = 0; l < L; ++l) o[j + l] = base[l] + below(key(base[l]), v[j + l]);
+                    };
 ```
 
 - 길이를 반씩 줄이며 선택 하나로 시작점을 옮겨요. 비교 결과로 갈라지는 분기가 없어서 예측 실패가 없어요.
@@ -832,29 +854,30 @@ auto group = [&]<int L>(std::int64_t j) {
 채우기는 분기가 없어요.
 
 ```cpp
-// csrc/array/ops/searching.cpp, nonzero의 1차원 채우기 (줄인 발췌)
-std::int64_t k = start[t];
-const std::int64_t end_k = start[t + 1];
-constexpr std::int64_t kRun = 16;
-for (; i + kRun <= e; i += kRun) {
-    std::int64_t c = 0;
-    if constexpr (std::is_same_v<T, bool>) {
-        const uint8x16_t v = vld1q_u8(reinterpret_cast<const std::uint8_t*>(p + i));
-        c = vmaxvq_u8(v) == 0 ? 0 : vminvq_u8(v) != 0 ? kRun : 1;  // 1: some, not all
-    } else {
-        for (std::int64_t j = 0; j < kRun; ++j) c += truthy(p[i + j]);
-    }
-    if (c == 0) continue;
-    if (c == kRun) {
-        for (std::int64_t j = 0; j < kRun; ++j) o[k + j] = i + j;
-        k += kRun;
-        continue;
-    }
-    for (std::int64_t j = 0; j < kRun; ++j) {
-        if (k < end_k) o[k] = i + j;  // 거의 언제나 참: 예측이 잘 맞는다
-        k += truthy(p[i + j]);        // 참일 때만 k가 늘어난다
-    }
-}
+            // csrc/array/ops/searching.cpp, nonzero의 1차원 채우기 (줄인 발췌)
+            std::int64_t k = start[t];
+            const std::int64_t end_k = start[t + 1];
+                // ...
+                constexpr std::int64_t kRun = 16;
+                for (; i + kRun <= e; i += kRun) {
+                    std::int64_t c = 0;
+                    if constexpr (std::is_same_v<T, bool>) {
+                        const uint8x16_t v = vld1q_u8(reinterpret_cast<const std::uint8_t*>(p + i));
+                        c = vmaxvq_u8(v) == 0 ? 0 : vminvq_u8(v) != 0 ? kRun : 1;  // 1: some, not all
+                    } else {
+                        for (std::int64_t j = 0; j < kRun; ++j) c += truthy(p[i + j]);
+                    }
+                    if (c == 0) continue;
+                    if (c == kRun) {
+                        for (std::int64_t j = 0; j < kRun; ++j) o[k + j] = i + j;
+                        k += kRun;
+                        continue;
+                    }
+                    for (std::int64_t j = 0; j < kRun; ++j) {
+                        if (k < end_k) o[k] = i + j;
+                        k += truthy(p[i + j]);
+                    }
+                }
 ```
 
 - 1차원은 16개 블록마다 참의 수를 먼저 세요. bool이면 NEON 최대 하나와 최소 하나로 "하나도 없음", "모두 참", "섞임"을 가려요. 하나도 없으면 블록을 건너뛰고, 모두 참이면 위치 16개를 연달아 쓰고, 섞여 있을 때만 아래 루프를 돌아요. 희소한 마스크(1% 참)에서는 원소마다의 저장이 사라져요.
@@ -870,10 +893,10 @@ for (; i + kRun <= e; i += kRun) {
 - `take_along_axis`는 결과를 메모리 순서대로 원소별로 돌아요. x를 그 축의 stride를 0으로 둔 뷰로 보면, 결과의 각 위치는 자기 레인의 첫 원소 `x[..., 0, ...]`를 가리켜요. 거기에 `index * stride`를 더해 원소를 읽어요.
 
   ```cpp
-  // csrc/array/ops/searching.cpp, along_loop (줄인 발췌). args: x(축 stride 0), indices, out
-  std::int64_t k = *reinterpret_cast<const std::int64_t*>(args[1] + i * s[1]);
-  if (k < 0) k += c.n_x;
-  *reinterpret_cast<T*>(args[2] + i * s[2]) = *reinterpret_cast<const T*>(args[0] + i * s[0] + k * c.x_stride);
+          // csrc/array/ops/searching.cpp, along_loop (줄인 발췌). args: x(축 stride 0), indices, out
+          std::int64_t k = *reinterpret_cast<const std::int64_t*>(args[1] + i * s[1]);
+          if (k < 0) k += c.n_x;
+          *reinterpret_cast<T*>(args[2] + i * s[2]) = *reinterpret_cast<const T*>(args[0] + i * s[0] + k * c.x_stride);
   ```
 
   어느 축을 따라 고르든 결과 메모리를 순서대로 지나고, 이터레이터가 병렬로 나눠요. 레인 단위로 돌면 C 순서 행렬의 `axis=0`에서 2.5배 느려요. 범위 검사는 먼저 한 번, 조각별로 분기 없이(`b |= q[i] < -n || q[i] >= n`) 병렬로 해요. 나쁜 것이 있을 때만 C 순서로 첫 번째를 찾아 메시지를 만들어요. 같은 일을 다차원 고급 인덱싱으로 하는 것보다 1스레드 3.5배, 10스레드 12배 빨라요.

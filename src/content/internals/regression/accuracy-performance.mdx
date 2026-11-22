@@ -51,6 +51,7 @@ import Steps from '../../../components/fig/Steps.astro';
 OLS·WLS(와 백색화한 GLS, ridge)의 참값은 `tools/regref.py`의 `ols`가 정규방정식 $X^{\mathsf T}WXb = X^{\mathsf T}Wy$를 Arb의 행렬(`arb_mat`)로 풀어 만들어요. double 입력은 정확한 공이고, Arb는 모든 반올림을 공의 반지름에 넣어요. double에서는 정규방정식이 조건수를 제곱해 쓸모없지만, 높은 정밀도에서는 $\kappa^2$이 비트를 더 쓸 뿐 답을 틀리게 하지 않아요.
 
 ```python
+    # tools/regref.py
     p = ar.START_PREC
     while p <= ar.MAX_PREC:
         with ar.precision(p):
@@ -124,6 +125,7 @@ $$
 를 구간 산술로 계산해요. $F$는 점수(기울기), $F'(\mathbf X)$는 상자 전체에서의 헤시안을 담은 구간 행렬, $Y$는 $F'(y)$의 중심의 역행렬이에요. $K(\mathbf X)$가 $\mathbf X$의 안쪽에 들어가면 $\mathbf X$ 안에 $F$의 근이 정확히 하나 있어요(Krawczyk 1969). 그 $K(\mathbf X)$가 참값의 공이에요.
 
 ```python
+    # tools/regref.py
     g, H = grad_hess(beta)
     Ym = arb_mat([[H[a][b].mid() for b in range(k)] for a in range(k)]).inv()
     Ym = arb_mat([[Ym[a, b].mid() for b in range(k)] for a in range(k)])

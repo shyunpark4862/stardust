@@ -101,29 +101,29 @@ $p = 0$과 $p = 1$의 답인 `f.lo`, `f.hi`는 분포 족의 지지집합의 끝
 음이항의 $n = 0$(기다릴 성공이 없으니 실패도 없어요)도 0의 점질량이에요. $n = 0$은 `valid`의 정의역 밖이라, 엔진의 극한 장치(`at_limit`)가 모든 메서드를 $p = 1$인 음이항의 값으로 보내요([원소별 엔진과 빠른 경로](/internals/stats/engine/)).
 
 ```cpp
-// csrc/stats/dist/discrete_basic.hpp, NegativeBinomial
-static bool at_limit(double n, double p) { return n == 0.0 && p > 0.0 && p <= 1.0; }
-template <class M>
-static double limit_in(double x, double, double) {
-    return method_of<NegativeBinomial, M>(x, 1.0, 1.0);
-}
-template <class M>
-static double limit_par(double, double) {
-    return method_of<NegativeBinomial, M>(1.0, 1.0);
-}
+    // csrc/stats/dist/discrete_basic.hpp, NegativeBinomial
+    static bool at_limit(double n, double p) { return n == 0.0 && p > 0.0 && p <= 1.0; }
+    template <class M>
+    static double limit_in(double x, double, double) {
+        return method_of<NegativeBinomial, M>(x, 1.0, 1.0);
+    }
+    template <class M>
+    static double limit_par(double, double) {
+        return method_of<NegativeBinomial, M>(1.0, 1.0);
+    }
 ```
 
 베타이항은 모양 $a$나 $b$가 $2^{-1021}$ 아래이면 0과 $n$의 두 점 분포예요($P(n) = a/(a + b)$). 이 모양은 `valid` 안에 있지만, 엔진이 `at_limit`을 먼저 물어서 같은 장치로 넘어가요. 값은 베타와 함께 쓰는 `two_point.hpp`에서 나와요([작은 모양의 두 점](/internals/stats/engine/#작은-모양의-두-점-two_point)). 분위수 탐색을 거치지 않고 `cdf`가 목표 이상이 되는 가장 작은 점을 바로 골라요. 지지집합은 여기서도 족의 것 $[0, n]$이라 `icdf(1)`은 $n$이에요.
 
 ```cpp
-// csrc/stats/dist/discrete_more.hpp, BetaBinomial
-static bool at_limit(double n, double a, double b) {
-    return valid(n, a, b) && (a < two_point::kMinShape || b < two_point::kMinShape);
-}
-template <class M>
-static double limit_in(double x, double n, double a, double b) {
-    return two_point::in<M>(x, two_point::of_shapes(a, b, 0.0, n, true));
-}
+    // csrc/stats/dist/discrete_more.hpp, BetaBinomial
+    static bool at_limit(double n, double a, double b) {
+        return valid(n, a, b) && (a < two_point::kMinShape || b < two_point::kMinShape);
+    }
+    template <class M>
+    static double limit_in(double x, double n, double a, double b) {
+        return two_point::in<M>(x, two_point::of_shapes(a, b, 0.0, n, true));
+    }
 ```
 
 ```python
@@ -152,15 +152,15 @@ Zipf처럼 깊은 꼬리의 분위수가 아주 큰 분포는 한 단계 더 가
 이분 부분은 이래요.
 
 ```cpp
-// csrc/stats/discrete.hpp, disc::smallest의 끝
-for (int i = 0; b - a > 1.0; ++i) {
-    if (i >= kMaxSearchSteps) return kNaN;  // not reached: the bracket halves each time
-    const double m = std::floor(a + 0.5 * (b - a));
-    if (m <= a || m >= b) break;  // past 2^53 no float64 lies between: b is the answer rounded
-    if (pred(m)) b = m;
-    else a = m;
-}
-return b;
+    // csrc/stats/discrete.hpp, disc::smallest의 끝
+    for (int i = 0; b - a > 1.0; ++i) {
+        if (i >= kMaxSearchSteps) return kNaN;  // not reached: the bracket halves each time
+        const double m = std::floor(a + 0.5 * (b - a));
+        if (m <= a || m >= b) break;  // past 2^53 no float64 lies between: b is the answer rounded
+        if (pred(m)) b = m;
+        else a = m;
+    }
+    return b;
 ```
 
 중간점을 `(a + b)/2`가 아니라 `a + 0.5*(b − a)`로 만드는 것은 $a + b$가 double을 넘지 않게 하려는 거예요. 위로 질주하는 걸음이 $2^{1023}$을 넘으려 하면 가장 큰 double($1.797\ldots \times 10^{308}$)에서 조건을 한 번 시험해요. 거기서 참이면 답은 그 아래의 유한한 double이고, 거짓이면 `inf`예요. 그래서 참 분위수가 $4.9 \times 10^{307}$처럼 $2^{1023}$과 가장 큰 double 사이에 있어도 맞게 나와요.
@@ -343,6 +343,7 @@ inline double series_r(double t) {
     return e + t * o;
 }
 
+// ...
 // Binomial(n, p) at k: 13 <= k <= n - 13, n <= 2^53, 0 < p < 1 (ok false otherwise; the
 // arithmetic is safe for any input). D = n p - k; r = n / (2 pi k (n - k)).
 inline Parts binomial(double k, double n, double p) {
@@ -451,21 +452,21 @@ $$
 비는 네 인자의 곱과 몫이고, 각 인자는 정수(정확)이거나 정수 + 모양(two_sum으로 정확한 double-double)이에요. `Ratio4`가 이 넷을 담고, `tail_sum_dd`가 항을 double-double로 걸어요.
 
 ```cpp
-// csrc/stats/discrete.hpp, disc::tail_sum_dd (발췌)
-num::DD t{1.0, 0.0};
-for (double j = k; dir > 0.0 ? j < last : j > last; j += dir) {
-    const Ratio4 r = ratio(j);
-    t = t * ((r.a1 * r.a2) / (r.b1 * r.b2));
-    sum.add(t.hi);
-    sum.c += t.lo;
-    if (full) {
-        if (t.hi < 1e-200) return -1.0;
-    } else if (t.hi <= sum.s * 0x1p-60) {
-        return sum.s + sum.c;
+    // csrc/stats/discrete.hpp, disc::tail_sum_dd (발췌)
+    num::DD t{1.0, 0.0};
+    for (double j = k; dir > 0.0 ? j < last : j > last; j += dir) {
+        const Ratio4 r = ratio(j);
+        t = t * ((r.a1 * r.a2) / (r.b1 * r.b2));
+        sum.add(t.hi);
+        sum.c += t.lo;
+        if (full) {
+            if (t.hi < 1e-200) return -1.0;
+        } else if (t.hi <= sum.s * 0x1p-60) {
+            return sum.s + sum.c;
+        }
     }
-}
-if (last != end) return kNaN;  // the bound, with terms that still count beyond it
-return sum.s + sum.c;
+    if (last != end) return kNaN;  // the bound, with terms that still count beyond it
+    return sum.s + sum.c;
 ```
 
 - 항은 첫 항에 대한 비 $t_j = P(j)/P(k)$로 다뤄요. 곱과 몫이 모두 double-double이라 한 걸음의 오차가 $2^{-104}$ 정도예요. float64 비를 쓰면 반올림이 걸음마다 쌓여 32항이면 $10^{-14}$에 닿는데, double-double이면 수천 항을 걸어도 log pmf에서 다시 맞출 필요가 없어요.
@@ -545,30 +546,30 @@ $$
 - **보정의 크기**: $j$번째 보정은 대략 $(h/2\pi)^{2j}(2j)!$로 줄어요($h = \max(w, 1/V)$). 앞의 항을 $V = k + 1 + M \ge 20$이 될 때까지 직접 더해 $1/V \le 0.05$로 만들고, $w \le 0.1$이므로 $h \le 0.1$이에요. 그러면 보정 10항으로 $2^{-60}$에 닿아요.
 
 ```cpp
-// csrc/stats/dist/discrete_more.hpp, logser_detail::phi_em (발췌)
-double s = 0.0, t = 1.0, V = v;
-while (V < 20.0) {
-    s += t / V;
-    t *= p;
-    V += 1.0;
-}
-double tail = exp_e1(V * lw) + 0.5 / V;
-const double r = 1.0 / V;
-double nfact = 1.0;  // n!
-for (int j = 1; j <= 10; ++j) {
-    const int n = 2 * j - 1;
-    nfact *= (j == 1 ? 1.0 : double(n) * (n - 1));
-    double poly = 0.0, c = 1.0;  // sum_{q <= n} lw^q / q! r^(n-q); c = lw^q / q!
-    for (int q = 0; q <= n; ++q) {
-        poly += c * std::pow(r, n - q);
-        c *= lw / (q + 1);
+    // csrc/stats/dist/discrete_more.hpp, logser_detail::phi_em (발췌)
+    double s = 0.0, t = 1.0, V = v;
+    while (V < 20.0) {
+        s += t / V;
+        t *= p;
+        V += 1.0;
     }
-    const double d = -nfact * r * poly;  // f^(n)(0), n odd
-    const double corr = kBernoulliOverFactorial[j - 1] * d;
-    tail -= corr;
-    if (std::fabs(corr) <= tail * 0x1p-60) break;
-}
-return s + t * tail;
+    double tail = exp_e1(V * lw) + 0.5 / V;
+    const double r = 1.0 / V;
+    double nfact = 1.0;  // n!
+    for (int j = 1; j <= 10; ++j) {
+        const int n = 2 * j - 1;
+        nfact *= (j == 1 ? 1.0 : double(n) * (n - 1));
+        double poly = 0.0, c = 1.0;  // sum_{q <= n} lw^q / q! r^(n-q); c = lw^q / q!
+        for (int q = 0; q <= n; ++q) {
+            poly += c * std::pow(r, n - q);
+            c *= lw / (q + 1);
+        }
+        const double d = -nfact * r * poly;  // f^(n)(0), n odd
+        const double corr = kBernoulliOverFactorial[j - 1] * d;
+        tail -= corr;
+        if (std::fabs(corr) <= tail * 0x1p-60) break;
+    }
+    return s + t * tail;
 ```
 
 다른 방법은 이 구간에서 쓸 수 없어요. $\Phi$를 초기하 함수 ${}_2F_1$로 바꾸는 변환 꼴은 항이 $e^{vw}$ 크기로 상쇄해서 $vw \approx 14$에서 결과가 음수가 돼요. $\Phi$의 점근 급수는 $vw = 30$에서도 $10^{-12}$밖에 맞지 않아요. Euler–Maclaurin은 모든 항의 부호와 크기가 통제되어 이런 문제가 없어요.
@@ -697,11 +698,11 @@ $\lvert s\rvert \ge \lvert x\rvert$이면 Dekker의 Fast2Sum 정리에 따라 $s
 그래서 남은 꼬리를 어림해요. 최빈값을 지난 뒤에는 이웃 항의 비 $r$이 계속 줄어드므로, 이번 항 $u$ 뒤의 나머지는 많아야 기하급수 $u r/(1 - r)$ 정도예요. 이것이 합의 $2^{-60}$ 아래일 때 멈춰요.
 
 ```cpp
-// csrc/stats/discrete.hpp, disc::entropy_run (발췌)
-if (!full && (dir > 0.0 ? k > mode + 1.0 : k < mode - 1.0)) {
-    const double r = prev > 0.0 ? u / prev : 0.0;
-    if (r < 1.0 && u * r <= (1.0 - r) * std::fabs(sums.h.s) * 0x1p-60) return true;
-}
+        // csrc/stats/discrete.hpp, disc::entropy_run (발췌)
+        if (!full && (dir > 0.0 ? k > mode + 1.0 : k < mode - 1.0)) {
+            const double r = prev > 0.0 ? u / prev : 0.0;
+            if (r < 1.0 && u * r <= (1.0 - r) * std::fabs(sums.h.s) * 0x1p-60) return true;
+        }
 ```
 
 항이 $10^{-290}$ 아래로 내려가도 멈춰요. 줄어드는 걸음의 나머지는 그보다 작아요.

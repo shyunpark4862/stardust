@@ -48,7 +48,7 @@ import Tree from '../../../components/fig/Tree.astro';
 메서드는 이름표(tag) 구조체예요. 입력을 받는 메서드 열두 개는 매크로 하나로 만들어요.
 
 ```cpp
-// stats/engine.hpp (발췌)
+// csrc/stats/engine.hpp (발췌)
 #define SD_STATS_INPUT_METHOD(Tag, fname, argname)                                                   \
     struct Tag {                                                                                     \
         static constexpr char name[] = #fname;                                                       \
@@ -60,14 +60,21 @@ import Tree from '../../../components/fig/Tree.astro';
         }                                                                                            \
         template <class D, class C>                                                                  \
         static constexpr bool chunked = requires(const C& c, double* o) { D::fname##_chunk(c, o); }; \
-        ...                                                                                          \
+        template <class D, class C>                                                                  \
+        static void run_chunk(const C& c, double* o) {                                               \
+            if constexpr (chunked<D, C>) D::fname##_chunk(c, o);                                     \
+        }                                                                                            \
     };
 
+// ...
 SD_STATS_INPUT_METHOD(Cdf, cdf, "x")
-SD_STATS_INPUT_METHOD(Pmf, pmf, "k")      // 이산 분포의 입력 이름은 k
+SD_STATS_INPUT_METHOD(Logcdf, logcdf, "x")
+SD_STATS_INPUT_METHOD(Ccdf, ccdf, "x")
+SD_STATS_INPUT_METHOD(Logccdf, logccdf, "x")
 SD_STATS_INPUT_METHOD(Icdf, icdf, "p")
+SD_STATS_INPUT_METHOD(Iccdf, iccdf, "p")
 SD_STATS_INPUT_METHOD(Ilogcdf, ilogcdf, "logp")
-...
+SD_STATS_INPUT_METHOD(Ilogccdf, ilogccdf, "logp")
 ```
 
 `chunked`는 C++20의 `requires` 식이에요. 분포 `D`에 `cdf_chunk`라는 함수가 있으면 참이에요. 이것이 위 그림의 갈림길이에요.
@@ -79,17 +86,30 @@ SD_STATS_INPUT_METHOD(Ilogcdf, ilogcdf, "logp")
 Op 하나에는 [special의 Op 구조체](/internals/special/engine/)와 같은 필드가 있어요. 다만 필드를 모두 분포와 메서드에서 계산해 내요.
 
 ```cpp
-// stats/engine.hpp (줄인 발췌)
+// csrc/stats/engine.hpp (줄인 발췌)
 template <class D, class M, std::size_t... I>
 struct DistOp<D, M, std::index_sequence<I...>> : Real {
     template <std::size_t> using P = double;
-    static constexpr auto name_buf = join_name(D::name, M::name);       // 예: "gamma" + "_" + "cdf"
+    static constexpr auto name_buf = join_name(D::name, M::name);
     static constexpr const char* name = name_buf.data();
     static constexpr int nin = static_cast<int>(M::input) + static_cast<int>(sizeof...(I));
     static constexpr int nout = 1;
-    static constexpr std::array<const char*, nin> args = ...;          // 예: {"a", "scale", "x"}
-    static constexpr double cost_ns = cost_of<D, M>();                  // 아래 "비용표" 절
-    static constexpr const LoopTable* table = ...;                      // chunk 커널이 있으면 그 표
+    static constexpr std::array<const char*, nin> args = [] {
+        std::array<const char*, nin> a{};
+        std::size_t k = 0;
+        for (const char* s : D::params) a[k++] = s;
+        if constexpr (M::input) a[k] = M::arg;
+        return a;
+    }();
+    static constexpr double cost_ns = cost_of<D, M>();
+    // ...
+    // the method's chunk kernel, when the distribution has one (nary_bind::table_of)
+    static constexpr const LoopTable* table = []() -> const LoopTable* {
+        if constexpr (M::input) {
+            if constexpr (M::template chunked<D, Chunk<sizeof...(I)>>) return &chunk_table<D, M>;
+        }
+        return nullptr;
+    }();
 
     static double f(P<I>... p, double x)
         requires M::input
@@ -114,6 +134,7 @@ struct DistOp<D, M, std::index_sequence<I...>> : Real {
         if (!D::valid(p...)) return kNaN;
         return signed_zero(M::template call<D>(p...), p...);
     }
+    // ...
 };
 ```
 
@@ -132,35 +153,35 @@ struct DistOp<D, M, std::index_sequence<I...>> : Real {
 청크 커널이 있는 메서드는 묶음을 먼저 훑어 원소를 셋으로 나눠요. 매개변수가 `valid`이고 극한이 아니며 x가 NaN이 아닌 원소는 좋음, `at_limit`인 원소는 극한, 그 밖은 나쁨이에요. 커널은 좋은 원소만 봐요. 나쁘거나 극한인 원소가 섞여 있으면 커널에 넘기는 사본에서 그 자리에 좋은 원소 하나의 매개변수와 x를 넣고, 커널이 끝난 뒤 그 자리를 자기 값(NaN이나 극한 분포의 값)으로 덮어써요. 좋은 원소가 하나도 없는 묶음은 커널을 부르지 않아요. 매개변수가 모두 브로드캐스트된 스칼라이면 `valid`와 `at_limit`을 한 번만 불러요.
 
 ```cpp
-// chunk_loop_impl (stats/engine.hpp, 줄인 발췌)
-for (std::int64_t off = 0; off < n; off += kChunk) {
-    ...
-    int good = -1, bad = 0;
-    auto classify = [&](int i, bool limit, bool valid) {
-        const bool nan = c.x[i] != c.x[i];
-        state[i] = limit ? (nan ? kBad : kLimit) : (valid && !nan ? kGood : kBad);
-        if (state[i] == kGood) good = good < 0 ? i : good;
-        else ++bad;
-    };
-    ...
-    if (good >= 0) {
-        if (bad > 0) {  // the kernel's copy: every element a good one
-            ...
-            for (int i = 0; i < m; ++i) {
-                if (state[i] == kGood) continue;
-                xb[i] = xb[good];
-                ((c.same[I] ? void() : void(pb[I][i] = pb[I][good])), ...);
+    // chunk_loop_impl (csrc/stats/engine.hpp, 줄인 발췌)
+    for (std::int64_t off = 0; off < n; off += kChunk) {
+        // ...
+        int good = -1, bad = 0;
+        auto classify = [&](int i, bool limit, bool valid) {
+            const bool nan = c.x[i] != c.x[i];
+            state[i] = limit ? (nan ? kBad : kLimit) : (valid && !nan ? kGood : kBad);
+            if (state[i] == kGood) good = good < 0 ? i : good;
+            else ++bad;
+        };
+        // ...
+        if (good >= 0) {
+            if (bad > 0) {  // the kernel's copy: every element a good one
+                // ...
+                for (int i = 0; i < m; ++i) {
+                    if (state[i] == kGood) continue;
+                    xb[i] = xb[good];
+                    ((c.same[I] ? void() : void(pb[I][i] = pb[I][good])), ...);
+                }
             }
+            M::template run_chunk<D, Chunk<NP>>(c, ob);
         }
-        M::template run_chunk<D, Chunk<NP>>(c, ob);
+        for (int i = 0; i < m; ++i) {
+            if (state[i] == kGood) ob[i] += zero;
+            else if constexpr (kLimits) ob[i] = state[i] == kLimit ? lim[i] : kNaN;
+            else ob[i] = kNaN;
+        }
+    // ...
     }
-    for (int i = 0; i < m; ++i) {
-        if (state[i] == kGood) ob[i] += zero;
-        else if constexpr (kLimits) ob[i] = state[i] == kLimit ? lim[i] : kNaN;
-        else ob[i] = kNaN;
-    }
-    ...
-}
 ```
 
 커널이 잘못된 원소를 보지 않게 하는 것은 커널이 빠른 경로가 남긴 원소를 스칼라 정의로 넘기기 때문이에요. 스칼라 정의는 `valid` 안의 매개변수를 가정하고 써서, 잘못된 원소가 거기에 닿으면 끝나지 않을 수 있어요. 파레토의 `log_ratio`는 아주 작은 척도를 $2^{200}$배 해서 자신을 다시 부르는데, scale = 0은 0 그대로이고 scale < 0은 $-\infty$로 가서 멈추지 않아요. 그 재귀와 베이불의 같은 꼴에는 scale > 0 조건도 두어요. 커널이 내는 원소의 값은 그 원소에만 달려 있으므로, 좋은 원소의 비트는 사본을 쓰든 아니든 같아요. `tests/stats/test_invalid_sweep.py`는 31개 단변량 분포마다 잘못되거나 극단인 매개변수의 격자(값 13개의 $k$제곱, $k$는 매개변수 수)와 x 14개로 메서드 19개를 불러, 모든 호출이 시간 제한 안에 끝나는지 봐요.
@@ -178,38 +199,38 @@ for (std::int64_t off = 0; off < n; off += kChunk) {
 좋지 않은 원소가 하나라도 있는 묶음만 위의 분류·사본 길로 가요. 커널이 원소별이라 두 길의 값은 비트까지 같아요.
 
 ```cpp
-// chunk_loop_impl (stats/engine.hpp, 줄인 발췌)
-const bool all_same = ((s[I] == 0) && ...);
-const int first = static_cast<int>(std::min<std::int64_t>(kChunk, n));
-// a broadcast scalar parameter: its buffer filled once (the slow path below never writes it)
-((s[I] == 0 ? (void)std::fill(pb[I], pb[I] + first, *reinterpret_cast<const double*>(args[I])) : void()), ...);
-bool same_good = false;  // scalar parameters, valid and not at a limit
-if (all_same) {
-    bool limit = false;
-    if constexpr (kLimits) limit = D::at_limit(pb[I][0]...);
-    same_good = !limit && D::valid(pb[I][0]...);
-}
-const bool out_direct = s[NP + 1] == sizeof(double);
-for (std::int64_t off = 0; off < n; off += kChunk) {
-    ...
-    const bool fast = all_same ? same_good && no_nan(c.x, m) : all_good_params<D>(c, std::index_sequence<I...>{});
-    if (fast) {
-        double* dst = ob;
-        if (out_direct) {
-            double* od = reinterpret_cast<double*>(o);
-            if (apart(od, c.x, m) && ((s[I] == 0 || apart(od, c.p[I], m)) && ...)) dst = od;
-        }
-        M::template run_chunk<D, Chunk<NP>>(c, dst);
-        if constexpr (kNonNegative<M>)
-            for (int i = 0; i < m; ++i) dst[i] += zero;
-        if (dst == ob) {
-            if (out_direct) std::memcpy(o, ob, static_cast<std::size_t>(m) * sizeof(double));
-            else scatter(ob, o, s[NP + 1], m);
-        }
-        continue;
+    // chunk_loop_impl (csrc/stats/engine.hpp, 줄인 발췌)
+    const bool all_same = ((s[I] == 0) && ...);
+    const int first = static_cast<int>(std::min<std::int64_t>(kChunk, n));
+    // a broadcast scalar parameter: its buffer filled once (the slow path below never writes it)
+    ((s[I] == 0 ? (void)std::fill(pb[I], pb[I] + first, *reinterpret_cast<const double*>(args[I])) : void()), ...);
+    bool same_good = false;  // scalar parameters, valid and not at a limit
+    if (all_same) {
+        bool limit = false;
+        if constexpr (kLimits) limit = D::at_limit(pb[I][0]...);
+        same_good = !limit && D::valid(pb[I][0]...);
     }
-    ...  // 위의 분류와 사본
-}
+    const bool out_direct = s[NP + 1] == sizeof(double);
+    for (std::int64_t off = 0; off < n; off += kChunk) {
+        // ...
+        const bool fast = all_same ? same_good && no_nan(c.x, m) : all_good_params<D>(c, std::index_sequence<I...>{});
+        if (fast) {
+            double* dst = ob;
+            if (out_direct) {
+                double* od = reinterpret_cast<double*>(o);
+                if (apart(od, c.x, m) && ((s[I] == 0 || apart(od, c.p[I], m)) && ...)) dst = od;
+            }
+            M::template run_chunk<D, Chunk<NP>>(c, dst);
+            if constexpr (kNonNegative<M>)
+                for (int i = 0; i < m; ++i) dst[i] += zero;
+            if (dst == ob) {
+                if (out_direct) std::memcpy(o, ob, static_cast<std::size_t>(m) * sizeof(double));
+                else scatter(ob, o, s[NP + 1], m);
+            }
+            continue;
+        }
+    // ...
+    }
 ```
 
 ### −0.0을 +0.0으로
@@ -253,11 +274,11 @@ for (std::int64_t off = 0; off < n; off += kChunk) {
 이런 분포는 정적 함수 셋을 더 둬요. 어디가 극한인지(`at_limit`), 입력을 받는 메서드의 값(`limit_in`), 매개변수만의 메서드의 값(`limit_par`)이에요.
 
 ```cpp
-// stats/engine.hpp (발췌)
+// csrc/stats/engine.hpp (발췌)
 // A distribution may be another one at some parameter values: the limit of an infinite
 // parameter that valid() leaves out (the t at df = inf is the normal), a point mass (the
 // negative binomial's n = 0), or, inside valid(), a shape too small for the distribution's
-// own functions (Beta's and BetaBinomial's below 2^-1021: two atoms; the engine asks
+// own functions (Beta's and BetaBinomial's below 2^-1021: two atoms, T50; the engine asks
 // at_limit first, so valid() need not leave them out). It then says where, and gives every
 // method's value there,
 //
@@ -274,26 +295,26 @@ constexpr bool has_limit = requires(P... p) { D::at_limit(p...); };
 t와 F에서는 이렇게 생겼어요. 메서드 이름표 `M`을 그대로 넘기므로 메서드 스무 개가 모두 함수 둘로 끝나요.
 
 ```cpp
-// stats/dist/t_f.hpp (StudentT)
-static bool at_limit(double df) { return df == kInf; }
-template <class M>
-static double limit_in(double x, double) {
-    return method_of<Normal, M>(x, 0.0, 1.0);
-}
-template <class M>
-static double limit_par(double) {
-    return method_of<Normal, M>(0.0, 1.0);
-}
+    // csrc/stats/dist/t_f.hpp (StudentT)
+    static bool at_limit(double df) { return df == kInf; }
+    template <class M>
+    static double limit_in(double x, double) {
+        return method_of<Normal, M>(x, 0.0, 1.0);
+    }
+    template <class M>
+    static double limit_par(double) {
+        return method_of<Normal, M>(0.0, 1.0);
+    }
 
-// stats/dist/t_f.hpp (F)
-static bool at_limit(double dfn, double dfd) {
-    return (dfd == kInf && dfn > 0.0 && std::isfinite(dfn)) || (dfn == kInf && dfd > 0.0 && std::isfinite(dfd));
-}
-template <class M>
-static double limit_in(double x, double dfn, double dfd) {
-    if (dfd == kInf) return scaled_of<ChiSquared, M>(dfn, x, dfn);
-    return method_of<InverseGamma, M>(x, 0.5 * dfd, 0.5 * dfd);
-}
+    // csrc/stats/dist/t_f.hpp (F)
+    static bool at_limit(double dfn, double dfd) {
+        return (dfd == kInf && dfn > 0.0 && std::isfinite(dfn)) || (dfn == kInf && dfd > 0.0 && std::isfinite(dfd));
+    }
+    template <class M>
+    static double limit_in(double x, double dfn, double dfd) {
+        if (dfd == kInf) return scaled_of<ChiSquared, M>(dfn, x, dfn);
+        return method_of<InverseGamma, M>(x, 0.5 * dfd, 0.5 * dfd);
+    }
 ```
 
 엔진은 `has_limit`으로 그런 분포인지 컴파일할 때 알아보고, `DistOp::f`에서는 `valid`보다 먼저 `at_limit`을 물어요(위의 `DistOp` 발췌). chunk 루프에서는 원소를 나눌 때 `at_limit`을 보고, 극한인 원소의 값을 커널 앞에서 구해 두었다가 커널 뒤에 덮어써요(위의 `chunk_loop_impl` 발췌). 매개변수가 모두 스칼라이면 `at_limit`을 한 번만 봐요. 극한이 없는 분포에서는 이 코드가 아예 생기지 않아요.
@@ -303,7 +324,7 @@ static double limit_in(double x, double dfn, double dfd) {
 극한의 값은 극한 분포의 메서드에서 와요. 이때 그 분포가 Python float 하나에 주는 것과 같은 경로를 불러야 해요. 정규분포의 `cdf`는 청크 커널이 있으므로, 스칼라 정의 `Normal::cdf`를 직접 부르면 커널의 빠른 값과 마지막 비트가 다를 수 있어요. 그래서 `method_of`는 커널이 있으면 원소 하나짜리 묶음으로 `chunk_loop`을 부르고, 없으면 그 분포의 `DistOp::f`를 불러요.
 
 ```cpp
-// stats/engine.hpp (발췌)
+// csrc/stats/engine.hpp (발췌)
 template <class T, class M, class... A>
 double method_of(double x, A... a)
     requires M::input
@@ -326,7 +347,7 @@ double method_of(double x, A... a)
 $F(d_1, \infty) = \chi^2(d_1)/d_1$처럼 극한이 다른 분포를 상수로 나눈 것이면, $X = Y/c$의 메서드를 $Y$의 메서드로 써요. 밀도는 $c\,f_Y(cx)$, 누적분포는 $F_Y(cx)$, 역함수는 $Y$의 분위수를 $c$로 나눈 값이에요. 매개변수만의 메서드는 분산이 $c^2$로, 엔트로피가 $\log c$만큼 바뀌고, 왜도·첨도는 그대로예요.
 
 ```cpp
-// stats/engine.hpp (발췌)
+// csrc/stats/engine.hpp (발췌)
 template <class T, class M, class... A>
 double scaled_of(double c, double x, A... a)
     requires M::input
@@ -376,23 +397,20 @@ array([               3.0,                1.0, 1.0714285714285714], dtype=float6
 베타 분포의 모양이 0으로 가면 질량이 두 끝으로 갈라져요. $a, b \to 0$에서 $\mathrm{Beta}(a, b)$는 1에 $a/(a + b)$, 0에 $b/(a + b)$를 둔 두 점 분포로 가요. 그 사이 $(0, 1)$의 질량은 $a$, $b$ 정도라서, 모양이 $2^{-1021}$ 아래이면 double로는 보이지 않아요. 이 경계 아래에서는 베타 함수와 불완전 베타의 계산도 모양의 비트를 잃어요. 그래서 엔진의 극한 장치로 모든 메서드를 두 점 분포의 값으로 바꿔요. 경계는 t·F의 자유도와 같은 $2^{-1021}$(`kMinShape`)이에요. 베타이항은 같은 두 점이 0과 $n$이에요.
 
 ```cpp
-// stats/dist/beta.hpp (Beta, 발췌)
-// A shape below 2^-1021: the shape's limit at 0, the point
-// mass at 0 (a), at 1 (b), or both atoms with P(1) = a / (a + b), every method
-// (stats/dist/two_point.hpp).
-static bool at_limit(double a, double b) {
-    return valid(a, b) && (a < two_point::kMinShape || b < two_point::kMinShape);
-}
-template <class M>
-static double limit_in(double x, double a, double b) {
-    return two_point::in<M>(x, two_point::of_shapes(a, b, 0.0, 1.0, false));
-}
+    // csrc/stats/dist/beta.hpp (Beta, 발췌)
+    static bool at_limit(double a, double b) {
+        return valid(a, b) && (a < two_point::kMinShape || b < two_point::kMinShape);
+    }
+    template <class M>
+    static double limit_in(double x, double a, double b) {
+        return two_point::in<M>(x, two_point::of_shapes(a, b, 0.0, 1.0, false));
+    }
 ```
 
 두 질량은 `of_shapes`가 한 번에 정해요. 두 모양이 모두 1보다 작으면 둘에 $2^{1000}$을 곱한 뒤 나눠요. 2의 거듭제곱이라 곱이 정확하고, 서브노멀 모양도 비트를 잃지 않아요. 위 질량 $q$와 아래 질량 $q_c$를 따로 나눠서, 한쪽이 1에 가까워도 다른 쪽의 작은 질량이 $1 - q$의 상쇄 없이 남아요.
 
 ```cpp
-// stats/dist/two_point.hpp (발췌)
+// csrc/stats/dist/two_point.hpp (발췌)
 inline Law of_shapes(double a, double b, double lo, double hi, bool discrete) {
     constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
     if (lo == hi) return {lo, hi, 0.0, 1.0, discrete, lo};
@@ -400,10 +418,10 @@ inline Law of_shapes(double a, double b, double lo, double hi, bool discrete) {
     const double as = a * k, bs = b * k, s = as + bs;
     const double q = as / s, qc = bs / s;
     double mode = q == 0.0 ? lo : (qc == 0.0 ? hi : (b >= 1.0 ? lo : (a >= 1.0 ? hi : kNaN)));
-    if (discrete) mode = q > qc ? hi : (q < qc ? lo : kNaN);  // the larger mass (a tie is NaN)
+    if (discrete) mode = q > qc ? hi : (q < qc ? lo : kNaN);  // the larger mass (T25: a tie is NaN)
     return {lo, hi, q, qc, discrete, mode};
 }
-
+// ...
 // log P(lo) and log P(hi), from the smaller mass where the other is near 1
 inline double log_lo(const Law& t) { return t.qc >= 0.5 ? std::log1p(-t.q) : std::log(t.qc); }
 inline double log_hi(const Law& t) { return t.q >= 0.5 ? std::log1p(-t.qc) : std::log(t.q); }
@@ -446,12 +464,13 @@ array([0.3333333333333333, 0.3333333333333333], dtype=float64)
 통계 영역은 special의 바인딩 템플릿(`bind/nary_bind.hpp`)을 그대로 써요. 루프 표를 고르는 함수에만 갈래가 하나 더 있어요.
 
 ```cpp
-// bind/nary_bind.hpp (발췌)
+// csrc/bind/nary_bind.hpp (발췌)
 template <typename Op>
 constexpr const LoopTable& table_of() {
-    if constexpr (requires { &Op::chunk; }) return special::chunked_table<Op>;          // special의 NEON 커널
-    else if constexpr (requires { Op::table; }) return Op::table != nullptr ? *Op::table : nary_table<Op>;
-    else return nary_table<Op>;                                                          // 원소마다 f
+    if constexpr (requires { &Op::chunk; }) return special::chunked_table<Op>;
+    else if constexpr (requires { Op::table; })
+        return Op::table != nullptr ? *Op::table : nary_table<Op>;  // stats' chunk kernels
+    else return nary_table<Op>;
 }
 ```
 
@@ -508,14 +527,14 @@ scipy의 원소별 루프는 컴파일러가 벡터화한 C 코드예요. stardu
 3. 정밀 정의로 넘기기: `fast[i]`가 거짓인 원소만 분포의 스칼라 정의(double-double을 쓰는 원래 정의)로 다시 계산해요.
 
 ```cpp
-// stats/engine.hpp (발췌)
+// csrc/stats/engine.hpp (발췌)
 inline constexpr int kChunkSize = static_cast<int>(vforce_detail::kChunk);  // 1024
 inline constexpr double kUlp = 0x1p-53;            // unit roundoff
 inline constexpr double kFastBudget = 16.0;        // in kUlp: 1.8e-15
 ```
 
 ```cpp
-// stats/chunk.hpp (발췌)
+// csrc/stats/chunk.hpp (발췌)
 template <class F>
 inline void fallback(int n, const bool* fast, double* out, F&& precise) {
     bool all = true;  // (a vectorized pass first: most chunks have no element to redo)
@@ -696,7 +715,7 @@ inline ExpParts exp_parts(double x) {
     t = std::fma(r2 * r2, p45, t);
     return {scale, t};
 }
-
+// ...
 inline double exp1(double x) {
     if (!(std::fabs(x) <= kExpMax)) return std::exp(x);
     const ExpParts e = exp_parts(x);
@@ -713,15 +732,21 @@ inline double exp1(double x) {
 이 가운데 `expm1`과 `log1p`는 통과한 함수로 다시 써요.
 
 ```cpp
-// stats/chunk_dd.hpp (발췌)
-// 1 - e^-t = 2T / (1 + T), T = tanh(t/2): 상한 kTanh + 2
+// csrc/stats/chunk_dd.hpp (발췌)
+// out = 1 - e^-t for t >= 0 (t = inf: 1): 2 T / (1 + T), T = tanh(t / 2). T's error reaches
+// the result times 1 / (1 + T) <= 1, then a sum and a quotient: kOneMinusExp = kTanh + 2.
+// (libm's expm1 costs 5 ns an element on mixed arguments, this 1.5.) out may be t.
 inline constexpr double kOneMinusExp = kTanh + 2.0;
 inline void one_minus_exp(double* out, const double* t, int n) {
     for (int i = 0; i < n; ++i) out[i] = 0.5 * t[i];
     tanh(out, out, n);
     for (int i = 0; i < n; ++i) out[i] = 2.0 * out[i] / (1.0 + out[i]);
 }
-// log(1 + x) = 2 atanh(x / (2 + x)), -1/2 <= x <= 1: 상한 2.2 + kAtanh
+
+// out = log(1 + x) for -1/2 <= x <= 1: 2 atanh(x / (2 + x)). The argument |s| <= 1/3 carries
+// 2 units (a sum and a quotient), atanh multiplies them by s / ((1 - s^2) atanh s) <= 1.09
+// and adds its own: kLog1p = 2.2 + kAtanh. An error of x itself reaches the result times
+// x / ((1 + x) log(1 + x)), at most 1 for x >= 0 and 1 / (1 + x) for x < 0. out may be x.
 inline constexpr double kLog1p = 2.2 + kAtanh;
 inline void log1p(double* out, const double* x, int n) {
     for (int i = 0; i < n; ++i) out[i] = x[i] / (2.0 + x[i]);
@@ -739,7 +764,7 @@ inline void log1p(double* out, const double* x, int n) {
 $\log\sigma$, $\log\Gamma(a)$처럼 매개변수에서만 나오는 상수는 매개변수가 스칼라이면 한 번만, 배열이면 원소마다 계산해요. 두 경우가 같은 함수를 써야 해요. 예를 들어 스칼라일 때 libm `log`, 배열일 때 vForce `log`로 계산하면, `Normal(mu=0.5, sigma=1.5).pdf(x)`와 `Normal(mu=sd.full(n, 0.5), sigma=1.5).pdf(x)`가 같은 매개변수에서 다른 비트를 내요. `ckd::constant`는 같은 람다 `f(i)`를 한 번 부를지 원소마다 부를지만 정해요.
 
 ```cpp
-// stats/chunk_dd.hpp (발췌)
+// csrc/stats/chunk_dd.hpp (발췌)
 template <std::size_t NP, class F>
 inline void constant(const Chunk<NP>& c, double* kh, double* kl, F&& f) {
     bool same = true;
@@ -779,18 +804,19 @@ True
 ### 표준화 변수와 비
 
 ```cpp
-// ckd::standardize (stats/chunk_dd.hpp, 발췌): num::standardize와 비트까지 같은 산술
-const double a = x[i], b = -mu[i], s = sigma[i];
-const double d = a + b;                                  // two_sum: d + dl = x - mu (정확)
-const double bb = d - a;
-const double dl = (a - (d - bb)) + (b - bb);
-const double q = d / s;
-const double r = std::fma(-q, s, d) + dl;                // 나머지 d - q s는 FMA로 정확
-const double rl = r / s;
-const double h = q + rl;
-const bool ok = std::isfinite(q) && (std::fabs(d) >= 0x1p-960 ? std::fabs(q) >= 0x1p-960 : d == 0.0);
-zh[i] = ok ? h : kNaN;
-zl[i] = ok ? rl - (h - q) : 0.0;
+        // ckd::standardize (csrc/stats/chunk_dd.hpp, 발췌): num::standardize와 비트까지 같은 산술
+        const double a = x[i], b = -mu[i], s = sigma[i];
+        const double d = a + b;
+        const double bb = d - a;
+        const double dl = (a - (d - bb)) + (b - bb);
+        const double q = d / s;
+        const double r = std::fma(-q, s, d) + dl;
+        const double rl = r / s;
+        const double h = q + rl;
+        // (a quotient below 2^-960 has a low part in the subnormals: left to num::standardize's callers)
+        const bool ok = std::isfinite(q) && (std::fabs(d) >= 0x1p-960 ? std::fabs(q) >= 0x1p-960 : d == 0.0);
+        zh[i] = ok ? h : kNaN;
+        zl[i] = ok ? rl - (h - q) : 0.0;
 ```
 
 $x - \mu$를 TwoSum으로 정확히 $d + d_l$로 나누고, 몫 $q = d/\sigma$의 나머지 $d - q\sigma$를 FMA로 정확히 구해 $d_l$과 함께 다시 $\sigma$로 나눠요. 쌍 $(z_h, z_l)$의 상대오차는 약 $2^{-104}$예요. 스칼라의 `num::standardize`와 연산이 하나하나 같아서, 빠른 경로의 지수가 스칼라 정의의 지수와 같은 비트예요. 그래서 빠른 경로가 바꾸는 것은 libm의 `exp`·`log`를 `vmath::exp`·vForce로 바꾼 부분뿐이고, 상한도 그 함수의 상수만큼이에요. `ckd::ratio`는 같은 방법의 $x/s$예요. TwoSum과 FMA로 곱의 오차를 구하는 방법은 [공통 수치 기법](/internals/special/techniques/)에 있어요.
@@ -826,24 +852,34 @@ $$
 이산 분포의 자료는 같은 값이 되풀이돼요. `Binomial(n=40, p=0.3)`에서 뽑은 원소 $10^5$개에는 서로 다른 $k$가 수십 개뿐이에요. 그래서 이산 분포의 값 메서드(`pmf`, `logpmf`, `cdf`, …)는 커널 앞에 **스레드마다의 직접 사상 표**를 둬요.
 
 ```cpp
-// stats/discrete.hpp (발췌)
+// csrc/stats/discrete.hpp (발췌)
 struct KMemo {
     static constexpr int kSlots = 1024;
-    double par[3];              // 매개변수 (비트로 비교)
-    double key[kSlots];         // k (NaN이면 빈 칸)
-    double val[kSlots];         // 그 k에서의 값
-    void bind(const double* p) {                       // 매개변수가 바뀌면 비워요
+    double par[3];
+    double key[kSlots];
+    double val[kSlots];
+    KMemo() {
+        par[0] = par[1] = par[2] = kNaN;
+        clear();
+    }
+    void clear() {
+        for (double& k : key) k = kNaN;  // a NaN key matches nothing
+    }
+    // Point the memo at a parameter set (unused entries of p: 0).
+    void bind(const double* p) {
         if (std::memcmp(par, p, sizeof par) == 0) return;
         std::memcpy(par, p, sizeof par);
         clear();
     }
-    static int slot(double k) {                        // k의 아래 10비트
-        return std::fabs(k) < 0x1p62 ? static_cast<int>(static_cast<std::uint64_t>(static_cast<std::int64_t>(k)) & (kSlots - 1)) : 0;
+    static int slot(double k) {
+        return std::fabs(k) < 0x1p62
+                   ? static_cast<int>(static_cast<std::uint64_t>(static_cast<std::int64_t>(k)) & (kSlots - 1))
+                   : 0;
     }
-    ...
+// ...
 };
 template <class Tag>
-KMemo& memo() {  // (분포, 메서드)마다, 스레드마다 하나
+KMemo& memo() {
     thread_local KMemo m;
     return m;
 }
@@ -873,13 +909,13 @@ True
 통계 영역에서 다른 것은 비용을 어디서 가져오느냐예요.
 
 ```cpp
-// stats/engine.hpp (발췌)
+// csrc/stats/engine.hpp (발췌)
 template <class D, class M>
 constexpr double cost_of() {
-    if (const double ns = cost_table::find(D::name, M::name); ns > 0.0) return ns;   // 잰 값
-    if constexpr (requires { D::template cost<M>(); }) return D::template cost<M>(); // 분포의 어림
-    else if constexpr (!M::input && param_cost<D, M>() > 0.0) return param_cost<D, M>(); // 매개변수만의 메서드
-    else return 20.0;                                                                 // 기본값
+    if (const double ns = cost_table::find(D::name, M::name); ns > 0.0) return ns;
+    if constexpr (requires { D::template cost<M>(); }) return D::template cost<M>();
+    else if constexpr (!M::input && param_cost<D, M>() > 0.0) return param_cost<D, M>();
+    else return 20.0;
 }
 ```
 
@@ -896,12 +932,12 @@ constexpr double cost_of() {
 "모든 호출은 정해진 시간 안에 끝난다"는 원칙([통계 영역의 구조](/internals/stats/overview/))은 코드에서 상수 몇 개와 그 상수를 지키는 루프의 모양이에요. 이산 분포의 상한은 한 곳에 모여 있어요.
 
 ```cpp
-// stats/discrete.hpp (발췌)
-inline constexpr double kMaxTailTerms = 0x1p20;        // 꼬리 합 하나의 항 수 (보장 영역의 지지집합은 3001점 이하)
-inline constexpr int kMaxEntropyTerms = 1 << 25;       // 엔트로피 합 (영역 안 최대 1.9e7항)
-inline constexpr double kMaxEntropyVariance = 0x1p42;  // 이보다 큰 분산이면 시작하지 않아요
-inline constexpr int kMaxMomentTerms = 1 << 12;        // 중심 모멘트의 합
-inline constexpr int kMaxSearchSteps = 1100;           // 분위수 탐색의 배증, 그리고 이분
+// csrc/stats/discrete.hpp (발췌)
+inline constexpr double kMaxTailTerms = 0x1p20;
+inline constexpr int kMaxEntropyTerms = 1 << 25;
+inline constexpr double kMaxEntropyVariance = 0x1p42;
+inline constexpr int kMaxMomentTerms = 1 << 12;
+inline constexpr int kMaxSearchSteps = 1100;
 ```
 
 - 상한의 근거를 수로 적어요. 분위수 탐색은 시작점에서 1, 2, 4, … 칸씩 질주한 뒤 이분해요. float64는 $2^{1024}$ 아래에서 끝나므로 배증 1025번이면 어떤 분위수에도 닿고, 이분은 이웃한 두 float64가 될 때까지 많아야 $1024 + 53$번이에요. 그래서 1100이에요.

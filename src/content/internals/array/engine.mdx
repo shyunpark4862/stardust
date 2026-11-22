@@ -122,16 +122,27 @@ $$
 이터레이터는 늘어난 배열을 만들지 않아요. 늘어나는 축의 stride를 0으로 둘 뿐이에요. stride가 0이면 그 축을 따라 걸어도 주소가 그대로라서, 같은 값을 계속 읽어요.
 
 ```cpp
-// NdIter 생성자의 1단계 (array/iter.cpp, 줄이고 다듬은 발췌)
-for (int k = 0; k < nop_; ++k) {
-    const int offset = ndim - ops[k].shape.size();          // 오른쪽 정렬
-    for (int d = 0; d < ndim; ++d) {
-        const int od = d - offset;
-        if (od < 0 || ops[k].shape[od] == 1) strides_[k][d] = 0;               // 없는 축, 길이 1 축
-        else if (ops[k].shape[od] == shape[d]) strides_[k][d] = ops[k].strides[od];
-        else throw nb::value_error("operand of shape ... cannot be broadcast to ...");
+    // csrc/array/iter.cpp, NdIter 생성자의 1단계 (발췌)
+    for (int k = 0; k < nop_; ++k) {
+        data_[k] = ops[k].data;
+        const int offset = ndim - static_cast<int>(ops[k].shape.size());
+        if (offset < 0)  // e.g. out= or x += y with a result of fewer dimensions than an input
+            throw nb::value_error(
+                ("operand of shape " + shape_str(ops[k].shape) + " cannot be broadcast to " + shape_str(shape)).c_str()
+            );
+        for (int d = 0; d < ndim; ++d) {
+            const int od = d - offset;
+            if (od < 0 || ops[k].shape[od] == 1) {
+                strides_[k][d] = 0;
+            } else if (ops[k].shape[od] == shape[d]) {
+                strides_[k][d] = ops[k].strides[od];
+            } else {
+                throw nb::value_error(("operand of shape " + shape_str(ops[k].shape) + " cannot be broadcast to " +
+                                       shape_str(shape))
+                                          .c_str());
+            }
+        }
     }
-}
 ```
 
 `(3, 4)` 배열 `m`에 `(4,)` 배열 `row`를 더하면 `row`의 stride는 `(0, 8)`이 되고, `(3, 1)` 배열 `col`을 더하면 `col`의 stride는 `(8, 0)`이 돼요.
@@ -162,17 +173,17 @@ stride 절댓값이 큰 축을 바깥에 둬요. 그러면 가장 안쪽 축이 
 4. 끝까지 정해지지 않으면 원래 순서를 유지해요.
 
 ```cpp
-// NdIter 생성자의 3단계 (array/iter.cpp, 줄이고 다듬은 발췌)
-auto outer = [&](int a, int b) {
-    for (int k = nop_ - 1; k >= 0; --k) {                 // 출력부터
-        const std::int64_t sa = std::llabs(strides_[k][a]), sb = std::llabs(strides_[k][b]);
-        if (sa == 0 || sb == 0) continue;                  // 브로드캐스트: 정보 없음
-        if (sa != sb) return sa > sb;
-    }
-    return false;                                          // 같으면 원래 순서
-};
-for (int i = 1; i < ndim_; ++i)                            // insertion sort
-    for (int j = i; j > 0 && outer(perm[j], perm[j - 1]); --j) std::swap(perm[j], perm[j - 1]);
+        // csrc/array/iter.cpp, NdIter 생성자의 3단계 (발췌)
+        auto outer = [&](int a, int b) {
+            for (int k = nop_ - 1; k >= 0; --k) {
+                const std::int64_t sa = std::llabs(strides_[k][a]), sb = std::llabs(strides_[k][b]);
+                if (sa == 0 || sb == 0) continue;
+                if (sa != sb) return sa > sb;
+            }
+            return false;
+        };
+        for (int i = 1; i < ndim_; ++i)
+            for (int j = i; j > 0 && outer(perm[j], perm[j - 1]); --j) std::swap(perm[j], perm[j - 1]);
 ```
 
 출력부터 보는 것은 출력에 쓰는 순서를 순차적으로 만들려는 것이에요. 원소별 연산의 새 출력은 대개 입력의 레이아웃을 따라 만들어지므로(아래 "출력 레이아웃") 보통은 입력과 출력의 순서가 일치해요. 둘이 어긋나는 것은 `out=`로 레이아웃이 다른 배열을 주었을 때나, 레이아웃이 서로 다른 두 배열을 섞었을 때예요. 그때는 출력의 순서를 따르고 입력 쪽이 strided로 읽혀요.
@@ -189,7 +200,7 @@ for (int i = 1; i < ndim_; ++i)                            // insertion sort
   <ArrayFig name="재정렬 후" data={[1, 2, 3, 4, 5, 6]} tones={['a', 'a', 'a', 'a', 'a', 'a']} note="메모리 순서 그대로" />
 </Fig>
 
-비공개 진단 함수 `sd._core._iter_plan`으로 각 단계의 결과를 볼 수 있어요. 피연산자는 `[f.T, 스칼라, 출력]`이고 출력은 `f.T`와 같은 F 순서예요.
+아래 표는 모드마다 이터레이터가 정한 결과예요. 피연산자는 `[f.T, 스칼라, 출력]`이고 출력은 `f.T`와 같은 F 순서예요.
 
 | 모드 | shape | stride (`f.T`, 스칼라, 출력) | 커널 호출 |
 |:---:|:---:|:---:|:---:|
@@ -223,25 +234,24 @@ $$
 을 만족하면, 곧 "바깥 축으로 한 칸 = 안쪽 축으로 $n_{d+1}$칸"이면 두 축은 실제로는 하나의 긴 축이에요. 길이 $n_d \cdot n_{d+1}$, stride $s_k[d+1]$인 축 하나로 합쳐요.
 
 ```cpp
-// NdIter 생성자의 4단계 (array/iter.cpp, 줄이고 다듬은 발췌)
-int out = 0;
-for (int d = 1; d < ndim_; ++d) {
-    bool mergeable = true;
-    for (int k = 0; k < nop_; ++k)
-        mergeable = mergeable && strides_[k][out] == strides_[k][d] * shape_[d];
-    if (mergeable) {                                   // 축 out과 d를 합침
-        shape_[out] *= shape_[d];
-        for (int k = 0; k < nop_; ++k) strides_[k][out] = strides_[k][d];
-    } else {                                           // 새 축 시작
-        ++out;
-        shape_[out] = shape_[d];
-        for (int k = 0; k < nop_; ++k) strides_[k][out] = strides_[k][d];
-    }
-}
-ndim_ = out + 1;
+            // csrc/array/iter.cpp, NdIter 생성자의 4단계 (발췌)
+            int out = 0;
+            for (int d = 1; d < ndim_; ++d) {
+                bool mergeable = true;
+                for (int k = 0; k < nop_; ++k) mergeable = mergeable && strides_[k][out] == strides_[k][d] * shape_[d];
+                if (mergeable) {
+                    shape_[out] *= shape_[d];
+                    for (int k = 0; k < nop_; ++k) strides_[k][out] = strides_[k][d];
+                } else {
+                    ++out;
+                    shape_[out] = shape_[d];
+                    for (int k = 0; k < nop_; ++k) strides_[k][out] = strides_[k][d];
+                }
+            }
+            ndim_ = out + 1;
 ```
 
-조건은 "연속"보다 넓어요. 띄엄띄엄이어도 간격이 일정하면 합쳐져요. 아래는 `_iter_plan`으로 본 예예요.
+조건은 "연속"보다 넓어요. 띄엄띄엄이어도 간격이 일정하면 합쳐져요. 아래는 합쳐지는 예예요.
 
 | 계산 | 합치기 전 stride | 합친 결과 | 이유 |
 |---|---|---|---|
@@ -266,19 +276,24 @@ ndim_ = out + 1;
 남은 축을 자동차의 주행 거리계처럼 돌아요. 가장 안쪽 축은 커널이 통째로 처리하고, 이터레이터는 바깥 축의 인덱스만 올려요.
 
 ```cpp
-// NdIter::run_serial (array/iter.cpp, 줄이고 다듬은 발췌)
-std::array<std::byte*, kMaxOperands> p = data_;           // 피연산자별 현재 주소
-for (;;) {
-    kernel(p.data(), shape_[last], inner.data(), ctx);    // 안쪽 구간 하나
-    int d = last - 1;
-    for (; d >= 0; --d) {                                  // 바깥 축 올리기
-        for (int k = 0; k < nop_; ++k) p[k] += strides_[k][d];
-        if (++index[d] < shape_[d]) break;                 // 자리올림 없음
-        for (int k = 0; k < nop_; ++k) p[k] -= strides_[k][d] * shape_[d];  // 0으로 되돌림
-        index[d] = 0;
+    // csrc/array/iter.cpp, NdIter::run_serial (발췌)
+    std::array<std::byte*, kMaxOperands> p = data_;
+    std::array<std::int64_t, kMaxOperands> inner{};
+    for (int k = 0; k < nop_; ++k) inner[k] = strides_[k][last];
+    Dims index;
+    std::fill(index.begin(), index.begin() + ndim_, 0);
+    for (;;) {
+        kernel(p.data(), shape_[last], inner.data(), ctx);
+        // Odometer over the outer axes.
+        int d = last - 1;
+        for (; d >= 0; --d) {
+            for (int k = 0; k < nop_; ++k) p[k] += strides_[k][d];
+            if (++index[d] < shape_[d]) break;
+            for (int k = 0; k < nop_; ++k) p[k] -= strides_[k][d] * shape_[d];
+            index[d] = 0;
+        }
+        if (d < 0) return;
     }
-    if (d < 0) return;                                     // 모든 축을 다 돎
-}
 ```
 
 주소는 곱셈 없이 더하기와 빼기로만 움직여요. 원소 $N$개, 안쪽 길이 $n_{\text{in}}$이면 커널이 하는 일은 $O(N)$, 이터레이터가 하는 일은 $O(N / n_{\text{in}})$번의 자리올림이에요(자리올림 한 번은 축 하나당 피연산자 수만큼의 덧셈). 생성자의 준비 비용은 축 수 $d$에 대해 $O(\text{nop} \cdot d^2)$이지만 $d \le 32$인 상수예요.
@@ -290,20 +305,30 @@ for (;;) {
 그래서 원소별 연산(ufunc)은 이런 경우에 **16행 × 128열 타일**로 돌아요(`NdIter::run_serial`의 앞부분).
 
 ```cpp
-// NdIter::run_serial (array/iter.cpp, 줄이고 다듬은 발췌)
-if (tiles_ok_ && ndim_ == 2) {
-    bool across = false;   // 안쪽 걸음이 바깥 걸음보다 긴 피연산자가 있나
-    for (int k = 0; k < nop_; ++k)
-        across |= std::llabs(strides_[k][1]) > std::llabs(strides_[k][0]) && strides_[k][0] != 0;
-    constexpr std::int64_t kTileRows = 16, kTileCols = 128;
-    if (across && shape_[0] >= kTileRows && shape_[1] >= 2 * kTileCols) {
-        for (std::int64_t i0 = 0; i0 < shape_[0]; i0 += kTileRows)
-            for (std::int64_t j0 = 0; j0 < shape_[1]; j0 += kTileCols)
-                for (std::int64_t i = i0; i < std::min(shape_[0], i0 + kTileRows); ++i)
-                    kernel(/* 행 i의 [j0, j0 + 128) */);
-        return;
+    // csrc/array/iter.cpp, NdIter::run_serial (발췌)
+    if (tiles_ok_ && ndim_ == 2) {
+        // ...
+        bool across = false;
+        for (int k = 0; k < nop_; ++k)
+            across |= std::llabs(strides_[k][1]) > std::llabs(strides_[k][0]) && strides_[k][0] != 0;
+        constexpr std::int64_t kTileRows = 16, kTileCols = 128;
+        if (across && shape_[0] >= kTileRows && shape_[1] >= 2 * kTileCols) {
+            std::array<std::byte*, kMaxOperands> p;
+            std::array<std::int64_t, kMaxOperands> inner{};
+            for (int k = 0; k < nop_; ++k) inner[k] = strides_[k][1];
+            for (std::int64_t i0 = 0; i0 < shape_[0]; i0 += kTileRows) {
+                const std::int64_t i1 = std::min(shape_[0], i0 + kTileRows);
+                for (std::int64_t j0 = 0; j0 < shape_[1]; j0 += kTileCols) {
+                    const std::int64_t len = std::min(kTileCols, shape_[1] - j0);
+                    for (std::int64_t i = i0; i < i1; ++i) {
+                        for (int k = 0; k < nop_; ++k) p[k] = data_[k] + i * strides_[k][0] + j0 * strides_[k][1];
+                        kernel(p.data(), len, inner.data(), ctx);
+                    }
+                }
+            }
+            return;
+        }
     }
-}
 ```
 
 - 16행은 캐시 라인 하나에 맞춘 값이에요. 건너뛰는 피연산자에서 한 캐시 라인은 원소 16개(16 × 8바이트 = 128바이트)이고, 그 16개는 서로 다른 16개 행에 있어요. 타일의 16행을 차례로 돌면 한 번 가져온 줄의 원소 16개를 모두 써요.
@@ -329,12 +354,10 @@ if (tiles_ok_ && ndim_ == 2) {
 `NdIter`의 상태는 전부 고정 크기 배열이에요.
 
 ```cpp
-// NdIter의 멤버 (array/iter.hpp)
-int nop_, ndim_;
-bool empty_;
-Dims shape_;                                     // std::array<int64_t, 32>
-std::array<Dims, kMaxOperands> strides_;         // 5 × 32 × 8 = 1280바이트
-std::array<std::byte*, kMaxOperands> data_{};
+    // csrc/array/iter.hpp, NdIter의 멤버 (발췌)
+    Dims shape_;
+    std::array<Dims, kMaxOperands> strides_;
+    std::array<std::byte*, kMaxOperands> data_{};
 ```
 
 힙 할당이 한 번도 없어요. 대신 객체가 1,600바이트예요. 생성할 때마다 이 객체를 0으로 채우면 작은 배열에서는 그 비용이 눈에 띄어요. 그래서 `shape_`과 `strides_`는 초기화하지 않고, 앞의 `ndim_`칸과 `nop_`개 피연산자만 쓰고 읽어요. `NDArray`의 복사·이동이 앞의 `ndim`칸만 옮기는 것과 같은 원칙이에요([작은 배열의 호출 비용](/internals/array/small-arrays/)).
@@ -373,29 +396,35 @@ std::array<std::byte*, kMaxOperands> data_{};
 `BufferedLoop`는 "어느 입력을 어떤 캐스트 커널로 바꿀지"를 담은 구조체이고, `buffered_loop`는 그것을 `ctx`로 받는 커널이에요.
 
 ```cpp
-// array/kernels/buffered.hpp (줄이고 다듬은 발췌)
+// csrc/array/kernels/buffered.hpp (줄인 발췌)
 inline constexpr std::int64_t kBufferElements = 4096;
 
 struct BufferedLoop {
-    Loop inner;                                     // 진짜 커널 (예: binary_loop<Add, double>)
-    int nin, nop;                                   // 입력 수, 전체 피연산자 수
-    std::array<Loop, kMaxOperands> cast{};          // 입력 k → 루프 dtype, null이면 그대로
-    std::array<std::int64_t, kMaxOperands> item{};  // 루프 dtype의 원소 크기
+    Loop inner = nullptr;
+    int nin = 0;  // inputs; operands after them are outputs, never buffered
+    int nop = 0;  // all operands
+    std::array<Loop, kMaxOperands> cast{};          // input k -> loop dtype, or null: used in place
+    std::array<std::int64_t, kMaxOperands> item{};  // loop-dtype itemsize of input k
+// ...
 };
-
+// ...
 inline void buffered_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, void* ctx) {
     const BufferedLoop& b = *static_cast<const BufferedLoop*>(ctx);
+    std::array<std::byte*, kMaxOperands> p;
+    std::array<std::int64_t, kMaxOperands> st;
     for (std::int64_t off = 0; off < n; off += kBufferElements) {
         const std::int64_t m = std::min(kBufferElements, n - off);
         for (int k = 0; k < b.nop; ++k) {
-            if (k < b.nin && b.cast[k]) {                       // 변환할 입력: 버퍼로
+            if (k < b.nin && b.cast[k]) {
                 std::byte* buf = scratch(k);
                 std::byte* io[] = {args[k] + off * s[k], buf};
                 const std::int64_t cs[] = {s[k], b.item[k]};
-                b.cast[k](io, m, cs, nullptr);                  // 캐스트도 커널이에요
-                p[k] = buf;  st[k] = b.item[k];                 // 버퍼는 연속
-            } else {                                            // 그대로 쓰는 피연산자
-                p[k] = args[k] + off * s[k];  st[k] = s[k];
+                b.cast[k](io, m, cs, nullptr);  // chunk -> buffer, in the loop dtype
+                p[k] = buf;
+                st[k] = b.item[k];
+            } else {
+                p[k] = args[k] + off * s[k];
+                st[k] = s[k];
             }
         }
         b.inner(p.data(), m, st.data(), nullptr);
@@ -408,10 +437,11 @@ inline void buffered_loop(std::byte* const* args, std::int64_t n, const std::int
 버퍼는 스레드마다 하나예요(`thread_local`). `ctx`(`BufferedLoop`)는 루프를 도는 모든 스레드가 함께 읽어요. 버퍼를 `ctx`에 두면 스레드끼리 같은 버퍼에 쓰게 돼요. 그래서 버퍼는 `scratch(k)`가 스레드별로 한 번 할당해 둔 메모리예요.
 
 ```cpp
+// csrc/array/kernels/buffered.hpp
 inline std::byte* scratch(int k) {
-    static constexpr std::int64_t kSlot = kBufferElements * 16;   // complex128 기준 64KB
+    static constexpr std::int64_t kSlot = kBufferElements * 16;  // complex128
     thread_local std::unique_ptr<std::byte[]> mem =
-        std::make_unique_for_overwrite<std::byte[]>(kSlot * kMaxOperands);
+        std::make_unique_for_overwrite<std::byte[]>(static_cast<size_t>(kSlot * kMaxOperands));
     return mem.get() + k * kSlot;
 }
 ```
@@ -460,20 +490,20 @@ $$
 원소별 연산 하나는 `array/kernels/scalar_ops.hpp`의 구조체 하나예요. 구조체는 두 가지를 말해요. 어느 저장 타입에 루프가 있는지(`ok<T>`), 원소 하나를 어떻게 계산하는지(`f`).
 
 ```cpp
-// array/kernels/scalar_ops.hpp (발췌)
+// csrc/array/kernels/scalar_ops.hpp (발췌)
 struct Divide {
     static constexpr const char* name = "divide";
-    template <typename T> static constexpr bool ok = is_float<T> || is_cplx<T>;  // 정수 루프 없음
+    template <typename T> static constexpr bool ok = is_float<T> || is_cplx<T>;
     static double f(double a, double b) { return a / b; }
     static c128 f(c128 a, c128 b) { return cdiv(a, b); }
 };
-
+// ...
 struct Abs {
     static constexpr const char* name = "abs";
     template <typename T> static constexpr bool ok = !is_bool<T>;
-    static i64 f(i64 a) { return a < 0 ? wrap_sub(0, a) : a; }
+    static i64 f(i64 a) { return a < 0 ? wrap_sub(0, a) : a; }  // abs(INT_MIN) == INT_MIN
     static double f(double a) { return std::fabs(a); }
-    static double f(c128 a) { return complex_abs(a); }   // complex → float64
+    static double f(c128 a) { return complex_abs(a); }  // complex -> float64
 };
 ```
 
@@ -482,24 +512,38 @@ struct Abs {
 `array/kernels/elementwise.hpp`가 이것을 루프와 표로 바꿔요.
 
 ```cpp
-// array/kernels/elementwise.hpp (줄이고 다듬은 발췌)
-struct LoopEntry { Loop loop = nullptr; DType out = DType::Bool; };
-using LoopTable = std::array<LoopEntry, kNumArrayDTypes>;    // bool, int64, float64, complex128
-
+// csrc/array/kernels/elementwise.hpp (줄인 발췌)
+struct LoopEntry {
+    Loop loop = nullptr;
+    DType out = DType::Bool;
+};
+using LoopTable = std::array<LoopEntry, kNumArrayDTypes>;
+// ...
 template <typename Op, typename T, int Arity>
 constexpr LoopEntry entry() {
-    if constexpr (!Op::template ok<T>) return {};                       // 루프 없음
-    else if constexpr (Arity == 1) return {&unary_loop<Op, T>, dtype_of<unary_result_t<Op, T>>};
-    else return {&binary_loop<Op, T>, dtype_of<binary_result_t<Op, T>>};
+    if constexpr (!Op::template ok<T>) {
+        return {};
+    } else if constexpr (Arity == 1) {
+        return {&unary_loop<Op, T>, dtype_of<unary_result_t<Op, T>>};
+    } else {
+        return {&binary_loop<Op, T>, dtype_of<binary_result_t<Op, T>>};
+    }
 }
-
-template <typename Op> inline constexpr LoopTable binary_table = {
-    entry<Op, bool, 2>(), entry<Op, std::int64_t, 2>(), entry<Op, double, 2>(), entry<Op, complex128, 2>()};
+// ...
+template <typename Op, int Arity>
+constexpr LoopTable make_table() {
+    return {
+        entry<Op, bool, Arity>(), entry<Op, std::int64_t, Arity>(), entry<Op, double, Arity>(),
+        entry<Op, complex128, Arity>()
+    };
+}
+// ...
+template <typename Op> inline constexpr LoopTable binary_table = detail::make_table<Op, 2>();
 ```
 
 - `if constexpr`는 루프가 없는 타입에서 `binary_loop<Op, T>`를 인스턴스화하지 않게 해요. `Divide::f(i64, i64)`는 없으므로 인스턴스화하면 컴파일 에러인데, 그 가지가 아예 컴파일되지 않아요.
 - `binary_result_t<Op, T>`는 `decltype(Op::f(std::declval<T>(), std::declval<T>()))`예요. 오버로드 해석이 고른 `f`의 반환 타입이고, `dtype_of<R>`가 그것을 `DType`으로 바꿔요.
-- 표는 `inline constexpr` 변수 템플릿이라 실행 중에 만드는 비용이 없어요. 데이터 영역에 박힌 함수 포인터 넷이에요.
+- 표는 `make_table`이 dtype 넷의 `entry`를 모아 만든 `inline constexpr` 변수 템플릿이라 실행 중에 만드는 비용이 없어요. 데이터 영역에 박힌 함수 포인터 넷이에요.
 
 이렇게 만든 표의 일부예요(✓는 루프가 있는 dtype).
 
@@ -520,11 +564,11 @@ template <typename Op> inline constexpr LoopTable binary_table = {
 `select`는 numpy와 같은 규칙을 따라요. 승격한 dtype부터 위로 올라가며 루프가 있는 첫 dtype을 써요 [4].
 
 ```cpp
-// array/ops/ufunc.cpp
+// csrc/array/ops/ufunc.cpp
 DType select(const LoopTable& table, DType d, std::span<const DType> inputs, const char* symbol) {
     for (int k = static_cast<int>(d); k < kNumArrayDTypes; ++k)
         if (table[k].loop) return static_cast<DType>(k);
-    no_loop(inputs, symbol);     // TypeError
+    no_loop(inputs, symbol);
 }
 ```
 
@@ -544,10 +588,13 @@ dtype은 넷뿐이고 승격 순서가 일직선(`bool < int64 < float64 < compl
 시프트처럼 bool 입력 자체를 막아야 하는 연산은 구조체에 `no_bool_inputs` 표시를 달아요. 디스패처는 C++20 requires 식으로 그 멤버가 있는지만 봐요.
 
 ```cpp
+// csrc/array/ops/ufunc.hpp (발췌)
 template <typename Op>
 nb::object binary(nb::handle a, nb::handle b, nb::handle out, const char* symbol = nullptr) {
-    constexpr bool no_bool = requires { Op::no_bool_inputs; };   // 멤버가 있으면 true
-    return run_binary(binary_table<Op>, no_bool, a, b, out, symbol);
+    constexpr bool no_bool = requires { Op::no_bool_inputs; };
+    if constexpr (std::is_same_v<Op, ops::Pow>)
+        return run_binary(binary_table<Op>, no_bool, a, b, out, symbol, pow_weights(b));
+    return run_binary(binary_table<Op>, no_bool, a, b, out, symbol, op_weights<Op>);
 }
 ```
 
@@ -651,22 +698,24 @@ $[\text{lo}_a, \text{hi}_a)$와 $[\text{lo}_b, \text{hi}_b)$가 떨어져 있으
 </Fig>
 
 ```cpp
-// array/ops/lanes.hpp (줄이고 다듬은 발췌)
+// csrc/array/ops/lanes.hpp (줄인 발췌)
 struct LaneCtx {
-    std::int64_t n, x_stride, o_stride;     // 레인 길이, axis 방향 stride (입력, 출력)
+    std::int64_t n, x_stride, o_stride;  // lane length; step along the axis in x and in out
     void (*fn)(const std::byte* x, std::byte* o, const LaneCtx& c);
-    void* user = nullptr;                   // 연산별 상태 (함수 포인터, 작업 버퍼)
+    void* user = nullptr;  // per-operation state (function pointers, scratch buffers)
 };
-
+// ...
 inline void lane_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, void* ctx) {
     const LaneCtx& c = *static_cast<const LaneCtx*>(ctx);
     for (std::int64_t i = 0; i < n; ++i) c.fn(args[0] + i * s[0], args[1] + i * s[1], c);
 }
-
+// ...
 inline void run_lanes(const NDArray& x, NDArray& out, int axis, LaneCtx& ctx) {
-    const Outer xo = drop_axis(x, axis), oo = drop_axis(out, axis);   // axis를 뺀 shape, stride
+    const detail::Outer xo = detail::drop_axis(x, axis);
+    const detail::Outer oo = detail::drop_axis(out, axis);
     const IterOperand ops[] = {xo.op(x.data), oo.op(out.data)};
-    NdIter(ops[0].shape, ops).run(&lane_loop, &ctx, Split::Elementwise, std::max<std::int64_t>(ctx.n, 1));
+    // Lanes are independent; each call does a whole lane of work.
+    NdIter(ops[0].shape, ops).run(&detail::lane_loop, &ctx, Split::Elementwise, std::max<std::int64_t>(ctx.n, 1));
 }
 ```
 
@@ -734,40 +783,44 @@ $$
 **4. 조각을 실행해요.** 조각마다 이터레이터를 복사하고, 자를 축의 길이와 시작 주소만 바꿔 직렬로 돌려요.
 
 ```cpp
-// NdIter::run (array/iter.cpp, 줄이고 다듬은 발췌)
-if (split == Split::None) {  // 커널이 호출 스레드와 GIL을 떠날 수 없어요
+// csrc/array/iter.cpp, NdIter::run (발췌)
+void NdIter::run(Loop kernel, void* ctx, Split split, std::int64_t weight) const {
+    if (empty_) return;
+    if (split == Split::None) {  // the kernel may not leave the calling thread or the GIL
+        run_serial(kernel, ctx);
+        return;
+    }
+    const Plan p = plan(split, weight);
+    // ...
+    std::int64_t moved = p.work;
+    if (split == Split::Elementwise && p.work >= 8 * kParallelThreshold) {
+        int arrays = 0;
+        for (int k = 0; k < nop_; ++k) arrays += strides_[k][ndim_ - 1] != 0 || shape_[ndim_ - 1] == 1;
+        if (arrays < 3) moved = p.work / 3 * std::max(arrays, 1);
+    }
+    if (moved < 8 * kParallelThreshold) {  // small: on the calling thread, the GIL kept
+        run_serial(kernel, ctx);
+        return;
+    }
+    if (p.tasks > 1 && parallel::available()) {
+        const std::int64_t extent = shape_[p.axis];
+        parallel::parallel_for(
+            p.tasks,
+            [&](std::int64_t t) {
+                NdIter piece = *this;
+                const std::int64_t begin = t * p.chunk;
+                piece.shape_[p.axis] = std::min(extent, begin + p.chunk) - begin;
+                for (int k = 0; k < nop_; ++k) piece.data_[k] += begin * strides_[k][p.axis];
+                piece.run_serial(kernel, ctx);
+            },
+            work_ns(p.work / 8 / p.tasks)
+        );
+        return;
+    }
+    // ...
+    const parallel::Unlocked unlocked(true);
     run_serial(kernel, ctx);
-    return;
 }
-const Plan p = plan(split, weight);
-// 원소별 실행은 움직이는 배열 수로 고쳐 세요: 기준값은 배열 셋(x + y)으로 정했어요
-std::int64_t moved = p.work;
-if (split == Split::Elementwise && p.work >= 8 * kParallelThreshold) {
-    int arrays = 0;
-    for (int k = 0; k < nop_; ++k) arrays += strides_[k][ndim_ - 1] != 0 || shape_[ndim_ - 1] == 1;
-    if (arrays < 3) moved = p.work / 3 * std::max(arrays, 1);
-}
-if (moved < 8 * kParallelThreshold) {  // 작은 일: 호출 스레드에서, GIL을 쥔 채
-    run_serial(kernel, ctx);
-    return;
-}
-if (p.tasks > 1 && parallel::available()) {
-    const std::int64_t extent = shape_[p.axis];
-    parallel::parallel_for(
-        p.tasks,
-        [&](std::int64_t t) {
-            NdIter piece = *this;  // 고정 배열 복사, 할당 없음
-            const std::int64_t begin = t * p.chunk;
-            piece.shape_[p.axis] = std::min(extent, begin + p.chunk) - begin;
-            for (int k = 0; k < nop_; ++k) piece.data_[k] += begin * strides_[k][p.axis];
-            piece.run_serial(kernel, ctx);
-        },
-        work_ns(p.work / 8 / p.tasks)  // 태스크 하나의 시간 어림: 잠든 워커를 깨울지 정해요
-    );
-    return;
-}
-const parallel::Unlocked unlocked(true);  // 1스레드, 바쁜 풀, 자를 축 없음: 크니까 GIL 없이
-run_serial(kernel, ctx);
 ```
 
 - **움직이는 배열 수.** 안쪽 축에서 stride가 0이 아닌 피연산자가 둘뿐인 실행(복사, `abs(x)`, `x + 1.5`)은 일을 2/3로 세어 풀 기준과 비교해요. 이런 연산은 2¹⁵개에서 10스레드가 1스레드와 같거나 느렸어요. 계획(`Plan`의 조각)은 그대로라서, 그것에 기대는 판단(블록 리덕션의 블록 수)도 바뀌지 않아요. 리덕션(`Split::Reduction`)에는 쓰지 않아요.
@@ -786,21 +839,21 @@ run_serial(kernel, ctx);
 분위수, 공분산, 히스토그램, `repeat`/`tile`, `searchsorted`, `nonzero`처럼 이터레이터 모양에 맞지 않는 연산은 범위 `[0, n)`을 손으로 잘라요. 그 공통 도구가 `for_pieces`예요.
 
 ```cpp
-// array/ops/pieces.hpp
+// csrc/array/ops/pieces.hpp
 template <typename F>
 void for_pieces(std::int64_t n, std::int64_t per, std::int64_t work, F&& fn) {
     per = std::max<std::int64_t>(per, 1);
     const std::int64_t pieces = (n + per - 1) / per;
     auto run = [&](std::int64_t t) { fn(t, t * per, std::min(n, (t + 1) * per)); };
     if (work < kParallelThreshold) {
-        for (std::int64_t t = 0; t < pieces; ++t) run(t);      // 작은 일: GIL을 쥔 채
+        for (std::int64_t t = 0; t < pieces; ++t) run(t);
         return;
     }
-    const parallel::Unlocked unlocked(true);                   // 큰 일: 어디서 돌든 GIL 없이
+    const parallel::Unlocked unlocked(true);
     if (pieces > 1 && parallel::available()) {
         parallel::parallel_for(pieces, run, work_ns(work / pieces));
     } else {
-        for (std::int64_t t = 0; t < pieces; ++t) run(t);      // 같은 조각, 순서대로
+        for (std::int64_t t = 0; t < pieces; ++t) run(t);
     }
 }
 ```

@@ -441,6 +441,7 @@ True
 $L_2$ 항이 없으면(lasso, `l1_ratio = 1`) 똑같은 열 둘이 함께 활성일 때 Gram 블록이 특이해요. 두 열의 합(같은 부호)만 정해지고, 어떻게 나눠도 최소점이라서요. 그래서 연마는 사본들을 한 무리로 묶고, 무리의 앞 사본 하나만 활성 집합 $A$에 넣어요. 사본은 적합에 쓰인 행에서 값이 비트까지 같고 중심과 척도도 같은 열, 곧 $z_j$가 비트까지 같은 열이에요.
 
 ```cpp
+// csrc/regression/penalized.cpp
 // Whether the solver's columns j and k are exact copies: the same values over the fit's rows
 // and the same center and scale (so the same z, bit for bit).
 bool same_column(const Src& src, const Prep& P, lint j, lint k) {
@@ -457,6 +458,7 @@ bool same_column(const Src& src, const Prep& P, lint j, lint k) {
 무리는 적합마다 한 번, Gram을 만든 뒤에 찾아요(`first[j]`는 열 $j$의 무리에서 가장 앞의 열). 사본끼리는 $d_j$, 중심, 척도가 비트까지 같으니, 이 셋으로 열을 안정 정렬하면 후보끼리만 이웃해요. 행을 견주는 `same_column`은 셋이 같은 열 사이에서만 불러요.
 
 ```cpp
+// csrc/regression/penalized.cpp
 std::vector<lint> copies(const Solver& s, const Src& src, const Prep& P) {
     std::vector<lint> first(static_cast<std::size_t>(s.pc)), ord(static_cast<std::size_t>(s.pc));
     std::iota(first.begin(), first.end(), lint(0));
@@ -482,6 +484,7 @@ std::vector<lint> copies(const Solver& s, const Src& src, const Prep& P) {
 연마는 무리마다 계수의 합을 앞 사본의 자리에 모으고, 합이 0이 아닌 무리의 앞 사본을 그 합의 부호로 $A$에 넣어요. 좌표 하강이 어느 사본을 활성으로 남겼든(앞 사본을 0으로 두고 뒤 사본에 몫을 다 주었어도) $A$와 부호는 같고, $A$는 사본이 없을 때처럼 열 순서예요.
 
 ```cpp
+    // csrc/regression/penalized.cpp
     if (l2 == 0.0 && l1 > 0.0 && !s.first.empty()) {
         // the exact copies' total at the first copy, in column order as without copies (the
         // system's bits must not depend on which copies the descent left active)
@@ -552,11 +555,12 @@ std::vector<lint> copies(const Solver& s, const Src& src, const Prep& P) {
                 const CDResult more = cd_solve(s, l1, l2, op.max_iter - cd.n_iter, t * s.vv, t);
                 cd.n_iter += more.n_iter;
                 cd.gap = more.gap;
+                // ...
                 cd.converged = more.converged;
                 if (!more.converged) break;
                 po = polish(s, src, P, op.intercept, l1, l2, op.refine_cond);
             }
-            // max_iter cut the retries before a polish took: not converged
+            // ...
             if (!po.ok && cd.n_iter >= op.max_iter) cd.converged = false;
         }
 ```
@@ -653,7 +657,7 @@ ridge에는 해가 0이 되는 alpha가 없어서 이 $\alpha_{\max}$는 lasso�
     for (lint l = 0; l < L && !descent; ++l) descent = rd(reinterpret_cast<const std::byte*>(alphas) + l * as) != 0.0;
     if (descent) {
         build(src, P, op, s);
-        s.first = copies(s, src, P);  // the lasso's exact copies
+        s.first = copies(s, src, P);  // the lasso's exact copies (R116, R178)
     }
     const double rho = op.l1_ratio;
     const double tss = descent ? s.vv * P.sw : kNaN;
@@ -661,6 +665,7 @@ ridge에는 해가 0이 되는 alpha가 없어서 이 $\alpha_{\max}$는 lasso�
         const double alpha = rd(reinterpret_cast<const std::byte*>(alphas) + l * as);
         const double l1 = alpha * rho, l2 = alpha * (1.0 - rho);
         if (alpha == 0.0) {
+            // ...
             double* st = stats + l * pNStat;
             std::fill(st, st + pNStat, kNaN);
             st[pNobs] = double(P.m);
@@ -675,6 +680,7 @@ ridge에는 해가 0이 되는 alpha가 없어서 이 $\alpha_{\max}$는 lasso�
 ```python
     # src/stardust/regression/_penalized.py (_run)
     if kind == _ENET and bool(_sd.any(alphas == 0.0)):
+        # ...
         P0, S0 = _k.penalized_path(
             func,
             _RIDGE,
@@ -831,6 +837,7 @@ double effective_df(std::vector<double> H, lint a, double l2) {
             err = _sd.mean(mse, axis=0)
             se = _sd.std(mse, axis=0, correction=1) / math.sqrt(cv)
         else:
+            # ...
             used = _sd.logical_not(empty)
             cnt = _sd.sum(_sd.where(used, 1.0, 0.0), axis=0)
             err = _sd.sum(_sd.where(used, mse, 0.0), axis=0) / cnt
@@ -954,6 +961,7 @@ struct WG {
 열이 1,024개를 넘으면 naive 갱신을 위해 설계를 꾸려요. 그때는 $(p + 3)^2$ 크기의 Gram을 만들지 않아요($p$ = 4,000이면 128 MB예요). 좌표 하강은 꾸린 설계로 돌고, 연마의 KKT 검사와 마지막 값(쌍대 간격, 유효 자유도)에 필요한 것은 열마다의 합 세 개와 $[\sqrt W, \sqrt W\eta, u]$의 3×3 블록뿐이에요. 그래서 한 번 훑어 그것만 모아요(`wvec`, 메모리 $O(p)$).
 
 ```cpp
+// csrc/regression/penalized.cpp
 struct WV {
     lint na = 0;
     std::vector<double> v;  // S(a) | G(a, u) | G(a, a) | one.one, one.eta, one.u, eta.eta, eta.u, u.u
@@ -999,6 +1007,7 @@ IRLS가 수렴하면 $A$와 부호를 고정한 매끄러운 문제를 뉴턴법
 그다음 부호와 $A$ 밖 열의 KKT 부등식(선형과 같은 꼴, $v^{\mathsf T}\Omega v$ 자리에 편차/$s_w$)을 검사하고, 통과하면 그 해를 써요. 실패하면 안쪽 허용오차를 $10^{-6}$배로 줄여 IRLS를 이어 가요(최대 2번). $L_1$ 항이 없으면(`l1_ratio = 0`) 처음부터 매끄러운 문제라 뉴턴법으로 바로 풀고(정확한 안쪽 풀이의 IRLS와 같아요), 실패할 때만 IRLS예요. `n_iter`는 IRLS(또는 뉴턴) 반복 수이고, 어느 길로 가도 `max_iter`를 넘지 않아요. 처음의 뉴턴 걸음 수를 `max_iter`로 자르고, 상한에 잘리면 그 반복점이 목적함수를 줄인 점일 때 거기서 남은 반복으로 IRLS를 이어 가요($L_1$ 항이 없어 지켜야 할 부호가 없으니 그 점을 그대로 써도 돼요). 뉴턴이 반올림까지 못 간 것이 귀무 모형에서 다시 시작할 이유는 아니기 때문이에요.
 
 ```cpp
+            // csrc/regression/penalized.cpp
             if (!settled) {
                 if (keep && newton_steps == steps && steps < kNewtonSteps && gp.valid && Fp <= objective(g, beta)) {
                     // the budget ran out on the way: the Newton iterate stands (no L1 term, so
@@ -1044,6 +1053,7 @@ IRLS가 수렴하면 $A$와 부호를 고정한 매끄러운 문제를 뉴턴법
     double b0 = eta0;
     GlmState g, gn;
     glm_eval(src, P, fam, beta.data(), b0, g);
+    // ...
     double null_dev = g.dev;
     if (op.intercept) {
         bool constant = true;
@@ -1097,6 +1107,7 @@ True
 선형 정규화(ridge, lasso, 엘라스틱 넷)에서 $y$의 크기가 $[2^{-256}, 2^{256}]$ 밖이면, [선형 모형](/internals/regression/least-squares/#극단적인-척도)처럼 회귀마다 $y$를 2의 거듭제곱 $f$로 나눈 문제를 풀어요. 계수가 $1/f$배가 될 뿐 같은 해가 되려면 벌점도 옮겨야 해요. 목적함수를 $1/f^2$배로 두면 $L_1$ 항은 alpha·`l1_ratio`$/f$, $L_2$ 항은 alpha$(1 - $`l1_ratio`$)$ 그대로예요. 그래서 ridge는 같은 alpha, lasso는 alpha$/f$이고, 엘라스틱 넷은 alpha와 `l1_ratio`를 함께 바꿔요.
 
 ```python
+# src/stardust/regression/_penalized.py
 def _run(func, kind, y, X, w, alphas, l1_ratio, family, intercept, standardize, max_iter, tol, tw=None):
     """The kernel's path. A linear fit whose y is far outside [2^-256, 2^256] is solved in
     power-of-two units (exact), as the linear models: y / fy with the penalty that makes the

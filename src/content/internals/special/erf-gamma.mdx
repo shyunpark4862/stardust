@@ -326,12 +326,12 @@ $\operatorname{ndtri\_exp}(y) = \operatorname{ndtri}(e^y)$는 $y \le 0$인 로�
 4. $y \lt -745$: 꼬리의 점근식 $\log\operatorname{ndtr}(x) = -\tfrac{x^2}{2} - \log(-x) - \tfrac12\log 2\pi + \log S$($S = 1 - x^{-2} + 3x^{-4} - \cdots$, 여덟 항)에 대해 Newton을 두 번 해요. 출발점은 $w = -2y - \log 2\pi$로 만든 $x^2 = w - \log(w - \log w)$이고, 잔차의 $x^2/2 + y$는 `two_prod`로 정확히 빼요. `log_ndtr`을 거치는 Newton은 기울기가 크기 $x^2/2$인 두 수의 차라서 $\lvert x\rvert > 10^6$부터 망가지는데, 이 꼴은 그런 차가 없어요. $y \lt -10^8$이면 같은 점근식의 고정점 세 번이 곧 답이에요(다음 항이 마지막 비트보다 한참 작아요).
 
 ```cpp
-// csrc/special/ops/distr.hpp, NdtriExp::f (발췌)
-constexpr double kLn2Hi = 0x1.62e42fefa39efp-1, kLn2Lo = 0x1.abc9e3b39803fp-56;
-if (y > -1.39 && y < -0.28) {
-    const double q = 0.5 * std::expm1((y + kLn2Hi) + kLn2Lo);
-    if (std::fabs(q) <= 0.25) return q * erf_detail::ndtri_parts(q, 0.0).ratio;
-}
+        // csrc/special/ops/distr.hpp, NdtriExp::f (발췌)
+        constexpr double kLn2Hi = 0x1.62e42fefa39efp-1, kLn2Lo = 0x1.abc9e3b39803fp-56;
+        if (y > -1.39 && y < -0.28) {
+            const double q = 0.5 * std::expm1((y + kLn2Hi) + kLn2Lo);
+            if (std::fabs(q) <= 0.25) return q * erf_detail::ndtri_parts(q, 0.0).ratio;
+        }
 ```
 
 `ndtri_exp`는 `ndtri`의 유리식 부품(`ndtri_parts`)을 원소마다 스칼라로 불러요. `exp`와 `log`가 빠져서 vForce에 묶음으로 넘길 것이 없어요.
@@ -411,13 +411,13 @@ $$
 **2. sinpi와 cospi.** $\sin(\pi x)$를 `sin(pi * x)`로 계산하면 $\pi x$의 반올림 오차가 $x$에 비례해서 커지고, 정수 근처에서는 $\sin$ 값이 0에 가까워 상대오차가 폭발해요. 하지만 $\sin(\pi x)$는 주기가 2이고, $x \bmod 2$는 float64에서 정확히 계산돼요(`fmod`는 반올림이 없어요). 그다음 $[-\tfrac12, \tfrac12]$로 접는 빼기 $1 - r$, $-1 - r$도 Sterbenz로 정확해요. 그래서 반올림은 마지막 $\pi r$ 한 번뿐이에요.
 
 ```cpp
-// gamma_core.hpp, sinpi (간추림)
-double r = std::fmod(x, 2.0);          // 정확
-if (r > 1.0) r -= 2.0;
-else if (r < -1.0) r += 2.0;
-if (r > 0.5) r = 1.0 - r;              // Sterbenz: 정확
-else if (r < -0.5) r = -1.0 - r;
-return std::sin(kPi * r);              // 반올림은 여기 한 번
+    // csrc/special/gamma_core.hpp, sinpi (발췌)
+    double r = std::fmod(x, 2.0);
+    if (r > 1.0) r -= 2.0;
+    else if (r < -1.0) r += 2.0;
+    if (r > 0.5) r = 1.0 - r;
+    else if (r < -0.5) r = -1.0 - r;
+    return std::sin(kPi * r);
 ```
 
 **3. 꼭 만들어야 하는 합은 두 조각으로.** $B(a, b)$의 $a + b$나 `binom`의 $n - k + 1$처럼 피할 수 없는 합은 Knuth의 TwoSum으로 $s + e = a + b$(정확)를 만들어 두 조각으로 들고 가요 [9, 10]. 그리고 1차 Taylor 보정을 해요.

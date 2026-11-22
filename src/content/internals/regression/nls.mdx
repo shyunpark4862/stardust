@@ -303,6 +303,7 @@ nls는 `epsfcn`을 0으로 두므로 $h = \sqrt\varepsilon\,\lvert\theta_j\rvert
 경계가 있는 최소화의 1차 최적 조건은 성분마다 "기울기 $g_j$가 0이거나, 모수가 경계에 있고 기울기가 바깥을 향함"이에요. Coleman–Li(1996)는 이것을 하나의 방정식 $v \odot g = 0$으로 써요. 여기서 $v_j$는 기울기가 향하는 쪽 경계까지의 거리예요(`cl_scaling`, `csrc/optimize/lsq.cpp`).
 
 ```cpp
+// csrc/optimize/lsq.cpp
 void cl_scaling(const vec& x, const vec& g, const vec& lb, const vec& ub, vec& v, vec& dv) {
     for (std::size_t i = 0; i < x.size(); ++i) {
         v[i] = 1;
@@ -347,6 +348,7 @@ $$
 ### 반지름과 멈춤
 
 ```cpp
+            // csrc/optimize/lsq.cpp
             double Delta_new = Delta;
             if (ratio < 0.25) Delta_new = 0.25 * step_h_norm;
             else if (ratio > 0.75 && step_h_norm > 0.95 * Delta) Delta_new = 2 * Delta;
@@ -481,6 +483,7 @@ $$
 걸음의 크기는 성분별 상대 크기 $s_k = \max_j\lvert d_j\rvert/\lvert\theta_j\rvert$예요($\theta_j = 0$이면 $\lVert\theta\rVert_\infty$로 나눠요).
 
 ```python
+        # src/stardust/regression/_nls.py
         theta, v, r = tn, vn, rn
         steps += 1
         done = size <= _POLISH_TOL
@@ -511,6 +514,7 @@ $$
 다듬기의 $f$ 호출도 `max_nfev` 안에서 해요. 반복이 쓰고 남은 호출 수가 다듬기의 예산이고, 걸음을 하기 전에 그 걸음의 비용(새 점 1번과 그 점의 정확한 야코비안, 차분이면 $4p$번, `jac`이면 0번)이 남았는지 봐요. 뉴턴으로 바꿀 때는 $S$의 비용 $2p^2$번도 먼저 봐요.
 
 ```python
+    # src/stardust/regression/_nls.py
     def afford(calls):
         return M.nfev - start + calls <= budget
 
@@ -551,6 +555,7 @@ $$
 $(J^{\mathsf T}J)^{-1}$은 같은 `fit` 호출이 공분산으로 돌려주는 $(R^{\mathsf T}R)^{-1}$이에요. 이 꼴에서는 $d_n = 0 \iff d = 0$이라 고정점이 그대로예요. 그래서 $S$의 정확도는 수렴 속도만 바꾸고 답은 바꾸지 않아요. 아래는 `src/stardust/regression/_nls.py`의 `_newton_step`이에요.
 
 ```python
+# src/stardust/regression/_nls.py
 def _newton_step(d, cols, C, S):
     """Newton's step from the Gauss-Newton one: (J^T J + S) dn = J^T J d, that is
     (I + (J^T J)^-1 S) dn = d on the free columns. None when singular."""
@@ -576,6 +581,7 @@ $S$는 $\varphi(t) = \sum_i c_i f_i(t)$의 2차 중앙 차분이에요. 대각�
 `'trf'`의 반복점은 늘 경계 안쪽이라, 해가 경계에 있으면 scipy는 경계에서 $10^{-10}\max(1, \lvert b\rvert)$ 안쪽 값(0.5000000000000001 같은)을 내요. 여기서는 반복이 끝난 점에서 경계에 걸린 모수를 찾아 경계값으로 맞춰요(`_nls.py`의 `_active`).
 
 ```python
+# src/stardust/regression/_nls.py
 def _active(theta, lb, ub, g, rtol):
     """Parameters on a bound at the solution: within scipy's find_active_constraints
     distance (rtol = xtol) and with the gradient of the sum of squares pointing outwards."""
@@ -613,10 +619,12 @@ def _active(theta, lb, ub, g, rtol):
 `rtol`의 기본값은 야코비안의 출처에 따라 달라요.
 
 ```python
+# src/stardust/regression/_nls.py
 _FD_RTOL = 2.0**-30
 ```
 
 ```python
+    # src/stardust/regression/_nls.py
     rt = _check_rtol(rtol, func)
     if rt < 0 and jac is None:
         rt = _FD_RTOL
@@ -709,6 +717,7 @@ array([nan, nan], dtype=float64)
 $J_{\text{new}}$는 $x_{\text{new}}$의 행에서 해의 야코비안이에요. 사용자 `jac`이 있으면 그것이고, 없으면 해에서 고른 간격 그대로의 5점 차분이에요(잡음 열의 규칙도 같아요). 간격은 모수의 국소 척도이지 행의 것이 아니라서 다시 고르지 않아요.
 
 ```python
+        # src/stardust/regression/_nls.py
         # a row with NaN (x_new or its f) has a NaN interval; the Jacobian is formed on the
         # other rows only (its differences would find the model "not finite" there)
         ok = _sd.isfinite(mean)

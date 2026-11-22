@@ -65,21 +65,21 @@ export const zig8 = [[0, 1], [0.7384, 1.0], [0.7384, 0.7614], [1.0274, 0.7614], 
 `Words`가 이 규칙을 감싸요.
 
 ```cpp
-// csrc/stats/sample.hpp
-std::uint64_t next() {
-    if (!used_) {
-        used_ = true;
-        return have_ ? first_ : s_.first(e_);
+    // csrc/stats/sample.hpp
+    std::uint64_t next() {
+        if (!used_) {
+            used_ = true;
+            return have_ ? first_ : s_.first(e_);
+        }
+        if (k_ < npre_) return pre_[k_++];
+        const std::uint64_t j = 1 + (k_ >> 2);  // extra word k: word k mod 4 of block (e, 1 + k / 4)
+        if (j != block_) refill(j);
+        return words_[k_++ & 3];
     }
-    if (k_ < npre_) return pre_[k_++];
-    const std::uint64_t j = 1 + (k_ >> 2);  // extra word k: word k mod 4 of block (e, 1 + k / 4)
-    if (j != block_) refill(j);
-    return words_[k_++ & 3];
-}
-// (0, 1), symmetric about 1/2: (m + 1/2) 2^-53
-double u() { return (static_cast<double>(next() >> 11) + 0.5) * 0x1p-53; }
-// [0, 1): m 2^-53 (sd.random's random())
-double u01() { return static_cast<double>(next() >> 11) * 0x1p-53; }
+    // (0, 1), symmetric about 1/2: (m + 1/2) 2^-53
+    double u() { return (static_cast<double>(next() >> 11) + 0.5) * 0x1p-53; }
+    // [0, 1): m 2^-53 (sd.random's random())
+    double u01() { return static_cast<double>(next() >> 11) * 0x1p-53; }
 ```
 
 균등 변수는 두 가지예요. `u01()`은 위 53비트 $m$으로 만든 $m \cdot 2^{-53} \in [0, 1)$이고 `random()`과 같아요. `u()`는 $(m + \tfrac12) \cdot 2^{-53}$이라 0과 1이 나오지 않고 1/2에 대해 대칭이에요. 그래서 $1 - u$가 정확하고, $\log u$가 언제나 유한해요. 역함수 법과 log를 취하는 방법이 `u()`를 써요.
@@ -351,14 +351,14 @@ $G(a+1)$과 $U$가 독립이면 곱이 $G(a)$를 따라요. $U^{1/a} = \exp(\log
 비중심 카이제곱의 $\text{df} > 1$ 꼴은 비중심도를 정규 좌표 하나에 몰아넣은 거예요. $\sum_i (Z_i + \mu_i)^2$의 분포는 $\sum\mu_i^2$에만 기대므로, 비중심도 전체를 첫 좌표에 두면 나머지 $\text{df} - 1$ 좌표는 중심 카이제곱이에요. 감마 하나와 정규 하나로 끝나요. $\text{df} = 1$이면 남는 좌표가 없어서 정규 하나의 제곱이에요. $\text{df} < 1$이면 $\text{df} - 1$이 음수라 이 꼴을 쓸 수 없어서, 포아송 혼합 $2G(\text{df}/2 + N)$을 써요.
 
 ```cpp
-// csrc/stats/sample_dist.hpp, Custom<NoncentralChiSquared>::draw
-if (s.snc == 0.0) return Custom<ChiSquared>::draw(w, {s.g0, s.df < kMinSampleDf});
-if (s.df >= 1.0) {
-    const double z = std_normal(w) + s.snc;
-    return s.df == 1.0 ? z * z : 2.0 * gamma_draw(w, s.g1) + z * z;
-}
-const double n = poisson_draw(w, s.pn);
-return 2.0 * gamma_draw(w, n == 0.0 ? s.g0 : gamma_prep(s.h + n));
+        // csrc/stats/sample_dist.hpp, Custom<NoncentralChiSquared>::draw
+        if (s.snc == 0.0) return Custom<ChiSquared>::draw(w, {s.g0, s.df < kMinSampleDf});
+        if (s.df >= 1.0) {
+            const double z = std_normal(w) + s.snc;
+            return s.df == 1.0 ? z * z : 2.0 * gamma_draw(w, s.g1) + z * z;
+        }
+        const double n = poisson_draw(w, s.pn);
+        return 2.0 * gamma_draw(w, n == 0.0 ? s.g0 : gamma_prep(s.h + n));
 ```
 
 `g1`은 모양 $(\text{df} - 1)/2$의 감마 준비이고, $2G((\text{df}-1)/2)$가 $\chi^2_{\text{df}-1}$이에요.
@@ -418,7 +418,7 @@ struct Custom<ChiSquared> {
     static constexpr bool kExtra = true;  // draws extra words
     struct State {
         GammaPrep g;
-        bool nan;  // df < 2^-1021: NaN, as the value methods
+        bool nan;  // df < 2^-1021: NaN, as the value methods (user decision 2026-11-19; was 0)
     };
     static State prep(double df) { return {gamma_prep(0.5 * df), df < kMinSampleDf}; }
     static double draw(Words& w, const State& s) {
@@ -430,30 +430,27 @@ struct Custom<ChiSquared> {
 F는 두 자유도 중 하나라도 이 경계 아래이면 NaN이에요(`lim` = 3). 두 감마의 모양이 자유도의 절반이라 카이제곱과 같은 까닭이에요. 극한 분포와 겹치는 곳은 값 메서드를 따라요. dfd = inf이면 표본이 $\chi^2_\text{dfn}/\text{dfn}$이라 작은 dfn은 카이제곱처럼 NaN이에요. dfn = inf이면 역감마 `InverseGamma(a=dfd/2, scale=dfd/2)`의 극한이고, 역감마는 서브노멀 모양에서도 값 메서드가 값을 내므로 작은 dfd에서도 그 극한에서 뽑아요.
 
 ```cpp
-// csrc/stats/sample_dist.hpp, Custom<F>
-// A df below 2^-1021 (no exact half): NaN, as the value methods; with dfd = inf that is
-// ChiSquared(dfn)'s NaN, while dfn = inf with a small dfd is the inverse gamma's limit,
-// which has values (its sample too).
-static State prep(double dfn, double dfd) {
-    const bool tiny = dfn < kMinSampleDf || dfd < kMinSampleDf;
-    const int lim = dfd == kInf ? (tiny ? 3 : 1) : (dfn == kInf ? 2 : (tiny ? 3 : 0));
-    return {
-        gamma_prep(lim == 2 ? 1.0 : 0.5 * dfn), gamma_prep(lim == 1 ? 1.0 : 0.5 * dfd),
-        lim == 0 ? log_ratio(dfd, dfn) : 0.0, lim
-    };
-}
-static double draw(Words& w, const State& s) {
-    if (s.lim == 3) return std::numeric_limits<double>::quiet_NaN();
-    ...
-}
+    // csrc/stats/sample_dist.hpp, Custom<F>
+    static State prep(double dfn, double dfd) {
+        const bool tiny = dfn < kMinSampleDf || dfd < kMinSampleDf;
+        const int lim = dfd == kInf ? (tiny ? 3 : 1) : (dfn == kInf ? 2 : (tiny ? 3 : 0));
+        return {
+            gamma_prep(lim == 2 ? 1.0 : 0.5 * dfn), gamma_prep(lim == 1 ? 1.0 : 0.5 * dfd),
+            lim == 0 ? log_ratio(dfd, dfn) : 0.0, lim
+        };
+    }
+    static double draw(Words& w, const State& s) {
+        if (s.lim == 3) return std::numeric_limits<double>::quiet_NaN();
+        // ...
+    }
 ```
 
 비중심 F도 두 자유도 중 하나라도 이 경계 아래이면 NaN이에요. nc = 0이면 준비 단계가 `Custom<F>`에 넘기므로(`kind` = 4), 이 경계 아래에서도 두 분포의 표본이 같아요. 준비 단계가 inf인 자유도를 먼저 보므로, 다른 자유도가 inf이면 위 표의 극한 분포를 뽑아요.
 
 ```cpp
-// csrc/stats/sample_dist.hpp, Custom<NoncentralF>::prep
-const int lim = dfd == kInf ? 1 : (dfn == kInf ? 2 : (dfn < kMinSampleDf || dfd < kMinSampleDf ? 3 : 0));
-const int kind = nc == 0.0 && lim != 3 ? 4 : lim;
+        // csrc/stats/sample_dist.hpp, Custom<NoncentralF>::prep
+        const int lim = dfd == kInf ? 1 : (dfn == kInf ? 2 : (dfn < kMinSampleDf || dfd < kMinSampleDf ? 3 : 0));
+        const int kind = nc == 0.0 && lim != 3 ? 4 : lim;
 ```
 
 ```python
@@ -487,15 +484,15 @@ $e^{-1/2} = 0.6065$예요.
 - **섞인 경우**: 두 감마를 log로 뽑아 $1/(1 + e^{\log Y - \log X})$로 합쳐요(지수가 넘치지 않는 쪽을 골라요).
 
 ```cpp
-// csrc/stats/sample_dist.hpp, Custom<Beta>
-static State prep(double a, double b) {
-    const bool at = Beta::at_limit(a, b);
-    return {gamma_prep(a), gamma_prep(b), at, at ? two_point::of_shapes(a, b, 0.0, 1.0, false) : two_point::Law{}};
-}
-static double draw(Words& w, const State& s) {
-    if (s.at) return s.t.q == 0.0 ? 0.0 : (s.t.qc == 0.0 ? 1.0 : (w.u01() < s.t.q ? 1.0 : 0.0));
-    ...
-}
+    // csrc/stats/sample_dist.hpp, Custom<Beta>
+    static State prep(double a, double b) {
+        const bool at = Beta::at_limit(a, b);
+        return {gamma_prep(a), gamma_prep(b), at, at ? two_point::of_shapes(a, b, 0.0, 1.0, false) : two_point::Law{}};
+    }
+    static double draw(Words& w, const State& s) {
+        if (s.at) return s.t.q == 0.0 ? 0.0 : (s.t.qc == 0.0 ? 1.0 : (w.u01() < s.t.q ? 1.0 : 0.0));
+        // ...
+    }
 ```
 
 Jöhnk 갈래의 거듭제곱은 log에서 $-E/a$예요. 경계 바로 위의 모양($2^{-1021}$의 몇 배)에서는 $E/a$가 double을 넘어 두 log가 모두 −inf가 될 수 있어요. 그때는 더 작은 모양으로 두 지수의 크기를 맞춰 비교해서 0, 1, 1/2 중 하나를 내요. 질량이 두 끝으로 갈라지는 극한에서의 판정이에요.
@@ -541,22 +538,22 @@ $$
 $u_s \ge 0.07$이고 $V \le v_r$인 영역은 모자가 언제나 pmf 아래에 있도록 고른 squeeze라, pmf를 계산하지 않고 받아들여요. 한 라운드가 이 squeeze만으로 끝날 확률이 0.34 이상이에요.
 
 ```cpp
-// csrc/stats/sample_dist.hpp, poisson_draw (발췌)
-for (;;) {
-    const double U = w.u01() - 0.5, V = w.u01();
-    const double us = 0.5 - std::fabs(U);
-    const double k = std::floor((2.0 * s.a / us + s.b) * U + s.mu + 0.43);
-    if (us >= 0.07 && V <= s.vr) return k;
-    if (k < 0.0 || (us < 0.013 && V > us)) continue;
-    // log pmf(k) = k log mu - mu - log k!, in plain double first
-    const double lhs = std::log(V) + s.log_ia - std::log(s.a / (us * us) + s.b);
-    const double klm = k * s.log_mu, lf = log_fact(k);
-    const int quick = quick_accept(lhs, (klm - s.mu) - lf, std::fabs(klm) + s.mu + lf + 2.0 * k + 1.0);
-    if (quick > 0) return k;
-    if (quick < 0) continue;
-    const num::DD l = Poisson::log_pmf_dd(k, s.mu);
-    if (lhs <= l.hi + l.lo) return k;
-}
+    // csrc/stats/sample_dist.hpp, poisson_draw (발췌)
+    for (;;) {
+        const double U = w.u01() - 0.5, V = w.u01();
+        const double us = 0.5 - std::fabs(U);
+        const double k = std::floor((2.0 * s.a / us + s.b) * U + s.mu + 0.43);
+        if (us >= 0.07 && V <= s.vr) return k;
+        if (k < 0.0 || (us < 0.013 && V > us)) continue;
+        // log pmf(k) = k log mu - mu - log k!, in plain double first
+        const double lhs = std::log(V) + s.log_ia - std::log(s.a / (us * us) + s.b);
+        const double klm = k * s.log_mu, lf = log_fact(k);
+        const int quick = quick_accept(lhs, (klm - s.mu) - lf, std::fabs(klm) + s.mu + lf + 2.0 * k + 1.0);
+        if (quick > 0) return k;
+        if (quick < 0) continue;
+        const num::DD l = Poisson::log_pmf_dd(k, s.mu);
+        if (lhs <= l.hi + l.lo) return k;
+    }
 ```
 
 ### 이항: 역변환과 BTRS
@@ -645,19 +642,19 @@ $$
 이에요($s = (1-p)^U$, $t = 1 - s$로 치환, $L = -\log(1-p)$). 로그 급수의 pmf 그대로예요. 기하 변수는 $\lfloor 1 + \log V/\log q\rfloor$예요.
 
 ```cpp
-// csrc/stats/sample_dist.hpp, Custom<LogSeries>::draw
-for (;;) {
-    const double V = w.u01();
-    if (V >= s.p) return 1.0;
-    const double U = w.u01();
-    const double q = -std::expm1(s.r * U);
-    if (V <= q * q) {
-        const double k = std::floor(1.0 + std::log(V) / std::log(q));
-        if (k < 1.0 || V == 0.0) continue;
-        return k;
-    }
-    return V >= q ? 1.0 : 2.0;
-}
+        // csrc/stats/sample_dist.hpp, Custom<LogSeries>::draw
+        for (;;) {
+            const double V = w.u01();
+            if (V >= s.p) return 1.0;
+            const double U = w.u01();
+            const double q = -std::expm1(s.r * U);
+            if (V <= q * q) {
+                const double k = std::floor(1.0 + std::log(V) / std::log(q));
+                if (k < 1.0 || V == 0.0) continue;
+                return k;
+            }
+            return V >= q ? 1.0 : 2.0;
+        }
 ```
 
 지름길 둘이 있어요. $q \le p$이므로 $V \ge p$이면 $V \ge q$이고, 그러면 $\log V/\log q < 1$이라 답이 1이에요. $U$를 뽑지 않아도 돼요($p$가 작으면 거의 언제나 여기서 끝나요). $q^2 < V < q$이면 답이 2라서 log를 계산하지 않아요. $q = 1 - (1-p)^U$는 `expm1`로 만들어 $p$가 작아도 자릿수를 잃지 않아요. 다시 뽑는 것은 $V = 0$이거나 $q$가 1로 반올림되는 경우뿐이라 확률이 $2^{-50}$보다 작아요.
@@ -679,18 +676,18 @@ $$
 이고 $k = 1$($T = b = 2^{a-1}$)에서 가장 커요. 그래서 확률 $\dfrac{p/q}{\max p/q} = \dfrac{T}{k(T-1)}\cdot\dfrac{b-1}{b}$로 받아들이면 돼요. 판정은 $V\,k\,(T - 1)/(b - 1) \le T/b$예요. 받아들일 확률은 $1/\max(p/q) = (1 - 2^{1-a})\zeta(a)$이고, 이 값은 $\log 2 = 0.69$ 이상이에요.
 
 ```cpp
-// csrc/stats/sample_dist.hpp, Custom<Zipf>::draw (발췌)
-for (;;) {
-    const double U = 1.0 - w.u01(), V = w.u01();  // U in (0, 1]
-    const double X = std::floor(std::exp(-std::log(U) * s.inv));
-    if (std::isinf(X)) {  // beyond float64: the test's limit, X (T - 1) -> a - 1, T -> 1
-        if (V * s.am1 / s.bm1 <= 1.0 / s.b) return X;
-        continue;
-    }
-    if (X < 1.0) continue;
-    const double tm1 = std::expm1(s.am1 * std::log1p(1.0 / X));
-    if (V * X * tm1 / s.bm1 <= (1.0 + tm1) / s.b) return X;
-}
+        // csrc/stats/sample_dist.hpp, Custom<Zipf>::draw (발췌)
+        for (;;) {
+            const double U = 1.0 - w.u01(), V = w.u01();  // U in (0, 1]
+            const double X = std::floor(std::exp(-std::log(U) * s.inv));
+            if (std::isinf(X)) {  // beyond float64: the test's limit, X (T - 1) -> a - 1, T -> 1
+                if (V * s.am1 / s.bm1 <= 1.0 / s.b) return X;
+                continue;
+            }
+            if (X < 1.0) continue;
+            const double tm1 = std::expm1(s.am1 * std::log1p(1.0 / X));
+            if (V * X * tm1 / s.bm1 <= (1.0 + tm1) / s.b) return X;
+        }
 ```
 
 $T - 1$과 $b - 1$은 `expm1`로 만들어요. $X$가 크면 $T$가 1에 아주 가까워 $T - 1$을 뺄셈으로 만들면 자릿수가 모두 사라지기 때문이에요. $a$가 1에 가까우면 $X$가 double을 넘을 수 있어요($a = 1.01$에서 $X$가 가장 큰 double을 넘을 확률이 $8.2 \times 10^{-4}$). 그 표본은 `inf`예요(`icdf`가 double 밖에서 inf인 것과 같아요). 이때도 판정은 $X \to \infty$의 극한($X(T-1) \to a - 1$, $T \to 1$)으로 해요. 극한 판정 없이 inf를 언제나 받아들이면 inf의 비율이 0.125%가 되는데, 참값은 0.082%예요.

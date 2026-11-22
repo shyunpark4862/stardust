@@ -173,10 +173,7 @@ True
 ```python
     # src/stardust/sparse/_compressed.py
     def _long_across(self):
-        """Whether some position (an index of the other axis) holds more than L = 4096 entries: a
-        sum scattered along it is then cut into pieces (docs/design/sparse.md §2.6), and the
-        scatter must count. Found once and kept (the index arrays never change), in a holder the
-        arrays sharing these index arrays share (.T, copies, new values): A.T @ x does not count again."""
+        # ...
         holder = self._long_holder()
         if holder[0] is None:
             lines, positions = self._lines()

@@ -118,19 +118,19 @@ $$
 $d = x - \mu$는 TwoSum으로 $d_{hi} + d_{lo}$이고, $cd_{hi}$와 $cd_{lo}$는 TwoProd로 각각 정확한 두 double이에요. 그러면 $n$은 다섯 double $\sigma, -p_{hi}, -p_{lo}, -q_{hi}, -q_{lo}$의 정확한 합이에요. 이 다섯을 TwoSum으로 여러 번 훑어(증류) 합을 마지막 원소에, 오차를 앞 원소에 모은 뒤 더해요.
 
 ```cpp
-// csrc/stats/dist/extreme.hpp (GEV::edge_log_y)
-// all five terms: the product with d.lo may be larger than n itself, so it enters exactly too
-const num::DD q = num::dd::two_prod(cc, d.lo);
-double w[5] = {-q.lo, -q.hi, -p.lo, -p.hi, ss};
-for (int pass = 0; pass < 4; ++pass) {
-    for (int i = 0; i < 4; ++i) {
-        const num::DD t = num::dd::two_sum(w[i], w[i + 1]);
-        w[i] = t.lo, w[i + 1] = t.hi;
-    }
-}
-const num::DD n = num::dd::two_sum(w[4], w[3] + (w[2] + (w[1] + w[0])));
-if (!(n.hi > 0.0)) return {{0.0, 0.0}, n.hi == 0.0 ? 0.0 : -1.0};
-return {num::dd::log_pos(n) - ls, 1.0};
+        // csrc/stats/dist/extreme.hpp (GEV::edge_log_y)
+        // all five terms: the product with d.lo may be larger than n itself, so it enters exactly too
+        const num::DD q = num::dd::two_prod(cc, d.lo);
+        double w[5] = {-q.lo, -q.hi, -p.lo, -p.hi, ss};
+        for (int pass = 0; pass < 4; ++pass) {
+            for (int i = 0; i < 4; ++i) {
+                const num::DD t = num::dd::two_sum(w[i], w[i + 1]);
+                w[i] = t.lo, w[i + 1] = t.hi;
+            }
+        }
+        const num::DD n = num::dd::two_sum(w[4], w[3] + (w[2] + (w[1] + w[0])));
+        if (!(n.hi > 0.0)) return {{0.0, 0.0}, n.hi == 0.0 ? 0.0 : -1.0};
+        return {num::dd::log_pos(n) - ls, 1.0};
 ```
 
 $\sigma$가 아주 작으면 곱의 낮은 부분이 서브노멀이 되므로 $\sigma$와, $c$와 $d$ 중 작은 쪽에 $2^{600}$을 곱해 놓고 계산해요. 큰 항이 정확히 지워지면 $n$은 마지막 곱 $c\,d_{lo}$ 하나라서 그 log를 바로 만들어요(double 아래일 수도 있어요).
@@ -235,22 +235,18 @@ $X = s/Y$, $Y \sim$ 감마$(a, 1)$이에요. 그래서 거의 모든 메서드�
 - **double 밖의 근.** 그래도 근의 자리를 정하지 못하는 곳이 있어요. 서브노멀 $a$에서는 $Y$의 질량이 $e^{-1/a}$ 근처, 곧 double보다 한참 아래에 몰려서 감마의 근이 모든 배율 밖이에요. $s \lt 2^{-900}$이면 $y$가 $2^{-2000}$ 아래여도 $x = s/y$가 double 너머인지 알 수 없어요. 그러면 두 끝을 봐요(`past_the_ends`). 가장 큰 double에서도 $X$의 아래꼬리가 목표에 못 미치면 근은 그 너머라 inf, 가장 작은 양수에서 이미 넘으면 0이에요. 위꼬리 목표는 방향이 반대예요. 인자 자체가 NaN이거나 목표가 $[0, 1]$ 밖이면 NaN 그대로예요. `median`도 `icdf(0.5)`라 같은 규칙을 따르고, `F(dfn=inf, dfd)`의 작은 `dfd`도 이 극한이라 값을 내요.
 
 ```cpp
-// csrc/stats/dist/lifetime.hpp, InverseGamma (발췌)
-// A root that invert() cannot place (the gamma's y below every scaling, as for a subnormal a,
-// where Y sits below e^(-1/a); or a scale below 2^-900): the ends decide where they can.
-// X's lower tail at the largest double still below the target: the root is beyond it,
-// inf; at the smallest positive double already above: 0.
-// lt is the target of X's lower tail (upper: of its upper tail), as a log.
-static double past_the_ends(double r, double lt, double a, double s, bool upper) {
-    // (a NaN of the arguments' own, a target outside [0, 1] or past the shapes' range, stays)
-    if (r == r || !(lt <= 0.0) || a > gamma_detail::kMaxShape) return r;
-    constexpr double kMax = std::numeric_limits<double>::max(), kMin = std::numeric_limits<double>::denorm_min();
-    const double at_max = tail(kMax, a, s, upper, true), at_min = tail(kMin, a, s, upper, true);
-    // the lower tail grows with x, the upper one falls
-    if (upper ? at_max > lt : at_max < lt) return kInf;
-    if (upper ? at_min < lt : at_min > lt) return 0.0;
-    return r;
-}
+    // csrc/stats/dist/lifetime.hpp, InverseGamma (발췌)
+    // lt is the target of X's lower tail (upper: of its upper tail), as a log.
+    static double past_the_ends(double r, double lt, double a, double s, bool upper) {
+        // (a NaN of the arguments' own, a target outside [0, 1] or past the shapes' range, stays)
+        if (r == r || !(lt <= 0.0) || a > gamma_detail::kMaxShape) return r;
+        constexpr double kMax = std::numeric_limits<double>::max(), kMin = std::numeric_limits<double>::denorm_min();
+        const double at_max = tail(kMax, a, s, upper, true), at_min = tail(kMin, a, s, upper, true);
+        // the lower tail grows with x, the upper one falls
+        if (upper ? at_max > lt : at_max < lt) return kInf;
+        if (upper ? at_min < lt : at_min > lt) return 0.0;
+        return r;
+    }
 ```
 
 ```python
@@ -279,25 +275,25 @@ $nc = 0$이면 모든 메서드가 중심 분포(`ChiSquared`, `StudentT`, `F`)�
 비중심 식에 $nc = 0$을 넣어도 같은 분포이지만, 식이 달라서 마지막 비트가 달라요. 비중심 F의 분산은 두 인자의 곱을 펼친 합(아래 "비중심 모멘트")이라 $nc = 10^{-300}$에서 1.7072310405643738이고, 중심 F의 닫힌 꼴은 1.707231040564374예요. 중앙값도 중심 F는 잰 모양 범위($10^{-3}$–$10^5$)에서 special의 `fdtri`을 쓰고, 비중심 F는 `icdf(0.5)`를 풀어요. 그래서 모멘트와 중앙값에도 분기를 따로 둬요.
 
 ```cpp
-// csrc/stats/dist/noncentral.hpp, NoncentralF (발췌)
-// (nc = 0: the central F's own moments, its bits, as the chi-square's)
-static double mean(double dfn, double dfd, double nc) {
-    if (nc == 0.0) return F::mean(dfn, dfd);
-    return dfd > 2.0 ? (dfn + nc) / dfn * (dfd / (dfd - 2.0)) : kInf;
-}
-...
-static double variance(double dfn, double dfd, double nc) {
-    if (nc == 0.0) return F::variance(dfn, dfd);
-    if (!(dfd > 4.0)) return dfd > 2.0 ? kInf : kNaN;
-    if (!moments_in_range(dfn, dfd, nc)) return kNaN;
-    double ma, mb;
-    return central(dfn, dfd, nc, ma, mb).m2;
-}
-...
-static double median(double dfn, double dfd, double nc) {
-    if (nc == 0.0 && halvable(dfn, dfd)) return F::median(dfn, dfd);
-    return icdf(0.5, dfn, dfd, nc);
-}
+    // csrc/stats/dist/noncentral.hpp, NoncentralF (발췌)
+    // (nc = 0: the central F's own moments, its bits, as the chi-square's)
+    static double mean(double dfn, double dfd, double nc) {
+        if (nc == 0.0) return F::mean(dfn, dfd);
+        return dfd > 2.0 ? (dfn + nc) / dfn * (dfd / (dfd - 2.0)) : kInf;
+    }
+    // ...
+    static double variance(double dfn, double dfd, double nc) {
+        if (nc == 0.0) return F::variance(dfn, dfd);
+        if (!(dfd > 4.0)) return dfd > 2.0 ? kInf : kNaN;
+        if (!moments_in_range(dfn, dfd, nc)) return kNaN;
+        double ma, mb;
+        return central(dfn, dfd, nc, ma, mb).m2;
+    }
+    // ...
+    static double median(double dfn, double dfd, double nc) {
+        if (nc == 0.0 && halvable(dfn, dfd)) return F::median(dfn, dfd);
+        return icdf(0.5, dfn, dfd, nc);
+    }
 ```
 
 표본은 nc = 0일 때 비중심 카이제곱과 F가 중심 분포의 표본기를 불러요. 비중심 t의 표본 $(Z + \text{nc})R$은 nc = 0에서 t의 표본과 같은 비트예요([표본 뽑기](/internals/stats/sampling/#감마로-만드는-분포)).
@@ -318,14 +314,15 @@ True
 t·F의 베타 모양과 카이제곱의 감마 모양은 자유도의 절반이에요. df가 $2^{-1021}$ 아래이면 그 절반이 double로 정확하지 않아요. 서브노멀 df는 반으로 나누면 비트를 잃거나 0이 되고, 가장 작은 정규수 구간 $[2^{-1022}, 2^{-1021})$의 df도 절반이 서브노멀이라 마지막 비트가 1이면 반올림돼요. 그래서 중심 분포는 그 아래에서 밀도, cdf 계열, 역함수, 중앙값, 엔트로피, 표본이 NaN이고([연속 분포의 수치 기법](/internals/stats/continuous/#아주-작은-모양과-아주-큰-모양)), 비중심 t와 F도 같은 경계를 써요. 비중심 t는 `StudentT::halvable(df)`, 비중심 F는 두 자유도를 함께 보는 `halvable(dfn, dfd)`로, 밀도·cdf 계열·역함수·엔트로피의 맨 앞에서 nc = 0 분기보다 먼저 검사해요(중앙값은 `icdf(0.5)`가 검사해요). 표본도 같은 경계에서 NaN이에요([표본 뽑기](/internals/stats/sampling/)).
 
 ```cpp
-// csrc/stats/dist/noncentral.hpp, NoncentralF (발췌)
-// A df below 2^-1021 has no exact half (the beta shapes are df / 2): NaN, as F's
-// density, cdfs, inverses, median and entropy (and the sample, sample_dist.hpp).
-static bool halvable(double dfn, double dfd) { return dfn >= 0x1p-1021 && dfd >= 0x1p-1021; }
-static double pdf(double x, double dfn, double dfd, double nc) {
-    if (!halvable(dfn, dfd)) return kNaN;
-    if (nc == 0.0) return F::pdf(x, dfn, dfd);
-    ...
+    // csrc/stats/dist/noncentral.hpp, NoncentralF (발췌)
+    // A df below 2^-1021 has no exact half (the beta shapes are df / 2): NaN, as F's
+    // density, cdfs, inverses, median and entropy (and the sample, sample_dist.hpp).
+    static bool halvable(double dfn, double dfd) { return dfn >= 0x1p-1021 && dfd >= 0x1p-1021; }
+    static double pdf(double x, double dfn, double dfd, double nc) {
+        if (!halvable(dfn, dfd)) return kNaN;
+        if (nc == 0.0) return F::pdf(x, dfn, dfd);
+        if (x < 0.0 || std::isinf(x)) return 0.0;
+        // ...
 ```
 
 경계 위에서는 값을 내요. `NoncentralT(df=1e-300, nc=1)`의 중앙값 inf는 맞는 값이에요. $T = (Z + \delta)R$에서 $R = \sqrt{\nu/V}$는 $\nu \to 0$에서 무한대로 가므로, $T$의 부호는 $Z + \delta$의 부호이고 크기는 무한대예요. $P(Z + 1 \lt 0) = 0.1587$이라 질량의 절반 넘게가 $+\infty$ 쪽에 있어요.
@@ -349,18 +346,18 @@ nan
 `atom`이 이 영역을 알아봐요. 꼬리는 x < 0, x = 0, x > 0의 세 갈래예요. x = 0에서는 질량 그 자체($e^{-nc/2}$, 위꼬리는 `-expm1`로 $1 - e^{-nc/2}$)를 내고, x > 0에서는 special의 `chndtr`·`chndtrc`을 df = 0으로 불러요. special은 df = 0을 0에 $e^{-nc/2}$가 몰린 분포로 받아요([분포 함수](/internals/special/distributions/)).
 
 ```cpp
-// csrc/stats/dist/noncentral.hpp, NoncentralChiSquared (발췌)
-static bool atom(double df, double nc) { return df < 0x1p-1021 && nc > 0.0; }
-static double cdf(double x, double df, double nc) {
-    if (nc == 0.0) return ChiSquared::cdf(x, df);
-    if (atom(df, nc)) return x < 0.0 ? 0.0 : (x == 0.0 ? std::exp(-0.5 * nc) : special::Chndtr::f(0.0, nc, x));
-    return x <= 0.0 ? 0.0 : special::Chndtr::f(df, nc, x);
-}
-static double ccdf(double x, double df, double nc) {
-    if (nc == 0.0) return ChiSquared::ccdf(x, df);
-    if (atom(df, nc)) return x < 0.0 ? 1.0 : (x == 0.0 ? -std::expm1(-0.5 * nc) : special::Chndtrc::f(0.0, nc, x));
-    return x <= 0.0 ? 1.0 : special::Chndtrc::f(df, nc, x);
-}
+    // csrc/stats/dist/noncentral.hpp, NoncentralChiSquared (발췌)
+    static bool atom(double df, double nc) { return df < 0x1p-1021 && nc > 0.0; }
+    static double cdf(double x, double df, double nc) {
+        if (nc == 0.0) return ChiSquared::cdf(x, df);
+        if (atom(df, nc)) return x < 0.0 ? 0.0 : (x == 0.0 ? std::exp(-0.5 * nc) : special::Chndtr::f(0.0, nc, x));
+        return x <= 0.0 ? 0.0 : special::Chndtr::f(df, nc, x);
+    }
+    static double ccdf(double x, double df, double nc) {
+        if (nc == 0.0) return ChiSquared::ccdf(x, df);
+        if (atom(df, nc)) return x < 0.0 ? 1.0 : (x == 0.0 ? -std::expm1(-0.5 * nc) : special::Chndtrc::f(0.0, nc, x));
+        return x <= 0.0 ? 1.0 : special::Chndtrc::f(df, nc, x);
+    }
 ```
 
 `X.cdf(1)`은 $e^{-1/2} + \sum_{j \ge 1} P(N = j)\,P(\chi^2_{2j} \le 1)$이에요. log 판도 같은 갈래예요. `logcdf(0)`은 $-nc/2$, `logccdf(0)`은 $\log(1 - e^{-nc/2})$이고, x > 0에서는 df를 0으로 바꾼 뒤 보통의 넓은 지수 꼬리(아래 절)를 걸어요.
@@ -368,27 +365,28 @@ static double ccdf(double x, double df, double nc) {
 역함수는 목표가 질량 안에 들면 0이에요. 아래꼬리는 $p \le e^{-nc/2}$, 위꼬리는 $q \ge 1 - e^{-nc/2}$이고, 그 밖이면 df = 0으로 근을 찾아요. log 확률을 받는 판은 $\log p \le -nc/2$, $\log q \ge \log(1 - e^{-nc/2})$로 같은 판정을 해요. 중앙값은 `icdf(0.5)`라서 $e^{-nc/2} \ge 1/2$이면 0이에요. 위의 `X`는 $e^{-1/2} = 0.607$이 절반을 넘어서 0이에요.
 
 ```cpp
-// csrc/stats/dist/noncentral.hpp, NoncentralChiSquared::inv (발췌)
-if (atom(df, nc)) {  // a target inside the point mass: 0
-    if (upper ? p >= -std::expm1(-0.5 * nc) : p <= std::exp(-0.5 * nc)) return 0.0;
-    df = 0.0;
-}
+        // csrc/stats/dist/noncentral.hpp, NoncentralChiSquared::inv (발췌)
+        if (atom(df, nc)) {  // a target inside the point mass: 0
+            if (upper ? p >= -std::expm1(-0.5 * nc) : p <= std::exp(-0.5 * nc)) return 0.0;
+            df = 0.0;
+        }
 ```
 
 밀도는 0에서 inf예요. 질량이 점에 있으니 밀도로 나타내면 발산하고, df < 2의 밀도가 0에서 발산하는 것과 같은 값이라 `density0`을 그대로 써요. x > 0의 밀도는 df = 0의 혼합, 곧 $j \ge 1$ 항만의 합이에요. 최빈값은 0이고, 엔트로피는 −inf예요. 점질량이 있는 분포에는 유한한 미분 엔트로피가 없어요.
 
 ```cpp
-// csrc/stats/dist/noncentral.hpp, NoncentralChiSquared (발췌)
-static double pdf(double x, double df, double nc) {
-    if (nc == 0.0) return ChiSquared::pdf(x, df);
-    if (x < 0.0 || std::isinf(x)) return 0.0;
-    if (x == 0.0) return density0(df, nc);
-    return ncd::density(log_density(x, atom(df, nc) ? 0.0 : df, nc));
-}
-static double entropy(double df, double nc) {
-    if (nc == 0.0) return ChiSquared::entropy(df);
-    if (atom(df, nc)) return -kInf;  // a point mass: no finite differential entropy
-    ...
+    // csrc/stats/dist/noncentral.hpp, NoncentralChiSquared (발췌)
+    static double pdf(double x, double df, double nc) {
+        if (nc == 0.0) return ChiSquared::pdf(x, df);
+        if (x < 0.0 || std::isinf(x)) return 0.0;
+        if (x == 0.0) return density0(df, nc);
+        return ncd::density(log_density(x, atom(df, nc) ? 0.0 : df, nc));
+    }
+    // ...
+    static double entropy(double df, double nc) {
+        if (nc == 0.0) return ChiSquared::entropy(df);
+        if (atom(df, nc)) return -kInf;  // a point mass: no finite differential entropy
+        const double m = std::max(df + nc, 1e-3);  // x = m e^u
 ```
 
 모멘트는 닫힌 꼴(평균 df + nc 등)이라 그대로 값을 내고, 표본은 질량의 비율만큼 0이에요([표본 뽑기](/internals/stats/sampling/)).

@@ -115,9 +115,7 @@ TypeError: skew(): 'nan_policy' must be 'propagate', 'omit' or 'raise', not None
 ```python
 # src/stardust/stats/_distribution.py
 def _real_option(v, func, arg):
-    """An int-or-float option as a float (API.md §2: numpy integers are ints, bool is not; an
-    int beyond the doubles is OverflowError "'arg' is out of range"), or None when v is not
-    a real number."""
+    # ...
     if isinstance(v, bool):
         return None
     if isinstance(v, float):  # (numpy's float64 too)
@@ -437,10 +435,10 @@ inline void comb8(const double* s, const double* c, double& hi, double& lo) {
 버킷 번호는 "원소보다 작은 분할자의 수"예요. 분할자 63개가 정렬되어 있으니 이 수는 분기 없는 이분 탐색으로 구해요.
 
 ```cpp
-// csrc/bind/stats_desc.cpp, sort_long (발췌)
-std::int64_t lo = 0;  // the number of splitters below x: a branch-free binary search
-for (std::int64_t step = kBuckets / 2; step > 0; step /= 2) lo += split[lo + step - 1] < x ? step : 0;
-id[static_cast<std::size_t>(i)] = static_cast<std::uint8_t>(lo);
+                // csrc/bind/stats_desc.cpp, sort_long (발췌)
+                std::int64_t lo = 0;  // the number of splitters below x: a branch-free binary search
+                for (std::int64_t step = kBuckets / 2; step > 0; step /= 2) lo += split[lo + step - 1] < x ? step : 0;
+                id[static_cast<std::size_t>(i)] = static_cast<std::uint8_t>(lo);
 ```
 
 비교가 `<`라서 같은 값은 언제나 같은 버킷에 들어가고, 버킷 $b$의 모든 원소는 버킷 $b + 1$의 모든 원소보다 작거나 같아요. 그래서 버킷을 각각 정렬해 이어 붙이면 전체가 정렬돼요.
@@ -567,20 +565,20 @@ $$
 **간격이 0이거나 무한한 경우.** 동점이 있으면 어떤 간격이 0이고 그 항은 $\log 0 = -\infty$라 추정값도 $-\infty$예요. 데이터에 inf가 있으면 그 값에 닿는 간격이 inf이고 그 항은 $+\infty$라 추정값도 inf예요. 둘이 함께면 $-\infty + \infty$라 NaN이에요(셋 다 scipy와 같아요). 그런데 보상 합에 무한한 항을 넣으면 보정항에서 $\infty - \infty$가 생겨 NaN이 돼요. 그래서 0이나 inf인 항은 합에 넣지 않고 따로 표시해 두었다가, 마지막에 `result`가 유한한 항으로 계산한 값을 무한대로 바꿔요. 그 값이 이미 NaN이거나 반대쪽 무한대이면 NaN이에요.
 
 ```cpp
-// csrc/bind/stats_desc.cpp, diffent_lane (발췌)
-bool zero = false, infinite = false;
-auto add_log = [&](double t) {
-    if (t == 0.0) zero = true;
-    else if (t == kInf) infinite = true;
-    else s.add(std::log(t));
-};
-auto result = [&](double value) {
-    if (std::isnan(value)) return kNaN;
-    if (zero && infinite) return kNaN;
-    if (zero) return value == kInf ? kNaN : -kInf;
-    if (infinite) return value == -kInf ? kNaN : kInf;
-    return value;
-};
+    // csrc/bind/stats_desc.cpp, diffent_lane (발췌)
+    bool zero = false, infinite = false;
+    auto add_log = [&](double t) {
+        if (t == 0.0) zero = true;
+        else if (t == kInf) infinite = true;
+        else s.add(std::log(t));
+    };
+    auto result = [&](double value) {
+        if (std::isnan(value)) return kNaN;
+        if (zero && infinite) return kNaN;
+        if (zero) return value == kInf ? kNaN : -kInf;
+        if (infinite) return value == -kInf ? kNaN : kInf;
+        return value;
+    };
 ```
 
 Correa는 이 표시를 쓰지 않아요. 창 안의 값이 모두 같으면 분자와 분모가 모두 0인 $0/0$이고, 창에 inf가 있으면 창의 평균을 뺄 때 $\infty - \infty$라 NaN이에요(둘 다 scipy와 같아요).

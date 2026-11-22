@@ -49,6 +49,7 @@ $$
 이고, LAPACK `potri`가 위 삼각 $R$에서 이 역행렬을 바로 만들어요(Cholesky 인자에서 역행렬을 만드는 루틴이에요. $R$이 곧 $\tilde X^{\mathsf T}\tilde X$의 Cholesky 인자이기 때문이에요). $X^{\mathsf T}X$를 만들면 조건수가 $\kappa^2$인 행렬을 거치지만, $R$은 조건수가 $\kappa$예요. 공분산의 상대오차는 대략 $\kappa u$예요.
 
 ```cpp
+    // csrc/regression/linear.cpp
     if (!robust) {
         if (linalg::lapack::potri_upper(kk, RR, kk) > 0) {
             std::fill(RR, RR + kk * kk, kNaN);  // an exact zero on R's diagonal (cannot happen once kept)
@@ -58,11 +59,12 @@ $$
 커널이 내는 것은 척도를 곱하기 전의 $(R^{\mathsf T}R)^{-1}$이에요. Python이 처음 읽을 때 적합의 단위의 척도(`_scale_s`, `df_resid` = 0이면 NaN)를 곱해 `_cov_s`를 만들어요. 강건 공분산은 커널이 낸 것이 이미 공분산이라 그대로 쓰고, `df_resid` = 0일 때만 NaN으로 둬요. 겹친 열의 행과 열은 NaN이에요.
 
 ```python
+    # src/stardust/regression/_linear.py
     def _cov_s(self):
         def make():
             c = self._raw[1]
             if self._robust:
-                # no degree of freedom left: 0/0 like the classical one
+                # ...
                 df = self.df_resid
                 if self._batch:
                     return _sd.where(_expand(df == 0.0, 2), math.nan, c)
@@ -75,6 +77,7 @@ $$
 `cov_params()`와 `bse`는 이것을 데이터의 단위로 옮긴 값이에요. 열과 $y$를 2의 거듭제곱 $f_{x_j}$, $f_y$로 옮겨 적합했으면 계수마다의 배율 $g_j = f_y/f_{x_j}$를 곱하고(`_colfactor`), 아니면 그대로예요. 공분산을 다 만든 뒤에 배율을 한 번만 곱하므로, 중간의 $(R^{\mathsf T}R)^{-1}$과 척도가 double을 벗어나지 않아요.
 
 ```python
+    # src/stardust/regression/_linear.py
     def cov_params(self):
         """The covariance of the parameters (k x k); rows and columns of aliased parameters are NaN."""
 
@@ -101,11 +104,13 @@ $$
 $\bar F$는 위꼬리 확률(`ccdf`), $\bar F^{-1}$은 그 역함수(`iccdf`)예요. $1 - F$(`1 - cdf`)로 구하지 않으므로 아주 작은 p값도 상대 정확도가 있어요. 두 함수는 sd.stats의 보장 영역에서 상대오차 10⁻¹⁴ 안이에요([Student t 분포](/api/stats/student-t/)).
 
 ```python
+    # src/stardust/regression/_linear.py
     @property
     def pvalues(self):
         return self._cached("pvalues", lambda: 2.0 * self._dist().ccdf(_sd.abs(self.tvalues)))
 
     def conf_int(self, *, alpha=0.05):
+        # ...
         alpha = _check_alpha(alpha, "conf_int")
         q = self._dist().iccdf(alpha / 2)
         if "beff_params_s" not in self._extra:
@@ -183,6 +188,7 @@ $n$은 쓰인 행의 수, $k$는 랭크, $h_t$는 지렛대예요. 공분산은 
 HC는 $\sqrt{\omega_t}$를 Q의 행에 곱해 $U$를 만들고 `syrk`로 $U^{\mathsf T}U$를 구해요. 부호는 제곱에서 사라지므로 $\sqrt{\omega_t}$ 대신 $\tilde e_t$, $\tilde e_t/\sqrt{1-h_t}$, $\tilde e_t/(1-h_t)$를 그대로 곱해요(`csrc/regression/linear.cpp`).
 
 ```cpp
+    // csrc/regression/linear.cpp
     for (lint t = 0; t < m; ++t) {
         double e = s[t] * r[t];  // the whitened residual
         // GLM frequency weights: a replicated row adds its score's square once per copy (HC,
@@ -221,6 +227,7 @@ $$
 라서 지연 합 전체가 행렬곱 한 번 $C = U^{\mathsf T}V$이고, $S = U^{\mathsf T}U + C + C^{\mathsf T}$예요.
 
 ```cpp
+        // csrc/regression/linear.cpp
         cblas_dsyrk(CblasColMajor, CblasUpper, CblasTrans, kk, m, 1.0, Q, m, 0.0, M, kk);
         const lint Le = static_cast<lint>(std::min<std::int64_t>(L, m - 1));  // lags with a pair of rows
         if (Le > 0) {
@@ -255,6 +262,7 @@ $V$는 4,096행 덩어리로 만들고(열마다 스레드풀), 덩어리마다�
 같은 군집(학교, 회사, 지역) 안에서 오차가 상관이 있고 군집끼리는 독립이면, 군집마다 점수를 더한 $s_g$가 독립인 단위가 돼요. 고기는 $\sum_g s_gs_g^{\mathsf T}$이고, Stata와 statsmodels의 보정 $\tfrac{G}{G-1}\tfrac{n-1}{n-k}$를 곱해요. t와 F의 분모 자유도는 $G - 1$이에요(Stata와 같아요). 군집이 하나뿐이면 점수의 합이 0이고 $G/(G-1)$이 무한이라 공분산이 NaN이에요. $y$가 상수라 점수가 모두 0이어도 이 NaN을 0으로 바꾸지 않아요. 군집이 하나면 군집 사이의 변동을 잴 수 없으니 NaN이 맞는 답이에요.
 
 ```cpp
+        // csrc/regression/linear.cpp
         lint G = 0;
         for (lint t = 0; t < m; ++t) {
             std::int64_t code = rd_i64(d.g + idx[t] * d.gs);
@@ -309,11 +317,10 @@ $$
 예요. $S_{22}$를 Cholesky로 풀어요.
 
 ```cpp
+    // csrc/regression/linear.cpp
     const lint q0 = (pb.intercept && K[0] == 0) ? 1 : 0, q = kk - q0;
     st[kWaldQ] = static_cast<double>(q);
-    // a cluster meat has rank at most G - 1 (the group sums of the scores add to X^T e = 0):
-    // with fewer than q + 1 groups S22 is singular and the test undefined (api §2), though its
-    // rounding can still pass the Cholesky
+    // ...
     if (q > 0 && !pb.glm && pb.cov == kCluster && st[kNGroups] - 1.0 < static_cast<double>(q)) {
         st[kWaldF] = kNaN;
     } else if (q > 0 && !pb.glm) {
@@ -369,6 +376,7 @@ $$
 예요. 결과의 `leverage`는 커널의 두 번째 방식(`hat_only`)을 불러요. 적합과 같은 열 선택, 같은 분해를 하고 얇은 Q를 만들어 행마다 제곱합을 내요. Householder QR이면 `orgqr`로 Q를 만들고(`form_q`), 키가 크고 조건이 좋아 CholeskyQR2를 탄 설계는 분해가 이미 만든 Q를 그대로 써요([최소제곱 풀이](/internals/regression/least-squares/#키가-큰-설계-choleskyqr2)).
 
 ```cpp
+    // csrc/regression/linear.cpp
     auto form_q = [&]() {
         if (explicit_q) return;
         std::copy(A, A + m * kk, Q);
@@ -415,6 +423,7 @@ D_t = \frac{\sum_i (\hat y_i - \hat y_{i(t)})^2}{k\,s^2} = \frac{r_t^2}{k}\cdot\
 $$
 
 ```python
+    # src/stardust/regression/_linear.py
     @property
     def resid_studentized_external(self):
         """e~_t / (s_(t) sqrt(1 - h_t)) with s_(t) the residual scale without row t (statsmodels'
@@ -548,6 +557,7 @@ $$
 - 보조 회귀의 `df_resid`가 0이면(보조 열이 쓰인 행만큼 있을 때) 보조 회귀가 자료를 정확히 지나요. 그때는 두 판의 LM과 그 p값도 보조 회귀의 F처럼 NaN이에요([White 검정](/internals/regression/diagnostics/)과 같은 규칙).
 
 ```python
+            # src/stardust/regression/_linear.py
             raw = _k.fit("breusch_pagan", e * e, Z, wa, None, True, tol, 0, _REFINE_STEPS)
             return OLSResult(raw, param_names=None, intercept=True, cov_type="nonrobust", batch=_batch_shape(raw))
 ```

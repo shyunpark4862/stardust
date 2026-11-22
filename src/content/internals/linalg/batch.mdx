@@ -98,11 +98,11 @@ private:
 배치 원소에는 C 순서로 번호를 매겨요(마지막 축이 가장 빨리 변해요). `offsets(idx, out)`은 이 번호를 각 축의 인덱스로 풀고(혼합 기수 분해), 피연산자마다 인덱스 × stride를 더해 바이트 오프셋을 만들어요.
 
 ```cpp
-// linalg/batch.cpp
+// csrc/linalg/batch.cpp
 void Batch::offsets(std::int64_t idx, std::int64_t* out) const {
     const std::size_t nd = shape_.size();
     for (std::size_t k = 0; k < nops_; ++k) out[k] = 0;
-    for (std::size_t d = nd; d-- > 0;) {          // 마지막 축부터
+    for (std::size_t d = nd; d-- > 0;) {
         const std::int64_t i = idx % shape_[d];
         idx /= shape_[d];
         for (std::size_t k = 0; k < nops_; ++k) out[k] += i * strides_[k * nd + d];
@@ -205,9 +205,7 @@ Failure run_batch(const Batch& b, double element_ns, F&& body, int max_tasks = 0
             if (f && (!best || f.index < best.index)) best = f;
         return best;
     }
-    // On the calling thread: one element, one thread or a busy pool. A batch
-    // worth splitting by its estimated time still runs without the GIL
-    // (docs/design/linalg.md §8.1); the body is the one the tasks run.
+    // ...
     const parallel::Unlocked unlocked(element_ns > 0 && element_ns * static_cast<double>(n) >= kParallelMinNs);
     Scratch scratch;
     Failure fail;
@@ -256,22 +254,25 @@ $$
 - $a$는 호출 하나의 고정비(인자 해석, 작은 버퍼, LAPACK 진입), $c$는 원소 하나당 비용이에요.
 
 ```cpp
-// linalg/cost.hpp (발췌)
-struct Family { double a, c; };
-inline constexpr Family kLU{70, 3.0};          // solve, inv, det, slogdet, lu, cholesky, ldl, matrix_power, cond(±2 외)
+// csrc/linalg/cost.hpp
+struct Family {
+    double a, c;
+};
+
+inline constexpr Family kLU{70, 3.0};  // solve, inv, det, slogdet, lu, cholesky, ldl, matrix_power, cond (other ords)
 inline constexpr Family kTriangular{30, 0.5};  // solve_triangular, cholesky_solve, lu_solve
-inline constexpr Family kQR{180, 10};          // qr, qr_pivoted, hessenberg
-inline constexpr Family kEigh{250, 45};        // eigh, eigvalsh (일반화 포함)
-inline constexpr Family kSVD{1000, 80};        // svd, svdvals, matrix_rank, pinv, cond ±2, lstsq, matrix_norm 2/-2/nuc
-inline constexpr Family kEig{700, 200};        // eig, eigvals, schur
-inline constexpr Family kSylvester{500, 370};  // solve_sylvester, w = (m² + n²) / 2
-inline constexpr Family kBanded{20, 3};        // solve_tridiagonal, solve_banded, w = n·(대역폭 + 1)
-inline constexpr Family kStream{12, 0.3};      // vecdot, 노름, trace: w = 출력 하나에 더하는 원소 수
-inline constexpr Family kCopy{2, 0.5};         // diagonal, outer, kron, cross: w = 복사하는 원소 수
-inline constexpr Family kExpm{600, 15};        // expm
+inline constexpr Family kQR{180, 10};  // qr, qr_pivoted, hessenberg
+inline constexpr Family kEigh{250, 45};  // eigh, eigvalsh (and the generalized ones)
+inline constexpr Family kSVD{1000, 80};  // svd, svdvals, matrix_rank, pinv, cond +-2, lstsq, matrix_norm 2/-2/nuc
+inline constexpr Family kEig{700, 200};  // eig, eigvals, schur
+inline constexpr Family kSylvester{500, 370};  // solve_sylvester, w = (m^2 + n^2) / 2
+inline constexpr Family kBanded{20, 3};  // solve_tridiagonal, solve_banded, w = n * (bandwidths + 1)
+inline constexpr Family kStream{12, 0.3};  // vecdot, norms, trace: w = elements summed (per output)
+inline constexpr Family kCopy{2, 0.5};  // diagonal, outer, kron, cross: w = elements copied
+inline constexpr Family kExpm{600, 15};  // expm (docs/design/linalg.md §7.1)
 
 inline double cost(Family f, double w) { return f.a + f.c * w; }
-
+// ...
 inline constexpr double kRhsNs = 1.0;
 inline double rhs_cost(double n, double k) { return kRhsNs * n * k; }
 ```
@@ -388,7 +389,7 @@ inline bool use_getf2(lint m, lint n) { return m >= kGetf2Min && m <= kGetf2Max 
 | 우변 $k \ge 8$의 삼각 풀기 | $n = 35$–40 | 5 |
 
 ```cpp
-// linalg/cost.hpp
+// csrc/linalg/cost.hpp
 inline int lu_task_cap(std::int64_t n, std::int64_t k) {
     if (!kLuTaskCapOn) return 0;
     if (k >= 8 && n >= 24 && n <= 34) return 3;
@@ -532,9 +533,12 @@ LAPACK에 결과 자리를 바로 넘기면(고유벡터를 결과 배열에 바
 **LAPACK과 BLAS에 넘기는 배열은 모두 16바이트 정렬해요.** 입력은 원래 `Scratch`에 패킹하므로 정렬돼 있어요(작은 버퍼는 128바이트 경계, 큰 버퍼는 `new[]`의 16바이트 경계). 문제는 결과 자리에 바로 쓰는 출력이고, 이 출력은 `LapackSlot`이 맡아요. 예외는 `lstsq`가 `gelsd`에 넘기는 우변 하나예요. numpy와 비트까지 같은 해를 내려고 numpy와 같은 자리(경계에서 $8mn \bmod 16$바이트, float64에서 $mn$이 홀수이면 8바이트 어긋남)에 일부러 둬요. 이 자리도 모양만으로 정해져서 배치 안의 위치와는 무관해요([QR 분해와 최소제곱](/internals/linalg/qr/#b의-자리-numpy와-같은-정렬)).
 
 ```cpp
-// linalg/ops/common.hpp
+// csrc/linalg/ops/common.hpp
 inline bool aligned16(const void* p) { return reinterpret_cast<std::uintptr_t>(p) % 16 == 0; }
-
+// ...
+// An output slot handed to LAPACK/BLAS: the slot itself when it is 16-byte
+// aligned, else scratch memory that is copied to the slot when this object goes
+// out of scope. Everything written for the slot goes through get().
 template <class T>
 class LapackSlot {
 public:
@@ -548,6 +552,7 @@ public:
     LapackSlot(const LapackSlot&) = delete;
     LapackSlot& operator=(const LapackSlot&) = delete;
     T* get() const { return p_; }
+
 private:
     T* slot_;
     std::int64_t n_;
@@ -564,8 +569,6 @@ private:
 
 ```cpp
                 // csrc/linalg/ops/spectral.cpp
-                // With vectors, `a` is packed straight into the eigenvector slot; LAPACK
-                // overwrites it with the eigenvectors (docs/design/linalg.md §5.2).
                 LapackSlot<T> vs(
                     vectors ? vo.as<T>() + i * n * n : s.get<T>(static_cast<std::size_t>(n * n)), n * n, s,
                     Scratch::kAlign0

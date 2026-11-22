@@ -514,18 +514,18 @@ Lemire가 M. Eisel의 아이디어에서 출발해 분석하고 fast_float 라�
 **둘째 곱셈.** 아래 9비트가 모두 1(`0x1FF`)이면 $w \cdot T_q^{\text{lo}}$의 위 64비트를 `lo`에 더하고, 자리올림을 `hi`에 반영해요. 이제 남은 오차는 표가 128비트에서 잘라 낸 부분뿐이라 `lo`의 한 단위보다 작아요. 그래도 `hi`의 아래 9비트가 모두 1이고 `lo`도 모두 1이면, 그 마지막 한 단위가 위로 번질지 알 수 없어요. 이때만 "모름"이에요.
 
 ```cpp
-// ops/parse.hpp, eisel_lemire (발췌)
+// csrc/frame/ops/parse.hpp
 const int lz = __builtin_clzll(w);
 w <<= lz;
 const std::size_t index = 2 * static_cast<std::size_t>(q - kSmallestPowerOfFive);
 unsigned __int128 first = static_cast<unsigned __int128>(w) * kPowerOfFive128[index];
-std::uint64_t hi = first >> 64, lo = first;
-if ((hi & 0x1FF) == 0x1FF) {                         // 아래 9비트가 모두 1: 다음 워드도 곱해요
+std::uint64_t hi = static_cast<std::uint64_t>(first >> 64), lo = static_cast<std::uint64_t>(first);
+if ((hi & 0x1FF) == 0x1FF) {  // the low bits of the 64-bit truncation are all ones: add the next word
     const unsigned __int128 second = static_cast<unsigned __int128>(w) * kPowerOfFive128[index + 1];
-    const std::uint64_t carry = second >> 64;
+    const std::uint64_t carry = static_cast<std::uint64_t>(second >> 64);
     lo += carry;
-    if (carry > lo) ++hi;                            // lo에서 넘친 자리올림
-    if ((hi & 0x1FF) == 0x1FF && lo == ~0ull && (q < -27 || q > 55)) return false;  // 모름
+    if (carry > lo) ++hi;
+    if ((hi & 0x1FF) == 0x1FF && lo == ~std::uint64_t{0} && (q < -27 || q > 55)) return false;  // undecided
 }
 ```
 
@@ -536,17 +536,20 @@ if ((hi & 0x1FF) == 0x1FF) {                         // 아래 9비트가 모두
 
 2023년에는 Mushtak과 Lemire가 유효숫자 19자리 이하의 입력에서 이 "모름"이 실제로는 한 번도 일어나지 않음을 증명했어요[2]. 현재 fast_float 소스에는 이 검사가 없어요. stardust에는 검사가 있지만 이 분기는 타지 않아요. 검사의 비용은 둘째 곱셈을 한 경우에만 드는 비교 몇 번이에요.
 
-**가수와 지수.** 곱의 맨 위 비트(`upper`)가 0인지 1인지에 따라 `hi`를 `upper + 9`비트 오른쪽으로 밀면 54비트 `mantissa`가 나와요. 2의 지수는 $\lfloor q \log_2 10 \rfloor$에 정규화로 민 비트 수와 `upper`를 보정한 값이에요. $\lfloor q \log_2 10 \rfloor$은 부동소수점 없이 고정소수점으로 구해요.
+**가수와 지수.** 곱의 맨 위 비트(`upper`)가 0인지 1인지에 따라 `hi`를 `upper + 9`비트 오른쪽으로 밀면 54비트 `mantissa`가 나와요. 2의 지수는 $\lfloor q \log_2 10 \rfloor$에 정규화로 민 비트 수와 `upper`를 보정한 값이에요. $\lfloor q \log_2 10 \rfloor$은 부동소수점 없이 고정소수점으로 구해요. $(152170 + 65536)/2^{16} = 3.32193\ldots \approx \log_2 10$이라서, $q$에 곱하고 16비트 오른쪽으로 밀면 돼요.
 
 ```cpp
-// ops/parse.hpp: floor(q · log2(10)) + 63.  (152170 + 65536) / 2^16 = 3.32193… ≈ log2(10)
+// csrc/frame/ops/parse.hpp
+// The binary exponent of 10^q plus 63: floor(q * log2(10)) + 63, computed in
+// fixed point (152170 + 65536 = log2(10) * 2^16, rounded).
 inline int power2_of(std::int64_t q) { return static_cast<int>(((152170 + 65536) * q) >> 16) + 63; }
 ```
 
 **반올림.** `mantissa`의 맨 아래 비트가 반올림 비트예요. `mantissa += mantissa & 1; mantissa >>= 1;`은 "반올림 비트가 1이면 올림"이에요. 이 규칙은 한가운데에서도 늘 올리므로, 정확히 한가운데인 경우만 따로 짝수 쪽으로 고쳐요.
 
 ```cpp
-// 정확히 두 double의 한가운데: 올리지 않고 짝수 쪽으로
+// csrc/frame/ops/parse.hpp
+// Exactly halfway between two doubles: round half to even, not up.
 if (lo <= 1 && q >= -4 && q <= 23 && (mantissa & 3) == 1 && (mantissa << shift) == hi)
     mantissa &= ~std::uint64_t{1};
 ```
@@ -689,51 +692,49 @@ int64 범위 밖의 정수만 있는 열도 float64예요. list는 이 경우 `O
 추론하는 열의 루프는 둘로 나뉘어요. 앞의 루프는 int로 읽다가, int가 아닌 숫자를 처음 만나면 앞의 값들을 double로 바꾸고 뒤의 루프로 넘어가요. 뒤의 루프는 float만 읽어요.
 
 ```cpp
-        // csrc/frame/io/csv.cpp
-        for (; r < R; ++r) {
-            const FieldText f = field(first, ix, r * W + i, last);
-            if (is_na(f, scratch)) {
-                p.set_na(r);
-                num[r] = 0;
-                continue;
-            }
-            const bool first_value = !p.any;
-            p.any = true;
-            const std::string_view s = text(f, scratch);
-            std::int64_t v;
-            if (text::parse_int64(s, v, begin_of(f)) == 1) {
-                num[r] = v;
-                continue;
-            }
-            double d;
-            if (!text::parse_double(s, d, begin_of(f))) {  // no number: bools, or text
-                if (first_value && (s == "True" || s == "False")) return parse_bools(j, first, ix, p, r);
-                return parse_text(j, first, ix, p, false);
-            }
-            // An int beyond int64 is float syntax. The chunk's ints so far
-            // become doubles, rounded as in list inference.
-            for (std::int64_t k = 0; k < r; ++k)
-                if (p.is_valid(k)) num[k] = bits_of(static_cast<double>(num[k]));
-            num[r++] = bits_of(d);
-            p.kind = Part::Float;
-            break;
-        }
-        for (; r < R; ++r) {
-            const FieldText f = field(first, ix, r * W + i, last);
-            if (is_na(f, scratch)) {
-                p.set_na(r);
-                num[r] = 0;
-                continue;
-            }
-            const std::string_view s = text(f, scratch);
-            double d;
-            // A float column: an int is rounded to float64, as list inference
-            // rounds an int next to a float (docs/api/frame.md §2.2, §10.4). parse_double
-            // reads an int as exactly that, except "-0": the int 0, so +0.0.
-            if (!text::parse_double(s, d, begin_of(f))) return parse_text(j, first, ix, p, false);
-            if (d == 0.0 && std::signbit(d) && text::int_grammar(s)) d = 0.0;
-            num[r] = bits_of(d);
-        }
+// csrc/frame/io/csv.cpp
+for (; r < R; ++r) {
+    const FieldText f = field(first, ix, r * W + i, last);
+    if (is_na(f, scratch)) {
+        p.set_na(r);
+        num[r] = 0;
+        continue;
+    }
+    const bool first_value = !p.any;
+    p.any = true;
+    const std::string_view s = text(f, scratch);
+    std::int64_t v;
+    if (text::parse_int64(s, v, begin_of(f)) == 1) {
+        num[r] = v;
+        continue;
+    }
+    double d;
+    if (!text::parse_double(s, d, begin_of(f))) {  // no number: bools, or text
+        if (first_value && (s == "True" || s == "False")) return parse_bools(j, first, ix, p, r);
+        return parse_text(j, first, ix, p, false);
+    }
+    // An int beyond int64 is float syntax. The chunk's ints so far
+    // become doubles, rounded as in list inference.
+    for (std::int64_t k = 0; k < r; ++k)
+        if (p.is_valid(k)) num[k] = bits_of(static_cast<double>(num[k]));
+    num[r++] = bits_of(d);
+    p.kind = Part::Float;
+    break;
+}
+for (; r < R; ++r) {
+    const FieldText f = field(first, ix, r * W + i, last);
+    if (is_na(f, scratch)) {
+        p.set_na(r);
+        num[r] = 0;
+        continue;
+    }
+    const std::string_view s = text(f, scratch);
+    double d;
+    // ...
+    if (!text::parse_double(s, d, begin_of(f))) return parse_text(j, first, ix, p, false);
+    if (d == 0.0 && std::signbit(d) && text::int_grammar(s)) d = 0.0;
+    num[r] = bits_of(d);
+}
 ```
 
 <Fig caption="한 청크에서 int로 읽다가 float를 만나는 순간. 같은 8바이트 칸에 int64로 쓰던 앞의 값들(1, 2)을 그 자리에서 double로 바꾸고, 셋째 값부터 double로 계속 써요.">
@@ -745,7 +746,7 @@ int64 범위 밖의 정수만 있는 열도 float64예요. list는 이 경우 `O
 </Fig>
 
 - int64와 double이 같은 벡터(`num`)를 써요. 둘 다 8바이트라서, int에서 float로 바뀔 때 앞의 값들을 제자리에서 바꿔요. 이 변환은 조각마다 한 번만 일어나요.
-- float가 된 뒤에는 int를 먼저 시도하지 않아요. `parse_double`이 int 텍스트도 올바르게 반올림해 읽으니, 필드마다 파싱이 한 번이에요.
+- float가 된 뒤에는 int를 먼저 시도하지 않아요. `parse_double`이 int 텍스트도 올바르게 반올림해 읽으니, 필드마다 파싱이 한 번이에요. 다만 `-0`은 int 0이라서, int 꼴(`text::int_grammar`)이면 `-0.0`을 `+0.0`으로 바꿔요.
 - 첫 값이 `True`나 `False`면 bool 조각으로 읽어요(`parse_bools`, 행마다 flag 1바이트). 숫자도 bool도 아닌 필드를 만나면 그 조각을 색인에서 처음부터 문자열로 다시 읽어요(`parse_text`). 문자열 컬럼은 보통 첫 필드부터 숫자가 아니라서 다시 읽을 행이 없어요.
 - NA 판정이 가장 먼저예요. 따옴표 없는 빈 필드는 길이와 플래그만 보면 돼요. `na_values`가 있으면 그 텍스트들의 길이 집합으로 먼저 걸러서(`NaSet`), 그 길이의 텍스트가 없는 필드는 해시를 계산하지 않아요. 길이가 맞는 필드만 해시 집합에서 `string_view`로 찾아요(새 `std::string`을 만들지 않아요). NA 칸의 값은 0으로 써요. frame의 모든 컬럼에서 NA 자리의 값은 0이에요([컬럼과 메모리](/internals/frame/columns/)).
 - 조각의 크기는 색인으로 레코드 수를 안 뒤에 정확히 잡아요. 자라며 옮기는 일이 없어요. 유효 표시 `valid`는 처음 NA를 만날 때에야 만들어요. NA가 없는 조각은 유효 표시를 들지 않아요.

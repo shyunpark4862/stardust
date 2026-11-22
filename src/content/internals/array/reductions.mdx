@@ -85,7 +85,7 @@ export const lin = (xs, ys, x) => {
 커널의 시그니처는 원소별 커널과 같아요. 1차원 strided 루프 하나이고, 입력이 앞, 출력이 뒤예요.
 
 ```cpp
-// array/iter.hpp
+// csrc/array/iter.hpp
 using Loop = void (*)(std::byte* const* args, std::int64_t n, const std::int64_t* strides, void* ctx);
 ```
 
@@ -125,16 +125,16 @@ using Loop = void (*)(std::byte* const* args, std::int64_t n, const std::int64_t
 런타임 dtype은 `visit_dtype`이 컴파일 시점 타입으로 바꿔요. C++20의 템플릿 람다(`[&]<typename T>(std::type_identity<T>)`)를 넘기면 dtype마다 한 번씩 인스턴스화돼요. 연산에 그 타입의 루프가 있는지는 연산 구조체의 변수 템플릿 `Op::ok<T>`가 알려 주고, `if constexpr`로 없는 조합은 아예 코드를 만들지 않아요.
 
 ```cpp
-// array/ops/reduction.cpp의 fold (발췌)
+// csrc/array/ops/reduction.cpp의 fold (발췌)
 template <typename Op>
 nb::object fold(const NDArray& x, const Axes& ax, DType loop_dtype, bool keepdims, auto start) {
     NDArray out = keepdims_result(x, ax, loop_dtype);
     visit_dtype(loop_dtype, [&]<typename T>(std::type_identity<T>) {
         if constexpr (Op::template ok<T>) {
             fill<T>(out, start(std::type_identity<T>{}));
-            run_reduce(x, out, &reduce_loop<Op, T>);   // 커널 = 함수 포인터 하나
+            run_reduce(x, out, &reduce_loop<Op, T>);
         } else {
-            unsupported(loop_dtype);                    // 예: complex의 max
+            unsupported(loop_dtype);
         }
     });
     return finish(std::move(out), ax, keepdims);
@@ -186,21 +186,25 @@ stardust는 numpy의 `DOUBLE_pairwise_sum`/`CDOUBLE_pairwise_sum`(numpy 소스 `
 - $n > 512$: 반으로 나눠요. 이때 자르는 위치는 16의 배수로 내려요($n_2 = \lfloor n/2 \rfloor - (\lfloor n/2 \rfloor \bmod 16)$). 양쪽을 재귀로 더한 뒤 둘을 더해요.
 
 ```cpp
-// base/pairwise.hpp (발췌)
+// csrc/base/pairwise.hpp (발췌)
 inline constexpr std::int64_t kBlock = 512;  // in doubles
 inline constexpr int kLanes = 16;            // accumulators of a real leaf (8 per part for complex)
 
+// Where a run of n terms splits: half of it, rounded down to a multiple of 16
+// doubles. Complex terms count as two doubles, so the cut is at
+// (n - n % 16) / 2 complex numbers.
 inline std::int64_t split(std::int64_t n) {
     const std::int64_t m = n / 2;
     return m - m % kLanes;
 }
-
+// ...
 [[gnu::always_inline]] inline double fold_lanes(double* r) {
     for (int w = 1; w < kLanes; w *= 2)
         for (int j = 0; j < kLanes; j += 2 * w) r[j] += r[j + w];
     return r[0];
 }
 
+// A leaf: get(0) + ... + get(n - 1) for n <= kBlock.
 template <typename Get>
 [[gnu::always_inline]] inline double leaf(std::int64_t n, const Get& get) {
     if (n < kLanes) {
@@ -217,7 +221,7 @@ template <typename Get>
     for (; i < n; ++i) res += get(i);
     return res;
 }
-
+// ...
 template <typename LeafSum>
 double tree(std::int64_t begin, std::int64_t n, const LeafSum& leaf_sum) {
     if (n <= kBlock) return leaf_sum(begin, n);
@@ -284,19 +288,25 @@ numpy 2.5.4와 비교하면 정규분포 원소 100개, 1000개, 1만 개, 100�
 트리와 잎은 원소를 직접 읽지 않고 **접근자** `get(i)`를 불러요. 배열의 커널은 이 접근자를 람다로 만들어 넘겨요.
 
 ```cpp
-// array/kernels/reduce.hpp (발췌)
+// csrc/array/kernels/reduce.hpp (발췌)
 template <typename Get>
 double pairwise_sum(std::int64_t begin, std::int64_t n, const Get& get) {
     return pairwise::tree(begin, n, [&](std::int64_t b, std::int64_t m) {
         return pairwise::leaf(m, [&](std::int64_t i) { return get(b + i); });
     });
 }
-
-// reduce_loop 안: 연속 입력이면 형이 있는 접근자
-acc = acc + pairwise_sum_mt(n, [xp](std::int64_t i) { return xp[i]; });
-// strided 입력이면 바이트 stride를 곱하는 접근자
-auto at = [&](std::int64_t i) { return value(load_as<T>(x + i * s[0])); };
+        // ...
+        auto at = [&](std::int64_t i) { return value(load_as<T>(x + i * s[0])); };
+        // ...
+            if (s[0] == sizeof(T)) {
+                const T* xp = reinterpret_cast<const T*>(x);
+                acc = acc + pairwise_sum_mt(n, [xp](std::int64_t i) { return xp[i]; });
+            } else {
+                acc = acc + pairwise_sum_mt(n, at);
+            }
 ```
+
+`reduce_loop`는 입력이 연속이면 형이 있는 접근자(`xp[i]`)를, 그 밖이면 바이트 stride를 곱하는 접근자(`at`)를 넘겨요.
 
 이 덕분에 여러 종류의 "항"이 임시 배열 없이 같은 트리로 흘러 들어가요.
 
@@ -322,11 +332,14 @@ strided 입력과 `nansum`은 같은 트리, 같은 잎을 지나므로 "그 값
 3. `pairwise::combine(n, task, parts)`: 트리를 다시 같은 방식으로 자르며 내려가서, 잎 자리에 부분합을 끼워 넣고 같은 순서로 더해요.
 
 ```cpp
-// base/pairwise.hpp (발췌)
+// csrc/base/pairwise.hpp (발췌)
 inline Leaves plan(std::int64_t n, std::int64_t task, bool complex) {
     Leaves leaves;
     auto collect = [&](auto&& self, std::int64_t b, std::int64_t m) -> void {
-        if (m <= task) { leaves.emplace_back(b, m); return; }
+        if (m <= task) {
+            leaves.emplace_back(b, m);
+            return;
+        }
         const std::int64_t m2 = complex ? split_complex(m) : split(m);
         self(self, b, m2);
         self(self, b + m2, m - m2);
@@ -337,13 +350,15 @@ inline Leaves plan(std::int64_t n, std::int64_t task, bool complex) {
 
 template <typename T>
 T combine(std::int64_t n, std::int64_t task, const std::vector<T>& parts) {
+    constexpr bool complex = std::is_same_v<T, complex128>;
     std::size_t next = 0;
     auto rec = [&](auto&& self, std::int64_t m) -> T {
         if (m <= task) return parts[next++];
-        const std::int64_t m2 = /* split(m) 또는 split_complex(m) */;
+        const std::int64_t m2 = complex ? split_complex(m) : split(m);
         const T left = self(self, m2);
         const T right = self(self, m - m2);
-        return left + right;
+        if constexpr (complex) return add(left, right);
+        else return left + right;
     };
     return rec(rec, n);
 }
@@ -364,19 +379,36 @@ T combine(std::int64_t n, std::int64_t task, const std::vector<T>& parts) {
 `max`/`min`은 NaN을 전파하고 `-0 < +0`으로 봐요(IEEE 754-2019의 maximum/minimum [6]). 스칼라 코드로 쓰면 비교가 세 번(NaN, NaN, ±0) 필요한 함수예요. 그런데 AArch64의 `FMAX`/`FMIN` 명령은 바로 이 의미를 명령 하나로 계산해요. 그래서 연속 float64 구간은 NEON intrinsic으로 직접 접어요.
 
 ```cpp
-// array/kernels/reduce.hpp의 neon_fold (발췌, Max 쪽만)
+// csrc/array/kernels/reduce.hpp, neon_fold
 template <bool Max, bool SkipNan = false>
 double neon_fold(const double* x, std::int64_t n, double acc) {
+    // FMAXNM/FMINNM skip a NaN operand (nanmax/nanmin); FMAX/FMIN propagate it.
+    auto pick = [](float64x2_t a, float64x2_t b) {
+        if constexpr (SkipNan) return Max ? vmaxnmq_f64(a, b) : vminnmq_f64(a, b);
+        else return Max ? vmaxq_f64(a, b) : vminq_f64(a, b);
+    };
+    auto one = [](double a, double b) {
+        if constexpr (SkipNan) return Max ? ops::NanMaximum::f(a, b) : ops::NanMinimum::f(a, b);
+        else return Max ? ops::fmax_nan(a, b) : ops::fmin_nan(a, b);
+    };
     std::int64_t i = 0;
     if (n >= 8) {
-        float64x2_t v[4];                                   // 레지스터 4개 = 레인 8개
+        // Four independent registers (8 lanes), like the 8 sum accumulators:
+        // FMAX's latency is hidden behind the other three.
+        float64x2_t v[4];
         for (int j = 0; j < 4; ++j) v[j] = vld1q_f64(x + 2 * j);
         for (i = 8; i + 8 <= n; i += 8)
-            for (int j = 0; j < 4; ++j) v[j] = vmaxq_f64(v[j], vld1q_f64(x + i + 2 * j));   // FMAX
-        const float64x2_t m = vmaxq_f64(vmaxq_f64(v[0], v[1]), vmaxq_f64(v[2], v[3]));
-        acc = fmax_nan(acc, vmaxvq_f64(m));                 // 두 레인끼리 (FMAXV)
+            for (int j = 0; j < 4; ++j) {
+                const float64x2_t y = vld1q_f64(x + i + 2 * j);
+                v[j] = pick(v[j], y);
+            }
+        const float64x2_t m = pick(pick(v[0], v[1]), pick(v[2], v[3]));
+        double lanes;  // across the two lanes
+        if constexpr (SkipNan) lanes = Max ? vmaxnmvq_f64(m) : vminnmvq_f64(m);
+        else lanes = Max ? vmaxvq_f64(m) : vminvq_f64(m);
+        acc = one(acc, lanes);
     }
-    for (; i < n; ++i) acc = fmax_nan(acc, x[i]);           // 남은 원소
+    for (; i < n; ++i) acc = one(acc, x[i]);
     return acc;
 }
 ```
@@ -396,16 +428,18 @@ NEON에는 64비트 정수의 max/min 명령이 없어요. 비교(`vcgtq_s64`, C
 - 레지스터 8개(레인 16개)를 써야 numpy와 같은 속도가 나와요. 원소 100만 개 `max(i)`가 1스레드 65µs, numpy 69µs예요.
 
 ```cpp
-// array/kernels/reduce.hpp의 neon_fold_int (발췌)
-constexpr int kRegs = 8;
-int64x2_t v[kRegs];
-auto pick = [](int64x2_t a, int64x2_t b) {
-    return Max ? vbslq_s64(vcgtq_s64(a, b), a, b) : vbslq_s64(vcgtq_s64(a, b), b, a);
-};
-for (i = 2 * kRegs; i + 2 * kRegs <= n; i += 2 * kRegs)
-    for (int j = 0; j < kRegs; ++j) v[j] = pick(v[j], vld1q_s64(x + i + 2 * j));
-for (int w = kRegs / 2; w >= 1; w /= 2)                    // 8 → 4 → 2 → 1 트리로 합침
-    for (int j = 0; j < w; ++j) v[j] = pick(v[j], v[j + w]);
+    // csrc/array/kernels/reduce.hpp의 neon_fold_int (발췌)
+    constexpr int kRegs = 8;
+        // ...
+        int64x2_t v[kRegs];
+        for (int j = 0; j < kRegs; ++j) v[j] = vld1q_s64(x + 2 * j);
+        auto pick = [](int64x2_t a, int64x2_t b) {
+            return Max ? vbslq_s64(vcgtq_s64(a, b), a, b) : vbslq_s64(vcgtq_s64(a, b), b, a);
+        };
+        for (i = 2 * kRegs; i + 2 * kRegs <= n; i += 2 * kRegs)
+            for (int j = 0; j < kRegs; ++j) v[j] = pick(v[j], vld1q_s64(x + i + 2 * j));
+        for (int w = kRegs / 2; w >= 1; w /= 2)
+            for (int j = 0; j < w; ++j) v[j] = pick(v[j], v[j + w]);
 ```
 
 필요한 독립 사슬의 수는 대략 "명령 하나의 지연 × 사이클당 처리할 수 있는 명령 수"예요. 지연이 긴 연산일수록 사슬이 더 많이 필요하므로, float 덧셈에 맞춘 누산기 수를 다른 연산에 그대로 쓸 수 없어요.
@@ -417,38 +451,51 @@ for (int w = kRegs / 2; w >= 1; w /= 2)                    // 8 → 4 → 2 → 
 연속 float64 레인은 두 번 읽어요(`neon_arg_extreme`). 한 번 읽으며 (최댓값, 위치)를 함께 따라가면 벡터마다 "비교 → 값 선택 → 위치 선택"이 앞의 결과에 기대는 사슬이 되어, 덧셈 지연에 묶여요. 그래서 극값을 먼저 구하고, 그 값이 처음 나오는 위치를 다시 찾아요.
 
 ```cpp
-// array/kernels/reduce.hpp의 neon_arg_extreme (발췌)
-auto pick = [](float64x2_t a, float64x2_t b) {
-    if constexpr (SkipNan) return Max ? vmaxnmq_f64(a, b) : vminnmq_f64(a, b);
-    else return Max ? vmaxq_f64(a, b) : vminq_f64(a, b);
-};
-// 1단계: 레지스터 넷의 서로 독립인 사슬로 극값
-float64x2_t m0 = vld1q_f64(x), m1 = vld1q_f64(x + 2), m2 = vld1q_f64(x + 4), m3 = vld1q_f64(x + 6);
-for (i = 8; i + 8 <= n; i += 8) {
-    m0 = pick(m0, vld1q_f64(x + i));
-    m1 = pick(m1, vld1q_f64(x + i + 2));
-    m2 = pick(m2, vld1q_f64(x + i + 4));
-    m3 = pick(m3, vld1q_f64(x + i + 6));
-}
-// ... 넷을 합치고 꼬리를 접어 best를 얻어요
-std::int64_t k = 0;
-if (best != best || (SkipNan && best == far)) {  // a NaN (the first); SkipNan: the first NaN or far value
-    if constexpr (!SkipNan) {
-        for (;; ++k)
-            if (x[k] != x[k]) return k;
-    } else {
-        for (;; ++k)
-            if (x[k] != x[k] || x[k] == far) return k;
+// csrc/array/kernels/reduce.hpp, neon_arg_extreme (발췌)
+template <bool Max, bool SkipNan = false>
+std::int64_t neon_arg_extreme(const double* x, std::int64_t n) {
+    const double far = Max ? -std::numeric_limits<double>::infinity() : std::numeric_limits<double>::infinity();
+    auto pick = [](float64x2_t a, float64x2_t b) {
+        if constexpr (SkipNan) return Max ? vmaxnmq_f64(a, b) : vminnmq_f64(a, b);
+        else return Max ? vmaxq_f64(a, b) : vminq_f64(a, b);
+    };
+    double best;
+    std::int64_t i = 0;
+    if (n >= 8) {
+        float64x2_t m0 = vld1q_f64(x), m1 = vld1q_f64(x + 2), m2 = vld1q_f64(x + 4), m3 = vld1q_f64(x + 6);
+        for (i = 8; i + 8 <= n; i += 8) {
+            m0 = pick(m0, vld1q_f64(x + i));
+            m1 = pick(m1, vld1q_f64(x + i + 2));
+            m2 = pick(m2, vld1q_f64(x + i + 4));
+            m3 = pick(m3, vld1q_f64(x + i + 6));
+        }
+        const float64x2_t m = pick(pick(m0, m1), pick(m2, m3));
+        best = SkipNan ? (Max ? vmaxnmvq_f64(m) : vminnmvq_f64(m)) : (Max ? vmaxvq_f64(m) : vminvq_f64(m));
+    // ...
     }
+    for (; i < n; ++i) {
+        const float64x1_t a = vdup_n_f64(best), b = vdup_n_f64(x[i]);
+        if constexpr (SkipNan) best = vget_lane_f64(Max ? vmaxnm_f64(a, b) : vminnm_f64(a, b), 0);
+        else best = vget_lane_f64(Max ? vmax_f64(a, b) : vmin_f64(a, b), 0);
+    }
+    std::int64_t k = 0;
+    if (best != best || (SkipNan && best == far)) {  // a NaN (the first); SkipNan: the first NaN or far value
+        if constexpr (!SkipNan) {
+            for (;; ++k)
+                if (x[k] != x[k]) return k;
+        } else {
+            for (;; ++k)
+                if (x[k] != x[k] || x[k] == far) return k;
+        }
+    }
+    const float64x2_t bv = vdupq_n_f64(best);
+    for (; k + 4 <= n; k += 4) {
+        const uint64x2_t e = vorrq_u64(vceqq_f64(vld1q_f64(x + k), bv), vceqq_f64(vld1q_f64(x + k + 2), bv));
+        if (vmaxvq_u32(vreinterpretq_u32_u64(e))) break;
+    }
+    for (;; ++k)
+        if (x[k] == best) return k;
 }
-// 2단계: 그 값이 처음 나오는 넷을 찾으면 멈춤
-const float64x2_t bv = vdupq_n_f64(best);
-for (; k + 4 <= n; k += 4) {
-    const uint64x2_t e = vorrq_u64(vceqq_f64(vld1q_f64(x + k), bv), vceqq_f64(vld1q_f64(x + k + 2), bv));
-    if (vmaxvq_u32(vreinterpretq_u32_u64(e))) break;
-}
-for (;; ++k)
-    if (x[k] == best) return k;
 ```
 
 - **NaN.** `FMAX`/`FMIN`(`vmaxq_f64`, `vminq_f64`)은 NaN이 하나라도 있으면 NaN을 내요. 그래서 극값이 NaN이면 레인에 NaN이 있다는 뜻이고, 처음부터 훑어 첫 NaN을 돌려줘요. NaN은 드물다고 보고 흔한 경우를 빠르게 했어요.
@@ -462,19 +509,33 @@ for (;; ++k)
 2. **그 값이 처음 나오는 위치를 찾아요.** 극값을 모든 레인에 퍼뜨리고, 원소 넷씩 `vceqq_s64`로 비교해 하나라도 같으면 멈춘 뒤 그 넷 안에서 스칼라로 첫 위치를 골라요.
 
 ```cpp
-// array/kernels/reduce.hpp의 neon_arg_extreme_i64 (발췌, max 쪽)
-auto pick = [](int64x2_t a, int64x2_t b) { return vbslq_s64(vcgtq_s64(a, b), a, b); };
-for (; i + 8 <= n; i += 8) {                      // 1단계: 독립 사슬 넷
-    m0 = pick(vld1q_s64(x + i), m0);     m1 = pick(vld1q_s64(x + i + 2), m1);
-    m2 = pick(vld1q_s64(x + i + 4), m2); m3 = pick(vld1q_s64(x + i + 6), m3);
+// csrc/array/kernels/reduce.hpp, neon_arg_extreme_i64
+template <bool Max>
+std::int64_t neon_arg_extreme_i64(const std::int64_t* x, std::int64_t n) {
+    auto pick = [](int64x2_t a, int64x2_t b) { return vbslq_s64(Max ? vcgtq_s64(a, b) : vcltq_s64(a, b), a, b); };
+    int64x2_t m0 = vld1q_s64(x), m1 = vld1q_s64(x + 2), m2 = m0, m3 = m1;
+    std::int64_t i = 4;
+    for (; i + 8 <= n; i += 8) {
+        m0 = pick(vld1q_s64(x + i), m0);
+        m1 = pick(vld1q_s64(x + i + 2), m1);
+        m2 = pick(vld1q_s64(x + i + 4), m2);
+        m3 = pick(vld1q_s64(x + i + 6), m3);
+    }
+    const int64x2_t m = pick(pick(m0, m1), pick(m2, m3));
+    std::int64_t best = vgetq_lane_s64(m, 0);
+    const std::int64_t b1 = vgetq_lane_s64(m, 1);
+    if (Max ? b1 > best : b1 < best) best = b1;
+    for (; i < n; ++i)
+        if (Max ? x[i] > best : x[i] < best) best = x[i];
+    const int64x2_t bv = vdupq_n_s64(best);
+    std::int64_t k = 0;
+    for (; k + 4 <= n; k += 4) {
+        const uint64x2_t e = vorrq_u64(vceqq_s64(vld1q_s64(x + k), bv), vceqq_s64(vld1q_s64(x + k + 2), bv));
+        if (vmaxvq_u32(vreinterpretq_u32_u64(e))) break;
+    }
+    for (;; ++k)
+        if (x[k] == best) return k;
 }
-// ... 넷을 합치고 꼬리를 더해 best를 얻어요
-const int64x2_t bv = vdupq_n_s64(best);
-for (k = 0; k + 4 <= n; k += 4) {                  // 2단계: 처음 나오는 넷을 찾으면 멈춤
-    const uint64x2_t e = vorrq_u64(vceqq_s64(vld1q_s64(x + k), bv), vceqq_s64(vld1q_s64(x + k + 2), bv));
-    if (vmaxvq_u32(vreinterpretq_u32_u64(e))) break;
-}
-for (;; ++k) if (x[k] == best) return k;
 ```
 
 - 동점이면 저절로 첫 위치가 나와요. 2단계가 앞에서부터 찾다가 처음 만난 곳에서 멈추기 때문이에요. 정수에는 NaN이 없어서 따로 볼 것이 없어요.
@@ -498,13 +559,12 @@ C 연속 float64·int64에서 줄이는 축이 맨 안쪽이 아니면(`argmax(m
 어떤 접기는 순서를 어떻게 바꿔도 결과가 같아요. 이런 접기를 컴파일 시점에 표시하는 변수 템플릿이 있어요.
 
 ```cpp
-// array/kernels/reduce.hpp
+// csrc/array/kernels/reduce.hpp
 template <typename Op, typename T>
-inline constexpr bool order_free = std::is_same_v<Op, ops::Maximum> || std::is_same_v<Op, ops::Minimum> ||
-                                   std::is_same_v<Op, ops::NanMaximum> || std::is_same_v<Op, ops::NanMinimum> ||
-                                   std::is_same_v<Op, ops::LogicalOr> || std::is_same_v<Op, ops::LogicalAnd> ||
-                                   ((std::is_same_v<Op, ops::Add> || std::is_same_v<Op, ops::Multiply>) &&
-                                    (ops::is_int<T> || ops::is_bool<T>));
+inline constexpr bool order_free =
+    std::is_same_v<Op, ops::Maximum> || std::is_same_v<Op, ops::Minimum> || std::is_same_v<Op, ops::NanMaximum> ||
+    std::is_same_v<Op, ops::NanMinimum> || std::is_same_v<Op, ops::LogicalOr> || std::is_same_v<Op, ops::LogicalAnd> ||
+    ((std::is_same_v<Op, ops::Add> || std::is_same_v<Op, ops::Multiply>) && (ops::is_int<T> || ops::is_bool<T>));
 ```
 
 int64 덧셈과 곱셈은 넘치면 wrap해요. $2^{64}$로 나눈 나머지의 덧셈·곱셈이라 결합·교환 법칙이 정확히 성립해요. max/min, and/or도 마찬가지예요.
@@ -516,15 +576,17 @@ int64 덧셈과 곱셈은 넘치면 wrap해요. $2^{64}$로 나눈 나머지의 
 `any`는 True를 하나 찾으면, `all`은 False를 하나 찾으면 답이 정해져요. bool 입력이면 4096원소 블록마다 "답이 정해졌는가"를 보고, 정해졌으면 멈춰요. 같은 출력의 다음 구간도 시작하자마자 돌아와요.
 
 ```cpp
-// reduce_loop의 any/all 부분 (발췌)
-constexpr bool decided = std::is_same_v<Op, ops::LogicalOr>;   // any는 true, all은 false에서 결정
-for (std::int64_t off = 0; off < n && acc != decided; off += 4096) {
-    const std::int64_t m = std::min<std::int64_t>(4096, n - off);
-    const std::uint8_t* p = reinterpret_cast<const std::uint8_t*>(x) + off;
-    std::uint8_t bits = decided ? 0 : 1;
-    for (std::int64_t i = 0; i < m; ++i) bits = decided ? (bits | p[i]) : (bits & p[i]);
-    acc = Op::f(acc, bits != 0);
-}
+            // csrc/array/kernels/reduce.hpp, reduce_loop의 any/all 부분 (발췌)
+            constexpr bool decided = std::is_same_v<Op, ops::LogicalOr>;
+            for (std::int64_t off = 0; off < n && acc != decided; off += 4096) {
+                const std::int64_t m = std::min<std::int64_t>(4096, n - off);
+                    // ...
+                    const std::uint8_t* p = reinterpret_cast<const std::uint8_t*>(x) + off;
+                    std::uint8_t bits = decided ? 0 : 1;
+                    for (std::int64_t i = 0; i < m; ++i) bits = decided ? (bits | p[i]) : (bits & p[i]);
+                // ...
+                acc = Op::f(acc, part);
+            }
 ```
 
 - 블록 안은 분기 없는 벡터 OR/AND예요. 원소마다 "찾았나?"를 검사하면 분기가 원소마다 생겨요. 검사를 4096원소마다 한 번으로 줄이면 블록 안은 NEON으로 16바이트씩 처리돼요.
@@ -538,16 +600,16 @@ for (std::int64_t off = 0; off < n && acc != decided; off += 4096) {
 연속 bool은 바이트 카운터로 세요. 바이트마다 int64에 더하면 바이트를 64비트로 넓히는 명령이 원소마다 붙어요(원소 100만 개 47µs). 그래서 16바이트씩 읽어 바이트 카운터 16개에 더해요. `vtstq_u8(v, v)`는 0이 아닌 바이트에서 `0xFF`(−1)인 마스크라, 카운터에서 빼면 1씩 늘어요. 바이트 카운터는 255에서 넘치므로 255번(4080바이트)마다 `vaddlvq_u8`로 넓혀 합에 더하고 다시 0에서 시작해요. 원소 100만 개 `count_nonzero(b)`가 23µs로 numpy(23µs)와 같아요.
 
 ```cpp
-// array/kernels/reduce.hpp의 count_loop, 연속 bool (발췌)
-while (i + 16 <= e) {
-    uint8x16_t c = vdupq_n_u8(0);
-    const std::int64_t stop = std::min(e - 15, i + 255 * 16);   // 넘치기 전에 멈춤
-    for (; i < stop; i += 16) {
-        const uint8x16_t v = vld1q_u8(p + i);
-        c = vsubq_u8(c, vtstq_u8(v, v));                        // 0이 아니면 +1
-    }
-    acc += vaddlvq_u8(c);                                       // 16개를 넓혀 합침
-}
+                // csrc/array/kernels/reduce.hpp의 count_loop, 연속 bool (발췌)
+                while (i + 16 <= e) {
+                    uint8x16_t c = vdupq_n_u8(0);
+                    const std::int64_t stop = std::min(e - 15, i + 255 * 16);
+                    for (; i < stop; i += 16) {
+                        const uint8x16_t v = vld1q_u8(p + i);
+                        c = vsubq_u8(c, vtstq_u8(v, v));
+                    }
+                    acc += vaddlvq_u8(c);
+                }
 ```
 
 ## 블록 리덕션
@@ -579,12 +641,14 @@ C 순서 행렬의 `sum(axis=0)`은 남는 축(열)이 메모리상 안쪽이라
 이렇게 해도 답이 맞으려면 시작값이 "다시 접어도 그대로"여야 해요. 출력도 시작값을 담고 있고 복사본도 시작값에서 출발했으니, 마지막 접기에서 시작값이 한 번 더 들어가기 때문이에요. 모든 리덕션의 시작값은 이 조건을 만족해요(`0 + p = p`, `1 × p = p`, `max(최솟값, p) = p`, `false ∨ p = p`).
 
 ```cpp
-// array/ops/reduction.cpp의 reduce_blocked (발췌)
+// csrc/array/ops/reduction.cpp의 reduce_blocked (발췌)
 template <typename Fold>
 void reduce_blocked(const NDArray& x, NDArray& out, const Blocks& b, Loop combine, Fold fold) {
-    const std::int64_t bytes = out.nbytes();
-    auto store = std::make_unique_for_overwrite<std::byte[]>(b.count * bytes);
-    std::vector<NDArray> xs(b.count, x), parts(b.count, out);   // 뷰는 여기서(호출 스레드) 만든다
+    const std::int64_t bytes = out.nbytes();  // dense, non-negative strides (new_array_like)
+    auto store = std::make_unique_for_overwrite<std::byte[]>(static_cast<size_t>(b.count * bytes));
+    // The views are made here: copying an NDArray touches Python references,
+    // which the tasks (running without the GIL) must not.
+    std::vector<NDArray> xs(b.count, x), parts(b.count, out);
     for (std::int64_t t = 0; t < b.count; ++t) {
         const std::int64_t begin = t * b.size;
         xs[t].shape[b.axis] = std::min(x.shape[b.axis] - begin, b.size);
@@ -592,15 +656,15 @@ void reduce_blocked(const NDArray& x, NDArray& out, const Blocks& b, Loop combin
         parts[t].data = store.get() + t * bytes;
     }
     parallel::parallel_for(b.count, [&](std::int64_t t) {
-        std::memcpy(parts[t].data, out.data, bytes);             // 시작값 복사
-        fold(xs[t], parts[t]);                                   // 이 블록을 복사본에 접기
+        std::memcpy(parts[t].data, out.data, static_cast<size_t>(bytes));
+        fold(xs[t], parts[t]);
     });
-    NDArray all = out;                                           // 복사본들을 축 하나로 쌓은 뷰
+    NDArray all = out;
     all.data = store.get();
     all.shape[b.axis] = b.count;
     all.strides[b.axis] = bytes;
     const IterOperand ops[] = {operand(all), operand(out)};
-    NdIter(all.shape_span(), ops).run(combine, nullptr, Split::Reduction);   // 블록 순서대로
+    NdIter(all.shape_span(), ops).run(combine, nullptr, Split::Reduction);
 }
 ```
 
@@ -667,18 +731,21 @@ $$
 ### 접근: 4096원소 조각, 조각 안에 누산기 8개
 
 ```cpp
-// array/kernels/reduce.hpp의 product_piece (발췌)
+// csrc/array/kernels/reduce.hpp의 product_piece (발췌)
 template <typename T, typename Get>
 T product_piece(std::int64_t b, std::int64_t m, const Get& get) {
-    if (m < 8) { /* 왼쪽부터 곱한다 (m == 0이면 1) */ }
+    if (m < 8) {
+        if (m == 0) return T(1);
+    // ...
+    }
     T a[8];
     for (int j = 0; j < 8; ++j) a[j] = get(b + j);
     std::int64_t i = 8;
     for (; i + 8 <= m; i += 8)
-        for (int j = 0; j < 8; ++j) a[j] = a[j] * get(b + i + j);    // 누산기 j는 8칸 간격
-    for (int j = 0; i < m; ++i, ++j) a[j] = a[j] * get(b + i);       // 나머지는 a[0]부터
-    for (int w = 1; w < 8; w *= 2)                                    // ((a0·a1)·(a2·a3))·((a4·a5)·(a6·a7))
-        for (int j = 0; j < 8; j += 2 * w) a[j] = a[j] * a[j + w];
+        for (int j = 0; j < 8; ++j) a[j] = ops::Multiply::f(a[j], get(b + i + j));
+    for (int j = 0; i < m; ++i, ++j) a[j] = ops::Multiply::f(a[j], get(b + i));
+    for (int w = 1; w < 8; w *= 2)
+        for (int j = 0; j < 8; j += 2 * w) a[j] = ops::Multiply::f(a[j], a[j + w]);
     return a[0];
 }
 ```
@@ -765,25 +832,33 @@ $$
 1단계의 "블록 4개 나란히" 루프에는 속도를 좌우하는 선택이 네 가지 들어 있어요.
 
 ```cpp
-// array/kernels/reduce.hpp의 scan_group (발췌)
+// csrc/array/kernels/reduce.hpp, scan_group (발췌)
 template <typename Op, typename T, bool Contig, bool SkipNan = false>
-void scan_group(const std::byte* x, std::int64_t xs, std::byte* o, std::int64_t os,
-                std::int64_t first, std::int64_t blocks, std::int64_t n) {
-    if constexpr (Contig) xs = os = sizeof(T);              // stride가 컴파일 시점 상수
-    // ... xp[j], op[j]: 블록 j의 시작, acc[j]: 블록 j의 누산기
-    auto chunk = [&]<bool First>(std::int64_t i) {
-        T v[kScanGroup][8];
-        for (int j = 0; j < kScanGroup; ++j)
-            for (int k = 0; k < 8; ++k) v[j][k] = ld(j, i + k);           // 블록마다 8개 load
-        if constexpr (First)
-            for (int j = 0; j < kScanGroup; ++j) acc[j] = v[j][0];        // 자기 첫 원소에서 출발
-        for (int k = First ? 1 : 0; k < 8; ++k)
-            for (int j = 0; j < kScanGroup; ++j) v[j][k] = acc[j] = Op::f(acc[j], v[j][k]);  // 사슬 4개
-        for (int j = 0; j < kScanGroup; ++j)
-            for (int k = 0; k < 8; ++k) st(j, i + k, v[j][k]);            // 블록마다 8개 store
-    };
-    chunk.template operator()<true>(0);
-    for (std::int64_t i = 8; i < kScanBlock; i += 8) chunk.template operator()<false>(i);
+void scan_group(
+    const std::byte* x,
+    std::int64_t xs,
+    std::byte* o,
+    std::int64_t os,
+    std::int64_t first,
+    std::int64_t blocks,
+    std::int64_t n
+) {
+    if constexpr (Contig) xs = os = sizeof(T);
+    // ...
+        auto chunk = [&]<bool First>(std::int64_t i) {
+            T v[kScanGroup][8];
+            for (int j = 0; j < kScanGroup; ++j)
+                for (int k = 0; k < 8; ++k) v[j][k] = ld(j, i + k);
+            if constexpr (First)
+                for (int j = 0; j < kScanGroup; ++j) acc[j] = v[j][0];
+            for (int k = First ? 1 : 0; k < 8; ++k)
+                for (int j = 0; j < kScanGroup; ++j) v[j][k] = acc[j] = Op::f(acc[j], v[j][k]);
+            for (int j = 0; j < kScanGroup; ++j)
+                for (int k = 0; k < 8; ++k) st(j, i + k, v[j][k]);
+        };
+        chunk.template operator()<true>(0);
+        for (std::int64_t i = 8; i < kScanBlock; i += 8) chunk.template operator()<false>(i);
+        // ...
 }
 ```
 
@@ -821,29 +896,29 @@ int64와 bool의 평균은 float로 바꿔 더하지 않고, 정수 그대로 �
 - $2^{31}$개마다, 그리고 마지막에 두 반쪽을 `__int128` 하나로 옮겨요. 배열이 가질 수 있는 어떤 개수의 int64를 더해도 `__int128`에 정확히 담겨요.
 
 ```cpp
-// base/int_sum.hpp (발췌)
-void add_range(const std::int64_t* p, std::int64_t n) {
-    while (n > 0) {
-        const std::int64_t m = n < kFlush - pending_ ? n : kFlush - pending_;
-        std::int64_t hi = 0;
-        std::uint64_t lo = 0;
-        for (std::int64_t i = 0; i < m; ++i) {
-            hi += p[i] >> 32;
-            lo += static_cast<std::uint64_t>(p[i]) & 0xFFFFFFFFu;
+    // csrc/base/int_sum.hpp (발췌)
+    void add_range(const std::int64_t* p, std::int64_t n) {
+        while (n > 0) {
+            const std::int64_t m = n < kFlush - pending_ ? n : kFlush - pending_;
+            std::int64_t hi = 0;
+            std::uint64_t lo = 0;
+            for (std::int64_t i = 0; i < m; ++i) {
+                hi += p[i] >> 32;
+                lo += static_cast<std::uint64_t>(p[i]) & 0xFFFFFFFFu;
+            }
+            hi_ += hi;
+            lo_ += lo;
+            pending_ += m;
+            if (pending_ == kFlush) flush();
+            p += m;
+            n -= m;
         }
-        hi_ += hi;
-        lo_ += lo;
-        pending_ += m;
-        if (pending_ == kFlush) flush();
-        p += m;
-        n -= m;
     }
-}
+    // ...
+    __int128 value() const { return total_ + (static_cast<__int128>(hi_) << 32) + static_cast<__int128>(lo_); }
 
-__int128 value() const { return total_ + (static_cast<__int128>(hi_) << 32) + static_cast<__int128>(lo_); }
-
-// Round to nearest (the compiler's __int128 -> double conversion rounds correctly).
-double to_double() const { return static_cast<double>(value()); }
+    // Round to nearest (the compiler's __int128 -> double conversion rounds correctly).
+    double to_double() const { return static_cast<double>(value()); }
 ```
 
 정수 덧셈은 순서와 상관없으므로, 조각을 어떻게 나누고 어느 순서로 합쳐도 같은 비트예요. 전체 평균은 32KB 분량(int64 4096개)의 조각을 풀에서 따로 더하고 `merge`로 합쳐요. 반올림이 한 번뿐이라 결과는 참 평균에 가장 가까운 double을 개수로 한 번 나눈 값이에요. 합이 $2^{53}$을 넘지 않으면 float로 바꿔 더한 값과 같고, 넘으면 이쪽이 더 정확해요. 원소마다 float로 바꾸는 일이 없어서 빠르기도 해요. 원소 100만 개를 1스레드에서 float로 바꿔 더하면 200µs가 들고, 같은 배열의 정수 `sum`은 72µs예요.
@@ -873,7 +948,7 @@ $c$는 `correction`(기본 0)이에요. $N - c \le 0$이면 NaN이에요(빈 입
 편차의 제곱은 반올림 한 번으로 더해요. 실수는 `fma(d, d, acc)`, complex는 `fma(re, re, im·im)`을 더해요. 실수의 안쪽 축은 제곱을 잎 안의 누산기에 바로 융합하는 잎(`pairwise::leaf_squares`)을 써요. 트리 모양과 병렬 계획은 `sum`과 같아요.
 
 ```cpp
-// base/pairwise.hpp (발췌)
+// csrc/base/pairwise.hpp (발췌)
 template <typename Dev>
 [[gnu::always_inline]] inline double leaf_squares(std::int64_t n, const Dev& dev) {
     if (n < kLanes) {

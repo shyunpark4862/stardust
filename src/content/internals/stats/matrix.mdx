@@ -90,12 +90,12 @@ $$
 $\log\lvert X\rvert$의 계수 $(n - p - 1)/2$는 `two_sum`으로 정확히 둬요. 이 계수를 double로 반올림하면 상대 $2^{-54}$의 오차가 $\log\lvert X\rvert$에 곱해져 밀도에 그대로 들어가요. 디리클레의 $a_i - 1$과 같은 문제예요.
 
 ```cpp
-// csrc/bind/stats_matrix.cpp, wishart_logpdf
-// n -+ (p + 1) kept exactly: its rounding (2^-54 of the coefficient)
-// times log|X| would reach the density
-const DD coef = inverse ? dd::two_sum(n, pd + 1.0) * -0.5 : dd::two_sum(n, -(pd + 1.0)) * 0.5;
-const DD lx = ldx * coef;
-const DD l = cst[b] + lx - htr;
+                    // csrc/bind/stats_matrix.cpp, wishart_logpdf
+                    // n -+ (p + 1) kept exactly: its rounding (2^-54 of the coefficient)
+                    // times log|X| would reach the density
+                    const DD coef = inverse ? dd::two_sum(n, pd + 1.0) * -0.5 : dd::two_sum(n, -(pd + 1.0)) * 0.5;
+                    const DD lx = ldx * coef;
+                    const DD l = cst[b] + lx - htr;
 ```
 
 ### 왜 double-double인가
@@ -283,9 +283,9 @@ $$
 두 로그 행렬식은 분해에서 나온 값(hi + lo)이고, 세 항을 double-double로 더해요(`matnorm_entropy`). 두 로그 행렬식이 크고 부호가 반대이면 double로 더할 때 상쇄로 자리를 잃어요. $U = 10^{-300}I$, $V = 10^{300}I$, $n = p = 100$에서 double로 더하면 $3.3 \times 10^{-14}$이 틀려요.
 
 ```cpp
-// csrc/bind/stats_matrix.cpp, matnorm_entropy (발췌)
-const DD c = (num::kLogSqrt2Pi + 0.5) * (nd * pd);  // (n p exact: both are matrix sizes)
-...
+    // csrc/bind/stats_matrix.cpp, matnorm_entropy (발췌)
+    const DD c = (num::kLogSqrt2Pi + 0.5) * (nd * pd);  // (n p exact: both are matrix sizes)
+        // ...
         const DD h = c + DD{el(luh, b), el(lul, b)} * (0.5 * pd) + DD{el(lvh, b), el(lvl, b)} * (0.5 * nd);
         po[b] = h.hi + h.lo;
 ```

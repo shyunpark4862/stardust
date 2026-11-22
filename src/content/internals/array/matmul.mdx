@@ -68,22 +68,23 @@ $$
 배치마다 두 행렬의 시작 주소는 계산 전에 한 번에 구해 둬요. 배치 축 위를 C 순서의 odometer(가장 안쪽 자리부터 하나씩 올리고, 끝에 닿으면 0으로 돌리며 다음 자리를 올리는 방식)로 돌면서 `(a의 시작, b의 시작)` 쌍을 `starts` 배열에 채워요.
 
 ```cpp
-// matmul.cpp의 matmul()에서 발췌, 줄임
-auto batch_stride = [&](const NDArray& x, int nbatch, int dd) {
-    const int xd = dd - (bd - nbatch);                     // 오른쪽 정렬
-    return xd < 0 || x.shape[xd] == 1 ? 0 : x.strides[xd];  // 브로드캐스트면 0
-};
-for (std::int64_t t = 0; t < count; ++t) {
-    starts[t] = {pa, pb};
-    for (int dd = bd - 1; dd >= 0; --dd) {                 // C 순서 odometer
-        pa += batch_stride(a, a_batch, dd);
-        pb += batch_stride(b, b_batch, dd);
-        if (++idx[dd] < batch[dd]) break;
-        pa -= batch_stride(a, a_batch, dd) * batch[dd];
-        pb -= batch_stride(b, b_batch, dd) * batch[dd];
-        idx[dd] = 0;
+    // csrc/array/ops/matmul.cpp, matmul() (줄인 발췌)
+    auto batch_stride = [&](const NDArray& x, int nbatch, int dd) {  // stride of broadcast batch axis dd
+        const int xd = dd - (bd - nbatch);
+        return xd < 0 || x.shape[xd] == 1 ? 0 : x.strides[xd];
+    };
+    // ...
+    for (std::int64_t t = 0; t < count; ++t) {
+        starts[t] = {pa, pb};
+        for (int dd = bd - 1; dd >= 0; --dd) {  // C-order odometer over the batch axes
+            pa += batch_stride(a, a_batch, dd);
+            pb += batch_stride(b, b_batch, dd);
+            if (++idx[dd] < batch[dd]) break;
+            pa -= batch_stride(a, a_batch, dd) * batch[dd];
+            pb -= batch_stride(b, b_batch, dd) * batch[dd];
+            idx[dd] = 0;
+        }
     }
-}
 ```
 
 이 계산을 호출한 스레드에서 미리 해 두면, 풀의 태스크는 배치 번호 `t`만 받아 `starts[t]`를 읽으면 돼요. 태스크 안에서는 `NDArray`를 복사하지도, Python 객체를 만지지도 않아요(태스크는 GIL 없이 돌아요, [스레드풀과 결정성](/internals/core/threads/)).
@@ -154,10 +155,10 @@ CBLAS의 행 우선 인터페이스에서 행렬 인자는 세 값으로 정해�
 stardust의 배열에는 축마다 바이트 단위 stride가 있어요. matmul은 행렬 하나를 이렇게 적어요.
 
 ```cpp
-// matmul.cpp
+// csrc/array/ops/matmul.cpp
 struct Mat {
     const std::byte* p;
-    std::int64_t rows, cols, rs, cs;  // 원소 (i, j)는 p + i*rs + j*cs 바이트
+    std::int64_t rows, cols, rs, cs;
 };
 ```
 
@@ -184,13 +185,11 @@ struct Mat {
 이 판정을 하는 함수가 `blas_view`예요.
 
 ```cpp
-// matmul.cpp (주석 추가)
+// csrc/array/ops/matmul.cpp
 std::optional<BlasView> blas_view(const Mat& a, std::int64_t item) {
-    // 이 방향이 "간격 1"로 읽히는가: 길이 1인 축은 stride가 무엇이든 괜찮다
     auto unit = [&](std::int64_t s, std::int64_t extent) { return extent == 1 || s == item; };
-    // 다른 방향의 stride가 leading dimension이 될 수 있는가
     auto lead = [&](std::int64_t s, std::int64_t extent, std::int64_t inner) -> std::optional<blas_int> {
-        if (extent == 1) return std::max<std::int64_t>(inner, 1);  // 한 줄뿐이면 아무 값이나 유효
+        if (extent == 1) return std::max<std::int64_t>(inner, 1);
         if (s <= 0 || s % item != 0 || s / item < std::max<std::int64_t>(inner, 1)) return std::nullopt;
         return s / item;
     };
@@ -198,7 +197,7 @@ std::optional<BlasView> blas_view(const Mat& a, std::int64_t item) {
         if (auto ld = lead(a.rs, a.rows, a.cols)) return BlasView{CblasNoTrans, *ld};
     if (unit(a.rs, a.rows))
         if (auto ld = lead(a.cs, a.cols, a.rows)) return BlasView{CblasTrans, *ld};
-    return std::nullopt;  // 복사해야 한다
+    return std::nullopt;
 }
 ```
 
@@ -234,10 +233,10 @@ std::optional<BlasView> blas_view(const Mat& a, std::int64_t item) {
 `gemv`는 계산에 쓰는 행렬이 아니라 저장된 행렬의 크기를 받아요. 그래서 `Trans`이면 행과 열 수를 바꿔 넘겨요.
 
 ```cpp
-// matmul.cpp의 blas_matmul()에서 발췌
-const blas_int sr = v->trans == CblasNoTrans ? mt.rows : mt.cols;
-const blas_int sc = v->trans == CblasNoTrans ? mt.cols : mt.rows;
-blas::gemv<T>(v->trans, sr, sc, ap, v->ld, x, inc, c);
+        // csrc/array/ops/matmul.cpp, blas_matmul() (발췌)
+        const blas_int sr = v->trans == CblasNoTrans ? mt.rows : mt.cols;
+        const blas_int sc = v->trans == CblasNoTrans ? mt.cols : mt.rows;
+        blas::gemv<T>(v->trans, sr, sc, ap, v->ld, x, inc, c);
 ```
 
 벡터는 (포인터, 증분 `inc`)로 넘겨요(`blas_vector`). stride가 양수이고 원소 크기의 배수이면 그대로 넘기고, stride가 0이거나 음수이면 복사해요. 기준 BLAS(netlib)의 `dgemv`는 증분 0을 인자 오류로 보고해요. 음수 증분은 "벡터를 메모리의 높은 주소 쪽에서부터 읽는다"는 뜻이라, 포인터가 메모리상 가장 낮은 원소를 가리켜야 해요. stardust의 data 포인터는 논리적 원소 0을 가리키므로 그대로 넘기면 틀린 곳을 읽어요[3]. 길이 n짜리 벡터의 복사는 $O(n)$이라 비용이 작아요.
@@ -252,15 +251,13 @@ blas::gemv<T>(v->trans, sr, sc, ap, v->ld, x, inc, c);
 BLAS 호출은 `csrc/accelerate/blas.hpp`의 템플릿 넷(`blas::dot`, `blas::gemv`, `blas::gemm`, `blas::syrk_upper`)을 거쳐요. 함수 하나가 float64와 complex128을 `if constexpr`로 갈라요.
 
 ```cpp
-// accelerate/blas.hpp (줄임)
+// csrc/accelerate/blas.hpp (줄임)
 template <class T>
-void gemm(Trans ta, Trans tb, Int m, Int n, Int k, const T* a, Int lda,
-          const T* b, Int ldb, T* c, Int ldc) {
+void gemm(Trans ta, Trans tb, Int m, Int n, Int k, const T* a, Int lda, const T* b, Int ldb, T* c, Int ldc) {
     const T one(1), zero(0);
     if constexpr (std::is_same_v<T, std::complex<double>>)
         cblas_zgemm(CblasRowMajor, ta, tb, m, n, k, &one, a, lda, b, ldb, &zero, c, ldc);
-    else
-        cblas_dgemm(CblasRowMajor, ta, tb, m, n, k, one, a, lda, b, ldb, zero, c, ldc);
+    else cblas_dgemm(CblasRowMajor, ta, tb, m, n, k, one, a, lda, b, ldb, zero, c, ldc);
 }
 ```
 
@@ -326,23 +323,28 @@ void tiny_matmul(const Mat& a, const Mat& b, double* c) {
 세 겹 루프의 순서는 여섯 가지가 가능해요. stardust는 **i-k-j**를 써요.
 
 ```cpp
-// matmul.cpp의 int_matmul()에서 발췌, 줄임
-for (std::int64_t i = 0; i < m; ++i) {
-    std::int64_t* crow = c + i * n;
-    std::fill(crow, crow + n, 0);
-    for (std::int64_t p = 0; p < k; ++p) {
-        const std::int64_t aip = load_as<std::int64_t>(a.p + i * a.rs + p * a.cs);  // 스칼라 하나
-        const std::int64_t* bp = /* b의 p번째 행 */;
-        std::int64_t j = 0;
-        for (; j + 4 <= n; j += 4) {          // 4배 언롤 (b의 행이 연속일 때)
-            crow[j]     = wrap_add(crow[j],     wrap_mul(aip, bp[j]));
-            crow[j + 1] = wrap_add(crow[j + 1], wrap_mul(aip, bp[j + 1]));
-            crow[j + 2] = wrap_add(crow[j + 2], wrap_mul(aip, bp[j + 2]));
-            crow[j + 3] = wrap_add(crow[j + 3], wrap_mul(aip, bp[j + 3]));
+    // csrc/array/ops/matmul.cpp, int_matmul() (발췌)
+    for (std::int64_t i = 0; i < m; ++i) {
+        std::int64_t* crow = c + i * n;
+        std::fill(crow, crow + n, 0);
+        for (std::int64_t p = 0; p < k; ++p) {
+            const std::int64_t aip = load_as<std::int64_t>(a.p + i * a.rs + p * a.cs);
+            const std::byte* brow = b.p + p * b.rs;
+            std::int64_t j = 0;
+            if (b.cs == sizeof(std::int64_t)) {
+                // ...
+                const std::int64_t* bp = reinterpret_cast<const std::int64_t*>(brow);
+                for (; j + 4 <= n; j += 4) {
+                    crow[j] = ops::wrap_add(crow[j], ops::wrap_mul(aip, bp[j]));
+                    crow[j + 1] = ops::wrap_add(crow[j + 1], ops::wrap_mul(aip, bp[j + 1]));
+                    crow[j + 2] = ops::wrap_add(crow[j + 2], ops::wrap_mul(aip, bp[j + 2]));
+                    crow[j + 3] = ops::wrap_add(crow[j + 3], ops::wrap_mul(aip, bp[j + 3]));
+                }
+            }
+            for (; j < n; ++j)
+                crow[j] = ops::wrap_add(crow[j], ops::wrap_mul(aip, load_as<std::int64_t>(brow + j * b.cs)));
         }
-        for (; j < n; ++j) crow[j] = wrap_add(crow[j], wrap_mul(aip, bp[j]));
     }
-}
 ```
 
 <Fig caption="i-k-j 순서의 한 걸음. a[i, p] 하나를 레지스터에 두고, b의 p번째 행 전체를 곱해 c의 i번째 행 전체에 더해요. 가장 안쪽 루프가 두 행을 연속으로 걸어요.">
@@ -417,14 +419,14 @@ P코어 클럭을 4.5GHz 전후로 잡으면 1스레드는 사이클당 곱셈-�
 int64 경로는 출력 행 묶음을 태스크로 해요. 출력의 행끼리는 서로 독립이에요. 행 i는 a의 행 i와 b 전체만 읽고, c의 행 i에만 써요.
 
 ```cpp
-// matmul.cpp의 matmul()에서 발췌
-const std::int64_t rows = std::max<std::int64_t>(1, kParallelTask / std::max<std::int64_t>(k * n, 1));
-const std::int64_t per_batch = (m + rows - 1) / rows;
-parallel::parallel_for(count * per_batch, [&](std::int64_t task) {
-    const std::int64_t t = task / per_batch;                      // 배치 번호
-    const std::int64_t r0 = (task % per_batch) * rows, r1 = std::min(m, r0 + rows);
-    int_matmul(/* a의 r0..r1 행 */, /* b 전체 */, /* c의 r0..r1 행 */);
-});
+        // csrc/array/ops/matmul.cpp, matmul() (발췌)
+        const std::int64_t rows = std::max<std::int64_t>(1, kParallelTask / std::max<std::int64_t>(k * n, 1));
+        const std::int64_t per_batch = (m + rows - 1) / rows;
+        parallel::parallel_for(count * per_batch, [&](std::int64_t task) {
+            const std::int64_t t = task / per_batch, r0 = (task % per_batch) * rows, r1 = std::min(m, r0 + rows);
+            const Mat am{starts[t].first + r0 * a_rs, r1 - r0, k, a_rs, a_cs}, bm{starts[t].second, k, n, b_rs, b_cs};
+            int_matmul(am, bm, reinterpret_cast<std::int64_t*>(out.data + (t * m + r0) * n * item));
+        });
 ```
 
 - 행 하나의 일은 곱셈-덧셈 $k \cdot n$개예요. 태스크 하나가 약 `kParallelTask` = $2^{12}$ = 4096개 분량이 되도록 행을 묶어요. 300³이면 행 하나가 이미 90,000개라 태스크 하나가 행 하나이고, 태스크는 300개예요.
@@ -444,19 +446,23 @@ float/complex 배치에는 두 갈래가 있어요.
 배치가 둘 이상이고, 행렬이 `kSmallBlas` 이하이고, `parallel::available()`(스레드가 둘 이상이고, 태스크 안이 아니고, 다른 Python 스레드가 풀을 쓰고 있지 않음)이 참일 때만 풀로 나눠요.
 
 ```cpp
-// matmul.cpp의 matmul()에서 발췌
+// csrc/array/ops/matmul.cpp, matmul() (발췌)
 inline constexpr std::int64_t kSmallBlas = 256 * 256 * 256;
 inline constexpr std::int64_t kBlasTaskWork = 1 << 15;
-
-const std::int64_t work = m * n * k;
-if (count > 1 && work <= kSmallBlas && parallel::available()) {
-    const std::int64_t per_task = std::max<std::int64_t>(1, kBlasTaskWork / std::max<std::int64_t>(work, 1));
-    parallel::parallel_for((count + per_task - 1) / per_task, [&](std::int64_t task) {
-        for (std::int64_t t = task * per_task; t < std::min(count, (task + 1) * per_task); ++t) one_batch(t);
-    });
-} else {
-    for (std::int64_t t = 0; t < count; ++t) one_batch(t);
-}
+        // ...
+        const std::int64_t work = m * n * k;
+        if (count > 1 && work <= kSmallBlas && parallel::available()) {
+            const std::int64_t per_task = std::max<std::int64_t>(1, kBlasTaskWork / std::max<std::int64_t>(work, 1));
+            parallel::parallel_for((count + per_task - 1) / per_task, [&](std::int64_t task) {
+                for (std::int64_t t = task * per_task; t < std::min(count, (task + 1) * per_task); ++t) one_batch(t);
+            });
+        } else {
+            // On the calling thread (Accelerate may thread inside): a call of real
+            // size lets other Python threads run meanwhile, as cov's BLAS call does.
+            // BLAS and the packing touch no Python objects.
+            const parallel::Unlocked unlocked(count * work >= kBlasTaskWork);
+            for (std::int64_t t = 0; t < count; ++t) one_batch(t);
+        }
 ```
 
 태스크 하나는 곱셈-덧셈 약 $2^{15}$개(`kBlasTaskWork`) 분량의 행렬을 묶어요. 8×8이면 행렬 하나가 512개라 64개씩, 4×4면 512개씩 묶여요. BLAS 호출 하나에는 인자 검사와 분기 같은 고정 비용이 있어서, 단위가 int64 경로의 4096보다 커요.
@@ -523,6 +529,8 @@ nb::object vecdot(nb::handle x1, nb::handle x2, nb::handle axis_obj) {
         kw["axis"] = axis_obj;
         return nb::handle(linalg_vecdot)(x1, x2, **kw);
     }
+    // ...
+}
 ```
 
 - float64와 complex128 입력은 두 함수가 같은 계산이라, `sd.linalg.vecdot`을 그대로 불러요. 그래서 결과의 비트, 모양 규칙, 메시지가 같아요. 그쪽은 곱을 합에 융합하는 잎(`fma_dot_leaf`)으로 pairwise 트리를 지나요. 곱마다의 반올림 하나가 없어서 `sd.sum(conj(x1) * x2, axis=-1)`과는 끝 비트가 다를 수 있어요([linalg의 기본 연산](/internals/linalg/basic/)).

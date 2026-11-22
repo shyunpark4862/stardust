@@ -175,7 +175,7 @@ $$
 $\tfrac{3\pi}{4}$(1차)도 같은 식으로 풀어요. 그 결과 `j0`은 Hankel 쪽 공식을 이렇게 계산해요. `hankel0`의 `p`는 $P_0(x)$, `q`는 $x Q_0(x)/5$이고, `s`, `c`는 $\sin x$, $\cos x$예요.
 
 ```cpp
-// ops/bessel01.hpp: x > 5, Cephes의 진폭 유리식과 sin x, cos x
+// csrc/special/ops/bessel01.hpp: x > 5, Cephes의 진폭 유리식과 sin x, cos x
 inline Hankel hankel0(double x) {
     const double w = 5.0 / x, z = w * w;
     const SinCos sc = sincos(x);
@@ -184,7 +184,10 @@ inline Hankel hankel0(double x) {
         sc.s, sc.c
     };
 }
-// sqrt(2/(pi x)) [P cos(x - pi/4) - Q sin(x - pi/4)]를 덧셈정리로 푼 꼴
+// ...
+// sqrt(2/pi)/sqrt(x) times p cos(chi) - w q sin(chi), with chi = x - pi/4 or x - 3pi/4 written out:
+//   x - pi/4:  cos = (c + s)/sqrt2, sin = (s - c)/sqrt2   ->  1/sqrt(pi x) [p (c + s) - w q (s - c)]
+//   x - 3pi/4: cos = (s - c)/sqrt2, sin = -(s + c)/sqrt2
 inline double j0_large(double x) {
     const Hankel h = hankel0(x);
     return (h.p * (h.c + h.s) - h.w * h.q * (h.s - h.c)) / (kSqrtPi * std::sqrt(x));
@@ -472,7 +475,7 @@ $$
 $g = a - \tanh a = \operatorname{atanh} t - t$는 두 가지로 셈해요. $t < 1/2$이면($x$가 $\nu$에 가까우면) 양항 급수 $t^3/3 + t^5/5 + \cdots$라 상쇄가 없고, $t$는 $(\nu - x)/\nu$와 $(\nu + x)/\nu$의 제곱근을 곱해 만들어서 $\nu$가 $10^{30}$이고 $x$가 그 바로 옆이어도 $t$가 살아 있어요. $t \ge 1/2$이면 $a = \operatorname{acosh}(\nu/x) = \log(\nu/x) + \operatorname{log1p}(t)$로 써요. $\nu/x$를 직접 나누면 아주 작은 $x$에서 넘치고, $\operatorname{atanh} t$는 $t$가 1로 반올림되면 inf라서 로그를 따로 빼요.
 
 ```cpp
-// ops/bessel.hpp: J_nu(x) (nu > 0, 0 < x < nu)가 0으로 반올림된다고 증명되면 true
+// csrc/special/ops/bessel.hpp: J_nu(x) (nu > 0, 0 < x < nu)가 0으로 반올림된다고 증명되면 true
 inline constexpr double kJZeroLog = -746.2;
 inline bool j_underflows(double nu, double x) {
     if (!(nu > 0.0 && x > 0.0 && x < nu)) return false;
@@ -481,14 +484,15 @@ inline bool j_underflows(double nu, double x) {
     if (t < 0.5) {
         const double t2 = t * t;
         double term = t * t2, s = 0.0;
-        for (int k = 3; k < 200; k += 2) {  // 비가 t^2 <= 1/4라 k = 63이면 2^-60
+        for (int k = 3; k < 200; k += 2) {  // ratio t^2 <= 1/4: 2^-60 by k = 63
             s += term / k;
             term *= t2;
             if (term < 0x1p-60 * s) break;
         }
         g = s;
     } else {
-        // a = acosh(nu / x) = log(nu / x) + log1p(t), 두 로그를 따로
+        // a = acosh(nu / x) = log(nu / x) + log1p(t), the logs apart (nu / x may overflow; and
+        // atanh(t) loses t's last bits as t rounds to 1 for a tiny x)
         g = (std::log(nu) - std::log(x)) + std::log1p(t) - t;
     }
     if (-nu * g < kJZeroLog) return true;
@@ -499,7 +503,8 @@ inline bool j_underflows(double nu, double x) {
 `jv_or_yv`는 `order_saturates` 바로 다음에 이 판정을 불러요.
 
 ```cpp
-if (!want_y && (v >= 0.0 || is_int(a)) && j_underflows(a, x)) return v >= 0.0 ? 0.0 : cospi(a) * 0.0;
+    // csrc/special/ops/bessel.hpp
+    if (!want_y && (v >= 0.0 || is_int(a)) && j_underflows(a, x)) return v >= 0.0 ? 0.0 : cospi(a) * 0.0;
 ```
 
 음의 정수 차수는 $J_{-n} = (-1)^n J_n$이라 부호 있는 0이고, 음의 비정수 차수는 $J_{-a} = \cos(a\pi)J_a - \sin(a\pi)Y_a$에 $Y_a$가 들어가므로 이 판정을 쓰지 않아요. $Y$에는 같은 방향의 엄밀한 부등식이 없어요. DLMF 10.14는 $J$의 상한만 주고, Debye 꼴 $\lvert JY\rvert \approx 1/(\pi\nu\tanh a)$는 점근식일 뿐 증명이 아니에요. 그래서 `yv`의 −∞는 `order_saturates`가 정하는 곳뿐이고, `yv(3e7, 1.9e7)`은 NaN이에요. 이 판정은 차수의 크기와 상관없이 쓰여요. 판정이 0을 내는 곳은 참값이 $2^{-1075}$ 아래라 계산했어도 0으로 반올림됐을 곳이에요.
@@ -615,19 +620,19 @@ $$
 까다로운 곳은 지수 $\nu\eta$예요. $\nu = x = 10^9$이면 $s$와 $\nu\log(\ldots)$가 둘 다 $10^9$ 크기이고 그 차가 수억이에요. 마지막 비트까지 맞으려면 $\nu\eta$의 절대오차가 $2^{-53}$쯤이어야 하는데, $10^9$짜리 두 수를 float64로 빼면 절대오차가 $10^{-7}$이에요. 그래서 이 지수를 double-double로 만들어요.
 
 ```cpp
-// ops/bessel.hpp, debye_value: 지수를 double-double로, exp는 한 번만
-const dd::DD s2 = dd::two_prod(nu, nu) + dd::two_prod(x, x);  // ν² + x², 정확
-const double sh = std::sqrt(s2.hi);
-const dd::DD sh2 = dd::two_prod(sh, sh);
-const dd::DD s = dd::DD{sh, 0.0} + ((s2 - sh2) / (2.0 * sh)).hi;  // one Newton step
-const dd::DD lg = dd::log(s + nu) - dd::log(x);  // log((nu + s) / x)
-const dd::DD nueta = s - lg * nu;
-// ...
-auto expo = [](dd::DD e) {  // e^(hi + lo); beyond exp_scaled's range the result is 0 or inf anyway
-    Scaled r = exp_scaled(e.hi);
-    if (std::isfinite(r.m)) r.m = std::fma(r.m, e.lo, r.m);  // e^lo = 1 + lo where the result is in range
-    return r;
-};
+    // csrc/special/ops/bessel.hpp, debye_value: 지수를 double-double로, exp는 한 번만
+    const dd::DD s2 = dd::two_prod(nu, nu) + dd::two_prod(x, x);
+    const double sh = std::sqrt(s2.hi);
+    const dd::DD sh2 = dd::two_prod(sh, sh);
+    const dd::DD s = dd::DD{sh, 0.0} + ((s2 - sh2) / (2.0 * sh)).hi;  // one Newton step
+    const dd::DD lg = dd::log(s + nu) - dd::log(x);  // log((nu + s) / x)
+    const dd::DD nueta = s - lg * nu;
+    // ...
+    auto expo = [](dd::DD e) {  // e^(hi + lo); beyond exp_scaled's range the result is 0 or inf anyway
+        Scaled r = exp_scaled(e.hi);
+        if (std::isfinite(r.m)) r.m = std::fma(r.m, e.lo, r.m);  // e^lo = 1 + lo where the result is in range
+        return r;
+    };
 ```
 
 스케일된 판의 지수 $\nu\eta \mp x$도 double-double로 만든 뒤 한 번만 지수를 취해요. $e^{\mp x}$와 스케일하지 않은 값을 따로 곱하지 않는 이유는, $x \approx 10^9$이면 두 인수가 모두 지수 범위를 넘어 포화된 지수끼리 상쇄되기 때문이에요. Debye 경로는 차수와 상관없이 원소당 약 0.15 µs이고(같은 차수 범위에서 잰 값), $\nu = 10^4$–$4 \times 10^4$에서 double-double 점화식의 값과 $7 \times 10^{-16}$ 안으로 맞아요.
@@ -730,11 +735,11 @@ $u_k$는 $u_0 = 1$, $u_k = \frac{(6k-5)(6k-3)(6k-1)}{(2k-1)\,216\,k}\,u_{k-1}$�
 $x < 0$의 위상은 $\zeta = \tfrac23 z^{3/2}$예요. $z = 10^4$이면 $\zeta \approx 6.7 \times 10^5$이고, $\zeta$를 float64로 반올림하면 위상이 $\zeta \cdot 2^{-53} \approx 7 \times 10^{-11}$ 라디안 틀려요. 진폭 대비 수만 ULP예요. 그래서 $\zeta$를 double-double로 만들어요.
 
 ```cpp
-// ops/airy.hpp: ζ = (2/3) z^(3/2) = (2/3) z √z, √z에 Newton 한 걸음
+// csrc/special/ops/airy.hpp: ζ = (2/3) z^(3/2) = (2/3) z √z, √z에 Newton 한 걸음
 inline dd::DD zeta_of(double z) {
     const double s = std::sqrt(z);
-    const dd::DD sq{s, std::fma(-s, s, z) / (2.0 * s)};   // √z를 hi + lo로
-    return sq * z * dd::kTwoThirds;                        // (2/3)를 double-double로
+    const dd::DD sq{s, std::fma(-s, s, z) / (2.0 * s)};  // sqrt(z), one Newton step
+    return sq * z * dd::kTwoThirds;
 }
 ```
 

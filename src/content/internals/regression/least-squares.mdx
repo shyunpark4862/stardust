@@ -142,6 +142,7 @@ $$
 둘째 항은 $\beta$와 상관없으므로 $R\beta_0 = c_1$을 풀면(`trtrs`) 최소예요.
 
 ```cpp
+    // csrc/regression/linear.cpp
     // initial solution
     if (kk > 0) {
         for (lint t = 0; t < m; ++t) cv[t] = s[t] * rd(d.y + idx[t] * d.ys);
@@ -154,6 +155,7 @@ $$
 `qt_apply`는 Householder QR이면 반사를 적용하고, CholeskyQR2면 얇은 Q로 곱해요([아래](#키가-큰-설계-choleskyqr2)). Householder의 $Q^{\mathsf T}b$는 LAPACK `dormqr` 대신 `apply_reflectors`로 직접 구해요. 벡터 하나에 Accelerate의 `dormqr`를 부르면 개선을 도는 적합 시간의 대부분을 그 호출이 차지해요. `apply_reflectors`는 반사 $H_j$ 하나에 벡터를 한 번 훑으며, $H_j$를 적용하는 갱신 $c \leftarrow c - \tau_j (v_j^{\mathsf T}c)\,v_j$와 다음 반사의 내적 $v_{j+1}^{\mathsf T}c$를 같은 루프에서 해요. 내적은 행 수 m으로만 정한 4,096행 덩어리로 나눠 덩어리 순서대로 더하고, 남은 행이 2¹⁵개 이상이면 덩어리를 스레드풀에 보내요.
 
 ```cpp
+    // csrc/regression/linear.cpp
     double dot = pass(-1, 0.0, order(0));
     for (lint q = 0; q < kk; ++q) {
         const lint j = order(q);
@@ -301,6 +303,7 @@ array([ 0.9948875828852495, 0.49584816210923005,                 nan,
 ### 빼고 다시 분해하기
 
 ```cpp
+        // csrc/regression/linear.cpp
         lint j = first_aliased(0);
         // blocked restarts: drop column j, factor the columns after it again
         while (j >= 0 && restarts < 8) {
@@ -324,6 +327,7 @@ array([ 0.9948875828852495, 0.49584816210923005,                 nan,
 겹친 열이 8개를 넘으면 블록으로 다시 하는 비용이 쌓이므로, 그다음부터는 `dqrdc2`처럼 한 열씩(`larfg`로 반사를 만들고 `larf`로 뒤 열에 적용) 처리해요. 남은 노름이 판정에 걸린 열은 반사를 만들지 않고 빼요. 이러면 겹친 열이 몇 개든 비용이 QR 한 번 꼴이에요. 열이 쓰인 행보다 많으면 앞 nobs개만 남아요.
 
 ```cpp
+        // csrc/regression/linear.cpp
         if (kk > m) {  // m kept columns span every row: the rest are aliased
             kk = m;
             dropped = true;
@@ -372,6 +376,7 @@ h = R^{-\mathsf T}g, \qquad d = Q^{\mathsf T}(W^{1/2}f), \qquad \delta\beta = R^
 $$
 
 ```cpp
+        // csrc/regression/linear.cpp
         // correction: h = R^-T g, d = Q^T (s f), dbeta = R^-1 (d_1 - h), dr~ = Q [h; d_2]
         std::copy(g, g + kk, h);
         linalg::lapack::trtrs('U', 'T', 'N', kk, 1, A, m, h, kk);
@@ -383,6 +388,7 @@ $$
 (`use_newton` 분기는 GLM의 뉴턴 걸음이 같은 루프를 쓰는 부분이에요. 선형 모형에서는 꺼져 있어요.)
 
 ```cpp
+        // csrc/regression/linear.cpp
         linalg::lapack::trtrs('U', 'N', 'N', kk, 1, A, m, work, kk);
         double dn = 0.0, bn = 0.0;
         for (lint jj = 0; jj < kk; ++jj) {
@@ -414,6 +420,7 @@ $$
 개선이 의미가 있으려면 $(f, g)$가 계산하는 해보다 정확해야 해요. $f = y - r - X\beta$는 거의 같은 수의 차라서 double로 구하면 그 자체가 반올림 잡음이에요. 그래서 두 덩어리 모두 Dot2(곱은 `fma`로 정확히, 합은 two-sum)로 더해요([회귀 영역의 구조](/internals/regression/overview/)).
 
 ```cpp
+                // csrc/regression/linear.cpp
                 for (lint t = t0; t < t1; ++t) {
                     double h1, e1, h2, e2;
                     two_sum(rd(d.y + idx[t] * d.ys), -r[t], h1, e1);
@@ -428,6 +435,7 @@ $$
 여기서 X는 꾸린 버퍼가 아니라 원래 입력을 읽어요. $\sqrt{w}$를 곱한 값의 반올림은 QR(보정을 푸는 전처리)에만 들어가고, 개선이 다가가는 고정점은 "받은 double 값 그대로의 $y$, $X$, $w$에 대한 정확한 해"예요. 처음 잔차도 같은 방식이에요. $r = y - X\beta_0$를 double-double로 구해 반올림한 값을 $r$로, 그 반올림의 나머지를 첫 $f$로 둬요.
 
 ```cpp
+            // csrc/regression/linear.cpp
             two_sum(yv, -P[t], hh, e);
             const double v = e - S[t];
             r[t] = hh + v;
@@ -472,12 +480,14 @@ $$
 $$
 
 ```cpp
+    // csrc/regression/linear.cpp
     const double kappa_u =
         kk > 0 ? kSafety * 0x1p-53 / linalg::lapack::trcon_1('U', kk, A, m) * (use_newton ? kappa_m : 1.0) : 0.0;
     for (int step = 0; step < pb.steps && kk > 0; ++step) {
 ```
 
 ```cpp
+        // csrc/regression/linear.cpp
         const bool converged = !(dn * kappa_u > 0x1p-54 * bn);  // NaN: stop (nothing to refine)
 ```
 
@@ -575,6 +585,7 @@ $\bar y$는 가중 평균(double-double)이고, GLS에서는 백색화한 1의 �
 $R^2 = 1 - \text{SSR}/\text{TSS} = \text{ESS}/\text{TSS}$예요. 수학적으로 같은 두 식이 수치적으로는 달라요. $R^2$가 0에 가까우면 SSR ≈ TSS라서 $1 - \text{SSR}/\text{TSS}$가 큰 상쇄를 겪어요. 반대로 $R^2$가 1에 가까우면 ESS ≈ TSS라서 $\text{ESS}/\text{TSS}$를 1에서 빼는 쪽(수정 $R^2$의 $1 - R^2$)이 상쇄를 겪어요. 그래서 두 제곱합 가운데 작은 쪽을 쓰는 식을 골라요.
 
 ```python
+    # src/stardust/regression/_linear.py
     @property
     def rsquared(self):
         def make():
@@ -640,6 +651,7 @@ $R^2 = 1 - \text{SSR}/\text{TSS} = \text{ESS}/\text{TSS}$예요. 수학적으로
 오차 공분산 $\Sigma$를 아는 GLS는 $\Sigma = LL^{\mathsf T}$(Cholesky)로 문제를 백색화해 OLS로 바꿔요. $L^{-1}y$를 $L^{-1}X$에 회귀하면 오차의 공분산이 $I$가 되기 때문이에요. 이때 절편 열도 $L^{-1}\mathbf 1$이 되므로 그 열을 커널의 `u`로 넘겨 절편 자리와 TSS의 중심화에 써요(`src/stardust/regression/_linear.py`).
 
 ```python
+    # src/stardust/regression/_linear.py
     try:
         L = _linalg.cholesky(S)
     except _linalg.LinAlgError as e:
@@ -681,6 +693,7 @@ $$
 $\beta_j$를 반올림하면 $x_t^{\mathsf T}\beta$가 대략 $u\sum_j\lvert x_{tj}\beta_j\rvert$만큼 움직이니, 괄호 안은 $y_t - x_t^{\mathsf T}\beta$의 항들의 크기예요. $k$개 곱의 합을 반올림하는 오차의 상한이 $k\,u$ 꼴이라 거기에 여유 16을 더했어요. 항마다 $\lvert x_{tj}\rvert\lvert\beta_j\rvert$를 더하는 것이 중요해요. $\lVert x_t\rVert_1\lVert\beta\rVert_\infty$처럼 열의 크기와 계수의 크기를 따로 재면, 시각이나 금액처럼 값이 큰 열과 그 열을 상쇄하는 큰 절편이 다른 열일 때 두 크기의 곱이 실제 항보다 그 비만큼($10^{12}$배쯤) 커서, 잡음이 있는 자료까지 완전 적합으로 보게 돼요. 비용은 같아요. [강건 회귀](/internals/regression/robust/)와 [분위 회귀](/internals/regression/quantile/)가 0 잔차로 보는 기준과 같은 식이라, 같은 자료가 어느 모형에서나 같은 판정을 받아요. 모든 행이 이 안이면 SSR을 0으로 두고, 강건 공분산의 점수에 쓸 내부 잔차도 0으로 둬요. 결과의 `resid` 필드는 계산한 값 그대로예요.
 
 ```cpp
+    // csrc/regression/linear.cpp
     if (kk > 0 && fin[fSsr].hi > 0.0) {
         const double c = static_cast<double>(kk + 16) * 0x1p-53;
         bool perfect = true;
@@ -706,7 +719,9 @@ $\beta_j$를 반올림하면 $x_t^{\mathsf T}\beta$가 대략 $u\sum_j\lvert x_{
 t만은 IEEE 연산에 맡기지 않아요. 계수는 정확도 약속 안의 값일 뿐이라, 참값이 0인 계수도 반올림 크기의 값으로 남을 수 있어요. 그것을 표준오차 0으로 나누면 ±inf와 p 0, 곧 가짜 유의성이 돼요. 그래서 결과 객체는 `ssr`이 0이고 `df_resid` > 0인 회귀(`_perfect`)의 t를 NaN으로 두고, p는 그 t에서 구하니 함께 NaN이에요(`src/stardust/regression/_linear.py`).
 
 ```python
+    # src/stardust/regression/_linear.py
     def _perfect(self):
+        # ...
         z = self._ssr_s() == 0.0
         df = self.df_resid
         if self._batch:
@@ -769,6 +784,7 @@ array([3.0, 0.0], dtype=float64)
 그래서 Python 층의 `_exact_constant`가 커널의 결과를 받아, 쓰인 행의 $y$가 정확히 한 값이면 정확한 해로 바꿔요. 계수는 $(y_0, 0, \dots, 0)$(겹친 열은 그대로 NaN), SSR·중심 TSS·중심 ESS는 0, 적합값은 모든 행에서 $y_0$, 잔차는 $y - y_0$(쓰인 행에서 0, 가중치 0인 행에서 그 차)이에요. 잔차가 0이면 강건 공분산의 점수 $u_t = \tilde e_t\,q_t$([추론과 진단](/internals/regression/inference/))도 모두 0이라 강건 공분산도 0으로 둬요. 다만 군집 공분산의 군집이 하나뿐이면 0으로 두지 않고 커널의 NaN을 그대로 둬요. 군집 하나의 공분산은 $G/(G - 1)$에서 이미 0/0이라, 잔차가 0이라는 사실이 그것을 정의된 값으로 만들지 않기 때문이에요. 판정은 쓰인 행에서 $y$의 최댓값과 최솟값이 같은지로 하고, NaN인 회귀와 절편 열이 빠진 회귀는 건드리지 않아요. 절편이 없으면 해가 자명하지 않으므로 이 처리를 하지 않아요.
 
 ```python
+    # src/stardust/regression/_linear.py
     if not intercept or y.shape[-1] == 0:
         return None
     robust = cov_type != "nonrobust"
@@ -806,6 +822,7 @@ array([3.0, 0.0], dtype=float64)
 GLS에서도 같은 해예요. 백색화한 문제의 절편 열은 $L^{-1}\mathbf 1$이고 반응은 $L^{-1}y = y_0 L^{-1}\mathbf 1$이라, $y_0$배의 절편 열이 반응을 그대로 만들어요. 다만 이 등식은 정확한 산술에서만 성립하고, 반올림한 $L^{-1}y$는 $L^{-1}\mathbf 1$의 정확히 $y_0$배가 아니에요. 그래서 판정은 백색화한 반응이 아니라 원래 $y$로 해요(척도를 바꿔 적합했으면 같은 $f_y$로 나눈 $y$로 해서, 정해 넣는 $y_0$가 커널의 단위와 맞아요). 원래 척도의 적합값과 잔차는 바뀐 계수로 다시 구하므로 정확히 $y_0$와 0이 되고, 백색화한 잔차 $L^{-1}(y - y_0\mathbf 1)$도 0으로 둬요.
 
 ```python
+    # src/stardust/regression/_linear.py
     # the whitened problem's constant: y itself (L^-1 y = y0 L^-1 1 holds exactly only in exact
     # arithmetic); the original-scale fit below then gives fitted y0, residuals y - y0 exactly
     yc = y
@@ -836,6 +853,7 @@ GLS에서도 같은 해예요. 백색화한 문제의 절편 열은 $L^{-1}\math
 이 표시는 백색화한 잔차를 만드는 `_wresid_raw`가 읽어요. `wresid`와 그것으로 만드는 진단(스튜던트화 잔차, Durbin–Watson, Jarque–Bera 등)이 모두 이 잔차를 쓰므로, 상수 $y$의 GLS에서는 모두 0에서 출발해요.
 
 ```python
+            # src/stardust/regression/_linear.py
             const = self._extra.get("const")
             if const is not None:
                 if self._batch:
@@ -869,6 +887,7 @@ GLS에서도 같은 해예요. 백색화한 문제의 절편 열은 $L^{-1}\math
 그래서 Python 층의 `_fit_kernel`이 커널에 주기 전에 회귀마다 $y$의 최대 절댓값을, 열마다 X의 최대 절댓값을 보고, $[2^{-256}, 2^{256}]$ 밖인 것만 2의 거듭제곱 $f$로 나눠 최댓값을 $[1/2, 1)$로 옮겨요(`math.frexp`의 지수).
 
 ```python
+# src/stardust/regression/_linear.py
 def _pow2(m):
     """Power-of-two factors for the maxima m (a float or an array): 2^e with m = f 2^e, f in
     [1/2, 1), where m is finite and outside [2^-256, 2^256]; 1 elsewhere (0, NaN, inf: the
@@ -927,9 +946,10 @@ array([4.3403891381277555,  2.444902493779801], dtype=float64)
 계수 자체가 double을 벗어나도 같아요. $y \cdot 10^{300}$을 $x \cdot 10^{-300}$에 회귀하면 기울기의 참값이 $6.4\times10^{599}$라, 데이터 단위의 `params`와 `bse`의 그 원소는 inf예요. 그 둘로 t를 만들면 inf/inf = NaN이 되므로, `tvalues`는 데이터 단위의 값을 거치지 않아요. `_unscale`이 계수를 돌려놓기 전에 적합의 단위의 계수 $\beta'$를 `beff_params_s`로 남겨 두고, t는 그것을 $\sqrt{\operatorname{diag}C'}$로 바로 나눠요. 척도를 바꾸지 않은 적합에는 그 자리가 없어서 `params / bse`예요(배율이 1이라 같은 값이에요). 이 메서드는 모든 회귀 결과가 함께 쓰는 기본 클래스 `_RegressionResult`에 있고, 위의 [완전 적합](#완전-적합의-판정) 표시(`_perfect`)도 여기서 읽어요.
 
 ```python
+    # src/stardust/regression/_linear.py
     @property
     def tvalues(self):
-
+        # ...
         def make():
             if "beff_params_s" not in self._extra:
                 t = self.params / self.bse
@@ -956,7 +976,9 @@ p는 이 t에서 구하므로 넘친 계수의 p도 맞아요.
 신뢰구간도 같은 이유로 적합의 단위에서 만들어요. 데이터 단위의 $\beta \pm q\cdot\text{bse}$로 구하면 계수와 `bse`가 함께 inf로 넘친 원소에서 $\infty - \infty$ = NaN이 나와요. 그래서 `_RegressionResult.conf_int`는 두 끝을 적합의 단위에서 $\beta'_j \mp q\sqrt{C'_{jj}}$로 구한 뒤 계수처럼 $f_y/f_{x_j}$를 곱해요. 적합의 단위에서는 두 끝이 유한하고, 배율을 곱할 때 끝마다 제 부호를 지킨 채 넘쳐요. 그래서 넘친 끝은 $+\infty$나 $-\infty$이고 아래로 넘친 끝은 0이며, NaN은 나오지 않아요. 넘치지 않은 원소는 데이터 단위로 구한 구간과 반올림 안에서 같아요. 척도를 바꾸지 않은 적합(`beff_params_s`가 없음)은 같은 메서드의 앞 갈래, $\beta \pm q\cdot\text{bse}$ 그대로예요([추론](/internals/regression/inference/)). `ols`·`wls`·`gls`와 강건 공분산, 배치가 모두 이 길을 따르고, `y`나 열의 척도를 옮겨 푸는 `glm`·`rlm`·`quantreg`도 `beff_params_s`와 `fx`를 같은 꼴로 남겨 이 길을 함께 써요.
 
 ```python
+    # src/stardust/regression/_linear.py
     def conf_int(self, *, alpha=0.05):
+        # ...
         alpha = _check_alpha(alpha, "conf_int")
         q = self._dist().iccdf(alpha / 2)
         if "beff_params_s" not in self._extra:

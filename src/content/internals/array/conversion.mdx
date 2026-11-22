@@ -57,7 +57,7 @@ constexpr DType promote(DType a, DType b) { return a > b ? a : b; }
 DType select(const LoopTable& table, DType d, std::span<const DType> inputs, const char* symbol) {
     for (int k = static_cast<int>(d); k < kNumArrayDTypes; ++k)
         if (table[k].loop) return static_cast<DType>(k);
-    no_loop(inputs, symbol);   // TypeError: "not supported for complex128 and complex128"
+    no_loop(inputs, symbol);
 }
 ```
 
@@ -96,12 +96,12 @@ struct Divide {
     static double f(double a, double b) { return a / b; }
     static c128 f(c128 a, c128 b) { return cdiv(a, b); }
 };
-
+// ...
 struct LeftShift {
     static constexpr const char* name = "bitwise_left_shift";
     static constexpr bool no_bool_inputs = true;
     template <typename T> static constexpr bool ok = is_int<T>;
-    static i64 f(i64 a, i64 b) { /* ... */ }
+    static i64 f(i64 a, i64 b) { return static_cast<u64>(b) >= 64 ? 0 : static_cast<i64>(static_cast<u64>(a) << b); }
 };
 ```
 
@@ -110,19 +110,23 @@ struct LeftShift {
 ```cpp
 // csrc/array/kernels/elementwise.hpp (발췌)
 struct LoopEntry {
-    Loop loop = nullptr;       // 이 dtype으로 계산하는 1차원 루프 (없으면 null)
-    DType out = DType::Bool;   // 그 루프가 쓰는 출력 dtype
+    Loop loop = nullptr;
+    DType out = DType::Bool;
 };
 using LoopTable = std::array<LoopEntry, kNumArrayDTypes>;
-
+// ...
 template <typename Op, typename T, int Arity>
 constexpr LoopEntry entry() {
-    if constexpr (!Op::template ok<T>) return {};
-    else if constexpr (Arity == 1) return {&unary_loop<Op, T>, dtype_of<unary_result_t<Op, T>>};
-    else return {&binary_loop<Op, T>, dtype_of<binary_result_t<Op, T>>};
+    if constexpr (!Op::template ok<T>) {
+        return {};
+    } else if constexpr (Arity == 1) {
+        return {&unary_loop<Op, T>, dtype_of<unary_result_t<Op, T>>};
+    } else {
+        return {&binary_loop<Op, T>, dtype_of<binary_result_t<Op, T>>};
+    }
 }
-
-template <typename Op> inline constexpr LoopTable binary_table = make_table<Op, 2>();
+// ...
+template <typename Op> inline constexpr LoopTable binary_table = detail::make_table<Op, 2>();
 ```
 
 - `if constexpr`로 루프가 없는 dtype은 인스턴스화 자체를 하지 않아요. `Divide::f`에 int64판이 없어도 컴파일 오류가 나지 않는 이유예요.
@@ -178,9 +182,15 @@ void validate(PyObject* o, size_t depth, const std::vector<std::int64_t>& shape,
     if (depth == shape.size()) {
         if (auto d = scalar_dtype(o)) return merge(*d);
         if (is_seq(o) || is_ndarray(o)) ragged(shape);
-        throw nb::type_error("cannot store an object of type '...' in an array ...");
+        throw nb::type_error(("cannot store an object of type '" + py_type_name(nb::handle(o)) +
+                              "' in an array (only bool, int, float and complex)")
+                                 .c_str());
     }
-    if (is_ndarray(o)) { /* 남은 shape과 비교 */ return merge(as_ndarray(o).dtype); }
+    if (is_ndarray(o)) {
+        const NDArray& a = as_ndarray(o);
+        // ...
+        return merge(a.dtype);
+    }
     if (!is_seq(o) || seq_len(o) != shape[depth]) ragged(shape);
     for (Py_ssize_t i = 0; i < shape[depth]; ++i) validate(seq_item(o, i), depth + 1, shape, kind);
 }
@@ -301,10 +311,18 @@ bool 버퍼에는 0과 1이 아닌 바이트가 들어 있을 수 있어요(예:
 그래서 bool 버퍼를 공유하기 전에 모든 바이트의 OR을 구해 1 이하인지 봐요.
 
 ```cpp
-// csrc/array/ops/asarray.cpp (발췌): 분기 없는 OR 리덕션
-std::uint8_t any = 0;
-for (std::int64_t i = 0, n = foreign.size(); i < n; ++i) any |= q[i];
-valid = any <= 1;
+    // csrc/array/ops/asarray.cpp (발췌): 분기 없는 OR 리덕션
+    if (target == DType::Bool && shareable && aligned && copy != true) {
+        std::uint8_t any = 0;
+        foreign.update_flags();
+        if (foreign.c_contiguous) {
+            const auto* q = static_cast<const std::uint8_t*>(view.buf);
+            for (std::int64_t i = 0, n = foreign.size(); i < n; ++i) any |= q[i];
+        } else {
+            // ...
+        }
+        valid = any <= 1;
+    }
 ```
 
 모든 바이트가 0 또는 1이면 OR도 0 또는 1이고, 2 이상의 바이트가 하나라도 있으면 OR에 1보다 높은 비트가 켜져요. 원소마다 비교하고 분기하는 대신 OR만 하므로 컴파일러가 16바이트씩 NEON으로 벡터화해요. 원소 100만 개에서 8.3µs로, 비교하고 분기하는 루프(235µs)보다 훨씬 빨라요. 0/1이 아닌 바이트가 있으면 0/1로 정규화해서 복사해요.
@@ -326,32 +344,35 @@ ValueError: asarray(): copy=False, but this bool buffer holds bytes other than 0
 공유할 수 없으면 새 배열에 복사하면서 변환해요. 원천 타입 13가지(`uint64` 제외)와 대상 dtype 4가지의 조합을 템플릿 람다 두 겹으로 만들어요.
 
 ```cpp
-// csrc/array/ops/asarray.cpp (발췌)
-NDArray dst = new_array_like(foreign, target);   // 원본의 메모리 축 순서를 따른다
-visit_src(src, [&]<typename S>(std::type_identity<S>) {
-    visit_dtype(target, [&]<typename T>(std::type_identity<T>) {
-        // 평탄한 경로: 버퍼가 결과와 같은 순서로 연속일 때 (바이트 순서는 상관없다)
-        if ((PyBuffer_IsContiguous(&view, 'C') && dst.c_contiguous) ||
-            (PyBuffer_IsContiguous(&view, 'F') && dst.f_contiguous)) {
-            const auto* sp = static_cast<const std::byte*>(view.buf);
-            T* dp = reinterpret_cast<T*>(dst.data);
-            const std::int64_t n = dst.size();
-            for_pieces(n, kParallelTask, n, [&](std::int64_t, std::int64_t i0, std::int64_t i1) {
-                if (swapped)
-                    for (std::int64_t i = i0; i < i1; ++i)
-                        dp[i] = cast_value<T>(widen(load_swapped<S>(sp + i * sizeof(S))));
-                else
-                    for (std::int64_t i = i0; i < i1; ++i)
-                        dp[i] = cast_value<T>(widen(load<S>(sp + i * sizeof(S))));
-            });
-            return;
-        }
-        // 일반 경로: 결과의 메모리 순서로 번호를 매겨 조각으로 잘라 풀에서 돈다 (아래 "일반 경로")
-        auto run = [&](auto&& load_one) { /* 조각마다 odometer + 안쪽 루프 */ };
-        if (swapped) run([](const std::byte* p) { return load_swapped<S>(p); });
-        else run([](const std::byte* p) { return load<S>(p); });
+    // csrc/array/ops/asarray.cpp (발췌)
+    NDArray dst = new_array_like(foreign, target);  // keeps the source's memory order
+    visit_src(src, [&]<typename S>(std::type_identity<S>) {
+        visit_dtype(target, [&]<typename T>(std::type_identity<T>) {
+            // ...
+            if ((PyBuffer_IsContiguous(&view, 'C') && dst.c_contiguous) ||
+                (PyBuffer_IsContiguous(&view, 'F') && dst.f_contiguous)) {
+                const auto* sp = static_cast<const std::byte*>(view.buf);
+                T* dp = reinterpret_cast<T*>(dst.data);
+                const std::int64_t n = dst.size();
+                constexpr std::int64_t w = static_cast<std::int64_t>(sizeof(S));
+                for_pieces(n, kParallelTask, n, [&](std::int64_t, std::int64_t i0, std::int64_t i1) {
+                    if (swapped) {  // byte-reversed (a big-endian buffer): the same flat loop
+                        for (std::int64_t i = i0; i < i1; ++i)
+                            dp[i] = cast_value<T>(widen(load_swapped<S>(sp + i * w)));
+                    } else {
+                        for (std::int64_t i = i0; i < i1; ++i) dp[i] = cast_value<T>(widen(load<S>(sp + i * w)));
+                    }
+                });
+                return;
+            }
+            // ...
+            auto run = [&](auto&& load_one) {
+                // ...
+            };
+            if (swapped) run([](const std::byte* p) { return load_swapped<S>(p); });
+            else run([](const std::byte* p) { return load<S>(p); });
+        });
     });
-});
 ```
 
 - 넓히기는 모두 정확해요. 32비트 이하의 정수는 int64에, float16과 float32의 모든 값은 float64에, complex64는 complex128에 정확히 들어가요. 그래서 이 변환은 `dtype=` 없이도 자동으로 해요.
@@ -378,49 +399,57 @@ $$
 **일반 경로: 결과의 메모리 순서로, 조각마다 odometer.** 연속이 아닌 버퍼(`np_arr[::2]`, `m[:, 1:]`, 전치한 뷰 등)는 원소 간격이 축마다 달라 평탄한 루프로 쓸 수 없어요. 이 경로는 먼저 축을 결과 배열의 stride 절댓값이 큰 순서로 정렬해요. 결과는 원본의 메모리 축 순서를 따라 만들어졌으므로(`new_array_like`), 이 순서는 원본의 메모리 순서이기도 해요. 그 순서로 원소에 $0, 1, \dots, n - 1$번까지 번호를 매기고, 번호 구간을 평탄한 경로와 똑같이 `for_pieces`로 잘라 풀에서 돌려요.
 
 ```cpp
-// csrc/array/ops/asarray.cpp, 일반 경로 (줄이고 다듬은 발췌)
-// 축을 결과의 stride 순서로 정렬한다 (결과 = 원본의 메모리 축 순서)
-int perm[kMaxNdim];
-std::iota(perm, perm + nd, 0);
-std::stable_sort(perm, perm + nd, [&](int x, int y) { return std::abs(dst.strides[x]) > std::abs(dst.strides[y]); });
-// shp: 정렬한 shape, ss / ds: 원본과 결과의 축별 바이트 stride (같은 순서), nd: 차원 수
-for_pieces(n, kParallelTask, n, [&](std::int64_t, std::int64_t i0, std::int64_t i1) {
-    // 1. 조각의 첫 번호 i0를 축별 인덱스로 풀고, 두 배열에서의 바이트 오프셋을 구한다
-    std::int64_t idx[kMaxNdim], rem = i0, so = 0, dof = 0;
-    for (int d = nd - 1; d >= 0; --d) {
-        idx[d] = rem % shp[d];
-        rem /= shp[d];
-        so += idx[d] * ss[d];
-        dof += idx[d] * ds[d];
-    }
-    const std::int64_t inner = shp[nd - 1], si = ss[nd - 1], di = ds[nd - 1];
-    const bool dense = si == sizeof(S) && di == sizeof(T);   // 안쪽 축이 양쪽에서 붙어 있나
-    for (std::int64_t i = i0; i < i1;) {
-        // 2. 안쪽 축을 따라 갈 수 있는 만큼: 붙어 있으면 인덱스 루프, 아니면 strided 루프
-        const std::int64_t len = std::min(inner - idx[nd - 1], i1 - i);
-        const std::byte* ps = sbase + so;
-        std::byte* pd = dbase + dof;
-        if (dense) {
-            T* dp = reinterpret_cast<T*>(pd);
-            for (std::int64_t k = 0; k < len; ++k) dp[k] = cast_value<T>(widen(load_one(ps + k * sizeof(S))));
-        } else {
-            for (std::int64_t k = 0; k < len; ++k, ps += si, pd += di)
-                store(pd, cast_value<T>(widen(load_one(ps))));
-        }
-        i += len, so += len * si, dof += len * di, idx[nd - 1] += len;
-        // 3. 축 끝에 닿았으면 자리올림
-        for (int d = nd - 1; d > 0 && idx[d] == shp[d]; --d) {
-            so += ss[d - 1] - shp[d] * ss[d];
-            dof += ds[d - 1] - shp[d] * ds[d];
-            idx[d] = 0;
-            ++idx[d - 1];
-        }
-    }
-});
+                // csrc/array/ops/asarray.cpp, 일반 경로 (발췌)
+                int perm[kMaxNdim];
+                for (int d = 0; d < nd; ++d) perm[d] = d;
+                std::stable_sort(perm, perm + nd, [&](int x, int y) {
+                    return std::abs(dst.strides[x]) > std::abs(dst.strides[y]);
+                });
+                std::int64_t shp_[kMaxNdim], ss_[kMaxNdim], ds_[kMaxNdim];
+                for (int d = 0; d < nd; ++d)
+                    shp_[d] = dst.shape[perm[d]], ss_[d] = foreign.strides[perm[d]], ds_[d] = dst.strides[perm[d]];
+                const std::int64_t* shp = shp_;
+                const std::int64_t* ss = ss_;
+                const std::int64_t* ds = ds_;
+                const auto* sbase = static_cast<const std::byte*>(view.buf);
+                std::byte* dbase = dst.data;
+                for_pieces(n, kParallelTask, n, [&](std::int64_t, std::int64_t i0, std::int64_t i1) {
+                    std::int64_t idx[kMaxNdim];
+                    std::int64_t rem = i0, so = 0, dof = 0;
+                    for (int d = nd - 1; d >= 0; --d) {
+                        idx[d] = rem % shp[d];
+                        rem /= shp[d];
+                        so += idx[d] * ss[d];
+                        dof += idx[d] * ds[d];
+                    }
+                    const std::int64_t inner = shp[nd - 1], si = ss[nd - 1], di = ds[nd - 1];
+                    const bool dense =
+                        si == static_cast<std::int64_t>(sizeof(S)) && di == static_cast<std::int64_t>(sizeof(T));
+                    for (std::int64_t i = i0; i < i1;) {
+                        const std::int64_t len = std::min(inner - idx[nd - 1], i1 - i);
+                        const std::byte* ps = sbase + so;
+                        std::byte* pd = dbase + dof;
+                        if (dense) {
+                            T* dp = reinterpret_cast<T*>(pd);
+                            for (std::int64_t k = 0; k < len; ++k)
+                                dp[k] = cast_value<T>(widen(load_one(ps + k * static_cast<std::int64_t>(sizeof(S)))));
+                        } else {
+                            for (std::int64_t k = 0; k < len; ++k, ps += si, pd += di)
+                                store(pd, cast_value<T>(widen(load_one(ps))));
+                        }
+                        i += len, so += len * si, dof += len * di, idx[nd - 1] += len;
+                        for (int d = nd - 1; d > 0 && idx[d] == shp[d]; --d) {  // carry
+                            so += ss[d - 1] - shp[d] * ss[d];
+                            dof += ds[d - 1] - shp[d] * ds[d];
+                            idx[d] = 0;
+                            ++idx[d - 1];
+                        }
+                    }
+                });
 ```
 
 - 결과의 메모리 순서로 걷는 이유: 논리적 C 순서(마지막 축이 가장 빨리 도는 순서)로 걸으면, 전치한 뷰에서는 논리적 마지막 축이 원본과 결과 양쪽에서 메모리상 가장 멀리 뛰는 축이에요. 안쪽 루프가 원소마다 수 KB씩 건너뛰며 읽고 써서 캐시 미스가 시간을 정해요(float32 `m.T` 1000×1000을 그렇게 걸으면 1스레드 870µs). 메모리 순서로 걸으면 안쪽 축이 원본에서 가장 촘촘한 축이 되어 122µs예요.
-- 안쪽 축이 붙어 있으면 인덱스 루프예요. `m[:, 1:1001]`처럼 행 안은 연속이고 행 사이만 떨어진 버퍼는 안쪽 축의 간격이 양쪽 모두 원소 크기와 같아요. 이때는 평탄한 경로처럼 `sp + k * sizeof(S)`로 읽고 `dp[k]`에 쓰는 루프라 컴파일러가 벡터화해요. 간격이 런타임 값인 strided 루프로 돌면 같은 버퍼가 260µs, 인덱스 루프로는 127µs예요.
+- 안쪽 축이 붙어 있으면 인덱스 루프예요. `m[:, 1:1001]`처럼 행 안은 연속이고 행 사이만 떨어진 버퍼는 안쪽 축의 간격이 양쪽 모두 원소 크기와 같아요. 이때는 평탄한 경로처럼 `ps + k * sizeof(S)`로 읽고 `dp[k]`에 쓰는 루프라 컴파일러가 벡터화해요. 간격이 런타임 값인 strided 루프로 돌면 같은 버퍼가 260µs, 인덱스 루프로는 127µs예요.
 - 조각의 시작점은 나눗셈으로 구해요. 번호 $i_0$의 축별 인덱스는 shape를 진법의 밑으로 삼은 자릿수예요. 마지막 축부터 `%`와 `/`로 풀면서, 인덱스에 그 축의 stride를 곱해 더하면 원본과 결과에서의 바이트 오프셋이 나와요. 조각마다 한 번, $O(\text{ndim})$이에요. 그래서 조각은 앞 조각이 어디서 끝났는지 몰라도 혼자 시작할 수 있고, 어느 스레드가 어느 조각을 맡아도 같은 원소를 같은 자리에 써요.
 - 안쪽 루프는 평탄해요. 안쪽 축을 따라 `len`개를 도는 동안 하는 일은 포인터 이동과 load, 변환, store뿐이에요. 축 인덱스를 올리고 끝을 검사하는 odometer의 일은 안쪽 축 한 줄에 한 번만 해요. 원소마다 odometer를 한 칸씩 돌리면(원소마다 자리올림 검사) int32 100만 개에 417µs가 들어요.
 - 자리올림: 축 $d$가 끝에 닿으면 인덱스를 0으로 되돌리고 축 $d - 1$을 한 칸 올려요. 오프셋은 `ss[d - 1] - shp[d] * ss[d]`만큼 옮겨요. 축 $d$를 처음으로 되감고(`- shp[d] * ss[d]`) 바깥 축을 한 칸 나아가는(`+ ss[d - 1]`) 것을 한 번에 더한 값이에요.
@@ -434,21 +463,30 @@ for_pieces(n, kParallelTask, n, [&](std::int64_t, std::int64_t i0, std::int64_t 
 big-endian 버퍼(`>f8`, `>i4` 등)의 원소는 바이트 순서가 이 기계(little-endian)와 반대예요. `load_swapped<S>`가 원소 하나를 읽으면서 뒤집어요.
 
 ```cpp
-// csrc/array/ops/asarray.cpp, load_swapped (줄인 발췌)
+// csrc/array/ops/asarray.cpp, load_swapped
 template <typename S>
 S load_swapped(const std::byte* p) {
-    if constexpr (/* S가 complex가 아니고 크기가 2, 4, 8바이트 */) {
-        U u;                                   // 같은 크기의 부호 없는 정수 (uint16/32/64)
+    constexpr bool cplx = std::is_same_v<S, std::complex<float>> || std::is_same_v<S, std::complex<double>>;
+    if constexpr (!cplx && (sizeof(S) == 2 || sizeof(S) == 4 || sizeof(S) == 8)) {  // one part: a byte swap instruction
+        using U = std::conditional_t<
+            sizeof(S) == 2, std::uint16_t, std::conditional_t<sizeof(S) == 4, std::uint32_t, std::uint64_t>>;
+        U u;
         std::memcpy(&u, p, sizeof u);
-        u = __builtin_bswap64(u);              // 크기에 따라 bswap16 / bswap32 / bswap64
+        if constexpr (sizeof(S) == 2) u = __builtin_bswap16(u);
+        else if constexpr (sizeof(S) == 4) u = __builtin_bswap32(u);
+        else u = __builtin_bswap64(u);
         S v;
         std::memcpy(&v, &u, sizeof v);
         return v;
-    } else if constexpr (/* S가 complex */) {
-        using P = typename S::value_type;      // float 또는 double
+    } else if constexpr (cplx) {  // two parts, each swapped on its own
+        using P = typename S::value_type;
         return S(load_swapped<P>(p), load_swapped<P>(p + sizeof(P)));
     }
-    /* 1바이트 타입: 뒤집을 것이 없다 */
+    constexpr std::size_t part = cplx ? sizeof(S) / 2 : sizeof(S);
+    std::byte tmp[sizeof(S)];
+    for (std::size_t k = 0; k < sizeof(S); k += part)
+        for (std::size_t b = 0; b < part; ++b) tmp[k + b] = p[k + part - 1 - b];
+    return load<S>(tmp);
 }
 ```
 
@@ -542,11 +580,11 @@ To cast_value(From v) {
         if constexpr (is_complex_v<From>) return v.real() != 0 || v.imag() != 0;
         else return v != From(0);
     } else if constexpr (is_complex_v<To>) {
-        if constexpr (is_complex_v<From>) return To(double(v.real()), double(v.imag()));
+        if constexpr (is_complex_v<From>) return To(static_cast<double>(v.real()), static_cast<double>(v.imag()));
         else return To(static_cast<double>(v), 0.0);
     } else if constexpr (is_complex_v<From>) {
-        // 표를 채우느라 인스턴스화는 되지만 실행되지 않는다:
-        // check_castable이 원소를 보기 전에 complex -> 실수를 막는다.
+        // Instantiated by generic dtype x dtype loops but never reached:
+        // check_castable rejects complex -> real before any element is touched.
         check_castable(DType::Complex128, dtype_of<To>);
         __builtin_unreachable();
     } else if constexpr (std::is_same_v<To, std::int64_t> && std::is_floating_point_v<From>) {
@@ -571,24 +609,26 @@ To cast_value(From v) {
 // csrc/array/kernels/cast.hpp (발췌)
 template <typename From, typename To>
 void cast_loop(std::byte* const* args, std::int64_t n, const std::int64_t* strides, void*) {
-    if (strides[0] == sizeof(From) && strides[1] == sizeof(To)) {   // 둘 다 연속
+    if (strides[0] == sizeof(From) && strides[1] == sizeof(To)) {  // contiguous
         if constexpr (std::is_same_v<From, To>) {
-            std::memcpy(args[1], args[0], n * sizeof(To));            // 같은 타입: memcpy
+            // ...
+            std::memcpy(args[1], args[0], static_cast<size_t>(n) * sizeof(To));
             return;
         }
         const From* src = reinterpret_cast<const From*>(args[0]);
         To* dst = reinterpret_cast<To*>(args[1]);
         std::int64_t i = 0;
         if constexpr (std::is_same_v<From, double> && std::is_same_v<To, std::int64_t>) {
-            for (; i + 4 <= n; i += 4) {                              // float -> int64: 벡터 FCVTZS
-                vst1q_s64(dst + i,     vcvtq_s64_f64(vld1q_f64(src + i)));
+            // ...
+            for (; i + 4 <= n; i += 4) {
+                vst1q_s64(dst + i, vcvtq_s64_f64(vld1q_f64(src + i)));
                 vst1q_s64(dst + i + 2, vcvtq_s64_f64(vld1q_f64(src + i + 2)));
             }
         }
-        for (; i < n; ++i) dst[i] = cast_value<To>(src[i]);          // 나머지, 그리고 다른 쌍
+        for (; i < n; ++i) dst[i] = cast_value<To>(src[i]);
         return;
     }
-    // strided: 바이트 포인터를 stride만큼 밀며 원소마다 cast_value
+    // ...
 }
 ```
 
@@ -640,6 +680,7 @@ ARM에는 이 규칙을 그대로 수행하는 명령이 있어요. AArch64의 `
 ```cpp
 // csrc/base/saturate.hpp
 #include <arm_neon.h>
+// ...
 inline std::int64_t saturate_to_int64(double x) { return vcvtd_s64_f64(x); }
 ```
 
@@ -663,8 +704,11 @@ inline std::int64_t saturate_to_int64(double x) { return vcvtd_s64_f64(x); }
 ```cpp
 // csrc/array/ops/copy.cpp
 void check_assignable(DType from, DType to) {
-    if (from > to) throw nb::type_error("cannot implicitly convert ... (that would lose information); "
-                                        "convert explicitly with astype");
+    if (from > to) {
+        std::string msg = std::string("cannot implicitly convert ") + dtype_name(from) + " to " + dtype_name(to) +
+                          " (that would lose information); convert explicitly with astype";
+        throw nb::type_error(msg.c_str());
+    }
 }
 ```
 
@@ -708,10 +752,9 @@ ufunc에서는 루프 dtype이 아니라 승격한 피연산자 dtype으로 판�
 ```cpp
 // csrc/array/ops/ufunc.cpp (발췌)
 void check_int_scalars(std::span<const nb::handle> objs, DType promoted) {
-    if (promoted > DType::Int64) return;              // float/complex 옆의 int는 float로 읽는다
+    if (promoted > DType::Int64) return;
     for (nb::handle o : objs)
-        if (!is_ndarray(o) && scalar_dtype(o) == DType::Int64)
-            (void)scalar_from_python<std::int64_t>(o, DType::Int64);   // 범위 밖이면 OverflowError
+        if (!is_ndarray(o) && scalar_dtype(o) == DType::Int64) (void)scalar_from_python<std::int64_t>(o, DType::Int64);
 }
 ```
 
@@ -734,10 +777,10 @@ std::int64_t py_to_int64(PyObject* p) {
 ```cpp
 // csrc/array/convert.cpp (발췌)
 double py_to_double(PyObject* p) {
-    double v = PyFloat_AsDouble(p);  // int에도 동작
+    double v = PyFloat_AsDouble(p);  // works for int too
     if (v == -1.0 && PyErr_Occurred()) {
         if (!PyErr_ExceptionMatches(PyExc_OverflowError)) throw nb::python_error();
-        PyErr_Clear();  // double 범위 밖의 int: 함수 이름이 붙도록 우리 예외로
+        PyErr_Clear();  // an int beyond the double range: ours, so that the function's name is added
         throw std::overflow_error("Python int too large to convert to float64");
     }
     return v;

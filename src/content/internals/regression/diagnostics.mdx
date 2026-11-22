@@ -418,8 +418,7 @@ $\text{df}_{\text{aux}}$는 보조 회귀의 `df_model`이고, 보조 회귀 자
     A = _sd.concat(cols, axis=-1)
     raw = _k.fit("white_test", e * e, A, wa, None, True, tol, 0, _REFINE_STEPS)
     a = OLSResult(raw, param_names=None, intercept=True, cov_type="nonrobust", batch=_batch_shape(raw))
-    # no degree of freedom left in the auxiliary fit (more auxiliary columns than rows): it
-    # passes through the data, R^2 = 1 says nothing, and lm is 0/0 like its F
+    # ...
     lm = _nan_where_no_df(a.nobs * a.rsquared, a.df_resid)
 ```
 

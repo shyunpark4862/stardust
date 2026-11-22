@@ -61,6 +61,7 @@ stardust는 함수마다 정확도를 약속해요. 비트로 약속하는 것�
 공통 도구 `tools/arbref.py`가 정밀도를 올리는 방식을 정해요.
 
 ```python
+# tools/arbref.py (발췌)
 TARGET_BITS = 110  # hi + lo is exact to rounding (2^-106 relative) with a margin
 START_PREC = 128
 MAX_PREC = 1 << 13  # 8192 bits, ~2500 digits: past it a point is dropped (and recorded as dropped)
@@ -95,6 +96,7 @@ Arb의 함수는 자기 오차를 스스로 반지름에 넣어요. 도구가 �
 정규분포의 역함수 `ndtri`의 입력 집합이 전형적이에요(`tools/special_ref.py`).
 
 ```python
+# tools/special_ref.py (발췌)
 def _ndtri_inputs(rng):
     tail = np.exp(-25.0)  # where AS241 switches its tail rational (s = 5)
     p = np.concatenate(
@@ -163,6 +165,7 @@ double은 수직선 위의 띄엄띄엄한 점이에요. ULP(unit in the last pl
 칸 수는 비트로 바로 셀 수 있어요. 양의 double은 비트를 64비트 정수로 읽으면 크기 순서대로 1씩 늘어나요. 음수는 부호 비트를 떼고 음의 정수로 바꾸면, $-\infty$부터 $+\infty$까지 모든 double이 한 줄의 정수에 놓여요($+0$과 $-0$은 둘 다 0이에요). 두 정수의 차가 그 사이에 있는 double의 수예요.
 
 ```python
+# bench/accuracy/common.py (발췌)
 def _ordered(a):
     """float64 values as int64 keys in their order: -0 and +0 both 0, the next double above
     and below one key apart."""
@@ -205,6 +208,7 @@ $$
 진동 함수(`j0`, `y1`, `jv`, 음의 $x$의 `airy` 등)와 복소 오차함수(`erf`의 복소판, `wofz` 등)는 영점에서 상대오차를 정의할 수 없어서, 영점 근처의 계약이 $\lvert \text{오차}\rvert \le 10^{-14} M$이에요($M$은 크기의 포락선). 이것도 상대오차의 한계에 $\max(1, M/\lvert f\rvert)$를 곱한 꼴이라 같은 열로 보여요. 참값 파일의 `scale`이 이 배율이고, 배율이 1보다 큰 점이 있는 함수에만 열이 생겨요(`bench/accuracy/sources.py`).
 
 ```python
+        # bench/accuracy/sources.py (발췌)
         if (s > 1).any():  # every function with a scale above 1 somewhere: ULP / scale, the contract's unit
             entry["ulp_scale_max"] = _finite_max(u / s)
             entry["ulp_scale_p999"] = _p999(u / s)
@@ -272,6 +276,7 @@ $$
 special의 판정 함수 몸통은 짧아요(`tests/special/test_reference.py`의 `contract_error`).
 
 ```python
+    # tests/special/test_reference.py (발췌)
     rel = refdata.rel_error(got, hi, lo)
     sub = np.isfinite(hi) & (np.abs(hi) < 2.0**-1022)
     with np.errstate(invalid="ignore", over="ignore"):
@@ -353,6 +358,7 @@ stats의 보장 영역은 입력 집합의 영역을 다시 매개변수 범위�
 `compare`는 실행의 모든 칸을 기준선의 같은 칸과 견줘요(`bench/accuracy/__main__.py`).
 
 ```python
+            # bench/accuracy/__main__.py (발췌)
             for m in MEASURES:
                 new, old = r.get(m), rb.get(m)
                 if old is None or new == old or (new != new and old != old):  # NaN = NaN

@@ -151,23 +151,24 @@ $k_l$이 블록 크기 이상으로 넓으면 블록 경로를 써요. `nb`열�
 </Fig>
 
 ```cpp
-// csrc/linalg/ops/special.cpp, solve_banded의 배치 몸체 (kl, ku가 (1, 1)이 아닐 때, 줄인 발췌)
-const lint ldab = 2 * kl + ku + 1;                    // 위 kl개 행은 채움 자리
-T* w = s.get<T>(ldab * n);
-std::fill(w, w + ldab * n, T(0));
-for (lint j = 0; j < n; ++j) {
-    // ab의 j열에서 행렬 안에 해당하는 행 범위 [r0, r1]만 읽고 검사해요
-    const lint r0 = std::max<lint>(0, ku - j), r1 = std::min<lint>(kl + ku, ku + n - 1 - j);
-    if (!pack(a.dtype(), base + r0 * rs + j * cs, r1 - r0 + 1, 1, rs, 0,
-              w + j * ldab + kl + r0, ldab, true))
-        return kNonFinite;
-}
-const bool b_ok = pack(y.dtype(), y.data() + off[1], n, r.k, r.rs, r.cs, x, n, true);
-if (n > 0) {
-    lint* ipiv = s.get_ints(static_cast<std::size_t>(n));
-    if (lapack::gbsv(n, kl, ku, r.k, w, ldab, ipiv, x, n) > 0) return kSingular;
-}
-return b_ok ? 0 : kNonFiniteB;
+                // csrc/linalg/ops/special.cpp
+                const lint ldab = 2 * kl + ku + 1;
+                T* w = s.get<T>(static_cast<std::size_t>(ldab * n));
+                std::fill(w, w + ldab * n, T(0));
+                for (lint j = 0; j < n; ++j) {
+                    const lint r0 = std::max<lint>(0, ku - j), r1 = std::min<lint>(kl + ku, ku + n - 1 - j);
+                    if (!pack(
+                            a.dtype(), base + r0 * rs + j * cs, r1 - r0 + 1, 1, rs, 0, w + j * ldab + kl + r0, ldab,
+                            true
+                        ))
+                        return kNonFinite;
+                }
+                const bool b_ok = pack(y.dtype(), y.data() + off[1], n, r.k, r.rs, r.cs, x, n, true);
+                if (n > 0) {
+                    lint* ipiv = s.get_ints(static_cast<std::size_t>(n));
+                    if (lapack::gbsv(n, kl, ku, r.k, w, ldab, ipiv, x, n) > 0) return kSingular;
+                }
+                return b_ok ? 0 : kNonFiniteB;
 ```
 
 - **작업 배열을 0으로 채워요.** 채움 자리와 모서리를 포함해 전부 0으로 둔 뒤 행렬 안의 칸만 덮어써요. `gbtrf`가 채움 자리를 스스로 0으로 지우긴 하지만, 모서리에 사용자의 NaN이 그대로 들어가지 않도록 처음부터 깨끗한 배열을 넘겨요. 입력 배열 `ab`는 바꾸지 않아요.
@@ -199,7 +200,7 @@ return b_ok ? 0 : kNonFiniteB;
 `gbsv`에는 호출마다 약 1µs의 고정비가 있어요. 행이 몇 개뿐인 띠 행렬에서는 이 고정비가 계산보다 커요. 그래서 $n \le 8$(`kBandDenseMax`)이고 대역폭이 (1, 1)이 아니면, 띠 밖을 0으로 채운 $n \times n$ 행렬을 만들어 LU(`lu_in_place`)와 `getrs`로 풀어요.
 
 ```cpp
-// csrc/linalg/ops/special.cpp, solve_banded의 배치 몸체 (발췌)
+// csrc/linalg/ops/special.cpp
 if (dense) {
     // The n x n matrix itself, zero outside the band: a[i, j] = ab[ku + i - j, j]. Only
     // the band's elements inside the matrix are read and checked, as for gbsv.
@@ -393,28 +394,45 @@ scipy와는 계산 방식이 하나 더 달라요. scipy는 $b^\mathsf{H}$를 Sc
 ### stardust의 `solve_sylvester`
 
 ```cpp
-// csrc/linalg/ops/special.cpp, solve_sylvester의 배치 몸체 (줄인 발췌)
-T *R = rs_, *S = rs_ + mm, *U = uw, *W = uw + mm;      // scratch 슬롯 0: R, S / 슬롯 1: U, W
-if (!pack(a.dtype(), ..., R, m, true)) return kNonFinite;               // a의 NaN
-const bool b_finite = pack(bb.dtype(), ..., S, n, true);
-if (b_finite && m > 0 && n > 0 && std::min(m, n) >= kSchurPairMin && detail::begin_parallel()) {
-    Scratch s2;                                          // b의 분해는 두 번째 scratch에서
-    detail::run_tasks(2, [&](std::int64_t t) {
-        if (t == 0) info_a = lapack::gees(m, R, m, U, m, s);
-        else        info_b = lapack::gees(n, S, n, W, n, s2);
-    });
-} else { /* 차례로: a의 분해, 성공하고 b가 유한하면 b의 분해 */ }
-if (info_a > 0) return kNoConvergenceEig;               // 인자 순서대로 보고
-if (!b_finite)  return kNonFiniteB;
-if (info_b > 0) return kNoConvergenceEig;
-if (!pack(c.dtype(), ..., x, m, true)) return kNonFinite2;
-lapack::gemm('C', 'N', m, n, m, U, m, x, m, tmp, m);    // Uᴴ c
-lapack::gemm('N', 'N', m, n, n, tmp, m, W, n, x, m);    // F = Uᴴ c W
-double scale = 1.0;
-if (lapack::trsyl3(m, n, R, m, S, n, x, m, scale, s) == 1) return kCloseEigenvalues;
-if (scale != 1.0) for (lint k = 0; k < m * n; ++k) x[k] /= scale;
-lapack::gemm('N', 'N', m, n, m, U, m, x, m, tmp, m);    // U Y
-lapack::gemm('N', 'C', m, n, n, tmp, m, W, n, x, m);    // x = U Y Wᴴ
+                // csrc/linalg/ops/special.cpp
+                const std::size_t mm = pad2(m * m), nn = pad2(n * n);  // 16-byte boundaries (aligned16)
+                T* rs_ = s.get<T>(mm + nn, 0);  // R, then S
+                T* uw = s.get<T>(mm + nn, 1);   // U, then W
+                T *R = rs_, *S = rs_ + mm, *U = uw, *W = uw + mm;
+                LapackSlot<T> xs(res + i * m * n, m * n, s, Scratch::kAlign0);
+                T* x = xs.get();
+                if (!pack(a.dtype(), a.data() + off[0], m, m, a.stride(-2), a.stride(-1), R, m, true))
+                    return kNonFinite;
+                const bool b_finite =
+                    pack(bb.dtype(), bb.data() + off[1], n, n, bb.stride(-2), bb.stride(-1), S, n, true);
+                // ...
+                lint info_a = 0, info_b = 0;
+                if (b_finite && m > 0 && n > 0 && std::min(m, n) >= kSchurPairMin && detail::begin_parallel()) {
+                    Scratch s2;
+                    detail::run_tasks(2, [&](std::int64_t t) {
+                        if (t == 0) info_a = lapack::gees(m, R, m, U, m, s);
+                        else info_b = lapack::gees(n, S, n, W, n, s2);
+                    });
+                } else {
+                    if (m > 0) info_a = lapack::gees(m, R, m, U, m, s);
+                    if (info_a == 0 && b_finite && n > 0) info_b = lapack::gees(n, S, n, W, n, s);
+                }
+                // reported in argument order, as before: a, a's Schur, b, b's Schur
+                if (info_a > 0) return kNoConvergenceEig;
+                if (!b_finite) return kNonFiniteB;
+                if (info_b > 0) return kNoConvergenceEig;
+                if (!pack(c.dtype(), c.data() + off[2], m, n, c.stride(-2), c.stride(-1), x, m, true))
+                    return kNonFinite2;
+                if (m == 0 || n == 0) return 0;
+                T* tmp = s.get<T>(static_cast<std::size_t>(m * n), 2);
+                lapack::gemm('C', 'N', m, n, m, U, m, x, m, tmp, m);  // U^H c
+                lapack::gemm('N', 'N', m, n, n, tmp, m, W, n, x, m);  // F = U^H c W
+                double scale = 1.0;
+                if (lapack::trsyl3(m, n, R, m, S, n, x, m, scale, s) == 1) return kCloseEigenvalues;
+                if (scale != 1.0)  // trsyl3 solved R Y + Y S = scale F (scale < 1 avoids overflow)
+                    for (lint k = 0; k < m * n; ++k) x[k] /= scale;
+                lapack::gemm('N', 'N', m, n, m, U, m, x, m, tmp, m);  // U Y
+                lapack::gemm('N', 'C', m, n, n, tmp, m, W, n, x, m);  // x = U Y W^H
 ```
 
 - **두 Schur 분해를 동시에 돌려요.** Accelerate의 `gees`는 코어 하나만 쓰고, `a`와 `b`의 분해는 서로 독립이에요. $\min(m, n) \ge 8$(`kSchurPairMin`)이면 풀의 태스크 두 개로 동시에 돌리고, `b`의 분해는 두 번째 scratch를 써요. 두 분해가 받는 배열과 작업 배열 크기가 차례로 돌 때와 같아서 결과 비트도 같아요($m, n = 3$–200, 실수·complex에서 확인하는 테스트가 있어요). 켜고 끈 측정은 $\min(m, n)$이 6 미만에서 0.76–0.96배, 6에서 1.05배, 8–24에서 1.1–1.3배, 32 이상에서 1.4–1.7배였어요. 그래서 문턱이 8이에요. 이 덕분에 300², 1000²는 1.6배, 32²는 1.35배 빨라요.

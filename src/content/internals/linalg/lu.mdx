@@ -566,6 +566,24 @@ $$
 ```cpp
 // csrc/linalg/ops/lu.cpp
 template <class T>
+void sign_logabs(const T* lu, const lint* ipiv, lint n, bool singular, T& sign, double& logabs) {
+    if (singular) {
+        sign = T(0);
+        logabs = -std::numeric_limits<double>::infinity();
+        return;
+    }
+    sign = T(1);
+    logabs = 0.0;
+    for (lint i = 0; i < n; ++i) {
+        const T u = lu[i * n + i];
+        const double au = std::abs(u);
+        logabs += std::log(au);
+        sign *= u / au;
+        if (ipiv[i] != i + 1) sign = -sign;  // ipiv is 1-based: row i was swapped with ipiv[i]
+    }
+}
+// ...
+template <class T>
 T det_of(const T* lu, const lint* ipiv, lint n, bool singular) {
     if (singular) return T(0);
     T d = T(1);
@@ -593,24 +611,6 @@ T det_of(const T* lu, const lint* ipiv, lint n, bool singular) {
     const int k = static_cast<int>(std::clamp<std::int64_t>(e, -4000, 4000));  // past either end: 0 or inf
     if constexpr (std::is_same_v<T, cplx>) return cplx(std::ldexp(d.real(), k), std::ldexp(d.imag(), k));
     else return std::ldexp(d, k);
-}
-
-template <class T>
-void sign_logabs(const T* lu, const lint* ipiv, lint n, bool singular, T& sign, double& logabs) {
-    if (singular) {
-        sign = T(0);
-        logabs = -std::numeric_limits<double>::infinity();
-        return;
-    }
-    sign = T(1);
-    logabs = 0.0;
-    for (lint i = 0; i < n; ++i) {
-        const T u = lu[i * n + i];
-        const double au = std::abs(u);
-        logabs += std::log(au);
-        sign *= u / au;
-        if (ipiv[i] != i + 1) sign = -sign;  // ipiv is 1-based: row i was swapped with ipiv[i]
-    }
 }
 ```
 
@@ -652,8 +652,7 @@ numpy 2.5.4의 `det`은 다르게 계산해요. `slogdet`을 구한 뒤 $\text{s
                 lint* ipiv = s.get_ints(static_cast<std::size_t>(kk));
                 if (!pack(x.dtype(), x.data() + off[0], m, n, x.stride(-2), x.stride(-1), a, m, true))
                     return kNonFinite;
-                // A singular matrix still has an LU factorization; U just has a zero
-                // on its diagonal (docs/design/linalg.md §10.2), so info > 0 is not an error here.
+                // ...
                 if (m > 0 && n > 0) lapack::lu_in_place(m, n, a, m, ipiv);
                 T* li = L + i * m * kk;
                 T* ui = U + i * kk * n;

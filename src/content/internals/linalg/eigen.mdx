@@ -373,15 +373,13 @@ numpy 2.5.4의 `np.linalg.eigh`도 `syevd`/`heevd`를 아래 삼각으로 불러
         // csrc/linalg/ops/spectral.cpp
         const Failure f =
             run_batch(b, cost(kEigh, double(n) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
-                // With vectors, `a` is packed straight into the eigenvector slot; LAPACK
-                // overwrites it with the eigenvectors (docs/design/linalg.md §5.2).
+                // ...
                 LapackSlot<T> vs(
                     vectors ? vo.as<T>() + i * n * n : s.get<T>(static_cast<std::size_t>(n * n)), n * n, s,
                     Scratch::kAlign0
                 );
                 T* av = vs.get();
-                // Lower triangles only (docs/api/linalg.md §1.4), checked as read
-                // (docs/design/linalg.md §5.4).
+                // ...
                 if (!pack_triangle(
                         a.dtype(), a.data() + off[0], n, a.stride(-2), a.stride(-1), av, n, true, true, true
                     ))
@@ -605,24 +603,24 @@ $$
 `eig`와 `eigvals`는 `eig_impl` 하나가 맡고, 행렬 하나의 계산은 `eig_one<T>`예요. 실수 입력이면 `dgeev`, 복소 입력이면 `zgeev`를 불러요.
 
 ```cpp
-// ops/nonsym.cpp의 eig_one, 줄임 (w, v는 정렬 전의 복소 결과)
+// csrc/linalg/ops/nonsym.cpp
 template <class T>
 int eig_one(const Input& x, std::int64_t off, lint n, bool vectors, Scratch& s, cplx* w, cplx* v) {
-    T* a = s.get<T>(n * n);
+    T* a = s.get<T>(static_cast<std::size_t>(n * n));
     if (!pack(x.dtype(), x.data() + off, n, n, x.stride(-2), x.stride(-1), a, n, true)) return kNonFinite;
     if (n == 0) return 0;
     const char jobvr = vectors ? 'V' : 'N';
     if constexpr (std::is_same_v<T, cplx>) {
-        // zgeev는 복소 고유값 w와 복소 고유벡터를 바로 줘요.
-        cplx dummy{};                                  // 벡터를 구하지 않을 때의 빈 자리
+        cplx dummy{};
         if (lapack::geev(jobvr, n, a, n, w, vectors ? v : &dummy, vectors ? n : 1, s) > 0) return kNoConvergenceEig;
     } else {
         double* wr = s.get<double>(2 * pad2(n), 1);
-        double* wi = wr + pad2(n);                     // wi도 16바이트 경계에서 시작
+        double* wi = wr + pad2(n);  // 16-byte aligned too (common.hpp)
         double dummy = 0;
-        double* vr = vectors ? s.get<double>(n * n, 2) : &dummy;
+        double* vr = vectors ? s.get<double>(static_cast<std::size_t>(n * n), 2) : &dummy;
         if (lapack::geev(jobvr, n, a, n, wr, wi, vr, vectors ? n : 1, s) > 0) return kNoConvergenceEig;
-        // 켤레쌍(wi > 0이 먼저)의 벡터는 실수 열 두 개: 실수부가 j열, 허수부가 j+1열
+        // A real matrix's complex eigenvalues come in conjugate pairs (wi > 0 first);
+        // the pair's vectors are stored as two real columns: re in j, im in j+1.
         for (lint j = 0; j < n; ++j) {
             w[j] = cplx(wr[j], wi[j]);
             if (!vectors) continue;
@@ -630,8 +628,8 @@ int eig_one(const Input& x, std::int64_t off, lint n, bool vectors, Scratch& s, 
                 for (lint r = 0; r < n; ++r) v[j * n + r] = cplx(vr[j * n + r], 0.0);
             } else {
                 for (lint r = 0; r < n; ++r) {
-                    v[j * n + r]       = cplx(vr[j * n + r],  vr[(j + 1) * n + r]);   // x_j + i x_{j+1}
-                    v[(j + 1) * n + r] = cplx(vr[j * n + r], -vr[(j + 1) * n + r]);   // 그 켤레
+                    v[j * n + r] = cplx(vr[j * n + r], vr[(j + 1) * n + r]);
+                    v[(j + 1) * n + r] = cplx(vr[j * n + r], -vr[(j + 1) * n + r]);
                 }
                 w[j + 1] = cplx(wr[j + 1], wi[j + 1]);
                 ++j;
@@ -651,18 +649,19 @@ int eig_one(const Input& x, std::int64_t off, lint n, bool vectors, Scratch& s, 
 LAPACK이 돌려주는 고유값의 순서는 $T$의 대각선 순서, 곧 반복이 고유값을 떼어 낸 순서예요. 수학적 의미가 없고, 같은 행렬도 균형 맞추기나 블록 크기가 바뀌면 순서가 달라질 수 있어요. 그래서 `eig`와 `eigvals`는 고유값을 **(실수부, 허수부)의 사전순으로 안정 정렬**하고, 고유벡터 열도 같은 순서로 옮겨요.
 
 ```cpp
-// ops/nonsym.cpp의 eig_impl, 배치 몸체의 뒷부분
-lint* idx = s.get_ints(n);                       // 행렬마다 vector를 할당하지 않아요
-std::iota(idx, idx + n, lint(0));
-std::stable_sort(idx, idx + n, [&](lint p, lint q) {
-    return w[p].real() < w[q].real() || (w[p].real() == w[q].real() && w[p].imag() < w[q].imag());
-});
-cplx* wout = wo.as<cplx>() + i * n;
-for (lint j = 0; j < n; ++j) wout[j] = w[idx[j]];
-if (vectors) {
-    cplx* vout = vo.as<cplx>() + i * n * n;
-    for (lint j = 0; j < n; ++j) std::copy(v + idx[j] * n, v + idx[j] * n + n, vout + j * n);
-}
+        // csrc/linalg/ops/nonsym.cpp
+        lint* idx =
+            s.get_ints(static_cast<std::size_t>(n));  // scratch, not a vector per matrix (docs/design/linalg.md §9)
+        std::iota(idx, idx + n, lint(0));
+        std::stable_sort(idx, idx + n, [&](lint p, lint q) {
+            return w[p].real() < w[q].real() || (w[p].real() == w[q].real() && w[p].imag() < w[q].imag());
+        });
+        cplx* wout = wo.as<cplx>() + i * n;
+        for (lint j = 0; j < n; ++j) wout[j] = w[idx[j]];
+        if (vectors) {
+            cplx* vout = vo.as<cplx>() + i * n * n;
+            for (lint j = 0; j < n; ++j) std::copy(v + idx[j] * n, v + idx[j] * n + n, vout + j * n);
+        }
 ```
 
 - **왜 이 순서인가.** 배열 영역에서 복소수에 순서를 매기는 곳(`unique_*`)이 쓰는 (실수부, 허수부) 사전순과 같아요. 배열의 `sort`는 복소수를 받지 않으므로, 라이브러리 안에서 복소수의 순서는 이 하나뿐이에요. numpy의 `np.sort`가 복소수를 놓는 순서와도 같아요. 고유값이 모두 실수이면 그냥 오름차순이라 `eigvalsh`와 같은 순서예요. 절댓값 순서는 같은 크기의 값(켤레쌍은 언제나 같아요)을 가를 규칙이 따로 필요하고, 이 순서와도 어긋나서 쓰지 않아요.
@@ -695,13 +694,14 @@ True
 stardust는 `sort = 'N'`으로만 불러요. 고유값을 원하는 순서로 대각선에 늘어놓으려면(`trsen`) 이웃한 블록을 직교 변환으로 맞바꾸는 계산이 더 들고 $T$와 $Z$의 비트가 바뀌어요. scipy 1.18.1의 `scipy.linalg.schur`도 기본이 정렬 없음이라, 이렇게 하면 결과가 scipy와 **비트까지 같아요**(테스트 `test_schur`가 고정해요). 그 대가로 `schur`의 $T$ 대각선 순서는 `eig`의 정렬된 고유값 순서와 다를 수 있어요.
 
 ```cpp
-// ops/nonsym.cpp의 schur, 배치 몸체
-LapackSlot<T> ts(to.as<T>() + i * n * n, n * n, s, Scratch::kAlign0);
-LapackSlot<T> zs(zo.as<T>() + i * n * n, n * n, s, Scratch::kAlign1);
-T* t = ts.get();              // 입력을 T의 결과 자리에 패킹해요. gees가 그 자리를 T로 덮어써요.
-if (!pack(x.dtype(), x.data() + off[0], n, n, x.stride(-2), x.stride(-1), t, n, true)) return kNonFinite;
-if (n == 0) return 0;
-return lapack::gees(n, t, n, zs.get(), n, s) > 0 ? kNoConvergenceEig : 0;
+                // csrc/linalg/ops/nonsym.cpp
+                LapackSlot<T> ts(to.as<T>() + i * n * n, n * n, s, Scratch::kAlign0);
+                LapackSlot<T> zs(zo.as<T>() + i * n * n, n * n, s, Scratch::kAlign1);
+                T* t = ts.get();  // packed into T's slot; gees overwrites it with T
+                if (!pack(x.dtype(), x.data() + off[0], n, n, x.stride(-2), x.stride(-1), t, n, true))
+                    return kNonFinite;
+                if (n == 0) return 0;
+                return lapack::gees(n, t, n, zs.get(), n, s) > 0 ? kNoConvergenceEig : 0;
 ```
 
 입력을 $T$의 결과 자리에 패킹하고 $Z$도 결과 자리에 바로 받으니, 입력 복사 한 번 말고는 옮기는 것이 없어요. `gees`가 함께 돌려주는 고유값 `wr`/`wi`는 쓰지 않지만 LAPACK이 요구하므로 scratch에 자리를 둬요. 이 배열도 `pad2` 간격으로 잘라 16바이트 경계에 놓아요(정렬하지 않은 주소를 넘기면 $n = 3, 5, 7, 9$의 무작위 행렬 120개 가운데 18–30개의 실수 `schur`가 배치 위치에 따라 달라져요). 정렬 함수 포인터 자리에는 `nullptr`, `bwork`에도 `nullptr`을 넘겨요. `sort = 'N'`이면 둘 다 읽히지 않아요.
@@ -713,21 +713,22 @@ return lapack::gees(n, t, n, zs.get(), n, s) > 0 ? kNoConvergenceEig : 0;
 `hessenberg`는 `gehrd`로 축약하고 `orghr`(복소수면 `unghr`)로 $Q$를 만들어요. 반복이 없는, 정해진 걸음 수의 계산이에요. 비용은 $\tfrac{10}{3}n^3 + \tfrac{4}{3}n^3$ flop이에요.
 
 ```cpp
-// ops/nonsym.cpp의 hessenberg, 배치 몸체
-T* a = s.get<T>(n * n);
-if (!pack(x.dtype(), x.data() + off[0], n, n, x.stride(-2), x.stride(-1), a, n, true)) return kNonFinite;
-if (n == 0) return 0;
-T* tau = s.get<T>(std::max<lint>(n - 1, 1), 1);
-lapack::gehrd(n, a, n, tau, s);                  // ilo = 1, ihi = n: 균형 맞추기 없음
-// H: 부대각과 그 위. 그 아래는 반사 벡터라 0으로 바꿔 내보내요.
-T* h = ho.as<T>() + i * n * n;
-for (lint j = 0; j < n; ++j)
-    for (lint r = 0; r < n; ++r) h[j * n + r] = r <= j + 1 ? a[j * n + r] : T(0);
-// Q: 반사를 Q의 결과 자리에 복사하고, orghr가 그 자리에서 Q로 바꿔요.
-LapackSlot<T> qs(qo.as<T>() + i * n * n, n * n, s, Scratch::kAlign0);
-T* q = qs.get();
-std::copy(a, a + n * n, q);
-lapack::orghr(n, q, n, tau, s);
+                // csrc/linalg/ops/nonsym.cpp
+                T* a = s.get<T>(static_cast<std::size_t>(n * n));
+                if (!pack(x.dtype(), x.data() + off[0], n, n, x.stride(-2), x.stride(-1), a, n, true))
+                    return kNonFinite;
+                if (n == 0) return 0;
+                T* tau = s.get<T>(static_cast<std::size_t>(std::max<lint>(n - 1, 1)), 1);
+                lapack::gehrd(n, a, n, tau, s);
+                // H: on and above the subdiagonal; below it are the reflectors.
+                T* h = ho.as<T>() + i * n * n;
+                for (lint j = 0; j < n; ++j)
+                    for (lint r = 0; r < n; ++r) h[j * n + r] = r <= j + 1 ? a[j * n + r] : T(0);
+                // Q: the reflectors go to Q's slot, and orghr turns them into Q there.
+                LapackSlot<T> qs(qo.as<T>() + i * n * n, n * n, s, Scratch::kAlign0);
+                T* q = qs.get();
+                std::copy(a, a + n * n, q);
+                lapack::orghr(n, q, n, tau, s);
 ```
 
 - `gehrd`는 결과를 겹쳐 놓아요. 부대각과 그 위가 $H$, 부대각 아래가 반사 벡터예요. 그래서 $H$는 부대각 아래를 0으로 채우며 옮기고, 반사 벡터가 든 사본 전체를 $Q$의 자리에 복사한 뒤 `orghr`가 그 자리에서 $Q$를 만들어요. `orghr`는 부대각 아래의 반사 벡터만 읽으므로, 위쪽에 $H$의 값이 남아 있어도 상관없어요.

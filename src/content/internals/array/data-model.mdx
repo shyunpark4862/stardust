@@ -52,9 +52,11 @@ $$
 // csrc/base/dtype.hpp (발췌)
 enum class DType : std::uint8_t { Bool, Int64, Float64, Complex128, String };
 
-inline constexpr int kNumArrayDTypes = 4;   // 배열은 앞의 넷만 쓴다
+// The array area's dtypes: DType values [0, kNumArrayDTypes).
+inline constexpr int kNumArrayDTypes = 4;
+// ...
 constexpr bool is_array_dtype(DType d) { return static_cast<int>(d) < kNumArrayDTypes; }
-
+// ...
 constexpr DType promote(DType a, DType b) { return a > b ? a : b; }
 ```
 
@@ -101,11 +103,11 @@ template <typename T> inline constexpr DType dtype_of = [] {
 template <typename F>
 decltype(auto) visit_dtype(DType d, F&& f) {
     switch (d) {
-        case DType::Bool:       return f(std::type_identity<bool>{});
-        case DType::Int64:      return f(std::type_identity<std::int64_t>{});
-        case DType::Float64:    return f(std::type_identity<double>{});
+        case DType::Bool: return f(std::type_identity<bool>{});
+        case DType::Int64: return f(std::type_identity<std::int64_t>{});
+        case DType::Float64: return f(std::type_identity<double>{});
         case DType::Complex128: return f(std::type_identity<complex128>{});
-        case DType::String:     break;  // 배열 dtype이 아니다
+        case DType::String: break;  // not an array dtype
     }
     __builtin_unreachable();
 }
@@ -114,10 +116,11 @@ decltype(auto) visit_dtype(DType d, F&& f) {
 부르는 쪽은 C++20의 **템플릿 람다**(`[&]<typename T>(...)`)를 넘겨요. 예를 들어 원소 하나를 Python 객체로 꺼내는 `load_python`(`csrc/array/convert.cpp`)은 이렇게 생겼어요.
 
 ```cpp
+// csrc/array/convert.cpp (발췌)
 nb::object load_python(DType d, const std::byte* p) {
     return visit_dtype(d, [&]<typename T>(std::type_identity<T>) {
         T v;
-        std::memcpy(&v, p, sizeof(T));   // 정렬되지 않은 주소에서도 안전하게 읽는다
+        std::memcpy(&v, p, sizeof(T));
         return to_python(v);
     });
 }
@@ -142,22 +145,34 @@ Python의 `sd.bool`, `sd.int64`, `sd.float64`, `sd.complex128`, `sd.string`은 C
 // csrc/base/buffer.hpp (발췌)
 class Buffer {
 public:
-    static constexpr std::size_t kAlignment = 128;   // Apple M4의 캐시 라인
-    static constexpr std::size_t kInline = 256;      // 이하이면 객체 안에 둔다
+    // One cache line on Apple M4. Aligning the start of every allocation to a
+    // cache line means a SIMD loop never straddles two lines at its first load.
+    static constexpr std::size_t kAlignment = 128;
 
+    // Fresh memory owned by this Buffer. `zeroed` uses calloc: for large
+    // sizes the OS hands out pages that are zero-filled lazily on first
+    // touch, so zeros((10000, 10000)) costs almost nothing until written.
     static std::shared_ptr<Buffer> allocate(std::int64_t nbytes, bool zeroed);
-    static std::shared_ptr<Buffer> adopt(const Py_buffer& view);
 
+    // Memory owned by another Python object, obtained through the buffer
+    // protocol. Takes ownership of `view` and releases it on destruction.
+    static std::shared_ptr<Buffer> adopt(const Py_buffer& view);
+    // ...
     std::byte* data() const { return data_; }
+    // Bytes of data (what was allocated or adopted). Column slices check their
+    // ranges against it.
     std::int64_t size() const { return size_; }
     // ...
+    static constexpr std::size_t kInline = 256;
+// ...
 private:
-    void* raw_ = nullptr;      // malloc/calloc이 돌려준 포인터 (자기 메모리일 때만)
+    void* raw_ = nullptr;  // pointer returned by malloc/calloc (own memory only)
     std::byte* data_ = nullptr;
     std::int64_t size_ = 0;
     bool external_ = false;
-    Py_buffer view_{};         // 외부 메모리일 때 쥐고 있는 버퍼 프로토콜 뷰
-    alignas(16) std::byte inline_[kInline + kAlignment - 16];  // 안의 첫 128바이트 경계부터 kInline바이트
+    Py_buffer view_{};
+    // ...
+    alignas(16) std::byte inline_[kInline + kAlignment - 16];
 };
 ```
 
@@ -179,16 +194,18 @@ arm64 macOS(CPython 헤더 기준)에서 각 부분의 크기는 이래요.
 ```cpp
 // csrc/base/buffer.cpp (발췌)
 std::shared_ptr<Buffer> Buffer::allocate(std::int64_t nbytes, bool zeroed) {
-    auto buf = make_buffer();  // Buffer와 참조 카운트를 한 번에 (스레드별 목록에서)
+    auto buf = make_buffer();  // the Buffer and its reference count, together
     buf->size_ = nbytes;
-    if (static_cast<std::size_t>(nbytes) <= kInline) {  // 작은 배열: 객체 안의 첫 128바이트 경계부터
+    if (static_cast<std::size_t>(nbytes) <= kInline) {
         const auto addr = reinterpret_cast<std::uintptr_t>(buf->inline_);
         buf->data_ = buf->inline_ + (((addr + kAlignment - 1) & ~(std::uintptr_t{kAlignment} - 1)) - addr);
         if (zeroed) std::memset(buf->data_, 0, static_cast<std::size_t>(nbytes));
         return buf;
     }
-    // 물리 메모리보다 큰 요청은 채울 수 없어요: MemoryError (TooLarge는 std::bad_alloc)
+    // ...
     if (static_cast<std::uint64_t>(nbytes) > physical_memory()) throw TooLarge(nbytes);
+    // Over-allocate by one alignment unit and round the start up, so the
+    // calloc fast path above still applies (aligned_alloc has no calloc twin).
     const std::size_t request = static_cast<std::size_t>(nbytes) + kAlignment;
     void* raw = zeroed ? std::calloc(1, request) : std::malloc(request);
     if (raw == nullptr) throw std::bad_alloc();
@@ -247,7 +264,7 @@ $$
 std::shared_ptr<Buffer> Buffer::adopt(const Py_buffer& view) {
     auto buf = make_buffer();
     buf->external_ = true;
-    buf->view_ = view;                        // 소유권을 넘겨받는다
+    buf->view_ = view;
     buf->data_ = static_cast<std::byte*>(view.buf);
     buf->size_ = view.len;
     return buf;
@@ -255,11 +272,13 @@ std::shared_ptr<Buffer> Buffer::adopt(const Py_buffer& view) {
 
 Buffer::~Buffer() {
     if (external_) {
-        PyGILState_STATE gil = PyGILState_Ensure();   // GIL이 없는 곳에서 불릴 수 있다
+        // The last owner may be dropped where the GIL is not held (later,
+        // worker threads); releasing a Py_buffer touches Python objects.
+        PyGILState_STATE gil = PyGILState_Ensure();
         PyBuffer_Release(&view_);
         PyGILState_Release(gil);
     } else {
-        std::free(raw_);   // 인라인 데이터면 raw_가 null이라 아무 일도 하지 않는다
+        std::free(raw_);  // null for inline data: a no-op
     }
 }
 ```
@@ -289,19 +308,25 @@ Buffer::~Buffer() {
 ```cpp
 // csrc/array/ndarray.hpp (발췌)
 inline constexpr int kMaxNdim = 32;
+
+// Stored inline (no heap allocation per array). Only the first ndim entries
+// are meaningful.
 using Dims = std::array<std::int64_t, kMaxNdim>;
 
 struct NDArray {
-    std::shared_ptr<Buffer> buffer;   // 메모리 소유
-    std::byte* data = nullptr;        // 첫 원소의 주소 (Buffer 안 어딘가)
+    std::shared_ptr<Buffer> buffer;
+    std::byte* data = nullptr;
     DType dtype = DType::Float64;
     int ndim = 0;
-    Dims shape;                       // [0, ndim)만 의미가 있다
-    Dims strides;                     // 바이트 단위
+    Dims shape;    // only [0, ndim) is meaningful, and only that part is copied
+    Dims strides;
     bool c_contiguous = true;
     bool f_contiguous = true;
     bool writeable = true;
-    nb::object base;                  // Python의 .base: 메모리를 실제로 소유한 객체
+    // What Python sees as `.base`: the object that owns the memory, or a
+    // null handle when this array allocated `buffer` itself.
+    nb::object base;
+// ...
 };
 ```
 
@@ -382,14 +407,14 @@ shape와 strides를 `std::vector`가 아니라 객체 안의 `std::array<int64_t
 - 복사와 이동은 앞의 ndim칸만 옮겨요. 고정 배열 전체(512바이트)를 `memmove`하면 작은 연산의 비용이 눈에 띄게 늘어요. 그래서 복사 생성자와 대입 연산자를 직접 써서 `std::copy(o.shape.begin(), o.shape.begin() + o.ndim, ...)`로 살아 있는 칸만 옮겨요. 같은 이유로 `Dims`를 0으로 채우지 않아요. `ndim` 뒤의 칸은 쓰레기 값이고, 읽지 않아요.
 
 ```cpp
-// csrc/array/ndarray.hpp (발췌): 기본 복사였다면 560바이트 전체를 옮긴다
-NDArray& operator=(const NDArray& o) {
-    if (this == &o) return *this;
-    buffer = o.buffer;      // 참조 카운트 +1 (원자적)
-    base = o.base;          // Python 참조 +1
-    copy_meta(o);           // data, dtype, ndim, shape[0, ndim), strides[0, ndim), 플래그
-    return *this;
-}
+    // csrc/array/ndarray.hpp (발췌): 기본 복사였다면 560바이트 전체를 옮긴다
+    NDArray& operator=(const NDArray& o) {
+        if (this == &o) return *this;
+        buffer = o.buffer;
+        base = o.base;
+        copy_meta(o);
+        return *this;
+    }
 ```
 
 - 대가는 객체 크기예요. `NDArray`는 560바이트이고, 이를 담은 Python 객체는 객체 머리를 더해 512바이트를 넘어요. CPython의 소형 객체 할당기(pymalloc)는 512바이트 이하의 요청만 맡으므로, 배열 객체를 새로 할당하면 시스템 `malloc`으로 가요. macOS의 `free`는 돌려받은 메모리를 0으로 채워요. 그래서 ndarray 객체는 nanobind의 인스턴스 풀(`nb::pooled(256)`)에서 다시 써요. 해제된 객체 256개까지를 모아 두었다가 다음 결과가 쓰므로, 연달아 부르는 작은 호출은 `malloc`과 `free`를 거의 부르지 않아요.
@@ -402,9 +427,9 @@ NDArray& operator=(const NDArray& o) {
 
 ```cpp
 // csrc/array/ndarray.cpp (발췌)
-std::int64_t checked_size(std::span<const std::int64_t> shape, DType dtype) {
-    if (shape.empty()) throw nb::value_error("0-dimensional arrays are not supported ...");
-    if (shape.size() > kMaxNdim) throw nb::value_error("arrays may have at most 32 dimensions");
+std::int64_t checked_count(std::span<const std::int64_t> shape, DType dtype) {
+    if (shape.size() > static_cast<size_t>(kMaxNdim))
+        throw nb::value_error(("arrays may have at most " + std::to_string(kMaxNdim) + " dimensions").c_str());
     const std::int64_t limit = std::numeric_limits<std::int64_t>::max() / itemsize(dtype);
     std::int64_t n = 1;
     for (std::int64_t extent : shape) {
@@ -414,11 +439,16 @@ std::int64_t checked_size(std::span<const std::int64_t> shape, DType dtype) {
     }
     return n;
 }
+// ...
+std::int64_t checked_size(std::span<const std::int64_t> shape, DType dtype) {
+    if (shape.empty()) throw nb::value_error("0-dimensional arrays are not supported (stardust has no 0-d arrays)");
+    return checked_count(shape, dtype);
+}
 ```
 
 - 원소 수 $n = \prod_d \text{shape}[d]$에 itemsize를 곱한 바이트 수가 `int64`에 들어가야 해요. 한계를 $L = \lfloor (2^{63}-1) / \text{itemsize} \rfloor$로 두고, 축 길이 $e$를 곱하기 전에 $n > \lfloor L / e \rfloor$인지 보면 $n \cdot e \le L$이 보장돼요. 곱한 뒤에 넘쳤는지 보면 이미 부호 있는 정수 오버플로가 일어난 뒤라, C++에서는 정의되지 않은 동작이에요. 그래서 나눗셈으로 미리 막아요.
 - 축 하나라도 0이면 원소 수는 0이에요. `extent != 0` 조건 덕분에 0으로 나누지 않아요.
-- 0차원(`shape.empty()`)도 여기 한곳에서 막아요. 아래의 "0차원 배열이 없는 이유" 절에서 다시 다뤄요.
+- 검사의 본체는 `checked_count`이고, `checked_size`는 그 앞에서 0차원(`shape.empty()`)을 막아요. 배열을 만드는 길은 모두 `checked_size`를 지나므로 0차원은 이 한곳에서 막혀요. 아래의 "0차원 배열이 없는 이유" 절에서 다시 다뤄요.
 
 ### 연속성 플래그와 relaxed strides
 
@@ -427,15 +457,30 @@ std::int64_t checked_size(std::span<const std::int64_t> shape, DType dtype) {
 ```cpp
 // csrc/array/ndarray.cpp (발췌)
 void NDArray::update_flags() {
-    if (size() == 0) { c_contiguous = f_contiguous = true; return; }
+    if (size() == 0) {
+        c_contiguous = f_contiguous = true;
+        return;
+    }
     std::int64_t expect = itemsize();
     c_contiguous = true;
-    for (int d = ndim - 1; d >= 0; --d) {      // 안쪽 축부터
-        if (shape[d] == 1) continue;           // 길이 1인 축은 stride를 보지 않는다
-        if (strides[d] != expect) { c_contiguous = false; break; }
+    for (int d = ndim - 1; d >= 0; --d) {
+        if (shape[d] == 1) continue;
+        if (strides[d] != expect) {
+            c_contiguous = false;
+            break;
+        }
         expect *= shape[d];
     }
-    // f_contiguous: 같은 일을 d = 0부터
+    expect = itemsize();
+    f_contiguous = true;
+    for (int d = 0; d < ndim; ++d) {
+        if (shape[d] == 1) continue;
+        if (strides[d] != expect) {
+            f_contiguous = false;
+            break;
+        }
+        expect *= shape[d];
+    }
 }
 ```
 
@@ -496,13 +541,14 @@ stride가 0인 축(브로드캐스트, `newaxis`)은 레이아웃에 대해 알�
 // csrc/bind/pyutil.cpp
 NDArray view_of(nb::handle x) {
     const NDArray& a = as_ndarray(x);
-    NDArray v = NDArray::meta_of(a);  // data, dtype, shape, strides, 플래그만 복사
+    NDArray v = NDArray::meta_of(a);
     if (a.base.is_valid()) {
-        // x가 뷰이거나 외부 메모리: 같은 주인, 같은 Buffer(외부 메모리를 붙잡는 Py_buffer일 수 있어요)
+        // x is a view or holds foreign memory: the same owner, and the same Buffer,
+        // which may be the export (Py_buffer) that pins the foreign memory.
         v.base = a.base;
         v.buffer = a.buffer;
     } else {
-        // x가 메모리를 직접 가져요: x에 대한 참조가 x의 Buffer를 살려 두니 뷰는 Buffer를 갖지 않아요
+        // ...
         v.base = nb::borrow(x);
     }
     return v;
@@ -634,12 +680,13 @@ ByteRange byte_range(const NDArray& a) {
     }
     return {lo, hi + static_cast<std::uintptr_t>(a.itemsize())};
 }
-
+// ...
 bool may_share_memory(const NDArray& a, const NDArray& b) {
     if (a.size() == 0 || b.size() == 0) return false;
     const ByteRange ra = byte_range(a), rb = byte_range(b);
-    if (!(ra.lo < rb.hi && rb.lo < ra.hi)) return false;      // 1단계: 범위가 떨어져 있다
-    std::int64_t g = 0;                                         // 2단계: 엇갈린 뷰인가
+    if (!(ra.lo < rb.hi && rb.lo < ra.hi)) return false;
+    // ...
+    std::int64_t g = 0;
     for (int d = 0; d < a.ndim; ++d)
         if (a.shape[d] > 1) g = std::gcd(g, a.strides[d]);
     for (int d = 0; d < b.ndim; ++d)
@@ -722,13 +769,16 @@ dtype이 다르면 같은 주소에서 시작해도 `same_view`가 아니고, �
 ```cpp
 // csrc/array/ops/copy.cpp의 assign (발췌)
 void assign(NDArray& dst, const NDArray& src) {
-    if (same_view(dst, src)) return;             // x[i] = x[i]: 쓸 것이 없다
-    if (may_share_memory(dst, src)) {            // 예: a[1:] = a[:-1]
+    // x[i] op= y arrives here as x[i] = (the view x[i], already updated in place):
+    // nothing to copy (it was a full pass over the data, 119 us for 10^6).
+    if (same_view(dst, src)) return;
+    if (may_share_memory(dst, src)) {
+        // e.g. a[1:] = a[:-1]: walking forward would read values already overwritten.
         NDArray tmp = cast_copy(src, src.dtype);
-        run_cast(tmp, dst, IterMode::Full);
+        run_cast(tmp, dst);
         return;
     }
-    run_cast(src, dst, IterMode::Full);
+    run_cast(src, dst);
 }
 ```
 
@@ -739,17 +789,18 @@ void assign(NDArray& dst, const NDArray& src) {
 겹치는 입력만 새 배열로 복사한 뒤(`cast_copy(in, in.dtype)`, 원본의 메모리 축 순서를 따르는 새 배열), 그 복사본을 입력으로 연산해요. 시간과 메모리 모두 그 입력의 크기에 비례하는 $O(n)$이 더 들어요.
 
 ```cpp
-// csrc/array/ops/ufunc.cpp의 launch (발췌): out=가 결과 dtype과 같을 때
-std::array<bool, kMaxInputs> overlaps{};
-bool any_overlap = false;
-for (size_t k = 0; k < nin; ++k) {
-    overlaps[k] = may_share_memory(ins[k], out) && !same_view(ins[k], out);
-    any_overlap |= overlaps[k];
-}
-if (any_overlap && overlap_in_chunks(inputs, in_types, overlaps, out, loop)) return nb::borrow(out_obj);
-for (size_t k = 0; k < nin; ++k)
-    if (overlaps[k]) ins[k] = cast_copy(ins[k], ins[k].dtype);
-run_loop(inputs, in_types, std::span(&out, 1), out.shape_span(), loop, weight);
+            // csrc/array/ops/ufunc.cpp의 launch (발췌): out=가 결과 dtype과 같을 때
+            std::array<bool, kMaxInputs> overlaps{};
+            bool any_overlap = false;
+            for (size_t k = 0; k < nin; ++k) {
+                overlaps[k] = may_share_memory(ins[k], out) && !same_view(ins[k], out);
+                any_overlap |= overlaps[k];
+            }
+            if (any_overlap && overlap_in_chunks(inputs, in_types, overlaps, out, loop, weight))
+                return nb::borrow(out_obj);
+            for (size_t k = 0; k < nin; ++k)
+                if (overlaps[k]) ins[k] = cast_copy(ins[k], ins[k].dtype);
+            run_loop(inputs, in_types, std::span(&out, 1), out.shape_span(), loop, weight);
 ```
 
 1차원 원소별 연산은 조각으로 나눠 돌아서 전체 복사를 피해요(`overlap_in_chunks`). `x[1:] += x[:-1]`처럼 모든 피연산자가 길이와 stride가 같은 1차원이고, 겹치는 입력이 out과 같은 dtype이고, 원소가 2048개 이상이면 1024개씩 조각으로 나눠요. 조각마다 겹치는 입력의 그 조각만 스택 버퍼(조각당 최대 16KB)에 복사한 뒤 계산해요. 결과가 맞으려면 조각을 도는 순서를 잘 골라야 해요.

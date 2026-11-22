@@ -106,13 +106,14 @@ inline DD neg_log_density(DD z, double sigma) {
     return (z * z) * 0.5 + c;
 }
 
-static double pdf(double x, double mu, double sigma) {
-    using namespace normal_detail;
-    if (std::isinf(x)) return 0.0;
-    const DD z = num::standardize(x, mu, sigma);
-    if (std::fabs(z.hi) > kHugeZ) return 0.0;
-    return num::exp_dd(-neg_log_density(z, sigma));
-}
+    // ...
+    static double pdf(double x, double mu, double sigma) {
+        using namespace normal_detail;
+        if (std::isinf(x)) return 0.0;
+        const DD z = num::standardize(x, mu, sigma);
+        if (std::fabs(z.hi) > kHugeZ) return 0.0;
+        return num::exp_dd(-neg_log_density(z, sigma));
+    }
 ```
 
 `exp_dd`는 $e^{hi + lo} = e^{hi}(1 + lo)$로 반올림 한 번에 지수화해요(`numeric.hpp`). $lo$가 $hi$의 ULP 아래라 둘째 항 $lo^2/2$는 무시해도 돼요. `Memo`는 스레드마다 마지막 매개변수에 대한 상수를 기억하는 칸이에요. 매개변수가 스칼라인 흔한 호출에서 원소마다 같은 `log`를 되풀이하지 않게 해요. 같은 매개변수면 기억하든 안 하든 같은 비트가 나와요.
@@ -174,17 +175,17 @@ log 꼬리는 $\log\Phi$의 도함수 $\varphi/\Phi$를 곱해요. 깊은 꼬리
 베이불은 한 단계가 더 있어요. $t = e^{E}$를 `exp(E.hi)`로 만들면 그 반올림(0.5 ULP)이 $e^{-t}$에서 다시 $t$배가 돼요. 그래서 $t > 4$이면 반올림의 잔차 $E - \log(\exp(E_{hi}))$를 double-double로 구해 $t$의 낮은 부분으로 접어 넣어요.
 
 ```cpp
-// csrc/stats/dist/weibull.hpp
-static T t_of(double x, double c, double s) {
-    const num::DD e = e_of(weibull_detail::log_ratio(x, s), c);
-    const double th = std::exp(e.hi);
-    if (th == 0.0 || std::isinf(th)) return {num::DD{th, 0.0}, e};
-    if (th > 4.0) {
-        const num::DD r = e - num::log_dd(th);
-        return {num::DD{th, th * (r.hi + r.lo)}, e};
+    // csrc/stats/dist/weibull.hpp
+    static T t_of(double x, double c, double s) {
+        const num::DD e = e_of(weibull_detail::log_ratio(x, s), c);
+        const double th = std::exp(e.hi);
+        if (th == 0.0 || std::isinf(th)) return {num::DD{th, 0.0}, e};
+        if (th > 4.0) {
+            const num::DD r = e - num::log_dd(th);
+            return {num::DD{th, th * (r.hi + r.lo)}, e};
+        }
+        return {num::DD{th, th * e.lo}, e};
     }
-    return {num::DD{th, th * e.lo}, e};
-}
 ```
 
 `log_ratio(x, s)`는 $x/s$를 double-double로 만든 뒤 그 log를 구하고, 몫의 낮은 부분이 서브노멀이 되는 곳($x < 2^{-960}$)에서는 두 log를 따로 빼요. 이 $t$가 극값 분포(Gumbel, GEV)와 파레토·레일리에서도 같은 모양으로 쓰여요([극값·수명·비중심 분포](/internals/stats/extreme-noncentral/)).
@@ -381,20 +382,31 @@ inline std::array<double, 2> log_tail(double a, double x, bool lower, dd::DD lt)
         if (!ended) return {kNaN, kNaN};
         return {ld + std::log(sum), a / (x * sum)};
     }
-    // ... the continued fraction for tail, then ld + log(a / tail), and Q'/Q = -tail / x
+    const double tail = cf_fast_value(
+        x + 1.0 - a,
+        [&](int n) {
+            const double k = n;
+            return std::pair{-k * (k - a), x + 2.0 * k + 1.0 - a};
+        },
+        kMaxTerms
+    );
+    // (a / tail below the normal range has lost bits, or is 0: the logs apart)
+    const double r = a / tail;
+    return {ld + (r >= 0x1p-1022 ? std::log(r) : std::log(a) - std::log(tail)), -tail / x};
 }
 ```
 
 둘째 반환값은 로그 도함수($P'/P$나 $Q'/Q$)예요. stats의 `logcdf`는 이것으로 $y_{lo}$의 1차 보정을 해요.
 
 ```cpp
-// csrc/stats/dist/gamma.hpp (log_tail)
-if (upper == !lower_small) {  // the small side is asked for
-    if (small >= 0x1p-1000) return std::log(small);
-    const auto [l, dl] = special::igam_detail::log_tail(a, y.hi, lower_small, DD{0.0, 0.0});
-    return l + dl * y.lo;
-}
-return std::log1p(-small);
+    // csrc/stats/dist/gamma.hpp (log_tail)
+    if (upper == !lower_small) {  // the small side is asked for
+        if (small >= 0x1p-1000) return std::log(small);
+        const auto [l, dl] = special::igam_detail::log_tail(a, y.hi, lower_small, DD{0.0, 0.0});
+        return l + dl * y.lo;
+    }
+    (void)large;
+    return std::log1p(-small);
 ```
 
 ```python
@@ -572,13 +584,13 @@ F의 베타 인자는 $w = d_1x/(d_1x + d_2)$와 $v = 1 - w$예요. 둘 중 하�
 어림은 아래꼬리의 주항에서 나와요. 감마는 $P \approx y^a/\Gamma(a + 1)$, 베타는 $I \approx x^a/(aB(a, b))$라서 근의 log는 $(\log p + \log\Gamma(a+1))/a$나 $(\log p + \log a + \log B)/a$예요.
 
 ```cpp
-// csrc/stats/dist/beta.hpp (lower_root)
-if (p >= kDeepP) {
-    const double est = (lt.hi + std::log(a) + special::Betaln::f(a, b)) / a;  // log of the leading-term root
-    if (est > -40.0) return {special::Betaincinv::f(a, b, p), DD{kNaN, 0.0}};
-}
-const DD lx = deep_log_inverse(a, b, lt);
-return {num::exp_dd(lx), lx};
+    // csrc/stats/dist/beta.hpp (lower_root)
+    if (p >= kDeepP) {
+        const double est = (lt.hi + std::log(a) + special::Betaln::f(a, b)) / a;  // log of the leading-term root
+        if (est > -40.0) return {special::Betaincinv::f(a, b, p), DD{kNaN, 0.0}};
+    }
+    const DD lx = deep_log_inverse(a, b, lt);
+    return {num::exp_dd(lx), lx};
 ```
 
 ### 감마: deep_inverse
@@ -624,7 +636,8 @@ inline bool small_upper_log_root(double a, double q, DD& ly) {
 inline double upper_inverse(double a, double s, double q, DD lt) {
     if (q < kDeepP) return deep_inverse(a, lt, false, s);
     if (DD ly; a < 1.0 && small_upper_log_root(a, q, ly)) return num::exp_dd(ly + num::log_dd(s));
-    // ... where 2a is an integer, one Halley step on the finite sum; else s * Gammainccinv::f(a, q)
+    // ...
+    return s * special::Gammainccinv::f(a, q);
 }
 ```
 
@@ -649,21 +662,24 @@ Arb 참값 대비 근의 상대오차는 $2.2 \times 10^{-14}$와 $1.7 \times 10
   가 $y \lt 2^{-960}$에서 double로 정확해요(위꼬리의 `small_upper_log_root`와 같은 식이에요). $l_t$는 목표의 log(double-double), $\log\Gamma(1 + a)$는 `lgamma1p`예요. 척도는 $\log s$로 지수에 넣어 `exp_dd` 한 번에 $sy$를 만들어요. $l_t/a \lt -2000$이면 가장 큰 척도($e^{709.8}$)를 곱해도 가장 작은 서브노멀 아래라 바로 0이에요. 근이 $2^{-960}$ 위로 오면 정규수 모양은 보통 경로로 가고, 서브노멀 모양은 NaN이에요.
 
 ```cpp
-// csrc/stats/dist/gamma.hpp (inverse_beyond, 발췌)
-double r_lower = kNaN;
-if (lower && a < kRefShape) {
-    if (lt.hi / a < -2000.0) return 0.0;
-    const DD ly = (lt + num::lgamma1p(a)) / a;
-    if (ly.hi < -960.0 * num::kLn2.hi) r_lower = num::exp_dd(ly + num::log_dd(s));
-    else if (a < kMinNormalShape) return kNaN;
-}
-const bool shifted = !lower && a < kRefShape;
-if (shifted) {
-    lt = lt - log_shape_ratio(a);
-    a = kRefShape;
-}
-if (!lower && a <= kRefShape && lt.hi >= std::log(a) + kLogRootZero) return 0.0;
-if (shifted) p = num::exp_dd(lt);  // the shifted target: below 1600 a0
+    // csrc/stats/dist/gamma.hpp (inverse_beyond, 발췌)
+    double r_lower = kNaN;
+    if (lower && a < kRefShape) {
+        if (lt.hi / a < -2000.0) return 0.0;
+        const DD ly = (lt + num::lgamma1p(a)) / a;
+        if (ly.hi < -960.0 * num::kLn2.hi) r_lower = num::exp_dd(ly + num::log_dd(s));
+        else if (a < kMinNormalShape) return kNaN;
+    }
+    // the upper side below the reference shape: Q(a, y) = a E1(y) to the doubles for a and a0
+    // alike, so it is solved at a0 (the deep inverse, which a target below 2^-1000 reaches,
+    // loses such a shape: NaN or 1e-13 off near 2^-1022)
+    const bool shifted = !lower && a < kRefShape;
+    if (shifted) {
+        lt = lt - log_shape_ratio(a);
+        a = kRefShape;
+    }
+    if (!lower && a <= kRefShape && lt.hi >= std::log(a) + kLogRootZero) return 0.0;
+    if (shifted) p = num::exp_dd(lt);  // the shifted target: below 1600 a0
 ```
 
 ```python
@@ -688,21 +704,21 @@ Arb로 $a$를 $5 \times 10^{-324}$부터 $2^{-601}$까지 9개, $Q = ca$의 $c$�
 - **멈춤.** 걸음이 $2^{-54}\max(1, \lvert\log x\rvert)$ 아래가 되면 끝이에요. $\log x$ 자체의 간격이 그 $2^{-52}$배이고, $\log I$의 반올림 때문에 걸음이 그보다 훨씬 작아지지는 않아요. 100걸음 안에 거기 닿지 않으면 마지막 걸음이 $2^{-48}\max(1, \lvert\log x\rvert)$ 이하일 때만 근으로 받고, 아니면 NaN이에요. 감마의 깊은 역함수처럼 수렴하지 않은 값은 내지 않아요.
 
 ```cpp
-// csrc/stats/dist/beta.hpp (deep_log_inverse의 뉴턴)
-double lx = lx0.hi, step = kInf;
-for (int it = 0; it < 100; ++it) {
-    const double x = std::exp(lx);
-    const DD xd{x, 0.0}, yd = dd::two_sum(1.0, -x);
-    const double li = log_lower_deep(a, b, xd, yd);
-    const DD lp = log_prefix(a, b, xd, yd);
-    const double slope = std::exp(lp.hi - std::log(yd.hi) - li);
-    const DD g = DD{li, 0.0} - lt;
-    step = (g.hi + g.lo) / slope;
-    lx -= step;
-    if (std::fabs(step) <= 0x1p-54 * std::max(1.0, std::fabs(lx))) return DD{lx, 0.0};
-}
-if (!(std::fabs(step) <= 0x1p-48 * std::max(1.0, std::fabs(lx)))) return DD{kNaN, 0.0};
-return DD{lx, 0.0};
+    // csrc/stats/dist/beta.hpp (deep_log_inverse의 뉴턴)
+    double lx = lx0.hi, step = kInf;
+    for (int it = 0; it < 100; ++it) {
+        const double x = std::exp(lx);
+        const DD xd{x, 0.0}, yd = dd::two_sum(1.0, -x);
+        const double li = log_lower_deep(a, b, xd, yd);
+        const DD lp = log_prefix(a, b, xd, yd);
+        const double slope = std::exp(lp.hi - std::log(yd.hi) - li);
+        const DD g = DD{li, 0.0} - lt;
+        step = (g.hi + g.lo) / slope;
+        lx -= step;
+        if (std::fabs(step) <= 0x1p-54 * std::max(1.0, std::fabs(lx))) return DD{lx, 0.0};
+    }
+    if (!(std::fabs(step) <= 0x1p-48 * std::max(1.0, std::fabs(lx)))) return DD{kNaN, 0.0};
+    return DD{lx, 0.0};
 ```
 
 t와 F는 베타 인자 $x$와 $1 - x$의 비로 원래 변수로 돌아가요.
@@ -747,9 +763,9 @@ inline LogPair deep_log_inverse_both(double a, double b, DD lt) {
 t는 $\tfrac12(\log\nu - \log x + \log(1 - x))$의 double-double을 지수화해서 만들고, F는 $\log w - \log v + \log d_2 - \log d_1$의 지수예요.
 
 ```cpp
-// csrc/stats/dist/t_f.hpp (StudentT의 깊은 역함수)
-const beta_detail::LogPair r = beta_detail::deep_log_inverse_both(a, 0.5, lt + num::kLn2);
-return -num::exp_dd((num::log_dd(df) - r.lx + r.ly) * 0.5);
+        // csrc/stats/dist/t_f.hpp (StudentT의 깊은 역함수)
+        const beta_detail::LogPair r = beta_detail::deep_log_inverse_both(a, 0.5, lt + num::kLn2);
+        return -num::exp_dd((num::log_dd(df) - r.lx + r.ly) * 0.5);
 ```
 
 ```python
@@ -778,17 +794,17 @@ special의 `betainc`·`betaincc`는 두 모양이 6 이하이면 Boost.Math의 `
 log 꼬리도 작은 쪽을 먼저 골라요. 평균 $a/(a+b)$를 보고 작아 보이는 쪽을 계산하고, 그 값이 $\tfrac12$을 넘으면 다른 쪽을 계산해요.
 
 ```cpp
-// csrc/stats/dist/beta.hpp (Beta::log_tail)
-if (small_shapes(a, b)) {
-    bool lower_small = x * (a + b) < a;
-    double small = lower_small ? special::Betainc::f(a, b, x) : special::Betaincc::f(a, b, x);
-    if (small > 0.5) {
-        lower_small = !lower_small;
-        small = lower_small ? special::Betainc::f(a, b, x) : special::Betaincc::f(a, b, x);
-    }
-    if (small >= beta_detail::kDeep) return upper != lower_small ? std::log(small) : std::log1p(-small);
-}
-return beta_detail::log_tail(a, b, num::DD{x, 0.0}, num::dd::two_sum(1.0, -x), upper);
+        // csrc/stats/dist/beta.hpp (Beta::log_tail)
+        if (small_shapes(a, b)) {
+            bool lower_small = x * (a + b) < a;
+            double small = lower_small ? special::Betainc::f(a, b, x) : special::Betaincc::f(a, b, x);
+            if (small > 0.5) {
+                lower_small = !lower_small;
+                small = lower_small ? special::Betainc::f(a, b, x) : special::Betaincc::f(a, b, x);
+            }
+            if (small >= beta_detail::kDeep) return upper != lower_small ? std::log(small) : std::log1p(-small);
+        }
+        return beta_detail::log_tail(a, b, num::DD{x, 0.0}, num::dd::two_sum(1.0, -x), upper);
 ```
 
 $a = b = \tfrac12$(아크사인 분포)는 닫힌 꼴이 있어서 불완전 베타를 부르지 않아요. $P(X \le x) = \tfrac{2}{\pi}\arcsin\sqrt{x}$이고 역함수는 $\sin^2(\pi p/2)$예요. 둘 다 가까운 끝에서 계산해요. $x \gt \tfrac12$이면 정확한 $1 - x$를, $p \gt \tfrac12$이면 정확한 $1 - p$를 넣고 결과를 반대쪽으로 돌려요. 그래서 0과 1 근처의 꼬리도 상대 정확도를 지켜요. log 꼴과 다른 모양은 위의 일반 경로예요.
@@ -963,15 +979,16 @@ inline double accept_root(double x, double lf, double log_xf, double lt) {
 감마 계열에서 몫 $y = x/s$가 $2^{-960}$ 아래이면(작은 모양의 위꼬리 근이에요) $y$의 double-double이 이미 비트를 잃었거나 0으로 언더플로했어요. 그때는 꼬리를 $\log x - \log s$에서 주항으로 만들고(`ratio_tail`), 기울기의 $\log(yf(y)) = a\log y - y - \log\Gamma(a)$도 log에서 만들어요.
 
 ```cpp
-// csrc/stats/dist/gamma.hpp (inverse_beyond, 발췌)
-if (y.hi >= 0x1p-960) {
-    lf = dist_log_tail(a, y, !lower);
-    ld = log_density_std(a, y) + dd::log(y);
-} else {
-    lf = ratio_tail(a, r, s, !lower, true);
-    const DD ly = num::log_dd(r) - num::log_dd(s);
-    ld = ly * a - y.hi - special::Gammaln::f(a);
-}
+    // csrc/stats/dist/gamma.hpp (inverse_beyond, 발췌)
+    if (y.hi >= 0x1p-960) {
+        lf = dist_log_tail(a, y, !lower);
+        ld = log_density_std(a, y) + dd::log(y);
+    } else {
+        // ...
+        lf = ratio_tail(a, r, s, !lower, true);
+        const DD ly = num::log_dd(r) - num::log_dd(s);
+        ld = ly * a - y.hi - special::Gammaln::f(a);
+    }
 ```
 
 근이 끝(감마는 0이나 inf, 베타는 0이나 1)이면 그 방향의 마지막 double에서 꼬리를 재요. 아래꼬리는 $x$와 함께 커지므로, 근이 0이라는 것은 가장 작은 서브노멀에서의 꼬리가 이미 목표 이상이라는 뜻이에요. 이 조건이 성립할 때만 0을 내요(여유는 $10^{-9}\max(1, \lvert l_t\rvert)$).

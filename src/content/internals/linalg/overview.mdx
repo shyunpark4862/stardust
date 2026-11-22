@@ -140,9 +140,12 @@ Python 쪽에 남는 것은 세 가지예요.
 - `src/stardust/_results.py`: 결과 namedtuple 타입들이에요. 배열 영역(`unique_all`, `histogram` 등)과 특수함수 영역(`airy`)의 결과 타입과 한 파일에 있어요. 라이브러리 전체의 결과 타입이 한 모듈에 모여 있어서 이름 규칙(`함수이름Result`)과 필드 이름 규칙이 한 곳에서 보여요.
 
 ```python
-# src/stardust/linalg/__init__.py에서 발췌
+# src/stardust/linalg/__init__.py
 _core = _sd_core.linalg
-_core._setup(LinAlgError, _results.LINALG)   # 타입을 C++에 한 번 넘겨요
+
+# The C++ core builds these Python objects itself.
+_core._setup(LinAlgError, _results.LINALG)
+# ...
 globals().update({_name: getattr(_core, _name) for _name in __all__ if _name != "LinAlgError"})
 ```
 
@@ -151,7 +154,7 @@ globals().update({_name: getattr(_core, _name) for _name in __all__ if _name != 
 바인딩에서 배열 인자는 이름 없는 `nb::arg()`로 둬요. nanobind는 이름 없는 인자만 positional-only로 받기 때문이에요. 대신 `m.def`마다 API 문서의 시그니처를 `nb::sig`로 그대로 줘요. 그래서 `help()`와 nanobind의 호출 모양 에러(`incompatible function arguments`)가 `arg0: object | None` 대신 문서의 인자 이름을 보여요. 테스트(`tests/linalg/test_api_surface.py`)가 문서와 대조해요.
 
 ```cpp
-// linalg/ops/lu.cpp
+// csrc/linalg/ops/lu.cpp
 m.def("solve", named("solve", &solve), nb::sig("def solve(a, b, /)"), nb::arg().none(), nb::arg().none());
 ```
 
@@ -188,20 +191,33 @@ struct PyRefs {
 배열과 선형대수는 같은 확장 모듈 `stardust._core` 안에 있어요([전체 구조](/internals/core/overview/)). 그래서 선형대수 함수는 Python 객체에서 C++ 구조체 `NDArray`를 바로 꺼내요. 버퍼 프로토콜 같은 중간 형식을 거치지 않아요.
 
 ```cpp
-// input.hpp, 줄임
+// csrc/linalg/input.hpp
 class Input {
 public:
-    Input(nb::handle obj, const char* func, const char* arg);   // sd.ndarray가 아니면 TypeError
-    DType dtype() const;
-    int ndim() const;
-    std::int64_t shape(int d) const;     // d < 0이면 뒤에서부터
-    std::int64_t stride(int d) const;    // 바이트 단위
-    const std::byte* data() const;
-    std::span<const std::int64_t> batch_shape(int core) const;    // 마지막 core개 축을 뺀 앞부분
-    std::span<const std::int64_t> batch_strides(int core) const;
+    // ...
+    // `func` and `arg` only name things in error messages. The array is
+    // borrowed: the caller's argument keeps it alive for the whole call.
+    Input(nb::handle obj, const char* func, const char* arg);
+    Input(const Input&) = delete;
+    Input& operator=(const Input&) = delete;
+
+    DType dtype() const { return x_->dtype; }
+    int ndim() const { return x_->ndim; }
+    std::int64_t shape(int d) const { return x_->shape[d < 0 ? d + x_->ndim : d]; }
+    std::int64_t stride(int d) const { return x_->strides[d < 0 ? d + x_->ndim : d]; }  // bytes
+    const std::byte* data() const { return x_->data; }
+
+    // The leading `ndim() - core` axes: the batch part when the last `core`
+    // axes are one matrix (core = 2) or one vector (core = 1).
+    std::span<const std::int64_t> batch_shape(int core) const { return {x_->shape.data(), size_t(x_->ndim - core)}; }
+    std::span<const std::int64_t> batch_strides(int core) const {
+        return {x_->strides.data(), size_t(x_->ndim - core)};
+    }
+// ...
 private:
-    const NDArray* x_;                   // 빌린 포인터
-    const char *func_, *arg_;            // 에러 메시지에 쓸 이름
+    const NDArray* x_;
+    const char* func_;
+    const char* arg_;
 };
 ```
 
@@ -263,7 +279,7 @@ ValueError: inv(): 'x' must be square in its last two dimensions, got 2x3
 계산 타입은 `double`과 `std::complex<double>`(코드에서는 `cplx`) 둘뿐이에요. 함수 몸체는 타입 `T`의 템플릿(제네릭 람다)으로 한 번만 쓰고, 실행 중에 dtype을 보고 둘 중 하나를 골라요.
 
 ```cpp
-// ops/common.hpp
+// csrc/linalg/ops/common.hpp
 template <class F>
 nb::object with_type(bool complex, F&& f) {
     if (complex) return f(std::type_identity<cplx>{});
@@ -282,7 +298,7 @@ bool과 int64 입력을 float64로 바꾸는 변환은 따로 패스를 돌지 �
 실제 함수는 위의 틀을 이렇게 써요. `solve`의 코드예요.
 
 ```cpp
-// ops/lu.cpp의 solve
+// csrc/linalg/ops/lu.cpp
 nb::object solve(nb::handle ao, nb::handle bo) {
     Input a(ao, "solve", "a");
     Input y(bo, "solve", "b");
@@ -350,7 +366,7 @@ LAPACK은 Fortran으로 정의된 라이브러리이고, 그 아래에서 행렬
 `csrc/linalg/lapack.hpp`는 쓰는 루틴마다 얇은 템플릿 함수를 하나씩 둬요. 타입 인자 `T`가 `double`이면 `d*`를, `cplx`이면 `z*`를 불러요.
 
 ```cpp
-// lapack.hpp
+// csrc/linalg/lapack.hpp
 inline lint checked(lint info, const char* routine) {
     if (info < 0) throw std::logic_error(std::string(routine) + ": illegal argument " + std::to_string(-info));
     return info;
@@ -414,8 +430,8 @@ lint geqrf(lint m, lint n, T* a, lint lda, T* tau, Scratch& s) {
 Accelerate는 옛 LAPACK 인터페이스와 새 인터페이스를 함께 제공하고, 새 인터페이스는 정수 인자가 32비트인 판과 64비트인 판으로 나뉘어요. stardust는 새 인터페이스의 64비트판(ILP64)을 써요. 컴파일 정의 `ACCELERATE_NEW_LAPACK`, `ACCELERATE_LAPACK_ILP64`가 이 판을 고르고(`CMakeLists.txt`) [2], 정수 인자(차원, `lda`, 피벗 인덱스, `info`)는 모두 64비트가 돼요.
 
 ```cpp
-// types.hpp
-using lint = __LAPACK_int;   // Accelerate 헤더가 정의하는 LAPACK 정수 타입
+// csrc/linalg/types.hpp
+using lint = __LAPACK_int;  // 64-bit LAPACK integer
 static_assert(sizeof(lint) == 8, "ACCELERATE_LAPACK_ILP64 must be defined");
 ```
 
@@ -682,7 +698,7 @@ stardust.linalg.LinAlgError: inv(): singular matrix (at batch index (1,))
 배치 몸체는 예외를 던지지 않고 정수 코드를 돌려줘요. 몸체는 풀의 워커에서 돌 수 있고, 여러 워커가 동시에 실패할 수 있어서, 예외 대신 "인덱스와 코드"를 모은 뒤 호출 스레드에서 하나를 골라 던지는 쪽이 단순해요. 워커 스레드에서 C++ 예외를 던지면 그 예외를 호출 스레드로 옮겨 다시 던지는 장치가 따로 필요하고, 여러 예외 중 무엇을 고를지도 정해야 해요.
 
 ```cpp
-// ops/common.hpp
+// csrc/linalg/ops/common.hpp
 constexpr int kNonFinite = 1;   // NaN or inf in the first matrix argument
 constexpr int kSingular = 2;    // exact zero pivot / zero on a triangular diagonal
 constexpr int kNonFiniteB = 3;  // NaN or inf in the right-hand side
@@ -755,10 +771,9 @@ constexpr int kCloseEigenvalues = 11; // Sylvester: a and -b share an eigenvalue
 namedtuple은 C++가 채워요. 필드 배열을 모두 만든 뒤, 캐시해 둔 타입 객체를 vectorcall(인자를 C 배열로 넘기는 CPython의 빠른 호출 규약)로 불러요.
 
 ```cpp
-// pyrefs.cpp
+// csrc/linalg/pyrefs.cpp
 nb::object make_result(Result r, std::initializer_list<nb::handle> fields) {
-    // The array fields are read-only (API.md §2): a result object's fields are views of one
-    // computation, never edited in place; .copy() gives a writable array.
+    // ...
     std::vector<PyObject*> args;
     for (nb::handle f : fields) {
         NDArray* a = nullptr;

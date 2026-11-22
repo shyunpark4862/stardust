@@ -344,9 +344,11 @@ $E$는 처음부터 작은 값으로 계산돼요. $\mu(t)$는 $t \to 0$에서 $
 // csrc/special/gamma_core.hpp (발췌)
 struct Scaled {
     double m;        // 0.5 <= |m| < 1, or 0, inf, NaN
-    std::int64_t e;  // 값 = m · 2^e
+    std::int64_t e;
 };
-inline Scaled scaled(double v) {               // 정상 수는 비트로 가수와 지수를 나눠요
+// (frexp by the bits for a normal v: frexp and ldexp are calls, and a Scaled product, quotient or
+// value made a third of gamma_scaled's time; the same m and e.)
+inline Scaled scaled(double v) {
     const auto bits = std::bit_cast<std::uint64_t>(v);
     const auto be = static_cast<std::int64_t>((bits >> 52) & 0x7ff);
     if (be != 0 && be != 0x7ff) [[likely]]
@@ -356,8 +358,8 @@ inline Scaled scaled(double v) {               // 정상 수는 비트로 가수
     return {m, e};
 }
 inline Scaled operator*(Scaled a, Scaled b) {
-    Scaled r = scaled(a.m * b.m);             // 가수끼리 곱하고 다시 정규화
-    r.e += a.e + b.e;                         // 지수는 정수로 더한다
+    Scaled r = scaled(a.m * b.m);
+    r.e += a.e + b.e;
     return r;
 }
 ```
@@ -449,22 +451,22 @@ $$
 $C_n D_n$이 1에서 $2^{-53}$ 안으로 들어오면 멈춰요. 항 수를 미리 몰라도 되고 넘치지 않아요. 계산 중에 분모가 정확히 0이 되면 나눌 수 없으니 그 자리를 아주 작은 수 `tiny`로 바꾸고 계속해요. 다음 걸음에서 그 영향이 상쇄돼요. 이것이 Thompson과 Barnett의 **수정 Lentz 방법**이에요[7][4].
 
 ```cpp
-// csrc/special/cf.hpp, lentz (발췌)
-constexpr double tiny = 0x1p-1000;            // 0이 된 분모 대신
-double f = b0 == 0.0 ? tiny : b0;
-double c = f;
-double d = 0.0;
-for (int n = 1; n <= max_terms; ++n) {
-    const auto [a, b] = term(n);              // a_n, b_n 항
-    d = b + a * d;
-    if (d == 0.0) d = tiny;
-    c = b + a / c;
-    if (c == 0.0) c = tiny;
-    d = 1.0 / d;
-    const double delta = c * d;
-    f *= delta;
-    if (std::fabs(delta - 1.0) <= tol) return {f, n, true};
-}
+    // csrc/special/cf.hpp, lentz (발췌)
+    constexpr double tiny = 0x1p-1000;  // stands in for a zero denominator
+    double f = b0 == 0.0 ? tiny : b0;
+    double c = f;
+    double d = 0.0;
+    for (int n = 1; n <= max_terms; ++n) {
+        const auto [a, b] = term(n);
+        d = b + a * d;
+        if (d == 0.0) d = tiny;
+        c = b + a / c;
+        if (c == 0.0) c = tiny;
+        d = 1.0 / d;
+        const double delta = c * d;
+        f *= delta;
+        if (std::fabs(delta - 1.0) <= tol) return {f, n, true};
+    }
 ```
 
 ### $b_0 = 0$일 때의 함정
@@ -721,14 +723,15 @@ scipy 1.18.1의 `erfc(19.6)`는 187 ULP, `sd.special.erfc(19.6)`는 0 ULP예요.
 ```cpp
 // csrc/special/dd.hpp (발췌)
 inline DD operator*(DD a, DD b) {
-    DD p = two_prod(a.hi, b.hi);                 // hi·hi를 정확히: p.hi + p.lo
-    p.lo += a.hi * b.lo + a.lo * b.hi;            // 교차항은 float64로 충분 (2^-53 아래)
-    return quick_two_sum(p.hi, p.lo);             // 다시 |lo| <= ulp(hi)/2로
+    DD p = two_prod(a.hi, b.hi);
+    p.lo += a.hi * b.lo + a.lo * b.hi;
+    return quick_two_sum(p.hi, p.lo);
 }
+// ...
 inline DD operator/(DD a, DD b) {
     const double q1 = a.hi / b.hi;
-    const double r = (std::fma(-q1, b.hi, a.hi) + a.lo) - q1 * b.lo;  // 정확한 나머지
-    return quick_two_sum(q1, r / b.hi);           // 보정 한 번: 상대 약 2^-104
+    const double r = (std::fma(-q1, b.hi, a.hi) + a.lo) - q1 * b.lo;
+    return quick_two_sum(q1, r / b.hi);
 }
 ```
 

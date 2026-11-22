@@ -90,12 +90,14 @@ stardust는 "무엇을 할지"를 모두 컴파일 시점의 타입으로 바꿔
 먼저 입력 하나를 감싸는 작은 타입이 있어요. 행 `i`를 읽을 때 스칼라면 언제나 0번을, 컬럼이면 `i`번을 읽는데, 그 선택이 `if constexpr`라서 컴파일 시점에 사라져요.
 
 ```cpp
-// ops/elementwise.cpp (발췌)
+// csrc/frame/ops/elementwise.cpp
+// One input of a kernel: a column, or a one-row scalar read at every row.
+// The scalar case is a template parameter so the loop body has no branch.
 template <class T, bool Scalar>
 struct In {
     const T* p;
     T operator[](std::int64_t i) const {
-        if constexpr (Scalar) return p[0];   // 스칼라: 언제나 0번 (컴파일 시점에 정해짐)
+        if constexpr (Scalar) return p[0];
         else return p[i];
     }
 };
@@ -104,9 +106,9 @@ template <class A, class B, class F>
 void visit_inputs(const Column& a, const Column& b, int scalar_side, F&& f) {
     const A* pa = a.data<A>();
     const B* pb = b.data<B>();
-    if (scalar_side == 1) f(In<A, true>{pa}, In<B, false>{pb});    // 1 - s
-    else if (scalar_side == 2) f(In<A, false>{pa}, In<B, true>{pb}); // s + 1
-    else f(In<A, false>{pa}, In<B, false>{pb});                    // s + t
+    if (scalar_side == 1) f(In<A, true>{pa}, In<B, false>{pb});
+    else if (scalar_side == 2) f(In<A, false>{pa}, In<B, true>{pb});
+    else f(In<A, false>{pa}, In<B, false>{pb});
 }
 ```
 
@@ -115,33 +117,52 @@ void visit_inputs(const Column& a, const Column& b, int scalar_side, F&& f) {
 연산은 **람다**로 넘겨요. 람다는 저마다 고유한 타입이라, 람다를 받는 템플릿 함수는 람다마다 새로 인스턴스화되고 연산이 루프 안에 인라인돼요.
 
 ```cpp
-// ops/elementwise.cpp (발췌, 줄임)
+// csrc/frame/ops/elementwise.cpp
 template <class R, class A, class B, bool CanNA = false, class F>
 Column map2(const Column& a, const Column& b, int scalar_side, DType result, F f) {
     const std::int64_t n = scalar_side == 1 ? b.length : a.length;
     Column out = make_fixed(result, n);
-    out.validity = and_validity(a, b, scalar_side, n);   // 결과의 NA (아래 절)
+    // ...
     R* o = reinterpret_cast<R*>(out.values->data());
-    visit_inputs<A, B>(a, b, scalar_side, [&](auto x, auto y) {
-        for_chunks(n, [&, x, y](std::int64_t lo, std::int64_t hi) {
-            const auto xx = x;  const auto yy = y;  R* oo = o;   // 지역 변수로 (앨리어싱 절)
-            for (std::int64_t i = lo; i < hi; ++i) oo[i] = f(xx[i], yy[i]);
+    // ...
+    if constexpr (CanNA) {
+        // ...
+    } else {
+        // ...
+        visit_inputs<A, B>(a, b, scalar_side, [&](auto x, auto y) {
+            for_chunks(n, [&, x, y](std::int64_t lo, std::int64_t hi) {
+                const auto xx = x;  // locals, not captures: see the comment above
+                const auto yy = y;
+                R* oo = o;
+                if (!vbits) {
+                    for (std::int64_t i = lo; i < hi; ++i) oo[i] = f(xx[i], yy[i]);
+                    return;
+                }
+                // ...
+            });
         });
-    });
+        // ...
+        return out;
+    }
     finish_fixed(out);
     return out;
 }
-
+// ...
 template <class A, class B>
 Column float_arith(Op op, const Column& a, const Column& b, int side) {
     auto run = [&](auto f) { return map2<double, A, B>(a, b, side, DType::Float64, f); };
     auto d = [](auto v) { return static_cast<double>(v); };
-    switch (op) {                                   // 연산 종류는 여기서 한 번 고르고
-    case Op::Add: return run([&](auto x, auto y) { return d(x) + d(y); });   // 람다마다 루프 한 벌
-    case Op::Sub: return run([&](auto x, auto y) { return d(x) - d(y); });
-    // ... Mul, TrueDiv, FloorDiv, Mod
-    case Op::Pow: return float_pow<A, B>(a, b, side);   // 배열의 pow와 같은 커널
+    switch (op) {
+        case Op::Add: return run([&](auto x, auto y) { return d(x) + d(y); });
+        case Op::Sub: return run([&](auto x, auto y) { return d(x) - d(y); });
+        case Op::Mul: return run([&](auto x, auto y) { return d(x) * d(y); });
+        case Op::TrueDiv: return run([&](auto x, auto y) { return d(x) / d(y); });
+        case Op::FloorDiv: return run([&](auto x, auto y) { return float_floordiv(d(x), d(y)); });
+        case Op::Mod: return run([&](auto x, auto y) { return float_mod(d(x), d(y)); });
+        case Op::Pow: return float_pow<A, B>(a, b, side);
+        default: break;
     }
+    throw nb::value_error("not an arithmetic operator");
 }
 ```
 
@@ -187,7 +208,7 @@ def python_error(op, a, b):
 
 ### validity 비트맵
 
-모든 dtype의 결측은 **validity 비트맵**이 나타내요. 행마다 1비트, 1이면 값이 있고 0이면 NA예요. 행 `i`는 바이트 `i / 8`의 비트 `i % 8`이에요(LSB 우선, Arrow와 같아요). 비트맵, NA 자리의 값이 0이라는 약속, 슬라이스가 비트 오프셋을 갖는 방식은 [컬럼과 메모리](/internals/frame/columns/)에 자세히 있어요. 원소별 결과의 비트맵은 세 단계로 만들어요.
+모든 dtype의 결측은 **validity 비트맵**이 나타내요. 행마다 1비트, 1이면 값이 있고 0이면 NA예요. 행 `i`는 바이트 `i / 8`의 비트 `i % 8`이에요(LSB 우선, Arrow와 같아요). 비트맵, NA 자리의 값이 0이라는 약속, 슬라이스가 비트 오프셋을 갖는 방식은 [컬럼과 메모리](/internals/frame/columns/)에 자세히 있어요. 원소별 결과의 비트맵은 이렇게 만들어요.
 
 1. 결측이 한쪽 컬럼에만 있고 그 비트맵이 행 0에서 시작하면, 결과는 그 Buffer를 그대로 공유하고 NA 개수도 그대로 써요. 결과의 NA 행은 정확히 그 입력의 NA 행이에요.
 2. 그 밖에는 두 입력의 비트맵을 비트 0에서 시작하도록 옮긴 뒤 AND해요 (`and_validity`). NA 스칼라면 모든 행이 NA예요.
@@ -233,14 +254,14 @@ $$
 </Fig>
 
 ```cpp
-// bitmap.hpp의 copy_bits (발췌)
+// csrc/frame/bitmap.hpp
 for (std::int64_t j = 0; j < nbytes; ++j) {
     const std::int64_t k = first + j;
     unsigned v = src[k] >> shift;
     if (shift != 0 && k + 1 <= last_src) v |= static_cast<unsigned>(src[k + 1]) << (8 - shift);
     dst[j] = static_cast<std::uint8_t>(v);
 }
-if (n & 7) dst[nbytes - 1] &= static_cast<std::uint8_t>((1u << (n & 7)) - 1);  // 쓰지 않는 높은 비트는 0
+if (n & 7) dst[nbytes - 1] &= static_cast<std::uint8_t>((1u << (n & 7)) - 1);
 ```
 
 `k + 1 <= last_src` 검사 덕분에 슬라이스의 마지막 비트가 든 바이트 너머를 읽지 않아요. 마지막 출력 바이트의 쓰지 않는 높은 비트를 0으로 지우는 것은 나중에 `popcount`로 NA를 셀 때 쓰레기 비트가 섞이지 않게 하려는 거예요.
@@ -250,16 +271,24 @@ if (n & 7) dst[nbytes - 1] &= static_cast<std::uint8_t>((1u << (n & 7)) - 1);  /
 옮긴 두 비트맵을 바이트끼리 AND하면 "두 입력 모두 값이 있는 행"이 1인 비트맵이 돼요. 루프는 바이트 배열 두 개의 AND라서 컴파일러가 바이트 16개씩 벡터화해요.
 
 ```cpp
-// column.cpp의 and_validity (발췌)
+// csrc/frame/column.cpp
 for (int side = 1; side <= 2; ++side) {
     const Column& c = *rows[side - 1];
-    if (!c.validity) continue;                       // 결측 없는 쪽은 볼 것이 없어요
-    if (side == scalar_side)                         // NA 스칼라: 모든 행이 NA
-        return Buffer::allocate(bitmap::num_bytes(n), /*zeroed=*/true);
-    if (!out) out = rebased_validity(c);
-    else { auto other = rebased_validity(c); /* out[j] &= other[j] */ }
+    if (!c.validity) continue;
+    if (side == scalar_side) {  // an NA scalar makes every row NA
+        out = Buffer::allocate(bitmap::num_bytes(n), /*zeroed=*/true);
+        return out;
+    }
+    if (!out) {
+        out = rebased_validity(c);
+    } else {
+        auto other = rebased_validity(c);
+        auto* o = reinterpret_cast<std::uint8_t*>(out->data());
+        const auto* p = reinterpret_cast<const std::uint8_t*>(other->data());
+        for (std::int64_t j = 0; j < bitmap::num_bytes(n); ++j) o[j] &= p[j];
+    }
 }
-return out;                                          // 둘 다 결측이 없으면 null
+return out;
 ```
 
 스칼라 쪽은 1행이라 비트가 하나뿐이에요. 그 비트가 0(NA 스칼라)이면 결과의 모든 행이 NA이므로 0으로 채운 비트맵을 바로 돌려줘요. 값이 있는 스칼라는 비트맵이 없어서 아무것도 하지 않아요.
@@ -269,7 +298,7 @@ return out;                                          // 둘 다 결측이 없으
 정수의 `// 0`, `% 0`, `** 음수`는 결과로 쓸 정수가 없어서 그 행이 NA가 돼요. 이런 연산만 `map2<..., CanNA = true>`로 불러요. 연산 람다가 `bool& na`를 하나 더 받아 켜면 루프가 그 행의 비트를 지워요.
 
 ```cpp
-// map2의 CanNA 판 (발췌)
+// csrc/frame/ops/elementwise.cpp
 for (std::int64_t i = lo; i < hi; ++i) {
     bool na = false;
     oo[i] = f(xx[i], yy[i], na);
@@ -422,21 +451,39 @@ $$
 `logic`은 두 입력의 비트맵을 `valid_bytes`로 바이트로 펼치고(비트맵이 없으면 모두 1), 연산과 스칼라 위치를 템플릿 인자로 받은 `logic_rows`가 위 식을 그대로 계산해요. 결과 비트는 8행씩 바이트 하나에 모아 써요.
 
 ```cpp
-// ops/elementwise.cpp의 logic_rows (발췌, & 쪽만)
+// csrc/frame/ops/elementwise.cpp
+// Rows [lo, n) with lo a multiple of 8: bitmap bytes lo / 8 onward.
 template <Op O, int Side>
-void logic_rows(const uint8_t* x, const uint8_t* vx, const uint8_t* y, const uint8_t* vy,
-                int64_t lo, int64_t n, uint8_t* o, uint8_t* bits) {
-    for (int64_t j = lo / 8; j < bitmap::num_bytes(n); ++j) {          // 출력 비트맵의 바이트 하나
+void logic_rows(
+    const std::uint8_t* x,
+    const std::uint8_t* vx,
+    const std::uint8_t* y,
+    const std::uint8_t* vy,
+    std::int64_t lo,
+    std::int64_t n,
+    std::uint8_t* o,
+    std::uint8_t* bits
+) {
+    for (std::int64_t j = lo / 8; j < bitmap::num_bytes(n); ++j) {
         unsigned byte = 0;
-        for (int64_t i = j * 8; i < std::min(n, j * 8 + 8); ++i) {      // 8행
-            const int64_t ia = Side == 1 ? 0 : i, ib = Side == 2 ? 0 : i;
+        for (std::int64_t i = j * 8; i < std::min(n, j * 8 + 8); ++i) {
+            const std::int64_t ia = Side == 1 ? 0 : i, ib = Side == 2 ? 0 : i;
             const unsigned a = x[ia], va = vx[ia], b = y[ib], vb = vy[ib];
-            const unsigned value = a & b;
-            const unsigned valid = (va & vb) | (va & (a ^ 1)) | (vb & (b ^ 1));
-            o[i] = static_cast<uint8_t>(value & valid);                   // NA 자리는 0
+            unsigned value, valid;
+            if constexpr (O == Op::And) {  // False & anything is False
+                value = a & b;
+                valid = (va & vb) | (va & (a ^ 1)) | (vb & (b ^ 1));
+            } else if constexpr (O == Op::Or) {  // True | anything is True
+                value = a | b;
+                valid = (va & vb) | (va & a) | (vb & b);
+            } else {
+                value = a ^ b;
+                valid = va & vb;
+            }
+            o[i] = static_cast<std::uint8_t>(value & valid);  // NA rows hold 0 (docs/design/frame.md §4.5)
             byte |= valid << (i & 7);
         }
-        bits[j] = static_cast<uint8_t>(byte);
+        bits[j] = static_cast<std::uint8_t>(byte);
     }
 }
 ```
@@ -473,6 +520,7 @@ int64 산술의 원칙은 **값 때문에 실패하지 않는다**예요. 오버
 C++에서 부호 있는 정수의 오버플로는 정의되지 않은 동작이라, 컴파일러는 "오버플로는 없다"고 가정하고 코드를 바꿀 수 있어요. 그래서 `uint64_t`로 계산하고 되돌려요. 부호 없는 산술은 $2^{64}$로 나눈 나머지로 정의되어 있고, 하드웨어 명령은 부호 있는 덧셈과 같아요. 배열 영역도 같은 모양으로 써요([원소별 커널](/internals/array/elementwise/)).
 
 ```cpp
+// csrc/frame/ops/elementwise.cpp
 std::int64_t wrap_add(std::int64_t x, std::int64_t y) {
     return static_cast<std::int64_t>(static_cast<std::uint64_t>(x) + static_cast<std::uint64_t>(y));
 }
@@ -483,20 +531,29 @@ std::int64_t wrap_add(std::int64_t x, std::int64_t y) {
 Python과 numpy의 `//`는 바닥(floor) 나눗셈이고 `%`의 결과는 나누는 수의 부호를 따라요. C++의 `/`는 0 쪽으로 자르고 `%`는 나누어지는 수의 부호를 따라서, 나머지가 있고 부호가 다를 때 한 칸 보정해요.
 
 ```cpp
-// ops/elementwise.cpp (발췌)
+// csrc/frame/ops/elementwise.cpp
+// Floor division and its remainder (the result takes the divisor's sign),
+// as in Python. x / -1 is handled apart: INT64_MIN / -1 overflows, which C++
+// leaves undefined; wrapping gives INT64_MIN.
 std::int64_t int_floordiv(std::int64_t x, std::int64_t y, bool& na) {
-    if (y == 0) { na = true; return 0; }          // NA
-    if (y == -1) return wrap_neg(x);              // INT64_MIN // -1 == INT64_MIN (wrap)
-    std::int64_t q = x / y;                       // 0 쪽으로 자름
-    if (x % y != 0 && ((x < 0) != (y < 0))) --q;  // 부호가 다르면 한 칸 내림
+    if (y == 0) {
+        na = true;
+        return 0;
+    }
+    if (y == -1) return wrap_neg(x);
+    std::int64_t q = x / y;
+    if (x % y != 0 && ((x < 0) != (y < 0))) --q;
     return q;
 }
 
 std::int64_t int_mod(std::int64_t x, std::int64_t y, bool& na) {
-    if (y == 0) { na = true; return 0; }
+    if (y == 0) {
+        na = true;
+        return 0;
+    }
     if (y == -1) return 0;
     std::int64_t r = x % y;
-    if (r != 0 && ((r < 0) != (y < 0))) r += y;   // 나누는 수의 부호로
+    if (r != 0 && ((r < 0) != (y < 0))) r += y;
     return r;
 }
 ```
@@ -540,8 +597,15 @@ pandas 3.1.1의 `Int64` 배열에서 `1 // 0`과 `1 % 0`은 NA가 아니라 값 
 - `<<`, `>>`는 시프트 수를 부호 없는 수로 읽어요. 64 이상(음수도 부호 없는 수로는 아주 큰 수라서 포함)이면 모든 비트가 밀려 나가서 `<<`는 0, `>>`는 부호(0 또는 -1)예요. C++에서 비트 폭 이상으로 시프트하는 것도 정의되지 않은 동작이라 검사해요. `>>`는 산술 시프트예요.
 
 ```cpp
-case Op::LShift: return run([](I x, I y) { return static_cast<U>(y) >= 64 ? I{0} : static_cast<I>(static_cast<U>(x) << y); });
-case Op::RShift: return run([](I x, I y) { return static_cast<U>(y) >= 64 ? (x < 0 ? I{-1} : I{0}) : x >> y; });
+// csrc/frame/ops/elementwise.cpp
+case Op::LShift:
+    return run([](I x, I y) {
+        return static_cast<U>(y) >= 64 ? I{0} : static_cast<I>(static_cast<U>(x) << y);
+    });
+case Op::RShift:
+    return run([](I x, I y) {
+        return static_cast<U>(y) >= 64 ? (x < 0 ? I{-1} : I{0}) : x >> y;
+    });  // arithmetic
 ```
 
 이 람다의 삼항 연산자는 분기가 아니라 비교와 선택(`CSEL`, 벡터로는 비교 + `BSL`)으로 컴파일돼서 루프가 벡터화돼요.
@@ -617,23 +681,31 @@ dtype: float64
 float의 `sum`, `mean`, `var`, `std`는 모두 **pairwise 합**으로 더해요 [1, 11]. 512개 이하의 구간은 누산기 16개가 16칸 간격으로 나눠 더하고(서로 의존하지 않는 사슬 16개), 더 긴 구간은 반(16의 배수로 내림)씩 잘라 재귀해요. 반올림 오차의 한계가 $n$이 아니라 $\log_2 n$에 비례하고, 사슬 16개가 덧셈 장치를 쉬지 않게 해요. numpy의 pairwise 합과 같은 알고리즘이고 잎만 넓어요(numpy는 누산기 8개, 블록 128개). 그래서 numpy와는 마지막 자리가 다를 수 있어요. 알고리즘, 트리 모양, 오차 한계의 유도, 여러 스레드로 같은 비트를 내는 방법(부분 트리를 태스크로 돌리고 같은 트리 모양으로 합치기)은 [집계](/internals/array/reductions/)에 자세히 있어요. 정의는 모든 영역이 함께 쓰는 `base/pairwise.hpp` 한 벌이고, frame은 항을 접근자 람다로 넘겨요.
 
 ```cpp
-// csrc/frame/ops/pairwise.hpp (발췌)
-inline constexpr std::int64_t kPairwiseLeaf = 1 << 14;    // 병렬 태스크 하나의 최대 항 수
+// csrc/frame/ops/pairwise.hpp
+inline constexpr std::int64_t kPairwiseLeaf = 1 << 14;
 
+// tree(0, n), bit for bit, with the subtrees in parallel; tree(b, m) is
+// pairwise_sum or pairwise_squares. `cost` as in for_chunks.
 template <class Tree>
 double pairwise_parallel(std::int64_t n, const Tree& tree, std::int64_t cost) {
     if (n <= kPairwiseLeaf || n * cost < kParallelThreshold) return tree(0, n);
     const pairwise::Leaves leaves = pairwise::plan(n, kPairwiseLeaf, /*complex=*/false);
     std::vector<double> part(leaves.size());
-    run_unlocked(static_cast<std::int64_t>(part.size()), [&](std::int64_t t) {   // GIL을 놓고 parallel_for
-        const auto k = static_cast<std::size_t>(t);
-        part[k] = tree(leaves[k].first, leaves[k].second);
-    });
+    run_unlocked(
+        static_cast<std::int64_t>(part.size()),
+        [&](std::int64_t t) {
+            const auto k = static_cast<std::size_t>(t);
+            part[k] = tree(leaves[k].first, leaves[k].second);
+        },
+        n * cost
+    );
     return pairwise::combine(n, kPairwiseLeaf, part);
 }
 
+// A sum starts from the identity: 0.0 + pairwise(all), as the array area's
+// (and numpy's add.reduce). That start is why a sum of -0.0s is +0.0.
 template <class Get>
-double float_sum(std::int64_t n, const Get& get, std::int64_t cost = 1) {   // 항등원 0.0에서 시작
+double float_sum(std::int64_t n, const Get& get, std::int64_t cost = 1) {
     return 0.0 + pairwise_parallel(n, [&get](std::int64_t b, std::int64_t m) { return pairwise_sum(b, m, get); }, cost);
 }
 ```
@@ -647,7 +719,7 @@ double float_sum(std::int64_t n, const Get& get, std::int64_t cost = 1) {   // �
 float 합의 접근자는 그냥 `v[i]`예요. NA 행을 건너뛰지 않고 그 자리의 `0.0`을 더해요.
 
 ```cpp
-// csrc/frame/ops/reduce.cpp, float sum
+// csrc/frame/ops/reduce.cpp
 const double* v = c.data<double>();
 return scalar(DType::Float64, float_sum(c.length, [v](std::int64_t i) { return v[i]; }));
 ```
@@ -686,13 +758,13 @@ $$
 두 번째 훑기에서는 NA 행을 따로 다뤄야 해요. NA 행의 값은 0이지만 $(0 - \bar x)^2$은 0이 아니니, NA 행의 편차를 골라 0으로 바꿔요. 제곱은 잎에서 `fma(d, d, acc)` 하나로 더해요(`squares_sum`, `pairwise::leaf_squares`). 곱과 덧셈 사이의 반올림이 하나 줄고, 배열 영역의 `var`와 같은 계산이라 NA가 없으면 `sd.var(s.to_array())`와 비트까지 같아요.
 
 ```cpp
-// csrc/frame/ops/reduce.cpp (발췌)
-const std::vector<std::uint8_t> m = valid_bytes(c);          // 행마다 1바이트 (NA 없으면 모두 1)
+// csrc/frame/ops/reduce.cpp
+const std::vector<std::uint8_t> m = valid_bytes(c);
 const double ssd = squares_sum(
     c.length,
     [&](std::int64_t i) {
         const double d = as_double(c, i) - mean;
-        return m[i] ? d : 0.0;                               // 선택이지 분기가 아니에요
+        return m[i] ? d : 0.0;
     },
     4
 );
@@ -717,7 +789,7 @@ const double var = ssd / (static_cast<double>(count) - correction);
 stardust의 float `min`/`max`는 NaN을 전파하고 `-0.0 < +0.0`으로 보는 IEEE 754-2019의 minimum/maximum이에요 [2]. numpy의 `np.min`/`np.max`와 같은 의미예요. 이 정의는 결합법칙과 교환법칙이 정확히 성립해서, 청크별 결과를 어떤 순서로 묶어도 같은 비트가 나와요. 또 AArch64의 `FMIN`/`FMAX` 명령이 바로 이 정의라서 [3], 비교 셋(NaN, NaN, ±0)을 명령 하나로 해요.
 
 ```cpp
-// ops/pairwise.hpp (발췌): 스칼라도 벡터 명령의 한 레인으로
+// csrc/frame/ops/pairwise.hpp
 template <bool Max>
 double ieee_minmax(double a, double b) {
     const float64x2_t x = vdupq_n_f64(a), y = vdupq_n_f64(b);
@@ -773,12 +845,21 @@ nan
 `convert_fixed`는 변환 람다 `f`와 "이 값이 변환되는가"를 묻는 람다 `ok`를 받아요. 청크마다 먼저 모든 행의 `ok`를 `&=`로 모으고(중간에 멈추지 않으니 분기가 없어요), 실패가 있을 때만 앞에서부터 다시 찾아 첫 실패 행을 보고해요.
 
 ```cpp
-// cast.cpp의 convert_fixed (발췌)
+// csrc/frame/ops/cast.cpp
 bool all_ok = true;
-for (int64_t i = lo; i < hi; ++i) all_ok &= !(m == nullptr || m[i]) || ok(in[i]);
-if (!all_ok) { /* 첫 실패 행을 찾아 bad.offer(i) */ return; }
-if (m == nullptr) for (int64_t i = lo; i < hi; ++i) o[i] = f(in[i]);
-else              for (int64_t i = lo; i < hi; ++i) o[i] = m[i] ? f(in[i]) : To{};
+for (std::int64_t i = lo; i < hi; ++i) all_ok &= !(m == nullptr || m[i]) || ok(in[i]);
+if (!all_ok) {
+    for (std::int64_t i = lo; i < hi; ++i)
+        if ((m == nullptr || m[i]) && !ok(in[i])) {
+            bad.offer(i);
+            return;
+        }
+}
+if (m == nullptr) {
+    for (std::int64_t i = lo; i < hi; ++i) o[i] = f(in[i]);
+} else {
+    for (std::int64_t i = lo; i < hi; ++i) o[i] = m[i] ? f(in[i]) : To{};
+}
 ```
 
 숫자끼리의 변환은 모두 실패하지 않아서 `ok`가 언제나 `true`를 돌려주는 람다이고, 검사 루프는 컴파일러가 통째로 지워요. 실패할 수 있는 변환(문자열 → 숫자)은 `from_string`이 맡는데, 여러 청크가 동시에 실패해도 행 순서로 가장 앞의 실패가 보고되도록 `parallel::FirstRow`를 써요. 청크마다 자기의 첫 실패 행만 내고 가장 작은 행이 이기며, 앞에서 이미 실패했으면 뒤 청크는 일찍 멈춰요(`failed_before`). 에러 메시지에는 값의 `repr`이 들어가므로 병렬 구간이 끝나고 GIL을 다시 잡은 뒤에 만들어요([병렬화와 결정성](/internals/frame/parallel/)).
@@ -970,11 +1051,12 @@ void good(const C& c, const uint8_t* in, uint8_t* out) {
 값으로 캡처한 변수는 지역 변수처럼 보이지만, 실제로는 클로저 객체의 멤버예요. 람다 몸통은 그 객체의 `operator()`이고, 캡처한 `o`를 읽는 것은 `this->o`를 메모리에서 읽는 것이에요. 게다가 `for_chunks`가 병렬로 돌 때 태스크는 `std::function`을 거쳐 불리므로 클로저 객체가 메모리에 있어요. 루프 안에서 `uint8_t*`로 쓰면 그 쓰기가 클로저 객체의 `o`를 바꿨을 수 있으니 매 반복 다시 읽어요.
 
 ```cpp
-// selection.cpp의 isna (발췌)
+// csrc/frame/ops/selection.cpp
 for_chunks(col.length, [b, o, flip](std::int64_t lo, std::int64_t hi) {
-    std::uint8_t* out = o + lo;              // 캡처를 태스크 안의 지역 변수로
+    // ...
+    std::uint8_t* out = o + lo;
     const std::int64_t len = hi - lo;
-    bitmap::expand(b + lo / 8, len, out);
+    bitmap::expand(b + lo / 8, len, out);  // eight rows per lookup (docs/design/frame.md §4.4)
     if (flip)
         for (std::int64_t i = 0; i < len; ++i) out[i] ^= 1;
 });

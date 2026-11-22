@@ -145,20 +145,22 @@ $\oplus$는 비트 XOR이에요. 곱 $M \cdot c$는 최대 128비트이고, $\ma
 코드는 이 정의를 그대로 옮겨요.
 
 ```cpp
-// csrc/random/philox.hpp (줄인 발췌)
-inline void mulhilo(uint64_t a, uint64_t b, uint64_t& hi, uint64_t& lo) {
-    const unsigned __int128 p = static_cast<unsigned __int128>(a) * b;   // 128비트 곱
-    hi = static_cast<uint64_t>(p >> 64);
-    lo = static_cast<uint64_t>(p);
+// csrc/random/philox.hpp
+inline void mulhilo(std::uint64_t a, std::uint64_t b, std::uint64_t& hi, std::uint64_t& lo) {
+    const unsigned __int128 p = static_cast<unsigned __int128>(a) * b;
+    hi = static_cast<std::uint64_t>(p >> 64);
+    lo = static_cast<std::uint64_t>(p);
 }
 
-inline Block philox(Block c, Key key) {          // Block = std::array<uint64_t, 4>
-    constexpr uint64_t kM0 = 0xD2E7470EE14C6C93ULL, kM1 = 0xCA5A826395121157ULL;
-    constexpr uint64_t kW0 = 0x9E3779B97F4A7C15ULL, kW1 = 0xBB67AE8584CAA73BULL;
-    uint64_t k0 = key.k0, k1 = key.k1;
+// Ten rounds, the key bumped by the Weyl constants between them (Random123's
+// philox4x64_R with R = 10; checked against its known-answer vectors).
+inline Block philox(Block c, Key key) {
+    constexpr std::uint64_t kM0 = 0xD2E7470EE14C6C93ULL, kM1 = 0xCA5A826395121157ULL;
+    constexpr std::uint64_t kW0 = 0x9E3779B97F4A7C15ULL, kW1 = 0xBB67AE8584CAA73BULL;
+    std::uint64_t k0 = key.k0, k1 = key.k1;
     for (int r = 0; r < 10; ++r) {
-        if (r > 0) k0 += kW0, k1 += kW1;          // 키 일정: 라운드마다 상수를 더해요
-        uint64_t hi0, lo0, hi1, lo1;
+        if (r > 0) k0 += kW0, k1 += kW1;
+        std::uint64_t hi0, lo0, hi1, lo1;
         mulhilo(kM0, c[0], hi0, lo0);
         mulhilo(kM1, c[2], hi1, lo1);
         c = {hi1 ^ c[1] ^ k0, lo1, hi0 ^ c[3] ^ k1, lo0};
@@ -260,11 +262,9 @@ Philox 블록 하나는 64비트 단어 넷을 줘요. 이 단어를 수열의 �
 `integers`처럼 기각 표본을 쓰는 원소는 가끔 단어가 더 필요해요. 원소 e의 k번째 추가 단어($k = 0, 1, 2, \dots$)는 계수기 $(e, 1 + \lfloor k/4 \rfloor, 0, 0)$ 블록의 $k \bmod 4$번째 단어예요. 곧 계수기 $(e, j, 0, 0)$, $j \ge 1$의 블록을 차례로 써요.
 
 ```cpp
-// csrc/random/philox.hpp, Stream::extra
-// 원소 e의 추가 단어 k (0, 1, 2, ...): 블록 j = 1 + k/4의 단어 k mod 4
-std::uint64_t extra(std::uint64_t e, std::uint64_t k) const {
-    return philox({e, 1 + (k >> 2), 0, 0}, key_)[k & 3];
-}
+// csrc/random/philox.hpp
+// Extra word k (0, 1, 2, ...) of element e: word k mod 4 of block j = 1 + k / 4.
+std::uint64_t extra(std::uint64_t e, std::uint64_t k) const { return philox({e, 1 + (k >> 2), 0, 0}, key_)[k & 3]; }
 ```
 
 두 종류의 계수기는 계수기의 둘째 단어로 갈려요. 첫 단어용은 둘째 단어가 0, 추가 단어용은 1 이상이에요. 그래서 둘은 절대 만나지 않고, 어떤 단어도 두 원소가 함께 쓰지 않아요. 같은 원소의 추가 단어끼리도 k가 다르면 다른 단어예요.
@@ -339,26 +339,29 @@ True
 서로 다른 계수기의 블록은 완전히 독립이에요. 블록 넷의 라운드 r을 한꺼번에 계산하면, 한 블록의 곱셈이 결과를 기다리는 동안 다른 블록의 곱셈이 곱셈기에 들어가요.
 
 ```cpp
-// csrc/random/philox.hpp, philox4 (줄인 발췌)
-// 계수기 (c0[q], 0, 0, 0), q = 0..3의 블록 넷을 함께
-uint64_t a[4], b[4], c[4], d[4];                 // 블록마다 단어 넷 (b, c, d는 0에서 시작)
-for (int q = 0; q < 4; ++q) a[q] = c0[q], b[q] = 0, c[q] = 0, d[q] = 0;
-uint64_t k0 = key.k0, k1 = key.k1;
-for (int r = 0; r < 10; ++r) {
-    if (r > 0) k0 += kW0, k1 += kW1;              // 키 일정은 네 블록이 같아요
-    for (int q = 0; q < 4; ++q) {                 // 서로 독립인 네 블록의 같은 라운드
-        uint64_t hi0, lo0, hi1, lo1;
-        mulhilo(kM0, a[q], hi0, lo0);
-        mulhilo(kM1, c[q], hi1, lo1);
-        const uint64_t na = hi1 ^ b[q] ^ k0, nc = hi0 ^ d[q] ^ k1;
-        a[q] = na, b[q] = lo1, c[q] = nc, d[q] = lo0;
+// csrc/random/philox.hpp
+inline void philox4(const std::uint64_t* c0, Key key, std::array<std::uint64_t, 16>& out, std::uint64_t c1 = 0) {
+    constexpr std::uint64_t kM0 = 0xD2E7470EE14C6C93ULL, kM1 = 0xCA5A826395121157ULL;
+    constexpr std::uint64_t kW0 = 0x9E3779B97F4A7C15ULL, kW1 = 0xBB67AE8584CAA73BULL;
+    std::uint64_t a[4], b[4], c[4], d[4];  // the four counter words of each block (b, c, d start at 0)
+    for (int q = 0; q < 4; ++q) a[q] = c0[q], b[q] = c1, c[q] = 0, d[q] = 0;
+    std::uint64_t k0 = key.k0, k1 = key.k1;
+    for (int r = 0; r < 10; ++r) {
+        if (r > 0) k0 += kW0, k1 += kW1;
+        for (int q = 0; q < 4; ++q) {
+            std::uint64_t hi0, lo0, hi1, lo1;
+            mulhilo(kM0, a[q], hi0, lo0);
+            mulhilo(kM1, c[q], hi1, lo1);
+            const std::uint64_t na = hi1 ^ b[q] ^ k0, nc = hi0 ^ d[q] ^ k1;
+            a[q] = na, b[q] = lo1, c[q] = nc, d[q] = lo0;
+        }
     }
+    for (int q = 0; q < 4; ++q) out[4 * q] = a[q], out[4 * q + 1] = b[q], out[4 * q + 2] = c[q], out[4 * q + 3] = d[q];
 }
-// out[4q .. 4q+3] = (a[q], b[q], c[q], d[q])
 ```
 
 - 단어를 블록별 구조체가 아니라 `a[4]`, `b[4]`, `c[4]`, `d[4]`처럼 같은 자리의 단어끼리 모아 둬요. 안쪽 루프가 짧고 고정 길이(4)라 컴파일러가 펼쳐서 레지스터에 두고, 독립인 네 곱셈 묶음을 나란히 내보내요.
-- 첫 단어용 계수기는 둘째·셋째·넷째 단어가 언제나 0이라 `b`, `c`, `d`를 0으로 시작해요. 계수기 배열을 받을 필요가 없어요.
+- 계수기는 $(c_0[q], c_1, 0, 0)$이에요. 첫 단어용은 $c_1 = 0$(기본값)이고, `integers`가 기각된 원소의 첫 추가 블록(계수기 $(e, 1, 0, 0)$)을 넷씩 계산할 때는 $c_1 = 1$이에요. 셋째·넷째 단어는 언제나 0이라 `c`, `d`를 0으로 시작하고, 계수기 배열은 첫 단어 `c0`만 받아요.
 - 키 일정은 계수기와 무관하니 라운드마다 한 번만 계산해 네 블록이 같이 써요.
 - 블록 하나하나의 계산은 `philox()`와 완전히 같아요. 계산 순서만 섞었을 뿐 각 블록의 연산은 그대로라서 비트도 같아요.
 
@@ -369,21 +372,22 @@ for (int r = 0; r < 10; ++r) {
 커널은 원소 번호로 단어를 달라고 해요. `Stream`이 그 사이에서 블록 넷(단어 16개)을 한 묶음으로 계산해 두고 꺼내 줘요.
 
 ```cpp
-// csrc/random/philox.hpp, Stream::first (줄인 발췌)
+// csrc/random/philox.hpp
+// The first word of element e (consecutive elements share a group).
 std::uint64_t first(std::uint64_t e) {
-    const std::uint64_t g = e >> 4;                     // e가 든 묶음 번호
-    if (!have_ || g != group_) {                         // 새 묶음이면 블록 4g .. 4g+3을 함께 계산
+    const std::uint64_t g = e >> 4;
+    if (!have_ || g != group_) {
         const std::uint64_t blocks[4] = {4 * g, 4 * g + 1, 4 * g + 2, 4 * g + 3};
-        philox4(blocks, key_, words_);                   // words_: std::array<uint64_t, 16>
+        philox4(blocks, key_, words_);
         group_ = g, have_ = true;
     }
-    return words_[e & 15];                               // 원소 e = 묶음 안의 e mod 16번째 단어
+    return words_[e & 15];
 }
 ```
 
 묶음의 경계는 원소 번호로 정해져요(16의 배수). 호출의 시작 위치 `pos`나 조각의 경계와는 상관없어요. 그래서 조각 경계가 묶음 중간에 떨어지면 그 묶음을 양쪽 조각이 한 번씩 계산하지만(4096원소 조각마다 많아야 묶음 하나, 1/256 정도의 중복), 원소가 받는 단어는 어느 쪽에서 계산하든 같아요.
 
-추가 단어(`extra`)는 기각할 때만 필요하고 드물어서 `philox()`로 블록 하나씩 계산해요.
+추가 단어(`extra`)는 기각할 때만 필요하고 드물어서 `philox()`로 블록 하나씩 계산해요. 기각이 흔한 `integers`의 넓은 범위만 기각된 원소를 모아 첫 추가 블록을 `philox4`로 넷씩 계산해요([뽑기 알고리즘](/internals/random/sampling/)).
 
 ## 호출 하나의 흐름: 예약과 병렬 계산
 
@@ -392,12 +396,16 @@ std::uint64_t first(std::uint64_t e) {
 생성기의 키와 위치는 Python 속성이 아니라 C++ 객체 `random::State`(`csrc/random/random.hpp`, Python에서는 `_core.random.State`)에 있어요. 예약은 이 객체의 메서드 하나예요.
 
 ```cpp
-// csrc/random/random.hpp (State, 발췌)
+// csrc/random/random.hpp
 Taken reserve(std::uint64_t n) {
     Guard g(busy_);
     const Taken t{k0_, k1_, pos_};
     pos_ += n;  // modulo 2^64
     return t;
+}
+Taken get() {
+    Guard g(busy_);
+    return {k0_, k1_, pos_};
 }
 void set(std::uint64_t k0, std::uint64_t k1, std::uint64_t pos) {
     Guard g(busy_);
@@ -406,8 +414,10 @@ void set(std::uint64_t k0, std::uint64_t k1, std::uint64_t pos) {
 ```
 
 ```python
-# src/stardust/random/__init__.py, Generator._reserve
+# src/stardust/random/__init__.py
 def _reserve(self, n):
+    """Take n elements of the stream: (key, position), read and moved in one native step, so
+    that a `state` assigned from another thread is seen whole or not at all."""
     return self._st.reserve(n)
 ```
 
@@ -449,13 +459,20 @@ def _reserve(self, n):
 커널은 원소 범위 `[0, n)`을 배열 영역의 다른 수동 병렬 경로와 같은 `for_pieces`로 나눠요.
 
 ```cpp
-// csrc/random/random.cpp, uniform (줄인 발췌)
-inline constexpr std::int64_t kWordWork = 8;    // 원소 하나의 일: 블록 하나(~10ns)가 원소 넷을 맡아요
-
-for_pieces(n, kParallelTask, n * kWordWork, [&](int64_t, int64_t i0, int64_t i1) {
-    Stream s({k0, k1});                          // 조각마다 자기 Stream (묶음 캐시)
-    for (int64_t i = i0; i < i1; ++i) o[i] = random::to_unit(s.first(pos + i));
-});
+// csrc/random/random.cpp
+// Work per element, for the pool's threshold: a Philox block is ~10 ns and serves four.
+inline constexpr std::int64_t kWordWork = 8;
+// ...
+nb::object uniform(std::uint64_t k0, std::uint64_t k1, std::uint64_t pos, nb::handle shape_obj) {
+    NDArray out = result_array(DType::Float64, shape_obj);
+    double* o = reinterpret_cast<double*>(out.data);
+    const std::int64_t n = out.size();
+    for_pieces(n, kParallelTask, n * kWordWork, [&](std::int64_t, std::int64_t i0, std::int64_t i1) {
+        Stream s({k0, k1});
+        for (std::int64_t i = i0; i < i1; ++i) o[i] = random::to_unit(s.first(pos + static_cast<std::uint64_t>(i)));
+    });
+    return wrap(std::move(out));
+}
 ```
 
 - **조각:** `kParallelTask` = 2¹² = 4096원소씩이에요. 조각의 경계는 n과 4096만으로 정해지고, 스레드 수와 상관없어요.

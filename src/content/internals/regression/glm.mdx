@@ -149,6 +149,7 @@ statsmodels는 $(y + \bar y)/2$(이항은 $(y + \tfrac12)/2$)에서 시작해요
 logit·probit·cloglog의 $0 \lt \mu \lt 1$과 log 링크의 $\mu \gt 0$은 유한한 $\eta$에서 언제나 참이에요. 그래서 유효 범위는 $\eta$로만 봐요.
 
 ```cpp
+// csrc/regression/glm.cpp
 inline bool row_valid(const Model& M, double eta, double mu, double muc) {
     (void)muc;
     if (!std::isfinite(mu) || !std::isfinite(eta)) return false;
@@ -164,6 +165,7 @@ inline bool row_valid(const Model& M, double eta, double mu, double muc) {
 $\eta$가 유한해도 $\mu$나 $1 - \mu$는 double에서 0(또는 자릿수가 줄어든 $2^{-1022}$ 아래의 비정규수)이 될 수 있어요. logit은 $\lvert\eta\rvert \gt 745$, probit은 38.5, cloglog의 $1 - \mu = e^{-e^\eta}$는 $\eta \gt 6.61$, log 링크의 $\mu$는 $\eta \lt -745$에서예요. 이것은 아주 작은 값이 언더플로한 것이지 경계가 아니에요. R은 $\mu$를 $[\varepsilon, 1 - \varepsilon]$로 자르고 statsmodels도 비슷하게 자르는데, 그러면 최대우도 추정에서 그만큼 벗어나요. 여기서는 그 행의 값을 $\eta$에서 바로 구해요. $\log\mu$는 logit·log·cloglog에서 $\eta$예요($e^\eta$가 $2^{-1022}$ 아래라 그 뒤 항은 double에 남지 않아요). probit에서는 sd.special의 [`log_ndtr`](/api/special/ndtr/)($\log\Phi(\eta)$)예요. $\log(1 - \mu)$는 logit $-\eta$, probit `log_ndtr`$(-\eta)$, cloglog $-e^\eta$예요.
 
 ```cpp
+// csrc/regression/glm.cpp
 // log mu: from the complements (binomial) or log mu while mu is normal, else from eta
 inline double log_mu_at(int fam, int link, double eta, double mu, double muc) {
     if (mu >= kTiny) return fam == fBinomial ? log_mu(mu, muc) : std::log(mu);
@@ -275,6 +277,7 @@ True
 `converged`는 편차의 판정을 통과했고, 그 뒤의 연마도 위의 멈춤 규칙 가운데 하나로 끝났을 때만 True예요. 연마의 세 멈춤에서 `polished`를 세우고, 반복이 끝나면 `converged = conv && polished`예요.
 
 ```cpp
+    // csrc/regression/glm.cpp
     out.converged = conv && polished && !blocked;
 ```
 
@@ -283,6 +286,7 @@ True
 `blocked`는 마지막 반복의 걸음이 유효 범위를 벗어나 반감으로 줄어든 반복이에요. 최대우도 추정이 범위의 끝에 있으면(최대점이 $\mu = 1$ 경계에 있는 이항 log 링크 등) 걸음이 매번 경계에 막혀 사라지고, 편차가 움직이지 않으니 판정을 통과해요. 해에 다가가서가 아니라 걸음이 사라져서 통과한 것이라 False예요. 반감이 범위 안의 점을 찾지 못해 반복이 멈춘 경우도 같은 이유로 False예요.
 
 ```cpp
+        // csrc/regression/glm.cpp
             if (!ok) {
                 // stuck: the last valid iterate stays (not converged when the range stopped it)
                 out.iters = t;
@@ -307,6 +311,7 @@ True
 분리가 아닌데 남은 열의 계수가 NaN이어도 수렴한 적합이 아니라 False로 둬요(분리의 NaN 계수는 그 자체가 답이라 그대로예요).
 
 ```cpp
+    // csrc/regression/glm.cpp
     if (!separated)
         for (lint c = 0; c < k; ++c)
             if (o.kept[c] && std::isnan(o.params[c])) converged = false;
@@ -771,6 +776,7 @@ p값과 구간은 결과를 처음 읽을 때 계산해요([결과 객체와 지
 `df_resid`가 0이면 척도를 추정하는 분포족(정규, 감마, 또는 `scale='X2'`·`'dev'`)의 $\phi = \text{Pearson χ}^2/\text{df\_resid}$가 $0/0$이에요. 커널은 그 척도를 NaN으로 두고, Python의 `cov_params()`도 그 회귀의 공분산 전체를 NaN으로 둬요(강건 공분산도요).
 
 ```cpp
+    // csrc/regression/glm.cpp
     auto per_df = [&](double v) { return df_resid == 0.0 ? kNaN : v / df_resid; };
 ```
 
@@ -789,7 +795,9 @@ array([0.9999999999999997, 1.1547005383792512], dtype=float64)
 척도를 추정하는 분포족에서 척도가 정확히 0이고 `df_resid` > 0이면(완전 적합) `bse`는 0이에요. 그 t를 계수 ÷ 0으로 두면 반올림 크기의 계수도 ±inf와 p 0, 곧 가짜 유의성이 되니, `ols`와 같은 이름의 `_perfect`가 그 회귀를 가려 t와 p를 NaN으로 둬요([최소제곱 풀이](/internals/regression/least-squares/#완전-적합의-판정)). 척도가 고정이면 이 일이 생기지 않아요.
 
 ```python
+    # src/stardust/regression/_glm.py
     def _perfect(self):
+        # ...
         if self._scale_fixed:
             return False
         z = self._stat(_G_SCALE) == 0.0
@@ -807,12 +815,6 @@ array([0.9999999999999997, 1.1547005383792512], dtype=float64)
 
 ```cpp
     // csrc/regression/glm.cpp (glm_one)
-    // y exactly constant over the fit's rows (y0) with an intercept and no offset, g(y0) finite:
-    // ...
-    // inside the family's range (V(y0) > 0) the iterations run and their result is replaced (§5);
-    // with y0 on its boundary (V(y0) = 0: poisson identity or sqrt with y = 0, binomial log with
-    // y = 1) the iterations only creep towards it (mu -> 0 at a linear rate) and are skipped:
-    // the final solve at the start's weights gives the columns, the inference is NaN
     bool yconst = op.intercept && !has_offset;
     double y0 = kNaN;
     for (lint i = 0; i < n && yconst; ++i) {
@@ -860,8 +862,7 @@ array([0.9999999999999997, 1.1547005383792512], dtype=float64)
                          row_valid(M, etac, y0, muc0) && std::isfinite(d10) && d10 != 0.0) ||
                         bconst;
     if (bconst) {
-        // on the boundary: every row of the fit at mu = y0 (residuals 0, as a separated row's);
-        // V(y0) = 0 leaves no information, so the covariance is NaN
+        // ...
         o.params[0] = etac;
         for (lint c = 1; c < k; ++c) o.params[c] = o.kept[c] ? 0.0 : kNaN;
         std::fill(o.cov, o.cov + k * k, kNaN);
@@ -909,6 +910,7 @@ array([0.9999999999999997, 1.1547005383792512], dtype=float64)
 잔차는 행마다 $y_i - y_0$(이항은 여사건 $1 - y_0$로 상쇄 없이)이고, 쓰인 행에서는 0, 가중치 0인 행에서는 그 차예요. 작업 잔차는 그것을 $d\mu/d\eta$로 나눈 값, Pearson 잔차는 $\sqrt{m_i}\,r_i/\sqrt{V(y_0)}$, 편차 잔차는 $\operatorname{sign}(r_i)\sqrt{m_i\,d(y_i, y_0)}$예요. 편차, Pearson χ², 귀무 편차가 0이고, 강건 공분산은 점수가 모두 0이라 0이에요(군집이 하나면 NaN 그대로). 귀무 모형이 곧 이 적합이라 `llnull`은 `llf`와 같고, `llf`는 $\mu = y_0$에서 바로 재요.
 
 ```cpp
+    // csrc/regression/glm.cpp
     else if (gconst) llf = llf_at(nullptr, nullptr, nullptr, y0, muc0, nullptr, false, 0, D);  // at mu = y0 exactly
 ```
 
@@ -964,9 +966,9 @@ True
 척도를 추정하는 분포족이 완전 적합이라 $\phi = 0$이면, 로그우도의 밀도 항이 $\log\phi$로 발산해요. 커널은 그 값을 우도의 극한으로 정해요. 모든 행을 정확히 맞추는 모형(편차 0)은 $+\infty$이고, 그렇지 않은 모형은 같은 $\phi = 0$에서 맞추지 못한 행의 밀도가 0이라 $-\infty$예요. OLS의 완전 적합에서 `llf`가 +inf인 것과 같은 규칙이에요. `llf`가 +inf이면 `aic`·`bic`는 −inf예요.
 
 ```cpp
+        // csrc/regression/glm.cpp
         if (!concentrated && phi == 0.0) {
-            // an estimated scale of 0 (a perfect fit): the likelihood's limit, +inf where the
-            // model fits every row exactly (its deviance 0), -inf elsewhere
+            // ...
             return dev_at == 0.0 ? kInf : -kInf;
         }
 ```
@@ -1012,7 +1014,9 @@ True
 척도를 추정하는 분포족의 다른 완전 적합은 $\ell = +\infty$이고 $\ell_0$은 유한하거나(정규·identity의 집중 로그우도) $-\infty$예요. 그때 `llr`은 $+\infty$이고, Cox–Snell은 $1 - e^{-\infty}$의 극한 1을 그대로 내요. 모형이 모든 것을 설명했다는 뜻으로 읽을 수 있는 값이에요. McFadden의 $\ell/\ell_0$은 그렇지 않아요. $\ell_0$이 유한하면 $\ell_0$의 부호에 따라 $1 - \ell/\ell_0$이 $+\infty$나 $-\infty$가 되고, $\ell_0 = -\infty$면 $\infty/\infty$예요. 어느 쪽도 0과 1 사이의 비율로 읽을 수 없어서, `llf`가 무한하면 McFadden은 NaN이에요. $\ell_0 = 0$일 때도(포아송의 $y$가 모두 0이나 위 경계의 상수 $y$처럼 모든 행이 경계라 로그우도가 0) 나눌 수 없어 NaN이에요. 그때 Cox–Snell은 `llr`이 0이라 0이에요. 척도가 고정인 분포족의 상수 $y$는 $\ell = \ell_0$이 유한해서 두 값 모두 0이에요.
 
 ```python
+            # src/stardust/regression/_glm.py
             else:
+                # ...
                 llf, lln = self.llf, self.llnull
                 v = 1.0 - _div(llf, lln)
                 if isinstance(v, _sd.ndarray):
@@ -1111,6 +1115,7 @@ True
 열이나 $y$의 크기가 $[2^{-256}, 2^{256}]$ 밖이면 [선형 모형](/internals/regression/least-squares/#극단적인-척도)과 같은 방법으로, Python 층이 그 값을 2의 거듭제곱 $f$로 나눈 문제를 커널에 줘요(정확한 연산이라 범위 안의 자료는 비트까지 그대로예요). 열은 모든 분포족에서 옮겨요. 계수 $\beta_j$가 $f_{x_j}$배가 될 뿐 모형이 바뀌지 않으니까요. $y$는 모형이 $y$의 척도에 등변인 정규·감마만 옮겨요(이항의 0·1과 포아송의 개수는 옮기면 다른 모형이에요). identity 링크는 계수가 $f_y$배, inverse 링크는 $1/f_y$배가 되고, log 링크는 $\mu/f_y = e^{\eta - \log f_y}$라 오프셋에 $-\log f_y$를 더하면 계수가 그대로예요.
 
 ```python
+    # src/stardust/regression/_glm.py
     # data far outside [2^-256, 2^256] is fitted in power-of-two units (exact), as the linear
     # models: the columns for every family (beta_j fx_j), y for the families whose model is
     # equivariant under its scale (gaussian, gamma: mu / fy; the log link through the offset

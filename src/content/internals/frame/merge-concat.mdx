@@ -94,17 +94,25 @@ concat은 Python에서 컬럼 집합과 공통 dtype을 정하고, C++의 `conca
 이 규칙은 이중 반복문으로 그대로 쓸 수 있어요. 테스트의 정답이 바로 이 반복문이에요(`tests/frame/test_merge.py`의 `oracle`).
 
 ```python
-# tests/frame/test_merge.py, oracle (줄인 발췌): 규칙을 그대로 옮긴 O(n·m) 참조 구현
-def one_sided(probe, build, keep_probe, keep_build):
-    out, hit = [], set()
-    for p, pk in enumerate(probe):
-        found = [b for b, bk in enumerate(build) if matches(pk, bk)]   # 오른쪽 순서
-        hit.update(found)
-        out += [(p, b) for b in found] or ([(p, None)] if keep_probe else [])
-    if keep_build:
-        out += [(None, b) for b in range(len(build)) if b not in hit]  # 남은 오른쪽 행
-    return out
-# right: 양쪽을 바꾼 one_sided를 부르고 쌍을 뒤집는다
+# tests/frame/test_merge.py
+def oracle(lk, rk, how):
+    # ...
+    def matches(a, b):
+        return all(x is not NA and y is not NA and norm(x) == norm(y) for x, y in zip(a, b))
+
+    def one_sided(probe, build, keep_probe, keep_build):
+        out, hit = [], set()
+        for p, pk in enumerate(probe):
+            found = [b for b, bk in enumerate(build) if matches(pk, bk)]
+            hit.update(found)
+            out += [(p, b) for b in found] or ([(p, None)] if keep_probe else [])
+        if keep_build:
+            out += [(None, b) for b in range(len(build)) if b not in hit]
+        return out
+
+    if how == "right":
+        return [(l, r) for r, l in one_sided(rk, lk, True, False)]
+    return one_sided(lk, rk, how != "inner", how == "outer")
 ```
 
 hypothesis가 키 dtype(int64, float64, string, bool), NA, NaN, `-0.0`, 키 개수(1–2), 행 수(0–12), `how`를 섞어 만든 입력에서 merge 결과의 행 쌍이 이 반복문과 정확히 같은지 봐요. 각 쪽에 행 번호 컬럼을 달아 두어서 어떤 행끼리 어떤 순서로 짝지어졌는지까지 비교해요.
@@ -134,27 +142,27 @@ ValueCodes::ValueCodes(const Column& build) : build_(build) {
 오른쪽 키가 작은 범위의 int64·bool이면 직접 주소 표로 코드를 매기고 그 표(`code_of_`)를 조회에 써요. 그 밖에는 이렇게 이어져요.
 
 ```cpp
-    // csrc/frame/ops/hash.cpp
-    codes_.resize(static_cast<std::size_t>(n));
-    auto valid = [this](std::int64_t i) { return build_.is_valid(i); };
-    if (build.dtype == DType::String) {
-        strings_ = std::make_unique<Partitioned<std::string_view, HashBytes>>();
-        strings_->build(n, [this](std::int64_t i) { return build_.string_at(i); }, valid, codes_.data());
-        ngroups_ = strings_->ngroups();
-    } else {
-        words_ = std::make_unique<Partitioned<std::uint64_t, Fmix64>>();
-        words_->build(n, [this](std::int64_t i) { return word_key(build_, i); }, valid, codes_.data());
-        ngroups_ = words_->ngroups();
-    }
-    // NA rows join nothing: -1, not the shared NA code (docs/api/frame.md §9.1).
-    if (build.null_count > 0) {
-        const std::int64_t na = strings_ ? strings_->na_code() : words_->na_code();
-        // The NA code is a code like the others, numbered by its first row;
-        // the codes after it move down by one so the codes stay dense.
-        for_chunks(n, [&](std::int64_t lo, std::int64_t hi) {
-            for (std::int64_t i = lo; i < hi; ++i) {
-                std::int64_t& c = codes_[static_cast<std::size_t>(i)];
-                c = c == na ? -1 : c > na ? c - 1 : c;
+// csrc/frame/ops/hash.cpp
+codes_.resize(static_cast<std::size_t>(n));
+auto valid = [this](std::int64_t i) { return build_.is_valid(i); };
+if (build.dtype == DType::String) {
+    strings_ = std::make_unique<Partitioned<std::string_view, HashBytes>>();
+    strings_->build(n, [this](std::int64_t i) { return build_.string_at(i); }, valid, codes_.data());
+    ngroups_ = strings_->ngroups();
+} else {
+    words_ = std::make_unique<Partitioned<std::uint64_t, Fmix64>>();
+    words_->build(n, [this](std::int64_t i) { return word_key(build_, i); }, valid, codes_.data());
+    ngroups_ = words_->ngroups();
+}
+// ...
+if (build.null_count > 0) {
+    const std::int64_t na = strings_ ? strings_->na_code() : words_->na_code();
+    // The NA code is a code like the others, numbered by its first row;
+    // the codes after it move down by one so the codes stay dense.
+    for_chunks(n, [&](std::int64_t lo, std::int64_t hi) {
+        for (std::int64_t i = lo; i < hi; ++i) {
+            std::int64_t& c = codes_[static_cast<std::size_t>(i)];
+            c = c == na ? -1 : c > na ? c - 1 : c;
 ```
 
 - `Partitioned::build`는 factorize 그 자체예요. 오른쪽 키가 작은 범위의 int64·bool이면 해시 테이블 대신 직접 주소 표에 코드를 두고, 조회는 행마다 표 한 칸 읽기예요([해시 테이블과 factorize](/internals/frame/hashing/)). 그 밖에는 행 × 비용이 2¹⁷ 이상이고 풀을 쓸 수 있으면 해시의 위쪽 8비트로 256개 파티션에 나눠 병렬로 만들고, 코드는 직렬 factorize와 정확히 같아요. Swiss table, 해시 함수(fmix64, wyhash의 mum), 파티션은 [해시 테이블과 factorize](/internals/frame/hashing/)에 있어요.
@@ -174,22 +182,39 @@ ValueCodes::ValueCodes(const Column& build) : build_(build) {
 왼쪽 키는 테이블에 넣지 않고 찾기만 해요(`ValueCodes::lookup`). 결과는 왼쪽 행마다 오른쪽 코드, 없거나 NA면 -1이에요.
 
 ```cpp
-// csrc/frame/ops/hash.cpp, find_rows (줄인 발췌): dtype과 NA 유무는 호출마다 한 번만 고른다
+// csrc/frame/ops/hash.cpp
 template <class Key, class Hash, class KeyOf>
-void find_rows(const Partitioned<Key, Hash>& table, const Column& probe, KeyOf key_of,
-               std::int64_t skip, std::int64_t* out) {
+void find_rows(
+    const Partitioned<Key, Hash>& table, const Column& probe, KeyOf key_of, std::int64_t skip, std::int64_t* out
+) {
     const bool nulls = probe.null_count > 0;
-    for_chunks(probe.length, [&](std::int64_t lo, std::int64_t hi) {
-        const auto& t = table;  const KeyOf key = key_of;  const std::int64_t s = skip;  std::int64_t* o = out;
-        if (!nulls) {
-            for (std::int64_t i = lo; i < hi; ++i) { const std::int64_t c = t.find(key(i)); o[i] = c - (c > s); }
-        } else {
-            for (std::int64_t i = lo; i < hi; ++i) {
-                if (!bitmap::get(bits, off + i)) { o[i] = -1; continue; }
-                const std::int64_t c = t.find(key(i)); o[i] = c - (c > s);
+    for_chunks(
+        probe.length,
+        [&](std::int64_t lo, std::int64_t hi) {
+            const Partitioned<Key, Hash>& t = table;
+            const KeyOf key = key_of;
+            const std::int64_t s = skip;
+            std::int64_t* o = out;
+            if (!nulls) {
+                for (std::int64_t i = lo; i < hi; ++i) {
+                    const std::int64_t c = t.find(key(i));
+                    o[i] = c - (c > s);
+                }
+            } else {
+                const std::uint8_t* bits = probe.validity_bits();
+                const std::int64_t off = probe.offset;
+                for (std::int64_t i = lo; i < hi; ++i) {
+                    if (!bitmap::get(bits, off + i)) {
+                        o[i] = -1;
+                        continue;
+                    }
+                    const std::int64_t c = t.find(key(i));
+                    o[i] = c - (c > s);
+                }
             }
-        }
-    }, 8);
+        },
+        8
+    );
 }
 ```
 

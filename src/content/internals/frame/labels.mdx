@@ -59,10 +59,12 @@ Index([1, 2, 3], dtype=int64)
 슬라이스의 결과 라벨은 위치에서 산술로 만들어요. 위치 슬라이스는 `slice.indices(n)`이 `(start, stop, step)` 위치로 바꿔 주는데(아래 "위치 키"), 0번 위치까지 내려가는 역순 슬라이스 `::-1`이면 `stop`이 `-1`이에요. 여기서 `-1`은 "0번 앞"이라는 뜻이에요. 이것을 `range`의 슬라이스에 그대로 넣으면 Python은 `-1`을 "마지막 원소"로 읽어서, 길이 4에서 `range(0, 4)[3:-1:-1]`이 빈 `range(3, 3, -1)`이 돼요. 그래서 `_slice`는 `range`를 다시 자르지 않고 개수와 첫 라벨로 새 `range`를 만들어요.
 
 ```python
-# src/stardust/frame/_index.py, RangeIndex._slice (발췌)
-def _slice(self, start, stop, step=1):    # 위치 range(start, stop, step)의 라벨
-    r, count = self._range, len(range(start, stop, step))   # 위치의 개수: -1은 "0번 앞"
-    first = r.start + start * r.step                        # 첫 위치의 라벨
+# src/stardust/frame/_index.py
+def _slice(self, start, stop, step=1):  # the labels at positions range(start, stop, step)
+    # Not self._range[start:stop:step]: the positions come from slice.indices(), where a
+    # stop of -1 (a backward slice down to position 0) means "before 0", not "the last one".
+    r, count = self._range, len(range(start, stop, step))
+    first = r.start + start * r.step
     return RangeIndex._from_range(range(first, first + count * step * r.step, step * r.step), self._name)
 ```
 
@@ -133,20 +135,33 @@ pandas 3.1.1의 `s.loc["a"]`는 라벨이 하나면 스칼라, 여럿이면 Seri
 `LabelTable`(`ops/hash.hpp`, `ops/hash.cpp`)의 멤버예요.
 
 ```cpp
-// csrc/frame/ops/hash.hpp, LabelTable (멤버만 줄인 발췌)
+// csrc/frame/ops/hash.hpp
 class LabelTable {
-    Column labels_;                         // 문자열 키가 이 바이트를 가리키므로 살려 둔다
-    std::vector<std::int64_t> codes_;       // 위치마다 코드
-    std::vector<std::int64_t> first_;       // 코드마다 처음 위치
-    std::int64_t ngroups_ = 0;              // 서로 다른 라벨 수
-    std::unique_ptr<Partitioned<std::uint64_t, Fmix64>> ints_;          // int64 라벨의 테이블
-    std::unique_ptr<Partitioned<std::string_view, HashBytes>> strings_; // string 라벨의 테이블
-    mutable std::vector<std::int64_t> group_start_, group_rows_;        // CSR, 처음 쓸 때 만든다
 public:
+    explicit LabelTable(const Column& labels);
+
     bool is_unique() const { return ngroups_ == labels_.length; }
-    Column lookup(const Column& targets) const;          // 대상마다 코드, 없으면 -1
-    Column first_positions(const Column& targets) const; // 대상마다 첫 위치, 없으면 -1
-    Column all_positions(const Column& targets) const;   // 대상마다 모든 위치를 이어 붙여서
+
+    // Per target row: the code of its label in this table, or -1 when absent
+    // (also for NA targets). The target dtype must match.
+    Column lookup(const Column& targets) const;
+
+    // Per target row: the first position holding its label, or -1.
+    Column first_positions(const Column& targets) const;
+
+    // For each target row in order, every position holding its label (in
+    // position order), concatenated. Absent labels contribute nothing.
+    Column all_positions(const Column& targets) const;
+
+private:
+    Column labels_;  // kept alive: string keys point into its bytes
+    std::vector<std::int64_t> codes_;  // per position
+    std::vector<std::int64_t> first_;  // per code
+    std::int64_t ngroups_ = 0;
+    std::unique_ptr<Partitioned<std::uint64_t, Fmix64>> ints_;
+    std::unique_ptr<Partitioned<std::string_view, HashBytes>> strings_;
+    // Positions grouped by code (built on first use by all_positions).
+    mutable std::vector<std::int64_t> group_start_, group_rows_;
 };
 ```
 
@@ -159,9 +174,9 @@ public:
 엔진은 처음 조회할 때 만들어서 Index 객체의 `_labels` 칸에 둬요(`_index.py`의 `_table()`).
 
 ```python
-# src/stardust/frame/_index.py, Index._table
+# src/stardust/frame/_index.py
 def _table(self):
-    if self._labels is None:             # 처음 쓸 때 만든다
+    if self._labels is None:  # built on first use (docs/design/frame.md §6.2)
         self._labels = LabelTable(self._col)
     return self._labels
 ```
@@ -188,15 +203,14 @@ def _table(self):
 **`all_positions`**는 CSR을 써요. CSR(compressed sparse row)은 "코드 $g$의 위치들"을 한 배열 `rows`에 코드 순서로 모아 두고, `start[g]`부터 `start[g+1]` 직전까지가 코드 $g$의 몫이라고 적는 방식이에요. 처음 부를 때 counting sort로 만들어요.
 
 ```cpp
-// csrc/frame/ops/hash.cpp, LabelTable::all_positions (CSR 만들기 부분, 줄인 발췌)
-if (group_start_.empty()) {
-    group_start_.assign(ngroups_ + 1, 0);
-    for (std::int64_t c : codes_) ++group_start_[c + 1];               // 1. 코드마다 개수
-    for (std::int64_t g = 0; g < ngroups_; ++g)                        // 2. 누적합 = 구간 시작
-        group_start_[g + 1] += group_start_[g];
+// csrc/frame/ops/hash.cpp
+if (group_start_.empty()) {  // counting sort of positions by code: CSR groups
+    group_start_.assign(static_cast<std::size_t>(ngroups_ + 1), 0);
+    for (std::int64_t c : codes_) ++group_start_[c + 1];
+    for (std::int64_t g = 0; g < ngroups_; ++g) group_start_[g + 1] += group_start_[g];
     group_rows_.resize(codes_.size());
     std::vector<std::int64_t> fill(group_start_.begin(), group_start_.end() - 1);
-    for (std::int64_t i = 0; i < n; ++i) group_rows_[fill[codes_[i]]++] = i;  // 3. 위치 순서로 채우기
+    for (std::int64_t i = 0; i < static_cast<std::int64_t>(codes_.size()); ++i) group_rows_[fill[codes_[i]]++] = i;
 }
 ```
 
@@ -342,16 +356,21 @@ dtype: int64
 ### 알고리즘 (`_select.align`)
 
 ```python
-# src/stardust/frame/_select.py, align (줄인 발췌)
+# src/stardust/frame/_select.py
 def align(a, b, func=None):
-    if a is b or a.equals(b):                          # 1. 같은 Index: 위치대로
-        return a, None, None
-    if a._dtype != b._dtype: raise TypeError(...)     # 2. int 라벨과 string 라벨은 맞출 수 없다
-    if not a.is_unique or not b.is_unique: raise ValueError(...)
-    only_b = (a._get_indexer(b) == -1).nonzero()      # 3. b의 라벨을 a에서 찾아 없는 것만
-    union = Index(concat([a_labels, b_labels.take(only_b)]))
-    a_pos = None if len(only_b) == 0 else concat([arange(0, 1, len(a)), [-1] * len(only_b)])
-    b_pos = b._get_indexer(union)                      # 4. 합집합의 라벨을 b에서 찾기
+    # ...
+    name = merged_name(a.name, b.name)
+    if same_index(a, b):
+        return a._with_name(name), None, None
+    if a._dtype != b._dtype:
+        raise TypeError(named(func, mixed_labels(a._dtype, b._dtype)))
+    if not a.is_unique or not b.is_unique:
+        raise ValueError(named(func, "cannot align indexes with duplicate labels"))
+    a_labels, b_labels = a._column(), b._column()
+    only_b = _core.binary_op("eq", a._get_indexer(b), Column.from_list([-1], None, None), 2).nonzero()
+    union = Index._new(_core.concat([a_labels, b_labels.take(only_b)]), name)
+    a_pos = None if len(only_b) == 0 else _core.concat([_core.arange(0, 1, len(a)), _minus_ones(len(only_b))])
+    b_pos = b._get_indexer(union)
     return union, a_pos, b_pos
 ```
 
@@ -484,15 +503,15 @@ for (i = 0; i < n; ++i)
 stardust의 고정폭(bool, int64, float64) 필터는 분기를 없애요.
 
 ```cpp
-// csrc/frame/ops/selection.cpp, compact_rows (줄인 발췌)
+// csrc/frame/ops/selection.cpp
 template <class Get>
 void compact_rows(const std::uint8_t* keep, std::int64_t lo, std::int64_t hi, Get get, auto* out) {
     std::int64_t last = hi - 1;
-    while (last >= lo && !keep[last]) --last;      // 이 청크에서 마지막으로 남길 행
+    while (last >= lo && !keep[last]) --last;
     std::int64_t k = 0;
     for (std::int64_t i = lo; i <= last; ++i) {
-        out[k] = get(i);                           // 언제나 쓴다
-        k += keep[i];                              // 남길 때만 다음 칸으로
+        out[k] = get(i);
+        k += keep[i];
     }
 }
 ```
@@ -571,12 +590,14 @@ Polars는 64행 단위로 마스크의 모양을 보고 고르는데, 이것은 
 `s.loc[...] = v`, `s.iloc[...] = v`, `df.loc[rows, "c"] = v`는 모두 `Series._assign`으로 와요.
 
 ```python
-# src/stardust/frame/_series.py, Series._assign
+# src/stardust/frame/_series.py
 def _assign(self, sel, value):
     labels = None if sel[0] == "one" else _select.select_index(self._index, sel)
-    values = assignment_values(value, self._dtype, labels)   # 1. 값을 컬럼 dtype의 Column으로
-    self._col = self._col.share()                            # 2. 내 Column 객체를 따로 갖는다
-    self._col.set_rows(_select.positions_column(sel), values) # 3. 쓰기 (Copy-on-Write)
+    values = assignment_values(value, self._dtype, labels)
+    # A Column object of our own, so the write cannot show through another
+    # object holding the old one; set_rows copies shared Buffers (CoW).
+    self._col = self._col.share()
+    self._col.set_rows(_select.positions_column(sel), values)
 ```
 
 1. **값 맞추기**: 스칼라는 `implicit_scalar`로, list는 추론한 뒤 `implicit`로 컬럼 dtype에 맞춰요. list와 tuple은 추론하기 전에 bool과 수(int, float, numpy 정수·실수)가 섞였는지 봐요(`_check_no_bool_mix`). 원소마다 값을 보지 않고 타입의 집합(`set(map(type, values))`, C 안에서 한 번 훑기)만 봐요. 섞였으면 TypeError예요. object dtype의 numpy 배열도 Python 객체를 담고 있으니 list로 바꿔 같은 검사를 해요. 생성자의 추론처럼 `[True, 2]`를 int64 `[1, 2]`로 승격하면 int 컬럼에 넣을 때 `True`가 아무 말 없이 `1`이 되기 때문이에요. 컬럼을 통째로 새로 만드는 `df["c"] = [True, 2]`는 이 길이 아니라서 생성과 같이 int64예요. 규칙은 dtype만 보고 위로만(`bool → int64 → float64`)이에요. int 컬럼에 `2.0`은 값과 상관없이 TypeError예요. 값이 Series면 고른 행의 라벨로 `reindexed`(정렬)한 뒤 같은 규칙을 적용해요. 마스크로 골랐으면 `select_index`가 남은 행의 라벨을 만들어 그 라벨로 맞춰요.
@@ -588,18 +609,24 @@ DataFrame의 `df.loc[rows, "c"] = v`는 그 컬럼으로 임시 Series를 만들
 ### C++ 쪽: detach
 
 ```cpp
-// csrc/frame/ops/selection.cpp, detach (줄인 발췌)
+// csrc/frame/ops/selection.cpp
+// Gives `col` values and validity Buffers that nothing else holds, starting
+// at offset 0, copying its rows when needed. Afterwards writes cannot be
+// seen through any other object.
 void detach(Column& col, bool need_validity) {
     const bool shared = col.values.use_count() > 1 || (col.validity && col.validity.use_count() > 1);
     const bool add_bits = need_validity && !col.validity;
-    if (!shared && !(add_bits && col.offset != 0)) {      // 나만 들고 있다: 그 자리에서
+    if (!shared && !(add_bits && col.offset != 0)) {
         if (add_bits) add_validity(col);
         return;
     }
-    // 다른 주인이 있다: 내 행 범위 [offset, offset + length)만 새 Buffer로 복사
-    auto values = Buffer::allocate(col.length * size);
-    std::memcpy(values->data(), col.values->data() + col.offset * size, col.length * size);
-    col.values = values;  col.validity = rebased_validity(col);  col.offset = 0;
+    const std::int64_t size = itemsize(col.dtype);
+    auto values = Buffer::allocate(col.length * size, /*zeroed=*/false);
+    std::memcpy(values->data(), col.values->data() + col.offset * size, static_cast<std::size_t>(col.length * size));
+    auto validity = rebased_validity(col);
+    col.values = values;
+    col.validity = validity;
+    col.offset = 0;
     if (add_bits) add_validity(col);
 }
 ```

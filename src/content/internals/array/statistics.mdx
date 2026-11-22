@@ -83,14 +83,17 @@ $$
 여기까지는 수식이에요. 부동소수점에서는 수학적으로 같은 식도 반올림이 달라요. 예를 들어 `linear`를 $(\alpha, \beta) = (1, 1)$의 일반형으로 계산하면 $(n-1)q$와 마지막 비트가 다를 수 있고, 그러면 $\lfloor v \rfloor$가 한 칸 바뀌어 다른 원소를 고르거나 $\gamma$가 달라져요. numpy도 이 이유로 `linear`만 따로 $(n-1)q$로 계산해요. stardust의 `pick` 함수는 방법마다 numpy와 같은 식을 써요.
 
 ```cpp
-// array/ops/quantile.cpp (발췌)
+// csrc/array/ops/quantile.cpp (발췌)
 double virtual_index(double n, double q, double alpha, double beta) {
-    return n * q + (alpha + q * (1 - alpha - beta)) - 1;        // numpy의 괄호 그대로
+    return n * q + (alpha + q * (1 - alpha - beta)) - 1;
 }
 
-double py_mod2(double v) { return v - 2 * std::floor(v / 2); }  // Python의 float % 2
+// Python's float % 2 (the sign of the divisor), as numpy's np.floor(index) % 2.
+double py_mod2(double v) { return v - 2 * std::floor(v / 2); }
 
-std::int64_t to_boundary(double index, bool odd_rule) {          // _discrete_interpolation_to_boundaries
+// _discrete_interpolation_to_boundaries: previous (when `take_previous`) or
+// previous + 1, and never below 0.
+std::int64_t to_boundary(double index, bool odd_rule) {
     const double previous = std::floor(index);
     const double gamma = index - previous;
     const bool take_previous = gamma == 0 && (!odd_rule || py_mod2(previous) == 1);
@@ -100,20 +103,42 @@ std::int64_t to_boundary(double index, bool odd_rule) {          // _discrete_in
 
 Pick pick(Method m, std::int64_t count, double q) {
     const double n = static_cast<double>(count);
+    Pick p;
+    auto take = [&](std::int64_t k) {
+        p.lo = p.hi = k;
+        return p;
+    };
+    double v = 0;  // the virtual index of an interpolating method
     switch (m) {
-        case Method::Nearest: return take(std::nearbyint((n - 1) * q));   // np.around: 짝수 쪽
-        case Method::Linear:  v = (n - 1) * q; break;
-        case Method::Hazen:   v = virtual_index(n, q, 0.5, 0.5); break;
-        // ... 나머지 방법
+        case Method::Lower: return take(static_cast<std::int64_t>(std::floor((n - 1) * q)));
+        case Method::Higher: return take(static_cast<std::int64_t>(std::ceil((n - 1) * q)));
+        case Method::Nearest:
+            return take(static_cast<std::int64_t>(std::nearbyint((n - 1) * q)));  // half to even, as np.around
+        // ...
+        case Method::Hazen: v = virtual_index(n, q, 0.5, 0.5); break;
+        case Method::Weibull: v = virtual_index(n, q, 0, 0); break;
+        case Method::Linear: v = (n - 1) * q; break;
+        // ...
     }
-    double previous = std::floor(v);                    // _get_indexes
-    if (v >= n - 1)  { previous = -1; p.lo = p.hi = count - 1; }   // 끝을 넘으면
-    else if (v < 0)  { previous = 0;  p.lo = p.hi = 0; }           // 앞을 넘으면
-    else             { p.lo = previous; p.hi = p.lo + 1; }
-    double gamma = v - previous;                        // _get_gamma
+    // _get_indexes. Past the end both neighbours are the last element, and
+    // the index numpy then subtracts in _get_gamma is -1, not n - 1.
+    double previous = std::floor(v);
+    if (v >= n - 1) {
+        previous = -1;
+        p.lo = p.hi = count - 1;
+    } else if (v < 0) {
+        previous = 0;
+        p.lo = p.hi = 0;
+    } else {
+        p.lo = static_cast<std::int64_t>(previous);
+        p.hi = p.lo + 1;
+    }
+    double gamma = v - previous;
     if (m == Method::AveragedInvertedCdf) gamma = gamma == 0 ? 0.5 : 1.0;
     if (m == Method::Midpoint) gamma = std::floor(v) == v ? 0.0 : 0.5;
-    ...
+    p.gamma = gamma;
+    p.lerp = true;
+    return p;
 }
 ```
 
@@ -137,7 +162,7 @@ numpy 2.5.4도 첫 호출에 `nan`을 돌려줘요(`invalid value encountered in
 ### 보간: numpy의 `_lerp`
 
 ```cpp
-// array/ops/quantile.cpp
+// csrc/array/ops/quantile.cpp
 double lerp(double a, double b, double t) {
     const double diff = b - a;
     return t >= 0.5 ? b - diff * (1 - t) : a + diff * t;
@@ -151,10 +176,22 @@ $t$가 0.5 이상이면 $b$ 쪽에서 거꾸로 계산해요. 끝점에서 정�
 `median`은 `quantile(x, 0.5)`가 아니라 numpy의 `_median`을 따라요. numpy는 가운데 하나(홀수) 또는 둘(짝수)을 `partition`으로 제자리에 놓고 그 조각의 `mean`을 구해요. `mean`은 `+0.0`부터 더해서 개수로 나누는 것이니, stardust도 똑같이 계산해요.
 
 ```cpp
-// array/ops/quantile.cpp의 run_lane (발췌)
-const std::int64_t h = n / 2;
-if (n % 2) out[0] = (0.0 + p[h]) / 1.0;                  // 가운데 하나
-else       out[0] = (0.0 + p[h - 1] + p[h]) / 2.0;       // 가운데 둘: (0 + a) + b
+    // csrc/array/ops/quantile.cpp의 run_lane (발췌)
+    if (job.method == Method::Median) {
+        // numpy's _median: mean() of the middle one or two, a sum from +0.0
+        // divided by the count.
+        const std::int64_t h = n / 2;
+        if (n % 2) {
+            const std::int64_t ks[] = {h};
+            order_statistics(p, n, job.lanes == 1, ks, 1);
+            out[0] = (0.0 + p[h]) / 1.0;
+        } else {
+            const std::int64_t ks[] = {h - 1, h};
+            order_statistics(p, n, job.lanes == 1, ks, 2);
+            out[0] = (0.0 + p[h - 1] + p[h]) / 2.0;
+        }
+        return;
+    }
 ```
 
 앞의 `0.0 +`에도 쓸모가 있어요. 레인이 `[-0.0]`이면 `0.0 + -0.0 = +0.0`이라 결과가 `+0.0`이에요. numpy의 `mean`도 `+0.0`에서 시작하므로 같아요. `quantile`의 `linear`와 `median`은 대부분 같은 값이지만, 이런 경계에서 비트가 달라질 수 있어서 numpy처럼 둘을 따로 계산해요.
@@ -175,17 +212,20 @@ else       out[0] = (0.0 + p[h - 1] + p[h]) / 2.0;       // 가운데 둘: (0 + 
 긴 레인에서는 고를 위치가 여러 개일 수 있어서 선택을 재귀로 해요.
 
 ```cpp
-// array/ops/quantile.cpp의 select (발췌)
+// csrc/array/ops/quantile.cpp의 select (발췌)
 void select(double* p, std::int64_t lo, std::int64_t hi, const std::int64_t* ks, int count) {
     if (count == 0) return;
-    if (count > 32) { sort_float64_total(p + lo, hi - lo, false); return; }  // 위치가 많으면 정렬
+    if (count > 32) {  // many positions: sorting the range is cheaper
+        sort_float64_total(p + lo, hi - lo, false);
+        return;
+    }
     const int mid = count / 2;
     const std::int64_t k = ks[mid];
-    if (k == lo)          std::iter_swap(p + k, std::min_element(p + lo, p + hi, TotalLess{}));
+    if (k == lo) std::iter_swap(p + k, std::min_element(p + lo, p + hi, TotalLess{}));
     else if (k == hi - 1) std::iter_swap(p + k, std::max_element(p + lo, p + hi, TotalLess{}));
-    else                  std::nth_element(p + lo, p + k, p + hi, TotalLess{});
-    select(p, lo, k, ks, mid);                          // 왼쪽 위치들은 왼쪽 범위 안에서만
-    select(p, k + 1, hi, ks + mid + 1, count - mid - 1); // 오른쪽 위치들은 오른쪽 범위 안에서만
+    else std::nth_element(p + lo, p + k, p + hi, TotalLess{});
+    select(p, lo, k, ks, mid);
+    select(p, k + 1, hi, ks + mid + 1, count - mid - 1);
 }
 ```
 
@@ -200,7 +240,7 @@ void select(double* p, std::int64_t lo, std::int64_t hi, const std::int64_t* ks,
 세 갈래는 모두 `-0.0 < +0.0`으로 보는 같은 **전순서**(total order)로 비교해요.
 
 ```cpp
-// array/ops/sort.hpp
+// csrc/array/ops/sort.hpp
 struct TotalLess {
     bool operator()(double a, double b) const { return a < b || (a == b && std::signbit(a) && !std::signbit(b)); }
 };
@@ -211,15 +251,15 @@ struct TotalLess {
 NEON 정렬은 병합할 때 같은 값을 어느 쪽에서든 가져와서 `-0.0`과 `+0.0`이 섞여 나와요. 그래서 `sort_float64_total`은 정렬한 뒤 0의 구간을 찾아 "음의 0 개수만큼 `-0.0`, 나머지는 `+0.0`"으로 다시 써요. 정렬된 결과에서 0은 한데 붙어 있으므로 `lower_bound`/`upper_bound`로 구간을 찾고 개수만 세면 돼요. 병렬 정렬의 조각 병합도 `TotalLess`로 비교해요.
 
 ```cpp
-// array/ops/sort.cpp의 sort_float64_total (발췌)
-auto piece = [](double* p, std::int64_t m) {
-    simd_sort::sort<simd_sort::F64>(p, m);
-    double* z0 = std::lower_bound(p, p + m, 0.0);
-    double* z1 = std::upper_bound(z0, p + m, 0.0);
-    const std::int64_t negative = std::count_if(z0, z1, [](double v) { return std::signbit(v); });
-    std::fill(z0, z0 + negative, -0.0);
-    std::fill(z0 + negative, z1, 0.0);
-};
+    // csrc/array/ops/sort.cpp의 sort_float64_total (발췌)
+    auto piece = [](double* p, std::int64_t m) {
+        simd_sort::sort<simd_sort::F64>(p, m);
+        double* z0 = std::lower_bound(p, p + m, 0.0);
+        double* z1 = std::upper_bound(z0, p + m, 0.0);
+        const std::int64_t negative = std::count_if(z0, z1, [](double v) { return std::signbit(v); });
+        std::fill(z0, z0 + negative, -0.0);
+        std::fill(z0 + negative, z1, 0.0);
+    };
 ```
 
 ### numpy와 비트가 같은 이유, 같지 않은 단 하나
@@ -258,19 +298,18 @@ numpy의 nan 함수는 대부분 NaN을 중립값으로 바꾼 복사본을 만�
 stardust는 복사본을 만들지 않고 같은 값을 계산해요. 커널이 원소를 읽는 순간 NaN을 중립값으로 봐요.
 
 ```cpp
-// array/kernels/reduce.hpp
+// csrc/array/kernels/reduce.hpp
 template <typename T>
 inline T nan_as(T v, T fill) {
     if constexpr (ops::is_cplx<T>) return (std::isnan(v.real()) || std::isnan(v.imag())) ? fill : v;
     else if constexpr (ops::is_float<T>) return v != v ? fill : v;
     else return v;
 }
-
-// reduce_loop<Op, T, SkipNan> 안의 값 읽기
-auto value = [&](T v) {
-    if constexpr (SkipNan) return nan_as(v, identity);   // 합은 0, 곱은 1
-    else return v;
-};
+    // ...
+    auto value = [&](T v) {
+        if constexpr (SkipNan) return nan_as(v, identity);
+        else return v;
+    };
 ```
 
 `reduce_loop<Op, T, true>`는 이터레이터, 블록 리덕션, pairwise 트리를 모두 원래 함수와 똑같이 지나요. 다른 점은 접근자가 NaN 자리에 0을 돌려준다는 것뿐이에요. 그러니 "NaN을 0으로 바꾼 복사본의 `sum`"과 같은 덧셈을 같은 순서로 해요. NaN이 없으면 원래 함수와 비트가 같아요. numpy의 nan 함수와는 계산의 정의가 같고, 합의 잎이 달라서 끝자리가 다를 수 있어요(테스트가 레이아웃, 축, 스레드 수마다 허용오차로 대조해요).
@@ -295,13 +334,13 @@ auto value = [&](T v) {
 `nanvar`의 두 번째 패스는 `sq_dev_loop<T, true>`가 NaN 자리에 `+0.0`을 더해요.
 
 ```cpp
-// array/kernels/reduce.hpp의 sq_dev_loop, 실수 부분 (발췌)
-auto dev = [&](std::int64_t i) {
-    const T v = load_as<T>(x + i * s[0]);
-    const T d = v - load_as<T>(m + i * s[1]);
-    if constexpr (SkipNan) return v != v ? 0.0 : d;  // a select, as above
-    return d;
-};
+        // csrc/array/kernels/reduce.hpp의 sq_dev_loop, 실수 부분 (발췌)
+        auto dev = [&](std::int64_t i) {
+            const T v = load_as<T>(x + i * s[0]);
+            const T d = v - load_as<T>(m + i * s[1]);
+            if constexpr (SkipNan) return v != v ? 0.0 : d;  // a select, as above
+            return d;
+        };
 ```
 
 편차를 `+0.0`으로 읽으면 잎은 그 자리에서 `fma(0.0, 0.0, acc)`, 곧 `acc + (+0.0)`을 더해요. complex는 두 부분 중 하나라도 NaN이면 제곱 `fma(re, re, im·im)` 대신 `0.0`을 돌려줘요.
@@ -344,13 +383,12 @@ $X X^{\mathsf T}$는 대칭이라 위 삼각만 계산하면 돼요. BLAS의 `sy
 이론상으로는 `syrk`의 계산량이 언제나 절반이지만, Accelerate의 `syrk`는 관측이 변수보다 훨씬 많으면 오히려 느려요. p = 20, n = 1e5에서 `syrk` 3.5ms, `gemm` 2.0ms예요. 반대로 p = 2000, n = 200에서는 `syrk`가 2.4배 빨라요. 두 루틴의 속도가 뒤바뀌는 경계가 $n = 4p$ 근처라서, $n \le 4p$이면 `syrk`, 아니면 `gemm`을 불러요.
 
 ```cpp
-// array/ops/covariance.cpp (발췌)
-{
-    nb::gil_scoped_release release;    // BLAS는 오래 걸릴 수 있고 Python 객체를 만지지 않는다
-    if (n <= 4 * p) blas::syrk_upper<T>(p, n, xp, n, cp, p);           // dsyrk / zherk, 위 삼각
-    else blas::gemm<T>(CblasNoTrans, ops::is_cplx<T> ? CblasConjTrans : CblasTrans,
-                       p, p, n, xp, n, xp, n, cp, p);                    // B = Xᴴ
-}
+                // csrc/array/ops/covariance.cpp (발췌)
+                if (n <= 4 * p) blas::syrk_upper<T>(p, n, xp, n, cp, p);
+                else
+                    blas::gemm<T>(
+                        CblasNoTrans, ops::is_cplx<T> ? CblasConjTrans : CblasTrans, p, p, n, xp, n, xp, n, cp, p
+                    );
 ```
 
 `syrk_upper`는 `cblas_dsyrk(CblasRowMajor, CblasUpper, CblasNoTrans, ...)`, 복소수면 `cblas_zherk`예요. `zherk`는 대각을 정확히 실수로 만들어요. BLAS를 부르는 동안에는 GIL을 놓아 다른 Python 스레드가 돌 수 있게 해요. BLAS 자체의 내부 스레드는 Accelerate가 정해요.
@@ -362,24 +400,27 @@ $X X^{\mathsf T}$는 대칭이라 위 삼각만 계산하면 돼요. BLAS의 `sy
 단순하게 쓰면 `c[j * p + i] = c[i * p + j]`를 행 순서로 돌게 되는데, 쓰는 쪽이 stride $p$로 열을 따라 내려가요. 원소마다 다른 캐시 라인이라 거의 매번 캐시를 놓쳐요. p = 2000에서 이 복사만 1.7ms(전체 `cov` 2.7ms 중)가 걸려요. 그래서 64×64 타일 단위로 복사해요. 타일 하나는 읽는 쪽과 쓰는 쪽 모두 64줄 × 64원소라 L1에 들어가요.
 
 ```cpp
-// array/ops/covariance.cpp의 block_row (발췌)
-constexpr std::int64_t kTile = 64;
-auto block_row = [&](std::int64_t bi) {
-    const std::int64_t i0 = bi * kTile, i1 = std::min(p, i0 + kTile);
-    for (std::int64_t j0 = i0; j0 < p; j0 += kTile) {          // 위 삼각의 타일들
-        const std::int64_t j1 = std::min(p, j0 + kTile);
-        for (std::int64_t i = i0; i < i1; ++i) {
-            if constexpr (ops::is_cplx<T>)
-                if (j0 == i0) cp[i * p + i] = T(cp[i * p + i].real(), 0.0);   // 대각은 실수
-            for (std::int64_t j = std::max(j0, i); j < j1; ++j) {
-                const T val = cp[i * p + j] * scale;               // 1/fact를 곱하고
-                cp[i * p + j] = val;
-                cp[j * p + i] = is_cplx ? conj(val) : val;         // 거울 자리에 (복소면 켤레)
-            }
-        }
-    }
-};
-for_pieces(blocks, 1, p * p, [&](std::int64_t b, std::int64_t, std::int64_t) { block_row(b); });
+            // csrc/array/ops/covariance.cpp의 block_row (발췌)
+            constexpr std::int64_t kTile = 64;
+            const std::int64_t blocks = (p + kTile - 1) / kTile;
+            auto block_row = [&](std::int64_t bi) {
+                const std::int64_t i0 = bi * kTile, i1 = std::min(p, i0 + kTile);
+                for (std::int64_t j0 = i0; j0 < p; j0 += kTile) {
+                    const std::int64_t j1 = std::min(p, j0 + kTile);
+                    for (std::int64_t i = i0; i < i1; ++i) {
+                        if constexpr (ops::is_cplx<T>) {
+                            if (j0 == i0) cp[i * p + i] = T(cp[i * p + i].real(), 0.0);  // |x|^2 sums: real
+                        }
+                        for (std::int64_t j = std::max(j0, i); j < j1; ++j) {
+                            const T val = cp[i * p + j] * scale;
+                            cp[i * p + j] = val;
+                            if constexpr (ops::is_cplx<T>) cp[j * p + i] = T(val.real(), -val.imag());
+                            else cp[j * p + i] = val;
+                        }
+                    }
+                }
+            };
+            for_pieces(blocks, 1, p * p, [&](std::int64_t b, std::int64_t, std::int64_t) { block_row(b); });
 ```
 
 태스크 하나가 위 삼각의 블록 행 하나(타일 $(b_i, b_j)$, $b_j \ge b_i$)와 그 거울 타일 $(b_j, b_i)$를 맡아요. 다른 태스크는 이 타일을 건드리지 않으므로 잠금 없이 병렬로 돌아요. 대각 타일에서는 `j`를 `max(j0, i)`부터 돌려 위 삼각 부분만 처리해요. 블록 행마다 일의 양이 다르지만(위쪽 블록 행일수록 타일이 많아요) 태스크를 블록 행 단위로 잘게 나눠 풀의 동적 분배가 균형을 맞춰요.
@@ -425,15 +466,16 @@ $$
 4. **가중치 합.** 원소가 $2^{15}$개 이상이고 결과 길이의 16배 이하이면 개수와 같은 16구간으로 나눠요. 구간마다 자기 배열에 `0.0`부터 원소 순서대로 더하고(`c[v[i]] += p[i]`), 구간 순서대로 합쳐요. 구간은 $n$과 결과 길이로만 정해서(풀이 비었는지는 보지 않아요) 스레드 수와 상관없이 같은 비트예요. 그 밖에는 원소 순서대로 직렬로 더해요. numpy는 언제나 원소 순서대로 직렬이라 끝자리가 다를 수 있어요. $4 \times 10^6$개, 결과 길이 1000에서 10스레드 약 4배로 어림했어요.
 
 ```cpp
-// array/ops/histogram.cpp의 count_into (발췌)
+// csrc/array/ops/histogram.cpp의 count_into (발췌)
 template <typename BinOf>
 void count_into(std::int64_t* counts, std::int64_t bins, std::int64_t n, BinOf&& bin_of) {
-    if (!use_groups(n, bins)) {                       // 짧거나 결과가 너무 길면 직렬
+    if (!use_groups(n, bins)) {
+        const parallel::Unlocked unlocked(n >= kParallelThreshold);
         for (std::int64_t i = 0; i < n; ++i)
             if (const std::int64_t b = bin_of(i); b >= 0) ++counts[b];
         return;
     }
-    std::vector<std::int64_t> local(kGroups * bins, 0);   // 구간마다 자기 개수 배열
+    std::vector<std::int64_t> local(static_cast<size_t>(kGroups * bins), 0);
     for_pieces(n, (n + kGroups - 1) / kGroups, n, [&](std::int64_t g, std::int64_t b0, std::int64_t e0) {
         std::int64_t* c = local.data() + g * bins;
         for (std::int64_t i = b0; i < e0; ++i)
@@ -461,16 +503,16 @@ $$
 이 식은 부동소수점이라 경계 근처에서 한 칸 틀릴 수 있어요. 경계는 `linspace`로 따로 계산한 값이고, $f$는 다른 반올림을 거친 값이기 때문이에요. numpy는 이 값을 실제 경계와 비교해 두 번 바로잡아요. stardust도 똑같이 해요.
 
 ```cpp
-// array/ops/histogram.cpp의 UniformBins (발췌)
-std::int64_t operator()(double v) const {
-    if (!(v >= first && v <= last)) return -1;            // 범위 밖이거나 NaN
-    const double f = ((v - first) / (last - first)) * bins_d;
-    auto i = static_cast<std::int64_t>(f);
-    if (i == bins) --i;                                     // v == last: 마지막 구간은 오른쪽이 닫혀 있다
-    if (v < edge[i]) --i;                                   // 보정 1: 실제 경계보다 작으면 한 칸 아래
-    if (v >= edge[i + 1] && i != bins - 1) ++i;             // 보정 2: 다음 경계 이상이면 한 칸 위
-    return i;
-}
+    // csrc/array/ops/histogram.cpp의 UniformBins (발췌)
+    std::int64_t operator()(double v) const {
+        if (!(v >= first && v <= last)) return -1;
+        const double f = ((v - first) / (last - first)) * bins_d;
+        auto i = static_cast<std::int64_t>(f);
+        if (i == bins) --i;
+        if (v < edge[i]) --i;
+        if (v >= edge[i + 1] && i != bins - 1) ++i;
+        return i;
+    }
 ```
 
 계산은 $O(1)$이고 이진 탐색이 없어요. 보정 덕분에 구간 번호는 언제나 돌려주는 경계 배열과 맞아요.

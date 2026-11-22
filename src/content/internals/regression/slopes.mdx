@@ -55,6 +55,7 @@ TheilslopesResult(slope=nan, intercept=nan, low_slope=nan, high_slope=nan)
 중앙값은 scipy가 쓰는 `quantile(..., 0.5)`(`method='linear'`)와 같은 식이에요. 개수 $c$가 홀수면 가운데 값, 짝수면 가운데 두 값 $a \le b$의 $0.5a + 0.5b$예요.
 
 ```cpp
+// csrc/regression/slopes.cpp
 double qmedian(double* v, lint c) {
     if (c == 0) return kNaN;
     const lint m = (c - 1) / 2;
@@ -83,6 +84,7 @@ Theil–Sen에 필요한 값은 기울기 $N$개(유한·무한 모두, $x$가 �
 $N \le 2^{23}$이면 기울기를 한 배열에 모으고, 순위가 작은 것부터 `nth_element`로 골라요. 순위 $r$을 고른 뒤에는 $r$ 뒤의 원소가 모두 그 값 이상이므로, 다음 순위는 $[r, N)$ 구간에서만 고르면 돼요.
 
 ```cpp
+        // csrc/regression/slopes.cpp
         lint from = 0;
         for (std::size_t t = 0; t < want.size(); ++t) {
             const lint r = static_cast<lint>(want[t]);
@@ -101,6 +103,7 @@ $2^{23}$개는 double로 64 MiB이고, 같은 $x$가 없으면 $n = 4{,}096$까�
 **순서를 보존하는 정수 키.** 기울기 $v$를 64비트 정수 키로 바꿔 비교해요. IEEE double의 비트를 부호 있는 정수로 읽으면 양수끼리는 크기 순서와 같고, 음수는 순서가 거꾸로예요. 음수의 비트를 부호 비트만 빼고 뒤집으면(`b ^ INT64_MAX`) 전체가 크기 순서대로 놓여요. $v + 0.0$을 먼저 해서 $-0$을 $+0$으로 만들어요(같은 값이 같은 키가 되게). $x$가 같은 쌍과 $\infty/\infty$인 쌍은 가장 큰 키 `INT64_MAX`로 두어, 셀 때 맨 위에 모이게 해요. 원하는 순위는 모두 $N$ 아래라 그 키에 닿지 않아요.
 
 ```cpp
+// csrc/regression/slopes.cpp
 inline std::int64_t okey(double v) {
     v = v + 0.0;
     std::int64_t b;
@@ -114,6 +117,7 @@ inline std::int64_t okey(double v) {
 **한 번의 훑기.** 행 $i$를 쌍의 수가 거의 같은 128개 덩어리로 나눠요(나누는 자리는 $n$만으로 정해요). 덩어리 안에서 행 $i$마다 $j > i$의 기울기 키를 한 배열에 계산하고, 순위마다 네 수를 분기 없이 세요.
 
 ```cpp
+                    // csrc/regression/slopes.cpp
                     for (lint j = i + 1; j < n; ++j) {
                         const std::int64_t q = kq[j];
                         a0 += q < l;
@@ -165,6 +169,7 @@ True
 $x$가 같은 쌍의 수는 $x$를 정렬해 동률을 세는 것으로 정확히 알아요(아래 신뢰구간 절의 동률 합과 같은 계산). $\infty/\infty$인 쌍은 $x$의 차가 넘칠 때만 생기므로, $x$의 범위($\max x - \min x$)가 넘치는지 먼저 보고 그때만 모든 쌍을 훑어 세요. 보통의 자료는 이 $O(n^2)$ 훑기를 하지 않아요.
 
 ```cpp
+    // csrc/regression/slopes.cpp
     std::int64_t nnan = 0;
     if (n > 1 && std::isinf(*std::max_element(P.x, P.x + n) - *std::min_element(P.x, P.x + n)))
         for (lint i = 0; i + 1 < n; ++i)

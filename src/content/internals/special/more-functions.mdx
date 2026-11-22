@@ -508,8 +508,8 @@ $W_0$는 $p > 0$, $W_{-1}$은 $p < 0$이에요. stardust는 이 급수의 계수
 어려운 것은 $e\,x + 1$이에요. $x \approx -1/e$이면 $e\,x \approx -1$이라 1을 더하는 순간 앞자리가 모두 지워지고, $e$와 곱셈의 반올림만 남아요. scipy 1.18.1은 여기서 $2 \times 10^7$ ULP를 잃어요. 그런데 이 점은 $W$의 조건수 $1/\lvert 1 + W\rvert$가 크긴 해도, 입력은 정확한 float64예요. 그 입력에서의 값을 상대 정확도로 내려면 $e\,x + 1$만 정확하면 돼요. 그래서 $e = e_{\mathrm{hi}} + e_{\mathrm{lo}}$를 double-double로 두고
 
 ```cpp
-// ops/lambertw.hpp: 2(e x + 1), x가 −1/e 근처여도 반올림 한 번 수준
-// e_hi·x + 1을 fma로 정확히, 그다음 e_lo·x
+// csrc/special/ops/lambertw.hpp: 2(e x + 1), x가 −1/e 근처여도 반올림 한 번 수준
+// 2 (e x + 1), exact to rounding for x near -1/e: e_hi x + 1 by fma, then + e_lo x.
 inline double two_ex_plus_one(double x) { return 2.0 * (std::fma(kEHi, x, 1.0) + kELo * x); }
 ```
 

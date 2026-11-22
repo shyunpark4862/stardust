@@ -69,29 +69,46 @@ Python 층과 바인딩은 dtype을 이름 문자열(`"int64"`)로 주고받고,
 ## Column 구조체
 
 ```cpp
-// csrc/frame/column.hpp (발췌)
+// csrc/frame/column.hpp
 struct Column {
     DType dtype = DType::Float64;
     std::int64_t length = 0;
-    std::int64_t offset = 0;      // Buffer 안의 첫 행. values의 원소, validity의 비트, offsets의 칸을 똑같이 센다
+    // First row inside the Buffers: a slice moves `offset` and `length` and
+    // shares everything else. It counts elements of `values`, bits of
+    // `validity` and entries of `offsets` alike.
+    std::int64_t offset = 0;
     std::int64_t null_count = 0;
-    std::shared_ptr<Buffer> values;    // bool/int64/float64는 값, string은 모든 UTF-8 바이트
-    std::shared_ptr<Buffer> validity;  // null_count == 0일 때 정확히 null
-    std::shared_ptr<Buffer> offsets;   // string만: length + 1개의 int64 위치. 절대 위치라 슬라이스가 공유한다
+    // bool/int64/float64: the values. string: all the UTF-8 bytes, back to back.
+    std::shared_ptr<Buffer> values;
+    // ...
+    std::shared_ptr<Buffer> validity;
+    // string only: length + 1 int64 positions into `values`; row i is bytes
+    // [offsets[i], offsets[i + 1]). They are absolute, so slices share them.
+    std::shared_ptr<Buffer> offsets;
 
     template <class T>
-    const T* data() const { return reinterpret_cast<const T*>(values->data()) + offset; }
-
-    bool is_valid(std::int64_t i) const { return !validity || bitmap::get(validity_bits(), offset + i); }
-
-    std::string_view string_at(std::int64_t i) const {
-        const std::int64_t* o = string_offsets();          // offsets->data() + offset
-        return {reinterpret_cast<const char*>(values->data()) + o[i],
-                static_cast<std::size_t>(o[i + 1] - o[i])};
+    const T* data() const {
+        return reinterpret_cast<const T*>(values->data()) + offset;
     }
 
+    const std::uint8_t* validity_bits() const {
+        return validity ? reinterpret_cast<const std::uint8_t*>(validity->data()) : nullptr;
+    }
+    bool is_valid(std::int64_t i) const { return !validity || bitmap::get(validity_bits(), offset + i); }
+
+    const std::int64_t* string_offsets() const {
+        return reinterpret_cast<const std::int64_t*>(offsets->data()) + offset;
+    }
+    std::string_view string_at(std::int64_t i) const {
+        const std::int64_t* o = string_offsets();
+        return {reinterpret_cast<const char*>(values->data()) + o[i], static_cast<std::size_t>(o[i + 1] - o[i])};
+    }
+
+    // Rows [start, start + len), sharing the Buffers (zero-copy). The null
+    // count is recounted for the range; a slice with no NA drops the bitmap.
     Column slice(std::int64_t start, std::int64_t len) const;
-    Column convert(DType target) const;   // 손실 없는 int64 ↔ float64 (조회 x in s용)
+    // ...
+    Column convert(DType target) const;
 };
 ```
 
@@ -124,7 +141,7 @@ Column을 만들고 고치는 모든 코드가 다음 네 약속을 지켜요. �
 `Series`는 Column 객체 하나, Index 하나, 이름 하나를 담은 Python 객체예요.
 
 ```python
-# src/stardust/frame/_series.py (발췌)
+# src/stardust/frame/_series.py
 @own_reductions
 class Series(Reductions):
     __slots__ = ("_col", "_index", "_name")
@@ -168,11 +185,14 @@ $$
 `i >> 3`은 `i / 8`, `i & 7`은 `i % 8`이에요. 8이 2의 거듭제곱이라 나눗셈 없이 시프트와 AND로 돼요.
 
 ```cpp
-// csrc/frame/bitmap.hpp (발췌)
+// csrc/frame/bitmap.hpp
 inline std::int64_t num_bytes(std::int64_t nbits) { return (nbits + 7) / 8; }
+
 inline bool get(const std::uint8_t* bits, std::int64_t i) { return (bits[i >> 3] >> (i & 7)) & 1; }
-inline void set(std::uint8_t* bits, std::int64_t i)   { bits[i >> 3] |= std::uint8_t(1u << (i & 7)); }
-inline void clear(std::uint8_t* bits, std::int64_t i) { bits[i >> 3] &= std::uint8_t(~(1u << (i & 7))); }
+
+inline void set(std::uint8_t* bits, std::int64_t i) { bits[i >> 3] |= static_cast<std::uint8_t>(1u << (i & 7)); }
+
+inline void clear(std::uint8_t* bits, std::int64_t i) { bits[i >> 3] &= static_cast<std::uint8_t>(~(1u << (i & 7))); }
 ```
 
 ### 결측이 없으면 비트맵이 없어요
@@ -180,16 +200,19 @@ inline void clear(std::uint8_t* bits, std::int64_t i) { bits[i >> 3] &= std::uin
 결측이 없는 컬럼의 `validity`는 null 포인터예요. 모든 비트가 1인 비트맵을 두지 않아요. 그래서 커널은 컬럼마다 한 번 `col.validity`를 보고 두 루프 중 하나를 골라요.
 
 ```cpp
-// csrc/frame/ops/selection.cpp의 isna (발췌)
+// csrc/frame/ops/selection.cpp
 Column isna(const Column& col, bool want_na) {
     Column out = make_fixed(DType::Bool, col.length);
-    auto bits = rebased_validity(col);      // 비트맵이 없으면 null
-    if (!bits) {                            // 결측 없음: 전부 False (notna면 전부 True)
-        std::memset(out_bytes, want_na ? 0 : 1, col.length);
+    auto* o = reinterpret_cast<std::uint8_t*>(out.values->data());
+    const std::uint8_t flip = want_na ? 1 : 0;  // isna is 1 - valid, notna is valid
+    auto bits = rebased_validity(col);
+    if (!bits) {
+        const Unlocked unlocked(col.length);
+        std::memset(o, flip ^ 1, static_cast<std::size_t>(col.length));
         return out;
     }
-    // 결측 있음: 비트를 바이트로 펼친다 (아래)
-    ...
+    // ...
+    return out;
 }
 ```
 
@@ -243,21 +266,27 @@ $$
 이렇게 맞춘 뒤 결과 비트맵은 바이트 단위 AND 한 줄이에요.
 
 ```cpp
-// csrc/frame/column.cpp의 and_validity (줄임)
+// csrc/frame/column.cpp
 std::shared_ptr<Buffer> and_validity(const Column& a, const Column& b, int scalar_side, std::int64_t n) {
+    const Column* rows[2] = {&a, &b};
     std::shared_ptr<Buffer> out;
     for (int side = 1; side <= 2; ++side) {
-        const Column& c = side == 1 ? a : b;
-        if (!c.validity) continue;                         // 결측 없는 쪽은 건너뛴다
-        if (side == scalar_side)                           // NA 스칼라: 모든 행이 결측
-            return Buffer::allocate(bitmap::num_bytes(n), /*zeroed=*/true);
-        if (!out) out = rebased_validity(c);
-        else {
+        const Column& c = *rows[side - 1];
+        if (!c.validity) continue;
+        if (side == scalar_side) {  // an NA scalar makes every row NA
+            out = Buffer::allocate(bitmap::num_bytes(n), /*zeroed=*/true);
+            return out;
+        }
+        if (!out) {
+            out = rebased_validity(c);
+        } else {
             auto other = rebased_validity(c);
-            for (std::int64_t j = 0; j < bitmap::num_bytes(n); ++j) out_bytes[j] &= other_bytes[j];
+            auto* o = reinterpret_cast<std::uint8_t*>(out->data());
+            const auto* p = reinterpret_cast<const std::uint8_t*>(other->data());
+            for (std::int64_t j = 0; j < bitmap::num_bytes(n); ++j) o[j] &= p[j];
         }
     }
-    return out;                                            // 둘 다 결측이 없으면 null
+    return out;
 }
 ```
 
@@ -270,19 +299,19 @@ std::shared_ptr<Buffer> and_validity(const Column& a, const Column& b, int scala
 그래서 비트맵을 행마다 0 또는 1인 바이트로 펼친 뒤 그 바이트로 분기 없이 골라요. 펼치는 방법은 256칸짜리 표예요.
 
 ```cpp
-// csrc/frame/bitmap.hpp (발췌)
-// 바이트 값 b마다, b의 비트 k를 바이트 k에 담은 8바이트 (0 또는 1)
+// csrc/frame/bitmap.hpp
 inline constexpr std::array<std::uint64_t, 256> kExpand = [] {
     std::array<std::uint64_t, 256> t{};
     for (unsigned b = 0; b < 256; ++b)
-        for (unsigned k = 0; k < 8; ++k) t[b] |= std::uint64_t((b >> k) & 1) << (8 * k);
+        for (unsigned k = 0; k < 8; ++k) t[b] |= static_cast<std::uint64_t>((b >> k) & 1) << (8 * k);
     return t;
 }();
 
+// Bits [0, n) of `bits` (starting at bit 0) as n bytes of 0 or 1.
 inline void expand(const std::uint8_t* bits, std::int64_t n, std::uint8_t* out) {
     const std::int64_t full = n / 8;
-    for (std::int64_t j = 0; j < full; ++j) std::memcpy(out + 8 * j, &kExpand[bits[j]], 8);  // 8행을 한 번에
-    for (std::int64_t i = full * 8; i < n; ++i) out[i] = get(bits, i);                     // 남은 7행 이하
+    for (std::int64_t j = 0; j < full; ++j) std::memcpy(out + 8 * j, &kExpand[bits[j]], 8);
+    for (std::int64_t i = full * 8; i < n; ++i) out[i] = get(bits, i);
 }
 ```
 
@@ -336,13 +365,7 @@ void finish_fixed(Column& col) {
         col.validity.reset();
         return;
     }
-    // Branch-free: AND every value with all-ones (valid) or zero (NA), the
-    // bitmap first expanded to one byte per row so the loop vectorizes
-    // (docs/design/frame.md §4.5).
-    // Per chunk: expand that chunk's bits into a stack buffer, then mask.
-    // Bounds and pointers are locals: a store through a uint8_t pointer may
-    // alias anything, so a bound read through a reference would be reloaded
-    // every iteration and the loop would not vectorize (docs/design/frame.md §7.6).
+    // ...
     auto zero = [&](auto* v) {
         using T = std::remove_reference_t<decltype(*v)>;
         for_chunks(col.length, [bits, v](std::int64_t lo, std::int64_t hi) {
@@ -446,12 +469,12 @@ Polars는 이 대가를 피하려고 Arrow의 문자열 view 레이아웃을 써
 // csrc/frame/column.cpp
 Column Column::slice(std::int64_t start, std::int64_t len) const {
     if (start < 0 || len < 0 || start + len > length) throw nb::index_error("column slice out of range");
-    Column out = *this;                 // shared_ptr 셋의 복사: 참조 수만 하나씩 는다
+    Column out = *this;
     out.offset = offset + start;
     out.length = len;
-    if (validity) {                     // 자기 범위의 결측만 다시 센다
+    if (validity) {
         out.null_count = len - bitmap::count_set(validity_bits(), out.offset, len);
-        if (out.null_count == 0) out.validity.reset();   // 약속 1: 결측 없으면 비트맵 없음
+        if (out.null_count == 0) out.validity.reset();
     }
     return out;
 }
@@ -493,10 +516,10 @@ step이 1이 아닌 슬라이스(`.iloc[::2]`), 위치 리스트, 마스크는 �
 `DataFrame`은 **컬럼 이름 → Column의 순서 있는 사전 하나와 Index 하나**예요. 모든 컬럼의 길이가 같아요.
 
 ```python
-# src/stardust/frame/_frame.py (발췌)
+# src/stardust/frame/_frame.py
 @own_reductions
 class DataFrame(Reductions):
-    __slots__ = ("_cols", "_index")          # _cols: dict[str, Column]
+    __slots__ = ("_cols", "_index")
 ```
 
 <Fig caption="DataFrame({'k': [1, 2, 3], 'v': [0.5, NA, 2.0]})의 구조. 컬럼마다 따로 Column이 있고, 각자 자기 dtype과 Buffer를 가져요. 2차원 블록은 없어요.">
@@ -537,9 +560,11 @@ Buffer의 `use_count()`가 1이면 그 Buffer를 가리키는 `shared_ptr`가 �
 # src/stardust/frame/_series.py
 def _assign(self, sel, value):
     labels = None if sel[0] == "one" else _select.select_index(self._index, sel)
-    values = assignment_values(value, self._dtype, labels)   # 값을 컬럼 dtype으로 (암묵적 변환)
-    self._col = self._col.share()                             # 1단계: 내 Column 객체를 따로 갖는다
-    self._col.set_rows(_select.positions_column(sel), values) # 2단계: 참조 수를 보고 쓴다
+    values = assignment_values(value, self._dtype, labels)
+    # A Column object of our own, so the write cannot show through another
+    # object holding the old one; set_rows copies shared Buffers (CoW).
+    self._col = self._col.share()
+    self._col.set_rows(_select.positions_column(sel), values)
 ```
 
 **1단계: 쓰는 쪽이 먼저 자기만의 Column 객체를 만들어요.** `share()`는 같은 Buffer를 가리키는 새 Column 객체를 돌려줘요(바인딩에서 `[](const Column& c) { return c; }`, 곧 `shared_ptr` 셋의 복사예요).
@@ -551,19 +576,21 @@ def _assign(self, sel, value):
 **2단계: `set_rows`가 values와 validity Buffer의 참조 수를 봐요.**
 
 ```cpp
-// csrc/frame/ops/selection.cpp의 detach (줄임)
-// col에 아무도 공유하지 않는 values와 validity를 준다. 필요하면 자기 행만 복사한다.
+// csrc/frame/ops/selection.cpp
+// Gives `col` values and validity Buffers that nothing else holds, starting
+// at offset 0, copying its rows when needed. Afterwards writes cannot be
+// seen through any other object.
 void detach(Column& col, bool need_validity) {
     const bool shared = col.values.use_count() > 1 || (col.validity && col.validity.use_count() > 1);
-    const bool add_bits = need_validity && !col.validity;        // 결측을 쓰는데 비트맵이 없다
+    const bool add_bits = need_validity && !col.validity;
     if (!shared && !(add_bits && col.offset != 0)) {
-        if (add_bits) add_validity(col);                         // 그 자리에서: 모든 비트 1인 비트맵만 추가
+        if (add_bits) add_validity(col);
         return;
     }
     const std::int64_t size = itemsize(col.dtype);
     auto values = Buffer::allocate(col.length * size, /*zeroed=*/false);
-    std::memcpy(values->data(), col.values->data() + col.offset * size, col.length * size);  // 자기 행 범위만
-    auto validity = rebased_validity(col);                       // 비트도 0부터 다시
+    std::memcpy(values->data(), col.values->data() + col.offset * size, static_cast<std::size_t>(col.length * size));
+    auto validity = rebased_validity(col);
     col.values = values;
     col.validity = validity;
     col.offset = 0;
@@ -653,16 +680,17 @@ pandas 3도 Copy-on-Write가 유일한 모드예요 [5]. 구현은 달라요. pa
 결측이 없는 bool·int64·float64 컬럼의 `to_numpy()`는 Column의 values Buffer를 그대로 가리키는 읽기 전용 numpy 배열이에요(`convert.cpp`의 `to_numpy_view`). 복사가 없어서 1M 행이어도 448 ns예요(1스레드, Apple M4 Pro).
 
 ```cpp
-// csrc/frame/convert.cpp (발췌)
-// numpy 배열이 Buffer를 쓰는 동안 살려 두는 capsule
+// csrc/frame/convert.cpp
+// A capsule that keeps a Buffer alive for as long as a numpy array uses it.
 nb::capsule buffer_owner(const std::shared_ptr<Buffer>& buf) {
-    auto* holder = new std::shared_ptr<Buffer>(buf);      // 참조 수 +1
+    auto* holder = new std::shared_ptr<Buffer>(buf);
     return nb::capsule(holder, [](void* p) noexcept { delete static_cast<std::shared_ptr<Buffer>*>(p); });
 }
-
+// ...
 nb::object to_numpy_view(const Column& col) {
-    const std::byte* ptr = col.values->data() + col.offset * itemsize(col.dtype);   // 슬라이스면 그만큼 민 자리
-    return nb::ndarray<nb::numpy, nb::ro>(ptr, {std::size_t(col.length)}, buffer_owner(col.values), {}, dtype)
+    const nb::dlpack::dtype dt = numpy_dtype(col.dtype);
+    const std::byte* ptr = col.values->data() + col.offset * itemsize(col.dtype);
+    return nb::ndarray<nb::numpy, nb::ro>(ptr, {static_cast<std::size_t>(col.length)}, buffer_owner(col.values), {}, dt)
         .cast();
 }
 ```
@@ -754,11 +782,11 @@ pickle은 Column의 `__getstate__`가 자기 행만 바이트로 내요. `(dtype
 ### 나갈 때: 같은 Buffer를 가리키는 뷰
 
 ```cpp
-// csrc/frame/interop.cpp (발췌)
+// csrc/frame/interop.cpp
 NDArray view_of(const Column& col, bool writeable) {
     NDArray a;
-    a.buffer = col.values;                                          // 같은 shared_ptr<Buffer>: 참조 수 +1
-    a.data = col.values->data() + col.offset * itemsize(col.dtype); // 슬라이스면 그만큼 민 자리
+    a.buffer = col.values;
+    a.data = col.values->data() + col.offset * itemsize(col.dtype);
     a.dtype = col.dtype;
     a.ndim = 1;
     a.shape[0] = col.length;

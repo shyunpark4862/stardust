@@ -121,23 +121,26 @@ $$
 stardust는 인자를 반올림하지 않아요. $x$와 $y = 1 - x$를 둘 다 double-double(값을 반올림되지 않은 두 double의 합 $hi + lo$로 들고 다니는 표현, [공통 수치 기법](/internals/special/techniques/))로 만들고, 불완전 베타의 핵심 `ibeta_detail::ibeta(a, b, x, y)`가 그 쌍을 그대로 받아요.
 
 ```cpp
-// csrc/special/ops/distr.hpp, t_arg (줄인 발췌)
+// csrc/special/ops/distr.hpp, t_arg (발췌)
 struct Arg {
-    dd::DD x, y;   // x + y = 1, 약 2^-100까지
+    dd::DD x, y;
 };
-
+// ...
+// x = df / (df + t^2), y = t^2 / (df + t^2), t != 0 finite, df > 0 finite.
 inline Arg t_arg(double df, double t) {
     const double at = std::fabs(t);
     if (std::ilogb(at) > 500 || df > 1e300) {
         if (std::ilogb(df) + 64 < 2 * std::ilogb(at)) {
-            const double x = (df / at) / at;              // t^2이 df를 압도: x = df/t^2 (다음 항 x^2은 마지막 비트 아래)
+            // t^2 dwarfs df: x = df / t^2 to the last bit (the next term, x^2, is below it).
+            const double x = (df / at) / at;
             return {{x, 0.0}, dd::two_sum(1.0, -x)};
         }
-        return t_arg(std::ldexp(df, -1024), std::ldexp(at, -512));  // 둘 다 크면 같은 비율로 축소
+        // Both large: the same ratios of copies scaled by 2^-512 and 2^-1024.
+        return t_arg(std::ldexp(df, -1024), std::ldexp(at, -512));
     }
-    const dd::DD z = dd::two_prod(at, at);                // t^2 = hi + lo, 정확
-    const dd::DD s = z + df;                              // df + t^2를 double-double로
-    return {dd::DD{df, 0.0} / s, z / s};                  // x와 y, 각자 따로 나눠요
+    const dd::DD z = dd::two_prod(at, at);
+    const dd::DD s = z + df;
+    return {dd::DD{df, 0.0} / s, z / s};
 }
 ```
 
@@ -154,19 +157,21 @@ F도 같아요. `f_arg`가 $u = d_1 x$(정확한 곱)와 $s = u + d_2$를 double
 $\kappa_x \approx a$이므로 $a$가 작으면 반올림해도 잃는 것이 작아요. `t_tail`은 $a = \nu/2 \le 6$이면 작은 쪽 인자를 double로 반올림해서 Boost.Math의 `ibeta`/`ibetac`(`Betainc::f`, `Betaincc::f`를 거쳐)를 불러요. 반올림 비용은 많아야 $\kappa/2 \le 3$ ULP예요. 이 구간은 Boost가 참값 파일의 모든 점에서 계약을 지키고 1스레드에서 우리 BRATIO 핵심보다 느리지 않아서 Boost에 맡긴 구간이에요. `f_value`도 $a, b \le 6$이면 같아요. `bdtr`, `nbdtr`은 인자가 입력 $p$ 자체라 반올림할 것이 없으므로 처음부터 `Betainc::f`/`Betaincc::f`를 불러요. 그 안에서 $a, b \le 6$이면 Boost예요.
 
 ```cpp
-// csrc/special/ops/distr.hpp, t_tail (발췌)
-if (g.y.hi == 0.0) return 0.5;                 // t^2이 df의 마지막 비트 아래
-if (g.x.hi < kTinyArg) {                       // x < 2^-1000: x 자체가 언더플로할 수 있어요
-    const double r = std::sqrt(df) / std::fabs(t);
-    // 지수는 hi + lo로: -700에 이르러 그 반올림이 그만큼 커져요
-    const double xa =
-        r >= 0x1p-1000 ? std::pow(r, df) : exp_dd((dd::log_pos(df) * 0.5 - dd::log_pos(std::fabs(t))) * df);
-    return 0.5 * xa / shape_beta(a, 0.5);         // a·B(a, 1/2), 서브노멀 a에서도 유한
-}
-if (a <= 6.0) {                                 // 조건수 <= 6: 반올림 <= 3 ULP, Boost가 빨라요
-    return 0.5 * (g.x.hi <= g.y.hi ? Betainc::f(a, 0.5, g.x.hi) : Betaincc::f(0.5, a, g.y.hi));
-}
-return 0.5 * ibeta_detail::ibeta(a, 0.5, g.x, g.y).i;   // double-double 쌍 그대로
+    // csrc/special/ops/distr.hpp, t_tail (발췌)
+    if (g.y.hi == 0.0) return 0.5;  // t^2 below df's last bit
+    if (g.x.hi < kTinyArg) {
+        // ...
+        const double r = std::sqrt(df) / std::fabs(t);
+        // (the exponent as hi + lo: it reaches -700, and its rounding would enter that many times)
+        const double xa =
+            r >= 0x1p-1000 ? std::pow(r, df) : exp_dd((dd::log_pos(df) * 0.5 - dd::log_pos(std::fabs(t))) * df);
+        return 0.5 * xa / shape_beta(a, 0.5);
+    }
+    if (a <= 6.0) {
+        // ...
+        return 0.5 * (g.x.hi <= g.y.hi ? Betainc::f(a, 0.5, g.x.hi) : Betaincc::f(0.5, a, g.y.hi));
+    }
+    return 0.5 * ibeta_detail::ibeta(a, 0.5, g.x, g.y).i;
 ```
 
 Boost가 그 구간에서 무엇을 하는지는 아래 [Boost.Math의 불완전 베타](#boostmath의-불완전-베타-작은-매개변수)에 따로 정리했어요.
@@ -250,20 +255,23 @@ $$
 
 ```cpp
 // csrc/special/ops/distr.hpp
-inline double exp_dd(dd::DD e) {                                              // e^(hi+lo), 한 번의 반올림
+inline double exp_dd(dd::DD e) {
     const double e0 = std::exp(e.hi);
-    if (e0 == 0.0 || std::isinf(e0)) return e0;                               // 범위 밖이면 그대로(lo는 거대할 수 있어요)
+    if (e0 == 0.0 || std::isinf(e0)) return e0;
     return e0 * (1.0 + e.lo);
 }
-inline dd::DD log_product(double v, double c) {                               // log(v c), 서브노멀 v도
+// ...
+inline dd::DD log_product(double v, double c) {
     if (v >= 0x1p-960) return dd::log(dd::two_prod(v, c));
-    return dd::log_pos(v) + dd::log_pos(c);                                   // 곱이 언더플로할 수 있어 로그를 따로
+    // ...
+    return dd::log_pos(v) + dd::log_pos(c);
 }
+// ...
 inline double chi2_tiny(double v, double x) {
-    if (v == 0.0) return 1.0;                                                 // 0에 몰린 분포
+    if (v == 0.0) return 1.0;
     const double a = 0.5 * v;
     const dd::DD e = log_product(x, 0.5) * a;
-    if (!(e.hi > -1e4)) return 0.0;                                           // 거대한 v: 곱이 -inf
+    if (!(e.hi > -1e4)) return 0.0;  // (a huge v: the product is -inf, or NaN as a double-double)
     return exp_dd(e) * Rgamma::f(a + 1.0);
 }
 ```
@@ -310,25 +318,26 @@ Boost의 `gamma_q_inv`는 이 출발점에서 자기 순방향 함수로 Halley�
 - 어느 쪽이 작은지는 $p$만 보고는 몰라요. $p \le \tfrac12$이어도 분포가 치우쳐 있으면 $w > \tfrac12$일 수 있어요. 그래서 $p$를 $I_{1/2}(a, b)$와 비교해요. $I$가 $w$에 대해 증가하므로 $p < I_{1/2}(a, b)$이면 정확히 $w < \tfrac12$예요. $p \le \tfrac12$로 고르면 `fdtri(0.019, 262, 0.70)`(참값 $1.2 \times 10^{-14}$)처럼 $p > \tfrac12$인데 $w$가 아주 작은 점에서 $1 - w$를 풀게 되어 $w$의 자리가 모두 사라지고 0이 나와요.
 
 ```cpp
-// csrc/special/ops/distr.hpp, Fdtri::f (발췌)
-if (p < Betainc::f(a, b, 0.5)) {                       // w < 1/2: w를 풀어요
-    const double w = Betaincinv::f(a, b, p);
-    // p = w^a/(aB)(1 + O((b + 1) w))를 거꾸로: 로그를 double-double로
-    if (w < 0x1p-60 && w * b < 0x1p-56) {
-        const dd::DD l = distr_detail::log_product(p, distr_detail::shape_beta(a, b));
-        if (!(l.hi / a > -0x1p1000)) return 0.0;       // 작은 a로 나눈 지수가 모든 double 아래
-        return distr_detail::exp_dd(l / a + dd::log(dfd) - dd::log(dfn));
-    }
-    return distr_detail::scaled_ratio(w, 1.0 - w, dfd, dfn);
-}
-const double v = Betainccinv::f(b, a, p);              // 1 - I_v(b, a) = p, 곧 I_w(a, b) = p
-// 1 - p = v^b/(bB)(1 + O((a + 1) v)), 1 - p는 정확
-if (v < 0x1p-60 && v * a < 0x1p-56 && p >= 0.5) {
-    const dd::DD l = distr_detail::log_product(1.0 - p, distr_detail::shape_beta(b, a));
-    if (!(l.hi / b > -0x1p1000)) return kInf;  // (as above: fdtri(1, 1e-310, 0.5))
-    return distr_detail::exp_dd(dd::log(dfd) - dd::log(dfn) - l / b);
-}
-return distr_detail::scaled_ratio(1.0 - v, v, dfd, dfn);
+        // csrc/special/ops/distr.hpp, Fdtri::f (발췌)
+        if (p < Betainc::f(a, b, 0.5)) {
+            const double w = Betaincinv::f(a, b, p);
+            // p = w^a / (a B) (1 + O((b + 1) w)): x = (dfd/dfn) w from logs in double-double
+            if (w < 0x1p-60 && w * b < 0x1p-56) {
+                const dd::DD l = distr_detail::log_product(p, distr_detail::shape_beta(a, b));
+                // ...
+                if (!(l.hi / a > -0x1p1000)) return 0.0;
+                return distr_detail::exp_dd(l / a + dd::log(dfd) - dd::log(dfn));
+            }
+            return distr_detail::scaled_ratio(w, 1.0 - w, dfd, dfn);
+        }
+        const double v = Betainccinv::f(b, a, p);  // 1 - I_v(b, a) = p, i.e. I_w(a, b) = p
+        // 1 - p = v^b / (b B) (1 + O((a + 1) v)), 1 - p exact here: x = (dfd/dfn) / v
+        if (v < 0x1p-60 && v * a < 0x1p-56 && p >= 0.5) {
+            const dd::DD l = distr_detail::log_product(1.0 - p, distr_detail::shape_beta(b, a));
+            if (!(l.hi / b > -0x1p1000)) return kInf;  // (as above: fdtri(1, 1e-310, 0.5))
+            return distr_detail::exp_dd(dd::log(dfd) - dd::log(dfn) - l / b);
+        }
+        return distr_detail::scaled_ratio(1.0 - v, v, dfd, dfn);
 ```
 
 마지막 곱 $x = \tfrac{w}{1-w}\cdot\tfrac{d_2}{d_1}$는 `scaled_ratio`가 만들어요. $d_2/d_1$이 정규 double이면 그 곱 그대로예요. 몫이 서브노멀이나 0, inf로 벗어나면 몫 자체가 비트를 잃었거나, $w/(1 - w)$가 inf인데 몫이 0이라 곱이 NaN이 되므로, 네 수의 가수를 곱하고 지수를 정수로 더해 `ldexp` 한 번으로 내요. 그래서 분모 자유도가 5e-324이고 근이 double 밖인 `fdtri(2, 5e-324, 0.1)`도 inf예요.
@@ -587,18 +596,18 @@ $G$와 전체 합은 보상 합(`dd::Sum`: 각 덧셈의 반올림 오차를 Two
 - **아주 작은 자유도.** 카이제곱에서 $0 < v < 2^{-960}$이고 $x > 0$이면 `ncx2_edge`가 자유도 0의 법칙에서 값을 내요. $a = v/2$가 이렇게 작으면 불완전 감마의 모양으로 다루기 어려워서, 그대로 두면 작은 $x$의 위꼬리가 NaN이 돼요(`chndtrc(1e-307, 1, 1e-300)`). $j \ge 1$ 항의 모양 $a + j$를 $j$로 바꾼 차이는 상대 $a|\log y| < 2^{-950}$이에요. $j = 0$ 항은 자유도 0에서는 0에 몰린 점이지만, 여기서는 위꼬리에 $e^{-\mu}Q(a, y)$를 남겨요. $\Gamma(a) = 1/a$, $\Gamma(a, y) = E_1(y) + O(a)$라서 같은 차수까지 $Q(a, y) = a\,E_1(y)$예요. 위꼬리는 자유도 0의 값에 이 항을 더해요. 보통은 반올림에 묻히지만 비중심 모수도 아주 작아 꼬리 자체가 작으면 눈에 띄는 몫이에요(`chndtrc(2**-1022, 1e-300, 1e-300)`은 5.00007686e-301, 자유도 0이면 5e-301). 이 항의 $a$는 $v$에 $2^{1000}$을 곱한 뒤에 반으로 나눠 만들어요. 먼저 $v/2$를 만들면 끝 비트가 홀수인 서브노멀 $v$에서 반올림되고, 5e-324의 절반은 0이 되기 때문이에요(`chndtrc(5e-324, 5e-324, 1e-300)`의 참값은 $1.71 \times 10^{-321}$이에요). $E_1(y)$와의 곱도 $2^{1000}$배인 채로 해서 서브노멀끼리의 곱이 비트를 잃지 않아요. 아래꼬리는 $j = 0$ 항의 $P(a, y) = 1 - a\,E_1(y)$가 1로 반올림되므로 자유도 0의 값 그대로예요. $x = 0$은 0이에요. 자유도가 0보다 크면 0에 몰린 확률이 없어요.
 
   ```cpp
-  // csrc/special/ops/noncentral.hpp (ncx2_edge의 한 갈래)
-  } else if (df > 0.0 && df < 0x1p-960) {
-      double o;
-      if (!ncx2_edge(0.0, nc, x, upper, o)) o = nc_detail::ncx2(0.0, nc, x, upper);
-      if (upper) {
-          const double y = 0.5 * x;
-          // (a = df/2는 2^1000배 한 뒤에 만들어요: 서브노멀 df의 절반이 비트를 지켜요)
-          const double j0 = std::exp(-0.5 * nc) * ((df * 0x1p1000 * 0.5) * expint_detail::en(1.0, y)) * 0x1p-1000;
-          o = o + j0;
-      }
-      out = o;
-  }
+      // csrc/special/ops/noncentral.hpp (ncx2_edge의 한 갈래)
+      } else if (df > 0.0 && df < 0x1p-960) {
+          // ...
+          double o;
+          if (!ncx2_edge(0.0, nc, x, upper, o)) o = nc_detail::ncx2(0.0, nc, x, upper);
+          if (upper) {
+              const double y = 0.5 * x;
+              // ...
+              const double j0 = std::exp(-0.5 * nc) * ((df * 0x1p1000 * 0.5) * expint_detail::en(1.0, y)) * 0x1p-1000;
+              o = o + j0;
+          }
+          out = o;
   ```
 
   F에서 $w = d_1 x/d_2$가 $2^{-1000}$ 아래이면 `ncf_s`가 $j = 0$ 항 $e^{-\mu}\,I_w(a, b)$(`fdtr`)만 써요. 이웃한 두 항의 비는 1차까지 $\mu I_w(a + 1, b)/I_w(a, b) = \mu w(a + b)/(a + 1)$이므로, 아래꼬리에 대해서는 이 비를, 위꼬리 $1 - e^{-\mu} \approx \mu$에 대해서는 $\mu$로 나눈 것을 봐서 $\max(1, \mu)\,w(a + b)/(a + 1) \le 2^{-60}$일 때만 이 합을 써요. 분자 자유도가 아주 작아도($d_1 = 2^{-1021}$) 이 조건을 지나서 `ncfdtr(2**-1021, 5, 2, 1)`은 $e^{-1}$에 `fdtr(2**-1021, 5, 1)`을 곱한 0.36788이에요.
@@ -722,15 +731,15 @@ Arb로 포아송 혼합을 높은 정밀도로 직접 더한 참값은 $2.458125
 7. **double 밖의 근.** 양수 근(`chndtrix`, `ncfdtri`)은 6에서 NaN이 나와도 두 끝을 한 번 더 봐요. 가장 큰 double에서도 꼬리가 목표에 못 미치면($g < 0$) 근은 그 너머라 inf, 가장 작은 양수에서 이미 넘으면($g > 0$) 0이에요. `ncfdtri(5e-324, 5, 2, 0.5)`가 inf예요. 분자 자유도가 이렇게 작으면 아래꼬리가 가장 큰 double에서도 $e^{-1} \approx 0.368$이에요.
 
 ```cpp
-// csrc/special/ops/noncentral.hpp (invert_positive의 끝)
-const double r =
-    solve(g, x0, [](double x) { return std::log(x); }, [](double u) { return std::exp(u); }, 0.125, 0.0, kInf);
-if (r == r) return r;
-// 브래킷이 double 안에 없어요: 가장 큰 double 너머의 근은 inf, 가장 작은 양수 아래의 근은 0
-constexpr double kMax = std::numeric_limits<double>::max(), kMin = std::numeric_limits<double>::denorm_min();
-if (g(kMax) < 0.0) return kInf;
-if (g(kMin) > 0.0) return 0.0;
-return r;
+    // csrc/special/ops/noncentral.hpp (invert_positive의 끝)
+    const double r =
+        solve(g, x0, [](double x) { return std::log(x); }, [](double u) { return std::exp(u); }, 0.125, 0.0, kInf);
+    if (r == r) return r;
+    // ...
+    constexpr double kMax = std::numeric_limits<double>::max(), kMin = std::numeric_limits<double>::denorm_min();
+    if (g(kMax) < 0.0) return kInf;
+    if (g(kMin) > 0.0) return 0.0;
+    return r;
 ```
 
 ### Boost.Math의 비중심 분포와 쓰지 않는 이유

@@ -100,17 +100,26 @@ True
 ### 부품 둘: `hashmix`와 `mix`
 
 ```python
-# src/stardust/random/__init__.py (상수는 numpy와 같아요)
+# src/stardust/random/__init__.py
 _INIT_A, _MULT_A = 0x43B0D7E5, 0x931E8875
 _INIT_B, _MULT_B = 0x8B51F9DD, 0x58F38DED
 _MIX_MULT_L, _MIX_MULT_R = 0xCA01F9DD, 0x4973F715
 _XSHIFT = 16
+_POOL = 4
+# ...
+class _HashConst:
+    __slots__ = ("v",)
 
-def _hashmix(value, h):              # h.v: 부를 때마다 바뀌는 해시 상수
+    def __init__(self, v):
+        self.v = v
+
+
+def _hashmix(value, h):
     value ^= h.v
     h.v = (h.v * _MULT_A) & _MASK32
     value = (value * h.v) & _MASK32
     return value ^ (value >> _XSHIFT)
+
 
 def _mix(x, y):
     r = (_MIX_MULT_L * x - _MIX_MULT_R * y) & _MASK32
@@ -132,32 +141,31 @@ def _mix(x, y):
 ### 1단계: 풀에 섞기
 
 ```python
-# src/stardust/random/__init__.py, _SeedSequence.__init__ (줄인 발췌)
+# src/stardust/random/__init__.py
 run = _entropy_words(entropy)
 spawn = _entropy_words(self.spawn_key)
-if spawn and len(run) < _POOL:              # spawn_key가 있으면 엔트로피를 단어 넷까지 0으로 채워요
+if spawn and len(run) < _POOL:
     run = run + [0] * (_POOL - len(run))
 data = run + spawn
-
 h = _HashConst(_INIT_A)
-pool = [_hashmix(data[i] if i < len(data) else 0, h) for i in range(_POOL)]   # (a)
-for src in range(_POOL):                                                       # (b)
+pool = [_hashmix(data[i] if i < len(data) else 0, h) for i in range(_POOL)]
+for src in range(_POOL):
     for dst in range(_POOL):
         if src != dst:
             pool[dst] = _mix(pool[dst], _hashmix(pool[src], h))
-for src in range(_POOL, len(data)):                                            # (c)
+for src in range(_POOL, len(data)):
     for dst in range(_POOL):
         pool[dst] = _mix(pool[dst], _hashmix(data[src], h))
 ```
 
-- **(a) 채우기:** 처음 네 단어를 하나씩 해시해서 풀의 네 칸에 넣어요. 단어가 넷보다 적으면 0을 해시해 채워요. 그래서 `42`와 `(42, 0)`이 같아요.
-- **(b) 서로 섞기:** 풀의 칸마다 그 칸을 해시한 값을 다른 세 칸 모두에 `mix`로 섞어요(12번). 이것이 끝나면 처음 네 단어의 모든 비트가 풀의 모든 칸에 영향을 줘요. 순서상 늦게 섞이는 단어도 앞 칸에 영향을 줘요.
-- **(c) 나머지 단어:** 다섯째 단어부터는 하나씩 해시해서 풀의 네 칸 모두에 섞어요. 단어가 m개면 이 부분이 $4(m - 4)$번이에요.
+- **(a) 채우기(`pool = [...]` 줄):** 처음 네 단어를 하나씩 해시해서 풀의 네 칸에 넣어요. 단어가 넷보다 적으면 0을 해시해 채워요. 그래서 `42`와 `(42, 0)`이 같아요.
+- **(b) 서로 섞기(첫째 `for src` 고리):** 풀의 칸마다 그 칸을 해시한 값을 다른 세 칸 모두에 `mix`로 섞어요(12번). 이것이 끝나면 처음 네 단어의 모든 비트가 풀의 모든 칸에 영향을 줘요. 순서상 늦게 섞이는 단어도 앞 칸에 영향을 줘요.
+- **(c) 나머지 단어(둘째 `for src` 고리):** 다섯째 단어부터는 하나씩 해시해서 풀의 네 칸 모두에 섞어요. 단어가 m개면 이 부분이 $4(m - 4)$번이에요.
 
 ### 2단계: 키 뽑기
 
 ```python
-# src/stardust/random/__init__.py, _SeedSequence.key
+# src/stardust/random/__init__.py
 def key(self):
     """generate_state(2, uint64): the 128-bit Philox key as two 64-bit ints."""
     h = _INIT_B
@@ -220,8 +228,10 @@ array([0.09551019029449048, 0.28028699622055075, 0.37536262264203024], dtype=flo
 시드를 주지 않으면 `secrets.randbits(128)`로 128비트 int를 받아요. `secrets`는 `os.urandom`을 거쳐 운영체제의 암호용 난수원을 쓰는 Python 표준 모듈이에요. numpy도 같은 크기(`pool_size × 32` = 128비트)를 같은 방법으로 받아요[1].
 
 ```python
-# src/stardust/random/__init__.py, _seed_entropy
+# src/stardust/random/__init__.py
 if seed is None:
+    if not allow_none:
+        raise TypeError(f"{name}(): '{arg}' must be {kinds}, not NoneType")
     return secrets.randbits(128)
 ```
 
@@ -246,17 +256,20 @@ True
 ```python
 # src/stardust/random/__init__.py
 class _SeedSequence:
+    # ...
     def spawn(self, n):
         first = self.n_children_spawned
         self.n_children_spawned += n
         return [_SeedSequence(self.entropy, self.spawn_key + (i,)) for i in range(first, first + n)]
-
+# ...
 class Generator:
+    # ...
     def spawn(self, n, /):
+        # ...
         n = _count(n, "spawn", "n")
-        with self._lock:                       # 번호 매기기를 원자적으로
+        with self._lock:
             seqs = self._seq.spawn(n)
-        return [Generator(s) for s in seqs]    # 자식마다 해시를 다시 거쳐 키를 만들어요
+        return [Generator(s) for s in seqs]
 ```
 
 해시의 입력은 엔트로피 단어 뒤에 `spawn_key` 단어를 이어 붙인 것이에요. 이때 엔트로피가 단어 넷보다 짧으면 넷까지 0으로 채운 뒤에 붙여요. 그래서 엔트로피 42의 자식 0은 단어 `[42, 0, 0, 0, 0]`을, 자식 1은 `[42, 0, 0, 0, 1]`을 해시해요.
@@ -335,19 +348,29 @@ class Generator:
 `state`에 dict를 대입하면 그 상태로 돌아가요.
 
 ```python
-# src/stardust/random/__init__.py, Generator.state의 setter (줄인 발췌)
+# src/stardust/random/__init__.py
 try:
-    entropy = _seed_entropy(value["entropy"], ".state", "entropy", allow_none=False)   # None은 받지 않아요
+    # a state is a fixed point of the stream: None (fresh OS entropy) is not one
+    entropy = _seed_entropy(value["entropy"], ".state", "entropy", allow_none=False)
+    if isinstance(value["spawn_key"], (str, bytes)) or not hasattr(value["spawn_key"], "__iter__"):
+        raise TypeError(
+            f".state(): 'spawn_key' must be a sequence of ints, not {_type_name(value['spawn_key'])}"
+        )
     spawn_key = tuple(_spawn_key_item(v) for v in value["spawn_key"])
     n_spawned = _count(value["n_children_spawned"], ".state", "n_children_spawned")
-except (TypeError, ValueError, OverflowError) as e:   # 공용 검사는 "이름(): "을 붙여요
+except (TypeError, ValueError, OverflowError) as e:  # the helpers write "name(): "
     raise type(e)(str(e).replace(".state(): ", ".state: ", 1)) from None
-pos = ...                                                     # int, 0 <= pos < 2**64
-seq = _SeedSequence(entropy, spawn_key, n_spawned)            # 해시를 다시 해서 엔트로피 풀을 만들고
+pos = value["position"]
+if isinstance(pos, bool) or not hasattr(pos, "__index__"):
+    raise TypeError(f".state: 'position' must be an int, not {_type_name(pos)}")
+pos = operator.index(pos)
+if not 0 <= pos <= _MASK64:
+    raise ValueError(".state: 'position' must be an int in [0, 2**64)")
+seq = _SeedSequence(entropy, spawn_key, n_spawned)
 k0, k1 = seq.key()
 with self._lock:
     self._seq = seq
-    self._st.set(k0, k1, pos)                                 # 키와 위치는 네이티브 상태가 한 잠금 안에서 바꿔요
+    self._st.set(k0, k1, pos)
 ```
 
 - `entropy`는 `default_rng`와 같은 검사를 하지만 `None`은 받지 않아요(`TypeError`). `state`가 내놓는 값에는 `None`이 없고, `None`(OS 엔트로피)을 받으면 대입할 때마다 다른 상태가 되어 "그 상태로 돌아간다"는 뜻이 깨지기 때문이에요.
@@ -369,15 +392,17 @@ True
 
 ```python
 # src/stardust/random/__init__.py
-def __reduce__(self):
-    return (_restore, (self.state,))
+class Generator:
+    # ...
+    def __reduce__(self):
+        return (_restore, (self.state,))
 
-def __copy__(self):
-    return _restore(self.state)
+    def __copy__(self):
+        return _restore(self.state)
 
-def __deepcopy__(self, memo):
-    return _restore(self.state)
-
+    def __deepcopy__(self, memo):
+        return _restore(self.state)
+# ...
 def _restore(state):
     g = Generator(_SeedSequence(0))
     g.state = state

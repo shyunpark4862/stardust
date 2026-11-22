@@ -472,11 +472,11 @@ complex판 `zgesdd`는 실수 workspace(`rwork`)의 크기를 질의로 알려 �
 특이값만 쓰는 함수는 모두 `singular_values` 하나를 거쳐요. (`svals.hpp`에는 `pinv`와 `lstsq`가 아주 작은 특이값을 다루는 작은 헬퍼 둘도 있어요. [`pinv`](#pinv-유사역행렬) 절에서 설명해요.)
 
 ```cpp
-// svals.hpp
+// csrc/linalg/ops/svals.hpp
 template <class T>
 int singular_values(const Input& x, std::int64_t off, lint m, lint n, Scratch& s, double* out) {
     const lint lda = std::max<lint>(m, 1);
-    T* a = s.get<T>(lda * n, 3);                       // gesvd가 덮어쓸 사본 (슬롯 3)
+    T* a = s.get<T>(static_cast<std::size_t>(lda * n), 3);
     if (!pack(x.dtype(), x.data() + off, m, n, x.stride(-2), x.stride(-1), a, lda, true)) return kNonFinite;
     if (m == 0 || n == 0) return 0;
     return lapack::gesvd_values(m, n, a, lda, out, s) > 0 ? kNoConvergence : 0;
@@ -495,6 +495,7 @@ int singular_values(const Input& x, std::int64_t off, lint m, lint n, Scratch& s
 | `cond` (`ord=-2`) | $\sigma_k = 0$이면 0, 아니면 $\sigma_k/\sigma_1$ | `spectral.cpp` |
 | `matrix_norm` (`ord=2`, `-2`) | $\sigma_1$, $\sigma_k$ | `norms.cpp` |
 | `matrix_norm` (`ord='nuc'`) | pairwise 합 $\sum_j \sigma_j$ | `norms.cpp` |
+| `lstsq` (`rtol` < ε) | 결과의 `singular_values`, 랭크($\sigma_j > \text{rtol}\cdot\sigma_1$인 개수) | `qr.cpp` |
 
 `cond(x, ord='nuc')`은 정의가 $\lVert x\rVert_*\,\lVert x^{-1}\rVert_*$라서 역행렬이 필요해요. 이 경로는 `square_norm`에서 패킹한 사본에 `gesvd_values`를 바로 불러요(헬퍼는 원래 배열을 패킹하는 데서 시작하므로, 이미 만든 역행렬에는 쓸 수 없어요). 루틴과 인자는 같아요.
 
@@ -595,17 +596,18 @@ $$
 **아주 작은 특이값.** 남긴 $\sigma_j$가 $2^{-1022}$보다 작으면 $1/\sigma_j$가 inf로 넘쳐요. 그 inf가 특이벡터의 정확한 0과 곱해지면 NaN이라서, `diag(1, 5e-324)`를 `rtol=0`으로 그대로 셈하면 `[[nan, nan], [nan, inf]]`가 나와요. 참값은 `[[1, 0], [0, 2.02e323]]`이라 넘치는 것은 한 성분뿐이에요. 그래서 그런 항은 $W$에서 0으로 두고, $\sigma_j \cdot 2^{600}$으로 나눈 열을 따로 모아 `gemm`으로 곱한 뒤 $2^{600}$을 곱해 더해요. 쓰는 헬퍼는 `svals.hpp`에 있어요.
 
 ```cpp
-// svals.hpp
+// csrc/linalg/ops/svals.hpp
 inline constexpr double kTinySingular = 0x1p-1022, kSingularShift = 0x1p600;
 
-// 내림차순 특이값의 앞 `rank`개 가운데 역수가 double에 있는 것의 개수
+// How many of the first `rank` singular values (descending) have a double reciprocal.
 inline lint normal_rank(const double* sv, lint rank) {
     lint r = 0;
     while (r < rank && sv[r] >= kTinySingular) ++r;
     return r;
 }
 
-// out += shift * part, part의 정확한 0은 건너뛰어요(out의 -0.0이 부호를 지키고, 0인 항은 더할 것이 없어요)
+// out (n x k, column-major) += shift * part, skipping exact zeros of `part` (so a -0.0 of
+// `out` keeps its sign and a 0 term adds nothing).
 template <class T>
 void add_shifted(T* out, const T* part, lint count) {
     for (lint i = 0; i < count; ++i)

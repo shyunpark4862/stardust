@@ -58,7 +58,7 @@ $$
 두 방법은 마지막 비트가 자주 달라요. numpy 바이너리는 컴파일러의 FMA 축약(`a*b - c*d`를 FMA로 바꾸기)이 켜진 채 빌드돼 있어서 complex 곱셈이 두 번째 방법으로 계산돼요. 반면 C++의 `std::complex`의 `operator*`는 축약하지 않아요. 그리고 stardust는 컴파일러가 몰래 FMA를 만들지 않도록 `-ffp-contract=off`로 빌드해요(같은 식이 컴파일러 판단에 따라 다른 비트를 내지 않게 하려는 것이에요). FMA를 쓰는 자리는 코드에 직접 적어요. complex 곱셈은 numpy에서 축약이 일어나는 자리와 같은 곳에 적어서, 지금은 numpy와 비트까지 같아요.
 
 ```cpp
-// linalg/types.hpp
+// csrc/linalg/types.hpp
 inline double mul(double a, double b) { return a * b; }
 inline cplx mul(cplx a, cplx b) {
     const double ar = a.real(), ai = a.imag(), br = b.real(), bi = b.imag();
@@ -222,7 +222,7 @@ inline double dot_chunk(std::int64_t n, const double* x, std::int64_t incx, cons
 잎은 곱을 합에 바로 융합해요. NEON 레지스터 8개(레인 16개)에 `vfmaq`로 곱-덧셈을 반올림 한 번에 하고, 레인은 pairwise로 더해요(`fma_dot_leaf`).
 
 ```cpp
-// linalg/pairwise.hpp (발췌)
+// csrc/linalg/pairwise.hpp
 inline double fma_dot_leaf(const double* a, const double* b, std::int64_t n) {
     std::int64_t i = 0;
     double r = 0.;
@@ -1170,7 +1170,7 @@ private:
 버퍼 길의 2-노름은 제곱합을 `vecdot`과 같은 융합 잎(`fma_dot_leaf(x, x, n)`)으로 더해요. 크기 `|x|`를 버퍼에 채운 뒤 잎을 부르는데, 논리적 C 순서로 float64가 이어진 입력은 버퍼 없이 값을 바로 읽어요(`sq_leaf_in_place`). 이 잎은 같은 패스에서 최댓값과 NaN도 구해요. $x \cdot x$와 $|x| \cdot |x|$는 정확히 같으므로 버퍼를 거치든 아니든 비트가 같아요.
 
 ```cpp
-// linalg/ops/vnorm.hpp (발췌)
+// csrc/linalg/ops/vnorm.hpp
 template <class Fill>
 inline double two_leaf(Fill& fill, const double* direct, std::int64_t b, std::int64_t len, NormSide& sd) {
     if (direct) return sq_leaf_in_place(direct + b, len, sd);

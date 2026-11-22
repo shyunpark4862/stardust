@@ -124,14 +124,16 @@ import Steps from '../../../components/fig/Steps.astro';
   <ArrayFig name="rows" data={[0, 2, 1, 3]} tones={['a', 'a', 'b', '']} note="그룹 0 | 1 | 2" />
 </Fig>
 
-직렬 코드는 이 정의를 그대로 옮긴 세 줄이에요.
+직렬 코드는 이 정의를 그대로 옮긴 루프 셋이에요.
 
 ```cpp
-// csrc/frame/ops/radix.hpp, counting_sort의 직렬 경로 (줄인 발췌)
-for (i = 0; i < n; ++i) ++start[key[i] + 1];              // 세기 (한 칸 밀어서)
-for (k = 0; k < nkeys; ++k) start[k + 1] += start[k];     // 누적합: start[k]가 그룹 k의 첫 칸
+// csrc/frame/ops/radix.hpp
+for (std::int64_t i = 0; i < n; ++i) ++start[static_cast<std::size_t>(key[i]) + 1];
+for (std::int64_t k = 0; k < nkeys; ++k)
+    start[static_cast<std::size_t>(k) + 1] += start[static_cast<std::size_t>(k)];
 std::vector<std::int64_t> fill(start.begin(), start.end() - 1);
-for (i = 0; i < n; ++i) perm[fill[key[i]]++] = i;         // 놓기: 그룹 안에서 원래 순서
+for (std::int64_t i = 0; i < n; ++i)
+    perm[static_cast<std::size_t>(fill[static_cast<std::size_t>(key[i])]++)] = i;
 ```
 
 세기를 `start[key + 1]`에 하는 것은 누적합을 제자리에서 하기 위한 요령이에요. 누적합이 끝나면 `start[k]`가 바로 그룹 $k$보다 앞선 행의 수, 즉 그룹 $k$의 첫 칸이 돼요.
@@ -356,10 +358,10 @@ IEEE 754의 float64는 위에서부터 부호 1비트, 지수 11비트(바이어
 이 변환을 정규화 없이 쓰면 IEEE 754-2019의 전순서 술어 totalOrder처럼 `-0.0 < +0.0`이 되고, 부호 비트가 선 NaN은 $-\infty$ 아래로, 그렇지 않은 NaN은 $+\infty$ 위로 가요[8]. stardust의 순서는 이것과 두 곳이 달라요. `-0.0`과 `0.0`은 같은 값이고, NaN은 부호와 상관없이 가장 큰 값이에요. 그래서 변환 전에 `float_key`로 정규화해요.
 
 ```cpp
-// csrc/frame/ops/hash.hpp, float_key
+// csrc/frame/ops/hash.hpp
 inline std::uint64_t float_key(double d) {
-    if (d != d) return 0x7ff8000000000000ULL;   // 모든 NaN을 부호 없는 NaN 하나로
-    if (d == 0.0) return 0;                     // -0.0은 +0.0의 비트로
+    if (d != d) return 0x7ff8000000000000ULL;
+    if (d == 0.0) return 0;
     std::uint64_t bits;
     std::memcpy(&bits, &d, sizeof bits);
     return bits;
@@ -733,12 +735,15 @@ inline RadixPlan plan_passes(const KeyScan& s, int digits, bool wide = false) {
 가장 중요한 자리부터 나눠 내려가므로 MSD(most significant digit) 기수 정렬이에요. 한 깊이 안의 정렬은 위의 LSD 기수 정렬이고요.
 
 ```cpp
-// csrc/frame/ops/radix.hpp, string_prefix
+// csrc/frame/ops/radix.hpp
+// The first 8 bytes of a string as a big-endian number (shorter strings
+// padded with zero bytes): comparing prefixes compares the strings' first 8
+// bytes in code point order (UTF-8 byte order).
 inline std::uint64_t string_prefix(std::string_view s) {
     std::uint8_t b[8] = {};
     std::memcpy(b, s.data(), std::min<std::size_t>(8, s.size()));
     std::uint64_t k = 0;
-    for (int j = 0; j < 8; ++j) k = (k << 8) | b[j];    // 첫 바이트가 맨 위 바이트
+    for (int j = 0; j < 8; ++j) k = (k << 8) | b[j];
     return k;
 }
 ```
@@ -764,7 +769,7 @@ inline std::uint64_t string_prefix(std::string_view s) {
 // csrc/frame/ops/radix.hpp
 inline void order_string_run(const Column& c, std::int64_t* rows, std::int64_t len, std::size_t depth) {
     if (len < 2) return;
-    bool more = false;  // depth보다 긴 문자열이 있으면 더 내려가서 가를 수 있다
+    bool more = false;  // a string longer than `depth`: a deeper level can tell rows apart
     if (len >= kStringRadixRun)
         for (std::int64_t j = 0; j < len && !more; ++j) more = c.string_at(rows[j]).size() > depth;
     if (!more) {
@@ -864,24 +869,35 @@ groupby의 그룹 순서(`sort_groups`)에서는 정렬할 대상이 이미 그�
 2. **버킷마다 counting sort:** 각 버킷은 자기 키 `width`개만 담당하는 작은 직렬 counting sort를 해요. 버킷끼리 독립이라 버킷이 태스크예요.
 
 ```cpp
-// csrc/frame/ops/radix.hpp, counting_sort의 병렬 경로 (줄인 발췌)
+// csrc/frame/ops/radix.hpp
+// `width` is a power of two, so a key's bucket is a shift (a division
+// per position cost more than the whole serial counting sort).
+const std::int64_t buckets = 256;
 int wbits = 0;
-while ((std::int64_t{1} << wbits) * 256 < nkeys) ++wbits;   // width = 2^wbits, width × 256 ≥ K
+while ((std::int64_t{1} << wbits) * buckets < nkeys) ++wbits;
 const std::int64_t width = std::int64_t{1} << wbits;
-const std::int64_t B = (nkeys + width - 1) / width;          // 버킷 수 ≤ 256
-// 1. 청크별 버킷 개수 → (버킷, 청크) 순서의 시작 위치 → 청크별로 by_bucket에 흩뿌리기
-// 2. 버킷 b = 키 [k0, k1), 행 by_bucket[r0, r1)
+const std::int64_t B = std::max<std::int64_t>(1, (nkeys + width - 1) / width);
+// ...
 parallel::parallel_for(B, [&](std::int64_t b) {
-    std::vector<std::int64_t> fill(k1 - k0, 0);
-    for (j = r0; j < r1; ++j) ++fill[key[by_bucket[j]] - k0];
-    std::int64_t at = r0;
-    for (k = k0; k < k1; ++k) {
-        const auto c = fill[k - k0];
-        fill[k - k0] = at;
-        at += c;
-        start[k + 1] = at;                // start[k0]은 앞 버킷이 써요
+    const std::int64_t k0 = std::min(nkeys, b * width), k1 = std::min(nkeys, (b + 1) * width);
+    const std::int64_t r0 = bstart[static_cast<std::size_t>(b)], r1 = bstart[static_cast<std::size_t>(b) + 1];
+    // Local counts: start[k0] belongs to the bucket before (it ends
+    // there), so a bucket writes start only at (k0, k1].
+    std::vector<std::int64_t> fill(static_cast<std::size_t>(k1 - k0), 0);
+    for (std::int64_t j = r0; j < r1; ++j)
+        ++fill[static_cast<std::size_t>(key[by_bucket[static_cast<std::size_t>(j)]] - k0)];
+    std::int64_t at_pos = r0;
+    for (std::int64_t k = k0; k < k1; ++k) {
+        const std::int64_t c = fill[static_cast<std::size_t>(k - k0)];
+        fill[static_cast<std::size_t>(k - k0)] = at_pos;
+        at_pos += c;
+        start[static_cast<std::size_t>(k) + 1] = at_pos;
     }
-    for (j = r0; j < r1; ++j) { const auto i = by_bucket[j]; perm[fill[key[i] - k0]++] = i; }
+    for (std::int64_t j = r0; j < r1; ++j) {
+        const std::int64_t i = by_bucket[static_cast<std::size_t>(j)];
+        perm[static_cast<std::size_t>(fill[static_cast<std::size_t>(key[i] - k0)]++)] =
+            i;  // stable: order within a key
+    }
 });
 ```
 

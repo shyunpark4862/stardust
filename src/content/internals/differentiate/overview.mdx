@@ -73,8 +73,7 @@ import Steps from '../../../components/fig/Steps.astro';
 def derivative(
     f, x, /, *, args=(), atol=None, rtol=None, max_iter=10, order=8, initial_step=0.5, step_factor=2.0, step_direction=0
 ):
-    """The derivative of the elementwise f at each x by repeated high-order differences
-    (scipy.differentiate.derivative; docs/api/differentiate.md §2)."""
+    # ...
     func = "derivative"
     _callable(f, func, "f")
     atol, rtol = _tolerances(atol, rtol, func)

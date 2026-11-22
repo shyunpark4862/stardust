@@ -325,7 +325,7 @@ $$
 예요. 항은 모두 양수라서 소거가 없어요. 이웃한 두 항의 비는 $x/(a + n)$이라 $x$가 $a$보다 작으면 첫 항부터 줄어들고, $x$가 $a$보다 조금 커도 $n$이 $x - a$를 넘으면 줄기 시작해요.
 
 ```cpp
-// ops/incgamma.hpp, lower_series
+// csrc/special/ops/incgamma.hpp, lower_series
 inline double lower_series(double a, double x) {
     double sum = 1.0, term = 1.0, ap = a;
     for (int n = 0; n < kMaxTerms; n += 2) {
@@ -363,22 +363,22 @@ $$
 곧 $a_n = -n(n - a)$, $b_n = x + 2n + 1 - a$예요. $x$가 $a$보다 크면 $b_n$이 $2n$보다 빨리 커지므로 층이 깊어질수록 $a_n/(b_{n-1}b_n)$이 작아지고 빨리 수렴해요. 코드에서 $aD = x^a e^{-x}/\Gamma(a)$이고, 분모 전체를 `cf_fast_value`로 계산해요. 항 수의 상한 안에 수렴하지 않으면 NaN이에요.
 
 ```cpp
-// ops/incgamma.hpp, cf_upper (발췌)
-const Scaled d = gamma_prefix(a, x);
-double tail = 1.0;
-if (d.m != 0.0) {
-    tail = cf_fast_value(
-        x + 1.0 - a,                               // b0 항
-        [&](int n) {
-            const double k = n;
-            return std::pair{-k * (k - a), x + 2.0 * k + 1.0 - a};
-        },
-        kMaxTerms
-    );
-    if (std::isnan(tail)) return {kNaN, kNaN, kNaN};
-}
-const double dv = value(d);
-const double q = dv >= 0x1p-900 ? dv * (a / tail) : value(d * scaled(a / tail));
+    // csrc/special/ops/incgamma.hpp, cf_upper (발췌)
+    const Scaled d = gamma_prefix(a, x);
+    double tail = 1.0;
+    if (d.m != 0.0) {
+        tail = cf_fast_value(
+            x + 1.0 - a,
+            [&](int n) {
+                const double k = n;
+                return std::pair{-k * (k - a), x + 2.0 * k + 1.0 - a};
+            },
+            kMaxTerms
+        );
+        if (std::isnan(tail)) return {kNaN, kNaN, kNaN};
+    }
+    const double dv = value(d);
+    const double q = dv >= 0x1p-900 ? dv * (a / tail) : value(d * scaled(a / tail));
 ```
 
 **수정 Lentz 방법.** 근사분수 $f_n = A_n/B_n$을 끝에서부터 계산하려면 항 수를 미리 알아야 해요. Lentz[6]는 앞에서부터 가는 방법을 줬어요. $C_n = A_n/A_{n-1}$, $D_n = B_{n-1}/B_n$을 점화식 $C_n = b_n + a_n/C_{n-1}$, $D_n = 1/(b_n + a_n D_{n-1})$로 갱신하면 $f_n = f_{n-1} C_n D_n$이고, $C_n D_n$이 1과 $2^{-53}$ 안으로 같아지면 멈춰요. 중간에 분모가 정확히 0이 되면 아주 작은 수($2^{-1000}$)로 바꿔 계속하는 것이 "수정"이고[7], 다음 걸음이 그 효과를 지워요(`cf.hpp`의 `lentz`). 자세한 내용과 $b_0 = 0$일 때의 처리는 [공통 수치 기법](/internals/special/techniques/)에 있어요.

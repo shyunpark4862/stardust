@@ -498,10 +498,11 @@ numpy, scipy, pandas는 모든 영역의 정답지예요. 다만 정답지와 �
 // csrc/base/dtype.hpp (줄인 발췌)
 enum class DType : std::uint8_t { Bool, Int64, Float64, Complex128, String };
 
-inline constexpr int kNumArrayDTypes = 4;   // 배열은 앞의 넷
+// The array area's dtypes: DType values [0, kNumArrayDTypes).
+inline constexpr int kNumArrayDTypes = 4;
+// ...
 constexpr bool is_array_dtype(DType d) { return static_cast<int>(d) < kNumArrayDTypes; }
-
-// 배열 dtype의 승격: 더 큰 쪽
+// ...
 constexpr DType promote(DType a, DType b) { return a > b ? a : b; }
 ```
 
@@ -512,27 +513,25 @@ constexpr DType promote(DType a, DType b) { return a > b ? a : b; }
 런타임 dtype을 컴파일 시점 타입으로 바꾸는 것이 `visit_dtype`이에요. 템플릿 함수 본문 하나가 dtype마다 한 번씩 인스턴스화되고, 실행 중에는 `switch` 하나로 골라져요.
 
 ```cpp
-// csrc/base/dtype.hpp (줄인 발췌)
+// csrc/base/dtype.hpp (발췌)
 template <typename F>
 decltype(auto) visit_dtype(DType d, F&& f) {
     switch (d) {
-        case DType::Bool:       return f(std::type_identity<bool>{});
-        case DType::Int64:      return f(std::type_identity<std::int64_t>{});
-        case DType::Float64:    return f(std::type_identity<double>{});
+        case DType::Bool: return f(std::type_identity<bool>{});
+        case DType::Int64: return f(std::type_identity<std::int64_t>{});
+        case DType::Float64: return f(std::type_identity<double>{});
         case DType::Complex128: return f(std::type_identity<complex128>{});
-        case DType::String:     break;  // 배열 dtype이 아님
+        case DType::String: break;  // not an array dtype
     }
     __builtin_unreachable();
 }
-
-// 쓰는 쪽: C++20의 템플릿 람다로 타입을 받아요
-visit_dtype(a.dtype, [&]<typename T>(std::type_identity<T>) {
-    T* out = reinterpret_cast<T*>(a.data);
-    // ... T로 쓰인 루프
-});
+            // csrc/array/ops/matmul.cpp
+            visit_dtype(d, [&]<typename T>(std::type_identity<T>) {
+                if constexpr (ops::is_float<T> || ops::is_cplx<T>) blas_matmul(am, bm, reinterpret_cast<T*>(pc));
+            });
 ```
 
-`std::type_identity<T>`는 값이 없는 빈 태그예요. 람다가 `<typename T>`로 그 타입을 받아서, 본문 안에서는 `T`가 실제 타입처럼 쓰여요. `visit_dtype`이 배열 dtype만 받는 것은 의도예요. `String`까지 받으면 모든 커널이 문자열 타입으로도 인스턴스화되어야 해서 컴파일 시간과 바이너리가 커지고, 대부분 뜻이 없는 코드가 돼요. 데이터프레임은 방문자를 따로 두지 않고 dtype마다 `switch`로 골라요.
+`std::type_identity<T>`는 값이 없는 빈 태그예요. 쓰는 쪽(위의 둘째 조각, matmul의 배치 하나)은 C++20의 템플릿 람다를 넘겨요. 람다가 `<typename T>`로 그 타입을 받아서, 본문 안에서는 `T`가 실제 타입처럼 쓰여요. `visit_dtype`이 배열 dtype만 받는 것은 의도예요. `String`까지 받으면 모든 커널이 문자열 타입으로도 인스턴스화되어야 해서 컴파일 시간과 바이너리가 커지고, 대부분 뜻이 없는 코드가 돼요. 데이터프레임은 방문자를 따로 두지 않고 dtype마다 `switch`로 골라요.
 
 Python 쪽 dtype 객체는 C++이 모듈을 만들 때 만든 싱글턴 다섯 개예요(`bind/pyutil.cpp`의 `register_dtypes`). 그래서 dtype 비교는 포인터 비교 하나예요. dtype 인자는 이 객체나 그 이름 문자열(`"float64"`)을 받고, Python 타입(`float`), numpy dtype, 다른 이름(`"float32"`)은 TypeError예요. 이 규칙은 배열과 데이터프레임이 같아요.
 
@@ -544,22 +543,34 @@ Buffer는 참조 카운트로 수명을 관리하는 메모리 블록이에요. 
 // csrc/base/buffer.hpp (줄인 발췌)
 class Buffer {
 public:
-    static constexpr std::size_t kAlignment = 128;  // M4의 캐시 라인
-    static constexpr std::size_t kInline = 256;     // 이하의 데이터는 객체 안에
+    // One cache line on Apple M4. Aligning the start of every allocation to a
+    // cache line means a SIMD loop never straddles two lines at its first load.
+    static constexpr std::size_t kAlignment = 128;
 
+    // Fresh memory owned by this Buffer. `zeroed` uses calloc: for large
+    // sizes the OS hands out pages that are zero-filled lazily on first
+    // touch, so zeros((10000, 10000)) costs almost nothing until written.
     static std::shared_ptr<Buffer> allocate(std::int64_t nbytes, bool zeroed);
-    static std::shared_ptr<Buffer> adopt(const Py_buffer& view);  // 다른 객체의 메모리
 
+    // Memory owned by another Python object, obtained through the buffer
+    // protocol. Takes ownership of `view` and releases it on destruction.
+    static std::shared_ptr<Buffer> adopt(const Py_buffer& view);
+    // ...
     std::byte* data() const { return data_; }
+    // Bytes of data (what was allocated or adopted). Column slices check their
+    // ranges against it.
     std::int64_t size() const { return size_; }
-
+    // ...
+    static constexpr std::size_t kInline = 256;
+// ...
 private:
-    void* raw_ = nullptr;       // malloc/calloc이 돌려준 포인터 (자기 메모리일 때만)
+    void* raw_ = nullptr;  // pointer returned by malloc/calloc (own memory only)
     std::byte* data_ = nullptr;
     std::int64_t size_ = 0;
     bool external_ = false;
     Py_buffer view_{};
-    alignas(16) std::byte inline_[kInline + kAlignment - 16];  // 안의 첫 128B 경계부터 kInline바이트
+    // ...
+    alignas(16) std::byte inline_[kInline + kAlignment - 16];
 };
 ```
 

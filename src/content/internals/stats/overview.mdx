@@ -150,12 +150,15 @@ True
 ```python
 # src/stardust/stats/_distribution.py (발췌)
 class _Distribution:
+    # ...
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
         if not cls._name:  # the bases ContinuousDistribution and DiscreteDistribution
             return
         ops = {m: getattr(_k, f"{cls._name}_{m}") for m in cls._density + _INPUT_METHODS + _PARAM_METHODS}
-        ...
+        ops["sample"] = getattr(_k, f"{cls._name}_sample")
+        ops["sample1"] = getattr(_k, f"{cls._name}_sample1")
+        ops["sample1s"] = getattr(_k, f"{cls._name}_sample1s")
         cls._ops = ops
         cls._s1 = staticmethod(ops["sample1s"])  # sample()'s scalar call, one attribute away
         for i, p in enumerate(cls._params):  # read-only attributes (T19)
@@ -164,6 +167,7 @@ class _Distribution:
             setattr(cls, m, _fast_input(m, ops[m], len(cls._params), getattr(cls, m)))
         _calls.keyword_init(cls)
 
+    # ...
     def cdf(self, x, /, *, out=None):
         """P(X <= x)."""
         if type(x) is int:
@@ -179,17 +183,27 @@ class _Distribution:
 C++ 쪽 분포 구조체는 이렇게 생겼어요.
 
 ```cpp
-// stats/dist/normal.hpp (줄인 발췌)
+// csrc/stats/dist/normal.hpp (줄인 발췌)
 struct Normal {
-    static constexpr char name[] = "normal";                         // gamma_cdf의 "gamma"
+    static constexpr char name[] = "normal";
     static constexpr std::array<const char*, 2> params{"mu", "sigma"};
+
     static bool valid(double mu, double sigma) { return std::isfinite(mu) && sigma > 0.0 && std::isfinite(sigma); }
-    static double pdf(double x, double mu, double sigma) { ... }     // 메서드마다 원소 함수
+
+    static double pdf(double x, double mu, double sigma) {
+        using namespace normal_detail;
+        if (std::isinf(x)) return 0.0;
+        const DD z = num::standardize(x, mu, sigma);
+        if (std::fabs(z.hi) > kHugeZ) return 0.0;
+        return num::exp_dd(-neg_log_density(z, sigma));
+    }
+    // ...
     static double cdf(double x, double mu, double sigma) { return tail(x, mu, sigma, false); }
-    ...
-    static void pdf_chunk(const Chunk<2>& c, double* out) { ... }    // 있으면 빠른 경로
+    // ...
+    static void cdf_chunk(const Chunk<2>& c, double* out) { tail_chunk(c, out, false); }
+    // ...
     static double mean(double mu, double) { return mu; }
-    ...
+    // ...
 };
 ```
 
@@ -229,12 +243,19 @@ def _kept(v):
 ```cpp
 // csrc/bind/errors.cpp (발췌)
 std::string py_type_name(nb::handle o) {
+    // ...
     PyTypeObject* t = Py_TYPE(o.ptr());
     const char* name = t->tp_name;
     const char* dot = std::strrchr(name, '.');
     std::string out = dot ? dot + 1 : name;
     PyObject* mod = PyObject_GetAttrString(reinterpret_cast<PyObject*>(t), "__module__");
-    ...
+    if (mod == nullptr) {
+        PyErr_Clear();
+        return out;
+    }
+    if (PyUnicode_Check(mod)) {
+        const char* m = PyUnicode_AsUTF8(mod);
+        if (m == nullptr) PyErr_Clear();
         else if (std::strncmp(m, "numpy", 5) == 0 && (m[5] == '\0' || m[5] == '.')) {
             std::string pub;  // the module's parts up to the first private one
             for (const char *p = m, *e; *p != '\0'; p = *e ? e + 1 : e) {
@@ -245,7 +266,9 @@ std::string py_type_name(nb::handle o) {
             }
             out = pub + "." + out;
         }
-    ...
+    }
+    Py_DECREF(mod);
+    return out;
 }
 ```
 

@@ -273,8 +273,7 @@ $$
     // the best bound on d4, d6, d8 known so far, or the value once known
     auto d4 = [&] { return n4 >= 0 ? root(n4, 4) : root(n2, 2); };
     auto d6 = [&] { return n6 >= 0 ? root(n6, 6) : n4 >= 0 ? root(n4 * n2, 6) : root(n2, 2); };
-    // (||A^8|| <= ||A^4||^2 gives d8 <= ||A^4||^(1/4); ^(1/2) would be no bound
-    // when ||A^4|| < 1, docs/design/linalg.md §11.2)
+    // ...
     auto d8 = [&] { return n8 >= 0 ? root(n8, 8) : n4 >= 0 ? root(n4, 4) : root(n2, 2); };
     // eta <= theta with eta = max(dx(), dy()): on the bounds first, then exact
     auto passes = [&](double theta, auto dx, auto dy, auto form) {
@@ -347,7 +346,7 @@ $$
 수학적으로 같지만 반올림은 달라요. 노름이 작으면 $r_m(B) \approx I$이고 $U$는 작아요. 앞의 형태는 $V+U$($\approx I$)를 우변으로 풀어서, 풀기의 반올림이 1 크기의 대각 원소에 그대로 남아요. 뒤의 형태는 작은 보정 $2(V-U)^{-1}U$를 먼저 구하고 마지막에 $I$를 **정확히** 더해요. 보정의 상대오차는 결과의 상대오차로 훨씬 작게 줄어들어요. 앞의 형태로는 $\lVert A\rVert \sim 10^{-3}$에서 대각의 마지막 비트(1ulp, $2.2\times10^{-16}$)를 잃어요. scipy도 뒤의 형태를 써요.
 
 ```cpp
-// expm.cpp: R = I + 2 (V - U)^-1 U
+// csrc/linalg/ops/expm.cpp
 T* Q = buf[4];
 for (lint k = 0; k < nn; ++k) Q[k] = P[k] - U[k];
 lint* ipiv = s.get_ints(static_cast<std::size_t>(n));
@@ -418,7 +417,7 @@ $$
 그래서 $|\lambda_2 - \lambda_1| \lt 1$이면 (2.2), 아니면 차분몫을 써요.
 
 ```cpp
-// expm.cpp
+// csrc/linalg/ops/expm.cpp
 template <class T>
 T exp_divided_difference(T l1, T l2) {
     const T d = l2 - l1;

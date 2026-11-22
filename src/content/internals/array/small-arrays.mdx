@@ -61,20 +61,19 @@ C++ 쪽에서 메모리를 할당할 수 있는 곳은 5단계 한 곳이고, �
 4~6단계의 실제 코드를 줄인 발췌예요(`array/ops/ufunc.cpp`의 `launch`).
 
 ```cpp
-// array/ops/ufunc.cpp (launch, 줄인 발췌)
-const size_t nin = objs.size();
-if (out_obj.is_none() && std::ranges::none_of(objs, [](nb::handle o) { return is_ndarray(o); }))
-    return launch_scalars(objs, in_types, result, loop, nout);  // 모두 스칼라 (아래)
-if (out_obj.is_none() && nout == 1)
-    if (nb::object r = launch_contiguous(objs, in_types, result, loop, weight); r.is_valid()) return r;
-std::array<NDArray, kMaxInputs> ins;
-std::array<std::span<const std::int64_t>, kMaxInputs> shapes;  // fixed arrays: no allocation per call
-size_t narrays = 0;
-for (size_t k = 0; k < nin; ++k) {
-    ins[k] = prepare(objs[k], in_types[k]);  // 배열이면 NDArray 복사
-    if (is_ndarray(objs[k])) shapes[narrays++] = as_ndarray(objs[k]).shape_span();
-}
-// ... 브로드캐스트, 결과 할당, NdIter를 만들고 실행, wrap
+    // csrc/array/ops/ufunc.cpp (launch, 줄인 발췌)
+    const size_t nin = objs.size();
+    if (out_obj.is_none() && std::ranges::none_of(objs, [](nb::handle o) { return is_ndarray(o); }))
+        return launch_scalars(objs, in_types, result, loop, nout);
+    if (out_obj.is_none() && nout == 1)
+        if (nb::object r = launch_contiguous(objs, in_types, result, loop, weight); r.is_valid()) return r;
+    std::array<NDArray, kMaxInputs> ins;
+    std::array<std::span<const std::int64_t>, kMaxInputs> shapes;  // fixed arrays: no allocation per call
+    size_t narrays = 0;
+    for (size_t k = 0; k < nin; ++k) {
+        ins[k] = prepare(objs[k], in_types[k]);
+        if (is_ndarray(objs[k])) shapes[narrays++] = as_ndarray(objs[k]).shape_span();
+    }
 ```
 
 ### 작은 호출은 커널 한 번: `launch_contiguous`
@@ -82,29 +81,29 @@ for (size_t k = 0; k < nin; ++k) {
 같은 shape이고 연속인 배열끼리의 작은 호출에는 이터레이터가 할 일이 없어요. 축을 합치면 1차원 하나가 되고, 풀로 나누지도 않아요. 그런데 `NdIter`를 만들고 입력 `NDArray`를 복사하는 일이 작은 `x + y`에서 눈에 띄는 몫이었어요. 그래서 조건이 맞으면 이터레이터 없이 결과 배열을 할당하고 평평한 메모리 전체에 커널을 한 번 불러요.
 
 ```cpp
-// array/ops/ufunc.cpp (launch_contiguous, 줄인 발췌)
-for (size_t k = 0; k < nin; ++k) {
-    if (!is_ndarray(objs[k])) continue;
-    const NDArray& a = as_ndarray(objs[k]);
-    if (a.dtype != in_types[k]) return {};
-    if (first == nullptr) first = &a;
-    else if (!std::ranges::equal(a.shape_span(), first->shape_span())) return {};
-    c = c && a.c_contiguous;
-    f = f && a.f_contiguous;
-    bytes = std::max(bytes, a.itemsize());
-}
-if (first == nullptr || (!c && !f)) return {};
-const std::int64_t n = first->size();
-// NdIter::run's rule: fewer than three arrays moved (scalars are not) count for less
-const std::int64_t arrays = std::ranges::count_if(objs, [](nb::handle o) { return is_ndarray(o); }) + 1;
-const std::int64_t work = weight * std::min<std::int64_t>(bytes, 8) * n;
-if ((arrays < 3 ? work / 3 * arrays : work) >= 8 * kParallelThreshold) return {};
-// ... Python 스칼라는 스택의 원소 하나를 stride 0으로
-NDArray res = c ? new_array(result, first->shape_span()) : new_array_like(*first, result);
-args[nin] = res.data;
-strides[nin] = res.itemsize();
-if (n > 0) loop(args.data(), n, strides.data(), nullptr);
-return wrap(std::move(res));
+    // csrc/array/ops/ufunc.cpp (launch_contiguous, 줄인 발췌)
+    for (size_t k = 0; k < nin; ++k) {
+        if (!is_ndarray(objs[k])) continue;
+        const NDArray& a = as_ndarray(objs[k]);
+        if (a.dtype != in_types[k]) return {};
+        if (first == nullptr) first = &a;
+        else if (!std::ranges::equal(a.shape_span(), first->shape_span())) return {};
+        c = c && a.c_contiguous;
+        f = f && a.f_contiguous;
+        bytes = std::max(bytes, a.itemsize());
+    }
+    if (first == nullptr || (!c && !f)) return {};
+    const std::int64_t n = first->size();
+    // NdIter::run's rule: fewer than three arrays moved (scalars are not) count for less
+    const std::int64_t arrays = std::ranges::count_if(objs, [](nb::handle o) { return is_ndarray(o); }) + 1;
+    const std::int64_t work = weight * std::min<std::int64_t>(bytes, 8) * n;
+    if ((arrays < 3 ? work / 3 * arrays : work) >= 8 * kParallelThreshold) return {};
+    // ...
+    NDArray res = c ? new_array(result, first->shape_span()) : new_array_like(*first, result);
+    args[nin] = res.data;
+    strides[nin] = res.itemsize();
+    if (n > 0) loop(args.data(), n, strides.data(), nullptr);
+    return wrap(std::move(res));
 ```
 
 - 빈 객체를 돌려주면 "일반 경로로 가라"는 뜻이에요. dtype을 바꿔야 하는 피연산자, shape가 다른 피연산자(브로드캐스트), 연속이 아닌 배열, 풀을 쓸 만큼 큰 일은 모두 일반 경로예요.
@@ -136,18 +135,25 @@ numpy보다 느린 원인이 "C++과 Python 사이를 건너는 비용"일 것�
 `NDArray`는 shape와 strides를 객체 안의 **고정 배열**에 담아요([데이터 모델](/internals/array/data-model/)).
 
 ```cpp
+// csrc/array/ndarray.hpp (발췌)
 inline constexpr int kMaxNdim = 32;
-using Dims = std::array<std::int64_t, kMaxNdim>;   // 객체 안에 박힌 256바이트
+// ...
+using Dims = std::array<std::int64_t, kMaxNdim>;
 
 struct NDArray {
     std::shared_ptr<Buffer> buffer;
     std::byte* data = nullptr;
     DType dtype = DType::Float64;
     int ndim = 0;
-    Dims shape;      // [0, ndim)만 의미가 있어요
+    Dims shape;    // only [0, ndim) is meaningful, and only that part is copied
     Dims strides;
-    bool c_contiguous = true, f_contiguous = true, writeable = true;
+    bool c_contiguous = true;
+    bool f_contiguous = true;
+    bool writeable = true;
+    // What Python sees as `.base`: the object that owns the memory, or a
+    // null handle when this array allocated `buffer` itself.
     nb::object base;
+// ...
 };
 ```
 
@@ -160,21 +166,27 @@ shape를 `std::vector`로 두면 배열(뷰 포함)을 만들 때마다 힙 할�
 컴파일러가 만들어 주는 복사 생성자는 `Dims` 두 개 512바이트를 모두 복사해요. 3원소 1차원 배열이면 그중 16바이트만 의미가 있어요. 그래서 복사와 이동을 직접 정의해요(`array/ndarray.hpp`, 발췌).
 
 ```cpp
-NDArray(const NDArray& o) { *this = o; }
-NDArray(NDArray&& o) noexcept { *this = std::move(o); }
-NDArray& operator=(const NDArray& o) {
-    if (this == &o) return *this;
-    buffer = o.buffer;            // shared_ptr: 참조 카운트 +1 (atomic)
-    base = o.base;                // Python 참조 +1 (base가 있을 때)
-    copy_meta(o);
-    return *this;
-}
-void copy_meta(const NDArray& o) {
-    data = o.data;  dtype = o.dtype;  ndim = o.ndim;
-    std::copy(o.shape.begin(),   o.shape.begin()   + o.ndim, shape.begin());
-    std::copy(o.strides.begin(), o.strides.begin() + o.ndim, strides.begin());
-    c_contiguous = o.c_contiguous;  f_contiguous = o.f_contiguous;  writeable = o.writeable;
-}
+    // csrc/array/ndarray.hpp (발췌)
+    NDArray(const NDArray& o) { *this = o; }
+    NDArray(NDArray&& o) noexcept { *this = std::move(o); }
+    NDArray& operator=(const NDArray& o) {
+        if (this == &o) return *this;
+        buffer = o.buffer;
+        base = o.base;
+        copy_meta(o);
+        return *this;
+    }
+    // ...
+    void copy_meta(const NDArray& o) {
+        data = o.data;
+        dtype = o.dtype;
+        ndim = o.ndim;
+        std::copy(o.shape.begin(), o.shape.begin() + o.ndim, shape.begin());
+        std::copy(o.strides.begin(), o.strides.begin() + o.ndim, strides.begin());
+        c_contiguous = o.c_contiguous;
+        f_contiguous = o.f_contiguous;
+        writeable = o.writeable;
+    }
 ```
 
 - 기본 생성자는 `Dims`를 0으로 채우지 않아요. `Dims shape;`처럼 초기값 없이 선언한 `std::array<int64_t, 32>`는 C++에서 기본 초기화(default-initialization)되어 값이 정해지지 않은 채로 남아요. 비용이 없어요. 그래서 `launch`의 `std::array<NDArray, 4> ins;`처럼 `NDArray`를 미리 여러 개 만들어 두어도 싸요. 대신 앞의 `ndim`칸만 쓰고 읽는다는 규칙을 코드 전체가 지켜야 해요.
@@ -185,23 +197,25 @@ void copy_meta(const NDArray& o) {
 `NdIter`는 shape 하나와 피연산자별 strides(최대 5개)를 고정 배열에 담아요. 피연산자 상한이 5라서(`sd.special`의 `hyp2f1`이 입력 4개 + 출력 1개) 객체가 1,600바이트예요. 만들 때마다 이 객체를 0으로 채우면 작은 배열에서는 눈에 띄는 비용이 돼요.
 
 ```cpp
+// csrc/array/iter.hpp (발췌)
 class NdIter {
-    ...
-    // 초기화하지 않아요: 앞의 ndim_칸과 nop_개 피연산자만 쓰고 읽어요.
+// ...
     Dims shape_;
     std::array<Dims, kMaxOperands> strides_;
     std::array<std::byte*, kMaxOperands> data_{};
+    // ...
 };
 ```
 
 축을 재배열할 때 쓰는 임시 복사본도 살아 있는 칸만 복사해요.
 
 ```cpp
-Dims shape_p;                                // 초기화하지 않음
-std::array<Dims, kMaxOperands> strides_p;
-std::copy(shape_.begin(), shape_.begin() + ndim_, shape_p.begin());
-for (int k = 0; k < nop_; ++k)
-    std::copy(strides_[k].begin(), strides_[k].begin() + ndim_, strides_p[k].begin());
+        // csrc/array/iter.cpp (발췌)
+        Dims shape_p;  // copies of the live part only
+        std::array<Dims, kMaxOperands> strides_p;
+        std::copy(shape_.begin(), shape_.begin() + ndim_, shape_p.begin());
+        for (int k = 0; k < nop_; ++k)
+            std::copy(strides_[k].begin(), strides_[k].begin() + ndim_, strides_p[k].begin());
 ```
 
 ## 할당은 한 번: Buffer 안의 작은 데이터
@@ -221,14 +235,19 @@ for (int k = 0; k < nop_; ++k)
 ```cpp
 // csrc/base/buffer.hpp (발췌)
 class Buffer {
-    static constexpr std::size_t kAlignment = 128;   // M4의 캐시 라인
+public:
+    // ...
+    static constexpr std::size_t kAlignment = 128;
+    // ...
     static constexpr std::size_t kInline = 256;
-    ...
-    void* raw_ = nullptr;          // malloc한 포인터 (내장 데이터면 null)
-    std::byte* data_ = nullptr;    // 실제 데이터 시작 (내장 영역 또는 정렬한 malloc 영역)
+// ...
+private:
+    void* raw_ = nullptr;  // pointer returned by malloc/calloc (own memory only)
+    std::byte* data_ = nullptr;
     std::int64_t size_ = 0;
-    bool external_ = false;        // 버퍼 프로토콜로 빌려 온 메모리인가
+    bool external_ = false;
     Py_buffer view_{};
+    // ...
     alignas(16) std::byte inline_[kInline + kAlignment - 16];
 };
 ```
@@ -236,7 +255,7 @@ class Buffer {
 ```cpp
 // csrc/base/buffer.cpp (발췌)
 std::shared_ptr<Buffer> make_buffer() { return std::allocate_shared<Buffer>(CachedAlloc<Buffer>{}, Buffer::Key{}); }
-
+// ...
 std::shared_ptr<Buffer> Buffer::allocate(std::int64_t nbytes, bool zeroed) {
     auto buf = make_buffer();  // the Buffer and its reference count, together
     buf->size_ = nbytes;
@@ -246,7 +265,7 @@ std::shared_ptr<Buffer> Buffer::allocate(std::int64_t nbytes, bool zeroed) {
         if (zeroed) std::memset(buf->data_, 0, static_cast<std::size_t>(nbytes));
         return buf;
     }
-    ...  // 큰 배열: malloc/calloc + 128B 정렬
+    // ...
 }
 ```
 
@@ -268,23 +287,23 @@ std::shared_ptr<Buffer> Buffer::allocate(std::int64_t nbytes, bool zeroed) {
 할당을 한 번으로 줄여도 그 블록의 `malloc`과 `free`가 작은 연산에서 눈에 띄는 몫이에요. 그래서 `allocate_shared`에 넘기는 할당자가 블록을 다시 써요.
 
 ```cpp
-// csrc/base/buffer.cpp (CachedAlloc의 할당과 해제)
-T* allocate(std::size_t n) {
-    static_assert(alignof(T) <= 16);  // what malloc guarantees on macOS
-    if (n == 1 && t_cache.count > 0) return static_cast<T*>(t_cache.blocks[--t_cache.count]);
-    if (n == 1 && t_cache.count == 0) (void)&t_flusher;  // registers the flusher on first use
-    void* p = std::malloc(n * sizeof(T));
-    if (p == nullptr) throw std::bad_alloc();
-    return static_cast<T*>(p);
-}
-void deallocate(T* p, std::size_t n) {
-    if (n == 1 && t_cache.count >= 0 && t_cache.count < BlockCache::kCached) {
-        if (t_cache.count == 0) (void)&t_flusher;
-        t_cache.blocks[t_cache.count++] = p;
-        return;
+    // csrc/base/buffer.cpp (CachedAlloc의 할당과 해제)
+    T* allocate(std::size_t n) {
+        static_assert(alignof(T) <= 16);  // what malloc guarantees on macOS
+        if (n == 1 && t_cache.count > 0) return static_cast<T*>(t_cache.blocks[--t_cache.count]);
+        if (n == 1 && t_cache.count == 0) (void)&t_flusher;  // registers the flusher on first use
+        void* p = std::malloc(n * sizeof(T));
+        if (p == nullptr) throw std::bad_alloc();
+        return static_cast<T*>(p);
     }
-    std::free(p);
-}
+    void deallocate(T* p, std::size_t n) {
+        if (n == 1 && t_cache.count >= 0 && t_cache.count < BlockCache::kCached) {
+            if (t_cache.count == 0) (void)&t_flusher;
+            t_cache.blocks[t_cache.count++] = p;
+            return;
+        }
+        std::free(p);
+    }
 ```
 
 - 목록(`t_cache`)은 `thread_local`이라 잠금이 없어요. 다른 스레드에서 해제된 블록은 그 스레드의 목록에 들어가요. 메모리는 어느 쪽이든 `malloc`의 것이라 섞여도 괜찮아요.
@@ -303,20 +322,19 @@ void deallocate(T* p, std::size_t n) {
 새 결과 배열은 입력의 메모리 축 순서를 따라야 해요(numpy의 `order='K'`). 그래서 strides의 절댓값이 큰 축부터 정렬하는데, 같은 값이면 원래 순서를 지켜야 하므로 안정 정렬이어야 해요. `std::stable_sort`는 안정성을 위해 호출마다 임시 버퍼를 할당해요. 축은 많아야 32개이므로 할당이 없는 insertion sort를 써요. 시간 복잡도는 $O(d^2)$($d$는 차원 수)이지만 $d \le 32$이고 보통 1~3이라 할당 하나보다 훨씬 싸요(`array/ndarray.cpp`의 `new_array_like`).
 
 ```cpp
-// array/ndarray.cpp의 new_array_like (발췌)
-std::array<int, kMaxNdim> order;
-std::iota(order.begin(), order.begin() + proto.ndim, 0);
-std::array<int, kMaxNdim> slots;  // the places of the axes with a stride
-int live = 0;
-for (int d = 0; d < proto.ndim; ++d)
-    if (proto.strides[d] != 0) slots[live++] = d;
-std::array<int, kMaxNdim> axes = slots;
-// Insertion sort (stable): at most 32 axes, and std::stable_sort would
-// allocate a scratch buffer on every call (docs/design/array.md §11).
-for (int i = 1; i < live; ++i)
-    for (int j = i; j > 0 && std::llabs(proto.strides[axes[j]]) > std::llabs(proto.strides[axes[j - 1]]); --j)
-        std::swap(axes[j], axes[j - 1]);
-for (int i = 0; i < live; ++i) order[slots[i]] = axes[i];
+    // csrc/array/ndarray.cpp, new_array_like (발췌)
+    std::array<int, kMaxNdim> order;
+    std::iota(order.begin(), order.begin() + proto.ndim, 0);
+    std::array<int, kMaxNdim> slots;  // the places of the axes with a stride
+    int live = 0;
+    for (int d = 0; d < proto.ndim; ++d)
+        if (proto.strides[d] != 0) slots[live++] = d;
+    std::array<int, kMaxNdim> axes = slots;
+    // ...
+    for (int i = 1; i < live; ++i)
+        for (int j = i; j > 0 && std::llabs(proto.strides[axes[j]]) > std::llabs(proto.strides[axes[j - 1]]); --j)
+            std::swap(axes[j], axes[j - 1]);
+    for (int i = 0; i < live; ++i) order[slots[i]] = axes[i];
 ```
 
 stride가 0인 축(브로드캐스트)은 정렬에서 빼고 C 자리에 그대로 둬요. 자세한 것은 [데이터 모델](/internals/array/data-model/)에 있어요.
@@ -330,11 +348,15 @@ stride가 0인 축(브로드캐스트)은 정렬에서 빼고 C 자리에 그대
 ```cpp
 // csrc/bind/pyutil.hpp (발췌)
 struct ShapeArg {
-    std::array<std::int64_t, kMaxNdim> small;   // 흔한 경우: 힙 할당 없음
-    std::vector<std::int64_t> big;              // 드문 경우: 일반 해석기의 결과
+    std::array<std::int64_t, kMaxNdim> small;
+    std::vector<std::int64_t> big;
     std::size_t n = 0;
-    std::span<const std::int64_t> span() const;
+    std::span<const std::int64_t> span() const {
+        return big.empty() && n <= small.size() ? std::span<const std::int64_t>(small.data(), n)
+                                                : std::span<const std::int64_t>(big);
+    }
 };
+ShapeArg parse_shape_arg(nb::handle o);
 ```
 
 공통 부분만 다뤘는데 모든 작은 연산이 함께 싸져요. `a + 1.0`, `a += b`, `sum(a)`가 모두 같은 `NDArray` 복사, 같은 Buffer, 같은 이터레이터를 쓰기 때문이에요. 특수 경로 대신 일반 경로를 다듬는 이유가 이것이에요.
@@ -346,7 +368,7 @@ struct ShapeArg {
 그래서 모든 항목이 정확히 Python `int`(하위 클래스 제외)이거나 경계가 `None`·정확한 int인 slice인 키는 계획 없이 오프셋, shape, strides를 바로 계산해요(`array/ops/indexing.cpp`의 `basic_fast`).
 
 ```cpp
-// array/ops/indexing.cpp (basic_fast)
+// csrc/array/ops/indexing.cpp (basic_fast)
 nb::object basic_fast(nb::handle x, PyObject* key) {
     const NDArray& a = as_ndarray(x);
     PyObject* const* items = &key;
@@ -420,7 +442,7 @@ nb::object basic_fast(nb::handle x, PyObject* key) {
 키 해석을 건너뛰어도, `x[5]`가 바인딩한 `__getitem__`까지 가는 길(메서드 찾기와 nanobind의 디스패치)이 그 호출에서 눈에 띄는 몫이었어요. 그래서 바인딩이 끝난 뒤 타입의 `mp_subscript` 슬롯을 `array_subscript`로 바꿔요. `__getitem__`을 대입하면 Python이 일반 슬롯을 다시 달아 버리므로 바인딩의 맨 마지막에 해요.
 
 ```cpp
-// bind/array_bind.cpp (array_subscript)
+// csrc/bind/array_bind.cpp (array_subscript)
 PyObject* array_subscript(PyObject* self, PyObject* key) {
     try {
         nb::object r = getitem_fast(nb::handle(self), key);
@@ -444,22 +466,31 @@ PyObject* array_subscript(PyObject* self, PyObject* key) {
 `launch_scalars`는 이런 호출에서(`out=`이 없을 때) 같은 루프 함수를 스택 버퍼 위에서 n = 1로 한 번 불러요(발췌).
 
 ```cpp
-nb::object launch_scalars(std::span<const nb::handle> objs, std::span<const DType> in_types,
-                          DType result, Loop loop, int nout) {
-    alignas(16) std::byte buf[kMaxOperands][16];         // 스칼라 하나에 16바이트 (complex128)
+// csrc/array/ops/ufunc.cpp (발췌)
+nb::object launch_scalars(
+    std::span<const nb::handle> objs, std::span<const DType> in_types, DType result, Loop loop, int nout
+) {
+    const size_t nin = objs.size();
+    alignas(16) std::byte buf[kMaxOperands][16];
     std::array<std::byte*, kMaxOperands> args;
-    std::array<int64_t, kMaxOperands> strides;
-    for (size_t k = 0; k < objs.size(); ++k) {
-        // 일반 경로가 1원소 배열에 넣을 때와 같은 변환
+    std::array<std::int64_t, kMaxOperands> strides;
+    for (size_t k = 0; k < nin; ++k) {
+        const DType kind = *scalar_dtype(objs[k]);
         visit_dtype(in_types[k], [&]<typename T>(std::type_identity<T>) {
-            *reinterpret_cast<T*>(buf[k]) = scalar_from_python<T>(objs[k], *scalar_dtype(objs[k]));
+            *reinterpret_cast<T*>(buf[k]) = scalar_from_python<T>(objs[k], kind);
         });
         args[k] = buf[k];
         strides[k] = itemsize(in_types[k]);
     }
-    ...                                                   // 출력 자리도 스택 버퍼
-    loop(args.data(), 1, strides.data(), nullptr);        // 배열 경로와 같은 루프
-    return load_python(result, buf[objs.size()]);
+    for (int j = 0; j < nout; ++j) {
+        args[nin + static_cast<size_t>(j)] = buf[nin + static_cast<size_t>(j)];
+        strides[nin + static_cast<size_t>(j)] = itemsize(result);
+    }
+    loop(args.data(), 1, strides.data(), nullptr);
+    if (nout == 1) return load_python(result, buf[nin]);
+    nb::list results;
+    for (int j = 0; j < nout; ++j) results.append(load_python(result, buf[nin + static_cast<size_t>(j)]));
+    return nb::tuple(results);
 }
 ```
 
@@ -486,7 +517,7 @@ nb::object launch_scalars(std::span<const nb::handle> objs, std::span<const DTyp
 결과 객체를 만드는 `wrap`과 타입 검사 `is_ndarray`도 nanobind의 해시표를 찾지 않아요. `bind_ndarray`가 클래스를 만든 직후 그 타입 포인터를 `g_ndarray_type`에 저장하고, 두 함수가 그것을 바로 써요.
 
 ```cpp
-// bind/pyutil.hpp (wrap)
+// csrc/bind/pyutil.hpp (wrap)
 inline nb::object wrap(NDArray&& a) {
     nb::object o = nb::inst_alloc(nb::handle(reinterpret_cast<PyObject*>(g_ndarray_type)));
     new (nb::inst_ptr<NDArray>(o)) NDArray(std::move(a));

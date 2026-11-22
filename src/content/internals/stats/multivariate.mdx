@@ -89,10 +89,10 @@ array([2.8378770664093453,                nan], dtype=float64)
 ```python
 # src/stardust/stats/_multivariate.py, _Gaussian (발췌)
 _MIN_DF = 2.0**-1021  # StudentT's boundary: below it df / 2 is not exact (docs/api/stats.md §2.2)
-...
-# df below 2^-1021 is outside the domain too (df / 2 is not exact; StudentT's NaN)
-good = sd.all(sd.isfinite(self._mu), axis=1) & ~sd.isnan(self._df) & (self._df >= _MIN_DF)
-self._ok = sd.where(good, ok, 0.0)
+        # ...
+        # df below 2^-1021 is outside the domain too (df / 2 is not exact; StudentT's NaN)
+        good = sd.all(sd.isfinite(self._mu), axis=1) & ~sd.isnan(self._df) & (self._df >= _MIN_DF)
+        self._ok = sd.where(good, ok, 0.0)
 ```
 
 ```python
@@ -149,21 +149,21 @@ array([[2.0, 0.3],
 위 삼각의 99는 읽지 않으니, logpdf는 맨 앞의 예에서 첫 배치 원소(같은 아래 삼각)의 값과 같아요.
 
 ```cpp
-// csrc/stats/dd_linalg.hpp
-for (std::int64_t j = 0; j < d; ++j) {
-    DD s{a(j, j), 0.0};
-    for (std::int64_t k = 0; k < j; ++k) s = s - L[j * d + k] * L[j * d + k];
-    if (!(s.hi > 0.0) || !std::isfinite(s.hi)) return false;
-    const DD ljj = sqrt(s);
-    L[j * d + j] = ljj;
-    logdet = logdet + dd::log(ljj) * 2.0;
-    for (std::int64_t i = j + 1; i < d; ++i) {
-        DD t{a(i, j), 0.0};
-        for (std::int64_t k = 0; k < j; ++k) t = t - L[i * d + k] * L[j * d + k];
-        if (!std::isfinite(t.hi)) return false;
-        L[i * d + j] = t / ljj;
+    // csrc/stats/dd_linalg.hpp
+    for (std::int64_t j = 0; j < d; ++j) {
+        DD s{a(j, j), 0.0};
+        for (std::int64_t k = 0; k < j; ++k) s = s - L[j * d + k] * L[j * d + k];
+        if (!(s.hi > 0.0) || !std::isfinite(s.hi)) return false;
+        const DD ljj = sqrt(s);
+        L[j * d + j] = ljj;
+        logdet = logdet + dd::log(ljj) * 2.0;
+        for (std::int64_t i = j + 1; i < d; ++i) {
+            DD t{a(i, j), 0.0};
+            for (std::int64_t k = 0; k < j; ++k) t = t - L[i * d + k] * L[j * d + k];
+            if (!std::isfinite(t.hi)) return false;
+            L[i * d + j] = t / ljj;
+        }
     }
-}
 ```
 
 double-double 제곱근 `ddla::sqrt`는 $s = \sqrt{a_{hi}}$를 구한 뒤 Newton 한 걸음 $(a - s^2)/(2s)$로 고쳐요. $s^2$는 `two_prod`로 정확히 구하므로, 고친 값은 약 106비트예요. 피벗이 양수가 아니거나 유한하지 않으면 `false`를 돌려주고, `mv_chol`은 그 배치 원소의 `ok`를 0으로, $L$을 NaN으로 채워요. 성공하면 $L$의 hi와 lo, $\log\lvert\Sigma\rvert$의 hi와 lo, 그리고 피벗의 역수 $1/L_{jj}$(double-double)를 돌려줘요. 전진 대입은 피벗으로 나누지 않고 이 역수를 곱해요.
@@ -180,17 +180,19 @@ double-double 제곱근 `ddla::sqrt`는 $s = \sqrt{a_{hi}}$를 구한 뒤 Newton
 Dot2는 합 $s$를 float64 하나에 쌓고, 곱의 오차 $e$와 덧셈의 오차는 모두 다른 float64 하나 $s_l$에 더해요. 끝에서 $s + s_l$을 한 번 반올림해요. 결과는 내적을 두 배 정밀도로 계산해 반올림한 것과 같은 수준으로, $\lvert\mathrm{res} - x^\top y\rvert \le u\lvert x^\top y\rvert + \gamma_n^2 \lvert x\rvert^\top\lvert y\rvert$를 만족해요[1]. 오차를 모으는 쪽이 float64 하나뿐이라 double-double 산술의 약 1/3 비용이에요.
 
 ```cpp
-// csrc/bind/stats_mv.cpp, quad_form: z_i와 Q = |z|^2를 double-double로
-const DD r = dd::two_sum(el(x, m, i), -el(mu, b, i));        // x - mu, 정확히
-double sh = r.hi, sl = r.lo;
-for (std::int64_t k = 0; k < i; ++k) {
-    const double ph = rowh[k] * zh[k];
-    const double pe = std::fma(rowh[k], zh[k], -ph);           // 정확히: rowh zh = ph + pe
-    const double t = sh - ph, bb = t - sh;
-    sl += ((sh - (t - bb)) + (-ph - bb)) - pe - (rowh[k] * zl[k] + rowl[k] * zh[k]);
-    sh = t;
-}
-const DD zi = dd::quick_two_sum(sh, sl) * DD{ih[i], il[i]};    // 피벗의 역수를 곱해요
+        // csrc/bind/stats_mv.cpp, quad_form: z_i와 Q = |z|^2를 double-double로
+        const DD r = dd::two_sum(el(x, m, i), -el(mu, b, i));
+        double sh = r.hi, sl = r.lo;
+        const double* rowh = lh + i * d;
+        const double* rowl = ll + i * d;
+        for (std::int64_t k = 0; k < i; ++k) {
+            const double ph = rowh[k] * zh[k];
+            const double pe = std::fma(rowh[k], zh[k], -ph);  // exact: rowh zh = ph + pe
+            const double t = sh - ph, bb = t - sh;
+            sl += ((sh - (t - bb)) + (-ph - bb)) - pe - (rowh[k] * zl[k] + rowl[k] * zh[k]);
+            sh = t;
+        }
+        const DD zi = dd::quick_two_sum(sh, sl) * DD{ih[i], il[i]};
 ```
 
 $L$과 $z$가 모두 hi + lo라서 곱 $(L_h + L_l)(z_h + z_l)$에서 $L_h z_h$만 TwoProduct로 정확히 다루고, 교차항 $L_h z_l + L_l z_h$는 그냥 $s_l$에 더해요. 교차항은 주항의 $2^{-53}$배 크기라 그 반올림은 $2^{-106}$ 단위예요. $x - \mu$도 `two_sum`으로 정확히 빼요. 그래서 $x$가 $\mu$ 근처에 있어 뺄셈이 상쇄해도 잃는 자리가 없어요. $Q = \sum z_i^2$도 같은 방식으로 $z_{i,h}^2$을 fma로 정확히 두고 쌓아요.
@@ -208,16 +210,16 @@ $L$과 $z$가 모두 hi + lo라서 곱 $(L_h + L_l)(z_h + z_l)$에서 $L_h z_h$�
 내적 하나는 fma 사슬 여덟 개로 계산해요. 항 $k$는 사슬 $k \bmod 8$에 들어가고, 여덟 사슬의 합은 정해진 나무 $((s_0 + s_2) + (s_4 + s_6)) + ((s_1 + s_3) + (s_5 + s_7))$로 모아요. Apple M4 Pro(aarch64)에서는 128비트 NEON 레지스터 네 개가 두 사슬씩 맡아요.
 
 ```cpp
-// csrc/stats/dd_linalg.hpp, dot8: 8 * blocks개 항의 내적
-float64x2_t s0 = vdupq_n_f64(0.0), s1 = s0, s2 = s0, s3 = s0;
-for (std::int64_t q = 0; q < blocks; ++q, a += 8, b += 8) {
-    s0 = vfmaq_f64(s0, vld1q_f64(a), vld1q_f64(b));
-    s1 = vfmaq_f64(s1, vld1q_f64(a + 2), vld1q_f64(b + 2));
-    s2 = vfmaq_f64(s2, vld1q_f64(a + 4), vld1q_f64(b + 4));
-    s3 = vfmaq_f64(s3, vld1q_f64(a + 6), vld1q_f64(b + 6));
-}
-const float64x2_t t = vaddq_f64(vaddq_f64(s0, s1), vaddq_f64(s2, s3));
-return vgetq_lane_f64(t, 0) + vgetq_lane_f64(t, 1);
+    // csrc/stats/dd_linalg.hpp, dot8: 8 * blocks개 항의 내적
+    float64x2_t s0 = vdupq_n_f64(0.0), s1 = s0, s2 = s0, s3 = s0;
+    for (std::int64_t q = 0; q < blocks; ++q, a += 8, b += 8) {
+        s0 = vfmaq_f64(s0, vld1q_f64(a), vld1q_f64(b));
+        s1 = vfmaq_f64(s1, vld1q_f64(a + 2), vld1q_f64(b + 2));
+        s2 = vfmaq_f64(s2, vld1q_f64(a + 4), vld1q_f64(b + 4));
+        s3 = vfmaq_f64(s3, vld1q_f64(a + 6), vld1q_f64(b + 6));
+    }
+    const float64x2_t t = vaddq_f64(vaddq_f64(s0, s1), vaddq_f64(s2, s3));
+    return vgetq_lane_f64(t, 0) + vgetq_lane_f64(t, 1);
 ```
 
 다른 프로세서를 위한 스칼라 판은 같은 순서로 더해서 비트가 같아요. $W$의 행과 벡터 $r$, $z$는 0으로 채워 길이를 8의 배수로 맞춰 두어 나머지 처리가 없어요(0인 항은 더해도 반올림이 없어요). `dot8x4`는 네 행을 한 번에 계산해서 $r$의 로드를 네 행이 나눠 써요. 로드 포트가 한계라서 이렇게 하면 빨라져요.

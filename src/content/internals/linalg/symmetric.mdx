@@ -214,7 +214,7 @@ Accelerate가 같은 블록 크기와 같은 재귀를 쓰는지는 알 수 없�
                 T* o = os.get();
                 // L is computed in the output slot itself; for upper=True in scratch, then U = L^H.
                 T* l = upper ? s.get<T>(static_cast<std::size_t>(n * n)) : o;
-                // The input's lower triangle only (docs/api/linalg.md §1.4).
+                // ...
                 if (!pack_triangle(x.dtype(), x.data() + off[0], n, x.stride(-2), x.stride(-1), l, n, true, true, true))
                     return kNonFinite;
                 if (n > 0 && lapack::potrf('L', n, l, n) > 0) return kNotPD;
@@ -399,29 +399,43 @@ $$
 
 이고 $L$은 대각이 1인 진짜 아래 삼각이에요. `lu`의 결과 `x[perm] = L @ U`와 같은 꼴이에요.
 
-`ldl_unpack`(`csrc/linalg/ops/nonsym.cpp`)이 하는 일은 네 단계예요. scipy의 `_ldl_sanitize_ipiv`, `_ldl_get_d_and_l`, `_ldl_construct_tri_factor`와 같은 해석을 C++ 루프로 해요.
+`ldl_unpack`(`csrc/linalg/ops/nonsym.cpp`)이 하는 일은 네 단계예요. `ipiv`를 읽어 단계마다 바꾼 상대(`swap`)와 블록의 종류(`piv`: 1×1이면 1, 2×2의 첫째면 2, 둘째면 0)를 적고, $D$(대각 블록)와 $M$(단위 대각과 블록 아래의 승수)을 채우고, 교환을 마지막 단계부터 첫 단계로 거꾸로 다시 적용하고, 마지막으로 `perm`의 역순열 `perm_out`으로 $M$의 행을 모아 $L$을 만들어요. 아래 발췌는 그 가운데 첫째, 셋째, 넷째 단계예요. scipy의 `_ldl_sanitize_ipiv`, `_ldl_get_d_and_l`, `_ldl_construct_tri_factor`와 같은 해석을 C++ 루프로 해요.
 
 ```cpp
-// csrc/linalg/ops/nonsym.cpp, ldl_unpack (줄인 발췌)
-// 1. ipiv 읽기: swap[k] = 바꾼 상대, piv[k] = 1 (1×1), 2 (2×2의 첫째), 0 (2×2의 둘째)
-for (lint k = 0; k < n;) {
-    if (ipiv[k] > 0) { swap[k] = ipiv[k] - 1;          piv[k] = 1;              k += 1; }
-    else             { swap[k + 1] = -ipiv[k + 1] - 1; piv[k] = 2; piv[k + 1] = 0; k += 2; }
-}
-// 2. D = 대각 블록, M = 단위 대각 + 블록 아래의 승수 (2×2 블록의 부대각은 D 몫)
-// 3. 교환을 마지막 단계부터 첫 단계로 거꾸로 다시 적용: M의 행(그 단계 열부터 오른쪽만)과 perm에
-for (lint k = n - 1; k >= 0; --k) {
-    const lint t = swap[k];
-    if (t == k) continue;
-    const lint c0 = piv[k] == 0 ? k - 1 : k;           // 2×2의 둘째면 블록의 첫 열부터
-    for (lint c = c0; c < n; ++c) std::swap(L[c * n + k], L[c * n + t]);
-    std::swap(perm[k], perm[t]);
-}
-// 4. perm_out = argsort(perm), L = M[perm_out]: 행을 모으면 아래 삼각
-for (lint k = 0; k < n; ++k) perm_out[perm[k]] = k;
+    // csrc/linalg/ops/nonsym.cpp
+    lint* swap = s.get<lint>(static_cast<std::size_t>(n), 1);
+    lint* piv = s.get<lint>(static_cast<std::size_t>(n), 2);  // 1: 1x1, 2: first of a 2x2, 0: its second
+    for (lint k = 0; k < n; ++k) swap[k] = k;
+    for (lint k = 0; k < n;) {
+        if (ipiv[k] > 0) {
+            swap[k] = ipiv[k] - 1;
+            piv[k] = 1;
+            k += 1;
+        } else {
+            swap[k + 1] = -ipiv[k + 1] - 1;
+            piv[k] = 2;
+            piv[k + 1] = 0;
+            k += 2;
+        }
+    }
+    // ...
+    // Replay the interchanges from the last step back to the first, on M's rows
+    // (only the columns at and right of the step) and on a running permutation.
+    // Slot 3: slots 0-3 are the function body's, 4-5 the LAPACK workspaces' (batch.hpp).
+    std::int64_t* perm = reinterpret_cast<std::int64_t*>(s.get<lint>(static_cast<std::size_t>(n), 3));
+    for (lint k = 0; k < n; ++k) perm[k] = k;
+    for (lint k = n - 1; k >= 0; --k) {
+        const lint t = swap[k];
+        if (t == k) continue;
+        const lint c0 = piv[k] == 0 ? k - 1 : k;
+        for (lint c = c0; c < n; ++c) std::swap(L[c * n + k], L[c * n + t]);
+        std::swap(perm[k], perm[t]);
+    }
+    // perm_out = argsort(perm); M[perm_out] is lower triangular: gather its rows.
+    for (lint k = 0; k < n; ++k) perm_out[perm[k]] = k;
 ```
 
-- 3단계가 $M = P_1L_1P_2L_2\cdots$의 곱을 오른쪽부터 계산하는 부분이에요. $P_k$는 자기보다 오른쪽 인수들($L_k P_{k+1} \cdots$)에만 걸리므로, 행 교환을 $k$열(2×2의 둘째면 $k{-}1$열)부터 오른쪽에만 적용해요. 왼쪽의 앞 단계 승수 열은 건드리지 않아요.
+- 셋째 단계가 $M = P_1L_1P_2L_2\cdots$의 곱을 오른쪽부터 계산하는 부분이에요. $P_k$는 자기보다 오른쪽 인수들($L_k P_{k+1} \cdots$)에만 걸리므로, 행 교환을 $k$열(2×2의 둘째면 $k{-}1$열)부터 오른쪽에만 적용해요. 왼쪽의 앞 단계 승수 열은 건드리지 않아요.
 - 2×2 블록의 부대각 원소(예의 2)는 $D$에 들어가고, complex면 $D$의 반대쪽 칸에 켤레를 넣어 에르미트로 만들어요.
 - 비용은 $O(n^2)$예요. 행 교환이 많아야 $n$번이고 한 번에 $n$칸이며, 마지막 행 모으기도 $n^2$칸이에요.
 - 임시 배열(`swap`, `piv`, `perm`, $M$의 사본)은 모두 함수 몸체 몫의 scratch 슬롯을 써요. LAPACK 작업 배열 몫의 슬롯과 섞이지 않아요.

@@ -70,17 +70,24 @@ import Tree from '../../../components/fig/Tree.astro';
 // csrc/frame/parallel.hpp
 inline constexpr std::int64_t kParallelThreshold = 1 << 17;
 
+// Rows per task of for_chunks: a multiple of 64, so two tasks never write
+// the same byte (or word) of a validity bitmap.
 inline constexpr std::int64_t kChunkRows = 1 << 14;
 
+// Number of for_chunks chunks of n rows (for per-chunk partial results).
 inline std::int64_t num_chunks(std::int64_t n) { return (n + kChunkRows - 1) / kChunkRows; }
 
+// ...
 inline constexpr std::int64_t kWorkPerNs = 4;
 
+// parallel_for of `ntasks` tasks of about `task_ns` each (0: unknown, the
+// pool times its first tasks). Which thread runs a task never changes a result.
 template <class F>
 void parallel_tasks(std::int64_t ntasks, F&& fn, std::int64_t task_ns = 0) {
     parallel::parallel_for(ntasks, fn, task_ns);
 }
 
+// ...
 template <class F>
 void run_unlocked(std::int64_t ntasks, F&& fn, std::int64_t work = 0) {
     const parallel::Unlocked unlocked(true);
@@ -88,6 +95,7 @@ void run_unlocked(std::int64_t ntasks, F&& fn, std::int64_t work = 0) {
     parallel_tasks(ntasks, fn, task_ns);
 }
 
+// ...
 template <class F>
 void for_chunks(std::int64_t n, F&& f, std::int64_t cost = 1) {
     if (n <= 0) return;
@@ -100,6 +108,7 @@ void for_chunks(std::int64_t n, F&& f, std::int64_t cost = 1) {
     run_unlocked(ntasks, task, n * cost);
 }
 
+// ...
 class Unlocked : public parallel::Unlocked {
 public:
     explicit Unlocked(std::int64_t work) : parallel::Unlocked(work >= kParallelThreshold) {}
@@ -306,10 +315,7 @@ GIL을 놓고 다시 잡는 일은 공용 풀의 `parallel::GilRelease`(생성�
 // csrc/parallel/pool.cpp
 void parallel_for(std::int64_t ntasks, const std::function<void(std::int64_t)>& fn, std::int64_t task_ns) {
     if (ntasks <= 0) return;
-    // One task or a nested call: a plain loop on this thread, the GIL left as
-    // it is (docs/design/array.md §10.2 -- one task is the caller's own size
-    // decision, and releasing and retaking the GIL would cost a small call
-    // more than it saves; a nested call holds no GIL anyway).
+    // ...
     if (ntasks == 1 || t_in_task) {
         for (std::int64_t t = 0; t < ntasks; ++t) fn(t);
         return;
@@ -444,23 +450,29 @@ stardust의 float 합은 모든 영역이 함께 쓰는 pairwise 합(`base/pairw
 </Fig>
 
 ```cpp
-// csrc/frame/ops/pairwise.hpp (발췌)
+// csrc/frame/ops/pairwise.hpp
 inline constexpr std::int64_t kPairwiseLeaf = 1 << 14;
 
-// tree(0, n)과 비트까지 같다. 부분 트리를 병렬로. tree(b, m)은 pairwise_sum이나 pairwise_squares.
+// tree(0, n), bit for bit, with the subtrees in parallel; tree(b, m) is
+// pairwise_sum or pairwise_squares. `cost` as in for_chunks.
 template <class Tree>
 double pairwise_parallel(std::int64_t n, const Tree& tree, std::int64_t cost) {
-    if (n <= kPairwiseLeaf || n * cost < kParallelThreshold) return tree(0, n);   // 직렬 트리
+    if (n <= kPairwiseLeaf || n * cost < kParallelThreshold) return tree(0, n);
     const pairwise::Leaves leaves = pairwise::plan(n, kPairwiseLeaf, /*complex=*/false);
     std::vector<double> part(leaves.size());
-    run_unlocked(static_cast<std::int64_t>(part.size()), [&](std::int64_t t) {
-        const auto k = static_cast<std::size_t>(t);
-        part[k] = tree(leaves[k].first, leaves[k].second);
-    });
-    return pairwise::combine(n, kPairwiseLeaf, part);   // 같은 트리 모양으로 합치기
+    run_unlocked(
+        static_cast<std::int64_t>(part.size()),
+        [&](std::int64_t t) {
+            const auto k = static_cast<std::size_t>(t);
+            part[k] = tree(leaves[k].first, leaves[k].second);
+        },
+        n * cost
+    );
+    return pairwise::combine(n, kPairwiseLeaf, part);
 }
 
-// 합은 항등원 0.0에서 시작한다(배열 영역과 numpy의 add.reduce처럼): -0.0만의 합이 +0.0인 이유.
+// A sum starts from the identity: 0.0 + pairwise(all), as the array area's
+// (and numpy's add.reduce). That start is why a sum of -0.0s is +0.0.
 template <class Get>
 double float_sum(std::int64_t n, const Get& get, std::int64_t cost = 1) {
     return 0.0 + pairwise_parallel(n, [&get](std::int64_t b, std::int64_t m) { return pairwise_sum(b, m, get); }, cost);
@@ -581,16 +593,23 @@ CSV는 아무 바이트에서나 자를 수 없어요. 따옴표 안의 줄바�
 `parallel::FirstRow`는 가장 작은 실패 행을 골라요.
 
 ```cpp
-// csrc/parallel/pool.hpp (발췌)
+// csrc/parallel/pool.hpp
+// The first index (a row, an element) where a check failed, found by tasks
+// running in any order: each task offers its first failing index and the
+// smallest wins. So an error names the same index for any thread count, and
+// the caller builds the message after the parallel part, holding the GIL
+// again (tasks must not touch Python objects).
 class FirstRow {
 public:
-    void offer(std::int64_t row) {               // 이 태스크의 첫 실패 행
+    void offer(std::int64_t row) {
         std::int64_t cur = row_.load(std::memory_order_relaxed);
         while (row < cur && !row_.compare_exchange_weak(cur, row, std::memory_order_relaxed)) {}
     }
+    // True when an index before `row` already failed: a task past it can stop.
     bool failed_before(std::int64_t row) const { return row_.load(std::memory_order_relaxed) < row; }
     bool any() const { return row_.load() != kNone; }
     std::int64_t row() const { return row_.load(); }
+
 private:
     static constexpr std::int64_t kNone = INT64_MAX;
     std::atomic<std::int64_t> row_{kNone};

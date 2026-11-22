@@ -152,8 +152,8 @@ stardust는 해시하기 전에 키를 비트로 정규화해요.
 ```cpp
 // csrc/frame/ops/hash.hpp
 inline std::uint64_t float_key(double d) {
-    if (d != d) return 0x7ff8000000000000ULL;   // 모든 NaN을 NaN 하나로
-    if (d == 0.0) return 0;                      // -0.0을 +0.0의 비트로
+    if (d != d) return 0x7ff8000000000000ULL;
+    if (d == 0.0) return 0;
     std::uint64_t bits;
     std::memcpy(&bits, &d, sizeof bits);
     return bits;
@@ -188,14 +188,14 @@ inline std::uint64_t float_key(double d) {
 NA 행은 값 자리가 0이에요([컬럼과 메모리](/internals/frame/columns/)). 그래서 NA를 그대로 넣으면 int64의 0, float의 `0.0`, bool의 False, 빈 문자열과 같은 키가 돼요. 이것을 막으려고 NA 행은 테이블을 거치지 않아요.
 
 ```cpp
-// csrc/frame/ops/hash.hpp, Partitioned::build의 직렬 경로 (줄인 발췌)
+// csrc/frame/ops/hash.hpp
 for (std::int64_t i = 0; i < n; ++i) {
-    if (!valid(i)) {                                  // NA 행
-        if (na_code_ < 0) {                           // 처음 나온 NA: 다음 번호를 준다
+    if (!valid(i)) {
+        if (na_code_ < 0) {
             na_code_ = static_cast<std::int64_t>(first.size());
             first.push_back(i);
         }
-        codes[i] = na_code_;                          // 이후의 NA는 모두 같은 코드
+        codes[i] = na_code_;
         continue;
     }
     auto [code, added] = table.insert(key_of(i), static_cast<std::int64_t>(first.size()));
@@ -236,13 +236,24 @@ $$
 stardust에는 비교용 linear probing 테이블 `LinearTable`도 있어요. 실제로는 쓰지 않아요(`KeyTable = SwissTable`).
 
 ```cpp
-// csrc/frame/ops/hash.hpp, LinearTable::insert (줄인 발췌). 칸 = {word, code}, code < 0이면 빈 칸
-std::uint64_t s = h & mask_;
-while (true) {
-    Slot& e = slots_[s];
-    if (e.code < 0) { /* 빈 칸: 여기에 넣는다 */ ...; return {new_code, true}; }
-    if (matches(e, k, h)) return {e.code, false};   // 찾았다
-    s = (s + 1) & mask_;                            // 다음 칸
+// csrc/frame/ops/hash.hpp
+std::pair<std::int64_t, bool> insert(Key k, std::int64_t new_code) {
+    const std::uint64_t h = Hash{}(k);
+    std::uint64_t s = h & mask_;
+    while (true) {
+        Slot& e = slots_[s];
+        if (e.code < 0) {
+            e = Slot{word_of(k, h), new_code};
+            if constexpr (!kInline) {
+                if (static_cast<std::int64_t>(keys_.size()) <= new_code) keys_.resize(new_code + 1);
+                keys_[new_code] = k;
+            }
+            if (++size_ * 2 > static_cast<std::int64_t>(slots_.size())) grow();
+            return {new_code, true};
+        }
+        if (matches(e, k, h)) return {e.code, false};
+        s = (s + 1) & mask_;
+    }
 }
 ```
 
@@ -361,12 +372,12 @@ Abseil에서 빈 칸은 0x80이라, 새 제어 바이트 배열은 그 값으로
 x86의 SSE2에는 16바이트 비교 결과(바이트마다 0x00 또는 0xFF)를 16비트 정수로 모으는 `movemask`(`_mm_movemask_epi8`)가 있어요. Arm의 NEON에는 그런 명령이 없어요. stardust는 `vshrn_n_u16`(shift right and narrow)으로 같은 역할을 해요. 이 기법은 Kutenin의 글[5]이 정리한 것이고, 그 글에 따르면 Zstandard의 NEON 경로가 이 방법을 써요.
 
 ```cpp
-// csrc/frame/ops/hash.hpp, SwissTable (줄인 발췌)
-// 16바이트 비교 결과 → 64비트 마스크, 바이트마다 4비트(니블)
+// csrc/frame/ops/hash.hpp
+// A 16-byte compare result (0x00 or 0xFF per byte) as a 64-bit mask with
+// four bits per byte: shift each 16-bit lane right by 4 and narrow.
 static std::uint64_t nibbles(uint8x16_t cmp) {
     return vget_lane_u64(vreinterpret_u64_u8(vshrn_n_u16(vreinterpretq_u16_u8(cmp), 4)), 0);
 }
-// 가장 낮은 니블 하나(4비트)를 지운다
 static std::uint64_t clear_nibble(std::uint64_t m) {
     return m & ~(std::uint64_t{0xF} << (__builtin_ctzll(m) & ~3u));
 }
@@ -411,22 +422,27 @@ static std::uint64_t clear_nibble(std::uint64_t m) {
 ### 찾기와 넣기
 
 ```cpp
-// csrc/frame/ops/hash.hpp, SwissTable::insert (줄인 발췌)
+// csrc/frame/ops/hash.hpp
 std::pair<std::int64_t, bool> insert(Key k, std::uint64_t h, std::int64_t new_code) {
-    if (!ctrl_) [[unlikely]] allocate(32);
-    const std::uint8_t tag = 0x80 | (h & 0x7f);
-    for (std::uint64_t g = (h >> 7) & gmask_;; g = (g + 1) & gmask_) {     // 그룹을 차례로
-        const uint8x16_t ctrl = vld1q_u8(ctrl_.get() + g * 16);             // 제어 바이트 16개
+    if (!ctrl_) [[unlikely]]
+        allocate(32);
+    const std::uint8_t tag = tag_of(h);
+    for (std::uint64_t g = (h >> 7) & gmask_;; g = (g + 1) & gmask_) {
+        const uint8x16_t ctrl = vld1q_u8(ctrl_.get() + g * 16);
         for (std::uint64_t m = nibbles(vceqq_u8(ctrl, vdupq_n_u8(tag))); m; m = clear_nibble(m)) {
-            const Slot& e = slots_[g * 16 + (__builtin_ctzll(m) >> 2)];     // 태그가 같은 칸
-            if (matches(e, k, h)) return {e.code, false};                   // 있던 키
+            const Slot& e = slots_[g * 16 + (__builtin_ctzll(m) >> 2)];
+            if (matches(e, k, h)) return {e.code, false};
         }
         const std::uint64_t empty = nibbles(vceqzq_u8(ctrl));
-        if (empty) {                                                        // 없는 키: 첫 빈 칸에 넣는다
+        if (empty) {
             const std::uint64_t at = g * 16 + (__builtin_ctzll(empty) >> 2);
             ctrl_[at] = tag;
             slots_[at] = Slot{word_of(k, h), new_code};
-            if (++size_ * 8 > capacity() * 7) grow();                       // 7/8을 넘으면 두 배로
+            if constexpr (!kInline) {
+                if (static_cast<std::int64_t>(keys_.size()) <= new_code) keys_.resize(new_code + 1);
+                keys_[new_code] = k;
+            }
+            if (++size_ * 8 > static_cast<std::int64_t>(capacity()) * 7) grow();
             return {new_code, true};
         }
     }
@@ -600,10 +616,10 @@ wyhash 자체는 16바이트(또는 48바이트)씩 두 단어를 한 번에 접
 행 수는 키 수의 상한이에요. 키가 행보다 많을 수는 없으니, 테이블을 행 수에 맞게 잡으면 한 번도 자라지 않아요. `reserve(n)`은 키 $n$개를 7/8 아래로 담는 가장 작은 칸 수를 잡아요.
 
 ```cpp
-// csrc/frame/ops/hash.hpp, SwissTable::reserve
+// csrc/frame/ops/hash.hpp
 void reserve(std::int64_t n) {
     std::size_t slots = 32;
-    while (static_cast<std::int64_t>(slots) * 7 < n * 8) slots *= 2;   // slots ≥ 8n/7
+    while (static_cast<std::int64_t>(slots) * 7 < n * 8) slots *= 2;
     if (slots > capacity()) allocate(slots);
 }
 ```
@@ -638,7 +654,7 @@ void reserve(std::int64_t n) {
 이 기준들은 행 수와 dtype으로만 정해요. 키 수를 미리 세어 보거나 표본을 보는 일은 하지 않아요.
 
 ```cpp
-// csrc/frame/ops/hash.hpp, Partitioned::build의 직렬 경로
+// csrc/frame/ops/hash.hpp
 table.reserve(kInline ? n : std::min<std::int64_t>(n, std::int64_t{1} << 16));
 ```
 
@@ -664,19 +680,26 @@ table.reserve(kInline ? n : std::min<std::int64_t>(n, std::int64_t{1} << 16));
 </Fig>
 
 ```cpp
-// csrc/frame/ops/hash.cpp, factorize_rows (줄인 발췌)
+// csrc/frame/ops/hash.cpp
+// acc holds the tuple of codes so far as one number below acc_n.
 Factorized acc = factorize(cols[0]);
 std::int64_t acc_n = acc.ngroups;
 for (std::size_t j = 1; j < cols.size(); ++j) {
     Factorized next = factorize(cols[j]);
     if (next.ngroups != 0 && acc_n > (std::int64_t{1} << 62) / next.ngroups) {
-        acc = factorize(acc.codes);          // 넘칠 것 같다: 지금까지의 튜플을 빈틈없는 코드로
+        // The product would overflow: compact acc to dense codes first.
+        acc = factorize(acc.codes);
         acc_n = acc.ngroups;
     }
-    // a[i] = a[i] * m + b[i]  (청크 병렬)
+    auto* a = reinterpret_cast<std::int64_t*>(acc.codes.values->data());
+    const auto* b = next.codes.data<std::int64_t>();
+    const std::int64_t m = next.ngroups;
+    for_chunks(n, [=](std::int64_t lo, std::int64_t hi) {
+        for (std::int64_t i = lo; i < hi; ++i) a[i] = a[i] * m + b[i];
+    });
     acc_n *= next.ngroups;
 }
-return factorize(acc.codes);                 // 빈틈없고, 처음 나타난 순서
+return factorize(acc.codes);  // dense, in order of first appearance
 ```
 
 - 넘침 검사는 곱하기 전에 나눗셈으로 해요(`acc_n > 2^62 / n_j`). 곱한 뒤에 검사하면 이미 넘친 값을 보게 돼요.
@@ -757,12 +780,15 @@ $P = 256$인 것은 다른 커널과 맞춘 값이에요. 기수 정렬의 한 �
 - 청크 안에서는 길이 16,384의 `rank` 배열에 첫 등장 행을 1로 표시하고, 분기 없는 누적합으로 번호를 매겨요.
 
 ```cpp
-// csrc/frame/ops/hash.hpp, Partitioned::build 5단계 (줄인 발췌)
+// csrc/frame/ops/hash.hpp
+// Branch-free numbering: first rows are often too dense and too
+// random for a branch to predict.
 std::int64_t g = fstart[chunk(lo)];
+std::int64_t* rk = rank.data();
 for (std::int64_t i = 0, len = hi - lo; i < len; ++i) {
-    const std::int64_t is = rk[i];      // 첫 등장 행이면 1, 아니면 0
+    const std::int64_t is = rk[i];
     g += is;
-    rk[i] = g & -is;                    // 첫 등장 행: 코드 + 1, 아니면 0
+    rk[i] = g & -is;
 }
 ```
 
@@ -892,25 +918,39 @@ factorize는 넣으면서 코드를 매기는 일이에요. 넣지 않고 찾기
 조회 루프가 `find_rows`예요.
 
 ```cpp
-// csrc/frame/ops/hash.cpp, find_rows (줄인 발췌)
+// csrc/frame/ops/hash.cpp
 template <class Key, class Hash, class KeyOf>
-void find_rows(const Partitioned<Key, Hash>& table, const Column& probe, KeyOf key_of,
-               std::int64_t skip, std::int64_t* out) {
+void find_rows(
+    const Partitioned<Key, Hash>& table, const Column& probe, KeyOf key_of, std::int64_t skip, std::int64_t* out
+) {
     const bool nulls = probe.null_count > 0;
-    for_chunks(probe.length, [&](std::int64_t lo, std::int64_t hi) {
-        const Partitioned<Key, Hash>& t = table;   // 태스크의 지역 변수로
-        const KeyOf key = key_of;
-        const std::int64_t s = skip;
-        std::int64_t* o = out;
-        if (!nulls) {
-            for (std::int64_t i = lo; i < hi; ++i) {
-                const std::int64_t c = t.find(key(i));
-                o[i] = c - (c > s);                // NA 코드 보정, 분기 없이
+    for_chunks(
+        probe.length,
+        [&](std::int64_t lo, std::int64_t hi) {
+            const Partitioned<Key, Hash>& t = table;
+            const KeyOf key = key_of;
+            const std::int64_t s = skip;
+            std::int64_t* o = out;
+            if (!nulls) {
+                for (std::int64_t i = lo; i < hi; ++i) {
+                    const std::int64_t c = t.find(key(i));
+                    o[i] = c - (c > s);
+                }
+            } else {
+                const std::uint8_t* bits = probe.validity_bits();
+                const std::int64_t off = probe.offset;
+                for (std::int64_t i = lo; i < hi; ++i) {
+                    if (!bitmap::get(bits, off + i)) {
+                        o[i] = -1;
+                        continue;
+                    }
+                    const std::int64_t c = t.find(key(i));
+                    o[i] = c - (c > s);
+                }
             }
-        } else {
-            // 비트맵을 읽어 NA 행은 -1, 나머지는 위와 같다
-        }
-    }, 8);
+        },
+        8
+    );
 }
 ```
 

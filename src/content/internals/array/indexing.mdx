@@ -70,11 +70,14 @@ import Op from '../../../components/fig/Op.astro';
 ```cpp
 // csrc/array/ops/indexing.cpp, Items (줄인 발췌)
 class Items {
+public:
     static constexpr int kCapacity = 2 * kMaxNdim + 1;
-    void push_back(Item&& it) { new (slot(n_++)) Item(std::move(it)); }
-    Item& operator[](int i) { return *std::launder(reinterpret_cast<Item*>(slot(i))); }
-    ~Items() { for (int i = 0; i < n_; ++i) (*this)[i].~Item(); }
-    alignas(Item) std::byte storage_[kCapacity * sizeof(Item)];  // push 전까지 초기화하지 않음
+    // ...
+    ~Items() {
+        for (int i = 0; i < n_; ++i) (*this)[i].~Item();
+    }
+    // ...
+    alignas(Item) std::byte storage_[kCapacity * sizeof(Item)];  // uninitialized until pushed
     int n_ = 0;
 };
 ```
@@ -104,11 +107,12 @@ class Items {
 ```cpp
 // csrc/array/ops/indexing.cpp
 struct Plan {
-    NDArray view;                  // 기본 항목을 적용한 뷰
-    int first = 0;                 // 고급 항목이 가리키는 축의 시작 (view 기준)
-    std::vector<NDArray> indices;  // 축마다 int64 인덱스 배열 하나
-    bool mask_only = false;        // bool 마스크 하나가 유일한 고급 항목인가
+    NDArray view;  // ndim may be 0 internally (all ints): never escapes
+    int first = 0;
+    std::vector<NDArray> indices;  // empty: basic indexing only (unless mask_only)
+    bool mask_only = false;
     NDArray mask;
+    bool advanced() const { return mask_only || !indices.empty(); }
 };
 ```
 
@@ -139,36 +143,37 @@ $$
 `x[1, 2]`, `x[1]`, `x[::2]`, `x[:, 5]` 같은 호출은 흔하고, 일반 경로로 처리하면 시간 대부분을 오프셋 계산이 아니라 준비 작업(Items 만들기, Plan 만들기, 뷰 복사)에 써요. 그래서 키의 항목이 모두 정확한 Python int이거나 경계가 `None`·정확한 int인 slice이면 키 해석 전체를 건너뛰어요.
 
 ```cpp
-// csrc/array/ops/indexing.cpp, basic_fast (줄인 발췌)
-for (Py_ssize_t d = 0; d < n; ++d) {
-    PyObject* it = items[d];
-    if (PyLong_CheckExact(it)) {  // bool, numpy.int64 등은 일반 경로로
-        int overflow = 0;
-        long long i = PyLong_AsLongLongAndOverflow(it, &overflow);
-        if (overflow) return {};
-        if (i < 0) i += a.shape[d];
-        if (i < 0 || i >= a.shape[d]) return {};  // 에러는 일반 경로가 낸다
-        p += i * a.strides[d];
-    } else if (PySlice_Check(it)) {
-        auto* sl = reinterpret_cast<PySliceObject*>(it);
-        for (PyObject* b : {sl->start, sl->stop, sl->step})
-            if (b != Py_None && !PyLong_CheckExact(b)) return {};  // __index__는 코드를 실행할 수 있어요
-        Py_ssize_t start, stop, step;
-        if (PySlice_Unpack(it, &start, &stop, &step) < 0) {
-            PyErr_Clear();  // step 0: the general path raises it
+    // csrc/array/ops/indexing.cpp, basic_fast (줄인 발췌)
+    for (Py_ssize_t d = 0; d < n; ++d) {
+        PyObject* it = items[d];
+        if (PyLong_CheckExact(it)) {
+            int overflow = 0;
+            long long i = PyLong_AsLongLongAndOverflow(it, &overflow);
+            if (overflow) return {};
+            if (i < 0) i += a.shape[d];
+            if (i < 0 || i >= a.shape[d]) return {};
+            p += i * a.strides[d];
+        } else if (PySlice_Check(it)) {
+            // Plain-int bounds only: an object with __index__ could run code, and
+            // a bad bound must raise the general path's error.
+            auto* sl = reinterpret_cast<PySliceObject*>(it);
+            for (PyObject* b : {sl->start, sl->stop, sl->step})
+                if (b != Py_None && !PyLong_CheckExact(b)) return {};
+            Py_ssize_t start, stop, step;
+            if (PySlice_Unpack(it, &start, &stop, &step) < 0) {
+                PyErr_Clear();  // step 0: the general path raises it
+                return {};
+            }
+            const Py_ssize_t len = PySlice_AdjustIndices(a.shape[d], &start, &stop, step);
+            if (len > 0) p += start * a.strides[d];  // an empty slice leaves the pointer alone
+            shape[nd] = len;
+            strides[nd] = a.strides[d] * step;
+            ++nd;
+        } else {
             return {};
         }
-        const Py_ssize_t len = PySlice_AdjustIndices(a.shape[d], &start, &stop, step);
-        if (len > 0) p += start * a.strides[d];  // an empty slice leaves the pointer alone
-        shape[nd] = len;
-        strides[nd] = a.strides[d] * step;
-        ++nd;
-    } else {
-        return {};
     }
-}
-if (nd == 0 && n == a.ndim) return load_python(a.dtype, p);  // 원소 하나: Python 스칼라
-// 아니면 뷰: slice 축의 shape·strides 뒤에 남은 축을 이어 붙여요
+    if (nd == 0 && n == a.ndim) return load_python(a.dtype, p);
 ```
 
 - `PyLong_CheckExact`는 하위 클래스를 받지 않아요. `bool`은 `int`의 하위 클래스라 여기서 저절로 빠지고, 일반 경로에서 정해진 에러를 내요. slice의 경계도 `None`이나 정확한 int일 때만 이 길로 가요. `__index__`를 가진 객체는 사용자 코드를 실행할 수 있기 때문이에요.
@@ -273,10 +278,10 @@ void gather_one_loop(std::byte* const* args, std::int64_t n, const std::int64_t*
     const OneIndex& c = *static_cast<const OneIndex*>(ctx);
     bool bad = false;
     for (std::int64_t t = 0; t < n; ++t) {
-        std::int64_t i = wrap_index(load_as<std::int64_t>(args[0] + t * s[0]), c.len);  // 음수 보정
-        const bool oob = static_cast<std::uint64_t>(i) >= static_cast<std::uint64_t>(c.len);
-        bad |= oob;                     // 분기 없이 표시만
-        i = oob ? 0 : i;                // 나쁜 인덱스는 0번으로 읽는다
+        std::int64_t i = wrap_index(load_as<std::int64_t>(args[0] + t * s[0]), c.len);
+        const bool out_of_bounds = static_cast<std::uint64_t>(i) >= static_cast<std::uint64_t>(c.len);
+        bad |= out_of_bounds;
+        i = out_of_bounds ? 0 : i;
         *reinterpret_cast<T*>(args[1] + t * s[1]) = load_as<T>(c.base + i * c.stride);
     }
     if (bad) c.bad->store(true, std::memory_order_relaxed);
@@ -318,10 +323,13 @@ stride가 0인 축은 "그 축을 따라 가도 같은 자리를 가리킨다"�
 template <typename T>
 void take_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, void* ctx) {
     const Take& c = *static_cast<const Take*>(ctx);
-    if (s[1] == 0) {  // 이 구간 전체가 같은 인덱스: 블록 복사 (m[rows])
+    if (s[1] == 0) {  // one index for the whole run: a block copy (m[rows])
         const std::byte* src = args[0] + wrap_index(load_as<std::int64_t>(args[1]), c.len) * c.stride;
-        if (s[0] == sizeof(T) && s[2] == sizeof(T)) std::memcpy(args[2], src, n * sizeof(T));
-        else for (std::int64_t t = 0; t < n; ++t) /* strided 복사 */;
+        if (s[0] == sizeof(T) && s[2] == sizeof(T)) {
+            std::memcpy(args[2], src, static_cast<size_t>(n) * sizeof(T));
+        } else {
+            for (std::int64_t t = 0; t < n; ++t) *reinterpret_cast<T*>(args[2] + t * s[2]) = load_as<T>(src + t * s[0]);
+        }
         return;
     }
     for (std::int64_t t = 0; t < n; ++t) {
@@ -385,12 +393,12 @@ $$
 4단계 덕분에 `x[idx] = v`는 전부 아니면 전무예요. 범위 밖 인덱스가 하나라도 있으면 아무것도 쓰지 않고 IndexError를 내요. 검사는 `check_indices`가 해요.
 
 ```cpp
-// csrc/array/ops/indexing.cpp, check_loop (줄인 발췌)
-bool bad = false;
-for (std::int64_t t = 0; t < n; ++t)  // 분기 없음: 벡터화된다
-    bad |= static_cast<std::uint64_t>(wrap_index(load_as<std::int64_t>(args[0] + t * s[0]), c.len)) >=
-           static_cast<std::uint64_t>(c.len);
-if (bad) c.bad->store(true, std::memory_order_relaxed);
+    // csrc/array/ops/indexing.cpp, check_loop (줄인 발췌)
+    bool bad = false;
+    for (std::int64_t t = 0; t < n; ++t)  // branch-free: vectorizes
+        bad |= static_cast<std::uint64_t>(wrap_index(load_as<std::int64_t>(args[0] + t * s[0]), c.len)) >=
+               static_cast<std::uint64_t>(c.len);
+    if (bad) c.bad->store(true, std::memory_order_relaxed);
 ```
 
 - 이 루프도 이터레이터 위에서 돌아서 큰 인덱스 배열이면 여러 스레드로 나뉘어요.
@@ -441,20 +449,25 @@ stardust는 마스크가 유일한 고급 항목이면 `Plan::mask_only`로 표�
 3. 결과 할당 후 채우기(병렬): 청크마다 자기 구간만 걸으며 결과의 $[\text{start}_t, \text{start}_{t+1})$을 채워요.
 
 ```cpp
-// csrc/array/ops/indexing.cpp, count_mask (줄인 발췌)
-parallel::parallel_for(mc.chunks, [&](std::int64_t c) {
-    std::int64_t count = 0;
-    mask_runs(m, vs, c * kMaskChunk, std::min(size, (c + 1) * kMaskChunk), [&](auto mp, auto ms, auto, auto, auto n) {
-        if (ms == 1) {  // 연속: 바이트 합
-            const std::uint8_t* q = reinterpret_cast<const std::uint8_t*>(mp);
-            std::uint32_t part = 0;  // 구간은 kMaskChunk를 넘지 않으므로 32비트로 충분
-            for (std::int64_t t = 0; t < n; ++t) part += q[t];
-            count += part;
-        } else { /* strided: 원소마다 */ }
+    // csrc/array/ops/indexing.cpp, count_mask (줄인 발췌)
+    parallel::parallel_for(mc.chunks, [&](std::int64_t c) {
+        std::int64_t count = 0;
+        mask_runs(
+            m, vs, c * kMaskChunk, std::min(mc.size, (c + 1) * kMaskChunk),
+            [&](const std::byte* mp, std::int64_t ms, std::int64_t, std::int64_t, std::int64_t n) {
+                if (ms == 1) {
+                    const std::uint8_t* q = reinterpret_cast<const std::uint8_t*>(mp);
+                    std::uint32_t part = 0;  // a run never exceeds kMaskChunk elements
+                    for (std::int64_t t = 0; t < n; ++t) part += q[t];
+                    count += part;
+                } else {
+                    for (std::int64_t t = 0; t < n; ++t) count += *reinterpret_cast<const bool*>(mp + t * ms);
+                }
+            }
+        );
+        mc.start[c + 1] = count;
     });
-    mc.start[c + 1] = count;
-});
-for (std::int64_t c = 0; c < mc.chunks; ++c) mc.start[c + 1] += mc.start[c];  // 누적합
+    for (std::int64_t c = 0; c < mc.chunks; ++c) mc.start[c + 1] += mc.start[c];
 ```
 
 - 세기는 바이트 합이에요. stardust의 bool은 언제나 0 또는 1인 바이트라, True 수는 바이트를 더한 값이에요. 컴파일러가 이 루프를 NEON 벡터 덧셈으로 바꿔요(손으로 짠 intrinsic은 아니에요). 구간 하나는 청크(16384원소)를 넘지 않으므로 구간의 합은 `uint32_t` 누산기로 넘치지 않아요.
@@ -482,15 +495,17 @@ sparse 경로의 `for_true`는 마스크 8바이트를 `uint64_t` 하나로 읽�
 dense 조각은 이 루프로 처리해요.
 
 ```cpp
-// csrc/array/ops/indexing.cpp, compress_chunk의 dense 경로 (줄인 발췌)
-T buf[256];
-std::int64_t cnt = 0;
-for (std::int64_t t = 0; t < m; ++t) {
-    buf[cnt] = load_as<T>(p + t * vstep);  // 모든 원소를 일단 buf[cnt]에 쓴다
-    cnt += q[t];                            // True일 때만 cnt가 1 늘어난다
-}
-std::memcpy(out + b * step, buf, cnt * sizeof(T));  // 결과로 한 번에
-b += cnt;
+            // csrc/array/ops/indexing.cpp, compress_chunk의 dense 경로 (줄인 발췌)
+            T buf[256];
+            std::int64_t cnt = 0;
+            const std::byte* p = src + vo;
+            for (std::int64_t t = 0; t < m; ++t) {
+                buf[cnt] = load_as<T>(p + t * vstep);
+                cnt += q[t];
+            }
+            if (step == sizeof(T)) std::memcpy(out + b * step, buf, static_cast<size_t>(cnt) * sizeof(T));
+            // ...
+            b += cnt;
 ```
 
 모든 원소를 `buf[cnt]`에 쓰지만, `cnt`는 마스크 바이트가 1일 때만 늘어나요. False 원소는 다음 원소에 덮어써지고, True 원소만 자리를 지켜요. 루프 안에 조건문이 없어요.
@@ -525,14 +540,15 @@ numpy 2.5.4의 `f[mask]`는 `array_boolean_subscript`(`numpy/_core/src/multiarra
 값이 스칼라일 때는 원소의 원시 비트에 비트 마스크를 적용해요.
 
 ```cpp
-// csrc/array/ops/indexing.cpp, expand_chunk의 스칼라 경로 (줄인 발췌)
-using W = std::conditional_t<sizeof(T) % 8 == 0, std::uint64_t, std::uint8_t>;
-constexpr int kWords = sizeof(T) / sizeof(W);   // float64: 1, complex128: 2, bool: 1
-for (std::int64_t t = 0; t < m; ++t) {
-    W* e = reinterpret_cast<W*>(p + t * vstep);
-    const W keep = static_cast<W>(q[t]) - 1;     // False(0) → 모든 비트 1, True(1) → 0
-    for (int j = 0; j < kWords; ++j) e[j] = (e[j] & keep) | (val[j] & ~keep);
-}
+                // csrc/array/ops/indexing.cpp, expand_chunk의 스칼라 경로 (줄인 발췌)
+                using W = std::conditional_t<sizeof(T) % 8 == 0, std::uint64_t, std::uint8_t>;
+                constexpr int kWords = sizeof(T) / sizeof(W);
+                // ...
+                for (std::int64_t t = 0; t < m; ++t) {
+                    W* e = reinterpret_cast<W*>(p + t * vstep);
+                    const W keep = static_cast<W>(q[t]) - 1;  // all ones where false
+                    for (int j = 0; j < kWords; ++j) e[j] = (e[j] & keep) | (val[j] & ~keep);
+                }
 ```
 
 - 선택을 비트 연산으로 직접 써요. `*e = q ? val : *e`로 쓰면 컴파일러가 이것을 "q가 참일 때만 저장"하는 분기로 바꿔요(100만 원소에 2.2ms). 마스크 바이트 $q \in \{0, 1\}$에서 $q - 1$은 0이면 모든 비트가 1, 1이면 0이에요. 그러면
@@ -570,11 +586,11 @@ Apple M4 Pro, numpy 2.5.4에서 잰 값이에요.
 대입의 값은 고른 shape으로 브로드캐스트되는데, 규칙이 numpy보다 엄격해요. 값이 고른 영역보다 축이 많으면 안 돼요. 길이 1인 축을 늘리는 것과 앞에 축을 붙이는 것은 되지만, 앞쪽의 길이 1인 축을 떼어내지는 않아요.
 
 ```cpp
-// csrc/array/ops/indexing.cpp, check_value_shape (줄인 발췌)
-const std::ptrdiff_t off = indexed.size() - value.size();
-if (off < 0) throw value_shape_error(value, indexed);          // 값의 축이 더 많음
-for (size_t d = 0; d < value.size(); ++d)
-    if (value[d] != 1 && value[d] != indexed[d + off]) throw value_shape_error(value, indexed);
+    // csrc/array/ops/indexing.cpp, check_value_shape (줄인 발췌)
+    const std::ptrdiff_t off = static_cast<std::ptrdiff_t>(indexed.size()) - static_cast<std::ptrdiff_t>(value.size());
+    if (off < 0) throw value_shape_error(value, indexed);
+    for (size_t d = 0; d < value.size(); ++d)
+        if (value[d] != 1 && value[d] != indexed[d + off]) throw value_shape_error(value, indexed);
 ```
 
 그래서 `a[sd.asarray([0, 1])] = sd.asarray([[1.0, 2.0]])`는 "cannot broadcast a value of shape (1, 2) to the indexed shape (2,)"예요. numpy는 앞쪽 길이 1인 축을 떼어내고 받아들여요. stardust가 받지 않는 것은 일반 브로드캐스팅과 같은 규칙을 쓰기 때문이에요. `x + y`에서 결과의 축 수가 줄어들지 않듯, 대입에서도 값의 축이 사라지지 않아요. 고급 키에서는 같은 규칙을 `scatter` 안에서 stride를 만들며 적용해요(늘어나는 축에 stride 0).

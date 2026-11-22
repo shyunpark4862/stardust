@@ -105,6 +105,7 @@ bisquare의 $u = z/c$예요. Huber는 큰 잔차의 영향을 일정한 크기 $
 네 함수(ψ, 가중치, ρ, ψ′)는 `NormF`라는 작은 구조체에 있어요. bisquare의 ψ는 이렇게 계산해요(`csrc/regression/robust.cpp`).
 
 ```cpp
+            // csrc/regression/robust.cpp
             case nBisquare: {
                 if (!(az <= c)) return 0.0;
                 const double u = z / c, t = (1.0 - u) * (1.0 + u);
@@ -158,6 +159,7 @@ $$
 나누는 수는 표준정규분포의 3/4 분위수예요. 오차가 정규분포면 $\lvert r\rvert$의 중앙값이 $\sigma\,\Phi^{-1}(3/4)$이므로, 나누면 $\sigma$의 일치 추정량이 돼요. 상수는 statsmodels `mad(center=0)`이 쓰는 scipy `norm.ppf(0.75)`의 double 그대로예요.
 
 ```cpp
+// csrc/regression/robust.cpp
 double mad0(const double* r, lint n, double* buf) {
     if (n == 0) return kNaN;
     for (lint i = 0; i < n; ++i) buf[i] = std::fabs(r[i]) / kMadC;
@@ -195,6 +197,7 @@ t \leftarrow \frac{T - n_{\text{밖}}\, d^2/2}{\sum_{\text{안}} r_i^2 / 2}
 $$
 
 ```cpp
+        // csrc/regression/robust.cpp
         const double num = T - static_cast<double>(nout) * d2 * 0.5;
         const double den = 0.5 * (A.hi + A.lo);
         // the rows inside are all exactly 0: f stays n_out d^2/2 for every larger t, so below
@@ -216,6 +219,7 @@ $\sum_{\text{안}} r_i^2$는 덩어리마다 TwoProduct와 double-double 덧셈�
 반복은 목적함수의 상대 변화가 `tol`(기본 1e-8) 아래가 되면 수렴(`converged=True`)으로 봐요.
 
 ```cpp
+// csrc/regression/robust.cpp
 inline bool settled(DD a, DD b, double tol) {  // |b - a|/(|b| + 0.1) < tol
     const double d = (b.hi - a.hi) + (b.lo - a.lo);
     return std::fabs(d) / (std::fabs(b.hi) + 0.1) < tol;
@@ -254,6 +258,7 @@ $$
 $\nabla s$ 항을 빼면 척도를 상수로 본 뉴턴이 되는데, 척도가 $\beta$와 함께 움직이는 규칙에서는 그 야코비안이 틀려서 걸음이 다시 선형 수렴이 돼요. 계산은 `newton_step`에 있어요. 부분합 덩어리에서 $X^{\mathsf T}\Psi'X$와 $X^{\mathsf T}\Psi'z$를 모으고, 랭크 1 갱신을 더한 뒤 $k\times k$ LU로 풀어요.
 
 ```cpp
+    // csrc/regression/robust.cpp
     scale_grad(D, sr, r, s, K, g);
     for (lint a = 0; a < kk; ++a)
         for (lint b = 0; b < kk; ++b) M[a * kk + b] += u[a] * g[b];
@@ -266,6 +271,7 @@ $M$은 대칭이 아니므로(랭크 1 갱신 때문에) Cholesky 대신 LU(`get
 뉴턴 걸음은 두 조건을 모두 만족할 때만 받아요. $\lVert F\rVert_2$가 줄어야 하고, 새 척도가 원래 척도의 1/2–2배 안이어야 해요. 새 계수의 잔차와 척도에서 $F$를 다시 구해 비교하고, 어느 하나라도 어기면 그 반복은 반복 개선한 QR의 IRLS 걸음이에요. 그래서 해에서 멀거나 ψ의 조각(Huber의 꺾이는 점, 가운데 행)이 바뀌는 곳에서도 반복이 망가지지 않아요.
 
 ```cpp
+// csrc/regression/robust.cpp
 constexpr double kNewtonScaleFactor = 2.0;
 inline bool scale_kept(double sn, double s) {
     return sn > 0.0 && std::isfinite(sn) && sn <= kNewtonScaleFactor * s && s <= kNewtonScaleFactor * sn;
@@ -329,6 +335,7 @@ $$
 이면 0으로 봐요. [분위 회귀](/internals/regression/quantile/)가 0 잔차의 허용오차로 쓰고 [최소제곱](/internals/regression/least-squares/#완전-적합의-판정)이 완전 적합을 가르는 식과 같아요. 직선 위의 행이라도 $\beta$를 반올림하는 것만으로 그 행의 $x_i^{\mathsf T}\beta$가 대략 이만큼 움직여요. 겹쳐서 계수가 없는 열(NaN)은 합에 들지 않아요.
 
 ```cpp
+// csrc/regression/robust.cpp
 // (k + 16) u (|y_i| + sum_c |x_ic| |beta_c|); a NaN beta_c (a column without a coefficient)
 // takes no part. At most the quick bound (k + 16) u (|y_i| + ||x_i||_1 ||beta||_inf).
 inline double zero_tol_row(const Design& D, const double* y, lint i, const double* beta) {
@@ -371,6 +378,7 @@ hampel [1.0, 2.0] 0.0 [0.0, 0.0] True
 반복을 시작하기 전에 답이 정해지는 세 경우가 있어요. 셋 다 `n_iter`는 0이고 `converged`는 True예요.
 
 ```cpp
+    // csrc/regression/robust.cpp
     bool exact = rank > 0 && n == rank;
     if (op.intercept && kept[0] && rank > 0) {
         bool cy = true;
@@ -456,6 +464,7 @@ S 추정의 탐색은 Salibian-Barrera–Yohai(2006)의 fast-S이고, 단계와 
 행을 뽑는 난수는 Philox4×64-10([난수 생성기](/internals/random/generator/))이에요. 키는 Python 층이 회귀마다 `rng.integers(-2**63, 2**63 - 1, endpoint=True, shape=batch_shape + (2,))`로 뽑은 두 단어이고, 후보 $j$의 $t$번째 시도는 원소 $e = j\cdot2^{32} + t$의 첫 단어를 Lemire의 방법으로 $[0, n)$에 줄여 써요. 기각되면 같은 원소의 여분 단어를 써요(sd.random의 `integers`와 같은 규칙, [정수 뽑기](/internals/random/sampling/)).
 
 ```cpp
+    // csrc/regression/robust.cpp
     for (int t = 0; t < kMts && static_cast<lint>(rows.size()) < p; ++t) {
         const std::uint64_t e = (static_cast<std::uint64_t>(j) << 32) | static_cast<std::uint64_t>(t);
         const lint i = static_cast<lint>(
@@ -471,6 +480,7 @@ Philox는 계수기를 키로 섞는 전단사라서 어떤 원소든 바로 계
 후보를 계산한 뒤 고르는 일은 후보 순서대로 해요(`best_candidates`). 지금까지 남긴 둘 가운데 큰 척도를 $W$라 하면, 새 후보의 잔차에서 $\sum_i\tilde\rho(r_i/W) < T$인지만 먼저 봐요. $g$가 감소하므로 이것은 "이 후보의 척도가 $W$보다 작다"와 같아요. 그럴 때만 그 후보의 척도를 정확히 구해(`mscale`, 상대 $10^{-10}$) $W$를 바꿔요.
 
 ```cpp
+        // csrc/regression/robust.cpp
         if (std::isfinite(worst)) {
             if (worst == 0.0) continue;
             const DD v = row_sum(n, [&](lint i) { return chi_s(r[i] / worst, kSChi); });
@@ -563,6 +573,7 @@ $$
 robustbase는 $X^{\mathsf T}\Psi'X$를 만들어 `solve`로 역행렬을 구하므로 오차가 $\kappa(X)^2u$예요. sd는 합을 시작 최소제곱의 $R$로 얇은 Q의 좌표에서 만들어요. 행마다 $q_i = R^{-\mathsf T}x_i$(전진 대입)로 바꾸면 $X^{\mathsf T}DX = R^{\mathsf T}(Q^{\mathsf T}DQ)R$이므로, $Q^{\mathsf T}\Psi'Q$의 조건수에는 $\kappa(X)^2$이 들어 있지 않아요. 그 좌표에서 $V_Q$를 만든 뒤 $V = R^{-1}V_QR^{-\mathsf T}$로 되돌려요(삼각 풀이 두 번).
 
 ```cpp
+            // csrc/regression/robust.cpp
             V[i * kk + j] = acc + (-(a[i] * Av2[j]) - Av2[i] * a[j] + mu4 * a[i] * a[j]) / dn;
 ```
 
