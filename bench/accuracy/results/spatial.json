@@ -54,28 +54,61 @@
     "Boost in sd.special": "4682f44"
    }
   },
-  "20261123-010204-f80ddd4+": {
-   "commit": "f80ddd4",
+  "20261123-013752-8832c53+": {
+   "commit": "8832c53",
    "dirty": true,
    "changed": [
+    "CMakeLists.txt",
     "ROADMAP.md",
-    "csrc/spatial/distance.cpp",
-    "csrc/spatial/dual.cpp",
-    "csrc/spatial/kdtree.cpp",
+    "bench/accuracy/spatial.py",
+    "bench/speed/cases/spatial.py",
+    "csrc/bind/plot_bind.cpp",
+    "csrc/bind/spatial_bind.cpp",
+    "csrc/plot/levels.cpp",
+    "csrc/plot/raster.cpp",
+    "csrc/plot/raster.hpp",
+    "csrc/plot/zbuffer.cpp",
+    "csrc/plot/zbuffer.hpp",
     "csrc/spatial/metric.hpp",
-    "csrc/spatial/neighbors.cpp",
+    "csrc/spatial/spatial.hpp",
+    "docs/api/plot.md",
     "docs/api/spatial.md",
+    "docs/design/plot.md",
     "docs/design/spatial.md",
-    "src/stardust/spatial/_common.py",
-    "src/stardust/spatial/_kdtree.py",
+    "src/stardust/plot/__init__.py",
+    "src/stardust/plot/_basic.py",
+    "src/stardust/plot/_field.py",
+    "src/stardust/plot/_figure.py",
+    "src/stardust/plot/_function.py",
+    "src/stardust/plot/_layers.py",
+    "src/stardust/plot/_pdf.py",
+    "src/stardust/plot/_png.py",
+    "src/stardust/plot/_sample.py",
+    "src/stardust/plot/_scene.py",
+    "src/stardust/plot/_stat.py",
+    "src/stardust/plot/_surface.py",
+    "src/stardust/plot/_svg.py",
+    "src/stardust/plot/_text.py",
+    "src/stardust/plot/_ticks.py",
     "src/stardust/spatial/_neighbors.py",
+    "tests/golden/cases_plot.py",
+    "tests/golden/cases_spatial.py",
     "tests/golden/data/spatial.json",
+    "tests/plot/data/text/sans/strings.jsonl",
+    "tests/plot/data/text/serif/strings.jsonl",
+    "tests/plot/test_basic.py",
+    "tests/plot/test_figure.py",
+    "tests/plot/test_function.py",
+    "tests/plot/test_scene.py",
+    "tests/plot/test_stat.py",
+    "tests/plot/test_surface.py",
+    "tests/plot/test_text_tex.py",
+    "tests/spatial/points.py",
     "tests/spatial/refdata.py",
-    "tests/spatial/test_kdtree.py",
-    "tests/spatial/test_kdtree_query.py",
-    "tests/spatial/test_neighbors.py"
+    "tests/spatial/test_reference_data.py",
+    "tools/spatial_ref.py"
    ],
-   "date": "2026-11-23T01:02:04",
+   "date": "2026-11-23T01:37:52",
    "machine": "arm64",
    "python": "3.15.0",
    "references": {
@@ -456,7 +489,7 @@
      ]
     }
    },
-   "run": "20261123-010204-f80ddd4+"
+   "run": "20261123-013752-8832c53+"
   },
   {
    "id": "spatial/counting",
@@ -509,7 +542,7 @@
      ]
     }
    },
-   "run": "20261123-010204-f80ddd4+",
+   "run": "20261123-013752-8832c53+",
    "comparators": {
     "scipy": {
      "hamming": {
@@ -838,7 +871,7 @@
      ]
     }
    },
-   "run": "20261123-010204-f80ddd4+",
+   "run": "20261123-013752-8832c53+",
    "comparators": {
     "scipy": {
      "braycurtis": {
@@ -1270,17 +1303,17 @@
    "regions": {
     "haversine": {
      "points": 32,
-     "ulp_max": 2.0,
-     "ulp_p999": 2.0,
-     "rel_max": 2.042274635160849e-16,
-     "contract": 0.09197587285898615,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 1.5844229478604714e-16,
+     "contract": 0.07135606597581681,
      "bound": 1.0,
      "worst": [
-      "haversine/random15#0"
+      "haversine/random14#0"
      ]
     }
    },
-   "run": "20261123-010204-f80ddd4+",
+   "run": "20261123-013752-8832c53+",
    "comparators": {
     "sklearn": {
      "haversine": {
@@ -1667,7 +1700,7 @@
      ]
     }
    },
-   "run": "20261123-010204-f80ddd4+"
+   "run": "20261123-013752-8832c53+"
   },
   {
    "id": "spatial/neighbors",
@@ -2036,7 +2069,76 @@
      ]
     }
    },
-   "run": "20261123-010204-f80ddd4+"
+   "run": "20261123-013752-8832c53+"
+  },
+  {
+   "id": "spatial/sphere",
+   "area": "spatial",
+   "name": "sphere",
+   "points": 120,
+   "regions": {
+    "sphere/uniform": {
+     "points": 20,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "contract": 0.059790381290050744,
+     "bound": 1.0,
+     "worst": [
+      "sphere/uniform#17"
+     ]
+    },
+    "sphere/close": {
+     "points": 20,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "contract": 0.09580111750420094,
+     "bound": 1.0,
+     "worst": [
+      "sphere/close#2"
+     ]
+    },
+    "sphere/antipode": {
+     "points": 20,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "contract": 0.09316579920712027,
+     "bound": 1.0,
+     "worst": [
+      "sphere/antipode#7"
+     ]
+    },
+    "sphere/poles": {
+     "points": 20,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "contract": 0.059604644853390454,
+     "bound": 1.0,
+     "worst": [
+      "sphere/poles#13"
+     ]
+    },
+    "sphere/dateline": {
+     "points": 20,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "contract": 0.08183721333199077,
+     "bound": 1.0,
+     "worst": [
+      "sphere/dateline#10"
+     ]
+    },
+    "sphere/ties": {
+     "points": 20,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "sphere/ties#0"
+     ]
+    }
+   },
+   "run": "20261123-013752-8832c53+"
   }
  ]
 }

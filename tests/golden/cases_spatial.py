@@ -223,6 +223,19 @@ def _neighbor_cases(L):
                                                                         **kw))  # fmt: skip
     yield "kneighbors haversine", lambda: S.kneighbors(a(np.array([[0.1, 0.2], [-1.0, 3.0]])),
                                                        a(_data(L)["hav"][:200]), k=3, metric="haversine")  # fmt: skip
+    # the KD tree on the unit sphere (SPT83-SPT88): duplicates, the poles, the dateline; out of its domain
+    geo = np.column_stack([np.arcsin(r.uniform(-1.0, 1.0, 6000)), r.uniform(-np.pi, np.pi, 6000)])
+    geo[3000:3200] = geo[:200]
+    geo[3200:3300, 0] = 1.5707963267948966
+    geo[3300:3400, 1] = np.pi - r.uniform(0.0, 1e-6, 100)
+    yield "kneighbors haversine tree", lambda: S.kneighbors(a(geo[::20]), a(geo), k=6, metric="haversine")
+    yield ("kneighbors haversine tree upper bound",
+           lambda: S.kneighbors(a(geo[::15]), a(geo), k=4, metric="haversine", distance_upper_bound=0.01))  # fmt: skip
+    yield "radius_neighbors haversine tree", lambda: S.radius_neighbors(a(geo[::25]), a(geo), 0.03, metric="haversine")
+    yield ("radius_neighbors haversine tree return_length",
+           lambda: S.radius_neighbors(a(geo[::10]), a(geo), 0.05, metric="haversine", return_length=True))  # fmt: skip
+    deg = np.degrees(geo[:600])
+    yield "kneighbors haversine out of domain", lambda: S.kneighbors(a(deg[:40]), a(deg), k=3, metric="haversine")
     yield "kneighbors w", lambda: S.kneighbors(a(q), a(small), k=3, w=a(np.array([1.0, 0.0, 2.0, 0.5, 1.0])))
     yield "kneighbors k=1", lambda: S.kneighbors(a(q), a(small))
     yield "kneighbors ranks", lambda: S.kneighbors(a(q), a(small), k=[3, 1, 1, 40])

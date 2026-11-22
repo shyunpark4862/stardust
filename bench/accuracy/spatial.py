@@ -42,6 +42,14 @@ SPT4 adds
              largest returned distance against its reference. Comparators: scipy's
              KDTree.query_ball_point and scikit-learn's KDTree.query_radius (points only; their
              distances are not compared).
+
+The haversine tree path (SPT83) adds
+
+  sphere     the k = 5 nearest of every query of sphere.npz (the (latitude, longitude) sets of tag sphere:
+             uniform, near-identical clusters, antipodes, the poles, the dateline, exact ties) by
+             sd.spatial.kneighbors(metric='haversine') (the KD tree on the unit sphere), one region per set,
+             judged as `neighbors` on general data with eta = 20u (the haversine contract). Comparator:
+             scikit-learn's BallTree(metric='haversine').query.
 """
 
 from __future__ import annotations
@@ -340,6 +348,45 @@ def _ball_regions(lib):
     return out or None
 
 
+def _sphere_regions(lib):
+    """The `sphere` sweep: the haversine k nearest against sphere.npz, judged as the docstring says."""
+    from tests.spatial import points as P
+    from tests.spatial import refdata
+
+    r = refdata.ref("sphere")
+    m = r.methods["haversine"]
+    eta = refdata.C_HAVERSINE * refdata.U
+    out = {}
+    for sid in P.ids("sphere"):
+        rows = [k for k in range(r.points) if r.inputs["set"][k] == sid]
+        s = P.get(sid)
+        Q = np.array([r.inputs["query"][k] for k in rows])
+        if lib == "sd":
+            import stardust as sd
+
+            d, i = sd.spatial.kneighbors(Q, s.x, k=NEIGHBOR_K, metric="haversine")
+        elif lib == "sklearn":
+            from sklearn.neighbors import BallTree
+
+            d, i = BallTree(s.x, metric="haversine").query(Q, k=NEIGHBOR_K)
+        else:
+            return None
+        d, i = np.asarray(d, dtype=np.float64), np.asarray(i, dtype=np.int64)
+        where, units, ul = [], [], []
+        for q, k in enumerate(rows):
+            hi, lo = m.hi[k], m.lo[k]
+            true = hi + lo
+            dk = d[q, -1]
+            mask = np.zeros(true.size, bool)
+            mask[i[q]] = True
+            over = max(float(np.max(true[mask] - dk, initial=0.0)), float(np.max(dk - true[~mask], initial=0.0)))
+            units.append(over / (eta * dk) if dk > 0 else (0.0 if over == 0 else np.inf))
+            ul.append(float(ulps(dk, hi[i[q, -1]])))
+            where.append(f"{sid}#{int(r.inputs['pair'][k])}")
+        out[sid] = region(where, ulp=np.array(ul), contract=np.array(units), bound=1.0)
+    return out
+
+
 def sweeps():
     out = []
     for fam in FAMILIES:
@@ -357,4 +404,6 @@ def sweeps():
                       compare_libs(lambda lib: _neighbor_regions(lib, _tree_knn), ("scipy", "sklearn"), seconds=120.0)))  # fmt: skip
     out.append(Custom("spatial", "ball", lambda: _ball_regions("sd"),
                       compare_libs(_ball_regions, ("scipy", "sklearn"), seconds=120.0)))  # fmt: skip
+    out.append(Custom("spatial", "sphere", lambda: _sphere_regions("sd"),
+                      compare_libs(_sphere_regions, ("sklearn",), seconds=120.0)))  # fmt: skip
     return out

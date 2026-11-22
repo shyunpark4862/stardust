@@ -1,9 +1,9 @@
 # sd.spatial API
 
-> 상태: **초안** (SPT0, 2026-11-22; SPT1·SPT2·SPT3·SPT4 반영 2026-11-22). §2(거리)와 §3(`kneighbors`, `radius_neighbors`), §4의 `KDTree`(생성자, 속성, `query`와 반경·짝·개수의 다섯 메서드), §5의 `QueryResult`·`RadiusResult`는 공개되었고 구현과 맞다. 계획한 모든 이름이 공개되었다. 아래 시그니처는 scipy 1.18.1의 `scipy.spatial`(`distance`, `KDTree`)의 이름과 인자 이름에 stardust의 규칙과 SPT1–SPT28의 결정을 입힌 안이고, 마일스톤 SPT1–SPT4에서 하나씩 공개된다(docs/design/spatial.md §8: 거리는 SPT1, `kneighbors`·`radius_neighbors`와 결과 객체는 SPT2, `KDTree`와 `query`는 SPT3, 반경·짝·개수는 SPT4).
+> 상태: **확정** (2026-11-23; 승인(위임)). §2–§5의 모든 이름이 구현되어 있다: 거리(SPT1), `kneighbors`·`radius_neighbors`와 결과 객체(SPT2), `KDTree`와 `query`(SPT3), 반경·짝·개수의 다섯 메서드(SPT4). 시그니처는 scipy 1.18.1의 `scipy.spatial`(`distance`, `KDTree`)의 이름과 인자 이름에 stardust의 규칙과 SPT1–SPT89의 결정을 입힌 것이다.
 
-- 설계와 결정의 근거는 [docs/design/spatial.md](../design/spatial.md)(§1.1 SPT1–SPT28), 공통 규칙은 [API.md](../../API.md)다.
-- 언어 표시가 없는 코드 블록은 `tests/spatial/test_api_surface.py`가 읽는다. 블록의 줄은 모듈의 이름(`name(...)`, 클래스는 `name(...)`의 생성자), 클래스의 메서드(`Class.method(...)`)와 속성(`Class.attr`)이다. 모듈 수준의 이름이 계획한 공개 이름 전부이고, 공개된 것은 시그니처가 블록과 같아야 한다.
+- 설계와 결정의 근거는 [docs/design/spatial.md](../design/spatial.md)(§1.1 SPT1–SPT89), 공통 규칙은 [API.md](../../API.md)다.
+- 언어 표시가 없는 코드 블록은 `tests/spatial/test_api_surface.py`가 읽는다. 블록의 줄은 모듈의 이름(`name(...)`, 클래스는 `name(...)`의 생성자), 클래스의 메서드(`Class.method(...)`)와 속성(`Class.attr`)이다. 모듈 수준의 이름이 공개 이름 전부이고, 시그니처가 블록과 같아야 한다.
 
 ## §1. 공통 규칙
 
@@ -83,9 +83,9 @@ sqeuclidean(u, v, /, *, w=None)
 | `braycurtis` | Σ\|zᵢ\| / Σ\|xᵢ + yᵢ\| | 두 합 모두 wᵢ를 곱한다 | 0/0은 NaN, 분모만 0이면 inf |
 | `hamming` | (Σ wᵢ[xᵢ ≠ yᵢ]) / Σ wᵢ, 기본 wᵢ = 1 | 같은 식 | NaN끼리는 다른 값으로 센다 |
 | `jaccard` | Σ wᵢ[(xᵢ≠0) xor (yᵢ≠0)] / Σ wᵢ[(xᵢ≠0) or (yᵢ≠0)] | 같은 식 | 분모가 0이면 0. NaN은 0이 아니다 |
-| `haversine` | 2·asin(√(sin²(Δφ/2) + cos φ₁ cos φ₂ sin²(Δλ/2))), 입력은 (위도, 경도) 라디안의 2열, 결과는 단위 구의 중심각(라디안) | 없음 | 열이 2가 아니면 `ValueError`. 같은 값을 2·atan2(√h, √(1 − h))로, 1 − h를 상쇄 없는 꼴로 구해 대척점에서도 자릿수를 지킨다(sklearn의 asin 꼴은 대척점 근처에서 잃는다) |
+| `haversine` | 2·asin(√(sin²(Δφ/2) + cos φ₁ cos φ₂ sin²(Δλ/2))), 입력은 (위도, 경도) 라디안의 2열, 결과는 단위 구의 중심각(라디안) | 없음 | 열이 2가 아니면 `ValueError`. h ≤ 1/2이면 2·asin(√h), 아니면 π − 2·asin(√(1 − h))이고 1 − h를 상쇄 없는 꼴로 구해 대척점에서도 자릿수를 지킨다(sklearn의 asin 꼴은 대척점 근처에서 잃는다). 경도의 차이는 반올림 오차까지 정확히 다뤄 날짜 변경선을 사이에 둔 가까운 두 점도 자릿수를 지킨다(sklearn은 경도 −π와 π 근처의 두 점이 거리 10⁻¹³일 때 상대 4×10⁻³을 잃는다) |
 
-- `haversine`은 sklearn `haversine_distances`의 뜻이다(SPT9; scipy에는 없다). 이웃 찾기에서는 트리를 쓰지 않고 전수로 간다.
+- `haversine`은 sklearn `haversine_distances`의 뜻이다(SPT9; scipy에는 없다). 이웃 찾기(`kneighbors`, `radius_neighbors`)에서는 점을 단위 구 위의 3차원 점으로 옮긴 KD 트리가 후보를 고르고, 돌려주는 거리와 모든 판정은 이 거리 자체다(§3). `KDTree`는 Minkowski 계열만 받는다.
 - **`squareform`**: scipy와 같다(SPT16). 벡터 → 행렬은 길이가 n(n−1)/2가 아니면 `ValueError`, 빈 벡터는 (1, 1)의 0이다. 행렬 → 벡터는 `checks=True`면 정확한 대칭과 0 대각을 검사한다. NaN이 대칭 검사에 걸리면 메시지가 NaN을 말한다(`squareform(): 'X' has NaN off the diagonal, so it is not symmetric`; scipy의 메시지는 "must be symmetric"뿐이다). (1, 1)과 (0, 0)은 빈 벡터다. `force`는 `'no'`, `'tomatrix'`, `'tovector'`다. dtype을 지키고, 3차원 이상은 `ValueError`다.
 
 ## §3. 한 번에 끝나는 이웃 찾기 (SPT2)
@@ -97,7 +97,8 @@ radius_neighbors(XA, XB, r, /, *, metric='euclidean', p=None, w=None, V=None, VI
 - **입력**: `XA`와 `XB`는 `cdist`와 같다(2차원 (mA, n)과 (mB, n), n이 같아야 하고, 점 하나도 (1, n)이다). 거리 이름과 그 인자(`p`, `w`, `V`, `VI`)의 규칙과 기본 `V`·`VI`(`XA`와 `XB`를 세로로 이은 자료)도 `cdist`와 같다. 데이터는 모두 유한해야 한다(`ValueError`: `kneighbors(): 'XA' must be finite`; SPT12. sklearn도 NaN을 막는다).
 - **결과는 정의로 정해진다**: `kneighbors(XA, XB, k=k)`의 행 i는 `cdist(XA, XB)`의 행 i에서 거리가 `distance_upper_bound`보다 작은 원소를 (거리, 열 번호)로 정렬해 앞 k개를 고른 것이고, 거리는 그 원소와 비트까지 같다. 모자라는 자리는 (inf, mB)로 채운다. `radius_neighbors(XA, XB, r)`의 행 i는 그 행에서 거리가 r 이하인 열 번호 전부(오름차순)와 그 거리다. Minkowski 계열(`euclidean`, `sqeuclidean`, `cityblock`, `chebyshev`, `minkowski` p ≥ 1)은 `KDTree(XB).query(XA, k=k, p=…)`와도 같다. `radius_neighbors(XA, XB, r)`는 `KDTree(XB).query_ball_point(XA, r)`, `KDTree(XA).query_ball_tree(KDTree(XB), r)`와 같다.
   - 그래서 거리가 inf이거나 NaN인 짝은 `kneighbors`에 나오지 않는다(기본 상한 inf에서도 d < inf가 아니다): 넘치는 `sqeuclidean`, 영벡터의 `cosine`, 0/0의 `braycurtis`, 양정치가 아닌 `VI`의 `mahalanobis` 같은 것이다. `radius_neighbors`는 r = inf면 거리가 inf인 짝을 넣고(inf ≤ inf), NaN인 짝은 어떤 r에도 넣지 않는다.
-  - 계산하는 길(전수, GEMM 고르기, `XB`로 만든 KD 트리)은 거리 이름과 모양으로만 고르고 결과를 바꾸지 않는다. 스레드 수와 Accelerate의 스레드 모드와도 무관하다(§1.3).
+  - 계산하는 길(전수, GEMM 고르기, `XB`로 만든 KD 트리, `haversine`은 `XB`의 점을 단위 구 위의 3차원 점으로 옮긴 KD 트리)은 거리 이름과 모양으로만 고르고 결과를 바꾸지 않는다. 스레드 수와 Accelerate의 스레드 모드와도 무관하다(§1.3).
+  - `haversine`의 트리는 3차원 점 사이의 현(chord) 거리로 후보를 고르고, 돌려주는 거리와 경계·순서의 판정은 `cdist(metric='haversine')`의 그 원소다. 반올림 뒤에는 현 거리와 `haversine`의 순서가 어긋날 수 있어, 그 어긋남보다 넉넉한 여유로 후보를 고르므로 참 이웃과 동점이 빠지지 않는다(docs/design/spatial.md §3.4). 위도가 [−π/2, π/2]를 벗어나거나 경도의 크기가 8을 넘는 점이 있으면(도 단위를 라디안으로 잘못 준 자료 같은 것) 전수로 간다(결과는 같고 느리다).
 - **`k`**: `KDTree.query`(§4)와 같다. 1 이상의 int거나 1 이상의 int 시퀀스(1부터 센 순위, 순서와 반복을 그대로 쓴다; scipy의 뜻)다. 0, 음수, 빈 시퀀스는 `ValueError`, bool·실수는 `TypeError`다. k가 int면 결과는 (mA, k)이고 k = 1이면 (mA,)다. 시퀀스면 (mA, len(k))다. k > mB의 자리와 mB보다 큰 순위는 (inf, mB)다(scipy와 같다; sklearn은 에러다). 요청한 결과가 물리 메모리보다 크면 `MemoryError`다.
 - **`distance_upper_bound`**: 거리가 이 값보다 **작은** 이웃만이다(엄격한 부등호). 0 이상의 실수나 inf다(NaN·음수는 `ValueError`, 수가 아니면 `TypeError`; §4).
 - **`r`**: 0 이상의 실수나 inf, 또는 그런 수의 배열로 (mA,)로 브로드캐스트되는 것((mA,)이나 (1,)이나 0차원)이다. 음수·NaN은 `ValueError`, bool과 수가 아닌 것은 `TypeError`다(`[scipy와 다름]`은 §4의 `query_ball_point`와 같다). 경계를 넣는다(d ≤ r). 판정하는 거리는 돌려주는 거리 그 자체다.
@@ -122,7 +123,7 @@ KDTree.mins
 KDTree.size
 ```
 - **만들기**: `data`는 (n, m)이다(1차원과 3차원 이상은 `ValueError`; scipy와 같다). 데이터는 언제나 복사한다(`[scipy와 다름]`: scipy는 복사하지 않을 수 있어 만든 뒤 원본을 고치면 답이 틀린다). n = 0(질의는 모두 채움 값)과 m = 0(모든 거리가 0; scipy는 질의에서 `IndexError`)도 받는다. 트리는 언제나 가장 넓은 축의 중앙값으로 나누고 노드 상자를 실제 점의 범위로 줄인다. 만들기는 결정적이다: 트리는 데이터와 `leafsize`로만 정해지고 스레드 수와 무관하다. 데이터에 NaN·inf가 있으면 `ValueError`(`KDTree(): 'data' must be finite`), complex는 `TypeError`다.
-- **`leafsize`**: 1 이상의 int다(bool·실수는 `TypeError`; `[scipy와 다름]`: scipy는 2.5를 2로 자른다). 결과는 `leafsize`와 무관하고 빠르기만 바뀐다. 기본 10은 SPT6에서 재서 1.2배 넘게 빠른 값이 있으면 바꾼다(SPT18).
+- **`leafsize`**: 1 이상의 int다(bool·실수는 `TypeError`; `[scipy와 다름]`: scipy는 2.5를 2로 자른다). 결과는 `leafsize`와 무관하고 빠르기만 바뀐다. 기본 10은 SPT6에서 6–32를 재서 1.2배 넘게 빠른 값이 없어 그대로 두었다(SPT78).
 - **속성**: `data`(쓰기 금지 (n, m) float64, 입력 순서; 처음 읽을 때 트리의 사본에서 한 번 만들고 그 뒤로는 복사하지 않는다), `n`, `m`, `leafsize`(int), `maxes`, `mins`(쓰기 금지 (m,); n = 0이면 0, scipy와 같다), `size`(노드 수, int). 점이 `leafsize`보다 많은 노드는 같은 점뿐이어도 나누므로 `size`는 n과 `leafsize`로만 정해진다(`[scipy와 다름]`: scipy는 폭이 0인 노드를 나누지 않아 같은 점 50개에서 scipy 1, sd 15). scipy의 `tree`, `indices`, `boxsize`는 없다. `repr`는 `KDTree(n=1000, m=3, leafsize=10)`이다. 피클과 `copy.copy`·`copy.deepcopy`는 같은 데이터와 `leafsize`로 다시 만든 같은 트리다.
 - **`p`**: 1 이상의 실수나 inf다(1 미만과 NaN은 `ValueError`; scipy와 같다). p = 1, 2, inf는 `cityblock`, `euclidean`, `chebyshev`와, 그 밖의 p는 `minkowski(p=)`와 같은 커널이다.
 - **`query(x)`**: 데이터 점 가운데 x에 가장 가까운 k개다.
@@ -192,9 +193,9 @@ RadiusResult.tocsr()
 | `paired_distances` | 거리 함수의 배치(`sd.spatial.euclidean(U, V)`) | SPT1 |
 | `haversine_distances` | `cdist(metric='haversine')`, `haversine(u, v)` | SPT1 |
 | `sklearn.neighbors.KDTree` | `KDTree`(scipy의 API) | SPT3 |
-| `BallTree` | 없음(나중 후보, SPT8) | — |
+| `BallTree` | 없음(나중 후보, SPT8). `BallTree(metric='haversine')`의 이웃 찾기는 `kneighbors(X, Y, metric='haversine')`, `radius_neighbors(X, Y, r, metric='haversine')`가 단위 구 위의 KD 트리로 한다(SPT83) | — |
 | `kneighbors_graph`, `nan_euclidean_distances`, `KernelDensity`, `two_point_correlation` | 없음(짝 세기는 `count_neighbors`) | — |
 
 ## §7. 정확도
-- 거리는 Arb로 구한 참 거리와 견준 계약 안이다(docs/design/spatial.md §4의 표; 판정은 `tests/spatial/refdata.py`). `chebyshev`와 가중치 없는 `hamming`·`jaccard`는 올바른 반올림이다. 참값 파일의 모든 짝에서 잰 최대는 `euclidean`·`seuclidean`·`mahalanobis`·`haversine` 2 ULP, `sqeuclidean`·`cityblock`·`canberra` 3 ULP, `braycurtis` 5 ULP(가중 7), `minkowski` 6 ULP(p = 0.5)이고, `cosine`·`correlation`은 절대와 상대를 섞은 한계다(참값이 0에 가까우면 ULP가 크다). 반올림 크기의 결과는 scipy와 끝자리가 다를 수 있다(API.md §4의 규칙 3). 같은 짝은 `pdist`, `cdist`, 거리 함수에서 같은 비트다.
-- 이웃은 같은 커널의 전수 결과와 정확히 같고(길·스레드와 무관), 거리가 올바르게 반올림되는 데이터(정수·2진 격자)에서는 Arb로 정렬한 참 이웃과 정확히 같다. 일반 데이터에서는 참 거리가 1 ULP 안에서 다른 두 점의 순서가 돌려준 거리의 순서다.
+- 거리는 Arb로 구한 참 거리와 견준 계약 안이다(docs/design/spatial.md §4의 표; 판정은 `tests/spatial/refdata.py`). `chebyshev`와 가중치 없는 `hamming`·`jaccard`는 올바른 반올림이다. 참값 파일의 모든 짝에서 잰 최대는 `haversine` 1 ULP, `euclidean`·`seuclidean`·`mahalanobis` 2 ULP, `sqeuclidean`·`cityblock`·`canberra` 3 ULP, `braycurtis` 5 ULP(가중 7), `minkowski` 6 ULP(p = 0.5)이고, `cosine`·`correlation`은 절대와 상대를 섞은 한계다(참값이 0에 가까우면 ULP가 크다). 반올림 크기의 결과는 scipy와 끝자리가 다를 수 있다(API.md §4의 규칙 3). 같은 짝은 `pdist`, `cdist`, 거리 함수에서 같은 비트다.
+- 이웃은 같은 커널의 전수 결과와 정확히 같고(길·스레드와 무관), 거리가 올바르게 반올림되는 데이터(정수·2진 격자)에서는 Arb로 정렬한 참 이웃과 정확히 같다. 일반 데이터에서는 참 거리가 1 ULP 안에서 다른 두 점의 순서가 돌려준 거리의 순서다. `haversine`의 이웃은 단위 구 위의 점 집합 여섯(균등, 거의 같은 점의 군집, 대척점, 극, 날짜 변경선, 거울상의 동점)에서 Arb의 참 거리로 계약 안의 참 이웃이다(계약의 0.096 이하; sklearn의 `BallTree`는 극의 집합에서 계약의 3.8×10¹⁴배).

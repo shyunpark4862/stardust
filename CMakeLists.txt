@@ -106,6 +106,7 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/spatial/neighbors.cpp
   csrc/spatial/query.cpp
   csrc/spatial/dual.cpp
+  csrc/spatial/sphere.cpp
   csrc/special/reduce.cpp
   csrc/frame/column.cpp
   csrc/frame/convert.cpp

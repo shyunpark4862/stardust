@@ -1,6 +1,6 @@
 # stardust 로드맵
 
-> 상태: **확정** (2026-11-12). 앞부분은 세 프로젝트의 통합(M0–M7, 완료), 뒷부분은 새 영역 [특수함수 (sd.special)](#특수함수-영역-sdspecial)(S0–S11, 완료), 그 뒤 [통계 (sd.stats, sd.random)](#통계-영역-sdstats-sdrandom)(T0–T10, 완료·승인; 검정은 뺐다), 그 뒤 [회귀 (sd.regression)](#회귀-영역-sdregression)(G0–G6 완료·승인, G7a 완료·승인, G7b 완료·승인), 그 뒤 [최적화 (sd.optimize)](#최적화-영역-sdoptimize)(O0 완료·승인, O1 완료·승인, O2 완료·승인, O3 완료·승인, O4 완료·승인, O5 완료·승인, O6 완료·승인), 그 뒤 [가설검정 (sd.htest)](#가설검정-영역-sdhtest)(H0 완료·승인, H1 완료·승인, H2 완료·승인, H3 완료·승인, H4 완료·승인, H5 완료·승인, H6 완료·승인(위임), H7 완료·승인(위임), H8 완료·승인(위임), H9 완료·승인(위임), H10 완료·승인(위임)), 그 뒤 [희소 (sd.sparse)](#희소-영역-sdsparse)(SP0 완료·승인, SP1 완료·승인, SP2 완료·승인, SP3 완료·승인, SP4 완료·승인(위임), SP5 완료·승인(위임), SP6 완료·승인(위임), SP7 완료·승인(위임), SP8 완료·승인(위임)), 그 뒤 [수치 미적분 (sd.integrate, sd.differentiate)](#수치-미적분-영역-sdintegrate-sddifferentiate)(C0 완료·승인(위임), C1 완료·승인(위임), C2 완료·승인(위임), C3 완료·승인(위임), C4 완료·승인(위임), C5 완료·승인(위임), C6 완료·승인(위임), C7 완료·승인(위임), C8 완료·승인(위임)), 그 뒤 [공간 (sd.spatial)](#공간-영역-sdspatial)(SPT0 완료·승인(위임), SPT1 완료·승인(위임), SPT2 완료·승인(위임), SPT3 완료·승인(위임), SPT4 완료·승인(위임), SPT6 완료·승인(위임)), 그리고 [그림 (sd.plot)](#그림-영역-sdplot)(PL0–PL9 완료·승인)이다.
+> 상태: **확정** (2026-11-12). 앞부분은 세 프로젝트의 통합(M0–M7, 완료), 뒷부분은 새 영역 [특수함수 (sd.special)](#특수함수-영역-sdspecial)(S0–S11, 완료), 그 뒤 [통계 (sd.stats, sd.random)](#통계-영역-sdstats-sdrandom)(T0–T10, 완료·승인; 검정은 뺐다), 그 뒤 [회귀 (sd.regression)](#회귀-영역-sdregression)(G0–G6 완료·승인, G7a 완료·승인, G7b 완료·승인), 그 뒤 [최적화 (sd.optimize)](#최적화-영역-sdoptimize)(O0 완료·승인, O1 완료·승인, O2 완료·승인, O3 완료·승인, O4 완료·승인, O5 완료·승인, O6 완료·승인), 그 뒤 [가설검정 (sd.htest)](#가설검정-영역-sdhtest)(H0 완료·승인, H1 완료·승인, H2 완료·승인, H3 완료·승인, H4 완료·승인, H5 완료·승인, H6 완료·승인(위임), H7 완료·승인(위임), H8 완료·승인(위임), H9 완료·승인(위임), H10 완료·승인(위임)), 그 뒤 [희소 (sd.sparse)](#희소-영역-sdsparse)(SP0 완료·승인, SP1 완료·승인, SP2 완료·승인, SP3 완료·승인, SP4 완료·승인(위임), SP5 완료·승인(위임), SP6 완료·승인(위임), SP7 완료·승인(위임), SP8 완료·승인(위임)), 그 뒤 [수치 미적분 (sd.integrate, sd.differentiate)](#수치-미적분-영역-sdintegrate-sddifferentiate)(C0 완료·승인(위임), C1 완료·승인(위임), C2 완료·승인(위임), C3 완료·승인(위임), C4 완료·승인(위임), C5 완료·승인(위임), C6 완료·승인(위임), C7 완료·승인(위임), C8 완료·승인(위임)), 그 뒤 [공간 (sd.spatial)](#공간-영역-sdspatial)(SPT0 완료·승인(위임), SPT1 완료·승인(위임), SPT2 완료·승인(위임), SPT3 완료·승인(위임), SPT4 완료·승인(위임), SPT6 완료·승인(위임), SPT7 완료·승인(위임)), 그리고 [그림 (sd.plot)](#그림-영역-sdplot)(PL0–PL9 완료·승인)이다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -750,9 +750,7 @@
 
 # 공간 영역 (sd.spatial)
 
-> 상태: **설계 초안** (2026-11-22). SPT0–SPT4는 완료·승인(위임, 2026-11-22), SPT6은 완료·승인(위임, 2026-11-23)이다. 설계는 [docs/design/spatial.md](docs/design/spatial.md), API의 초안은 [docs/api/spatial.md](docs/api/spatial.md)다.
->
-> **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
+> 상태: **완료** (SPT0–SPT4, SPT6, SPT7, 2026-11-23; 승인(위임)). SPT5(BallTree)는 건너뛰었고, `haversine`의 이웃은 단위 구 위의 KD 트리가 맡는다(SPT83, 사용자 결정 2026-11-23). 설계는 [docs/design/spatial.md](docs/design/spatial.md)(확정), API는 [docs/api/spatial.md](docs/api/spatial.md)(확정)다.
 
 ## 진행 원칙
 - 다른 영역과 같다: 마일스톤마다 시작 전에 물을 것(docs/design/spatial.md §9)을 묻고, 구현하고, 정확도·속도를 재고, 커밋하고, 결과를 전달하고, 승인받으면 다음으로 간다. 해설과 안내서는 쓰지 않는다.
@@ -770,7 +768,7 @@
 | SPT4 반경·짝·개수: `query_ball_point query_ball_tree query_pairs count_neighbors sparse_distance_matrix` | 완료·승인(위임, 2026-11-22) |
 | SPT5 BallTree | 건너뜀(SPT8: 첫 판에 넣지 않는다, 나중 후보) |
 | SPT6 성능과 일관성 점검 | 완료·승인(위임, 2026-11-23) |
-| SPT7 문서 | 계획 |
+| SPT7 문서(와 `haversine` 이웃의 트리 길) | 완료·승인(위임, 2026-11-23) |
 
 ## 마일스톤
 
@@ -812,8 +810,11 @@
 - 결과: csrc/spatial/metric.hpp·distance.cpp·neighbors.cpp·kdtree.cpp·dual.cpp, src/stardust/spatial/_neighbors.py·_kdtree.py·_common.py, tests/spatial/(트리 길·먼 점부터 정렬·전수 `query`·표본 띠의 테스트, 경로 `path=3`), tests/spatial/refdata.py의 c_pow.
 - 찾은 것(docs/design/spatial.md §5): 1스레드에서 `kneighbors` 4000² n = 3 k = 1이 9.2배, `query` m = 16 k = 10이 10배, `mahalanobis`가 3.8–4배, `minkowski` p = 3이 8.6배, 10⁶점 만들기의 10스레드가 1.9배 빨라졌고 결과는 같다(골든은 p = 3 `minkowski` 다섯과 `haversine` 셋이 1 ULP 바뀜). `haversine`의 kNN은 sklearn `BallTree`보다 30배 넘게 느려 SPT5(BallTree)를 열지 사용자에게 묻는다.
 
-### SPT7. 문서
-- docs/api/spatial.md의 확정과 설계 문서를 구현대로 고치기.
+### SPT7. 문서 — 완료·승인(위임, 2026-11-23)
+- docs/api/spatial.md의 확정과 설계 문서를 구현대로 고치기. 그 앞에 SPT6이 물은 `haversine`의 이웃 찾기를 사용자의 결정대로 했다.
+- 결정: docs/design/spatial.md §1.1 SPT83(사용자 결정 2026-11-23: (위도, 경도)를 단위 구 위의 3차원 점으로 옮겨 기존 KD 트리가 현 거리로 후보를 고르고, 돌려주는 거리와 모든 판정은 `haversine` 커널), SPT84–SPT89(추천안, 사용자 위임 2026-11-23: 증명한 오차의 4배 넘는 여유 cut(T); 여유의 정의역 |위도| ≤ fl(π/2), |경도| ≤ 8, 밖은 전수; 잎의 점은 3차원 제곱합으로 먼저 거르고 cut은 T가 바뀔 때만; 문턱 mB ≥ 128, mA ≥ 16, 8k ≤ mB와 4–64점의 질의 조각; `haversine` 커널의 경도 차를 TwoSum으로 정확히, h의 언더플로는 2⁶⁰⁰배로; 파일 `sphere.cpp`와 참값 `sphere.npz`).
+- 결과: csrc/spatial/sphere.cpp(`_sphere_kneighbors`, `_sphere_radius`, 정리 4의 주석), csrc/spatial/metric.hpp(`haversine_pair`의 경도 차와 신중한 경로), src/stardust/spatial/_neighbors.py(길 고르기), 참값 tests/spatial/points.py의 `sphere` 집합 여섯과 tools/spatial_ref.py의 `sphere` 묶음(tests/spatial/ref/sphere.npz, 120점), 테스트 tests/spatial/test_neighbors_haversine.py(16개)와 test_reference_data.py, 정확도 bench/accuracy/spatial.py의 `sphere`(6영역, 모두 계약 안, 최대 0.096), 속도 사례 bench/speed/cases/spatial.py에 둘(`--smoke`로 확인; sklearn `BallTree`와 결과가 같다), 골든 다섯을 더함(바뀐 셋과 함께 기록은 메인 세션이 다시 한다), docs/api/spatial.md 확정(상태, `haversine`의 식과 트리 길, `leafsize`, 대응표, 정확도), docs/design/spatial.md 확정(상태, §3.4의 증명, §4–§8의 잰 값·파일·시험).
+- 찾은 것(docs/design/spatial.md §3.4, §4, §5): 10⁴ × 10⁵ k = 5가 10스레드 3.61초 → 6.9 ms, 1스레드 26.1초 → 27.9 ms가 되어 sklearn `BallTree`(98 ms)보다 10스레드 14배, 1스레드 3.5배 빠르다(반경 r = 0.01은 6.7 대 47.4 ms). 여유를 상대 2⁻⁵⁰만 모자라게 하면 적대적 시험 여섯이 실패한다(여유가 꼭 필요하다). 기존 `haversine` 커널은 날짜 변경선을 사이에 둔 가까운 짝에서 상대 uπ/d를 잃었고(d = 10⁻¹¹에서 계약의 2×10⁹배; sklearn은 d = 10⁻¹³에서 상대 4×10⁻³) 10⁻³⁰⁰ 둘레 좌표의 짝에서는 0을 냈다(SPT88로 고침; 고친 뒤 적대적 집합에서 계약의 0.20, 참값 파일에서 1 ULP). sklearn `BallTree`는 극의 집합에서 계약의 3.8×10¹⁴배다.
 
 ---
 

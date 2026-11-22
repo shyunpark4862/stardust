@@ -50,6 +50,19 @@ def _normal(ma, mb, n, seed=20261122):
     return setup
 
 
+def _geo(ma, mb, seed=20261123):
+    """(latitude, longitude) in radians, uniform on the sphere: XA (ma rows) and XB (mb rows)."""
+
+    def setup():
+        import stardust as sd
+
+        g = np.random.Generator(np.random.PCG64([seed, ma, mb]))
+        a, b = (np.column_stack([np.arcsin(g.uniform(-1.0, 1.0, m)), g.uniform(-np.pi, np.pi, m)]) for m in (ma, mb))
+        return {"a": a, "b": b, "sa": sd.asarray(a), "sb": sd.asarray(b), "r": 0.01}
+
+    return setup
+
+
 def _bool(ma, mb, n, seed=20261124):
     def setup():
         import stardust as sd
@@ -191,7 +204,30 @@ def _neighbor_specs():
                     _normal(2000, 2000, 64), lambda d: lambda: _sp().kneighbors(d["sa"], d["sb"], k=5, metric="cosine"),
                     (Ref("sklearn brute", _nn_brute(5, "cosine"), threads="follow",
                          differs="1 - cos (cancellation)"),), note="direct path"))  # fmt: skip
+    out.append(Spec("SPT6", "neighbors", "kneighbors k=5 haversine", ("kneighbors",), "(100000, 2)", _geo(10**4, 10**5),
+                    lambda d: lambda: _sp().kneighbors(d["sa"], d["sb"], k=5, metric="haversine"),
+                    (Ref("sklearn BallTree", _ball_tree(5)),),
+                    note="10^4 query rows; the KD tree on the unit sphere (SPT83); BallTree built in the call"))  # fmt: skip
+    out.append(Spec("SPT6", "neighbors", "radius_neighbors haversine", ("radius_neighbors",), "(100000, 2)",
+                    _geo(10**4, 10**5), lambda d: lambda: _sp().radius_neighbors(d["sa"], d["sb"], d["r"], metric="haversine"),
+                    (Ref("sklearn BallTree", _ball_tree(None)),),
+                    note="10^4 query rows, r = 0.01 (about 2.5 neighbours per row); BallTree built in the call",
+                    check=RADIUS_CHECK))  # fmt: skip
     return out
+
+
+def _ball_tree(k):
+    """scikit-learn's BallTree with metric='haversine', built in the timed call as sd builds its tree: the k
+    nearest, or (k None) the points within d["r"] as (distances, indices)."""
+
+    def make(d):
+        from sklearn.neighbors import BallTree
+
+        if k is not None:
+            return lambda: BallTree(d["b"], metric="haversine").query(d["a"], k=k)
+        return lambda: BallTree(d["b"], metric="haversine").query_radius(d["a"], d["r"], return_distance=True)[::-1]
+
+    return make
 
 
 def _with_radius(base, per_row=10):

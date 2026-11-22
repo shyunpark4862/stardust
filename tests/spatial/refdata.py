@@ -13,6 +13,8 @@ and the family's inputs, and per method the reference hi + lo (a double-double):
                hamming, jaccard, w_hamming, w_jaccard
     haversine  u, v ((latitude, longitude) in radians); method haversine
     neighbors  query; methods p1, p2, pinf: the distance to every data point of the set, in order
+    sphere     query ((latitude, longitude) in radians); method haversine: the distance to every data
+               point of the set (tag sphere), in order
 
 tests/spatial/data holds the other libraries' records (tools/spatial_probe.py: scipy.json,
 sklearn.json, r.json), each with its own "_provenance".
@@ -49,7 +51,7 @@ from .. import reffile
 
 REF = pathlib.Path(__file__).parent / "ref"
 DATA = pathlib.Path(__file__).parent / "data"
-FAMILIES = ("distances", "counting", "haversine", "neighbors")
+FAMILIES = ("distances", "counting", "haversine", "neighbors", "sphere")
 U = 2.0**-53
 TILE_BLOCK = 32  # the tile order's block of terms (csrc/spatial/metric.hpp, SPT26)
 C_POW = 2 * U / (1 - 2 * U)  # gamma_2: libm pow within one ULP (SPT0), and p = 3's (a a) a (SPT80)

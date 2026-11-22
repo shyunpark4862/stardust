@@ -5,8 +5,9 @@ The arguments are checked here as cdist checks them (the metric and its options,
 and VI from XA over XB), and the data must be finite (SPT12). The search is stardust._core.spatial's
 (csrc/spatial/neighbors.cpp): every distance it returns or compares is cdist's value of the pair, so the
 answer is fixed by the definition whatever the path (direct, the GEMM pre-selection of §3.2 for
-euclidean and sqeuclidean, or a KD tree over XB for the Minkowski metrics, SPT73), the thread count or
-Accelerate's thread mode. path (tests): 0 by shape, 1 direct, 2 GEMM, 3 the tree.
+euclidean and sqeuclidean, a KD tree over XB for the Minkowski metrics, SPT73, or a KD tree over the points
+of XB on the unit sphere for haversine, SPT83-SPT88), the thread count or Accelerate's thread mode. path
+(tests): 0 by shape, 1 direct, 2 GEMM, 3 the tree.
 """
 
 import math
@@ -54,6 +55,10 @@ def _tree_p(km, pv, wv):
     return pv if km == "minkowski" and pv >= 1.0 else None
 
 
+def _rows(A):
+    return A if A._flags()["c_contiguous"] else A.copy()
+
+
 def _use_tree(path, tp, ma, mb, n, k=1):
     """Whether a search goes through a KD tree over XB (decision SPT73, measured in SPT6): forced (path 3),
     or few columns and enough rows on both sides that building the tree pays. minkowski's brute force
@@ -67,6 +72,23 @@ def _use_tree(path, tp, ma, mb, n, k=1):
     if tp not in (1.0, 2.0, math.inf):  # minkowski
         return n <= 8 and mb >= 1024 and ma * mb >= 1 << 17
     return n <= 4 and k <= 32 and mb >= 2048 and (ma >= 2048 or (ma >= 512 and mb >= 32768))
+
+
+def _use_sphere(path, km, ma, mb, k=1):
+    """Whether a haversine search goes through the KD tree over the points of XB on the unit sphere
+    (decisions SPT83-SPT88): forced (path 3), or enough rows on both sides that building the tree pays.
+    The native search still answers None for points outside the domain of its margin (SPT85), and the
+    brute force answers then."""
+    if km != "haversine":
+        return False
+    if path:
+        return path == 3
+    return mb >= _SPHERE_MB and ma >= _SPHERE_MA and 8 * k <= mb
+
+
+# The measured crossovers of the sphere path (SPT87), 10 threads.
+_SPHERE_MB = 128
+_SPHERE_MA = 16
 
 
 def _ranks(k, name):
@@ -87,10 +109,14 @@ def _knn(name, XA, XB, k, metric, p, w, V, VI, distance_upper_bound, path=0):
     C.check_alloc(16 * ma * width, name)
     kc = max(1, min(kmax, mb))  # ranks past the data points are the fill (inf, mB)
     tp = _tree_p(km, pv, wv)
+    out = None
     if _use_tree(path, tp, ma, mb, A.shape[1], kc):
-        d, i = _core._KDTree(B, 10).query(A, sd.arange(1, kc + 1, dtype=sd.int64), tp, ub)
-    else:
-        d, i = _core._kneighbors(A, B, km, pv, wv, aux, kc, ub, 0 if path == 3 else path)
+        out = _core._KDTree(B, 10).query(A, sd.arange(1, kc + 1, dtype=sd.int64), tp, ub)
+    elif _use_sphere(path, km, ma, mb, kc):
+        out = _core._sphere_kneighbors(_rows(A), _rows(B), kc, ub)
+    if out is None:
+        out = _core._kneighbors(A, B, km, pv, wv, aux, kc, ub, 0 if path == 3 else path)
+    d, i = out
     if ranks is None:
         if kmax > kc:
             d = sd.concat([d, sd.full((ma, kmax - kc), math.inf)], axis=1)
@@ -113,10 +139,12 @@ def _radius(name, XA, XB, r, metric, p, w, V, VI, return_length, path=0):
     A, B, km, pv, wv, aux = _sides(name, XA, XB, metric, p, w, V, VI)
     rr = C.radius(r, name, A.shape[0])
     tp = _tree_p(km, pv, wv)
+    out = None
     if _use_tree(path, tp, A.shape[0], B.shape[0], A.shape[1]):
-        Ac = A if A._flags()["c_contiguous"] else A.copy()
-        out = _core._ball_point(_core._KDTree(B, 10), Ac, rr, tp, return_length)
-    else:
+        out = _core._ball_point(_core._KDTree(B, 10), _rows(A), rr, tp, return_length)
+    elif _use_sphere(path, km, A.shape[0], B.shape[0]):
+        out = _core._sphere_radius(_rows(A), _rows(B), rr, return_length)
+    if out is None:
         out = _core._radius_neighbors(A, B, km, pv, wv, aux, rr, return_length, 0 if path == 3 else path)
     if return_length:
         return out

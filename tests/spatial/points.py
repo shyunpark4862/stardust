@@ -17,6 +17,9 @@ and, for the neighbour sets, query points (q, n). Kinds, by tag:
                  distance is the square root of an exact number, correctly rounded -- the data of
                  §4 neighbours 2 (exact ties by the thousand)
     neighbors    the sets with queries (`queries`), for the neighbour references
+    sphere       (latitude, longitude) sets with queries for the haversine neighbour references (the KD
+                 tree on the unit sphere): uniform, near-identical clusters with duplicates, antipodes,
+                 the poles, the dateline, exact ties
     binary       bool and int64 sets for hamming and jaccard (int64 values past 2^53)
 
 and the pair families of the distance functions: `edge_pairs()` (NaN and inf in every position,
@@ -202,6 +205,52 @@ def _neighbors_normal(n, m, q, key):
     return g.standard_normal((m, n)), g.standard_normal((q, n))
 
 
+LAT_MAX = 1.5707963267948966  # fl(pi / 2)
+
+
+def _on_sphere(g, m, lon=(-math.pi, math.pi)):
+    return np.column_stack([np.arcsin(g.uniform(-1.0, 1.0, m)), g.uniform(*lon, m)])
+
+
+def _sphere(kind, m=400, q=20):
+    """(data, queries) on the unit sphere, (latitude, longitude) in radians, inside the domain of the
+    sphere path's margin (|latitude| <= fl(pi / 2), |longitude| <= 8)."""
+    g = rng("sphere", kind)
+    if kind == "uniform":
+        return _on_sphere(g, m, (0.0, 2.0 * math.pi)), _on_sphere(g, q, (0.0, 2.0 * math.pi))
+    if kind == "close":  # clusters of spread 1e-12 to 1e-6 rad, a fifth of them duplicates
+        c = _on_sphere(g, 10)
+        lab = g.integers(0, 10, m)
+        x = c[lab] + g.normal(0.0, 1.0, (m, 2)) * 10.0 ** g.integers(-12, -5, (m, 1))
+        x[: m // 5] = x[m // 5 : 2 * (m // 5)]
+        return x, c[g.integers(0, 10, q)] + g.normal(0.0, 1e-9, (q, 2))
+    if kind == "antipode":  # the queries' antipodes, moved by 0 to 1e-3 rad
+        qq = _on_sphere(g, q)
+        anti = np.column_stack([-qq[:, 0], np.where(qq[:, 1] > 0, qq[:, 1] - math.pi, qq[:, 1] + math.pi)])
+        near = np.repeat(anti, m // (2 * q), axis=0)
+        near = near + g.normal(0.0, 1.0, near.shape) * 10.0 ** g.integers(-14, -2, (len(near), 1))
+        x = np.vstack([near, _on_sphere(g, m - len(near))])
+        x[:, 0] = np.clip(x[:, 0], -LAT_MAX, LAT_MAX)
+        return x, qq
+    if kind == "poles":  # at and next to both poles, every longitude
+        lat = g.choice([LAT_MAX, -LAT_MAX, LAT_MAX * (1 - 1e-16), -(LAT_MAX - 1e-9)], m // 2)
+        x = np.vstack([np.column_stack([lat, g.uniform(-8.0, 8.0, m // 2)]), _on_sphere(g, m - m // 2)])
+        return x, np.column_stack([g.choice([LAT_MAX, -LAT_MAX, LAT_MAX - 1e-7], q), g.uniform(-4.0, 4.0, q)])
+    if kind == "dateline":  # longitudes next to pi and -pi
+        side = g.uniform(0.0, 1e-6, m)
+        lon = np.where(g.random(m) < 0.5, math.pi - side, -math.pi + side)
+        x = np.column_stack([g.uniform(-1.0, 1.0, m), lon])
+        return x, np.column_stack([g.uniform(-1.0, 1.0, q), g.choice([math.pi, -math.pi], q)])
+    if kind == "ties":  # mirror images about the equator and a meridian of queries on the equator: equal h
+        qq = np.column_stack([np.zeros(q), g.uniform(-3.0, 3.0, q)])
+        a = g.uniform(0.0, 0.05, (m // 4, 1))
+        base = qq[g.integers(0, q, m // 4)]
+        x = np.vstack([base + np.hstack([a * 0, a]), base - np.hstack([a * 0, a]), base + np.hstack([a, a * 0]),
+                       base - np.hstack([a, a * 0])])  # fmt: skip
+        return x, qq
+    raise KeyError(kind)
+
+
 _BUILDERS = {}
 
 
@@ -251,6 +300,8 @@ _register(
 _register("nn/normal3", {"random", "neighbors"}, lambda: _neighbors_normal(3, 1000, 50, "a"))
 _register("nn/normal16", {"random", "neighbors"}, lambda: _neighbors_normal(16, 500, 30, "b"))
 _register("nn/mixture8", {"random", "neighbors"}, lambda: (_mixture(8, 500), _mixture(8, 530)[500:]))
+for _kind in ("uniform", "close", "antipode", "poles", "dateline", "ties"):
+    _register(f"sphere/{_kind}", {"sphere"}, lambda k=_kind: _sphere(k))
 for _kind, _n in (("bool", 7), ("bool", 64), ("bool", 200), ("int", 10), ("int64big", 10)):
     _register(f"binary/{_kind}{_n}", {"binary"}, lambda k=_kind, n=_n: (_binary(k, n), None))
 

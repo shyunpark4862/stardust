@@ -66,19 +66,23 @@ def test_points_are_the_generators_points():
             assert np.array_equal(u, want[0]) and np.array_equal(v, want[1]), (family, sid, pair)
             dtype = str(r.inputs["dtype"][k]) if family == "counting" else str(u.dtype)
             assert dtype == str(np.asarray(want[0]).dtype), (family, sid)
-    r = REFS["neighbors"]
-    for k in range(r.points):
-        s = P.get(str(r.inputs["set"][k]))
-        assert np.array_equal(r.inputs["query"][k], s.queries[int(r.inputs["pair"][k])])
-        assert r.inputs["digest"][k] == P.digest(s.queries[int(r.inputs["pair"][k])])
+    for family in ("neighbors", "sphere"):
+        r = REFS[family]
+        for k in range(r.points):
+            s = P.get(str(r.inputs["set"][k]))
+            assert np.array_equal(r.inputs["query"][k], s.queries[int(r.inputs["pair"][k])])
+            assert r.inputs["digest"][k] == P.digest(s.queries[int(r.inputs["pair"][k])])
+            for m in r.methods.values():
+                assert len(m.hi[k]) == s.m, (family, k)
 
 
 def test_every_point_set_is_covered():
     sets = {str(s) for f in ("distances", "counting") for s in REFS[f].inputs["set"]}
     for sid in P.ids():
-        if P.get(sid).m >= 2:
+        if P.get(sid).m >= 2 and "sphere" not in P.get(sid).tags:
             assert sid in sets, sid
     assert set(P.ids("neighbors")) == {str(s) for s in REFS["neighbors"].inputs["set"]}
+    assert set(P.ids("sphere")) == {str(s) for s in REFS["sphere"].inputs["set"]}
 
 
 # ---- the references check themselves --------------------------------------------------------

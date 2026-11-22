@@ -31,6 +31,9 @@ distance of those inputs, rounded once (a double-double hi + lo).
                On the lattice sets every computed distance is correctly rounded, so these are the
                exact answers of §4 neighbours 2; on the others they are the true distances §4
                neighbours 3 checks against
+    sphere     one point per query of a (latitude, longitude) set (tag sphere): the haversine distance
+               from the query to every data point, in data order (method haversine), for the haversine
+               neighbours of the KD tree on the unit sphere (§4 neighbours 3)
 
 Settling: an exact rational is exact; an Arb value is settled to 2^-110 relative (a value that is
 exactly 0 is recognised in rationals first). A point that does not settle within the precision
@@ -251,7 +254,7 @@ def distance_points():
     M = P()
     for sid in M.ids():
         s = M.get(sid)
-        if "binary" in s.tags:
+        if "binary" in s.tags or "sphere" in s.tags:
             continue
         u, v = M.pairs(s, PAIRS if s.n < 512 else 4)
         for k in range(len(u)):
@@ -314,19 +317,25 @@ def haversine_points():
     return [{"set": f"haversine/{hid}", "pair": 0, "u": u, "v": v} for hid, u, v in P().haversine_pairs()]
 
 
-def haversine_task(p):
+def _haversine_ref(f1, l1, f2, l2):
+    """The central angle of two (latitude, longitude) doubles: exactly 0 for the same point (the only
+    pair of doubles with h = 0), else settled in Arb."""
     from flint import arb
 
-    (f1, l1), (f2, l2) = p["u"].tolist(), p["v"].tolist()
     if f1 == f2 and l1 == l2:
-        return {"haversine": (0.0, 0.0)}
+        return (0.0, 0.0)
 
     def f():
         a1, b1, a2, b2 = arb(f1), arb(l1), arb(f2), arb(l2)
         h = ((a2 - a1) / 2).sin() ** 2 + a1.cos() * a2.cos() * ((b2 - b1) / 2).sin() ** 2
         return 2 * h.sqrt().asin()
 
-    return {"haversine": settle(f)}
+    return settle(f)
+
+
+def haversine_task(p):
+    (f1, l1), (f2, l2) = p["u"].tolist(), p["v"].tolist()
+    return {"haversine": _haversine_ref(f1, l1, f2, l2)}
 
 
 # ---------------------------------------------------------------- neighbours
@@ -355,6 +364,23 @@ def neighbor_task(p):
     return {k: (np.array([h for h, _ in v]), np.array([lo for _, lo in v])) for k, v in out.items()}
 
 
+def sphere_points():
+    M = P()
+    pts = []
+    for sid in M.ids("sphere"):
+        s = M.get(sid)
+        for k in range(s.queries.shape[0]):
+            pts.append({"set": sid, "pair": k, "query": s.queries[k]})
+    return pts
+
+
+def sphere_task(p):
+    s = P().get(p["set"])
+    f1, l1 = p["query"].tolist()
+    v = [_haversine_ref(f1, l1, f2, l2) for f2, l2 in s.x.tolist()]
+    return {"haversine": (np.array([h for h, _ in v]), np.array([lo for _, lo in v]))}
+
+
 # ---------------------------------------------------------------- driver
 
 FAMILIES = {
@@ -362,6 +388,7 @@ FAMILIES = {
     "counting": (counting_points, counting_task, ("u", "v", "w")),
     "haversine": (haversine_points, haversine_task, ("u", "v")),
     "neighbors": (neighbor_points, neighbor_task, ("query",)),
+    "sphere": (sphere_points, sphere_task, ("query",)),
 }
 
 

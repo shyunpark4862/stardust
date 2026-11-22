@@ -10,5 +10,6 @@ void bind_kdtree(nanobind::module_& m);
 void bind_neighbors(nanobind::module_& m);
 void bind_query(nanobind::module_& m);
 void bind_dual(nanobind::module_& m);
+void bind_sphere(nanobind::module_& m);
 
 }  // namespace sd::spatial

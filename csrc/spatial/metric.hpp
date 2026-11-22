@@ -36,10 +36,11 @@
 //                power of two would overflow or underflow |z'|^p for large p), times max |z|.
 //   mahalanobis  t_i = sum_j VI_ij z_j (tile order), q = sum_i z_i t_i (tile order), sqrt (q < 0: NaN);
 //                careful path as euclidean on z.
-//   haversine    SPT31: d = 2 atan2(sqrt(h), sqrt(g)) with h = sin^2(dphi/2) + cos phi1 cos phi2
-//                sin^2(dlam/2) and g = 1 - h written as cos^2(dphi/2) cos^2(dlam/2) + sin^2(S/2)
-//                sin^2(dlam/2), S = phi1 + phi2: both sums of nonnegative terms, so near the antipode g
-//                keeps its digits (sklearn's 2 asin(sqrt(h)) loses them there).
+//   haversine    SPT31, SPT81, SPT88: h = sin^2(dphi/2) + cos phi1 cos phi2 sin^2(dlam/2) and g = 1 - h
+//                written as cos^2(dphi/2) cos^2(dlam/2) + sin^2(S/2) sin^2(dlam/2), S = phi1 + phi2: both
+//                sums of nonnegative terms; d = 2 asin(sqrt(h)) for h <= 1/2, else pi - 2 asin(sqrt(g)), so
+//                near the antipode g keeps its digits (sklearn's 2 asin(sqrt(h)) loses them there); dlam
+//                exact by TwoSum (the dateline).
 #pragma once
 
 #include "base/sincos.hpp"
@@ -510,13 +511,27 @@ inline void mahalanobis_lanes(
 // asin(sqrt(h)) while h <= 1/2 (d <= pi/2, where asin's condition number is at most 1.3), else d = pi - 2
 // asin(sqrt(g)) with g the cancellation-free 1 - h above (g <= 1/2 there too, the antipode's digits kept):
 // one asin for SPT31's atan2, and g with its sine only for the far half.
+// SPT88: the longitude difference is dl + e exactly (TwoSum: dl = fl(lam2 - lam1), e its rounding error), and
+// sin((dl + e)/2), cos((dl + e)/2) are taken to first order in e/2 (one fma each; the second-order terms are
+// below e^2/8). Without it a pair across the dateline (dl near 2 pi, d small) carried the absolute error
+// u |dl| / 2 of dl into sin(dl/2): a relative error u pi / d in d (1e-10 for d = 3e-6). A sum h below kTiny
+// is recomputed from the sines scaled by 2^600 (exact), so the squares of a tiny distance do not underflow.
 inline double haversine_pair(double f1, double l1, double c1, double f2, double l2, double c2) {
-    const SinCos a = sincos((f2 - f1) * 0.5), b = sincos((l2 - l1) * 0.5);
-    const double sb2 = b.s * b.s;
-    const double h = a.s * a.s + (c1 * c2) * sb2;
-    if (h <= 0.5) return 2.0 * std::asin(std::sqrt(h));
+    const SinCos a = sincos((f2 - f1) * 0.5);
+    const double dl = l2 - l1, lv = dl + l1, bv = dl - lv;
+    const double he = ((l2 - lv) + (-l1 - bv)) * 0.5;  // e / 2
+    const SinCos b = sincos(dl * 0.5);
+    const double bs = std::fma(he, b.c, b.s);
+    const double cc = c1 * c2;
+    const double h = a.s * a.s + cc * (bs * bs);
+    if (h <= 0.5) {
+        if (h >= kTiny) return 2.0 * std::asin(std::sqrt(h));
+        const double x = a.s * 0x1p600, y = bs * 0x1p600;  // the careful path (h = 0 stays 0)
+        return 2.0 * std::asin(std::sqrt(x * x + cc * (y * y)) * 0x1p-600);
+    }
+    const double bc = std::fma(-he, b.s, b.c);
     const double ss = std::sin((f1 + f2) * 0.5);
-    const double ac = a.c * b.c, sd_ = ss * b.s;
+    const double ac = a.c * bc, sd_ = ss * bs;
     const double g = ac * ac + sd_ * sd_;
     return 0x1.921fb54442d18p+1 - 2.0 * std::asin(std::sqrt(g));
 }
