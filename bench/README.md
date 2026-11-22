@@ -10,7 +10,7 @@
 
 | 관례 | 뜻 |
 |---|---|
-| `AREA …` | 위치 인자. 영역 이름 `array linalg frame special stats regression random optimize htest sparse integrate differentiate spatial`(`bench/areas.py`, README.md의 표 순서) 가운데 그 도구가 다루는 것. 주지 않으면 모두다. 정확도는 참값이 있는 열하나(array, linalg, special, stats, regression, optimize, htest, sparse, integrate, differentiate, spatial)를 다룬다(spatial은 공개 함수가 생기는 SPT1부터 스윕이 있다; sparse의 스윕은 `spmv`, `sums`, `solve`, `iterative`, `eig`, `norms`, `matfuncs`의 일곱, integrate는 `samples`, `fixed_quad`, `quad`, `multiple`, `quad_weights`, `tanhsinh`, `nsum`, `quad_vec`, `cubature`, `newton_cotes`의 열, differentiate는 `derivative`, `jacobian`, `hessian`, `gradient`의 넷이다; 나머지는 `list`로 본다). |
+| `AREA …` | 위치 인자. 영역 이름 `array linalg frame special stats regression random optimize htest sparse integrate differentiate spatial plot`(`bench/areas.py`, README.md의 표 순서) 가운데 그 도구가 다루는 것. 주지 않으면 모두다. 정확도는 참값이 있는 열하나(array, linalg, special, stats, regression, optimize, htest, sparse, integrate, differentiate, spatial)를 다룬다(spatial은 공개 함수가 생기는 SPT1부터 스윕이 있다; sparse의 스윕은 `spmv`, `sums`, `solve`, `iterative`, `eig`, `norms`, `matfuncs`의 일곱, integrate는 `samples`, `fixed_quad`, `quad`, `multiple`, `quad_weights`, `tanhsinh`, `nsum`, `quad_vec`, `cubature`, `newton_cotes`의 열, differentiate는 `derivative`, `jacobian`, `hessian`, `gradient`의 넷이다; 나머지는 `list`로 본다). |
 | `--match PATTERN` | id가 맞는 것만 남긴다. `*`, `?`가 있으면 id 전체와 맞춰 보는 glob이고, 없으면 부분 문자열이다. `[`, `]`는 보통 글자라 표에서 복사한 id(`erf(x) [10^6]`)가 그대로 맞는다. 여러 번 주면 하나만 맞아도 된다. |
 | `--jobs N` | 작업 프로세스 수. 기본 8, 최대 10. |
 | `--out FILE` | 결과를 쓸 파일(폴더가 아니다). |

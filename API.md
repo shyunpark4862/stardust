@@ -21,6 +21,7 @@
 | 적분 | `sd.integrate` | [docs/api/integrate.md](docs/api/integrate.md) (확정: 결과 클래스 `IntegrateResult`와 scipy.integrate의 적분 15개 `quad dblquad tplquad nquad quad_vec cubature tanhsinh nsum fixed_quad newton_cotes trapezoid simpson romb cumulative_trapezoid cumulative_simpson`가 공개되었다; 설계 [docs/design/integrate.md](docs/design/integrate.md)) |
 | 미분 | `sd.differentiate` | [docs/api/differentiate.md](docs/api/differentiate.md) (확정: `derivative jacobian hessian`과 결과 클래스 `DifferentiateResult`가 공개되었다; 설계는 적분과 함께 [docs/design/integrate.md](docs/design/integrate.md)) |
 | 공간 | `sd.spatial` | [docs/api/spatial.md](docs/api/spatial.md) (초안: 공개 이름은 SPT1부터. 거리 `pdist cdist squareform`과 거리 함수 열넷, 한 번에 끝나는 이웃 찾기 `kneighbors radius_neighbors`, `KDTree`; 설계 [docs/design/spatial.md](docs/design/spatial.md)) |
+| 그림 | `sd.plot` | [docs/api/plot.md](docs/api/plot.md) (초안: `Figure`와 `grid`, 기본 그림 `line scatter bar area step errorbar hline vline text annotate`, 함수 그림 `function parametric polar implicit region contour density phase`, 3D `surface parametric_surface curve3d scatter3d`, 통계 그림 `histogram ecdf boxplot strip qq heatmap pairs`, 결과의 그림 `diagnostics coefficients distribution`과 메서드 `compare fit`; 설계 [docs/design/plot.md](docs/design/plot.md)) |
 
 - 설계의 근거와 측정은 `docs/design/<영역>.md`, 통합의 결정은 [DESIGN.md](DESIGN.md), 진행 상황은 [ROADMAP.md](ROADMAP.md)에 있다.
 
@@ -174,6 +175,7 @@ numpy, scipy, pandas는 정답지다. 무엇이 정답지와 같아야 하고 �
 - **`rtol`**
   - `sd.linalg`(`matrix_rank`, `pinv`, `lstsq`)와 `sd.regression`(`ols` 등): 랭크를 정하는 상대 기준이다. linalg는 가장 큰 특이값 대비, 회귀는 열마다 그 열의 노름 대비다(`|R_jj| ≤ rtol·‖x_j‖`). 기본값의 식(행과 열 수 가운데 큰 것 × float64의 머신 엡실론)은 같다.
   - `sd.optimize.root_scalar`: 근의 상대 허용오차다(scipy와 같은 이름과 뜻). 다른 풀이 함수는 같은 뜻에 `xrtol`을 쓴다(`find_root`, `find_minimum`).
+- **`histogram`**: `sd.histogram`은 값(`HistogramResult`)을, `sd.plot.histogram`은 그림(`Figure`)을 돌려준다. `bins`, `range`, `density`는 같은 뜻이고 그림의 막대 높이가 `sd.histogram`의 결과다(docs/design/plot.md PL20).
 - **`correction`의 기본값**: 배열의 `sd.var`·`sd.std`와 frame의 `var`·`std`는 `correction=0`이다(Array API, numpy; DESIGN.md §8.2). `sd.stats`의 `describe`와 `sem`은 `correction=1`이다(scipy.stats와 같은 기본값). 같은 이름이고 뜻도 같지만(자유도에서 빼는 수) 기본값이 다르다.
   - 이유: 배열은 numpy의 기본값을, 통계는 scipy.stats의 기본값을 따른다. 한쪽으로 맞추면 그 라이브러리에서 옮겨 온 코드가 조용히 다른 값을 낸다. 표본 분산은 어디서든 `correction=1`로 적어 주면 같다.
 

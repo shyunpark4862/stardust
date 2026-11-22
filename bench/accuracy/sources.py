@@ -20,8 +20,9 @@ from bench import areas as _areas
 
 from .common import Custom, isolated, ulps
 
-# the areas measured, in bench/areas.py's order (frame and random have no references yet)
-AREAS = tuple(a for a in _areas.AREAS if a not in ("frame", "random"))
+# the areas measured, in bench/areas.py's order (frame and random have no references yet; plot
+# draws, it has no values to compare with a reference)
+AREAS = tuple(a for a in _areas.AREAS if a not in ("frame", "random", "plot"))
 GUARANTEED = 1e-14
 SWEEP_SECONDS = 30.0  # a reference sweep's comparator call: its time limit (common.isolated)
 REG_SECONDS = 120.0  # a regression problem's comparator fit

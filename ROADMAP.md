@@ -809,3 +809,28 @@
 ### SPT7. 문서
 - docs/api/spatial.md의 확정과 설계 문서를 구현대로 고치기.
 
+---
+
+# 그림 영역 (sd.plot)
+
+> 상태: **PL0–PL8 구현** (2026-11-23). 디자인 손질(기본 색 jco·viridis, 범례 자리, 2D와 3D의 배치), 반투명 곡면, 두 변수 함수와 공간 곡선의 적응형 표본까지 들어갔다(docs/design/plot.md PL38, PL41–PL43). 설계는 [docs/design/plot.md](docs/design/plot.md), API의 초안은 [docs/api/plot.md](docs/api/plot.md)다.
+
+## 진행 원칙
+- 큰 결정(사용자, 2026-11-22): 수학 함수의 그림과 논문 그림의 두 갈래를 한 바닥 위에; 자체 렌더러; 함수가 `Figure`를 돌려주는 꼴; 모든 글자는 LaTeX; 글꼴 두 벌; 3D는 깊이 버퍼의 그림에 벡터 축; 출력 PDF·SVG·PNG; 상호작용 없음; 성능은 노트북에서 그림 한 장의 반응 시간으로 잰다 (docs/design/plot.md §1.1 PL1–PL17).
+- 그림에는 참값이 없다. 검증은 장면과 픽셀의 골든, 성질 테스트, 다른 렌더러와의 견줌이고(docs/design/plot.md §8), 예쁜지는 사용자가 본보기 그림으로 본다.
+- 사용자가 남은 결정을 위임하고 끝까지 진행하라고 했다(2026-11-22). 본보기 그림을 보고 정할 기본값(테마의 세부, 3D의 색과 빛, 글자 크기)은 docs/design/plot.md §10에 남아 있다.
+
+## 진행 상태
+| 마일스톤 | 상태 |
+|---|---|
+| PL0 준비: 글자 길의 탐침, API 문서 초안 | 완료 |
+| PL1 장면과 글자: 장면, SVG, LaTeX 두 길, 글리프 캐시, 숫자 늘어놓기, 영역 등록 | 완료 |
+| PL2 래스터와 PDF: C++ 2D 래스터라이저, PNG, PDF | 완료 |
+| PL3 축과 배치: 눈금, 배치, 범례, 테마, 색 | 완료 |
+| PL4 기본 그림: `line scatter bar area step errorbar hline vline text annotate`, `grid` | 완료 |
+| PL5 함수 그림: `function parametric polar implicit region contour density phase` | 완료 |
+| PL6 통계 그림과 결과 객체: `histogram ecdf boxplot strip qq heatmap pairs`, `compare fit diagnostics coefficients distribution` | 완료 |
+| PL7 3D: `surface parametric_surface curve3d scatter3d` | 완료 |
+| PL8 성능과 일관성 점검: 큰 자료, 병렬 점 찍기, 속도 사례 | 완료 (본보기 그림의 승인은 남았다) |
+| PL9 문서: API 문서의 확정 | 계획 (승인 뒤) |
+

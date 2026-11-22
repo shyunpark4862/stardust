@@ -58,6 +58,7 @@ print([round(b, 12) for b in beta.tolist()])  # [1.0, 1.0]
 | 적분 | `sd.integrate` | 만드는 중: scipy.integrate의 적분(QUADPACK의 `quad`와 겹친 적분, 벡터 값·다차원 적응 구적, 배치 tanh-sinh와 급수, 고정 규칙, 표본의 구적 규칙). 지금은 결과 클래스만 | [docs/api/integrate.md](docs/api/integrate.md) |
 | 미분 | `sd.differentiate` | scipy.differentiate의 배치 수치 미분: `derivative`, `jacobian`, `hessian`(C2, 승인 대기) | [docs/api/differentiate.md](docs/api/differentiate.md) |
 | 공간 | `sd.spatial` | 준비 중(공개 이름은 SPT1부터): scipy.spatial의 거리(`pdist`, `cdist`, `squareform`, 거리 함수 열넷)와 `KDTree`, 전체 거리 행렬 없이 한 번에 끝나는 이웃 찾기(`kneighbors`, `radius_neighbors`). 같은 짝은 어디서든 같은 비트, 동점은 (거리, 색인) 순서, 결과는 스레드 수·계산 길과 무관 | [docs/api/spatial.md](docs/api/spatial.md) |
+| 그림 | `sd.plot` | 수학 함수의 그림(`function parametric polar implicit region contour density phase surface`: 표본·범위·극점을 알아서 정한다)과 논문에 싣는 그림(`line scatter bar errorbar histogram boxplot strip qq heatmap`, 검정 결과의 괄호 `compare`, 회귀선 `fit`, 진단 `diagnostics`). 자체 렌더러(PDF, SVG, PNG; 3D는 깊이 버퍼), 모든 글자는 LaTeX가 조판한다 |
 
 - 모든 영역이 함께 쓰는 규칙(dtype 객체, 에러 종류와 메시지, 결과의 배열, 스레드와 결정성, 정답지와 같아야 하는 것, 받는 입력, 같은 이름의 다른 뜻)은 [API.md](API.md)에 있다.
 

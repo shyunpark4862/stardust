@@ -4,7 +4,7 @@ sparse arrays, numerical integration and differentiation, and spatial distances 
 
 Usage: ``import stardust as sd``. The top level is the array area (docs/api/array.md);
 the others are sd.linalg, sd.frame, sd.special, sd.stats, sd.random, sd.regression,
-sd.optimize, sd.htest, sd.sparse, sd.integrate, sd.differentiate and sd.spatial.
+sd.optimize, sd.htest, sd.sparse, sd.integrate, sd.differentiate, sd.spatial and sd.plot.
 """
 
 import math as _math
@@ -380,3 +380,4 @@ from . import sparse  # noqa: E402  (sd.sparse)
 from . import integrate  # noqa: E402  (sd.integrate)
 from . import differentiate  # noqa: E402  (sd.differentiate)
 from . import spatial  # noqa: E402  (sd.spatial)
+from . import plot  # noqa: E402  (sd.plot; TeX is looked for when a figure is first drawn)

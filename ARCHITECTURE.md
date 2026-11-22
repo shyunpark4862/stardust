@@ -4,11 +4,11 @@
 
 ## 1. 층 구조
 
-영역은 열셋이다: array, linalg, frame, special, stats, regression, random, optimize, htest, sparse, integrate, differentiate, spatial(`bench/areas.py`의 순서). Python 하위 모듈 하나와 `csrc/`의 디렉터리 하나가 영역 하나다.
+영역은 열넷이다: array, linalg, frame, special, stats, regression, random, optimize, htest, sparse, integrate, differentiate, spatial, plot(`bench/areas.py`의 순서). Python 하위 모듈 하나와 `csrc/`의 디렉터리 하나가 영역 하나다. plot(그림)은 맨 위 층이다: 모든 영역의 결과를 받고 어느 영역도 plot을 모른다(docs/design/plot.md §1.4).
 
 ```
  Python:  sd   sd.linalg   sd.frame   sd.special   sd.stats   sd.regression   sd.random   sd.optimize
-          sd.htest   sd.sparse   sd.integrate   sd.differentiate   sd.spatial
+          sd.htest   sd.sparse   sd.integrate   sd.differentiate   sd.spatial   sd.plot
             │       │          │           │            │            │               │            │
  bind/ ─────┴───────┴──────────┴───────────┴────────────┴────────────┴───────────────┴────────────┴──  _core 확장 모듈 하나
                                                         │
@@ -61,6 +61,9 @@ stardust/
     integrate/                  _quadpack, _quad_vec, _cubature, _tanhsinh, _samples, _rules, _gauss, _result
     differentiate/              _derivative, _weights, _differences, _result
     spatial/                    _common, _distance, _neighbors, _radius(RadiusResult), _kdtree (docs/design/spatial.md §6)
+    plot/                       _figure(칸·배치·내보내기), _layers, _basic, _sample·_function(함수 그림), _field(두 변수), _stat, _surface(3D), _adapt(곡면의 적응형 표본),
+                                _scene(도형 목록), _text(LaTeX 조판과 글리프 윤곽선의 캐시), _dvi, _ticks, _color, _svg·_pdf·_png
+                                (docs/design/plot.md §7)
 
   csrc/
     base/         buffer(참조 카운트 메모리 블록), dtype(DType enum), pairwise(pairwise 합의 정의),
@@ -96,6 +99,7 @@ stardust/
                   krylov arpack svds parallel
     spatial/      metric(타일 순서의 짝 커널과 거리마다의 연산), distance(pdist·cdist·배치 거리 함수·squareform; docs/design/spatial.md §3.1),
                   neighbors(kneighbors·radius_neighbors의 전수와 GEMM 고르기; §3.2), kdtree(KD 트리 만들기와 kNN; §3.3, §3.4)
+    plot/         raster(2D 래스터라이저: 면적 누적, 획의 윤곽, 점 찍기, 그림 붙이기), zbuffer(3D 깊이 버퍼), levels(marching squares; docs/design/plot.md §3.5, §5, §6)
     elementwise/  loop(원소별 반복 고리: optimize의 배치 넷, 미분·적분의 원소별 무리; docs/design/integrate.md §6.2)
     bind/         module.cpp(_core와 하위 모듈), <영역>_bind.cpp, stats_{desc,matrix,mv,mvcdf,sample}.cpp,
                   nary_bind.hpp(원소별 함수의 공통 바인딩), pyutil, errors

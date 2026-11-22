@@ -19,6 +19,7 @@ AREAS = (
     "integrate",
     "differentiate",
     "spatial",
+    "plot",
 )
 
 

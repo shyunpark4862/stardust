@@ -8,6 +8,7 @@
 #include "bind/integrate_bind.hpp"
 #include "bind/linalg_bind.hpp"
 #include "bind/optimize_bind.hpp"
+#include "bind/plot_bind.hpp"
 #include "bind/regression_bind.hpp"
 #include "bind/sparse_bind.hpp"
 #include "bind/spatial_bind.hpp"
@@ -175,4 +176,5 @@ NB_MODULE(_core, m) {
     sd::bind_htest(m);  // after stats (its distributions) and the array
     sd::bind_sparse(m);  // after linalg (its LinAlgError) and the array
     sd::bind_spatial(m);  // after the array (it returns ndarrays)
+    sd::bind_plot(m);  // on its own: the rasterizer takes plain numbers and bytes
 }

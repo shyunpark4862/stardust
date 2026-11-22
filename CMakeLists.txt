@@ -138,6 +138,10 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/bind/spatial_bind.cpp
   csrc/bind/module.cpp)
 
+  csrc/bind/plot_bind.cpp
+  csrc/plot/levels.cpp
+  csrc/plot/raster.cpp
+  csrc/plot/zbuffer.cpp
 target_include_directories(_core PRIVATE csrc)
 # Boost.Math (headers only, the subset sd.special calls; third_party/boost_math/README.md).
 # SYSTEM: its headers are not held to our warning flags.

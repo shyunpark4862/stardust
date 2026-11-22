@@ -1,0 +1,439 @@
+"""Function plots (docs/api/plot.md §4; docs/design/plot.md §4): the sampler finds bends, poles,
+jumps and the edges of the domain, the y range leaves out what runs away, fast oscillation
+becomes a band; level curves lie on their level; regions have their area; pictures have their
+colours."""
+
+import math
+from array import array
+
+import pytest
+
+import stardust as sd
+from stardust._core import plot as core
+from stardust.plot import _color, _field, _figure, _function, _layers, _sample, _scene, _text
+
+P = sd.plot
+
+
+def measure(fig):
+    return _figure._measure(fig, fig._cell, 200.0, 150.0, _figure.THEMES["paper"], _text.engine("serif"))
+
+
+def finite(layer):
+    return [(x, y) for x, y in zip(layer.x.tolist(), layer.y.tolist()) if math.isfinite(x) and math.isfinite(y)]
+
+
+def test_a_smooth_function_is_followed_closely_with_few_samples():
+    fig = P.function(sd.sin, 0, 2 * math.pi)
+    (info,) = fig.info
+    assert (
+        info.kind == "function"
+        and 257 <= info.n < 1200
+        and info.poles == info.jumps == info.undefined == info.oscillating == ()
+    )
+    assert info.clipped == (False, False) and info.ylim == pytest.approx((-1.0, 1.0), abs=1e-4)
+    pts = finite(fig._cell.layers[0])
+    worst = max(abs(0.5 * (y0 + y1) - math.sin(0.5 * (x0 + x1))) for (x0, y0), (x1, y1) in zip(pts, pts[1:]))
+    assert worst < 2e-4  # the chords stay within a hair of the curve
+    assert pts[0][0] == 0.0 and pts[-1][0] == 2 * math.pi  # the ends exactly
+
+
+def test_poles_are_found_cut_and_left_out_of_the_range():
+    fig = P.function(sd.tan, -2 * math.pi, 2 * math.pi, asymptotes=True)
+    (info,) = fig.info
+    assert info.poles == pytest.approx([-1.5 * math.pi, -0.5 * math.pi, 0.5 * math.pi, 1.5 * math.pi], abs=2e-4)
+    assert info.clipped == (True, True) and -15 < info.ylim[0] < -4 and 4 < info.ylim[1] < 15
+    curve, *rules = fig._cell.layers
+    assert sum(1 for y in curve.y.tolist() if y != y) == 4  # the line is cut at each pole
+    assert [r.value for r in rules] == list(info.poles) and all(r.vertical and r.style == "--" for r in rules)
+    m = measure(fig)
+    assert -16 < m.ya.lo < -4 and 4 < m.ya.hi < 16  # the axis shows the bulk, not the poles
+    gamma = P.function(sd.special.gamma, -4.2, 4.2).info[0]
+    assert gamma.poles == pytest.approx([-4, -3, -2, -1, 0], abs=3e-4) and gamma.clipped[1] and gamma.ylim[1] < 30
+    even = P.function(lambda x: 1 / (x * x), -1, 1).info[0]  # no sign change: no cut is needed, the range is still held
+    assert even.clipped == (False, True) and even.ylim[1] < 1e3
+
+
+def test_jumps_are_cut_without_a_riser():
+    fig = P.function(sd.floor, -2.5, 2.5)
+    (info,) = fig.info
+    assert info.jumps == pytest.approx([-2, -1, 0, 1, 2], abs=2e-4) and info.poles == ()
+    ys = fig._cell.layers[0].y.tolist()
+    assert sum(1 for y in ys if y != y) == 5
+    assert {y for y in ys if y == y} == {-3.0, -2.0, -1.0, 0.0, 1.0, 2.0}  # no value between the steps
+    steep = P.function(lambda x: sd.tanh(50 * x), -1, 1).info[0]
+    assert steep.jumps == () and steep.n < 1500  # steep but continuous: resolved, not cut
+
+
+def test_the_edge_of_the_domain_is_closed_in_on():
+    fig = P.function([sd.sqrt, lambda x: sd.sqrt(1 - x * x)], -1.5, 3)
+    root, arc = fig.info
+    assert list(root.undefined[0]) == pytest.approx([-1.5, 0.0], abs=2e-4) and len(root.undefined) == 1
+    assert [u for pair in arc.undefined for u in pair] == pytest.approx([-1.5, -1.0, 1.0, 3.0], abs=2e-4)
+    pts = finite(fig._cell.layers[0])
+    assert 0.0 <= pts[0][0] < 1e-4 and pts[0][1] < 0.011  # the curve starts at the axis
+    apts = finite(fig._cell.layers[1])
+    assert apts[0][1] < 0.02 and apts[-1][1] < 0.02
+
+
+def test_growth_is_not_mistaken_for_a_pole():
+    for f, a, b in ((sd.exp, 0, 10), (lambda x: x**3, -3, 3), (lambda x: x * x, -10, 10)):
+        info = P.function(f, a, b).info[0]
+        assert info.clipped == (False, False) and info.poles == ()
+    assert P.function(sd.exp, 0, 10).info[0].ylim[1] == pytest.approx(math.exp(10))
+
+
+def test_the_first_grid_is_not_in_step_with_a_periodic_function():
+    n = _sample.N0
+    info = P.function(lambda x: sd.sin(2 * math.pi * n * x), 0, 1).info[0]  # a period per grid step
+    assert info.ylim[1] - info.ylim[0] > 1.5
+    t = _sample.first_grid(2.0, 5.0).tolist()
+    assert t[0] == 2.0 and t[-1] == 5.0 and all(a < b for a, b in zip(t, t[1:])) and len(t) == n + 1
+    steps = {round((b - a) / (3.0 / n), 6) for a, b in zip(t, t[1:])}
+    assert len(steps) >= 3 and max(steps) - min(steps) > 0.2  # uneven on purpose
+
+
+def test_fast_oscillation_becomes_a_band():
+    fig = P.function(lambda x: sd.sin(1 / x), -0.5, 0.5)
+    (info,) = fig.info
+    ((x0, x1),) = info.oscillating
+    assert -0.03 < x0 < -0.002 and 0.002 < x1 < 0.03 and info.jumps == ()
+    band, curve = fig._cell.layers
+    assert isinstance(band, _layers.Area) and min(band.y1.tolist()) < -0.99 and max(band.y2.tolist()) > 0.99
+    assert info.n <= _sample.CAP
+
+
+def test_several_functions_share_the_range_and_take_labels():
+    fig = P.function([sd.sin, sd.cos, lambda x: 0.5], 0, 6, labels=[r"$\sin\theta$", "Group A", "Residuals"])
+    a, b, c = fig._cell.layers
+    assert [la.label for la in (a, b, c)] == [r"$\sin\theta$", "Group A", "Residuals"] and a.color != b.color != c.color
+    assert set(c.y.tolist()) == {0.5} and len(fig.info) == 3  # a function may return a number
+    single = P.function(sd.sin, 0, 1, label="Group A", color="red", style="--", width=2)._cell.layers[0]
+    assert (single.label, single.color, single.style, single.width) == ("Group A", (1.0, 0.0, 0.0, 1.0), "--", 2.0)
+    fixed = P.function(sd.tan, -1.5, 1.5, ylim=(-2, 2))
+    assert fixed._cell.ylim == [-2.0, 2.0] and fixed.info[0].ylim == pytest.approx((-2.0, 2.0))
+
+
+def test_function_errors():
+    cases = [
+        (lambda: P.function(3, 0, 1), TypeError, "function(): 'f' must be callable, not int"),
+        (
+            lambda: P.function([], 0, 1),
+            ValueError,
+            "function(): 'f' must be a function or a non-empty sequence of functions",
+        ),
+        (lambda: P.function(sd.sin, 1, 1), ValueError, "function(): 'a' must be less than 'b'"),
+        (lambda: P.function(sd.sin, 0, math.inf), ValueError, "function(): 'b' must be finite"),
+        (lambda: P.function(sd.sin, 0, 1, ylim=3), TypeError, "function(): 'ylim' must be a pair (low, high), not int"),
+        (
+            lambda: P.function(sd.sin, 0, 1, ylim=(2, 1)),
+            ValueError,
+            "function(): 'ylim[0]' must be less than 'ylim[1]'",
+        ),
+        (
+            lambda: P.function(sd.sin, 0, 1, asymptotes=1),
+            TypeError,
+            "function(): 'asymptotes' must be True or False, not int",
+        ),
+        (
+            lambda: P.function(lambda x: x.tolist(), 0, 1),
+            TypeError,
+            "function(): 'f' must return an sd.ndarray (it is called with one), not list",
+        ),
+        (
+            lambda: P.function(lambda x: x[:3], 0, 1),
+            ValueError,
+            "function(): 'f' must return an array of its argument's shape (257,), not (3,)",
+        ),
+        (
+            lambda: P.function(lambda x: x + 1j, 0, 1),
+            TypeError,
+            "function(): 'f' must return real values, not complex128",
+        ),
+        (
+            lambda: P.function([sd.sin, sd.cos], 0, 1, label="a"),
+            ValueError,
+            "function(): several functions take 'labels', not 'label'",
+        ),
+        (
+            lambda: P.function([sd.sin, sd.cos], 0, 1, labels=["a"]),
+            ValueError,
+            "function(): 'labels' must be 2 strings, one per function",
+        ),
+        (
+            lambda: P.function([sd.sin, sd.cos], 0, 1, color="red"),
+            ValueError,
+            "function(): 'color' cannot be given for several functions (they take the palette's colours)",
+        ),
+        (lambda: P.parametric(sd.sin, 3, 0, 1), TypeError, "parametric(): 'fy' must be callable, not int"),
+        (lambda: P.polar(sd.sin, 2, 1), ValueError, "polar(): 'a' must be less than 'b'"),
+    ]
+    for call, kind, message in cases:
+        with pytest.raises(kind) as e:
+            call()
+        assert str(e.value) == message, message
+    with pytest.raises(ZeroDivisionError):  # the function's own error passes
+        P.function(lambda x: 1 / 0, 0, 1)
+
+
+def test_parametric_and_polar_keep_the_plane_square():
+    fig = P.parametric(sd.cos, sd.sin, 0, 2 * math.pi)
+    pts = finite(fig._cell.layers[0])
+    assert max(abs(math.hypot(x, y) - 1.0) for x, y in pts) < 1e-12 and fig._cell.aspect == 1.0
+    worst = max(1.0 - math.hypot(0.5 * (a[0] + b[0]), 0.5 * (a[1] + b[1])) for a, b in zip(pts, pts[1:]))
+    assert worst < 3e-4  # the chords are close to the circle
+    sc = fig._root._build("t")
+    axes = next(i for i in sc.items if isinstance(i, _scene.Path) and i.ops == "MLL" and i.cap == "square")
+    w, h = axes.xy[4] - axes.xy[0], axes.xy[3] - axes.xy[1]
+    assert w == pytest.approx(h, rel=1e-4)  # equal ranges: a square plot
+    rose = P.polar(lambda t: sd.cos(4 * t), 0, 2 * math.pi)
+    assert max(math.hypot(x, y) for x, y in finite(rose._cell.layers[0])) == pytest.approx(1.0, abs=1e-6)
+    assert rose.info[0].kind == "polar" and rose.info[0].ylim is None
+
+
+def test_level_curves_lie_on_their_level_and_close():
+    fig = P.implicit(lambda x, y: x * x + y * y, -2, 2, -2, 2, level=1.0)
+    layer = fig._cell.layers[0]
+    pts = finite(layer)
+    assert max(abs(x * x + y * y - 1.0) for x, y in pts) < 5e-6  # the secant step: far inside a cell's size (0.0125)
+    assert pts[0] == pts[-1] and len(pts) > 300 and not any(v != v for v in layer.x.tolist())  # one closed curve
+    assert layer.extent("x", False) == (-2.0, 2.0, (-2.0, 2.0)) and fig._cell.aspect == 1.0
+    two = P.implicit(lambda x, y: x * x - 1, -2, 2, -2, 2)._cell.layers[0]
+    assert sum(1 for v in two.x.tolist() if v != v) == 1  # two lines, a gap between them
+    assert sorted({round(x, 9) for x in two.x.tolist() if x == x}) == [-1.0, 1.0]
+    saddle = P.implicit(lambda x, y: x * x - y * y, -2, 2, -2, 2)._cell.layers[0]
+    spts = finite(saddle)
+    assert (
+        max(abs(abs(x) - abs(y)) for x, y in spts) < 1e-3 and len(spts) > 600
+    )  # the two diagonals (they cross in one cell)
+    nothing = P.implicit(lambda x, y: x * x + y * y + 1, -1, 1, -1, 1)._cell.layers[0]
+    assert nothing.x.shape[0] == 0 and nothing.extent("y", False)[:2] == (-1.0, 1.0)
+    hole = P.implicit(lambda x, y: sd.where(x < 0, math.nan, y - x), -1, 1, -1, 1)._cell.layers[0]
+    assert min(x for x, _ in finite(hole)) >= 0.0  # cells with a NaN corner are left out
+
+
+def test_region_has_the_area_of_the_set():
+    fig = P.region(lambda x, y: 1 - x * x - y * y, -1.5, 1.5, -1.5, 1.5, alpha=0.5, color="red", label="Group A")
+    (fill,) = fig._cell.layers
+    assert fill.color == (1.0, 0.0, 0.0, 0.5) and fill.label == "Group A"
+    area, i, xy = 0.0, 0, fill.xy
+    for sub in fill.ops.split("Z")[:-1]:
+        n = len(sub)
+        pts = [(xy[i + 2 * k], xy[i + 2 * k + 1]) for k in range(n)]
+        i += 2 * n
+        a = 0.5 * sum(p[0] * q[1] - q[0] * p[1] for p, q in zip(pts, pts[1:] + pts[:1]))
+        assert a > 0  # every piece turns the same way
+        area += a
+    assert area == pytest.approx(math.pi, rel=2e-5)
+    assert P.region(lambda x, y: x - 9, -1, 1, -1, 1)._cell.layers[0].ops == ""  # empty
+    whole = P.region(lambda x, y: x + 9, -1, 1, -1, 1)._cell.layers[0]
+    assert whole.ops.count("M") == _field.NY  # a rectangle per row of cells
+
+
+def test_contours_levels_colours_and_labels():
+    f = lambda x, y: x * x + y * y  # noqa: E731
+    fig = P.contour(f, -2, 2, -2, 2, levels=[1, 2, 3])
+    *lines, labels = fig._cell.layers
+    assert len(lines) == 3 and [la.color for la in lines] == [_color.cmap("viridis", t) for t in (0.0, 0.5, 1.0)]
+    assert [s for s, *_ in labels.items] == ["$1$", "$2$", "$3$"] and labels.strings() == ["$1$", "$2$", "$3$"]
+    for line, level in zip(lines, (1, 2, 3)):
+        assert max(abs(x * x + y * y - level) for x, y in finite(line)) < 1e-5
+    auto = P.contour(f, -2, 2, -2, 2, levels=4, labels=False, color="black")._cell.layers
+    assert 3 <= len(auto) <= 8 and all(la.color == (0.0, 0.0, 0.0, 1.0) for la in auto)
+    filled = P.contour(f, -2, 2, -2, 2, levels=[1, 2, 3], filled=True, labels=False, cmap="magma")._cell.layers
+    assert [type(la).__name__ for la in filled] == ["Fill"] * 4 + [
+        "Line"
+    ] * 3  # the base and a band per level, then the lines
+    assert filled[0].ops == "MLLLZ" and filled[1].color != filled[2].color
+    for call, kind, message in (
+        (lambda: P.contour(f, -2, 2, -2, 2, levels=0), ValueError, "contour(): 'levels' must be at least 1"),
+        (
+            lambda: P.contour(f, -2, 2, -2, 2, levels=1.5),
+            TypeError,
+            "contour(): 'levels' must be an int or a sequence of numbers, not float",
+        ),
+        (lambda: P.contour(f, -2, 2, -2, 2, levels=[]), ValueError, "contour(): 'levels' is empty"),
+        (
+            lambda: P.contour(f, -2, 2, -2, 2, cmap="jet"),
+            ValueError,
+            "contour(): 'cmap' must be 'viridis', 'magma', 'cividis' or 'rdbu', not 'jet'",
+        ),
+        (
+            lambda: P.contour(f, -2, 2, -2, 2, cmap="magma", color="red"),
+            ValueError,
+            "contour(): 'color' and 'cmap' cannot both be given",
+        ),
+        (
+            lambda: P.contour(lambda x, y: x * math.nan, -2, 2, -2, 2),
+            ValueError,
+            "contour(): 'f' has no finite value on the grid",
+        ),
+        (lambda: P.implicit(lambda x, y: 1, 2, 1, 0, 1), ValueError, "implicit(): 'x0' must be less than 'x1'"),
+        (
+            lambda: P.region(lambda x, y: [1], 0, 1, 0, 1),
+            TypeError,
+            "region(): 'f' must return an sd.ndarray (it is called with two), not list",
+        ),
+    ):
+        with pytest.raises(kind) as e:
+            call()
+        assert str(e.value) == message, message
+
+
+def test_density_is_a_picture_with_a_colour_bar():
+    fig = P.density(lambda x, y: x + 0 * y, 0, 1, 0, 2, cmap="magma")
+    (pic,) = fig._cell.layers
+    assert (pic.iw, pic.ih, pic.smooth, pic.box) == (_field.DX, _field.DY, True, (0.0, 1.0, 0.0, 2.0))
+    table = _color.table("magma")
+    row = pic.rgba[: 4 * pic.iw]
+    assert row[:4] == table[:4] and row[-4:] == table[-4:]  # the lowest value to the highest across a row
+    assert pic.rgba[: 4 * pic.iw] == pic.rgba[-4 * pic.iw :]  # constant along y
+    lo, hi = fig._cell.colorbar[1:]
+    assert lo == pytest.approx(0.5 / _field.DX) and hi == pytest.approx(1 - 0.5 / _field.DX)  # the pixel centres
+    with_bar, without = measure(fig), measure(P.density(lambda x, y: x + 0 * y, 0, 1, 0, 2, colorbar=False))
+    assert (
+        with_bar.right > without.right + 15 and with_bar.xa.lo == 0.0 and with_bar.ya.hi == 2.0
+    )  # no padding around a picture
+    images = [i for i in fig._root._build("t").items if isinstance(i, _scene.Image)]
+    assert [(i.iw, i.ih) for i in images] == [(_field.DX, _field.DY), (1, 256)]
+    held = P.density(lambda x, y: x + 0 * y, 0, 1, 0, 2, vmin=0.25, vmax=0.5)._cell.layers[0].rgba
+    assert (
+        held[:4] == _color.table("viridis")[:4] and held[4 * 400 : 4 * 401] == _color.table("viridis")[-4:]
+    )  # clamped to the ends
+    with pytest.raises(ValueError, match=r"density\(\): 'vmin' must be less than 'vmax'"):
+        P.density(lambda x, y: x, 0, 1, 0, 1, vmin=1, vmax=1)
+    for fmt in (fig.to_svg(), fig.to_pdf(), fig.to_png(dpi=60)):
+        assert len(fmt) > 2000
+    assert "data:image/png;base64," in fig.to_svg() and b"/Subtype /Image" in fig.to_pdf()
+
+
+def test_phase_portrait_colours():
+    fig = P.phase(lambda z: z, -1, 1, -1, 1, contours=False)
+    (pic,) = fig._cell.layers
+    px = lambda i, j: tuple(pic.rgba[4 * (j * pic.iw + i) : 4 * (j * pic.iw + i) + 3])  # noqa: E731
+    mid = pic.ih // 2
+    assert px(pic.iw - 1, mid)[0] == 255 and px(pic.iw - 1, mid)[2] < 60  # positive reals: red
+    assert px(0, mid)[1] > 200 and px(0, mid)[2] > 200 and px(0, mid)[0] < 60  # negative reals: cyan
+    assert px(pic.iw // 2, 0)[1] > 200  # +i: between yellow and green
+    assert fig._cell.aspect == 1.0
+    banded = P.phase(lambda z: z, -1, 1, -1, 1)._cell.layers[0].rgba
+    assert banded != pic.rgba
+    with pytest.raises(
+        TypeError, match=r"phase\(\): 'f' must return an sd.ndarray of its argument's shape \(360, 480\)"
+    ):
+        P.phase(lambda z: 1.0, -1, 1, -1, 1)
+
+
+def test_core_colour_helpers():
+    table = _color.table("viridis")
+    v = array("d", [-1.0, 0.0, 0.5, 1.0, 2.0, math.nan, math.inf]).tobytes()
+    out = core.colormap(v, 0.0, 1.0, table)
+    assert out[:4] == out[4:8] == table[:4] and out[12:16] == out[16:20] == out[24:28] == table[-4:]
+    assert out[8:12] == table[4 * 128 : 4 * 129] and out[20:24] == b"\0\0\0\0"
+    assert core.colormap(v, 1.0, 1.0, table)[:4] == table[:4]  # an empty range: the first colour
+    re_, im_ = (
+        array("d", [1.0, 0.0, -1.0, 0.0, 0.0, math.inf, math.nan]),
+        array("d", [0.0, 1.0, 0.0, -1.0, 0.0, 0.0, 0.0]),
+    )
+    c = core.phase_colors(re_.tobytes(), im_.tobytes(), False)
+    cols = [tuple(c[4 * i : 4 * i + 4]) for i in range(7)]
+    assert (
+        cols[0] == (255, 38, 38, 255)
+        and cols[4] == (0, 0, 0, 255)
+        and cols[5] == (255, 255, 255, 255)
+        and cols[6] == (0, 0, 0, 0)
+    )
+    assert cols[2][1] == cols[2][2] == 255 and cols[1][1] == 255 and cols[3][2] == 255
+    with pytest.raises(ValueError, match="re and im must be packed doubles of one length"):
+        core.phase_colors(re_.tobytes(), im_.tobytes()[:8], False)
+
+
+def test_images_in_the_rasterizer():
+    red, blue = bytes([255, 0, 0, 255]), bytes([0, 0, 255, 255])
+    c = core.Canvas(4, 2)
+    c.image(red + blue, 2, 1, 0.0, 0.0, 4.0, 2.0, False, ())
+    px = c.rgba8()
+    assert px[:8] == red * 2 and px[8:16] == blue * 2  # flat squares
+    c = core.Canvas(4, 1)
+    c.image(red + blue, 2, 1, 0.0, 0.0, 4.0, 1.0, True, ())
+    px = c.rgba8()
+    assert px[0:4] == red and px[12:16] == blue and px[4] > px[8] > 0 and px[6] < px[10]  # a ramp between the centres
+    c = core.Canvas(4, 2)
+    c.image(red, 1, 1, 1.5, 0.0, 2.0, 2.0, False, (0.0, 1.0, 4.0, 2.0))
+    assert [c.rgba8()[4 * i + 3] for i in range(8)] == [0, 0, 0, 0, 0, 128, 255, 128]  # partial pixels, clipped rows
+    half = core.Canvas(1, 1)
+    half.image(bytes([255, 255, 255, 128]), 1, 1, 0.0, 0.0, 1.0, 1.0, False, ())
+    assert half.rgba8() == bytes([255, 255, 255, 128])
+    with pytest.raises(ValueError, match="rgba must hold iw x ih pixels of 4 bytes"):
+        c.image(red, 2, 1, 0.0, 0.0, 1.0, 1.0, False, ())
+    big = bytes(range(256)) * 4 * 64  # the rows are painted on the pool: the same at any thread count
+    old, outs = sd.get_num_threads(), []
+    try:
+        for n in (1, 3, 10):
+            sd.set_num_threads(n)
+            cv = core.Canvas(700, 500)
+            cv.image(big, 256, 64, 3.3, 2.2, 690.0, 490.0, True, ())
+            outs.append(cv.rgba8())
+    finally:
+        sd.set_num_threads(old)
+    assert outs[0] == outs[1] == outs[2]
+    assert isinstance(_function.PlotInfo, type)
+
+
+def test_a_curve_is_sampled_finer_near_itself():
+    from stardust.plot import _field
+
+    calls = []
+
+    def circle(x, y):
+        calls.append(x.size)
+        return x * x + y * y - 1.0
+
+    xs, ys, F = _field.grid(circle, -1.5, 1.5, -1.5, 1.5, _field.NX, _field.NY, "t")
+    fx, fy, fine = _field.near(circle, xs, ys, F, 0.0, "t")
+    assert len(fx) == _field.NX * _field.FINE + 1 and len(fy) == _field.NY * _field.FINE + 1
+    assert fx[:: _field.FINE] == pytest.approx(xs, abs=1e-15) and calls[1] < 0.2 * fine.size  # the band only
+    X, Y = sd.meshgrid(sd.asarray(fx), sd.asarray(fy), indexing="xy")
+    true = circle(X, Y)
+    assert bool(sd.all((fine > 0.0) == (true > 0.0)))  # the side of the level is right everywhere
+    band = sd.abs(true) < 0.01
+    assert bool(sd.all(fine[band] == true[band]))  # true values by the curve
+    far = _field.near(circle, xs, ys, F, 50.0, "t")
+    assert far[2] is F  # no curve: nothing sampled
+    fig = sd.plot.implicit(lambda x, y: x * x - y * y, -1, 1, -1, 1)
+    x, y = fig._cell.layers[0].x, fig._cell.layers[0].y
+    ok = sd.isfinite(x)
+    assert float(sd.max(sd.abs(sd.abs(x[ok]) - sd.abs(y[ok])))) < 1e-3  # both branches, through the crossing
+    assert float(sd.min(sd.abs(x[ok]) + sd.abs(y[ok]))) < 2e-3
+
+
+def test_level_curves_in_the_core_and_contours_by_a_pole():
+    xs, ys = [0.0, 1.0, 2.0], [0.0, 1.0, 2.0]
+    F = sd.asarray([[0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 0.0]])  # a peak in the middle
+    cells = _field.Cells(lambda x, y: 0.0 * x, xs, ys, F, 0.5, "t", polish=False)
+    X, Y = cells.arrays()
+    assert X.tolist() == [1.0, 0.5, 1.0, 1.5, 1.0] and Y.tolist() == [0.5, 1.0, 1.5, 1.0, 0.5]  # a closed diamond
+    assert cells.curves() == [[(1.0, 0.5), (0.5, 1.0), (1.0, 1.5), (1.5, 1.0), (1.0, 0.5)]]
+    ops, xy = cells.inside()
+    assert ops == "MLLZ" * 4 and len(xy) == 24  # the corner triangles of the four cells
+    grid = _field.Grid(xs, ys, F)
+    assert _field.Cells(None, xs, ys, F, 2.0, "t", polish=False, grid=grid).arrays()[0].shape[0] == 0
+    with pytest.raises(ValueError, match="the grid must hold"):
+        core.Levels(b"\0" * 16, b"\0" * 16, b"\0" * 16)
+    with pytest.raises(ValueError, match="points must hold"):
+        grid.core.curves(0.5, b"")
+    assert core.path_text(b"MLQZ", array("d", [1.0, -2.5, 0.00004, 1e-9, 3.0, 3.0, 6.0, 0.0]).tobytes(), 4, False) == (
+        "M1 -2.5L0 0Q3 3 6 0Z"
+    )
+    assert core.path_text(b"MLZ", array("d", [1.25, 2.0, -0.5, 100000.123456]).tobytes(), 4, True) == (
+        "1.25 2 m\n-0.5 100000.1235 l\nh"
+    )
+    with pytest.raises(ValueError, match="do not match"):
+        core.path_text(b"ML", b"\0" * 8, 4, False)
+    pole = P.contour(lambda x, y: 1 / (x * x + y * y), -1, 1, -1, 1)
+    lines = [layer for layer in pole._cell.layers if isinstance(layer, _layers.Line)]
+    assert len(lines) >= 5  # levels over the bulk of the values, not one lost near the pole's top
+    busy = P.contour(lambda x, y: sd.sin(1 / (x * x + y * y + 0.02)), -1, 1, -1, 1, levels=6, filled=True)
+    assert busy._cell.colorbar is not None and not any(
+        isinstance(layer, _field.ContourLabels) for layer in busy._cell.layers
+    )
