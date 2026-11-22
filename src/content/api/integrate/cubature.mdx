@@ -47,7 +47,7 @@ raises:
   - type: TypeError
     desc: f가 호출 가능하지 않을 때, a·b가 수의 시퀀스가 아닐 때(수 하나 포함), rule이 문자열이 아닐 때, rtol·atol이 실수가 아닐 때, max_subdivisions가 int가 아닐 때, points가 점의 시퀀스가 아닐 때. f 안에서 난 에러도 그대로 나와요.
   - type: ValueError
-    desc: a·b가 비었거나 길이가 다를 때, NaN이 있을 때, 한 축의 두 끝이 같은 무한일 때, rule 이름이 틀렸을 때(scipy의 'gauss-kronrod' 포함), ndim = 1에 'genz-malik'을 줬을 때, rtol·atol이 음수이거나 유한하지 않을 때, max_subdivisions가 1보다 작을 때, points의 점이 ndim개가 아닐 때, f가 돌려준 모양이 틀렸을 때.
+    desc: a·b가 비었거나 길이가 다를 때, NaN이 있을 때, 한 축의 두 끝이 같은 무한일 때, rule 이름이 틀렸을 때(scipy의 'gauss-kronrod' 포함), ndim = 1에 'genz-malik'을 줬을 때, rtol·atol이 음수이거나 유한하지 않을 때, max_subdivisions가 1보다 작을 때, points의 점이 ndim개가 아닐 때, 영역 하나의 점이 너무 많을 때(gk21·gk15의 6차원 이상, genz-malik의 21차원 이상), points로 나눈 처음 영역의 점이 너무 많을 때, f가 돌려준 모양이 틀렸을 때.
 seeAlso: [quad_vec, nquad, dblquad, quad, results, basics]
 ---
 import Callout from '../../../components/Callout.astro';
@@ -153,11 +153,11 @@ Message:                                             Target precision reached.
 
 | rule | 영역마다의 점 | 차수 | 알맞은 곳 |
 |---|---|---|---|
-| `'gk21'` | $21^{\text{ndim}}$ | 곱 규칙 | 2–3차원, 높은 정확도 |
+| `'gk21'` | $21^{\text{ndim}}$ | 곱 규칙 | 2–3차원, 높은 정확도(5차원까지) |
 | `'gk15'` | $15^{\text{ndim}}$ | 곱 규칙 | 2–5차원, 'gk21'보다 가벼움 |
-| `'genz-malik'` | $2^{\text{ndim}} + 2\,\text{ndim}^2 + 2\,\text{ndim} + 1$ | 7 (오차용 5) | 4차원 이상, 보통의 정확도 |
+| `'genz-malik'` | $2^{\text{ndim}} + 2\,\text{ndim}^2 + 2\,\text{ndim} + 1$ | 7 (오차용 5) | 4차원 이상, 보통의 정확도(20차원까지) |
 
-Gauss–Kronrod 곱 규칙은 매끄러운 함수에서 아주 정확해서 처음 상자 하나로 끝나는 일이 많아요. 하지만 점의 수가 차원에 대해 지수적으로 늘어요. 'gk15'로 5차원이면 영역 하나에 $15^5 = 759{,}375$점이고, 6차원이면 천만 점이 넘어 호출 한 번의 배열이 수백 MB가 돼요. Genz–Malik 규칙은 6차원에서도 영역마다 149점이라, 차원이 높으면 영역을 많이 나누더라도 점이 훨씬 적게 들어요.
+Gauss–Kronrod 곱 규칙은 매끄러운 함수에서 아주 정확해서 처음 상자 하나로 끝나는 일이 많아요. 하지만 점의 수가 차원에 대해 지수적으로 늘어요. 'gk15'로 5차원이면 영역 하나에 $15^5 = 759{,}375$점이에요. Genz–Malik 규칙은 6차원에서도 영역마다 149점이라, 차원이 높으면 영역을 많이 나누더라도 점이 훨씬 적게 들어요.
 
 ```python
 >>> g = lambda x: sd.exp(-sd.sum(x**2, axis=1))
@@ -183,6 +183,32 @@ genz-malik 39403
 ```
 
 Genz–Malik 규칙은 2차원부터 정의돼요. 1차원이면 `ValueError`이고, 1차원 적분은 [`quad`](/api/integrate/quad/)나 [`quad_vec`](/api/integrate/quad_vec/)가 알맞아요.
+
+### 영역 하나의 크기 상한
+
+오차를 어림하는 호출은 높은 규칙과 낮은 규칙의 점을 함께 받아요. 'gk21'은 $21^d + 10^d$점, 'gk15'는 $15^d + 7^d$점, 'genz-malik'은 $2^d + 4d^2 + 4d + 2$점이에요. 이 점들의 값(점 수 × d)이 $2^{25}$개를 넘으면 f를 부르기 전에 `ValueError`예요. 점의 배열 하나가 256 MiB를 넘지 않게 하는 상한이라, 곱 규칙은 5차원, 'genz-malik'은 20차원까지 쓸 수 있어요. 점의 배열은 규칙의 표, f에 넘기는 배열, f 안의 중간 배열로 몇 벌이 함께 있으니, 상한에 가까운 규칙은 메모리를 GB 단위로 써요.
+
+```python
+>>> sd.integrate.cubature(g, [0] * 6, [1] * 6, rule='gk15')
+Traceback (most recent call last):
+    ...
+ValueError: cubature(): rule='gk15' in 6 dimensions needs 15**6 + 7**6 points per region of 6 values each, more than 2**25 values; use rule='genz-malik'
+>>> sd.integrate.cubature(g, [0] * 21, [1] * 21, rule='genz-malik')
+Traceback (most recent call last):
+    ...
+ValueError: cubature(): rule='genz-malik' in 21 dimensions needs 2099002 points per region of 21 values each, more than 2**25 values
+```
+
+`points`가 만드는 처음 영역에도 상한이 있어요. 점 하나는 그 점을 품은 영역을 $2^d$개까지 나누므로, 처음 영역의 수 × 영역의 점이 $2^{24}$을 넘으면 `ValueError`예요.
+
+```python
+>>> sd.integrate.cubature(g, [0] * 10, [1] * 10, rule='genz-malik', points=[[0.07 * k] * 10 for k in range(1, 13)])
+Traceback (most recent call last):
+    ...
+ValueError: cubature(): 'points' split the box into more than 11444 regions of 1466 points each (more than 2**24 points)
+```
+
+대각선 위의 점은 저마다 자기를 품은 영역 하나를 $2^{10}$개로 나눠요. 점 12개면 처음 영역이 $1 + 12 \times 1{,}023 = 12{,}277$개라 상한 11,444개를 넘어요.
 
 ## 어려운 피적분 함수
 
@@ -250,5 +276,6 @@ Genz–Malik 규칙은 2차원부터 정의돼요. 1차원이면 `ValueError`이
 - 결과의 `estimate`는 `integral`, status는 문자열 대신 정수(0, 1, 3)와 `converged`예요. `regions`는 배열 필드예요.
 - `args`, `workers`, 규칙 객체, 별칭 `'gauss-kronrod'`(`'gk21'`)는 없어요. `max_subdivisions`는 1 이상의 int예요(scipy는 None과 0도 받아요).
 - `a`, `b`는 길이가 같은 시퀀스여야 해요(scipy는 수 하나를 늘려 맞춰요).
+- 영역 하나의 점과 `points`가 만드는 처음 영역에 크기 상한이 있어요(위의 [영역 하나의 크기 상한](#영역-하나의-크기-상한)). scipy는 상한 없이 점의 표를 그대로 만들어요.
 - $(-\infty, b]$ 축은 문서에 적힌 치환 그대로예요(scipy의 코드는 이 축을 $[-b, \infty)$로 계산해 $\int_{-\infty}^0 e^x$에 inf를 내요).
 - 멈춘 값이나 오차가 유한하지 않으면 status 3이에요(scipy는 NaN에서 `'converged'`라고 알려요). 무한한 축이 있을 때의 `points`도 그 축의 치환으로 옮겨 받아요.

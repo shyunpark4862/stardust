@@ -35,6 +35,8 @@ raises:
     desc: n_rows, n_cols, k가 정수가 아닐 때, dtype이나 format의 타입이 틀렸을 때.
   - type: ValueError
     desc: n_rows나 n_cols가 음수일 때, format이 네 형식의 이름이 아닐 때('dia' 등).
+  - type: OverflowError
+    desc: n_rows, n_cols, k가 int64 밖일 때.
 seeAlso: [diags_array, basics, csr_array, kronsum, block_diag]
 ---
 import Callout from '../../../components/Callout.astro';

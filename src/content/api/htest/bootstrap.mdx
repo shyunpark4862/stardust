@@ -53,7 +53,7 @@ returns:
   desc: "bootstrap_distribution((*배치, n_resamples)), standard_error(붓스트랩 분포의 표준편차, n − 1)와 메서드 conf_int(*, alpha=0.05), summary(*, alpha=0.05)가 있어요. 튜플로 풀리지 않아요."
 raises:
   - type: TypeError
-    desc: rng가 없거나 sd.random.Generator가 아닐 때, data가 list·tuple이 아닐 때, statistic이 호출할 수 없을 때나 수가 아닌 것을 돌려줄 때, 없는 키워드를 줬을 때.
+    desc: rng가 없거나 sd.random.Generator가 아닐 때, data가 list·tuple이 아니거나 표본이 아닌 수의 시퀀스(표본 하나를 그대로 준 것)일 때, statistic이 호출할 수 없을 때나 수가 아닌 것을 돌려줄 때, 없는 키워드를 줬을 때.
   - type: ValueError
     desc: 관측이 둘 미만인 표본이 있을 때, paired인데 표본의 길이가 다를 때, statistic이 맞지 않는 모양을 돌려줄 때, method·alternative 이름이 틀렸을 때, n_resamples·batch가 1보다 작을 때. conf_int()에서 alpha가 (0, 1) 밖일 때.
 seeAlso: [methods, permutation_test, monte_carlo_test, pearsonr, basics, results]
@@ -223,6 +223,10 @@ array([3.45, 6.75], dtype=float64)
 Traceback (most recent call last):
     ...
 TypeError: bootstrap(): missing 1 required keyword-only argument: 'rng'
+>>> sd.htest.bootstrap([1., 2, 3, 4], mean, n_resamples=100, rng=sd.random.default_rng(1))
+Traceback (most recent call last):
+    ...
+TypeError: bootstrap(): 'data' must be a sequence of samples (one sample is given as (x,)), not a sequence of numbers
 >>> sd.htest.bootstrap((x,), mean, n_resamples=100, rng=sd.random.default_rng(1), method='bca')
 Traceback (most recent call last):
     ...

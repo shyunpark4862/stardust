@@ -255,6 +255,10 @@ TypeError: unsupported operand type(s) for /: 'ndarray' and 'csr_array'
 Traceback (most recent call last):
     ...
 TypeError: '==' not supported between instances of 'csr_array' and 'numpy.ndarray'
+>>> A * np.ones((2, 3))
+Traceback (most recent call last):
+    ...
+TypeError: unsupported operand type(s) for *: 'csr_array' and 'numpy.ndarray'
 >>> A + [1, 2, 3]
 Traceback (most recent call last):
     ...
@@ -325,7 +329,14 @@ Traceback (most recent call last):
 TypeError: unsupported operand type(s) for @: 'csr_array' and 'int'
 ```
 
-희소 행렬은 2차원까지라서 `@`의 밀집 피연산자도 1차원이나 2차원이에요. 행렬 여러 장(3차원 배열)을 한 번에 곱하지 않아요.
+희소 행렬은 2차원까지라서 `@`의 밀집 피연산자도 1차원이나 2차원이에요. 행렬 여러 장(3차원 배열)을 한 번에 곱하지 않아요. 3차원 이상은 어느 쪽에 있어도 `ValueError`예요.
+
+```python
+>>> A @ sd.ones((3, 3, 2))
+Traceback (most recent call last):
+    ...
+ValueError: the operand must have 1 or 2 dimensions, got 3
+```
 
 ### 저장하지 않은 자리는 곱에 들지 않아요
 
@@ -383,7 +394,7 @@ array([2.0, 4.0, 6.0], dtype=float64)
 - **비교는 IEEE대로예요.** scipy의 `<=`·`>=`는 `>`·`<`의 부정이라 NaN과 비교해도 참이 될 수 있어요. 결과가 꽉 차는 비교에 `SparseEfficiencyWarning`도 내지 않아요.
 - **`dok + 희소`는 CSR이에요.** scipy는 DOK예요(`dok - 희소`는 scipy도 CSR이에요).
 - **`A * 밀집`과 `A.multiply(밀집)`은 A의 형식이에요.** scipy는 COO예요.
-- **밀집 피연산자는 `sd.ndarray`만이에요.** numpy 배열과는 연산자가 `TypeError`이고 `==`·`!=`도 `TypeError`예요. 브로드캐스트도 결과가 A의 모양인 꼴만 받아요(scipy의 `multiply`는 더 큰 결과도 받아요).
+- **밀집 피연산자는 `sd.ndarray`만이에요.** numpy 배열과는 연산자가 Python의 `unsupported operand type(s)` 문장인 `TypeError`이고(numpy 배열이 어느 쪽에 있어도요) `==`·`!=`도 `TypeError`예요. 브로드캐스트도 결과가 A의 모양인 꼴만 받아요(scipy의 `multiply`는 더 큰 결과도 받아요).
 - **`A @ 2`는 `TypeError`예요.** scipy는 `ValueError`예요.
 - **제자리 연산자가 값 배열을 바꾸지 않아요.** scipy의 `A *= 2`는 값 배열을 제자리에서 바꿔요.
 - **dtype은 밀집 배열의 규칙이에요.** bool + bool, bool @ bool, `-bool`이 int64예요(scipy는 bool + bool과 bool @ bool이 bool이에요).

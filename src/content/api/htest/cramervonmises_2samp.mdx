@@ -104,7 +104,7 @@ Cramervonmises2sampResult(statistic=0.3722, pvalue=0.0859878, method='asymptotic
 Cramervonmises2sampResult(statistic=0.3722, pvalue=0.0868366, method='exact')
 ```
 
-50 × 50에서 점근 p값은 정확한 p값과 0.001쯤 달라요. 계산량이 상한(합친 목록의 항목 10⁹개, 동시에 드는 항목 10⁷개)을 넘으면 `method='exact'`는 `ValueError`로 `'asymptotic'`을 알려 줘요.
+50 × 50에서 점근 p값은 정확한 p값과 0.001쯤 달라요. 계산량이 상한(합친 목록의 항목 10⁹개, 동시에 드는 항목 10⁷개)을 넘으면 `method='exact'`는 `ValueError`로 `'asymptotic'`을 알려 줘요. 미리 어림한 계산량은 실제보다 넉넉해서, 어림이 상한을 넘어도 `'exact'`는 상한 안에서 실제로 계산해 보고 넘으면 같은 `ValueError`를 내요. 이 시도는 배치의 여러 줄 가운데 한 번에 하나씩만 하고, 저장 공간이 256 MiB를 넘으면 그만둬요. 그래서 스레드가 많아도 메모리가 그만큼 늘지 않아요.
 
 ```python
 >>> big1 = sd.stats.Normal().sample(3000, rng=rng)

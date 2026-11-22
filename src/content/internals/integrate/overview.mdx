@@ -67,13 +67,13 @@ import Steps from '../../../components/fig/Steps.astro';
 
 <Fig column caption="quad 한 번의 흐름. 사용자 함수는 커널 안에서 불리고, 결과 객체는 Python에서 만들어요.">
   <Steps steps={[
-    { label: 'quad()', note: '끝 a, b가 NaN 아닌 float인지, 옵션이 모두 기본값인지 먼저 봐요. 그렇다면 검사를 건너뛰는 빠른 길로 옵션 튜플을 바로 만들어요', where: '_quadpack.py' },
+    { label: 'quad()', note: '끝 a, b가 NaN 아닌 float인지, 옵션이 모두 기본값인지(형을 먼저, 그다음 값) 먼저 봐요. 그렇다면 검사를 건너뛰는 빠른 길로 미리 만든 옵션 튜플을 써요', where: '_quadpack.py' },
     { label: 'quad_solve', note: 'a == b면 f를 부르지 않고 0. a > b면 끝을 바꾸고 부호를 기억해요. 그다음 scipy의 갈래대로 루틴을 골라요', where: 'quadpack.cpp' },
     { label: 'qagse', note: 'QAGS. 유한 구간의 적응 분할과 ε-알고리즘', where: 'quadpack.hpp', depth: 1 },
     { label: 'qk21', note: '21점 Gauss–Kronrod 규칙. 가운데, Gauss 점의 쌍, Kronrod 점의 쌍 순서로 f를 불러요', where: 'quadpack.hpp', depth: 2 },
     { label: 'Fn', note: 'f(x)를 Python float로 불러요. 돌려받은 값이 float가 아니면 check가 바꾸거나 에러를 내요', where: 'quadpack.cpp', depth: 3 },
     { label: 'interval_arrays', note: '구간의 끝·값·오차를 오차 추정이 큰 차례로 읽기 전용 배열 셋에 담아요', where: 'quadpack.cpp' },
-    { label: '_quad_result', note: 'ier를 status로, scipy의 글을 message로 붙여 IntegrateResult._quad로 결과를 만들어요', where: '_quadpack.py, _result.py' },
+    { label: '_quad_result', note: 'ier를 status로(정상 끝인데 값이나 오차가 유한하지 않으면 −3), scipy의 글을 message로 붙여 IntegrateResult._quad로 결과를 만들어요', where: '_quadpack.py, _result.py' },
   ]} />
 </Fig>
 
@@ -205,6 +205,7 @@ Python 층에서도 같은 무리의 도구를 함께 써요. `tanhsinh`·`nsum`
 
 - 필드는 클래스의 `_FIELDS`에 적힌 이름마다 읽기 전용 속성이에요. 함수가 주지 않은 필드를 읽으면 `AttributeError`예요.
 - 배열 필드는 읽기 전용이고 읽을 때 복사하지 않아요. 커널이 만든 배열을 그대로 쥐어요.
+- 공개 생성자 `IntegrateResult(**fields)`는 키워드만 받고, 넘긴 `sd.ndarray`·numpy 배열·수의 리스트를 결과 자신의 읽기 전용 `sd.ndarray`로 한 번 복사하며 공통 필드의 종류(`message`는 str, `converged`는 bool, 개수와 번호는 int)를 검사해요. 함수가 결과를 만들 때 쓰는 `_make`와 `_quad`는 복사도 검사도 하지 않아요. 값이 모두 커널이 방금 만든 것이기 때문이에요.
 - `repr`는 한 줄이고 `summary()`는 상자 꼴의 표예요.
 
 ```python
@@ -275,7 +276,7 @@ TypeError: this IntegrateResult does not unpack (only the quad family's results 
 
 ## scipy와 같은 걸음
 
-영역의 함수들은 scipy 1.18.1의 계산을 같은 차례로 따라가요. 멈춤 판정, status의 뜻, 기본값, 구간을 나누는 순서가 scipy와 같고, 사용자 함수를 부르는 점의 순서와 비트, 호출 수, 값, 오차 추정도 지금은 비트까지 같아요(약속은 아니에요). 지키는 약속은 다른 영역과 같아요. 같은 입력이면 스레드 수와 상관없이 같은 비트이고, 시험 모음의 Arb(구간 산술)로 만든 참값에 대한 계약을 지켜요([정확도와 성능](/internals/integrate/accuracy-performance/)).
+영역의 함수들은 scipy 1.18.1의 계산을 같은 차례로 따라가요. 멈춤 판정, status의 뜻, 기본값, 구간을 나누는 순서가 scipy와 같고, 사용자 함수를 부르는 점의 순서와 비트, 호출 수, 값, 오차 추정도 지금은 비트까지 같아요(약속은 아니에요). 다른 것은 아래 상자의 몇 곳과, QAWO·QAWF 오차 추정의 반올림 바닥, `quad` 무리의 유한하지 않은 결과(scipy의 `ier` 0 대신 status −3)예요. 지키는 약속은 다른 영역과 같아요. 같은 입력이면 스레드 수와 상관없이 같은 비트이고, 시험 모음의 Arb(구간 산술)로 만든 참값에 대한 계약을 지켜요([정확도와 성능](/internals/integrate/accuracy-performance/)).
 
 비트까지 맞추는 데 가장 품이 드는 곳은 부동소수점의 축약이에요. scipy의 QUADPACK은 Fortran 원본의 C 판이고 clang의 기본값(`-ffp-contract=on`)으로 빌드되어, 한 식 안의 곱과 합을 FMA 하나로 합쳐요. stardust는 축약을 끄고 빌드하므로, 그 자리마다 `std::fma`를 적어요. 어디가 그 자리인지는 [Gauss–Kronrod 규칙과 오차 어림](/internals/integrate/gauss-kronrod/)과 [가중 함수 루틴](/internals/integrate/weight-routines/)에 있어요. 반대로 `quad_vec`과 `cubature`는 scipy의 Python 코드라 산술이 numpy와 Python의 것이에요. 그래서 FMA를 한 곳도 쓰지 않고, 합의 순서와 노름도 numpy의 것을 따라요([quad_vec의 적응 구적](/internals/integrate/quad-vec/)).
 

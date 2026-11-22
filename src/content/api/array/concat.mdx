@@ -344,6 +344,15 @@ array([[1, 2, 0],
 True
 ```
 
+희소 배열을 `concat`이나 `stack`에 넣으면 희소 쪽 함수를 알려 주는 `TypeError`예요. `stack`의 메시지는 `sd.sparse.vstack`을 알려 줘요.
+
+```python
+>>> sd.concat([sd.sparse.csr_array(p), sd.sparse.csr_array(q)], axis=1)
+Traceback (most recent call last):
+    ...
+TypeError: concat(): 'arrays' must hold sd.ndarray only, not csr_array; for sparse arrays use sd.sparse.hstack or sd.sparse.vstack
+```
+
 ## numpy를 아는 분께
 
 - `concat`은 numpy의 `np.concatenate`(numpy 2의 `np.concat`)에 해당해요.

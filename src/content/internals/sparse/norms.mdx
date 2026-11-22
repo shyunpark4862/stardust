@@ -150,14 +150,17 @@ $p > 0$의 합이 넘치거나 모든 항이 $2^{-969}$ 아래로 작으면 그 
     redo = (_sd.isinf(s) | ((amax > 0) & (top < 2.0**-969))) & _sd.isfinite(amax)
     if bool(_sd.any(redo)):
         div = _sd.where(redo & (amax > 0), amax, 1.0)
-        r = a.multiply(_sd.reshape(1.0 / div, (-1, 1) if axis == 1 else (1, -1)))
+        # each stored magnitude over its line's largest (a division, as vector_norm: a reciprocal
+        # of a subnormal largest overflows, and its product rounds once more)
+        line = C._core._expand(a._indptr, a.shape[0], a.nnz) if axis == 1 else a._indices
+        r = a._with_data(a.data / div[line])
         t = _powered(r, p).sum(axis=axis)
         again = div * (_sd.sqrt(t) if p == 2 else t ** (1.0 / p))
         out = _sd.where(redo, again, out)
     return _sd.where(_sd.isinf(amax), _INF, out)
 ```
 
-넘치지 않는 대부분의 줄은 한 번 읽고 끝나요.
+다시 더할 때는 저장된 크기마다 그 줄의 최댓값으로 나눠요. `line`은 CSR의 저장된 원소마다의 줄 번호예요(축 1이면 `indptr`을 펼친 행 번호, 축 0이면 열 번호 `indices`). 역수를 한 번 구해 곱하지 않는 까닭은 둘이에요. 최댓값이 서브노멀이면 그 역수가 double을 넘쳐 inf가 되고, 넘치지 않아도 역수의 반올림이 한 번 더 들어 `vector_norm`의 나눗셈과 끝자리가 달라져요. 넘치지 않는 대부분의 줄은 한 번 읽고 끝나요.
 
 ```python
 >>> x = sd.sparse.csr_array(sd.asarray([[1e200, 1e200, 0.0]]))
@@ -165,6 +168,9 @@ $p > 0$의 합이 넘치거나 모든 항이 $2^{-969}$ 아래로 작으면 그 
 array([1.414213562373095e+200], dtype=float64)
 >>> sd.sparse.norm(x, ord=-1, axis=1)
 array([0.0], dtype=float64)
+>>> y = sd.asarray([3e-310, 1e-310])
+>>> sd.sparse.norm(sd.sparse.coo_array(y)), float(sd.linalg.vector_norm(y))
+(3.1622776601684e-310, 3.1622776601684e-310)
 ```
 
 ### 정확도

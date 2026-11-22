@@ -164,7 +164,7 @@ Gamma(a=2.0, scale=3.0)
 >>> sd.stats.Normal(0.0, 1.0)
 Traceback (most recent call last):
     ...
-TypeError: Normal(): takes no positional arguments but 2 were given
+TypeError: Normal(): takes 0 positional arguments but 2 were given
 ```
 
 기본값은 **위치는 0, 척도는 1**에만 있어요. `Normal()`은 표준정규분포 `Normal(mu=0, sigma=1)`이고, `Gamma(a=2.0)`의 척도는 1이에요. 분포의 모양을 정하는 매개변수(`df`, `a`, `b`, `p` 등)와 균등분포의 두 끝 `a`, `b`는 기본값이 없어서 꼭 줘야 해요.

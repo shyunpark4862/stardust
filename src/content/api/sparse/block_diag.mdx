@@ -27,6 +27,8 @@ raises:
     desc: arrays가 리스트나 tuple이 아닐 때, 블록이 희소 배열이나 sd.ndarray가 아닐 때(None 포함).
   - type: ValueError
     desc: arrays가 비었을 때, 블록이 3차원 이상일 때, format이 네 형식의 이름이 아닐 때.
+  - type: OverflowError
+    desc: 결과의 행이나 열의 수가 int64를 넘을 때.
 seeAlso: [block_array, kron, hstack, vstack, basics]
 ---
 import Callout from '../../../components/Callout.astro';

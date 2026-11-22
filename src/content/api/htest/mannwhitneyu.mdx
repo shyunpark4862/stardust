@@ -38,7 +38,7 @@ params:
     desc: True면 결과에 표본 축이 길이 1로 남아요.
 returns:
   type: MannwhitneyuResult
-  desc: "statistic(x의 U), pvalue, method(실제로 쓴 방법), 정규 근사를 쓴 때만 zstatistic이 있어요. (statistic, pvalue)로 풀려요. 검정 하나면 Python 수, 배치면 배치 모양의 배열이에요."
+  desc: "statistic(x의 U), pvalue, method(실제로 쓴 방법), 정규 근사를 쓴 때만 zstatistic이 있어요(배치에는 언제나 있고 정확한 분포의 줄은 NaN). (statistic, pvalue)로 풀려요. 검정 하나면 Python 수, 배치면 배치 모양의 배열이에요."
 raises:
   - type: TypeError
     desc: "표본이 배열·수의 시퀀스·frame이 아니거나 복소수일 때, use_continuity·keepdims가 True·False가 아닐 때, alternative·method·nan_policy가 문자열이 아닐 때, method에 MonteCarloMethod·BootstrapMethod를 줬을 때, 옵션을 위치로 주거나 없는 키워드를 줬을 때."
@@ -140,7 +140,7 @@ p값은 귀무가설 아래에서 관측한 U만큼, 또는 그보다 극단적�
 | `statistic` | x의 $U$. 0부터 $n_x n_y$까지이고 동점이 있으면 반정수일 수 있어요. |
 | `pvalue` | `alternative`에 맞는 p값 |
 | `method` | 실제로 쓴 방법. `'exact'`, `'asymptotic'`, `'permutation'` 가운데 하나예요. |
-| `zstatistic` | 정규 근사를 쓴 때만 있는 표준화한 통계량 |
+| `zstatistic` | 정규 근사를 쓴 때만 있는 표준화한 통계량. 배치에는 언제나 있고 정확한 분포를 쓴 줄은 NaN이에요 |
 
 `(statistic, pvalue)` 둘로 풀려요. `zstatistic`은 정규 근사를 쓰지 않은 결과에는 없어서 읽으면 `AttributeError`예요. 있는지는 `hasattr`로 알아요.
 
@@ -272,7 +272,7 @@ array([  0.9736992897368464,   0.9212120545847358, 0.013410537144510945], dtype=
 array([0.03296902366978935, 0.09890707100936805,  -2.472676775234201], dtype=float64)
 ```
 
-배치의 `summary()`는 줄마다 한 줄인 표예요([결과 객체 읽기](/api/htest/results/)). 배치에서 필드는 배치 모양의 배열이에요. 방법은 줄마다 그 줄의 크기와 동점을 보고 따로 골라요. 그래서 `method`는 줄마다의 이름을 배치 모양으로 담은 리스트예요. 한 줄이라도 정규 근사를 쓰면 `zstatistic`이 있고, 정확한 분포를 쓴 줄의 칸은 NaN이에요. 배치의 줄 하나는 혼자 검정했을 때와 같은 비트예요.
+배치의 `summary()`는 줄마다 한 줄인 표예요([결과 객체 읽기](/api/htest/results/)). 배치에서 필드는 배치 모양의 배열이에요. 방법은 줄마다 그 줄의 크기와 동점을 보고 따로 골라요. 그래서 `method`는 줄마다의 이름을 배치 모양으로 담은 리스트예요. 배치에는 `zstatistic`이 언제나 있고, 정확한 분포를 쓴 줄의 칸은 NaN이에요. 모든 줄이 정확한 분포여도 NaN의 배열이라 데이터에 따라 필드가 없어지지 않아요. 배치의 줄 하나는 혼자 검정했을 때와 같은 비트예요.
 
 ## NaN, inf, 퇴화한 입력
 

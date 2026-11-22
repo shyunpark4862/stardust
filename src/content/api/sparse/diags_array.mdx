@@ -35,6 +35,8 @@ raises:
     desc: 대각선이 배열이나 수가 아닐 때, offsets가 int 하나인데 diagonals가 리스트일 때, offsets가 int나 리스트가 아닐 때.
   - type: ValueError
     desc: 대각선이 2차원 이상일 때, 대각선과 offsets의 수가 다를 때, offsets가 겹칠 때, 대각선이 행렬 밖일 때, 대각선의 값이 모자랄 때.
+  - type: OverflowError
+    desc: offsets가 int64 밖일 때.
 seeAlso: [eye_array, kronsum, spbandwidth, tril, basics]
 ---
 import Callout from '../../../components/Callout.astro';

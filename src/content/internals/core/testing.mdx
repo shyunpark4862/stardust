@@ -20,7 +20,7 @@ stardust가 맞게 계산하는지는 네 가지 장치로 따져요. 장치마�
 | 커버리지 | 어떤 테스트도 지나가지 않는 코드와 분기가 어디인가요? | `tools/coverage.py` |
 | 정확도 측정 | 함수마다 오차가 얼마이고, 기준선보다 나빠진 것이 있나요? | `bench/accuracy/` ([정확도 측정](/internals/core/accuracy/)) |
 
-열두 영역과 공통 폴더의 단위 테스트는 178개 파일에 17,404개예요. 평소에 돌리는 `quick` 등급이 그중 16,681개를 고르고, 나머지 723개는 시간이 오래 걸려 `deep` 등급에서만 돌아요. 저장소 밖에서 받은 파일(희소 행렬, QUADPACK의 Fortran 원본)을 쓰는 테스트 40개는 `all` 등급에서만 돌아요. 골든 테스트는 열두 영역에 케이스 34,358개를 기록해 두었어요. 테스트를 여러 프로세스로 나눠 돌리는 `tools/test.py`가 있고, 기계를 혼자 써야 하는 테스트는 따로 모아 마지막에 혼자 돌려요.
+열두 영역과 공통 폴더의 단위 테스트는 181개 파일에 17,700개예요. 평소에 돌리는 `quick` 등급이 그중 16,977개를 고르고, 나머지 723개는 시간이 오래 걸려 `deep` 등급에서만 돌아요. 저장소 밖에서 받은 파일(희소 행렬, QUADPACK의 Fortran 원본)을 쓰는 테스트 40개는 `all` 등급에서만 돌아요. 골든 테스트는 열두 영역에 케이스 34,391개를 기록해 두었어요. 테스트를 여러 프로세스로 나눠 돌리는 `tools/test.py`가 있고, 기계를 혼자 써야 하는 테스트는 따로 모아 마지막에 혼자 돌려요.
 
 모든 명령은 라이브러리 저장소 맨 위에서 `.venv`의 Python으로 돌려요. 명령과 옵션의 전체 목록은 라이브러리 저장소의 `tests/README.md`(테스트, 골든, 커버리지)와 `bench/README.md`(속도, 정확도)에 있어요.
 
@@ -47,23 +47,23 @@ stardust가 맞게 계산하는지는 네 가지 장치로 따져요. 장치마�
 
 | 폴더 | 파일 | 테스트 |
 |---|---:|---:|
-| `tests/` (영역을 가로지르는 것) | 7 | 194 |
-| `tests/array/` | 21 | 2,532 |
-| `tests/linalg/` | 19 | 598 |
-| `tests/frame/` | 14 | 671 |
-| `tests/special/` | 15 | 771 |
-| `tests/stats/` | 11 | 2,097 |
-| `tests/regression/` | 18 | 1,061 |
-| `tests/random/` | 3 | 81 |
-| `tests/optimize/` | 13 | 2,918 |
-| `tests/htest/` | 14 | 1,162 |
-| `tests/sparse/` | 19 | 3,934 |
-| `tests/integrate/` | 11 | 1,157 |
-| `tests/differentiate/` | 8 | 77 |
+| `tests/` (영역을 가로지르는 것) | 7 | 196 |
+| `tests/array/` | 21 | 2,535 |
+| `tests/linalg/` | 19 | 600 |
+| `tests/frame/` | 14 | 672 |
+| `tests/special/` | 15 | 773 |
+| `tests/stats/` | 11 | 2,098 |
+| `tests/regression/` | 19 | 1,072 |
+| `tests/random/` | 3 | 88 |
+| `tests/optimize/` | 13 | 2,922 |
+| `tests/htest/` | 16 | 1,243 |
+| `tests/sparse/` | 19 | 3,976 |
+| `tests/integrate/` | 11 | 1,290 |
+| `tests/differentiate/` | 8 | 84 |
 | `tests/interop/` | 1 | 39 |
 | `tests/bench/` (측정 도구 자체) | 3 | 63 |
 | `tests/golden/` | 1 | 49 |
-| 합계 | 178 | 17,404 |
+| 합계 | 181 | 17,700 |
 
 ### 무엇에 대 보나요
 
@@ -181,12 +181,12 @@ GIL 테스트는 GIL을 직접 볼 수 없어서 간접적으로 재요. Python 
 | stats | 2,442 | 298 |
 | regression | 902 | 91 |
 | random | 141 | 52 |
-| optimize | 3,879 | 91 |
+| optimize | 3,882 | 92 |
 | htest | 1,342 | 146 |
 | sparse | 7,296 | 556 |
-| integrate | 572 | 105 |
-| differentiate | 265 | 25 |
-| 합계 | 34,358 | 5,175 |
+| integrate | 588 | 110 |
+| differentiate | 279 | 31 |
+| 합계 | 34,391 | 5,187 |
 
 난수 영역의 케이스는 뽑은 값과 함께 뽑은 뒤의 생성기 상태도 돌려줘요. 값이 같아도 호출이 스트림을 얼마나 썼는지가 달라지면 잡혀요.
 
@@ -322,9 +322,9 @@ C++ 분기는 소스 위치마다 한 번 세요. 템플릿은 dtype마다 인�
 
 | 등급 | 고르는 테스트 | hypothesis | `examples(n)` | 테스트 수 |
 |---|---|---|---|---:|
-| `quick` (기본) | `deep`·`external` 마커가 없는 것 | 매번 같은 예제(`derandomize=True`), 기본 100개 | n | 16,681 |
-| `deep` | `quick`과 `deep` 마커 | 무작위, 기본 1000개 | 10n | 17,404 |
-| `all` | `deep`과 `external` 마커 | 무작위, 기본 1000개 | 10n | 17,444 |
+| `quick` (기본) | `deep`·`external` 마커가 없는 것 | 매번 같은 예제(`derandomize=True`), 기본 100개 | n | 16,977 |
+| `deep` | `quick`과 `deep` 마커 | 무작위, 기본 1000개 | 10n | 17,700 |
+| `all` | `deep`과 `external` 마커 | 무작위, 기본 1000개 | 10n | 17,740 |
 
 - `deep` 마커는 넓은 격자를 쓰거나 비싼 참값을 그 자리에서 계산하는 테스트에 달아요. 지금 723개예요. 대부분은 최적화의 문제 모음을 모두 도는 테스트(589개: Newton 계열이 scipy와 같은 점에서 함수를 부르는지 보는 460개와 `minimize`의 129개)예요. quick에서는 문제 목록의 여덟 개에 하나와 MGH 모음 밖의 문제만, scipy와 단계를 견주는 스윕은 첫 문제만 돌아요. 나머지는 통계 분포의 넓은 검사(81개: 분포 31개마다 잘못된 매개변수로 모든 메서드를 불러 끝나는지 보는 하위 프로세스, 비중심 F 분포가 `nc=0`에서 F 분포와 같은지 보는 격자 48개, 극단 매개변수 2개), 회귀의 Arb 참값 대조(GLM 44개)와 Theil-Sen 기울기의 큰 문제용 알고리즘을 작은 문제에 강제로 돌리는 테스트(5개), 희소 행렬과 적분의 참값 도구가 점 몇 개를 다시 만들어 파일과 같은지 보는 테스트 하나씩, 그리고 골든 비교(`tests/golden/test_golden.py`)와 정확도 비교(`tests/bench/test_accuracy_baseline.py`) 하나씩이에요.
 - `external`은 R이나 Fortran 컴파일러를 실제로 부르거나 저장소 밖에서 받은 파일을 읽는 테스트의 마커예요. 지금은 SuiteSparse 모음의 실제 행렬 여덟을 읽는 `tests/sparse/test_suitesparse.py`의 39개와, QUADPACK의 Fortran 원본을 gfortran으로 빌드해 기록의 문제 12개를 다시 돌리고 고정 기록과 같은지 보는 `tests/integrate/test_reference_data.py`의 하나, 모두 40개가 달려 있어요. 행렬은 `tools/sparse_suitesparse.py`가 `build/sparse/suitesparse/`에, Fortran 원본은 `build/comparators/quadpack/`에 받아 두고(저장소에 넣지 않아요), 파일이나 컴파일러가 없으면 건너뛰어요. 행렬이 없을 때는 받는 명령도 알려 줘요.
@@ -392,7 +392,7 @@ GIL 테스트는 벽시계 시간으로 재므로 다른 프로세스가 CPU를 
 | `tests/htest/data/` | scipy·statsmodels의 결과와 R(base `stats`, `car`, `multcomp`, `nortest`, `goftest`, `coin`)의 결과 | `tools/gen_htest_scipy.py`, `tools/gen_htest_r.py` |
 | `tests/sparse/ref/` | 시험 행렬(`tests/sparse/matrices.py`)의 곱, 줄 합, 노름, 풀이, 최소제곱, 고유값과 특이값, `expm`과 `expm_multiply`의 참값(`.npz` 8개). 풀이는 Rump식 검증으로 오차 한계를 증명한 값이에요 | `tools/sparse_ref.py` |
 | `tests/sparse/data/` | scipy의 결과와 R(`Matrix`, `RSpectra`, `irlba`)의 결과 | `tools/gen_sparse_scipy.py`, `tools/gen_sparse_r.py` |
-| `tests/integrate/ref/` | 적분의 참값(JSON 7개). 시험 적분 116개(`integrals.json`), 가중 함수의 적분 99개(`weights.json`), 급수 9개, 겹친 적분 7개, 벡터 값 2개는 Arb의 공이에요. 문제가 허락하는 방법(닫힌 꼴, `acb.integral`, 끝점 특이점을 없애는 치환)을 모두 계산해 공이 겹칠 때만 저장해요. 표본 12벌마다 다섯 규칙의 식을 같은 double에서 정확한 유리수로 계산한 값(`samples.json`)과, n = 101–1000의 Gauss–Legendre 마디와 가중치를 Arb로 정해 반올림한 값(`gauss.json`)도 있어요 | `tools/integrate_ref.py` |
+| `tests/integrate/ref/` | 적분의 참값(JSON 10개). 시험 적분 116개(`integrals.json`), 가중 함수의 적분 99개(`weights.json`), 급수 9개, 겹친 적분 7개, 벡터 값 2개는 Arb의 공이고, `cubature`의 4·5차원 상자와 꺾이는 점이 있는 상자 6개(`boxes.json`)는 닫힌 꼴이에요. 문제가 허락하는 방법(닫힌 꼴, `acb.integral`, 끝점 특이점을 없애는 치환)을 모두 계산해 공이 겹칠 때만 저장해요. 표본 12벌마다 다섯 규칙의 식을 같은 double에서 정확한 유리수로 계산한 값(`samples.json`)과, n = 101–1000의 Gauss–Legendre 마디와 가중치를 Arb로 정해 반올림한 값(`gauss.json`), 표본 규칙의 축·복소수·`x`·`initial` 변형 21벌을 정확한 유리수로 계산한 값(`sample_variants.json`), `newton_cotes`의 표본 위치 38벌에 대한 가중치와 오차 계수를 정확한 유리수로 계산한 값(`newton_cotes.json`)도 있어요 | `tools/integrate_ref.py` |
 | `tests/integrate/data/` | scipy의 결과와 호출점, QUADPACK Fortran 원본의 결과와 그것을 scipy와 견준 비교 | `tools/gen_integrate_scipy.py`, `tools/gen_integrate_fortran.py` |
 | `tests/differentiate/ref/` | 초등 함수와 끝 근처의 104점에서 1·2계 도함수(`derivatives.json`), MGH 문제의 야코비안 47개와 헤시안 42개(`mgh.npz`)의 Arb 값 | `tools/differentiate_ref.py` |
 | `tests/differentiate/data/` | scipy의 `derivative`, `jacobian`, `hessian`의 결과와 호출점 | `tools/gen_differentiate_scipy.py` |
@@ -410,7 +410,7 @@ GIL 테스트는 벽시계 시간으로 재므로 다른 프로세스가 CPU를 
 
 JSON 참값도 `_provenance`에 같은 출처를 적어요. 참값은 Arb의 공(참값을 반드시 담는 구간)이 값의 $2^{-110}$보다 작아질 때까지 정밀도를 올려 계산해서, `hi`가 참값을 반올림한 double이고 `hi + lo`는 그보다 훨씬 정확해요. 그래서 테스트는 Arb 없이도 오차를 ULP의 몇 분의 1까지 잴 수 있어요. 생성기는 시드를 받아서 다시 돌리면 같은 파일이 나와요.
 
-참값 폴더의 크기는 영역마다 60 MiB를 넘지 않아야 하고, `tools/check.py`가 영역의 `tests/<영역>/ref`(와 `ref_*`) 폴더를 합한 크기를 재요. 지금 가장 큰 것은 stats의 35.5 MiB이고, array 20.0, special 11.3, sparse 6.1, linalg 4.3, regression 1.0, integrate 0.48, htest 0.25, optimize 0.07, differentiate 0.05 MiB예요.
+참값 폴더의 크기는 영역마다 60 MiB를 넘지 않아야 하고, `tools/check.py`가 영역의 `tests/<영역>/ref`(와 `ref_*`) 폴더를 합한 크기를 재요. 지금 가장 큰 것은 stats의 35.5 MiB이고, array 20.0, special 11.3, sparse 6.1, linalg 4.3, regression 1.0, integrate 0.53, htest 0.25, optimize 0.08, differentiate 0.06 MiB예요.
 
 R과 Fortran의 생성기는 테스트의 의존성이 아니에요. Rscript(필요한 R 패키지 포함)나 Fortran 컴파일러가 있는 곳에서 한 번 돌려 JSON을 만들어 두고, 테스트는 그 기록만 읽어요. `tools/`에는 이 밖에도 `gen_`으로 시작하는 도구가 여럿 있는데(`gen_debye.py`, `gen_zeta_even.py` 등), 이것들은 테스트 기록이 아니라 C++ 코드에 들어가는 계수 표를 만들어요.
 

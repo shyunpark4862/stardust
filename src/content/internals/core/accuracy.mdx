@@ -2,7 +2,7 @@
 title: 정확도 측정
 group: 검증과 측정
 order: 2
-summary: 배열, 선형대수, 특수함수, 통계(다변량·행렬 분포 포함), 회귀, 최적화, 가설검정, 적분, 미분의 결과를 미리 만든 참값의 모든 점에 대고 재는 체계예요. 오차를 계약의 단위로 바꿔 1 이하인지 보고, 기준선보다 나빠진 칸을 하나도 빠짐없이 찾아요.
+summary: 배열, 선형대수, 특수함수, 통계(다변량·행렬 분포 포함), 회귀, 최적화, 가설검정, 희소 행렬, 적분, 미분의 결과를 미리 만든 참값의 모든 점에 대고 재는 체계예요. 오차를 계약의 단위로 바꿔 1 이하인지 보고, 기준선보다 나빠진 칸을 하나도 빠짐없이 찾아요.
 seeAlso: [testing, benchmarks]
 ---
 import AccuracySummary from '../../../components/fig/AccuracySummary.astro';
@@ -36,11 +36,9 @@ stardust는 함수마다 정확도를 약속해요. 비트로 약속하는 것�
 | 기준선 | 영역마다 잰 값을 저장소에 넣어 두고, 새 측정과 비교해요 | `bench/accuracy/results/<영역>.json` |
 | 표 | 기준선에서 영역마다 표를 만들어요 | `bench/<영역>/accuracy.md`(stats의 다변량·행렬 분포 묶음은 `bench/stats/accuracy_multivariate.md`) |
 
-열두 영역 가운데 기준선이 있는 영역은 아홉이에요. 배열의 원소별 함수와 리덕션, 선형대수의 분해와 풀이, `sd.special`의 참값 파일 전부, `sd.stats`의 단변량 분포 31개와 다변량·행렬 분포 묶음, `sd.regression`의 선형·일반화 선형·정규화·강건 회귀와 적합한 모형의 검정과 변수 선택, `sd.optimize`의 근 찾기와 최소화, `sd.htest`의 검정 묶음 53개, `sd.integrate`의 함수 묶음 9개, `sd.differentiate`의 세 함수예요. 다변량·행렬 분포는 따로 영역이 아니라 stats 안의 묶음이고, 스윕 이름이 `mv/`로 시작해요. 데이터프레임과 난수, 비선형·분위 회귀는 참값 파일이 없어서 이 측정에 들어 있지 않고, 그 정확도는 각 영역의 테스트가 확인해요.
+열두 영역 가운데 기준선이 있는 영역은 열이에요. 배열의 원소별 함수와 리덕션, 선형대수의 분해와 풀이, `sd.special`의 참값 파일 전부, `sd.stats`의 단변량 분포 31개와 다변량·행렬 분포 묶음, `sd.regression`의 선형·일반화 선형·정규화·강건 회귀와 적합한 모형의 검정과 변수 선택, `sd.optimize`의 근 찾기와 최소화, `sd.htest`의 검정 묶음 57개, `sd.sparse`의 스윕 일곱(곱, 줄 합, 직접 풀이, 반복법, 고유값과 특이값, 노름, 행렬 함수), `sd.integrate`의 함수 묶음 10개, `sd.differentiate`의 세 함수와 기울기예요. 다변량·행렬 분포는 따로 영역이 아니라 stats 안의 묶음이고, 스윕 이름이 `mv/`로 시작해요. 데이터프레임과 난수, 비선형·분위 회귀는 참값 파일이 없어서 이 측정에 들어 있지 않고, 그 정확도는 각 영역의 테스트가 확인해요.
 
-`sd.sparse`는 참값 파일(`tests/sparse/ref/`)과 스윕 일곱(`spmv`, `sums`, `solve`, `iterative`, `eig`, `norms`, `matfuncs`, `bench/accuracy/sparse.py`)이 있고 `run sparse`로 잴 수 있지만, 저장소에 기준선(`bench/accuracy/results/sparse.json`)과 표가 없어요. 그래서 아래 요약 표에 줄이 없고, 계약은 테스트(`tests/sparse/refdata.py`의 판정을 쓰는 `tests/sparse/test_reference_data.py`)가 확인해요.
-
-<AccuracySummary caption="영역별 요약. 스윕은 참값 파일의 메서드 하나(회귀는 문제 하나, 최적화는 방법 하나, 적분은 함수 묶음 하나, 미분은 함수 하나)이고, 줄은 (함수, 영역) 한 칸이에요. 계약 안은 수치 계약이 있는 줄 가운데 계약 대비가 1 이하인 줄의 수예요. 들여 쓴 줄은 sd.stats 안의 다변량·행렬 분포 묶음이에요." />
+<AccuracySummary caption="영역별 요약. 스윕은 참값 파일의 메서드 하나(회귀는 문제 하나, 최적화는 방법 하나, 희소 행렬은 참값 묶음 하나, 적분은 함수 묶음 하나, 미분은 함수 하나)이고, 줄은 (함수, 영역) 한 칸이에요. 계약 안은 수치 계약이 있는 줄 가운데 계약 대비가 1 이하인 줄의 수예요. 들여 쓴 줄은 sd.stats 안의 다변량·행렬 분포 묶음이에요." />
 
 ## 테스트와 따로 재는 이유
 
@@ -180,7 +178,13 @@ $$
 
 그래서 ULP 오차는 "오차가 그 자리의 간격 몇 개인가"로 읽어도 돼요. 1 ULP의 상대 크기는 $1.1$–$2.2 \times 10^{-16}$이라 계약의 $10^{-14}$은 45–90 ULP예요. 칸 수로 세는 것이 다른 점은 두 값이 구간의 경계나 0을 건널 때 드러나요. 경계 아래쪽은 간격이 절반이라, 칸 수는 위쪽 간격으로 나눈 값보다 조금 커요. 0을 건너면 그 사이의 아주 작은 double과 서브노멀을 모두 세므로 수가 $10^{18}$ 단위까지 커져요. 그래서 0 근처를 지나는 값은 ULP가 아니라 상대오차를 배율로 나눈 값이나 mixed 오차로 판정해요(아래 절).
 
-복소수는 실수부와 허수부의 칸 수 중 큰 쪽이에요. 한쪽만 NaN이거나, 같지 않은데 한쪽이 무한대인 점은 무한대 오차로 쳐요. 둘 다 NaN이거나 같은 무한대면 0이에요. 그래서 최댓값이 inf인 칸은 어딘가에서 값을 아예 놓쳤다는 뜻이에요. 같은 `ulp_distance`를 배열 테스트의 `assert_ulp`와 골든 테스트의 출력도 써요.
+복소수는 두 성분을 한 눈금으로 재요. 참값의 두 성분 가운데 큰 쪽의 간격을 단위로, 두 성분의 오차 가운데 큰 쪽을 나눠요.
+
+$$
+\text{ULP 오차} = \frac{\max(\lvert \Delta\,\text{re}\rvert, \lvert \Delta\,\text{im}\rvert)}{\operatorname{ulp}(\max(\lvert \text{re}\,hi\rvert, \lvert \text{im}\,hi\rvert))}
+$$
+
+성분마다 따로 칸을 세면, 0 근처에서 부호가 바뀌는 작은 성분 하나가 0 주변의 아주 작은 double을 모두 세어 수가 $10^{18}$ 단위로 터져요. 값 전체로 보면 반올림 몇 번 크기의 오차인데도 그래요. 한 눈금으로 재면 그런 성분은 큰 성분의 간격에 견주어 작게 나와요. 성분이 유한하지 않은 점만 두 성분의 칸 수 가운데 큰 쪽을 써요(`ulps`). 한쪽만 NaN이거나, 같지 않은데 한쪽이 무한대인 점은 무한대 오차로 쳐요. 둘 다 NaN이거나 같은 무한대면 0이에요. 그래서 최댓값이 inf인 칸은 어딘가에서 값을 아예 놓쳤다는 뜻이에요. 실수의 칸 수를 세는 같은 `ulp_distance`를 배열 테스트의 `assert_ulp`와 골든 테스트의 출력도 써요.
 
 ### 99.9% 분위수
 
@@ -407,9 +411,9 @@ stats의 보장 영역은 입력 집합의 영역을 다시 매개변수 범위�
 
 ### 회귀
 
-`sd.regression`은 문제 90개(선형 17, GLM 17, 정규화 21, 강건 19, 모형 검정 9, 변수 선택 7)의 필드를 재요. 수치 계약이 있는 줄은 조건수 $10^{11}$ 이하인 선형 모형의 계수 15줄이고, 가장 큰 계약 대비는 0.013(`linear/ols_kappa11`)이에요. 계수(`params`)의 노름 상대오차는 모든 문제에서 $1.5 \times 10^{-15}$ 이하예요. 다른 필드에는 상대오차가 큰 칸도 있어요. 표준오차는 QR의 $R$에서 계산해 상대오차가 $\kappa u$ 꼴이라, 조건수가 큰 문제(NIST Filip, $\kappa \approx 1.8 \times 10^{15}$)에서 $10^{-8}$–$10^{-7}$이에요. 이런 칸도 기준선에 남아서, 더 나빠지면 `compare`가 짚어요. NIST Wampler2는 잔차가 반올림 수준인 거의 완전한 적합이라, stardust가 계산한 잔차 제곱합과 표준오차가 0이 돼요. 그래서 표준오차로 나누는 필드(t값, p값, 스튜던트화 잔차, Cook 거리, 로그우도와 정보 기준 등)는 정할 수 없는 값(NaN)이고, 참값은 유한해서 이 칸들은 NaN·inf 점으로 세어요.
+`sd.regression`은 문제 90개(선형 17, GLM 17, 정규화 21, 강건 19, 모형 검정 9, 변수 선택 7)의 필드를 재요. 수치 계약이 있는 줄은 조건수 $10^{11}$ 이하인 선형 모형의 계수 15줄과 변수 선택의 Mallows $C_p$ 4줄이에요. $C_p$는 크기가 $n$인 항들의 차라서 오차를 $n$에 대어 재고, 한계는 $10^{-13}$이에요. 가장 큰 계약 대비는 0.013(`linear/ols_kappa11`)이에요. 계수(`params`)의 노름 상대오차는 모든 문제에서 $1.5 \times 10^{-15}$ 이하예요. 다른 필드에는 상대오차가 큰 칸도 있어요. 표준오차는 QR의 $R$에서 계산해 상대오차가 $\kappa u$ 꼴이라, 조건수가 큰 문제(NIST Filip, $\kappa \approx 1.8 \times 10^{15}$)에서 $10^{-8}$–$10^{-7}$이에요. 이런 칸도 기준선에 남아서, 더 나빠지면 `compare`가 짚어요. NIST Wampler2는 잔차가 반올림 수준인 거의 완전한 적합이라, stardust가 계산한 잔차 제곱합과 표준오차가 0이 돼요. 그래서 표준오차로 나누는 필드(t값, p값, 스튜던트화 잔차, Cook 거리, 로그우도와 정보 기준 등)는 정할 수 없는 값(NaN)이고, 참값은 유한해서 이 칸들은 NaN·inf 점으로 세어요.
 
-<AccuracySummary area="regression" names={['linear/nist_Longley', 'linear/nist_Filip', 'glm/poisson_log', 'robust/stackloss_huber']} regions={['params', 'bse', 'ssr']} caption="회귀 일부(계수, 표준오차, SSR). 필드 하나가 한 줄이고, 점은 그 필드의 원소 수예요. 계약 대비는 조건수 10¹¹ 이하인 선형 모형의 계수에만 있어요." />
+<AccuracySummary area="regression" names={['linear/nist_Longley', 'linear/nist_Filip', 'glm/poisson_log', 'robust/stackloss_huber']} regions={['params', 'bse', 'ssr']} caption="회귀 일부(계수, 표준오차, SSR). 필드 하나가 한 줄이고, 점은 그 필드의 원소 수예요. 계약 대비는 조건수 10¹¹ 이하인 선형 모형의 계수와 변수 선택의 Cp에만 있어요." />
 
 모형별 참값과 참조 라이브러리 비교는 [회귀의 정확도와 성능](/internals/regression/accuracy-performance/)에 있어요.
 
@@ -435,15 +439,25 @@ stats의 보장 영역은 입력 집합의 영역을 다시 매개변수 범위�
 
 ### 가설검정
 
-`sd.htest`는 공개 검정의 참값 묶음마다 스윕 하나, 모두 53개를 재요. 영역은 결과의 필드(통계량, p값, 자유도, 신뢰구간 등)이고, 점은 문제 하나예요(다중 비교는 비교 하나, 보정은 p값 하나). 142줄이 모두 계약 안이에요. Cramér–von Mises의 두 p값(한 표본의 근사식, 두 표본의 극한 분포)은 그 식이 정의하는 값에 절대 $10^{-15}$ 안이라서 계약 안이고, 계약 대비가 1로 적혀요. 그 밖에서 가장 큰 것은 `shapiro`의 p값(0.34), `odds_ratio`의 한쪽 구간(0.25), `jarque_bera`의 통계량(0.23)이에요. 정수로 센 정확한 분포를 쓰는 검정(`mannwhitneyu`, `wilcoxon`, `kendalltau`, `fisher_exact`, `binomtest`, `barnard_exact`, `boschloo_exact`)의 p값은 계약 대비가 0.07 아래예요.
+`sd.htest`는 공개 검정의 참값 묶음마다 스윕 하나, 모두 57개를 재요. 재표본과 몬테카를로를 쓰는 `permutation_test`, `goodness_of_fit`, `multiscale_graphcorr`도 들어 있어요. 영역은 결과의 필드(통계량, p값, 자유도, 신뢰구간 등)이고, 점은 문제 하나예요(다중 비교는 비교 하나, 보정은 p값 하나). 150줄이 모두 계약 안이에요. Cramér–von Mises의 두 p값(한 표본의 근사식, 두 표본의 극한 분포)은 그 식이 정의하는 값에 절대 $10^{-15}$ 안이라서 계약 안이고, 계약 대비가 1로 적혀요. 그 밖에서 가장 큰 것은 `multiscale_graphcorr`의 통계량(0.75), `goodness_of_fit`의 통계량(0.53), `shapiro`의 p값(0.34), `odds_ratio`의 한쪽 구간(0.25), `jarque_bera`의 통계량(0.23)이에요. 정수로 센 정확한 분포를 쓰는 검정(`mannwhitneyu`, `wilcoxon`, `kendalltau`, `fisher_exact`, `binomtest`, `barnard_exact`, `boschloo_exact`)의 p값은 계약 대비가 0.07 아래예요.
 
 <AccuracySummary area="htest" names={['ttest', 'shapiro', 'mannwhitneyu', 'kendalltau', 'fisher_exact', 'cramervonmises', 'dunnett']} caption="가설검정 일부. 묶음 하나가 스윕 하나이고, 필드 하나가 한 줄이에요. p값의 계약에는 통계량에 대한 p값의 조건수가 들어가서, 꼬리의 p값은 최대 ULP가 커도 계약 대비가 작아요." />
 
 검정별 참값과 비교 대상, 원인 분석은 [가설검정의 정확도와 성능](/internals/htest/accuracy-performance/)에 있어요.
 
+### 희소 행렬
+
+`sd.sparse`는 참값 묶음마다 스윕 하나, 모두 7개를 재요. 곱(`spmv`), 줄 합(`sums`), 직접 풀이(`solve`: `spsolve`, `splu`, `factorized`), 반복법(`iterative`: `cg`, `minres`, `gmres`, `bicgstab`, `lsqr`, `lsmr`), 고유값과 특이값(`eig`: `eigsh`, `eigs`, `svds`), 노름(`norms`), 행렬 함수(`matfuncs`: `expm`, `expm_multiply`)예요. 점은 시험 행렬(`tests/sparse/matrices.py`)에서 나온 결과의 원소 하나이고, 영역은 함수나 연산(`A @ x`와 `w @ A`, 노름의 차수 등)이에요. 26줄이 모두 계약 안이에요.
+
+계약은 함수마다 그 계산이 약속할 수 있는 크기예요. 곱과 합은 같은 순서로 더할 때의 반올림 한계 $\gamma_m \sum_j \lvert a_{ij} x_j\rvert$($m$은 그 줄의 항 수)라서 상대오차가 커 보이는 칸(서로 지우는 합)도 계약 안이에요. 가장 큰 계약 대비는 `spmv`의 `w @ A`(0.83), `A @ x`(0.67), 열 합(0.59)이에요. 직접 풀이는 0.097이에요. 반복법은 멈춤 판정이 약속하는 크기(정사각 풀이는 $\lVert b - Ax\rVert_2 \le \text{rtol}\,\lVert b\rVert_2$에서 나오는 원소 오차)에 대고 재서 가장 큰 것이 `bicgstab`의 0.39예요. `minres`는 판정이 잔차의 어림에 대한 것이라, 참 잔차가 어림에서 벌어질 수 있는 크기($\varepsilon\,\kappa(A)\,\lVert A\rVert\,\lVert x\rVert$)를 한계에 더해요. 고유값과 특이값은 $1000\,\varepsilon\lVert A\rVert_2$(`eigs`는 고유값의 조건수를 곱해요)에 대고 `eigsh`가 0.50, `expm`은 $10\,\varepsilon\max(1, \lVert sA\rVert_1)$에 결과의 크기를 곱한 것에 대고 0.24예요. 비교 열에서는 scipy의 `svds`와 R RSpectra의 `eigsh`에 계약을 넘는 줄이 있어요.
+
+<AccuracySummary area="sparse" names={['spmv', 'sums', 'solve', 'iterative', 'eig', 'matfuncs']} caption="희소 행렬 일부. 곱과 합의 최대 ULP·상대오차는 서로 지우는 합에서 커지지만, 계약은 같은 순서의 반올림 한계라 계약 대비는 1 아래예요. 반복법은 수렴한 결과만 재요." />
+
+함수별 표와 비교 대상은 [희소 행렬의 정확도와 성능](/internals/sparse/accuracy-performance/)에 있어요.
+
 ### 적분
 
-`sd.integrate`는 함수 묶음마다 스윕 하나, 모두 9개를 재요. 영역은 문제 모음(QUADPACK 문헌의 무리 `book`, 루틴 예제 `quadpack`, scipy 시험의 적분 `scipy`, 어려운 적분 `hard`)이나 가중 함수, 규칙이고, 점은 적분 하나예요. 적응 방법의 오차 추정은 엄밀한 상한이 아니라 경험적인 어림이에요. 그래서 계약은 "수렴했다고 알리면 참 오차가 추정 안"이라는 멈춤 판정의 뜻을 시험 모음에서 지키는지 재는 거예요. 수치 계약이 있는 30줄이 모두 계약 안이고, 가장 큰 계약 대비는 `cubature`의 gk15 규칙(0.96)과 `quad_vec`(0.95)이에요. 표본 규칙은 식을 정확히 계산한 값에 대고 재서 0.05 아래예요. 최대 상대오차는 수렴하지 못했다고 알린 실행까지 모두 센 값이라 1을 넘거나 inf인 줄도 있어요. `fixed_quad`는 정해진 점 수의 규칙이 내는 이산화 오차라서 기록만 해요. 마디와 가중치가 올바르게 반올림되었는지는 테스트가 봐요.
+`sd.integrate`는 함수 묶음마다 스윕 하나, 모두 10개를 재요. 영역은 문제 모음(QUADPACK 문헌의 무리 `book`, 루틴 예제 `quadpack`, scipy 시험의 적분 `scipy`, 어려운 적분 `hard`)이나 가중 함수, 규칙이고, 점은 적분 하나예요. 적응 방법의 오차 추정은 엄밀한 상한이 아니라 경험적인 어림이에요. 그래서 계약은 "수렴했다고 알리면 참 오차가 추정 안"이라는 멈춤 판정의 뜻을 시험 모음에서 지키는지 재는 거예요. 수치 계약이 있는 36줄이 모두 계약 안이고, 가장 큰 계약 대비는 `cubature`의 gk15 규칙(0.96)과 `quad_vec`(0.95)이에요. 표본 규칙은 식을 정확히 계산한 값에 대고 재서 0.05 아래이고, 축·복소수·`x`·`initial`을 바꾼 변형도 0.18 아래예요. 최대 상대오차는 수렴하지 못했다고 알린 실행까지 모두 센 값이라 1을 넘거나 inf인 줄도 있어요. `fixed_quad`는 정해진 점 수의 규칙이 내는 이산화 오차라서, `newton_cotes`의 가중치와 오차 계수는 정확한 유리수 참값과의 차이를 기록만 해요. 마디와 가중치가 올바르게 반올림되었는지는 테스트가 봐요.
 
 scipy 1.18.1은 대부분의 줄에서 stardust와 같은 값을 내요. 같은 점에서 같은 순서로 함수를 부르기 때문이에요. QAWF(반무한 구간의 진동 가중 함수)의 scipy 열만 계약을 넘는데, 진동수 $\omega = 0$이고 아래 끝이 1인 경우 하나 때문이에요. scipy는 아래 끝과 상관없이 $[0, \infty)$를 적분하고, stardust는 $[a, \infty)$를 적분해요.
 
@@ -453,9 +467,9 @@ scipy 1.18.1은 대부분의 줄에서 stardust와 같은 값을 내요. 같은 
 
 ### 미분
 
-`sd.differentiate`는 함수마다 스윕 하나, 모두 3개를 재요. `derivative`는 초등 함수 11개의 점과 정의역 끝 근처의 경우 109개, `jacobian`은 MGH 문제 47개(항목 7,389개), `hessian`은 42개(항목 1,612개)예요. 세 줄 모두 계약 안이고, 가장 큰 계약 대비는 `hessian`의 0.11이에요. 수렴하지 못한 실행의 수와, 수렴했지만 참 오차가 오차 추정보다 큰 결과의 수도 함께 적어요. 오차 추정은 두 반복의 차이라서 엄밀한 상한이 아니에요.
+`sd.differentiate`는 스윕 4개를 재요. `derivative`는 초등 함수 11개의 점과 정의역 끝 근처의 경우 111개, `jacobian`은 MGH 문제 47개(항목 7,389개), `hessian`은 42개(항목 1,612개)이고, `gradient`는 MGH 문제 47개에서 제곱합 $\sum_i F_i^2$의 기울기(스칼라 함수를 준 `jacobian`, 항목 342개)예요. 네 줄 모두 계약 안이고, 가장 큰 계약 대비는 `hessian`의 0.11이에요. 수렴하지 못한 실행의 수와, 수렴했지만 참 오차가 오차 추정보다 큰 결과의 수도 함께 적어요. 오차 추정은 두 반복의 차이라서 엄밀한 상한이 아니에요.
 
-<AccuracySummary area="differentiate" caption="미분 전체. 야코비안과 헤시안은 항목 하나하나가 아니라 가장 큰 참 항목에 대고 노름으로 재요." />
+<AccuracySummary area="differentiate" caption="미분 전체. 야코비안, 헤시안, 기울기는 항목 하나하나가 아니라 가장 큰 참 항목에 대고 노름으로 재요." />
 
 구현은 [미분의 구조](/internals/differentiate/overview/)에서 이어져요.
 

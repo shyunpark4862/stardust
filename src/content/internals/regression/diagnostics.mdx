@@ -173,7 +173,7 @@ $t_i$는 행을 뺀 적합 없이 내적 스튜던트화 잔차에서 바로 구
         return self._cached("dffits", make)
 ```
 
-R `dffits`, statsmodels `OLSInfluence.dffits[0]`과 같은 식이에요. 가중치가 0인 행은 지렛대와 잔차가 0이라 값도 0이에요.
+R `dffits`, statsmodels `OLSInfluence.dffits[0]`과 같은 식이에요. 가중치가 0인 행은 지렛대와 백색화한 잔차가 0이라 값도 0이에요. 백색화한 잔차 $\sqrt{w_t}\,e_t$에 $+0.0$을 더해 두므로, 잔차가 음수인 행도 $-0.0$이 아니라 $+0.0$이에요.
 
 ## DFBETAS
 
@@ -408,12 +408,16 @@ $\text{df}_{\text{aux}}$는 보조 회귀의 `df_model`이고, 보조 회귀 자
     A = _sd.concat(cols, axis=-1)
     raw = _k.fit("white_test", e * e, A, wa, None, True, tol, 0, _REFINE_STEPS)
     a = OLSResult(raw, param_names=None, intercept=True, cov_type="nonrobust", batch=_batch_shape(raw))
+    # no degree of freedom left in the auxiliary fit (more auxiliary columns than rows): it
+    # passes through the data, R^2 = 1 says nothing, and lm is 0/0 like its F
+    lm = _nan_where_no_df(a.nobs * a.rsquared, a.df_resid)
 ```
 
 - 보조 회귀의 $Z$는 백색화한 설계예요. OLS는 $X$ 그대로이고 상수는 보조 회귀의 절편이에요. WLS는 $\sqrt w X$와 절편이 있으면 $\sqrt w$ 열 자체, GLS는 $L^{-1}X$와 $L^{-1}\mathbf 1$이에요. 백색화한 절편 열은 상수가 아니라서 그 열도 제곱과 곱에 들어가요.
 - `cross_terms=True`는 $z_iz_j$($i \le j$)를 모두, `False`는 수준과 제곱만 넣어요. 열이 $p$개면 보조 열은 $p + p(p+1)/2$개예요.
 - 가중치가 0인 행은 보조 회귀에서도 빠지도록 0/1 가중치를 줘요.
 - 보조 회귀는 같은 커널로 반복 개선까지 해요. 그래서 R²가 0에 가까운 보통의 경우(이분산이 없을 때)에도 ESS와 R²가 정확해요.
+- 보조 열이 쓰인 행만큼 있어 보조 회귀의 `df_resid`가 0이면, 보조 회귀가 자료를 정확히 지나 $R^2 = 1$이에요. 그 값은 이분산에 대해 아무것도 말하지 않으니 LM도 보조 회귀의 F처럼 0/0의 NaN으로 둬요(`_nan_where_no_df`). [Breusch–Pagan](/internals/regression/inference/)도 같아요.
 
 ### 겹치는 보조 열
 

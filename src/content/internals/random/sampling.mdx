@@ -454,26 +454,56 @@ array([6, 4, 9, 0], dtype=int64)
 
 결과는 고른 차례대로예요. 따로 증명할 것이 없고, 섞기의 성질이 그대로 표본의 성질이에요.
 
-**큰 모집단의 작은 표본은 해시 맵으로 해요.** $n = 10^9$에서 1000개를 뽑으려고 8GB짜리 배열을 채울 수는 없어요. 그런데 $k$걸음 동안 건드리는 칸은 많아야 $2k$개예요. 나머지 칸은 처음 값 그대로, 곧 `a[i] = i`예요. 그래서 $k \le n/16$이면 배열 대신 "자기 인덱스가 아닌 칸"만 `std::unordered_map`에 둬요.
+**큰 모집단의 작은 표본은 해시 표로 해요.** $n = 10^9$에서 1000개를 뽑으려고 8GB짜리 배열을 채울 수는 없어요. 그런데 $k$걸음 동안 건드리는 칸은 많아야 $2k$개예요. 나머지 칸은 처음 값 그대로, 곧 `a[i] = i`예요. 그래서 $k \le n/16$이면 배열 대신 "자기 인덱스가 아닌 칸"만 해시 표에 둬요.
+
+표는 칸이 한 줄로 늘어선 평평한 열린 주소 표예요. 칸 하나는 (키, 값) 16바이트이고, 칸 수는 $2k$ 이상인 가장 작은 2의 거듭제곱(적어도 16)이에요. 빈 칸은 키 −1로 표시해요. 키에 $2^{64}/\varphi$에 가까운 홀수 상수를 곱하고 위쪽 비트를 칸 번호로 쓰고(피보나치 해시), 그 칸이 차 있으면 다음 칸으로 넘어가요(선형 탐사). 걸음마다 키가 많아야 하나 늘어서 키는 $k$개 이하이고, 칸의 절반 넘게 차는 일이 없어요.
+
+뽑기($j$)는 표와 상관없이 키와 위치만으로 정해지므로 미리 할 수 있어요. 그래서 16걸음 앞의 $j$를 먼저 뽑아 두고, 그 걸음이 읽을 두 칸(칸 $i$와 칸 $j$의 처음 자리)을 미리 읽어 오게 해요(prefetch). 큰 표에서는 칸 하나를 읽는 일이 메모리를 기다리는 일이라, 여러 걸음의 기다림이 겹쳐요. 같은 $j$로 같은 교환을 하므로 결과는 미리 읽지 않을 때와 같아요.
 
 ```cpp
-// csrc/random/random.cpp, fisher_yates의 해시 맵 경로 (줄인 발췌)
-std::unordered_map<int64_t, int64_t> moved;     // 칸 번호 → 값 (값 ≠ 칸 번호인 것만)
-moved.reserve(2 * k);
-auto at = [&](int64_t i) { auto it = moved.find(i); return it == moved.end() ? i : it->second; };
-for (int64_t i = 0; i < k; ++i) {
-    const int64_t j = draw(i);                  // 배열 경로와 같은 j
-    const int64_t vi = at(i), vj = at(j);
-    moved[j] = vi;                              // a[j] ← a[i]
-    o[i] = vj;                                  // a[i] ← a[j], 결과에 바로 써요
+// csrc/random/random.cpp, fisher_yates의 해시 표 경로 (발췌)
+const std::size_t cap =
+    std::bit_ceil(static_cast<std::size_t>(std::max<std::int64_t>(kSlotsPerEntry * k, 16)));
+const int shift = 64 - std::countr_zero(cap);
+std::vector<Slot> table(cap, Slot{-1, 0});
+auto home = [&](std::int64_t key) {
+    return static_cast<std::size_t>((static_cast<std::uint64_t>(key) * 0x9E3779B97F4A7C15ull) >> shift);
+};
+auto slot = [&](std::int64_t key) -> Slot& {
+    std::size_t h = home(key);
+    while (table[h].key != -1 && table[h].key != key) h = (h + 1) & (cap - 1);
+    return table[h];
+};
+// The draws do not depend on the table: step i + kAhead's is made kAhead steps early
+// and its two home slots are prefetched, so the random reads overlap.
+std::int64_t ahead[kAhead];
+const std::int64_t first = std::min<std::int64_t>(k, kAhead);
+for (std::int64_t t = 0; t < first; ++t) {
+    ahead[t] = draw(t);
+    __builtin_prefetch(&table[home(ahead[t])], 1);
+    __builtin_prefetch(&table[home(t)]);
+}
+for (std::int64_t i = 0; i < k; ++i) {
+    const std::int64_t j = ahead[i % kAhead];
+    if (const std::int64_t t = i + kAhead; t < k) {
+        ahead[i % kAhead] = draw(t);
+        __builtin_prefetch(&table[home(ahead[i % kAhead])], 1);
+        __builtin_prefetch(&table[home(t)]);
+    }
+    const Slot& si = slot(i);
+    const std::int64_t vi = si.key == -1 ? i : si.value;
+    Slot& sj = slot(j);
+    const std::int64_t vj = sj.key == -1 ? j : sj.value;
+    sj = Slot{j, vi};
+    o[i] = vj;
 }
 ```
 
-맵에는 교환의 절반만 적어요. `a[i]`의 새 값은 결과 `o[i]`에 쓰고 맵에는 적지 않아요. 걸음 $i$ 다음의 걸음은 $i$보다 큰 칸만 읽으므로($i' > i$, $j' \ge i'$) 칸 $i$는 다시 읽히지 않기 때문이에요. 맵에는 걸음마다 많아야 한 항목이 늘어서 크기가 $k$ 이하예요.
+표에는 교환의 절반만 적어요. `a[j]`의 새 값(`vi`)은 표의 칸 $j$에 적고, `a[i]`의 새 값(`vj`)은 결과 `o[i]`에 쓰고 표에는 적지 않아요. 걸음 $i$ 다음의 걸음은 $i$보다 큰 칸만 읽으므로($i' > i$, $j' \ge i'$) 칸 $i$는 다시 읽히지 않기 때문이에요. 표에는 걸음마다 많아야 한 항목이 늘어서 키가 $k$개 이하예요.
 
 $n = 8$, $k = 3$의 예로 두 경로를 나란히 보면 이래요.
 
-| 걸음 | $j$ | 배열 경로의 `a` | 맵 경로의 `moved` | 결과 |
+| 걸음 | $j$ | 배열 경로의 `a` | 표 경로의 표 | 결과 |
 |:---:|:---:|---|---|---|
 | 처음 | | `[0, 1, 2, 3, 4, 5, 6, 7]` | 비어 있음 | |
 | 0 | 5 | `[5, 1, 2, 3, 4, 0, 6, 7]` | 5→0 | `[5]` |
@@ -482,16 +512,17 @@ $n = 8$, $k = 3$의 예로 두 경로를 나란히 보면 이래요.
 
 두 경로는 같은 $j$로 같은 교환을 하므로 결과가 같아요. 어느 경로를 타든 `choice(n, shape=k, replace=False)`는 `permutation(n)`의 앞 $k$개와 같아요.
 
-- 해시 맵 경로는 시간과 메모리가 $O(k)$라서 모집단 크기와 무관해요. 원소 $10^6$개에서 1000개를 뽑는 데 0.03ms예요([성능과 검증](/internals/random/performance/)).
-- 배열 경로는 $O(n)$의 초기화와 $8n$바이트가 들지만 걸음마다 연속한 배열을 읽고 써요. 해시 맵의 찾기·넣기는 배열 접근보다 훨씬 비싸서, 표본이 모집단의 상당 부분이면 배열이 나아요. 둘을 가르는 기준이 $k \le n/16$이에요.
-- **메모리 검사는 작업 메모리까지 세요.** 결과만 보면 안 돼요. 섞기의 작업 메모리가 결과보다 클 수 있어요. 결과 $8k$바이트에 해시 맵 경로는 원소당 64바이트(노드와 버킷의 상한, $10^6$개에서 잰 값은 약 45바이트), 배열 경로는 $8n$바이트를 더해 물리 메모리와 비교해요(`_shuffle_bytes`). 배열 모집단이면 고른 원소($k$ × 원소 크기)도 더해요. 넘으면 위치를 예약하기 전에 `MemoryError`예요.
+- 해시 표 경로는 시간과 메모리가 $O(k)$라서 모집단 크기와 무관해요([성능과 검증](/internals/random/performance/)).
+- 배열 경로는 $O(n)$의 초기화와 $8n$바이트가 들지만 걸음마다 연속한 배열을 읽고 써요. 해시 표의 찾기·넣기는 배열 접근보다 비싸서, 표본이 모집단의 상당 부분이면 배열이 나아요. 둘을 가르는 기준이 $k \le n/16$이에요.
+- **메모리 검사는 작업 메모리까지 세요.** 결과만 보면 안 돼요. 섞기의 작업 메모리가 결과보다 클 수 있어요. 결과 $8k$바이트에 해시 표 경로는 원소당 64바이트(상한이에요. 표는 16바이트 칸 $2k$ 이상의 2의 거듭제곱 개라 실제로는 원소당 32–64바이트예요), 배열 경로는 $8n$바이트를 더해 물리 메모리와 비교해요(`_shuffle_bytes`). 배열 모집단이면 고른 원소($k$ × 원소 크기)도 더해요. 넘으면 위치를 예약하기 전에 `MemoryError`예요.
 
 ```python
 # src/stardust/random/__init__.py
 def _shuffle_bytes(n, k):
     """The memory _k.fisher_yates(…, n, k) takes, by its path (csrc/random/random.cpp): the
-    result (8 k) and, for k < n, the shuffled entries -- a hash map of at most k entries
-    (64 bytes each, nodes and buckets) for k <= n / 16, else an array of n."""
+    result (8 k) and, for k < n, the shuffled entries -- a flat hash table of bit_ceil(2 k)
+    16-byte slots (below 64 bytes per entry; 64 k is the bound) for k <= n / 16, else an
+    array of n."""
     if k == n:
         return 8 * k
     if k <= n // 16:
@@ -576,7 +607,7 @@ $n$은 모집단 크기(또는 원소 수), $k$는 뽑는 개수예요.
 | `permutation(x)` | $O(n)$ + 모으기 | 인덱스 + 결과 | $n$ | 모으기만 |
 | `choice` 복원, 균등 | $O(k)$ | 결과 | $k$ | 예 |
 | `choice` 복원, 가중치 | $O(n + k \log n)$ | 누적합 + $u$ | $k$ | `random`과 탐색 |
-| `choice` 비복원, 균등, $k \le n/16$ | $O(k)$ 기댓값 | 해시 맵 $O(k)$ | $k$ | 아니요 |
+| `choice` 비복원, 균등, $k \le n/16$ | $O(k)$ 기댓값 | 해시 표 $O(k)$ | $k$ | 아니요 |
 | `choice` 비복원, 균등, $k > n/16$ | $O(n)$ | $8n$ 바이트 | $k$ | 아니요 |
 | `choice` 비복원, 가중치 | $O(n)$ 키 + 정렬 | 키 + 정렬 버퍼 | $n$ | 키와 정렬 |
 

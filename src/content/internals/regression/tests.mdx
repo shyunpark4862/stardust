@@ -524,7 +524,7 @@ statsmodels의 `anova_lm(m1, m2, m3)`은 척도를 마지막 모형에서 가져
 
 ## anova: 항의 표
 
-`anova(r)`는 모형 하나의 항마다 한 줄인 표예요. 항은 열(X에서의 위치나 이름)의 목록이고, `terms`를 주지 않으면 열 하나가 항 하나예요. 더미 세 개처럼 함께 들고 나는 열은 한 항으로 묶어요. 절편은 항이 아니고, 마지막 줄 `'Residual'`은 `df_resid`, SSR, 척도예요.
+`anova(r)`는 모형 하나의 항마다 한 줄인 표예요. 항은 열(X에서의 위치나 이름)의 목록이고, `terms`를 주지 않으면 열 하나가 항 하나예요. 목록이 아닌 항은 열 하나예요. 이름은 `str`, 위치는 `operator.index`가 받는 정수(`int`, numpy의 정수와 0차원 정수 배열)이고, 정수 배열은 열의 목록이에요. 그 밖의 스칼라(실수, bool, bytes)는 순회하지 않고 열 하나로 받아 열의 형 검사가 `TypeError`를 내요. 더미 세 개처럼 함께 들고 나는 열은 한 항으로 묶어요. 절편은 항이 아니고, 마지막 줄 `'Residual'`은 `df_resid`, SSR, 척도예요.
 
 ### Type I, 선형: 효과
 
@@ -708,7 +708,16 @@ Type III의 값은 더미의 부호화에 달려 있어요. 처리 대비(기준
 | Type III, F | $W/m$ | 공분산 안에 | `df_resid_inference` |
 | Type III, χ² | $W$ | 공분산 안에 | (χ²의 자유도 $m$) |
 
-Type III의 분모 자유도만 `df_resid_inference`인 것은 그 값이 `wald_test`이고, 군집 공분산의 Wald는 군집 수 − 1을 쓰기 때문이에요. 표의 `mean_sq`는 `sum_sq / df`이고, GLM의 `'Residual'` 줄은 편차와 `df_resid`예요.
+Type III의 분모 자유도만 `df_resid_inference`인 것은 그 값이 `wald_test`이고, 군집 공분산의 Wald는 군집 수 − 1을 쓰기 때문이에요. 표의 `mean_sq`는 `sum_sq / df`예요. `'Residual'` 줄만은 통계량의 분모인 척도예요. 선형 모형은 `ssr / df_resid`가 곧 척도이고, GLM의 `'Residual'` 줄은 `sum_sq`가 편차, `df`가 `df_resid`, `mean_sq`가 모형의 `scale`이에요. 편차 ÷ `df_resid`는 GLM의 척도가 아니라서(Pearson 척도이거나 고정된 1) 그 줄에 두면 항의 `mean_sq`를 나눠도 F가 나오지 않아요. 척도를 두면 F = 항의 `mean_sq` ÷ `'Residual'`의 `mean_sq`로 다시 셀 수 있어요.
+
+```python
+    # src/stardust/regression/_tests.py (_anova_terms)
+    mean = [_div(s, d) if d else math.nan for s, d in zip(ss_out, df_out)]
+    if glm:
+        # the 'Residual' row's mean square is the scale, the statistics' denominator: a
+        # GLM's deviance / df_resid is not it (a Pearson scale, or a fixed 1)
+        mean[-1] = float(r.scale)
+```
 
 집단 더미를 한 항으로 묶은 OLS의 표는 일원 분산분석이고, `sd.htest.f_oneway`와 같은 F·p예요. 다만 계산이 달라서(이쪽은 적합의 QR, `f_oneway`는 집단마다의 합) 비트까지 같지는 않고 두 쪽의 정확도 안에서 같아요.
 

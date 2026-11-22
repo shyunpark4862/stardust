@@ -99,6 +99,22 @@ sum(x, /, *, axis=None, dtype=None, keepdims=False)
 
 `help()`와 호출 모양이 틀렸을 때 nanobind가 내는 메시지(아래 "호출 모양이 틀렸을 때")가 이 시그니처를 보여요. 위치 전용 인자도 이름이 보여서, 무엇을 넘겨야 하는지 바로 읽혀요.
 
+배열의 메서드(`x.sum()`, `x.reshape()`, `x.astype()` …)도 같아요. 모듈 함수의 시그니처에서 배열 인자 `x`를 `self`로 바꾼 것을 `nb::sig`로 넘겨요(`csrc/bind/array_bind.cpp`). 넘기지 않으면 nanobind가 타입 표기가 붙은 `sum(self, *, axis: object | None = None, ...) -> object` 꼴을 만들어서 모듈 함수와 모양이 달라져요.
+
+```cpp
+// csrc/bind/array_bind.cpp (발췌)
+.def(
+    "sum", named("sum", &sum), nb::sig("def sum(self, /, *, axis=None, dtype=None, keepdims=False)"),
+    nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("dtype").none() = nb::none(),
+    nb::arg("keepdims").none() = false
+)
+```
+
+```python
+>>> print(sd.asarray([1.0]).sum.__doc__)
+sum(self, /, *, axis=None, dtype=None, keepdims=False)
+```
+
 nanobind 함수에는 Python의 `inspect.signature`가 `(*args, **kwargs)`만 보여요. 그래서 공개 API와 문서가 같은지 확인하는 테스트(`tests/<영역>/test_api_surface.py`)는 nanobind가 붙여 주는 `__nb_signature__`를 읽어서 위치 전용·키워드 전용 구분과 기본값을 비교해요.
 
 ### 짧은 타입 이름
@@ -706,7 +722,7 @@ const char* name_of(const Func& func) {
 
 | 함수 | 꼴 | 예 |
 |---|---|---|
-| Python으로 쓴 무거운 입구: 모듈 수준 함수(`sd.stats`의 기술통계, `sd.regression`, `sd.optimize`, `sd.htest`, `sd.sparse`, `sd.integrate`, `sd.differentiate`의 모든 함수, `sd.random.default_rng`, `sd.frame`의 `read_csv`·`merge`·`concat`), 생성자(frame의 `Series`·`DataFrame`·`Index`·`RangeIndex`, 분포, 희소 배열), 희소 배열·`LinearOperator`·`SparseLU`의 메서드, frame의 `groupby` | `f(): ` 다음에 Python의 문장 | `minimize(): unexpected keyword argument 'foo'`, `Normal(): takes no positional arguments but 1 was given` |
+| Python으로 쓴 무거운 입구: 모듈 수준 함수(`sd.stats`의 기술통계, `sd.regression`, `sd.optimize`, `sd.htest`, `sd.sparse`, `sd.integrate`, `sd.differentiate`의 모든 함수, `sd.random.default_rng`, `sd.frame`의 `read_csv`·`merge`·`concat`), 생성자(frame의 `Series`·`DataFrame`·`Index`·`RangeIndex`, 분포, 희소 배열), 희소 배열·`LinearOperator`·`SparseLU`의 메서드, frame의 `groupby` | `f(): ` 다음에 Python의 문장 | `minimize(): unexpected keyword argument 'foo'`, `Normal(): takes 0 positional arguments but 1 was given` |
 | 작은 메서드: frame의 메서드, `Generator`의 메서드, 분포의 메서드 | Python의 기본 꼴 그대로 | `Series.head() got some positional-only arguments passed as keyword arguments: 'n'`, `sample() missing 1 required keyword-only argument: 'rng'` |
 | C++ 바인딩으로 바로 묶은 함수: 배열의 함수와 메서드, `sd.linalg`, `sd.special` | nanobind의 메시지와 받을 수 있는 시그니처 | `solve(): incompatible function arguments. The following argument types are supported: 1. solve(a, b, /) ...` |
 

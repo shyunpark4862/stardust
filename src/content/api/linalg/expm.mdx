@@ -454,6 +454,8 @@ array([], shape=(0, 0), dtype=float64)
 
 희소 행렬(0이 아닌 원소만 저장한 행렬)의 행렬 지수는 [`sd.sparse.expm`](/api/sparse/expm/)이에요. 행렬 지수는 대부분 꽉 차므로, 필요한 것이 $e^{A}v$처럼 벡터에 곱한 값이면 행렬 지수를 만들지 않고 그 곱을 바로 구하는 [`sd.sparse.expm_multiply`](/api/sparse/expm_multiply/)가 맞아요. `expm_multiply`는 밀집 배열도 받아요. 희소 배열을 `sd.linalg.expm`에 넣으면 `sd.sparse.expm`을 알려 주는 `TypeError`예요.
 
+대각 행렬과 2×2 삼각 행렬에서는 `sd.sparse.expm(A).toarray()`가 `sd.linalg.expm(A.toarray())`와 비트까지 같아요(0의 부호만 다를 수 있어요). 그 밖의 행렬은 두 함수의 계산 순서가 달라서, 둘 다 정확도 계약 안에서 마지막 몇 자리가 다를 수 있어요.
+
 ## numpy·scipy를 아는 분께
 
 - `scipy.linalg.expm`과 같은 함수예요. numpy에는 행렬 지수가 없어요(`np.exp`는 원소별이에요).

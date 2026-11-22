@@ -106,7 +106,7 @@ F(dfn=3, dfd=10)
 >>> sd.stats.F(3, 10)
 Traceback (most recent call last):
     ...
-TypeError: F(): takes no positional arguments but 2 were given
+TypeError: F(): takes 0 positional arguments but 2 were given
 >>> sd.stats.F(dfn=0, dfd=10).cdf(1.0)
 nan
 >>> sd.stats.F(dfn=3, dfd=sd.inf).mean()

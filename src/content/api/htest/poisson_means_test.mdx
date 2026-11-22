@@ -39,7 +39,7 @@ raises:
   - type: TypeError
     desc: k1·k2가 int가 아닐 때, n1·n2·diff가 수가 아닐 때, alternative가 문자열이 아닐 때, 없는 키워드를 줬을 때.
   - type: ValueError
-    desc: k1·k2가 음수일 때, n1·n2가 양의 유한한 수가 아닐 때, diff가 음수이거나 유한하지 않을 때, alternative 이름이 틀렸을 때.
+    desc: k1·k2가 음수일 때, n1·n2가 양의 유한한 수가 아닐 때, diff가 음수이거나 유한하지 않을 때, alternative 이름이 틀렸을 때, 횟수가 너무 커서(조 단위) 정확한 합이 2·10⁷걸음을 넘을 때.
 seeAlso: [binomtest, test_proportions_2indep, basics, results]
 ---
 
@@ -132,6 +132,17 @@ Traceback (most recent call last):
     ...
 ValueError: poisson_means_test(): 'diff' must be non-negative and finite
 ```
+
+p값은 근사 없이 모든 결과의 확률을 더해요. 더하는 걸음은 횟수의 제곱근에 비례해서 수천억 번의 횟수도 계산하지만, 2·10⁷걸음을 넘으면(횟수가 조 단위) `ValueError`예요. 걸음이 그보다 훨씬 많을 것이 분명하면 더하기 전에 바로 알려 줘요.
+
+```python
+>>> sd.htest.poisson_means_test(10**13, 1.0, 10**13 + 10**5, 1.0)
+Traceback (most recent call last):
+    ...
+ValueError: poisson_means_test(): the counts are too large for the exact sum (it needs more than 2e+07 steps)
+```
+
+이만큼 큰 횟수에서는 통계량을 표준정규분포에 견준 p값이 정확한 값과 거의 같아요.
 
 ## 다른 검정과 고르기
 

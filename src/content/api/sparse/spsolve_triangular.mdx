@@ -31,7 +31,7 @@ raises:
   - type: TypeError
     desc: upper를 주지 않았을 때, upper나 unit_diagonal이 True·False가 아닐 때, A가 희소 배열이 아닐 때(밀집 배열이면 sd.linalg.solve_triangular를 쓰라고 알려 줘요), b가 sd.ndarray가 아닐 때(희소 배열, 리스트 포함), 없는 키워드(lower 등)를 줬을 때.
   - type: ValueError
-    desc: A가 2차원이 아니거나 정사각이 아닐 때, b가 1차원이나 2차원이 아닐 때, b의 행 수가 A의 크기와 다를 때, A에 저장된 원소나 b에 NaN·inf가 있을 때.
+    desc: A가 2차원이 아니거나 정사각이 아닐 때, b가 1차원이나 2차원이 아닐 때, b의 행 수가 A의 크기와 다를 때, A에서 읽는 원소(고른 쪽 삼각, unit_diagonal=False면 대각)나 b에 NaN·inf가 있을 때.
   - type: LinAlgError
     desc: unit_diagonal=False인데 대각 원소가 저장돼 있지 않거나 0일 때.
 seeAlso: [spsolve, splu, tril, triu, is_sptriangular, basics]
@@ -194,7 +194,7 @@ $$
 
 ## 밀집 짝 `sd.linalg.solve_triangular`
 
-밀집 짝은 [`sd.linalg.solve_triangular`](/api/linalg/solve_triangular/)예요. `upper`와 `unit_diagonal`의 뜻과 반대쪽을 무시하는 규칙이 같아요. 더하는 순서가 달라서 마지막 자리는 다를 수 있어요.
+밀집 짝은 [`sd.linalg.solve_triangular`](/api/linalg/solve_triangular/)예요. `upper`와 `unit_diagonal`의 뜻, 반대쪽을 무시하는 규칙, NaN·inf를 읽는 원소에서만 보는 규칙이 같아요. 더하는 순서가 달라서 마지막 자리는 다를 수 있어요.
 
 ```python
 >>> sd.linalg.solve_triangular(L.toarray(), b, upper=False)
@@ -206,7 +206,6 @@ array([               1.0,                2.0, 1.4000000000000001], dtype=float6
 | 받는 행렬 | 희소 배열 하나 | 밀집 배열, 배치도 돼요 |
 | 읽는 원소 | 고른 쪽의 저장된 원소와 대각 | 고른 쪽 삼각 전체 |
 | 계산량 | 저장된 원소 수에 비례 | n²에 비례 |
-| NaN·inf 검사 | 저장된 원소 모두 | 읽는 쪽만 |
 
 ## 어디에서 삼각 행렬이 나오나요
 
@@ -232,16 +231,20 @@ array([1.0, 0.0], dtype=float64)
 
 `unit_diagonal=True`면 대각을 읽지 않으므로 에러가 나지 않아요.
 
-### NaN과 inf는 저장된 원소 모두를 봐요
+### NaN과 inf는 읽는 원소만 봐요
 
-`A`에 저장된 원소 가운데 하나라도 NaN이나 무한대면, 읽지 않는 쪽에 있더라도 `ValueError`예요. 밀집 `sd.linalg.solve_triangular`는 읽는 쪽만 보므로 이 점이 달라요.
+읽는 원소(고른 쪽 삼각과, `unit_diagonal=False`면 대각) 가운데 NaN이나 무한대가 있으면 `ValueError`예요. 읽지 않는 쪽에 있는 것은 결과에 영향이 없어서 그대로 풀어요. 밀집 `sd.linalg.solve_triangular`와 같은 규칙이에요.
 
 ```python
 >>> sd.sparse.spsolve_triangular(sd.sparse.csr_array(sd.asarray([[1.0, sd.nan], [1.0, 1.0]])), sd.ones(2), upper=False)
+array([1.0, 0.0], dtype=float64)
+>>> sd.sparse.spsolve_triangular(sd.sparse.csr_array(sd.asarray([[1.0, 0.0], [sd.nan, 1.0]])), sd.ones(2), upper=False)
 Traceback (most recent call last):
     ...
 ValueError: spsolve_triangular(): 'A' contains NaN or infinity
 ```
+
+첫 행렬의 NaN은 위 삼각에 있어서 `upper=False`의 풀이가 읽지 않아요. 둘째 행렬의 NaN은 아래 삼각에 있어요.
 
 ### `upper`는 `True`나 `False`
 

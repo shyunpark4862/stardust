@@ -237,7 +237,7 @@ True
 
 - **A**(와 M)는 희소 배열(어느 형식이든), 2차원 `sd.ndarray`, 또는 `LinearOperator`예요. 행렬은 그대로 곱하고, `LinearOperator`는 곱마다 그 `matvec`을 불러요(`lsqr`·`lsmr`은 `rmatvec`도). `cg`, `minres`, `gmres`, `bicgstab`의 A는 정사각이어야 해요.
 - **b**와 **x0**은 밀집 `sd.ndarray`이고 모양이 (n,)이나 (n, 1)이에요. 리스트, numpy 배열, 희소 배열은 받지 않아요. 결과의 `x`는 언제나 (n,)이에요.
-- **dtype**: 계산은 float64나 complex128로 해요. A, b, x0, M 가운데 하나라도 복소수면 복소수로 풀고, bool·int64는 float64로 바꿔요.
+- **dtype**: 계산은 float64나 complex128로 해요. A, b, x0, M 가운데 하나라도 복소수면 복소수로 풀고, bool·int64는 float64로 바꿔요. 실수로 선언한 `LinearOperator`가 복소 값을 돌려주면 `TypeError`예요(`cg(): the operator returned complex128 values for a float64 system; give it dtype=complex128`).
 - **NaN과 inf**: A, M에 저장된 값이나 b, x0에 NaN·inf가 있으면 `ValueError`예요.
 
 ```python

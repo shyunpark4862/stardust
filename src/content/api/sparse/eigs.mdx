@@ -269,7 +269,7 @@ array([0.7999999999999955, 0.8013838647570061, 0.8013838647570061], dtype=float6
 
 수렴하지 않을 때의 결과, `status`의 뜻, `tol`과 `max_iter`, 시작 벡터와 결정성은 모두 [eigsh](/api/sparse/eigsh/)와 같아요. 요약하면 이래요.
 
-- 수렴하지 않으면 에러가 아니라 `converged=False`인 결과에 수렴한 쌍만 담겨요. 먼저 `r.converged`를 확인해요.
+- 수렴하지 않으면 에러가 아니라 `converged=False`인 결과에 수렴한 쌍만 담겨요. 먼저 `r.converged`를 확인해요. 상한에 걸린 결과의 `n_iter`는 `max_iter`보다 하나 커요(위의 401은 n = 40의 기본 상한 400에 걸린 것이에요).
 - `v0=None`이면 `sd.random.default_rng(0)`의 고정된 시작 벡터라서 같은 호출은 같은 비트의 결과예요. 행렬의 형식과 sd의 스레드 수와도 상관없어요. 다른 시작 벡터는 `rng=`나 `v0=`로 줘요.
 - 행렬 대신 곱하는 함수를 [LinearOperator](/api/sparse/linearoperator/)로 줄 수 있어요. 이때 `sigma`나 `M`의 역은 곱마다 반복법으로 풀어서 비용이 커요. 좋은 방법이 있으면 `OPinv=`, `Minv=`로 줘요.
 

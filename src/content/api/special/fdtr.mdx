@@ -294,11 +294,17 @@ array([ 5.786135043349965, 4.1028210151304005, 3.3158295010135213,
 | `fdtri(dfn, dfd, 0)`, `fdtri(dfn, dfd, 1)` | 0, inf | 분포의 양 끝 |
 | `fdtri`의 무한대 자유도 | 위 극한의 역함수 | `fdtri(inf, inf, p)`는 1 |
 | `fdtri(5e-324, dfd, p)`, `0 < p < 1` | 0 | 분자 자유도가 0에 다가가면 분포가 0에 몰려요 |
+| `fdtri(dfn, 5e-324, p)`, `0 < p < 1` | inf | 분모 자유도가 0에 다가가면 분포가 무한대 쪽으로 밀려나서 근이 float64 범위를 넘어요. `p`가 서브노멀일 만큼 작을 때만 유한한 근이 있어요 |
 | `fdtri(dfn, dfd, p)`, 두 자유도가 모두 2⁻⁶⁹⁹ 아래, `0 < p < 1` | 0 또는 inf | 확률이 0과 inf에 나뉘어 몰려요. `p`가 0에 몰린 몫 `dfd/(dfn + dfd)`보다 작으면 0, 크면 inf |
 | `dfn ≤ 0` 또는 `dfd ≤ 0` | NaN | 자유도는 양수여야 해요 |
 | `x < 0` | NaN | |
 | `p < 0` 또는 `p > 1` | NaN | 확률이 아니에요 |
 | 인자 중 NaN | NaN | |
+
+```python
+>>> sd.special.fdtri(5e-324, 3, 0.5), sd.special.fdtri(2, 5e-324, 0.1)
+(0.0, inf)
+```
 
 ## 조심할 점
 
@@ -355,5 +361,6 @@ TypeError: fdtrc(): 'dfn' must be an sd.ndarray or a bool, int, float or complex
 
 - 이름, 인자 순서, 뜻은 `scipy.special.fdtr`, `fdtrc`, `fdtri`과 같아요. `fdtri`이 누적확률의 역함수인 것도 같아요.
 - 자유도가 무한대인 경우를 극한값으로 계산해요. scipy 1.18.1은 `fdtr(3, inf, 2.0)`, `fdtr(inf, 10, 2.0)`, `fdtr(inf, inf, x)`, `fdtri(3, inf, 0.5)`에서 모두 NaN을 돌려줘요.
+- 분모 자유도가 아주 작아 근이 float64 범위를 넘으면 stardust는 inf예요. scipy 1.18.1은 `fdtri(2, 5e-324, 0.1)`에서 NaN, `fdtri(10, 1e-323, 0.1)`에서 5.4323092249e-313을 내요.
 - 분모 자유도를 거꾸로 구하는 `fdtridfd`는 없어요.
 - 리스트, numpy 배열은 받지 않아요. `sd.ndarray`와 Python 숫자만 받아요. `out`은 keyword-only예요.

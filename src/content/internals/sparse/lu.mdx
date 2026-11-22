@@ -246,7 +246,7 @@ stardust.linalg.LinAlgError: splu(): singular matrix
         }
 ```
 
-`transposed_`는 인수를 CSR의 전치 속성으로 만들었는지예요. 그런 인수의 보통 풀이와 CSC 인수의 전치 풀이가 모두 "전치로 도는 풀이"라서 조건이 두 경우를 함께 잡아요. 전치 풀이는 이렇게 해요.
+`transposed_`는 인수를 CSR의 전치 속성으로 만들었는지예요. 그런 인수의 보통 풀이와 CSC 인수의 전치 풀이가 모두 "전치로 도는 풀이"라서 조건이 두 경우를 함께 잡아요. 공개 함수는 아래처럼 언제나 CSC를 넘기므로 `transposed_`는 늘 거짓이고, 실제로 걸리는 것은 `trans='T'`·`'H'`의 여러 우변이에요. 전치 속성의 길은 래퍼의 시험에서만 써요. 전치 풀이는 이렇게 해요.
 
 ```cpp
             // csrc/accelerate/sparse.hpp, Lu::solve

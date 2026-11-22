@@ -190,13 +190,13 @@ array([                  1.0, 6.663371773434072e-05], dtype=float64)
 
 방법은 줄마다 골라요. `nan_policy`, `keepdims`, 빈 표본의 NaN은 다른 검정과 같아요.
 
-모든 값이 같으면 점수도 모두 같아서 AB가 어느 나눔에서나 같아요. 정확한 분포로는 p값이 1이에요. 이때 `'auto'`는 동점이 있어 정규 근사를 고르고, 그 근사식은 점수가 모두 같은 경우를 따로 다루지 않아 1이 아닌 값을 내요. 동점이 아주 많은 자료에서는 `method='exact'`로 읽으세요.
+모든 값이 같으면 점수도 모두 같아서 AB가 어느 나눔에서나 같은 값으로 정해져요. 견줄 분포가 없으니 `method`가 무엇이든 p값은 NaN이에요. AB는 그대로 줘요. 분산이 0인 표본에서 다른 순위 검정이 NaN을 내는 것과 같은 규칙이에요.
 
 ```python
 >>> sd.htest.ansari([1.0, 1.0, 1.0], [1.0, 1.0])
-AnsariResult(statistic=9, pvalue=0.220671, method='asymptotic')
+AnsariResult(statistic=9, pvalue=nan, method='asymptotic')
 >>> sd.htest.ansari([1.0, 1.0, 1.0], [1.0, 1.0], method='exact')
-AnsariResult(statistic=9, pvalue=1, method='exact')
+AnsariResult(statistic=9, pvalue=nan, method='exact')
 ```
 
 ## 정확도
@@ -223,6 +223,7 @@ AnsariResult(statistic=np.float64(24.0), pvalue=np.float64(0.022999222999223))
   ```
 
 - 큰 표본의 정확한 p값: scipy는 N이 45–108쯤에서 상대 6.5e-9–2.6e-7 틀려요(54개와 54개에서 2.6e-7). sd는 정수의 셈이에요.
+- 모든 값이 같으면 p값이 NaN이에요. scipy는 정규 근사에서 0.2207 같은 값, `method='exact'`에서 0을 내요.
 - 결과에 `method`가 있어요.
 - `axis`의 기본값이 None이에요(scipy는 0). 배치에서는 방법을 줄마다 골라요.
 - R의 `ansari.test`는 동점의 분산과 50개 이상에서의 방법이 달라서 값이 다를 수 있어요.

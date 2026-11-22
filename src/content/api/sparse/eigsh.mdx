@@ -301,7 +301,7 @@ True
 array([ 0.008701304061962366, 0.0038688057328112473, 0.0009674354160238588], dtype=float64)
 ```
 
-이때는 고유값이 계산에서 나온 순서 그대로라 오름차순이 아닐 수 있어요(위에서는 큰 것부터예요). 순서가 필요하면 `sd.sort(w)`로 정렬해요.
+이때는 고유값이 계산에서 나온 순서 그대로라 오름차순이 아닐 수 있어요(위에서는 큰 것부터예요). 순서가 필요하면 `sd.sort(w)`로 정렬해요. [복소 에르미트 행렬](#복소-에르미트-행렬)은 이때도 작은 것부터예요.
 
 ## 수렴하지 않을 때
 
@@ -315,7 +315,7 @@ EigshResult(converged=False, status=1, n_iter=6, n_converged=0, eigenvalues=[])
 'the iteration limit was reached: 0 of 3 eigenvalues converged'
 ```
 
-상한에 걸리면 `n_iter`가 `max_iter`보다 하나 커요. 마지막 재시작 뒤의 수렴 판정까지 센 수라서 그래요.
+상한에 걸리면 `n_iter`가 `max_iter`보다 하나 커요. 상한을 넘은 재시작까지 센 수라서 그래요([eigs](/api/sparse/eigs/)도 같고, [svds](/api/sparse/svds/)는 `max_iter` 그대로예요).
 
 결과를 쓰기 전에 `r.converged`를 확인하세요. 수렴하지 않을 때 해 볼 것은 이래요.
 
@@ -373,15 +373,12 @@ A(또는 M, `v0`)가 복소수면 에르미트 문제로 풀어요. 고유값은
 >>> H = (L + 1j * (sh - sh.T) * 0.5).tocsr()
 >>> r = sd.sparse.eigsh(H, k=3, which='LA')
 >>> r.eigenvalues
-array([4.234986351822727, 4.231742521194547, 4.226339623811934], dtype=float64)
+array([4.226339623811934, 4.231742521194547, 4.234986351822727], dtype=float64)
 >>> r.eigenvectors.dtype
 complex128
 ```
 
-복소 문제에서는 두 가지가 달라요.
-
-- 고유값이 작은 것부터 정렬되어 나오지 않을 수 있어요(위에서는 큰 것부터예요). 순서가 필요하면 `sd.argsort(r.eigenvalues)`로 고유벡터의 열도 함께 정렬해요.
-- `which='BE'`와 `'normal'` 밖의 `mode`는 쓸 수 없어요(`ValueError`).
+고유값은 실수 문제처럼 작은 것부터예요. 고유벡터의 열도 같은 순서로 놓여서 `i`번째 열이 `eigenvalues[i]`의 짝이에요. 복소 문제에서는 `return_eigenvectors=False`여도 작은 것부터예요. 다른 점은 `which='BE'`와 `'normal'` 밖의 `mode`를 쓸 수 없다는 것 하나예요(`ValueError`).
 
 ## 입력과 에러
 
@@ -464,5 +461,6 @@ TypeError: eigh(): 'a' must be an sd.ndarray, not csr_array; for a sparse array 
 - 인자는 `A`만 위치이고 나머지는 키워드예요. `maxiter`는 `max_iter`예요.
 - 수렴하지 않으면 `ArpackNoConvergence` 예외 대신 `converged=False`인 결과에 수렴한 쌍을 담아요. `ArpackError`, `ArpackNoConvergence`는 없어요. 시작 벡터가 연산자의 영공간에 있으면(scipy의 `ArpackError` −9) `ValueError`예요.
 - `return_eigenvectors=False`여도 결과의 꼴이 같아요. scipy는 배열 하나를 돌려주지만 여기서는 `(w, None)`으로 풀려요.
+- 복소 에르미트 문제의 고유값은 작은 것부터 정렬하고 고유벡터의 열도 같이 옮겨요. scipy는 계산이 남긴 순서 그대로예요(위의 예에서는 큰 것부터).
 - k ≥ n이면 scipy는 경고와 함께 밀집 계산으로 넘어가지만(희소 행렬에는 `TypeError`), 여기서는 `sd.linalg.eigh`를 짚는 `ValueError`예요.
 - `sigma` 없이 `mode`를 주면 scipy는 조용히 무시하지만 여기서는 `ValueError`예요. `sigma`가 고유값이면 scipy는 `RuntimeError`, 여기서는 `LinAlgError`예요.

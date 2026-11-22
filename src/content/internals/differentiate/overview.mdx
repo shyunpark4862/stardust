@@ -57,8 +57,9 @@ import Steps from '../../../components/fig/Steps.astro';
 <Fig column caption="derivative 한 번의 흐름. 반복은 모두 커널 안에 있고, Python은 반복 전과 후만 맡아요.">
   <Steps steps={[
     { label: 'derivative()', note: 'f가 호출 가능한지, atol·rtol의 기본값과 검사, max_iter', where: '_derivative.py' },
-    { label: '_stencil()', note: 'order를 짝수 2n으로, step_factor 검사, weights(n, c)의 가중치 두 벌 (n, c마다 기억)', where: '_derivative.py, _weights.py', depth: 1 },
+    { label: '_stencil()', note: 'order를 짝수 2n으로(18까지), step_factor 검사, 중앙 가중치 (n, c마다 기억)', where: '_derivative.py, _weights.py', depth: 1 },
     { label: '_inputs()', note: 'x, initial_step, step_direction, args를 브로드캐스트해 원소 n개의 1차원 float64 배열로', where: 'optimize/_elementwise.py', depth: 1 },
+    { label: '_one_sided()', note: '어느 원소가 한쪽 공식을 쓸 때만 한쪽 가중치, 아니면 빈 배열', where: '_derivative.py, _weights.py', depth: 1 },
     { label: 'derivative_solve', note: '원소별 고리. 첫 호출 f(x)는 (k,), 반복마다 남은 원소의 점 (k, p)', where: 'derivative.cpp' },
     { label: 'f(x, *args)', note: '사용자의 Python 함수. 돌려받은 값이 맞는 모양의 float64 sd.ndarray가 아니면 check(value, shape)', where: '사용자', depth: 1 },
     { label: 'update()', note: '원소마다 스텐실의 값을 밀어 넣고 df, error, status를 갱신', where: 'derivative.cpp', depth: 1 },
@@ -77,18 +78,19 @@ def derivative(
     _callable(f, func, "f")
     atol, rtol = _tolerances(atol, rtol, func)
     max_iter = _check_int(max_iter, func, "max_iter", 1)
-    n, c, wc, wr = _stencil(order, step_factor, func)
+    n, c, wc = _stencil(order, step_factor, func)
     named = [("x", x), ("initial_step", initial_step), ("step_direction", step_direction)]
     (xs, h0, d), extra, shape = _inputs(func, named, _args(args, func))
+    wr = _one_sided(n, c, d)
     df, err, status, nit, nfev = _k.derivative_solve(
         func, f, _values(func), extra, xs, h0, d, wc, wr, n, c, atol, rtol, max_iter
     )
     return DifferentiateResult._make(batch=shape, **_fields(shape, df, err, status, nit, nfev), x=_shaped(xs, shape))
 ```
 
-커널에 넘기는 것은 원소 n개의 1차원 배열(`xs`, `h0`, `d`와 사용자 `args`), 가중치 두 벌(중앙 `wc`, 한쪽 `wr`), 그리고 `_values(func)`가 만든 확인 함수예요. 커널이 돌려주는 것도 원소 n개의 1차원 배열 다섯이고, Python이 그것을 입력의 브로드캐스트 모양으로 되돌려요. 기본 `atol`은 가장 작은 정규수 $2^{-1022}$, 기본 `rtol`은 $\sqrt\varepsilon = 2^{-26}$이에요(scipy의 기본값).
+커널에 넘기는 것은 원소 n개의 1차원 배열(`xs`, `h0`, `d`와 사용자 `args`), 가중치 두 벌(중앙 `wc`, 한쪽 `wr`; 한쪽 공식을 쓰는 원소가 없으면 `wr`은 빈 배열), 그리고 `_values(func)`가 만든 확인 함수예요. 커널이 돌려주는 것도 원소 n개의 1차원 배열 다섯이고, Python이 그것을 입력의 브로드캐스트 모양으로 되돌려요. 기본 `atol`은 가장 작은 정규수 $2^{-1022}$, 기본 `rtol`은 $\sqrt\varepsilon = 2^{-26}$이에요(scipy의 기본값).
 
-가중치는 `weights(n, c)`가 정확한 유리수 계산으로 만들어 (n, c)마다 기억해 둬요(`functools.lru_cache`). 같은 `order`와 `step_factor`로 여러 번 부르면 처음 한 번만 계산해요. 계산하는 방법은 [derivative의 알고리즘](/internals/differentiate/derivative/#가중치를-정확하게)에 있어요.
+가중치는 `central_weights(n, c)`와 `one_sided_weights(n, c)`가 정확한 유리수 계산으로 만들어 (n, c)마다 따로 기억해 둬요(`functools.lru_cache`). 같은 `order`와 `step_factor`로 여러 번 부르면 처음 한 번만 계산해요. 한쪽 가중치는 $\mathbb{Q}(\sqrt c)$의 계산이라 처음 비용의 대부분이어서, 어느 원소가 한쪽 공식을 쓸 때만 계산해요(`_one_sided`). `hessian`은 늘 중앙 공식이라 빈 배열을 넘겨요. `order`는 18까지예요. 까닭은 [차수의 상한](/internals/differentiate/derivative/#차수의-상한)에 있어요. 계산하는 방법은 [derivative의 알고리즘](/internals/differentiate/derivative/#가중치를-정확하게)에 있어요.
 
 ## 사용자 함수를 부르는 꼴
 
@@ -277,7 +279,7 @@ FIELDS = ("df", "ddf", "error", "converged", "status", "n_iter", "nfev", "x")
 _REPR = ("df", "ddf", "error", "converged", "n_iter", "nfev")
 ```
 
-세 함수가 같은 클래스를 쓰고 주는 필드가 달라요. `derivative`는 `df error converged status n_iter nfev x`, `jacobian`은 `x` 없이 같은 것, `hessian`은 `ddf error converged status nfev`예요. 결과는 커널이 막 만든 배열을 `_make`로 복사 없이 받아요. `converged`는 따로 계산하지 않고 `status == 0`에서 만들어요.
+세 함수가 같은 클래스를 쓰고 주는 필드가 달라요. `derivative`는 `df error converged status n_iter nfev x`, `jacobian`은 `x` 없이 같은 것, `hessian`은 `ddf error converged status nfev`예요. 결과는 커널이 막 만든 배열을 `_make`로 복사 없이 받아요. `converged`는 따로 계산하지 않고 `status == 0`에서 만들어요. 사용자가 부르는 공개 생성자 `DifferentiateResult(**fields)`는 다른 길이에요. 넘긴 `sd.ndarray`, numpy 배열, 수의 리스트를 결과 자신의 배열로 한 번 복사하고, 공통 필드의 종류(`converged`는 bool, `status`·`n_iter`·`nfev`는 정수)를 검사해요. 키워드로만 받으므로 위치 인자는 `DifferentiateResult(): takes 0 positional arguments but 1 was given`이에요.
 
 ```python
 # src/stardust/differentiate/_derivative.py

@@ -27,6 +27,8 @@ raises:
     desc: A가 희소 배열이나 sd.ndarray가 아닐 때, k가 정수가 아닐 때, k를 위치로 줬을 때.
   - type: ValueError
     desc: A가 2차원이 아닐 때, format이 네 형식의 이름이 아닐 때.
+  - type: OverflowError
+    desc: k가 int64 밖일 때.
 seeAlso: [triu, is_sptriangular, spbandwidth, spsolve_triangular, diags_array]
 ---
 import Fig from '../../../components/fig/Fig.astro';

@@ -1,6 +1,6 @@
 ---
 title: stepwise
-names: [stepwise, StepwiseResult]
+names: [stepwise, StepwiseResult, SelectionStep, SkippedFit]
 group: 변수 선택
 order: 1
 signatures:
@@ -38,7 +38,7 @@ params:
   - name: terms
     type: 항의 목록 또는 None
     kind: keyword-only
-    desc: 함께 들어가고 함께 빠지는 열의 묶음. 각 항은 열 하나이거나 열의 목록이고, X의 모든 열을 꼭 한 번씩 덮어야 해요. None이면 열 하나가 항 하나예요.
+    desc: 함께 들어가고 함께 빠지는 열의 묶음. 각 항은 열 하나(위치나 이름. numpy의 정수도 위치예요)이거나 열의 목록이고, X의 모든 열을 꼭 한 번씩 덮어야 해요. None이면 열 하나가 항 하나예요.
   - name: alpha_enter
     type: float
     kind: keyword-only
@@ -297,6 +297,17 @@ add x3 114.33
 - `action`: `'start'`, `'add'`, `'drop'` 중 하나.
 - `term`: 넣거나 뺀 항의 이름. 시작은 None이에요. 여러 열의 항은 열 이름을 `' + '`로 이어요(`'east + west'`).
 - `criterion`: 그 걸음 뒤 모형의 기준값. `'pvalue'`만은 그 걸음의 검정 p값이고, 시작은 NaN이에요.
+
+`SelectionStep`은 `sd.regression`에 있는 namedtuple이에요. 아래 [GLM 절](#glm-후보의-분리와-미수렴)의 `SkippedFit`, [`best_subset`](/api/regression/best-subset/)의 `SkippedSubset`도 그래요. 필드 이름으로 읽어도, 튜플처럼 풀어도 돼요.
+
+```python
+>>> s1 = r.steps[1]
+>>> isinstance(s1, sd.regression.SelectionStep), isinstance(s1, tuple)
+(True, True)
+>>> action, term, crit = s1
+>>> action, term, round(crit, 2)
+('drop', 'x4', 116.14)
+```
 
 옮기는 규칙은 이래요.
 

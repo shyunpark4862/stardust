@@ -630,7 +630,7 @@ array([[66.36743097424777, 70.10625323627853],
 
 - **NaN**: 위의 [nan_policy](#nan_policy-nan이-있을-때)를 보세요.
 - **겹친 열**: 그 계수와 표준오차·t·p가 NaN이고 나머지는 그 열을 뺀 적합과 비트까지 같아요. `rank`가 그만큼 줄어요.
-- **완전 적합**(점이 모형 위에 정확히 놓일 때): `ssr`과 `scale`이 0, `bse`가 0(강건 표준오차도 0), `llf`가 +inf이고, `tvalues`와 `pvalues`는 NaN이에요. 계수도 반올림을 품은 값이라 0으로 나눈 t는 뜻이 없어서예요. 구간은 폭이 0인 $[\hat\beta, \hat\beta]$예요. 계산한 잔차는 반올림 때문에 정확히 0이 되지 않을 때가 많아서, 쓰인 행마다 $|e_i| \le (k + 16)\,u\,(|y_i| + \sum_j |x_{ij}|\,|\hat\beta_j|)$이면 완전 적합으로 봐요($k$는 쓰인 열 수, $u = 2^{-53}$). 반올림 크기의 잔차가 가짜 표준오차와 p값을 만들지 않게 하려는 기준이에요. `resid` 필드는 계산한 값 그대로예요.
+- **완전 적합**(점이 모형 위에 정확히 놓일 때): `ssr`과 `scale`이 0, `bse`가 0(강건 표준오차도 0), `llf`가 +inf이고, `tvalues`, `pvalues`, `fvalue`, `f_pvalue`는 NaN이에요(강건 공분산의 F도). 계수도 반올림을 품은 값이라 0으로 나눈 t와 F는 뜻이 없어서예요. 구간은 폭이 0인 $[\hat\beta, \hat\beta]$예요. 계산한 잔차는 반올림 때문에 정확히 0이 되지 않을 때가 많아서, 쓰인 행마다 $|e_i| \le (k + 16)\,u\,(|y_i| + \sum_j |x_{ij}|\,|\hat\beta_j|)$이면 완전 적합으로 봐요($k$는 쓰인 열 수, $u = 2^{-53}$). 반올림 크기의 잔차가 가짜 표준오차와 p값을 만들지 않게 하려는 기준이에요. `resid` 필드는 계산한 값 그대로예요.
 - **잔차 자유도가 0일 때**(`df_resid` = 0, 예: 점 세 개에 2차식): 오차의 크기를 어림할 자료가 남지 않아요. `scale`, `bse`, `tvalues`, `pvalues`, `conf_int()`, `cov_params()`, `predict_interval()`이 모두 NaN이에요(0 ÷ 0). 강건 표준오차도 같아요. 계수와 적합값, `predict()`는 정상이에요.
 - **빈 입력**(행이 없거나, `'omit'`으로 모든 행이 빠질 때): 에러가 아니라 모든 값이 NaN인 결과예요. `nobs`는 0, `rank`는 0, `df_model`과 `df_resid`는 NaN이에요. 배치에서는 그 회귀만 NaN이에요.
 - **열이 행보다 많을 때**: 앞의 열부터 `nobs`개까지만 쓰이고 나머지는 겹친 열로 NaN이에요.
@@ -768,7 +768,7 @@ statsmodels 0.15.0, scikit-learn 1.9.1, scipy 1.18.1, numpy 2.5.4 기준이에�
 - statsmodels는 `X`에서 상수 열을 찾아 절편으로 봐요(`k_constant`). sd는 `intercept`만 봐요. 1의 열을 넣으면 `intercept=True`에서는 겹친 열(NaN)이고, `intercept=False`에서는 R²가 0을 기준으로 해요. 위의 공부 시간 데이터에서 statsmodels의 R²는 0.940, `intercept=False`의 sd는 0.9989예요.
 - `cov_type='HC0'`–`'HC3'`의 표준오차는 같지만 p값과 구간은 다르게 구해요. sd는 언제나 t 분포(`df_resid_inference`)를 쓰고, statsmodels의 기본(`use_t=False`)은 정규분포예요. 위 데이터의 HC3 절편 p값이 statsmodels는 1.2e-203, sd는 1.5e-9예요. statsmodels에 `use_t=True`를 주면 sd와 같아요.
 - 겹친 열: 위의 `[hours, 2 * hours]` 예에서 statsmodels는 의사역행렬로 두 열에 값을 나눠 줘요(`[47.97, 0.811, 1.621]`, 경고와 함께). sd는 앞 열을 남기고 뒤 열을 NaN으로 둬요(`[47.97, 4.053, nan]`).
-- 완전 적합: statsmodels는 잔차가 반올림 수준으로 남아 표준오차 1e-14 안팎, t 1e13–1e15, p 1e-90–1e-103 같은 값을 내요($x = 0, \dots, 9$, $y = 1 + 2x + 3x^2$). sd는 표준오차 0에 t와 p가 NaN이에요. 위의 `third`($y = 0.1 + x/3$)에서도 statsmodels는 표준오차 `[3.3e-16, 6.2e-17]`, p `[1.5e-113, 1.5e-123]`이에요.
+- 완전 적합: statsmodels는 잔차가 반올림 수준으로 남아 표준오차 1e-14 안팎, t 1e13–1e15, p 1e-90–1e-103 같은 값을 내요($x = 0, \dots, 9$, $y = 1 + 2x + 3x^2$). sd는 표준오차 0에 t, p, F가 NaN이에요. 위의 `third`($y = 0.1 + x/3$)에서도 statsmodels는 표준오차 `[3.3e-16, 6.2e-17]`, p `[1.5e-113, 1.5e-123]`이에요.
 - 잔차 자유도가 0이면(위의 `d0`) statsmodels는 `scale`과 `bse`가 inf, p값과 구간이 NaN이에요. sd는 모두 NaN이에요.
 - 극단 척도: 위 데이터의 `y`에 1e-300을 곱하면 statsmodels는 t가 inf, p가 0, R²가 NaN이고, `X`에 1e300을 곱하면 R²가 −4.78이에요. sd는 어느 쪽이든 원래 데이터와 같은 t(27.70, 11.23)와 R²(0.940)예요.
 - NaN: statsmodels의 기본(`missing='none'`)은 에러 없이 NaN 계수를 줘요. `missing='drop'`이 sd의 `nan_policy='omit'`이에요.

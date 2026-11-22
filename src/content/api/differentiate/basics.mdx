@@ -74,6 +74,7 @@ DifferentiateResult(df=2.71828, error=7.13118e-12, converged=True, n_iter=2, nfe
 
 - **간격이 함수의 척도에 맞지 않을 때**: 처음 간격 0.5는 $x$나 함수의 척도를 보지 않는 절대 간격이에요. $\sin(1000x)$처럼 0.5 안에서 여러 번 출렁이는 함수는 처음 추정부터 엉뚱해요. 이럴 때는 `initial_step`을 함수가 변하는 척도에 맞춰 줘요.
 - **정의역의 끝 가까이**: $\log x$를 $x = 10^{-3}$에서 미분하면 $x - 0.5$가 음수라 값이 NaN이에요. 그 원소는 status −3으로 멈춰요. 더 작은 `initial_step`이나 한쪽 차분 `step_direction`을 줘요.
+- **$x$가 아주 클 때**: 간격이 $x$의 끝자리 단위(ulp)보다 작으면 스텐실의 점이 모두 $x$로 반올림돼요. 그러면 함숫값이 모두 같아서 `df`가 0, `error`가 0으로 수렴했다고 나와요. 기본 간격 0.5면 $\lvert x\rvert \gtrsim 2^{53}$에서 그래요. $\lvert x\rvert$에 맞춘 `initial_step`을 줘요.
 - **도함수가 0이거나 함숫값보다 아주 작을 때**: 기본 허용오차는 상대 판정이라 도함수가 0 근처면 맞추기 어려워요. `atol`을 줘요.
 - **매끄럽지 않은 점**: 꺾이거나 끊긴 점에서는 도함수가 없지만 차분은 수를 내요.
 
@@ -88,6 +89,15 @@ DifferentiateResult(df=862.319, error=5.70803e-07, converged=True, n_iter=2, nfe
 ```
 
 첫 결과는 `converged=False`라서 믿으면 안 된다는 것을 알 수 있어요. 결과를 쓰기 전에 늘 `converged`를 확인하세요.
+
+큰 $x$에서 점이 반올림으로 사라지는 경우는 `converged`로도 알 수 없어요. $\log x$의 $x = 10^{20}$에서 도함수는 $10^{-20}$인데, 기본 간격으로는 0이 수렴으로 나와요.
+
+```python
+>>> D(sd.log, 1e20)
+DifferentiateResult(df=0, error=0, converged=True, n_iter=2, nfev=11)
+>>> D(sd.log, 1e20, initial_step=1e20 / 4)
+DifferentiateResult(df=1e-20, error=4.41861e-30, converged=True, n_iter=2, nfev=11)
+```
 
 <Callout type="warn" title="꺾인 점에서는 수렴했다고 나올 수 있어요">
 $\lvert x\rvert$는 0에서 미분할 수 없지만, 중앙 차분은 양쪽 값이 같아 정확히 0을 내고 수렴했다고 알려요. 차분은 함수가 매끄럽다고 믿고 계산해요. 꺾이거나 끊긴 점 근처에서는 결과를 그대로 믿지 마세요.
@@ -285,11 +295,25 @@ Batch shape:                      (4,)  Converged:                      2 of 4
 
 $x = 10^{-3}$과 $0.1$에서는 처음 간격 0.5가 0 아래로 넘어가 $\log$가 NaN이라 status −3이에요. 원소 하나의 `summary()`는 표 대신 머리에 `Converged`, `Status`, `Point`, `Derivative`, `Error estimate`, `No. Iterations`, `Function Evals`를 적어요. `jacobian`과 `hessian`의 표는 항목마다 `[i, j]` 한 줄이에요.
 
-`DifferentiateResult(*, batch=(), **fields)`로 직접 만들 수도 있어요. 예를 들어 다른 계산의 결과를 같은 꼴로 보여 줄 때 써요.
+`DifferentiateResult(*, batch=(), **fields)`로 직접 만들 수도 있어요. 예를 들어 다른 계산의 결과를 같은 꼴로 보여 줄 때 써요. 필드는 키워드로만 줘요. 넘긴 리스트나 배열(`sd.ndarray`, numpy 배열)은 결과 자신의 읽기 전용 `sd.ndarray`로 한 번 복사해 두므로, 넘긴 뒤에 원래 것을 고쳐도 결과는 그대로예요. `converged`는 bool, `status`·`n_iter`·`nfev`는 정수(또는 그런 배열), 나머지 필드는 수나 수의 배열이어야 해요.
 
 ```python
->>> sd.differentiate.DifferentiateResult(df=1.0, error=0.0)
+>>> R = sd.differentiate.DifferentiateResult
+>>> R(df=1.0, error=0.0)
 DifferentiateResult(df=1, error=0)
+>>> v = [1.0, 2.0]
+>>> rr = R(df=v, batch=(2,))
+>>> v[0] = 9.0
+>>> rr.df
+array([1.0, 2.0], dtype=float64)
+>>> R(1.0)
+Traceback (most recent call last):
+    ...
+TypeError: DifferentiateResult(): takes 0 positional arguments but 1 was given
+>>> R(df=1.0, status='ok')
+Traceback (most recent call last):
+    ...
+TypeError: DifferentiateResult(): 'status' must be an int or an array of ints, not str
 ```
 
 ## 멈춤과 status
@@ -337,7 +361,7 @@ DifferentiateResult(df=-2.55332e-15, error=2.34275e-15, converged=True, n_iter=2
 (5.05021371943748e-16, 3.313389601751482e-15)
 ```
 
-Arb(구간 산술)로 만든 참값과 견주면, 수렴한 `derivative`의 결과는 시험한 초등 함수 11개 × 9점과 정의역 끝 근처 14경우 모두에서 `atol + rtol·|df|` 안이었어요(최대 상대오차 $6.2 \times 10^{-11}$). 오차 추정이 참 오차보다 작은 것은 109경우 가운데 다섯이었어요.
+Arb(구간 산술)로 만든 참값과 견주면, 수렴한 `derivative`의 결과는 시험한 초등 함수 11개 × 9점과 정의역의 끝 근처나 옵션을 바꾼 17경우 모두에서 `atol + rtol·|df|` 안이었어요(최대 상대오차 $6.2 \times 10^{-11}$). 오차 추정이 참 오차보다 작은 것은 수렴한 111경우 가운데 다섯이었어요.
 
 ## 에러
 
@@ -356,6 +380,10 @@ TypeError: derivative(): unexpected keyword argument 'tolerances'
 Traceback (most recent call last):
     ...
 ValueError: derivative(): 'max_iter' must be >= 1
+>>> D(sd.exp, 1.0, order=20)
+Traceback (most recent call last):
+    ...
+ValueError: derivative(): 'order' must be at most 18
 >>> D(sd.exp, 1.0, atol=-1)
 Traceback (most recent call last):
     ...
@@ -370,7 +398,7 @@ Traceback (most recent call last):
 ValueError: derivative(): the inputs must broadcast together, not shapes (2,), (), (), (3,)
 ```
 
-브로드캐스트 에러의 모양은 `x`, `initial_step`, `step_direction`, `args`의 값 차례예요. 점이 NaN이거나 `initial_step`이 0 이하인 것은 에러가 아니라 그 원소의 status −3이에요.
+`order`는 1부터 18까지예요. 차수가 그보다 높으면 첫 반복의 가장 안쪽 점이 $x$에 너무 가까워 반올림에 묻히기 시작하고, 가중치를 정확히 계산하는 데도 오래 걸려요([derivative의 차수](/api/differentiate/derivative/#차수-order)). 브로드캐스트 에러의 모양은 `x`, `initial_step`, `step_direction`, `args`의 값 차례예요. 점이 NaN이거나 `initial_step`이 0 이하인 것은 에러가 아니라 그 원소의 status −3이에요.
 
 ## scipy를 아는 분께
 
@@ -379,7 +407,9 @@ ValueError: derivative(): the inputs must broadcast together, not shapes (2,), (
 - **결과의 이름**: `success`는 `converged`, `nit`는 `n_iter`예요. 결과 클래스는 `DifferentiateResult` 하나이고, 주지 않는 필드를 읽으면 `AttributeError`예요. 필드와 배열은 읽기 전용이에요.
 - **허용오차와 상한**: `tolerances` dict 대신 키워드 `atol`·`rtol`이고, `maxiter`는 `max_iter`예요.
 - **없는 것**: `kwargs`, `preserve_shape`, `callback`(그래서 status −4도 없어요)이에요. `args`는 `derivative`만 받아요(scipy와 같아요).
+- **차수의 상한**: `order`는 18까지예요. scipy는 상한이 없어서, 예를 들어 `order=20`이면 $e^x$의 1에서 2.71821을 수렴했다고 내요.
 - **첫 호출**: `derivative`의 첫 호출은 $(k,)$ 1차원이에요. scipy는 입력 모양 그대로예요.
 - **가중치와 합**: 공식의 가중치는 정확한 값을 한 번 반올림한 것이고, 중앙 공식은 양쪽 점의 차를 짝마다 더해요. 그래서 `df`는 scipy와 끝자리가 다를 수 있고(허용오차 안), 판정의 경계에서는 반복 수가 갈릴 수 있어요. 예를 들어 $x^3$의 0은 여기서 둘째 반복에 수렴하고 scipy는 −2예요.
 - **같은 비트**: 원소의 결과는 배치의 크기와 스레드 수와 상관없이 같아요. scipy는 배치의 크기에 따라 끝자리가 다를 수 있어요.
 - `jacobian`과 `hessian`의 `f`는 $(m, N)$ 2차원 배열을 받고, `x`는 1차원만 받아요.
+- 큰 $x$에서 점이 반올림으로 사라져 0이 수렴으로 나오는 것($\log$의 $10^{20}$)은 scipy도 같아요.

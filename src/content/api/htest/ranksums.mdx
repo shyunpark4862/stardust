@@ -110,11 +110,11 @@ RanksumsResult(statistic=-2.5, pvalue=0.0124193)
 MannwhitneyuResult(statistic=3.5, pvalue=0.0105632, zstatistic=-2.55683, method='asymptotic')
 ```
 
-모든 값이 같으면 순위가 모두 같아서 $R_x$가 기대값과 정확히 같아요. 보정 없는 분산은 0이 아니므로 $z = 0$, p값은 1이에요.
+모든 값이 같으면 순위가 모두 같아서 어떻게 나누어도 $R_x$가 같아요. 견줄 분포가 없으므로 통계량과 p값이 NaN이에요. 분산이 0인 표본에서 다른 순위 검정이 NaN을 내는 것과 같은 규칙이에요.
 
 ```python
 >>> sd.htest.ranksums([1.0, 1.0, 1.0], [1.0, 1.0])
-RanksumsResult(statistic=0, pvalue=1)
+RanksumsResult(statistic=nan, pvalue=nan)
 ```
 
 ## 언제 쓰나요
@@ -145,7 +145,7 @@ RanksumsResult(statistic=nan, pvalue=nan)
 RanksumsResult(statistic=-1.22474, pvalue=0.220671)
 ```
 
-표본이 비면 NaN이에요.
+표본이 비거나 모든 값이 같으면 NaN이에요.
 
 ## 정확도
 
@@ -162,5 +162,6 @@ RanksumsResult(statistic=np.float64(-2.5), pvalue=np.float64(0.01241933065155226
 ```
 
 - `axis`의 기본값이 None이에요(scipy는 0).
+- 모든 값이 같으면 NaN이에요. scipy는 통계량 0, p값 1을 내요.
 - 표본은 위치로만, 옵션은 키워드로만 받아요.
 - R의 `wilcox.test`는 정규 근사에 동점 보정을 넣어서 동점이 있으면 값이 달라요.

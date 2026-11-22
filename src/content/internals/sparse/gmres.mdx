@@ -201,6 +201,7 @@ $|f|$, $|g|$가 모두 $[\sqrt{\text{safmin}}, \sqrt{\text{safmax}/2}]$ 안이�
 
 - 반복 수와 상태는 시험 기록에서 scipy와 같아요(`n_inner`는 scipy의 `callback_type='pr_norm'` 호출 수와 같아요). 단계마다의 `presid × ‖b‖`가 scipy의 `pr_norm × ‖b‖`와 상대 10⁻⁶ 안이에요. SuiteSparse의 memplus에서 GMRES(20)는 안쪽 5,425번으로 scipy와 같고, young1c는 2,809번(scipy 2,822)이에요.
 - 내적·노름은 결정적인 쌍 트리, 해의 갱신은 원소마다의 순차 합이라 numpy와 끝자리가 달라요.
+- 그 끝자리 차이가 크게 드러나는 경우가 특이 행렬이에요. Arnoldi가 정확한 해의 표시로 멈춘 뒤 회전한 대각 H(k, k)가 scipy에서는 정확히 0이라 그 성분을 풀지 않고, 이쪽은 반올림 크기(약 10⁻¹⁷)라 나눗셈이 큰 x를 만들어요. `diags_array([1.0, 1.0, 0.0])`과 b = `ones(3)`에서 scipy는 최소 잔차의 x = [1, 1, 1], 이쪽은 [1.45, 1.45, 2.2 × 10¹⁶]이에요. 둘 다 status 30(`converged=False`)이에요. scipy처럼 정확한 0만 비교하고 상대 문턱은 두지 않아요. 문턱을 두면 scipy와 다른 동작이 되기 때문이에요.
 - `callback`과 `callback_type`이 없어요. scipy의 옛 동작(`callback_type='legacy'`에서 `maxiter`가 안쪽 반복을 세던 것)도 없고, `max_iter`는 언제나 주기의 수예요.
 
 ## 참고 문헌

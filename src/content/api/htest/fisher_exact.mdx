@@ -27,7 +27,7 @@ raises:
   - type: TypeError
     desc: table이 배열·수의 시퀀스·frame이 아닐 때, method가 None·PermutationMethod·MonteCarloMethod가 아닐 때, 없는 인자를 줬을 때.
   - type: ValueError
-    desc: "table이 2차원보다 작을 때, 행이나 열이 없을 때, 음수·정수가 아닌 값·NaN이 있을 때, 2 × 2가 아닌 표나 재표본 method에 'two-sided'가 아닌 alternative를 줬을 때, r × c 표의 정확한 계산이 작업량 상한 2·10⁸을 넘을 때."
+    desc: "table이 2차원보다 작을 때, 행이나 열이 없을 때, 음수·정수가 아닌 값·NaN이 있을 때, 표의 합이 2⁵³ 이상일 때, 2 × 2가 아닌 표나 재표본 method에 'two-sided'가 아닌 alternative를 줬을 때, r × c 표의 정확한 계산이 작업량 상한 2·10⁸을 넘을 때."
 seeAlso: [chi2_contingency, barnard_exact, boschloo_exact, odds_ratio, basics, results]
 ---
 ## 무엇을 묻는 검정인가요
@@ -199,6 +199,31 @@ Traceback (most recent call last):
 ValueError: fisher_exact(): 'table' must hold non-negative integer counts
 ```
 
+## 아주 큰 개수
+
+2 × 2 표는 개수가 수십억이어도 짧은 시간에 끝나요. 표의 합(그래서 모든 칸)은 float64로 정확히 나타낼 수 있는 정수의 범위인 2⁵³ 아래여야 하고, 넘으면 `ValueError`예요.
+
+```python
+>>> sd.htest.fisher_exact([[1900000000, 1900000003], [1900000001, 1900000000]])
+FisherExactResult(statistic=1, pvalue=0.999982)
+>>> sd.htest.fisher_exact([[2**53, 1], [1, 1]])
+Traceback (most recent call last):
+    ...
+ValueError: fisher_exact(): the table's counts must be below 2**53
+```
+
+이렇게 큰 표에서는 p값이 NaN일 수 있어요. p값은 [초기하 분포](/api/stats/hypergeometric/)의 꼬리인데, 그 꼬리는 표의 합이 2⁵²를 넘으면 NaN이고, 합이 10¹²에 가까워지면 더할 항이 너무 많아 구하지 못하는 곳이 생겨요. 그런 표의 양쪽 p값은 관측 표와 그 반대편 경계 사이에 있는 표들의 확률을 1에서 빼서 구하고, 그 확률이 1/2보다 크면(p값이 작으면) NaN이에요. 한쪽 p값은 꼬리 그대로라 NaN이에요.
+
+```python
+>>> big = [[10**12 + 10**5, 10**12], [10**12, 10**12 + 10**5]]
+>>> sd.htest.fisher_exact(big)
+FisherExactResult(statistic=1, pvalue=0.920345)
+>>> sd.htest.fisher_exact(big, alternative='greater')
+FisherExactResult(statistic=1, pvalue=nan)
+```
+
+개수가 이만큼 크면 [`chi2_contingency`](/api/htest/chi2_contingency/)의 근사가 정확한 p값과 거의 같아요(위 표에서 0.920345). NaN이 나온 표는 그쪽으로 읽어요.
+
 ## 정확도
 
 2 × 2 표의 p값은 초기하 분포의 정확한 꼬리이고, 양쪽 규칙의 비교는 확률의 정확한 비로 해요. r × c 표도 확률을 근사 없이 더해서, 관측 표와 확률이 같은 표를 하나도 빠뜨리지 않아요. 정확한 유리수 계산으로 만든 참값에 견주면 18문제(r × c 9개, 2/C(1000, 500) = 7.4e-300의 깊은 꼬리, 0인 행·열 포함)에서 통계량은 상대오차 1.5e-16 안, p값은 6.1e-16 안이에요.
@@ -212,3 +237,4 @@ ValueError: fisher_exact(): 'table' must hold non-negative integer counts
 - R `fisher.test`의 2 × 2 양쪽 규칙은 허용이 10⁻⁷이라, 확률이 아주 가까운 표가 있으면 scipy·sd와 p값이 다를 수 있어요.
 - `alternative`의 기본값은 `'two-sided'`예요(scipy의 None과 같아요).
 - 표의 배치가 있어요(앞 축).
+- scipy는 행합과 열합이 수십억이면 2 × 2 표의 최빈값 계산이 넘쳐서 위의 `[[1900000000, 1900000003], [1900000001, 1900000000]]`에 경고와 함께 p = 0.50을 내요(맞는 값은 0.99998).

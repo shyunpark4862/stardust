@@ -5,12 +5,22 @@ order: 1
 summary: permutation_test, bootstrap, monte_carlo_test와 다른 검정의 method= 인자가 재표본을 C++에서 만드는 방법을 따라가요. 재표본 하나가 (키, 위치, 번호)만의 함수라서 스레드 수와 batch가 비트를 바꾸지 않고, 정확한 나열은 scipy와 같은 순서예요. BCa 구간의 보정과 p값의 허용오차도 설명해요.
 seeAlso: [mgc-gof, rank-tests, contingency, overview, accuracy-performance]
 ---
+import AccuracySummary from '../../../components/fig/AccuracySummary.astro';
 import Fig from '../../../components/fig/Fig.astro';
 import Steps from '../../../components/fig/Steps.astro';
 
 ## 한눈에 보기
 
 재표본은 Python과 C++이 일을 나눠요. `src/stardust/htest/_resampling.py`는 설정 객체(`PermutationMethod`, `BootstrapMethod`, `MonteCarloMethod`), 세 함수, 그리고 다른 검정이 부르는 `method_pvalue`·`method_interval`·`table_pvalues`를 가져요. 재표본을 만드는 일은 C++(`csrc/htest/resampling.cpp`)이 해요. 첨자를 만들어 바로 데이터를 모으고, 재표본 하나가 스레드풀의 일 하나예요. 사용자의 `statistic`은 Python에서 덩어리마다 한 번 불러요.
+
+`permutation_test`와 `bootstrap`의 `data`는 표본의 시퀀스예요. 표본 하나도 `(x,)`처럼 감싸서 줘요. 수의 리스트를 그대로 주면 그 수 하나하나를 표본으로 읽게 되므로, 원소가 모두 스칼라이면 표본을 나누기 전에 그 점을 짚는 `TypeError`를 내요.
+
+```python
+>>> sd.htest.permutation_test([1.0, 2.0, 3.0], sd.mean)
+Traceback (most recent call last):
+    ...
+TypeError: permutation_test(): 'data' must be a sequence of samples (one sample is given as (x,)), not a sequence of numbers
+```
 
 <Fig column caption="permutation_test 한 번의 흐름. 정확한 나열이면 난수를 쓰지 않고, 무작위면 rng의 스트림에서 구간 하나를 예약해요.">
   <Steps
@@ -241,6 +251,12 @@ FisherExactResult(statistic=0.0606061, pvalue=0.296)
 >>> sd.htest.fisher_exact(t)
 FisherExactResult(statistic=0.0606061, pvalue=0.272727)
 ```
+
+## 정확도
+
+무작위 재표본의 p값에는 수치 계약이 없고, 약속은 위의 정의식과 재현성이에요. 정해진 답이 있는 것은 정확한 나열이에요. 모든 배열을 `Fraction`으로 나열해 센 몫이 참값이고, 나열의 p값은 셈의 몫이라 상대 $5.6 \times 10^{-17}$ 안이에요.
+
+<AccuracySummary area="htest" names={['permutation_test']} caption="permutation_test의 정확한 나열 10문제(independent, pairings, samples, 부호 뒤집기, 동점 포함)." />
 
 ## scipy와 다른 곳
 

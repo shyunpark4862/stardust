@@ -302,7 +302,7 @@ $2^{52}$, $2^{53}$의 경계는 개수의 연산 때문이에요. 불완전 베�
 
 | 메서드 | NaN이 되는 곳 |
 |---|---|
-| cdf 계열, 역함수, median | 카이제곱은 nc가 약 $2.33 \times 10^9$ 초과(평균 근처부터), F는 nc가 약 $1.47 \times 10^9$ 초과, t는 $\lvert\text{nc}\rvert$가 약 $3.8 \times 10^4$ 초과. 카이제곱은 df가 $1.1 \times 10^{24}$를 넘으면 평균 근처 |
+| cdf 계열, 역함수, median | 카이제곱은 nc가 약 $2.33 \times 10^9$ 초과(평균을 둘러싼 띠, nc와 함께 넓어져요), F는 nc가 약 $1.47 \times 10^9$ 초과, t는 $\lvert\text{nc}\rvert$가 약 $3.83 \times 10^4$ 초과(F와 t는 값이 1로 반올림되는 위꼬리까지 넓게). 카이제곱은 df가 $1.1 \times 10^{24}$를 넘으면 평균 근처 |
 | pdf, logpdf | F는 nc가 약 $1.3 \times 10^8$ 초과, t는 $\lvert\text{nc}\rvert$나 $\lvert t\rvert$가 약 $10^{15}$ 초과. 카이제곱은 큰 df와 큰 nc가 함께일 때만(df가 작으면 nc $= 10^{300}$까지 값이 나와요) |
 | mode | t는 $\lvert\text{nc}\rvert > 128\sqrt{1 + \text{df}}$, F는 nc $> 1.3 \times 10^8$ |
 | `ilogcdf`, `ilogccdf` | $\log p \le -2^{62}$ |

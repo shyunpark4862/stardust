@@ -49,7 +49,7 @@ returns:
   desc: "statistic(관측한 통계량), pvalue, null_distribution(순열마다의 통계량, (순열 수, *배치))와 summary()가 있어요. 튜플로 풀리지 않아요."
 raises:
   - type: TypeError
-    desc: data가 list·tuple이 아닐 때, statistic이 호출할 수 없을 때나 수가 아닌 것을 돌려줄 때, 무작위 순열이 필요한데 rng가 없을 때, rng가 sd.random.Generator가 아닐 때, 없는 키워드를 줬을 때.
+    desc: data가 list·tuple이 아니거나 표본이 아닌 수의 시퀀스일 때, statistic이 호출할 수 없을 때나 수가 아닌 것을 돌려줄 때, 무작위 순열이 필요한데 rng가 없을 때, rng가 sd.random.Generator가 아닐 때, 없는 키워드를 줬을 때.
   - type: ValueError
     desc: "'independent'인데 표본이 하나일 때, 관측이 둘 미만인 표본이 있을 때, 짝지은 종류에서 표본의 길이가 다를 때, statistic이 맞지 않는 모양을 돌려줄 때, 나열할 순열이 10⁷개를 넘을 때, 문자열 옵션의 이름이 틀렸을 때, n_resamples·batch가 1보다 작을 때."
 seeAlso: [methods, bootstrap, monte_carlo_test, bws_test, ttest_ind, mannwhitneyu, basics, results]
@@ -270,6 +270,15 @@ ValueError: permutation_test(): permutation_type='independent' needs at least tw
 Traceback (most recent call last):
     ...
 ValueError: permutation_test(): each sample must hold at least 2 observations, not 1 (data[1])
+```
+
+`data`는 표본들의 리스트나 튜플이에요. 표본 하나를 수의 리스트 그대로 주면 `TypeError`이고, 메시지가 `(x,)`처럼 감싸라고 알려 줘요.
+
+```python
+>>> sd.htest.permutation_test([1., 2, 3, 4], mean)
+Traceback (most recent call last):
+    ...
+TypeError: permutation_test(): 'data' must be a sequence of samples (one sample is given as (x,)), not a sequence of numbers
 ```
 
 ## 이미 있는 검정을 순열로

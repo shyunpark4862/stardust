@@ -153,7 +153,7 @@ Column:                             25  No. A X, A^H X:                      3
   >>> sd.sparse.onenormest(sd.sparse.LinearOperator(L.shape, lu.solve))
   Traceback (most recent call last):
       ...
-  ValueError: rmatvec(): the operator was made without 'rmatvec'
+  ValueError: onenormest(): the operator was made without 'rmatvec'
   ```
 
 - `t`는 1 이상, `max_iter`는 2 이상이에요.

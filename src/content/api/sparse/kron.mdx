@@ -27,6 +27,8 @@ raises:
     desc: A나 B가 희소 배열이나 sd.ndarray가 아닐 때(리스트, numpy 배열 포함).
   - type: ValueError
     desc: A나 B가 3차원 이상일 때, format이 네 형식의 이름이 아닐 때.
+  - type: OverflowError
+    desc: 결과의 행이나 열의 수가 int64를 넘을 때.
 seeAlso: [kronsum, block_diag, eye_array, block_array, basics]
 ---
 import Callout from '../../../components/Callout.astro';

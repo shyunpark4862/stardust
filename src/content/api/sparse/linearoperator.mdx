@@ -205,6 +205,15 @@ Traceback (most recent call last):
 ValueError: rmatvec(): the operator was made without 'rmatvec'
 ```
 
+$A^H$의 곱이 필요한 함수([lsqr](/api/sparse/lsqr/), [lsmr](/api/sparse/lsmr/), [svds](/api/sparse/svds/), [onenormest](/api/sparse/onenormest/))에 이런 연산자를 주면 메시지가 그 함수의 이름으로 시작해요. `lsqr`와 `lsmr`는 반복을 시작하기 전에 알려요.
+
+```python
+>>> sd.sparse.lsqr(only, sd.ones(5))
+Traceback (most recent call last):
+    ...
+ValueError: lsqr(): the operator was made without 'rmatvec'
+```
+
 ## `matmat`과 `rmatmat`
 
 여러 벡터를 한꺼번에 곱하는 `matmat(X)`는 X가 `(N, k)`이고 결과가 `(M, k)`예요. 주지 않으면 열마다 `matvec`을 불러요. 열을 묶어 한 번에 곱하는 빠른 방법이 있을 때만 따로 주면 돼요. `rmatmat`도 같아요.
@@ -339,6 +348,20 @@ Traceback (most recent call last):
 ValueError: matvec(): 'x' must have shape (5,) or (5, 1), got (4,)
 ```
 
+numpy 배열은 곱하는 벡터가 아니에요. `@`의 어느 쪽에 있어도 Python의 `TypeError`예요. 3차원 이상의 배열도 받지 않아요.
+
+```python
+>>> import numpy as np
+>>> L @ np.ones(5)
+Traceback (most recent call last):
+    ...
+TypeError: unsupported operand type(s) for @: 'LinearOperator' and 'numpy.ndarray'
+>>> L @ sd.ones((5, 5, 2))
+Traceback (most recent call last):
+    ...
+ValueError: the operand must have 1 or 2 dimensions, got 3
+```
+
 ### 연산자의 dtype과 결과의 dtype
 
 `dtype`을 주어도 `matvec`의 결과를 그 dtype으로 바꾸지는 않아요. `dtype=sd.complex128`인 연산자라면 `matvec`이 복소 배열을 돌려주게 짜야 해요.
@@ -361,6 +384,6 @@ ValueError: a power needs a square operator, got shape (4, 5)
 - `rmatvec`, `matmat`, `rmatmat`, `dtype`은 키워드로만 받아요. scipy는 위치로도 받아요.
 - 벡터와의 곱은 `@`뿐이에요. scipy의 `L * x`, `L.dot(x)`, `L(x)`는 없어요(`*`는 스칼라만). `L * M`(연산자끼리)도 `@`로 써요.
 - `rmatvec` 없이 만든 연산자의 `rmatvec`은 `ValueError`예요. scipy는 `NotImplementedError`예요.
-- 곱하는 벡터는 `sd.ndarray`예요. numpy 배열은 받지 않아요. 사용자 함수가 돌려주는 값은 `sd.asarray`의 규칙으로 바꿔요.
+- 곱하는 벡터는 `sd.ndarray`예요. numpy 배열은 받지 않아요(`np.ones(5) * L`도 `TypeError`예요. scipy는 numpy 배열과의 `*`도 곱으로 계산해요). 사용자 함수가 돌려주는 값은 `sd.asarray`의 규칙으로 바꿔요.
 - `dtype=None`일 때 0 벡터로 `matvec`을 한 번 부르는 것, 하위 클래스가 `_matvec`·`_matmat`을 정의하는 방식, 연산자 조합의 모양과 dtype은 scipy와 같아요.
 - `aslinearoperator`로 감싼 희소·밀집 행렬은 반복법에서 행렬을 그대로 넘긴 것과 같은 결과예요.

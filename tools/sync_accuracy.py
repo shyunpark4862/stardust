@@ -21,8 +21,8 @@ import pathlib
 
 SITE = pathlib.Path(__file__).resolve().parents[1]
 OUT = SITE / "src" / "data" / "accuracy.json"
-# The areas the library measures, in its order (bench/areas.py without frame, random and sparse).
-AREAS = ("array", "linalg", "special", "stats", "regression", "optimize", "htest", "integrate", "differentiate")
+# The areas the library measures, in its order (bench/areas.py without frame and random).
+AREAS = ("array", "linalg", "special", "stats", "regression", "optimize", "htest", "sparse", "integrate", "differentiate")
 GROUPS = {"stats": {"mv": "mv/"}}  # area -> {group: sweep name prefix}
 
 # The output: {"fields": FIELDS, "areas": {area: {"summary": {...}, "groups": {group: summary},

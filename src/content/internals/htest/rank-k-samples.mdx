@@ -231,7 +231,12 @@ array([[0, 2],
 
 ## 순위 합 검정
 
-[`ranksums`](/api/htest/ranksums/)는 동점·연속성 보정이 없는 z $= (R_1 - n_1(N + 1)/2)/\sqrt{n_1 n_2 (N + 1)/12}$예요(scipy의 정의). 분자는 두 배 순위 합에서 나온 정수의 반이고, 분산은 128비트 정수를 12로 나눈 double-double이에요. 동점 보정과 정확 분포가 필요하면 Mann–Whitney가 같은 순위 합으로 그 둘을 가져요.
+[`ranksums`](/api/htest/ranksums/)는 동점·연속성 보정이 없는 z $= (R_1 - n_1(N + 1)/2)/\sqrt{n_1 n_2 (N + 1)/12}$예요(scipy의 정의). 분자는 두 배 순위 합에서 나온 정수의 반이고, 분산은 128비트 정수를 12로 나눈 double-double이에요. 동점 보정과 정확 분포가 필요하면 Mann–Whitney가 같은 순위 합으로 그 둘을 가져요. 모든 값이 같은 줄(묶음이 하나)은 통계량과 p값 모두 NaN이에요. 식대로 계산하면 z = 0이지만 순위가 모두 같아 견줄 것이 없는 자리라, 다른 순위 검정의 분산 0 규칙과 같이 NaN으로 둬요.
+
+```python
+>>> sd.htest.ranksums([2.0] * 5, [2.0] * 6)
+RanksumsResult(statistic=nan, pvalue=nan)
+```
 
 ## 정확도
 
@@ -245,3 +250,4 @@ array([[0, 2],
 - scipy `median_test`는 중앙값을 double로 반올림한 뒤 그 반올림한 값과 같은 값을 "같다"로 세요. 그래서 `ties='above'`면 위 예에서 표가 [[1, 2], [1, 0]]이에요.
 - scipy `page_trend_test`의 정확 분포는 동점을 보정하지 않아, 동점이 있는 'auto'에서 p값이 그 데이터의 귀무분포가 아니에요. 여기서는 행마다의 조건부 분포예요.
 - scipy `brunnermunzel`은 두 위치 분산이 0이면 ±inf와 경고를 내요. 여기서는 NaN이에요.
+- 모든 값이 같은 표본에서 scipy `ranksums`는 통계량 0, p값 1이에요. 여기서는 둘 다 NaN이에요.

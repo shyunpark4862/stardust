@@ -263,7 +263,7 @@ True
 
 여유보다 큰 계수는 그대로라, 문턱에서 잘 떨어진 해는 비트 하나 바뀌지 않아요. 정규화 GLM의 안쪽 좌표 하강도 같은 갱신이에요($v^{\mathsf T}\Omega v$ 자리에 작업 반응의 가중 분산).
 
-여유는 반올림 크기의 값만 없애요. 정확히 겹친 열은 같은 부호로 나눈 모든 몫이 최소점이라(L1 노름과 예측이 같아요) 해가 하나가 아니에요. 좌표 하강이 원래 열과 사본 사이에서 다른 계수를 움직이면 사본의 상관이 $l_1$을 반올림보다 크게 넘을 수 있고, 그때 사본은 진짜 몫을 받아요. 그 활성 집합은 Gram 블록이 특이해서 연마가 성공하지 못하므로, 결과는 좌표 하강이 멈춘 최소점이에요. 몫의 크기는 시작점(경로의 따뜻한 시작인지, 0에서 시작한 단독 적합인지)과 갱신 순서에 달려 있어요(아래 alpha = 0 절의 예).
+여유는 반올림 크기의 값만 없애요. 정확히 겹친 열은 같은 부호로 나눈 모든 몫이 최소점이라(L1 노름과 예측이 같아요) 해가 하나가 아니에요. 좌표 하강이 원래 열과 사본 사이에서 다른 계수를 움직이면 사본의 상관이 $l_1$을 반올림보다 크게 넘을 수 있고, 그때 사본은 진짜 몫을 받아요. 몫의 크기는 시작점(경로의 따뜻한 시작인지, 0에서 시작한 단독 적합인지)과 갱신 순서에 달려 있어요. 연마는 사본들을 한 무리로 보고 그 합을 앞의 사본에 모으므로, 결과는 그 몫과 상관없어요(아래 [똑같은 열](#똑같은-열)과 alpha = 0 절의 예).
 
 ### 활성 집합 스윕
 
@@ -397,7 +397,7 @@ True
 
 ### 똑같은 열
 
-$L_2$ 항이 없으면(lasso, `l1_ratio = 1`) 똑같은 열 둘이 함께 활성일 때 Gram 블록이 특이해요. 두 열의 합(같은 부호)만 정해지고, 어떻게 나눠도 최소점이라서요. 그래서 연마는 활성 집합 $A$를 만들 때 앞서 들어온 열의 사본을 넣지 않아요. 사본은 적합에 쓰인 행에서 값이 비트까지 같고 중심과 척도도 같은 열, 곧 $z_j$가 비트까지 같은 열이에요.
+$L_2$ 항이 없으면(lasso, `l1_ratio = 1`) 똑같은 열 둘이 함께 활성일 때 Gram 블록이 특이해요. 두 열의 합(같은 부호)만 정해지고, 어떻게 나눠도 최소점이라서요. 그래서 연마는 사본들을 한 무리로 묶고, 무리의 앞 사본 하나만 활성 집합 $A$에 넣어요. 사본은 적합에 쓰인 행에서 값이 비트까지 같고 중심과 척도도 같은 열, 곧 $z_j$가 비트까지 같은 열이에요.
 
 ```cpp
 // Whether the solver's columns j and k are exact copies: the same values over the fit's rows
@@ -413,32 +413,74 @@ bool same_column(const Src& src, const Prep& P, lint j, lint k) {
 }
 ```
 
+무리는 적합마다 한 번, Gram을 만든 뒤에 찾아요(`first[j]`는 열 $j$의 무리에서 가장 앞의 열). 사본끼리는 $d_j$, 중심, 척도가 비트까지 같으니, 이 셋으로 열을 안정 정렬하면 후보끼리만 이웃해요. 행을 견주는 `same_column`은 셋이 같은 열 사이에서만 불러요.
+
 ```cpp
-    for (lint j = 0; j < s.pc; ++j) {
-        // without an L1 term every column is in the system and the signs are free
-        if (!(s.b[j] != 0.0 || (l1 == 0.0 && s.d[j] > 0.0))) continue;
-        bool copy = false;
-        if (l2 == 0.0 && l1 > 0.0)
-            for (const lint q : A)
-                if (s.d[q] == s.d[j] && same_column(src, P, q, j)) {
-                    copy = true;
+std::vector<lint> copies(const Solver& s, const Src& src, const Prep& P) {
+    std::vector<lint> first(static_cast<std::size_t>(s.pc)), ord(static_cast<std::size_t>(s.pc));
+    std::iota(first.begin(), first.end(), lint(0));
+    std::iota(ord.begin(), ord.end(), lint(0));
+    auto key = [&](lint j) { return std::array<double, 3>{s.d[j], P.cx[P.cols[j]], P.sc[P.cols[j]]}; };
+    std::stable_sort(ord.begin(), ord.end(), [&](lint a, lint b) { return key(a) < key(b); });
+    for (lint u = 0; u < s.pc;) {
+        lint v = u + 1;
+        while (v < s.pc && key(ord[v]) == key(ord[u])) ++v;
+        // ord[u..v) share the key, in column order (stable): each takes the first earlier copy
+        for (lint i = u + 1; i < v; ++i)
+            for (lint h = u; h < i; ++h)
+                if (first[ord[h]] == ord[h] && same_column(src, P, ord[h], ord[i])) {
+                    first[ord[i]] = ord[h];
                     break;
                 }
-        if (!copy) A.push_back(j), sg.push_back(s.b[j] > 0 ? 1.0 : -1.0);
+        u = v;
+    }
+    return first;
+}
+```
+
+연마는 무리마다 계수의 합을 앞 사본의 자리에 모으고, 합이 0이 아닌 무리의 앞 사본을 그 합의 부호로 $A$에 넣어요. 좌표 하강이 어느 사본을 활성으로 남겼든(앞 사본을 0으로 두고 뒤 사본에 몫을 다 주었어도) $A$와 부호는 같고, $A$는 사본이 없을 때처럼 열 순서예요.
+
+```cpp
+    if (l2 == 0.0 && l1 > 0.0 && !s.first.empty()) {
+        // the exact copies' total at the first copy, in column order as without copies (the
+        // system's bits must not depend on which copies the descent left active)
+        std::vector<double> tot(static_cast<std::size_t>(s.pc), 0.0);
+        for (lint j = 0; j < s.pc; ++j) tot[s.first[j]] += s.b[j];
+        for (lint j = 0; j < s.pc; ++j)
+            if (tot[j] != 0.0) A.push_back(j), sg.push_back(tot[j] > 0 ? 1.0 : -1.0);
+    } else {
+        for (lint j = 0; j < s.pc; ++j) {
+            // without an L1 term every column is in the system and the signs are free
+            if (!(s.b[j] != 0.0 || (l1 == 0.0 && s.d[j] > 0.0))) continue;
+            A.push_back(j), sg.push_back(s.b[j] > 0 ? 1.0 : -1.0);
+        }
     }
 ```
 
-그러면 앞의 사본이 합을 받고 뒤의 사본은 0이에요. 뒤의 사본의 기울기는 앞의 것과 같아 정확히 $l_1$이라, 비활성 열의 KKT 검사가 그 점을 확인해요. 연마한 점은 좌표 하강이 사본에 남긴 몫과 상관없으므로, 두 사본이 모두 몫을 가진 채 연마에 오면 경로(따뜻한 시작)와 단일 적합이 같은 비트예요. 좌표 하강이 앞의 사본을 0으로 두고 뒤의 사본에만 몫을 주었으면 앞의 사본은 $A$에 들지 않아서, 뒤의 사본이 합을 가진 채 남아요. 특이한 블록을 그대로 풀면 연마가 실패하고, 간격이 이미 반올림 수준인데도 좌표 하강을 `max_iter`까지 이어 가 `converged=False`가 돼요. 엘라스틱 넷($l_2 \gt 0$)은 사본이 같은 몫을 받는 해가 하나뿐이라 이 규칙이 필요 없어요.
+그러면 앞의 사본이 합을 받고 뒤의 사본은 0이에요. 뒤의 사본의 기울기는 앞의 것과 같아 정확히 $l_1$이라, 비활성 열의 KKT 검사가 그 점을 확인해요. 연마한 점은 $A$와 부호에만 달려 있고 좌표 하강이 사본에 남긴 몫과는 상관없으므로, 경로(따뜻한 시작)와 단일 적합이 같은 비트예요. 특이한 블록을 그대로 풀면 연마가 실패하고, 간격이 이미 반올림 수준인데도 좌표 하강을 `max_iter`까지 이어 가 `converged=False`가 돼요. 엘라스틱 넷($l_2 \gt 0$)은 사본이 같은 몫을 받는 해가 하나뿐이라 이 규칙이 필요 없어요.
 
 거의 같은 열(0.01 크기의 차이)은 이 규칙에 들지 않아요. 그런 열에서는 좌표 하강의 수렴비가 $1 - O(1/\kappa^2)$로 느려 기본 `max_iter` = 1000에 닿고 `converged=False`일 수 있어요. `max_iter`를 늘리면 scikit-learn과 같은 해에 닿아요.
 
 ### 연마를 시도하는 때
 
 - **간격 판정을 통과했을 때.** 연마가 실패하면(alpha_max 바로 아래처럼 아직 활성 집합이 다르면) 허용오차를 $10^{-6}$배로 줄여 좌표 하강을 이어 간 뒤 다시 연마해요(최대 2번). 끝내 통과하지 못하면 좌표 하강의 해를 내요. 다시 도는 좌표 하강이 `max_iter`에 닿으면 거기서 멈추고, 연마하지 않은 마지막 반복의 계수와 그 간격을 내며 `converged`를 False로 둬요. 처음의 간격 판정을 통과했어도 그 해는 좁힌 허용오차에도, 연마한 해에도 이르지 못했기 때문이에요. 다시 도는 좌표 하강이 좁힌 판정을 통과했더라도, 그 사이에 `max_iter`를 다 써서 연마를 더 시도할 수 없으면 같은 이유로 False예요. `converged=True`는 언제나 "연마한 해, 또는 연마할 수 없음이 밝혀질 때까지 좁힌 해"라는 뜻이에요. 반복 수의 상한이 alpha마다라서 경로에서도 alpha마다 따로 정해져요.
-- **좌표 하강 도중, 두 스윕 연달아 모든 계수의 부호가 같을 때**(활성 집합이 자리를 잡았을 때). 부호 꼴마다 한 번만 시도해요. 통과하면 그 해의 간격으로 수렴을 판정해요. 좌표 하강은 조건이 나쁜 활성 집합에서 선형으로만 수렴하는데, 연마는 그것을 한 번에 풀어요.
+- **좌표 하강 도중, 두 스윕 연달아 모든 계수의 부호가 같을 때**(활성 집합이 자리를 잡았을 때). 부호 꼴마다 한 번만 시도해요. lasso의 부호 꼴은 연마가 쓰는 꼴, 곧 사본의 무리마다 합의 부호예요. 사본 하나하나의 부호는 그대로인데 합의 부호가 바뀌면 새 꼴이에요. 통과하면 그 해의 간격으로 수렴을 판정해요. 좌표 하강은 조건이 나쁜 활성 집합에서 선형으로만 수렴하는데, 연마는 그것을 한 번에 풀어요.
 
 ```cpp
     // csrc/regression/penalized.cpp (cd_solve)
+    auto pattern = [&](std::vector<std::int8_t>& v) {
+        v.resize(static_cast<std::size_t>(s.pc));
+        if (s.first.empty() || !(l2 == 0.0 && l1 > 0.0)) {
+            for (lint j = 0; j < s.pc; ++j) v[j] = static_cast<std::int8_t>((s.b[j] > 0) - (s.b[j] < 0));
+            return;
+        }
+        // with exact copies, the polish's pattern: the sign of each copies' total at the first
+        // copy (whichever copies hold it), so a total that changes sign is a new pattern
+        tot.assign(static_cast<std::size_t>(s.pc), 0.0);
+        for (lint j = 0; j < s.pc; ++j) tot[s.first[j]] += s.b[j];
+        for (lint j = 0; j < s.pc; ++j) v[j] = static_cast<std::int8_t>((tot[j] > 0) - (tot[j] < 0));
+    };
+    // after a sweep: the polish when the signs settled (true: converged on it)
     auto settle = [&]() {
         if (!polish_fn) return false;
         pattern(pat);
@@ -570,7 +612,10 @@ ridge에는 해가 0이 되는 alpha가 없어서 이 $\alpha_{\max}$는 lasso�
     Solver s;
     bool descent = false;  // an alpha > 0 (alpha = 0 is not solved here, below)
     for (lint l = 0; l < L && !descent; ++l) descent = rd(reinterpret_cast<const std::byte*>(alphas) + l * as) != 0.0;
-    if (descent) build(src, P, op, s);
+    if (descent) {
+        build(src, P, op, s);
+        s.first = copies(s, src, P);  // the lasso's exact copies
+    }
     const double rho = op.l1_ratio;
     const double tss = descent ? s.vv * P.sw : kNaN;
     for (const lint l : path_order(alphas, as, L)) {

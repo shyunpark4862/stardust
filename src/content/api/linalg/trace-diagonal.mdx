@@ -25,7 +25,7 @@ returns:
   desc: diagonal은 대각선 원소를 담은 모양 (..., L)의 새 배열로, 입력의 dtype을 유지해요. trace는 그 합으로, 행렬 하나면 Python 숫자이고 여러 개면 모양이 (...)인 배열이에요.
 raises:
   - type: TypeError
-    desc: x가 배열이 아닐 때, k가 int가 아닐 때(bool, float 포함), k나 dtype을 이름 없이 자리로 넘겼을 때, trace의 dtype이 sd.bool이거나 복소수 입력에 실수 dtype을 줬을 때.
+    desc: x가 배열이 아닐 때(리스트, 희소 배열 포함), k가 int가 아닐 때(bool, float 포함), k나 dtype을 이름 없이 자리로 넘겼을 때, trace의 dtype이 sd.bool이거나 복소수 입력에 실수 dtype을 줬을 때.
   - type: ValueError
     desc: x가 2차원 미만일 때.
   - type: OverflowError
@@ -443,6 +443,23 @@ array([[1.0, 0.0, 0.0],
 >>> S = sd.sparse.csr_array(sd.asarray([[1.0, 2.0], [3.0, 4.0]]))
 >>> S.diagonal(), S.trace()
 (array([1.0, 4.0], dtype=float64), 5.0)
+```
+
+희소 배열을 `sd.linalg.trace`나 `sd.linalg.diagonal`에 넣으면 그 메서드를 알려 주는 `TypeError`예요.
+
+```python
+>>> sd.linalg.trace(S)
+Traceback (most recent call last):
+    ...
+TypeError: trace(): 'x' must be an sd.ndarray, not csr_array; for a sparse array use A.trace()
+```
+
+실수와 복소수 행렬이면 `S.trace()`는 `sd.linalg.trace(S.toarray())`와 비트까지 같아요. 정수와 bool 행렬에서는 결과의 종류가 달라요. 희소 쪽의 `trace()`는 [`sd.sum`](/api/array/sum/)처럼 정수를 유지하고, `sd.linalg.trace`는 float64로 더해요.
+
+```python
+>>> N = sd.sparse.csr_array(sd.asarray([[1, 2], [3, 4]]))
+>>> N.trace(), sd.linalg.trace(N.toarray())
+(5, 5.0)
 ```
 
 ## numpy·scipy를 아는 분께

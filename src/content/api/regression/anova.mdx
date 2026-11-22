@@ -19,7 +19,7 @@ params:
   - name: terms
     type: 항의 목록 또는 None
     kind: keyword-only
-    desc: "결과가 하나일 때 열을 묶은 항. 항마다 열 하나(위치 또는 이름)나 열의 목록이고, X의 모든 열을 한 번씩 덮어야 해요. 목록의 순서가 Type I에서 항을 넣는 순서예요. None(기본값)이면 열 하나가 항 하나예요. 절편은 항이 아니에요."
+    desc: "결과가 하나일 때 열을 묶은 항. 항마다 열 하나(위치 또는 이름. numpy의 정수도 위치예요)나 열의 목록이고, X의 모든 열을 한 번씩 덮어야 해요. 목록의 순서가 Type I에서 항을 넣는 순서예요. None(기본값)이면 열 하나가 항 하나예요. 절편은 항이 아니에요."
   - name: test
     type: str 또는 None
     kind: keyword-only
@@ -29,7 +29,7 @@ returns:
   desc: "표의 열을 필드로 담은 결과예요. 모형 여럿의 표는 줄(모형)마다 df_resid, ssr(GLM은 편차), df_diff, ss_diff, statistic, pvalue이고, 항의 표는 줄(항과 마지막 'Residual')마다 terms, df, sum_sq, mean_sq, statistic, pvalue예요. test, typ와 summary()도 있어요."
 raises:
   - type: TypeError
-    desc: 결과를 하나도 주지 않았을 때, ols·wls·gls·glm이 아닌 결과를 줬을 때, 결과의 종류가 섞였을 때, typ이 int가 아닐 때, terms가 목록이 아닐 때, 항의 열이 위치(int)나 이름(str)이 아닐 때.
+    desc: 결과를 하나도 주지 않았을 때, ols·wls·gls·glm이 아닌 결과를 줬을 때, 결과의 종류가 섞였을 때, typ이 int가 아닐 때, terms가 목록이 아닐 때, 항이나 항의 열이 위치(int)나 이름(str)이 아닐 때(실수, bool, bytes).
   - type: ValueError
     desc: 배치 결과를 줬을 때, typ이 1·3이 아닐 때, 결과가 여럿인데 typ·terms를 줬을 때, terms가 없는 열을 가리키거나 한 열을 두 번 쓰거나 빠뜨렸을 때, 빈 항이 있을 때, test가 'F'·'Chisq'가 아닐 때, 척도가 고정인 GLM에 test='F'를 줬을 때, 강건 공분산(cov_type)의 결과로 모형 여럿의 표나 Type I 표를 만들 때, 모형 여럿이 같은 자료의 내포 모형이 아닐 때.
 seeAlso: [model-comparison, hypothesis-tests, results, ols, glm]
@@ -146,7 +146,7 @@ array([                  nan, 8.446800243958934e-22,   0.15849022756798448], dty
 | `terms` | 항의 이름. 마지막은 `'Residual'` |
 | `df` | 항의 자유도(그 항이 더하는 계수의 수) |
 | `sum_sq` | 항이 맡은 제곱합 |
-| `mean_sq` | `sum_sq / df` |
+| `mean_sq` | `sum_sq / df`. `'Residual'` 줄은 통계량의 분모인 척도(`scale`)예요(선형 모형은 `ssr / df_resid`와 같아요) |
 | `statistic`, `pvalue` | 항의 F(또는 카이제곱)와 p값. `'Residual'` 줄은 NaN |
 
 ### Type I: 순서대로 더하기
@@ -223,7 +223,7 @@ Type II는 항마다 "그 항을 품는 항(상호작용)을 뺀 나머지가 �
 
 ### 열 묶음을 한 항으로
 
-`terms`로 여러 열을 한 항으로 묶을 수 있어요. 항마다 열의 이름이나 위치(0부터)의 목록을 주고, 항의 이름은 열 이름을 `' + '`로 이어 붙여요. 묶은 항의 F는 그 열들을 한꺼번에 검정해요. 아래 `paper + sns` 줄은 [`compare_f_test`의 예](/api/regression/model-comparison/#compare_f_test-f-검정)의 F = 1.84와 같아요.
+`terms`로 여러 열을 한 항으로 묶을 수 있어요. 항마다 열의 이름이나 위치(0부터)의 목록을 주고, 항의 이름은 열 이름을 `' + '`로 이어 붙여요. 목록이 아닌 항은 열 하나예요. 이름(`str`)이나 위치(`int`, numpy의 정수와 0차원 정수 배열)를 받고, 정수 배열은 열의 목록으로 봐요. 묶은 항의 F는 그 열들을 한꺼번에 검정해요. 아래 `paper + sns` 줄은 [`compare_f_test`의 예](/api/regression/model-comparison/#compare_f_test-f-검정)의 F = 1.84와 같아요.
 
 ```python
 >>> g = sd.regression.anova(m4, terms=[['tv', 'radio'], [2, 3]])
@@ -380,7 +380,7 @@ array([   3.938737025754865,    23.04697596085645, 0.026821894469078306], dtype=
 
 Type I의 `dose` 줄(34.2)은 절편만의 모형에 투약량을 더할 때 줄어든 편차, 곧 우도비 통계량이에요. Type III의 `dose` 줄(23.0)은 나이가 들어 있을 때 투약량의 계수가 0인지 묻는 Wald 통계량이고, 그 계수의 z값의 제곱이에요. 묻는 모형도 통계량의 꼴도 달라서 값이 달라요.
 
-척도를 추정하는 분포족에서는 편차의 감소를 항의 자유도와 척도(`scale`)로 나눈 F예요. F의 분모는 표의 `'Residual'` 줄의 `mean_sq`(편차 ÷ `df_resid`)가 아니라 모형의 `scale`이에요. 감마 분포처럼 `scale`이 Pearson 통계량으로 어림한 값이면 둘이 달라요.
+척도를 추정하는 분포족에서는 편차의 감소를 항의 자유도와 척도(`scale`)로 나눈 F예요. 표의 `'Residual'` 줄은 `sum_sq`가 잔차 편차이고 `mean_sq`는 그 F의 분모인 모형의 `scale`이라서, 항의 `mean_sq`를 `'Residual'`의 `mean_sq`로 나누면 F가 다시 나와요. 감마 분포처럼 `scale`이 Pearson 통계량으로 어림한 값이면 `mean_sq`는 편차 ÷ `df_resid`와 달라요. 척도가 고정인 이항·포아송의 `'Residual'` `mean_sq`는 1이에요.
 
 ```python
 >>> rng = sd.random.default_rng(5)
@@ -394,7 +394,11 @@ Type I의 `dose` 줄(34.2)은 절편만의 모형에 투약량을 더할 때 줄
 >>> gt.statistic
 array([ 47.21253034846571, 0.3551935357588285,                nan], dtype=float64)
 >>> gt.sum_sq[0] / gm.scale, gt.mean_sq[2], gm.scale
-(47.21253034846571, 0.20113895387891895, 0.21677217507770194)
+(47.21253034846571, 0.21677217507770194, 0.21677217507770194)
+>>> gt.mean_sq[0] / gt.mean_sq[2]
+47.21253034846571
+>>> gt.sum_sq[2] / gt.df[2]
+0.20113895387891895
 ```
 
 척도가 고정인 GLM에 `test='F'`를 주면 에러예요.
@@ -464,6 +468,10 @@ ValueError: anova(): 'typ' and 'terms' are for one model's table, not for 2 mode
 Traceback (most recent call last):
     ...
 ValueError: anova(): 'terms' names a column 'price' that 'X' does not have
+>>> sd.regression.anova(m4, terms=[0, 1, 2.0, 3])
+Traceback (most recent call last):
+    ...
+TypeError: anova(): a term's columns must be positions (int) or names (str), not float
 >>> sd.regression.anova(m4, test='chisq')
 Traceback (most recent call last):
     ...

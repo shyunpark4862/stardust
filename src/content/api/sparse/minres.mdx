@@ -177,7 +177,7 @@ True
 
 ## 전처리기 M
 
-M은 **양정치**여야 해요. A − shift·I가 부정이어도 M은 양정치예요. `minres`는 반복 중에 $r^{\mathsf H}Mr$를 계산하므로, 이 값이 음수로 나오면 M이 양정치가 아님을 알아채요. 처음 잔차에서 드러나면 `'the preconditioner is not positive definite'`, 반복 중에 드러나면 `'the matrix is not symmetric'`이에요. 두 메시지 모두 원인은 M이에요.
+M은 **양정치**여야 해요. A − shift·I가 부정이어도 M은 양정치예요. `minres`는 반복 중에 $r^{\mathsf H}Mr$를 계산하므로, 이 값이 음수로 나오면 M이 양정치가 아님을 알아채요. 처음 잔차에서 드러나든 반복 중에 드러나든 메시지는 `'the preconditioner is not positive definite'`예요. M이 양정치면 이 값은 음수가 될 수 없으므로 원인은 언제나 M이에요.
 
 ```python
 >>> sd.sparse.minres(A, b, M=-sd.sparse.eye_array(N))
@@ -189,7 +189,7 @@ stardust.linalg.LinAlgError: minres(): the preconditioner is not positive defini
 >>> sd.sparse.minres(A, b, M=sd.sparse.diags_array(d))
 Traceback (most recent call last):
     ...
-stardust.linalg.LinAlgError: minres(): the matrix is not symmetric
+stardust.linalg.LinAlgError: minres(): the preconditioner is not positive definite
 ```
 
 `LinAlgError`는 `ValueError`의 하위 클래스라 `except ValueError`로도 잡혀요. 대각이 모두 양수인 행렬의 Jacobi 전처리기(대각의 역수)는 양정치라 안전해요. 대각에 음수가 있는 부정 행렬이면 대각의 절댓값의 역수를 써요.
@@ -232,6 +232,6 @@ ValueError: minres(): 'shift' must be finite
 
 - `scipy.sparse.linalg.minres`(Paige–Saunders)와 같은 알고리즘과 판정이에요. `status`는 scipy의 `info`이고, 어느 판정으로 멈췄는지는 `message`에 있어요(scipy는 `show=True`일 때만 인쇄해요).
 - `norma`, `conda`, `normar`, `normx`를 결과에 넣었어요. scipy가 `show=True`로 인쇄하는 `Anorm`, `Acond`, `Arnorm`, `ynorm`과 같은 값이에요.
-- 양정치가 아닌 전처리기는 scipy의 `ValueError` 대신 `sd.linalg.LinAlgError`예요(`ValueError`의 하위 클래스라 `except ValueError`는 그대로 돼요). 메시지는 scipy의 `'indefinite preconditioner'`, `'non-symmetric matrix'`에 해당해요.
+- 양정치가 아닌 전처리기는 scipy의 `ValueError` 대신 `sd.linalg.LinAlgError`예요(`ValueError`의 하위 클래스라 `except ValueError`는 그대로 돼요). 메시지는 scipy의 `'indefinite preconditioner'`에 해당해요. scipy는 반복 중에 드러난 경우를 `'non-symmetric matrix'`라고 하지만 그 원인도 M이라서, 여기서는 두 경우가 같은 메시지예요.
 - `maxiter`는 `max_iter`, `callback`·`show`·`check`는 없어요. `shift`가 유한한지 검사해요.
 - 반올림에 민감한 부정 행렬에서는 뒷부분의 반복 수가 scipy와 조금 다를 수 있어요. 상태는 같아요.

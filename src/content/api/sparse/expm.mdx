@@ -93,7 +93,9 @@ A가 희소해도 $e^A$는 거의 언제나 밀집에 가까워요. 급수의 $A
 >>> R
 <csc_array of shape (3, 3), float64, 3 stored elements>
 >>> R.diagonal()
-array([               1.0, 2.718281828459045, 0.3678794411714423], dtype=float64)
+array([                1.0,   2.718281828459045, 0.36787944117144233], dtype=float64)
+>>> bool(sd.all(R.toarray() == sd.linalg.expm(D.toarray())))
+True
 ```
 
 ## 형식과 dtype
@@ -153,7 +155,7 @@ ValueError: expm(): 'A' contains NaN or infinity
 
 ## `sd.linalg.expm`과 언제 무엇을
 
-두 함수는 같은 방법(크기를 줄여 Padé 근사를 하고 다시 제곱하는 방법)에 같은 선택(근사의 차수, 제곱 수, 삼각 행렬의 보정, 큰 노름의 처리)을 해요. 값은 반올림 차이 안에서 같아요.
+두 함수는 같은 방법(크기를 줄여 Padé 근사를 하고 다시 제곱하는 방법)에 같은 선택(근사의 차수, 제곱 수, 삼각 행렬의 보정, 큰 노름의 처리)을 해요. 대각 행렬과 2 × 2 삼각 행렬은 보정을 같은 식으로 계산해서 위의 `D`처럼 비트까지 같아요. 다른 행렬은 행렬 곱과 마지막 연립방정식 풀이의 계산 순서가 달라 끝자리가 다를 수 있어요. 둘 다 아래 [정확도](#정확도)의 한계 안이에요.
 
 ```python
 >>> dense = sd.linalg.expm((-L).toarray())

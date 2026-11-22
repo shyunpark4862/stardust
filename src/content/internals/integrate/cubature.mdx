@@ -31,7 +31,10 @@ seeAlso: [overview, gauss-kronrod, accuracy-performance]
 Fixed product_rule(const double* x, const double* w, std::size_t k, std::size_t d) {
     Fixed r;
     r.n = 1;
-    for (std::size_t i = 0; i < d; ++i) r.n *= k;
+    for (std::size_t i = 0; i < d; ++i) {
+        if (r.n > kCubeValuesMax / k / d) throw nb::value_error("the rule needs more than 2**25 values per region");
+        r.n *= k;
+    }
     r.nodes.resize(r.n * d);
     r.weights.resize(r.n);
     std::vector<std::size_t> idx(d, 0);
@@ -51,7 +54,7 @@ Fixed product_rule(const double* x, const double* w, std::size_t k, std::size_t 
 }
 ```
 
-곱 규칙은 축마다 차수가 높아 매끄러운 함수에는 아주 정확하지만, 마디 수가 차원에 지수로 늘어요. 3차원 `'gk21'`은 영역 하나에 9,261점이에요.
+곱 규칙은 축마다 차수가 높아 매끄러운 함수에는 아주 정확하지만, 마디 수가 차원에 지수로 늘어요. 3차원 `'gk21'`은 영역 하나에 9,261점이에요. 곱할 때마다 점 수 × d가 $2^{25}$을 넘지 않는지 먼저 봐요. Python 층이 같은 상한을 f를 부르기 전에 검사하므로([크기의 상한](#크기의-상한)) 이 검사에 걸리는 일은 없지만, 15차원부터 `size_t`의 $21^d$가 넘치는 곱을 커널 스스로도 막아 둬요.
 
 ### Genz–Malik
 
@@ -199,6 +202,48 @@ $\lambda_2 = \sqrt{9/70}$, $\lambda_3 = \lambda_4 = \sqrt{9/10}$, $\lambda_5 = \
 
 꺼낸 영역은 모든 축의 가운데에서 $2^d$개로 나눠요. Genz와 Malik의 원래 알고리즘은 네 번째 차분이 가장 큰 축 하나만 반으로 나눠 영역이 두 개씩 늘어나는데, scipy의 `cubature`는 규칙과 상관없이 모든 축을 나눠요. 차원이 높으면 한 번의 나누기가 비싸요. 4차원 `'genz-malik'`이면 나누기 한 번에 16영역 × (57 + 98)점이에요.
 
+## 크기의 상한
+
+한 영역의 일은 오차 규칙의 점 수에 비례하고, 그 점들의 좌표는 규칙의 표, 두 규칙을 이은 표, 사용자 함수에 넘기는 배열, 사용자 함수 안의 중간 배열로 몇 벌이 함께 있어요. 곱 규칙은 그 수가 차원에 지수로 늘어서, 8차원 `'gk21'`이면 점의 표만 2 TB예요. 그래서 오차 규칙 한 벌의 값(점 수 × d)을 $2^{25}$개로 막아, 배열 하나가 256 MiB를 넘지 않게 해요. 검사는 Python 층이 사용자 함수를 부르기 전에 해요.
+
+```python
+# src/stardust/integrate/_cubature.py
+def _points_per_region(rule, d):
+    """(points of one region, its text): the product rules' k^d + g^d, genz-malik's degree 7 and
+    5 rules 2^d + 4d^2 + 4d + 2 (their nodes are computed apart, as scipy's)."""
+    if rule == "genz-malik":
+        n = 2**d + 4 * d * d + 4 * d + 2
+        return n, str(n)
+    k, g = _PRODUCT[rule]
+    return k**d + g**d, f"{k}**{d} + {g}**{d}"
+```
+
+```python
+    # src/stardust/integrate/_cubature.py
+    n, text = _points_per_region(rule, d)
+    if n * d > _VALUES_MAX:
+        hint = "; use rule='genz-malik'" if rule != "genz-malik" else ""
+        raise ValueError(
+            f"{fn}(): rule={rule!r} in {d} dimensions needs {text} points per region of {d} values each, "
+            f"more than 2**25 values{hint}"
+        )
+```
+
+Genz–Malik의 낮은 규칙은 높은 규칙의 마디 가운데 무리 5를 뺀 것이지만, scipy처럼 마디를 따로 만들어 이으므로 오차 규칙은 $2^d + 4d^2 + 4d + 2$점이에요. 이 상한에서 곱 규칙은 5차원(`'gk21'`이면 $21^5 + 10^5$ = 4,184,101점), `'genz-malik'`은 20차원(1,050,258점)까지예요. 커널은 곱 규칙을 만들 때와 두 규칙을 이을 때 같은 상한을 다시 봐요.
+
+`points`가 만드는 처음 영역도 셀 수 있어야 해요. 점 하나가 그 점을 품은 영역을 $2^d$개까지 나누므로, 점이 여럿이면 처음 영역의 수가 빠르게 늘어요. 나눌 때마다 영역 수 × 오차 규칙의 점 수가 $2^{24}$을 넘는지 봐요.
+
+```cpp
+            // csrc/integrate/adaptive.cpp
+            initial = std::move(next);
+            if (initial.size() > kCubePointsMax / c.both.n) {  // checked as they grow: up to 2^d per point
+                const std::string msg = "'points' split the box into more than " +
+                                        std::to_string(kCubePointsMax / c.both.n) + " regions of " +
+                                        std::to_string(c.both.n) + " points each (more than 2**24 points)";
+                throw nb::value_error(msg.c_str());
+            }
+```
+
 ## 무한 축
 
 무한한 축은 scipy의 치환으로 유한한 구간에 옮기고, 값에 야코비안 $1/\prod t_i^2$을 곱해요.
@@ -269,4 +314,4 @@ $(-\infty, b]$의 축은 scipy 문서의 치환 $x = b - (1 - t)/t$에서 f를 �
 
 ## scipy와 같은 점
 
-규칙의 상수와 마디의 차례, 마디와 가중치의 산술(곱셈·덧셈 축약 없이 Python·numpy의 순서), 합의 배치 규칙, 힙의 비교를 같게 두어서, scipy로 기록한 12개(상자 넷 × 규칙 셋, 호출의 모양까지), 기록 밖의 39경우(1–4차원, 벡터와 3차원 값, 여러 배치, 평면·반평면·반직선·직선, 뒤집은 끝, `points`, `max_subdivisions`, `atol`), 1차원 시험 모음 105개 × 규칙 둘이 부른 점, 값, 오차, `subdivisions`, 영역까지 지금은 비트까지 같아요(약속은 아니에요). 다른 것은 셋이에요. 위의 $(-\infty, b]$ 축, 무한 축과 `points`를 함께 줄 때(scipy는 이중 무한 축이 하나뿐인 경우 말고 에러를 내요. sd는 scipy가 뜻한 대로 좌표를 옮겨요), 그리고 유한하지 않은 값의 status 3이에요.
+규칙의 상수와 마디의 차례, 마디와 가중치의 산술(곱셈·덧셈 축약 없이 Python·numpy의 순서), 합의 배치 규칙, 힙의 비교를 같게 두어서, scipy로 기록한 12개(상자 넷 × 규칙 셋, 호출의 모양까지), 기록 밖의 39경우(1–4차원, 벡터와 3차원 값, 여러 배치, 평면·반평면·반직선·직선, 뒤집은 끝, `points`, `max_subdivisions`, `atol`), 1차원 시험 모음 105개 × 규칙 둘이 부른 점, 값, 오차, `subdivisions`, 영역까지 지금은 비트까지 같아요(약속은 아니에요). 다른 것은 넷이에요. 위의 $(-\infty, b]$ 축, 무한 축과 `points`를 함께 줄 때(scipy는 이중 무한 축이 하나뿐인 경우 말고 에러를 내요. sd는 scipy가 뜻한 대로 좌표를 옮겨요), 유한하지 않은 값의 status 3, 그리고 크기의 상한이에요(scipy는 상한 없이 점의 표를 만들어요).

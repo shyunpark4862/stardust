@@ -130,7 +130,7 @@ Message:                                the 3 wanted singular values converged
 | `converged` | k개가 모두 수렴했는지(`status == 0`) |
 | `status` | 0(모두 수렴), 1(반복 상한) |
 | `message` | `status`의 글 |
-| `n_iter` | 재시작 수 |
+| `n_iter` | 재시작 수. 상한에 걸리면 `max_iter`와 같아요 |
 | `n_converged` | 돌려준 특이값의 수 |
 | `n_op` | `A @ x`와 `Aᴴ @ x`를 합한 곱의 수 |
 
@@ -211,7 +211,7 @@ array([0.0021982170285773307, 0.0009770847990678933, 0.0002442861186941181], dty
 >>> sd.sparse.svds(sd.sparse.LinearOperator(L.shape, lu.solve), k=3)
 Traceback (most recent call last):
     ...
-ValueError: rmatvec(): the operator was made without 'rmatvec'
+ValueError: svds(): the operator was made without 'rmatvec'
 ```
 
 ## 입력과 에러

@@ -31,11 +31,11 @@ params:
   - name: order
     type: int
     kind: keyword-only
-    desc: "차분 공식의 차수(1 이상, 홀수는 다음 짝수로 올려요). 기본값 8. 중앙 공식은 x 양쪽에 order/2개씩의 점을 써요."
+    desc: "차분 공식의 차수(1 이상 18 이하, 홀수는 다음 짝수로 올려요). 기본값 8. 중앙 공식은 x 양쪽에 order/2개씩의 점을 써요."
   - name: initial_step
     type: 실수 또는 배열
     kind: keyword-only
-    desc: "처음의 절대 간격. 기본값 0.5. 원소마다 줄 수 있어요. 0 이하이거나 NaN인 원소는 status −3이에요."
+    desc: "처음의 절대 간격. 기본값 0.5. 원소마다 줄 수 있어요. 0 이하이거나 NaN인 원소는 status −3이에요. x의 끝자리 단위(ulp)보다 작으면 점이 x로 반올림되어 df 0으로 수렴하니, 큰 |x|에는 |x|에 맞춰 줘요."
   - name: step_factor
     type: float
     kind: keyword-only
@@ -51,7 +51,7 @@ raises:
   - type: TypeError
     desc: f가 호출 가능하지 않을 때, x나 다른 입력이 수나 수의 배열이 아닐 때, args가 튜플이 아닐 때, 옵션의 형이 틀릴 때(order·max_iter가 정수가 아닐 때 등), f가 수의 배열이 아닌 것이나 bool·복소수 값을 돌려줄 때, 모르는 키워드를 줬을 때. f 안에서 난 에러도 그대로 나와요.
   - type: ValueError
-    desc: 입력과 args가 서로 브로드캐스트되지 않을 때, f가 받은 것과 다른 모양(스칼라 포함)을 돌려줄 때, atol·rtol이 음수이거나 유한하지 않을 때, order·max_iter가 1보다 작을 때, step_factor가 1이거나 0 이하이거나 유한하지 않을 때.
+    desc: 입력과 args가 서로 브로드캐스트되지 않을 때, f가 받은 것과 다른 모양(스칼라 포함)을 돌려줄 때, atol·rtol이 음수이거나 유한하지 않을 때, order·max_iter가 1보다 작을 때, order가 18보다 클 때, step_factor가 1이거나 0 이하이거나 유한하지 않을 때.
 seeAlso: [basics, jacobian, hessian]
 ---
 import Callout from '../../../components/Callout.astro';
@@ -170,6 +170,18 @@ DifferentiateResult(df=1000, error=1.70303e-10, converged=True, n_iter=2, nfev=1
 
 $x \cdot \tfrac{d}{dx}\log x = 1$이라 네 점 모두 1에 가까워야 해요. 간격이 점에 비례하니 네 점에서 같은 상대 정확도($1.7 \times 10^{-12}$)예요.
 
+$\lvert x\rvert$가 아주 클 때도 간격을 맞춰 줘야 해요. 기본 간격 0.5가 $x$의 끝자리 단위(ulp)보다 작으면 $x \pm 0.5$가 $x$로 반올림돼서, 스텐실의 함숫값이 모두 같아요. 그러면 `df`가 0, `error`가 0이고 `converged=True`예요. 기본 간격이면 $\lvert x\rvert \gtrsim 2^{53}$에서 그래요. 아래에서 $10^{10}$은 간격이 $x$의 척도에 비해 작아 함숫값의 차가 반올림에 묻혀서 수렴하지 못하고, $10^{20}$은 틀린 0이 수렴으로 나와요.
+
+```python
+>>> x = sd.asarray([1e10, 1e20])
+>>> r = sd.differentiate.derivative(sd.log, x)
+>>> r.df, r.converged
+(array([9.990544155234876e-11,                   0.0], dtype=float64), array([False,  True], dtype=bool))
+>>> r = sd.differentiate.derivative(sd.log, x, initial_step=x / 4)
+>>> r.df * x, r.converged
+(array([0.9999999999984518, 0.9999999999982345], dtype=float64), array([True, True], dtype=bool))
+```
+
 `step_factor`는 반복마다 간격을 나누는 수예요. 크면 간격이 빨리 줄어 반올림에 빨리 닿고, 1에 가까우면 천천히 줄어요. 1보다 작으면 간격이 반복마다 커져요. 1, 0 이하, 무한대는 에러예요.
 
 ```python
@@ -236,6 +248,17 @@ array([-3,  0, -3], dtype=int64)
 
 2차 공식은 10번으로 모자라 status −2예요. 매끄러운 함수에서는 기본 8차가 대개 가장 적은 호출로 가장 정확해요. 차수가 높은 공식은 멀리 떨어진 점까지 쓰므로, 함수가 간격 안에서 매끄럽지 않으면 낮은 차수와 작은 간격이 나을 수 있어요.
 
+`order`는 18까지예요. 차수를 올리면 첫 반복의 가장 안쪽 점 $x \pm h/c^{n-1}$($n$ = order/2)이 $x$에 점점 가까워져 함숫값의 차가 반올림에 묻히기 시작하고, 공식의 가중치를 정확히 계산하는 시간도 빠르게 늘어요. Arb(구간 산술)로 만든 참값과 견주면 초등 함수 11개 × 9점에서 18까지의 모든 짝수 차수가 `atol + rtol·|df|` 안이고, 20부터는 넘는 점이 생겨요. 더 올리면 틀린 값을 수렴했다고 내기 시작해요.
+
+```python
+>>> sd.differentiate.derivative(sd.exp, 1.0, order=18)
+DifferentiateResult(df=2.71828, error=1.82521e-13, converged=True, n_iter=2, nfev=21)
+>>> sd.differentiate.derivative(sd.exp, 1.0, order=20)
+Traceback (most recent call last):
+    ...
+ValueError: derivative(): 'order' must be at most 18
+```
+
 ## 허용오차와 멈춤
 
 `atol`과 `rtol`은 멈춤 판정이에요. `error < atol + rtol·|df|`이면 멈춰요. 기본은 사실상 상대 $\sqrt\varepsilon \approx 1.5 \times 10^{-8}$이에요($\varepsilon = 2^{-52}$). 판정은 오차 추정에 대한 것이라 실제 결과는 대개 훨씬 정확해요. 위의 $e^x$는 오차 추정 $7 \times 10^{-12}$에서 멈췄고 실제 상대오차는 $10^{-14}$이에요.
@@ -284,11 +307,13 @@ DifferentiateResult(df=-2.55332e-15, error=2.34275e-15, converged=True, n_iter=2
 
 ## 정확도
 
-Arb(구간 산술)로 만든 참값과 견주면, 초등 함수 11개($x^2$, $x^3$, $x^7$, $1/x$, $\sqrt x$, $\cos$, $\sin$, $e^x$, $\log$, $\arctan$, $\tanh$)를 0.01–100의 9점에서, 그리고 정의역 끝 가까이의 14경우에서 기본 설정으로 미분했을 때 수렴한 109경우가 모두 `atol + rtol·|df|` 안이었고 최대 상대오차는 $6.2 \times 10^{-11}$이었어요. 수렴하지 못한 넷은 위에서 본 $\log$의 $10^{-3}$(중앙과 오른쪽), $\sqrt x$의 $10^{-6}$, 2차 공식의 $e^x$예요. 오차 추정이 참 오차보다 작은 것은 다섯 경우였어요. 엄밀한 상계가 필요하면 결과를 그대로 믿지 말고 다른 간격으로 한 번 더 확인해요.
+Arb(구간 산술)로 만든 참값과 견주면, 초등 함수 11개($x^2$, $x^3$, $x^7$, $1/x$, $\sqrt x$, $\cos$, $\sin$, $e^x$, $\log$, $\arctan$, $\tanh$)를 0.01–100의 9점에서, 그리고 정의역 끝 가까이나 옵션(`order`, `step_factor`, `rtol`, 한쪽 공식)을 바꾼 17경우에서 미분했을 때 수렴한 111경우가 모두 `atol + rtol·|df|` 안이었고 최대 상대오차는 $6.2 \times 10^{-11}$이었어요. 수렴하지 못한 다섯은 위에서 본 $\log$의 $10^{-3}$(중앙과 오른쪽), $\sqrt x$의 $10^{-6}$, 2차 공식의 $e^x$, 간격이 반복마다 커지는 `step_factor=0.5`의 $e^x$(status −1)예요. 오차 추정이 참 오차보다 작은 것은 다섯 경우였어요. 엄밀한 상계가 필요하면 결과를 그대로 믿지 말고 다른 간격으로 한 번 더 확인해요.
 
 ## scipy를 아는 분께
 
-- 이름과 인자는 `scipy.differentiate.derivative`의 것이고, 같은 점을 같은 순서로 불러요. scipy로 기록한 시험 124경우 가운데 123경우가 부르는 점과 status, 셈까지 같아요.
+- 이름과 인자는 `scipy.differentiate.derivative`의 것이고, 같은 점을 같은 순서로 불러요. scipy로 기록한 시험 139경우(2차원 배치와 `args`를 준 경우 포함) 가운데 138경우가 부르는 점과 status, 셈까지 같아요.
+- `order`는 18까지예요. scipy는 상한이 없고, `order=20`이면 $e^x$의 1에서 2.71821을 수렴했다고 내요.
+- 큰 $\lvert x\rvert$에서 기본 간격이 반올림으로 사라져 0이 수렴으로 나오는 것은 scipy도 같아요.
 - `tolerances` 대신 `atol`·`rtol`, `maxiter` 대신 `max_iter`예요. 결과는 `success` 대신 `converged`, `nit` 대신 `n_iter`예요.
 - `kwargs`, `preserve_shape`, `callback`이 없어요.
 - 첫 호출의 `x`는 $(k,)$ 1차원이에요. 다음부터는 scipy처럼 $(k, p)$예요.

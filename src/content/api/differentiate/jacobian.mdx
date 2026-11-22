@@ -27,7 +27,7 @@ params:
   - name: order
     type: int
     kind: keyword-only
-    desc: "차분 공식의 차수(1 이상, 홀수는 다음 짝수). 기본값 8."
+    desc: "차분 공식의 차수(1 이상 18 이하, 홀수는 다음 짝수). 기본값 8."
   - name: initial_step
     type: 실수 또는 실수 m개
     kind: keyword-only
@@ -188,6 +188,16 @@ array([[-3,  0]], dtype=int64)
 (31.622776601683796, 0.03162277660168379)
 >>> sd.differentiate.jacobian(f, [1e-3, 2.0], step_direction=[1, 0], initial_step=[1e-4, 0.5]).df
 array([[  31.622776601700764, 0.031622776601683916]], dtype=float64)
+```
+
+간격은 절대 간격이라, 아주 큰 변수에서는 기본 0.5가 그 변수의 끝자리 단위보다 작아 점이 $x_j$로 반올림될 수 있어요. 그러면 그 열이 0으로 수렴했다고 나와요([derivative](/api/differentiate/derivative/#간격-initial_step과-step_factor)와 같아요). 그런 변수에는 크기에 맞는 간격을 줘요.
+
+```python
+>>> g = lambda x: [sd.log(x[0]) * x[1]]
+>>> sd.differentiate.jacobian(g, [1e20, 2.0]).df
+array([[              0.0, 46.05170185988063]], dtype=float64)
+>>> sd.differentiate.jacobian(g, [1e20, 2.0], initial_step=[2.5e19, 0.5]).df
+array([[1.999999999996469e-20,     46.05170185988063]], dtype=float64)
 ```
 
 개수가 틀리면 에러예요.

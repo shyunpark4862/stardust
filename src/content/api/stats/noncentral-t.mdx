@@ -139,7 +139,7 @@ array([-2.0536911511184894,                 0.0,  2.0536911511184894], dtype=flo
 >>> sd.stats.NoncentralT(10, 2)
 Traceback (most recent call last):
     ...
-TypeError: NoncentralT(): takes no positional arguments but 2 were given
+TypeError: NoncentralT(): takes 0 positional arguments but 2 were given
 >>> sd.stats.NoncentralT(df=10)
 Traceback (most recent call last):
     ...
@@ -438,13 +438,13 @@ True
 
 | 어디서 | NaN이 되는 것 |
 |---|---|
-| $\lvert\delta\rvert$가 약 3.8e4 초과 | `cdf` 계열, 역함수, `median` |
+| $\lvert\delta\rvert$가 약 3.83e4 초과 | `cdf` 계열, 역함수, `median` |
 | $\lvert\delta\rvert$나 $\lvert t\rvert$가 약 1e15 초과 | `pdf`, `logpdf` |
 | $\nu < 2^{-1021}$(약 4.5e-308) | `pdf`, `cdf` 계열, 역함수, `median`, `entropy`, 표본 |
 | $\lvert\delta\rvert > 128\sqrt{1+\nu}$ | `mode` |
 | `ilogcdf`, `ilogccdf`의 입력이 $-2^{62}$ 이하 | 결과 |
 
-평균과 분산은 이런 매개변수에서도 값이 나와요.
+$\lvert\delta\rvert$가 클 때 NaN인 곳은 분포의 가운데만이 아니에요. `NoncentralT(df=10, nc=3.9e4)`의 `cdf`는 $t \lesssim 10^3$에서 0, $t \gtrsim 3 \times 10^{151}$에서 1이고, 그 사이는 값이 1로 반올림되는 위꼬리까지 모두 NaN이에요. `ccdf`는 $0 < t \lesssim 10^{91}$과 $t < -3 \times 10^3$도 NaN이에요. 평균과 분산은 이런 매개변수에서도 값이 나와요.
 
 ```python
 >>> huge = sd.stats.NoncentralT(df=10, nc=4e4)

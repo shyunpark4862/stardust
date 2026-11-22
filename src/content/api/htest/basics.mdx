@@ -371,7 +371,8 @@ Ttest1sampResult(statistic=nan, pvalue=nan, df=3)
 
 - 표본이 비었을 때
 - 관측이 그 검정에 너무 적을 때. 예를 들어 t 검정은 표본마다 둘 이상이 필요하고, `shapiro`는 셋, `kurtosistest`는 다섯, `skewtest`는 여덟 이상이 필요해요. 검정마다의 최소 크기는 그 페이지에 있어요
-- 분산이 0일 때. 모든 값이 같은 표본은 평균의 차를 나눌 표준오차가 0이라 t를 정할 수 없어요
+- 분산이 0일 때. 모든 값이 같은 표본은 평균의 차를 나눌 표준오차가 0이라 t를 정할 수 없어요. 순위 검정(`mannwhitneyu`, `kruskal`, `ansari`, `ranksums` 등)도 모든 값이 같으면 순위가 모두 같아 견줄 분포가 없어서 p값이 NaN이에요
+- 요약값이 데이터를 나타낼 수 없을 때. `ttest_ind_from_stats`의 음수 표준편차나 유한하지 않은 평균·표준편차가 그래요
 
 ```python
 >>> sd.htest.ttest_1samp([1.0, 1, 1], 0.0)

@@ -96,7 +96,7 @@ import Steps from '../../../components/fig/Steps.astro';
 
 아래 표는 참값이 있는 모든 묶음의 결과예요. 줄 하나가 (묶음, 필드) 한 칸이고, 점은 문제의 수(배열 필드는 원소의 수)예요. 계약 대비가 1 이하이면 계약 안이에요.
 
-<AccuracySummary area="htest" caption="sd.htest 전체. 계약 대비가 가장 큰 곳은 Cramér–von Mises의 p값(절대 10⁻¹⁵ 규칙으로 판정하는 꼬리)이고, 이 페이지들의 검정에서는 오즈비의 한쪽 구간 끝(0.25: 근을 푸는 t의 4 ULP), Dunnett 구간의 끝(0.18: 임계값의 근과 꼬리의 반올림), 두 비율 구간의 끝(0.13)이 커요. 비교 패키지의 열은 같은 점에서 같은 척도로 잰 그 라이브러리의 오차예요." />
+<AccuracySummary area="htest" caption="sd.htest 전체. 계약 대비가 가장 큰 곳은 Cramér–von Mises의 p값(절대 10⁻¹⁵ 규칙으로 판정하는 꼬리)이고, 이 페이지들의 검정에서는 MGC의 통계량(0.75), goodness_of_fit의 통계량(0.53), 오즈비의 한쪽 구간 끝(0.25: 근을 푸는 t의 4 ULP), Dunnett 구간의 끝(0.18: 임계값의 근과 꼬리의 반올림), 두 비율 구간의 끝(0.13)이 커요. 비교 패키지의 열은 같은 점에서 같은 척도로 잰 그 라이브러리의 오차예요." />
 
 분할표와 비율, 다중 비교에서 눈여겨볼 곳은 이래요.
 
@@ -105,7 +105,7 @@ import Steps from '../../../components/fig/Steps.astro';
 - 사후 비교의 평균의 차와 $t$·$q$는 오프셋 $10^8$·$10^9$에서도 상대 $10^{-16}$ 안이에요. p값의 가장 큰 상대오차는 Tukey 꼬리($p = 7.8 \times 10^{-21}$)의 $5.2 \times 10^{-15}$인데, $q$의 반올림에 $\kappa_p = 56$을 곱한 크기라 계약 안이에요. 보정 p값은 정확한 유리수와 $1.2 \times 10^{-16}$ 안이고 기각은 모두 정확한 판정과 같아요.
 
 <Callout type="note" title="재표본의 정해진 답">
-재표본 묶음의 정해진 부분(나열한 순열의 p값, BWS의 통계량, MGC의 통계량, `goodness_of_fit`의 맞춘 모수와 통계량)은 위 표에 없고 `tests/htest/test_resampling.py`가 참값과 견줘요. 57문제 모두 계약 안이에요. 나열의 p값은 셈의 몫이라 상대 $5.6 \times 10^{-17}$(`permutation_test`)·$7 \times 10^{-17}$(`bws_test`) 안이고, MGC의 통계량은 $7.5 \times 10^{-15}$(n = 25, 국소 상관의 합과 제곱근), 맞춘 모수는 $9.3 \times 10^{-16}$ 안이에요.
+재표본 묶음에도 정해진 답이 있는 부분(나열한 순열의 p값, BWS의 통계량, MGC의 통계량, `goodness_of_fit`의 맞춘 모수와 통계량)은 위 표의 `permutation_test`, `bws_test`, `multiscale_graphcorr`, `goodness_of_fit` 줄이에요. 나열의 p값은 셈의 몫이라 상대 $5.6 \times 10^{-17}$(`permutation_test`)·$7 \times 10^{-17}$(`bws_test`) 안이고, MGC의 통계량은 $7.5 \times 10^{-15}$(n = 25, 국소 상관의 합과 제곱근), 맞춘 모수는 $9.3 \times 10^{-16}$ 안이에요. `goodness_of_fit`의 통계량은 Gumbel 분포의 Cramér–von Mises에서 $1.9 \times 10^{-14}$로 가장 큰데, 통계량의 조건수를 넣은 계약의 절반쯤이에요.
 </Callout>
 
 ### 무작위 p값

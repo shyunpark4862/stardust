@@ -222,7 +222,7 @@ TypeError: matrix_norm(): 'x' must be an sd.ndarray, not csr_array; for a sparse
 
 ## 정확도
 
-합으로 재는 노름(1, −1, inf, −inf, Frobenius, 벡터의 p-노름)은 참값 $v$와 $|\hat v - v| \le (\gamma_m + 2\varepsilon)\,v$ 안이에요. $m$은 가장 긴 줄의 항 수(Frobenius는 저장된 원소 수), $\gamma_m = m\varepsilon/(1 - m\varepsilon)$, $\varepsilon = 2^{-52}$예요. `ord=2`는 [svds](/api/sparse/svds/)의 약속($1000\,\varepsilon\,\lVert A\rVert_2$)이에요. Arb(구간 산술)로 만든 참값과 견준 시험에서 가장 큰 오차는 이 한계의 0.17배(합의 노름), 0.007배(Frobenius), 0.013배(2-노름)예요.
+합으로 재는 노름(1, −1, inf, −inf, Frobenius, 벡터의 p-노름)은 참값 $v$와 $|\hat v - v| \le (\gamma_m + 2\varepsilon)\,v$ 안이에요. $m$은 가장 긴 줄의 항 수(Frobenius는 저장된 원소 수), $\gamma_m = m\,u/(1 - m\,u)$, $u = 2^{-53}$, $\varepsilon = 2^{-52}$예요. `ord=2`는 [svds](/api/sparse/svds/)의 약속($1000\,\varepsilon\,\lVert A\rVert_2$)이에요. Arb(구간 산술)로 만든 참값과 견준 시험에서 가장 큰 오차는 이 한계의 0.17배(합의 노름), 0.007배(Frobenius), 0.013배(2-노름)예요.
 
 ## scipy를 아는 분께
 

@@ -31,13 +31,20 @@ import Op from '../../../components/fig/Op.astro';
 `eye_array`는 대각이 하나뿐이라 줄 r의 원소가 많아야 하나예요. `indptr`은 −r₀부터 1씩 늘어나는 수열을 [0, 대각의 길이]로 자른 것이고, `indices`는 c₀부터의 연속한 수예요. 정렬도 커널도 없이 배열 함수 세 번으로 표준 꼴이 나와요.
 
 ```python
-    # src/stardust/sparse/_construct.py
+    # src/stardust/sparse/_construct.py, eye_array
     length = max(0, min(m, n - k) if k >= 0 else min(m + k, n))
     r0, c0 = max(-k, 0), max(k, 0)
-    indptr = _readonly(_sd.clip(_sd.arange(-r0, m + 1 - r0, dtype=_sd.int64), min=0, max=length))
-    indices = _readonly(_sd.arange(c0, c0 + length, dtype=_sd.int64))
-    data = _sd.ones(length, dtype=dtype)
+
+    def parts():
+        if m == 2**63 - 1:  # an indptr of 2**63 entries
+            raise ValueError("array is too big")
+        indptr = _sd.clip(_sd.arange(-r0, m + 1 - r0, dtype=_sd.int64), min=0, max=length)
+        return _readonly(indptr), _readonly(_sd.arange(c0, c0 + length, dtype=_sd.int64)), _sd.ones(length, dtype=dtype)
+
+    indptr, indices, data = C.sized(func, parts)
 ```
+
+`C.sized`는 안에서 난 할당 실패(`MemoryError: ... cannot allocate N bytes`, `ValueError: array is too big`)의 메시지 앞을 사용자가 부른 함수의 이름으로 바꿔요. 그래서 큰 단위 행렬의 실패는 `arange()`가 아니라 `eye_array(): cannot allocate ...`로 보여요. 정수 인자(`n_rows`, `k`, `diags_array`의 `offsets`, `tril`·`triu`의 `k`)는 int64 범위를 넘으면 밀집 짝처럼 `OverflowError: eye_array(): 'k' is out of range`예요.
 
 ```python
 >>> import stardust as sd
@@ -109,6 +116,8 @@ kron(A, B)의 행 i·p + r은 A의 행 i와 B의 행 r에서 나와요. A의 행
 ```
 
 밀집은 0 × (−1)을 계산해 −0.0을 두지만, 희소는 A의 (1, 0)이 저장되지 않아 그 자리를 계산하지 않아요.
+
+결과의 모양은 커널을 부르기 전에 Python 정수로 계산해요. 행 수 m·p나 열 수 n·q가 int64를 넘으면 `OverflowError: kron(): the result's shape is out of range`예요. 커널도 행 수의 곱, 가장 큰 열 번호 j·q + l, 행마다의 원소 수 합을 넘침 검사(`__builtin_mul_overflow`)로 다시 막아서, 넘친 색인이 배열에 들어가는 일이 없어요. `kronsum`, 쌓기, `block_diag`도 결과 모양의 길이 합·곱을 같은 규칙으로 먼저 검사해요.
 
 ## kronsum: 값을 놓기
 

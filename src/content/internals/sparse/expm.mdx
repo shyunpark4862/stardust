@@ -17,7 +17,7 @@ import Steps from '../../../components/fig/Steps.astro';
 | [`expm(A)`](/api/sparse/expm/) | $e^{A}$ 전체(희소 배열) | Al-Mohy–Higham(2009) Algorithm 5.1, 밀집 `sd.linalg.expm`과 같은 선택 [1] | SpGEMM, 희소 LU |
 | [`expm_multiply(A, B)`](/api/sparse/expm_multiply/) | $e^{A}B$, 또는 여러 시각의 $e^{tA}B$ | Al-Mohy–Higham(2011)의 잘린 Taylor [2] | SpMV·SpMM |
 
-둘 다 Python(`src/stardust/sparse/_matfuncs.py`)이 이 라이브러리의 커널을 불러요. 일이 모두 행렬곱, 행렬과 벡터의 곱, 풀이, 리덕션에 있고 호출 하나의 Python 비용이 곱 하나보다 작아서 C++ 파일을 따로 두지 않아요. 부르는 커널이 모두 결정적이라 결과는 스레드 수와 상관없이 같은 비트예요.
+둘 다 Python(`src/stardust/sparse/_matfuncs.py`)이 이 라이브러리의 커널을 불러요. 일이 모두 행렬곱, 행렬과 벡터의 곱, 풀이, 리덕션에 있고 호출 하나의 Python 비용이 곱 하나보다 작아서 C++ 파일을 따로 두지 않아요. C++로 쓴 것은 삼각 행렬의 대각과 첫 부대각을 고치는 작은 함수(`_expm_fix`) 하나예요. 부르는 커널이 모두 결정적이라 결과는 스레드 수와 상관없이 같은 비트예요.
 
 ## `expm`
 
@@ -108,21 +108,40 @@ $V - U$는 [`splu`](/api/sparse/splu/)와 같은 Accelerate LU/AMD로 한 번 �
 
 ```python
     # src/stardust/sparse/_matfuncs.py, expm
-    def fix(X, k):  # X ~ exp(2^-k A): its exact diagonal and first off-diagonal
-        f = math.ldexp(1.0, -k) if k <= 1022 else 0.0
-        lk = lam * f
-        X.setdiag(_sd.exp(lk))
-        X.setdiag((tt * f) * _exp_divided_difference(lk[:-1], lk[1:]), k=1 if shape == "upper" else -1)
+    def fix(X, k):  # X ~ exp(2^-k A): its exact diagonal and first off-diagonal, sd.linalg.expm's bits
+        diag, off = C._core._expm_fix(lam, tt, k)  # libm exp and sinh (Al-Mohy & Higham 2009, (2.2))
+        X.setdiag(diag)
+        X.setdiag(off, k=1 if shape == "upper" else -1)
 ```
 
-$\begin{bmatrix}\lambda_1 & t\\ 0 & \lambda_2\end{bmatrix}$의 지수의 (1, 2) 원소는 $t\,(e^{\lambda_2} - e^{\lambda_1})/(\lambda_2 - \lambda_1)$이에요. 두 고유값이 가까우면 차분몫이 상쇄로 자리를 잃으므로 $|\lambda_2 - \lambda_1| < 1$에서는 $t\,e^{(\lambda_1+\lambda_2)/2}\,\operatorname{sinch}((\lambda_2 - \lambda_1)/2)$로 계산해요. $[[10, 1], [0, 10 + 10^{-12}]]$의 (1, 2) 원소는 상대오차 $9\times10^{-16}$이에요.
+$\begin{bmatrix}\lambda_1 & t\\ 0 & \lambda_2\end{bmatrix}$의 지수의 (1, 2) 원소는 $t\,(e^{\lambda_2} - e^{\lambda_1})/(\lambda_2 - \lambda_1)$이에요. 두 고유값이 가까우면 차분몫이 상쇄로 자리를 잃으므로 $|\lambda_2 - \lambda_1| < 1$에서는 $t\,e^{(\lambda_1+\lambda_2)/2}\,\operatorname{sinch}((\lambda_2 - \lambda_1)/2)$로 계산해요.
+
+```cpp
+// csrc/sparse/convert.cpp
+template <class T>
+T exp_divided_difference(T l1, T l2) {
+    const T d = l2 - l1;
+    if (std::abs(d) < 1.0) {
+        const T h = d * 0.5;
+        const T sinch = nonzero(h) ? std::sinh(h) / h : T(1);
+        return std::exp(l1 + h) * sinch;
+    }
+    return (std::exp(l2) - std::exp(l1)) / d;
+}
+```
+
+`_expm_fix`는 대각의 $e^{2^{-k}\lambda_j}$와 부대각의 $2^{-k}t_j$ × 차분몫을 이 식으로 계산해요. $2^{-k}$ 곱은 `ldexp`라 서브노멀로 내려가지 않는 한 반올림이 없어요. 대각 행렬의 경로도 같은 함수를 `k = 0`으로 불러 대각만 받아요. 이 계산을 C++로 둔 까닭은 밀집 `sd.linalg.expm`의 고침과 같은 식을 같은 libm `exp`·`sinh`로 하기 위해서예요. 배열의 `sd.exp`는 자기 구현이라 libm과 끝자리가 다를 수 있어요(`sd.exp(10.0)`은 22026.465794806714, libm은 올바르게 반올림한 22026.465794806718). 그 값을 쓰면 2 × 2 삼각 행렬의 모든 원소가 밀집과 1 ulp씩 달라져요. 같은 libm 함수를 쓰므로 대각 행렬과 2 × 2 삼각 행렬의 지수는 밀집과 비트까지 같아요. $[[10, 1], [0, 10 + 10^{-12}]]$의 (1, 2) 원소는 상대오차 $9.7\times10^{-16}$이에요.
 
 ```python
 >>> T = sd.sparse.csr_array(sd.asarray([[10.0, 1.0], [0.0, 10.0 + 1e-12]]))
 >>> sd.sparse.expm(T).toarray()
-array([[22026.465794806714,  22026.46579481775],
-       [               0.0, 22026.465794828742]], dtype=float64)
+array([[22026.465794806718, 22026.465794817752],
+       [               0.0, 22026.465794828746]], dtype=float64)
+>>> sd.sparse.expm(T).toarray().tolist() == sd.linalg.expm(T.toarray()).tolist()
+True
 ```
+
+더 큰 삼각 행렬과 일반 행렬은 곱(SpGEMM)과 마지막 풀이(희소 LU)의 계산 순서가 밀집의 행렬곱·LU와 달라서 끝자리가 다를 수 있어요. 둘 다 아래 정확도 계약 안이에요.
 
 ### 결과는 대개 거의 밀집이에요
 
@@ -232,7 +251,11 @@ $e^{A}$를 만들어 곱한 값과 끝자리 몇 ulp 안에서 같아요. 두 �
 
 ### 대각합과 연산자
 
-`traceA`를 주지 않으면 행렬은 정확한 대각합(희소 `trace()`, 밀집 `sd.linalg.trace`)을 써요. 일반 `LinearOperator`는 대각합을 모르므로 scipy처럼 Hutch++(Meyer, Musco, Musco, Woodruff 2021) [3]로 어림해요. ±1 무작위 행렬 $S$로 $AS$의 QR에서 $Q$를 얻어 $\operatorname{tr}(Q^{\mathsf H}AQ)$를 정확히 더하고, 나머지는 $Q$에 직교인 무작위 열의 Hutchinson 추정으로 더해요. ±1 열은 `sd.random.default_rng(0)`의 고정된 열이라 같은 호출은 같은 결과예요. 대각합은 $A$를 $\mu I$만큼 옮기는 데만 쓰이므로 어떤 값이어도 결과는 $e^{A}B$예요. 값이 나쁘면 곱이 조금 더 들 뿐이에요.
+`traceA`를 주지 않으면 행렬은 정확한 대각합(희소 `trace()`, 밀집 `sd.linalg.trace`)을 써요. 일반 `LinearOperator`는 대각합을 모르므로 scipy처럼 Hutch++(Meyer, Musco, Musco, Woodruff 2021) [3]로 어림해요. ±1 무작위 행렬 $S$로 $AS$의 QR에서 $Q$를 얻어 $\operatorname{tr}(Q^{\mathsf H}AQ)$를 정확히 더하고, 나머지는 $Q$에 직교인 무작위 열의 Hutchinson 추정으로 더해요. ±1 열은 `sd.random.default_rng(0)`의 고정된 열이라 같은 호출은 같은 결과예요. 연산자가 첫 곱 $AS$에서 NaN이나 inf를 돌려주면 QR로 넘어가지 않고 `ValueError: expm_multiply(): the operator returned NaN or infinity`예요.
+
+대각합은 $A$를 $\mu I$만큼 옮기는 데 쓰여요. 정확한 대각합(또는 `None`)일 때 결과가 아래 계약 안이에요. 참 대각합에서 먼 `traceA`는 $A - \mu I$의 노름을 키우고, Taylor 합의 항들이 크게 상쇄해 정확도를 잃어요. `expm_multiply(eye_array(2), ones(2), traceA=100.0)`의 상대오차는 $9.4\times10^{-9}$이에요(이 입력에서 계약이 허용하는 상대오차는 $C_{\mathrm{EXPM}}\,\varepsilon \approx 2.2\times10^{-15}$). scipy도 같은 값을 내요.
+
+$e^{\mu}$ 같은 스칼라 지수가 넘치면 inf를 돌려줘요(Python `math.exp`는 `OverflowError`를 내므로 잡아서 inf로 바꾸고, 복소수는 크기와 위상을 나눠 계산해요). 그래서 `expm_multiply(eye_array(2) * 800.0, ones(2))`는 `expm`, scipy와 같이 `[inf, inf]`예요. $B$의 열이 0개(모양 $(n, 0)$)면 $n = 0$처럼 계산 없이 빈 결과예요(구간이면 $(\text{num}, n, 0)$).
 
 행렬 $A - \mu I$는 희소 배열로 만들어 곱해요(scipy와 같아요). 1스레드에서는 CSC 입력을 그대로 곱하고(흩뿌리기 곱이 CSR의 SpMV와 비슷한 빠르기예요), 여러 스레드에서는 행이 나뉘는 CSR로 바꿔요. 어느 형식의 곱이든 같은 비트라서 결과는 스레드 수와 상관없이 같아요.
 
@@ -255,6 +278,7 @@ $e^{A}$를 만들어 곱한 값과 끝자리 몇 ulp 안에서 같아요. 두 �
 - **`expm`의 극단.** 고유값이 $-10^{40}$ 근처인 행렬의 지수는 sd가 0이고 scipy는 단위 행렬이에요(2¹⁰⁰ 가드).
 - **`expm`의 결과 형식.** scipy는 경로마다 달라요(DOK → CSR 등). sd는 입력의 형식이에요.
 - **`expm_multiply`의 비트.** 곱(SpMV·SpMM의 합 순서가 scipy와 같아요), 스칼라 곱과 덧셈, 멈춤 판정의 ∞-노름이 scipy와 같아서 $(m^*, s)$가 같으면 결과가 지금은 비트까지 같아요(약속은 아니에요). scipy의 $d_p$는 시드 없는 무작위 추정이라 실행마다 다른 $(m^*, s)$를 고를 수 있어요. $\lVert A\rVert_1$만으로 고르는 경우는 비트까지 같아요.
+- **열이 0개인 `B`.** scipy는 $\lVert A\rVert_1$만으로 고르지 않는 행렬에서 단계 선택의 식이 0으로 나눠 `ZeroDivisionError`예요. sd는 빈 결과예요.
 - **희소 `B`와 `traceA` 경고.** scipy는 희소 `B`도 받고, 연산자의 대각합을 어림할 때 경고를 내요. sd는 `B`가 밀집 배열이어야 하고(희소면 `B.toarray()`를 짚는 `TypeError`), 경고 없이 고정 열로 어림해요.
 
 ## 참고 문헌

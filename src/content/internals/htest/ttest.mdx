@@ -230,6 +230,14 @@ TLane t_finish(DD diff, DD est, double se2, double df, bool zero, int alt) {
 (Ttest1sampResult(statistic=nan, pvalue=nan, df=2), array([5.0, 5.0], dtype=float64))
 ```
 
+`ttest_1samp`의 `popmean`이 ±inf일 때도 t와 p는 NaN이에요. 무한대와의 차를 검정통계량으로 읽을 근거가 없기 때문이에요. 구간은 `popmean`과 상관없는 평균의 구간이라 그대로 나와요.
+
+```python
+>>> r = sd.htest.ttest_1samp([1.0, 2.0, 3.0], float('inf'))
+>>> r.pvalue, r.conf_int()
+(nan, array([-0.4841377117503307, 4.48413771175033], dtype=float64))
+```
+
 `alt < 0`은 p값 없이 통계량만 원하는 호출이에요. `ttest_ind(method=PermutationMethod(...))`가 재표본마다 t만 다시 계산할 때 이 길로 커널을 불러요. 같은 커널이라 순열 분포의 t와 관측한 t가 같은 식, 같은 반올림이에요.
 
 ## 신뢰구간
@@ -255,7 +263,23 @@ TLane t_finish(DD diff, DD est, double se2, double df, bool zero, int alt) {
 
 ## 요약값에서: `ttest_ind_from_stats`
 
-평균, 표준편차, 크기를 받는 판은 같은 식을 줄마다 계산해요. 평균의 차는 `two_sum`으로 정확히 빼고, 결과에 `df`와 `conf_int()`가 `ttest_ind`과 같은 꼴로 있어요. 크기 nᵢ ≤ 0은 NaN, Welch는 nᵢ ≤ 1이면 NaN, 두 표준편차가 모두 0이면 표준오차 0의 규칙으로 NaN이에요.
+평균, 표준편차, 크기를 받는 판은 같은 식을 줄마다 계산해요. 평균의 차는 `two_sum`으로 정확히 빼고, 결과에 `df`와 `conf_int()`가 `ttest_ind`과 같은 꼴로 있어요. 크기 nᵢ ≤ 0은 NaN, Welch는 nᵢ ≤ 1이면 NaN, 두 표준편차가 모두 0이면 표준오차 0의 규칙으로 NaN이에요. 정수가 아닌 크기는 scipy처럼 받아서 자유도의 식에 그대로 넣어요.
+
+요약값도 데이터라서, 표준편차가 음수이거나 평균·표준편차가 유한하지 않은 줄은 표본에 NaN이 든 줄처럼 그 줄만 t, p, 구간이 NaN이에요. Python 쪽이 그런 줄의 평균과 표준편차를 NaN으로 바꿔 커널에 넘겨요.
+
+```python
+    # src/stardust/htest/_parametric.py
+    m1, s1, _, m2, s2, _ = flat
+    bad = (s1 < 0.0) | (s2 < 0.0) | ~(_sd.isfinite(m1) & _sd.isfinite(s1) & _sd.isfinite(m2) & _sd.isfinite(s2))
+    if bool(_sd.any(bad)):
+        flat[0] = _sd.where(bad, math.nan, m1)
+        flat[1] = _sd.where(bad, math.nan, s1)
+```
+
+```python
+>>> sd.htest.ttest_ind_from_stats(1.0, -2.0, 10, 0.5, 1.0, 12)
+TtestIndFromStatsResult(statistic=nan, pvalue=nan, df=20)
+```
 
 ## 정확도
 
@@ -267,6 +291,8 @@ t 검정 32문제의 Arb 참값에 대한 결과예요. 통계량은 최대 상�
 
 - 평균과 제곱합을 double로 계산하는 scipy는 오프셋이 큰 자료에서 t의 자릿수를 잃어요. `ttest_rel`은 a − b를 double로 만들어서, 크기가 다른 두 값의 차가 먼저 반올림돼요.
 - 표준오차가 0이면 scipy는 t = ±inf, p = 0, 여기서는 NaN이에요.
+- `popmean`이 inf이면 scipy는 t = −inf, p = 0이에요. 여기서는 NaN이에요.
+- `ttest_ind_from_stats`에 음수 표준편차를 주면 scipy는 그것을 제곱해 그대로 계산하고, 무한대 표준편차에는 t = 0, p = 1을 내요. 여기서는 그 줄이 NaN이에요.
 - Welch에서 한 표본의 크기가 2 미만이면 scipy의 자유도는 1이고 여기서는 NaN이에요.
 - 자유도 `df`는 언제나 float예요. `ttest_ind_from_stats`의 결과에도 `df`와 `conf_int()`가 있어요.
 - p값의 정의(양쪽은 2·ccdf(|t|)), 신뢰구간의 정의, Yuen의 g의 반올림은 scipy와 같아요.

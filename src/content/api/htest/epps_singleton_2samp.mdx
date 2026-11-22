@@ -160,11 +160,14 @@ array([0.15353997431246816, 0.02416932210455553, 0.07933111282153728], dtype=flo
 - **한 표본의 값이 5개 미만**이면 NaN이에요.
 - **유한하지 않은 값**(±inf)이 있으면 NaN이에요. NaN은 `nan_policy`를 따라요.
 - **합친 표본의 사분위범위가 0**이면(값의 대부분이 같으면) 점을 정할 수 없어 NaN이에요.
+- **두 표본이 각각 상수**이면(표본 안의 값이 모두 같으면) 특성함수 값의 공분산이 0이라 NaN이에요. 공분산이 반올림 크기밖에 안 될 때도 같아요. 값의 단위와는 상관없어요.
 
 ```python
 >>> sd.htest.epps_singleton_2samp(a[:4], b)
 EppsSingleton2sampResult(statistic=nan, pvalue=nan, df=nan)
 >>> sd.htest.epps_singleton_2samp([1.0, 1, 1, 1, 1, 1, 2], [1.0, 1, 1, 1, 1, 1, 1])
+EppsSingleton2sampResult(statistic=nan, pvalue=nan, df=nan)
+>>> sd.htest.epps_singleton_2samp([2.0] * 9, [3.0] * 8)
 EppsSingleton2sampResult(statistic=nan, pvalue=nan, df=nan)
 >>> sd.htest.epps_singleton_2samp(list(a) + [float('inf')], b)
 EppsSingleton2sampResult(statistic=nan, pvalue=nan, df=nan)
@@ -184,3 +187,4 @@ scipy 1.18.1 기준이에요.
 - 결과에 자유도 `df`가 있어요(scipy의 결과에는 없어요). 튜플로 풀면 scipy처럼 둘이에요.
 - 평균이 10⁸만큼 떨어진 데이터에서 scipy는 코사인의 인자를 반올림해서 통계량이 9.6e-10, p값이 4.5e-9 틀려요. `t=(0.2, 0.5, 1.0)`에서는 통계량이 3.8e-12, p값이 1.4e-11 틀려요.
 - 5개 미만인 표본은 경고 없이 NaN이에요(scipy는 경고와 함께 NaN). 사분위범위가 0이면 NaN이에요(scipy는 `LinAlgError`).
+- 두 표본이 각각 상수이면 NaN이에요. scipy는 `[2.0] * 9`와 `[3.0] * 8`에서 통계량 4.9e32, p값 0을 내요.

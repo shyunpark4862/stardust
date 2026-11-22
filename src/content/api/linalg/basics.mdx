@@ -325,7 +325,7 @@ array([[ 1.0, -1.0],
 역행렬, 방정식의 해, 고유값은 정수 행렬에서 출발해도 대부분 정수로 떨어지지 않아요. 그래서 `sd.linalg`는 "어떤 함수는 정수를 유지하고 어떤 함수는 실수로 바꾼다"로 나누지 않고, 모든 함수가 같은 규칙을 따라요.
 
 <Callout type="warn" title="정수 행렬을 넣어도 결과는 float64예요">
-  곱셈만 하는 `matrix_power`, `outer`, `kron`, `cross`, `vecdot`, `trace`도 정수 입력에 float64를 돌려줘요. 배열 영역의 `@`([matmul](/api/array/matmul/)), [`sum`](/api/array/sum/), [`sd.vecdot`](/api/array/vecdot/)이 int64를 유지하는 것과 달라요. 정수 결과가 필요하면 배열 영역의 함수를 쓰세요.
+  곱셈만 하는 `matrix_power`, `outer`, `kron`, `cross`, `vecdot`, `trace`도 정수 입력에 float64를 돌려줘요. 배열 영역의 `@`([matmul](/api/array/matmul/)), [`sum`](/api/array/sum/), [`sd.vecdot`](/api/array/vecdot/)이 int64를 유지하는 것과 달라요. 정수 결과가 필요하면 배열 영역의 함수를 쓰세요. 희소 행렬의 짝(`A.trace()`, [`sd.sparse.kron`](/api/sparse/kron/), [`sd.sparse.kronsum`](/api/sparse/kronsum/))은 배열 영역의 규칙이라 정수 입력에 int64를 돌려줘요.
 </Callout>
 
 ```python

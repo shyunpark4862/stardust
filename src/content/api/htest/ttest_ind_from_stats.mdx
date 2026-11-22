@@ -31,7 +31,7 @@ params:
   - name: nobs2
     type: 실수 또는 배열
     kind: positional-only
-    desc: 둘째 표본의 크기. 여섯 인자는 실수이거나 서로 브로드캐스트되는 배열이에요. 하나라도 배열이면 결과는 그 브로드캐스트 모양의 배치예요.
+    desc: 둘째 표본의 크기. 크기는 정수가 아니어도 자유도의 식에 그대로 들어가요. 여섯 인자는 실수이거나 서로 브로드캐스트되는 배열이에요. 하나라도 배열이면 결과는 그 브로드캐스트 모양의 배치예요.
   - name: equal_var
     type: bool
     kind: keyword-only
@@ -199,9 +199,12 @@ TypeError: ttest_ind_from_stats(): got some positional-only arguments passed as 
 | 입력 | 결과 |
 |---|---|
 | 두 표준편차가 모두 0 | t, p값이 NaN, `conf_int()`는 폭 0의 (차, 차) |
+| 표준편차가 음수 | t, p값, `conf_int()`가 NaN |
+| 평균이나 표준편차가 NaN·±inf | t, p값, `conf_int()`가 NaN |
 | 크기가 0 이하 | t, p값, `df`가 NaN |
 | Welch에서 크기가 1 이하 | t, p값, `df`가 NaN |
-| 평균이 NaN | t, p값이 NaN |
+
+t, p값이 NaN인 줄의 `df`는 크기만으로 정해지는 식 그대로예요(Student는 $n_1 + n_2 - 2$, Welch는 NaN). 배치에서는 그 줄만 NaN이고 다른 줄은 그대로예요.
 
 ```python
 >>> z = sd.htest.ttest_ind_from_stats(1.0, 0.0, 5, 2.0, 0.0, 6)
@@ -209,6 +212,20 @@ TypeError: ttest_ind_from_stats(): got some positional-only arguments passed as 
 (TtestIndFromStatsResult(statistic=nan, pvalue=nan, df=9), array([-1.0, -1.0], dtype=float64))
 >>> sd.htest.ttest_ind_from_stats(1.0, 1.0, 1, 2.0, 1.0, 6, equal_var=False)
 TtestIndFromStatsResult(statistic=nan, pvalue=nan, df=nan)
+>>> neg = sd.htest.ttest_ind_from_stats(1.0, -1.0, 5, 2.0, 1.0, 6)
+>>> neg, neg.conf_int()
+(TtestIndFromStatsResult(statistic=nan, pvalue=nan, df=9), array([nan, nan], dtype=float64))
+>>> sd.htest.ttest_ind_from_stats(1.0, 1.0, 5, 2.0, sd.inf, 6)
+TtestIndFromStatsResult(statistic=nan, pvalue=nan, df=9)
+>>> sd.htest.ttest_ind_from_stats([1.0, 1.0], [1.0, -1.0], 5, 2.0, 1.0, 6).statistic
+array([-1.6514456476895412,                 nan], dtype=float64)
+```
+
+크기가 정수가 아니어도 받아서 자유도의 식에 그대로 넣어요.
+
+```python
+>>> sd.htest.ttest_ind_from_stats(1.0, 1.0, 5.5, 2.0, 1.0, 6)
+TtestIndFromStatsResult(statistic=-1.69398, pvalue=0.122737, df=9.5)
 ```
 
 Student의 검정에서 크기가 1인 표본은 [`ttest_ind`](/api/htest/ttest_ind/#특수한-경우)처럼 분산을 0으로 봐요. 그 표본의 `std`는 쓰이지 않아요.
@@ -228,4 +245,5 @@ scipy 1.18.1의 `scipy.stats.ttest_ind_from_stats`와 같은 검정이에요.
 - 결과에 `df`와 `conf_int()`가 있어요. scipy의 결과는 `statistic`, `pvalue`뿐이라 자유도와 구간을 직접 구해야 해요. `(statistic, pvalue)`로 푸는 것은 scipy와 같아요.
 - 결과의 클래스는 `ttest_ind`와 같은 꼴이에요(scipy는 `Ttest_indResult` namedtuple).
 - 두 표준편차가 0이면 NaN이에요. scipy는 평균이 다르면 t = ±inf, p = 0을 내요.
+- 음수 표준편차와 유한하지 않은 평균·표준편차는 NaN이에요. scipy는 음수를 제곱해서 양수처럼 계산하고(`std1 = -1.0`이 `1.0`과 같은 결과), 표준편차가 inf면 t = −0, p = 1을 내요.
 - 요약값은 위치로만, 옵션은 키워드로만 받아요.

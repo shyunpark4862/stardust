@@ -159,12 +159,19 @@ True
 
 ### `traceA`
 
-계산은 A 대신 $A - \mu I$($\mu = \mathrm{tr}(A)/n$)로 해서 마지막에 $e^{\mu}$를 곱해요. 대각을 고르게 옮기면 노름이 줄어 걸음이 적어지기 때문이에요. `traceA`는 이 $\mu$를 정하는 데만 써요. 어떤 값을 줘도 결과는 $e^A B$이고, 걸음 수와 반올림만 달라져요.
+계산은 A 대신 $A - \mu I$($\mu = \mathrm{tr}(A)/n$)로 해서 마지막에 $e^{\mu}$를 곱해요. 대각을 고르게 옮기면 노름이 줄어 걸음이 적어지기 때문이에요. `traceA`는 이 $\mu$를 정하는 데만 써요. `-L`의 대각합은 −2 × 50 = −100이라서 그 값을 주면 행렬을 줄 때와 같은 정확도예요.
 
 ```python
 >>> v = sd.sparse.expm_multiply(op, u0, traceA=-100.0)
 >>> float(sd.max(sd.abs(v - u))) < 1e-15
 True
+```
+
+정확도의 약속은 정확한 대각합(또는 None)을 줄 때의 것이에요. 참 대각합에서 먼 값을 주면 $A - \mu I$의 노름이 커져서, 급수의 항이 크게 상쇄되며 자릿수를 잃어요. 단위 행렬의 대각합은 2인데 100을 주면 $e = 2.718281828459045$가 여덟 자리쯤만 맞아요.
+
+```python
+>>> sd.sparse.expm_multiply(sd.sparse.eye_array(2), sd.ones(2), traceA=100.0)
+array([2.718281854124665, 2.718281854124665], dtype=float64)
 ```
 
 None(기본값)이면 행렬은 정확한 대각합을 써요. 대각을 읽을 수 없는 `LinearOperator`는 곱으로 대각합을 어림하는데, 고정된 난수(`sd.random.default_rng(0)`)를 써서 같은 호출은 같은 결과예요. 대각합을 알면 `traceA=`로 주는 편이 곱을 아껴요.
@@ -205,7 +212,29 @@ None(기본값)이면 행렬은 정확한 대각합을 써요. 대각을 읽을 
   ValueError: expm_multiply(): 'num' must be >= 2
   ```
 
-- A나 B에 NaN·inf가 있거나, `start`·`stop`·`traceA`가 유한하지 않으면 `ValueError`예요.
+- A나 B에 NaN·inf가 있거나, `start`·`stop`·`traceA`가 유한하지 않으면 `ValueError`예요. 대각합을 곱으로 어림하는 `LinearOperator`가 NaN·inf를 돌려줘도 `ValueError`예요.
+
+  ```python
+  >>> bad = sd.sparse.LinearOperator((50, 50), lambda x: x * sd.nan, rmatvec=lambda x: x, dtype=sd.float64)
+  >>> sd.sparse.expm_multiply(bad, u0)
+  Traceback (most recent call last):
+      ...
+  ValueError: expm_multiply(): the operator returned NaN or infinity
+  ```
+
+- 열이 0개인 B(모양 (n, 0))는 빈 결과예요. 시각 구간이면 (num, n, 0)이에요.
+
+  ```python
+  >>> sd.sparse.expm_multiply(-L, sd.zeros((50, 0))).shape
+  (50, 0)
+  ```
+
+- 결과가 float64의 범위를 넘으면 경고 없이 inf예요([expm](/api/sparse/expm/)과 같아요).
+
+  ```python
+  >>> sd.sparse.expm_multiply(800.0 * sd.sparse.eye_array(2), sd.ones(2))
+  array([inf, inf], dtype=float64)
+  ```
 
 ## `expm`과 `expm_multiply`, 언제 무엇을
 
@@ -232,4 +261,6 @@ Arb(구간 산술)로 만든 참값과 견주어 결과 원소 $i$의 오차가 
 - 같은 걸음을 고르면 지금은 scipy와 비트까지 같아요(약속은 아니에요). scipy는 걸음을 고를 때 쓰는 노름을 무작위로 어림해서, 고르는 걸음이 달라지면 끝자리가 달라요.
 - B는 밀집 `sd.ndarray`만 받아요. scipy는 희소 B도 받아요.
 - 대각합을 모르는 연산자에서 scipy는 경고를 내고 실행마다 다른 어림을 쓰지만, 여기서는 경고 없이 고정된 어림이에요.
+- 참 대각합에서 먼 `traceA`가 자릿수를 잃는 것은 scipy도 같아요(위의 `traceA=100.0`도 같은 값이에요).
+- 열이 0개인 B는 빈 결과예요. scipy는 `ZeroDivisionError`예요.
 - `start` 등은 키워드로만 받아요.

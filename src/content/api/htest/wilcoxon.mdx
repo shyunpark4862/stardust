@@ -46,7 +46,7 @@ params:
     desc: True면 결과에 표본 축이 길이 1로 남아요.
 returns:
   type: WilcoxonResult
-  desc: "statistic(양쪽 검정이면 min(T⁺, T⁻), 한쪽이면 T⁺), pvalue, method, 정규 근사를 쓴 때만 zstatistic이 있어요. (statistic, pvalue)로 풀려요."
+  desc: "statistic(양쪽 검정이면 min(T⁺, T⁻), 한쪽이면 T⁺), pvalue, method, 정규 근사를 쓴 때만 zstatistic이 있어요(배치에는 언제나 있고 정확한 분포의 줄은 NaN). (statistic, pvalue)로 풀려요."
 raises:
   - type: TypeError
     desc: "표본이 배열·수의 시퀀스·frame이 아니거나 복소수일 때, correction·keepdims가 True·False가 아닐 때, 문자열 옵션이 문자열이 아닐 때, method에 MonteCarloMethod·BootstrapMethod를 줬을 때, 옵션을 위치로 주거나 없는 키워드를 줬을 때."
@@ -97,7 +97,7 @@ WilcoxonResult(statistic=3, pvalue=0.0078125, method='exact')
 | `statistic` | 양쪽 검정이면 $\min(T^+, T^-)$, 한쪽 검정이면 $T^+$ |
 | `pvalue` | `alternative`에 맞는 p값 |
 | `method` | 실제로 쓴 방법(`'exact'`, `'asymptotic'`, `'permutation'`) |
-| `zstatistic` | 정규 근사를 쓴 때만 있는 표준화한 $T^+$. 양쪽 검정이면 $-\lvert z \rvert$예요. |
+| `zstatistic` | 정규 근사를 쓴 때만 있는 표준화한 $T^+$. 양쪽 검정이면 $-\lvert z \rvert$예요. 배치에는 언제나 있고 정확한 분포를 쓴 줄은 NaN이에요. |
 
 ```python
 >>> r = sd.htest.wilcoxon(before, after)

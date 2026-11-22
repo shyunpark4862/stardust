@@ -163,7 +163,7 @@ Python 층의 결과 클래스는 두 갈래예요.
 모형이 아닌 결과는 따로예요.
 
 - 검정의 결과(`TTestResult`, `WaldTestResult`, `CompareFTestResult`, `CompareLRTestResult`, `AnovaResult`, `WhiteTestResult`, `GoldfeldQuandtResult`, `ResetTestResult`)는 htest의 결과 바탕 위의 읽기 전용 클래스예요. statsmodels가 튜플을 돌려주는 곳(`white_test()`, `goldfeld_quandt()`, `compare_f_test()`, `compare_lr_test()`)만 같은 개수로 풀려요. `jarque_bera()`의 결과는 htest의 `JarqueBeraResult` 그대로예요.
-- 변수 선택의 결과 `StepwiseResult`, `BestSubsetResult`는 고른 열과 모형 함수의 결과(`fit`)를 담은 읽기 전용 클래스이고, 걸음과 건너뛴 후보는 namedtuple(`SelectionStep`, `SkippedFit`, `SkippedSubset`)이에요.
+- 변수 선택의 결과 `StepwiseResult`, `BestSubsetResult`는 고른 열과 모형 함수의 결과(`fit`)를 담은 읽기 전용 클래스이고, 걸음과 건너뛴 후보는 namedtuple(`SelectionStep`, `SkippedFit`, `SkippedSubset`)이에요. 세 형도 `sd.regression`의 공개 이름이라 `isinstance(r.steps[0], sd.regression.SelectionStep)`처럼 쓸 수 있어요.
 
 `theilslopes`, `siegelslopes`의 결과와 `breusch_pagan()`의 결과는 scipy·statsmodels처럼 namedtuple이에요. 그 namedtuple을 이어받은 클래스라 `summary()`가 있어요.
 
@@ -540,7 +540,7 @@ def forg(x, prec=3):
     return f"{x:.{prec}f}"
 ```
 
-배치 결과의 summary는 레인(배치 안의 문제 하나)마다 한 줄인 표예요. 줄 이름은 C 순서로 센 그 레인의 첨자(`[3]`, `[1, 2]`)이고, 머리에는 레인들이 함께 가진 것(모형, 공분산 종류, 배치 모양)만 둬요. 자유도(모형의 `df_model`, 검정의 `df`·`df_num`·`df_denom`)는 `shared`가 모든 레인의 값이 같은지(NaN끼리도 같다고 봐요) 보고, 같으면 머리에 한 번, 다르면 표의 열로 둬요. 같은 `X`의 배치라면 어느 결과든 자유도가 같은 자리에 오고, 열이 겹쳐 빠진 레인이 있어 값이 다를 때 첫 레인의 값 하나만 적어 틀리는 일이 없어요. 회귀의 배치는 적합 통계량의 표와 계수의 표 두 개예요. 줄이 20개를 넘으면 `shown`이 앞뒤 5줄만 남기고 그 사이에 `...` 줄을 넣어요. 최적화의 긴 x와 검정의 큰 분할표도 같은 규칙이에요.
+배치 결과의 summary는 레인(배치 안의 문제 하나)마다 한 줄인 표예요. 줄 이름은 C 순서로 센 그 레인의 첨자(`[3]`, `[1, 2]`)이고, 머리에는 레인들이 함께 가진 것(모형, 공분산 종류, 배치 모양)만 둬요. 자유도(모형의 `df_model`, 검정의 `df`·`df_num`·`df_denom`)는 `shared`가 모든 레인의 값이 같은지(NaN끼리도 같다고 봐요) 보고, 같으면 머리에 한 번, 다르면 표의 열로 둬요. 같은 `X`의 배치라면 어느 결과든 자유도가 같은 자리에 오고, 열이 겹쳐 빠진 레인이 있어 값이 다를 때 첫 레인의 값 하나만 적어 틀리는 일이 없어요. 검정 결과의 관측 수도 같은 규칙이에요. 모든 레인이 같으면 머리의 `No. Observations:`에 적고, 다르면 적지 않아요. 그래서 머리 왼쪽(자유도)이 비면 오른쪽의 설명을 두 칸에 나눠 둬요. 회귀의 배치는 적합 통계량의 표와 계수의 표 두 개예요. 줄이 20개를 넘으면 `shown`이 앞뒤 5줄만 남기고 그 사이에 `...` 줄을 넣어요. 최적화의 긴 x와 검정의 큰 분할표도 같은 규칙이에요.
 
 ```python
 def shown(n):
@@ -867,5 +867,5 @@ ValueError: wls(): 'weights' must be >= 0
 ```
 
 <Callout type="note">
-값 때문에 생기는 상태는 에러가 아니에요. 겹친 열은 그 계수가 NaN이고 `rank`가 줄어요. 모든 잔차가 반올림 수준 안인 완전 적합은 `bse`가 0, t와 p가 NaN이에요. 남은 자유도가 없으면(`df_resid` = 0) 척도가 0/0이라 추론 전부가 NaN이에요. NaN이 있는 회귀는 모든 값이 NaN이고, 쓰인 행이 없는 회귀는 NaN에 `nobs` 0이에요. 이런 상태에서 경고도 내지 않아요.
+값 때문에 생기는 상태는 에러가 아니에요. 겹친 열은 그 계수가 NaN이고 `rank`가 줄어요. 모든 잔차가 반올림 수준 안인 완전 적합은 `bse`가 0, t, p, F가 NaN이에요. 남은 자유도가 없으면(`df_resid` = 0) 척도가 0/0이라 추론 전부가 NaN이에요. NaN이 있는 회귀는 모든 값이 NaN이고, 쓰인 행이 없는 회귀는 NaN에 `nobs` 0이에요. 이런 상태에서 경고도 내지 않아요.
 </Callout>

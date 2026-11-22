@@ -218,26 +218,46 @@ $$
 둘째 항은 크기가 $\log\lvert z\rvert$뿐이라 double로 충분해요. 기울기도 $\varphi$와 $\Phi$의 지수 $-z^2/2$를 손으로 지운 꼴이에요(부동소수점에서 두 지수를 따로 계산해 빼면 큰 $\lvert z\rvert$에서 자릿수를 잃어요).
 
 ```cpp
-// csrc/stats/dist/normal.hpp
+// csrc/stats/dist/normal.hpp (발췌)
 inline DD log_ndtr_dd(double z) {
     return num::dd::two_prod(z, z) * -0.5 + std::log(0.5 * special::Erfcx::f(-z * special::kSqrtHalf));
 }
 
+// The smaller side q <= 1/2 comes with lq = log q (a double-double); q = 0 when
+// only lq is known.
 inline DD quantile_small(double q, DD lq, bool flip) {
     const double z = q >= 0x1p-1000 ? ndtri(q) : special::NdtriExp::f(lq.hi);  // <= 0
     if (std::isinf(z)) return {flip ? -z : z, 0.0};
+    // |z| beyond 2^500 (log q below -2^1000): the asymptote's fixed point is the answer (its
+    // next term is 15 / z^6 below the last bit), and z^2 / 2 in the step would overflow
+    if (lq.hi < -0x1p1000) return {flip ? -z : z, 0.0};
     DD lz;
     if (z <= -1.0) lz = log_ndtr_dd(z);
     else lz = {log_ndtr(z), 0.0};
+    // phi / ndtr: for z <= -1 as 2 / (sqrt(2 pi) erfcx(-z / sqrt 2)), the two exponents -z^2/2
+    // cancelled by hand (their difference in floating point is lost for large |z|)
     const double slope = z <= -1.0 ? 2.0 * num::kInvSqrt2Pi / special::Erfcx::f(-z * special::kSqrtHalf)
                                    : std::exp(-0.5 * z * z - num::kLogSqrt2Pi.hi - lz.hi);
     const DD d = lq - lz;
     const DD zz = num::dd::quick_two_sum(z, (d.hi + d.lo) / slope);
     return flip ? -zz : zz;
 }
+...
+// The z for ilogcdf (upper: ilogccdf) at lp <= 0.
+inline DD quantile_z_log(double lp, bool upper) {
+    // log(1/2) rounded is logcdf(0)'s value: the median, as the t distribution's ilogcdf (the
+    // exact root for that double is ndtri_exp's 2.9e-17, both within the contract)
+    if (lp == -num::kLn2.hi) return {0.0, 0.0};
+    if (lp > -num::kLn2.hi) {
+        const double q = -std::expm1(lp);  // the other side
+        if (q == 0.0) return {upper ? -kInf : kInf, 0.0};
+        return quantile_small(q, num::log_dd(q), !upper);
+    }
+    return quantile_small(0.0, DD{lp, 0.0}, upper);
+}
 ```
 
-$\log q$와 $\log\Phi(z)$는 각자 자기 크기의 1 ULP 안이고 기울기는 약 $\lvert z\rvert$이므로, 걸음 뒤 $z$의 오차는 ULP$/\lvert z\rvert$ 정도예요. $q$가 $2^{-1000}$ 아래면 $q$ 자체가 비트를 잃었으므로 그 로그($\log q$, double-double)에서 출발점을 `ndtri_exp`로 구해요([ndtri_exp](/internals/special/distributions/)). `ilogcdf`도 같은 함수로 와요. $\log p > -\log 2$이면 다른 쪽 $1 - e^{\log p} = -\operatorname{expm1}(\log p)$가 작은 쪽이에요.
+$\log q$와 $\log\Phi(z)$는 각자 자기 크기의 1 ULP 안이고 기울기는 약 $\lvert z\rvert$이므로, 걸음 뒤 $z$의 오차는 ULP$/\lvert z\rvert$ 정도예요. $q$가 $2^{-1000}$ 아래면 $q$ 자체가 비트를 잃었으므로 그 로그($\log q$, double-double)에서 출발점을 `ndtri_exp`로 구해요([ndtri_exp](/internals/special/distributions/)). $\log q < -2^{1000}$이면 그 출발점이 답이에요. 점근식의 다음 항이 마지막 비트보다 작고, 걸음 안의 $z^2/2$는 넘치기 때문이에요. `ilogcdf`도 같은 함수로 와요(`quantile_z_log`). $\log p > -\log 2$이면 다른 쪽 $1 - e^{\log p} = -\operatorname{expm1}(\log p)$가 작은 쪽이에요. 반올림한 $\log\tfrac12$, 곧 `logcdf(0)`의 값 −0.6931471805599453은 중앙값 0을 바로 내요. 그 double의 정확한 근은 `ndtri_exp`가 내는 $2.9 \times 10^{-17}$이지만 그곳의 조건수가 약 $3 \times 10^{16}$이라 두 값 모두 계약 안이고, 0을 내면 t 분포의 `ilogcdf`처럼 `ilogcdf(logcdf(0)) == 0`이 지켜져요.
 
 마지막으로 $x = \mu + \sigma z$를 `two_prod(sigma, z.hi) + sigma * z.lo + mu`의 double-double로 만들어 한 번 반올림해요(`locate`). 로그정규는 같은 double-double 지수를 `exp_dd`로 지수화해요(`from_z`). $\sigma z$가 넘치면 반씩 나눠 계산하고 두 배 해요.
 

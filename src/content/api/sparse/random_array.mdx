@@ -39,6 +39,8 @@ raises:
     desc: rng를 주지 않았을 때, rng가 sd.random.Generator가 아닐 때(None 포함), density가 실수가 아닐 때, data_sampler를 부를 수 없을 때.
   - type: ValueError
     desc: density가 [0, 1] 밖일 때, data_sampler가 n개가 아닌 값을 돌려줄 때, format이 네 형식의 이름이 아닐 때.
+  - type: OverflowError
+    desc: shape가 int64 밖일 때.
 seeAlso: [coo_array, basics, eye_array, diags_array]
 ---
 import Callout from '../../../components/Callout.astro';

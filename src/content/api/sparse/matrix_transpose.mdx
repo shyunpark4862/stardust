@@ -16,7 +16,7 @@ returns:
   desc: 모양이 (N, M)인 전치 행렬. CSR은 CSC, CSC는 CSR이 되고(같은 배열을 나누는 뷰), COO와 DOK는 같은 형식이에요.
 raises:
   - type: TypeError
-    desc: A가 희소 배열이 아닐 때(밀집 sd.ndarray, 리스트 포함).
+    desc: A가 희소 배열이 아닐 때(리스트 포함; 밀집 sd.ndarray는 sd.matrix_transpose를 짚어요).
   - type: ValueError
     desc: A가 1차원일 때.
 seeAlso: [sparray, csr_array, csc_array, operators]
@@ -101,13 +101,13 @@ Traceback (most recent call last):
 ValueError: matrix_transpose(): the array must have at least 2 dimensions, got 1
 ```
 
-밀집 배열은 `TypeError`예요. 밀집 배열은 [`sd.matrix_transpose`](/api/array/permute_dims/)로 전치해요.
+밀집 배열은 쓸 함수를 짚는 `TypeError`예요. 밀집 배열은 [`sd.matrix_transpose`](/api/array/permute_dims/)로 전치해요.
 
 ```python
 >>> sd.sparse.matrix_transpose(A.toarray())
 Traceback (most recent call last):
     ...
-TypeError: matrix_transpose(): 'A' must be a sparse array, not ndarray
+TypeError: matrix_transpose(): 'A' must be a sparse array, not ndarray; for a dense array use sd.matrix_transpose
 >>> sd.matrix_transpose(A.toarray())
 array([[0.0, 3.0],
        [2.0, 0.0],

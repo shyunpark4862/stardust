@@ -34,7 +34,7 @@ $$
 
 ### 단위와 제곱합
 
-줄마다 x와 y를 따로 $2^{-e}$배 해요(e는 가장 큰 절댓값의 지수). 2의 거듭제곱 곱이라 정확하고, 10³⁰⁰ 같은 값의 제곱도 넘치지 않아요. 상관은 각 변수의 배율과 상관없으므로 단위를 되돌릴 필요도 없어요. 평균은 double-double이고, 중심화한 값 $x_c = x - \bar x$도 TwoSum으로 double-double이라 오프셋이 커도(10⁹ 근처의 데이터) 차가 정확해요. $S_{xx}, S_{yy}, S_{xy}$는 double-double 곱의 double-double 합이에요. 합은 고정된 크기의 블록마다 네 줄의 사슬로 더해(NEON으로 두 칸씩) 블록 순서대로 모으므로, 긴 줄 하나도 스레드풀에서 나눠 돌고 스레드 수와 상관없이 같은 비트예요.
+줄마다 x와 y를 따로 $2^{-e}$배 해요(e는 가장 큰 절댓값의 지수). 2의 거듭제곱 곱이라 정확하고, 10³⁰⁰ 같은 값의 제곱도 넘치지 않아요. 상관은 각 변수의 배율과 상관없으므로 단위를 되돌릴 필요도 없어요. 가장 큰 절댓값이 서브노멀 크기(지수가 −1000 아래)인 변수는 $2^{-e}$가 double을 넘치므로, 먼저 그 변수에 $2^{600}$을 곱한 사본을 만들고 같은 계산을 해요. 평균은 double-double이고, 중심화한 값 $x_c = x - \bar x$도 TwoSum으로 double-double이라 오프셋이 커도(10⁹ 근처의 데이터) 차가 정확해요. $S_{xx}, S_{yy}, S_{xy}$는 double-double 곱의 double-double 합이에요. 합은 고정된 크기의 블록마다 네 줄의 사슬로 더해(NEON으로 두 칸씩) 블록 순서대로 모으므로, 긴 줄 하나도 스레드풀에서 나눠 돌고 스레드 수와 상관없이 같은 비트예요.
 
 ### q를 만드는 두 갈래
 
@@ -95,6 +95,32 @@ True
 ```
 
 r을 double로 반올림하면 1이지만, q는 잔차에서 따로 만들어서 p값이 살아 있어요.
+
+### 참값이 0인 상관
+
+반대쪽 끝도 있어요. 참 $S_{xy}$가 정확히 0이어도 double-double 합은 반올림 크기($10^{-32}$쯤)의 값을 남겨서, r이 0이 아니라 $10^{-33}$쯤으로 나와요. 상대오차로는 무한대예요. 그래서 $|S_{xy}|$가 $2^{-80}\sqrt{S_{xx}S_{yy}}$ 이하(|r| ≤ 2⁻⁸⁰)이면 0인지를 정확히 판정해 봐요. 모든 값이 공통의 $2^{-k}$의 정수배이고 그 정수가 $2^{40}$ 아래인 짧은 2진 값의 자료(정수, 반정수 같은)이고 $n \le 2^{20}$이면, $n\sum xy = \sum x\sum y$를 128비트 정수로 넘치지 않고 계산할 수 있어요. 같으면 $S_{xy}$를 0으로 둬요.
+
+```cpp
+// csrc/htest/correlation.cpp
+bool exact_zero_sxy(const double* x, const double* y, std::int64_t n) {
+    int kx, ky;
+    if (!small_dyadic(x, n, kx) || !small_dyadic(y, n, ky)) return false;
+    i128 sx = 0, sy = 0, sxy = 0;
+    for (std::int64_t j = 0; j < n; ++j) {
+        const i128 u = dyadic_int(x[j], kx), v = dyadic_int(y[j], ky);
+        sx += u, sy += v, sxy += u * v;
+    }
+    return static_cast<i128>(n) * sxy == sx * sy;
+}
+```
+
+판정은 0인지만 정하고 다른 값은 건드리지 않아요. 짧은 2진 값이 아닌 자료(0.1을 더한 값처럼)는 double-double의 값 그대로예요.
+
+```python
+>>> u = [float(i) for i in range(-10, 11)]
+>>> sd.htest.pearsonr(u, [t * t for t in u])
+PearsonrResult(statistic=0, pvalue=1)
+```
 
 ### 퇴화한 입력
 

@@ -72,7 +72,7 @@ seeAlso: [anderson, ks_1samp, cramervonmises, shapiro, monte_carlo_test, methods
 ```python
 >>> r = sd.htest.goodness_of_fit(sd.stats.Normal, x, n_mc_samples=1000, rng=sd.random.default_rng(8))
 >>> r
-GoodnessOfFitResult(statistic=0.262854, pvalue=0.675325, null_distribution=<array of shape (1000,)>)
+GoodnessOfFitResult(fit_result=<Normal>, statistic=0.262854, pvalue=0.675325, null_distribution=<array of shape (1000,)>)
 >>> r.fit_result
 Normal(mu=0.605, sigma=1.2933079503913423)
 ```
@@ -85,12 +85,12 @@ p = 0.68이라 정규분포라는 가설을 기각할 근거는 없어요. `fit_
 ==============================================================================
 Statistic:                      0.2629  No. Observations:                   12
 P-value:                         0.675  Distribution:                   Normal
-                                        Statistic:                          ad
+                                        Statistic type:                     ad
                                         Samples:                          1000
 ==============================================================================
 ```
 
-머리의 오른쪽 `Statistic:`은 통계량의 종류(`'ad'`)예요.
+머리의 왼쪽 `Statistic:`은 통계량의 값, 오른쪽 `Statistic type:`은 통계량의 종류(`'ad'`)예요. `repr`에서 `fit_result`는 `<Normal>`처럼 분포의 이름만 짧게 보이고, 맞추기에 실패하면 `None`이에요.
 
 ## 맞춘 모수로 ks_1samp을 하면
 

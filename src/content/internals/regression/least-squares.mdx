@@ -613,7 +613,17 @@ t만은 IEEE 연산에 맡기지 않아요. 계수는 정확도 약속 안의 �
         return bool(z) and df > 0
 ```
 
-`glm`(척도를 추정할 때)과 `rlm`(척도가 0일 때)도 같은 이름의 메서드로 같은 규칙을 따르고, `tvalues`는 모든 결과가 함께 쓰는 기본 클래스에서 이 표시를 읽어요(아래 [돌려놓기](#돌려놓기)의 코드).
+모형 전체의 F도 같은 표시를 읽어요. 반올림 크기의 ESS를 0인 척도로 나누면 inf와 p 0이 되어 t와 같은 가짜 유의성이라서, `fvalue`는 `_perfect`인 회귀에서 NaN이고 `f_pvalue`도 그 F에서 구하니 NaN이에요. 강건 공분산의 Wald F도 같아요.
+
+```python
+            # src/stardust/regression/_linear.py (fvalue)
+            bad = self._perfect()
+            if isinstance(bad, _sd.ndarray):
+                return _sd.where(bad, math.nan, f)
+            return math.nan if bad else f
+```
+
+`_perfect`는 `glm`(척도를 추정할 때)과 `rlm`(척도가 0일 때)에도 같은 이름의 메서드로 있어서 같은 규칙을 따르고, `tvalues`는 모든 결과가 함께 쓰는 기본 클래스에서 이 표시를 읽어요(아래 [돌려놓기](#돌려놓기)의 코드).
 
 ```python
 >>> x8 = sd.arange(1.0, 9.0)
@@ -622,6 +632,8 @@ t만은 IEEE 연산에 맡기지 않아요. 계수는 정확도 약속 안의 �
 array([ 8.326672684688674e-17, 2.7755575615628914e-17, -2.7755575615628914e-17], dtype=float64)
 >>> rp.ssr, rp.bse, rp.tvalues
 (0.0, array([0.0, 0.0], dtype=float64), array([nan, nan], dtype=float64))
+>>> rp.fvalue, rp.f_pvalue
+(nan, nan)
 ```
 
 Wampler1은 반복 개선이 잔차를 정확히 0까지 줄여 판정 전부터 SSR이 0이고, Wampler2는 잔차가 $2.8\times10^{-15}$ 남지만 이 판정으로 완전 적합이에요. 같은 Wampler1에서 statsmodels 0.15.0은 반올림 수준의 잔차로 표준오차 2×10⁻¹²–4×10⁻⁸, t 2.5×10⁷–5.2×10¹¹을 내고, R(`summary.lm`)은 "essentially perfect fit" 경고와 함께 표준오차 6×10⁻¹⁵–1.4×10⁻¹⁰을 내요.
@@ -888,7 +900,7 @@ NIST의 선형 회귀 인증 자료 11개는 극단적인 조건수와 공인된
 
 - `ols`는 Filip에서 두 번, 나머지 10개에서 한 번 보정하고 멈춰요. 돌려준 계수는 11개 모두 Arb 참값을 double로 반올림한 것과 비트까지 같아요.
 - Filip의 κ는 1.8×10¹⁵로 $\kappa^2 u > 1$이지만, 잔차가 작아서 개선이 수렴해요.
-- Wampler2는 double 입력에서의 참 잔차가 반올림 수준이라(계수를 double로 반올림한 것만으로 잔차가 바뀌어요), 그 잔차로 구한 표준오차에는 상대 정확도가 없어요. 잔차가 모두 완전 적합의 판정 안이라 SSR이 0이고, 표준오차는 0, t와 p는 NaN이에요.
+- Wampler2는 double 입력에서의 참 잔차가 반올림 수준이라(계수를 double로 반올림한 것만으로 잔차가 바뀌어요), 그 잔차로 구한 표준오차에는 상대 정확도가 없어요. 잔차가 모두 완전 적합의 판정 안이라 SSR이 0이고, 표준오차는 0, t, p, F는 NaN이에요.
 - 인증값은 10진 자료 그대로의 참값이에요. Filip은 자료를 double로 한 번 반올림한 것만으로 참 계수가 2.4×10⁻⁸ 움직여요. 입력의 반올림이 문제 자체를 바꾼 몫이라 어떤 방법으로도 줄일 수 없어요.
 
 같은 입력에서 다른 라이브러리가 낸 계수의 최대 상대오차예요. 견준 것은 statsmodels 0.15.0(`OLS().fit()`, 기본 `pinv`), scikit-learn 1.9.1(`LinearRegression`), numpy 2.5.4의 `lstsq`와 같은 값을 내는 `sd.linalg.lstsq`(SVD)예요.

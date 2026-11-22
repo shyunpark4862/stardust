@@ -357,7 +357,7 @@ True
 
 - `studentize=True`(기본값, Koenker 판): $\mathrm{lm} = n R^2_{\text{보조}}$. 오차가 정규분포가 아니어도 돼요.
 - `studentize=False`(원래 판): $\mathrm{lm} = \mathrm{ESS}_{\text{보조}} / (2\hat\sigma^4)$, $\hat\sigma^2 = \mathrm{SSR}/n$. 오차가 정규분포라고 가정해요.
-- `lm_pvalue`는 자유도가 보조 회귀의 `df_model`(설명변수 수)인 카이제곱의 위 꼬리예요. `fvalue`, `f_pvalue`는 보조 회귀의 F 검정이고 두 판에서 같아요.
+- `lm_pvalue`는 자유도가 보조 회귀의 `df_model`(설명변수 수)인 카이제곱의 위 꼬리예요. `fvalue`, `f_pvalue`는 보조 회귀의 F 검정이고 두 판에서 같아요. 보조 회귀에 남는 자유도가 없으면(보조 회귀의 열이 쓰인 행만큼 있을 때) 보조 회귀가 자료를 정확히 지나니 네 값이 모두 NaN이에요.
 
 $x$가 클수록 오차가 커지는 데이터에서는 잔차가 오른쪽으로 갈수록 넓게 퍼져요.
 
@@ -476,7 +476,7 @@ TypeError: breusch_pagan(): takes 0 positional arguments but 1 was given
 - [`gls`](/api/regression/gls/): 상관을 걷어 낸(백색화한) 잔차와 열로 구해요.
 - `breusch_pagan()`의 보조 회귀는 모형에 절편이 있든 없든 상수를 넣어요. 가중 적합이면 상수 열과 함께 $\sqrt{w_i}$ 열과 $\sqrt{w_i}$를 곱한 설명변수를 넣어요.
 
-가중치가 0인 행은 적합에 쓰이지 않으니, 그 행의 `leverage`, 스튜던트화 잔차, `cooks_distance`, `dffits`, `dfbetas`, `wresid`는 0이에요. `vif`, `durbin_watson`, `jarque_bera()`, `breusch_pagan()`의 합에서도 빠져서, 그 행을 뺀 적합의 진단과 같아요.
+가중치가 0인 행은 적합에 쓰이지 않으니, 그 행의 `leverage`, 스튜던트화 잔차, `cooks_distance`, `dffits`, `dfbetas`, `wresid`는 0이에요. 잔차가 음수인 행도 √0 × 음수의 `-0.0`이 아니라 `0.0`이에요. `vif`, `durbin_watson`, `jarque_bera()`, `breusch_pagan()`의 합에서도 빠져서, 그 행을 뺀 적합의 진단과 같아요.
 
 ```python
 >>> xw = sd.asarray([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0])

@@ -6,6 +6,7 @@ summary: sd.sparse가 맞게 계산하는지를 식으로 만든 시험 행렬 6
 seeAlso: [overview, arpack, svds, expm, norms]
 ---
 import Callout from '../../../components/Callout.astro';
+import AccuracySummary from '../../../components/fig/AccuracySummary.astro';
 
 ## 한눈에 보기
 
@@ -87,7 +88,7 @@ $n \le 2000$인 행렬은 정확한 참값을 만들 수 있는 `small` 태그�
 | `norm(ord=2)` | `svds`의 계약 | 0.013 |
 | `onenormest` | 하한(계약 아님) | 42개 중 26개가 참값과 같음, 가장 작은 비율 0.76 |
 
-계약의 상수는 잰 값에 여유를 둔 것이에요. 가장 빠듯한 `eigsh` 0.50은 1000개짜리 1차원 라플라시안의 `'LA'`에서 ARPACK이 762번 재시작하며 $VQ$를 거듭 곱해 쌓인 반올림이에요(같은 문제의 scipy는 0.22). 고유값과 특이값은 잔차 $\lVert Av - \lambda Mv\rVert$, $\lVert A^{\mathsf H}u - \sigma v\rVert$도 $C_{\mathrm{EIG}}\,\varepsilon\,\lVert A\rVert_2$ 안이고 벡터의 직교성 $\lVert V^{\mathsf H}MV - I\rVert$는 $C_{\mathrm{EIG}}\,k\,\varepsilon$ 안인지 테스트가 봐요.
+계약의 상수는 잰 값에 여유를 둔 것이에요. 가장 빠듯한 `eigsh` 0.50은 1000개짜리 1차원 라플라시안의 `'LA'`에서 ARPACK이 762번 재시작하며 $VQ$를 거듭 곱해 쌓인 반올림이에요(같은 문제의 scipy는 0.15). 고유값과 특이값은 잔차 $\lVert Av - \lambda Mv\rVert$, $\lVert A^{\mathsf H}u - \sigma v\rVert$도 $C_{\mathrm{EIG}}\,\varepsilon\,\lVert A\rVert_2$ 안이고 벡터의 직교성 $\lVert V^{\mathsf H}MV - I\rVert$는 $C_{\mathrm{EIG}}\,k\,\varepsilon$ 안인지 테스트가 봐요.
 
 반복법의 결과는 "멈춤 판정을 만족한 점"이에요. 계약은 판정이 약속하는 앞오차이고, `converged=True`인 결과는 다시 계산한 참 잔차가 판정을 만족하는지 테스트가 봐요. 수렴하지 못한 결과(등급 매긴 행렬, 거의 특이한 행렬 같은 꼴에서 `cg` 2, `minres` 2, `gmres` 6, `bicgstab` 4점)는 스윕에서 빼고 그 수를 세요. `minres`는 판정이 잔차의 어림에 대한 것이라 조건수가 큰 행렬에서 참 잔차가 어림보다 $\varepsilon\kappa\lVert A\rVert\lVert x\rVert$만큼 클 수 있어서, 그 몫을 경계에 더해요.
 
@@ -98,15 +99,17 @@ $n \le 2000$인 행렬은 정확한 참값을 만들 수 있는 `small` 태그�
 | 스윕 | 비교 패키지와 그 오차(계약 단위) |
 |---|---|
 | `spmv`, `sums` | scipy와 R Matrix(`%*%`, `crossprod`, `rowSums`, `colSums`, `sum`) 모두 계약 안 |
-| `solve` | scipy `spsolve`, R `solve`(CSparse LU) |
+| `solve` | scipy `spsolve`(0.29), R `solve`(CSparse LU, 0.26) |
 | `iterative` | scipy(같은 허용오차; `bicgstab` 0.32, 나머지는 sd와 같은 크기). R Matrix에는 반복법이 없어요 |
 | `eig` | scipy(`eigsh` 0.15, `eigs` 0.020, `svds`는 랭크 부족한 80 × 30의 `'SM'`에서 $2\times10^{12}$), R RSpectra(`eigsh` 2.4: 허용오차 $10^{-12}$에서 멈춘 값, `eigs` 0.27, `svds` 0.011), R irlba |
 | `norms` | scipy(sd와 같은 크기; 2-노름은 0인 행이 있는 행렬에서 `ArpackError`라 그 점을 빼요), R Matrix |
 | `matfuncs` | scipy(`expm` 0.48, `expm_multiply`는 sd와 같은 값), R Matrix(`expm` 0.42) |
 
-<Callout>
-희소 영역의 스윕은 저장된 결과 파일이 없어서 다른 영역처럼 정확도 요약 표로 보이지 않아요. 위의 값은 스윕을 돌려 잰 가장 큰 값이에요.
-</Callout>
+스윕은 일곱 개, 줄은 (함수, 영역) 26개, 점은 64만 개쯤이에요. 26줄 모두 계약 안이고 가장 큰 계약 대비는 `rmatvec`의 0.83이에요. 아래 표는 결과 파일(`bench/accuracy/results/sparse.json`)에서 그대로 만든 것이에요.
+
+<AccuracySummary area="sparse" caption="희소 영역 전체. 영역 열은 함수(고유값·반복법·행렬 함수·풀이), 노름의 ord, 곱과 합의 종류예요. 계약 대비가 1 이하면 계약 안이에요." />
+
+`eig`, `expm`, 전체 합(`total`)의 최대 ULP와 최대 상대오차가 아주 큰 것은 참값이(복소수면 그 실수부나 허수부가) 0이거나 0에 아주 가까운 점이 있어서예요. 랭크가 부족한 행렬의 특이값 0, 상쇄로 거의 0이 되는 합과 지수의 원소, 허수부가 거의 0인 복소 값 같은 것이에요. 0 근처에는 double이 아주 촘촘해서 반올림 크기의 절대오차도 ULP와 상대오차로는 커져요. 그래서 이 영역은 행렬의 노름 같은 척도에 대한 오차, 곧 계약 대비로 판정해요.
 
 ### scipy와 R의 기록
 

@@ -498,7 +498,7 @@ ValueError: matrix_norm(): 'x' must have at least 2 dimensions, got 1
 
 ## 희소 행렬에서는
 
-희소 행렬(0이 아닌 원소만 저장한 행렬)의 노름은 [`sd.sparse.norm`](/api/sparse/norm/)이에요. `ord`의 뜻과 받는 값이 `matrix_norm`, `vector_norm`과 같아요. 큰 희소 행렬의 1-노름을 행렬 곱 몇 번으로 어림하는 [`sd.sparse.onenormest`](/api/sparse/onenormest/)도 있어요. 희소 배열을 `matrix_norm`이나 `vector_norm`에 넣으면 `sd.sparse.norm`을 알려 주는 `TypeError`예요.
+희소 행렬(0이 아닌 원소만 저장한 행렬)의 노름은 [`sd.sparse.norm`](/api/sparse/norm/)이에요. `ord`의 뜻과 받는 값이 `matrix_norm`, `vector_norm`과 같아요. 큰 희소 행렬의 1-노름을 행렬 곱 몇 번으로 어림하는 [`sd.sparse.onenormest`](/api/sparse/onenormest/)도 있어요. 희소 배열을 `matrix_norm`이나 `vector_norm`에 넣으면 `sd.sparse.norm`을 알려 주는 `TypeError`예요. 희소 쪽은 저장된 값만 더하므로 더하는 순서가 달라서, 같은 행렬이라도 두 쪽의 마지막 자리가 다를 수 있어요(둘 다 정확도 계약 안이에요).
 
 ## numpy·scipy를 아는 분께
 

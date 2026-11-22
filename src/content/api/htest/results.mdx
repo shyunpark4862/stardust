@@ -118,12 +118,16 @@ Traceback (most recent call last):
 AttributeError: 'WilcoxonResult' object has no attribute 'zstatistic' (the test does not give it for this call). Did you mean '.statistic' instead of '.zstatistic'?
 ```
 
-배치에서는 한 줄이라도 정규 근사를 쓰면 필드가 있고, 정확한 분포를 쓴 줄의 값이 NaN이에요. 모든 줄이 정확한 분포면 필드가 없어요.
+배치에서는 데이터에 따라 필드가 생기거나 없어지지 않아요. `method='auto'`가 정규 근사를 고를 수 있는 `mannwhitneyu`, `wilcoxon`의 배치에는 `zstatistic`이 언제나 있고, 정확한 분포를 쓴 줄의 값이 NaN이에요. 모든 줄이 정확한 분포여도 NaN의 배열이에요. 그래서 같은 코드가 데이터에 따라 `AttributeError`를 내지 않아요.
 
 ```python
->>> ub = sd.htest.mannwhitneyu(sd.asarray([[1.0, 2, 3, 4], [1.0, 2, 3, 4]]), sd.asarray([[5.0, 6, 7], [2.0, 2, 5]]), axis=1)
+>>> A = sd.asarray([[1.0, 2, 3, 4], [1.0, 2, 3, 4]])
+>>> ub = sd.htest.mannwhitneyu(A, sd.asarray([[5.0, 6, 7], [2.0, 2, 5]]), axis=1)
 >>> ub.method, ub.zstatistic
 (['exact', 'asymptotic'], array([                nan, -0.1834498464263357], dtype=float64))
+>>> ue = sd.htest.mannwhitneyu(A, sd.asarray([[5.0, 6, 7], [2.5, 2.2, 5]]), axis=1)
+>>> ue.method, ue.zstatistic
+(['exact', 'exact'], array([nan, nan], dtype=float64))
 ```
 
 ## 튜플로 풀기
@@ -328,7 +332,7 @@ TypeError: summary(): unexpected keyword argument 'alpha'
 
 ### 배열 필드
 
-검정 하나의 결과에 배열 필드가 있으면 머리 아래에 표로 보여요. 행 이름은 `[i]`, 열 이름은 `[j]`이고, 20을 넘는 행이나 열은 앞뒤 5개씩만 두고 가운데를 `...`로 줄여요.
+검정 하나의 결과에 배열 필드가 있으면 머리 아래에 표로 보여요. 행 이름은 `[i]`, 열 이름은 `[j]`이고, 20을 넘는 행이나 열은 앞뒤 5개씩만 두고 가운데를 `...`로 줄여요. 어떤 필드가 표인지는 결과마다 필드 이름으로 정해져 있어서(`table`, `expected_freq`), 원소가 하나뿐인 1 × 1 표도 표로 보여요.
 
 ```python
 >>> print(sd.htest.chi2_contingency([[12, 5], [3, 10]]).summary())
@@ -377,7 +381,7 @@ Alternative:                 two-sided
 ==============================================================================
 ```
 
-Student의 자유도는 두 줄 모두 12라서 머리에, Welch의 자유도는 줄마다 달라서 열에 있어요. 표의 p값은 소수 셋째 자리까지예요. 줄이 20개를 넘으면 앞뒤 5줄씩만 두고 가운데에 `...` 줄을 둬요. 줄마다의 표(배치의 `expected_freq` 같은 것)는 보이지 않아요.
+Student의 자유도는 두 줄 모두 12라서 머리에, Welch의 자유도는 줄마다 달라서 열에 있어요. 표의 p값은 소수 셋째 자리까지예요. 줄이 20개를 넘으면 앞뒤 5줄씩만 두고 가운데에 `...` 줄을 둬요. 줄마다의 표(배치의 `expected_freq` 같은 것)는 보이지 않아요. 줄이 하나도 없는 배치(모양 `(0,)`)는 열 이름만 있는 빈 표예요.
 
 ## 결과는 읽기 전용
 
@@ -432,7 +436,7 @@ scipy 1.18.1, statsmodels 0.15.0 기준이에요.
 | `f_oneway`, `levene`의 결과 `statistic pvalue` | `df_num`, `df_denom`을 더해요 |
 | `bartlett`, `fligner`, `alexandergovern`, `kruskal`, `chisquare` 등의 결과 `statistic pvalue` | `df`를 더해요 |
 | `ttest_ind_from_stats`의 결과 `statistic pvalue` | `df`와 `conf_int()`를 더해요 |
-| `mannwhitneyu`, `wilcoxon`의 `zstatistic`(`method='asymptotic'`을 준 때만) | 정규 근사를 쓴 때마다 |
+| `mannwhitneyu`, `wilcoxon`의 `zstatistic`(`method='asymptotic'`을 준 때만) | 정규 근사를 쓴 때마다(배치에는 언제나) |
 | `method='auto'`로 고른 방법(`page_trend_test`에만 있어요) | `method='auto'`가 있는 모든 검정의 `method` 필드 |
 
 - 풀기는 scipy가 풀리는 곳에서 같은 개수와 순서예요. 자유도처럼 더한 필드는 튜플에 들지 않아서, scipy에서 옮긴 `stat, p = ...` 코드는 그대로 돌아요.

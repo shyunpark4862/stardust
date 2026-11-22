@@ -33,6 +33,8 @@ raises:
     desc: "arg가 받는 꼴이 아닐 때(int, str 등), 좌표가 정수가 아닐 때(float, bool), 값을 넓힐 수 없는 dtype일 때(uint64, 문자열, object)."
   - type: ValueError
     desc: "좌표가 shape 밖이거나 음수일 때, data와 좌표의 길이가 다를 때, 좌표가 비었는데 shape가 없을 때, shape의 차원 수나 크기가 입력과 맞지 않을 때, 3차원 이상일 때, copy=False인데 복사가 필요할 때."
+  - type: OverflowError
+    desc: "shape 없이 색인으로 모양을 정할 때 가장 큰 색인 + 1이 int64를 넘을 때(shape를 주라고 알려 줘요)."
 seeAlso: [basics, sparray, csr_array, dok_array, indexing, find]
 ---
 import Callout from '../../../components/Callout.astro';

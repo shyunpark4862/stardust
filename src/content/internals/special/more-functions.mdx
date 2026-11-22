@@ -644,7 +644,7 @@ Weideman [10]의 유리 근사와 Poppe–Wijers의 한 식 방법도 후보였�
 
 ## 정확도
 
-Arb 참값 대비, 보장 영역 참값 파일에서 지금 빌드로 잰 최대 ULP예요(정확도 측정 도구 `bench/accuracy/`, 결과는 `bench/accuracy/results/special.json`). 느슨한 영역은 따로 적었어요. scipy 1.18.1의 같은 입력도 적었어요. 복소수는 ULP 대신 계약 대비($\lvert\text{오차}\rvert$를 $10^{-14}\lvert\text{값}\rvert$로 나눈 값의 최대, 영점 근처는 포락선 배율을 곱한 한계로 나눠요)로 적어요. 복소수의 ULP는 두 성분 가운데 큰 쪽이라, 한 성분이 0에 가까운 점에서 아주 커지기 때문이에요. scipy 열은 참값이 유한한데 scipy가 NaN이나 inf를 낸 점을 빼고 잰 값이고, 괄호 안이 뺀 점의 수예요.
+Arb 참값 대비, 보장 영역 참값 파일에서 지금 빌드로 잰 최대 ULP예요(정확도 측정 도구 `bench/accuracy/`, 결과는 `bench/accuracy/results/special.json`). 느슨한 영역은 따로 적었어요. scipy 1.18.1의 같은 입력도 적었어요. 복소수는 ULP 대신 계약 대비($\lvert\text{오차}\rvert$를 $10^{-14}\lvert\text{값}\rvert$로 나눈 값의 최대, 영점 근처는 포락선 배율을 곱한 한계로 나눠요)로 적어요. 복소수의 ULP(두 성분의 차 가운데 큰 쪽을 참값의 큰 성분의 ULP로 나눈 값)는 영점 근처에서 값 자체가 작아 아주 커지기 때문이에요(`wofz`는 최대 $1.5 \times 10^{13}$이고, 포락선 배율로 나누면 2예요). scipy 열은 참값이 유한한데 scipy가 NaN이나 inf를 낸 점을 빼고 잰 값이고, 괄호 안이 뺀 점의 수예요.
 
 | 함수 | stardust 최대 | scipy 최대 | 비고 |
 |---|:---:|:---:|---|

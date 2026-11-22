@@ -23,7 +23,7 @@ raises:
   - type: TypeError
     desc: table이 배열·수의 시퀀스·frame이 아닐 때, 없는 인자를 줬을 때.
   - type: ValueError
-    desc: "표가 2 × 2가 아닐 때, 음수·정수가 아닌 값·NaN이 있을 때, kind 이름이 틀렸을 때."
+    desc: "표가 2 × 2가 아닐 때, 음수·정수가 아닌 값·NaN이 있을 때, 표의 합이 2⁵³ 이상일 때, kind 이름이 틀렸을 때. kind='conditional'의 계산에 드는 항이 너무 많을 때(개수가 조 단위인 표)."
 seeAlso: [fisher_exact, relative_risk, chi2_contingency, basics, results]
 ---
 ## 무엇을 하나요
@@ -177,6 +177,21 @@ Traceback (most recent call last):
     ...
 ValueError: odds_ratio(): 'table' must be a 2 x 2 table, not 2 x 3
 ```
+
+## 아주 큰 개수
+
+표의 합은 [`fisher_exact`](/api/htest/fisher_exact/#아주-큰-개수)처럼 2⁵³ 아래여야 해요. 조건부 추정은 표의 첫 칸이 가질 수 있는 모든 값에 걸친 합을 풀어야 하는데, 개수가 크면 그 값이 아주 많아요. 그래서 합에 실제로 보탬이 되는 최빈값 둘레만 더해요. 그 둘레는 개수의 제곱근만큼 넓어서 개수가 수십억인 표도 계산해요. 개수가 조 단위에 이르러 그 둘레마저 약 4백만 항을 넘으면 `kind='sample'`을 알려 주는 `ValueError`예요. 구간을 구하는 `conf_int()`도 같아요.
+
+```python
+>>> sd.htest.odds_ratio([[10**9, 10**9 + 7], [10**9 + 3, 10**9]])
+OddsRatioResult(statistic=1)
+>>> sd.htest.odds_ratio([[10**12, 10**12 + 7], [10**12 + 3, 10**12]])
+Traceback (most recent call last):
+    ...
+ValueError: odds_ratio(): the conditional odds ratio needs more than 4.19e+06 terms of its sums for this table; use kind='sample'
+```
+
+개수가 이만큼 크면 조건부 추정과 표본 오즈비는 거의 같아요.
 
 ## 정확도
 

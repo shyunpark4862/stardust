@@ -129,7 +129,7 @@ array([0.9814338645369568, 0.8985649635139985, 0.4973517263452094], dtype=float6
 >>> sd.stats.NoncentralChiSquared(3, 2)
 Traceback (most recent call last):
     ...
-TypeError: NoncentralChiSquared(): takes no positional arguments but 2 were given
+TypeError: NoncentralChiSquared(): takes 0 positional arguments but 2 were given
 >>> sd.stats.NoncentralChiSquared(df=3)
 Traceback (most recent call last):
     ...
@@ -425,6 +425,8 @@ True
 | `df`와 `nc`가 함께 아주 클 때 | `pdf`, `logpdf` (`df`가 작으면 `nc = 1e300`에서도 값이 나와요) |
 | `ilogcdf`, `ilogccdf`의 입력이 $-2^{62}$ 이하 | 결과 |
 | 위 절의 경우 | `entropy` |
+
+`nc`가 클 때 NaN인 곳은 평균을 둘러싼 띠이고, 띠는 `nc`와 함께 넓어져요. `nc = 2.4e9`이면 평균 $\pm 0.5\sqrt{nc}$는 NaN이고 $\pm\sqrt{nc}$는 값이 나오지만, `nc = 4e9`이면 평균 $\pm 80\sqrt{nc}$도 NaN이에요. 띠 밖의 먼 꼬리는 0이나 1이에요.
 
 평균, 분산 같은 닫힌 꼴의 요약값은 이런 매개변수에서도 값이 나와요.
 

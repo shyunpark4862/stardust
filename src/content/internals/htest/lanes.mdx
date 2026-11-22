@@ -252,4 +252,16 @@ inline void method_array(const double* x, std::int64_t n, double* out, A... a) {
 
 ## GIL
 
-커널은 GIL을 쥔 채 불려요. `for_pieces`가 일을 스레드풀에 나누는 순간(일이 2¹⁵원소 이상) GIL을 놓고, 그 안의 코드는 Python 객체를 건드리지 않아요. 작은 검정은 GIL을 놓고 다시 잡는 비용도 치르지 않고, 큰 검정 동안에는 다른 Python 스레드가 돌 수 있어요. 사용자 함수를 부르는 검정(`ks_1samp`·`cramervonmises`의 `cdf`, 재표본의 `statistic`)은 사용자 함수를 Python에서 한 번 부르고 그 값을 커널에 넘겨요. 커널 안에서 Python으로 되돌아오지 않아요.
+커널은 GIL을 쥔 채 불려요. `for_pieces`는 일이 2¹⁵원소 이상이면 GIL을 놓고 조각을 스레드풀에 나눠요(조각이 하나뿐이어도 GIL은 놓아요). 그 안의 코드는 Python 객체를 건드리지 않아요. 작은 검정은 GIL을 놓고 다시 잡는 비용도 치르지 않고, 큰 검정 동안에는 다른 Python 스레드가 돌 수 있어요.
+
+그래서 `cost`의 어림이 GIL도 정해요. 일이 입력 크기로 정해지지 않는 검정은 데이터에서 어림해요. 2 × 2 [`fisher_exact`](/internals/htest/contingency/#큰-표)는 관측 칸과 최빈값의 거리(걸어가는 부분)와 초기하 분포의 표준편차(꼬리의 합이 훑는 폭)로, `odds_ratio`는 받침이나 최빈값 둘레 창의 크기로 줄 하나의 일을 어림해 `each_lane`에 넘겨요. 줄이 아닌 스칼라 검정인 `poisson_means_test`는 합의 걸음 수(√μ₂에 비례)로 어림해서, 그 일이 2¹⁵원소 이상이면 `parallel::Unlocked`로 GIL을 놓고 합을 계산해요.
+
+```cpp
+    // csrc/htest/proportion.cpp
+    const double mu2 = std::max(0.0, (k1 + k2 - diff * n1) / (n1 + n2) * n2);
+    PoissonOut o;
+    {
+        const parallel::Unlocked unlocked(std::sqrt(mu2) * 400.0 >= static_cast<double>(kParallelThreshold));
+        o = poisson_means_body(k1, n1, k2, n2, diff, alt);
+    }
+``` 사용자 함수를 부르는 검정(`ks_1samp`·`cramervonmises`의 `cdf`, 재표본의 `statistic`)은 사용자 함수를 Python에서 한 번 부르고 그 값을 커널에 넘겨요. 커널 안에서 Python으로 되돌아오지 않아요.

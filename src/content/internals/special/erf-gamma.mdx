@@ -21,7 +21,7 @@ import Steps from '../../../components/fig/Steps.astro';
 | `ndtr` | erfc와 같은 유리식, $e^{-x^2/2}$를 x에서 직접 | 3 | `ops/erf.hpp` |
 | `log_ndtr` | `log1p(-ndtr(-x))`, 음수 쪽은 erfcx로 | 2 | `ops/erf.hpp` |
 | `ndtri`, `erfinv`, `erfcinv` | Wichura AS241의 유리 근사 셋 | 3 | `ops/erf.hpp` |
-| `ndtri_exp` | ndtri, 아주 깊은 꼬리는 점근식에서 Newton | 2 | `ops/distr.hpp` |
+| `ndtri_exp` | ndtri, $p \approx \tfrac12$은 `expm1`로 만든 $p - \tfrac12$를 가운데 유리식에, 아주 깊은 꼬리는 점근식에서 Newton | 3 | `ops/distr.hpp` |
 | `gamma` | Boost.Math의 Lanczos 근사, 깊은 음수는 반사식 | 1–2 | `ops/gamma.hpp`, `boost.hpp` |
 | `rgamma` | Cephes 감마의 역수, 반사식, 지수를 따로 둔 Lanczos | 2 | `ops/gamma.hpp`, `gamma_core.hpp` |
 | `gammaln` | 2 둘레의 Taylor 급수와 Stirling 급수 | 2 | `gamma_core.hpp` |
@@ -318,11 +318,21 @@ $z - 1$은 $z \in [\tfrac12, 2]$에서 정확하고, $2 - z$도 $z \ge 1$에서 
 
 ### ndtri_exp: 로그 확률에서 분위수로
 
-$\operatorname{ndtri\_exp}(y) = \operatorname{ndtri}(e^y)$는 $y \le 0$인 로그 확률을 받아요. $e^y$가 언더플로하는 $y \lt -745$에서도 답이 있어야 해서 세 갈래예요(`ops/distr.hpp`).
+$\operatorname{ndtri\_exp}(y) = \operatorname{ndtri}(e^y)$는 $y \le 0$인 로그 확률을 받아요. $e^y$가 언더플로하는 $y \lt -745$에서도 답이 있어야 하고, $p = e^y$가 $\tfrac12$ 근처인 곳에서는 $p - \tfrac12$를 잃지 말아야 해서 네 갈래예요(`ops/distr.hpp`).
 
-1. $\log\tfrac12 \lt y \le 0$: $-\operatorname{ndtri}(-\operatorname{expm1}(y))$. $p = e^y$가 1에 가까우면 $1 - p$를 `expm1`으로 직접 만들어 소거를 피해요.
-2. $-700 \lt y \le \log\tfrac12$: $\operatorname{ndtri}(e^y)$. $e^y$가 보통 수이고, 이 꼬리에서 x는 p의 반올림에 둔감해요($\kappa = \lvert p/(x\,\phi(x)) \rvert$가 작아요).
-3. $y \le -700$: 꼬리의 점근식 $\log\operatorname{ndtr}(x) \approx -\tfrac{x^2}{2} - \log(-x) - \tfrac12\log 2\pi + \log(1 - x^{-2} + 3x^{-4})$를 $x^2$에 대한 고정점 반복으로 다섯 번 풀고, 그 값에서 `log_ndtr(x) = y`를 Newton으로 다듬어요. Newton의 기울기는 $\phi(x)/\operatorname{ndtr}(x) = \exp(-x^2/2 - \tfrac12\log 2\pi - \log\operatorname{ndtr}(x))$로, 이미 계산한 `log_ndtr`에서 나와요. $y \lt -10^8$이면 점근식의 다음 항($15/x^6$)이 마지막 비트보다 작아서 고정점이 곧 답이에요. 그 아래에서 Newton을 계속하면 기울기 계산이 크기 $x^2/2$인 두 수의 차가 되어 오히려 망가져요.
+1. $\lvert p - \tfrac12\rvert \le \tfrac14$: $q = p - \tfrac12 = \tfrac12\operatorname{expm1}(y + \log 2)$를 만들어 `ndtri`의 가운데 유리식 $q\,R(q^2)$에 바로 넣어요. $\log 2$는 $hi + lo$로 나눠 더하고, $y = -\log 2$ 근처에서 $y + hi$는 정확해요(Sterbenz 보조정리). $e^y$를 먼저 만들고 $\tfrac12$를 빼면 $e^y$의 반올림(절대 약 $5.5 \times 10^{-17}$)이 작은 $q$를 덮어서, 반올림한 $\log\tfrac12$의 근 $2.9 \times 10^{-17}$이 0이 돼요. $\lvert q\rvert$가 $\tfrac14$를 넘으면 아래 갈래가 더 정확해서(Arb 참값과 견준 값) 이 구간에서만 써요.
+2. $\log\tfrac12 \lt y \le 0$: $-\operatorname{ndtri}(-\operatorname{expm1}(y))$. $p = e^y$가 1에 가까우면 $1 - p$를 `expm1`으로 직접 만들어 소거를 피해요.
+3. $-700 \lt y \le \log\tfrac12$: $\operatorname{ndtri}(e^y)$. $e^y$가 보통 수이고, 이 꼬리에서 x는 p의 반올림에 둔감해요($\kappa = \lvert p/(x\,\phi(x)) \rvert$가 작아요).
+4. $y \le -700$: 꼬리의 점근식 $\log\operatorname{ndtr}(x) \approx -\tfrac{x^2}{2} - \log(-x) - \tfrac12\log 2\pi + \log(1 - x^{-2} + 3x^{-4})$를 $x^2$에 대한 고정점 반복으로 다섯 번 풀고, 그 값에서 `log_ndtr(x) = y`를 Newton으로 다듬어요. Newton의 기울기는 $\phi(x)/\operatorname{ndtr}(x) = \exp(-x^2/2 - \tfrac12\log 2\pi - \log\operatorname{ndtr}(x))$로, 이미 계산한 `log_ndtr`에서 나와요. $y \lt -10^8$이면 점근식의 다음 항($15/x^6$)이 마지막 비트보다 작아서 고정점이 곧 답이에요. 그 아래에서 Newton을 계속하면 기울기 계산이 크기 $x^2/2$인 두 수의 차가 되어 오히려 망가져요.
+
+```cpp
+// csrc/special/ops/distr.hpp, NdtriExp::f (발췌)
+constexpr double kLn2Hi = 0x1.62e42fefa39efp-1, kLn2Lo = 0x1.abc9e3b39803fp-56;
+if (y > -1.39 && y < -0.28) {
+    const double q = 0.5 * std::expm1((y + kLn2Hi) + kLn2Lo);
+    if (std::fabs(q) <= 0.25) return q * erf_detail::ndtri_parts(q, 0.0).ratio;
+}
+```
 
 `ndtri`을 원소마다 길이 1의 묶음로 부르므로, 1024원소를 vForce 한 번에 넘기는 청크 커널의 이점이 없어요.
 
@@ -340,9 +350,9 @@ $\operatorname{ndtri\_exp}(y) = \operatorname{ndtri}(e^y)$는 $y \le 0$인 로�
 | `ndtri` | 5 | 4 | 3 |
 | `erfinv` | 4 | 3 | 2 |
 | `erfcinv` | 4 | 3 | 1.5e12 (2) |
-| `ndtri_exp` | 146 | 3.00 | 5.3e3 |
+| `ndtri_exp` | 4.00 | 3.00 | 5.3e3 |
 
-(정확도는 정확도 측정 도구 `bench/accuracy/`가 지금 빌드로 잰 값이에요. 기준값은 `tests/special/ref`(Arb)이고, scipy 1.18.1의 같은 값을 함께 적었어요. scipy 최대는 참값이 유한한데 scipy가 NaN이나 inf를 낸 점을 빼고 잰 값이고, 괄호 안이 뺀 점의 수예요. `ndtri_exp`는 ULP를 조건수로 나눈 값이고, 146은 결과가 0을 지나는 $y = \log(1/2)$의 점 하나예요. 그 점은 조건수가 커서 계약 안이고, 빼면 최대는 4예요.)
+(정확도는 정확도 측정 도구 `bench/accuracy/`가 지금 빌드로 잰 값이에요. 기준값은 `tests/special/ref`(Arb)이고, scipy 1.18.1의 같은 값을 함께 적었어요. scipy 최대는 참값이 유한한데 scipy가 NaN이나 inf를 낸 점을 빼고 잰 값이고, 괄호 안이 뺀 점의 수예요. `ndtri_exp`는 ULP를 조건수로 나눈 값이에요.)
 
 - scipy의 최대 오차가 큰 줄(`erfc`, `ndtr`, `log_ndtr`의 $10^{13}$)은 모두 서브노멀 꼬리를 0으로 내는 점이에요. 그 밖에도 위에서 본 $x^2$와 $t$의 반올림 때문에 꼬리에서 수백 ULP가 나요. `erfcx`의 500 ULP는 음의 큰 x($x \approx -25$)에서 $e^{x^2}$의 인자 $x^2$를 반올림하는 데서, `erfcinv`의 큰 값과 뺀 두 점은 $z/2$의 언더플로에서 와요.
 - `ndtri`과 `erfinv`는 scipy가 조금 더 정확해요(최대 3, 2 대 5, 4 ULP). 둘 다 약속($10^{-14}$, 45–90 ULP)보다 한참 작아요.

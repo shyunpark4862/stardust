@@ -25,7 +25,7 @@ import Steps from '../../../components/fig/Steps.astro';
 | `nls` | Arb 320비트 가우스–뉴턴 | `jac` $3.1 \times 10^{-13}$, 차분 $3.0 \times 10^{-10}$(최대) | scipy·R의 계수 LRE 중앙값 5.9–6.8 |
 | 검정·모형 비교·분산분석 | 비교하는 적합들의 제곱합·편차를 정의대로 | 조건이 좋은 8개 문제에서 통계량과 p값이 최대 $1.9 \times 10^{-14}$, $\kappa \approx 10^8$에서 $\kappa u$ 꼴 | statsmodels는 가중치 0인 WLS에서 0.1, 조건이 나쁘면 $4.2 \times 10^{-2}$ |
 | 진단 추가(VIF, DFFITS·DFBETAS, White·GQ·RESET, GLM의 영향력) | 보조 회귀, 행을 하나씩 뺀 적합 n번 | 조건이 좋은 8개 문제에서 최대 $1.2 \times 10^{-13}$, $\kappa \approx 10^8$에서 $\kappa u$ 꼴 | statsmodels의 한쪽 GQ p값 0.21, 감마 log의 DFBETAS $6.2 \times 10^{-2}$ |
-| `stepwise`·`best_subset` | 모든 부분집합의 제곱합·우도와 선택의 시뮬레이션 | 걸음과 부분집합이 모두 같음, AIC·BIC $2.5 \times 10^{-16}$, $C_p$ $4.7 \times 10^{-15}$ | |
+| `stepwise`·`best_subset` | 모든 부분집합의 제곱합·우도와 선택의 시뮬레이션 | 걸음과 부분집합이 모두 같음, AIC·BIC $2.5 \times 10^{-16}$, $C_p$ $8.0 \times 10^{-16}$($n$에 대한 상대) | |
 
 - 선형 모형의 약속은 "쓰인 열의 2-노름 조건수 $\kappa \le 10^{11}$이고 잔차가 $\lVert X\beta\rVert$의 100배까지이면, 계수 벡터의 상대오차 $\le 10^{-14}$"예요. 그 밖은 잰 값으로 알려요.
 - 반복 방법은 반복이 멈춘 허용오차와 상관없이 해에 반올림 수준으로 가까워요. 판정을 통과한 뒤에도 계수가 반올림보다 크게 움직이는 동안 반복을 이어 가기 때문이에요(GLM과 rlm의 연마, 정규화의 KKT 연마, 분위 회귀의 꼭짓점, 비선형의 다듬기).
@@ -202,7 +202,7 @@ NIST의 통계 참조 자료(StRD)는 공인된 참값과 극단적인 조건수
 
 - Filip은 세 참조 라이브러리 모두 맞는 자릿수가 없어요. scikit-learn은 다항식 문제(Pontius, Wampler)에서 크게 틀려요.
 - 잔차가 큰 문제(Longley, Wampler4·5)는 QR 해에 $\kappa^2 u\,\lVert r\rVert$ 꼴의 항이 남아요. 증강 시스템의 반복 개선이 그 항을 지워요([최소제곱 풀이](/internals/regression/least-squares/)).
-- 표준오차는 개선해도 $R$이 그대로라 상대오차가 대략 $\kappa u$예요(Filip $7 \times 10^{-8}$). Wampler2는 double 입력의 참 제곱합이 아주 작아, $\beta$를 double로 반올림한 것만으로 잔차가 바뀌어 표준오차에 상대 정확도가 없어요. 잔차가 모두 반올림 크기 안이라 sd는 완전 적합으로 판정하고 `bse` 0과 NaN인 t·p를 내요([최소제곱 풀이](/internals/regression/least-squares/)).
+- 표준오차는 개선해도 $R$이 그대로라 상대오차가 대략 $\kappa u$예요(Filip $7 \times 10^{-8}$). Wampler2는 double 입력의 참 제곱합이 아주 작아, $\beta$를 double로 반올림한 것만으로 잔차가 바뀌어 표준오차에 상대 정확도가 없어요. 잔차가 모두 반올림 크기 안이라 sd는 완전 적합으로 판정하고 `bse` 0과 NaN인 t·p·F를 내요([최소제곱 풀이](/internals/regression/least-squares/)).
 
 **조건수를 바꾼 무작위 문제**($X = U\operatorname{diag}(s)V^{\mathsf T}$, $n = 100$, $k = 8$, 잔차는 $X$에 수직이고 $\lVert r\rVert = \rho\lVert X\beta\rVert$, $\rho = 10^{-10}, 1, 100$, $\kappa$마다 9개의 최대).
 
@@ -383,14 +383,14 @@ R(4.6.2, `deriv()`의 해석적 기울기, `nls.control(tol = 1e-10)`)의 `nls`�
 
 ### 변수 선택
 
-`bench/regression/accuracy.md`의 `selection/*` 행이에요. 참값은 문제마다 모든 부분집합의 제곱합·우도·AIC·BIC(선형은 겹마다의 학습 제곱합과 시험 오차까지)를 정의대로 계산하고, 그 값으로 `stepwise`(방향 셋 × 기준)와 `best_subset`(기준 다섯)이 고를 걸음과 부분집합을 시뮬레이션한 것이에요. 문제는 선형 넷(공선이 조금 있는 OLS, 가중치 0이 있는 WLS, 절편 없음, $\kappa \approx 2.3 \times 10^5$)과 GLM 셋(이항 logit, 포아송 log, 감마 log)이고, 스윕 7개에 점이 모두 349개예요. 모든 걸음과 부분집합이 참값의 선택과 같고, 걸음마다·크기마다의 기준값의 최대 상대오차는 이래요.
+`bench/regression/accuracy.md`의 `selection/*` 행이에요. 참값은 문제마다 모든 부분집합의 제곱합·우도·AIC·BIC(선형은 겹마다의 학습 제곱합과 시험 오차까지)를 정의대로 계산하고, 그 값으로 `stepwise`(방향 셋 × 기준)와 `best_subset`(기준 다섯)이 고를 걸음과 부분집합을 시뮬레이션한 것이에요. 문제는 선형 넷(공선이 조금 있는 OLS, 가중치 0이 있는 WLS, 절편 없음, $\kappa \approx 2.3 \times 10^5$)과 GLM 셋(이항 logit, 포아송 log, 감마 log)이고, 스윕 7개에 점이 모두 349개예요. 모든 걸음과 부분집합이 참값의 선택과 같고, 걸음마다·크기마다의 기준값의 최대 상대오차는 이래요. $C_p$ 열만은 $n$에 대한 상대오차 $\lvert\Delta\rvert/n$이에요. $C_p$는 크기가 $n$인 항들의 차라서 $C_p$ 자신에 대한 상대오차는 $C_p$가 0에 가까울 때 뜻이 없기 때문이에요.
 
 | 문제 | AIC·BIC | $C_p$ | 수정 결정계수 | 교차검증 오차 |
 |---|---:|---:|---:|---:|
-| ols | 2.5e-16 | 4.5e-15 | 4.2e-16 | 9.9e-17 |
-| wls_zero | 1.3e-16 | 3.7e-15 | 1.7e-16 | 3.2e-16 |
-| noint | 2.0e-16 | 4.7e-15 | 3.0e-16 | 3.1e-16 |
-| cond ($\kappa \approx 2.3 \times 10^5$) | 1.4e-16 | 2.2e-15 | 8.8e-16 | 3.0e-12 |
+| ols | 2.5e-16 | 3.1e-16 | 4.2e-16 | 9.9e-17 |
+| wls_zero | 1.3e-16 | 3.1e-16 | 1.7e-16 | 3.2e-16 |
+| noint | 2.0e-16 | 1.5e-16 | 3.0e-16 | 3.1e-16 |
+| cond ($\kappa \approx 2.3 \times 10^5$) | 1.4e-16 | 8.0e-16 | 8.8e-16 | 3.0e-12 |
 | glm_logit | 1.1e-16 | | | |
 | glm_poisson | 6.1e-17 | | | |
 | glm_gamma | 5.5e-17 | | | |

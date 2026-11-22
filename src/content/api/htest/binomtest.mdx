@@ -15,7 +15,7 @@ params:
   - name: n
     type: int
     kind: positional-only
-    desc: 시도 횟수. 1 이상의 int예요.
+    desc: 시도 횟수. 1 이상이고 2⁵³ 아래인 int예요.
   - name: p
     type: float
     kind: keyword-only
@@ -31,7 +31,7 @@ raises:
   - type: TypeError
     desc: k나 n이 int가 아닐 때(float, bool, 문자열), p가 수가 아닐 때, alternative가 문자열이 아닐 때, 없는 키워드를 줬을 때, k·n을 키워드로 줬을 때.
   - type: ValueError
-    desc: k가 음수이거나 n보다 클 때, n이 1보다 작을 때, p가 [0, 1] 밖일 때, alternative 이름이 틀렸을 때. conf_int()에서 alpha가 (0, 1) 밖이거나 method 이름이 틀렸을 때.
+    desc: k가 음수이거나 n보다 클 때, n이 1보다 작거나 2⁵³ 이상일 때, p가 [0, 1] 밖일 때, alternative 이름이 틀렸을 때. conf_int()에서 alpha가 (0, 1) 밖이거나 method 이름이 틀렸을 때.
 seeAlso: [proportion_confint, proportions_ztest, quantile_test, test_proportions_2indep, basics, results]
 ---
 import Fig from '../../../components/fig/Fig.astro';
@@ -202,6 +202,18 @@ p = 0이나 1은 결과가 하나뿐인 분포예요. 그 결과와 같으면 p�
 ```python
 >>> sd.htest.binomtest(0, 10, p=0.0).pvalue, sd.htest.binomtest(3, 10, p=0.0).pvalue
 (1.0, 0.0)
+```
+
+`n`은 float64로 정확히 나타낼 수 있는 정수의 범위인 2⁵³ 아래여야 해요. 2⁵²보다 큰 `n`은 [이항 분포](/api/stats/binomial/)의 꼬리를 구할 수 있는 범위 밖이라 p값이 NaN이에요. 구간은 그래도 구해요.
+
+```python
+>>> r52 = sd.htest.binomtest(3, 2**52 + 10)
+>>> r52.pvalue, r52.conf_int()
+(nan, array([1.3737280710648393e-16,  1.946725685040796e-15], dtype=float64))
+>>> sd.htest.binomtest(3, 2**53)
+Traceback (most recent call last):
+    ...
+ValueError: binomtest(): 'n' must be below 2**53
 ```
 
 ## 입력과 에러

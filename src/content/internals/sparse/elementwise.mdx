@@ -106,7 +106,7 @@ inline void merge_line(
 
 ## 스칼라와
 
-`A * c`, `c * A`, `A / c`, `-A`는 저장된 값에만 하고 패턴과 형식(DOK 포함)을 지켜요. COO의 중복도 그대로 둬요. 곱과 나눗셈은 선형이라 중복을 먼저 더하든 나중에 더하든 같은 뜻이기 때문이에요. 값은 `sd.multiply(v, c)`, `sd.divide(v, c)`예요. `A / 0`도 같은 규칙이라 저장된 원소만 ±inf·NaN이 되고 암시적 0은 0이에요.
+`A * c`, `c * A`, `A / c`, `-A`는 저장된 값에만 하고 패턴과 형식(DOK 포함)을 지켜요. COO의 중복도 그대로 둬요. 곱과 나눗셈은 선형이라 중복을 먼저 더하든 나중에 더하든 같은 뜻이기 때문이에요. 값은 배열의 곱과 나눗셈이에요. 연산자(`A * c`, `A / c`)는 배열의 연산자 `v * c`, `v / c`를 불러 에러에 함수 이름이 없고(`A * 2**70`은 밀집 `x * 2**70`과 같은 `OverflowError: Python int too large to convert to int64`), 메서드 `A.multiply(c)`는 배열의 함수 `sd.multiply`를 불러 `multiply(): `로 시작해요. `A ** n`과 `A.power(n)`도 같은 나눔이에요. 값은 어느 길이든 같아요. `A / 0`도 같은 규칙이라 저장된 원소만 ±inf·NaN이 되고 암시적 0은 0이에요.
 
 ```python
 >>> (A / 0).toarray().tolist()
@@ -143,7 +143,7 @@ def scalar_compare(A, c, op):
 'ndarray'
 ```
 
-numpy 배열과 리스트는 피연산자가 아니에요. 연산자는 `NotImplemented`를 돌려 Python이 `TypeError`를 내게 하고, `==`·`!=`는 다른 쪽의 비교를 물어 본 뒤 그것도 받지 않으면 `TypeError`예요. Python이 조용히 `False`(객체가 같은지)로 넘어가지 않게 하려는 것이에요.
+numpy 배열과 리스트는 피연산자가 아니에요. 연산자는 `NotImplemented`를 돌려 Python이 `TypeError`를 내게 해요. 상대가 numpy 배열이면 numpy의 반사 연산이 자기 글로 답하므로, 그때는 Python과 같은 글(`unsupported operand type(s) for *: 'csr_array' and 'numpy.ndarray'`)의 `TypeError`를 직접 던져요([영역의 구조](/internals/sparse/overview/#밀집으로-몰래-바뀌지-않아요)). `==`·`!=`는 다른 쪽의 비교를 물어 본 뒤 그것도 받지 않으면 `TypeError`예요. Python이 조용히 `False`(객체가 같은지)로 넘어가지 않게 하려는 것이에요.
 
 ## 원소별 함수
 

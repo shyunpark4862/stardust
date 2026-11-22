@@ -385,7 +385,7 @@ Traceback (most recent call last):
 TypeError: kron(): 'x1' must be an sd.ndarray, not csr_array; for a sparse array use sd.sparse.kron
 ```
 
-두 함수는 같은 계산의 짝이에요. float64·complex128 입력이면 `sd.linalg.kron(A, B)`의 값은 `sd.sparse.kron(A, B).toarray()`와 비트까지 같아요. 다를 수 있는 것은 0의 부호뿐이에요. 희소 행렬은 0을 저장하지 않아서, 밀집 계산에서 −0.0이 나오는 자리가 +0.0이에요. 1차원 입력을 한 행으로 보는 규칙도 같아요. 정수와 bool은 희소 쪽이 정수로 두고 이쪽은 float64로 계산하므로 dtype이 달라요.
+두 함수는 같은 계산의 짝이에요. float64·complex128 입력이면 `sd.linalg.kron(A, B)`의 값은 `sd.sparse.kron(A, B).toarray()`와 비트까지 같아요. 다를 수 있는 것은 0의 부호뿐이에요. 희소 행렬은 0을 저장하지 않아서, 밀집 계산에서 −0.0이 나오는 자리가 +0.0이에요. 1차원 입력을 한 행으로 보는 규칙도 같아요. 정수와 bool은 희소 쪽이 int64로 두고 이쪽은 float64로 계산하므로 dtype이 달라요.
 
 ```python
 >>> bool(sd.all(sd.linalg.kron(A, B) == sd.sparse.kron(S, B).toarray()))

@@ -247,6 +247,13 @@ array([165.9530614988235,             170.0, 174.0469385011765], dtype=float64)
 
 확률의 로그가 float64의 끝(약 −1.8e308)에 가까워도 분위수는 유한한 값이에요. 로그가 −inf일 때만 ±inf예요.
 
+`ilogcdf`에 `logcdf(mu)`의 값, 곧 float64로 반올림한 $\log\frac12$를 넣으면 중앙값 $\mu$가 나와요. 그래서 `ilogcdf(logcdf(mu))`가 $\mu$로 돌아와요. `ilogccdf`도 같아요.
+
+```python
+>>> H.ilogcdf(H.logcdf(170.0)), H.ilogccdf(H.logccdf(170.0))
+(170.0, 170.0)
+```
+
 `p`가 0이면 −inf, 1이면 inf이고, [0, 1] 밖이면 NaN이에요.
 
 ```python

@@ -15,7 +15,7 @@ import Steps from '../../../components/fig/Steps.astro';
 | 검정 | 계산하는 것 | 정확하게 다루는 부분 |
 |---|---|---|
 | [`chi2_contingency`](/api/htest/chi2_contingency/) | 기댓값 $E_{ij} = R_iC_j/N$과 Cressie–Read 통계량 | 주변합과 $R_iC_j$를 double-double로 만들고 한 번 나눠요 |
-| [`fisher_exact`](/api/htest/fisher_exact/) 2 × 2 | 표본 오즈비와 초기하 분포의 꼬리 | 양쪽 규칙을 이웃한 확률의 정확한 비로 판정해요 |
+| [`fisher_exact`](/api/htest/fisher_exact/) 2 × 2 | 표본 오즈비와 초기하 분포의 꼬리 | 양쪽 규칙을 이웃한 확률의 정확한 비로, 최빈값에서 먼 표는 double-double log 확률의 이분 탐색으로 판정해요 |
 | `fisher_exact` r × c | 관측 표의 확률과 그보다 확률이 작은 모든 표의 합 | 망 알고리즘으로 모든 표를 빠짐없이 세요 |
 | [`barnard_exact`](/api/htest/barnard_exact/), [`boschloo_exact`](/api/htest/boschloo_exact/) | 장애 모수에 대한 최댓값 | [장애 모수의 최댓값](/internals/htest/barnard-boschloo/)에서 따로 다뤄요 |
 | [`odds_ratio`](/api/htest/odds_ratio/) | 조건부 최우추정과 정확 구간 | 비중심 초기하 분포의 가중치를 정확한 비의 log로 쌓아요 |
@@ -70,9 +70,52 @@ $$
     };
 ```
 
-곱은 `two_prod`로 정확하고, double-double 나눗셈은 상대 $u^2$쯤의 오차만 남겨요. 관측 칸 $a$에서 최빈값까지 이 비를 곱해 $\rho = P(\text{최빈값})/P(a)$를 만들고, 최빈값에서 반대편으로 비를 계속 곱하며 $(1 + 10^{-14})$와 견줘 반대편의 경계를 찾아요. 곱이 길어지면 지수가 넘칠 수 있어서, 값을 $m \cdot 2^e$로 들고 다니며 $m$이 $2^{\pm 600}$을 벗어날 때마다 2의 거듭제곱을 $e$로 옮겨요. 경계를 찾은 뒤의 p값은 관측 쪽 꼬리와 반대편 꼬리, 곧 `Hypergeometric`의 두 꼬리의 합이에요.
+곱은 `two_prod`로 정확하고, double-double 나눗셈은 상대 $u^2$쯤의 오차만 남겨요. 관측 칸 $a$에서 최빈값까지 이 비를 곱해 $\rho = P(\text{최빈값})/P(a)$를 만들고, 최빈값에서 반대편으로 비를 계속 곱하며 $(1 + 10^{-14})$와 견줘 반대편의 경계를 찾아요. 곱이 길어지면 지수가 넘칠 수 있어서, 값을 $m \cdot 2^e$로 들고 다니며 $m$이 $2^{\pm 600}$을 벗어날 때마다 2의 거듭제곱을 $e$로 옮겨요. 견줄 때도 $m \cdot 2^e$를 double로 되돌리지 않아요. 값이 4 이상이거나 1/2 아래이면 지수만 보고 크다·작다를 정하고, 그 사이에서만 double-double로 빼 봐요. 강하게 유의한 표에서는 $\rho$가 $2^{1024}$를 넘어 double로 나타낼 수 없기 때문이에요. 경계를 찾은 뒤의 p값은 관측 쪽 꼬리와 반대편 꼬리, 곧 `Hypergeometric`의 두 꼬리의 합이에요.
+
+최빈값 $\lfloor (c_0 + 1)(r_0 + 1)/(N + 2) \rfloor$의 곱은 128비트 정수로 해요. 행합과 열합이 $3 \times 10^9$쯤이면 64비트 곱이 넘쳐요.
 
 0인 행이나 열이 있는 표는 오즈비가 NaN이고 p값이 1이에요(표가 하나뿐이에요).
+
+### 큰 표
+
+비를 한 걸음씩 곱하는 일은 $|a - \text{최빈값}|$에 비례해요. 그래서 관측 칸이 최빈값에서 $2^{16}$ 안일 때만 걸어가고, 더 멀면 반대편의 경계를 sd.stats `Hypergeometric`의 double-double log 확률로 이분 탐색해요. log 확률은 최빈값에서 멀어질수록 줄어들므로 경계는 하나예요. 그 오차는 $10^{-30}$쯤이라 규칙의 $10^{-14}$보다 훨씬 작아서, 가까운 표에서 걸어서 찾은 경계와 같은 표를 골라요. 걸어가던 반대편이 $2^{18}$걸음을 넘을 때도 남은 부분을 이분 탐색에 넘겨요.
+
+```cpp
+    // csrc/htest/contingency.cpp
+    auto search = [&](std::int64_t from) {
+        const DD thr = lpmf(a) + dd::log(g);
+        if (a < mode) {
+            std::int64_t L = from, R = hi + 1;  // L: not below (from is not), R: below
+            while (R - L > 1) {
+                const std::int64_t mid = L + (R - L) / 2;
+                if (dd_cmp(lpmf(mid), thr) < 0) R = mid;
+                else L = mid;
+            }
+            return R;
+        }
+```
+
+총합이 $4 \times 10^{10}$쯤을 넘으면 `Hypergeometric`의 꼬리가 합의 상한에 닿아 NaN이 될 수 있어요. 그때는 두 경계 사이에 있는 표들(최빈값을 포함해요)의 확률을 최빈값에서 이웃한 비를 곱해 가며 더하고, 1에서 그 합을 빼요. 사이의 표가 $2^{21}$개 이하이고 그 확률이 1/2 이하일 때만 이렇게 해요. 그러면 p값이 1/2 이상이라 뺄셈에서 자릿수를 거의 잃지 않아요. 그 밖의 경우, 곧 이런 큰 표에서 p값이 작을 때는 NaN이에요.
+
+```python
+>>> sd.htest.fisher_exact([[10**12, 10**12 + 10**5], [10**12 + 10**5, 10**12]]).pvalue
+0.9203451213358211
+>>> sd.htest.fisher_exact([[10**12, 10**12 + 10**6], [10**12 + 10**6, 10**12]]).pvalue
+nan
+```
+
+표의 총합은 $2^{53}$ 아래여야 해요. 그 위의 개수는 double로 정확한 정수가 아니라서 Python 쪽이 `ValueError`를 내요. 그 안에서는 어떤 크기의 표든 일이 정해진 한도 안에서 끝나요.
+
+```python
+>>> sd.htest.fisher_exact([[10**8, 10**8 + 30000], [10**8 + 30000, 10**8]])
+FisherExactResult(statistic=0.9994, pvalue=0.00270268)
+>>> sd.htest.fisher_exact([[2**52, 2**52], [1, 1]])
+Traceback (most recent call last):
+    ...
+ValueError: fisher_exact(): the table's counts must be below 2**53
+```
+
+표 하나의 일은 $|a - \text{최빈값}|$(걷는 부분, $2^{16}$까지)과 초기하 분포의 표준편차(꼬리의 합이 훑는 폭)로 어림해요. 이 어림이 스레드풀과 GIL을 정해서, 큰 표 하나를 계산하는 동안에도 다른 Python 스레드가 멈추지 않아요([배치와 줄](/internals/htest/lanes/#gil)).
 
 ## r × c Fisher 검정: 망 알고리즘
 
@@ -196,11 +239,27 @@ $$
             },
             0.0
         );
+        too_big_ = too_big_ || cut_short_;
         return std::exp(t);
     }
 ```
 
 $x$가 받침의 끝이면 근이 없어요. 아래 끝이면 0, 위 끝이면 inf예요.
+
+### 큰 받침: 최빈값 둘레의 창
+
+받침 $[\max(0, n + N - M), \min(n, N)]$이 $2^{16}$점 이하면 모든 점의 가중치를 한 번 쌓아 두고 $t$마다 다시 써요. 그보다 크면 받침 전체를 들고 있지 않아요. 개수가 $10^7$이면 받침 전체의 가중치만 수백 MB가 되기 때문이에요. 대신 $t$마다 그 $t$에서의 최빈값을 찾고(이웃의 비 $w(k)e^t/w(k - 1)$이 1을 지나는 $k$, 그 비가 $k$에 대해 줄어들므로 이분 탐색), 거기서 양쪽으로 이웃의 비를 double-double로 곱해 가며 항을 만들어요. 항이 최빈값의 항의 $2^{-110}$ 아래로 떨어지면 그쪽을 멈춰요. 구간을 풀 때는 꼬리 $\alpha$가 작으면 $\alpha \cdot 2^{-60}$까지 내려가요. 이 창의 폭은 분포의 표준편차에 비례하는 $O(\sqrt{N})$점이에요.
+
+창이 근에서 $2^{22}$점을 넘으면 그 근은 창이 잘린 합이라 믿을 수 없어요. 그때는 `kind='sample'`을 쓰라고 알려 주는 `ValueError`예요. 받침 크기와 창의 크기로 표 하나의 일을 어림해서, 긴 계산은 GIL을 놓고 해요.
+
+```python
+>>> sd.htest.odds_ratio([[10**7, 10**7 + 5000], [10**7, 10**7]]).statistic
+0.9995002498875519
+>>> sd.htest.odds_ratio([[10**14, 10**14], [10**14, 10**14 + 1]])
+Traceback (most recent call last):
+    ...
+ValueError: odds_ratio(): the conditional odds ratio needs more than 4.19e+06 terms of its sums for this table; use kind='sample'
+```
 
 ### 정확 구간
 
@@ -234,7 +293,7 @@ $x$가 받침의 끝이면 근이 없어요. 아래 끝이면 0, 위 끝이면 i
 ## McNemar와 Cochran의 Q
 
 - **`mcnemar`**: 짝지은 2 × 2 표의 어긋난 칸 $b = t_{01}$, $c = t_{10}$만 봐요. `exact=True`(기본)이면 통계량은 $\min(b, c)$이고 p값은 $B \sim \text{Binomial}(b + c, 1/2)$의 $\min(1, 2P(B \le \min(b, c)))$예요. `exact=False`면 $(|b - c| - \text{correction})^2/(b + c)$를 정수의 몫으로 만들고 카이제곱(1)의 위 꼬리를 써요. statsmodels처럼 $b = c$일 때도 1을 빼요. $b + c = 0$이면 통계량을 정할 수 없어 NaN이에요.
-- **`cochrans_q`**: $(N, k)$의 0·1 자료에서 $Q = (k - 1)(k\sum C_j^2 - T^2)/(kT - \sum R_i^2)$를 128비트 정수로 만들고 한 번 나눠요. p값은 카이제곱($k - 1$)이에요. 분모가 0(모든 블록이 모두 0이거나 모두 1)이면 NaN이에요.
+- **`cochrans_q`**: $(N, k)$의 0·1 자료에서 $Q = (k - 1)(k\sum C_j^2 - T^2)/(kT - \sum R_i^2)$를 128비트 정수로 만들고 한 번 나눠요. p값은 카이제곱($k - 1$)이에요. 분모가 0(모든 블록이 모두 0이거나 모두 1)이면 NaN이에요. 0과 1이 아닌 값(2, 0.5, −1)은 개수의 검사보다 먼저 보고 모두 `'x' must hold 0 and 1 values` 메시지 하나로 거절해요. NaN만 개수의 메시지예요.
 
 ```python
 >>> sd.htest.mcnemar([[10, 5], [5, 10]], exact=False)

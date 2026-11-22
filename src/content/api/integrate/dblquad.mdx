@@ -159,7 +159,7 @@ TypeError: dblquad(): unexpected keyword argument 'limit'
 
 - `error`는 모든 층의 모든 `quad`가 낸 오차 어림 가운데 가장 큰 것이에요. 안쪽 적분의 오차가 바깥 적분에 더해지는 것은 셈하지 않으니 엄밀한 상한이 아니에요.
 - `nfev`는 f를 부른 수예요. 끝 함수의 호출은 세지 않아요. 바깥 21점 × 안쪽 21점이면 441이에요.
-- `converged`는 모든 `quad`가 수렴했을 때예요. `status`와 `message`는 끝나는 차례로(안쪽이 먼저) 처음 수렴하지 못한 `quad`의 것이에요.
+- `converged`는 모든 `quad`가 수렴했을 때예요. `status`와 `message`는 끝나는 차례로(안쪽이 먼저) 처음 수렴하지 못한 `quad`의 것이에요. 모든 `quad`가 정상으로 끝났어도 적분값이나 오차가 유한하지 않으면(f가 inf를 돌려준 경우 등) `status` −3, `converged=False`예요.
 
 ```python
 >>> calls = []
@@ -193,6 +193,7 @@ TypeError: dblquad(): unexpected keyword argument 'limit'
 - `epsabs`·`epsrel`은 `atol`·`rtol`이에요. `args`는 없어요(클로저로 넘겨요).
 - 튜플 `(y, abserr)` 대신 둘로 풀리는 결과 객체예요. scipy가 안쪽 `quad`마다 내는 경고는 `converged`·`status`·`message`로 알려요.
 - `gfun`·`hfun`이 돌려준 NaN은 `ValueError`예요.
+- 적분값이나 오차가 유한하지 않으면 `status` −3이에요. scipy는 같은 경우에 경고 없이 `(inf, inf)` 같은 값을 돌려줘요.
 
 ```python
 >>> import scipy.integrate as si

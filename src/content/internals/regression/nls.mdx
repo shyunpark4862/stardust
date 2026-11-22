@@ -409,7 +409,9 @@ $h = 2^{e}\cdot 2^{\text{base}}$이고 $2^{\text{base}}$는 $\lvert b_3\rvert \l
         """The step of variable j, chosen once: from 2^-8 |x_j| down by factors of 4 while
         consecutive estimates get closer by more than 8 times; the last such estimate and its
         step. A start at rounding level is moved up first (_grow); when no larger step leaves
-        rounding level (a column that is 0 or noise) the search is the plain one from the start."""
+        rounding level (a column that is 0 or noise) the search is the plain one from the start.
+        Below _FD_CAP (|x_j| < 1) a search whose estimates never agreed (_settled) is checked
+        against the search from x_j = 0's start (_from_cap)."""
         base = math.frexp(abs(x[j]) if x[j] != 0 else 1.0)[1]
         e0 = base + _FD_START
         col0 = self.column(x, j, math.ldexp(1.0, e0), g0)
@@ -417,7 +419,10 @@ $h = 2^{e}\cdot 2^{\text{base}}$이고 $2^{\text{base}}$는 $\lvert b_3\rvert \l
             return self._descend(x, j, g0, e0, (col0, self.fits))
         r0 = self._rounding(col0, j)
         if r0 <= _GROW_TOL:
-            return self._descend(x, j, g0, e0, (col0, self.fits))
+            best, hbest = self._descend(x, j, g0, e0, (col0, self.fits))
+            if best is not None and not self._settled:
+                best, hbest = self._from_cap(x, j, g0, best, hbest)
+            return best, hbest
         fits0 = self.fits
         e = self._grow(x, j, g0, e0, col0)
         if e is not None:
@@ -426,9 +431,10 @@ $h = 2^{e}\cdot 2^{\text{base}}$이고 $2^{\text{base}}$는 $\lvert b_3\rvert \l
                 return best, hbest
 ```
 
-`src/stardust/differentiate/_differences.py`의 `Differences.choose_step`이에요(`_FD_START, _FD_END = -8, -30`). 보통은 시작 $2^{-8}\lvert\theta_j\rvert$에서 바로 위의 규칙대로 내려가요(`_descend`). 두 가지를 더 봐요.
+`src/stardust/differentiate/_differences.py`의 `Differences.choose_step`이에요(`_FD_START, _FD_END = -8, -30`). 보통은 시작 $2^{-8}\lvert\theta_j\rvert$에서 바로 위의 규칙대로 내려가요(`_descend`). 세 가지를 더 봐요.
 
-- 시작 간격의 열이 반올림으로 목표 정확도를 잃었으면(반올림 수준이 열의 $2^{-36}$배(`_GROW_TOL`)를 넘으면) 시작이 그 모수의 척도에 비해 너무 작은 거예요. $\theta_j$가 0 가까이에 있어 $2^{-8}\lvert\theta_j\rvert$가 작을 때 그래요. 그때는 먼저 간격을 키워요(`_grow`). 반올림 수준이 열의 $\sqrt\varepsilon = 2^{-26}$배가 되도록 한 번에 옮긴 뒤(많아야 $\theta_j = 0$의 시작인 $2^{-8}$까지), 이웃한 두 추정의 차가 둘의 반올림 수준의 합을 넘을 때까지(절단 오차가 보일 때까지) 4배씩 키우고, 거기서부터 내려가요. 어느 간격에서도 반올림 수준을 벗어나지 못하면(열이 0이거나 잡음뿐이면) 처음 시작에서 보통대로 내려가요.
+- 시작 간격의 열이 반올림으로 목표 정확도를 잃었으면(반올림 수준이 열의 $2^{-36}$배(`_GROW_TOL`)를 넘으면) 시작이 그 모수의 척도에 비해 너무 작은 거예요. $\theta_j$가 0 가까이에 있어 $2^{-8}\lvert\theta_j\rvert$가 작을 때 그래요. 그때는 먼저 간격을 키워요(`_grow`). 반올림 수준이 열의 $\sqrt\varepsilon = 2^{-26}$배가 되도록 한 번에 옮긴 뒤(많아야 $\theta_j = 0$의 시작까지), 이웃한 두 추정의 차가 둘의 반올림 수준의 합을 넘을 때까지(절단 오차가 보일 때까지) 4배씩 키우고, 거기서부터 내려가요. $\theta_j = 0$의 시작에 닿아도 반올림이 남으면, 열이 잡음이 아닌 한 그 간격에서 내려가요. 더 작은 간격은 반올림이 더 클 뿐이니까요. 어느 간격에서도 열이 0이거나 잡음뿐이면 처음 시작에서 보통대로 내려가요.
+- 시작 간격의 반올림이 문턱 아래여서 바로 내려갔는데 마지막 두 추정이 끝내 맞지 않으면(상대 차이가 $2^{-20}$을 넘으면), 시작 간격에서의 함숫값의 차가 $f$ 자신의 계산 오차보다 작았던 거예요. 그때는($\lvert\theta_j\rvert < 1$에서만) $\theta_j = 0$의 시작에서 한 번 더 찾고, 그 추정들이 맞으면 그것을 써요(`_from_cap`).
 - 내려가는 동안 첫 추정이 잡음이 아닌데 둘째 추정이 반올림 잡음(아래 [반올림 잡음뿐인 차분 열](#반올림-잡음뿐인-차분-열)의 16배 기준)이면 둘째를 받지 않고 첫 추정을 써요.
 
 nls의 `_Model`은 쓰인 행의 $f$를 이 클래스에 넘겨 해의 야코비안을 만들어요. 같은 규칙을 위의 열에 적용하면 $e = -18$을 골라요.
