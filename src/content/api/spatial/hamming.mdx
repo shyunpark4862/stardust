@@ -84,7 +84,7 @@ TypeError: hamming(): 'u' must be an sd.ndarray, a sequence of numbers, a numpy 
 0.5
 ```
 
-2⁶⁰과 2⁶⁰ + 1은 float64로는 같은 수지만 int64로는 다른 수예요. 큰 정수 ID를 견줄 때 이 차이가 중요해요.
+$2^{60}$과 $2^{60} + 1$은 float64로는 같은 수지만 int64로는 다른 수예요. 큰 정수 ID를 견줄 때 이 차이가 중요해요.
 
 두 입력의 dtype이 다르면 하나로 맞춘 뒤 견줘요.
 
@@ -108,7 +108,7 @@ TypeError: hamming(): 'u' must be an sd.ndarray, a sequence of numbers, a numpy 
 
 <Callout type="warn" title="실수는 정확히 같아야 같은 값이에요">
 
-float64를 견줄 때도 끝자리까지 같아야 같은 값이에요. 계산해서 얻은 0.1 + 0.2는 0.3과 다른 수예요. 측정값처럼 반올림 오차가 있는 자료에는 해밍 거리가 맞지 않아요. 범주를 정수로 적은 자료에 쓰세요.
+float64를 견줄 때도 끝자리까지 같아야 같은 값이에요. 계산해서 얻은 $0.1 + 0.2$는 0.3과 다른 수예요. 측정값처럼 반올림 오차가 있는 자료에는 해밍 거리가 맞지 않아요. 범주를 정수로 적은 자료에 쓰세요.
 
 </Callout>
 
@@ -191,9 +191,9 @@ ValueError: hamming(): 'w' must be finite and nonnegative
 
 ## 정확도
 
-가중치가 없으면 다른 자리의 수를 정확히 세고 자리 수로 한 번 나눠요. 그래서 결과는 참값 k/n을 올바르게 반올림한 값이에요(0 ULP). 같은 개수면 bool, int64, float64 어느 dtype으로 넣어도 같은 결과예요.
+가중치가 없으면 다른 자리의 수를 정확히 세고 자리 수로 한 번 나눠요. 그래서 결과는 참값 $k/n$을 올바르게 반올림한 값이에요(0 ULP). 같은 개수면 bool, int64, float64 어느 dtype으로 넣어도 같은 결과예요.
 
-가중치가 있으면 가중치를 더하는 데 반올림이 들어가서, 약속은 상대오차 $\gamma_{2m+1}$ 이하예요. $\gamma_k = ku/(1 - ku)$, u = 2⁻⁵³이고 m은 덧셈이 거치는 반올림의 수로, 자리 수 n이 32 이하면 m = n이에요(n이 크면 m = 32 + ⌈n/32⌉ − 1).
+가중치가 있으면 가중치를 더하는 데 반올림이 들어가서, 약속은 상대오차 $\gamma_{2m+1}$ 이하예요. $\gamma_k = ku/(1 - ku)$, $u = 2^{-53}$이고 m은 덧셈이 거치는 반올림의 수로, 자리 수 n이 32 이하면 $m = n$이에요(n이 크면 $m = 32 + \lceil n/32 \rceil - 1$).
 
 | | 시험한 짝 | 최대 ULP | 최대 상대오차 | 약속 대비 |
 |---|---:|---:|---:|---:|
@@ -205,7 +205,7 @@ ValueError: hamming(): 'w' must be finite and nonnegative
 ## scipy·sklearn을 아는 분께
 
 - `scipy.spatial.distance.hamming`과 이름, 뜻(가중치가 있으면 가중 비율)이 같아요. `w`는 키워드로만 받아요.
-- int64를 그대로 견줘요. scipy는 float64로 바꾼 뒤 견줘서 2⁶⁰과 2⁶⁰ + 1을 같은 값으로 봐요.
+- int64를 그대로 견줘요. scipy는 float64로 바꾼 뒤 견줘서 $2^{60}$과 $2^{60} + 1$을 같은 값으로 봐요.
 - NaN·inf 가중치는 `ValueError`예요. scipy는 음수만 막아요.
 - 배치를 받아요. scipy 1.18.1의 `hamming`은 1차원만 받아요.
 - 거리 이름 문자열은 `"hamming"` 하나예요. `"matching"`, `"hamm"` 같은 별칭은 `ValueError`예요.

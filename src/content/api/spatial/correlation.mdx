@@ -122,7 +122,7 @@ TypeError: correlation(): 'centered' must be True or False, not int
 
 ### 상관계수와의 관계
 
-거리는 1 − r이므로 r은 `1 - d`로 되찾아요. [`pearsonr`](/api/htest/pearsonr/)의 통계량과 견주면 끝자리가 조금 다를 수 있어요. 두 함수는 같은 값을 다른 순서로 계산해요.
+거리는 $1 - r$이므로 r은 `1 - d`로 되찾아요. [`pearsonr`](/api/htest/pearsonr/)의 통계량과 견주면 끝자리가 조금 다를 수 있어요. 두 함수는 같은 값을 다른 순서로 계산해요.
 
 ```python
 >>> x = sd.asarray([1.0, 4.0, 2.0, 3.0, 7.0, 5.0, 9.0, 6.0])
@@ -162,7 +162,7 @@ TypeError: pdist(): unexpected keyword argument 'centered'
 
 ## 가중치 `w`
 
-`w`를 주면 평균은 가중 평균 $\bar u_w = \sum w_i u_i / \sum w_i$이고, 평균을 뺀 뒤의 내적과 길이도 가중치를 곱해 재요. 가중 상관계수의 1 − r이에요. 가중치 0인 관측은 빠져요.
+`w`를 주면 평균은 가중 평균 $\bar u_w = \sum w_i u_i / \sum w_i$이고, 평균을 뺀 뒤의 내적과 길이도 가중치를 곱해 재요. 가중 상관계수의 $1 - r$이에요. 가중치 0인 관측은 빠져요.
 
 ```python
 >>> sd.spatial.correlation([1.0, 2.0, 3.0, 4.0], [1.0, 2.0, 3.0, 40.0])

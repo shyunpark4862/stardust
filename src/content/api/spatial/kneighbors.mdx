@@ -214,7 +214,7 @@ QueryResult(distances=array([[0.0, inf]], dtype=float64), indices=array([[2, 5]]
 QueryResult(distances=array([[0.0, 5.0]], dtype=float64), indices=array([[2, 1]], dtype=int64))
 ```
 
-점 2 (6, 8)에서 점 1까지는 꼭 5라서 상한 5에서는 빠지고 5.5에서는 들어가요. 경계를 넣고 싶으면(d ≤ r) 반경 안의 모든 점을 찾는 [`radius_neighbors`](/api/spatial/radius_neighbors/)를 쓰세요.
+점 2 (6, 8)에서 점 1까지는 꼭 5라서 상한 5에서는 빠지고 5.5에서는 들어가요. 경계를 넣고 싶으면($d \le r$) 반경 안의 모든 점을 찾는 [`radius_neighbors`](/api/spatial/radius_neighbors/)를 쓰세요.
 
 기본값 inf에서도 같은 규칙이라, 거리가 inf이거나 NaN인 짝은 이웃으로 나오지 않아요. 넘치는 `sqeuclidean`, 영벡터와의 `cosine`, 분모가 0인 `braycurtis` 같은 것이에요.
 
@@ -332,7 +332,7 @@ TypeError: kneighbors(): takes 2 positional arguments but 3 were given
 
 - scipy에는 이 함수가 없어요. `KDTree(XB).query(XA, k=k)`와 같은 결과이고(Minkowski 계열), 다른 거리도 받아요. 이름은 sklearn `NearestNeighbors`의 메서드에서 왔어요. `NearestNeighbors(n_neighbors=k).fit(XB).kneighbors(XA)`는 `kneighbors(XA, XB, k=k)`이고, 반환 순서 (거리, 색인)도 같아요. 클래스는 없어요.
 - sklearn의 `pairwise_distances_argmin_min(X, Y)`는 `kneighbors(X, Y)`예요. sklearn은 `(argmin, distances)`, 여기서는 `(distances, indices)` 순서로 풀려요. `pairwise_distances_argmin(X, Y)`는 `kneighbors(X, Y).indices`예요.
-- **거리는 언제나 직접 계산한 값이에요.** sklearn은 유클리드 거리를 ‖x‖² + ‖y‖² − 2x·y로 펼쳐 구해서, 원점에서 먼 가까운 점들(1e8 + [0, 1)³ 같은 자료)에서 거리를 모두 0으로 내고 가장 가까운 점을 틀리게 고를 수 있어요.
+- **거리는 언제나 직접 계산한 값이에요.** sklearn은 유클리드 거리를 $\lVert x \rVert^2 + \lVert y \rVert^2 - 2x \cdot y$로 펼쳐 구해서, 원점에서 먼 가까운 점들($10^8 + [0, 1)^3$ 같은 자료)에서 거리를 모두 0으로 내고 가장 가까운 점을 틀리게 고를 수 있어요.
 - **동점은 (거리, 색인) 순서로 약속해요.** scipy와 sklearn은 약속하지 않고 실제로도 달라요.
 - k가 데이터 점보다 크면 (inf, mB)로 채워요(scipy와 같아요). sklearn은 에러예요.
 - `k`는 키워드로만 받고 bool·실수는 `TypeError`, 0·음수·`k=[0]`은 `ValueError`예요.

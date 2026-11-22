@@ -107,18 +107,18 @@ jaccard      0.75
 | `sqeuclidean` | | 받음 | 참값이 float64를 넘으면 inf | |
 | `cityblock` | | 받음 | | 1 |
 | `chebyshev` | | 받음(0보다 큰 무게의 좌표만 고름) | NaN을 퍼뜨려요. 올바르게 반올림한 값 | inf |
-| `minkowski` | `p`(키워드, 기본 2, 0보다 큼) | 받음 | p가 커도 넘치지 않아요 | p ≥ 1 |
+| `minkowski` | `p`(키워드, 기본 2, 0보다 큼) | 받음 | p가 커도 넘치지 않아요 | $p \ge 1$ |
 | `seuclidean` | `V`(셋째 자리, 꼭 줌) | 안 받음 | | |
 | `mahalanobis` | `VI`(셋째 자리, 꼭 줌) | 안 받음 | 이차식이 음수면 NaN | |
 | `cosine` | | 받음 | 영벡터가 있으면 NaN | |
 | `correlation` | `centered`(키워드, 기본 True) | 받음 | 상수 행이 있으면 NaN | |
-| `canberra` | | 받음 | 0/0인 항은 0. NaN을 퍼뜨려요 | |
-| `braycurtis` | | 받음 | 0/0이면 NaN, 분모만 0이면 inf | |
+| `canberra` | | 받음 | $0/0$인 항은 0. NaN을 퍼뜨려요 | |
+| `braycurtis` | | 받음 | $0/0$이면 NaN, 분모만 0이면 inf | |
 | `hamming` | | 받음 | NaN끼리는 다른 값. 입력의 dtype 그대로 비교 | |
 | `jaccard` | | 받음 | 분모가 0이면 0. 입력의 dtype 그대로 비교 | |
 | `haversine` | 마지막 축이 (위도, 경도) 2개 | 안 받음 | 대척점과 날짜 변경선에서도 자릿수를 지켜요 | |
 
-[`KDTree`](/api/spatial/KDTree/)는 Minkowski 거리만 받아서, 질의의 `p`로 거리를 정해요(p = 1, 2, inf는 `cityblock`, `euclidean`, `chebyshev`와 같은 값). [`kneighbors`](/api/spatial/kneighbors/)와 [`radius_neighbors`](/api/spatial/radius_neighbors/)는 열네 거리를 모두 받아요.
+[`KDTree`](/api/spatial/KDTree/)는 Minkowski 거리만 받아서, 질의의 `p`로 거리를 정해요($p = 1, 2, \infty$는 `cityblock`, `euclidean`, `chebyshev`와 같은 값). [`kneighbors`](/api/spatial/kneighbors/)와 [`radius_neighbors`](/api/spatial/radius_neighbors/)는 열네 거리를 모두 받아요.
 
 ## 거리 함수와 거리 이름
 
@@ -270,7 +270,7 @@ $d(u, v)$와 $d(v, u)$도 비트까지 같아요. 같은 기계, 같은 스레�
 | `sqeuclidean` | 645 | 3 | 0.68 |
 | `cityblock` | 645 | 3 | 0.36 |
 | `chebyshev` | 645 | 0 | 올바른 반올림 |
-| `minkowski` (p = 0.5, 1.5, 3, 7.5) | 645 | 6, 3, 1, 2 | 0.2, 0.17, 0.21, 0.4 |
+| `minkowski` ($p = 0.5, 1.5, 3, 7.5$) | 645 | 6, 3, 1, 2 | 0.2, 0.17, 0.21, 0.4 |
 | `seuclidean` | 645 | 2 | 0.45 |
 | `mahalanobis` | 492 | 2 | 0.29 |
 | `cosine` | 626 | | 0.41 |

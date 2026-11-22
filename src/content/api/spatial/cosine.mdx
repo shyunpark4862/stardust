@@ -40,13 +40,13 @@ export const cosNearC = [[9.423, 2.893], [1.027, 0.37327], [6.62, 1.736], [9.717
 
 ## 무엇을 재나요
 
-두 벡터 사이의 각을 θ라고 하면 코사인 거리는 이래요.
+두 벡터 사이의 각을 $\theta$라고 하면 코사인 거리는 이래요.
 
 $$
 d(u, v) = 1 - \cos\theta = 1 - \frac{u \cdot v}{\|u\|\,\|v\|}
 $$
 
-$\cos\theta$는 두 벡터가 같은 방향이면 1, 직각이면 0, 정반대 방향이면 −1이에요. 그래서 거리는 0에서 2 사이에 놓여요.
+$\cos\theta$는 두 벡터가 같은 방향이면 1, 직각이면 0, 정반대 방향이면 $-1$이에요. 그래서 거리는 0에서 2 사이에 놓여요.
 
 ```python
 >>> import stardust as sd
@@ -208,7 +208,7 @@ ValueError: cosine(): 'w' must have 2 entries (one per column), not 1
 
 ## 각도로 바꾸기
 
-거리 d에서 각 θ(라디안)를 되찾으려면 `acos(1 - d)`보다 `2 * asin(sqrt(d / 2))`가 좋아요. 두 식은 수학으로는 같지만, 작은 각에서 `1 - d`가 1로 반올림되면 `acos`는 0을 내요.
+거리 $d$에서 각 $\theta$(라디안)를 되찾으려면 `acos(1 - d)`보다 `2 * asin(sqrt(d / 2))`가 좋아요. 두 식은 수학으로는 같지만, 작은 각에서 `1 - d`가 1로 반올림되면 `acos`는 0을 내요.
 
 ```python
 >>> import math
@@ -221,7 +221,7 @@ ValueError: cosine(): 'w' must have 2 entries (one per column), not 1
 1e-08
 ```
 
-두 벡터의 각은 약 10⁻⁸ 라디안이에요. 둘째 식이 맞는 까닭은 길이 1로 맞춘 두 벡터 $\hat u = u/\|u\|$, $\hat v = v/\|v\|$ 사이의 거리가 $\|\hat u - \hat v\| = 2\sin(\theta/2)$이고, 코사인 거리가 그 제곱의 절반 $2\sin^2(\theta/2)$이기 때문이에요.
+두 벡터의 각은 약 $10^{-8}$ 라디안이에요. 둘째 식이 맞는 까닭은 길이 1로 맞춘 두 벡터 $\hat u = u/\|u\|$, $\hat v = v/\|v\|$ 사이의 거리가 $\|\hat u - \hat v\| = 2\sin(\theta/2)$이고, 코사인 거리가 그 제곱의 절반 $2\sin^2(\theta/2)$이기 때문이에요.
 
 ## 거의 나란한 벡터
 
@@ -302,7 +302,7 @@ TypeError: cosine(): takes 2 positional arguments but 3 were given
 
 ## 정확도
 
-참값은 Arb(구간 산술)로 구한 정확한 코사인 거리예요. 거리가 0에 가까울 때는 상대오차로 약속할 수 없어서(참값 0을 상대오차로 맞히려면 계산 결과도 정확히 0이어야 해요), 약속은 절대오차와 상대오차를 섞은 꼴이에요. 대략 거리 d가 크면 d에 비례하고, 작으면 $\sqrt{d}$에 u = 2⁻⁵³을 곱한 크기가 한계예요.
+참값은 Arb(구간 산술)로 구한 정확한 코사인 거리예요. 거리가 0에 가까울 때는 상대오차로 약속할 수 없어서(참값 0을 상대오차로 맞히려면 계산 결과도 정확히 0이어야 해요), 약속은 절대오차와 상대오차를 섞은 꼴이에요. 대략 거리 $d$가 크면 $d$에 비례하고, 작으면 $\sqrt{d}$에 $u = 2^{-53}$을 곱한 크기가 한계예요.
 
 | | 시험한 짝 | 약속 대비 최대 오차 |
 |---|---:|---:|
@@ -318,6 +318,6 @@ TypeError: cosine(): takes 2 positional arguments but 3 were given
 - `scipy.spatial.distance.cosine`과 이름, 뜻이 같아요. `sd.spatial.cosine`처럼 `sd.spatial`에 바로 있어요(`sd.spatial.distance`는 없어요).
 - `w`는 키워드로만 받아요. NaN·inf 가중치는 `ValueError`예요. scipy는 음수만 막고 NaN·inf 가중치로 NaN·inf 거리를 내요.
 - 배치를 받아요. `cosine(U, V)`가 같은 자리의 짝마다 거리를 재요. sklearn의 `paired_distances(U, V, metric="cosine")`와 같은 일이에요. scipy 1.18.1의 `cosine`은 1차원만 받아요.
-- 거의 나란한 벡터에서도 작은 거리의 자릿수가 남아요. scipy의 `cosine`과 sklearn의 `cosine_distances`는 1 − cos를 그대로 계산해서 이런 짝에서 0이나 상대오차가 큰 값을 낼 수 있어요. 같은 시험 짝에서 sklearn의 `cosine_distances`는 약속의 3.24×10¹⁵배, scipy의 `cosine`은 넘침과 언더플로가 있는 짝(좌표 10¹⁶⁰, 10⁻¹⁶⁰, 비정상 수)에서 inf·0·NaN을 내서 약속을 넘었어요.
+- 거의 나란한 벡터에서도 작은 거리의 자릿수가 남아요. scipy의 `cosine`과 sklearn의 `cosine_distances`는 $1 - \cos$를 그대로 계산해서 이런 짝에서 0이나 상대오차가 큰 값을 낼 수 있어요. 같은 시험 짝에서 sklearn의 `cosine_distances`는 약속의 $3.24 \times 10^{15}$배, scipy의 `cosine`은 넘침과 언더플로가 있는 짝(좌표 $10^{160}$, $10^{-160}$, 비정상 수)에서 inf·0·NaN을 내서 약속을 넘었어요.
 - 거리 이름 문자열은 `"cosine"` 하나예요. `"cos"`, `"Cosine"`은 `ValueError`이고 `metric`은 키워드로만 받아요(`cdist(A, B, "cosine")`은 `TypeError`).
 - 복소수는 `TypeError`예요.

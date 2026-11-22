@@ -96,7 +96,7 @@ array([ 0,  7, 11, 18], dtype=int64)
 
 행마다의 목록을 꺼내는 다른 방법, 쓰기 금지, 희소 행렬로 바꾸는 `tocsr()`는 [결과 객체](/api/spatial/results/)에 정리해 두었어요.
 
-x를 (a, b, m)처럼 축이 더 많은 배열로 주면 앞쪽 축을 C 순서로 펼쳐 a·b개의 행이 돼요. 점 하나 (m,)도 행 하나짜리 결과예요.
+x를 (a, b, m)처럼 축이 더 많은 배열로 주면 앞쪽 축을 C 순서로 펼쳐 $a \cdot b$개의 행이 돼요. 점 하나 (m,)도 행 하나짜리 결과예요.
 
 ## 질의점마다 다른 반경
 
@@ -146,7 +146,7 @@ ValueError: query_ball_point(): 'r' of shape (1,) does not broadcast to the batc
 
 ## 경계는 들어가요
 
-거리가 r과 꼭 같은 점도 결과에 들어가요(d ≤ r). 이때 견주는 거리는 결과의 `distances`에 담기는 값 그대로라서, 결과에 든 점은 언제나 `distances <= r`이고 빠진 점은 언제나 r보다 멀어요.
+거리가 r과 꼭 같은 점도 결과에 들어가요($d \le r$). 이때 견주는 거리는 결과의 `distances`에 담기는 값 그대로라서, 결과에 든 점은 언제나 `distances <= r`이고 빠진 점은 언제나 r보다 멀어요.
 
 ```python
 >>> grid = sd.spatial.KDTree([[0.0, 0.0], [1.0, 0.0], [0.0, 2.0]])
@@ -222,8 +222,8 @@ ValueError: query_ball_point(): 'x' must be finite
 - 결과는 언제나 `RadiusResult`예요. scipy는 점 하나면 list, 여럿이면 list의 object 배열이에요. 행마다 list가 필요하면 `indptr`로 잘라 꺼내요.
 - 행 안은 언제나 색인 오름차순이에요. scipy의 기본은 점 하나면 정렬하지 않고 여럿이면 정렬해요. `return_sorted` 인자는 없어요.
 - 결과에 거리도 함께 담겨요. scipy는 색인만 돌려줘요.
-- 음수나 NaN 반경은 `ValueError`예요. scipy는 r = −1을 r = 1처럼, NaN을 빈 목록으로 다뤄요.
-- 경계의 판정은 돌려주는 거리 그 자체로 해요. scipy는 제곱한 자리에서 비교해서, 돌려줄 거리가 r과 같은 점이 √의 자리와 다르게 판정되는 일이 있어요.
+- 음수나 NaN 반경은 `ValueError`예요. scipy는 $r = -1$을 $r = 1$처럼, NaN을 빈 목록으로 다뤄요.
+- 경계의 판정은 돌려주는 거리 그 자체로 해요. scipy는 제곱한 자리에서 비교해서, 돌려줄 거리가 r과 같은 점이 $\sqrt{\ }$의 자리와 다르게 판정되는 일이 있어요.
 - `p`, `return_length`는 이름으로만 받아요. `eps`, `workers`는 없어요.
 - `return_length=True`의 결과는 scipy와 같아요(배치 모양의 개수, 점 하나면 int).
 - sklearn의 `NearestNeighbors(...).fit(data).radius_neighbors(x, r)`는 행마다 object 배열이고 기본으로 정렬하지 않아요(`sort_results=False`). 여기서는 CSR 꼴이고 언제나 색인 순서예요. sklearn의 `radius_neighbors_graph(mode='distance')`는 `query_ball_point(x, r).tocsr()`예요.

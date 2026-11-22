@@ -270,7 +270,7 @@ ValueError: query(): 'distance_upper_bound' must be a nonnegative number or inf,
 | 2 (기본값) | 보통의 직선거리(유클리드) | [`euclidean`](/api/spatial/euclidean/) |
 | 1 | 좌표 차이의 절댓값 합(맨해튼, 격자 길 위의 거리) | [`cityblock`](/api/spatial/cityblock/) |
 | `inf` | 좌표 차이 절댓값의 최댓값(체비쇼프) | [`chebyshev`](/api/spatial/chebyshev/) |
-| 그 밖의 p ≥ 1 | 일반 Minkowski 거리 | [`minkowski(p=)`](/api/spatial/minkowski/) |
+| 그 밖의 $p \ge 1$ | 일반 Minkowski 거리 | [`minkowski(p=)`](/api/spatial/minkowski/) |
 
 같은 점들이라도 `p`에 따라 가까운 순서가 바뀔 수 있어요. 아래 두 점은 원점에서 유클리드로는 0번이 가깝고, 체비쇼프로는 1번이 가까워요.
 
@@ -284,7 +284,7 @@ QueryResult(distances=array([0.8, 1.0], dtype=float64), indices=array([1, 0], dt
 QueryResult(distances=array([1.0, 1.6], dtype=float64), indices=array([0, 1], dtype=int64))
 ```
 
-`p`는 1 이상이어야 해요. p < 1이 꼭 필요하면 [`kneighbors`](/api/spatial/kneighbors/)에 `metric='minkowski', p=…`로 줘요.
+`p`는 1 이상이어야 해요. $p \lt 1$이 꼭 필요하면 [`kneighbors`](/api/spatial/kneighbors/)에 `metric='minkowski', p=…`로 줘요.
 
 ```python
 >>> tree.query([0.5, 0.5], p=0.5)
@@ -351,7 +351,7 @@ TypeError: query(): takes 1 positional argument but 2 were given
 - `k`는 int나 int의 시퀀스만 받아요. scipy는 `k=True`와 `k=2.0`을 받고, `k=0`은 numpy 내부 메시지의 `ValueError`이며, `k=[0]`은 프로세스를 죽여요. 여기서는 각각 `TypeError`, `ValueError`예요.
 - `distance_upper_bound`가 음수나 NaN이면 `ValueError`예요. scipy는 상한을 제곱해 비교해서 −1이 1처럼 동작하고, NaN이면 모든 자리를 채움 값으로 채워요.
 - `eps`(근사 찾기)와 `workers`는 없어요. 결과는 언제나 정확하고, 스레드 수는 [`sd.set_num_threads`](/api/array/threads/)로 정해요.
-- 점 하나에 k = 1이면 Python `float`와 `int`예요. scipy는 `float`와 `numpy.int64`예요.
+- 점 하나에 $k = 1$이면 Python `float`와 `int`예요. scipy는 `float`와 `numpy.int64`예요.
 - 동점은 언제나 (거리, 색인) 순서예요. scipy와 sklearn은 동점의 순서를 약속하지 않고 실제로도 서로 달라요.
 - 거리는 `cdist`의 같은 원소와 비트까지 같아요. scipy는 `cdist`와 `KDTree`가 덧셈 순서가 달라서 같은 짝의 거리가 끝자리에서 다를 수 있어요.
 - 채움 값은 scipy와 같아요(거리 inf, 색인 n). sklearn의 `KDTree.query`는 k가 점의 수보다 크면 에러예요.

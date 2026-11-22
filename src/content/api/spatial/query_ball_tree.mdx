@@ -93,11 +93,11 @@ array([1, 2, 3, 5], dtype=int64)
 
 2번 집(0.5, 0.5)의 행에 자기 자신인 2가 들어 있어요.
 
-같은 집합 안의 짝을 한 번씩만 원하면(자기 자신 없이, (i, j)와 (j, i) 가운데 하나만) [`query_pairs`](/api/spatial/query_pairs/)가 더 알맞아요.
+같은 집합 안의 짝을 한 번씩만 원하면(자기 자신 없이, $(i, j)$와 $(j, i)$ 가운데 하나만) [`query_pairs`](/api/spatial/query_pairs/)가 더 알맞아요.
 
 ## 경계와 반경
 
-거리가 r과 꼭 같은 짝도 들어가요(d ≤ r). 판정은 결과의 `distances`에 담기는 거리 그대로로 해요. `r`은 수 하나예요. 행마다 다른 반경이 필요하면 `query_ball_point`에 반경 배열을 줘요.
+거리가 r과 꼭 같은 짝도 들어가요($d \le r$). 판정은 결과의 `distances`에 담기는 거리 그대로로 해요. `r`은 수 하나예요. 행마다 다른 반경이 필요하면 `query_ball_point`에 반경 배열을 줘요.
 
 ```python
 >>> homes.query_ball_tree(stops, [0.3])
@@ -137,7 +137,7 @@ ValueError: query_ball_tree(): 'other' must have the same m as this tree (2), no
 
 - 결과는 `RadiusResult`예요. scipy는 list의 list(행마다 색인의 list)를 돌려줘요. 행 i의 list는 `res.indices[res.indptr[i]:res.indptr[i+1]]`로 꺼내요.
 - 행 안은 언제나 색인 오름차순이고 거리도 함께 담겨요. scipy의 결과에는 거리가 없어요.
-- 음수나 NaN 반경은 `ValueError`예요. scipy는 반경을 제곱해서 비교해 r = −1이 r = 1처럼 동작해요.
+- 음수나 NaN 반경은 `ValueError`예요. scipy는 반경을 제곱해서 비교해 $r = -1$이 $r = 1$처럼 동작해요.
 - `p`는 이름으로만 받고 `eps`는 없어요. 결과는 언제나 정확해요.
 - `other`가 `KDTree`가 아니면 `TypeError`, 차원이 다르면 `ValueError`예요.
 - 희소 행렬이 필요하면 `res.tocsr()`나 [`sparse_distance_matrix`](/api/spatial/sparse_distance_matrix/)를 써요. 둘은 같은 행렬이에요.

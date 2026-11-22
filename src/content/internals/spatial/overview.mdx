@@ -13,7 +13,7 @@ import Steps from '../../../components/fig/Steps.astro';
 
 `sd.spatial`은 세 가지 일을 해요. 점 사이의 거리를 재고(`pdist`, `cdist`, 거리 함수 열네 개, `squareform`), 전체 거리 행렬을 만들지 않고 가까운 이웃을 찾고(`kneighbors`, `radius_neighbors`), 한 번 만든 KD 트리로 같은 데이터에 여러 번 묻게 해 줘요(`KDTree`와 그 메서드 여섯).
 
-이 영역의 설계는 한 문장으로 모여요. **짝 하나의 거리는 한 커널이 정하고, 이웃의 순서는 (거리, 색인)의 전순서가 정해요.** 그래서 같은 짝 (x, y)는 `pdist`, `cdist`, 거리 함수, `kneighbors`, 트리의 잎 어디서 계산하든 같은 비트이고, 이웃 찾기의 답은 "모든 짝을 그 커널로 계산해 (거리, 색인)으로 정렬한 것"이라는 정의 하나로 정해져요. 빠른 길(GEMM 고르기, KD 트리, 단위 구 위의 트리)은 이 정의를 바꾸지 않고, 답이 될 수 없다고 증명된 짝을 건너뛸 뿐이에요.
+이 영역의 설계는 한 문장으로 모여요. **짝 하나의 거리는 한 커널이 정하고, 이웃의 순서는 (거리, 색인)의 전순서가 정해요.** 그래서 같은 짝 $(x, y)$는 `pdist`, `cdist`, 거리 함수, `kneighbors`, 트리의 잎 어디서 계산하든 같은 비트이고, 이웃 찾기의 답은 "모든 짝을 그 커널로 계산해 (거리, 색인)으로 정렬한 것"이라는 정의 하나로 정해져요. 빠른 길(GEMM 고르기, KD 트리, 단위 구 위의 트리)은 이 정의를 바꾸지 않고, 답이 될 수 없다고 증명된 짝을 건너뛸 뿐이에요.
 
 ## 층과 파일
 
@@ -60,7 +60,7 @@ Python 층은 인자를 모두 검사하고 C++ 층은 넘겨받은 배치(dtype
 |---|---:|---|
 | `metric.hpp` | 621 | 거리마다의 연산(Op), `tile`·`pair_scalar`, 신중한 경로, `minkowski`·`mahalanobis`·`haversine`의 짝 함수, 정규화와 비트 묶음 |
 | `distance.cpp` | 982 | `_pdist`, `_cdist`, `_paired`(배치 거리 함수), `squareform`, 블록마다의 `cdist`(`CdistBlocks`) |
-| `neighbors.cpp` | 798 | `_kneighbors`, `_radius_neighbors`, (d̂, j) 최대 힙, 나누기, GEMM 고르기 |
+| `neighbors.cpp` | 798 | `_kneighbors`, `_radius_neighbors`, $(\hat d, j)$ 최대 힙, 나누기, GEMM 고르기 |
 | `kdtree.hpp`, `kdtree.cpp` | 304, 549 | 트리의 꼴, 질의점과 점의 거리, 가지치기의 문턱과 kNN 찾기, 만들기 |
 | `query.cpp`, `dual.cpp` | 229, 648 | `_ball_point`, `_ball_tree`, `_pairs`, `_count` |
 | `sphere.cpp` | 468 | `_sphere_kneighbors`, `_sphere_radius` |
@@ -82,7 +82,7 @@ Python 층은 인자를 모두 검사하고 C++ 층은 넘겨받은 배치(dtype
   ]} />
 </Fig>
 
-C++는 많아야 min(max k, mB)개만 찾아요. k = 10⁹ 같은 호출이 태스크마다 k자리의 힙을 잡지 않게 하려는 것이고, 넘는 순위의 채움 값은 Python이 붙여요. 결과 배열은 처음부터 끝까지 `sd.ndarray`라서 numpy를 거치지 않아요.
+C++는 많아야 $\min(\max k, m_B)$개만 찾아요. $k = 10^9$ 같은 호출이 태스크마다 $k$자리의 힙을 잡지 않게 하려는 것이고, 넘는 순위의 채움 값은 Python이 붙여요. 결과 배열은 처음부터 끝까지 `sd.ndarray`라서 numpy를 거치지 않아요.
 
 ## 길 고르기
 
@@ -91,11 +91,11 @@ C++는 많아야 min(max k, mB)개만 찾아요. k = 10⁹ 같은 호출이 태�
 | 길 | 쓰는 곳 | 조건 | 자세히 |
 |---|---|---|---|
 | 직접 전수 | 모든 거리 | 다른 길이 맞지 않을 때 | [한 짝 커널](/internals/spatial/pair-kernel/), [병렬화와 결정성](/internals/spatial/parallel/) |
-| GEMM 고르기 | 가중치 없는 `euclidean`·`sqeuclidean`(`minkowski` p = 2 포함) | 1 ≤ n ≤ 2¹⁶, mA ≥ 64, mB ≥ 2048(n ≥ 8이면 1024) | [유클리드 혼합 계산](/internals/spatial/euclid-gemm/) |
-| XB로 만든 KD 트리 | 가중치 없는 `euclidean`·`cityblock`·`chebyshev`·`minkowski`(p ≥ 1) | n ≤ 4, k ≤ 32, mB ≥ 2048이고 mA ≥ 2048이거나 (mA ≥ 512, mB ≥ 32768). 다른 p의 `minkowski`는 n ≤ 8, mB ≥ 1024, mA·mB ≥ 2¹⁷ | [KD 트리](/internals/spatial/kdtree/), [질의](/internals/spatial/queries/) |
-| 단위 구 KD 트리 | `haversine` | mB ≥ 128, mA ≥ 16, 8k ≤ mB, 그리고 모든 점이 \|위도\| ≤ fl(π/2), \|경도\| ≤ 8 | [단위 구 위의 KD 트리](/internals/spatial/haversine-tree/) |
+| GEMM 고르기 | 가중치 없는 `euclidean`·`sqeuclidean`(`minkowski` $p = 2$ 포함) | $1 \le n \le 2^{16}$, $m_A \ge 64$, $m_B \ge 2048$($n \ge 8$이면 1024) | [유클리드 혼합 계산](/internals/spatial/euclid-gemm/) |
+| XB로 만든 KD 트리 | 가중치 없는 `euclidean`·`cityblock`·`chebyshev`·`minkowski`($p \ge 1$) | $n \le 4$, $k \le 32$, $m_B \ge 2048$이고 $m_A \ge 2048$이거나 ($m_A \ge 512$, $m_B \ge 32768$). 다른 $p$의 `minkowski`는 $n \le 8$, $m_B \ge 1024$, $m_A m_B \ge 2^{17}$ | [KD 트리](/internals/spatial/kdtree/), [질의](/internals/spatial/queries/) |
+| 단위 구 KD 트리 | `haversine` | $m_B \ge 128$, $m_A \ge 16$, $8k \le m_B$, 그리고 모든 점이 $\lvert\text{위도}\rvert \le \mathrm{fl}(\pi/2)$, $\lvert\text{경도}\rvert \le 8$ | [단위 구 위의 KD 트리](/internals/spatial/haversine-tree/) |
 
-`KDTree.query`도 반대 방향으로 고르기를 해요. p = 2이고 점의 차원 m이 점 수 n에 비해 높으면 트리 대신 입력 순서의 `data`에 `kneighbors`의 전수(모양이 맞으면 GEMM 고르기)를 써요. 트리의 질의당 일은 대략 $2^{5m/6}$로, 전수는 n으로 자라니 그 둘을 견주는 식이에요. `_kdtree.py`의 `_brute_pays(n, m, k)`가 $5m/6 + \tfrac14\log_2 k + 7 - \log_2 n \ge 0.5$이면 전수를 골라요(k가 크면 트리가 조금 더 불리해지는 몫이 $\tfrac14\log_2 k$예요).
+`KDTree.query`도 반대 방향으로 고르기를 해요. $p = 2$이고 점의 차원 $m$이 점 수 $n$에 비해 높으면 트리 대신 입력 순서의 `data`에 `kneighbors`의 전수(모양이 맞으면 GEMM 고르기)를 써요. 트리의 질의당 일은 대략 $2^{5m/6}$로, 전수는 $n$으로 자라니 그 둘을 견주는 식이에요. `_kdtree.py`의 `_brute_pays(n, m, k)`가 $5m/6 + \tfrac14\log_2 k + 7 - \log_2 n \ge 0.5$이면 전수를 골라요($k$가 크면 트리가 조금 더 불리해지는 몫이 $\tfrac14\log_2 k$예요).
 
 ```python
 >>> from stardust.spatial._kdtree import _brute_pays
@@ -103,7 +103,7 @@ C++는 많아야 min(max k, mB)개만 찾아요. k = 10⁹ 같은 호출이 태�
 (False, True)
 ```
 
-`sqeuclidean`은 KD 트리 길에 들지 않아요. 트리는 √를 씌운 거리 d̂로 순서를 정하는데, 서로 다른 두 제곱합이 √의 반올림 뒤 같은 d̂가 될 수 있어요. 그러면 제곱합 (ŝ, j)의 순서와 (d̂, j)의 순서가 동점에서 갈려 결과가 정의와 달라질 수 있어요.
+`sqeuclidean`은 KD 트리 길에 들지 않아요. 트리는 $\sqrt{\ }$를 씌운 거리 $\hat d$로 순서를 정하는데, 서로 다른 두 제곱합이 $\sqrt{\ }$의 반올림 뒤 같은 $\hat d$가 될 수 있어요. 그러면 제곱합 $(\hat s, j)$의 순서와 $(\hat d, j)$의 순서가 동점에서 갈려 결과가 정의와 달라질 수 있어요.
 
 ### 길이 결과를 바꾸지 않는 까닭
 
@@ -111,7 +111,7 @@ C++는 많아야 min(max k, mB)개만 찾아요. k = 10⁹ 같은 호출이 태�
 
 1. **거리가 같은 비트.** 어느 길이든 짝의 거리는 `cdist`의 커널이 구해요. 전수 길은 `cdist`의 구동기를 블록마다 그대로 부르고(`CdistBlocks`), GEMM 길은 남은 짝을 같은 한 짝 커널(`pair_scalar`)과 같은 마무리 함수로 다시 계산하고, 트리의 잎도 같은 커널이에요. 타일 커널의 레인과 한 짝 커널이 같은 비트라는 것은 [한 짝 커널](/internals/spatial/pair-kernel/)에서 보여요.
 2. **순서가 전순서.** 힙과 정렬과 합치기가 모두 `before(a, b) = a.d < b.d || (a.d == b.d && a.j < b.j)` 하나로 견줘요. 전순서라 어떤 순서로 넣고 어떻게 나눠 합쳐도 가장 작은 k개는 하나로 정해져요. NaN인 거리는 `d < upper`도 `d <= r`도 거짓이라 힙에 들어오지 않아요.
-3. **건너뛰기가 보수적.** 빠른 길이 짝을 건너뛰는 것은 그 짝의 거리 d̂가 지금의 문턱 T보다 **엄격히** 크다고 증명될 때뿐이에요. 엄격하니 같은 거리에 색인이 작은 점(동점)도 빠지지 않아요. GEMM 고르기는 [정리 3](/internals/spatial/euclid-gemm/), KD 트리는 상자까지의 거리 하한, 단위 구 트리는 현 거리의 여유가 그 증명이에요.
+3. **건너뛰기가 보수적.** 빠른 길이 짝을 건너뛰는 것은 그 짝의 거리 $\hat d$가 지금의 문턱 $T$보다 **엄격히** 크다고 증명될 때뿐이에요. 엄격하니 같은 거리에 색인이 작은 점(동점)도 빠지지 않아요. GEMM 고르기는 [정리 3](/internals/spatial/euclid-gemm/), KD 트리는 상자까지의 거리 하한, 단위 구 트리는 현 거리의 여유가 그 증명이에요.
 
 테스트용 숨은 인자 `path`(1 전수, 2 GEMM, 3 트리)로 세 길을 강제로 타 보면 거리와 색인이 바이트까지 같아요.
 
@@ -156,7 +156,7 @@ RadiusResult(shape=(4, 5000), nnz=10)
 
 - **sparse.** `RadiusResult.tocsr()`와 `KDTree.sparse_distance_matrix`가 `sd.sparse.csr_array`를 만들어요. 이 의존은 Python 층에만 있어요. C++의 `spatial/`은 `sparse/`를 모르고, CSR의 세 배열을 직접 채운 뒤 Python이 그것을 희소 배열로 감싸요. 정수 인자 판별 하나(`is_int`)도 sparse의 Python 도우미를 빌려 써요.
 - **linalg와 배열.** `mahalanobis`의 기본 `VI`는 `sd.cov(X, rowvar=False, correction=1)`의 역행렬을 `sd.linalg.inv`로 구하고, `seuclidean`의 기본 `V`는 `sd.var(..., correction=1)`이에요. 공분산이 특이하면 `inv`의 `LinAlgError`를 받아 이 영역의 메시지로 바꿔 다시 던져요.
-- **linalg의 노름과는 비트가 다를 수 있어요.** 거리의 합은 linalg의 합을 쓰지 않으니 `euclidean(x, y)`와 `sd.linalg.vector_norm(x - y)`는 n ≥ 16에서 끝자리가 갈릴 수 있어요. n < 16이면 두 순서가 같은 차례 합이라 언제나 같아요.
+- **linalg의 노름과는 비트가 다를 수 있어요.** 거리의 합은 linalg의 합을 쓰지 않으니 `euclidean(x, y)`와 `sd.linalg.vector_norm(x - y)`는 $n \ge 16$에서 끝자리가 갈릴 수 있어요. $n \lt 16$이면 두 순서가 같은 차례 합이라 언제나 같아요.
 
 ```python
 >>> a = sd.asarray([0.1 * i for i in range(40)])

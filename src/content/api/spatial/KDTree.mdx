@@ -104,7 +104,7 @@ array([[0.3663067970033914, 0.5114570440506139],
 
 ## 만들기: `data`
 
-`data`는 점 n개를 행으로 담은 (n, m) 배열이에요. m은 점의 차원(좌표의 수)이에요. `sd.ndarray`, 수의 리스트, numpy 배열, `sd.frame.DataFrame`을 받고 모두 float64로 바꿔요. 정수 좌표도 받지만 float64로 바뀌므로 2⁵³보다 큰 정수는 정확히 담기지 않아요.
+`data`는 점 n개를 행으로 담은 (n, m) 배열이에요. m은 점의 차원(좌표의 수)이에요. `sd.ndarray`, 수의 리스트, numpy 배열, `sd.frame.DataFrame`을 받고 모두 float64로 바꿔요. 정수 좌표도 받지만 float64로 바뀌므로 $2^{53}$보다 큰 정수는 정확히 담기지 않아요.
 
 ```python
 >>> df = sd.frame.DataFrame({"x": [0.0, 1.0, 2.0], "y": [0.0, 0.5, 1.0]})
@@ -156,7 +156,7 @@ ValueError: KDTree(): 'data' must be finite
 
 ### 점이 없거나 좌표가 없어도 돼요
 
-n = 0이면 점이 없는 트리예요. 질의는 모두 "찾지 못함"의 채움 값(거리 inf, 색인 n)을 돌려줘요. m = 0이면 좌표가 없어 모든 거리가 0이에요. 그래서 가장 가까운 점은 색인 순서대로예요.
+$n = 0$이면 점이 없는 트리예요. 질의는 모두 "찾지 못함"의 채움 값(거리 inf, 색인 n)을 돌려줘요. $m = 0$이면 좌표가 없어 모든 거리가 0이에요. 그래서 가장 가까운 점은 색인 순서대로예요.
 
 ```python
 >>> empty = sd.spatial.KDTree(sd.zeros((0, 3)))
@@ -217,7 +217,7 @@ array([ 0.01710724023095611, 0.015964419691204212], dtype=float64)
 array([0.9705324606579506, 0.9913321149946199], dtype=float64)
 ```
 
-n = 0이면 `mins`와 `maxes`는 0으로 채운 (m,) 배열이에요.
+$n = 0$이면 `mins`와 `maxes`는 0으로 채운 (m,) 배열이에요.
 
 배열 속성은 읽기 전용이라 원소를 바꿀 수 없어요. 고친 점으로 찾으려면 `data`를 복사해 고친 뒤 트리를 다시 만들어요. 속성 자체에 대입하거나 새 속성을 붙일 수도 없어요.
 
@@ -279,7 +279,7 @@ pickle에는 트리의 노드가 아니라 데이터와 `leafsize`만 담겨요.
 | [`query(x, k=)`](/api/spatial/query/) | x마다 가장 가까운 k개 | `QueryResult(distances, indices)` |
 | [`query_ball_point(x, r)`](/api/spatial/query_ball_point/) | x마다 거리 r 이하의 점 | `RadiusResult` 또는 개수 |
 | [`query_ball_tree(other, r)`](/api/spatial/query_ball_tree/) | 이 트리의 점마다 다른 트리에서 거리 r 이하의 점 | `RadiusResult` |
-| [`query_pairs(r)`](/api/spatial/query_pairs/) | 이 트리 안에서 거리 r 이하인 짝 (i, j), i < j | (짝의 수, 2) int64 배열 |
+| [`query_pairs(r)`](/api/spatial/query_pairs/) | 이 트리 안에서 거리 r 이하인 짝 $(i, j)$, $i \lt j$ | (짝의 수, 2) int64 배열 |
 | [`count_neighbors(other, r)`](/api/spatial/count_neighbors/) | 두 트리 사이에서 거리 r 이하인 짝의 수(가중 합) | `int`, `float`, 또는 배열 |
 | [`sparse_distance_matrix(other, max_distance)`](/api/spatial/sparse_distance_matrix/) | 거리 `max_distance` 이하인 짝의 거리 | `sd.sparse.csr_array` |
 
@@ -358,7 +358,7 @@ TypeError: KDTree(): takes 1 positional argument but 2 were given
 - 옵션은 `leafsize` 하나예요. `balanced_tree`, `compact_nodes`, `copy_data`, `boxsize`는 없어서 주면 `TypeError`예요. 트리는 언제나 중앙값으로 나누고 노드 상자를 점들의 실제 범위로 줄여요(scipy의 기본과 같은 꼴). 주기 경계(`boxsize`)가 필요한 자료는 지원하지 않아요.
 - `leafsize`는 이름으로만, int로만 받아요. scipy의 `KDTree(data, 5)`는 `TypeError`이고, scipy가 2.5를 2로 자르는 것과 달리 2.5는 `TypeError`예요.
 - 데이터에 NaN이나 inf가 있으면 `ValueError`예요.
-- m = 0인 데이터도 받아요(모든 거리가 0). scipy는 이런 트리에 질의하면 `IndexError`예요.
+- $m = 0$인 데이터도 받아요(모든 거리가 0). scipy는 이런 트리에 질의하면 `IndexError`예요.
 - `size`는 n과 `leafsize`로만 정해져요. scipy는 폭이 0인 노드를 나누지 않아서 같은 점이 많으면 노드 수가 달라요(같은 점 50개에서 scipy 1, sd 15).
 - scipy의 `tree`, `indices`, `boxsize` 속성은 없어요. 트리의 속은 공개하지 않아요. `repr`는 `KDTree(n=…, m=…, leafsize=…)`예요.
 - 메서드의 `workers`와 `eps`는 없어요. 스레드 수는 [`sd.set_num_threads`](/api/array/threads/) 하나로 정하고, 결과는 언제나 정확해요.
