@@ -36,7 +36,12 @@ raises:
 seeAlso: [KDTree, query, query_ball_tree, radius_neighbors, results, count_neighbors]
 ---
 import Callout from '../../../components/Callout.astro';
-import PlotImage from '../../../components/fig/PlotImage.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import PlaneFig from '../../../components/fig/PlaneFig.astro';
+
+export const unitTicks = [{ v: 0, label: '0' }, { v: 0.25, label: '' }, { v: 0.5, label: '0.5' }, { v: 0.75, label: '' }, { v: 1, label: '1' }];
+export const qbPts = [[0.02173, 0.87739], [0.90157, 0.62168], [0.48663, 0.13736], [0.80026, 0.78884], [0.55216, 0.11634], [0.19141, 0.21924], [0.00088, 0.42864], [0.88027, 0.75879], [0.72595, 0.91013], [0.31646, 0.87134], [0.57378, 0.4079], [0.47144, 0.0753], [0.33307, 0.94319], [0.64969, 0.64974], [0.04604, 0.28235], [0.74259, 0.62969], [0.74553, 0.30281], [0.82723, 0.11898], [0.74506, 0.86024], [0.14923, 0.51626], [0.40543, 0.62912], [0.05689, 0.02939], [0.41801, 0.14757], [0.75979, 0.11499], [0.83901, 0.1147], [0.30459, 0.37052], [0.20393, 0.14321], [0.63228, 0.01034], [0.37107, 0.59226], [0.8659, 0.21678], [0.65389, 0.24882], [0.92016, 0.78195], [0.44336, 0.66193], [0.27438, 0.65215], [0.70698, 0.2913], [0.62625, 0.50655], [0.51383, 0.70675], [0.62042, 0.71165], [0.53024, 0.19076], [0.50576, 0.09443], [0.61608, 0.60284], [0.4375, 0.82098], [0.98202, 0.09085], [0.38003, 0.60865], [0.20807, 0.75608], [0.06086, 0.55533], [0.80451, 0.05171], [0.46853, 0.7849], [0.59504, 0.27469], [0.01128, 0.77192]];
+export const qbHit = [[0.30459, 0.37052], [0.90157, 0.62168], [0.80026, 0.78884], [0.88027, 0.75879], [0.72595, 0.91013], [0.64969, 0.64974], [0.74259, 0.62969], [0.74506, 0.86024], [0.92016, 0.78195], [0.62625, 0.50655], [0.51383, 0.70675], [0.62042, 0.71165], [0.61608, 0.60284], [0.46853, 0.7849]];
 
 ## 한눈에 보기
 
@@ -103,19 +108,32 @@ x를 (a, b, m)처럼 축이 더 많은 배열로 주면 앞쪽 축을 C 순서�
 >>> res = tree.query_ball_point(centers, radii)
 >>> res
 RadiusResult(shape=(2, 50), nnz=14)
->>> t = sd.linspace(0, 2 * 3.141592653589793, 200)
->>> fig = sd.plot.Figure(width=80, height=86)
->>> fig = fig.scatter(pts[:, 0], pts[:, 1], color="gray", size=4, label="점")
->>> for row in range(2):
-...     cx, cy, rr = centers[row, 0], centers[row, 1], radii[row]
-...     fig = fig.line(cx + rr * sd.cos(t), cy + rr * sd.sin(t), color="gray", style="--", width=0.6)
->>> hit = res.indices
->>> fig = fig.scatter(pts[hit, 0], pts[hit, 1], size=5, label="반경 안의 점")
->>> fig = fig.scatter(centers[:, 0], centers[:, 1], shape="x", size=7, color="black", label="질의점")
->>> fig = fig.xlim(0, 1).ylim(0, 1).legend(loc="top")
 ```
 
-<PlotImage name="query-ball-point-radii" alt="네모 안에 회색 점 50개가 흩어져 있고, 왼쪽 아래 가위표를 반지름 0.12의 작은 점선 원이, 오른쪽 위 가위표를 반지름 0.25의 큰 점선 원이 둘러싸며 원 안의 점이 파랗게 칠해진 그림" caption="질의점마다 반경을 달리 준 결과예요. 작은 원과 큰 원 안의 점이 각 행의 이웃이에요." />
+<Fig caption="질의점마다 반경을 달리 준 결과. 작은 원과 큰 원 안의 점(파랑)이 각 행의 이웃이에요.">
+  <PlaneFig
+    label="흩어진 점 50개와 질의점 두 개, 반지름 0.12와 0.25의 점선 원, 원 안의 점"
+    domain={[0, 1]}
+    range={[0, 1]}
+    xTicks={unitTicks}
+    yTicks={unitTicks}
+    width={420}
+    layers={[
+      { kind: 'points', pts: qbPts, tone: 'faint', size: 3 },
+      { kind: 'circle', at: [0.3, 0.3], r: 0.12, tone: 'base', dashed: true },
+      { kind: 'circle', at: [0.7, 0.7], r: 0.25, tone: 'base', dashed: true },
+      { kind: 'text', at: [0.3, 0.42], text: 'r = 0.12', dy: -6, anchor: 'middle' },
+      { kind: 'text', at: [0.7, 0.95], text: 'r = 0.25', dy: -6, anchor: 'middle' },
+      { kind: 'points', pts: qbHit, tone: 'main', size: 3.8 },
+      { kind: 'points', pts: [[0.3, 0.3], [0.7, 0.7]], tone: 'ink', shape: 'cross', size: 4 },
+    ]}
+    legend={[
+      { label: '점', tone: 'faint', shape: 'dot' },
+      { label: '반경 안의 점', tone: 'main', shape: 'dot' },
+      { label: '질의점', tone: 'ink', shape: 'cross' },
+    ]}
+  />
+</Fig>
 
 점 하나 (m,)의 배치 모양은 ()라서 반경도 수 하나로 줘요. 길이 1인 배열은 받지 않아요.
 

@@ -27,7 +27,12 @@ raises:
 seeAlso: [metrics, kneighbors, radius_neighbors, cdist, pdist, euclidean, basics]
 ---
 import Callout from '../../../components/Callout.astro';
-import PlotImage from '../../../components/fig/PlotImage.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import PlaneFig from '../../../components/fig/PlaneFig.astro';
+
+export const townPts = [[177.5, 64.73], [186.8, 64.42], [190.2, 66.16], [194.6, 64.5], [197.4, 66.9], [170.3, 69.7], [198.2, 60.79], [193.5, 53.87], [183.3, 51.88], [173.2, 52.93], [158.7, 53.02], [203.2, 71.29]];
+export const nearHav = [[177.5, 64.73, 186.8, 64.42], [186.8, 64.42, 190.2, 66.16], [190.2, 66.16, 186.8, 64.42], [194.6, 64.5, 190.2, 66.16], [197.4, 66.9, 194.6, 64.5], [170.3, 69.7, 177.5, 64.73], [198.2, 60.79, 194.6, 64.5], [193.5, 53.87, 183.3, 51.88], [183.3, 51.88, 173.2, 52.93], [173.2, 52.93, 183.3, 51.88], [158.7, 53.02, 173.2, 52.93], [203.2, 71.29, 197.4, 66.9]];
+export const nearEuc = [[177.5, 64.73, 170.3, 69.7], [194.6, 64.5, 197.4, 66.9], [193.5, 53.87, 198.2, 60.79], [183.3, 51.88, 193.5, 53.87], [173.2, 52.93, 177.5, 64.73]];
 
 ## 무엇을 재나요
 
@@ -205,21 +210,35 @@ array([443.00819951705745,  250.3395007787166,  250.3395007787166,
 [('Anadyr', 'Pevek'), ('Nome', 'Kotzebue'), ('Unalaska', 'Bethel'), ('Adak', 'Unalaska'), ('Attu', 'Anadyr')]
 ```
 
-```python
->>> lat = deg[:, 0].tolist()
->>> east = [lon % 360 for lon in deg[:, 1].tolist()]       # 날짜 변경선을 가운데에 두려고 0–360도로
->>> def panel(near, title):
-...     f = sd.plot.Figure(width=80)
-...     for i, j in enumerate(near.tolist()):
-...         f = f.line([east[i], east[j]], [lat[i], lat[j]], color="gray")
-...     f = f.vline(180, style="--", color="silver")
-...     f = f.scatter(east, lat, color="C0").title(title)
-...     return f.xlabel(r"경도(동경, $^\circ$)").ylabel(r"위도($^\circ$)")
->>> fig = sd.plot.grid([panel(near_e, "도 단위의 euclidean"), panel(near_h, "haversine")],
-...                    ncols=2, labels="A", width=160)
-```
 
-<PlotImage name="haversine-bering" alt="베링 해 둘레 열두 마을을 경도 155도에서 205도, 위도 51도에서 72도 범위에 찍고 각 마을을 가장 가까운 마을과 회색 선으로 이은 두 칸. 경도 180도에 점선이 있어요. 왼쪽 칸의 선은 점선을 하나도 건너지 않고, 오른쪽 칸에서는 Anadyr와 Provideniya, Attu와 Adak을 잇는 선이 점선을 건너요." caption="각 마을에서 가장 가까운 마을로 그은 선. A는 위도와 경도를 평면 좌표로 본 유클리드 거리, B는 haversine이에요. 점선은 날짜 변경선(경도 180도)이에요. A는 날짜 변경선을 건너는 이웃을 찾지 못하고, B는 건너편의 가까운 마을을 찾아요." />
+<Fig caption="각 마을에서 가장 가까운 마을. 실선은 haversine이 고른 이웃이고, 점선은 위도와 경도를 평면 좌표로 본 유클리드 거리가 다르게 고른 이웃이에요. 세로 점선이 날짜 변경선(경도 180도)이에요. Attu에서 유클리드 거리는 날짜 변경선 이쪽의 먼 Anadyr를 고르고, haversine은 건너편의 가까운 Adak을 골라요. Anadyr의 이웃도 haversine으로는 건너편의 Provideniya예요.">
+  <PlaneFig
+    label="베링 해 둘레 열두 마을과 각 마을에서 가장 가까운 마을을 이은 선, 경도 180도의 날짜 변경선"
+    domain={[155, 207]}
+    range={[50, 73]}
+    equal={false}
+    width={600}
+    height={360}
+    xTicks={[160, 170, 180, 190, 200].map((v) => ({ v, label: `${v}°` }))}
+    yTicks={[55, 60, 65, 70].map((v) => ({ v, label: `${v}°` }))}
+    layers={[
+      { kind: 'vline', x: 180, tone: 'faint', dashed: true },
+      { kind: 'segments', segs: nearEuc, tone: 'base', dashed: true },
+      { kind: 'segments', segs: nearHav, tone: 'main', width: 1.8 },
+      { kind: 'points', pts: townPts, tone: 'main', size: 3.8 },
+      { kind: 'text', at: [177.5, 64.73], text: 'Anadyr', dx: -8, dy: -8, anchor: 'end' },
+      { kind: 'text', at: [186.8, 64.42], text: 'Provideniya', dx: 0, dy: 18, anchor: 'middle' },
+      { kind: 'text', at: [173.2, 52.93], text: 'Attu', dx: -8, dy: -8, anchor: 'end' },
+      { kind: 'text', at: [183.3, 51.88], text: 'Adak', dx: 8, dy: -8, anchor: 'start' },
+      { kind: 'text', at: [170.3, 69.7], text: 'Pevek', dx: 8, dy: -8, anchor: 'start' },
+      { kind: 'text', at: [158.7, 53.02], text: 'Petropavlovsk', dx: 8, dy: 16, anchor: 'start' },
+    ]}
+    legend={[
+      { label: 'haversine', tone: 'main', shape: 'line' },
+      { label: '도 단위의 euclidean(다를 때만)', tone: 'base', shape: 'dash' },
+    ]}
+  />
+</Fig>
 
 반경은 거리를 반지름으로 나눈 중심각으로 줘요. 서울에서 1000 km 안의 도시는 이래요.
 

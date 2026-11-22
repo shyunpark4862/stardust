@@ -35,7 +35,12 @@ raises:
 seeAlso: [metrics, cosine, euclidean, cdist, pdist, kneighbors, basics]
 ---
 import Callout from '../../../components/Callout.astro';
-import PlotImage from '../../../components/fig/PlotImage.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+export const profA = [[1, 2.0], [2, 3.0], [3, 5.0], [4, 4.0], [5, 6.0], [6, 8.0], [7, 7.0], [8, 9.0]];
+export const profB = [[1, 11.0], [2, 11.5], [3, 12.5], [4, 12.0], [5, 13.0], [6, 14.0], [7, 13.5], [8, 14.5]];
+export const profC = [[1, 16.0], [2, 15.0], [3, 13.0], [4, 14.0], [5, 12.0], [6, 10.0], [7, 11.0], [8, 9.0]];
 
 ## 무엇을 재나요
 
@@ -72,11 +77,21 @@ $\bar u$는 `u`의 평균이에요. 평균을 뺀 두 벡터의 [코사인 거�
 0.0
 >>> sd.spatial.correlation(a, c)
 1.9999999999999998
->>> fig = sd.plot.line(t, a, label="$a$").line(t, b, label=r"$b = a/2 + 10$")
->>> fig = fig.line(t, c, label="$c = 18 - a$").xlabel("time").ylabel("value").legend(loc="right")
 ```
 
-<PlotImage name="correlation-profiles" alt="1에서 8까지의 시점에서 세 선이 오르내려요. 파란 a는 2에서 9로 오르고, 노란 b는 11에서 14.5로 a와 같은 꼴로 완만하게 오르고, 회색 c는 16에서 9로 a를 거꾸로 뒤집은 꼴로 내려가요." caption="b는 a와 높이와 폭이 다르지만 오르내리는 꼴이 같아서 상관 거리가 0이에요. c는 a가 오를 때 내리고 내릴 때 올라서 거리가 2예요." />
+<Fig caption="b는 a와 높이와 폭이 다르지만 오르내리는 꼴이 같아서 상관 거리가 0이에요. c는 a가 오를 때 내리고 내릴 때 올라서 거리가 2예요.">
+  <Plot
+    curves={[
+      { points: profA, label: 'a' },
+      { points: profB, label: 'b' },
+      { points: profC, label: 'c' },
+    ]}
+    domain={[1, 8]}
+    range={[0, 18]}
+    xTicks={[2, 4, 6, 8].map((v) => ({ v, label: String(v) }))}
+    yTicks={[5, 10, 15].map((v) => ({ v, label: String(v) }))}
+  />
+</Fig>
 
 유클리드 거리로는 `a`와 `b`가 멀어요. 높이가 10 가까이 다르기 때문이에요. 상관 거리는 꼴만 보므로 같은 패턴을 가진 시계열, 유전자 발현 프로필, 설문 응답처럼 측정 기준이 행마다 다른 자료를 견줄 때 써요.
 

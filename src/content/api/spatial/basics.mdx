@@ -7,7 +7,8 @@ summary: sd.spatial이 하는 일과 상황마다 쓸 함수를 고르는 법을
 seeAlso: [results, pdist, cdist, kneighbors, radius_neighbors, metrics, KDTree]
 ---
 import Callout from '../../../components/Callout.astro';
-import PlotImage from '../../../components/fig/PlotImage.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import PlaneFig from '../../../components/fig/PlaneFig.astro';
 
 ## 한눈에 보기
 
@@ -259,16 +260,26 @@ QueryResult(distances=array([[               0.0,                1.0,           
                        1.0,                1.0, 1.4142135623730951]], dtype=float64), indices=array([[5, 0, 1, 2, 3, 4]], dtype=int64))
 ```
 
-```python
->>> fig = sd.plot.Figure(width=70, height=62)
->>> fig = fig.scatter(XB[:, 0], XB[:, 1], size=5, label="XB")
->>> fig = fig.scatter(q[:, 0], q[:, 1], shape="s", size=3, label="XA")
->>> for j in range(6):
-...     fig = fig.text(float(XB[j, 0]) + 0.13, float(XB[j, 1]) + 0.13, f"${j}$")
->>> fig = fig.xlim(-0.5, 2.5).ylim(-0.5, 2.5).legend(loc="upper left")
-```
 
-<PlotImage name="basics-ties" alt="질의점 (1, 1)과 데이터 점 여섯 개. 점 5는 질의점과 같은 자리에 있고, 점 0, 1, 2, 3은 질의점에서 거리 1인 십자 모양 자리에, 점 4는 대각선 방향의 (2, 2)에 있어요. 점마다 색인 번호가 적혀 있어요." caption="질의점 (1, 1)에서 거리 1인 점이 넷(0, 1, 2, 3)이에요. 거리가 같으므로 색인 순서대로 줄을 서요." />
+<Fig caption="질의점 (1, 1)에서 거리 1인 점(점선 원 위)이 넷(0, 1, 2, 3)이에요. 거리가 같으므로 색인 순서대로 줄을 서요. 점 5는 질의점과 같은 자리라 거리 0이에요.">
+  <PlaneFig
+    label="질의점 (1, 1)과 색인 번호를 붙인 데이터 점 여섯 개, 질의점에서 거리 1인 점선 원"
+    domain={[-0.5, 2.5]}
+    range={[-0.5, 2.5]}
+    xTicks={[0, 1, 2]}
+    yTicks={[0, 1, 2]}
+    width={340}
+    layers={[
+      { kind: 'circle', at: [1, 1], r: 1, tone: 'base', dashed: true },
+      { kind: 'points', pts: [[1.0, 1.0]], tone: 'ink', shape: 'cross', size: 6 },
+      { kind: 'points', pts: [[2.0, 1.0], [1.0, 2.0], [0.0, 1.0], [1.0, 0.0], [2.0, 2.0], [1.0, 1.0]], tone: 'main', size: 4, labels: ['0', '1', '2', '3', '4', '5'] },
+    ]}
+    legend={[
+      { label: 'XB의 점(번호는 색인)', tone: 'main', shape: 'dot' },
+      { label: '질의점', tone: 'ink', shape: 'cross' },
+    ]}
+  />
+</Fig>
 
 질의점과 같은 자리의 점 5가 거리 0으로 첫째이고, 거리 1인 점 넷은 색인 순서 0, 1, 2, 3으로, 마지막이 거리 √2인 점 4예요. 같은 점이 여럿인 데이터에서도 같아요. 같은 점 여섯 개는 색인 순서 그대로 나와요.
 

@@ -38,7 +38,12 @@ raises:
 seeAlso: [KDTree, query_ball_point, kneighbors, results, cdist, minkowski]
 ---
 import Callout from '../../../components/Callout.astro';
-import PlotImage from '../../../components/fig/PlotImage.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import PlaneFig from '../../../components/fig/PlaneFig.astro';
+
+export const unitTicks = [{ v: 0, label: '0' }, { v: 0.25, label: '' }, { v: 0.5, label: '0.5' }, { v: 0.75, label: '' }, { v: 1, label: '1' }];
+export const ubPts = [[0.13192, 0.38074], [0.16465, 0.85068], [0.85758, 0.92509], [0.42137, 0.17081], [0.5366, 0.5697], [0.27529, 0.79765], [0.88217, 0.8598], [0.20235, 0.15011], [0.82277, 0.2882], [0.1002, 0.06482], [0.69181, 0.65145], [0.08035, 0.56022], [0.07444, 0.0097], [0.38536, 0.12719], [0.89677, 0.99744], [0.42177, 0.34397], [0.27295, 0.52067], [0.04614, 0.4588], [0.9354, 0.35543], [0.6268, 0.05581], [0.8079, 0.96279], [0.90921, 0.55256], [0.4631, 0.53131], [0.57855, 0.43], [0.71883, 0.13994], [0.90687, 0.06595], [0.92701, 0.30284], [0.41688, 0.11856], [0.54309, 0.5552], [0.44056, 0.131], [0.18007, 0.3417], [0.87441, 0.00888], [0.65378, 0.63412], [0.96703, 0.8488], [0.63171, 0.97044], [0.14275, 0.17059], [0.91897, 0.5338], [0.83653, 0.48666], [0.84451, 0.16097], [0.86056, 0.06879]];
+export const ubHit = [[0.4631, 0.53131], [0.54309, 0.5552], [0.5366, 0.5697], [0.57855, 0.43]];
 
 ## 한눈에 보기
 
@@ -213,17 +218,30 @@ array([ 0.0483943059453627, 0.07002564424565981,  0.0787231776885056,
        0.10521483530488861,                 inf], dtype=float64)
 >>> i
 array([22, 28,  4, 23, 40], dtype=int64)
->>> t = sd.linspace(0, 2 * 3.141592653589793, 200)
->>> inside = i < tree.n
->>> fig = sd.plot.Figure(width=80, height=86)
->>> fig = fig.scatter(pts[:, 0], pts[:, 1], color="gray", size=4, label="점")
->>> fig = fig.line(0.5 + 0.15 * sd.cos(t), 0.5 + 0.15 * sd.sin(t), color="gray", style="--", width=0.6)
->>> fig = fig.scatter(pts[i[inside], 0], pts[i[inside], 1], size=5, label="찾은 이웃")
->>> fig = fig.scatter([0.5], [0.5], shape="x", size=7, color="black", label="질의점")
->>> fig = fig.xlim(0, 1).ylim(0, 1).legend(loc="top")
 ```
 
-<PlotImage name="query-upper-bound" alt="네모 안에 회색 점 40개가 흩어져 있고, 가운데의 가위표(질의점)를 반지름 0.15의 점선 원이 둘러싸며, 원 안의 점 네 개만 파랗게 칠해진 그림" caption="k=5로 찾았지만 거리 상한 0.15(점선 원) 안에는 점이 네 개뿐이에요. 다섯째 자리는 거리 inf, 색인 40(트리의 점 수)으로 채워졌어요." />
+<Fig caption="k=5로 찾았지만 거리 상한 0.15(점선 원) 안에는 점이 넷뿐이에요. 다섯째 자리는 거리 inf와 색인 40(트리의 점 수)으로 채워져요.">
+  <PlaneFig
+    label="흩어진 점 40개와 가운데 질의점, 반지름 0.15의 점선 원 안에서 찾은 네 점에 순서 번호를 붙인 그림"
+    domain={[0, 1]}
+    range={[0, 1]}
+    xTicks={unitTicks}
+    yTicks={unitTicks}
+    width={420}
+    layers={[
+      { kind: 'points', pts: ubPts, tone: 'faint', size: 3 },
+      { kind: 'circle', at: [0.5, 0.5], r: 0.15, tone: 'base', dashed: true },
+      { kind: 'text', at: [0.5, 0.65], text: '상한 0.15', dy: -6, anchor: 'middle' },
+      { kind: 'points', pts: ubHit, tone: 'main', size: 3.8, labels: ["1", "2", "3", "4"] },
+      { kind: 'points', pts: [[0.5, 0.5]], tone: 'ink', shape: 'cross', size: 4 },
+    ]}
+    legend={[
+      { label: '점', tone: 'faint', shape: 'dot' },
+      { label: '찾은 이웃', tone: 'main', shape: 'dot' },
+      { label: '질의점', tone: 'ink', shape: 'cross' },
+    ]}
+  />
+</Fig>
 
 상한과 거리가 같은 점은 빠져요. 거리 r **이하**의 점을 모두 찾는 [`query_ball_point`](/api/spatial/query_ball_point/)와 경계를 다루는 방법이 달라요.
 

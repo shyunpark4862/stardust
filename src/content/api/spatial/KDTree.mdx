@@ -28,7 +28,12 @@ raises:
 seeAlso: [query, query_ball_point, query_ball_tree, query_pairs, count_neighbors, sparse_distance_matrix, kneighbors, radius_neighbors, basics, results]
 ---
 import Callout from '../../../components/Callout.astro';
-import PlotImage from '../../../components/fig/PlotImage.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import PlaneFig from '../../../components/fig/PlaneFig.astro';
+
+export const unitTicks = [{ v: 0, label: '0' }, { v: 0.25, label: '' }, { v: 0.5, label: '0.5' }, { v: 0.75, label: '' }, { v: 1, label: '1' }];
+export const shopPts = [[0.25347, 0.57656], [0.95204, 0.42056], [0.25501, 0.66551], [0.73646, 0.97232], [0.71304, 0.38797], [0.28333, 0.97608], [0.50954, 0.61759], [0.86777, 0.02518], [0.17941, 0.59658], [0.48411, 0.42498], [0.32398, 0.47397], [0.8798, 0.15512], [0.31812, 0.41552], [0.65258, 0.09605], [0.57208, 0.65274], [0.23814, 0.20606], [0.96342, 0.59899], [0.82391, 0.36582], [0.92311, 0.27161], [0.06396, 0.89176], [0.01711, 0.9452], [0.02853, 0.99133], [0.82521, 0.90694], [0.48867, 0.75974], [0.56639, 0.79547], [0.81745, 0.01596], [0.62143, 0.35882], [0.93599, 0.20315], [0.26274, 0.46218], [0.2697, 0.58395], [0.7797, 0.38357], [0.64167, 0.20516], [0.49856, 0.20449], [0.76738, 0.89694], [0.45049, 0.62204], [0.57656, 0.51539], [0.04891, 0.41911], [0.37857, 0.96373], [0.19569, 0.72184], [0.53409, 0.31383], [0.2001, 0.25428], [0.39171, 0.31446], [0.97053, 0.04238], [0.27566, 0.18644], [0.91916, 0.46002], [0.71332, 0.83536], [0.15791, 0.44135], [0.59744, 0.15005], [0.28207, 0.69706], [0.58408, 0.12579], [0.77776, 0.08208], [0.74162, 0.51846], [0.14391, 0.95613], [0.3863, 0.0773], [0.52257, 0.93491], [0.47923, 0.40132], [0.36631, 0.51146], [0.24677, 0.37804], [0.31585, 0.33076], [0.23716, 0.27415]];
+export const shopNear = [[0.36631, 0.51146], [0.45049, 0.62204], [0.50954, 0.61759], [0.32398, 0.47397], [0.48411, 0.42498]];
 
 ## 한눈에 보기
 
@@ -56,18 +61,28 @@ array([[0.3663067970033914, 0.5114570440506139],
 
 `d`는 가까운 순서의 거리, `i`는 그 가게가 `shops`의 몇째 행인지예요. 56번 가게가 가장 가깝고 거리는 약 0.066이에요.
 
-```python
->>> t = sd.linspace(0, 2 * 3.141592653589793, 200)
->>> d5, i5 = tree.query([0.42, 0.55], k=5)
->>> fig = sd.plot.Figure(width=80, height=86)
->>> fig = fig.scatter(shops[:, 0], shops[:, 1], color="gray", size=4, label="가게")
->>> fig = fig.line(0.42 + d5[4] * sd.cos(t), 0.55 + d5[4] * sd.sin(t), color="gray", style="--", width=0.6)
->>> fig = fig.scatter(shops[i5, 0], shops[i5, 1], size=5, label="가까운 5곳")
->>> fig = fig.scatter([0.42], [0.55], shape="x", size=7, color="black", label="집")
->>> fig = fig.xlim(0, 1).ylim(0, 1).legend(loc="top")
-```
 
-<PlotImage name="kdtree-nearest" alt="0과 1 사이의 네모 안에 회색 점 60개가 흩어져 있고, 가운데 왼쪽의 가위표(집) 둘레에 파란 점 다섯 개와 다섯째 점을 지나는 점선 원이 그려진 그림" caption="집(가위표)에서 가장 가까운 가게 다섯 곳. 점선 원의 반지름이 다섯째 거리예요. 원 안에는 다섯 곳만 있어요." />
+<Fig caption="집(×)에서 가장 가까운 가게 다섯 곳과 그 순서. 점선 원의 반지름이 다섯째 거리라 원 안에는 다섯 곳만 들어 있어요.">
+  <PlaneFig
+    label="흩어진 가게 60곳 가운데 집에서 가까운 다섯 곳에 순서 번호를 붙인 그림"
+    domain={[0, 1]}
+    range={[0, 1]}
+    xTicks={unitTicks}
+    yTicks={unitTicks}
+    width={420}
+    layers={[
+      { kind: 'points', pts: shopPts, tone: 'faint', size: 2.8 },
+      { kind: 'circle', at: [0.42, 0.55], r: 0.1405, tone: 'base', dashed: true },
+      { kind: 'points', pts: shopNear, tone: 'main', size: 3.8, labels: ["1", "2", "3", "4", "5"] },
+      { kind: 'points', pts: [[0.42, 0.55]], tone: 'ink', shape: 'cross', size: 4 },
+    ]}
+    legend={[
+      { label: '가게', tone: 'faint', shape: 'dot' },
+      { label: '가까운 5곳', tone: 'main', shape: 'dot' },
+      { label: '집', tone: 'ink', shape: 'cross' },
+    ]}
+  />
+</Fig>
 
 <Reference />
 

@@ -35,7 +35,18 @@ raises:
     desc: 결과 배열이 이 기계의 물리 메모리보다 클 때.
 seeAlso: [metrics, euclidean, cityblock, chebyshev, cdist, kneighbors, KDTree]
 ---
-import PlotImage from '../../../components/fig/PlotImage.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import PlaneFig from '../../../components/fig/PlaneFig.astro';
+
+export const unitBall = (p) =>
+  Array.from({ length: 721 }, (_, k) => {
+    const t = (2 * Math.PI * k) / 720;
+    const c = Math.cos(t);
+    const s = Math.sin(t);
+    const n = p === Infinity ? Math.max(Math.abs(c), Math.abs(s)) : (Math.abs(c) ** p + Math.abs(s) ** p) ** (1 / p);
+    return [c / n, s / n];
+  });
+export const ballPs = [[0.5, 'p = 0.5'], [1, 'p = 1'], [2, 'p = 2'], [Infinity, 'p = ∞']];
 
 ## 한눈에 보기
 
@@ -69,18 +80,26 @@ p를 고르는 것은 "차이가 여러 좌표에 고루 퍼진 것"과 "한 좌
 
 ### 원점에서 거리 1인 점들
 
-평면에서 원점과의 거리가 1인 점들을 이으면 p마다 모양이 달라요. 거리 함수가 배치를 받으니, 격자 위의 점을 한 번에 넘겨 [`sd.plot.implicit`](/api/plot/implicit/)으로 거리 1의 곡선을 그릴 수 있어요.
+평면에서 원점과의 거리가 1인 점들을 이으면 p마다 모양이 달라요.
 
-```python
->>> def dist_from_origin(p):
-...     return lambda x, y: sd.spatial.minkowski(sd.stack([x, y], axis=-1), [0.0, 0.0], p=p)
->>> fig = sd.plot.Figure(width=110.0, height=80.0)
->>> for p, name in [(0.5, "0.5"), (1, "1"), (1.5, "1.5"), (2, "2"), (3, "3"), (sd.inf, r"\infty")]:
-...     fig = fig.implicit(dist_from_origin(p), -1.2, 1.2, -1.2, 1.2, level=1.0, label=f"$p = {name}$")
->>> fig = fig.xlabel("$z_1$").ylabel("$z_2$").legend(loc="right")
-```
 
-<PlotImage name="minkowski-unit-balls" alt="원점을 둘러싼 닫힌 곡선 여섯. p = 0.5는 네 꼭짓점이 축 위에 있고 안으로 오목한 별 모양, p = 1은 마름모, p = 1.5는 둥근 마름모, p = 2는 원, p = 3은 모서리가 둥근 정사각형, p = ∞는 꼭짓점이 (±1, ±1)인 정사각형이에요. 모든 곡선이 축 위의 네 점 (±1, 0), (0, ±1)을 지나요" caption="원점에서 거리가 1인 점들이에요. p = 1은 마름모, p = 2는 원, p = ∞는 정사각형이고, p가 커질수록 곡선이 바깥 정사각형 쪽으로 부풀어요. p = 0.5의 곡선은 안으로 오목해서, 그 안의 영역이 볼록하지 않아요." />
+<Fig caption="원점에서 거리가 1인 점들. 곡선이 대각선과 만나는 곳에 p를 적었어요. p = 1은 마름모, p = 2는 원, p = ∞는 정사각형이고, p가 커질수록 곡선이 바깥 정사각형 쪽으로 부풀어요. p = 0.5의 곡선은 안으로 오목해서, 그 안의 영역이 볼록하지 않아요.">
+  <PlaneFig
+    label="원점에서 민코프스키 거리 1인 곡선 네 개(p = 0.5, 1, 2, 무한대)"
+    domain={[-1.3, 1.3]}
+    range={[-1.3, 1.3]}
+    xTicks={[-1, 0, 1]}
+    yTicks={[-1, 0, 1]}
+    width={420}
+    layers={[
+      ...ballPs.map(([p], k) => ({ kind: 'line', pts: unitBall(p), tone: k ? 'main' : 'soft', width: 1.8 })),
+      ...ballPs.map(([p, name]) => {
+        const s = p === Infinity ? 1 : 2 ** (-1 / p);
+        return { kind: 'text', at: [s, s], text: name, dx: 7, dy: 4 };
+      }),
+    ]}
+  />
+</Fig>
 
 모든 곡선이 축 위의 네 점을 지나는 것은 좌표 하나만 다를 때는 p와 상관없이 거리가 그 차이 하나이기 때문이에요. 대각선 방향으로 갈수록 p에 따라 거리가 달라져요.
 

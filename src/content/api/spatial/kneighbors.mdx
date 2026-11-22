@@ -59,7 +59,13 @@ raises:
     desc: k가 int64의 범위를 넘을 때.
 seeAlso: [radius_neighbors, results, cdist, KDTree, query, basics, metrics]
 ---
-import PlotImage from '../../../components/fig/PlotImage.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import PlaneFig from '../../../components/fig/PlaneFig.astro';
+
+export const unitTicks = [{ v: 0, label: '0' }, { v: 0.25, label: '' }, { v: 0.5, label: '0.5' }, { v: 0.75, label: '' }, { v: 1, label: '1' }];
+export const knXA = [[0.3, 0.7], [0.75, 0.35]];
+export const knXB = [[0.60438, 0.34838], [0.97665, 0.53318], [0.46882, 0.42615], [0.36298, 0.23735], [0.13874, 0.51199], [0.30276, 0.98595], [0.10071, 0.76021], [0.80231, 0.52774], [0.10272, 0.03733], [0.14037, 0.0238], [0.9327, 0.43799], [0.68947, 0.557], [0.84121, 0.97173], [0.42063, 0.81572], [0.6074, 0.70903], [0.6149, 0.51393], [0.7331, 0.76378], [0.52127, 0.70575], [0.68229, 0.80505], [0.17997, 0.72424], [0.20964, 0.93538], [0.9149, 0.66987], [0.25785, 0.20174], [0.73068, 0.44907], [0.23696, 0.77304], [0.54204, 0.36378], [0.91452, 0.2095], [0.72085, 0.74976], [0.00991, 0.2972], [0.92586, 0.57481], [0.28724, 0.59949], [0.89076, 0.94835], [0.662, 0.17363], [0.51426, 0.95673], [0.22224, 0.44334], [0.77633, 0.77456], [0.40405, 0.4839], [0.74051, 0.89574], [0.48378, 0.48578], [0.14888, 0.57494]];
+export const knLinks = [[0.3, 0.7, 0.23696, 0.77304], [0.3, 0.7, 0.28724, 0.59949], [0.3, 0.7, 0.17997, 0.72424], [0.3, 0.7, 0.42063, 0.81572], [0.75, 0.35, 0.73068, 0.44907], [0.75, 0.35, 0.60438, 0.34838], [0.75, 0.35, 0.80231, 0.52774], [0.75, 0.35, 0.662, 0.17363]];
 
 ## 한눈에 보기
 
@@ -83,20 +89,29 @@ array([[0.09648183758079247, 0.10131936228143196, 0.12245073195627522,
 
 질의점 (0.3, 0.7)에서 가장 가까운 점은 `XB`의 24번 점이고 거리가 약 0.096이에요. 그다음이 30, 19, 13번이에요. 행마다 가까운 순서로 줄을 서요.
 
-```python
->>> xs, ys = [], []
->>> for a in range(2):
-...     for j in i[a].tolist():
-...         xs += [float(XA[a, 0]), float(XB[j, 0]), sd.nan]
-...         ys += [float(XA[a, 1]), float(XB[j, 1]), sd.nan]
->>> fig = sd.plot.Figure(width=80, height=76)
->>> fig = fig.line(xs, ys, color="gray")
->>> fig = fig.scatter(XB[:, 0], XB[:, 1], label="XB")
->>> fig = fig.scatter(XA[:, 0], XA[:, 1], shape="s", size=4, label="XA")
->>> fig = fig.xlim(0, 1).ylim(0, 1).legend(loc="top")
-```
 
-<PlotImage name="kneighbors-k4" alt="단위 정사각형 안에 흩어진 파란 점 40개와 노란 네모 질의점 두 개. 질의점마다 가장 가까운 파란 점 네 개까지 회색 선이 이어져 있어요." caption="kneighbors(XA, XB, k=4)가 고른 이웃. 질의점마다 가장 가까운 점 넷까지 선을 그었어요." />
+<Fig caption="kneighbors(XA, XB, k=4)가 고른 이웃. 질의점(■)마다 가장 가까운 점 넷까지 선을 긋고, 가까운 순서로 번호를 붙였어요.">
+  <PlaneFig
+    label="흩어진 점 40개와 질의점 두 개, 질의점마다 가장 가까운 네 점까지 이은 선"
+    domain={[0, 1]}
+    range={[0, 1]}
+    xTicks={unitTicks}
+    yTicks={unitTicks}
+    width={420}
+    layers={[
+      { kind: 'segments', segs: knLinks, tone: 'base' },
+      { kind: 'points', pts: knXB, tone: 'faint', size: 3 },
+      { kind: 'points', pts: [[0.23696, 0.77304], [0.28724, 0.59949], [0.17997, 0.72424], [0.42063, 0.81572]], tone: 'main', size: 3.8, labels: ["1", "2", "3", "4"] },
+      { kind: 'points', pts: [[0.73068, 0.44907], [0.60438, 0.34838], [0.80231, 0.52774], [0.662, 0.17363]], tone: 'main', size: 3.8, labels: ["1", "2", "3", "4"] },
+      { kind: 'points', pts: knXA, tone: 'ink', shape: 'square', size: 4 },
+    ]}
+    legend={[
+      { label: 'XB', tone: 'faint', shape: 'dot' },
+      { label: '고른 이웃', tone: 'main', shape: 'dot' },
+      { label: 'XA', tone: 'ink', shape: 'square' },
+    ]}
+  />
+</Fig>
 
 <Reference />
 

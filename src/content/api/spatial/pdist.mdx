@@ -47,7 +47,6 @@ seeAlso: [squareform, cdist, metrics, basics, kneighbors, query_pairs]
 ---
 import Fig from '../../../components/fig/Fig.astro';
 import ArrayFig from '../../../components/fig/ArrayFig.astro';
-import PlotImage from '../../../components/fig/PlotImage.astro';
 
 ## 한눈에 보기
 
@@ -215,11 +214,18 @@ ValueError: pdist(): the default 'VI' needs more observations than columns, not 
 >>> km = sd.spatial.pdist(P, metric="haversine") * 6371.0
 >>> sd.round(km[:5])
 array([ 325.0, 1149.0,  952.0,  866.0,  829.0], dtype=float64)
->>> D = sd.round(sd.spatial.squareform(km))
->>> fig = sd.plot.heatmap(D, xlabels=names, ylabels=names, annotate=".0f")
 ```
 
-<PlotImage name="pdist-cities" alt="서울, 부산, 도쿄, 베이징, 상하이, 오사카 여섯 도시 사이의 거리를 킬로미터로 적은 6×6 열지도. 대각선은 0이고, 가장 먼 짝은 도쿄와 베이징의 2089 km, 가장 가까운 짝은 서울과 부산의 325 km예요." caption="pdist로 구한 여섯 도시 사이의 거리(km)를 squareform으로 펼쳐 그린 것이에요." />
+squareform으로 펼쳐 여섯 도시 사이의 거리(km)를 표로 보면 이래요. 가장 가까운 짝은 서울과 부산(325 km), 가장 먼 짝은 도쿄와 베이징(2,089 km)이에요.
+
+| | 서울 | 부산 | 도쿄 | 베이징 | 상하이 | 오사카 |
+|---|---:|---:|---:|---:|---:|---:|
+| **서울** | · | 325 | 1,149 | 952 | 866 | 829 |
+| **부산** | 325 | · | 959 | 1,233 | 832 | 588 |
+| **도쿄** | 1,149 | 959 | · | 2,089 | 1,754 | 392 |
+| **베이징** | 952 | 1,233 | 2,089 | · | 1,067 | 1,781 |
+| **상하이** | 866 | 832 | 1,754 | 1,067 | · | 1,363 |
+| **오사카** | 829 | 588 | 392 | 1,781 | 1,363 | · |
 
 서울에서 부산까지 약 325 km, 도쿄까지 약 1149 km예요. 지구를 완전한 구로 본 거리라 타원체로 잰 실제 거리와는 0.5% 안팎까지 다를 수 있어요. 위도와 경도를 도 단위 그대로 넣으면 틀린 값이 나오니 꼭 라디안으로 바꿔 넣으세요. 자세한 것은 [`haversine`](/api/spatial/haversine/)에 있어요.
 

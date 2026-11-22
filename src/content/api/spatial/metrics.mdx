@@ -6,7 +6,8 @@ order: 1
 summary: sd.spatial의 열네 가지 거리를 한 표로 견줘요. 거리마다의 정의와 어울리는 자료, 가중치 w를 받는지, 경계의 값, 이웃 찾기에서 쓰는 법을 정리하고, 모든 거리 함수가 함께 따르는 배치 규칙 (…, n)과 거리 이름 문자열(metric='…')과 거리 함수의 관계를 설명해요.
 seeAlso: [euclidean, cityblock, chebyshev, minkowski, seuclidean, mahalanobis, cosine, hamming, haversine, pdist, cdist, kneighbors, KDTree]
 ---
-import PlotImage from '../../../components/fig/PlotImage.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import PlaneFig from '../../../components/fig/PlaneFig.astro';
 
 ## 한눈에 보기
 
@@ -21,17 +22,31 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
 
 직선으로 가면 5, 가로세로로만 꺾어 가면 7, 체스의 킹처럼 대각선 걸음을 쓰면 4예요.
 
-```python
->>> fig = sd.plot.Figure(width=80.0, height=90.0)
->>> fig = fig.line([0, 3, 3], [0, 0, 4], label="cityblock 7")
->>> fig = fig.line([0, 1, 1, 2, 2, 3, 3], [0, 0, 2, 2, 3, 3, 4], color="C0")
->>> fig = fig.line([0, 3], [0, 4], color="C2", style="--", label="euclidean 5")
->>> fig = fig.line([0, 3, 3], [0, 3, 4], color="C3", style=":", label="chebyshev 4")
->>> fig = fig.scatter([0, 3], [0, 4], color="black", size=5)
->>> fig = fig.xticks([0, 1, 2, 3]).yticks([0, 1, 2, 3, 4]).xlim(-0.5, 3.5).ylim(-0.5, 4.5).legend(loc="top")
-```
 
-<PlotImage name="metrics-three-paths" alt="격자 위의 두 검은 점 (0, 0)과 (3, 4) 사이를 잇는 길 넷. 파란 실선 둘은 가로세로로만 꺾어 가는 계단 길이고, 회색 점선은 두 점을 곧게 잇는 선분, 붉은 점선은 대각선으로 (3, 3)까지 간 뒤 위로 한 칸 오르는 길이에요" caption="같은 두 점의 세 거리예요. 파란 계단 길은 어느 것이든 가로 3과 세로 4를 더한 7(cityblock), 회색 선분은 5(euclidean), 붉은 길은 대각선 세 걸음과 세로 한 걸음으로 4(chebyshev)예요." />
+<Fig caption="같은 두 점의 세 거리. 가로세로로만 꺾어 가는 파란 계단 길은 어느 것이든 가로 3과 세로 4를 더한 7(cityblock), 곧은 점선은 5(euclidean), 대각선 세 걸음과 세로 한 걸음의 연한 파란 길은 4(chebyshev)예요.">
+  <PlaneFig
+    label="격자 위의 두 점 (0, 0)과 (3, 4)를 잇는 계단 길 둘, 곧은 선분, 대각선으로 가는 길"
+    domain={[-0.5, 3.5]}
+    range={[-0.5, 4.5]}
+    xTicks={[0, 1, 2, 3]}
+    yTicks={[0, 1, 2, 3, 4]}
+    width={340}
+    layers={[
+      { kind: 'line', pts: [[0, 0], [3, 0], [3, 4]], tone: 'main', width: 2 },
+      { kind: 'line', pts: [[0, 0], [1, 0], [1, 2], [2, 2], [2, 3], [3, 3], [3, 4]], tone: 'main', width: 2 },
+      { kind: 'line', pts: [[0, 0], [3, 3], [3, 4]], tone: 'soft', width: 2.4 },
+      { kind: 'line', pts: [[0, 0], [3, 4]], tone: 'base', dashed: true, width: 1.8 },
+      { kind: 'points', pts: [[0, 0], [3, 4]], tone: 'ink', size: 4.5 },
+      { kind: 'text', at: [0, 0], text: '(0, 0)', dx: -8, dy: 18, anchor: 'start' },
+      { kind: 'text', at: [3, 4], text: '(3, 4)', dx: -10, dy: -10, anchor: 'end' },
+    ]}
+    legend={[
+      { label: 'cityblock 7', tone: 'main', shape: 'line' },
+      { label: 'euclidean 5', tone: 'base', shape: 'dash' },
+      { label: 'chebyshev 4', tone: 'soft', shape: 'line' },
+    ]}
+  />
+</Fig>
 
 어느 거리가 "맞는지"는 자료가 정해요. 지도 위의 직선 거리를 묻는다면 5, 바둑판 길을 걷는다면 7, 모든 좌표가 얼마 안에 드는지를 묻는다면 4가 답이에요. `sd.spatial`에는 이런 거리가 열네 가지 있고, 이 페이지는 그 가운데 무엇을 고를지와 모든 거리 함수가 함께 따르는 규칙을 정리해요.
 
