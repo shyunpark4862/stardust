@@ -227,3 +227,43 @@ FIGURES.update(
         "checks": checks,
     }
 )
+
+
+def counted(font):
+    """hist2d and hexbin of a fixed cloud, side by side."""
+    t = sd.linspace(0.0, 1.0, 400)
+    x = sd.sin(t * 37.0) + 0.3 * sd.cos(t * 91.0)
+    y = 0.6 * x + 0.5 * sd.sin(t * 53.0)
+    return P.grid([P.hist2d(x, y, bins=20, font=font), P.hexbin(x, y, size=12, font=font)], ncols=2, width=160)
+
+
+def flows(font):
+    """A vector field's arrows and its streamlines."""
+    fu, fv = (lambda x, y: y), (lambda x, y: x - x**3 - 0.3 * y)
+    arrows = P.vectorfield(fu, fv, -2, 2, -1.5, 1.5, samples=11, font=font)
+    lines = P.streamlines(fu, fv, -2, 2, -1.5, 1.5, cells=12, font=font)
+    return P.grid([arrows, lines], ncols=2, width=160)
+
+
+def layout(font):
+    """Shared axes over facets, a second y axis, an inset, and the bar options."""
+    df = sd.frame.DataFrame(
+        {"a": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0], "b": [2.0, 1.0, 4.0, 3.0, 6.0, 5.0], "g": ["u", "u", "v", "v", "w", "w"]}
+    )
+    grid = P.facet(df, "g", font=font).scatter("a", "b").figure
+    bars = P.bar(
+        ["x", "y", "x", "y"],
+        [2.0, 3.0, 4.0, 1.0],
+        group=["a", "a", "b", "b"],
+        err=[0.2, 0.3, 0.4, 0.1],
+        annotate=True,
+        font=font,
+    )
+    bars.twin().line([0.0, 1.0], [10.0, 30.0])
+    bars.inset(P.line([0.0, 1.0], [1.0, 0.0], font=font), (0.6, 0.6, 0.35, 0.35))
+    return grid, bars
+
+
+FIGURES.update(
+    {"counted": counted, "flows": flows, "facets": lambda font: layout(font)[0], "extras": lambda font: layout(font)[1]}
+)

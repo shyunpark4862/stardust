@@ -122,7 +122,7 @@ def test_missing_tool_message(monkeypatch):
     monkeypatch.setenv("PATH", str(pathlib.Path("/nonexistent")))
     with pytest.raises(
         _text.MissingTool,
-        match=r"sd.plot needs 'latex', 'xelatex', 'dvisvgm' and 'kpsewhich' \(TeX Live\) on PATH; "
+        match=r"sd.plot needs 'latex', 'xelatex', 'tex', 'xetex', 'dvisvgm' and 'kpsewhich' \(TeX Live\) on PATH; "
         "'latex' was not found",
     ):
         _text.tool("latex")

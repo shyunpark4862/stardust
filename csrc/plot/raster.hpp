@@ -27,7 +27,7 @@ inline constexpr double kFlatness = 0.05;    // pixels a flattened curve may lea
 inline constexpr double kMiterLimit = 10.0;  // miter length over half the width beyond which a join is a bevel
 
 enum class Cap { Butt = 0, Round = 1, Square = 2 };
-enum class Join { Miter = 0, Round = 1 };
+enum class Join { Miter = 0, Round = 1, Bevel = 2 };
 
 // A clip rectangle in pixels; edges may fall inside pixels (coverage is scaled there).
 struct Clip {
@@ -50,7 +50,8 @@ public:
         std::size_t nxy,
         const double m[6],
         const float rgba[4],
-        const Clip* clip
+        const Clip* clip,
+        bool evenodd = false  // the even-odd rule (else non-zero)
     );
     // width in pixels; dash: on/off lengths in pixels (ndash 0: solid).
     void stroke(
@@ -110,7 +111,7 @@ private:
     };
     bool begin(Window& win, double x0, double y0, double x1, double y1, const Clip* clip, int rmin, int rmax) const;
     static void edge(Window& win, double x0, double y0, double x1, double y1);
-    void composite(Window& win, const float rgba[4], const Clip* clip);
+    void composite(Window& win, const float rgba[4], const Clip* clip, bool evenodd = false);
 
     int w_, h_;
     std::vector<float> px_;   // 4 floats a pixel
@@ -121,6 +122,11 @@ private:
 // column of width `column`, the first, the lowest, the highest and the last are kept. Nothing
 // wider than a column changes. xy: n points (x, y); returns the kept points.
 std::vector<double> decimate(const double* xy, std::size_t n, double column);
+
+// A polyline (n points, x y pairs) with the points left out that lie within `tol` of the line
+// through their kept neighbours (Ramer-Douglas-Peucker): the drawn curve moves by at most tol.
+// The first and last points are kept; a closed polyline stays closed.
+std::vector<double> simplify(const double* xy, std::size_t n, double tol);
 
 // The text of a path for a vector file: SVG path data ("M1 2L3 4Z"), or with `pdf` the PDF
 // construction operators one a line ("1 2 m", a quadratic as the same cubic, "h"). Numbers have

@@ -76,12 +76,16 @@ def write(scene, dpi=300.0):
             body.append(f"<g{attr}{clip_attr(item.clip)}>{uses}</g>")
         elif isinstance(item, _scene.Path):
             attr = _paint("fill", item.fill)
+            if item.fill is not None and item.rule == "evenodd":
+                attr += ' fill-rule="evenodd"'
             if item.stroke is not None:
                 attr += _paint("stroke", item.stroke) + f' stroke-width="{num(item.width)}"'
                 if item.cap != "butt":
                     attr += f' stroke-linecap="{item.cap}"'
                 if item.join != "miter":
                     attr += f' stroke-linejoin="{item.join}"'
+                elif "L" in item.ops[2:]:  # a corner: the miter limit of the PNG and the PDF (SVG's own is 4)
+                    attr += ' stroke-miterlimit="10"'
                 if item.dash:
                     attr += f' stroke-dasharray="{" ".join(num(v) for v in item.dash)}"'
             attr += clip_attr(item.clip)

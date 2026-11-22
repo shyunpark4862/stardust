@@ -99,7 +99,11 @@ def test_bars_on_a_category_axis_stand_on_zero():
 def test_grouped_bars_stand_side_by_side_and_horizontal_bars_swap_the_axes():
     fig = P.bar(["Group A", "Residuals"] * 2, [1.0, 2.0, 3.0, 4.0], group=["x", "x", "y", "y"])
     a, b = fig._cell.layers
-    assert a.width == b.width == 0.4 and a.pos.tolist() == [-0.2, 0.8] and b.pos.tolist() == [0.2, 1.2]
+    assert (
+        a.width == b.width == pytest.approx(0.4 * 0.9)
+        and a.pos.tolist() == [-0.2, 0.8]
+        and b.pos.tolist() == [0.2, 1.2]
+    )
     h = P.bar(["Group A", "Residuals"], [1.0, 2.0], horizontal=True)
     m = measure(h)
     assert m.ya.labels == ["Group A", "Residuals"] and m.xa.lo == 0.0
@@ -285,7 +289,9 @@ def test_a_long_line_is_thinned_and_a_large_scatter_is_a_picture_in_the_vector_f
     assert min(xs) == pytest.approx(frame[0] + frame[2] * 0.04 / 1.08, abs=0.5)  # the same extent as the data
     assert max(ys) - min(ys) == pytest.approx(frame[3] / 1.08, rel=0.02)
     short = P.line(x[:5000], y[:5000])
-    assert len(data_paths(short)[0].ops) == 5000  # a short line is drawn point for point
+    assert 3000 < len(data_paths(short)[0].ops) < 5000  # visible wiggles kept, points on a straight run left out
+    smooth = P.line(x[:5000], sd.sin(x[:5000]))
+    assert len(data_paths(smooth)[0].ops) < 400  # a smooth curve: a few points a bp
 
     from stardust.plot import _png
 
@@ -297,3 +303,39 @@ def test_a_long_line_is_thinned_and_a_large_scatter_is_a_picture_in_the_vector_f
     small = P.scatter(sd.linspace(0.0, 1.0, 500), sd.sin(sd.linspace(0.0, 50.0, 500))).to_svg()
     assert small.count("<use ") >= 500 and "data:image" not in small  # a small one stays vector
     assert len(items(big, _scene.Markers)[0].at) == 2 * m  # the scene itself keeps the points
+
+
+def test_bar_gaps_stacks_errors_and_values():
+    from stardust.plot import _basic
+
+    x, g = ["Q1", "Q2"] * 2, ["Group A"] * 2 + ["Residuals"] * 2
+    h = [2.0, 3.0, 4.0, -1.0]
+    side = P.bar(x, h, group=g)
+    a, b = side._cell.layers
+    assert a.width == pytest.approx(0.4 * 0.9) and float(b.pos[0] - a.pos[0]) == pytest.approx(0.4)  # a gap between
+    assert P.bar(x, h, group=g, gap=0.0)._cell.layers[0].width == pytest.approx(0.4)
+    stacked = P.bar(x, h, group=g, stack=True)
+    low, high = stacked._cell.layers
+    assert high.base.tolist() == [2.0, 0.0] and high.pos.tolist() == low.pos.tolist()  # on top; a negative goes down
+    assert stacked._cell.layers[1].extent("y", False)[:2] == (-1.0, 6.0)
+    err = P.bar(["Q1", "Q2"], [2.0, 3.0], err=([0.5, 0.2], [1.0, 0.3]))
+    lo, hi = err._cell.layers[0].err
+    assert lo.tolist() == [1.5, 2.8] and hi.tolist() == [3.0, 3.3]
+    sym = P.bar(["Q1", "Q2"], [2.0, 3.0], err=[0.5, 0.2])._cell.layers[0].err
+    assert sym[0].tolist() == [1.5, 2.8] and sym[1].tolist() == [2.5, 3.2]
+    assert (
+        _basic.value_text(0.1234, ".1%", "bar") == r"$12.3\%$"
+        and _basic.value_text(12345.0, ",.0f", "bar") == "$12{,}345$"
+    )
+    assert _basic.value_text(1.2e-5, True, "bar") == r"$1.2\times10^{-5}$"
+    marked = P.bar(["Q1", "Q2"], [2.0, 3.0], annotate=True)._cell.layers[0]
+    assert marked.text == ["$2$", "$3$"] and marked.strings() == ["$2$", "$3$"]
+    for kw, kind, text in (
+        (dict(gap=1.0), ValueError, "'gap' must be in [0, 1)"),
+        (dict(stack=True, err=[1.0, 1.0]), ValueError, "'err' cannot be given for stacked bars"),
+        (dict(err=[-1.0, 1.0]), ValueError, "'err' must not be negative"),
+        (dict(annotate=3), TypeError, "'annotate' must be a bool or a format spec string, not int"),
+        (dict(annotate="q"), ValueError, "'annotate' is not a format spec for numbers: 'q'"),
+    ):
+        with pytest.raises(kind, match=text.replace("(", r"\(").replace(")", r"\)").replace("[", r"\[")):
+            P.bar(["Q1", "Q2"], [2.0, 3.0], **kw)

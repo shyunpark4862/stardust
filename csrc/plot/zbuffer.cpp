@@ -304,7 +304,7 @@ std::vector<std::uint8_t> render3(
                 o[3] = static_cast<float>(al);
             });
         }
-        if (!peel) {  // nothing translucent but the lines: they are painted over, in their order
+        if (!peel) {  // nothing translucent but the lines: lines and points test and keep the depth, in their order
             for (const Quad& q : quads) {
                 each_quad(q, r0, r1, [&](std::size_t at2, float d) {
                     if (d + bias < depth[at2]) return;
@@ -313,7 +313,7 @@ std::vector<std::uint8_t> render3(
                         mark[at2] = q.strip;
                     }
                     over(at2, q.rgba);
-                    if (q.disc && d > depth[at2]) depth[at2] = d;  // a point hides what is behind it
+                    if (d > depth[at2]) depth[at2] = d;  // a line or a point hides what lies behind it
                 });
             }
             return;

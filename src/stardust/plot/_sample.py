@@ -51,8 +51,8 @@ def robust_range(v):
         return lo, hi, False, False
     q10, q50, q90 = (float(q) for q in sd.quantile(w, sd.asarray([0.1, 0.5, 0.9])))
     spread = q90 - q10
-    if spread <= 0.0:
-        spread = max(abs(q50), 1.0) * 1e-9
+    if spread <= 0.0:  # most values alike (a function nearly everywhere constant): the full range
+        return lo, hi, False, False
     clip_hi = hi - q90 > 4.0 * spread
     clip_lo = q10 - lo > 4.0 * spread
     return (q10 - spread if clip_lo else lo), (q90 + spread if clip_hi else hi), clip_lo, clip_hi
@@ -163,6 +163,11 @@ def refine(g, t, x, y, xr, yr, depth=DEPTH):
     # (without refinement nothing was narrowed down: a steep segment is not known to be a break)
     brk = both & narrow & ((dv > JUMP) | (du > JUMP)) & (depth > 0)
     idx = [int(i) for i in sd.nonzero(brk)[0].tolist()]
+    # a steep step beside the end of the domain is the curve running into that end (ln x at 0),
+    # not a break in it
+    nfin = fin.shape[0]
+    flags = bytes(memoryview(fin))
+    idx = [i for i in idx if all(flags[k] for k in range(max(0, i - 4), min(nfin, i + 6)))]
     c.breaks, c.poles, c.jumps = idx, [], []
     last_t, last_kind = None, None
     for i in idx:

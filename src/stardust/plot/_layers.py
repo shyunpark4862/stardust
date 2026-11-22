@@ -19,6 +19,7 @@ _RUN = re.compile(b"\x01+")
 EDGE_UPTO = 3000  # points up to which a scatter's markers get a white rim
 THIN_FROM = 8000  # points from which a line is thinned for drawing
 THIN_COLUMN = 0.05  # bp: a seventh of a pixel at 200 dpi, under half a pixel at 600
+SIMPLIFY = 0.02  # bp: how far a simplified line may move (a twentieth of a pixel at 200 dpi)
 
 
 def finite_range(a, positive=False):
@@ -50,9 +51,20 @@ def polyline(X, Y):
             thin = array("d")
             thin.frombytes(_core_plot.decimate(run.tobytes(), THIN_COLUMN))
             run = thin
+        run = simplified(run)
         ops.append("M" + "L" * (len(run) // 2 - 1))
         out.extend(run)
     return "".join(ops), out
+
+
+def simplified(run):
+    """A run of page points without those that lie within SIMPLIFY bp of the line through their
+    neighbours (no output can show the difference): a smooth curve keeps a few points a bp."""
+    if len(run) < 2 * 16:
+        return run
+    out = array("d")
+    out.frombytes(_core_plot.simplify(run.tobytes(), SIMPLIFY))
+    return out
 
 
 def points(X, Y):
@@ -188,7 +200,14 @@ class Scatter(Layer):
         return th["marker_size"] if self.size is None else self.size
 
     def draw(self, fr):
-        at = points(fr.tx(self.x), fr.ty(self.y))
+        X, Y = fr.tx(self.x), fr.ty(self.y)
+        # markers are not cut at the plot's edge, so points outside the axes' range are left out
+        # (they would stand in the margins, over the tick labels)
+        e = 1e-6 * max(fr.w, fr.h)
+        out = (X < fr.x - e) | (X > fr.x + fr.w + e) | (Y < fr.y - e) | (Y > fr.y + fr.h + e)
+        if bool(sd.any(out)):
+            X = sd.where(out, math.nan, X)
+        at = points(X, Y)
         if at:
             # markers are not cut at the plot's edge: a point on the edge shows whole
             edge, ew = self._edge(len(at) // 2, fr.theme)
@@ -213,36 +232,59 @@ class Scatter(Layer):
 
 
 class Bars(Layer):
-    """Rectangles from a base to a value at positions pos, each `width` wide (data units)."""
+    """Rectangles from a base to a value at positions pos, each `width` wide (data units). The
+    base is a number or an array (stacked bars stand on the ones below). `err`: (low, high) ends
+    of error bars (arrays of values), or None. `text`: a string per bar written at its end (a
+    stacked one: inside, in its middle), or None."""
 
-    def __init__(self, pos, value, base, width, horizontal, color, label):
+    def __init__(self, pos, value, base, width, horizontal, color, label, err=None, text=None, inside=False):
         self.pos, self.value, self.base, self.width = pos, value, base, width
         self.horizontal, self.color, self.label = horizontal, color, label
+        self.err, self.text, self.inside = err, text, inside
+
+    def _ends(self):
+        """The bars' far ends: the values (stacked: base + value)."""
+        return self.value if isinstance(self.base, float) else self.base + self.value
 
     def extent(self, axis, positive):
         along = (axis == "y") == self.horizontal  # the axis the positions lie on
         if along:
             r = finite_range(self.pos, positive)
             return None if r is None else (r[0] - self.width / 2, r[1] + self.width / 2, ())
-        r = finite_range(self.value, positive)
-        if r is None:
+        ends = [self._ends()] + ([] if isinstance(self.base, float) else [self.base])
+        if self.err is not None:
+            ends += list(self.err)
+        rs = [r for r in (finite_range(e, positive) for e in ends) if r is not None]
+        if not rs:
             return None
+        lo, hi = min(r[0] for r in rs), max(r[1] for r in rs)
+        if self.text is not None and not self.inside:
+            # room for the numbers beyond the bars' ends
+            pad = 0.1 * (hi - lo if hi > lo else abs(hi) or 1.0)
+            hi = hi + pad if hi > 0 else hi
+            lo = lo - pad if lo < 0 else lo
         if positive:
-            return (r[0], r[1], ())
-        return (min(r[0], self.base), max(r[1], self.base), (self.base,))
+            return (lo, hi, ())
+        base = self.base if isinstance(self.base, float) else 0.0
+        return (min(lo, base), max(hi, base), (base,))
 
     def draw(self, fr):
         half = self.width / 2
-        base = self.base
-        if (fr.xa if self.horizontal else fr.ya).scale == "log" and base <= 0.0:
-            base = (fr.xa if self.horizontal else fr.ya).lo
-        lo, hi = self.pos - half, self.pos + half
+        axis = fr.xa if self.horizontal else fr.ya
         v = self.value
-        b = sd.full(v.shape, base)
-        if self.horizontal:
-            x0, x1, y0, y1 = fr.tx(b), fr.tx(v), fr.ty(lo), fr.ty(hi)
+        if isinstance(self.base, float):
+            base = self.base
+            if axis.scale == "log" and base <= 0.0:
+                base = axis.lo
+            b = sd.full(v.shape, base)
+            end = v
         else:
-            x0, x1, y0, y1 = fr.tx(lo), fr.tx(hi), fr.ty(b), fr.ty(v)
+            b, end = self.base, self.base + v
+        lo, hi = self.pos - half, self.pos + half
+        if self.horizontal:
+            x0, x1, y0, y1 = fr.tx(b), fr.tx(end), fr.ty(lo), fr.ty(hi)
+        else:
+            x0, x1, y0, y1 = fr.tx(lo), fr.tx(hi), fr.ty(b), fr.ty(end)
         ok = bytes(memoryview(sd.isfinite(x0) & sd.isfinite(x1) & sd.isfinite(y0) & sd.isfinite(y1)))
         a0, a1, b0, b1 = (array("d", bytes(memoryview(a))) for a in (x0, x1, y0, y1))
         ops, xy = [], array("d")
@@ -261,14 +303,95 @@ class Bars(Layer):
                     clip=fr.clip,
                 )
             )
+        tips = None  # where the numbers start: the far end of the bar or of its error bar
+        if self.err is not None:
+            elo, ehi = self.err
+            p = self.pos
+            if self.horizontal:
+                X0, X1, Y = fr.tx(elo), fr.tx(ehi), fr.ty(p)
+                segs = (X0, Y, X1, Y)
+            else:
+                Y0, Y1, X = fr.ty(elo), fr.ty(ehi), fr.tx(p)
+                segs = (X, Y0, X, Y1)
+            cap = min(
+                3.0,
+                0.3
+                * abs(
+                    float((fr.ty(p[:1] + half) - fr.ty(p[:1]))[0])
+                    if self.horizontal
+                    else float((fr.tx(p[:1] + half) - fr.tx(p[:1]))[0])
+                ),
+            )
+            eops, exy = [], array("d")
+            for i in range(v.shape[0]):
+                q = [float(c[i]) for c in segs]
+                if not all(math.isfinite(c) for c in q):
+                    continue
+                if self.horizontal:
+                    exy.extend(
+                        (q[0], q[1], q[2], q[3], q[0], q[1] - cap, q[0], q[1] + cap, q[2], q[3] - cap, q[2], q[3] + cap)
+                    )
+                else:
+                    exy.extend(
+                        (q[0], q[1], q[2], q[3], q[0] - cap, q[1], q[0] + cap, q[1], q[2] - cap, q[3], q[2] + cap, q[3])
+                    )
+                eops.append("MLMLML")
+            if eops:
+                fr.scene.add(
+                    _scene.Path("".join(eops), exy, stroke=_scene.INK, width=fr.theme["axis_width"], clip=fr.clip)
+                )
+            tips = sd.where(v >= 0.0, sd.maximum(elo, ehi), sd.minimum(elo, ehi))
+        if self.text is not None:
+            ts = fr.theme["tick_size"]
+            ends = end if tips is None else tips
+            for i, s in enumerate(self.text):
+                if not s or not ok[i]:
+                    continue
+                if self.inside:  # a stacked piece: its number in its middle
+                    mid = (float(b[i]) + float(end[i])) / 2
+                    px, py = (
+                        (fr.px(mid), fr.py(float(self.pos[i])))
+                        if self.horizontal
+                        else (fr.px(float(self.pos[i])), fr.py(mid))
+                    )
+                    fr.scene.add(_scene.Text(s, px, py, size=ts, ha="center", va="center"))
+                    continue
+                up = float(v[i]) >= 0.0
+                e = float(ends[i])
+                if self.horizontal:
+                    fr.scene.add(
+                        _scene.Text(
+                            s,
+                            fr.px(e) + (2.0 if up else -2.0),
+                            fr.py(float(self.pos[i])),
+                            size=ts,
+                            ha="left" if up else "right",
+                            va="center",
+                        )
+                    )
+                else:
+                    fr.scene.add(
+                        _scene.Text(
+                            s,
+                            fr.px(float(self.pos[i])),
+                            fr.py(e) + (-2.0 if up else 2.0),
+                            size=ts,
+                            ha="center",
+                            va="bottom" if up else "top",
+                        )
+                    )
+
+    def strings(self):
+        return [s for s in (self.text or []) if s]
 
     def entries(self):
         return [(self.label, _patch_handle(_color.fill_of(self.color), self.color))]
 
     def sample(self, fr):
+        ends = self._ends()
         if self.horizontal:
-            return _sample(fr.tx(self.value), fr.ty(self.pos))
-        return _sample(fr.tx(self.pos), fr.ty(self.value))
+            return _sample(fr.tx(ends), fr.ty(self.pos))
+        return _sample(fr.tx(self.pos), fr.ty(ends))
 
 
 class Area(Layer):

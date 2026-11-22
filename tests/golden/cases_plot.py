@@ -7,7 +7,7 @@ zlib is no part of it). The text comes from the
 recorded cache tests/plot/data/text, read frozen: no TeX runs and the results do not move with
 the TeX installation. The engine's own results are cases too: layouts of recorded strings and of
 numbers laid out from their characters, and the errors.
-Each milestone adds the cases of what it brings (docs/design/plot.md §9); nothing is public yet.
+Every public name has cases.
 """
 
 import hashlib
@@ -125,6 +125,12 @@ def _raises(fn):
         return fn()
 
     return thunk
+
+
+# the figures of tests/plot/figures.py that draw with the names added since: hist2d and hexbin
+# in "counted", vectorfield and streamlines in "flows", facet in "facets" (the bar options, twin
+# and inset in "extras")
+DRAWN_BY = {"hist2d": "counted", "hexbin": "counted", "vectorfield": "flows", "streamlines": "flows", "facet": "facets"}
 
 
 def cases(L):

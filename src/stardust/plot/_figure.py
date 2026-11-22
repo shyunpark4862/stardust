@@ -101,6 +101,28 @@ class Cell:
         self.headroom = 0  # brackets stacked above the data (compare)
         self.note = None  # a line of text inside the plot, in a free corner (a fit's equation)
         self.placed = None  # where a 'best' legend goes, found by the layout
+        self.span = [None, None]  # x and y ranges shared with other cells (grid's sharex, sharey; the layout's)
+        self.inner = [False, False]  # x and y tick labels left to a neighbouring cell (shared axes)
+        self.twin = None  # a cell drawn against a second y axis at the right (twin()), sharing x
+        self.insets = []  # (cell, (x, y, w, h) as shares of the plot rectangle) drawn over it (inset())
+
+    def copy(self):
+        """A cell of its own with the same content: its settings and layers are copied, so that
+        changing one of the two leaves the other as it was (grid)."""
+        import copy
+
+        out = copy.copy(self)
+        out.xlim, out.ylim, out.legend = list(self.xlim), list(self.ylim), dict(self.legend)
+        out.layers = []
+        for layer in self.layers:
+            twin = copy.copy(layer)
+            if hasattr(twin, "fork"):
+                twin.fork(out)  # a layer with lists of its own (a 3D space) copies them
+            out.layers.append(twin)
+        if self.twin is not None:
+            out.twin = self.twin.copy()
+        out.insets = [(c.copy(), rect) for c, rect in self.insets]
+        return out
 
     def next_color(self, palette):
         c = _color.cycle(palette, self.ncolor)
@@ -169,6 +191,7 @@ class Figure:
         self._palette = _check_choice(palette, who, "palette", tuple(_color.PALETTES))
         self._cells = [Cell() for _ in range(self._nrows * self._ncols)]
         self._panels = None  # panel labels, a str per cell
+        self._share = (False, False)  # sharex, sharey of a grid: False, True or 'all'
         self._scene = None
         self._infos = []
         return self
@@ -182,7 +205,39 @@ class Figure:
 
     @property
     def _cell(self):
-        return self._root._cells[self._index]
+        c = self._root._cells[self._index]
+        return c.twin if self.__dict__.get("_twinned") else c
+
+    def inset(self, figure, rect, /):
+        """Draws the one cell of `figure` over this cell's plot, in `rect` = (x, y, w, h): shares
+        of the plot rectangle from its lower left corner (its ticks and labels inside the rect)."""
+        if not isinstance(figure, Figure) or len(figure._root._cells) != 1:
+            raise TypeError(f"inset(): 'figure' must be a Figure of one cell, not {_type_name(figure)}")
+        if not isinstance(rect, (tuple, list)) or len(rect) != 4:
+            raise TypeError(f"inset(): 'rect' must be (x, y, w, h), not {_type_name(rect)}")
+        x, y, w, h = (real(v, "inset", "rect") for v in rect)
+        if not (0.0 <= x and 0.0 <= y and 0.0 < w and 0.0 < h and x + w <= 1.0 + 1e-9 and y + h <= 1.0 + 1e-9):
+            raise ValueError("inset(): 'rect' must lie in the plot: shares in [0, 1] with x + w and y + h at most 1")
+        cell = self._cell
+        if not cell.frame:
+            raise ValueError("inset(): an inset goes over a 2D plot's cell")
+        cell.insets.append((figure._root._cells[0].copy(), (x, y, w, h)))
+        return self._touch()
+
+    def twin(self):
+        """A view of the cell that draws against a second y axis at the right: its plotting
+        methods and ylabel, ylim, yscale, yticks set that axis; the x axis is shared."""
+        if self.__dict__.get("_twinned"):
+            raise ValueError("twin(): this is already the second y axis")
+        cell = self._cell
+        if not cell.frame or any(type(layer).__name__ == "Space" for layer in cell.layers):
+            raise ValueError("twin(): a second y axis needs a 2D plot's cell")
+        if cell.twin is None:
+            cell.twin = Cell()
+            cell.twin.ncolor = cell.ncolor  # the colours go on where the first axis's left off
+        v = self._view(self._index)
+        v._twinned = True
+        return v
 
     def _touch(self):
         self._root._scene = None
@@ -266,19 +321,28 @@ class Figure:
             raise ValueError(f"{who}(): 'low' must be less than 'high'")
         return [lo, hi]
 
+    def _flat(self, who):
+        """Settings of a plot's axes, which a 3D cell does not have: ValueError there."""
+        if any(type(layer).__name__ == "Space" for layer in self._cell.layers):
+            raise ValueError(f"{who}(): a 3D cell has no such axis setting; its ranges are those of the data")
+
     def xlim(self, low, high, /):
+        self._flat("xlim")
         self._cell.xlim = self._lim("xlim", low, high)
         return self._touch()
 
     def ylim(self, low, high, /):
+        self._flat("ylim")
         self._cell.ylim = self._lim("ylim", low, high)
         return self._touch()
 
     def xscale(self, kind, /):
+        self._flat("xscale")
         self._cell.xscale = _check_choice(kind, "xscale", "kind", SCALES)
         return self._touch()
 
     def yscale(self, kind, /):
+        self._flat("yscale")
         self._cell.yscale = _check_choice(kind, "yscale", "kind", SCALES)
         return self._touch()
 
@@ -304,10 +368,12 @@ class Figure:
         return (vals, labels)
 
     def xticks(self, values, /, *, labels=None):
+        self._flat("xticks")
         self._cell.xticks = self._ticks("xticks", values, labels)
         return self._touch()
 
     def yticks(self, values, /, *, labels=None):
+        self._flat("yticks")
         self._cell.yticks = self._ticks("yticks", values, labels)
         return self._touch()
 
@@ -380,20 +446,35 @@ class Figure:
         p.write_bytes(data)
         return self
 
-    def _repr_svg_(self):
-        return self._write("Figure", _svg.write, 200.0)  # the pictures inside at the PNG's resolution
+    def _pictured(self):
+        """Whether the figure holds a 3D cell or a layer drawn as a picture (a density, a phase
+        portrait): a notebook shows it as PNG, the rest as SVG."""
+        for cell in self._root._cells:
+            for layer in cell.layers:
+                if type(layer).__name__ in ("Space", "Picture"):
+                    return True
+        return False
 
-    def _repr_png_(self):
-        return self._write("Figure", _png.write, 200.0, level=1)
+    def _repr_mimebundle_(self, include=None, exclude=None):
+        """The notebook's view: one image, PNG at 200 dpi or SVG (docs/api/plot.md §2.4), and
+        the one-line repr as plain text. Only one of the two is made."""
+        if self._pictured():
+            data = {"image/png": self._write("Figure", _png.write, 200.0, level=1)}
+        else:
+            data = {"image/svg+xml": self._write("Figure", _svg.write, 200.0)}
+        data["text/plain"] = repr(self)
+        return data
 
 
 # ---- layout
 
 
 def _extent(cell, axis, scale):
-    """(lo, hi, sticky values) of the layers' data along an axis, or None."""
+    """(lo, hi, sticky values) of the layers' data along an axis, or None (x: with the layers of
+    a second y axis, which share it)."""
     lo, hi, sticky = math.inf, -math.inf, set()
-    for layer in cell.layers:
+    layers = cell.layers + (cell.twin.layers if axis == "x" and cell.twin is not None else [])
+    for layer in layers:
         e = layer.extent(axis, scale == "log")
         if e is None:
             continue
@@ -409,6 +490,9 @@ def _range(cell, axis, th):
     scale = cell.xscale if axis == "x" else cell.yscale
     cats = cell.xcats if axis == "x" else cell.ycats
     lo, hi = lim
+    span = cell.span[0 if axis == "x" else 1]
+    if span is not None and lo is None and hi is None:
+        return span
     if lo is not None and hi is not None:
         if scale == "log" and lo <= 0.0:
             raise ValueError(f"{axis}lim(): a log axis needs positive limits")
@@ -517,7 +601,7 @@ class _Measured:
 
 def _legend_entries(cell):
     seen, out = set(), []
-    for layer in cell.layers:
+    for layer in cell.layers + (cell.twin.layers if cell.twin is not None else []):
         for label, handle in layer.entries():
             if label is not None and label not in seen:
                 seen.add(label)
@@ -530,6 +614,11 @@ def _static_strings(fig):
     out = []
     for cell in fig._cells:
         out += [s for s in (cell.title, cell.xlabel, cell.ylabel, cell.zlabel, cell.legend["title"], cell.note) if s]
+        if cell.twin is not None:
+            out += [s for s in (cell.twin.ylabel,) if s] + [s for layer in cell.twin.layers for s in layer.strings()]
+        for inner, _ in cell.insets:
+            out += [s for s in (inner.title, inner.xlabel, inner.ylabel) if s]
+            out += [s for layer in inner.layers for s in layer.strings()]
         out += [label for label, _ in _legend_entries(cell)]
         for cats in (cell.xcats, cell.ycats):
             out += cats or []
@@ -557,6 +646,12 @@ def _measure(fig, cell, pw, ph, th, engine):
         space = cell.layers[0] if cell.layers and hasattr(cell.layers[0], "margins") else None
         if space is not None:  # a 3D cell: labels in the margins, the box in the plot rectangle
             m.left, m.right, m.top, m.bottom = space.margins(th, engine)
+            entries = _legend_entries(cell)
+            m.loc = None if cell.legend["loc"] is None else "right"  # beside the box: it has no free corner
+            if entries and m.loc:
+                m.legend = _legend_box(cell, entries, th, engine, pw, "right")
+                m.right += m.legend["w"] + th["gap"]
+                pw = max(pw - m.legend["w"] - th["gap"], 10.0)
             a = space.aspect()
             fw = min(pw, ph / a)
             m.fit = (fw, fw * a)
@@ -565,13 +660,21 @@ def _measure(fig, cell, pw, ph, th, engine):
             m.top += h + d + th["title_pad"]
         return m
     m.xa, m.ya = _axis(cell, "x", pw, th), _axis(cell, "y", ph, th)
-    if cell.headroom and m.ya.scale == "linear" and cell.ylim[1] is None:
+    for k, a in enumerate((m.xa, m.ya)):
+        if cell.inner[k]:  # a shared axis: the outer cell carries the numbers
+            a.labels, a.mult = [""] * len(a.labels), None
+    if cell.headroom and cell.ylim[1] is None:
         # room above the data for the brackets: the range grows so that they clear it
-        # (the ticks stay those of the data: none beside the brackets)
+        # (the ticks stay those of the data: none beside the brackets); on a log axis it grows
+        # in the logarithm
         need = min(0.7, (13.0 * cell.headroom + 12.0) / ph)
         data = _axis(cell, "y", ph * (1.0 - need), th)
-        m.ya.ticks, m.ya.labels, m.ya.mult = data.ticks, data.labels, data.mult
-        m.ya.hi = m.ya.lo + (m.ya.hi - m.ya.lo) / (1.0 - need)
+        m.ya.ticks, m.ya.labels, m.ya.mult, m.ya.minor = data.ticks, data.labels, data.mult, data.minor
+        if m.ya.scale == "log":
+            a, b = math.log10(m.ya.lo), math.log10(m.ya.hi)
+            m.ya.hi = 10.0 ** (a + (b - a) / (1.0 - need))
+        else:
+            m.ya.hi = m.ya.lo + (m.ya.hi - m.ya.lo) / (1.0 - need)
     m.fit = None
     if cell.aspect is not None and m.xa.scale == "linear" and m.ya.scale == "linear":
         # equal data units: the plot rectangle is the largest of the data's shape that fits
@@ -583,6 +686,8 @@ def _measure(fig, cell, pw, ph, th, engine):
             m.xa, m.ya = cx, cy
         pw, ph = fw, fh
     ts, tl, tp = th["tick_size"], th["tick_len"], th["tick_pad"]
+    # the labels the layout made (pi ticks, a common power of ten) are typeset in one batch
+    engine.layout([s for s in (*m.xa.labels, *m.ya.labels, m.xa.mult, m.ya.mult) if s])
     xb = [box(s, ts) for s in m.xa.labels]
     yb = [box(s, ts) for s in m.ya.labels]
 
@@ -626,6 +731,17 @@ def _measure(fig, cell, pw, ph, th, engine):
         m.bottom += th["label_pad"] + h + d
     m.left = max(m.left, over_l)
     m.right = max(over_r, 0.0)
+    m.ya2 = None
+    if cell.twin is not None and cell.twin.layers:  # the second y axis: its ticks and name at the right
+        twin = cell.twin
+        m.ya2 = _axis(twin, "y", ph, th)
+        engine.layout([s for s in (*m.ya2.labels, m.ya2.mult) if s])
+        m.ytick2_w = max((box(s, ts)[0] for s in m.ya2.labels), default=0.0)
+        need = tl + tp + m.ytick2_w
+        if twin.ylabel:
+            _, h, d = box(twin.ylabel, th["size"])
+            need += th["label_pad"] + h + d
+        m.right = max(m.right, need)
     m.bottom = max(m.bottom, over_b)
     m.top = max(over_t, 0.0)
     if m.ya.mult:
@@ -710,6 +826,49 @@ def _legend_box(cell, entries, th, engine, room, loc):
     }
 
 
+def _share(fig, th):
+    """The ranges shared by the cells of a grid made with sharex or sharey: True shares along
+    the columns (x) or the rows (y), 'all' among all the cells. A shared axis shows its numbers
+    on the outer cells only (the bottom of a column, the left of a row)."""
+    nr, nc = fig._nrows, fig._ncols
+    cells = fig._cells
+    for c in cells:
+        c.span, c.inner = [None, None], [False, False]
+    for k, how in enumerate(fig._share):
+        if not how:
+            continue
+        axis = "x" if k == 0 else "y"
+        if how == "all":
+            groups = [list(range(nr * nc))]
+        elif k == 0:
+            groups = [[r * nc + c for r in range(nr)] for c in range(nc)]
+        else:
+            groups = [[r * nc + c for c in range(nc)] for r in range(nr)]
+        for g in groups:
+            members = [
+                i
+                for i in g
+                if cells[i].frame and cells[i].layers and (cells[i].xcats if k == 0 else cells[i].ycats) is None
+            ]
+            if len(members) < 2:
+                continue
+            ranges = [_range(cells[i], axis, th) for i in members]
+            span = (min(r[0] for r in ranges), max(r[1] for r in ranges))
+            for i in members:
+                if (cells[i].xlim if k == 0 else cells[i].ylim) == [None, None]:
+                    cells[i].span[k] = span
+        # the numbers stay on the outer side: none on a cell with a drawn cell below it (x) or left of it (y)
+        drawn = [c.frame and bool(c.layers) for c in cells]
+        for i, c in enumerate(cells):
+            r, col = divmod(i, nc)
+            if not drawn[i]:
+                continue
+            if k == 0:
+                c.inner[0] = any(drawn[rr * nc + col] for rr in range(r + 1, nr))
+            else:
+                c.inner[1] = any(drawn[r * nc + cc] for cc in range(col))
+
+
 def _layout(fig, dpi=300.0):
     """The scene of a figure."""
     th = THEMES[fig._theme]
@@ -717,6 +876,7 @@ def _layout(fig, dpi=300.0):
     engine.layout(_static_strings(fig))  # one TeX run for all that is new
     for cell in fig._cells:
         cell.placed = None
+    _share(fig, THEMES[fig._theme])
     nr, nc = fig._nrows, fig._ncols
     W = fig._w * MM
     margin, gap = th["margin"], th["gap"]
@@ -770,7 +930,10 @@ def _layout(fig, dpi=300.0):
                     continue
                 w, h = m.fit if m.fit is not None else (pw[c], ph[r])
                 cell.placed = _place_legend(cell, m, w, h, th, fig._palette, engine)
-                moved = moved or cell.placed in ("top", "right")
+                if cell.placed in ("top", "right"):
+                    moved = True
+                else:
+                    m.loc = cell.placed  # a corner takes no room of the layout: the measure stands
         if not moved:
             break
         for _ in range(2):
@@ -802,10 +965,11 @@ def _layout(fig, dpi=300.0):
                     _scene.Text(rf"\textbf{{{fig._panels[i]}}}", x0, y0, size=th["panel_size"], ha="left", va="top")
                 )
             cw, chh = pw[c], ph[r]
+            band = py  # the top of the row's plot band: the titles of a row stand on one line
             if getattr(m, "fit", None) is not None:  # centred in the room the cell has
                 fw, fh = m.fit
                 px, py, cw, chh = px + (cw - fw) / 2, py + (chh - fh) / 2, fw, fh
-            _draw_cell(scene, cell, m, px, py, cw, chh, th, fig._palette, engine, dpi)
+            _draw_cell(scene, cell, m, px, py, cw, chh, th, fig._palette, engine, dpi, band)
             x0 += cell_w + gap
         y0 += cell_h[r] + gap
     return scene
@@ -863,6 +1027,10 @@ def _place_legend(cell, m, w, h, th, palette, engine):
     fr = Frame(trial, 0.0, 0.0, w, h, m.xa, m.ya, th, palette, engine)
     for layer in cell.layers:
         layer.draw(fr)
+    if getattr(m, "ya2", None) is not None:
+        fr2 = Frame(trial, 0.0, 0.0, w, h, m.xa, m.ya2, th, palette, engine)
+        for layer in cell.twin.layers:
+            layer.draw(fr2)
     ink = Ink(trial.items, 0.0, 0.0, w, h)
     lw, lh = m.legend["w"], m.legend["h"]
     best = None
@@ -884,16 +1052,17 @@ def _line(scene, pts, th, color=INK, width=None, **kw):
     )
 
 
-def _draw_cell(scene, cell, m, x, y, w, h, th, palette, engine, dpi=300.0):
+def _draw_cell(scene, cell, m, x, y, w, h, th, palette, engine, dpi=300.0, band=None):
     ts, tl, tp = th["tick_size"], th["tick_len"], th["tick_pad"]
     if not cell.frame:
         fr = Frame(scene, x, y, w, h, None, None, th, palette, engine, dpi)
         for layer in cell.layers:
             layer.draw(fr)
+        if getattr(m, "legend", None):
+            _draw_legend(scene, cell, m, fr, th, engine)
         if cell.title:
-            scene.add(
-                _scene.Text(cell.title, x + w / 2, y - th["title_pad"], size=th["title_size"], ha="center", va="bottom")
-            )
+            ty = (y if band is None else min(y, band)) - th["title_pad"]
+            scene.add(_scene.Text(cell.title, x + w / 2, ty, size=th["title_size"], ha="center", va="bottom"))
         return
     xa, ya = m.xa, m.ya
     fr = Frame(scene, x, y, w, h, xa, ya, th, palette, engine)
@@ -907,6 +1076,11 @@ def _draw_cell(scene, cell, m, x, y, w, h, th, palette, engine, dpi=300.0):
     first = len(scene.items)
     for layer in cell.layers:
         layer.draw(fr)
+    fr2 = None
+    if getattr(m, "ya2", None) is not None:
+        fr2 = Frame(scene, x, y, w, h, xa, m.ya2, th, palette, engine)
+        for layer in cell.twin.layers:
+            layer.draw(fr2)
     drawn = scene.items[first:]
     # the axis lines, then ticks and their labels
     sp = th["spines"]
@@ -942,6 +1116,21 @@ def _draw_cell(scene, cell, m, x, y, w, h, th, palette, engine, dpi=300.0):
     for v in ya.minor:
         py = fr.py(v)
         _line(scene, [(x, py), (x - 0.6 * tl, py)], th, width=0.7 * aw)
+    if fr2 is not None:  # the second y axis, at the right
+        ya2, twin = m.ya2, cell.twin
+        _line(scene, [(x + w, y), (x + w, y + h)], th, cap="square")
+        for v, s in zip(ya2.ticks, ya2.labels):
+            py = fr2.py(v)
+            _line(scene, [(x + w, py), (x + w + tl, py)], th)
+            scene.add(_scene.Text(s, x + w + tl + tp, py, size=ts, ha="left", va="center"))
+        if ya2.mult:
+            scene.add(_scene.Text(ya2.mult, x + w, y - 2.0, size=ts, ha="right", va="bottom"))
+        if twin.ylabel:
+            _, lh, ld = engine.layout([twin.ylabel])[0].box(th["size"])
+            xx = x + w + tl + tp + m.ytick2_w + th["label_pad"] + lh
+            scene.add(
+                _scene.Text(twin.ylabel, xx, y + h / 2, size=th["size"], ha="center", va="baseline", rotation=90.0)
+            )
     if ya.mult:
         scene.add(_scene.Text(ya.mult, x, y - 2.0, size=ts, ha="left", va="bottom"))
     if xa.mult:
@@ -987,6 +1176,24 @@ def _draw_cell(scene, cell, m, x, y, w, h, th, palette, engine, dpi=300.0):
             scene.add(_scene.Text(m.bar["mult"], bx, y - 2.0, size=ts, ha="left", va="bottom"))
     if m.legend:
         _draw_legend(scene, cell, m, fr, th, engine)
+    for inner, (rx, ry, rw, rh) in cell.insets:
+        _draw_inset(scene, inner, x + rx * w, y + (1.0 - ry - rh) * h, rw * w, rh * h, th, palette, engine, dpi)
+
+
+def _draw_inset(scene, cell, x, y, w, h, th, palette, engine, dpi):
+    """A cell drawn in the rectangle (x, y, w, h) of the page, its ticks and labels inside it, on
+    a white ground."""
+    pw, ph = max(w - 30.0, 10.0), max(h - 20.0, 10.0)
+    for _ in range(3):  # the margins depend on the plot size, the plot size on the margins
+        m = _measure(None, cell, pw, ph, th, engine)
+        pw, ph = max(w - m.left - m.right - 2.0, 10.0), max(h - m.top - m.bottom - 2.0, 10.0)
+    m = _measure(None, cell, pw, ph, th, engine)
+    scene.add(_scene.Path(*_scene.rect(x, y, w, h), fill=WHITE))
+    px, py = x + m.left + 1.0, y + m.top + 1.0
+    if getattr(m, "fit", None) is not None:
+        fw, fh = m.fit
+        px, py, pw, ph = px + (pw - fw) / 2, py + (ph - fh) / 2, fw, fh
+    _draw_cell(scene, cell, m, px, py, pw, ph, th, palette, engine, dpi)
 
 
 def _draw_legend(scene, cell, m, fr, th, engine):

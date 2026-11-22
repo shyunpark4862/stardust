@@ -202,7 +202,23 @@ void Levels::inside(double level, const std::vector<double>& points, std::string
                 ++count;
             }
         }
-        if (count >= 3) {
+        // A saddle whose corners' mean is on the other side of its inside corners: as the curves
+        // do (curves), the two inside corners are cut off apart, each with its two crossings.
+        const bool apart =
+            count == 6 && (at(j, i) + at(j, i + 1) + at(j + 1, i + 1) + at(j + 1, i)) / 4.0 > 0.0 != (at(j, i) > 0.0);
+        if (apart) {
+            // a triangle for each inside corner k: the crossing of the side before it, the corner,
+            // the crossing of its own side (side k runs from corner k to corner k + 1)
+            for (int k = 0; k < 4; ++k) {
+                if (!(at(cj[k], ci[k]) > 0.0)) continue;
+                const std::int32_t before = index_.at(e[(k + 3) % 4].key), after = index_.at(e[k].key);
+                ops += "MLLZ";
+                xy.insert(
+                    xy.end(), {points[2 * before], points[2 * before + 1], xs_[ci[k]], ys_[cj[k]], points[2 * after],
+                               points[2 * after + 1]}
+                );
+            }
+        } else if (count >= 3) {
             ops += 'M';
             ops.append(static_cast<std::size_t>(count - 1), 'L');
             ops += 'Z';

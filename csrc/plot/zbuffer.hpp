@@ -4,7 +4,8 @@
 // into view space (x right, y up, z towards the viewer), projected (orthographic, or perspective
 // from a distance), and painted into a grid of ss x ss samples per pixel. Every sample keeps the
 // nearest surface, so surfaces that cross each other are right; lines and discs are tested
-// against that depth and painted over it. The colour of a surface sample is its vertex colours
+// against that depth (a line on a surface passes with a small allowance), painted over it, and
+// keep their own depth, so that curves and points hide one another as they lie. The colour of a surface sample is its vertex colours
 // under three fixed lights, both sides alike, from the normal interpolated across the triangle:
 // a key light (View3::light), a weaker fill light from the other side and a rim light from
 // behind, an ambient part, and white gloss on top (a broad sheen and a sharp highlight of the

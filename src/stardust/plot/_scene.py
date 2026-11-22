@@ -9,7 +9,7 @@ with items in painting order:
     Text   a string LaTeX typesets, anchored at a point (kept as a string: the golden form of a
            scene does not depend on the TeX installation)
 
-The outputs (SVG now; PDF and PNG in PL2) read a resolved scene, in which every Text has become
+The outputs (SVG, PDF and PNG) read a resolved scene, in which every Text has become
 glyph outlines (resolve). to_dict is the exact, readable form the golden cases store.
 """
 
@@ -25,12 +25,26 @@ _VA = ("baseline", "bottom", "center", "top")
 
 
 class Path:
-    __slots__ = ("ops", "xy", "fill", "stroke", "width", "dash", "cap", "join", "clip")
+    __slots__ = ("ops", "xy", "fill", "stroke", "width", "dash", "cap", "join", "clip", "rule")
 
-    def __init__(self, ops, xy, *, fill=None, stroke=None, width=1.0, dash=(), cap="butt", join="miter", clip=None):
+    def __init__(
+        self,
+        ops,
+        xy,
+        *,
+        fill=None,
+        stroke=None,
+        width=1.0,
+        dash=(),
+        cap="butt",
+        join="miter",
+        clip=None,
+        rule="nonzero",
+    ):
         self.ops, self.xy = ops, xy if isinstance(xy, array) else array("d", xy)
         self.fill, self.stroke, self.width = fill, stroke, float(width)
         self.dash, self.cap, self.join, self.clip = tuple(dash), cap, join, clip
+        self.rule = rule  # the fill rule: 'nonzero' or 'evenodd'
 
     def to_dict(self):
         d = {"type": "path", "ops": self.ops, "xy": list(self.xy)}
@@ -42,6 +56,7 @@ class Path:
             ("cap", "butt"),
             ("join", "miter"),
             ("clip", None),
+            ("rule", "nonzero"),
         ):
             v = getattr(self, k)
             if v != default:

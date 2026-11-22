@@ -22,7 +22,7 @@ PLANNED = set()
 # Figure methods documented for a later milestone (docs/design/plot.md §9)
 PLANNED_METHODS = set()
 # functions that make several cells themselves: no method of the same name (docs/api/plot.md §1.1)
-NO_METHOD = {"Figure", "grid", "diagnostics", "pairs"}
+NO_METHOD = {"Figure", "grid", "diagnostics", "pairs", "facet"}
 # methods that draw over an existing figure only: no module function (docs/api/plot.md §6)
 METHOD_ONLY = {"compare", "fit"}
 LINE = re.compile(r"^(?:(?P<cls>[A-Za-z_]\w*)\.)?(?P<name>[A-Za-z_]\w*)(?:\((?P<sig>.*)\))?$")

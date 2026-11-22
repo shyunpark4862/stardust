@@ -216,18 +216,26 @@ def test_region_has_the_area_of_the_set():
     fig = P.region(lambda x, y: 1 - x * x - y * y, -1.5, 1.5, -1.5, 1.5, alpha=0.5, color="red", label="Group A")
     (fill,) = fig._cell.layers
     assert fill.color == (1.0, 0.0, 0.0, 0.5) and fill.label == "Group A"
-    area, i, xy = 0.0, 0, fill.xy
-    for sub in fill.ops.split("Z")[:-1]:
-        n = len(sub)
-        pts = [(xy[i + 2 * k], xy[i + 2 * k + 1]) for k in range(n)]
-        i += 2 * n
-        a = 0.5 * sum(p[0] * q[1] - q[0] * p[1] for p, q in zip(pts, pts[1:] + pts[:1]))
-        assert a > 0  # every piece turns the same way
-        area += a
-    assert area == pytest.approx(math.pi, rel=2e-5)
+
+    def areas(layer):
+        out, i, xy = [], 0, layer.xy
+        for sub in layer.ops.split("Z")[:-1]:
+            n = len(sub)
+            pts = [(xy[i + 2 * k], xy[i + 2 * k + 1]) for k in range(n)]
+            i += 2 * n
+            out.append(abs(0.5 * sum(p[0] * q[1] - q[0] * p[1] for p, q in zip(pts, pts[1:] + pts[:1]))))
+        return out
+
+    assert fill.rule == "evenodd" and fill.ops.count("M") == 1  # one outline
+    assert areas(fill)[0] == pytest.approx(math.pi, rel=2e-5)
     assert P.region(lambda x, y: x - 9, -1, 1, -1, 1)._cell.layers[0].ops == ""  # empty
     whole = P.region(lambda x, y: x + 9, -1, 1, -1, 1)._cell.layers[0]
-    assert whole.ops.count("M") == _field.NY  # a rectangle per row of cells
+    assert whole.ops.count("M") == 1 and areas(whole)[0] == pytest.approx(4.0)  # the box itself
+    ring = P.region(lambda x, y: sd.minimum(1 - x * x - y * y, x * x + y * y - 0.25), -1.5, 1.5, -1.5, 1.5)
+    outer, inner = sorted(areas(ring._cell.layers[0]), reverse=True)  # even-odd: the inner loop is a hole
+    assert outer == pytest.approx(math.pi, rel=1e-4) and inner == pytest.approx(math.pi / 4, rel=1e-4)
+    holes = P.region(lambda x, y: sd.where(x > 0.5, math.nan, 1 - x * x - y * y), -1.5, 1.5, -1.5, 1.5)
+    assert holes._cell.layers[0].rule == "nonzero"  # a hole in the domain opens the outline: cell by cell
 
 
 def test_contours_levels_colours_and_labels():
@@ -322,7 +330,7 @@ def test_phase_portrait_colours():
     with pytest.raises(
         TypeError, match=r"phase\(\): 'f' must return an sd.ndarray of its argument's shape \(360, 480\)"
     ):
-        P.phase(lambda z: 1.0, -1, 1, -1, 1)
+        P.phase(lambda z: [1.0], -1, 1, -1, 1)
 
 
 def test_core_colour_helpers():
@@ -479,3 +487,75 @@ def test_samples_and_refine_set_the_sampling():
         P.surface(pole, -1, 1, -1, 1, samples=(3, 4, 5))
     with pytest.raises(ValueError, match=r"implicit\(\): 'refine' must be between 0 and 1"):
         P.implicit(circle, -2, 2, -2, 2, refine=2)
+
+
+def test_function_ranges_settle_on_the_curve():
+    bump = lambda x: sd.where(sd.abs(x) < 1, sd.exp(-1 / (1 - sd.minimum(x * x, 0.999999))), 0.0)  # noqa: E731
+    info = P.function(bump, -10, 10).info[0]
+    assert info.ylim[1] == pytest.approx(math.exp(-1), rel=1e-3) and info.clipped == (False, False)
+    log = P.function(sd.log, -1, 3).info[0]
+    assert log.jumps == () and log.poles == ()  # the end of the domain is no jump
+    spike = lambda x: sd.exp(-(((x - 0.5) / 1e-4) ** 2))  # noqa: E731
+    assert P.function(spike, 0, 1, samples=20001, ylim=(0, 1.05)).info[0].clipped == (False, False)
+    folium = P.parametric(lambda t: 3 * t / (1 + t**3), lambda t: 3 * t * t / (1 + t**3), -20, 20)
+    lo, hi, _ = folium._cell.layers[0].extent("x", False)
+    assert -1 < lo and hi < 2  # the loop, not the arms running off to a pole
+    assert P.phase(lambda z: 2.0, -1, 1, -1, 1)._cell.layers[0].iw == _field.DX0  # a constant, as elsewhere
+
+
+def test_grid_values_take_the_place_of_a_function():
+    x, y = sd.linspace(-2.0, 2.0, 41), sd.linspace(-1.0, 1.0, 21)
+    X, Y = sd.meshgrid(x, y, indexing="xy")
+    Z = X * X + Y * Y
+    line = P.implicit(Z, -2, 2, -1, 1, level=1.0)._cell.layers[0]
+    pts = [(a, b) for a, b in zip(line.x.tolist(), line.y.tolist()) if a == a]
+    assert max(abs(a * a + b * b - 1.0) for a, b in pts) < 0.02  # linear interpolation on the grid
+    pic = P.density(Z, -2, 2, -1, 1)._cell.layers[0]
+    assert (pic.iw, pic.ih) == (41, 21)
+    surf = P.surface(Z, -2, 2, -1, 1)._cell.layers[0].surfaces[0]
+    assert tuple(surf[0].shape) == (21, 41) and surf[6] is None
+    assert P.contour(Z, -2, 2, -1, 1, filled=True)._cell.colorbar is not None
+    with pytest.raises(ValueError, match=r"contour\(\): 'samples' and 'refine' are for a function"):
+        P.contour(Z, -2, 2, -1, 1, samples=11)
+    with pytest.raises(TypeError, match=r"region\(\): 'f' must be callable or a 2-D array of values, not str"):
+        P.region("Z", -2, 2, -1, 1)
+
+
+def test_vector_fields_draw_arrows_and_even_streamlines():
+    fig = P.vectorfield(lambda x, y: -y, lambda x, y: x, -2, 2, -2, 2, samples=(5, 4))
+    arrows = fig._cell.layers[0]
+    assert len(arrows.x) == 20 and fig._cell.aspect == 1.0 and fig._cell.colorbar is not None
+    longest = max(math.hypot(u, v) for u, v in zip(arrows.u, arrows.v))
+    assert longest == pytest.approx(0.9 * min(4 / 5, 4 / 4), rel=1e-9)  # the longest fills 90% of a cell
+    black = P.vectorfield(lambda x, y: -y, lambda x, y: x, -2, 2, -2, 2, color="black")
+    assert set(black._cell.layers[0].colors) == {(0.0, 0.0, 0.0, 1.0)} and black._cell.colorbar is None
+    raw = array(
+        "d",
+        core.streamlines(
+            array("d", [1.0] * 25).tobytes(), array("d", [0.0] * 25).tobytes(), 5, 5, 0.0, 1.0, 0.0, 1.0, 10, 10, 2.0
+        ),
+    )
+    lines = [chunk for chunk in _split_nan(raw)]
+    assert len(lines) == 10  # a uniform flow to the right: one line a row of cells
+    for pts in lines:
+        xs = pts[0::3]
+        assert xs == sorted(xs) and xs[-1] - xs[0] > 0.8  # along the flow, across the box
+    swirl = P.streamlines(lambda x, y: -y, lambda x, y: x, -1, 1, -1, 1, cells=10)
+    assert swirl._cell.layers[0].xyz and swirl._root._build("t") is not None
+    with pytest.raises(TypeError, match=r"streamlines\(\): 'fu' and 'fv' must both be functions or both"):
+        P.streamlines(lambda x, y: x, [[1.0, 2.0], [3.0, 4.0]], 0, 1, 0, 1)
+    with pytest.raises(ValueError, match=r"streamlines\(\): 'cells' must be between 2 and 400"):
+        P.streamlines(lambda x, y: x, lambda x, y: y, 0, 1, 0, 1, cells=500)
+
+
+def _split_nan(xyz):
+    out, cur = [], []
+    for i in range(0, len(xyz), 3):
+        if xyz[i] != xyz[i]:
+            out.append(cur)
+            cur = []
+        else:
+            cur += xyz[i : i + 3]
+    if cur:
+        out.append(cur)
+    return out

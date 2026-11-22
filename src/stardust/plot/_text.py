@@ -55,10 +55,10 @@ _PDF = {
 }
 _XE = {
     "serif": r"\usepackage{newtxtext}\usepackage{newtxmath}\usepackage[no-math]{fontspec}"
-    r"\usepackage{xeCJK}\xeCJKsetup{CJKspace=true}"
+    r"\usepackage{xeCJK}\xeCJKsetup{CJKspace=true,CJKecglue={}}"
     r"\setCJKmainfont{KoPubWorld Batang_Pro Light.otf}[Path=" + _KOPUB + r",BoldFont={KoPubWorld Batang_Pro Bold.otf}]",
     "sans": r"\usepackage[T1]{fontenc}\usepackage{tgheros}\usepackage{newtxsf}\usepackage[no-math]{fontspec}"
-    r"\usepackage{xeCJK}\xeCJKsetup{CJKspace=true}"
+    r"\usepackage{xeCJK}\xeCJKsetup{CJKspace=true,CJKecglue={}}"
     r"\setmainfont{texgyreheros}[Extension=.otf,UprightFont=*-regular,BoldFont=*-bold,ItalicFont=*-italic,"
     r"BoldItalicFont=*-bolditalic,Ligatures=TeX]"
     r"\setCJKmainfont{AppleSDGothicNeo.ttc}[Path=" + _SYSTEM + r",FontIndex=0,BoldFont=*,BoldFeatures={FontIndex=6}]",
@@ -166,7 +166,7 @@ def tool(name):
                     break
         if path is None:
             raise MissingTool(
-                "sd.plot needs 'latex', 'xelatex', 'dvisvgm' and 'kpsewhich' (TeX Live) on PATH; "
+                "sd.plot needs 'latex', 'xelatex', 'tex', 'xetex', 'dvisvgm' and 'kpsewhich' (TeX Live) on PATH; "
                 f"{name!r} was not found"
             )
         _tools[name] = path
@@ -431,9 +431,9 @@ class Engine:
     def _typeset(self, need):
         self.dir.mkdir(parents=True, exist_ok=True)
         warm = self.dir / "warm"
-        if self.warm and not warm.exists():
+        warming = self.warm and not warm.exists()
+        if warming:
             need = list(need) + [s for s in _WARM if s not in need and s not in self.strings]
-            warm.touch()
         latin = [s for s in need if not _CJK.search(s)]
         hangul = [s for s in need if _CJK.search(s)]
         with tempfile.TemporaryDirectory(prefix="sdplot_") as tmp:
@@ -456,6 +456,8 @@ class Engine:
                 for s, (lay, _) in zip(strings, results):
                     self.strings[s] = lay
                     f.write(json.dumps({"s": s, **lay.to_json()}, ensure_ascii=False, separators=(",", ":")) + "\n")
+        if warming:
+            warm.touch()  # only once the batch with the common glyphs went through
 
     def _format(self):
         """The dumped pdfLaTeX format of this family. It lives in the user's cache whatever cache
@@ -523,7 +525,9 @@ class Engine:
         text = log.read_text(errors="replace")
         m = re.search(r"^Missing character: There is no (\S+)", text, re.M)
         if m:
-            raise TypesetError("?", f"the font has no character {m.group(1)}")
+            ch = m.group(1)
+            bad = next((s for s in strings if ch in s), "?")
+            raise TypesetError(bad, f"the font has no character {ch}")
         return _read_dvi(tmp / out, _boxes(log), strings)
 
     # -- glyph outlines

@@ -277,7 +277,11 @@ def test_save_writes_by_extension(tmp_path):
     fig.save(str(tmp_path / "a.svg")).save(tmp_path / "a.PNG", dpi=80)
     assert (tmp_path / "a.pdf").read_bytes() == fig.to_pdf() and (tmp_path / "a.svg").read_text() == fig.to_svg()
     assert (tmp_path / "a.PNG").read_bytes() == fig.to_png(dpi=80)
-    assert fig._repr_svg_() == fig.to_svg() and fig._repr_png_()[:8] == b"\x89PNG\r\n\x1a\n"
+    flat = fig._repr_mimebundle_()
+    assert set(flat) == {"image/svg+xml", "text/plain"} and flat["image/svg+xml"] == fig.to_svg()
+    hill = sd.plot.surface(lambda x, y: x * y, -1, 1, -1, 1)._repr_mimebundle_()
+    assert set(hill) == {"image/png", "text/plain"} and hill["image/png"][:8] == b"\x89PNG\r\n\x1a\n"
+    assert "image/png" in sd.plot.density(lambda x, y: x * y, 0, 1, 0, 1)._repr_mimebundle_()
     for call, kind, message in (
         (
             lambda: fig.save(tmp_path / "a.jpg"),
@@ -369,3 +373,78 @@ def test_x_labels_that_would_touch_are_thinned_or_turned():
     assert len(turned) == 4 and all(t.ha == "right" for t in turned)
     for s, x0, _y0, _x1, y1 in text_boxes(narrow):
         assert x0 >= -0.5 and y1 <= narrow.height + 0.5, s
+
+
+def test_a_best_legend_is_drawn_in_the_corner_found():
+    x = sd.linspace(0.0, 1.0, 50)
+    fig = P.line(x, x, label="Group A")  # the rising line leaves the upper left free
+    sc = scene_of(fig)
+    assert fig._cell.placed == "upper left"
+    px, py, pw, ph = axis_lines(sc)
+    box = next(b for s, *b in text_boxes(sc) if s == "Group A")
+    assert box[2] < px + pw / 2 and box[3] < py + ph / 2
+
+
+def test_grid_copies_its_cells():
+    a, b = P.line([0.0, 1.0], [0.0, 1.0]), P.line([0.0, 1.0], [1.0, 0.0])
+    g = P.grid([a, b])
+    g[0].title("Group A")
+    assert a._cell.title is None  # the figure given stays as it was
+    a.xlabel("Residuals")
+    assert g[0]._cell.xlabel is None
+
+
+def test_points_outside_the_range_and_log_labels():
+    from stardust.plot import _ticks
+
+    f = P.scatter([1.85, 3.0, 4.0, 5.1], [3.0, 1.9, 4.0, 3.0]).xlim(2, 5).ylim(2, 5)
+    marks = [i for i in scene_of(f).items if isinstance(i, _scene.Markers)]
+    assert sum(len(m.at) // 2 for m in marks) == 1  # only (4, 4) is inside
+    assert _ticks.log_labels([1.0, 2.0, 4.0]) == ["$1$", "$2$", "$4$"]  # no mix of the two forms
+    assert _ticks.log_labels([1.0, 10.0]) == ["$10^{0}$", "$10^{1}$"]
+
+
+def test_the_notebook_gets_one_form():
+    flat = P.line([0.0, 1.0], [0.0, 1.0])
+    assert set(flat._repr_mimebundle_()) == {"image/svg+xml", "text/plain"}
+    assert not hasattr(flat, "_repr_svg_") and not hasattr(flat, "_repr_png_")
+
+
+def test_shared_axes_facets_twins_and_insets():
+    x = sd.linspace(0.0, 10.0, 20)
+    figs = [P.line(x, sd.sin(x) * k) for k in (1.0, 3.0)]
+    g = P.grid(figs, ncols=2, sharey=True)
+    scene_of(g)
+    a, b = g._root._cells
+    assert a.span[1] == b.span[1] and a.span[1][1] > 3.0 and b.inner[1] and not a.inner[1]
+    with pytest.raises(ValueError, match=r"grid\(\): 'sharex' must be False, True or 'all'"):
+        P.grid(figs, sharex="cols")
+    df = sd.frame.DataFrame(
+        {
+            "a": [1.0, 2.0, 3.0, 4.0],
+            "b": [2.0, 1.0, 4.0, 3.0],
+            "g": ["Group A", "Residuals"] * 2,
+            "s": ["u", "u", "v", "v"],
+        }
+    )
+    f = P.facet(df, "s").scatter("a", "b", group="g")
+    left, right = f.figure._root._cells
+    assert [lay.color for lay in left.layers] == [lay.color for lay in right.layers]  # a group keeps its colour
+    assert left.legend["loc"] is None and right.legend["loc"] == "best" and left.title == "u"
+    assert f.xlabel("Fitted values") is f and left.xlabel == right.xlabel == "Fitted values"
+    with pytest.raises(TypeError, match=r"scatter\(\): a facet's data is its own rows"):
+        f.scatter("a", "b", data=df)
+    twin = P.bar([1.0, 2.0], [3.0, 4.0])
+    second = twin.twin().line([1.0, 2.0], [100.0, 300.0])
+    cell = twin._cell
+    assert cell.twin is second._cell and len(cell.twin.layers) == 1
+    sc = scene_of(twin)
+    px, py, pw, ph = axis_lines(sc)
+    right_ticks = [i for i in sc.items if isinstance(i, _scene.Text) and i.ha == "left" and i.x > px + pw]
+    assert len(right_ticks) >= 2  # the second axis's numbers, at the right
+    with pytest.raises(ValueError, match=r"twin\(\): this is already the second y axis"):
+        second.twin()
+    host = P.line(x, sd.sin(x)).inset(P.line(x, sd.cos(x)), (0.6, 0.6, 0.35, 0.35))
+    assert len(host._cell.insets) == 1 and scene_of(host) is not None
+    with pytest.raises(ValueError, match=r"inset\(\): 'rect' must lie in the plot"):
+        P.line(x, x).inset(P.line(x, x), (0.8, 0.8, 0.5, 0.5))

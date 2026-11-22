@@ -207,7 +207,7 @@ def test_parametric_surfaces_curves_and_points_keep_equal_units():
     assert torus.equal and helix.equal and len(helix.curves) == 1 and len(helix.points) == 1
     lo, hi = torus.limits()
     assert (lo[0], hi[0]) == pytest.approx((-3.0, 3.0)) and (lo[2], hi[2]) == pytest.approx((-1.0, 1.0), abs=1e-3)
-    x, y, z, rgba, width = helix.curves[0]
+    x, y, z, rgba, width, _label = helix.curves[0]
     assert x.shape[0] > 257 and width == 1.0 and helix.points[0][4] == 5.0 and not helix.perspective
     grouped = P.scatter3d([0.0, 1.0, 2.0], [0.0, 1.0, 2.0], [0.0, 1.0, 2.0], group=["a", "b", "a"])
     assert [p[0].tolist() for p in space_of(grouped).points] == [[0.0, 2.0], [1.0]]
@@ -228,7 +228,11 @@ def test_the_picture_does_not_depend_on_the_thread_count():
 def test_3d_errors():
     f = lambda x, y: x * y  # noqa: E731
     cases = [
-        (lambda: P.surface(3, 0, 1, 0, 1), TypeError, "surface(): 'f' must be callable, not int"),
+        (
+            lambda: P.surface(3, 0, 1, 0, 1),
+            TypeError,
+            "surface(): 'f' must be callable or a 2-D array of values, not int",
+        ),
         (lambda: P.surface(f, 1, 0, 0, 1), ValueError, "surface(): 'x0' must be less than 'x1'"),
         (lambda: P.surface(f, 0, 1, 0, 1, zlim=3), TypeError, "surface(): 'zlim' must be a pair (low, high), not int"),
         (lambda: P.surface(f, 0, 1, 0, 1, elevation=100), ValueError, "surface(): 'elevation' must be in [-90, 90]"),
@@ -473,3 +477,41 @@ def test_view_scores_in_the_core():
     assert p[1] > p[3] > p[5] == pytest.approx(0.0, abs=1e-9) and p[0] == 0.0  # a ring: widest from the top
     with pytest.raises(ValueError, match="view_scores"):
         core.view_scores(v, t, b"", flat[:5], 0.0, 1.5, 160)
+
+
+def test_a_3d_cell_takes_no_2d_plot_and_draws_its_legend():
+    hill = lambda x, y: x * y  # noqa: E731
+    for call, message in (
+        (lambda: P.surface(hill, -1, 1, -1, 1).line([0, 1], [0, 1]), "line(): the cell already holds a 3D plot"),
+        (lambda: P.surface(hill, -1, 1, -1, 1).xlim(0, 0.5), "xlim(): a 3D cell has no such axis setting"),
+        (lambda: P.curve3d(sd.cos, sd.sin, sd.cos, 0, 1).yticks([0, 1]), "yticks(): a 3D cell has no such axis"),
+    ):
+        with pytest.raises(ValueError, match=message.replace("(", r"\(").replace(")", r"\)")):
+            call()
+    names = ["Group A", "Residuals", "Group A"]
+    pts = P.scatter3d([0.0, 1.0, 2.0], [0.0, 1.0, 2.0], [0.0, 1.0, 2.0], group=names)
+    pts.curve3d(sd.cos, sd.sin, lambda t: t, 0, 2, label="Fitted values")
+    strings = [i["s"] for i in pts.scene()["items"] if i["type"] == "text"]
+    assert {"Group A", "Residuals", "Fitted values"} <= set(strings)
+    quiet = P.scatter3d([0.0, 1.0], [0.0, 1.0], [0.0, 1.0], group=names[:2]).legend(loc=None)
+    assert "Group A" not in [i.get("s") for i in quiet.scene()["items"]]
+
+
+def test_curves_and_points_keep_their_depth():
+    def centre(first_top):
+        top = (lambda t: t, lambda t: 0 * t, lambda t: 0 * t + 1, "red")  # z = 1, nearer the eye from above
+        low = (lambda t: 0 * t, lambda t: t, lambda t: 0 * t, "blue")
+        a, b = (top, low) if first_top else (low, top)
+        fig = P.curve3d(*a[:3], -1, 1, color=a[3], width=4, azimuth=-60, elevation=90, perspective=False)
+        fig.curve3d(*b[:3], -1, 1, color=b[3], width=4)
+        im = next(i for i in fig._root._build("t", 100.0).items if isinstance(i, _scene.Image))
+        o = 4 * ((im.ih // 2) * im.iw + im.iw // 2)
+        return tuple(im.rgba[o : o + 4])
+
+    assert centre(True)[0] > 200 and centre(False)[0] > 200  # red on top whatever the order
+
+
+def test_a_cloud_of_points_keeps_a_margin():
+    sp = space_of(P.scatter3d([0.0, 1.0], [0.0, 2.0], [0.0, 4.0]))
+    lo, hi = sp.limits()
+    assert lo[0] == pytest.approx(-0.04) and hi[2] == pytest.approx(4.16)

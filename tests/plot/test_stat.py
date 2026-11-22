@@ -325,3 +325,72 @@ def test_diagnostics_coefficients_distribution_pairs():
 def test_the_statistical_figures_draw_in_every_format(name):
     fig = figures.FIGURES[name]("serif")
     assert len(fig.to_svg()) > 3000 and fig.to_pdf().startswith(b"%PDF") and fig.to_png(dpi=72)[:4] == b"\x89PNG"
+
+
+def test_fit_equations_intervals_and_links():
+    from stardust.plot import _stat
+
+    assert [_stat._coef(v) for v in (1.2e-5, 1.86e-10, 0.154, 1e6)] == [
+        r"1.2\times10^{-5}",
+        r"1.86\times10^{-10}",
+        "0.154",
+        "10^{6}",
+    ]
+    x = sd.linspace(0.0, 10.0, 30)
+    tiny = 1.2e-5 * x + 3e-6 * sd.sin(7 * x)
+    note = P.scatter(x, tiny).fit(sd.regression.ols(tiny, sd.reshape(x, (-1, 1))))._cell.note
+    assert note.startswith(r"$y = 1.2\times10^{-5}x + ") and note.count("{") == note.count("}")
+    y = 1.8 * x + 3 + sd.cos(7 * x)
+    for name in ("rlm", "quantreg"):  # their predict_interval takes no 'kind'
+        assert len(P.scatter(x, y).fit(getattr(sd.regression, name)(y, x))._cell.layers) == 3
+    counts = sd.round(sd.exp(0.2 * x))
+    note = P.scatter(x, counts).fit(sd.regression.glm(counts, x, family="poisson"))._cell.note
+    assert note.startswith(r"$\log\mu = ")  # the line is the mean; the equation is on the link's scale
+    ridge = P.coefficients(sd.regression.ridge(y, x, alpha=1.0))  # no intervals: points alone
+    assert ridge._cell.layers[-1].xlo.tolist() == ridge._cell.layers[-1].xhi.tolist()
+
+
+def test_compare_stacks_near_pairs_lowest_and_reads_dunnett():
+    from stardust.plot import _stat
+
+    a, b, c = sd.asarray([1.0, 2, 3, 4]), sd.asarray([2.0, 3.5, 4.1, 6]), sd.asarray([5.0, 6.5, 7.1, 9])
+    g = ["A"] * 4 + ["B"] * 4 + ["C"] * 4
+    fig = P.boxplot(g, sd.concat([a, b, c])).compare(sd.htest.tukey_hsd(a, b, c))
+    brs = [br for br in fig._cell.layers if isinstance(br, _stat.Bracket)]
+    assert {br.total for br in brs} == {3} and fig._cell.headroom == 3
+    widest = max(brs, key=lambda br: br.x2 - br.x1)
+    assert widest.level == 2  # neighbours first, at level 0: the lowest, just over the data
+    page = [9.0 + 13.0 * (br.total - 1 - br.level) for br in brs]  # draw()'s height below the plot's top
+    assert page[brs.index(widest)] == min(page)  # the widest stands highest
+    dun = P.boxplot(g, sd.concat([a, b, c])).compare(sd.htest.dunnett(b, c, control=a))
+    assert [(br.x1, br.x2) for br in dun._cell.layers if isinstance(br, _stat.Bracket)] == [(0.0, 1.0), (0.0, 2.0)]
+    batch = sd.htest.ttest_ind(sd.asarray([[1.0, 2, 3, 4], [2.0, 3, 4, 5]]), sd.asarray([[2.5, 3, 4, 6]] * 2), axis=1)
+    with pytest.raises(ValueError, match="a batch of tests cannot be drawn"):
+        P.boxplot(["a"] * 4 + ["b"] * 4, [1.0] * 8).compare(batch)
+    assert _stat.p_text(math.nan, "stars") == _stat.p_text(math.nan, "p") == "n/a"
+
+
+def test_distribution_reaches_the_peak_and_counts_on_integers():
+    info = P.distribution(sd.stats.LogNormal(mu=0.0, sigma=1.0)).info[0]
+    assert info.clipped == (False, False) and info.ylim[1] == pytest.approx(0.6577, abs=1e-3)
+    ticks = P.distribution(sd.stats.Binomial(n=20, p=0.3))._cell.xticks[0]
+    assert all(t == int(t) for t in ticks)
+    with pytest.raises(ValueError, match=r"distribution\(\): a batch of distributions cannot be drawn"):
+        P.distribution(sd.stats.Normal(mu=sd.asarray([0.0, 1.0]), sigma=1.0))
+
+
+def test_hist2d_and_hexbin_count_the_pairs():
+    x = [0.1, 0.2, 0.9, 0.95, 0.5]
+    y = [0.1, 0.15, 0.9, 0.85, 0.5]
+    h = P.hist2d(x, y, bins=2, range=((0.0, 1.0), (0.0, 1.0)))
+    pic = h._cell.layers[0]
+    assert (pic.iw, pic.ih, pic.smooth) == (2, 2, False) and h._cell.colorbar[1:] == (0.0, 3.0)
+    rgba = pic.rgba  # rows top down: the upper left bin is empty, so blank
+    assert rgba[3] == 0 and rgba[4 * 1 + 3] == 255
+    hx = P.hexbin(x, y, size=4)
+    hexes = hx._cell.layers[0]
+    assert len(hexes.cx) == len(hexes.colors) >= 3 and hx._cell.colorbar[2] >= 2.0
+    with pytest.raises(ValueError, match=r"hist2d\(\): 'bins' as a pair must hold 2 numbers"):
+        P.hist2d(x, y, bins=(2, 3, 4))
+    with pytest.raises(TypeError, match=r"hexbin\(\): 'range' must be \(\(x0, x1\), \(y0, y1\)\)"):
+        P.hexbin(x, y, range=(0, 1))

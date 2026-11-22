@@ -116,12 +116,9 @@ def labels(values):
 
 
 def log_labels(values):
-    """Powers of ten as "$10^{k}$"; other values as plain numbers."""
-    out = []
-    for v in values:
-        k = round(math.log10(v))
-        if abs(v - 10.0**k) <= 1e-9 * v:
-            out.append(f"$10^{{{k}}}$")
-        else:
-            out.append(labels([v])[0][0])
-    return out
+    """Powers of ten as "$10^{k}$" when every value is one; else all as plain numbers, so that an
+    axis does not mix the two forms."""
+    ks = [round(math.log10(v)) for v in values]
+    if all(abs(v - 10.0**k) <= 1e-9 * v for v, k in zip(values, ks)):
+        return [f"$10^{{{k}}}$" for k in ks]
+    return [labels([v])[0][0] for v in values]

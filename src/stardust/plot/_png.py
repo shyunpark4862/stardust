@@ -14,7 +14,7 @@ from . import _scene, _svgpath
 
 _Canvas = _core.plot.Canvas
 _CAP = {"butt": 0, "round": 1, "square": 2}
-_JOIN = {"miter": 0, "round": 1, "bevel": 1}
+_JOIN = {"miter": 0, "round": 1, "bevel": 2}
 _RECT = b"MLLLZ"
 MAX_PIXELS = 1 << 28
 
@@ -65,7 +65,7 @@ def pixels(scene, dpi=300):
             canvas.markers(ops, xy, base, item.at.tobytes(), item.fill or (), item.stroke or (), item.width * s, clip)
         elif isinstance(item, _scene.Path):
             if item.fill is not None:
-                canvas.fill(ops, xy, base, item.fill, clip)
+                canvas.fill(ops, xy, base, item.fill, clip, item.rule == "evenodd")
             if item.stroke is not None:
                 canvas.stroke(
                     ops,

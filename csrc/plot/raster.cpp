@@ -219,7 +219,14 @@ void Canvas::edge(Window& win, double x0, double y0, double x1, double y1) {
 
 // Paints the window: the accumulated edge areas become coverage (a running sum along the row,
 // its magnitude at most 1) and the colour goes over the pixels. Clears what it read.
-void Canvas::composite(Window& win, const float rgba[4], const Clip* clip) {
+void Canvas::composite(Window& win, const float rgba[4], const Clip* clip, bool evenodd) {
+    // the coverage of a winding sum: non-zero, or even-odd (a triangle wave of period 2)
+    const auto cover = [evenodd](float sum) {
+        float c = std::abs(sum);
+        if (!evenodd) return std::min(c, 1.0f);
+        c = std::fmod(c, 2.0f);
+        return c > 1.0f ? 2.0f - c : c;
+    };
     const float a = rgba[3];
     const float sr = rgba[0] * a, sg = rgba[1] * a, sb = rgba[2] * a;
     for (int r = 0; r < win.bh; ++r) {
@@ -231,10 +238,10 @@ void Canvas::composite(Window& win, const float rgba[4], const Clip* clip) {
         const int end = std::min(hi, win.bw + 2);
         for (int i = lo; i < end; ++i) {
             sum += row[i];
-            row[i] = std::min(std::abs(sum), 1.0f);
+            row[i] = cover(sum);
         }
         if (std::abs(sum) > 1e-4f) {  // an edge right of the window was cut off: covered to the end
-            const float c = std::min(std::abs(sum), 1.0f);
+            const float c = cover(sum);
             for (int i = end; i < win.bw; ++i) row[i] = c;
             hi = win.hi[r] = win.bw + 2;
         }
@@ -271,7 +278,8 @@ void Canvas::fill(
     std::size_t nxy,
     const double m[6],
     const float rgba[4],
-    const Clip* clip
+    const Clip* clip,
+    bool evenodd
 ) {
     Poly p;
     flatten(ops, nops, xy, nxy, m, p);
@@ -295,7 +303,7 @@ void Canvas::fill(
             edge(win, p.pts[2 * i], p.pts[2 * i + 1], p.pts[2 * i + 2], p.pts[2 * i + 3]);
         if (b - a >= 2) edge(win, p.pts[2 * b - 2], p.pts[2 * b - 1], p.pts[2 * a], p.pts[2 * a + 1]);  // fills close
     }
-    composite(win, rgba, clip);
+    composite(win, rgba, clip, evenodd);
 }
 
 namespace {
@@ -346,7 +354,7 @@ struct Stroker {
                 add(px + nux * hw, py + nuy * hw);
                 arc(px, py, nux, nuy, nvx, nvy);
                 add(px + nvx * hw, py + nvy * hw);
-            } else if (half > 1e-12 && 2.0 / half <= kMiterLimit * kMiterLimit) {
+            } else if (join == Join::Miter && half > 1e-12 && 2.0 / half <= kMiterLimit * kMiterLimit) {
                 add(px + (nux + nvx) * hw / half, py + (nuy + nvy) * hw / half);
             } else {
                 add(px + nux * hw, py + nuy * hw);
@@ -933,6 +941,47 @@ std::string path_text(const char* ops, std::size_t nops, const double* xy, int d
             }
         }
         i += static_cast<std::size_t>(n);
+    }
+    return out;
+}
+
+std::vector<double> simplify(const double* xy, std::size_t n, double tol) {
+    if (n < 3) return std::vector<double>(xy, xy + 2 * n);
+    std::vector<char> keep(n, 0);
+    keep[0] = keep[n - 1] = 1;
+    const double t2 = tol * tol;
+    std::vector<std::pair<std::size_t, std::size_t>> todo{{0, n - 1}};
+    while (!todo.empty()) {
+        const auto [a, b] = todo.back();
+        todo.pop_back();
+        if (b <= a + 1) continue;
+        const double ax = xy[2 * a], ay = xy[2 * a + 1], dx = xy[2 * b] - ax, dy = xy[2 * b + 1] - ay;
+        const double len2 = dx * dx + dy * dy;
+        double far = -1.0;
+        std::size_t at = a;
+        for (std::size_t i = a + 1; i < b; ++i) {
+            const double px = xy[2 * i] - ax, py = xy[2 * i + 1] - ay;
+            double d2;
+            if (len2 > 0.0) {
+                const double cr = px * dy - py * dx;
+                d2 = cr * cr / len2;  // to the line through a and b
+            } else {
+                d2 = px * px + py * py;  // a and b at one place (a closed run): to that place
+            }
+            if (d2 > far) {
+                far = d2;
+                at = i;
+            }
+        }
+        if (far > t2) {
+            keep[at] = 1;
+            todo.push_back({a, at});
+            todo.push_back({at, b});
+        }
+    }
+    std::vector<double> out;
+    for (std::size_t i = 0; i < n; ++i) {
+        if (keep[i]) out.insert(out.end(), {xy[2 * i], xy[2 * i + 1]});
     }
     return out;
 }

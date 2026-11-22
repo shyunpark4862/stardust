@@ -43,6 +43,31 @@ def call2(f, X, Y, who, arg="f"):
     raise TypeError(f"{who}(): '{arg}' must return an sd.ndarray (it is called with two), not {_type_name(out)}")
 
 
+def given(f, who, samples=None, refine=None):
+    """A function, or the values of a grid given as a 2-D array (Z[j, i] at x_i, y_j; the first
+    row at y0): None for the first, the float64 array for the second."""
+    if callable(f):
+        return None
+    from ..optimize._common import _as_array
+
+    if isinstance(f, (list, tuple)) or isinstance(f, sd.ndarray):
+        Z = _as_array(f, who, "f")
+        if Z.ndim != 2 or Z.shape[0] < 2 or Z.shape[1] < 2:
+            raise ValueError(
+                f"{who}(): 'f' as values must be a 2-D array of at least 2 x 2, not of shape {tuple(Z.shape)}"
+            )
+        if samples is not None or refine is not None:
+            raise ValueError(f"{who}(): 'samples' and 'refine' are for a function; the values given are the grid")
+        return Z if Z.dtype == sd.float64 else Z.astype(sd.float64)
+    raise TypeError(f"{who}(): 'f' must be callable or a 2-D array of values, not {_type_name(f)}")
+
+
+def values_grid(Z, x0, x1, y0, y1):
+    """(xs, ys, F) of values given over the box: the grid's points spread evenly from edge to edge."""
+    ny, nx = Z.shape
+    return sd.linspace(x0, x1, nx).tolist(), sd.linspace(y0, y1, ny).tolist(), Z
+
+
 def _box(who, x0, x1, y0, y1):
     x0, x1 = _interval(who, x0, x1, "x0", "x1")
     y0, y1 = _interval(who, y0, y1, "y0", "y1")
@@ -152,7 +177,7 @@ class Cells:
         n = E.shape[0] // 8
         E = sd.reshape(E, (n, 8))
         px, py = E[:, 0], E[:, 1]
-        if polish and n:
+        if polish and n and f is not None:  # a grid given as values has nothing to polish with
             # a secant step between the crossing estimate and the corner on the other side of the level
             v = call2(f, sd.reshape(px, (n, 1)), sd.reshape(py, (n, 1)), who)
             v = sd.reshape(v, (n,)) - level
@@ -172,23 +197,106 @@ class Cells:
 
     def curves(self):
         """The level set as polylines: lists of (x, y)."""
-        X, Y = self.arrays()
-        out, cur = [], []
-        for x, y in zip(X.tolist(), Y.tolist()):
-            if x != x:
-                out.append(cur)
-                cur = []
-            else:
-                cur.append((x, y))
-        if cur:
-            out.append(cur)
-        return out
+        return _pieces(*self.arrays())
 
     def inside(self):
         """(ops, xy) of the region where the function is above the level: rectangles for runs of
         cells wholly inside, and the inside polygon of every cell the level crosses."""
         ops, xy = self.core.inside(self.level, self.points)
         return ops.decode(), array("d", xy)
+
+
+def _region(f, xs, ys, F, level, who, cells=None):
+    """(ops, xy, fill rule) of where f is above the level: its outline, or cell by cell."""
+    cells = cells or Cells(f, *framed(xs, ys, F, _below(F, [level])), level, who, polish=f is not None)
+    out = loops(*cells.arrays())
+    if out is not None:
+        return out[0], out[1], "evenodd"
+    ops, xy = Cells(f, xs, ys, F, level, who, polish=f is not None).inside()
+    return ops, xy, "nonzero"
+
+
+def framed(xs, ys, F, below):
+    """The grid with a border of value `below` (under every level) at the same coordinates as
+    its edge: a level set of it closes along the edge of the box, and its loops bound regions."""
+    ny, nx = F.shape
+    G = sd.full((ny + 2, nx + 2), below)
+    G[1:-1, 1:-1] = F
+    return [xs[0], *xs, xs[-1]], [ys[0], *ys, ys[-1]], G
+
+
+def _below(F, levels):
+    r = _layers.finite_range(sd.reshape(F, (-1,)))
+    lo = min(levels) if r is None else min(r[0], min(levels))
+    return lo - 1.0 - abs(lo)
+
+
+def loops(X, Y):
+    """(ops, xy) of the closed polylines of X, Y (NaN between them; a closed one repeats its first
+    point), to be filled with the even-odd rule; None when one of them is open (a hole in the
+    function's domain cuts it): then the region is drawn cell by cell."""
+    n = X.shape[0]
+    if n == 0:
+        return "", array("d")
+    gap = sd.isnan(X)
+    ends = [-1, *sd.nonzero(gap)[0].tolist(), n]
+    ops, keep = [], []
+    for a, b in zip(ends, ends[1:]):
+        a, b = a + 1, b - 1  # the first and last point of a piece
+        if b - a < 2:
+            continue
+        if not (float(X[a]) == float(X[b]) and float(Y[a]) == float(Y[b])):
+            return None
+        ops.append("M" + "L" * (b - a - 1) + "Z")
+        keep.append((a, b))  # the repeated last point is left out
+    idx = sd.concat([sd.arange(0, b - a) + a for a, b in keep]) if keep else sd.zeros(0, dtype=sd.int64)
+    xy = array("d")
+    if keep:
+        xy.frombytes(bytes(memoryview(sd.reshape(sd.stack([sd.take(X, idx), sd.take(Y, idx)], axis=1), (-1,)))))
+    return "".join(ops), xy
+
+
+def off_edge(X, Y, box):
+    """The level curves of a framed grid without their runs along the edge of the box: a NaN is
+    put into every segment that lies on the edge."""
+    n = X.shape[0]
+    if n < 2:
+        return X, Y
+    x0, x1, y0, y1 = box
+
+    def on(x, y):
+        return (x == x0) | (x == x1) | (y == y0) | (y == y1)
+
+    a, b = slice(0, n - 1), slice(1, n)
+    cut = on(X[a], Y[a]) & on(X[b], Y[b]) & on((X[a] + X[b]) * 0.5, (Y[a] + Y[b]) * 0.5)
+    k = int(sd.sum(cut))
+    if k == 0:
+        return X, Y
+    shift = sd.concat([sd.zeros(1, dtype=sd.int64), sd.cumulative_sum(cut.astype(sd.int64))])
+    pos = sd.arange(0, n) + shift
+    oX, oY = sd.full((n + k,), math.nan), sd.full((n + k,), math.nan)
+    oX[pos], oY[pos] = X, Y
+    # a point left alone between two cuts draws nothing: out, with the second of two gaps in a row
+    fin = sd.isfinite(oX)
+    no = sd.zeros(1, dtype=sd.bool)
+    prev, nxt = sd.concat([no, fin[:-1]]), sd.concat([fin[1:], no])
+    keep = fin & (prev | nxt) | ~fin & prev
+    return oX[keep], oY[keep]
+
+
+def _pieces(X, Y):
+    """Polylines as lists of (x, y) from two arrays with a NaN between them."""
+    out, cur = [], []
+    for x, y in zip(X.tolist(), Y.tolist()):
+        if x != x:
+            if cur:
+                out.append(cur)
+            cur = []
+        else:
+            cur.append((x, y))
+    if cur:
+        out.append(cur)
+    return out
 
 
 def _doubles(b):
@@ -198,8 +306,8 @@ def _doubles(b):
 class Fill(_layers.Layer):
     """Polygons in data coordinates, filled (a region)."""
 
-    def __init__(self, ops, xy, box, color, label):
-        self.ops, self.xy, self.box, self.color, self.label = ops, xy, box, color, label
+    def __init__(self, ops, xy, box, color, label, rule="nonzero"):
+        self.ops, self.xy, self.box, self.color, self.label, self.rule = ops, xy, box, color, label, rule
 
     def extent(self, axis, positive):
         lo, hi = (self.box[0], self.box[1]) if axis == "x" else (self.box[2], self.box[3])
@@ -214,7 +322,17 @@ class Fill(_layers.Layer):
         X, Y = fr.tx(P[:, 0]), fr.ty(P[:, 1])
         out = array("d")
         out.frombytes(bytes(memoryview(sd.reshape(sd.stack([X, Y], axis=1), (-1,)))))
-        fr.scene.add(_scene.Path(self.ops, out, fill=self.color, clip=fr.clip))
+        ops = self.ops
+        if self.rule == "evenodd" and len(out) > 64:  # outlines: each loop simplified as a line is
+            parts, xy, at = [], array("d"), 0
+            for piece in ops.split("Z")[:-1]:
+                k = len(piece)
+                run = _layers.simplified(out[2 * at : 2 * (at + k)] + out[2 * at : 2 * at + 2])  # closed again
+                parts.append("M" + "L" * (len(run) // 2 - 2) + "Z")
+                xy.extend(run[:-2])
+                at += k
+            ops, out = "".join(parts), xy
+        fr.scene.add(_scene.Path(ops, out, fill=self.color, clip=fr.clip, rule=self.rule))
 
     def entries(self):
         return [(self.label, _layers._patch_handle(self.color))]
@@ -289,13 +407,16 @@ def implicit(
     self, f, x0, x1, y0, y1, /, *, level=0.0, samples=None, refine=None, color=None, width=None, style="-", label=None
 ):
     who = "implicit"
-    _callable(f, who, "f")
+    Z = given(f, who, samples, refine)
     x0, x1, y0, y1 = _box(who, x0, x1, y0, y1)
     level = real(level, who, "level")
     width, style, label = _opt_real(who, "width", width), _style(who, style), _label(who, label)
-    (nx, ny), deep = _sample.knobs(who, samples, refine, (NX + 1, NY + 1), 1, pair=True)
-    xs, ys, F = grid(f, x0, x1, y0, y1, nx - 1, ny - 1, who)
-    X, Y = Cells(f, *(near(f, xs, ys, F, level, who) if deep else (xs, ys, F)), level, who).arrays()
+    if Z is None:
+        (nx, ny), deep = _sample.knobs(who, samples, refine, (NX + 1, NY + 1), 1, pair=True)
+        xs, ys, F = grid(f, x0, x1, y0, y1, nx - 1, ny - 1, who)
+        X, Y = Cells(f, *(near(f, xs, ys, F, level, who) if deep else (xs, ys, F)), level, who).arrays()
+    else:
+        X, Y = Cells(None, *values_grid(Z, x0, x1, y0, y1), level, who, polish=False).arrays()
     layer = _layers.Line(X, Y, _parse(self, who, color), width, style, label)
     layer.extent = lambda axis, positive: (x0, x1, (x0, x1)) if axis == "x" else (y0, y1, (y0, y1))
     self._cell.layers.append(layer)
@@ -305,13 +426,19 @@ def implicit(
 
 def region(self, f, x0, x1, y0, y1, /, *, samples=None, refine=None, color=None, alpha=0.3, label=None):
     who = "region"
-    _callable(f, who, "f")
+    Z = given(f, who, samples, refine)
     x0, x1, y0, y1 = _box(who, x0, x1, y0, y1)
     a, label = _alpha(who, alpha), _label(who, label)
-    (nx, ny), deep = _sample.knobs(who, samples, refine, (NX + 1, NY + 1), 1, pair=True)
-    xs, ys, F = grid(f, x0, x1, y0, y1, nx - 1, ny - 1, who)
-    ops, xy = Cells(f, *(near(f, xs, ys, F, 0.0, who) if deep else (xs, ys, F)), 0.0, who).inside()
-    self._cell.layers.append(Fill(ops, xy, (x0, x1, y0, y1), _color.with_alpha(_parse(self, who, color), a), label))
+    if Z is None:
+        (nx, ny), deep = _sample.knobs(who, samples, refine, (NX + 1, NY + 1), 1, pair=True)
+        xs, ys, F = grid(f, x0, x1, y0, y1, nx - 1, ny - 1, who)
+        xs, ys, F = near(f, xs, ys, F, 0.0, who) if deep else (xs, ys, F)
+    else:
+        (xs, ys, F), f = values_grid(Z, x0, x1, y0, y1), None
+    ops, xy, rule = _region(f, xs, ys, F, 0.0, who)
+    self._cell.layers.append(
+        Fill(ops, xy, (x0, x1, y0, y1), _color.with_alpha(_parse(self, who, color), a), label, rule)
+    )
     self._cell.aspect = 1.0
     return self._touch()
 
@@ -352,7 +479,7 @@ def contour(
     color=None,
 ):
     who = "contour"
-    _callable(f, who, "f")
+    Z = given(f, who, samples, refine)
     x0, x1, y0, y1 = _box(who, x0, x1, y0, y1)
     _check_bool(filled, who, "filled")
     _check_bool(labels, who, "labels")
@@ -360,8 +487,11 @@ def contour(
         raise ValueError(f"{who}(): 'color' and 'cmap' cannot both be given")
     one = _color.parse(color, who, "color", self._root._palette) if color is not None else None
     name = _cmap(who, cmap)
-    (nx, ny), deep = _sample.knobs(who, samples, refine, (NX + 1, NY + 1), 1, pair=True)
-    xs, ys, F = grid(f, x0, x1, y0, y1, nx - 1, ny - 1, who)
+    if Z is None:
+        (nx, ny), deep = _sample.knobs(who, samples, refine, (NX + 1, NY + 1), 1, pair=True)
+        xs, ys, F = grid(f, x0, x1, y0, y1, nx - 1, ny - 1, who)
+    else:
+        (xs, ys, F), f, deep = values_grid(Z, x0, x1, y0, y1), None, 0
     r = _layers.finite_range(sd.reshape(F, (-1,)))
     if r is None:
         raise ValueError(f"{who}(): 'f' has no finite value on the grid")
@@ -370,7 +500,8 @@ def contour(
     lv = _levels(who, levels, rr[0], rr[1])
     if len(lv) > 1 and deep:
         xs, ys, F = swift(f, xs, ys, F, lv, who)
-    whole = Grid(xs, ys, F)
+    fxs, fys, fF = framed(xs, ys, F, _below(F, lv))
+    whole = Grid(fxs, fys, fF)
     box = (x0, x1, y0, y1)
     span = (lv[-1] - lv[0]) or 1.0
     cell = self._cell
@@ -378,6 +509,7 @@ def contour(
     def shade(v):
         return _color.cmap(name, (v - lv[0]) / span) if len(lv) > 1 else _color.cmap(name, 0.5)
 
+    by_level = [Cells(f, fxs, fys, fF, v, who, grid=whole) for v in lv]  # each crossing polished once
     if filled:
         # bands painted from the lowest up: each level's region covers the part above it
         step = lv[1] - lv[0] if len(lv) > 1 else span
@@ -385,14 +517,14 @@ def contour(
             Fill("MLLLZ", array("d", (x0, y0, x1, y0, x1, y1, x0, y1)), box, shade(lv[0] - step / 2), None)
         )
         for k, v in enumerate(lv):
-            ops, xy = Cells(f, xs, ys, F, v, who, grid=whole).inside()
+            ops, xy, rule = _region(f, xs, ys, F, v, who, by_level[k])
             top = lv[k + 1] if k + 1 < len(lv) else v + step
-            cell.layers.append(Fill(ops, xy, box, shade((v + top) / 2), None))
+            cell.layers.append(Fill(ops, xy, box, shade((v + top) / 2), None, rule))
     text, _ = _ticks.labels(lv)
     marks = []
     for k, v in enumerate(lv):
-        cells = Cells(f, xs, ys, F, v, who, grid=whole)
-        X, Y = cells.arrays()
+        cells = by_level[k]
+        X, Y = off_edge(*cells.arrays(), box)
         if X.shape[0] == 0:
             continue
         c = one if one is not None else (_scene.INK if filled else shade(v))
@@ -400,7 +532,7 @@ def contour(
         layer.extent = lambda axis, positive: (x0, x1, (x0, x1)) if axis == "x" else (y0, y1, (y0, y1))
         cell.layers.append(layer)
         if labels and not filled:
-            pts = max(cells.curves(), key=len)
+            pts = max(_pieces(X, Y), key=len)
             if len(pts) >= 12:
                 places = []
                 for t in _PLACES if k % 2 == 0 else _PLACES[1:] + _PLACES[:1]:
@@ -423,17 +555,20 @@ def _picture(F, vmin, vmax, table):
 
 def density(self, f, x0, x1, y0, y1, /, *, samples=None, cmap=None, vmin=None, vmax=None, colorbar=True):
     who = "density"
-    _callable(f, who, "f")
+    Z = given(f, who, samples)
     x0, x1, y0, y1 = _box(who, x0, x1, y0, y1)
     name = _cmap(who, cmap)
     _check_bool(colorbar, who, "colorbar")
-    # the samples are the centres of the picture's pixels
-    (DX, DY), _ = _sample.knobs(who, samples, None, (DX0, DY0), 0, pair=True)
-    hx, hy = (x1 - x0) / DX, (y1 - y0) / DY
-    x = sd.linspace(x0 + hx / 2, x1 - hx / 2, DX)
-    y = sd.linspace(y0 + hy / 2, y1 - hy / 2, DY)
-    X, Y = sd.meshgrid(x, y, indexing="xy")
-    F = call2(f, X, Y, who)
+    if Z is None:
+        # the samples are the centres of the picture's pixels
+        (DX, DY), _ = _sample.knobs(who, samples, None, (DX0, DY0), 0, pair=True)
+        hx, hy = (x1 - x0) / DX, (y1 - y0) / DY
+        x = sd.linspace(x0 + hx / 2, x1 - hx / 2, DX)
+        y = sd.linspace(y0 + hy / 2, y1 - hy / 2, DY)
+        X, Y = sd.meshgrid(x, y, indexing="xy")
+        F = call2(f, X, Y, who)
+    else:  # values given: one pixel each, its value at its centre
+        F, (DY, DX) = Z, Z.shape
     r = _layers.finite_range(sd.reshape(F, (-1,))) or (0.0, 1.0)
     lo = r[0] if vmin is None else real(vmin, who, "vmin")
     hi = r[1] if vmax is None else real(vmax, who, "vmax")
@@ -460,6 +595,8 @@ def phase(self, f, re0, re1, im0, im1, /, *, samples=None, contours=True):
     X, Y = sd.meshgrid(x, y, indexing="xy")
     Z = X + Y * 1j
     W = f(Z)
+    if isinstance(W, (int, float, complex)) and not isinstance(W, bool):  # a constant, as the other plots take it
+        W = sd.full(tuple(Z.shape), complex(W))
     if not isinstance(W, sd.ndarray) or tuple(W.shape) != tuple(Z.shape):
         raise TypeError(
             f"{who}(): 'f' must return an sd.ndarray of its argument's shape {tuple(Z.shape)} "
@@ -476,4 +613,291 @@ def phase(self, f, re0, re1, im0, im1, /, *, samples=None, contours=True):
     return self._touch()
 
 
-METHODS = {"implicit": implicit, "region": region, "contour": contour, "density": density, "phase": phase}
+# ---- vector fields
+
+
+def _field_values(who, fu, fv, x0, x1, y0, y1, nx, ny, centred):
+    """(xs, ys, U, V) of a vector field: two functions sampled on an nx x ny grid over the box
+    (at the cells' centres when `centred`), or two grids of values given."""
+    U, V = given(fu, who), given(fv, who)
+    if (U is None) != (V is None):
+        raise TypeError(f"{who}(): 'fu' and 'fv' must both be functions or both be 2-D arrays of values")
+    if U is not None:
+        if tuple(U.shape) != tuple(V.shape):
+            raise ValueError(f"{who}(): 'fu' and 'fv' must have one shape, not {tuple(U.shape)} and {tuple(V.shape)}")
+        xs, ys, _ = values_grid(U, x0, x1, y0, y1)
+        return xs, ys, U, V
+    if centred:
+        hx, hy = (x1 - x0) / nx, (y1 - y0) / ny
+        x, y = sd.linspace(x0 + hx / 2, x1 - hx / 2, nx), sd.linspace(y0 + hy / 2, y1 - hy / 2, ny)
+    else:
+        x, y = sd.linspace(x0, x1, nx), sd.linspace(y0, y1, ny)
+    X, Y = sd.meshgrid(x, y, indexing="xy")
+    return x.tolist(), y.tolist(), call2(fu, X, Y, who, "fu"), call2(fv, X, Y, who, "fv")
+
+
+def _shades(who, color, cmap, palette, fig):
+    """A colour for all, or a colour map by magnitude (the default)."""
+    if color is not None and cmap is not None:
+        raise ValueError(f"{who}(): 'color' and 'cmap' cannot both be given")
+    if color is not None:
+        return _color.parse(color, who, "color", palette), None
+    return None, _cmap(who, cmap)
+
+
+SHADES = 32  # the colours a map is cut into for drawing (one path each)
+
+
+def _top(M):
+    """The magnitude a field's colours and arrows end at: the bulk of the values, as function
+    plots take a range (a pole nearby does not take it all)."""
+    r = _sample.robust_range(sd.reshape(M, (-1,)))
+    return r[1] if r[1] > 0.0 else 1.0
+
+
+class Arrows(_layers.Layer):
+    """Arrows from points (x, y) by vectors (u, v) in data units; a colour each (a few distinct)."""
+
+    def __init__(self, x, y, u, v, colors, width, box, label):
+        self.x, self.y, self.u, self.v, self.colors, self.width = x, y, u, v, colors, width
+        self.box, self.label = box, label
+
+    def extent(self, axis, positive):
+        lo, hi = (self.box[0], self.box[1]) if axis == "x" else (self.box[2], self.box[3])
+        return (lo, hi, (lo, hi))
+
+    def draw(self, fr):
+        w = fr.theme["line_width"] * 0.6 if self.width is None else self.width
+        shafts, heads = {}, {}
+        for x, y, u, v, c in zip(self.x, self.y, self.u, self.v, self.colors):
+            ax, ay = fr.px(x - u / 2), fr.py(y - v / 2)  # centred on the point
+            bx, by = fr.px(x + u / 2), fr.py(y + v / 2)
+            dx, dy = bx - ax, by - ay
+            length = math.hypot(dx, dy)
+            if not length > 0.3:
+                continue
+            ux, uy = dx / length, dy / length
+            hl = min(0.4 * length, 1.6 + 2.2 * w)
+            hw = 0.45 * hl
+            sx, sy = bx - ux * hl * 0.8, by - uy * hl * 0.8  # the shaft ends inside the head
+            shafts.setdefault(c, array("d")).extend((ax, ay, sx, sy))
+            heads.setdefault(c, array("d")).extend(
+                (bx, by, bx - ux * hl - uy * hw, by - uy * hl + ux * hw, bx - ux * hl + uy * hw, by - uy * hl - ux * hw)
+            )
+        for c, xy in shafts.items():
+            fr.scene.add(_scene.Path("ML" * (len(xy) // 4), xy, stroke=c, width=w, clip=fr.clip))
+        for c, xy in heads.items():
+            fr.scene.add(_scene.Path("MLLZ" * (len(xy) // 6), xy, fill=c, clip=fr.clip))
+
+    def entries(self):
+        c = self.colors[0] if self.colors else _scene.INK
+        return [(self.label, _layers._line_handle(c, 0.8, ()))]
+
+
+def vectorfield(
+    self,
+    fu,
+    fv,
+    x0,
+    x1,
+    y0,
+    y1,
+    /,
+    *,
+    samples=None,
+    scale=1.0,
+    color=None,
+    cmap=None,
+    width=None,
+    colorbar=True,
+    label=None,
+):
+    """Arrows of the vector field (fu(x, y), fv(x, y)) at the centres of a grid of cells."""
+    who = "vectorfield"
+    for g, name in ((fu, "fu"), (fv, "fv")):
+        if callable(g):
+            _callable(g, who, name)
+    x0, x1, y0, y1 = _box(who, x0, x1, y0, y1)
+    scale = real(scale, who, "scale", positive=True)
+    width, label = _opt_real(who, "width", width), _label(who, label)
+    _check_bool(colorbar, who, "colorbar")
+    across = 21
+    down = max(3, round(across * (y1 - y0) / (x1 - x0)))
+    (nx, ny), _ = _sample.knobs(who, samples, None, (across, down), 0, pair=True, most=400)
+    xs, ys, U, V = _field_values(who, fu, fv, x0, x1, y0, y1, nx, ny, True)
+    ny, nx = U.shape
+    one, name = _shades(who, color, cmap, self._root._palette, self)
+    M = sd.sqrt(U * U + V * V)
+    top = _top(M)
+    step = min((x1 - x0) / nx, (y1 - y0) / ny)
+    k = 0.9 * step * scale / top  # the longest arrow fills 90% of a cell
+    X, Y = sd.meshgrid(sd.asarray(xs), sd.asarray(ys), indexing="xy")
+    ok = sd.isfinite(M)
+    xv, yv = X[ok].tolist(), Y[ok].tolist()
+    shrink = sd.where(M > top, top / M, 1.0)  # beyond the top (by a pole): as long as the longest
+    uv, vv, mv = (U * shrink * k)[ok].tolist(), (V * shrink * k)[ok].tolist(), sd.minimum(M, top)[ok].tolist()
+    if one is not None:
+        cols = [one] * len(xv)
+    else:
+        cols = [_color.cmap(name, round(m / top * (SHADES - 1)) / (SHADES - 1)) for m in mv]
+    self._cell.layers.append(Arrows(xv, yv, uv, vv, cols, width, (x0, x1, y0, y1), label))
+    self._cell.aspect = 1.0
+    if one is None and colorbar:
+        self._cell.colorbar = (name, 0.0, top)
+    return self._touch()
+
+
+class Streams(_layers.Layer):
+    """Streamlines: polylines with the field's magnitude at each point, coloured by it (or one
+    colour), with an arrowhead halfway along each line."""
+
+    def __init__(self, xyz, one, name, top, width, arrows, box, label):
+        self.xyz, self.one, self.name, self.top = xyz, one, name, top
+        self.width, self.arrows, self.box, self.label = width, arrows, box, label
+
+    def extent(self, axis, positive):
+        lo, hi = (self.box[0], self.box[1]) if axis == "x" else (self.box[2], self.box[3])
+        return (lo, hi, (lo, hi))
+
+    def _colour(self, m):
+        if self.one is not None:
+            return self.one
+        t = 0.0 if not m == m else min(max(m / self.top, 0.0), 1.0)
+        return _color.cmap(self.name, round(t * (SHADES - 1)) / (SHADES - 1))
+
+    def draw(self, fr):
+        w = fr.theme["line_width"] * 0.7 if self.width is None else self.width
+        runs, heads = {}, {}
+        n = len(self.xyz) // 3
+        line = []
+        for i in range(n + 1):
+            if i == n or self.xyz[3 * i] != self.xyz[3 * i]:
+                self._line(fr, line, runs, heads, w)
+                line = []
+            else:
+                line.append((fr.px(self.xyz[3 * i]), fr.py(self.xyz[3 * i + 1]), self.xyz[3 * i + 2]))
+        for c, (ops, xy) in runs.items():
+            fr.scene.add(_scene.Path("".join(ops), xy, stroke=c, width=w, join="round", cap="round", clip=fr.clip))
+        for c, xy in heads.items():
+            fr.scene.add(_scene.Path("MLLZ" * (len(xy) // 6), xy, fill=c, clip=fr.clip))
+
+    def _line(self, fr, pts, runs, heads, w):
+        if len(pts) < 2:
+            return
+        # runs of one colour; a run starts at the last point of the one before, so they join
+        start, cur = 0, self._colour(pts[0][2])
+        for i in range(1, len(pts) + 1):
+            c = self._colour(pts[i][2]) if i < len(pts) else None
+            if c != cur:
+                seg = pts[start : i + 1] if i < len(pts) else pts[start:]
+                if len(seg) >= 2:
+                    run = array("d", [v for p in seg for v in p[:2]])
+                    run = _layers.simplified(run)
+                    ops, xy = runs.setdefault(cur, ([], array("d")))
+                    ops.append("M" + "L" * (len(run) // 2 - 1))
+                    xy.extend(run)
+                start, cur = i, c
+        if self.arrows:
+            # an arrowhead halfway along the line, pointing along it
+            total = sum(math.dist(pts[i][:2], pts[i + 1][:2]) for i in range(len(pts) - 1))
+            if total < 6.0:
+                return
+            half, run_ = total / 2, 0.0
+            for i in range(len(pts) - 1):
+                d = math.dist(pts[i][:2], pts[i + 1][:2])
+                if run_ + d >= half and d > 0:
+                    t = (half - run_) / d
+                    x = pts[i][0] + t * (pts[i + 1][0] - pts[i][0])
+                    y = pts[i][1] + t * (pts[i + 1][1] - pts[i][1])
+                    ux, uy = (pts[i + 1][0] - pts[i][0]) / d, (pts[i + 1][1] - pts[i][1]) / d
+                    hl = 2.2 + 2.0 * w
+                    hw = 0.5 * hl
+                    bx, by = x + ux * hl / 2, y + uy * hl / 2
+                    heads.setdefault(self._colour(pts[i][2]), array("d")).extend(
+                        (
+                            bx,
+                            by,
+                            bx - ux * hl - uy * hw,
+                            by - uy * hl + ux * hw,
+                            bx - ux * hl + uy * hw,
+                            by - uy * hl - ux * hw,
+                        )
+                    )
+                    break
+                run_ += d
+
+    def entries(self):
+        c = self.one if self.one is not None else _color.cmap(self.name, 0.5)
+        return [(self.label, _layers._line_handle(c, 0.8, ()))]
+
+
+def streamlines(
+    self,
+    fu,
+    fv,
+    x0,
+    x1,
+    y0,
+    y1,
+    /,
+    *,
+    cells=25,
+    samples=None,
+    color=None,
+    cmap=None,
+    width=None,
+    arrows=True,
+    colorbar=True,
+    label=None,
+):
+    """Streamlines of the vector field (fu(x, y), fv(x, y)), spread evenly over the box."""
+    who = "streamlines"
+    for g, name in ((fu, "fu"), (fv, "fv")):
+        if callable(g):
+            _callable(g, who, name)
+    x0, x1, y0, y1 = _box(who, x0, x1, y0, y1)
+    mx = integer(cells, who, "cells", 2)
+    if mx > 400:
+        raise ValueError(f"{who}(): 'cells' must be between 2 and 400")
+    my = max(2, round(mx * (y1 - y0) / (x1 - x0)))
+    width, label = _opt_real(who, "width", width), _label(who, label)
+    _check_bool(arrows, who, "arrows")
+    _check_bool(colorbar, who, "colorbar")
+    across = 6 * mx + 1
+    down = max(3, round(across * (y1 - y0) / (x1 - x0)))
+    (nx, ny), _ = _sample.knobs(who, samples, None, (across, down), 0, pair=True)
+    xs, ys, U, V = _field_values(who, fu, fv, x0, x1, y0, y1, nx, ny, False)
+    ny, nx = U.shape
+    one, name = _shades(who, color, cmap, self._root._palette, self)
+    raw = _core_plot.streamlines(
+        bytes(memoryview(sd.reshape(U, (-1,)))),
+        bytes(memoryview(sd.reshape(V, (-1,)))),
+        nx,
+        ny,
+        x0,
+        x1,
+        y0,
+        y1,
+        mx,
+        my,
+        2.0,
+    )
+    xyz = array("d", raw)
+    M = sd.sqrt(U * U + V * V)
+    top = _top(M)
+    self._cell.layers.append(Streams(xyz, one, name, top, width, arrows, (x0, x1, y0, y1), label))
+    self._cell.aspect = 1.0
+    if one is None and colorbar:
+        self._cell.colorbar = (name, 0.0, top)
+    return self._touch()
+
+
+METHODS = {
+    "implicit": implicit,
+    "region": region,
+    "contour": contour,
+    "density": density,
+    "phase": phase,
+    "vectorfield": vectorfield,
+    "streamlines": streamlines,
+}

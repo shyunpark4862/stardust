@@ -108,10 +108,11 @@ def write(scene, dpi=300.0):
                 if item.dash:
                     body.append("[" + " ".join(_n(d) for d in item.dash) + "] 0 d")
             body.append(_path(item.ops, item.xy))
+            star = "*" if item.rule == "evenodd" else ""
             body.append(
-                "B"
+                "B" + star
                 if fill is not None and stroke is not None
-                else "f"
+                else "f" + star
                 if fill is not None
                 else "S"
                 if stroke is not None

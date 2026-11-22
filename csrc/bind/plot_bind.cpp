@@ -8,6 +8,7 @@
 
 #include "plot/levels.hpp"
 #include "plot/raster.hpp"
+#include "plot/streams.hpp"
 #include "plot/zbuffer.hpp"
 
 #include <nanobind/stl/pair.h>
@@ -102,17 +103,18 @@ void bind_plot(nb::module_& core) {
         .def(
             "fill",
             [](Canvas& c, nb::bytes ops, nb::bytes xy, const std::vector<double>& mat, const std::vector<double>& rgba,
-               const std::vector<double>& clip) {
+               const std::vector<double>& clip, bool evenodd) {
                 const Args a = unpack(ops, xy, mat, rgba, clip);
-                c.fill(a.ops, a.nops, a.xy.data(), a.xy.size(), a.m, a.rgba, a.has_clip ? &a.clip : nullptr);
-            }
+                c.fill(a.ops, a.nops, a.xy.data(), a.xy.size(), a.m, a.rgba, a.has_clip ? &a.clip : nullptr, evenodd);
+            },
+            nb::arg("ops"), nb::arg("xy"), nb::arg("m"), nb::arg("rgba"), nb::arg("clip"), nb::arg("evenodd") = false
         )
         .def(
             "stroke",
             [](Canvas& c, nb::bytes ops, nb::bytes xy, const std::vector<double>& mat, const std::vector<double>& rgba,
                const std::vector<double>& clip, double width, int cap, int join, const std::vector<double>& dash) {
                 const Args a = unpack(ops, xy, mat, rgba, clip);
-                if (cap < 0 || cap > 2 || join < 0 || join > 1) throw std::invalid_argument("bad cap or join");
+                if (cap < 0 || cap > 2 || join < 0 || join > 2) throw std::invalid_argument("bad cap or join");
                 c.stroke(
                     a.ops, a.nops, a.xy.data(), a.xy.size(), a.m, a.rgba, width, static_cast<plot::Cap>(cap),
                     static_cast<plot::Join>(join), dash.data(), dash.size(), a.has_clip ? &a.clip : nullptr
@@ -266,6 +268,27 @@ void bind_plot(nb::module_& core) {
         if (v.size() != need) throw std::invalid_argument("the coordinates do not match the ops");
         const std::string out = plot::path_text(ops.c_str(), ops.size(), v.data(), digits, pdf);
         return nb::str(out.data(), out.size());
+    });
+    m.def(
+        "streamlines", [](nb::bytes u, nb::bytes v, int nx, int ny, double x0, double x1, double y0, double y1, int mx,
+                          int my, double min_cells) {
+            const std::vector<double> U = doubles(u), V = doubles(v);
+            if (nx < 2 || ny < 2 || U.size() != static_cast<std::size_t>(nx) * ny || V.size() != U.size() || mx < 1 ||
+                my < 1 || !(x1 > x0) || !(y1 > y0)) {
+                throw std::invalid_argument("streamlines: a grid of nx x ny values each, a box, a mask of cells");
+            }
+            const std::vector<double> out =
+                plot::streamlines(U.data(), V.data(), nx, ny, x0, x1, y0, y1, mx, my, min_cells);
+            return nb::bytes(reinterpret_cast<const char*>(out.data()), out.size() * sizeof(double));
+        }
+    );
+    m.def("simplify", [](nb::bytes xy, double tol) {
+        if (xy.size() % (2 * sizeof(double)) != 0 || !(tol >= 0.0)) {
+            throw std::invalid_argument("xy must be packed pairs, tol not negative");
+        }
+        const std::vector<double> v = doubles(xy);
+        const std::vector<double> out = plot::simplify(v.data(), v.size() / 2, tol);
+        return nb::bytes(reinterpret_cast<const char*>(out.data()), out.size() * sizeof(double));
     });
     m.def("decimate", [](nb::bytes xy, double column) {
         if (xy.size() % (2 * sizeof(double)) != 0 || !(column > 0.0)) {

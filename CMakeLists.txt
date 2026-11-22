@@ -142,6 +142,7 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/bind/plot_bind.cpp
   csrc/plot/levels.cpp
   csrc/plot/raster.cpp
+  csrc/plot/streams.cpp
   csrc/plot/zbuffer.cpp
   csrc/bind/module.cpp)
 

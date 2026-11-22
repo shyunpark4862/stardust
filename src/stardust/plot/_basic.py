@@ -6,6 +6,7 @@ function of the same name makes a new figure from the figure options (width, hei
 theme, palette) and calls the method.
 """
 
+import functools
 import inspect
 import math
 
@@ -159,6 +160,12 @@ def _each(fig, who, n, group, data, color, label):
         raise ValueError(f"{who}(): 'color' and 'group' cannot both be given (a group takes the palette's colours)")
     if label is not None:
         raise ValueError(f"{who}(): 'label' and 'group' cannot both be given (a group is named by its value)")
+    order = getattr(fig._cell, "order", None)  # a facet's cell: every group keeps the colour it has in the others
+    if order:
+        palette = fig._root._palette
+        return [
+            (idx, _color.cycle(palette, order.index(key)) if key in order else None, escape(key)) for key, idx in parts
+        ]
     return [(idx, None, escape(key)) for key, idx in parts]
 
 
@@ -212,14 +219,72 @@ def _categories(cell, axis, cats):
     return sd.asarray(pos) if pos else sd.zeros(0)
 
 
-def bar(self, x, height, /, *, data=None, group=None, color=None, width=0.8, horizontal=False, label=None):
+def value_text(v, spec, who):
+    """A number written on a plot (bar values, heatmap cells): spec True gives three significant
+    digits; a format spec string ('.1f', '.0%', ',.0f') is Python's own."""
+    if v != v:
+        return ""
+    if spec is True:
+        s = f"{v:.3g}"
+        if "e" in s:
+            m, e = s.split("e")
+            return f"${m}\\times10^{{{int(e)}}}$"
+        return f"${s}$"
+    try:
+        s = format(v, spec)
+    except ValueError:
+        raise ValueError(f"{who}(): 'annotate' is not a format spec for numbers: {spec!r}") from None
+    return "$" + s.replace("%", "\\%").replace(",", "{,}") + "$"
+
+
+def _annotate(who, annotate):
+    if isinstance(annotate, bool) or isinstance(annotate, str):
+        return annotate
+    raise TypeError(f"{who}(): 'annotate' must be a bool or a format spec string, not {_type_name(annotate)}")
+
+
+def bar(
+    self,
+    x,
+    height,
+    /,
+    *,
+    data=None,
+    group=None,
+    stack=False,
+    gap=0.1,
+    err=None,
+    annotate=False,
+    color=None,
+    width=0.8,
+    horizontal=False,
+    label=None,
+):
     who = "bar"
     _check_data(who, data)
     kind, xv = labels_or_numbers(who, "x", x, data)
     H = numbers_(who, "height", height, data)
     n = same_length(who, x=xv, height=H)
     width, label = real(width, who, "width", positive=True), _label(who, label)
+    gap = real(gap, who, "gap")
+    if not 0.0 <= gap < 1.0:
+        raise ValueError(f"{who}(): 'gap' must be in [0, 1)")
     _check_bool(horizontal, who, "horizontal")
+    _check_bool(stack, who, "stack")
+    annotate = _annotate(who, annotate)
+    if err is not None:
+        if stack:
+            raise ValueError(f"{who}(): 'err' cannot be given for stacked bars")
+        if isinstance(err, tuple):
+            if len(err) != 2:
+                raise ValueError(f"{who}(): 'err' as a tuple must be (below, above), not {len(err)} items")
+            below, above = numbers_(who, "err[0]", err[0], data), numbers_(who, "err[1]", err[1], data)
+        else:
+            below = above = numbers_(who, "err", err, data)
+        same_length(who, height=H, err=below)
+        same_length(who, height=H, err=above)
+        if bool(sd.any(below < 0.0)) or bool(sd.any(above < 0.0)):
+            raise ValueError(f"{who}(): 'err' must not be negative")
     cell = self._cell
     parts = _each(self, who, n, group, data, color, label)
     if kind == "cat":
@@ -229,11 +294,32 @@ def bar(self, x, height, /, *, data=None, group=None, color=None, width=0.8, hor
             raise ValueError(f"{who}(): 'x' must be labels: the axis already has categories")
         pos = xv
     k = len(parts)
+    up, down = {}, {}  # stacked: the running ends above and below zero at each position
     for j, (idx, col, lab) in enumerate(parts):
+        P, V = _take(pos, idx), _take(H, idx)
+        values = V.tolist()
+        text = [value_text(v, annotate, who) for v in values] if annotate is not False else None
+        if stack:
+            bases = []
+            for p, v in zip(P.tolist(), values):
+                run = up if v >= 0 else down
+                bases.append(run.get(p, 0.0))
+                run[p] = run.get(p, 0.0) + (v if v == v else 0.0)
+            cell.layers.append(
+                _layers.Bars(
+                    P, V, sd.asarray(bases), width, horizontal, _color_of(self, who, col), lab, None, text, True
+                )
+            )
+            continue
         w = width / k
-        off = (j - (k - 1) / 2) * w  # the groups' bars side by side around the position
+        off = (j - (k - 1) / 2) * w  # the groups' bars side by side around the position, a gap between them
+        e = None
+        if err is not None:
+            e = (V - _take(below, idx), V + _take(above, idx))
         cell.layers.append(
-            _layers.Bars(_take(pos, idx) + off, _take(H, idx), 0.0, w, horizontal, _color_of(self, who, col), lab)
+            _layers.Bars(
+                P + off, V, 0.0, w * (1.0 - gap) if k > 1 else w, horizontal, _color_of(self, who, col), lab, e, text
+            )
         )
     return self._touch()
 
@@ -431,14 +517,21 @@ def module_function(name, method):
     return f
 
 
-def grid(figures, /, *, nrows=None, ncols=None, labels=None, width=None, height=None):
+def _share_arg(who, name, v):
+    if v is False or v is True or v == "all":
+        return v
+    raise ValueError(f"{who}(): '{name}' must be False, True or 'all', not {v!r}")
+
+
+def grid(figures, /, *, nrows=None, ncols=None, labels=None, sharex=False, sharey=False, width=None, height=None):
     """Gathers figures into the cells of a new one (docs/api/plot.md §2.1)."""
     who = "grid"
     if not isinstance(figures, (list, tuple)) or not figures or not all(isinstance(f, Figure) for f in figures):
         raise TypeError(f"{who}(): 'figures' must be a non-empty sequence of Figures, not {_type_name(figures)}")
     cells = []
     for f in figures:
-        cells += [f._cell] if f._root is not f else f._root._cells
+        # copies: the figures given stay as they were, and changing the grid leaves them alone
+        cells += [c.copy() for c in ([f._cell] if f._root is not f else f._root._cells)]
     n = len(cells)
     if nrows is None and ncols is None:
         nc = min(n, 2) if n <= 4 else 3
@@ -453,6 +546,7 @@ def grid(figures, /, *, nrows=None, ncols=None, labels=None, width=None, height=
         nr, nc = integer(nrows, who, "nrows", 1), integer(ncols, who, "ncols", 1)
         if nr * nc < n:
             raise ValueError(f"{who}(): {nr} x {nc} cells cannot hold {n} figures")
+    share = tuple(_share_arg(who, name, v) for name, v in (("sharex", sharex), ("sharey", sharey)))
     first = figures[0]._root
     out = object.__new__(Figure)
     out._init(who, first._w * nc if width is None else width, height, nr, nc, first._font, first._theme, first._palette)
@@ -462,6 +556,7 @@ def grid(figures, /, *, nrows=None, ncols=None, labels=None, width=None, height=
         empty = Cell()
         empty.frame = False
         out._cells[i] = empty
+    out._share = share
     for f in figures:
         out._infos += f._root._infos
     if labels is not None:
@@ -489,12 +584,28 @@ METHODS = {
 }
 
 
-def install(methods=None):
-    """Attaches the methods to Figure and returns the module functions."""
+def flat_only(name, method):
+    """A 2D plot method that refuses a cell holding a 3D plot (the other way round, the 3D
+    methods refuse a cell with a 2D plot)."""
+
+    @functools.wraps(method)
+    def guarded(self, *args, **kw):
+        if any(type(layer).__name__ == "Space" for layer in self._cell.layers):
+            raise ValueError(f"{name}(): the cell already holds a 3D plot")
+        return method(self, *args, **kw)
+
+    return guarded
+
+
+def install(methods=None, flat=True):
+    """Attaches the methods to Figure and returns the module functions. `flat`: they draw 2D
+    plots, which a 3D cell does not take."""
     out = {}
     for name, method in (METHODS if methods is None else methods).items():
         method.__name__ = name
         method.__qualname__ = f"Figure.{name}"
+        if flat:
+            method = flat_only(name, method)
         setattr(Figure, name, method)
         out[name] = module_function(name, method)
     return out

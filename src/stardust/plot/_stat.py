@@ -12,7 +12,7 @@ from array import array
 from .. import _core as sd
 from .._core import _type_name
 from ..optimize._common import _check_bool, _check_choice
-from . import _basic, _color, _field, _function, _layers, _scene, _ticks
+from . import _basic, _color, _field, _function, _layers, _scene
 from ._basic import _alpha, _each, _label, _opt_real, _take, escape, numbers_, same_length, split
 from ._figure import Cell, Figure, integer, real
 
@@ -27,32 +27,35 @@ def _nonan(a):
 
 
 class Hist(_layers.Layer):
-    """Bars between bin edges, standing on zero."""
+    """Bars between bin edges, standing on `base` (zero; a pairs plot's diagonal stands them on
+    the low end of its row's range). Filled as bars are: the colour's tint, the colour as a thin edge."""
 
-    def __init__(self, edges, heights, color, label):
-        self.edges, self.heights, self.color, self.label = edges, heights, color, label
+    def __init__(self, edges, heights, color, label, base=0.0):
+        self.edges, self.heights, self.color, self.label, self.base = edges, heights, color, label, base
 
     def extent(self, axis, positive):
         if axis == "x":
             return (self.edges[0], self.edges[-1], ())
-        top = max(self.heights, default=0.0)
-        return (0.0, top, (0.0,)) if not positive else None
+        top = max(self.heights, default=0.0) + self.base
+        return (self.base, top, (self.base,)) if not positive or self.base > 0.0 else None
 
     def draw(self, fr):
         ops, xy = [], array("d")
-        y0 = fr.py(0.0)
+        y0 = fr.py(self.base)
         for a, b, h in zip(self.edges, self.edges[1:], self.heights):
             if h > 0.0:
-                x0, x1, y1 = fr.px(a), fr.px(b), fr.py(h)
+                x0, x1, y1 = fr.px(a), fr.px(b), fr.py(self.base + h)
                 ops.append("MLLLZ")
                 xy.extend((x0, y0, x1, y0, x1, y1, x0, y1))
         if ops:
+            fill = _color.fill_of(self.color)
+            edge = (*self.color[:3], min(1.0, self.color[3] + 0.25))
             fr.scene.add(
-                _scene.Path("".join(ops), xy, fill=self.color, stroke=(1.0, 1.0, 1.0, 1.0), width=0.3, clip=fr.clip)
+                _scene.Path("".join(ops), xy, fill=fill, stroke=edge, width=fr.theme["edge_width"], clip=fr.clip)
             )
 
     def entries(self):
-        return [(self.label, _layers._patch_handle(self.color))]
+        return [(self.label, _layers._patch_handle(_color.fill_of(self.color), self.color))]
 
 
 def histogram(
@@ -328,7 +331,7 @@ def heatmap(self, z, /, *, xlabels=None, ylabels=None, cmap=None, vmin=None, vma
     nr, nc = Z.shape
     xl, yl = _strings(who, "xlabels", xlabels, nc), _strings(who, "ylabels", ylabels, nr)
     name = _field._cmap(who, cmap)
-    _check_bool(annotate, who, "annotate")
+    annotate = _basic._annotate(who, annotate)
     _check_bool(colorbar, who, "colorbar")
     r = _layers.finite_range(sd.reshape(Z, (-1,))) or (0.0, 1.0)
     lo = r[0] if vmin is None else real(vmin, who, "vmin")
@@ -347,10 +350,11 @@ def heatmap(self, z, /, *, xlabels=None, ylabels=None, cmap=None, vmin=None, vma
     cell.yticks = ([nr - 1 - i for i in range(nr)], yl if yl is not None else [f"${i}$" for i in range(nr)])
     if colorbar:
         cell.colorbar = (name, lo, hi)
-    if annotate:
+    if annotate is not False:
         vals = Z.tolist()
         flat = [v for row in vals for v in row if math.isfinite(v)]
-        text, _ = _ticks.labels([float(f"{v:.3g}") for v in flat]) if flat else ([], None)
+        # each with its own digits: a small value does not lengthen the rest
+        text = [_basic.value_text(v, annotate, who) for v in flat]
         it = iter(text)
         items = []
         for i, row in enumerate(vals):
@@ -369,7 +373,9 @@ def heatmap(self, z, /, *, xlabels=None, ylabels=None, cmap=None, vmin=None, vma
 
 
 def p_text(p, fmt):
-    """A p-value as text: 'p = 0.012' with summary()'s digits, or stars."""
+    """A p-value as text: 'p = 0.012' with summary()'s digits, or stars; n/a when the test gave none (NaN)."""
+    if p != p:
+        return "n/a"
     if fmt == "stars":
         return "ns" if not p <= 0.05 else "*" * (1 + (p <= 0.01) + (p <= 0.001))
     if p < 0.001:
@@ -382,13 +388,15 @@ class Bracket(_layers.Layer):
 
     def __init__(self, x1, x2, level, s):
         self.x1, self.x2, self.level, self.s = x1, x2, level, s
+        self.total = level + 1  # brackets in the cell; compare() sets it for all of them
 
     def strings(self):
         return [self.s]
 
     def draw(self, fr):
-        # the bracket stands in the room the layout kept above the data (cell.headroom)
-        y = fr.y + 9.0 + 13.0 * self.level
+        # the bracket stands in the room the layout kept above the data (cell.headroom); level 0
+        # is the lowest, just over the data, and later ones stand above it
+        y = fr.y + 9.0 + 13.0 * (self.total - 1 - self.level)
         a, b = fr.px(self.x1), fr.px(self.x2)
         fr.scene.add(
             _scene.Path(
@@ -426,12 +434,26 @@ def compare(self, result, /, *, groups=None, format="p", y=None):
         for _, i, j in pairs:
             cell.layers.append(Bracket(float(i), float(j), level, p_text(float(pv[i][j]), format)))
             level += 1
+    elif isinstance(p, sd.ndarray) and p.ndim == 1 and type(result).__name__ == "DunnettResult":
+        # each group against the control: the control is the first category
+        if groups is not None:
+            raise ValueError(
+                f"{who}(): 'groups' cannot be given for Dunnett's test (the control is the first category)"
+            )
+        if p.shape[0] != len(cats) - 1:
+            raise ValueError(
+                f"{who}(): the result compares {p.shape[0]} groups with a control, "
+                f"the figure has {len(cats)} categories"
+            )
+        for j, v in enumerate(p.tolist()):
+            cell.layers.append(Bracket(0.0, float(j + 1), level, p_text(float(v), format)))
+            level += 1
     else:
         try:
             value = float(p)
         except TypeError, ValueError:
-            raise TypeError(
-                f"{who}(): 'result' has a pvalue of shape {tuple(p.shape)}; one test or a k x k comparison is drawn"
+            raise ValueError(
+                f"{who}(): 'result' has a pvalue of shape {tuple(p.shape)}; a batch of tests cannot be drawn, give one"
             ) from None
         if groups is None:
             if len(cats) != 2:
@@ -452,6 +474,9 @@ def compare(self, result, /, *, groups=None, format="p", y=None):
         cell.layers.append(Bracket(float(i), float(j), level, p_text(value, format)))
         level += 1
     cell.headroom = level
+    for layer in cell.layers:
+        if isinstance(layer, Bracket):
+            layer.total = level
     return self._touch()
 
 
@@ -468,6 +493,28 @@ def _simple(result, who):
     if len(names) == 1:
         return False, 0.0, float(params[0])
     raise ValueError(f"{who}(): 'result' must have one explanatory variable; it has parameters {names}")
+
+
+_LINKS = {
+    "identity": r"\mu",
+    "log": r"\log\mu",
+    "logit": r"\mathrm{logit}\,\mu",
+    "probit": r"\Phi^{-1}(\mu)",
+    "inverse": r"1/\mu",
+    "inverse_power": r"1/\mu",
+    "cloglog": r"\log(-\log(1-\mu))",
+    "sqrt": r"\sqrt{\mu}",
+}
+
+
+def _coef(v):
+    """A coefficient with three significant digits, in TeX: 1.2 x 10^-5 written as such."""
+    s = f"{v:.3g}"
+    if "e" not in s:
+        return s
+    m, e = s.split("e")
+    e = int(e)
+    return rf"10^{{{e}}}" if m == "1" else rf"{m}\times10^{{{e}}}"
 
 
 def fit(self, result, /, *, band=True, alpha=0.05, equation=True, color=None):
@@ -495,13 +542,22 @@ def fit(self, result, /, *, band=True, alpha=0.05, equation=True, color=None):
     xs = sd.linspace(e[0], e[1], 101)
     X = sd.reshape(xs, (-1, 1))
     if band and hasattr(result, "predict_interval"):
-        iv = result.predict_interval(X, alpha=alpha, kind="mean")
+        import inspect
+
+        known = inspect.signature(result.predict_interval).parameters
+        kw = {"alpha": alpha}
+        if "kind" in known:
+            kw["kind"] = "mean"  # the band of the mean, not of a new observation
+        elif "which" in known:
+            kw["which"] = "mean"
+        iv = result.predict_interval(X, **kw)
         cell.layers.append(_layers.Area(xs, iv[:, 0], iv[:, 1], _color.with_alpha(c, 0.2), None))
     cell.layers.append(_layers.Line(xs, result.predict(X), c, None, "-", None))
     if equation:
         sign = "-" if b0 < 0 else "+"
-        eq = f"$y = {b1:.3g}x {sign} {abs(b0):.3g}$" if const else f"$y = {b1:.3g}x$"
-        eq = eq.replace("e-0", r"\times10^{-").replace("e+0", r"\times10^{") if "e" in eq else eq
+        # a GLM's line is the mean on the scale of its link: the equation says so
+        lhs = _LINKS.get(getattr(result, "link", "identity"), r"g(\mu)") if hasattr(result, "family") else "y"
+        eq = f"${lhs} = {_coef(b1)}x {sign} {_coef(abs(b0))}$" if const else f"${lhs} = {_coef(b1)}x$"
         r2 = getattr(result, "rsquared", None)
         if r2 is not None:
             eq += f", $R^2 = {float(r2):.3f}$"
@@ -548,13 +604,14 @@ def coefficients(self, result, /, *, alpha=0.05, intercept=False, color=None):
     if not 0.0 < alpha < 1.0:
         raise ValueError(f"{who}(): 'alpha' must be in (0, 1)")
     _check_bool(intercept, who, "intercept")
-    if not hasattr(result, "params") or not hasattr(result, "conf_int"):
+    if not hasattr(result, "params"):
         raise TypeError(f"{who}(): 'result' must be a regression result, not {_type_name(result)}")
     params = result.params
     if params.ndim != 1:
         raise ValueError(f"{who}(): a batch of fits cannot be drawn; give one fit")
     names = list(getattr(result, "param_names", [f"x{i}" for i in range(params.shape[0])]))
-    ci = result.conf_int(alpha=alpha).tolist()
+    # a fit without intervals (ridge) shows its estimates alone
+    ci = result.conf_int(alpha=alpha).tolist() if hasattr(result, "conf_int") else [[v, v] for v in params.tolist()]
     est = params.tolist()
     keep = [i for i, n in enumerate(names) if intercept or n != "const"]
     if not keep:
@@ -577,8 +634,11 @@ def distribution(self, dist, /, *, kind="pdf", a=None, b=None, color=None, label
     if not hasattr(dist, "icdf") or not hasattr(dist, "cdf"):
         raise TypeError(f"{who}(): 'dist' must be an sd.stats distribution, not {_type_name(dist)}")
     discrete = hasattr(dist, "pmf")
-    lo, hi = (float(v) for v in dist.support())
-    qa, qb = float(dist.icdf(0.001)), float(dist.icdf(0.999))
+    try:
+        lo, hi = (float(v) for v in dist.support())
+        qa, qb = float(dist.icdf(0.001)), float(dist.icdf(0.999))
+    except TypeError:
+        raise ValueError(f"{who}(): a batch of distributions cannot be drawn; give one") from None
     a = (lo if math.isfinite(lo) and lo >= qa - 0.25 * (qb - qa) else qa) if a is None else real(a, who, "a")
     b = (hi if math.isfinite(hi) and hi <= qb + 0.25 * (qb - qa) else qb) if b is None else real(b, who, "b")
     if not a < b:
@@ -592,9 +652,36 @@ def distribution(self, dist, /, *, kind="pdf", a=None, b=None, color=None, label
             cell.layers.append(_layers.Bars(ks, v, 0.0, 0.8, False, _basic._color_of(self, who, color), label))
         else:
             self.step(ks, v, where="post", color=color, label=label)
+        if cell.xticks is None:  # values live on the integers: so do the ticks
+            cell.xticks = (_integer_ticks(float(ks[0]), float(ks[-1])), None) if ks.shape[0] else None
         return self._touch()
     f = dist.pdf if kind == "pdf" else dist.cdf if kind == "cdf" else dist.ccdf
-    return _function.function(self, f, a, b, color=color, label=label)
+    ylim = None
+    if kind == "pdf":
+        # A density's peak is what the plot is about: the range reaches it, unless the density
+        # runs away at an end of the range (a pole, as Gamma's with a < 1 at 0).
+        t = sd.linspace(a, b, 2001)
+        v = f(t)
+        fin = sd.isfinite(v)
+        if bool(sd.all(fin[1:-1])):
+            inner = v[1:-1]
+            top = float(sd.max(inner))
+            ends = float(sd.max(sd.where(fin[[0, -1]], v[[0, -1]], 0.0)))
+            k = int(sd.argmax(inner))
+            if top > 0.0 and ends <= 1.05 * top and 10 < k < inner.shape[0] - 10:
+                ylim = (0.0, 1.05 * top)
+    return _function.function(self, f, a, b, ylim=ylim, color=color, label=label)
+
+
+def _integer_ticks(lo, hi):
+    """Ticks on the integers from lo to hi: a step of 1, 2 or 5 times a power of ten, the
+    smallest that gives six ticks or fewer."""
+    span, step, p = max(hi - lo, 1.0), 1, 1
+    while span / step > 6:
+        step = next(m * p for m in (1, 2, 5, 10) if span / (m * p) <= 6 or m == 10)
+        p *= 10
+    first = math.ceil(lo / step) * step
+    return [float(v) for v in range(int(first), int(math.floor(hi)) + 1, step)]
 
 
 def pairs(data, /, *, columns=None, group=None, width=None, height=None, font="serif", theme="paper", palette="jco"):
@@ -626,6 +713,15 @@ def pairs(data, /, *, columns=None, group=None, width=None, height=None, font="s
                 cell.histogram(
                     cols[ci], group=None if parts is None else group, data=data if isinstance(group, str) else None
                 )
+                # the bars span the row's range, so that the row's y ticks read as its variable throughout
+                r = _layers.finite_range(cols[ci])
+                if r is not None and r[1] > r[0]:
+                    hists = [layer for layer in cell._cell.layers if isinstance(layer, Hist)]
+                    top = max((max(h.heights, default=0.0) for h in hists), default=0.0)
+                    if top > 0.0:
+                        for h in hists:
+                            h.heights = [v * (r[1] - r[0]) / top for v in h.heights]
+                            h.base = r[0]
             else:
                 cell.scatter(
                     cols[cj],
@@ -640,12 +736,146 @@ def pairs(data, /, *, columns=None, group=None, width=None, height=None, font="s
             if j == 0:
                 cell.ylabel(escape(ci))
     if parts is not None:
-        fig[0, k - 1]._cell.legend["loc"] = "upper right"
+        fig[0, k - 1]._cell.legend["loc"] = "best"  # a free corner of that cell, else beside it
     return fig
+
+
+def _pairs_xy(who, x, y, data, range_):
+    """The finite (x, y) pairs and the box they are counted in."""
+    X, Y = numbers_(who, "x", x, data), numbers_(who, "y", y, data)
+    same_length(who, x=X, y=Y)
+    ok = sd.isfinite(X) & sd.isfinite(Y)
+    X, Y = X[ok], Y[ok]
+    if range_ is None:
+        if X.shape[0] == 0:
+            raise ValueError(f"{who}(): no finite (x, y) pair to count")
+        box = [float(sd.min(X)), float(sd.max(X)), float(sd.min(Y)), float(sd.max(Y))]
+    else:
+        if (
+            not isinstance(range_, (tuple, list))
+            or len(range_) != 2
+            or not all(isinstance(r, (tuple, list)) and len(r) == 2 for r in range_)
+        ):
+            raise TypeError(f"{who}(): 'range' must be ((x0, x1), (y0, y1)), not {_type_name(range_)}")
+        box = [real(v, who, "range") for r in range_ for v in r]
+        keep = (X >= box[0]) & (X <= box[1]) & (Y >= box[2]) & (Y <= box[3])
+        X, Y = X[keep], Y[keep]
+    for k in (0, 2):
+        if not box[k] < box[k + 1]:
+            d = 0.5 if box[k] == 0.0 else abs(box[k]) * 0.05
+            box[k], box[k + 1] = box[k] - d, box[k + 1] + d
+    return X, Y, box
+
+
+def hist2d(self, x, y, /, *, data=None, bins=40, range=None, density=False, cmap=None, colorbar=True):
+    """The counts of (x, y) pairs in a grid of bins, as a picture; empty bins are left blank."""
+    who = "hist2d"
+    _basic._check_data(who, data)
+    _check_bool(density, who, "density")
+    _check_bool(colorbar, who, "colorbar")
+    name = _field._cmap(who, cmap)
+    if isinstance(bins, (tuple, list)):
+        if len(bins) != 2:
+            raise ValueError(f"{who}(): 'bins' as a pair must hold 2 numbers, not {len(bins)}")
+        nx, ny = integer(bins[0], who, "bins", 1), integer(bins[1], who, "bins", 1)
+    else:
+        nx = ny = integer(bins, who, "bins", 1)
+    X, Y, (x0, x1, y0, y1) = _pairs_xy(who, x, y, data, range)
+    i = sd.clip(sd.floor((X - x0) / (x1 - x0) * nx), min=0.0, max=nx - 1.0).astype(sd.int64)
+    j = sd.clip(sd.floor((Y - y0) / (y1 - y0) * ny), min=0.0, max=ny - 1.0).astype(sd.int64)
+    counts = sd.bincount(j * nx + i, minlength=nx * ny).astype(sd.float64)
+    if density and X.shape[0]:
+        counts = counts / (X.shape[0] * (x1 - x0) / nx * (y1 - y0) / ny)
+    F = sd.reshape(sd.where(counts > 0.0, counts, math.nan), (ny, nx))
+    hi = float(sd.max(counts)) if counts.shape[0] else 1.0
+    lo = 0.0
+    if not hi > lo:
+        hi = 1.0
+    cell = self._cell
+    cell.layers.append(_field.Picture((x0, x1, y0, y1), nx, ny, _field._picture(F, lo, hi, _color.table(name)), False))
+    if colorbar:
+        cell.colorbar = (name, lo, hi)
+    return self._touch()
+
+
+class Hexes(_layers.Layer):
+    """Hexagonal bins: centres and the half sizes of a hexagon in data units, a colour each."""
+
+    def __init__(self, cx, cy, rx, ry, colors, box):
+        self.cx, self.cy, self.rx, self.ry, self.colors, self.box = cx, cy, rx, ry, colors, box
+
+    def extent(self, axis, positive):
+        lo, hi = (self.box[0], self.box[1]) if axis == "x" else (self.box[2], self.box[3])
+        return (lo, hi, ())
+
+    def draw(self, fr):
+        # pointy-top hexagons; those of one colour go in one path
+        corners = [(math.cos(math.radians(90 + 60 * k)), math.sin(math.radians(90 + 60 * k))) for k in range(6)]
+        groups = {}
+        for x, y, c in zip(self.cx, self.cy, self.colors):
+            groups.setdefault(c, []).append((x, y))
+        for c, pts in groups.items():
+            ops, xy = [], array("d")
+            for x, y in pts:
+                ops.append("MLLLLLZ")
+                for ux, uy in corners:
+                    xy.extend((fr.px(x + ux * self.rx), fr.py(y + uy * self.ry)))
+            # a hairline of the same colour closes the seams between neighbours
+            fr.scene.add(_scene.Path("".join(ops), xy, fill=c, stroke=c, width=0.25, clip=fr.clip))
+
+
+def hexbin(self, x, y, /, *, data=None, size=30, range=None, cmap=None, colorbar=True):
+    """The counts of (x, y) pairs in hexagonal bins, `size` hexagons across; empty ones blank."""
+    who = "hexbin"
+    _basic._check_data(who, data)
+    _check_bool(colorbar, who, "colorbar")
+    name = _field._cmap(who, cmap)
+    n = integer(size, who, "size", 2)
+    X, Y, (x0, x1, y0, y1) = _pairs_xy(who, x, y, data, range)
+    # the lattice in units where a plot of the default shape (4 : 3) shows the hexagons regular
+    W, H = 4.0, 3.0
+    u, v = (X - x0) / (x1 - x0) * W, (Y - y0) / (y1 - y0) * H
+    dx = W / n
+    dy = dx * math.sqrt(3.0)
+    ia, ja = sd.round(u / dx), sd.round(v / dy)  # two rectangular lattices; the nearer centre wins
+    ib, jb = sd.floor(u / dx), sd.floor(v / dy)
+    da = (u - ia * dx) ** 2 + (v - ja * dy) ** 2
+    db = (u - (ib + 0.5) * dx) ** 2 + (v - (jb + 0.5) * dy) ** 2
+    first = da <= db
+    na, nb = n + 2, int(H / dy) + 3
+    key = sd.where(first, (ja + 1) * na + (ia + 1), na * nb + (jb + 1) * na + (ib + 1)).astype(sd.int64)
+    counts = sd.bincount(key, minlength=2 * na * nb)
+    full = sd.nonzero(counts > 0)[0]
+    k = full.tolist()
+    if not k:
+        hi = 1.0
+        cx = cy = []
+        cols = []
+    else:
+        c = counts[full].astype(sd.float64).tolist()
+        hi = max(c)
+        cx, cy = [], []
+        for key_ in k:
+            second, rest = divmod(key_, na * nb)
+            j_, i_ = divmod(rest, na)
+            i_, j_ = i_ - 1, j_ - 1
+            uu, vv = (i_ * dx, j_ * dy) if not second else ((i_ + 0.5) * dx, (j_ + 0.5) * dy)
+            cx.append(x0 + uu / W * (x1 - x0))
+            cy.append(y0 + vv / H * (y1 - y0))
+        cols = [_color.cmap(name, v / hi) for v in c]
+    rx = dx / math.sqrt(3.0) / W * (x1 - x0)  # the circumradius, as data units along each axis
+    ry = dx / math.sqrt(3.0) / H * (y1 - y0)
+    cell = self._cell
+    cell.layers.append(Hexes(cx, cy, rx, ry, cols, (x0, x1, y0, y1)))
+    if colorbar:
+        cell.colorbar = (name, 0.0, hi)
+    return self._touch()
 
 
 METHODS = {
     "histogram": histogram,
+    "hist2d": hist2d,
+    "hexbin": hexbin,
     "ecdf": ecdf,
     "boxplot": boxplot,
     "strip": strip,

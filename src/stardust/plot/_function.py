@@ -54,16 +54,17 @@ def _interval(who, a, b, na="a", nb="b"):
 class CurveLine(_layers.Line):
     """A sampled curve: a line whose y extent is held to the range the sampler chose."""
 
-    def __init__(self, x, y, color, width, style, label, yclip=None):
+    def __init__(self, x, y, color, width, style, label, yclip=None, xclip=None):
         super().__init__(x, y, color, width, style, label)
-        self.yclip = yclip
+        self.yclip, self.xclip = yclip, xclip
 
     def extent(self, axis, positive):
         e = super().extent(axis, positive)
-        if e is None or axis == "x" or self.yclip is None:
+        clip = self.xclip if axis == "x" else self.yclip
+        if e is None or clip is None:
             return e
-        lo, hi = max(e[0], self.yclip[0]), min(e[1], self.yclip[1])
-        return (lo, hi, ()) if lo <= hi else (self.yclip[0], self.yclip[1], ())
+        lo, hi = max(e[0], clip[0]), min(e[1], clip[1])
+        return (lo, hi, ()) if lo <= hi else (clip[0], clip[1], ())
 
 
 def _add_curve(fig, c, xr, yr, yclip, color, width, style, label, kind):
@@ -155,7 +156,11 @@ def function(
         osc = _add_curve(self, c, xr, yr, yclip, colors[k], width, style, labels[k] if labels else None, who)
         poles_all += c.poles
         e = self._cell.layers[-1].extent("y", False)
-        cut = (clipped[0] or (e is not None and e[0] <= yclip[0]), clipped[1] or (e is not None and e[1] >= yclip[1]))
+        # cut: some value of the curve lies beyond the range drawn (touching its end is not)
+        cut = (
+            clipped[0] or bool(sd.any(c.y < yclip[0])),
+            clipped[1] or bool(sd.any(c.y > yclip[1])),
+        )
         jumps = tuple(j for j in c.jumps if not any(x0 <= j <= x1 for x0, x1 in osc))
         self._root._infos.append(
             PlotInfo(
@@ -186,20 +191,23 @@ def _plane(self, who, g, a, b, samples, refine, color, width, style, label):
     t0 = _sample.first_grid(a, b, n - 1)
     x0, y0 = g(t0)
 
-    def full(v):
-        r = _layers.finite_range(v)
-        if r is None:
-            return (0.0, 1.0)
-        return r if r[0] < r[1] else (r[0] - 0.5, r[1] + 0.5)
+    def bulk(v):
+        """The range of the first samples, without values that run far away (a pole), as
+        function plots take it."""
+        lo, hi, cut_lo, cut_hi = _sample.robust_range(v)
+        if not lo < hi:
+            lo, hi = lo - 0.5, hi + 0.5
+        return (lo, hi), cut_lo or cut_hi
 
-    xr, yr = full(x0), full(y0)
+    (xr, xcut), (yr, ycut) = bulk(x0), bulk(y0)
+    clip = (xr if xcut else None, yr if ycut else None)
     # one scale for both: the screen is the larger of the two extents, as the equal axes will be
     span = max(xr[1] - xr[0], (yr[1] - yr[0]) * _sample.W0 / _sample.H0)
     xr = (xr[0], xr[0] + span)
     yr = (yr[0], yr[0] + span * _sample.H0 / _sample.W0)
     c = _sample.refine(g, t0, x0, y0, xr, yr, depth)
     x, y = _sample.with_breaks(c)
-    self._cell.layers.append(_layers.Line(x, y, c0, width, style, label))
+    self._cell.layers.append(CurveLine(x, y, c0, width, style, label, clip[1], clip[0]))
     self._cell.aspect = 1.0
     self._root._infos.append(
         PlotInfo(who, int(c.t.shape[0]), tuple(c.poles), tuple(c.jumps), None, (False, False), tuple(c.undefined), ())

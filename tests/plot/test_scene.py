@@ -106,6 +106,9 @@ def test_svg_numbers_and_paint():
     out = _svg.write(sc)
     assert (
         'fill="#ff0000" fill-opacity="0.5" stroke="#0000ff" stroke-width="0.25" stroke-linecap="round" '
-        'stroke-dasharray="1 2"' in out
+        'stroke-miterlimit="10" stroke-dasharray="1 2"' in out  # corners: the PNG's and the PDF's miter limit
     )
+    hole = S.Scene(10, 10)
+    hole.add(S.Path(*S.rect(0, 0, 5, 5), fill=(0, 0, 0, 1), rule="evenodd"))
+    assert 'fill-rule="evenodd"' in _svg.write(hole) and "fill-rule" not in out
     assert "<defs>" not in out

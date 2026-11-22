@@ -52,10 +52,27 @@ class Space(_layers.Layer):
         self._picture = None  # (what was rendered, the pixels) of the last picture
         # (X, Y, Z 2-D sd arrays, colour spec, mesh cells, alpha, what _adapt added or None, floor contour levels)
         self.surfaces = []
-        self.curves = []  # (x, y, z 1-D arrays, rgba, width)
-        self.points = []  # (x, y, z arrays, rgba, size)
+        self.curves = []  # (x, y, z 1-D arrays, rgba, width, label)
+        self.points = []  # (x, y, z arrays, rgba, size, label)
         self.zlim = None  # a user's z range
         self.equal = True  # equal data units along the three axes (until a graph z = f(x, y) is added)
+
+    def fork(self, cell):
+        """Turns a shallow copy into a space of its own, in the cell `cell`."""
+        self.surfaces, self.curves, self.points = list(self.surfaces), list(self.curves), list(self.points)
+        self._chosen = self._picture = None
+        self.cell = cell
+
+    def entries(self):
+        """The legend's entries: named curves and points (scatter3d's groups)."""
+        out = []
+        for _x, _y, _z, rgba, width, label in self.curves:
+            if label is not None:
+                out.append((label, _layers._line_handle(rgba, 1.0 if width is None else width, ())))
+        for _x, _y, _z, rgba, size, label in self.points:
+            if label is not None:
+                out.append((label, _layers._marker_handle("o", 3.8 if size is None else size, rgba, None, 0.0)))
+        return out
 
     # -- ranges
 
@@ -84,6 +101,11 @@ class Space(_layers.Layer):
             r = _sample.robust_range(zs)
             if r[2] or r[3]:
                 lo[2], hi[2] = max(lo[2], r[0]), min(hi[2], r[1])
+        if not self.surfaces and self.points:
+            # points alone: a margin as a 2D plot keeps, so that the outermost do not sit on the axes
+            for k in range(3):
+                d = 0.04 * (hi[k] - lo[k])
+                lo[k], hi[k] = lo[k] - d, hi[k] + d
         return lo, hi
 
     # -- the camera
@@ -200,7 +222,7 @@ class Space(_layers.Layer):
             wide.append(max((engine.layout([s])[0].box(ts)[0] for s in text), default=0.0))
         names = self.labels()
         extra = [engine.layout([n])[0].box(th["size"]) if n else None for n in names]
-        left = tl + 3.0 + wide[2] + (extra[2][1] + extra[2][2] + 4.0 if extra[2] else 0.0)
+        left = tl + 3.0 + wide[2] + (extra[2][0] + 4.0 if extra[2] else 0.0)  # the z name stands level: its width
         below = tl + 3.0 + ts + (th["size"] + 4.0 if (extra[0] or extra[1]) else 0.0)
         return left, 0.5 * max(wide[0], wide[1]) + 2.0, 2.0, below
 
@@ -225,13 +247,33 @@ class Space(_layers.Layer):
         def box(k, v):
             return (v - lo[k]) / (hi[k] - lo[k]) * 2.0 * BOX[k] - BOX[k]
 
-        # as many ticks as the drawn length of each axis has room for
-        want = [max(2, min(6, round(scale * 2.0 * BOX[k] * 0.8 / (24.0 if k < 2 else 20.0)) + 1)) for k in range(3)]
-        ticks = [[t for t in _ticks.linear(lo[k], hi[k], want[k]) if lo[k] <= t <= hi[k]] for k in range(3)]
-        scene = fr.scene
         # the faces behind the scene: for each axis, the side turned away from the eye
         back = [-BOX[k] if eye[k] > 0 else BOX[k] for k in range(3)]
         front = [-b for b in back]
+
+        # the axes: the bottom edges nearest the eye for x and y, the upright edge at the side for z
+        def edge(k, fixed):
+            a, b = [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]
+            for m in range(3):
+                if m == k:
+                    a[m], b[m] = -BOX[m], BOX[m]
+                else:
+                    a[m] = b[m] = fixed[m]
+            return a, b
+
+        zc = min(
+            ((back[0], front[1]), (front[0], back[1])), key=lambda c: P((c[0], c[1], 0.0))[0]
+        )  # the left of the two
+        axes = [
+            (0, edge(0, (0.0, front[1], -BOX[2])), (0.0, front[1] / BOX[1], -0.35)),
+            (1, edge(1, (front[0], 0.0, -BOX[2])), (front[0] / BOX[0], 0.0, -0.35)),
+            (2, edge(2, (zc[0], zc[1], 0.0)), (zc[0] / BOX[0], zc[1] / BOX[1], 0.0)),
+        ]
+        # as many ticks as the drawn length of each axis has room for (an axis seen end on is short)
+        drawn = {k_: math.dist(P(a), P(b)) for k_, (a, b), _ in axes}
+        want = [max(2, min(6, round(drawn[k] * 0.8 / (24.0 if k < 2 else 18.0)) + 1)) for k in range(3)]
+        ticks = [[t for t in _ticks.linear(lo[k], hi[k], want[k]) if lo[k] <= t <= hi[k]] for k in range(3)]
+        scene = fr.scene
         for k in range(3):
             i, j = [m for m in range(3) if m != k]
             quad = []
@@ -292,26 +334,9 @@ class Space(_layers.Layer):
             rgba = self._picture[1]
             scene.add(_scene.Image(fr.x, fr.y, fr.w, fr.h, iw, ih, rgba, smooth=True))
 
-        # the axes: the bottom edges nearest the eye for x and y, the upright edge at the side for z
-        def edge(k, fixed):
-            a, b = [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]
-            for m in range(3):
-                if m == k:
-                    a[m], b[m] = -BOX[m], BOX[m]
-                else:
-                    a[m] = b[m] = fixed[m]
-            return a, b
-
-        zc = min(
-            ((back[0], front[1]), (front[0], back[1])), key=lambda c: P((c[0], c[1], 0.0))[0]
-        )  # the left of the two
-        axes = [
-            (0, edge(0, (0.0, front[1], -BOX[2])), (0.0, front[1] / BOX[1], -0.35)),
-            (1, edge(1, (front[0], 0.0, -BOX[2])), (front[0] / BOX[0], 0.0, -0.35)),
-            (2, edge(2, (zc[0], zc[1], 0.0)), (zc[0] / BOX[0], zc[1] / BOX[1], 0.0)),
-        ]
         ts, tl = th["tick_size"], th["tick_len"]
         labels = self.labels()
+        placed = []  # the boxes of the tick labels set so far
         for k_, (a, b), out in axes:
             pa, pb = P(a), P(b)
             scene.add(_scene.Path(*_scene.polyline([pa, pb]), stroke=INK, width=th["axis_width"], cap="round"))
@@ -335,11 +360,12 @@ class Space(_layers.Layer):
                 # the label's centre lies beyond the tick by half its extent along the direction
                 r = abs(ux) * w / 2 + abs(uy) * (h + d) / 2
                 far = max(far, tl + 2.0 + 2 * r)
-                scene.add(
-                    _scene.Text(
-                        s, px + ux * (tl + 2.0 + r), py + uy * (tl + 2.0 + r), size=ts, ha="center", va="center"
-                    )
-                )
+                lx, ly = px + ux * (tl + 2.0 + r), py + uy * (tl + 2.0 + r)
+                rect = (lx - w / 2 - 1.5, ly - (h + d) / 2 - 1.0, lx + w / 2 + 1.5, ly + (h + d) / 2 + 1.0)
+                if any(rect[0] < q[2] and q[0] < rect[2] and rect[1] < q[3] and q[1] < rect[3] for q in placed):
+                    continue  # it would touch a label already set (where two axes meet): left out
+                placed.append(rect)
+                scene.add(_scene.Text(s, lx, ly, size=ts, ha="center", va="center"))
             if ops:
                 scene.add(_scene.Path("".join(ops), xy, stroke=INK, width=th["axis_width"]))
             name = labels[k_]
@@ -451,7 +477,7 @@ class Space(_layers.Layer):
                 lines.append(bytes(memoryview(sd.reshape(full, (-1,)))))
                 counts += [n_each] * m
                 widths += [MESH_WIDTH * k] * m
-        for x, y, z, rgba, _width in self.curves:
+        for x, y, z, rgba, _width, _label in self.curves:
             x, y, z = _clip(x, y, z, lo, hi)
             n = x.shape[0]
             colour = [sd.full((n,), c) for c in rgba]
@@ -460,7 +486,7 @@ class Space(_layers.Layer):
             )
             counts.append(n)
             widths.append((1.0 if _width is None else _width) * k)
-        for x, y, z, rgba, size in self.points:
+        for x, y, z, rgba, size, _label in self.points:
             n = x.shape[0]
             rad = (th["marker_size"] if size is None else size) / 2 * k
             cols = [box(0, x), box(1, y), box(2, z), sd.full((n,), rad), *[sd.full((n,), c) for c in rgba]]
@@ -679,7 +705,7 @@ def surface(
     perspective=True,
 ):
     who, graph = "surface", True
-    _callable(f, who, "f")
+    given = _field.given(f, who, samples, refine)
     x0, x1, y0, y1 = _field._box(who, x0, x1, y0, y1)
     mesh = _mesh(who, mesh)
     spec, alpha = _colour(self, who, color, cmap), _alpha(who, alpha)
@@ -687,6 +713,15 @@ def surface(
         if not isinstance(zlim, (tuple, list)) or len(zlim) != 2:
             raise TypeError(f"{who}(): 'zlim' must be a pair (low, high), not {_type_name(zlim)}")
         zlim = _interval(who, zlim[0], zlim[1], "zlim[0]", "zlim[1]")
+    if given is not None:  # the heights given on an even grid over the box
+        ny, nx = given.shape
+        X, Y = sd.meshgrid(sd.linspace(x0, x1, nx), sd.linspace(y0, y1, ny), indexing="xy")
+        sp = _space(self, who, azimuth, elevation, perspective)
+        sp.surfaces.append((X, Y, given, spec, mesh, alpha, None, _contours(who, contours)))
+        sp.equal = False
+        if zlim is not None:
+            sp.zlim = zlim
+        return self._touch()
     (nx, ny), levels = _sample.knobs(who, samples, refine, (N + 1, N + 1), 2, pair=True, most=2000)
     X, Y = sd.meshgrid(sd.linspace(x0, x1, nx), sd.linspace(y0, y1, ny), indexing="xy")
 
@@ -765,6 +800,7 @@ def curve3d(
     refine=None,
     color=None,
     width=None,
+    label=None,
     azimuth=None,
     elevation=None,
     perspective=True,
@@ -802,23 +838,43 @@ def curve3d(
     view = (-0.9, 0.9)
     found = _sample.refine(lambda t: screen(at(t)), t0, *screen(first), view, view, depth)
     x, y, z = _sample.cut(found, at(found.t))
-    sp.curves.append((x, y, z, c, width))
+    sp.curves.append((x, y, z, c, width, _basic._label(who, label)))
     return self._touch()
 
 
 def scatter3d(
-    self, x, y, z, /, *, data=None, group=None, color=None, size=None, azimuth=None, elevation=None, perspective=True
+    self,
+    x,
+    y,
+    z,
+    /,
+    *,
+    data=None,
+    group=None,
+    color=None,
+    size=None,
+    label=None,
+    azimuth=None,
+    elevation=None,
+    perspective=True,
 ):
     who = "scatter3d"
     _basic._check_data(who, data)
     X, Y, Z = numbers_(who, "x", x, data), numbers_(who, "y", y, data), numbers_(who, "z", z, data)
     n = same_length(who, x=X, y=Y, z=Z)
     size = _opt_real(who, "size", size)
-    parts = _basic._each(self, who, n, group, data, color, None)
+    parts = _basic._each(self, who, n, group, data, color, _basic._label(who, label))
     sp = _space(self, who, azimuth, elevation, perspective)
-    for idx, col, _lab in parts:
+    for idx, col, lab in parts:
         sp.points.append(
-            (_basic._take(X, idx), _basic._take(Y, idx), _basic._take(Z, idx), _basic._color_of(self, who, col), size)
+            (
+                _basic._take(X, idx),
+                _basic._take(Y, idx),
+                _basic._take(Z, idx),
+                _basic._color_of(self, who, col),
+                size,
+                lab,
+            )
         )
     return self._touch()
 

@@ -44,12 +44,17 @@ region = _functions["region"]
 contour = _functions["contour"]
 density = _functions["density"]
 phase = _functions["phase"]
+vectorfield = _functions["vectorfield"]
+streamlines = _functions["streamlines"]
 
 from . import _stat  # noqa: E402
+from ._facet import Facets, facet  # noqa: E402, F401  (Facets: the type facet() returns)
 from ._stat import diagnostics, pairs  # noqa: E402
 
 _functions = _basic.install(_stat.METHODS)
 histogram = _functions["histogram"]
+hist2d = _functions["hist2d"]
+hexbin = _functions["hexbin"]
 ecdf = _functions["ecdf"]
 boxplot = _functions["boxplot"]
 strip = _functions["strip"]
@@ -59,14 +64,14 @@ coefficients = _functions["coefficients"]
 distribution = _functions["distribution"]
 from . import _surface  # noqa: E402
 
-_functions = _basic.install(_surface.METHODS)
+_functions = _basic.install(_surface.METHODS, flat=False)
 surface = _functions["surface"]
 parametric_surface = _functions["parametric_surface"]
 curve3d = _functions["curve3d"]
 scatter3d = _functions["scatter3d"]
 for _name, _method in _stat.FIGURE_ONLY.items():  # they draw over an existing figure only
     _method.__name__, _method.__qualname__ = _name, f"Figure.{_name}"
-    setattr(Figure, _name, _method)
+    setattr(Figure, _name, _basic.flat_only(_name, _method))
 del _name, _method
 
 __all__ = [
@@ -83,9 +88,12 @@ __all__ = [
     "distribution",
     "ecdf",
     "errorbar",
+    "facet",
     "function",
     "grid",
     "heatmap",
+    "hexbin",
+    "hist2d",
     "histogram",
     "hline",
     "implicit",
@@ -100,8 +108,10 @@ __all__ = [
     "scatter",
     "scatter3d",
     "step",
+    "streamlines",
     "strip",
     "surface",
     "text",
+    "vectorfield",
     "vline",
 ]
