@@ -16,7 +16,7 @@ import Op from '../../../components/fig/Op.astro';
 
 "수학 점수가 80점 이상인 학생만", "비가 온 날만"처럼 조건에 맞는 행만 남기는 것은 표를 다룰 때 가장 자주 하는 일이에요. 엑셀의 필터나 SQL의 `WHERE`와 같아요.
 
-방법은 두 단계예요. 먼저 컬럼을 비교해서 행마다 `True`/`False`가 든 bool Series를 만들고, 그 Series를 대괄호에 넣어요. 이렇게 행을 고르는 데 쓰는 bool Series를 **마스크(mask)**라고 해요.
+방법은 두 단계예요. 먼저 컬럼을 비교해서 행마다 `True`/`False`가 든 bool Series를 만들고, 그 Series를 대괄호에 넣어요. 이렇게 행을 고르는 데 쓰는 bool Series를 <strong>마스크(mask)</strong>라고 해요.
 
 ```python
 >>> import stardust as sd

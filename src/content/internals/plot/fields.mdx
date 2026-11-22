@@ -1,0 +1,302 @@
+---
+title: 두 변수 함수의 표본
+group: 함수 그림
+order: 2
+summary: implicit, region, contour, density, phase가 두 변수 함수를 재고 그리는 방법을 설명해요. 격자를 한 번에 계산하는 호출, C++ levels.cpp의 marching squares와 안장 칸의 판정, 교차점을 할선 한 걸음으로 다듬는 일, 곡선 둘레만 4배로 다시 재는 띠, 등고선 수준과 그 숫자의 자리, 채운 등고선, 밀도와 위상 그림의 색 입히기를 코드를 따라가며 봐요.
+seeAlso: [sampling, raster, layout, overview, surface]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import Steps from '../../../components/fig/Steps.astro';
+import PlotImage from '../../../components/fig/PlotImage.astro';
+
+## 한눈에 보기
+
+두 변수 함수의 그림은 다섯이고, 모두 `src/stardust/plot/_field.py`에 있어요. 곡선과 영역을 그리는 셋은 격자 위의 marching squares를 쓰고, 그 고리는 C++ `csrc/plot/levels.cpp`의 `Levels` 클래스예요. 나머지 둘은 격자의 값을 그대로 그림(래스터 이미지)으로 바꿔요.
+
+| 그림 | 격자(기본 `samples`) | 하는 일 |
+|---|---|---|
+| [`implicit`](/api/plot/implicit/) | 321 × 241 꼭짓점 | f(x, y) = level인 곡선 |
+| [`region`](/api/plot/region/) | 321 × 241 | f(x, y) > 0인 곳을 칠하기 |
+| [`contour`](/api/plot/contour/) | 321 × 241 | 여러 수준의 곡선, 채운 띠 |
+| [`density`](/api/plot/density/) | 480 × 360 화소 | 값을 연속 색으로 |
+| [`phase`](/api/plot/phase/) | 480 × 360 화소 | 복소 함수의 위상을 색상으로 |
+
+<Fig column caption="implicit 한 번의 흐름.">
+  <Steps steps={[
+    { label: 'grid()', note: 'meshgrid로 만든 X, Y로 f를 한 번 부르기', where: '_field.py' },
+    { label: 'near()', note: '곡선이 지나가는 칸과 그 둘레만 4 × 4로 다시 재기(f를 한 번 더)', where: '_field.py', depth: 1 },
+    { label: 'Levels.edges', note: '부호가 바뀌는 칸의 변마다 선형 보간한 교차점', where: 'levels.cpp' },
+    { label: 'Cells.__init__', note: '교차점에서 f를 한 번 불러 할선 한 걸음으로 다듬기', where: '_field.py', depth: 1 },
+    { label: 'Levels.curves', note: '칸 안의 교차점을 잇고, 이은 것을 곡선으로 걸어 NaN으로 가르기', where: 'levels.cpp' },
+    { label: 'Line 층', note: '칸의 가로세로 비 1', where: '_field.py' },
+  ]} />
+</Fig>
+
+사용자 함수는 언제나 배열로 불러요. `implicit`는 격자 한 번, 다시 재는 띠 한 번, 교차점 다듬기 한 번으로 많아야 세 번이에요.
+
+```python
+>>> calls = []
+>>> def f(x, y):
+...     calls.append(x.size)
+...     return sd.sin(3 * x) * sd.sin(3 * y)
+>>> fig = sd.plot.implicit(f, -1, 2, -1, 2, level=0.97, samples=31)
+>>> calls
+[961, 5301, 140]
+```
+
+## 격자 한 번
+
+`grid`는 꼭짓점 좌표 $x_0, \ldots, x_{n_x}$와 $y_0, \ldots, y_{n_y}$를 `sd.linspace`로 만들고, `sd.meshgrid(..., indexing="xy")`의 두 배열로 함수를 한 번 불러요. 결과 $F_{j,i} = f(x_i, y_j)$는 행이 y, 열이 x인 배열이에요. 기본 칸 수는 320 × 240(꼭짓점 321 × 241)이고, `samples`가 꼭짓점의 수를 정해요(한 방향 3에서 4000까지).
+
+## Marching squares
+
+### 칸의 경우
+
+Marching squares는 Lorensen과 Cline(1987)의 marching cubes를 평면으로 내린 방법이에요. 격자 함수의 수준 집합 $\{f = c\}$를 칸 하나씩 다뤄요. 꼭짓점마다 $f > c$이면 안(1), 아니면 밖(0)으로 적으면 칸의 네 꼭짓점이 4비트, 곧 16가지 경우가 돼요. 모두 안(15)이나 모두 밖(0)이면 칸을 지나는 곡선이 없어요. 나머지는 부호가 바뀌는 변이 2개나 4개예요.
+
+- **변이 2개**(14가지): 곡선 조각 하나가 두 교차점을 잇고, 그 조각은 안인 꼭짓점들을 밖인 꼭짓점들과 갈라요.
+- **변이 4개**(대각선의 두 꼭짓점만 안인 2가지): **안장 칸**이에요. 네 교차점을 두 쌍으로 잇는 방법이 둘이고, 꼭짓점 값만으로는 어느 쪽인지 정할 수 없어요.
+
+변 위의 교차점은 두 꼭짓점 값 $p = f_a - c$, $r = f_b - c$의 선형 보간 $t = p/(p - r)$로 어림해요. 칸 안의 함수를 꼭짓점 값의 쌍선형 보간 $\tilde f(s, u) = (1-s)(1-u)f_{00} + s(1-u)f_{10} + (1-s)u f_{01} + su f_{11}$로 보면, 그 함수는 변 위에서 일차라서 이 t가 정확히 그 교차점이에요.
+
+### 변을 한 번씩만
+
+`prepare`는 격자를 행 순서로 한 번 걸으며 부호가 갈리는 칸을 모으고, 그 칸의 네 변(아래, 오른쪽, 위, 왼쪽 순서) 가운데 부호가 바뀌는 변의 교차점을 구해요.
+
+```cpp
+// csrc/plot/levels.cpp
+void Levels::prepare(double level) {
+    if (ready_ && level == level_) return;
+    level_ = level;
+    ready_ = true;
+    cells_.clear();
+    index_.clear();
+    edges_.clear();
+    const std::size_t w = nx_ + 1;
+    for (std::size_t j = 0; j < ny_; ++j) {
+        const double* r0 = F_.data() + j * w;
+        const double* r1 = r0 + w;
+        for (std::size_t i = 0; i < nx_; ++i) {
+            const double a = r0[i], b = r0[i + 1], c = r1[i + 1], d = r1[i];
+            const int in = (a > level) + (b > level) + (c > level) + (d > level);
+            if (in == 0 || in == 4) continue;
+            if (!(std::isfinite(a) && std::isfinite(b) && std::isfinite(c) && std::isfinite(d))) continue;
+            cells_.push_back(static_cast<std::uint32_t>(j * nx_ + i));
+            Edge e[4];
+            cell_edges(nx_, j, i, e);
+            for (const Edge& q : e) {
+                const double p = at(q.ja, q.ia), r = at(q.jb, q.ib);
+                if ((p > 0.0) == (r > 0.0)) continue;
+                if (!index_.emplace(q.key, static_cast<std::int32_t>(index_.size())).second) continue;
+                const double t = p / (p - r);
+                const double ax = xs_[q.ia], ay = ys_[q.ja], bx = xs_[q.ib], by = ys_[q.jb];
+                edges_.insert(edges_.end(), {ax + t * (bx - ax), ay + t * (by - ay), ax, ay, p, bx, by, r});
+            }
+        }
+    }
+}
+```
+
+변 하나는 이웃한 두 칸이 함께 가져요. 변마다 열쇠(가로 변은 꼭짓점 번호의 두 배, 세로 변은 두 배 더하기 1)를 두고 `index_`에 처음 나온 순서대로 번호를 매기므로, 두 칸이 같은 교차점을 공유해요. 이웃한 칸의 곡선 조각이 같은 점에서 만나니 곡선을 이을 때 좌표를 견줄 필요가 없어요. 네 꼭짓점 가운데 하나라도 유한하지 않은 칸은 건너뛰어요. 함수가 정의되지 않는 곳에서 곡선이 끊겨요.
+
+교차점마다 8개의 수를 돌려줘요. 어림한 점 (x, y)와, 변의 두 끝점의 좌표와 그 값에서 수준을 뺀 것이에요. Python 쪽이 이 목록으로 교차점을 다듬은 뒤 같은 순서로 돌려주면, `curves`와 `inside`가 그 점으로 곡선과 다각형을 만들어요. 마지막에 물은 수준의 칸 목록을 들고 있어서, 한 수준에 세 번 불러도 격자는 한 번만 걸어요.
+
+### 안장 칸의 판정
+
+```cpp
+        // csrc/plot/levels.cpp, Levels::curves
+        if (count == 2) {
+            join(id[found[0]], id[found[1]]);
+        } else if (count == 4) {  // a saddle: the corners' mean decides which pairs of edges are joined
+            const double centre = (at(j, i) + at(j, i + 1) + at(j + 1, i + 1) + at(j + 1, i)) / 4.0;
+            if ((centre > 0.0) == (at(j, i) > 0.0)) {
+                join(id[0], id[1]);
+                join(id[2], id[3]);
+            } else {
+                join(id[0], id[3]);
+                join(id[2], id[1]);
+            }
+        }
+```
+
+안장 칸에서는 네 꼭짓점의 평균을 칸 가운데의 값으로 보고 판정해요. 평균은 쌍선형 보간 $\tilde f$의 가운데 $(s, u) = (\tfrac12, \tfrac12)$ 값과 같아요. 가운데가 왼쪽 아래 꼭짓점과 같은 쪽이면 가운데를 지나 그 꼭짓점과 맞은편 꼭짓점이 이어진 것으로 보고, 아래 변을 오른쪽 변과, 위 변을 왼쪽 변과 이어요. 아니면 왼쪽 아래 꼭짓점을 잘라 내는 쪽(아래 변과 왼쪽 변, 위 변과 오른쪽 변)으로 이어요.
+
+이 판정은 쌍선형 함수의 실제 위상과 다를 때가 있어요. Nielson과 Hamann(1991)의 asymptotic decider는 칸 가운데가 아니라 쌍선형 함수의 안장점 값 $\tilde f^{\ast} = (f_{00}f_{11} - f_{10}f_{01})/(f_{00} + f_{11} - f_{10} - f_{01})$으로 판정하는데, 그것이 쌍선형 보간의 수준 곡선과 정확히 같은 연결이에요. 가운데 값 판정은 두 값의 부호가 갈리는 드문 칸에서 그와 다른 쪽을 고를 수 있어요. 아래의 다시 재는 띠가 교차점 둘레의 칸을 4배로 잘게 만들어서, 안장 칸이 작아지고 어느 쪽을 골라도 화면에서 차이가 거의 없어요.
+
+### 곡선으로 걷기
+
+칸 안에서 이은 교차점 쌍이 그래프의 변이에요. 교차점마다 이웃이 많아야 둘이에요(`link`에 두 칸). 걷기는 먼저 이웃이 하나뿐인 교차점(격자 가장자리나 정의되지 않는 곳에서 끝나는 열린 곡선의 끝)에서 시작해 이웃을 따라가고, 남은 교차점은 닫힌 곡선이라 아무 데서나 시작해요. 걷기가 시작점의 이웃에서 멈추면 닫힌 곡선이라 첫 점을 한 번 더 적어요. 점이 하나뿐인 조각은 버려요. 곡선 사이에는 NaN 쌍을 넣어요. 선 층은 NaN에서 획을 끊으므로 곡선 여럿이 층 하나예요.
+
+## 교차점 다듬기: 할선 한 걸음
+
+선형 보간은 함수가 변 위에서 곧을 때만 정확해요. 휘는 함수는 교차점이 어긋나고, 그 어긋남은 변의 길이 h에 대해 $O(h^2)$예요. `Cells`는 어림한 교차점에서 함수를 한 번 불러(모든 교차점을 배열 하나로) 한 걸음 더 가요.
+
+```python
+        # src/stardust/plot/_field.py, Cells.__init__
+        if polish and n:
+            # a secant step between the crossing estimate and the corner on the other side of the level
+            v = call2(f, sd.reshape(px, (n, 1)), sd.reshape(py, (n, 1)), who)
+            v = sd.reshape(v, (n,)) - level
+            first = (E[:, 4] > 0.0) != (v > 0.0)  # the corner on the other side: the first, or the second
+            cx, cy = sd.where(first, E[:, 2], E[:, 5]), sd.where(first, E[:, 3], E[:, 6])
+            t = v / (v - sd.where(first, E[:, 4], E[:, 7]))
+            use = sd.isfinite(v) & (v != 0.0) & (t >= 0.0) & (t <= 1.0)
+            t = sd.where(use, t, 0.0)
+            px, py = px + t * (cx - px), py + t * (cy - py)
+```
+
+어림한 점 P의 값 v의 부호를 보고, 변의 두 끝점 가운데 v와 부호가 반대인 쪽을 골라요. 근은 P와 그 끝점 사이에 갇혀 있으므로, 두 점을 잇는 직선의 영점으로 가요. 근을 가둔 채 할선을 긋는 regula falsi(거짓 위치법)의 한 걸음이에요. 함수가 매끄러우면 할선 걸음의 오차는 대략 $e_1 \approx \frac{f''}{2f'}\,e_P\,e_B$예요($e_P$, $e_B$는 P와 고른 끝점이 근에서 떨어진 거리). $e_P = O(h^2)$이고 $e_B = O(h)$이니 오차가 $O(h^3)$으로 줄어요. v가 0이거나 유한하지 않거나 t가 [0, 1] 밖이면 그 점은 그대로 둬요.
+
+아래 그림은 단위원 $x^2 + y^2 = 1$을 4 × 4 칸의 격자(회색 선)로 잰 것이에요. 점선이 선형 보간만 한 교차점, 실선이 다듬은 교차점, 가는 회색 원이 참 곡선이에요.
+
+```python
+>>> import math
+>>> from stardust.plot import _field
+>>> circle = lambda x, y: x * x + y * y - 1.0
+>>> xs, ys, F = _field.grid(circle, -1.5, 1.5, -1.5, 1.5, 4, 4, "demo")
+>>> X0, Y0 = _field.Cells(circle, xs, ys, F, 0.0, "demo", polish=False).arrays()
+>>> X1, Y1 = _field.Cells(circle, xs, ys, F, 0.0, "demo").arrays()
+>>> [round(float(sd.max(sd.abs(sd.sqrt(X * X + Y * Y) - 1.0))), 4) for X, Y in ((X0, Y0), (X1, Y1))]
+[0.0556, 0.0114]
+>>> fig = sd.plot.parametric(sd.cos, sd.sin, 0, 2 * math.pi, color="gray", width=0.5)
+>>> for v in xs:
+...     fig = fig.vline(v, width=0.3, color="#d0d0d0").hline(v, width=0.3, color="#d0d0d0")
+>>> fig = fig.line(X0, Y0, style="--", label="linear").line(X1, Y1, label="secant").scatter(X1, Y1, size=2)
+```
+
+<PlotImage name="in-fields-polish" alt="4 × 4 칸의 격자 위에 단위원과 두 다각형. 점선 다각형은 원 안쪽으로 크게 들어가 있고, 실선 다각형의 꼭짓점은 원 위에 거의 놓여 있어요." caption="꼭짓점이 0.75 간격인 거친 격자에서도 할선 한 걸음이 교차점을 원에 붙여요. 반지름의 최대 오차는 0.056에서 0.011로 줄어요." />
+
+## 다시 재는 띠: 곡선 둘레만 4배로
+
+격자 한 칸보다 작은 모양(칸 하나 안에 들어가는 고리, 한 점에서 스치는 곡선, 두 가지의 교차)은 꼭짓점 값만으로는 보이지 않아요. `near`는 곡선이 지나가거나 지나갈 만한 칸을 골라 그 칸만 가로세로 4배(`FINE` = 4)로 다시 재요.
+
+```python
+    # src/stardust/plot/_field.py, near
+    G = F - level
+    fin = sd.isfinite(G)
+    c = (G[:-1, :-1], G[:-1, 1:], G[1:, :-1], G[1:, 1:])
+    k = (fin[:-1, :-1], fin[:-1, 1:], fin[1:, :-1], fin[1:, 1:])
+    every, some = k[0] & k[1] & k[2] & k[3], k[0] | k[1] | k[2] | k[3]
+    low = sd.minimum(sd.minimum(c[0], c[1]), sd.minimum(c[2], c[3]))
+    high = sd.maximum(sd.maximum(c[0], c[1]), sd.maximum(c[2], c[3]))
+    band = every & (low - (high - low) <= 0.0) & (high + (high - low) >= 0.0) | some & ~every
+    return _again(f, xs, ys, F, band, who)
+```
+
+칸의 네 값의 범위 [low, high]를 그 폭만큼 양쪽으로 넓혀 수준을 품으면 그 칸을 골라요. 부호가 바뀌는 칸은 물론이고, 바뀌지 않지만 수준에 가까운 칸도 들어가요. 칸 안의 변화가 그 칸의 값과 수준의 거리만큼은 된다는 뜻이라, 꼭짓점 사이에 수준을 넘는 봉우리가 숨었을 수 있는 칸이에요. 꼭짓점 일부만 유한한 칸(정의역의 끝)도 골라요. `_again`은 고른 칸 둘레로 한 칸씩 넓히고(3 × 3), 고른 칸이 없거나 격자의 35%(`MAX_NEAR`)를 넘으면 아무것도 하지 않아요. 어디서나 거친 함수는 띠가 격자 전체가 되어 이득이 없기 때문이에요.
+
+```python
+    # src/stardust/plot/_field.py, _again
+    x = sd.reshape(_stretch(sd.reshape(sd.asarray(xs), (1, -1)), 1), (-1,))
+    y = sd.reshape(_stretch(sd.reshape(sd.asarray(ys), (1, -1)), 1), (-1,))
+    fine = _stretch(_stretch(F, 1), 0)
+    nodes = _spread(sd.repeat(sd.repeat(band, FINE, axis=0), FINE, axis=1))
+    jj, ii = sd.nonzero(nodes)
+    n = jj.shape[0]
+    fine[nodes] = sd.reshape(call2(f, sd.reshape(x[ii], (n, 1)), sd.reshape(y[jj], (n, 1)), who), (n,))
+    return x.tolist(), y.tolist(), fine
+```
+
+결과는 격자 전체를 4배로 잘게 만든 격자예요. `_stretch`가 두 방향으로 한 번씩 선형 보간해서(쌍선형 보간) 모든 꼭짓점에 값을 채우고, 띠 안의 칸의 꼭짓점만 함수의 참값으로 바꿔요. 띠 밖의 보간 값은 틀려도 괜찮아요. 띠 밖의 칸은 수준에서 멀어 네 꼭짓점이 모두 한쪽이고, 보간 값도 같은 쪽에 있으니 marching squares가 그 칸에서 할 일이 없어요. 참값은 꼭짓점들을 `(n, 1)` 배열 둘로 모아 한 번에 불러요. marching squares는 이 잘게 만든 격자 전체(기본이면 1281 × 961 꼭짓점)를 걸어요.
+
+아래 그림은 $\sin 3x \sin 3y = 0.97$을 31 × 31 꼭짓점의 격자로 그린 것이에요. 수준 곡선은 함수의 봉우리마다 지름 0.16쯤의 작은 고리이고, 격자 간격은 0.1이에요. 왼쪽은 `refine=0`으로 격자만 쓴 것, 오른쪽은 띠를 다시 잰 것이에요.
+
+```python
+>>> f = lambda x, y: sd.sin(3 * x) * sd.sin(3 * y)
+>>> a = sd.plot.implicit(f, -1, 2, -1, 2, level=0.97, samples=31, refine=0).title("refine=0")
+>>> b = sd.plot.implicit(f, -1, 2, -1, 2, level=0.97, samples=31).title("refine=1")
+>>> fig = sd.plot.grid([a, b], ncols=2, labels="A", width=120)
+```
+
+<PlotImage name="in-fields-near" alt="두 칸. 왼쪽 A는 다섯 곳에 모서리가 진 작은 오각형, 오른쪽 B는 같은 자리에 둥근 고리 다섯." caption="A: 꼭짓점 몇 개만 수준을 넘어서 고리가 모서리진 다각형이 돼요. B: 띠 안을 4배로 잘게 재면 둥근 고리가 돼요." />
+
+`implicit`와 `region`의 `refine`은 0이나 1이에요(기본 1). 띠를 한 번 더 잘게 나누는 단계는 없어요.
+
+## 영역: 안쪽 다각형
+
+`region`은 f > 0인 곳을 칠해요. `Levels::inside`는 두 가지 다각형을 만들어요.
+
+- 한 행에서 네 꼭짓점이 모두 안이고 유한한 칸이 이어지면, 그 줄을 직사각형 하나로 묶어요.
+- 부호가 갈리는 칸은 꼭짓점을 반시계로 돌며, 안인 꼭짓점과 칸을 떠나는 변의 교차점을 차례로 적은 다각형이에요(세모, 네모, 오각형, 안장 칸이면 육각형).
+
+교차점은 이웃한 칸이 공유하는 바로 그 점이고 다듬은 점이므로, 다각형들이 틈 없이 영역을 덮어요. 넓이도 그대로 맞아서, 단위원의 `region`을 다각형의 넓이로 재면 π에 가까워요. 다각형들은 Path 하나로 모여 칠해져요. 다각형끼리 겹치지 않아서 어느 칠하기 규칙으로도 한 번씩 덮여요([2D 래스터라이저](/internals/plot/raster/)).
+
+## 등고선
+
+### 수준 고르기
+
+`contour`의 `levels`가 개수이면 격자 전체의 값에 [곡선의 자동 범위](/internals/plot/sampling/)와 같은 분위수 규칙(`robust_range`)을 써서 값의 본체를 잡고, 그 범위에 눈금과 같은 확장 Wilkinson 알고리즘(`_ticks.linear`)으로 고운 값 약 n개를 골라요. 범위의 양 끝과 같은 값은 빼요(그 수준의 곡선은 격자 끝의 점이에요). 극점이 있는 함수에서 큰 값 몇 개가 수준을 모두 가져가지 않아요.
+
+```python
+>>> from stardust.plot import _sample, _ticks
+>>> xs, ys, F = _field.grid(lambda x, y: 1 / (x * x + y * y), -1, 1, -1, 1, 320, 240, "demo")
+>>> lo, hi, _, top = _sample.robust_range(sd.reshape(F, (-1,)))
+>>> round(lo, 3), round(hi, 3), top
+(0.5, 14.807, True)
+>>> [v for v in _ticks.linear(lo, hi, 10) if lo < v < hi]
+[2.0, 4.0, 6.0, 8.0, 10.0, 12.0, 14.0]
+```
+
+### 빨리 변하는 칸
+
+수준이 여럿이면 `swift`가 띠를 골라요. 한 칸 안에서 값이 가장 가까운 두 수준 간격의 절반보다 크게 변하면, 그 칸에는 수준 곡선 둘 이상이 지나갈 수 있어 꼭짓점 넷으로는 갈라 그릴 수 없어요. 그런 칸(값이 수준들의 범위 근처에 있는 것만)과 정의역 끝의 칸을 `near`와 같은 `_again`으로 4배로 다시 재요. 함수가 고르게 변하면 띠가 비어 함수를 한 번 더 부르지 않아요. 잘게 만든 격자는 `Grid` 하나로 C++에 넘기고, 모든 수준이 그것을 함께 써요.
+
+### 숫자의 자리
+
+수준의 숫자는 `_ticks.labels`가 한꺼번에 만들어 소수 자릿수가 모두 같아요(`$0.50$`, `$1.00$`처럼). 수준마다 가장 긴 곡선을 골라, 점이 12개 이상이면 그 곡선의 길이 비율 0.5, 0.33, 0.67, 0.2, 0.8, 0.42, 0.58, 0.1, 0.9인 자리를 후보로 둬요(0부터 센 번호가 홀수인 수준은 0.33부터 시작해서, 이웃한 두 수준의 첫 후보가 엇갈려요). 후보마다 앞뒤 두 점의 차로 곡선의 방향도 적어요.
+
+배치가 끝나 화면 좌표를 알게 되면 `ContourLabels.draw`가 후보를 차례로 봐요. 글자 상자를 감싸는 원의 반지름 r로, 후보가 칸 안에 r만큼 들어와 있고 이미 놓은 숫자들과 $r + r' + 2$ bp 넘게 떨어져 있으면 그 자리를 써요. 숫자는 곡선의 방향으로 돌리되 각을 −90°에서 90° 사이로 접어 거꾸로 서지 않게 하고, 같은 각으로 돌린 흰 직사각형을 먼저 깔아 그 밑의 선을 가려요. 맞는 후보가 없는 수준은 숫자 없이 둬요.
+
+```python
+>>> fig = sd.plot.contour(lambda x, y: 1 / (x * x + y * y), -1, 1, -1, 1)
+```
+
+<PlotImage name="in-fields-contour" alt="원점에 극점이 있는 1/(x²+y²)의 등고선. 2에서 14까지 2 간격의 일곱 고리(가로로 늘어난 타원)가 원점 둘레에 겹겹이 있고, 고리마다 곡선 방향으로 돌린 숫자가 적혀 있어요." caption="수준은 값의 본체 0.5에서 14.8 사이에서 고른 2, 4, …, 14예요. 극점 둘레의 큰 값은 수준을 가져가지 않아요. 숫자는 서로 닿지 않는 자리에 서요. contour는 가로세로 단위를 맞추지 않아서 원이 타원으로 보여요." />
+
+### 채운 등고선
+
+`filled=True`면 아래 수준부터 차례로 칠해요. 먼저 상자 전체를 가장 낮은 수준 아래 띠의 색으로 칠하고, 수준마다 그 수준보다 높은 영역(`Levels::inside`, 영역 그림과 같은 다각형)을 그 수준과 다음 수준의 가운데 값의 색으로 덮어요. 위의 수준이 아래 수준의 영역 일부를 다시 덮으므로, 마지막에 남는 색이 그 자리의 띠예요. 띠마다 구멍 뚫린 다각형을 만들지 않아도 되는 화가 알고리즘이에요. 그 위에 수준 곡선을 글자색의 가는 선(0.5 pt)으로 긋고, 숫자 대신 색 막대를 붙여요.
+
+## 밀도 그림과 위상 그림
+
+`density`와 `phase`는 곡선을 찾지 않고 화소마다 값 하나를 재요. 표본은 화소의 가운데예요. 가로 DX개의 화소가 [x0, x1]을 덮으면 표본은 $x_0 + (k + \tfrac12)(x_1 - x_0)/DX$예요. 그림은 `Picture` 층이 되어 래스터라이저가 칸의 직사각형에 붙여요.
+
+### 밀도: 색띠 표
+
+`density`는 유한한 값의 최솟값과 최댓값(또는 `vmin`, `vmax`)으로 값을 [0, 1]에 놓고 색띠의 색으로 바꿔요. 색띠는 이름마다 고정점 몇 개(기본 `'cool'`은 7개)를 sRGB에서 선형 보간한 것이고, `_color.table`이 그것을 256칸의 RGBA8 표로 한 번 구워요. C++ `colormap`은 화소마다 표의 가장 가까운 칸을 복사만 해요.
+
+```cpp
+// csrc/plot/raster.cpp
+void colormap(
+    const double* v, std::size_t n, double vmin, double vmax, const std::uint8_t* table, int entries, std::uint8_t* out
+) {
+    const double scale = vmax > vmin ? (entries - 1) / (vmax - vmin) : 0.0;
+    for (std::size_t i = 0; i < n; ++i) {
+        const double x = v[i];
+        if (std::isnan(x)) {
+            out[4 * i] = out[4 * i + 1] = out[4 * i + 2] = out[4 * i + 3] = 0;
+            continue;
+        }
+        const double t =
+            std::clamp((x - vmin) * scale, 0.0, static_cast<double>(entries - 1));  // an infinity takes an end
+        std::memcpy(out + 4 * i, table + 4 * static_cast<std::size_t>(t + 0.5), 4);
+    }
+}
+```
+
+NaN은 투명이고, 무한대와 범위 밖의 값은 표의 끝 색이에요. [`heatmap`](/api/plot/heatmap/)도 같은 함수로 칸의 색을 만들어요.
+
+### 위상: 정의역 색칠
+
+`phase`는 복소 함수 w = f(z)를 정의역 색칠(domain colouring)로 그려요. 화소마다 $\arg w$를 색상(hue)으로, $\lvert w\rvert$를 밝기로 써서 HSV 색을 만들어요.
+
+- 색상 $h = \arg w / 2\pi$를 [0, 1)로 접어요. 양의 실수가 빨강, 그다음 노랑, 초록, 청록, 파랑, 자홍 순이에요. 영점 둘레를 한 바퀴 돌면 색상이 한 바퀴 돌고, 극점 둘레는 반대로 돌아요. 위수 k의 영점은 색이 k바퀴 돌아요.
+- `contours=True`면 밝기 $V = 0.62 + 0.38\,\{\log_2\lvert w\rvert\}$예요. 크기가 두 배가 될 때마다 밝기가 0.62에서 1까지 오른 뒤 뚝 떨어져서, 크기의 등고선이 띠의 경계로 보여요. 영점 쪽으로 갈수록 띠가 촘촘해지고, 극점 쪽도 같아요. `False`면 V = 1이에요.
+- 채도는 0.85로 고정이에요.
+- $w = 0$은 검정, 무한대는 흰색, NaN은 투명이에요.
+
+HSV에서 RGB로는 표준 공식이에요. $h_6 = 6h$의 정수 부분이 여섯 구간 가운데 하나를 고르고, 소수 부분 f로 $p = V(1 - S)$, $q = V(1 - Sf)$, $t = V(1 - S(1 - f))$를 만들어 구간마다 (V, t, p), (q, V, p), (p, V, t), (p, q, V), (t, p, V), (V, p, q)를 R, G, B로 써요.
+
+## 결정성
+
+격자와 띠의 선택, 교차점의 순서(행 순서와 칸 안의 변 순서), 걷기의 시작점이 모두 입력으로만 정해져요. 해시 표 `index_`는 번호를 찾는 데만 쓰고 순회하지 않으므로 순서에 들어가지 않아요. 같은 기계, 같은 스레드 수, 같은 입력이면 같은 곡선과 같은 그림이에요.

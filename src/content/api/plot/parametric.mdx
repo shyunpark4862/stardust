@@ -1,0 +1,162 @@
+---
+kind: function
+title: parametric
+names: [parametric]
+group: 함수 그림
+order: 3
+signatures:
+  - "sd.plot.parametric(fx, fy, a, b, /, *, samples=None, refine=None, color=None, width=None, style='-', label=None, **figure)"
+  - "fig.parametric(fx, fy, a, b, /, *, samples=None, refine=None, color=None, width=None, style='-', label=None)"
+summary: 매개변수 곡선 (x(t), y(t))를 t가 a에서 b까지 가는 동안 그려요. 표본은 평면에서 꺾이는 곳에 모이고, 칸은 가로와 세로의 한 단위가 같은 길이예요.
+params:
+  - name: fx, fy
+    type: 호출 가능한 객체
+    kind: positional-only
+    desc: "x(t)와 y(t). 둘 다 float64 sd.ndarray t를 받아 같은 모양의 실수 배열(또는 수 하나)을 돌려줘요. 같은 t로 함께 불려요."
+  - name: a, b
+    type: float
+    kind: positional-only
+    desc: 매개변수 t의 구간. 유한하고 a < b여야 해요.
+  - name: samples
+    type: int 또는 None
+    kind: keyword-only
+    desc: "처음 격자의 t의 수(3 이상 200000 이하). 기본값 None은 257이에요."
+  - name: refine
+    type: int 또는 None
+    kind: keyword-only
+    desc: "처음 격자의 한 구간을 반으로 나누는 횟수의 한계(0 이상 10 이하). 0이면 처음 격자를 그대로 이어요. 기본값 None은 10이에요."
+  - name: color
+    type: 색 또는 None
+    kind: keyword-only
+    desc: 선의 색. None이면 팔레트의 다음 색이에요.
+  - name: width
+    type: float 또는 None
+    kind: keyword-only
+    desc: 선의 굵기(pt). None이면 테마의 굵기예요.
+  - name: style
+    type: str
+    kind: keyword-only
+    desc: "선의 꼴. '-'(기본값), '--', ':', '-.'."
+  - name: label
+    type: str 또는 None
+    kind: keyword-only
+    desc: 범례에 적을 이름(LaTeX 원문).
+  - name: "**figure"
+    type: 그림 옵션
+    kind: keyword-only
+    desc: "새 그림의 height, font, theme, palette. 모듈 함수만 받아요. 여기서 width는 선의 굵기라서 그림의 너비가 되지 않아요(그림의 너비는 Figure(width=...)에 메서드로 그리거나 fig.size로 정해요). 뜻은 그림의 기본에 있어요."
+returns:
+  type: Figure
+  desc: 모듈 함수는 새 Figure를, 메서드는 곡선을 더한 그 Figure 자신을 돌려줘요. 그림이 한 일은 fig.info에 kind가 'parametric'인 기록으로 남아요.
+raises:
+  - type: TypeError
+    desc: fx나 fy가 호출 가능하지 않을 때, 함수가 sd.ndarray나 수가 아닌 것이나 복소수를 돌려줄 때, samples·refine이 정수가 아닐 때.
+  - type: ValueError
+    desc: a < b가 아니거나 a·b가 유한하지 않을 때, 함수가 받은 것과 다른 모양을 돌려줄 때, samples·refine이 범위 밖일 때.
+seeAlso: [polar, function, sampling, implicit]
+---
+import PlotImage from '../../../components/fig/PlotImage.astro';
+
+## 한눈에 보기
+
+$x$와 $y$를 같은 매개변수 $t$의 함수로 주면, $t$가 구간을 지나는 동안 점 $(x(t), y(t))$가 그리는 곡선이 나와요. 리사주 곡선 $x = \sin 3t$, $y = \sin 4t$를 한 주기 그려 볼게요.
+
+```python
+>>> import math
+>>> fig = sd.plot.parametric(lambda t: sd.sin(3 * t), lambda t: sd.sin(4 * t), 0, 2 * math.pi)
+>>> info = fig.info[0]
+>>> info.kind, info.n
+('parametric', 543)
+```
+
+<PlotImage name="parametric-lissajous" alt="x = sin 3t, y = sin 4t의 리사주 곡선. 정사각형 안에서 여러 번 교차하는 닫힌 곡선이에요" caption="t를 0에서 2π까지 움직인 리사주 곡선이에요. 가로와 세로의 한 단위가 같은 길이라 곡선이 찌그러지지 않아요." />
+
+곡선이 꺾이는 끝자락에 표본이 모여서 257점에서 시작한 표본이 543점이 되었어요. 표본을 고르는 법은 `function`과 같지만, 꺾임을 $y$ 하나가 아니라 평면 위의 곡선 모양으로 재요([함수 그림의 표본](/api/plot/sampling/)).
+
+<Reference />
+
+## 무엇을 그리나요
+
+`fx`와 `fy`는 각각 $t$의 배열을 받아 같은 모양의 배열을 돌려주는 함수예요. 그림은 두 함수를 같은 $t$로 함께 불러요. 원은 `sd.cos`과 `sd.sin`을 그대로 넘기면 돼요.
+
+```python
+>>> fig = sd.plot.parametric(sd.cos, sd.sin, 0, 2 * math.pi)
+```
+
+$y = f(x)$로 쓸 수 없는 곡선, 예를 들어 같은 $x$에서 두 번 이상 지나가거나 되돌아가는 곡선을 그릴 때 써요. 바퀴 위의 한 점이 그리는 사이클로이드 $x = t - \sin t$, $y = 1 - \cos t$는 뾰족한 곳(첨점)이 있는 곡선이에요.
+
+```python
+>>> fig = sd.plot.parametric(
+...     lambda t: t - sd.sin(t), lambda t: 1 - sd.cos(t), 0, 6 * math.pi, height=26
+... )
+>>> fig.height
+26.0
+```
+
+<PlotImage name="parametric-cycloid" alt="세 번 구르는 바퀴의 사이클로이드. 높이 2의 아치 셋이 첨점에서 만나요" caption="세 바퀴 구른 사이클로이드예요. 아치의 가로세로 비가 실제와 같아서 그림이 납작해요. height를 자료의 모양에 맞게 줄여 위아래의 빈 곳을 덜었어요." />
+
+## 같은 비율의 칸
+
+`parametric`의 칸은 자료의 한 단위가 가로와 세로에서 같은 길이예요. 원은 원으로, 정사각형은 정사각형으로 보여요. 그러려고 범위를 넓히지 않고, 칸의 그림 사각형을 자료의 모양에 맞게 줄여요. 그래서 위의 사이클로이드처럼 납작한 곡선은 기본 크기(가로 89 mm, 칸의 가로세로 비 4:3)에서 위아래에 빈 곳이 남아요. 그림 옵션 `height`(mm)를 자료의 모양에 맞게 주면 빈 곳이 줄어요.
+
+범위는 곡선의 값 전체예요. `function`처럼 달아나는 값을 빼고 범위를 잡지 않아요. 값이 한없이 커지는 $t$가 있으면 그 값이 축을 다 차지하니, 그때는 `xlim`, `ylim`으로 보고 싶은 곳을 정해요. 데카르트의 엽선 $x = 3t/(1 + t^3)$, $y = 3t^2/(1 + t^3)$는 $t = -1$에서 달아나요.
+
+```python
+>>> fx = lambda t: 3 * t / (1 + t**3)
+>>> fy = lambda t: 3 * t * t / (1 + t**3)
+>>> fig = sd.plot.parametric(fx, fy, -20, 20)
+>>> [round(p, 3) for p in fig.info[0].poles]
+[-1.0]
+>>> fig = fig.xlim(-3, 3).ylim(-3, 3)
+```
+
+극점은 찾아서 선을 끊어요. `info.poles`의 값은 그 자리의 $t$예요. 범위를 주지 않으면 이 곡선은 수십만 단위의 범위에 그려져 고리가 보이지 않고 직선 하나만 남아요.
+
+## 겹치기
+
+메서드로 같은 칸에 다른 곡선을 더해요. 같은 비율의 칸은 그대로 남으므로, `function`으로 더한 직선도 같은 비율로 그려져요. 원과 그 접선을 함께 그려 볼게요.
+
+```python
+>>> fig = sd.plot.parametric(sd.cos, sd.sin, 0, 2 * math.pi, label="circle")
+>>> fig = fig.function(lambda x: math.sqrt(2) - x, -0.5, 2, style="--", label="tangent")
+>>> [i.kind for i in fig.info]
+['parametric', 'function']
+```
+
+<PlotImage name="parametric-tangent" alt="단위원과 점 (√2/2, √2/2)에서의 접선. 접선은 파선이고 오른쪽 위에 범례가 있어요" caption="원과 그 접선 y = √2 − x예요. 칸의 비율이 1:1이라 접선이 원에 정확히 한 점에서 닿는 모양으로 보여요." />
+
+같은 칸에 함수 그림을 여럿 겹치면 `fig.info`에 곡선마다 기록이 더해져요. `parametric`의 기록은 `ylim`이 `None`이고 `clipped`가 언제나 `(False, False)`예요.
+
+## 표본과 정의역
+
+`samples`와 `refine`의 뜻은 `function`과 같아요. 선을 끊는 곳, 정의역의 끝을 좁히는 것도 같아요. $x$나 $y$가 NaN인 $t$에서는 선을 비워 두고, `info.undefined`에 그 $t$ 구간을 적어요.
+
+```python
+>>> fig = sd.plot.parametric(lambda t: t, lambda t: sd.sqrt(1 - t * t), -2, 2)
+>>> [(round(u, 4), round(v, 4)) for u, v in fig.info[0].undefined]
+[(-2.0, -1.0), (1.0, 2.0)]
+```
+
+## 에러
+
+```python
+>>> sd.plot.parametric(sd.sin, 3, 0, 1)
+Traceback (most recent call last):
+    ...
+TypeError: parametric(): 'fy' must be callable, not int
+>>> sd.plot.parametric(sd.cos, sd.sin, 1, 0)
+Traceback (most recent call last):
+    ...
+ValueError: parametric(): 'a' must be less than 'b'
+>>> sd.plot.parametric(sd.cos, lambda t: t[:5], 0, 1)
+Traceback (most recent call last):
+    ...
+ValueError: parametric(): 'fy' must return an array of its argument's shape (257,), not (5,)
+```
+
+## 조심할 점
+
+- **범위는 값 전체예요.** 달아나는 값이 있으면 `xlim`, `ylim`으로 정해요.
+- **칸의 비율은 1:1이에요.** 납작하거나 길쭉한 곡선은 `height`를 맞춰 빈 곳을 줄여요. 여기서 `width=`는 선의 굵기예요. 그림의 너비는 `sd.plot.Figure(width=...)`에 메서드로 그려서 정해요.
+- **t의 방향은 보이지 않아요.** 곡선이 어느 쪽으로 지나가는지는 그림에 나타나지 않아요. 방향을 보이고 싶으면 [annotate](/api/plot/text-annotate/)로 화살표를 더해요.
+- 공간 곡선 $(x(t), y(t), z(t))$는 [curve3d](/api/plot/curve3d/)예요.

@@ -166,7 +166,7 @@ m.def("solve", named("solve", &solve), nb::sig("def solve(a, b, /)"), nb::arg().
 
 ### C++가 쓰는 Python 객체
 
-C++ 코어가 호출 중에 쓰는 Python 객체는 **결과 namedtuple 타입 12개와 `LinAlgError`**뿐이에요. `_setup`이 import 때 한 번 받아 `csrc/linalg/pyrefs.cpp`의 정적 구조체에 넣어 둬요.
+C++ 코어가 호출 중에 쓰는 Python 객체는 <strong>결과 namedtuple 타입 12개와 `LinAlgError`</strong>뿐이에요. `_setup`이 import 때 한 번 받아 `csrc/linalg/pyrefs.cpp`의 정적 구조체에 넣어 둬요.
 
 ```cpp
 // csrc/linalg/pyrefs.hpp

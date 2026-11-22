@@ -1,0 +1,173 @@
+---
+kind: function
+title: parametric_surface
+names: [parametric_surface]
+group: 3D
+order: 3
+signatures:
+  - "sd.plot.parametric_surface(fx, fy, fz, u0, u1, v0, v1, /, *, mesh=True, color=None, cmap=None, alpha=1.0, samples=None, refine=None, azimuth=None, elevation=None, perspective=True, **figure)"
+  - "fig.parametric_surface(fx, fy, fz, u0, u1, v0, v1, /, *, mesh=True, color=None, cmap=None, alpha=1.0, samples=None, refine=None, azimuth=None, elevation=None, perspective=True)"
+summary: 두 매개변수 u, v의 함수 셋으로 주어진 곡면 (x(u, v), y(u, v), z(u, v))를 그려요. 구, 원환면, 뫼비우스 띠처럼 그래프 z = f(x, y)로 쓸 수 없는 곡면을 그리고, 상자는 자료의 비율을 따라요.
+params:
+  - name: fx, fy, fz
+    type: 호출 가능한 객체
+    kind: positional-only
+    desc: "x(u, v), y(u, v), z(u, v). 같은 모양의 float64 sd.ndarray 둘(u, v)을 받아 같은 모양의 실수 배열을 돌려줘요. 수 하나를 돌려주면 상수예요. 정의되지 않는 점은 NaN을 돌려줘요."
+  - name: u0, u1
+    type: 실수
+    kind: positional-only
+    desc: u의 범위. 유한하고 u0 < u1이어야 해요.
+  - name: v0, v1
+    type: 실수
+    kind: positional-only
+    desc: v의 범위. 유한하고 v0 < v1이어야 해요.
+  - name: mesh
+    type: bool 또는 int
+    kind: keyword-only
+    desc: "곡면 위의 매개변수 선(u가 일정한 선과 v가 일정한 선). True(기본값)는 한 방향 24칸, False는 없음, 정수(1–400)는 그 칸 수예요."
+  - name: color
+    type: 색 또는 None
+    kind: keyword-only
+    desc: "곡면 전체의 한 색(음영만 줘요). cmap과 함께 줄 수 없어요."
+  - name: cmap
+    type: str 또는 None
+    kind: keyword-only
+    desc: "높이 z에 따른 색띠의 이름. surface와 같은 아홉 가지예요. 둘 다 None이면 칸에 곡면이 하나일 때 'cool', 여럿일 때 곡면마다 팔레트의 색이에요."
+  - name: alpha
+    type: 실수
+    kind: keyword-only
+    desc: "불투명도. 0보다 크고 1 이하예요. 기본값 1.0."
+  - name: samples
+    type: int, (int, int) 또는 None
+    kind: keyword-only
+    desc: "첫 격자의 점의 수. 수 하나면 두 방향이 같고, 쌍이면 (u 방향, v 방향)이에요. 3–2000. None(기본값)이면 121 × 121이에요."
+  - name: refine
+    type: int 또는 None
+    kind: keyword-only
+    desc: "모자란 칸을 다시 재는 횟수의 한계(0–2). 한 번에 칸을 4 × 4로 나눠요. 0이면 적응형 표본을 꺼요. None(기본값)이면 2예요."
+  - name: azimuth, elevation
+    type: 실수 또는 None
+    kind: keyword-only
+    desc: "보는 방향의 방위각과 고도(도). elevation은 −90–90이에요. None(기본값)이면 장면에 맞게 골라요. 칸의 첫 3D 층의 값만 쓰여요."
+  - name: perspective
+    type: bool
+    kind: keyword-only
+    desc: "True(기본값)는 원근 투영, False는 직교 투영이에요."
+  - name: "**figure"
+    type: 그림 옵션
+    kind: keyword-only
+    desc: "width, height, font, theme, palette. 모듈 함수만 받아요. 뜻은 그림의 기본에 있어요."
+returns:
+  type: Figure
+  desc: 곡면을 그린 그림. 메서드로 부르면 그 그림 자신이에요.
+raises:
+  - type: TypeError
+    desc: "fx·fy·fz가 호출 가능하지 않을 때, 그 함수가 배열이나 수가 아닌 것이나 복소수를 돌려줄 때, 범위·각·alpha가 수가 아닐 때, mesh가 bool이나 정수가 아닐 때, samples·refine이 정수가 아닐 때, perspective가 bool이 아닐 때, 받지 않는 인자(contours, zlim 등)를 줄 때. 함수 안에서 난 에러도 그대로 나와요."
+  - type: ValueError
+    desc: "범위가 유한하지 않거나 u0 < u1, v0 < v1이 아닐 때, 함수가 다른 모양의 배열을 돌려줄 때, color와 cmap을 함께 줄 때, 모르는 cmap이나 색, mesh·samples·refine·alpha·elevation이 범위 밖일 때, 2D 층이 있는 칸에 더할 때."
+seeAlso: [view3d, surface, curve3d, parametric, sampling]
+---
+import PlotImage from '../../../components/fig/PlotImage.astro';
+
+## 한눈에 보기
+
+`parametric_surface(fx, fy, fz, u0, u1, v0, v1)`은 매개변수 $(u, v)$가 직사각형 $[u_0, u_1] \times [v_0, v_1]$을 훑을 때 점
+
+$$
+\big(x(u, v),\ y(u, v),\ z(u, v)\big)
+$$
+
+가 그리는 곡면이에요. 아래는 큰 반지름 2, 작은 반지름 1의 원환면(도넛)이에요. $u$는 큰 원을 따라, $v$는 관의 단면을 따라 한 바퀴씩 돌아요.
+
+```python
+>>> import math
+>>> fig = sd.plot.parametric_surface(
+...     lambda u, v: (2 + sd.cos(v)) * sd.cos(u),
+...     lambda u, v: (2 + sd.cos(v)) * sd.sin(u),
+...     lambda u, v: sd.sin(v),
+...     0, 2 * math.pi, 0, 2 * math.pi)
+```
+
+<PlotImage name="parametric-surface-torus" format="png" alt="원환면(도넛). 높이에 따라 아래는 하늘색, 위는 빨강이고, 곡면 위에 큰 원을 따라 도는 선과 관을 감싸는 선이 격자를 이뤄요. 상자는 가로세로 6, 높이 2로 납작해요." caption="원환면. 상자가 자료의 비율(6 : 6 : 2)을 따르므로 도넛이 제 모양으로 보여요." />
+
+그래프 $z = f(x, y)$는 한 $(x, y)$에 높이가 하나뿐이라 구, 원환면, 띠처럼 겹쳐 접히는 곡면을 그릴 수 없어요. 매개변수 곡면은 이런 곡면을 그려요. 그래프로 쓸 수 있는 곡면은 [`surface`](/api/plot/surface/)가 더 간단해요.
+
+<Reference />
+
+## 함수 셋 넘기기
+
+`fx`, `fy`, `fz`는 저마다 배열 둘 `(u, v)`를 받아 같은 모양의 배열을 돌려줘요. 격자의 점을 모두 모아 함수마다 **배열 한 번으로** 불러요. 수 하나를 돌려주면 상수예요. 평면 $z = 0$ 위의 원판은 `lambda u, v: 0.0`을 `fz`로 쓰면 돼요.
+
+```python
+>>> calls = []
+>>> def fx(u, v):
+...     calls.append(u.shape)
+...     return sd.cos(u) * sd.sin(v)
+>>> fig = sd.plot.parametric_surface(fx, lambda u, v: sd.sin(u) * sd.sin(v),
+...                                  lambda u, v: sd.cos(v), 0, 2 * math.pi, 0, math.pi)
+>>> calls
+[(121, 121)]
+```
+
+위는 단위 구예요. 매끈한 곡면이라 첫 격자(121 × 121) 한 번으로 끝났어요.
+
+## 상자는 자료의 비율
+
+`parametric_surface`, [`curve3d`](/api/plot/curve3d/), [`scatter3d`](/api/plot/scatter3d/)만 든 칸의 상자는 자료의 비율을 따라요. 세 축에서 자료의 한 단위가 같은 길이라서 구는 둥글고 원환면은 납작해요. 같은 칸에 [`surface`](/api/plot/surface/)를 더하면 상자는 그래프의 비율(1 : 1 : 0.72)이 되고 세 축이 저마다의 척도를 가져요.
+
+## 색과 매개변수 선
+
+- 아무것도 주지 않으면 칸에 곡면이 하나일 때 높이 $z$에 따른 색띠 `'cool'`이에요. 여럿이면 곡면마다 팔레트의 색이에요.
+- `cmap=`은 높이 $z$에 따른 색띠, `color=`는 한 색이에요. 둘을 함께 주면 에러예요.
+- `mesh`는 곡면 위의 **매개변수 선**이에요. $u$가 일정한 선과 $v$가 일정한 선이 저마다 24칸으로 고르게 깔려요. 원환면에서는 큰 원과 관의 단면이 격자선이 돼요. 정수를 주면 그 칸 수, `False`면 선이 없어요.
+
+`surface`의 `zlim`과 바닥 등고선 `contours`는 그래프에만 있어서 받지 않아요.
+
+## 두 면을 똑같이 밝혀요
+
+곡면의 앞면과 뒷면을 똑같이 밝혀요. 뫼비우스 띠처럼 앞뒤가 이어진 곡면도 한쪽이 어둡게 꺼지지 않아요.
+
+```python
+>>> fig = sd.plot.parametric_surface(
+...     lambda u, v: (1 + v / 2 * sd.cos(u / 2)) * sd.cos(u),
+...     lambda u, v: (1 + v / 2 * sd.cos(u / 2)) * sd.sin(u),
+...     lambda u, v: v / 2 * sd.sin(u / 2),
+...     0, 2 * math.pi, -1, 1, color="C1")
+```
+
+<PlotImage name="parametric-surface-mobius" format="png" alt="노란 뫼비우스 띠. 띠가 한 바퀴 도는 동안 반 바퀴 꼬여 안쪽 면이 바깥쪽 면으로 이어지고, 어느 쪽 면이든 같은 밝기의 음영을 받아요." caption="뫼비우스 띠를 한 색 color='C1'로 그렸어요. 면이 하나뿐인 곡면이라 앞뒤를 같게 밝혀야 끊김 없이 보여요." />
+
+## 표본: samples와 refine
+
+표본을 고르는 법은 [`surface`](/api/plot/surface/#표본-samples와-refine)와 같아요. $(u, v)$의 첫 격자(기본 121 × 121)에서 재고, 꺾이는 칸과 정의역의 가장자리(꼭짓점의 일부만 값이 있는 칸)만 4 × 4로 나눠 다시 재요. 다시 잰 칸이 아직 모자라면 한 번 더 나눠 첫 격자의 16배까지 촘촘해져요. 칸의 40%가 넘게 모자라면 격자 전체를 3배로 다시 재요.
+
+| 인자 | 기본값 | 뜻 |
+|---|---|---|
+| `samples` | 121 × 121 | 첫 격자의 점의 수. 수 하나(두 방향 같게)나 `(u 방향, v 방향)`, 3–2000 |
+| `refine` | 2 | 모자란 칸을 다시 나누는 횟수의 한계. 한 번에 4 × 4. `0`이면 첫 격자만 써요 |
+
+`samples`의 쌍은 매개변수의 두 방향이에요. 한쪽으로 길게 늘어난 띠는 긴 쪽에 점을 더 주면 고르게 보여요(`samples=(241, 41)` 등).
+
+## 다른 층과 겹치기
+
+같은 칸에 메서드로 곡면, 곡선, 점을 더해요. 반투명한 곡면 안에 다른 것을 넣어 보이려면 `alpha`를 줘요.
+
+```python
+>>> sphere = (lambda u, v: sd.cos(u) * sd.sin(v), lambda u, v: sd.sin(u) * sd.sin(v),
+...           lambda u, v: sd.cos(v))
+>>> fig = sd.plot.parametric_surface(*sphere, 0, 2 * math.pi, 0, math.pi, alpha=0.3)
+>>> fig = fig.curve3d(lambda t: 0.6 * sd.cos(t), lambda t: 0.6 * sd.sin(t),
+...                   lambda t: t / (4 * math.pi) - 0.5, 0, 4 * math.pi)
+```
+
+반투명 곡면과 깊이, 시점의 규칙은 [3D 칸과 시점](/api/plot/view3d/)에 있어요.
+
+## 조심할 점
+
+- 닫힌 곡면(구, 원환면)은 매개변수의 끝이 맞물리도록 범위를 정확히 줘요. 원환면의 $u$를 $[0, 6]$으로 주면 $2\pi$까지 닿지 않아 한 조각이 빠져요.
+- 매개변수가 한 점으로 모이는 곳(구의 극 $v = 0, \pi$)에서는 격자의 칸이 아주 좁아져요. 그림에는 문제가 없지만 매개변수 선이 그 점에 모여 촘촘해 보여요.
+- 높이 범위는 값의 대부분으로 잡으므로, 몇 점만 아주 멀리 달아나는 곡면은 그 부분이 상자의 면에서 잘려요.
+
+## matplotlib을 아는 분께
+
+matplotlib에서는 `u, v = np.meshgrid(...)`로 격자를 만들고 `X, Y, Z`를 계산해 `plot_surface(X, Y, Z)`에 넘겨요. `parametric_surface`는 세 함수와 범위를 받아 격자를 스스로 정하고, 꺾이는 곳과 가장자리만 더 촘촘히 재요. 교차하거나 스스로 겹치는 곡면(클라인 병 등)도 깊이 버퍼로 옳게 가려져요. matplotlib처럼 상자의 비율을 `set_box_aspect`로 맞출 필요가 없어요. 자료의 비율이 기본이에요.

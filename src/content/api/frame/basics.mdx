@@ -336,7 +336,7 @@ TypeError: zeros(): 'dtype' must be sd.bool, sd.int64, sd.float64 or sd.complex1
 
 ## 결측값은 `NA` 하나예요
 
-기록에는 빈칸이 있기 마련이에요. 리스트에 `None`을 넣으면 그 자리는 **결측값 `NA`**가 되고, 출력에는 `<NA>`로 나와요. 정수 열에 빈칸이 있어도 dtype은 int64 그대로예요. 합계 같은 계산은 기본으로 `NA`를 건너뛰어요.
+기록에는 빈칸이 있기 마련이에요. 리스트에 `None`을 넣으면 그 자리는 <strong>결측값 `NA`</strong>가 되고, 출력에는 `<NA>`로 나와요. 정수 열에 빈칸이 있어도 dtype은 int64 그대로예요. 합계 같은 계산은 기본으로 `NA`를 건너뛰어요.
 
 ```python
 >>> sd.frame.Series([1200, None, 3000])

@@ -1,0 +1,175 @@
+---
+kind: function
+title: scatter
+names: [scatter]
+group: 기본 그림
+order: 2
+signatures:
+  - "sd.plot.scatter(x, y, /, *, data=None, group=None, color=None, size=None, shape='o', alpha=1.0, label=None, **figure)"
+  - "fig.scatter(x, y, /, *, data=None, group=None, color=None, size=None, shape='o', alpha=1.0, label=None)"
+summary: 점 (x, y)마다 점 기호를 찍는 산점도를 그려요. 점 기호의 꼴과 크기, 불투명도를 고르고, group으로 무리마다 색을 나눠요.
+params:
+  - name: x, y
+    type: 수의 시퀀스, ndarray, numpy 배열, Series, 또는 열 이름
+    kind: positional-only
+    desc: "점의 좌표. 1차원이고 길이가 같아야 해요. float64로 바꿔 써요. data를 주면 열 이름(str)을 줄 수 있어요."
+  - name: data
+    type: DataFrame 또는 None
+    kind: keyword-only
+    desc: "주면 x, y, group에 열 이름을 쓸 수 있어요. 기본값 None."
+  - name: group
+    type: 열 이름, 시퀀스, 또는 None
+    kind: keyword-only
+    desc: "점을 무리로 나누는 값. 길이가 자료와 같아야 해요. 무리마다 팔레트의 색을 차례로 주고 무리의 값을 범례의 이름으로 써요. color, label과 함께 줄 수 없어요."
+  - name: color
+    type: 색 또는 None
+    kind: keyword-only
+    desc: "점의 색 하나. None(기본값)이면 칸의 팔레트에서 다음 색을 받아요."
+  - name: size
+    type: float 또는 None
+    kind: keyword-only
+    desc: "점 기호의 지름(pt). 0보다 커야 해요. 모든 점에 같은 크기예요. None(기본값)이면 테마의 크기예요."
+  - name: shape
+    type: str
+    kind: keyword-only
+    desc: "점 기호의 꼴. 'o'(원, 기본값), 's'(네모), '^'(위 삼각형), 'v'(아래 삼각형), 'D'(마름모), '+'(더하기), 'x'(가위표)."
+  - name: alpha
+    type: float
+    kind: keyword-only
+    desc: "불투명도. 0 이상 1 이하이고 기본값 1.0이에요."
+  - name: label
+    type: str 또는 None
+    kind: keyword-only
+    desc: "범례에 적을 이름(LaTeX 원문). 기본값 None."
+  - name: "**figure"
+    type: 그림 옵션
+    kind: keyword-only
+    desc: "모듈 함수만 받아요. width, height, font, theme, palette(그림의 기본)."
+returns:
+  type: Figure
+  desc: "모듈 함수는 새 그림을, 메서드는 점을 더한 그 그림(fig 자신)을 돌려줘요."
+raises:
+  - type: TypeError
+    desc: data 없이 자료 인자에 문자열을 줬을 때, data가 DataFrame이 아닐 때, 수가 아닌 열을 줬을 때, size·alpha가 수가 아닐 때, 모르는 키워드를 줬을 때.
+  - type: ValueError
+    desc: x와 y의 길이가 다를 때, 자료가 1차원이 아닐 때, 없는 열 이름일 때, group의 길이가 자료와 다를 때, group과 color나 label을 함께 줬을 때, 색이나 shape를 알 수 없을 때, alpha가 [0, 1] 밖일 때, size가 0 이하일 때.
+seeAlso: [basics, line, strip, pairs, fit]
+---
+import PlotImage from '../../../components/fig/PlotImage.astro';
+
+## 무엇을 하나요
+
+`scatter(x, y)`는 점 $(x_i, y_i)$마다 점 기호 하나를 찍어요. 두 양의 관계를 볼 때 가장 먼저 그리는 그림이에요. 점을 선으로 잇지 않으므로 순서는 상관없어요.
+
+<Reference />
+
+## 한눈에 보기
+
+```python
+>>> import stardust as sd
+>>> rng = sd.random.default_rng(3)
+>>> N = sd.stats.Normal()
+>>> x = N.sample(150, rng=rng)
+>>> y = 0.6 * x + 0.8 * N.sample(150, rng=rng)
+>>> fig = sd.plot.scatter(x, y).xlabel(r"$x$").ylabel(r"$y$")
+```
+
+<PlotImage name="scatter-basic" alt="양의 상관이 있는 점 150개가 오른쪽 위로 비스듬히 퍼진 산점도" caption="점마다 가는 흰 테두리가 있어서 겹친 점도 하나하나 구별돼요." />
+
+점 기호는 칸의 가장자리에 걸려도 잘리지 않고 온전히 보여요. 축의 범위는 점들의 범위에 조금 여유를 두고 잡혀요.
+
+점을 하나하나 가려 보이도록 기호에 가는 흰 테두리를 둘러요. 점이 수천 개를 넘는 구름이거나 기호가 아주 작으면 테두리가 구름을 하얗게 씻어 내므로 두르지 않아요.
+
+## 점 기호의 꼴과 크기
+
+`shape`는 일곱 가지예요. `size`는 기호의 지름(pt)이에요. 크기와 색은 한 번의 호출에서 모든 점이 같아요. 점마다 크기나 색을 달리하려면 무리로 나누거나(`group=`), 호출을 여럿으로 나눠요.
+
+```python
+>>> fig = sd.plot.Figure(height=28)
+>>> for i, s in enumerate(["o", "s", "^", "v", "D", "+", "x"]):
+...     fig = fig.scatter([i], [0.0], shape=s, size=9)
+>>> names = ["o", "s", r"\^{}", "v", "D", "+", "x"]    # ^는 LaTeX에서 \^{}로 숨겨요
+>>> fig = fig.xticks(range(7), labels=[r"\texttt{'" + s + "'}" for s in names])
+>>> fig = fig.yticks([]).xlim(-0.6, 6.6)
+```
+
+<PlotImage name="scatter-shapes" alt="일곱 가지 점 기호 원, 네모, 위 삼각형, 아래 삼각형, 마름모, 더하기, 가위표가 가로로 한 줄에 늘어서 있고 아래 눈금에 그 꼴의 문자가 적힌 그림" caption="shape의 일곱 꼴. 호출마다 팔레트의 다음 색을 받았어요. '+'와 'x'는 속이 빈 기호라 선으로 그려요." />
+
+`'+'`와 `'x'`는 획으로만 된 기호라 채우지 않고 선으로 그려요. 나머지 다섯은 색으로 채운 도형이에요.
+
+## 겹친 점: alpha
+
+점이 많아 서로 덮이면 `alpha`를 낮춰요. 여러 점이 겹친 곳일수록 진해져서 점이 몰린 정도가 보여요. 아래는 점 2000개를 `alpha=0.25`로 찍은 거예요.
+
+```python
+>>> u = N.sample(2000, rng=rng)
+>>> v = u * u * 0.5 + 0.6 * N.sample(2000, rng=rng)
+>>> fig = sd.plot.scatter(u, v, size=2, alpha=0.25)
+>>> fig = fig.xlabel(r"$u$").ylabel(r"$v$")
+```
+
+포물선 모양의 구름에서 점이 몰린 가운데 아래쪽이 가장 진하게 보여요. 이렇게 작고 많은 점에는 흰 테두리를 두르지 않아요.
+
+## 무리: group과 data
+
+무리를 나누는 열이 있으면 `group=`에 줘요. 무리마다 팔레트의 색을 차례로 받고, 무리의 값이 범례의 이름이 돼요.
+
+```python
+>>> rows = []
+>>> for name, (cx, cy) in {"setosa": (5.0, 3.4), "versicolor": (5.9, 2.8),
+...                        "virginica": (6.6, 3.0)}.items():
+...     dx, dy = N.sample(40, rng=rng), N.sample(40, rng=rng)
+...     rows += [(cx + 0.35 * a, cy + 0.3 * b, name) for a, b in zip(dx.tolist(), dy.tolist())]
+>>> df = sd.frame.DataFrame({"sepal_length": [r[0] for r in rows],
+...                          "sepal_width": [r[1] for r in rows],
+...                          "species": [r[2] for r in rows]})
+>>> fig = sd.plot.scatter("sepal_length", "sepal_width", data=df, group="species", alpha=0.85)
+>>> fig = fig.xlabel("sepal length (cm)").ylabel("sepal width (cm)")
+>>> fig = fig.legend(loc="top")
+```
+
+<PlotImage name="scatter-group" alt="세 무리 setosa, versicolor, virginica의 점이 파랑, 노랑, 회색으로 찍힌 산점도. 칸 위에 범례가 한 줄로 있어요." caption="group은 처음 나온 차례로 팔레트의 색을 받아요. 칸 안에 빈 구석이 없어 범례는 legend(loc='top')로 칸 위에 두었어요." />
+
+무리의 색은 그림의 `palette`가 정해요. `sd.plot.scatter(..., palette="okabe-ito")`처럼 모듈 함수에 그림 옵션으로 주면 돼요. 팔레트 목록은 [스타일](/api/plot/style/)에 있어요.
+
+무리가 색과 이름을 정하므로 `color`, `label`과 함께 줄 수 없어요.
+
+```python
+>>> sd.plot.scatter("sepal_length", "sepal_width", data=df, group="species", color="red")
+Traceback (most recent call last):
+    ...
+ValueError: scatter(): 'color' and 'group' cannot both be given (a group takes the palette's colours)
+```
+
+## 다른 그림과 겹치기
+
+산점도 위에 선을 얹으려면 메서드를 이어 불러요. 아래는 처음 자료에 직선 $y = 0.6x$를 겹친 거예요. 회귀선과 신뢰 띠까지 그리려면 회귀 결과를 받는 [`Figure.fit`](/api/plot/fit/)이 있어요.
+
+```python
+>>> line_x = sd.linspace(-3.0, 3.0, 2)
+>>> fig = sd.plot.scatter(x, y, color="gray", alpha=0.6, label="sample")
+>>> fig = fig.line(line_x, 0.6 * line_x, color="C0", label=r"$y = 0.6x$")
+>>> fig = fig.legend(loc="upper left")
+```
+
+## NaN
+
+`x`나 `y`가 NaN이거나 무한대인 점은 찍지 않아요. 에러도 경고도 아니에요. 축의 범위도 유한한 값만 보고 잡아요. 로그 축에서는 0 이하의 값도 찍지 않아요.
+
+```python
+>>> fig = sd.plot.scatter([1.0, 2.0, float("nan"), 4.0], [1.0, float("inf"), 3.0, 4.0])
+```
+
+넷 가운데 두 점만 찍혀요.
+
+## 조심할 점
+
+- 점의 크기 `size`는 pt 단위의 지름이에요. 점의 넓이가 아니에요.
+- 점의 수만큼 기호가 SVG·PDF에 들어가요. 수만 개의 점을 벡터로 내보내면 파일이 커지니, 그럴 때는 PNG로 저장하거나 [`heatmap`](/api/plot/heatmap/), [`histogram`](/api/plot/histogram/)처럼 모아서 보이는 그림을 생각해 보세요.
+- 범주 축(문자열의 `x`)은 받지 않아요. 범주마다 값을 흩어 찍으려면 [`strip`](/api/plot/strip/)을 써요.
+
+## matplotlib을 아는 분께
+
+- `plt.scatter(x, y, s=..., c=..., marker=...)` 대신 `sd.plot.scatter(x, y, size=..., color=..., shape=...)`예요. `size`는 넓이(pt²)가 아니라 지름(pt)이에요.
+- `c=`에 값의 배열을 주어 색띠로 칠하는 기능과 점마다 다른 크기는 없어요. 무리는 `group=`으로 나눠요.
+- 점 기호의 꼴은 일곱 가지만 있어요(`'*'`, `'.'`, `','` 등은 없어요).

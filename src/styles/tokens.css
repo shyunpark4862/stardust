@@ -231,3 +231,8 @@
   --area-soft: #e7f5f9;
   --area-line: #b2dce8;
 }
+[data-area='plot'] {
+  --area: #b42318;
+  --area-soft: #fdeeec;
+  --area-line: #f5c4bd;
+}

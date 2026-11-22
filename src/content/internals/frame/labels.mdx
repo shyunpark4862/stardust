@@ -196,11 +196,11 @@ def _table(self):
 | `first_positions(targets)` | 대상 라벨마다 첫 위치, 없으면 -1 | `in`, `get_indexer`(정렬, reindex, 마스크 맞추기) |
 | `all_positions(targets)` | 대상 라벨마다 그 라벨의 모든 위치를 위치 순서로, 대상 순서대로 이어 붙여서 | `.loc` 라벨 하나, 라벨 리스트, 라벨 슬라이스의 양 끝 |
 
-**`lookup`**은 [해시 테이블과 factorize](/internals/frame/hashing/)의 `find_rows`를 불러요. 대상 dtype이 라벨 dtype과 다르면 TypeError예요. `find_rows`는 dtype과 "대상에 NA가 있는가"를 호출마다 한 번 골라서, 행 루프에는 "찾고 쓰기"만 남겨요. 대상 행 $k$개를 16,384행 청크로 나눠 병렬로 찾는데, 비용 가중치를 8로 줘서(조회 하나가 덧셈 하나보다 훨씬 비싸요) 대상이 2¹⁷ / 8 = 16,384개 이상이면 나눠요.
+<strong>`lookup`</strong>은 [해시 테이블과 factorize](/internals/frame/hashing/)의 `find_rows`를 불러요. 대상 dtype이 라벨 dtype과 다르면 TypeError예요. `find_rows`는 dtype과 "대상에 NA가 있는가"를 호출마다 한 번 골라서, 행 루프에는 "찾고 쓰기"만 남겨요. 대상 행 $k$개를 16,384행 청크로 나눠 병렬로 찾는데, 비용 가중치를 8로 줘서(조회 하나가 덧셈 하나보다 훨씬 비싸요) 대상이 2¹⁷ / 8 = 16,384개 이상이면 나눠요.
 
-**`first_positions`**는 `lookup`의 결과에 `first_`를 한 번 더 거쳐요(`o[i] = first_[o[i]]`, -1은 그대로).
+<strong>`first_positions`</strong>는 `lookup`의 결과에 `first_`를 한 번 더 거쳐요(`o[i] = first_[o[i]]`, -1은 그대로).
 
-**`all_positions`**는 CSR을 써요. CSR(compressed sparse row)은 "코드 $g$의 위치들"을 한 배열 `rows`에 코드 순서로 모아 두고, `start[g]`부터 `start[g+1]` 직전까지가 코드 $g$의 몫이라고 적는 방식이에요. 처음 부를 때 counting sort로 만들어요.
+<strong>`all_positions`</strong>는 CSR을 써요. CSR(compressed sparse row)은 "코드 $g$의 위치들"을 한 배열 `rows`에 코드 순서로 모아 두고, `start[g]`부터 `start[g+1]` 직전까지가 코드 $g$의 몫이라고 적는 방식이에요. 처음 부를 때 counting sort로 만들어요.
 
 ```cpp
 // csrc/frame/ops/hash.cpp
@@ -376,8 +376,8 @@ def align(a, b, func=None):
 
 1. **같은 Index면 위치대로 계산해요.** `is`로 먼저 보고, 아니면 `equals`로 원소를 비교해요. 같은 DataFrame에서 꺼낸 두 컬럼(`df["x"] + df["y"]`)은 같은 Index 객체를 공유해서 `is`에서 끝나요. 이것은 "같은 라벨 순서면 위치가 곧 짝"이라는 의미 규칙이에요. 데이터를 보고 빠른 길로 가는 휴리스틱이 아니라, 두 Index가 같은지라는 입력의 정의 자체를 묻는 것이라서 중복 라벨이 있어도 성립해요.
 2. **dtype과 고유성을 검사해요.** int 라벨과 string 라벨은 맞출 수 없어요(RangeIndex는 int64로 쳐요). 같은 Index가 아니면서 중복이 있으면 ValueError예요.
-3. **`a._get_indexer(b)`**는 `b`의 라벨마다 `a`에서의 첫 위치(`first_positions`)를 구하고, -1인 자리(`a`에 없는 라벨)만 `nonzero`로 골라요. 합집합은 `a`의 라벨 뒤에 그 라벨들을 이어 붙인 것이에요(`concat` 커널). `a`의 위치 배열은 `[0, 1, …, len(a)-1]` 뒤에 -1을 그만큼 붙인 것이에요. 붙일 것이 없으면 `None`을 돌려줘서 `a`의 컬럼을 `take` 없이 그대로 써요.
-4. **`b._get_indexer(union)`**은 합집합의 라벨마다 `b`에서의 위치를 구해요. `b`에 없는 라벨은 -1이에요.
+3. <strong>`a._get_indexer(b)`</strong>는 `b`의 라벨마다 `a`에서의 첫 위치(`first_positions`)를 구하고, -1인 자리(`a`에 없는 라벨)만 `nonzero`로 골라요. 합집합은 `a`의 라벨 뒤에 그 라벨들을 이어 붙인 것이에요(`concat` 커널). `a`의 위치 배열은 `[0, 1, …, len(a)-1]` 뒤에 -1을 그만큼 붙인 것이에요. 붙일 것이 없으면 `None`을 돌려줘서 `a`의 컬럼을 `take` 없이 그대로 써요.
+4. <strong>`b._get_indexer(union)`</strong>은 합집합의 라벨마다 `b`에서의 위치를 구해요. `b`에 없는 라벨은 -1이에요.
 
 그 뒤 각 컬럼은 `take(positions)`로 다시 배열되고, 위치 -1은 NA 행이 돼요.
 
@@ -602,7 +602,7 @@ def _assign(self, sel, value):
 
 1. **값 맞추기**: 스칼라는 `implicit_scalar`로, list는 추론한 뒤 `implicit`로 컬럼 dtype에 맞춰요. list와 tuple은 추론하기 전에 bool과 수(int, float, numpy 정수·실수)가 섞였는지 봐요(`_check_no_bool_mix`). 원소마다 값을 보지 않고 타입의 집합(`set(map(type, values))`, C 안에서 한 번 훑기)만 봐요. 섞였으면 TypeError예요. object dtype의 numpy 배열도 Python 객체를 담고 있으니 list로 바꿔 같은 검사를 해요. 생성자의 추론처럼 `[True, 2]`를 int64 `[1, 2]`로 승격하면 int 컬럼에 넣을 때 `True`가 아무 말 없이 `1`이 되기 때문이에요. 컬럼을 통째로 새로 만드는 `df["c"] = [True, 2]`는 이 길이 아니라서 생성과 같이 int64예요. 규칙은 dtype만 보고 위로만(`bool → int64 → float64`)이에요. int 컬럼에 `2.0`은 값과 상관없이 TypeError예요. 값이 Series면 고른 행의 라벨로 `reindexed`(정렬)한 뒤 같은 규칙을 적용해요. 마스크로 골랐으면 `select_index`가 남은 행의 라벨을 만들어 그 라벨로 맞춰요.
 2. **자기 Column 객체 갖기**: Python 객체 둘이 같은 C++ Column 객체를 가리킬 수 있어요(`df["a"]`로 꺼낸 Series와 DataFrame). 그 객체를 고치면 둘 다 바뀌므로, 쓰는 쪽이 먼저 `share()`(Buffer를 공유하는 새 Column 객체, `shared_ptr` 셋의 복사)로 자기 객체를 만들어요. 이전 객체를 쥔 다른 주인이 없으면 이 대입으로 해제되고, Buffer의 참조 수가 함께 줄어요.
-3. **`set_rows`**가 Buffer의 참조 수를 보고 필요할 때만 복사해요.
+3. <strong>`set_rows`</strong>가 Buffer의 참조 수를 보고 필요할 때만 복사해요.
 
 DataFrame의 `df.loc[rows, "c"] = v`는 그 컬럼으로 임시 Series를 만들어 `_assign`한 뒤 `df._cols["c"] = target._col`로 되돌려 놓아요. 없는 라벨에 대입하면 KeyError예요. pandas처럼 행을 늘리지 않아요(행을 늘리면 모든 컬럼의 Buffer를 다시 만들어야 해서, 대입 한 번의 비용이 데이터에 따라 크게 달라져요).
 

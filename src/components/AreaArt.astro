@@ -47,6 +47,12 @@ const slope = pts(slopeF, 16, 156);
 const tanAt = 112;
 const tanY = slopeF(tanAt);
 const tanK = (slopeF(tanAt + 0.01) - slopeF(tanAt - 0.01)) / 0.02;
+// Two branches of a curve with a pole between them, as a function plot draws it:
+// the line stops at the pole and the axes carry ticks.
+const poleX = 96;
+const branchF = (x: number) => 32 - 9 / ((x - poleX) / 18);
+const branchL = pts(branchF, 30, poleX - 3, 40).filter(([, y]) => y > 4 && y < 56);
+const branchR = pts(branchF, poleX + 3, 156, 40).filter(([, y]) => y > 4 && y < 56);
 const r2 = rand(3);
 const scatter = Array.from({ length: 16 }, (_, i) => {
   const x = 20 + i * 8 + r2() * 4;
@@ -179,6 +185,22 @@ const scatter = Array.from({ length: 16 }, (_, i) => {
           <circle cx={tanAt + h} cy={slopeF(tanAt + h)} r="1.8" fill="var(--area)" opacity="0.45" />
         ))}
         <circle cx={tanAt} cy={tanY} r="3.4" fill="var(--area)" />
+      </g>
+    )
+  }
+  {
+    area === 'plot' && (
+      <g fill="none" stroke-linecap="round">
+        <path d="M22 58H158M22 58V6" stroke="var(--line-strong)" stroke-width="1" />
+        {[46, 70, 94, 118, 142].map((x) => (
+          <path d={`M${x} 58v3`} stroke="var(--line-strong)" stroke-width="1" />
+        ))}
+        {[14, 30, 46].map((y) => (
+          <path d={`M22 ${y}h-3`} stroke="var(--line-strong)" stroke-width="1" />
+        ))}
+        <path d={`M${poleX} 6V58`} stroke="var(--area)" stroke-width="1" stroke-dasharray="3 3" opacity="0.5" />
+        <path d={path(branchL)} stroke="var(--area)" stroke-width="2" />
+        <path d={path(branchR)} stroke="var(--area)" stroke-width="2" />
       </g>
     )
   }

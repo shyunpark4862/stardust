@@ -448,7 +448,7 @@ TypeError: choice(): 'replace' must be True or False, not int
 ## numpy를 아는 분께
 
 - numpy의 `Generator.choice`에 해당해요. **값은 numpy와 달라요.** 생성기 종류가 달라서, 같은 시드를 줘도 다른 원소를 골라요. 확률을 정한 비복원 추출도 뽑히는 확률(분포)은 numpy와 같지만 값은 달라요.
-- `size=` 대신 **`shape=`**이고, `shape`·`replace`·`p`는 이름을 붙여야만 해요.
+- `size=` 대신 <strong>`shape=`</strong>이고, `shape`·`replace`·`p`는 이름을 붙여야만 해요.
 - `a`는 1차원 `sd.ndarray`이거나 정수만 받아요. 리스트, 여러 차원 배열, `axis=`는 없어요. 행을 고르려면 `x[rng.choice(len(x), ...)]`처럼 행 번호를 고르세요.
 - `shuffle=` 인자는 없어요. `replace=False`의 결과는 언제나 고른 차례대로예요.
 - `p`도 배열만 받아요(리스트 안 됨). 합의 허용치(약 `1.5e-8`)는 numpy와 같아요.

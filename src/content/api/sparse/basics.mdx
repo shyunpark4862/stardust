@@ -411,7 +411,7 @@ TypeError: exp(): 'x' must be an sd.ndarray or a bool, int, float or complex, no
 
 - **값을 옮기기만 하거나 원소마다 반올림을 한 번만 하는 짝**은 희소 쪽 결과의 `toarray()`가 밀집 쪽 결과와 마지막 한 자리까지 같아요. 만들기와 잇기(`eye_array`, `diags_array`, `tril`, `triu`, `hstack`, `vstack`, `block_array`, `block_diag`), 꺼내기(`find`, `A.diagonal()`), 원소별 메서드와 `A.power(n)`, 곱 한 번인 `kron`, 덧셈 한 번인 `kronsum`이 그래요. 다를 수 있는 것은 0의 부호뿐이에요. `toarray()`는 0에 저장된 값을 더해서 밀집 배열을 만들므로 −0.0이 +0.0으로 나와요(complex면 허수부의 −0.0도).
 - **계산 방법이 다른 짝**은 반올림 차이 안에서 같아요. `spsolve`와 `solve`, `splu`와 `lu`, `inv`, `spsolve_triangular`, `expm`은 희소 쪽이 희소 행렬에 맞춘 다른 방법으로 계산해서 끝자리가 다를 수 있어요. 두 쪽 모두 정확도의 약속 안이에요. `expm`도 대각 행렬과 2 × 2 삼각 행렬은 같은 식으로 계산해서 마지막 자리까지 같아요. 리덕션(`A.sum(axis=0)` 등)과 `norm`도 더하는 순서가 달라서, 줄이 길면 끝자리가 다를 수 있어요.
-- **정수 입력의 `kron`과 `kronsum`**은 값은 같지만 dtype이 달라요. 희소 쪽은 int64를 그대로 두고, 밀집 쪽은 float64로 계산해요. `A.trace()`도 정수 입력이면 정수, `sd.linalg.trace`는 float64예요.
+- <strong>정수 입력의 `kron`과 `kronsum`</strong>은 값은 같지만 dtype이 달라요. 희소 쪽은 int64를 그대로 두고, 밀집 쪽은 float64로 계산해요. `A.trace()`도 정수 입력이면 정수, `sd.linalg.trace`는 float64예요.
 - `spbandwidth`는 저장된 0도 0이 아닌 칸으로 세요. 저장된 0이 없으면 `sd.linalg.bandwidth(A.toarray())`와 같은 값이에요.
 
 | sd.sparse | 밀집의 짝 |

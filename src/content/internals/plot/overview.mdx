@@ -1,0 +1,277 @@
+---
+title: 영역의 구조
+group: 구조
+order: 1
+summary: sd.plot에서 그림 함수가 층을 더하고, 출력할 때 한 번 배치해 장면을 짓고, 세 출력이 그 장면을 읽는 흐름을 따라가요. 모듈 함수와 메서드의 관계, 칸의 보기, 3D 칸, 파일과 C++ 커널의 몫, 다른 영역과의 관계, 바깥 프로그램 TeX를 함께 설명해요.
+seeAlso: [layout, scene-outputs, verification, text, raster]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Layers from '../../../components/fig/Layers.astro';
+import Steps from '../../../components/fig/Steps.astro';
+import PlotImage from '../../../components/fig/PlotImage.astro';
+
+## 한눈에 보기
+
+`sd.plot`은 다른 그림 라이브러리 위에 얹지 않고 자기 렌더러로 그려요. 그림 함수는 모두 `Figure`를 돌려주고, `Figure`는 칸들을, 칸은 층들을 가져요. 층은 그릴 자료와 그리는 법을 쥔 객체예요. 그림 함수와 고치는 메서드는 층과 설정만 바꾸고 아무것도 그리지 않아요. 출력을 달라고 할 때 그림 전체를 한 번 배치해 **장면**을 짓고, SVG·PDF·PNG 쓰기가 그 장면만 읽어요.
+
+<Fig column caption="sd.plot의 층. 위가 사용자가 부르는 것, 아래가 그 밑바탕이에요.">
+  <Layers layers={[
+    { title: '그림 함수 (Python)', note: 'src/stardust/plot/', items: [
+      { name: '_basic.py', note: 'line, scatter, bar 등 기본 그림, grid, 모듈 함수 만들기' },
+      { name: '_function.py', note: 'function, parametric, polar', uses: '_sample.py' },
+      { name: '_field.py', note: 'implicit, region, contour, density, phase' },
+      { name: '_stat.py', note: '통계 그림과 결과 객체의 그림' },
+      { name: '_surface.py', note: '3D 칸(Space)과 곡면·곡선·점', uses: '_adapt.py' },
+    ] },
+    { title: '그림의 뼈대 (Python)', items: [
+      { name: '_figure.py', note: 'Figure, 칸, 축과 눈금 고르기, 배치, 범례, 내보내기' },
+      { name: '_layers.py', note: '층(선, 점, 막대, 영역, 오차 막대, 기준선, 글자)' },
+      { name: '_ticks.py', note: '눈금 자리와 라벨' },
+      { name: '_color.py', note: '색, 팔레트, 색띠' },
+    ] },
+    { title: '장면과 출력 (Python)', items: [
+      { name: '_scene.py', note: '장면: Path, Markers, Image, Text' },
+      { name: '_svg.py, _pdf.py, _png.py', note: '세 출력' },
+      { name: '_text.py, _dvi.py, _svgpath.py', note: 'LaTeX 조판, DVI·TFM 읽기, 윤곽선 읽기' },
+    ] },
+    { title: '커널 (C++)', note: 'csrc/plot/, 바인딩 csrc/bind/plot_bind.cpp', items: [
+      { name: 'raster.cpp', note: '2D 래스터라이저, 경로 글자, 선 줄이기, 색 입히기' },
+      { name: 'zbuffer.cpp', note: '3D 깊이 버퍼, 시점 점수' },
+      { name: 'levels.cpp', note: 'marching squares' },
+    ] },
+    { title: '바닥', tone: 'dark', items: [
+      { name: 'array', note: 'sd 배열과 원소별 연산' },
+      { name: 'parallel', note: '스레드풀' },
+      { name: 'TeX Live', note: 'latex, xelatex, tex, xetex, dvisvgm, kpsewhich' },
+    ] },
+  ]} />
+</Fig>
+
+다른 영역은 "얇은 Python, 두꺼운 C++"인데 이 영역은 Python이 두꺼워요. 배치, 눈금, 범례, 장면 짓기는 다루는 도형이 수십에서 수백 개라서 Python으로 충분해요. 반복이 화소나 표본의 수만큼 도는 곳만 C++예요. 화소를 칠하는 래스터라이저와 깊이 버퍼, 격자를 넘기는 marching squares, 수만 개의 좌표를 글자로 쓰는 경로 쓰기가 그래요.
+
+## 그림 하나가 지나는 길
+
+`sd.plot.function(sd.sin, 0, 2π)`로 그림을 만들고 라벨을 붙여 PDF로 저장하는 길이에요.
+
+<Fig column caption="그림 한 장의 흐름. 표본은 그림 함수를 부를 때, 배치·글자·장면은 출력할 때 만들어요.">
+  <Steps steps={[
+    { label: 'sd.plot.function(f, a, b)', note: '모듈 함수. 그림 옵션(width, height, font, theme, palette)을 떼어 새 Figure를 만들고 같은 이름의 메서드를 불러요', where: '_basic.py' },
+    { label: 'Figure.function(f, a, b)', note: '인자를 검사하고 곡선의 표본을 골라, 칸에 CurveLine 층을 더하고 PlotInfo를 적어요', where: '_function.py', depth: 1 },
+    { label: 'fig.xlabel(...)', note: '칸의 설정만 바꾸고 지어 둔 장면을 버려요(_touch)', where: '_figure.py' },
+    { label: 'fig.save("a.pdf")', note: '확장자로 쓰기를 고르고 _build로 장면을 받아요', where: '_figure.py' },
+    { label: '_layout(fig, dpi)', note: '장면 짓기', where: '_figure.py', depth: 1 },
+    { label: '_static_strings', note: '배치와 무관한 문자열(제목, 축 이름, 범례, 범주)을 모아, 캐시에 없는 것을 한 묶음으로 조판해요', where: '_figure.py, _text.py', depth: 2 },
+    { label: 'solve(pw, ph)', note: '칸마다 축과 눈금을 고르고, 글자 상자로 여백을 재고, 줄과 열의 여백을 맞춰요. 세 번 되풀이해요', where: '_figure.py', depth: 2 },
+    { label: '_place_legend', note: "loc='best'인 범례의 자리를 고르고, 칸 밖으로 나가면 다시 배치해요", where: '_figure.py', depth: 2 },
+    { label: '_draw_cell', note: '층이 Frame(자료 → 쪽 좌표의 사상)에 자기를 그리고, 축·눈금·라벨·범례가 뒤따라요', where: '_figure.py, _layers.py', depth: 2 },
+    { label: '_pdf.write(scene)', note: 'scene.resolve()가 Text를 글리프로 바꾸고, PDF의 바이트를 써요', where: '_pdf.py' },
+  ]} />
+</Fig>
+
+장면은 `fig.scene()`으로 dict로 볼 수 있어요. 쪽 크기는 bp(1/72인치)이고, 항목은 칠하는 차례대로 놓여요.
+
+```python
+>>> import math, collections
+>>> fig = sd.plot.function(sd.sin, 0, 2 * math.pi)
+>>> fig.xlabel(r"$x$").ylabel(r"$\sin x$") is fig
+True
+>>> scene = fig.scene()
+>>> round(scene['width'], 3), fig.width
+(252.283, 89.0)
+>>> collections.Counter(i['type'] for i in scene['items'])
+Counter({'path': 15, 'text': 14})
+>>> scene['items'][0]['ops'], scene['items'][0]['fill']
+('MLLLZ', [1.0, 1.0, 1.0, 1.0])
+>>> [i['s'] for i in scene['items'] if i['type'] == 'text'][-4:]
+['$0.5$', '$1.0$', '$x$', '$\\sin x$']
+```
+
+89 mm는 252.283 bp예요. 첫 항목은 쪽 전체를 덮는 흰 사각형이고, 경로 15개는 그 바탕, 곡선, 축 선, 눈금 12개예요. 글자는 문자열 그대로 남아 있어요. 글자가 윤곽선이 되는 것은 출력이 장면을 읽을 때예요([장면과 세 출력](/internals/plot/scene-outputs/)).
+
+<PlotImage name="in-overview-sine" alt="0에서 2π까지의 사인 곡선. 가로축 x, 세로축 sin x, 왼쪽과 아래에만 축 선이 있어요." caption="위 예제의 그림. 경로 15개와 글자 14개로 된 장면을 SVG로 쓴 것이에요." />
+
+## 모듈 함수는 새 그림의 메서드예요
+
+공개 그림 함수는 손으로 쓰지 않아요. `Figure`의 메서드를 하나 쓰고, 모듈을 읽을 때 `install`이 그 메서드를 `Figure`에 붙이면서 같은 이름의 모듈 함수를 만들어요.
+
+```python
+# src/stardust/plot/_basic.py
+def module_function(name, method):
+    """The module function of a Figure method: a new figure, then the method."""
+    sig = inspect.signature(method)
+    params = list(sig.parameters.values())[1:]
+    own = inspect.Signature(params)
+    public = inspect.Signature(params + [inspect.Parameter("figure", inspect.Parameter.VAR_KEYWORD)])
+    names = {p.name for p in params if p.kind is inspect.Parameter.KEYWORD_ONLY}
+
+    def f(*args, **kw):
+        options = {k: kw.pop(k) for k in list(kw) if k in FIGURE_OPTIONS and k not in names}
+        try:
+            own.bind(*args, **kw)
+        except TypeError as e:
+            raise TypeError(f"{name}(): {e}") from None
+        return method(new_figure(name, options), *args, **kw)
+
+    f.__name__ = f.__qualname__ = name
+    f.__signature__ = public
+    f.__doc__ = method.__doc__
+    return f
+```
+
+모듈 함수의 시그니처는 메서드의 인자 뒤에 `**figure`를 붙인 것이에요. 부르면 키워드 가운데 그림 옵션(`FIGURE_OPTIONS`의 `width height font theme palette`)을 떼어 새 그림을 만들고, 남은 인자를 메서드의 시그니처에 맞춰 본 뒤 메서드를 불러요. 맞지 않으면 함수 이름을 붙인 `TypeError`예요. 그래서 메서드와 모듈 함수의 인자, 기본값, 에러가 따로 놀 수 없어요. API 표면 테스트도 이것을 봐요([검증](/internals/plot/verification/)).
+
+메서드 자신이 같은 이름의 키워드를 가지면 그 키워드는 메서드로 가요(`k not in names`). `line`의 `width`는 선 굵기라서 `sd.plot.line(x, y, width=1.0)`은 1 pt 선이고 그림 너비는 기본 89 mm 그대로예요. 이런 함수로 만든 그림의 크기는 `fig.size(...)`로 바꿔요.
+
+```python
+>>> fig = sd.plot.line([0.0, 1.0], [0.0, 1.0], width=1.0)
+>>> fig.width
+89.0
+>>> fig.size(60).width
+60.0
+```
+
+`grid`, `diagnostics`, `pairs`처럼 칸 여럿을 스스로 만드는 함수는 메서드가 없고 모듈 함수만 있어요. 거꾸로 `compare`와 `fit`은 이미 있는 그림 위에 그리므로 메서드만 있어요.
+
+## 칸과 보기
+
+`fig[i, j]`는 칸을 복사하지 않아요. 뿌리 그림과 칸의 번호만 쥔 `Figure`를 하나 더 만들어요.
+
+```python
+    # src/stardust/plot/_figure.py
+    def _view(self, index):
+        v = object.__new__(Figure)
+        v._root, v._index = self._root, index
+        return v
+
+    @property
+    def _cell(self):
+        return self._root._cells[self._index]
+
+    def _touch(self):
+        self._root._scene = None
+        return self
+```
+
+메서드는 모두 `self._cell`에 쓰고 `self._touch()`를 돌려줘요. 보기에서 부르면 그 칸에, 뿌리에서 부르면 첫 칸에 쓰고, 어느 쪽이든 뿌리가 지어 둔 장면을 버려요. 그래서 다음 출력이 장면을 다시 지어요. 크기, 글꼴, 테마, 팔레트, 장면 같은 그림 전체의 값은 뿌리에만 있어요.
+
+```python
+>>> fig = sd.plot.Figure(ncols=2)
+>>> right = fig[0, 1]
+>>> right.line([0.0, 1.0], [1.0, 0.0]) is right
+True
+>>> [len(c.layers) for c in fig._cells], right.shape
+([0, 1], (1, 2))
+```
+
+`sd.plot.grid`는 받은 그림들의 칸 객체를 새 그림의 칸 자리에 그대로 넣어요. 남는 자리는 축이 없는 빈 칸이에요.
+
+## 그릴 때까지 미루기
+
+그림 함수가 하는 계산은 표본까지예요. 함수 그림은 메서드를 부를 때 함수를 불러 표본을 고르고([곡선의 표본](/internals/plot/sampling/)), 그 결과를 층에 넣어요. 축의 범위, 눈금, 글자의 크기, 여백은 출력할 때 한 번에 정해요. 라벨 하나를 바꿀 때마다 배치를 다시 할 까닭이 없고, 라벨에 따라 여백이 달라지므로 미리 정할 수도 없어요.
+
+```python
+    # src/stardust/plot/_figure.py
+    def _build(self, who, dpi=300.0):
+        r = self._root
+        # a figure with a 3D cell holds a picture made for one resolution
+        if r._scene is not None and getattr(r, "_scene_dpi", dpi) != dpi and any(not c.frame for c in r._cells):
+            r._scene = None
+        if r._scene is None:
+            try:
+                r._scene = _layout(r, dpi)
+                r._scene_dpi = dpi
+            except _text.TypesetError as e:
+                raise ValueError(f"{who}(): {e}") from None
+            except _text.MissingTool as e:
+                raise RuntimeError(f"{who}(): {e}") from None
+        return r._scene
+```
+
+지은 장면은 뿌리에 남아 있다가 다음 출력이 그대로 써요. 3D 칸이 있는 그림은 장면 안에 정해진 해상도로 구운 그림이 들어 있어서 다른 `dpi`를 달라고 하면 다시 지어요. 2D만 있는 그림의 장면은 해상도와 무관해요.
+
+조판이 장면을 짓는 중에 일어나므로 조판 오류는 그 출력 메서드의 이름으로 나요. TeX가 실패하면 `ValueError`, TeX 프로그램이 없으면 `RuntimeError`예요. 묶음을 깨뜨리는 문자열은 TeX에 넘기기 전에 막아요.
+
+```python
+>>> sd.plot.line([0.0, 1.0], [0.0, 1.0]).xlabel("50% of").to_svg()
+Traceback (most recent call last):
+    ...
+ValueError: to_svg(): LaTeX could not typeset '50% of': an unescaped % (write \%)
+```
+
+## 3D 칸
+
+3D 그림 함수는 칸에 `Space` 층 하나를 두고, 그 칸의 `frame`을 끄고, 곡면·곡선·점을 그 `Space`에 모아요. 한 칸에 2D 층과 3D 층을 섞을 수 없어요.
+
+배치는 3D 칸을 축이 없는 칸으로 다뤄요. 대신 `Space`가 두 가지를 알려 줘요. `margins`는 상자 둘레의 눈금 숫자와 축 이름이 차지할 여백이고, `aspect`는 상자를 화면에 투영한 모양의 세로 대 가로예요. 그림의 높이를 주지 않으면 3D 칸만 있는 줄은 이 비율로 높이를 정하고, 2D 칸이 섞인 줄은 2D 칸의 4:3을 따라요.
+
+그릴 때 `Space`는 장면에 세 겹을 쌓아요. 먼저 상자의 뒤쪽 세 면과 그 격자를 벡터 경로로, 그 위에 곡면·곡선·점을 깊이 버퍼로 구운 그림(`Image`) 한 장을, 맨 위에 앞쪽 모서리의 축과 눈금과 이름을 벡터로 그려요. 그래서 3D 그림의 PDF·SVG에서도 글자와 축은 벡터예요. 시점 고르기는 [카메라](/internals/plot/camera/), 그림을 굽는 깊이 버퍼는 [깊이 버퍼](/internals/plot/zbuffer/)에서 다뤄요.
+
+```python
+>>> left = sd.plot.function(sd.special.gamma, -4, 4).xlabel(r"$x$").ylabel(r"$\Gamma(x)$")
+>>> right = sd.plot.surface(lambda x, y: x * y * sd.exp(-(x * x + y * y)), -2, 2, -2, 2)
+>>> fig = sd.plot.grid([left, right], ncols=2, labels="A")
+>>> fig.shape, fig.width
+((1, 2), 178.0)
+>>> [c.frame for c in fig._cells]
+[True, False]
+```
+
+<PlotImage name="in-overview-mixed" format="png" alt="두 칸의 그림. 왼쪽 A는 -4에서 4까지의 감마 함수로 극점에서 곡선이 끊겨요. 오른쪽 B는 x y e^(-(x²+y²))의 곡면으로 상자 축과 눈금이 있어요." caption="2D 칸과 3D 칸이 한 줄에 선 그림. 두 칸은 위아래가 맞고, 오른쪽 칸의 곡면만 래스터 그림이에요." />
+
+## 파일
+
+| 파일 | 하는 일 |
+|---|---|
+| `__init__.py` | 공개 이름. 그림 모듈마다 `install`로 메서드를 붙이고 모듈 함수를 받아요 |
+| `_figure.py` | `Figure`, `Cell`, 축 고르기(`_axis`), 여백 재기(`_measure`), 배치(`_layout`), 범례, 내보내기 |
+| `_basic.py` | 기본 그림의 메서드, 자료 인자 읽기(`data=`, `group=`), `grid`, `module_function` |
+| `_layers.py` | 층의 바탕 `Layer`와 기본 층들, 점 기호 |
+| `_ticks.py` | 확장 Wilkinson 눈금, 로그 눈금, 라벨 문자열 |
+| `_color.py` | 색 값 읽기, 팔레트, 색띠의 표 |
+| `_function.py`, `_sample.py` | 한 변수 함수의 그림과 곡선의 적응 표본, `PlotInfo` |
+| `_field.py` | 두 변수 함수의 그림: 격자, marching squares의 앞뒤, 채운 등고선, 색 그림 |
+| `_stat.py` | 통계 그림, `compare`, `fit`, `diagnostics`, `coefficients`, `distribution`, `pairs` |
+| `_surface.py`, `_adapt.py` | 3D 칸 `Space`, 곡면의 적응 표본 |
+| `_scene.py` | 장면의 네 항목과 글자의 자리 잡기 |
+| `_svg.py`, `_pdf.py`, `_png.py` | 세 출력, 큰 점 묶음을 그림으로 바꾸기, 나란한 압축 |
+| `_text.py`, `_dvi.py`, `_svgpath.py` | LaTeX의 두 길, 배치와 윤곽선의 캐시, DVI·XDV·TFM 읽기, SVG 경로 읽기 |
+
+## C++이 맡는 것
+
+C++ 쪽은 `stardust._core.plot` 하나로 묶여 있어요.
+
+| 이름 | 하는 일 | 부르는 곳 |
+|---|---|---|
+| `Canvas` | 2D 래스터라이저. `fill`, `stroke`, `markers`, `image`로 칠하고 `rgba8`로 화소를 내줘요 | PNG 출력, 큰 점 묶음의 그림, 범례 자리를 고를 때의 잉크 지도 |
+| `render3` | 삼각형, 선, 원판을 깊이 버퍼로 그린 그림 한 장 | 3D 칸 |
+| `view_scores` | 시점 후보마다 곡면이 보이는 넓이의 점수 | 3D 칸의 시점 고르기 |
+| `Levels` | 격자 위의 수준선(marching squares): 변의 교점, 곡선 잇기, 안쪽 다각형 | 음함수, 영역, 등고선 |
+| `path_text` | 경로의 좌표를 SVG 경로 글이나 PDF 연산자로 쓰기 | SVG, PDF |
+| `decimate` | 점이 아주 많은 선을 열마다 네 점으로 줄이기 | 긴 선 |
+| `colormap`, `phase_colors` | 값을 색띠의 색으로, 복소수를 위상의 색으로 | 밀도, 열지도, 위상 그림 |
+
+Python은 경로를 `ops` 바이트(`"MLQCZ"` 위의 글자)와 float64를 이어 붙인 바이트로 넘기고, 행렬과 색과 자르기 사각형은 수로 넘겨요. 바인딩은 개수가 맞지 않거나 모르는 연산이 오면 `ValueError`를 내요. 사용자의 값은 이미 Python 쪽에서 검사했으므로, 여기서 나는 에러는 영역 안의 실수예요. 화소를 칠하는 방법은 [래스터라이저](/internals/plot/raster/)에서 다뤄요.
+
+## 다른 영역과의 관계
+
+`sd.plot`은 맨 위 층이에요. 다른 영역을 쓰기만 하고, 어느 영역도 `sd.plot`을 가져오지 않아요.
+
+- **배열**: 자료는 모두 float64 `sd` 배열로 바꿔 쓰고, 좌표 변환과 표본 계산은 배열 연산이에요. 히스토그램의 막대는 `sd.histogram`, 상자 그림의 사분위와 자동 범위의 분위수는 `sd.quantile`이 내요.
+- **frame**: `data=`에 `DataFrame`을 주면 열 이름으로 자료를 꺼내요.
+- **random**: `strip`의 흩음은 `sd.random`의 생성기예요. 씨를 주지 않으면 0으로 고정해 같은 호출이 같은 그림이에요.
+- **stats**: `qq`의 기본 분포는 표준정규분포이고 분위수는 분포의 `icdf`예요. `distribution`은 분포 객체를 받아요.
+- **regression, htest**: `fit`, `compare`, `diagnostics`, `coefficients`는 결과 객체의 속성(`params`, `predict`, `pvalue` 등)을 읽어요. 검정이나 회귀를 그림 안에서 다시 하지 않아요.
+- **optimize**: 인자 검사 함수(`_check_choice`, `_check_bool`)를 함께 써서 메시지의 꼴이 같아요.
+
+통계 그림이 계산을 계산 영역에 맡기는 자세한 모습은 [통계 그림](/internals/plot/stat/)에서 다뤄요.
+
+## 바깥 프로그램 TeX
+
+라이브러리에서 실행 중에 바깥 프로그램을 부르는 영역은 `sd.plot`뿐이에요. 글자를 모두 LaTeX가 조판하기 때문이에요. 쓰는 프로그램은 TeX Live의 `latex`(pdfLaTeX 길), `xelatex`(한글 길), `tex`·`xetex`(글리프 하나씩의 쪽), `dvisvgm`(윤곽선), `kpsewhich`(글꼴 파일 찾기)예요.
+
+`import stardust`가 `sd.plot`도 읽지만 TeX는 찾지 않아요. 프로그램은 처음 필요할 때 `PATH`에서, 없으면 `/Library/TeX/texbin`에서 찾고 찾은 경로를 기억해요. 그래서 TeX가 없는 기계에서도 다른 영역은 그대로 쓰고, `sd.plot`은 그림을 만들고 고치는 것까지는 되며 출력할 때 `RuntimeError`가 나요. 문자열의 배치와 글리프의 윤곽선은 디스크 캐시에 남으므로, 한 번 본 글자로 된 그림은 TeX를 부르지 않아요([글자](/internals/plot/text/)).
+
+<Callout type="note">
+테스트는 TeX를 부르지 않아요. 테스트 그림이 쓰는 모든 문자열의 배치와 윤곽선을 저장소에 기록해 두고 그 기록만 읽어요. TeX를 실제로 부르는 테스트는 따로 있어요([검증](/internals/plot/verification/)).
+</Callout>

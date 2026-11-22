@@ -1,0 +1,144 @@
+---
+kind: function
+title: ecdf
+names: [ecdf]
+group: 통계 그림
+order: 2
+signatures:
+  - "sd.plot.ecdf(x, /, *, data=None, group=None, color=None, width=None, label=None, **figure)"
+  - "fig.ecdf(x, /, *, data=None, group=None, color=None, width=None, label=None)"
+summary: 경험 분포 함수를 계단으로 그려요. 값 v에서의 높이는 v 이하인 값의 비율이에요. 구간을 고를 필요가 없어서 여러 무리의 분포를 견주기 좋아요.
+params:
+  - name: x
+    type: 1차원 수의 배열 또는 열 이름
+    kind: positional-only
+    desc: "셀 값. sd.ndarray, 수의 시퀀스, numpy 배열, frame의 Series예요. data=를 주면 열 이름이에요. NaN과 무한대는 빼고 그려요."
+  - name: data
+    type: DataFrame 또는 None
+    kind: keyword-only
+    desc: "주면 x와 group을 이 DataFrame의 열 이름으로 읽어요. 기본값 None."
+  - name: group
+    type: 열 이름, 시퀀스 또는 None
+    kind: keyword-only
+    desc: "값을 무리로 나누는 라벨. 무리마다 팔레트의 다음 색으로 계단을 하나씩 그리고 범례를 붙여요. 기본값 None."
+  - name: color
+    type: 색 또는 None
+    kind: keyword-only
+    desc: "선의 색. None이면 팔레트의 다음 색이에요. group과 함께 줄 수 없어요."
+  - name: width
+    type: float 또는 None
+    kind: keyword-only
+    desc: "선의 굵기(pt, 0보다 커야 해요). None이면 테마의 선 굵기예요."
+  - name: label
+    type: str 또는 None
+    kind: keyword-only
+    desc: "범례에 쓸 이름(LaTeX 원문). group과 함께 줄 수 없어요."
+  - name: "**figure"
+    type: 그림 옵션
+    kind: keyword-only
+    desc: "모듈 함수만 받는 width, height, font, theme, palette. 뜻은 기본 개념 페이지에 있어요. 선 굵기 width와 이름이 같으니, 모듈 함수에서 width는 선 굵기예요."
+returns:
+  type: Figure
+  desc: "계단 선 층을 더한 그림. 모듈 함수는 새 그림을, 메서드는 그 그림 자신을 돌려줘요."
+raises:
+  - type: TypeError
+    desc: "data 없이 x에 문자열(열 이름)을 줬을 때, data가 DataFrame이 아닐 때, x가 수가 아닐 때."
+  - type: ValueError
+    desc: "x가 1차원이 아닐 때, width가 0 이하일 때, group의 길이가 x와 다를 때, color나 label을 group과 함께 줬을 때."
+seeAlso: [basics, histogram, qq, distribution, step]
+---
+import Callout from '../../../components/Callout.astro';
+import PlotImage from '../../../components/fig/PlotImage.astro';
+
+## 한눈에 보기
+
+값 다섯 개 2, 3, 3, 5, 8이 있어요. 가로축의 어느 자리 v에서 "v 이하인 값이 전체의 몇 분의 몇인가"를 세로축에 올리면 **경험 분포 함수**(ECDF)예요.
+
+```python
+>>> import stardust as sd
+>>> v = [2.0, 3.0, 3.0, 5.0, 8.0]
+>>> fig = sd.plot.ecdf(v).xlabel(r"$v$").ylabel(r"$\hat F(v)$")
+```
+
+<PlotImage name="ecdf-steps" alt="값 2, 3, 3, 5, 8의 경험 분포 함수. 2에서 0.2, 3에서 0.6, 5에서 0.8, 8에서 1로 오르는 계단" caption="값 다섯 개의 경험 분포 함수. 값마다 1/5씩 오르고, 두 번 나온 3에서는 2/5를 한 번에 올라요." />
+
+계단은 값이 있는 자리에서만 올라요. 2에서 0.2(다섯 개 중 하나), 3에서 0.6(두 개가 더해져 셋), 5에서 0.8, 8에서 1이에요. 값과 값 사이에서는 비율이 바뀌지 않으므로 평평해요. 같은 값이 여러 번 나오면 그 수만큼 한 번에 올라가요.
+
+<Reference />
+
+## 계단의 높이
+
+그림이 하는 계산은 정렬과 비율뿐이에요. 유한한 값 n개를 정렬했을 때 i번째 값(1부터 셈)에서의 높이는 i/n이에요.
+
+```python
+>>> s = sd.sort(sd.asarray(v))
+>>> s
+array([2.0, 3.0, 3.0, 5.0, 8.0], dtype=float64)
+>>> sd.arange(1.0, 6.0) / 5
+array([0.2, 0.4, 0.6, 0.8, 1.0], dtype=float64)
+```
+
+계단의 꼭짓점이 이 두 배열의 짝이에요. 두 번째와 세 번째 값이 모두 3이라 3의 자리에서 0.2부터 0.6까지 곧게 올라가요. 그림의 계단은 첫 값에서 0부터 올라가기 시작해 마지막 값에서 1에 닿고 끝나요. 첫 값보다 왼쪽과 마지막 값보다 오른쪽으로는 선을 늘이지 않아요.
+
+히스토그램과 달리 구간을 고를 일이 없어요. 자료가 그림에 그대로 다 들어가므로, 같은 자료는 언제나 같은 계단이에요.
+
+## 이론 분포와 견주기
+
+정규분포에서 뽑은 50개의 ECDF 위에 그 분포의 누적분포함수를 겹쳐 볼게요. [`fig.distribution`](/api/plot/distribution/)에 `kind="cdf"`를 주면 누적분포함수를 그려요.
+
+```python
+>>> rng = sd.random.default_rng(4)
+>>> N = sd.stats.Normal(mu=0.0, sigma=1.0)
+>>> x = N.sample(50, rng=rng)
+>>> fig = sd.plot.ecdf(x, label="sample").distribution(N, kind="cdf", label=r"$\Phi(x)$")
+```
+
+표본이 클수록 ECDF는 참 누적분포함수에 가까워져요. 둘 사이의 가장 큰 세로 거리가 한 표본 Kolmogorov–Smirnov 검정의 통계량이에요. [`sd.htest.ks_1samp`](/api/htest/ks_1samp/)이 그 거리와 자리를 알려 주니, 그 자리에 세로선을 그어 볼게요.
+
+```python
+>>> r = sd.htest.ks_1samp(x, N)
+>>> round(r.statistic, 4), round(r.statistic_location, 4)
+(0.0758, -0.09)
+>>> fig = fig.vline(r.statistic_location, style=":", color="gray").legend(loc="lower right")
+```
+
+<PlotImage name="ecdf-ks" alt="정규분포에서 뽑은 50개의 경험 분포 함수 계단과 표준정규 누적분포함수 곡선, 두 선이 가장 멀어지는 자리의 점선" caption="표본 50개의 ECDF(파랑)와 표준정규의 누적분포함수(노랑). 점선이 두 선 사이의 세로 거리가 가장 큰 자리예요." />
+
+범례 자리는 `fig.legend(loc=...)`로 정해요. 누적 곡선은 왼쪽 아래에서 오른쪽 위로 가므로 오른쪽 아래가 비어 있는 경우가 많아요.
+
+## 무리 나누기: `group`
+
+무리 여럿의 분포를 견줄 때 ECDF가 특히 쓸모 있어요. 히스토그램은 겹치면 막대가 서로 가리지만, 계단은 선이라 여러 개를 겹쳐도 다 보여요. 오른쪽에 있는 계단일수록 값이 큰 무리예요.
+
+```python
+>>> rng = sd.random.default_rng(7)
+>>> a = sd.stats.Normal(mu=5.0, sigma=1.0).sample(40, rng=rng)
+>>> b = sd.stats.Normal(mu=6.2, sigma=1.3).sample(40, rng=rng)
+>>> c = sd.stats.Normal(mu=7.8, sigma=0.9).sample(40, rng=rng)
+>>> df = sd.frame.DataFrame({"dose": ["control"] * 40 + ["low"] * 40 + ["high"] * 40, "response": sd.concat([a, b, c])})
+>>> fig = sd.plot.ecdf("response", data=df, group="dose").xlabel("response").legend(loc="lower right")
+```
+
+<PlotImage name="ecdf-group" alt="control, low, high 세 무리의 경험 분포 함수 계단. control이 가장 왼쪽, high가 가장 오른쪽에 있어요." caption="세 무리의 ECDF. 높이 0.5에서 가로로 읽으면 무리마다의 중앙값이에요." />
+
+세로축의 한 높이에서 가로로 읽으면 분위수예요. 0.5의 높이에서 계단을 만나는 자리가 그 무리의 중앙값, 0.9에서 만나는 자리가 90번째 백분위수쯤이에요. 무리마다 값의 수가 달라도 세로축은 비율이므로 그대로 견줄 수 있어요.
+
+`group=`에는 열 이름 대신 값과 길이가 같은 라벨의 시퀀스를 줘도 돼요. 무리의 순서는 라벨이 처음 나온 순서예요.
+
+## 선의 꼴
+
+`color=`는 선의 색, `width=`는 선의 굵기(pt)예요. 모듈 함수 `sd.plot.ecdf`에서도 `width`는 선의 굵기예요. 그림의 너비를 정하려면 `Figure`를 먼저 만들고 메서드를 불러요.
+
+```python
+>>> fig = sd.plot.Figure(width=60).ecdf(x, color="C3", width=1.5)
+>>> fig.width
+60.0
+```
+
+선의 꼴(점선 등)은 고를 수 없어요. 점선 계단이 필요하면 정렬한 값과 비율로 [`step`](/api/plot/step/)을 불러요.
+
+## 조심할 점
+
+- 유한하지 않은 값은 빼고 비율을 매겨요. 그래서 n은 유한한 값의 수예요.
+- 값이 하나도 없는 무리는 선을 그리지 않아요(범례에는 이름이 남아요).
+- 세로축은 0에서 1까지의 비율이에요. 개수로 그린 누적 그림이 필요하면 `sd.cumsum`으로 센 값을 [`step`](/api/plot/step/)으로 그려요.

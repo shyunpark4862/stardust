@@ -244,7 +244,7 @@ Failure run_batch(const Batch& b, double element_ns, F&& body, int max_tasks = 0
 
 ### 왜 시간으로 재나
 
-배열 영역은 "원소 2¹⁵개 이상이면 나눈다"처럼 일의 양을 **원소 수(바이트)**로 재요. 원소 하나의 비용이 대략 일정한 원소별 연산에는 맞는 방법이에요. linalg에서는 맞지 않아요. 3×3 `svd` 하나는 원소 9개를 다루지만 같은 원소 9개의 `diagonal`보다 수백 배 오래 걸려요. 그래서 linalg는 일의 양을 **추정 시간**으로 재고, 함수 계열마다 원소 하나의 비용을 추정해요(`csrc/linalg/cost.hpp`).
+배열 영역은 "원소 2¹⁵개 이상이면 나눈다"처럼 일의 양을 <strong>원소 수(바이트)</strong>로 재요. 원소 하나의 비용이 대략 일정한 원소별 연산에는 맞는 방법이에요. linalg에서는 맞지 않아요. 3×3 `svd` 하나는 원소 9개를 다루지만 같은 원소 9개의 `diagonal`보다 수백 배 오래 걸려요. 그래서 linalg는 일의 양을 **추정 시간**으로 재고, 함수 계열마다 원소 하나의 비용을 추정해요(`csrc/linalg/cost.hpp`).
 
 $$
 \text{element\_ns} = a + c \cdot w

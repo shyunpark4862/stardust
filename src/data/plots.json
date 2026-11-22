@@ -1,0 +1,824 @@
+{
+ "area-band": {
+  "page": "api/plot/area",
+  "format": "svg",
+  "width": 89.0,
+  "height": 67.7454
+ },
+ "area-normal": {
+  "page": "api/plot/area",
+  "format": "svg",
+  "width": 89.0,
+  "height": 66.846
+ },
+ "area-overlap": {
+  "page": "api/plot/area",
+  "format": "svg",
+  "width": 89.0,
+  "height": 67.0611
+ },
+ "bar-basic": {
+  "page": "api/plot/bar",
+  "format": "svg",
+  "width": 89.0,
+  "height": 69.3304
+ },
+ "bar-group": {
+  "page": "api/plot/bar",
+  "format": "svg",
+  "width": 89.0,
+  "height": 66.1653
+ },
+ "bar-signed": {
+  "page": "api/plot/bar",
+  "format": "svg",
+  "width": 89.0,
+  "height": 66.1587
+ },
+ "basics-data": {
+  "page": "api/plot/basics",
+  "format": "svg",
+  "width": 89.0,
+  "height": 68.4929
+ },
+ "basics-hero": {
+  "page": "api/plot/basics",
+  "format": "svg",
+  "width": 89.0,
+  "height": 73.9956
+ },
+ "basics-nan": {
+  "page": "api/plot/basics",
+  "format": "svg",
+  "width": 89.0,
+  "height": 64.9571
+ },
+ "basics-styles": {
+  "page": "api/plot/basics",
+  "format": "svg",
+  "width": 89.0,
+  "height": 50.0
+ },
+ "boxplot-compare": {
+  "page": "api/plot/boxplot",
+  "format": "svg",
+  "width": 89.0,
+  "height": 64.2558
+ },
+ "boxplot-dose": {
+  "page": "api/plot/boxplot",
+  "format": "svg",
+  "width": 89.0,
+  "height": 65.706
+ },
+ "boxplot-group": {
+  "page": "api/plot/boxplot",
+  "format": "svg",
+  "width": 89.0,
+  "height": 65.706
+ },
+ "boxplot-parts": {
+  "page": "api/plot/boxplot",
+  "format": "svg",
+  "width": 60.0,
+  "height": 44.7679
+ },
+ "boxplot-strip": {
+  "page": "api/plot/boxplot",
+  "format": "svg",
+  "width": 89.0,
+  "height": 65.706
+ },
+ "coefficients-basic": {
+  "page": "api/plot/coefficients",
+  "format": "svg",
+  "width": 89.0,
+  "height": 66.4259
+ },
+ "coefficients-intercept": {
+  "page": "api/plot/coefficients",
+  "format": "svg",
+  "width": 89.0,
+  "height": 63.9514
+ },
+ "compare-stars": {
+  "page": "api/plot/compare",
+  "format": "svg",
+  "width": 89.0,
+  "height": 68.9804
+ },
+ "compare-tukey": {
+  "page": "api/plot/compare",
+  "format": "svg",
+  "width": 89.0,
+  "height": 66.1653
+ },
+ "compare-two": {
+  "page": "api/plot/compare",
+  "format": "svg",
+  "width": 89.0,
+  "height": 66.1653
+ },
+ "contour-default": {
+  "page": "api/plot/contour",
+  "format": "svg",
+  "width": 89.0,
+  "height": 66.2375
+ },
+ "contour-filled": {
+  "page": "api/plot/contour",
+  "format": "png",
+  "width": 89.0,
+  "height": 59.7199
+ },
+ "contour-pole": {
+  "page": "api/plot/contour",
+  "format": "svg",
+  "width": 89.0,
+  "height": 80.0
+ },
+ "curve3d-trefoil": {
+  "page": "api/plot/curve3d",
+  "format": "png",
+  "width": 89.0,
+  "height": 71.8666
+ },
+ "customize-axes": {
+  "page": "api/plot/customize",
+  "format": "svg",
+  "width": 183.0,
+  "height": 48.4963
+ },
+ "customize-hero": {
+  "page": "api/plot/customize",
+  "format": "svg",
+  "width": 89.0,
+  "height": 71.6887
+ },
+ "customize-legends": {
+  "page": "api/plot/customize",
+  "format": "svg",
+  "width": 183.0,
+  "height": 53.0698
+ },
+ "density-log": {
+  "page": "api/plot/density",
+  "format": "svg",
+  "width": 89.0,
+  "height": 72.0
+ },
+ "density-signed": {
+  "page": "api/plot/density",
+  "format": "svg",
+  "width": 89.0,
+  "height": 58.7849
+ },
+ "density-wave": {
+  "page": "api/plot/density",
+  "format": "svg",
+  "width": 89.0,
+  "height": 58.9839
+ },
+ "diagnostics-bent": {
+  "page": "api/plot/diagnostics",
+  "format": "svg",
+  "width": 183.0,
+  "height": 144.5767
+ },
+ "diagnostics-good": {
+  "page": "api/plot/diagnostics",
+  "format": "svg",
+  "width": 183.0,
+  "height": 142.8395
+ },
+ "distribution-gamma-binomial": {
+  "page": "api/plot/distribution",
+  "format": "svg",
+  "width": 160.0,
+  "height": 62.553
+ },
+ "distribution-histogram": {
+  "page": "api/plot/distribution",
+  "format": "svg",
+  "width": 89.0,
+  "height": 65.8048
+ },
+ "distribution-tails": {
+  "page": "api/plot/distribution",
+  "format": "svg",
+  "width": 89.0,
+  "height": 69.546
+ },
+ "ecdf-group": {
+  "page": "api/plot/ecdf",
+  "format": "svg",
+  "width": 89.0,
+  "height": 70.2121
+ },
+ "ecdf-ks": {
+  "page": "api/plot/ecdf",
+  "format": "svg",
+  "width": 89.0,
+  "height": 67.0277
+ },
+ "ecdf-steps": {
+  "page": "api/plot/ecdf",
+  "format": "svg",
+  "width": 89.0,
+  "height": 66.3686
+ },
+ "errorbar-basic": {
+  "page": "api/plot/errorbar",
+  "format": "svg",
+  "width": 89.0,
+  "height": 69.476
+ },
+ "errorbar-group": {
+  "page": "api/plot/errorbar",
+  "format": "svg",
+  "width": 89.0,
+  "height": 68.4316
+ },
+ "errorbar-shapes": {
+  "page": "api/plot/errorbar",
+  "format": "svg",
+  "width": 89.0,
+  "height": 67.4237
+ },
+ "export-hero": {
+  "page": "api/plot/export",
+  "format": "svg",
+  "width": 89.0,
+  "height": 68.2921
+ },
+ "figure-cells": {
+  "page": "api/plot/figure",
+  "format": "svg",
+  "width": 140.0,
+  "height": 110.5303
+ },
+ "figure-grid": {
+  "page": "api/plot/figure",
+  "format": "svg",
+  "width": 183.0,
+  "height": 48.707
+ },
+ "fit-alpha": {
+  "page": "api/plot/fit",
+  "format": "svg",
+  "width": 89.0,
+  "height": 67.5852
+ },
+ "fit-basic": {
+  "page": "api/plot/fit",
+  "format": "svg",
+  "width": 89.0,
+  "height": 67.7842
+ },
+ "fit-groups": {
+  "page": "api/plot/fit",
+  "format": "svg",
+  "width": 89.0,
+  "height": 67.5852
+ },
+ "function-bessel": {
+  "page": "api/plot/function",
+  "format": "svg",
+  "width": 89.0,
+  "height": 65.8831
+ },
+ "function-gamma": {
+  "page": "api/plot/function",
+  "format": "svg",
+  "width": 89.0,
+  "height": 66.0194
+ },
+ "function-tan": {
+  "page": "api/plot/function",
+  "format": "svg",
+  "width": 89.0,
+  "height": 70.5843
+ },
+ "heatmap-annotate": {
+  "page": "api/plot/heatmap",
+  "format": "svg",
+  "width": 89.0,
+  "height": 68.0655
+ },
+ "heatmap-corr": {
+  "page": "api/plot/heatmap",
+  "format": "svg",
+  "width": 89.0,
+  "height": 56.8686
+ },
+ "heatmap-nan": {
+  "page": "api/plot/heatmap",
+  "format": "svg",
+  "width": 89.0,
+  "height": 63.0539
+ },
+ "heatmap-visits": {
+  "page": "api/plot/heatmap",
+  "format": "svg",
+  "width": 89.0,
+  "height": 58.6506
+ },
+ "histogram-bins": {
+  "page": "api/plot/histogram",
+  "format": "svg",
+  "width": 160.0,
+  "height": 64.3422
+ },
+ "histogram-density": {
+  "page": "api/plot/histogram",
+  "format": "svg",
+  "width": 89.0,
+  "height": 70.1327
+ },
+ "histogram-group": {
+  "page": "api/plot/histogram",
+  "format": "svg",
+  "width": 89.0,
+  "height": 69.5234
+ },
+ "histogram-heights": {
+  "page": "api/plot/histogram",
+  "format": "svg",
+  "width": 89.0,
+  "height": 68.6312
+ },
+ "histogram-mean": {
+  "page": "api/plot/histogram",
+  "format": "svg",
+  "width": 89.0,
+  "height": 71.5829
+ },
+ "hline-vline-tanh": {
+  "page": "api/plot/hline-vline",
+  "format": "svg",
+  "width": 89.0,
+  "height": 68.3348
+ },
+ "hline-vline-walk": {
+  "page": "api/plot/hline-vline",
+  "format": "svg",
+  "width": 89.0,
+  "height": 71.0869
+ },
+ "implicit-folium": {
+  "page": "api/plot/implicit",
+  "format": "svg",
+  "width": 183.0,
+  "height": 73.0499
+ },
+ "implicit-heart": {
+  "page": "api/plot/implicit",
+  "format": "svg",
+  "width": 89.0,
+  "height": 65.5624
+ },
+ "implicit-levels": {
+  "page": "api/plot/implicit",
+  "format": "svg",
+  "width": 89.0,
+  "height": 60.6589
+ },
+ "in-camera-scores": {
+  "page": "internals/plot/camera",
+  "format": "svg",
+  "width": 89.0,
+  "height": 61.4612
+ },
+ "in-camera-step": {
+  "page": "internals/plot/camera",
+  "format": "png",
+  "width": 116.0,
+  "height": 51.3571
+ },
+ "in-fields-contour": {
+  "page": "internals/plot/fields",
+  "format": "svg",
+  "width": 89.0,
+  "height": 65.5458
+ },
+ "in-fields-near": {
+  "page": "internals/plot/fields",
+  "format": "svg",
+  "width": 120.0,
+  "height": 53.0047
+ },
+ "in-fields-polish": {
+  "page": "internals/plot/fields",
+  "format": "svg",
+  "width": 89.0,
+  "height": 70.1165
+ },
+ "in-layout-align": {
+  "page": "internals/plot/layout",
+  "format": "svg",
+  "width": 89.0,
+  "height": 130.4
+ },
+ "in-layout-legend": {
+  "page": "internals/plot/layout",
+  "format": "svg",
+  "width": 178.0,
+  "height": 71.2944
+ },
+ "in-overview-mixed": {
+  "page": "internals/plot/overview",
+  "format": "png",
+  "width": 178.0,
+  "height": 70.2122
+ },
+ "in-overview-sine": {
+  "page": "internals/plot/overview",
+  "format": "svg",
+  "width": 89.0,
+  "height": 65.9615
+ },
+ "in-raster-coverage": {
+  "page": "internals/plot/raster",
+  "format": "svg",
+  "width": 89.0,
+  "height": 61.6569
+ },
+ "in-raster-decimate": {
+  "page": "internals/plot/raster",
+  "format": "svg",
+  "width": 89.0,
+  "height": 72.6014
+ },
+ "in-raster-stroke": {
+  "page": "internals/plot/raster",
+  "format": "svg",
+  "width": 178.0,
+  "height": 71.0724
+ },
+ "in-sampling-band": {
+  "page": "internals/plot/sampling",
+  "format": "svg",
+  "width": 89.0,
+  "height": 65.8831
+ },
+ "in-sampling-refine": {
+  "page": "internals/plot/sampling",
+  "format": "svg",
+  "width": 89.0,
+  "height": 64.9238
+ },
+ "in-sampling-tan": {
+  "page": "internals/plot/sampling",
+  "format": "svg",
+  "width": 89.0,
+  "height": 66.3739
+ },
+ "in-scene-outputs-points": {
+  "page": "internals/plot/scene-outputs",
+  "format": "svg",
+  "width": 89.0,
+  "height": 67.4989
+ },
+ "in-stat-compare": {
+  "page": "internals/plot/stat",
+  "format": "svg",
+  "width": 89.0,
+  "height": 68.9804
+ },
+ "in-stat-fit": {
+  "page": "internals/plot/stat",
+  "format": "svg",
+  "width": 89.0,
+  "height": 67.5852
+ },
+ "in-surface-patches": {
+  "page": "internals/plot/surface",
+  "format": "svg",
+  "width": 89.0,
+  "height": 65.3513
+ },
+ "in-surface-rim": {
+  "page": "internals/plot/surface",
+  "format": "png",
+  "width": 130.0,
+  "height": 58.3366
+ },
+ "in-text-glyph-a": {
+  "page": "internals/plot/text",
+  "format": "svg",
+  "width": 70.0,
+  "height": 72.0
+ },
+ "in-verification-poles": {
+  "page": "internals/plot/verification",
+  "format": "svg",
+  "width": 89.0,
+  "height": 70.5843
+ },
+ "in-zbuffer-glass": {
+  "page": "internals/plot/zbuffer",
+  "format": "png",
+  "width": 130.0,
+  "height": 56.0076
+ },
+ "in-zbuffer-light": {
+  "page": "internals/plot/zbuffer",
+  "format": "png",
+  "width": 89.0,
+  "height": 89.0264
+ },
+ "line-group": {
+  "page": "api/plot/line",
+  "format": "svg",
+  "width": 89.0,
+  "height": 68.5236
+ },
+ "line-sin-cos": {
+  "page": "api/plot/line",
+  "format": "svg",
+  "width": 89.0,
+  "height": 69.675
+ },
+ "line-styles": {
+  "page": "api/plot/line",
+  "format": "svg",
+  "width": 89.0,
+  "height": 58.5365
+ },
+ "pairs-body": {
+  "page": "api/plot/pairs",
+  "format": "svg",
+  "width": 183.0,
+  "height": 135.3106
+ },
+ "pairs-cell": {
+  "page": "api/plot/pairs",
+  "format": "svg",
+  "width": 120.0,
+  "height": 90.0524
+ },
+ "pairs-group": {
+  "page": "api/plot/pairs",
+  "format": "svg",
+  "width": 183.0,
+  "height": 135.3106
+ },
+ "parametric-cycloid": {
+  "page": "api/plot/parametric",
+  "format": "svg",
+  "width": 89.0,
+  "height": 26.0
+ },
+ "parametric-lissajous": {
+  "page": "api/plot/parametric",
+  "format": "svg",
+  "width": 89.0,
+  "height": 65.8831
+ },
+ "parametric-surface-mobius": {
+  "page": "api/plot/parametric_surface",
+  "format": "png",
+  "width": 89.0,
+  "height": 64.8361
+ },
+ "parametric-surface-torus": {
+  "page": "api/plot/parametric_surface",
+  "format": "png",
+  "width": 89.0,
+  "height": 61.8561
+ },
+ "parametric-tangent": {
+  "page": "api/plot/parametric",
+  "format": "svg",
+  "width": 89.0,
+  "height": 66.1437
+ },
+ "phase-identity": {
+  "page": "api/plot/phase",
+  "format": "svg",
+  "width": 89.0,
+  "height": 66.2375
+ },
+ "phase-rational": {
+  "page": "api/plot/phase",
+  "format": "svg",
+  "width": 89.0,
+  "height": 68.522
+ },
+ "phase-sine": {
+  "page": "api/plot/phase",
+  "format": "svg",
+  "width": 89.0,
+  "height": 50.0
+ },
+ "polar-butterfly": {
+  "page": "api/plot/polar",
+  "format": "svg",
+  "width": 89.0,
+  "height": 67.3
+ },
+ "polar-lemniscate": {
+  "page": "api/plot/polar",
+  "format": "svg",
+  "width": 89.0,
+  "height": 40.0
+ },
+ "polar-rose": {
+  "page": "api/plot/polar",
+  "format": "svg",
+  "width": 89.0,
+  "height": 70.1165
+ },
+ "qq-exponential": {
+  "page": "api/plot/qq",
+  "format": "svg",
+  "width": 160.0,
+  "height": 65.0089
+ },
+ "qq-labels": {
+  "page": "api/plot/qq",
+  "format": "svg",
+  "width": 89.0,
+  "height": 69.0484
+ },
+ "qq-normal": {
+  "page": "api/plot/qq",
+  "format": "svg",
+  "width": 89.0,
+  "height": 68.2384
+ },
+ "region-both": {
+  "page": "api/plot/region",
+  "format": "png",
+  "width": 89.0,
+  "height": 65.5624
+ },
+ "region-setops": {
+  "page": "api/plot/region",
+  "format": "png",
+  "width": 183.0,
+  "height": 75.2059
+ },
+ "region-venn": {
+  "page": "api/plot/region",
+  "format": "png",
+  "width": 89.0,
+  "height": 65.5624
+ },
+ "sampling-nine": {
+  "page": "api/plot/sampling",
+  "format": "svg",
+  "width": 183.0,
+  "height": 71.2453
+ },
+ "sampling-refine-tan": {
+  "page": "api/plot/sampling",
+  "format": "svg",
+  "width": 183.0,
+  "height": 71.7361
+ },
+ "scatter-basic": {
+  "page": "api/plot/scatter",
+  "format": "svg",
+  "width": 89.0,
+  "height": 67.4989
+ },
+ "scatter-group": {
+  "page": "api/plot/scatter",
+  "format": "svg",
+  "width": 89.0,
+  "height": 72.2328
+ },
+ "scatter-shapes": {
+  "page": "api/plot/scatter",
+  "format": "svg",
+  "width": 89.0,
+  "height": 28.0
+ },
+ "scatter3d-clouds": {
+  "page": "api/plot/scatter3d",
+  "format": "png",
+  "width": 89.0,
+  "height": 91.6502
+ },
+ "step-survival": {
+  "page": "api/plot/step",
+  "format": "svg",
+  "width": 89.0,
+  "height": 67.4237
+ },
+ "step-where": {
+  "page": "api/plot/step",
+  "format": "svg",
+  "width": 150.0,
+  "height": 45.0
+ },
+ "strip-box": {
+  "page": "api/plot/strip",
+  "format": "svg",
+  "width": 89.0,
+  "height": 65.706
+ },
+ "strip-dose": {
+  "page": "api/plot/strip",
+  "format": "svg",
+  "width": 89.0,
+  "height": 65.706
+ },
+ "strip-group": {
+  "page": "api/plot/strip",
+  "format": "svg",
+  "width": 89.0,
+  "height": 65.706
+ },
+ "strip-jitter": {
+  "page": "api/plot/strip",
+  "format": "svg",
+  "width": 160.0,
+  "height": 64.7916
+ },
+ "style-boxed": {
+  "page": "api/plot/style",
+  "format": "svg",
+  "width": 80.0,
+  "height": 48.5139
+ },
+ "style-cmaps": {
+  "page": "api/plot/style",
+  "format": "svg",
+  "width": 183.0,
+  "height": 95.0
+ },
+ "style-grid": {
+  "page": "api/plot/style",
+  "format": "svg",
+  "width": 80.0,
+  "height": 48.5139
+ },
+ "style-palettes": {
+  "page": "api/plot/style",
+  "format": "svg",
+  "width": 183.0,
+  "height": 75.0
+ },
+ "style-sans": {
+  "page": "api/plot/style",
+  "format": "svg",
+  "width": 80.0,
+  "height": 52.6079
+ },
+ "surface-edges": {
+  "page": "api/plot/surface",
+  "format": "png",
+  "width": 183.0,
+  "height": 54.4191
+ },
+ "surface-options": {
+  "page": "api/plot/surface",
+  "format": "png",
+  "width": 183.0,
+  "height": 52.336
+ },
+ "surface-ripple": {
+  "page": "api/plot/surface",
+  "format": "png",
+  "width": 89.0,
+  "height": 85.1285
+ },
+ "text-annotate-align": {
+  "page": "api/plot/text-annotate",
+  "format": "svg",
+  "width": 89.0,
+  "height": 60.0
+ },
+ "text-annotate-arrows": {
+  "page": "api/plot/text-annotate",
+  "format": "svg",
+  "width": 89.0,
+  "height": 67.3
+ },
+ "text-annotate-peak": {
+  "page": "api/plot/text-annotate",
+  "format": "svg",
+  "width": 89.0,
+  "height": 67.4087
+ },
+ "view3d-anatomy": {
+  "page": "api/plot/view3d",
+  "format": "png",
+  "width": 89.0,
+  "height": 86.311
+ },
+ "view3d-angles": {
+  "page": "api/plot/view3d",
+  "format": "png",
+  "width": 183.0,
+  "height": 63.6586
+ },
+ "view3d-layers": {
+  "page": "api/plot/view3d",
+  "format": "png",
+  "width": 89.0,
+  "height": 78.037
+ }
+}

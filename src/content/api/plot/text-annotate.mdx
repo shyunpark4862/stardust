@@ -1,0 +1,186 @@
+---
+kind: function
+title: text, annotate
+names: [text, annotate]
+group: 기본 그림
+order: 8
+signatures:
+  - "sd.plot.text(x, y, s, /, *, ha='center', va='center', size=None, color=None, rotation=0.0, **figure)"
+  - "sd.plot.annotate(s, xy, xytext, /, *, arrow=True, size=None, color=None, **figure)"
+  - "fig.text(x, y, s, /, *, ha='center', va='center', size=None, color=None, rotation=0.0)"
+  - "fig.annotate(s, xy, xytext, /, *, arrow=True, size=None, color=None)"
+summary: 칸 안의 자료 좌표에 글자를 적어요. text는 한 점에 글자를, annotate는 글자에서 다른 점을 가리키는 화살표를 함께 그려요. 글자는 LaTeX 원문이라 수식을 그대로 쓸 수 있어요.
+params:
+  - name: x, y (text)
+    type: float
+    kind: positional-only
+    desc: "글자를 놓을 자리(자료의 단위). 유한한 수예요."
+  - name: s
+    type: str
+    kind: positional-only
+    desc: "적을 글자. LaTeX 원문이에요. 수식은 $...$에 넣고 %, _, &, #은 \\로 숨겨요."
+  - name: xy (annotate)
+    type: (x, y)
+    kind: positional-only
+    desc: "화살표가 가리킬 점(자료의 단위). 수 둘의 튜플이나 리스트예요."
+  - name: xytext (annotate)
+    type: (x, y)
+    kind: positional-only
+    desc: "글자의 가운데가 놓일 자리(자료의 단위). 수 둘의 튜플이나 리스트예요."
+  - name: ha
+    type: str
+    kind: keyword-only
+    desc: "text만. 자리에 맞출 글자의 가로 기준. 'left', 'center'(기본값), 'right'."
+  - name: va
+    type: str
+    kind: keyword-only
+    desc: "text만. 자리에 맞출 글자의 세로 기준. 'baseline', 'bottom', 'center'(기본값), 'top'."
+  - name: size
+    type: float 또는 None
+    kind: keyword-only
+    desc: "글자 크기(pt). 0보다 커야 해요. None(기본값)이면 축 라벨과 같은 크기예요."
+  - name: color
+    type: 색 또는 None
+    kind: keyword-only
+    desc: "글자(와 화살표)의 색. None(기본값)이면 축 선·눈금 숫자와 같은 짙은 잉크색이에요."
+  - name: rotation
+    type: float
+    kind: keyword-only
+    desc: "text만. 글자를 기준점 둘레로 시계 반대 방향으로 돌리는 각(도). 기본값 0.0."
+  - name: arrow
+    type: bool
+    kind: keyword-only
+    desc: "annotate만. False면 화살표 없이 xytext에 글자만 적어요. 기본값 True."
+  - name: "**figure"
+    type: 그림 옵션
+    kind: keyword-only
+    desc: "모듈 함수만 받아요. width, height, font, theme, palette(그림의 기본)."
+returns:
+  type: Figure
+  desc: "모듈 함수는 새 그림을, 메서드는 글자를 더한 그 그림(fig 자신)을 돌려줘요."
+raises:
+  - type: TypeError
+    desc: 자리가 수가 아닐 때, s가 str가 아닐 때, xy·xytext가 수 둘의 튜플이나 리스트가 아닐 때, arrow가 bool이 아닐 때, 모르는 키워드를 줬을 때.
+  - type: ValueError
+    desc: 자리가 유한하지 않을 때, ha·va·색을 알 수 없을 때, size가 0 이하일 때. 조판 오류는 그릴 때(save, to_svg, to_pdf, to_png, 노트북 표시) 그 메서드의 이름으로 나요.
+seeAlso: [basics, hline-vline, customize, export]
+---
+import PlotImage from '../../../components/fig/PlotImage.astro';
+
+## 무엇을 하나요
+
+`fig.text(x, y, s)`는 자료 좌표의 점 $(x, y)$에 글자 `s`를 적어요. 곡선 옆에 이름을 붙이거나, 칸 안에 값을 적을 때 써요. `fig.annotate(s, xy, xytext)`는 `xytext`에 글자를 적고, 글자에서 점 `xy`를 가리키는 화살표를 그어요.
+
+글자는 축 라벨이나 범례처럼 LaTeX가 조판해요. 수식, 그리스 문자, 분수를 그대로 쓸 수 있고 한글도 돼요. 글자의 규칙은 [그림의 기본](/api/plot/basics/)에 있어요.
+
+<Reference />
+
+## 한눈에 보기
+
+곡선에 범례 대신 이름을 바로 붙이고, 극댓값을 화살표로 가리켜요.
+
+```python
+>>> import stardust as sd
+>>> import math
+>>> x = sd.linspace(0.0, 4 * math.pi, 300)
+>>> fig = sd.plot.line(x, sd.sin(x) * sd.exp(-x / 8)).line(x, sd.exp(-x / 8), style="--", color="C2")
+>>> fig = fig.text(9.0, 0.42, r"$e^{-x/8}$", color="C2", ha="left")
+>>> fig = fig.text(5.3, -0.55, r"$e^{-x/8}\sin x$", color="C0", ha="left")
+>>> fig = fig.annotate("first peak", (1.45, 0.83), (4.3, 0.95))
+>>> fig = fig.xticks("pi").xlabel(r"$x$")
+```
+
+<PlotImage name="text-annotate-peak" alt="감쇠하는 사인 곡선(파랑)과 그 위의 회색 파선 감쇠 곡선. 두 곡선 옆에 같은 색의 수식 이름이 적혀 있고, first peak라는 글자에서 첫 봉우리로 화살표가 그어져 있어요." caption="text로 곡선의 이름을 같은 색으로 적고, annotate로 첫 봉우리를 가리켰어요." />
+
+곡선이 둘셋뿐이면 범례보다 곡선 옆에 바로 적은 이름이 읽기 쉬워요. 글자의 색을 그 곡선과 같은 팔레트의 번호(`'C0'`, `'C2'`)로 맞추면 돼요.
+
+## 맞춤: ha와 va
+
+`text`의 자리 $(x, y)$는 글자 상자의 어느 점에 맞출지를 `ha`(가로)와 `va`(세로)로 골라요. 기본은 가운데(`'center'`, `'center'`)예요.
+
+- `ha='left'`: 글자가 그 점에서 오른쪽으로 시작해요. `'right'`면 그 점에서 끝나요.
+- `va='bottom'`: 글자의 아래 끝(내림 글자 포함)이 그 점에 와요. `'top'`은 위 끝, `'baseline'`은 글자의 기준선이 그 점에 와요.
+
+```python
+>>> fig = sd.plot.Figure(height=60)
+>>> for i, ha in enumerate(["left", "center", "right"]):
+...     for j, va in enumerate(["bottom", "baseline", "center", "top"]):
+...         fig = fig.text(i, j, "Agy", ha=ha, va=va, size=12)
+...         fig = fig.scatter([i], [j], color="C3", size=2.5)
+>>> fig = fig.xticks([0, 1, 2], labels=["left", "center", "right"]).xlabel("ha")
+>>> fig = fig.yticks([0, 1, 2, 3], labels=["bottom", "baseline", "center", "top"]).ylabel("va")
+>>> fig = fig.xlim(-0.7, 2.7).ylim(-0.6, 3.6)
+```
+
+<PlotImage name="text-annotate-align" alt="세 열 네 줄의 붉은 점마다 Agy라는 글자가 하나씩 있어요. 아래 눈금이 ha, 왼쪽 눈금이 va의 값이에요. 왼쪽 열은 글자가 점에서 오른쪽으로 뻗고, 가운데 열은 점이 글자의 가운데, 오른쪽 열은 글자가 점에서 끝나요. 줄마다 위에서부터 점이 글자의 위 끝, 가운데, 기준선, 아래 끝에 와요." caption="붉은 점이 text의 자리예요. ha가 열, va가 줄을 정해요. baseline과 bottom의 차이는 g, y처럼 아래로 내려가는 글자에서 보여요." />
+
+`'baseline'`은 글자 여러 개를 한 줄에 나란히 적을 때 좋아요. 글자마다 내림 글자가 있든 없든 기준선이 같은 높이에 서요.
+
+## 크기, 색, 회전
+
+`size`는 글자 크기(pt)예요. 주지 않으면 축 라벨과 같은 크기예요. `color`의 기본은 축의 글자와 같은 짙은 잉크색이고, 팔레트의 다음 색을 쓰지 않아요. `rotation`은 기준점을 중심으로 시계 반대 방향으로 돌리는 각(도)이에요. 비스듬한 직선을 따라 글자를 놓을 때 써요.
+
+```python
+>>> fig = sd.plot.line([0, 10], [0, 5]).xlim(0, 10).ylim(0, 6)
+>>> fig = fig.text(5.0, 2.9, "slope 1/2", rotation=26.6, va="bottom", size=9)
+```
+
+자료의 기울기 1/2는 칸의 가로세로 비가 1:1일 때만 26.6°로 보여요. 칸이 납작하면 선이 더 눕기 때문에, 각을 그림을 보며 맞춰요.
+
+## 화살표: annotate
+
+`annotate(s, xy, xytext)`는 글자의 가운데를 `xytext`에 두고, 글자 상자의 가장자리에서 `xy`를 향해 화살표를 그어요. 화살표는 `xy` 바로 앞에서 멈춰 점을 덮지 않아요. 글자와 화살표는 같은 색이에요.
+
+- 글자가 `xy`에 너무 가까워서 화살표를 그을 자리가 없으면 화살표 없이 글자만 적어요.
+- `arrow=False`면 화살표를 긋지 않아요. 이때는 `fig.text(*xytext, s)`와 같고, `xy`는 쓰지 않아요.
+- `annotate`의 글자는 언제나 가운데 맞춤이고 돌리지 않아요.
+
+```python
+>>> f = lambda x: x**3 - 3 * x
+>>> x = sd.linspace(-2.2, 2.2, 200)
+>>> fig = sd.plot.line(x, f(x)).hline(0.0, width=0.4)
+>>> fig = fig.annotate("local max", (-1.0, 2.0), (-0.9, 3.6))
+>>> fig = fig.annotate("local min", (1.0, -2.0), (1.6, -3.4), color="C3")
+>>> fig = fig.annotate(r"$x = \sqrt{3}$", (math.sqrt(3), 0.0), (1.05, 1.2))
+```
+
+<PlotImage name="text-annotate-arrows" alt="삼차 곡선 y = x³ - 3x가 파랗게 그려지고, local max 글자에서 극댓값으로, 붉은 local min 글자에서 극솟값으로, x = √3 글자에서 오른쪽 근으로 화살표가 그어진 그림" caption="annotate는 글자 상자의 가장자리에서 가리킬 점 바로 앞까지 화살표를 그어요. color를 주면 글자와 화살표가 함께 그 색이에요." />
+
+## 축의 범위와 글자
+
+글자의 자리 $(x, y)$는 축의 범위를 잡을 때 자료처럼 들어가요(화살표가 있는 `annotate`는 `xy`와 `xytext` 둘 다). 하지만 글자의 너비와 높이는 들어가지 않아요. 그래서 칸의 가장자리에 놓은 글자는 칸 밖으로 비어져 나올 수 있어요. 가장자리 가까이에서는 `ha`, `va`를 칸 안쪽으로 맞추거나 `xlim`, `ylim`으로 여유를 줘요.
+
+## 조판과 에러
+
+글자를 주는 메서드는 조판을 기다리지 않아요. 조판은 그림을 그릴 때 한꺼번에 하고, 조판 오류도 그때 그리는 메서드의 이름으로 나요. `%`처럼 숨기지 않은 특수 문자는 TeX에 넘기기 전에 알려 줘요.
+
+```python
+>>> fig = sd.plot.line([0, 1], [0, 1]).text(0.5, 0.5, "50% of")
+>>> fig.to_svg()
+Traceback (most recent call last):
+    ...
+ValueError: to_svg(): LaTeX could not typeset '50% of': an unescaped % (write \%)
+>>> svg = sd.plot.line([0, 1], [0, 1]).text(0.5, 0.5, r"50\% of").to_svg()
+```
+
+인자의 형은 부를 때 바로 확인해요.
+
+```python
+>>> sd.plot.line([0, 1], [0, 1]).annotate("here", (0.5, 0.5), 0.8)
+Traceback (most recent call last):
+    ...
+TypeError: annotate(): 'xytext' must be a pair of numbers (x, y), not float
+```
+
+## 조심할 점
+
+- 자리는 언제나 자료 좌표예요. 칸의 구석처럼 칸에 대한 상대 자리(0에서 1)는 받지 않아요. 축의 범위를 정해 두고 그 안의 값을 쓰세요.
+- 로그 축에서 0 이하의 자리에 놓은 글자는 그리지 않아요.
+- 글자는 한 줄로 조판해요. 여러 줄은 `text`를 줄마다 불러요.
+
+## matplotlib을 아는 분께
+
+- `ax.text(x, y, s)`, `ax.annotate(s, xy, xytext, arrowprops=...)`에 해당해요. 기본 맞춤이 왼쪽 아래가 아니라 가운데예요.
+- `transform=ax.transAxes`처럼 칸에 대한 좌표는 없고, 언제나 자료 좌표예요.
+- 화살표의 꼴을 고르는 `arrowprops`는 없어요. 글자와 같은 색의 곧은 화살표 하나예요.
+- 글자는 mathtext가 아니라 LaTeX가 조판해요.

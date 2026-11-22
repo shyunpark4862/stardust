@@ -53,6 +53,7 @@ NAMESPACES = {
     "htest": sd.htest,
     "integrate": sd.integrate,
     "differentiate": sd.differentiate,
+    "plot": sd.plot,
 }
 
 
@@ -94,7 +95,12 @@ def names_of(path: Path) -> list[str]:
 # Classes whose public members are documented by name too, as `Class.member`.
 MEMBERS = {
     "frame": ("Series", "DataFrame", "Index", "RangeIndex"),
+    "plot": ("Figure",),
 }
+
+# Areas whose class methods repeat module functions of the same name
+# (`sd.plot.line` and `Figure.line`): the page of the function documents both.
+SHARED_METHODS = {"plot"}
 
 
 def coverage(area: str) -> int:
@@ -109,7 +115,10 @@ def coverage(area: str) -> int:
             if name in seen:
                 twice.append(f"{name}: {seen[name]} and {path.stem}")
             seen[name] = path.stem
-    missing = sorted(public - set(seen))
+    covered = set(seen)
+    if area in SHARED_METHODS:
+        covered |= {n for n in public if "." in n and n.split(".", 1)[1] in seen}
+    missing = sorted(public - covered)
     unknown = sorted(set(seen) - public)
     print(f"{area}: {len(public) - len(missing)}/{len(public)} public names documented")
     if missing:

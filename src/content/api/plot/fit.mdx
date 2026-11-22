@@ -1,0 +1,178 @@
+---
+kind: function
+title: fit
+names: [Figure.fit]
+group: 결과 객체의 그림
+order: 2
+signatures:
+  - "fig.fit(result, /, *, band=True, alpha=0.05, equation=True, color=None)"
+summary: sd.regression의 회귀 결과를 산점도 위에 얹어요. 결과의 predict로 회귀선을, 평균의 신뢰구간으로 띠를 그리고, 식과 R²를 칸의 빈 구석에 적어요. 설명 변수가 하나인 모형만 받아요.
+params:
+  - name: result
+    type: 회귀 결과
+    kind: positional-only
+    desc: "params와 predict가 있는, 설명 변수가 하나인 회귀 결과(ols, wls, gls 등). 계수는 절편과 기울기 둘(param_names가 const로 시작)이거나 기울기 하나(intercept=False)여야 해요."
+  - name: band
+    type: bool
+    kind: keyword-only
+    desc: "True(기본값)면 평균의 신뢰 띠를 그려요. 결과의 predict_interval(kind='mean')로 구해요. 그런 메서드가 없는 결과는 띠 없이 선만 그려요."
+  - name: alpha
+    type: float
+    kind: keyword-only
+    desc: "띠의 유의수준. 0과 1 사이이고 기본값 0.05(95% 띠)예요. 결과의 conf_int·predict_interval의 alpha와 같은 뜻이에요."
+  - name: equation
+    type: bool
+    kind: keyword-only
+    desc: "True(기본값)면 y = b₁x + b₀ 꼴의 식과, 결과에 rsquared가 있으면 R²를 칸 안에 적어요."
+  - name: color
+    type: 색 또는 None
+    kind: keyword-only
+    desc: "선과 띠의 색. None(기본값)이면 칸의 마지막 층의 색(보통 바로 앞에 그린 점의 색)이에요. 띠는 그 색을 옅게 칠해요."
+returns:
+  type: Figure
+  desc: "띠와 선을 더한 그 그림(fig 자신)이에요."
+raises:
+  - type: TypeError
+    desc: "result에 params나 predict가 없을 때, band·equation이 bool이 아닐 때, color를 알 수 없는 형으로 줬을 때."
+  - type: ValueError
+    desc: "설명 변수가 둘 이상인 결과, 배치 결과(여러 적합), 칸에 가로 범위를 잡을 자료가 없을 때, alpha가 (0, 1) 밖일 때, 색을 알 수 없을 때."
+seeAlso: [scatter, coefficients, diagnostics, compare, area, basics]
+---
+import PlotImage from '../../../components/fig/PlotImage.astro';
+
+## 한눈에 보기
+
+점 40개에 직선을 맞추고, 그 결과를 산점도 위에 얹어요.
+
+```python
+>>> import stardust as sd
+>>> rng = sd.random.default_rng(3)
+>>> x = sd.linspace(0.0, 10.0, 40)
+>>> y = 1.5 * x + 2.0 + sd.stats.Normal(mu=0.0, sigma=2.0).sample((40,), rng=rng)
+>>> res = sd.regression.ols(y, x)
+>>> res.params
+array([1.8645409618297522, 1.5394070302690706], dtype=float64)
+>>> fig = sd.plot.scatter(x, y).fit(res).xlabel("$x$").ylabel("$y$")
+```
+
+<PlotImage name="fit-basic" alt="파란 점 40개 위에 오른쪽 위로 오르는 파란 회귀선과 옅은 파란 띠가 있고, 왼쪽 위 구석에 y = 1.54x + 1.86, R² = 0.865가 적힌 그림" caption="선은 결과의 predict, 띠는 평균의 95% 신뢰구간, 식과 R²는 결과의 params와 rsquared예요. 식은 칸에서 자료가 가장 적은 구석에 놓여요." />
+
+<Reference />
+
+## 무엇을 하나요
+
+`fit`은 회귀를 하지 않아요. [`sd.regression`](/api/regression/basics/)으로 이미 맞춘 결과를 받아, 그 결과가 말하는 것을 그림으로 옮겨요.
+
+- **회귀선**: 칸의 자료가 차지하는 가로 범위에서 101개의 x로 `result.predict`를 불러 이은 선이에요.
+- **신뢰 띠**: 같은 x에서 `result.predict_interval(X, alpha=alpha, kind="mean")`이 주는 평균의 신뢰구간이에요. "그 x에서 반응의 평균이 있을 법한 범위"이고, 새 관측 하나가 떨어질 범위(예측 구간)보다 좁아요.
+- **식과 R²**: 계수를 유효숫자 세 자리로 적은 `y = b₁x + b₀`와 결과의 `rsquared`예요.
+
+그래서 그림의 수는 결과 객체의 수와 같아요. 결과를 [`summary()`](/api/regression/results/)로 읽은 값과 그림이 어긋나지 않아요.
+
+모듈 함수 `sd.plot.fit`은 없어요. 얹을 자료가 칸에 먼저 있어야 하니까요. 보통 [`scatter`](/api/plot/scatter/) 바로 뒤에 불러요.
+
+## 띠와 식: band, alpha, equation
+
+`alpha`는 띠의 유의수준이에요. `alpha=0.01`이면 99% 띠라 더 넓어요. `band=False`면 선만, `equation=False`면 식 없이 그려요. `color`로 선과 띠의 색을 정해요.
+
+```python
+>>> fig = sd.plot.scatter(x, y, color="gray").fit(res, alpha=0.01, color="C3")
+>>> lo, hi = res.predict_interval(sd.asarray([[5.0]]), alpha=0.01, kind="mean")[0].tolist()
+>>> round(lo, 3), round(hi, 3)
+(8.769, 10.354)
+```
+
+<PlotImage name="fit-alpha" alt="회색 점 위에 붉은 회귀선과 옅은 붉은 띠, 왼쪽 위에 식이 적힌 그림. 띠가 앞 그림보다 넓어요." caption="alpha=0.01의 99% 띠예요. x = 5에서 띠의 위아래 끝은 predict_interval이 주는 8.769와 10.354예요. 띠는 자료의 가운데에서 가장 좁고 양 끝으로 갈수록 넓어져요." />
+
+띠가 양 끝에서 넓어지는 것은 기울기의 불확실성 때문이에요. 기울기가 조금만 달라도 자료의 가운데에서 먼 곳일수록 선이 많이 움직여요.
+
+식의 숫자는 유효숫자 세 자리라 `res.params`보다 짧아요. 계수가 음수면 `y = -1.54x - 1.86`처럼 부호를 붙여 적어요. 절편 없는 모형(`intercept=False`)은 `y = 2.25x`처럼 기울기만 적어요.
+
+## 무리마다 회귀선
+
+무리마다 회귀를 따로 했다면 점과 결과를 차례로 얹어요. `color`를 주지 않으면 선은 바로 앞 층의 색을 받으므로, 점 다음에 바로 그 무리의 `fit`을 부르면 색이 맞아요.
+
+```python
+>>> y2 = 0.6 * x + 8.0 + sd.stats.Normal(mu=0.0, sigma=1.5).sample((40,), rng=rng)
+>>> res2 = sd.regression.ols(y2, x)
+>>> fig = sd.plot.scatter(x, y, label="A").fit(res, equation=False)
+>>> fig = fig.scatter(x, y2, label="B").fit(res2, equation=False)
+>>> fig = fig.legend(loc="lower right")
+```
+
+<PlotImage name="fit-groups" alt="파란 점과 가파른 파란 회귀선, 노란 점과 완만한 노란 회귀선이 각자의 옅은 띠와 함께 그려지고, 오른쪽 아래에 A, B 범례가 있는 그림" caption="점 다음에 그 무리의 fit을 불러 색을 맞췄어요. 식은 칸에 하나만 적히므로 둘 다 끄고, 계수는 글로 적어요." />
+
+식은 칸마다 한 자리라서, `fit`을 두 번 부르면 나중 결과의 식만 남아요. 무리가 여럿이면 `equation=False`로 끄고 계수는 캡션이나 표로 적는 편이 읽기 쉬워요. 무리마다 칸을 나누고 싶으면 [`grid`](/api/plot/figure/)로 그림 둘을 붙여요.
+
+선의 가로 범위는 칸에 있는 모든 자료의 범위예요. 위 그림에서 두 무리의 x가 같아서 두 선의 길이도 같지만, 무리의 범위가 다르면 먼저 그린 무리의 선도 나중 자료까지 늘어나요. 회귀선을 자료 밖으로 늘리면 외삽이니 조심하세요.
+
+## 표에서 그리기
+
+`data=`로 그린 산점도에도 그대로 얹어요. 회귀도 같은 표의 열로 하면 돼요.
+
+```python
+>>> df = sd.frame.DataFrame({"dose": x, "response": y})
+>>> r3 = sd.regression.ols(df["response"], df[["dose"]])
+>>> r3.param_names
+['const', 'dose']
+>>> fig = sd.plot.scatter("dose", "response", data=df).fit(r3).xlabel("dose").ylabel("response")
+```
+
+식은 열 이름이 아니라 언제나 `x`와 `y`로 적어요.
+
+## 받는 결과
+
+`fit`은 결과의 형을 보지 않고 가진 것으로 가려요. `params`와 `predict`가 있고 설명 변수가 하나여야 해요.
+
+| 결과 | 선 | 띠 | 식 |
+|---|---|---|---|
+| [`ols`](/api/regression/ols/), [`wls`](/api/regression/wls/), [`gls`](/api/regression/gls/) | ○ | ○ | ○ (R² 포함) |
+| [`ridge`](/api/regression/ridge/) 등 `predict_interval`이 없는 결과 | ○ | 그리지 않음 | ○ |
+| [`rlm`](/api/regression/rlm/), [`quantreg`](/api/regression/quantreg/) | ○ | `band=False`로 줘야 함 | ○ (R² 없음) |
+| [`glm`](/api/regression/glm/) | ○ (평균의 곡선) | `band=False`로 줘야 함 | `equation=False` 권함 |
+
+`rlm`, `quantreg`, `glm`의 결과는 `predict_interval`의 인자가 달라서 `band=True`(기본값)로 주면 `TypeError`예요. `band=False`로 주면 선을 그려요.
+
+`glm`은 선이 `predict`가 주는 평균의 곡선이라 곧은 선이 아닐 수 있어요. 그런데 식은 계수로 `y = b₁x + b₀`를 적으므로, 링크 함수가 항등이 아니면 식이 그림의 곡선과 맞지 않아요. 이때는 `equation=False`를 주세요.
+
+```python
+>>> counts = sd.round(sd.exp(0.2 * x))
+>>> g = sd.regression.glm(counts, x, family="poisson")
+>>> fig = sd.plot.scatter(x, counts).fit(g, band=False, equation=False)
+```
+
+## 에러
+
+```python
+>>> two = sd.regression.ols(y, sd.stack([x, x * x], axis=1))
+>>> sd.plot.scatter(x, y).fit(two)
+Traceback (most recent call last):
+    ...
+ValueError: fit(): 'result' must have one explanatory variable; it has parameters ['const', 'x1', 'x2']
+>>> sd.plot.Figure().fit(res)
+Traceback (most recent call last):
+    ...
+ValueError: fit(): the figure has no data to take the x range from
+>>> sd.plot.scatter(x, y).fit(res, alpha=1)
+Traceback (most recent call last):
+    ...
+ValueError: fit(): 'alpha' must be in (0, 1)
+>>> sd.plot.scatter(x, y).fit(3)
+Traceback (most recent call last):
+    ...
+TypeError: fit(): 'result' must be a regression result, not int
+```
+
+설명 변수가 여럿인 모형은 한 평면 위의 선으로 그릴 수 없어요. 계수를 보려면 [`coefficients`](/api/plot/coefficients/), 적합이 괜찮은지 보려면 [`diagnostics`](/api/plot/diagnostics/)를 써요.
+
+## 조심할 점
+
+- 그림은 결과를 다시 계산하지 않아요. 산점도의 자료와 회귀에 쓴 자료가 다르면 선은 회귀에 쓴 자료를 따르고, 그림만 보고는 알 수 없어요. 같은 `x`, `y`를 넘기세요.
+- [`xlim`](/api/plot/customize/)으로 가로축을 넓혀도 선은 자료의 범위까지만 그어요.
+- 계수가 아주 작거나 커서(10⁻⁴ 아래, 10⁶ 이상) 유효숫자 세 자리가 지수 꼴이 되면, 식을 조판하지 못해 내보낼 때 `ValueError`가 나요. 그런 자료는 `equation=False`로 그리거나 단위를 바꿔 계수를 1 근처로 맞추세요.
+- 식과 범례는 서로 다른 구석에 놓여요. 범례의 자리를 `legend(loc=...)`로 정하면 식은 남은 구석 가운데 자료가 가장 적은 곳으로 가요.
+
+## matplotlib을 아는 분께
+
+- seaborn의 `regplot`이나 ggplot2의 `geom_smooth(method = "lm")`은 그림이 회귀를 직접 해요. `fit`은 이미 맞춘 결과를 받아서, 그림의 선과 [`summary()`](/api/regression/results/)의 수가 같은 계산에서 나와요.
+- seaborn의 띠는 기본이 부트스트랩이지만, `fit`의 띠는 결과의 해석적 신뢰구간이에요.

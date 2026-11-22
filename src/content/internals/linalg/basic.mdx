@@ -1385,7 +1385,7 @@ inline void strip_abs_sums(const double* p, std::int64_t es, std::int64_t len, i
 
 - **작은 호출은 고정비가 정해요.** 3×3의 `trace`, `diagonal`은 계산이 몇 ns라서 인자 해석과 결과 배열을 만드는 비용이 시간의 대부분이에요. stardust는 Python 래퍼 없이 C++에서 바로 바인딩되고 배열을 직접 읽어요([선형대수 영역의 구조](/internals/linalg/overview/)).
 - **짧은 합이 많은 배치**(`(1000, 3, 3)`의 `matrix_norm`, `vecdot`의 행)는 합 하나마다 드는 준비가 시간을 정해요. 그래서 빠른 합의 계획은 호출마다 한 번 만들고, 청크 하나 이하의 빠른 합은 클로저나 함수 호출 없이 배치 루프 안에 인라인돼요. 배치 오프셋도 원소마다 나눗셈으로 구하지 않고 줄마다 한 번 구해요([배치와 병렬화](/internals/linalg/batch/)).
-- **`diagonal` (1000, 3, 3)**은 numpy가 뷰에 `.copy()` 한 번을 하는 것과 달리 배치 드라이버를 거쳐서, 그만큼 고정비가 더 붙어요.
+- <strong>`diagonal` (1000, 3, 3)</strong>은 numpy가 뷰에 `.copy()` 한 번을 하는 것과 달리 배치 드라이버를 거쳐서, 그만큼 고정비가 더 붙어요.
 - **`matrix_power`의 큰 행렬**은 입력을 패킹하지 않고 그 자리에서 `gemm`에 넘겨요. 작은 float64 행렬은 BLAS의 호출 비용을 피해 직접 짠 곱을 써요.
 - **긴 합**은 Accelerate의 BLAS(`ddot`, `dasum`)가 청크 안을 더하고, ±inf 노름은 NEON 최댓값이라 1스레드에서도 빨라요. 여러 스레드에서는 청크를 나눠 돌아요.
 - **`block_diag`, `kronsum`의 큰 결과**는 0을 쓰지 않고 0으로 채운 새 페이지를 받아요.

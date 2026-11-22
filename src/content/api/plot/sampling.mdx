@@ -1,0 +1,189 @@
+---
+kind: concept
+title: 함수 그림의 표본
+group: 함수 그림
+order: 1
+summary: 함수를 받는 그림을 처음 쓸 때 읽는 페이지예요. 함수를 넘기는 법, 그림이 함수를 어디서 몇 번 계산할지 스스로 고르는 방법, 그것을 조절하는 두 인자 samples와 refine을 그림으로 견줘 보여요.
+seeAlso: [function, parametric, implicit, contour, density]
+---
+import PlotImage from '../../../components/fig/PlotImage.astro';
+import Callout from '../../../components/Callout.astro';
+
+## 함수를 주면 표본은 그림이 골라요
+
+곡선을 그리려면 함수를 여러 점에서 계산하고 그 점들을 선분으로 이어야 해요. 이 점들을 **표본**이라고 해요. 표본이 너무 성기면 곡선이 꺾인 선이 되고, 극점에서는 위아래 끝을 잇는 세로선이 생기고, 좁은 봉우리는 사라져요. 너무 촘촘하면 계산과 파일이 쓸데없이 커져요.
+
+`sd.plot`에서 함수를 받는 그림(`function`, `parametric`, `polar`, `implicit`, `region`, `contour`, `density`, `phase`, 3D의 `surface`, `parametric_surface`, `curve3d`)은 표본을 스스로 골라요. 사용자는 함수와 범위만 주면 돼요.
+
+```python
+>>> import math
+>>> fig = sd.plot.function(sd.sin, 0, 2 * math.pi)
+>>> fig.info[0].n
+257
+```
+
+`fig.info`는 그림이 한 일을 곡선마다 적은 기록이고, `n`은 실제로 계산한 표본의 수예요. 사인 곡선은 처음 고른 257점으로 이미 충분해서 더 계산하지 않았어요. 기록의 다른 필드는 [function](/api/plot/function/) 페이지에서 읽는 법을 다뤄요.
+
+## 함수를 넘기는 법
+
+함수는 **배열을 받아 같은 모양의 배열을 돌려주는** 호출 가능한 객체예요. 그림은 표본을 점마다 하나씩 넘기지 않고, 한 번에 계산할 점들을 모아 float64 `sd.ndarray` 하나로 넘겨요. `sd.sin`, `sd.exp`, `sd.special.gamma` 같은 원소별 함수와 그것들을 산술 연산으로 엮은 `lambda`가 그대로 맞아요.
+
+```python
+>>> calls = []
+>>> def f(x):
+...     calls.append(x.shape)
+...     return sd.sin(x**2)
+>>> fig = sd.plot.function(f, 0, 10)
+>>> calls
+[(257,), (108,), (131,), (123,), (88,), (16,)]
+>>> fig.info[0].n
+723
+```
+
+함수를 여섯 번 불렀어요. 첫 호출이 처음 격자 257점이고, 나머지는 곡선이 꺾이는 곳에 더한 점들이에요. 점마다 Python 함수를 부르지 않으니 표본이 수백, 수천 개여도 호출은 몇 번이에요.
+
+몇 가지 약속이 있어요.
+
+- **수 하나를 돌려주면** 상수 함수로 봐요. `lambda x: 0.5`는 높이 0.5의 수평선이에요.
+- **리스트나 다른 모양의 배열을 돌려주면** 에러예요. 복소수 배열도 실수 그림에서는 에러예요(복소 함수는 [phase](/api/plot/phase/)로 그려요).
+- **스칼라만 받는 함수**(`math.sin`)는 쓸 수 없어요. 배열을 받으면 그 함수가 스스로 에러를 내고, 그 에러가 그대로 나와요.
+- **함수 안에서 난 에러**는 그대로 나와요. 그림이 삼키지 않아요.
+
+```python
+>>> sd.plot.function(lambda x: [0.0] * 3, 0, 1)
+Traceback (most recent call last):
+    ...
+TypeError: function(): 'f' must return an sd.ndarray (it is called with one), not list
+>>> sd.plot.function(lambda x: x[:3], 0, 1)
+Traceback (most recent call last):
+    ...
+ValueError: function(): 'f' must return an array of its argument's shape (257,), not (3,)
+>>> sd.plot.function(math.sin, 0, 1)
+Traceback (most recent call last):
+    ...
+TypeError: an array cannot be converted to float
+```
+
+배열 전체에 한 번에 적용되어야 하므로, 조각마다 식이 다른 함수는 `if` 대신 `sd.where`로 써요. `if x < 0:`은 배열의 참거짓을 묻게 되어 동작하지 않아요.
+
+```python
+>>> hat = lambda x: sd.where(sd.abs(x) < 1, 1 - sd.abs(x), 0.0)
+>>> hat(sd.asarray([-1.5, -0.5, 0.0, 0.5]))
+array([0.0, 0.5, 1.0, 0.5], dtype=float64)
+>>> fig = sd.plot.function(hat, -2, 2)
+```
+
+두 변수의 그림(`implicit`, `region`, `contour`, `density`)에서는 함수가 같은 모양의 배열 둘 `x`, `y`를 받아요. 복소 함수의 그림 `phase`에서는 complex128 배열 하나를 받아요. 약속은 같아요. 같은 모양의 배열을 돌려주면 돼요.
+
+## 곡선의 표본은 이렇게 골라요
+
+`function`, `parametric`, `polar`의 곡선은 세 단계로 표본을 골라요.
+
+1. **처음 격자**: 범위를 256칸으로 나눈 257점에서 시작해요. 안쪽 점들은 칸 너비의 일부만큼 일부러 조금씩 흩어 놓아요. 간격이 완전히 고르면 주기가 격자 간격과 맞는 함수(예를 들어 $\sin(2\pi \cdot 256 x)$)가 매번 같은 위상에서 계산되어 평평한 선으로 보일 수 있어요. 흩은 격자는 그런 박자 맞춤을 피해요.
+2. **꺾이는 곳 쪼개기**: 이웃한 두 선분이 **화면에서** 4°보다 많이 꺾이는 곳의 구간을 반으로 나눠 가운데 점을 더해요. 이것을 꺾임이 없어질 때까지 되풀이해요. 각은 자료 좌표가 아니라 그림에 그려질 모양에서 재므로, 화면에서 이미 곧게 보이는 곳에는 점을 쓰지 않아요.
+3. **끝과 끊긴 곳 다듬기**: 값이 있는 점과 없는 점(NaN) 사이의 구간도 반씩 나눠서 정의역의 끝을 찾아요. 가장 좁게 나눠도 여전히 크게 뛰는 구간은 극점이나 뜀으로 보고 선을 끊어요.
+
+아래 그림은 같은 사인 곡선을 처음 격자 9점으로 그린 거예요. 왼쪽(A)은 쪼개기를 끈 것이고 오른쪽(B)은 켠 것이에요.
+
+```python
+>>> a = sd.plot.function(sd.sin, 0, 2 * math.pi, samples=9, refine=0)
+>>> b = sd.plot.function(sd.sin, 0, 2 * math.pi, samples=9)
+>>> a.info[0].n, b.info[0].n
+(9, 103)
+>>> fig = sd.plot.grid([a, b], ncols=2, labels="A", width=183)
+```
+
+<PlotImage name="sampling-nine" alt="왼쪽은 아홉 점을 이은 꺾인 선, 오른쪽은 같은 아홉 점에서 시작해 쪼갠 매끈한 사인 곡선" caption="A는 9점을 그대로 이은 선이고, B는 같은 9점에서 시작해 꺾이는 곳만 쪼갠 곡선이에요. 점은 봉우리와 골짜기 근처에 모이고 곧은 곳에는 거의 더하지 않아요." scale={1} />
+
+점은 곡선이 굽은 곳에 모여요. 처음 격자가 성겨도 쪼개기가 모자란 곳을 채우지만, 처음 격자가 아예 보지 못한 좁은 무늬는 쪼개기도 찾지 못해요(아래 [조심할 점](#조심할-점)).
+
+## samples와 refine
+
+두 인자로 표본을 조절해요. 함수를 받는 모든 그림이 같은 이름과 같은 뜻으로 받아요.
+
+- **`samples`**: 처음 격자의 점의 수예요. 곡선은 한 방향뿐이라 정수 하나이고, 두 변수의 그림은 정수 하나(가로와 세로가 같게)나 `(가로, 세로)` 쌍이에요. 3 이상이에요.
+- **`refine`**: 처음 격자의 한 조각을 더 쪼개는 횟수의 한계예요. `0`이면 쪼개기를 끄고 처음 격자를 그대로 써요.
+
+둘 다 `None`(기본)이면 그림마다 정한 기본값을 써요.
+
+| 그림 | `samples`의 기본 | `samples`의 최대 | `refine`의 기본(최대) | 한 번 쪼개면 |
+|---|---|---|---|---|
+| `function` `parametric` `polar` `curve3d` | 257 | 200000 | 10 | 구간을 반으로 |
+| `implicit` `region` `contour` | (321, 241) | 한 방향 4000 | 1 | 칸을 4 × 4로 |
+| `surface` `parametric_surface` | (121, 121) | 한 방향 2000 | 2 | 칸을 4 × 4로 |
+| `density` `phase` | (480, 360) 화소 | 한 방향 4000 | 받지 않아요 | |
+
+곡선의 `refine` 10은 처음 격자의 한 칸을 $2^{10} = 1024$조각까지 나눌 수 있다는 뜻이에요. 곡선 하나의 표본은 많아도 4만 개, `samples`가 2만보다 크면 `samples`의 두 배에서 멈춰요.
+
+### refine: 얼마나 깊이 쪼갤까
+
+빨라지는 진동 $\sin(x^2)$에서 `refine`을 바꿔 보면 쪼갠 깊이만큼 표본이 늘다가 멈춰요. 더 쪼갤 곳이 없으면 한계까지 가지 않아요.
+
+```python
+>>> chirp = lambda x: sd.sin(x**2)
+>>> [sd.plot.function(chirp, 0, 10, refine=r).info[0].n for r in (0, 1, 2, 4, 10)]
+[257, 413, 539, 719, 723]
+```
+
+`refine=0`은 처음 격자를 잇기만 해요. 쪼개기와 함께 **극점과 뜀을 찾는 일도 하지 않아요**. 가장 좁은 구간까지 나눠 봐야 "가파른 곳"과 "끊긴 곳"을 가릴 수 있기 때문이에요. 그래서 $\tan x$를 `refine=0`으로 그리면 극점의 아래 끝과 위 끝을 잇는 세로선이 남아요.
+
+```python
+>>> a = sd.plot.function(sd.tan, -3, 3, refine=0)
+>>> b = sd.plot.function(sd.tan, -3, 3)
+>>> a.info[0].poles, [round(p, 4) for p in b.info[0].poles]
+((), [-1.5708, 1.5708])
+>>> fig = sd.plot.grid([a, b], ncols=2, labels="A", width=183)
+```
+
+<PlotImage name="sampling-refine-tan" alt="왼쪽은 극점마다 세로선이 그어진 탄젠트, 오른쪽은 극점에서 끊긴 탄젠트" caption="A(refine=0)는 극점의 양쪽 표본을 그대로 이어 세로선이 생겨요. B(기본)는 극점을 찾아 그 자리에서 선을 끊어요. 세로 범위는 둘 다 극점 근처의 큰 값을 빼고 잡아요." scale={1} />
+
+`refine=0`이 쓸모 있는 때는 표본의 수를 정확히 정하고 싶을 때예요. 예를 들어 `samples=11, refine=0`이면 함수를 정확히 11점에서 한 번 불러요.
+
+### samples: 처음 격자를 얼마나 촘촘히
+
+`samples`는 처음 격자가 볼 수 있는 가장 좁은 무늬를 정해요. 쪼개기는 처음 격자에서 꺾임이 보인 곳만 파고들므로, 격자 점 사이에 숨은 좁은 봉우리는 처음 격자가 촘촘해야 찾아요.
+
+```python
+>>> spike = lambda x: sd.exp(-((x - 0.5) / 1e-4) ** 2)
+>>> a = sd.plot.function(spike, 0, 1, ylim=(0, 1.1))
+>>> b = sd.plot.function(spike, 0, 1, ylim=(0, 1.1), samples=20001)
+>>> a.info[0].ylim[1], b.info[0].ylim[1]
+(7.106702748074495e-10, 0.9994233560307177)
+```
+
+폭이 $10^{-4}$인 봉우리는 기본 격자(간격 약 0.004)의 표본 사이에 숨어서, 가장 높은 표본이 $7 \times 10^{-10}$이에요. 처음 격자를 20001점(간격 $5 \times 10^{-5}$)으로 늘리면 봉우리에 표본이 닿고, 그 뒤는 쪼개기가 모양을 채워요. 여기서 `ylim`을 준 까닭은 [function의 자동 범위](/api/plot/function/#자동-범위와-ylim)가 거의 어디서나 0인 함수의 봉우리를 극점처럼 잘라 내기 때문이에요.
+
+두 변수의 그림에서는 `samples`가 격자의 점의 수, `refine`이 곡선이 지나는 칸을 다시 재는지(1)와 그러지 않는지(0)예요. 이 그림들의 표본은 [implicit](/api/plot/implicit/)과 [contour](/api/plot/contour/)에서 그림으로 견줘요. `density`와 `phase`는 격자 점 하나가 그림의 화소 하나라 `samples`만 받아요.
+
+## 잘못된 값
+
+`samples`와 `refine`은 정수여야 하고 범위를 벗어나면 에러예요. 메시지에 그 그림이 받는 범위가 나와요.
+
+```python
+>>> sd.plot.function(sd.sin, 0, 1, samples=2)
+Traceback (most recent call last):
+    ...
+ValueError: function(): 'samples' must be between 3 and 200000
+>>> sd.plot.function(sd.sin, 0, 1, refine=11)
+Traceback (most recent call last):
+    ...
+ValueError: function(): 'refine' must be between 0 and 10
+>>> sd.plot.implicit(lambda x, y: x * x + y * y - 1, -2, 2, -2, 2, refine=2)
+Traceback (most recent call last):
+    ...
+ValueError: implicit(): 'refine' must be between 0 and 1
+>>> sd.plot.function(sd.sin, 0, 1, samples=(3, 4))
+Traceback (most recent call last):
+    ...
+TypeError: function(): 'samples' must be an int, not tuple
+```
+
+## 조심할 점
+
+- **보증은 없어요.** 표본을 고르는 방법은 처음 격자가 본 것에서 출발해요. 처음 격자의 간격보다 좁은 무늬는 놓칠 수 있어요. 함수의 생김새를 알면 `samples`로 격자를 그 무늬보다 촘촘하게 주세요.
+- **같은 입력이면 같은 그림이에요.** 표본의 자리는 함수의 값만으로 정해져요(흩은 격자도 고정된 수열이에요). 같은 기계, 같은 스레드 수, 같은 입력이면 같은 바이트의 파일이 나와요.
+- **경고를 내지 않아요.** 극점을 찾거나 범위를 자른 것은 경고 대신 `fig.info`에 적혀요. 읽는 법은 [function](/api/plot/function/#figureinfo-그림이-한-일)에 있어요.
+
+<Callout type="tip" title="함수 대신 값이 있을 때">
+이미 계산한 점들이 있으면 함수 그림이 아니라 [line](/api/plot/line/)으로 이어요. 격자 위의 값의 배열은 [heatmap](/api/plot/heatmap/)이에요. 함수 그림은 함수를 받아야 표본을 고를 수 있어요.
+</Callout>

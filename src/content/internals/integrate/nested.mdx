@@ -157,9 +157,9 @@ IntegrateResult(integral=0.166667, error=1.10541e-14, converged=True, nfev=9261)
         return v;
 ```
 
-- **`error`**는 모든 층의 모든 `quad`, 곧 바깥 점마다 돈 안쪽 `quad`까지 모두가 낸 오차 어림의 최댓값이에요. scipy의 `_NQuad`가 `self.abserr = max(self.abserr, abserr)`로 하는 것과 같아요. NaN은 비교가 거짓이라 건너뛰어요(scipy의 Python `max`도 그래요).
-- **`nfev`**는 가장 안쪽 `quad`들의 호출 수의 합, 곧 f를 부른 수예요.
-- **`status`·`message`**는 끝나는 차례로(안쪽이 먼저) 처음 수렴하지 못한 `quad`의 것이에요. scipy는 그런 `quad`마다 경고를 내는데, 그 첫 경고에 해당해요. 안쪽의 실패가 바깥 실패의 까닭인 경우가 많아서 처음의 것을 남겨요. 모든 `quad`가 0으로 끝났는데 마지막 적분값이나 `error`가 유한하지 않으면, Python 층이 결과를 만들 때 status를 −3(`Non-finite values encountered.`)으로 바꿔요. `quad` 하나의 결과와 같은 규칙이에요. `converged`는 status가 0일 때, 곧 모든 `quad`가 수렴하고 결과가 유한할 때만 참이에요.
+- <strong>`error`</strong>는 모든 층의 모든 `quad`, 곧 바깥 점마다 돈 안쪽 `quad`까지 모두가 낸 오차 어림의 최댓값이에요. scipy의 `_NQuad`가 `self.abserr = max(self.abserr, abserr)`로 하는 것과 같아요. NaN은 비교가 거짓이라 건너뛰어요(scipy의 Python `max`도 그래요).
+- <strong>`nfev`</strong>는 가장 안쪽 `quad`들의 호출 수의 합, 곧 f를 부른 수예요.
+- <strong>`status`·`message`</strong>는 끝나는 차례로(안쪽이 먼저) 처음 수렴하지 못한 `quad`의 것이에요. scipy는 그런 `quad`마다 경고를 내는데, 그 첫 경고에 해당해요. 안쪽의 실패가 바깥 실패의 까닭인 경우가 많아서 처음의 것을 남겨요. 모든 `quad`가 0으로 끝났는데 마지막 적분값이나 `error`가 유한하지 않으면, Python 층이 결과를 만들 때 status를 −3(`Non-finite values encountered.`)으로 바꿔요. `quad` 하나의 결과와 같은 규칙이에요. `converged`는 status가 0일 때, 곧 모든 `quad`가 수렴하고 결과가 유한할 때만 참이에요.
 
 최댓값은 엄밀한 상계가 아니에요. 바깥 `quad`는 안쪽 적분이 낸 값을 정확한 함숫값처럼 받아 쓰고, 안쪽의 오차를 바깥의 오차 어림에 더하지 않아요. 바깥 규칙의 오차 어림과 안쪽 오차 어림 가운데 큰 쪽을 보고하는 셈이에요. 안쪽 적분의 오차가 바깥 점마다 같은 쪽으로 쏠리면 참 오차는 대략 (바깥 구간의 길이) × (안쪽 오차) + (바깥 오차)까지 갈 수 있어요.
 

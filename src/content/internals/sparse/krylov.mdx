@@ -97,8 +97,8 @@ A와 전처리기 M은 희소 배열, 2차원 `sd.ndarray`, [`LinearOperator`](/
 
 - **행렬**(어느 형식이든)은 CSR 배열 셋으로 C++에 가요. 형식이 무엇이든 같은 CSR이 되므로 결과의 비트가 형식과 무관해요. `lsqr`·`lsmr`가 쓰는 $A^{\mathsf H}$는 $A^{\mathsf T}$의 CSR(복소는 켤레)을 한 번 만들어 둔 것이에요.
 - **밀집 행렬**은 모든 원소(0까지)를 저장한 CSR로 바꿔요. 그래서 곱이 SpMV이고, 밀집 `A @ x`(BLAS의 `gemv`)와는 끝자리가 다를 수 있어요.
-- **`aslinearoperator(A)`**로 감싼 연산자는 감싼 행렬을 `_matrix`로 들고 있어서, `_Operand`가 그 행렬을 꺼내 위의 길로 보내요. 감싸도 Python을 거치지 않아요.
-- **다른 `LinearOperator`**는 곱마다 Python의 `matvec`(`lsqr`·`lsmr`의 $A^{\mathsf H}$는 `rmatvec`)을 불러요. 결과가 계의 dtype이 아니면 맞추고(실수 결과는 복소로 넓히고, 실수 계에서 복소 결과는 `TypeError`), 연속이 아니면 복사해요. $A^{\mathsf H}$가 필요한데 연산자를 `rmatvec` 없이 만들었으면 반복을 시작하기 전에 `ValueError: lsqr(): the operator was made without 'rmatvec'`이에요. 연산자 함수 안에서 나는 이런 오류도 메시지 앞이 사용자가 부른 풀이 함수의 이름이에요.
+- <strong>`aslinearoperator(A)`</strong>로 감싼 연산자는 감싼 행렬을 `_matrix`로 들고 있어서, `_Operand`가 그 행렬을 꺼내 위의 길로 보내요. 감싸도 Python을 거치지 않아요.
+- <strong>다른 `LinearOperator`</strong>는 곱마다 Python의 `matvec`(`lsqr`·`lsmr`의 $A^{\mathsf H}$는 `rmatvec`)을 불러요. 결과가 계의 dtype이 아니면 맞추고(실수 결과는 복소로 넓히고, 실수 계에서 복소 결과는 `TypeError`), 연속이 아니면 복사해요. $A^{\mathsf H}$가 필요한데 연산자를 `rmatvec` 없이 만들었으면 반복을 시작하기 전에 `ValueError: lsqr(): the operator was made without 'rmatvec'`이에요. 연산자 함수 안에서 나는 이런 오류도 메시지 앞이 사용자가 부른 풀이 함수의 이름이에요.
 
 계의 dtype은 A, b, x0, M 가운데 하나라도 복소면 complex128, 아니면 float64예요. bool과 int64는 float64가 돼요.
 

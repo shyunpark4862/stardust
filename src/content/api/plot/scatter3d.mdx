@@ -1,0 +1,134 @@
+---
+kind: function
+title: scatter3d
+names: [scatter3d]
+group: 3D
+order: 5
+signatures:
+  - "sd.plot.scatter3d(x, y, z, /, *, data=None, group=None, color=None, size=None, azimuth=None, elevation=None, perspective=True, **figure)"
+  - "fig.scatter3d(x, y, z, /, *, data=None, group=None, color=None, size=None, azimuth=None, elevation=None, perspective=True)"
+summary: 세 좌표 (x, y, z)의 점들을 3D 칸에 둥근 점으로 찍어요. 열 이름과 data=로 표의 열을 받고, group=으로 무리마다 팔레트의 색을 줘요. 시점을 주지 않으면 점들이 화면에 가장 넓게 퍼지는 방향을 골라요.
+params:
+  - name: x, y, z
+    type: ndarray, 수의 시퀀스, numpy 배열, frame의 Series, 또는 열 이름
+    kind: positional-only
+    desc: "점의 좌표. 길이가 같아야 해요. float64로 바꿔 써요. data=를 주면 열 이름(str)이에요. NaN인 점은 찍지 않아요."
+  - name: data
+    type: DataFrame 또는 None
+    kind: keyword-only
+    desc: "x, y, z, group이 열 이름일 때 그 열을 꺼낼 표."
+  - name: group
+    type: 열 이름, 시퀀스 또는 None
+    kind: keyword-only
+    desc: "점을 무리로 나누는 값(점과 길이가 같은 시퀀스나 data의 열 이름). 무리마다 팔레트의 색을 차례로 받아요. color와 함께 줄 수 없어요."
+  - name: color
+    type: 색 또는 None
+    kind: keyword-only
+    desc: "모든 점의 한 색. None(기본값)이면 팔레트의 다음 색이에요."
+  - name: size
+    type: 실수 또는 None
+    kind: keyword-only
+    desc: "점의 지름(pt). 0보다 커야 해요. None(기본값)이면 테마의 점 크기(3.8 pt)예요."
+  - name: azimuth, elevation
+    type: 실수 또는 None
+    kind: keyword-only
+    desc: "보는 방향의 방위각과 고도(도). elevation은 −90–90이에요. None(기본값)이면 장면에 맞게 골라요. 칸의 첫 3D 층의 값만 쓰여요."
+  - name: perspective
+    type: bool
+    kind: keyword-only
+    desc: "True(기본값)는 원근 투영, False는 직교 투영이에요."
+  - name: "**figure"
+    type: 그림 옵션
+    kind: keyword-only
+    desc: "width, height, font, theme, palette. 모듈 함수만 받아요. 뜻은 그림의 기본에 있어요."
+returns:
+  type: Figure
+  desc: 점을 찍은 그림. 메서드로 부르면 그 그림 자신이에요.
+raises:
+  - type: TypeError
+    desc: "좌표가 수의 모임이 아닐 때, data 없이 열 이름(str)을 줄 때, data가 DataFrame이 아닐 때, size·각이 수가 아닐 때, perspective가 bool이 아닐 때."
+  - type: ValueError
+    desc: "x, y, z의 길이가 다를 때, data에 없는 열 이름일 때, color와 group을 함께 줄 때, 모르는 색, size가 0 이하일 때, elevation이 범위 밖일 때, 2D 층이 있는 칸에 더할 때."
+seeAlso: [view3d, scatter, curve3d, surface, basics]
+---
+import PlotImage from '../../../components/fig/PlotImage.astro';
+
+## 한눈에 보기
+
+`scatter3d(x, y, z)`는 점 $(x_i, y_i, z_i)$를 3D 칸에 찍어요. 2D의 [`scatter`](/api/plot/scatter/)에 좌표 하나를 더한 판이에요. 아래는 정규분포에서 뽑은 두 무리의 점 150개씩이에요.
+
+```python
+>>> rng = sd.random.default_rng(7)
+>>> a = sd.stats.Normal().sample((3, 150), rng=rng)
+>>> b = sd.stats.Normal(mu=2.5, sigma=0.6).sample((3, 150), rng=rng)
+>>> x, y, z = (sd.concat([a[i], b[i]]) for i in range(3))
+>>> kind = ["A"] * 150 + ["B"] * 150
+>>> fig = sd.plot.scatter3d(x, y, z, group=kind)
+```
+
+<PlotImage name="scatter3d-clouds" format="png" alt="상자 안의 두 점 구름. 원점 둘레에 넓게 퍼진 파란 점 150개와, (2.5, 2.5, 2.5) 둘레에 좁게 모인 노란 점 150개가 있어요." caption="group=으로 나눈 두 무리. 무리마다 팔레트 'jco'의 색을 차례로 받았어요." />
+
+점은 화면을 향한 둥근 원이에요. 깊이를 견줘 찍으므로 가까운 점이 먼 점을 가려요. 곡면과 함께 그리면 곡면 뒤의 점은 가려지고 앞의 점은 곡면 위에 보여요. 곡선([`curve3d`](/api/plot/curve3d/))과는 깊이를 견주지 않아서 점이 언제나 곡선 위에 찍혀요.
+
+<Reference />
+
+## 자료 넘기기
+
+좌표는 수의 시퀀스, `sd.ndarray`, numpy 배열, frame의 `Series`예요. 셋의 길이가 같아야 해요. 표의 열을 쓸 때는 `data=`에 `DataFrame`을 주고 좌표 자리에 열 이름을 써요. `group=`도 열 이름일 수 있어요.
+
+```python
+>>> df = sd.frame.DataFrame({"x": [1.0, 2.0, 3.0, 4.0], "y": [2.0, 1.0, 0.0, 1.0],
+...                          "z": [0.0, 1.0, 4.0, 2.0], "kind": ["a", "b", "a", "b"]})
+>>> fig = sd.plot.scatter3d("x", "y", "z", data=df, group="kind")
+```
+
+`data=` 없이 문자열을 주면 에러예요.
+
+```python
+>>> sd.plot.scatter3d("x", "y", "z")
+Traceback (most recent call last):
+    ...
+TypeError: scatter3d(): 'x' is a column name ('x'), which needs 'data'
+```
+
+좌표 가운데 하나라도 NaN인 점은 찍지 않아요. 축의 범위는 유한한 좌표로만 잡아요.
+
+## 색과 크기
+
+- `color`를 주지 않으면 모든 점이 팔레트의 다음 색이에요. `group=`을 주면 무리마다 팔레트의 색을 차례로 받아요. 둘을 함께 줄 수는 없어요.
+- `size`는 점의 지름(pt)이에요. 기본은 테마의 점 크기 3.8 pt예요.
+
+```python
+>>> sd.plot.scatter3d([1.0, 2.0], [1.0, 2.0], [1.0, 2.0], group=["a", "b"], color="red")
+Traceback (most recent call last):
+    ...
+ValueError: scatter3d(): 'color' and 'group' cannot both be given (a group takes the palette's colours)
+```
+
+3D 칸은 범례를 그리지 않아요. 무리의 이름은 그림에 나오지 않으므로 캡션이나 제목으로 어느 색이 어느 무리인지 알려 주세요. 2D의 `scatter`가 받는 점의 꼴(`shape`), 불투명도(`alpha`), 범례 이름(`label`)은 받지 않아요. 점은 언제나 둥근 원이에요.
+
+## 상자와 시점
+
+점만 든 칸의 상자는 자료의 비율을 따라요. 세 축에서 자료의 한 단위가 같은 길이라서, 거리를 눈으로 견줄 수 있어요. 한 좌표의 범위가 다른 좌표보다 아주 좁으면 상자가 그만큼 납작해요. 단위가 서로 다른 좌표(키, 몸무게, 나이)를 찍을 때는 미리 표준화하면 상자가 고르게 서요.
+
+시점을 주지 않으면 점들이 화면에 가장 넓게 퍼지는 방향을 골라요. 평면에 가깝게 모인 점 구름을 그 평면과 나란한 방향에서 봐서 한 줄로 겹쳐 보이게 하는 일이 없어요. 시점 고르기의 자세한 규칙은 [3D 칸과 시점](/api/plot/view3d/#시점-azimuth와-elevation)에 있어요.
+
+## 다른 층과 겹치기
+
+곡면 위에 자료의 점을 찍어 맞춘 모양과 견줄 수 있어요. 메서드로 더하면 한 상자 안에 들어가요.
+
+```python
+>>> xs = [-0.8, -0.3, 0.1, 0.5, 0.9, -0.6, 0.7]
+>>> ys = [0.2, -0.7, 0.4, -0.2, 0.8, 0.9, -0.5]
+>>> zs = [x * y + 0.1 for x, y in zip(xs, ys)]
+>>> fig = sd.plot.surface(lambda x, y: x * y, -1, 1, -1, 1, alpha=0.5)
+>>> fig = fig.scatter3d(xs, ys, zs, color="black", size=4)
+```
+
+반투명한 곡면 뒤의 점은 곡면을 통해 비쳐 보여요. 시점은 첫 층(여기서는 곡면)이 정하고, 상자는 곡면이 든 칸이라 그래프의 비율이에요.
+
+## matplotlib을 아는 분께
+
+- matplotlib의 `ax.scatter(x, y, z)`는 점을 깊이로 정렬하지 않고 준 순서로 찍어서, 무리를 나눠 여러 번 부르면 뒤의 무리가 앞의 무리를 덮어요. `scatter3d`는 점마다 깊이를 견줘요.
+- matplotlib의 `depthshade`(먼 점을 옅게)는 없어요. 점의 색은 거리와 무관하게 같아요.
+- `s=`(넓이, pt²) 대신 `size=`(지름, pt)예요. `c=`로 값에 따라 칠하는 꼴은 없고, 무리는 `group=`이에요.

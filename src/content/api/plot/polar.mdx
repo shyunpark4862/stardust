@@ -1,0 +1,159 @@
+---
+kind: function
+title: polar
+names: [polar]
+group: 함수 그림
+order: 4
+signatures:
+  - "sd.plot.polar(r, a, b, /, *, samples=None, refine=None, color=None, width=None, style='-', label=None, **figure)"
+  - "fig.polar(r, a, b, /, *, samples=None, refine=None, color=None, width=None, style='-', label=None)"
+summary: 극좌표 곡선 r = r(θ)를 θ가 a에서 b까지(라디안) 가는 동안 그려요. 점 (r cos θ, r sin θ)를 가로와 세로의 한 단위가 같은 칸에 그리고, 표본은 평면에서 꺾이는 곳에 모여요.
+params:
+  - name: r
+    type: 호출 가능한 객체
+    kind: positional-only
+    desc: "반지름 r(θ). float64 sd.ndarray θ를 받아 같은 모양의 실수 배열(또는 수 하나)을 돌려줘요. 음수면 θ의 반대쪽에 점이 찍혀요."
+  - name: a, b
+    type: float
+    kind: positional-only
+    desc: 각 θ의 구간(라디안). 유한하고 a < b여야 해요. 한 바퀴보다 길어도 돼요.
+  - name: samples
+    type: int 또는 None
+    kind: keyword-only
+    desc: "처음 격자의 θ의 수(3 이상 200000 이하). 기본값 None은 257이에요."
+  - name: refine
+    type: int 또는 None
+    kind: keyword-only
+    desc: "처음 격자의 한 구간을 반으로 나누는 횟수의 한계(0 이상 10 이하). 0이면 처음 격자를 그대로 이어요. 기본값 None은 10이에요."
+  - name: color
+    type: 색 또는 None
+    kind: keyword-only
+    desc: 선의 색. None이면 팔레트의 다음 색이에요.
+  - name: width
+    type: float 또는 None
+    kind: keyword-only
+    desc: 선의 굵기(pt). None이면 테마의 굵기예요.
+  - name: style
+    type: str
+    kind: keyword-only
+    desc: "선의 꼴. '-'(기본값), '--', ':', '-.'."
+  - name: label
+    type: str 또는 None
+    kind: keyword-only
+    desc: 범례에 적을 이름(LaTeX 원문).
+  - name: "**figure"
+    type: 그림 옵션
+    kind: keyword-only
+    desc: "새 그림의 height, font, theme, palette. 모듈 함수만 받아요. 여기서 width는 선의 굵기라서 그림의 너비가 되지 않아요(그림의 너비는 Figure(width=...)에 메서드로 그리거나 fig.size로 정해요). 뜻은 그림의 기본에 있어요."
+returns:
+  type: Figure
+  desc: 모듈 함수는 새 Figure를, 메서드는 곡선을 더한 그 Figure 자신을 돌려줘요. 그림이 한 일은 fig.info에 kind가 'polar'인 기록으로 남아요.
+raises:
+  - type: TypeError
+    desc: r이 호출 가능하지 않을 때, r이 sd.ndarray나 수가 아닌 것이나 복소수를 돌려줄 때, samples·refine이 정수가 아닐 때.
+  - type: ValueError
+    desc: a < b가 아니거나 a·b가 유한하지 않을 때, r이 받은 것과 다른 모양을 돌려줄 때, samples·refine이 범위 밖일 때.
+seeAlso: [parametric, function, sampling, implicit]
+---
+import PlotImage from '../../../components/fig/PlotImage.astro';
+
+## 한눈에 보기
+
+반지름을 각의 함수 $r(\theta)$로 주면, $\theta$가 구간을 도는 동안 원점에서 거리 $r$인 점이 그리는 곡선이 나와요. 장미 곡선 $r = \cos 4\theta$와 단위원을 함께 그려 볼게요.
+
+```python
+>>> import math
+>>> fig = sd.plot.polar(lambda t: sd.cos(4 * t), 0, 2 * math.pi, label=r"$r=\cos 4\theta$")
+>>> fig = fig.polar(lambda t: 1.0, 0, 2 * math.pi, style="--", label=r"$r=1$")
+>>> [i.kind for i in fig.info]
+['polar', 'polar']
+```
+
+<PlotImage name="polar-rose" alt="꽃잎 여덟 장의 장미 곡선 r = cos 4θ와 그것을 둘러싼 파선 단위원. 범례는 칸 위에 한 줄로 있어요" caption="r = cos 4θ는 꽃잎이 여덟 장이에요. 꽃잎 끝이 단위원에 닿아요. 칸 안의 구석에는 범례가 곡선을 가리지 않고 들어갈 자리가 없어서 칸 위로 나갔어요." />
+
+`r`이 수 하나를 돌려주면 상수 반지름이에요. `lambda t: 1.0`이 원이에요.
+
+<Reference />
+
+## 무엇을 그리나요
+
+`polar(r, a, b)`는 점 $(r(\theta)\cos\theta,\ r(\theta)\sin\theta)$를 잇는 곡선이에요. 각은 라디안이고, 0은 오른쪽(양의 $x$축), 각이 커지면 시계 반대 방향으로 돌아요. [parametric](/api/plot/parametric/)에 $x = r\cos\theta$, $y = r\sin\theta$를 준 것과 같고, 표본도 같은 방법으로 평면에서 꺾이는 곳에 모여요.
+
+그림은 보통의 직교 축에 그려요. 동심원과 방사선으로 된 극좌표 격자는 그리지 않아요. 칸은 자료의 한 단위가 가로와 세로에서 같은 길이라 원은 원으로 보여요.
+
+**음의 반지름**은 그 각의 반대쪽에 찍혀요. $r = \cos 2\theta$는 $\theta$가 $[0, 2\pi]$를 도는 동안 $r$이 음수인 때도 있어서, 꽃잎 둘이 아니라 넷이 그려져요.
+
+**한 바퀴보다 긴 구간**도 돼요. 아르키메데스 나선 $r = \theta / 2\pi$는 두 바퀴($4\pi$) 동안 원점에서 2까지 멀어져요. 심장형 $r = 1 - \sin\theta$와 함께 그려 볼게요.
+
+```python
+>>> fig = sd.plot.polar(lambda t: 1 - sd.sin(t), 0, 2 * math.pi)
+>>> fig = fig.polar(lambda t: t / (2 * math.pi), 0, 4 * math.pi)
+>>> fig.info[1].n
+284
+```
+
+## 정의되지 않는 각
+
+`r`이 NaN인 각에서는 선을 비워 두고, 그 각의 구간을 `info.undefined`에 적어요. 렘니스케이트 $r = \sqrt{\cos 2\theta}$는 $\cos 2\theta < 0$인 각에서 정의되지 않아요. 정의역의 끝을 좁혀 가므로 두 고리가 원점에서 만나요.
+
+```python
+>>> fig = sd.plot.polar(lambda t: sd.sqrt(sd.cos(2 * t)), 0, 2 * math.pi, height=40)
+>>> [(round(u / math.pi, 3), round(v / math.pi, 3)) for u, v in fig.info[0].undefined]
+[(0.25, 0.75), (1.25, 1.75)]
+```
+
+<PlotImage name="polar-lemniscate" alt="옆으로 누운 8자 모양의 렘니스케이트. 두 고리가 원점에서 만나요" caption="θ가 π/4에서 3π/4, 5π/4에서 7π/4 사이일 때는 r이 정의되지 않아 그 구간을 건너뛰어요. 각 고리의 끝은 원점까지 닿아요. 곡선이 납작해서 height=40으로 위아래의 빈 곳을 줄였어요." />
+
+`info.undefined`의 값은 $x$가 아니라 각 $\theta$예요. `poles`와 `jumps`도 마찬가지예요.
+
+## 표본이 많이 드는 곡선
+
+여러 바퀴를 도는 곡선은 꺾이는 곳이 많아서 표본이 크게 늘어요. 아래는 나비 곡선 $r = e^{\sin\theta} - 2\cos 4\theta + \sin^5\!\big((2\theta - \pi)/24\big)$를 열두 바퀴 그린 것이에요.
+
+```python
+>>> butterfly = lambda t: sd.exp(sd.sin(t)) - 2 * sd.cos(4 * t) + sd.sin((2 * t - math.pi) / 24) ** 5
+>>> fig = sd.plot.polar(butterfly, 0, 24 * math.pi)
+>>> fig.info[0].n
+6447
+```
+
+<PlotImage name="polar-butterfly" alt="열두 바퀴를 돈 나비 곡선. 날개 넷이 겹겹의 고리로 되어 있어요" caption="처음 격자 257점은 한 바퀴에 21점꼴이라 모자라요. 꺾이는 곳마다 쪼개서 6447점이 되었어요. 함수는 몇 번의 배열 호출로만 불려요." />
+
+처음 격자를 늘리고 싶으면 `samples`를 줘요. 쪼개기를 끄려면 `refine=0`이에요. 뜻은 [함수 그림의 표본](/api/plot/sampling/)에 있어요.
+
+## 달아나는 반지름
+
+범위는 곡선의 값 전체예요. $r = 1/\cos\theta$(직선 $x = 1$)처럼 반지름이 한없이 커지는 각이 있으면 그 값이 축을 차지하니 `xlim`, `ylim`으로 범위를 정해요.
+
+```python
+>>> fig = sd.plot.polar(lambda t: 1 / sd.cos(t), 0, 2 * math.pi)
+>>> [round(p / math.pi, 3) for p in fig.info[0].poles]
+[0.5, 1.5]
+>>> fig = fig.xlim(-2, 2).ylim(-2, 2)
+```
+
+극점은 찾아서 선을 끊어요. 범위를 정하지 않으면 세로축이 수십만 단위까지 늘어나 직선 하나만 보여요.
+
+## 에러
+
+```python
+>>> sd.plot.polar(2.0, 0, 1)
+Traceback (most recent call last):
+    ...
+TypeError: polar(): 'r' must be callable, not float
+>>> sd.plot.polar(sd.sin, 2, 1)
+Traceback (most recent call last):
+    ...
+ValueError: polar(): 'a' must be less than 'b'
+>>> sd.plot.polar(lambda t: sd.exp(1j * t), 0, 1)
+Traceback (most recent call last):
+    ...
+TypeError: polar(): 'r' must return real values, not complex128
+```
+
+## 조심할 점
+
+- **각은 라디안이에요.** 한 바퀴는 `2 * math.pi`예요.
+- **범위는 값 전체예요.** 달아나는 반지름이 있으면 `xlim`, `ylim`으로 정해요.
+- **극좌표 격자는 없어요.** 동심원이 필요하면 `fig.polar(lambda t: 1.0, ...)`처럼 상수 반지름의 원을 가는 선으로 더해요.
+- 매개변수로 쓰는 편이 쉬운 곡선은 [parametric](/api/plot/parametric/), 식 $F(x, y) = 0$으로 주어진 곡선은 [implicit](/api/plot/implicit/)이에요.

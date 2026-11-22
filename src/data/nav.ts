@@ -70,6 +70,7 @@ export const areas = [
   { key: 'integrate', name: '적분', ns: 'sd.integrate', desc: 'QUADPACK 적응 구적, 겹친 적분, tanh-sinh, 다차원 cubature, 고정·표본 규칙', status: 'done' },
   { key: 'differentiate', name: '미분', ns: 'sd.differentiate', desc: '도함수, 야코비안, 헤시안의 수치 미분', status: 'done' },
   { key: 'random', name: '난수', ns: 'sd.random', desc: '계수기형 생성기, 스레드 수와 무관한 결정성', status: 'done' },
+  { key: 'plot', name: '그림', ns: 'sd.plot', desc: '함수 그림, 논문용 통계 그림, 3D 곡면, PDF·SVG·PNG 출력', status: 'done' },
 ] as const;
 
 /** Areas of the internals section. "core" is what every area is built on. */
@@ -87,4 +88,5 @@ export const internalsAreas = [
   { key: 'integrate', name: '적분', ns: 'sd.integrate', desc: 'QUADPACK의 Gauss–Kronrod와 외삽, 겹친 적분, 원소별 tanh-sinh와 급수, 벡터 값과 다차원 적분, 고정·표본 규칙, 정확도와 성능' },
   { key: 'differentiate', name: '미분', ns: 'sd.differentiate', desc: '유한 차분과 Richardson 외삽, 간격 고르기, 야코비안과 헤시안, 정확도와 성능' },
   { key: 'random', name: '난수', ns: 'sd.random', desc: '계수기형 생성기 Philox, 시드와 spawn, 정수·순열·가중치 추출의 알고리즘, 성능과 검증' },
+  { key: 'plot', name: '그림', ns: 'sd.plot', desc: '장면과 배치, LaTeX 글자와 글리프 캐시, 래스터라이저와 세 출력, 적응 표본, 3D 깊이 버퍼' },
 ] as const;

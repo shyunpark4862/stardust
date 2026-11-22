@@ -1,0 +1,677 @@
+---
+title: LaTeX 글자와 글리프 캐시
+group: 글자
+order: 1
+summary: 그림의 모든 글자를 LaTeX가 조판하는 두 길(pdfLaTeX와 XeLaTeX), DVI·XDV와 TFM을 읽어 글리프의 자리를 얻는 법, 글리프마다 한 번만 받는 윤곽선, TeX 없이 늘어놓는 눈금 숫자, 10pt 배치의 비례 확대, 디스크 캐시와 도장, 묶음 조판의 오류 처리를 코드를 따라가며 설명해요.
+seeAlso: [overview, layout, scene-outputs, raster, verification]
+---
+import PlotImage from '../../../components/fig/PlotImage.astro';
+
+## 한눈에 보기
+
+그림에 들어가는 글자는 축 이름, 눈금 숫자, 범례, 제목, 칸 이름 할 것 없이 모두 LaTeX가 조판해요. 출력 파일에는 글꼴을 넣지 않고, TeX가 놓은 글리프의 윤곽선을 경로로 그려요. SVG, PDF, PNG가 같은 윤곽선을 쓰므로 세 출력의 글자는 같은 모양이에요.
+
+TeX는 바깥 프로그램이라 부를 때마다 프로세스를 띄워야 해요. 그래서 글자 길의 짜임은 두 가지를 노려요. TeX를 되도록 부르지 않고, 불러야 하면 그림 하나에 한 번만 불러요.
+
+| 단계 | 하는 일 | 코드 |
+|---|---|---|
+| 모으기 | 그림의 문자열을 모아 캐시에 없는 것만 고른다 | `Engine.layout` |
+| 조판 | 한글이 없는 문자열은 pdfLaTeX로, 있는 문자열은 XeLaTeX로, 길마다 한 번 | `_pdflatex`, `_xelatex` |
+| 읽기 | DVI·XDV에서 글리프(글꼴, 코드, 자리)와 괘선을 읽는다. 글자 너비는 TFM에서 | `_dvi.pages`, `_dvi.tfm_widths` |
+| 윤곽선 | 처음 보는 (글꼴, 코드)만 한 쪽에 하나씩 조판해 dvisvgm으로 경로를 받는다 | `_calibrate`, `_page_outline` |
+| 저장 | 배치는 `strings.jsonl`에, 윤곽선은 글꼴마다 JSON 파일에 | `_typeset`, `_calibrate` |
+| 놓기 | 10pt 배치를 글자 크기만큼 늘려 장면의 자리에 놓는다 | `_scene.place` |
+
+파일은 셋이에요. `src/stardust/plot/_text.py`가 엔진이고, `_dvi.py`가 DVI·XDV·TFM을 읽고, `_svgpath.py`가 dvisvgm이 쓴 SVG 경로를 풀어요. 이 길에는 C++가 없어요. 글꼴 파일을 직접 여는 코드도 없어요. 글꼴을 읽는 일은 TeX와 dvisvgm이 해요.
+
+그림 한 장을 그릴 때 TeX를 부르는 횟수는 이렇게 정해져요.
+
+- 문자열이 모두 캐시에 있거나 눈금 숫자뿐이면 0번이에요.
+- 캐시에 없는 문자열이 있으면 길마다 한 번이에요. 한글이 없는 것은 pdfLaTeX 한 번, 한글이 든 것은 XeLaTeX 한 번이고 두 길은 함께 돌아요.
+- 그 문자열에 처음 보는 글리프가 있으면 윤곽선 받기가 붙어요. plain TeX(또는 plain XeTeX) 한 번과 dvisvgm 한 번이고, 이것도 두 종류가 함께 돌아요.
+
+배치([배치](/internals/plot/layout/))는 글자의 크기를 알아야 여백을 풀 수 있으므로, 그림을 그리기 시작할 때 제목, 축 이름, 범례 이름, 범주 이름 같은 문자열을 한꺼번에 `layout`에 넘겨 한 묶음으로 조판해요. 그 뒤에 배치가 크기를 물을 때는 메모리의 배치를 꺼내기만 해요.
+
+## 문자열 하나가 남기는 것
+
+엔진은 글꼴 벌(`'serif'`, `'sans'`)과 캐시 폴더마다 하나예요. 아래 예제는 비어 있는 임시 폴더를 캐시로 하는 엔진을 따로 만들어, 캐시가 빈 상태에서 무슨 일이 일어나는지 보여요.
+
+```python
+>>> import pathlib, tempfile
+>>> from stardust.plot import _text
+>>> tmp = tempfile.TemporaryDirectory()
+>>> root = pathlib.Path(tmp.name)
+>>> e = _text.Engine("serif", root, False)
+>>> lay, num = e.layout([r"$\alpha^2 + 1$", "$-0.25$"])
+>>> e.tex_runs
+1
+>>> lay.width, lay.height, lay.depth
+(1716670, 560823, 6553)
+>>> lay.fonts
+[('ntxmi', 655360), ('ntx-Regular-tlf-ot1', 478413), ('ntxsy', 655360), ('ntx-Regular-tlf-ot1', 655360)]
+>>> lay.glyphs
+[(0, 11, 0, 560823), (1, 50, 408944, 322928), (2, 207, 826550, 560823), (3, 49, 1388990, 560823)]
+>>> lay.rules
+[]
+```
+
+문자열 둘이 TeX 한 번으로 조판됐어요. 조판의 결과는 `Layout` 하나이고, 모든 길이가 TeX의 정수 단위 sp(scaled point, 1pt의 1/65536)예요. 원점은 상자의 왼쪽 위이고 y는 아래로 커져요.
+
+| 필드 | 뜻 |
+|---|---|
+| `width`, `height`, `depth` | 상자의 너비, 기준선 위의 높이, 기준선 아래의 깊이 |
+| `fonts` | 쓰인 글꼴 `(TeX 글꼴 이름, 크기 sp)`의 목록. 655360 sp는 10pt, 478413 sp는 위첨자 크기 7.3pt |
+| `glyphs` | `(fonts의 번호, 글리프 코드, h, v)`. (h, v)는 글리프의 기준점(기준선의 왼쪽 끝) |
+| `rules` | 괘선 `(h, 아래 변의 v, 너비, 높이)`. 분수의 가로줄, 근호의 윗줄 |
+
+첫 글리프는 `ntxmi`(newtxmath의 수식 이탤릭)의 코드 11, α예요. 기준선이 v = 560823, 상자의 높이와 같은 곳에 있어요. 위첨자 2는 7.3pt 글꼴로 v = 322928, 기준선보다 237895 sp(3.63pt) 위에 놓였어요. 글리프마다 글꼴의 이름과 코드만 남기고 모양은 남기지 않아요. 모양은 [글리프 윤곽선](#글리프-윤곽선)에서 (글꼴, 코드)마다 한 번 받아요.
+
+## 상자를 재고 쪽으로 나누기
+
+문자열마다 상자 하나를 만들고, 그 크기를 로그에 한 줄 적고, 상자를 한 쪽으로 내보내요. 그 일을 하는 매크로가 `\one`이에요.
+
+```python
+# src/stardust/plot/_text.py
+_MEASURE = (
+    r"\pagestyle{empty}\newbox\sdb"
+    r"\def\one#1{\setbox\sdb\hbox{#1}\typeout{SDBOX \number\wd\sdb,\number\ht\sdb,\number\dp\sdb}\shipout\box\sdb}"
+)
+```
+
+`\hbox{#1}`은 문자열을 한 줄로 조판한 상자예요. `\number\wd\sdb`는 그 너비를 sp 정수로 적어요. 그래서 로그의 `SDBOX w,h,d` 줄이 문자열의 상자 크기를 반올림 없이 알려 줘요. `\shipout`은 상자를 쪽 하나로 DVI 파일에 내보내요. 묶음의 문자열이 n개면 로그에 `SDBOX` 줄이 n개, DVI에 쪽이 n개 생기고, 둘의 순서가 문자열의 순서예요. TeX가 쪽을 내보낼 때 상자의 왼쪽 위가 쪽의 원점에 오고 기준선은 상자의 높이만큼 아래에 와요. 위 예제에서 기준선의 v가 상자의 높이와 같았던 까닭이에요.
+
+## 두 길
+
+### pdfLaTeX와 미리 구운 포맷
+
+한글이 없는 문자열은 `latex`가 조판해요. TeX Live의 `latex`는 pdfTeX 엔진을 DVI 모드로 돌리는 이름이에요. 글꼴은 Type 1 글꼴과 TFM 파일이고, 세리프 벌의 머리말은 newtxtext와 newtxmath, 산세리프 벌은 TeX Gyre Heros(`tgheros`)와 newtxsf예요.
+
+LaTeX의 머리말을 읽는 데에는 문자열을 조판하는 것보다 긴 시간이 들어요. 그래서 머리말을 한 번 읽은 상태를 포맷 파일(`.fmt`)로 구워 두고, 조판할 때마다 그 포맷에서 시작해요.
+
+```python
+    # src/stardust/plot/_text.py
+    def _format(self):
+        """The dumped pdfLaTeX format of this family. It lives in the user's cache whatever cache
+        is in force (a recorded cache holds layouts and outlines only), made once per stamp."""
+        fmt = _default_root() / f"{self.family}.fmt"
+        if not fmt.exists():
+            fmt.parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.TemporaryDirectory(prefix="sdplot_fmt_") as tmp:
+                (pathlib.Path(tmp) / "f.tex").write_text(
+                    _HEAD + _PDF[self.family] + _MEASURE + "\\endofdump\n\\begin{document}\\end{document}\n"
+                )
+                _run(
+                    [
+                        tool("latex"),
+                        "-ini",
+                        "-interaction=batchmode",
+                        "-jobname=pdf",
+                        "&latex",
+                        "mylatexformat.ltx",
+                        "f.tex",
+                    ],
+                    tmp,
+                )
+                made = pathlib.Path(tmp) / "pdf.fmt"
+                if not made.exists():
+                    raise TypesetError(
+                        "?", "the LaTeX format could not be made (newtx, tgheros and mylatexformat are needed)"
+                    )
+                shutil.copy(made, fmt.with_suffix(".tmp"))
+                os.replace(fmt.with_suffix(".tmp"), fmt)
+        return fmt
+
+    def _pdflatex(self, strings, tmp):
+        tmp.mkdir()
+        os.symlink(self._format(), tmp / "pdf.fmt")
+        (tmp / "j.tex").write_text(
+            "\\begin{document}\n" + "".join(f"\\one{{{s}}}\n" for s in strings) + "\\end{document}\n"
+        )
+        self.tex_runs += 1
+        p = _run(
+            [tool("latex"), "-interaction=nonstopmode", "-halt-on-error", "-no-shell-escape", "-fmt=pdf", "j.tex"], tmp
+        )
+        return self._collect(p, tmp, "j.dvi", strings)
+```
+
+`-ini`로 띄운 TeX는 빈 상태에서 시작해요. `&latex`가 LaTeX 포맷을 먼저 싣고, `mylatexformat.ltx`(TeX Live의 꾸러미)가 `f.tex`의 머리말을 `\endofdump`까지 읽은 뒤 그때의 상태 전체(정의된 매크로, 실린 글꼴의 정보)를 `pdf.fmt`로 쏟아 내요. 그 뒤의 조판은 `-fmt=pdf`로 이 상태에서 바로 시작하므로, 넘기는 파일은 `\begin{document}`와 `\one{…}` 줄들뿐이에요. 포맷은 글꼴 벌마다 하나이고, 다 만든 뒤 `os.replace`로 제자리에 옮겨서 반쯤 쓴 포맷을 다른 프로세스가 읽는 일이 없어요.
+
+옵션 셋도 뜻이 있어요. `-halt-on-error`는 첫 오류에서 멈추게 하고, `-interaction=nonstopmode`는 오류에서 입력을 기다리지 않게 해요(표준 입력도 닫아 둬요). `-no-shell-escape`는 문자열 안의 `\write18`이 바깥 명령을 부르지 못하게 막아요.
+
+### XeLaTeX와 시스템 글꼴
+
+한글이 든 문자열은 `xelatex`가 조판해요. 한글 글꼴(세리프 벌은 KoPubWorld 바탕, 산세리프 벌은 Apple SD Gothic Neo)이 OpenType 시스템 글꼴이라 pdfTeX가 바로 쓰지 못하기 때문이에요. 어느 문자열이 이 길로 가는지는 정규식 `_CJK` 하나가 정해요. 한글 자모, 한글 음절, CJK 한자와 부호, 전각 글자의 범위 중 하나라도 들어 있으면 XeLaTeX 길이에요.
+
+XeLaTeX의 머리말(`_XE`)은 newtx 꾸러미를 먼저 읽고 그 위에 `fontspec`(수식 글꼴은 건드리지 않는 `no-math`)과 `xeCJK`로 한글 글꼴을 얹어요. 한글 글꼴은 이름이 아니라 파일 경로로 줘요. `xeCJK`의 `CJKspace=true`는 한글 낱말 사이의 띄어쓰기를 남겨요. 이 길에서는 라틴 글자도 OpenType 판(세리프는 TeX Gyre Termes X)으로 조판돼요. `xelatex -no-pdf`는 PDF 대신 XDV 파일을 내요. XDV는 DVI를 넓힌 형식이에요([XDV](#xdv)).
+
+### 문자열 하나는 한 길로만
+
+같은 영문 문자열이라도 두 길의 글꼴은 Type 1 판과 OpenType 판으로 달라서, 글리프의 높이와 깊이가 조금 다를 수 있어요. 문자열 하나는 한글이 있는지로만 길이 정해지므로 같은 문자열이 두 크기를 갖는 일은 없어요. 영문 문자열의 너비가 두 길에서 같은지는 TeX를 실제로 부르는 테스트가 봐요.
+
+## DVI 읽기
+
+DVI(device independent) 파일은 TeX가 쪽마다 "어느 글꼴의 어느 글자를 어디에 놓아라"를 적은 바이트 명령의 줄이에요. 명령은 1바이트 연산 부호와 그 뒤의 인자로 되어 있고, 읽는 쪽은 상태 여섯 개 (h, v, w, x, y, z)와 그것을 쌓는 스택 하나를 들고 명령을 차례로 실행해요. h와 v가 지금 자리이고, w, x는 가로, y, z는 세로로 자주 쓰는 간격을 담아 두는 칸이에요. 모든 길이는 sp 정수예요. 형식은 D. Knuth의 `dvitype.web`과 `tex.web`의 583절 이하에 정의돼 있어요.
+
+| 연산 부호 | 이름 | 하는 일 |
+|---|---|---|
+| 0–127 | `set_char_c` | 글자 c를 (h, v)에 놓고 h를 글자 너비만큼 옮긴다 |
+| 128–131 | `set1`–`set4` | 위와 같고 글자 코드가 1–4바이트 인자 |
+| 132 | `set_rule` | 높이 a, 너비 b의 괘선을 (h, v)를 왼쪽 아래로 놓고 h += b |
+| 133–136 | `put1`–`put4` | 글자를 놓되 h를 옮기지 않는다 |
+| 137 | `put_rule` | 괘선을 놓되 h를 옮기지 않는다 |
+| 139, 140 | `bop`, `eop` | 쪽의 시작(쪽 번호 열 개와 앞 쪽의 자리, 44바이트)과 끝 |
+| 141, 142 | `push`, `pop` | (h, v, w, x, y, z)를 스택에 넣고 꺼낸다 |
+| 143–170 | `right`, `w`, `x`, `down`, `y`, `z` | h나 v를 옮기고, 인자가 있으면 그 간격을 칸에 담는다 |
+| 171–238 | `fnt_num_k`, `fnt1`–`fnt4` | 지금 글꼴을 바꾼다 |
+| 239–242 | `xxx1`–`xxx4` | special(드라이버에 넘기는 글). 건너뛴다 |
+| 243–246 | `fnt_def1`–`fnt_def4` | 글꼴 정의(번호, 검사합, 크기 s, 설계 크기, 이름) |
+| 247, 248, 249 | `pre`, `post`, `post_post` | 파일의 머리와 꼬리 |
+
+읽기의 가운데 부분, 글자와 괘선의 명령이에요.
+
+```python
+    # src/stardust/plot/_dvi.py
+    while r.i < n:
+        op = r.u(1)
+        if op <= 127 or 128 <= op <= 131 or 133 <= op <= 136:
+            code = op if op <= 127 else r.u(op - 127 if op <= 131 else op - 132)
+            f = defs[cur]
+            if not names_only:
+                page.glyphs.append((use(cur), code, h, v))
+                if op <= 131:
+                    if f.widths is None:
+                        f.widths = tfm(f.key)
+                    h += scaled(f.widths[code], f.size)
+        elif op in (132, 137):
+            a, b = r.s(4), r.s(4)
+            if not names_only and a > 0 and b > 0:
+                page.rules.append((h, v, b, a))
+            if op == 132:
+                h += b
+```
+
+DVI의 `set_char`는 글자를 놓은 뒤 h를 "그 글자의 너비만큼" 옮기라고만 하고, 너비는 적지 않아요. 너비는 글꼴의 TFM(TeX font metric) 파일에 있어요. 그래서 읽기는 두 번 지나가요. 첫 번째(`names_only=True`)는 글꼴 정의만 모아 쓰인 TFM 이름을 알아내고, `kpsewhich` 한 번으로 그 파일들을 모두 찾아 너비 표를 읽어요. 두 번째가 쪽을 읽어요.
+
+### TFM의 너비와 TeX의 곱셈
+
+TFM 파일은 32비트 낱말의 배열이에요. 첫 6낱말은 16비트 수 열둘 `lf lh bc ec nw nh nd ni nl nk ne np`로, 각 표의 길이를 알려요. 그 뒤에 머리(`lh`낱말), 글자 정보(`bc`부터 `ec`까지 글자마다 한 낱말), 너비 표(`nw`낱말)가 이어져요. 글자 정보 낱말의 첫 바이트가 너비 표의 번호예요.
+
+```python
+# src/stardust/plot/_dvi.py
+def tfm_widths(data):
+    """The 256 character widths of a TFM file as fix_words (raw 32-bit integers; 0 where the font
+    has no such character)."""
+    lf, lh, bc, ec, nw = struct.unpack_from(">5H", data, 0)
+    info = 24 + 4 * lh
+    table = info + 4 * (ec - bc + 1)
+    words = struct.unpack_from(f">{nw}i", data, table)
+    out = [0] * 256
+    for c in range(bc, ec + 1):
+        out[c] = words[data[info + 4 * (c - bc)]]
+    return out
+
+
+def scaled(fix, size):
+    """TeX's product of a fix_word and a font size in sp (tex.web §571-575: the truncations are
+    part of the result)."""
+    z, alpha = size, 16
+    while z >= 0o40000000:
+        z //= 2
+        alpha += alpha
+    beta = 256 // alpha
+    alpha *= z
+    a, b, c, d = (fix >> 24) & 255, (fix >> 16) & 255, (fix >> 8) & 255, fix & 255
+    sw = (((d * z) // 256 + c * z) // 256 + b * z) // beta
+    return sw if a == 0 else sw - alpha
+```
+
+너비는 fix_word예요. 부호 있는 32비트 정수를 2²⁰으로 나눈 고정 소수점 수이고, 단위는 글꼴의 설계 크기예요. 크기 s(sp)로 실은 글꼴에서 글자의 너비는 fix · s / 2²⁰ sp인데, TeX는 이 곱을 32비트 정수 안에서 하려고 `tex.web` 571–575절의 차례로 계산해요. fix_word를 바이트 넷 a, b, c, d로 나누고, 크기 z를 2²³ 아래로 줄인 뒤(그만큼 α와 β를 맞춰요), 아래 바이트부터 곱해 256으로 나누기를 되풀이해요. a가 255(음수)면 α를 빼요. 크기가 128pt보다 작으면 이 결과는 정확히 ⌊fix · s / 2²⁰⌋이고, 그보다 크면 z를 반으로 줄일 때의 버림이 결과에 남아요. `scaled`는 이 차례를 그대로 따르므로 어느 크기에서나 TeX가 계산한 h와 같은 정수를 얻어요. 반올림이 아니라 버림이라는 것도 그대로예요.
+
+```python
+>>> from stardust.plot import _dvi
+>>> w = _text._tfm("ntxmi")[11]
+>>> w, w * 655360 / 2**20, _dvi.scaled(w, 655360)
+(629146, 393216.25, 393216)
+```
+
+α의 너비 fix_word 629146에 10pt를 곱하면 393216.25 sp이고, TeX는 393216 sp(6pt)로 버려요. 위 예제에서 위첨자 2가 h = 408944에 놓였던 것은 이 너비에 α의 이탤릭 보정 15728 sp를 더한 자리예요. 이탤릭 보정은 TeX가 첨자를 붙이기 전에 이미 h를 옮기는 명령(`right`)으로 적어 두므로 읽기가 따로 계산하지 않아요.
+
+넘겨받은 쪽마다 글꼴은 처음 쓰인 차례로 번호를 다시 받아요(`use`). 그래서 `Layout.fonts`에는 그 문자열에 쓰인 글꼴만 들어가요. TeX 글꼴 이름이 가상 글꼴(VF)일 때도 있어요. newtxmath의 `ntxmi`가 그렇고, 실제 모양은 다른 Type 1 글꼴의 글리프를 옮기거나 합친 것이에요. 가상 글꼴에도 TFM이 있으므로 너비 계산은 같고, 모양은 dvisvgm이 실제 글꼴까지 풀어서 줘요.
+
+## XDV
+
+XeTeX의 XDV는 DVI의 명령을 그대로 두고 연산 부호 252–254를 더한 형식이에요. 252는 시스템 글꼴(native font)의 정의로, 글꼴 파일의 경로와 그 안의 번호(TrueType 모음 `.ttc`의 몇 번째 글꼴인지)를 적어요. 253과 254는 글리프의 배열이에요. 글리프 n개의 번호(글꼴 안의 glyph id)와 저마다의 상대 자리 (dx, dy), 그리고 배열 전체의 진행 폭을 함께 적어요. 254는 그 앞에 원래 글(UTF-16)을 더 붙여요.
+
+```python
+        # src/stardust/plot/_dvi.py
+        elif op == 252:
+            num = r.s(4)
+            size = r.u(4)
+            flags = r.u(2)
+            path = r.take(r.u(1)).decode("utf-8")
+            index = r.u(4)
+            for bit in (0x0200, 0x1000, 0x2000, 0x4000):
+                if flags & bit:
+                    r.take(4)
+            if num not in defs:
+                defs[num] = Font(f"{path.rsplit('/', 1)[-1]}#{index}", size, True, path, index)
+        elif op in (253, 254):
+            if op == 254:
+                r.take(2 * r.u(2))
+            adv = r.s(4)
+            count = r.u(2)
+            pos = [(r.s(4), r.s(4)) for _ in range(count)]
+            ids = [r.u(2) for _ in range(count)]
+            if not names_only:
+                fi = use(cur)
+                for (dx, dy), g in zip(pos, ids):
+                    page.glyphs.append((fi, g, h + dx, v + dy))
+            h += adv
+```
+
+시스템 글꼴의 글리프는 자리를 모두 들고 오므로 TFM이 필요 없어요. 글꼴 정의의 꼬리표(색, 가로 늘이기, 기울이기, 굵게 하기)는 켜져 있으면 4바이트씩 건너뛰어요. 글꼴의 열쇠는 `파일 이름#번호`라서, 한글 라벨의 글리프는 글꼴 열쇠 `'KoPubWorld Batang_Pro Light.otf#0'`와 글리프 번호(예를 들어 2342)로 남아요.
+
+## 글리프 윤곽선
+
+### 한 쪽에 글리프 하나
+
+문자열을 조판하고 나면 쓰인 (글꼴, 코드)를 모아 캐시에 윤곽선이 없는 것만 골라요. 그것들을 한 쪽에 글리프 하나씩 다시 조판하고 dvisvgm으로 SVG를 받아요. TFM 글꼴은 plain TeX의 `\char`로, 시스템 글꼴은 plain XeTeX의 `\XeTeXglyph`(글리프 번호로 바로 놓는 명령)로 놓아요. 글꼴은 언제나 10pt로 실어요.
+
+```python
+    # src/stardust/plot/_text.py
+    def _glyph_pages(self, eng, todo, tmp):
+        tmp.mkdir()
+        lines, items = [_PLAIN], []
+        for n, (font, codes) in enumerate(todo):
+            if font.native:
+                where = f"[{font.path}:{font.index}]" if font.index else f"[{font.path}]"
+                lines.append(f'\\font\\sdf{_alpha(n)}="{where}" at 10pt')
+            else:
+                lines.append(f"\\font\\sdf{_alpha(n)}={font.key} at 10pt")
+            for c in codes:
+                lines.append(
+                    f"\\one{{\\sdf{_alpha(n)}" + (f"\\XeTeXglyph{c} }}" if font.native else f'\\char"{c:X} }}')
+                )
+                items.append((font.key, c))
+        (tmp / "g.tex").write_text("\n".join(lines) + "\n\\bye\n")
+        cmd = (
+            [tool(eng), "-interaction=batchmode", "-no-shell-escape"]
+            + (["-no-pdf"] if eng == "xetex" else [])
+            + ["g.tex"]
+        )
+        _run(cmd, tmp)
+        out = tmp / ("g.xdv" if eng == "xetex" else "g.dvi")
+        boxes = _boxes(tmp / "g.log")
+        if not out.exists() or len(boxes) != len(items):
+            raise TypesetError("?", f"the glyph outlines of {todo[0][0].key} could not be typeset")
+        _run([tool("dvisvgm"), "--no-fonts", "--no-specials", "-p1-", "-o", "p%p.svg", out.name], tmp)
+        pages = {int(re.sub(r"\D", "", f.stem)): f for f in tmp.glob("p*.svg")}
+        res = []
+        for i, ((key, code), (_, h, _)) in enumerate(zip(items, boxes), 1):
+            ops, xy = _page_outline(pages[i]) if i in pages else ("", [])
+            dy = h * SP_TO_BP
+            res.append((key, code, [ops, [round(v - dy, 6) if j % 2 else round(v, 6) for j, v in enumerate(xy)]]))
+        return res
+```
+
+`_PLAIN`은 LaTeX의 `\one`과 같은 일을 plain TeX로 하는 매크로예요(`\typeout` 대신 `\immediate\write16`). 글꼴 이름은 `\sdfa`, `\sdfb`, …, `\sdfz`, `\sdfaa`처럼 글자로만 지어요(`_alpha`). TeX의 제어 순서 이름에는 숫자를 넣을 수 없기 때문이에요.
+
+dvisvgm의 옵션이 모양을 정해요. `--no-fonts`는 글리프를 SVG 글꼴로 적지 않고 `<path>`로 적게 해요. `--no-specials`는 special을 무시하고, `-p1-`은 모든 쪽을, `-o p%p.svg`는 쪽마다 파일 하나를 내게 해요. dvisvgm의 좌표 단위는 bp(1/72인치)이고 쪽의 원점은 상자의 왼쪽 위예요. 그래서 상자의 높이 h만큼 y를 빼면 원점이 글리프의 기준점으로 와요. 공백처럼 잉크가 없는 글리프는 빈 윤곽선 `("", [])`으로 남아 다시 받으러 가지 않아요.
+
+### 별칭 따라가기
+
+dvisvgm은 글리프의 경로를 `<defs>` 안에 두고 본문에서 `<use>`로 불러요. 두 글꼴이 같은 모양을 쓰면 경로를 한 번만 적고 다른 쪽에는 `<defs>` 안의 `<use>`로 별칭을 달아요. 가상 글꼴이 같은 Type 1 글리프를 여러 이름으로 내놓을 때 생기는 일이에요(빼기표와 근호가 그래요). `_page_outline`은 이 별칭을 끝까지 따라가요.
+
+```python
+# src/stardust/plot/_text.py
+def _page_outline(path):
+    """Every filled shape of a dvisvgm page as one outline (ops, xy) in the page's bp. A <use>
+    names a path of <defs> or another <use> there (dvisvgm writes a glyph shared by two fonts
+    once and aliases it)."""
+    root = ET.parse(path).getroot()
+    defs = {e.get("id"): e for d in root.iter(_SVG + "defs") for e in d if e.get("id")}
+    ops, xy = [], []
+
+    def draw(e, m):
+        tag = e.tag.removeprefix(_SVG)
+        t = _svgpath.compose(m, _svgpath.matrix(e.get("transform")))
+        if tag == "g":
+            for child in e:
+                draw(child, t)
+        elif tag == "use":
+            t = _svgpath.compose(t, (1.0, 0.0, 0.0, 1.0, float(e.get("x", 0)), float(e.get("y", 0))))
+            target = defs.get(e.get(_HREF).lstrip("#"))  # a glyph without ink (a space) has none
+            if target is not None:
+                draw(target, t)
+        elif tag == "path":
+            o, c = _svgpath.parse(e.get("d"))
+            ops.append(o)
+            xy.extend(_svgpath.apply(t, c))
+        elif tag == "rect":
+            x, y, w, h = (float(e.get(k, 0)) for k in ("x", "y", "width", "height"))
+            ops.append("MLLLZ")
+            xy.extend(_svgpath.apply(t, [x, y, x + w, y, x + w, y + h, x, y + h]))
+
+    for e in root:
+        if e.tag != _SVG + "defs":
+            draw(e, (1.0, 0.0, 0.0, 1.0, 0.0, 0.0))
+    return "".join(ops), xy
+```
+
+본문의 원소에서 시작해 `<g>`는 자식으로, `<use>`는 이름이 가리키는 원소로 내려가면서 변환 행렬을 곱해 나가요. 행렬은 SVG의 `matrix(a b c d e f)`, `translate`, `scale` 꼴만 나오고 `_svgpath.matrix`가 그것을 (a, b, c, d, e, f) 여섯 수로 바꿔요. `compose(m, t)`는 t를 먼저, m을 나중에 적용하는 행렬이에요. `<path>`에 닿으면 경로를 풀어 좌표에 행렬을 적용해 쌓아요. 별칭을 따라가지 않으면 별칭으로만 적힌 글리프가 빈칸이 돼요.
+
+### SVG 경로 풀기
+
+SVG의 경로 글(`d` 속성)은 명령 글자와 수의 줄이에요. `_svgpath.parse`는 이것을 다섯 명령 `M L C Q Z`와 절대 좌표의 목록으로 바꿔요. 장면, 래스터라이저, 벡터 출력이 모두 이 꼴의 경로만 받아요.
+
+| SVG 명령 | 바꾸는 꼴 |
+|---|---|
+| `m l c q`(소문자) | 지금 점을 더해 절대 좌표로 |
+| `H x`, `V y` | 한쪽 좌표만 바뀐 `L` |
+| `S` | 앞 `C`의 둘째 조절점을 지금 점에 대해 뒤집은 점을 첫 조절점으로 한 `C` |
+| `T` | 앞 `Q`의 조절점을 뒤집은 점을 조절점으로 한 `Q` |
+| `M` 뒤의 좌표 쌍 | 둘째 쌍부터는 `L` |
+| `Z` | 지금 점을 부분 경로의 시작점으로 되돌린다 |
+
+호(`A`)는 글리프 윤곽선에 나오지 않으므로 받지 않아요. 아래는 세리프 벌의 `a` 한 글자의 윤곽선이에요.
+
+```python
+>>> lay_a = e.layout(["a"])[0]
+>>> (key, size), = lay_a.fonts
+>>> key, size, lay_a.glyphs[0][1]
+('ntx-Regular-tlf-t1', 655360, 97)
+>>> ops, xy = e.outline(key, 97)
+>>> ops
+'MLCCLCCCCCCCCCCLCCCCCCZMCCCLCLZ'
+>>> nan = float("nan")
+>>> X, Y, ends, ctrl, hx, hy = [], [], [], [], [], []
+>>> i = 0
+>>> for op in ops:
+...     if op in "ML":
+...         x, y = xy[i:i + 2]; i += 2
+...         if op == "M":
+...             X.append(nan); Y.append(nan); start = (x, y)
+...         X.append(x); Y.append(-y); ends.append((x, y))
+...     elif op == "C":
+...         x0, y0 = X[-1], -Y[-1]
+...         x1, y1, x2, y2, x3, y3 = xy[i:i + 6]; i += 6
+...         for k in range(1, 17):
+...             t = k / 16; u = 1 - t
+...             X.append(u**3 * x0 + 3 * u * u * t * x1 + 3 * u * t * t * x2 + t**3 * x3)
+...             Y.append(-(u**3 * y0 + 3 * u * u * t * y1 + 3 * u * t * t * y2 + t**3 * y3))
+...         ctrl += [(x1, y1), (x2, y2)]; ends.append((x3, y3))
+...         hx += [x0, x1, nan, x2, x3, nan]; hy += [-y0, -y1, nan, -y2, -y3, nan]
+...     elif op == "Z":
+...         X.append(start[0]); Y.append(-start[1])
+>>> fig = sd.plot.Figure(width=70, height=72).line(X, Y, label="윤곽선")
+>>> fig = fig.line(hx, hy, color="gray", style=":", width=0.6)
+>>> fig = fig.scatter([p[0] for p in ctrl], [-p[1] for p in ctrl], shape="s", size=2.5, color="C3", label="조절점")
+>>> fig = fig.scatter([p[0] for p in ends], [-p[1] for p in ends], size=3, color="black", label="끝점")
+>>> fig = fig.xlim(0, 4.8).ylim(-0.3, 4.8).legend(loc="top").xlabel("$x$ (bp)").ylabel("$y$ (bp)")
+```
+
+<PlotImage name="in-text-glyph-a" alt="세리프 a 글리프의 윤곽선. 바깥 윤곽과 안쪽 구멍이 파란 곡선으로, 3차 베지어 곡선의 끝점이 검은 점으로, 조절점이 빨간 네모로 그려져 있어요." caption="10pt로 실은 a의 윤곽선(bp, y는 위로). 부분 경로 둘이고 거의 모두 3차 베지어 곡선이에요. 점선은 끝점과 조절점을 잇는 손잡이예요." />
+
+부분 경로가 둘이에요. 바깥 윤곽과 안쪽 구멍이고 도는 방향이 반대예요. 채울 때 구멍이 비는 까닭이 이 방향이에요([래스터라이저의 채움 규칙](/internals/plot/raster/#채움-규칙)). 받은 윤곽선은 10pt, bp 단위, 기준점이 원점인 좌표로 글꼴마다의 JSON 파일에 `{코드: [ops, xy]}` 꼴로 쌓여요.
+
+## 숫자는 TeX 없이
+
+눈금 라벨은 그림마다 달라요. 범위가 조금만 바뀌어도 `$0.25$`, `$0.5$`, `$0.75$` 같은 처음 보는 문자열이 생기고, 그때마다 TeX를 부르면 그림마다 TeX 한 번이 들어요. 그래서 눈금이 쓰는 두 꼴, `$-1.5$` 같은 소수와 `$10^{-3}$` 같은 거듭제곱은 TeX에 넘기지 않고 한 글자씩의 배치를 이어 붙여 만들어요.
+
+```python
+# src/stardust/plot/_text.py
+_CJK = re.compile("[\u1100-\u11ff\u2e80-\u9fff\ua960-\ua97f\uac00-\ud7ff\uf900-\ufaff\uff00-\uffef]")
+_NUMBER = re.compile(r"\$(-?)(\d+)(?:\.(\d+))?\$")
+_POWER = re.compile(r"\$(-?)(\d+)(?:\.(\d+))?\^\{(-?)(\d+)\}\$")
+```
+
+이 꼴의 문자열이 처음 나오면 엔진은 그 문자열 대신 "원자" 스물다섯을 조판해요. 숫자 열 개와 빼기표, 소수점을 본문 크기(`$1$`)와 첨자 크기(`$\scriptstyle 1$`)로 하나씩, 그리고 위첨자의 높이를 재는 `$1^{1}$`이에요. 한 번 조판한 원자는 캐시에 남으므로 그 뒤의 숫자는 모두 TeX 없이 만들어져요. 처음 예제의 `$-0.25$`도 이렇게 만들어졌어요. 원자 스물다섯은 보통의 문자열처럼 캐시에 들어가요.
+
+```python
+>>> len(e.strings)
+27
+>>> sorted(e.strings)[:4]
+['$-$', '$.$', '$0$', '$1$']
+>>> num.glyphs
+[(0, 0, 0, 451215), (1, 48, 416808, 451215), (2, 58, 744488, 451215), (1, 50, 929954, 451215), (1, 53, 1257634, 451215)]
+>>> before = e.tex_runs
+>>> e.layout(["$10^{-3}$"])[0].glyphs
+[(0, 49, 0, 560823), (0, 48, 327680, 560823), (1, 0, 655360, 322928), (2, 51, 997903, 322928)]
+>>> e.tex_runs - before
+0
+```
+
+(27은 원자 스물다섯과 앞의 두 문자열 `$\alpha^2 + 1$`, `a`예요.) `$-0.25$`의 글리프는 빼기표(`ntxsy` 코드 0), 0, 소수점(`ntxmi` 코드 58), 2, 5이고 숫자 하나의 폭은 327680 sp(5pt)예요. 이어 붙이는 코드예요.
+
+```python
+    # src/stardust/plot/_text.py
+    def _number(self, s):
+        m = _POWER.fullmatch(s)
+        if m:
+            base = self._concat([f"${c}$" for c in _digits(m.group(1), m.group(2), m.group(3))])
+            sup = self._concat([rf"$\scriptstyle {c}$" for c in _digits(m.group(4), m.group(5), None)])
+            ref = self.strings["$1^{1}$"]
+            one, small = self.strings["$1$"], self.strings[r"$\scriptstyle 1$"]
+            raised = ref.height - small.height  # how far TeX lifts a superscript's baseline
+            height = max(base.height, sup.height + raised)
+            fonts = list(base.fonts)
+            glyphs = [(fi, c, h, v - base.height + height) for fi, c, h, v in base.glyphs]
+            for fi, c, h, v in sup.glyphs:
+                f = sup.fonts[fi]
+                if f not in fonts:
+                    fonts.append(f)
+                glyphs.append((fonts.index(f), c, base.width + h, v - sup.height + height - raised))
+            assert one.depth == 0
+            return Layout(base.width + sup.width + SCRIPTSPACE, height, base.depth, fonts, glyphs, [])
+        m = _NUMBER.fullmatch(s)
+        return self._concat([f"${c}$" for c in _digits(*m.groups())])
+```
+
+`_concat`은 글자들의 배치를 한 기준선 위에 왼쪽부터 너비만큼 옮겨 가며 놓고, 높이와 깊이는 가장 큰 것을 받아요. 이것이 TeX의 결과와 sp 하나까지 같으려면 TeX가 수식 안의 숫자에 아무것도 더하지 않아야 해요. TeX 수식 조판의 규칙(The TeXbook 부록 G)으로 보면 그래요.
+
+- 숫자와 소수점은 모두 Ord 원자예요. Ord와 Ord 사이에는 수식 간격이 들어가지 않아요(부록 G의 간격 표).
+- 빼기표는 Bin 원자지만 수식의 맨 앞에 오면 Ord로 바뀌어요(부록 G 규칙 5). 그래서 `$-1.5$`의 빼기표 뒤에도 간격이 없어요.
+- 이웃한 Ord 글자가 같은 글꼴이면 TeX는 글꼴의 리거처·커닝 표를 적용해요(규칙 14). newtx의 이 글꼴들에는 숫자, 빼기표, 소수점 사이의 커닝과 리거처가 없어요.
+- 위첨자는 밑의 오른쪽 끝(`base.width`)에서 시작해 정해진 만큼 올라가요(규칙 18). 밑이 글자 하나일 때 올림의 크기는 글꼴의 매개변수와 위첨자 상자의 깊이로 정해지는데, 여기 오는 위첨자는 모두 숫자와 빼기표라 그 값이 어느 조합에서나 같아요. 그래서 `$1^{1}$`에서 한 번 재요. 위첨자 뒤에는 `\scriptspace`(0.5pt)가 붙어요.
+
+마지막 두 항목은 이 글꼴에 대한 사실이라 코드가 스스로 증명하지 못해요. 그래서 TeX Live를 실제로 부르는 테스트가 여러 숫자를 TeX로 조판한 결과와 이 코드의 결과를 글리프 하나하나의 자리까지 견줘요([검증](/internals/plot/verification/)).
+
+이렇게 만든 배치는 디스크에 남기지 않고 프로세스의 메모리(`Engine.numbers`)에만 둬요. 원자에서 언제든 다시 만들 수 있기 때문이에요.
+
+## 10pt 한 번, 크기는 비례
+
+문자열은 언제나 10pt로 한 번만 조판해요. 그림의 글자 크기는 테마가 정하고(`'paper'` 테마는 축 이름 8, 눈금 7, 제목 9, 범례 7 bp), 그 크기의 글자는 10pt 배치를 비례로 늘이거나 줄인 것이에요. 글자 크기 `size`는 bp로 재요. 10pt는 10 · 72/72.27 bp이므로(`UNIT_BP`), 크기 10 bp의 글자는 10pt 배치를 72.27/72배 한 것이에요.
+
+```python
+>>> [round(v, 3) for v in lay.box(10)]
+[26.194, 8.557, 0.1]
+>>> [round(v, 3) for v in lay.box(7)]
+[18.336, 5.99, 0.07]
+```
+
+장면에 놓을 때(`_scene.place`)도 같은 비율을 써요.
+
+```python
+# src/stardust/plot/_scene.py
+def place(text, lay):
+    """The Glyphs of a Text given its layout."""
+    k0 = text.size / _text.UNIT_BP
+    k = _text.SP_TO_BP * k0
+    w, h, d = lay.width * k, lay.height * k, lay.depth * k
+    dx = {"left": 0.0, "center": -w / 2, "right": -w}[text.ha]
+    dy = {"baseline": 0.0, "bottom": -d, "center": (h - d) / 2, "top": h}[text.va]
+    top = lay.height
+    glyphs = [
+        (lay.fonts[fi][0], code, lay.fonts[fi][1] / _text.TEN_PT * k0, hh * k, (v - top) * k)
+        for fi, code, hh, v in lay.glyphs
+    ]
+    rules = [(hh * k, (v - top - ht) * k, ww * k, ht * k) for hh, v, ww, ht in lay.rules]
+    a = math.radians(text.rotation)
+    c, s = math.cos(a), math.sin(a)
+    if text.rotation == 90.0:
+        c, s = 0.0, 1.0
+    # y is down: a counter-clockwise rotation by a is (c, -s; s, c) on (x, y)
+    m = (c, -s, s, c, text.x + c * dx + s * dy, text.y - s * dx + c * dy)
+    return Glyphs(glyphs, rules, m, text.color)
+```
+
+글리프마다의 배율은 `글꼴 크기 / 10pt × k0`예요. 윤곽선은 10pt로 받았으므로, 7.3pt로 실린 위첨자 글꼴의 글리프는 0.73배가 되고 그 위에 글자 크기의 배율이 곱해져요. 자리는 기준선의 왼쪽 끝을 원점으로 하는 글자의 틀에 두고, 기준점(`ha`, `va`)과 회전은 행렬 하나에 모아요. 세로 축 이름의 90도 회전은 cos과 sin을 0과 1로 정확히 둬서 반올림이 끼지 않아요.
+
+이 방식의 결과 하나는 알아 둘 만해요. 7 bp의 눈금 숫자는 10pt용으로 그린 숫자를 줄인 것이에요. 작은 크기용 설계(획을 조금 굵게, 글자 사이를 조금 넓게 그린 판)로 바꾸지 않아요. 한 문자열 안에서 TeX가 고른 첨자용 글꼴(`ntxmi7`, `ntxsy7` 같은 7pt 설계)은 배치에 이미 들어 있으므로 그대로 쓰여요.
+
+## 디스크 캐시와 도장
+
+캐시 폴더 하나의 모습이에요.
+
+```python
+>>> for p in sorted(str(p.relative_to(root)) for p in root.rglob("*")):
+...     print(p)
+glyphs
+glyphs/ntx-Regular-tlf-ot1-49793cd5.json
+glyphs/ntx-Regular-tlf-t1-b09d39d5.json
+glyphs/ntxmi-3a9c9a33.json
+glyphs/ntxmi7-38871640.json
+glyphs/ntxsy-6157cea4.json
+glyphs/ntxsy7-daac6a7c.json
+serif
+serif/strings.jsonl
+```
+
+- **`<벌>/strings.jsonl`**: 조판한 문자열의 배치를 한 줄에 하나씩 적은 JSON Lines 파일이에요. 덧붙이기만 하므로 쓰다가 멈춰도 앞 줄들은 온전해요. 엔진을 만들 때 이 파일을 한 번 읽어 메모리에 올려요.
+- **`glyphs/<글꼴>-<해시>.json`**: 글꼴 하나의 윤곽선 `{코드: [ops, xy]}`이에요. 파일 이름은 글꼴 열쇠의 안전한 글자와 SHA-256의 앞 8자리예요. 새 글리프가 들면 파일 전체를 임시 파일에 쓰고 `os.replace`로 바꿔치기해요. 윤곽선은 두 벌(세리프, 산세리프)이 함께 써요.
+
+같은 폴더를 가리키는 엔진을 하나 더 만들면 TeX를 부르지 않고 같은 배치를 얻어요. 새 프로세스가 사용자 캐시를 여는 것과 같은 일이에요.
+
+```python
+>>> e2 = _text.Engine("serif", root, False)
+>>> len(e2.strings), e2.layout([r"$\alpha^2 + 1$"])[0].width, e2.tex_runs
+(27, 1716670, 0)
+```
+
+사용자의 캐시는 `~/Library/Caches/stardust/plot/<도장>/`이에요. 도장은 캐시의 내용을 바꿀 수 있는 것을 모두 SHA-256 하나에 넣은 값의 앞 16자리예요. 캐시 파일 형식의 판(`FORMAT`), 머리말과 매크로의 글 전부, 그리고 `latex`, `xelatex`, `dvisvgm` 실행 파일의 실제 경로, 크기, 수정 시각이에요. TeX Live를 올리거나 머리말을 고치면 도장이 바뀌어 빈 폴더에서 시작하고, 예전 캐시와 섞이지 않아요. 미리 구운 포맷 `<벌>.fmt`도 이 폴더에 있어요.
+
+사용자 캐시의 첫 묶음에는 문자열 몇 개(`_WARM`)가 더 붙어요. 대소문자 알파벳, 숫자, 문장 부호, 굵은 글자와 이탤릭, 그리스 문자, 자주 쓰는 수식 기호와 연산자 이름, 첨자 크기의 글자들이에요. 이 묶음에서 흔한 글리프의 윤곽선을 dvisvgm 한 번에 받아 두면, 그 뒤의 라벨은 대개 아는 글리프로만 되어 있어 TeX 조판 한 번으로 끝나요. 폴더의 `warm` 파일이 이 일을 했다는 표시예요.
+
+테스트는 녹음해 둔 캐시 폴더를 "얼린" 채로 써요(`frozen=True`). 얼린 캐시에 없는 문자열은 TeX를 부르는 대신 `FrozenMiss`가 나므로, TeX Live가 없는 기계에서도 그림 테스트가 같은 결과로 돌아요([검증](/internals/plot/verification/)).
+
+## 묶음 조판의 오류
+
+문자열들을 한 파일에 `\one{…}` 줄로 늘어놓으므로, 한 문자열이 이웃을 망가뜨릴 수 있어요. 닫히지 않은 `{`는 다음 줄들을 자기 인자로 삼키고, 숨기지 않은 `%`는 그 줄의 나머지, 곧 `\one`의 닫는 중괄호를 주석으로 지워요. 이 둘은 TeX에 넘기기 전에 막아요.
+
+```python
+# src/stardust/plot/_text.py
+def _check(s):
+    """A string that would swallow its neighbours in the batch is refused before TeX sees it."""
+    depth = 0
+    for m in re.finditer(r"\\.|[{}%]", s, re.S):
+        t = m.group()
+        if t == "%":
+            raise TypesetError(s, "an unescaped % (write \\%)")
+        if t == "{":
+            depth += 1
+        elif t == "}":
+            depth -= 1
+            if depth < 0:
+                break
+    if depth != 0:
+        raise TypesetError(s, "unbalanced braces")
+```
+
+정규식의 첫 갈래 `\\.`가 `\%`, `\{`, `\}`처럼 백슬래시로 숨긴 글자를 통째로 먹어서, 숨긴 글자는 세지 않아요. 나머지 오류는 TeX가 알려 줘요. `-halt-on-error`로 첫 오류에서 멈추면, 로그의 첫 `! ` 줄이 이유이고 로그의 `SDBOX` 줄 수가 실패한 문자열의 번호예요. 문자열 하나를 마칠 때마다 `SDBOX` 한 줄을 쓰기 때문이에요.
+
+```python
+# src/stardust/plot/_text.py
+def _log_error(log, strings):
+    """The TypesetError a failed run's log tells: TeX's first '! ' line, and the string TeX was
+    in (one box line is written per string done, so their count is the failing one's index)."""
+    text = log.read_text(errors="replace") if log.exists() else ""
+    m = re.search(r"^! (.*)$", text, re.M)
+    reason = "! " + m.group(1).strip() if m else "TeX stopped without an error message"
+    k = len(_BOX.findall(text))
+    return TypesetError(strings[k] if k < len(strings) else "?", reason)
+```
+
+```python
+>>> for s in ["50%", r"$\frac{1}{2$", r"$\foo$", "x_1"]:
+...     try:
+...         e.layout([s])
+...     except _text.TypesetError as err:
+...         print(err.string, "|", err.reason)
+50% | an unescaped % (write \%)
+$\frac{1}{2$ | unbalanced braces
+$\foo$ | ! Undefined control sequence.
+x_1 | ! Missing $ inserted.
+>>> try:
+...     e.layout(["first", r"$\foo$", "third"])
+... except _text.TypesetError as err:
+...     print(err.string)
+$\foo$
+>>> "first" in e.strings
+False
+```
+
+묶음 하나가 실패하면 그 묶음의 문자열은 하나도 캐시에 넣지 않아요. 배치를 파일에 쓰는 일은 두 길의 조판과 윤곽선 받기가 모두 끝난 뒤에만 하기 때문이에요(아래 `_typeset`의 마지막 `with open`). 그래서 `first`는 TeX가 문제없이 조판했지만 남지 않았어요. 고친 문자열로 다시 그리면 묶음 전체를 다시 조판해요.
+
+그림의 메서드에서는 이 오류가 그리는 메서드의 이름을 단 `ValueError`로 나요. TeX Live 프로그램이 없으면(`MissingTool`) `RuntimeError`예요. 글자를 주는 `xlabel` 같은 메서드는 조판을 기다리지 않으므로 오류는 그릴 때 나요([기본 개념](/api/plot/basics/)).
+
+```python
+>>> try:
+...     sd.plot.line([0, 1], [0, 1]).xlabel(r"$\foo$").to_svg()
+... except ValueError as err:
+...     print(err)
+to_svg(): LaTeX could not typeset '$\\foo$': ! Undefined control sequence.
+```
+
+## 두 길을 함께 돌리기
+
+캐시에 없는 문자열을 조판하는 `_typeset`이에요.
+
+```python
+    # src/stardust/plot/_text.py
+    def _typeset(self, need):
+        self.dir.mkdir(parents=True, exist_ok=True)
+        warm = self.dir / "warm"
+        if self.warm and not warm.exists():
+            need = list(need) + [s for s in _WARM if s not in need and s not in self.strings]
+            warm.touch()
+        latin = [s for s in need if not _CJK.search(s)]
+        hangul = [s for s in need if _CJK.search(s)]
+        with tempfile.TemporaryDirectory(prefix="sdplot_") as tmp:
+            tmp = pathlib.Path(tmp)
+            jobs = []
+            with ThreadPoolExecutor(2) as pool:
+                if latin:
+                    jobs.append((latin, pool.submit(self._pdflatex, latin, tmp / "pdf")))
+                if hangul:
+                    jobs.append((hangul, pool.submit(self._xelatex, hangul, tmp / "xe")))
+            done = [(strings, job.result()) for strings, job in jobs]
+            fonts = {}
+            for _, results in done:
+                for lay, page_fonts in results:
+                    for fi, code, _, _ in lay.glyphs:
+                        fonts.setdefault(page_fonts[fi].key, (page_fonts[fi], set()))[1].add(code)
+            self._calibrate(fonts, tmp)
+        with open(self.dir / "strings.jsonl", "a") as f:
+            for strings, results in done:
+                for s, (lay, _) in zip(strings, results):
+                    self.strings[s] = lay
+                    f.write(json.dumps({"s": s, **lay.to_json()}, ensure_ascii=False, separators=(",", ":")) + "\n")
+```
+
+두 길은 스레드 두 개에서 함께 돌아요. 스레드는 바깥 프로세스를 기다리는 동안 Python의 인터프리터 잠금을 놓으므로, 한글 라벨이 있는 그림의 조판 시간은 두 길의 합이 아니라 긴 쪽이에요. 조판이 끝나면 두 길에서 쓰인 (글꼴, 코드)를 모아 `_calibrate`에 넘기고, 거기서도 TFM 글꼴의 plain TeX 쪽과 시스템 글꼴의 plain XeTeX 쪽을 스레드 두 개로 함께 돌려요. 모든 일은 엔진의 잠금 안에서 일어나므로, 여러 스레드가 그림을 함께 그려도 같은 문자열을 두 번 조판하지 않아요.
+
+## 세 출력에서
+
+장면이 글자를 출력에 넘길 때는 글리프 하나가 `(글꼴 열쇠, 코드, 배율, x, y)`이고, 세 출력 모두 윤곽선을 (글꼴, 코드)마다 한 번만 꺼내요.
+
+| 출력 | 글리프를 쓰는 법 |
+|---|---|
+| SVG | 윤곽선을 `<defs>`에 `<path>`로 한 번 적고 글자마다 `<use>`와 배율·자리 행렬로 부른다 |
+| PDF | 윤곽선을 폼 XObject로 한 번 적고 글자마다 `cm`(행렬)과 `Do`로 부른다 |
+| PNG | 래스터라이저가 윤곽선을 채운다. 윤곽선을 C++에 넘길 바이트로 바꾼 것(`Engine.packed`)도 글리프마다 한 번 만들어 둔다 |
+
+자세한 것은 [장면과 세 출력](/internals/plot/scene-outputs/)과 [2D 래스터라이저](/internals/plot/raster/)에 있어요. 윤곽선이 경로이므로 PDF의 글자는 고르거나 찾을 수 없고, 대신 어느 보기 프로그램에서나 같은 모양이에요.
+
+```python
+>>> tmp.cleanup()
+```

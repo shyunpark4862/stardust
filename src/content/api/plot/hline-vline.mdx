@@ -1,0 +1,130 @@
+---
+kind: function
+title: hline, vline
+names: [hline, vline]
+group: 기본 그림
+order: 7
+signatures:
+  - "sd.plot.hline(y, /, *, color=None, width=None, style='-', label=None, **figure)"
+  - "sd.plot.vline(x, /, *, color=None, width=None, style='-', label=None, **figure)"
+  - "fig.hline(y, /, *, color=None, width=None, style='-', label=None)"
+  - "fig.vline(x, /, *, color=None, width=None, style='-', label=None)"
+summary: 칸을 가로지르는 기준선을 그려요. hline은 높이 y의 가로선, vline은 자리 x의 세로선이에요. 0의 기준선, 문턱값, 사건이 일어난 시점을 표시할 때 써요.
+params:
+  - name: y (hline), x (vline)
+    type: float
+    kind: positional-only
+    desc: "선의 자리(자료의 단위). 유한한 수 하나예요."
+  - name: color
+    type: 색 또는 None
+    kind: keyword-only
+    desc: "선의 색. None(기본값)이면 축 선과 같은 짙은 잉크색이에요. 팔레트의 색을 쓰지 않으므로 다른 층의 색 차례를 바꾸지 않아요."
+  - name: width
+    type: float 또는 None
+    kind: keyword-only
+    desc: "선의 굵기(pt). 0보다 커야 해요. None(기본값)이면 축 선과 같은 굵기예요."
+  - name: style
+    type: str
+    kind: keyword-only
+    desc: "선의 꼴. '-'(기본값), '--', ':', '-.'."
+  - name: label
+    type: str 또는 None
+    kind: keyword-only
+    desc: "범례에 적을 이름(LaTeX 원문). 기본값 None."
+  - name: "**figure"
+    type: 그림 옵션
+    kind: keyword-only
+    desc: "모듈 함수만 받아요. height, font, theme, palette(그림의 기본). width는 선의 굵기라서 그림의 너비로 쓸 수 없어요."
+returns:
+  type: Figure
+  desc: "모듈 함수는 새 그림을, 메서드는 선을 더한 그 그림(fig 자신)을 돌려줘요."
+raises:
+  - type: TypeError
+    desc: 자리가 수가 아닐 때(리스트, 문자열 등), 옵션의 형이 틀릴 때, 모르는 키워드를 줬을 때.
+  - type: ValueError
+    desc: 자리가 NaN이거나 무한대일 때, 색이나 style을 알 수 없을 때, width가 0 이하일 때.
+seeAlso: [basics, line, text-annotate, customize]
+---
+import PlotImage from '../../../components/fig/PlotImage.astro';
+
+## 무엇을 하나요
+
+`fig.hline(y)`는 칸의 왼쪽 끝에서 오른쪽 끝까지 높이 `y`의 가로선을, `fig.vline(x)`는 아래 끝에서 위 끝까지 자리 `x`의 세로선을 그려요. 선의 길이는 자료가 아니라 칸이 정하므로, 축의 범위가 바뀌어도 언제나 칸을 가로질러요.
+
+기준선은 자료가 아니라 표시라서, 색을 주지 않으면 팔레트의 색이 아니라 축 선과 같은 짙은 잉크색이고 굵기도 축 선과 같아요. 그래서 자료의 선보다 가늘게 보이고, 다음 층이 받을 팔레트의 색도 그대로예요.
+
+<Reference />
+
+## 한눈에 보기
+
+시계열에 0의 기준선, 문턱값, 사건의 시점을 표시해요.
+
+```python
+>>> import stardust as sd
+>>> rng = sd.random.default_rng(21)
+>>> steps = sd.stats.Normal().sample(120, rng=rng)
+>>> walk = sd.cumulative_sum(steps) * 0.3
+>>> day = sd.arange(120.0)
+>>> fig = sd.plot.line(day, walk, width=0.9)
+>>> fig = fig.hline(0.0).hline(2.0, style="--", color="C3", label="threshold")
+>>> fig = fig.vline(60.0, style=":", label="intervention")
+>>> fig = fig.xlabel("day").legend(loc="lower left")
+```
+
+<PlotImage name="hline-vline-walk" alt="120일 동안 오르내리는 파란 선. 0에 가는 검은 가로선, 2에 붉은 파선의 가로선, 60일에 검은 점선의 세로선이 칸을 가로지르고 왼쪽 아래에 범례가 있어요." caption="색을 주지 않은 기준선은 축 선과 같은 색, 같은 굵기예요. label을 준 기준선은 범례에 들어가요." />
+
+선 하나에 자리 하나예요. 여러 줄을 그으려면 메서드를 여러 번 불러요. 메서드는 `fig`를 돌려주므로 이어 쓸 수 있어요.
+
+```python
+>>> fig = sd.plot.line(day, walk)
+>>> for level in (-2.0, -1.0, 1.0, 2.0):
+...     fig = fig.hline(level, style=":", width=0.4)
+```
+
+## 축의 범위에 들어가요
+
+기준선의 자리는 축의 범위를 잡을 때 자료처럼 들어가요. 자료가 모두 0보다 커도 `hline(0.0)`을 그으면 세로축이 0까지 내려와 선이 보여요. 문턱값이 자료에서 멀면 그만큼 축이 늘어나니, 보이고 싶지 않다면 [`ylim`](/api/plot/customize/)으로 범위를 정해 주세요. 범위를 정하면 그 밖의 기준선은 그리지 않아요.
+
+함수 그림의 점근선이나 극한을 표시할 때도 써요.
+
+```python
+>>> fig = sd.plot.function(sd.tanh, -4, 4, label=r"$\tanh x$")
+>>> fig = fig.hline(1.0, style="--").hline(-1.0, style="--").vline(0.0, width=0.3)
+>>> fig = fig.xlabel(r"$x$").legend(loc="lower right")
+```
+
+<PlotImage name="hline-vline-tanh" alt="-4에서 4까지 tanh 곡선이 S자로 그려지고, 1과 -1에 검은 파선의 가로선, 0에 가는 세로선이 있는 그림" caption="tanh의 두 점근선 y = ±1을 hline으로, 원점의 세로선을 vline으로 그었어요." />
+
+## 로그 축
+
+로그 축에서는 0 이하의 자리를 나타낼 수 없어서, 그런 기준선은 그리지 않고 축의 범위에도 넣지 않아요. 에러는 아니에요.
+
+## 모듈 함수
+
+`sd.plot.hline(y)`와 `sd.plot.vline(x)`도 있어요. 다른 모듈 함수처럼 새 그림을 만들고 그 선 하나만 그려요. 대개는 메서드로 다른 그림 위에 얹어 써요.
+
+```python
+>>> fig = sd.plot.vline(1.5, label="cut").line([0, 1, 2, 3], [0, 1, 4, 9])
+>>> fig.shape
+(1, 1)
+```
+
+## 조심할 점
+
+- 자리에는 수 하나만 받아요. 리스트를 주면 `TypeError`예요.
+
+```python
+>>> sd.plot.line(day, walk).hline([1.0, 2.0])
+Traceback (most recent call last):
+    ...
+TypeError: hline(): 'y' must be an int or a float, not list
+```
+
+- 칸의 한 부분에만 긋는 선분은 없어요. 두 점을 [`line`](/api/plot/line/)으로 이으면 돼요.
+- 범주 축에서는 범주의 자리가 0, 1, 2, …라서 `vline(1.5)`가 둘째와 셋째 범주의 사이예요.
+
+## matplotlib을 아는 분께
+
+- `ax.axhline`, `ax.axvline`에 해당해요. 칸의 일부만 덮는 `xmin`, `xmax`는 없어요.
+- `plt.hlines(y, xmin, xmax)`처럼 여러 선분을 한 번에 긋는 함수는 없어요. 선분은 `line`으로, 여러 기준선은 메서드를 여러 번 불러 그려요.
+- 기본 색이 팔레트의 다음 색이 아니라 축 선과 같은 색이에요.

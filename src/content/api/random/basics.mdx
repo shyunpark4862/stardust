@@ -13,7 +13,7 @@ import ArrayFig from '../../../components/fig/ArrayFig.astro';
 
 ## 한눈에 보기
 
-`sd.random`은 **난수(무작위로 고른 수)**를 만드는 곳이에요. 주사위를 던지거나, 제비를 뽑거나, 데이터를 무작위로 섞거나, 시뮬레이션에 쓸 값을 마구 고르고 싶을 때 써요.
+`sd.random`은 <strong>난수(무작위로 고른 수)</strong>를 만드는 곳이에요. 주사위를 던지거나, 제비를 뽑거나, 데이터를 무작위로 섞거나, 시뮬레이션에 쓸 값을 마구 고르고 싶을 때 써요.
 
 쓰는 방법은 언제나 같아요. 먼저 [`default_rng`](/api/random/default_rng/)로 **생성기**(난수를 만들어 주는 객체)를 하나 만들고, 그 생성기의 메서드로 난수를 받아요.
 
@@ -329,5 +329,5 @@ array([True, True, True], dtype=bool)
 - **전역 함수와 전역 상태가 없어요.** `np.random.rand`, `np.random.seed`, `np.random.randint` 같은 모듈 함수에 해당하는 것이 없고, 언제나 `default_rng`로 만든 Generator에서 받아요.
 - **같은 시드라도 numpy와 값이 달라요.** 시드를 해석하는 방식은 numpy의 `default_rng`와 같지만 생성기의 종류가 달라서, `sd.random.default_rng(42).random()`과 `np.random.default_rng(42).random()`은 다른 수예요. numpy로 만든 결과를 stardust로 그대로 다시 만들 수는 없어요.
 - **numpy가 보장하지 않는 것을 보장해요.** 결과가 스레드 수와 상관없고, 한 호출을 둘로 나눠 불러도 앞의 값이 같아요.
-- `size=` 대신 **`shape`**이에요. `random`에서는 자리로만(`rng.random(3)`), `integers`·`choice`에서는 이름으로만(`shape=3`) 넘겨요. 생략하면 numpy 스칼라(`np.float64`)가 아니라 Python `float`·`int`를 돌려줘요.
+- `size=` 대신 <strong>`shape`</strong>이에요. `random`에서는 자리로만(`rng.random(3)`), `integers`·`choice`에서는 이름으로만(`shape=3`) 넘겨요. 생략하면 numpy 스칼라(`np.float64`)가 아니라 Python `float`·`int`를 돌려줘요.
 - 메서드는 `random`, `integers`, `choice`, `permutation`, `spawn`과 속성 `state`뿐이에요. `normal`, `uniform`, `exponential` 같은 분포 메서드는 없고, 분포의 난수는 `sd.stats`의 분포가 맡아요. 제자리에서 섞는 `shuffle`도 없어요([permutation](/api/random/permutation/) 참고).

@@ -457,7 +457,7 @@ Generator(Philox4x64-10)
 ## numpy를 아는 분께
 
 - `rng.spawn(n)`은 numpy의 `Generator.spawn`과 같은 방식으로 자식 시드를 정해요(`SeedSequence.spawn`과 같은 `spawn_key`). 하지만 생성기 종류가 달라서 **값은 numpy와 달라요.**
-- 상태는 `rng.bit_generator.state`가 아니라 **`rng.state`**예요. 키도 numpy와 달라서(`entropy`, `spawn_key`, `n_children_spawned`, `position`) 서로 바꿔 넣을 수 없어요.
+- 상태는 `rng.bit_generator.state`가 아니라 <strong>`rng.state`</strong>예요. 키도 numpy와 달라서(`entropy`, `spawn_key`, `n_children_spawned`, `position`) 서로 바꿔 넣을 수 없어요.
 - **`copy.copy`가 numpy와 달라요.** numpy의 `copy.copy(rng)`는 내부 상태를 원본과 함께 쓰는 얕은 복사라서 원본과 이어지는 값을 내지만, stardust의 `copy.copy`는 `deepcopy`처럼 **독립된 복사본**을 만들어 원본과 같은 값을 다시 내요.
 - `SeedSequence`, `bit_generator`, `jumped()`, `advance()`는 없어요. 시드는 `default_rng`에 정수나 정수 시퀀스로 주고, 수열의 다른 위치로 가려면 `state`의 `position`을 바꿔요.
 - numpy처럼 `default_rng([42, 0])`은 `default_rng(42)`와 같은 수열이에요.

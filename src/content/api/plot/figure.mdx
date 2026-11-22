@@ -1,0 +1,229 @@
+---
+kind: function
+title: Figure와 칸
+names: [Figure, grid, Figure.width, Figure.height, Figure.shape, Figure.axes, Figure.size]
+group: 기본 개념
+order: 2
+signatures:
+  - "sd.plot.Figure(*, width=89.0, height=None, nrows=1, ncols=1, font='serif', theme='paper', palette='jco')"
+  - "fig.size(width, height=None, /)"
+  - "sd.plot.grid(figures, /, *, nrows=None, ncols=None, labels=None, width=None, height=None)"
+summary: 그림 한 장을 이루는 Figure 객체와 그 안의 칸을 다뤄요. 빈 그림을 칸 여럿으로 만들고 fig[i, j]로 칸을 골라 그리거나, 이미 그린 그림들을 grid로 모아 A, B, C 이름이 붙은 한 장으로 만들어요. 그림의 크기(mm)와 모양을 읽고 바꾸는 속성도 여기 있어요.
+params:
+  - name: width
+    type: float
+    kind: keyword-only
+    desc: "그림 전체의 바깥 너비(mm). 0보다 커야 해요. 기본값 89.0. grid에서는 None(기본값)이면 첫 그림의 너비에 열의 수를 곱한 값이에요."
+  - name: height
+    type: float 또는 None
+    kind: keyword-only
+    desc: "그림 전체의 바깥 높이(mm). None(기본값)이면 칸의 그림 영역이 가로 4, 세로 3의 비가 되게 배치가 정해요."
+  - name: nrows, ncols
+    type: int
+    kind: keyword-only
+    desc: "칸의 줄 수와 열 수(1 이상). Figure의 기본값은 1과 1이에요. grid에서 None(기본값)이면 그림의 수로 정해요."
+  - name: font
+    type: str
+    kind: keyword-only
+    desc: "글꼴 벌. 'serif'(기본값)나 'sans'."
+  - name: theme
+    type: str
+    kind: keyword-only
+    desc: "테마. 'paper'(기본값), 'boxed', 'grid'."
+  - name: palette
+    type: str
+    kind: keyword-only
+    desc: "범주 색의 팔레트 이름. 'jco'(기본값), 'tableau', 'deep', 'bright', 'okabe-ito', 'npg', 'aaas', 'lancet', 'nejm'."
+  - name: i, j
+    type: int
+    kind: positional-only
+    desc: "fig[i, j]의 줄과 열 번호. 0부터 세고 음수는 끝에서부터예요. 한 줄이나 한 열로 된 그림은 fig[k] 하나로도 골라요."
+  - name: figures
+    type: Figure의 리스트나 튜플
+    kind: positional-only
+    desc: "grid로 모을 그림들. 칸이 여럿인 그림은 그 칸이 모두 차례로 들어가고, fig[i, j]로 고른 칸은 그 칸 하나가 들어가요."
+  - name: labels
+    type: "'A', 'a', str의 시퀀스, 또는 None"
+    kind: keyword-only
+    desc: "grid의 칸 이름. 'A'는 A, B, C…, 'a'는 a, b, c…를 칸의 왼쪽 위에 굵게 붙여요. 문자열을 칸의 수만큼 주면 그 글자를 붙여요(LaTeX 원문). None(기본값)이면 붙이지 않아요."
+returns:
+  type: Figure
+  desc: "Figure(...)와 grid는 새 그림, fig[i, j]는 그 칸을 가리키는 같은 그림의 보기, size는 fig 자신이에요. width·height는 float(mm), shape는 (줄 수, 열 수), axes는 칸마다의 보기를 줄 순서로 담은 튜플이에요."
+raises:
+  - type: TypeError
+    desc: 크기가 수가 아니거나, nrows·ncols가 정수가 아니거나, 칸 번호가 정수가 아닐 때, grid의 figures가 Figure의 시퀀스가 아니거나 비었을 때.
+  - type: ValueError
+    desc: 크기가 0 이하이거나 유한하지 않을 때, nrows·ncols가 1보다 작을 때, font·theme·palette의 이름이 틀렸을 때, grid의 nrows × ncols가 그림의 칸 수보다 작을 때, labels가 'A', 'a', 칸 수만큼의 문자열 가운데 하나가 아닐 때.
+  - type: IndexError
+    desc: 그림에 없는 칸을 고를 때, 줄과 열이 둘 다 여럿인 그림을 번호 하나로 고를 때, 칸의 보기에서 다시 칸을 고를 때.
+seeAlso: [basics, customize, export, style, diagnostics, pairs]
+---
+import Callout from '../../../components/Callout.astro';
+import PlotImage from '../../../components/fig/PlotImage.astro';
+
+## 한눈에 보기
+
+`Figure`는 그림 한 장이에요. 그림은 칸들로 되어 있고, 칸 하나가 축 한 벌과 그 위에 겹친 층들을 가져요. 그림 함수(`sd.plot.line` 등)는 칸 하나짜리 그림을 만들고, 칸이 여럿인 그림은 `Figure(nrows=, ncols=)`로 빈 그림을 만든 뒤 `fig[i, j]`로 칸을 골라 그려요.
+
+```python
+>>> import math
+>>> import stardust as sd
+>>> x = sd.linspace(0, 2 * math.pi, 200)
+>>> fig = sd.plot.Figure(width=140, nrows=2, ncols=2)
+>>> _ = fig[0, 0].line(x, sd.sin(x)).title(r"$\sin x$")
+>>> _ = fig[0, 1].line(x, sd.cos(x)).title(r"$\cos x$")
+>>> _ = fig[1, 0].line(x, sd.sin(2 * x)).title(r"$\sin 2x$")
+>>> _ = fig[1, 1].line(x, sd.cos(2 * x)).title(r"$\cos 2x$")
+>>> fig.shape
+(2, 2)
+```
+
+<PlotImage name="figure-cells" alt="2 × 2 칸의 그림. 위 줄은 sin x와 cos x, 아래 줄은 sin 2x와 cos 2x의 곡선이고 칸마다 제목이 있음" caption="2줄 2열의 칸에 곡선을 하나씩 그렸어요. 같은 열의 칸은 왼쪽 축이 한 줄에 서고, 같은 줄의 칸은 그림 영역의 위아래가 맞아요." />
+
+칸을 고른 `fig[0, 0]`의 메서드도 그 보기 자신을 돌려줘요. 여기서는 셸에 그 repr이 찍히지 않게 `_`에 받았어요([그림의 기본](/api/plot/basics/#겹치기-같은-이름의-메서드)).
+
+<Reference />
+
+## Figure 만들기
+
+`sd.plot.Figure()`는 아무것도 그리지 않은 그림을 만들어요. 옵션은 모두 키워드로 주고, 그림 함수의 그림 옵션과 같은 뜻이에요.
+
+| 옵션 | 기본값 | 뜻 |
+|---|---|---|
+| `width` | `89.0` | 바깥 너비(mm) |
+| `height` | `None` | 바깥 높이(mm). `None`이면 배치가 정해요 |
+| `nrows`, `ncols` | `1`, `1` | 칸의 줄 수와 열 수 |
+| `font` | `'serif'` | 글꼴 벌 |
+| `theme` | `'paper'` | 테마 |
+| `palette` | `'jco'` | 범주 색의 팔레트 |
+
+`font`, `theme`, `palette`는 [테마, 팔레트, 글꼴](/api/plot/style/)에서 그림으로 봐요. 빈 그림에 메서드로 그리는 것은 모듈 함수와 같아요. `sd.plot.line(x, y, palette="npg")`와 `sd.plot.Figure(palette="npg").line(x, y)`는 같은 그림이에요.
+
+```python
+>>> a = sd.plot.Figure(palette="npg").line([0, 1], [0, 1])
+>>> b = sd.plot.line([0, 1], [0, 1], palette="npg")
+>>> a.to_svg() == b.to_svg()
+True
+```
+
+빈 `Figure`로 시작하면 좋은 때가 둘 있어요. 칸이 여럿인 그림을 만들 때, 그리고 `width=`가 선의 굵기를 뜻하는 함수(`line`, `function` 등)로 그림의 너비를 정하고 싶을 때예요([그림 옵션](/api/plot/basics/#그림-옵션-figure)).
+
+## 크기: width, height, size
+
+그림의 크기는 mm로 잰 바깥 크기예요. 저장한 PDF와 SVG의 크기가 정확히 이 값이고, 여백과 칸의 크기는 그 안에서 글자의 크기를 재서 배치가 풀어요. 바깥이 고정이라 라벨이 길어지면 그림 영역이 줄어들어요.
+
+`height=None`이면 칸의 그림 영역(축이 둘러싼 사각형)이 가로 4, 세로 3이 되게 높이가 정해져요. 바깥 높이는 거기에 축 이름과 눈금 숫자, 제목의 자리를 더한 값이라, 4 : 3보다 조금 높아요. `fig.height`는 그 값을 알려 줘요.
+
+```python
+>>> fig = sd.plot.line([0, 1], [0, 1])
+>>> fig.width
+89.0
+>>> round(fig.height, 2)
+67.06
+>>> fig = sd.plot.line([0, 1], [0, 1], height=50)
+>>> fig.height
+50.0
+```
+
+<Callout type="note" title="height를 읽으면 배치를 해요">
+
+높이를 주지 않은 그림의 `fig.height`는 배치를 마쳐야 알 수 있어서, 읽는 순간 글자를 조판하고 여백을 풀어요(TeX가 필요해요). 한 번 푼 배치는 그림을 고치기 전까지 다시 쓰므로, 그 뒤의 내보내기가 그만큼 빨라져요.
+
+</Callout>
+
+다 그린 뒤 크기를 바꾸려면 `fig.size(width, height=None)`이에요. 높이를 빼면 다시 배치가 정해요. 실을 곳의 단 너비가 정해진 뒤에 고칠 때 쓰기 좋아요.
+
+```python
+>>> fig = fig.size(183)
+>>> fig.width, round(fig.height, 2)
+(183.0, 137.58)
+>>> fig = fig.size(120, 60)
+>>> fig.width, fig.height
+(120.0, 60.0)
+```
+
+학술지는 그림의 너비를 단 너비로 정하는 일이 많아요. 한 단이 89 mm 안팎, 두 단을 걸치는 그림이 183 mm 안팎이에요.
+
+## 칸 고르기: fig[i, j]
+
+`fig[i, j]`는 i번 줄, j번 열의 칸을 가리키는 보기예요. 번호는 0부터 세고 음수는 끝에서부터예요. 보기의 메서드는 그 칸에 그리고 그 칸을 고쳐요. 보기는 원래 그림과 같은 그림이라, 칸에 그린 것은 `fig`를 내보낼 때 함께 나와요.
+
+```python
+>>> fig = sd.plot.Figure(nrows=2, ncols=3)
+>>> _ = fig[-1, -1].scatter([1, 2, 3], [3, 1, 2]).xlabel(r"$x$")
+>>> fig[1, 3]
+Traceback (most recent call last):
+    ...
+IndexError: index 3 is out of bounds for a figure of 2 x 3 cells
+```
+
+한 줄이나 한 열로 된 그림은 번호 하나로 골라요. 줄과 열이 둘 다 여럿이면 번호 둘이 있어야 해요.
+
+```python
+>>> row = sd.plot.Figure(width=183, ncols=3)
+>>> _ = row[2].line([0, 1], [1, 0])
+>>> fig[0]
+Traceback (most recent call last):
+    ...
+IndexError: a figure of 2 x 3 cells takes two indices
+```
+
+칸을 고르지 않고 그림에 바로 부른 메서드는 첫 칸(`fig[0, 0]`)에 그려요. 칸이 하나인 그림에서 `fig.line(...)`이 그 칸에 그리는 것과 같은 규칙이에요.
+
+`fig.axes`는 칸마다의 보기를 줄 순서(왼쪽에서 오른쪽, 위에서 아래)로 담은 튜플이에요. 칸을 차례로 돌며 그릴 때 편해요. `fig.shape`는 (줄 수, 열 수)예요. 보기에서 읽어도 그림 전체의 값이에요.
+
+```python
+>>> fig = sd.plot.Figure(width=183, ncols=3)
+>>> for k, cell in enumerate(fig.axes):
+...     cell = cell.line(x, sd.sin((k + 1) * x)).title(f"$k = {k + 1}$")
+>>> len(fig.axes), fig.shape, fig[1].shape
+(3, (1, 3), (1, 3))
+```
+
+칸마다 축은 따로예요. 범위와 눈금은 칸의 자료로 저마다 잡혀요. 칸끼리 범위를 맞추려면 칸마다 `xlim`, `ylim`을 같게 줘요([제목, 축, 범례](/api/plot/customize/)).
+
+## grid: 그린 그림을 모으기
+
+`sd.plot.grid`는 따로 그린 그림들을 칸으로 모아 새 그림 한 장을 만들어요. 논문의 "그림 1(A), 1(B)"처럼 칸에 이름을 붙이는 일도 해요. 함수, 히스토그램, 산점도처럼 종류가 다른 그림을 한 장에 모을 때 써요.
+
+```python
+>>> rng = sd.random.default_rng(7)
+>>> z = sd.stats.Normal(mu=0.0, sigma=1.0).sample(300, rng=rng)
+>>> a = sd.plot.function(sd.special.gamma, -4, 4).xlabel(r"$x$").ylabel(r"$\Gamma(x)$")
+>>> b = sd.plot.histogram(z, bins=20).xlabel(r"$z$")
+>>> c = sd.plot.scatter(z[:60], z[60:120]).xlabel(r"$u$").ylabel(r"$v$")
+>>> fig = sd.plot.grid([a, b, c], ncols=3, labels="a", width=183)
+>>> fig.shape
+(1, 3)
+```
+
+<PlotImage name="figure-grid" alt="한 줄에 칸 셋. a는 감마 함수의 곡선, b는 정규분포를 닮은 히스토그램, c는 흩어진 점들이고 칸마다 왼쪽 위에 굵은 a, b, c" caption="따로 그린 세 그림을 한 줄로 모으고 a, b, c를 붙였어요. 칸마다 축 이름과 눈금은 원래 그림의 것 그대로예요." />
+
+- **칸의 수**: 칸이 여럿인 그림은 그 칸이 모두 차례로 들어가고, `fig[i, j]`로 고른 칸은 그 칸 하나가 들어가요.
+- **줄과 열**: 둘 다 주지 않으면 칸이 넷 이하일 때 2열(칸이 하나면 1열), 다섯 이상일 때 3열이고, 줄은 필요한 만큼이에요. 하나만 주면 다른 하나를 맞춰요. 남는 자리는 빈칸이에요.
+- **크기**: `width=None`이면 첫 그림의 너비에 열의 수를 곱해요. `height=None`이면 배치가 정해요.
+- **글꼴과 테마**: 첫 그림의 `font`, `theme`, `palette`를 따라요. 층의 색은 저마다의 그림에서 이미 정해졌으므로 그대로예요.
+- **칸 이름**: `labels="A"`는 A, B, C…, `"a"`는 a, b, c…예요. 문자열의 목록을 칸의 수만큼 주면 그 글자를 붙여요.
+- **기록**: 모은 그림들의 `fig.info`(함수 그림의 기록)를 이어 붙여 가져요.
+
+```python
+>>> sd.plot.grid([a, b, c]).shape
+(2, 2)
+>>> sd.plot.grid([a, b, c], labels=["(i)", "(ii)"])
+Traceback (most recent call last):
+    ...
+ValueError: grid(): 'labels' must be 'A', 'a' or 3 strings
+```
+
+`grid`는 칸 여럿을 스스로 만드는 함수라서 같은 이름의 메서드가 없어요. [`diagnostics`](/api/plot/diagnostics/)와 [`pairs`](/api/plot/pairs/)도 그래요.
+
+## matplotlib을 아는 분께
+
+| matplotlib | sd.plot |
+|---|---|
+| `fig, axes = plt.subplots(2, 2)` | `fig = sd.plot.Figure(nrows=2, ncols=2)` |
+| `axes[0, 1].plot(...)` | `fig[0, 1].line(...)` |
+| `figsize=(7, 5)`(인치) | `width=`, `height=`(mm) |
+| `fig.set_size_inches(...)` | `fig.size(width, height)` |
+| `sharex=True` | 없어요. 칸마다 `xlim`을 같게 줘요 |
+| 따로 그린 그림을 모으는 함수가 없어요 | `sd.plot.grid([...], labels="A")`(R ggpubr의 `ggarrange`와 비슷해요) |

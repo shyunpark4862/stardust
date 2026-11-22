@@ -1,0 +1,168 @@
+---
+kind: function
+title: bar
+names: [bar]
+group: 기본 그림
+order: 3
+signatures:
+  - "sd.plot.bar(x, height, /, *, data=None, group=None, color=None, width=0.8, horizontal=False, label=None, **figure)"
+  - "fig.bar(x, height, /, *, data=None, group=None, color=None, width=0.8, horizontal=False, label=None)"
+summary: 범주나 수의 자리마다 0에서 값까지의 막대를 그려요. group을 주면 무리의 막대가 한 자리에 나란히 서고, horizontal=True면 가로 막대예요.
+params:
+  - name: x
+    type: 문자열의 시퀀스, 수의 시퀀스, ndarray, Series, 또는 열 이름
+    kind: positional-only
+    desc: "막대의 자리. 문자열이면 범주 축(처음 나온 차례로 0, 1, 2, …의 자리), 수면 그 값의 자리예요. 1차원이고 height와 길이가 같아야 해요."
+  - name: height
+    type: 수의 시퀀스, ndarray, numpy 배열, Series, 또는 열 이름
+    kind: positional-only
+    desc: "막대의 값. 막대는 0에서 이 값까지예요. 음수면 아래로(가로 막대면 왼쪽으로) 뻗어요."
+  - name: data
+    type: DataFrame 또는 None
+    kind: keyword-only
+    desc: "주면 x, height, group에 열 이름을 쓸 수 있어요. 기본값 None."
+  - name: group
+    type: 열 이름, 시퀀스, 또는 None
+    kind: keyword-only
+    desc: "막대를 무리로 나누는 값. 무리마다 팔레트의 색을 받고, 한 자리의 막대들이 width 안에 나란히 서요. color, label과 함께 줄 수 없어요."
+  - name: color
+    type: 색 또는 None
+    kind: keyword-only
+    desc: "막대의 색. 채움은 이 색을 옅게 한 것이고 테두리가 이 색이에요. None(기본값)이면 칸의 팔레트에서 다음 색을 받아요."
+  - name: width
+    type: float
+    kind: keyword-only
+    desc: "한 자리의 막대가 차지하는 너비(자료의 단위). 범주 축에서는 이웃 범주의 간격이 1이에요. 0보다 커야 하고 기본값 0.8이에요. 무리가 k개면 막대 하나는 width/k예요."
+  - name: horizontal
+    type: bool
+    kind: keyword-only
+    desc: "True면 가로 막대예요. x가 세로 축의 자리, height가 가로 축의 값이 돼요. 기본값 False."
+  - name: label
+    type: str 또는 None
+    kind: keyword-only
+    desc: "범례에 적을 이름(LaTeX 원문). 기본값 None."
+  - name: "**figure"
+    type: 그림 옵션
+    kind: keyword-only
+    desc: "모듈 함수만 받아요. height, font, theme, palette(그림의 기본). width는 막대의 너비라서 그림의 너비로 쓸 수 없어요."
+returns:
+  type: Figure
+  desc: "모듈 함수는 새 그림을, 메서드는 막대를 더한 그 그림(fig 자신)을 돌려줘요."
+raises:
+  - type: TypeError
+    desc: data 없이 문자열 하나를 열 이름으로 줬을 때, data가 DataFrame이 아닐 때, height가 수가 아닐 때, horizontal이 bool이 아닐 때, 모르는 키워드를 줬을 때.
+  - type: ValueError
+    desc: x와 height의 길이가 다를 때, 없는 열 이름일 때, group의 길이가 자료와 다를 때, group과 color나 label을 함께 줬을 때, 색을 알 수 없을 때, width가 0 이하일 때, 범주가 있는 축에 수의 x를 줬을 때.
+seeAlso: [basics, errorbar, histogram, boxplot, compare]
+---
+import PlotImage from '../../../components/fig/PlotImage.astro';
+
+## 무엇을 하나요
+
+`bar(x, height)`는 자리 `x`마다 0에서 `height`까지의 막대를 세워요. `x`가 문자열이면 범주 축이에요. 범주는 처음 나온 차례로 왼쪽부터 놓이고, 눈금 라벨이 범주의 이름이에요.
+
+막대는 그 색을 옅게 한 채움에 그 색의 가는 테두리로 그려요. 값의 축은 0에서 시작해요. 막대의 바닥이 0이므로 0 아래로 여유를 두지 않아요.
+
+<Reference />
+
+## 한눈에 보기
+
+```python
+>>> import stardust as sd
+>>> fig = sd.plot.bar(["control", "low", "mid", "high"], [3.1, 4.2, 6.5, 7.9])
+>>> fig = fig.xlabel("dose").ylabel("response (a.u.)")
+```
+
+<PlotImage name="bar-basic" alt="control, low, mid, high 네 범주의 파란 막대가 3.1, 4.2, 6.5, 7.9 높이로 커지는 막대그림. 값의 축이 0에서 시작해요." caption="범주 축의 막대. 범주는 주어진 차례로 놓이고 값의 축은 0에서 시작해요." />
+
+## 무리를 나란히: group
+
+`group=`을 주면 한 자리에 무리의 막대가 나란히 서요. 무리마다 팔레트의 색을 받고 범례가 생겨요. 한 자리의 막대들이 모두 합쳐 `width` 안에 들어가요.
+
+```python
+>>> doses = ["control", "low", "mid", "high"] * 2
+>>> response = [3.1, 4.2, 6.5, 7.9, 2.2, 3.9, 5.1, 8.8]
+>>> year = ["2024"] * 4 + ["2025"] * 4
+>>> fig = sd.plot.bar(doses, response, group=year)
+>>> fig = fig.ylabel("response (a.u.)").legend(loc="upper left")
+```
+
+<PlotImage name="bar-group" alt="네 범주마다 2024년(파랑)과 2025년(노랑) 막대 두 개가 나란히 선 막대그림. 왼쪽 위에 범례가 있어요." caption="group의 무리 둘이 한 범주의 자리에 나란히 섰어요. 범주는 처음 나온 차례로, 무리도 처음 나온 차례로 놓여요." />
+
+긴 꼴의 표라면 `data=`와 열 이름으로 같은 그림을 그려요.
+
+```python
+>>> df = sd.frame.DataFrame({"dose": doses, "response": response, "year": year})
+>>> fig = sd.plot.bar("dose", "response", data=df, group="year")
+```
+
+쌓은 막대는 없어요. 무리의 막대는 언제나 나란히 서요.
+
+## 수의 자리와 음수
+
+`x`가 수면 막대는 그 값의 자리에 서요. 축은 보통의 수 축이고, `width`도 그 축의 단위예요. `height`가 음수인 막대는 0에서 아래로 뻗어요.
+
+```python
+>>> years = [float(y) for y in range(2011, 2025)]
+>>> anomaly = [-0.12, -0.08, 0.05, -0.02, 0.18, 0.31, 0.12, -0.04, 0.22, 0.35, 0.09, 0.27, 0.41, 0.52]
+>>> fig = sd.plot.bar(years, anomaly, width=0.7).hline(0.0, width=0.5)
+>>> fig = fig.xlabel("year").ylabel(r"anomaly ($^\circ$C)")
+```
+
+<PlotImage name="bar-signed" alt="2011년부터 2024년까지 해마다 막대 하나. 몇 해는 0 아래로, 나머지는 0 위로 뻗고 0에 가는 가로선이 있어요." caption="음수 값의 막대는 0에서 아래로 뻗어요. 0의 기준선은 hline으로 더했어요." />
+
+값이 모두 양수이거나 모두 음수일 때만 축이 0에서 바로 시작하고, 부호가 섞이면 양쪽에 조금씩 여유를 둬요.
+
+## 가로 막대: horizontal
+
+`horizontal=True`면 `x`가 세로 축의 자리, `height`가 가로 축의 값이에요. 이름이 긴 범주는 가로 막대가 읽기 좋아요. 범주는 위에서 아래가 아니라 아래에서 위로 0, 1, 2, …의 자리에 놓이므로, 위에서부터 읽히게 하려면 거꾸로 줘요.
+
+```python
+>>> names = ["linear algebra", "special functions", "statistics", "optimization", "plotting"]
+>>> pages = [41, 63, 88, 37, 52]
+>>> fig = sd.plot.bar(names[::-1], pages[::-1], horizontal=True, color="C3")
+>>> fig = fig.xlabel("pages")
+```
+
+## 막대 위에 오차 막대
+
+범주 축의 자리는 0, 1, 2, …예요. 그래서 [`errorbar`](/api/plot/errorbar/)에 그 자리의 수를 주면 막대 위에 오차를 얹을 수 있어요. 아래는 무리마다 표본 6개의 평균과 표준오차예요.
+
+```python
+>>> rng = sd.random.default_rng(11)
+>>> N = sd.stats.Normal()
+>>> means, sems = [], []
+>>> for mu in (3.0, 4.2, 6.1):
+...     s = N.sample(6, rng=rng) * 0.9 + mu
+...     means.append(float(sd.mean(s)))
+...     sems.append(float(sd.stats.sem(s)))
+>>> fig = sd.plot.bar(["A", "B", "C"], means, width=0.6)
+>>> fig = fig.errorbar([0, 1, 2], means, yerr=sems, color="black")
+```
+
+`errorbar`는 수의 `x`를 받지만 범주 축에 그 자리의 수로 놓여요. 반대로, 범주 축이 생긴 칸에 수의 `x`로 막대를 더하면 어느 범주인지 알 수 없으므로 `ValueError`예요.
+
+```python
+>>> fig.bar([0, 1, 2], means)
+Traceback (most recent call last):
+    ...
+ValueError: bar(): 'x' must be labels: the axis already has categories
+```
+
+같은 칸에 범주의 막대를 더 부르면 새 범주는 축의 끝에 붙고, 있는 범주는 제자리에 그려요.
+
+## 로그 축
+
+값의 축을 [로그 척도](/api/plot/customize/)로 바꾸면 0을 그릴 수 없으므로 막대의 바닥이 축의 아래 끝이에요. 0 이하의 값의 막대는 그리지 않아요.
+
+## 조심할 점
+
+- `width`는 막대의 너비(자료의 단위)예요. 선의 굵기나 그림의 너비가 아니에요.
+- 수를 세어 막대로 보이려면 [`histogram`](/api/plot/histogram/)을 써요. 구간과 높이를 `sd.histogram`으로 계산해 줘요.
+- 무리 사이의 검정 결과(괄호와 p값)를 막대 위에 얹으려면 [`Figure.compare`](/api/plot/compare/)를 써요.
+
+## matplotlib을 아는 분께
+
+- `plt.bar`와 `plt.barh`가 `bar(..., horizontal=True)` 하나예요.
+- 무리의 막대를 나란히 세우려고 자리를 손으로 옮길 필요가 없어요. `group=`이 나눠 줘요. `bottom=`으로 쌓는 막대는 없어요.
+- 막대의 채움은 색을 옅게 한 것이고 테두리가 그 색이에요. ggplot2의 `geom_col`과 비슷하게 `x`가 문자열이면 범주 축이에요.
