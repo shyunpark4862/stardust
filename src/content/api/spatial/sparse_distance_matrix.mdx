@@ -1,0 +1,168 @@
+---
+title: sparse_distance_matrix
+names: [KDTree.sparse_distance_matrix]
+group: KD 트리
+order: 7
+signatures:
+  - "tree.sparse_distance_matrix(other, max_distance, /, *, p=2.0)"
+summary: 두 트리 사이에서 거리가 max_distance 이하인 짝의 거리만 담은 희소 행렬을 만들어요. 결과는 sd.sparse.csr_array (self.n, other.n)이고, 거리가 0인 짝도 저장된 0으로 들어 있어요. 이웃 그래프를 희소 행렬 연산에 넘길 때 써요.
+params:
+  - name: other
+    type: KDTree
+    kind: positional-only
+    desc: "열 쪽 점들을 담은 트리. 차원 m이 이 트리와 같아야 해요. 이 트리 자신을 줘도 돼요."
+  - name: max_distance
+    type: float
+    kind: positional-only
+    desc: "담을 짝의 최대 거리. 거리가 이 값 이하인 짝(경계 포함)을 담아요. 0 이상의 수 하나나 inf예요."
+  - name: p
+    type: float
+    kind: keyword-only
+    desc: "Minkowski 거리의 차수. 1 이상의 실수나 inf예요. 2(기본값)는 유클리드, 1은 맨해튼(cityblock), inf는 체비쇼프 거리예요."
+returns:
+  type: sd.sparse.csr_array
+  desc: "모양 (self.n, other.n)의 float64 희소 행렬. (i, j) 자리에 이 트리의 점 i와 other의 점 j 사이의 거리가 저장돼요. 거리가 0인 짝도 저장된 0이에요. 행 안의 열 번호는 오름차순이고 중복이 없어요."
+raises:
+  - type: TypeError
+    desc: "other가 KDTree가 아닐 때, max_distance가 수 하나가 아닐 때, p가 수가 아닐 때, 옵션을 자리로 줄 때, 없는 인자(output_type 등)를 줄 때."
+  - type: ValueError
+    desc: "other의 m이 이 트리와 다를 때, max_distance가 음수나 NaN일 때, p가 1보다 작거나 NaN일 때."
+  - type: MemoryError
+    desc: "찾은 짝의 목록이 이 컴퓨터의 물리 메모리를 넘을 만큼 커질 때. 그 크기에 이르면 찾기를 멈추고 알려 줘요."
+seeAlso: [KDTree, query_ball_tree, query_pairs, count_neighbors, results, radius_neighbors]
+---
+import Callout from '../../../components/Callout.astro';
+
+## 한눈에 보기
+
+모든 짝의 거리를 담은 거리 행렬([`cdist`](/api/spatial/cdist/)의 결과)은 점이 많으면 너무 커요. 점 10만 개끼리면 원소가 100억 개예요. 그런데 많은 계산에서 필요한 것은 가까운 짝의 거리뿐이에요. `sparse_distance_matrix`는 거리가 `max_distance` 이하인 짝만 담은 희소 행렬을 만들어요. 담기지 않은 자리는 "멀어서 담지 않음"이라는 뜻이에요.
+
+```python
+>>> import stardust as sd
+>>> a = sd.spatial.KDTree([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]])
+>>> b = sd.spatial.KDTree([[0.0, 0.0], [0.5, 0.5], [3.0, 3.0]])
+>>> S = a.sparse_distance_matrix(b, 1.0)
+>>> S
+<csr_array of shape (4, 3), float64, 7 stored elements>
+>>> S.toarray()
+array([[               0.0, 0.7071067811865476,                0.0],
+       [               1.0, 0.7071067811865476,                0.0],
+       [               1.0, 0.7071067811865476,                0.0],
+       [               0.0, 0.7071067811865476,                0.0]], dtype=float64)
+```
+
+행은 `a`의 점, 열은 `b`의 점이에요. (1, 0)의 1.0은 `a`의 1번 점과 `b`의 0번 점 사이의 거리예요. `b`의 2번 점 (3, 3)은 어느 점과도 1보다 멀어서 열 전체가 비어 있어요.
+
+<Reference />
+
+## 결과는 CSR 희소 행렬이에요
+
+결과는 [`sd.sparse.csr_array`](/api/sparse/csr_array/)예요. 행마다 저장된 열 번호와 값을 `indptr`, `indices`, `data` 세 배열로 담아요. 행 안의 열 번호는 오름차순이고 중복이 없는 표준 꼴이라 바로 희소 행렬 연산에 쓸 수 있어요.
+
+```python
+>>> S.indptr
+array([0, 2, 4, 6, 7], dtype=int64)
+>>> S.indices
+array([0, 1, 0, 1, 0, 1, 1], dtype=int64)
+```
+
+다른 희소 형식이 필요하면 `asformat`으로 바꿔요.
+
+```python
+>>> S.asformat("coo")
+<coo_array of shape (4, 3), float64, 7 stored elements>
+```
+
+`S`는 보통의 희소 배열이라 값을 고쳐도 돼요. 트리나 다른 결과에는 영향이 없어요.
+
+## 거리가 0인 짝은 저장된 0이에요
+
+위의 `S.toarray()`에서 (0, 0)은 0.0이에요. `a`의 0번 점과 `b`의 0번 점이 같은 자리라 거리가 0이기 때문이에요. 그런데 (0, 2)도 0.0으로 보여요. 이것은 멀어서 담지 않은 자리예요. 밀집 배열로 펼치면 둘이 구별되지 않지만, 희소 행렬 안에서는 다르게 담겨 있어요.
+
+- (0, 0)은 **저장된 0**이에요. 반경 안의 짝이라 자리가 있고 값이 0이에요.
+- (0, 2)는 저장되지 않은 자리예요. 반경 밖의 짝이에요.
+
+그래서 저장된 원소의 수 `nnz`는 거리 0인 짝도 세고, 0이 아닌 값의 수 `count_nonzero()`는 세지 않아요.
+
+```python
+>>> S.nnz, S.count_nonzero()
+(7, 6)
+```
+
+이 행렬을 이웃 그래프로 쓸 때는 저장된 자리가 곧 "이웃"이에요. 같은 자리의 점이나 자기 자신도 이웃이므로 0을 지우지 않고 저장해 둬요. 행마다 이웃의 수는 `indptr`의 차로 세요.
+
+```python
+>>> sd.diff(S.indptr)
+array([2, 2, 2, 1], dtype=int64)
+```
+
+<Callout type="warn" title="0을 지우는 연산은 이웃도 지워요">
+
+`eliminate_zeros()`는 저장된 0을 지워요. 이웃 그래프에서 부르면 거리 0인 이웃(같은 자리의 점, 자기 자신)이 사라져요. 비교 연산 `S > 0`처럼 0을 저장하지 않는 결과를 만드는 연산도 마찬가지예요. 거리 0인 짝을 정말로 빼고 싶을 때만 써요.
+
+</Callout>
+
+```python
+>>> S2 = S.copy()
+>>> S2.eliminate_zeros()
+>>> S2.nnz
+6
+```
+
+## 자기 자신과
+
+`other`에 자기 자신을 주면 같은 집합 안의 이웃 그래프예요. 거리는 대칭이라 행렬도 대칭이고, 대각선에는 자기 자신과의 거리 0이 저장돼요.
+
+```python
+>>> G = a.sparse_distance_matrix(a, 1.0)
+>>> G
+<csr_array of shape (4, 4), float64, 12 stored elements>
+>>> G.toarray()
+array([[0.0, 1.0, 1.0, 0.0],
+       [1.0, 0.0, 0.0, 1.0],
+       [1.0, 0.0, 0.0, 1.0],
+       [0.0, 1.0, 1.0, 0.0]], dtype=float64)
+```
+
+정사각형의 꼭짓점이라 변으로 이어진 짝(거리 1)은 담기고 대각선 짝(거리 √2)은 빠졌어요. 저장된 12개는 대각선의 0 넷과 변 넷의 양방향 여덟이에요.
+
+## 무엇과 같나요
+
+결과는 [`query_ball_tree(other, max_distance)`](/api/spatial/query_ball_tree/)의 결과를 `tocsr()`로 바꾼 것과 같아요. 함수로 쓰면 [`radius_neighbors(self.data, other.data, max_distance).tocsr()`](/api/spatial/radius_neighbors/)예요. 저장된 거리는 [`cdist`](/api/spatial/cdist/)의 같은 원소와 비트까지 같아요(`p`가 1, 2, inf면 `cityblock`, `euclidean`, `chebyshev`, 그 밖의 p는 `minkowski`).
+
+```python
+>>> R = a.query_ball_tree(b, 1.0).tocsr()
+>>> bool(sd.all(R.indptr == S.indptr)), bool(sd.all(R.indices == S.indices)), bool(sd.all(R.data == S.data))
+(True, True, True)
+>>> D = sd.spatial.cdist(a.data, b.data)
+>>> bool(sd.all(D[0, :2] == S.toarray()[0, :2]))
+True
+```
+
+경계는 들어가요(d ≤ `max_distance`). 결과는 트리의 `leafsize`, [스레드 수](/api/array/threads/)와 상관없이 언제나 같아요.
+
+## 조심할 점
+
+### `max_distance`는 0 이상의 수 하나예요
+
+음수, NaN, 배열은 에러예요. `inf`를 주면 모든 짝이 담겨 밀집 행렬과 크기가 같아지니, 그때는 [`cdist`](/api/spatial/cdist/)가 알맞아요.
+
+```python
+>>> a.sparse_distance_matrix(b, -1)
+Traceback (most recent call last):
+    ...
+ValueError: sparse_distance_matrix(): 'max_distance' must be a nonnegative number or inf, not -1
+```
+
+### 결과의 크기
+
+저장되는 원소의 수는 반경 안의 짝 수예요. 반경이 크면 행렬이 밀집에 가까워져요. 찾은 짝이 이 컴퓨터의 물리 메모리를 넘을 만큼 많아지면 찾기를 멈추고 `MemoryError`로 알려 줘요. 짝의 수만 필요하면 [`count_neighbors`](/api/spatial/count_neighbors/)가 행렬을 만들지 않고 세어요.
+
+## scipy·sklearn을 아는 분께
+
+- 결과는 언제나 `sd.sparse.csr_array`예요. scipy의 기본은 `dok_matrix`이고 `output_type`으로 형식을 골라요. 여기서는 `output_type` 인자가 없고, 다른 형식은 `asformat`으로 바꿔요.
+- 거리가 0인 짝은 저장된 0이에요. scipy의 `sparse_distance_matrix`도 0인 짝을 저장해요.
+- 음수나 NaN `max_distance`는 `ValueError`예요.
+- 경계의 판정은 저장되는 거리 그 자체로 해요. 저장된 값은 언제나 `max_distance` 이하예요.
+- `p`는 이름으로만 받아요.
+- sklearn의 `radius_neighbors_graph(X, r, mode='distance')`는 `KDTree(X).sparse_distance_matrix(KDTree(X), r)`와 같은 그래프예요. sklearn은 `include_self=False`가 기본이라 자기 자신을 넣지 않아요. 여기서는 언제나 저장된 0으로 들어 있어요.

@@ -1,0 +1,524 @@
+---
+title: 트리 질의와 이중 트리 순회
+group: KD 트리
+order: 2
+summary: query의 (거리, 색인) 최대 힙과 distance_upper_bound, 반경 질의와 개수만 세는 지름길, 두 상자 사이의 가까운 한계와 먼 한계의 증명, query_ball_tree·query_pairs·count_neighbors가 쓰는 이중 트리 순회(Gray–Moore), 가중 셈을 더하는 순서, sparse_distance_matrix의 CSR 조립, 결과가 너무 클 때 찾기를 멈추는 MemoryError를 설명해요.
+seeAlso: [kdtree, haversine-tree, parallel, overview]
+---
+import PlotImage from '../../../components/fig/PlotImage.astro';
+
+## 한눈에 보기
+
+`KDTree`의 메서드 여섯은 네이티브 함수 넷으로 내려가요. 트리 하나를 질의점마다 내려가는 것이 둘, 트리 둘을 함께 내려가는 이중 트리 순회가 둘이에요.
+
+| 메서드 | 네이티브 함수 | 순회 | 넣는 판정 |
+|---|---|---|---|
+| [`query`](/api/spatial/query/) | `_KDTree.query`(`kdtree.cpp`, `kdtree.hpp`의 `KdSearch`) | 질의점마다 깊이 우선, 크기 k의 최대 힙 | (d̂, 색인)이 힙 맨 위보다 앞, d̂ < 상한 |
+| [`query_ball_point`](/api/spatial/query_ball_point/) | `_ball_point`(`query.cpp`) | 질의점마다 깊이 우선 | d̂ ≤ r |
+| [`query_ball_tree`](/api/spatial/query_ball_tree/), [`sparse_distance_matrix`](/api/spatial/sparse_distance_matrix/) | `_ball_tree`(`dual.cpp`) | 두 트리의 이중 순회 | d̂ ≤ r |
+| [`query_pairs`](/api/spatial/query_pairs/) | `_pairs`(`dual.cpp`) | 한 트리와 자기 자신의 이중 순회 | d̂ ≤ r, i < j |
+| [`count_neighbors`](/api/spatial/count_neighbors/) | `_count`(`dual.cpp`) | 두 트리의 이중 순회, 반경 여럿을 한 번에 | d̂ ≤ r_k인 첫 k |
+
+어느 질의든 규칙은 [KD 트리 만들기와 가지치기](/internals/spatial/kdtree/)의 두 가지예요. 넣을지, 어느 순서인지, 경계 안인지는 돌려줄 거리 d̂(`cdist`의 그 원소와 같은 비트)로만 정하고, 노드를 치는 것은 그 안의 모든 짝이 문턱보다 엄격히 멀다고 증명될 때뿐이에요. 그래서 모든 질의의 답이 같은 커널의 전수와 같아요. [`kneighbors`](/api/spatial/kneighbors/)와 [`radius_neighbors`](/api/spatial/radius_neighbors/)가 트리 길을 탈 때도 `XB`로 트리를 만들어 이 쪽의 `query`와 `query_ball_point` 네이티브 함수를 그대로 불러요.
+
+## kNN: (거리, 색인)의 최대 힙
+
+질의점 하나의 찾기는 `KdSearch`가 해요. 힙은 크기 min(k, n)의 최대 힙이고 원소는 `std::pair<double, int64_t>`예요. `pair`의 비교가 사전 순서라 힙의 맨 위는 (거리, 색인)이 가장 뒤인 원소, 곧 지금까지의 k번째 이웃이에요.
+
+```cpp
+    // csrc/spatial/kdtree.hpp
+    void offer(double r, const double* y, int64_t i) {
+        const bool full = static_cast<int64_t>(heap_.size()) >= k_;
+        const double T = full ? heap_.front().first : ub_;
+        if (Dist::plain(r) && r > Dist::above(T)) return;  // d^ > T: neither below ub nor before the top
+        const std::pair<double, int64_t> e{dist_.finish(r, x_, y), i};
+        if (!full) {
+            if (!(e.first < ub_)) return;
+            heap_.push_back(e);
+            std::push_heap(heap_.begin(), heap_.end());
+        } else if (e < heap_.front()) {
+            std::pop_heap(heap_.begin(), heap_.end());
+            heap_.back() = e;
+            std::push_heap(heap_.begin(), heap_.end());
+        }
+    }
+
+    void visit(int64_t node) {
+        const KdNode& nd = t_.nodes[static_cast<size_t>(node)];
+        if (nd.right < 0) {
+            const double* y = t_.data.data() + nd.start * t_.m;
+            for (int64_t i = nd.start; i < nd.end; ++i, y += t_.m)
+                offer(dist_.raw(x_, y), y, t_.idx[static_cast<size_t>(i)]);
+            return;
+        }
+        const int64_t l = node + 1, r = nd.right;
+        const double bl = bound(l), br = bound(r);
+        const bool left_first = !(br < bl);
+        if (left_first) {
+            if (!cut_sum(bl, l)) visit(l);
+            if (!cut_sum(br, r)) visit(r);
+        } else {
+            if (!cut_sum(br, r)) visit(r);
+            if (!cut_sum(bl, l)) visit(l);
+        }
+    }
+```
+
+- 내부 노드에서는 두 자식의 한계를 모두 구하고 작은 쪽(같으면 왼쪽)부터 내려가요. 가까운 쪽을 먼저 보면 힙이 빨리 차고 맨 위의 거리가 빨리 줄어서, 돌아와 다른 쪽을 견줄 때 더 많이 쳐요. 다른 쪽은 돌아온 **그때의** T로 다시 견줘요.
+- 점이 이겨야 하는 거리 T는 힙이 덜 찼으면 `distance_upper_bound`, 찼으면 맨 위의 거리예요. 문턱은 `KdCut(T)`이고, p = 2면 제곱합으로 먼저 걸러요(above).
+- 힙이 덜 찼을 때는 d̂ < 상한인 점만 넣어요(엄격한 부등호). 찼을 때는 (d̂, 색인)이 맨 위보다 앞일 때만 맨 위와 바꿔요. 거리가 같으면 색인이 작은 쪽이 앞이에요.
+
+### 전수와 같은 까닭
+
+답은 "d̂ < 상한인 모든 점을 (d̂, 색인)으로 정렬한 앞 k개"예요. 어떤 점 y가 이 앞 k개에 들면 찾기가 y를 놓치지 않는다는 것을 보이면 돼요. 찾기가 점을 빠뜨리는 길은 셋이에요.
+
+1. **노드를 쳐서.** 그때의 T에 대해 노드의 모든 점이 d̂ > T예요(가지치기 정리). 힙이 덜 찼으면 T가 상한이라 그 점은 자격이 없어요. 찼으면 T가 맨 위의 거리라 그 점은 힙에 있는 서로 다른 k개보다 (d̂, 색인)으로 뒤예요.
+2. **제곱합으로 걸러서.** s > above(T)면 d̂ > T라 1과 같아요.
+3. **`offer`에서 물리쳐서.** 덜 찼을 때는 d̂ ≥ 상한이라 자격이 없고, 찼을 때는 (d̂, 색인)이 맨 위보다 뒤예요.
+
+힙의 원소는 바뀔 때마다 앞쪽으로만 바뀌니(맨 위를 더 앞인 원소로 갈아 끼우니), 어느 순간 k개 뒤에 있던 점은 끝까지 k개 뒤에 있어요. 그래서 빠진 점은 모두 답 밖이고, 힙에 남은 k개가 답이에요. 마지막에 힙을 (d̂, 색인)으로 정렬해 돌려줘요.
+
+```python
+>>> S = sd.spatial
+>>> x = sd.asarray([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [-1.0, 0.0], [0.0, -1.0], [2.0, 2.0]])
+>>> t = S.KDTree(x, leafsize=2)
+>>> t.query([0.0, 0.0], k=4)
+QueryResult(distances=array([0.0, 1.0, 1.0, 1.0], dtype=float64), indices=array([0, 1, 2, 3], dtype=int64))
+```
+
+거리 1인 점이 넷(1, 2, 3, 4)이고 자리는 셋뿐이에요. 색인이 작은 셋이 들어가고 4는 빠져요. 이 순서는 어느 잎을 먼저 들렀는지와 상관없이 (d̂, 색인)이 정해요.
+
+### k의 시퀀스와 상한
+
+`k`가 순위의 시퀀스면 가장 큰 순위만큼 찾고 그 순위들만 골라요. 힙은 min(max k, n)자리라 큰 순위를 물어도 n개 넘게 쥐지 않아요. 없는 순위는 (inf, n)으로 채워요.
+
+```python
+>>> t.query([0.0, 0.0], k=[2, 5, 9])
+QueryResult(distances=array([1.0, 1.0, inf], dtype=float64), indices=array([1, 4, 6], dtype=int64))
+>>> t.query([0.0, 0.0], k=3, distance_upper_bound=1.0)
+QueryResult(distances=array([0.0, inf, inf], dtype=float64), indices=array([0, 6, 6], dtype=int64))
+```
+
+상한 1.0은 거리 1인 점을 넣지 않아요(d̂ < 1.0이 거짓). 그래서 찾은 이웃은 자기 자신 하나이고 남은 두 자리가 채움 값이에요.
+
+### 트리 대신 전수로 갈 때
+
+p = 2에서는 질의 하나의 일이 차원에 따라 빠르게 늘어나는 트리보다, 모든 점과의 거리를 GEMM 고르기로 훑는 전수가 나은 모양이 있어요. `query`는 p = 2이고
+
+$$
+\tfrac{5}{6}m + \tfrac14\log_2 k + 7 - \log_2 n \ge 0.5
+$$
+
+이면 트리를 두고 입력 순서의 `data`에 `kneighbors`의 전수([유클리드 혼합 계산](/internals/spatial/euclid-gemm/))를 써요. 왼쪽은 트리의 질의당 일이 대략 2^(5m/6)로 늘고 k가 크면 조금 줄며, 전수의 일은 n으로 는다는 어림을 식으로 옮긴 것이에요.
+
+```python
+    # src/stardust/spatial/_kdtree.py
+    n = tree.n
+    if not (p == 2.0 and _brute_pays(n, tree.m, kmax)):
+        return tree._tree.query(X, ranks, p, ub)
+    sd = _sd
+    C.finite(X, "query", "x")
+    kc = min(kmax, n)
+    d, i = _core._kneighbors(X, tree.data, "euclidean", 2.0, None, None, kc, ub, 0)
+    q = X.shape[0]
+    if kmax > kc:  # ranks past the data points are the fill (inf, n)
+        d = sd.concat([d, sd.full((q, 1), math.inf)], axis=1)
+        i = sd.concat([i, sd.full((q, 1), n, dtype=sd.int64)], axis=1)
+    cols = sd.minimum(ranks - 1, kc)
+    return d[:, cols], i[:, cols]
+```
+
+```python
+>>> from stardust.spatial._kdtree import _brute_pays
+>>> _brute_pays(10**5, 3, 10), _brute_pays(10**5, 16, 10)
+(False, True)
+```
+
+전수도 같은 `euclidean` 커널로 거리를 구하고 (d̂, 색인)으로 고르니 답이 같아요. 길은 빠르기만 바꿔요. 전수는 입력 순서의 `data`를 쓰므로 이 길을 한 번 타면 트리가 입력 순서의 사본을 쥐게 돼요.
+
+질의점은 64개씩 한 태스크로 묶어요. 질의점 하나는 한 태스크가 처음부터 끝까지 찾으니 순회 순서가 스레드와 무관해요.
+
+## 반경 질의
+
+`query_ball_point`는 질의점마다 트리를 내려가며 가까운 한계가 `KdCut(r)`보다 큰 노드를 치고, 잎의 점은 d̂ ≤ r로 넣어요. 점 하나와 상자의 가까운 한계는 질의점을 폭이 0인 상자 (x, x)로 본 두 상자 사이의 한계(아래)이고, kNN의 가둔 점 c와 같은 차이를 줘요.
+
+```cpp
+    // csrc/spatial/query.cpp
+    bool beyond(int64_t node) {
+        pr_.near(x_, x_, t_.lo(node), t_.hi(node), t_.m);
+        return kd_beyond(dist_, pr_.a.data(), pr_.b.data(), T1_);
+    }
+
+    bool inside(int64_t node) {
+        pr_.far(x_, x_, t_.lo(node), t_.hi(node), t_.m);
+        return cut_(kd_distance(dist_, pr_.a.data(), pr_.b.data())) <= r_;
+    }
+
+    void visit(int64_t node) {
+        const KdNode& nd = t_.nodes[static_cast<size_t>(node)];
+        if (!out_ && inside(node)) {
+            count_ += nd.end - nd.start;
+            return;
+        }
+        if (nd.right < 0) {
+            const double below = Dist::below(r_), above = Dist::above(r_);
+            const double* y = t_.data.data() + nd.start * t_.m;
+            for (int64_t i = nd.start; i < nd.end; ++i, y += t_.m) {
+                const double s = dist_.raw(x_, y);
+                if (Dist::plain(s)) {
+                    if (s > above) continue;  // d^ > r
+                    if (!out_ && s <= below) {  // d^ <= r
+                        ++count_;
+                        continue;
+                    }
+                }
+                const double d = dist_.finish(s, x_, y);
+                if (!(d <= r_)) continue;
+                ++count_;
+                if (out_) out_->push_back({t_.idx[static_cast<size_t>(i)], d});
+            }
+            return;
+        }
+        const int64_t l = node + 1, rt = nd.right;
+        if (!beyond(l)) visit(l);
+        if (!beyond(rt)) visit(rt);
+    }
+```
+
+- **목록을 모을 때**는 잎에서 s > above(r)인 점을 √ 없이 버리고 나머지는 d̂를 구해 d̂ ≤ r로 넣어요. 한 질의점의 목록은 다 찾은 뒤 색인으로 정렬해요.
+- **개수만 셀 때**(`return_length=True`)는 두 지름길이 더 있어요. 먼 한계가 노드 전체가 r 안이라고 증명하면(`inside`) 점을 하나도 보지 않고 노드의 점 수를 더해요. 잎에서는 s ≤ below(r)인 점을 √ 없이 세요. 둘 다 d̂ ≤ r을 증명한 뒤에만 세니 개수는 목록의 길이와 같아요.
+
+아래 그림은 점 400개(`leafsize` 10, 잎 64개)에서 반경 0.15의 질의가 실제로 거리를 재는 잎을 보여 줘요. 잎의 상자까지의 거리가 r 이하인 잎만 내려가고, 조상이 쳐진 잎은 상자도 보지 않아요(조상의 상자가 잎의 상자를 담으니 조상의 하한이 더 작거나 같아요).
+
+```python
+>>> import math
+>>> rng = sd.random.default_rng(2)
+>>> pts = rng.random((400, 2))
+>>> tree = S.KDTree(pts)
+>>> q, r = [0.42, 0.55], 0.15
+>>> idx, starts, ends, rights, boxes = tree._tree._state()
+>>> def gap(lo0, lo1, hi0, hi1):
+...     return math.hypot(max(lo0 - q[0], 0.0, q[0] - hi0), max(lo1 - q[1], 0.0, q[1] - hi1))
+>>> seen, cut = ([], []), ([], [])
+>>> for k in range(tree.size):
+...     if rights[k] < 0:
+...         lo0, lo1, hi0, hi1 = boxes[k].tolist()
+...         xs, ys = seen if gap(lo0, lo1, hi0, hi1) <= r else cut
+...         xs += [lo0, hi0, hi0, lo0, lo0, math.nan]
+...         ys += [lo1, lo1, hi1, hi1, lo1, math.nan]
+>>> len(seen[0]) // 6, len(cut[0]) // 6
+(12, 52)
+>>> hit = tree.query_ball_point(q, r).indices
+>>> hit.shape[0]
+38
+>>> a = sd.linspace(0.0, 2 * math.pi, 200)
+>>> fig = sd.plot.Figure(width=89, height=89)
+>>> fig = fig.line(cut[0], cut[1], color="C7", width=0.5, alpha=0.5)
+>>> fig = fig.line(seen[0], seen[1], color="C0", width=0.8)
+>>> fig = fig.scatter(pts[:, 0], pts[:, 1], size=1.5, color="C7")
+>>> fig = fig.scatter(pts[hit, 0], pts[hit, 1], size=2.5, color="C1")
+>>> fig = fig.line(q[0] + r * sd.cos(a), q[1] + r * sd.sin(a), color="C3", width=0.8)
+>>> fig = fig.scatter([q[0]], [q[1]], size=4, shape="x", color="C3").xlim(0, 1).ylim(0, 1)
+```
+
+<PlotImage name="in-queries-ball" alt="단위 정사각형의 점 400개와 잎 상자 64개. 빨간 원(반경 0.15) 둘레의 파란 상자 12개만 진하게 그려졌고 나머지 상자는 옅은 회색이에요. 원 안의 점 38개가 노랗게 칠해졌어요." caption="반경 질의가 들르는 잎(파랑)과 건너뛰는 잎(회색). 원과 겹치는 상자만 내려가고, 64개 가운데 12개의 잎에서만 점의 거리를 재요." />
+
+그림의 판정은 여유 없는 하한이라 실제 문턱 `KdCut(r)`과 r의 상대 10⁻¹⁴ 남짓만큼 다를 수 있지만, 이 그림에서 그 차이에 걸리는 상자는 없어요.
+
+## 두 상자 사이의 한계
+
+반경 질의와 이중 트리 순회는 노드 둘(또는 점 하나와 노드 하나)을 견줘요. 상자 A = [loᴬ, hiᴬ], B = [loᴮ, hiᴮ]의 한계는 두 상자의 모서리로 만든 점 a, b의 짝 거리예요. 한계도 짝 하나의 거리라 [가지치기의 증명](/internals/spatial/kdtree/)이 그대로 쓰여요.
+
+```cpp
+    // csrc/spatial/kdtree.hpp
+    void near(const double* loA, const double* hiA, const double* loB, const double* hiB, int64_t m) {
+        for (int64_t i = 0; i < m; ++i) {
+            const size_t k = static_cast<size_t>(i);
+            if (loB[i] > hiA[i]) {
+                a[k] = hiA[i];
+                b[k] = loB[i];
+            } else if (loA[i] > hiB[i]) {
+                a[k] = loA[i];
+                b[k] = hiB[i];
+            } else {
+                a[k] = 0.0;
+                b[k] = 0.0;
+            }
+        }
+    }
+    void far(const double* loA, const double* hiA, const double* loB, const double* hiB, int64_t m) {
+        for (int64_t i = 0; i < m; ++i) {
+            const size_t k = static_cast<size_t>(i);
+            if (hiB[i] - loA[i] >= hiA[i] - loB[i]) {
+                a[k] = loA[i];
+                b[k] = hiB[i];
+            } else {
+                a[k] = hiA[i];
+                b[k] = loB[i];
+            }
+        }
+    }
+```
+
+### 가까운 한계
+
+축마다 두 상자 사이의 틈을 사이에 둔 모서리를 골라요. loᴮᵢ > hiᴬᵢ면 (hiᴬᵢ, loᴮᵢ), loᴬᵢ > hiᴮᵢ면 (loᴬᵢ, hiᴮᵢ), 겹치면 (0, 0)이에요. 그러면 |aᵢ − bᵢ|가 그 축의 틈 그 자체이고, A의 어느 x와 B의 어느 y든 |xᵢ − yᵢ| ≥ |aᵢ − bᵢ|예요. [상자 보조정리](/internals/spatial/kdtree/)와 같은 논리로 D(x, y) ≥ D(a, b)이고, 가지치기 정리의 증명에서 D(x, c)를 D(a, b)로 바꾸면 "b̂ > KdCut(r)이면 노드 쌍의 모든 짝이 d̂ > r"이 서요. 질의점 x는 상자 (x, x)라 이것이 가둔 점과 같은 차이를 줘요.
+
+### 먼 한계
+
+개수를 셀 때는 반대 방향도 필요해요. "노드 쌍의 모든 짝이 r 안"을 증명하면 짝을 하나도 계산하지 않고 노드의 점 수의 곱을 한 번에 더할 수 있어요. 먼 한계는 축마다 fl(hiᴮᵢ − loᴬᵢ)와 fl(hiᴬᵢ − loᴮᵢ) 가운데 큰 쪽(같으면 앞쪽)의 두 모서리예요.
+
+**먼 한계 보조정리.** 먼 한계의 계산값을 b̂라 하면 A의 모든 x와 B의 모든 y에서 d̂(x, y) ≤ KdCut(b̂) = fl(fl(b̂·c_m) + η)예요.
+
+*증명.* 축 i에서 두 상자 위의 가장 큰 |xᵢ − yᵢ|는 fᵢ = max(hiᴮᵢ − loᴬᵢ, hiᴬᵢ − loᴮᵢ)예요(두 차이의 합이 두 폭의 합이라 큰 쪽은 0 이상이에요). 고른 쪽의 참 차이를 tᵢ라 하면, 반올림이 단조이므로 두 반올림값이 다르면 큰 반올림값을 준 쪽이 큰 참 차이라 tᵢ = fᵢ예요. 둘이 같은 값 R로 반올림되었다면 tᵢ ≥ R/(1 + u), fᵢ ≤ R/(1 − u)라 tᵢ ≥ fᵢ(1 − u)/(1 + u) ≥ fᵢ(1 − 2u)예요(차이가 비정상 수면 정확해서 tᵢ = fᵢ예요). p-노름은 좌표마다 줄지 않고 동차라
+
+$$
+D(x, y) \le D(f) \le \frac{D(t)}{1 - 2u} = \frac{D(a, b)}{1 - 2u}
+$$
+
+예요. 거리 계약을 두 번 쓰면 d̂(x, y) ≤ (1 + κ)D(x, y) + 2⁻¹⁰⁷⁴이고 D(a, b) ≤ (b̂ + 2⁻¹⁰⁷⁴)/(1 − κ)라
+
+$$
+\hat d(x, y) \le \frac{1 + \kappa}{(1 - \kappa)(1 - 2u)}\,(\hat b + 2^{-1074}) + 2^{-1074}
+$$
+
+예요. 한편 fl(fl(b̂·c_m) + η) ≥ b̂·c_m(1 − u)² + (η − 2⁻¹⁰⁷⁵)(1 − u)이고, c_m(1 − u)² ≥ 1 + (4m + 46)u − O(u²)가 (1 + κ)/((1 − κ)(1 − 2u)) ≤ 1 + (2m + 24)u + O(u²)보다 커요(κ ≤ (m + 11)u). 절대 항은 (η − 2⁻¹⁰⁷⁵)(1 − u) > 15·2⁻¹⁰⁷⁴이 오른쪽의 2⁻¹⁰⁷⁴ 두 개 남짓을 덮어요. ∎
+
+그래서 KdCut(b̂) ≤ r이면 노드 쌍 안의 모든 짝이 d̂ ≤ r이에요. 차이가 넘치면 b̂ = inf라 r = inf일 때만 안이고, 유한한 데이터의 d̂는 언제나 inf 이하이니 그때도 맞아요. p = ∞는 커널이 올바르게 반올림한 |xᵢ − yᵢ|의 최댓값이고, 반올림의 단조성으로 fl|xᵢ − yᵢ| ≤ fl(fᵢ) = (고른 쪽의 반올림값)이라 d̂(x, y) ≤ b̂가 정확히 서요. 그때는 `KdCut`이 T 그대로라 b̂ ≤ r로 견줘요.
+
+## 이중 트리 순회
+
+질의점이 많을 때 점마다 트리를 따로 내려가면, 서로 가까운 질의점들이 같은 노드를 거의 같은 이유로 되풀이해 치고 되풀이해 들러요. Gray와 Moore(2001)의 이중 트리(dual-tree) 순회는 질의 쪽도 트리로 묶어 **노드 쌍**을 단위로 내려가요. 노드 쌍 (A, B)가 통째로 멀면 A의 모든 점과 B의 모든 점의 짝을 한 번에 치고, 통째로 가까우면(셀 때) 한 번에 세요. 둘 다 아니면 한쪽 노드를 두 자식으로 나눠 노드 쌍 둘로 내려가요. 근처의 질의점들이 하는 일을 노드 하나로 몰아서 하는 셈이에요.
+
+```cpp
+// csrc/spatial/dual.cpp
+// The common walk: from (na, nb), cut by `cut(na, nb)`, two leaves to `leaves(na, nb)`, else the larger
+// node split (A's on a tie, a leaf never).
+template <class Cut, class Leaves>
+void walk(const KdTree& A, const KdTree& B, int64_t na, int64_t nb, Cut& cut, Leaves& leaves) {
+    if (cut(na, nb)) return;
+    const KdNode &a = A.nodes[static_cast<size_t>(na)], &b = B.nodes[static_cast<size_t>(nb)];
+    const bool la = a.right < 0, lb = b.right < 0;
+    if (la && lb) {
+        leaves(na, nb);
+    } else if (lb || (!la && a.end - a.start >= b.end - b.start)) {
+        walk(A, B, na + 1, nb, cut, leaves);
+        walk(A, B, a.right, nb, cut, leaves);
+    } else {
+        walk(A, B, na, nb + 1, cut, leaves);
+        walk(A, B, na, b.right, cut, leaves);
+    }
+}
+```
+
+나눌 쪽은 점이 많은 노드예요(같으면 A, 잎은 나누지 않아요). 두 노드가 모두 잎이면 모든 짝을 d̂ ≤ r로 견줘요(p = 2면 제곱합 above(r)로 먼저 걸러요). 치는 판정은 두 상자의 가까운 한계가 `KdCut(r)`보다 큰지예요. 짝 (x, y)는 A에서 x를 담은 잎과 B에서 y를 담은 잎의 노드 쌍에서 꼭 한 번 만나요. 순회가 노드 쌍을 나눌 때 한쪽을 두 자식으로 쪼개므로, 어느 짝도 두 갈래로 동시에 들어가지 않기 때문이에요.
+
+### query_ball_tree
+
+`self`의 트리가 A, `other`의 트리가 B예요. 잎 쌍에서 찾은 짝을 (A의 잎 순서 자리, B의 원래 색인, d̂)의 세 값으로 모았다가 행으로 정리해요. 결과는 `radius_neighbors(self.data, other.data, r)`와 바이트까지 같아요.
+
+### query_pairs
+
+한 트리 안의 i < j 짝이에요. 노드와 자기 자신의 쌍은 한계가 0이라 견줄 필요가 없고, 두 반쪽 각각과 자기 자신, 그리고 두 반쪽끼리의 쌍으로 풀어요. 두 반쪽끼리는 서로소인 두 노드라 위의 `walk`를 그대로 써요.
+
+```cpp
+            // csrc/spatial/dual.cpp
+            // a node with itself: its two halves with themselves and with each other (no bound: distance 0)
+            auto self = [&](auto&& me, int64_t node) -> void {
+                if (over.load(std::memory_order_relaxed)) return;
+                const KdNode& nd = A.nodes[static_cast<size_t>(node)];
+                if (nd.right < 0) {
+                    const size_t from = out.size();
+                    for (int64_t p = nd.start; p < nd.end; ++p)
+                        for (int64_t q = p + 1; q < nd.end; ++q) test(p, q);
+                    account(from);
+                    return;
+                }
+                me(me, node + 1);
+                walk(A, A, node + 1, nd.right, cutf, leaves);
+                me(me, nd.right);
+            };
+```
+
+한 잎 안의 짝은 잎 안에서, 다른 잎의 짝은 두 점의 가장 낮은 공통 조상에서 갈라진 두 반쪽의 `walk`에서 꼭 한 번 만나요. 찾은 짝은 원래 색인으로 (min(i, j), max(i, j))로 적고, 마지막에 (i, j)의 사전 순서로 정렬해요. 그래서 `pdist(data)`에서 r 이하인 짝을 행 우선으로 읽은 것과 같아요.
+
+```python
+>>> t.query_pairs(1.5)
+array([[0, 1],
+       [0, 2],
+       [0, 3],
+       [0, 4],
+       [1, 2],
+       [1, 4],
+       [2, 3],
+       [3, 4]], dtype=int64)
+```
+
+## count_neighbors: 반경 여럿을 한 번에
+
+`count_neighbors(other, r)`는 x₁ ∈ `self`, x₂ ∈ `other`인 순서쌍 가운데 d̂ ≤ r인 것을 세요. r이 배열이면 반경마다 따로 순회하지 않고 한 번의 순회로 모두 세요. Gray와 Moore가 두 점 상관함수를 셀 때 쓴 방법이에요.
+
+반경을 줄지 않게 정렬해 $r_0 \le r_1 \le \dots \le r_{R-1}$로 두고(같은 값은 원래 순서, 안정 정렬), 태스크마다 칸 R + 1개의 배열 delta를 둬요. delta[k]는 "d̂ ≤ r_k가 처음 참이 되는 k가 k인 짝의 수"예요(어느 반경에도 들지 않으면 k = R이고 버려요). 노드 쌍은 아직 정해지지 않은 반경의 구간 [lo, hi)를 들고 내려가요.
+
+```cpp
+    // csrc/spatial/dual.cpp
+    void go(int64_t na, int64_t nb, int64_t lo, int64_t hi) {
+        const int64_t m = A.m;
+        pr.near(A.lo(na), A.hi(na), B.lo(nb), B.hi(nb), m);
+        const double dn = kd_distance(dist, pr.a.data(), pr.b.data());
+        lo = std::partition_point(T1 + lo, T1 + hi, [dn](double t) { return t < dn; }) - T1;  // cut below lo
+        if (lo < hi) {
+            pr.far(A.lo(na), A.hi(na), B.lo(nb), B.hi(nb), m);
+            const double F = cut(kd_distance(dist, pr.a.data(), pr.b.data()));
+            hi = std::partition_point(r + lo, r + hi, [F](double v) { return v < F; }) - r;  // inside from hi
+        }
+        if (lo == hi) {
+            delta[hi] += whole(na, nb);
+            return;
+        }
+        const KdNode &a = A.nodes[static_cast<size_t>(na)], &b = B.nodes[static_cast<size_t>(nb)];
+        const bool la = a.right < 0, lb = b.right < 0;
+        if (la && lb) {
+            leaves(a, b, lo, hi);
+        } else if (lb || (!la && a.end - a.start >= b.end - b.start)) {
+            go(na + 1, nb, lo, hi);
+            go(a.right, nb, lo, hi);
+        } else {
+            go(na, nb + 1, lo, hi);
+            go(na, b.right, lo, hi);
+        }
+    }
+```
+
+1. 가까운 한계 d̂ₙ이 KdCut(r_k)보다 큰 앞쪽 반경은 노드 쌍의 모든 짝이 d̂ > r_k예요. 그런 k를 구간에서 빼고 lo를 올려요(`T1[k]`가 미리 구한 KdCut(r_k)예요).
+2. 먼 한계로 F = KdCut(b̂_far)를 구하고, r_k ≥ F인 뒤쪽 반경은 모든 짝이 안이에요(먼 한계 보조정리). hi를 그 첫 자리로 내려요.
+3. lo = hi가 되면 노드 쌍의 모든 짝이 "d̂ ≤ r_k인 첫 k = hi"를 공유해요. delta[hi]에 노드의 점 수의 곱(가중이면 노드 무게의 곱)을 한 번에 더하고 끝내요.
+4. 아니면 `walk`와 같은 규칙으로 나눠 내려가고, 잎 쌍에서는 짝마다 d̂를 구해 [lo, hi)에서 이분 탐색으로 첫 k를 찾아요. p = 2는 제곱합으로 먼저 봐서 s > above($r_{hi-1}$)면 hi, s ≤ below(r_lo)면 lo예요.
+
+```cpp
+    // csrc/spatial/dual.cpp
+    void leaves(const KdNode& a, const KdNode& b, int64_t lo, int64_t hi) {
+        const int64_t m = A.m;
+        const double above = Dist::above(r[hi - 1]), below = Dist::below(r[lo]);
+        for (int64_t i = a.start; i < a.end; ++i) {
+            const double* x = A.data.data() + i * m;
+            const double* y = B.data.data() + b.start * m;
+            for (int64_t q = b.start; q < b.end; ++q, y += m) {
+                const double s = dist.raw(x, y);
+                int64_t k;
+                if (Dist::plain(s) && s > above) {
+                    k = hi;
+                } else if (Dist::plain(s) && s <= below) {
+                    k = lo;
+                } else {
+                    const double d = dist.finish(s, x, y);
+                    k = std::partition_point(r + lo, r + hi, [d](double v) { return v < d; }) - r;
+                }
+                if constexpr (std::is_same_v<Acc, double>) delta[k] += (wa ? wa[i] : 1.0) * (wb ? wb[q] : 1.0);
+                else ++delta[k];
+            }
+        }
+    }
+```
+
+모든 태스크가 끝나면 태스크마다의 delta를 **태스크 번호 순서로** 더해 구간별 셈을 얻어요. `cumulative=False`면 그것이 곧 결과(첫째는 d̂ ≤ r₀, k번째는 $r_{k-1} < \hat d \le r_k$)이고, `cumulative=True`면 정렬 순서로 누적합을 내 원래 자리로 되돌려 써요.
+
+```python
+>>> t.count_neighbors(t, [0.0, 1.0, 1.5, 3.0])
+array([ 6, 14, 22, 32], dtype=int64)
+>>> t.count_neighbors(t, [0.0, 1.0, 1.5, 3.0], cumulative=False)
+array([ 6,  8,  8, 10], dtype=int64)
+```
+
+`other`가 자기 자신이라 (i, i)가 6개(거리 0), (0, j)와 (j, 0)이 8개(거리 1), 거리 √2인 이웃 짝이 양방향으로 8개, 나머지가 거리 3 안의 10개예요. 정수 셈은 정확해서 어느 길로 세든 `cdist(self.data, other.data)`에서 r 이하인 원소의 수와 같아요.
+
+### 가중 셈의 순서
+
+`weights`가 있으면 짝마다 w₁ᵢ·w₂ⱼ를 더해요. 이 합은 float64라 더하는 순서가 비트를 정해요. 순서는 이렇게 고정돼요.
+
+- 노드의 무게는 잎이면 잎 순서로 점의 무게를 더한 것, 내부 노드면 왼쪽 + 오른쪽이에요. 트리가 데이터와 `leafsize`의 함수이니 노드 무게도 그래요.
+- 노드 쌍을 통째로 셀 때는 두 노드 무게의 곱을, 잎 쌍에서는 짝마다 곱을 delta에 순회 순서로 더해요.
+- 순회는 트리를 깊이 4의 조각으로 자른 조각 쌍마다 태스크 하나이고(반경이 많으면 더 얕게, [병렬화와 결정성](/internals/spatial/parallel/)), 태스크마다의 delta를 태스크 번호 순서로 더해요.
+
+```cpp
+// csrc/spatial/dual.cpp
+// The weight of every node: its points' weights summed (a leaf in leaf order, a node as left + right), or
+// the point count without weights.
+double node_weights(const KdTree& t, const double* w, int64_t node, std::vector<double>& W) {
+    const KdNode& nd = t.nodes[static_cast<size_t>(node)];
+    double v = 0.0;
+    if (nd.right < 0) {
+        if (!w) v = static_cast<double>(nd.end - nd.start);
+        else
+            for (int64_t i = nd.start; i < nd.end; ++i) v += w[i];
+    } else {
+        const double l = node_weights(t, w, node + 1, W);
+        v = l + node_weights(t, w, nd.right, W);
+    }
+    W[static_cast<size_t>(node)] = v;
+    return v;
+}
+```
+
+그래서 가중 셈은 데이터, 트리, 반경으로만 정해지고 스레드 수와 무관해요. 다만 짝을 색인 순서로 하나씩 더한 합과는 순서가 달라 끝자리가 다를 수 있어요(노드 쌍의 몫이 곱의 합이 아니라 합의 곱이에요).
+
+```python
+>>> w = sd.asarray([0.1, 0.2, 0.3, 0.4, 0.5, 0.6])
+>>> t.count_neighbors(t, 1.0, weights=w)
+1.19
+```
+
+## 결과 모으기와 CSR
+
+목록을 돌려주는 질의는 결과의 크기를 미리 알 수 없어요. 먼저 세고 다시 찾으면 거리를 두 번 계산하니, 태스크마다 찾은 것을 모았다가 개수의 누적합으로 자리를 정해 옮겨요. 그동안 `query_ball_point`는 결과 크기의 두 배, `query_ball_tree`와 `sparse_distance_matrix`는 세 배 반 남짓이 잠깐 들어요.
+
+- **`query_ball_point`**: 태스크(질의점 64개)마다 행의 목록을 차례로 이어 모으고, 행마다 색인으로 정렬해요. 행의 개수로 `indptr`을 만들고, 태스크마다 자기 첫 행의 `indptr` 자리부터 제 목록을 복사해요.
+- **`query_ball_tree`**: 태스크는 A의 조각 a와 B의 조각 b의 쌍이에요. A의 조각마다 그 조각의 모든 태스크의 세 값을 잎 순서 자리로 세는 정렬(counting sort)로 행에 모으고, 행 안을 B의 색인으로 정렬해요. 그다음 `A.idx`로 잎 순서 자리를 원래 색인으로 바꿔 입력 순서의 `indptr`을 만들고 행을 제자리에 복사해요.
+- **`query_pairs`**: 찾은 짝을 i로 4096행씩의 블록에 바로 흩고(태스크 × 블록의 개수와 (블록, 태스크) 순서의 누적합), 블록마다 i로 세는 정렬과 행마다 j 정렬을 따로 해요. 누적합 말고는 모든 단계가 풀에서 돌아요.
+
+`sparse_distance_matrix`는 `query_ball_tree`의 세 배열을 그대로 `sd.sparse.csr_array((distances, indices, indptr), shape=(self.n, other.n))`에 넘겨요. 행 안이 이미 색인 순서이고 중복이 없어 표준 꼴의 CSR이에요. 거리가 0인 짝(자기 자신, 중복된 점)도 찾은 짝이라 **저장된 0**으로 남아요.
+
+```python
+>>> M = t.sparse_distance_matrix(t, 1.0)
+>>> M.nnz, M.count_nonzero()
+(14, 8)
+```
+
+저장 자리 14개 가운데 6개가 대각선의 0이에요. 이웃 그래프로 쓸 때 0을 지우면(`eliminate_zeros()`) 자기 자신과 중복된 점이 이웃에서 사라지니 지우지 않고 둬요.
+
+## 결과가 너무 크면
+
+`query_pairs(r)`에 r = inf를 주면 10⁵점에서 짝이 약 5×10⁹개예요. 그런 결과를 끝까지 모으면 기계의 메모리가 바닥나니, 목록을 모으는 넷(`query_ball_point`, `query_ball_tree`, `sparse_distance_matrix`, `query_pairs`)은 찾은 짝의 수를 원자적으로 세다가 물리 메모리를 넘을 수가 되면 찾기를 멈춰요.
+
+```cpp
+    // csrc/spatial/query.cpp
+    // Per task the hits of its rows one after another (each row in index order) and the rows' counts.
+    std::vector<std::vector<Hit>> hits(static_cast<size_t>(ntasks));
+    std::vector<int64_t> counts(static_cast<size_t>(q), 0);
+    const int64_t budget = static_cast<int64_t>(physical_memory() / kEntryBytes);
+    std::atomic<int64_t> total{0};
+    std::atomic<bool> over{false};
+    {
+        const parallel::Unlocked unlocked(split);
+        run_tasks(ntasks, split, [&](int64_t task) {
+            std::vector<Hit>& h = hits[static_cast<size_t>(task)];
+            Ball<Dist> b(t, dist, cut, &h);
+            for (int64_t i = task * kQueryBlock, e = std::min(q, (task + 1) * kQueryBlock); i < e; ++i) {
+                if (over.load(std::memory_order_relaxed)) return;
+                const size_t from = h.size();
+                b.run(X + i * m, R[i]);
+                std::sort(h.begin() + static_cast<std::ptrdiff_t>(from), h.end(), [](const Hit& u, const Hit& v) {
+                    return u.j < v.j;
+                });
+                const int64_t c = static_cast<int64_t>(h.size() - from);
+                counts[static_cast<size_t>(i)] = c;
+                if (c && total.fetch_add(c, std::memory_order_relaxed) + c > budget) over.store(true);
+            }
+        });
+    }
+    if (over.load()) too_large("query_ball_point");
+```
+
+짝 하나의 바이트는 모으는 동안과 결과를 합쳐 `query_ball_point` 40, `query_ball_tree`·`sparse_distance_matrix` 64, `query_pairs` 32로 잡아요. 예산은 물리 메모리 ÷ 그 바이트예요. 넘으면 플래그를 세우고, 다른 태스크는 다음 질의점이나 다음 노드 쌍에서 플래그를 보고 멈춰요(이중 순회는 치는 함수가 플래그를 보고 참을 돌려 순회를 끊어요). GIL을 다시 쥔 뒤 `MemoryError`(`query_pairs(): the result is larger than this machine's physical memory`)를 내요. 멈추는 시점은 스레드마다 다르지만 어차피 결과를 버리니 상관없어요.
+
+개수만 필요하면 `query_ball_point(..., return_length=True)`와 `count_neighbors`가 색인을 모으지 않아요. `count_neighbors`의 작업 메모리는 태스크 × (R + 1)칸이고 2²²칸을 넘지 않게 조각의 깊이를 줄여요.

@@ -53,6 +53,12 @@ const poleX = 96;
 const branchF = (x: number) => 32 - 9 / ((x - poleX) / 18);
 const branchL = pts(branchF, 30, poleX - 3, 40).filter(([, y]) => y > 4 && y < 56);
 const branchR = pts(branchF, poleX + 3, 156, 40).filter(([, y]) => y > 4 && y < 56);
+// Points, a query point, the radius around it and the neighbours inside it.
+const r4 = rand(19);
+const nnPts = Array.from({ length: 30 }, () => [18 + r4() * 134, 8 + r4() * 50] as const);
+const nnQ = [86, 33] as const;
+const nnR = 19;
+const nnHits = nnPts.filter(([x, y]) => Math.hypot(x - nnQ[0], y - nnQ[1]) <= nnR);
 const r2 = rand(3);
 const scatter = Array.from({ length: 16 }, (_, i) => {
   const x = 20 + i * 8 + r2() * 4;
@@ -185,6 +191,23 @@ const scatter = Array.from({ length: 16 }, (_, i) => {
           <circle cx={tanAt + h} cy={slopeF(tanAt + h)} r="1.8" fill="var(--area)" opacity="0.45" />
         ))}
         <circle cx={tanAt} cy={tanY} r="3.4" fill="var(--area)" />
+      </g>
+    )
+  }
+  {
+    area === 'spatial' && (
+      <g>
+        {nnPts.map(([x, y]) => (
+          <circle cx={x} cy={y} r="2" fill="var(--area)" opacity="0.35" />
+        ))}
+        <circle cx={nnQ[0]} cy={nnQ[1]} r={nnR} fill="var(--area)" opacity="0.08" stroke="var(--area)" stroke-width="1" stroke-dasharray="3 3" />
+        {nnHits.map(([x, y]) => (
+          <path d={`M${nnQ[0]} ${nnQ[1]}L${x} ${y}`} stroke="var(--area)" stroke-width="1.2" opacity="0.7" />
+        ))}
+        {nnHits.map(([x, y]) => (
+          <circle cx={x} cy={y} r="2.6" fill="var(--area)" />
+        ))}
+        <circle cx={nnQ[0]} cy={nnQ[1]} r="3.6" fill="none" stroke="var(--area)" stroke-width="1.8" />
       </g>
     )
   }

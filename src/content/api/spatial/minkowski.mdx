@@ -1,0 +1,221 @@
+---
+title: minkowski
+names: [minkowski]
+group: 거리 함수
+order: 6
+signatures:
+  - "sd.spatial.minkowski(u, v, /, *, p=2.0, w=None)"
+summary: 차이의 절댓값을 p제곱해 더하고 p제곱근을 씌운 (Σ|uᵢ − vᵢ|ᵖ)^(1/p)를 구해요. p = 1, 2, inf에서 cityblock, euclidean, chebyshev가 되는, 세 거리를 잇는 한 가족이에요.
+params:
+  - name: u
+    type: 수의 배열
+    kind: positional-only
+    desc: 첫째 점. 모양은 (..., n)이고 마지막 축이 좌표예요. 리스트, sd.ndarray, numpy 배열, frame의 DataFrame·Series를 받아요. 정수와 bool은 float64로 바꿔요.
+  - name: v
+    type: 수의 배열
+    kind: positional-only
+    desc: 둘째 점. 마지막 축의 길이가 u와 같아야 하고, 앞 축은 u의 앞 축과 브로드캐스트돼요.
+  - name: p
+    type: int 또는 float
+    kind: keyword-only
+    desc: 거듭제곱의 차수. 0보다 큰 실수나 inf예요. 기본 2는 유클리드 거리예요. p < 1도 받지만 삼각 부등식이 성립하지 않아요.
+  - name: w
+    type: 수의 배열 또는 None
+    kind: keyword-only
+    desc: 좌표마다의 가중치. 1차원, 길이 n, 모두 유한하고 0 이상이어야 해요. 주면 (Σ wᵢ|uᵢ − vᵢ|ᵖ)^(1/p)이고, p = inf면 무게가 0보다 큰 좌표의 최댓값이에요.
+returns:
+  type: float 또는 ndarray
+  desc: 거리. u와 v가 모두 1차원이면 Python float, 아니면 앞 축을 브로드캐스트한 모양의 float64 배열이에요.
+raises:
+  - type: TypeError
+    desc: u·v·w가 수의 배열이 아닐 때(문자열, 수 하나), 복소수일 때, p가 int나 float가 아닐 때(bool, None, 문자열), p나 w를 키워드 없이 줬을 때, 모르는 키워드를 줬을 때.
+  - type: ValueError
+    desc: p가 0 이하이거나 NaN일 때, u와 v의 마지막 축 길이가 다를 때, 앞 축이 브로드캐스트되지 않을 때, w가 1차원이 아니거나 길이가 n이 아니거나 음수·NaN·inf가 있을 때.
+  - type: MemoryError
+    desc: 결과 배열이 이 기계의 물리 메모리보다 클 때.
+seeAlso: [metrics, euclidean, cityblock, chebyshev, cdist, kneighbors, KDTree]
+---
+import PlotImage from '../../../components/fig/PlotImage.astro';
+
+## 한눈에 보기
+
+(0, 0)과 (3, 4) 사이의 거리는 재는 법에 따라 7(가로세로로 꺾어 가는 길), 5(직선), 4(킹의 걸음)였어요. `minkowski`는 이 셋을 수 하나 `p`로 잇는 거리예요.
+
+```python
+>>> import stardust as sd
+>>> for p in [1, 1.5, 2, 3, 10, sd.inf]:
+...     print(p, sd.spatial.minkowski([0.0, 0.0], [3.0, 4.0], p=p))
+1 7.0
+1.5 5.584250376480029
+2 5.0
+3 4.497941445275415
+10 4.021974149822332
+inf 4.0
+```
+
+p = 1은 [`cityblock`](/api/spatial/cityblock/), p = 2는 [`euclidean`](/api/spatial/euclidean/), p = inf는 [`chebyshev`](/api/spatial/chebyshev/)이고, 그 사이의 p는 그 사이의 값이에요.
+
+<Reference />
+
+## 무엇을 재나요
+
+$$
+d_p(u, v) = \Big( \sum_{i=1}^{n} \lvert u_i - v_i \rvert^p \Big)^{1/p}
+$$
+
+민코프스키 거리(Minkowski distance), 또는 $L_p$ 거리예요. p가 커질수록 큰 차이가 더 크게 부풀어 더해지니, 가장 큰 차이 하나가 점점 거리를 혼자 정해요. p를 끝없이 키우면 가장 큰 차이만 남아 $L_\infty$, 곧 `chebyshev`가 돼요. 위의 예에서 p = 10이면 벌써 4에 아주 가까워요.
+
+p를 고르는 것은 "차이가 여러 좌표에 고루 퍼진 것"과 "한 좌표에 몰린 것"을 얼마나 다르게 볼지 정하는 일이에요. p가 작으면 고루 퍼진 차이를, p가 크면 한 곳에 몰린 차이를 더 멀게 봐요. 특별한 까닭이 없으면 1, 2, inf 가운데 하나를 쓰고, 그때는 이름이 있는 함수를 부르는 편이 읽기 쉬워요.
+
+### 원점에서 거리 1인 점들
+
+평면에서 원점과의 거리가 1인 점들을 이으면 p마다 모양이 달라요. 거리 함수가 배치를 받으니, 격자 위의 점을 한 번에 넘겨 [`sd.plot.implicit`](/api/plot/implicit/)으로 거리 1의 곡선을 그릴 수 있어요.
+
+```python
+>>> def dist_from_origin(p):
+...     return lambda x, y: sd.spatial.minkowski(sd.stack([x, y], axis=-1), [0.0, 0.0], p=p)
+>>> fig = sd.plot.Figure(width=110.0, height=80.0)
+>>> for p, name in [(0.5, "0.5"), (1, "1"), (1.5, "1.5"), (2, "2"), (3, "3"), (sd.inf, r"\infty")]:
+...     fig = fig.implicit(dist_from_origin(p), -1.2, 1.2, -1.2, 1.2, level=1.0, label=f"$p = {name}$")
+>>> fig = fig.xlabel("$z_1$").ylabel("$z_2$").legend(loc="right")
+```
+
+<PlotImage name="minkowski-unit-balls" alt="원점을 둘러싼 닫힌 곡선 여섯. p = 0.5는 네 꼭짓점이 축 위에 있고 안으로 오목한 별 모양, p = 1은 마름모, p = 1.5는 둥근 마름모, p = 2는 원, p = 3은 모서리가 둥근 정사각형, p = ∞는 꼭짓점이 (±1, ±1)인 정사각형이에요. 모든 곡선이 축 위의 네 점 (±1, 0), (0, ±1)을 지나요" caption="원점에서 거리가 1인 점들이에요. p = 1은 마름모, p = 2는 원, p = ∞는 정사각형이고, p가 커질수록 곡선이 바깥 정사각형 쪽으로 부풀어요. p = 0.5의 곡선은 안으로 오목해서, 그 안의 영역이 볼록하지 않아요." />
+
+모든 곡선이 축 위의 네 점을 지나는 것은 좌표 하나만 다를 때는 p와 상관없이 거리가 그 차이 하나이기 때문이에요. 대각선 방향으로 갈수록 p에 따라 거리가 달라져요.
+
+## p < 1은 거리가 아니에요
+
+p는 0보다 크면 받아요. 그런데 p < 1이면 위 그림의 p = 0.5처럼 거리 1의 곡선이 안으로 오목해지고, 삼각 부등식이 깨져요. (0, 0)에서 (1, 1)로 바로 가는 것이 (1, 0)을 거쳐 가는 것보다 멀어요.
+
+```python
+>>> a, b, c = [0.0, 0.0], [1.0, 0.0], [1.0, 1.0]
+>>> sd.spatial.minkowski(a, b, p=0.5) + sd.spatial.minkowski(b, c, p=0.5)
+2.0
+>>> sd.spatial.minkowski(a, c, p=0.5)
+4.0
+```
+
+이런 것을 준거리(quasi-metric)라고 해요. 값을 재고 견주는 데는 쓸 수 있지만 거리의 성질에 기대는 계산에는 맞지 않아요. [`KDTree`](/api/spatial/KDTree/)의 질의는 p ≥ 1만 받으니, p < 1로 이웃을 찾으려면 [`kneighbors`](/api/spatial/kneighbors/)나 [`radius_neighbors`](/api/spatial/radius_neighbors/)에 `metric='minkowski', p=0.5`처럼 주세요.
+
+```python
+>>> sd.spatial.KDTree([[1.0, 1.0], [0.2, 0.0]]).query([0.0, 0.0], p=0.5)
+Traceback (most recent call last):
+    ...
+ValueError: query(): 'p' must be a number of at least 1 or inf, not 0.5
+>>> sd.spatial.kneighbors([[0.0, 0.0]], [[1.0, 1.0], [0.2, 0.0]], metric='minkowski', p=0.5)
+QueryResult(distances=array([0.19999999999999998], dtype=float64), indices=array([1], dtype=int64))
+```
+
+좌표 하나만 다른 짝도 $(0.2^{0.5})^{2}$를 거치니 0.2와 끝자리가 조금 달라요.
+
+## 인자 p
+
+p는 0보다 큰 int나 float, 또는 `sd.inf`예요. 기본은 2예요. 0 이하와 NaN은 `ValueError`, bool·None·문자열은 `TypeError`예요. 키워드로만 받아요.
+
+```python
+>>> u, v = [0.1, 0.7, 0.2], [0.4, 0.2, 0.9]
+>>> sd.spatial.minkowski(u, v, p=0)
+Traceback (most recent call last):
+    ...
+ValueError: minkowski(): 'p' must be a positive number or inf, not 0
+>>> sd.spatial.minkowski(u, v, p=True)
+Traceback (most recent call last):
+    ...
+TypeError: minkowski(): 'p' must be an int or a float, not bool
+>>> sd.spatial.minkowski(u, v, 3)
+Traceback (most recent call last):
+    ...
+TypeError: minkowski(): takes 2 positional arguments but 3 were given
+```
+
+p = 1, 2, inf는 `cityblock`, `euclidean`, `chebyshev`로 계산하므로 그 함수들과 비트까지 같아요.
+
+```python
+>>> (sd.spatial.minkowski(u, v, p=1) == sd.spatial.cityblock(u, v),
+...  sd.spatial.minkowski(u, v) == sd.spatial.euclidean(u, v),
+...  sd.spatial.minkowski(u, v, p=sd.inf) == sd.spatial.chebyshev(u, v))
+(True, True, True)
+```
+
+거리 행렬에서는 `metric='minkowski'`와 함께 `p`를 줘요. 다른 거리 이름에 `p`를 주면 `TypeError`예요. [`pdist`](/api/spatial/pdist/)·[`cdist`](/api/spatial/cdist/)의 `p`는 기본이 None이고, None이면 2예요.
+
+```python
+>>> X = sd.asarray([[0.0, 0.0], [3.0, 4.0], [1.0, -1.0], [2.0, 2.0]])
+>>> sd.spatial.pdist(X, metric='minkowski', p=3)
+array([ 4.497941445275415, 1.2599210498948732, 2.5198420997897464,
+        5.104468722001463,  2.080083823051904, 3.0365889718756627], dtype=float64)
+>>> sd.spatial.pdist(X, p=3)
+Traceback (most recent call last):
+    ...
+TypeError: pdist(): 'p' applies only to metric='minkowski'
+```
+
+## 큰 p, 아주 크거나 작은 좌표
+
+$\lvert z \rvert^p$는 쉽게 넘치거나 0으로 사라져요. p = 2000이면 $3^{2000}$이 이미 float64를 넘고, 좌표가 $10^{-200}$이면 세제곱이 0이 돼요. `minkowski`는 합이 넘치거나 아주 작아지면 차이를 가장 큰 차이로 나눈 비율로 다시 더해서, 참 거리가 float64에 담기는 한 유한한 값을 내요.
+
+```python
+>>> sd.spatial.minkowski([0.0, 0.0], [3.0, 4.0], p=2000)
+4.0
+>>> sd.spatial.minkowski([0.0, 0.0], [3e-200, 4e-200], p=3)
+4.497941445275415e-200
+```
+
+## 가중치 w
+
+`w`를 주면 $\big(\sum w_i \lvert u_i - v_i \rvert^p\big)^{1/p}$예요. p = inf에서는 `chebyshev`처럼 무게가 0보다 큰 좌표만 최댓값에 넣고 무게를 곱하지 않아요.
+
+```python
+>>> sd.spatial.minkowski([0.0, 0.0], [3.0, 4.0], p=3, w=[2.0, 0.5])
+4.414004962442104
+>>> sd.spatial.minkowski([0.0, 0.0], [3.0, 4.0], p=sd.inf, w=[2.0, 0.0])
+3.0
+```
+
+규칙은 다른 거리 함수와 같아서, 1차원, 길이 $n$, 유한하고 0 이상이어야 하고 키워드로만 받아요.
+
+## 이웃 찾기에서
+
+[`kneighbors`](/api/spatial/kneighbors/)와 [`radius_neighbors`](/api/spatial/radius_neighbors/)는 `metric='minkowski', p=…`로, [`KDTree`](/api/spatial/KDTree/)의 질의는 `p=…`로 받아요. 같은 짝의 거리는 어디서나 `minkowski(u, v, p=p)`와 비트까지 같아요. 거리가 같은 이웃은 색인이 작은 것이 먼저예요.
+
+```python
+>>> sd.spatial.kneighbors([[2.5, 3.0]], X, k=2, metric='minkowski', p=3)
+QueryResult(distances=array([[1.040041911525952, 1.040041911525952]], dtype=float64), indices=array([[1, 3]], dtype=int64))
+>>> sd.spatial.KDTree(X).query([2.5, 3.0], k=2, p=3)
+QueryResult(distances=array([1.040041911525952, 1.040041911525952], dtype=float64), indices=array([1, 3], dtype=int64))
+```
+
+질의점 (2.5, 3)에서 (3, 4)와 (2, 2)는 차이가 (0.5, 1)과 (0.5, 1)로 같아 거리가 같고, 색인이 작은 1이 먼저 와요.
+
+## NaN, inf, 빈 벡터
+
+다른 거리 함수와 같아요. NaN은 결과까지 퍼지고, 한쪽만 무한대면 inf이고, 좌표가 0개면 0이에요.
+
+```python
+>>> sd.spatial.minkowski([sd.nan, 0.0], [0.0, 0.0], p=3), sd.spatial.minkowski([sd.inf, 0.0], [0.0, 0.0], p=3)
+(nan, inf)
+>>> sd.spatial.minkowski([], [], p=3)
+0.0
+```
+
+## 정확도
+
+상대오차는 좌표 수와 p에 따라 정해지는 작은 한계 안이에요. 넘침과 언더플로가 걸리는 짝까지 넣은 시험 645짝에서 Arb(구간 산술)로 만든 참값과 견준 최대 오차는 이래요.
+
+| p | 최대 오차 | 한계 대비 |
+|---|---:|---:|
+| 0.5 | 6 ULP | 0.2 |
+| 1.5 | 3 ULP | 0.17 |
+| 3 | 1 ULP | 0.21 |
+| 7.5 | 2 ULP | 0.4 |
+| 3, 가중치 | 2 ULP | 0.22 |
+
+## scipy·sklearn을 아는 분께
+
+- 뜻과 `w`의 뜻은 `scipy.spatial.distance.minkowski`와 같아요. `p`와 `w`는 키워드로만 받아요(scipy의 `minkowski(u, v, 3)`은 `TypeError`).
+- p가 0 이하이거나 NaN이면 [`pdist`](/api/spatial/pdist/)·[`cdist`](/api/spatial/cdist/)에서도 `ValueError`예요. scipy의 `pdist`는 `p=-1`에서 값을, `p=0`에서 inf를 내요.
+- 큰 p와 아주 크거나 작은 좌표에서도 유한한 거리예요. scipy는 (0, 0)과 (3, 4)의 p = 2000 거리를 inf로 내요. R의 `dist(x, method="minkowski", p=)`도 넘치는 좌표에서 inf예요.
+- `pdist`·`cdist`에 `metric='minkowski'`가 아닌 거리와 `p`를 함께 주면 `TypeError`예요. scipy는 바인딩의 시그니처를 늘어놓은 에러를 내요.
+- `minkowski_distance`, `minkowski_distance_p`는 없어요. 앞의 것은 `minkowski`이고 뒤의 것은 그 p제곱이에요.
+- sklearn의 `NearestNeighbors(metric='minkowski', p=…)`의 이웃 찾기는 `kneighbors(X, Y, metric='minkowski', p=…)`예요.

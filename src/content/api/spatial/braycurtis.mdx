@@ -1,0 +1,190 @@
+---
+kind: function
+title: braycurtis
+names: [braycurtis]
+group: 거리 함수
+order: 23
+signatures:
+  - "sd.spatial.braycurtis(u, v, /, *, w=None)"
+summary: 차이의 절댓값의 합을 두 벡터를 더한 것의 절댓값의 합으로 나눈 Σ|uᵢ − vᵢ| / Σ|uᵢ + vᵢ|예요. 음이 아닌 개수 자료에서는 0(같은 구성)과 1(겹치는 것이 없음) 사이의 값이라, 생태학에서 두 곳의 종 구성을 견줄 때 많이 써요.
+params:
+  - name: u
+    type: ndarray, 수의 시퀀스, numpy 배열, 또는 frame의 DataFrame
+    kind: positional-only
+    desc: 첫째 벡터. 마지막 축이 좌표예요. 2차원 이상이면 앞 축이 벡터 여러 개의 배치예요. bool·int64는 float64로 바꿔 계산하고, 복소수는 받지 않아요.
+  - name: v
+    type: ndarray, 수의 시퀀스, numpy 배열, 또는 frame의 DataFrame
+    kind: positional-only
+    desc: 둘째 벡터. 마지막 축의 길이가 u와 같아야 하고, 앞 축은 u와 브로드캐스트돼야 해요.
+  - name: w
+    type: 1차원 배열 또는 None
+    kind: keyword-only
+    desc: 좌표마다의 가중치. 길이가 좌표 수와 같고 모든 값이 유한하며 0 이상이어야 해요. 분자와 분모의 항에 모두 wᵢ를 곱해요. None(기본값)이면 모두 1이에요.
+returns:
+  type: float 또는 ndarray
+  desc: 거리. 두 입력이 음이 아니면 0 이상 1 이하예요. 두 입력이 1차원이면 Python float, 아니면 배치 모양의 float64 배열이에요. 두 벡터가 모두 0이면 NaN, 분모만 0이면 inf예요.
+raises:
+  - type: TypeError
+    desc: u·v가 배열·수의 시퀀스·DataFrame이 아닐 때, 복소수일 때, w를 위치로 줬을 때, 없는 키워드를 줬을 때.
+  - type: ValueError
+    desc: 마지막 축의 길이가 다를 때, 앞 축이 브로드캐스트되지 않을 때, w가 1차원이 아니거나 길이가 틀렸거나 음수·NaN·inf를 담았을 때.
+seeAlso: [metrics, canberra, cityblock, jaccard, cdist, pdist, basics]
+---
+import Callout from '../../../components/Callout.astro';
+
+## 무엇을 재나요
+
+브레이–커티스 거리는 두 벡터의 차이를 두 벡터의 전체 양으로 나눠요.
+
+$$
+d(u, v) = \frac{\sum_i |u_i - v_i|}{\sum_i |u_i + v_i|}
+$$
+
+분자는 [`cityblock`](/api/spatial/cityblock/) 거리예요. 그것을 두 벡터의 전체 양으로 나눠서, 많이 센 곳끼리의 차이와 적게 센 곳끼리의 차이를 같은 눈금에서 견줘요.
+
+생태학의 예를 들어 볼게요. 두 숲에서 네 가지 새를 세었어요.
+
+```python
+>>> import stardust as sd
+>>> forest_a = [10.0, 0.0, 5.0, 3.0]
+>>> forest_b = [6.0, 2.0, 0.0, 3.0]
+>>> sd.spatial.braycurtis(forest_a, forest_b)
+0.3793103448275862
+```
+
+차이의 합은 4 + 2 + 5 + 0 = 11, 두 숲의 새는 모두 18 + 11 = 29마리라서 11/29 ≈ 0.379예요.
+
+<Reference />
+
+## 음이 아닌 자료에서는 0과 1 사이
+
+모든 값이 0 이상이면 $|u_i + v_i| = u_i + v_i$이고 $|u_i - v_i| = u_i + v_i - 2\min(u_i, v_i)$라서 이렇게 쓸 수 있어요.
+
+$$
+d(u, v) = 1 - \frac{2 \sum_i \min(u_i, v_i)}{\sum_i u_i + \sum_i v_i}
+$$
+
+$\sum \min(u_i, v_i)$는 두 벡터가 "함께 가진" 양이에요. 위의 두 숲에서는 6 + 0 + 0 + 3 = 9이고, 1 − 18/29 = 11/29예요. 그래서 거리는 구성이 같으면 0, 겹치는 것이 하나도 없으면 1이에요.
+
+```python
+>>> sd.spatial.braycurtis([1.0, 2.0], [1.0, 2.0])
+0.0
+>>> sd.spatial.braycurtis([1.0, 0.0], [0.0, 1.0])
+1.0
+```
+
+두 벡터가 모두 0인 좌표는 분자에도 분모에도 아무것도 더하지 않아요. 두 숲 모두에 없는 새의 종을 목록에 더해도 거리는 그대로예요.
+
+### 전체 양에 따라 달라져요
+
+[`cosine`](/api/spatial/cosine/)과 달리 한 벡터를 몇 배 해도 같은 거리가 아니에요. 같은 구성의 숲이라도 한쪽에서 두 배를 세었으면 거리가 0이 아니에요.
+
+```python
+>>> sd.spatial.pdist([[10.0, 0.0, 5.0, 3.0],
+...                   [6.0, 2.0, 0.0, 3.0],
+...                   [20.0, 0.0, 10.0, 6.0]], metric="braycurtis")
+array([0.3793103448275862, 0.3333333333333333, 0.6170212765957447], dtype=float64)
+```
+
+셋째 숲은 첫째 숲의 두 배를 센 것이라 둘의 거리가 1/3이에요(차이 18, 전체 54). 조사한 넓이나 노력이 곳마다 달라서 양보다 비율을 견주고 싶으면, 각 행을 그 합으로 나눠 비율로 바꾼 뒤에 재요.
+
+```python
+>>> X = sd.asarray([[10.0, 0.0, 5.0, 3.0], [20.0, 0.0, 10.0, 6.0]])
+>>> share = X / sd.sum(X, axis=1, keepdims=True)
+>>> sd.spatial.braycurtis(share[0], share[1])
+0.0
+```
+
+비율로 바꾼 두 행의 합은 모두 1이라 분모가 2이고, 거리는 비율의 차이의 합의 절반이에요.
+
+## 음수가 섞이면
+
+거리의 식은 음수도 받지만 0과 1 사이라는 성질은 사라져요. $\sum |u_i + v_i|$가 0이 될 수 있어서, 두 벡터가 서로의 부호를 뒤집은 것이면 분모만 0이라 inf예요.
+
+```python
+>>> sd.spatial.braycurtis([1.0, -1.0], [1.0, 1.0])
+1.0
+>>> sd.spatial.braycurtis([1.0, -1.0], [-1.0, 1.0])
+inf
+```
+
+이 거리는 음이 아닌 양(개수, 무게, 넓이)에 쓰려고 만든 것이에요. 음수가 뜻을 가진 자료에는 [`cityblock`](/api/spatial/cityblock/)이나 [`canberra`](/api/spatial/canberra/)가 더 맞아요.
+
+## 여러 짝을 한꺼번에
+
+마지막 축이 좌표이고 앞 축은 배치예요. 앞 축은 브로드캐스트로 맞춰요. 모든 행의 짝은 [`pdist`](/api/spatial/pdist/)나 [`cdist`](/api/spatial/cdist/)에 `metric="braycurtis"`를 줘요. 이웃 찾기([`kneighbors`](/api/spatial/kneighbors/), [`radius_neighbors`](/api/spatial/radius_neighbors/))에도 같은 이름을 줄 수 있어요. 같은 두 벡터의 거리는 어디서 재든 비트까지 같아요.
+
+```python
+>>> sd.spatial.braycurtis([[10.0, 0.0, 5.0, 3.0], [20.0, 0.0, 10.0, 6.0]], forest_b)
+array([0.3793103448275862, 0.6170212765957447], dtype=float64)
+```
+
+## 가중치 `w`
+
+`w`를 주면 분자와 분모의 항에 모두 $w_i$를 곱해요.
+
+$$
+d_w(u, v) = \frac{\sum_i w_i |u_i - v_i|}{\sum_i w_i |u_i + v_i|}
+$$
+
+가중치 0인 좌표는 빠져요.
+
+```python
+>>> sd.spatial.braycurtis([1.0, 2.0], [3.0, 4.0], w=[1.0, 0.0])
+0.5
+```
+
+## 경계의 값
+
+| 입력 | 결과 | 까닭 |
+|---|:---:|---|
+| 두 벡터가 같음 | 0 | 분모가 0이 아니면 |
+| 두 벡터가 모두 0 | NaN | 0/0 |
+| 분모만 0 | inf | 음수가 섞인 경우 |
+| NaN·inf가 있음 | NaN | |
+| 좌표가 없음(길이 0) | NaN | 0/0 |
+
+```python
+>>> sd.spatial.braycurtis([0.0, 0.0], [0.0, 0.0])
+nan
+>>> sd.spatial.braycurtis([1.0, sd.nan], [1.0, 1.0])
+nan
+>>> sd.spatial.braycurtis([1.0, sd.inf], [1.0, 1.0])
+nan
+```
+
+<Callout type="warn" title="빈 표본">
+
+아무것도 세지 못한 두 곳의 거리는 NaN이에요. 이런 행이 있으면 `pdist`의 결과에도 NaN이 섞이고, [`kneighbors`](/api/spatial/kneighbors/)는 NaN인 짝을 이웃으로 고르지 않아요. 군집 분석 전에 합이 0인 행을 빼 두세요.
+
+</Callout>
+
+## 에러
+
+```python
+>>> sd.spatial.braycurtis(forest_a, [1.0, 2.0])
+Traceback (most recent call last):
+    ...
+ValueError: braycurtis(): 'u' and 'v' must have the same length on their last axis, not 4 and 2
+>>> sd.spatial.braycurtis(forest_a, forest_b, w=[1.0, 1.0, 1.0, -1.0])
+Traceback (most recent call last):
+    ...
+ValueError: braycurtis(): 'w' must be finite and nonnegative
+```
+
+## 정확도
+
+참값은 Arb(구간 산술)로 구한 정확한 거리예요. 약속은 상대오차 $\gamma_{2m+3}$ 이하예요. $\gamma_k = ku/(1 - ku)$, u = 2⁻⁵³이고 m은 덧셈이 거치는 반올림의 수로, 좌표 수 n이 32 이하면 m = n이에요(n이 크면 m = 32 + ⌈n/32⌉ − 1). 두 합에서 반올림이 쌓이고 나눗셈이 한 번 더해져요.
+
+| | 시험한 짝 | 최대 ULP | 최대 상대오차 | 약속 대비 |
+|---|---:|---:|---:|---:|
+| `braycurtis` | 624 | 5 | 9.31×10⁻¹⁶ | 0.35 |
+| `braycurtis`, 가중치 | 584 | 7 | 7.83×10⁻¹⁶ | 0.46 |
+
+분모의 항 $|u_i + v_i|$는 음수가 섞이면 상쇄가 생길 수 있지만, 그 반올림은 항마다 한 번이라 상대오차로 약속할 수 있어요.
+
+## scipy·sklearn을 아는 분께
+
+- `scipy.spatial.distance.braycurtis`와 이름, 뜻이 같아요(0/0은 NaN, 분모만 0이면 inf). `w`는 키워드로만 받아요.
+- NaN·inf 가중치는 `ValueError`예요. scipy는 음수만 막아요.
+- 배치를 받아요. scipy 1.18.1의 `braycurtis`는 1차원만 받아요.

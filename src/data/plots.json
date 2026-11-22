@@ -59,6 +59,12 @@
   "width": 89.0,
   "height": 50.0
  },
+ "basics-ties": {
+  "page": "api/spatial/basics",
+  "format": "svg",
+  "width": 70.0,
+  "height": 62.0
+ },
  "boxplot-compare": {
   "page": "api/plot/boxplot",
   "format": "svg",
@@ -136,6 +142,24 @@
   "format": "svg",
   "width": 89.0,
   "height": 80.0
+ },
+ "correlation-profiles": {
+  "page": "api/spatial/correlation",
+  "format": "svg",
+  "width": 89.0,
+  "height": 52.3859
+ },
+ "cosine-neighbors": {
+  "page": "api/spatial/cosine",
+  "format": "svg",
+  "width": 150.0,
+  "height": 64.8752
+ },
+ "count-neighbors-pairs": {
+  "page": "api/spatial/count_neighbors",
+  "format": "svg",
+  "width": 85.0,
+  "height": 70.0
  },
  "curve3d-trefoil": {
   "page": "api/plot/curve3d",
@@ -299,6 +323,12 @@
   "width": 89.0,
   "height": 70.5843
  },
+ "haversine-bering": {
+  "page": "api/spatial/haversine",
+  "format": "svg",
+  "width": 160.0,
+  "height": 70.4651
+ },
  "heatmap-annotate": {
   "page": "api/plot/heatmap",
   "format": "svg",
@@ -413,6 +443,24 @@
   "width": 89.0,
   "height": 70.1165
  },
+ "in-haversine-tree-chord": {
+  "page": "internals/spatial/haversine-tree",
+  "format": "svg",
+  "width": 89.0,
+  "height": 60.0
+ },
+ "in-haversine-tree-dateline": {
+  "page": "internals/spatial/haversine-tree",
+  "format": "svg",
+  "width": 120.0,
+  "height": 50.0
+ },
+ "in-kdtree-leaves": {
+  "page": "internals/spatial/kdtree",
+  "format": "svg",
+  "width": 89.0,
+  "height": 89.0
+ },
  "in-layout-align": {
   "page": "internals/plot/layout",
   "format": "svg",
@@ -436,6 +484,18 @@
   "format": "svg",
   "width": 89.0,
   "height": 65.9615
+ },
+ "in-pair-kernel-cosine": {
+  "page": "internals/spatial/pair-kernel",
+  "format": "svg",
+  "width": 120.0,
+  "height": 95.406
+ },
+ "in-queries-ball": {
+  "page": "internals/spatial/queries",
+  "format": "svg",
+  "width": 89.0,
+  "height": 89.0
  },
  "in-raster-coverage": {
   "page": "internals/plot/raster",
@@ -527,6 +587,18 @@
   "width": 89.0,
   "height": 89.0264
  },
+ "kdtree-nearest": {
+  "page": "api/spatial/KDTree",
+  "format": "svg",
+  "width": 80.0,
+  "height": 86.0
+ },
+ "kneighbors-k4": {
+  "page": "api/spatial/kneighbors",
+  "format": "svg",
+  "width": 80.0,
+  "height": 76.0
+ },
  "line-group": {
   "page": "api/plot/line",
   "format": "svg",
@@ -544,6 +616,24 @@
   "format": "svg",
   "width": 89.0,
   "height": 58.5365
+ },
+ "mahalanobis-ellipses": {
+  "page": "api/spatial/mahalanobis",
+  "format": "svg",
+  "width": 100.0,
+  "height": 90.0
+ },
+ "metrics-three-paths": {
+  "page": "api/spatial/metrics",
+  "format": "svg",
+  "width": 80.0,
+  "height": 90.0
+ },
+ "minkowski-unit-balls": {
+  "page": "api/spatial/minkowski",
+  "format": "svg",
+  "width": 110.0,
+  "height": 80.0
  },
  "pairs-body": {
   "page": "api/plot/pairs",
@@ -592,6 +682,12 @@
   "format": "svg",
   "width": 89.0,
   "height": 66.1437
+ },
+ "pdist-cities": {
+  "page": "api/spatial/pdist",
+  "format": "svg",
+  "width": 89.0,
+  "height": 56.663
  },
  "phase-identity": {
   "page": "api/plot/phase",
@@ -646,6 +742,30 @@
   "format": "svg",
   "width": 89.0,
   "height": 68.2384
+ },
+ "query-ball-point-radii": {
+  "page": "api/spatial/query_ball_point",
+  "format": "svg",
+  "width": 80.0,
+  "height": 86.0
+ },
+ "query-pairs-links": {
+  "page": "api/spatial/query_pairs",
+  "format": "svg",
+  "width": 80.0,
+  "height": 80.0
+ },
+ "query-upper-bound": {
+  "page": "api/spatial/query",
+  "format": "svg",
+  "width": 80.0,
+  "height": 86.0
+ },
+ "radius-neighbors-r02": {
+  "page": "api/spatial/radius_neighbors",
+  "format": "svg",
+  "width": 80.0,
+  "height": 76.0
  },
  "region-both": {
   "page": "api/plot/region",

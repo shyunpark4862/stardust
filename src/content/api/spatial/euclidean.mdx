@@ -1,0 +1,283 @@
+---
+title: euclidean
+names: [euclidean]
+group: 거리 함수
+order: 2
+signatures:
+  - "sd.spatial.euclidean(u, v, /, *, w=None)"
+summary: 두 점 사이를 자로 잰 직선 거리 √Σ(uᵢ − vᵢ)²를 구해요. 좌표가 아주 크거나 작아도 넘치지 않고, 여러 짝을 한 번에 받아요.
+params:
+  - name: u
+    type: 수의 배열
+    kind: positional-only
+    desc: 첫째 점. 모양은 (..., n)이고 마지막 축이 좌표예요. 리스트, sd.ndarray, numpy 배열, frame의 DataFrame·Series를 받아요. 정수와 bool은 float64로 바꿔요.
+  - name: v
+    type: 수의 배열
+    kind: positional-only
+    desc: 둘째 점. 마지막 축의 길이가 u와 같아야 하고, 앞 축은 u의 앞 축과 브로드캐스트돼요.
+  - name: w
+    type: 수의 배열 또는 None
+    kind: keyword-only
+    desc: 좌표마다의 가중치. 1차원, 길이 n, 모두 유한하고 0 이상이어야 해요. 주면 √Σ wᵢ(uᵢ − vᵢ)²예요. 기본 None은 모두 1과 같아요.
+returns:
+  type: float 또는 ndarray
+  desc: 거리. u와 v가 모두 1차원이면 Python float, 아니면 앞 축을 브로드캐스트한 모양의 float64 배열이에요.
+raises:
+  - type: TypeError
+    desc: u·v·w가 수의 배열이 아닐 때(문자열, 수 하나), 복소수일 때, w를 키워드 없이 셋째 자리로 줬을 때, u·v를 키워드로 줬을 때, 모르는 키워드를 줬을 때.
+  - type: ValueError
+    desc: u와 v의 마지막 축 길이가 다를 때, 앞 축이 브로드캐스트되지 않을 때, 들쭉날쭉한 시퀀스일 때, w가 1차원이 아니거나 길이가 n이 아니거나 음수·NaN·inf가 있을 때.
+  - type: MemoryError
+    desc: 결과 배열이 이 기계의 물리 메모리보다 클 때.
+seeAlso: [metrics, sqeuclidean, minkowski, seuclidean, mahalanobis, cdist, pdist, kneighbors]
+---
+
+## 한눈에 보기
+
+`euclidean`은 두 점 사이를 자로 잰 **직선 거리**예요. 평면 위의 점 (0, 0)과 (3, 4)는 가로로 3, 세로로 4 떨어져 있고, 둘을 잇는 선분의 길이는 피타고라스 정리로 $\sqrt{3^2 + 4^2} = 5$예요.
+
+```python
+>>> import stardust as sd
+>>> sd.spatial.euclidean([0.0, 0.0], [3.0, 4.0])
+5.0
+```
+
+좌표가 몇 개든 같은 방식이에요. 3차원의 두 점도, 특징이 100개인 두 표본도 좌표마다 차이를 제곱해 더하고 제곱근을 씌워요.
+
+```python
+>>> sd.spatial.euclidean([1.0, 2.0, 3.0], [4.0, 6.0, 3.0])
+5.0
+```
+
+<Reference />
+
+## 무엇을 재나요
+
+길이 $n$인 두 점 $u$, $v$의 유클리드 거리는 이래요.
+
+$$
+d(u, v) = \sqrt{\sum_{i=1}^{n} (u_i - v_i)^2} = \lVert u - v \rVert_2
+$$
+
+우리가 보통 "거리"라고 할 때 떠올리는 바로 그 거리예요. 지도 위의 직선 거리, 물리 공간의 두 물체 사이 거리, 그림의 두 화소 위치 사이 거리가 모두 이것이에요. 그래서 좌표가 **같은 단위**이고 **같은 무게**로 비교해도 되는 자료에 잘 맞아요. 위치, 같은 단위로 잰 측정값, 미리 표준화한 특징, 임베딩 벡터가 그런 예예요.
+
+거리라면 지켜야 할 성질을 모두 지켜요. 언제나 0 이상이고, 같은 점끼리만 0이고, $d(u, v) = d(v, u)$이고, 삼각 부등식 $d(u, w) \le d(u, v) + d(v, w)$가 성립해요. 대칭은 계산 결과에서도 비트까지 그대로예요.
+
+```python
+>>> sd.spatial.euclidean([0.1, 0.7], [0.3, 0.2]) == sd.spatial.euclidean([0.3, 0.2], [0.1, 0.7])
+True
+```
+
+### 단위가 섞인 자료에서는 조심해요
+
+좌표의 단위가 다르면 숫자가 큰 좌표가 거리를 좌우해요. 사람 셋의 키(cm)와 몸무게(kg)를 보세요.
+
+```python
+>>> a = [170.0, 65.0]
+>>> b = [180.0, 65.0]   # 키만 10cm 더 커요
+>>> c = [170.0, 75.0]   # 몸무게만 10kg 더 나가요
+>>> sd.spatial.euclidean(a, b), sd.spatial.euclidean(a, c)
+(10.0, 10.0)
+```
+
+키 10cm와 몸무게 10kg을 같은 차이로 봤어요. 키를 mm로 적었다면 b가 열 배 멀어졌을 거예요. 이럴 때는 좌표마다 퍼진 정도로 나눠 주는 [`seuclidean`](/api/spatial/seuclidean/)이나, 좌표 사이의 상관까지 따지는 [`mahalanobis`](/api/spatial/mahalanobis/)가 맞아요. 아래의 가중치 `w`로 직접 무게를 줄 수도 있어요.
+
+## 받는 입력
+
+`u`와 `v`는 수의 리스트, `sd.ndarray`, numpy 배열, frame의 `DataFrame`·`Series`를 받아요. 정수와 bool은 float64로 바꿔서 계산하고, 결과도 언제나 float64예요.
+
+```python
+>>> sd.spatial.euclidean([1, 2], [4, 6])
+5.0
+>>> sd.spatial.euclidean(sd.asarray([0.0, 0.0]), sd.asarray([3.0, 4.0]))
+5.0
+```
+
+두 점이 모두 1차원이면 결과는 Python `float` 하나예요. 복소수는 받지 않아요(`TypeError`). 좌표가 0개인 두 점의 거리는 빈 합의 제곱근이라 0이에요.
+
+```python
+>>> sd.spatial.euclidean([], [])
+0.0
+```
+
+## 여러 짝을 한 번에
+
+마지막 축이 좌표이고, 앞의 축들은 numpy의 브로드캐스팅 규칙으로 짝을 지어요. 결과의 모양은 앞 축을 브로드캐스트한 모양이에요.
+
+점 여럿과 한 점 사이의 거리는 `(m, n)`과 `(n,)`을 넘기면 돼요. 결과는 `(m,)`이에요.
+
+```python
+>>> P = sd.asarray([[0.0, 0.0], [1.0, 1.0], [3.0, 4.0]])
+>>> sd.spatial.euclidean(P, [0.0, 0.0])
+array([              0.0, 1.4142135623730951,               5.0], dtype=float64)
+```
+
+모양이 같은 두 배열은 행끼리 짝을 지어요. 짝지은 행마다의 거리예요.
+
+```python
+>>> Q = sd.asarray([[1.0, 0.0], [1.0, 1.0], [0.0, 0.0]])
+>>> sd.spatial.euclidean(P, Q)
+array([1.0, 0.0, 5.0], dtype=float64)
+```
+
+축 하나를 끼워 넣으면 모든 짝의 거리 행렬도 만들 수 있어요. 결과는 [`cdist`](/api/spatial/cdist/)와 같아요. 다만 이 방법은 `(m, m, n)` 모양의 중간 배열을 만드니, 거리 행렬이 필요하면 `cdist`나 [`pdist`](/api/spatial/pdist/)를 쓰세요.
+
+```python
+>>> sd.spatial.euclidean(P[:, None, :], P[None, :, :])
+array([[               0.0, 1.4142135623730951,                5.0],
+       [1.4142135623730951,                0.0,  3.605551275463989],
+       [               5.0,  3.605551275463989,                0.0]], dtype=float64)
+```
+
+마지막 축의 길이가 다르거나 앞 축이 브로드캐스트되지 않으면 `ValueError`예요.
+
+```python
+>>> sd.spatial.euclidean([1.0, 2.0], [1.0, 2.0, 3.0])
+Traceback (most recent call last):
+    ...
+ValueError: euclidean(): 'u' and 'v' must have the same length on their last axis, not 2 and 3
+>>> sd.spatial.euclidean(sd.zeros((3, 2)), sd.zeros((2, 2)))
+Traceback (most recent call last):
+    ...
+ValueError: euclidean(): shapes could not be broadcast together: (3, 2) (2, 2)
+```
+
+## 가중치 w
+
+`w`를 주면 좌표마다 차이의 제곱에 무게를 곱해요.
+
+$$
+d_w(u, v) = \sqrt{\sum_{i=1}^{n} w_i (u_i - v_i)^2}
+$$
+
+$w_i = c^2$은 $i$번째 좌표를 $c$배로 늘린 뒤 잰 거리와 같아요. 그래서 `w=[4, 1]`은 가로 차이를 두 배로 쳐요.
+
+```python
+>>> sd.spatial.euclidean([0.0, 0.0], [3.0, 4.0], w=[4.0, 1.0])   # √(4·9 + 16)
+7.211102550927978
+>>> sd.spatial.euclidean([0.0, 0.0], [6.0, 4.0])
+7.211102550927978
+```
+
+무게 0인 좌표는 거리에 들어가지 않아요. 좌표 몇 개만 골라 재고 싶을 때 쓸 수 있어요.
+
+```python
+>>> sd.spatial.euclidean([0.0, 0.0], [3.0, 4.0], w=[1.0, 0.0])
+3.0
+```
+
+`w`는 1차원이고 길이가 좌표 수 $n$이어야 하며, 모든 원소가 유한하고 0 이상이어야 해요. 키워드로만 받아요.
+
+```python
+>>> sd.spatial.euclidean([0.0, 0.0], [3.0, 4.0], w=[1.0, -1.0])
+Traceback (most recent call last):
+    ...
+ValueError: euclidean(): 'w' must be finite and nonnegative
+>>> sd.spatial.euclidean([0.0, 0.0], [3.0, 4.0], w=[1.0])
+Traceback (most recent call last):
+    ...
+ValueError: euclidean(): 'w' must have 2 entries (one per column), not 1
+>>> sd.spatial.euclidean([0.0, 0.0], [3.0, 4.0], [1.0, 1.0])
+Traceback (most recent call last):
+    ...
+TypeError: euclidean(): takes 2 positional arguments but 3 were given
+```
+
+좌표마다 분산 $V_i$로 나누고 싶다면 `w`에 $1/V_i$를 주면 돼요. 그게 바로 [`seuclidean`](/api/spatial/seuclidean/)이에요.
+
+## 아주 큰 좌표, 아주 작은 좌표
+
+차이를 제곱하면 수의 지수가 두 배가 돼요. float64는 $1.8 \times 10^{308}$까지만 담으니, 좌표가 $10^{200}$이면 제곱이 넘쳐 무한대가 되고, $10^{-200}$이면 제곱이 0으로 사라져요. 식을 그대로 옮긴 계산은 이렇게 틀려요.
+
+```python
+>>> u = sd.asarray([1e200, 0.0])
+>>> v = sd.asarray([0.0, 1e200])
+>>> sd.sqrt(sd.sum((u - v) ** 2))
+inf
+>>> sd.spatial.euclidean(u, v)
+1.414213562373095e+200
+```
+
+`euclidean`은 제곱합이 넘치거나 아주 작아지면 좌표를 2의 거듭제곱으로 나눠 크기를 맞춘 뒤 다시 계산해요. 2의 거듭제곱으로 나누는 것은 반올림이 없어서 정확도를 잃지 않아요. 참 거리가 float64에 담기면 결과도 유한한 값이에요.
+
+```python
+>>> u = sd.asarray([1e-200, 0.0])
+>>> v = sd.asarray([0.0, 1e-200])
+>>> sd.sqrt(sd.sum((u - v) ** 2))
+0.0
+>>> sd.spatial.euclidean(u, v)
+1.414213562373095e-200
+```
+
+좌표의 차이 자체가 float64를 넘으면(예를 들어 $10^{308}$과 $-10^{308}$) 참 거리도 담을 수 없으니 결과는 `inf`예요.
+
+## NaN과 inf
+
+거리 함수는 유한하지 않은 값을 IEEE 규칙대로 결과까지 흘려보내요. 좌표에 NaN이 하나라도 있으면 NaN이고, 한쪽만 무한대면 inf, 같은 부호의 무한대끼리는 inf − inf가 NaN이라 NaN이에요.
+
+```python
+>>> sd.spatial.euclidean([1.0, sd.nan], [0.0, 0.0])
+nan
+>>> sd.spatial.euclidean([sd.inf, 0.0], [0.0, 0.0])
+inf
+>>> sd.spatial.euclidean([sd.inf, 0.0], [sd.inf, 0.0])
+nan
+```
+
+이웃 찾기([`kneighbors`](/api/spatial/kneighbors/), [`KDTree`](/api/spatial/KDTree/))는 다르게 해요. 거기서는 NaN이 있으면 "가장 가까운"이 정해지지 않으니 데이터가 모두 유한해야 하고, 아니면 `ValueError`예요.
+
+## 같은 짝은 어디서 재도 같은 값
+
+같은 두 점의 거리는 `euclidean`으로 재든, [`cdist`](/api/spatial/cdist/)·[`pdist`](/api/spatial/pdist/)로 재든, [`kneighbors`](/api/spatial/kneighbors/)나 [`KDTree`](/api/spatial/KDTree/)가 돌려주든 마지막 비트까지 같아요. 그래서 이웃 찾기의 결과를 거리 행렬과 바로 견줘도 어긋나지 않아요.
+
+```python
+>>> X = sd.asarray([[0.1, 0.2, 0.3], [0.9, 0.1, 0.4], [0.5, 0.5, 0.5]])
+>>> D = sd.spatial.cdist(X, X)
+>>> D[0, 2] == sd.spatial.euclidean(X[0], X[2]) == sd.spatial.pdist(X)[1]
+True
+>>> d, i = sd.spatial.kneighbors(X[:1], X, k=2)
+>>> d[0, 1] == D[0, i[0, 1]]
+True
+```
+
+[`sd.linalg.vector_norm(u - v)`](/api/linalg/norms/)도 같은 양이지만, 좌표가 많으면 제곱을 더하는 순서가 달라 마지막 자리가 다를 수 있어요. 둘 다 아래의 정확도 안이에요.
+
+```python
+>>> rng = sd.random.default_rng(10)
+>>> x = sd.stats.Normal().sample((20,), rng=rng)
+>>> y = sd.stats.Normal().sample((20,), rng=rng)
+>>> sd.spatial.euclidean(x, y)
+6.814500716899186
+>>> sd.linalg.vector_norm(x - y)
+6.814500716899187
+```
+
+같은 기계, 같은 스레드 수, 같은 입력이면 실행마다 같은 비트예요.
+
+## 정확도
+
+결과의 상대오차는 좌표 수 $n$에 따라 정해지는 작은 한계 안이에요. 제곱하는 항이 모두 0 이상이라 더하면서 자릿수가 상쇄되는 일이 없어서, 좌표가 많아도 한계가 천천히만 커져요. 넘침과 언더플로가 걸리는 짝(좌표 $10^{\pm 160}$, 비정상 수)까지 넣은 시험 645짝에서, [Arb(구간 산술)로 만든 참값](/internals/spatial/accuracy-performance/)과 견준 최대 오차는 2 ULP(한계의 0.46)였어요. 가중치를 준 경우도 2 ULP(한계의 0.42)예요. 1 ULP는 그 크기의 float64에서 바로 옆 수까지의 간격이에요.
+
+## 비슷한 함수와의 차이
+
+| 함수 | 무엇이 다른가요 |
+|---|---|
+| [`sqeuclidean`](/api/spatial/sqeuclidean/) | 제곱근을 씌우지 않은 $\sum (u_i - v_i)^2$. 순서만 필요하거나 제곱합 자체가 필요할 때 |
+| [`minkowski(p=2)`](/api/spatial/minkowski/) | 같은 거리이고 비트까지 같아요. p를 바꾸면 다른 거리가 돼요 |
+| [`seuclidean`](/api/spatial/seuclidean/) | 좌표마다 분산으로 나눠 단위를 없앤 유클리드 거리 |
+| [`mahalanobis`](/api/spatial/mahalanobis/) | 좌표 사이의 상관까지 따진 거리 |
+| [`cdist`](/api/spatial/cdist/), [`pdist`](/api/spatial/pdist/) | 점 집합의 모든 짝. `metric='euclidean'`이 기본이에요 |
+| [`kneighbors`](/api/spatial/kneighbors/) | 가장 가까운 k개만. 전체 거리 행렬을 만들지 않아요 |
+
+열네 가지 거리를 한 표로 견주는 것은 [거리 함수 고르기](/api/spatial/metrics/)에 있어요.
+
+## scipy·sklearn을 아는 분께
+
+- 뜻과 `w`의 뜻은 `scipy.spatial.distance.euclidean`과 같아요.
+- `w`는 키워드로만 받아요. scipy의 `euclidean(u, v, w)`처럼 셋째 자리로 주면 `TypeError`예요.
+- `w`에 NaN·inf가 있으면 `ValueError`예요. scipy는 음수만 막고 NaN·inf 가중치로 NaN·inf 거리를 내요.
+- 좌표가 $10^{200}$처럼 커도 유한한 거리예요. scipy와 R의 `dist`는 같은 자리에서 inf를 내요.
+- 앞 축의 브로드캐스팅으로 여러 짝을 한 번에 받아요. sklearn의 `paired_distances(X, Y)`는 `euclidean(X, Y)`예요.
+- sklearn의 `euclidean_distances`는 $\lVert x\rVert^2 + \lVert y\rVert^2 - 2x\cdot y$로 계산해, 서로 가깝지만 원점에서 먼 점들에서 자릿수를 잃어요(`[[1e8, 1e8], [1e8 + 1, 1e8]]`의 거리가 1이 아니라 0). 이 라이브러리의 거리는 언제나 차이를 직접 제곱해 더해요.
+- 복소수는 `TypeError`예요.
+- 정상 범위의 짝에서는 지금은 scipy와 같거나 마지막 자리 몇 개가 다른 값이 나와요(약속은 아니에요). 더하는 순서가 달라서예요.

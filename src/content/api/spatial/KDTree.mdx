@@ -1,0 +1,351 @@
+---
+title: KDTree
+names: [KDTree, KDTree.data, KDTree.n, KDTree.m, KDTree.leafsize, KDTree.maxes, KDTree.mins, KDTree.size]
+group: KD 트리
+order: 1
+signatures:
+  - "sd.spatial.KDTree(data, /, *, leafsize=10)"
+summary: 점 집합을 상자로 나눠 정리해 두는 KD 트리를 만들어요. 한 번 만들어 두면 가장 가까운 점, 반경 안의 점, 가까운 짝, 짝의 수를 모든 점과 견주지 않고 정확히 찾아요. 만들기, leafsize, 속성, 복사와 저장, 언제 KDTree를 쓰는지를 설명해요.
+params:
+  - name: data
+    type: ndarray, 수의 시퀀스, numpy 배열, DataFrame
+    kind: positional-only
+    desc: "점 n개를 행으로 담은 (n, m) 배열. 행 하나가 m차원 점 하나예요. float64로 바꿔 복사해 두므로, 만든 뒤 원래 배열을 고쳐도 트리는 바뀌지 않아요. 모든 값이 유한해야 해요. n = 0이나 m = 0도 받아요."
+  - name: leafsize
+    type: int
+    kind: keyword-only
+    desc: "잎 하나에 담는 점의 최대 개수(1 이상). 결과는 바꾸지 않고 빠르기만 바꿔요. 기본값 10."
+returns:
+  type: KDTree
+  desc: "새 트리. 속성 data(입력 순서의 읽기 전용 사본), n, m, leafsize, maxes, mins, size와 질의 메서드 여섯을 가져요."
+raises:
+  - type: TypeError
+    desc: "data가 수의 배열이 아닐 때(문자열, complex), leafsize가 int가 아닐 때(2.5, True), leafsize를 자리로 주거나 없는 인자(balanced_tree, copy_data, boxsize 등)를 줄 때."
+  - type: ValueError
+    desc: "data가 2차원이 아닐 때, data에 NaN이나 inf가 있을 때, leafsize가 1보다 작을 때."
+  - type: OverflowError
+    desc: "leafsize가 int64 범위를 넘을 때."
+seeAlso: [query, query_ball_point, query_ball_tree, query_pairs, count_neighbors, sparse_distance_matrix, kneighbors, radius_neighbors, basics, results]
+---
+import Callout from '../../../components/Callout.astro';
+import PlotImage from '../../../components/fig/PlotImage.astro';
+
+## 한눈에 보기
+
+가게 60곳의 위치가 있고, 어느 집에서 가장 가까운 가게 세 곳을 찾고 싶다고 해 볼게요. 가장 쉬운 방법은 60곳까지의 거리를 모두 재서 작은 순서로 고르는 거예요. 가게가 수십만 곳이고 집도 수십만 채라면 그렇게 재는 거리가 너무 많아져요.
+
+`KDTree`는 점들을 미리 상자로 나눠 정리해 두는 자료 구조예요. 한 번 만들어 두면 "이 점에서 가장 가까운 점은?" 같은 질문에 답할 때, 답이 있을 수 없는 상자를 통째로 건너뛰어서 아주 적은 점만 견줘요. 그래도 답은 모든 점과 견준 것과 똑같아요.
+
+```python
+>>> import stardust as sd
+>>> rng = sd.random.default_rng(12)
+>>> shops = rng.random((60, 2))
+>>> tree = sd.spatial.KDTree(shops)
+>>> tree
+KDTree(n=60, m=2, leafsize=10)
+>>> d, i = tree.query([0.42, 0.55], k=3)
+>>> d
+array([0.06609477665709551, 0.07823074249552857, 0.11218336308905229], dtype=float64)
+>>> i
+array([56, 34,  6], dtype=int64)
+>>> shops[i]
+array([[0.3663067970033914, 0.5114570440506139],
+       [0.4504918757914729, 0.6220436991146283],
+       [0.5095380771124675, 0.6175872746970313]], dtype=float64)
+```
+
+`d`는 가까운 순서의 거리, `i`는 그 가게가 `shops`의 몇째 행인지예요. 56번 가게가 가장 가깝고 거리는 약 0.066이에요.
+
+```python
+>>> t = sd.linspace(0, 2 * 3.141592653589793, 200)
+>>> d5, i5 = tree.query([0.42, 0.55], k=5)
+>>> fig = sd.plot.Figure(width=80, height=86)
+>>> fig = fig.scatter(shops[:, 0], shops[:, 1], color="gray", size=4, label="가게")
+>>> fig = fig.line(0.42 + d5[4] * sd.cos(t), 0.55 + d5[4] * sd.sin(t), color="gray", style="--", width=0.6)
+>>> fig = fig.scatter(shops[i5, 0], shops[i5, 1], size=5, label="가까운 5곳")
+>>> fig = fig.scatter([0.42], [0.55], shape="x", size=7, color="black", label="집")
+>>> fig = fig.xlim(0, 1).ylim(0, 1).legend(loc="top")
+```
+
+<PlotImage name="kdtree-nearest" alt="0과 1 사이의 네모 안에 회색 점 60개가 흩어져 있고, 가운데 왼쪽의 가위표(집) 둘레에 파란 점 다섯 개와 다섯째 점을 지나는 점선 원이 그려진 그림" caption="집(가위표)에서 가장 가까운 가게 다섯 곳. 점선 원의 반지름이 다섯째 거리예요. 원 안에는 다섯 곳만 있어요." />
+
+<Reference />
+
+## 트리는 무엇을 해 두나요
+
+트리를 만들 때는 점들을 둘로 나누기를 거듭해요. 점들이 가장 넓게 퍼진 축을 골라 그 축의 가운데 값(중앙값)에서 점을 반씩 나누고, 나뉜 쪽마다 또 나눠요. 점이 `leafsize`개 이하가 된 무리는 더 나누지 않고 **잎**으로 남겨요. 나뉜 무리마다 그 점들을 꼭 감싸는 상자(축마다 가장 작은 값과 가장 큰 값)를 기억해 둬요.
+
+찾을 때는 질의점에서 상자까지의 거리를 먼저 봐요. 상자 안의 점은 상자보다 가까울 수 없으니, 상자까지의 거리가 지금까지 찾은 후보보다 멀면 그 안의 점은 하나도 보지 않고 건너뛰어요. 이렇게 걸러 내고 남은 점만 거리를 재요.
+
+건너뛰는 판단이 늘 안전한 쪽이라 결과는 근삿값이 아니에요. 모든 점과 거리를 재서 고른 결과와 같은 점, 같은 순서, 같은 거리 비트예요. 트리는 빠르기만 바꿔요.
+
+```python
+>>> q = rng.random((4, 2))
+>>> a = tree.query(q, k=2)
+>>> b = sd.spatial.kneighbors(q, shops, k=2)
+>>> bool(sd.all(a.distances == b.distances)), bool(sd.all(a.indices == b.indices))
+(True, True)
+```
+
+## 만들기: `data`
+
+`data`는 점 n개를 행으로 담은 (n, m) 배열이에요. m은 점의 차원(좌표의 수)이에요. `sd.ndarray`, 수의 리스트, numpy 배열, `sd.frame.DataFrame`을 받고 모두 float64로 바꿔요. 정수 좌표도 받지만 float64로 바뀌므로 2⁵³보다 큰 정수는 정확히 담기지 않아요.
+
+```python
+>>> df = sd.frame.DataFrame({"x": [0.0, 1.0, 2.0], "y": [0.0, 0.5, 1.0]})
+>>> sd.spatial.KDTree(df).data
+array([[0.0, 0.0],
+       [1.0, 0.5],
+       [2.0, 1.0]], dtype=float64)
+>>> sd.spatial.KDTree([[1, 2], [3, 4]]).data.dtype
+float64
+```
+
+점이 1차원이어도 (n, 1)로 줘요. 수 n개를 1차원 배열로 주면 점 하나로 볼지 점 n개로 볼지 정할 수 없어 에러예요.
+
+```python
+>>> x = sd.asarray([0.0, 1.5, 4.0, 4.2, 9.0])
+>>> sd.spatial.KDTree(x)
+Traceback (most recent call last):
+    ...
+ValueError: KDTree(): 'data' must have 2 dimensions, not 1
+>>> sd.spatial.KDTree(sd.reshape(x, (-1, 1))).query([4.1], k=2)
+QueryResult(distances=array([0.09999999999999964, 0.10000000000000053], dtype=float64), indices=array([2, 3], dtype=int64))
+```
+
+### 데이터는 복사해 둬요
+
+트리는 데이터를 자기 사본으로 쥐어요. 그래서 트리를 만든 뒤 원래 배열을 고쳐도 트리의 답은 그대로예요. 원래 배열의 새 값으로 찾고 싶으면 트리를 다시 만들어요.
+
+```python
+>>> pts = sd.asarray([[0.0, 0.0], [5.0, 5.0]])
+>>> t = sd.spatial.KDTree(pts)
+>>> pts[0, 0] = 100.0
+>>> t.query([0.0, 0.0])
+QueryResult(distances=0.0, indices=0)
+>>> t.data
+array([[0.0, 0.0],
+       [5.0, 5.0]], dtype=float64)
+```
+
+### 값은 모두 유한해야 해요
+
+NaN이 있는 점은 어느 점과의 거리도 NaN이라 "가장 가까운"이 정해지지 않아요. 그래서 NaN이나 inf가 하나라도 있으면 에러예요. 결측값이 있는 행은 먼저 빼고 만들어요.
+
+```python
+>>> sd.spatial.KDTree([[0.0, 1.0], [float("nan"), 2.0]])
+Traceback (most recent call last):
+    ...
+ValueError: KDTree(): 'data' must be finite
+```
+
+### 점이 없거나 좌표가 없어도 돼요
+
+n = 0이면 점이 없는 트리예요. 질의는 모두 "찾지 못함"의 채움 값(거리 inf, 색인 n)을 돌려줘요. m = 0이면 좌표가 없어 모든 거리가 0이에요. 그래서 가장 가까운 점은 색인 순서대로예요.
+
+```python
+>>> empty = sd.spatial.KDTree(sd.zeros((0, 3)))
+>>> empty.query([1.0, 2.0, 3.0], k=2)
+QueryResult(distances=array([inf, inf], dtype=float64), indices=array([0, 0], dtype=int64))
+>>> flat = sd.spatial.KDTree(sd.zeros((4, 0)))
+>>> flat.query(sd.zeros(0), k=2)
+QueryResult(distances=array([0.0, 0.0], dtype=float64), indices=array([0, 1], dtype=int64))
+```
+
+## `leafsize`: 결과는 그대로, 빠르기만
+
+`leafsize`는 잎 하나에 담는 점의 최대 개수예요. 작게 하면 상자가 잘게 나뉘어 많이 건너뛰지만 상자를 오가는 일이 늘고, 크게 하면 그 반대예요. 어느 값이든 결과는 같아요. 노드의 수(`size`)만 달라져요.
+
+```python
+>>> for ls in (1, 4, 10, 60):
+...     t = sd.spatial.KDTree(shops, leafsize=ls)
+...     print(ls, t.size, t.query([0.42, 0.55], k=3).indices)
+1 119 [56 34  6]
+4 31 [56 34  6]
+10 15 [56 34  6]
+60 1 [56 34  6]
+```
+
+`leafsize`가 점의 수보다 크거나 같으면 트리는 잎 하나뿐이에요. 그때는 모든 점과 견주는 것과 같아요. 기본값 10이면 대부분의 자료에서 알맞아서 따로 고를 일이 드물어요.
+
+`leafsize`는 1 이상의 int여야 해요. 2.5나 `True`는 받지 않아요.
+
+```python
+>>> sd.spatial.KDTree(shops, leafsize=2.5)
+Traceback (most recent call last):
+    ...
+TypeError: KDTree(): 'leafsize' must be an int, not float
+>>> sd.spatial.KDTree(shops, leafsize=0)
+Traceback (most recent call last):
+    ...
+ValueError: KDTree(): 'leafsize' must be at least 1, not 0
+```
+
+## 속성
+
+| 속성 | 뜻 | 타입 |
+|---|---|---|
+| `data` | 만들 때 준 점들. 입력의 행 순서 그대로예요 | 읽기 전용 (n, m) float64 배열 |
+| `n` | 점의 수 | `int` |
+| `m` | 점의 차원(좌표의 수) | `int` |
+| `leafsize` | 만들 때 준 `leafsize` | `int` |
+| `mins` | 축마다 가장 작은 좌표. 점들을 감싸는 상자의 한쪽 모서리예요 | 읽기 전용 (m,) float64 배열 |
+| `maxes` | 축마다 가장 큰 좌표. 상자의 반대쪽 모서리예요 | 읽기 전용 (m,) float64 배열 |
+| `size` | 트리의 노드(나뉜 무리와 잎) 수 | `int` |
+
+```python
+>>> tree.n, tree.m, tree.leafsize, tree.size
+(60, 2, 10, 15)
+>>> tree.mins
+array([ 0.01710724023095611, 0.015964419691204212], dtype=float64)
+>>> tree.maxes
+array([0.9705324606579506, 0.9913321149946199], dtype=float64)
+```
+
+n = 0이면 `mins`와 `maxes`는 0으로 채운 (m,) 배열이에요.
+
+배열 속성은 읽기 전용이라 원소를 바꿀 수 없어요. 고친 점으로 찾으려면 `data`를 복사해 고친 뒤 트리를 다시 만들어요. 속성 자체에 대입하거나 새 속성을 붙일 수도 없어요.
+
+```python
+>>> tree.data[0, 0] = 9.0
+Traceback (most recent call last):
+    ...
+ValueError: assignment destination is read-only
+>>> tree.n = 5
+Traceback (most recent call last):
+    ...
+AttributeError: property 'n' of 'KDTree' object has no setter
+```
+
+`size`는 점의 수 n과 `leafsize`로만 정해져요. 점이 `leafsize`보다 많은 무리는 좌표가 모두 같아도 반으로 나누기 때문이에요. 그래서 같은 점 50개로 만든 트리도 서로 다른 점 50개로 만든 트리와 노드 수가 같아요.
+
+```python
+>>> sd.spatial.KDTree(sd.ones((50, 2))).size
+15
+>>> sd.spatial.KDTree(rng.random((50, 2))).size
+15
+```
+
+## 화면에 보이는 모습
+
+출력하면 점의 수, 차원, `leafsize`가 한 줄로 보여요. 점의 좌표는 보이지 않아요. 좌표는 `data`로 봐요.
+
+```python
+>>> print(tree)
+KDTree(n=60, m=2, leafsize=10)
+```
+
+## 복사와 저장(pickle)
+
+`copy.copy`, `copy.deepcopy`, `pickle`은 모두 같은 데이터와 같은 `leafsize`로 트리를 다시 만들어요. 트리를 만드는 방법이 데이터와 `leafsize`로만 정해지므로 다시 만든 트리는 원래 트리와 노드 하나하나까지 같고, 같은 질의에 같은 답을 내요. 트리는 고칠 수 없는 객체라 얕은 복사와 깊은 복사의 차이가 없어요.
+
+```python
+>>> import copy, pickle
+>>> c = copy.deepcopy(tree)
+>>> c is tree, c.size == tree.size
+(False, True)
+>>> restored = pickle.loads(pickle.dumps(tree))
+>>> restored
+KDTree(n=60, m=2, leafsize=10)
+>>> restored.query([0.42, 0.55], k=3).indices
+array([56, 34,  6], dtype=int64)
+```
+
+pickle에는 트리의 노드가 아니라 데이터와 `leafsize`만 담겨요. 되살릴 때 트리를 다시 만드는 시간이 들지만 파일은 데이터 크기와 거의 같아요.
+
+`==`는 같은 객체인지만 봐요. 같은 데이터로 만든 두 트리도 `False`예요. 데이터가 같은지는 `data`를 견줘요.
+
+## 메서드
+
+트리로 하는 일은 여섯 메서드가 전부예요. 거리는 모두 Minkowski 거리이고 `p`로 골라요(`p=2`가 보통의 유클리드 거리, `p=1`이 맨해튼 거리, `p=inf`가 체비쇼프 거리).
+
+| 메서드 | 묻는 것 | 돌려주는 것 |
+|---|---|---|
+| [`query(x, k=)`](/api/spatial/query/) | x마다 가장 가까운 k개 | `QueryResult(distances, indices)` |
+| [`query_ball_point(x, r)`](/api/spatial/query_ball_point/) | x마다 거리 r 이하의 점 | `RadiusResult` 또는 개수 |
+| [`query_ball_tree(other, r)`](/api/spatial/query_ball_tree/) | 이 트리의 점마다 다른 트리에서 거리 r 이하의 점 | `RadiusResult` |
+| [`query_pairs(r)`](/api/spatial/query_pairs/) | 이 트리 안에서 거리 r 이하인 짝 (i, j), i < j | (짝의 수, 2) int64 배열 |
+| [`count_neighbors(other, r)`](/api/spatial/count_neighbors/) | 두 트리 사이에서 거리 r 이하인 짝의 수(가중 합) | `int`, `float`, 또는 배열 |
+| [`sparse_distance_matrix(other, max_distance)`](/api/spatial/sparse_distance_matrix/) | 거리 `max_distance` 이하인 짝의 거리 | `sd.sparse.csr_array` |
+
+`QueryResult`와 `RadiusResult`를 읽는 법은 [결과 객체](/api/spatial/results/)에 있어요.
+
+```python
+>>> tree.query_ball_point([0.42, 0.55], 0.1).indices
+array([34, 56], dtype=int64)
+>>> tree.query_pairs(0.03)
+array([[ 0, 29],
+       [ 9, 55],
+       [47, 49]], dtype=int64)
+>>> tree.count_neighbors(tree, 0.03)
+66
+```
+
+마지막 셈은 자기 자신과의 짝 60개와, 거리 0.03 이하인 세 짝을 양쪽 순서로 센 6개를 더한 값이에요.
+
+## KDTree와 kneighbors 가운데 무엇을 쓰나요
+
+가장 가까운 이웃이나 반경 안의 이웃은 [`kneighbors`](/api/spatial/kneighbors/)와 [`radius_neighbors`](/api/spatial/radius_neighbors/)로도 찾아요. 두 함수는 호출 한 번으로 끝나고, 안에서 자료의 모양과 거리에 맞는 방법을 알아서 골라요. 결과는 같은 짝에 같은 비트라서 어느 쪽을 써도 답은 같아요. 고르는 기준은 쓰는 모양이에요.
+
+| 상황 | 알맞은 것 |
+|---|---|
+| 질의점이 한 번에 다 있고, 한 번 찾으면 끝이에요 | `kneighbors`, `radius_neighbors` |
+| Minkowski가 아닌 거리(`cosine`, `haversine`, `mahalanobis` 등)나 가중치 `w`가 필요해요 | `kneighbors`, `radius_neighbors` (트리는 `p`만 받아요) |
+| 같은 점 집합에 질의가 여러 번 나눠 들어와요 | `KDTree`를 한 번 만들어 두고 `query` |
+| 한 집합 안의 가까운 짝을 모두 찾아요 | `KDTree.query_pairs` |
+| 거리 r 이하인 짝의 수만 필요해요(반경을 여럿 바꿔 가며) | `KDTree.count_neighbors` |
+| 이웃 그래프를 희소 행렬로 만들어요 | `KDTree.sparse_distance_matrix` 또는 `radius_neighbors(...).tocsr()` |
+
+트리를 만드는 데는 점의 수에 비례하는 것보다 조금 더 걸리는 시간이 들어요. 질의가 많을수록 그 비용이 여러 질의에 나뉘어 트리를 따로 쥐는 쪽이 이득이에요.
+
+<Callout type="note" title="차원이 높으면">
+
+상자로 건너뛰는 효과는 점의 차원 m이 낮을수록 커요. 차원이 높아지면 상자들이 서로 멀리 떨어져 보이지 않아서 질의마다 보는 점이 늘어요. 그래도 결과는 언제나 정확해요. 빠르기만 모든 점과 견주는 쪽에 가까워져요.
+
+</Callout>
+
+## 결과는 언제나 같아요
+
+같은 데이터, 같은 `leafsize`면 언제나 같은 트리가 만들어져요. 질의의 결과는 트리 모양과도 상관없어서, `leafsize`를 바꿔도, [스레드 수](/api/array/threads/)를 바꿔도 같은 점, 같은 순서, 같은 거리 비트가 나와요.
+
+거리가 같은 이웃(동점)은 색인이 작은 점이 먼저예요. 정사각형의 네 꼭짓점은 가운데에서 거리가 모두 같아서 색인 순서로 나와요.
+
+```python
+>>> square = sd.spatial.KDTree([[1.0, 1.0], [0.0, 0.0], [1.0, 0.0], [0.0, 1.0]])
+>>> square.query([0.5, 0.5], k=4)
+QueryResult(distances=array([0.7071067811865476, 0.7071067811865476, 0.7071067811865476,
+       0.7071067811865476], dtype=float64), indices=array([0, 1, 2, 3], dtype=int64))
+```
+
+거리는 [`cdist`](/api/spatial/cdist/)와 거리 함수가 같은 짝에 내는 값과 비트까지 같아요. 그래서 트리로 찾은 거리를 `cdist`의 값과 `==`로 견줘도 맞아요. 자세한 규칙은 [기본 개념](/api/spatial/basics/)에 모아 두었어요.
+
+## 조심할 점
+
+### 옵션은 이름으로 줘요
+
+`data`만 자리로 주고 `leafsize`는 언제나 이름으로 줘요. 메서드의 `k`, `p`도 마찬가지예요.
+
+```python
+>>> sd.spatial.KDTree(shops, 5)
+Traceback (most recent call last):
+    ...
+TypeError: KDTree(): takes 1 positional argument but 2 were given
+```
+
+### 트리는 만든 때의 점을 기억해요
+
+점이 바뀌면 트리를 다시 만들어야 해요. 점을 하나 더하거나 빼는 메서드는 없어요. 점이 자주 바뀌고 질의가 드물면 `kneighbors`처럼 한 번에 끝나는 함수가 더 간단해요.
+
+## scipy·sklearn을 아는 분께
+
+- 이름은 `scipy.spatial.KDTree`와 같고 메서드 이름도 같아요. `cKDTree`는 없어요. scipy에서도 같은 것이라 `KDTree` 하나로 써요.
+- 데이터는 언제나 복사해요. scipy는 복사하지 않을 수 있어서 만든 뒤 원래 배열을 고치면 답이 틀릴 수 있어요. `copy_data` 인자는 없어요.
+- 옵션은 `leafsize` 하나예요. `balanced_tree`, `compact_nodes`, `copy_data`, `boxsize`는 없어서 주면 `TypeError`예요. 트리는 언제나 중앙값으로 나누고 노드 상자를 점들의 실제 범위로 줄여요(scipy의 기본과 같은 꼴). 주기 경계(`boxsize`)가 필요한 자료는 지원하지 않아요.
+- `leafsize`는 이름으로만, int로만 받아요. scipy의 `KDTree(data, 5)`는 `TypeError`이고, scipy가 2.5를 2로 자르는 것과 달리 2.5는 `TypeError`예요.
+- 데이터에 NaN이나 inf가 있으면 `ValueError`예요.
+- m = 0인 데이터도 받아요(모든 거리가 0). scipy는 이런 트리에 질의하면 `IndexError`예요.
+- `size`는 n과 `leafsize`로만 정해져요. scipy는 폭이 0인 노드를 나누지 않아서 같은 점이 많으면 노드 수가 달라요(같은 점 50개에서 scipy 1, sd 15).
+- scipy의 `tree`, `indices`, `boxsize` 속성은 없어요. 트리의 속은 공개하지 않아요. `repr`는 `KDTree(n=…, m=…, leafsize=…)`예요.
+- 메서드의 `workers`와 `eps`는 없어요. 스레드 수는 [`sd.set_num_threads`](/api/array/threads/) 하나로 정하고, 결과는 언제나 정확해요.
+- 동점은 언제나 (거리, 색인) 순서예요. scipy와 sklearn은 동점의 순서를 약속하지 않아요.
+- sklearn의 `sklearn.neighbors.KDTree`와는 API가 달라요. 이 `KDTree`는 scipy의 API를 따르고 `metric` 대신 Minkowski의 `p`만 받아요. sklearn의 `KDTree(X).query(Y, k=3)`은 `KDTree(X).query(Y, k=3)`과 같은 일이지만 결과는 `(distances, indices)` 순서의 `QueryResult`예요. 다른 거리가 필요하면 `kneighbors(Y, X, k=3, metric=...)`를 써요. `BallTree`는 없어요.

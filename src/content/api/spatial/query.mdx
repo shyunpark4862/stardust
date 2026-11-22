@@ -1,0 +1,340 @@
+---
+title: query
+names: [KDTree.query]
+group: KD 트리
+order: 2
+signatures:
+  - "tree.query(x, /, *, k=1, p=2.0, distance_upper_bound=inf)"
+summary: 질의점마다 트리의 점 가운데 가장 가까운 k개를 찾아 거리와 색인을 가까운 순서로 돌려줘요. 순위를 골라 받거나(k=[2]), 거리 상한으로 찾는 범위를 줄이거나, Minkowski의 p로 거리를 바꿀 수 있어요.
+params:
+  - name: x
+    type: ndarray, 수의 시퀀스, numpy 배열, DataFrame
+    kind: positional-only
+    desc: "질의점. 점 하나는 (m,), 여럿은 (q, m)이고 더 많은 축 (…, m)도 받아요. 마지막 축의 길이가 트리의 m과 같아야 하고 모든 값이 유한해야 해요."
+  - name: k
+    type: int 또는 int의 시퀀스
+    kind: keyword-only
+    desc: "int면 가까운 순서로 1번째부터 k번째까지, 시퀀스(list, tuple, 1차원 정수 배열)면 그 순위만 그 순서대로 돌려줘요. 순위는 1부터 세고 1 이상이어야 해요. 기본값 1."
+  - name: p
+    type: float
+    kind: keyword-only
+    desc: "Minkowski 거리의 차수. 1 이상의 실수나 inf예요. 2(기본값)는 유클리드, 1은 맨해튼(cityblock), inf는 체비쇼프 거리예요."
+  - name: distance_upper_bound
+    type: float
+    kind: keyword-only
+    desc: "거리가 이 값보다 작은 점만 이웃으로 봐요(같으면 빠져요). 0 이상의 실수나 inf. 기본값 inf."
+returns:
+  type: QueryResult(distances, indices)
+  desc: "가까운 순서의 거리(float64)와 트리 점의 색인(int64). k가 int면 모양이 (…, k)이고 k = 1이면 마지막 축이 없어요. 시퀀스면 (…, len(k))예요. x가 점 하나이고 k = 1이면 Python float와 int예요. 찾지 못한 자리는 거리 inf, 색인 n이에요. 배열은 읽기 전용이에요."
+raises:
+  - type: TypeError
+    desc: "k가 bool이나 실수일 때, p·distance_upper_bound가 수가 아닐 때, 옵션을 자리로 줄 때, 없는 인자(eps, workers 등)를 줄 때."
+  - type: ValueError
+    desc: "x의 마지막 축 길이가 트리의 m과 다를 때, x에 NaN이나 inf가 있을 때, k가 0·음수·빈 시퀀스이거나 0 이하의 순위가 있을 때, p가 1보다 작거나 NaN일 때, distance_upper_bound가 음수이거나 NaN일 때."
+  - type: OverflowError
+    desc: "k가 int64 범위를 넘을 때."
+  - type: MemoryError
+    desc: "결과 배열(질의점 수 × 돌려줄 자리 수)이 이 컴퓨터의 물리 메모리보다 클 때. 할당하기 전에 알려 줘요."
+seeAlso: [KDTree, query_ball_point, kneighbors, results, cdist, minkowski]
+---
+import Callout from '../../../components/Callout.astro';
+import PlotImage from '../../../components/fig/PlotImage.astro';
+
+## 한눈에 보기
+
+`tree.query(x, k=3)`은 점 x에서 가장 가까운 트리의 점 세 개를 찾아요. 여기서 `tree`는 [`sd.spatial.KDTree(data)`](/api/spatial/KDTree/)로 만든 트리예요. 결과는 거리와 색인(트리를 만든 `data`의 행 번호) 두 배열이고, 가까운 순서로 놓여요.
+
+```python
+>>> import stardust as sd
+>>> rng = sd.random.default_rng(5)
+>>> pts = rng.random((40, 2))
+>>> tree = sd.spatial.KDTree(pts)
+>>> tree.query([0.5, 0.5], k=3)
+QueryResult(distances=array([ 0.0483943059453627, 0.07002564424565981,  0.0787231776885056], dtype=float64), indices=array([22, 28,  4], dtype=int64))
+```
+
+(0.5, 0.5)에서 가장 가까운 점은 22번이고 거리는 약 0.048, 그다음이 28번, 4번이에요.
+
+`k`를 주지 않으면 가장 가까운 점 하나만 찾아요. 점 하나를 물으면 거리와 색인이 배열이 아니라 Python `float`와 `int`로 와요.
+
+```python
+>>> tree.query([0.5, 0.5])
+QueryResult(distances=0.0483943059453627, indices=22)
+```
+
+<Reference />
+
+## 결과 읽기
+
+결과는 `QueryResult`예요. 두 이름으로 풀어 받거나 `.distances`, `.indices`로 읽어요.
+
+```python
+>>> d, i = tree.query([0.5, 0.5], k=3)
+>>> i
+array([22, 28,  4], dtype=int64)
+>>> pts[i]
+array([[0.4630952578683267, 0.5313057320011538],
+       [0.5430891057028262, 0.5551989114181646],
+       [0.5366007138626605, 0.5696973919893684]], dtype=float64)
+>>> r = tree.query([0.5, 0.5], k=3)
+>>> r.distances
+array([ 0.0483943059453627, 0.07002564424565981,  0.0787231776885056], dtype=float64)
+```
+
+색인 `i`로 `pts[i]`처럼 이웃의 좌표를 바로 꺼낼 수 있어요. 결과 배열은 읽기 전용이에요. 고쳐 쓰려면 `.copy()`로 복사해요. `QueryResult`의 자세한 내용은 [결과 객체](/api/spatial/results/)에 있어요.
+
+## 질의점 여럿과 결과의 모양
+
+질의점을 (q, m) 배열로 주면 행마다 따로 찾아요. 결과의 행 하나가 질의점 하나의 답이에요.
+
+```python
+>>> d, i = tree.query([[0.5, 0.5], [0.1, 0.9]], k=3)
+>>> d
+array([[ 0.0483943059453627, 0.07002564424565981,  0.0787231776885056],
+       [0.08131106497042058, 0.20298298944079612, 0.34034676080291315]], dtype=float64)
+>>> i
+array([[22, 28,  4],
+       [ 1,  5, 11]], dtype=int64)
+```
+
+결과의 모양은 x의 앞쪽 축(배치 모양)에 k의 축을 붙인 거예요. k가 int 1이면 그 축이 없어요.
+
+| x의 모양 | `k=1` | `k=3` | `k=[2, 5]` |
+|---|---|---|---|
+| (m,) 점 하나 | `float`, `int` | (3,) | (2,) |
+| (q, m) | (q,) | (q, 3) | (q, 2) |
+| (a, b, m) | (a, b) | (a, b, 3) | (a, b, 2) |
+
+```python
+>>> tree.query([[0.5, 0.5], [0.1, 0.9]]).indices
+array([22,  1], dtype=int64)
+>>> tree.query(sd.zeros((2, 3, 2)), k=4).indices.shape
+(2, 3, 4)
+```
+
+x의 마지막 축은 트리의 차원 m과 같아야 해요.
+
+```python
+>>> tree.query([0.5, 0.5, 0.5])
+Traceback (most recent call last):
+    ...
+ValueError: query(): 'x' must have 2 entries on its last axis (the tree's m), not 3
+```
+
+## `k`: 개수 또는 순위의 목록
+
+`k`가 int면 1번째부터 k번째까지를 모두 돌려줘요. 특정한 순위만 필요하면 순위의 목록을 줘요. 순위는 1부터 세요. `k=[2]`는 두 번째로 가까운 점만, `k=[1, 5]`는 첫째와 다섯째만이에요. 목록의 순서와 반복을 그대로 따라요.
+
+```python
+>>> tree.query([0.5, 0.5], k=[2])
+QueryResult(distances=array([0.07002564424565981], dtype=float64), indices=array([28], dtype=int64))
+>>> tree.query([0.5, 0.5], k=[1, 5, 5])
+QueryResult(distances=array([ 0.0483943059453627, 0.17454779853615887, 0.17454779853615887], dtype=float64), indices=array([22, 15, 15], dtype=int64))
+```
+
+`k=[2]`는 int `k=1`과 달리 길이 1인 축이 남아요.
+
+### 자기 자신을 뺀 가장 가까운 점
+
+트리의 점들을 그대로 질의점으로 주면, 거리 0인 자기 자신이 첫째로 나와요. 자기 말고 가장 가까운 점이 필요하면 `k=2`로 찾아 둘째 열을 쓰거나 `k=[2]`로 둘째만 받아요.
+
+```python
+>>> d, i = tree.query(pts, k=2)
+>>> i[:3]
+array([[ 0, 30],
+       [ 1,  5],
+       [ 2, 20]], dtype=int64)
+>>> tree.query(pts, k=[2]).indices[:3]
+array([[30],
+       [ 5],
+       [20]], dtype=int64)
+```
+
+<Callout type="warn" title="같은 점이 여럿이면 첫째가 자기 자신이 아닐 수 있어요">
+
+좌표가 똑같은 점이 둘 이상이면 거리 0인 점이 여럿이에요. 동점은 색인이 작은 점이 먼저라서, 색인이 큰 쪽의 첫째 이웃은 자기가 아니라 색인이 작은 쌍둥이예요. 아래에서 2번 점의 첫째는 1번이고 자기 자신은 둘째예요. 거리는 어느 쪽이든 0이라 "가장 가까운 다른 점까지의 거리"는 둘째 열의 거리로 맞게 나와요. 색인을 쓸 때만 조심해요.
+
+</Callout>
+
+```python
+>>> dup = sd.spatial.KDTree([[0.0, 0.0], [1.0, 1.0], [1.0, 1.0]])
+>>> dup.query(dup.data, k=2).indices
+array([[0, 1],
+       [1, 2],
+       [1, 2]], dtype=int64)
+```
+
+`k`는 1 이상이어야 하고, 실수나 `True`는 받지 않아요.
+
+```python
+>>> tree.query([0.5, 0.5], k=0)
+Traceback (most recent call last):
+    ...
+ValueError: query(): 'k' must be at least 1, not 0
+>>> tree.query([0.5, 0.5], k=2.0)
+Traceback (most recent call last):
+    ...
+TypeError: query(): 'k' must be an int or a sequence of ints, not float
+>>> tree.query([0.5, 0.5], k=[0])
+Traceback (most recent call last):
+    ...
+ValueError: query(): every entry of 'k' must be at least 1, not 0
+```
+
+## 이웃이 모자랄 때: 채움 값
+
+트리의 점이 k개보다 적거나 `distance_upper_bound` 안의 점이 모자라면, 남은 자리는 거리 `inf`, 색인 `n`(트리의 점 수)으로 채워요. 색인 n은 어느 점의 색인도 아니라서 "찾지 못함"의 표시예요.
+
+```python
+>>> small = sd.spatial.KDTree([[0.0, 0.0], [1.0, 0.0], [0.0, 2.0]])
+>>> d, i = small.query([0.0, 0.0], k=5)
+>>> d
+array([0.0, 1.0, 2.0, inf, inf], dtype=float64)
+>>> i
+array([0, 1, 2, 3, 3], dtype=int64)
+```
+
+채운 자리를 빼려면 `i < tree.n`으로 걸러요. 채움 색인 n으로 `data[i]`를 꺼내면 범위 밖이라 에러가 나니 먼저 거르는 편이 안전해요.
+
+```python
+>>> found = i < small.n
+>>> d[found], i[found]
+(array([0.0, 1.0, 2.0], dtype=float64), array([0, 1, 2], dtype=int64))
+```
+
+## `distance_upper_bound`: 이보다 가까운 이웃만
+
+`distance_upper_bound`를 주면 거리가 그 값보다 **작은** 점만 이웃으로 봐요. "반경 0.15 안에서 가장 가까운 다섯 곳, 없으면 없는 대로"처럼 너무 먼 이웃은 필요 없을 때 써요. 찾는 범위가 좁아지는 만큼 빨라지기도 해요.
+
+```python
+>>> d, i = tree.query([0.5, 0.5], k=5, distance_upper_bound=0.15)
+>>> d
+array([ 0.0483943059453627, 0.07002564424565981,  0.0787231776885056,
+       0.10521483530488861,                 inf], dtype=float64)
+>>> i
+array([22, 28,  4, 23, 40], dtype=int64)
+>>> t = sd.linspace(0, 2 * 3.141592653589793, 200)
+>>> inside = i < tree.n
+>>> fig = sd.plot.Figure(width=80, height=86)
+>>> fig = fig.scatter(pts[:, 0], pts[:, 1], color="gray", size=4, label="점")
+>>> fig = fig.line(0.5 + 0.15 * sd.cos(t), 0.5 + 0.15 * sd.sin(t), color="gray", style="--", width=0.6)
+>>> fig = fig.scatter(pts[i[inside], 0], pts[i[inside], 1], size=5, label="찾은 이웃")
+>>> fig = fig.scatter([0.5], [0.5], shape="x", size=7, color="black", label="질의점")
+>>> fig = fig.xlim(0, 1).ylim(0, 1).legend(loc="top")
+```
+
+<PlotImage name="query-upper-bound" alt="네모 안에 회색 점 40개가 흩어져 있고, 가운데의 가위표(질의점)를 반지름 0.15의 점선 원이 둘러싸며, 원 안의 점 네 개만 파랗게 칠해진 그림" caption="k=5로 찾았지만 거리 상한 0.15(점선 원) 안에는 점이 네 개뿐이에요. 다섯째 자리는 거리 inf, 색인 40(트리의 점 수)으로 채워졌어요." />
+
+상한과 거리가 같은 점은 빠져요. 거리 r **이하**의 점을 모두 찾는 [`query_ball_point`](/api/spatial/query_ball_point/)와 경계를 다루는 방법이 달라요.
+
+```python
+>>> small.query([0.0, 0.0], k=3, distance_upper_bound=1.0)
+QueryResult(distances=array([0.0, inf, inf], dtype=float64), indices=array([0, 3, 3], dtype=int64))
+>>> small.query_ball_point([0.0, 0.0], 1.0).indices
+array([0, 1], dtype=int64)
+```
+
+상한은 0 이상의 수나 `inf`여야 해요. 음수나 NaN은 에러예요.
+
+```python
+>>> tree.query([0.5, 0.5], distance_upper_bound=-1)
+Traceback (most recent call last):
+    ...
+ValueError: query(): 'distance_upper_bound' must be a nonnegative number or inf, not -1
+```
+
+## `p`: 거리의 종류
+
+트리는 Minkowski 거리 $\left(\sum_j |x_j - y_j|^p\right)^{1/p}$로 찾아요. `p`가 거리의 모양을 정해요.
+
+| `p` | 거리 | 같은 거리 함수 |
+|---|---|---|
+| 2 (기본값) | 보통의 직선거리(유클리드) | [`euclidean`](/api/spatial/euclidean/) |
+| 1 | 좌표 차이의 절댓값 합(맨해튼, 격자 길 위의 거리) | [`cityblock`](/api/spatial/cityblock/) |
+| `inf` | 좌표 차이 절댓값의 최댓값(체비쇼프) | [`chebyshev`](/api/spatial/chebyshev/) |
+| 그 밖의 p ≥ 1 | 일반 Minkowski 거리 | [`minkowski(p=)`](/api/spatial/minkowski/) |
+
+같은 점들이라도 `p`에 따라 가까운 순서가 바뀔 수 있어요. 아래 두 점은 원점에서 유클리드로는 0번이 가깝고, 체비쇼프로는 1번이 가까워요.
+
+```python
+>>> two = sd.spatial.KDTree([[1.0, 0.0], [0.8, 0.8]])
+>>> two.query([0.0, 0.0], k=2)
+QueryResult(distances=array([               1.0, 1.1313708498984762], dtype=float64), indices=array([0, 1], dtype=int64))
+>>> two.query([0.0, 0.0], k=2, p=float("inf"))
+QueryResult(distances=array([0.8, 1.0], dtype=float64), indices=array([1, 0], dtype=int64))
+>>> two.query([0.0, 0.0], k=2, p=1)
+QueryResult(distances=array([1.0, 1.6], dtype=float64), indices=array([0, 1], dtype=int64))
+```
+
+`p`는 1 이상이어야 해요. p < 1이 꼭 필요하면 [`kneighbors`](/api/spatial/kneighbors/)에 `metric='minkowski', p=…`로 줘요.
+
+```python
+>>> tree.query([0.5, 0.5], p=0.5)
+Traceback (most recent call last):
+    ...
+ValueError: query(): 'p' must be a number of at least 1 or inf, not 0.5
+```
+
+`cosine`, `haversine`처럼 Minkowski가 아닌 거리나 좌표마다의 가중치도 트리에서는 쓸 수 없어요. 그런 거리는 `kneighbors`가 맡아요.
+
+## 결과는 정의대로예요
+
+`query`의 답은 근삿값이 아니에요. 질의점에서 모든 점까지의 거리를 [`cdist`](/api/spatial/cdist/)로 구해 (거리, 색인) 순서로 정렬한 뒤, 상한보다 작은 앞의 k개를 고른 것과 같아요. 거리도 `cdist`의 그 원소와 비트까지 같아요.
+
+```python
+>>> q = rng.random((5, 2))
+>>> d, i = tree.query(q, k=4)
+>>> D = sd.spatial.cdist(q, pts)
+>>> bool(sd.all(sd.take_along_axis(D, i, axis=1) == d))
+True
+```
+
+그래서 결과는 트리의 `leafsize`, [스레드 수](/api/array/threads/)와 상관없이 언제나 같아요. 거리가 같은 점은 색인이 작은 쪽이 먼저예요.
+
+```python
+>>> square = sd.spatial.KDTree([[1.0, 1.0], [0.0, 0.0], [1.0, 0.0], [0.0, 1.0]])
+>>> square.query([0.5, 0.5], k=2).indices
+array([0, 1], dtype=int64)
+```
+
+정사각형의 네 꼭짓점은 가운데에서 거리가 모두 같아서, 둘을 고르면 언제나 색인이 가장 작은 0번과 1번이에요.
+
+## 조심할 점
+
+### 질의점도 유한해야 해요
+
+질의점에 NaN이나 inf가 있으면 에러예요. 결측값이 있는 행은 질의 전에 걸러 내요.
+
+```python
+>>> tree.query([0.5, float("nan")])
+Traceback (most recent call last):
+    ...
+ValueError: query(): 'x' must be finite
+```
+
+### `k`는 이름으로 줘요
+
+`tree.query(x, 3)`처럼 자리로 주면 에러예요. 옵션은 모두 이름으로 줘요.
+
+```python
+>>> tree.query([0.5, 0.5], 3)
+Traceback (most recent call last):
+    ...
+TypeError: query(): takes 1 positional argument but 2 were given
+```
+
+### 아주 큰 k
+
+결과는 질의점 수 × 돌려줄 자리 수의 배열 두 개예요. 그 크기가 이 컴퓨터의 물리 메모리를 넘으면 할당하기 전에 `MemoryError`로 알려 줘요. 트리의 점보다 큰 k는 채움 값만 늘리니, 필요한 만큼만 물어요.
+
+## scipy·sklearn을 아는 분께
+
+- `k`, `p`, `distance_upper_bound`는 이름으로만 받아요. scipy의 `tree.query(x, 3)`은 `TypeError`예요.
+- `k`는 int나 int의 시퀀스만 받아요. scipy는 `k=True`와 `k=2.0`을 받고, `k=0`은 numpy 내부 메시지의 `ValueError`이며, `k=[0]`은 프로세스를 죽여요. 여기서는 각각 `TypeError`, `ValueError`예요.
+- `distance_upper_bound`가 음수나 NaN이면 `ValueError`예요. scipy는 상한을 제곱해 비교해서 −1이 1처럼 동작하고, NaN이면 모든 자리를 채움 값으로 채워요.
+- `eps`(근사 찾기)와 `workers`는 없어요. 결과는 언제나 정확하고, 스레드 수는 [`sd.set_num_threads`](/api/array/threads/)로 정해요.
+- 점 하나에 k = 1이면 Python `float`와 `int`예요. scipy는 `float`와 `numpy.int64`예요.
+- 동점은 언제나 (거리, 색인) 순서예요. scipy와 sklearn은 동점의 순서를 약속하지 않고 실제로도 서로 달라요.
+- 거리는 `cdist`의 같은 원소와 비트까지 같아요. scipy는 `cdist`와 `KDTree`가 덧셈 순서가 달라서 같은 짝의 거리가 끝자리에서 다를 수 있어요.
+- 채움 값은 scipy와 같아요(거리 inf, 색인 n). sklearn의 `KDTree.query`는 k가 점의 수보다 크면 에러예요.
+- sklearn의 `query(X, k, return_distance=True)`가 돌려주는 `(dist, ind)`와 같은 순서예요. `return_distance`, `dualtree`, `breadth_first`, `sort_results` 인자는 없어요. 결과는 언제나 정렬되어 있어요.

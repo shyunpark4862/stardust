@@ -231,6 +231,11 @@
   --area-soft: #e7f5f9;
   --area-line: #b2dce8;
 }
+[data-area='spatial'] {
+  --area: #4338ca;
+  --area-soft: #eef0fd;
+  --area-line: #c9cdf6;
+}
 [data-area='plot'] {
   --area: #b42318;
   --area-soft: #fdeeec;

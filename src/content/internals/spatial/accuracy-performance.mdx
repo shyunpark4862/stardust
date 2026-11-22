@@ -1,0 +1,127 @@
+---
+title: 정확도와 성능
+group: 정확도와 성능
+order: 1
+summary: sd.spatial이 맞게 계산하는지를 식으로 만든 시험 점, Arb와 정확한 유리수로 만든 참값, 합의 깊이로 적은 거리마다의 계약으로 확인하는 방법을 모았어요. 이웃 찾기를 세 겹으로 판정하는 방법, 정확도 표의 비교 패키지 열을 읽는 법, 그리고 어디가 빠르고 어디가 느린지를 적었어요.
+seeAlso: [pair-kernel, euclid-gemm, overview, parallel]
+---
+import AccuracySummary from '../../../components/fig/AccuracySummary.astro';
+
+## 한눈에 보기
+
+공간 영역의 결과는 세 가지로 확인해요.
+
+1. **거리는 계약 안.** 짝마다의 거리를 Arb(구간 산술)나 정확한 유리수로 만든 참값과 견줘요. 거리마다 합의 깊이 m과 단위 반올림 u = 2⁻⁵³으로 적은 한계(계약)가 있고, 오차를 그 한계로 나눈 값(계약 대비)이 1 이하여야 해요.
+2. **이웃은 정의와 같게.** 이웃 찾기의 답은 같은 커널로 모든 짝을 계산해 (거리, 색인)으로 정렬한 것과 바이트까지 같아야 해요. 거리가 올바르게 반올림되는 데이터에서는 Arb로 정렬한 참 이웃과도 정확히 같아야 해요.
+3. **반올림이 아닌 동작은 scipy와 같게.** 결과의 모양과 형, 기본값, 경계의 포함 여부, k > n의 채움, 정렬 순서를 scipy 1.18.1의 기록과 그 자리에서 부른 scipy와 견줘요. 다르게 정한 곳은 함수 페이지의 끝 절에 모여 있어요.
+
+그리고 결과가 계산 길(전수, GEMM 고르기, KD 트리)과 스레드 수와 Accelerate의 스레드 모드와 상관없이 같은지를 테스트와 골든 출력이 봐요.
+
+## 시험 점
+
+모든 테스트, 참값 도구, scipy·sklearn·R의 기록, 측정이 같은 점 목록(`tests/spatial/points.py`)에서 아이디로 점을 가져와요. 모두 식과 고정 시드로 만들고 내려받는 것이 없어요.
+
+| 묶음 | 점 | 무엇을 보려고 |
+|---|---|---|
+| 무작위 | 표준정규, 균등, 가우스 혼합, 64차원 속의 2차원 다양체. 표준정규는 n = 0, 1, 2, 3, 8, 16, 64, 512, 2048, 2049, 4096 | 덩어리 32의 경계, 짝 커널의 모든 길이 |
+| 적대적 | 원점에서 먼 작은 군집(10⁸ + [0, 1)ⁿ, 10¹⁵ + 정수), 질의까지의 거리가 1 ULP씩 다른 껍질, 같은 점의 무더기, k번째 경계의 동점, 제곱이 넘치기 직전(10¹⁵⁰, 10¹⁶⁰)과 언더플로하는(10⁻¹⁶⁰) 좌표 | GEMM 고르기의 여유, 신중한 경로 |
+| 격자 | 정수 격자와 2진 유리수 격자 | 거리가 정확한 수의 올바른 √라 동점이 수천 개 |
+| 단위 구 | (위도, 경도) 집합 여섯: 균등, 거의 같은 점의 군집과 중복, 질의의 대척점 둘레, 두 극, 날짜 변경선의 양쪽, 적도 위의 거울상(정확한 동점) | haversine 이웃의 단위 구 트리 |
+| 개수 | bool과 int64(2⁵³을 넘는 값 포함) | `hamming`, `jaccard` |
+| 경계의 짝 | NaN·inf의 모든 자리, 영벡터, 상수 행, 0/0 항, 음수 좌표, 0이 섞인 가중치, 양정치가 아닌 VI, 대척점과 극 | 거리 함수의 경계 |
+
+참값 파일과 기록 파일은 점마다 그 입력의 해시(`digest`)를 적어 두어, 점을 만드는 식이 바뀌면 테스트가 바로 알아요.
+
+## 참값
+
+참값은 python-flint(Arb)와 Python의 정확한 유리수로 만들어요(`tools/spatial_ref.py`). 입력은 double이고 double은 분모가 2의 거듭제곱인 유리수라, 차이와 합과 곱은 유리수로 정확히 구할 수 있어요. 그래서 `euclidean`의 제곱합, `cityblock`의 합, `chebyshev`의 최댓값, `hamming`·`jaccard`의 개수, `mahalanobis`의 이차식까지는 정확해요. √, 거듭제곱, 사인과 아크사인이 드는 마지막 단계만 Arb의 구간으로 구하고, 공의 폭이 상대 2⁻¹¹⁰ 아래로 정해질 때까지 정밀도를 올려요. 값은 double-double(hi + lo)로 저장해서 float64 결과의 오차를 잴 때 참값 자신의 오차가 보이지 않아요. 정해지지 않는 점은 빼고 알리게 되어 있는데, 빠진 점은 없어요.
+
+| 묶음 | 점 | 내용 |
+|---|---:|---|
+| `distances` | 645짝 | 무작위·적대적·격자 집합의 이웃한 행과 유한한 경계의 짝. `euclidean`, `sqeuclidean`, `cityblock`, `chebyshev`, `minkowski` p = 0.5·1.5·3·7.5, `seuclidean`, `mahalanobis`(n ≤ 16의 양정치 VI), `cosine`, `correlation`, `canberra`, `braycurtis`와 그 가중판 |
+| `counting` | 80짝 | `hamming`, `jaccard`와 가중판(bool, int64를 그 dtype 그대로) |
+| `haversine` | 32짝 | 무작위, 대척점, 극, 같은 점과 가까운 점 |
+| `neighbors` | 질의 308개 | 질의마다 모든 데이터 점까지의 p = 1, 2, inf 거리 |
+| `sphere` | 질의 120개 | 단위 구 집합 여섯의 질의마다 모든 점(400개)까지의 `haversine` |
+
+정의로 NaN이거나 유한하지 않은 점(영벡터의 `cosine`, 0/0의 `braycurtis`)은 그 거리에서 빠져요. 그래서 `braycurtis`, `cosine`, `correlation`, `mahalanobis`는 점 수가 645보다 적어요.
+
+## 계약
+
+계약은 테스트와 정확도 스윕이 함께 쓰는 한 곳(`tests/spatial/refdata.py`)에 있어요. m은 [합의 깊이](/internals/spatial/pair-kernel/) min(n, 32) + ⌈n/32⌉ − 1, $\gamma_k = ku/(1 - ku)$, d는 참 거리예요. 모든 한계에 2⁻¹⁰⁷⁴(가장 작은 비정상 수)을 더해요. 비정상 수인 결과는 올바르게 반올림해도 그만큼 다를 수 있으니까요.
+
+| 거리 | 계약 | 잰 최대 ULP | 계약 대비 |
+|---|---|---:|---:|
+| `chebyshev`, 가중 | 올바른 반올림(½ ULP) | 0, 0 | 1, 1 |
+| `euclidean`, 가중 | $(\gamma_{m+3}/2 + u)\,d$ | 2, 2 | 0.46, 0.42 |
+| `seuclidean` | $(\gamma_{m+4}/2 + u)\,d$ | 2 | 0.45 |
+| `sqeuclidean`, 가중 | $\gamma_{m+2}\,s$, 가중 $\gamma_{m+3}\,s$ | 3, 4 | 0.68, 0.46 |
+| `cityblock`, 가중 | $\gamma_{m+2}\,d$ | 3, 3 | 0.36, 0.35 |
+| `minkowski` | $(4u + (\gamma_m + 2c)/p + c)\,d$, $c = \gamma_2$ | p = 0.5·1.5·3·7.5에서 6·3·1·2, 가중 p = 3에서 2 | 0.2·0.17·0.21·0.4, 0.22 |
+| `canberra`, 가중 | $\gamma_{m+3}\,d$ | 3, 2 | 0.36, 0.46 |
+| `braycurtis`, 가중 | $\gamma_{2m+3}\,d$ | 5, 7 | 0.35, 0.46 |
+| `cosine`, 가중 | $u(3\sqrt d + (2m + 8)d) + (m + 4)^2u^2$ | 아래 참고 | 0.41, 0.25 |
+| `correlation`, 가중 | `cosine`의 한계 + $2(\rho_x^2 + \rho_y^2)$ | 아래 참고 | 0.39, 0.21 |
+| `mahalanobis` | $\min(E/d, \sqrt E) + ud$, $E = \gamma_{2m+3}\,\lvert z\rvert^{\mathsf T}\lvert VI\rvert\lvert z\rvert$ | 2 | 0.29 |
+| `hamming`, `jaccard` | 올바른 반올림(정확한 개수의 나눗셈 한 번) | 0, 0 | 0.88, 0.93 |
+| `hamming`, `jaccard` 가중 | $\gamma_{2m+1}\,d$ | 2, 2 | 0.12, 0.12 |
+| `haversine` | $20u\cdot d$ | 1 | 0.071 |
+
+한계는 계산 순서의 반올림을 하나하나 센 것이에요. 제곱합은 깊이 m의 합에 차이의 반올림 하나와 제곱의 반올림을 더해 γₘ₊₂이고, `euclidean`은 √가 상대오차를 반으로 줄이고 마지막 반올림 u를 더해 γₘ₊₃/2 + u예요. `canberra`는 항마다 세 번(차이, 분모의 합, 나눗셈), `braycurtis`는 두 합과 나눗셈이에요. `minkowski`는 신중한 경로의 나눗셈과 뉴턴 걸음 뒤의 근, `pow`의 오차(c)까지 넣었어요. 몇 가지는 보충이 필요해요.
+
+- **`chebyshev`의 계약 대비 1.** 결과는 언제나 올바르게 반올림한 값이에요(최댓값은 정확한 연산이고 반올림은 단조예요). 계약 대비가 정확히 1인 것은 참값이 두 double의 한가운데에 있는 짝이 있어서예요. 그때 올바른 반올림의 오차가 꼭 ½ ULP예요.
+- **`cosine`과 `correlation`의 ULP.** 참값이 0(평행한 행)이거나 아주 작으면 반올림 크기의 절대오차도 ULP로는 커요. 그래서 이 둘은 절대와 상대를 섞은 한계로 판정해요. √d의 항은 정규화한 원소의 반올림이 차이 벡터를 절대 u 크기로 옮겨서 생겨요([한 짝 커널](/internals/spatial/pair-kernel/)).
+- **`correlation`의 ρ.** $\rho = \gamma_{2m+2}\cdot\max\lvert x_i\rvert\cdot\sqrt{\textstyle\sum w}/\lVert x_c\rVert_w$는 평균의 반올림이 행을 1 방향으로 옮긴 몫이에요. 평균의 오차에 대해 2차라서 첫째 차수의 항이 없어요. 10¹⁵ + 정수처럼 중심이 퍼짐보다 훨씬 먼 행에서는 ρ가 커서 ULP도 커요.
+- **`mahalanobis`.** VI가 나쁜 조건이면 상쇄로 상대오차가 커질 수 있어, 상대가 아니라 절댓값의 이차식 |z|ᵀ|VI||z|에 대한 한계예요.
+- **`haversine`.** 계약은 상대오차 20u(절대로 20u·d)예요. 증명한 오차는 가까운 갈래 16u·d + 2⁻⁹⁹, 먼 갈래 43u이고([단위 구 위의 KD 트리](/internals/spatial/haversine-tree/)), 둘 가운데 어느 쪽이 더 조이는지는 갈래와 d에 따라 달라요.
+
+## 이웃의 판정
+
+이웃 찾기는 세 겹으로 판정해요.
+
+1. **같은 커널의 전수와 정확히 같다.** `kneighbors`(haversine의 트리 길 포함), `radius_neighbors`, `query`, `query_ball_point`, `query_ball_tree`, `query_pairs`, `count_neighbors`, `sparse_distance_matrix`의 결과(색인, 순서, 거리의 비트, `indptr`, 개수)는 `cdist`로 모든 짝을 계산해 (d̂, 색인)으로 고른 것과 바이트까지 같아야 해요. 길마다, `leafsize`마다, 스레드 수마다 그래요. 이것이 GEMM 고르기의 여유([정리 3](/internals/spatial/euclid-gemm/)), 가지치기의 여유([KD 트리](/internals/spatial/kdtree/)), 단위 구 트리의 여유를 시험해요.
+2. **Arb로 정렬한 참 이웃과 정확히 같다.** 정수 격자(3차원 좌표 |x| < 2²⁴라 차이의 제곱합이 2⁵³ 아래)와 2진 유리수 격자에서는 차이와 제곱합이 정확하고 √가 올바른 반올림이라 d̂ = RN(d)예요. 그런 데이터에서 결과는 Arb로 구한 (RN(d), 색인)의 정렬과 정확히 같아야 해요. 격자에는 참 거리가 같은 짝이 아주 많아서 동점 순서의 약속을 직접 시험해요.
+3. **일반 데이터에서 참 kNN이다.** 돌려준 k번째 거리 d̂₍ₖ₎에 대해, 돌려준 모든 점의 참 거리는 d̂₍ₖ₎(1 + η) 이하이고 빠진 모든 점의 참 거리는 d̂₍ₖ₎(1 − η) 이상이어야 해요(η는 거리 계약). 일반 데이터에서는 참 거리가 1 ULP 안에서 다른 두 점의 d̂ 순서가 참 순서와 다를 수 있어요. 순서는 언제나 돌려준 값의 순서이고 그 값은 계약 안이라는 것이 1번과 3번이 함께 하는 약속이에요.
+
+정확도 스윕에서 이 판정은 질의 하나가 점 하나예요. `neighbors`(`kneighbors` k = 5), `kdtree`(`KDTree.query` k = 5), `ball`(`query_ball_point`, r은 질의의 다섯째 참 거리 RN(d)라서 거리가 꼭 r인 점이 경계에 있어요), `sphere`(`kneighbors(metric='haversine')` k = 5, η = 20u)예요. 격자 집합은 맞으면 0, 틀리면 inf이고, 그 밖은 d̂₍ₖ₎(또는 r)을 넘는 가장 큰 차이를 ηd̂₍ₖ₎ 단위로 재요.
+
+## 잰 결과
+
+스윕은 일곱 개, 줄은 (스윕, 영역) 142개, 점은 17,649개예요. 142줄 모두 계약 안이에요. 아래 두 표는 결과 파일에서 그대로 만든 것이에요.
+
+<AccuracySummary area="spatial" names={['distances', 'counting', 'haversine']} caption="거리. 영역은 거리 이름(w_는 가중판)이고 점은 짝 하나예요. cosine과 correlation의 최대 ULP와 최대 상대오차가 큰 것은 참값이 0이거나 아주 작은 짝 때문이고, 판정은 섞인 한계의 계약 대비로 해요." />
+
+<AccuracySummary area="spatial" names={['neighbors', 'kdtree', 'ball', 'sphere']} caption="이웃. 영역은 거리와 점 집합이고 점은 질의 하나예요. 격자(lattice)·먼 군집(far)·껍질(shell)·중복(dup)·동점(ties) 집합은 정확히 맞아 0이고, 일반 집합(nn, sphere)은 경계의 차이를 η·d₍ₖ₎ 단위로 잰 값이에요." />
+
+### 비교 패키지 열
+
+라이브러리의 정확도 표(`bench/spatial/accuracy.md`)에는 같은 짝에서 그 자리에서 잰 비교 패키지의 열이 더 있어요. 같은 참값, 같은 척도이고 "초과"는 계약 대비가 1을 넘은 것이에요. 같은 양을 계산하는 공개 함수가 없으면 칸에 줄표만 적혀 있고, "제외"는 참값이 유한한데 그 라이브러리가 NaN·inf를 낸 점의 수예요(그 점은 다른 열에서 빠져요).
+
+- **scipy 1.18.1**(같은 이름의 거리 함수). 정상 범위의 짝에서는 계약 안이에요. 넘침과 언더플로(10¹⁶⁰, 10⁻¹⁶⁰, 비정상 수의 짝)에서 inf·0·NaN을 내서 `euclidean`, `seuclidean`, `mahalanobis`, `cosine`, `correlation`, `minkowski`(p = 3, 7.5, 가중)의 계약 대비가 inf예요. `minkowski` p = 1.5는 2.02×10³배 초과예요. `chebyshev`는 17점에서 NaN·inf를 내 제외예요.
+- **scikit-learn 1.9.1**(`euclidean_distances`, `manhattan_distances`, `cosine_distances`, `haversine_distances`). 전개식의 `euclidean`·`sqeuclidean`은 inf 초과, 1 − cos 꼴의 `cosine`은 3.24×10¹⁵배 초과, `haversine_distances`는 4.27×10⁶배 초과예요. `manhattan_distances`(`cityblock`)는 계약 안이에요.
+- **R 4.6.2**(`stats::dist`). `euclidean`과 `minkowski`(p = 3, 7.5)는 넘침에서 inf라 inf 초과, p = 1.5는 2.02×10³배 초과예요. `manhattan`, `maximum`, `canberra`(R의 항이 정의와 같은 짝만), `binary`(개수의 `jaccard`)는 계약 안이에요.
+
+이웃의 스윕(`neighbors`, `kdtree`, `ball`, `sphere`)은 이 표에서 비교 패키지의 열이 비어 있어요.
+
+scipy와 다른 곳은 계약이 아니라 이 열로 드러나요. 반올림 크기의 결과는 scipy와 끝자리가 다를 수 있고, 그것은 다른 덧셈 순서일 뿐 어느 쪽이 틀린 것이 아니에요.
+
+## 결정성
+
+라이브러리의 약속은 같은 기계, 같은 스레드 수, 같은 입력이면 실행마다 같은 비트라는 것이에요. 이 영역은 거기에 더해, API가 정한 대로 결과(이웃의 집합, 동점의 순서, 정렬, 거리의 비트)가 스레드 수, 계산 길, Accelerate의 스레드 모드와 무관해요. 근거는 세 가지예요. 짝 하나는 어디서 계산하든 한 커널이고, 순서는 (d̂, 색인)의 전순서이고, 모든 분할은 크기로만 정해요. 자세한 것은 [병렬화와 결정성](/internals/spatial/parallel/)에 있어요.
+
+테스트는 여러 스레드 수(1, 3, 10 등)에서 결과의 바이트를 견주고, Accelerate를 한 스레드로 묶은 자식 프로세스와 기본 모드의 자식 프로세스가 같은 SHA-256을 내는지 봐요. 골든 출력(`tests/golden/cases_spatial.py`)은 모든 거리와 경계 데이터, `squareform`, 이웃 함수의 모든 꼴(haversine의 트리 길과 정의역 밖 포함), 틀린 호출을 담고, 1·3·10스레드에서 같은 바이트여야 해요. 큰 케이스는 병렬 길과 GEMM 고르기를 탈 크기예요.
+
+scipy와는 덧셈 순서가 달라 끝자리가 다를 수 있어요. scipy의 `KDTree`는 `cdist`와 덧셈 순서가 달라서 scipy 안에서도 트리의 거리와 `cdist`의 값이 짝마다 다를 수 있어요. 이 영역은 한 커널이라 같아요.
+
+## 성능
+
+속도는 통합 측정 체계의 사례(`bench/speed/cases/spatial.py`)로 재요. 거리마다의 `pdist`·`cdist`, `kneighbors` k = 1·10(sklearn `pairwise_distances_argmin_min`, `NearestNeighbors(algorithm='brute')`와), `KDTree` 만들기, `query` k = 1·10, `query_ball_point`, `query_pairs`, `count_neighbors`(반경 하나와 여럿), `sparse_distance_matrix`, haversine의 `kneighbors`·`radius_neighbors`(sklearn `BallTree`와)가 사례예요. scipy는 `workers=1`과 `workers=-1` 둘 다와 견줘요. 사례는 결과의 색인과 거리도 견줘요.
+
+질적으로 보면 이래요.
+
+- **짝 커널.** 타일 커널은 x 넷에 y 여덟을 함께 들어 판의 값 하나를 네 번 써요. NEON의 곱셈-덧셈 파이프를 거의 채우는 꼴이에요. 그래서 `euclidean`류, `cityblock`, `canberra`, `braycurtis`, `cosine`의 `cdist`가 빨라요.
+- **`cdist`는 GEMM을 쓰지 않아요.** 모든 거리를 직접 계산해 돌려주니, n이 큰 유클리드 `cdist`는 직접 커널의 빠르기가 한계예요. 전개식으로 GEMM을 쓰는 라이브러리보다 느릴 수 있는 자리이고, 그 대신 자릿수를 잃지 않아요.
+- **짝마다 비싼 거리.** `minkowski`(항마다 `pow`, p = 3은 곱 둘), `mahalanobis`(짝마다 n²), `haversine`(짝마다 사인·코사인 둘과 아크사인)은 짝 하나의 비용이 커요. `mahalanobis`는 짝 8개를 레인에 나란히 두어 그 비용을 줄여요. `haversine`은 대척점과 날짜 변경선을 지키는 계산이 더 들어, 한 스레드에서는 단순한 식보다 느려요.
+- **이웃 찾기.** 전체 거리 행렬을 만들지 않고, 작업 메모리는 입력과 무관한 상한 안이에요. n이 크면 GEMM 고르기가 대부분의 짝을 싸게 버리고, 저차원(n ≤ 4)의 큰 데이터는 XB로 만든 KD 트리가, haversine은 단위 구 트리가 답해요. 길은 이득이 있는 모양에서만 골라요.
+- **KD 트리.** 만들기는 하위 트리를 태스크로 나누는 병렬이고, 질의는 질의점 조각마다 한 태스크라 스레드에 고르게 나뉘어요. 차원이 높아 트리가 불리한 모양의 `query`는 GEMM 고르기의 전수로 바꿔 답해요. 짝 세기(`count_neighbors`)는 이중 트리 순회로 노드 쌍을 통째로 세요.
+- **반경 결과.** 결과가 찾은 짝의 수에 비례하고, 모으는 동안 결과 크기의 몇 배가 잠깐 들어요. 결과가 물리 메모리를 넘을 수가 되면 찾기를 멈추고 `MemoryError`를 내요. 개수만 필요하면 `return_length`나 `count_neighbors`가 색인을 모으지 않아 가벼워요.

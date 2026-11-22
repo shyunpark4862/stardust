@@ -1,0 +1,225 @@
+---
+title: cdist
+names: [cdist]
+group: 거리 행렬
+order: 2
+signatures:
+  - "sd.spatial.cdist(XA, XB, /, *, metric='euclidean', p=None, w=None, V=None, VI=None)"
+summary: 두 점 집합 사이의 모든 짝의 거리를 (mA, mB) 거리 행렬로 구해요. 행 i, 열 j가 XA의 점 i와 XB의 점 j의 거리예요. 거리는 열네 가지 가운데 metric으로 고르고, 모든 칸을 차이에서 직접 계산해요.
+params:
+  - name: XA
+    type: ndarray, 수의 중첩 시퀀스, numpy 배열, 또는 frame의 DataFrame
+    kind: positional-only
+    desc: 첫 점 집합. 모양 (mA, n)이고 행 하나가 점 하나예요. 결과의 행이 돼요. bool·int64는 float64로 바꿔 계산해요(hamming·jaccard는 그대로 비교해요).
+  - name: XB
+    type: ndarray, 수의 중첩 시퀀스, numpy 배열, 또는 frame의 DataFrame
+    kind: positional-only
+    desc: 둘째 점 집합. 모양 (mB, n)이고 열 수 n이 XA와 같아야 해요. 결과의 열이 돼요.
+  - name: metric
+    type: str
+    kind: keyword-only
+    desc: "거리 이름. 'euclidean'(기본값), 'sqeuclidean', 'cityblock', 'chebyshev', 'minkowski', 'seuclidean', 'mahalanobis', 'cosine', 'correlation', 'canberra', 'braycurtis', 'hamming', 'jaccard', 'haversine' 가운데 하나예요."
+  - name: p
+    type: int, float, 또는 None
+    kind: keyword-only
+    desc: metric='minkowski'의 차수. 0보다 큰 실수나 inf이고, None(기본값)이면 2예요. 다른 거리에 주면 TypeError예요.
+  - name: w
+    type: 1차원 배열 또는 None
+    kind: keyword-only
+    desc: 열마다의 가중치. 길이 n, 모두 유한하고 0 이상이어야 해요. seuclidean, mahalanobis, haversine은 받지 않아요.
+  - name: V
+    type: 1차원 배열 또는 None
+    kind: keyword-only
+    desc: metric='seuclidean'에서 열마다 나누는 분산. 길이 n, 모두 유한한 양수예요. None(기본값)이면 XA 아래에 XB를 이어 붙인 자료의 열 분산(correction=1)이에요.
+  - name: VI
+    type: 2차원 배열 또는 None
+    kind: keyword-only
+    desc: metric='mahalanobis'의 (n, n) 행렬. None(기본값)이면 XA 아래에 XB를 이어 붙인 자료의 공분산의 역행렬이에요.
+returns:
+  type: ndarray(float64)
+  desc: (mA, mB)의 거리 행렬. 한쪽이 비어 있으면 그 축이 0인 빈 배열이에요. 보통의 새 배열이라 고칠 수 있어요.
+raises:
+  - type: TypeError
+    desc: XA·XB가 배열로 바꿀 수 없는 것이거나 복소수일 때, metric이나 그 인자를 자리로 넘겼을 때, 그 거리가 쓰지 않는 인자를 주었을 때.
+  - type: ValueError
+    desc: XA·XB가 2차원이 아니거나 열 수가 다를 때, 모르는 거리 이름, p·w·V·VI가 규칙에 맞지 않을 때, haversine인데 열이 2개가 아닐 때, 기본 VI를 만들 행이 모자랄 때.
+  - type: sd.linalg.LinAlgError
+    desc: metric='mahalanobis'의 기본 VI를 만들 공분산이 특이할 때.
+  - type: MemoryError
+    desc: 결과(mA × mB × 8바이트)가 이 컴퓨터의 물리 메모리보다 클 때.
+seeAlso: [pdist, squareform, kneighbors, radius_neighbors, metrics, basics]
+---
+
+## 한눈에 보기
+
+`cdist`는 점 집합 두 개를 받아 **첫 집합의 모든 점에서 둘째 집합의 모든 점까지** 거리를 재요. 결과는 행이 `XA`의 점, 열이 `XB`의 점인 표예요. 아래는 집 다섯 곳과 가게 세 곳의 좌표(km)예요.
+
+```python
+>>> import stardust as sd
+>>> homes = sd.asarray([[1.0, 1.0], [4.0, 2.0], [2.0, 5.0], [6.0, 6.0], [7.0, 1.0]])
+>>> shops = sd.asarray([[0.0, 0.0], [5.0, 5.0], [6.0, 0.0]])
+>>> D = sd.spatial.cdist(homes, shops)
+>>> D
+array([[1.4142135623730951,  5.656854249492381, 5.0990195135927845],
+       [  4.47213595499958, 3.1622776601683795, 2.8284271247461903],
+       [ 5.385164807134504,                3.0, 6.4031242374328485],
+       [  8.48528137423857, 1.4142135623730951,                6.0],
+       [7.0710678118654755,   4.47213595499958, 1.4142135623730951]], dtype=float64)
+```
+
+행 0은 집 0 (1, 1)에서 가게 셋까지의 거리예요. 가게 0 (0, 0)까지 √2 ≈ 1.41 km로 가장 가까워요. 행마다 가장 작은 칸을 고르면 집마다 가장 가까운 가게가 나와요.
+
+```python
+>>> sd.argmin(D, axis=1)
+array([0, 2, 1, 1, 2], dtype=int64)
+```
+
+<Reference />
+
+## 결과 읽기
+
+결과의 모양은 언제나 (mA, mB)예요. 점이 하나여도 2차원으로 주고 2차원으로 받아요.
+
+```python
+>>> sd.spatial.cdist(homes[:1], shops)
+array([[1.4142135623730951,  5.656854249492381, 5.0990195135927845]], dtype=float64)
+>>> sd.spatial.cdist(homes, shops[:0])
+array([], shape=(5, 0), dtype=float64)
+```
+
+한쪽이 비어 있으면 그 축이 0인 빈 행렬이에요. 두 집합의 열 수(좌표의 수)는 같아야 하지만 점의 수는 달라도 돼요.
+
+```python
+>>> sd.spatial.cdist(homes, sd.zeros((2, 3)))
+Traceback (most recent call last):
+    ...
+ValueError: cdist(): 'XA' and 'XB' must have the same number of columns, not 2 and 3
+```
+
+### 가장 가까운 것만 필요하면 kneighbors
+
+행마다 가장 작은 칸을 고르는 일은 [`kneighbors`](/api/spatial/kneighbors/)가 거리 행렬을 만들지 않고 해요. 답은 같고, 거리는 `cdist`의 그 칸과 비트까지 같아요.
+
+```python
+>>> sd.spatial.kneighbors(homes, shops)
+QueryResult(distances=array([1.4142135623730951, 2.8284271247461903,                3.0,
+       1.4142135623730951, 1.4142135623730951], dtype=float64), indices=array([0, 2, 1, 1, 2], dtype=int64))
+```
+
+거리 행렬 자체가 필요할 때(표로 보거나, 행렬을 받는 다른 계산에 넘길 때)는 `cdist`를, 행마다 가까운 몇 개나 반경 안의 점만 필요할 때는 `kneighbors`와 [`radius_neighbors`](/api/spatial/radius_neighbors/)를 쓰세요. 점이 많으면 메모리와 시간이 크게 차이 나요(아래 [크기와 메모리](#크기와-메모리)).
+
+## 거리 고르기: metric과 그 인자
+
+`metric`과 그 인자(`p`, `w`, `V`, `VI`)의 규칙은 [`pdist`](/api/spatial/pdist/#거리의-인자-p-w-v-vi)와 같아요. 열네 가지 거리는 [거리 함수 한눈에 보기](/api/spatial/metrics/)에 있어요. 가로와 세로로만 다닐 수 있는 길이라면 `'cityblock'`이 맞아요.
+
+```python
+>>> sd.spatial.cdist(homes, shops, metric="cityblock")
+array([[ 2.0,  8.0,  6.0],
+       [ 6.0,  4.0,  4.0],
+       [ 7.0,  3.0,  9.0],
+       [12.0,  2.0,  6.0],
+       [ 8.0,  6.0,  2.0]], dtype=float64)
+```
+
+### 기본 V와 VI는 두 집합을 합친 자료에서
+
+`metric='seuclidean'`의 기본 `V`와 `metric='mahalanobis'`의 기본 `VI`는 `XA` 아래에 `XB`를 이어 붙인 자료에서 구해요. 그래서 같은 집과 가게의 거리라도 그 호출에 함께 넘긴 점들에 따라 값이 달라져요.
+
+```python
+>>> sd.spatial.cdist(homes, shops, metric="seuclidean")[0]
+array([0.5621387729022078, 2.2485550916088313, 1.9748417658131499], dtype=float64)
+>>> sd.spatial.cdist(homes[:1], shops, metric="seuclidean")
+array([[0.5402362479692653,  2.160944991877061, 1.7495959455973482]], dtype=float64)
+```
+
+첫 줄은 집 다섯과 가게 셋의 분산으로, 둘째 줄은 집 하나와 가게 셋의 분산으로 나눴어요. 기준이 되는 분산을 정해 두고 싶으면 한 번 구해 `V=`로 넘겨요. 그러면 몇 번에 나눠 불러도 눈금이 같아요.
+
+```python
+>>> V = sd.var(sd.concat([homes, shops], axis=0), axis=0, correction=1)
+>>> V
+array([6.696428571428571,               6.0], dtype=float64)
+>>> sd.spatial.cdist(homes[:1], shops, metric="seuclidean", V=V)
+array([[0.5621387729022078, 2.2485550916088313, 1.9748417658131499]], dtype=float64)
+```
+
+## cdist(X, X)와 pdist
+
+한 집합 안의 거리를 `cdist(X, X)`로 구하면 대각선이 0이고 대칭인 정사각 행렬이 나와요. [`pdist`](/api/spatial/pdist/)는 그 위 삼각형만 압축 꼴로 구하므로 계산과 메모리가 반이에요. 두 결과는 비트까지 같아요.
+
+```python
+>>> C = sd.spatial.cdist(homes, homes)
+>>> bool(sd.all(C == sd.spatial.squareform(sd.spatial.pdist(homes))))
+True
+>>> bool(sd.all(C == C.T))
+True
+```
+
+## 모든 거리를 직접 계산해요
+
+유클리드 거리를 많이 구할 때 흔히 쓰는 지름길이 있어요. ‖x − y‖² = ‖x‖² + ‖y‖² − 2x·y로 펼치면 가운데 항이 행렬 곱 하나라서 아주 빨라요. 하지만 이 식은 큰 수 둘을 빼서 작은 수를 얻는 꼴이라, 점들이 원점에서 멀고 서로 가까우면 자릿수를 다 잃어요. 아래 점들은 모두 원점에서 약 1.7 × 10⁸ 떨어져 있고 서로는 1보다 가까워요.
+
+```python
+>>> A = sd.asarray([[1e8 + 0.25, 1e8 + 0.5, 1e8 + 0.75]])
+>>> B = sd.asarray([[1e8, 1e8, 1e8],
+...                 [1e8 + 0.5, 1e8 + 0.5, 1e8 + 0.5],
+...                 [1e8 + 1, 1e8 + 1, 1e8 + 1]])
+>>> sq = sd.sum(A * A, axis=1)[:, None] + sd.sum(B * B, axis=1)[None, :] - 2 * (A @ B.T)
+>>> sd.sqrt(sd.maximum(sq, 0.0))
+array([[0.0, 0.0, 0.0]], dtype=float64)
+>>> sd.spatial.cdist(A, B)
+array([[0.9354143466934853, 0.3535533905932738, 0.9354143466934853]], dtype=float64)
+```
+
+펼친 식은 세 거리를 모두 0으로 냈어요. ‖x‖²가 약 3 × 10¹⁶이라 float64의 간격이 4인 자리에서 1보다 작은 차이를 구하려 했기 때문이에요. 0이 아닌 거리가 모두 0이 되면 가장 가까운 점도 엉뚱하게 골라져요. `cdist`는 모든 칸을 좌표의 차이에서 직접 계산해서 이런 상쇄가 없어요. 차이 (x − y)를 먼저 구하므로 원점에서 얼마나 먼지와 상관없이 같은 정확도예요. 거리마다의 정확도는 [정확도와 성능](/internals/spatial/accuracy-performance/)에 있어요.
+
+## 크기와 메모리
+
+결과의 크기는 mA × mB × 8바이트예요. 점이 각각 1만 개면 800 MB, 10만 개씩이면 80 GB예요. 결과가 이 컴퓨터의 물리 메모리보다 크면 계산을 시작하기 전에 `MemoryError`를 내요.
+
+```python
+>>> sd.spatial.cdist(sd.zeros((3_000_000, 1)), sd.zeros((3_000_000, 1)))
+Traceback (most recent call last):
+    ...
+MemoryError: cdist(): cannot allocate 72000000000000 bytes: more than this machine's physical memory
+```
+
+가까운 이웃만 필요하면 `kneighbors`와 `radius_neighbors`가 행렬 없이 찾아요. 행렬이 꼭 필요하지만 한 번에 담기 어렵다면 `XA`를 몇 행씩 나눠 부르고 결과를 차례로 쓰면 돼요. 짝 하나의 거리는 어떻게 나눠 불러도 같은 비트라 나눈 결과를 이어 붙이면 한 번에 부른 것과 같아요(기본 `V`·`VI`를 쓰는 거리는 위에서처럼 `V=`, `VI=`를 정해 넘길 때만).
+
+```python
+>>> top = sd.spatial.cdist(homes[:2], shops)
+>>> bottom = sd.spatial.cdist(homes[2:], shops)
+>>> bool(sd.all(sd.concat([top, bottom], axis=0) == D))
+True
+```
+
+## NaN과 inf
+
+`cdist`는 에러를 내지 않고 NaN과 inf를 결과에 그대로 내보내요. 좌표에 NaN이 있는 점의 행(또는 열)은 그 거리가 NaN이에요. 이웃 찾기와 달리 결측이 섞인 자료도 받아서, 어느 칸이 NaN인지 보고 판단할 수 있어요.
+
+```python
+>>> sd.spatial.cdist(sd.asarray([[0.0, sd.nan], [0.0, 0.0]]), shops)
+array([[               nan,                nan,                nan],
+       [               0.0, 7.0710678118654755,                6.0]], dtype=float64)
+```
+
+## 조심할 점
+
+- `XA`와 `XB`는 2차원이어야 해요. 점 하나를 1차원으로 주면 `ValueError`예요. `x[None, :]`나 `X[i:i+1]`처럼 행 하나짜리 2차원으로 주세요.
+- 두 집합의 순서를 바꾸면 결과는 전치 행렬이에요(`cdist(B, A)`는 `cdist(A, B).T`와 비트까지 같아요). 다만 기본 `V`·`VI`를 쓰는 `seuclidean`과 `mahalanobis`는 이어 붙이는 순서가 바뀌어 분산을 더하는 순서도 바뀌므로 끝자리가 다를 수 있어요. 똑같아야 하면 `V=`, `VI=`를 정해 넘겨요.
+- `metric`은 키워드로 줘요. `cdist(XA, XB, 'cityblock')`은 `TypeError`예요.
+
+```python
+>>> sd.spatial.cdist([1.0, 2.0], shops)
+Traceback (most recent call last):
+    ...
+ValueError: cdist(): 'XA' must have 2 dimensions, not 1
+```
+
+## scipy·sklearn을 아는 분께
+
+- 이름과 인자의 뜻, 기본 `V`·`VI`(두 집합을 세로로 이은 자료)는 scipy의 `cdist`와 같아요. `metric`과 그 인자는 키워드로만 받고, 별칭과 대문자 이름, 호출 가능한 `metric`, `out=`은 없어요. scipy의 `distance_matrix(x, y, p)`는 `cdist(x, y, metric='minkowski', p=p)`예요.
+- 그 거리가 쓰지 않는 인자는 `TypeError`, `p ≤ 0`·`w`의 NaN·inf·`V`의 0 이하는 `ValueError`예요(scipy는 받아서 값을 내요).
+- scipy의 `cdist`는 `chebyshev`에서 NaN 좌표를 건너뛰어 `[nan, 0]`과 `[1, 5]`의 거리를 5로 내요. 여기서는 NaN이에요.
+- sklearn의 `euclidean_distances`는 위의 펼친 식으로 계산해서 원점에서 먼 가까운 점들의 거리를 잃을 수 있어요. 여기서는 언제나 직접 계산이에요. `euclidean_distances(X, Y, squared=True)`는 `cdist(X, Y, metric='sqeuclidean')`, sklearn의 `haversine_distances`는 `cdist(X, Y, metric='haversine')`예요.
+- 같은 짝의 거리가 `pdist`, 거리 함수, `kneighbors`, `KDTree`의 결과와 비트까지 같아요. scipy는 `cdist`와 `KDTree`의 덧셈 순서가 달라 같은 짝의 거리가 끝자리에서 다를 수 있어요.
+- 반올림 크기의 차이로 끝자리가 scipy와 다를 수 있어요. 반올림이 아닌 동작(모양, 빈 입력, 기본값)은 scipy와 같아요.

@@ -1,0 +1,293 @@
+---
+kind: function
+title: haversine
+names: [haversine]
+group: 거리 함수
+order: 26
+signatures:
+  - "sd.spatial.haversine(u, v, /)"
+summary: 구 위의 두 점을 (위도, 경도) 라디안으로 받아, 단위 구에서 두 점 사이의 중심각(라디안)을 재요. 지구 위의 거리는 여기에 반지름을 곱해요. 대척점과 날짜 변경선 근처에서도 자릿수를 지켜요.
+params:
+  - name: u
+    type: ndarray, 수의 시퀀스, numpy 배열, 또는 frame의 DataFrame
+    kind: positional-only
+    desc: 첫째 점. 마지막 축의 길이가 2이고 (위도, 경도)를 라디안으로 담아요. 2차원 이상이면 앞 축이 점 여러 개의 배치예요. float64로 계산해요.
+  - name: v
+    type: ndarray, 수의 시퀀스, numpy 배열, 또는 frame의 DataFrame
+    kind: positional-only
+    desc: 둘째 점. u와 같은 꼴이고, 앞 축은 u와 브로드캐스트돼야 해요.
+returns:
+  type: float 또는 ndarray
+  desc: 0 이상 π 이하의 중심각(라디안). 두 입력이 1차원이면 Python float, 아니면 배치 모양의 float64 배열이에요. NaN이 있으면 NaN이에요.
+raises:
+  - type: TypeError
+    desc: u·v가 배열·수의 시퀀스·DataFrame이 아닐 때, 복소수일 때, w를 비롯한 키워드를 줬을 때.
+  - type: ValueError
+    desc: 마지막 축의 길이가 2가 아닐 때, 두 입력의 마지막 축 길이가 다를 때, 앞 축이 브로드캐스트되지 않을 때.
+seeAlso: [metrics, kneighbors, radius_neighbors, cdist, pdist, euclidean, basics]
+---
+import Callout from '../../../components/Callout.astro';
+import PlotImage from '../../../components/fig/PlotImage.astro';
+
+## 무엇을 재나요
+
+지구 위의 두 곳이 얼마나 먼지를 위도와 경도로 재는 함수예요. 두 점을 구의 중심에서 바라본 각, 곧 **중심각** θ를 돌려줘요. 구 위에서 두 점을 잇는 가장 짧은 길(대원의 호)의 길이는 반지름 R에 이 각을 곱한 Rθ예요.
+
+점 하나는 (위도 φ, 경도 λ)이고 단위는 라디안이에요. 중심각은 haversine 공식으로 구해요.
+
+$$
+h = \sin^2\!\frac{\varphi_2 - \varphi_1}{2} + \cos\varphi_1 \cos\varphi_2 \sin^2\!\frac{\lambda_2 - \lambda_1}{2}, \qquad
+\theta = 2 \arcsin \sqrt{h}
+$$
+
+$\sin^2(x/2)$를 옛 항해술에서 haversine(반 versed sine)이라 불러서 공식의 이름이 됐어요. 서울과 부산의 거리를 재 볼게요.
+
+```python
+>>> import stardust as sd
+>>> seoul = sd.deg2rad(sd.asarray([37.5665, 126.9780]))     # (위도, 경도)
+>>> busan = sd.deg2rad(sd.asarray([35.1796, 129.0756]))
+>>> theta = sd.spatial.haversine(seoul, busan)
+>>> theta
+0.05102986326318674
+>>> theta * 6371.0                                          # km
+325.1112588497627
+```
+
+중심각은 약 0.051 라디안(2.9도)이고, 지구 반지름 6371 km를 곱하면 약 325 km예요.
+
+<Reference />
+
+## 입력: (위도, 경도), 라디안
+
+마지막 축의 길이는 2이고, **위도가 먼저, 경도가 다음**이에요. 지도 프로그램이나 GeoJSON은 (경도, 위도)의 순서로 적는 일이 많으니 열의 순서를 확인하세요.
+
+단위는 라디안이에요. 도 단위의 자료는 [`deg2rad`](/api/array/deg2rad/)로 바꿔서 넣어요. 도를 그대로 넣어도 에러가 나지 않고 뜻 없는 값이 나와요.
+
+```python
+>>> sd.spatial.haversine([37.5665, 126.9780], [35.1796, 129.0756])    # 도를 그대로 넣은 잘못
+1.0678031376909536
+```
+
+1.07 라디안이면 6800 km쯤이에요. 결과가 이상하게 크면 단위부터 의심하세요.
+
+```python
+>>> sd.spatial.haversine([0.1, 0.2, 0.3], [0.1, 0.2, 0.3])
+Traceback (most recent call last):
+    ...
+ValueError: haversine(): 'u' and 'v' must have 2 entries on their last axis (latitude and longitude in radians), not 3
+```
+
+## 지구 위의 거리로 바꾸기
+
+결과는 반지름이 1인 구의 중심각이라 단위가 없는 라디안이에요. 거리가 필요하면 반지름을 곱해요. 지구의 평균 반지름은 약 6371 km예요.
+
+| 원하는 것 | 계산 |
+|---|---|
+| km | `theta * 6371.0` |
+| m | `theta * 6_371_000.0` |
+| 해리 | `theta * 3440.065` |
+| 각도(도) | `sd.rad2deg(theta)` |
+
+지구는 완전한 구가 아니라 극 쪽이 조금 납작해요. 구로 본 거리는 타원체로 잰 거리와 0.5%쯤까지 다를 수 있어요. 측량처럼 그보다 정밀해야 하는 일에는 타원체 공식(Vincenty, Karney의 방법 같은 것)을 써요.
+
+## 여러 짝을 한꺼번에
+
+마지막 축이 (위도, 경도)이고 앞 축은 배치예요. 앞 축은 브로드캐스트로 맞춰요. 아래는 세 도시와 서울의 거리예요.
+
+```python
+>>> cities = sd.deg2rad(sd.asarray([[35.1796, 129.0756],     # 부산
+...                                 [35.6762, 139.6503],     # 도쿄
+...                                 [39.9042, 116.4074]]))   # 베이징
+>>> sd.spatial.haversine(cities, seoul) * 6371.0
+array([325.1112588497627, 1149.357335839889, 952.3277227599414], dtype=float64)
+```
+
+모든 짝이 필요하면 [`cdist`](/api/spatial/cdist/)나 [`pdist`](/api/spatial/pdist/)에 `metric="haversine"`을 줘요. 열이 두 개여야 해요.
+
+```python
+>>> sd.spatial.pdist(cities, metric="haversine") * 6371.0
+array([ 959.2638206253955, 1232.7431071498556, 2089.3862016931125], dtype=float64)
+>>> sd.spatial.cdist(sd.ones((1, 3)), sd.ones((1, 3)), metric="haversine")
+Traceback (most recent call last):
+    ...
+ValueError: cdist(): metric='haversine' needs 2 columns (latitude and longitude in radians), not 3
+```
+
+같은 두 점의 거리는 이 함수, `pdist`, `cdist`, 이웃 찾기가 모두 비트까지 같은 값을 내요.
+
+## 날짜 변경선
+
+경도 180도에서 지도가 끊기지만 지구는 이어져 있어요. 경도의 차이는 $\sin^2(\Delta\lambda/2)$로만 들어가므로, 날짜 변경선을 사이에 둔 두 점도 가까운 거리로 나와요. 경도 179도와 −179도는 2도 떨어져 있어요.
+
+```python
+>>> a = sd.deg2rad(sd.asarray([0.0, 179.0]))
+>>> b = sd.deg2rad(sd.asarray([0.0, -179.0]))
+>>> sd.rad2deg(sd.spatial.haversine(a, b))
+1.9999999999999918
+```
+
+끝자리가 2에서 조금 벗어난 것은 도를 라디안으로 바꿀 때의 반올림 때문이에요. 경도를 [−π, π]로 맞출 필요도 없어요. 경도에 2π를 더한 점은 같은 점이에요.
+
+날짜 변경선 바로 옆의 아주 가까운 두 점은 공식을 그대로 계산하면 자릿수를 잃어요. 경도의 차이 $\lambda_2 - \lambda_1$이 2π에 가까운 큰 수라서, 그 뺄셈의 반올림 오차(약 10⁻¹⁵)가 아주 작은 거리 앞에서는 커지기 때문이에요. `haversine`은 이 뺄셈의 반올림 오차까지 따로 챙겨서 거리에 반영해요.
+
+```python
+>>> import math
+>>> def naive(u, v):
+...     h = (math.sin((v[0] - u[0]) / 2) ** 2
+...          + math.cos(u[0]) * math.cos(v[0]) * math.sin((v[1] - u[1]) / 2) ** 2)
+...     return 2 * math.asin(math.sqrt(h))
+>>> u = [0.0, 3.14159265358979]
+>>> v = [0.0, -3.1415926535897]
+>>> sd.spatial.haversine(u, v)
+9.661228789729306e-14
+>>> naive(u, v)
+9.6168198687443e-14
+```
+
+참값은 9.661228789729306×10⁻¹⁴예요. 공식을 그대로 계산한 값은 셋째 자리부터 틀려요(상대오차 약 5×10⁻³).
+
+## 대척점
+
+지구 반대편의 점(대척점)까지는 중심각이 π예요. 대척점 근처에서는 h가 1에 가까워지는데, $\arcsin$은 1 근처에서 기울기가 무한히 커지므로 h의 반올림 오차가 크게 부풀어요. 공식을 그대로 쓰면 대척점에서 조금 벗어난 점도 정확히 π로 나와요.
+
+```python
+>>> u = [0.0, 0.0]
+>>> v = [1e-10, math.pi]
+>>> sd.spatial.haversine(u, v)
+3.141592653489793
+>>> naive(u, v)
+3.141592653589793
+```
+
+참값은 π − 10⁻¹⁰이에요. `haversine`은 h가 1/2을 넘으면 $\theta = \pi - 2\arcsin\sqrt{1 - h}$로 바꿔 구하고, $1 - h$를 1에서 빼지 않는 꼴로 따로 계산해요. 그래서 대척점 근처에서도 자릿수를 지켜요.
+
+## 극
+
+극에서는 경도가 뜻이 없어요. 다만 `math.pi / 2`는 정확한 π/2보다 조금 작은 수라서, 위도 `math.pi / 2`의 점은 북극에서 6×10⁻¹⁷ 라디안쯤 떨어진 점이에요. 그래서 경도가 다른 두 "북극"의 거리가 0이 아니라 그 크기로 나와요. 입력한 두 점 사이의 참 거리이니 맞는 값이에요.
+
+```python
+>>> sd.spatial.haversine([math.pi / 2, 0.0], [math.pi / 2, 1.0])
+5.87126951281133e-17
+>>> sd.spatial.haversine([math.pi / 2, 0.0], [-math.pi / 2, 0.0])
+3.141592653589793
+```
+
+## 이웃 찾기
+
+가장 가까운 도시, 반경 안의 가게를 찾는 일은 [`kneighbors`](/api/spatial/kneighbors/)와 [`radius_neighbors`](/api/spatial/radius_neighbors/)에 `metric="haversine"`을 줘서 해요. 점이 많아도 모든 짝의 거리를 다 재지 않고 찾고, 돌려주는 거리는 `haversine`의 값 그대로예요.
+
+아래는 베링 해 둘레의 열두 마을이에요. 각 마을에서 가장 가까운 다른 마을을 찾아요. 자기 자신이 거리 0으로 첫째 이웃이라 `k=2`의 둘째 열을 봐요.
+
+```python
+>>> towns = {"Anadyr": (64.73, 177.51), "Provideniya": (64.42, -173.23),
+...          "Uelen": (66.16, -169.81), "Nome": (64.50, -165.41),
+...          "Kotzebue": (66.90, -162.60), "Pevek": (69.70, 170.31),
+...          "Bethel": (60.79, -161.76), "Unalaska": (53.87, -166.54),
+...          "Adak": (51.88, -176.66), "Attu": (52.93, 173.18),
+...          "Petropavlovsk": (53.02, 158.65), "Utqiagvik": (71.29, -156.79)}
+>>> names = list(towns)
+>>> deg = sd.asarray(list(towns.values()))
+>>> rad = sd.deg2rad(deg)
+>>> res = sd.spatial.kneighbors(rad, rad, k=2, metric="haversine")
+>>> near_h = res.indices[:, 1]
+>>> [(names[i], names[j]) for i, j in enumerate(near_h.tolist())][:4]
+[('Anadyr', 'Provideniya'), ('Provideniya', 'Uelen'), ('Uelen', 'Provideniya'), ('Nome', 'Uelen')]
+>>> res.distances[:4, 1] * 6371.0
+array([443.00819951705745,  250.3395007787166,  250.3395007787166,
+       275.15866515561936], dtype=float64)
+```
+
+위도와 경도를 평면의 좌표처럼 보고 유클리드 거리로 찾으면 답이 달라요. 날짜 변경선의 양쪽은 경도로 350도 넘게 떨어진 것처럼 보이고, 높은 위도에서는 경도 1도가 위도 1도보다 훨씬 짧은 것도 무시해요.
+
+```python
+>>> near_e = sd.spatial.kneighbors(deg, deg, k=2).indices[:, 1]
+>>> [(names[i], names[j]) for i, j in enumerate(near_e.tolist()) if j != near_h[i]]
+[('Anadyr', 'Pevek'), ('Nome', 'Kotzebue'), ('Unalaska', 'Bethel'), ('Adak', 'Unalaska'), ('Attu', 'Anadyr')]
+```
+
+```python
+>>> lat = deg[:, 0].tolist()
+>>> east = [lon % 360 for lon in deg[:, 1].tolist()]       # 날짜 변경선을 가운데에 두려고 0–360도로
+>>> def panel(near, title):
+...     f = sd.plot.Figure(width=80)
+...     for i, j in enumerate(near.tolist()):
+...         f = f.line([east[i], east[j]], [lat[i], lat[j]], color="gray")
+...     f = f.vline(180, style="--", color="silver")
+...     f = f.scatter(east, lat, color="C0").title(title)
+...     return f.xlabel(r"경도(동경, $^\circ$)").ylabel(r"위도($^\circ$)")
+>>> fig = sd.plot.grid([panel(near_e, "도 단위의 euclidean"), panel(near_h, "haversine")],
+...                    ncols=2, labels="A", width=160)
+```
+
+<PlotImage name="haversine-bering" alt="베링 해 둘레 열두 마을을 경도 155도에서 205도, 위도 51도에서 72도 범위에 찍고 각 마을을 가장 가까운 마을과 회색 선으로 이은 두 칸. 경도 180도에 점선이 있어요. 왼쪽 칸의 선은 점선을 하나도 건너지 않고, 오른쪽 칸에서는 Anadyr와 Provideniya, Attu와 Adak을 잇는 선이 점선을 건너요." caption="각 마을에서 가장 가까운 마을로 그은 선. A는 위도와 경도를 평면 좌표로 본 유클리드 거리, B는 haversine이에요. 점선은 날짜 변경선(경도 180도)이에요. A는 날짜 변경선을 건너는 이웃을 찾지 못하고, B는 건너편의 가까운 마을을 찾아요." />
+
+반경은 거리를 반지름으로 나눈 중심각으로 줘요. 서울에서 1000 km 안의 도시는 이래요.
+
+```python
+>>> r = 1000.0 / 6371.0
+>>> asia = sd.deg2rad(sd.asarray([[37.5665, 126.9780], [35.1796, 129.0756],
+...                               [35.6762, 139.6503], [39.9042, 116.4074],
+...                               [31.2304, 121.4737], [43.1155, 131.8855]]))
+>>> found = sd.spatial.radius_neighbors(asia[:1], asia, r, metric="haversine")
+>>> found.indices
+array([0, 1, 3, 4, 5], dtype=int64)
+>>> found.distances * 6371.0
+array([              0.0, 325.1112588497627, 952.3277227599414, 866.4505561170181,
+       743.7993343098113], dtype=float64)
+```
+
+1149 km 떨어진 도쿄(2번)만 빠졌어요. 결과 객체는 [결과 객체](/api/spatial/results/)에서 다뤄요.
+
+<Callout type="warn" title="KDTree에는 줄 수 없어요">
+
+[`KDTree`](/api/spatial/KDTree/)는 민코프스키 계열 거리만 받아서, 위도와 경도로 만든 트리는 평면의 유클리드 거리로 찾아요. 구 위의 이웃은 `kneighbors`와 `radius_neighbors`에 `metric="haversine"`을 줘서 찾아요.
+
+</Callout>
+
+이웃 찾기에서도 범위를 검사하지 않아요. 위도가 [−π/2, π/2] 밖이거나 경도가 아주 큰 점(도 단위를 그대로 준 자료 같은 것)이 있어도 같은 공식으로 계산한 결과를 돌려줘요. 다만 그런 자료는 더 느린 방법으로 찾아요. 결과는 같아요.
+
+## 경계의 값
+
+| 입력 | 결과 |
+|---|---|
+| 같은 점 | 0 |
+| 대척점 | π |
+| 경도만 2π 다름 | 0(입력의 반올림만큼의 아주 작은 값일 수 있어요) |
+| 위도·경도가 범위 밖 | 에러 없이 공식대로 계산해요 |
+| NaN이 있음 | NaN |
+
+```python
+>>> sd.spatial.haversine([0.0, 0.0], [0.0, 2 * math.pi])
+2.4492935982947064e-16
+>>> sd.spatial.haversine([0.0, sd.nan], [0.0, 0.0])
+nan
+```
+
+`2 * math.pi`도 정확한 2π보다 조금 작은 수라서 그 차이만큼의 거리예요.
+
+가중치는 받지 않아요. 두 좌표가 따로 뜻을 갖지 않고 함께 구 위의 한 점을 이루기 때문이에요.
+
+```python
+>>> sd.spatial.haversine(seoul, busan, w=[1.0, 1.0])
+Traceback (most recent call last):
+    ...
+TypeError: haversine(): unexpected keyword argument 'w'
+```
+
+## 정확도
+
+참값은 Arb(구간 산술)로 구한 정확한 중심각이에요. 약속은 상대오차 20u 이하예요(u = 2⁻⁵³, 20u ≈ 2.2×10⁻¹⁵). 대척점 넷과 날짜 변경선, 극 근처의 짝을 넣은 32짝에서 잰 결과예요.
+
+| | 시험한 짝 | 최대 ULP | 최대 상대오차 | 약속 대비 |
+|---|---:|---:|---:|---:|
+| `haversine` | 32 | 1 | 1.58×10⁻¹⁶ | 0.071 |
+
+이웃 찾기는 단위 구 위의 점 집합 여섯(고르게 퍼진 점, 거의 같은 점의 군집, 대척점, 극, 날짜 변경선, 거울에 비친 동점)에서 참 거리로 정렬한 이웃과 견줬어요. 돌려준 이웃과 빠진 점의 참 거리가 모두 약속 안이었고, 약속 대비 최대 0.096이었어요.
+
+## scipy·sklearn을 아는 분께
+
+- scipy에는 없는 거리예요. sklearn의 `haversine_distances(X, Y)`와 뜻(입력은 (위도, 경도) 라디안, 결과는 단위 구의 중심각)이 같고, `cdist(X, Y, metric="haversine")`이 그것이에요.
+- 대척점과 날짜 변경선 근처에서 자릿수를 지켜요. sklearn의 `haversine_distances`는 공식 $2\arcsin\sqrt{h}$를 그대로 계산해서, 같은 32짝에서 최대 6.71×10⁷ ULP(상대오차 9.49×10⁻⁹, 약속의 4.27×10⁶배)였어요.
+- 배치를 받아요. `haversine(U, V)`는 sklearn의 `paired_distances`처럼 같은 자리의 짝마다 재요.
+- sklearn의 `BallTree(metric="haversine")`로 하던 이웃 찾기는 `kneighbors(X, Y, metric="haversine")`, `radius_neighbors(X, Y, r, metric="haversine")`이에요. 동점은 (거리, 색인)의 순서예요.
+- 열이 2가 아니면 `ValueError`예요. 위도·경도의 범위는 검사하지 않아요.

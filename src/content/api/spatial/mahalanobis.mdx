@@ -1,0 +1,201 @@
+---
+title: mahalanobis
+names: [mahalanobis]
+group: 거리 함수
+order: 8
+signatures:
+  - "sd.spatial.mahalanobis(u, v, VI, /)"
+summary: 공분산 행렬의 역행렬 VI로 잰 거리 √((u − v)ᵀ VI (u − v))를 구해요. 자료가 퍼진 모양(좌표마다의 퍼짐과 좌표 사이의 상관)을 따져, 자료에서 흔한 방향의 차이는 가깝게, 드문 방향의 차이는 멀게 봐요.
+params:
+  - name: u
+    type: 수의 배열
+    kind: positional-only
+    desc: 첫째 점. 모양은 (..., n)이고 마지막 축이 좌표예요. 리스트, sd.ndarray, numpy 배열, frame의 DataFrame·Series를 받아요. 정수와 bool은 float64로 바꿔요.
+  - name: v
+    type: 수의 배열
+    kind: positional-only
+    desc: 둘째 점. 마지막 축의 길이가 u와 같아야 하고, 앞 축은 u의 앞 축과 브로드캐스트돼요.
+  - name: VI
+    type: 수의 배열
+    kind: positional-only
+    desc: (n, n) 행렬. 보통 자료의 공분산 행렬의 역행렬이에요. 거리 함수에서는 꼭 줘야 해요. pdist·cdist에서는 키워드 VI이고, 주지 않으면 자료의 공분산의 역행렬이에요.
+returns:
+  type: float 또는 ndarray
+  desc: 거리. u와 v가 모두 1차원이면 Python float, 아니면 앞 축을 브로드캐스트한 모양의 float64 배열이에요. 이차식이 음수인 짝은 NaN이에요.
+raises:
+  - type: TypeError
+    desc: VI를 주지 않았을 때, VI를 키워드로 줬을 때, w를 줬을 때, u·v·VI가 수의 배열이 아니거나 복소수일 때.
+  - type: ValueError
+    desc: VI의 모양이 (n, n)이 아닐 때, u와 v의 마지막 축 길이가 다르거나 앞 축이 브로드캐스트되지 않을 때.
+  - type: MemoryError
+    desc: 결과 배열이 이 기계의 물리 메모리보다 클 때.
+seeAlso: [metrics, seuclidean, euclidean, pdist, cdist, kneighbors]
+---
+import PlotImage from '../../../components/fig/PlotImage.astro';
+
+## 한눈에 보기
+
+두 좌표가 강하게 함께 움직이는 자료(상관계수 0.8쯤)를 만들고, 자료의 가운데에서 같은 직선 거리만큼 떨어진 두 점 $a$, $b$를 골라 볼게요. $a$는 자료가 길게 뻗은 대각선 방향에, $b$는 그와 직각인 방향에 있어요.
+
+```python
+>>> import stardust as sd
+>>> rng = sd.random.default_rng(7)
+>>> Z = sd.stats.Normal().sample((500, 2), rng=rng)
+>>> X = Z @ sd.asarray([[1.0, 0.8], [0.0, 0.6]])    # 상관 0.8인 두 열
+>>> VI = sd.linalg.inv(sd.cov(X, rowvar=False))
+>>> center = sd.mean(X, axis=0)
+>>> a = center + sd.asarray([1.5, 1.5])
+>>> b = center + sd.asarray([1.5, -1.5])
+>>> sd.spatial.euclidean(a, center), sd.spatial.euclidean(b, center)
+(2.1213203435596424, 2.1213203435596424)
+>>> sd.spatial.mahalanobis(a, center, VI), sd.spatial.mahalanobis(b, center, VI)
+(1.5492000032593072, 4.645808112479588)
+```
+
+직선 거리는 둘 다 2.12인데, 마할라노비스 거리는 $a$가 1.55, $b$가 4.65예요. 자료 안에서 $a$ 같은 점은 흔하고 $b$ 같은 점은 아주 드물기 때문이에요. 그림으로 보면 분명해요.
+
+```python
+>>> m = lambda x, y: sd.spatial.mahalanobis(sd.stack([x, y], axis=-1), center, VI)
+>>> e = lambda x, y: sd.spatial.euclidean(sd.stack([x, y], axis=-1), center)
+>>> fig = sd.plot.Figure(width=100.0, height=90.0).scatter(X[:, 0], X[:, 1], color="gray", alpha=0.35, size=2)
+>>> for r in [1.0, 2.0, 3.0]:
+...     fig = fig.implicit(m, -4, 4, -4, 4, level=r, color="C0", label="마할라노비스 거리 1, 2, 3" if r == 1.0 else None)
+>>> fig = fig.implicit(e, -4, 4, -4, 4, level=2.1213203435596424, color="C3", style="--", label="유클리드 거리 2.12")
+>>> fig = fig.scatter([a[0], b[0]], [a[1], b[1]], color="black", size=5)
+>>> fig = fig.text(a[0] + 0.2, a[1], "$a$").text(b[0] + 0.2, b[1], "$b$").legend(loc="top")
+```
+
+<PlotImage name="mahalanobis-ellipses" alt="왼쪽 아래에서 오른쪽 위로 길게 퍼진 회색 점 500개. 그 위에 같은 방향으로 기운 파란 타원 셋이 안에서 밖으로 겹쳐 있고, 가운데를 중심으로 한 붉은 점선 원이 있어요. 원 위의 검은 점 a는 오른쪽 위 대각선에 있어 둘째 타원 안쪽이고, 검은 점 b는 오른쪽 아래에 있어 모든 타원 바깥이에요" caption="파란 타원은 가운데에서 마할라노비스 거리가 1, 2, 3인 점들이고, 붉은 점선은 유클리드 거리 2.12인 원이에요. a와 b는 같은 원 위에 있지만, a는 자료가 뻗은 방향이라 마할라노비스 거리 2의 타원 안에, b는 자료가 거의 없는 방향이라 3의 타원 바깥에 있어요." />
+
+<Reference />
+
+## 무엇을 재나요
+
+$$
+d(u, v) = \sqrt{(u - v)^\top \, VI \, (u - v)}
+$$
+
+$VI$에 자료의 공분산 행렬 $\Sigma$의 역행렬 $\Sigma^{-1}$을 넣은 것이 마할라노비스 거리(Mahalanobis distance)예요. 같은 거리의 점들이 원이 아니라 자료의 퍼진 모양을 닮은 타원이 돼요. 자료가 넓게 퍼진 방향으로는 멀리 가도 거리가 조금만 늘고, 좁게 모인 방향으로는 조금만 가도 거리가 크게 늘어요.
+
+다르게 보면, 자료를 돌리고 늘이고 줄여서 상관이 없고 모든 방향의 분산이 1인 꼴로 바꾼 뒤(백색화) 잰 유클리드 거리예요. 그래서 단위에도, 좌표 사이의 상관에도 흔들리지 않아요.
+
+이런 곳에 써요.
+
+- **튀는 점 찾기**: 자료의 평균에서 마할라노비스 거리가 큰 점이 드문 점이에요. 좌표 하나하나로는 평범해도 조합이 드문 점(위의 $b$)을 잡아내요.
+- **가장 가까운 무리 고르기**: 무리마다 평균과 공분산이 있을 때, 새 점을 거리가 가장 가까운 무리에 넣어요.
+- **단위와 상관이 섞인 특징 공간의 이웃 찾기**.
+
+### 정규분포와의 관계
+
+자료가 $n$차원 정규분포를 따르면, 평균에서의 마할라노비스 거리의 제곱은 자유도 $n$인 카이제곱 분포를 따라요. 2차원이면 거리 2 안에 들어오는 비율이 $1 - e^{-2} \approx 0.865$예요. 위의 자료 500점에서 세어 보면 그 근처예요.
+
+```python
+>>> d = sd.spatial.cdist(X, center[None, :], metric='mahalanobis', VI=VI)[:, 0]
+>>> sd.mean(d <= 2.0), 1 - sd.exp(-2.0)
+(0.856, 0.8646647167633873)
+```
+
+가장 먼 점은 거리 3.5쯤이에요. 자료가 정규분포라면 500점 가운데 이만큼 먼 점이 한둘 나오는 것은 자연스러운 일이에요.
+
+```python
+>>> sd.max(d)
+3.5368189392083225
+```
+
+## 인자 VI
+
+거리 함수 `mahalanobis`에서는 `VI`를 셋째 자리로 꼭 줘야 하고, 모양이 $(n, n)$이어야 해요. 공분산 행렬이 아니라 그 **역행렬**을 준다는 데 조심하세요. 공분산 행렬을 그대로 넣으면 거리가 뒤집혀서, 자료가 뻗은 방향을 멀게 봐요.
+
+```python
+>>> sd.spatial.mahalanobis([0.0, 0.0], [1.0, 1.0])
+Traceback (most recent call last):
+    ...
+TypeError: mahalanobis(): missing 1 required positional argument: 'VI'
+>>> sd.spatial.mahalanobis([0.0, 0.0], [1.0, 1.0], sd.eye(3))
+Traceback (most recent call last):
+    ...
+ValueError: mahalanobis(): 'VI' must have shape (2, 2), not (3, 3)
+```
+
+`VI`가 대칭인지, 양정치인지는 검사하지 않아요. 양정치가 아니면 이차식 $(u - v)^\top VI (u - v)$가 음수가 되는 짝이 있고, 그 짝의 거리는 NaN이에요. 공분산의 역행렬은 언제나 양정치이니, 자료에서 구한 `VI`라면 이런 일이 없어요.
+
+```python
+>>> bad = [[1.0, 2.0], [2.0, 1.0]]    # 고유값이 3과 −1
+>>> sd.spatial.mahalanobis([0.0, 0.0], [1.0, 1.0], bad), sd.spatial.mahalanobis([0.0, 0.0], [1.0, -1.0], bad)
+(2.449489742783178, nan)
+```
+
+`VI`가 모든 가중치를 정하므로 `w`는 받지 않아요(`TypeError`).
+
+### 다른 거리와의 관계
+
+`VI`가 단위행렬이면 [`euclidean`](/api/spatial/euclidean/), 대각이 $1/V_i$인 대각행렬이면 [`seuclidean`](/api/spatial/seuclidean/)과 같은 양이에요.
+
+```python
+>>> u, v = [0.3, 1.2, -0.5], [1.0, 0.4, 0.2]
+>>> sd.spatial.mahalanobis(u, v, sd.eye(3)), sd.spatial.euclidean(u, v)
+(1.2727922061357855, 1.2727922061357855)
+>>> V = sd.asarray([2.0, 0.5, 4.0])
+>>> sd.spatial.mahalanobis(u, v, sd.diag(1.0 / V)), sd.spatial.seuclidean(u, v, V)
+(1.2835497652993435, 1.2835497652993435)
+```
+
+## 거리 행렬과 기본 VI
+
+[`pdist`](/api/spatial/pdist/)와 [`cdist`](/api/spatial/cdist/)에서는 `metric='mahalanobis'`와 함께 키워드 `VI`를 줘요. 주지 않으면 자료의 공분산(`correction=1`)의 역행렬을 써요. `pdist`는 `X`, `cdist`는 `XA`와 `XB`를 세로로 이은 자료예요. 그래서 `cdist`의 기본 `VI`는 넘기는 행에 따라 바뀌어요. 자료 전체의 `VI`가 있다면 직접 주는 편이 안전해요.
+
+공분산의 역행렬은 자료가 충분해야 있어요. 행이 열보다 많지 않으면 `ValueError`, 공분산이 특이하면(한 열이 다른 열의 일차 결합이면) [`sd.linalg.LinAlgError`](/api/linalg/errors/)예요. 자료에 NaN이나 inf가 있으면 공분산부터 NaN이라 모든 거리가 NaN이에요.
+
+```python
+>>> sd.spatial.pdist(sd.asarray([[0.0, 0.0], [1.0, 1.0]]), metric='mahalanobis')
+Traceback (most recent call last):
+    ...
+ValueError: pdist(): the default 'VI' needs more observations than columns, not 2 observations of 2 columns; give 'VI'
+>>> sd.spatial.pdist(sd.asarray([[0.0, 0.0], [1.0, 1.0], [2.0, 2.0]]), metric='mahalanobis')
+Traceback (most recent call last):
+    ...
+stardust.linalg.LinAlgError: pdist(): the covariance of the data is singular, so the default 'VI' does not exist; give 'VI'
+```
+
+## 이웃 찾기에서
+
+[`kneighbors`](/api/spatial/kneighbors/)와 [`radius_neighbors`](/api/spatial/radius_neighbors/)도 `metric='mahalanobis'`를 받아요. 기본 `VI`는 `cdist`처럼 `XA`와 `XB`를 이은 자료에서 구하니, 아래 둘째 줄은 질의점 하나가 더해진 자료의 `VI`라 거리의 끝자리가 조금 달라요.
+
+```python
+>>> sd.spatial.kneighbors(center[None, :], X, k=3, metric='mahalanobis', VI=VI)
+QueryResult(distances=array([[0.026928125225531407,  0.09212247813280515,  0.13148535187712468]], dtype=float64), indices=array([[285, 117, 296]], dtype=int64))
+>>> sd.spatial.kneighbors(center[None, :], X, k=3, metric='mahalanobis')
+QueryResult(distances=array([[ 0.0269281252255314, 0.09212247813280514, 0.13148535187712468]], dtype=float64), indices=array([[285, 117, 296]], dtype=int64))
+```
+
+좌표가 $n$개면 짝 하나마다 $n^2$에 비례하는 계산이 들어서, 좌표가 많으면 다른 거리보다 무거워요. 같은 `VI`로 이웃을 여러 번 찾는다면 자료를 한 번 백색화해 두고 `euclidean`과 [`KDTree`](/api/spatial/KDTree/)를 쓰는 길도 있어요. 공분산을 $\Sigma = LL^\top$으로 [촐레스키 분해](/api/linalg/cholesky/)하면 $(u - v)^\top \Sigma^{-1} (u - v) = \lVert L^{-1}(u - v) \rVert^2$이니, $L^{-1}$을 곱한 자료의 유클리드 거리가 마할라노비스 거리예요. 계산 순서가 달라 끝자리는 다를 수 있어요.
+
+```python
+>>> L = sd.linalg.cholesky(sd.cov(X, rowvar=False))
+>>> W = sd.linalg.solve_triangular(L, (X - center).T, upper=False).T
+>>> sd.spatial.euclidean(W[0], [0.0, 0.0]), d[0]
+(2.4690655927779908, 2.46906559277799)
+```
+
+## NaN, inf, 빈 벡터, 배치
+
+다른 거리 함수와 같아요. 마지막 축이 좌표이고 앞 축은 브로드캐스트돼요. NaN은 결과까지 퍼지고, 좌표가 0개면 0이에요.
+
+```python
+>>> sd.spatial.mahalanobis(X[:3], center, VI)
+array([  2.46906559277799, 1.6220966692114345, 1.6116194536674047], dtype=float64)
+>>> sd.spatial.mahalanobis([sd.nan, 0.0], [0.0, 0.0], sd.eye(2)), sd.spatial.mahalanobis([], [], sd.zeros((0, 0)))
+(nan, 0.0)
+```
+
+## 정확도
+
+`mahalanobis`의 오차 한계는 거리 자체가 아니라 절댓값으로 바꾼 이차식 $\lvert z\rvert^\top \lvert VI\rvert \lvert z\rvert$($z = u - v$)에 비례해요. `VI`의 원소끼리 크게 상쇄되는 나쁜 조건의 행렬이면, 이 이차식이 거리의 제곱보다 훨씬 커서 상대오차가 클 수 있어요. 공분산이 거의 특이한 자료(거의 같은 열이 있는 자료)가 그런 예예요. 넘침과 언더플로가 걸리는 짝까지 넣은 시험 492짝(좌표 16개 이하, 양정치 `VI`)에서 Arb(구간 산술)로 만든 참값과 견준 최대 오차는 2 ULP(한계의 0.29)였어요.
+
+## scipy·sklearn을 아는 분께
+
+- 뜻과 기본 `VI`(pdist는 `X`, cdist는 `XA`와 `XB`를 이은 자료의 공분산의 역행렬)는 scipy와 같아요. 행이 열보다 많지 않을 때 `ValueError`인 것도 같아요.
+- 거리 함수에서 `VI`가 셋째 자리인 것도 scipy와 같아요. `pdist`·`cdist`에서는 `metric`과 `VI` 모두 키워드로만 받아요.
+- 양정치가 아닌 `VI`에서 이차식이 음수인 짝이 NaN인 것은 scipy와 같아요.
+- 좌표가 아주 크거나 작아도 크기를 맞춰 다시 계산해 유한한 거리예요. scipy는 같은 자리에서 inf나 0, NaN을 내요.
+- sklearn의 `NearestNeighbors(metric='mahalanobis', metric_params={'VI': VI})`의 이웃 찾기는 `kneighbors(X, Y, k=k, metric='mahalanobis', VI=VI)`예요.

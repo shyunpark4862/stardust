@@ -1,0 +1,211 @@
+---
+kind: function
+title: hamming
+names: [hamming]
+group: 거리 함수
+order: 24
+signatures:
+  - "sd.spatial.hamming(u, v, /, *, w=None)"
+summary: 두 벡터에서 값이 다른 자리의 비율을 재요. 같은 길이의 염기 서열, 범주로 적은 설문 응답, 비트 열처럼 값이 같은지 다른지만 뜻을 가진 자료에 써요. bool·int64·float64를 바꾸지 않고 그대로 견줘요.
+params:
+  - name: u
+    type: ndarray, 수의 시퀀스, numpy 배열, 또는 frame의 DataFrame
+    kind: positional-only
+    desc: 첫째 벡터. 마지막 축이 자리예요. 2차원 이상이면 앞 축이 벡터 여러 개의 배치예요. bool, int64, float64를 그 dtype 그대로 견주고, 복소수는 받지 않아요.
+  - name: v
+    type: ndarray, 수의 시퀀스, numpy 배열, 또는 frame의 DataFrame
+    kind: positional-only
+    desc: 둘째 벡터. 마지막 축의 길이가 u와 같아야 하고, 앞 축은 u와 브로드캐스트돼야 해요. dtype이 u와 다르면 하나라도 float64일 때 float64로, 아니면 int64로 맞춰 견줘요.
+  - name: w
+    type: 1차원 배열 또는 None
+    kind: keyword-only
+    desc: 자리마다의 가중치. 길이가 자리 수와 같고 모든 값이 유한하며 0 이상이어야 해요. 다른 자리의 가중치 합을 전체 가중치 합으로 나눠요. None(기본값)이면 모두 1이에요.
+returns:
+  type: float 또는 ndarray
+  desc: 0 이상 1 이하의 비율. 두 입력이 1차원이면 Python float, 아니면 배치 모양의 float64 배열이에요. 자리가 없거나 가중치가 모두 0이면 NaN이에요.
+raises:
+  - type: TypeError
+    desc: u·v가 배열·수의 시퀀스·DataFrame이 아닐 때(문자열의 리스트 포함), 복소수일 때, w를 위치로 줬을 때, 없는 키워드를 줬을 때.
+  - type: ValueError
+    desc: 마지막 축의 길이가 다를 때, 앞 축이 브로드캐스트되지 않을 때, w가 1차원이 아니거나 길이가 틀렸거나 음수·NaN·inf를 담았을 때.
+seeAlso: [metrics, jaccard, cityblock, cdist, pdist, kneighbors, basics]
+---
+import Callout from '../../../components/Callout.astro';
+
+## 무엇을 재나요
+
+해밍 거리는 같은 자리끼리 견줘 값이 다른 자리가 몇 분의 몇인지를 재요.
+
+$$
+d(u, v) = \frac{1}{n} \sum_{i=1}^{n} [\,u_i \ne v_i\,]
+$$
+
+$[\,u_i \ne v_i\,]$는 두 값이 다르면 1, 같으면 0이에요. 값이 얼마나 다른지는 보지 않아요. 1과 2의 차이도, 1과 1000의 차이도 "다름" 하나예요.
+
+```python
+>>> import stardust as sd
+>>> sd.spatial.hamming([1, 0, 1, 1], [1, 1, 0, 1])
+0.5
+```
+
+네 자리 가운데 가운데 두 자리가 달라서 2/4예요.
+
+<Reference />
+
+## 다른 자리의 수
+
+결과는 비율이에요. 다른 자리의 수가 필요하면 자리 수를 곱하고 반올림해요.
+
+```python
+>>> a = [ord(c) for c in "GATTACA"]
+>>> b = [ord(c) for c in "GACTATA"]
+>>> d = sd.spatial.hamming(a, b)
+>>> d
+0.2857142857142857
+>>> round(d * len(a))
+2
+```
+
+문자열은 받지 않아서 글자를 `ord`로 정수 부호로 바꿨어요. 셋째 자리(T와 C)와 여섯째 자리(C와 T)가 달라요. 염기 서열처럼 길이가 같은 두 서열에서 바뀐 자리를 셀 때 이렇게 써요. 끼워 넣거나 빠진 글자가 있어 길이가 다른 서열은 자리끼리 견줄 수 없어서 해밍 거리로 잴 수 없어요.
+
+```python
+>>> sd.spatial.hamming(["G", "A"], ["G", "C"])
+Traceback (most recent call last):
+    ...
+TypeError: hamming(): 'u' must be an sd.ndarray, a sequence of numbers, a numpy array or a frame DataFrame, not list
+```
+
+## 값을 바꾸지 않고 견줘요
+
+`hamming`은 입력을 float64로 바꾸지 않아요. bool은 bool끼리, int64는 int64끼리, float64는 float64끼리 정확히 같은지 봐요. 그래서 float64로 바꾸면 같아지는 큰 정수도 다르다고 봐요.
+
+```python
+>>> sd.spatial.hamming([2**60, 1], [2**60 + 1, 1])
+0.5
+```
+
+2⁶⁰과 2⁶⁰ + 1은 float64로는 같은 수지만 int64로는 다른 수예요. 큰 정수 ID를 견줄 때 이 차이가 중요해요.
+
+두 입력의 dtype이 다르면 하나로 맞춘 뒤 견줘요.
+
+| `u` | `v` | 견주는 dtype |
+|---|---|---|
+| bool | bool | bool |
+| bool | int64 | int64(True는 1) |
+| 정수나 bool | float64 | float64 |
+| 같은 dtype | 같은 dtype | 그대로 |
+
+```python
+>>> sd.spatial.hamming([True, False], [1, 0])
+0.0
+>>> sd.spatial.hamming([True, False], [2, 0])
+0.5
+>>> sd.spatial.hamming([1, 2], [1.0, 2.5])
+0.5
+```
+
+둘째 예는 True를 1로 보므로 2와 달라요. 0이 아닌지만 보려면 [`jaccard`](/api/spatial/jaccard/)를 쓰거나, 먼저 `x != 0`으로 bool로 바꿔요.
+
+<Callout type="warn" title="실수는 정확히 같아야 같은 값이에요">
+
+float64를 견줄 때도 끝자리까지 같아야 같은 값이에요. 계산해서 얻은 0.1 + 0.2는 0.3과 다른 수예요. 측정값처럼 반올림 오차가 있는 자료에는 해밍 거리가 맞지 않아요. 범주를 정수로 적은 자료에 쓰세요.
+
+</Callout>
+
+```python
+>>> sd.spatial.hamming([0.1 + 0.2], [0.3])
+1.0
+```
+
+## 여러 짝을 한꺼번에
+
+마지막 축이 자리이고 앞 축은 배치예요. 앞 축은 브로드캐스트로 맞춰요. 모든 행의 짝은 [`pdist`](/api/spatial/pdist/)나 [`cdist`](/api/spatial/cdist/)에 `metric="hamming"`을 줘요. 이 경우에도 dtype을 그대로 견줘요.
+
+```python
+>>> answers = sd.asarray([[1, 3, 2, 2, 4],     # 설문 다섯 문항의 응답 번호
+...                       [1, 3, 2, 1, 4],
+...                       [2, 1, 2, 2, 3]])
+>>> sd.spatial.hamming(answers, answers[0])
+array([0.0, 0.2, 0.6], dtype=float64)
+>>> sd.spatial.pdist(answers, metric="hamming")
+array([0.2, 0.6, 0.8], dtype=float64)
+```
+
+bool 행렬은 아주 긴 행(수천 자리의 비트 열)도 빠르게 재요. 이웃 찾기([`kneighbors`](/api/spatial/kneighbors/), [`radius_neighbors`](/api/spatial/radius_neighbors/))에도 `metric="hamming"`을 줄 수 있어요. 같은 두 벡터의 거리는 어디서 재든 비트까지 같아요.
+
+```python
+>>> bits = sd.asarray([[True, False, True], [True, True, False], [False, False, False]])
+>>> sd.spatial.pdist(bits, metric="hamming")
+array([0.6666666666666666, 0.6666666666666666, 0.6666666666666666], dtype=float64)
+```
+
+## 가중치 `w`
+
+`w`를 주면 다른 자리의 가중치 합을 전체 가중치 합으로 나눠요.
+
+$$
+d_w(u, v) = \frac{\sum_i w_i [\,u_i \ne v_i\,]}{\sum_i w_i}
+$$
+
+더 중요한 자리에 큰 가중치를 줘요. 가중치 0인 자리는 빠져요.
+
+```python
+>>> sd.spatial.hamming([1, 2, 3], [1, 2, 4])
+0.3333333333333333
+>>> sd.spatial.hamming([1, 2, 3], [1, 2, 4], w=[1.0, 1.0, 2.0])
+0.5
+```
+
+## 경계의 값
+
+| 입력 | 결과 | 까닭 |
+|---|:---:|---|
+| NaN과 NaN | 다른 값으로 세요 | NaN은 자기 자신과도 같지 않아요 |
+| inf와 inf | 같은 값으로 세요 | |
+| 자리가 없음(길이 0) | NaN | 0/0 |
+| 가중치가 모두 0 | NaN | 0/0 |
+
+```python
+>>> sd.spatial.hamming([1.0, sd.nan], [1.0, sd.nan])
+0.5
+>>> sd.spatial.hamming([], [])
+nan
+>>> sd.spatial.hamming([1, 0], [1, 0], w=[0.0, 0.0])
+nan
+```
+
+NaN으로 적은 결측값은 두 쪽이 모두 결측이어도 "다름"으로 세져요. 결측을 같은 값으로 보려면 결측을 범주에 없는 값(예를 들어 −1)으로 바꿔 넣어요.
+
+## 에러
+
+```python
+>>> sd.spatial.hamming([1, 0, 1], [1, 0])
+Traceback (most recent call last):
+    ...
+ValueError: hamming(): 'u' and 'v' must have the same length on their last axis, not 3 and 2
+>>> sd.spatial.hamming([1, 0], [1, 1], w=[1.0, sd.inf])
+Traceback (most recent call last):
+    ...
+ValueError: hamming(): 'w' must be finite and nonnegative
+```
+
+## 정확도
+
+가중치가 없으면 다른 자리의 수를 정확히 세고 자리 수로 한 번 나눠요. 그래서 결과는 참값 k/n을 올바르게 반올림한 값이에요(0 ULP). 같은 개수면 bool, int64, float64 어느 dtype으로 넣어도 같은 결과예요.
+
+가중치가 있으면 가중치를 더하는 데 반올림이 들어가서, 약속은 상대오차 $\gamma_{2m+1}$ 이하예요. $\gamma_k = ku/(1 - ku)$, u = 2⁻⁵³이고 m은 덧셈이 거치는 반올림의 수로, 자리 수 n이 32 이하면 m = n이에요(n이 크면 m = 32 + ⌈n/32⌉ − 1).
+
+| | 시험한 짝 | 최대 ULP | 최대 상대오차 | 약속 대비 |
+|---|---:|---:|---:|---:|
+| `hamming` | 80 | 0 | 6.34×10⁻¹⁷ | 0.88 |
+| `hamming`, 가중치 | 80 | 2 | 3.01×10⁻¹⁶ | 0.12 |
+
+참값은 정확한 유리수로 구했어요.
+
+## scipy·sklearn을 아는 분께
+
+- `scipy.spatial.distance.hamming`과 이름, 뜻(가중치가 있으면 가중 비율)이 같아요. `w`는 키워드로만 받아요.
+- int64를 그대로 견줘요. scipy는 float64로 바꾼 뒤 견줘서 2⁶⁰과 2⁶⁰ + 1을 같은 값으로 봐요.
+- NaN·inf 가중치는 `ValueError`예요. scipy는 음수만 막아요.
+- 배치를 받아요. scipy 1.18.1의 `hamming`은 1차원만 받아요.
+- 거리 이름 문자열은 `"hamming"` 하나예요. `"matching"`, `"hamm"` 같은 별칭은 `ValueError`예요.

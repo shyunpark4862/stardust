@@ -2,7 +2,7 @@
 title: 정확도 측정
 group: 검증과 측정
 order: 2
-summary: 배열, 선형대수, 특수함수, 통계(다변량·행렬 분포 포함), 회귀, 최적화, 가설검정, 희소 행렬, 적분, 미분의 결과를 미리 만든 참값의 모든 점에 대고 재는 체계예요. 오차를 계약의 단위로 바꿔 1 이하인지 보고, 기준선보다 나빠진 칸을 하나도 빠짐없이 찾아요.
+summary: 배열, 선형대수, 특수함수, 통계(다변량·행렬 분포 포함), 회귀, 최적화, 가설검정, 희소 행렬, 적분, 미분, 공간의 결과를 미리 만든 참값의 모든 점에 대고 재는 체계예요. 오차를 계약의 단위로 바꿔 1 이하인지 보고, 기준선보다 나빠진 칸을 하나도 빠짐없이 찾아요.
 seeAlso: [testing, benchmarks]
 ---
 import AccuracySummary from '../../../components/fig/AccuracySummary.astro';
@@ -26,19 +26,21 @@ stardust는 함수마다 정확도를 약속해요. 비트로 약속하는 것�
 | `sd.integrate`의 적응 방법 | 수렴했다고 알린 결과의 참 오차가 돌려준 오차 추정 안(`quad_vec`, `cubature`, 가중 함수가 있는 `quad`는 추정에 $8\varepsilon\lvert I\rvert$을 더해요). scipy의 같은 방법도 짧게 어림하는 정해진 몇 경우는 따로 세요 |
 | `sd.integrate`의 표본 규칙 | 같은 double 입력에서 규칙의 식을 정확히 계산한 값과의 차이가 $c\,\varepsilon S$ 이하($S$는 항의 크기, $c$는 합이면 $\lceil \log_2 n\rceil + 10$, 누적의 $k$번째 값이면 $k + 10$) |
 | `sd.differentiate` | 수렴한 도함수의 참 오차가 $\text{atol} + \text{rtol}\,\lvert df\rvert$ 이하. 야코비안과 헤시안은 수렴한 항목의 오차가 rtol과 참 행렬의 가장 큰 항목의 곱 이하 |
+| `sd.spatial`의 거리 | 거리마다 합의 깊이 $m$의 $\gamma_k = ku/(1 - ku)$로 적은 상대 한계(예: `euclidean`은 $(\gamma_{m+3}/2 + u)\,d$). `chebyshev`와 가중치 없는 `hamming`·`jaccard`는 올바른 반올림, `cosine`·`correlation`은 절대와 상대를 섞은 한계, `haversine`은 $20u\,d$ |
+| `sd.spatial`의 이웃 | 같은 커널로 모든 짝을 계산해 (거리, 색인)으로 고른 결과와 정확히 같아요. 거리가 올바르게 반올림되는 격자에서는 Arb로 정렬한 참 이웃과 같고, 일반 데이터에서는 거리 계약 $\eta$ 안의 참 이웃이에요 |
 
 이 약속을 지키는지, 그리고 얼마나 여유 있게 지키는지를 재는 도구가 `bench/accuracy/`이고, 저장소 맨 위에서 `python -m bench.accuracy`로 불러요.
 
 | 단계 | 하는 일 | 어디에 |
 |---|---|---|
 | 참값 | Arb(구간 산술)나 정확한 산술로 계산해 파일로 저장해요. 측정할 때는 Arb를 부르지 않아요 | `tests/<영역>/ref/` |
-| 측정 | 참값 파일의 모든 점에서 stardust를 불러 오차를 여러 척도로 재요 | `bench/accuracy/sources.py`와 영역별 `array.py`, `linalg.py`, `multivariate.py`, `optimize.py`, `htest.py`, `sparse.py`, `integrate.py`, `differentiate.py` |
+| 측정 | 참값 파일의 모든 점에서 stardust를 불러 오차를 여러 척도로 재요 | `bench/accuracy/sources.py`와 영역별 `array.py`, `linalg.py`, `multivariate.py`, `optimize.py`, `htest.py`, `sparse.py`, `integrate.py`, `differentiate.py`, `spatial.py` |
 | 기준선 | 영역마다 잰 값을 저장소에 넣어 두고, 새 측정과 비교해요 | `bench/accuracy/results/<영역>.json` |
 | 표 | 기준선에서 영역마다 표를 만들어요 | `bench/<영역>/accuracy.md`(stats의 다변량·행렬 분포 묶음은 `bench/stats/accuracy_multivariate.md`) |
 
-열두 영역 가운데 기준선이 있는 영역은 열이에요. 배열의 원소별 함수와 리덕션, 선형대수의 분해와 풀이, `sd.special`의 참값 파일 전부, `sd.stats`의 단변량 분포 31개와 다변량·행렬 분포 묶음, `sd.regression`의 선형·일반화 선형·정규화·강건 회귀와 적합한 모형의 검정과 변수 선택, `sd.optimize`의 근 찾기와 최소화, `sd.htest`의 검정 묶음 57개, `sd.sparse`의 스윕 일곱(곱, 줄 합, 직접 풀이, 반복법, 고유값과 특이값, 노름, 행렬 함수), `sd.integrate`의 함수 묶음 10개, `sd.differentiate`의 세 함수와 기울기예요. 다변량·행렬 분포는 따로 영역이 아니라 stats 안의 묶음이고, 스윕 이름이 `mv/`로 시작해요. 데이터프레임과 난수, 비선형·분위 회귀는 참값 파일이 없어서 이 측정에 들어 있지 않고, 그 정확도는 각 영역의 테스트가 확인해요.
+열네 영역 가운데 기준선이 있는 영역은 열하나예요. 배열의 원소별 함수와 리덕션, 선형대수의 분해와 풀이, `sd.special`의 참값 파일 전부, `sd.stats`의 단변량 분포 31개와 다변량·행렬 분포 묶음, `sd.regression`의 선형·일반화 선형·정규화·강건 회귀와 적합한 모형의 검정과 변수 선택, `sd.optimize`의 근 찾기와 최소화, `sd.htest`의 검정 묶음 57개, `sd.sparse`의 스윕 일곱(곱, 줄 합, 직접 풀이, 반복법, 고유값과 특이값, 노름, 행렬 함수), `sd.integrate`의 함수 묶음 10개, `sd.differentiate`의 세 함수와 기울기, `sd.spatial`의 거리 묶음 셋과 이웃 찾기 묶음 넷이에요. 다변량·행렬 분포는 따로 영역이 아니라 stats 안의 묶음이고, 스윕 이름이 `mv/`로 시작해요. 데이터프레임과 난수, 비선형·분위 회귀는 참값 파일이 없어서 이 측정에 들어 있지 않고, 그 정확도는 각 영역의 테스트가 확인해요. `sd.plot`에는 정확도 측정이 없어요. 그림에는 견줄 참값이 없어서, 그 영역의 검증은 골든(장면, 파일, 화소의 해시)과 성질 테스트, 세 출력 겹쳐 보기가 맡아요([그림의 검증](/internals/plot/verification/)).
 
-<AccuracySummary caption="영역별 요약. 스윕은 참값 파일의 메서드 하나(회귀는 문제 하나, 최적화는 방법 하나, 희소 행렬은 참값 묶음 하나, 적분은 함수 묶음 하나, 미분은 함수 하나)이고, 줄은 (함수, 영역) 한 칸이에요. 계약 안은 수치 계약이 있는 줄 가운데 계약 대비가 1 이하인 줄의 수예요. 들여 쓴 줄은 sd.stats 안의 다변량·행렬 분포 묶음이에요." />
+<AccuracySummary caption="영역별 요약. 스윕은 참값 파일의 메서드 하나(회귀는 문제 하나, 최적화는 방법 하나, 희소 행렬은 참값 묶음 하나, 적분은 함수 묶음 하나, 미분은 함수 하나, 공간은 참값 묶음 하나)이고, 줄은 (함수, 영역) 한 칸이에요. 계약 안은 수치 계약이 있는 줄 가운데 계약 대비가 1 이하인 줄의 수예요. 들여 쓴 줄은 sd.stats 안의 다변량·행렬 분포 묶음이에요." />
 
 ## 테스트와 따로 재는 이유
 
@@ -153,6 +155,7 @@ JSON으로 저장하는 참값(회귀, 최적화, 가설검정, 적분, 미분�
 - **희소 행렬**(`tools/sparse_ref.py`, `tests/sparse/ref/`). 시험 행렬(`tests/sparse/matrices.py`)의 표준 꼴을 정확한 유리수로 읽어요. 곱과 합은 정확한 합을 한 번 반올림하고, 노름·고유값·특이값·`expm`은 Arb로 구해요. 연립방정식의 해는 Rump식으로 검증해요. double로 구한 역행렬 $R$로 $\lVert I - RA\rVert_\infty$의 상한 $\alpha$를 반올림 오차까지 넣어 잡아 $\lVert A^{-1}\rVert_\infty$의 상한을 얻고, 잔차를 정확히 계산하며 해를 다듬어 오차 한계가 $2^{-110}\lVert x\rVert_\infty$ 아래로 내려갈 때 멈춰요. 이 증명이 서지 않는 점($\alpha \ge 1$, 12번 안에 수렴하지 않음)은 버리고 적어 둬요.
 - **적분**(`tools/integrate_ref.py`, `tests/integrate/ref/`). 시험 적분(QUADPACK 문헌의 세 무리, 루틴마다의 예제, scipy 시험의 적분, 끝점 특이점·진동·무한 구간이 있는 어려운 적분)과 가중 함수의 적분, 급수, 겹친 적분, 벡터 값을 Arb로 구해요. 방법은 셋이에요. 닫힌 꼴이 있으면 Arb의 함수로 계산하고, 피적분 함수가 구간에서 해석적이고 유계이면 Arb의 엄밀한 구적 `acb.integral`을 써요. 끝점에서 유계가 아니면($x^{-1/2}$, $x^{-0.9}$처럼) `acb.integral`이 무한한 공을 돌려주므로, 치환($x = t^k$, $x = u^2$, $x = e^{-u}$)으로 특이점을 없앤 뒤 적분하고 무한 구간의 꼬리는 엄밀한 상한과 함께 잘라요. 쓸 수 있는 방법을 모두 계산해 공이 겹치지 않으면 도구가 멈춰요. 문제의 상수와 끝(π/4, π, 중단점)은 코드에 적힌 double 그대로라서, 참값은 사용자가 실제로 넣는 문제의 정확한 적분이에요. 상한 `math.pi / 2`는 π/2보다 $6.1 \times 10^{-17}$ 작아서, 그 적분의 참값은 닫힌 꼴과 조금 달라요. 표본 규칙의 참값은 식이 유리 연산뿐이라 같은 double 입력에서 `Fraction`으로 정확히 계산하고, Gauss–Legendre의 마디와 가중치는 Arb의 Legendre 다항식 근(`arb.legendre_p_root`)을 $2^{-110}$까지 정해 반올림해요.
 - **미분**(`tools/differentiate_ref.py`, `tests/differentiate/ref/`). 해석적 도함수를 Arb로 계산해요. 헤시안은 Arb 위에서 2계까지 전진하는 자동 미분(`tests/differentiate/jets.py`)으로 구하고, 야코비안은 최적화의 해석적 도함수 참값과 같은 값이에요.
+- **공간**(`tools/spatial_ref.py`, `tests/spatial/ref/`). 시험 점(`tests/spatial/points.py`)의 double을 정확한 유리수로 읽어요. 좌표의 차이, 합, 곱은 유리수에서 정확하므로, 제곱합이나 절댓값의 합, 최댓값 같은 거리는 정확한 값을 한 번 반올림해요. 제곱근이 드는 거리(`euclidean`, `seuclidean`, `mahalanobis`, `cosine`)는 정확한 유리수의 제곱근을, `pow`·`asin`·`sin`이 드는 거리(`minkowski`, `haversine`)는 그 함수를 Arb의 공으로 $2^{-110}$까지 줄여요. `hamming`·`jaccard`는 정확한 개수의 비라 유리수예요. 점은 무작위 집합, 적대적 집합(원점에서 먼 작은 군집, 1 ULP씩 다른 껍질, 같은 점의 무더기, 넘치기 직전과 아주 작은 좌표), 거리가 올바르게 반올림되는 정수와 2진 격자, 경계의 짝(0/0 항, 영벡터, 대척점)을 섞어요. 이웃 찾기의 참값은 질의마다 모든 데이터 점까지의 참 거리 표이고, `sphere.npz`는 단위 구 위 점 집합 여섯(균등, 거의 같은 점의 군집, 대척점 둘레, 두 극, 날짜 변경선의 양쪽, 거울상의 동점)의 `haversine`이에요.
 
 다변량·행렬 분포의 참값(`tests/stats/ref/mv/`)은 같은 생성기 `tools/stats_ref.py`가 만들어요. 밀도와 엔트로피는 주어진 행렬 그대로 Arb의 LU로, 누적분포는 Plackett 항등식과 척도 혼합으로 $2^{-64}$까지 구해요. 한 요인 구조 t 분포(`factor_t`)는 $d \le 3$을 Arb로 재고, $d > 3$만 scipy의 적응 구적(약 $10^{-11}$)으로 만들어 그 영역은 준몬테카를로의 허용오차 `atol`에 대고만 재요.
 
@@ -271,6 +274,7 @@ $$
 - **가설검정**: 필드마다 `tests/htest/refdata.py`의 척도로, $B = 10^{-14}$예요. 통계량은 상대오차를 $\max(1, \kappa_\text{stat})$로, p값은 $\max(1, \kappa_p)\max(1, \kappa_\text{stat})$로 나눠요. $\kappa_\text{stat}$은 D'Agostino 변환이 받는 적률이나 Anderson–Darling의 상쇄하는 합에 대한 통계량의 조건수이고 다른 검정에서는 1, $\kappa_p$는 통계량에 대한 p값의 조건수예요. 신뢰구간의 끝은 빼는 꼴(t 검정의 추정값 ± 반폭, 비율의 정규 근사)이면 구간의 크기에, 그렇지 않으면 끝 자신에 대고 재요. Cramér–von Mises의 p값은 근사식이 정의하는 값에 절대 $10^{-15}$ 안이어도 계약 안으로 치고, 그런 점의 계약 대비는 1로 적어요.
 - **최적화**: 구간법의 기본 허용오차에서는 Arb 근까지의 거리를 $\text{xtol} + \text{rtol}\cdot\lvert x^*\rvert$로 나눈 값, 기울기로 멈추는 `minimize`는 수렴했다고 한 점에서 정확한 기울기의 노름을 `gtol`로 나눈 값이에요.
 - **적분**: 적응 방법은 수렴한 실행의 $\lvert \text{값} - \text{참값}\rvert / \text{오차 추정}$이고, `quad_vec`, `cubature`, 가중 함수가 있는 `quad`는 분모에 $8\varepsilon\lvert\text{참값}\rvert$을 더해요. Clenshaw–Curtis와 $\lvert K - G\rvert$ 꼴의 오차 추정에는 반올림의 바닥이 없어서, 다항식에서는 추정이 0이 되기도 하기 때문이에요. $B = 1$이에요. scipy의 같은 방법도 추정이 짧은 정해진 경우(`quad`의 셋, `tanhsinh`의 여덟 등)는 계약에서 빼고 따로 세요. 표본 규칙은 $\lvert \text{값} - \text{참값}\rvert / (c\,\varepsilon S)$, $B = 1$이에요.
+- **공간**: 거리는 짝마다 오차를 `tests/spatial/refdata.py`의 한계로 나눈 값, $B = 1$이에요. 한계에는 모두 $2^{-1074}$를 더해요. 올바른 반올림을 약속하는 거리는 반 ULP가 한계라서, 참값이 두 double의 한가운데에 가까운 짝이 있으면 ULP가 0이어도 계약 대비가 1에 닿아요. 이웃은 격자 집합에서 Arb의 (올바르게 반올림한 거리, 색인) 순서와 돌려준 색인·거리가 같으면 0, 다르면 inf이고, 일반 데이터에서는 돌려준 점의 참 거리가 $d_{(k)}(1 + \eta)$ 이하이고 빠진 점의 참 거리가 $d_{(k)}(1 - \eta)$ 이상인지를 $\eta\,d_{(k)}$ 단위로 재요($d_{(k)}$는 돌려준 $k$번째 거리, $\eta$는 그 거리의 계약).
 - **미분**: `derivative`는 수렴한 결과의 $\lvert df - f'\rvert / (\text{atol} + \text{rtol}\,\lvert df\rvert)$, `jacobian`과 `hessian`은 수렴한 항목의 가장 큰 오차를 rtol과 가장 큰 참 항목의 곱으로 나눈 값이에요. $B = 1$이에요. 항목마다 상대 판정을 하지 않는 것은 0에 가까운 항목에서 그 판정이 뜻이 없기 때문이에요.
 
 special의 판정 함수 몸통은 짧아요(`tests/special/test_reference.py`의 `contract_error`).
@@ -298,7 +302,7 @@ special의 판정 함수 몸통은 짧아요(`tests/special/test_reference.py`�
 
 stats의 보장 영역은 입력 집합의 영역을 다시 매개변수 범위로 좁힌 거예요. 예를 들어 감마 분포는 모양 $a \le 10^6$, 베타 분포는 $a, b \le 10^5$, 비중심 분포는 special의 비중심 함수가 잰 범위와 확률 $10^{-300}$ 이상이에요(`tools/stats_ref.py`의 `PARAM_RANGE`, `NC_RANGE`). 범위 밖의 점도 파일에 남아서 느슨 영역으로 재요.
 
-다른 영역의 영역 열은 그 영역에 맞게 나눠요. 배열은 입력의 종류와 모양(`normal`, `subnormal`, `uniform 100000` 등), 선형대수는 행렬의 조건수(`kappa=1`부터 `kappa=1e+12`), 최적화는 문제 묶음이나 판정(`default`, `xtol=0`, `mgh`, `gradient stop` 등), 다변량 누적분포는 위의 한계별 영역(`guaranteed`, `loose`, `tiny`, `exact d<=3`, `atol=…`), 적분은 문제 모음이나 규칙(`book`, `scipy`, `hard`, `qawo`, `gk21`, `trapezoid` 등), 미분은 문제 모음(`elementary`, `mgh`)이에요.
+다른 영역의 영역 열은 그 영역에 맞게 나눠요. 배열은 입력의 종류와 모양(`normal`, `subnormal`, `uniform 100000` 등), 선형대수는 행렬의 조건수(`kappa=1`부터 `kappa=1e+12`), 최적화는 문제 묶음이나 판정(`default`, `xtol=0`, `mgh`, `gradient stop` 등), 다변량 누적분포는 위의 한계별 영역(`guaranteed`, `loose`, `tiny`, `exact d<=3`, `atol=…`), 적분은 문제 모음이나 규칙(`book`, `scipy`, `hard`, `qawo`, `gk21`, `trapezoid` 등), 미분은 문제 모음(`elementary`, `mgh`), 공간은 거리 이름(가중 판은 `w_euclidean`처럼)이나 거리와 점 집합(`euclidean/lattice/int3d`, `sphere/antipode` 등)이에요.
 
 ## 측정의 흐름
 
@@ -478,6 +482,18 @@ scipy 1.18.1은 대부분의 줄에서 stardust와 같은 값을 내요. 같은 
 <AccuracySummary area="differentiate" caption="미분 전체. 야코비안, 헤시안, 기울기는 항목 하나하나가 아니라 가장 큰 참 항목에 대고 노름으로 재요." />
 
 구현은 [미분의 구조](/internals/differentiate/overview/)에서 이어져요.
+
+### 공간
+
+`sd.spatial`은 참값 묶음마다 스윕 하나, 모두 7개를 재요. 거리의 묶음 셋(`distances` 645짝의 거리 스물셋, `counting` 80짝의 `hamming`·`jaccard`와 그 가중 판, `haversine` 32짝)은 거리 이름이 영역이고 짝 하나가 점이에요. 값은 거리 함수(`sd.spatial.euclidean(u, v)` 등)로 재고, `pdist`·`cdist`도 같은 짝에 같은 비트를 내요. 이웃 찾기의 묶음 넷은 질의 하나가 점이에요. `neighbors`(`kneighbors`), `kdtree`(`KDTree.query`), `ball`(`query_ball_point`, 반경은 그 질의에서 다섯째로 가까운 점까지의 거리)은 `euclidean`·`cityblock`·`chebyshev`마다 점 집합 열둘이 영역이고, `sphere`는 단위 구 위 점 집합 여섯에서 `haversine`의 $k = 5$ 이웃이에요. 142줄이 모두 계약 안이에요.
+
+거리에서 계약 대비가 가장 큰 것은 올바른 반올림을 약속하는 `chebyshev`(1, ULP는 0)와 `jaccard`(0.93), `hamming`(0.88)이에요. 한계가 반 ULP라서 참값이 두 double의 한가운데에 가까운 짝 하나가 1 가까이 끌어올려요. 반올림이 쌓이는 거리는 `sqeuclidean`의 0.68이 가장 크고 나머지는 0.5 아래예요. 최대 ULP는 `haversine` 1, `euclidean`·`seuclidean`·`mahalanobis` 2, `sqeuclidean`·`canberra`·`cityblock` 3, `braycurtis` 5(가중 7), `minkowski`의 $p = 0.5$에서 6이에요. `cosine`과 `correlation`은 참값이 0에 가까운 짝에서 ULP가 $10^{18}$ 단위까지 커지지만, 계약이 절대와 상대를 섞은 한계라서 계약 대비는 0.41과 0.39예요. 이웃은 격자 집합에서 모두 Arb의 순서와 정확히 같고(계약 대비 0), 일반 데이터에서는 가장 큰 것이 0.27, `haversine`의 단위 구 집합에서는 0.096이에요.
+
+비교 열에서 scipy 1.18.1은 넘치거나 아주 작은 좌표의 짝($10^{160}$, $10^{-160}$, 비정상 수)에서 inf나 0을 내서 `euclidean`, `seuclidean`, `minkowski`, `mahalanobis`, `cosine`, `correlation`이 계약을 넘어요. scikit-learn 1.9.1의 전개식 거리와 `cosine_distances`, `haversine_distances`도 계약을 넘고, R 4.6.2의 `stats::dist`는 `euclidean`과 `minkowski`가 넘치거나 아주 작은 좌표의 짝에서 계약을 넘어요.
+
+<AccuracySummary area="spatial" names={['distances', 'counting', 'haversine', 'neighbors', 'sphere']} regions={['euclidean', 'chebyshev', 'minkowski_p0.5', 'cosine', 'correlation', 'jaccard', 'haversine', 'euclidean/lattice/int3d', 'euclidean/nn/normal3', 'sphere/antipode', 'sphere/poles']} caption="공간 일부. 거리는 짝 하나, 이웃은 질의 하나가 점이에요. cosine과 correlation은 0에 가까운 참값에서 ULP가 크지만 섞은 한계에 대고 계약 대비는 작아요. 격자의 이웃은 Arb의 순서와 같으면 0이에요." />
+
+구현은 [공간의 정확도와 성능](/internals/spatial/accuracy-performance/)에서 이어져요.
 
 <Callout title="숫자를 읽는 순서">
 계약 대비부터 봐요. 1 이하면 약속 안이고, 그 값이 한계까지 남은 여유예요. 다음으로 역함수와 진동 함수는 ULP / 배율을, 0을 지나는 값은 mixed를 봐요. 최대 ULP는 그다음이고, 0 근처를 건너는 칸에서는 아주 크게 나올 수 있어요. 마지막으로 최대와 99.9%의 차이로 나쁜 점이 드문 끝점인지 영역 전체인지 가려요.

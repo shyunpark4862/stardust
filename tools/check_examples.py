@@ -53,6 +53,7 @@ NAMESPACES = {
     "htest": sd.htest,
     "integrate": sd.integrate,
     "differentiate": sd.differentiate,
+    "spatial": sd.spatial,
     "plot": sd.plot,
 }
 
@@ -95,6 +96,7 @@ def names_of(path: Path) -> list[str]:
 # Classes whose public members are documented by name too, as `Class.member`.
 MEMBERS = {
     "frame": ("Series", "DataFrame", "Index", "RangeIndex"),
+    "spatial": ("KDTree",),
     "plot": ("Figure",),
 }
 
