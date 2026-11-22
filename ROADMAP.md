@@ -764,7 +764,7 @@
 | 마일스톤 | 상태 |
 |---|---|
 | SPT0 준비: API 문서, 영역 등록, 시험 점, 참값(Arb)·scipy·sklearn·R 기록, §3.2의 상수와 증명, 짝 커널 두 순서와 GEMM 동시 호출의 측정, §5의 다시 잰 시간 | 완료·승인(위임, 2026-11-22) |
-| SPT1 거리: `pdist cdist squareform`, 거리 함수 열넷(`haversine` 포함), `w`·`V`·`VI`, 배치, bool의 비트 묶음 | 계획 |
+| SPT1 거리: `pdist cdist squareform`, 거리 함수 열넷(`haversine` 포함), `w`·`V`·`VI`, 배치, bool의 비트 묶음 | 완료·승인(위임, 2026-11-22) |
 | SPT2 축약과 전수 이웃: `kneighbors radius_neighbors`, `QueryResult`, `RadiusResult`와 `tocsr()`, GEMM 고르기 | 계획 |
 | SPT3 KD 트리와 kNN: `KDTree`, `query` | 계획 |
 | SPT4 반경·짝·개수: `query_ball_point query_ball_tree query_pairs count_neighbors sparse_distance_matrix` | 계획 |
@@ -781,6 +781,9 @@
 
 ### SPT1. 거리
 - `pdist cdist squareform`과 거리 함수 열넷, 타일 순서의 짝 커널(`metric.hpp`), `haversine`의 식 고르기(Arb), `cosine`의 두 안 재기(docs/design/spatial.md §3.1).
+- 결정(추천안, 사용자 위임 2026-11-22): docs/design/spatial.md §1.1 SPT29–SPT36(`cosine`·`correlation`은 정규화한 행의 ‖x̂ − ŷ‖²/2; `minkowski`의 근에 뉴턴 한 걸음과 최댓값으로 나누는 신중한 경로; `haversine`은 2·atan2(√h, √g)에 g를 상쇄 없는 꼴로; 거리마다의 정확도 계약과 2⁻¹⁰⁷⁴의 바닥; 신중한 경로의 문턱 2⁻⁹⁶⁸과 `cosine`·`correlation` 행의 2ᵏ 비율; NaN 자료의 기본 `VI`는 NaN; `hamming`·`jaccard`의 두 dtype 맞추기; SPT0 시제품을 tools/로 옮김).
+- 결과: csrc/spatial/metric.hpp(연산마다 NEON과 스칼라의 같은 연산, `tile<Op, R, W>`와 `pair_scalar`, 신중한 경로, `minkowski`·`mahalanobis`·`haversine`, 행의 준비와 비트 묶음), csrc/spatial/distance.cpp(`_pdist _cdist _paired _squareform_*`, 크기로만 나누는 태스크, 두 짝씩의 마무리), csrc/bind/spatial_bind.cpp, src/stardust/spatial/(`_common.py`, `_distance.py`; 공개 이름 17), tests/spatial/(test_distance·test_pair_kernel·test_squareform·test_reference·test_errors·test_threads), 골든 tests/golden/cases_spatial.py(235케이스, 1·3·10스레드 같음), 정확도 bench/accuracy/spatial.py(distances·counting·haversine 28영역, 모두 계약 안; 기준선 bench/accuracy/results/spatial.json, 표 bench/spatial/accuracy.md), 속도 사례 bench/speed/cases/spatial.py(SPT1 20개, `--smoke`로 확인; 전체 측정은 하지 않았다).
+- 찾은 것(docs/design/spatial.md §4, §5): 참값의 모든 짝에서 계약의 0.68 이하(`chebyshev`·가중치 없는 셈은 올바른 반올림), 최대 ULP는 `euclidean` 2, `braycurtis` 7(가중), `minkowski` 6(p = 0.5), `haversine` 2(대척점 포함). scipy는 1e160·1e-160·비정상 수의 짝에서 inf·0·NaN을 내고, `cosine`의 1 − c는 거의 평행한 짝에서 모든 자릿수를 잃는다(d ≈ 5×10⁻¹⁷에서 상대 6.2; sd 4×10⁻⁹). 1스레드에서 scipy보다 `cdist` euclidean n = 64가 2.1배, n = 512가 2.6배, bool `hamming`이 55배 빠르고, `minkowski`(9% 느림)·`haversine`(sklearn보다 약 3배 느림)·`mahalanobis`(같음)는 SPT6에서 다시 본다.
 
 ### SPT2. 축약과 전수 이웃
 - `kneighbors radius_neighbors`, 결과 객체, §3.2의 GEMM 고르기(중심 빼기, 정리 3의 상수), 문턱 n₀.

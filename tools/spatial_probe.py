@@ -7,7 +7,7 @@ build/logs/spatial_probe/<stamp>.log, and docs/design/spatial.md §3.1, §3.5 an
     .venv/bin/python tools/spatial_probe.py scipy sklearn r    # only these sections
 
 Sections (positional; default all):
-  kernels  the two pair orders of csrc/spatial/pair_kernel.hpp timed in a cdist-like loop (decision
+  kernels  the two pair orders of tools/spatial_probe_pair_kernel.hpp timed in a cdist-like loop (decision
            SPT22; tools/spatial_probe_kernels.cpp), and their distances on small cases against
            sd.linalg.vector_norm(x - y): NormOrder must give its bits
   ddot     whether Accelerate's cblas_ddot(z, z) moves with the address of z (the BLAS chunks of the
@@ -90,7 +90,7 @@ class Log:
 
 def build() -> pathlib.Path:
     exe = BUILD / "kernels"
-    deps = [SRC, ROOT / "csrc" / "spatial" / "pair_kernel.hpp", ROOT / "csrc" / "base" / "pairwise.hpp"]
+    deps = [SRC, ROOT / "tools" / "spatial_probe_pair_kernel.hpp", ROOT / "csrc" / "base" / "pairwise.hpp"]
     if exe.exists() and exe.stat().st_mtime >= max(d.stat().st_mtime for d in deps):
         return exe
     BUILD.mkdir(parents=True, exist_ok=True)

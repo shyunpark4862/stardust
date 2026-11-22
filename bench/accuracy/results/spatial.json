@@ -1,0 +1,902 @@
+{
+ "schema": 1,
+ "area": "spatial",
+ "runs": {
+  "20261122-225345-3e3a1b4+": {
+   "commit": "3e3a1b4",
+   "dirty": true,
+   "changed": [
+    "API.md",
+    "ARCHITECTURE.md",
+    "CMakeLists.txt",
+    "README.md",
+    "bench/README.md",
+    "bench/accuracy/__init__.py",
+    "bench/accuracy/sources.py",
+    "bench/accuracy/spatial.py",
+    "bench/accuracy/tables.py",
+    "bench/areas.py",
+    "csrc/bind/module.cpp",
+    "src/stardust/__init__.py",
+    "src/stardust/spatial/__init__.py",
+    "tests/README.md",
+    "tests/golden/cases_spatial.py",
+    "tests/golden/data/spatial.json",
+    "tests/spatial/refdata.py",
+    "tests/spatial/test_api_surface.py"
+   ],
+   "date": "2026-11-22T22:53:45",
+   "machine": "arm64",
+   "python": "3.15.0",
+   "references": {
+    "array": "aef7e7bf22a5feb65a19c421f4d1b04d578dca8fd4e3122d503043afbc1c9638",
+    "linalg": "ba8d2d9b5e6767d51c11ec21fe26040320b31de4c06ccfe0562a6b1033ff2950",
+    "special": "241d3855ece237ebf086080118d4295238b54dc9b7b60a2822cef413e170064f",
+    "stats": "ca7bc42e79f8787828558247f67e206132d2d8dffbc91df5fd67a7c324b31431",
+    "regression": "d18611e3becf4d1273fb0aff2671ad314fe6bd66c918a6db28ce54d01acb18b0",
+    "optimize": "28d5e52d860b54463697743fb86962197c0c4b7e5a4b9a670ca0518d9d3588e8"
+   },
+   "comparators": {
+    "scipy": "1.18.1",
+    "numpy": "2.5.4",
+    "statsmodels": "0.15.0",
+    "scikit-learn": "1.9.1",
+    "R": "4.6.2",
+    "R mvtnorm": "1.4.2",
+    "R reticulate": "1.47.0",
+    "R minpack.lm": "1.2.4",
+    "R car": "3.1.5",
+    "R lmtest": "0.9.40",
+    "R leaps": "3.2",
+    "R irlba": "2.4.1",
+    "R numDeriv": "2016.8.1.1",
+    "Boost": "boostorg/math 75cb4c4 2026-11-18",
+    "Boost in sd.special": "4682f44"
+   }
+  }
+ },
+ "sweeps": [
+  {
+   "id": "spatial/counting",
+   "area": "spatial",
+   "name": "counting",
+   "points": 320,
+   "regions": {
+    "hamming": {
+     "points": 80,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 6.34413156928661e-17,
+     "contract": 0.88,
+     "bound": 1.0,
+     "worst": [
+      "binary/bool200#5"
+     ]
+    },
+    "jaccard": {
+     "points": 80,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 7.065055611250997e-17,
+     "contract": 0.9333333333333333,
+     "bound": 1.0,
+     "worst": [
+      "binary/bool64#10"
+     ]
+    },
+    "w_hamming": {
+     "points": 80,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "rel_max": 3.00593529924519e-16,
+     "contract": 0.11657605110690288,
+     "bound": 1.0,
+     "worst": [
+      "binary/bool7#3"
+     ]
+    },
+    "w_jaccard": {
+     "points": 80,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "rel_max": 2.9116593704477534e-16,
+     "contract": 0.11657605110690288,
+     "bound": 1.0,
+     "worst": [
+      "binary/bool7#3"
+     ]
+    }
+   },
+   "comparators": {
+    "scipy": {
+     "hamming": {
+      "points": 80,
+      "ulp_max": 0.0,
+      "ulp_p999": 0.0,
+      "rel_max": 6.34413156928661e-17,
+      "contract": 0.88,
+      "bound": 1.0,
+      "excluded": 0,
+      "worst": [
+       "binary/bool200#5"
+      ]
+     },
+     "jaccard": {
+      "points": 80,
+      "ulp_max": 0.0,
+      "ulp_p999": 0.0,
+      "rel_max": 7.065055611250997e-17,
+      "contract": 0.9333333333333333,
+      "bound": 1.0,
+      "excluded": 0,
+      "worst": [
+       "binary/bool64#10"
+      ]
+     },
+     "w_hamming": {
+      "points": 80,
+      "ulp_max": 2.0,
+      "ulp_p999": 2.0,
+      "rel_max": 2.9488041691811055e-16,
+      "contract": 0.11657605110690288,
+      "bound": 1.0,
+      "excluded": 0,
+      "worst": [
+       "binary/bool7#3"
+      ]
+     },
+     "w_jaccard": {
+      "points": 80,
+      "ulp_max": 1.0,
+      "ulp_p999": 1.0,
+      "rel_max": 2.1975809854717352e-16,
+      "contract": 0.11657605110690288,
+      "bound": 1.0,
+      "excluded": 0,
+      "worst": [
+       "binary/bool7#3"
+      ]
+     }
+    },
+    "R": {
+     "jaccard": {
+      "points": 80,
+      "ulp_max": 0.0,
+      "ulp_p999": 0.0,
+      "rel_max": 7.065055611250997e-17,
+      "contract": 0.9333333333333333,
+      "bound": 1.0,
+      "worst": [
+       "binary/bool64#10"
+      ]
+     }
+    }
+   },
+   "comparator_seconds": 120.0,
+   "run": "20261122-225345-3e3a1b4+",
+   "comparators_run": "20261122-225345-3e3a1b4+"
+  },
+  {
+   "id": "spatial/distances",
+   "area": "spatial",
+   "name": "distances",
+   "points": 14405,
+   "regions": {
+    "braycurtis": {
+     "points": 624,
+     "ulp_max": 5.0,
+     "ulp_p999": 5.0,
+     "rel_max": 9.314294615291977e-16,
+     "contract": 0.3471192707324994,
+     "bound": 1.0,
+     "worst": [
+      "mixture/2#15"
+     ]
+    },
+    "canberra": {
+     "points": 645,
+     "ulp_max": 3.0,
+     "ulp_p999": 3.0,
+     "rel_max": 4.501885239057898e-16,
+     "contract": 0.35548698052534716,
+     "bound": 1.0,
+     "worst": [
+      "normal/1#2"
+     ]
+    },
+    "chebyshev": {
+     "points": 645,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 1.0919340175870345e-16,
+     "contract": 1.0,
+     "bound": 1.0,
+     "worst": [
+      "normal/1#2"
+     ]
+    },
+    "cityblock": {
+     "points": 645,
+     "ulp_max": 3.0,
+     "ulp_p999": 3.0,
+     "rel_max": 5.312526453697535e-16,
+     "contract": 0.3617016340744245,
+     "bound": 1.0,
+     "worst": [
+      "nn/normal3#7"
+     ]
+    },
+    "correlation": {
+     "points": 606,
+     "ulp_max": 4.1632436039691796e+18,
+     "ulp_p999": 4.1632436039691796e+18,
+     "rel_max": 0.00016018969652068947,
+     "contract": 0.3851121194958096,
+     "bound": 1.0,
+     "worst": [
+      "mixture/3#11"
+     ]
+    },
+    "cosine": {
+     "points": 626,
+     "ulp_max": 972999095242128.0,
+     "ulp_p999": 972999095242128.0,
+     "rel_max": 0.12782457543300327,
+     "contract": 0.4149957632986265,
+     "bound": 1.0,
+     "worst": [
+      "far/1e15#13"
+     ]
+    },
+    "euclidean": {
+     "points": 645,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "rel_max": 2.5671671091031354e-16,
+     "contract": 0.45720251464071987,
+     "bound": 1.0,
+     "worst": [
+      "nn/normal3#4"
+     ]
+    },
+    "mahalanobis": {
+     "points": 492,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "rel_max": 2.0115034561124598e-16,
+     "contract": 0.2919284831449911,
+     "bound": 1.0,
+     "worst": [
+      "normal/1#7"
+     ]
+    },
+    "minkowski_p0.5": {
+     "points": 645,
+     "ulp_max": 6.0,
+     "ulp_p999": 6.0,
+     "rel_max": 6.85646096818549e-16,
+     "contract": 0.19749689628509456,
+     "bound": 1.0,
+     "worst": [
+      "uniform/2#13"
+     ]
+    },
+    "minkowski_p1.5": {
+     "points": 645,
+     "ulp_max": 3.0,
+     "ulp_p999": 3.0,
+     "rel_max": 3.7789925265062517e-16,
+     "contract": 0.16767919034079204,
+     "bound": 1.0,
+     "worst": [
+      "far/1e8#9"
+     ]
+    },
+    "minkowski_p3": {
+     "points": 645,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "rel_max": 2.929587332459143e-16,
+     "contract": 0.20576825864893872,
+     "bound": 1.0,
+     "worst": [
+      "scaled/1e-160#5"
+     ]
+    },
+    "minkowski_p7.5": {
+     "points": 645,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "rel_max": 3.0763947250185195e-16,
+     "contract": 0.39965913857417196,
+     "bound": 1.0,
+     "worst": [
+      "scaled/1e150#8"
+     ]
+    },
+    "seuclidean": {
+     "points": 645,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "rel_max": 2.852037048904605e-16,
+     "contract": 0.4515225183164015,
+     "bound": 1.0,
+     "worst": [
+      "normal/2#3"
+     ]
+    },
+    "sqeuclidean": {
+     "points": 645,
+     "ulp_max": 3.0,
+     "ulp_p999": 3.0,
+     "rel_max": Infinity,
+     "contract": 0.679679995932849,
+     "bound": 1.0,
+     "worst": [
+      "normal/1#7"
+     ]
+    },
+    "w_braycurtis": {
+     "points": 584,
+     "ulp_max": 7.0,
+     "ulp_p999": 7.0,
+     "rel_max": 7.831798118871094e-16,
+     "contract": 0.45968467945893415,
+     "bound": 1.0,
+     "worst": [
+      "normal/1#13"
+     ]
+    },
+    "w_canberra": {
+     "points": 645,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "rel_max": 4.2756179793568784e-16,
+     "contract": 0.4560706098331275,
+     "bound": 1.0,
+     "worst": [
+      "normal/1#2"
+     ]
+    },
+    "w_chebyshev": {
+     "points": 645,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 1.0919340175870345e-16,
+     "contract": 1.0,
+     "bound": 1.0,
+     "worst": [
+      "normal/1#2"
+     ]
+    },
+    "w_cityblock": {
+     "points": 645,
+     "ulp_max": 3.0,
+     "ulp_p999": 3.0,
+     "rel_max": 4.373823074800558e-16,
+     "contract": 0.34803693940539115,
+     "bound": 1.0,
+     "worst": [
+      "normal/1#9"
+     ]
+    },
+    "w_correlation": {
+     "points": 567,
+     "ulp_max": 4.1851727827182515e+18,
+     "ulp_p999": 4.1851727827182515e+18,
+     "rel_max": 0.009518101270092658,
+     "contract": 0.21244472379441595,
+     "bound": 1.0,
+     "worst": [
+      "edge/huge#0"
+     ]
+    },
+    "w_cosine": {
+     "points": 586,
+     "ulp_max": 4.131127850098156e+18,
+     "ulp_p999": 4.131127850098156e+18,
+     "rel_max": 0.006219165421369059,
+     "contract": 0.2514588399151078,
+     "bound": 1.0,
+     "worst": [
+      "far/1e8#15"
+     ]
+    },
+    "w_euclidean": {
+     "points": 645,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "rel_max": 2.7079806512368825e-16,
+     "contract": 0.4247487510658439,
+     "bound": 1.0,
+     "worst": [
+      "normal/3#1"
+     ]
+    },
+    "w_minkowski_p3": {
+     "points": 645,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "rel_max": 2.2148409961004441e-16,
+     "contract": 0.22326242735109855,
+     "bound": 1.0,
+     "worst": [
+      "scaled/1e150#8"
+     ]
+    },
+    "w_sqeuclidean": {
+     "points": 645,
+     "ulp_max": 4.0,
+     "ulp_p999": 4.0,
+     "rel_max": Infinity,
+     "contract": 0.456900686770429,
+     "bound": 1.0,
+     "worst": [
+      "normal/1#9"
+     ]
+    }
+   },
+   "comparators": {
+    "scipy": {
+     "braycurtis": {
+      "points": 624,
+      "ulp_max": 3.0,
+      "ulp_p999": 3.0,
+      "rel_max": 4.196152655209753e-16,
+      "contract": 0.3471192707324994,
+      "bound": 1.0,
+      "excluded": 0,
+      "worst": [
+       "mixture/2#15"
+      ]
+     },
+     "canberra": {
+      "points": 645,
+      "ulp_max": 2.0,
+      "ulp_p999": 2.0,
+      "rel_max": 2.1227325236741948e-16,
+      "contract": 0.35548698052534716,
+      "bound": 1.0,
+      "excluded": 0,
+      "worst": [
+       "normal/1#2"
+      ]
+     },
+     "chebyshev": {
+      "points": 628,
+      "ulp_max": 0.0,
+      "ulp_p999": 0.0,
+      "rel_max": 1.0919340175870345e-16,
+      "contract": 1.0,
+      "bound": 1.0,
+      "excluded": 17,
+      "worst": [
+       "normal/1#2"
+      ]
+     },
+     "cityblock": {
+      "points": 645,
+      "ulp_max": 2.0,
+      "ulp_p999": 2.0,
+      "rel_max": 2.5046377836395084e-16,
+      "contract": 0.3617016340744245,
+      "bound": 1.0,
+      "excluded": 0,
+      "worst": [
+       "nn/normal3#7"
+      ]
+     },
+     "correlation": {
+      "points": 606,
+      "ulp_max": Infinity,
+      "ulp_p999": Infinity,
+      "rel_max": Infinity,
+      "contract": Infinity,
+      "bound": 1.0,
+      "excluded": 0,
+      "worst": [
+       "scaled/1e160#0"
+      ]
+     },
+     "cosine": {
+      "points": 626,
+      "ulp_max": Infinity,
+      "ulp_p999": Infinity,
+      "rel_max": Infinity,
+      "contract": Infinity,
+      "bound": 1.0,
+      "excluded": 0,
+      "worst": [
+       "scaled/1e160#0"
+      ]
+     },
+     "euclidean": {
+      "points": 645,
+      "ulp_max": Infinity,
+      "ulp_p999": Infinity,
+      "rel_max": Infinity,
+      "contract": Infinity,
+      "bound": 1.0,
+      "excluded": 0,
+      "worst": [
+       "scaled/1e160#0"
+      ]
+     },
+     "mahalanobis": {
+      "points": 492,
+      "ulp_max": Infinity,
+      "ulp_p999": Infinity,
+      "rel_max": Infinity,
+      "contract": Infinity,
+      "bound": 1.0,
+      "excluded": 0,
+      "worst": [
+       "scaled/1e160#0"
+      ]
+     },
+     "minkowski_p0.5": {
+      "points": 645,
+      "ulp_max": 4.0,
+      "ulp_p999": 4.0,
+      "rel_max": 6.367873694811505e-16,
+      "contract": 0.19749689628509456,
+      "bound": 1.0,
+      "excluded": 0,
+      "worst": [
+       "uniform/2#13"
+      ]
+     },
+     "minkowski_p1.5": {
+      "points": 645,
+      "ulp_max": 2024.0,
+      "ulp_p999": 2024.0,
+      "rel_max": 1.0,
+      "contract": 2024.0,
+      "bound": 1.0,
+      "excluded": 0,
+      "worst": [
+       "edge/subnormal#0"
+      ]
+     },
+     "minkowski_p3": {
+      "points": 645,
+      "ulp_max": Infinity,
+      "ulp_p999": Infinity,
+      "rel_max": Infinity,
+      "contract": Infinity,
+      "bound": 1.0,
+      "excluded": 0,
+      "worst": [
+       "scaled/1e150#0"
+      ]
+     },
+     "minkowski_p7.5": {
+      "points": 645,
+      "ulp_max": Infinity,
+      "ulp_p999": Infinity,
+      "rel_max": Infinity,
+      "contract": Infinity,
+      "bound": 1.0,
+      "excluded": 0,
+      "worst": [
+       "scaled/1e150#0"
+      ]
+     },
+     "seuclidean": {
+      "points": 645,
+      "ulp_max": Infinity,
+      "ulp_p999": Infinity,
+      "rel_max": Infinity,
+      "contract": Infinity,
+      "bound": 1.0,
+      "excluded": 0,
+      "worst": [
+       "scaled/1e160#0"
+      ]
+     },
+     "sqeuclidean": {
+      "points": 645,
+      "ulp_max": 2.0,
+      "ulp_p999": 2.0,
+      "rel_max": Infinity,
+      "contract": 1.0,
+      "bound": 1.0,
+      "excluded": 0,
+      "worst": [
+       "scaled/1e-160#0"
+      ]
+     },
+     "w_braycurtis": {
+      "points": 584,
+      "ulp_max": 3.0,
+      "ulp_p999": 3.0,
+      "rel_max": 4.082730484517074e-16,
+      "contract": 0.45968467945893415,
+      "bound": 1.0,
+      "excluded": 0,
+      "worst": [
+       "normal/1#13"
+      ]
+     },
+     "w_canberra": {
+      "points": 645,
+      "ulp_max": 2.0,
+      "ulp_p999": 2.0,
+      "rel_max": 2.672173235749322e-16,
+      "contract": 0.4560706098331275,
+      "bound": 1.0,
+      "excluded": 0,
+      "worst": [
+       "normal/1#2"
+      ]
+     },
+     "w_chebyshev": {
+      "points": 628,
+      "ulp_max": 0.0,
+      "ulp_p999": 0.0,
+      "rel_max": 1.0919340175870345e-16,
+      "contract": 1.0,
+      "bound": 1.0,
+      "excluded": 17,
+      "worst": [
+       "normal/1#2"
+      ]
+     },
+     "w_cityblock": {
+      "points": 645,
+      "ulp_max": 2.0,
+      "ulp_p999": 2.0,
+      "rel_max": 2.4096908289193323e-16,
+      "contract": 0.4340913087679681,
+      "bound": 1.0,
+      "excluded": 0,
+      "worst": [
+       "lattice/bigint3#10"
+      ]
+     },
+     "w_correlation": {
+      "points": 567,
+      "ulp_max": Infinity,
+      "ulp_p999": Infinity,
+      "rel_max": Infinity,
+      "contract": Infinity,
+      "bound": 1.0,
+      "excluded": 0,
+      "worst": [
+       "scaled/1e160#0"
+      ]
+     },
+     "w_cosine": {
+      "points": 586,
+      "ulp_max": Infinity,
+      "ulp_p999": Infinity,
+      "rel_max": Infinity,
+      "contract": Infinity,
+      "bound": 1.0,
+      "excluded": 0,
+      "worst": [
+       "scaled/1e160#0"
+      ]
+     },
+     "w_euclidean": {
+      "points": 645,
+      "ulp_max": Infinity,
+      "ulp_p999": Infinity,
+      "rel_max": Infinity,
+      "contract": Infinity,
+      "bound": 1.0,
+      "excluded": 0,
+      "worst": [
+       "scaled/1e160#0"
+      ]
+     },
+     "w_minkowski_p3": {
+      "points": 645,
+      "ulp_max": Infinity,
+      "ulp_p999": Infinity,
+      "rel_max": Infinity,
+      "contract": Infinity,
+      "bound": 1.0,
+      "excluded": 0,
+      "worst": [
+       "scaled/1e150#0"
+      ]
+     },
+     "w_sqeuclidean": {
+      "points": 645,
+      "ulp_max": 2.0,
+      "ulp_p999": 2.0,
+      "rel_max": Infinity,
+      "contract": 1.0,
+      "bound": 1.0,
+      "excluded": 0,
+      "worst": [
+       "scaled/1e-160#0"
+      ]
+     }
+    },
+    "sklearn": {
+     "cityblock": {
+      "points": 628,
+      "ulp_max": 17.0,
+      "ulp_p999": 17.0,
+      "rel_max": 3.3366186056715135e-15,
+      "contract": 0.3617016340744245,
+      "bound": 1.0,
+      "excluded": 0,
+      "worst": [
+       "nn/normal3#7"
+      ]
+     },
+     "cosine": {
+      "points": 626,
+      "ulp_max": 4.3560090659296957e+18,
+      "ulp_p999": 4.3560090659296957e+18,
+      "rel_max": 1143904661891.1108,
+      "contract": 3243774001759751.5,
+      "bound": 1.0,
+      "excluded": 0,
+      "worst": [
+       "scaled/1e160#2"
+      ]
+     },
+     "euclidean": {
+      "points": 628,
+      "ulp_max": Infinity,
+      "ulp_p999": Infinity,
+      "rel_max": Infinity,
+      "contract": Infinity,
+      "bound": 1.0,
+      "excluded": 0,
+      "worst": [
+       "scaled/1e160#0"
+      ]
+     },
+     "sqeuclidean": {
+      "points": 628,
+      "ulp_max": Infinity,
+      "ulp_p999": Infinity,
+      "rel_max": Infinity,
+      "contract": Infinity,
+      "bound": 1.0,
+      "excluded": 0,
+      "worst": [
+       "scaled/1e160#1"
+      ]
+     }
+    },
+    "R": {
+     "canberra": {
+      "points": 117,
+      "ulp_max": 2.0,
+      "ulp_p999": 2.0,
+      "rel_max": 1.996133441837161e-16,
+      "contract": 0.2931883471538802,
+      "bound": 1.0,
+      "worst": [
+       "uniform/3#4"
+      ]
+     },
+     "chebyshev": {
+      "points": 628,
+      "ulp_max": 0.0,
+      "ulp_p999": 0.0,
+      "rel_max": 1.0919340175870345e-16,
+      "contract": 1.0,
+      "bound": 1.0,
+      "worst": [
+       "normal/1#2"
+      ]
+     },
+     "cityblock": {
+      "points": 628,
+      "ulp_max": 17.0,
+      "ulp_p999": 17.0,
+      "rel_max": 3.3366186056715135e-15,
+      "contract": 0.3617016340744245,
+      "bound": 1.0,
+      "worst": [
+       "nn/normal3#7"
+      ]
+     },
+     "euclidean": {
+      "points": 628,
+      "ulp_max": Infinity,
+      "ulp_p999": Infinity,
+      "rel_max": Infinity,
+      "contract": Infinity,
+      "bound": 1.0,
+      "worst": [
+       "scaled/1e160#0"
+      ]
+     },
+     "minkowski_p0.5": {
+      "points": 628,
+      "ulp_max": 33.0,
+      "ulp_p999": 33.0,
+      "rel_max": 3.814996691974977e-15,
+      "contract": 0.19749689628509456,
+      "bound": 1.0,
+      "worst": [
+       "uniform/2#13"
+      ]
+     },
+     "minkowski_p1.5": {
+      "points": 628,
+      "ulp_max": 2024.0,
+      "ulp_p999": 2024.0,
+      "rel_max": 1.0,
+      "contract": 2024.0,
+      "bound": 1.0,
+      "worst": [
+       "edge/subnormal#0"
+      ]
+     },
+     "minkowski_p3": {
+      "points": 628,
+      "ulp_max": Infinity,
+      "ulp_p999": Infinity,
+      "rel_max": Infinity,
+      "contract": Infinity,
+      "bound": 1.0,
+      "worst": [
+       "scaled/1e150#0"
+      ]
+     },
+     "minkowski_p7.5": {
+      "points": 628,
+      "ulp_max": Infinity,
+      "ulp_p999": Infinity,
+      "rel_max": Infinity,
+      "contract": Infinity,
+      "bound": 1.0,
+      "worst": [
+       "scaled/1e150#0"
+      ]
+     }
+    }
+   },
+   "comparator_seconds": 120.0,
+   "run": "20261122-225345-3e3a1b4+",
+   "comparators_run": "20261122-225345-3e3a1b4+"
+  },
+  {
+   "id": "spatial/haversine",
+   "area": "spatial",
+   "name": "haversine",
+   "points": 32,
+   "regions": {
+    "haversine": {
+     "points": 32,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "rel_max": 2.042274635160849e-16,
+     "contract": 0.09197587285898615,
+     "bound": 1.0,
+     "worst": [
+      "haversine/random15#0"
+     ]
+    }
+   },
+   "comparators": {
+    "sklearn": {
+     "haversine": {
+      "points": 32,
+      "ulp_max": 67108864.0,
+      "ulp_p999": 67108864.0,
+      "rel_max": 9.486373848575592e-09,
+      "contract": 4272282.972954226,
+      "bound": 1.0,
+      "excluded": 0,
+      "worst": [
+       "haversine/antipode0#0"
+      ]
+     }
+    }
+   },
+   "comparator_seconds": 120.0,
+   "run": "20261122-225345-3e3a1b4+",
+   "comparators_run": "20261122-225345-3e3a1b4+"
+  }
+ ]
+}

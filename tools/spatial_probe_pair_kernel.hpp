@@ -1,8 +1,9 @@
 // Prototype pair kernels for the squared Euclidean distance (docs/design/spatial.md §3.1, decision
 // SPT22): the two candidate summation orders, each as a one-pair kernel and as the batched kernel
 // a cdist-like loop would run. Milestone SPT0 timed them (tools/spatial_probe.py, section
-// kernels); SPT1 builds metric.hpp from the order the measurement chose. Nothing here is bound to
-// Python yet.
+// kernels); the library's kernel is csrc/spatial/metric.hpp (SPT1), which has the tile order the
+// measurement chose. This copy stays with the probe (in SPT0 it was pair_kernel.hpp of csrc/spatial) so
+// the measurement can be repeated; nothing here is bound to Python.
 //
 // A distance is d = sqrt(s), s = sum z_i^2 with z_i = fl(x_i - y_i) formed in a register. The two
 // orders differ only in how the n terms of s are added:

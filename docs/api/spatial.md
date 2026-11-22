@@ -1,6 +1,6 @@
 # sd.spatial API
 
-> 상태: **초안** (SPT0, 2026-11-22). 공개된 이름은 아직 없다. 아래 시그니처는 scipy 1.18.1의 `scipy.spatial`(`distance`, `KDTree`)의 이름과 인자 이름에 stardust의 규칙과 SPT1–SPT28의 결정을 입힌 안이고, 마일스톤 SPT1–SPT4에서 하나씩 공개된다(docs/design/spatial.md §8: 거리는 SPT1, `kneighbors`·`radius_neighbors`와 결과 객체는 SPT2, `KDTree`와 `query`는 SPT3, 반경·짝·개수는 SPT4).
+> 상태: **초안** (SPT0, 2026-11-22; SPT1 반영 2026-11-22). §2(거리)는 공개되었고 구현과 맞다: `pdist cdist squareform`과 거리 함수 열넷. 나머지 이름은 아직 공개되지 않았다. 아래 시그니처는 scipy 1.18.1의 `scipy.spatial`(`distance`, `KDTree`)의 이름과 인자 이름에 stardust의 규칙과 SPT1–SPT28의 결정을 입힌 안이고, 마일스톤 SPT1–SPT4에서 하나씩 공개된다(docs/design/spatial.md §8: 거리는 SPT1, `kneighbors`·`radius_neighbors`와 결과 객체는 SPT2, `KDTree`와 `query`는 SPT3, 반경·짝·개수는 SPT4).
 
 - 설계와 결정의 근거는 [docs/design/spatial.md](../design/spatial.md)(§1.1 SPT1–SPT28), 공통 규칙은 [API.md](../../API.md)다.
 - 언어 표시가 없는 코드 블록은 `tests/spatial/test_api_surface.py`가 읽는다. 블록의 줄은 모듈의 이름(`name(...)`, 클래스는 `name(...)`의 생성자), 클래스의 메서드(`Class.method(...)`)와 속성(`Class.attr`)이다. 모듈 수준의 이름이 계획한 공개 이름 전부이고, 공개된 것은 시그니처가 블록과 같아야 한다.
@@ -17,7 +17,7 @@
 
 ### §1.2 입력 (SPT12, SPT13, SPT23, SPT24)
 - **데이터**(`X`, `XA`, `XB`, `u`, `v`, `data`, `x`, `r`의 배열)는 API.md §5의 상위 함수 입력이다: `sd.ndarray`, 수의 시퀀스, numpy 배열, `sd.frame`의 `DataFrame`(2차원; 결측은 NaN). 계산은 float64다.
-  - bool·int64는 float64로 바꾼다(linalg의 규칙과 같다; scipy도 바꾼다). 예외는 `hamming`·`jaccard`다: bool, int64, float64를 입력의 dtype 그대로 비교한다(bool은 비트 묶음의 빠른 길). 그래서 2⁶⁰과 2⁶⁰ + 1은 다른 값이다(`[scipy와 다름]`: scipy는 float64로 바꾼 뒤 비교해 같은 값으로 본다).
+  - bool·int64는 float64로 바꾼다(linalg의 규칙과 같다; scipy도 바꾼다). 예외는 `hamming`·`jaccard`다: bool, int64, float64를 입력의 dtype 그대로 비교한다(가중치 없는 bool은 비트 묶음의 빠른 길; 개수가 정확해 어느 dtype이든 같은 값이면 같은 결과다). 그래서 2⁶⁰과 2⁶⁰ + 1은 다른 값이다(`[scipy와 다름]`: scipy는 float64로 바꾼 뒤 비교해 같은 값으로 본다). 두 입력의 dtype이 다르면 하나라도 float64면 float64, 아니면 int64로 맞춘다.
   - complex128은 `TypeError`다(`[scipy와 다름]`: scipy의 `pdist`·`cdist`는 `ValueError: Unsupported dtype complex128`). numpy의 정보 손실 없는 dtype은 `sd.asarray`의 규칙으로 넓히고, 문자열·object는 `TypeError`다.
   - 모양: `pdist`는 (m, n), `cdist`는 (mA, n)과 (mB, n)이다. n이 다르면 `ValueError`다. n = 0(특징이 없음)도 받는다: 거리는 그 정의를 빈 합에 쓴 값이다(`euclidean`·`cityblock`·`chebyshev`는 0, `cosine`·`correlation`·`braycurtis`·`hamming`은 0/0의 NaN; scipy의 `pdist`와 같다. `[scipy와 다름]`: scipy의 함수 `chebyshev`는 n = 0에서 `ValueError`다). 행이 0이거나 1이면 `pdist`는 빈 배열이다.
 - **유한하지 않은 값**: 거리 함수는 IEEE 규칙으로 퍼뜨린다(NaN → NaN, inf − inf → NaN, inf와 유한 값의 거리는 inf; `chebyshev`와 `canberra`도). 이웃 찾기(`KDTree`, `kneighbors`, `radius_neighbors`)는 데이터와 질의점이 모두 유한해야 한다(`ValueError`: `KDTree(): 'data' must be finite`). NaN이 있으면 "가장 가까운"이 정해지지 않는다.
@@ -64,7 +64,7 @@ sqeuclidean(u, v, /, *, w=None)
 - **`metric`**: `'euclidean'`, `'sqeuclidean'`, `'cityblock'`, `'chebyshev'`, `'minkowski'`, `'seuclidean'`, `'mahalanobis'`, `'cosine'`, `'correlation'`, `'canberra'`, `'braycurtis'`, `'hamming'`, `'jaccard'`, `'haversine'`다. 다른 문자열은 `ValueError`, 문자열이 아니면 `TypeError`다(API.md §2.1의 문자열 옵션 꼴).
 - **`p`**: `metric='minkowski'`에서만 받는다. 기본(None)은 2이고, 0보다 큰 실수나 inf다(`p < 1`은 삼각 부등식이 없는 준거리이고 scipy처럼 받는다). 0 이하와 NaN은 `ValueError`다(`[scipy와 다름]`: scipy의 `pdist`는 `p=-1`에서 값을, `p=0`에서 inf를 낸다). p = 1, 2, inf는 `cityblock`, `euclidean`, `chebyshev`와 비트까지 같다.
 - **`V`**(`seuclidean`): 기본은 `pdist`가 `X`, `cdist`가 `XA`와 `XB`를 세로로 이은 것의 열 분산(`correction=1`)이다(scipy와 같다). 받은 `V`는 1차원 길이 n이고 유한한 양수여야 한다(`[scipy와 다름]`: scipy는 음수 `V`에서 뜻 없는 값을, 0에서 inf를 낸다).
-- **`VI`**(`mahalanobis`): 기본은 같은 자료의 공분산의 역행렬이다(scipy와 같다; 관측이 차원 이하이면 `ValueError`). 받은 `VI`는 (n, n)이다. 양정치가 아니면 이차식이 음수인 짝의 거리가 NaN이다(scipy와 같다).
+- **`VI`**(`mahalanobis`): 기본은 같은 자료의 공분산의 역행렬이다(scipy와 같다; 관측이 차원 이하이면 `ValueError`: `pdist(): the default 'VI' needs more observations than columns, not 3 observations of 3 columns; give 'VI'`; 공분산이 특이하면 `sd.linalg.LinAlgError`; 자료에 NaN·inf가 있으면 모든 거리가 NaN이다). 받은 `VI`는 (n, n)이다. 양정치가 아니면 이차식이 음수인 짝의 거리가 NaN이다(scipy와 같다).
 - **배치**: 모든 거리 함수가 (…, n) 배열을 받아 앞 축끼리 브로드캐스트하고, 결과는 앞 축의 모양이다(1차원 둘이면 Python `float`). 짝 하나는 `cdist`의 그 짝과 비트까지 같다. `[scipy와 다름]`: scipy 1.18.1은 `minkowski`·`euclidean`·`sqeuclidean`만 배치를 받는다.
 
 **거리의 정의** (z = x − y를 원소마다 한 번 반올림한 것)
@@ -74,16 +74,16 @@ sqeuclidean(u, v, /, *, w=None)
 | `sqeuclidean` | Σ zᵢ² | Σ wᵢzᵢ² | 참값이 넘치면 inf |
 | `cityblock` | Σ \|zᵢ\| | Σ wᵢ\|zᵢ\| | |
 | `chebyshev` | maxᵢ \|zᵢ\| | wᵢ > 0인 i의 최댓값 | NaN을 퍼뜨린다(`[scipy와 다름]`: scipy의 `cdist`는 NaN을 건너뛰어 `[nan, 0]`과 `[1, 5]`의 거리가 5다) |
-| `minkowski` | (Σ \|zᵢ\|ᵖ)^(1/p) | (Σ wᵢ\|zᵢ\|ᵖ)^(1/p) | 넘침·언더플로는 비율을 맞춘다(`[scipy와 다름]`: scipy는 (0, 0)과 (3, 4)의 p = 2000 거리가 inf) |
+| `minkowski` | (Σ \|zᵢ\|ᵖ)^(1/p); p = 1, 2, inf는 `cityblock`, `euclidean`, `chebyshev`와 비트까지 같다 | (Σ wᵢ\|zᵢ\|ᵖ)^(1/p) | 넘침·언더플로는 최댓값으로 나눠 비율을 맞춘다(`[scipy와 다름]`: scipy는 (0, 0)과 (3, 4)의 p = 2000 거리가 inf) |
 | `seuclidean` | √(Σ zᵢ²/Vᵢ) | 없음 | |
 | `mahalanobis` | √(zᵀ VI z) | 없음 | 이차식이 음수면 NaN |
-| `cosine` | 1 − x·y/(‖x‖‖y‖), [0, 2]로 자른다 | 가중 내적과 가중 노름 | 영벡터가 있으면 NaN |
+| `cosine` | 1 − x·y/(‖x‖‖y‖), [0, 2]로 자른다. 정규화한 행의 ‖x̂ − ŷ‖²/2로 구한다(거의 평행한 행에서도 작은 거리의 자릿수가 남는다; 정확히 반대인 행은 2와 1 ULP 안) | 가중 내적과 가중 노름 | 영벡터가 있으면 NaN |
 | `correlation` | 행마다 (가중) 평균을 뺀 뒤의 `cosine`(`centered=False`면 빼지 않는다) | 가중 평균 Σwx/Σw | 상수 행은 NaN |
 | `canberra` | Σ \|zᵢ\|/(\|xᵢ\| + \|yᵢ\|), 0/0 항은 0 | Σ wᵢ(…) | NaN을 퍼뜨린다(`[scipy와 다름]`: scipy의 함수 `canberra`는 NaN 항을 건너뛰고 `pdist`는 퍼뜨린다) |
 | `braycurtis` | Σ\|zᵢ\| / Σ\|xᵢ + yᵢ\| | 두 합 모두 wᵢ를 곱한다 | 0/0은 NaN, 분모만 0이면 inf |
 | `hamming` | (Σ wᵢ[xᵢ ≠ yᵢ]) / Σ wᵢ, 기본 wᵢ = 1 | 같은 식 | NaN끼리는 다른 값으로 센다 |
 | `jaccard` | Σ wᵢ[(xᵢ≠0) xor (yᵢ≠0)] / Σ wᵢ[(xᵢ≠0) or (yᵢ≠0)] | 같은 식 | 분모가 0이면 0. NaN은 0이 아니다 |
-| `haversine` | 2·asin(√(sin²(Δφ/2) + cos φ₁ cos φ₂ sin²(Δλ/2))), 입력은 (위도, 경도) 라디안의 2열, 결과는 단위 구의 중심각(라디안) | 없음 | 열이 2가 아니면 `ValueError`. 식의 꼴은 SPT1에서 대척점까지 계약을 지키는 것으로 고른다 |
+| `haversine` | 2·asin(√(sin²(Δφ/2) + cos φ₁ cos φ₂ sin²(Δλ/2))), 입력은 (위도, 경도) 라디안의 2열, 결과는 단위 구의 중심각(라디안) | 없음 | 열이 2가 아니면 `ValueError`. 같은 값을 2·atan2(√h, √(1 − h))로, 1 − h를 상쇄 없는 꼴로 구해 대척점에서도 자릿수를 지킨다(sklearn의 asin 꼴은 대척점 근처에서 잃는다) |
 
 - `haversine`은 sklearn `haversine_distances`의 뜻이다(SPT9; scipy에는 없다). 이웃 찾기에서는 트리를 쓰지 않고 전수로 간다.
 - **`squareform`**: scipy와 같다(SPT16). 벡터 → 행렬은 길이가 n(n−1)/2가 아니면 `ValueError`, 빈 벡터는 (1, 1)의 0이다. 행렬 → 벡터는 `checks=True`면 정확한 대칭과 0 대각을 검사한다. NaN이 대칭 검사에 걸리면 메시지가 NaN을 말한다(`squareform(): 'X' has NaN off the diagonal, so it is not symmetric`; scipy의 메시지는 "must be symmetric"뿐이다). (1, 1)과 (0, 0)은 빈 벡터다. `force`는 `'no'`, `'tomatrix'`, `'tovector'`다. dtype을 지키고, 3차원 이상은 `ValueError`다.
@@ -190,5 +190,5 @@ RadiusResult.tocsr()
 | `kneighbors_graph`, `nan_euclidean_distances`, `KernelDensity`, `two_point_correlation` | 없음(짝 세기는 `count_neighbors`) | — |
 
 ## §7. 정확도
-- 거리는 Arb로 구한 참 거리와 견준 계약 안이다(docs/design/spatial.md §4). `chebyshev`는 올바른 반올림이고, `euclidean`은 n = 3에서 약 3.5 ULP 이하다. 반올림 크기의 결과는 scipy와 끝자리가 다를 수 있다(API.md §4의 규칙 3).
+- 거리는 Arb로 구한 참 거리와 견준 계약 안이다(docs/design/spatial.md §4의 표; 판정은 `tests/spatial/refdata.py`). `chebyshev`와 가중치 없는 `hamming`·`jaccard`는 올바른 반올림이다. 참값 파일의 모든 짝에서 잰 최대는 `euclidean`·`seuclidean`·`mahalanobis`·`haversine` 2 ULP, `sqeuclidean`·`cityblock`·`canberra` 3 ULP, `braycurtis` 5 ULP(가중 7), `minkowski` 6 ULP(p = 0.5)이고, `cosine`·`correlation`은 절대와 상대를 섞은 한계다(참값이 0에 가까우면 ULP가 크다). 반올림 크기의 결과는 scipy와 끝자리가 다를 수 있다(API.md §4의 규칙 3). 같은 짝은 `pdist`, `cdist`, 거리 함수에서 같은 비트다.
 - 이웃은 같은 커널의 전수 결과와 정확히 같고(길·스레드와 무관), 거리가 올바르게 반올림되는 데이터(정수·2진 격자)에서는 Arb로 정렬한 참 이웃과 정확히 같다. 일반 데이터에서는 참 거리가 1 ULP 안에서 다른 두 점의 순서가 돌려준 거리의 순서다.

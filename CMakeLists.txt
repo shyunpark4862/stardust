@@ -101,6 +101,7 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/sparse/iterative.cpp
   csrc/sparse/arpack.cpp
   csrc/sparse/svds.cpp
+  csrc/spatial/distance.cpp
   csrc/special/reduce.cpp
   csrc/frame/column.cpp
   csrc/frame/convert.cpp
@@ -132,6 +133,7 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/bind/differentiate_bind.cpp
   csrc/bind/integrate_bind.cpp
   csrc/bind/sparse_bind.cpp
+  csrc/bind/spatial_bind.cpp
   csrc/bind/module.cpp)
 
 target_include_directories(_core PRIVATE csrc)

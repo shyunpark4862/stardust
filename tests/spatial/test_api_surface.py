@@ -16,12 +16,9 @@ from .._api_doc import signature_blocks
 
 API = pathlib.Path(__file__).parents[2] / "docs" / "api" / "spatial.md"
 
-# Documented, not implemented yet (docs/design/spatial.md §8): every name until SPT1. A milestone
-# moves its names from here to sd.spatial.__all__.
+# Documented, not implemented yet (docs/design/spatial.md §8): SPT1 made the distances public. A
+# milestone moves its names from here to sd.spatial.__all__.
 PLANNED = {
-    # SPT1
-    "pdist", "cdist", "squareform", "braycurtis", "canberra", "chebyshev", "cityblock", "correlation", "cosine",
-    "euclidean", "hamming", "haversine", "jaccard", "mahalanobis", "minkowski", "seuclidean", "sqeuclidean",
     # SPT2
     "kneighbors", "radius_neighbors",
     # SPT3, SPT4
@@ -139,5 +136,5 @@ def test_shared_options_have_one_spelling():
 
 
 def test_module_is_wired():
-    assert sd.spatial.__all__ == []
+    assert len(sd.spatial.__all__) == 17  # SPT1: pdist, cdist, squareform and the fourteen distance functions
     assert not hasattr(sd.spatial, "distance")

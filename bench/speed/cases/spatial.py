@@ -49,6 +49,28 @@ def _normal(ma, mb, n, seed=20261122):
     return setup
 
 
+def _bool(ma, mb, n, seed=20261124):
+    def setup():
+        import stardust as sd
+
+        g = np.random.Generator(np.random.PCG64([seed, ma, mb, n]))
+        a, b = g.random((ma, n)) < 0.3, g.random((mb, n)) < 0.3
+        return {"a": a, "b": b, "sa": sd.asarray(a), "sb": sd.asarray(b)}
+
+    return setup
+
+
+def _latlon(m, seed=20261125):
+    def setup():
+        import stardust as sd
+
+        g = np.random.Generator(np.random.PCG64([seed, m]))
+        a = np.column_stack([g.uniform(-1.5, 1.5, m), g.uniform(-3.1, 3.1, m)])
+        return {"a": a, "sa": sd.asarray(a)}
+
+    return setup
+
+
 def _uniform(npts, m, nq, seed=20261123):
     def setup():
         import stardust as sd
@@ -110,6 +132,24 @@ def _distance_specs():
         out.append(Spec("SPT1", "distance", f"cdist {metric}", ("cdist",), "(1000, 64)", _normal(1000, 1000, 64),
                         lambda d, m=metric, kw=kw: lambda: _sp().cdist(d["sa"], d["sb"], metric=m, **kw),
                         (Ref("scipy", lambda d, m=metric, kw=kw: lambda: _scipy_d().cdist(d["a"], d["b"], m, **kw)),)))  # fmt: skip
+    for metric, kw in (("seuclidean", {}), ("mahalanobis", {})):
+        n = 16 if metric == "mahalanobis" else 64
+        out.append(Spec("SPT1", "distance", f"cdist {metric}", ("cdist",), f"(1000, {n})", _normal(1000, 1000, n),
+                        lambda d, m=metric: lambda: _sp().cdist(d["sa"], d["sb"], metric=m),
+                        (Ref("scipy", lambda d, m=metric: lambda: _scipy_d().cdist(d["a"], d["b"], m)),),
+                        note="default V / VI from the data"))  # fmt: skip
+    out.append(Spec("SPT1", "distance", "cdist hamming bool", ("cdist",), "(1000, 256)", _bool(1000, 1000, 256),
+                    lambda d: lambda: _sp().cdist(d["sa"], d["sb"], metric="hamming"),
+                    (Ref("scipy", lambda d: lambda: _scipy_d().cdist(d["a"], d["b"], "hamming")),),
+                    note="bit-packed rows (SPT23)"))  # fmt: skip
+    out.append(Spec("SPT1", "distance", "cdist haversine", ("cdist",), "(2000, 2)", _latlon(2000),
+                    lambda d: lambda: _sp().cdist(d["sa"], d["sa"], metric="haversine"),
+                    (Ref("sklearn", lambda d: (lambda f: lambda: f(d["a"]))(_sk("haversine_distances")),
+                         threads="follow"),)))  # fmt: skip
+    for n in (3, 64):
+        out.append(Spec("SPT1", "distance", "pdist cosine", ("pdist",), f"(2000, {n})", _normal(2000, 1, n),
+                        lambda d: lambda: _sp().pdist(d["sa"], metric="cosine"),
+                        (Ref("scipy", lambda d: lambda: _scipy_d().pdist(d["a"], "cosine")),)))  # fmt: skip
     for n in (3, 64):
         refs = [Ref("scipy", lambda d: lambda: _scipy_d().pdist(d["a"]))]
         refs.append(RRef("R", R_DIST.format("euclidean"), data=R_DATA))

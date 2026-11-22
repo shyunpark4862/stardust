@@ -3,7 +3,7 @@
 // (-O3 -mcpu=native -ffp-contract=off) and Accelerate; one process, the calling thread unless
 // a section says otherwise.
 //
-//   kernels DIR   the two pair orders of csrc/spatial/pair_kernel.hpp in a cdist-like loop
+//   kernels DIR   the two pair orders of tools/spatial_probe_pair_kernel.hpp in a cdist-like loop
 //                 (XB in blocks that stay in L2, each block against every XA row), one thread,
 //                 best of several runs, per n; checks that the batched kernels give the one-pair
 //                 kernels' bits, and dumps small cases into DIR for the probe to compare with
@@ -13,7 +13,7 @@
 //   gemm          the screening product of §3.2 (C = A B^T, 256 x 2048 tiles) called from T
 //                 threads at once, T = 1, 2, 4, 6, 10: the aggregate rate (AMX is shared by a
 //                 cluster's cores)
-#include "spatial/pair_kernel.hpp"
+#include "spatial_probe_pair_kernel.hpp"
 
 #include <Accelerate/Accelerate.h>
 

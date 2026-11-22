@@ -1,6 +1,6 @@
 # 공간 영역 설계 (sd.spatial)
 
-> 상태: **설계 초안** (2026-11-22). 큰 결정(§1.1 SPT1–SPT5)은 사용자가 정했다. §9의 질문 스물은 모두 추천안으로 정했다(SPT6–SPT25, 사용자 위임 2026-11-22). SPT0(준비)을 마쳤다: API 초안 `docs/api/spatial.md`, 시험 점·참값·탐침의 도구와 기록, §3.2의 상수와 증명, 짝 커널 두 순서의 측정(SPT22의 결과는 타일 순서, §3.1), §5의 다시 잰 시간. SPT0에서 정한 것은 SPT26–SPT28이다. 나머지는 안이다.
+> 상태: **설계 초안** (2026-11-22). 큰 결정(§1.1 SPT1–SPT5)은 사용자가 정했다. §9의 질문 스물은 모두 추천안으로 정했다(SPT6–SPT25, 사용자 위임 2026-11-22). SPT0(준비)을 마쳤다: API 초안 `docs/api/spatial.md`, 시험 점·참값·탐침의 도구와 기록, §3.2의 상수와 증명, 짝 커널 두 순서의 측정(SPT22의 결과는 타일 순서, §3.1), §5의 다시 잰 시간. SPT0에서 정한 것은 SPT26–SPT28이다. SPT1(거리)을 마쳤다: `pdist cdist squareform`과 거리 함수 열넷, 타일 순서의 짝 커널(`csrc/spatial/metric.hpp`), 잰 정확도 계약(§4), SPT1에서 정한 것은 SPT29–SPT36이다. 거리 부분(§2.1, §2.2, §3.1, §4의 거리, §6의 파일)은 구현과 맞다. 나머지는 안이다.
 
 `sd.spatial`(점 사이의 거리와 가장 가까운 이웃 찾기)의 확정 사항과 내부 구조의 안을 적는다.
 
@@ -45,6 +45,14 @@
 | SPT23 `hamming`·`jaccard`의 dtype | bool, int64, float64를 입력의 dtype 그대로 비교한다(bool은 비트 묶음). 다른 거리는 int64·bool을 float64로 바꾼다(§9의 18) (추천안, 사용자 위임 2026-11-22) |
 | SPT24 `w`의 검사 | 유한하고 0 이상이다. NaN·inf는 `ValueError`다(§9의 19) (추천안, 사용자 위임 2026-11-22) |
 | SPT25 가중 `count_neighbors` | 고정 깊이의 노드 쌍 태스크와 태스크 번호 순서의 합이다. 스레드 수와 무관하다(§9의 20) (추천안, 사용자 위임 2026-11-22) |
+| SPT29 `cosine`·`correlation`의 식 | 행을 한 번 정규화하고(x̂ = x/‖x‖_w, 노름은 `euclidean`의 커널과 신중한 경로) 짝마다 d = ‖x̂ − ŷ‖²_w/2를 `sqeuclidean`의 타일 커널로 구해 2로 자른다(§3.1의 안 (b)). 까닭: Arb와 견준 64차원 거의 평행한 짝에서 상대오차가 d ≈ 4×10⁻³에서 (a) 1.2×10⁻¹³ 대 (b) 5.5×10⁻¹⁶, d ≈ 5×10⁻¹⁷에서 (a) 6.2(모든 자릿수를 잃음) 대 (b) 4×10⁻⁹이고, 빠르기는 `euclidean`과 같다(2000² n = 64 `cdist` 10스레드 2.6 ms 대 3.6 ms). 정확히 반대인 두 행은 2가 아니라 2‖x̂‖²(1 ULP 안)일 수 있다 (추천안, 사용자 위임 2026-11-22) |
+| SPT30 `minkowski`의 근과 신중한 경로 | 근은 `pow(s, 1/p)`이고 1/p가 2의 거듭제곱이 아니면 `pow(r, p)`에 대한 뉴턴 한 걸음 r − r((t − s)/s)/p를 더한다. 신중한 경로는 2ᵏ 대신 최댓값 M = max\|zᵢ\|로 나눈 \|zᵢ\|/M의 합과 M·근이다. 까닭: 1/p의 반올림은 s^(1/p)에 상대 (u/p)·\|ln s\|의 오차를 더해 s ≈ 10³⁰⁰에서 수백 ULP가 된다(scipy의 `edge/huge`, `scaled/1e150`에서 보인다); 뉴턴 걸음 뒤에는 2u/p + u다. 큰 p에서 \|z′\|ᵖ의 2ᵏ 비율은 넘치거나(z′ ≥ 1) 언더플로한다(z′ < 1, p = 2000). \|zᵢ\|/M의 반올림 u는 그 p제곱에서 pu, 근에서 u라 계약에 넣었다(§4). 가중이면 wᵢ = 0인 항은 wᵢ·zᵢ(NaN·inf만 퍼진다)라서 \|zᵢ\|ᵖ의 넘침이 0·inf의 NaN을 만들지 않는다 (추천안, 사용자 위임 2026-11-22) |
+| SPT31 `haversine`의 식 | d = 2·atan2(√h, √g), h = sin²(Δφ/2) + cos φ₁ cos φ₂ sin²(Δλ/2), g = 1 − h를 같은 값의 다른 꼴 cos²(Δφ/2) cos²(Δλ/2) + sin²((φ₁ + φ₂)/2) sin²(Δλ/2)로 구한다. h와 g가 모두 음이 아닌 항의 합이라 상쇄가 없다. 계약은 \|d̂ − d\| ≤ 20u·d다. 까닭: sklearn의 2·asin(√h)은 대척점 근처에서 asin의 인자가 1에 가까워 자릿수를 잃고(대척점에서 10⁻⁸ 떨어진 짝의 기록이 참값과 수천 ULP 다르다), atan2(√h, √(1 − h))는 1 − h의 상쇄로 같은 곳에서 잃는다. 잰 최대는 2 ULP(상대 1.84u, 대척점 넷 포함 32짝)다 (추천안, 사용자 위임 2026-11-22) |
+| SPT32 거리의 정확도 계약 | §4의 표다(잰 값과 함께). 모든 한계에 2⁻¹⁰⁷⁴(가장 작은 비정상 수)를 더한다: 비정상 수인 결과는 올바르게 반올림해도 그만큼 다르다. `seuclidean`은 1/Vᵢ의 반올림까지 γₘ₊₄, 가중 `sqeuclidean`은 w·z의 반올림까지 γₘ₊₃, `braycurtis`는 두 합과 나눗셈의 γ₂ₘ₊₃, `cosine`은 u(3√d + (2m + 8)d) + (m + 4)²u², `correlation`은 그것에 평균의 반올림이 만드는 2(ρₓ² + ρᵧ²)(평균의 오차에 대해 2차라서 첫째 차수가 없다), `mahalanobis`는 min(E/d, √E) + ud(E = γ₂ₘ₊₃\|z\|ᵀ\|VI\|\|z\|)다. 까닭: 각 계산 순서의 반올림을 센 한계이고(§4), Arb와 견주면 `chebyshev`와 가중치 없는 셈은 올바른 반올림이고 나머지는 모든 점에서 계약의 0.68 이하다 (추천안, 사용자 위임 2026-11-22) |
+| SPT33 신중한 경로의 문턱과 행의 비율 | 제곱합(과 `minkowski`의 합, `mahalanobis`의 이차식)이 inf이거나 2⁻⁹⁶⁸보다 작으면 신중한 경로다(초안의 n·2⁻¹⁰⁰⁰ 대신 상수; n < 2⁴⁰이면 언더플로한 항의 몫이 상대 2⁻¹⁰⁷ 아래다). `cosine`·`correlation`의 행은 정규화(와 평균 빼기) 전에 가장 큰 원소의 지수로 고른 2ᵏ로 비율을 맞춘다(정확; 정상 범위의 행은 비트가 같다). 까닭: 비정상 수 행의 노름과 평균은 자릿수를 잃는다(`edge/subnormal`의 가중 `cosine`이 계약의 2×10¹⁴배, `correlation`의 평균 5×10⁻³²⁴/2가 0으로 반올림되었다) (추천안, 사용자 위임 2026-11-22) |
+| SPT34 기본 `VI`와 유한하지 않은 자료 | 자료에 NaN·inf가 있어 공분산이 유한하지 않으면 기본 `VI`는 NaN 행렬이고 모든 거리가 NaN이다(scipy와 같은 결과; `inv()`의 `ValueError`를 내지 않는다). 공분산이 특이하면 `LinAlgError`(`pdist(): the covariance of the data is singular, so the default 'VI' does not exist; give 'VI'`)다. 까닭: 거리 함수는 NaN을 퍼뜨린다(SPT12) (추천안, 사용자 위임 2026-11-22) |
+| SPT35 `hamming`·`jaccard`의 두 dtype | `u`와 `v`(`XA`와 `XB`)의 dtype이 다르면 하나라도 float64면 float64, 아니면 int64(bool과 int64)로 맞춘 뒤 비교한다. 가중 bool 행은 바이트 비교의 한 짝 커널이다(비트 묶음은 가중치 없는 bool만). 까닭: 배열의 형 승격과 같은 규칙이고, 개수가 정확해 어느 길이든 같은 값이다 (추천안, 사용자 위임 2026-11-22) |
+| SPT36 SPT0 시제품의 자리 | `csrc/spatial/`의 `pair_kernel.hpp`(두 순서의 시제품)는 지우지 않고 `tools/spatial_probe_pair_kernel.hpp`로 옮긴다. 라이브러리의 커널은 `metric.hpp`다. 까닭: `tools/spatial_probe.py kernels`가 SPT22의 측정을 다시 할 수 있어야 하고, 라이브러리 밖의 코드는 `csrc/`에 두지 않는다 (추천안, 사용자 위임 2026-11-22) |
 
 ### 1.2 범위 (안)
 마일스톤은 §8이다. "SPTn"은 그 마일스톤에서 만든다는 뜻이고 "나중"은 첫 판에 넣지 않는 후보다.
@@ -108,7 +116,7 @@
 
 ### 2.1 입력
 - **데이터**(`X`, `XA`, `XB`, `u`, `v`, `data`, 질의점 `x`): API.md §5의 상위 함수 입력이다(§9의 8번). `sd.ndarray`, 수의 시퀀스, numpy 배열, frame의 `DataFrame`(2차원; 결측은 NaN)을 받는다. 계산은 float64다.
-  - bool·int64는 float64로 바꾼다(linalg의 int 입력 규칙과 같다, DESIGN §9.6; scipy도 바꾼다). 예외는 `hamming`·`jaccard`다: 입력의 dtype 그대로 비교한다(§9의 6번).
+  - bool·int64는 float64로 바꾼다(linalg의 int 입력 규칙과 같다, DESIGN §9.6; scipy도 바꾼다). 예외는 `hamming`·`jaccard`다: 입력의 dtype 그대로 비교하고, 두 입력의 dtype이 다르면 하나라도 float64면 float64, 아니면 int64로 맞춘다(§9의 18번, SPT23, SPT35).
   - complex128은 `TypeError`다(`[scipy와 다름]`: scipy의 `pdist`·`cdist`는 `ValueError: Unsupported dtype complex128`, `KDTree`는 `TypeError`. API.md §2는 받지 않는 dtype을 `TypeError`로 정한다).
   - 모양: `pdist`는 (m, n), `cdist`는 (mA, n)와 (mB, n)이고 n이 같아야 한다(`ValueError`). n = 0(특징이 없음)도 받는다: 거리는 그 거리의 정의를 빈 합에 쓴 값이다(`euclidean`·`cityblock`·`chebyshev`는 0, `cosine`·`correlation`·`braycurtis`·`hamming`은 0/0의 NaN; scipy와 같다). 행이 0이거나 1이면 `pdist`는 빈 배열이다(scipy와 같다).
 - **유한하지 않은 값**: 거리 함수는 IEEE 규칙으로 퍼뜨린다(NaN → NaN, inf − inf → NaN, inf와 유한 값의 거리는 inf). 이웃 찾기(`KDTree`, `kneighbors`, `radius_neighbors`)는 데이터와 질의점이 모두 유한해야 한다(`ValueError`; scipy의 `KDTree`와 같다). NaN이 있으면 "가장 가까운"이 정해지지 않고, 트리의 경계 상자가 뜻을 잃는다(§9의 7번).
@@ -137,7 +145,7 @@ sqeuclidean(u, v, /, *, w=None)
 ```
 - `metric`과 그 인자는 키워드로만 받는다(§9의 10번). `[scipy와 다름]`: scipy는 `pdist(X, 'cityblock')`처럼 위치로도 받고 거리의 인자를 `**kwargs`로 받는다. 그 거리가 쓰지 않는 인자(`metric='euclidean'`에 `p=3`)는 `TypeError`다(`pdist(): 'p' applies only to metric='minkowski'`). scipy는 같은 경우 바인딩의 시그니처 덤프를 낸다.
 - `p`의 기본(None)은 `minkowski`에서 2다. `p`는 0보다 큰 실수나 inf다(`p < 1`은 삼각 부등식이 없는 준거리이고 scipy처럼 받는다). 0 이하와 NaN은 `ValueError`다(`[scipy와 다름]`: scipy의 `pdist`는 `p` 검사를 건너뛰어 `p=-1`에서 값을 내고 `p=0`에서 inf를 낸다; 거리 함수 `minkowski`는 막는다).
-- `V`의 기본은 `pdist`가 `X`, `cdist`가 `XA`와 `XB`를 세로로 이은 것의 열 분산(`correction=1`)이고, `VI`의 기본은 같은 자료의 공분산의 역행렬이다(scipy와 같다; 관측이 차원 이하이면 `ValueError`, scipy의 메시지 뜻과 같다). 받은 `V`는 1차원 길이 n이고 양수여야 한다(`[scipy와 다름]`: scipy는 음수 `V`를 받아 뜻 없는 값을, 0이면 inf를 낸다). `VI`는 (n, n)이다. 양정치가 아니면 이차식이 음수인 짝의 거리가 NaN이다(scipy와 같다).
+- `V`의 기본은 `pdist`가 `X`, `cdist`가 `XA`와 `XB`를 세로로 이은 것의 열 분산(`correction=1`)이고, `VI`의 기본은 같은 자료의 공분산의 역행렬이다(scipy와 같다; 관측이 차원 이하이면 `ValueError`, scipy의 메시지 뜻과 같다; 자료에 NaN·inf가 있으면 NaN 행렬이라 모든 거리가 NaN, 공분산이 특이하면 `LinAlgError`, SPT34). 받은 `V`는 1차원 길이 n이고 양수여야 한다(`[scipy와 다름]`: scipy는 음수 `V`를 받아 뜻 없는 값을, 0이면 inf를 낸다). `VI`는 (n, n)이다. 양정치가 아니면 이차식이 음수인 짝의 거리가 NaN이다(scipy와 같다).
 - 모든 거리 함수는 (…, n) 배치를 받아 앞 축끼리 브로드캐스트하고 결과는 앞 축의 모양이다. 짝 하나는 `cdist`의 그 짝과 비트까지 같다.
 
 **거리의 정의** (z = x − y를 원소마다 한 번 반올림한 것; 합의 순서는 §3.1)
@@ -226,10 +234,10 @@ KDTree.sparse_distance_matrix(other, max_distance, /, *, p=2.0)
 **짝 하나의 거리는 한 커널이 정한다.** `pdist`, `cdist`, 거리 함수, `kneighbors`·`radius_neighbors`, 트리의 잎, GEMM 고르기 뒤의 다시 계산이 모두 같은 함수 `pair_distance<Metric>(x, y, n, params)`의 순서로 계산한다. 그래서 같은 짝은 어디서든 같은 비트다(SPT2). 묶음 커널(여러 짝을 레지스터에 함께 두는 것)은 짝 하나의 덧셈 순서를 바꾸지 않는다.
 
 - **차이**: zᵢ = fl(xᵢ − yᵢ). 레지스터에서 빼고 바로 쓴다(배열에 쓰지 않는다). `sd.subtract`와 같은 반올림 한 번이다.
-- **합의 순서는 타일 순서다**(SPT22의 측정, SPT26): 짝마다 항을 kTileBlock = 32개씩 덩어리로 나누고, 덩어리 안은 0에서 시작해 `fma(zᵢ, zᵢ, t)`를 차례로, 덩어리의 합은 차례로 더한다(s = t₁, s = s + t₂, …). 묶음 커널은 x 4행 × y 8행의 32짝을 누산 레지스터 16개(레지스터 하나에 두 짝)에 두고, y 블록을 열 우선의 판(panel)으로 한 번 옮겨 둔다. 짝 하나를 계산하는 커널(트리의 잎, 다시 계산)도 같은 순서라 같은 비트다. 시제품은 `csrc/spatial/pair_kernel.hpp`(`tile_4x8`, `tile_order`)이고 SPT1의 `metric.hpp`가 이것을 바탕으로 한다.
+- **합의 순서는 타일 순서다**(SPT22의 측정, SPT26): 짝마다 항을 kTileBlock = 32개씩 덩어리로 나누고, 덩어리 안은 0에서 시작해 `fma(zᵢ, zᵢ, t)`를 차례로, 덩어리의 합은 차례로 더한다(s = t₁, s = s + t₂, …). 묶음 커널은 x 4행 × y 8행의 32짝을 누산 레지스터 16개(레지스터 하나에 두 짝)에 두고, y 블록을 열 우선의 판(panel)으로 한 번 옮겨 둔다. 짝 하나를 계산하는 커널(트리의 잎, 다시 계산)도 같은 순서라 같은 비트다. 구현은 `csrc/spatial/metric.hpp`의 `tile<Op, R, W>`(R × 8짝: 누산기가 하나인 거리는 R = 4, 둘인 `braycurtis`·`jaccard`는 R = 2)와 `pair_scalar<Op, W>`이고, 연산(Op)마다 NEON과 스칼라의 같은 IEEE 연산(뺄셈, 절댓값, fma, 덧셈, 나눗셈, FMAX, 비교)으로 적어 레인과 스칼라가 같은 비트다. 남는 행과 열은 채워서 계산하고 버린다. SPT0의 시제품은 `tools/spatial_probe_pair_kernel.hpp`로 옮겼다(SPT36).
   - 합의 깊이(한 항이 거치는 반올림의 수)는 m = min(n, 32) + ⌈n/32⌉ − 1이다(§4의 계약). n < 16이면 덩어리 하나의 차례 합이라 `sd.linalg.vector_norm(x − y)`와 같은 비트다(탐침: n = 3, 8, 15에서 256짝 모두 같다). n ≥ 16에서는 linalg의 16레인 잎과 달라 끝자리가 다를 수 있다(탐침: 256짝 가운데 106–216짝이 같다). 둘 다 정확도 계약 안이다.
-  - `sqeuclidean`은 같은 제곱합 s 그대로다. `euclidean`은 √s이고, s가 inf·NaN이거나 n·2⁻¹⁰⁰⁰ 아래면 신중한 경로다(최댓값의 지수로 고른 2ᵏ로 비율을 맞춘 같은 순서의 두 번째 패스, SPT27). 참 제곱 거리가 넘치면 `sqeuclidean`의 inf가 맞는 값이다.
-  - `cityblock`은 같은 꼴의 |zᵢ| 합, `minkowski(p)`는 |zᵢ|ᵖ(`std::pow`)의 같은 꼴의 합과 `pow(s, 1/p)`(넘침·언더플로면 2ᵏ로 나눈 두 번째 패스)다. p = 1, 2, inf는 `cityblock`, `euclidean`, `chebyshev`로 간다.
+  - `sqeuclidean`은 같은 제곱합 s 그대로다. `euclidean`은 √s이고, s가 inf이거나 2⁻⁹⁶⁸ 아래면(NaN은 그대로) 신중한 경로다(최댓값의 지수로 고른 2ᵏ로 비율을 맞춘 같은 순서의 두 번째 패스, SPT27, SPT33). `sqeuclidean`도 2⁻⁹⁶⁸ 아래에서 같은 두 번째 패스를 하고 2²ᵏ를 곱한다(결과가 비정상 수일 수 있다). 참 제곱 거리가 넘치면 `sqeuclidean`의 inf가 맞는 값이다. `pdist`·`cdist`의 마무리(√, 나눗셈, 자르기)는 두 짝씩 NEON으로 하고 신중한 경로가 필요한 레인만 짝 하나씩 다시 한다(같은 비트).
+  - `cityblock`은 같은 꼴의 |zᵢ| 합(가중이면 `fma(w, |z|, t)`), `minkowski(p)`는 |zᵢ|ᵖ(`std::pow`)의 같은 꼴의 합과 근이다. 근은 `pow(s, 1/p)`에 1/p가 2의 거듭제곱이 아니면 뉴턴 한 걸음을 더하고, 합이 inf이거나 2⁻⁹⁶⁸ 아래면 |zᵢ|/max|z|의 합과 max|z|·근이다(SPT30). p = 1, 2, inf는 `cityblock`, `euclidean`, `chebyshev`로 간다(비트까지 같다; 가중도).
   - `chebyshev`는 NEON 최댓값(`FMAX`가 NaN을 퍼뜨린다)이다. 정확한 연산이라 순서와 무관하고 결과는 최대 |zᵢ|를 올바르게 반올림한 값이다(반올림이 단조이므로). `vector_norm(ord=inf)`와 언제나 같은 비트다.
 - **`vector_norm`과 같은 순서는 얼마나 비쌌나**(SPT0의 측정, `tools/spatial_probe.py`의 `kernels`): 두 순서를 `cdist` 꼴의 고리(`XB`를 L2에 드는 블록으로, 블록마다 `XA`의 모든 행)로 1스레드에서 쟀다. `vector_norm`의 순서(linalg의 `sq_leaf`와 같은 16레인 잎, 512 넘으면 pairwise 트리, 2048 넘으면 `cblas_ddot`)는 짝 하나가 누산 레지스터 8개를 쓰므로 묶음 커널이 x 한 행과 y 두 행(누산 16개)까지만 든다. 그 커널의 거리는 `sd.linalg.vector_norm(x − y)`와 모든 n에서 256짝 모두 비트까지 같았다(같게 만들 수는 있다). 시간(ms, 세 번 이상 가운데 가장 좋은 값; 부하 평균 1.5):
 
@@ -252,11 +260,11 @@ KDTree.sparse_distance_matrix(other, max_distance, /, *, p=2.0)
   모든 길이에서 1.3배를 넘어 SPT22의 규칙대로 타일 순서로 바꿨다. 느린 까닭: 짝마다 덩어리를 접는 덧셈 8개, 16개에 모자라는 꼬리의 스칼라 `fma` 사슬(n = 17–31에서 가장 크다), y 한 행을 x 한 행에만 쓰는 읽기(타일은 판의 y 하나를 x 넷에 쓴다), BLAS 구간에서는 짝마다의 버퍼 쓰기와 호출이다. 타일 커널은 n = 512에서 짝·항마다 약 0.25주기로 NEON 4파이프의 약 80%다. 덩어리를 16, 64, 나누지 않음으로 바꿔도 시간은 ±2% 안이었다(SPT26).
 - **가중 거리, `seuclidean`, `canberra`, `braycurtis`, `hamming`, `jaccard`**: 같은 타일 순서의 합이다. 항: `euclidean`의 가중은 `fma(wᵢ·zᵢ, zᵢ, s)`, `seuclidean`은 미리 구한 rᵢ = 1/Vᵢ로 `fma(rᵢ·zᵢ, zᵢ, s)`(scipy는 √(1/V)를 곱한 차이의 노름이다; 정확도는 §4), `braycurtis`는 두 합을 같은 덩어리에서 함께, `canberra`의 항은 |zᵢ| / (|xᵢ| + |yᵢ|)이고 분모가 0이면 0(분자도 0이다), `hamming`·`jaccard`는 개수를 int64로 정확히 센다(가중이면 float64 합).
 - **`hamming`·`jaccard`의 bool 입력**: 행을 64비트 낱말로 묶어 두고(데이터마다 한 번) 짝마다 `xor`·`or`와 NEON `vcnt`로 센다. n비트의 짝 하나가 n/64 낱말이다. 정수 셈이라 순서와 무관하고 바이트 입력과 비트가 같다.
-- **`cosine`·`correlation`**: 행마다의 노름(과 `correlation`의 평균)을 데이터마다 한 번 구한다(행에만 기대므로 `pdist`와 `cdist`에서 같다). 짝마다는 내적 하나(타일 순서)다. 식은 scipy의 1 − x·y / √(xx·yy)이고 [0, 2]로 자른다. SPT1에서 Arb로 두 안을 잰다: (a) 이 식, (b) 행을 정규화한 뒤 ‖x̂ − ŷ‖²/2(거의 평행한 두 벡터에서 1 − c의 상쇄가 없어 작은 거리의 오차가 d·u에서 약 u·√(2c)로 준다). 더 정확한 쪽이 느리지 않으면 그것을 쓴다(성능 다음 정확도).
-- **`mahalanobis`**: 짝마다 z를 만들고 t = VI·z(행마다 `fma_dot_leaf`의 순서), q = z·t, √q(q < 0이면 NaN)다. 짝 하나가 O(n²)이다(scipy도 같다). BLAS를 쓰면 비트가 Accelerate의 묶음에 따라 달라지므로 이 라이브러리의 커널이다. 큰 `cdist`에서는 z 여러 개를 모아 VI와의 곱을 NEON 타일로 한다(짝 하나의 순서는 그대로).
-- **`haversine`**(§9의 4번): sklearn의 식은 대척점 근처에서 asin의 인자가 1에 가까워 나쁜 조건이다. 같은 값을 주는 꼴 가운데(asin 꼴, atan2 꼴, Vincenty의 구면 꼴) Arb와 견주어 모든 범위에서 계약을 지키는 것을 SPT1에서 고른다. sincos는 `base/sincos.hpp`로 함께 구한다.
-- **`pdist`의 순서**: 압축 꼴(i < j, 행 우선)이다. 행 i의 짝은 n − 1 − i개라 일을 짝의 수로 고르게 나누는 행 구간으로 나눈다(크기로만 정함). 짝 하나는 어디서 돌든 같은 계산이라 나누는 방식은 비트를 바꾸지 않는다.
-- **`cdist`**: (mA, mB) 출력을 행 블록 × 열 블록 타일로 나눈다(`XB` 블록이 L2에 들도록, 크기는 SPT1에서 잰다). 전체 행렬을 돌려주므로 GEMM은 쓰지 않는다(SPT2는 고르기에만 쓴다). 그래서 큰 n의 `cdist`는 직접 커널의 빠르기가 한계다(§5).
+- **`cosine`·`correlation`**: 행마다 2ᵏ로 비율을 맞추고(`correlation`은 그 뒤 (가중) 평균을 빼고 다시 맞춘다) 노름으로 나눈 x̂를 데이터마다 한 번 구한다(행에만 기대므로 `pdist`와 `cdist`에서 같다). 짝마다는 x̂, ŷ의 (가중) `sqeuclidean` 타일 커널 하나이고 d = s/2를 2로 자른다(SPT29: (b)를 골랐다). SPT1에서 잰 두 안: (a) scipy의 1 − x·y/√(xx·yy)와 (b) ‖x̂ − ŷ‖²/2를 Arb와 견주면 거의 평행한 짝(d ≈ 5×10⁻¹⁷)의 상대오차가 (a) 6.2, (b) 4×10⁻⁹였고 빠르기는 같았다. 상수 행은 평균을 그 값 자체로 두어(가중이면 wᵢ > 0인 원소가 모두 같을 때) 언제나 NaN이다.
+- **`mahalanobis`**: 짝마다 z를 만들고 tᵢ = VI의 i행·z(타일 순서의 `fma`), q = Σzᵢtᵢ(타일 순서), √q(q < 0이면 NaN)다. |q|가 2⁻⁹⁶⁸ 아래이거나 inf면 z를 2ᵏ로 비율을 맞춰 다시 한다. 짝 하나가 O(n²)이다(scipy도 같다; 1000² n = 16에서 1스레드 76 ms, scipy 75 ms). BLAS를 쓰면 비트가 Accelerate의 묶음에 따라 달라지므로 이 라이브러리의 커널이다. z 여러 개를 모은 NEON 타일은 SPT6의 후보다.
+- **`haversine`**(§9의 4번, SPT31): d = 2·atan2(√h, √g), h = sin²(Δφ/2) + cos φ₁ cos φ₂ sin²(Δλ/2), g = cos²(Δφ/2) cos²(Δλ/2) + sin²((φ₁ + φ₂)/2) sin²(Δλ/2)(= 1 − h, 상쇄 없이)다. Δφ/2, Δλ/2의 sin·cos는 `base/sincos.hpp`로 함께, cos φ는 행마다 한 번 구한다. 대척점 넷을 포함한 32짝에서 최대 2 ULP였다. 짝마다 sincos 둘, sin, atan2라 1스레드에서 sklearn(numpy의 묶음 libm)의 약 3배 느리다(2000² 153 ms 대 45 ms; 10스레드 18 ms). 묶음 sin·cos는 SPT6의 후보다.
+- **`pdist`의 순서**: 압축 꼴(i < j, 행 우선)이다. 행을 R개씩 묶은 행 묶음이 열 판 (i₀ + 1)/8부터 끝까지를 타일로 계산하고 j > i만 쓴다(행 i의 압축 자리는 j를 따라 이어져 있어 두 짝씩 쓴다). 행 묶음을 짝·항이 2²⁰개쯤인 태스크로 나눈다(크기로만 정함). 짝 하나는 어디서 돌든 같은 계산이라 나누는 방식은 비트를 바꾸지 않는다.
+- **`cdist`**: `XB`를 8행 판으로 한 번 옮겨 두고, (mA, mB) 출력을 행 블록 × 판 묶음의 태스크로 나눈다. 판 묶음은 256 KB(2¹⁵개 double), 행 블록은 태스크 하나가 짝·항 2²⁰개쯤이 되는 R의 배수다(크기로만 정함). 전체 행렬을 돌려주므로 GEMM은 쓰지 않는다(SPT2는 고르기에만 쓴다). 그래서 큰 n의 `cdist`는 직접 커널의 빠르기가 한계다(§5). 커널을 쓰지 않는 거리(`minkowski`, `mahalanobis`, `haversine`, int64와 가중 bool의 셈, 비트 묶음의 popcount)는 행 구간마다 짝 하나씩이다.
 
 ### 3.2 유클리드 혼합 계산 (SPT2)
 GEMM은 후보를 빨리 고르는 데만 쓰고, 돌려주는 값과 경계의 판정은 모두 §3.1의 직접 커널이 한다. 여기서는 고르기가 참 후보를 빠뜨리지 않는다는 것을 보인다.
@@ -359,21 +367,26 @@ GEMM은 후보를 빨리 고르는 데만 쓰고, 돌려주는 값과 경계의 
 
 ---
 
-## 4. 정확도 계약 (안)
-참값은 Arb다. 입력은 float64라 차이와 제곱합을 Arb에서 정확히 구할 수 있고, 참 거리를 올바르게 반올림한 값 RN(d)과 견준다. ULP는 `bench`의 `ulp_distance`다. 계약 단위(오차 ÷ 한계)로 적고 경계는 1이다(sparse.md §4와 같은 꼴). 잰 값은 SPT1에서 채운다.
+## 4. 정확도 계약 (거리는 SPT1에서 잼, 이웃은 안)
+참값은 Arb다. 입력은 float64라 차이와 제곱합을 Arb에서 정확히 구할 수 있고, 참 거리를 올바르게 반올림한 값 RN(d)과 견준다. ULP는 `bench`의 `ulp_distance`다. 계약 단위(오차 ÷ 한계)로 적고 경계는 1이다(sparse.md §4와 같은 꼴). 판정은 `tests/spatial/refdata.py`의 `bound()`·`units()` 하나이고 테스트(`tests/spatial/test_reference.py`)와 정확도 체계(`bench/accuracy/spatial.py`, 표 `bench/spatial/accuracy.md`)가 같이 쓴다.
 
-- **거리** (m은 합의 깊이: 타일 순서에서 m = min(n, 32) + ⌈n/32⌉ − 1, §3.1·SPT26)
-  | 거리 | 계약 | 메모 |
-  |---|---|---|
-  | `chebyshev` | RN(d)와 같다(0 ULP) | 최대 \|fl(zᵢ)\|가 올바른 반올림이다 |
-  | `euclidean`, `seuclidean`, 가중 | \|d̂ − d\| ≤ (γₘ₊₃/2 + u)·d | 항이 모두 음이 아니라 상쇄가 없다. n = 3이면 약 3.5 ULP 이하 |
-  | `sqeuclidean`, `cityblock` | \|ŝ − s\| ≤ γₘ₊₂·s | |
-  | `minkowski(p)` | \|d̂ − d\| ≤ (2u + (γₘ + c_pow)/p + c_pow)·d | c_pow는 `std::pow`의 상대오차다. SPT0에서 Arb와 견준 libm의 `pow`는 결과가 정상 범위인 2만 4천 점에서 0.504 ULP 이하였고(p = 0.5, 1.5, 3, 7.5, 무작위 p), 결과가 아주 작은 p = 2000에서 1 ULP였다. 그래서 c_pow = 2u(1 ULP)로 잡는다. 비율을 맞춘 길도 같다 |
-  | `canberra`, `braycurtis` | 합마다 γₘ₊₃·Σ\|항\|, 나눗셈 u | `braycurtis`는 분모의 상쇄(x ≈ −y)에서 상대오차가 커질 수 있다: 분모의 Σ\|xᵢ + yᵢ\|를 기준으로 적는다 |
-  | `cosine`, `correlation` | 절대오차 ≤ c·n·u (안 (a)); 안 (b)면 작은 거리에서 상대 | 값이 [0, 2]라 절대로 적는다. `correlation`은 평균을 빼는 반올림을 더한다 |
-  | `mahalanobis` | \|q̂ − q\| ≤ γₙ₊₂·\|z\|ᵀ\|VI\|\|z\| | VI가 나쁜 조건이면 상대오차가 크다: 계약은 절댓값의 이차식 기준이다 |
-  | `hamming`, `jaccard` | 정확한 개수의 나눗셈 한 번(0.5 ULP); 가중이면 합의 γₘ | |
-  | `haversine` | SPT1에서 고른 식의 한계, 모든 범위(대척점 포함) | §9의 4번 |
+- **거리** (SPT1에서 잼, SPT32. m은 합의 깊이: 타일 순서에서 m = min(n, 32) + ⌈n/32⌉ − 1, §3.1·SPT26. u = 2⁻⁵³, c_pow = 2u. 모든 한계에 2⁻¹⁰⁷⁴을 더한다. 잰 값은 `distances.npz` 645짝, `counting.npz` 80짝, `haversine.npz` 32짝의 최대다)
+  | 거리 | 계약 | 잰 최대 ULP | 계약 대비 | 메모 |
+  |---|---|---:|---:|---|
+  | `chebyshev`, 가중 | RN(d)와 같다(0 ULP) | 0 | 1 | 최대 \|fl(zᵢ)\|가 올바른 반올림이다(계약 대비 1은 참값이 두 double의 한가운데인 짝) |
+  | `euclidean`, 가중 | \|d̂ − d\| ≤ (γₘ₊₃/2 + u)·d | 2, 2 | 0.46, 0.43 | 항이 모두 음이 아니라 상쇄가 없다 |
+  | `seuclidean` | (γₘ₊₄/2 + u)·d | 2 | 0.45 | 1/Vᵢ의 반올림까지 |
+  | `sqeuclidean` | γₘ₊₂·s(가중 γₘ₊₃) | 3, 4 | 0.68, 0.46 | |
+  | `cityblock`, 가중 | γₘ₊₂·s | 3, 3 | 0.36, 0.35 | |
+  | `minkowski(p)` | (4u + (γₘ + 2c_pow)/p + c_pow)·d | 6 (p = 0.5), 3, 2, 2; 가중 p = 3에서 2 | 0.2, 0.17, 0.21, 0.4; 0.22 | SPT30의 근과 신중한 경로까지. libm의 `pow`는 SPT0에서 정상 범위 0.504 ULP 이하였다 |
+  | `canberra`, 가중 | γₘ₊₃·d | 3, 2 | 0.36, 0.46 | 항마다 세 번의 반올림 |
+  | `braycurtis`, 가중 | γ₂ₘ₊₃·d | 5, 7 | 0.35, 0.46 | 두 합과 나눗셈. 분모의 \|xᵢ + yᵢ\|는 한 번 반올림이라 상대로 적힌다 |
+  | `cosine`, 가중 | u(3√d + (2m + 8)d) + (m + 4)²u² | d ≥ 10⁻⁸에서 15, 22 | 0.42, 0.25 | SPT29의 식. 참값이 0(평행)이거나 아주 작으면 절대오차 2.6×10⁻²⁵ 이하라 ULP는 크다 |
+  | `correlation`, 가중 | `cosine`의 한계 + 2(ρₓ² + ρᵧ²), ρ = γ₂ₘ₊₂·max\|xᵢ\|·√(Σw)/‖x_c‖_w | — | 0.39, 0.21 | 평균의 반올림이 행을 1 방향으로 옮긴 몫이고 2차다. ρ가 큰 행(1e15 + 정수처럼 중심이 퍼짐보다 훨씬 먼 행)에서는 ULP가 크다(scipy는 같은 곳에서 상대 5×10⁻⁵) |
+  | `mahalanobis` | min(E/d, √E) + u·d, E = γ₂ₘ₊₃·\|z\|ᵀ\|VI\|\|z\| | 2 | 0.29 | VI가 나쁜 조건이면 상대오차가 크다: 계약은 절댓값의 이차식 기준이다(n ≤ 16의 양정치 VI에서 잼) |
+  | `hamming`, `jaccard` | 정확한 개수의 나눗셈 한 번(올바른 반올림); 가중이면 γ₂ₘ₊₁·d | 0, 0; 가중 2, 2 | 0.88, 0.93; 0.12, 0.12 | bool·int64·float64가 같은 개수 |
+  | `haversine` | 20u·d(SPT31) | 2 | 0.09 | 대척점 넷 포함 |
+- 비교 패키지(같은 짝에서 그 자리에서; `bench/spatial/accuracy.md`): scipy 1.18.1은 넘침·언더플로(1e160, 1e-160, 비정상 수의 짝)에서 inf·0·NaN을 내 `euclidean`·`seuclidean`·`minkowski`·`mahalanobis`·`cosine`·`correlation`의 계약을 넘고(scipy의 `minkowski` p = 1.5는 `edge/subnormal`에서 상대 1), 정상 범위의 짝에서는 계약 안이다. sklearn 1.9.1의 전개식(`euclidean_distances`)과 `cosine_distances`는 계약을 넘는다(1 − cos의 상쇄, 넘침). R 4.6.2의 `stats::dist`는 `euclidean`·`minkowski`가 넘침에서 inf다.
 - **이웃 찾기** (세 겹)
   1. **같은 커널의 전수와 정확히 같다**: `kneighbors`, `query`, `query_ball_point`, `query_ball_tree`, `query_pairs`, `count_neighbors`, `sparse_distance_matrix`의 결과(색인, 순서, 거리의 비트, 개수)는 같은 직접 커널로 모든 짝을 계산해 (d̂, 색인)으로 고른 것과 같다. 길(트리, GEMM 고르기, 전수)마다, 스레드 수마다 같다. 이것이 SPT2의 여유(§3.2)와 가지치기의 여유(§3.4)를 시험한다.
   2. **Arb로 정렬한 전수와 정확히 같다**(거리가 올바르게 반올림되는 데이터에서): 정수 격자(차이의 제곱합이 2⁵³ 아래: 3차원 좌표 \|x\| < 2²⁴), 2진 유리수 격자, 같은 점이 많은 데이터에서는 차이와 제곱합이 정확하고 √가 올바른 반올림이라 d̂ = RN(d)다. 그런 데이터에서 결과는 Arb로 구한 (RN(d), 색인)의 정렬과 정확히 같아야 한다. 격자는 참 거리가 같은 짝(동점)이 아주 많아 동점 순서의 약속을 직접 시험한다.
@@ -399,6 +412,26 @@ SPT0에서 다시 잰 scipy 1.18.1과 sklearn 1.9.1의 시간이다(`tools/spati
 | `query` 10⁴점, n = 10⁵, m = 16, k = 1 / 10 | 3547 / 8675 | 3244 / 6020 | scipy `workers=-1`도 442 / 1130. 전수 GEMM의 영역이다(§3.4) |
 | `query_ball_point` 10⁴점(평균 9.9개), n = 10⁶, m = 3 | 27.5 | — | |
 
+**SPT1의 거리**(2026-11-22; ms, 다섯 번(n = 512는 두 번) 가운데 가장 좋은 값, 무작위 표준정규, 부하 평균 1.6–1.8. 기준선이 아닌 개발 중의 확인이고, 속도 사례 `bench/speed/cases/spatial.py`는 `--smoke`로 한 번씩만 불러 결과를 견줬다):
+
+| 일 | sd 1스레드 | sd 10스레드 | scipy |
+|---|---:|---:|---:|
+| `cdist` euclidean 1000², n = 3 | 0.589 | 0.101 | 0.663 |
+| `cdist` euclidean 1000², n = 64 | 4.46 | 0.649 | 9.45 |
+| `cdist` euclidean 4000², n = 3 | 10.5 | 1.36 | 11.1 |
+| `cdist` euclidean 4000², n = 64 | 74.5 | 8.51 | 155 |
+| `cdist` euclidean 4000², n = 512 | 564 | 62.7 | 1450 |
+| `cdist` cityblock 4000², n = 512 | 545 | 61.3 | 1910 |
+| `cdist` cosine 1000², n = 64 | 4.92 | 0.753 | 21.9 |
+| `cdist` canberra 1000², n = 64 | 25.6 | 3.33 | 27.5 |
+| `cdist` minkowski p = 3 1000², n = 64 | 332 | 37.4 | 305 |
+| `pdist` euclidean m = 2000, n = 3 / 64 | 1.24 / 9.14 | 0.485 / 1.17 | 1.45 / 19.5 |
+| `pdist` cosine m = 2000, n = 64 | 9.25 | 1.27 | 43.3 |
+| `cdist` hamming bool 1000², n = 256 | 1.15 | 0.261 | 63.2 |
+
+- 1스레드에서 scipy 이상이 아닌 것은 `minkowski`(짝·항마다의 `pow`가 시간을 정하고, 짝마다의 뉴턴 걸음이 `pow` 하나를 더한다: 9% 느림), `haversine`(sklearn의 묶음 libm보다 약 3배 느림, §3.1), `mahalanobis`(1000² n = 16에서 76 대 75 ms)다. SPT6에서 다시 본다. n = 512의 `cdist`는 §5의 어림(1스레드 0.55초, 10스레드 60 ms)과 같다.
+- n = 3에서 처음에는 짝마다의 마무리(합을 꺼내 스칼라 √와 신중한 경로 검사, 결과 복사)가 시간의 대부분이라 scipy보다 느렸다(4000² 18.5 대 11.5 ms). 마무리를 두 짝씩 NEON으로 하고 출력에 바로 쓰게 바꿔 10.5 ms가 되었다(비트는 같다).
+
 - **목표**(SPT6에서 확인한다)
   - `pdist`·`cdist`: 1스레드에서 scipy 이상(같은 직접 계산에 NEON), 10스레드에서 거의 스레드 수만큼. n이 큰 `cdist`는 sklearn의 GEMM만큼 빠를 수 없다: 모든 거리를 직접 계산하므로 n·mA·mB의 뺄셈과 FMA가 하한이다(n = 512, 4000²에서 짝·항 8.2×10⁹개; SPT0의 타일 커널은 1스레드에서 짝·항마다 약 0.07 ns(§3.1의 n = 512)라 1스레드 약 0.55초, 10스레드 약 60 ms를 어림한다). 이것은 SPT2가 정한 정확도의 값이다.
   - `kneighbors`(k = 1, n ≥ n₀): sklearn `pairwise_distances_argmin_min`의 1.5배 안(같은 GEMM에 다시 계산과 중심 빼기를 더한다).
@@ -411,17 +444,16 @@ SPT0에서 다시 잰 scipy 1.18.1과 sklearn 1.9.1의 시간이다(`tools/spati
 - **층**: `spatial/`은 `array/`, `accelerate/`(`blas.hpp`의 `gemm`: §3.2의 고르기), `parallel/`, `base/`(`sincos.hpp`) 위에 있다. 합의 순서가 이 영역의 타일 순서라(SPT22, SPT26) `linalg/`의 합과 노름에 기대지 않는다. 다른 영역은 `spatial/`을 모른다. Python 층의 `stardust.spatial`은 `stardust.sparse`(`.tocsr()`), `stardust.linalg`(`inv`), 배열의 `var`를 쓴다.
 - `bench/areas.py`의 끝에 `spatial`이 있다(영역 열셋째). ARCHITECTURE §1의 그림과 §2의 목록, API.md의 색인 표, README.md의 표에 한 줄씩 있다(SPT0).
 - `csrc/spatial/`
-  - `pair_kernel.hpp`(SPT0의 시제품): §3.1의 두 순서(`norm_order`, `tile_order`·`tile_4x8`). SPT1이 타일 순서를 `metric.hpp`로 옮기고 지운다
-  - `metric.hpp`: 거리마다의 짝 커널 `pair_distance<Metric>`과 데이터마다의 준비(노름, 평균, `1/V`, 비트 묶음)
-  - `distance.cpp`: `pdist`, `cdist`, `squareform`, 배치 거리 함수
+  - `metric.hpp`(SPT1): 거리마다의 연산(Op)과 두 커널 `tile<Op, R, W>`·`pair_scalar<Op, W>`, 신중한 경로, `minkowski`·`mahalanobis`·`haversine`의 짝 함수, 데이터마다의 준비(정규화, 평균, 비트 묶음). SPT0의 시제품 `pair_kernel.hpp`는 `tools/spatial_probe_pair_kernel.hpp`로 옮겼다(SPT36)
+  - `distance.cpp`(SPT1): `_pdist`, `_cdist`, `_paired`(배치 거리 함수), `_squareform_tomatrix`, `_squareform_tovector`와 구동기(타일, 짝 하나씩, 태스크 나누기), `spatial.hpp`가 `bind_*`를 알린다
   - `hybrid.hpp`: §3.2의 GEMM 고르기(중심 빼기, 여유, 블록 순회)
   - `heap.hpp`: (d̂, 색인) 최대 힙과 행마다의 반경 버퍼
   - `kdtree.hpp`, `kdtree.cpp`: 만들기(§3.3), 노드 배열, 피클의 상태
   - `query.cpp`: kNN, 반경, 개수(§3.4)
   - `dual.cpp`: 이중 트리의 짝과 `count_neighbors`
   - `brute.cpp`: `kneighbors`·`radius_neighbors`의 전수 길
-- 바인딩 `bind/spatial_bind.cpp`(SPT1에서 만든다): `_core.spatial` 하위 모듈.
-- `src/stardust/spatial/` (하위 패키지 없음): `__init__.py`(공개 이름), `_common.py`(입력 정리, `metric`과 인자의 검사, 메시지), `_distance.py`(`pdist cdist squareform`과 거리 함수), `_neighbors.py`(`kneighbors radius_neighbors`), `_kdtree.py`(`KDTree`), `_result.py`(`RadiusResult`). `QueryResult`는 `stardust/_results.py`에 더한다.
+- 바인딩 `bind/spatial_bind.cpp`(SPT1): `_core.spatial` 하위 모듈.
+- `src/stardust/spatial/` (하위 패키지 없음): `__init__.py`(공개 이름), `_common.py`(입력 정리, `metric`과 인자의 검사, 메시지; SPT1), `_distance.py`(`pdist cdist squareform`과 거리 함수, 기본 `V`·`VI`; SPT1), `_neighbors.py`(`kneighbors radius_neighbors`), `_kdtree.py`(`KDTree`), `_result.py`(`RadiusResult`). `QueryResult`는 `stardust/_results.py`에 더한다.
 
 ---
 
@@ -440,6 +472,7 @@ SPT0에서 다시 잰 scipy 1.18.1과 sklearn 1.9.1의 시간이다(`tools/spati
 
 ### 7.3 테스트 (`tests/spatial/`)
 - `test_api_surface.py`(API 문서의 시그니처), `test_distance.py`(거리마다의 정의, `w`, `V`, `VI`, 경계의 값, 배치, 대칭, `pdist`와 `cdist`의 비트, scipy와 계약 안), `test_squareform.py`, `test_pair_kernel.py`(§3.1의 타일 순서: 묶음 커널과 짝 하나의 비트, 덩어리 경계 31·32·33과 길이 경계마다, n < 16에서 `vector_norm`과 같은 비트, `chebyshev`는 언제나 같은 비트), `test_neighbors.py`(`kneighbors`·`radius_neighbors`가 같은 커널의 전수와 정확히 같음: 길마다, 거리마다), `test_hybrid.py`(§7.1의 적대적 데이터와 hypothesis로 GEMM 고르기가 답을 바꾸지 않음; 고르기를 끈 비공개 길과 비교), `test_kdtree.py`(만들기의 불변식, 노드 상자, 피클, 스레드마다 같은 트리), `test_query.py`(k, k 시퀀스, 모양, 채움, 상한, 동점 순서, scipy와 집합이 같음), `test_radius.py`, `test_pairs.py`, `test_count.py`(가중 포함), `test_reference.py`(§4 이웃의 2번과 3번, Arb 참값), `test_errors.py`(§2의 모든 에러와 메시지), `test_threads.py`(1, 2, 3, 7, 10스레드에서 같은 바이트; `VECLIB_MAXIMUM_THREADS` 1과 기본에서 이웃 결과가 같음).
+- SPT1에서 만든 것: `test_distance.py`(scipy 1.18.1과 그 기록, sklearn의 `haversine`, R의 `dist`, 경계의 값, 배치, dtype, 입력), `test_pair_kernel.py`(묶음 커널과 짝 하나의 비트를 모든 거리·길이 경계·남는 행과 열·NaN과 inf에서, hypothesis 포함; n < 16의 `vector_norm`, `chebyshev`와 `ord=inf`, p = 1, 2, inf; 신중한 경로), `test_squareform.py`, `test_reference.py`(Arb 참값의 모든 점이 계약 안), `test_errors.py`, `test_threads.py`(1, 3, 10스레드에서 같은 바이트).
 - hypothesis는 tests/README.md의 프로필을 쓴다(quick은 짧게, deep은 길게). 적대적 생성기는 군집의 중심, 퍼짐, 동점의 수, m, k를 고른다.
 - scipy·sklearn과는 그 자리에서 견준다: 거리는 계약 안, 이웃은 동점이 없는 데이터에서 같은 집합과 순서, 동점이 있으면 같은 집합(scipy의 순서는 약속이 아니다).
 
@@ -460,7 +493,7 @@ SPT0에서 다시 잰 scipy 1.18.1과 sklearn 1.9.1의 시간이다(`tools/spati
 | 마일스톤 | 내용 | 끝났다는 뜻 |
 |---|---|---|
 | SPT0 준비 | API 문서 초안(`docs/api/spatial.md`: 모든 공개 이름의 시그니처, scipy·sklearn → sd 대응표, §9의 답), 영역 등록(`bench/areas.py`, ARCHITECTURE, API.md의 색인), 시험 데이터(§7.1), 참값 도구(§7.2), 탐침 도구와 기록(§7.4), §3.2의 상수와 증명의 마무리, 짝 커널의 두 안(§3.1의 `vector_norm`과 같은 순서 대 타일 순서)과 GEMM의 동시 호출(AMX) 측정, 속도 사례의 틀 | 문서와 도구가 커밋되고 탐침 기록이 있다. §9의 답이 §1.1의 결정으로 옮겨졌다 |
-| SPT1 거리 | `pdist cdist squareform`, 거리 함수 열넷(`haversine` 포함, SPT9), `w`·`V`·`VI`, 배치, bool의 비트 묶음 | 정확도 스윕이 계약 안, 타일 순서의 비트 테스트(SPT22·SPT26: 묶음 커널과 짝 하나, n < 16에서 `vector_norm`), 골든, scipy·R과의 속도 사례 |
+| SPT1 거리 — **완료·승인(위임, 2026-11-22)** | `pdist cdist squareform`, 거리 함수 열넷(`haversine` 포함, SPT9), `w`·`V`·`VI`, 배치, bool의 비트 묶음 | 정확도 스윕이 계약 안, 타일 순서의 비트 테스트(SPT22·SPT26: 묶음 커널과 짝 하나, n < 16에서 `vector_norm`), 골든, scipy·R과의 속도 사례 |
 | SPT2 축약과 전수 이웃 | `kneighbors radius_neighbors`, `QueryResult`, `RadiusResult`와 `tocsr()`, GEMM 고르기(§3.2)와 직접 전수 | 같은 커널의 전수와 정확히 같음(모든 거리, 적대적 데이터, hypothesis), Accelerate 모드와 무관함, sklearn과의 속도 사례 |
 | SPT3 KD 트리와 kNN | `KDTree`(만들기, 속성, 피클), `query`(k, k 시퀀스, 상한, p) | §4 이웃의 1–3번, 스레드마다 같은 트리와 결과, scipy와의 속도 사례 |
 | SPT4 반경·짝·개수 | `query_ball_point query_ball_tree query_pairs count_neighbors sparse_distance_matrix` | 같은 커널의 전수와 같음, 가중 셈의 결정성, scipy와 집합이 같음, 속도 사례 |

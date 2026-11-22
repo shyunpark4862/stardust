@@ -100,6 +100,17 @@ INTRO = {
         "멈춤 판정 자체는 R의 것이다(optim의 BFGS·Nelder-Mead는 f의 상대 감소 √eps로 멈춘다). 속도 측정"
         "(bench/speed)도 같은 호출을 잰다."
     ),
+    "spatial": (
+        "참값은 tests/spatial/ref의 Arb와 정확한 유리수 참값이다(tools/spatial_ref.py; 시험 점은 tests/spatial/points.py). "
+        "묶음(참값 파일)마다 한 줄 묶음이고 거리 방법(가중 판 w_…)이 영역이며 짝 하나가 점 하나다. sd의 값은 거리 함수"
+        "(sd.spatial.euclidean(u, v) 등)이고 pdist·cdist는 같은 짝에 같은 비트다(한 짝 커널). 계약은 "
+        "tests/spatial/refdata.py의 한계다(docs/design/spatial.md §4; 테스트가 같은 함수로 판정한다): 합의 깊이 "
+        "m = min(n, 32) + ⌈n/32⌉ − 1의 γ로 적은 거리마다의 상대 한계, chebyshev와 가중치 없는 hamming·jaccard는 올바른 "
+        "반올림, cosine·correlation은 절대와 상대를 섞은 한계, mahalanobis는 |z|ᵀ|VI||z|에 대한 한계, haversine은 20u다. "
+        "비교 패키지는 scipy 1.18.1(같은 이름의 거리 함수), scikit-learn 1.9.1(euclidean_distances·manhattan_distances·"
+        "cosine_distances·haversine_distances: 전개식과 1 − cos의 꼴), R 4.6.2의 stats::dist(euclidean·manhattan·maximum·"
+        "minkowski, 좌표가 음이 아닌 정상 수이고 0/0 항이 없는 짝의 canberra(R의 항은 |x − y|/|x + y|이고 분모가 DBL_MIN 아래인 항을 빼고 비율을 다시 맞춘다), counting의 jaccard에 binary)이고 같은 짝에서 그 자리에서 잰다."
+    ),
     "htest": (
         "참값은 tests/htest/ref의 Arb와 정확한 유리수 참값이다(tools/htest_ref.py; 문제는 tests/htest/problems.py). "
         "묶음(검정의 족)마다 한 줄이고, 결과의 필드(통계량, p값, 자유도, 신뢰구간)가 영역이며 문제 하나가 점 하나다. "
