@@ -1,6 +1,6 @@
 # stardust 로드맵
 
-> 상태: **확정** (2026-11-12). 앞부분은 세 프로젝트의 통합(M0–M7, 완료), 뒷부분은 새 영역 [특수함수 (sd.special)](#특수함수-영역-sdspecial)(S0–S11, 완료), 그 뒤 [통계 (sd.stats, sd.random)](#통계-영역-sdstats-sdrandom)(T0–T10, 완료·승인; 검정은 뺐다), 그 뒤 [회귀 (sd.regression)](#회귀-영역-sdregression)(G0–G6 완료·승인, G7a 완료·승인, G7b 완료·승인), 그 뒤 [최적화 (sd.optimize)](#최적화-영역-sdoptimize)(O0 완료·승인, O1 완료·승인, O2 완료·승인, O3 완료·승인, O4 완료·승인, O5 완료·승인, O6 완료·승인), 그 뒤 [가설검정 (sd.htest)](#가설검정-영역-sdhtest)(H0 완료·승인, H1 완료·승인, H2 완료·승인, H3 완료·승인, H4 완료·승인, H5 완료·승인, H6 완료·승인(위임), H7 완료·승인(위임), H8 완료·승인(위임), H9 완료·승인(위임), H10 완료·승인(위임)), 그 뒤 [희소 (sd.sparse)](#희소-영역-sdsparse)(SP0 완료·승인, SP1 완료·승인, SP2 완료·승인, SP3 완료·승인, SP4 완료·승인(위임), SP5 완료·승인(위임), SP6 완료·승인(위임), SP7 완료·승인(위임), SP8 완료·승인(위임)), 그 뒤 [수치 미적분 (sd.integrate, sd.differentiate)](#수치-미적분-영역-sdintegrate-sddifferentiate)(C0 완료·승인(위임), C1 완료·승인(위임), C2 완료·승인(위임), C3 완료·승인(위임), C4 완료·승인(위임), C5 완료·승인(위임), C6 완료·승인(위임), C7 완료·승인(위임), C8 완료·승인(위임)), 그 뒤 [공간 (sd.spatial)](#공간-영역-sdspatial)(SPT0 완료·승인(위임), SPT1 완료·승인(위임), SPT2 완료·승인(위임), SPT3 완료·승인(위임), SPT4 완료·승인(위임), SPT6 완료·승인(위임))이다.
+> 상태: **확정** (2026-11-12). 앞부분은 세 프로젝트의 통합(M0–M7, 완료), 뒷부분은 새 영역 [특수함수 (sd.special)](#특수함수-영역-sdspecial)(S0–S11, 완료), 그 뒤 [통계 (sd.stats, sd.random)](#통계-영역-sdstats-sdrandom)(T0–T10, 완료·승인; 검정은 뺐다), 그 뒤 [회귀 (sd.regression)](#회귀-영역-sdregression)(G0–G6 완료·승인, G7a 완료·승인, G7b 완료·승인), 그 뒤 [최적화 (sd.optimize)](#최적화-영역-sdoptimize)(O0 완료·승인, O1 완료·승인, O2 완료·승인, O3 완료·승인, O4 완료·승인, O5 완료·승인, O6 완료·승인), 그 뒤 [가설검정 (sd.htest)](#가설검정-영역-sdhtest)(H0 완료·승인, H1 완료·승인, H2 완료·승인, H3 완료·승인, H4 완료·승인, H5 완료·승인, H6 완료·승인(위임), H7 완료·승인(위임), H8 완료·승인(위임), H9 완료·승인(위임), H10 완료·승인(위임)), 그 뒤 [희소 (sd.sparse)](#희소-영역-sdsparse)(SP0 완료·승인, SP1 완료·승인, SP2 완료·승인, SP3 완료·승인, SP4 완료·승인(위임), SP5 완료·승인(위임), SP6 완료·승인(위임), SP7 완료·승인(위임), SP8 완료·승인(위임)), 그 뒤 [수치 미적분 (sd.integrate, sd.differentiate)](#수치-미적분-영역-sdintegrate-sddifferentiate)(C0 완료·승인(위임), C1 완료·승인(위임), C2 완료·승인(위임), C3 완료·승인(위임), C4 완료·승인(위임), C5 완료·승인(위임), C6 완료·승인(위임), C7 완료·승인(위임), C8 완료·승인(위임)), 그 뒤 [공간 (sd.spatial)](#공간-영역-sdspatial)(SPT0 완료·승인(위임), SPT1 완료·승인(위임), SPT2 완료·승인(위임), SPT3 완료·승인(위임), SPT4 완료·승인(위임), SPT6 완료·승인(위임)), 그리고 [그림 (sd.plot)](#그림-영역-sdplot)(PL0–PL9 완료·승인)이다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -819,12 +819,12 @@
 
 # 그림 영역 (sd.plot)
 
-> 상태: **PL0–PL8 구현** (2026-11-23). 디자인 손질(기본 색 jco·viridis, 범례 자리, 2D와 3D의 배치), 반투명 곡면, 두 변수 함수와 공간 곡선의 적응형 표본까지 들어갔다(docs/design/plot.md PL38, PL41–PL43). 설계는 [docs/design/plot.md](docs/design/plot.md), API의 초안은 [docs/api/plot.md](docs/api/plot.md)다.
+> 상태: **완료** (PL0–PL9, 2026-11-23; 사용자 승인). 기본 그림, 함수 그림, 통계 그림, 3D에 더해 디자인 손질(기본 색 jco·cool, 범례 자리, 2D와 3D의 배치, MuPAD 꼴의 조명), 반투명 곡면, 적응형 표본과 그 조절 인자, 카메라의 자동 선택까지 들어갔다(docs/design/plot.md PL38, PL41–PL47). 설계는 [docs/design/plot.md](docs/design/plot.md), API는 [docs/api/plot.md](docs/api/plot.md)다. 커밋은 c6eb9ab, 74d6118, d408a9b, f80ddd4다.
 
 ## 진행 원칙
 - 큰 결정(사용자, 2026-11-22): 수학 함수의 그림과 논문 그림의 두 갈래를 한 바닥 위에; 자체 렌더러; 함수가 `Figure`를 돌려주는 꼴; 모든 글자는 LaTeX; 글꼴 두 벌; 3D는 깊이 버퍼의 그림에 벡터 축; 출력 PDF·SVG·PNG; 상호작용 없음; 성능은 노트북에서 그림 한 장의 반응 시간으로 잰다 (docs/design/plot.md §1.1 PL1–PL17).
 - 그림에는 참값이 없다. 검증은 장면과 픽셀의 골든, 성질 테스트, 다른 렌더러와의 견줌이고(docs/design/plot.md §8), 예쁜지는 사용자가 본보기 그림으로 본다.
-- 사용자가 남은 결정을 위임하고 끝까지 진행하라고 했다(2026-11-22). 본보기 그림을 보고 정할 기본값(테마의 세부, 3D의 색과 빛, 글자 크기)은 docs/design/plot.md §10에 남아 있다.
+- 사용자가 남은 결정을 위임하고 끝까지 진행하라고 했다(2026-11-22). 기본 색(범주 팔레트 jco, 연속 색 cool)은 후보 그림을 보고 사용자가 골랐고, 3D의 빛과 색은 사용자가 든 본보기(MuPAD의 곡면)에 맞췄다.
 
 ## 진행 상태
 | 마일스톤 | 상태 |
@@ -837,6 +837,6 @@
 | PL5 함수 그림: `function parametric polar implicit region contour density phase` | 완료 |
 | PL6 통계 그림과 결과 객체: `histogram ecdf boxplot strip qq heatmap pairs`, `compare fit diagnostics coefficients distribution` | 완료 |
 | PL7 3D: `surface parametric_surface curve3d scatter3d` | 완료 |
-| PL8 성능과 일관성 점검: 큰 자료, 병렬 점 찍기, 속도 사례 | 완료 (본보기 그림의 승인은 남았다) |
-| PL9 문서: API 문서의 확정 | 계획 (승인 뒤) |
+| PL8 성능과 일관성 점검: 큰 자료, 병렬 점 찍기, 속도 사례 | 완료·승인 |
+| PL9 문서: API 문서의 확정 | 완료 (2026-11-23) |
 

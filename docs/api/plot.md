@@ -1,6 +1,6 @@
 # sd.plot API
 
-> 상태: **초안** (PL0–PL8, 2026-11-22). 아래의 모든 이름이 공개되어 있다(`sd.plot.__all__`과 `Figure`의 메서드). 시그니처는 `tests/plot/test_api_surface.py`가 코드와 견준다. 본보기 그림을 보고 고칠 기본값(글자 크기, 테마의 세부, 3D의 색과 빛)은 [설계 문서](../design/plot.md) §10에 남아 있다.
+> 상태: **확정** (PL0–PL9, 2026-11-23). 아래의 모든 이름이 공개되어 있다(`sd.plot.__all__`과 `Figure`의 메서드). 시그니처는 `tests/plot/test_api_surface.py`가 코드와 견준다. 결정과 그 까닭은 [설계 문서](../design/plot.md)에 있다.
 
 - 설계와 결정의 근거는 [docs/design/plot.md](../design/plot.md)(§1.1 PL1–PL22), 공통 규칙은 [API.md](../../API.md)다.
 - 언어 표시가 없는 코드 블록은 `tests/plot/test_api_surface.py`가 읽는다. 블록의 줄은 모듈의 이름(`name(...)`, 클래스는 `name`), 클래스의 메서드(`Class.method(...)`)와 속성(`Class.attr`)이다.
