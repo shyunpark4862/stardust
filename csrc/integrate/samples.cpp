@@ -463,19 +463,22 @@ nb::object run(
                 const SideBySide S{p.y, L.ys, std::min(kSideLanes, inner - l0), dx_scalar};
                 S.tree(0, n - 1, reinterpret_cast<double*>(p.o), buf.data());
             };
-            parallel::Unlocked unlocked(work >= kParallelThreshold);
-            if (blocks >= 2 && work >= kParallelThreshold && parallel::available()) {
-                parallel::parallel_for(
-                    blocks,
-                    [&](std::int64_t bi) {
-                        std::vector<double> buf(scratch);
-                        block(bi, buf);
-                    },
-                    kSideLanes * (n - 1) / 4  // about 0.25 ns per term
-                );
-            } else {
-                std::vector<double> buf(scratch);
-                for (std::int64_t bi = 0; bi < blocks; ++bi) block(bi, buf);
+            {
+                // the GIL comes back at the end of this scope: wrap() below makes a Python object
+                parallel::Unlocked unlocked(work >= kParallelThreshold);
+                if (blocks >= 2 && work >= kParallelThreshold && parallel::available()) {
+                    parallel::parallel_for(
+                        blocks,
+                        [&](std::int64_t bi) {
+                            std::vector<double> buf(scratch);
+                            block(bi, buf);
+                        },
+                        kSideLanes * (n - 1) / 4  // about 0.25 ns per term
+                    );
+                } else {
+                    std::vector<double> buf(scratch);
+                    for (std::int64_t bi = 0; bi < blocks; ++bi) block(bi, buf);
+                }
             }
             return wrap(std::move(out));
         }

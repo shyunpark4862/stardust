@@ -335,3 +335,27 @@ def test_trapezoid_outer_axis_has_the_lane_bits(shape, dx):
     lanes = np.ascontiguousarray(np.moveaxis(y, 0, -1))
     want = np.asarray(sd.integrate.trapezoid(sd.asarray(lanes), axis=-1, dx=dx))
     assert np.array_equal(got, want)
+
+
+@pytest.mark.parametrize("threads", [1, 10])
+def test_trapezoid_outer_axis_makes_its_result_with_the_gil(threads):
+    # R275: the side-by-side blocks released the GIL (work >= 32768) and built the result
+    # object before taking it back, which crashed the interpreter: (512, 64) and (100, 700) are
+    # past that threshold, (511, 64) is just below. In a child process, so that a crash is a
+    # failure of this test and not of the test run.
+    import subprocess
+
+    code = (
+        "import numpy as np, stardust as sd\n"
+        f"sd.set_num_threads({threads})\n"
+        "for shape in [(511, 64), (512, 64), (100, 700), (64, 8, 64)]:\n"
+        "    y = np.random.default_rng(2).standard_normal(shape)\n"
+        "    for _ in range(50):\n"
+        "        got = np.asarray(sd.integrate.trapezoid(sd.asarray(y), axis=0, dx=0.5))\n"
+        "    lanes = np.ascontiguousarray(np.moveaxis(y, 0, -1))\n"
+        "    want = np.asarray(sd.integrate.trapezoid(sd.asarray(lanes), axis=-1, dx=0.5))\n"
+        "    assert got.shape == shape[1:] and np.array_equal(got, want), shape\n"
+        "print('ok')\n"
+    )
+    r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=120)
+    assert r.returncode == 0 and r.stdout.strip() == "ok", (r.returncode, r.stderr[-500:])
