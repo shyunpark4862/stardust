@@ -9,7 +9,10 @@ Long runs:
 - The measuring happens in a worker process (bench/speed/worker.py) in its own process
   group. The supervisor watches each case's wall time and the resident memory of the
   worker and its children (the R session); past a limit it kills the group, records
-  the case as "timeout" or "memory", starts a new worker and goes on. Workers are also
+  the case as "timeout" or "memory", starts a new worker and goes on. A case's time is
+  the time its requests take: starting a worker (importing stardust may rebuild the core)
+  has a limit of its own and does not count. A request that did not come back (a time or
+  memory stop) ends its worker, whose reply may still be on the way. Workers are also
   replaced every `restart_every` cases, so memory a case leaks does not pile up, and at
   every round boundary of a run with several rounds: a short parallel call may settle in
   a faster or slower mode for a whole process (2.4x apart for a + b at 2^16 elements,
@@ -116,6 +119,7 @@ class WorkerHandle:
             start_new_session=True,
         )
         WorkerHandle.live.add(self.p.pid)
+        self.killed = False
         self.buf = b""
         self.served = 0
         _, status, _ = self._read(limits.startup_timeout_s, starting=True)
@@ -150,13 +154,21 @@ class WorkerHandle:
         line, self.buf = self.buf.split(b"\n", 1)
         return json.loads(line), "ok", peak
 
-    def request(self, obj, timeout_s):
+    def request(self, obj, timeout_s, starting=False):
+        """Send one request and read its reply, as _read. When it does not come back (a
+        time or memory stop), the worker is killed: its reply may still arrive, and the next
+        request would read it as its own. starting: count only this worker's memory (the
+        env request is part of starting a worker)."""
         try:
             self.p.stdin.write((json.dumps(obj) + "\n").encode())
             self.p.stdin.flush()
-        except BrokenPipeError, OSError:
+        except BrokenPipeError, OSError, ValueError:  # ValueError: a killed worker's closed pipe
+            self.kill()
             return None, "died", 0
-        return self._read(timeout_s)
+        reply, status, peak = self._read(timeout_s, starting=starting)
+        if status != "ok":
+            self.kill()
+        return reply, status, peak
 
     def close(self):
         if self.p.poll() is None:
@@ -169,7 +181,11 @@ class WorkerHandle:
         WorkerHandle.live.discard(self.p.pid)
 
     def kill(self):
-        """Kill the worker's process group: the worker and the R session it started."""
+        """Kill the worker's process group: the worker and the R session it started. Once:
+        a second call must not signal a group id the system may have given to others."""
+        if self.killed:
+            return
+        self.killed = True
         try:
             os.killpg(self.p.pid, signal.SIGKILL)
         except ProcessLookupError, PermissionError:
@@ -177,6 +193,10 @@ class WorkerHandle:
         try:
             self.p.wait(timeout=30)
         except subprocess.SubprocessError:
+            pass
+        try:
+            self.p.stdin.close()  # drop a request the dead worker never read
+        except OSError:
             pass
         WorkerHandle.live.discard(self.p.pid)
 
@@ -206,9 +226,9 @@ class State:
 
     def add_reply(self, reply):
         cid = reply["id"]
-        for label, lib, t, times, calls, nan in reply["samples"]:
+        for label, lib, t, times, calls, nan, *more in reply["samples"]:
             key = (label, t)
-            s = harness.Sample(list(times), calls, nan)
+            s = harness.Sample(list(times), calls, nan, more[0] if more else None)
             old = self.samples[cid].get(key)
             self.samples[cid][key] = s if old is None else old.merged(s)
             self.libs[cid][label] = lib
@@ -250,6 +270,8 @@ class State:
                 )
                 if s.nan is not None:
                     rec["nan"] = round(s.nan, 4)
+                if s.abs_err is not None:
+                    rec["abs_err"] = float(f"{s.abs_err:.3e}")
             else:
                 rec.update(min=None, error=self.errors[cid].get((label, t)) or self.failure.get(cid) or "not measured")
             if label in self.checks[cid] and not any(t["label"] == label for t in timings):
@@ -293,7 +315,7 @@ class State:
                 continue
             for t in c["timings"]:
                 if t.get("times"):
-                    sample = harness.Sample(t["times"], t.get("calls", 1), t.get("nan"))
+                    sample = harness.Sample(t["times"], t.get("calls", 1), t.get("nan"), t.get("abs_err"))
                     st.samples[cid][(t["label"], t["threads"])] = sample
                     st.libs[cid][t["label"]] = t["lib"]
                 if t.get("check"):
@@ -850,6 +872,7 @@ def run(
 
     workers: dict = {}  # BLAS thread setting (None: default) -> WorkerHandle
     by_id = {c.id: c for c in cases}
+    env_asked = [False]  # one lane asks for the env (it imports every comparator library)
 
     def worker_for(ws, key):
         w = ws.get(key)
@@ -859,15 +882,23 @@ def run(
         if w is None:
             w = WorkerHandle(areas, log, limits, smoke=smoke, blas_threads=key)
             ws[key] = w
-            if key is None and "versions" not in env:
+            with lock:
+                ask = key is None and "versions" not in env and not env_asked[0]
+                env_asked[0] = env_asked[0] or ask
+            if ask:
                 pkgs = sorted({p for c in cases for r in c.refs if isinstance(r, RRef) for p in r.packages})
                 reply, status, _ = w.request(
                     {"cmd": "env", "r": state.use_r, "r_packages": pkgs if state.use_r else []},
                     limits.startup_timeout_s,
+                    starting=True,
                 )
-                if status == "ok":
-                    with lock:
+                with lock:
+                    if status == "ok":
                         env.update(reply["env"])
+                    env_asked[0] = False
+                if status != "ok":  # the worker is gone (request kills it): this start failed
+                    ws.pop(key, None)
+                    raise WorkerStartError(status)
         return w
 
     def kill_worker(ws, key):
@@ -898,26 +929,32 @@ def run(
             keys.append(None)
         return [(k, out.get(k, []), k is None) for k in keys]
 
-    def run_case(cid, ws) -> tuple[str, float]:
+    def case_limit(cid) -> float:
+        return by_id[cid].timeout_s or limits.case_timeout_s
+
+    def run_case(cid, ws, alone=False) -> tuple[str, float]:
         """One round of one case in the workers `ws` (BLAS key -> WorkerHandle); records the
-        result in `state` and returns (status, wall seconds)."""
+        result in `state` and returns (status, wall seconds). The case's time limit counts
+        its requests, not the starting of workers (which has a limit of its own). alone: a
+        parallel run's case running again on its own (a memory stop is then final)."""
         with lock:
             state.load[cid] = max(state.load[cid], proc.load1())
         meter = None if smoke else proc.CpuMeter().start()
         t0 = time.monotonic()
-        status, seconds, key, peak = "ok", 0.0, None, 0
+        status, seconds, key, peak, used = "ok", 0.0, None, 0, 0.0
         for key, ths, fixed in parts(by_id[cid]):
-            budget = limits.case_timeout_s - (time.monotonic() - t0)
             trim_idle(ws, key)
             try:
                 worker = worker_for(ws, key)
             except WorkerStartError as e:
                 status = e.status
                 break
+            t_req = time.monotonic()
             reply, status, peak = worker.request(
                 {"cmd": "case", "id": cid, "threads": ths, "use_r": state.use_r, "fixed": fixed},
-                max(budget, 1.0),
+                max(case_limit(cid) - used, 1.0),
             )
+            used += time.monotonic() - t_req
             worker.served += 1
             with lock:
                 state.rss[cid] = max(state.rss[cid], peak)
@@ -945,12 +982,12 @@ def run(
                 state.rounds_done[cid] += 1
             else:
                 why = {
-                    "timeout": f"timeout: over {fmt_duration(limits.case_timeout_s)}",
+                    "timeout": f"timeout: over {fmt_duration(case_limit(cid))}",
                     "memory": f"memory: over {limits.rss_bytes / 2**30:g} GB (peak {peak / 2**30:.1f} GB)",
                     "died": "the worker died",
                 }[status]
                 state.failure[cid] = why
-                if parallel and status == "memory":
+                if parallel and status == "memory" and not alone:
                     con.event("deferred", case_label(by_id[cid]), f"{why}; runs again alone at the end")
                 else:
                     con.event("stopped", case_label(by_id[cid]), f"{why}; starting a new worker")
@@ -995,6 +1032,14 @@ def run(
                 snapshot(*divmod(next_index[0], len(cases)), cids=(pairs[idx][1],))
 
         def lane(ws):
+            try:
+                lane_cases(ws)
+            except BaseException as e:  # noqa: BLE001  (a supervisor bug must not drop cases silently)
+                with lock:
+                    lane_errors.append(e)
+                stop.set()
+
+        def lane_cases(ws):
             while not stop.is_set():
                 with lock:
                     if not todo:
@@ -1011,6 +1056,7 @@ def run(
                 if w is not None and proc.tree_rss(w.p.pid) > limits.idle_rss_bytes:
                     ws.pop(None).close()
 
+        lane_errors: list[BaseException] = []
         lane_ws[:] = [{} for _ in range(min(lanes, len(todo)))]
         threads_ = [threading.Thread(target=lane, args=(ws,), daemon=True) for ws in lane_ws]
         for t in threads_:
@@ -1021,13 +1067,15 @@ def run(
         for ws in lane_ws:
             for key in list(ws):
                 ws.pop(key).close()
+        if lane_errors:
+            raise lane_errors[0]
         if retry:
             say(f"Running {len(retry)} cases again one at a time (stopped at the shared memory limit).")
             lane_ws[:] = [{}]
             for idx in sorted(retry):
                 if stop.is_set():
                     break
-                status, dt = run_case(pairs[idx][1], lane_ws[0])
+                status, dt = run_case(pairs[idx][1], lane_ws[0], alone=True)
                 finish(idx, status, dt)
         with lock:
             return snapshot(*divmod(next_index[0], len(cases)), full=True)

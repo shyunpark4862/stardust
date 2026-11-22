@@ -123,24 +123,28 @@ void for_elements(std::size_t k, Fn&& fn) {
 // The weighted form of for_elements for the calculus functions, whose elements carry many points
 // each (tanhsinh 64 - 2^19, nsum's direct sums up to 2^24, derivative 2 - order): fn(r0, r1) over
 // [0, k) split over the threads when the work, k elements of about w points each, reaches kParallel
-// points, in pieces of about kTask points (at least one element) and at least kWoken pieces, so
-// that a pool's sleeping workers join (csrc/parallel/pool.cpp wakes them at once for a job of more
-// than 16 tasks of unknown length; parallel_for's task_ns overload would do without the floor).
-// Which thread runs a piece never changes an element's arithmetic.
+// points, in pieces of about kTask points (at least one element). The pool is told a piece's length
+// (parallel_for's task_ns: about kPointNs a point), so a job long enough to pay for waking sleeping
+// workers wakes them at once and a short one wakes none, however many pieces it has. Which thread
+// runs a piece, and how many pieces there are, never changes an element's arithmetic.
 // for_elements itself (the optimize functions, one point per element) is unchanged (C22).
-constexpr std::size_t kWoken = 17;
+constexpr std::int64_t kPointNs = 2;  // a point's work in these passes (writing it, updating, summing)
 
 template <class Fn>
 void for_weighted(std::size_t k, std::size_t w, Fn&& fn) {
     const std::size_t work = k * std::max<std::size_t>(w, 1);
     if (work >= kParallel && k > 1 && parallel::available()) {
-        std::size_t per = std::max<std::size_t>(kTask / std::max<std::size_t>(w, 1), 1);  // elements a piece
-        per = std::min(per, std::max<std::size_t>(k / kWoken, 1));
+        const std::size_t per = std::max<std::size_t>(kTask / std::max<std::size_t>(w, 1), 1);  // elements a piece
         const auto tasks = static_cast<std::int64_t>((k + per - 1) / per);
-        parallel::parallel_for(tasks, [&](std::int64_t t) {
-            const std::size_t r0 = static_cast<std::size_t>(t) * per;
-            fn(r0, std::min(k, r0 + per));
-        });
+        const auto task_ns = static_cast<std::int64_t>(per * std::max<std::size_t>(w, 1)) * kPointNs;
+        parallel::parallel_for(
+            tasks,
+            [&](std::int64_t t) {
+                const std::size_t r0 = static_cast<std::size_t>(t) * per;
+                fn(r0, std::min(k, r0 + per));
+            },
+            task_ns
+        );
     } else {
         parallel::Unlocked u(work >= kParallel);
         fn(std::size_t{0}, k);

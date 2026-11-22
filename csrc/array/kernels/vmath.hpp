@@ -6,7 +6,8 @@
 //
 // exp: x = (k + j/128) log 2 + r, |r| <= log 2 / 256; e^x = 2^k 2^(j/128) (1 + p(r)) with
 // 2^(j/128) a double and its relative tail (the table, Arb), p the degree-5 Taylor polynomial
-// (truncation r^6/720 < 2^-60): ARM optimized-routines' exp, also stats/vmath.hpp's.
+// (truncation r^6/720 < 2^-60): ARM optimized-routines' exp. The library's one NEON exp: stats'
+// chunk kernels (ck::exp), mvcdf's integrand and special's softmax/logsumexp call it too.
 // expm1: the same reduction, e^x - 1 = (s - 1) + s t, s = 2^(k + j/128), t = tail + p(r):
 // s - 1 is exact where it matters (s in [1/2, 2], Sterbenz) and fma rounds the sum once, so
 // the result keeps its relative accuracy near 0 (|x| < 2^-54 returns x).

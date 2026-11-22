@@ -9,9 +9,10 @@ stream is a copy of the original stdout, taken before fd 1 is redirected.
 Requests:
     {"cmd": "env", "r": bool, "r_packages": [...]} -> {"env": {...}}
     {"cmd": "case", "id": ..., "threads": [..] | null, "use_r": bool, "fixed": bool}
-        -> {"id": ..., "samples": [[label, lib, threads, times, calls, nan], ...],
+        -> {"id": ..., "samples": [[label, lib, threads, times, calls, nan, abs_err], ...],
             "errors": [[label, threads, text], ...], "setup_error": text | null, "seconds": s,
             "checks": [[label, ok, text], ...]}
+        (abs_err: the warm-up result's error against the case's reference, or null)
     {"cmd": "quit"}
 
     python -m bench.speed.worker AREA [AREA ...] [--smoke]
@@ -89,12 +90,13 @@ class Worker:
                 arrays, sets = _r_inputs(rref, data)
                 timing = dict(case.timing, batches=1, min_batches=1, target_s=0.0) if self.smoke else case.timing
                 sample = r.time(rref.expr, arrays, setup=rref.setup, packages=rref.packages, sets=sets, **timing)
-                if keep is not None:
-                    keep.append(
-                        r.value(
-                            rref.expr, arrays, setup=rref.setup, packages=rref.packages, sets=sets, value=rref.value
-                        )
+                if keep is not None or case.abs_err is not None:
+                    v = r.value(
+                        rref.expr, arrays, setup=rref.setup, packages=rref.packages, sets=sets, value=rref.value
                     )
+                    if keep is not None:
+                        keep.append(v)
+                    sample.abs_err = _abs_err(case, data, v)
                 return sample, None
             with harness.sd_threads(threads if label == "sd" else None), harness.blas_threads(blas):
                 fn = make(data)
@@ -102,6 +104,7 @@ class Worker:
                 sample = harness.measure(fn, **case.timing, smoke=self.smoke, keep=got)
                 if got:
                     sample.nan = check.nan_share(got[0])
+                    sample.abs_err = _abs_err(case, data, got[0])
                     if keep is not None:
                         keep.append(got[0])
                 return sample, None
@@ -127,7 +130,7 @@ class Worker:
         def add(label, lib, t, res):
             sample, err = res
             if sample is not None:
-                out["samples"].append([label, lib, t, sample.times, sample.calls, sample.nan])
+                out["samples"].append([label, lib, t, sample.times, sample.calls, sample.nan, sample.abs_err])
             else:
                 out["errors"].append([label, t, err])
 
@@ -180,6 +183,15 @@ class Worker:
     def close(self):
         if self._r is not None:
             self._r.close()
+
+
+def _abs_err(case, data, result) -> float | None:
+    """The case's abs_err of a result (None without one); it raises like the call would, so
+    a reference that does not fit shows as the measurement's error."""
+    if case.abs_err is None:
+        return None
+    e = case.abs_err(data, result)
+    return None if e is None else float(e)
 
 
 def _r_inputs(rref, data):

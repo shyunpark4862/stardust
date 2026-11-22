@@ -5,7 +5,8 @@ their libraries' default threads gets one row per case (sd at each thread count 
 own column); a group with a comparator whose BLAS follows sd's thread count gets one
 row per case and thread count. A case's note gets the comparators' `differs` reasons
 (from the run) and a line for each comparator that gives NaN more often than sd
-(check.nan_note).
+(check.nan_note). A group whose cases have a reference (registry.Case.abs_err) gets an
+error column after each library's time: the largest |value - reference| its result reached.
 """
 
 from __future__ import annotations
@@ -46,6 +47,16 @@ def _cell(t, n_case, foot):
         foot.add("scaled")
         return fmt_time(v) + "\\*"
     return fmt_time(v)
+
+
+def _err_cell(ts) -> str:
+    """The largest abs_err of the timings `ts` (one library's, any thread count)."""
+    vals = [t["abs_err"] for t in ts if t is not None and t.get("abs_err") is not None]
+    return f"{max(vals):.1e}" if vals else "-"
+
+
+def _err_labels(cases: list[dict]) -> set[str]:
+    return {t["label"] for c in cases for t in c["timings"] if t.get("abs_err") is not None}
 
 
 def _name_cell(c, foot) -> str:
@@ -118,6 +129,7 @@ def _summary(cases, fixed, follow, ths) -> list[str]:
 
 def group_table(cases: list[dict]) -> list[str]:
     fixed, follow, ths = _ref_labels(cases)
+    errs = _err_labels(cases)
     note_of = {c["id"]: case_note(c) for c in cases}
     notes = any(note_of.values())
     sizes = any(c.get("size") for c in cases)
@@ -127,8 +139,9 @@ def group_table(cases: list[dict]) -> list[str]:
         out.append("")
     if not follow:
         head = ["사례"] + (["크기"] if sizes else []) + [f"sd {t}{THREADS_WORD}" for t in ths]
+        head += ["sd 오차"] if "sd" in errs else []
         for label in fixed:
-            head += [label] + [f"÷ sd {t}" for t in ths]
+            head += [label] + (["오차"] if label in errs else []) + [f"÷ sd {t}" for t in ths]
         head += ["잡음"] + (["비고"] if notes else [])
         out += [
             "| " + " | ".join(head) + " |",
@@ -140,12 +153,15 @@ def group_table(cases: list[dict]) -> list[str]:
                 [_name_cell(c, foot)]
                 + ([c.get("size", "")] if sizes else [])
                 + [_cell(t, c.get("n"), foot) for t in sds]
+                + ([_err_cell(sds)] if "sd" in errs else [])
             )
             used = list(sds)
             for label in fixed:
                 ref = results.timing(c, label, None)
                 used.append(ref)
                 row.append(_cell(ref, c.get("n"), foot))
+                if label in errs:
+                    row.append(_err_cell([ref]))
                 v, _ = _scaled(ref, c.get("n"))
                 for sd in sds:
                     row.append(_ratio_cell(v / sd["min"] if v and sd and sd.get("min") else None))
@@ -154,9 +170,9 @@ def group_table(cases: list[dict]) -> list[str]:
                 row.append(note_of[c["id"]])
             out.append("| " + " | ".join(row) + " |")
     else:
-        head = ["사례"] + (["크기"] if sizes else []) + [THREADS_WORD, "sd"]
+        head = ["사례"] + (["크기"] if sizes else []) + [THREADS_WORD, "sd"] + (["sd 오차"] if "sd" in errs else [])
         for label in follow + fixed:
-            head += [label, "÷ sd"]
+            head += [label] + (["오차"] if label in errs else []) + ["÷ sd"]
         head += ["잡음"] + (["비고"] if notes else [])
         out += [
             "| " + " | ".join(head) + " |",
@@ -171,19 +187,29 @@ def group_table(cases: list[dict]) -> list[str]:
                     [_name_cell(c, foot)]
                     + ([c.get("size", "")] if sizes else [])
                     + [str(th), _cell(sd, c.get("n"), foot)]
+                    + ([_err_cell([sd])] if "sd" in errs else [])
                 )
                 used = [sd]
                 for label in follow + fixed:
                     ref = results.timing(c, label, th if label in follow else None)
                     used.append(ref)
                     v, _ = _scaled(ref, c.get("n"))
-                    row += [_cell(ref, c.get("n"), foot), _ratio_cell(v / sd["min"] if v and sd.get("min") else None)]
+                    row.append(_cell(ref, c.get("n"), foot))
+                    if label in errs:
+                        row.append(_err_cell([ref]))
+                    row.append(_ratio_cell(v / sd["min"] if v and sd.get("min") else None))
                 row.append(_noise(used))
                 if notes:
                     row.append(note_of[c["id"]])
                 out.append("| " + " | ".join(row) + " |")
         if fixed:
             out += ["", f"{', '.join(fixed)}은(는) 스레드 수와 상관없이 한 번 잰 값이다(그 라이브러리의 기본 스레드)."]
+    if errs:
+        out += [
+            "",
+            "오차: 그 라이브러리의 결과와 참값의 차이 중 가장 큰 것(절댓값)이다. 입력의 일부로 잰 비교 대상은 그 일부에서 "
+            "잰다. 참값은 사례의 비고에 적는다.",
+        ]
     if "busy" in foot:
         out += ["", "† 잴 때 다른 프로세스가 CPU를 1코어 넘게 썼다(사례의 `other_cpu`). 다시 재는 것이 좋다."]
     if "scaled" in foot:

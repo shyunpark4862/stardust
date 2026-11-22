@@ -1,6 +1,6 @@
 // Building blocks of the chunk kernels (stats/engine.hpp, docs/design/stats.md §3.4): whole-
 // chunk elementary functions whose result for an element does not depend on its position or
-// the call's length -- exp from stats/vmath.hpp (NEON, 1.003 units against Arb), log and pow
+// the call's length -- exp from array/kernels/vmath.hpp (NEON, 1.003 units against Arb), log and pow
 // through vForce (accelerate/vforce.hpp: checked; expm1 and log1p failed and are libm loops
 // here) -- and the fallback pass.
 //
@@ -12,8 +12,8 @@
 #pragma once
 
 #include "accelerate/vforce.hpp"
+#include "array/kernels/vmath.hpp"
 #include "stats/engine.hpp"
-#include "stats/vmath.hpp"
 
 #include <cmath>
 
@@ -24,9 +24,9 @@ inline constexpr double kVfLog = 4.0;
 inline constexpr double kVf = kVfLog;
 
 // out may be the input.
-// exp: stats/vmath.hpp (0.52 ULP; measured against Arb on 6e4 points over [-708, 708]: 1.003 units,
+// exp: array/kernels/vmath.hpp, the library's one NEON exp (0.52 ULP; measured against Arb on 6e4 points over [-708, 708]: 1.003 units,
 // vvexp 1.96 on the same points), kept at kVfExp in the bounds.
-inline void exp(double* out, const double* x, int n) { vm::exp(out, x, n); }
+inline void exp(double* out, const double* x, int n) { vmath::exp(out, x, n); }
 inline void log(double* out, const double* x, int n) { vvlog(out, x, &n); }
 inline void pow(double* out, const double* base, const double* e, int n) { vvpow(out, e, base, &n); }  // base^e
 inline void expm1(double* out, const double* x, int n) {

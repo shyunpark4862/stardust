@@ -17,6 +17,7 @@
 #include "special/reduce.hpp"
 
 #include "array/ndarray.hpp"
+#include "array/kernels/vmath.hpp"
 #include "array/ops/reduction.hpp"
 #include "array/ops/ufunc.hpp"
 #include "bind/pyutil.hpp"
@@ -24,7 +25,6 @@
 #include "special/cost.hpp"
 #include "special/gamma_core.hpp"
 #include "special/kernels/chunked.hpp"
-#include "stats/vmath.hpp"
 
 #include <arm_neon.h>
 
@@ -48,7 +48,7 @@ struct FiniteOrZero : Real {
 
 // exp(x - m) with x - m = hi + lo exact: e^hi (1 + lo), no correction where hi is not finite
 // (inf - inf = NaN, exp(-inf) = 0) or e^hi is 0. In chunks (kernels/chunked.hpp): x - m in NEON
-// lanes, e^hi by stats/vmath.hpp's NEON exp (0.6 ns an element, 0.52 ULP; libm's exp an element
+// lanes, e^hi by array/kernels/vmath.hpp's NEON exp (0.6 ns an element, 0.52 ULP; libm's exp an element
 // at a time was 2 ns, most of softmax's time), the correction in lanes; the odd last element
 // the same operations in scalar (vmath's twin), so an element's value does not depend on its
 // position.
@@ -70,7 +70,7 @@ struct ExpDiff : Real {
             const TwoSum d = two_sum(x[i], -m[i]);
             hi[i] = d.s, lo[i] = d.err;
         }
-        stats::vm::exp(e, hi, n);
+        vmath::exp(e, hi, n);
         const float64x2_t inf = vdupq_n_f64(kInf);
         i = 0;
         for (; i + 2 <= n; i += 2) {

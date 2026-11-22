@@ -25,6 +25,10 @@ with its first Python comparator's and with every R and Boost comparator's (chec
 A comparator that computes something else by design carries `differs` (why; it is not
 compared and the reason goes into the table's note); a case whose results cannot be
 compared value by value carries a Check (a normaliser, or `skip` with the reason).
+
+A case whose libraries stop at a tolerance (an integral to atol, an iteration to a cap)
+carries `abs_err`: every measurement then records the error its result reached against a
+reference, so the tables show the time and the accuracy bought with it.
 """
 
 from __future__ import annotations
@@ -125,6 +129,11 @@ class Case:
     teardown: Callable[[dict], None] | None = None  # undo global settings the setup made
     title: str = ""  # the group's section title in bench/<area>/speed.md (set by load from TITLES)
     check: Check = Check()  # how --smoke compares the results
+    timeout_s: float | None = None  # this case's time limit per round in place of the run's (--timeout)
+    # The error a call reached: (data, result) -> the largest |value - reference| (a comparator
+    # timed on a sample of the inputs gives the first values). Recorded next to each timing
+    # ("abs_err") and shown in the tables, where libraries stop at a tolerance of their own.
+    abs_err: Callable[[dict, object], float] | None = None
 
     @property
     def notes(self) -> str:

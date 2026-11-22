@@ -349,7 +349,6 @@ COMPARATOR_SAMPLE = {
     ("Hypergeometric.icdf", "R"): 1_000,
     ("Hypergeometric.iccdf", "R"): 1_000,
     ("Poisson.logccdf", "Boost"): 10_000,
-    ("MultivariateNormal(d=3).cdf(x, atol=1e-06)", "R abseps=atol"): 1_000,
 }
 
 
@@ -1119,16 +1118,35 @@ def _mvcdf_rows():
     return rows
 
 
+def mvcdf_max_points(d: int) -> int:
+    """The cap on integrand evaluations per point every library of the mvn / mvt cdf cases
+    gets: sd's default (max_points, 10^6 per variable), which is scipy's mvn default too.
+    sd, scipy and mvtnorm stop at the tolerance or at this cap, whichever comes first;
+    mvtnorm's GenzBretz alone would stop at 25000 and scipy's mvt at 1000 d, short of the
+    tolerance at d = 10."""
+    return 10**6 * d
+
+
 # sd at one thread above 5 s per call (timed once per round)
 MVCDF_SLOW = {(10, math.inf, 1e-6), (10, 4.0, 1e-6)}
+# The comparators' points where all of them would take more than about 10 s a call at the
+# shared cap (seconds a point measured 2026-11-22): mvtnorm at atol = 1e-6 (pmvnorm d = 3
+# 0.03 s, pmvt d = 3 0.38 s, d = 10 1.9 s), and scipy's mvt cdf, which has no tolerance and
+# always takes the cap's points (0.44 s at d = 2, 0.67 s at d = 3, 1.3 s at d = 5, 4 s at d = 10).
+MVCDF_R_N = {(3, math.inf, 1e-6): 300, (3, 4.0, 1e-6): 20, (10, 4.0, 1e-6): 5}
+MVT_SCIPY_N = {2: 20, 3: 10, 5: 5, 10: 4}
 
 
-def _mvcdf_setup(d, df):
+def _mvcdf_setup(d, df, truth=True):
+    """truth=False: without the reference values (stats_mvcdf_ref.py makes them)."""
+
     def setup():
         import numpy as np
         import scipy.stats as st
 
         import stardust as sd
+
+        from .stats_mvcdf_ref import reference
 
         rng = np.random.default_rng(d)
         A = rng.normal(size=(d, d + 2))
@@ -1149,16 +1167,32 @@ def _mvcdf_setup(d, df):
             ref = None
         else:
             D = sd.stats.MultivariateT(mu=sd.asarray(np.zeros(d)), shape=sd.asarray(S), df=df)
-            ref = st.multivariate_t(np.zeros(d), S, df=df, seed=0)
-        return {"D": D, "X": sd.asarray(X), "xn": X, "xs": X[:n_sc].copy(), "S": S, "ref": ref, "st": st, "d": d}
+            ref = st.multivariate_t(np.zeros(d), S, df=df)
+        # the values the errors are measured against: sd's exact formula at d <= 3, a stored
+        # far tighter run at d >= 4 (stats_mvcdf_ref.py)
+        exact = np.asarray(D.cdf(sd.asarray(X))) if d <= 3 else None
+        return {
+            "D": D,
+            "X": sd.asarray(X),
+            "xn": X,
+            "xs": X[:n_sc].copy(),
+            "S": S,
+            "ref": ref,
+            "st": st,
+            "d": d,
+            "truth": exact if d <= 3 or not truth else reference(d, df, X, S),
+        }
 
     return setup
 
 
-def _scipy_mvt_cdf(d):
+def _mvcdf_abs_err(data, result):
+    """The largest |value - reference| of a cdf result over its points (a comparator timed on
+    a sample gives the first ones)."""
     import numpy as np
 
-    return lambda: np.array([d["ref"].cdf(x) for x in d["xs"]])
+    v = np.asarray(result, dtype=np.float64).ravel()
+    return float(np.max(np.abs(v - data["truth"][: v.size])))
 
 
 def _mvcdf_cases():
@@ -1167,32 +1201,37 @@ def _mvcdf_cases():
     for d, df, n_ours, n_sc, atol in _mvcdf_rows():
         cls = "MultivariateNormal" if math.isinf(df) else "MultivariateT"
         what = f"d={d}" if math.isinf(df) else f"d={d}, df=4"
+        cap = mvcdf_max_points(d)
         slow = (d, df, atol) in MVCDF_SLOW
-        note = "정확한 공식" if d <= 3 else ""
+        notes = ["정확한 공식" if d <= 3 else ""]
         if slow:
-            note = "sd 1스레드 한 번에 5초가 넘는다"
+            notes = ["sd 1스레드 한 번에 5초가 넘는다"]
+        notes.append(f"세 라이브러리 모두 평가 수 상한 {cap:,}")
         if not math.isinf(df):
-            note = ", ".join(filter(None, (note, "scipy의 mvt cdf에는 허용오차 인자가 없다")))
+            notes.append("scipy의 mvt cdf에는 허용오차 인자가 없어 상한의 점을 모두 쓴다")
+        notes.append("오차의 참값: " + ("sd의 정확한 공식" if d <= 3 else "sd의 atol=1e-8 실행(stats_mvcdf_ref.json)"))
         out.append(
             Case(
                 area="stats",
                 group="mvn-mvt-cdf",
-                name=f"{cls}({what}).cdf(x, atol={atol:.0e})",
+                name=f"{cls}({what}).cdf(x, atol={atol:.0e}, max_points={cap})",
                 size=f"{n_ours} points",
                 n=n_ours,
                 setup=_mvcdf_setup(d, df),
-                sd=lambda dd, atol=atol: lambda D=dd["D"], X=dd["X"]: D.cdf(X, atol=atol),
-                refs=(_mvcdf_ref(d, df, atol, n_sc), _mvcdf_r(df, atol, f"{cls}({what}).cdf(x, atol={atol:.0e})")),
+                sd=lambda dd, atol=atol, cap=cap: lambda D=dd["D"], X=dd["X"]: D.cdf(X, atol=atol, max_points=cap),
+                refs=(_mvcdf_ref(d, df, atol, n_sc, cap), _mvcdf_r(d, df, atol, cap)),
                 quick=(d, df, atol) in quick,
-                note=note,
+                note=", ".join(filter(None, notes)),
+                abs_err=_mvcdf_abs_err,
             )
         )
     return out
 
 
-def _mvcdf_r(df, atol, case):
-    """mvtnorm's pmvnorm / pmvt at sd's accuracy (Genz-Bretz, abseps = atol, releps = 0), one
-    row a call as the accuracy measurement calls it, a fixed seed per row."""
+def _mvcdf_r(d, df, atol, cap):
+    """mvtnorm's pmvnorm / pmvt at sd's accuracy and cap (Genz-Bretz, abseps = atol, releps =
+    0, maxpts = the shared cap), one row a call as the accuracy measurement calls it, a fixed
+    seed per row."""
     call = (
         "pmvnorm(upper = X[i, ], sigma = S, algorithm = alg)[1]"
         if math.isinf(df)
@@ -1200,9 +1239,9 @@ def _mvcdf_r(df, atol, case):
     )
     expr = (
         f"vapply(seq_len(nrow(X)), function(i) {{ set.seed(0); "
-        f"alg <- GenzBretz(abseps = {atol!r}, releps = 0); {call} }}, 0.0)"
+        f"alg <- GenzBretz(maxpts = {cap}, abseps = {atol!r}, releps = 0); {call} }}, 0.0)"
     )
-    k = COMPARATOR_SAMPLE.get((case, "R abseps=atol"))
+    k = MVCDF_R_N.get((d, df, atol))
     setup = f"X <- X[seq_len({k}), , drop = FALSE]" if k else ""
     return RRef("R abseps=atol", expr, data={"xn": "X", "S": "S"}, packages=("mvtnorm",), setup=setup, n=k)
 
@@ -1214,11 +1253,19 @@ MVN_LABEL = "scipy abseps=atol"
 MVN_SCIPY_N = {(3, 1e-6): 100}
 
 
-def _mvcdf_ref(dim, df, atol, n_sc):
-    """scipy's mvn cdf at sd's accuracy (abseps=atol, releps=0); its mvt cdf takes no
-    tolerance and runs at its own."""
+def _mvcdf_ref(dim, df, atol, n_sc, cap):
+    """scipy's mvn cdf at sd's accuracy and cap (abseps=atol, releps=0, maxpts=cap); its mvt
+    cdf takes no tolerance and integrates with the cap's points, on the first points only."""
     if not math.isinf(df):
-        return Ref("scipy", _scipy_mvt_cdf, n=n_sc)
+        k = min(n_sc, MVT_SCIPY_N[dim])
+
+        def make_t(d):
+            import numpy as np
+
+            ref, xs = d["ref"], d["xs"][:k].copy()
+            return lambda: np.array([ref.cdf(x, maxpts=cap, random_state=0) for x in xs])
+
+        return Ref("scipy", make_t, n=k)
     k = MVN_SCIPY_N.get((dim, atol), n_sc)
 
     def make(d):
@@ -1226,7 +1273,7 @@ def _mvcdf_ref(dim, df, atol, n_sc):
 
         st, xs, S = d["st"], d["xs"][:k].copy(), d["S"]
         mu = np.zeros(d["d"])
-        return lambda: st.multivariate_normal.cdf(xs, mu, S, abseps=atol, releps=0, rng=0)
+        return lambda: st.multivariate_normal.cdf(xs, mu, S, maxpts=cap, abseps=atol, releps=0, rng=0)
 
     return Ref(MVN_LABEL, make, n=k, lib="scipy")
 

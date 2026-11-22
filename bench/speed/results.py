@@ -6,7 +6,7 @@ so a long run never rewrites what it has written:
     {"schema": 2, "kind": "run", "run": "<stamp>-<commit>", "env": {...}, "options": {...}}
     {"case": {"id", "area", "group", "name", "size", "n", "cost", "note", "rounds", ...,
               "timings": [{"label", "lib", "threads", "n", "min", "median", "noise",
-                           "batches", "calls", "times", "nan", "check", "error"}]}}
+                           "batches", "calls", "times", "nan", "abs_err", "check", "error"}]}}
     {"env": {...}}          the whole env again, when the workers added to it
     {"options": {...}}      changed options (progress: next, complete, elapsed_s)
 
@@ -17,12 +17,13 @@ interruption is ignored.
 
 `threads` is the thread count the call ran at: stardust's pool for "sd", the BLAS limit
 for a "follow" comparator, and null for a "fixed" comparator (its library's defaults).
-Times are seconds per call. `nan` is the NaN share of the call's result; `check` (smoke
-runs) is the results check against sd: {"ok", "text"}.
+Times are seconds per call. `nan` is the NaN share of the call's result; `abs_err` (cases
+with a reference, registry.Case.abs_err) the largest error of the result against it;
+`check` (smoke runs) is the results check against sd: {"ok", "text"}.
 
 A baseline (bench/speed/results/<area>.json, in the repository) is one JSON:
 {"schema", "area", "runs": {run: env}, "cases": [...]}. Its timings keep min, median,
-noise, batches, calls, n and nan (not the batch times), the run each came from and that
+noise, batches, calls, n, nan and abs_err (not the batch times), the run each came from and that
 run's rounds.
 Promoting a run merges it timing by timing: a timing the run measured replaces the
 baseline's (label, threads) timing, every other timing stays, so a run of one thread
@@ -41,7 +42,9 @@ BASELINE_DIR = ROOT / "bench" / "speed" / "results"
 RUN_DIR = ROOT / "build" / "speed"
 
 # what a baseline keeps of a run's timing (with the run and its rounds)
-BASELINE_TIMING = ("label", "lib", "threads", "n", "min", "median", "noise", "batches", "calls", "nan", "error")
+BASELINE_TIMING = (
+    "label", "lib", "threads", "n", "min", "median", "noise", "batches", "calls", "nan", "abs_err", "error"
+)  # fmt: skip
 
 
 def load(path) -> dict:

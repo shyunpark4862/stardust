@@ -24,6 +24,7 @@
 // |d log P / d log x| over the inputs), which is ~ -log P in the tails.
 #pragma once
 
+#include "array/kernels/vmath.hpp"
 #include "array/ops/pieces.hpp"
 #include "parallel/pool.hpp"
 #include "random/philox.hpp"
@@ -31,7 +32,6 @@
 #include "special/ops/distr.hpp"
 #include "special/ops/erf.hpp"
 #include "special/ops/incgamma.hpp"
-#include "stats/vmath.hpp"
 
 #include <arm_neon.h>
 
@@ -1385,7 +1385,7 @@ inline bool reorder(std::vector<double> S, std::vector<double> b, int n, double 
 //
 // sd.special's algorithms (Cephes ndtr's rationals with exp(-x^2 / 2) split as hi + lo; Wichura's
 // AS241) in NEON lanes, two elements a vector: a pair computes the regions its two elements
-// need (one when they share a region, the usual case) and selects. exp is stats/vmath.hpp's
+// need (one when they share a region, the usual case) and selects. exp is array/kernels/vmath.hpp's
 // (0.52 ULP against vvexp's 1), the tail's log log01 below (vvlog was 17% of the integrand).
 // The chunk kernels branch per element on scalars after a vForce pass; on mixed regions the
 // lanes measured about 1.25x (Phi) and 2.8x (Phi^-1) faster. Computing every region branch-free,
@@ -1411,8 +1411,8 @@ inline float64x2_t splat(double c) { return vdupq_n_f64(c); }
 
 // e^x for x <= 0 (NaN passes): the lanes' exp where x >= -kExpMax, libm's below (subnormal or 0)
 inline float64x2_t exp_neg(float64x2_t x) {
-    const uint64x2_t in = vcgeq_f64(x, splat(-vm::kExpMax));  // false for NaN
-    float64x2_t y = vm::exp_core(vbslq_f64(in, x, splat(0.0)));
+    const uint64x2_t in = vcgeq_f64(x, splat(-vmath::kExpMax));  // false for NaN
+    float64x2_t y = vmath::exp_lanes(vbslq_f64(in, x, splat(0.0)));
     if (!all(in)) [[unlikely]] {
         double a[2];
         vst1q_f64(a, y);
@@ -1541,7 +1541,7 @@ inline void chi_r(const ChiTable& T, const double* u, double* r, double* y, doub
     static_cast<void>(y);
     qv::ndtri(u, z, E);
     for (int q = 0; q < E; ++q) r[q] = u[q] <= T.wsplit ? T.left.eval(std::log(u[q])) : T.right.eval(z[q]);
-    vm::exp(r, r, E);
+    vmath::exp(r, r, E);
 }
 
 // Scratch for one task: the coordinates, y's and products of a block.

@@ -1296,6 +1296,7 @@ def _sm_rlm(M, collect=False):
     def make(d):
         import gc
 
+        import numpy as np
         from statsmodels.robust import norms
 
         sm = _sm()
@@ -1303,9 +1304,12 @@ def _sm_rlm(M, collect=False):
         def f():
             r = sm.RLM(d["y"], d["Xc"], M=getattr(norms, M)()).fit()
             if collect:
+                # The fit leaves ~3.6 GB in reference cycles; two of them pass 16 GB. Keep only
+                # the coefficients (a copy, for the smoke run's check) and collect the rest.
+                params = np.array(r.params)
                 del r
-                gc.collect()  # the fit leaves ~3.6 GB in reference cycles; two of them pass 16 GB
-                return None
+                gc.collect()
+                return params
             return r
 
         return _quiet(f)

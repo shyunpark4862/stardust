@@ -127,7 +127,7 @@ struct LogNormal {
         }
     }
     // The first tier: log x as L + r, L = log x by vForce and r = x e^-L - 1 (fma; e^-L by
-    // stats/vmath.hpp's exp, 1.04 units): log x is then off by at most 1.04 units absolutely,
+    // array/kernels/vmath.hpp's exp, 1.04 units): log x is then off by at most 1.04 units absolutely,
     // z = (log x - mu) / sigma (two_sum, the quotient and its fma remainder) by 1.04 / sigma, and
     // the exponent -(z^2 / 2 + log(sigma sqrt(2 pi)) + log x), summed by two_sum with the low
     // parts gathered, by T = 1.04 (|z| / sigma + 1) + 1 units. pdf: e^(exponent) with

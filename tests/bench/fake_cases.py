@@ -1,5 +1,9 @@
 """Fake cases for the supervisor tests (SDBENCH_CASES_MODULE=tests.bench.fake_cases).
 
+The stops are certain rather than raced against the clock: "sleep" never ends and has a
+time limit of its own (1 s), "hog" grows without end; the tests give the run a long time
+limit, so no other case can reach it however loaded the machine is.
+
 SDBENCH_PID_LOG=<file>: the "pid" case's setup appends its worker's pid to that file.
 """
 
@@ -15,7 +19,8 @@ def _hog(d):
     blocks = []
 
     def f():
-        # Keep allocating and touching memory until the supervisor kills the worker.
+        # Keep allocating and touching memory until the supervisor kills the worker: with no
+        # time limit near, the memory limit is the only thing that stops it.
         while True:
             blocks.append(np.ones(16 * 2**20))  # 128 MB per block
             time.sleep(0.05)
@@ -53,7 +58,16 @@ def cases():
             cost=("special", "_fake"),
             **fast,
         ),
-        Case(area="array", group="fake", name="sleep", sd=lambda d: lambda: time.sleep(60), threads=(1,), **fast),
+        # Never ends: stopped by its own time limit, while the other cases have the run's (long) one.
+        Case(
+            area="array",
+            group="fake",
+            name="sleep",
+            sd=lambda d: lambda: time.sleep(3600),
+            threads=(1,),
+            timeout_s=1.0,
+            **fast,
+        ),
         Case(area="array", group="fake", name="pid", setup=_pid_setup, sd=lambda d: lambda: None, threads=(1,), **fast),
         Case(
             area="array",
@@ -99,6 +113,18 @@ def cases():
             sd=_boom,
             threads=(1,),
             refs=(Ref("numpy", lambda d: lambda: None),),
+            **fast,
+        ),
+        Case(
+            area="array",
+            group="fake",
+            name="err",
+            n=2,
+            setup=lambda: {"truth": [1.0, 2.0]},
+            sd=lambda d: lambda: [1.0, 2.0 + 1e-12],
+            refs=(Ref("numpy", lambda d: lambda: [1.0, 2.0 + 1e-7]), Ref("sampled", lambda d: lambda: [1.5], n=1)),
+            threads=(1,),
+            abs_err=lambda d, v: max(abs(a - b) for a, b in zip(v, d["truth"], strict=False)),
             **fast,
         ),
         Case(

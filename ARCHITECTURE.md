@@ -14,7 +14,7 @@
                                                         │
                      htest/      ──▶ stats/, special/, random/, array/, parallel/
                      sparse/     ──▶ linalg/, array/, base/, parallel/, accelerate/(Accelerate의 희소 LU와 BLAS)
-                     regression/ ──▶ linalg/, special/, random/
+                     regression/ ──▶ linalg/, special/, random/, htest/(Jarque–Bera의 중심 합), parallel/
                      optimize/   ──▶ linalg/, differentiate/(차분의 간격), elementwise/(원소별 반복 고리)
                      differentiate/ ──▶ elementwise/(derivative의 원소별 고리), linalg/(accurate의 fastsum 합), parallel/, array/  (steps는 표준 라이브러리만 쓴다)
                      integrate/  ──▶ array/(pairwise 합과 cumulative_sum의 스캔), parallel/, elementwise/(tanhsinh·nsum의 원소별 고리), linalg/(Accelerate의 BLAS: quad_vec의 2-노름)
@@ -29,7 +29,7 @@
   - `array/`는 다른 영역을 include하지 않는다. 같은 x의 sin과 cos를 한 번에 구하는 `base/sincos.hpp`(docs/design/array.md §1.3)는 의존이 없어 바닥 층에 두고 array와 special이 함께 쓴다.
   - `linalg/`는 `array/`의 `NDArray`를 직접 받는다. buffer protocol을 거치지 않는다 (DESIGN §3.1). LAPACK 래퍼(`linalg/lapack.hpp`, `linalg/ops/common.hpp`)는 regression과 optimize도 쓴다.
   - `frame/`은 `array/`를 모른다. 둘을 잇는 코드는 `frame/interop.{hpp,cpp}` 한 곳에만 둔다 (DESIGN §4.3). `array/` 헤더를 include하는 frame 파일은 `interop.cpp` 하나다. 다른 frame 파일은 `interop.hpp`(Column과 nanobind만 쓰는 선언)를 통해 부른다 (docs/design/frame.md §5.4).
-  - `stats/`는 special의 커널(불완전 감마·베타, 오차함수 등)과 random의 생성기를 쓴다. `regression/`은 linalg의 LAPACK 래퍼, special의 double-double·오차함수·감마·로지스틱 함수, random의 생성기를 쓴다. Python 쪽에서 `regression.nls`는 optimize의 최소제곱(`csrc/optimize/lsq.cpp`)을 쓴다.
+  - `stats/`는 special의 커널(불완전 감마·베타, 오차함수 등)과 random의 생성기를 쓴다. `regression/`은 linalg의 LAPACK 래퍼, special의 double-double·오차함수·감마·로지스틱 함수, random의 생성기, htest의 중심 합 커널(`htest/normality.hpp`: `jarque_bera()`), parallel의 스레드풀(`parallel/pool.hpp`)을 쓴다. Python 쪽에서 `regression.nls`는 optimize의 최소제곱(`csrc/optimize/lsq.cpp`)을 쓴다.
   - Python 층에서 `stardust.integrate`와 `stardust.differentiate`는 인자 검사 도우미(`_callable`, `_check_int`, `_real` 등)를 `stardust.optimize._common`에서, 원소별 무리의 입력(`_inputs`, `_args`, `_shaped`)을 `stardust.optimize._elementwise`에서 가져온다. C++의 반복 고리는 바닥 폴더 `csrc/elementwise/`에 있어 optimize를 거치지 않는다(docs/design/integrate.md C16, §6.3).
   - Python 경계의 공용 도우미 `bind/pyutil.hpp`(배열 받기와 만들기)와 `bind/errors.hpp`(에러 메시지에 공개 함수 이름 붙이기)는 모든 영역의 `ops/`가 쓴다. 영역마다의 바인딩 파일(`bind/<영역>_bind.cpp`)은 맨 위 층이다.
 - **새 영역은 디렉터리 하나와 Python 하위 모듈 하나로 붙는다.** 아래 층만 쓰고, 기존 영역을 고치지 않는다.
@@ -78,7 +78,7 @@ stardust/
                             bessel bessel01 airy hyper lambertw wofz cf_fast halley_fast testing
                   kernels/  simd chunked
                   coeffs/   생성한 계수 표 (tools/gen_*.py)
-    stats/        engine chunk chunk_dd vmath numeric discrete dd_linalg mvcdf sample sample_dist cost_table
+    stats/        engine chunk chunk_dd numeric discrete dd_linalg mvcdf sample sample_dist cost_table
                   dist/     분포 계열마다 한 파일 (normal, gamma, beta, t_f, noncentral, discrete_basic, …)
                   coeffs/   생성한 계수 표
     regression/   linear lsq slopes glm penalized robust quantile select dot2 dd2 unitdev
@@ -160,7 +160,7 @@ stardust/
 - `visit_dtype`은 배열 dtype만 받는다. 모든 커널이 모든 dtype을 인스턴스화하지 않게 하기 위해서다. frame 코드는 dtype마다 `switch`로 고르고, 그 `switch`들이 `Complex128`을 "frame dtype이 아님"으로 따로 적는다. `interop.cpp`는 고정폭 dtype의 바이트를 복사할 뿐이라 `itemsize`로 충분하다.
 
 ### 4.4 Accelerate 래퍼
-- 영역을 넘어 쓰는 BLAS(`accelerate/blas.hpp`: 배열의 `matmul`·공분산)와 vForce(`accelerate/vforce.hpp`: 배열·special·stats의 원소별 초월함수)는 `accelerate/`에 둔다. 배열의 `exp`·`expm1`·`log1p`·`cos`는 vForce가 아니라 자체 NEON 커널(`array/kernels/vmath.hpp`, docs/design/array.md §5.4)이고, stats의 chunk 커널의 exp도 자체 커널(`stats/vmath.hpp`, docs/design/stats.md T55)이다. LAPACK 래퍼는 `linalg/lapack.hpp`에 있다(§1).
+- 영역을 넘어 쓰는 BLAS(`accelerate/blas.hpp`: 배열의 `matmul`·공분산)와 vForce(`accelerate/vforce.hpp`: 배열·special·stats의 원소별 초월함수)는 `accelerate/`에 둔다. 배열의 `exp`·`expm1`·`log1p`·`cos`는 vForce가 아니라 자체 NEON 커널(`array/kernels/vmath.hpp`, docs/design/array.md §5.4)이고, stats의 chunk 커널·mvcdf와 special의 `softmax`·`logsumexp`도 같은 exp를 부른다(docs/design/stats.md T55). LAPACK 래퍼는 `linalg/lapack.hpp`에 있다(§1).
 - 컴파일 정의 `ACCELERATE_NEW_LAPACK`, `ACCELERATE_LAPACK_ILP64`는 모듈 전체에 건다.
 
 ## 5. 빌드

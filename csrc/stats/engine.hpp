@@ -51,7 +51,7 @@ using special::Real;
 // non-NaN x: the engine gives the other elements a good element's values in the kernel's
 // copy of the chunk and puts their own values (NaN, a limit's) afterwards. A kernel is the
 // method's definition for every layout: a single element is a chunk of n = 1, and its
-// building blocks (ck::exp: stats/vmath.hpp; log, pow, ...: accelerate/vforce.hpp; elementwise loops)
+// building blocks (ck::exp: array/kernels/vmath.hpp; log, pow, ...: accelerate/vforce.hpp; elementwise loops)
 // do not depend on an element's position, so f(x)[i] == f(x[i]) on any thread count.
 //
 // The usual shape: the result in plain double for the whole chunk (vForce), a bound on its

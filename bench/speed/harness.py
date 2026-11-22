@@ -36,10 +36,12 @@ class Sample:
     times: list[float]
     calls: int  # calls per batch
     nan: float | None = None  # the NaN share of the result (check.nan_share), when numeric
+    abs_err: float | None = None  # the result's largest error against the case's reference (Case.abs_err)
 
     def merged(self, other: Sample) -> Sample:
         nan = other.nan if other.nan is not None else self.nan
-        return Sample(self.times + other.times, max(self.calls, other.calls), nan)
+        errs = [e for e in (self.abs_err, other.abs_err) if e is not None]
+        return Sample(self.times + other.times, max(self.calls, other.calls), nan, max(errs) if errs else None)
 
     @property
     def min(self) -> float:

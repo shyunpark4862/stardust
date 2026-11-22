@@ -2,6 +2,7 @@
 results, tables, comparison, cost headers, the results check, the command line, and the
 supervisor's limits, rounds and resume."""
 
+import math
 import os
 import subprocess
 import sys
@@ -57,6 +58,9 @@ def test_sample_merge_and_noise():
     a = harness.Sample([1.0, 1.2], 4).merged(harness.Sample([1.1], 8))
     assert a.min == 1.0 and a.median == 1.1 and a.calls == 8
     assert a.noise == pytest.approx(0.1)
+    assert a.abs_err is None
+    e = harness.Sample([1.0], 1, abs_err=2e-7).merged(harness.Sample([1.0], 1, abs_err=1e-7))
+    assert e.abs_err == 2e-7 and harness.Sample([1.0], 1).merged(e).abs_err == 2e-7
 
 
 def test_sd_threads_restores():
@@ -256,6 +260,43 @@ def test_table_follow_rows_per_thread_and_scaled_sample():
     assert "환산" in md
 
 
+def test_table_error_columns():
+    """A group whose cases record abs_err gets an error column after each library's time
+    (both layouts); a group without stays as it was."""
+    rec = _rec("q", 1e-3, 2e-4, ref=2e-3)
+    for t, e in zip(rec["timings"], (3e-7, 3e-7, 1.234e-5), strict=True):
+        t["abs_err"] = e
+    md = tables.render("array", _run_data("r1", [rec]), [_case("q")], "x.json")
+    assert "| 사례 | sd 1스레드 | sd 10스레드 | sd 오차 | numpy | 오차 | ÷ sd 1 | ÷ sd 10 | 잡음 |" in md
+    assert "| `q` | 1.00 ms | 200 µs | 3.0e-07 | 2.00 ms | 1.2e-05 | 2.00 | 10.0 | 1% |" in md
+    assert "오차: 그 라이브러리의 결과와 참값의 차이" in md
+    plain = tables.render("array", _run_data("r1", [_rec("p", 1e-3, ref=2e-3)]), [_case("p")], "x.json")
+    assert "오차" not in plain
+    fit = _rec("fit", 1.0)
+    fit["timings"][0]["abs_err"] = 1e-9
+    fit["timings"].append(
+        {"label": "statsmodels", "lib": "statsmodels", "threads": 1, "n": 1000, "min": 2.0, "noise": 0}
+    )
+    md = tables.render("array", _run_data("r1", [fit]), [_case("fit")], "x.json")
+    assert "| `fit` | 1 | 1.00 s | 1.0e-09 | 2.00 s | 2.00 | 1% |" in md  # statsmodels has none: no column
+
+
+def test_abs_err_kept_by_state_and_baseline(tmp_path, monkeypatch):
+    case = _case("a", threads=(1,), refs=(Ref("numpy", lambda d: lambda: None),))
+    st = runmod.State([case], None, False)
+    st.add_reply({"id": case.id, "samples": [["sd", "sd", 1, [1e-3], 1, None, 2.5e-7],
+                                             ["numpy", "numpy", None, [2e-3], 1, None]], "errors": []})  # fmt: skip
+    st.rounds_done[case.id] = 1
+    rec = st.record(case)
+    by = {t["label"]: t for t in rec["timings"]}
+    assert by["sd"]["abs_err"] == 2.5e-7 and "abs_err" not in by["numpy"]
+    again = runmod.State.from_file({"options": {}, "cases": [rec]}, [case]).record(case)
+    assert {t["label"]: t.get("abs_err") for t in again["timings"]} == {"sd": 2.5e-7, "numpy": None}
+    monkeypatch.setattr(results, "BASELINE_DIR", tmp_path)
+    results.promote(_run_data("r1", [rec]), known_ids=[case.id])
+    assert results.timing(results.load_baseline("array")["cases"][0], "sd", 1)["abs_err"] == 2.5e-7
+
+
 def test_compare_without_a_baseline_exits_1(tmp_path, monkeypatch):
     from bench.speed import __main__ as cli_main
 
@@ -348,8 +389,11 @@ def test_eta_scales_by_progress():
 
 
 def _limits(**kw):
+    """Limits for runs of the fake cases. The run's time limit is long: only the fake "sleep"
+    case (which never ends, with a limit of its own) and "hog" (which grows until stopped)
+    reach a limit, whatever the load of the machine."""
     base = dict(
-        case_timeout_s=60, rss_bytes=8 * 2**30, poll_s=0.2, notify_after_s=1e9, load_warn=1e9, idle_window_s=0.2
+        case_timeout_s=120, rss_bytes=8 * 2**30, poll_s=0.2, notify_after_s=1e9, load_warn=1e9, idle_window_s=0.2
     )
     base.update(kw)
     return Limits(**base)
@@ -363,7 +407,7 @@ def test_supervisor_limits_and_failures(tmp_path, monkeypatch):
     data = run(
         cases,
         out=out,
-        limits=_limits(case_timeout_s=1.5, rss_bytes=600 * 2**20),
+        limits=_limits(rss_bytes=600 * 2**20),
         notify=False,
         progress=False,
         keep_awake=False,
@@ -372,7 +416,7 @@ def test_supervisor_limits_and_failures(tmp_path, monkeypatch):
     by = {c["name"]: c for c in data["cases"]}
     assert by["sum"]["timings"][0]["min"] > 0 and by["sum"]["rounds"] == 1
     assert {(t["label"], t["threads"]) for t in by["sum"]["timings"]} == {("sd", 1), ("sd", 10), ("numpy", None)}
-    assert by["sleep"]["failure"].startswith("timeout")
+    assert by["sleep"]["failure"] == "timeout: over 1s"  # the case's own limit
     assert by["hog"]["failure"].startswith("memory") and by["hog"]["peak_rss_mb"] >= 500
     boom = {t["label"]: t for t in by["boom"]["timings"]}
     assert "boom" in boom["sd"]["error"] and boom["numpy"]["min"] is not None
@@ -391,7 +435,7 @@ def test_parallel_smoke_lanes_memory_retry_and_checks(tmp_path, monkeypatch):
     data = run(
         cases,
         out=out,
-        limits=_limits(case_timeout_s=1.5, rss_bytes=600 * 2**20),
+        limits=_limits(rss_bytes=600 * 2**20),
         notify=False,
         progress=False,
         keep_awake=False,
@@ -403,10 +447,12 @@ def test_parallel_smoke_lanes_memory_retry_and_checks(tmp_path, monkeypatch):
     with open(data["log"]) as fh:
         log = fh.read()
     assert "Lanes:" in log and "4 (at most 4 processes)" in log
-    # the hog stops every lane at the memory limit: the stopped cases run again one at a time
+    # the hog takes the lanes past the shared memory limit: the stopped cases run again one at
+    # a time, and the hog, stopped again on its own, keeps its memory failure
     assert "again one at a time" in log
     assert by["hog"]["failure"].startswith("memory")
-    assert by["sleep"]["failure"].startswith("timeout")
+    assert by["sleep"]["failure"] == "timeout: over 1s"
+    assert all(c.get("failure") or any(t["min"] is not None for t in c["timings"]) for c in data["cases"])
     for name in ("sum", "sum2"):
         assert "failure" not in by[name] and by[name]["timings"][0]["min"] > 0
     assert {(t["label"], t["threads"]) for t in by["sum"]["timings"]} == {("sd", 1), ("sd", 10), ("numpy", None)}
@@ -423,6 +469,86 @@ def test_parallel_smoke_lanes_memory_retry_and_checks(tmp_path, monkeypatch):
     assert by["wrong"]["note"] == "numpy swapped: takes the arguments reversed"
     assert runmod.case_failed(by["wrong"]) and not runmod.case_failed(by["check"])
     assert not any(t.get("check") for t in by["skipped"]["timings"]) and not runmod.case_failed(by["skipped"])
+
+
+@pytest.mark.serial
+@pytest.mark.parametrize("smoke", [True, False])
+def test_abs_err_measured_for_every_library(tmp_path, monkeypatch, smoke):
+    """A case with abs_err: each measurement records its warm-up result's error (a
+    comparator timed on a sample against the first reference values)."""
+    monkeypatch.setenv("SDBENCH_CASES_MODULE", FAKE)
+    cases = registry.select(registry.load(["array"]), match=["array/fake/err"])
+    data = run(cases, out=tmp_path / "r.jsonl", limits=_limits(), notify=False, progress=False, keep_awake=False,
+               smoke=smoke, use_r=False, quiet="no")  # fmt: skip
+    errs = {t["label"]: t.get("abs_err") for t in data["cases"][0]["timings"]}
+    assert errs == {"sd": pytest.approx(1e-12, rel=1e-3), "numpy": pytest.approx(1e-7, rel=1e-3), "sampled": 0.5}
+
+
+@pytest.mark.serial
+def test_worker_is_ended_after_a_stopped_request(monkeypatch):
+    """A request stopped at a limit ends its worker: the reply may still come, and a next
+    request must not read it as its own."""
+    monkeypatch.setenv("SDBENCH_CASES_MODULE", FAKE)
+    with open(os.devnull, "w") as log:
+        w = runmod.WorkerHandle(["array"], log, _limits())
+        try:
+            req = {"cmd": "case", "id": "array/fake/sleep", "threads": [1], "use_r": False}
+            reply, status, _ = w.request(req, 0.5)
+            assert (reply, status) == (None, "timeout")
+            assert w.p.poll() is not None and w.p.pid not in runmod.WorkerHandle.live
+            req = {"cmd": "case", "id": "array/fake/sum2", "threads": [1], "use_r": False}
+            assert w.request(req, 30)[1] == "died"
+        finally:
+            w.kill()
+
+
+@pytest.mark.serial
+def test_stopped_env_request_does_not_shift_the_replies(tmp_path, monkeypatch):
+    """The env request of a lane's new worker stopped at the shared memory limit: the
+    worker is ended and the case runs again, instead of the case request reading the env
+    reply (which lost the case from the run without a failure)."""
+    monkeypatch.setenv("SDBENCH_CASES_MODULE", FAKE)
+    cases = registry.select(registry.load(["array"]), match=["sum", "check"])
+    orig_request, orig_read = runmod.WorkerHandle.request, runmod.WorkerHandle._read
+    stopped = []
+
+    def request(self, obj, timeout_s, starting=False):
+        self.last_cmd = obj["cmd"]
+        return orig_request(self, obj, timeout_s, starting)
+
+    def read(self, timeout_s, starting=False):
+        if getattr(self, "last_cmd", None) == "env" and not stopped:
+            stopped.append(self.p.pid)
+            return None, "memory", 0  # the env reply is still on its way
+        return orig_read(self, timeout_s, starting)
+
+    monkeypatch.setattr(runmod.WorkerHandle, "request", request)
+    monkeypatch.setattr(runmod.WorkerHandle, "_read", read)
+    data = run(cases, out=tmp_path / "r.jsonl", limits=_limits(), notify=False, progress=False, keep_awake=False,
+               smoke=True, jobs=2, use_r=False)  # fmt: skip
+    assert stopped and "versions" in data["env"]  # a later worker gave the env
+    for c in data["cases"]:
+        assert "failure" not in c and all(t["min"] is not None for t in c["timings"]), c["name"]
+    assert not runmod.WorkerHandle.live
+
+
+@pytest.mark.serial
+def test_a_lane_error_stops_the_run(tmp_path, monkeypatch):
+    """A supervisor error in a lane is raised, not lost with the lane's cases."""
+    monkeypatch.setenv("SDBENCH_CASES_MODULE", FAKE)
+    cases = registry.select(registry.load(["array"]), match=["sum", "check"])
+    orig = runmod.State.add_reply
+
+    def add_reply(self, reply):
+        if reply["id"].endswith("/sum2"):
+            raise RuntimeError("supervisor bug")
+        orig(self, reply)
+
+    monkeypatch.setattr(runmod.State, "add_reply", add_reply)
+    with pytest.raises(RuntimeError, match="supervisor bug"):
+        run(cases, out=tmp_path / "r.jsonl", limits=_limits(), notify=False, progress=False, keep_awake=False,
+            smoke=True, jobs=2, use_r=False)  # fmt: skip
+    assert not runmod.WorkerHandle.live
 
 
 @pytest.mark.serial
@@ -683,3 +809,19 @@ def test_rsession_one_thread_rotation_and_values():
         unnamed = r.value("list(1, 2:3)", {})
         assert sorted(unnamed) == ["1", "2"] and unnamed["2"].tolist() == [2.0, 3.0]
         assert r.value("lm(y ~ 1)", {"y": np.array([1.0, 3.0])}, value="coef(.v)").tolist() == [2.0]
+
+
+def test_mvcdf_references_fit_the_case_points():
+    """The stored mvn / mvt cdf references (bench/speed/cases/stats_mvcdf_ref.json) belong to
+    the point sets the cases build now, and every case records the error against them."""
+    from bench.speed.cases import stats as st_cases
+    from bench.speed.cases import stats_mvcdf_ref as mvref
+
+    for d, df in mvref.SETS:
+        data = st_cases._mvcdf_setup(d, df)()  # raises when the file holds another point set
+        assert data["truth"].shape == (len(data["xn"]),)
+        assert st_cases._mvcdf_abs_err(data, data["truth"][:3]) == 0.0
+    with pytest.raises(ValueError, match="no reference"):
+        mvref.reference(5, math.inf, np.zeros((2, 5)), np.eye(5))
+    group = [c for c in registry.load(["stats"]) if c.group == "mvn-mvt-cdf"]
+    assert group and all(c.abs_err is not None and "max_points=" in c.name for c in group)
