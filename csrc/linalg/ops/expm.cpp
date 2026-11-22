@@ -152,7 +152,16 @@ public:
     }
     double log2norm(int p) {
         while (p_ < p) {  // r^T <- r^T B, i.e. r <- B^T r
-            cblas_dgemv(CblasColMajor, CblasTrans, n_, n_, 1.0, b_, n_, r_, 1, 0.0, t_, 1);
+            if (n_ <= lapack::kTinyGemm) {  // inline: a gemv call cost more than a tiny product
+                for (lint j = 0; j < n_; ++j) {
+                    const double* col = b_ + j * n_;
+                    double acc = col[0] * r_[0];
+                    for (lint i = 1; i < n_; ++i) acc = std::fma(col[i], r_[i], acc);
+                    t_[j] = acc;
+                }
+            } else {
+                cblas_dgemv(CblasColMajor, CblasTrans, n_, n_, 1.0, b_, n_, r_, 1, 0.0, t_, 1);
+            }
             std::swap(r_, t_);
             ++p_;
         }

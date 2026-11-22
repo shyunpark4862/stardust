@@ -1,4 +1,6 @@
-// Pairwise summation for every floating-point sum in linalg: numpy's
+// Pairwise summation for linalg's sums that do not go through the fast sums
+// (fastsum.hpp: long float64/complex128 data read in place), and for the short ones
+// that do (their leaves are these): numpy's
 // DOUBLE_pairwise_sum and CDOUBLE_pairwise_sum algorithm with base/pairwise.hpp's
 // wider leaf (the tree, the leaf sums, the parallel plan, defined once there), so
 // linalg's sums have the array area's bits, not numpy's (docs/design/linalg.md §8.2).
@@ -12,8 +14,8 @@
 // Sums of products (vecdot, the squares of the 2-norm) have leaves of their own:
 // the products fused into the sum (vfmaq, one rounding per term) on 16 lanes, read
 // straight from contiguous float64 input or from two filled buffers otherwise. The
-// leaf is a function of its terms' values only, so every layout gives the same bits,
-// and the tree is the same as every other sum's (docs/design/linalg.md §8.2).
+// leaf is a function of its terms' values only, and the tree is the same as every
+// other sum's (docs/design/linalg.md §8.2).
 #pragma once
 
 #include <arm_neon.h>

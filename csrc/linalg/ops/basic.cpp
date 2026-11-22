@@ -11,6 +11,7 @@
 
 #include "linalg/args.hpp"
 #include "linalg/cost.hpp"
+#include "linalg/fastsum.hpp"
 #include "linalg/outblock.hpp"
 #include "linalg/pairwise.hpp"
 #include "linalg/pyrefs.hpp"
@@ -70,27 +71,44 @@ nb::object vecdot(nb::handle x1o, nb::handle x2o, nb::handle axis_o) {
                 if constexpr ((std::is_same_v<SX, cplx> || std::is_same_v<SY, cplx>) && !std::is_same_v<T, cplx>) {
                     return nb::none();  // unreachable: a complex input makes T complex
                 } else {
-                    // sum_i conj(x1[i]) * x2[i]  (x1 is conjugated: Array API), summed
-                    // pairwise with the products fused into the leaves (fma_dot_leaf,
-                    // fma_cdot_leaf; docs/design/linalg.md §8.2). Contiguous inputs of the
-                    // computing type are read in place; any other layout or dtype is
-                    // converted into two buffers first. The leaf sees the same values either
-                    // way, so the bits do not depend on the layout.
+                    // sum_i conj(x1[i]) * x2[i]  (x1 is conjugated: Array API). Inputs of the
+                    // computing type with positive strides are read in place by the fast sums
+                    // (fastsum.hpp: Accelerate's ddot / zdotc on long runs, docs/design/linalg.md
+                    // §8.2); any other layout or dtype is converted into two buffers per leaf
+                    // and summed by the fused leaves, the chunks the same either way.
                     constexpr bool direct_type = std::is_same_v<SX, T> && std::is_same_v<SY, T>;
                     constexpr std::int64_t isx = sizeof(SX), isy = sizeof(SY);
-                    [[maybe_unused]] const bool direct = direct_type && sx == isx && sy == isy;
-                    auto dot = [&](const std::int64_t* off) {
+                    [[maybe_unused]] const bool direct =
+                        direct_type && sx > 0 && sy > 0 && sx % isx == 0 && sy % isy == 0;
+                    // the result of dot(offsets) for every batch element (a scalar for none)
+                    auto all = [&](const auto& dot) -> nb::object {
+                        if (b.ndim() == 0) {
+                            const std::int64_t off[2] = {0, 0};
+                            return py_scalar(dot(off));
+                        }
+                        Out out = alloc_c(b.shape(), dtype_of<T>());
+                        T* res = out.as<T>();
+                        run_batch(
+                            b, cost(kStream, double(len)), [&](std::int64_t i, const std::int64_t* off, Scratch&) {
+                                res[i] = dot(off);
+                                return 0;
+                            }
+                        );
+                        return to_array(out);
+                    };
+                    if constexpr (direct_type) {
+                        if (direct)  // a body of its own: small, so it inlines into the batch loop
+                            return all([&](const std::int64_t* off) -> T {
+                                const T* a = reinterpret_cast<const T*>(x.data() + off[0]);
+                                const T* c = reinterpret_cast<const T*>(y.data() + off[1]);
+                                if constexpr (std::is_same_v<T, cplx>) return fast::cdot(len, a, sx / isx, c, sy / isy);
+                                else return fast::dot(len, a, sx / isx, c, sy / isy);
+                            });
+                    }
+                    return all([&](const std::int64_t* off) -> T {
                         const std::byte* p = x.data() + off[0];
                         const std::byte* q = y.data() + off[1];
                         auto leaf = [&](std::int64_t b0, std::int64_t k) -> T {
-                            if constexpr (direct_type) {
-                                if (direct) {
-                                    const T* a = reinterpret_cast<const T*>(p) + b0;
-                                    const T* c = reinterpret_cast<const T*>(q) + b0;
-                                    if constexpr (std::is_same_v<T, cplx>) return detail::fma_cdot_leaf(a, c, k);
-                                    else return detail::fma_dot_leaf(a, c, k);
-                                }
-                            }
                             alignas(16) double ra[kPairwiseBlock], rc[kPairwiseBlock];  // no constructor runs
                             T* a = reinterpret_cast<T*>(ra);
                             T* c = reinterpret_cast<T*>(rc);
@@ -103,19 +121,13 @@ nb::object vecdot(nb::handle x1o, nb::handle x2o, nb::handle axis_o) {
                             if constexpr (std::is_same_v<T, cplx>) return detail::fma_cdot_leaf(a, c, k);
                             else return detail::fma_dot_leaf(a, c, k);
                         };
-                        return pairwise_tree_mt<T>(len, leaf);  // on the pool when long (docs/design/linalg.md §8.3)
-                    };
-                    if (b.ndim() == 0) {
-                        std::int64_t off[2] = {0, 0};
-                        return py_scalar(dot(off));
-                    }
-                    Out out = alloc_c(b.shape(), dtype_of<T>());
-                    T* res = out.as<T>();
-                    run_batch(b, cost(kStream, double(len)), [&](std::int64_t i, const std::int64_t* off, Scratch&) {
-                        res[i] = dot(off);
-                        return 0;
+                        const T s = fast::chunked_sum<T>(len, [&](std::int64_t b0, std::int64_t k) -> T {
+                            if constexpr (std::is_same_v<T, cplx>) return pairwise::tree_complex(b0, k, leaf);
+                            else return pairwise::tree(b0, k, leaf);
+                        });
+                        if constexpr (std::is_same_v<T, cplx>) return {0. + s.real(), 0. + s.imag()};
+                        else return 0. + s;
                     });
-                    return to_array(out);
                 }
             });
         });
@@ -283,15 +295,38 @@ nb::object matrix_power(nb::handle xo, nb::handle n_o) {
                     for (lint d = 0; d < m; ++d) o[d * m + d] = T(1);
                     return 0;
                 }
-                T* base = s.get<T>(mm, 1);
+                // The base: x^-1 (column-major in scratch), or x itself. A float64 or complex128
+                // x with unit-stride columns or rows is read in place: a row-major x is the
+                // column-major x^T, and every product with the base takes it transposed (no
+                // packing; the last bits can differ from a packed copy's). Tiny float64
+                // matrices are packed for gemm_square's own kernel (tiny_gemm).
+                const T* base;
+                lint ldb = m;
+                char opb = 'N';
+                constexpr std::int64_t sz = sizeof(T);
+                const std::byte* xp = x.data() + off[0];
+                const bool tiny = std::is_same_v<T, double> && m <= lapack::kTinyGemm;
                 if (n < 0) {
                     // x^-e = (x^-1)^e. The inverse goes through LAPACK, so it is checked like inv.
                     T* lu;
                     lint* ipiv;
                     if (const int code = lu_factor<T>(x, off[0], m, s, lu, ipiv)) return code;
-                    lu_inverse(lu, ipiv, m, base);
+                    T* inv = s.get<T>(mm, 1);
+                    lu_inverse(lu, ipiv, m, inv);
+                    base = inv;
+                } else if (!tiny && x.dtype() == dtype_of<T>() && aligned16(xp) && x.stride(-2) == sz &&
+                           x.stride(-1) % 16 == 0 && x.stride(-1) / sz >= m) {
+                    base = reinterpret_cast<const T*>(xp);
+                    ldb = x.stride(-1) / sz;
+                } else if (!tiny && x.dtype() == dtype_of<T>() && aligned16(xp) && x.stride(-1) == sz &&
+                           x.stride(-2) % 16 == 0 && x.stride(-2) / sz >= m) {
+                    base = reinterpret_cast<const T*>(xp);
+                    ldb = x.stride(-2) / sz;
+                    opb = 'T';
                 } else {
-                    pack(x.dtype(), x.data() + off[0], m, m, x.stride(-2), x.stride(-1), base, m, false);
+                    T* packed = s.get<T>(mm, 1);
+                    pack(x.dtype(), xp, m, m, x.stride(-2), x.stride(-1), packed, m, false);
+                    base = packed;
                 }
                 // Binary powering, most significant bit first: r = base; for each further bit,
                 // r = r*r, then r = r*base if the bit is set. log2(e) squarings + popcount(e)-1 products.
@@ -299,24 +334,31 @@ nb::object matrix_power(nb::handle xo, nb::handle n_o) {
                 // straight to the output slot (no copies of r, docs/design/linalg.md §9).
                 int top = 63;
                 while (!((e >> top) & 1)) --top;
+                LapackSlot<T> os(o, static_cast<std::int64_t>(mm), s, Scratch::kAlign0);
                 if (top == 0) {  // x^1 and x^-1: base itself
-                    std::copy(base, base + mm, o);
+                    T* d = os.get();
+                    for (lint j = 0; j < m; ++j)
+                        for (lint r = 0; r < m; ++r) d[j * m + r] = opb == 'N' ? base[j * ldb + r] : base[r * ldb + j];
                     return 0;
                 }
-                const int total = top + std::popcount(e) - 1;  // gemm calls
-                LapackSlot<T> os(o, static_cast<std::int64_t>(mm), s, Scratch::kAlign0);
+                const int total = top + std::popcount(e) - 1;  // products
                 T* buf[2] = {s.get<T>(mm, 2), s.get<T>(mm, 3)};
                 const T* r = base;
+                lint ldr = ldb;
+                char opr = opb;
                 int done = 0, next = 0;
-                auto product = [&](const T* lhs, const T* rhs) {
+                auto product = [&](const T* lhs, lint ldl, char opl, const T* rhs, lint ldrh, char oprh) {
                     T* dst = ++done == total ? os.get() : buf[next];
-                    lapack::gemm_square(m, lhs, rhs, dst);
+                    if (tiny) lapack::gemm_square(m, lhs, rhs, dst);  // both packed column-major here
+                    else lapack::gemm(opl, oprh, m, m, m, lhs, ldl, rhs, ldrh, dst, m);
                     next ^= 1;
                     r = dst;
+                    ldr = m;
+                    opr = 'N';
                 };
                 for (int bit = top - 1; bit >= 0; --bit) {
-                    product(r, r);
-                    if ((e >> bit) & 1) product(r, base);
+                    product(r, ldr, opr, r, ldr, opr);
+                    if ((e >> bit) & 1) product(r, ldr, opr, base, ldb, opb);
                 }
                 return 0;
             },
@@ -495,37 +537,75 @@ nb::object block_diag(nb::handle arrays_o) {
     }
     const std::vector<std::int64_t> zero(nd, 0);
     Batch b({{bshape, zero}}, "block_diag");  // walks the batch (and checks its size)
-    Out out = alloc_matrices(b.shape(), rows, cols, dt);
+    Out out = alloc_matrices(b.shape(), rows, cols, dt, true);  // zeros: only the blocks are written
     const std::int64_t block = rows * cols;
+    // each operand's first row and column in the result
+    std::vector<std::int64_t> r0s(ops.size()), c0s(ops.size());
+    for (std::size_t j = 0, r0 = 0, c0 = 0; j < ops.size(); ++j) {
+        r0s[j] = static_cast<std::int64_t>(r0);
+        c0s[j] = static_cast<std::int64_t>(c0);
+        r0 += static_cast<std::size_t>(ops[j].rows);
+        c0 += static_cast<std::size_t>(ops[j].cols);
+    }
     visit_storage(dt, [&]<class R>(std::type_identity<R>) {
         R* res = out.as<R>();
-        run_batch(b, cost(kCopy, double(block)), [&](std::int64_t i, const std::int64_t*, Scratch&) {
-            R* o = res + i * block;
-            std::fill(o, o + block, R(0));
+        // Columns [cb, ce) of operand j's block of result element o; its zeros are already
+        // there (a large result is calloc's fresh zero pages, a smaller one is filled per
+        // element). Large float64 and complex128 blocks are copied by pack (C-order sources
+        // in tiles, docs/design/linalg.md §5.3); small ones by the element loop (pack's call
+        // and dispatch cost more there).
+        auto columns = [&](R* o, std::size_t j, const std::byte* p, std::int64_t cb, std::int64_t ce) {
+            const KronOperand& op = ops[j];
+            const std::int64_t r0 = r0s[j], c0 = c0s[j];
+            visit_storage(in[j].dtype(), [&]<class S>(std::type_identity<S>) {
+                if constexpr (!(std::is_same_v<S, cplx> && !std::is_same_v<R, cplx>)) {
+                    if constexpr (std::is_same_v<R, double> || std::is_same_v<R, cplx>) {
+                        if (op.rows * (ce - cb) >= 4096) {
+                            pack(
+                                in[j].dtype(), p + cb * op.cs, op.rows, ce - cb, op.rs, op.cs,
+                                o + (c0 + cb) * rows + r0, rows, false
+                            );
+                            return 0;
+                        }
+                    }
+                    for (std::int64_t c = cb; c < ce; ++c) {
+                        R* dst = o + (c0 + c) * rows + r0;
+                        for (std::int64_t r = 0; r < op.rows; ++r)
+                            dst[r] = convert<R>(load<S>(p + r * op.rs + c * op.cs));
+                    }
+                }
+                return 0;
+            });
+        };
+        auto source = [&](std::int64_t i, std::size_t j) {
             std::int64_t coord[kMaxNdim];
             for (std::int64_t d = static_cast<std::int64_t>(nd) - 1, t = i; d >= 0; --d) {
                 coord[d] = t % bshape[d];
                 t /= bshape[d];
             }
-            std::int64_t r0 = 0, c0 = 0;
-            for (std::size_t j = 0; j < ops.size(); ++j) {
-                const KronOperand& op = ops[j];
-                std::int64_t off = 0;
-                for (std::size_t d = 0; d < nd; ++d) off += coord[d] * bstride[j * nd + d];
-                const std::byte* p = in[j].data() + off;
-                visit_storage(in[j].dtype(), [&]<class S>(std::type_identity<S>) {
-                    if constexpr (!(std::is_same_v<S, cplx> && !std::is_same_v<R, cplx>)) {
-                        for (std::int64_t c = 0; c < op.cols; ++c) {
-                            R* dst = o + (c0 + c) * rows + r0;
-                            for (std::int64_t r = 0; r < op.rows; ++r)
-                                dst[r] = convert<R>(load<S>(p + r * op.rs + c * op.cs));
-                        }
-                    }
-                    return 0;
-                });
-                r0 += op.rows;
-                c0 += op.cols;
-            }
+            std::int64_t off = 0;
+            for (std::size_t d = 0; d < nd; ++d) off += coord[d] * bstride[j * nd + d];
+            return in[j].data() + off;
+        };
+        // One large result: its columns on the pool (copies only, so the same result).
+        constexpr std::int64_t kStripCols = 64;
+        if (b.size() == 1 && block >= (1 << 18) && cols > kStripCols && detail::begin_parallel()) {
+            const std::int64_t ntasks = (cols + kStripCols - 1) / kStripCols;
+            detail::run_tasks(ntasks, [&](std::int64_t t) {
+                const std::int64_t C0 = t * kStripCols, C1 = std::min(cols, C0 + kStripCols);
+                if (!out.zeroed) std::fill(res + C0 * rows, res + C1 * rows, R(0));
+                for (std::size_t j = 0; j < ops.size(); ++j) {
+                    const std::int64_t cb = std::max<std::int64_t>(0, C0 - c0s[j]);
+                    const std::int64_t ce = std::min<std::int64_t>(ops[j].cols, C1 - c0s[j]);
+                    if (cb < ce) columns(res, j, source(0, j), cb, ce);
+                }
+            });
+            return 0;
+        }
+        run_batch(b, cost(kCopy, double(block)), [&](std::int64_t i, const std::int64_t*, Scratch&) {
+            R* o = res + i * block;
+            if (!out.zeroed) std::fill(o, o + block, R(0));
+            for (std::size_t j = 0; j < ops.size(); ++j) columns(o, j, source(i, j), 0, ops[j].cols);
             return 0;
         });
         return 0;
@@ -551,28 +631,40 @@ nb::object kronsum(nb::handle x1o, nb::handle x2o) {
     if (__builtin_mul_overflow(m, n, &size)) throw nb::value_error("array is too big");
     const bool complex = computes_complex(x.dtype()) || computes_complex(y.dtype());
     return with_type(complex, [&]<class T>(std::type_identity<T>) -> nb::object {
-        Out out = alloc_matrices(b.shape(), size, size, dtype_of<T>());
+        // zeros to start with when large (calloc), else written around the nonzero entries
+        Out out = alloc_matrices(b.shape(), size, size, dtype_of<T>(), true);
         T* res = out.as<T>();
         const std::int64_t block = size * size;
+        // column J = j*m + q (column-major): A's column q in block row j, then b_ij at row
+        // i*m + q of every block row i (added to a_qq on block row j)
+        auto columns = [&](T* o, const T* a, const T* c, std::int64_t J0, std::int64_t J1) {
+            for (std::int64_t J = J0; J < J1; ++J) {
+                const std::int64_t j = J / m, q = J % m;
+                T* col = o + J * size;
+                if (!out.zeroed) std::fill(col, col + size, T(0));  // one fill: cheaper than two around A's column
+                std::copy(a + q * m, a + (q + 1) * m, col + j * m);
+                const T* cj = c + j * n;
+                for (std::int64_t r = 0; r < n; ++r) {
+                    if (r == j) col[r * m + q] = col[r * m + q] + cj[r];  // kron(I, A) + kron(B, I)
+                    else col[r * m + q] = cj[r];
+                }
+            }
+        };
         run_batch(b, cost(kCopy, double(block)), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
             T* a = s.get<T>(static_cast<std::size_t>(m * m), 0);
             T* c = s.get<T>(static_cast<std::size_t>(n * n), 1);
             pack(x.dtype(), x.data() + off[0], m, m, x.stride(-2), x.stride(-1), a, m, false);
             pack(y.dtype(), y.data() + off[1], n, n, y.stride(-2), y.stride(-1), c, n, false);
             T* o = res + i * block;
-            // column J = j*m + q (column-major): A's column q in block row j, then b_ij at
-            // row i*m + q of every block row i (added to a_qq on block row j)
-            for (std::int64_t j = 0; j < n; ++j)
-                for (std::int64_t q = 0; q < m; ++q) {
-                    T* col = o + (j * m + q) * size;
-                    std::fill(col, col + size, T(0));
-                    std::copy(a + q * m, a + (q + 1) * m, col + j * m);
-                    const T* cj = c + j * n;
-                    for (std::int64_t r = 0; r < n; ++r) {
-                        if (r == j) col[r * m + q] = col[r * m + q] + cj[r];  // kron(I, A) + kron(B, I)
-                        else col[r * m + q] = cj[r];
-                    }
-                }
+            // one large result: its columns on the pool (copies only, so the same result)
+            constexpr std::int64_t kCols = 64;
+            if (b.size() == 1 && block >= (1 << 18) && size > kCols && detail::begin_parallel()) {
+                detail::run_tasks((size + kCols - 1) / kCols, [&](std::int64_t t) {
+                    columns(o, a, c, t * kCols, std::min(size, (t + 1) * kCols));
+                });
+            } else {
+                columns(o, a, c, 0, size);
+            }
             return 0;
         });
         return to_array(out);

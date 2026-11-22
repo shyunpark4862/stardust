@@ -1,11 +1,14 @@
 """The optimizations keep the results.
 
-- sums are pairwise (docs/design/linalg.md §8.2): plain sums have the bits of sd's
-  sum of the same terms, sums of products (vecdot, 2-norm) fuse the products and are
-  within the pairwise error bound of numpy's; whatever the input layout;
+- sums (docs/design/linalg.md §8.2): float64 and complex128 data read in place go through
+  the fast sums (csrc/linalg/fastsum.hpp: multi-accumulator chunks of a fixed size, a
+  pairwise tree over the chunks), any other layout or dtype through buffered pairwise
+  leaves: every path is within a plain multi-accumulator sum's error bound of numpy's and
+  of sd's sum, whatever the input layout (the last bits may depend on the layout);
 - workspace sizes are asked once per batch, and every LAPACK array is 16-byte
   aligned: a batch gives each matrix's own result, bit for bit;
-- read-only triangles are used in place when column-major: the same bits as packed.
+- read-only triangles are used in place when column-major (the same bits as packed) or
+  row-major (equal within rounding).
 """
 
 import math
@@ -33,6 +36,18 @@ def within_pairwise_bound(got, want, terms_abs, n):
     return got.shape == want.shape and bool(np.all(np.abs(got - want) <= bound))
 
 
+# A lane of a fast sum adds at most 64 terms in order (fastsum.hpp), the chunks pairwise.
+FAST_LANE = 64
+
+
+def within_sum_bound(got, want, terms_abs, n):
+    """|got - want| within two error bounds of the fast sums (or a pairwise sum and a fast
+    sum) of each other: 2 (64 + log2 n + 2) eps times the sum of the terms' magnitudes."""
+    got, want, terms_abs = np.asarray(got), np.asarray(want), np.asarray(terms_abs)
+    bound = 2 * (FAST_LANE + math.log2(max(n, 1)) + 2) * 2.0**-52 * terms_abs
+    return got.shape == want.shape and bool(np.all(np.abs(got - want) <= bound))
+
+
 # ------------------------------------------------------------ pairwise sums --
 
 
@@ -51,30 +66,32 @@ def test_sums_are_numpys_pairwise(seed, rows, n, dtype, layout):
     xc, yc = np.ascontiguousarray(x), np.ascontiguousarray(y)
     calc = np.complex128 if dtype == "complex128" else np.float64
     xf, yf = xc.astype(calc), yc.astype(calc)
-    # vecdot: sum(conj(x1) * x2) along the axis, the products fused into the leaves:
-    # within the pairwise bound of numpy's sum, the same bits for every layout
+    # vecdot: sum(conj(x1) * x2) along the axis: within the bound of numpy's sum, and of
+    # the contiguous layout's
     v = npy(sd.linalg.vecdot(as_sd(x), as_sd(y)))
     want = np.sum(np.conj(xf) * yf, axis=-1)
-    assert within_pairwise_bound(v, want, np.sum(np.abs(xf) * np.abs(yf), axis=-1), n)
-    assert bits_equal(v, npy(sd.linalg.vecdot(as_sd(xc), as_sd(yc))))
-    # vector_norm ord=1 and matrix_norm ord=inf: plain sums of |x| along the rows, the bits
-    # of sd.sum (real values: a complex modulus can differ from np.abs in the last bit,
-    # which is not about the sum); numpy's within the bound
+    mags = np.sum(np.abs(xf) * np.abs(yf), axis=-1)
+    assert within_sum_bound(v, want, mags, n)
+    assert within_sum_bound(v, npy(sd.linalg.vecdot(as_sd(xc), as_sd(yc))), mags, n)
+    # vector_norm ord=1 and matrix_norm ord=inf: sums of |x| along the rows, within the
+    # bound of sd.sum's and numpy's (real values: a complex modulus can differ from np.abs
+    # in the last bit, which is not about the sum)
     if dtype != "complex128":
         a = np.abs(xf)
         r1 = npy(sd.linalg.vector_norm(as_sd(x), ord=1, axis=-1))
-        assert bits_equal(r1, npy(sd.sum(as_sd(a), axis=-1)))
-        assert within_pairwise_bound(r1, np.sum(a, axis=-1), np.sum(a, axis=-1), n)
+        assert within_sum_bound(r1, npy(sd.sum(as_sd(a), axis=-1)), np.sum(a, axis=-1), n)
+        assert within_sum_bound(r1, np.sum(a, axis=-1), np.sum(a, axis=-1), n)
         if n:
-            assert sd.linalg.matrix_norm(as_sd(x), ord=math.inf) == np.max(r1)
-    # 2-norm and fro (no rescaling at these magnitudes): the squares over the flattened
-    # C-order sequence (complex: the parts re0, im0, re1, ... as separate terms), fused
+            assert within_sum_bound(sd.linalg.matrix_norm(as_sd(x), ord=math.inf), np.max(r1), np.max(r1), n)
+    # 2-norm and fro (no rescaling at these magnitudes): the squares of the elements
+    # (complex: the parts re0, im0, re1, ... as separate terms), fused
     parts = xf.view(np.float64) if dtype == "complex128" else xf
     sq = np.sum(parts * parts)
     for got in (sd.linalg.vector_norm(as_sd(x)), sd.linalg.matrix_norm(as_sd(x))):
-        assert within_pairwise_bound(got * got, sq, sq, parts.size) or abs(got - math.sqrt(sq)) <= 4e-16 * got
-    assert sd.linalg.vector_norm(as_sd(x)) == sd.linalg.vector_norm(as_sd(xc))
-    assert sd.linalg.matrix_norm(as_sd(x)) == sd.linalg.matrix_norm(as_sd(xc))
+        assert within_sum_bound(got * got, sq, sq, parts.size) or abs(got - math.sqrt(sq)) <= 4e-16 * got
+    for f in (sd.linalg.vector_norm, sd.linalg.matrix_norm):
+        g, c = f(as_sd(x)), f(as_sd(xc))
+        assert within_sum_bound(g * g, c * c, sq, parts.size) or abs(g - c) <= 4e-16 * c
 
 
 @SETTINGS
@@ -117,13 +134,14 @@ def test_norm_layouts_agree():
         ref = [sd.linalg.matrix_norm(as_sd(x), ord=o) for o in ("fro", 1, math.inf, -1, -math.inf)]
         for layout in ("F", "strided", "reversed"):
             y = with_layout(x, layout)
-            assert [sd.linalg.matrix_norm(as_sd(y), ord=o) for o in ("fro", 1, math.inf, -1, -math.inf)] == ref
-        # cond's norm(x) * norm(inv(x)) uses the same sums as matrix_norm
+            got = [sd.linalg.matrix_norm(as_sd(y), ord=o) for o in ("fro", 1, math.inf, -1, -math.inf)]
+            assert got == pytest.approx(ref, rel=1e-14)  # the sums' order may depend on the layout
+        # cond's norm(x) * norm(inv(x)) uses the same sums as matrix_norm, within rounding
         sq = x[:29, :29] + 40 * np.eye(29)
         for o in ("fro", 1, math.inf):
             inv = npy(sd.linalg.inv(as_sd(sq)))
-            assert sd.linalg.cond(as_sd(sq), ord=o) == sd.linalg.matrix_norm(as_sd(sq), ord=o) * sd.linalg.matrix_norm(
-                as_sd(inv), ord=o
+            assert sd.linalg.cond(as_sd(sq), ord=o) == pytest.approx(
+                sd.linalg.matrix_norm(as_sd(sq), ord=o) * sd.linalg.matrix_norm(as_sd(inv), ord=o), rel=1e-14
             )
 
 
@@ -190,16 +208,23 @@ def test_triangle_in_place_or_packed(seed, n, dtype, upper):
     a = well_conditioned(rng, (2,), n, dtype)
     b = random_values(rng, (2, n, 2), "float64")
     f = with_layout(a, "F")  # read in place when float64/complex128
-    results = []
+    results = {}
     for layout in ("F", "C", "strided"):
         y = with_layout(a, layout)
-        results.append(npy(sd.linalg.solve_triangular(as_sd(y), as_sd(b), upper=upper)))
-    assert all(bits_equal(r, results[0]) for r in results)
-    # lu_solve on lu's own column-major factors equals solve (two trtrs == getrs)
+        results[layout] = npy(sd.linalg.solve_triangular(as_sd(y), as_sd(b), upper=upper))
+    # F in place and strided packed: the same column-major solve, the same bits; C read in
+    # place as row-major: equal within rounding (docs/design/linalg.md §5.5)
+    assert bits_equal(results["strided"], results["F"])
+
+    def close(got, want):
+        return np.allclose(got, want, rtol=1e-12, atol=1e-12 * max(1.0, np.abs(want).max(initial=0)))
+
+    assert close(results["C"], results["F"])
+    # lu_solve on lu's own column-major factors equals solve (the same two triangular solves)
     L, U, P = sd.linalg.lu(as_sd(f))
     assert bits_equal(npy(sd.linalg.lu_solve(L, U, P, as_sd(b))), npy(sd.linalg.solve(as_sd(f), as_sd(b))))
     Lc, Uc = (as_sd(np.ascontiguousarray(npy(t))) for t in (L, U))
-    assert bits_equal(npy(sd.linalg.lu_solve(Lc, Uc, P, as_sd(b))), npy(sd.linalg.solve(as_sd(f), as_sd(b))))
+    assert close(npy(sd.linalg.lu_solve(Lc, Uc, P, as_sd(b))), npy(sd.linalg.solve(as_sd(f), as_sd(b))))
 
 
 def test_in_place_operand_checks():
@@ -218,9 +243,10 @@ def test_in_place_operand_checks():
 
 @pytest.mark.parametrize("order", ["C", "F"])
 def test_matrix_norm_sums_each_line_pairwise(order):
-    # Each column (1, -1) or row (inf, -inf) is summed pairwise in its logical order, whatever
-    # the memory layout: the bits of sd.sum over that line as a contiguous vector. 'fro' fuses
-    # the squares into the sum (fma), so it agrees with sqrt(sum(x * x)) within rounding.
+    # Each column (1, -1) or row (inf, -inf) is summed on its own: within rounding of sd.sum
+    # over that line as a contiguous vector, whatever the memory layout (a contiguous line is
+    # one fast sum, lines side by side are summed in strips). 'fro' fuses the squares into
+    # the sum (fma), so it agrees with sqrt(sum(x * x)) within rounding.
     rng = np.random.default_rng(7)
     m = rng.standard_normal((300, 500))
     x = sd.asarray(np.asarray(m, order=order))
@@ -230,10 +256,10 @@ def test_matrix_norm_sums_each_line_pairwise(order):
 
     cols = np.array([line_sum(m[:, j]) for j in range(m.shape[1])])
     rows = np.array([line_sum(m[i, :]) for i in range(m.shape[0])])
-    assert float(sd.linalg.matrix_norm(x, ord=1)) == cols.max()
-    assert float(sd.linalg.matrix_norm(x, ord=-1)) == cols.min()
-    assert float(sd.linalg.matrix_norm(x, ord=float("inf"))) == rows.max()
-    assert float(sd.linalg.matrix_norm(x, ord=float("-inf"))) == rows.min()
+    assert float(sd.linalg.matrix_norm(x, ord=1)) == pytest.approx(cols.max(), rel=1e-14)
+    assert float(sd.linalg.matrix_norm(x, ord=-1)) == pytest.approx(cols.min(), rel=1e-14)
+    assert float(sd.linalg.matrix_norm(x, ord=float("inf"))) == pytest.approx(rows.max(), rel=1e-14)
+    assert float(sd.linalg.matrix_norm(x, ord=float("-inf"))) == pytest.approx(rows.min(), rel=1e-14)
     fro = float(sd.linalg.matrix_norm(x, ord="fro"))
     assert fro == pytest.approx(float(np.sqrt((m * m).sum())), rel=1e-14)
-    assert fro == float(sd.linalg.matrix_norm(sd.asarray(np.ascontiguousarray(m)), ord="fro"))
+    assert fro == pytest.approx(float(sd.linalg.matrix_norm(sd.asarray(np.ascontiguousarray(m)), ord="fro")), rel=1e-14)

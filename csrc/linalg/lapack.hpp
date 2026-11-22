@@ -7,9 +7,11 @@
 #include "linalg/types.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 namespace sd::linalg::lapack {
@@ -86,6 +88,57 @@ lint trtrs(char uplo, char trans, char diag, lint n, lint nrhs, const T* a, lint
     if constexpr (std::is_same_v<T, double>) dtrtrs_(&uplo, &trans, &diag, &n, &nrhs, a, &lda, b, &ldb, &info);
     else ztrtrs_(&uplo, &trans, &diag, &n, &nrhs, a, &lda, b, &ldb, &info);
     return checked(info, "trtrs");
+}
+
+// Solves op(A) X = B, A triangular n x n, B n x k column-major (B overwritten), with no
+// singularity check (the callers look at the diagonal first). A is column-major, or
+// row-major (`row_major`: a C-order input read in place, docs/design/linalg.md §5.5).
+// Up to kTrsvMaxK columns go through BLAS trsv one column at a time: Accelerate's trsm (and
+// so trtrs, getrs, potrs) was 3-4x slower than trsv for one column from n = 100 on, 1.7x
+// for two, and faster from four. More columns: trtrs, on the transposed view for a
+// row-major A (op 'N' <-> 'T'); a row-major A with op 'C' and more columns has no such
+// view: callers pack it (row_major_ok).
+inline constexpr lint kTrsvMaxK = 2;
+
+inline bool row_major_ok(bool complex, char trans, lint k) { return !(complex && trans == 'C' && k > kTrsvMaxK); }
+
+template <class T>
+void tri_solve(bool row_major, char uplo, char trans, char diag, lint n, lint k, const T* a, lint lda, T* b, lint ldb) {
+    if (n == 0 || k == 0) return;
+    if (k <= kTrsvMaxK) {
+        const auto lay = row_major ? CblasRowMajor : CblasColMajor;
+        const auto ul = uplo == 'U' ? CblasUpper : CblasLower;
+        const auto tr = trans == 'N' ? CblasNoTrans : (trans == 'T' ? CblasTrans : CblasConjTrans);
+        const auto dg = diag == 'U' ? CblasUnit : CblasNonUnit;
+        for (lint j = 0; j < k; ++j) {
+            if constexpr (std::is_same_v<T, double>) cblas_dtrsv(lay, ul, tr, dg, n, a, lda, b + j * ldb, 1);
+            else cblas_ztrsv(lay, ul, tr, dg, n, a, lda, b + j * ldb, 1);
+        }
+        return;
+    }
+    if (row_major) {  // A^T column-major: the other triangle, the other op
+        if (trans == 'C' && std::is_same_v<T, cplx>) throw std::logic_error("tri_solve: row-major A with op 'C'");
+        trtrs(uplo == 'U' ? 'L' : 'U', trans == 'N' ? 'T' : 'N', diag, n, k, a, lda, b, ldb);
+        return;
+    }
+    trtrs(uplo, trans, diag, n, k, a, lda, b, ldb);
+}
+
+// getrs('N') with the factors of getrf: the row swaps, then L (unit) and U by tri_solve.
+template <class T>
+void lu_solve_factored(lint n, lint k, const T* lu, const lint* ipiv, T* b, lint ldb) {
+    if (n == 0 || k == 0) return;
+    if (k > kTrsvMaxK) {
+        getrs('N', n, k, lu, n, ipiv, b, ldb);
+        return;
+    }
+    for (lint j = 0; j < k; ++j) {
+        T* c = b + j * ldb;
+        for (lint i = 0; i < n; ++i)
+            if (ipiv[i] - 1 != i) std::swap(c[i], c[ipiv[i] - 1]);
+    }
+    tri_solve(false, 'L', 'N', 'U', n, k, lu, n, b, ldb);
+    tri_solve(false, 'U', 'N', 'N', n, k, lu, n, b, ldb);
 }
 
 // The reciprocal 1-norm condition number of a real triangular matrix (an estimate, Hager's
@@ -587,10 +640,33 @@ void gemm(char ta, char tb, lint m, lint n, lint k, const T* a, lint lda, const 
     }
 }
 
-// C = A B for n x n column-major matrices (BLAS gemm; C must not alias A or B).
+// C = A B for tiny n x n float64 column-major matrices (n <= kTinyGemm): each column of C
+// an fma chain over the inner index. BLAS gemm's call cost was most of the time of a 3 x 3
+// product (matrix_power, expm of small matrices).
+inline constexpr lint kTinyGemm = 8;
+
+inline void tiny_gemm(lint n, const double* a, const double* b, double* c) {
+    for (lint j = 0; j < n; ++j) {
+        double* cj = c + j * n;
+        const double* bj = b + j * n;
+        for (lint i = 0; i < n; ++i) cj[i] = a[i] * bj[0];
+        for (lint p = 1; p < n; ++p) {
+            const double bp = bj[p];
+            const double* ap = a + p * n;
+            for (lint i = 0; i < n; ++i) cj[i] = std::fma(ap[i], bp, cj[i]);
+        }
+    }
+}
+
+// C = A B for n x n column-major matrices (BLAS gemm, or tiny_gemm for tiny float64 ones;
+// C must not alias A or B).
 template <class T>
 void gemm_square(lint n, const T* a, const T* b, T* c) {
     if constexpr (std::is_same_v<T, double>) {
+        if (n <= kTinyGemm) {
+            tiny_gemm(n, a, b, c);
+            return;
+        }
         cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, n, n, n, 1.0, a, n, b, n, 0.0, c, n);
     } else {
         const T one(1.0), zero(0.0);

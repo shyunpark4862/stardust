@@ -324,7 +324,9 @@ def test_only_sd_arrays(call, bad):
 @SETTINGS
 @given(seed=st.integers(0, 2**32 - 1), n=st.integers(1, 6), dtype=st.sampled_from(FLOATS))
 def test_results_do_not_depend_on_input_layout(seed, n, dtype):
-    """Packing turns every layout into the same F-order buffer, so the bits agree."""
+    """Packing turns every layout into the same F-order buffer, so the bits agree -- except
+    where a C-order input is read in place as row-major (solve_triangular's a,
+    docs/design/linalg.md §5.5): there the values agree within rounding."""
     rng = np.random.default_rng(seed)
     s = spd(rng, (2,), n, dtype)
     b = random_values(rng, (2, n, 2), dtype)
@@ -345,8 +347,11 @@ def test_results_do_not_depend_on_input_layout(seed, n, dtype):
 
     ref = run("C")
     for layout in ("F", "strided", "reversed"):
-        for got, want in zip(run(layout), ref):
-            assert np.array_equal(got, want)
+        for i, (got, want) in enumerate(zip(run(layout), ref)):
+            if i == 1:  # solve_triangular: the C-order a was read in place
+                assert np.allclose(got, want, rtol=1e-12, atol=1e-12 * max(1.0, np.abs(want).max(initial=0)))
+            else:
+                assert np.array_equal(got, want)
 
 
 def test_bits_shared_with_numpy_and_scipy():

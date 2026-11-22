@@ -2,6 +2,8 @@
 // that also converts the dtype and checks finiteness (docs/design/linalg.md §5).
 #pragma once
 
+#include <arm_neon.h>
+
 #include "linalg/batch.hpp"
 #include "linalg/types.hpp"
 
@@ -62,6 +64,58 @@ bool copy_run(const std::byte* src, std::int64_t n, T* dst, bool check) {
     }
 }
 
+// d[c * ld + r] = p[r * rs + c] for r, c < 4 (element strides): a 4 x 4 block transposed
+// in registers.
+inline void transpose4(const double* p, std::int64_t rs, double* d, std::int64_t ld) {
+    const float64x2_t r0a = vld1q_f64(p), r0b = vld1q_f64(p + 2);
+    const float64x2_t r1a = vld1q_f64(p + rs), r1b = vld1q_f64(p + rs + 2);
+    const float64x2_t r2a = vld1q_f64(p + 2 * rs), r2b = vld1q_f64(p + 2 * rs + 2);
+    const float64x2_t r3a = vld1q_f64(p + 3 * rs), r3b = vld1q_f64(p + 3 * rs + 2);
+    vst1q_f64(d, vtrn1q_f64(r0a, r1a));
+    vst1q_f64(d + 2, vtrn1q_f64(r2a, r3a));
+    vst1q_f64(d + ld, vtrn2q_f64(r0a, r1a));
+    vst1q_f64(d + ld + 2, vtrn2q_f64(r2a, r3a));
+    vst1q_f64(d + 2 * ld, vtrn1q_f64(r0b, r1b));
+    vst1q_f64(d + 2 * ld + 2, vtrn1q_f64(r2b, r3b));
+    vst1q_f64(d + 3 * ld, vtrn2q_f64(r0b, r1b));
+    vst1q_f64(d + 3 * ld + 2, vtrn2q_f64(r2b, r3b));
+}
+
+// The C-order float64 transpose of pack_loop for columns [j0, j1) of an m-row matrix with
+// row stride r (elements): 32 x 32 tiles, each in 4 x 4 register blocks (1.5x the element
+// loop on a 1000 x 1000 matrix). The finiteness check as pack_loop's.
+inline constexpr std::int64_t kTransposeNeonMin = 4096;  // elements
+
+[[gnu::noinline]] inline bool transpose_f64(
+    const double* src,
+    std::int64_t m,
+    std::int64_t j0,
+    std::int64_t j1,
+    std::int64_t r,
+    double* dst,
+    std::int64_t ld,
+    bool check
+) {
+    constexpr std::int64_t tile = 32;
+    for (std::int64_t i0 = 0; i0 < m; i0 += tile) {
+        const std::int64_t i1 = std::min(m, i0 + tile), i4 = i0 + (i1 - i0) / 4 * 4;
+        for (std::int64_t jt = j0; jt < j1; jt += tile) {
+            const std::int64_t jt1 = std::min(j1, jt + tile), jn = jt + (jt1 - jt) / 4 * 4;
+            for (std::int64_t j = jt; j < jn; j += 4) {
+                for (std::int64_t i = i0; i < i4; i += 4) transpose4(src + i * r + j, r, dst + j * ld + i, ld);
+                for (std::int64_t jj = j; jj < j + 4; ++jj)
+                    for (std::int64_t i = i4; i < i1; ++i) dst[jj * ld + i] = src[i * r + jj];
+            }
+            for (std::int64_t j = jn; j < jt1; ++j)
+                for (std::int64_t i = i0; i < i1; ++i) dst[j * ld + i] = src[i * r + j];
+        }
+    }
+    bool ok = true;
+    if (check)
+        for (std::int64_t j = j0; j < j1; ++j) ok &= all_finite(dst + j * ld, m);
+    return ok;
+}
+
 // The loop for one source type S, for destination columns [j0, j1). Only
 // float sources can hold NaN or inf. Fast paths (docs/design/linalg.md §5.3):
 // columns contiguous in the source (F-order: a copy per column) and rows
@@ -87,6 +141,13 @@ bool pack_loop(
         return ok;
     }
     if (cs == sz && m > 1) {
+        if constexpr (std::is_same_v<S, double> && std::is_same_v<T, double>) {
+            // a larger float64 matrix: 4 x 4 register transposes, out of line (inside this
+            // loop they slowed the small packs down by up to a third: kron, block_diag, det of
+            // 3 x 3 batches)
+            if (rs % 8 == 0 && m * (j1 - j0) >= kTransposeNeonMin)
+                return transpose_f64(reinterpret_cast<const double*>(p), m, j0, j1, rs / 8, dst, ld, check);
+        }
         constexpr std::int64_t tile = 32;
         for (std::int64_t i0 = 0; i0 < m; i0 += tile) {
             const std::int64_t i1 = std::min(m, i0 + tile);
@@ -338,12 +399,14 @@ bool pack_triangle(
 }
 
 // For an operand LAPACK reads in place (docs/design/linalg.md §5.5): true if
-// the triangle that pack_triangle would read has no NaN or inf. a is
-// column-major T with leading dimension ld.
+// the triangle that pack_triangle would read has no NaN or inf, in columns [j0, j1).
+// a is column-major T with leading dimension ld.
 template <class T>
-bool triangle_finite(const T* a, std::int64_t n, std::int64_t ld, bool lower, bool with_diag) {
+bool triangle_finite_cols(
+    const T* a, std::int64_t n, std::int64_t ld, bool lower, bool with_diag, std::int64_t j0, std::int64_t j1
+) {
     bool ok = true;
-    for (std::int64_t j = 0; j < n; ++j) {
+    for (std::int64_t j = j0; j < j1; ++j) {
         const std::int64_t i0 = lower ? (with_diag ? j : j + 1) : 0;
         const std::int64_t i1 = lower ? n : (with_diag ? j + 1 : j);
         if (i1 > i0)
@@ -353,6 +416,23 @@ bool triangle_finite(const T* a, std::int64_t n, std::int64_t ld, bool lower, bo
             );
     }
     return ok;
+}
+
+// The check of a large triangle on the pool, by blocks of columns (out of line, as pack_large).
+template <class T>
+[[gnu::noinline]] bool triangle_finite_large(const T* a, std::int64_t n, std::int64_t ld, bool lower, bool with_diag) {
+    return detail::on_pool_by_columns(n, [&](std::int64_t j0, std::int64_t j1) {
+        return triangle_finite_cols(a, n, ld, lower, with_diag, j0, j1);
+    });
+}
+
+// The whole triangle: a large one (twice pack_large's size) on the pool, where the check
+// was a third of a large in-place triangular solve (lu_solve at n = 1000, one thread).
+template <class T>
+bool triangle_finite(const T* a, std::int64_t n, std::int64_t ld, bool lower, bool with_diag) {
+    if (n * n >= 2 * detail::kPackParallelMin) [[unlikely]]
+        return triangle_finite_large(a, n, ld, lower, with_diag);
+    return triangle_finite_cols(a, n, ld, lower, with_diag, 0, n);
 }
 
 // True if an n x n column-major matrix has an exact zero on its diagonal.

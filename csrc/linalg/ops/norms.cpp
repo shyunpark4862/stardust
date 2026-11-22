@@ -12,6 +12,7 @@
 
 #include "linalg/args.hpp"
 #include "linalg/cost.hpp"
+#include "linalg/fastsum.hpp"
 #include "linalg/outblock.hpp"
 #include "linalg/pairwise.hpp"
 #include "linalg/ops/common.hpp"
@@ -87,6 +88,69 @@ double region_norm(
     });
 }
 
+// The fast path of a norm (fastsum.hpp): float64 data (complex128 for the 2-norm, its
+// parts as terms) whose region is one dense block of memory in any axis order, or a single
+// axis with a positive stride, read in place as `count` doubles `inc` apart from the
+// region's base. The region's shape and strides are the same for every norm of a batch, so
+// the plan is made once per call.
+struct FastPlan {
+    bool ok = false;
+    std::int64_t count = 0, inc = 1;
+};
+
+FastPlan fast_plan(VecOrd ord, DType dt, int nd, const std::int64_t* shape, const std::int64_t* strides) {
+    FastPlan f;
+    const bool cx = dt == DType::Complex128;
+    if (!(dt == DType::Float64 || (cx && ord.kind == Ord::Two))) return f;
+    if (ord.kind != Ord::Two && ord.kind != Ord::One && ord.kind != Ord::Inf && ord.kind != Ord::NegInf) return f;
+    std::int64_t ext[kMaxWalkDims], st[kMaxWalkDims];
+    int k = 0;
+    std::int64_t count = 1;
+    for (int d = 0; d < nd; ++d) {
+        if (shape[d] == 0) return {true, 0, 1};
+        if (shape[d] == 1) continue;
+        ext[k] = shape[d];
+        st[k++] = strides[d];
+        count *= shape[d];
+    }
+    if (cx) {  // the two parts of each element: an innermost axis of 2 doubles
+        ext[k] = 2;
+        st[k++] = sizeof(double);
+        count *= 2;
+    }
+    if (k == 0) return {true, 1, 1};
+    if (k == 1) {
+        if (st[0] <= 0 || st[0] % static_cast<std::int64_t>(sizeof(double)) != 0) return f;
+        const std::int64_t inc = st[0] / static_cast<std::int64_t>(sizeof(double));
+        if (inc != 1 && (ord.kind == Ord::Inf || ord.kind == Ord::NegInf)) return f;  // the max reads runs only
+        return {true, count, inc};
+    }
+    // a dense block: sorted by stride, each axis spans exactly the ones inside it
+    int order[kMaxWalkDims];
+    for (int i = 0; i < k; ++i) order[i] = i;
+    std::sort(order, order + k, [&](int a, int b) { return st[a] < st[b]; });
+    std::int64_t step = sizeof(double);
+    for (int i = 0; i < k; ++i) {
+        if (st[order[i]] != step) return f;
+        step *= ext[order[i]];
+    }
+    return {true, count, 1};
+}
+
+// The norm by the fast path, or a negative number when the 2-norm's plain sum of squares
+// cannot be trusted (fast::norm_from_squares): the caller then takes the careful path.
+double fast_norm(VecOrd ord, const FastPlan& f, const std::byte* base) {
+    if (f.count == 0) return 0.0;  // empty sets have norm 0 (docs/design/linalg.md §2.5)
+    const double* p = reinterpret_cast<const double*>(base);
+    switch (ord.kind) {
+        case Ord::Two: return fast::norm_from_squares(fast::sum_squares(f.count, p, f.inc), f.count);
+        case Ord::One: return fast::sum_abs(f.count, p, f.inc);
+        case Ord::Inf: return fast::extreme<true>(f.count, p);
+        case Ord::NegInf: return fast::extreme<false>(f.count, p);
+        default: return -1.0;
+    }
+}
+
 // ---------------------------------------------------------- vector_norm --
 
 nb::object vector_norm(nb::handle xo, nb::handle axis_o, nb::handle keepdims_o, nb::handle ord_o) {
@@ -111,8 +175,16 @@ nb::object vector_norm(nb::handle xo, nb::handle axis_o, nb::handle keepdims_o, 
     }
     const std::vector<std::int64_t> rsh(red_shape.begin(), red_shape.end()),
         rst(red_strides.begin(), red_strides.end());
-    auto norm_at = [&](std::int64_t off) {
+    const FastPlan plan = fast_plan(ord, x.dtype(), static_cast<int>(rsh.size()), rsh.data(), rst.data());
+    auto slow = [&](std::int64_t off) __attribute__((noinline)) {
         return region_norm(ord, x, x.data() + off, static_cast<int>(rsh.size()), rsh.data(), rst.data());
+    };
+    auto norm_at = [&](std::int64_t off) {
+        if (plan.ok) {
+            const double r = fast_norm(ord, plan, x.data() + off);
+            if (r >= 0 || r != r) return r;
+        }
+        return slow(off);
     };
     std::int64_t red_count = 1;
     for (std::int64_t v : rsh) red_count *= v;
@@ -193,19 +265,41 @@ nb::object matrix_norm(nb::handle xo, nb::handle keepdims_o, nb::handle ord_o) {
         out_shape.push_back(1);
     }
     if (ord == MatOrd::Two || ord == MatOrd::NegTwo || ord == MatOrd::Nuc) return matrix_norm_svd(x, ord, out_shape);
-    // One norm: sums of magnitudes along the lines (columns for 1, rows for inf), then max/min.
+    const std::int64_t fsh[2] = {m, n}, fst[2] = {rs, cs};
+    const FastPlan fro_plan = ord == MatOrd::Fro ? fast_plan({Ord::Two, 2.0}, x.dtype(), 2, fsh, fst) : FastPlan{};
+    // The 1/inf norms: sums of magnitudes along the lines (columns for 1, rows for inf),
+    // then their max/min, NaN propagating.
+    const bool cols = ord == MatOrd::One || ord == MatOrd::NegOne;
+    const std::int64_t lines = cols ? n : m, len = cols ? m : n;
+    const std::int64_t line_step = cols ? cs : rs, elem_step = cols ? rs : cs;
+    const bool max = ord == MatOrd::One || ord == MatOrd::Inf;
+    constexpr std::int64_t d8 = sizeof(double);
+    // float64 read in place: lines contiguous (each a fast sum), or the lines side by side
+    // (strips of lines summed together, row by row)
+    const bool f64 = x.dtype() == DType::Float64;
+    const bool line_runs = f64 && elem_step == d8;
+    const bool strips = f64 && !line_runs && line_step == d8 && elem_step > 0 && elem_step % d8 == 0;
     auto norm_at = [&](std::int64_t off) -> double {
         const std::byte* base = x.data() + off;
         if (ord == MatOrd::Fro) {
-            const std::int64_t sh[2] = {m, n}, st[2] = {rs, cs};
-            return region_norm({Ord::Two, 2.0}, x, base, 2, sh, st);
+            if (fro_plan.ok) {
+                const double r = fast_norm({Ord::Two, 2.0}, fro_plan, base);
+                if (r >= 0) return r;
+            }
+            return region_norm({Ord::Two, 2.0}, x, base, 2, fsh, fst);
         }
-        // One norm: pairwise sums of magnitudes along the lines (columns for 1,
-        // rows for inf), then their max/min, NaN propagating.
-        const bool cols = ord == MatOrd::One || ord == MatOrd::NegOne;
-        const std::int64_t lines = cols ? n : m, len = cols ? m : n;
-        const std::int64_t line_step = cols ? cs : rs, elem_step = cols ? rs : cs;
-        const bool max = ord == MatOrd::One || ord == MatOrd::Inf;
+        if (lines == 0) return 0.0;
+        double best = max ? 0.0 : kInf;
+        bool nan = false;
+        auto take = [&](double sum) {
+            if (sum != sum) nan = true;
+            else best = max ? (sum > best ? sum : best) : (sum < best ? sum : best);
+        };
+        const bool large = lines * len >= kSumParallelMin;
+        if (line_runs || strips)
+            return fast::line_abs_extreme(
+                reinterpret_cast<const double*>(base), lines, len, line_step / d8, elem_step / d8, max
+            );
         return visit_storage(x.dtype(), [&]<class S>(std::type_identity<S>) {  // one dispatch per matrix
             auto line_sum = [&](std::int64_t l) {
                 const std::byte* line = base + l * line_step;
@@ -213,15 +307,7 @@ nb::object matrix_norm(nb::handle xo, nb::handle keepdims_o, nb::handle ord_o) {
                     for (std::int64_t t = 0; t < k; ++t) out[t] = magnitude(load<S>(line + (b0 + t) * elem_step));
                 });
             };
-            double best = max ? 0.0 : kInf;
-            bool nan = false;
-            auto take = [&](double sum) {
-                if (sum != sum) nan = true;
-                else best = max ? (sum > best ? sum : best) : (sum < best ? sum : best);
-            };
-            if (lines * len >= kSumParallelMin && lines > 1 && detail::begin_parallel()) {
-                // one large matrix: its lines on the pool (docs/design/linalg.md §8.3); each line's sum is
-                // computed as in the serial loop, and max/min do not depend on order
+            if (large && lines > 1 && detail::begin_parallel()) {
                 std::vector<double> sums(static_cast<std::size_t>(lines));
                 const std::int64_t per = std::max<std::int64_t>(1, kSumLeaf / std::max<std::int64_t>(len, 1));
                 detail::run_tasks((lines + per - 1) / per, [&](std::int64_t t) {
@@ -229,18 +315,26 @@ nb::object matrix_norm(nb::handle xo, nb::handle keepdims_o, nb::handle ord_o) {
                 });
                 for (double v : sums) take(v);
             } else {
-                const parallel::Unlocked unlocked(lines * len >= kSumParallelMin);
+                const parallel::Unlocked unlocked(large);
                 for (std::int64_t l = 0; l < lines; ++l) take(line_sum(l));
             }
-            return lines == 0 ? 0.0 : (nan ? kNaN : best);
+            return nan ? kNaN : best;
         });
     };
     if (out_shape.empty()) return py_scalar(norm_at(0));
     Batch b({{x.batch_shape(2), x.batch_strides(2)}}, "matrix_norm");
     Out out = alloc_c(out_shape, DType::Float64);
     double* res = out.as<double>();
+    auto slow = [&](std::int64_t off) __attribute__((noinline)) { return norm_at(off); };
     run_batch(b, cost(kStream, double(m) * n), [&](std::int64_t i, const std::int64_t* off, Scratch&) {
-        res[i] = norm_at(off[0]);
+        if (fro_plan.ok) {  // inline in the batch loop: the 'fro' norm of small matrices
+            const double r = fast_norm({Ord::Two, 2.0}, fro_plan, x.data() + off[0]);
+            if (r >= 0) {
+                res[i] = r;
+                return 0;
+            }
+        }
+        res[i] = slow(off[0]);
         return 0;
     });
     return to_array(out);

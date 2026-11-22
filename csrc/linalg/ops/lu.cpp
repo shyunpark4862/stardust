@@ -222,7 +222,7 @@ nb::object solve(nb::handle ao, nb::handle bo) {
                 LapackSlot<T> xs(res + i * n * k, n * k, s, Scratch::kAlign0);
                 T* x = xs.get();  // b is packed straight into the output slot (docs/design/linalg.md §5.2)
                 if (!pack(y.dtype(), y.data() + off[1], n, k, r.rs, r.cs, x, n, true)) return kNonFiniteB;
-                if (n > 0 && k > 0) lapack::getrs('N', n, k, lu, n, ipiv, x, n);
+                lapack::lu_solve_factored(n, k, lu, ipiv, x, n);  // trsv for one or two columns
                 return 0;
             },
             lu_task_cap(n, k)

@@ -154,10 +154,10 @@ def test_long_sums_same_for_any_thread_count(n):
         lambda: sd.linalg.matrix_norm(m, ord=math.inf),
     ):
         same_for_all_counts(call)
-    # pairwise sums (docs/design/linalg.md §8.2): plain ones are sd.sum's bits, fused ones
-    # within the error bound of numpy's
-    assert sd.linalg.vector_norm(X, ord=1) == sd.sum(sd.abs(X))
-    bound = 2 * (math.log2(n) + 2) * 2.0**-52
+    # the fast sums (docs/design/linalg.md §8.2): within a multi-accumulator sum's error bound
+    # (64 terms in order per lane, fastsum.hpp) of sd.sum's and numpy's
+    bound = 2 * (64 + math.log2(n) + 2) * 2.0**-52
+    assert abs(sd.linalg.vector_norm(X, ord=1) - sd.sum(sd.abs(X))) <= bound * np.sum(np.abs(x))
     assert abs(sd.linalg.vecdot(X, Y) - np.sum(x * y)) <= bound * np.sum(np.abs(x * y))
 
 

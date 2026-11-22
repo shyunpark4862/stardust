@@ -1,15 +1,44 @@
 #include "linalg/outblock.hpp"
 
+#include "base/buffer.hpp"
+
+#include <algorithm>
+
 namespace sd::linalg {
 
 namespace {
 
+constexpr std::int64_t kZeroedMin = std::int64_t(1) << 20;  // bytes
+
 // The layout is linalg's (column-major matrices, batch axes outside in C
 // order: docs/design/linalg.md §4); the memory is a Buffer like every array's,
 // 128-byte aligned, so LAPACK's 16-byte alignment needs hold.
-Out alloc(const std::vector<std::int64_t>& shape, std::vector<std::int64_t> strides, std::int64_t nbytes, DType dt) {
+Out alloc(
+    const std::vector<std::int64_t>& shape,
+    std::vector<std::int64_t> strides,
+    std::int64_t nbytes,
+    DType dt,
+    bool zeroed = false
+) {
     Out out;
-    out.arr = new_array_strided(dt, shape, strides, nbytes);
+    // Zeroed memory only for large blocks (calloc gives them as fresh zero pages, which cost no
+    // more than writing the zeros); a small one would be zeroed by calloc's memset, and fresh
+    // pages for a medium one made small block_diag and kronsum calls slower. out.zeroed tells.
+    zeroed = zeroed && nbytes >= kZeroedMin;
+    out.zeroed = zeroed;
+    if (zeroed) {  // new_array_strided's array on zeroed memory
+        checked_size(shape, dt);
+        NDArray& a = out.arr;
+        a.dtype = dt;
+        a.ndim = static_cast<int>(shape.size());
+        std::copy(shape.begin(), shape.end(), a.shape.begin());
+        std::copy(strides.begin(), strides.end(), a.strides.begin());
+        a.buffer = Buffer::allocate(nbytes, true);
+        a.data = a.buffer->data();
+        a.update_flags();
+    } else {
+        out.arr = new_array_strided(dt, shape, strides, nbytes);
+    }
     out.data = out.arr.data;
     out.strides = std::move(strides);
     return out;
@@ -40,7 +69,7 @@ std::int64_t fill_c_strides(
 
 }  // namespace
 
-Out alloc_matrices(const std::vector<std::int64_t>& batch, std::int64_t m, std::int64_t n, DType dt) {
+Out alloc_matrices(const std::vector<std::int64_t>& batch, std::int64_t m, std::int64_t n, DType dt, bool zeroed) {
     const std::int64_t isz = itemsize(dt);
     std::vector<std::int64_t> shape = batch, strides(batch.size() + 2);
     shape.push_back(m);
@@ -49,7 +78,7 @@ Out alloc_matrices(const std::vector<std::int64_t>& batch, std::int64_t m, std::
     strides[batch.size()] = isz;
     strides[batch.size() + 1] = isz * m;
     const std::int64_t total = fill_c_strides(shape, batch.size(), strides, isz * m * n);
-    return alloc(shape, std::move(strides), total, dt);
+    return alloc(shape, std::move(strides), total, dt, zeroed);
 }
 
 Out alloc_vectors(const std::vector<std::int64_t>& batch, std::int64_t m, DType dt) {

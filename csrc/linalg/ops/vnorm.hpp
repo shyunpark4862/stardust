@@ -1,7 +1,8 @@
 // The norm of a set of magnitudes, shared by vector_norm, matrix_norm and cond
 // (docs/design/linalg.md §10.8: fast unscaled pass, rescaled second pass only
 // on overflow or when every term is tiny; empty sets have norm 0). Sums are
-// pairwise (docs/design/linalg.md §8.2).
+// pairwise (docs/design/linalg.md §8.2). The buffered and careful path: float64 data
+// read in place takes the fast sums first (norms.cpp, fastsum.hpp).
 #pragma once
 
 #include "linalg/pairwise.hpp"

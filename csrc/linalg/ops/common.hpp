@@ -133,19 +133,38 @@ private:
 // cholesky_solve's l, lu_solve's l and u). When the input already is
 // column-major with T elements, LAPACK reads it in place and only the triangle
 // is checked (docs/design/linalg.md §5.5); otherwise it is packed into `buf`.
-// The arithmetic, and so the result, is the same either way. Returns false on NaN/inf.
+// With `row_major` given, a row-major input (C order) is read in place too and
+// *row_major says which it was: the solve then takes it as row-major (tri_solve), and
+// its last bits may differ from the packed copy's. Returns false on NaN/inf.
 template <class T>
 bool triangle_operand(
-    const Input& x, std::int64_t off, lint n, bool lower, bool with_diag, T* buf, const T*& a, lint& lda
+    const Input& x,
+    std::int64_t off,
+    lint n,
+    bool lower,
+    bool with_diag,
+    T* buf,
+    const T*& a,
+    lint& lda,
+    bool* row_major = nullptr
 ) {
     constexpr std::int64_t sz = sizeof(T);
     const std::byte* p = x.data() + off;
-    // in place only when 16-byte aligned, every column too (see aligned16)
-    if (x.dtype() == dtype_of<T>() && x.stride(-2) == sz && x.stride(-1) % 16 == 0 &&
-        x.stride(-1) / sz >= std::max<lint>(n, 1) && aligned16(p)) {
-        a = reinterpret_cast<const T*>(p);
-        lda = x.stride(-1) / sz;
-        return triangle_finite(a, n, lda, lower, with_diag);
+    if (row_major) *row_major = false;
+    // in place only when 16-byte aligned, every column (row) too (see aligned16)
+    if (x.dtype() == dtype_of<T>() && aligned16(p)) {
+        if (x.stride(-2) == sz && x.stride(-1) % 16 == 0 && x.stride(-1) / sz >= std::max<lint>(n, 1)) {
+            a = reinterpret_cast<const T*>(p);
+            lda = x.stride(-1) / sz;
+            return triangle_finite(a, n, lda, lower, with_diag);
+        }
+        if (row_major && x.stride(-1) == sz && x.stride(-2) % 16 == 0 && x.stride(-2) / sz >= std::max<lint>(n, 1)) {
+            a = reinterpret_cast<const T*>(p);
+            lda = x.stride(-2) / sz;
+            *row_major = true;
+            // the row-major triangle is the other one of the column-major transpose
+            return triangle_finite(a, n, lda, !lower, with_diag);
+        }
     }
     a = buf;
     lda = std::max<lint>(n, 1);
@@ -169,13 +188,13 @@ int lu_factor(const Input& x, std::int64_t off, lint n, Scratch& s, T*& a, lint*
 }
 
 // The inverse from an LU factorization, written to `r` (n x n, column-major):
-// getrs against the identity (docs/design/linalg.md §10.2), so inv(a) == solve(a, I) bit for bit.
+// solve()'s steps against the identity (docs/design/linalg.md §10.2), so inv(a) == solve(a, I) bit for bit.
 template <class T>
 void lu_inverse(const T* lu, const lint* ipiv, lint n, T* r) {
     if (n == 0) return;
     for (lint k = 0; k < n * n; ++k) r[k] = T(0);
     for (lint k = 0; k < n; ++k) r[k * n + k] = T(1);
-    lapack::getrs('N', n, n, lu, n, ipiv, r, n);
+    lapack::lu_solve_factored(n, n, lu, ipiv, r, n);  // as solve() does
 }
 
 template <class T>

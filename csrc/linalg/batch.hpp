@@ -30,6 +30,9 @@ struct BatchOperand {
     std::span<const std::int64_t> strides;
 };
 
+inline constexpr std::size_t kMaxOperands = 4;
+inline constexpr std::size_t kMaxBatchDims = 32;  // the array's kMaxNdim
+
 class Batch {
 public:
     // Broadcasts the operands' batch shapes (right-aligned, size-1 axes
@@ -42,6 +45,28 @@ public:
 
     // Byte offset of every operand for batch element `idx` (C order over shape()).
     void offsets(std::int64_t idx, std::int64_t* out) const;
+
+    // Calls fn(i, offsets) for the elements i in [begin, end), in order. The offsets are
+    // computed by offsets() once per run along the innermost batch axis and by one multiply-add
+    // per operand inside it: a division per axis and element (offsets() for each one) was a
+    // visible part of a small element's time, and offsets carried from element to element
+    // through memory made a dependency chain of their own.
+    template <class F>
+    void walk(std::int64_t begin, std::int64_t end, F&& fn) const {
+        const std::size_t nd = shape_.size();
+        const std::int64_t last = nd ? shape_[nd - 1] : 1;
+        std::int64_t inner[kMaxOperands] = {0, 0, 0, 0}, row[kMaxOperands] = {0, 0, 0, 0}, off[kMaxOperands];
+        if (nd)
+            for (std::size_t k = 0; k < nops_; ++k) inner[k] = strides_[k * nd + nd - 1];
+        for (std::int64_t i = begin; i < end;) {
+            const std::int64_t j0 = i % last, m = std::min(last - j0, end - i);
+            offsets(i, row);
+            for (std::int64_t j = 0; j < m; ++j, ++i) {
+                for (std::size_t k = 0; k < kMaxOperands; ++k) off[k] = row[k] + j * inner[k];
+                if (!fn(i, static_cast<const std::int64_t*>(off))) return;
+            }
+        }
+    }
 
     // "(1, 2)": `idx` as a batch index, for error messages.
     std::string index_str(std::int64_t idx) const;
@@ -154,7 +179,6 @@ struct Failure {
 // bit-for-bit those of the serial loop, for any thread count. Failures: each task stops at its first one, and
 // every task skips elements past the smallest failure seen so far; the
 // smallest index overall is reported, as in the serial loop.
-inline constexpr std::size_t kMaxOperands = 4;
 // Measured (docs/design/linalg.md §7.2).
 inline constexpr double kParallelMinNs = 10000;  // a batch whose estimated serial time is below this runs serially
 inline constexpr double kTaskNs = 5000;          // estimated serial time of one task
@@ -181,18 +205,16 @@ Failure run_batch(const Batch& b, double element_ns, F&& body, int max_tasks = 0
         std::atomic<std::int64_t> first{std::numeric_limits<std::int64_t>::max()};
         detail::run_tasks(ntasks, [&](std::int64_t t) {
             Scratch scratch;
-            std::int64_t offs[kMaxOperands];
-            const std::int64_t end = std::min(n, (t + 1) * per);
-            for (std::int64_t i = t * per; i < end; ++i) {
-                if (i > first.load(std::memory_order_relaxed)) return;  // a smaller failure is already known
-                b.offsets(i, offs);
-                if (const int code = body(i, static_cast<const std::int64_t*>(offs), scratch)) {
+            b.walk(t * per, std::min(n, (t + 1) * per), [&](std::int64_t i, const std::int64_t* offs) {
+                if (i > first.load(std::memory_order_relaxed)) return false;  // a smaller failure is already known
+                if (const int code = body(i, offs, scratch)) {
                     fails[static_cast<std::size_t>(t)] = {i, code};
                     std::int64_t cur = first.load(std::memory_order_relaxed);
                     while (i < cur && !first.compare_exchange_weak(cur, i, std::memory_order_relaxed)) {}
-                    return;
+                    return false;
                 }
-            }
+                return true;
+            });
         });
         Failure best;
         for (const Failure& f : fails)
@@ -204,12 +226,15 @@ Failure run_batch(const Batch& b, double element_ns, F&& body, int max_tasks = 0
     // (docs/design/linalg.md §8.1); the body is the one the tasks run.
     const parallel::Unlocked unlocked(element_ns > 0 && element_ns * static_cast<double>(n) >= kParallelMinNs);
     Scratch scratch;
-    std::int64_t offs[kMaxOperands];
-    for (std::int64_t i = 0; i < n; ++i) {
-        b.offsets(i, offs);
-        if (const int code = body(i, static_cast<const std::int64_t*>(offs), scratch)) return {i, code};
-    }
-    return {};
+    Failure fail;
+    b.walk(0, n, [&](std::int64_t i, const std::int64_t* offs) {
+        if (const int code = body(i, offs, scratch)) {
+            fail = {i, code};
+            return false;
+        }
+        return true;
+    });
+    return fail;
 }
 
 // Message for a failed batch element: "<what>" or "<what> (at batch index (1, 2))".

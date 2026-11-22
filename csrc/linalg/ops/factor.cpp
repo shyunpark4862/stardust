@@ -43,18 +43,20 @@ nb::object solve_triangular(nb::handle ao, nb::handle bo, nb::handle upper_o, nb
         const Failure f = run_batch(
             b, cost(kTriangular, double(n) * n) + rhs_cost(n, r.k),
             [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
-                // Only the triangle trtrs reads; the diagonal too unless it is taken as 1.
+                // Only the triangle the solve reads; the diagonal too unless it is taken as 1.
+                // Column- or row-major inputs are read in place (tri_solve).
                 const T* t;
                 lint ld;
+                bool rm;
                 if (!triangle_operand(
-                        a, off[0], n, !upper, !unit_diagonal, s.get<T>(static_cast<std::size_t>(n * n)), t, ld
+                        a, off[0], n, !upper, !unit_diagonal, s.get<T>(static_cast<std::size_t>(n * n)), t, ld, &rm
                     ))
                     return kNonFinite;
                 if (!unit_diagonal && zero_on_diagonal(t, n, ld)) return kSingular;
                 LapackSlot<T> xs(res + i * n * r.k, n * r.k, s, Scratch::kAlign0);
                 T* x = xs.get();
                 if (!pack(y.dtype(), y.data() + off[1], n, r.k, r.rs, r.cs, x, n, true)) return kNonFiniteB;
-                if (n > 0) lapack::trtrs(upper ? 'U' : 'L', 'N', unit_diagonal ? 'U' : 'N', n, r.k, t, ld, x, n);
+                lapack::tri_solve(rm, upper ? 'U' : 'L', 'N', unit_diagonal ? 'U' : 'N', n, r.k, t, ld, x, n);
                 return 0;
             },
             lu_task_cap(n, r.k)
@@ -85,12 +87,15 @@ nb::object cholesky(nb::handle xo, nb::handle upper_o) {
                 if (!pack_triangle(x.dtype(), x.data() + off[0], n, x.stride(-2), x.stride(-1), l, n, true, true, true))
                     return kNonFinite;
                 if (n > 0 && lapack::potrf('L', n, l, n) > 0) return kNotPD;
-                for (lint j = 0; j < n; ++j)
-                    for (lint r = 0; r < n; ++r) {
-                        if (upper)
-                            o[j * n + r] = r <= j ? conj_if_complex(l[r * n + j]) : T(0);  // U(r,j) = conj(L(j,r))
-                        else if (r < j) o[j * n + r] = T(0);  // clear L's upper part
+                for (lint j = 0; j < n; ++j) {
+                    T* c = o + j * n;
+                    if (upper) {
+                        for (lint r = 0; r <= j; ++r) c[r] = conj_if_complex(l[r * n + j]);  // U(r,j) = conj(L(j,r))
+                        for (lint r = j + 1; r < n; ++r) c[r] = T(0);
+                    } else {
+                        for (lint r = 0; r < j; ++r) c[r] = T(0);  // clear L's upper part
                     }
+                }
                 return 0;
             });
         if (f) raise(b, f, "cholesky", "x");
@@ -117,14 +122,29 @@ nb::object cholesky_solve(nb::handle lo, nb::handle bo, nb::handle upper_o) {
             [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
                 const T* t;
                 lint ld;
-                if (!triangle_operand(l, off[0], n, !upper, true, s.get<T>(static_cast<std::size_t>(n * n)), t, ld))
+                bool rm;
+                // row-major in place unless a complex row-major factor would need op 'C' on many columns
+                const bool rm_ok = lapack::row_major_ok(std::is_same_v<T, cplx>, 'C', r.k);
+                if (!triangle_operand(
+                        l, off[0], n, !upper, true, s.get<T>(static_cast<std::size_t>(n * n)), t, ld,
+                        rm_ok ? &rm : nullptr
+                    ))
                     return kNonFinite;
+                if (!rm_ok) rm = false;
                 // potrs would divide by a zero diagonal without a word (docs/design/linalg.md §10.3).
                 if (zero_on_diagonal(t, n, ld)) return kSingular;
                 LapackSlot<T> xs(res + i * n * r.k, n * r.k, s, Scratch::kAlign0);
                 T* x = xs.get();
                 if (!pack(y.dtype(), y.data() + off[1], n, r.k, r.rs, r.cs, x, n, true)) return kNonFiniteB;
-                if (n > 0 && r.k > 0) lapack::potrs(upper ? 'U' : 'L', n, r.k, t, ld, x, n);
+                if (n > 0 && r.k > 0) {
+                    if (!rm && r.k > lapack::kTrsvMaxK) {
+                        lapack::potrs(upper ? 'U' : 'L', n, r.k, t, ld, x, n);
+                    } else {  // L L^H x = b: L, then L^H (U^H U: U^H, then U), as potrs does
+                        const char ul = upper ? 'U' : 'L';
+                        lapack::tri_solve(rm, ul, upper ? 'C' : 'N', 'N', n, r.k, t, ld, x, n);
+                        lapack::tri_solve(rm, ul, upper ? 'N' : 'C', 'N', n, r.k, t, ld, x, n);
+                    }
+                }
                 return 0;
             },
             lu_task_cap(n, r.k)
@@ -160,10 +180,25 @@ nb::object lu(nb::handle xo) {
                 if (m > 0 && n > 0) lapack::lu_in_place(m, n, a, m, ipiv);
                 T* li = L + i * m * kk;
                 T* ui = U + i * kk * n;
-                for (lint j = 0; j < kk; ++j)
-                    for (lint r = 0; r < m; ++r) li[j * m + r] = r > j ? a[j * m + r] : (r == j ? T(1) : T(0));
-                for (lint j = 0; j < n; ++j)
-                    for (lint r = 0; r < kk; ++r) ui[j * kk + r] = r <= j ? a[j * m + r] : T(0);
+                if (m * n <= 1024) {  // small: one loop (runs of library calls cost more here)
+                    for (lint j = 0; j < kk; ++j)
+                        for (lint r = 0; r < m; ++r) li[j * m + r] = r > j ? a[j * m + r] : (r == j ? T(1) : T(0));
+                    for (lint j = 0; j < n; ++j)
+                        for (lint r = 0; r < kk; ++r) ui[j * kk + r] = r <= j ? a[j * m + r] : T(0);
+                } else {  // column by column, in runs: zeros, the unit diagonal, L's strict part; U's part, zeros
+                    for (lint j = 0; j < kk; ++j) {
+                        T* c = li + j * m;
+                        std::fill(c, c + j, T(0));
+                        c[j] = T(1);
+                        std::copy(a + j * m + j + 1, a + (j + 1) * m, c + j + 1);
+                    }
+                    for (lint j = 0; j < n; ++j) {
+                        T* c = ui + j * kk;
+                        const lint top = std::min<lint>(j + 1, kk);
+                        std::copy(a + j * m, a + j * m + top, c);
+                        std::fill(c + top, c + kk, T(0));
+                    }
+                }
                 // ipiv records swaps (step r swapped rows r and ipiv[r]-1); replaying them
                 // on 0..m-1 gives the rows of x that L @ U reproduces: x[perm] = L @ U.
                 std::int64_t* p = P + i * m;
@@ -222,10 +257,19 @@ nb::object lu_solve(nb::handle lo, nb::handle uo, nb::handle po, nb::handle bo, 
                 // (docs/design/linalg.md §5.5).
                 const T *tl, *tu;
                 lint ldl, ldu;
-                if (!triangle_operand(l, off[0], n, true, false, s.get<T>(static_cast<std::size_t>(n * n)), tl, ldl))
+                bool rml, rmu;
+                const char op = trans == 'N' ? 'N' : (trans == 'H' && std::is_same_v<T, cplx> ? 'C' : 'T');
+                bool* rm_ok = lapack::row_major_ok(std::is_same_v<T, cplx>, op, r.k) ? &rml : nullptr;
+                if (!triangle_operand(
+                        l, off[0], n, true, false, s.get<T>(static_cast<std::size_t>(n * n)), tl, ldl, rm_ok
+                    ))
                     return kNonFinite;
-                if (!triangle_operand(u, off[1], n, false, true, s.get<T>(static_cast<std::size_t>(n * n), 3), tu, ldu))
+                if (!triangle_operand(
+                        u, off[1], n, false, true, s.get<T>(static_cast<std::size_t>(n * n), 3), tu, ldu,
+                        rm_ok ? &rmu : nullptr
+                    ))
                     return kNonFiniteU;
+                if (!rm_ok) rml = rmu = false;
                 if (zero_on_diagonal(tu, n, ldu)) return kSingular;
                 // perm must be a permutation of 0..n-1.
                 lint* perm = s.get_ints(static_cast<std::size_t>(n));
@@ -259,17 +303,17 @@ nb::object lu_solve(nb::handle lo, nb::handle uo, nb::handle po, nb::handle bo, 
                     }
                 });
                 if (!ok) return kNonFiniteB;
-                // getrs without swaps is trtrs with L (unit) and then with U: the same
-                // calls, the same bits (checked, docs/design/linalg.md §10.2), and no
+                // getrs without swaps is a solve with L (unit) and then with U: the same
+                // calls as solve() makes (lapack::lu_solve_factored), the same bits for
+                // column-major factors (checked, docs/design/linalg.md §10.2), and no
                 // packed L\U matrix needed.
                 if (n > 0 && r.k > 0) {
                     if (trans == 'N') {
-                        lapack::trtrs('L', 'N', 'U', n, r.k, tl, ldl, x, n);
-                        lapack::trtrs('U', 'N', 'N', n, r.k, tu, ldu, x, n);
+                        lapack::tri_solve(rml, 'L', 'N', 'U', n, r.k, tl, ldl, x, n);
+                        lapack::tri_solve(rmu, 'U', 'N', 'N', n, r.k, tu, ldu, x, n);
                     } else {
-                        const char t = trans == 'H' && std::is_same_v<T, cplx> ? 'C' : 'T';
-                        lapack::trtrs('U', t, 'N', n, r.k, tu, ldu, x, n);
-                        lapack::trtrs('L', t, 'U', n, r.k, tl, ldl, x, n);
+                        lapack::tri_solve(rmu, 'U', op, 'N', n, r.k, tu, ldu, x, n);
+                        lapack::tri_solve(rml, 'L', op, 'U', n, r.k, tl, ldl, x, n);
                         T* dst = xs.get();
                         for (lint j = 0; j < r.k; ++j)
                             for (lint k = 0; k < n; ++k) dst[j * n + perm[k]] = x[j * n + k];

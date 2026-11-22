@@ -16,6 +16,7 @@
 
 #include "linalg/args.hpp"
 #include "linalg/cost.hpp"
+#include "linalg/fastsum.hpp"
 #include "linalg/outblock.hpp"
 #include "linalg/pairwise.hpp"
 #include "linalg/pyrefs.hpp"
@@ -286,6 +287,15 @@ int square_norm(CondOrd ord, const T* a, lint n, Scratch& s, double& out) {
     const std::byte* base = reinterpret_cast<const std::byte*>(a);
     constexpr std::int64_t sz = sizeof(T);
     if (ord == CondOrd::Fro) {
+        // the fast sum of squares over the buffer (fastsum.hpp), the careful pass if it cannot be trusted
+        constexpr std::int64_t parts = std::is_same_v<T, cplx> ? 2 : 1;
+        const double r = fast::norm_from_squares(
+            fast::sum_squares(parts * n * n, reinterpret_cast<const double*>(a), 1), parts * n * n
+        );
+        if (r >= 0) {
+            out = r;
+            return 0;
+        }
         if constexpr (std::is_same_v<T, cplx>) {
             auto w = make_walk<double>(base, {n, n, 2}, {sz, n * sz, 8}, [](double v) { return std::fabs(v); });
             out = vnorm({Ord::Two, 2.0}, w.count(), w);
@@ -307,6 +317,10 @@ int square_norm(CondOrd ord, const T* a, lint n, Scratch& s, double& out) {
     }
     const bool cols = ord == CondOrd::One || ord == CondOrd::NegOne;
     const bool max = ord == CondOrd::One || ord == CondOrd::Inf;
+    if constexpr (std::is_same_v<T, double>) {  // columns contiguous, rows side by side (fastsum.hpp)
+        out = fast::line_abs_extreme(a, n, n, cols ? n : 1, cols ? 1 : n, max);
+        return 0;
+    }
     double best = max ? 0.0 : kInf;
     for (lint l = 0; l < n; ++l) {
         // column l: (0..n-1, l), step 1 element; row l: (l, 0..n-1), step n elements
