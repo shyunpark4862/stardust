@@ -412,9 +412,10 @@ void qrfac(lint m, lint n, double* a, lint lda, lint* ipvt, double* rdiag, doubl
     };
     if (double(m) * double(n) >= kQrfacParallel && n >= 2 && parallel::available()) {
         const lint per = std::max<lint>(1, (n + kQrfacTasks - 1) / kQrfacTasks);
-        parallel::parallel_for((n + per - 1) / per, [&](std::int64_t t) {
-            norms(t * per, std::min<lint>(n, (t + 1) * per));
-        });
+        parallel::parallel_for(
+            (n + per - 1) / per, [&](std::int64_t t) { norms(t * per, std::min<lint>(n, (t + 1) * per)); },
+            static_cast<std::int64_t>(per * m)  // about 1 ns per element of a column norm
+        );
     } else {
         parallel::Unlocked u(double(m) * double(n) >= kQrfacParallel);
         norms(0, n);
@@ -444,10 +445,14 @@ void qrfac(lint m, lint n, double* a, lint lda, lint* ipvt, double* rdiag, doubl
             if (work >= kQrfacParallel && cols >= 8 && parallel::available()) {
                 const lint per = std::max<lint>(8, (cols + 8 * kQrfacTasks - 1) / (8 * kQrfacTasks) * 8);
                 const lint tasks = (cols + per - 1) / per;
-                parallel::parallel_for(tasks, [&](std::int64_t t) {
-                    const lint k0 = j + 1 + t * per;
-                    qrfac_columns<Fu>(m, j, a, lda, rdiag, wa, k0, std::min(n, k0 + per));
-                });
+                parallel::parallel_for(
+                    tasks,
+                    [&](std::int64_t t) {
+                        const lint k0 = j + 1 + t * per;
+                        qrfac_columns<Fu>(m, j, a, lda, rdiag, wa, k0, std::min(n, k0 + per));
+                    },
+                    static_cast<std::int64_t>(per * (m - j))  // 4 flops per element at about 0.25 ns each
+                );
             } else {
                 parallel::Unlocked u(work >= kQrfacParallel);
                 qrfac_columns<Fu>(m, j, a, lda, rdiag, wa, j + 1, n);

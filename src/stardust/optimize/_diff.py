@@ -68,22 +68,6 @@ def _f_values(v, func, what, m=None):
     return a, False
 
 
-def _forward(f, x, f0, eps, m, func, what):
-    """scipy's approx_fprime: (f(x + h_j e_j) - f(x)) / ((x_j + h_j) - x_j) with h_j = eps_j,
-    or sqrt(eps) sign(x_j) max(1, |x_j|) (sqrt(eps) = 2^-26) where x_j + eps_j rounds to x_j
-    (approx_derivative's abs_step)."""
-    xl = x.tolist()
-    cols = []
-    for j, (t, h) in enumerate(zip(xl, eps)):
-        if (t + h) - t == 0:
-            h = 2.0**-26 * (1.0 if t >= 0 else -1.0) * max(1.0, abs(t))
-        xj = x.copy()
-        xj[j] = t + h
-        dx = (t + h) - t
-        cols.append((_f_values(f(xj), func, what, m)[0] - f0) / dx)
-    return _sd.stack(cols, axis=1)
-
-
 def _derivative(func, what, f, x, epsilon):
     """(J (m, n), scalar): approx_fprime's work for the public function func, whose messages
     name f as `what`."""
@@ -101,14 +85,16 @@ def _derivative(func, what, f, x, epsilon):
     if m == 0:  # least_squares' message (O28)
         raise ValueError(f"{func}(): '{what}' must return at least 1 value")
 
-    def g(th):
-        return _f_values(f(_sd.asarray(th)), func, what, m)[0]
-
+    # f is called with a new float64 sd.ndarray each time; a float (m = 1) or a float64 array of
+    # m values is read as it is, anything else goes through _f_values
+    D = Differences(f, n, [-math.inf] * n, [math.inf] * n, array_x=True, check=lambda v: _f_values(v, func, what, m)[0])
     if eps is not None:
-        return _forward(f, x, f0, eps, m, func, what), scalar
+        # scipy's approx_fprime: (f(x + h_j e_j) - f(x)) / ((x_j + h_j) - x_j) with h_j = eps_j, or
+        # sqrt(eps) sign(x_j) max(1, |x_j|) (sqrt(eps) = 2^-26) where x_j + eps_j rounds to x_j
+        # (approx_derivative's abs_step)
+        return D.forward(xl, f0, eps), scalar
     if not bool(_sd.all(_sd.isfinite(f0))):
         raise ValueError(f"{func}(): '{what}' is not finite at the point")
-    D = Differences(g, n, [-math.inf] * n, [math.inf] * n)
     J, bad = D.jacobian(xl, f0)
     if J is None:
         raise ValueError(f"{func}(): '{what}' is not finite near the point (the differences of variable {bad})")
@@ -151,7 +137,10 @@ def check_grad(func, grad, x0, /, *, epsilon=None, direction="all", rng=None):
             _real(epsilon, fn, "epsilon")  # one step, along the direction
 
     def value(t):
-        a, scalar = _f_values(func(t), fn, "func")
+        v = func(t)
+        if type(v) is float:
+            return v
+        a, scalar = _f_values(v, fn, "func")
         if not scalar:
             raise ValueError(f"{fn}(): 'func' must return a real number, not shape {tuple(a.shape)}")
         return float(a[0])

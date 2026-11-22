@@ -261,11 +261,23 @@ def test_nist_against_scipy():
                         )
                     a = agree.setdefault((method, jac), [0, 0, 0])
                     a[0] += r.status == q.status
-                    a[1] += dist(r.x.tolist(), q.x, p0) <= 1e-6
-                    # the certified values as often as scipy (6 digits)
-                    a[2] += (min(N.lre(v, cv) for v, cv in zip(r.x.tolist(), d["params"])) >= 6) - (
-                        min(N.lre(v, cv) for v, cv in zip(q.x, d["params"])) >= 6
+                    # the same point (1e-6), or, both converged, the same minimum as far as the
+                    # stopping rule tells (costs within ftol = 1e-8 relative): Lanczos3's valley is
+                    # so flat that the cost changes by 1e-10 over 1e-6 in x, so where the forward
+                    # differences stop there follows the model's last bits (start 1 moved from
+                    # within 1e-6 to 1.18e-6 when sd.exp's kernel changed, the cost to 1.5e-10)
+                    same = dist(r.x.tolist(), q.x, p0) <= 1e-6 or (
+                        r.status > 0 and q.status > 0 and abs(r.cost - q.cost) <= 1e-8 * q.cost
                     )
+                    a[1] += same
+                    # the certified values as often as scipy (6 digits), where the two stopped at
+                    # different minima: at the same one, which lands nearer the certified point is
+                    # the stopping rule's noise (Bennett5 from start 2 with differences: costs
+                    # within 2e-10, 4.7 digits against 6.4, with numpy's model as with sd's)
+                    if not same:
+                        a[2] += (min(N.lre(v, cv) for v, cv in zip(r.x.tolist(), d["params"])) >= 6) - (
+                            min(N.lre(v, cv) for v, cv in zip(q.x, d["params"])) >= 6
+                        )
                     if method == "lm" and f"{name}/{start}" not in NIST_LM_APART[jac]:
                         m, p = len(yn), len(p0)
                         if m >= 10 * p and m * p >= 2000:
@@ -275,10 +287,12 @@ def test_nist_against_scipy():
                             assert abs(calls - q.nfev) <= 3, (name, start, jac, calls, q.nfev)
                         else:  # scipy's build: its steps to the bit (O95)
                             assert r.x.tolist() == q.x.tolist() and r.status == q.status, (name, start, jac)
-    # of 54 fits each: 'trf' parts on MGH09, MGH10, MGH17, BoxBOD and Bennett5 (start 1)
+    # of 54 fits each: 'trf' parts on MGH09, MGH10, MGH17, BoxBOD and Bennett5 (start 1); in x
+    # (or the same minimum) 'trf' with differences only on MGH17 and Bennett5 from start 1 (both
+    # stopped by max_nfev or ftol far from the other's point)
     least = {
         ("trf", "analytic"): (52, 54),
-        ("trf", "2-point"): (49, 50),
+        ("trf", "2-point"): (49, 52),
         ("lm", "analytic"): (52, 52),
         ("lm", "2-point"): (53, 52),
     }

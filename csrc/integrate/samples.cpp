@@ -21,6 +21,7 @@
 #include "array/kernels/reduce.hpp"
 #include "array/ndarray.hpp"
 #include "array/parallel_limits.hpp"
+#include "base/pairwise.hpp"
 #include "bind/errors.hpp"
 #include "bind/pyutil.hpp"
 #include "parallel/pool.hpp"
@@ -123,6 +124,15 @@ struct Kernel {
     T simpson_basic(const Lane& p, std::int64_t stop, double d, bool mt) const {
         const std::int64_t pairs = stop > 0 ? (stop + 1) / 2 : 0;
         if (!p.x) {
+            if constexpr (std::is_same_v<T, double>) {
+                if (L.ys == static_cast<std::int64_t>(sizeof(double))) {  // typed loads (the same bits)
+                    const double* yp = reinterpret_cast<const double*>(p.y);
+                    const T s = lane_sum<T>(
+                        pairs, [yp](std::int64_t j) { return yp[2 * j] + 4.0 * yp[2 * j + 1] + yp[2 * j + 2]; }, mt
+                    );
+                    return d / 3.0 * s;
+                }
+            }
             const T s = lane_sum<T>(
                 pairs, [&](std::int64_t j) { return y(p, 2 * j) + 4.0 * y(p, 2 * j + 1) + y(p, 2 * j + 2); }, mt
             );
@@ -195,6 +205,14 @@ struct Kernel {
     }
 
     T weighted(const Lane& p, bool mt) const {
+        if constexpr (std::is_same_v<T, double>) {
+            if (L.ys == static_cast<std::int64_t>(sizeof(double)) &&
+                L.xs == static_cast<std::int64_t>(sizeof(double))) {
+                const double* yp = reinterpret_cast<const double*>(p.y);
+                const double* xp = reinterpret_cast<const double*>(p.x);
+                return lane_sum<T>(L.n, [xp, yp](std::int64_t i) { return xp[i] * yp[i]; }, mt);
+            }
+        }
         return lane_sum<T>(L.n, [&](std::int64_t i) { return x(p, i) * y(p, i); }, mt);
     }
 
@@ -202,9 +220,26 @@ struct Kernel {
         switch (rule) {
             case kTrapezoid: {
                 const double d = dx(p);
-                return lane_sum<T>(
-                    std::max<std::int64_t>(L.n - 1, 0), [&](std::int64_t i) { return trapezoid_term(p, i, d); }, mt
-                );
+                const std::int64_t m = std::max<std::int64_t>(L.n - 1, 0);
+                if constexpr (std::is_same_v<T, double>) {
+                    // contiguous float64: typed loads, so the pairwise leaf's chains load vectors
+                    // (the same terms in the same tree: the same bits)
+                    if (L.ys == static_cast<std::int64_t>(sizeof(double))) {
+                        const double* yp = reinterpret_cast<const double*>(p.y);
+                        if (!p.x)
+                            return lane_sum<T>(
+                                m, [yp, d](std::int64_t i) { return d * (yp[i + 1] + yp[i]) / 2.0; }, mt
+                            );
+                        if (L.xs == static_cast<std::int64_t>(sizeof(double))) {
+                            const double* xp = reinterpret_cast<const double*>(p.x);
+                            return lane_sum<T>(
+                                m, [yp, xp](std::int64_t i) { return (xp[i + 1] - xp[i]) * (yp[i + 1] + yp[i]) / 2.0; },
+                                mt
+                            );
+                        }
+                    }
+                }
+                return lane_sum<T>(m, [&](std::int64_t i) { return trapezoid_term(p, i, d); }, mt);
             }
             case kSimpson: return simpson(p, mt);
             case kRomb: return romb(p, mt);
@@ -248,10 +283,14 @@ struct Kernel {
         auto put = [&](std::int64_t k) { *reinterpret_cast<T*>(first + k * L.os) = piece(p, k, d); };
         if (mt && m >= kParallelThreshold) {
             const std::int64_t tasks = (m + kParallelTask - 1) / kParallelTask;
-            parallel::parallel_for(tasks, [&](std::int64_t t) {
-                const std::int64_t end = std::min(m, (t + 1) * kParallelTask);
-                for (std::int64_t k = t * kParallelTask; k < end; ++k) put(k);
-            });
+            parallel::parallel_for(
+                tasks,
+                [&](std::int64_t t) {
+                    const std::int64_t end = std::min(m, (t + 1) * kParallelTask);
+                    for (std::int64_t k = t * kParallelTask; k < end; ++k) put(k);
+                },
+                kParallelTask  // about 1 ns per interval
+            );
         } else {
             for (std::int64_t k = 0; k < m; ++k) put(k);
         }
@@ -300,6 +339,85 @@ Lanes lanes_of(
     return L;
 }
 
+// trapezoid on lanes that lie side by side in memory (the reduced axis outer, as axis=0 of a
+// C-ordered matrix): a block of `w` adjacent lanes is summed row by row, each lane through the
+// very same pairwise tree and leaf as pairwise_sum (base/pairwise.hpp: the 16 chains, their fold,
+// the tail, the splits), so every lane has the bits of the lane-at-a-time sum; the rows are read
+// contiguously across the block instead of one strided element per lane.
+struct SideBySide {
+    const std::byte* y;  // lane 0's first element
+    std::int64_t ys;     // bytes between rows (the reduced axis)
+    std::int64_t w;      // lanes in the block (adjacent doubles)
+    double d;
+
+    double term(std::int64_t i, std::int64_t l) const {
+        const double* r0 = reinterpret_cast<const double*>(y + i * ys);
+        const double* r1 = reinterpret_cast<const double*>(y + (i + 1) * ys);
+        return d * (r1[l] + r0[l]) / 2.0;
+    }
+    // out[l] = the pairwise leaf of terms [b, b + m), m <= kBlock
+    void leaf(std::int64_t b, std::int64_t m, double* out, double* r) const {
+        constexpr int K = pairwise::kLanes;
+        if (m < K) {
+            for (std::int64_t l = 0; l < w; ++l) out[l] = 0.;
+            for (std::int64_t i = 0; i < m; ++i) {
+                const double* r0 = reinterpret_cast<const double*>(y + (b + i) * ys);
+                const double* r1 = reinterpret_cast<const double*>(y + (b + i + 1) * ys);
+                for (std::int64_t l = 0; l < w; ++l) out[l] += d * (r1[l] + r0[l]) / 2.0;
+            }
+            return;
+        }
+        // r[j * w + l]: chain j of lane l
+        for (int j = 0; j < K; ++j) {
+            const double* r0 = reinterpret_cast<const double*>(y + (b + j) * ys);
+            const double* r1 = reinterpret_cast<const double*>(y + (b + j + 1) * ys);
+            double* rj = r + j * w;
+            for (std::int64_t l = 0; l < w; ++l) rj[l] = d * (r1[l] + r0[l]) / 2.0;
+        }
+        std::int64_t i = K;
+        for (; i + K <= m; i += K)
+            for (int j = 0; j < K; ++j) {
+                const double* r0 = reinterpret_cast<const double*>(y + (b + i + j) * ys);
+                const double* r1 = reinterpret_cast<const double*>(y + (b + i + j + 1) * ys);
+                double* rj = r + j * w;
+                for (std::int64_t l = 0; l < w; ++l) rj[l] += d * (r1[l] + r0[l]) / 2.0;
+            }
+        for (int st = 1; st < K; st *= 2)  // fold_lanes, lane by lane
+            for (int j = 0; j < K; j += 2 * st) {
+                double* a = r + j * w;
+                const double* c = r + (j + st) * w;
+                for (std::int64_t l = 0; l < w; ++l) a[l] += c[l];
+            }
+        for (std::int64_t l = 0; l < w; ++l) out[l] = r[l];
+        for (; i < m; ++i) {
+            const double* r0 = reinterpret_cast<const double*>(y + (b + i) * ys);
+            const double* r1 = reinterpret_cast<const double*>(y + (b + i + 1) * ys);
+            for (std::int64_t l = 0; l < w; ++l) out[l] += d * (r1[l] + r0[l]) / 2.0;
+        }
+    }
+    // pairwise::tree over terms [b, b + m), lane by lane; scratch: w * (16 + 2 * depth) doubles
+    void tree(std::int64_t b, std::int64_t m, double* out, double* scratch) const {
+        if (m <= pairwise::kBlock) {
+            leaf(b, m, out, scratch);
+            return;
+        }
+        const std::int64_t m2 = pairwise::split(m);
+        double* left = scratch;
+        double* right = scratch + w;
+        tree(b, m2, left, scratch + 2 * w);
+        tree(b + m2, m - m2, right, scratch + 2 * w);
+        for (std::int64_t l = 0; l < w; ++l) out[l] = left[l] + right[l];
+    }
+};
+
+// Whether trapezoid can run on blocks of side-by-side lanes: float64, no x, a scalar dx, the
+// lanes' innermost axis contiguous in y and in the result, and more than one lane there.
+bool side_by_side(const Lanes& L, int rule, bool has_x, bool has_dx_array) {
+    return rule == kTrapezoid && !has_x && !has_dx_array && L.nd >= 1 && L.n >= 2 &&
+           L.sy[L.nd - 1] == static_cast<std::int64_t>(sizeof(double)) &&
+           L.so[L.nd - 1] == static_cast<std::int64_t>(sizeof(double)) && L.shape[L.nd - 1] >= 2;
+}
+
 template <typename T>
 nb::object run(
     int rule,
@@ -327,6 +445,41 @@ nb::object run(
     const Lanes L = lanes_of(y, x, dx, init, out, axis, cumulative);
     const Kernel<T> K{L, dx_scalar, init_scalar, has_init, rule};
     const std::int64_t work = L.count * std::max<std::int64_t>(n, 1);
+    if constexpr (std::is_same_v<T, double>) {
+        if (side_by_side(L, rule, x != nullptr, dx != nullptr)) {
+            // blocks of up to kSideLanes adjacent lanes within each run of the innermost axis
+            // 64 lanes: one 512-byte run per row, and 16 blocks (tasks) for 1000 lanes
+            constexpr std::int64_t kSideLanes = 64;
+            const std::int64_t inner = L.shape[L.nd - 1];
+            const std::int64_t runs = L.count / inner;
+            const std::int64_t per_run = (inner + kSideLanes - 1) / kSideLanes;
+            const std::int64_t blocks = runs * per_run;
+            int depth = 0;
+            for (std::int64_t m = n - 1; m > pairwise::kBlock; m = m - pairwise::split(m)) ++depth;
+            const std::size_t scratch = static_cast<std::size_t>(kSideLanes * (pairwise::kLanes + 2 * depth + 2));
+            auto block = [&](std::int64_t bi, std::vector<double>& buf) {
+                const std::int64_t run = bi / per_run, l0 = (bi % per_run) * kSideLanes;
+                const Lane p = L.at(run * inner + l0);
+                const SideBySide S{p.y, L.ys, std::min(kSideLanes, inner - l0), dx_scalar};
+                S.tree(0, n - 1, reinterpret_cast<double*>(p.o), buf.data());
+            };
+            parallel::Unlocked unlocked(work >= kParallelThreshold);
+            if (blocks >= 2 && work >= kParallelThreshold && parallel::available()) {
+                parallel::parallel_for(
+                    blocks,
+                    [&](std::int64_t bi) {
+                        std::vector<double> buf(scratch);
+                        block(bi, buf);
+                    },
+                    kSideLanes * (n - 1) / 4  // about 0.25 ns per term
+                );
+            } else {
+                std::vector<double> buf(scratch);
+                for (std::int64_t bi = 0; bi < blocks; ++bi) block(bi, buf);
+            }
+            return wrap(std::move(out));
+        }
+    }
     {
         parallel::Unlocked unlocked(work >= kParallelThreshold);
         auto lane = [&](std::int64_t l, bool mt) {
@@ -337,10 +490,14 @@ nb::object run(
         if (L.count >= 2 && work >= kParallelThreshold && parallel::available()) {
             const std::int64_t per = std::max<std::int64_t>(1, kParallelTask / std::max<std::int64_t>(n, 1));
             const std::int64_t tasks = (L.count + per - 1) / per;
-            parallel::parallel_for(tasks, [&](std::int64_t t) {
-                const std::int64_t end = std::min(L.count, (t + 1) * per);
-                for (std::int64_t l = t * per; l < end; ++l) lane(l, false);
-            });
+            parallel::parallel_for(
+                tasks,
+                [&](std::int64_t t) {
+                    const std::int64_t end = std::min(L.count, (t + 1) * per);
+                    for (std::int64_t l = t * per; l < end; ++l) lane(l, false);
+                },
+                per * std::max<std::int64_t>(n, 1) / 2  // about 0.5 ns per term (reductions 0.2, cumulative 1.7)
+            );
         } else {
             for (std::int64_t l = 0; l < L.count; ++l) lane(l, L.count == 1);
         }

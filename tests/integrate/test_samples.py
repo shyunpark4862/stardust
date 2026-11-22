@@ -323,3 +323,15 @@ def test_variants_exact_contract():
     for vid, rule, y, x, dx, axis, initial in variants:
         worst, _ = variant_errors(rule, y, x, dx, axis, initial, ref[vid])
         assert worst <= 1, (vid, worst)
+
+
+@pytest.mark.parametrize("shape", [(2, 3), (1000, 300), (17, 5), (513, 7), (1025, 3), (600, 2, 300)])
+@pytest.mark.parametrize("dx", [1.0, 0.37])
+def test_trapezoid_outer_axis_has_the_lane_bits(shape, dx):
+    # an outer axis (lanes side by side in memory) is summed in blocks of lanes through the same
+    # pairwise tree as one lane at a time: the bits of the same lanes made contiguous
+    y = np.random.default_rng(1).standard_normal(shape)
+    got = np.asarray(sd.integrate.trapezoid(sd.asarray(y), axis=0, dx=dx))
+    lanes = np.ascontiguousarray(np.moveaxis(y, 0, -1))
+    want = np.asarray(sd.integrate.trapezoid(sd.asarray(lanes), axis=-1, dx=dx))
+    assert np.array_equal(got, want)

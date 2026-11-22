@@ -747,6 +747,30 @@ struct NnlsWork {
     double* zz() { return buf.data() + 2 * n + m * n + m; }
 };
 
+// The dot product and the one-column reflection of nnls's inner steps: for short runs a plain
+// four-accumulator loop (Accelerate's per-call cost dominated a (100, 10) problem, the run
+// lengths being m - nsetp), from 256 terms BLAS. The order is fixed by the length, so the bits
+// (and the columns chosen) are the same on every run and thread count.
+inline double nnls_dot(lint n, const double* a, const double* b) {
+    if (n >= 256) return cblas_ddot(n, a, 1, b, 1);
+    double s0 = 0, s1 = 0, s2 = 0, s3 = 0;
+    lint i = 0;
+    for (; i + 4 <= n; i += 4) {
+        s0 += a[i] * b[i];
+        s1 += a[i + 1] * b[i + 1];
+        s2 += a[i + 2] * b[i + 2];
+        s3 += a[i + 3] * b[i + 3];
+    }
+    for (; i < n; ++i) s0 += a[i] * b[i];
+    return (s0 + s1) + (s2 + s3);
+}
+// LAPACK's dlarf for one column: c = (I - tau v v^T) c (v[0] = 1 set by the caller).
+inline void nnls_reflect(lint n, const double* v, double tau, double* c) {
+    if (tau == 0) return;
+    const double t = -tau * nnls_dot(n, v, c);
+    for (lint i = 0; i < n; ++i) c[i] = c[i] + v[i] * t;
+}
+
 // Returns info: 1 solved, 0 the iteration cap (more than maxiter iterations needed). iters: the
 // iterations done (scipy's count, at most maxiter). scipy's C code stops at iter >= maxiter, one
 // short of Lawson and Hanson's > itmax; this is theirs, with maxiter = 3n - 1 by default (the
@@ -756,11 +780,10 @@ int nnls_kernel(NnlsWork& W, lint maxiter, lint& iters) {
     double *x = W.x(), *a = W.a(), *b = W.b(), *w = W.w(), *zz = W.zz();
     std::vector<lint> idx(static_cast<std::size_t>(n));
     const lint one = 1;
-    const char L = 'L';
     for (lint i = 0; i < n; ++i) idx[i] = i;
     for (lint i = 0; i < n; ++i) x[i] = 0;
     lint nsetp = 0, iter = 0, izmax = 0;
-    double tau = 0, beta = 0, work = 0;
+    double tau = 0, beta = 0;
     int info = 1;
     const lint mn = std::min(m, n);
     // solve the triangular system for zz[0:nsetp] (A's columns idx[0:nsetp], rows 0:nsetp)
@@ -778,7 +801,7 @@ int nnls_kernel(NnlsWork& W, lint maxiter, lint& iters) {
         // the dual w = A^T b on the rows nsetp.. for the columns not in P
         for (lint iz = nsetp; iz < n; ++iz) {
             const lint j = idx[iz];
-            w[j] = cblas_ddot(m - nsetp, &a[nsetp + j * m], 1, &b[nsetp], 1);
+            w[j] = nnls_dot(m - nsetp, &a[nsetp + j * m], &b[nsetp]);
         }
         // take in the column with the largest dual that passes the tests
         bool taken = false;
@@ -809,7 +832,7 @@ int nnls_kernel(NnlsWork& W, lint maxiter, lint& iters) {
             std::memcpy(zz, b, static_cast<std::size_t>(m) * sizeof(double));
             const double save = a[nsetp + j * m];
             a[nsetp + j * m] = 1;
-            dlarf_(&L, &nn, &one, &a[nsetp + j * m], &one, &tau, &zz[nsetp], &nn, &work);
+            nnls_reflect(nn, &a[nsetp + j * m], tau, &zz[nsetp]);
             if (!(zz[nsetp] / beta > 0)) {
                 a[nsetp + j * m] = save;
                 w[j] = 0;
@@ -820,8 +843,7 @@ int nnls_kernel(NnlsWork& W, lint maxiter, lint& iters) {
             idx[nsetp] = j;
             const lint old = nsetp;
             ++nsetp;
-            for (lint k = nsetp; k < n; ++k)
-                dlarf_(&L, &nn, &one, &a[old + j * m], &one, &tau, &a[old + idx[k] * m], &nn, &work);
+            for (lint k = nsetp; k < n; ++k) nnls_reflect(nn, &a[old + j * m], tau, &a[old + idx[k] * m]);
             a[old + j * m] = beta;
             for (lint i = nsetp; i < m; ++i) a[i + j * m] = 0;
             w[j] = 0;

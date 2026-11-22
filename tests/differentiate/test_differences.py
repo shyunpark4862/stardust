@@ -60,3 +60,56 @@ def test_small_values_near_zero_count_less(f):
     for x0 in (1e-300, 1e-30, 1e-12, 1e-8):
         _, n = _count(f, x0)
         assert 9 <= n <= 25, (f, x0, n)
+
+
+def _exp_model(t):
+    import numpy as np
+
+    x = np.linspace(0.01, 5.0, 50)
+    return t[0] * np.exp(-t[1] * x)
+
+
+def test_reused_buffer_and_strided_values_give_the_same_jacobian():
+    # each returned array is read once, right after its call (csrc/differentiate/accurate.hpp):
+    # a g that overwrites one buffer, or returns a strided view, gets the fresh arrays' Jacobian
+    import numpy as np
+
+    buf = sd.zeros(50)
+
+    def fresh(t):
+        return sd.asarray(_exp_model(t))
+
+    def reused(t):
+        buf[:] = sd.asarray(_exp_model(t))
+        return buf
+
+    def strided(t):
+        return sd.asarray(np.repeat(_exp_model(t), 2))[::2]
+
+    x, inf = [2.0, 0.8], [math.inf] * 2
+    g0 = fresh(x)
+    want, _ = Differences(fresh, 2, [-v for v in inf], inf).jacobian(x, g0, zero_noise=True)
+    for g in (reused, strided):
+        got, bad = Differences(g, 2, [-v for v in inf], inf).jacobian(x, g0, zero_noise=True)
+        assert bad is None
+        assert np.array_equal(np.asarray(got), np.asarray(want))
+
+
+def test_second_differences_reuse_the_central_values():
+    import numpy as np
+
+    calls = [0]
+
+    def g(t):
+        calls[0] += 1
+        return sd.asarray(_exp_model(t))
+
+    x, inf = [2.0, 0.8], [math.inf] * 2
+    g0 = g(x)
+    D = Differences(g, 2, [-v for v in inf], inf)
+    D.jacobian(x, g0)
+    before = calls[0]
+    c = sd.asarray(np.linspace(-1.0, 1.0, 50))
+    S = D.second(x, g0, c, [0, 1])
+    assert calls[0] - before == 4  # the diagonal from the Jacobian's central values, one 4-point cross
+    assert S[0][1] == S[1][0]

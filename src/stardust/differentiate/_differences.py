@@ -17,8 +17,8 @@ a float64 sd.ndarray.
 import math
 
 from .. import _core as _sd
-from .. import linalg as _linalg
 
+# The method's constants, as csrc/differentiate/accurate.hpp has them (kept here to name them):
 # the steps: powers of two from 2^-8 |x_j| down to 2^-30 |x_j|
 _FD_START, _FD_END = -8, -30
 # a difference column whose 2-norm is at most this times its rounding level is taken as 0
@@ -28,293 +28,29 @@ _NOISE_FACTOR = 16.0
 _U = 2.0**-53  # the unit roundoff: rounding a value moves it by at most u |f|
 # a column whose rounding level is above sqrt(eps) = 2^-26 of its 2-norm (eps = 2u, the machine
 # epsilon) has lost half its digits to rounding: its step is too small for the variable's scale
-# (the start 2^-8 |x_j| with x_j near 0)
 _ROUNDING_TOL = 2.0**-26
-# a start whose rounding level is above 2^-36 (about 1.5e-11) of its column already loses more
-# than the differences' aim (about 1e-11 - 1e-13 relative), and a search that only goes down
-# from it cannot do better: the step grows first as from rounding level (C112; exp at x = 1e-5
-# gave 5e-9 before)
+# a start whose rounding level is above 2^-36 of its column grows first (C112)
 _GROW_TOL = 2.0**-36
-# the largest start of that search: x_j = 0's (2^-8 of a variable of size 1)
+# the largest start of a search: x_j = 0's (2^-8 of a variable of size 1)
 _FD_CAP = math.ldexp(1.0, math.frexp(1.0)[1] + _FD_START)
-# a search whose last two estimates differ by more than this (relative) never saw the truncation
-# error fall: its estimates did not agree to about 6 digits
+# a search whose last two estimates differ by more than this (relative) never settled
 _SETTLED = 2.0**-20
 
 
-class Differences:
-    """5-point difference Jacobians of g(x) -> (m,) values (a float64 sd.ndarray), x a list
-    of p floats within [lb, ub], with each variable's step chosen at its first column and
-    kept (steps). weights (None or (m,)) scale the rows of the Jacobian. central keeps the
-    last Jacobian's central values (h, g(x - h e_j), g(x + h e_j)) for second(); noise the
-    rounding level of each column (column())."""
+def Differences(g, p, lb, ub, weights=None, *, array_x=False, check=None):
+    """5-point difference Jacobians of g(x) -> (m,) values (a float64 sd.ndarray, or a float
+    when m = 1), x a list of p floats within [lb, ub] (a new float64 sd.ndarray of p values with
+    array_x), with each variable's step chosen at its first column and kept (steps). weights
+    (None or (m,)) scale the rows of the Jacobian. check (None or a callable) converts a value
+    g returned that is not such an array (or raises). The loop is csrc/differentiate/accurate.hpp
+    (the method above, in its constants: steps 2^-8 |x_j| down to 2^-30 |x_j|, a column within
+    16 times its rounding level u |f| taken as 0, a start above 2^-36 of rounding grown first,
+    the search from 2^-7 when one from below never settled to 2^-20).
 
-    # the 5-point stencils: central, and one-sided at a bound or where g is not finite on one
-    # side (offsets in steps h, weights, the denominator's multiple of h)
-    _STENCILS = (
-        ((-2, -1, 1, 2), (1.0, -8.0, 8.0, -1.0)),
-        ((0, 1, 2, 3, 4), (-25.0, 48.0, -36.0, 16.0, -3.0)),
-        ((0, -1, -2, -3, -4), (25.0, -48.0, 36.0, -16.0, 3.0)),
-    )
-
-    def __init__(self, g, p, lb, ub, weights=None):
-        self.g, self.p, self.lb, self.ub, self.weights = g, p, lb, ub, weights
-        self.steps = [None] * p  # the step per variable, chosen once
-        self.central = [None] * p  # (h, g(x - h e_j), g(x + h e_j)) of the last Jacobian
-        self.noise = [0.0] * p  # the rounding level of the last difference column
-        self.fits = False  # some stencil of the last column asked fitted within the bounds
-        # a failed jacobian(): no stencil fitted within the bounds at any step (else g was not
-        # finite at the points of every stencil that fitted)
-        self.too_narrow = False
-        self._settled = False  # the last _descend's estimates agreed (_SETTLED)
-
-    def column(self, x, j, h, g0):
-        """dg/dx_j (unweighted) by the first feasible 5-point stencil with step h, or None;
-        the central stencil's values are kept for second(). Also sets noise[j], the 2-norm
-        (weighted as the Jacobian) of the column's rounding level: each value
-        g_i(x + o h e_j) carries its rounding, up to u |g_i|, and the stencil
-        sum_o w_o g_o / (12 h) adds those with the weights, so element i is uncertain by up to
-        (sum_o |w_o|) / (12 h) u max_o |g_i(x + o h e_j)|."""
-        t = x[j]
-        self.fits = False
-        for kind, (offs, wts) in enumerate(self._STENCILS):
-            if not (self.lb[j] <= t + min(offs) * h and t + max(offs) * h <= self.ub[j]):
-                continue
-            self.fits = True
-            acc = None
-            vals = {}
-            for o, w in zip(offs, wts):
-                if o == 0:
-                    vr = g0
-                else:
-                    th = list(x)
-                    th[j] = t + o * h
-                    vr = self.g(th)
-                    if not bool(_sd.all(_sd.isfinite(vr))):
-                        acc = None
-                        break
-                vals[o] = vr
-                acc = w * vr if acc is None else acc + w * vr
-            if acc is not None:
-                if kind == 0:
-                    self.central[j] = (h, vals[-1], vals[1])
-                big = None
-                for o, w in zip(offs, wts):
-                    if w != 0.0:
-                        a = _sd.abs(vals[o])
-                        big = a if big is None else _sd.maximum(big, a)
-                if self.weights is not None:
-                    big = big * self.weights
-                wsum = sum(abs(w) for w in wts)
-                self.noise[j] = wsum / (12.0 * h) * _U * float(_linalg.vector_norm(big)) if big.shape[0] else 0.0
-                return acc / (12.0 * h)
-        return None
-
-    def _wnorm(self, col):
-        """The 2-norm of a column weighted as the Jacobian (noise[j]'s scale)."""
-        return float(_linalg.vector_norm(col if self.weights is None else col * self.weights))
-
-    def _rounding(self, col, j):
-        """noise[j] (of the column just computed) relative to the column's size: inf for 0."""
-        size = self._wnorm(col)
-        return self.noise[j] / size if size > 0 else math.inf
-
-    def choose_step(self, x, j, g0):
-        """The step of variable j, chosen once: from 2^-8 |x_j| down by factors of 4 while
-        consecutive estimates get closer by more than 8 times; the last such estimate and its
-        step. A start at rounding level is moved up first (_grow); when no larger step leaves
-        rounding level (a column that is 0 or noise) the search is the plain one from the start.
-        Below _FD_CAP (|x_j| < 1) a search whose estimates never agreed (_settled) is checked
-        against the search from x_j = 0's start (_from_cap)."""
-        base = math.frexp(abs(x[j]) if x[j] != 0 else 1.0)[1]
-        e0 = base + _FD_START
-        col0 = self.column(x, j, math.ldexp(1.0, e0), g0)
-        if col0 is None or math.ldexp(1.0, e0) >= _FD_CAP:
-            return self._descend(x, j, g0, e0, (col0, self.fits))
-        r0 = self._rounding(col0, j)
-        if r0 <= _GROW_TOL:
-            best, hbest = self._descend(x, j, g0, e0, (col0, self.fits))
-            if best is not None and not self._settled:
-                best, hbest = self._from_cap(x, j, g0, best, hbest)
-            return best, hbest
-        fits0 = self.fits
-        e = self._grow(x, j, g0, e0, col0)
-        if e is not None:
-            best, hbest = self._descend(x, j, g0, e)
-            if best is not None:
-                return best, hbest
-        if r0 <= _ROUNDING_TOL:  # not at rounding level: the plain search from the start
-            best, hbest = self._descend(x, j, g0, e0)
-        else:
-            best, hbest = self._descend(x, j, g0, e0, strict=False)
-        self.fits = self.fits or fits0
-        return best, hbest
-
-    def _from_cap(self, x, j, g0, best, hbest):
-        """The search from _FD_CAP (x_j = 0's start) in place of (best, hbest), a search from
-        2^-8 |x_j| whose estimates never agreed to _SETTLED: its start was below the rounding of
-        f's own evaluation, which the rounding level (u |f|) does not see (log(1 + x) at
-        x = 1e-14: 1 + x rounds to a multiple of 2^-52, and the start 2^-54 gave -1/3). Taken
-        when its estimates agree; else (best, hbest) as they were."""
-        fits = self.fits
-        cap = math.frexp(_FD_CAP)[1] - 1
-        alt, halt = self._descend(x, j, g0, cap)
-        if alt is not None and self._settled:
-            self.fits = self.fits or fits
-            return alt, halt
-        self.fits = fits
-        return best, hbest
-
-    def _grow(self, x, j, g0, e0, col0):
-        """The exponent of the step to start from when the start 2^e0 is at rounding level:
-        moved by the factor that brings the rounding to sqrt(eps) of the column (at most to
-        _FD_CAP), then up by factors of 4 until consecutive estimates differ by more than their
-        rounding levels (the truncation error shows) or _FD_CAP; None when no such step leaves
-        rounding level (a column that is 0 or within _NOISE_FACTOR of its rounding level at every
-        step: the usual search decides). A last column above sqrt(eps) of rounding still counts:
-        a smaller step only has more (cos at x = 3.4e-8, whose derivative is 3.4e-8 of its value:
-        2^-7 leaves 2e-14 of rounding, the start 2^-32 gave -4.8e-7)."""
-        cap = math.frexp(_FD_CAP)[1] - 1
-        r = self._rounding(col0, j)
-        jump = cap - e0 if math.isinf(r) else math.ceil(math.log2(r / _ROUNDING_TOL))
-        e = min(cap, e0 + max(jump, 2))
-        col = self.column(x, j, math.ldexp(1.0, e), g0)
-        if col is None:
-            return None
-        lvl = self.noise[j]
-        while e + 2 <= cap:
-            nxt = self.column(x, j, math.ldexp(1.0, e + 2), g0)
-            if nxt is None:
-                break
-            nlvl = self.noise[j]
-            e += 2
-            shows = self._wnorm(nxt - col) > lvl + nlvl
-            col, lvl = nxt, nlvl
-            if shows:
-                break
-        size = self._wnorm(col)
-        if not (size > 0 and lvl / size * _NOISE_FACTOR < 1):
-            return None
-        return e
-
-    def _descend(self, x, j, g0, e0, first=None, strict=True):
-        """The search from the step 2^e0 down by factors of 4 (12 steps): the estimate where
-        consecutive ones stop getting closer by more than 8 times. first: (column, fits) at
-        2^e0 when just computed. strict: the second estimate is not taken over the first when
-        it is rounding noise (within _NOISE_FACTOR of its rounding level, regression G88's test)
-        and the first is not. Sets _settled: the last estimate taken differs from the one before
-        by at most _SETTLED (relative; False when only one was taken)."""
-        best = hbest = None
-        dprev = math.inf
-        prev = None
-        prev_ok = False  # the first estimate is not rounding noise
-        fits = False
-        for e in range(e0, e0 + _FD_END - _FD_START - 1, -2):
-            h = math.ldexp(1.0, e)
-            if first is not None and e == e0:
-                col, self.fits = first
-            else:
-                col = self.column(x, j, h, g0)
-            fits = fits or self.fits
-            if col is None:
-                if best is not None:
-                    break
-                continue
-            if prev is None:
-                best, hbest = col, h
-                prev_ok = strict and self._rounding(col, j) * _NOISE_FACTOR < 1
-            else:
-                if prev_ok and dprev == math.inf and self._rounding(col, j) * _NOISE_FACTOR >= 1:
-                    break
-                sc = float(_sd.max(_sd.abs(col)))
-                dd = float(_sd.max(_sd.abs(col - prev))) / sc if sc > 0 else 0.0
-                if dd >= dprev / 8:
-                    break
-                best, hbest = col, h
-                dprev = dd
-                if dd == 0:
-                    break
-            prev = col
-        self.fits = fits
-        self._settled = dprev <= _SETTLED
-        return best, hbest
-
-    def jacobian(self, x, g0, zero_noise=False):
-        """(J, bad): the (m, p) Jacobian at x (g0 = g(x)), rows scaled by the weights, with the
-        steps chosen at the first call; bad is the first variable whose column no stencil
-        gives (J is None then). zero_noise: a column within _NOISE_FACTOR of its rounding level
-        is set to 0 (regression G88)."""
-        self.central = [None] * self.p
-        self.too_narrow = False
-        cols = []
-        for j in range(self.p):
-            col = None
-            fits = False
-            if self.steps[j] is not None:
-                col = self.column(x, j, self.steps[j], g0)
-                fits = self.fits
-            if col is None:
-                col, self.steps[j] = self.choose_step(x, j, g0)
-                fits = fits or self.fits
-            if col is None:
-                self.too_narrow = not fits
-                return None, j
-            cols.append(col)
-        J = _sd.stack(cols, axis=1)
-        if self.weights is not None:
-            J = J * _sd.reshape(self.weights, (self.weights.shape[0], 1))
-        if zero_noise:
-            # kept, a noise column has a direction of its own and can take the place of an
-            # identified parameter's column (a exp(-k t) + c at a large k: the k column was
-            # rounding noise constant over the rows, the direction of c's)
-            zero = [j for j in range(self.p) if float(_linalg.vector_norm(J[:, j])) <= _NOISE_FACTOR * self.noise[j]]
-            if zero:
-                keep = _sd.asarray([0.0 if j in zero else 1.0 for j in range(self.p)])
-                J = J * keep
-        return J, None
-
-    def second(self, x, g0, c, idx):
-        """S = sum_i c_i d^2 g_i / dx^2 over the variables idx (0 elsewhere), by central
-        differences with the Jacobian's steps (its kept values for the diagonal); None when a
-        point is outside the bounds or not finite."""
-        p = self.p
-        hs = []
-        for j in range(p):
-            if self.central[j] is not None:
-                hs.append(self.central[j][0])
-            elif self.steps[j] is not None:
-                hs.append(self.steps[j])
-            else:
-                hs.append(math.ldexp(1.0, math.frexp(abs(x[j]) if x[j] != 0 else 1.0)[1] + _FD_START - 2))
-        if not all(self.lb[j] <= x[j] - hs[j] and x[j] + hs[j] <= self.ub[j] for j in idx):
-            return None
-        c0 = float(_linalg.vecdot(c, g0))
-
-        def phi(steps):
-            th = list(x)
-            for j, s in steps:
-                th[j] = x[j] + s * hs[j]
-            vr = self.g(th)
-            if not bool(_sd.all(_sd.isfinite(vr))):
-                raise ArithmeticError
-            return float(_linalg.vecdot(c, vr))
-
-        S = [[0.0] * p for _ in range(p)]
-        try:
-            for a, j in enumerate(idx):
-                if self.central[j] is not None:
-                    fm, fp = (float(_linalg.vecdot(c, v)) for v in self.central[j][1:])
-                else:
-                    fm, fp = phi([(j, -1)]), phi([(j, 1)])
-                S[j][j] = (fp - 2 * c0 + fm) / (hs[j] * hs[j])
-                for k in idx[:a]:
-                    v = (
-                        phi([(j, 1), (k, 1)])
-                        - phi([(j, 1), (k, -1)])
-                        - phi([(j, -1), (k, 1)])
-                        + phi([(j, -1), (k, -1)])
-                    ) / (4 * hs[j] * hs[k])
-                    S[j][k] = S[k][j] = v
-        except ArithmeticError:
-            return None
-        return S
+    Methods: jacobian(x, g0, zero_noise=False) -> (J (m, p) or None, bad variable or None);
+    forward(x, g0, eps) -> scipy's forward differences with steps eps; second(x, g0, c, idx) ->
+    S = sum_i c_i d^2 g_i / dx^2 over the variables idx by central differences with the
+    Jacobian's steps (a list of p lists; None when a point is outside the bounds or not
+    finite). Attributes: steps (settable), too_narrow (no stencil fitted within the bounds at
+    any step in the last failed jacobian())."""
+    return _sd.differentiate.AccurateDiff(g, p, [float(v) for v in lb], [float(v) for v in ub], weights, array_x, check)
