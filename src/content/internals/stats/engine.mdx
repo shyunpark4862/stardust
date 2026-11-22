@@ -503,7 +503,7 @@ scipy의 원소별 루프는 컴파일러가 벡터화한 C 코드예요. stardu
 
 분포가 메서드에 `static void cdf_chunk(const Chunk<NP>& c, double* out)`을 두면 엔진이 배열을 1024원소씩 모아 이 함수를 불러요. 1024는 vForce 호출에 쓰는 스택 버퍼의 크기(`vforce_detail::kChunk`, 원소 1024개 = 8KB)예요. 커널은 대개 세 단계예요.
 
-1. 배열 단위의 계산: 묶음 전체에 대해 `exp`, `log`, `pow`의 인자를 버퍼에 만들고 한 번에 계산해요. `exp`는 통계 영역이 직접 쓴 NEON 함수(`vm::exp`, [아래 절](#exp-vmexp))이고, `log`, `pow`, `tanh` 등은 Apple Accelerate의 vForce(`vvlog`, `vvpow` …)예요.
+1. 배열 단위의 계산: 묶음 전체에 대해 `exp`, `log`, `pow`의 인자를 버퍼에 만들고 한 번에 계산해요. `exp`는 라이브러리에 하나뿐인 NEON `exp`(`vmath::exp`, [아래 절](#exp-vmathexp))이고, `log`, `pow`, `tanh` 등은 Apple Accelerate의 vForce(`vvlog`, `vvpow` …)예요.
 2. 원소마다 오차 상한: 원소마다 그 값의 상대오차 상한을 $2^{-53}$ 단위로 세어 `fast[i]`를 정해요.
 3. 정밀 정의로 넘기기: `fast[i]`가 거짓인 원소만 분포의 스칼라 정의(double-double을 쓰는 원래 정의)로 다시 계산해요.
 
@@ -537,7 +537,7 @@ inline void fallback(int n, const bool* fast, double* out, F&& precise) {
 <Fig column caption="Normal::pdf_chunk의 단계. 각 원소는 자기를 받아들이는 첫 단계의 값을 써요.">
   <Steps
     steps={[
-      { label: '단계 0: plain double', where: 'pdf_kernel(grade 0)', note: 'z = (x − μ)/σ, z², −z²/2를 double로 만들고 exp(vm::exp) 한 번. 상한 2.5 z² + 2.5 + 3.5 ≤ 16, 곧 |z| ≤ 2인 원소만 받아요.' },
+      { label: '단계 0: plain double', where: 'pdf_kernel(grade 0)', note: 'z = (x − μ)/σ, z², −z²/2를 double로 만들고 exp(vmath::exp) 한 번. 상한 2.5 z² + 2.5 + 3.5 ≤ 16, 곧 |z| ≤ 2인 원소만 받아요.' },
       { label: '단계 1: double-double 지수', where: 'ckd::retry → pdf_kernel(grade 1)', note: '남은 원소만 모아 지수 −(z²/2 + log σ√(2π))를 스칼라 정의와 같은 double-double 산술로 만들고, exp(hi)·(1 + lo). 상한 kVfExp + 1 = 3.5, z와 무관해요. 결과가 2⁻¹⁰⁰⁰ 아래면 받지 않아요.' },
       { label: '정밀 정의', where: 'ck::fallback → Normal::pdf', note: '그래도 남은 원소(서브노멀 결과, |z| > 10¹⁰, 무한대)는 libm exp를 쓰는 원래 스칼라 정의로 계산해요.' },
     ]}
@@ -621,11 +621,11 @@ True
 
 ### 기본 함수의 잰 오차
 
-vForce의 오차는 Apple이 문서로 약속하지 않아요. 그래서 함수마다 double-double 참값과 비교해 잰 최대를 올림해서 상수로 써요. 같은 점에서 libm의 `exp`, `log`, `pow`는 모두 1.00단위로 나와서, 같은 측정이 참값 쪽을 믿을 근거도 돼요. `exp`는 vForce 대신 통계 영역의 `vm::exp`([아래 절](#exp-vmexp))를 쓰고, 상수는 보수적으로 2.5단위 그대로 둬요.
+vForce의 오차는 Apple이 문서로 약속하지 않아요. 그래서 함수마다 double-double 참값과 비교해 잰 최대를 올림해서 상수로 써요. 같은 점에서 libm의 `exp`, `log`, `pow`는 모두 1.00단위로 나와서, 같은 측정이 참값 쪽을 믿을 근거도 돼요. `exp`는 vForce 대신 배열 영역의 `vmath::exp`([아래 절](#exp-vmathexp))를 쓰고, 상수는 보수적으로 2.5단위 그대로 둬요.
 
 | 함수 | 잰 최대 | 쓰는 상한 | 잰 범위 |
 |---|---:|---:|---|
-| `vm::exp` | 1.003 (Arb 대비) | 2.5 (`ck::kVfExp`) | $[-708, 708]$, 6만 점 |
+| `vmath::exp` | 1.003 (Arb 대비) | 2.5 (`ck::kVfExp`) | $[-708, 708]$, 6만 점 |
 | `vvlog` | 3.78 | 4.0 (`ck::kVfLog`) | $e^{\pm 700}$, 1 둘레 등 |
 | `vvpow` | 2.08 | 2.5 (`ckd::kPow`) | 결과가 정규수인 곳: 1에 가까운 밑과 $10^6$까지의 지수, $e^{\pm 600}$의 밑 |
 | `vvtanh` | 5.27 | 6.5 (`ckd::kTanh`) | $[2^{-60}, 20]$, $2.5 \times 10^8$점 |
@@ -663,9 +663,9 @@ $$
 
 역함수의 계약은 $\lvert \Delta x/x \rvert \le 10^{-14} \max(1, \kappa)$예요. 결과가 0 근처로 상쇄하는 점에서는 $\kappa$가 크고, 빠른 경로는 이 $\max(1, \kappa)$ 단위의 계약을 지켜요. 정규분포의 `icdf`는 $\mu + \sigma z$가 상쇄하고 $z_0 = \Phi^{-1}(q) \in [-1, 0]$이면 Newton 한 단계를 선형 꼴 $z = z_0 + (q - t)/\varphi(z_0)$, $t = \Phi(z_0)$로 chunk 안에서 밟아요. $q - t$는 두 값이 몇 ULP 안이라 정확해요. 남는 오차는 $t$의 상대오차(이 구간에서 최대 7.5단위)에 $q\sigma/\varphi$를 곱한 것이고, 조건수 $\kappa = p\sigma/(\varphi \lvert x \rvert)$로 나누면 계약 단위로 그 7.5 + 2단위 안이에요. `Normal(mu=1.5, sigma=2.0).icdf(0.2267)`은 상대오차 $3.3 \times 10^{-13}$, $\kappa \approx 3120$이라 계약 단위로 $1.1 \times 10^{-16}$이에요. 라플라스, 로지스틱, Gumbel, GEV의 빠른 역함수도 같은 단위로 셈해요.
 
-### exp: `vm::exp`
+### exp: `vmath::exp`
 
-청크 커널의 `exp`(`ck::exp`)는 `csrc/stats/vmath.hpp`의 NEON 함수예요. 알고리즘은 ARM optimized-routines의 표 방식 exp예요. $N = 128$로 두고 지수를
+청크 커널의 `exp`(`ck::exp`)는 배열 영역의 NEON 함수(`csrc/array/kernels/vmath.hpp`의 `vmath::exp`)예요. 라이브러리의 NEON `exp`는 이것 하나라서, 배열의 `sd.exp`, 다변량 누적확률의 피적분함수, special의 `softmax`·`logsumexp`도 같은 함수를 불러요. 알고리즘은 ARM optimized-routines의 표 방식 exp예요. $N = 128$로 두고 지수를
 
 $$
 x = \left(k + \frac{j}{128}\right)\log 2 + r, \qquad \lvert r\rvert \le \frac{\log 2}{256}, \qquad e^x = 2^k \cdot 2^{j/128} \cdot (1 + p(r))
@@ -679,9 +679,8 @@ $$
 - **다항식.** $p(r) = \text{tail} + r + r^2(\tfrac12 + \tfrac{r}{6}) + r^4(\tfrac1{24} + \tfrac{r}{120})$은 5차 테일러 다항식에 표의 꼬리를 더한 것이에요. 잘린 항 $r^6/720$은 $2^{-60}$보다 작아요. 마지막은 $\text{scale} + \text{scale}\cdot t$를 FMA 하나로 계산해요.
 
 ```cpp
-// csrc/stats/vmath.hpp
-// One element, |x| <= kExpMax (the lanes' arithmetic).
-inline double exp_core(double x) {
+// csrc/array/kernels/vmath.hpp
+inline ExpParts exp_parts(double x) {
     const double z = x * kExpInvLn2N + kExpShift;
     const double kd = z - kExpShift;
     const std::uint64_t ki = as_bits(z);
@@ -695,15 +694,21 @@ inline double exp_core(double x) {
     const double p45 = std::fma(r, 1.0 / 120, 1.0 / 24);
     double t = std::fma(r2, p23, tail + r);
     t = std::fma(r2 * r2, p45, t);
-    return std::fma(scale, t, scale);
+    return {scale, t};
+}
+
+inline double exp1(double x) {
+    if (!(std::fabs(x) <= kExpMax)) return std::exp(x);
+    const ExpParts e = exp_parts(x);
+    return std::fma(e.scale, e.t, e.scale);
 }
 ```
 
-배열은 두 원소씩 NEON lane으로 계산해요(`exp_core(float64x2_t)`). lane 판은 위의 스칼라 판과 같은 IEEE 연산을 같은 순서로 하고, 홀수 개의 마지막 원소는 스칼라 판이 맡아요. 그래서 원소의 값은 배열 안의 위치와 길이에 달리지 않아요. $\lvert x\rvert \gt 708$과 NaN은 libm `exp`로 보내요. Arb로 만든 참값과 6만 점에서 견주면 최대 1.003단위($2^{-53}$ 단위, 곧 약 0.5 ULP)이고 vForce의 `vvexp`보다 빨라요. 같은 방식의 `log`(표 없는 fdlibm 꼴을 벡터로 쓴 것)는 `vvlog`보다 빠르지 않아서 `log`는 vForce를 써요.
+배열은 두 원소씩 NEON lane으로 계산해요(`exp_lanes`). lane 판은 위의 스칼라 짝(`exp_parts`와 `exp1`)과 같은 IEEE 연산을 같은 순서로 해요. 원소 넷을 한 번에 보고, 넷 가운데 하나라도 $\lvert x\rvert \gt 708$이거나 NaN이면 그 넷을, 그리고 끝에 남는 원소를 스칼라 짝이 맡아요. 그래서 원소의 값은 배열 안의 위치와 길이에 달리지 않아요. 스칼라 짝은 $\lvert x\rvert \gt 708$과 NaN을 libm `exp`로 보내요. Arb로 만든 참값과 6만 점에서 견주면 최대 1.003단위($2^{-53}$ 단위, 곧 약 0.5 ULP)이고 vForce의 `vvexp`보다 빨라요. `log`와 `pow`는 vForce를 써요. 배열 영역의 같은 파일에 있는 NEON `log`는 `log1p`의 속으로만 쓰여요.
 
 ## vForce 함수 고르기: 위치에 무관해야 해요
 
-청크 커널은 원소의 결과가 배열 안의 위치, 배열 길이, 정렬에 의존하지 않는 vForce 함수만 써요. 이 성질은 배열 영역이 함수마다 시험해 두었고([원소별 커널](/internals/array/elementwise/)의 vForce 절), 통계 영역은 그 목록 안의 `log`, `pow`, `tanh`, `atanh`, `atan`만 써요(`exp`는 위의 `vm::exp`예요). 이 성질이 없으면 같은 값이 묶음의 어디에 놓이느냐, 스레드가 배열을 어떻게 잘랐느냐에 따라 비트가 달라져서 `f(x)[i] == f(x[i])`도 스레드 수와의 무관함도 깨져요. `expm1`, `log1p`, `cos`, `tan`은 그 시험을 통과하지 못했어요.
+청크 커널은 원소의 결과가 배열 안의 위치, 배열 길이, 정렬에 의존하지 않는 vForce 함수만 써요. 이 성질은 배열 영역이 함수마다 시험해 두었고([원소별 커널](/internals/array/elementwise/)의 vForce 절), 통계 영역은 그 목록 안의 `log`, `pow`, `tanh`, `atanh`, `atan`만 써요(`exp`는 위의 `vmath::exp`예요). 이 성질이 없으면 같은 값이 묶음의 어디에 놓이느냐, 스레드가 배열을 어떻게 잘랐느냐에 따라 비트가 달라져서 `f(x)[i] == f(x[i])`도 스레드 수와의 무관함도 깨져요. `expm1`, `log1p`, `cos`, `tan`은 그 시험을 통과하지 못했어요.
 
 이 가운데 `expm1`과 `log1p`는 통과한 함수로 다시 써요.
 
@@ -788,7 +793,7 @@ zh[i] = ok ? h : kNaN;
 zl[i] = ok ? rl - (h - q) : 0.0;
 ```
 
-$x - \mu$를 TwoSum으로 정확히 $d + d_l$로 나누고, 몫 $q = d/\sigma$의 나머지 $d - q\sigma$를 FMA로 정확히 구해 $d_l$과 함께 다시 $\sigma$로 나눠요. 쌍 $(z_h, z_l)$의 상대오차는 약 $2^{-104}$예요. 스칼라의 `num::standardize`와 연산이 하나하나 같아서, 빠른 경로의 지수가 스칼라 정의의 지수와 같은 비트예요. 그래서 빠른 경로가 바꾸는 것은 libm의 `exp`·`log`를 `vm::exp`·vForce로 바꾼 부분뿐이고, 상한도 그 함수의 상수만큼이에요. `ckd::ratio`는 같은 방법의 $x/s$예요. TwoSum과 FMA로 곱의 오차를 구하는 방법은 [공통 수치 기법](/internals/special/techniques/)에 있어요.
+$x - \mu$를 TwoSum으로 정확히 $d + d_l$로 나누고, 몫 $q = d/\sigma$의 나머지 $d - q\sigma$를 FMA로 정확히 구해 $d_l$과 함께 다시 $\sigma$로 나눠요. 쌍 $(z_h, z_l)$의 상대오차는 약 $2^{-104}$예요. 스칼라의 `num::standardize`와 연산이 하나하나 같아서, 빠른 경로의 지수가 스칼라 정의의 지수와 같은 비트예요. 그래서 빠른 경로가 바꾸는 것은 libm의 `exp`·`log`를 `vmath::exp`·vForce로 바꾼 부분뿐이고, 상한도 그 함수의 상수만큼이에요. `ckd::ratio`는 같은 방법의 $x/s$예요. TwoSum과 FMA로 곱의 오차를 구하는 방법은 [공통 수치 기법](/internals/special/techniques/)에 있어요.
 
 ### 표 기반 로그 `log_dd`
 
@@ -911,7 +916,7 @@ inline constexpr int kMaxSearchSteps = 1100;           // 분위수 탐색의 �
 | 층 | 성질 | 왜 성립하나 |
 |---|---|---|
 | 정의역 | 정의역 밖·NaN은 어느 경로든 NaN, 극한은 극한 분포와 같은 비트 | `DistOp::f`와 `chunk_loop_impl`이 같은 `D::at_limit`과 `D::valid`로 걸러요. 극한의 값은 극한 분포가 Python float에 주는 경로(`method_of`)에서 와요 |
-| 청크 커널 | `f(x)[i] == f(x[i])` | 모든 호출이 커널을 지나고(원소 하나도 `n = 1`), 단계 선택과 상한이 원소의 값만으로 정해지고, `vm::exp`와 vForce 함수는 위치에 무관한 것만 써요. 모든 원소가 좋은 묶음의 짧은 길과 분류·사본 길도 같은 값을 내요 |
+| 청크 커널 | `f(x)[i] == f(x[i])` | 모든 호출이 커널을 지나고(원소 하나도 `n = 1`), 단계 선택과 상한이 원소의 값만으로 정해지고, `vmath::exp`와 vForce 함수는 위치에 무관한 것만 써요. 모든 원소가 좋은 묶음의 짧은 길과 분류·사본 길도 같은 값을 내요 |
 | 매개변수 상수 | 스칼라와 배열 매개변수가 같은 비트 | 한 번이든 원소마다든 같은 함수로 계산해요(`ckd::constant`, `num::Memo`, `dens::Const`) |
 | 메모 | 표가 있든 없든 같은 비트 | 표의 값은 그 메서드의 하나뿐인 정의가 낸 값이에요 |
 | 스레드 | 지금은 1·3·10스레드가 같음(약속은 아니에요) | 원소마다 독립이고, 스레드마다의 상태(메모, 마지막 상수)는 값을 바꾸지 않아요 |

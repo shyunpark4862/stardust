@@ -304,7 +304,31 @@ struct SideBySide {
 
 ### 스레드
 
-일(줄 수 × 줄의 길이)이 $2^{15}$ 이상이면 GIL을 놓아요. 줄이 둘 이상이면 줄을 스레드에 나누고(나란한 줄은 64줄 덩어리를), 줄이 하나이고 길면 같은 나무의 부분합을 스레드에 나눠요. 나무의 모양이 같으니 결과도 같아요. 풀에 나눌 때는 작업 하나의 대략 시간을 함께 넘겨서 긴 작업 몇 개가 처음부터 모든 일꾼을 깨우게 해요. 복소수 y는 실수 계수를 실수부와 허수부에 따로 곱해요. numpy는 계수를 복소수로 올려 곱해서, 한쪽 부분이 inf나 NaN일 때만 결과가 달라요.
+일(줄 수 × 줄의 길이)이 $2^{15}$ 이상이면 GIL을 놓아요. 줄이 둘 이상이면 줄을 스레드에 나누고(나란한 줄은 64줄 덩어리를), 줄이 하나이고 길면 같은 나무의 부분합을 스레드에 나눠요. 나무의 모양이 같으니 결과도 같아요. 풀에 나눌 때는 작업 하나의 대략 시간을 함께 넘겨서 긴 작업 몇 개가 처음부터 모든 일꾼을 깨우게 해요. GIL을 놓은 동안에는 Python 객체를 만들지 않아요. 나란한 줄의 덩어리 합은 GIL을 놓는 범위(`Unlocked`) 안에서 돌고, 결과 배열을 Python 객체로 감싸는 `wrap`은 그 범위가 닫혀 GIL을 다시 쥔 뒤에 불러요.
+
+```cpp
+            // csrc/integrate/samples.cpp
+            {
+                // the GIL comes back at the end of this scope: wrap() below makes a Python object
+                parallel::Unlocked unlocked(work >= kParallelThreshold);
+                if (blocks >= 2 && work >= kParallelThreshold && parallel::available()) {
+                    parallel::parallel_for(
+                        blocks,
+                        [&](std::int64_t bi) {
+                            std::vector<double> buf(scratch);
+                            block(bi, buf);
+                        },
+                        kSideLanes * (n - 1) / 4  // about 0.25 ns per term
+                    );
+                } else {
+                    std::vector<double> buf(scratch);
+                    for (std::int64_t bi = 0; bi < blocks; ++bi) block(bi, buf);
+                }
+            }
+            return wrap(std::move(out));
+```
+
+복소수 y는 실수 계수를 실수부와 허수부에 따로 곱해요. numpy는 계수를 복소수로 올려 곱해서, 한쪽 부분이 inf나 NaN일 때만 결과가 달라요.
 
 ## scipy와 같은 점, 다른 점
 

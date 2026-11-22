@@ -275,7 +275,7 @@ TBB나 Rayon 같은 범용 풀은 스레드마다 큐를 두고 남의 큐에서
 | 모름, 태스크가 4–16개 | 호출 스레드가 자기 태스크를 하나 끝낼 때마다 시간을 재요(`work(probe)`). 지금까지 태스크당 걸린 시간으로 남은 일을 어림해 `kWakeWorkNs`에 이르고 남은 태스크가 둘 이상이면 그때 깨워요 |
 
 - 시간은 코어의 일반 타이머 레지스터 `cntvct_el0`로 재요(`ticks()`). 레지스터 하나를 읽는 몇 ns라, 1µs짜리 태스크마다 읽어도 부담이 없어요. `std::chrono::steady_clock`은 그보다 몇 배 비싸요.
-- 배열 영역의 작업은 모두 `task_ns`를 알려요. 이터레이터와 `for_pieces`가 일의 양을 `work_ns(work) = work / 6 + 1`(float64 덧셈 하나를 약 0.16ns로 본 어림)로 바꿔 넘겨요. 그래서 짧은 태스크가 많은 작업은 깨우기를 내지 않고, 긴 태스크 몇 개는 처음부터 모든 워커를 받아요. frame(`frame/parallel.hpp`의 `parallel_tasks`)과 가설검정(`htest/lanes.hpp`의 `for_pieces_woken`)도 일의 길이를 알려요.
+- 배열 영역의 작업은 모두 `task_ns`를 알려요. 이터레이터와 `for_pieces`가 일의 양을 `work_ns(work) = work / 6 + 1`(float64 덧셈 하나를 약 0.16ns로 본 어림)로 바꿔 넘겨요. 그래서 짧은 태스크가 많은 작업은 깨우기를 내지 않고, 긴 태스크 몇 개는 처음부터 모든 워커를 받아요. frame(`frame/parallel.hpp`의 `parallel_tasks`), 가설검정(`htest/lanes.hpp`의 `for_pieces_woken`), 원소별 반복의 공용 고리(`elementwise/loop.hpp`의 `for_weighted`, 점마다 약 2ns)도 일의 길이를 알려요.
 - 시간을 알려도 바뀌는 것은 속도뿐이에요. 어느 스레드가 태스크를 맡든 결과는 같아요.
 
 깨우기 자체도 나눠서 해요.
@@ -303,8 +303,6 @@ void signal(std::int64_t k) {
 - 호출 스레드는 잠든 워커 셋(`kDirectWakes`)까지만 직접 신호하고, 나머지 수를 `relay_`에 적어요. 처음 깬 워커가 mutex를 놓은 뒤 그 수만큼 깨워요(위 `worker_main()`의 2). 잠든 9개에게 한꺼번에 보내는 broadcast는 호출 스레드를 오래 붙잡아 짧은 작업을 눈에 띄게 늦췄고, 전달받은 워커는 조금 늦게 도착할 뿐이에요. 직접 신호를 하나만 하면 중간 길이의 작업이 셋일 때보다 느렸어요.
 - 잠든 워커 수 `sleepers_`는 워커가 잠들 때 mutex 안에서 세요. 호출 스레드는 일을 mutex 안에서 내놓은 뒤에 이 수를 읽으므로, 이미 잠든 워커는 모두 세어져 있어요. 나중에 잠들려는 워커는 mutex 안에서 새 세대를 보고 잠들지 않아요. 깨울 워커가 없으면 신호를 보내지 않아요.
 - 늦게 받은 전달은 다음 일의 워커를 몇 더 깨울 뿐이에요. 전달하는 워커는 일이 이미 닫혔으면 깨우지 않아요.
-
-원소별 반복의 공용 고리(`elementwise/loop.hpp`)는 조각을 17개(`kWoken`) 이상으로 나눠, 시간을 알리지 않고도 "16개 초과는 바로 깨움" 규칙에 걸리게 해요. `task_ns`를 넘기는 쪽으로 바꿀 수 있는 자리예요.
 
 ### 예외
 
@@ -532,7 +530,7 @@ macOS는 코어를 성능 등급별로 알려 줘요. `hw.perflevel0`이 가장 
 | optimize | `kParallel`, `kTask` (`elementwise/loop.hpp`, 원소마다 따로 푸는 반복의 공용 고리), `kQrfacParallel` (`optimize/lsq.cpp`) | 배치 스칼라는 아직 끝나지 않은 원소 2¹⁵개부터 2¹³개씩, lmder의 QR은 한 단계 4×10⁵ 플롭부터 열 8개 이상씩 나눠요 |
 | htest | 배열의 `kParallelThreshold`, `kParallelTask` (`htest/lanes.hpp`의 `each_lane`) | 줄 하나의 비용을 원소 수로 어림해 배열의 기준값과 태스크 크기를 써요. 일의 길이를 풀에 알려서, 무거운 조각 몇 개도 처음부터 잠든 워커를 받아요(`for_pieces_woken`). 긴 표본 하나의 합은 2¹⁶개부터 4096개씩의 고정 덩어리로 나눠요 |
 | sparse | `kParallelThreshold`, `kChunk` (`sparse/parallel.hpp`) | 일 2¹⁵개 분량부터, 압축 배열의 줄을 `indptr`만으로 저장된 원소 약 2¹⁴개씩의 구간으로 잘라요(`line_bounds`) |
-| integrate | 배열의 `kParallelThreshold`, `kParallelTask` (`integrate/samples.cpp`, `integrate/gauss.cpp`), 공용 고리의 `kParallel`, `kTask` (`elementwise/loop.hpp`의 `for_weighted`) | 표본 규칙은 줄 수 × 길이가 2¹⁵개부터 줄을 나누고, 긴 줄 하나는 pairwise 합의 같은 트리를 부분 트리로 나눠요. Gauss–Legendre 마디(n > 100)는 걸음 2¹⁵개부터 마디마다 나눠요. `tanhsinh`과 `nsum`은 남은 원소 수 × 원소마다의 점 수가 2¹⁵개부터 약 2¹³점씩, 조각 17개 이상으로 나눠 잠든 워커도 깨워요 |
+| integrate | 배열의 `kParallelThreshold`, `kParallelTask` (`integrate/samples.cpp`, `integrate/gauss.cpp`), 공용 고리의 `kParallel`, `kTask` (`elementwise/loop.hpp`의 `for_weighted`) | 표본 규칙은 줄 수 × 길이가 2¹⁵개부터 줄을 나누고, 긴 줄 하나는 pairwise 합의 같은 트리를 부분 트리로 나눠요. Gauss–Legendre 마디(n > 100)는 걸음 2¹⁵개부터 마디마다 나눠요. `tanhsinh`과 `nsum`은 남은 원소 수 × 원소마다의 점 수가 2¹⁵개부터 약 2¹³점씩 나누고, 조각 하나의 길이를 풀에 알려 긴 일이면 처음부터 잠든 워커도 깨워요 |
 | differentiate | 공용 고리의 `kParallel`, `kTask` (`elementwise/loop.hpp`) | `derivative`는 `tanhsinh`과 같은 `for_weighted`, `jacobian`과 `hessian`은 남은 항목 2¹⁵개부터 항목의 갱신을 2¹³개씩 나눠요 |
 
 이름은 같고 값이 다른 상수가 배열은 `sd` 이름공간에, frame은 `sd::frame`에 있어서 각 영역의 코드가 자기 값을 찾아요. 아래는 배열의 정책이에요.

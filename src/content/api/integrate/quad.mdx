@@ -5,13 +5,13 @@ names: [quad]
 group: 적응 구적
 order: 1
 signatures:
-  - "sd.integrate.quad(func, a, b, /, *, atol=1.49e-08, rtol=1.49e-08, limit=50, points=None, weight=None, wvar=None, max_p1=50, limlst=50, complex_func=False)"
+  - "sd.integrate.quad(func, a, b, /, *, atol=1.49e-08, rtol=1.49e-08, limit=50, points=None, weight=None, wvar=None, max_p1=50, limlst=50, complex_func=False, vectorized=False)"
 summary: 변수 하나인 함수의 적분 ∫ₐᵇ f(x) dx를 QUADPACK의 적응 구적으로 계산해요. 어려운 곳만 잘게 나누고 외삽으로 끝점 특이점을 다루며, 무한 구간, 중단점, 진동·대수·로그·Cauchy 가중 함수를 받아요. 결과는 (integral, error)로 풀려요.
 params:
   - name: func
     type: 호출 가능한 객체
     kind: positional-only
-    desc: "피적분 함수 f(x). 점 하나의 Python float를 받아 실수 하나(Python·numpy의 수, 0차원 numpy 배열)를 돌려줘요. weight를 주면 가중 함수를 뺀 부분이에요. complex_func=True면 복소수도 돌려줄 수 있어요."
+    desc: "피적분 함수 f(x). 점 하나의 Python float를 받아 실수 하나(Python·numpy의 수, 0차원 numpy 배열)를 돌려줘요. weight를 주면 가중 함수를 뺀 부분이에요. complex_func=True면 복소수도 돌려줄 수 있어요. vectorized=True면 점 하나 대신 규칙 하나의 점들을 1차원 float64 sd.ndarray로 받아 같은 길이의 값을 돌려줘요."
   - name: a, b
     type: float
     kind: positional-only
@@ -48,14 +48,18 @@ params:
     type: bool
     kind: keyword-only
     desc: "True면 func가 복소수를 돌려줘도 되고, 실수부와 허수부를 따로 적분해 integral과 error가 complex예요. 기본 False."
+  - name: vectorized
+    type: bool
+    kind: keyword-only
+    desc: "True면 func를 규칙 한 번에 한 번, 그 규칙의 점들(15·21·25·30개)을 담은 1차원 float64 sd.ndarray로 불러요. func는 원소마다 따로 계산하는 배열 함수여야 해요. 부르는 점과 결과는 False일 때와 같아요. 기본 False."
 returns:
   type: IntegrateResult
   desc: "integral, error, converged, status, message, nfev와 구간 intervals, interval_integrals, interval_errors, n_intervals. 무한 구간의 'cos'·'sin'은 구간 대신 cycle_integrals, cycle_errors, cycle_status, n_cycles, complex_func=True는 구간 대신 두 부분의 결과 real, imag예요. (integral, error)로 풀려요."
 raises:
   - type: TypeError
-    desc: func가 호출 가능하지 않을 때, a·b·허용오차·wvar가 실수가 아닐 때(bool, 문자열, numpy 배열 포함), limit·max_p1·limlst가 정수가 아닐 때, points가 시퀀스가 아니거나 그 값이 실수가 아닐 때, weight가 문자열이 아닐 때, 'alg…'의 wvar가 쌍이 아닐 때, complex_func가 True나 False가 아닐 때, func가 bool이나 (complex_func=False에서) 복소수를 돌려줄 때, 모르는 키워드(epsabs 등)를 줬을 때. func 안에서 난 에러도 그대로 나와요.
+    desc: func가 호출 가능하지 않을 때, a·b·허용오차·wvar가 실수가 아닐 때(bool, 문자열, numpy 배열 포함), limit·max_p1·limlst가 정수가 아닐 때, points가 시퀀스가 아니거나 그 값이 실수가 아닐 때, weight가 문자열이 아닐 때, 'alg…'의 wvar가 쌍이 아닐 때, complex_func·vectorized가 True나 False가 아닐 때, func가 bool이나 (complex_func=False에서) 복소수를 돌려줄 때, vectorized=True에서 func가 bool 배열, (complex_func=False에서) 복소수 배열, 배열로 바꿀 수 없는 값을 돌려줄 때, 모르는 키워드(epsabs 등)를 줬을 때. func 안에서 난 에러도 그대로 나와요.
   - type: ValueError
-    desc: a·b나 points의 값이 NaN일 때, 허용오차가 음수·NaN·inf이거나 atol = 0인데 rtol < 50ε일 때, limit·max_p1·limlst가 하한보다 작을 때, 중단점이 limit개 이상일 때, points와 무한 구간이나 weight를 함께 줬을 때, weight 이름이 틀렸을 때, wvar가 유한하지 않거나 α·β ≤ −1일 때, weight 없이 wvar를 줬을 때, 쓰이지 않는 max_p1·limlst나 무한 구간 'cos'·'sin'의 rtol을 줬을 때, 무한 구간에 'alg…'·'cauchy'를 쓰거나 실수 전체에 'cos'·'sin'을 썼을 때, 'cauchy'의 c가 a나 b일 때, func가 길이 있는 배열을 돌려줄 때.
+    desc: a·b나 points의 값이 NaN일 때, 허용오차가 음수·NaN·inf이거나 atol = 0인데 rtol < 50ε일 때, limit·max_p1·limlst가 하한보다 작을 때, 중단점이 limit개 이상일 때, points와 무한 구간이나 weight를 함께 줬을 때, weight 이름이 틀렸을 때, wvar가 유한하지 않거나 α·β ≤ −1일 때, weight 없이 wvar를 줬을 때, 쓰이지 않는 max_p1·limlst나 무한 구간 'cos'·'sin'의 rtol을 줬을 때, 무한 구간에 'alg…'·'cauchy'를 쓰거나 실수 전체에 'cos'·'sin'을 썼을 때, 'cauchy'의 c가 a나 b일 때, func가 길이 있는 배열을 돌려줄 때, vectorized=True에서 func가 받은 배열과 모양이 다른 배열이나 수 하나를 돌려줄 때.
 seeAlso: [basics, results, tanhsinh, quad_vec, dblquad, nquad, fixed_quad]
 ---
 import Callout from '../../../components/Callout.astro';
@@ -127,7 +131,7 @@ $\int_0^1 e^x\,dx = e - 1$을 21점 규칙 한 번으로 끝냈어요. 결과는
 (1.7182818284590453, 1.9076760487502457e-14)
 ```
 
-f는 Python `float` 하나를 받아요. `math`의 함수나 `lambda`를 그대로 쓸 수 있어요. 상수가 필요하면 클로저로 넘겨요(`args`는 없어요).
+f는 Python `float` 하나를 받아요. `math`의 함수나 `lambda`를 그대로 쓸 수 있어요. 상수가 필요하면 클로저로 넘겨요(`args`는 없어요). 배열 연산으로 쓴 f는 [`vectorized=True`](#vectorized)로 점을 여럿씩 넘겨 부를 수 있어요.
 
 ```python
 >>> k = 3.0
@@ -334,6 +338,86 @@ Traceback (most recent call last):
 TypeError: quad(): 'func' must return a real number, not complex
 ```
 
+### vectorized
+
+f를 배열 연산(`sd.exp`, `sd.sqrt`, 사칙연산 등)으로 쓸 수 있으면 `vectorized=True`를 줘요. 그러면 `quad`가 점마다 f를 부르는 대신, 규칙을 한 번 쓸 때마다 그 규칙의 점들을 1차원 float64 `sd.ndarray` 하나에 담아 f를 한 번 불러요. f는 같은 길이의 값을 돌려줘야 하고, 원소마다 따로 계산하는 함수(`f(x)[i]`가 `f(x[i])`)여야 해요.
+
+```python
+>>> sizes = []
+>>> def g(x):
+...     sizes.append(x.shape[0])
+...     return sd.exp(-x * x)
+>>> sd.integrate.quad(g, 0, 1, vectorized=True)
+IntegrateResult(integral=0.746824, error=8.29141e-15, converged=True, nfev=21)
+>>> sizes
+[21]
+>>> sizes.clear()
+>>> sd.integrate.quad(g, -math.inf, math.inf, vectorized=True)
+IntegrateResult(integral=1.77245, error=1.42026e-08, converged=True, nfev=270)
+>>> sizes
+[30, 30, 30, 30, 30, 30, 30, 30, 30]
+```
+
+유한 구간은 21점 규칙 한 번에 끝나 한 번 불렀고, 실수 전체는 15점 규칙의 점마다 x와 −x를 함께 넘겨 30개씩 아홉 번 불렀어요. `nfev`는 부른 횟수가 아니라 점의 수예요. 한 번에 받는 점의 수는 쓰는 규칙이 정해요.
+
+| 경우 | 한 번에 받는 점 |
+|---|---|
+| 유한 구간, `points` | 21 |
+| 반무한 구간 | 15 |
+| 실수 전체 | 30 |
+| `weight` | 25 또는 15(구간마다 규칙이 달라요) |
+
+부르는 점과 그 차례, 더하는 차례가 점마다 부를 때와 같아서, f가 점마다 같은 값을 내면 결과의 모든 필드가 비트까지 같아요. 아래의 `peak`는 수에도 배열에도 쓸 수 있는 식이라 두 방법으로 견줄 수 있어요.
+
+```python
+>>> peak = lambda x: 1 / ((x - 0.3)**2 + 1e-4)
+>>> a = sd.integrate.quad(peak, 0, 1, vectorized=True)
+>>> b = sd.integrate.quad(peak, 0, 1)
+>>> tuple(a) == tuple(b), a.nfev
+(True, 315)
+```
+
+`points`, `weight`, 무한 구간, `complex_func`와 함께 쓸 수 있어요. `complex_func=True`면 f는 복소수 배열을 돌려줘도 돼요.
+
+```python
+>>> sd.integrate.quad(lambda x: 1 / sd.sqrt(sd.abs(x - 0.5)), 0, 1, points=[0.5], vectorized=True)
+IntegrateResult(integral=2.82843, error=3.27294e-13, converged=True, nfev=462)
+>>> sd.integrate.quad(sd.exp, 0, 1, weight='alg', wvar=(-0.5, 0.0), vectorized=True)
+IntegrateResult(integral=2.9253, error=4.80438e-14, converged=True, nfev=40)
+>>> sd.integrate.quad(lambda x: 1 / (1 + x * x), 0, math.inf, weight='cos', wvar=1.0, vectorized=True)
+IntegrateResult(integral=0.577864, error=1.37226e-08, converged=True, nfev=410)
+>>> z = sd.integrate.quad(lambda x: sd.exp(1j * x), 0, math.pi, complex_func=True, vectorized=True)
+>>> z.integral
+(4.9225526349740854e-17+2j)
+```
+
+값은 `sd.ndarray`, 실수의 리스트, numpy 배열 어느 것이든 되고, 정수 배열은 float64로 읽어요. 수 하나만 받는 `math`의 함수는 배열을 받지 못해요. 상수 함수도 받은 배열과 같은 길이로 돌려줘야 해요(`sd.ones(x.shape)`).
+
+```python
+>>> sd.integrate.quad(math.exp, 0, 1, vectorized=True)
+Traceback (most recent call last):
+    ...
+TypeError: an array cannot be converted to float
+>>> sd.integrate.quad(lambda x: 1.0, 0, 1, vectorized=True)
+Traceback (most recent call last):
+    ...
+ValueError: quad(): 'func' must return shape (21,) like its argument, not a scalar
+>>> sd.integrate.quad(lambda x: x[:20], 0, 1, vectorized=True)
+Traceback (most recent call last):
+    ...
+ValueError: quad(): 'func' must return shape (21,) like its argument, not (20,)
+>>> sd.integrate.quad(lambda x: x > 0.5, 0, 1, vectorized=True)
+Traceback (most recent call last):
+    ...
+TypeError: quad(): 'func' must return real values, not a bool array
+>>> sd.integrate.quad(math.exp, 0, 1, vectorized=1)
+Traceback (most recent call last):
+    ...
+TypeError: quad(): 'vectorized' must be True or False, not int
+```
+
+첫 에러는 f 안의 `math.exp`가 낸 것이라 그대로 나왔어요. 점이 많이 드는 적분일수록, f의 계산이 가벼울수록 Python 호출이 줄어드는 몫이 커서 빨라져요. f가 Python의 분기나 `math` 함수로만 쓸 수 있으면 기본값(점마다)으로 불러요.
+
 ## 무한 구간
 
 끝이 ±inf면 변수를 바꿔 (0, 1]의 적분으로 만들어요. $[a, \infty)$는 $x = a + (1 - t)/t$, $(-\infty, b]$는 $x = b - (1 - t)/t$, 실수 전체는 양쪽을 함께 써요.
@@ -518,7 +602,7 @@ IntegrateResult(integral=inf, error=inf, converged=False, nfev=21)
 ## 정확도와 비용
 
 - **정확도**: 결과는 "오차의 어림이 허용오차 안"인 값이에요. 매끄러운 함수와 끝점 특이점에서 어림은 참 오차보다 대개 몇 자리 커요. 여러 무리의 시험 문제를 Arb(구간 산술)로 만든 참값과 견주면, 수렴했다고 알린 결과는 아주 좁은 봉우리를 놓친 경우와 실수의 끝으로 낸 문제를 정확한 끝의 적분으로 외삽한 한 경우 말고는 참 오차가 어림 안이에요. 가중 함수의 결과는 어림에 값의 끝자리 $8\varepsilon\lvert I\rvert$를 더한 것 안이에요. `'cos'`·`'sin'`의 어림은 대략 $\varepsilon\int\lvert f\rvert$ 아래로 내려가지 않아서, 상쇄가 큰 적분(큰 ω)에서 값에 남는 반올림도 덮어요. `'alg…'`·`'cauchy'`의 Clenshaw–Curtis 어림에는 그런 하한이 없어서, f가 다항식인 주값처럼 규칙이 정확한 경우에는 어림이 0이에요.
-- **비용**: 구간 하나에 21점(무한 구간 15점, 가중 함수 15·25점)이고, f를 점 하나씩 Python으로 불러요. 시간은 대부분 f의 몫이라 `nfev`로 견줄 수 있어요. 같은 꼴의 적분을 많이 풀면 f를 배열로 부르는 [`tanhsinh`](/api/integrate/tanhsinh/)이나, 값이 여럿이면 [`quad_vec`](/api/integrate/quad_vec/)을 고려해요.
+- **비용**: 구간 하나에 21점(무한 구간 15점, 가중 함수 15·25점)이고, f를 점 하나씩 Python으로 불러요. `vectorized=True`면 규칙마다 한 번 불러서, 배열 연산으로 쓴 f에서는 Python 호출의 비용이 그만큼 줄어요. 시간은 대부분 f의 몫이라 `nfev`로 견줄 수 있어요. 같은 꼴의 적분을 많이 풀면 끝과 인자를 배열로 받는 [`tanhsinh`](/api/integrate/tanhsinh/)이나, 값이 여럿이면 [`quad_vec`](/api/integrate/quad_vec/)을 고려해요.
 - **스레드**: f가 Python이라 GIL을 쥔 채 돌아요. 같은 입력이면 실행마다 같은 비트이고, 지금은 스레드 수와도 상관없이 같아요(약속은 아니에요).
 
 ## scipy를 아는 분께
@@ -528,6 +612,7 @@ IntegrateResult(integral=inf, error=inf, converged=False, nfev=21)
 - **이름**: `epsabs`·`epsrel`은 `atol`·`rtol`, `maxp1`은 `max_p1`이에요. scipy의 이름은 `TypeError`예요.
 - **결과**: 튜플 `(y, abserr)` 대신 둘로 풀리는 결과 객체예요. `full_output`은 없고 `infodict`의 값은 필드예요. 경고 대신 `converged`·`status`·`message`예요.
 - **없는 것**: `args`(클로저로 넘겨요), `full_output`, `wopts`(미리 계산한 모멘트; 한 호출 안에서는 모멘트를 이미 기억해 다시 써요)
+- **더한 것**: `vectorized`. scipy의 `quad`는 언제나 점 하나씩 불러요. `vectorized=True`로 불러도 점과 결과는 지금은 scipy와 비트까지 같아요(약속은 아니에요).
 - **검사가 엄격해요**: 음수 `epsabs`, 수 하나인 `points`는 받지 않아요. 가중 함수와 함께 준 `points`, 쓰이지 않는 `max_p1`·`limlst`, 무한 구간 cos·sin의 `rtol`은 scipy가 경고하거나 조용히 버리지만 여기서는 `ValueError`예요. `a == b`여도 옵션을 검사해요.
 - **유한하지 않은 결과**: 적분값이나 오차가 inf·NaN인 정상 끝은 `status` −3, `converged=False`예요. scipy는 같은 경우를 `ier` 0(정상 끝)으로 두고 경고도 내지 않아요.
 - **`'cos'`·`'sin'`의 오차 어림**: 반올림의 하한(대략 $\varepsilon\int\lvert f\rvert$)이 있어서 scipy의 어림보다 작지 않아요. 상쇄가 큰 적분에서 scipy의 어림은 참 오차보다 훨씬 작아질 수 있어요. 하한이 멈춤 판정을 바꾸는 드문 입력에서는 점과 `status`도 달라요.
@@ -539,6 +624,12 @@ IntegrateResult(integral=inf, error=inf, converged=False, nfev=21)
 >>> r = sd.integrate.quad(lambda x: 1 / math.sqrt(x), 0, 1)
 >>> (y, abserr) == tuple(r), info['neval'] == r.nfev
 (True, True)
+>>> tuple(sd.integrate.quad(lambda x: 1 / sd.sqrt(x), 0, 1, vectorized=True)) == (y, abserr)
+True
+>>> si.quad(lambda x: 1 / math.sqrt(x), 0, 1, vectorized=True)
+Traceback (most recent call last):
+    ...
+TypeError: quad() got an unexpected keyword argument 'vectorized'
 >>> si.quad(lambda x: math.inf, 0, 1)
 (inf, inf)
 >>> om = 1.37 * 2**20

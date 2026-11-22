@@ -1051,7 +1051,7 @@ True
 | 지수의 `pdf`·`ccdf`, 라플라스의 `pdf` | 몫 $q = y$와 그 나머지(FMA)로 지수를 두 조각으로 만들어 $e^{-q}(1 - q_l)$ | |
 | 레일리의 `pdf`·`ccdf`·`logccdf`·`logpdf` | $t = y^2/2$를 $q^2$와 그 FMA 오차, $2q\,q_l$로 $2^{-100}$까지 만들어요. `logccdf`는 $-t$, `logpdf`는 vForce `log`로 받은 $\log x$, $\log s$에 혼합 상한 | |
 | 코시의 `pdf`·`logpdf` | `pdf`는 plain $z$(8단위), `logpdf`는 vForce `log`$(1 + z^2)$에 상수 $\log\sigma + \log\pi$ | `logpdf`는 $\sigma \ge 1/\pi$ |
-| 로그정규 밀도의 첫 단계 | $L = \log x$(vForce)에 $r = x e^{-L} - 1$(FMA, $e^{-L}$은 `vm::exp`)을 더해 $\log x$를 절대 1.04단위로 두고, $z$와 지수를 TwoSum으로 모아요. 몸통($\lvert z\rvert/\sigma$가 약 10 이하)만 받고, 나머지는 double-double log 단계, 그다음 정의 | |
+| 로그정규 밀도의 첫 단계 | $L = \log x$(vForce)에 $r = x e^{-L} - 1$(FMA, $e^{-L}$은 `vmath::exp`)을 더해 $\log x$를 절대 1.04단위로 두고, $z$와 지수를 TwoSum으로 모아요. 몸통($\lvert z\rvert/\sigma$가 약 10 이하)만 받고, 나머지는 double-double log 단계, 그다음 정의 | |
 | 균등의 `logcdf`·`logccdf` | 작은 쪽은 vForce `log`, 큰 쪽은 반대쪽 몫의 `ckd::log1p` | |
 
 "상한을 건너뛰는 조건"은 매개변수만으로 상한이 언제나 예산 안이라고 보장되는 경우예요. 그때는 원소별 상한 계산도 빼고 계산만 하는 루프가 돌아요. 정규의 `logpdf`에서 $k = \log(\sigma\sqrt{2\pi}) \ge 0$이면 $\lvert v\rvert = h + k$가 $h$, $k$, $\lvert\log\sigma\rvert - 1$보다 크거나 같아서, 모든 유한한 $z$에서 상한이 예산 안이에요.
@@ -1080,7 +1080,7 @@ True
 
 $\log\sigma$는 스칼라 $\sigma$여도 vForce `log`의 원소 하나 호출로 구해요. 배열 $\sigma$와 같은 함수라 같은 매개변수에서 같은 비트가 나와요.
 
-정규의 `ilogcdf`·`ilogccdf`도 커널이 있어요. $\log p \le \log\tfrac12$이면 $p = e^{\log p}$(`vm::exp`), 위쪽이면 $q = 1 - e^{\log p}$(`ckd::one_minus_exp`)로 작은 쪽 확률을 만들고, special의 `Ndtri::chunk`로 $z$를 내요. 그다음은 `icdf` 커널과 같아요. 상쇄가 없으면 $\mu + \sigma z$를 FMA로, 상쇄가 있고 $\lvert z_0\rvert \le 1$이면 선형 뉴턴 한 걸음(`newton_linear`)이에요. $p$의 반올림이 $z$를 옮기는 양은 조건수 $\kappa$의 $1/\lvert\log p\rvert \le 1.45$배라 역함수 계약 $\max(1, \kappa)$단위 안이에요. 반올림한 $\log\tfrac12$, $\log p \lt -700$, 0, $-\infty$는 위의 정의(`quantile_z_log`)로 가요.
+정규의 `ilogcdf`·`ilogccdf`도 커널이 있어요. $\log p \le \log\tfrac12$이면 $p = e^{\log p}$(`vmath::exp`), 위쪽이면 $q = 1 - e^{\log p}$(`ckd::one_minus_exp`)로 작은 쪽 확률을 만들고, special의 `Ndtri::chunk`로 $z$를 내요. 그다음은 `icdf` 커널과 같아요. 상쇄가 없으면 $\mu + \sigma z$를 FMA로, 상쇄가 있고 $\lvert z_0\rvert \le 1$이면 선형 뉴턴 한 걸음(`newton_linear`)이에요. $p$의 반올림이 $z$를 옮기는 양은 조건수 $\kappa$의 $1/\lvert\log p\rvert \le 1.45$배라 역함수 계약 $\max(1, \kappa)$단위 안이에요. 반올림한 $\log\tfrac12$, $\log p \lt -700$, 0, $-\infty$는 위의 정의(`quantile_z_log`)로 가요.
 
 감마·역감마 밀도 커널의 상수 $\log\Gamma(a) + \log s$와 베타·t·F 커널의 $\log B(a, b)$는 `dens::log_gamma`가 구해요. $w \ge 13$까지 이동 곱(서로 독립인 사슬 넷)으로 올리고, Stirling 급수를 Estrin 꼴로 더하고, $w \le 64$에서는 표 기반 `dens::log`(절대 $2^{-55}$ 이하)를 써요. $w \gt 64$와 $z \lt 2^{-1000}$은 double-double `log_gamma_dd`예요. 매개변수가 원소마다 다른 배열에서 특히 이 상수가 비용의 큰 몫이라, 상수는 매개변수가 바뀔 때만 다시 구해요.
 

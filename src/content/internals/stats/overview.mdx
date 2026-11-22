@@ -131,7 +131,7 @@ True
         tone: 'dark',
         items: [
           { name: 'special/', note: '불완전 감마·베타, 정규분포 함수, 비중심 분포, double-double' },
-          { name: 'array/', note: 'n항 디스패처, NdIter' },
+          { name: 'array/', note: 'n항 디스패처, NdIter, NEON exp' },
           { name: 'random/', note: 'Philox 스트림' },
           { name: 'parallel/ · accelerate/', note: '스레드풀, vForce' },
         ],
@@ -466,20 +466,20 @@ True
 
 | 파일 | 줄 수 | 내용 |
 |---|---:|---|
-| `src/stardust/stats/_distribution.py` | 351 | 단변량 분포의 공통 기반 |
+| `src/stardust/stats/_distribution.py` | 484 | 단변량 분포의 공통 기반 |
 | `src/stardust/stats/_continuous.py`, `_discrete.py` | 251, 120 | 분포 클래스 31개 |
-| `src/stardust/stats/_multivariate.py`, `_matrix.py` | 488, 284 | 다변량·행렬 분포 |
-| `src/stardust/stats/_descriptive.py` | 528 | 기술통계 |
-| `csrc/bind/stats_bind.cpp` | 101 | 단변량 분포 620개 함수 등록 |
-| `csrc/bind/stats_sample.cpp`, `stats_mv.cpp`, `stats_mvcdf.cpp`, `stats_matrix.cpp`, `stats_desc.cpp` | 195–960 | 표본, 다변량, 누적확률, 행렬, 기술통계 커널 |
-| `csrc/stats/engine.hpp` | 347 | `DistOp`, chunk 루프, 매개변수의 극한, 비용 |
-| `csrc/stats/chunk.hpp`, `chunk_dd.hpp` | 43, 314 | 청크 커널의 vForce 호출과 오차 상수, 배열 double-double |
-| `csrc/stats/cost_table.hpp` | 273 | 잰 원소당 비용 248줄 (생성 파일) |
+| `src/stardust/stats/_multivariate.py`, `_matrix.py` | 549, 315 | 다변량·행렬 분포 |
+| `src/stardust/stats/_descriptive.py` | 624 | 기술통계 |
+| `csrc/bind/stats_bind.cpp` | 155 | 단변량 분포 620개 함수 등록 |
+| `csrc/bind/stats_sample.cpp`, `stats_mv.cpp`, `stats_mvcdf.cpp`, `stats_matrix.cpp`, `stats_desc.cpp` | 215–1169 | 표본, 다변량, 누적확률, 행렬, 기술통계 커널 |
+| `csrc/stats/engine.hpp` | 546 | `DistOp`, chunk 루프, 매개변수의 극한, 비용 |
+| `csrc/stats/chunk.hpp`, `chunk_dd.hpp` | 50, 318 | 청크 커널의 기본 함수(`exp`는 배열 영역의 NEON 함수, 나머지는 vForce)와 오차 상수, 배열 double-double |
+| `csrc/stats/cost_table.hpp` | 370 | 잰 원소당 비용 340줄 (생성 파일) |
 | `csrc/stats/numeric.hpp` | 235 | 표준화 변수, 지수화, 엔트로피 묶음 |
-| `csrc/stats/discrete.hpp` | 702 | 분위수 탐색, 꼬리 합, 엔트로피 합, 정수점 메모, 상한 |
-| `csrc/stats/dist/*.hpp` | 163–1336 | 분포 31개 |
-| `csrc/stats/sample.hpp`, `sample_dist.hpp` | 136, 933 | 표본의 단어, 분포별 방법 |
-| `csrc/stats/dd_linalg.hpp`, `mvcdf.hpp` | 324, 1572 | double-double 선형대수, 다변량 누적확률 |
+| `csrc/stats/discrete.hpp` | 776 | 분위수 탐색, 꼬리 합, 엔트로피 합, 정수점 메모, 상한 |
+| `csrc/stats/dist/*.hpp` | 118–1445 | 분포 31개 |
+| `csrc/stats/sample.hpp`, `sample_dist.hpp` | 143, 1024 | 표본의 단어, 분포별 방법 |
+| `csrc/stats/dd_linalg.hpp`, `mvcdf.hpp` | 443, 1821 | double-double 선형대수, 다변량 누적확률 |
 | `csrc/stats/coeffs/` | | $\zeta(j) - 1$ ($j = 2..110$, Arb로 계산), 비중심 t 모멘트 급수의 유리수 계수 |
 | `tools/stats_ref.py`, `tests/stats/ref/` | | Arb 참값 생성과 저장(다변량·행렬 분포는 `tests/stats/ref/mv/`) |
 | `bench/stats/accuracy.md`, `accuracy_multivariate.md` | | 정확도 측정의 표 |

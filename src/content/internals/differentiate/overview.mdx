@@ -113,23 +113,25 @@ def derivative(
 
 셋 모두 둘째 반복에 멈췄으니 호출은 세 번이에요. 원소마다의 `nfev`는 그 원소의 값을 계산한 점의 수라 1 + 8 + 2 = 11이에요. 사용자의 `args`는 Python에서 배치 모양으로 브로드캐스트해 원소 n개로 펴 두고, 호출마다 남은 원소의 값만 모아 첫 호출에는 (k,), 그 뒤에는 (k, 1)로 넘겨요. (k, 1)이라 사용자 함수 안에서 `x * a` 같은 식이 (k, p)로 브로드캐스트돼요.
 
-돌려받은 값은 C++가 먼저 봐요. 그 호출의 점과 같은 모양의 float64 `sd.ndarray`이면 그대로 읽어요. 아니면 Python의 확인 함수를 불러요. 확인 함수는 수의 시퀀스나 numpy 배열을 `sd.asarray`로 바꾸고, 정수 배열은 float64로 바꾸고, 모양이 틀리거나 실수가 아니면 함수 이름으로 시작하는 에러를 내요.
+돌려받은 값은 C++가 먼저 봐요. 그 호출의 점과 같은 모양의 float64 `sd.ndarray`이면 그대로 읽어요. 아니면 Python의 확인 함수를 불러요. 확인 함수는 수의 시퀀스나 numpy 배열을 `sd.asarray`로 바꾸고, 정수 배열은 float64로 바꾸고, 모양이 틀리거나 실수가 아니면 함수 이름으로 시작하는 에러를 내요. 에러의 글에 넣을 사용자 함수의 이름은 `what`으로 받아요(기본 `'f'`). `sd.integrate.quad(vectorized=True)`는 같은 확인 함수를 `'func'`로 불러 써요.
 
 ```python
 # src/stardust/differentiate/_derivative.py
-def _values(func):
+def _values(func, what="f"):
     """check(value, shape) for derivative's kernel: what f returned, as a float64 sd.ndarray of
-    its argument's shape, (k,) (an int) or (k, p) (a tuple), or the error (optimize's form)."""
+    its argument's shape, (k,) (an int) or (k, p) (a tuple), or the error (optimize's form).
+    `what` names the function in the messages (quad's is 'func')."""
 
     def check(v, shape):
         want = (shape,) if isinstance(shape, int) else tuple(shape)
-        a = _real_array(v, func, "f")
+        a = _real_array(v, func, what)
         if a is None:
-            raise ValueError(f"{func}(): 'f' must return shape {_shape_text(want)} like its argument, not a scalar")
-        if tuple(a.shape) != want:
             raise ValueError(
-                f"{func}(): 'f' must return shape {_shape_text(want)} like its argument, not {_shape_text(a.shape)}"
+                f"{func}(): '{what}' must return shape {_shape_text(want)} like its argument, not a scalar"
             )
+        if tuple(a.shape) != want:
+            got = _shape_text(a.shape)
+            raise ValueError(f"{func}(): '{what}' must return shape {_shape_text(want)} like its argument, not {got}")
         return a if a.dtype == _sd.float64 else a.astype(_sd.float64)
 
     return check
@@ -219,17 +221,23 @@ optimize의 배치 함수는 원소마다 점이 하나라 남은 원소의 수�
 
 ```cpp
 // csrc/elementwise/loop.hpp
+constexpr std::int64_t kPointNs = 2;  // a point's work in these passes (writing it, updating, summing)
+
 template <class Fn>
 void for_weighted(std::size_t k, std::size_t w, Fn&& fn) {
     const std::size_t work = k * std::max<std::size_t>(w, 1);
     if (work >= kParallel && k > 1 && parallel::available()) {
-        std::size_t per = std::max<std::size_t>(kTask / std::max<std::size_t>(w, 1), 1);  // elements a piece
-        per = std::min(per, std::max<std::size_t>(k / kWoken, 1));
+        const std::size_t per = std::max<std::size_t>(kTask / std::max<std::size_t>(w, 1), 1);  // elements a piece
         const auto tasks = static_cast<std::int64_t>((k + per - 1) / per);
-        parallel::parallel_for(tasks, [&](std::int64_t t) {
-            const std::size_t r0 = static_cast<std::size_t>(t) * per;
-            fn(r0, std::min(k, r0 + per));
-        });
+        const auto task_ns = static_cast<std::int64_t>(per * std::max<std::size_t>(w, 1)) * kPointNs;
+        parallel::parallel_for(
+            tasks,
+            [&](std::int64_t t) {
+                const std::size_t r0 = static_cast<std::size_t>(t) * per;
+                fn(r0, std::min(k, r0 + per));
+            },
+            task_ns
+        );
     } else {
         parallel::Unlocked u(work >= kParallel);
         fn(std::size_t{0}, k);
@@ -237,7 +245,7 @@ void for_weighted(std::size_t k, std::size_t w, Fn&& fn) {
 }
 ```
 
-일이 $2^{15}$점 이상이면 패스를 조각으로 나눠 스레드풀에 맡기고 그동안 GIL을 놓아요. 조각 하나는 $2^{13}$점쯤(적어도 원소 하나)이고, 조각이 17개보다 적으면 더 잘게 나눠요. 스레드풀은 일이 16개를 넘을 때 자는 일꾼을 깨우므로, 이렇게 해야 원소가 수천 개인 배치에서도 모든 일꾼이 함께 일해요. 첫 반복은 원소마다 8점이라 원소 4,096개부터, 그 뒤 반복은 2점이라 16,384개부터 나뉘어요.
+일이 $2^{15}$점 이상이면 패스를 조각으로 나눠 스레드풀에 맡기고 그동안 GIL을 놓아요. 조각 하나는 $2^{13}$점쯤(적어도 원소 하나)이에요. 스레드풀에는 조각 하나가 걸리는 시간의 어림(점마다 약 2ns, `kPointNs`)을 함께 넘겨요. 풀은 그 어림으로 일 전체가 잠든 일꾼을 깨울 값을 하는지 보고, 길면 처음부터 깨우고 짧으면 깨우지 않아요([잠든 워커 깨우기](/internals/core/threads/#잠든-워커-깨우기)). 조각의 수는 원소의 산술에 닿지 않아요. 첫 반복은 원소마다 8점이라 원소 4,096개부터, 그 뒤 반복은 2점이라 16,384개부터 나뉘어요.
 
 원소의 산술은 어느 스레드에서 하든 같고, 계속 가는 원소는 압축한 뒤에도 원래 차례대로 남아요. 그래서 지금은 원소 하나의 결과가 스레드 수, 배치의 크기, 배치 안의 위치와 상관없이 비트까지 같아요(약속은 아니에요. 약속은 같은 기계, 같은 스레드 수에서 실행마다 같은 비트예요).
 

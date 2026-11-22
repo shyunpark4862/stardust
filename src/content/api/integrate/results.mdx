@@ -145,7 +145,7 @@ $1/x$의 [0, 1]은 발산해요. `quad`는 구간 50개를 다 쓰고 멈췄고,
 
 | 함수 | `nfev` |
 |---|---|
-| `quad`, `quad_vec` | 함수를 부른 수(점 하나에 한 번). `complex_func=True`는 두 부분의 합 |
+| `quad`, `quad_vec` | 함수를 부른 점의 수. `quad(vectorized=True)`도 부른 횟수가 아니라 점의 수예요. `complex_func=True`는 두 부분의 합 |
 | `dblquad`, `tplquad`, `nquad` | 가장 안쪽 f를 부른 수. 범위 함수(`gfun` 등)의 호출은 세지 않아요 |
 | `cubature` | f에 넘긴 점의 수(한 번에 여러 점을 넘겨요) |
 | `tanhsinh`, `nsum` | 원소마다 그 원소가 멈출 때까지 계산한 점의 수 |

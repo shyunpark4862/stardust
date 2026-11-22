@@ -55,6 +55,22 @@ void qk21(F& f, double a, double b, double& result, double& abserr, double& resa
     const double hlgth = 0.5 * (b - a);
     const double dhlgth = std::abs(hlgth);
     double resg = 0.0;
+    {
+        double xs[21];
+        int n = 0;
+        xs[n++] = centr;
+        for (int j = 1; j <= 5; ++j) {
+            const double absc = hlgth * kXgk21[2 * j - 1];
+            xs[n++] = centr - absc;
+            xs[n++] = centr + absc;
+        }
+        for (int j = 1; j <= 5; ++j) {
+            const double absc = hlgth * kXgk21[2 * j - 2];
+            xs[n++] = centr - absc;
+            xs[n++] = centr + absc;
+        }
+        prefetch(f, xs, n);
+    }
     const double fc = f(centr);
     double resk = kWgk21[10] * fc;
     resabs = std::abs(resk);
@@ -73,6 +89,8 @@ void qk21(F& f, double a, double b, double& result, double& abserr, double& resa
 ```
 
 부르는 순서는 가운데, 그다음 Gauss 마디의 쌍 c − h·t, c + h·t(바깥 마디부터), 마지막으로 Kronrod만의 마디의 쌍이에요. G10에는 가운데 마디가 없으므로 가운데 값은 K21에만 들어가요. 고리 하나가 네 합을 함께 쌓아요.
+
+고리에 앞서 규칙은 부를 점 21개를 부르는 순서대로, 부를 때와 같은 식으로 먼저 늘어놓아 `prefetch`에 넘겨요. 보통의 피적분 함수에는 `prefetch`가 아무 일도 하지 않아요. `quad(vectorized=True)`의 피적분 함수만 이 21점을 배열 하나로 한 번 불러 두고, 뒤따르는 `f(…)` 호출마다 차례로 값을 내줘요([규칙 하나를 한 번에](/internals/integrate/overview/#규칙-하나를-한-번에)). 그 뒤의 계산은 어느 쪽이든 같아요.
 
 | 합 | 뜻 |
 |---|---|
@@ -169,12 +187,32 @@ $$
     const double centr = 0.5 * (a + b);
     const double hlgth = 0.5 * (b - a);
     const double tabsc1 = boun + dinf * (1.0 - centr) / centr;
+    {
+        double xs[30];
+        int n = 0;
+        xs[n++] = tabsc1;
+        if (inf == 2) xs[n++] = -tabsc1;
+        for (int j = 0; j < 7; ++j) {
+            const double absc = hlgth * kXgk15[j];
+            const double absc1 = centr - absc;
+            const double absc2 = centr + absc;
+            const double t1 = boun + dinf * (1.0 - absc1) / absc1;
+            const double t2 = boun + dinf * (1.0 - absc2) / absc2;
+            xs[n++] = t1;
+            xs[n++] = t2;
+            if (inf == 2) {
+                xs[n++] = -t1;
+                xs[n++] = -t2;
+            }
+        }
+        prefetch(f, xs, n);
+    }
     double fval1 = f(tabsc1);
     if (inf == 2) fval1 = fval1 + f(-tabsc1);
     const double fc = (fval1 / centr) / centr;
 ```
 
-`dinf`는 [a, ∞)와 실수 전체에서 1, (−∞, b]에서 −1이에요. 1/t²는 원본의 식 그대로 (f/t)/t로 계산해요. Gauss 7점 가중치의 표 `kWg15i`는 Kronrod 표와 같은 자리에 두고 Kronrod만의 자리는 0으로 채워서, 같은 고리가 두 합을 함께 쌓아요. 실수 전체는 점마다 f를 두 번 부르므로 호출 수가 두 배예요. t는 (0, 1] 안의 마디에서만 계산하므로 t = 0(x = ∞)은 부르지 않아요.
+`dinf`는 [a, ∞)와 실수 전체에서 1, (−∞, b]에서 −1이에요. 먼저 늘어놓는 점은 가운데 마디의 x, 그다음 마디의 쌍마다 x 둘이에요. 실수 전체면 가운데 x 뒤에 −x가, 쌍의 x 둘 뒤에 −x 둘이 붙어요. 뒤의 고리가 f를 부르는 순서 그대로예요. 1/t²는 원본의 식 그대로 (f/t)/t로 계산해요. Gauss 7점 가중치의 표 `kWg15i`는 Kronrod 표와 같은 자리에 두고 Kronrod만의 자리는 0으로 채워서, 같은 고리가 두 합을 함께 쌓아요. 실수 전체는 점마다 f를 두 번 부르므로 호출 수가 두 배예요. t는 (0, 1] 안의 마디에서만 계산하므로 t = 0(x = ∞)은 부르지 않아요.
 
 결과의 구간은 바꾼 변수 t의 것이에요.
 
