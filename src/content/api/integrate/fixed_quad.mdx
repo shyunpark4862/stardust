@@ -71,7 +71,7 @@ $$
 ...     seen.append(x)
 ...     return sd.exp(x)
 >>> sd.integrate.fixed_quad(f, -1, 1, n=5)
-2.350402386462826
+2.3504023864628256
 >>> seen[0]
 array([ -0.906179845938664, -0.5384693101056831,                 0.0,
          0.538469310105683,  0.9061798459386639], dtype=float64)
@@ -124,7 +124,7 @@ ValueError: fixed_quad(): 'func' must return shape (5,) or (..., 5) for its argu
 3 -8.240865232433947e-07
 4 -9.329674810487631e-10
 5 -6.536993168992922e-13
-6 -2.220446049250313e-16
+6 -4.440892098500626e-16
 ```
 
 ## 잘 맞지 않는 함수
@@ -184,7 +184,7 @@ Traceback (most recent call last):
     ...
 ValueError: fixed_quad(): 'b' must be finite (Gaussian quadrature needs a finite interval)
 >>> sd.integrate.fixed_quad(sd.exp, 1, 0)
--1.7182818284583916
+-1.7182818284583914
 ```
 
 ## 마디와 가중치의 정확도

@@ -28,7 +28,7 @@ Series와 DataFrame의 행에는 **라벨**이 붙어 있어요. 라벨은 두 �
 
 - **라벨 조회는 factorize 위에 있어요.** "두 라벨이 같은가"를 정하는 코드는 unique, groupby, merge가 쓰는 factorize 하나뿐이에요. 조회 엔진은 라벨 컬럼을 factorize한 결과를 저장해 둘 뿐이에요. 해시 테이블 자체는 [해시 테이블과 factorize](/internals/frame/hashing/)가 자세히 다뤄요.
 - **결과의 모양은 키의 모양으로 정해요.** 슬라이스로 고르면 버퍼를 공유하고 RangeIndex가 RangeIndex로 남아요. 리스트나 마스크로 고르면 복사이고 결과 라벨은 Index예요. 마스크가 우연히 연속된 행을 골라도, 남은 라벨이 우연히 등차수열이어도 마찬가지예요.
-- **데이터를 보고 경로를 고르지 않아요.** 정렬된 Index에서 이진 탐색을 하거나, 고유한 Index에서 빠른 길로 가는 일이 없어요. 같은 코드는 데이터와 상관없이 같은 타입의 결과를 같은 방식으로 내요.
+- **조회는 데이터를 보고 경로를 고르지 않아요.** 정렬된 Index에서 이진 탐색을 하거나, 고유한 Index에서 빠른 길로 가는 일이 없어요. 같은 코드는 데이터와 상관없이 같은 타입의 결과를 같은 방식으로 내요. 데이터를 보는 길은 결과가 어느 길이든 같을 때만 둬요(`df[mask]`가 남는 행의 비율로 압축과 모으기 중 하나를 고르는 것처럼).
 - **행을 옮기는 커널은 셋뿐이에요.** 위치로 모으는 `take`, 마스크로 압축하는 `filter`, 위치에 쓰는 `set_rows`예요. reindex, 정렬, merge, sort, groupby의 `first`/`last`가 모두 `take` 위에 있어서, 그 연산들은 dtype마다 따로 코드를 갖지 않아요.
 
 이 글의 수치는 따로 적지 않으면 Apple M4 Pro 한 대에서 1스레드로 잰 호출당 최솟값이에요. pandas·Polars와 비교하는 수치는 버전을 적어요(pandas 3.1.1, Polars 2.1.0).
@@ -169,7 +169,7 @@ def _table(self):
 - 만들기만 하고 조회하지 않는 Index(대부분의 연산 결과)는 비용을 내지 않아요.
 - Index는 불변이니 한 번 만든 엔진은 계속 맞아요. `Index._copy()`(이름만 바꾼 복사본)는 같은 라벨이므로 엔진도 같이 넘겨요.
 - pickle에는 엔진을 넣지 않아요(`__reduce__`가 Column과 이름만 담아요). 읽은 쪽에서 처음 조회할 때 다시 만들어요.
-- 비용은 같은 라벨의 factorize와 같아요. string 라벨 1M개에서 처음 만들기 37ms, 그 뒤 스칼라 조회 1.56µs, 라벨 1,000개 조회 123µs예요.
+- 비용은 같은 라벨의 factorize와 같아요. 처음 만들 때 한 번 테이블 비용을 내고, 그 뒤 스칼라 조회는 해시 찾기 한 번이에요.
 
 캐시 칸을 채우는 코드는 GIL을 쥔 Python 코드예요. 다만 라벨이 2¹⁷개 이상이면 `Partitioned::build`가 만드는 도중에 GIL을 놓아요(병렬 구간, 또는 직렬 구간의 `Unlocked`). 그래서 두 Python 스레드가 같은 큰 Index를 동시에 처음 조회하면 둘 다 엔진을 만들 수 있어요. 두 엔진은 같은 라벨에서 만든 같은 결과이고, 늦게 끝난 쪽이 칸을 덮어쓸 뿐이라 결과는 달라지지 않아요. 만든 뒤의 조회는 엔진을 읽기만 해요.
 
@@ -418,41 +418,35 @@ Polars 2.1.0에는 정렬이 없어요. 두 Series의 연산은 위치대로이�
 
 ### 고정폭 dtype
 
-```cpp
-// csrc/frame/ops/selection.cpp, take와 gather (줄인 발췌)
-Column take(const Column& col, const Column& positions) {
-    // 1. 위치 검사: 청크마다 범위 밖(< -1, >= length)과 -1이 있는지 플래그로
-    for_chunks(n, [&](lo, hi) { ... bad |= pos[i] < -1 || pos[i] >= length; missing |= pos[i] == -1; ... });
-    if (out_of_range) throw nb::index_error("take: position out of range");
-    // 2. 결과: 원본에 비트맵이 있거나 -1이 하나라도 있을 때만 비트맵(모두 1)을 단다
-    Column out = ...;  if (col.validity || any_missing) bits = add_validity(out);
-    // 3. 모으기 (dtype은 템플릿 인자)
-    switch (col.dtype) { case DType::Int64: gather<std::int64_t>(col, pos, n, out, bits); break; ... }
-    // 4. NA 개수를 세고, 0이면 비트맵을 버리고, NA 행의 값을 0으로
-    finish_fixed(out);
-}
+고정폭 dtype(bool, int64, float64)은 한 번 지나며 끝내요(`take_fixed`). 행마다 범위 검사를 누적하고, 값을 읽고, 결과 비트맵을 64행씩 워드로 모아 쓰고, NA 행에는 0을 써요. 분기가 없어요.
 
-template <class T>
-void gather(const Column& col, const std::int64_t* pos, std::int64_t n, Column& out, std::uint8_t* bits) {
-    for_chunks(n, [&](std::int64_t lo, std::int64_t hi) {   // 청크는 64행의 배수: 비트맵 바이트를 나눠 쓰지 않는다
-        const T* in = col.data<T>();  T* o = ...;           // 지역 변수로 (앨리어싱, 아래 참고)
-        for (std::int64_t i = lo; i < hi; ++i) {
-            const std::int64_t p = pos[i];
-            if (p < 0) { o[i] = T{}; bitmap::clear(bits, i); }
-            else { o[i] = in[p]; if (bits && !col.is_valid(p)) bitmap::clear(bits, i); }
-        }
-    });
-}
+```cpp
+            // csrc/frame/ops/selection.cpp
+            for (std::int64_t i = b; i < e; ++i) {
+                const std::int64_t p = pos[i];
+                bad |= static_cast<std::uint64_t>(p + 1) > length;  // -1 .. length - 1
+                const bool has = p >= 0;
+                const std::int64_t q = has ? p : 0;
+                const bool valid = has && (!src || bitmap::get(src, off + q));
+                const T v = in[q];
+                o[i] = valid ? v : T{};
+                m |= static_cast<std::uint64_t>(valid) << (i - b);
+            }
+            w[b >> 6] = m;
+            na += (e - b) - __builtin_popcountll(m);
 ```
 
-- 결측이 없는 입력에 -1이 없으면 비트맵을 아예 만들지 않아요. 그러면 `bits`가 null이라 행마다 원본 비트를 읽지 않아요. "결측이 없으면 비트맵이 없다"는 컬럼의 속성으로 고르는 거예요.
-- 행 루프에 남은 분기는 "위치가 -1인가"예요. 데이터에 따라 달라지는 분기이지만, -1은 대개 드물거나(reindex에서 없는 라벨 몇 개) 한 구간에 몰려(정렬의 합집합 뒤쪽, outer merge의 끝) 예측이 잘 맞아요. `take`의 시간은 주로 `in[p]`의 무작위 읽기, 곧 메모리 지연이 정해요. 위치가 섞여 있으면 행마다 캐시 미스가 날 수 있어요.
-- 청크는 16,384행이고 64의 배수예요. 두 태스크가 같은 비트맵 바이트를 고치지 않아요. 위치 배열의 길이로만 청크를 나누므로 결과는 스레드 수와 무관해요([병렬화와 결정성](/internals/frame/parallel/)).
-- 마지막 `finish_fixed`가 NA 행의 값 자리를 0으로 지워요(NA 자리의 값은 언제나 0이라는 규칙, [컬럼과 메모리](/internals/frame/columns/)). `p < 0`인 행은 이미 `T{}`(0)이고, 원본이 NA인 행은 원본 값 자리가 0이라 0이 들어와 있어요. `finish_fixed`는 그 규칙을 한 번 더 확실히 하면서 NA 개수를 세요.
+- **범위 검사를 분기 없이.** 올바른 위치는 $-1 \le p < \text{length}$예요. $p + 1$을 부호 없는 정수로 보면 이 조건이 `p + 1 <= length` 하나가 되고(음수는 아주 큰 수가 돼요), 그 결과를 `bad`에 OR로 모아요. 루프가 끝난 뒤 하나라도 범위 밖이면 출력을 버리고 `IndexError`를 내요. 에러는 드무니 검사는 값을 모으는 루프에 얹어요.
+- **-1도 분기 없이.** 위치가 -1이면 행 0을 읽고(`q = 0`, 길이가 0인 컬럼은 따로 처리해요) 그 값을 버려요. "위치가 있고 원래 행에 값이 있다"(`valid`)로 값과 0 중 하나를 골라요. 원래 컬럼에 결측이 없으면(`src`가 null) 비트맵을 읽지 않아요. 컬럼의 속성으로 고르는 거예요.
+- **비트맵은 64행씩.** 결과의 validity 비트를 `m`에 모아 64행마다 워드 하나로 써요. NA 개수도 popcount로 그 자리에서 세요. 끝에 NA가 하나도 없으면 비트맵을 버려요.
+- 범위 검사, 모으기, 결측 정리(`finish_fixed`)를 따로 하던 세 패스에 비해 한 번만 지나서 약 2배 빨라요. `take`의 시간은 주로 `in[q]`의 무작위 읽기, 곧 메모리 지연이 정해요. 위치가 섞여 있으면 행마다 캐시 미스가 날 수 있어요.
+- 청크는 16,384행이고 64의 배수예요. 두 태스크가 같은 비트맵 워드를 쓰지 않아요. 위치 배열의 길이로만 청크를 나누므로 결과의 배치는 스레드 수와 상관없어요([병렬화와 결정성](/internals/frame/parallel/)).
 
 ### 문자열
 
-문자열은 길이가 제각각이라 결과의 바이트 위치를 미리 알 수 없어요. 두 번 훑어요.
+문자열은 길이가 제각각이라 결과의 바이트 위치를 미리 알 수 없어요.
+
+문자열의 `take`는 먼저 위치를 검사하는 패스(범위 밖, -1이 있는가)를 따로 돌고 나서 두 번 훑어요.
 
 1. 청크마다 고른 문자열의 바이트 수를 더해요. 청크 순서로 누적합을 내면 청크마다 바이트를 쓰기 시작할 자리가 나와요(`chunk_starts`).
 2. 청크마다 자기 자리부터 바이트를 `memcpy`하고, 행마다 끝 위치를 offsets에 적어요.
@@ -470,9 +464,9 @@ void gather(const Column& col, const std::int64_t* pos, std::int64_t n, Column& 
 
 ### 앨리어싱 때문에 지역 변수로 꺼내기
 
-`gather`의 람다 안에서 `in`, `o` 같은 포인터를 지역 변수로 꺼내는 것은 우연이 아니에요. 람다가 캡처한 값은 클로저 객체의 멤버라서, 루프 안에서 `uint8_t*`(비트맵)로 쓰면 컴파일러는 그 쓰기가 클로저의 멤버를 바꿨을 수도 있다고 보고 매 반복 멤버를 다시 읽어요. C++에서 `char` 계열 포인터는 어떤 객체든 가리킬 수 있기 때문이에요. 그러면 루프가 벡터화되지 않아요. frame의 커널은 루프가 읽는 경계와 포인터를 태스크 안의 지역 변수로 둬요. 자세한 예와 측정은 [원소별 연산과 리덕션](/internals/frame/elementwise/)에 있어요.
+`gather`의 람다 안에서 `in`, `o`, `w` 같은 포인터를 지역 변수로 꺼내는 것은 우연이 아니에요. 람다가 캡처한 값은 클로저 객체의 멤버라서, 루프 안에서 다른 타입의 포인터(비트맵 워드, `char` 계열)로 쓰면 컴파일러는 그 쓰기가 클로저의 멤버를 바꿨을 수도 있다고 보고 매 반복 멤버를 다시 읽어요. C++에서 `char` 계열 포인터는 어떤 객체든 가리킬 수 있기 때문이에요. 그러면 루프가 벡터화되지 않아요. frame의 커널은 루프가 읽는 경계와 포인터를 태스크 안의 지역 변수로 둬요. 자세한 예와 측정은 [원소별 연산과 리덕션](/internals/frame/elementwise/)에 있어요.
 
-## 마스크 필터: 분기 없는 압축
+## 마스크 필터: 분기 없는 압축과 모으기
 
 ### 분기 있는 압축의 문제
 
@@ -531,13 +525,37 @@ void compact_rows(const std::uint8_t* keep, std::int64_t lo, std::int64_t hi, Ge
 
 ### 문자열은 take(nonzero(mask))
 
-문자열은 압축하지 않고 `take(col, nonzero(mask))`로 가요. 같은 "항상 쓰기"를 문자열에 적용한 방법 둘을 1M 행에서 재면 6.5ms, 그리고 4.9ms·2.5ms로, 둘 다 `take`(2.1ms)보다 느려요. 문자열은 길이가 제각각이라 버릴 행까지 바이트를 쓰는 비용이 크고, `take`는 남길 행의 바이트만 옮기기 때문이에요.
+문자열은 압축하지 않고 `take(col, nonzero(mask))`로 가요. 같은 "항상 쓰기"를 문자열에 적용한 방법 둘을 1M 행에서 재면 둘 다 `take`보다 느렸어요. 문자열은 길이가 제각각이라 버릴 행까지 바이트를 쓰는 비용이 크고, `take`는 남길 행의 바이트만 옮기기 때문이에요.
 
-### DataFrame: 컬럼마다 바로 압축
+### DataFrame: 컬럼을 한꺼번에 거르기
 
-`df[mask]`는 마스크를 한 번 맞춘 뒤(`aligned_mask`) 컬럼마다 `filter`를 불러요. 결과 라벨만 `nonzero`로 위치를 구해 `Index._take`해요(기본 RangeIndex면 그 위치가 곧 라벨이에요). 위치 배열을 먼저 만들고 모든 컬럼을 `take`하는 두 단계 방식과 비교하면, 1M 행에서 3열 `df[mask]`가 5.14ms 대 3.10ms, NA가 10%인 `dropna`가 2.13ms 대 1.22ms예요(앞이 두 단계 방식). 위치 배열(8바이트 × 남긴 행)을 쓰고 다시 읽는 일과 `take`의 무작위 읽기가 없어지기 때문이에요. 4열 `df[mask]`는 10스레드에서 563µs예요.
+`df[mask]`는 마스크를 한 번 맞춘 뒤(`aligned_mask`) 남는 위치(`nonzero`)를 한 번 구하고, 모든 컬럼을 C++ 호출 하나로 걸러요(`filter_columns`). 그 위치를 결과 라벨(`Index._take`)과 문자열 컬럼이 함께 써요.
 
-컬럼마다 `filter`가 남길 행 수를 다시 세요. 마스크 바이트를 한 번 더 더하는 일이라 압축에 비하면 작아요.
+```python
+        # src/stardust/frame/_frame.py
+        if isinstance(key, Series):  # rows by a bool mask: each column compacted directly (docs/design/frame.md §7.3)
+            mask = _select.aligned_mask(key, self._index)
+            positions = mask.nonzero()  # the index's labels, and the string columns' rows
+            cols = _core.filter_columns(list(self._cols.values()), mask, positions)
+            return DataFrame._new(dict(zip(self._cols, cols)), self._index._take(positions))
+```
+
+`filter_columns`는 컬럼을 둘로 나눠요.
+
+- **NA 없는 고정폭 컬럼**은 (컬럼, 청크) 쌍이 태스크 하나예요. 컬럼 하나는 기준값 아래여도 컬럼을 합친 일이 기준값을 넘으면 나뉘어서, 10만 행 × 100열 같은 넓은 프레임도 여러 스레드로 돌아요.
+- **문자열과 NA가 있는 컬럼**은 하나씩 `take`나 `filter`를 불러요. 각 커널이 스스로 청크로 나눠요(한 태스크로 묶으면 그 컬럼이 한 스레드에서 돌아요).
+
+NA 없는 고정폭 컬럼은 남는 행의 비율로 방법을 골라요. 남는 행이 마스크의 2/3 이하이면 위치로 모으고(gather), 그보다 많으면 위의 압축을 해요.
+
+```cpp
+    // csrc/frame/ops/selection.cpp
+    const std::int64_t count = positions.length;
+    const bool gather = count * 3 <= n * 2;
+```
+
+압축은 모든 행을 지나고, 모으기는 남는 행만 읽고 써요. 절반이 남는 100열 프레임에서 모으기가 1스레드 약 2배 빨랐어요. 모으기는 출력 위치를 청크로 나눠요. 두 방법 모두 같은 행을 같은 순서로 내므로 결과는 같아요. 이 선택은 데이터(남는 행의 수)를 보지만 결과를 바꾸지 않아요. 남는 행 수는 어차피 결과의 길이로 알아야 하는 값이라, 고르는 비용도 따로 들지 않아요.
+
+`Series[mask]`와 `dropna`는 컬럼 하나의 `filter`예요. 언제나 압축이에요.
 
 ### pandas와 Polars의 필터
 
@@ -632,7 +650,7 @@ frame의 커널은 일이 크면 GIL을 놓고 돌아요. 그러면 다른 Pytho
 - 진행 중인 연산은 인자로 옛 Column 객체를 잡고 있고, 대입은 `share()`로 새 Column 객체를 만든 뒤 쓰므로, 그 사이 Buffer의 참조 수가 2 이상이라 대입이 복사해요.
 - 남은 틈은 "`set_rows`가 Buffer를 제자리에서 고치는 도중에 다른 스레드의 연산이 시작되는 경우" 하나예요. 그래서 `set_rows`는 크기와 상관없이 GIL을 쥔 채 돌아요. GIL을 쥐고 있는 한 다른 스레드의 연산은 쓰기 전이나 쓴 뒤의 컬럼만 봐요.
 
-10행 Series의 `s.iloc[3] = 1`이 0.94µs예요. 스냅샷 규칙과 그 테스트는 [컬럼과 메모리](/internals/frame/columns/)에 있어요.
+스냅샷 규칙과 그 테스트는 [컬럼과 메모리](/internals/frame/columns/)에 있어요.
 
 ### pandas와 Polars의 Copy-on-Write
 

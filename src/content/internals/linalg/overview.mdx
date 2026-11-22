@@ -19,8 +19,8 @@ import Layers from '../../../components/fig/Layers.astro';
 
 1. 분해 알고리즘을 직접 짜지 않아요. LAPACK(Linear Algebra PACKage, 밀집 행렬 분해의 표준 라이브러리 [1])을 불러요. macOS의 Accelerate 프레임워크에 들어 있는 구현이에요 [2]. 직접 짜는 것은 LAPACK에 없는 `expm`과, LAPACK이 필요 없는 원소 루프(`vecdot`, `outer`, `trace`, 노름 등)뿐이에요.
 2. stardust가 맡는 일은 LAPACK의 앞과 뒤예요. 인자를 검사하고, 어떤 메모리 배치의 입력이든 LAPACK이 읽는 형태로 옮기고(패킹), 행렬 여러 개를 스레드에 나누고(배치), LAPACK이 돌려준 상태 값 `info`를 에러로 바꾸고, 결과 배열을 만들어요. numpy·scipy도 같은 Accelerate를 부르므로, 속도 차이는 거의 다 이 부분에서 나와요.
-3. 함수마다 계산 경로가 하나예요. 입력 값을 보고 LAPACK 루틴을 바꾸지 않아요. 크기로 경로를 바꾸는 것은 이득이 2배를 넘는 두 곳뿐이고(LU 분해의 $n$ = 32–46, 행이 8개 이하인 `solve_banded`), 그때도 같은 모양이면 언제나 같은 계산이에요.
-4. 결과는 입력의 메모리 배치, 배치 안의 위치, 스레드 수와 무관하게 비트까지 같아요. 패킹, 16바이트 정렬, 배치 분할이 모두 이 성질을 지키도록 짜여 있어요.
+3. 함수마다 계산 경로를 모양으로 정해요. 입력 값을 보고 LAPACK 루틴을 바꾸지 않아요. 크기로 경로를 바꾸는 것은 이득이 분명한 곳뿐이고(LU 분해의 $n$ = 32–46, 행이 8개 이하인 `solve_banded`, 우변 두 열 이하의 삼각 풀기, 8×8 이하의 행렬 곱, 짧은 합과 긴 합), 그때도 같은 모양이면 언제나 같은 계산이에요.
+4. 같은 기계, 같은 스레드 수, 같은 입력이면 실행마다 비트까지 같아요. 배치 안의 위치와도 상관없어요. 16바이트 정렬과 배치 분할이 이 성질을 지키도록 짜여 있고, 지금은 스레드 수와도 상관없이 같은 비트예요(약속은 아니에요). 분해와 `solve`처럼 입력을 패킹하는 함수는 메모리 배치와도 상관없어요.
 5. Python 코드를 거치지 않아요. `sd.linalg.solve`는 C++ 함수 그 자체예요. 작은 행렬에서는 계산보다 호출 경로가 더 오래 걸리기 때문이에요.
 
 모든 행렬 함수는 아래 `solve(a, b)`와 같은 순서를 밟아요.
@@ -37,7 +37,7 @@ import Layers from '../../../components/fig/Layers.astro';
       { label: 'pack(a)', depth: 1, where: 'pack.hpp', note: 'a를 작업 버퍼에 열 우선으로 복사하면서 dtype을 바꾸고 NaN·inf를 찾아요.' },
       { label: 'getrf', depth: 1, where: 'lapack.hpp', note: 'LU 분해. info > 0이면 특이 행렬이에요.' },
       { label: 'pack(b)', depth: 1, where: 'pack.hpp', note: 'b를 결과 자리에 바로 복사해요.' },
-      { label: 'getrs', depth: 1, where: 'lapack.hpp', note: '결과 자리의 b를 해 x로 덮어써요.' },
+      { label: 'lu_solve_factored', depth: 1, where: 'lapack.hpp', note: '결과 자리의 b를 해 x로 덮어써요. 우변이 3열 이상이면 getrs, 두 열 이하면 행 교환 뒤 trsv 두 번이에요.' },
       { label: 'raise', where: 'ops/common.hpp', note: '실패한 원소가 있으면 가장 작은 배치 인덱스의 에러 하나를 던져요.' },
       { label: 'sd.ndarray', where: 'Python', note: '결과가 돌아와요. 함수에 따라 0차원이면 Python 스칼라, 값이 여럿이면 namedtuple이에요.' },
     ]}
@@ -269,13 +269,9 @@ nb::object with_type(bool complex, F&& f) {
     if (complex) return f(std::type_identity<cplx>{});
     return f(std::type_identity<double>{});
 }
-
-// 쓰는 쪽 (ops/lu.cpp의 solve에서)
-const bool complex = computes_complex(a.dtype()) || computes_complex(y.dtype());
-return with_type(complex, [&]<class T>(std::type_identity<T>) -> nb::object {
-    ...   // T로 쓴 몸체. 컴파일러가 double판과 cplx판 두 벌을 만들어요.
-});
 ```
+
+쓰는 쪽은 아래 `solve` 전체에서 볼 수 있어요. `with_type`에 넘긴 람다 안이 `T`로 쓴 몸체이고, 컴파일러가 `double`판과 `cplx`판 두 벌을 만들어요.
 
 `std::type_identity<T>`는 값이 없는 빈 객체예요. 타입 하나를 람다의 인자로 넘기려고 쓰는 C++20의 표준 도구이고, `[&]<class T>(...)`처럼 템플릿 인자 목록이 붙은 람다도 C++20에서 들어온 문법이에요. 분기는 호출당 한 번이고, 그 안의 루프와 LAPACK 호출은 모두 타입이 정해진 코드예요.
 
@@ -308,7 +304,7 @@ nb::object solve(nb::handle ao, nb::handle bo) {
                 LapackSlot<T> xs(res + i * n * k, n * k, s, Scratch::kAlign0);
                 T* x = xs.get();  // b is packed straight into the output slot (docs/design/linalg.md §5.2)
                 if (!pack(y.dtype(), y.data() + off[1], n, k, r.rs, r.cs, x, n, true)) return kNonFiniteB;
-                if (n > 0 && k > 0) lapack::getrs('N', n, k, lu, n, ipiv, x, n);
+                lapack::lu_solve_factored(n, k, lu, ipiv, x, n);  // trsv for one or two columns
                 return 0;
             },
             lu_task_cap(n, k)
@@ -325,7 +321,8 @@ nb::object solve(nb::handle ao, nb::handle bo) {
 - `run_batch`의 둘째 인자는 행렬 항 `cost(kLU, n²)`에 우변 항 `rhs_cost(n, k)`를 더한 값이에요. 넷째 인자 `lu_task_cap(n, k)`는 우변이 8열 이상인 작은 행렬에서 태스크 수를 줄여요([배치와 병렬화](/internals/linalg/batch/)).
 - `lu_factor`: `a`의 행렬 하나를 작업 메모리에 패킹하고 분해해요(`getrf`, 행과 열이 32–46이면 `getf2`). NaN·inf가 있으면 `kNonFinite`, 정확한 0 피벗이 나오면 `kSingular`를 돌려줘요.
 - `LapackSlot`: 결과 배열에서 이 원소의 자리를 LAPACK에 넘길 수 있는 포인터로 바꿔요. 자리가 16바이트 경계에 있지 않으면 정렬된 작업 메모리를 대신 내주고, 끝날 때 자리로 복사해요.
-- `pack(b → x)`: 우변을 **결과 자리에 바로** 복사해요. `getrs`가 우변을 해로 덮어쓰므로, 따로 옮길 것이 없어요.
+- `pack(b → x)`: 우변을 **결과 자리에 바로** 복사해요. 풀이가 우변을 해로 덮어쓰므로, 따로 옮길 것이 없어요.
+- `lu_solve_factored`: `getrf`의 인수로 풀어요. 우변이 3열 이상이면 `getrs`, 두 열 이하이면 행 교환 뒤 `trsv`를 $L$과 $U$에 한 번씩 불러요([LU 분해와 선형 시스템](/internals/linalg/lu/)).
 - `raise`: 실패 코드와 배치 인덱스로 예외를 만들어요.
 
 몸체 안에서는 Python 객체를 만지지 않아요. 배치의 추정 시간이 10µs 이상이면 몸체는 스레드 수와 상관없이 GIL 없이 돌기 때문이에요. 나눌 때는 스레드풀의 워커에서, 나누지 않을 때는 호출 스레드에서 돌아요([스레드풀과 결정성](/internals/core/threads/#gil)). 결과 배열과 namedtuple은 모두 `run_batch` 밖에서 만들어요.
@@ -359,7 +356,7 @@ inline lint checked(lint info, const char* routine) {
     return info;
 }
 
-// 부분 피벗 LU: A = P L U, 제자리. info > 0이면 U(info, info)가 정확히 0.
+// LU with partial pivoting: A = P L U, in place. info > 0: U(info, info) is exactly zero.
 template <class T>
 lint getrf(lint m, lint n, T* a, lint lda, lint* ipiv) {
     lint info = 0;
@@ -377,18 +374,18 @@ lint getrf(lint m, lint n, T* a, lint lda, lint* ipiv) {
 작업 메모리가 필요한 루틴의 래퍼는 `Scratch`를 받아 크기 질의와 할당까지 맡아요.
 
 ```cpp
-// lapack.hpp의 geqrf, 줄임 (복소수판은 같은 자리에서 zgeqrf_를 불러요)
+// csrc/linalg/lapack.hpp
 template <class T>
 lint geqrf(lint m, lint n, T* a, lint lda, T* tau, Scratch& s) {
     lint info = 0;
-    lint lwork = s.sizes({kGeqrf, m, n, lda, 0, esize<T>()}, [&] {   // 이 Scratch에서 처음일 때만 실행
-        lint query = -1;
-        T best{};
-        if constexpr (std::is_same_v<T, double>) dgeqrf_(&m, &n, a, &lda, tau, &best, &query, &info);
-        else zgeqrf_(&m, &n, a, &lda, tau, &best, &query, &info);            // lwork = -1: 크기만 물어요
-        return WorkSizes{work_size(best)};
-    }).work;
-    T* w = s.get<T>(lwork, Scratch::kWork);
+    lint lwork = s.sizes({kGeqrf, m, n, lda, 0, esize<T>()}, [&] {
+                      lint q_lwork = -1;
+                      T q{};
+                      if constexpr (std::is_same_v<T, double>) dgeqrf_(&m, &n, a, &lda, tau, &q, &q_lwork, &info);
+                      else zgeqrf_(&m, &n, a, &lda, tau, &q, &q_lwork, &info);
+                      return WorkSizes{work_size(q)};
+                  }).work;
+    T* w = s.get<T>(static_cast<std::size_t>(lwork), Scratch::kWork);
     if constexpr (std::is_same_v<T, double>) dgeqrf_(&m, &n, a, &lda, tau, w, &lwork, &info);
     else zgeqrf_(&m, &n, a, &lda, tau, w, &lwork, &info);
     return checked(info, "geqrf");
@@ -401,16 +398,16 @@ lint geqrf(lint m, lint n, T* a, lint lda, T* tau, Scratch& s) {
 
 | 종류 | 루틴 |
 |---|---|
-| LU, 삼각 | `getrf`, `getrs`, `trtrs` |
+| LU, 삼각 | `getrf`, `getf2`, `getrs`, `trtrs` |
 | 대칭 | `potrf`, `potrs`, `sytrf`/`hetrf` |
 | QR, 최소제곱 | `geqrf`, `geqp3`, `orgqr`/`ungqr`, `gelsd` |
 | 고유값 | `syevd`/`heevd`, `sygvd`/`hegvd`, `sygv`/`hegv`, `geev`, `gees`, `gehrd`, `orghr`/`unghr` |
 | 특이값 | `gesdd`, `gesvd` |
 | 띠, Sylvester | `gtsv`, `gbsv`, `trsyl3` |
 | 노름 추정 | `lacn2` |
-| BLAS | `gemm`, `gemv` |
+| BLAS | `gemm`, `gemv`, `trsv`(우변 두 열 이하의 삼각 풀기), `ddot`·`zdotc`·`dasum`(긴 합) |
 
-행렬곱이 필요한 함수(`matrix_power`, `expm`, `solve_sylvester`, `pinv`)는 `sd.matmul`을 거치지 않고 `cblas_dgemm`/`cblas_zgemm`을 바로 불러요. 곱할 행렬이 이미 C++ 안의 작업 버퍼에 열 우선으로 놓여 있어서, 배열 객체로 감쌌다 푸는 단계가 필요 없어요.
+행렬곱이 필요한 함수(`matrix_power`, `expm`, `solve_sylvester`, `pinv`)는 `sd.matmul`을 거치지 않고 `cblas_dgemm`/`cblas_zgemm`을 바로 불러요. 곱할 행렬이 이미 C++ 안의 작업 버퍼에 열 우선으로 놓여 있어서, 배열 객체로 감쌌다 푸는 단계가 필요 없어요. 8×8 이하의 float64 정사각 곱(`matrix_power`, `expm`)은 BLAS의 호출 비용이 계산보다 커서, 열마다 fma를 잇는 루프(`tiny_gemm`)로 곱해요.
 
 ### 64비트 정수 인터페이스
 
@@ -474,18 +471,23 @@ stardust의 `solve`는 **언제나 LU**예요. 구조를 쓰고 싶으면 그 �
 - 판별 자체가 $O(n^2)$의 추가 패스예요. 구조가 없는 흔한 경우에 모두가 그 비용을 내요.
 - 함수 이름에 구조가 적혀 있으면 코드를 읽는 사람이 어떤 가정이 깔려 있는지 알아요.
 
-### 크기로 경로를 바꾸는 것은 이득이 2배를 넘을 때만
+### 크기로 경로를 바꾸는 것은 이득이 분명할 때
 
-"작은 n에서는 A가 빠르고 큰 n에서는 B가 빠르다"는 측정이 나와도, 결과 비트가 달라지는 전환은 이득이 2배를 넘을 때만 해요. 전환점을 두면 같은 함수의 결과가 크기에 따라 서로 다른 계산에서 나오게 되기 때문이에요. 고르는 것은 모양(크기, 대역폭)뿐이고 값을 보지 않으므로, 같은 모양이면 언제나 같은 경로예요. 레이아웃·배치 위치·스레드 수와 무관한 비트도 그대로이고, 경계 양쪽의 크기를 테스트해요.
+"작은 n에서는 A가 빠르고 큰 n에서는 B가 빠르다"는 측정이 나오면, 이득이 분명할 때 크기로 경로를 바꿔요. 전환점을 두면 같은 함수의 결과가 크기에 따라 서로 다른 계산에서 나오지만, 크기마다 같은 비트일 필요는 없어요. 고르는 것은 모양(크기, 대역폭, 레이아웃)뿐이고 값을 보지 않으므로, 같은 모양이면 언제나 같은 경로예요. 배치 위치·스레드 수와 무관한 비트도 그대로이고, 경계 양쪽의 크기를 테스트해요.
 
-| 전환 | 크기 | 이득 |
+| 전환 | 크기 | 까닭 |
 |---|---|---|
-| LU 분해를 `getf2`로 ([LU 분해와 선형 시스템](/internals/linalg/lu/)) | 행과 열이 모두 32–46 | 10스레드 배치 2.1–4.4배 (AMX 경로를 피해요) |
-| `solve_banded`를 밀집 LU로 ([띠 행렬과 Sylvester 방정식](/internals/linalg/special/)) | 행 8개 이하, 대역폭 (1, 1) 외 | 행렬 하나 2.2–3.2배, 1스레드 배치 3.4–6.4배 (`gbsv`의 호출 고정비) |
+| LU 분해를 `getf2`로 ([LU 분해와 선형 시스템](/internals/linalg/lu/)) | 행과 열이 모두 32–46 | Accelerate `getrf`가 AMX에서 직렬로 도는 블록 경로를 피해요 |
+| `solve_banded`를 밀집 LU로 ([띠 행렬과 Sylvester 방정식](/internals/linalg/special/)) | 행 8개 이하, 대역폭 (1, 1) 외 | `gbsv`의 호출 고정비 |
+| 삼각 풀기를 `trsv`로 ([LU 분해와 선형 시스템](/internals/linalg/lu/)) | 우변 두 열 이하 | Accelerate의 `trsm`이 한두 열에서 `trsv`보다 느려요 |
+| 행렬 곱을 `tiny_gemm`으로 ([LAPACK 없이 계산하는 함수](/internals/linalg/basic/)) | 8×8 이하 float64 | `gemm`의 호출 고정비 |
+| 청크 안의 합을 Accelerate BLAS로 ([LAPACK 없이 계산하는 함수](/internals/linalg/basic/)) | 1024항 초과(제곱합 2048, complex 256) | AMX로 도는 `ddot`·`dasum`이 NEON 루프보다 몇 배 빨라요 |
 
-이득이 작으면 바꾸지 않아요. 대표적인 예가 `inv`예요. `inv`는 `getrf`로 분해한 뒤 단위행렬을 우변으로 `getrs`를 불러요. LAPACK에는 역행렬 전용 루틴 `getri`가 있고, $n \ge 256$에서는 `getri`가 더 빨라요($n = 2048$에서 1.56배). 최대 1.6배라 2배를 넘지 않으므로 모든 크기에서 `getrs`를 써요. 덕분에 `inv(a)`가 `solve(a, I)`와 모든 크기에서 비트까지 같아요([LU 분해와 선형 시스템](/internals/linalg/lu/)).
+`inv`는 `getrf`로 분해한 뒤 단위행렬을 우변으로 `solve`와 같은 풀이를 해요. LAPACK에는 역행렬 전용 루틴 `getri`가 있고, $n \ge 256$에서는 `getri`가 더 빨랐어요($n = 2048$에서 1.56배). 지금은 모든 크기에서 `solve`와 같은 풀이를 써서, `inv(a)`가 `solve(a, I)`와 모든 크기에서 비트까지 같아요([LU 분해와 선형 시스템](/internals/linalg/lu/)).
 
-**결과를 바꾸지 않는** 선택은 크기로 정해요. 배치를 스레드에 나눌지, 큰 행렬의 패킹을 풀에서 할지, 입력을 복사하지 않고 그 자리에서 읽을지가 그래요. 이것들은 같은 산술을 다른 순서나 다른 스레드에서 할 뿐이고, 켜든 끄든 결과 바이트가 같다는 것을 테스트가 확인해요.
+레이아웃으로 고르는 경로도 있어요. C 순서 삼각 인수는 전치해 패킹하지 않고 행 우선으로 그 자리에서 읽고(`solve_triangular`, `lu_solve`, `cholesky_solve`), `matrix_power`의 밑과 float64 노름의 합도 그 자리에서 읽어요. 이런 경로는 같은 행렬이라도 C 순서와 F 순서에서 끝 비트가 다를 수 있어요([패킹과 결과 레이아웃](/internals/linalg/packing/)).
+
+**결과를 바꾸지 않는** 선택은 크기로 정해요. 배치를 스레드에 나눌지, 큰 행렬의 패킹을 풀에서 할지, 열 우선 입력을 복사하지 않고 그 자리에서 읽을지, 큰 결과에 0으로 채운 페이지를 받을지가 그래요. 이것들은 같은 산술을 다른 순서나 다른 스레드에서 할 뿐이고, 켜든 끄든 결과 바이트가 같다는 것을 테스트가 확인해요.
 
 ## 함수와 루틴
 
@@ -497,21 +499,21 @@ stardust의 `solve`는 **언제나 LU**예요. 구조를 쓰고 싶으면 그 �
 
 | 함수 | 루틴 | 루틴이 하는 일 | 글 |
 |---|---|---|---|
-| `solve` | `getrf` + `getrs` | 열마다 절댓값이 가장 큰 원소를 피벗으로 행을 바꿔 가며 $A = PLU$로 분해하고, 삼각 시스템 두 개를 차례로 풀어 $AX = B$ | [LU](/internals/linalg/lu/) |
-| `inv` | `getrf` + `getrs` | 우변을 단위행렬로 둔 `solve`: $AX = I$의 해가 $A^{-1}$ | [LU](/internals/linalg/lu/) |
+| `solve` | `getrf` + `getrs`(우변 두 열 이하는 `trsv` 두 번) | 열마다 절댓값이 가장 큰 원소를 피벗으로 행을 바꿔 가며 $A = PLU$로 분해하고, 삼각 시스템 두 개를 차례로 풀어 $AX = B$ | [LU](/internals/linalg/lu/) |
+| `inv` | `getrf` + `solve`와 같은 풀이 | 우변을 단위행렬로 둔 `solve`: $AX = I$의 해가 $A^{-1}$ | [LU](/internals/linalg/lu/) |
 | `det`, `slogdet` | `getrf` | $\det A = \pm \prod_i u_{ii}$. 부호는 행 교환 횟수로 정하고, 곱은 stardust가 계산 | [LU](/internals/linalg/lu/) |
 | `lu` | `getrf` | $A = PLU$를 $L$, $U$, `perm`으로 풀어 돌려줌(직사각 행렬도 됨) | [LU](/internals/linalg/lu/) |
-| `lu_solve` | `trtrs` 두 번 | `b`의 행을 `perm`으로 모은 뒤 $LY = B$(대각 1), $UX = Y$를 대입으로 풂. `trans='T'`, `'H'`는 $U^{\mathsf T}$, $L^{\mathsf T}$ 순서로 푼 뒤 `perm` 자리로 흩음 | [LU](/internals/linalg/lu/) |
-| `solve_triangular` | `trtrs` | 삼각 시스템 $TX = B$를 위에서부터(아래 삼각) 또는 아래에서부터(위 삼각) 대입으로 풂 | [LU](/internals/linalg/lu/) |
-| `cond` (2, −2 외의 `ord`) | `getrf` + `getrs` | $\lVert A\rVert \cdot \lVert A^{-1}\rVert$. 역행렬은 `inv`와 같은 경로 | [LU](/internals/linalg/lu/) |
-| `matrix_power` (음수 지수) | `getrf` + `getrs`, `gemm` | `inv`와 같은 경로로 $A^{-1}$을 구한 뒤 이진 거듭제곱 | [기본 연산](/internals/linalg/basic/) |
+| `lu_solve` | 삼각 풀기 두 번(`trtrs`, 우변 두 열 이하는 `trsv`) | `b`의 행을 `perm`으로 모은 뒤 $LY = B$(대각 1), $UX = Y$를 대입으로 풂. `trans='T'`, `'H'`는 $U^{\mathsf T}$, $L^{\mathsf T}$ 순서로 푼 뒤 `perm` 자리로 흩음 | [LU](/internals/linalg/lu/) |
+| `solve_triangular` | `trtrs`(우변 두 열 이하는 `trsv`) | 삼각 시스템 $TX = B$를 위에서부터(아래 삼각) 또는 아래에서부터(위 삼각) 대입으로 풂 | [LU](/internals/linalg/lu/) |
+| `cond` (2, −2 외의 `ord`) | `getrf` + `inv`와 같은 풀이 | $\lVert A\rVert \cdot \lVert A^{-1}\rVert$. 역행렬은 `inv`와 같은 경로 | [LU](/internals/linalg/lu/) |
+| `matrix_power` (음수 지수) | `getrf` + `inv`와 같은 풀이, `gemm` | `inv`와 같은 경로로 $A^{-1}$을 구한 뒤 이진 거듭제곱 | [기본 연산](/internals/linalg/basic/) |
 
 ### 대칭 행렬
 
 | 함수 | 루틴 | 루틴이 하는 일 | 글 |
 |---|---|---|---|
 | `cholesky` | `potrf` | 대칭(에르미트) 양정치 행렬을 피벗 없이 $A = LL^{H}$로 분해. 대각에 양수가 아닌 값이 나오면 양정치가 아님 | [대칭 분해](/internals/linalg/symmetric/) |
-| `cholesky_solve` | `potrs` | $LY = B$, $L^{H}X = Y$를 차례로 풂 | [대칭 분해](/internals/linalg/symmetric/) |
+| `cholesky_solve` | `potrs`(우변 두 열 이하나 C 순서 인수는 삼각 풀기 두 번) | $LY = B$, $L^{H}X = Y$를 차례로 풂 | [대칭 분해](/internals/linalg/symmetric/) |
 | `ldl` | `sytrf`/`hetrf` | 양정치가 아닐 수 있는 대칭(에르미트) 행렬을 행과 열을 같이 바꾸는 Bunch–Kaufman 피벗으로 $PAP^{H} = LDL^{H}$로 분해. $D$는 1×1과 2×2 블록 | [대칭 분해](/internals/linalg/symmetric/) |
 
 ### QR과 최소제곱
@@ -552,11 +554,11 @@ stardust의 `solve`는 **언제나 LU**예요. 구조를 쓰고 싶으면 그 �
 | `solve_tridiagonal` | `gtsv` | 삼중대각 시스템을 부분 피벗 가우스 소거로 $O(n)$에 풂 | [띠와 Sylvester](/internals/linalg/special/) |
 | `solve_banded` | `gbsv` (대역폭 (1, 1)이면 `gtsv`) | 띠 저장 형식 안에서 부분 피벗 LU로 분해하고 풂. 피벗 때문에 위쪽 띠가 kl만큼 넓어짐 | [띠와 Sylvester](/internals/linalg/special/) |
 | `solve_sylvester` | `gees` 두 번 + `trsyl3` + `gemm` 네 번 | $AX + XB = C$. $A$, $B$를 Schur 형식으로 바꾸면 계수가 삼각인 방정식이 되고, `trsyl3`가 블록 단위 대입으로 풂 | [띠와 Sylvester](/internals/linalg/special/) |
-| `expm` | `gemm`, `gemv`, `getrf` + `getrs`, `lacn2` | 스케일링과 제곱, Padé 유리 근사. `lacn2`는 행렬-벡터 곱만으로 1-노름을 추정 | [행렬 지수](/internals/linalg/expm/) |
+| `expm` | `gemm`(8×8 이하는 `tiny_gemm`), `gemv`, `getrf` + `getrs`, `lacn2` | 스케일링과 제곱, Padé 유리 근사. `lacn2`는 행렬-벡터 곱만으로 1-노름을 추정 | [행렬 지수](/internals/linalg/expm/) |
 
 ### LAPACK을 부르지 않는 함수
 
-`vecdot`, `outer`, `trace`, `diagonal`, `kron`, `kronsum`, `block_diag`, `bandwidth`, `cross`, `vector_norm`, `matrix_norm`(fro, ±1, ±inf), `matrix_power`(0 이상의 지수, BLAS `gemm`만 써요)는 직접 짠 루프예요. [LAPACK 없이 계산하는 함수](/internals/linalg/basic/)에서 다뤄요.
+`vecdot`, `outer`, `trace`, `diagonal`, `kron`, `kronsum`, `block_diag`, `bandwidth`, `cross`, `vector_norm`, `matrix_norm`(fro, ±1, ±inf), `matrix_power`(0 이상의 지수, BLAS `gemm`이나 직접 짠 작은 곱만 써요)는 직접 짠 루프예요. `vecdot`과 노름의 긴 합은 청크 안을 Accelerate의 `ddot`·`zdotc`·`dasum`에 맡겨요. [LAPACK 없이 계산하는 함수](/internals/linalg/basic/)에서 다뤄요.
 
 ## Accelerate에 대해 알아 둔 사실
 
@@ -681,16 +683,29 @@ stardust.linalg.LinAlgError: inv(): singular matrix (at batch index (1,))
 
 ```cpp
 // ops/common.hpp
-constexpr int kNonFinite = 1;          // 첫 행렬 인자에 NaN 또는 inf
-constexpr int kSingular = 2;           // 정확한 0 피벗, 삼각 인수의 대각에 0
-constexpr int kNonFiniteB = 3;         // 우변에 NaN 또는 inf
-constexpr int kNotPD = 4;              // 양정치가 아님
-constexpr int kNoConvergence = 7;      // SVD가 수렴하지 않음
-constexpr int kNoConvergenceEig = 8;   // 고유값 알고리즘이 수렴하지 않음
-// ... (모두 11개)
+constexpr int kNonFinite = 1;   // NaN or inf in the first matrix argument
+constexpr int kSingular = 2;    // exact zero pivot / zero on a triangular diagonal
+constexpr int kNonFiniteB = 3;  // NaN or inf in the right-hand side
+constexpr int kNotPD = 4;       // Cholesky: not positive definite
+constexpr int kNonFiniteU = 5;  // lu_solve: NaN or inf in 'u'
+constexpr int kBadPerm = 6;     // lu_solve: 'perm' is not a permutation
+constexpr int kNoConvergence = 7;     // the SVD did not converge
+constexpr int kNoConvergenceEig = 8;  // an eigenvalue algorithm did not converge
+constexpr int kNonFinite2 = 9;        // NaN or inf in the argument named `arg2`
+constexpr int kNonFinite3 = 10;       // NaN or inf in the argument named `arg3`
+constexpr int kCloseEigenvalues = 11; // Sylvester: a and -b share an eigenvalue (docs/design/linalg.md §10.7)
+```
 
-[[noreturn]] void raise(const Batch& b, const Failure& f, const char* func, const char* arg,
-                        const char* arg2 = nullptr, const char* arg3 = nullptr);
+```cpp
+// csrc/linalg/ops/common.hpp
+[[noreturn]] inline void raise(
+    const Batch& b,
+    const Failure& f,
+    const char* func,
+    const char* arg,
+    const char* arg2 = nullptr,
+    const char* arg3 = nullptr
+) {
 ```
 
 `run_batch`는 `Failure` 값(가장 작은 실패 인덱스와 그 코드)을 돌려주고, `raise`가 코드를 예외 종류와 메시지로 바꿔요. `arg`, `arg2`, `arg3`는 NaN이 든 인자의 이름을 메시지에 넣으려고 받아요. 메시지는 `함수이름(): 내용` 형식이고, 배치 축이 있으면 끝에 ` (at batch index (1, 2))`를 붙여요. 배치 축이 없는 호출에는 붙이지 않아요.
@@ -775,7 +790,9 @@ scipy에는 옵션에 따라 돌려주는 값의 개수가 바뀌는 함수가 �
 | 출력 자리에 바로 패킹 | 작업 버퍼 하나와 복사 한 번 | [패킹과 결과 레이아웃](/internals/linalg/packing/) |
 | workspace 크기를 `Scratch`마다 한 번만 질의 | 행렬마다의 `lwork = -1` 호출 | [배치와 병렬화](/internals/linalg/batch/) |
 | 작업 메모리를 0으로 채우지 않음 | 큰 행렬에서 패킹만큼 드는 초기화 | [배치와 병렬화](/internals/linalg/batch/) |
-| 짧은 합에는 아무것도 할당하지 않음 | 출력마다의 힙 할당 | [LAPACK 없이 계산하는 함수](/internals/linalg/basic/) |
+| 짧은 합에는 아무것도 할당하지 않음, 짧은 빠른 합은 배치 루프에 인라인 | 출력마다의 힙 할당, 함수 호출과 클로저 | [LAPACK 없이 계산하는 함수](/internals/linalg/basic/) |
+| 배치 오프셋은 줄마다 한 번 | 원소마다 축 수만큼의 나눗셈 | [배치와 병렬화](/internals/linalg/batch/) |
+| 우변 두 열 이하는 `trsv`, 8×8 이하의 곱은 `tiny_gemm` | `trsm`, `gemm`의 호출 고정비 | [LU 분해와 선형 시스템](/internals/linalg/lu/) |
 | 큰 행렬 전용 코드는 함수 밖으로 | 작은 호출의 분기와 코드 크기 | [패킹과 결과 레이아웃](/internals/linalg/packing/) |
 
 남는 고정비의 대부분은 결과 객체예요. `NDArray`와 그 Python 객체를 만드는 데 약 75ns가 들어요. 그래서 스칼라를 돌려주는 함수가 가장 가벼워요.
@@ -791,8 +808,9 @@ scipy에는 옵션에 따라 돌려주는 값의 개수가 바뀌는 함수가 �
 | `csrc/linalg/cost.hpp` | 원소 하나의 비용 추정, 태스크 수 상한 |
 | `csrc/linalg/pack.hpp` | 패킹, 유한성 검사, 대각의 0 검사 |
 | `csrc/linalg/outblock.*` | 결과 배열 할당, Python 스칼라 |
-| `csrc/linalg/lapack.hpp` | LAPACK·BLAS 래퍼 |
-| `csrc/linalg/pairwise.hpp` | pairwise 합과 긴 합의 병렬화 |
+| `csrc/linalg/lapack.hpp` | LAPACK·BLAS 래퍼, 삼각 풀기 `tri_solve`, `lu_solve_factored`, `tiny_gemm` |
+| `csrc/linalg/pairwise.hpp` | pairwise 합과 그 병렬화, 곱의 합의 융합 잎 |
+| `csrc/linalg/fastsum.hpp` | 그 자리에서 읽는 float64·complex128의 빠른 합(청크, BLAS, 최댓값, 줄 묶음의 합) |
 | `csrc/linalg/errors.*`, `pyrefs.*` | C++ `LinAlgError`와 변환기, Python 타입 캐시, `make_result` |
 | `csrc/linalg/types.hpp` | `cplx`, `lint`, dtype 보조, 원소 변환 `convert`, 원소 곱 `mul` |
 | `csrc/linalg/ops/common.hpp` | `with_type`, 실패 코드와 `raise`, `Rhs`, `LapackSlot`, `triangle_operand`, `lu_factor`, `lu_inverse`, `parse_mode` |
@@ -818,7 +836,7 @@ numpy 2.5.4와 scipy 1.18.1도 Accelerate의 LAPACK을 불러요. 같은 루틴�
 
 - **작은 행렬 하나**: 계산이 0.1µs 안팎이라 호출 경로의 고정비가 시간을 정해요. 위 "호출 비용"의 장치들이 그대로 차이가 돼요.
 - **행렬 묶음(배치)**: numpy와 scipy는 배치를 코어 하나에서 차례로 돌아요. stardust는 배치 원소를 스레드풀에 나눠요. scipy의 일부 함수(`schur`, `hessenberg`, `ldl`, `expm` 등)는 배치를 Python 수준에서 하나씩 돌기 때문에 차이가 더 커요. 1스레드에서도 호출 비용이 원소마다 줄어든 만큼 빨라요.
-- **큰 행렬 하나**: 시간의 거의 전부가 LAPACK 안이고, 그 LAPACK이 같아요. 그래서 차이가 작아요. 예외는 stardust가 numpy·scipy와 다른 루틴을 고른 함수예요. `solve`는 `getrf` + `getrs`인데, Accelerate의 `gesv`는 스레드를 쓰는 `getrf` 경로를 타지 않아서 $n = 1024$에서 `gesv` 9.0ms, `getrf` 4.8ms예요. `solve_sylvester`는 블록 루틴 `trsyl3`를 써서 `trsyl`보다 $n = 1000$에서 4.8배 빨라요.
+- **큰 행렬 하나**: 시간의 거의 전부가 LAPACK 안이고, 그 LAPACK이 같아요. 그래서 차이가 작아요. 예외는 stardust가 numpy·scipy와 다른 루틴을 고른 함수예요. `solve`는 `getrf` + `getrs`(우변 한두 열은 `trsv`)인데, Accelerate의 `gesv`는 스레드를 쓰는 `getrf` 경로를 타지 않아서 $n = 1024$에서 `gesv` 9.0ms, `getrf` 4.8ms예요. `solve_sylvester`는 블록 루틴 `trsyl3`를 써서 `trsyl`보다 $n = 1000$에서 4.8배 빨라요.
 
 복잡도는 루틴이 정해요. 밀집 행렬의 분해는 모두 $O(n^3)$ 시간이고(LU는 약 $\tfrac{2}{3}n^3$ flop, Cholesky는 약 $\tfrac{1}{3}n^3$ flop [3]), stardust가 더하는 패킹과 유한성 검사는 $O(n^2)$이에요. 공간은 입력의 작업용 복사본 하나($n^2$)와 결과, 그리고 루틴이 요구하는 workspace예요. 루틴마다의 flop 수는 각 알고리즘 글에 있어요.
 
@@ -826,40 +844,42 @@ numpy 2.5.4와 scipy 1.18.1도 Accelerate의 LAPACK을 불러요. 같은 루틴�
 
 수치적 정확도(역오차, 잔차)는 LAPACK 루틴의 성질이고, 각 알고리즘 글이 다뤄요. 계약은 잔차로 적어요. 잔차를 $n\varepsilon$과 문제의 척도로 나눈 값이 10 이하여야 해요($n = \max(m, n)$, 무한 노름). `solve`는 $\lVert Ax - b\rVert/(\lVert A\rVert\lVert x\rVert + \lVert b\rVert)$, 분해(`lu`, `qr`, `cholesky`, `svd`)는 $\lVert A - \text{인수의 곱}\rVert/\lVert A\rVert$를 보고, 직교 인수는 $\lVert Q^{\mathsf H}Q - I\rVert$도 봐요.
 
-이 계약은 조건수 $\kappa_2 = 1$–$10^{12}$의 정사각·대칭·직사각 행렬(`tests/linalg/ref/`, `tools/linalg_ref.py`)에서 재요(`bench/linalg/accuracy.md`). 잔차를 $n\varepsilon$·척도로 나눈 값은 최대 1.12(`svd`, $\kappa_2 = 10^{12}$), 직교성은 최대 1.95(`svd`, $\kappa_2 = 1$)라 모든 함수가 한계의 0.2배 안이에요. 답이 하나로 정해지는 값(`solve`·`lstsq`의 해, `det`, `eigvalsh`, `svdvals`, `eigvals`, `expm`)은 Arb(구간 산술)로 만든 참값과의 오차를 기록해요. 상대오차를 $u$·조건수로 나눈 값이 `solve`의 해 0.66, `det` 0.27, `lstsq`의 해 10.5, `svdvals` 5.29, `eigvalsh` 22.8, `eigvals` 25.2, `expm` 1.09 이하예요. numpy 2.5.4와 R 4.6.2도 같은 점에서 같은 척도로 재요.
+이 계약은 조건수 $\kappa_2 = 1$–$10^{12}$의 정사각·대칭·직사각 행렬(`tests/linalg/ref/`, `tools/linalg_ref.py`)에서 재요(`bench/linalg/accuracy.md`). 잔차를 $n\varepsilon$·척도로 나눈 값은 최대 1.12(`svd`, $\kappa_2 = 10^{12}$), 직교성은 최대 1.95(`svd`, $\kappa_2 = 1$)라 모든 함수가 한계의 0.2배 안이에요. 답이 하나로 정해지는 값(`solve`·`lstsq`의 해, `det`, `eigvalsh`, `svdvals`, `eigvals`, `expm`)은 Arb(구간 산술)로 만든 참값과의 오차를 기록해요. 상대오차를 $u$·조건수로 나눈 값이 `solve`의 해 0.522, `det` 0.27, `lstsq`의 해 10.5, `svdvals` 5.29, `eigvalsh` 22.8, `eigvals` 25.2, `expm` 1.09 이하예요. numpy 2.5.4와 R 4.6.2도 같은 점에서 같은 척도로 재요.
 
 이 영역이 구조로 보장하는 것은 **재현성**이에요.
 
-**같은 입력은 언제나 같은 비트를 내요.** 아래 세 가지가 바뀌어도 결과는 그대로예요.
+**같은 기계, 같은 스레드 수, 같은 입력은 언제나 같은 비트를 내요.** 이것이 약속이에요. 아래 표는 그 밖에 결과를 바꾸지 않는 것들이에요.
 
 | 무엇이 바뀌어도 | 결과가 같은 이유 |
 |---|---|
-| 입력의 메모리 배치 (C 순서, F 순서, 건너뛴 뷰, 뒤집은 뷰, 브로드캐스트) | 패킹이 모든 배치를 같은 열 우선 버퍼로 만들어요 |
 | 배치 안의 위치 | LAPACK에 넘기는 배열을 16바이트에 맞춰요. numpy의 자리를 따르는 `lstsq`의 우변도 그 자리가 모양만으로 정해져요 |
-| 스레드 수 | 배치 원소 하나는 어느 스레드에서 돌든 같은 계산이고, Accelerate의 결과가 호출 스레드와 무관해요(Accelerate의 스레드 모드가 같을 때) |
+| 스레드 수 (지금의 사실, 약속은 아니에요) | 배치 원소 하나는 어느 스레드에서 돌든 같은 계산이고, 합과 패킹의 분할은 크기로만 정해져요. Accelerate의 결과도 호출 스레드와 무관해요(Accelerate의 스레드 모드가 같을 때) |
+| 입력의 메모리 배치 (패킹하는 함수만) | 분해와 `solve`, `inv`, `det` 등은 패킹이 모든 배치를 같은 열 우선 버퍼로 만들어요. C 순서 삼각 인수를 그 자리에서 읽는 풀이, `matrix_power`, 그 자리에서 읽는 합은 끝 비트가 레이아웃에 달릴 수 있어요 |
 
-약속하는 것은 위의 불변성, 아래의 우리 함수끼리의 관계, 그리고 정확도예요. numpy·scipy와 비트까지 같은 것은 약속이 아니라 지금의 사실이에요. 같은 루틴을 같은 방식으로 부르는 함수는 지금 비트까지 같고, 다른 루틴을 고른 함수는 반올림 수준에서 달라요. 지금 같은 코드를 그것만을 위해 바꾸지는 않지만, 고침이나 최적화에 필요하면 바꿔요. numpy가 부르는 루틴은 numpy 소스의 `umath_linalg.cpp`에서 볼 수 있어요 [6].
+약속하는 것은 같은 기계·같은 스레드 수에서의 재현성과 배치 위치에 대한 불변성, 아래의 우리 함수끼리의 관계, 그리고 정확도예요. numpy·scipy와 비트까지 같은 것은 약속이 아니라 지금의 사실이에요. 같은 루틴을 같은 방식으로 부르는 함수는 지금 비트까지 같고, 다른 루틴을 고른 함수는 반올림 수준에서 달라요. 지금 같은 코드를 그것만을 위해 바꾸지는 않지만, 고침이나 최적화에 필요하면 바꿔요. numpy가 부르는 루틴은 numpy 소스의 `umath_linalg.cpp`에서 볼 수 있어요 [6].
 
 | 함수 | numpy·scipy와의 관계 |
 |---|---|
 | `eigh`, `qr`, `lstsq` | 지금 numpy 2.5.4와 비트까지 같아요 (같은 루틴, 같은 호출. `lstsq`는 `rtol` ≥ ε일 때이고, 우변을 numpy와 같은 16바이트 경계 위치에 둬서 모든 모양에서 해까지 같아요) |
 | `outer`, `kron`, `cross` | 지금 numpy와 비트까지 같아요 (같은 곱셈 식) |
-| 부동소수점 합(`vecdot`, `trace`, 노름) | 끝 비트가 다를 수 있어요 (배열과 같은 넓은 잎의 pairwise 트리, 곱의 합은 곱을 잎에 융합) |
+| 부동소수점 합(`vecdot`, `trace`, 노름) | 끝 비트가 다를 수 있어요 (청크 합. 짧으면 배열과 같은 넓은 잎의 pairwise 트리, 길면 Accelerate의 BLAS) |
 | `ldl`, `solve_tridiagonal`, `solve_banded`($n > 8$) | 지금 scipy 1.18.1과 비트까지 같아요 |
 | `solve_banded`($n \le 8$, 대역폭 (1, 1) 외), LU 계열의 $n$ = 32–46 | 반올림 수준에서 달라요 (밀집 LU, `getf2`) |
-| `solve` | numpy와 반올림 수준에서 달라요 (numpy는 `gesv`, stardust는 LU 분해 + `getrs`) |
+| `solve` | numpy와 반올림 수준에서 달라요 (numpy는 `gesv`, stardust는 LU 분해 + `getrs`, 우변 두 열 이하는 `trsv`) |
+| `solve_triangular`, `lu_solve`, `cholesky_solve` | 우변 두 열 이하와 C 순서 인수는 scipy와 반올림 수준에서 달라요 (`trsv`, 행 우선으로 읽기) |
+| `matrix_power` | 반올림 수준에서 다를 수 있어요 (작은 행렬은 `tiny_gemm`, C 순서 밑은 전치로 넘김) |
 | `svd` | 특이값은 같고 $U$, $V^{H}$가 다를 수 있어요 (`gesdd`가 workspace 크기에 따라 내부 경로를 고르는데, 크기를 정하는 방법이 서로 달라요) |
 | `eigvalsh`, `svdvals` | 같은 함수의 `eigh`, `svd`가 주는 값과 $10^{-15}$ 수준에서 달라요 (값 전용 모드는 다른 알고리즘이에요. numpy도 같아요) |
 | `expm` | scipy와 달라요 (같은 알고리즘을 직접 짰고, BLAS 호출 순서와 노름 계산이 달라요) |
 
-stardust의 함수끼리 비트까지 같은 관계도 있어요. 함수마다 경로를 하나로 정해 두고, 같은 계산은 같은 코드(`lu_factor`, `lu_inverse`, `gtsv`)를 거치게 해서 생기는 관계예요.
+stardust의 함수끼리 비트까지 같은 관계도 있어요. 함수마다 경로를 하나로 정해 두고, 같은 계산은 같은 코드(`lu_factor`, `lu_inverse`, `lu_solve_factored`, `gtsv`)를 거치게 해서 생기는 관계예요.
 
 - `inv(a)`와 `solve(a, I)`
 - `matrix_power(x, -1)`과 `inv(x)`
-- `lu_solve(*lu(a), b)`와 `solve(a, b)` (계산 타입이 같을 때)
+- `lu_solve(*lu(a), b)`와 `solve(a, b)` (계산 타입이 같고 `lu`의 결과를 그대로 넘길 때)
 - `cholesky(x, upper=True)`와 `cholesky(x)`의 켤레 전치
 - `solve_banded(ab, b, lower_bandwidth=1, upper_bandwidth=1)`과 `solve_tridiagonal`
-- `trace(x)`와 `sum(diagonal(x), axis=-1)`, 노름의 줄 합과 그 줄의 `sd.sum`
+- `trace(x)`와 `sum(diagonal(x), axis=-1)`, 1024항 이하인 1-노름(`matrix_norm`의 연속인 줄의 합도)과 같은 항의 `sd.sum`
 
 이 관계와 불변성은 모두 `tests/linalg/`의 테스트가 바이트 비교로 확인해요.
 

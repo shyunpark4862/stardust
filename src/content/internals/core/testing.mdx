@@ -20,7 +20,7 @@ stardust가 맞게 계산하는지는 네 가지 장치로 따져요. 장치마�
 | 커버리지 | 어떤 테스트도 지나가지 않는 코드와 분기가 어디인가요? | `tools/coverage.py` |
 | 정확도 측정 | 함수마다 오차가 얼마이고, 기준선보다 나빠진 것이 있나요? | `bench/accuracy/` ([정확도 측정](/internals/core/accuracy/)) |
 
-열두 영역과 공통 폴더의 단위 테스트는 181개 파일에 17,700개예요. 평소에 돌리는 `quick` 등급이 그중 16,977개를 고르고, 나머지 723개는 시간이 오래 걸려 `deep` 등급에서만 돌아요. 저장소 밖에서 받은 파일(희소 행렬, QUADPACK의 Fortran 원본)을 쓰는 테스트 40개는 `all` 등급에서만 돌아요. 골든 테스트는 열두 영역에 케이스 34,391개를 기록해 두었어요. 테스트를 여러 프로세스로 나눠 돌리는 `tools/test.py`가 있고, 기계를 혼자 써야 하는 테스트는 따로 모아 마지막에 혼자 돌려요.
+열두 영역과 공통 폴더의 단위 테스트는 181개 파일에 17,715개예요. 평소에 돌리는 `quick` 등급이 그중 16,992개를 고르고, 나머지 723개는 시간이 오래 걸려 `deep` 등급에서만 돌아요. 저장소 밖에서 받은 파일(희소 행렬, QUADPACK의 Fortran 원본)을 쓰는 테스트 40개는 `all` 등급에서만 돌아요. 골든 테스트는 열두 영역에 케이스 34,391개를 기록해 두었어요. 테스트를 여러 프로세스로 나눠 돌리는 `tools/test.py`가 있고, 기계를 혼자 써야 하는 테스트는 따로 모아 마지막에 혼자 돌려요.
 
 모든 명령은 라이브러리 저장소 맨 위에서 `.venv`의 Python으로 돌려요. 명령과 옵션의 전체 목록은 라이브러리 저장소의 `tests/README.md`(테스트, 골든, 커버리지)와 `bench/README.md`(속도, 정확도)에 있어요.
 
@@ -69,9 +69,9 @@ stardust가 맞게 계산하는지는 네 가지 장치로 따져요. 장치마�
 
 테스트가 하는 일은 결국 stardust의 결과를 믿을 만한 다른 무엇과 비교하는 거예요. 비교 대상은 영역마다 달라요.
 
-- **다른 라이브러리.** 배열 테스트는 numpy를 기준으로 삼아요. 반올림이 아닌 동작(dtype, 정수 연산, 정렬 순서, NaN과 ±0, 상태 값, 기본값, 멈춤 규칙)은 정확히 견줘요. 반올림 크기의 값은 정확도 계약으로 견주고, 비트까지 같아야 하는 기준은 stardust 자신의 골든 기록이에요. `tests/array/conftest.py`의 `assert_same`은 shape, dtype, 비트가 numpy의 결과와 모두 같아야 통과시켜요(NaN끼리는 같다고 보고, `-0.0`과 `+0.0`은 다르다고 봐요). 지금 numpy와 비트까지 같은 곳에 쓰는 검사이고, vForce 함수처럼 계약이 ULP로 적힌 곳은 `assert_ulp`로 ULP 거리(두 값 사이에 있는 double의 수)를 봐요. 데이터프레임은 pandas, 특수함수와 통계는 scipy, 회귀는 statsmodels, 최적화, 적분, 미분은 scipy, 가설검정은 scipy와 statsmodels, 희소 행렬은 scipy와 비교해요. 희소 행렬은 같은 행렬을 CSR·CSC·COO로 넣은 결과가 비트까지 같은지, 결과가 밀집 배열의 같은 연산과 같은지도 봐요. 적분과 미분은 scipy와 같은 점에서 같은 순서로 사용자 함수를 부르는지도 봐요. 기록해 둔 scipy의 호출점(점의 hex, 배열로 부르는 함수는 호출마다의 모양과 바이트의 SHA-256)과 stardust가 부른 점을 비트까지 견줘요. 최적화, 적분, 미분에서 scipy를 함께 돌려 단계마다 견주는 테스트는 기록을 만든 scipy 판(1.18.1)이 아니면 건너뛰지 않고 실패해요.
+- **다른 라이브러리.** 배열 테스트는 numpy를 기준으로 삼아요. 반올림이 아닌 동작(dtype, 정수 연산, 정렬 순서, NaN과 ±0, 상태 값, 기본값, 멈춤 규칙)은 정확히 견줘요. 반올림 크기의 값은 정확도 계약으로 견주고, 비트까지 같아야 하는 기준은 stardust 자신의 골든 기록이에요. `tests/array/conftest.py`의 `assert_same`은 shape, dtype, 비트가 numpy의 결과와 모두 같아야 통과시켜요(NaN끼리는 같다고 보고, `-0.0`과 `+0.0`은 다르다고 봐요). 지금 numpy와 비트까지 같은 곳에 쓰는 검사이고, vForce 함수와 자체 초월함수 커널(`exp`, `expm1`, `log1p`, `cos`)처럼 numpy와 끝자리가 다를 수 있는 곳은 `assert_ulp`로 ULP 거리(두 값 사이에 있는 double의 수)를 봐요. 데이터프레임은 pandas, 특수함수와 통계는 scipy, 회귀는 statsmodels, 최적화, 적분, 미분은 scipy, 가설검정은 scipy와 statsmodels, 희소 행렬은 scipy와 비교해요. 희소 행렬은 같은 행렬을 CSR·CSC·COO로 넣은 결과가 비트까지 같은지, 결과가 밀집 배열의 같은 연산과 같은지도 봐요. 적분과 미분은 scipy와 같은 점에서 같은 순서로 사용자 함수를 부르는지도 봐요. 기록해 둔 scipy의 호출점(점의 hex, 배열로 부르는 함수는 호출마다의 모양과 바이트의 SHA-256)과 stardust가 부른 점을 비트까지 견줘요. 최적화, 적분, 미분에서 scipy를 함께 돌려 단계마다 견주는 테스트는 기록을 만든 scipy 판(1.18.1)이 아니면 건너뛰지 않고 실패해요.
 - **규칙을 그대로 옮긴 느린 구현.** 문서의 규칙을 그대로 코드로 옮긴 느린 구현(오라클)과 비교하기도 해요. `merge`의 테스트는 문서에 적힌 행 순서 규칙대로 이중 루프를 돌아 어느 행과 어느 행이 짝지어지는지를 만들고, stardust의 결과가 그 짝과 순서까지 같은지 봐요(`tests/frame/test_merge.py`의 `oracle`).
-- **Arb로 만든 참값.** 특수함수와 통계 분포는 Arb(구간 산술)로 만든 참값 파일을 읽어, 보장 영역에서 상대오차가 $10^{-14}$ 이하인지 봐요(`tests/special/test_reference.py`, `tests/stats/test_reference.py`). 다변량 정규분포와 t 분포의 누적분포도 참값 파일에 대 봐요(`tests/stats/test_mvcdf.py`). 배열의 원소별 함수(vForce를 쓰는 15개와 `pow`, 복소수의 절댓값, `deg2rad`, `rad2deg`)는 함수마다 정한 ULP 한계 안인지(`tests/array/test_reference.py`), 선형대수는 참값 행렬에서 잔차가 계약 안인지(`tests/linalg/test_reference.py`) 봐요. 가설검정은 Arb와 정확한 유리수로 만든 통계량·p값·신뢰구간의 참값에, 희소 행렬은 시험 행렬의 곱·합·풀이·고유값·행렬 지수의 Arb 참값에 대 봐요(`tests/htest/test_reference_data.py`, `tests/sparse/test_reference_data.py`). 적분은 시험 적분과 급수의 Arb 참값, 표본 규칙의 식을 같은 double에서 정확한 유리수로 계산한 값, Gauss–Legendre 마디와 가중치의 Arb 값에, 미분은 해석적 도함수·야코비안·헤시안의 Arb 값에 대 봐요(`tests/integrate/test_reference_data.py`, `tests/differentiate/test_reference_data.py` 등). 영역마다 `tests/<영역>/refdata.py` 하나가 참값 파일을 읽고 계약 대비 오차를 내고, 테스트와 정확도 측정이 그 함수를 같이 써요. 참값을 만드는 법과 오차 척도는 [정확도 측정](/internals/core/accuracy/)에 있어요.
+- **Arb로 만든 참값.** 특수함수와 통계 분포는 Arb(구간 산술)로 만든 참값 파일을 읽어, 보장 영역에서 상대오차가 $10^{-14}$ 이하인지 봐요(`tests/special/test_reference.py`, `tests/stats/test_reference.py`). 다변량 정규분포와 t 분포의 누적분포도 참값 파일에 대 봐요(`tests/stats/test_mvcdf.py`). 배열의 원소별 함수(`exp`와 vForce를 쓰는 14개, `pow`, 복소수의 절댓값, `deg2rad`, `rad2deg`)는 함수마다 정한 ULP 한계 안인지(`tests/array/test_reference.py`), 선형대수는 참값 행렬에서 잔차가 계약 안인지(`tests/linalg/test_reference.py`) 봐요. 가설검정은 Arb와 정확한 유리수로 만든 통계량·p값·신뢰구간의 참값에, 희소 행렬은 시험 행렬의 곱·합·풀이·고유값·행렬 지수의 Arb 참값에 대 봐요(`tests/htest/test_reference_data.py`, `tests/sparse/test_reference_data.py`). 적분은 시험 적분과 급수의 Arb 참값, 표본 규칙의 식을 같은 double에서 정확한 유리수로 계산한 값, Gauss–Legendre 마디와 가중치의 Arb 값에, 미분은 해석적 도함수·야코비안·헤시안의 Arb 값에 대 봐요(`tests/integrate/test_reference_data.py`, `tests/differentiate/test_reference_data.py` 등). 영역마다 `tests/<영역>/refdata.py` 하나가 참값 파일을 읽고 계약 대비 오차를 내고, 테스트와 정확도 측정이 그 함수를 같이 써요. 참값을 만드는 법과 오차 척도는 [정확도 측정](/internals/core/accuracy/)에 있어요.
 - **기록해 둔 R과 Fortran의 결과.** 회귀는 R의 `lm`, `glm`, `glmnet`, `quantreg`, `MASS::rlm`, `nls`의 결과를, 최적화는 MINPACK과 L-BFGS-B의 Fortran 원본을, 적분은 QUADPACK의 Fortran 원본을 돌린 결과를, 가설검정은 R의 base `stats` 검정과 `car`, `multcomp`, `nortest`, `goftest`, `coin`의 결과를, 희소 행렬은 R의 `Matrix`, `RSpectra`, `irlba`의 결과를 JSON으로 저장해 두고 읽어요. 가설검정, 희소 행렬, 적분, 미분은 scipy·statsmodels의 결과도 같은 방식으로 기록해 둬요. 테스트를 돌릴 때 R이나 Fortran 컴파일러는 필요 없어요.
 - **문서.** 영역마다 있는 `test_api_surface.py`는 `docs/api/<영역>.md`의 시그니처 블록을 읽어, 문서에 있는 이름이 모두 공개되어 있고 문서에 없는 이름은 공개되지 않았는지 봐요.
 
@@ -89,7 +89,7 @@ stardust가 맞게 계산하는지는 네 가지 장치로 따져요. 장치마�
 
 참값 없이도 확인할 수 있는 성질도 많이 테스트해요. 같은 계산을 다른 길로 했을 때 비트까지 같아야 한다는 성질이에요.
 
-- **스레드 수.** 스레드 수가 몇이든 결과는 비트까지 같아야 해요. `tests/array/test_threads.py`는 스레드 수 1, 2, 3, 7, 10에서 같은 계산을 하고 결과의 바이트를 비교해요. 왜 같을 수 있는지는 [스레드풀과 결정성](/internals/core/threads/)에 있어요.
+- **스레드 수.** 약속은 같은 스레드 수에서 실행마다 같은 비트이지만, 지금은 스레드 수가 몇이든 결과가 비트까지 같아서 테스트도 그것을 봐요. `tests/array/test_threads.py`는 스레드 수 1, 2, 3, 7, 10에서 같은 계산을 하고 결과의 바이트를 비교해요. 왜 같을 수 있는지는 [스레드풀과 결정성](/internals/core/threads/)에 있어요.
 - **배치와 하나씩.** 행렬을 쌓은 배치를 한 번에 넣은 결과의 `i`번째는 `i`번째 행렬 하나만 넣은 결과와 비트까지 같아야 해요(`tests/linalg/test_optimizations.py`의 `test_batch_equals_one_by_one`). 이 테스트는 일부러 홀수 `n`을 써요. 배치 원소가 16바이트 경계에 맞지 않는 자리에 놓이면 Accelerate가 다르게 반올림하기 때문이에요.
 - **스칼라와 배열.** 원소별 함수는 `f(x)[i]`와 `f(x[i])`가 같은 비트여야 해요. 참값 파일의 입력에서 200점을 골라 확인해요(`test_scalar_path_gives_the_same_bits`).
 - **지금 numpy와 같은 비트.** numpy와 비트까지 같은 것은 약속이 아니지만, 지금 같은 곳은 그것을 견주는 테스트를 통과하는 동안 그대로 둬요. 비트가 같다는 것은 따로 비용이 들지 않는 가장 강한 검사이기 때문이에요. `tests/linalg/test_lstsq_numpy_bits.py`는 여러 shape에서 `lstsq`의 해가 `np.linalg.lstsq`와 비트까지 같은지 봐요. 의도한 고침이나 최적화 때문에만 이런 테스트가 깨지면 허용오차와 반복 수의 비교로 바꿔요.
@@ -101,7 +101,7 @@ stardust가 맞게 계산하는지는 네 가지 장치로 따져요. 장치마�
 | 파일 | 확인하는 것 |
 |---|---|
 | `test_error_messages.py` | 공개 함수의 에러 메시지가 `func(): `로 시작하는지, 연산자와 인덱싱은 Python의 꼴을 지키는지, 같은 실수에는 영역이 달라도 같은 메시지가 나오는지, 메시지에 문서 절 번호가 섞이지 않는지 |
-| `test_gil_release.py` | 긴 호출이 스레드 수와 상관없이 GIL을 놓는지, 같은 호출이 스레드 1개와 10개에서 같은 비트를 내는지 |
+| `test_gil_release.py` | 긴 호출이 스레드 수가 몇이든 GIL을 놓는지, 같은 호출이 스레드 1개와 10개에서 같은 비트를 내는지 |
 | `test_out_of_range.py` | double 범위를 넘는 정수(`10**400`)는 함수 이름이 붙은 `OverflowError`, 물리 메모리를 넘는 요청은 `MemoryError`가 되는지 |
 | `test_build.py` | 확장 모듈이 C++20, NEON, FCMA로 빌드되었는지, Accelerate가 ILP64로 연결되었는지, 풀이 태스크를 모두 정확히 한 번씩 돌리는지 |
 | `test_bits.py` | 값 비교 도우미(`tests/_bits.py`)의 세 뜻이 서로 섞이지 않는지 |
@@ -234,7 +234,7 @@ def sample_indices(n):
 
 ### 스레드 수
 
-영역마다 스레드 수 1, 3, 10에서 프로세스를 따로 띄워 같은 케이스를 돌리고, 세 결과가 같아야 해요. 그래서 골든 테스트는 스레드 수와 상관없이 결과가 같다는 약속을 골든 케이스 전부에서 확인하는 일도 해요. 스레드 수에 따라 결과가 다른 케이스는 기록하지 않아요. `record`는 그 케이스의 이름을 적고 종료 코드 1로 끝나요. 예외는 케이스 파일의 `THREAD_DEPENDENT`에 이유와 함께 적은 케이스뿐이고, 그 결과만 스레드 수마다 따로 기록해요. 지금 `THREAD_DEPENDENT`에 적힌 케이스는 하나도 없어요.
+영역마다 스레드 수 1, 3, 10에서 프로세스를 따로 띄워 같은 케이스를 돌리고, 세 결과가 같아야 해요. 스레드 수와 상관없는 비트는 약속이 아니지만 지금은 모든 영역이 그렇게 동작하므로, 골든 테스트는 그 사실을 골든 케이스 전부에서 확인하는 일도 해요. 바뀌면 바로 드러나요. 스레드 수에 따라 결과가 다른 케이스는 기록하지 않아요. `record`는 그 케이스의 이름을 적고 종료 코드 1로 끝나요. 예외는 케이스 파일의 `THREAD_DEPENDENT`에 이유와 함께 적은 케이스뿐이고, 그 결과만 스레드 수마다 따로 기록해요. 지금 `THREAD_DEPENDENT`에 적힌 케이스는 하나도 없어요.
 
 ### check의 출력
 
@@ -322,9 +322,9 @@ C++ 분기는 소스 위치마다 한 번 세요. 템플릿은 dtype마다 인�
 
 | 등급 | 고르는 테스트 | hypothesis | `examples(n)` | 테스트 수 |
 |---|---|---|---|---:|
-| `quick` (기본) | `deep`·`external` 마커가 없는 것 | 매번 같은 예제(`derandomize=True`), 기본 100개 | n | 16,977 |
-| `deep` | `quick`과 `deep` 마커 | 무작위, 기본 1000개 | 10n | 17,700 |
-| `all` | `deep`과 `external` 마커 | 무작위, 기본 1000개 | 10n | 17,740 |
+| `quick` (기본) | `deep`·`external` 마커가 없는 것 | 매번 같은 예제(`derandomize=True`), 기본 100개 | n | 16,992 |
+| `deep` | `quick`과 `deep` 마커 | 무작위, 기본 1000개 | 10n | 17,715 |
+| `all` | `deep`과 `external` 마커 | 무작위, 기본 1000개 | 10n | 17,755 |
 
 - `deep` 마커는 넓은 격자를 쓰거나 비싼 참값을 그 자리에서 계산하는 테스트에 달아요. 지금 723개예요. 대부분은 최적화의 문제 모음을 모두 도는 테스트(589개: Newton 계열이 scipy와 같은 점에서 함수를 부르는지 보는 460개와 `minimize`의 129개)예요. quick에서는 문제 목록의 여덟 개에 하나와 MGH 모음 밖의 문제만, scipy와 단계를 견주는 스윕은 첫 문제만 돌아요. 나머지는 통계 분포의 넓은 검사(81개: 분포 31개마다 잘못된 매개변수로 모든 메서드를 불러 끝나는지 보는 하위 프로세스, 비중심 F 분포가 `nc=0`에서 F 분포와 같은지 보는 격자 48개, 극단 매개변수 2개), 회귀의 Arb 참값 대조(GLM 44개)와 Theil-Sen 기울기의 큰 문제용 알고리즘을 작은 문제에 강제로 돌리는 테스트(5개), 희소 행렬과 적분의 참값 도구가 점 몇 개를 다시 만들어 파일과 같은지 보는 테스트 하나씩, 그리고 골든 비교(`tests/golden/test_golden.py`)와 정확도 비교(`tests/bench/test_accuracy_baseline.py`) 하나씩이에요.
 - `external`은 R이나 Fortran 컴파일러를 실제로 부르거나 저장소 밖에서 받은 파일을 읽는 테스트의 마커예요. 지금은 SuiteSparse 모음의 실제 행렬 여덟을 읽는 `tests/sparse/test_suitesparse.py`의 39개와, QUADPACK의 Fortran 원본을 gfortran으로 빌드해 기록의 문제 12개를 다시 돌리고 고정 기록과 같은지 보는 `tests/integrate/test_reference_data.py`의 하나, 모두 40개가 달려 있어요. 행렬은 `tools/sparse_suitesparse.py`가 `build/sparse/suitesparse/`에, Fortran 원본은 `build/comparators/quadpack/`에 받아 두고(저장소에 넣지 않아요), 파일이나 컴파일러가 없으면 건너뛰어요. 행렬이 없을 때는 받는 명령도 알려 줘요.

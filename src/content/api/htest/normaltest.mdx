@@ -122,7 +122,7 @@ P-value:                         0.849
 ```python
 >>> b = sd.stats.Normal().sample((4, 60), rng=sd.random.default_rng(6))
 >>> sd.htest.normaltest(b, axis=1).pvalue
-array([0.18458474909213482,  0.6525000617020866, 0.40373731257037626,
+array([0.18458474909213482,  0.6525000617020867, 0.40373731257037604,
        0.09357857055399933], dtype=float64)
 >>> sd.htest.normaltest(b, axis=1, keepdims=True).pvalue.shape
 (4, 1)
@@ -149,7 +149,7 @@ TypeError: normaltest(): unexpected keyword argument 'alternative'
 
 - $K^2$와 p값은 두 변환식을 Arb(구간 산술)로 계산한 참값과 견줘 정확도 약속 안이에요. `skewtest`·`kurtosistest`·`normaltest` 24문제에서 통계량의 상대오차가 5.1e-16, p값이 2.2e-14 안이에요.
 - p값은 자유도 2의 카이제곱 분포의 위 꼬리를 직접 계산해서, 아주 작은 p값도 자릿수를 잃지 않아요.
-- 같은 입력이면 스레드 수와 상관없이 같은 비트예요.
+- 같은 입력이면 실행마다 같은 비트예요. 지금은 스레드 수와도 상관없이 같아요(약속은 아니에요).
 - 모든 값에 같은 수를 곱해도 통계량은 반올림 차이 안에서 그대로예요. 네제곱하면 float64를 넘는 1e300배나 서브노멀인 1e-310배의 데이터도 2의 거듭제곱 단위로 옮겨 계산해서 NaN이나 0이 되지 않아요.
 
 ## scipy를 아는 분께

@@ -130,7 +130,7 @@ $D$는 언제나 $1/\mathrm{lcm}(n_1, n_2)$의 정수배예요. `statistic_locat
 >>> sd.htest.ttest_ind(a, b).pvalue, sd.htest.mannwhitneyu(a, b).pvalue
 (0.4169380550577354, 0.8985164449208333)
 >>> sd.htest.ks_2samp(a, b).pvalue, sd.htest.cramervonmises_2samp(a, b).pvalue
-(0.17858668181221735, 0.0859877935426191)
+(0.17858668181221735, 0.08598779354261932)
 >>> sd.htest.anderson_ksamp([a, b]).pvalue, sd.htest.epps_singleton_2samp(a, b).pvalue
 (0.03291797011365928, 0.0011324766342762516)
 ```
@@ -238,7 +238,7 @@ ValueError: ks_2samp(): 'method' must be 'auto', 'exact' or 'asymp', not 'asympt
 - $D$는 정수 꼴로 세어 한 번 반올림한 값이라 Arb(구간 산술)와 정확한 정수 셈으로 만든 참값과 견줘 상대오차가 8.5e-17 안이에요(25문제).
 - 정확한 분포의 p값은 확률을 양수로만 더해서 상대오차가 5.3e-16 안이에요. 완전히 갈린 두 표본의 깊은 꼬리(p = 2.9e-133), 동점의 조건부 분포, 997 × 1000이나 2000 × 1500 같은 큰 표본도 포함해요.
 - 점근 p값도 같은 약속 안이에요(약속 대비 0.0067).
-- 같은 입력이면 스레드 수와 상관없이 같은 비트예요.
+- 같은 입력이면 실행마다 같은 비트예요. 지금은 스레드 수와도 상관없이 같아요(약속은 아니에요).
 
 ## scipy를 아는 분께
 

@@ -95,7 +95,7 @@ import Plot from '../../../components/fig/Plot.astro';
 <csr_array of shape (100, 100), float64, 298 stored elements>
 >>> w, v = sd.sparse.eigsh(L, k=3, which='SA')
 >>> w
-array([0.0009674354160238588, 0.0038688057328112473,  0.008701304061962366], dtype=float64)
+array([0.0009674354160243016, 0.0038688057328112946,  0.008701304061962801], dtype=float64)
 >>> v.shape
 (100, 3)
 ```
@@ -108,7 +108,7 @@ array([0.0009674354160238588, 0.0038688057328112473,  0.008701304061962366], dty
 array([ 0.000967435416023843, 0.0038688057328113423,  0.008701304061962789], dtype=float64)
 ```
 
-열네 자리쯤 맞아요. 고유벡터는 줄이 떠는 모양이에요. 가장 작은 고유값의 벡터가 반 파장, 그다음이 한 파장, 그다음이 한 파장 반이에요.
+열두 자리 넘게 맞아요. 고유벡터는 줄이 떠는 모양이에요. 가장 작은 고유값의 벡터가 반 파장, 그다음이 한 파장, 그다음이 한 파장 반이에요.
 
 <Fig caption="L의 가장 작은 세 고유값의 고유벡터를 점의 위치(0에서 1)에 따라 그린 것. 사인 곡선 sin(jπx)를 길이 1로 맞춘 것과 같아요. 부호는 정해져 있지 않아서 뒤집혀 나올 수 있어요.">
   <Plot
@@ -162,10 +162,10 @@ array([ 0.000967435416023843, 0.0038688057328113423,  0.008701304061962789], dty
 
 ```python
 >>> sd.sparse.eigsh(L, k=3, which='LA').eigenvalues
-array([3.9912986959380334, 3.9961311942671727, 3.9990325645839535], dtype=float64)
+array([3.9912986959380303, 3.9961311942671727, 3.9990325645839477], dtype=float64)
 >>> sd.sparse.eigsh(L, k=4, which='BE').eigenvalues
-array([0.0009674354160286487, 0.0038688057328084935,     3.99613119426722,
-       3.9990325645839726], dtype=float64)
+array([0.0009674354160254087, 0.0038688057328106302,     3.996131194267203,
+          3.9990325645839806], dtype=float64)
 ```
 
 이 행렬은 고유값이 모두 양수라 `'LM'`과 `'LA'`, `'SM'`과 `'SA'`가 같은 것을 골라요. 음수 고유값이 있는 행렬에서는 달라요. 가장 음수인 고유값은 `'SA'`로, 0에 가장 가까운 고유값은 `'SM'`으로 구해요.
@@ -181,7 +181,7 @@ array([0.0009674354160286487, 0.0038688057328084935,     3.99613119426722,
 ```python
 >>> r = sd.sparse.eigsh(L, k=3, sigma=0)
 >>> r.eigenvalues
-array([0.0009674354160238701,  0.003868805732811313,  0.008701304061962843], dtype=float64)
+array([0.0009674354160238754, 0.0038688057328113245,  0.008701304061962848], dtype=float64)
 >>> r.n_op, r.n_iter
 (21, 1)
 ```
@@ -213,7 +213,7 @@ stardust.linalg.LinAlgError: eigsh(): singular matrix
 
 ```python
 >>> sd.sparse.eigsh(L, k=3, sigma=1.0, mode='cayley').eigenvalues
-array([0.9643007502033492, 1.0180118380533556, 1.0726729360293454], dtype=float64)
+array([0.9643007502033492, 1.0180118380533556, 1.0726729360293452], dtype=float64)
 >>> sd.sparse.eigsh(L, k=3, mode='cayley')
 Traceback (most recent call last):
     ...
@@ -228,7 +228,7 @@ ValueError: eigsh(): mode='cayley' needs 'sigma'
 >>> M = sd.sparse.diags_array([1 / 6, 4 / 6, 1 / 6], offsets=[-1, 0, 1], shape=(n, n), format='csr')
 >>> w, v = sd.sparse.eigsh(L, k=3, M=M, sigma=0)
 >>> w
-array([0.0009675914297267632,  0.003871301952008867,  0.008713941170580053], dtype=float64)
+array([0.0009675914297267686, 0.0038713019520088834,  0.008713941170580067], dtype=float64)
 ```
 
 이때 고유벡터는 보통의 직교가 아니라 **M에 대해 직교**해요. $V^T M V = I$예요.
@@ -298,7 +298,7 @@ True
 >>> v is None
 True
 >>> w
-array([ 0.008701304061962366, 0.0038688057328112473, 0.0009674354160238588], dtype=float64)
+array([ 0.008701304061962801, 0.0038688057328112946, 0.0009674354160243016], dtype=float64)
 ```
 
 이때는 고유값이 계산에서 나온 순서 그대로라 오름차순이 아닐 수 있어요(위에서는 큰 것부터예요). 순서가 필요하면 `sd.sort(w)`로 정렬해요. [복소 에르미트 행렬](#복소-에르미트-행렬)은 이때도 작은 것부터예요.
@@ -326,7 +326,7 @@ EigshResult(converged=False, status=1, n_iter=6, n_converged=0, eigenvalues=[])
 
 ## 시작 벡터와 결정성
 
-반복은 시작 벡터 하나에서 출발해요. `v0=None`(기본값)이면 `sd.random.default_rng(0)`으로 뽑은 고정된 벡터를 써서, **같은 호출은 언제나 같은 비트의 결과**예요. 행렬의 형식(CSR, CSC, COO, DOK, 밀집), 같은 곱을 하는 `LinearOperator`, sd의 스레드 수와도 상관없이 같아요.
+반복은 시작 벡터 하나에서 출발해요. `v0=None`(기본값)이면 `sd.random.default_rng(0)`으로 뽑은 고정된 벡터를 써서, **같은 호출은 언제나 같은 비트의 결과**예요. 행렬의 형식(CSR, CSC, COO, DOK, 밀집), 같은 곱을 하는 `LinearOperator`와 상관없이 같고, 지금은 sd의 스레드 수와도 상관없어요(약속은 아니에요).
 
 ```python
 >>> a = sd.sparse.eigsh(L, k=3).eigenvalues
@@ -373,7 +373,7 @@ A(또는 M, `v0`)가 복소수면 에르미트 문제로 풀어요. 고유값은
 >>> H = (L + 1j * (sh - sh.T) * 0.5).tocsr()
 >>> r = sd.sparse.eigsh(H, k=3, which='LA')
 >>> r.eigenvalues
-array([4.226339623811934, 4.231742521194547, 4.234986351822727], dtype=float64)
+array([ 4.22633962381193,  4.23174252119454, 4.234986351822731], dtype=float64)
 >>> r.eigenvectors.dtype
 complex128
 ```
@@ -451,12 +451,12 @@ TypeError: eigh(): 'a' must be an sd.ndarray, not csr_array; for a sparse array 
 - 고유값의 오차 $|\hat\lambda - \lambda| \le 1000\,\varepsilon\,\lVert A\rVert_2$($\varepsilon = 2^{-52}$).
 - 잔차 $\lVert A v - \lambda M v\rVert$도 $1000\,\varepsilon\,\lVert A\rVert_2$ 안, 직교성 $\lVert V^H M V - I\rVert$는 $1000\,k\,\varepsilon$ 안.
 
-시험 문제(대칭 17개의 양 끝과 직사각 셋)에서 잰 가장 큰 고유값 오차는 한계의 절반, $497\,\varepsilon\lVert A\rVert_2$예요. 1차원 라플라시안 n = 1000의 `'LA'`로, 재시작을 762번 하는 동안 반올림이 쌓인 경우예요. 대부분의 문제는 이보다 훨씬 작아요. 재시작이 많을수록 오차가 커지므로, 정확도가 중요하면 `sigma`로 반복을 줄이는 것이 도움이 돼요.
+시험 문제(대칭 17개의 양 끝과 직사각 셋)에서 잰 가장 큰 고유값 오차는 한계의 0.7배, 약 $700\,\varepsilon\lVert A\rVert_2$예요. 1차원 라플라시안 n = 1000의 `'LA'`로, 재시작을 760번 넘게 하는 동안 반올림이 쌓인 경우예요. 대부분의 문제는 이보다 훨씬 작아요. 재시작이 많을수록 오차가 커지므로, 정확도가 중요하면 `sigma`로 반복을 줄이는 것이 도움이 돼요.
 
 ## scipy를 아는 분께
 
 - `scipy.sparse.linalg.eigsh`와 같은 함수예요. `sd.sparse.linalg` 없이 `sd.sparse.eigsh`예요.
-- 계산 방법(ARPACK의 암시적 재시작 Lanczos)을 scipy가 돌리는 순서 그대로 해서, 같은 `v0`이면 대개 반복 수와 상태가 scipy와 같아요. 겹친 고유값처럼 반올림에 민감한 문제에서는 scipy 자신이 `v0`의 한 ulp에 따라 흔들리는 폭 안에서 달라요.
+- 계산 방법(ARPACK의 암시적 재시작 Lanczos)을 scipy가 돌리는 순서 그대로 해서, 같은 `v0`이면 상태가 scipy와 같고 곱의 수(`n_op`)도 대개 같아요. 벡터 합의 끝자리가 scipy와 달라서 곱의 수는 scipy 자신이 `v0`의 한 ulp에 따라 흔들리는 폭 안에서 다를 수 있어요. 위의 `L`에서 `k=4, which='LA'`는 여기서 곱 412번이고, scipy는 같은 `v0`에서 426번, `v0`의 원소 하나를 한 ulp 바꾸면 412번이에요.
 - `v0=None`이 고정된 시작 벡터예요. scipy는 시드 없는 난수라 실행마다 결과가 달라요. `rng=`로 생성기를 줄 수 있어요.
 - 인자는 `A`만 위치이고 나머지는 키워드예요. `maxiter`는 `max_iter`예요.
 - 수렴하지 않으면 `ArpackNoConvergence` 예외 대신 `converged=False`인 결과에 수렴한 쌍을 담아요. `ArpackError`, `ArpackNoConvergence`는 없어요. 시작 벡터가 연산자의 영공간에 있으면(scipy의 `ArpackError` −9) `ValueError`예요.

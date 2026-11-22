@@ -61,7 +61,7 @@ $$
 >>> import math
 >>> r = sd.differentiate.derivative(sd.exp, 1.0)
 >>> r
-DifferentiateResult(df=2.71828, error=7.13118e-12, converged=True, n_iter=2, nfev=11)
+DifferentiateResult(df=2.71828, error=7.1303e-12, converged=True, n_iter=2, nfev=11)
 >>> r.df, math.e
 (2.718281828459014, 2.718281828459045)
 ```
@@ -198,8 +198,8 @@ TypeError: an array cannot be converted to float
 >>> r
 DifferentiateResult(batch shape (5,), 5 of 5 converged)
 >>> r.df
-array([0.9999999999999929, 1.6487212707001069,  2.718281828459014,
-         4.48168907033801,  7.389056098930562], dtype=float64)
+array([0.9999999999999913,  1.648721270700114,  2.718281828459014,
+         4.48168907033801,  7.389056098930579], dtype=float64)
 ```
 
 `args`는 `f`에 넘길 원소마다의 상수예요. 튜플로 주고, 값마다 `x`와 함께 브로드캐스트해요. `f`는 `f(x, *args)`로 불리고, 첫 호출에서는 $(k,)$, 다음부터는 $(k, 1)$로 줄여 받아서 `x`의 점들과 그대로 계산할 수 있어요.
@@ -214,7 +214,7 @@ array([[ 1.0,  2.0,  3.0],
 
 $x^p$의 도함수 $p x^{p-1}$을 $x = 1, 2$와 $p = 1, 2, 3$의 여섯 쌍에서 한 번에 구했어요. `jacobian`과 `hessian`에는 `args`가 없어요. 상수는 `lambda`나 클로저로 묶어요.
 
-원소를 배치에 넣어도 혼자 부른 것과 결과가 비트까지 같아요. 스레드 수와도 상관없어요.
+같은 기계, 같은 스레드 수, 같은 입력이면 실행마다 결과가 비트까지 같아요. 지금은 원소를 배치에 넣어도 혼자 부른 것과 비트까지 같고, 스레드 수와도 상관없어요(약속은 아니에요).
 
 ```python
 >>> xs = [0.3, 1.7, 2.9]
@@ -244,7 +244,7 @@ True
 ```python
 >>> r = D(sd.exp, 1.0)
 >>> r.df, r.error, r.converged, r.status, r.n_iter, r.nfev, r.x
-(2.718281828459014, 7.1311845317723055e-12, True, 0, 2, 11, 1.0)
+(2.718281828459014, 7.130296353352605e-12, True, 0, 2, 11, 1.0)
 >>> type(D(sd.exp, [1.0]).df), D(sd.exp, [1.0]).df.shape
 (<class 'stardust._core.ndarray'>, (1,))
 ```
@@ -329,14 +329,14 @@ TypeError: DifferentiateResult(): 'status' must be an int or an array of ints, n
 
 ```python
 >>> D(sd.exp, 1.0, rtol=0)
-DifferentiateResult(df=2.71828, error=1.81188e-13, converged=False, n_iter=7, nfev=21)
+DifferentiateResult(df=2.71828, error=7.77156e-14, converged=False, n_iter=10, nfev=27)
 >>> D(sd.exp, 1.0, order=2)
 DifferentiateResult(df=2.71828, error=1.29618e-06, converged=False, n_iter=10, nfev=21)
 >>> D(sd.exp, 1.0, order=2, max_iter=20)
-DifferentiateResult(df=2.71828, error=2.02517e-08, converged=True, n_iter=13, nfev=27)
+DifferentiateResult(df=2.71828, error=2.02526e-08, converged=True, n_iter=13, nfev=27)
 ```
 
-`rtol=0`이면 절대 판정만 남는데 `atol`이 너무 작아 반올림 수준에서 끝내 맞추지 못하고 일곱째 반복에 −1로 멈췄어요. 그래도 그때의 `df`는 상대 $6 \times 10^{-14}$까지 맞아요. 2차 공식은 10번으로 모자라 −2였고, `max_iter`를 늘리면 수렴해요.
+`rtol=0`이면 절대 판정만 남는데 `atol`이 너무 작아 반올림 수준에서 끝내 맞추지 못하고 `max_iter`의 10번을 다 써서 −2로 멈췄어요. 그래도 그때의 `df`는 상대 $1.4 \times 10^{-13}$까지 맞아요. 2차 공식은 10번으로 모자라 −2였고, `max_iter`를 늘리면 수렴해요.
 
 ### 도함수가 0 근처일 때는 atol
 
@@ -410,6 +410,6 @@ ValueError: derivative(): the inputs must broadcast together, not shapes (2,), (
 - **차수의 상한**: `order`는 18까지예요. scipy는 상한이 없어서, 예를 들어 `order=20`이면 $e^x$의 1에서 2.71821을 수렴했다고 내요.
 - **첫 호출**: `derivative`의 첫 호출은 $(k,)$ 1차원이에요. scipy는 입력 모양 그대로예요.
 - **가중치와 합**: 공식의 가중치는 정확한 값을 한 번 반올림한 것이고, 중앙 공식은 양쪽 점의 차를 짝마다 더해요. 그래서 `df`는 scipy와 끝자리가 다를 수 있고(허용오차 안), 판정의 경계에서는 반복 수가 갈릴 수 있어요. 예를 들어 $x^3$의 0은 여기서 둘째 반복에 수렴하고 scipy는 −2예요.
-- **같은 비트**: 원소의 결과는 배치의 크기와 스레드 수와 상관없이 같아요. scipy는 배치의 크기에 따라 끝자리가 다를 수 있어요.
+- **같은 비트**: 지금은 원소의 결과가 배치의 크기, 스레드 수와 상관없이 같아요(약속은 아니에요). scipy는 배치의 크기에 따라 끝자리가 다를 수 있어요.
 - `jacobian`과 `hessian`의 `f`는 $(m, N)$ 2차원 배열을 받고, `x`는 1차원만 받아요.
 - 큰 $x$에서 점이 반올림으로 사라져 0이 수렴으로 나오는 것($\log$의 $10^{20}$)은 scipy도 같아요.

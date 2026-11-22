@@ -232,4 +232,4 @@ UniqueCountsResult(values=array([1, 2, 3, 5, 6], dtype=int64), counts=array([1, 
 - `x`와 `weights`는 `sd.ndarray`만 받아요. 리스트는 `asarray`로 먼저 바꾸세요.
 - `x`는 int64나 bool이어야 해요. numpy처럼 실수 배열을 안전하게 바꿀 수 있는지 따지지 않고, 실수 배열이면 언제나 `TypeError`예요.
 - `weights`와 `minlength`는 keyword-only예요.
-- 개수는 numpy와 같아요. 가중치의 합은 원소가 많으면 조각으로 나눠 병렬로 더해서, 원소 순서대로 더하는 numpy와 마지막 자리가 다를 수 있어요. 조각은 원소 수와 결과 길이로만 정해서 결과는 스레드 수와 상관없이 같아요.
+- 개수는 numpy와 같아요. 가중치의 합은 원소가 많으면 조각으로 나눠 병렬로 더해서, 원소 순서대로 더하는 numpy와 마지막 자리가 다를 수 있어요. 조각은 원소 수와 결과 길이로만 정해서 지금은 결과가 스레드 수와도 상관없이 같아요(약속은 아니에요).

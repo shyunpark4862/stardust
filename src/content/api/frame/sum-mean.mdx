@@ -300,7 +300,7 @@ True
 True
 ```
 
-이 결과는 계산에 쓰는 스레드 수와도 상관없어요. [`sd.set_num_threads`](/api/array/threads/)로 몇 개를 쓰든 같은 컬럼이면 같은 비트가 나와요.
+같은 컬럼이면 실행마다 같은 비트가 나와요. 지금은 [`sd.set_num_threads`](/api/array/threads/)로 스레드 수를 바꿔도 같은 비트가 나와요(약속은 아니에요).
 
 ## 조심할 점
 

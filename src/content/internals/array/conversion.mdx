@@ -147,11 +147,12 @@ Python 스칼라 피연산자는 루프 dtype으로 미리 변환한 원소 1개
 `asarray(obj, dtype=None, copy=None)`(`csrc/array/ops/asarray.cpp`)는 `obj`를 이 순서로 봐요.
 
 1. ndarray: 그대로 돌려주거나, `dtype`이 다르거나 `copy=True`이면 변환·복사해요.
-2. Python 스칼라: 0차원 배열이 될 것이므로 `ValueError`예요.
-3. list, tuple: 아래의 두 패스 알고리즘으로 만들어요.
-4. range: 버퍼가 아니라서 `PySequence_List`로 int 리스트를 만든 뒤 3번 길로 보내요(frame도 range를 받아요).
-5. 버퍼 프로토콜을 지원하는 객체: 다음 절에서 다뤄요.
-6. 그 밖은 `TypeError`예요. generator는 받지 않아요.
+2. 정확한 `numpy.ndarray`: 조건이 맞으면 버퍼 프로토콜을 거치지 않고 바로 공유해요(아래 "numpy 배열은 바로 공유해요"). 맞지 않으면 6번 길로 가요.
+3. Python 스칼라: 0차원 배열이 될 것이므로 `ValueError`예요.
+4. list, tuple: 아래의 두 패스 알고리즘으로 만들어요.
+5. range: 버퍼가 아니라서 `PySequence_List`로 int 리스트를 만든 뒤 4번 길로 보내요(frame도 range를 받아요).
+6. 버퍼 프로토콜을 지원하는 객체: 다음 절에서 다뤄요.
+7. 그 밖은 `TypeError`예요. generator는 받지 않아요.
 
 ### 두 패스: shape와 dtype을 먼저, 값은 나중에
 
@@ -269,6 +270,16 @@ numpy 배열, `memoryview`, `array.array`처럼 PEP 3118 버퍼 프로토콜 [3]
 5. `copy=True`가 아니에요.
 
 공유하면 `Buffer::adopt`가 `Py_buffer`를 넘겨받고, 배열의 `base`는 내보낸 객체(`view.obj`), `writeable`은 `!view.readonly`가 돼요. 하나라도 어긋나면 복사하고, `copy=False`였다면 `ValueError`예요.
+
+### numpy 배열은 바로 공유해요
+
+numpy 배열을 버퍼 프로토콜로 받으면, numpy가 내보낼 때마다 format 문자열을 다시 만들어 캐시와 비교하는 일이 호출의 절반을 차지하고 `Py_buffer` 관리가 나머지예요. 그래서 정확히 `numpy.ndarray`(하위 클래스는 아니에요)인 입력은 numpy의 공개 C 구조체(`numpy/_core/include/numpy/ndarraytypes.h`의 `PyArrayObject_fields`와 `PyArray_Descr`의 앞부분, numpy 1.x와 2.x에서 같은 자리)에서 data, shape, strides, flags를 바로 읽어요(`share_numpy`).
+
+- 조건은 위의 공유 조건과 같아요. 원소 타입이 넷 중 하나(`type_num`: bool 0, long 7·longlong 9, double 12, cdouble 15)이고, native 바이트 순서이고, 정렬되어 있고, `dtype=`이 다르지 않고 `copy=True`가 아니어야 해요. bool은 0/1 검사를 똑같이 해요.
+- 원소가 없는 배열은 버퍼 경로로 보내요. numpy의 빈 배열은 stride가 0일 수 있는데, 버퍼 내보내기는 C 연속 stride를 주기 때문이에요.
+- 결과의 `base`는 그 numpy 배열이고 Buffer는 없어요. numpy 배열에 대한 참조가 메모리를 살려 둬요. 쓰기 가능 여부는 numpy의 내보내기와 같아요(`WRITEABLE`이고 `WARN_ON_WRITE`가 아닐 때).
+- numpy 타입은 이름(`tp_name`이 `"numpy.ndarray"`)으로 한 번 알아보고 포인터를 저장해요. numpy를 import하지 않아요.
+- 조건에 맞지 않으면(big-endian, float32, 하위 클래스, 정렬 안 됨 등) 버퍼 경로로 가요. 그래서 결과는 어느 길이든 같은 뷰, 같은 `.base`, 같은 쓰기 가능 여부예요.
 
 ```python
 >>> import numpy as np
@@ -414,7 +425,7 @@ for_pieces(n, kParallelTask, n, [&](std::int64_t, std::int64_t i0, std::int64_t 
 - 안쪽 루프는 평탄해요. 안쪽 축을 따라 `len`개를 도는 동안 하는 일은 포인터 이동과 load, 변환, store뿐이에요. 축 인덱스를 올리고 끝을 검사하는 odometer의 일은 안쪽 축 한 줄에 한 번만 해요. 원소마다 odometer를 한 칸씩 돌리면(원소마다 자리올림 검사) int32 100만 개에 417µs가 들어요.
 - 자리올림: 축 $d$가 끝에 닿으면 인덱스를 0으로 되돌리고 축 $d - 1$을 한 칸 올려요. 오프셋은 `ss[d - 1] - shp[d] * ss[d]`만큼 옮겨요. 축 $d$를 처음으로 되감고(`- shp[d] * ss[d]`) 바깥 축을 한 칸 나아가는(`+ ss[d - 1]`) 것을 한 번에 더한 값이에요.
 - 1차원에서는 odometer가 사라져요. `nd == 1`이면 자리올림 루프가 돌지 않고, 조각 하나가 strided 루프 하나예요.
-- 결과는 스레드 수와 무관해요. 조각마다 서로 다른 원소를 쓰고, 값은 원소마다 독립이에요.
+- 결과는 스레드 수와 상관없어요. 조각마다 서로 다른 원소를 쓰고, 값은 원소마다 독립이에요.
 
 안쪽 축이 붙어 있지 않으면(`i32[::2]`, `m[:, ::2]`) 간격 `si`, `di`가 런타임 값이라 컴파일러가 벡터화하지 못해요. 그래서 이 경우는 벡터화되는 루프보다 느려요. 안쪽 축이 붙어 있는 2차원 버퍼와 전치한 뷰는 안쪽 루프가 벡터화돼요.
 
@@ -466,15 +477,13 @@ S load_swapped(const std::byte* p) {
 
 복사가 없는 경로도 고정 비용이 있어요. `np.asarray(ndarray)`는 이미 numpy 배열이면 같은 객체를 그대로 돌려주므로 하는 일이 인자 확인뿐이에요. stardust에서 이에 맞는 것은 같은 객체를 돌려주는 `sd.asarray(sd 배열)`이에요. `sd.asarray(numpy 배열)`은 다른 라이브러리의 객체를 받아 새 Python 객체를 만드는 일이라 하는 일이 달라요. strided 뷰나 전치한 뷰도 복사 없이 공유하므로 같은 경로예요.
 
-그 비용이 어디에 쓰이는지 코드 순서대로 보면 이래요(`asarray` → `from_buffer`).
+그 비용이 어디에 쓰이는지 코드 순서대로 보면 이래요(`asarray` → `share_numpy`).
 
-1. `is_ndarray`가 아니므로 `scalar_dtype(obj)`로 Python·numpy 스칼라인지 봐요. Python의 `bool`, `int`, `float`, `complex`는 타입 검사 네 번이고, 그다음 `numpy_scalar_dtype`이 타입 이름(`tp_name`) 문자열을 봐요. `numpy.`으로 시작하지 않으면 numpy 스칼라가 아니고, 정확히 `numpy.ndarray`이면 배열이지 스칼라가 아니므로 바로 돌아와요. 문자열 비교 두 번이에요. numpy의 스칼라 타입 넷(`np.bool`, `np.integer`, `np.floating`, `np.complexfloating`)에 대한 `PyObject_IsInstance`는 그 밖의 `numpy.*` 타입에만 불러요. `PyObject_IsInstance` 네 번은 약 37ns가 드는 일이라, 가장 흔한 입력인 numpy 배열이 그 비용을 치르지 않게 이름으로 먼저 걸러요.
-2. `PyObject_GetBuffer`: numpy가 format, shape, strides를 채운 `Py_buffer`를 내줘요.
-3. format 해석, `NDArray` 채우기, 정렬 검사.
-4. `Buffer::adopt(view)`로 `Py_buffer`를 넘겨받는 Buffer(`shared_ptr`, 할당 1번)와 `wrap`으로 nanobind 인스턴스(할당 1번)를 만들어요.
-5. 결과가 버려질 때 Buffer의 소멸자가 GIL을 확인(`PyGILState_Ensure`)한 뒤 `PyBuffer_Release`를 부르고, 메모리를 돌려줘요.
+1. `is_ndarray`가 아니므로 `share_numpy`가 타입 포인터를 저장한 numpy 타입과 비교해요. 같으면 numpy의 C 구조체에서 dtype 번호, 바이트 순서, shape, strides, flags를 읽고 정렬을 확인해요. 스칼라 검사(`scalar_dtype`)는 이 뒤라서 numpy 배열은 그 비용을 치르지 않아요.
+2. `NDArray`를 채우고 `base`에 numpy 배열의 참조를 둬요. Buffer는 만들지 않아요.
+3. `wrap`이 인스턴스 풀에서 객체를 받아요.
 
-이 가운데 할당의 15~20ns는 배열 객체가 512바이트를 넘어 시스템 `malloc`으로 할당되는 비용이에요([작은 배열의 호출 비용](/internals/array/small-arrays/)). 버퍼 프로토콜로 numpy 배열을 받는 한 2단계의 버퍼 내보내기 비용도 줄일 수 없는 몫이에요.
+`np.asarray`가 입력을 그대로 돌려주는 것과 견주면 결과 객체 하나만큼의 시간이 남아요. 그 밖의 버퍼(`memoryview`, `array.array`, 조건에 맞지 않는 numpy 배열)는 `PyObject_GetBuffer`, format 해석, `Buffer::adopt`를 거치고, 결과가 버려질 때 Buffer의 소멸자가 GIL을 확인(`PyGILState_Ensure`)한 뒤 `PyBuffer_Release`를 불러요.
 
 반대 방향(stardust 배열을 numpy가 읽는 것)은 `bf_getbuffer` 슬롯으로 복사 없이 내보내요. format은 `?`, `q`, `d`, `Zd`예요. 자세한 내용은 [데이터 모델](/internals/array/data-model/)과 [Python과 C++의 경계](/internals/core/python-boundary/)에 있어요.
 
@@ -488,7 +497,7 @@ DLPack 1.0의 C 구조체(`DLTensor`, `DLManagedTensor`, `DLManagedTensorVersion
 
 ### 가져오는 순서
 
-1. `x.__dlpack__(max_version=(1, 0), copy=...)`을 불러요. 생산자가 키워드를 모르는 옛 구현이라 `TypeError`가 나면 인자 없이 다시 불러요. 속성 이름, 키워드 이름, 버전 tuple은 처음 한 번 만들어 두고, 속성은 한 번씩만 찾고, 호출은 vectorcall이에요. 일반 속성 조회와 키워드 호출로 하면 가져오기 한 번이 252ns, 이렇게 하면 229ns예요([Python과 C++의 경계](/internals/core/python-boundary/)).
+1. `x.__dlpack__(max_version=(1, 0), copy=...)`을 불러요. 생산자가 키워드를 모르는 옛 구현이라 `TypeError`가 나면 인자 없이 다시 불러요. 속성 이름, 키워드 이름, 버전 tuple은 처음 한 번 만들어 두고, 속성은 한 번씩만 찾고, 호출은 vectorcall이에요([Python과 C++의 경계](/internals/core/python-boundary/)). 정확한 numpy 배열은 이 단계 전에 `asarray`와 같은 공유(`share_numpy_array`)를 먼저 해 봐요. `__dlpack__`이 설명할 뷰와 같은 뷰이고, `base`가 capsule 대신 numpy 배열이에요.
 2. capsule 이름을 `"used_dltensor_versioned"`(또는 `"used_dltensor"`)로 바꿔요. 규약상 이것이 "소비자가 가져갔다"는 표시예요.
 3. 곧바로 소유권을 가져와요. 텐서 포인터를 담은 새 capsule(`"sd_dlpack_owner"`)을 만들고, 그 capsule의 소멸자가 생산자의 `deleter`를 부르게 해요. capsule을 만들지 못하면 그 자리에서 `deleter`를 부르고 에러를 내요.
 4. 그다음에 검사해요. 버전의 major가 1보다 크거나 장치가 CPU가 아니면 `BufferError`, dtype이 넷 중 하나가 아니면 `TypeError`, 0차원이거나 32차원을 넘으면 `ValueError`예요.
@@ -747,6 +756,7 @@ double py_to_double(PyObject* p) {
 | 버퍼 공유 | $O(\text{ndim})$, bool이면 $O(n)$ 검사 | 없음 | bool 검사 100만 개 8.3µs |
 | 버퍼 복사·넓히기 (연속, 어느 바이트 순서든) | $O(n)$, 병렬 | 결과 배열 | 평탄한 루프 (int32 → int64 100만 개 60µs, numpy `astype` 99µs) |
 | 버퍼 복사·넓히기 (연속이 아님) | $O(n)$, 병렬. 축 정렬 $O(\text{ndim} \log \text{ndim})$, 조각마다 시작점 계산 $O(\text{ndim})$ | 결과 배열 | 결과의 메모리 순서로 odometer. 안쪽 축이 붙어 있으면 인덱스 루프가 벡터화돼요 |
+| numpy 배열 공유 (`asarray`, `from_dlpack`) | $O(\text{ndim})$, bool이면 $O(n)$ 검사 | 없음 | 버퍼 프로토콜도 DLPack 생산자도 거치지 않아요 |
 | DLPack 공유 | $O(\text{ndim})$, bool이면 $O(n \cdot \text{ndim})$ 검사 | 없음 | |
 | `astype` | $O(n)$, 병렬 | 결과 배열 | 연속 f → i는 벡터 `FCVTZS` |
 

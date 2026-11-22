@@ -14,7 +14,7 @@ import Steps from '../../../components/fig/Steps.astro';
 
 `sd.differentiate`의 공개 함수 셋(`derivative`, `jacobian`, `hessian`)은 Python에서 입력을 검사하고 차분 공식의 가중치를 정한 뒤, 반복 전체를 C++ 커널 `stardust._core.differentiate`에 맡겨요. 사용자 함수는 Python이라 커널이 반복마다 Python으로 되돌아와 불러요. 다만 한 번 부를 때 점을 여러 개 담은 배열 하나를 넘기므로, 호출 수는 반복 수와 같고 점의 수와는 상관없어요. 함수의 쓰임새는 [기본 개념](/api/differentiate/basics/), [derivative](/api/differentiate/derivative/), [jacobian](/api/differentiate/jacobian/), [hessian](/api/differentiate/hessian/)에 있어요.
 
-이 영역에는 공개 함수가 쓰지 않는 커널도 둘 있어요. `sd.optimize`의 차분 기울기와 야코비안이 쓰는 고정 간격(`csrc/differentiate/steps.hpp`)과, `approx_fprime`과 `sd.regression.nls`가 쓰는 간격을 고르는 5점 차분(`src/stardust/differentiate/_differences.py`)이에요. 차분의 간격은 미분의 일이라 이 영역에 두고, 부르는 쪽이 저마다의 셈과 에러를 맡아요.
+이 영역에는 공개 함수가 쓰지 않는 커널도 둘 있어요. `sd.optimize`의 차분 기울기와 야코비안이 쓰는 고정 간격(`csrc/differentiate/steps.hpp`)과, `approx_fprime`과 `sd.regression.nls`가 쓰는 간격을 고르는 5점 차분(`csrc/differentiate/accurate.hpp`, 그것을 만드는 `src/stardust/differentiate/_differences.py`)이에요. 차분의 간격은 미분의 일이라 이 영역에 두고, 부르는 쪽이 저마다의 셈과 에러를 맡아요.
 
 <Fig column caption="sd.differentiate의 층. 위가 사용자가 부르는 것, 아래가 그 밑바탕이에요.">
   <Layers layers={[
@@ -27,11 +27,12 @@ import Steps from '../../../components/fig/Steps.astro';
       { name: '../optimize/_common.py', note: '수·정수·허용오차의 검사' },
       { name: '../optimize/_elementwise.py', note: '브로드캐스트(_inputs), args, 배치 모양(_shaped)' },
       { name: '../_results.py', note: '결과의 바탕 _FieldResult' },
-      { name: '_differences.py', note: 'approx_fprime·nls의 5점 차분' },
+      { name: '_differences.py', note: 'approx_fprime·nls의 5점 차분을 만드는 함수' },
     ] },
     { title: '커널 (C++)', note: 'csrc/differentiate/', items: [
       { name: 'derivative.cpp', note: '스텐실의 점과 갱신, 세 함수의 반복', uses: 'elementwise/loop.hpp' },
       { name: 'steps.hpp', note: 'scipy·MINPACK의 고정 간격 (optimize가 씀)' },
+      { name: 'accurate.hpp', note: '간격을 고르는 5점 차분의 고리 AccurateDiff (approx_fprime·nls가 씀)', uses: 'linalg/fastsum.hpp' },
     ] },
     { title: '바닥', tone: 'dark', items: [
       { name: 'elementwise/loop.hpp', note: '원소별 반복의 고리 (optimize·integrate와 함께)' },
@@ -238,7 +239,7 @@ void for_weighted(std::size_t k, std::size_t w, Fn&& fn) {
 
 일이 $2^{15}$점 이상이면 패스를 조각으로 나눠 스레드풀에 맡기고 그동안 GIL을 놓아요. 조각 하나는 $2^{13}$점쯤(적어도 원소 하나)이고, 조각이 17개보다 적으면 더 잘게 나눠요. 스레드풀은 일이 16개를 넘을 때 자는 일꾼을 깨우므로, 이렇게 해야 원소가 수천 개인 배치에서도 모든 일꾼이 함께 일해요. 첫 반복은 원소마다 8점이라 원소 4,096개부터, 그 뒤 반복은 2점이라 16,384개부터 나뉘어요.
 
-원소의 산술은 어느 스레드에서 하든 같고, 계속 가는 원소는 압축한 뒤에도 원래 차례대로 남아요. 그래서 원소 하나의 결과는 스레드 수, 배치의 크기, 배치 안의 위치와 상관없이 비트까지 같아요.
+원소의 산술은 어느 스레드에서 하든 같고, 계속 가는 원소는 압축한 뒤에도 원래 차례대로 남아요. 그래서 지금은 원소 하나의 결과가 스레드 수, 배치의 크기, 배치 안의 위치와 상관없이 비트까지 같아요(약속은 아니에요. 약속은 같은 기계, 같은 스레드 수에서 실행마다 같은 비트예요).
 
 ```python
 >>> x = sd.linspace(0.0, 2.0, 20001)
@@ -296,7 +297,7 @@ def _fields(shape, df, err, status, nit, nfev):
 
 배치 모양은 `derivative`면 입력의 브로드캐스트 모양이고, 입력이 모두 수면 `()`라 필드가 Python 수예요. `jacobian`과 `hessian`의 결과는 항목마다 따로 멈춘 배치라 배치 모양이 `df`·`ddf`의 모양((k, m) 또는 (m,); (m, m))이에요. 그래서 `repr`과 `summary()`도 배치의 꼴(모양과 수렴한 수, 항목마다 한 줄)이에요. `summary()`의 상자는 다른 영역과 같은 그리기 함수로 만들어요.
 
-## 차분 간격의 커널: steps.hpp와 _differences.py
+## 차분 간격의 커널: steps.hpp와 accurate.hpp
 
 ### steps.hpp: 반복 안의 고정 간격
 
@@ -311,9 +312,9 @@ def _fields(shape, df, err, status, nit, nfev):
 
 헤더 하나이고 표준 라이브러리 말고는 아무것도 include하지 않아요. 반복의 셈(호출 수), 한쪽이 유한하지 않을 때 반대쪽을 다시 해 보는 일, 같은 점의 기억은 부르는 쪽마다 다르므로 부르는 쪽에 있어요. 식과 계산 순서, 경계에서의 조정은 [수치 미분](/internals/optimize/derivatives/)에서 코드와 함께 설명해요.
 
-### _differences.py: 한 번의 정확한 차분
+### accurate.hpp: 한 번의 정확한 차분
 
-`approx_fprime`과 `check_grad`의 기본, 그리고 `sd.regression.nls`가 해에서 야코비안을 구할 때는 반복 안이 아니라 한 번의 정확한 결과가 필요해요. 그래서 scipy의 간격을 따르지 않고, 변수마다 간격을 골라 5점 차분으로 계산해요. 그 클래스가 `Differences`예요. 공개 이름은 아니라 `sd.differentiate.__all__`에 없어요.
+`approx_fprime`과 `check_grad`의 기본, 그리고 `sd.regression.nls`가 해에서 야코비안을 구할 때는 반복 안이 아니라 한 번의 정확한 결과가 필요해요. 그래서 scipy의 간격을 따르지 않고, 변수마다 간격을 골라 5점 차분으로 계산해요. 그 고리가 C++ 클래스 `AccurateDiff`(`stardust._core.differentiate.AccurateDiff`)이고, `_differences.py`의 `Differences`는 그것을 만드는 함수예요. 공개 이름은 아니라 `sd.differentiate.__all__`에 없어요.
 
 ```python
 >>> from stardust.differentiate._differences import Differences
@@ -323,7 +324,7 @@ def _fields(shape, df, err, status, nit, nfev):
 (True, True)
 ```
 
-`Differences`는 `g(x)`를 부르는 일, 간격을 고르는 일, 반올림 수준을 재는 일만 해요. 호출 수를 세고 에러의 글을 쓰는 것은 부르는 쪽(`_diff.py`, `_nls.py`)이에요. nls만 반올림 수준에 묻힌 열을 0으로 두는 처리(`zero_noise`)를 켜요. 간격을 고르는 방법, 시작이 반올림 수준일 때 간격을 키우는 고리, 셈은 [수치 미분](/internals/optimize/derivatives/)에 있고, `derivative`의 차분과 견준 모습은 [derivative의 알고리즘](/internals/differentiate/derivative/#approx_fprime의-차분과-견주면)에 있어요.
+`AccurateDiff`는 `g(x)`를 부르는 일, 간격을 고르는 일, 반올림 수준을 재는 일만 해요. 그 안에서 Python은 `g`뿐이고, 돌려받은 배열은 부른 바로 뒤에 한 번 읽어요. 호출 수를 세고 에러의 글을 쓰는 것은 부르는 쪽(`_diff.py`, `_nls.py`)이에요. nls만 반올림 수준에 묻힌 열을 0으로 두는 처리(`zero_noise`)를 켜요. 간격을 고르는 방법, 시작이 반올림 수준일 때 간격을 키우는 고리, 셈은 [수치 미분](/internals/optimize/derivatives/)에 있고, `derivative`의 차분과 견준 모습은 [derivative의 알고리즘](/internals/differentiate/derivative/#approx_fprime의-차분과-견주면)에 있어요.
 
 <Callout type="note" title="두 차분이 따로 있는 까닭">
 `derivative`는 간격을 반복마다 줄이며 오차를 어림하는 적응 방법이고, 원소별 배치를 한 번의 호출로 계산해요. `Differences`는 간격을 변수마다 한 번 고르고 nls의 반복 사이에서 그 간격을 다시 쓰며, 경계 안에서만 함수를 불러요. 부르는 꼴(점 하나씩의 벡터 함수)과 경계, 간격의 재사용이 달라서 한쪽으로 합치지 않아요.
@@ -337,7 +338,8 @@ def _fields(shape, df, err, status, nit, nfev):
 | `src/stardust/differentiate/_derivative.py` | `derivative`, `jacobian`, `hessian`의 입력 검사, 값의 확인 함수, 결과 |
 | `src/stardust/differentiate/_weights.py` | 중앙·한쪽 스텐실의 가중치를 정확히 계산해 한 번 반올림 |
 | `src/stardust/differentiate/_result.py` | `DifferentiateResult`, `summary()` |
-| `src/stardust/differentiate/_differences.py` | 간격을 고르는 5점 차분(`approx_fprime`의 기본, nls의 야코비안) |
+| `src/stardust/differentiate/_differences.py` | 간격을 고르는 5점 차분을 만드는 함수 `Differences` |
+| `csrc/differentiate/accurate.hpp` | 간격을 고르는 5점 차분의 고리 `AccurateDiff`(`approx_fprime`의 기본, nls의 야코비안) |
 | `csrc/differentiate/derivative.cpp` | 스텐실의 점과 갱신, `derivative_solve`, `jacobian_solve`, `hessian_solve` |
 | `csrc/differentiate/steps.hpp` | scipy `approx_derivative`와 MINPACK의 고정 간격, 경계 조정 |
 | `csrc/elementwise/loop.hpp` | 원소별 반복의 고리(optimize·integrate와 함께) |

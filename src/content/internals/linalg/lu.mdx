@@ -24,14 +24,14 @@ $$
 
 | 함수 | 부르는 LAPACK 루틴 | 주요 비용(flop) | 정확한 0 피벗(특이)일 때 | 코드 |
 |---|---|:---:|---|---|
-| `solve(a, b)` | `getrf` + `getrs` | $\tfrac23 n^3 + 2n^2k$ | `LinAlgError` | `ops/lu.cpp` |
-| `inv(x)` | `getrf` + 단위행렬 우변 `getrs` | $\tfrac83 n^3$ | `LinAlgError` | `ops/lu.cpp`, `ops/common.hpp` |
+| `solve(a, b)` | `getrf` + `getrs` (우변 두 열 이하는 `trsv` 두 번) | $\tfrac23 n^3 + 2n^2k$ | `LinAlgError` | `ops/lu.cpp` |
+| `inv(x)` | `getrf` + 단위행렬 우변을 `solve`와 같은 풀이로 | $\tfrac83 n^3$ | `LinAlgError` | `ops/lu.cpp`, `ops/common.hpp` |
 | `det(x)` | `getrf` | $\tfrac23 n^3$ | 0 | `ops/lu.cpp` |
 | `slogdet(x)` | `getrf` | $\tfrac23 n^3$ | (0, −inf) | `ops/lu.cpp` |
 | `lu(x)` | `getrf` | $mn^2 - \tfrac13 n^3$ | 에러 아님 | `ops/factor.cpp` |
-| `lu_solve(l, u, perm, b, *, trans='N')` | `trtrs` 두 번 | $2n^2k$ | `LinAlgError` | `ops/factor.cpp` |
-| `solve_triangular(a, b)` | `trtrs` | $n^2k$ | `LinAlgError` | `ops/factor.cpp` |
-| `cond(x, ord)` (±2 외) | `getrf` + 단위행렬 우변 `getrs` | $\tfrac83 n^3$ | inf | `ops/spectral.cpp` |
+| `lu_solve(l, u, perm, b, *, trans='N')` | 삼각 풀기 두 번 (`trtrs`, 우변 두 열 이하는 `trsv`) | $2n^2k$ | `LinAlgError` | `ops/factor.cpp` |
+| `solve_triangular(a, b)` | `trtrs` (우변 두 열 이하는 `trsv`) | $n^2k$ | `LinAlgError` | `ops/factor.cpp` |
+| `cond(x, ord)` (±2 외) | `getrf` + `inv`와 같은 풀이 | $\tfrac83 n^3$ | inf | `ops/spectral.cpp` |
 
 ($n$은 행렬 크기, $k$는 우변의 열 수, `lu`는 $m \times n$이고 $m \ge n$일 때의 값이에요. `getrf`라고 적은 분해는 행과 열이 모두 32–46이면 블록이 없는 `getf2`예요. 아래 "배치와 태스크 수"에 이유가 있어요.)
 
@@ -39,7 +39,7 @@ $$
 
 1. 가우스 소거가 곧 LU 분해예요. 학교에서 배우는 "한 행의 배수를 다른 행에서 빼기"를 행렬 곱으로 적으면 $L$과 $U$가 저절로 나와요.
 2. 피벗이 없으면 소거는 불안정해요. 아주 작은 수로 나누는 순간 정보가 반올림으로 사라져요. 열에서 가장 큰 원소를 고르는 부분 피벗(partial pivoting)이 이 문제를 막고, LAPACK의 `getrf`가 그렇게 해요.
-3. stardust는 루틴을 하나씩 재서 골랐어요. `solve`는 한 번에 푸는 `gesv` 대신 `getrf` + `getrs`를, `inv`는 역행렬 전용 `getri` 대신 단위행렬을 우변으로 둔 `getrs`를 써요. 그 덕분에 `inv(a)`가 `solve(a, I)`와, `lu_solve(*lu(a), b)`가 `solve(a, b)`와 비트까지 같아요.
+3. stardust는 루틴을 하나씩 재서 골랐어요. `solve`는 한 번에 푸는 `gesv` 대신 `getrf` + `getrs`를 쓰고, 우변이 두 열 이하이면 `getrs` 안의 `trsm` 대신 `trsv`로 풀어요. `inv`는 역행렬 전용 `getri` 대신 단위행렬을 우변으로 둔 같은 풀이예요. 그 덕분에 `inv(a)`가 `solve(a, I)`와, `lu_solve(*lu(a), b)`가 `solve(a, b)`와 비트까지 같아요.
 4. 특이 행렬은 함수의 뜻에 따라 다르게 다뤄요. 해가 없는 `solve`, `inv`는 에러이고, 값이 정의되는 `det`(0), `slogdet`((0, −inf)), `lu`(분해는 있음), `cond`(inf)는 에러가 아니에요.
 
 모든 함수가 [배치와 병렬화](/internals/linalg/batch/)의 같은 틀을 거쳐요. 배치 원소 하나에서 `solve`가 하는 일은 이래요.
@@ -51,7 +51,7 @@ $$
       { label: 'pack(a)', depth: 1, where: 'pack.hpp', note: 'NaN이나 inf가 있으면 ValueError로 끝나요.' },
       { label: 'getrf', depth: 1, where: 'LAPACK', note: 'PA = LU. 정확한 0 피벗이 있으면 info > 0, 곧 LinAlgError예요.' },
       { label: 'pack(b)', where: 'pack.hpp', note: 'b를 결과 배열의 자기 자리에 바로 복사해요. 여기서 NaN을 찾으면 ValueError예요.' },
-      { label: 'getrs', where: 'LAPACK', note: '행 교환 → L 풀기 → U 풀기. 결과 자리의 b를 해 x로 덮어써요.' },
+      { label: 'lu_solve_factored', where: 'lapack.hpp', note: '행 교환 → L 풀기 → U 풀기. 우변이 3열 이상이면 getrs, 두 열 이하면 trsv 두 번이에요. 결과 자리의 b를 해 x로 덮어써요.' },
     ]}
   />
 </Fig>
@@ -381,7 +381,9 @@ int lu_factor(const Input& x, std::int64_t off, lint n, Scratch& s, T*& a, lint*
     if (n == 0) return 0;
     return lapack::lu_in_place(n, n, a, n, ipiv) > 0 ? kSingular : 0;
 }
+```
 
+```cpp
 // csrc/linalg/lapack.hpp
 template <class T>
 lint lu_in_place(lint m, lint n, T* a, lint lda, lint* ipiv) {
@@ -402,8 +404,8 @@ LU 계열의 배치 원소 하나의 비용은 `kLU = 70 + 3·n²` ns로 추정�
 
 Accelerate는 일부 작은 호출을 코어들이 함께 쓰는 행렬 연산 장치(AMX)에서 돌려서, 스레드를 늘려도 빨라지지 않고 스레드가 몇 개를 넘으면 오히려 느려져요. 재 보면 그런 곳이 두 군데예요.
 
-- **$n$ = 32–46의 분해.** 이 크기는 `getrf` 대신 블록이 없는 `getf2`로 분해해요. `getf2`는 AMX 경로를 타지 않아요. `det` 배치로 재면 10스레드에서 2.1–4.4배, 1스레드에서도 1.2–1.6배, 행렬 하나는 1.2–1.7배 빨라요. $n \ge 64$에서는 `getf2`가 느려서($n = 128$에서 0.4배) 쓰지 않아요. 크기에 따라 다른 루틴을 부르면 같은 함수의 결과가 크기에 따라 다른 계산에서 나오므로, 이득이 2배를 넘는 범위에서만 바꿨어요. 결과는 `getrf`와 반올림 수준에서 다를 수 있지만, 피벗 규칙(부분 피벗)과 특이의 판정(정확한 0 피벗)은 같아요.
-- **우변 $k \ge 8$인 삼각 풀기** (`getrs`/`trtrs` 안의 `trsm`). 루틴은 그대로 두고 태스크 수에 상한을 둬요(`lu_task_cap`).
+- **$n$ = 32–46의 분해.** 이 크기는 `getrf` 대신 블록이 없는 `getf2`로 분해해요. `getf2`는 AMX 경로를 타지 않아요. `det` 배치로 재면 10스레드에서 2.1–4.4배, 1스레드에서도 1.2–1.6배, 행렬 하나는 1.2–1.7배 빨라요. $n \ge 64$에서는 `getf2`가 느려서($n = 128$에서 0.4배) 쓰지 않아요. 결과는 `getrf`와 반올림 수준에서 다를 수 있지만, 피벗 규칙(부분 피벗)과 특이의 판정(정확한 0 피벗)은 같아요.
+- **우변 $k \ge 8$인 삼각 풀기** (`getrs`/`trtrs`/`potrs` 안의 `trsm`). 루틴은 그대로 두고 태스크 수에 상한을 둬요(`lu_task_cap`).
 
 | 경로 | 크기 | 태스크 상한 |
 |---|:---:|:---:|
@@ -412,7 +414,7 @@ Accelerate는 일부 작은 호출을 코어들이 함께 쓰는 행렬 연산 �
 
 우변이 8열 이상이면 Accelerate의 `trsm`이 블록 경로로 들어가는데, 이 경로는 호출마다 약 1.3–1.5µs의 고정비가 있고 10스레드에서도 원소당 시간이 1스레드와 같아요. 상한을 두면 해당 크기에서 1.1–1.5배 빨라져요(예: `inv` (100, 32, 32)에서 1.39배). 어느 원소가 어느 스레드에서 도는지는 결과에 영향이 없으므로 결과 비트는 같아요. 자세한 내용은 [배치와 병렬화](/internals/linalg/batch/)에 있어요.
 
-## solve: getrf + getrs
+## solve: getrf + getrs, 한두 열은 trsv
 
 ### `getrs`: 교환, L 풀기, U 풀기
 
@@ -430,20 +432,51 @@ Accelerate는 일부 작은 호출을 코어들이 함께 쓰는 행렬 연산 �
 2. 전진 대입($L$): $y_1 = 24$, $y_2 = 4 - 0.25 \cdot 24 = -2$, $y_3 = 10 - 0.5 \cdot 24 - \tfrac23 \cdot (-2) = -\tfrac23$.
 3. 후진 대입($U$): $x_3 = (-\tfrac23)/(-\tfrac23) = 1$, $x_2 = (-2 + 1.25 \cdot 1)/(-0.75) = 1$, $x_1 = (24 - 7 - 9)/8 = 1$.
 
+### 우변이 한두 열이면 `trsv`
+
+Accelerate의 `getrs`는 안에서 `trsm`을 불러요. `trsm`은 우변이 여러 열일 때를 위한 루틴이라, 우변이 한 열이면 행렬-벡터 삼각 풀기 `trsv`보다 느려요. 재 보면 $n \ge 100$의 한 열과 두 열에서 `trsm`이 `trsv`보다 분명히 느렸고, 네 열부터는 `trsm`이 빨랐어요. 그래서 우변이 두 열(`kTrsvMaxK`) 이하이면 `getrs`가 하는 세 단계를 직접 하되, 삼각 풀기를 `trsv`로 해요.
+
+```cpp
+// csrc/linalg/lapack.hpp
+template <class T>
+void lu_solve_factored(lint n, lint k, const T* lu, const lint* ipiv, T* b, lint ldb) {
+    if (n == 0 || k == 0) return;
+    if (k > kTrsvMaxK) {
+        getrs('N', n, k, lu, n, ipiv, b, ldb);
+        return;
+    }
+    for (lint j = 0; j < k; ++j) {
+        T* c = b + j * ldb;
+        for (lint i = 0; i < n; ++i)
+            if (ipiv[i] - 1 != i) std::swap(c[i], c[ipiv[i] - 1]);
+    }
+    tri_solve(false, 'L', 'N', 'U', n, k, lu, n, b, ldb);
+    tri_solve(false, 'U', 'N', 'N', n, k, lu, n, b, ldb);
+}
+```
+
+- 교환은 `dlaswp`처럼 `ipiv`를 앞에서부터 차례로 적용해요. 값을 옮기기만 하므로 반올림이 없어요.
+- `tri_solve`는 우변 두 열 이하에서 `cblas_dtrsv`/`cblas_ztrsv`를 열마다 불러요([패킹과 결과 레이아웃](/internals/linalg/packing/)). 압축 형식의 `lu` 하나에서 $L$(단위 대각, `'U'`)과 $U$를 차례로 읽어요.
+- `trsv`와 `trsm`은 같은 대입을 다른 순서로 더해서, 결과는 반올림 수준에서 달라요. 그래서 우변 두 열 이하의 해는 `getrs`를 쓴 경우와 끝 비트가 다를 수 있어요. 정확도 측정에서 조건수 $10^4$인 `solve`의 역오차가 조금 커졌지만(최댓값 $0.015\, n\varepsilon$), 계약($10\, n\varepsilon$)과는 거리가 멀어요.
+- 우변의 열 수로 경로를 고르므로, 같은 행렬과 같은 우변 열이라도 우변이 2열일 때와 3열일 때 다른 루틴을 거쳐 끝 비트가 다를 수 있어요.
+
 ### 결과 자리에서 풀기
 
 ```cpp
-// csrc/linalg/ops/lu.cpp의 solve(), 배치 원소 하나의 몸체, 줄임
-T* lu; lint* ipiv;
-if (const int code = lu_factor<T>(a, off[0], n, s, lu, ipiv)) return code;  // a NaN, a 특이
-LapackSlot<T> xs(res + i * n * k, n * k, s, Scratch::kAlign0);   // 이 원소의 결과 자리
-T* x = xs.get();
-if (!pack(y.dtype(), y.data() + off[1], n, k, r.rs, r.cs, x, n, true)) return kNonFiniteB;  // b NaN
-if (n > 0 && k > 0) lapack::getrs('N', n, k, lu, n, ipiv, x, n);  // 그 자리를 해로 덮어써요
-return 0;
+                // csrc/linalg/ops/lu.cpp
+                T* lu;
+                lint* ipiv;
+                if (const int code = lu_factor<T>(a, off[0], n, s, lu, ipiv)) return code;
+                LapackSlot<T> xs(res + i * n * k, n * k, s, Scratch::kAlign0);
+                T* x = xs.get();  // b is packed straight into the output slot (docs/design/linalg.md §5.2)
+                if (!pack(y.dtype(), y.data() + off[1], n, k, r.rs, r.cs, x, n, true)) return kNonFiniteB;
+                lapack::lu_solve_factored(n, k, lu, ipiv, x, n);  // trsv for one or two columns
+                return 0;
 ```
 
-- **복사가 한 번씩뿐이에요.** `a`는 작업 메모리에, `b`는 결과 배열의 자기 자리에 바로 패킹해요. `getrs`가 그 자리의 `b`를 해로 덮어쓰므로 해를 다시 옮기지 않아요.
+`lu_factor`가 `a`의 NaN과 특이를 알려 주고, `b`는 이 원소의 결과 자리(`xs`)에 바로 패킹해요. 그 자리에서 해로 덮어써요.
+
+- **복사가 한 번씩뿐이에요.** `a`는 작업 메모리에, `b`는 결과 배열의 자기 자리에 바로 패킹해요. 풀이가 그 자리의 `b`를 해로 덮어쓰므로 해를 다시 옮기지 않아요.
 - **결과 자리가 16바이트 정렬이 아니면** `LapackSlot`이 정렬된 작업 메모리를 대신 주고, 소멸할 때 결과 자리로 복사해요. Accelerate는 배열이 16바이트 정렬인지에 따라 반올림을 다르게 할 때가 있어서, 같은 행렬이 배치 안의 위치에 따라 다른 비트를 받지 않게 하는 장치예요([배치와 병렬화](/internals/linalg/batch/)).
 - **에러 순서**: `a`의 NaN → `a`의 특이 → `b`의 NaN이에요. `b`를 패킹하기 전에 분해가 돌아서 이 순서가 저절로 나와요. 인자 순서대로 보고 각 행렬의 특이 판정은 그 행렬의 유한성 검사 바로 뒤에 오게 하는 것이 linalg 전체의 규칙이에요.
 - **우변의 모양**: `b`가 1차원이면 벡터 하나 `(n,)`이고 결과도 `(n,)`이에요. 그 밖에는 `(..., n, k)` 행렬 묶음이고, `a`와 `b`의 배치 축은 브로드캐스트해요(`rhs_of`).
@@ -455,11 +488,11 @@ LAPACK에는 분해와 풀기를 한 번에 하는 드라이버 `gesv`가 있고
 
 - **느려요.** $n$ = 2–2048, 우변 1개·16개·$n$개로 두 경로를 재면 `getrf` + `getrs`가 작은 행렬에서 30–40% 빠르고, $n = 1024$에서 1.6배, 2048에서 2.2배 빨라요. $n = 512$만 2% 느렸는데 측정 오차 수준이에요.
 - **큰 행렬에서 스레드를 안 써요.** Accelerate의 루틴은 대부분 한 스레드로 도는데, `getrf`만 $n \ge 768$에서 자체 스레드를 써요(CPU 시간/경과 시간이 $n = 768$에서 2.19, 1024에서 2.98). `gesv`는 이 경로를 타지 않아요. $n = 1024$에서 `gesv`가 9.0ms, `getrf`가 4.8ms였어요.
-- **결과 비트가 달라요.** $n \ge 4$에서 `gesv`와 `getrf` + `getrs`의 결과 비트가 달라요. Accelerate의 `gesv`가 안에서 다른 계산 순서를 쓴다는 뜻이에요. 그래서 stardust의 `solve`는 numpy와 반올림 수준에서 달라요(작은 $n$에서는 같아요).
+- **결과 비트가 달라요.** $n \ge 4$에서 `gesv`와 `getrf` + `getrs`의 결과 비트가 달라요. Accelerate의 `gesv`가 안에서 다른 계산 순서를 쓴다는 뜻이에요. 그래서 stardust의 `solve`는 numpy와 반올림 수준에서 달라요. 작은 $n$이라도 우변이 두 열 이하이면 `trsv` 때문에 다를 수 있어요.
 
-두 경로 모두 같은 부분 피벗 LU이므로 정확도는 같은 수준이에요. 그래서 속도에서 앞서는 쪽을 골랐어요. numpy와 마지막 자리까지 같을 필요는 없어요. 대신 `getrf` + `getrs`로 나누면 아래의 비트 관계(`inv`, `lu_solve`)를 얻어요.
+두 경로 모두 같은 부분 피벗 LU이므로 정확도는 같은 수준이에요. 그래서 속도에서 앞서는 쪽을 골랐어요. numpy와 마지막 자리까지 같을 필요는 없어요. 대신 분해와 풀이를 나누면 아래의 비트 관계(`inv`, `lu_solve`)를 얻어요.
 
-스레드는 결과를 바꾸지 않아요. 10개 스레드에서 `getrf`를 동시에 불러도 호출 스레드 하나의 결과와 비트가 같았고($n$ = 8, 64, 256), 프로세스 설정으로 Accelerate를 한 스레드로 고정해도 기본 설정과 비트가 같았어요($n$ = 64, 512, 1024, 자체 스레드를 쓰는 $n = 1024$의 `getrf` 포함). 그래서 stardust가 배치를 스레드에 나누든, 큰 행렬 하나를 Accelerate가 스레드로 나누든 결과는 같아요. 다만 Accelerate의 스레드 모드(`VECLIB_MAXIMUM_THREADS`로 정하는 단일·다중)가 다르면 다른 루틴에서는 마지막 자리 몇 개가 다를 수 있어요(`lstsq`에서 상대 $3 \times 10^{-14}$). stardust는 이 모드를 바꾸지 않으므로, 같은 모드에서 같은 비트를 약속해요.
+스레드는 결과를 바꾸지 않아요. 10개 스레드에서 `getrf`를 동시에 불러도 호출 스레드 하나의 결과와 비트가 같았고($n$ = 8, 64, 256), 프로세스 설정으로 Accelerate를 한 스레드로 고정해도 기본 설정과 비트가 같았어요($n$ = 64, 512, 1024, 자체 스레드를 쓰는 $n = 1024$의 `getrf` 포함). 그래서 stardust가 배치를 스레드에 나누든, 큰 행렬 하나를 Accelerate가 스레드로 나누든 지금은 결과가 같아요. 다만 Accelerate의 스레드 모드(`VECLIB_MAXIMUM_THREADS`로 정하는 단일·다중)가 다르면 다른 루틴에서는 마지막 자리 몇 개가 다를 수 있어요(`lstsq`에서 상대 $3 \times 10^{-14}$). stardust는 이 모드를 바꾸지 않아요. 약속은 같은 기계, 같은 스레드 수에서 실행마다 같은 비트예요.
 
 ## inv: 단위행렬을 우변으로
 
@@ -475,9 +508,9 @@ LAPACK에는 분해와 풀기를 한 번에 하는 드라이버 `gesv`가 있고
 
 분해 뒤 약 $\tfrac43 n^3$, 분해까지 합쳐 $2n^3$ flop이에요.
 
-**단위행렬을 우변으로 둔 `getrs`**
+**단위행렬을 우변으로 둔 풀이**
 
-$AX = I$를 `getrs`로 풀어요. 우변이 $n$개이므로 $2n^2 \cdot n = 2n^3$, 분해까지 합쳐 $\tfrac83 n^3$ flop이에요. 단위행렬의 0을 이용하지 않으므로 `getri`보다 flop이 3분의 1 많아요.
+$AX = I$를 `solve`와 같은 풀이(`lu_solve_factored`)로 풀어요. 우변이 $n$열이므로 $n \ge 3$이면 `getrs`예요. 우변이 $n$개이므로 $2n^2 \cdot n = 2n^3$, 분해까지 합쳐 $\tfrac83 n^3$ flop이에요. 단위행렬의 0을 이용하지 않으므로 `getri`보다 flop이 3분의 1 많아요.
 
 ```cpp
 // csrc/linalg/ops/common.hpp
@@ -485,12 +518,12 @@ template <class T>
 void lu_inverse(const T* lu, const lint* ipiv, lint n, T* r) {
     if (n == 0) return;
     for (lint k = 0; k < n * n; ++k) r[k] = T(0);
-    for (lint k = 0; k < n; ++k) r[k * n + k] = T(1);   // r = I (열 우선)
-    lapack::getrs('N', n, n, lu, n, ipiv, r, n);        // r ← A⁻¹
+    for (lint k = 0; k < n; ++k) r[k * n + k] = T(1);
+    lapack::lu_solve_factored(n, n, lu, ipiv, r, n);  // as solve() does
 }
 ```
 
-`inv`는 결과 배열의 자기 자리(`LapackSlot`)에 단위행렬을 채우고 그 자리에서 `getrs`를 불러요. 작업 메모리는 분해용 $n^2$과 `ipiv`뿐이고, `getri`의 `work`는 필요 없어요.
+`r`을 열 우선 단위행렬로 채우고 그 자리를 $A^{-1}$로 덮어써요. `inv`는 결과 배열의 자기 자리(`LapackSlot`)를 `r`로 넘겨요. 작업 메모리는 분해용 $n^2$과 `ipiv`뿐이고, `getri`의 `work`는 필요 없어요.
 
 ### 고른 이유와 대가
 
@@ -507,14 +540,14 @@ void lu_inverse(const T* lu, const lint* ipiv, lint n, T* r) {
 - **$n \le 128$에서는 `getrs`가 빨라요.** 참조 구현 기준으로 `getri`는 `trtri`, 열 블록 루프, 열 교환을 따로 도는 반면 `getrs`는 `laswp`와 `trsm` 두 번뿐이에요. 작은 행렬에서는 이런 단계 수의 차이가 flop 차이보다 크게 보여요(Accelerate 안쪽의 정확한 원인은 확인할 수 없어요).
 - **$n \ge 256$에서는 `getri`가 빨라요.** 최대 1.6배예요. 큰 행렬에서는 flop 수($2n^3$ 대 $\tfrac83 n^3$)가 시간을 정하기 때문이에요.
 
-stardust는 모든 크기에서 `getrs`를 써요. 이유는 두 가지예요.
+stardust는 모든 크기에서 단위행렬 우변의 풀이를 써요. 이유는 두 가지예요.
 
-1. **`inv(a)`가 `solve(a, I)`와 비트까지 같아요.** 둘 다 `lu_factor` 다음 같은 단위행렬 우변으로 같은 `getrs`를 부르기 때문이에요. 같은 원리로 `matrix_power(x, -1)`과 `cond`의 역행렬도 `inv(x)`와 비트가 같아요. 사용자가 두 식을 바꿔 써도 결과가 흔들리지 않아요.
-2. **크기에 따라 경로를 바꾸지 않아요.** 128과 256 사이 어딘가에서 `getri`로 넘어가면 $n$ = 128의 `inv`와 $n$ = 256의 `inv`가 서로 다른 계산에서 나오고, 위 비트 관계도 작은 행렬에서만 성립하게 돼요. 같은 함수의 결과는 크기와 상관없이 같은 계산에서 나오게 하는 것이 linalg 전체의 규칙이에요.
+1. **`inv(a)`가 `solve(a, I)`와 비트까지 같아요.** 둘 다 `lu_factor` 다음 같은 단위행렬 우변으로 같은 `lu_solve_factored`를 부르기 때문이에요. 같은 원리로 `matrix_power(x, -1)`과 `cond`의 역행렬도 `inv(x)`와 비트가 같아요. 사용자가 두 식을 바꿔 써도 결과가 흔들리지 않아요.
+2. **비트 관계가 모든 크기에서 성립해요.** 128과 256 사이 어딘가에서 `getri`로 넘어가면 그보다 큰 행렬에서는 위의 관계가 깨져요. 크기로 경로를 바꾸는 것은 이득이 분명하면 하지만, 여기서는 최대 1.6배의 이득과 이 관계를 견줘 모든 크기에서 같은 풀이를 써요.
 
 대가는 큰 행렬의 `inv`가 `getri`를 쓸 때보다 최대 1.6배 느리다는 것이에요. 연립방정식을 풀 목적이라면 역행렬 대신 `solve`를 쓰는 편이 어느 크기에서나 빠르고 정확해요.
 
-numpy의 `inv`는 단위행렬을 우변으로 둔 `gesv`를 불러요 [10]. 그래서 `solve`와 같은 이유로 $n \ge 4$에서 numpy와 반올림 수준에서 달라요.
+numpy의 `inv`는 단위행렬을 우변으로 둔 `gesv`를 불러요 [10]. 그래서 `solve`와 같은 이유로 numpy와 반올림 수준에서 달라요.
 
 ## det과 slogdet
 
@@ -538,13 +571,16 @@ T det_of(const T* lu, const lint* ipiv, lint n, bool singular) {
     T d = T(1);
     bool ok = true;
     for (lint i = 0; i < n; ++i) {
-        d *= lu[i * n + i];                 // U의 대각 (열 우선이라 i·n + i)
-        if (ipiv[i] != i + 1) d = -d;       // ipiv는 1부터: 교환 하나에 부호 한 번
+        d *= lu[i * n + i];
+        if (ipiv[i] != i + 1) d = -d;
         ok &= normal(d);
     }
     if (ok) return d;
-    // 부분 곱이 넘쳤거나 정규수 범위를 벗어났어요. 인수와 부분 곱을 [0.5, 1)로 맞추고
-    // 2의 거듭제곱은 따로 더해서 다시 곱해요. 마지막 ldexp에서만 넘치거나 0이 될 수 있어요.
+    // A partial product overflowed or left the normal range, although the determinant
+    // may not (diag(1e200, 1e200, 1e-300)). Again with every factor and partial product
+    // scaled into [0.5, 1) and the powers of 2 summed apart: scaling by a power of 2 is
+    // exact, so the products round as above while they stay normal, and only the final
+    // ldexp can overflow or underflow.
     d = T(1);
     std::int64_t e = 0;
     for (lint i = 0; i < n; ++i) {
@@ -561,14 +597,19 @@ T det_of(const T* lu, const lint* ipiv, lint n, bool singular) {
 
 template <class T>
 void sign_logabs(const T* lu, const lint* ipiv, lint n, bool singular, T& sign, double& logabs) {
-    if (singular) { sign = T(0); logabs = -inf; return; }
-    sign = T(1); logabs = 0.0;
+    if (singular) {
+        sign = T(0);
+        logabs = -std::numeric_limits<double>::infinity();
+        return;
+    }
+    sign = T(1);
+    logabs = 0.0;
     for (lint i = 0; i < n; ++i) {
         const T u = lu[i * n + i];
         const double au = std::abs(u);
-        logabs += std::log(au);             // log|det| = Σ log|u_ii|
-        sign *= u / au;                     // 실수는 ±1, complex는 단위원 위의 점
-        if (ipiv[i] != i + 1) sign = -sign;
+        logabs += std::log(au);
+        sign *= u / au;
+        if (ipiv[i] != i + 1) sign = -sign;  // ipiv is 1-based: row i was swapped with ipiv[i]
     }
 }
 ```
@@ -606,18 +647,43 @@ numpy 2.5.4의 `det`은 다르게 계산해요. `slogdet`을 구한 뒤 $\text{s
 - `perm`: 길이 $m$의 int64 순열. **`x[perm] == L @ U`**(반올림 범위에서)
 
 ```cpp
-// csrc/linalg/ops/factor.cpp의 lu(), 배치 원소 하나, 줄임
-T* a = s.get<T>(m * n);
-lint* ipiv = s.get_ints(kk);
-if (!pack(x.dtype(), x.data() + off[0], m, n, x.stride(-2), x.stride(-1), a, m, true)) return kNonFinite;
-if (m > 0 && n > 0) lapack::lu_in_place(m, n, a, m, ipiv);  // info > 0이어도 에러가 아니에요
-for (lint j = 0; j < kk; ++j)                              // L: 대각 아래는 승수, 대각은 1, 위는 0
-    for (lint r = 0; r < m; ++r) li[j * m + r] = r > j ? a[j * m + r] : (r == j ? T(1) : T(0));
-for (lint j = 0; j < n; ++j)                               // U: 대각과 위, 아래는 0
-    for (lint r = 0; r < kk; ++r) ui[j * kk + r] = r <= j ? a[j * m + r] : T(0);
-for (lint r = 0; r < m; ++r) p[r] = r;                     // perm: 0..m-1에서 시작해
-for (lint r = 0; r < kk; ++r) std::swap(p[r], p[ipiv[r] - 1]);  // 교환을 차례로 재생
+                // csrc/linalg/ops/factor.cpp
+                T* a = s.get<T>(static_cast<std::size_t>(m * n));
+                lint* ipiv = s.get_ints(static_cast<std::size_t>(kk));
+                if (!pack(x.dtype(), x.data() + off[0], m, n, x.stride(-2), x.stride(-1), a, m, true))
+                    return kNonFinite;
+                // A singular matrix still has an LU factorization; U just has a zero
+                // on its diagonal (docs/design/linalg.md §10.2), so info > 0 is not an error here.
+                if (m > 0 && n > 0) lapack::lu_in_place(m, n, a, m, ipiv);
+                T* li = L + i * m * kk;
+                T* ui = U + i * kk * n;
+                if (m * n <= 1024) {  // small: one loop (runs of library calls cost more here)
+                    for (lint j = 0; j < kk; ++j)
+                        for (lint r = 0; r < m; ++r) li[j * m + r] = r > j ? a[j * m + r] : (r == j ? T(1) : T(0));
+                    for (lint j = 0; j < n; ++j)
+                        for (lint r = 0; r < kk; ++r) ui[j * kk + r] = r <= j ? a[j * m + r] : T(0);
+                } else {  // column by column, in runs: zeros, the unit diagonal, L's strict part; U's part, zeros
+                    for (lint j = 0; j < kk; ++j) {
+                        T* c = li + j * m;
+                        std::fill(c, c + j, T(0));
+                        c[j] = T(1);
+                        std::copy(a + j * m + j + 1, a + (j + 1) * m, c + j + 1);
+                    }
+                    for (lint j = 0; j < n; ++j) {
+                        T* c = ui + j * kk;
+                        const lint top = std::min<lint>(j + 1, kk);
+                        std::copy(a + j * m, a + j * m + top, c);
+                        std::fill(c + top, c + kk, T(0));
+                    }
+                }
+                // ipiv records swaps (step r swapped rows r and ipiv[r]-1); replaying them
+                // on 0..m-1 gives the rows of x that L @ U reproduces: x[perm] = L @ U.
+                std::int64_t* p = P + i * m;
+                for (lint r = 0; r < m; ++r) p[r] = r;
+                for (lint r = 0; r < kk; ++r) std::swap(p[r], p[ipiv[r] - 1]);
 ```
+
+`L`은 대각 아래가 승수, 대각이 1, 위가 0이고, `U`는 대각과 그 위, 아래가 0이에요. 행렬이 작으면($mn \le 1024$) 원소마다 고르는 루프 하나로 나눠 쓰고, 크면 열마다 0 채우기(`std::fill`)와 복사(`std::copy`)를 이어 붙여요. 작은 행렬에서는 이런 라이브러리 호출을 여러 번 하는 비용이 원소 루프보다 컸어요. 어느 쪽이든 같은 값을 같은 자리에 써요.
 
 `perm`은 0, 1, …, $m-1$을 늘어놓은 배열에 `ipiv`의 교환을 **같은 순서로 다시 적용**해서 만들어요. 그러면 `perm[i]`는 "최종적으로 $i$번째 자리에 온 원래 행의 번호"가 되고, 그 행들을 모은 `x[perm]`이 $PA$, 곧 $LU$예요. 앞의 예에서는
 
@@ -642,10 +708,10 @@ $$
 `trans='N'`일 때 하는 일은 셋이에요.
 
 1. `x = b[perm]`: 우변의 행을 `perm` 순서로 모아요. 값을 옮기기만 하므로 반올림이 없어요.
-2. `trtrs('L', 'N', 'U', l, x)`: 단위 대각 아래 삼각 $L$로 전진 대입해요. `l`의 대각은 읽지 않고 1로 봐요.
-3. `trtrs('U', 'N', 'N', u, x)`: $U$로 후진 대입해요.
+2. 단위 대각 아래 삼각 $L$로 전진 대입해요(`tri_solve('L', 'N', 'U')`). `l`의 대각은 읽지 않고 1로 봐요.
+3. $U$로 후진 대입해요(`tri_solve('U', 'N', 'N')`).
 
-`trtrs`는 삼각 행렬로 여러 우변을 푸는 LAPACK 루틴이에요. 참조 구현은 대각에 정확한 0이 있는지 확인하고(`diag = 'N'`일 때, 있으면 `info` = 그 위치) 없으면 `trsm`을 한 번 불러요 [2]. 둘째 인자는 행렬을 그대로(`'N'`), 전치해서(`'T'`), 켤레 전치해서(`'C'`) 쓰라는 뜻이에요.
+삼각 풀기는 `solve`와 같은 `tri_solve`예요. 우변이 두 열 이하이면 `trsv`, 세 열 이상이면 `trtrs`예요. `trtrs`는 삼각 행렬로 여러 우변을 푸는 LAPACK 루틴이에요. 참조 구현은 대각에 정확한 0이 있는지 확인하고(`diag = 'N'`일 때, 있으면 `info` = 그 위치) 없으면 `trsm`을 한 번 불러요 [2]. 둘째 인자는 행렬을 그대로(`'N'`), 전치해서(`'T'`), 켤레 전치해서(`'C'`) 쓰라는 뜻이에요.
 
 `trans`는 네 인자가 배열인지 본 다음, 모양을 검사하기 전에 읽어요. 그래서 배열이 아닌 인자의 `TypeError`가 `trans`의 에러보다 먼저 나요. 값은 `'N'`, `'T'`, `'H'` 셋이고, 다른 문자열은 `ValueError`, 문자열이 아니면 `TypeError`예요.
 
@@ -655,16 +721,25 @@ $$
     const char trans = parse_choice(trans_o, "trans", {"N", "T", "H"})[0];
 ```
 
-배치 원소 하나의 몸체는 인수를 읽고 검사하는 앞부분과 LAPACK을 부르는 뒷부분으로 나뉘어요. 앞부분은 이래요.
+배치 원소 하나의 몸체는 인수를 읽고 검사하는 앞부분과 풀이를 부르는 뒷부분으로 나뉘어요. 앞부분은 이래요.
 
 ```cpp
                 // csrc/linalg/ops/factor.cpp
                 const T *tl, *tu;
                 lint ldl, ldu;
-                if (!triangle_operand(l, off[0], n, true, false, s.get<T>(static_cast<std::size_t>(n * n)), tl, ldl))
+                bool rml, rmu;
+                const char op = trans == 'N' ? 'N' : (trans == 'H' && std::is_same_v<T, cplx> ? 'C' : 'T');
+                bool* rm_ok = lapack::row_major_ok(std::is_same_v<T, cplx>, op, r.k) ? &rml : nullptr;
+                if (!triangle_operand(
+                        l, off[0], n, true, false, s.get<T>(static_cast<std::size_t>(n * n)), tl, ldl, rm_ok
+                    ))
                     return kNonFinite;
-                if (!triangle_operand(u, off[1], n, false, true, s.get<T>(static_cast<std::size_t>(n * n), 3), tu, ldu))
+                if (!triangle_operand(
+                        u, off[1], n, false, true, s.get<T>(static_cast<std::size_t>(n * n), 3), tu, ldu,
+                        rm_ok ? &rmu : nullptr
+                    ))
                     return kNonFiniteU;
+                if (!rm_ok) rml = rmu = false;
                 if (zero_on_diagonal(tu, n, ldu)) return kSingular;
                 // perm must be a permutation of 0..n-1.
                 lint* perm = s.get_ints(static_cast<std::size_t>(n));
@@ -700,24 +775,25 @@ $$
                 if (!ok) return kNonFiniteB;
 ```
 
-- **삼각 인수는 그 자리에서 읽어요.** `l`, `u`는 LAPACK이 읽기만 해요. 입력이 계산 타입과 같은 dtype이고, 열 우선이고, 시작과 열 간격이 16바이트 정렬이면 복사하지 않고 읽는 삼각만 NaN 검사를 해요(`triangle_operand`). `lu`가 돌려준 `L`, `U`는 열 우선이라 대개 이 조건을 만족해요. 아니면 읽는 삼각만 작업 메모리로 패킹해요. 어느 쪽이든 LAPACK이 보는 값은 같아서 결과 비트도 같아요.
+- **삼각 인수는 그 자리에서 읽어요.** `l`, `u`는 풀이가 읽기만 해요. 입력이 계산 타입과 같은 dtype이고, 열 우선이나 행 우선이고, 시작과 열(행) 간격이 16바이트 정렬이면 복사하지 않고 읽는 삼각만 NaN 검사를 해요(`triangle_operand`). `lu`가 돌려준 `L`, `U`는 열 우선이라 대개 이 조건을 만족해요. 아니면 읽는 삼각만 작업 메모리로 패킹해요. 열 우선을 그 자리에서 읽으면 패킹한 것과 같은 값이 같은 호출에 들어가서 결과 비트도 같아요. 행 우선(C 순서)은 같은 메모리를 전치로 보고 풀어서 반올림 수준에서 다를 수 있어요([패킹과 결과 레이아웃](/internals/linalg/packing/)).
+- **행 우선을 그 자리에서 못 읽는 경우가 있어요.** complex 인수에 켤레 전치(`trans='H'`)가 필요하고 우변이 세 열 이상이면, 행 우선 인수를 LAPACK에 넘길 전치 연산이 없어서 패킹해요(`row_major_ok`가 거짓이면 `rm_ok`가 `nullptr`).
+- **큰 삼각의 검사는 풀에서 해요.** $n^2 \ge 2^{18}$이면 읽는 삼각의 NaN 검사를 열 32개씩 나눠요. 큰 삼각 풀기에서는 이 검사가 호출 시간의 큰 몫이에요.
 - **읽는 칸만 검사해요.** `l`은 대각 아래만(`triangle_operand`의 넷째 인자 `true`가 아래, 다섯째 `false`가 대각을 읽지 않는다는 뜻), `u`는 대각과 그 위만 검사해요. 읽지 않는 칸에 NaN이 있어도 결과에 영향이 없으므로 에러가 아니에요.
-- **대각의 0은 LAPACK을 부르기 전에 확인해요**(`zero_on_diagonal`, $O(n)$). `trtrs`도 확인하지만, `trtrs`에 맡기면 `perm`과 `b`를 검사한 뒤에야 알게 되어 에러 순서(`l` NaN → `u` NaN → `u` 특이 → `perm` → `b` NaN)를 지킬 수 없어요.
+- **대각의 0은 풀기 전에 확인해요**(`zero_on_diagonal`, $O(n)$). `trtrs`도 확인하지만(`trsv`는 확인하지 않아요), `trtrs`에 맡기면 `perm`과 `b`를 검사한 뒤에야 알게 되어 에러 순서(`l` NaN → `u` NaN → `u` 특이 → `perm` → `b` NaN)를 지킬 수 없어요.
 - **`perm` 검사**: int64가 아니면 TypeError, 길이가 $n$이 아니면 ValueError예요(배치에 들어가기 전에 봐요). 배치 원소마다 0..$n-1$의 순열이 아니면 ValueError예요(`kBadPerm`). 확인용 `seen` 배열은 원소마다 다시 쓰는 작은 버퍼라, 다른 스레드의 버퍼와 캐시 라인을 나누지 않도록 `Scratch`가 따로 라인 경계에 맞춰 줘요.
 - **`b`를 읽는 순서가 `trans`에 따라 달라요.** `'N'`이면 `perm[k]`번째 행을 $k$번째 자리로 모으고, 결과 자리(`xs`)에 바로 놓아 그 자리에서 풀어요. `'T'`, `'H'`이면 `b`를 순서대로 작업 버퍼(`Scratch` 슬롯 2)에 옮겨요. 어느 쪽이든 dtype 변환과 NaN 검사를 같은 루프에서 해요.
 
-뒷부분은 LAPACK 호출이에요.
+뒷부분은 풀이예요.
 
 ```cpp
                 // csrc/linalg/ops/factor.cpp
                 if (n > 0 && r.k > 0) {
                     if (trans == 'N') {
-                        lapack::trtrs('L', 'N', 'U', n, r.k, tl, ldl, x, n);
-                        lapack::trtrs('U', 'N', 'N', n, r.k, tu, ldu, x, n);
+                        lapack::tri_solve(rml, 'L', 'N', 'U', n, r.k, tl, ldl, x, n);
+                        lapack::tri_solve(rmu, 'U', 'N', 'N', n, r.k, tu, ldu, x, n);
                     } else {
-                        const char t = trans == 'H' && std::is_same_v<T, cplx> ? 'C' : 'T';
-                        lapack::trtrs('U', t, 'N', n, r.k, tu, ldu, x, n);
-                        lapack::trtrs('L', t, 'U', n, r.k, tl, ldl, x, n);
+                        lapack::tri_solve(rmu, 'U', op, 'N', n, r.k, tu, ldu, x, n);
+                        lapack::tri_solve(rml, 'L', op, 'U', n, r.k, tl, ldl, x, n);
                         T* dst = xs.get();
                         for (lint j = 0; j < r.k; ++j)
                             for (lint k = 0; k < n; ++k) dst[j * n + perm[k]] = x[j * n + k];
@@ -731,13 +807,13 @@ $$
 
 `lu`의 인수는 $PA = LU$, 곧 $A = P^{\mathsf T} L U$를 만족해요. 전치하면 $A^{\mathsf T} = U^{\mathsf T} L^{\mathsf T} P$이므로 $A^{\mathsf T}x = b$는 차례를 뒤집은 세 단계가 돼요.
 
-1. $U^{\mathsf T} y = b$: $U^{\mathsf T}$는 아래 삼각이라 전진 대입이에요. `trtrs('U', 'T', 'N', u, x)`.
-2. $L^{\mathsf T} z = y$: $L^{\mathsf T}$는 대각이 1인 위 삼각이라 후진 대입이에요. `trtrs('L', 'T', 'U', l, x)`.
+1. $U^{\mathsf T} y = b$: $U^{\mathsf T}$는 아래 삼각이라 전진 대입이에요. `tri_solve('U', 'T', 'N', u, x)`.
+2. $L^{\mathsf T} z = y$: $L^{\mathsf T}$는 대각이 1인 위 삼각이라 후진 대입이에요. `tri_solve('L', 'T', 'U', l, x)`.
 3. $P x = z$: $(Px)_k = x_{\text{perm}[k]}$이므로 $z_k$를 $x$의 `perm[k]`번째 자리에 놓아요(흩기). `dst[j * n + perm[k]] = x[j * n + k]`가 이 줄이에요. 값을 옮기기만 하므로 반올림이 없어요.
 
-`'N'`은 모으기 → $L$ → $U$이고, `'T'`는 $U^{\mathsf T}$ → $L^{\mathsf T}$ → 흩기예요. 순열이 맨 끝에 오므로 `b`를 모으지 않고 그대로 풀어요. 흩기는 풀린 값을 다른 자리로 옮기는 일이라, 작업 버퍼에서 풀고 마지막에 결과 자리로 흩어요. 삼각 인수는 `'N'`과 같은 배열을 그 자리에서 읽고, LAPACK에 전치하라고만 알려요. 전치한 사본을 만들지 않아요.
+`'N'`은 모으기 → $L$ → $U$이고, `'T'`는 $U^{\mathsf T}$ → $L^{\mathsf T}$ → 흩기예요. 순열이 맨 끝에 오므로 `b`를 모으지 않고 그대로 풀어요. 흩기는 풀린 값을 다른 자리로 옮기는 일이라, 작업 버퍼에서 풀고 마지막에 결과 자리로 흩어요. 삼각 인수는 `'N'`과 같은 배열을 그 자리에서 읽고, BLAS·LAPACK에 전치하라고만 알려요. 전치한 사본을 만들지 않아요.
 
-`'H'`는 같은 차례에 `trtrs`의 `'C'`(켤레 전치)를 넘겨요. $A^{\mathsf H} = U^{\mathsf H} L^{\mathsf H} P$이기 때문이에요. 계산 타입이 실수이면 켤레가 아무 일도 하지 않으므로 `'T'`를 넘기고, 그래서 실수 인수와 실수 `b`에서 `'H'`와 `'T'`는 같은 호출, 같은 비트예요.
+`'H'`는 같은 차례에 `'C'`(켤레 전치)를 넘겨요. $A^{\mathsf H} = U^{\mathsf H} L^{\mathsf H} P$이기 때문이에요. 계산 타입이 실수이면 켤레가 아무 일도 하지 않으므로 `'T'`를 넘기고, 그래서 실수 인수와 실수 `b`에서 `'H'`와 `'T'`는 같은 호출, 같은 비트예요.
 
 ```python
 >>> a = sd.asarray([[1.0, 2.0], [3.0, 4.0]])
@@ -746,7 +822,7 @@ $$
 >>> sd.linalg.lu_solve(L, U, perm, b)
 array([-1.0,  1.0], dtype=float64)
 >>> sd.linalg.lu_solve(L, U, perm, b, trans='T')
-array([-0.49999999999999983,   0.4999999999999999], dtype=float64)
+array([-0.49999999999999983,  0.49999999999999994], dtype=float64)
 >>> sd.linalg.solve(sd.matrix_transpose(a), b)
 array([-0.5,  0.5], dtype=float64)
 >>> h = sd.linalg.lu_solve(L, U, perm, b, trans='H')
@@ -756,61 +832,95 @@ True
 
 $a^{\mathsf T}x = b$의 참 해는 $(-0.5, 0.5)$예요. `trans='T'`는 $a$의 분해를 그대로 쓰고, `solve(aᵀ, b)`는 $a^{\mathsf T}$를 따로 분해해요(피벗도 달라요). 그래서 둘은 반올림 차이 안에서 같고 끝자리는 다를 수 있어요. `trans`가 있으면 같은 행렬로 $a x = b$와 $a^{\mathsf T}x = b$를 모두 풀 때도 분해는 한 번이면 돼요.
 
-참조 구현의 `getrs`도 전치 경로가 같은 모양이에요 [2]. `trsm('Left', 'Upper', 'Transpose', 'Non-unit', U, B)`, `trsm('Left', 'Lower', 'Transpose', 'Unit', L, B)`를 차례로 부른 뒤 `dlaswp(B, ipiv, incx = -1)`로 교환을 **거꾸로** 적용해요. 교환을 거꾸로 차례대로 하는 것과 `perm`으로 한 번에 흩는 것은 같은 순열이라 반올림 차이가 없어요. 그래서 `getrs`를 `trans = 'T'`로 부르는 scipy 1.18.1의 `lu_solve(lu_factor(a), b, trans=1)`과, 켤레 전치의 `trans=2`와 $n$ = 3, 50, 300의 실수·complex 행렬에서 지금은 비트까지 같아요(약속은 아니에요). `trans`의 값은 희소 쪽 `sd.sparse.splu(A).solve(b, trans=)`와 같은 문자예요(scipy.linalg는 정수 0, 1, 2예요).
+참조 구현의 `getrs`도 전치 경로가 같은 모양이에요 [2]. `trsm('Left', 'Upper', 'Transpose', 'Non-unit', U, B)`, `trsm('Left', 'Lower', 'Transpose', 'Unit', L, B)`를 차례로 부른 뒤 `dlaswp(B, ipiv, incx = -1)`로 교환을 **거꾸로** 적용해요. 교환을 거꾸로 차례대로 하는 것과 `perm`으로 한 번에 흩는 것은 같은 순열이라 반올림 차이가 없어요. 그래서 우변이 세 열 이상이면 `getrs`를 `trans = 'T'`로 부르는 scipy 1.18.1의 `lu_solve(lu_factor(a), b, trans=1)`과, 켤레 전치의 `trans=2`와 $n$ = 3, 50, 300의 실수·complex 행렬에서 지금은 비트까지 같아요(약속은 아니에요). 우변이 두 열 이하이면 `trsv`로 풀어서 반올림 수준에서 달라요. `trans`의 값은 희소 쪽 `sd.sparse.splu(A).solve(b, trans=)`와 같은 문자예요(scipy.linalg는 정수 0, 1, 2예요).
 
 ### `solve`와 비트가 같은 이유
 
 `lu_solve(*lu(a), b)`(`trans='N'`)는 `solve(a, b)`와 비트까지 같아요. 두 계산을 나란히 놓으면 이유가 보여요.
 
-| 단계 | `solve` 안의 `getrs` | `lu_solve` |
+| 단계 | `solve` 안의 `lu_solve_factored` | `lu_solve` |
 |---|---|---|
-| 우변 정렬 | `dlaswp`: `ipiv`의 교환을 차례로 | `b[perm]`: 교환을 재생해 만든 순열로 모으기 |
-| L 풀기 | `trsm(Lower, Unit)`, `getrf`의 압축 L | `trtrs(L, Unit)` = `trsm(Lower, Unit)`, `lu`의 `L` |
-| U 풀기 | `trsm(Upper, Non-unit)`, 압축 U | `trtrs(U, Non-unit)` = `trsm(Upper, Non-unit)`, `lu`의 `U` |
+| 우변 정렬 | `ipiv`의 교환을 차례로(`getrs`면 `dlaswp`) | `b[perm]`: 교환을 재생해 만든 순열로 모으기 |
+| L 풀기 | `getrf`의 압축 L로 삼각 풀기(두 열 이하 `trsv`, 그 위 `trsm`) | `lu`의 `L`로 `tri_solve`: 같은 열 수에서 같은 루틴 |
+| U 풀기 | 압축 U로 같은 방식 | `lu`의 `U`로 같은 방식 |
 
 1. **우변 정렬은 반올림이 없어요.** 교환을 차례로 하든 순열로 한 번에 모으든 같은 값이 같은 자리에 와요. 앞의 예에서 `dlaswp`의 결과 $(24, 4, 10)$과 `b[[2, 0, 1]]`이 같았어요.
 2. **`L`과 `U`의 값이 같아요.** `lu`의 `L`, `U`는 `getrf`의 압축 형식을 값 그대로 나눈 것이고, 압축 형식의 $L$은 이미 최종 행 순서로 놓여 있어요(교환을 왼쪽 열에도 적용하므로).
-3. **삼각 풀기가 같은 `trsm` 호출이에요.** `getrs`는 교환 뒤 `trsm` 두 번이고, `trtrs`는 대각 확인 뒤 `trsm` 한 번이에요.
+3. **삼각 풀기가 같은 호출이에요.** 우변 두 열 이하이면 양쪽 모두 열마다 `trsv` 두 번이에요. 세 열 이상이면 `getrs`는 교환 뒤 `trsm` 두 번이고, `trtrs`는 대각 확인 뒤 `trsm` 한 번이에요. 참조 구현의 구조로는 이렇게 설명되고, Accelerate에서도 $n$ = 3–1000에서 `getrs`와 비트가 같아요.
 
-참조 구현의 구조로는 이렇게 설명되고, Accelerate에서도 $n$ = 3–1000에서 `getrs`와 비트가 같아요. 압축 형식을 다시 만들어 `getrs`를 부를 수도 있지만, 그러면 `L`과 `U`를 한 버퍼에 붙여 넣는 $n^2$ 복사와 `perm`을 `ipiv`로 되돌리는 일이 매번 들어요. `trtrs` 두 번은 두 인수를 따로, 그 자리에서 읽어요. 사용자가 직접 만든 `l`, `u`도 같은 뜻으로 받아요(`l`의 대각에 무엇이 있든 1로 봐요).
+이 관계는 `L`, `U`가 열 우선일 때예요. `lu`의 결과를 그대로 넘기면 언제나 그래요. 사용자가 `L`, `U`를 C 순서로 복사해서 넘기면 행 우선으로 그 자리에서 읽어 반올림 수준에서만 같아요.
+
+압축 형식을 다시 만들어 `getrs`를 부를 수도 있지만, 그러면 `L`과 `U`를 한 버퍼에 붙여 넣는 $n^2$ 복사와 `perm`을 `ipiv`로 되돌리는 일이 매번 들어요. 삼각 풀기 두 번은 두 인수를 따로, 그 자리에서 읽어요. 사용자가 직접 만든 `l`, `u`도 같은 뜻으로 받아요(`l`의 대각에 무엇이 있든 1로 봐요).
 
 한 가지 예외가 있어요. **실수 `a`와 complex `b`** 이면 `solve`는 `a`의 complex 사본을 `zgetrf`로 분해하고, `lu(a)`는 실수 `dgetrf`로 분해해요. 그래서 둘은 반올림 수준에서만 같아요. 계산 타입이 같으면 언제나 비트가 같아요.
 
 ## solve_triangular
 
-`solve_triangular(a, b, *, upper, unit_diagonal=False)`는 이미 삼각인 행렬로 $ax = b$를 풀어요. `trtrs` 한 번이에요.
+`solve_triangular(a, b, *, upper, unit_diagonal=False)`는 이미 삼각인 행렬로 $ax = b$를 풀어요. 삼각 풀기(`tri_solve`) 한 번이에요.
 
 ```cpp
-// csrc/linalg/ops/factor.cpp의 solve_triangular(), 배치 원소 하나, 줄임
-if (!triangle_operand(a, off[0], n, !upper, !unit_diagonal, buf, t, ld)) return kNonFinite;
-if (!unit_diagonal && zero_on_diagonal(t, n, ld)) return kSingular;      // LAPACK 전에
-LapackSlot<T> xs(res + i * n * k, n * k, s, Scratch::kAlign0);
-if (!pack(y.dtype(), y.data() + off[1], n, k, r.rs, r.cs, xs.get(), n, true)) return kNonFiniteB;
-if (n > 0) lapack::trtrs(upper ? 'U' : 'L', 'N', unit_diagonal ? 'U' : 'N', n, k, t, ld, xs.get(), n);
+                // csrc/linalg/ops/factor.cpp
+                // Only the triangle the solve reads; the diagonal too unless it is taken as 1.
+                // Column- or row-major inputs are read in place (tri_solve).
+                const T* t;
+                lint ld;
+                bool rm;
+                if (!triangle_operand(
+                        a, off[0], n, !upper, !unit_diagonal, s.get<T>(static_cast<std::size_t>(n * n)), t, ld, &rm
+                    ))
+                    return kNonFinite;
+                if (!unit_diagonal && zero_on_diagonal(t, n, ld)) return kSingular;
+                LapackSlot<T> xs(res + i * n * r.k, n * r.k, s, Scratch::kAlign0);
+                T* x = xs.get();
+                if (!pack(y.dtype(), y.data() + off[1], n, r.k, r.rs, r.cs, x, n, true)) return kNonFiniteB;
+                lapack::tri_solve(rm, upper ? 'U' : 'L', 'N', unit_diagonal ? 'U' : 'N', n, r.k, t, ld, x, n);
+                return 0;
 ```
 
 - **`upper`는 필수예요.** 위·아래를 잘못 고르면 에러 없이 조용히 틀린 답이 나오기 때문이에요. 지정한 삼각만 읽고 검사해요. `unit_diagonal=True`이면 대각도 읽지 않고 1로 봐요.
 - `lu_solve`처럼 `a`를 그 자리에서 읽을 수 있고, `b`는 결과 자리에 패킹한 뒤 그 자리에서 풀어요.
 - **안정성**: 삼각 시스템의 대입은 아주 강한 의미로 역방향 안정이에요. 계산한 해는 $(T + \Delta T)\hat x = b$, $|\Delta T| \le \gamma_n |T|$를 만족해요. 칸마다 상대오차가 작은, 곧 0인 칸은 0으로 남는 섭동이에요(Higham [5] 8장). 그래도 전진 오차는 $T$의 조건수만큼 커질 수 있어요.
-- 비용은 $n^2 k$ flop이에요. 계산이 $O(n^2)$라서 입력을 패킹하는 $O(n^2)$ 비용이 상대적으로 크게 보여요. 특히 **C 순서 입력**은 열 우선으로 전치하며 복사해요. 그 자리에서 `trans = 'T'`로 읽으면 복사를 아낄 수 있지만, 같은 행렬이 메모리 배치에 따라 다른 계산(다른 비트)을 받게 되어 쓰지 않아요([패킹과 결과 레이아웃](/internals/linalg/packing/)).
+- 비용은 $n^2 k$ flop이에요. 계산이 $O(n^2)$라서 입력을 패킹하는 $O(n^2)$ 비용이 상대적으로 크게 보여요. 그래서 열 우선 입력도 **C 순서 입력**도 복사하지 않고 그 자리에서 읽어요. C 순서 입력은 행 우선 행렬로 BLAS에 넘기거나(`trsv`), 전치로 보고 반대쪽 삼각에 `trans = 'T'`를 줘요(`trtrs`). 그래서 같은 행렬도 C 순서와 F 순서에서 끝 비트가 다를 수 있어요([패킹과 결과 레이아웃](/internals/linalg/packing/)).
+- 대각의 0은 풀기 전에 확인해요. 그래야 에러 순서(`a`의 NaN → `a`의 특이 → `b`의 NaN)를 지키고, 대각을 확인하지 않는 `trsv`에서도 특이를 알려요.
 
 ## cond의 LU 경로
 
 `cond(x, ord)`는 조건수 $\kappa(x) = \|x\|\,\|x^{-1}\|$예요. `ord`가 2나 −2이면 특이값의 비 $\sigma_{\max}/\sigma_{\min}$로 계산하고([특이값 분해](/internals/linalg/svd/)), 나머지 `ord`(1, −1, inf, −inf, `'fro'`, `'nuc'`)는 **정의 그대로 역행렬을 만들어** 두 노름을 곱해요.
 
 ```cpp
-// csrc/linalg/ops/spectral.cpp의 cond(), ±2가 아닌 ord, 줄임
-const int code = lu_factor<T>(x, off[0], n, s, lu, ipiv);
-if (code == kNonFinite) return code;
-if (code == kSingular) { C[i] = kInf; return 0; }       // 정확한 0 피벗 → inf
-pack(x.dtype(), x.data() + off[0], n, n, ..., xa, n, false);   // lu_factor가 덮어쓴 x를 다시
-square_norm(ord, xa, n, s, nx);                          // ‖x‖
-lu_inverse(lu, ipiv, n, xi);                             // inv()와 같은 경로
-square_norm(ord, xi, n, s, ni);                          // ‖x⁻¹‖
-C[i] = nx * ni;
+                // csrc/linalg/ops/spectral.cpp
+                T* lu;
+                lint* ipiv;
+                const int code = lu_factor<T>(x, off[0], n, s, lu, ipiv);
+                if (code == kNonFinite) return code;
+                if (code == kSingular) {
+                    C[i] = kInf;
+                    return 0;
+                }
+                // x itself again (lu_factor overwrote its copy), then its inverse.
+                T* xa = s.get<T>(static_cast<std::size_t>(n * n), 2);
+                pack(x.dtype(), x.data() + off[0], n, n, x.stride(-2), x.stride(-1), xa, n, false);
+                double nx = 0, ni = 0;
+                if (const int c = square_norm(ord, xa, n, s, nx)) return c;
+                T* xi = s.get<T>(static_cast<std::size_t>(n * n), 2);
+                lu_inverse(lu, ipiv, n, xi);
+                // A nonsingular x whose inverse overflows double (inf and NaN in xi, as in
+                // inv()): the condition number is infinite, as numpy's. The norms would drop
+                // the NaN (max/min) and 'nuc' would hand LAPACK a non-finite matrix.
+                constexpr std::int64_t parts = std::is_same_v<T, cplx> ? 2 : 1;
+                if (!detail::all_finite(reinterpret_cast<const double*>(xi), parts * n * n)) {
+                    C[i] = kInf;
+                    return 0;
+                }
+                if (const int c = square_norm(ord, xi, n, s, ni)) return c;
+                C[i] = nx * ni;
+                return 0;
 ```
 
-- **역행렬은 `inv`와 같은 경로**(`lu_factor` + `lu_inverse`)라 `inv(x)`와 비트가 같은 역행렬로 노름을 구해요. 노름의 합은 `matrix_norm`과 같은 pairwise 순서예요([LAPACK 없이 계산하는 함수](/internals/linalg/basic/)).
+정확한 0 피벗이면 inf예요. 아니면 `lu_factor`가 덮어쓴 `x`를 다시 패킹해 $\|x\|$를 구하고, `inv`와 같은 경로로 역행렬을 만들어 $\|x^{-1}\|$를 구해요.
+
+- **역행렬은 `inv`와 같은 경로**(`lu_factor` + `lu_inverse`)라 `inv(x)`와 비트가 같은 역행렬로 노름을 구해요. 노름은 열 우선 작업 버퍼에서 `matrix_norm`과 같은 합으로 구해요(±1, ±inf는 줄 묶음의 합, fro는 빠른 제곱합, [LAPACK 없이 계산하는 함수](/internals/linalg/basic/)). 버퍼가 언제나 열 우선이라 입력의 레이아웃과는 상관없어요.
+- **역행렬이 double을 넘치면 inf예요.** 특이하지 않아도 $x^{-1}$에 inf·NaN이 생기면(`inv`도 그런 결과를 내요) 조건수는 무한대로 봐요. numpy와 같아요.
 - **특이는 정확한 0 피벗일 때만 inf**예요. 그래서 반올림 때문에 피벗이 0이 아닌 행렬은 큰 유한값을 내요. `[[1, 2], [2, 4]]`는 부분 피벗 소거(피벗 2, 승수 0.5)에서 $u_{22} = 2 - 0.5 \cdot 4$가 정확히 0이라 `ord=1`에서 inf이지만, 특이값 경로인 `ord=2`에서는 가장 작은 특이값이 반올림으로 0이 아니어서 $2.76 \times 10^{16}$이에요.
 - **정사각이어야 해요.** 역행렬이 필요하기 때문이에요(아니면 ValueError). ±2는 정사각이 아니어도 돼요.
 - `x`를 두 번 패킹해요. `lu_factor`가 패킹한 사본을 분해로 덮어쓰기 때문이에요. 이미 패킹한 행렬을 받는 `lu_factor` 변형을 두면 한 번으로 줄일 수 있지만, 드문 경로라 하나의 헬퍼를 유지하는 쪽을 택했어요.
@@ -827,8 +937,8 @@ C[i] = nx * ni;
 | `inv` | $\tfrac83 n^3$ | $n^2$ + `ipiv` $n$ | `a` 패킹 1회, 결과 자리에 단위행렬 |
 | `det`, `slogdet` | $\tfrac23 n^3$ | $n^2$ + `ipiv` $n$ | `a` 패킹 1회 |
 | `lu` | $mn^2 - \tfrac13 n^3$ | $mn$ + `ipiv` | 패킹 1회, L·U로 나누는 복사 1회 |
-| `lu_solve` | $2n^2k$ | (그 자리에서 못 읽을 때) $2n^2$, `'T'`·`'H'`는 우변 $nk$ 더 | 인수는 대개 그 자리에서, `b` 모으기 1회(`'T'`·`'H'`는 옮기기와 흩기 1회씩) |
-| `solve_triangular` | $n^2k$ | (그 자리에서 못 읽을 때) $n^2$ | 삼각 반만 읽음 |
+| `lu_solve` | $2n^2k$ | (그 자리에서 못 읽을 때) $2n^2$, `'T'`·`'H'`는 우변 $nk$ 더 | 인수는 대개 그 자리에서(읽는 삼각의 NaN 검사), `b` 모으기 1회(`'T'`·`'H'`는 옮기기와 흩기 1회씩) |
+| `solve_triangular` | $n^2k$ | (그 자리에서 못 읽을 때) $n^2$ | 삼각 반만 읽음, 열 우선·행 우선이면 그 자리에서 |
 | `cond` (±2 외) | $\tfrac83 n^3$ | $3n^2$ + `ipiv` | `x` 패킹 2회 |
 
 ### numpy·scipy와 비교
@@ -842,9 +952,10 @@ C[i] = nx * ni;
 몇 가지 경우는 설명이 필요해요.
 
 - **큰 `inv`**: 위에서 본 대로 `getri`보다 flop이 많은 경로예요. numpy의 `inv`는 단위행렬 우변의 `gesv`라서 numpy와는 같은 종류의 계산이고, 차이는 `gesv`와 `getrf` + `getrs`의 차이를 따라가요.
-- **큰 C 순서 `solve_triangular`**: $O(n^2)$ 계산에 $O(n^2)$ 전치 패킹이 그대로 보여요. 원소 $2^{17}$개 이상인 C 순서 행렬의 전치는 열 32개 단위로 스레드풀에 나눠 줄이지만([패킹과 결과 레이아웃](/internals/linalg/packing/)), scipy가 `trans` 플래그로 복사 없이 읽는 것을 따라가지 않아요. 그래서 큰 크기에서는 scipy보다 느려요.
-- **큰 `lu_solve`**: 인수는 열 우선이라 그 자리에서 읽고 전치도 없는데 큰 크기에서 scipy보다 느려요. 원인은 밝혀지지 않았어요.
-- **`lu`의 나누는 복사**: 큰 행렬에서는 $L$, $U$를 나눠 쓰는 $O(mn)$ 루프가 보여요. $n = 300$에서 `getrf`가 약 302µs, 이 루프가 51µs였어요(scipy의 같은 부분은 28µs, Apple M4 Pro, float64). 결과를 바꾸지 않고 줄일 여지가 있는 부분이에요.
+- **한두 열의 우변**: `solve`, `lu_solve`, `solve_triangular`, `cholesky_solve`는 우변이 두 열 이하이면 `trsv`로 풀어요. Accelerate의 `trsm`이 이 크기에서 느려서, `getrs`나 `trtrs`를 부르는 scipy보다 빨라요.
+- **큰 C 순서 `solve_triangular`**: 삼각 인수를 전치 패킹하지 않고 행 우선으로 그 자리에서 읽어요. scipy가 `trans` 플래그로 복사 없이 읽는 것과 같은 방식이에요.
+- **큰 `lu_solve`, 우변 여러 열**: 인수는 그 자리에서 읽지만, 읽는 두 삼각의 NaN·inf 검사가 $O(n^2)$로 남아요. scipy는 `lu`를 검사하지 않아서, 1스레드에서는 그만큼 scipy보다 느려요. 여러 스레드에서는 큰 삼각의 검사를 풀에서 나눠요.
+- **`lu`의 나누는 복사**: 큰 행렬에서는 $L$, $U$를 열마다 0 채우기와 복사로 나눠 써요.
 
 ## 정확도
 
@@ -866,18 +977,21 @@ $\varepsilon = 2^{-52}$는 float64의 기계 엡실론이에요. 왼쪽을 오�
 
 | 관계 | 성립 여부 | 이유 |
 |---|---|---|
-| `inv(a) == solve(a, I)` | 비트까지 같음 | 같은 분해(`lu_in_place`) + 같은 단위행렬 우변 `getrs` |
+| `inv(a) == solve(a, I)` | 비트까지 같음 | 같은 분해(`lu_in_place`) + 같은 단위행렬 우변의 `lu_solve_factored` |
 | `matrix_power(x, -1) == inv(x)` | 비트까지 같음 | 같은 `lu_factor` + `lu_inverse` |
-| `lu_solve(*lu(a), b) == solve(a, b)` | 계산 타입이 같으면 비트까지 같음 | 교환은 반올림이 없고, 삼각 풀기는 같은 `trsm` |
-| 실수의 `lu_solve(..., trans='H') == lu_solve(..., trans='T')` | 비트까지 같음 | 같은 `trtrs('T')` 호출 |
-| `lu_solve(*lu(a), b, trans='T')` 대 scipy `lu_solve(lu_factor(a), b, trans=1)` | 지금은 비트까지 같음 | `getrs`의 전치 경로와 같은 `trsm` 두 번, 반올림 없는 흩기 |
+| `lu_solve(*lu(a), b) == solve(a, b)` | 계산 타입이 같고 `L`, `U`가 열 우선이면 비트까지 같음 | 교환은 반올림이 없고, 삼각 풀기는 같은 열 수에서 같은 루틴 |
+| 실수의 `lu_solve(..., trans='H') == lu_solve(..., trans='T')` | 비트까지 같음 | 같은 `'T'` 풀이 호출 |
+| `lu_solve(*lu(a), b, trans='T')` 대 scipy `lu_solve(lu_factor(a), b, trans=1)` | 우변 세 열 이상에서 지금은 비트까지 같음 | `getrs`의 전치 경로와 같은 `trsm` 두 번, 반올림 없는 흩기. 두 열 이하는 `trsv`라 다름 |
 | `lu(a)`의 `L`, `U` 대 scipy | 지금은 비트까지 같음($n$ = 32–46 제외) | 같은 Accelerate `getrf`. 32–46은 `getf2`라 반올림 수준에서 다를 수 있음 |
 | `slogdet` 대 numpy | 지금은 비트까지 같음($n$ = 32–46 제외) | 같은 `getrf`, 같은 순서의 로그 합 |
-| `solve`, `inv` 대 numpy | $n \ge 4$에서 반올림 수준 차이 | numpy는 Accelerate `gesv` |
+| `solve`, `inv` 대 numpy | 반올림 수준 차이 | numpy는 Accelerate `gesv`, stardust는 `getrf` + `getrs`(두 열 이하는 `trsv`) |
+| `solve_triangular`, `lu_solve` 대 scipy | 우변 두 열 이하나 C 순서 인수에서 반올림 수준 차이 | `trsv`, 행 우선으로 읽기 |
 | `det` 대 numpy | 큰 $n$에서 반올림 수준 차이. 중간 곱만 넘치는 행렬은 stardust가 정확 | numpy는 $\text{sign} \cdot \exp(\text{logabsdet})$ |
 | `cond` (±2 외) 대 numpy | `inv`가 다른 크기에서 반올림 수준 차이 | 역행렬 경로의 차이 |
 
-우리 함수끼리의 관계(위의 네 줄)는 약속이에요. numpy·scipy와의 관계는 지금의 사실이고 약속이 아니에요. 고침이나 최적화로 마지막 자리가 달라질 수 있어요($n$ = 32–46의 `getf2`처럼). 이 관계들은 `tests/linalg/`의 테스트로 고정돼 있어요(`test_solve_inv_det.py`, `test_factorizations.py`). 모든 함수의 결과는 입력의 메모리 배치, 배치 안의 위치, 스레드 수와도 무관하게 비트까지 같아요. 패킹이 모든 배치를 같은 열 우선 버퍼로 만들고, LAPACK에 넘기는 배열을 16바이트로 정렬하고, 배치 원소 하나는 어느 스레드에서 돌든 같은 호출이기 때문이에요([패킹과 결과 레이아웃](/internals/linalg/packing/), [배치와 병렬화](/internals/linalg/batch/)).
+우리 함수끼리의 관계(위의 네 줄)는 약속이에요. numpy·scipy와의 관계는 지금의 사실이고 약속이 아니에요. 고침이나 최적화로 마지막 자리가 달라질 수 있어요(우변 한두 열의 `trsv`, $n$ = 32–46의 `getf2`처럼). 이 관계들은 `tests/linalg/`의 테스트로 고정돼 있어요(`test_solve_inv_det.py`, `test_factorizations.py`, `test_optimizations.py`).
+
+같은 기계, 같은 스레드 수에서는 모든 함수의 결과가 실행마다 비트까지 같고, 배치 안의 위치와도 무관해요. LAPACK에 넘기는 배열을 16바이트로 정렬하고, 배치 원소 하나는 어느 스레드에서 돌든 같은 호출이기 때문이에요. 지금은 스레드 수와도 무관해요(약속은 아니에요). 입력을 패킹하는 `solve`, `inv`, `det`, `slogdet`, `lu`, `cond`는 입력의 메모리 배치와도 무관해요. 삼각 인수를 그 자리에서 읽는 `lu_solve`, `solve_triangular`은 C 순서 인수에서 끝 비트가 다를 수 있어요([패킹과 결과 레이아웃](/internals/linalg/packing/), [배치와 병렬화](/internals/linalg/batch/)).
 
 ## 참고 문헌
 

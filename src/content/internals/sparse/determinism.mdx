@@ -2,15 +2,15 @@
 title: 결정성과 병렬 분할
 group: 형식과 연산
 order: 6
-summary: 희소 연산의 결과가 sd의 스레드 수, 저장 형식, 태스크 분할과 상관없이 같은 비트인 까닭을 정리해요. 일을 크기로만 나누는 규칙(2¹⁵ 기준, 2¹⁴ 조각, indptr로 정한 줄 구간), GIL을 놓는 기준, 크기와 풀의 상태로 길을 골라도 결과가 같은 이유를 설명해요.
+summary: 희소 연산의 결과가 실행마다, 그리고 저장 형식과 태스크 분할과 상관없이 같은 비트인 까닭을 정리해요(지금은 sd의 스레드 수와도 상관없어요). 일을 크기로만 나누는 규칙(2¹⁵ 기준, 2¹⁴ 조각, indptr로 정한 줄 구간), GIL을 놓는 기준, 크기와 풀의 상태로 길을 골라도 결과가 같은 이유를 설명해요.
 seeAlso: [products, reductions, conversion, overview]
 ---
 import Fig from '../../../components/fig/Fig.astro';
 import Steps from '../../../components/fig/Steps.astro';
 
-## 약속
+## 약속과 지금의 동작
 
-희소 연산의 결과는 **행렬의 값과 모양으로만** 정해져요. sd의 스레드 수, 저장 형식(CSR·CSC·COO·DOK), 일을 나눈 모양이 비트를 바꾸지 않아요. 이 약속은 세 가지로 지켜요.
+약속은 같은 컴퓨터, 같은 스레드 수, 같은 입력이면 실행마다 같은 비트라는 것이에요. 희소 연산은 그보다 강하게, 결과가 **행렬의 값과 모양으로만** 정해져요. 저장 형식(CSR·CSC·COO·DOK)과 일을 나눈 모양이 비트를 바꾸지 않고, 지금은 sd의 스레드 수도 비트를 바꾸지 않아요(약속은 아니에요). 이것을 세 가지로 지켜요.
 
 1. **합의 순서를 정의로 둬요.** 출력 원소 하나의 합은 그 줄의 색인 오름차순 순차 합이고, L = 4096개를 넘으면 고정 조각과 조각 수로만 정한 트리예요([곱](/internals/sparse/products/)). 전체 합은 논리적 C 순서의 pairwise예요([리덕션](/internals/sparse/reductions/)). 중복은 입력 순서로 더해요([변환](/internals/sparse/conversion/)).
 2. **출력 원소 하나는 태스크 하나가 계산해요.** 태스크끼리 같은 출력에 더하지 않으므로, 어느 스레드가 언제 끝나든 원소마다의 계산은 한 스레드와 같아요. 태스크마다의 결과를 합쳐야 하면(세기, 누적) 태스크 순서로 합쳐요.
@@ -118,7 +118,8 @@ inline std::vector<std::int64_t> line_bounds(const std::int64_t* ip, std::int64_
 
 - **에러**: 입력 검사가 병렬로 돌다 틀린 곳을 여럿 만나면 `parallel::FirstRow`가 가장 앞의 자리를 남겨요. 그래서 메시지(`index 5 is out of bounds …`)도 스레드 수와 무관해요.
 - **난수**: `random_array`는 `sd.random`의 생성기에서 자리와 값을 뽑아요. 같은 생성기 상태면 같은 배열이에요([만들기 함수](/internals/sparse/construct/)).
-- **Accelerate**: 직접 풀이는 [Accelerate의 LU/AMD](/internals/sparse/lu/)예요. Accelerate가 안에서 스레드를 정하므로 sd의 스레드 수와는 무관하고, Accelerate의 스레드 모드(`VECLIB_MAXIMUM_THREADS`)가 같으면 같은 비트예요. 같은 모드에서 실행마다 비트가 달라지는 경로(Cholesky, LDLᵀ, Metis 순서)는 쓰지 않아요. sd는 그 모드를 정하지도 바꾸지도 않아요.
+- **Accelerate의 BLAS**: 반복법과 고유값 풀이의 긴 내적(`ddot`·`zdotc`)과 기저와의 곱(`dgemv`·`zgemv`)은 길이만으로 정한 고정 조각마다 Accelerate를 한 번 불러요([ARPACK](/internals/sparse/arpack/#같은-비트를-내는-벡터-연산)). 조각 안의 합 순서는 Accelerate가 정하지만 같은 크기의 같은 입력에는 같아서, 조각의 결과를 정해진 순서로 합치면 결과가 스레드 수와 무관해요.
+- **Accelerate의 LU**: 직접 풀이는 [Accelerate의 LU/AMD](/internals/sparse/lu/)예요. Accelerate가 안에서 스레드를 정하므로 sd의 스레드 수와는 무관하고, Accelerate의 스레드 모드(`VECLIB_MAXIMUM_THREADS`)가 같으면 같은 비트예요. 같은 모드에서 실행마다 비트가 달라지는 경로(Cholesky, LDLᵀ, Metis 순서)는 쓰지 않아요. sd는 그 모드를 정하지도 바꾸지도 않아요.
 
 ## scipy를 아는 분께
 

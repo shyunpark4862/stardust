@@ -338,7 +338,7 @@ TypeError: sin(): cannot implicitly convert float64 to int64 (that would lose in
 | `atan` | 3칸 | 1칸 |
 | `atan2` | 3칸 | 1칸 |
 
-5칸은 상대오차로 약 1.1e-15예요. ±0, ±inf, NaN 같은 특수값의 결과는 부호까지 정확하고, 같은 입력이면 배열 안의 위치나 스레드 수와 상관없이 같은 값이 나와요.
+5칸은 상대오차로 약 1.1e-15예요. `cos`는 따로 약속한 칸 수가 없지만, 같은 방법으로 잰 최대는 1칸이에요. ±0, ±inf, NaN 같은 특수값의 결과는 부호까지 정확하고, 같은 입력이면 배열 안의 위치와 상관없이 같은 값이 나와요. 지금은 스레드 수와도 상관없이 같아요(약속은 아니에요).
 
 ## 조심할 점
 
@@ -395,4 +395,4 @@ array([nan, nan], dtype=float64)
 - `asin(2.0)`처럼 정의역 밖의 값은 경고 없이 NaN이에요. `errstate` 같은 설정도 없어요.
 - `out`은 keyword-only예요. `where=` 인자는 없어요. 도와 라디안을 바꾸는 함수는 [`deg2rad`, `rad2deg`](/api/array/deg2rad/)이고, 별칭 `degrees`, `radians`는 없어요.
 - Python 숫자를 넣으면 numpy 스칼라가 아니라 Python `float`가 나와요.
-- `sin`, `asin`, `acos`, `atan`, `atan2`의 값은 numpy와 마지막 몇 자리가 다를 수 있어요(잰 차이는 최대 3칸). `cos`, `tan`은 지금은 numpy와 비트까지 같아요(약속은 아니에요). ±0, ±inf, NaN 같은 특수값의 결과는 부호까지 같아요.
+- `sin`, `cos`, `asin`, `acos`, `atan`, `atan2`의 값은 numpy와 마지막 몇 자리가 다를 수 있어요(잰 차이는 `cos`가 최대 1칸, 나머지가 최대 3칸). `tan`은 지금은 numpy와 비트까지 같아요(약속은 아니에요). ±0, ±inf, NaN 같은 특수값의 결과는 부호까지 같아요.

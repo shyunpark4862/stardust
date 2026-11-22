@@ -68,7 +68,7 @@ $$
 
 이면(같은 열의 남은 원소 가운데 가장 큰 것의 $\tau$배 이상이면) 순서를 그대로 두고 받아들여요. 아니면 조건을 만족하는 다른 행으로 바꿔요. 그러면 $|l_{ij}| \le 1/\tau$이고, 한 단계에서 원소가 자라는 비율이 많아야 $1 + 1/\tau$예요. $\tau = 1$이 보통의 부분 피벗이고, $\tau$를 줄일수록 순서를 더 지키는 대신 성장이 커질 수 있어요.
 
-Accelerate는 `pivotTolerance`를 $[0, 0.5]$로 잘라요. 이 라이브러리는 Accelerate의 double 기본값 0.01을 그대로 넘겨요. 문턱이 낮은 만큼 성장이 생길 수 있고, 그것은 풀이 뒤의 반복 다듬기가 갚아요([특이 판정과 풀이](/internals/sparse/solve/#반복-다듬기)).
+Accelerate는 `pivotTolerance`를 $[0, 0.5]$로 잘라요. 이 라이브러리는 Accelerate의 double 기본값 0.01을 그대로 넘겨요. 문턱이 낮은 만큼 성장이 생길 수 있고, 그것은 첫 해의 역오차가 클 때 하는 반복 다듬기가 갚아요([특이 판정과 풀이](/internals/sparse/solve/#반복-다듬기)).
 
 ## 부르는 코드
 
@@ -199,7 +199,7 @@ LU의 기본 순서(`SparseOrderDefault` = MTMetis)는 같은 입력에서도 �
 
 Cholesky와 LDLᵀ는 기본 스레드 모드에서 실행마다 비트가 달라요. `BLASSetThreading(BLAS_THREADING_SINGLE_THREADED)`를 불러도 결정적이 되지 않고, 희소 풀이의 스레드는 환경 변수 `VECLIB_MAXIMUM_THREADS`만 따라요. 이 라이브러리는 그 환경 변수를 정하지도 바꾸지도 않으므로, 프로세스 안에서 대칭 분해를 결정적으로 만들 길이 없어요. 그래서 대칭 행렬도 LU로 풀어요. scipy.sparse.linalg의 공개 함수도 모두 LU(SuperLU)라서 범위는 줄지 않아요.
 
-두 스레드 모드 사이에서는 LU도 비트가 달라요. BLAS·LAPACK을 부르는 밀집 선형대수와 같은 규칙이에요. 약속은 "같은 Accelerate 스레드 모드에서 같은 입력이면 같은 비트, sd의 스레드 수와는 무관"이에요.
+두 스레드 모드 사이에서는 LU도 비트가 달라요. BLAS·LAPACK을 부르는 밀집 선형대수와 같은 규칙이에요. 약속은 "같은 Accelerate 스레드 모드, 같은 sd 스레드 수에서 같은 입력이면 같은 비트"예요. 지금은 sd의 스레드 수와도 상관없어요(약속은 아니에요).
 
 ### 수치적으로 특이한 행렬의 성공
 
@@ -261,7 +261,7 @@ stardust.linalg.LinAlgError: splu(): singular matrix
 
 `SparseGetTranspose`는 인수를 복사하지 않고 참조를 세는 전치 객체를 줘요. 쓰고 나면 `SparseCleanup`으로 그 참조만 놓아요.
 
-보통 풀이(`trans='N'`)에서 우변이 여럿이면 Accelerate가 열을 함께 풀어요. 이때 열 하나의 결과가 그 열만 따로 푼 것과 반올림 크기만큼 달라요. 결정적이긴 해서(같은 k, 같은 값이면 같은 비트) 그대로 두고 문서에 적어요. 전치 풀이는 열마다 따로 푸므로 혼자 푼 것과 같아요.
+보통 풀이(`trans='N'`)에서 우변이 여럿이면 여덟 열씩 묶어 Accelerate가 함께 풀어요([우변 다루기](/internals/sparse/solve/#우변-다루기)). 이때 열 하나의 결과가 그 열만 따로 푼 것과 반올림 크기만큼 달라요. 결정적이긴 해서(같은 k, 같은 값이면 같은 비트) 그대로 두고 문서에 적어요. 전치 풀이는 열마다 따로 푸므로 혼자 푼 것과 같아요.
 
 ```python
 >>> rng = sd.random.default_rng(1)
@@ -275,7 +275,7 @@ stardust.linalg.LinAlgError: splu(): singular matrix
 >>> [bool(sd.all(XT[:, j] == lu.solve(B[:, j], trans="T"))) for j in range(4)]
 [True, True, True, True]
 >>> float(sd.max(sd.abs(X[:, 0] - lu.solve(B[:, 0]))))
-4.163336342344337e-17
+1.3877787807814457e-16
 ```
 
 ### 모든 입력을 CSC로
@@ -291,11 +291,11 @@ Accelerate는 CSR을 받지 않지만, CSR 배열은 그 전치의 CSC와 같은
         A, data, _ = _compressed(A.tocsc(), func)
         if data is not A.data:
             A = type(A)._new(A.shape, A.indptr, A.indices, data)
-        self.n, self.dtype, self.A, self._AH = n, data.dtype, A, None
+        self.n, self.dtype, self.A, self._Ac = n, data.dtype, A, None
         self.core = _core._lu_factor(A.shape, A.indptr, A.indices, data, csr=False, func=func) if n else None
 ```
 
-CSR → CSC는 O(nnz)의 계수 정렬이라 분해에 비하면 작아요. 값은 bool·int64면 float64로 바꾸고, 저장된 NaN·inf가 있으면 `ValueError`예요. 이 객체는 CSC로 바꾼 행렬을 쥐고 있다가 풀이 뒤의 다듬기에서 잔차를 계산하는 데 써요.
+CSR → CSC는 O(nnz)의 계수 정렬이라 분해에 비하면 작아요. 값은 bool·int64면 float64로 바꾸고, 저장된 NaN·inf가 있으면 `ValueError`예요. 이 객체는 CSC로 바꾼 행렬을 쥐고 있다가 풀이 뒤에 잔차와 원소별 역오차를 계산하는 데 써요.
 
 ### 그 밖의 제약
 

@@ -20,8 +20,8 @@ export const errFive = [[-2,-3.882],[-3,-5.089],[-4,-6.293],[-5,-7.498],[-6,-8.7
 
 | 어디서 | 차분 | 간격 | 코드 |
 |---|---|---|---|
-| `approx_fprime`, `check_grad`의 기본 | 5점 중앙(못 쓰면 한쪽 5점) | 변수마다 $2^{-8}\lvert x_j\rvert$부터 4배씩 줄이며 골라요 | `differentiate/_differences.py`의 `Differences` |
-| `approx_fprime`, `check_grad`의 `epsilon` | 앞쪽 | `epsilon` | `_diff.py`의 `_forward` |
+| `approx_fprime`, `check_grad`의 기본 | 5점 중앙(못 쓰면 한쪽 5점) | 변수마다 $2^{-8}\lvert x_j\rvert$부터 4배씩 줄이며 골라요 | `differentiate/accurate.hpp`의 `AccurateDiff` |
+| `approx_fprime`, `check_grad`의 `epsilon` | 앞쪽 | `epsilon` | `differentiate/accurate.hpp`의 `forward` |
 | `minimize`의 `jac=None` | 앞쪽 | 절대 간격 `eps`(BFGS $\sqrt\varepsilon$, L-BFGS-B $10^{-8}$) | `objective.hpp` |
 | `minimize`, `least_squares`의 `'2-point'` | 앞쪽 | $\sqrt\varepsilon\,\max(1, \lvert x_j\rvert)$ 또는 상대 간격 | `differentiate/steps.hpp`, `objective.hpp`, `lsq.cpp` |
 | `minimize`, `least_squares`의 `'3-point'` | 중앙(경계에서는 한쪽 3점) | $\varepsilon^{1/3}\max(1, \lvert x_j\rvert)$ 또는 상대 간격 | 같은 파일 |
@@ -415,7 +415,7 @@ True
 
 ## approx_fprime의 기본: 간격을 고르는 5점 차분
 
-`approx_fprime`과 `check_grad`의 기본은 반복 안에서 쓰는 것이 아니라 한 번의 정확한 결과를 위한 차분이에요. 그래서 scipy의 차분을 따르지 않고, 함수를 더 불러서라도 오차를 줄여요. `sd.regression.nls`가 해에서의 야코비안을 구할 때도 같은 코드(`src/stardust/differentiate/_differences.py`의 `Differences`)를 써요. 이 코드는 수치 미분 영역의 내부에 있고([differentiate의 구조](/internals/differentiate/overview/)), 공개 함수는 `sd.optimize`의 `approx_fprime`과 `check_grad`예요. 같은 영역의 공개 함수 [`sd.differentiate.derivative`](/api/differentiate/derivative/)·[`jacobian`](/api/differentiate/jacobian/)은 방법이 달라요. 점의 크기를 보지 않는 절대 간격에서 8차 공식을 간격을 줄이며 되풀이하고, 항목마다 오차 추정을 돌려줘요. 여기의 차분은 변수마다 간격을 한 번 고르고 오차 추정은 내지 않아요. 세 가지로 이뤄져요.
+`approx_fprime`과 `check_grad`의 기본은 반복 안에서 쓰는 것이 아니라 한 번의 정확한 결과를 위한 차분이에요. 그래서 scipy의 차분을 따르지 않고, 함수를 더 불러서라도 오차를 줄여요. `sd.regression.nls`가 해에서의 야코비안을 구할 때도 같은 코드를 써요. 고리는 C++의 `AccurateDiff`(`csrc/differentiate/accurate.hpp`)이고, `src/stardust/differentiate/_differences.py`의 `Differences`는 그것을 만드는 함수예요. 이 코드는 수치 미분 영역의 내부에 있고([differentiate의 구조](/internals/differentiate/overview/)), 공개 함수는 `sd.optimize`의 `approx_fprime`과 `check_grad`예요. 같은 영역의 공개 함수 [`sd.differentiate.derivative`](/api/differentiate/derivative/)·[`jacobian`](/api/differentiate/jacobian/)은 방법이 달라요. 점의 크기를 보지 않는 절대 간격에서 8차 공식을 간격을 줄이며 되풀이하고, 항목마다 오차 추정을 돌려줘요. 여기의 차분은 변수마다 간격을 한 번 고르고 오차 추정은 내지 않아요. 세 가지로 이뤄져요.
 
 **5점 스텐실.** 중앙 5점 차분은 절단 오차가 $h^4$이에요. 경계(nls)나 한쪽에서 함수가 유한하지 않을 때는 한쪽 5점 차분
 
@@ -425,63 +425,84 @@ $$
 
 (또는 그 거울)을 써요. 이것도 절단 오차가 $h^4$이지만 계수가 $\tfrac15$로 중앙의 $\tfrac{1}{30}$보다 크고, 가중치의 절댓값 합 $128/12$도 중앙의 $18/12$보다 7배쯤 커서 반올림에 그만큼 약해요.
 
-```python
-    # src/stardust/differentiate/_differences.py
-    _STENCILS = (
-        ((-2, -1, 1, 2), (1.0, -8.0, 8.0, -1.0)),
-        ((0, 1, 2, 3, 4), (-25.0, 48.0, -36.0, 16.0, -3.0)),
-        ((0, -1, -2, -3, -4), (25.0, -48.0, 36.0, -16.0, 3.0)),
-    )
+```cpp
+// csrc/differentiate/accurate.hpp
+// The stencils: central, and one-sided at a bound or where g is not finite on one side
+// (offsets in steps h, weights; the denominator is 12 h).
+struct Stencil {
+    int count;
+    int offs[5];
+    double wts[5];
+    int lo, hi;
+    double wsum;
+};
+inline constexpr Stencil kStencils[3] = {
+    {4, {-2, -1, 1, 2, 0}, {1.0, -8.0, 8.0, -1.0, 0.0}, -2, 2, 18.0},
+    {5, {0, 1, 2, 3, 4}, {-25.0, 48.0, -36.0, 16.0, -3.0}, 0, 4, 128.0},
+    {5, {0, -1, -2, -3, -4}, {25.0, -48.0, 36.0, -16.0, 3.0}, -4, 0, 128.0},
+};
 ```
 
-**2의 거듭제곱 간격.** $h = 2^{b + e}$이고 $2^b$는 $\lvert x_j\rvert < 2^b \le 2\lvert x_j\rvert$인 2의 거듭제곱(`math.frexp`의 지수)이에요. $e \le -8$이라 $kh$($k \le 4$)가 $\lvert x_j\rvert$보다 훨씬 작고, $e \ge -30$이라 $h$가 $x_j$의 끝자리 단위의 배수예요. 그래서 $x_j \pm kh$가 반올림 없이 정확하고 분모 $12h$도 정확해요. 몫에 들어가는 반올림은 함숫값의 것뿐이에요.
+`lo`와 `hi`는 스텐실이 닿는 가장 먼 점(간격 단위)이라 경계 안인지를 그것으로 보고, `wsum`은 가중치의 절댓값 합이라 [반올림 수준](#반올림-수준의-열)에 써요.
+
+**2의 거듭제곱 간격.** $h = 2^{b + e}$이고 $2^b$는 $\lvert x_j\rvert < 2^b \le 2\lvert x_j\rvert$인 2의 거듭제곱(`frexp`의 지수)이에요. $e \le -8$이라 $kh$($k \le 4$)가 $\lvert x_j\rvert$보다 훨씬 작고, $e \ge -30$이라 $h$가 $x_j$의 끝자리 단위의 배수예요. 그래서 $x_j \pm kh$가 반올림 없이 정확하고 분모 $12h$도 정확해요. 몫에 들어가는 반올림은 함숫값의 것뿐이에요.
 
 **변수마다 간격 고르기.** $2^{-8}$에서 시작해 지수를 2씩(간격을 4배씩) 줄이며 추정 $c_k$를 거듭해요. 절단 오차가 앞서면 간격이 1/4이 될 때 오차가 $4^4 = 256$배 줄어서, 이웃한 두 추정의 차이 $d_k = \max\lvert c_k - c_{k-1}\rvert / \max\lvert c_k\rvert$도 256배 가까이 줄어요. 반올림 오차가 앞서기 시작하면 $d_k$가 더 줄지 않거나 커져요. 그래서 $d_k < d_{k-1}/8$인 동안 이어 가고, 그렇지 않으면 멈추고 마지막으로 받아들인 추정을 써요.
 
-```python
-    # src/stardust/differentiate/_differences.py
-    def _descend(self, x, j, g0, e0, first=None, strict=True):
-        """The search from the step 2^e0 down by factors of 4 (12 steps): the estimate where
-        consecutive ones stop getting closer by more than 8 times. first: (column, fits) at
-        2^e0 when just computed. strict: the second estimate is not taken over the first when
-        it is rounding noise (within _NOISE_FACTOR of its rounding level, regression G88's test)
-        and the first is not. Sets _settled: the last estimate taken differs from the one before
-        by at most _SETTLED (relative; False when only one was taken)."""
-        best = hbest = None
-        dprev = math.inf
-        prev = None
-        prev_ok = False  # the first estimate is not rounding noise
-        fits = False
-        for e in range(e0, e0 + _FD_END - _FD_START - 1, -2):
-            h = math.ldexp(1.0, e)
-            if first is not None and e == e0:
-                col, self.fits = first
-            else:
-                col = self.column(x, j, h, g0)
-            fits = fits or self.fits
-            if col is None:
-                if best is not None:
-                    break
-                continue
-            if prev is None:
-                best, hbest = col, h
-                prev_ok = strict and self._rounding(col, j) * _NOISE_FACTOR < 1
-            else:
-                if prev_ok and dprev == math.inf and self._rounding(col, j) * _NOISE_FACTOR >= 1:
-                    break
-                sc = float(_sd.max(_sd.abs(col)))
-                dd = float(_sd.max(_sd.abs(col - prev))) / sc if sc > 0 else 0.0
-                if dd >= dprev / 8:
-                    break
-                best, hbest = col, h
-                dprev = dd
-                if dd == 0:
-                    break
-            prev = col
-        self.fits = fits
-        self._settled = dprev <= _SETTLED
-        return best, hbest
+```cpp
+    // csrc/differentiate/accurate.hpp
+    // The search from 2^e0 down by factors of 4 (12 steps): the estimate where consecutive ones
+    // stop getting closer by more than 8 times (_descend). first: the column at 2^e0 when just
+    // computed (use; ok: a stencil gave one; its fits). strict: the second estimate is not taken
+    // over the first when it is rounding noise and the first is not. Sets settled_.
+    bool descend(lint j, int e0, const First& first, bool strict, double* out, double& hbest) {
+        using namespace accurate_detail;
+        const lint m = m_;
+        bool have_best = false, have_prev = false, prev_ok = false, fits = false;
+        double dprev = kInf;
+        vec col(static_cast<std::size_t>(m)), prev(static_cast<std::size_t>(m));
+        hbest = kNaN;
+        for (int e = e0; e > e0 + kFdEnd - kFdStart - 1; e -= 2) {
+            const double h = std::ldexp(1.0, e);
+            bool ok;
+            if (e == e0 && first.use) {  // the start's column, computed by the caller
+                ok = first.ok;
+                if (ok) std::copy(first.col->begin(), first.col->end(), col.begin());
+                fits_ = first.fits;
+            } else {
+                ok = column(j, h, col.data());
+            }
+            fits = fits || fits_;
+            if (!ok) {
+                if (have_best) break;
+                continue;
+            }
+            if (!have_prev) {
+                std::copy(col.begin(), col.end(), out);
+                hbest = h;
+                have_best = true;
+                prev_ok = strict && rounding(col.data(), j) * kNoiseFactor < 1;
+            } else {
+                if (prev_ok && dprev == kInf && rounding(col.data(), j) * kNoiseFactor >= 1) break;
+                double sc, md;
+                max_abs2(col.data(), prev.data(), m, sc, md);
+                const double dd = sc > 0 ? md / sc : 0.0;
+                if (dd >= dprev / 8) break;
+                std::copy(col.begin(), col.end(), out);
+                hbest = h;
+                dprev = dd;
+                if (dd == 0) break;
+            }
+            std::swap(prev, col);
+            have_prev = true;
+        }
+        fits_ = fits;
+        settled_ = dprev <= kSettled;
+        return have_best;
+    }
 ```
+
+이웃한 두 추정의 차이는 `max_abs2`가 열의 가장 큰 크기와 차이의 가장 큰 크기를 한 패스로 구해 그 몫으로 재요. 가장 큰 값은 더하는 순서와 상관없이 정확해요.
 
 $e^x$의 $x = 1$에서 같은 규칙을 따라가 보면 $e = -12$($h = 2^{-11}$)를 골라요.
 
@@ -514,64 +535,95 @@ True
 
 $e = -10$에서 $-12$로 갈 때 $d$가 $1.2 \times 10^{-10}$에서 $3.2 \times 10^{-13}$으로 줄었으니(8배보다 훨씬 많이) 받아들이고, $-14$에서는 $d$가 오히려 커져서 멈춰요. 오차 곡선의 바닥($10^{-13}$ 근처)을 실제 오차를 모른 채 찾아낸 셈이에요. 둘째 추정은 견줄 앞의 차이가 없어 대개 받아들이므로, 출발점을 작게 잡으면 고른 간격도 한 단계 작아져요. 그래서 출발점은 넉넉하게 큰 $2^{-8}$이에요. 다만 둘째 추정이 반올림 잡음(열의 노름이 [반올림 수준](#반올림-수준의-열)의 16배 이하)이고 첫째가 아니면, 둘째를 받지 않고 첫째를 써요.
 
-**0에 아주 가까운 $x_j$.** 처음 간격은 $\lvert x_j\rvert$에 비례하므로, $x_j$가 함수가 변하는 척도보다 훨씬 작으면(예: $x_j = 10^{-12}$인데 함수는 1 크기에서 변할 때) 처음 간격 $2^{-8}\lvert x_j\rvert$부터 함숫값의 차이가 반올림에 묻혀요. 그대로 내려가면 반올림만 남은 추정을 고르게 돼요. 반올림에 다 묻히지 않았더라도, 처음 추정이 이미 반올림으로 목표 정확도만큼 잃었다면 아래로만 찾아서는 더 나아지지 않아요. 내려갈수록 반올림은 커지기만 하니까요. 그래서 처음 열의 반올림 한계(`noise`)가 열 크기의 $2^{-36}$(`_GROW_TOL`, $1.5 \times 10^{-11}$)을 넘으면 먼저 간격을 키워요. 이 차분이 노리는 정확도가 상대 $10^{-11}$–$10^{-13}$이라서 그 언저리의 문턱이에요.
+**0에 아주 가까운 $x_j$.** 처음 간격은 $\lvert x_j\rvert$에 비례하므로, $x_j$가 함수가 변하는 척도보다 훨씬 작으면(예: $x_j = 10^{-12}$인데 함수는 1 크기에서 변할 때) 처음 간격 $2^{-8}\lvert x_j\rvert$부터 함숫값의 차이가 반올림에 묻혀요. 그대로 내려가면 반올림만 남은 추정을 고르게 돼요. 반올림에 다 묻히지 않았더라도, 처음 추정이 이미 반올림으로 목표 정확도만큼 잃었다면 아래로만 찾아서는 더 나아지지 않아요. 내려갈수록 반올림은 커지기만 하니까요. 그래서 처음 열의 반올림 한계(`noise`)가 열 크기의 $2^{-36}$(`kGrowTol`, $1.5 \times 10^{-11}$)을 넘으면 먼저 간격을 키워요. 이 차분이 노리는 정확도가 상대 $10^{-11}$–$10^{-13}$이라서 그 언저리의 문턱이에요.
 
-```python
-    # src/stardust/differentiate/_differences.py
-    def choose_step(self, x, j, g0):
-        """The step of variable j, chosen once: from 2^-8 |x_j| down by factors of 4 while
-        consecutive estimates get closer by more than 8 times; the last such estimate and its
-        step. A start at rounding level is moved up first (_grow); when no larger step leaves
-        rounding level (a column that is 0 or noise) the search is the plain one from the start.
-        Below _FD_CAP (|x_j| < 1) a search whose estimates never agreed (_settled) is checked
-        against the search from x_j = 0's start (_from_cap)."""
-        base = math.frexp(abs(x[j]) if x[j] != 0 else 1.0)[1]
-        e0 = base + _FD_START
-        col0 = self.column(x, j, math.ldexp(1.0, e0), g0)
-        if col0 is None or math.ldexp(1.0, e0) >= _FD_CAP:
-            return self._descend(x, j, g0, e0, (col0, self.fits))
-        r0 = self._rounding(col0, j)
-        if r0 <= _GROW_TOL:
-            best, hbest = self._descend(x, j, g0, e0, (col0, self.fits))
-            if best is not None and not self._settled:
-                best, hbest = self._from_cap(x, j, g0, best, hbest)
-            return best, hbest
-        fits0 = self.fits
-        e = self._grow(x, j, g0, e0, col0)
-        if e is not None:
-            best, hbest = self._descend(x, j, g0, e)
-            if best is not None:
-                return best, hbest
-        if r0 <= _ROUNDING_TOL:  # not at rounding level: the plain search from the start
-            best, hbest = self._descend(x, j, g0, e0)
-        else:
-            best, hbest = self._descend(x, j, g0, e0, strict=False)
-        self.fits = self.fits or fits0
-        return best, hbest
+```cpp
+    // csrc/differentiate/accurate.hpp
+    // The step of variable j (_differences.py's choose_step): the column into out and its
+    // step h; false when no stencil gives one.
+    bool choose_step(lint j, double* out, double& h) {
+        using namespace accurate_detail;
+        const auto uj = static_cast<std::size_t>(j);
+        const lint m = m_;
+        const int base = frexp_exp(xw_[uj] != 0 ? std::abs(xw_[uj]) : 1.0);
+        const int e0 = base + kFdStart;
+        vec col0(static_cast<std::size_t>(m));
+        const bool ok0 = column(j, std::ldexp(1.0, e0), col0.data());
+        const First start{true, ok0, &col0, fits_};
+        if (!ok0 || e0 >= kCapExp) return descend(j, e0, start, true, out, h);
+        const double r0 = rounding(col0.data(), j);
+        if (r0 <= kGrowTol) {
+            bool ok = descend(j, e0, start, true, out, h);
+            if (ok && !settled_) from_cap(j, out, h);
+            return ok;
+        }
+        const bool fits0 = fits_;
+        int e = 0;
+        if (grow(j, e0, col0.data(), e)) {
+            if (descend(j, e, First{}, true, out, h)) return true;
+        }
+        bool ok;
+        if (r0 <= kRoundingTol) ok = descend(j, e0, First{}, true, out, h);  // the plain search from the start
+        else ok = descend(j, e0, First{}, false, out, h);
+        fits_ = fits_ || fits0;
+        return ok;
+    }
 ```
 
-키운 간격에서 찾기가 실패하면 처음 간격으로 돌아가요. 처음 열의 반올림 한계가 $2^{-26}$(`_ROUNDING_TOL`, $\sqrt\varepsilon$)보다 작았으면, 즉 반올림에 묻히지는 않았으면 보통의 찾기를 하고, 반올림 수준이었으면 둘째 추정을 잡음이라는 이유로 버리지 않는 찾기(`strict=False`)를 해요. $\sqrt\varepsilon$은 자릿수의 반을 반올림에 잃은 수준이에요.
+키운 간격에서 찾기가 실패하면 처음 간격으로 돌아가요. 처음 열의 반올림 한계가 $2^{-26}$(`kRoundingTol`, $\sqrt\varepsilon$)보다 작았으면, 즉 반올림에 묻히지는 않았으면 보통의 찾기를 하고, 반올림 수준이었으면 둘째 추정을 잡음이라는 이유로 버리지 않는 찾기(`strict`가 false)를 해요. $\sqrt\varepsilon$은 자릿수의 반을 반올림에 잃은 수준이에요.
 
-`_grow`는 반올림 한계를 열 크기의 $\sqrt\varepsilon$배로 낮추는 만큼 간격을 한 번에 키우고(적어도 4배), 그 뒤 4배씩 더 키우며 이웃한 두 추정의 차이가 두 반올림 한계의 합을 넘을 때(절단 오차가 보이기 시작할 때)나 $x_j = 0$일 때의 처음 간격 $2^{-7}$에 닿을 때 멈춰요. 멈춘 간격의 열이 잡음이 아니면(노름이 반올림 한계의 16배보다 크면) 거기서 보통의 찾기를 해요. $2^{-7}$에 닿아도 반올림 한계가 열의 $\sqrt\varepsilon$배를 넘을 수 있어요. $\cos$의 $x = 3.41 \times 10^{-8}$처럼 도함수가 함숫값의 $3.4 \times 10^{-8}$배뿐인 점이에요. 그래도 더 작은 간격은 반올림이 더 클 뿐이니 그 간격에서 찾아요. 처음 간격 $2^{-32}$부터 아래로만 찾으면 $-4.8 \times 10^{-7}$이 나와 부호까지 틀려요. 어느 간격에서도 열이 잡음이면(참값이 0인 열) `None`을 돌려주고, 위의 처음 간격으로 돌아가는 길을 가요.
+`grow`는 반올림 한계를 열 크기의 $\sqrt\varepsilon$배로 낮추는 만큼 간격을 한 번에 키우고(적어도 4배), 그 뒤 4배씩 더 키우며 이웃한 두 추정의 차이가 두 반올림 한계의 합을 넘을 때(절단 오차가 보이기 시작할 때)나 $x_j = 0$일 때의 처음 간격 $2^{-7}$에 닿을 때 멈춰요. 멈춘 간격의 열이 잡음이 아니면(노름이 반올림 한계의 16배보다 크면) 거기서 보통의 찾기를 해요. $2^{-7}$에 닿아도 반올림 한계가 열의 $\sqrt\varepsilon$배를 넘을 수 있어요. $\cos$의 $x = 3.41 \times 10^{-8}$처럼 도함수가 함숫값의 $3.4 \times 10^{-8}$배뿐인 점이에요. 그래도 더 작은 간격은 반올림이 더 클 뿐이니 그 간격에서 찾아요. 처음 간격 $2^{-32}$부터 아래로만 찾으면 $-4.8 \times 10^{-7}$이 나와 부호까지 틀려요. 어느 간격에서도 열이 잡음이면(참값이 0인 열) false를 돌려주고, 위의 처음 간격으로 돌아가는 길을 가요.
 
-**끝내 맞지 않는 추정.** 처음 간격의 반올림 한계가 문턱 아래라 아래로만 찾았는데 마지막 두 추정의 상대 차이가 $2^{-20}$(`_SETTLED`)을 넘으면, 여섯 자리쯤도 맞지 않은 채 끝난 거예요. 절단 오차가 줄어드는 것을 한 번도 보지 못했다는 뜻이고, 처음 간격에서의 함숫값의 차가, 반올림 한계 $u\lvert f\rvert$가 보지 못하는 $f$ 자신의 계산 오차보다 작았던 경우예요. `math.log(1 + x)`의 $x = 10^{-14}$에서는 $1 + x$가 $2^{-52}$의 배수로 반올림되므로, 처음 간격 $2^{-54}$의 추정은 $-1/3$이고 다음은 0이에요. 그럴 때는($\lvert x_j\rvert < 1$에서만) $x_j = 0$일 때의 처음 간격 $2^{-7}$에서 다시 찾고, 그 추정들이 맞으면 그것을 써요. `_descend`가 끝에 적어 두는 `_settled`가 이 판정이에요.
+```cpp
+    // csrc/differentiate/accurate.hpp
+    // The exponent e of the step to start from when the start 2^e0 is at rounding level
+    // (_grow); false when no step leaves rounding level.
+    bool grow(lint j, int e0, const double* col0, int& eout) {
+        using namespace accurate_detail;
+        const lint m = m_;
+        const double r = rounding(col0, j);
+        long jump;
+        if (std::isinf(r)) jump = kCapExp - e0;
+        else jump = static_cast<long>(std::ceil(std::log2(r / kRoundingTol)));
+        int e = static_cast<int>(std::min<long>(kCapExp, e0 + std::max<long>(jump, 2)));
+        vec col(static_cast<std::size_t>(m)), nxt(static_cast<std::size_t>(m)), diff(static_cast<std::size_t>(m));
+        if (!column(j, std::ldexp(1.0, e), col.data())) return false;
+        double lvl = noise_[std::size_t(j)];
+        while (e + 2 <= kCapExp) {
+            if (!column(j, std::ldexp(1.0, e + 2), nxt.data())) break;
+            const double nlvl = noise_[std::size_t(j)];
+            e += 2;
+            for (lint i = 0; i < m; ++i) diff[std::size_t(i)] = nxt[std::size_t(i)] - col[std::size_t(i)];
+            const bool shows = wnorm(diff.data()) > lvl + nlvl;
+            std::swap(col, nxt);
+            lvl = nlvl;
+            if (shows) break;
+        }
+        const double size = wnorm(col.data());
+        if (!(size > 0 && lvl / size * kNoiseFactor < 1)) return false;
+        eout = e;
+        return true;
+    }
+```
 
-```python
-    # src/stardust/differentiate/_differences.py
-    def _from_cap(self, x, j, g0, best, hbest):
-        """The search from _FD_CAP (x_j = 0's start) in place of (best, hbest), a search from
-        2^-8 |x_j| whose estimates never agreed to _SETTLED: its start was below the rounding of
-        f's own evaluation, which the rounding level (u |f|) does not see (log(1 + x) at
-        x = 1e-14: 1 + x rounds to a multiple of 2^-52, and the start 2^-54 gave -1/3). Taken
-        when its estimates agree; else (best, hbest) as they were."""
-        fits = self.fits
-        cap = math.frexp(_FD_CAP)[1] - 1
-        alt, halt = self._descend(x, j, g0, cap)
-        if alt is not None and self._settled:
-            self.fits = self.fits or fits
-            return alt, halt
-        self.fits = fits
-        return best, hbest
+**끝내 맞지 않는 추정.** 처음 간격의 반올림 한계가 문턱 아래라 아래로만 찾았는데 마지막 두 추정의 상대 차이가 $2^{-20}$(`kSettled`)을 넘으면, 여섯 자리쯤도 맞지 않은 채 끝난 거예요. 절단 오차가 줄어드는 것을 한 번도 보지 못했다는 뜻이고, 처음 간격에서의 함숫값의 차가, 반올림 한계 $u\lvert f\rvert$가 보지 못하는 $f$ 자신의 계산 오차보다 작았던 경우예요. `math.log(1 + x)`의 $x = 10^{-14}$에서는 $1 + x$가 $2^{-52}$의 배수로 반올림되므로, 처음 간격 $2^{-54}$의 추정은 $-1/3$이고 다음은 0이에요. 그럴 때는($\lvert x_j\rvert < 1$에서만) $x_j = 0$일 때의 처음 간격 $2^{-7}$에서 다시 찾고, 그 추정들이 맞으면 그것을 써요. `descend`가 끝에 적어 두는 `settled_`가 이 판정이에요.
+
+```cpp
+    // csrc/differentiate/accurate.hpp
+    // The search from 2^kCapExp in place of (out, h) when its estimates agree (_from_cap).
+    void from_cap(lint j, double* out, double& h) {
+        const bool fits = fits_;
+        vec alt(static_cast<std::size_t>(m_));
+        double halt = accurate_detail::kNaN;
+        const bool ok = descend(j, accurate_detail::kCapExp, First{}, true, alt.data(), halt);
+        if (ok && settled_) {
+            fits_ = fits_ || fits;
+            std::copy(alt.begin(), alt.end(), out);
+            h = halt;
+            return;
+        }
+        fits_ = fits;
+    }
 ```
 
 그래서 $x_j = 10^{-12}$나 $10^{-300}$에서도, 그 사이의 $10^{-6}$–$10^{-4}$에서도 $x_j = 0$일 때와 같은 크기의 절대오차가 나와요.
@@ -604,11 +656,107 @@ $e = -10$에서 $-12$로 갈 때 $d$가 $1.2 \times 10^{-10}$에서 $3.2 \times 
 
 스텐실의 점이 경계 밖이거나 값이 유한하지 않으면 그 간격에서는 다음 스텐실(앞쪽, 뒤쪽 한쪽 5점)을 써 보고, 어느 것도 안 되면 다음 간격으로 넘어가요. 어느 간격에서도 추정이 하나도 없으면 `approx_fprime`이 `ValueError`(`'f' is not finite near the point (the differences of variable 0)`)를 내요.
 
+### 사용자 함수 밖의 일
+
+간격 찾기, 스텐실의 합, 반올림 수준, 이계 차분(nls의 `second`)은 모두 C++에서 하고, Python은 사용자 함수뿐이에요. 사용자 함수가 돌려준 값이 길이 m의 float64 `sd.ndarray`(m = 1이면 Python `float`도)이면 그대로 읽고, 그 밖의 값만 부르는 쪽의 Python 검사 함수(`approx_fprime`이면 `_f_values`)를 거쳐요. 돌려받은 배열은 부른 바로 뒤에 한 번 읽어서, 스텐실의 합, 값의 가장 큰 크기, 유한한지를 한 패스에 구해요.
+
+```cpp
+    // csrc/differentiate/accurate.hpp
+    // dg/dx_j (unweighted) into out by the first feasible 5-point stencil with step h; false
+    // when none gives one. Keeps the central stencil's values for second() and sets noise_[j],
+    // the weighted 2-norm of the column's rounding level ((sum |w_o|) / (12 h) u
+    // max_o |g_i(x + o h e_j)|), and fits_ (some stencil fitted within the bounds).
+    bool column(lint j, double h, double* out) {
+        using namespace accurate_detail;
+        constexpr std::uint64_t kExp = 0x7ff0000000000000ull;
+        const auto uj = static_cast<std::size_t>(j);
+        const double t = xw_[uj];
+        const lint m = m_;
+        const lint nt = nchunks(m);
+        std::vector<std::uint8_t> bad(static_cast<std::size_t>(nt), 0);
+        double* acc = acc_.data();
+        double* big = big_.data();
+        fits_ = false;
+        for (int kind = 0; kind < 3; ++kind) {
+            const Stencil& st = kStencils[kind];
+            if (!(lb_[uj] <= t + st.lo * h && t + st.hi * h <= ub_[uj])) continue;
+            fits_ = true;
+            bool ok = true;
+            // each value is added into the sum (in the order of the offsets) and the largest
+            // magnitudes as it comes, with its finiteness test; a value that is not finite
+            // ends the stencil (its later points are not evaluated)
+            for (int q = 0; q < st.count && ok; ++q) {
+                const int o = st.offs[q];
+                const double w = st.wts[q];
+                const std::byte* d;
+                std::int64_t s;
+                if (o == 0) {
+                    d = reinterpret_cast<const std::byte*>(g0_.data());
+                    s = sizeof(double);
+                } else {
+                    xw_[uj] = t + o * h;
+                    call(vals_[q]);
+                    xw_[uj] = t;
+                    d = vals_[q].data;
+                    s = vals_[q].stride;
+                }
+                const bool first = q == 0;
+                chunks(m, [&](lint i0, lint i1, lint c) {
+                    std::uint64_t b = 0;
+                    if (s == static_cast<std::int64_t>(sizeof(double))) {
+                        const double* v = reinterpret_cast<const double*>(d);
+                        for (lint i = i0; i < i1; ++i) {
+                            const double vi = v[i];
+                            std::uint64_t u;
+                            std::memcpy(&u, &vi, sizeof u);
+                            b |= static_cast<std::uint64_t>((u & kExp) == kExp);
+                            if (first) {
+                                acc[i] = w * vi;
+                                big[i] = std::abs(vi);
+                            } else {
+                                acc[i] = acc[i] + w * vi;
+                                big[i] = std::max(big[i], std::abs(vi));
+                            }
+                        }
+                    } else {
+                        // ...
+                    }
+                    bad[std::size_t(c)] = b != 0;
+                });
+                for (std::uint8_t b : bad) ok = ok && !b;
+            }
+            if (!ok) continue;
+            const double den = 12.0 * h;
+            const double* wr = has_w_ ? w_.data() : nullptr;
+            chunks(m, [&](lint i0, lint i1, lint) {
+                for (lint i = i0; i < i1; ++i) {
+                    if (wr) big[i] = big[i] * wr[i];
+                    out[i] = acc[i] / den;
+                }
+            });
+            noise_[uj] = m ? st.wsum / (12.0 * h) * kU * norm2(big, m) : 0.0;
+            if (kind == 0) {  // the values at -h and +h, kept for second()
+                Central& c = central_[uj];
+                c.set = true;
+                c.h = h;
+                std::swap(c.fm, vals_[1]);
+                std::swap(c.fp, vals_[2]);
+            }
+            return true;
+        }
+        return false;
+    }
+```
+
+그래서 버퍼 하나를 고쳐 쓰며 돌려주는 함수도 같은 야코비안을 얻어요. 가운데 스텐실의 $x \pm h$ 값만은 nls의 이계 차분에 다시 쓰려고 쥐고 있어요(`central_`). 유한하지 않은 값이 나오면 그 스텐실은 거기서 끝나고, 남은 점은 부르지 않아요.
+
+값이 $2^{16}$개 이상이면 m개를 지나가는 패스(`chunks`)를 $2^{15}$개씩의 덩어리로 나눠 풀에서 돌려요. 덩어리는 m으로만 정해지고, 패스는 원소별이거나 정확한 줄이기(가장 큰 값, 유한하지 않다는 깃발)예요. 노름은 linalg의 빠른 제곱합이고, 그 합도 길이로만 나눠요. 간격을 고르는 비교가 이 노름과 가장 큰 값으로만 이뤄지므로, 지금은 고른 간격과 야코비안이 스레드 수와 상관없이 같은 비트예요(약속은 아니에요).
+
 ### 셈과 비용
 
 간격 하나에 함수를 4번 불러요(중앙 스텐실은 $x$를 쓰지 않고, 한쪽 스텐실의 $f(x)$는 이미 있어요). 처음 두 간격에 8번이고 간격을 하나 더 볼 때마다 4번이라, 변수 하나에 8번 이상이에요. MGH 47경우에서는 변수마다 평균 8–24번, 초등 함수 11개($x^2$, $x^3$, $x^7$, $1/x$, $\sqrt x$, $\cos$, $\sin$, $\exp$, $\log$, $\arctan$, $\tanh$)를 0.01–100의 9점에서 재면 8–28번(대부분 8–20번)이에요. $\cos$, $\sin$, $\exp$는 $\lvert x\rvert$가 클수록 많아 $x = 100$에서 28번이에요. 0에 가깝지만 0은 아닌 $x$에서 함숫값이 기울기보다 훨씬 크면 `_grow`가 간격을 4배씩 키우는 만큼 더 불러서, $\exp$를 $x = 10^{-12}$·$10^{-8}$에서 61번, $3 \times 10^{-6}$에서 57번, $10^{-5}$에서 53번, $10^{-4}$에서 49번 불러요($x = 0$은 17번, $10^{-300}$·$10^{-30}$은 25번, $10^{-2}$는 13번; 점 $x$의 한 번 포함). 처음 간격의 반올림이 문턱 $2^{-36}$ 바로 위인 $10^{-5}$ 근처에서도 간격을 키우므로, 정확도를 지키는 대신 호출이 네 배쯤 늘어요. $\cos$는 $x = 3.41 \times 10^{-8}$에서 21번($10^{-9}$, $10^{-14}$에서 17번), `math.log(1 + x)`는 다시 찾는 $\pm 10^{-14}$에서 29–33번이에요. $\sin$, $\arctan$, $\tanh$, `math.log1p`처럼 0 근처에서 값이 작은 함수는 9–25번이에요. Rosenbrock은 변수마다 10–12번, $e^{x_0}\sin x_1$은 18번이에요.
 
-`epsilon=2**-26`의 앞쪽 차분은 변수 하나에 한 번 부르니, 기본은 그보다 호출이 8배 이상 많아요. 5점 차분의 계산은 Python에 있어서 사용자 함수 밖의 비용도 커요. `check_grad`의 기본도 같은 차분이라 같은 비용이 들어요.
+`epsilon=2**-26`의 앞쪽 차분은 변수 하나에 한 번 부르니, 기본은 그보다 호출이 8배 이상 많아요. 사용자 함수 밖의 일은 위의 C++ 고리라서, 시간은 대부분 사용자 함수에 들어요. `check_grad`의 기본도 같은 차분이라 같은 비용이 들어요.
 
 ### 정확도
 
@@ -620,7 +768,7 @@ Moré–Garbow–Hillstrom 문제의 47경우에서 해석적 도함수와 견�
 
 ### 반올림 수준의 열
 
-`Differences`는 열마다 반올림 수준도 재요. 스텐실의 값 $f_i(x + oh)$마다 최대 $u\lvert f_i\rvert$의 반올림이 있으니, 원소 $i$의 불확실성은 $\tfrac{\sum_o \lvert w_o\rvert}{12h}\,u\max_o\lvert f_i(x + oh)\rvert$이고 그 2-노름이 `noise`예요. nls는 열의 노름이 `noise`의 16배 이하이면 그 열을 0으로 둬요(`zero_noise`). `approx_fprime`은 이것을 하지 않고 계산한 값을 그대로 돌려줘요. 그래서 참값이 0인 열에도 $10^{-14}$쯤의 수가 남아요.
+`column`은 열마다 반올림 수준도 재요. 스텐실의 값 $f_i(x + oh)$마다 최대 $u\lvert f_i\rvert$의 반올림이 있으니, 원소 $i$의 불확실성은 $\tfrac{\sum_o \lvert w_o\rvert}{12h}\,u\max_o\lvert f_i(x + oh)\rvert$이고 그 2-노름이 `noise`예요. nls는 열의 노름이 `noise`의 16배 이하이면 그 열을 0으로 둬요(`zero_noise`). `approx_fprime`은 이것을 하지 않고 계산한 값을 그대로 돌려줘요. 그래서 참값이 0인 열에도 $10^{-14}$쯤의 수가 남아요.
 
 ```python
 >>> from stardust.differentiate._differences import Differences
@@ -643,22 +791,35 @@ $x_0$이 함수에 나오지 않으니 첫 열은 참값이 0이에요. 그런�
 
 `epsilon`을 주면 scipy `approx_fprime`과 같은 앞쪽 차분이에요. scipy가 `approx_derivative(method='2-point', abs_step=epsilon)`로 하는 계산을 그대로 적었어요.
 
-```python
-# src/stardust/optimize/_diff.py
-def _forward(f, x, f0, eps, m, func, what):
-    """scipy's approx_fprime: (f(x + h_j e_j) - f(x)) / ((x_j + h_j) - x_j) with h_j = eps_j,
-    or sqrt(eps) sign(x_j) max(1, |x_j|) (sqrt(eps) = 2^-26) where x_j + eps_j rounds to x_j
-    (approx_derivative's abs_step)."""
-    xl = x.tolist()
-    cols = []
-    for j, (t, h) in enumerate(zip(xl, eps)):
-        if (t + h) - t == 0:
-            h = 2.0**-26 * (1.0 if t >= 0 else -1.0) * max(1.0, abs(t))
-        xj = x.copy()
-        xj[j] = t + h
-        dx = (t + h) - t
-        cols.append((_f_values(f(xj), func, what, m)[0] - f0) / dx)
-    return _sd.stack(cols, axis=1)
+```cpp
+    // csrc/differentiate/accurate.hpp
+    // scipy's approx_fprime with steps eps (one per variable): (g(x + h_j e_j) - g0) /
+    // ((x_j + h_j) - x_j), h_j = sqrt(eps) sign(x_j) max(1, |x_j|) where x_j + eps_j rounds to
+    // x_j. Returns (m, p).
+    nanobind::object forward(const vec& x, nanobind::handle g0o, const vec& eps) {
+        namespace nb = nanobind;
+        check_x(x);
+        load_g0(g0o);
+        if (static_cast<lint>(eps.size()) != p_) throw nb::value_error("Differences: eps must have p values");
+        const lint m = m_;
+        const std::int64_t shape[2] = {m, p_};
+        NDArray out = new_array(DType::Float64, shape);
+        double* o = reinterpret_cast<double*>(out.data);
+        Values v;
+        xw_ = x;
+        for (lint j = 0; j < p_; ++j) {
+            const auto uj = static_cast<std::size_t>(j);
+            const double t = x[uj];
+            double h = eps[uj];
+            if ((t + h) - t == 0) h = 0x1p-26 * (t >= 0 ? 1.0 : -1.0) * std::max(1.0, std::abs(t));
+            xw_[uj] = t + h;
+            const double dx = (t + h) - t;
+            call(v);
+            xw_[uj] = t;
+            for (lint i = 0; i < m; ++i) o[i * p_ + j] = (v.at(i) - g0_[std::size_t(i)]) / dx;
+        }
+        return wrap(std::move(out));
+    }
 ```
 
 같은 함수라면 지금은 scipy와 부르는 점이 같고 결과도 비트까지 같아요. MGH 47경우의 기울기와 야코비안에서 `epsilon=2**-26`(scipy의 기본)의 결과가 scipy와 모두 같아요. 기본과 달리 `xk`에서 함수가 유한하지 않아도 계산해요.

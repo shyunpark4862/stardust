@@ -658,9 +658,9 @@ TypeError: cannot pickle 'ndarray' object
 
 그래서 `multiprocessing`처럼 객체를 pickle로 주고받는 도구에도 Series와 DataFrame을 그대로 넘길 수 있어요.
 
-## 결과는 스레드 수와 상관없이 같아요
+## 같은 입력이면 결과도 같아요
 
-큰 표의 계산은 여러 CPU 코어로 나눠서 해요. 코어 수는 라이브러리 공통의 `sd.set_num_threads`로 정해요([스레드](/api/array/threads/)). 몇 개의 스레드로 계산하든 **결과는 비트까지 같아요.** float 합의 마지막 자리, 행의 순서, 에러 메시지까지 같아요.
+큰 표의 계산은 여러 CPU 코어로 나눠서 해요. 코어 수는 라이브러리 공통의 `sd.set_num_threads`로 정해요([스레드](/api/array/threads/)). 같은 기계, 같은 스레드 수에서 같은 입력을 계산하면 **결과는 실행마다 비트까지 같아요.** float 합의 마지막 자리, 행의 순서, 에러 메시지까지 같아요. 지금은 스레드 수를 바꿔도 같은 결과가 나와요(약속은 아니에요).
 
 ```python
 >>> x = sd.frame.Series([0.1] * 1_000_000)
@@ -672,7 +672,7 @@ TypeError: cannot pickle 'ndarray' object
 True
 ```
 
-float 덧셈은 순서에 따라 마지막 자리가 달라질 수 있어서, 나눠 계산하는 방식에 따라 결과가 흔들리기 쉬워요. stardust는 언제나 같은 순서로 더하도록 나눠서, 같은 데이터면 몇 번을 실행해도 같은 답이 나와요.
+float 덧셈은 순서에 따라 마지막 자리가 달라질 수 있어서, 나눠 계산하는 방식에 따라 결과가 흔들리기 쉬워요. stardust는 언제나 데이터의 길이로 정한 같은 순서로 더해서, 같은 데이터면 몇 번을 실행해도 같은 답이 나와요.
 
 ## 배열 영역과의 관계
 
@@ -689,7 +689,7 @@ float 덧셈은 순서에 따라 마지막 자리가 달라질 수 있어서, �
 | 고유값은 `unique_values`, 정렬한 순서 | [unique](/api/array/unique/) |
 | `std`, `var`의 기본 `correction=0` | [var](/api/array/var/) |
 | 주 인자는 자리로, 옵션은 이름으로, 옵션 타입 검사와 메시지 | [배열의 기본](/api/array/basics/) |
-| 경고 없음, Python 값으로 된 결과, `bool()`은 `TypeError`, 스레드와 무관한 결과 | [배열의 기본](/api/array/basics/) |
+| 경고 없음, Python 값으로 된 결과, `bool()`은 `TypeError`, 실행마다 같은 결과 | [배열의 기본](/api/array/basics/) |
 
 **다른 것**
 
@@ -732,5 +732,5 @@ dtype: float64
 - `df.dtypes`는 dict예요. DataFrame의 리덕션(`df.sum()`)은 Series가 아니라 1행짜리 DataFrame이에요. 열마다 dtype을 지키기 위해서예요.
 - `bool(df)`, `bool(s)`, `bool(index)`는 `TypeError`예요. pandas는 `ValueError`예요.
 - 경고가 없어요. pandas가 경고를 내고 계속하는 자리에서 stardust는 에러를 내거나, 정해진 규칙대로 조용히 계산해요.
-- float의 합, 평균, 분산처럼 반올림이 끼는 결과는 pandas·numpy와 반올림 오차 안에서 같고, 마지막 자리는 다를 수 있어요. 지금 비트까지 같은 경우가 있어도 그것을 약속하지는 않아요. 약속하는 것은 스레드 수와 상관없이 같은 비트, 같은 값을 담은 배열의 결과(`sd.sum`, `sd.mean`, `sd.var` 등)와 같은 비트, 그리고 정확도예요. 반올림과 상관없는 동작(dtype 규칙, 정수 연산, 정렬 순서, NaN과 `-0.0`)은 pandas·numpy와 같고, 다르게 정한 곳은 각 페이지의 끝에 이유와 함께 적어 두었어요.
+- float의 합, 평균, 분산처럼 반올림이 끼는 결과는 pandas·numpy와 반올림 오차 안에서 같고, 마지막 자리는 다를 수 있어요. 지금 비트까지 같은 경우가 있어도 그것을 약속하지는 않아요. 약속하는 것은 같은 스레드 수에서 실행마다 같은 비트, 같은 값을 담은 배열의 결과(`sd.sum`, `sd.mean`, `sd.var` 등)와 같은 비트, 그리고 정확도예요. 반올림과 상관없는 동작(dtype 규칙, 정수 연산, 정렬 순서, NaN과 `-0.0`)은 pandas·numpy와 같고, 다르게 정한 곳은 각 페이지의 끝에 이유와 함께 적어 두었어요.
 - Index의 출력은 `Index([1, 2], dtype=int64)`예요. pandas는 `dtype='int64'`처럼 따옴표를 붙여요. 넓은 표를 터미널 폭에 맞춰 접지 않아요.

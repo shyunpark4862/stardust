@@ -2,7 +2,7 @@
 title: 배치와 병렬화
 group: 구조
 order: 3
-summary: 행렬 묶음 하나를 배치 원소로 쪼개 스레드풀에 나누는 방식을 설명해요. 나눌지는 원소 하나의 비용을 시간으로 추정해 정하고, 작업 메모리와 16바이트 정렬까지 맞춰서 어떻게 나눠도 결과가 비트까지 같아요.
+summary: 행렬 묶음 하나를 배치 원소로 쪼개 스레드풀에 나누는 방식을 설명해요. 나눌지는 원소 하나의 비용을 시간으로 추정해 정하고, 작업 메모리와 16바이트 정렬까지 맞춰서 지금은 어떻게 나눠도 결과가 비트까지 같아요.
 seeAlso: [overview, packing, basic, lu]
 ---
 import Callout from '../../../components/Callout.astro';
@@ -16,7 +16,7 @@ import Tree from '../../../components/fig/Tree.astro';
 
 ## 한눈에 보기
 
-`sd.linalg`의 모든 행렬 함수는 `(..., M, N)` 모양의 **행렬 묶음**을 받아요. 마지막 두 축이 행렬 하나이고, 그 앞의 축들이 배치예요. `solve`에 `(1000, 3, 3)`을 넣으면 3×3 연립방정식 1000개를 풀어요. 이 글은 그 1000개를 어떻게 걷고, 어떤 기준으로 스레드에 나누고, 왜 어떻게 나눠도 결과가 비트까지 같은지를 설명해요.
+`sd.linalg`의 모든 행렬 함수는 `(..., M, N)` 모양의 **행렬 묶음**을 받아요. 마지막 두 축이 행렬 하나이고, 그 앞의 축들이 배치예요. `solve`에 `(1000, 3, 3)`을 넣으면 3×3 연립방정식 1000개를 풀어요. 이 글은 그 1000개를 어떻게 걷고, 어떤 기준으로 스레드에 나누고, 왜 지금 어떻게 나눠도 결과가 비트까지 같은지를 설명해요.
 
 모든 행렬 함수는 같은 틀을 지나요. 그 틀이 `csrc/linalg/batch.hpp`의 배치 드라이버예요.
 
@@ -39,8 +39,10 @@ import Tree from '../../../components/fig/Tree.astro';
 1. 배치 원소 하나는 LAPACK 호출 한 번(또는 정해진 몇 번)이에요. 원소끼리는 서로 독립이라 어떤 순서로, 어느 스레드에서 돌려도 같은 계산이에요. 병렬화는 원소를 태스크로 묶는 일뿐이에요.
 2. 나눌지는 시간으로 정해요. 함수 계열마다 원소 하나의 직렬 비용을 `a + c·w` ns로 추정하고, 배치 전체가 10µs를 넘으면 나눠요. 태스크 하나는 약 5µs 분량이에요.
 3. 원소 하나는 어디서 돌든 같은 비트를 내요. 이를 위해 세 가지를 지켜요. 태스크마다 자기 작업 메모리를 쓰고, LAPACK에 주는 workspace 크기를 행렬마다 물었을 때와 같게 하고, LAPACK에 넘기는 배열을 16바이트 정렬해요(`lstsq`의 우변만 numpy와 같은 자리에 둬요). 마지막 것은 Accelerate가 정렬에 따라 반올림을 다르게 하기 때문에 필요해요.
-4. 실패는 가장 작은 인덱스를 보고해요. 병렬로 돌아도 메시지가 스레드 수와 상관없이 같아요.
-5. 합은 배열과 같은 pairwise 트리이고, 긴 합은 트리의 잎 단위로 나눠요. 같은 트리 순서로 합치므로 직렬과 비트까지 같아요.
+4. 실패는 가장 작은 인덱스를 보고해요. 병렬로 돌아도 메시지가 직렬과 같아요.
+5. 합은 길이로만 정한 조각(빠른 합의 16384항 청크, 버퍼 길의 pairwise 트리 잎)으로 나눠요. 같은 트리 순서로 합치므로 직렬과 비트까지 같아요.
+
+약속은 같은 기계, 같은 스레드 수, 같은 입력이면 실행마다 같은 비트예요. 스레드 수와 상관없는 비트는 약속이 아니지만, linalg의 분할은 모두 크기로만 정해져서 지금은 결과가 스레드 수와도 상관없어요.
 
 스레드풀 자체(상주 워커, atomic 카운터, spin 대기, GIL 해제)는 모든 영역이 함께 쓰는 것이라 [스레드풀과 결정성](/internals/core/threads/)에서 다뤄요. 이 글은 그 풀 위에서 linalg가 정하는 정책을 다뤄요.
 
@@ -66,18 +68,28 @@ import Tree from '../../../components/fig/Tree.astro';
 `Batch`는 결과의 배치 모양과, 피연산자마다 배치 축의 **바이트 strides**를 담아 둬요. 브로드캐스트로 늘어난 축(길이 1이었던 축, 없던 축)의 stride는 0이에요. 피연산자는 최대 4개(`kMaxOperands`)예요. `lu_solve(l, u, perm, b)`와 `solve_tridiagonal(dl, d, du, b)`가 넷을 모두 써요.
 
 ```cpp
-// linalg/batch.hpp (발췌)
+// csrc/linalg/batch.hpp
 class Batch {
 public:
-    Batch(std::initializer_list<BatchOperand> ops, const char* func);   // 브로드캐스트, 실패면 ValueError
-    std::int64_t size() const;                                          // 배치 원소 수
-    void offsets(std::int64_t idx, std::int64_t* out) const;            // 원소 idx의 피연산자별 바이트 오프셋
-    std::string index_str(std::int64_t idx) const;                      // "(1, 2)": 에러 메시지용
+    // Broadcasts the operands' batch shapes (right-aligned, size-1 axes
+    // stretch). ValueError if they do not broadcast.
+    Batch(std::initializer_list<BatchOperand> ops, const char* func);
+
+    const std::vector<std::int64_t>& shape() const { return shape_; }
+    std::int64_t size() const { return size_; }
+    std::size_t ndim() const { return shape_.size(); }
+
+    // Byte offset of every operand for batch element `idx` (C order over shape()).
+    void offsets(std::int64_t idx, std::int64_t* out) const;
+```
+
+```cpp
+// csrc/linalg/batch.hpp
 private:
     std::vector<std::int64_t> shape_;
     std::int64_t size_ = 1;
     std::size_t nops_ = 0;
-    std::vector<std::int64_t> strides_;   // nops_ × ndim, 늘어난 축은 0
+    std::vector<std::int64_t> strides_;  // nops_ x ndim, 0 on broadcast axes
 };
 ```
 
@@ -98,7 +110,32 @@ void Batch::offsets(std::int64_t idx, std::int64_t* out) const {
 }
 ```
 
-원소마다 오프셋을 처음부터 다시 계산하므로, 아무 원소에서나 시작할 수 있어요. 태스크가 배치의 중간부터 맡아도 앞 원소들을 걸어올 필요가 없어요. 비용은 원소 하나에 (배치 축 수) × (피연산자 수)번의 곱셈과 나눗셈이고, 그 원소에서 하는 패킹과 LAPACK 호출에 비하면 작아요.
+`offsets`는 번호 하나에서 오프셋을 처음부터 계산하므로, 아무 원소에서나 시작할 수 있어요. 태스크가 배치의 중간부터 맡아도 앞 원소들을 걸어올 필요가 없어요. 비용은 (배치 축 수) × (피연산자 수)번의 곱셈과 축마다 나눗셈 한 번이에요.
+
+패킹과 LAPACK 호출이 있는 원소에서는 이 비용이 작지만, 3×3 행렬의 짧은 합처럼 원소 하나의 일이 아주 작은 배치에서는 축마다의 나눗셈이 원소당 시간의 큰 몫을 차지했어요. 그래서 배치 드라이버는 원소를 `walk`로 걸어요.
+
+```cpp
+    // csrc/linalg/batch.hpp
+    template <class F>
+    void walk(std::int64_t begin, std::int64_t end, F&& fn) const {
+        const std::size_t nd = shape_.size();
+        const std::int64_t last = nd ? shape_[nd - 1] : 1;
+        std::int64_t inner[kMaxOperands] = {0, 0, 0, 0}, row[kMaxOperands] = {0, 0, 0, 0}, off[kMaxOperands];
+        if (nd)
+            for (std::size_t k = 0; k < nops_; ++k) inner[k] = strides_[k * nd + nd - 1];
+        for (std::int64_t i = begin; i < end;) {
+            const std::int64_t j0 = i % last, m = std::min(last - j0, end - i);
+            offsets(i, row);
+            for (std::int64_t j = 0; j < m; ++j, ++i) {
+                for (std::size_t k = 0; k < kMaxOperands; ++k) off[k] = row[k] + j * inner[k];
+                if (!fn(i, static_cast<const std::int64_t*>(off))) return;
+            }
+        }
+    }
+```
+
+`walk(begin, end, fn)`은 원소 `[begin, end)`를 C 순서로 돌면서 `fn(i, off)`를 불러요. `offsets`는 가장 안쪽 배치 축의 줄이 시작할 때마다 한 번만 부르고, 줄 안에서는 `줄의 오프셋 + j × 안쪽 stride`, 곱셈-덧셈 하나로 오프셋을 내요. 오프셋을 원소에서 원소로 더해 넘기지 않고 줄의 시작에서 매번 곱하는 것은, 넘기는 방식이 원소 사이에 그 자체로 의존 사슬이 되었기 때문이에요. `fn`이 false를 돌려주면 거기서 멈춰요(실패한 원소).
+
 
 같은 번호 체계를 에러 메시지에도 써요. `index_str(idx)`가 번호를 `(1, 2)` 같은 다차원 인덱스로 바꿔요. 배치 축이 없으면(행렬 하나면) 인덱스를 붙이지 않아요.
 
@@ -109,7 +146,7 @@ void Batch::offsets(std::int64_t idx, std::int64_t* out) const {
 `run_batch(batch, element_ns, body, max_tasks)`는 배치 원소마다 `body(i, off, scratch)`를 불러요.
 
 - `i`: 원소 번호. 결과 배열에서 이 원소의 자리를 찾는 데 써요(`res + i * m * n`).
-- `off`: 피연산자별 바이트 오프셋(`Batch::offsets`의 결과).
+- `off`: 피연산자별 바이트 오프셋(`Batch::walk`가 낸 값).
 - `scratch`: 작업 메모리. 직렬이면 배치 전체가 하나를, 나누면 태스크마다 하나를 써요.
 - 돌려주는 값: 성공이면 0, 실패면 양수 코드(`kSingular`, `kNonFinite` 등, `ops/common.hpp`). 몸체는 첫 실패에서 바로 돌아와요.
 
@@ -118,25 +155,28 @@ void Batch::offsets(std::int64_t idx, std::int64_t* out) const {
 `solve`의 몸체는 이렇게 생겼어요.
 
 ```cpp
-// linalg/ops/lu.cpp의 solve (발췌)
-const Failure f = run_batch(
-    b, cost(kLU, double(n) * n) + rhs_cost(n, k),
-    [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
-        T* lu;
-        lint* ipiv;
-        if (const int code = lu_factor<T>(a, off[0], n, s, lu, ipiv)) return code;   // 패킹 + LU 분해
-        // ... b를 결과 자리에 패킹하고 getrs ...
-        return 0;
-    },
-    lu_task_cap(n, k)
-);
-if (f) raise(b, f, "solve", "a");
+        // csrc/linalg/ops/lu.cpp
+        const Failure f = run_batch(
+            b, cost(kLU, double(n) * n) + rhs_cost(n, k),
+            [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
+                T* lu;
+                lint* ipiv;
+                if (const int code = lu_factor<T>(a, off[0], n, s, lu, ipiv)) return code;
+                LapackSlot<T> xs(res + i * n * k, n * k, s, Scratch::kAlign0);
+                T* x = xs.get();  // b is packed straight into the output slot (docs/design/linalg.md §5.2)
+                if (!pack(y.dtype(), y.data() + off[1], n, k, r.rs, r.cs, x, n, true)) return kNonFiniteB;
+                lapack::lu_solve_factored(n, k, lu, ipiv, x, n);  // trsv for one or two columns
+                return 0;
+            },
+            lu_task_cap(n, k)
+        );
+        if (f) raise(b, f, "solve", "a");
 ```
 
 ### 직렬과 분할
 
 ```cpp
-// linalg/batch.hpp의 run_batch (발췌, 실패 처리는 아래 절에서)
+// csrc/linalg/batch.hpp
 template <class F>
 Failure run_batch(const Batch& b, double element_ns, F&& body, int max_tasks = 0) {
     const std::int64_t n = b.size();
@@ -145,26 +185,44 @@ Failure run_batch(const Batch& b, double element_ns, F&& body, int max_tasks = 0
         std::int64_t per = std::max<std::int64_t>(1, static_cast<std::int64_t>(kTaskNs / element_ns));
         if (max_tasks > 0 && (n + per - 1) / per > max_tasks) per = (n + max_tasks - 1) / max_tasks;
         const std::int64_t ntasks = (n + per - 1) / per;
+        std::vector<Failure> fails(static_cast<std::size_t>(ntasks));
+        std::atomic<std::int64_t> first{std::numeric_limits<std::int64_t>::max()};
         detail::run_tasks(ntasks, [&](std::int64_t t) {
-            Scratch scratch;                       // 태스크마다 자기 작업 메모리
-            std::int64_t offs[kMaxOperands];
-            for (std::int64_t i = t * per; i < std::min(n, (t + 1) * per); ++i) {
-                b.offsets(i, offs);
-                body(i, offs, scratch);            // (실패 기록은 생략)
-            }
+            Scratch scratch;
+            b.walk(t * per, std::min(n, (t + 1) * per), [&](std::int64_t i, const std::int64_t* offs) {
+                if (i > first.load(std::memory_order_relaxed)) return false;  // a smaller failure is already known
+                if (const int code = body(i, offs, scratch)) {
+                    fails[static_cast<std::size_t>(t)] = {i, code};
+                    std::int64_t cur = first.load(std::memory_order_relaxed);
+                    while (i < cur && !first.compare_exchange_weak(cur, i, std::memory_order_relaxed)) {}
+                    return false;
+                }
+                return true;
+            });
         });
-        /* ... 가장 작은 실패 고르기 ... */
+        Failure best;
+        for (const Failure& f : fails)
+            if (f && (!best || f.index < best.index)) best = f;
+        return best;
     }
+    // On the calling thread: one element, one thread or a busy pool. A batch
+    // worth splitting by its estimated time still runs without the GIL
+    // (docs/design/linalg.md §8.1); the body is the one the tasks run.
     const parallel::Unlocked unlocked(element_ns > 0 && element_ns * static_cast<double>(n) >= kParallelMinNs);
-    Scratch scratch;                               // 직렬: 하나로 차례로
-    std::int64_t offs[kMaxOperands];
-    for (std::int64_t i = 0; i < n; ++i) {
-        b.offsets(i, offs);
-        if (const int code = body(i, offs, scratch)) return {i, code};
-    }
-    return {};
+    Scratch scratch;
+    Failure fail;
+    b.walk(0, n, [&](std::int64_t i, const std::int64_t* offs) {
+        if (const int code = body(i, offs, scratch)) {
+            fail = {i, code};
+            return false;
+        }
+        return true;
+    });
+    return fail;
 }
 ```
+
+태스크마다 자기 `Scratch`(작업 메모리)를 만들고, 직렬이면 하나로 차례로 돌아요. 실패를 고르는 부분은 아래의 [실패 보고](#실패-보고) 절에서 설명해요.
 
 아래 다섯 조건이 모두 맞을 때 나눠요.
 
@@ -311,14 +369,14 @@ Accelerate의 내부 구현은 공개돼 있지 않으므로, "AMX에서 직렬�
 $n = 32$–46의 LU 분해는 `getrf` 대신 블록이 없는 `getf2`로 해요(`lapack::lu_in_place`, `kGetf2Min`/`kGetf2Max`). `getf2`는 AMX 경로를 타지 않아요. 행과 열이 모두 이 범위일 때예요(`lu`의 직사각 입력도 같아요). LU를 쓰는 모든 곳이 같은 규칙이에요: `solve`, `inv`, `det`, `slogdet`, `lu`, `cond`(±2 외), `matrix_power`(음수 지수), `expm`의 Padé 풀기.
 
 ```cpp
-// linalg/lapack.hpp (발췌)
-inline lint kGetf2Min = 32, kGetf2Max = 46;
+// csrc/linalg/lapack.hpp
+inline constexpr lint kGetf2Min = 32, kGetf2Max = 46;
 inline bool use_getf2(lint m, lint n) { return m >= kGetf2Min && m <= kGetf2Max && n >= kGetf2Min && n <= kGetf2Max; }
 ```
 
 `getrf`에 태스크 상한을 둔 것과 `getf2`를 `det` 배치로 견주면, 10스레드에서 $n = 32$–46이 2.1–4.4배, 47은 1.96배, 48은 1.7배였어요. 1스레드에서도 1.2–1.6배, 행렬 하나는 1.2–1.7배예요. $n \le 31$은 같고, $n \ge 64$는 `getf2`가 느려요($n = 128$에서 0.4배). 그래서 이득이 2배를 넘는 46까지를 경계로 했어요.
 
-크기에 따라 다른 루틴을 부르면 같은 함수의 결과가 크기에 따라 다른 계산에서 나와요. 그래서 크기로 경로를 바꾸는 것은 이득이 2배를 넘을 때만이에요. `getf2`의 결과는 `getrf`와 반올림 수준에서 다를 수 있지만, 피벗 규칙(부분 피벗)과 특이의 판정(정확한 0 피벗)은 같아요. 고르는 것은 모양뿐이라 같은 모양이면 언제나 같은 경로이고, 레이아웃·배치 위치·스레드 수와 무관한 비트도 그대로예요. 경계 양쪽의 크기($n$ = 31, 32, 46, 47)를 테스트해요.
+크기에 따라 다른 루틴을 부르면 같은 함수의 결과가 크기에 따라 다른 계산에서 나와요. 크기마다 같은 비트일 필요는 없어서, 이득이 분명하면 크기로 경로를 바꿔요. `getf2`의 결과는 `getrf`와 반올림 수준에서 다를 수 있지만, 피벗 규칙(부분 피벗)과 특이의 판정(정확한 0 피벗)은 같아요. 고르는 것은 모양뿐이라 같은 모양이면 언제나 같은 경로이고, 배치 위치와 무관한 비트도 그대로예요. 경계 양쪽의 크기($n$ = 31, 32, 46, 47)를 테스트해요.
 
 ### 규칙: `lu_task_cap`
 
@@ -380,24 +438,31 @@ inline int lu_task_cap(std::int64_t n, std::int64_t k) {
 그래서 4KB(`kSmall`)보다 작은 버퍼는 128바이트(Apple M 시리즈의 캐시 라인) 경계에서 시작하고, 크기도 128의 배수로 올려요. 그러면 버퍼 하나가 라인을 통째로 가지므로 다른 스레드의 버퍼와 라인을 나누지 않아요.
 
 ```cpp
-// linalg/batch.hpp의 Scratch::Buf (발췌)
-static constexpr std::size_t kLine = 128;    // Apple M 시리즈의 캐시 라인
-static constexpr std::size_t kSmall = 4096;
-
-std::byte* get(std::size_t want) {
-    if (want > n) {
-        if (want < kSmall) {                 // 작으면: 라인 경계에서, 라인 단위 크기로
-            const std::size_t size = (want + kLine - 1) / kLine * kLine;
-            p = {static_cast<std::byte*>(::operator new[](size, std::align_val_t{kLine})), Free{true}};
-            n = size;
-        } else {                             // 크면: 평범한 new[]
-            p = {new std::byte[want], Free{false}};
-            n = want;
-        }
-    }
-    return p.get();
-}
+    // csrc/linalg/batch.hpp
+    static constexpr std::size_t kLine = 128;  // Apple M-series cache line
+    static constexpr std::size_t kSmall = 4096;
 ```
+
+```cpp
+        // csrc/linalg/batch.hpp
+        std::byte* get(std::size_t want) {
+            if (want > n) {
+                if (want < kSmall) {
+                    const std::size_t size = (want + kLine - 1) / kLine * kLine;
+                    p = std::unique_ptr<std::byte[], Free>(
+                        static_cast<std::byte*>(::operator new[](size, std::align_val_t{kLine})), Free{true}
+                    );
+                    n = size;
+                } else {
+                    p = std::unique_ptr<std::byte[], Free>(new std::byte[want], Free{false});
+                    n = want;
+                }
+            }
+            return p.get();
+        }
+```
+
+작은 요청은 라인 경계에서 라인 단위 크기로, 큰 요청은 평범한 `new[]`로 받아요.
 
 `std::unique_ptr`의 삭제자 `Free`는 그 블록이 정렬 할당인지 기억했다가 맞는 `operator delete`를 불러요. 정렬된 `operator new`로 받은 메모리는 정렬된 `operator delete`로 돌려줘야 하기 때문이에요.
 
@@ -412,20 +477,30 @@ LAPACK의 많은 루틴은 작업 공간 `work`와 그 길이 `lwork`를 받아�
 이 질의도 LAPACK 호출 한 번이라 고정비가 있어요. 작은 행렬의 배치에서 행렬마다 물으면 질의가 계산만큼 비싸요. `qr`은 `geqrf`와 `orgqr` 두 루틴을 부르므로 행렬마다 두 번 물어야 해요. 그래서 `Scratch`가 질의 결과를 기억해요.
 
 ```cpp
-// linalg/batch.hpp (발췌)
-using WorkKey = std::array<lint, 6>;   // 루틴 id, 크기 인자들, 원소 크기
-template <class Query>
-WorkSizes sizes(const WorkKey& key, Query&& query) {
-    for (const auto& [k, v] : work_sizes_)
-        if (k == key) return v;        // 같은 루틴, 같은 크기면 기억한 값
-    work_sizes_.emplace_back(key, query());
-    return work_sizes_.back().second;
-}
+    // csrc/linalg/batch.hpp
+    using WorkKey = std::array<lint, 6>;  // routine id, its size arguments, the element size
+    template <class Query>
+    WorkSizes sizes(const WorkKey& key, Query&& query) {
+        for (const auto& [k, v] : work_sizes_)
+            if (k == key) return v;
+        work_sizes_.emplace_back(key, query());
+        return work_sizes_.back().second;
+    }
+```
 
-// linalg/lapack.hpp의 syevd 래퍼에서
-const WorkSizes z = s.sizes({kSyevd, n, lda, jobz, 0, esize<T>()}, [&] {
-    /* dsyevd_/zheevd_를 lwork = liwork = -1로 불러 크기를 받아요 */
-});
+같은 루틴, 같은 크기의 키가 있으면 기억한 값을 돌려줘요. `syevd` 래퍼는 이렇게 물어요. `dsyevd_`/`zheevd_`를 `lwork = liwork = -1`로 불러 크기를 받아요.
+
+```cpp
+    // csrc/linalg/lapack.hpp
+    const WorkSizes z = s.sizes({kSyevd, n, lda, jobz, 0, esize<T>()}, [&] {
+        lint q_lwork = -1, q_liwork = -1, q_lrwork = -1, iq = 0;
+        T q{};
+        double rq = 0;
+        if constexpr (std::is_same_v<T, double>)
+            dsyevd_(&jobz, &uplo, &n, a, &lda, w, &q, &q_lwork, &iq, &q_liwork, &info);
+        else zheevd_(&jobz, &uplo, &n, a, &lda, w, &q, &q_lwork, &rq, &q_lrwork, &iq, &q_liwork, &info);
+        return WorkSizes{work_size(q), work_size(rq), std::max<lint>(1, iq)};
+    });
 ```
 
 배치 안의 행렬은 모두 크기가 같으므로 질의는 직렬이면 배치당 한 번, 나누면 태스크당 한 번이에요. 키에 원소 크기를 넣은 것은 같은 루틴이라도 `double`과 `complex`의 요구량이 다르기 때문이에요. 목록은 선형 탐색이에요. 한 `Scratch`가 기억하는 키는 함수 하나가 부르는 루틴 수(많아야 서너 개)라서 해시가 필요 없어요.
@@ -464,10 +539,11 @@ template <class T>
 class LapackSlot {
 public:
     LapackSlot(T* slot, std::int64_t count, Scratch& s, int scratch_slot)
-        : slot_(slot), n_(count),
+        : slot_(slot),
+          n_(count),
           p_(aligned16(slot) ? slot : s.get<T>(static_cast<std::size_t>(count), scratch_slot)) {}
     ~LapackSlot() {
-        if (p_ != slot_) std::copy(p_, p_ + n_, slot_);   // 대역에서 계산했으면 자리로 복사
+        if (p_ != slot_) std::copy(p_, p_ + n_, slot_);
     }
     LapackSlot(const LapackSlot&) = delete;
     LapackSlot& operator=(const LapackSlot&) = delete;
@@ -487,12 +563,25 @@ private:
 `eigh`의 몸체에서 쓰는 모습은 이래요.
 
 ```cpp
-// linalg/ops/spectral.cpp의 eigh_impl (발췌)
-LapackSlot<T> vs(vo.as<T>() + i * n * n, n * n, s, Scratch::kAlign0);  // 고유벡터 자리
-pack_triangle(..., vs.get(), n, ...);           // a를 그 자리에 바로 패킹
-LapackSlot<double> ws(W + i * n, n, s, Scratch::kAlign1);              // 고유값 자리
-return lapack::syevd(jobz, n, vs.get(), n, ws.get(), s) > 0 ? kNoConvergenceEig : 0;
+                // csrc/linalg/ops/spectral.cpp
+                // With vectors, `a` is packed straight into the eigenvector slot; LAPACK
+                // overwrites it with the eigenvectors (docs/design/linalg.md §5.2).
+                LapackSlot<T> vs(
+                    vectors ? vo.as<T>() + i * n * n : s.get<T>(static_cast<std::size_t>(n * n)), n * n, s,
+                    Scratch::kAlign0
+                );
+                T* av = vs.get();
 ```
+
+```cpp
+                // csrc/linalg/ops/spectral.cpp
+                const char jobz = vectors ? 'V' : 'N';
+                LapackSlot<double> ws(W + i * n, n, s, Scratch::kAlign1);
+                double* w = ws.get();
+                if (!gen) return lapack::syevd(jobz, n, av, n, w, s) > 0 ? kNoConvergenceEig : 0;
+```
+
+`a`는 고유벡터 자리(`vs.get()`)에 바로 패킹하고(`pack_triangle`), LAPACK이 그 자리를 고유벡터로 덮어써요. 고유값은 `ws`의 자리로 받아요.
 
 정렬이 필요한 곳은 이 밖에도 있어요.
 
@@ -534,27 +623,29 @@ stardust.linalg.LinAlgError: inv(): singular matrix (at batch index (1,))
 4. 모두 끝나면 `fails`에서 가장 작은 인덱스를 골라요.
 
 ```cpp
-// linalg/batch.hpp의 run_batch, 나눌 때 (발췌)
-std::vector<Failure> fails(ntasks);
-std::atomic<std::int64_t> first{std::numeric_limits<std::int64_t>::max()};
-detail::run_tasks(ntasks, [&](std::int64_t t) {
-    Scratch scratch;
-    std::int64_t offs[kMaxOperands];
-    for (std::int64_t i = t * per; i < std::min(n, (t + 1) * per); ++i) {
-        if (i > first.load(std::memory_order_relaxed)) return;    // 더 작은 실패가 이미 있어요
-        b.offsets(i, offs);
-        if (const int code = body(i, offs, scratch)) {
-            fails[t] = {i, code};
-            std::int64_t cur = first.load(std::memory_order_relaxed);
-            while (i < cur && !first.compare_exchange_weak(cur, i, std::memory_order_relaxed)) {}
-            return;
-        }
-    }
-});
-Failure best;
-for (const Failure& f : fails)
-    if (f && (!best || f.index < best.index)) best = f;
+        // csrc/linalg/batch.hpp
+        std::vector<Failure> fails(static_cast<std::size_t>(ntasks));
+        std::atomic<std::int64_t> first{std::numeric_limits<std::int64_t>::max()};
+        detail::run_tasks(ntasks, [&](std::int64_t t) {
+            Scratch scratch;
+            b.walk(t * per, std::min(n, (t + 1) * per), [&](std::int64_t i, const std::int64_t* offs) {
+                if (i > first.load(std::memory_order_relaxed)) return false;  // a smaller failure is already known
+                if (const int code = body(i, offs, scratch)) {
+                    fails[static_cast<std::size_t>(t)] = {i, code};
+                    std::int64_t cur = first.load(std::memory_order_relaxed);
+                    while (i < cur && !first.compare_exchange_weak(cur, i, std::memory_order_relaxed)) {}
+                    return false;
+                }
+                return true;
+            });
+        });
+        Failure best;
+        for (const Failure& f : fails)
+            if (f && (!best || f.index < best.index)) best = f;
+        return best;
 ```
+
+`walk`에 넘긴 람다가 false를 돌려주면 그 태스크는 거기서 멈춰요.
 
 이 방법이 직렬과 같은 답을 내는 이유는 이래요. 직렬이 보고하는 인덱스를 $i^*$라고 해요. $i^*$를 맡은 태스크는 $i^*$에 도달하기 전에 멈추지 않아요. 멈추려면 $i^*$보다 작은 실패가 `first`에 있어야 하는데, $i^*$보다 작은 실패는 없기 때문이에요. 그 태스크는 $i^*$ 앞의 자기 원소들이 모두 성공하므로 $i^*$에서 실패를 기록해요. 다른 태스크가 기록하는 실패는 모두 $i^*$보다 뒤예요. 그래서 마지막에 고른 가장 작은 값은 언제나 $i^*$예요.
 
@@ -565,27 +656,30 @@ for (const Failure& f : fails)
 
 배열 영역의 같은 문제는 `parallel::FirstRow`가 같은 방법으로 풀어요([스레드풀과 결정성](/internals/core/threads/)).
 
-## 합: pairwise와 긴 합
+## 합: 청크와 pairwise 트리
+
+### 두 길
+
+linalg의 부동소수점 합은 `vecdot`, `trace`, `vector_norm`, `matrix_norm`(fro, ±1, ±inf, nuc), `cond`(fro, ±1, ±inf, nuc)의 합이에요. 입력을 읽는 길이 둘이에요([LAPACK 없이 계산하는 함수](/internals/linalg/basic/)).
+
+- **빠른 합**(`linalg/fastsum.hpp`): float64(2-노름과 `vecdot`은 complex128도)를 그 자리에서 읽을 수 있을 때예요. 합을 길이로만 정한 16384항(`kChunk`) 청크로 나누고, 청크의 부분합을 청크 위의 균형 트리로 합쳐요. 청크 안은 짧으면(1024항 이하, 제곱합은 2048항, complex는 256항) 배열과 같은 pairwise 트리, 길면 Accelerate의 `ddot`·`zdotc`·`dasum`이에요. 메모리에 놓인 순서로 더해요.
+- **버퍼 길**: 그 밖(다른 dtype, 음수 간격, 이어지지 않는 여러 축)과 `trace`, $p$-노름, `ord=0`이에요. 항을 논리적 C 순서로 잎 버퍼에 채운 뒤 pairwise 트리로 더해요.
 
 ### 배열과 같은 pairwise 트리
-
-linalg의 부동소수점 합은 모두 pairwise 합이에요. 대상은 `vecdot`, `trace`, `vector_norm`(1, 2, p), `matrix_norm`(fro, ±1, ±inf, nuc), `cond`(fro, ±1, ±inf, nuc)의 합이에요.
 
 트리는 배열의 합과 같은 한 벌의 정의(`base/pairwise.hpp`)예요. 512개 이하는 잎 하나로 더하고, 더 길면 16의 배수에서 반으로 나눠 재귀해요. 합은 `0.0 + 트리`예요. 덧셈 경로의 길이가 $\log n$ 정도라 오차 한계가 $n$이 아니라 $\log n$에 비례해요 [2]. numpy의 `DOUBLE_pairwise_sum`/`CDOUBLE_pairwise_sum`과 같은 알고리즘이고, 잎이 더 넓어요 [3]. 자세한 알고리즘과 오차 분석은 [집계](/internals/array/reductions/)에 있어요.
 
 잎은 두 가지예요.
 
-- **그냥 합**(`trace`, 1-노름과 $p$-노름, `matrix_norm`의 ±1, ±inf): 배열의 잎(`pairwise::leaf`, `leaf_complex`)이에요. 누산기 16개(complex는 부분마다 8개)예요. 같은 항이면 `sd.sum`과 비트까지 같아요. 예를 들어 `trace(x)`는 `sum(diagonal(x))`와 같아요.
-- **곱의 합**(`vecdot`, 2-노름과 'fro'의 제곱): 곱을 잎 안에서 합에 융합해요(`fma_dot_leaf`, `fma_cdot_leaf`). NEON 레지스터 8개(레인 16개)에 `vfmaq`로 곱-덧셈을 한 번 반올림하고, 레인은 pairwise로 더해요. 곱마다의 반올림 하나가 없어서 오차는 같거나 작아요. 대신 `sum(conj(x) * y)`나 `sqrt(sum(x * x))`와는 끝 비트가 다를 수 있어요.
+- **그냥 합**(`trace`, 1-노름과 $p$-노름, `matrix_norm`의 ±1, ±inf): 배열의 잎(`pairwise::leaf`, `leaf_complex`)이에요. 누산기 16개(complex는 부분마다 8개)예요. 같은 항을 이 트리로만 더하면 `sd.sum`과 비트까지 같아요. 예를 들어 `trace(x)`는 `sum(diagonal(x))`와 같고, 1024항 이하의 1-노름도 같은 항의 `sd.sum`과 같아요.
+- **곱의 합**(`vecdot`, 2-노름과 'fro'의 제곱): 곱을 잎 안에서 합에 융합해요(`fma_dot_leaf`, `fma_cdot_leaf`). NEON 레지스터 8개(레인 16개)에 `vfmaq`로 곱-덧셈을 한 번 반올림하고, 레인은 pairwise로 더해요. 그래서 `sum(conj(x) * y)`나 `sqrt(sum(x * x))`와는 끝 비트가 다를 수 있어요.
 
-항의 순서는 **논리적 C 순서**예요(마지막 축이 가장 빨리 변해요). 메모리 레이아웃과 상관없는 순서라서 결과도 레이아웃과 상관없어요.
+### 버퍼 길: 잎 버퍼
 
-### linalg만의 것: 잎 버퍼
-
-배열 영역은 트리에 접근자 `get(i)`를 넘겨 원소를 그 자리에서 읽어요. linalg의 그냥 합은 항을 먼저 잎 하나 분량(최대 512개)의 버퍼에 채우고, 그 버퍼를 더해요.
+배열 영역은 트리에 접근자 `get(i)`를 넘겨 원소를 그 자리에서 읽어요. linalg의 버퍼 길은 항을 먼저 잎 하나 분량(최대 512개)의 버퍼에 채우고, 그 버퍼를 더해요.
 
 ```cpp
-// linalg/pairwise.hpp (발췌)
+// csrc/linalg/pairwise.hpp
 template <class Fill>
 double pairwise(std::int64_t begin, std::int64_t n, Fill& fill) {
     return pairwise::tree(begin, n, [&fill](std::int64_t b, std::int64_t m) {
@@ -598,17 +692,18 @@ double pairwise(std::int64_t begin, std::int64_t n, Fill& fill) {
 
 `fill(begin, len, out)`은 항 `begin`부터 `len`개를 차례로 `out`에 써요. 항이 무엇인지는 함수가 정해요. 노름은 `|x|`(임의의 strides와 축 수를 걸으면서), `trace`는 대각선 원소예요. linalg의 항은 종류가 많고 출처의 레이아웃도 제각각이에요. 버퍼를 거치면 **더하는 루프가 하나**가 되고, 그 루프는 연속 배열 위의 단순한 루프라서 벡터화돼요.
 
-곱의 합은 계산 dtype의 연속 입력이면 버퍼 없이 입력을 바로 읽고, 그 밖(strided, 다른 dtype)은 두 버퍼에 값을 바꿔 채운 뒤 같은 잎을 불러요. 잎은 항의 값만의 함수라서 두 길의 비트가 같아요([LAPACK 없이 계산하는 함수](/internals/linalg/basic/)).
+### 짧은 합은 한 번에
 
-### 짧은 합은 트리를 부르지 않아요
+3×3 행렬의 열 합처럼 짧은 합이 배치마다 반복되면 재귀 함수 호출과 클로저 자체가 드러나요. 그래서 청크 하나 이하의 빠른 합은 청크 함수를 바로 부르고(배치 루프 안에 인라인돼요), 잎 하나 이하의 버퍼 길은 트리를 부르지 않고 채운 뒤 바로 잎 합을 해요(`pairwise_sum`). 2-노름은 빠른 합이 판정을 내리지 못할 때의 느린 경로를 out-of-line 함수로 떼어 두어, 배치 루프를 작게 지켜요. 어느 쪽이든 같은 덧셈이라 비트는 같아요.
 
-`pairwise_sum`은 $n \le 512$(complex는 256)이면 트리 함수를 부르지 않고 채운 뒤 바로 잎 합을 해요. 3×3 행렬의 열 합처럼 짧은 합이 배치마다 반복되면 재귀 함수 호출 자체가 드러나기 때문이에요. 이 길이 없으면 (1000, 3, 3)의 `matrix_norm(ord=1)`이 1스레드에서 17µs, 있으면 13µs예요. 트리를 부르든 안 부르든 잎 하나짜리 합은 같은 덧셈이라 비트는 같아요.
+### 출력 하나의 긴 합
 
-### 출력 하나의 긴 합은 잎 단위로 나눠요
+배치를 나누는 것과 별개로, **출력 하나**의 합이 길면 그 합 자체를 나눠요.
 
-배치를 나누는 것과 별개로, **출력 하나**의 합이 길면 그 합 자체를 나눠요. 기준은 배열 영역과 같아요. 항이 2¹⁵개(`kSumParallelMin`) 이상이면, 트리를 2¹²항(`kSumLeaf`) 이하의 부분 트리까지 내려가 그것들을 병렬로 더하고 같은 트리 순서로 합쳐요(`pairwise_plan`, `pairwise_run`, `pairwise_combine`). 곱의 합도 같은 계획을 써요(`pairwise_tree_mt`).
+- **빠른 합**: 2¹⁷항(`fast::kParallelMin`) 이상이면 청크를 풀에서 돌리고, 부분합 배열을 직렬과 같은 청크 트리로 합쳐요(`fast::chunked`). 나누지 않을 때도 2¹⁵항(`kReleaseMin`)부터는 GIL을 놓아요.
+- **버퍼 길**: 기준은 배열 영역과 같아요. 항이 2¹⁵개(`kSumParallelMin`) 이상이면, 트리를 2¹²항(`kSumLeaf`) 이하의 부분 트리까지 내려가 그것들을 병렬로 더하고 같은 트리 순서로 합쳐요(`pairwise_plan`, `pairwise_run`, `pairwise_combine`).
 
-<Fig column caption="원소 100만 개짜리 vecdot의 트리를 나누는 방법(일부). 크기가 4096 이하가 되면 거기서 멈추고 그 부분 트리 하나가 태스크 하나예요. 8단계를 내려가 크기 3904–3920인 잎 256개가 돼요. 트리의 자르는 위치는 직렬 트리와 같아요.">
+<Fig column caption="원소 100만 개짜리 합을 버퍼 길에서 나누는 방법(일부). 크기가 4096 이하가 되면 거기서 멈추고 그 부분 트리 하나가 태스크 하나예요. 8단계를 내려가 크기 3904–3920인 잎 256개가 돼요. 트리의 자르는 위치는 직렬 트리와 같아요.">
   <Tree
     root={{
       label: '[0, 1000000)', note: '반으로',
@@ -623,10 +718,10 @@ double pairwise(std::int64_t begin, std::int64_t n, Fill& fill) {
   />
 </Fig>
 
-덧셈 하나하나가 직렬 트리와 같은 피연산자, 같은 순서이므로 결과는 직렬과 비트까지 같아요. 잎을 앞에서부터 4096개씩 자르면 트리의 경계와 어긋나서 덧셈 순서가 바뀌므로, 잎도 트리를 따라 내려가며 만들어요. 이 방법은 [스레드풀과 결정성](/internals/core/threads/)에 자세히 있어요.
+어느 길이든 덧셈 하나하나가 직렬과 같은 피연산자, 같은 순서이므로 결과는 직렬과 비트까지 같아요. 버퍼 길에서 잎을 앞에서부터 4096개씩 자르면 트리의 경계와 어긋나서 덧셈 순서가 바뀌므로, 잎도 트리를 따라 내려가며 만들어요. 이 방법은 [스레드풀과 결정성](/internals/core/threads/)에 자세히 있어요.
 
 ```cpp
-// linalg/pairwise.hpp의 pairwise_sum_mt (발췌)
+// csrc/linalg/pairwise.hpp
 template <class T, class Fill>
 T pairwise_sum_mt(std::int64_t n, Fill&& fill) {
     constexpr bool complex = std::is_same_v<T, cplx>;
@@ -648,12 +743,12 @@ T pairwise_sum_mt(std::int64_t n, Fill&& fill) {
 }
 ```
 
-- **짧은 합에는 아무것도 할당하지 않아요.** 2¹⁵항 미만이면 계획(`std::vector`)을 만들지 않고 바로 직렬 함수로 가요. 출력이 많은 짧은 노름(예: (1000, 3, 3)의 행렬마다 노름)에서 출력마다 벡터를 두세 개 만들면, 할당이 계산보다 비싸지고 나눈 배치의 태스크 안에서는 할당끼리 경쟁까지 해요.
+- **짧은 합에는 아무것도 할당하지 않아요.** 나누지 않는 합은 계획이나 부분합 배열(`std::vector`)을 만들지 않고 바로 직렬 함수로 가요. 출력이 많은 짧은 노름(예: (1000, 3, 3)의 행렬마다 노름)에서 출력마다 벡터를 두세 개 만들면, 할당이 계산보다 비싸지고 나눈 배치의 태스크 안에서는 할당끼리 경쟁까지 해요.
 - `fill`은 여러 스레드에서 동시에 불리므로 공유 상태에 쓰면 안 돼요. 태스크마다 복사본을 써요.
 
 노름은 합과 함께 최댓값, NaN 여부, 0이 아닌 원소 수도 구해요. 이것들은 순서와 상관없는 값이라 잎마다 따로 구해 합쳐요. 단, 잎마다 **자기 칸**에 써요. 공유 변수 하나에 여러 스레드가 쓰면 경쟁이 생기기 때문이에요. 자세한 것은 [LAPACK 없이 계산하는 함수](/internals/linalg/basic/)에 있어요.
 
-`matrix_norm`의 1, inf는 큰 행렬 하나의 열(행) 합들을 태스크로 나눠요. 줄 하나의 합은 직렬과 같고, 그 합들의 max/min은 순서와 상관없으므로 결과가 같아요.
+`matrix_norm`의 ±1, ±inf는 큰 행렬 하나의 줄이나 줄 묶음(띠)을 태스크로 나눠요. 줄 하나의 합은 직렬과 같고(띠 안의 줄 하나가 받는 덧셈은 띠의 너비와 상관없어요), 그 합들의 max/min은 순서와 상관없으므로 결과가 같아요.
 
 ## 중첩하지 않기
 
@@ -665,16 +760,18 @@ T pairwise_sum_mt(std::int64_t n, Fill&& fill) {
 
 ## 결정성
 
-**결과는 스레드 수와 상관없이 비트까지 같아요.** 병렬 경로마다 그 이유는 아래 표와 같아요.
+**같은 기계, 같은 스레드 수에서는 실행마다 비트가 같아요.** 이것이 약속이에요. 스레드 수와 상관없는 비트는 약속이 아니지만, linalg의 분할은 모두 데이터의 크기로만 정해져서 지금은 스레드 수를 바꿔도 결과가 비트까지 같아요. 1, 3, 10스레드에서 같은 비트이고, 긴 합(5000–100만 항)은 Accelerate의 단일·다중 스레드 모드(`VECLIB_MAXIMUM_THREADS`)에서도 같은 비트였어요. 병렬 경로마다 그 이유는 아래 표와 같아요.
 
 | 병렬 경로 | 나누는 단위 | 결과가 같은 이유 |
 |---|---|---|
 | 배치 | 연속한 원소 묶음 | 원소 하나는 어디서 돌든 같은 계산이에요(자기 `Scratch`, 같은 `lwork`, 16바이트 정렬). 그리고 Accelerate는 여러 스레드에서 동시에 불러도 결과가 같아요 |
 | 태스크 수 상한 | — | 어느 원소가 어느 스레드에서 도는지만 바뀌어요 |
 | 실패 보고 | 태스크마다 첫 실패 | 가장 작은 인덱스를 골라요 |
-| 출력 하나의 긴 합 | pairwise 트리의 잎 | 같은 트리 순서로 합쳐요 |
-| `matrix_norm` 1/inf의 줄 | 줄 묶음 | 줄 하나의 합은 직렬과 같고, max/min은 순서와 상관없어요 |
-| 큰 C 순서 패킹 | 열 32개 블록 | 복사뿐이에요 |
+| 빠른 합 | 16384항 청크(길이로만) | 청크마다 같은 계산이고, 같은 청크 트리로 합쳐요 |
+| 버퍼 길의 긴 합 | pairwise 트리의 잎 | 같은 트리 순서로 합쳐요 |
+| `matrix_norm` ±1/±inf의 줄 | 줄 묶음이나 띠 | 줄 하나의 합은 직렬과 같고, max/min은 순서와 상관없어요 |
+| 큰 C 순서 패킹, 큰 삼각의 유한성 검사 | 열 32개 블록 | 복사와 검사뿐이에요 |
+| 큰 `block_diag`, `kronsum` 결과 | 열 64개 묶음 | 복사뿐이에요 |
 | Schur 쌍 | 두 분해 | 같은 배열과 같은 workspace 크기예요 |
 
 배치 행의 마지막 전제(Accelerate가 동시 호출에 같은 결과를 낸다)는 측정에서 나온 사실이에요. `getrf`, `gesv`, `potrf`, `geqrf`, `syevd`, `gesdd`, `geev`를 $n = 8, 64, 256$에서 10스레드로 동시에 불러도 모두 호출 스레드에서 부른 결과와 비트가 같았어요. Accelerate의 내부 스레드 수(`BLASSetThreading`으로 1에 고정)도 $n = 64, 512, 1024$에서 결과를 바꾸지 않았어요. 자세한 것은 [선형대수 영역의 구조](/internals/linalg/overview/)에 있어요.
@@ -683,7 +780,7 @@ T pairwise_sum_mt(std::int64_t n, Fill&& fill) {
 
 - `test_parallel.py`: 36개 호출 × float64·complex128 × 배치 세 가지(`(400,)`의 3×3, `(4, 30)`의 5×5, `(48,)`의 16×16, 모두 나눌 만큼 큼)를 스레드 1, 3, 10에서 바이트로 비교해요. 실패 메시지, 긴 합(4만 개, 100만 3개), Python 스레드 4개의 동시 호출도 봐요.
 - `test_optimizations.py`: 배치 결과와 하나씩 부른 결과의 바이트 비교(위의 정렬 테스트)와, 비공개 함수(`_set_tuning`, `_set_lu_task_cap` 등)로 분할·상한을 끈 경로와 켠 경로의 비트 비교를 해요.
-- `test_review_fixes_2.py`: 크기로 고르는 경로의 경계를 봐요. LU 계열의 $n$ = 31, 32, 46, 47과 직사각 `lu`, `solve_banded`의 $n$ = 7, 8, 9, 12에서 답(잔차, numpy와의 허용오차), 레이아웃·배치 위치·스레드 수와 무관한 비트, 특이의 판정을 확인해요. 경계는 비공개 함수(`_set_getf2_range`, `_set_band_dense_max`)로 옮겨 볼 수 있어요.
+- `test_optimizations_small.py`, `test_structured_solvers.py`: 크기로 고르는 경로의 경계를 봐요. LU 계열의 $n$ = 31, 32, 46, 47과 직사각 `lu`, `solve_banded`의 $n$ = 7, 8, 9, 12에서 답(잔차, numpy와의 허용오차), 레이아웃·배치 위치·스레드 수와 무관한 비트를 확인해요. 경계는 비공개 함수(`_set_getf2_range`, `_set_band_dense_max`)로 옮겨 볼 수 있어요.
 
 ## 성능
 
@@ -694,25 +791,25 @@ T pairwise_sum_mt(std::int64_t n, Fill&& fill) {
 
 32×32의 `inv`는 위의 태스크 수 상한에 걸리는 크기라서, 10스레드에서도 배치가 태스크 세 개까지만 나뉘어요.
 
-출력 하나의 긴 합은 트리의 잎을 나눠 돌아요. 그냥 합은 잎 버퍼를 채우고 다시 읽는 두 단계라, 1스레드의 긴 합은 numpy보다 느릴 수 있어요. 곱의 합(`vecdot`, 2-노름)은 연속 입력이면 곱과 잎 합을 NEON 레지스터 안에서 한 번에 해요. numpy 2.5.4의 `np.vecdot`은 BLAS 내적(`np.dot`과 같은 값)을 쓰고, `np.linalg.vector_norm`은 `x*x`를 만든 뒤 numpy의 합을 불러요.
+출력 하나의 긴 합은 청크를 나눠 돌아요. 청크 안의 긴 합은 Accelerate의 BLAS가 Apple 칩의 행렬 연산 장치로 더하므로, 1스레드에서도 NEON 루프보다 몇 배 빨라요. numpy 2.5.4의 `np.vecdot`은 BLAS 내적(`np.dot`과 같은 값)을 쓰고, `np.linalg.vector_norm`은 `x*x`를 만든 뒤 numpy의 합을 불러요.
 
 부분별 비용은 이래요.
 
 | 부분 | 비용 |
 |---|---|
 | `Batch` 생성 | $O(k \cdot d)$ ($k$: 피연산자 수, $d$: 배치 축 수) |
-| 원소 하나의 오프셋 | $O(k \cdot d)$ 곱셈·나눗셈 |
+| 원소 하나의 오프셋 | 줄의 시작에서 $O(k \cdot d)$ 곱셈·나눗셈, 줄 안에서는 피연산자마다 곱셈-덧셈 하나 |
 | 분할 판단 | $O(1)$ |
 | 태스크 하나의 시작 | `Scratch` 생성, 첫 원소의 workspace 질의 |
 | 실패 보고 | 원소마다 relaxed atomic 읽기 하나, 실패하면 CAS 몇 번 |
 | 정렬 대역 | 정렬되지 않은 자리마다 $O(mn)$ 복사 |
-| 긴 합 하나 | 잎 $\lceil n/4096 \rceil$개 정도의 계획(벡터 하나), 합치기 $O(n/4096)$ |
+| 긴 합 하나 | 빠른 합은 청크 $\lceil n/16384 \rceil$개의 부분합, 버퍼 길은 잎 $\lceil n/4096 \rceil$개 정도의 계획(벡터 하나) |
 
 ## 정확도
 
-배치와 병렬화는 값을 바꾸지 않아요. 원소 하나의 결과는 그 행렬을 혼자 불렀을 때와 비트까지 같고, 스레드 수, 배치 안의 위치, 분할 방식과 상관없어요. 정확도는 각 함수가 부르는 LAPACK 루틴이 정해요(각 알고리즘 글).
+배치와 병렬화는 값을 바꾸지 않아요. 원소 하나의 결과는 그 행렬을 혼자 불렀을 때와 비트까지 같고, 배치 안의 위치, 분할 방식과 상관없어요(지금은 스레드 수와도 상관없어요). 정확도는 각 함수가 부르는 LAPACK 루틴이 정해요(각 알고리즘 글).
 
-합은 pairwise 트리라서 $n$개 항의 합의 오차가 $\gamma_h \sum |x_i|$ 이하이고, $h$는 덧셈 경로의 최대 길이로 대략 $49 + \lceil \log_2(n/512) \rceil$이에요 [2]. 원소 100만 개면 $h \le 60$ 정도라, 순차 합의 $h = n - 1$보다 수만 배 작아요. 병렬로 나눠도 같은 트리라서 이 한계도, 결과 비트도 그대로예요.
+버퍼 길의 합은 pairwise 트리라서 $n$개 항의 합의 오차가 $\gamma_h \sum |x_i|$ 이하이고, $h$는 덧셈 경로의 최대 길이로 대략 $49 + \lceil \log_2(n/512) \rceil$이에요 [2]. 원소 100만 개면 $h \le 60$ 정도라, 순차 합의 $h = n - 1$보다 수만 배 작아요. 빠른 합의 긴 청크는 Accelerate가 누산기 약 256개로 나눠 더해서 누산기 하나가 64항쯤을 차례로 더하고, 청크끼리는 트리로 합쳐요. 테스트는 이 합을 $2(64 + \log_2 n + 2)\,\varepsilon \sum |x_i|$($\varepsilon = 2^{-52}$)로 확인해요. 병렬로 나눠도 같은 청크와 트리라서 이 한계도, 결과 비트도 그대로예요.
 
 ## 참고 문헌
 

@@ -73,7 +73,7 @@ export const acc = [[1, 0], [1, 0.0576], [1, NaN], [2, 0], [2, 0.1369], [2, NaN]
 >>> r
 BinomtestResult(k=7, n=20, alternative='two-sided', statistic=0.35, pvalue=0.0982217)
 >>> r.statistic, r.pvalue
-(0.35, 0.09822172861346874)
+(0.35, 0.09822172861346873)
 ```
 
 `statistic`은 표본 비율 k/n = 0.35이고, p값은 0.098이에요. 유의수준 0.05에서는 귀무가설을 기각하지 못해요. 20명은 20%와 35%를 가르기에 적은 수라는 뜻이에요.
@@ -82,9 +82,9 @@ BinomtestResult(k=7, n=20, alternative='two-sided', statistic=0.35, pvalue=0.098
 
 ```python
 >>> sd.htest.binomtest(7, 20, p=0.2, alternative='greater').pvalue
-0.08669251356740028
+0.08669251356740026
 >>> float(sd.stats.Binomial(n=20, p=0.2).ccdf(6))
-0.08669251356740028
+0.08669251356740026
 ```
 
 한쪽 p값은 꼬리 확률 그대로예요. `'less'`는 P(X ≤ k), `'greater'`는 P(X ≥ k)예요. 대립가설은 자료를 보기 전에 정해요. 자료를 보고 나서 p값이 작아지는 쪽을 고르면 p값의 뜻이 사라져요.
@@ -98,7 +98,7 @@ BinomtestResult(k=7, n=20, alternative='two-sided', statistic=0.35, pvalue=0.098
 ```python
 >>> X = sd.stats.Binomial(n=20, p=0.2)
 >>> float(X.cdf(0) + X.ccdf(6))
-0.09822172861346874
+0.09822172861346873
 ```
 
 P(X = 0) = 0.0115와 P(X ≥ 7)의 합이에요. 위의 p값과 같은 값이에요.
@@ -109,7 +109,7 @@ P(X = 0) = 0.0115와 P(X ≥ 7)의 합이에요. 위의 p값과 같은 값이에
 
 ```python
 >>> r.conf_int()
-array([0.15390920478454115,  0.5921885345328282], dtype=float64)
+array([0.15390920478454118,  0.5921885345328282], dtype=float64)
 >>> r.conf_int(alpha=0.1)
 array([0.1773109175744491, 0.5580345113154888], dtype=float64)
 ```
@@ -126,7 +126,7 @@ array([0.1773109175744491, 0.5580345113154888], dtype=float64)
 
 ```python
 >>> r.conf_int(method='wilson')
-array([0.1811918241010821, 0.5671457233147638], dtype=float64)
+array([0.18119182410108203,  0.5671457233147638], dtype=float64)
 >>> r.conf_int(method='wilsoncc')
 array([0.16308667971630933,  0.5905104338485733], dtype=float64)
 ```
@@ -192,7 +192,7 @@ k = 0이나 k = n도 그대로 계산해요. 1000번 중 한 번도 성공하지
 
 ```python
 >>> sd.htest.binomtest(0, 1000).pvalue
-1.8665272370064378e-301
+1.8665272370064373e-301
 >>> sd.htest.binomtest(0, 20, p=0.2).conf_int()
 array([                0.0, 0.16843347098308534], dtype=float64)
 ```
@@ -209,7 +209,7 @@ p = 0이나 1은 결과가 하나뿐인 분포예요. 그 결과와 같으면 p�
 ```python
 >>> r52 = sd.htest.binomtest(3, 2**52 + 10)
 >>> r52.pvalue, r52.conf_int()
-(nan, array([1.3737280710648393e-16,  1.946725685040796e-15], dtype=float64))
+(nan, array([1.3737280710648393e-16, 1.9467256850407955e-15], dtype=float64))
 >>> sd.htest.binomtest(3, 2**53)
 Traceback (most recent call last):
     ...
@@ -249,7 +249,7 @@ ValueError: conf_int(): 'method' must be 'exact', 'wilson' or 'wilsoncc', not 'j
 
 ## 정확도
 
-p값과 세 구간의 끝은 Arb(구간 산술)로 만든 참값과 상대 4e-16 안이에요(깊은 꼬리 2⁻⁹⁹⁹ 포함). 계약은 상대 1e-14이고, 시험한 문제에서 계약 대비 가장 큰 값이 0.039예요.
+p값과 세 구간의 끝은 Arb(구간 산술)로 만든 참값과 상대 7e-16 안이에요(깊은 꼬리 2⁻⁹⁹⁹ 포함). 계약은 상대 1e-14이고, 시험한 문제에서 계약 대비 가장 큰 값이 0.063이에요.
 
 ## scipy를 아는 분께
 
@@ -262,7 +262,7 @@ p값과 세 구간의 끝은 Arb(구간 산술)로 만든 참값과 상대 4e-16
 >>> import scipy.stats
 >>> s = scipy.stats.binomtest(7, 20, p=0.2)
 >>> s.pvalue, r.pvalue
-(np.float64(0.09822172861346881), 0.09822172861346874)
+(np.float64(0.09822172861346881), 0.09822172861346873)
 >>> float(s.proportion_ci().low), float(r.conf_int()[0])
-(0.15390920478454118, 0.15390920478454115)
+(0.15390920478454118, 0.15390920478454118)
 ```

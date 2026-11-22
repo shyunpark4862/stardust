@@ -78,7 +78,7 @@ $$
 >>> r
 TtestRelResult(statistic=4.90077, pvalue=0.00175159, df=7)
 >>> r.conf_int()
-array([0.23934347998560573,  0.6856565200143943], dtype=float64)
+array([0.2393434799856057, 0.6856565200143944], dtype=float64)
 ```
 
 p값 0.0018은 보조제가 효과가 없다면 이만큼 고르게 늘어나는 일이 드물다는 뜻이에요. 평균 차는 95% 신뢰로 0.24시간과 0.69시간 사이예요. 차는 첫 인자에서 둘째 인자를 뺀 a − b라서, `ttest_rel(after, before)`는 "뒤 − 전"이에요. 순서를 바꾸면 t와 구간의 부호가 바뀌고 양쪽 p값은 같아요.
@@ -131,9 +131,9 @@ mean difference       0.239      0.686
 ```python
 >>> g = sd.htest.ttest_rel(after, before, alternative='greater')
 >>> g.pvalue
-0.0008757934943564714
+0.0008757934943564722
 >>> g.conf_int()
-array([0.2837030650870529,                inf], dtype=float64)
+array([0.28370306508705284,                 inf], dtype=float64)
 ```
 
 ## 짝 맞추기와 axis
@@ -147,7 +147,7 @@ Traceback (most recent call last):
 ValueError: ttest_rel(): the paired samples must agree in size, not 8 and 7
 >>> A = sd.asarray([after, [6.0, 5.9, 7.1, 6.5, 5.4, 6.9, 6.1, 6.2]])
 >>> sd.htest.ttest_rel(A, before, axis=1).pvalue
-array([0.0017515869887129428,    0.5164895523012234], dtype=float64)
+array([0.0017515869887129445,    0.5164895523012234], dtype=float64)
 >>> sd.htest.ttest_rel(A, before[:7], axis=1)
 Traceback (most recent call last):
     ...
@@ -196,7 +196,7 @@ array([0.5, 0.5], dtype=float64)
 
 ## 정확도
 
-- t의 상대오차는 $10^{-14}$ 안이고, p값은 $10^{-14} \cdot \max(1, \kappa_p)$ 안이에요(t 검정 전체에서 잰 최대는 t가 $2.1 \times 10^{-16}$, p값이 $2.0 \times 10^{-14}$).
+- t의 상대오차는 $10^{-14}$ 안이고, p값은 $10^{-14} \cdot \max(1, \kappa_p)$ 안이에요(t 검정 전체에서 잰 최대는 t가 $2.1 \times 10^{-16}$, p값이 $1.9 \times 10^{-14}$).
 - 차 a − b를 float64 하나로 반올림하지 않고 두 배 정밀도로 들고 계산해요. 그래서 크기가 크게 다른 두 값의 차도 정확해요. `sd.asarray(a) - sd.asarray(b)`처럼 먼저 빼서 한 표본 검정을 하면 차마다 반올림이 생겨요.
 
 ```python

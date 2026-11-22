@@ -286,7 +286,7 @@ array([[0.22222222222222224, 0.11111111111111112],
 
 ### 스레드 수 설정을 따르지 않아요
 
-`cov`와 `corrcoef`가 쓰는 스레드 수는 [`sd.set_num_threads`](/api/array/threads/)로 바꿀 수 없어요. `sd.set_num_threads(1)`로 두어도 여러 코어를 쓸 수 있고, 스레드 수를 늘린다고 빨라지지도 않아요. 결과는 설정과 상관없이 언제나 같아요. 이유는 [스레드 수](/api/array/threads/#행렬곱과-cov는-따로예요) 문서에 있어요.
+`cov`와 `corrcoef`가 쓰는 스레드 수는 [`sd.set_num_threads`](/api/array/threads/)로 바꿀 수 없어요. `sd.set_num_threads(1)`로 두어도 여러 코어를 쓸 수 있고, 스레드 수를 늘린다고 빨라지지도 않아요. 그래서 결과도 이 설정에 따라 달라지지 않아요. 이유는 [스레드 수](/api/array/threads/#행렬곱과-cov는-따로예요) 문서에 있어요.
 
 ### 옵션은 이름을 붙여서
 

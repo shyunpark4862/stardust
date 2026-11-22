@@ -140,7 +140,7 @@ CompareLRTestResult(statistic=4.12404, pvalue=0.127197, df=2)
 ```python
 >>> fvalue, pvalue, df_num = big.compare_f_test(small)
 >>> fvalue, pvalue, df_num
-(1.8420623432880894, 0.17936185532426896, 2.0)
+(1.8420623432880894, 0.17936185532426907, 2.0)
 >>> stat, pv, dof = big.compare_lr_test(small)
 >>> dof
 2.0
@@ -284,7 +284,7 @@ Traceback (most recent call last):
     ...
 ValueError: compare_f_test(): a model has a robust covariance (cov_type='HC3'), which the F and likelihood ratio comparisons do not use; test the coefficients with wald_test()
 >>> hb.wald_test([[0, 0, 0, 1, 0], [0, 0, 0, 0, 1]]).pvalue
-0.0850892701111265
+0.08508927011112655
 ```
 
 ## 특수한 경우
@@ -307,7 +307,7 @@ CompareFTestResult(fvalue=nan, pvalue=nan, df_num=1, df_denom=3)
 >>> cf
 CompareFTestResult(batch shape (2,))
 >>> cf.pvalue
-array([  0.17936185532426896, 3.049994731658557e-08], dtype=float64)
+array([  0.17936185532426907, 3.049994731658558e-08], dtype=float64)
 ```
 
 둘째 회귀는 신문 광고가 반응에 들어간 자료라 p값이 아주 작아요.

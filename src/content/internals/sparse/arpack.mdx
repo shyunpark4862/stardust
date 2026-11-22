@@ -2,7 +2,7 @@
 title: ARPACK의 Lanczos와 Arnoldi
 group: 고유값과 특이값
 order: 1
-summary: eigsh와 eigs가 쓰는 ARPACK의 암시적 재시작 Lanczos·Arnoldi를 설명해요. scipy 1.18.1이 돌리는 계산 순서를 서브루틴 하나에 C++ 함수 하나로 옮겼고, 큰 벡터의 일은 스레드 수와 상관없이 같은 비트를 내는 이 라이브러리의 커널로 해요.
+summary: eigsh와 eigs가 쓰는 ARPACK의 암시적 재시작 Lanczos·Arnoldi를 설명해요. scipy 1.18.1이 돌리는 계산 순서를 서브루틴 하나에 C++ 함수 하나로 옮겼고, 큰 벡터의 일은 크기로만 나눈 결정적인 커널(고정 조각마다의 Accelerate gemv·ddot)로 해요.
 seeAlso: [svds, accuracy-performance, expm, overview]
 ---
 import Callout from '../../../components/Callout.astro';
@@ -25,7 +25,7 @@ import Steps from '../../../components/fig/Steps.astro';
 2. 기저는 `ncv`개까지만 둬요. 다 차면 원하지 않는 Ritz 값을 이동으로 쓰는 암시적 QR로 부분공간을 줄이고 다시 늘려요(암시적 재시작).
 3. 기저 벡터는 매번 이미 있는 모든 벡터에 대해 다시 직교화해요(DGKS 판정).
 4. 행렬 한가운데의 고유값은 연산자 OP를 바꿔(스펙트럼 변환) 양 끝으로 옮겨요.
-5. 시작 벡터는 정해진 생성기에서 뽑고, 내적·노름·기저 갱신은 크기로만 나누는 결정적인 커널이라 스레드 수, 행렬의 형식, 연산자의 꼴과 상관없이 같은 비트예요.
+5. 시작 벡터는 정해진 생성기에서 뽑고, 내적·노름·기저 갱신은 크기로만 나누는 결정적인 커널이라 행렬의 형식, 연산자의 꼴과 상관없이 같은 비트예요. 지금은 스레드 수와도 상관없어요(약속은 아니에요).
 
 <Fig column caption="eigsh 한 번의 흐름. eigs도 같은 꼴이고, 가운데의 루틴이 dnaup2·dneupd(복소는 znaup2·zneupd)로 바뀌어요.">
   <Steps
@@ -97,14 +97,14 @@ $$
 >>> A = sd.sparse.diags_array([sd.full(n, 2.0), sd.full(n - 1, -1.0), sd.full(n - 1, -1.0)], offsets=[0, 1, -1])
 >>> r = sd.sparse.eigsh(A, k=3, which='LA')
 >>> r.eigenvalues
-array([3.9912986959380334, 3.9961311942671727, 3.9990325645839535], dtype=float64)
+array([3.9912986959380303, 3.9961311942671727, 3.9990325645839477], dtype=float64)
 >>> [2 - 2 * math.cos(math.pi * j / (n + 1)) for j in (98, 99, 100)]
 [3.9912986959380374, 3.9961311942671887, 3.999032564583976]
 >>> r.n_op, r.n_iter
 (541, 32)
 ```
 
-가장 큰 세 고유값이 서로 0.005 안쪽으로 붙어 있어 32번 재시작하며 곱을 541번 했어요. 닫힌 꼴을 float64로 계산한 값과의 어긋남은 $2.3\times10^{-14}$ 이하이고, 계약 $C_{\mathrm{EIG}}\,\varepsilon\,\lVert A\rVert_2 \approx 8.9\times10^{-13}$($C_{\mathrm{EIG}} = 1000$, [정확도와 성능](/internals/sparse/accuracy-performance/)) 안이에요.
+가장 큰 세 고유값이 서로 0.005 안쪽으로 붙어 있어 32번 재시작하며 곱을 541번 했어요. 닫힌 꼴을 float64로 계산한 값과의 어긋남은 $2.8\times10^{-14}$ 이하이고, 계약 $C_{\mathrm{EIG}}\,\varepsilon\,\lVert A\rVert_2 \approx 8.9\times10^{-13}$($C_{\mathrm{EIG}} = 1000$, [정확도와 성능](/internals/sparse/accuracy-performance/)) 안이에요.
 
 ## 직교성을 지키기: DGKS
 
@@ -128,7 +128,7 @@ $r$을 직교화하기 전의 노름이 $w$, 뒤의 노름이 $\lVert r\rVert$�
             if (!(S.rnorm > 0.717 * wnorm)) {
 ```
 
-`gemv_t`가 $V^{\mathsf H}(Br)$의 열 내적, `orth_sub`가 $r \leftarrow r - Vh$예요. 대칭이므로 $h$의 마지막 원소가 $T$의 대각 $\alpha_j$가 되고, 앞 걸음의 $\lVert r\rVert$가 부대각 $\beta_j$가 돼요. 일반화 문제($M$이 있을 때, ARPACK의 `bmat = 'G'`)는 내적과 노름이 모두 $M$-내적 $\langle x, y\rangle_M = x^{\mathsf H} M y$라서 `P.bx`로 $Mr$을 만들어 둬요.
+`gemv_t`가 $V^{\mathsf H}(Br)$의 열 내적, `orth_sub`가 $r \leftarrow r - Vh$예요. 둘 다 아래의 [기저와의 곱](#같은-비트를-내는-벡터-연산)(Accelerate `dgemv`)이에요. 대칭이므로 $h$의 마지막 원소가 $T$의 대각 $\alpha_j$가 되고, 앞 걸음의 $\lVert r\rVert$가 부대각 $\beta_j$가 돼요. 일반화 문제($M$이 있을 때, ARPACK의 `bmat = 'G'`)는 내적과 노름이 모두 $M$-내적 $\langle x, y\rangle_M = x^{\mathsf H} M y$라서 `P.bx`로 $Mr$을 만들어 둬요.
 
 ### 불변 부분공간
 
@@ -238,7 +238,7 @@ Krylov 방법은 양 끝 고유값을 빨리 찾지만, 0 근처처럼 스펙트
 626
 >>> s = sd.sparse.eigsh(A, k=3, sigma=0.0)
 >>> s.eigenvalues
-array([0.0009674354160238701,  0.003868805732811313,  0.008701304061962843], dtype=float64)
+array([0.0009674354160238754, 0.0038688057328113245,  0.008701304061962848], dtype=float64)
 >>> s.n_op, s.n_iter
 (21, 1)
 ```
@@ -283,7 +283,7 @@ ARPACK은 원래 역통신(reverse communication)이라 `ido`로 "이 벡터에 
 
 ### 역은 희소 LU로
 
-`inv`, 곧 $(A - \sigma M)^{-1}$이나 $M^{-1}$은 Python 층(`_eigen.py`)이 만들어요. $A$와 $M$이 행렬(희소나 밀집)이면 $A - \sigma M$을 CSC로 만들어 [`splu`](/api/sparse/splu/)와 같은 Accelerate LU(AMD 순서)로 한 번 분해하고, 곱마다 풀이 하나와 반복 다듬기 한 번을 해요. $\sigma$가 고유값이면 분해가 특이로 판정되어 `LinAlgError("eigsh(): singular matrix")`예요. 일반 `LinearOperator`는 역을 만들 수 없으므로 scipy처럼 곱마다 [`gmres`](/api/sparse/gmres/)로 풀어요. 상대 허용오차는 $\max(\mathrm{tol}, 1000\sqrt n\,\varepsilon)$(`tol = 0`이면 $2\varepsilon$)이에요.
+`inv`, 곧 $(A - \sigma M)^{-1}$이나 $M^{-1}$은 Python 층(`_eigen.py`)이 만들어요. $A$와 $M$이 행렬(희소나 밀집)이면 $A - \sigma M$을 CSC로 만들어 [`splu`](/api/sparse/splu/)와 같은 Accelerate LU(AMD 순서)로 한 번 분해하고, 곱마다 풀이 하나를 해요. [직접 풀이](/internals/sparse/solve/#반복-다듬기)와 달리 반복 다듬기는 하지 않아요(`refine=False`). scipy(SuperLU)와 RSpectra도 걸음마다 풀이 하나이고, 격자 문제의 풀이처럼 원소별 역오차가 몇 ε(lap2d/100 2ε, lap3d/22 7ε)인 연산자는 ARPACK이 같은 판정으로 수렴시켜요. 걸음 하나의 비용은 풀이 둘과 SpMV 하나에서 풀이 하나로 줄어요. 대신 피벗이 원소를 키우는 행렬에서는 풀이 하나의 오차가 그대로 고유값에 남아요. 점 40개의 고리 행렬(대각 0.1, 순환 부대각 0.9)의 `eigs(C, k=3, sigma=0)`은 고유쌍의 잔차가 $10^{-11}$ 크기예요. $\sigma$가 고유값이면 분해가 특이로 판정되어 `LinAlgError("eigsh(): singular matrix")`예요. 일반 `LinearOperator`는 역을 만들 수 없으므로 scipy처럼 곱마다 [`gmres`](/api/sparse/gmres/)로 풀어요. 상대 허용오차는 $\max(\mathrm{tol}, 1000\sqrt n\,\varepsilon)$(`tol = 0`이면 $2\varepsilon$)이에요.
 
 ```python
         # src/stardust/sparse/_eigen.py, _Inverse.__init__
@@ -366,35 +366,48 @@ True
 
 `getv0`는 받은 시작 벡터에 OP를 한 번 곱한 $\mathrm{OP}\,v_0$에서 출발해요(arpack-ng의 동작이에요). 그래서 첫 곱의 입력은 $v_0$ 자체예요.
 
-### 스레드 수와 상관없는 비트
+### 같은 비트를 내는 벡터 연산
 
-큰 벡터의 일은 모두 `csrc/sparse/krylov.hpp`의 결정적인 커널이에요. 반복법([`cg`](/api/sparse/cg/) 등)과 함께 쓰는 커널이라 같은 연산은 같은 비트예요.
+큰 벡터의 일은 모두 `csrc/sparse/krylov.hpp`의 커널이에요. 반복법([`cg`](/api/sparse/cg/) 등)과 함께 쓰는 커널이라 같은 연산은 같은 비트예요.
 
-- 내적은 `sd.linalg.vecdot`의 합이에요. 512개짜리 잎을 FMA로 더하고 잎의 합을 정해진 이진 트리로 합쳐요. $V^{\mathsf H}x$처럼 여러 열의 내적(`dots`)은 잎마다 모든 열을 한꺼번에 계산해서 $x$의 잎을 캐시에서 한 번만 읽지만, 열마다의 트리는 `dot` 하나와 같아요.
-- 노름은 `sd.linalg.vector_norm`이에요.
-- $y \leftarrow y + Vc$(`gaxpy`)는 원소마다 열 순서의 FMA예요. 행 구간으로 나눠도 원소 하나의 계산 순서는 그대로예요.
+- 내적과 2-노름은 `sd.linalg.vecdot`·`vector_norm`과 같은 linalg의 빠른 합이에요. 길이 $n$만으로 정한 $2^{14}$항의 조각마다, 짧으면 16레인 FMA 잎을 짝지어 더하고 길면 Accelerate의 `ddot`·`zdotc`를 불러요. 조각의 부분합은 조각에 걸친 균형 이진 트리로 합쳐요. 노름은 그 제곱합을 믿을 수 있으면(넘치거나 너무 작지 않으면) 제곱근이고, 아니면 `vector_norm`의 척도를 조정하는 길이에요.
+- 기저와의 곱 $V^{\mathsf H}x$(`dots`)와 $y \leftarrow y + Vc$(`gaxpy`)는 행 $2^{14}$개씩의 고정 조각마다 Accelerate의 `dgemv`·`zgemv`를 한 번 불러요. $V^{\mathsf H}x$는 조각마다의 부분합을 조각 순서로 더하고, $Vc$는 조각마다 $y$의 다른 행을 채워요.
 
 ```cpp
-    // csrc/sparse/krylov.hpp, dots
-    for_tasks(nt, n * j, [&](int64_t t) {
-        for (int64_t q = t * per; q < std::min(nl, (t + 1) * per); ++q) {
-            const int64_t b0 = lv[static_cast<std::size_t>(q)].first, m = lv[static_cast<std::size_t>(q)].second;
-            int64_t l = 0;
-            if constexpr (!kComplex<T>)
-                for (; l + 2 <= j; l += 2)
-                    dot_leaf2(
-                        V + l * n + b0, V + (l + 1) * n + b0, x + b0, m, parts[l * nl + q], parts[(l + 1) * nl + q]
-                    );
-            for (; l < j; ++l) parts[l * nl + q] = dot_leaf(V + l * n + b0, x + b0, m);
-        }
+// csrc/sparse/krylov.hpp
+// y[l] = V[:, l]^H x for l < j (V's columns of n entries one after another): each piece's gemv,
+// the pieces' partial sums added in piece order.
+template <class T>
+void dots(const T* V, int64_t n, int64_t j, const T* x, T* y) {
+    if (j <= 0) return;
+    const int64_t nc = num_chunks(n, kGemvRows);
+    if (nc == 0) {
+        for (int64_t l = 0; l < j; ++l) y[l] = T{};
+        return;
+    }
+    if (nc == 1) {
+        gemv_piece<T>(true, n, j, V, n, x, y, false);
+        return;
+    }
+    std::vector<T> parts(static_cast<std::size_t>(nc * j));
+    for_tasks(nc, n * j, [&](int64_t t) {
+        const int64_t lo = t * kGemvRows, m = std::min(kGemvRows, n - lo);
+        gemv_piece<T>(true, m, j, V + lo, n, x + lo, parts.data() + t * j, false);
     });
-    for (int64_t l = 0; l < j; ++l) y[l] = dot_of_leaves(n, parts.data() + l * nl, nl);
+    for (int64_t l = 0; l < j; ++l) {
+        T acc = parts[static_cast<std::size_t>(l)];
+        for (int64_t t = 1; t < nc; ++t) acc = add(acc, parts[static_cast<std::size_t>(t * j + l)]);
+        y[l] = acc;
+    }
+}
 ```
 
-일을 나누는 기준이 $n$과 열 수뿐이라 스레드풀이 어떻게 나눠 맡든 같은 비트예요. 행렬의 곱은 희소 SpMV(합의 순서가 형식과 무관해요)이고, 밀집 행렬과 `aslinearoperator`로 감싼 행렬도 같은 SpMV를 타요. 그래서 CSR·CSC·COO·DOK, 밀집 배열, `aslinearoperator(A)`, `A @ v`를 부르는 Python `LinearOperator`가 모두 같은 비트를 내요. 큰 문제에서 연산자가 모두 C++ 커널이면 반복 내내 GIL을 놓고, Python `LinearOperator`는 곱마다 GIL을 쥐고 Python을 불러요.
+`gemv`는 기저 $V$($n \times j$, 열 우선)를 한 번 읽으며 $j$개의 내적을 함께 계산해요. 기저의 열 수 $j$가 10–20이면 Apple 칩의 행렬 장치(AMX)가 이 일을 NEON 고리보다 훨씬 빨리 해요. `gemv` 안의 합 순서는 Accelerate가 정하지만 같은 크기의 같은 입력에는 같은 순서라, 같은 입력을 300번, 부하 아래에서, 네 스레드가 동시에 불러도 비트가 같았어요. 조각의 경계가 $n$만으로 정해지므로 스레드풀이 조각을 어떻게 나눠 맡든 결과가 같아요.
+
+일을 나누는 기준이 $n$과 열 수뿐이라 지금은 스레드 수와도 상관없이 같은 비트예요(약속은 아니에요). 스무 문제의 곱의 수와 비트가 1·3·10스레드에서 같아요. 행렬의 곱은 희소 SpMV(합의 순서가 형식과 무관해요)이고, 밀집 행렬과 `aslinearoperator`로 감싼 행렬도 같은 SpMV를 타요. 그래서 CSR·CSC·COO·DOK, 밀집 배열, `aslinearoperator(A)`, `A @ v`를 부르는 Python `LinearOperator`가 모두 같은 비트를 내요. 큰 문제에서 연산자가 모두 C++ 커널이면 반복 내내 GIL을 놓고, Python `LinearOperator`는 곱마다 GIL을 쥐고 Python을 불러요.
 
 <Callout>
-shift-invert의 LU는 Accelerate가 계산해요. 그 비트는 sd의 스레드 수와 무관하고, Accelerate의 스레드 모드(`VECLIB_MAXIMUM_THREADS`)가 같으면 같아요. BLAS·LAPACK을 부르는 다른 함수와 같은 규칙이에요.
+shift-invert의 LU는 Accelerate가 계산해요. 그 비트는 Accelerate의 스레드 모드(`VECLIB_MAXIMUM_THREADS`)가 같으면 같고, 지금은 sd의 스레드 수와 무관해요. BLAS·LAPACK을 부르는 다른 함수와 같은 규칙이에요.
 </Callout>
 
 ### 고유벡터의 부호
@@ -403,7 +416,7 @@ shift-invert의 LU는 Accelerate가 계산해요. 그 비트는 sd의 스레드 
 
 ## scipy·R과 다른 곳
 
-- **같은 계산 순서.** 같은 `v0`로 scipy와 견준 스무 문제(1·2차원 라플라시안, 무작위 대칭·비대칭·복소, 모든 `which`)에서 상태가 모두 같고, 열다섯 문제에서 곱의 수까지 같아요. 나머지 다섯은 겹친 고유값이나 느린 수렴 때문에 scipy 자신이 `v0`의 한 원소를 1 ulp 바꾸면 곱의 수가 흔들리는 문제이고, sd의 수는 그 폭을 10% 넓힌 범위 안이에요. 값은 순서와 상관없이 상대 $10^{-9}$ 안에서 같아요. 모드 2–5, 복소 $\sigma$와 `OPpart`에서도 값과 그 순서가 같고, 복소 에르미트 문제는 값이 같아요(순서는 아래).
+- **같은 계산 순서, 다른 끝자리.** ARPACK의 계산 순서는 scipy와 같지만 기저와의 곱이 Accelerate의 `gemv`라서 합의 끝자리가 scipy의 BLAS와 달라요. 그래서 곱의 수는 scipy 자신의 흔들림으로 견줘요. 같은 `v0`로 scipy와 견준 스무 문제(1·2차원 라플라시안, 무작위 대칭·비대칭·복소, 모든 `which`)에서 상태가 모두 같고, 열세 문제에서 곱의 수까지 같아요. 나머지 일곱은 겹친 고유값이나 느린 수렴 때문에 scipy 자신이 `v0`의 한 원소를 1 ulp 바꾸면 곱의 수가 흔들리는 문제이고, sd의 수는 그 폭(여섯 실행)을 10% 넓힌 범위 안이에요. 1차원 라플라시안 n = 400의 `'LM'` k = 3은 sd가 4,483번, scipy가 4,466–4,483번이에요. 반올림에 둔한 문제는 값이 순서까지 상대 $10^{-9}$ 안에서 같고, 민감한 문제는 scipy의 여섯 실행 가운데 하나와 같은 값이에요(무작위 비대칭 행렬의 `'LI'` k = 4는 scipy 여섯 실행 가운데 둘이 찾는 고유값 쌍을 찾아요). 모드 2–5, 복소 $\sigma$와 `OPpart`에서도 값과 그 순서가 같고, 복소 에르미트 문제는 값이 같아요(순서는 아래).
 - **복소 에르미트 `eigsh`의 순서.** scipy는 복소 Arnoldi가 남긴 순서 그대로라, 40 × 40 에르미트 행렬의 `k=4`가 [24.59, −21.91, −21.24, 21.08]처럼 나와요. sd는 실수 대칭 문제와 같이 오름차순 [−21.91, −21.24, 21.08, 24.59]이에요.
 - **`tol = 0`.** scipy의 ARPACK이 쓰는 $2^{-52}$예요(LAPACK의 `dlamch('E')`는 $2^{-53}$이지만, scipy의 수렴 판정과 같은 곱의 수가 나오는 것은 $2^{-52}$예요). $u^{2/3}$과 `dsapps`의 분리 판정은 $2^{-53}$의 것이에요.
 - **시작 벡터.** scipy는 `v0`가 없으면 시드 없는 난수를 써서 실행마다 결과의 끝자리와 곱의 수가 달라질 수 있어요. sd는 정해진 생성기예요.

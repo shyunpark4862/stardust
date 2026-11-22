@@ -57,7 +57,7 @@ seeAlso: [test_proportions_2indep, proportion_confint, odds_ratio, relative_risk
 
 ```python
 >>> sd.htest.confint_proportions_2indep(45, 100, 30, 90)
-array([-0.02226985907316922,    0.248582972309352], dtype=float64)
+array([-0.022269859073169224,     0.248582972309352], dtype=float64)
 ```
 
 나은 비율의 차 p₁ − p₂는 −2.2%p에서 24.9%p 사이쯤이에요. 0이 구간 안에 있으므로 "차이가 없다"를 배제할 수 없어요. 그러면서도 25%p 가까운 큰 효과일 수도 있다는 것까지 알려 줘요.
@@ -149,7 +149,7 @@ array([nan, nan], dtype=float64)
 array([[-0.022975593105879703,    0.2512098252443872],
        [  -0.2878248040628229,   0.09516897429572053]], dtype=float64)
 >>> sd.htest.confint_proportions_2indep(45, 100, 30, 90, alpha=0.1)
-array([-7.287145757124098e-05,    0.22839798750266133], dtype=float64)
+array([-7.287145757123303e-05,    0.22839798750266138], dtype=float64)
 ```
 
 ## 입력과 에러

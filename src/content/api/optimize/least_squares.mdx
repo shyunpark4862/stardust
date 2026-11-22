@@ -330,7 +330,7 @@ ValueError: least_squares(): 'ftol', 'xtol' and 'gtol' must each be >= 2.2e-16 (
 
 ```python
 >>> [f'{v:.1e}' for v in r.grad.tolist()]
-['-1.6e-09', '-4.0e-06', '4.7e-10']
+['-1.8e-09', '-4.0e-06', '4.7e-10']
 >>> f'{r.optimality:.1e}', r.active_mask
 ('4.0e-06', array([0, 0, 0], dtype=int64))
 ```
@@ -427,9 +427,9 @@ ValueError: least_squares(): 'fun' is not finite at 'x0'
 ```python
 >>> fit = sd.regression.nls(lambda t, a, k, c: a * sd.exp(-k * t) + c, t, y, p0=[1.0, 1.0, 0.0])
 >>> fit.params
-array([ 5.030580751301966, 0.4048767917071542, 0.5239091983451125], dtype=float64)
+array([ 5.030580751301964, 0.4048767917071617, 0.5239091983451343], dtype=float64)
 >>> [f'{v:.1e}' for v in (r.x - fit.params).tolist()]
-['-5.5e-08', '-9.5e-08', '-2.4e-07']
+['-5.6e-08', '-9.5e-08', '-2.4e-07']
 ```
 
 모수의 불확실성이나 예측이 필요하면 `nls`를, 잔차가 "모형 − 데이터" 꼴이 아니거나 반복 자체만 필요하면 `least_squares`를 써요. 두 함수가 커널을 어떻게 나눠 쓰는지는 [nls의 구현](/internals/regression/nls/)과 [최소제곱의 구현](/internals/optimize/least-squares/)에 있어요.
@@ -442,7 +442,7 @@ array([ 5.030580751301966, 0.4048767917071542, 0.5239091983451125], dtype=float6
 
 ## 스레드와 GIL
 
-`fun`과 `jac`은 Python 함수라, 반복은 GIL을 쥔 채 돌아요. 다른 Python 스레드에서 따로 푸는 문제들도 사용자 함수 부분은 번갈아 돌아요. 큰 야코비안의 분해 같은 큰 선형대수만 GIL을 놓고 여러 스레드로 나눠 해요. 사용자 함수 안의 sd 연산은 그 연산의 규칙대로 스레드를 써요. 같은 입력이면 스레드 수와 상관없이 결과가 비트까지 같아요.
+`fun`과 `jac`은 Python 함수라, 반복은 GIL을 쥔 채 돌아요. 다른 Python 스레드에서 따로 푸는 문제들도 사용자 함수 부분은 번갈아 돌아요. 큰 야코비안의 분해 같은 큰 선형대수만 GIL을 놓고 여러 스레드로 나눠 해요. 사용자 함수 안의 sd 연산은 그 연산의 규칙대로 스레드를 써요. 같은 기계, 같은 스레드 수, 같은 입력이면 실행마다 결과가 비트까지 같고, 지금은 스레드 수와도 상관없이 같아요(약속은 아니에요).
 
 ## scipy를 아는 분께
 

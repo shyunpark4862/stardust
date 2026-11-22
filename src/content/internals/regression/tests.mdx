@@ -368,7 +368,7 @@ CompareFTestResult(fvalue=2.30445, pvalue=0.141071, df_num=1, df_denom=26)
 
 ### 같은 자료인지: 비트로 견줘요
 
-F와 LR은 두 적합이 같은 $y$, 같은 행, 같은 가중치일 때만 뜻이 있어요. 다른 자료의 두 적합도 수 하나는 내므로, 틀린 비교가 검정처럼 보이게 돼요. 두 적합이 사용자의 같은 배열에서 나왔으면 적합할 때 복사해 둔 값도 비트까지 같아야 하므로, 허용오차 없이 비트로 견줘요(NaN은 같은 자리에 있으면 같다고 봐요). 비용은 $O(n)$이에요.
+F와 LR은 두 적합이 같은 $y$, 같은 행, 같은 가중치일 때만 뜻이 있어요. 다른 자료의 두 적합도 수 하나는 내므로, 틀린 비교가 검정처럼 보이게 돼요. 두 적합이 사용자의 같은 배열에서 나왔으면 적합할 때 복사해 둔 값도 비트까지 같아야 하므로, 허용오차 없이 비트로 견줘요(NaN은 같은 자리에 있으면 같다고 봐요). 비용은 많아야 $O(n)$이에요.
 
 - 선형: 적합 함수, $y$(적합의 단위), 가중치, GLS의 백색화한 1의 열 $L^{-1}\mathbf 1$과 $\log\lvert\Sigma\rvert$.
 - GLM: 분포족, 링크, 척도 설정(추정 방법과 고정값), $y$, 그리고 `var_weights`·`freq_weights`·`trials`·`offset`을 묶은 블록.
@@ -395,6 +395,26 @@ def _same_data(big, small):
         return _nan_equal(_sd.asarray(la) + 0.0, _sd.asarray(lb) + 0.0)
     return la == lb or (math.isnan(la) and math.isnan(lb))
 ```
+
+`_nan_equal`은 같은 객체이면 바로 참이고, float64 배열은 커널 `same_values`가 원소를 차례로 견주다 첫 차이에서 멈춰요. 같은 메모리(주소, 간격, 모양이 같음)를 보는 두 배열도 바로 참이에요. 다른 자료는 보통 첫 원소에서 갈리므로, 비교 하나의 검사가 거의 공짜예요.
+
+```python
+# src/stardust/regression/_tests.py
+def _nan_equal(a, b):
+    """The same values element by element (NaN equal to NaN), stopping at the first difference
+    (the model comparisons' columns usually differ in their first element)."""
+    if a is None or b is None:
+        return a is None and b is None
+    if a is b:
+        return True
+    if tuple(a.shape) != tuple(b.shape):
+        return False
+    if a.dtype != _sd.float64 or b.dtype != _sd.float64:
+        return bool(_sd.all(_sd.logical_or(a == b, _sd.logical_and(_sd.isnan(a), _sd.isnan(b)))))
+    return _k.same_values(a, b)
+```
+
+적합마다 $y$와 열의 지문(해시)을 만들어 두면 이 검사도 $O(1)$이지만, 비교 한 번의 $O(n)$을 없애려고 모든 적합에 그 비용을 다는 것은 손해라 두지 않아요.
 
 형이 다르면(`OLSResult`와 `WLSResult`) `TypeError`, 배치 모양이 다르면 `ValueError`예요. 강건 공분산의 결과도 `ValueError`예요. F와 우도비는 강건 공분산을 쓰지 않으니, 그 공분산으로 검정하려면 `wald_test`를 쓰라고 알려요.
 
@@ -515,7 +535,7 @@ F의 분모는 모든 줄이 같은 척도, 곧 `df_resid`가 가장 작은 모�
 >>> one = sd.regression.ols(y, X[:, :1])
 >>> a = sd.regression.anova(one, small, r)
 >>> a.df_resid.tolist(), a.statistic.tolist(), a.pvalue.tolist()
-([28.0, 27.0, 26.0], [nan, 28.76560363545615, 2.304445810921585], [nan, 1.2913602541557603e-05, 0.14107114704254983])
+([28.0, 27.0, 26.0], [nan, 28.76560363545615, 2.304445810921585], [nan, 1.29136025415576e-05, 0.14107114704254978])
 ```
 
 첫 모형은 견줄 앞 모형이 없어서 그 줄의 통계량과 p값이 NaN이에요.
@@ -680,7 +700,7 @@ Type III는 다른 모든 항이 들어 있을 때 그 항의 계수가 모두 0
 ```python
 >>> a3 = sd.regression.anova(r, typ=3)
 >>> a3.statistic.tolist(), a3.pvalue.tolist()
-([29.737182361456274, 2.3044458109215853, 30.58493141186105, nan], [1.0204040719316085e-05, 0.14107114704254978, 8.33781348904155e-06, nan])
+([29.737182361456274, 2.3044458109215853, 30.58493141186105, nan], [1.0204040719316083e-05, 0.14107114704254975, 8.337813489041549e-06, nan])
 >>> small.ssr - r.ssr, float(a3.sum_sq[1])
 (1.3622576915373266, 1.3622576915373268)
 >>> sd.regression.anova(sd.regression.ols(y, X, cov_type="HC3"))
@@ -714,8 +734,6 @@ Type III의 분모 자유도만 `df_resid_inference`인 것은 그 값이 `wald_
     # src/stardust/regression/_tests.py (_anova_terms)
     mean = [_div(s, d) if d else math.nan for s, d in zip(ss_out, df_out)]
     if glm:
-        # the 'Residual' row's mean square is the scale, the statistics' denominator: a
-        # GLM's deviance / df_resid is not it (a Pearson scale, or a fixed 1)
         mean[-1] = float(r.scale)
 ```
 
@@ -736,15 +754,15 @@ Arb(구간 산술)로 만든 참값과 견준 상대오차예요(`bench/regressi
 
 | 문제 | t (`t_test`) | Wald | `compare_f_test` | `compare_lr_test` | Type I | Type III |
 |---|---:|---:|---:|---:|---:|---:|
-| OLS | 2.0e-16 | 1.4e-16 | 2.5e-16 | 3.2e-16 | 5.0e-16 | 6.3e-16 |
-| WLS(가중치 0인 행) | 5.3e-17 | 1.8e-16 | 7.1e-16 | 6.4e-16 | 4.4e-16 | 3.1e-16 |
+| OLS | 2.0e-16 | 1.4e-16 | 2.5e-16 | 3.2e-16 | 5.0e-16 | 2.9e-16 |
+| WLS(가중치 0인 행) | 5.3e-17 | 1.6e-18 | 7.1e-16 | 6.4e-16 | 4.4e-16 | 6.3e-16 |
 | 절편 없음 | 1.5e-16 | 2.9e-16 | 2.0e-16 | 2.0e-16 | 3.9e-16 | 3.3e-16 |
-| 세 수준 요인의 항 | 1.5e-16 | 1.9e-16 | 6.9e-16 | 6.4e-16 | 4.4e-16 | 5.3e-16 |
-| κ ≈ 10⁸ | 7.2e-10 | 6.8e-10 | 1.2e-16 | 1.1e-16 | 2.7e-9 | 1.4e-10 |
+| 세 수준 요인의 항 | 1.5e-16 | 2.1e-16 | 6.9e-16 | 6.4e-16 | 4.4e-16 | 5.1e-16 |
+| κ ≈ 10⁸ | 9.0e-10 | 1.8e-9 | 1.2e-16 | 1.1e-16 | 2.7e-9 | 1.4e-10 |
 | 이항 logit | 2.5e-16 | 2.3e-16 | | 4.3e-16 | 4.3e-16 | 1.3e-16 |
-| 이항 probit | 9.4e-16 | 4.0e-17 | | 2.3e-17 | 9.5e-16 | 5.4e-16 |
-| 포아송 log | 6.4e-17 | 2.4e-16 | | 8.6e-16 | 1.5e-16 | 2.9e-16 |
-| 감마 log | 2.1e-16 | 8.8e-16 | 1.2e-16 | 2.2e-16 | 1.3e-16 | 6.2e-16 |
+| 이항 probit | 9.4e-16 | 4.3e-16 | | 2.3e-17 | 9.5e-16 | 7.8e-16 |
+| 포아송 log | 6.4e-17 | 8.6e-18 | | 8.6e-16 | 1.5e-16 | 1.5e-16 |
+| 감마 log | 2.1e-16 | 8.8e-16 | 1.2e-16 | 2.2e-16 | 1.3e-16 | 8.4e-16 |
 
 - 표의 값은 통계량(Type I·III는 제곱합, GLM은 편차의 감소와 Wald 통계량)의 최대 상대오차예요. p값은 그 자신에 대한 상대오차로 모든 조건이 좋은 문제에서 2×10⁻¹⁴ 안이에요.
 - κ ≈ 10⁸에서 t, Wald, Type I·III는 $\kappa u$ 꼴로 나빠져요. 공분산 $(U^{\mathsf T}U)^{-1}$과 효과 $U\hat\beta$가 삼각 인자의 반올림을 $\kappa$배로 키우기 때문이고, 계수의 `bse`와 같은 꼴이에요.

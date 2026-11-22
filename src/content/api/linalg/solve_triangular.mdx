@@ -322,7 +322,7 @@ stardust.linalg.LinAlgError: solve_triangular(): singular matrix
 >>> tiny = sd.asarray([[1.0, 0.0],
 ...                    [2.0, 1e-300]])
 >>> sd.linalg.solve_triangular(tiny, sd.asarray([1.0, 5.0]), upper=False)
-array([                    1.0, 2.9999999999999996e+300], dtype=float64)
+array([   1.0, 3e+300], dtype=float64)
 ```
 
 `LinAlgError`는 `ValueError`의 한 종류예요. 잡는 방법과 특이 판정의 자세한 규칙은 [실패와 에러](/api/linalg/errors/)에 있어요.
@@ -413,11 +413,11 @@ array([], dtype=float64)
 | [`lu_solve(l, u, perm, b)`](/api/linalg/lu_solve/) | `lu`의 결과 셋 | 행 순서 바꾸기, `L` 풀이, `U` 풀이를 한꺼번에 해요. |
 | [`sd.tril`, `sd.triu`](/api/array/tril-triu/) | 아무 행렬 | 풀지 않아요. 행렬의 한쪽 삼각만 남기고 나머지를 0으로 만든 배열을 돌려줘요. |
 
-같은 삼각 행렬을 `solve`와 `solve_triangular`로 풀면 답은 같아요.
+같은 삼각 행렬을 `solve`로 풀어도 답은 같아요. 다만 `solve`는 삼각이라는 것을 모르고 일반적인 방법으로 풀어서, 계산 순서가 달라 마지막 자리가 조금 어긋날 수 있어요.
 
 ```python
 >>> sd.linalg.solve(lo, b)
-array([2.0, 3.0, 1.0], dtype=float64)
+array([1.9999999999999998,                3.0, 1.0000000000000002], dtype=float64)
 ```
 
 `cholesky_solve`에 넘기는 `L`과 `solve_triangular`에 넘기는 `L`은 같은 배열이지만 푸는 문제가 달라요. `solve_triangular(L, b, upper=False)`는 삼각 행렬 `L` 자체가 계수인 문제를, `cholesky_solve(L, b)`는 `L`로 분해되기 전의 원래 행렬이 계수인 문제를 풀어요.

@@ -14,7 +14,7 @@ import Steps from '../../../components/fig/Steps.astro';
 
 최적화의 결과는 "멈춤 판정을 만족한 점"이에요. 정확한 답 하나가 있는 특수함수나 선형 회귀와 달리, 같은 문제도 허용오차와 반복의 경로에 따라 다른 점에서 멈춰요. 그래서 이 영역은 정확도를 세 가지로 확인해요.
 
-1. **같은 걸음인가.** 각 방법은 scipy 1.18.1과 같은 알고리즘과 같은 멈춤 판정을 써요. 같은 문제에서 사용자 함수를 부르는 점을 차례대로 기록해 scipy의 것과 견줘요. scipy와의 비트 동일은 약속이 아니지만(약속은 스레드 수와 상관없이 같은 비트, 자기 골든 출력과의 비트, 정확도예요), 지금은 대부분의 방법이 그 점들까지 비트로 같아요.
+1. **같은 걸음인가.** 각 방법은 scipy 1.18.1과 같은 알고리즘과 같은 멈춤 판정을 써요. 같은 문제에서 사용자 함수를 부르는 점을 차례대로 기록해 scipy의 것과 견줘요. scipy와의 비트 동일은 약속이 아니지만(약속은 같은 기계, 같은 스레드 수에서 실행마다 같은 비트, 자기 골든 출력과의 비트, 정확도예요), 지금은 대부분의 방법이 그 점들까지 비트로 같아요.
 2. **원본에서 얼마나 떨어져 있나.** scipy의 MINPACK과 L-BFGS-B는 Fortran 원본을 C로 옮긴 것이에요. 원본을 gfortran으로 돌린 결과를 고정 데이터로 두고, scipy와 이 라이브러리가 원본에서 얼마나 떨어지는지 재요.
 3. **멈춘 점이 판정의 뜻대로 정답 가까이 있나.** 스칼라 근은 Arb(구간 산술)로 찾은 참값과 견주고, 최소화는 기울기와 KKT 조건의 잔차로 봐요.
 
@@ -29,7 +29,8 @@ import Steps from '../../../components/fig/Steps.astro';
 | `least_squares` 'lm' | scipy 110경우 × (해석적, 2점) | 해석적 108, 2점 104경우가 비트로 같음 |
 | `least_squares` 'trf' | scipy 110경우, 상자 47경우 | 끝자리부터 달라요. 해석적 야코비안에서 같은 `status` 110, 부르는 점이 모두 10⁻¹⁰ 안 103 |
 | `root` hybr, lm | scipy 55계 × (해석적, 차분) | 비트로 같음 |
-| `lsq_linear`, `nnls` | scipy 12문제, 무작위 문제 2,449번 | 비트로 같음('bvls'가 경계를 반올림만큼 넘은 x를 경계로 옮긴 경우는 그 x의 값) |
+| `lsq_linear` | scipy 12문제, 무작위 문제 1,648번 | 비트로 같음('bvls'가 경계를 반올림만큼 넘은 x를 경계로 옮긴 경우는 그 x의 값) |
+| `nnls` | scipy 12문제, 무작위 문제 300번 | 0인 성분의 자리, `status`, 반복 수가 같음. 나머지 성분은 반올림 안($64\,\varepsilon\,\mathrm{cond}(A_P)\max(1, \lVert x\rVert_\infty)$) |
 | `approx_fprime` | scipy(`epsilon=2**-26`) MGH 47경우, Arb 도함수 MGH 47경우와 0 근처 317점 | 비트로 같음. 기본 5점 차분은 MGH에서 노름 상대 6.4×10⁻¹¹ 안, 0 근처에서 절대 5.3×10⁻¹² 안 |
 
 속도는 대부분 사용자 함수가 정해요. 그래서 방법끼리는 사용자 함수 밖의 시간, 곧 반복 하나(스칼라는 호출 하나, 배치는 함수값 하나)에 방법 자신이 쓰는 시간으로 견줘요. 작은 문제에서 이 값은 scipy의 1/2–1/60이에요. 반복 전체가 C++이고 Python은 사용자 함수뿐이기 때문이에요. 같은 LAPACK·BLAS 호출이 시간의 대부분인 큰 선형 최소제곱과 L-BFGS-B n = 10⁴는 scipy와 같아요([속도](#속도)).
@@ -283,7 +284,6 @@ nelder-mead True True 640 640
 | `least_squares` | lm | MGH 110경우 가운데 해석적 108, 2점 104경우. NIST StRD 54적합 가운데 해석적 52, 2점 52 |
 | `root` | hybr, lm | 55계 × (해석적, 차분) 110번씩, 옵션을 바꾼 6계(hybr 7가지, lm 6가지) |
 | `lsq_linear` | trf, bvls | 12문제, 무작위 824번씩(넓고 긴 모양, 계수 부족, 반쪽·상자·무한이 섞인 경계), 작은 모양 480번, 큰 모양 셋. 'bvls'에서 scipy의 x가 경계를 반올림만큼 넘은 경우(테스트의 무작위 300번 가운데 84번)는 x가 그것을 경계로 옮긴 값과 비트까지 같고, `fun`·`cost`·`optimality`는 옮긴 x의 것이에요 |
-| `nnls` | Lawson–Hanson(scipy의 C 판) | 12문제, 무작위 801번 |
 | `approx_fprime` | `epsilon=2**-26`의 앞쪽 차분 | MGH 47경우의 기울기와 야코비안 |
 
 배치는 원소마다 같아요. scipy `elementwise`와 같은 구간에서 시작한 다섯 원소의 근과 원소마다의 셈이에요.
@@ -305,7 +305,7 @@ nelder-mead True True 640 640
 |---|---|---|
 | FMA 축약 | scipy의 C 코드(brentq, bisect, MINPACK, L-BFGS-B)는 clang의 기본(`-ffp-contract=on`)으로 빌드되어 한 식의 `a*b + c`를 FMA 하나로 계산해요. 이 라이브러리는 모듈 전체에서 축약을 끄므로 그 자리를 `std::fma`로 적거나, 파일에서 같은 축약을 켜요. 축약 없이 계산하면 스칼라 근 204문제 가운데 192문제, 경계 없는 L-BFGS-B 114경우 가운데 13경우만 부르는 점이 같아요 | `scalar.cpp`, `lsq.cpp`의 lmder(`Fu = true`), `hybrd.cpp`, `lbfgsb.cpp` |
 | 기계어에서 읽은 반올림의 꼴 | 설치된 scipy에는 MINPACK과 `nnls`의 C 소스가 없어요. 기계어(`otool -tv`)에서 MINPACK `t**2`의 제곱은 따로 반올림하고, clang이 벡터화한 두 고리(qrfac의 내적, gtol 판정)는 8개씩의 곱을 따로 반올림해 더해요. 읽은 꼴 그대로 적어요 | `minpack.hpp`의 `enorm`, `dot8` |
-| Accelerate `ddot`의 정렬 | Accelerate의 `ddot`은 둘째 인자가 16바이트 정렬인지에 따라 합의 순서가 달라요(길이 5부터 끝자리가 달라져요). scipy는 작업 배열 하나를 나눠 쓰므로 부분마다 정렬이 달라요. 여기서도 같은 위치로 나눠서 상자 경계의 L-BFGS-B가 51경우 모두 같아요 | `lbfgsb.cpp`의 작업 공간, `nnls`의 버퍼, `lstsq`(gelsd)의 버퍼 |
+| Accelerate `ddot`의 정렬 | Accelerate의 `ddot`은 둘째 인자가 16바이트 정렬인지에 따라 합의 순서가 달라요(길이 5부터 끝자리가 달라져요). scipy는 작업 배열 하나를 나눠 쓰므로 부분마다 정렬이 달라요. 여기서도 같은 위치로 나눠서 상자 경계의 L-BFGS-B가 51경우 모두 같아요 | `lbfgsb.cpp`의 작업 공간, `lstsq`(gelsd)의 버퍼 |
 | numpy의 `np.dot` | 두 벡터의 `np.dot`은 `0.0 + cblas_ddot`이라 BLAS가 돌려준 −0.0이 +0.0이 돼요. trust-ncg의 경계 교점은 $b = 2z^{\mathsf T}d$의 부호를 `copysign`으로 보므로 $z = 0$에서 이 차이가 걸음을 바꿔요(빼면 MGH 8경우가 갈려요) | `hessian.hpp`, `trust.cpp`, `linear.cpp` |
 | numpy의 정렬과 합 | Nelder–Mead는 numpy `argsort`의 introsort를 옮겨 같은 값의 순서까지 같게 하고(17개 미만은 삽입 정렬), 무게중심은 numpy처럼 +0.0에서 행을 차례로 더해요. trust 계열의 합은 numpy의 쌍별 합이에요 | `nelder_mead.cpp`, `trust.cpp` |
 | 넘침의 판정 | BFGS의 zoom 보간은 scipy가 `np.errstate(divide, over, invalid='raise')` 안에서 하고 그 에러에서 보간을 버려요. 연산마다 numpy의 규칙으로 같은 판정을 해요 | `wolfe.hpp` |
@@ -437,7 +437,7 @@ scipy가 부른 점에서 앞의 둘($x_0$의 두 호출)을 빼면 이 라이�
 
 hybr의 QR(`qrfac`, `qform`)은 서로 독립인 열 여덟 개를 함께 반사해요. 열마다의 합은 제 순서 그대로라 열을 하나씩 반사한 것과 비트가 같고, n = 300에서 자기 비용 전체가 scipy의 0.55배예요. 작은 n의 lm이 scipy보다 싼 것은 scipy의 `root(method='lm')`이 `fun`을 호출 수를 세는 Python 함수로 한 번 더 감싸기 때문이에요.
 
-선형 최소제곱은 사용자 함수가 없으므로 전체 시간으로 견줘요. (100, 10)의 'trf'는 0.04 ms로 scipy(0.35 ms)의 1/9쯤이에요. scipy가 반복마다 `LinearOperator`를 만들고 numpy 연산 수십 개를 Python에서 부르기 때문이에요. 큰 문제는 같은 LAPACK·BLAS 호출(geqp3, orgqr, gelsd, dgemv, dlarf)이 거의 전부라 같아요. (100, 10)의 `nnls`만 scipy보다 4 µs쯤 느린데, 반복은 같은 C 계산이고 차이는 입력의 확인과 결과 객체(잔차 $Ax - b$와 `cost`를 계산해요)예요.
+선형 최소제곱은 사용자 함수가 없으므로 전체 시간으로 견줘요. (100, 10)의 'trf'는 0.04 ms로 scipy(0.35 ms)의 1/9쯤이에요. scipy가 반복마다 `LinearOperator`를 만들고 numpy 연산 수십 개를 Python에서 부르기 때문이에요. 큰 문제는 같은 LAPACK·BLAS 호출(geqp3, orgqr, gelsd, dgemv)이 거의 전부라 같아요. `nnls`는 짧은 내적과 반사를 BLAS·LAPACK 호출 없이 해서 크기마다 scipy와 같거나 빨라요.
 
 ### 수치 미분
 

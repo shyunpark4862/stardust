@@ -60,7 +60,7 @@ seeAlso: [norm, splu, linearoperator, expm, expm_multiply, basics]
 OnenormestResult(est=325, v=None, w=None, n_iter=2, n_op=3)
 ```
 
-곱 세 번(한 번에 두 열씩)으로 어림한 값이 325예요. 역행렬을 실제로 만들어 재면 같은 값이에요.
+곱 세 번(한 번에 두 열씩)으로 어림한 값이 325예요. 역행렬을 실제로 만들어 재도 끝자리만 다른 값이에요.
 
 ```python
 >>> sd.linalg.matrix_norm(sd.linalg.inv(L.toarray()), ord=1)
@@ -75,7 +75,7 @@ OnenormestResult(est=325, v=None, w=None, n_iter=2, n_op=3)
 
 ```python
 >>> sd.sparse.norm(L, ord=1) * r.est
-1300.0000000000011
+1299.9999999999905
 ```
 
 대략 $10^3$이라, 답의 상대오차가 입력의 상대오차보다 천 배쯤까지 커질 수 있다는 뜻이에요. 밀집 행렬이면 [sd.linalg.cond](/api/linalg/cond/)가 같은 것을 구해요.
@@ -122,9 +122,9 @@ OnenormestResult(est=3.59704, v=None, w=None, n_iter=0, n_op=1)
 ```python
 >>> est, v, w = sd.sparse.onenormest(inv, compute_v=True, compute_w=True)
 >>> int(sd.argmax(v))
-25
+24
 >>> float(sd.sum(sd.abs(w)))
-325.00000000000034
+324.9999999999977
 ```
 
 $L^{-1}$은 가운데의 두 열(24번과 25번)의 절댓값 합이 같고 가장 커요. 그 가운데 하나를 찾은 거예요.
@@ -134,7 +134,7 @@ $L^{-1}$은 가운데의 두 열(24번과 25번)의 절댓값 합이 같고 가�
                            1-Norm Estimate Results
 ==============================================================================
 Estimate:                   325.000000  No. Iterations:                      2
-Column:                             25  No. A X, A^H X:                      3
+Column:                             24  No. A X, A^H X:                      3
 ==============================================================================
 ```
 

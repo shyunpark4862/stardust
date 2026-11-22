@@ -35,10 +35,10 @@ import Plot from '../../../components/fig/Plot.astro';
       { label: 'x + y', where: 'Python' },
       { label: 'ndarray.__add__ → binary<ops::Add>(x, y, out=None, "+")', where: 'bind/array_bind.cpp' },
       { label: 'run_binary', where: 'ops/ufunc.cpp', note: '피연산자 dtype → 승격 → 루프 dtype 선택.' },
-      { label: 'launch', note: '스칼라만인지, out=이 있는지 보고 새 결과 배열을 할당해요(new_result).' },
+      { label: 'launch', note: '스칼라만인지, 작은 연속 호출인지(launch_contiguous: 여기서 커널 한 번), out=이 있는지 보고 새 결과 배열을 할당해요(new_result).' },
       { label: 'run_loop', note: 'dtype이 다른 입력이 있으면 BufferedLoop로 감싸요.' },
       { label: 'NdIter', note: '브로드캐스트 → 크기 1 축 제거 → 축 재정렬 → 차원 합치기.' },
-      { label: 'run', note: '일이 2^15 이상이면 조각으로 나눠 스레드풀에, 아니면 직렬로.' },
+      { label: 'run', note: '일(원소 수 × 연산의 무게)이 2^15 이상이면 조각으로 나눠 스레드풀에, 아니면 직렬로.' },
       { label: 'kernel(args, n, strides, ctx)', note: '가장 안쪽 구간마다 한 번 불려요.' },
       { label: 'binary_loop<Add, double>', note: '연속이면 인덱스 루프예요(NEON으로 벡터화).' },
     ]}
@@ -50,7 +50,7 @@ import Plot from '../../../components/fig/Plot.astro';
 1. 커널은 1차원만 알아요. 차원 수, 브로드캐스팅, 메모리 배치, 스레드는 전부 이터레이터의 일이에요. 커널은 "시작 주소, 원소 수, 바이트 stride"만 받아요. 그래서 커널 하나가 모든 레이아웃에서 같은 코드로 돌고, 결과의 비트도 같아요.
 2. N차원을 1차원으로 접어요. 축을 메모리 순서로 다시 놓고, 이어진 축을 하나로 합쳐요. C 순서든 F 순서든 전치든, 메모리가 이어져 있으면 커널 호출 한 번으로 끝나요.
 3. 변환은 L1 캐시 안에서 해요. `int64 + float64`에서 int64 입력 전체를 float64 임시 배열로 바꾸지 않고, 4096원소씩 바꾸면서 바로 계산해요. 메모리를 두 번 덜 지나가요.
-4. 나누는 방법은 데이터만 보고 정해요. 어느 축을 몇 조각으로 자를지는 shape, 레이아웃, dtype으로만 정하고 스레드 수는 보지 않아요. 그래서 결과가 스레드 수와 무관하게 비트까지 같아요([스레드풀과 결정성](/internals/core/threads/)).
+4. 나누는 방법은 데이터만 보고 정해요. 어느 축을 몇 조각으로 자를지는 shape, 레이아웃, dtype으로만 정하고 스레드 수는 보지 않아요. 그래서 같은 설정이면 실행마다 비트까지 같고, 지금은 스레드 수가 달라도 같아요([스레드풀과 결정성](/internals/core/threads/)).
 
 이 엔진을 배열 영역만 쓰는 것은 아니에요. `sd.special`의 특수함수(`hyp2f1`, `airy` 등)도 같은 디스패처(`run_nary`)와 같은 이터레이터 위에서 돌아요. 피연산자 상한이 5인 것도 그 때문이에요(아래 "피연산자는 최대 5개").
 
@@ -555,16 +555,19 @@ Python int의 범위 검사는 승격한 피연산자 dtype으로 해요(`check_
 
 ### 실행 경로 넷 (`launch`)
 
-루프를 고른 다음 `launch`가 출력을 정해요. 경로는 넷이에요.
+루프를 고른 다음 `launch`가 출력을 정해요. 경로는 다섯이에요.
 
 | 조건 | 경로 | 하는 일 |
 |---|---|---|
 | 피연산자가 모두 Python 스칼라, `out=` 없음 | `launch_scalars` | 스택 버퍼에 값을 놓고 같은 루프를 `n = 1`로 한 번 부름. 배열도 이터레이터도 없음. Python 스칼라를 돌려줌 |
+| `out=` 없음, 출력 하나, 배열 피연산자가 모두 같은 shape·루프 dtype·C 연속(또는 모두 F 연속), 일이 풀 기준 아래 | `launch_contiguous` | 결과 배열을 할당하고 평평한 메모리 전체에 커널을 한 번 부름. 이터레이터도 입력 `NDArray` 복사도 없음. Python 스칼라는 스택의 원소 하나를 stride 0으로 |
 | `out=` 없음 | 새 결과 | `new_result`로 출력을 만들고 `run_loop` |
 | `out=`, dtype이 결과와 같음 | 직접 쓰기 | 겹침 검사 후 `out`에 바로 씀 |
 | `out=`, dtype이 결과보다 넓음 | 임시 후 변환 | 결과 dtype의 임시 배열에 계산하고 `assign(out, tmp)` |
 
-스칼라만 있는 경로는 `sd.exp(1.0)`, `sd.maximum(2, 3)` 같은 호출이에요. 배열 피연산자가 없으면 결과도 Python 스칼라예요(0차원 배열이 없으므로). 이 경로는 원소 1개짜리 배열 두세 개와 이터레이터를 만들지 않아 호출당 약 90ns를 아껴요. 그러면서도 배열 경로와 같은 루프를 같은 변환값으로 불러요. 그래서 `sd.exp(x)[i]`와 `sd.exp(x[i])`가 비트까지 같아요. vForce를 쓰는 함수도 `n = 1`로 vForce를 불러요([원소별 커널](/internals/array/elementwise/)).
+스칼라만 있는 경로는 `sd.exp(1.0)`, `sd.maximum(2, 3)` 같은 호출이에요. 배열 피연산자가 없으면 결과도 Python 스칼라예요(0차원 배열이 없으므로). 이 경로는 원소 1개짜리 배열 두세 개와 이터레이터를 만들지 않아요. 그러면서도 배열 경로와 같은 루프를 같은 변환값으로 불러요. 그래서 `sd.exp(x)[i]`와 `sd.exp(x[i])`가 비트까지 같아요. vForce와 자체 초월함수 커널도 `n = 1`로 불러요([원소별 커널](/internals/array/elementwise/)).
+
+`launch_contiguous`는 작은 연속 호출(`a + b`, `exp(a)`)의 경로예요. 이터레이터도 이 경우 축을 하나로 합쳐 같은 스레드에서 같은 커널을 같은 인자로 부르므로 비트가 같아요. 작은 `x + y`에서 이터레이터와 피연산자 복사가 눈에 띄는 몫이라 따로 둬요. 풀을 쓸지는 이터레이터와 같은 식(무게, 움직이는 배열 수)으로 판단해서, 이터레이터가 풀을 쓰지 않을 크기를 모두 맡아요([작은 배열의 호출 비용](/internals/array/small-arrays/)).
 
 `out=`이 있으면 먼저 쓰기 가능한지(`writeable`)와, 결과 dtype이 `out`의 dtype으로 위로만 변환되는지(`check_assignable`)를 봐요. `int_arr += 1.5`는 float64 결과를 int64에 넣어야 하므로 `TypeError`예요. 제자리 연산자 `x op= y`는 `op(x, y, out=x)`와 똑같아요(`bind/array_bind.cpp`의 `def_arith`가 `binary<Op>(self, other, self, "+=")`를 불러요). 결과는 같은 객체예요.
 
@@ -694,11 +697,12 @@ inline void run_lanes(const NDArray& x, NDArray& out, int axis, LaneCtx& ctx) {
 
 | 상수 | 값 | 뜻 |
 |---|:---:|---|
-| `kParallelThreshold` | $2^{15}$ | 이보다 작은 일(float64 원소 기준)은 1스레드, GIL을 쥔 채 |
-| `kParallelTask` | $2^{12}$ | 조각 하나의 일(float64 원소 기준) |
+| `kParallelThreshold` | $2^{15}$ | 이보다 작은 일(float64 덧셈 기준)은 1스레드, GIL을 쥔 채 |
+| `kParallelTask` | $2^{12}$ | 조각 하나의 일(float64 덧셈 기준) |
 | `kMinInnerPiece` | 1024 | 가장 안쪽 축을 자를 때의 최소 조각 |
+| `kMaxPieces` | 256 | 원소별 연산의 조각 수 상한(`array/iter.hpp`, `cap_pieces`) |
 
-**1. 일을 바이트로 세요.** 가중치 $w$, 안쪽 축에서 피연산자의 stride 절댓값 중 가장 큰 것을 8로 자른 값 $b$, 남은 축 길이 $n_d$로
+**1. 일을 바이트로 세요.** 가중치 $w$(원소별 연산은 연산과 dtype마다 정한 무게 `op_weights`, 예: float64 `exp` 6, `log` 8, `cos` 14, complex `log` 100; `pow`는 지수가 2, 0, 1, −1, 0.5인 Python 스칼라면 1), 안쪽 축에서 피연산자의 stride 절댓값 중 가장 큰 것을 8로 자른 값 $b$, 남은 축 길이 $n_d$로
 
 $$
 W = w \cdot b \cdot \prod_d n_d, \qquad b = \min\!\left(\max_k \lvert s_k[\text{last}] \rvert,\ 8\right)
@@ -716,7 +720,7 @@ $$
 \text{tasks} = \left\lceil \frac{n_{\text{axis}}}{\text{chunk}} \right\rceil
 $$
 
-가장 안쪽 축을 자르는 경우(그리고 축이 둘 이상)에는 $\text{chunk} \ge 1024$로 올려요. 안쪽 축을 자르면 커널 호출마다 구간이 짧아지기 때문이에요. 3000×3000 `sum(axis=0)`을 10스레드로 돌리면 조각이 10원소일 때 1스레드보다 2.7배 느리고, 256일 때 1.50ms, 1024일 때 0.91ms, 4096일 때 1.11ms예요(1스레드 1.05ms).
+원소별 연산은 조각이 256개(`kMaxPieces`)를 넘지 않게 $\text{chunk} \ge \lceil n_{\text{axis}} / 256 \rceil$로도 올려요. 무거운 연산의 긴 실행(`exp` 원소 1000만 개)이 아주 작은 조각 수만 개로 나뉘면 조각을 집어 가는 비용이 보이기 때문이에요. 상수라서 분할은 여전히 shape만으로 정해져요. 리덕션과 `sd.special`의 이터레이터는 이 상한을 켜지 않아요. 가장 안쪽 축을 자르는 경우(그리고 축이 둘 이상)에는 $\text{chunk} \ge 1024$로 올려요. 안쪽 축을 자르면 커널 호출마다 구간이 짧아지기 때문이에요. 3000×3000 `sum(axis=0)`을 10스레드로 돌리면 조각이 10원소일 때 1스레드보다 2.7배 느리고, 256일 때 1.50ms, 1024일 때 0.91ms, 4096일 때 1.11ms예요(1스레드 1.05ms).
 
 몇 가지 계획을 손으로 따라가 보면 이래요.
 
@@ -731,36 +735,51 @@ $$
 
 ```cpp
 // NdIter::run (array/iter.cpp, 줄이고 다듬은 발췌)
-if (split == Split::None) {                     // 커널이 호출 스레드와 GIL을 떠날 수 없어요
+if (split == Split::None) {  // 커널이 호출 스레드와 GIL을 떠날 수 없어요
     run_serial(kernel, ctx);
     return;
 }
 const Plan p = plan(split, weight);
-if (p.work < 8 * kParallelThreshold) {          // 작은 일: 호출 스레드에서, GIL을 쥔 채
+// 원소별 실행은 움직이는 배열 수로 고쳐 세요: 기준값은 배열 셋(x + y)으로 정했어요
+std::int64_t moved = p.work;
+if (split == Split::Elementwise && p.work >= 8 * kParallelThreshold) {
+    int arrays = 0;
+    for (int k = 0; k < nop_; ++k) arrays += strides_[k][ndim_ - 1] != 0 || shape_[ndim_ - 1] == 1;
+    if (arrays < 3) moved = p.work / 3 * std::max(arrays, 1);
+}
+if (moved < 8 * kParallelThreshold) {  // 작은 일: 호출 스레드에서, GIL을 쥔 채
     run_serial(kernel, ctx);
     return;
 }
 if (p.tasks > 1 && parallel::available()) {
-    parallel::parallel_for(p.tasks, [&](std::int64_t t) {
-        NdIter piece = *this;                                       // 고정 배열 복사, 할당 없음
-        const std::int64_t begin = t * p.chunk;
-        piece.shape_[p.axis] = std::min(extent, begin + p.chunk) - begin;
-        for (int k = 0; k < nop_; ++k) piece.data_[k] += begin * strides_[k][p.axis];
-        piece.run_serial(kernel, ctx);
-    });
+    const std::int64_t extent = shape_[p.axis];
+    parallel::parallel_for(
+        p.tasks,
+        [&](std::int64_t t) {
+            NdIter piece = *this;  // 고정 배열 복사, 할당 없음
+            const std::int64_t begin = t * p.chunk;
+            piece.shape_[p.axis] = std::min(extent, begin + p.chunk) - begin;
+            for (int k = 0; k < nop_; ++k) piece.data_[k] += begin * strides_[k][p.axis];
+            piece.run_serial(kernel, ctx);
+        },
+        work_ns(p.work / 8 / p.tasks)  // 태스크 하나의 시간 어림: 잠든 워커를 깨울지 정해요
+    );
     return;
 }
-const parallel::Unlocked unlocked(true);         // 1스레드, 바쁜 풀, 자를 축 없음: 크니까 GIL 없이
+const parallel::Unlocked unlocked(true);  // 1스레드, 바쁜 풀, 자를 축 없음: 크니까 GIL 없이
 run_serial(kernel, ctx);
 ```
 
-일이 기준값 이상이면 어느 길로 가든 GIL 없이 돌아요. 풀로 나누면 `parallel_for`가 놓고, 나누지 못하면 `Unlocked`가 놓아요. 그래서 GIL을 놓는지는 일의 양만으로 정해지고 스레드 수와 무관해요([스레드풀과 결정성](/internals/core/threads/#gil)). `Split::None`으로 부르는 커널(인덱스 배열 대입처럼 순서가 중요한 것)은 크기와 상관없이 GIL을 쥔 채 돌아요.
+- **움직이는 배열 수.** 안쪽 축에서 stride가 0이 아닌 피연산자가 둘뿐인 실행(복사, `abs(x)`, `x + 1.5`)은 일을 2/3로 세어 풀 기준과 비교해요. 이런 연산은 2¹⁵개에서 10스레드가 1스레드와 같거나 느렸어요. 계획(`Plan`의 조각)은 그대로라서, 그것에 기대는 판단(블록 리덕션의 블록 수)도 바뀌지 않아요. 리덕션(`Split::Reduction`)에는 쓰지 않아요.
+- **태스크 시간 어림.** `work_ns(work) = work / 6 + 1`은 일을 float64 덧셈 하나 약 0.16ns로 쳐서 ns로 바꾼 값이에요. 풀은 이것으로 잠든 워커를 깨울지 정하고(작업 전체가 약 20µs를 넘을 때만), 결과는 바꾸지 않아요.
+
+일이 기준값 이상이면 어느 길로 가든 GIL 없이 돌아요. 풀로 나누면 `parallel_for`가 놓고, 나누지 못하면 `Unlocked`가 놓아요. 그래서 GIL을 놓는지는 일의 양만으로 정해지고 스레드 수와 상관없어요([스레드풀과 결정성](/internals/core/threads/#gil)). `Split::None`으로 부르는 커널(인덱스 배열 대입처럼 순서가 중요한 것)은 크기와 상관없이 GIL을 쥔 채 돌아요.
 
 조각 번호는 워커가 atomic 카운터에서 하나씩 가져가요. 빠른 스레드가 더 많이 가져갈 뿐 고정 배정이 없어서, E코어처럼 느린 스레드가 전체를 기다리게 하지 않아요.
 
 `Split`은 세 종류예요. `Elementwise`는 어느 축이든 잘라도 돼요(원소마다 따로 계산). `Reduction`은 마지막 피연산자(출력)의 stride가 0이 아닌 축만 잘라요. 출력 원소 하나에 입력이 접히는 순서가 직렬과 똑같이 한 스레드에서 지켜져요. `None`은 자르지 않아요.
 
-계획은 스레드 수를 보지 않아요. `plan`의 입력은 shape, stride, 가중치뿐이에요. 같은 배열이면 1스레드든 10스레드든 같은 조각이 나와요. 원소별 연산은 어차피 조각과 무관하게 같은 결과지만, 블록 리덕션처럼 조각 구조가 결과 비트를 바꾸는 연산은 이 성질에 기대어 `plan`의 결과로 경로를 정해요([집계](/internals/array/reductions/)).
+계획은 스레드 수를 보지 않아요. `plan`의 입력은 shape, stride, 가중치뿐이에요. 무게는 언제 나눌지와 조각 크기를 바꾸지만 원소별 연산의 값은 바꾸지 않아요. 같은 배열이면 1스레드든 10스레드든 같은 조각이 나와요. 원소별 연산은 어차피 조각과 무관하게 같은 결과지만, 블록 리덕션처럼 조각 구조가 결과 비트를 바꾸는 연산은 이 성질에 기대어 `plan`의 결과로 경로를 정해요([집계](/internals/array/reductions/)).
 
 ### 이터레이터 밖: `for_pieces`
 
@@ -779,7 +798,7 @@ void for_pieces(std::int64_t n, std::int64_t per, std::int64_t work, F&& fn) {
     }
     const parallel::Unlocked unlocked(true);                   // 큰 일: 어디서 돌든 GIL 없이
     if (pieces > 1 && parallel::available()) {
-        parallel::parallel_for(pieces, run);
+        parallel::parallel_for(pieces, run, work_ns(work / pieces));
     } else {
         for (std::int64_t t = 0; t < pieces; ++t) run(t);      // 같은 조각, 순서대로
     }
@@ -787,7 +806,8 @@ void for_pieces(std::int64_t n, std::int64_t per, std::int64_t work, F&& fn) {
 ```
 
 - `fn(t, begin, end)`는 조각 번호와 범위를 받아요. 조각 번호가 있어서 호출하는 쪽이 조각별 부분 결과를 배열의 `t`번 칸에 두고, 나중에 조각 순서대로 합칠 수 있어요.
-- 조각은 `n`과 `per`로만 정해져요. 직렬로 돌 때도 같은 조각을 같은 순서로 돌아요. 그래서 조각을 고정 순서로 합치는 호출자는 스레드 수와 무관하게 같은 비트를 얻어요.
+- 조각은 `n`과 `per`로만 정해져요. 직렬로 돌 때도 같은 조각을 같은 순서로 돌아요. 그래서 조각을 고정 순서로 합치는 호출자는 스레드 수가 몇이든 같은 비트를 얻어요.
+- 풀에는 조각 하나의 시간 어림(`work_ns(work / pieces)`)을 함께 알려서, 짧은 작업은 잠든 워커를 깨우지 않아요.
 - `work`는 호출자가 어림한 원소 단위의 일이에요. 이터레이터처럼 바이트로 세지 않고, 호출자가 알맞게 넘겨요(예: 공분산은 출력 원소 수 $p^2$).
 - `parallel::available()`이 거짓이면(1스레드, 태스크 안에서의 중첩 호출, 다른 Python 스레드가 풀을 쓰는 중) 처음부터 직렬로 돌아요. 나눠 놓고 직렬로 도는 것보다 빠르고 결과는 같아요.
 - `work`가 기준값 이상이면 조각이 하나여도, 풀을 쓰지 못해도 GIL을 놓아요. 그래서 `fn`은 Python 객체를 만지면 안 돼요.
@@ -802,7 +822,7 @@ void for_pieces(std::int64_t n, std::int64_t per, std::int64_t work, F&& fn) {
 - `ft + 1.0`: 재정렬과 합치기 덕분에 전치가 비용을 만들지 않아요. 출력도 `ft`처럼 F 순서로 만들어져 연속 구간 하나예요.
 - `astype(f, int64)`: 캐스트 커널이 ARM의 `FCVTZS`(0 방향 자르기 + 포화 + NaN→0을 명령 하나로)를 벡터로 써요. 자세한 것은 [변환과 승격](/internals/array/conversion/)에 있어요.
 
-작은 배열에서는 엔진의 고정 비용이 보여요. 원소 3개짜리 `a + b`는 stardust 179ns, numpy 151ns예요. 스칼라만 있는 호출은 `launch_scalars`로 이터레이터를 건너뛰어요.
+작은 배열에서는 엔진의 고정 비용이 보여요. 원소 3개짜리 `a + b`는 `launch_contiguous`로, 스칼라만 있는 호출은 `launch_scalars`로 이터레이터를 건너뛰어요. 둘 다 numpy보다 빨라요.
 
 ### 확장성
 
@@ -826,7 +846,7 @@ void for_pieces(std::int64_t n, std::int64_t per, std::int64_t work, F&& fn) {
 | `i + f` | 1.00ms | 2.4× | 1.87ms |
 | `sqrt` | 0.95ms | 4.2× | 0.92ms |
 
-`f + g`는 96MB를 옮기는데, 1스레드가 이미 초당 약 130GB를 옮겨서 1.7배가 한계예요. 새 결과 배열의 첫 쓰기 페이지 폴트도 이 크기에서는 무시할 수 없어요. 변환 계산이 끼는 `i + f`는 2.4배, 계산 비중이 큰 `sqrt`는 4.2배까지 늘어나요. 초월함수처럼 계산에 묶인 연산은 코어 수에 더 가깝게 늘어나요(`exp`, `sin`은 [원소별 커널](/internals/array/elementwise/)).
+`f + g`는 96MB를 옮기는데, 1스레드가 이미 초당 약 130GB를 옮겨서 1.7배가 한계예요. 새 결과 배열의 첫 쓰기 페이지 폴트도 이 크기에서는 무시할 수 없어요. 변환 계산이 끼는 `i + f`는 2.4배, 계산 비중이 큰 `sqrt`는 4.2배까지 늘어나요. 초월함수처럼 계산에 묶인 연산은 코어 수에 더 가깝게 늘어나요([원소별 커널](/internals/array/elementwise/)).
 
 ### 복잡도
 
@@ -837,16 +857,16 @@ void for_pieces(std::int64_t n, std::int64_t per, std::int64_t work, F&& fn) {
 | 바깥 축 순회 | 커널 호출 $\prod_{d<\text{last}} n_d$번 |
 | 버퍼 캐스팅 | 스레드당 한 번 320KB 할당, 이후 0 |
 | 겹침 처리 | 겹칠 수 있으면 입력 하나당 $O(N)$ 복사 |
-| 병렬 분할 | 조각 수는 $W / (8 \cdot 2^{12})$ 정도, 조각당 이터레이터 복사 1,600바이트 |
+| 병렬 분할 | 조각 수는 $W / (8 \cdot 2^{12})$ 정도(원소별 연산은 256개까지), 조각당 이터레이터 복사 1,600바이트 |
 
 ## 정확도
 
-엔진은 값을 바꾸지 않아요. 어떤 값이 나오는지는 커널의 원소 함수(`Op::f`)가 정하고, 엔진은 그 함수가 어떤 레이아웃, 어떤 스레드 수에서도 같은 원소에 같은 입력으로 불리도록 할 뿐이에요.
+엔진은 값을 바꾸지 않아요. 어떤 값이 나오는지는 커널의 원소 함수(`Op::f`)가 정하고, 엔진은 그 함수가 어떤 레이아웃, 어떤 경로(`launch_scalars`, `launch_contiguous`, 이터레이터)에서도 같은 원소에 같은 입력으로 불리도록 할 뿐이에요.
 
 - 레이아웃과 무관해요. 연속, 스칼라 브로드캐스트, strided 경로가 모두 같은 `Op::f`(또는 그것과 비트가 같은 NEON 커널)를 써요. 테스트는 원소별 연산의 dtype 쌍을 세 레이아웃에서 모두 numpy와 비트로 비교해요.
 - 버퍼 캐스팅은 값을 바꾸지 않아요. 버퍼에 쓰는 값은 `cast_value`의 결과이고, 임시 배열로 변환했을 때와 비트가 같아요. 원소별 연산에서 버퍼 경계는 아무 영향이 없어요.
-- 스칼라 경로도 같은 루프예요. `f(x)[i] == f(x[i])`가 vForce 함수까지 포함해 성립해요.
-- 스레드 수와 무관해요. 분할 계획이 shape, 레이아웃, dtype으로만 정해지고, 원소별 연산은 원소마다 독립이에요. 테스트(`tests/array/test_threads.py`)가 1, 2, 3, 7, 10스레드에서 같은 바이트를 확인해요.
+- 스칼라 경로도 같은 루프예요. `f(x)[i] == f(x[i])`가 vForce와 자체 초월함수 커널까지 포함해 성립해요.
+- 지금은 스레드 수와도 상관없어요. 분할 계획이 shape, 레이아웃, dtype으로만 정해지고, 원소별 연산은 원소마다 독립이에요. 테스트(`tests/array/test_threads.py`)가 1, 2, 3, 7, 10스레드에서 같은 바이트를 확인해요.
 - 겹침 의미론이 numpy와 같아요. `a[1:] += a[:-1]`이 numpy와 같은 값을 내요.
 
 예외는 리덕션이에요. 형변환이 있는 리덕션은 4096원소 버퍼 단위로 접혀서 numpy와 합의 순서가 달라질 수 있어요. 오차의 크기와 테스트 방법은 [집계](/internals/array/reductions/)와 [정확도와 검증](/internals/array/accuracy/)에 있어요.

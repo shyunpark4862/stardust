@@ -175,7 +175,7 @@ array([           -2.2375, 2.0874999999999995], dtype=float64)
 ...     return sd.htest.pearsonr(p, q, axis=axis).statistic
 >>> rc = sd.htest.bootstrap((a, b), corr, paired=True, n_resamples=2000, rng=sd.random.default_rng(1))
 >>> rc.conf_int()
-array([ 0.885051223825566, 0.9886726324695883], dtype=float64)
+array([0.8849481091023371, 0.9886268470681132], dtype=float64)
 ```
 
 [pearsonr](/api/htest/pearsonr/)의 `conf_int(method=BootstrapMethod(...))`가 같은 계산을 해요.
@@ -183,7 +183,7 @@ array([ 0.885051223825566, 0.9886726324695883], dtype=float64)
 ```python
 >>> bm = sd.htest.BootstrapMethod(n_resamples=2000, rng=sd.random.default_rng(1))
 >>> sd.htest.pearsonr(a, b).conf_int(method=bm)
-array([ 0.885051223825566, 0.9886726324695883], dtype=float64)
+array([0.8849481091023371, 0.9886268470681132], dtype=float64)
 ```
 
 ## 통계량 함수와 배치
@@ -206,7 +206,7 @@ array([3.45, 6.75], dtype=float64)
 ((2, 500), array([0.8040977376047141, 1.6081954752094283], dtype=float64))
 ```
 
-같은 `rng` 상태면 스레드 수와 `batch`에 상관없이 같은 비트예요.
+같은 `rng` 상태면 `batch`에 상관없이 같은 비트예요. 지금은 스레드 수와도 상관없이 같아요(약속은 아니에요).
 
 ## 퇴화한 입력
 
@@ -241,7 +241,7 @@ ValueError: bootstrap(): 'method' must be 'percentile', 'basic' or 'BCa', not 'b
 
 ## 정확도
 
-붓스트랩 구간에는 참값이 없어요. 같은 `rng` 상태면 스레드 수와 `batch`에 상관없이 비트까지 같고, BCa 90% 구간의 포함률이 이항 한계 안에 드는지를 고정한 시드로 200번 시험해요.
+붓스트랩 구간에는 참값이 없어요. 같은 `rng` 상태면 `batch`에 상관없이 비트까지 같고(지금은 스레드 수와도 상관없어요), BCa 90% 구간의 포함률이 이항 한계 안에 드는지를 고정한 시드로 200번 시험해요.
 
 ## scipy를 아는 분께
 

@@ -2,7 +2,7 @@
 title: 특이 판정과 풀이
 group: 직접 풀이
 order: 2
-summary: Accelerate가 값으로 특이한 행렬을 성공으로 돌려주기 때문에 분해 뒤에 하는 특이 판정(1-노름 조건수 추정 lacn2), 모든 풀이에 한 번 하는 반복 다듬기, 그리고 spsolve·splu·factorized·inv가 우변을 어떻게 나눠 푸는지 설명해요.
+summary: Accelerate가 값으로 특이한 행렬을 성공으로 돌려주기 때문에 분해 뒤에 하는 특이 판정(1-노름 조건수 추정 lacn2), 첫 풀이의 원소별 역오차가 클 때만 하는 반복 다듬기, 그리고 spsolve·splu·factorized·inv가 우변을 어떻게 나눠 푸는지 설명해요.
 seeAlso: [lu, triangular, products]
 ---
 import Fig from '../../../components/fig/Fig.astro';
@@ -10,15 +10,15 @@ import Steps from '../../../components/fig/Steps.astro';
 
 ## 한눈에 보기
 
-[Accelerate의 희소 LU](/internals/sparse/lu/)는 구조적으로 특이한 행렬만 실패로 알려 줘요. 값으로 특이한 행렬은 성공을 돌려주고 크기 1/ε의 해나 inf를 내요. 그래서 분해 직후에 이 라이브러리가 한 번 판정하고, 풀이마다 반복 다듬기를 한 번 해요.
+[Accelerate의 희소 LU](/internals/sparse/lu/)는 구조적으로 특이한 행렬만 실패로 알려 줘요. 값으로 특이한 행렬은 성공을 돌려주고 크기 1/ε의 해나 inf를 내요. 그래서 분해 직후에 이 라이브러리가 한 번 판정하고, 풀이마다 첫 해의 원소별 역오차를 재서 크면 반복 다듬기를 한 번 해요.
 
 <Fig column caption="spsolve(A, b) 한 번. 분해와 판정은 한 번, 풀이와 다듬기는 우변마다예요.">
   <Steps steps={[
     { label: '_Factor(A)', note: 'CSC로 바꾸고 Accelerate LU/AMD로 분해', where: '_direct.py' },
     { label: '특이 판정', note: '구조적 특이 / 조건수 추정 안의 풀이가 유한하지 않음 / κ₁·ε ≥ 1', where: 'direct.cpp', depth: 1 },
-    { label: 'core.solve(b)', note: '우변을 열 우선으로 모아 Accelerate가 함께 풂, 유한하지 않으면 특이', where: 'direct.cpp' },
-    { label: 'r = b − A @ x', note: '이 라이브러리의 SpMV', where: '_direct.py', depth: 1 },
-    { label: 'x + core.solve(r)', note: '반복 다듬기 한 번', where: '_direct.py', depth: 1 },
+    { label: 'core.solve(b)', note: '우변을 열 우선으로 모아 8열씩 Accelerate가 함께 풂, 유한하지 않으면 특이', where: 'direct.cpp' },
+    { label: '_residual', note: 'r = b − A x와 원소별 역오차를 한 번에', where: 'direct.cpp', depth: 1 },
+    { label: 'x + core.solve(r)', note: '역오차가 8ε를 넘을 때만 다듬기 한 번', where: '_direct.py', depth: 1 },
   ]} />
 </Fig>
 
@@ -122,10 +122,12 @@ bool inverse_norm1(const sparse_solve::Lu<T>& lu, int64_t n, double& est) {
 
 ## 반복 다듬기
 
-모든 풀이(`spsolve`, `SparseLU.solve`, `factorized`, `inv`)에 반복 다듬기를 한 번 해요. 잔차를 같은 정밀도(float64)로 계산하는 고정 정밀도 다듬기예요.
+풀이(`spsolve`, `SparseLU.solve`, `factorized`, `inv`)는 첫 해 $x_0$의 잔차와 원소별 역오차를 재고, 그 역오차가 8ε를 넘을 때만 반복 다듬기를 한 번 해요. 잔차를 같은 정밀도(float64)로 계산하는 고정 정밀도 다듬기예요.
 
 $$
-x_0 = \mathrm{solve}(b), \qquad r = b - \mathrm{op}(A)\,x_0, \qquad x = x_0 + \mathrm{solve}(r)
+x_0 = \mathrm{solve}(b), \qquad r = b - \mathrm{op}(A)\,x_0, \qquad
+\omega = \max_i \frac{|r_i|}{\bigl(|\mathrm{op}(A)|\,|x_0| + |b|\bigr)_i}, \qquad
+x = \begin{cases} x_0 & \omega \le 8\varepsilon \\ x_0 + \mathrm{solve}(r) & \text{그 밖} \end{cases}
 $$
 
 ```python
@@ -135,13 +137,51 @@ $$
         if self.core is None:
             return b.copy()
         x = self.core.solve(b, trans=trans, func=func)
-        r = b - self._op(trans) @ x
+        if not refine:
+            return x
+        r, berr = _core._residual(
+            self.A.indptr, self.A.indices, self._data_as(x.dtype), x, b if C.contiguous(b) else b.copy(), trans=trans
+        )
+        if berr <= _REFINE_BERR:
+            return x
         return x + self.core.solve(r, trans=trans, func=func)
 ```
 
-잔차의 곱 `self._op(trans) @ x`는 이 라이브러리의 SpMV예요(행마다 열 번호 오름차순의 FMA 순차 합, [곱](/internals/sparse/products/)). $\mathrm{op}(A)$는 `'N'`이면 A, `'T'`면 $A^{\mathsf T}$, `'H'`면 복소에서 켤레 전치를 한 번 만들어 둔 것이에요.
+$\omega$는 LAPACK의 다듬기 루틴 `dgerfs`·`zgerfs`가 멈춤을 판정하는 성분별 역오차예요(Oettli–Prager의 값, 복소수의 크기는 $|\mathrm{re}| + |\mathrm{im}|$). "구한 해가 A와 b의 각 원소를 상대적으로 $\omega$만큼 흔든 문제의 정확한 해"라는 뜻이라, $\omega$가 몇 ε면 더 다듬어도 얻을 것이 없어요. 우변이 여럿이면 가장 나쁜 열이 정하고, 한 열이라도 문턱을 넘으면 묶음 전체를 다듬어요. NaN도 `berr <= _REFINE_BERR`가 거짓이라 다듬는 쪽으로 가요. `refine=False`는 고유값 함수의 shift-invert 연산자가 쓰는 길이에요([ARPACK](/internals/sparse/arpack/)).
 
-왜 한 번이면 될까요? 문턱 0.01의 피벗은 $|l_{ij}|$를 100까지 허락하므로 원소가 자라고, 그만큼 LU의 역오차가 커질 수 있어요. 안장점 행렬 saddle/600x150에서 다듬기 없는 정규화 역오차 $\lVert b - A\hat x\rVert_\infty / (\lVert A\rVert_\infty\lVert\hat x\rVert_\infty + \lVert b\rVert_\infty)$가 404ε였어요. Skeel(1980)은 가우스 소거가 너무 불안정하지 않으면 같은 정밀도의 다듬기 한 번이 성분별로 역안정한 해를 준다는 것을 보였어요. 잔차를 정확하게 다시 재고 같은 인수로 고치는 한 걸음이 분해의 성장을 갚는 거예요. 한 번 다듬은 뒤에는 정방이고 특이가 아닌 시험 행렬 모두와 SuiteSparse 행렬 다섯에서 역오차가 0.50ε 이하예요. 비용은 풀이 하나와 SpMV 하나예요.
+잔차와 $\omega$는 C++의 `_residual`이 CSC를 한 번 훑어 같이 구해요.
+
+```cpp
+        // csrc/sparse/direct.cpp
+        if (op == 'N') {
+            for (int64_t j = 0; j < n; ++j)
+                for (int64_t p = ip[j]; p < ip[j + 1]; ++p) {
+                    const int64_t i = ix[p];
+                    const T a = v[p];
+                    const double aa = cabs1(a);
+                    for (int64_t c = 0; c < k; ++c) {
+                        y[i * k + c] = madd(a, xp[j * k + c], y[i * k + c]);
+                        d[i * k + c] += aa * cabs1(xp[j * k + c]);
+                    }
+                }
+```
+
+`'N'`은 열을 차례로 흩뿌려서, 행 $i$의 곱 $\sum_j a_{ij}x_j$가 열 번호 오름차순의 FMA로 쌓여요. `'T'`와 `'H'`는 같은 열을 따라 모으는 꼴이에요. `d`는 같은 순서로 쌓은 $(|\mathrm{op}(A)|\,|x_0|)_i$예요. 순서가 정해져 있고 한 스레드로 돌아서 결과는 스레드 수와 상관없어요. 마지막 고리가 $r_q = b_q - y_q$와 비율을 구하는데, 분모가 0이면 분자도 0일 때 0, 아니면 inf로 쳐요(`dgerfs`와 같은 규칙이에요).
+
+왜 문턱이 있고, 왜 한 번이면 될까요? 문턱 0.01의 피벗은 $|l_{ij}|$를 100까지 허락하므로 원소가 자라고, 그만큼 LU의 역오차가 커질 수 있어요. 시험 행렬에서 잰 첫 풀이의 $\omega$는 이래요.
+
+| 행렬 | 첫 풀이의 $\omega$ | 다듬기 |
+|---|---|---|
+| 라플라시안, 대류-확산, 띠 행렬 | 0.4–8ε | 하지 않아요 |
+| saddle/600x150(안장점) | 4,362ε(`'N'`), 3,117ε(`'T'`) | 해요 |
+| blockdiag/200x8 | 302–800ε | 해요 |
+| coo/unsorted | 43–153ε | 해요 |
+| long_rows/9000 | 17ε | 해요 |
+| random_spd/1500, random_indef/1500 | 8.5–9.9ε | 해요 |
+
+saddle/600x150은 정규화 역오차 $\lVert b - A\hat x\rVert_\infty / (\lVert A\rVert_\infty\lVert\hat x\rVert_\infty + \lVert b\rVert_\infty)$로 재도 404ε예요. Skeel(1980)은 가우스 소거가 너무 불안정하지 않으면 같은 정밀도의 다듬기 한 번이 성분별로 역안정한 해를 준다는 것을 보였어요. 잔차를 다시 재고 같은 인수로 고치는 한 걸음이 분해의 성장을 갚는 거예요. 다듬은 풀이는 모두 정규화 역오차가 0.6ε 이하예요. 잘 조건된 격자 문제는 첫 풀이가 이미 문턱 안이라 다듬기의 풀이 하나를 아껴요. 풀이 시간이 약 절반이에요.
+
+문턱 8ε는 계약 4ε의 두 배예요. $\omega \le 8\varepsilon$이면 각 행에서 $|r_i| \le 8\varepsilon(|A||\hat x| + |b|)_i$이고, 이것을 행에 걸쳐 모으면 정규화 역오차도 8ε 이하라는 것만 따라 나와요. 그래서 문턱이 계약을 보장하지는 않아요. 시험 행렬에서 다듬지 않은 풀이 가운데 가장 큰 정규화 역오차는 lap3d/22의 `trans='T'`에서 3.54ε로 계약 안이에요.
 
 ## 우변 다루기
 
@@ -171,6 +211,18 @@ void gather(const NDArray& b, int64_t n, int64_t k, std::vector<T>& cols) {
 }
 ```
 
+모은 열은 여덟 열씩의 고정 묶음으로 Accelerate에 넘겨요.
+
+```cpp
+        // csrc/sparse/direct.cpp
+        const int64_t total = split ? 2 * k : k;
+        for (int64_t c0 = 0; c0 < total; c0 += kSolveBlock)
+            lu.solve(cols.data() + c0 * n, std::min(kSolveBlock, total - c0), n, op);
+        finite = all_finite(cols.data(), static_cast<int64_t>(cols.size()));
+```
+
+`kSolveBlock`은 8이에요. Accelerate의 묶은 풀이는 인수를 한 번 훑으며 여러 열을 함께 대입하므로 열이 많을수록 열 하나의 비용이 줄지만, 묶음이 너무 크면 오히려 늘어요. 잰 것에서는 여덟 열에서 열 하나의 비용이 가장 작았어요. 한 열의 비트는 그 열이 든 묶음으로 정해지므로 k와 묶음 안의 자리로 정해지고, 혼자 푼 같은 열과는 반올림 크기만큼 다를 수 있어요. 전치 풀이(`'T'`, `'H'`)는 [Accelerate의 결함](/internals/sparse/lu/) 때문에 이 안에서 열마다 따로 풀어요.
+
 실수 인수에 복소 우변을 주면 실수부 k열과 허수부 k열을 2k개의 실수 우변으로 함께 풀어요. A가 실수면 $A(x_r + i x_i) = b_r + i b_i$가 두 실수 계로 나뉘기 때문이에요. 복소 인수를 따로 만들지 않아도 되고, 밀집의 `sd.linalg.lu_solve`도 같아요(scipy의 `SuperLU.solve`는 이 경우 `TypeError`, `spsolve`는 A를 복소로 바꿔 분해해요). 풀이 뒤의 값이 하나라도 유한하지 않으면 `LinAlgError("<함수>(): singular matrix")`예요.
 
 ### `spsolve`의 희소 우변과 `inv`
@@ -185,7 +237,7 @@ def _block_columns(n):
     return max(1, min(64, (1 << 22) // max(n, 1)))
 ```
 
-한 묶음은 값 약 2²²개(32 MB)이고 1–64열이에요. 묶음의 열 수가 n으로만 정해지므로, 같은 열은 언제나 같은 묶음에서 같은 이웃과 함께 풀려 비트가 정해져요. 결과를 `csc_array(dense)`로 만들면 0이 아닌 값만 저장하므로 정확한 0이 빠지고 NaN은 남아요.
+한 묶음은 값 약 2²²개(32 MB)이고 1–64열이에요. 그 묶음이 다시 위의 여덟 열씩으로 나뉘어 Accelerate에 들어가요. 묶음의 열 수가 n으로만 정해지므로, 같은 열은 언제나 같은 묶음에서 같은 이웃과 함께 풀려 비트가 정해져요. 결과를 `csc_array(dense)`로 만들면 0이 아닌 값만 저장하므로 정확한 0이 빠지고 NaN은 남아요.
 
 [`inv`](/api/sparse/inv/)는 이 길에 단위 행렬을 희소 우변으로 넣은 것이에요. 희소 행렬의 역행렬은 대개 거의 밀집이라 n²의 메모리가 들어요.
 
@@ -193,7 +245,7 @@ def _block_columns(n):
 
 ## 정확도
 
-직접 풀이의 계약은 정규화한 역오차 $\lVert b - A\hat x\rVert_\infty / (\lVert A\rVert_\infty\lVert\hat x\rVert_\infty + \lVert b\rVert_\infty) \le 4\varepsilon$이에요. 다듬기 한 번 뒤에 정방이고 특이가 아닌 시험 행렬 모두와 SuiteSparse 다섯에서 0.50ε 이하였어요. 우변 여럿과 `trans='T'`·`'H'`도 시험 행렬 넷과 SuiteSparse 다섯에서 계약 안이에요. n ≤ 2000의 작은 행렬 30점은 Arb(구간 산술)로 검증한 해와 견줘 앞오차가 $4\kappa_\infty(A)\varepsilon$ 안이고, 가장 큰 것이 $0.39\kappa_\infty\varepsilon$예요.
+직접 풀이의 계약은 정규화한 역오차 $\lVert b - A\hat x\rVert_\infty / (\lVert A\rVert_\infty\lVert\hat x\rVert_\infty + \lVert b\rVert_\infty) \le 4\varepsilon$이에요. 정방이고 특이가 아닌 시험 행렬 모두와 SuiteSparse 다섯에서 계약 안이고, 가장 큰 것은 다듬지 않은 lap3d/22 `trans='T'`의 3.54ε, 다듬은 풀이는 모두 0.6ε 이하예요. 우변 여럿과 `trans='T'`·`'H'`도 시험 행렬 넷과 SuiteSparse 다섯에서 계약 안이에요. n ≤ 2000의 작은 행렬 30점은 Arb(구간 산술)로 검증한 해와 견줘 앞오차가 $4\kappa_\infty(A)\varepsilon$ 안이고, 가장 큰 것이 약 $1.0\kappa_\infty\varepsilon$(random_unsym/1000x8)예요. 언제나 다듬으면 이 값이 더 작지만, 잘 조건된 문제에서 풀이 하나를 아끼는 대신 앞오차의 끝자리를 조금 내준 거예요.
 
 ## scipy와 다른 점
 

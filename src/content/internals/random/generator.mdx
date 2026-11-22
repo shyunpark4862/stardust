@@ -34,7 +34,7 @@ import Steps from '../../../components/fig/Steps.astro';
     steps={[
       { label: 'rng.random(shape)', where: 'random/__init__.py', note: 'shape를 검사하고 원소 수 n을 구해요. 검사가 실패하면 위치는 움직이지 않아요.' },
       { label: '_take(n, "random")', where: 'random/__init__.py', note: '결과(원소당 8바이트)가 이 컴퓨터의 물리 메모리보다 크면 MemoryError. 위치는 움직이지 않아요.' },
-      { label: '_reserve(n)', depth: 1, where: 'random/__init__.py', note: 'threading.Lock 안에서 키와 pos를 함께 읽고 pos += n (mod 2⁶⁴). 이 호출의 구간은 [pos, pos + n)이에요.' },
+      { label: '_reserve(n)', depth: 1, where: 'random/__init__.py', note: '네이티브 상태(_core.random.State)의 스핀 잠금 안에서 키와 pos를 함께 읽고 pos += n (mod 2⁶⁴). 이 호출의 구간은 [pos, pos + n)이에요.' },
       { label: '_core.random.uniform(k0, k1, pos, shape)', where: 'random.cpp', note: '결과 배열을 만들고 원소 범위를 4096개씩 조각으로 나눠요.' },
       { label: 'for_pieces', depth: 1, where: 'array/ops/pieces.hpp', note: '원소가 4096개보다 많으면 스레드풀에서, 아니면 호출한 스레드에서 조각을 돌려요.' },
       { label: 'Stream::first(e)', depth: 2, where: 'philox.hpp', note: '원소 e가 든 16원소 묶음의 블록 넷을 philox4로 한꺼번에 계산해 두고 꺼내요.' },
@@ -274,7 +274,7 @@ std::uint64_t extra(std::uint64_t e, std::uint64_t k) const {
 | 원소 e의 첫 단어 | $(\lfloor e/4 \rfloor, 0, 0, 0)$ | $e \bmod 4$ | $c_0 \lt 2^{62}$ |
 | 원소 e의 추가 단어 k | $(e, 1 + \lfloor k/4 \rfloor, 0, 0)$ | $k \bmod 4$ | $c_0 \lt 2^{64}$, $c_1 \ge 1$ |
 
-위치 `pos`는 64비트이고 $2^{64}$에서 0으로 돌아가요(`_reserve`가 `& 0xFFFF…`로 잘라요). 그래서 키 하나의 수열은 원소 $2^{64}$개예요. 초당 10⁹개를 꺼내도 500년 넘게 걸리는 길이예요.
+위치 `pos`는 64비트이고 $2^{64}$에서 0으로 돌아가요(`State::reserve`의 `uint64_t` 덧셈이 그렇게 돌아요). 그래서 키 하나의 수열은 원소 $2^{64}$개예요. 초당 10⁹개를 꺼내도 500년 넘게 걸리는 길이예요.
 
 ### 그래서 생기는 성질
 
@@ -389,20 +389,41 @@ std::uint64_t first(std::uint64_t e) {
 
 ### 위치 예약
 
+생성기의 키와 위치는 Python 속성이 아니라 C++ 객체 `random::State`(`csrc/random/random.hpp`, Python에서는 `_core.random.State`)에 있어요. 예약은 이 객체의 메서드 하나예요.
+
+```cpp
+// csrc/random/random.hpp (State, 발췌)
+Taken reserve(std::uint64_t n) {
+    Guard g(busy_);
+    const Taken t{k0_, k1_, pos_};
+    pos_ += n;  // modulo 2^64
+    return t;
+}
+void set(std::uint64_t k0, std::uint64_t k1, std::uint64_t pos) {
+    Guard g(busy_);
+    k0_ = k0, k1_ = k1, pos_ = pos;
+}
+```
+
 ```python
 # src/stardust/random/__init__.py, Generator._reserve
 def _reserve(self, n):
-    with self._lock:                     # threading.Lock
-        key, p = self._key, self._pos    # 키와 위치를 함께 읽어요
-        self._pos = (p + n) & _MASK64    # 2^64에서 0으로
-    return key, p
+    return self._st.reserve(n)
 ```
 
-메서드는 인자를 검사한 뒤 `_take(n, 이름)`을 거쳐 `_reserve(n)`으로 키와 구간 `[p, p + n)`을 받아 커널에 넘겨요(`_k.uniform(key[0], key[1], pos, …)`). `_take`는 예약하기 전에 호출이 받을 메모리(결과, 그리고 섞는 호출은 작업 메모리까지)를 이 컴퓨터의 물리 메모리와 비교해서, 넘으면 메서드 이름을 붙인 `MemoryError`(`random(): cannot allocate 8796093022208 bytes: more than this machine's physical memory`)를 내요. 그래서 거절된 호출은 위치를 움직이지 않아요. 잠금 안에서 하는 일은 읽기 셋과 쓰기 하나뿐이에요. 원소 계산은 잠금을 풀고 나서 해요.
+`Guard`는 `std::atomic_flag`로 만든 스핀 잠금이에요. `test_and_set`이 성공할 때까지 돌고(acquire), 소멸자에서 `clear`(release)해요. 잠금 안에서 하는 일은 읽기 셋과 덧셈 하나뿐이라, 다른 스레드가 오래 돌 일이 없어요.
 
-키도 잠금 안에서 함께 읽는 것은 다른 스레드의 `state` 대입 때문이에요. `state` 대입은 키와 위치를 한 잠금 안에서 함께 바꿔요([시드, spawn, 상태](/internals/random/seeding/)). 메서드가 위치만 잠금 안에서 읽고 키는 `self._key`로 따로 읽으면, 그 사이에 대입이 끼어들어 옛 키와 새 위치(또는 그 반대)로 계산할 수 있어요. 둘을 한 번에 읽으면 대입 전 상태든 대입 후 상태든 온전한 한쪽만 봐요.
+메서드는 인자를 검사한 뒤 `_take(n, 이름)`을 거쳐 `_reserve(n)`으로 키와 구간 `[p, p + n)`을 받아 커널에 넘겨요(`_k.uniform(key[0], key[1], pos, …)`). `_take`는 예약하기 전에 호출이 받을 메모리(결과, 그리고 섞는 호출은 작업 메모리까지)를 이 컴퓨터의 물리 메모리와 비교해서, 넘으면 메서드 이름을 붙인 `MemoryError`(`random(): cannot allocate 8796093022208 bytes: more than this machine's physical memory`)를 내요. 그래서 거절된 호출은 위치를 움직이지 않아요. 원소 계산은 잠금을 풀고 나서 해요.
 
-잠금이 필요한 이유는 "읽고 더해서 쓰기"가 한 동작이 아니기 때문이에요. GIL이 있어도 CPython은 바이트코드 사이에서 스레드를 바꿀 수 있어요. 두 스레드가 같은 `p`를 읽고 각자 `p + n`을 쓰면 두 호출이 같은 구간을 받아 같은 난수를 두 번 써요. 잠금 안에서 읽고 쓰면 구간이 겹치지 않고 빈틈 없이 이어져요.
+키도 위치와 함께 읽는 것은 다른 스레드의 `state` 대입 때문이에요. `state` 대입은 `set`으로 키와 위치를 같은 잠금 안에서 함께 바꿔요([시드, spawn, 상태](/internals/random/seeding/)). 메서드가 위치와 키를 따로 읽으면, 그 사이에 대입이 끼어들어 옛 키와 새 위치(또는 그 반대)로 계산할 수 있어요. 한 번에 읽으면 대입 전 상태든 대입 후 상태든 온전한 한쪽만 봐요.
+
+잠금이 필요한 이유는 "읽고 더해서 쓰기"가 한 동작이 아니기 때문이에요. 두 스레드가 같은 `p`를 읽고 각자 `p + n`을 쓰면 두 호출이 같은 구간을 받아 같은 난수를 두 번 써요. 잠금 안에서 읽고 쓰면 구간이 겹치지 않고 빈틈 없이 이어져요.
+
+예약을 네이티브 호출 하나로 두면 Python의 `threading.Lock`, 대입 셋, 튜플 만들기가 없어요. 그리고 네이티브 스칼라 커널(`random()`의 `uniform1_state`, `sd.stats` 분포의 스칼라 표본)이 Python을 거치지 않고 상태에서 바로 예약할 수 있어요. Python 잠금(`_lock`)은 시드 수열(`_seq`)을 상태와 함께 읽고 바꾸는 `state`와 `spawn`에만 남아 있어요. 같은 위치, 같은 단어를 쓰므로 같은 시드의 값은 그대로예요.
+
+### `random()`의 스칼라
+
+`rng.random()`처럼 `shape`를 주지 않으면 원소 하나짜리 배열을 만들었다가 꺼내지 않아요. `_k.uniform1_state`가 생성기의 상태에서 위치를 예약하고, 블록 하나(계수기 $(\lfloor \text{pos}/4 \rfloor, 0, 0, 0)$)의 단어로 Python `float`를 바로 돌려줘요. 8바이트라 메모리 검사도 거르지 않아요. 배열 경로와 같은 단어, 같은 변환(위 53비트 × 2⁻⁵³)이라 값이 같아요. 테스트가 `uniform1`(키와 위치를 받는 같은 계산)과 배열 경로 `uniform`이 같은 값을 내는지 확인해요.
 
 ### 여러 Python 스레드가 한 생성기를 쓸 때
 
@@ -415,7 +436,7 @@ def _reserve(self, n):
   </FigRow>
 </Fig>
 
-- **깨지지 않아요.** 위치는 잠금 안에서만 바뀌고, 키는 계산 중에 바뀌지 않아요.
+- **깨지지 않아요.** 키와 위치는 잠금 안에서만 바뀌고, 호출 하나는 예약할 때 받은 키로 계산해요.
 - **같은 난수를 두 번 쓰지 않아요.** 구간이 겹치지 않으니 어떤 원소 번호도 두 호출에 가지 않아요.
 - **어느 스레드가 어느 구간을 받는지는 실행 순서에 달려요.** 각 호출의 결과는 받은 구간으로 정해지니, 스레드별 결과는 실행할 때마다 다를 수 있어요. 모든 호출이 받은 값을 모으면 언제나 같은 집합이에요.
 
@@ -437,14 +458,14 @@ for_pieces(n, kParallelTask, n * kWordWork, [&](int64_t, int64_t i0, int64_t i1)
 });
 ```
 
-- **조각:** `kParallelTask` = 2¹² = 4096원소씩이에요. 조각의 경계는 n과 4096만으로 정해지고, 스레드 수와 무관해요.
+- **조각:** `kParallelTask` = 2¹² = 4096원소씩이에요. 조각의 경계는 n과 4096만으로 정해지고, 스레드 수와 상관없어요.
 - **나눌지:** 일의 양을 "단순 원소별 연산 원소 몇 개 분량"으로 세어 배열 영역의 기준값 `kParallelThreshold` = 2¹⁵와 비교해요. 난수 원소 하나는 Philox 블록의 4분의 1이라 단순 연산보다 훨씬 무거워서 8로 쳐요. 그래서 원소가 4096개를 넘으면(조각이 둘 이상이면) 풀에서 돌아요.
 - **조각마다 `Stream`:** 묶음 캐시가 조각 안에만 있으니 스레드끼리 공유하는 상태가 없어요. 조각이 순서 없이 아무 스레드에서 돌아도 돼요.
 - **GIL:** 일(`n * kWordWork`)이 기준값 이상이면, 곧 원소가 4096개 이상이면 `for_pieces`가 스레드 수와 상관없이 GIL을 놓아요. 풀에서 돌든, 1스레드라 호출 스레드에서 차례로 돌든 같아요. 그동안 다른 Python 스레드가 같은 생성기에서 다음 구간을 예약하고 자기 계산을 할 수 있어요. 풀이 이미 다른 호출로 바쁘면 그 호출은 자기 스레드에서 혼자 계산하고, 결과는 같아요([스레드풀과 결정성](/internals/core/threads/#gil)).
 
 `integers`, `race_keys`, `bits`도 같은 모양이에요. `fisher_yates`(섞기와 비복원 추출)만 순차 알고리즘이라 풀을 쓰지 않고, 크기와 상관없이 루프 동안 GIL만 놓아요. 그래도 걸음 i가 원소 `pos + i`의 단어를 쓰니 결과는 (키, `pos`, n, k)로만 정해져요.
 
-`random(10**6)`은 stardust 1스레드에서 1.14ms로, numpy의 기본 `Generator`(PCG64)보다 2.4배 빨라요. 1스레드에서도 numpy보다 빠른 이유와 다른 메서드의 배율은 [성능과 검증](/internals/random/performance/)에서 다뤄요.
+`random(10**6)`은 1스레드에서도 numpy의 기본 `Generator`(PCG64)보다 빨라요. 그 이유는 [성능과 검증](/internals/random/performance/)에서 다뤄요.
 
 ## 정확성: 알려진 답
 

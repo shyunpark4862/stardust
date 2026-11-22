@@ -89,7 +89,7 @@ QuantileTestResult(statistic=4, statistic_type=1, pvalue=0.193848)
 >>> sd.htest.quantile_test(x, q=11, alternative='less')
 QuantileTestResult(statistic=3, statistic_type=2, pvalue=0.980713)
 >>> float(sd.stats.Binomial(n=12, p=0.5).cdf(4))
-0.19384765625000003
+0.19384765625
 ```
 
 `'greater'`의 p값 0.194가 P(Y ≤ 4)예요.
@@ -194,7 +194,7 @@ ValueError: quantile_test(): 'p' must be in (0, 1)
 
 ## 정확도
 
-통계량과 구간은 셈과 정렬이라 정확해요. p값은 정확한 이항 꼬리의 참값과 상대 4.2e-16 안이에요(계약 대비 0.042).
+통계량과 구간은 셈과 정렬이라 정확해요. p값은 정확한 이항 꼬리의 참값과 상대 2.1e-16 안이에요(계약 대비 0.021).
 
 ## scipy를 아는 분께
 

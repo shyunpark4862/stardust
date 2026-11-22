@@ -28,9 +28,9 @@ import Steps from '../../../components/fig/Steps.astro';
 | 보수 함수를 따로 계산 | $1 - f$의 소거 | `erfc` `gammaincc` `betaincc`, 위꼬리 분포 함수 | `ops/erf.hpp`, `ops/incgamma.hpp` |
 | log 공간, 지수 분리 | 넘침, 큰 지수의 오차 증폭 | `gammaln` `betaln`, 불완전 함수의 앞 인자 | `prefix.hpp`, `gamma_core.hpp` |
 | 거듭제곱급수, 점근전개 | — (가장 기본 도구) | `gammainc` `erfcx` `expn` `hyp1f1` `hyp2f1` | `ops/*.hpp` |
-| 연분수(수정 Lentz) | 급수가 느린 곳 | `gammaincc` `betainc` `expn`, Bessel 비 | `cf.hpp` |
+| 연분수(수정 Lentz, 나눗셈 없는 두 패스) | 급수가 느린 곳 | `gammaincc` `betainc` `expn`, Bessel 비 | `cf.hpp`, `ops/cf_fast.hpp` |
 | Euler–Maclaurin과 Bernoulli 수 | 느리게 줄어드는 합 | `zeta`(Hurwitz) | `ops/zeta.hpp` |
-| 초기값 + Halley 반복 | 닫힌 꼴이 없는 역함수 | `gammaincinv` `betaincinv` 등, `lambertw` | `halley.hpp` |
+| 초기값 + Halley 반복 | 닫힌 꼴이 없는 역함수 | `gammaincinv` `betaincinv` 등, `lambertw` | `halley.hpp`, `ops/halley_fast.hpp` |
 | 정확한 빼기(Sterbenz), TwoSum, FMA | 반올림한 인자 | `logit` `rel_entr`, `sinpi`, $1-p$ | `gamma_core.hpp`, `ops/logistic.hpp` |
 | $x^2$를 둘로 나누기 | $e^{-x^2}$의 오차 증폭 | `erf` 계열, `ndtr` | `ops/erf.hpp` |
 | double-double | 큰 지수·긴 점화식의 오차 | 앞 인자, 초기하 급수, Bessel 재귀, 비중심 분포 | `dd.hpp` |
@@ -346,19 +346,23 @@ struct Scaled {
     double m;        // 0.5 <= |m| < 1, or 0, inf, NaN
     std::int64_t e;  // 값 = m · 2^e
 };
+inline Scaled scaled(double v) {               // 정상 수는 비트로 가수와 지수를 나눠요
+    const auto bits = std::bit_cast<std::uint64_t>(v);
+    const auto be = static_cast<std::int64_t>((bits >> 52) & 0x7ff);
+    if (be != 0 && be != 0x7ff) [[likely]]
+        return {std::bit_cast<double>((bits & 0x800fffffffffffffULL) | 0x3fe0000000000000ULL), be - 1022};
+    int e = 0;
+    const double m = std::frexp(v, &e);
+    return {m, e};
+}
 inline Scaled operator*(Scaled a, Scaled b) {
-    Scaled r = scaled(a.m * b.m);             // 가수끼리 곱하고 frexp로 다시 정규화
+    Scaled r = scaled(a.m * b.m);             // 가수끼리 곱하고 다시 정규화
     r.e += a.e + b.e;                         // 지수는 정수로 더한다
     return r;
 }
-inline double value(Scaled s) {                // 마지막에 한 번만 반올림
-    if (s.m == 0.0 || !std::isfinite(s.m)) return s.m;
-    const std::int64_t e = std::clamp<std::int64_t>(s.e, -2200, 2200);
-    return std::ldexp(s.m, static_cast<int>(e));
-}
 ```
 
-가수끼리의 곱은 보통 float64 곱이라 반올림이 한 번이고, 지수는 정수 덧셈이라 넘치지 않아요. 마지막 `ldexp`는 서브노멀 범위까지 올바르게 반올림해요. 큰 지수함수는 `exp_scaled`가 Cody–Waite 방식으로 나눠요. $x = n\log 2 + r$에서 $n$을 고르고 $r = x - n\log 2$를 $\log 2$의 두 조각(hi, lo)으로 FMA 두 번에 계산하면, $e^x = 2^n e^r$에서 $e^r$만 libm이 계산해요. 거대한 결과(`gamma`의 서브노멀 꼬리, `beta`, 음수 `zeta`, `polygamma`, 비중심 분포의 항)가 이 길을 써요.
+가수끼리의 곱은 보통 float64 곱이라 반올림이 한 번이고, 지수는 정수 덧셈이라 넘치지 않아요. 다시 정규화하는 `scaled`는 정상 수면 `frexp`를 부르지 않고 비트를 직접 나눠요(같은 $m$과 $e$예요). 마지막 `value`는 결과가 정상 범위이면 $2^e$를 비트로 만들어 곱하고(정확해요), 그 밖에서만 `ldexp`로 서브노멀 범위까지 올바르게 반올림해요. 큰 지수함수는 `exp_scaled`가 Cody–Waite 방식으로 나눠요. $\lvert x\rvert < 700$이면 libm `exp` 그대로이고, `pow_scaled`도 결과가 정상 범위이면 libm `pow` 그대로예요(둘 다 1 ULP 안). $x = n\log 2 + r$에서 $n$을 고르고 $r = x - n\log 2$를 $\log 2$의 두 조각(hi, lo)으로 FMA 두 번에 계산하면, $e^x = 2^n e^r$에서 $e^r$만 libm이 계산해요. 거대한 결과(`gamma`의 서브노멀 꼬리, `beta`, 음수 `zeta`, `polygamma`, 비중심 분포의 항)가 이 길을 써요.
 
 ## 급수
 
@@ -451,7 +455,7 @@ double f = b0 == 0.0 ? tiny : b0;
 double c = f;
 double d = 0.0;
 for (int n = 1; n <= max_terms; ++n) {
-    const auto [a, b] = term(n);              // a_n, b_n
+    const auto [a, b] = term(n);              // a_n, b_n 항
     d = b + a * d;
     if (d == 0.0) d = tiny;
     c = b + a / c;
@@ -479,7 +483,7 @@ $$
 | $10^{-305}$ | $9.33 \times 10^{-302}$ | $10^{-305}$ | $10^{-305}$ |
 | $10^{-200}$ | $10^{-200}$ | $10^{-200}$ | $10^{-200}$ |
 
-그래서 $b_0 = 0$인 연분수는 꼬리 $b_1 + a_2/(b_2 + \cdots)$를 $b_0 = b_1 \ne 0$인 연분수로 따로 계산하고 $f = a_1/\text{꼬리}$로 나눠요. 불완전 감마의 $Q$는 `lentz_backward(x + 1 - a, ...)`로 꼬리를 구하고 `a * D / tail`을 돌려줘요. 확인용 비공개 함수 `_cf_tan`도 `x / lentz(1, ...)`이에요(보장 영역에서 Arb 참값 대비 최대 7 ULP).
+그래서 $b_0 = 0$인 연분수는 꼬리 $b_1 + a_2/(b_2 + \cdots)$를 $b_0 = b_1 \ne 0$인 연분수로 따로 계산하고 $f = a_1/\text{꼬리}$로 나눠요. 불완전 감마의 $Q$는 `cf_fast_value(x + 1 - a, ...)`로 꼬리를 구하고 `a * D / tail`을 돌려줘요. 확인용 비공개 함수 `_cf_tan`도 `x / lentz(1, ...)`이에요(보장 영역에서 Arb 참값 대비 최대 7 ULP).
 
 Boost.Math의 연분수 도구도 같은 구조예요(`tools/fraction.hpp`)[9].
 
@@ -500,7 +504,16 @@ Lentz는 매 걸음 비율 $C_n D_n$을 곱해서 반올림 오차가 걸음 수
   ]}
 />
 
-항 4개의 여유는 Lentz의 멈춤 판정과 거꾸로 계산의 오차 차이를 덮어요. 불완전 베타의 연분수는 항 하나가 나눗셈 세 번이라, 앞 64항을 보관하지 않으면 둘째 패스가 함수 시간의 3분의 1을 차지해요. Bessel의 비($J_{\nu+1}/J_\nu$, CF1)와 Steed 방법(CF2)은 [Bessel과 Airy](/internals/special/bessel-airy/)에 있어요.
+항 4개의 여유는 Lentz의 멈춤 판정과 거꾸로 계산의 오차 차이를 덮어요. 불완전 베타의 연분수는 항 하나가 나눗셈 세 번이라, 앞 64항을 보관하지 않으면 둘째 패스가 함수 시간의 3분의 1을 차지해요.
+
+### 나눗셈 없는 두 패스
+
+Lentz는 걸음마다 나눗셈 둘($a_n/C_{n-1}$과 $1/(b_n + a_n D_{n-1})$)이 의존 사슬 위에 있어요. 나눗셈은 곱셈보다 몇 배 오래 걸려서, 항이 수십 개인 연분수에서는 이 사슬이 시간을 정해요. 불완전 감마·베타와 비중심 분포의 연분수는 같은 두 패스를 나눗셈 없이 해요(`ops/cf_fast.hpp`의 `cf_fast`).
+
+- **앞으로**는 위의 세 항 점화식 $A_n$, $B_n$을 그대로 걸어요. 걸음마다 `fma` 둘이에요. 넘치지 않게 $A$, $B$를 함께 정확한 2의 거듭제곱으로 $2^{\pm256}$ 안에 돌려놔요. 멈춤 판정 $\lvert f_n/f_{n-1} - 1\rvert \le \text{tol}$은 $\lvert A_n B_{n-1} - A_{n-1}B_n\rvert \le \text{tol}\,\lvert A_{n-1}B_n\rvert$로 바꿔 써요. 왼쪽의 차는 `two_prod`의 나머지와 `fma`로 반올림 한 번에 만들어요.
+- **뒤로**는 꼬리 $t_k = a_k/(b_k + t_{k+1})$를 몫 $P_k/Q_k$로 들고 내려가요. $P_k = a_k Q_{k+1}$, $Q_k = b_k Q_{k+1} + P_{k+1}$이라 나눗셈은 맨 끝의 $P/Q$ 하나예요. 걸음마다 $P$와 $Q$를 한 번씩 반올림하니 나눗셈 꼴과 같은 두 반올림이고, 거꾸로 계산이 오차를 누르는 성질도 같아요.
+
+항 $(a_n, b_n)$을 만드는 나눗셈은 사슬과 상관없어서 겹쳐 돌아요. 계수가 $2^{200}$($a_n$은 $2^{400}$)을 넘으면 한 걸음의 증가를 $2^{\pm256}$ 안에 담을 수 없어서, 그리고 판정의 곱이 $2^{-900}$ 아래이면(꼬리가 수렴분자의 크기보다 한참 작아요) 비율만 다루는 `lentz_backward`로 가요. 참값 혼합의 99.6%에서 `lentz_backward`와 비트까지 같고 나머지도 4 ULP 안이에요. Bessel의 비($J_{\nu+1}/J_\nu$, CF1)와 Steed 방법(CF2)은 [Bessel과 Airy](/internals/special/bessel-airy/)에 있어요.
 
 ## Euler–Maclaurin과 Bernoulli 수
 
@@ -580,7 +593,7 @@ Halley는 세 걸음에 float64를 넘어요. 한 걸음에 도함수가 하나 
 
 ### `halley.hpp`가 더하는 것
 
-교과서의 Halley를 그대로 쓰면 꼬리에서 문제가 생겨요. `halley(x, t, inc, eval, lo, hi)`는 세 가지를 더해요.
+교과서의 Halley를 그대로 쓰면 꼬리에서 문제가 생겨요. `halley(x, t, inc, eval, lo, hi)`는 세 가지를 더해요. 불완전 함수의 역함수는 여기에 넷째(아래의 이른 멈춤)를 더한 `ops/halley_fast.hpp`의 `halley_fast`를 써요.
 
 **1. $x F'$을 받아요.** `eval(x)`는 $\{F(x),\ xF'(x),\ F''(x)/F'(x)\}$를 돌려줘요. $x$가 서브노멀이고 $a$가 작으면 $F'$ 자체는 넘치지만 $xF'$은 넘치지 않아요.
 
@@ -594,12 +607,14 @@ $$
 
 ```python
 >>> sd.special.gammaincinv(2.0, 1e-100)
-1.414213562373095e-50
+1.4142135623730953e-50
 ```
 
 **3. 브래킷.** 지금까지 본 $x$마다 $F - t$의 부호로 근을 $[\text{lo}, \text{hi}]$에 가둬요. 걸음이 브래킷 밖으로 나가면 대신 이분해요. 브래킷이 4배보다 넓으면 기하 평균 $\sqrt{\text{lo}\cdot\text{hi}}$(로그 눈금의 이분), 위가 열려 있으면 두 배, 아래가 0이면 $\text{hi} \cdot 2^{-20}$이에요.
 
 멈춤은 잔차가 반올림 수준($|F - t| \le 2^{-50}F$)이거나 걸음이 $2^{-54}|x|$ 아래일 때예요. 잔차 기준에 닿으면 그 걸음까지 적용하고 끝내요(3차 수렴이라 그 걸음 뒤의 오차는 무시할 만해요). 반복은 최대 100번이에요. 100번 안에 멈추지 않으면, 마지막 걸음이 $2^{-48}|x|$ 아래일 때(이웃한 double 몇 개 사이를 오가는 경우)만 그 값을 내고 그 밖은 NaN이에요. 브래킷이 정상 범위 아래($2^{-1022}$ 이하)로 내려가 있으면 근이 언더플로한 것이라 역함수의 규칙대로 0이에요.
+
+**4. 이른 멈춤(`halley_fast`).** 위의 두 멈춤 조건은 수렴한 점에서 한 번 더 평가해야 보여요. 그래서 Halley 걸음 $d$가 남길 오차를 미리 어림해요. Halley의 오차 상수는 $C = h^2/12 - h'/6$($h = F''/F'$)이고 다음 오차는 대략 $\lvert C\rvert d^3$이에요. 불완전 함수의 $h$, $h'$는 닫힌 꼴이라 공짜예요. $\lvert C\rvert d^3 \cdot 16 \le 2^{-56}x$, $d \le 2^{-16}x$, $d(\lvert h\rvert + \sqrt{\lvert h'\rvert}) \le 2^{-10}$이면 그 걸음의 결과를 내고 끝내요. 평가 하나가 줄어요. `lambertw`도 같은 생각으로, 걸음이 반복값의 $2^{-26}$ 아래이면 그 걸음의 결과를 내요(3차 수렴이라 남는 오차는 $K \cdot 2^{-78}$).
 
 확률이 $2^{-1000}$보다 작은 깊은 꼬리에서는 $F$를 float64로 반올림하는 것 자체가 몇 자리밖에 남지 않아요. 그곳은 반올림하지 않은 조각(앞 인자의 지수 $E$, 급수 합)으로 $\log F$를 만들어 그 위에서 반복해요(`ops/incgamma.hpp`의 `log_tail`).
 
@@ -613,14 +628,14 @@ Halley는 근 근처에서만 빨라요. 초기값이 나쁘면 걸음이 브래
 
 ### Boost.Math의 근 찾기
 
-`gammaincinv`, `gammainccinv`, `betaincinv`, `betainccinv`의 넓은 구간은 Boost를 불러요. Boost는 초기값 다음에 `tools::halley_iterate`(`tools/roots.hpp`)로 다듬어요[9].
+`betaincinv`, `betainccinv`의 넓은 구간은 Boost의 역함수를 불러요. 감마 역함수는 Boost의 초기값만 받아요. Boost의 역함수는 초기값 다음에 `tools::halley_iterate`(`tools/roots.hpp`)로 다듬어요[9].
 
 - **걸음:** `second_order_root_finder`가 $\delta = 2ff'/(2f'^2 - ff'')$를 계산해요. Halley 걸음과 Newton 걸음의 방향이 반대이면(2차 도함수가 소거로 틀렸다는 신호) Newton 걸음을 쓰되 $2|x|$를 넘지 않게 자르고, 분모가 넘칠 듯하면 Newton으로 바꿔요.
 - **진전이 없을 때:** 연이은 두 걸음의 비가 0.8–2이면(줄지 않음) 브래킷 쪽으로 이분해요. 브래킷이 1000배보다 넓으면 근을 가두는 탐색을 먼저 해요.
 - **멈춤:** 걸음이 $2^{1-\text{digits}}|x|$ 아래이면 멈춰요. `gamma_p_inv`는 double에서 `digits` = 53/2 − 1 = 25, 곧 걸음이 $2^{-24}|x|$ 아래이면 멈춰요. 3차 수렴이라 그 걸음 뒤의 오차가 대략 $(2^{-24})^3 = 2^{-72}$이기 때문이에요. $a < 0.125$이고 도함수가 크면 51로 올려요. `ibeta_inv`는 26이고, 근이 $10^{-50}$ 아래이며 $a$나 $b$가 1보다 작으면 1.5배로 올려요.
 - **초기값:** `gamma_p_inv`는 DiDonato와 Morris의 초기 근사(그들 논문의 식 21–35)[8]로 시작하고, `ibeta_inv`는 Temme의 균등 점근 역산 세 가지를 포함한 여러 근사 중에서 골라요.
 
-나머지 영역은 `halley.hpp`가 맡아요. Boost의 감마 역함수는 근이 정규수 범위 아래로 내려가면 언더플로 오류로 처리해서(우리 정책에서는 0) 서브노멀 근을 내지 못하고, 작은 $a, b$의 베타 역함수는 언더플로 근처에서 틀려요. 그래서 `gammaincinv`는 $p \ge 10^{-300}$, $a < 10^{10}$이고 근도 $10^{-300}$ 이상일 때만 Boost를 쓰고, `betaincinv`는 $10 \le a, b \le 10^6$, `betainccinv`는 $1 \le a, b \le 10^6$일 때만 써요(모양이 $10^6$을 넘으면 Boost가 다른 확률의 근을 내요). 감마 역함수는 Boost의 근에서 우리 순방향 함수로 Halley 걸음을 한 번 더 해서, Boost가 25비트 기준으로 멈추며 남긴 마지막 몇 비트를 채워요. 그 밖은 위의 $\log F$ 걸음과 반올림하지 않은 조각을 쓰는 우리 반복이에요.
+나머지 영역은 `halley.hpp`가 맡아요. Boost의 감마 역함수는 근이 정규수 범위 아래로 내려가면 언더플로 오류로 처리해서(우리 정책에서는 0) 서브노멀 근을 내지 못하고, 작은 $a, b$의 베타 역함수는 언더플로 근처에서 틀려요. 그래서 `betaincinv`는 $10 \le a, b \le 10^6$, `betainccinv`는 $1 \le a, b \le 10^6$일 때만 Boost를 써요(모양이 $10^6$을 넘으면 Boost가 다른 확률의 근을 내요). 감마 역함수는 $p \ge 10^{-300}$, $a < 10^{10}$이면 Boost의 초기값(`find_inverse_gamma`)에서 출발하고, 반복은 언제나 우리 순방향 함수에 대한 `halley_fast`예요. Boost의 반복은 25비트 기준으로 멈춰서 우리 함수로 한 걸음 더 다듬어야 하므로, 처음부터 우리 반복을 돌리는 편이 평가가 적어요. 그 밖은 위의 $\log F$ 걸음과 반올림하지 않은 조각을 쓰는 우리 반복이에요.
 
 ## 정확한 연산: Sterbenz, TwoSum, FMA
 
@@ -654,7 +669,7 @@ $$
 
 | 자리 | 정확한 차 | 왜 정확한가 |
 |---|---|---|
-| `sinpi`, `cospi` (`gamma_core.hpp`) | $r = x \bmod 2$, $1 - r$ | `fmod`는 정확, $r \in [1/2, 1]$에서 Sterbenz |
+| `sinpi`, `cospi` (`gamma_core.hpp`) | $r = x \bmod 2$, $1 - r$ | `fmod`는 정확, $r \in [1/2, 1]$에서 Sterbenz. Apple에서는 같은 정확한 축소를 하는 libm의 `__sinpi`, `__cospi`를 불러요 |
 | `rel_entr(x, y)` | $x - y$ ($x/y \in [1/2, 2]$) | Sterbenz. $x\,\mathrm{log1p}((x-y)/y)$ |
 | 역함수의 $1 - p$ | $p \ge 1/2$ | Sterbenz |
 | `ellipk`, `ellipe` | $y = 1 - m$ ($m \ge 1/2$) | Sterbenz. $m \to 1$의 $\log y$가 정확 |
@@ -662,7 +677,7 @@ $$
 | `dd.hpp`의 `log_series` | $m - 1$, $m \in [1/\sqrt2, \sqrt2)$ | Sterbenz |
 | `wofz`의 격자 Taylor | $h = z - z_0$ | Sterbenz (또는 $z_0 = 0$) |
 
-`sinpi`의 효과는 커요. $\sin(\pi x)$를 그대로 계산하면 $\pi x$의 반올림 오차가 $x$와 함께 커져요. $x = 3.0000001$에서 950만 ULP, $x = 10^{15} + 0.5$에서는 참값 1 대신 0.9526이 나와요. `sinpi`는 두 경우 모두 0 ULP, 곧 올바르게 반올림한 값이에요. 반사식이 정수 근처에서도 상대 정확도를 지키는 이유예요.
+`sinpi`의 효과는 커요. $\sin(\pi x)$를 그대로 계산하면 $\pi x$의 반올림 오차가 $x$와 함께 커져요. $x = 3.0000001$에서 950만 ULP, $x = 10^{15} + 0.5$에서는 참값 1 대신 0.9526이 나와요. `sinpi`는 인자를 정확히 줄이므로 두 경우 모두 마지막 자리 하나 안이에요(Apple libm의 `__sinpi`는 Arb 대비 1 ULP 안이고, `fmod` 축소 뒤 $\sin(\pi r)$을 부르는 꼴은 2 ULP예요). 반사식이 정수 근처에서도 상대 정확도를 지키는 이유예요. 두 꼴의 영점은 같고, 음의 홀수 정수에서 `__sinpi`가 $-0$을 내는 것만 달라요(IEEE 754의 sinPi).
 
 ### TwoSum과 TwoProd: 반올림 오차를 정확히 꺼내기
 
@@ -737,7 +752,7 @@ inline DD operator/(DD a, DD b) {
 
 합 하나만 정확해야 할 때는 완전한 double-double 대신 **보상 합**을 써요. `dd.hpp`의 `Sum`은 높은 부분을 TwoSum으로 더하고, 매 덧셈의 반올림 오차와 입력의 낮은 부분을 double 하나(`lo`)에 모아요. 그 오차들은 항의 $2^{-53}$ 크기라서, 오차를 모으며 생기는 반올림은 $2^{-106}$ 수준이에요.
 
-초기하 급수는 더 나아가, 먼저 float64로 더하면서 **오차의 상한을 함께 재요**. 항 $t_k$는 앞 항에 곱셈·나눗셈을 거듭해 만들므로 많아야 약 $3(k+1)$ ULP 틀려요. 그래서 $\sum_k (k+1)|t_k|$를 함께 쌓고, 이 값이 $4|s|$ 이하이면 합의 오차가 십여 ULP 안이라 float64 합을 그대로 써요. 넘으면 곱과 몫의 반올림 오차를 FMA로 꺼내 1차까지 들고 가는 보정 루프로 다시 계산해요. 항마다 double-double 곱과 나눗셈을 하는 방식(항당 약 70연산)은 $|z| < 0.5$의 `hyp2f1`에서 원소당 840 ns인데, 첫 패스로 끝나면 93 ns예요(두 방식을 1스레드에서 비교한 값). 자세한 기준은 [제타, 지수적분, 타원적분, 초기하, Lambert W, Faddeeva](/internals/special/more-functions/)에 있어요.
+초기하 급수는 더 나아가, 먼저 float64로 더하면서 **오차의 상한을 함께 재요**. 항 $t_k$는 앞 항에 곱셈·나눗셈을 거듭해 만들므로 많아야 약 $3(k+1)$ ULP 틀려요. 그래서 $\sum_k (k+1)|t_k|$를 함께 쌓고, 이 값이 $4|s|$ 이하이면 합의 오차가 십여 ULP 안이라 float64 합을 그대로 써요. 넘으면 곱과 몫의 반올림 오차를 FMA로 꺼내 1차까지 들고 가는 보정 루프로 다시 계산해요. 항마다 double-double 곱과 나눗셈을 하는 방식(항당 약 70연산)보다 첫 패스가 훨씬 싸서, 항이 처음부터 줄어드는 입력 대부분이 첫 패스에서 끝나요. 첫 패스가 거의 늘 기준을 넘지 못하는 입력(항이 커지다 줄어드는 곳)은 첫 패스 없이 바로 보정 루프로 가요. 자세한 기준은 [제타, 지수적분, 타원적분, 초기하, Lambert W, Faddeeva](/internals/special/more-functions/)에 있어요.
 
 <Callout type="tip">
 double-double을 쓸지 정하는 질문은 "이 값의 오차가 결과에서 몇 배로 커지는가"예요. 지수 $E$처럼 수백 배로 커지는 값, 수십 걸음 이어지는 점화식의 상태만 double-double로 두고, 나머지(유리식, $\Gamma^*$ 같은 1에 가까운 보정)는 float64로 둬요. 전체를 double-double로 하면 정확도는 비슷한데 시간이 몇 배가 돼요.

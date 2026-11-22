@@ -197,19 +197,26 @@ Column isna(const Column& col, bool want_na) {
 
 ### popcount로 결측 세기
 
-슬라이스나 대입 뒤에는 어떤 범위의 결측 수를 다시 세야 해요. 비트를 하나씩 세지 않고 바이트마다 `popcount`(1인 비트의 개수를 세는 명령, AArch64에서는 `cnt`)를 써요. 범위가 바이트 중간에서 시작하거나 끝나면, 양 끝의 덜 찬 바이트만 범위 밖 비트를 마스크로 지운 뒤 세요.
+슬라이스나 대입 뒤에는 어떤 범위의 결측 수를 다시 세야 해요. 비트를 하나씩 세지 않고 `popcount`(1인 비트의 개수를 세는 명령, AArch64에서는 `cnt`)를 써요. 가운데의 꽉 찬 바이트는 8바이트씩 64비트 정수 하나로 읽어 한 번에 세요. 범위가 바이트 중간에서 시작하거나 끝나면, 양 끝의 덜 찬 바이트만 범위 밖 비트를 마스크로 지운 뒤 세요.
 
 ```cpp
-// csrc/frame/bitmap.hpp의 count_set (줄임): 비트 [start, start + length) 중 1의 개수
-std::int64_t first = start >> 3, last = (end - 1) >> 3;
-auto byte_mask = [](int lo, int hi) { return std::uint8_t(((1u << hi) - 1) & ~((1u << lo) - 1)); };
-if (first == last) return popcount(bits[first] & byte_mask(start & 7, ((end - 1) & 7) + 1));
-std::int64_t count = popcount(bits[first] & byte_mask(start & 7, 8));        // 앞쪽 덜 찬 바이트
-for (std::int64_t b = first + 1; b < last; ++b) count += popcount(bits[b]);  // 가운데 꽉 찬 바이트
-count += popcount(bits[last] & byte_mask(0, ((end - 1) & 7) + 1));            // 뒤쪽 덜 찬 바이트
+    // csrc/frame/bitmap.hpp
+    if (first == last) return __builtin_popcount(bits[first] & byte_mask(start & 7, ((end - 1) & 7) + 1));
+    std::int64_t count = __builtin_popcount(bits[first] & byte_mask(start & 7, 8));
+    std::int64_t b = first + 1;
+    for (; b + 8 <= last; b += 8) {  // eight bytes per popcount
+        std::uint64_t w;
+        std::memcpy(&w, bits + b, 8);
+        count += __builtin_popcountll(w);
+    }
+    for (; b < last; ++b) count += __builtin_popcount(bits[b]);
+    count += __builtin_popcount(bits[last] & byte_mask(0, ((end - 1) & 7) + 1));
+    return count;
 ```
 
-위 10행 예에서 행 3–7(비트 3–7)의 1을 세면, 바이트 0x7D에 비트 3–7만 남기는 마스크 0xF8을 씌워 0x78이 되고, popcount는 4예요. 범위 5행 중 4행에 값이 있으니 결측은 1개(행 7)예요. 1M 행이면 바이트 125,000개에 popcount를 한 번씩 하는 셈이라 수 µs예요.
+`first`와 `last`는 범위의 첫 비트와 마지막 비트가 든 바이트, `byte_mask(lo, hi)`는 비트 `lo`부터 `hi - 1`까지만 1인 바이트예요. 앞쪽 덜 찬 바이트, 가운데 꽉 찬 바이트(8바이트씩, 남는 것은 하나씩), 뒤쪽 덜 찬 바이트 순서로 세요.
+
+위 10행 예에서 행 3–7(비트 3–7)의 1을 세면, 바이트 0x7D에 비트 3–7만 남기는 마스크 0xF8을 씌워 0x78이 되고, popcount는 4예요. 범위 5행 중 4행에 값이 있으니 결측은 1개(행 7)예요. 1M 행이면 바이트 125,000개를 8바이트 popcount 약 15,600번으로 세요.
 
 ### 비트를 0부터 다시 맞추기: `copy_bits`
 
@@ -231,7 +238,7 @@ $$
   <ArrayFig name="dst[0]" data={[1, 0, 1, 1, 0, 0, 0, 0]} tones={['a', 'a', 'b', 'b', 'm', 'm', 'm', 'm']} note="새 비트맵의 행 0–3" />
 </Fig>
 
-`copy_bits`는 비트 `offset + n - 1`이 든 바이트 너머를 읽지 않아요(`k + 1`이 마지막 바이트를 넘으면 OR하지 않아요). 그래서 Buffer 끝을 넘어 읽지 않아요.
+`copy_bits`는 비트 `offset + n - 1`이 든 바이트 너머를 읽지 않아요(`k + 1`이 마지막 바이트를 넘으면 OR하지 않아요). 그래서 Buffer 끝을 넘어 읽지 않아요. 오프셋이 8의 배수면 비트를 옮길 필요가 없어서 `rebased_validity`는 바이트 복사(`memcpy`) 한 번과 마지막 바이트의 쓰지 않는 비트 지우기로 끝내요.
 
 이렇게 맞춘 뒤 결과 비트맵은 바이트 단위 AND 한 줄이에요.
 
@@ -254,7 +261,7 @@ std::shared_ptr<Buffer> and_validity(const Column& a, const Column& b, int scala
 }
 ```
 
-스칼라는 1행 Column이에요. 스칼라가 결측(`s + NA`)이면 그 1행의 비트가 0이고, 결과는 모든 행이 결측이에요. 이때는 0으로 채운 비트맵을 새로 할당해 돌려줘요.
+스칼라는 1행 Column이에요. 스칼라가 결측(`s + NA`)이면 그 1행의 비트가 0이고, 결과는 모든 행이 결측이에요. 이때는 0으로 채운 비트맵을 새로 할당해 돌려줘요. 원소별 연산은 이 함수를 부르기 전에 한 번 더 보는데, 결측이 한쪽 컬럼에만 있고 그 비트맵이 행 0에서 시작하면 AND할 것 없이 그 비트맵 Buffer를 그대로 공유해요([원소별 연산과 리덕션](/internals/frame/elementwise/)).
 
 ### 바이트로 펼치기: 분기 없이 읽는 방법
 
@@ -289,19 +296,11 @@ inline void expand(const std::uint8_t* bits, std::int64_t n, std::uint8_t* out) 
   <ArrayFig name="kExpand[0x7D]" data={['01', '00', '01', '01', '01', '01', '01', '00']} tones={['', 'b', '', '', '', '', '', 'b']} note="바이트 8개 (16진수)" />
 </Fig>
 
-펼친 바이트로 커널을 쓰면 `valid ? x : 0` 같은 선택이 분기가 아니라 비트 연산이 돼요. 결측 자리를 0으로 지우는 `finish_fixed`가 그 예예요(아래). 이런 루프는 컴파일러가 NEON의 16바이트 AND로 벡터화해요.
+펼친 바이트로 커널을 쓰면 `valid ? x : 0` 같은 선택이 분기가 아니라 비트 연산이 돼요. 결측 자리를 0으로 지우는 `finish_fixed`와 `fill_na`(청크의 비트맵을 펼쳐 `valid ? x : value`를 골라요)가 그 예예요. 이런 루프는 컴파일러가 NEON의 16바이트 AND로 벡터화해요. 8바이트 결과를 쓰는 원소별 연산은 펼치지도 않고, 비트맵 바이트 하나에서 행마다의 64비트 마스크를 NEON으로 바로 만들어요([원소별 연산과 리덕션](/internals/frame/elementwise/)).
 
-두 설계를 같은 조건에서 비교한 값이에요(1M 행, 결측 10%, 1스레드, Apple M4 Pro).
+두 설계를 같은 조건(1M 행, 결측 10%, 1스레드)에서 비교하면, 바이트로 펼치고 루프 경계를 지역 변수로 꺼낸 쪽이 `isna`에서 약 8배, `int + int`와 float `std`에서 약 1.6~2배 빨라요.
 
-| 커널 | 행마다 비트를 꺼내 분기 | 바이트로 펼쳐 분기 없이 |
-|---|---:|---:|
-| `isna` | 377 µs | 47 µs |
-| `int + int` | 487 µs | 305 µs |
-| `bool & bool` (Kleene) | 1.43 ms | 542 µs |
-| float `std` | 1.03 ms | 475 µs |
-| float `min` | 933 µs | 613 µs |
-
-`isna`의 47 µs에는 펼치기 말고 손질이 하나 더 들어 있어요. 루프의 경계와 포인터를 지역 변수로 꺼내 둔 거예요. `uint8_t*`로 쓰는 루프에서는 C++ 규칙상 그 쓰기가 어떤 객체든(루프 경계 `col.length`도) 바꿀 수 있다고 봐서, 컴파일러가 매 반복 경계를 다시 읽고 벡터화를 포기해요. 같은 조건에서 펼치기만 하고 경계를 꺼내 두지 않은 루프는 288 µs예요(이 둘만 따로 비교하면 꺼낸 루프가 48 µs예요. 위 표의 47 µs와는 다른 회차의 측정이에요). 이 앨리어싱 문제는 [원소별 연산과 리덕션](/internals/frame/elementwise/)에 자세히 있어요.
+`isna`에는 펼치기 말고 손질이 하나 더 들어 있어요. 루프의 경계와 포인터를 지역 변수로 꺼내 둔 거예요. `uint8_t*`로 쓰는 루프에서는 C++ 규칙상 그 쓰기가 어떤 객체든(루프 경계 `col.length`도) 바꿀 수 있다고 봐서, 컴파일러가 매 반복 경계를 다시 읽고 벡터화를 포기해요. 펼치기만 하고 경계를 꺼내 두지 않은 루프는 꺼낸 루프보다 몇 배 느렸어요. 이 앨리어싱 문제는 [원소별 연산과 리덕션](/internals/frame/elementwise/)에 자세히 있어요.
 
 펼치기의 대가는 청크마다 바이트 배열 하나예요. `finish_fixed`처럼 청크 안에서 펼치는 커널은 16,384바이트짜리 스택 버퍼 하나를 써서 힙 할당이 없어요. pandas의 nullable 배열은 처음부터 행마다 1바이트라서 펼치는 단계가 없는 대신, 메모리를 8배 쓰고 컬럼을 읽을 때마다 그 8배를 지나가요.
 
@@ -324,33 +323,42 @@ stardust는 결측 자리를 언제나 0으로 둬요(문자열은 길이 0). �
 
 ### `finish_fixed`: 결과를 마무리하는 한 함수
 
-결과 컬럼을 만드는 고정폭 커널은 마지막에 모두 `finish_fixed`를 불러요. 커널 본체는 결측 행의 값 자리에 무엇을 써도 되고(예: `x[i] + y[i]`를 계산하면 결측 행에도 어떤 값이 써져요), 정리는 이 함수가 한 번에 해요.
+결과 컬럼을 만드는 고정폭 커널은 결측 행에 0을 쓰는 일을 값을 쓰는 루프에서 함께 하거나, 끝에 `finish_fixed`를 불러요. `finish_fixed`를 쓰는 커널의 본체는 결측 행의 값 자리에 무엇을 써도 되고(예: `x[i] + y[i]`를 계산하면 결측 행에도 어떤 값이 써져요), 정리는 이 함수가 한 번에 해요. 이 함수는 값 위를 한 번 더 지나므로, 많이 쓰는 커널(원소별 연산, `take`, `fill_na`, CSV)은 같은 루프에서 0을 써요.
 
 ```cpp
-// csrc/frame/column.cpp (발췌)
+// csrc/frame/column.cpp
 void finish_fixed(Column& col) {
     col.null_count = 0;
     if (!col.validity) return;
     const auto* bits = col.validity_bits();
     col.null_count = col.length - bitmap::count_set(bits, 0, col.length);
-    if (col.null_count == 0) {          // 결측이 없으면 비트맵을 버린다 (약속 1)
+    if (col.null_count == 0) {
         col.validity.reset();
         return;
     }
-    auto zero = [&](auto* v) {          // 결측 행의 값을 분기 없이 지운다 (약속 2)
+    // Branch-free: AND every value with all-ones (valid) or zero (NA), the
+    // bitmap first expanded to one byte per row so the loop vectorizes
+    // (docs/design/frame.md §4.5).
+    // Per chunk: expand that chunk's bits into a stack buffer, then mask.
+    // Bounds and pointers are locals: a store through a uint8_t pointer may
+    // alias anything, so a bound read through a reference would be reloaded
+    // every iteration and the loop would not vectorize (docs/design/frame.md §7.6).
+    auto zero = [&](auto* v) {
         using T = std::remove_reference_t<decltype(*v)>;
         for_chunks(col.length, [bits, v](std::int64_t lo, std::int64_t hi) {
-            std::uint8_t m[kChunkRows];                  // 16 KB 스택 버퍼
+            std::uint8_t m[kChunkRows];
             const std::int64_t len = hi - lo;
-            bitmap::expand(bits + lo / 8, len, m);       // 청크의 비트를 바이트로
+            bitmap::expand(bits + lo / 8, len, m);
             T* w = v + lo;
             for (std::int64_t i = 0; i < len; ++i) w[i] &= static_cast<T>(0 - static_cast<T>(m[i]));
         });
     };
     if (itemsize(col.dtype) == 1) zero(reinterpret_cast<std::uint8_t*>(col.values->data()));
-    else zero(reinterpret_cast<std::int64_t*>(col.values->data()));   // int64와 float64가 같은 루프
+    else zero(reinterpret_cast<std::int64_t*>(col.values->data()));  // int64 and float64: 0.0 is all-zero bits
 }
 ```
+
+결측이 없으면 비트맵을 버리고(약속 1), 결측 행의 값을 분기 없이 지워요(약속 2). `m`은 16KB 스택 버퍼예요.
 
 값을 지우는 일은 `w[i] &= 0 - m[i]` 한 줄이 해요. `m[i]`가 1이면 `0 - 1`은 2의 보수로 모든 비트가 1이라서(`0xFFFF…FF`) AND해도 값이 그대로예요. 0이면 `0 - 0 = 0`이라서 AND하면 0이 돼요. 분기 없이 "값이 있으면 그대로, 없으면 0"이 되는 거예요.
 
@@ -383,7 +391,7 @@ Arrow 형식은 boolean 값을 비트로 묶어 저장해요 [1]. stardust는 �
 - 마스크 필터가 단순해요. 분기 없는 압축 커널은 `k += keep[i]`처럼 마스크 바이트를 그대로 더해요([라벨, 조회, 선택](/internals/frame/labels/)). 비트였다면 행마다 비트를 꺼내야 해요.
 - 커널의 dtype 처리가 단순해요. bool은 원소 크기 1인 고정폭 dtype이라서 `take`, `concat`, `finish_fixed`가 크기만 바꿔 같은 코드를 써요. 비트로 묶은 dtype은 이 모든 곳에 비트 단위 경로가 따로 필요해요.
 
-대가는 메모리 8배와, bool 컬럼을 통째로 읽는 연산의 비용이에요. `bool.sum()`은 1M 바이트를 더해요(1M 행, 1스레드에서 44 µs). 비트로 저장하면 바이트 125,000개에 popcount를 하면 되므로 훨씬 짧아요.
+대가는 메모리 8배와, bool 컬럼을 통째로 읽는 연산의 비용이에요. `bool.sum()`은 1M 바이트를 더해요. 비트로 저장하면 바이트 125,000개에 popcount를 하면 되므로 훨씬 짧아요.
 
 ### int64와 float64
 
@@ -423,7 +431,7 @@ offsets는 int64예요. int32 offsets는 한 컬럼의 문자열 바이트가 �
 
 **대가.**
 
-- `tolist()`가 비싸요. 행마다 UTF-8을 디코딩해 str 객체를 새로 만들어요(`PyUnicode_DecodeUTF8`). 1M 행에 15.7 ms(1스레드)예요. 문자열을 Python 객체로 저장하는 구현(pyarrow가 없는 pandas 3의 `str` dtype)은 이미 있는 객체의 참조만 늘리면 돼요.
+- `tolist()`가 비싸요. 행마다 UTF-8을 디코딩해 str 객체를 새로 만들어요(`PyUnicode_DecodeUTF8`). 문자열을 Python 객체로 저장하는 구현(pyarrow가 없는 pandas 3의 `str` dtype)은 이미 있는 객체의 참조만 늘리면 돼요.
 - `filter`와 `take`가 문자열 길이에 비례해요. 고른 행의 바이트를 새 버퍼로 복사해야 하거든요. 고정폭 dtype의 분기 없는 압축(항상 쓰고 남길 때만 위치를 늘리기)은 문자열에 맞지 않아요. 길이가 제각각이라 "항상 쓰기"가 비싸서, 문자열 마스크 필터는 `take(nonzero(mask))`로 해요.
 
 Polars는 이 대가를 피하려고 Arrow의 문자열 view 레이아웃을 써요 [1, 3]. 행마다 16바이트짜리 view를 두고, 12바이트 이하의 문자열은 view 안에 통째로, 긴 문자열은 길이·앞 4바이트·버퍼 번호·위치를 적어요. `filter`와 `take`가 16바이트 view만 옮기면 되므로 문자열 길이와 무관해요. 대신 행마다 16바이트를 쓰고(offsets는 8바이트), 걸러진 뒤에도 긴 문자열 버퍼가 통째로 남아 있어서 언제 정리할지 정해야 해요 [3]. stardust는 짧은 문자열을 인라인으로 두는 레이아웃을 쓰지 않아요.
@@ -472,7 +480,7 @@ True
 
 ### 비용
 
-슬라이스 하나의 비용은 Column 구조체 복사, 참조 수 증가 셋, 그리고 비트맵이 있으면 자기 범위의 popcount예요. popcount는 64행에 8번 정도라서 1M 행을 슬라이스해도 수 µs예요. 1M 행 DataFrame의 `head()`는 656 ns였어요(1스레드, Apple M4 Pro). 컬럼마다 슬라이스 하나와 `RangeIndex` 슬라이스 하나예요.
+슬라이스 하나의 비용은 Column 구조체 복사, 참조 수 증가 셋, 그리고 비트맵이 있으면 자기 범위의 popcount예요. popcount는 꽉 찬 바이트 8개(64행)에 한 번이라 1M 행을 슬라이스해도 짧아요. 1M 행 DataFrame의 `head()`는 컬럼마다 슬라이스 하나와 `RangeIndex` 슬라이스 하나예요.
 
 슬라이스가 결측을 다시 세는 이유는 약속 1 때문이에요. 1M 행 중 결측이 한 행뿐인 컬럼에서 `head()`를 했는데 앞 5행에 결측이 없으면, 그 5행짜리 컬럼은 비트맵이 없어야 해요. 그래야 그 결과를 받는 커널이 결측 없는 루프로 가요.
 
@@ -594,7 +602,7 @@ Buffer의 다른 주인이 없을 때 정말로 그 자리에서 쓰는지도 �
 True
 ```
 
-10행 Series의 `s.iloc[3] = 1`은 0.94 µs였어요(1스레드, Apple M4 Pro).
+10행 Series의 `s.iloc[3] = 1`에는 복사가 없어요.
 
 ### 문자열 컬럼은 언제나 새 Buffer
 
@@ -708,7 +716,7 @@ array([ 1, -1,  3], dtype=int64)
 [0, 1, 2]
 ```
 
-비용은 1M int64에 109 µs였고(1스레드, Apple M4 Pro), 대부분 새 메모리의 페이지 폴트예요. 16KB 페이지마다 처음 쓸 때 운영체제가 페이지를 채워 넣어요. Polars 2.1.0은 numpy 배열의 메모리를 공유해요(`np.shares_memory`가 True). 공유하면 이 비용이 없지만, stardust의 Copy-on-Write는 위 이유로 공유를 받아들일 수 없어요.
+비용의 대부분은 새 메모리의 페이지 폴트예요. 16KB 페이지마다 처음 쓸 때 운영체제가 페이지를 채워 넣어요. Polars 2.1.0은 numpy 배열의 메모리를 공유해요(`np.shares_memory`가 True). 공유하면 이 비용이 없지만, stardust의 Copy-on-Write는 위 이유로 공유를 받아들일 수 없어요.
 
 ### Python list에서
 
@@ -825,18 +833,20 @@ ValueError: assignment destination is read-only
 
 ## 성능
 
-이 글에서 다룬 연산의 비용이에요(Apple M4 Pro, 1스레드, 호출당 최솟값).
+이 글에서 다룬 연산이 시간을 쓰는 곳이에요.
 
-| 연산 | 시간 | 무엇이 시간을 쓰나 |
-|---|---:|---|
-| 1M 행 DataFrame의 `head()` | 656 ns | 컬럼마다 Column 복사와 참조 수 증가, Index 슬라이스 |
-| 1M 행 컬럼의 `to_numpy()` (결측 없음) | 448 ns | numpy 배열 객체와 capsule 만들기. 데이터 복사 없음 |
-| 10행 Series의 `s.iloc[3] = 1` | 0.94 µs | 대입 값 변환, `share()`, 참조 수 확인. 복사 없음 |
-| 1M int64 numpy 배열 → Series | 109 µs | 새 메모리의 페이지 폴트 |
-| 1M `list[int]` → Series | 4.77 ms | Python 객체마다 종류 확인과 정수 읽기 |
-| 1M 문자열 컬럼의 `tolist()` | 15.7 ms | 행마다 UTF-8 디코딩과 str 객체 만들기 |
-| 1M bool 컬럼의 `sum()` | 44 µs | 1M 바이트 더하기 |
-| 1M 행 `isna` (결측 10%) | 47 µs | 비트맵 펼치기 (위 비교 표) |
+| 연산 | 무엇이 시간을 쓰나 |
+|---|---|
+| 1M 행 DataFrame의 `head()` | 컬럼마다 Column 복사와 참조 수 증가, Index 슬라이스. 데이터 복사 없음 |
+| 1M 행 컬럼의 `to_numpy()` (결측 없음) | numpy 배열 객체와 capsule 만들기. 데이터 복사 없음 |
+| 10행 Series의 `s.iloc[3] = 1` | 대입 값 변환, `share()`, 참조 수 확인. 복사 없음 |
+| 1M int64 numpy 배열 → Series | 새 메모리의 페이지 폴트 |
+| 1M `list[int]` → Series | Python 객체마다 종류 확인과 정수 읽기 |
+| 1M 문자열 컬럼의 `tolist()` | 행마다 UTF-8 디코딩과 str 객체 만들기 |
+| 1M bool 컬럼의 `sum()` | 1M 바이트 더하기 |
+| 1M 행 `isna` (결측 10%) | 비트맵 펼치기 |
+
+숫자는 벤치마크의 생성 표에 있어요.
 
 결측이 없는 컬럼은 비트맵이 없어서 커널이 NA 검사 없는 루프를 고르고, 값 버퍼가 numpy와 같은 연속 배치라서 메모리를 차례로 지나가요. 결측 없는 float 컬럼의 합과 마스크 필터가 이 경로를 타요.
 

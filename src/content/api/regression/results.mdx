@@ -166,7 +166,8 @@ True
 
 ```python
 >>> r.pvalues
-array([ 0.012640757146940481, 1.911539897240063e-11,    0.9269498031232929], dtype=float64)
+array([  0.012640757146940483, 1.9115398972400632e-11,
+           0.9269498031232929], dtype=float64)
 ```
 
 - 기온의 p값은 $1.9 \times 10^{-11}$이에요. 효과가 없는데 t값이 11이나 나올 일은 거의 없어요.
@@ -372,7 +373,7 @@ array([nan, nan, nan, nan, nan], dtype=float64)
 
 ```python
 >>> r.fvalue, r.f_pvalue
-(60.10618745577177, 1.1380530555581697e-10)
+(60.10618745577177, 1.1380530555581695e-10)
 >>> sd.stats.F(dfn=r.df_model, dfd=r.df_resid).ccdf(r.fvalue) == r.f_pvalue
 True
 ```
@@ -601,7 +602,7 @@ F p-value:                       0.382
 >>> print(sd.regression.ols(df['sales'] * 1000, df[['temp', 'rain']]).summary().splitlines()[12])
 const       1.971e+04   7377.396      2.671      0.013   4571.435   3.48e+04
 >>> r.pvalues[1]
-1.911539897240063e-11
+1.9115398972400632e-11
 ```
 
 ### alpha

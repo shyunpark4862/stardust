@@ -32,7 +32,7 @@ $$
     { label: 'nls()', note: '입력 검사, NaN 처리, 가중치 0인 행 빼기(남는 행이 없으면 NaN 결과), 방법과 max_nfev·rtol의 기본값', where: '_nls.py' },
     { label: '_Model', note: '쓰인 행의 잔차 √w(f − y)와 사용자 jac을 돌려주는 콜백, f 호출 수 세기', where: '_nls.py', depth: 1 },
     { label: 'lsq_solve', note: "sd.optimize의 최소제곱 커널. 'lm'(lmder) 또는 'trf'(trf_bounds). 야코비안마다 Householder QR 한 번, 그 뒤는 p 크기", where: 'csrc/optimize/lsq.cpp' },
-    { label: 'accurate_jac', note: '해의 5점 중앙 차분(differentiate/_differences.py의 Differences). 모수마다 간격을 처음 한 번 고르고 그 뒤에도 써요(jac이 있으면 그것)', where: '_nls.py' },
+    { label: 'accurate_jac', note: '해의 5점 중앙 차분(Python 입구는 differentiate/_differences.py의 Differences, 고리는 C++ AccurateDiff). 모수마다 간격을 처음 한 번 고르고 그 뒤에도 써요(jac이 있으면 그것)', where: '_nls.py' },
     { label: '_active', note: "'trf'만: 경계에 걸린 모수를 경계값으로 맞추고 다듬기에서 고정", where: '_nls.py', depth: 1 },
     { label: '_polish', note: '가우스–뉴턴 걸음(fit 커널), 느리면 S를 넣은 뉴턴 걸음, 최대 10걸음', where: '_nls.py' },
     { label: 'fit(-r, J)', note: '해의 야코비안으로 공분산 (RᵀR)⁻¹, 쓰인 열(겹친 모수), rank', where: 'csrc/regression/linear.cpp' },
@@ -45,7 +45,7 @@ $$
 | `'lm'` | MINPACK `lmder`(Moré 1978)를 0부터 세는 C++로 옮긴 것: `qrfac`, `lmpar`, `qrsolv`, factor 100, mode 1 | `csrc/optimize/lsq.cpp` |
 | `'trf'` | scipy 1.18.1 `least_squares`의 `trf_bounds`('exact' 부분문제, `x_scale=1`, 손실 함수 없음)를 같은 순서로 | 같은 파일 |
 | 반복의 야코비안 | 사용자 `jac`, 없으면 MINPACK `fdjac2`의 전진 차분 $h = \sqrt\varepsilon\,\lvert\theta_j\rvert$ | 같은 파일 |
-| 해의 야코비안 | 사용자 `jac`, 없으면 5점 중앙 차분. 간격은 모수마다 2의 거듭제곱에서 고른 것 | `src/stardust/differentiate/_differences.py` |
+| 해의 야코비안 | 사용자 `jac`, 없으면 5점 중앙 차분. 간격은 모수마다 2의 거듭제곱에서 고른 것 | `src/stardust/differentiate/_differences.py`, `csrc/differentiate/accurate.hpp` |
 | 다듬기 | 가우스–뉴턴(선형 모형의 `fit` 커널), 느리면 $(J^{\mathsf T}J + S)$의 뉴턴 | `src/stardust/regression/_nls.py` |
 | 공분산 | $\hat\sigma^2 (J^{\mathsf T} W J)^{-1}$, 해의 야코비안 한 번의 QR | 같은 파일 |
 
@@ -62,7 +62,7 @@ NIST StRD의 Misra1a(관측 14개, 모수 2개)를 첫 시작점에서 풀어요
 ...     return b1 * (1 - sd.exp(-b2 * x))
 >>> r = sd.regression.nls(f, sd.asarray(x), sd.asarray(y), p0=[500, 1e-4])
 >>> r.method, r.converged, r.n_iter, r.nfev
-('lm', True, 16, 103)
+('lm', True, 16, 95)
 ```
 
 참값은 같은 double 자료로 Arb(구간 산술)에서 만들어요. 320비트에서 정확한 야코비안의 가우스–뉴턴을 몇 걸음 하면 걸음이 double의 반올림보다 훨씬 작아져요.
@@ -84,7 +84,7 @@ NIST StRD의 Misra1a(관측 14개, 모수 2개)를 첫 시작점에서 풀어요
 >>> def relerr(p):
 ...     return f"{max(abs(a - b) / abs(b) for a, b in zip(p, ref)):.1e}"
 >>> relerr(r.params.tolist())
-'2.5e-14'
+'3.7e-14'
 ```
 
 scipy `curve_fit`은 같은 MINPACK 반복이지만 다듬기가 없어요. 해석적 `jac`을 주면 해의 야코비안에 차분 오차가 없으므로 반올림 수준까지 가요.
@@ -100,10 +100,10 @@ scipy `curve_fit`은 같은 MINPACK 반복이지만 다듬기가 없어요. 해�
 ...     return sd.stack([1 - e, b1 * x * e], axis=1)
 >>> rj = sd.regression.nls(f, sd.asarray(x), sd.asarray(y), p0=[500, 1e-4], jac=jac)
 >>> relerr(rj.params.tolist()), rj.nfev, rj.njev
-('3.9e-16', 23, 19)
+('2.0e-15', 23, 19)
 ```
 
-이 적합에서 반복(lmder)은 `gtol` 판정으로 멈췄고, 그 점은 참값과 성분별 상대 $9 \times 10^{-9}$ 떨어져 있었어요. 다듬기의 가우스–뉴턴 걸음은 성분별 상대 크기로 $9.3 \times 10^{-9}$, $2.6 \times 10^{-11}$, $1.1 \times 10^{-13}$이었고(비 약 0.003), 세 번째 걸음 뒤 남은 거리의 어림이 $2^{-50}$ 밑이라 멈췄어요. 남은 $2.5 \times 10^{-14}$는 5점 차분 야코비안의 오차예요(이 문제의 열마다 상대 $1.5 \times 10^{-13}$).
+이 적합에서 반복(lmder)은 `gtol` 판정으로 멈췄고, 그 점은 참값과 성분별 상대 $10^{-9}$ 남짓 떨어져 있었어요. 다듬기의 가우스–뉴턴 걸음은 성분별 상대 크기로 $1.1 \times 10^{-9}$, $3.0 \times 10^{-12}$, $1.8 \times 10^{-14}$이었고(비 약 0.003–0.006), 세 번째 걸음 뒤 남은 거리의 어림이 $2^{-50}$ 밑이라 멈췄어요. 남은 $3.7 \times 10^{-14}$는 5점 차분 야코비안의 오차예요(이 문제의 열마다 상대 $1.5 \times 10^{-13}$).
 
 ## 나눔: C++ 커널과 Python 콜백
 
@@ -386,7 +386,7 @@ $$
 ...     return f"{float(sd.max(sd.abs(col - exact)) / sd.max(sd.abs(exact))):.1e}"
 >>> base = math.frexp(b3)[1]
 >>> [err(five(math.ldexp(1.0, base + e))) for e in (-8, -10, -12, -14, -16, -18, -20)]
-['1.4e-02', '6.0e-05', '2.4e-07', '9.3e-10', '3.7e-12', '3.0e-13', '1.4e-12']
+['1.4e-02', '6.0e-05', '2.4e-07', '9.3e-10', '3.7e-12', '3.3e-13', '1.4e-12']
 ```
 
 $h = 2^{e}\cdot 2^{\text{base}}$이고 $2^{\text{base}}$는 $\lvert b_3\rvert \lt 2^{\text{base}} \le 2\lvert b_3\rvert$인 2의 거듭제곱(`math.frexp`의 지수)이에요. 그래서 $e = -8$은 $2^{-8}\lvert\theta_j\rvert$에서 $2^{-7}\lvert\theta_j\rvert$ 사이예요. 오차는 $e = -18$($h \approx 0.002$)까지 256배씩 줄다가 그 뒤 반올림 때문에 늘어요.
@@ -403,38 +403,41 @@ $h = 2^{e}\cdot 2^{\text{base}}$이고 $2^{\text{base}}$는 $\lvert b_3\rvert \l
 
 고르는 규칙은 "절단 오차가 앞서는 동안 줄인다"예요. $2^{-8}$에서 시작해 지수를 2씩(간격을 4배씩) 줄이며 이웃한 두 추정의 차이 $\delta_k = \max\lvert c_k - c_{k-1}\rvert/\max\lvert c_k\rvert$를 재요. 절단 오차가 앞서면 $\delta$가 256배 가까이 줄어드니, $\delta_k \lt \delta_{k-1}/8$인 동안 이어 가고 마지막 추정을 써요.
 
-```python
-    # src/stardust/differentiate/_differences.py
-    def choose_step(self, x, j, g0):
-        """The step of variable j, chosen once: from 2^-8 |x_j| down by factors of 4 while
-        consecutive estimates get closer by more than 8 times; the last such estimate and its
-        step. A start at rounding level is moved up first (_grow); when no larger step leaves
-        rounding level (a column that is 0 or noise) the search is the plain one from the start.
-        Below _FD_CAP (|x_j| < 1) a search whose estimates never agreed (_settled) is checked
-        against the search from x_j = 0's start (_from_cap)."""
-        base = math.frexp(abs(x[j]) if x[j] != 0 else 1.0)[1]
-        e0 = base + _FD_START
-        col0 = self.column(x, j, math.ldexp(1.0, e0), g0)
-        if col0 is None or math.ldexp(1.0, e0) >= _FD_CAP:
-            return self._descend(x, j, g0, e0, (col0, self.fits))
-        r0 = self._rounding(col0, j)
-        if r0 <= _GROW_TOL:
-            best, hbest = self._descend(x, j, g0, e0, (col0, self.fits))
-            if best is not None and not self._settled:
-                best, hbest = self._from_cap(x, j, g0, best, hbest)
-            return best, hbest
-        fits0 = self.fits
-        e = self._grow(x, j, g0, e0, col0)
-        if e is not None:
-            best, hbest = self._descend(x, j, g0, e)
-            if best is not None:
-                return best, hbest
+```cpp
+    // csrc/differentiate/accurate.hpp (AccurateDiff)
+    bool choose_step(lint j, double* out, double& h) {
+        using namespace accurate_detail;
+        const auto uj = static_cast<std::size_t>(j);
+        const lint m = m_;
+        const int base = frexp_exp(xw_[uj] != 0 ? std::abs(xw_[uj]) : 1.0);
+        const int e0 = base + kFdStart;
+        vec col0(static_cast<std::size_t>(m));
+        const bool ok0 = column(j, std::ldexp(1.0, e0), col0.data());
+        const First start{true, ok0, &col0, fits_};
+        if (!ok0 || e0 >= kCapExp) return descend(j, e0, start, true, out, h);
+        const double r0 = rounding(col0.data(), j);
+        if (r0 <= kGrowTol) {
+            bool ok = descend(j, e0, start, true, out, h);
+            if (ok && !settled_) from_cap(j, out, h);
+            return ok;
+        }
+        const bool fits0 = fits_;
+        int e = 0;
+        if (grow(j, e0, col0.data(), e)) {
+            if (descend(j, e, First{}, true, out, h)) return true;
+        }
+        bool ok;
+        if (r0 <= kRoundingTol) ok = descend(j, e0, First{}, true, out, h);  // the plain search from the start
+        else ok = descend(j, e0, First{}, false, out, h);
+        fits_ = fits_ || fits0;
+        return ok;
+    }
 ```
 
-`src/stardust/differentiate/_differences.py`의 `Differences.choose_step`이에요(`_FD_START, _FD_END = -8, -30`). 보통은 시작 $2^{-8}\lvert\theta_j\rvert$에서 바로 위의 규칙대로 내려가요(`_descend`). 세 가지를 더 봐요.
+`csrc/differentiate/accurate.hpp`의 `AccurateDiff::choose_step`이에요(`kFdStart, kFdEnd = -8, -30`). 차분의 고리(점 만들기, 5점 합, 반올림 수준, 간격 찾기)는 C++에서 돌고 $f$를 부르는 일만 Python이라, 호출 한 번의 비용이 거의 $f$ 자신의 비용이에요. 파이썬 쪽 입구는 `src/stardust/differentiate/_differences.py`의 `Differences`예요. 보통은 시작 $2^{-8}\lvert\theta_j\rvert$에서 바로 위의 규칙대로 내려가요(`descend`). 세 가지를 더 봐요.
 
-- 시작 간격의 열이 반올림으로 목표 정확도를 잃었으면(반올림 수준이 열의 $2^{-36}$배(`_GROW_TOL`)를 넘으면) 시작이 그 모수의 척도에 비해 너무 작은 거예요. $\theta_j$가 0 가까이에 있어 $2^{-8}\lvert\theta_j\rvert$가 작을 때 그래요. 그때는 먼저 간격을 키워요(`_grow`). 반올림 수준이 열의 $\sqrt\varepsilon = 2^{-26}$배가 되도록 한 번에 옮긴 뒤(많아야 $\theta_j = 0$의 시작까지), 이웃한 두 추정의 차가 둘의 반올림 수준의 합을 넘을 때까지(절단 오차가 보일 때까지) 4배씩 키우고, 거기서부터 내려가요. $\theta_j = 0$의 시작에 닿아도 반올림이 남으면, 열이 잡음이 아닌 한 그 간격에서 내려가요. 더 작은 간격은 반올림이 더 클 뿐이니까요. 어느 간격에서도 열이 0이거나 잡음뿐이면 처음 시작에서 보통대로 내려가요.
-- 시작 간격의 반올림이 문턱 아래여서 바로 내려갔는데 마지막 두 추정이 끝내 맞지 않으면(상대 차이가 $2^{-20}$을 넘으면), 시작 간격에서의 함숫값의 차가 $f$ 자신의 계산 오차보다 작았던 거예요. 그때는($\lvert\theta_j\rvert < 1$에서만) $\theta_j = 0$의 시작에서 한 번 더 찾고, 그 추정들이 맞으면 그것을 써요(`_from_cap`).
+- 시작 간격의 열이 반올림으로 목표 정확도를 잃었으면(반올림 수준이 열의 $2^{-36}$배(`kGrowTol`)를 넘으면) 시작이 그 모수의 척도에 비해 너무 작은 거예요. $\theta_j$가 0 가까이에 있어 $2^{-8}\lvert\theta_j\rvert$가 작을 때 그래요. 그때는 먼저 간격을 키워요(`grow`). 반올림 수준이 열의 $\sqrt\varepsilon = 2^{-26}$배가 되도록 한 번에 옮긴 뒤(많아야 $\theta_j = 0$의 시작까지), 이웃한 두 추정의 차가 둘의 반올림 수준의 합을 넘을 때까지(절단 오차가 보일 때까지) 4배씩 키우고, 거기서부터 내려가요. $\theta_j = 0$의 시작에 닿아도 반올림이 남으면, 열이 잡음이 아닌 한 그 간격에서 내려가요. 더 작은 간격은 반올림이 더 클 뿐이니까요. 어느 간격에서도 열이 0이거나 잡음뿐이면 처음 시작에서 보통대로 내려가요.
+- 시작 간격의 반올림이 문턱 아래여서 바로 내려갔는데 마지막 두 추정이 끝내 맞지 않으면(상대 차이가 $2^{-20}$을 넘으면), 시작 간격에서의 함숫값의 차가 $f$ 자신의 계산 오차보다 작았던 거예요. 그때는($\lvert\theta_j\rvert < 1$에서만) $\theta_j = 0$의 시작에서 한 번 더 찾고, 그 추정들이 맞으면 그것을 써요(`from_cap`).
 - 내려가는 동안 첫 추정이 잡음이 아닌데 둘째 추정이 반올림 잡음(아래 [반올림 잡음뿐인 차분 열](#반올림-잡음뿐인-차분-열)의 16배 기준)이면 둘째를 받지 않고 첫 추정을 써요.
 
 nls의 `_Model`은 쓰인 행의 $f$를 이 클래스에 넘겨 해의 야코비안을 만들어요. 같은 규칙을 위의 열에 적용하면 $e = -18$을 골라요.
@@ -450,7 +453,7 @@ nls의 `_Model`은 쓰인 행의 $f$를 이 클래스에 넘겨 해의 야코비
 ...         dprev = dd
 ...     best, ebest, prev = col, e, col
 >>> ebest, err(best)
-(-18, '3.0e-13')
+(-18, '3.3e-13')
 ```
 
 첫 쌍은 (둘째가 반올림 잡음일 때를 빼고) 늘 받으므로 시작을 $2^{-10}$으로 하면 고른 간격이 한 단계 작아져요. Lanczos3에서 그러면 계수가 $10^{-9}$ 수준으로 나빠져서 시작은 $2^{-8}$이에요. 고른 간격은 그 뒤 다듬기와 해의 야코비안에 그대로 써요(국소 척도는 해 근처에서 바뀌지 않아요). 고르는 데 모수마다 3–5단계, 12–20번의 호출이 들어요(NIST 27문제).
@@ -520,15 +523,15 @@ $$
 
 해의 값과 정확한 야코비안(간격 고르기 포함)은 이 예산 밖이에요. 공분산과 겹친 모수의 판정에 늘 필요해서, 상한이 작아도 결과에서 뺄 수 없기 때문이에요. 그래서 `max_nfev`는 해를 찾는 호출(반복과 다듬기)의 상한이고, `nfev`에는 그 위에 공분산용 야코비안의 호출이 더해져요. 그 수는 해의 값 1번과, 차분이면 모수마다 간격을 고르는 호출이에요(위 간격 고르기 절). 후보 간격은 $2^{-8}$에서 $2^{-30}$까지 지수를 2씩 줄인 12개이고, 후보 하나가 중앙 차분의 $f$ 호출 4번($\theta_j \pm h$, $\theta_j \pm 2h$)이라, 중앙 차분만 쓰면 모수마다 많아야 48번이에요. 이것은 중앙 차분만의 상한이고 전체의 상한은 아니에요. 경계에 걸리거나 값이 유한하지 않아 한쪽 5점 차분(가운데 값은 해의 값을 다시 써서 4번)으로 물러서면 앞쪽과 뒤쪽을 차례로 시도하므로, 후보마다 많아야 8번이 더 들어 48번을 넘을 수 있어요.
 
-매끄러운 모형은 절단 오차가 앞서는 동안이 짧아 후보 서너 개에서 멈춰요. 해의 값 호출을 뺀 모수마다의 호출은 지수 감쇠($p = 2$) 14번, 감쇠와 상수($p = 3$) 13.3번, 네 모수 로지스틱 13번, 가우스 봉우리($p = 3$) 16번, Misra1a 12번이고, NIST 27문제에서 12–20번이에요. 보통은 모수마다 12–16번이에요. `jac`이 있으면 값 1번뿐이에요. 아래 Misra1a는 반복이 51번을 쓰고, 해의 야코비안이 25번(값 1번 + 모수마다 12번), 다듬기 세 걸음이 9번씩이에요.
+매끄러운 모형은 절단 오차가 앞서는 동안이 짧아 후보 서너 개에서 멈춰요. 해의 값 호출을 뺀 모수마다의 호출은 지수 감쇠($p = 2$) 14번, 감쇠와 상수($p = 3$) 13.3번, 네 모수 로지스틱 13번, 가우스 봉우리($p = 3$) 16번, Misra1a 12번이고, NIST 27문제에서 12–20번이에요. 보통은 모수마다 12–16번이에요. `jac`이 있으면 값 1번뿐이에요. 아래 Misra1a는 반복이 51번을 쓰고, 해의 야코비안이 25번(값 1번 + 모수마다 12번), 다듬기가 9번짜리 두 걸음과 시험점 1번뿐인 마지막 걸음이에요.
 
 ```python
 >>> [(m, fm.converged, fm.nfev) for m, fm in
 ...  ((m, sd.regression.nls(f, sd.asarray(x), sd.asarray(y), p0=[500, 1e-4], max_nfev=m)) for m in (55, 70, 78))]
-[(55, False, 76), (70, False, 94), (78, True, 103)]
+[(55, False, 76), (70, False, 94), (78, True, 95)]
 ```
 
-`max_nfev=55`면 다듬기에 4번이 남아 걸음 하나(9번)도 못 하고, 70이면 두 걸음 뒤 세 번째를 못 해요. 78이면 세 걸음을 다 해서 기본값과 같은 결과예요.
+`max_nfev=55`면 다듬기에 4번이 남아 걸음 하나(9번)도 못 하고, 70이면 두 걸음 뒤 세 번째를 못 해요. 78이면 세 번째 걸음도 할 수 있어서 기본값과 같은 결과예요. 그 걸음은 크기가 $2^{-45}$ 아래라 야코비안을 다시 구하지 않고 시험점 1번으로 끝나요.
 
 ### 느린 가우스–뉴턴과 뉴턴 걸음
 
@@ -645,18 +648,22 @@ $$
 \frac{\sum_o\lvert w_o\rvert}{12h}\,u\,\max_o\bigl\lvert f_i(\theta + o h e_j)\bigr\rvert
 $$
 
-만큼 불확실해요(중앙 공식은 $\sum_o\lvert w_o\rvert = 18$). 이 값을 행마다 모아(가중치가 있으면 $\sqrt{w_i}$를 곱해서) 2-노름을 낸 것이 그 열의 반올림 수준이에요(`src/stardust/differentiate/_differences.py`의 `Differences.column`이 `noise[j]`에 적어요). 열의 2-노름이 그 16배 이하이면 열을 0으로 두고, 그러면 위의 판정이 그 모수를 겹친 모수로 빼요. 16배는 $f$ 자신의 계산 오차(sd의 vForce 함수는 몇 ulp, 많아야 8ulp)를 덮는 여유예요. 이 규칙은 nls만 켜요(`Differences.jacobian`의 `zero_noise=True`). 같은 차분을 쓰는 `approx_fprime`은 열을 그대로 돌려줘요.
+만큼 불확실해요(중앙 공식은 $\sum_o\lvert w_o\rvert = 18$). 이 값을 행마다 모아(가중치가 있으면 $\sqrt{w_i}$를 곱해서) 2-노름을 낸 것이 그 열의 반올림 수준이에요(`AccurateDiff`의 `column`이 `noise_[j]`에 적어요). 열의 2-노름이 그 16배 이하이면 열을 0으로 두고, 그러면 위의 판정이 그 모수를 겹친 모수로 빼요. 16배는 $f$ 자신의 계산 오차(sd의 vForce 함수는 몇 ulp, 많아야 8ulp)를 덮는 여유예요. 이 규칙은 nls만 켜요(`jacobian`의 `zero_noise=True`). 같은 차분을 쓰는 `approx_fprime`은 열을 그대로 돌려줘요.
 
-```python
-        # src/stardust/differentiate/_differences.py
-        if zero_noise:
-            # kept, a noise column has a direction of its own and can take the place of an
-            # identified parameter's column (a exp(-k t) + c at a large k: the k column was
-            # rounding noise constant over the rows, the direction of c's)
-            zero = [j for j in range(self.p) if float(_linalg.vector_norm(J[:, j])) <= _NOISE_FACTOR * self.noise[j]]
-            if zero:
-                keep = _sd.asarray([0.0 if j in zero else 1.0 for j in range(self.p)])
-                J = J * keep
+```cpp
+        // csrc/differentiate/accurate.hpp (AccurateDiff::jacobian)
+        // the weighted columns; with zero_noise a column within 16 times its rounding level is 0:
+        // kept, a noise column has a direction of its own and can take the place of an identified
+        // parameter's column (a exp(-k t) + c at a large k)
+        vec keep(static_cast<std::size_t>(p_), 1.0);
+        for (lint j = 0; j < p_; ++j) {
+            vec& col = cols[std::size_t(j)];
+            if (has_w_)
+                chunks(m, [&](lint i0, lint i1, lint) {
+                    for (lint i = i0; i < i1; ++i) col[std::size_t(i)] = col[std::size_t(i)] * w_[std::size_t(i)];
+                });
+            if (zero_noise && norm2(col.data(), m) <= kNoiseFactor * noise_[std::size_t(j)]) keep[std::size_t(j)] = 0.0;
+        }
 ```
 
 잡음 열을 그대로 두면 잡음도 자기 방향이 있어서, 식별되는 모수의 열 대신 남을 수 있어요. $a e^{-kt} + c$를 $k = 100$에서 시작하면 $t > 0$인 모든 행에서 $e^{-kt}$가 $c$의 ulp보다 작아요. 그래서 $k$의 열은 그 행들에서 거의 일정한 반올림 잡음이고, 그 방향은 $c$의 열(모두 1)과 같아요. 피벗 없는 QR은 앞 열을 남기므로 잡음인 $k$가 남고 $c$가 빠질 수 있어요. 잡음 열을 0으로 두면 빠지는 것은 $k$예요.
@@ -734,14 +741,14 @@ $x_{\text{new}}$에 NaN이 있거나 그 행의 $f$가 NaN인 행은 먼저 골�
 
 ```python
 >>> r.predict_interval(sd.asarray([100.0, 800.0]))
-array([[ 12.74499263840247, 12.835988260163083],
-       [ 84.89279618295112,  85.25510894276701]], dtype=float64)
+array([[12.744992638402529,  12.83598826016302],
+       [ 84.89279618295147,  85.25510894276677]], dtype=float64)
 >>> pf.predict_interval(sd.asarray([10.0]))
 array([[20.5, 20.5]], dtype=float64)
 >>> r.predict_interval(sd.asarray([100.0, math.nan, 800.0]))
-array([[ 12.74499263840247, 12.835988260163083],
+array([[12.744992638402529,  12.83598826016302],
        [               nan,                nan],
-       [ 84.89279618295112,  85.25510894276701]], dtype=float64)
+       [ 84.89279618295147,  85.25510894276677]], dtype=float64)
 ```
 
 ## GIL, 스레드, 결정성
@@ -753,22 +760,20 @@ array([[ 12.74499263840247, 12.835988260163083],
 
 ## f 호출의 비용
 
-차분 야코비안이면 $f$ 호출이 scipy `curve_fit`의 여러 배예요. 위 Misra1a(시작점 1, $p = 2$)의 103번은 이렇게 나뉘어요.
+차분 야코비안이면 $f$ 호출이 scipy `curve_fit`의 여러 배예요. 위 Misra1a(시작점 1, $p = 2$)의 95번은 이렇게 나뉘어요.
 
 | 부분 | 호출 |
 |---|---:|
 | 반복(lmder, 전진 차분 포함; scipy lm은 49번) | 51 |
 | 해의 값 1번 + 간격 고르기(모수 2개, 5점씩 단계마다) | 25 |
-| 가우스–뉴턴 3걸음 × (시험점 1번 + 야코비안 $4p$ = 8번) | 27 |
-| 합 | 103 |
+| 가우스–뉴턴 2걸음 × (시험점 1번 + 야코비안 $4p$ = 8번) + 마지막 걸음의 시험점 1번 | 19 |
+| 합 | 95 |
 
 일반적으로 간격 고르기가 $12p$–$16p$(중앙 차분만이면 상한 $48p$, 한쪽 차분으로 물러서면 그보다 많을 수 있어요), 야코비안마다 $4p$, 가우스–뉴턴 걸음이 보통 2–4번이에요. 이 가운데 반복과 다듬기의 걸음이 `max_nfev`의 상한 안이고, 해의 값과 간격 고르기는 그 위에 더해져요(위 예산 절). 해석적 `jac`을 주면 이 비용이 거의 사라져요(Misra1a 23번).
 
-차분 야코비안을 쓰면 $f$ 호출이 scipy lm의 5–7배예요. 모형이 $x \in [0.01, 5]$ 균등, 잡음은 신호 범위의 2%, `p0`는 참값의 1.1배이고, $p = 2$는 $a e^{-bx}$, $p = 4$는 네 모수 로지스틱, $p = 10$은 가우스 다섯 개의 합인 문제로 견주면(Apple M4 Pro, scipy 1.18.1, R 4.6.2) 이래요. sd의 스레드는 모형 안의 sd 연산과 QR에만 들어가요.
+차분 야코비안을 쓰면 $f$ 호출이 scipy lm의 몇 배예요. 반복 자체는 scipy와 비슷한 수이고, 나머지가 해의 정확한 야코비안의 간격 고르기와 다듬기 걸음마다의 야코비안이에요. 차분의 고리는 C++에서 돌아서 호출 사이의 비용은 작고, 시간은 거의 $f$를 부르는 횟수에 비례해요. sd의 스레드는 모형 안의 sd 연산과 QR에만 들어가요.
 
-- 차분일 때 sd 1스레드 시간은 scipy의 4–13배예요($n = 10^6$, $p = 10$에서 13.3 s와 0.99 s). $n = 10^6$에서는 10스레드가 모형의 sd 연산을 나눠 scipy 시간의 0.87–2.0배가 돼요.
-- 해석적 `jac`이면 nfev가 7–13(scipy 4–6)이고, $n = 10^6$에서 scipy `jac`과 같거나 1.4–1.5배 빨라요.
-- R `nls`(1스레드)보다는 $n = 10^6$, $p = 2, 4$에서 2.1배(10스레드) 빠르고 $p = 10$에서 1.5배 느려요.
+- 해석적 `jac`이면 간격 고르기와 다듬기의 차분이 사라져 호출 수가 scipy에 가까워져요.
 - 그 대가로 sd의 계수는 해에 반올림 수준(`jac`)이거나 차분의 정확도 수준($10^{-13}$–$10^{-10}$)이고, scipy와 R은 자기 멈춤 판정의 정밀도에서 멈춰요. 이 비용을 끄는 옵션은 없고, 사용자 `jac`이 그 비용의 대부분을 없애요.
 
 <Callout type="tip" title="빠르게 하려면">

@@ -12,17 +12,17 @@ import Op from '../../../components/fig/Op.astro';
 
 ## 한눈에 보기
 
-`x[key]`와 `x[key] = value`는 Python의 `__getitem__`, `__setitem__`이 C++ 함수 `getitem`, `setitem`(`csrc/array/ops/indexing.cpp`)을 바로 부르는 것으로 시작해요. Python 층에는 인덱싱 코드가 한 줄도 없어요. 키를 해석하는 일부터 원소를 옮기는 일까지 모두 C++에서 해요.
+`x[key]`는 타입 슬롯 `mp_subscript`가, `x[key] = value`는 Python의 `__setitem__`이 C++ 함수(`csrc/array/ops/indexing.cpp`의 `getitem_fast`·`getitem`, `setitem`)를 바로 부르는 것으로 시작해요. Python 층에는 인덱싱 코드가 한 줄도 없어요. 키를 해석하는 일부터 원소를 옮기는 일까지 모두 C++에서 해요.
 
 `getitem`은 세 단계로 일해요.
 
-1. 빠른 경로 시도(`leading_ints_fast`): 키가 `x[1]`, `x[1, 2]`처럼 앞쪽 축에 놓인 Python int뿐이면 키 해석을 건너뛰고 오프셋을 바로 계산해요.
+1. 빠른 경로 시도(`basic_fast`): 키가 `x[1]`, `x[1, 2]`, `x[::2]`, `x[:, 5]`처럼 앞쪽 축에 놓인 Python int와 slice뿐이면 키 해석을 건너뛰고 오프셋, shape, strides를 바로 계산해요.
 2. 키 해석(`make_plan`): 키의 항목을 하나씩 분류하고, 기본 항목(int, slice, `...`, `None`)을 적용해 **뷰**(`Plan::view`)를 만들어요. 고급 항목(정수 배열, bool 마스크)은 그 뷰의 연속한 축 범위로 남겨 둬요.
 3. 실행: 고급 항목이 없으면 뷰(또는 Python 스칼라)를 그대로 돌려줘요. 있으면 경우에 따라 다른 루프로 새 배열을 채워요.
 
 | 키의 모양 | 처리 | 결과 |
 |---|---|---|
-| 앞쪽 축의 Python int만 (`x[1, 2]`) | `leading_ints_fast`: 오프셋 직접 계산 | 원소(스칼라) 또는 뷰 |
+| 앞쪽 축의 Python int와 slice만 (`x[1, 2]`, `x[::2]`, `x[:, 5]`) | `basic_fast`: 오프셋, shape, strides 직접 계산 | 원소(스칼라) 또는 뷰 |
 | int, slice, `...`, `None` | `make_plan`: data 포인터·shape·strides만 다시 계산 | 뷰, 모든 축이 int면 스칼라 |
 | 1차원 뷰 + 정수 배열 하나 (`f[idx]`) | `gather_one`: 합친 루프, 병렬 | 새 배열 |
 | 정수 배열 하나 + 앞뒤 블록 (`m[:, rows]`) | `gather_take`: 결과 shape 위의 원소별 연산 하나 | 새 배열 |
@@ -34,7 +34,7 @@ import Op from '../../../components/fig/Op.astro';
 - 기본 인덱싱은 계산이지 복사가 아니에요. 결과는 같은 메모리를 다르게 읽는 "설명"일 뿐이라, 1GB 배열을 잘라도 비용은 축 수에만 비례해요.
 - 흔한 경우에는 합친 루프를 따로 둬요. 일반 경로는 어떤 키든 처리하지만 원소마다 하는 일이 많아요. `f[idx]`, `m[:, rows]`, `f[mask]`처럼 실제로 자주 쓰는 모양은 전용 루프로 보내요.
 - 쓰기 전에 모두 검사해요. `x[idx] = v`는 범위 밖 인덱스가 하나라도 있으면 아무것도 쓰지 않아요. 검사가 루프 밖에 있으니 루프에는 에러 경로가 없어요.
-- 병렬이어도 결과는 직렬과 비트까지 같아요. 마스크는 크기로만 정한 고정 청크로 나누고, 반복 인덱스가 있을 수 있는 scatter는 아예 나누지 않아요. 스레드 수에 따라 결과가 바뀌는 일이 없어요([스레드풀과 결정성](/internals/core/threads/)).
+- 병렬이어도 결과는 직렬과 비트까지 같아요. 마스크는 크기로만 정한 고정 청크로 나누고, 반복 인덱스가 있을 수 있는 scatter는 아예 나누지 않아요. 그래서 지금은 스레드 수에 따라 결과가 바뀌는 일도 없어요([스레드풀과 결정성](/internals/core/threads/)).
 
 ## 키 해석
 
@@ -134,29 +134,48 @@ $$
 
 마스크는 브로드캐스트하지 않아요. 마스크의 각 축 길이가 가리키는 축의 길이와 정확히 같아야 해요.
 
-### 빠른 경로: `leading_ints_fast`
+### 빠른 경로: `basic_fast`
 
-`x[1, 2]`나 `x[1]` 같은 호출은 흔하고, 일반 경로로 처리하면 시간 대부분을 오프셋 계산이 아니라 준비 작업(Items 만들기, Plan 만들기, 뷰 복사)에 써요. 그래서 키가 "앞쪽 축의 정확한 Python int"뿐이면 키 해석 전체를 건너뛰어요.
+`x[1, 2]`, `x[1]`, `x[::2]`, `x[:, 5]` 같은 호출은 흔하고, 일반 경로로 처리하면 시간 대부분을 오프셋 계산이 아니라 준비 작업(Items 만들기, Plan 만들기, 뷰 복사)에 써요. 그래서 키의 항목이 모두 정확한 Python int이거나 경계가 `None`·정확한 int인 slice이면 키 해석 전체를 건너뛰어요.
 
 ```cpp
-// csrc/array/ops/indexing.cpp, leading_ints_fast (줄인 발췌)
+// csrc/array/ops/indexing.cpp, basic_fast (줄인 발췌)
 for (Py_ssize_t d = 0; d < n; ++d) {
-    if (!PyLong_CheckExact(items[d])) return {};          // bool, numpy.int64 등은 일반 경로로
-    long long i = PyLong_AsLongLongAndOverflow(items[d], &overflow);
-    if (overflow) return {};
-    if (i < 0) i += a.shape[d];
-    if (i < 0 || i >= a.shape[d]) return {};               // 에러는 일반 경로가 낸다
-    p += i * a.strides[d];
+    PyObject* it = items[d];
+    if (PyLong_CheckExact(it)) {  // bool, numpy.int64 등은 일반 경로로
+        int overflow = 0;
+        long long i = PyLong_AsLongLongAndOverflow(it, &overflow);
+        if (overflow) return {};
+        if (i < 0) i += a.shape[d];
+        if (i < 0 || i >= a.shape[d]) return {};  // 에러는 일반 경로가 낸다
+        p += i * a.strides[d];
+    } else if (PySlice_Check(it)) {
+        auto* sl = reinterpret_cast<PySliceObject*>(it);
+        for (PyObject* b : {sl->start, sl->stop, sl->step})
+            if (b != Py_None && !PyLong_CheckExact(b)) return {};  // __index__는 코드를 실행할 수 있어요
+        Py_ssize_t start, stop, step;
+        if (PySlice_Unpack(it, &start, &stop, &step) < 0) {
+            PyErr_Clear();  // step 0: the general path raises it
+            return {};
+        }
+        const Py_ssize_t len = PySlice_AdjustIndices(a.shape[d], &start, &stop, step);
+        if (len > 0) p += start * a.strides[d];  // an empty slice leaves the pointer alone
+        shape[nd] = len;
+        strides[nd] = a.strides[d] * step;
+        ++nd;
+    } else {
+        return {};
+    }
 }
-if (n == a.ndim) return load_python(a.dtype, p);           // 원소 하나: Python 스칼라
-// 아니면 남은 축의 뷰
+if (nd == 0 && n == a.ndim) return load_python(a.dtype, p);  // 원소 하나: Python 스칼라
+// 아니면 뷰: slice 축의 shape·strides 뒤에 남은 축을 이어 붙여요
 ```
 
-- `PyLong_CheckExact`는 하위 클래스를 받지 않아요. `bool`은 `int`의 하위 클래스라 여기서 저절로 빠지고, 일반 경로에서 정해진 에러를 내요.
-- 실패하면 에러를 내지 않고 빈 객체를 돌려줘요. 범위 밖 인덱스나 너무 큰 int는 일반 경로가 다시 처리해 평소와 똑같은 메시지를 내요. 빠른 경로에 에러 메시지를 따로 두면 두 경로의 메시지가 어긋날 수 있어요.
-- 일반 경로로 가면 `x[1, 2]`에 58ns가 들어요. 빠른 경로로는 25ns이고, numpy는 33ns예요. 남은 비용은 [작은 배열의 호출 비용](/internals/array/small-arrays/)에서 다뤄요.
+- `PyLong_CheckExact`는 하위 클래스를 받지 않아요. `bool`은 `int`의 하위 클래스라 여기서 저절로 빠지고, 일반 경로에서 정해진 에러를 내요. slice의 경계도 `None`이나 정확한 int일 때만 이 길로 가요. `__index__`를 가진 객체는 사용자 코드를 실행할 수 있기 때문이에요.
+- 실패하면 에러를 내지 않고 빈 객체를 돌려줘요. 범위 밖 인덱스, 너무 큰 int, step 0은 일반 경로가 다시 처리해 평소와 똑같은 메시지를 내요. 빠른 경로에 에러 메시지를 따로 두면 두 경로의 메시지가 어긋날 수 있어요.
+- `x[key]`는 타입 슬롯 `mp_subscript`가 먼저 받아 이 함수를 불러요. 그 밖의 키와 모든 에러는 바인딩한 `__getitem__`(nanobind의 인자 처리와 예외 변환)으로 넘겨요. 슬롯과 비용은 [작은 배열의 호출 비용](/internals/array/small-arrays/)에서 다뤄요.
 
-`for v in x`처럼 배열을 반복할 때는 키를 아예 만들지 않아요. 반복자가 `item_along_axis0(x, i)`를 불러 축 0을 한 칸씩 걸어요. 하는 일은 `x[i]`의 빠른 경로와 같아요.
+`for v in x`처럼 배열을 반복할 때는 키를 아예 만들지 않아요. 반복자(`tp_iternext` 슬롯)가 `item_along_axis0(x, i)`를 불러 축 0을 한 칸씩 걸어요. 하는 일은 `x[i]`의 빠른 경로와 같아요.
 
 ## 기본 인덱싱: 뷰 계산
 
@@ -376,7 +395,7 @@ if (bad) c.bad->store(true, std::memory_order_relaxed);
 
 - 이 루프도 이터레이터 위에서 돌아서 큰 인덱스 배열이면 여러 스레드로 나뉘어요.
 - 루프 안에서 멈추지 않으니 분기가 없고, `bad |= ...`는 벡터 비교와 OR로 바뀌어요.
-- 나쁜 것이 있으면 그때만 C 순서로 다시 훑어 첫 번째 나쁜 인덱스로 메시지를 만들어요. 그래서 메시지는 스레드 수와 무관하게 언제나 같은 인덱스를 가리켜요.
+- 나쁜 것이 있으면 그때만 C 순서로 다시 훑어 첫 번째 나쁜 인덱스로 메시지를 만들어요. 그래서 메시지는 스레드 수가 몇이든 언제나 같은 인덱스를 가리켜요.
 
 ```python
 >>> import stardust as sd
@@ -575,14 +594,13 @@ for (size_t d = 0; d < value.size(); ++d)
 
 | 연산 | 1스레드 | 10스레드 | numpy | 원인 |
 |---|---:|---:|---:|---|
-| `x[1, 2]` | 25ns | — | 33ns | 키 해석을 건너뛰는 빠른 경로, Python `float`을 돌려줌 |
 | `f[idx]` (gather) | 733µs | 81µs | 757µs | 무작위 읽기라 캐시 미스가 지배. 합친 루프라 명령어 수는 적지만 메모리 지연은 같음 |
 | `g[idx] = 1.0` (scatter) | 1.04ms | 직렬 | 954µs | 검사 패스가 따로 있음(전부 아니면 전무의 대가). 쓰기는 직렬 |
 | `f[b]` (절반 True) | 324µs | 48µs | 3054µs | 분기 없는 압축 + 조각별 세 갈래 |
 | `f[b] = 0.0` (절반 True) | 412µs | 80µs | 2711µs | 분기 없는 마스크 선택(`expand_chunk`) |
 | `m[rows]` (행 1000개) | 111µs | 32µs | 143µs | 행마다 오프셋 한 번과 `memcpy`(`gather_take`) |
 
-뷰를 만드는 인덱싱(`f[1000:2000]`, `f[::2]`, `m[:, 5]`)은 뷰 객체 하나를 만드는 고정 비용이 대부분이에요. 그 비용의 큰 몫은 배열 객체의 할당과 등록이에요([작은 배열의 호출 비용](/internals/array/small-arrays/)). 마스크는 세기와 채우기가 모두 청크 단위로 병렬이라 10스레드에서 크게 빨라지고, scatter는 쓰기를 나누지 않아요.
+`x[1, 2]`와 뷰를 만드는 인덱싱(`f[1000:2000]`, `f[::2]`, `m[:, 5]`)은 키 해석을 건너뛰는 빠른 경로와 타입 슬롯, 인스턴스 풀 덕분에 numpy보다 빠르거나 같아요. 남는 것은 뷰 객체 하나를 만드는 고정 비용이에요([작은 배열의 호출 비용](/internals/array/small-arrays/)). 마스크는 세기와 채우기가 모두 청크 단위로 병렬이라 10스레드에서 크게 빨라지고, scatter는 쓰기를 나누지 않아요.
 
 시간·공간 복잡도예요. $N$은 x의 원소 수, $|B|$는 인덱스 점의 수, $L$은 블록 하나의 원소 수예요.
 
@@ -601,7 +619,7 @@ for (size_t d = 0; d < value.size(); ++d)
 - gather, scatter, 마스크 압축은 원소를 그 타입 그대로 복사해요. NaN의 페이로드, `-0.0`의 부호도 보존돼요.
 - 스칼라 마스크 대입은 원시 워드에 비트 선택을 하므로, False 원소는 비트 하나 바뀌지 않아요.
 - 값의 dtype이 대상과 다르면(위로만 변환, 예: int64 값을 float64 배열에) 캐스트 커널이 변환해요. 변환 결과는 numpy의 캐스트와 같아요([변환과 승격](/internals/array/conversion/)).
-- 어떤 경로든 결과는 스레드 수와 무관해요. 마스크는 고정 청크와 누적합으로, gather는 출력 원소의 독립성으로, scatter는 직렬 쓰기로 이를 지켜요. 에러 메시지도 언제나 C 순서로 첫 번째 나쁜 인덱스를 가리켜요.
+- 어떤 경로든 결과는 지금 스레드 수와 상관없어요. 마스크는 고정 청크와 누적합으로, gather는 출력 원소의 독립성으로, scatter는 직렬 쓰기로 이를 지켜요. 에러 메시지도 언제나 C 순서로 첫 번째 나쁜 인덱스를 가리켜요.
 
 ## 참고 문헌
 

@@ -71,7 +71,7 @@ import Callout from '../../../components/Callout.astro';
 >>> import math
 >>> r = sd.differentiate.derivative(sd.exp, 1.0)
 >>> r
-DifferentiateResult(df=2.71828, error=7.13118e-12, converged=True, n_iter=2, nfev=11)
+DifferentiateResult(df=2.71828, error=7.1303e-12, converged=True, n_iter=2, nfev=11)
 >>> r.df, abs(r.df - math.e) / math.e
 (2.718281828459014, 1.1435990324493589e-14)
 ```
@@ -130,7 +130,7 @@ array([2, 2, 3, 2, 2], dtype=int64)
 >>> r.df
 array([0.10798193302610247, 0.24197072451946838,  0.1760326633821493], dtype=float64)
 >>> sd.exp(-0.5 * (1.0 / s)**2) / (s * math.sqrt(2 * math.pi))
-array([0.10798193302637613, 0.24197072451914337, 0.17603266338214973], dtype=float64)
+array([0.10798193302637613, 0.24197072451914337, 0.17603266338214976], dtype=float64)
 ```
 
 `f`는 `f(x, *args)`로 불리고, `args`의 값은 첫 호출에서 $(k,)$, 다음부터 $(k, 1)$로 줄여 받아요. 그래서 `x`의 점들과 그대로 브로드캐스트돼요.
@@ -203,9 +203,9 @@ ValueError: derivative(): 'step_factor' must be a finite number > 0 other than 1
 DifferentiateResult(df=nan, error=nan, converged=False, n_iter=1, nfev=9)
 >>> r = sd.differentiate.derivative(e1, 1.0, step_direction=1)
 >>> r
-DifferentiateResult(df=2.71828, error=2.04636e-12, converged=True, n_iter=2, nfev=11)
+DifferentiateResult(df=2.71828, error=1.36424e-12, converged=True, n_iter=2, nfev=11)
 >>> abs(r.df - math.e) / math.e
-1.4262313647547006e-13
+4.772075391120825e-13
 ```
 
 한쪽 공식은 같은 차수의 중앙 공식보다 반올림에 약해서 조금 덜 정확해요. 끝 가까이에서 도함수가 빠르게 변하면 처음 간격도 줄여야 해요. $\log x$의 $x = 10^{-3}$에서 오른쪽으로만 가도 처음 간격 0.5는 $x$보다 500배 커서 맞추지 못해요.
@@ -243,7 +243,7 @@ array([-3,  0, -3], dtype=int64)
 4 0 6 15 1.2e-10
 6 0 3 11 1.2e-11
 8 0 2 11 1.1e-14
-12 0 2 15 5.1e-15
+12 0 2 15 7.7e-15
 ```
 
 2차 공식은 10번으로 모자라 status −2예요. 매끄러운 함수에서는 기본 8차가 대개 가장 적은 호출로 가장 정확해요. 차수가 높은 공식은 멀리 떨어진 점까지 쓰므로, 함수가 간격 안에서 매끄럽지 않으면 낮은 차수와 작은 간격이 나을 수 있어요.
@@ -252,7 +252,7 @@ array([-3,  0, -3], dtype=int64)
 
 ```python
 >>> sd.differentiate.derivative(sd.exp, 1.0, order=18)
-DifferentiateResult(df=2.71828, error=1.82521e-13, converged=True, n_iter=2, nfev=21)
+DifferentiateResult(df=2.71828, error=1.47438e-13, converged=True, n_iter=2, nfev=21)
 >>> sd.differentiate.derivative(sd.exp, 1.0, order=20)
 Traceback (most recent call last):
     ...
@@ -267,8 +267,13 @@ ValueError: derivative(): 'order' must be at most 18
 
 ```python
 >>> sd.differentiate.derivative(sd.exp, 1.0, rtol=1e-15)
-DifferentiateResult(df=2.71828, error=1.81188e-13, converged=False, n_iter=7, nfev=21)
+DifferentiateResult(df=2.71828, error=7.77156e-14, converged=False, n_iter=10, nfev=27)
+>>> r = sd.differentiate.derivative(sd.exp, 1.0, rtol=1e-15, max_iter=20)
+>>> r, r.status
+(DifferentiateResult(df=2.71828, error=1.31495e-12, converged=False, n_iter=11, nfev=29), -1)
 ```
+
+기본 `max_iter` 10번 안에서는 오차 추정이 반올림 수준에서 오르내리기만 해서 −2예요. 상한을 늘리면 열한째 반복에 오차 추정이 직전의 10배를 넘어 −1로 멈춰요. 그때의 `df`는 상대 $6 \times 10^{-13}$으로, 둘째 반복의 $10^{-14}$보다 덜 정확해요.
 
 도함수가 0 근처면 상대 판정을 맞출 수 없어요. 0 근처의 결과에 의미가 있는 절대 크기를 `atol`로 줘요. 함숫값이 도함수보다 아주 클 때도 그래요. $x^2 + 1$의 $x = 10^{-10}$에서 도함수는 $2 \times 10^{-10}$인데, 함숫값 1의 반올림이 그보다 커서 결과가 상대 $2 \times 10^{-4}$나 틀리고 수렴하지 못해요.
 

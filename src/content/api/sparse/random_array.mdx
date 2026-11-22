@@ -85,7 +85,7 @@ Traceback (most recent call last):
 TypeError: random_array(): 'rng' must be an sd.random.Generator (sd.random.default_rng(seed)), not NoneType
 ```
 
-같은 시드로 만든 생성기는 같은 배열을 만들어요. 컴퓨터의 스레드 수와도 상관없어요.
+같은 시드로 만든 생성기는 같은 배열을 만들어요. 지금은 컴퓨터의 스레드 수와도 상관없어요(약속은 아니에요).
 
 ```python
 >>> B = sd.sparse.random_array((3, 4), density=0.25, rng=sd.random.default_rng(0))

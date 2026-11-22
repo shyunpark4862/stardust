@@ -100,7 +100,7 @@ array([nan, 1.0, 2.0], dtype=float64)
 >>> a.ss_diff
 array([              nan, 937.9144743034867, 37.53778899974077], dtype=float64)
 >>> a.pvalue
-array([                  nan, 7.346614154818949e-10,   0.17936185532426896], dtype=float64)
+array([                  nan, 7.346614154818953e-10,   0.17936185532426907], dtype=float64)
 ```
 
 라디오를 더한 둘째 줄은 p값이 아주 작고, 신문과 SNS를 더한 셋째 줄은 0.18이에요. TV와 라디오까지는 필요하고 신문과 SNS는 필요하지 않다는 판단이에요.
@@ -161,8 +161,8 @@ Type I(`typ=1`, 기본값)은 절편만의 모형에서 시작해 항을 주어�
 array([ 872.2034336651993,   937.914474303487, 2.2355441153285445,
         35.30224488441224, 254.72664603696074], dtype=float64)
 >>> t1.pvalue
-array([1.5027935367212786e-09,  7.346614154818927e-10,
-           0.6435511801530118,    0.07448970648753586,
+array([1.5027935367212794e-09,  7.346614154818931e-10,
+           0.6435511801530118,    0.07448970648753589,
                           nan], dtype=float64)
 >>> float(sd.sum(t1.sum_sq)), m4.centered_tss
 (2102.3823430053876, 2102.3823430053876)
@@ -185,8 +185,9 @@ Type I의 몫은 **순서에 달려 있어요**. 설명변수끼리 상관이 �
 array([177.00653746221676,  7.536326060806327,  732.5631681558805,
          930.549665289524, 254.72664603696074], dtype=float64)
 >>> p1.pvalue
-array([0.0003214890076908037,    0.3979461724962051, 8.005036005906393e-09,
-       7.944162049469485e-10,                   nan], dtype=float64)
+array([0.00032148900769080383,      0.397946172496205,
+        8.005036005906397e-09,  7.944162049469489e-10,
+                          nan], dtype=float64)
 ```
 
 `terms`의 순서가 넣는 순서예요. Type I은 "이 순서로 쌓는다"는 물음에 맞는 표라서, 순서에 뜻이 있을 때(통제할 변수를 먼저, 관심 있는 변수를 나중에) 써요.
@@ -198,8 +199,8 @@ Type III(`typ=3`)은 항마다 "다른 항이 모두 있을 때 이 항의 계�
 ```python
 >>> t3 = sd.regression.anova(m4, typ=3)
 >>> t3.pvalue
-array([2.408974136094428e-10, 7.944162049469485e-10,    0.7437569746795544,
-         0.07448970648753586,                   nan], dtype=float64)
+array([2.408974136094429e-10, 7.944162049469489e-10,    0.7437569746795543,
+         0.07448970648753592,                   nan], dtype=float64)
 >>> t3.statistic[0], m4.tvalues[1] ** 2
 (102.86641834938669, 102.86641834938666)
 >>> drop_tv = sd.regression.ols(df['sales'], df[['radio', 'paper', 'sns']])
@@ -211,8 +212,8 @@ Type III의 `sum_sq`는 그 항을 뺐을 때 늘어나는 잔차 제곱합이�
 
 ```python
 >>> t3.sum_sq
-array([1048.1127094389658,  930.5496652895241, 1.1131264267730816,
-        35.30224488441224, 254.72664603696074], dtype=float64)
+array([1048.1127094389658,  930.5496652895241, 1.1131264267730812,
+        35.30224488441223, 254.72664603696074], dtype=float64)
 >>> float(sd.sum(t3.sum_sq))
 2269.804392076636
 ```
@@ -277,7 +278,7 @@ array([345.16867824143077, 172.83283669761184, 19.925287330385977,
 array([60.009254976007234, 25.740770319167744, 19.925287330385974,
         91.58821440633955], dtype=float64)
 >>> c3.pvalue
-array([0.008334942045675276,  0.03222877909354095,  0.15412224098758162,
+array([0.008334942045675274, 0.032228779093540945,  0.15412224098758162,
                         nan], dtype=float64)
 ```
 
@@ -290,7 +291,7 @@ array([0.008334942045675276,  0.03222877909354095,  0.15412224098758162,
 ```python
 >>> one = sd.regression.anova(sd.regression.ols(yld, d[['fB', 'fC']]), terms=[['fB', 'fC']])
 >>> one.statistic[0], one.pvalue[0]
-(13.352925455491766, 0.00015968238240301192)
+(13.352925455491766, 0.00015968238240301197)
 >>> sd.htest.f_oneway(*[yld[[i for i, f in enumerate(fert) if f == L]] for L in 'ABC'])
 FOnewayResult(statistic=13.3529, pvalue=0.000159682, df_num=2, df_denom=22)
 ```
@@ -324,7 +325,7 @@ FOnewayResult(statistic=13.3529, pvalue=0.000159682, df_num=2, df_denom=22)
 (91.58821440633955, 91.58821440633955)
 >>> terms_s = [['fA', 'fB'], ['water'], ['fA:water', 'fB:water']]
 >>> sd.regression.anova(crop_s, typ=3, terms=terms_s).statistic
-array([24.596959798935277, 32.013341419157136, 2.0667531392070075,
+array([24.596959798935274, 32.013341419157136,  2.066753139207007,
                       nan], dtype=float64)
 >>> c3.statistic
 array([ 6.224468136727954,  5.339929806845698, 2.0667531392070075,
@@ -392,11 +393,11 @@ Type I의 `dose` 줄(34.2)은 절편만의 모형에 투약량을 더할 때 줄
 >>> gt.test
 'F'
 >>> gt.statistic
-array([ 47.21253034846571, 0.3551935357588285,                nan], dtype=float64)
+array([  47.21253034846574, 0.35519353575882046,                 nan], dtype=float64)
 >>> gt.sum_sq[0] / gm.scale, gt.mean_sq[2], gm.scale
-(47.21253034846571, 0.21677217507770194, 0.21677217507770194)
+(47.21253034846574, 0.21677217507770186, 0.21677217507770186)
 >>> gt.mean_sq[0] / gt.mean_sq[2]
-47.21253034846571
+47.21253034846574
 >>> gt.sum_sq[2] / gt.df[2]
 0.20113895387891895
 ```
@@ -417,9 +418,8 @@ ValueError: anova(): the binomial model's scale is fixed: its deviance test is t
 ```python
 >>> h = sd.regression.ols(df['sales'], df[['tv', 'radio', 'paper', 'sns']], cov_type='HC3')
 >>> sd.regression.anova(h, typ=3).pvalue
-array([ 4.612573411809487e-09, 1.7356371413612172e-11,
-           0.7540557795238723,    0.02832897728757304,
-                          nan], dtype=float64)
+array([4.612573411809489e-09, 1.735637141361218e-11,    0.7540557795238721,
+         0.02832897728757305,                   nan], dtype=float64)
 >>> sd.regression.anova(h)
 Traceback (most recent call last):
     ...
@@ -440,8 +440,8 @@ ValueError: anova(): Type I sums of squares do not use the robust covariance (co
 >>> sd.regression.anova(ra).df
 array([1.0, 0.0, 1.0, 5.0], dtype=float64)
 >>> sd.regression.anova(ra, typ=3).statistic
-array([ 4367.851569284554,                nan, 0.6277630080715834,
-                      nan], dtype=float64)
+array([4367.851569284554,               nan, 0.627763008071583,
+                     nan], dtype=float64)
 >>> Y = sd.stack([sales, sales + paper], axis=0)
 >>> sd.regression.anova(sd.regression.ols(Y, tv))
 Traceback (most recent call last):

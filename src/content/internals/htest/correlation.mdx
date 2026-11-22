@@ -13,7 +13,7 @@ import AccuracySummary from '../../../components/fig/AccuracySummary.astro';
 
 | 함수 | 커널 | 통계량을 정확하게 만드는 것 | p값 |
 |---|---|---|---|
-| [`pearsonr`](/api/htest/pearsonr/), [`pointbiserialr`](/api/htest/pointbiserialr/) | `pearson` | 2의 거듭제곱 단위, double-double 제곱합, 잔차로 만든 1 − r² | r의 베타 분포 $I_q((n-2)/2, 1/2)$ |
+| [`pearsonr`](/api/htest/pearsonr/), [`pointbiserialr`](/api/htest/pointbiserialr/) | `pearson` | 2의 거듭제곱 단위, double-double 교차곱 합, 잔차로 만든 1 − r² | r의 베타 분포 $I_q((n-2)/2, 1/2)$ |
 | [`spearmanrho`](/api/htest/spearmanrho/), [`spearmanr`](/api/htest/spearmanr/) | `pearson`(순위), `corr_matrix` | 정수 중간 순위 | 같은 베타 분포 |
 | [`kendalltau`](/api/htest/kendalltau/) | `kendall` | 역순 쌍과 동점 쌍(128비트 정수) | 정확(Mahonian 수) 또는 정규 |
 | [`weightedtau`](/api/htest/weightedtau/) | `weightedtau` | double-double 가중 합 | 없음(NaN) |
@@ -34,14 +34,14 @@ $$
 
 ### 단위와 제곱합
 
-줄마다 x와 y를 따로 $2^{-e}$배 해요(e는 가장 큰 절댓값의 지수). 2의 거듭제곱 곱이라 정확하고, 10³⁰⁰ 같은 값의 제곱도 넘치지 않아요. 상관은 각 변수의 배율과 상관없으므로 단위를 되돌릴 필요도 없어요. 가장 큰 절댓값이 서브노멀 크기(지수가 −1000 아래)인 변수는 $2^{-e}$가 double을 넘치므로, 먼저 그 변수에 $2^{600}$을 곱한 사본을 만들고 같은 계산을 해요. 평균은 double-double이고, 중심화한 값 $x_c = x - \bar x$도 TwoSum으로 double-double이라 오프셋이 커도(10⁹ 근처의 데이터) 차가 정확해요. $S_{xx}, S_{yy}, S_{xy}$는 double-double 곱의 double-double 합이에요. 합은 고정된 크기의 블록마다 네 줄의 사슬로 더해(NEON으로 두 칸씩) 블록 순서대로 모으므로, 긴 줄 하나도 스레드풀에서 나눠 돌고 스레드 수와 상관없이 같은 비트예요.
+줄마다 x와 y를 따로 $2^{-e}$배 해요(e는 가장 큰 절댓값의 지수). 2의 거듭제곱 곱이라 정확하고, 10³⁰⁰ 같은 값의 제곱도 넘치지 않아요. 상관은 각 변수의 배율과 상관없으므로 단위를 되돌릴 필요도 없어요. 가장 큰 절댓값이 서브노멀 크기(지수가 −1000 아래)인 변수는 $2^{-e}$가 double을 넘치므로, 먼저 그 변수에 $2^{600}$을 곱한 사본을 만들고 같은 계산을 해요. 평균은 double-double이고, 중심화한 값 $x_c = x - \bar x$도 TwoSum으로 double-double이라 오프셋이 커도(10⁹ 근처의 데이터) 차가 정확해요. $S_{xy}$는 r이 0에 가까울수록 서로 지워지는 합이라 double-double 곱의 double-double 합이에요. $S_{xx}$와 $S_{yy}$는 양수인 제곱의 합이라 중심화한 값을 double로 반올림해 제곱하고 고정된 나무로 더해요(64개를 NEON 여덟 칸에 여덟 개씩, 64개의 합끼리 짝지어; [제곱합의 double 나무](/internals/htest/lanes/#제곱합의-double-나무)와 같은 꼴). 이 합은 참값의 약 20ε 안이라 r과 $q = 1 - r^2$(r² < 1/2에서)도 4 × 10⁻¹⁵ 안에 머물러요. 합은 고정된 크기의 블록마다 모아(교차곱은 네 줄의 사슬, NEON으로 두 칸씩) 블록 순서대로 더하므로, 긴 줄 하나도 스레드풀에서 나눠 돌고 지금은 스레드 수와 상관없이 같은 비트예요.
 
 ### q를 만드는 두 갈래
 
 r = $S_{xy}/\sqrt{S_{xx}S_{yy}}$는 double-double이에요. 그다음 q는 r²의 크기에 따라 두 갈래예요.
 
 - $r^2 < 1/2$: double-double r에서 $1 - r^2$. q가 1/2보다 커서 상쇄가 없어요.
-- $r^2 \ge 1/2$: 중심화한 y를 중심화한 x에 사영한 잔차 $e = y_c - (S_{xy}/S_{xx})x_c$로 $q = \lVert e\rVert^2/S_{yy}$. 회귀의 $1 - R^2$을 잔차 제곱합으로 얻는 것과 같은 방법이에요.
+- $r^2 \ge 1/2$: 중심화한 y를 중심화한 x에 사영한 잔차 $e = y_c - (S_{xy}/S_{xx})x_c$로 $q = \lVert e\rVert^2/S_{yy}$. 회귀의 $1 - R^2$을 잔차 제곱합으로 얻는 것과 같은 방법이에요. 이 갈래는 세 합을 모두 double-double로 다시 구해서 써요. 잔차 제곱합은 $q\,S_{yy}$인데 기울기 $b = S_{xy}/S_{xx}$가 d만큼 틀리면 잔차 제곱합에 $d^2 S_{xx}$가 더해져서, q가 작을 때는 b에 $S_{xx}$의 모든 자리가 필요하기 때문이에요.
 
 ```cpp
     // csrc/htest/correlation.cpp
@@ -51,7 +51,19 @@ r = $S_{xy}/\sqrt{S_{xx}S_{yy}}$는 double-double이에요. 그다음 q는 r²�
         o.w = w;
         o.q = DD{1.0, 0.0} - w;
     } else {
-        const DD b = Sxy / Sxx;
+        // (the products again, all in double-doubles: the residuals' sum is q times Syy, and a
+        // slope off by d adds d^2 Sxx to it, so b needs Sxx's every digit when q is small)
+        Acc sd2[3];
+        block_sums<3>(n, sd2, [&](std::int64_t j0, std::int64_t j1, Acc4* a) {
+            for4(products_dd_neon(x, y, fx, fy, mxd, myd, j0, j1, a), j1, [&](std::int64_t j, auto k) {
+                const DD u = xc(j), v = yc(j);
+                const DD uu = u * u, vv = v * v, uv = u * v;
+                a[0].c[k].add(uu.hi, uu.lo);
+                a[1].c[k].add(vv.hi, vv.lo);
+                a[2].c[k].add(uv.hi, uv.lo);
+            });
+        });
+        const DD b = sd2[2].value() / sd2[0].value();
         Acc s3[1];
         block_sums<1>(n, s3, [&](std::int64_t j0, std::int64_t j1, Acc4* a) {
             for4(residuals_neon(x, y, fx, fy, mxd, myd, b, j0, j1, a), j1, [&](std::int64_t j, auto k) {
@@ -60,14 +72,14 @@ r = $S_{xy}/\sqrt{S_{xx}S_{yy}}$는 double-double이에요. 그다음 q는 r²�
                 a[0].c[k].add(e2.hi, e2.lo);
             });
         });
-        o.q = s3[0].value() / Syy;
+        o.q = s3[0].value() / sd2[1].value();
         if (o.q.hi > 0.5) o.q = DD{1.0, 0.0} - w;  // (rounding past the branch's side: take 1 - r^2)
         if (o.q.hi < 0.0) o.q = DD{0.0, 0.0};
         o.w = DD{1.0, 0.0} - o.q;
     }
 ```
 
-잔차 꼴은 각 잔차를 double-double로 만들어 제곱해 더하므로 q의 상대오차가 약 $2^{-105}/\sqrt q$예요. $1 - r^2 = 10^{-18}$(r = 1 − 5·10⁻¹⁹)에서도 q의 자릿수가 남아요. 중심화한 값은 저장하지 않고 이 셋째 훑기에서 같은 식으로 다시 만들어요. 같은 연산이라 같은 비트이고 메모리가 들지 않아요.
+잔차 꼴은 각 잔차를 double-double로 만들어 제곱해 더하므로 q의 상대오차가 약 $2^{-105}/\sqrt q$예요. $1 - r^2 = 10^{-18}$(r = 1 − 5·10⁻¹⁹)에서도 q의 자릿수가 남아요. 중심화한 값은 저장하지 않고 다시 더하는 훑기와 잔차의 훑기에서 같은 식으로 다시 만들어요. 같은 연산이라 같은 비트이고 메모리가 들지 않아요.
 
 ### p값과 Fisher z
 
@@ -296,7 +308,7 @@ y가 x의 대칭인 함수라 Pearson의 r은 0이지만 ξ는 의존을 잡아�
 
 ## 정확도
 
-통계량은 정확한 유리수(나 그 제곱근)를 한 번 반올림한 값이라 상대 1.1e-16 안이에요. Pearson·Spearman의 p값은 q = 1 − r²에 대한 조건수로 재서, $1 - r^2 = 10^{-18}$의 깊은 상관과 10⁻²²⁰의 꼬리까지 6.7e-16 안이에요. Kendall의 정확 분포는 깊은 꼬리 $2/60!$, $200/100!$까지 맞아요. 참값은 r²과 1 − r²을 정확한 유리수로, p값을 Arb(구간 산술)의 불완전 베타로, Kendall의 개수를 쌍을 하나씩 센 정수와 Mahonian 수의 정수 꼬리로 만든 것이에요.
+통계량은 상대 1.8e-16 안이에요. Pearson의 r은 제곱합의 double 나무 때문에 반올림 몇 번이고, 다른 통계량은 정확한 유리수(나 그 제곱근)를 한 번 반올림한 값이에요. Pearson·Spearman의 p값은 q = 1 − r²에 대한 조건수로 재서, $1 - r^2 = 10^{-18}$의 깊은 상관과 10⁻²²⁰의 꼬리까지 1.6e-15 안이에요. Kendall의 정확 분포는 깊은 꼬리 $2/60!$, $200/100!$까지 맞아요. 참값은 r²과 1 − r²을 정확한 유리수로, p값을 Arb(구간 산술)의 불완전 베타로, Kendall의 개수를 쌍을 하나씩 센 정수와 Mahonian 수의 정수 꼬리로 만든 것이에요.
 
 <AccuracySummary area="htest" names={['pearsonr', 'spearmanrho', 'kendalltau', 'weightedtau', 'somersd', 'chatterjeexi']} caption="상관 검정의 정확도. pearsonr의 conf_int는 Fisher z 구간이에요. scipy·R 열의 큰 값은 r ≈ 1의 p값(1 − r²의 상쇄)에서 나와요." />
 

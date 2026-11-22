@@ -16,14 +16,14 @@ import Op from '../../../components/fig/Op.astro';
 
 설계의 뼈대는 네 가지예요.
 
-1. dtype마다 계산하는 곳이 달라요. float64와 complex128은 Apple Accelerate의 BLAS(Basic Linear Algebra Subprograms, 행렬·벡터 연산의 표준 인터페이스)에 맡기고, BLAS가 없는 int64(그리고 int64로 계산하는 bool)는 직접 짠 루프로 계산해요.
+1. dtype마다 계산하는 곳이 달라요. float64와 complex128은 Apple Accelerate의 BLAS(Basic Linear Algebra Subprograms, 행렬·벡터 연산의 표준 인터페이스)에 맡기고, BLAS가 없는 int64(그리고 int64로 계산하는 bool)는 직접 짠 루프로 계산해요. 곱셈-덧셈이 512개 이하인 2차원 float64 행렬 둘의 곱은 BLAS를 부르지 않고 자체 FMA 커널로 계산해요.
 2. 메모리를 되도록 옮기지 않아요. BLAS는 "포인터, leading dimension, 전치 플래그"로 행렬을 읽어요. 행이든 열이든 한 방향이 연속이면 그 표현으로 바로 넘기고, 그렇지 않을 때만 복사해요.
-3. 행렬 하나는 언제나 한 번에, 한 스레드에서 계산해요. 배치를 어떻게 나누든, 스레드가 몇 개든 결과 비트가 같아요.
+3. 행렬 하나는 언제나 한 번에, 한 스레드에서 계산해요. 그래서 배치를 어떻게 나누든 결과 비트가 같아요.
 4. 두 스레드풀이 부딪치지 않게 해요. Accelerate는 큰 행렬에서 자기 스레드를 써요. 그래서 큰 행렬의 배치는 차례로 돌리고, Accelerate가 한 스레드로 도는 작은 행렬의 배치만 stardust의 풀에 나눠요.
 
 | 계산 dtype | 행렬 × 행렬 | 한 행 또는 한 열 | 벡터 · 벡터 | 배치 병렬 |
 |---|---|---|---|---|
-| float64 | `cblas_dgemm` | `cblas_dgemv` | `cblas_ddot` | 작은 행렬(곱셈-덧셈 $256^3$개 이하)만 풀에서 |
+| float64 | `cblas_dgemm` (2차원 둘이고 곱셈-덧셈 512개 이하면 자체 `tiny_matmul`) | `cblas_dgemv` | `cblas_ddot` | 작은 행렬(곱셈-덧셈 $256^3$개 이하)만 풀에서 |
 | complex128 | `cblas_zgemm` | `cblas_zgemv` | `cblas_zdotu_sub` | 같음 |
 | int64, bool | 자체 i-k-j 루프 | 같은 루프 | 같은 루프 | 출력 행 묶음을 풀에서 |
 
@@ -31,7 +31,7 @@ import Op from '../../../components/fig/Op.astro';
 
 1. 두 인자가 `sd.ndarray`인지 확인해요(Python 스칼라는 받지 않아요).
 2. 계산 dtype `d`를 정하고, dtype이 다른 피연산자는 `d`로 바꾼 복사본을 만들어요.
-3. 마지막 두 축(벡터는 한 축)에서 `m, k, n`을 읽고 `k`가 맞는지 확인해요.
+3. 마지막 두 축(벡터는 한 축)에서 `m, k, n`을 읽고 `k`가 맞는지 확인해요. float64 2차원 둘이고 $m n k \le 512$이면 여기서 자체 커널로 계산하고 끝나요.
 4. 앞쪽 배치 축을 브로드캐스트해서 결과 shape를 정하고, C 순서 결과 배열을 하나 할당해요.
 5. 배치마다 두 피연산자 행렬의 시작 주소를 미리 계산해 둬요.
 6. int64면 출력 행 묶음을 태스크로 풀에 나누고, float/complex면 배치마다 BLAS를 한 번씩 불러요.
@@ -283,6 +283,37 @@ int64 경로와 작은 배치 경로는 `parallel_for`를 거치므로, 태스�
 
 Accelerate가 내부에서 어떤 하드웨어 유닛을 쓰는지는 공개되어 있지 않아요. 배치 측정의 모양은 행렬 연산 유닛(AMX)을 쓴다고 보면 설명돼요([배치](#배치) 절).
 
+## 아주 작은 float64 행렬: `tiny_matmul`
+
+3×4 @ 4×3 같은 아주 작은 곱에서는 계산보다 BLAS 호출과 일반 경로의 준비(배치 shape 벡터 넷)가 시간의 절반을 넘어요. 그래서 2차원 float64 행렬 둘의 곱이고 곱셈-덧셈 $m n k$가 512(`kTinyMatmul`) 이하이면 BLAS를 부르지 않아요.
+
+```cpp
+// csrc/array/ops/matmul.cpp (tiny_matmul)
+void tiny_matmul(const Mat& a, const Mat& b, double* c) {
+    const std::int64_t m = a.rows, k = a.cols, n = b.cols;
+    for (std::int64_t i = 0; i < m; ++i) {
+        double* crow = c + i * n;
+        for (std::int64_t j = 0; j < n; ++j) crow[j] = 0.0;
+        for (std::int64_t p = 0; p < k; ++p) {
+            const double aip = load_as<double>(a.p + i * a.rs + p * a.cs);
+            const std::byte* brow = b.p + p * b.rs;
+            if (b.cs == sizeof(double)) {
+                const double* bp = reinterpret_cast<const double*>(brow);
+                for (std::int64_t j = 0; j < n; ++j) crow[j] = std::fma(aip, bp[j], crow[j]);
+            } else {
+                for (std::int64_t j = 0; j < n; ++j) crow[j] = std::fma(aip, load_as<double>(brow + j * b.cs), crow[j]);
+            }
+        }
+    }
+}
+```
+
+- 원소마다 $\sum_p a_{ip} b_{pj}$를 $p$ 순서로 `fma`로 쌓아요. 루프 순서는 int64 커널과 같은 i-p-j라서 b의 행과 c의 행을 함께 걸어요.
+- 피연산자는 strides 그대로 읽어요. 레이아웃 때문에 복사하지 않아요.
+- 직렬이고 결정적이에요. 다만 BLAS의 비트가 아니라서 numpy와 끝자리가 달라요. 3×4 @ 4×5, 4×4, 8×8을 무작위로 20번씩 곱해 견주면 모두 어딘가 끝자리가 달라요. 300×200 @ 200×250, 64³은 BLAS 경로라 지금도 모두 같아요.
+- 정확도는 계약 안이에요. 내적 하나의 오차 한계(아래 "정확도")는 순서와 상관없고, `bench.accuracy`의 matmul 8×8 sweep에서 최대 상대오차가 $7.19 \times 10^{-15}$($0.848\,u\cdot$조건수)예요. R과 같은 값이에요.
+- 이 크기에서는 BLAS를 부르는 것보다 빨라요.
+
 ## int64 커널
 
 ### 직접 짠 루프를 쓰는 이유
@@ -447,9 +478,9 @@ Apple M4 Pro, float64예요. 배율은 1스레드 대비 10스레드이고, nump
 
 32×32부터는 배율이 2.7배, 2.3배, 1.6배로 떨어져 2배 안팎에 머물러요. Accelerate가 이 크기의 행렬 연산을 클러스터마다 하나인 행렬 유닛(AMX)으로 보낸다고 보면, P코어 클러스터가 둘이라 배율이 2배 안팎에 머무는 것이 설명돼요. Accelerate의 내부 동작은 공개되어 있지 않아서 측정의 모양에서 추론한 설명이에요.
 
-### 결과는 나누는 방식과 무관해요
+### 결과는 나누는 방식과 상관없어요
 
-어느 갈래든 행렬 하나는 BLAS 호출 하나예요. 배치를 태스크에 어떻게 묶든, 어느 스레드가 어느 행렬을 맡든 행렬마다 같은 인자로 같은 루틴을 불러요. 그래서 결과가 스레드 수와 상관없이 같아요. 스레드 결정성 테스트(`tests/array/test_threads.py`)는 1, 2, 3, 7, 10스레드에서 int64 행렬곱, float64 `M[:300] @ M[:300].T`, 그리고 작은 배치 세 종류(64×64 10개, 8×8 1000개, complex 8×8 500개)의 결과 바이트가 같은지 확인해요.
+어느 갈래든 행렬 하나는 BLAS 호출 하나(또는 자체 커널 한 번)예요. 배치를 태스크에 어떻게 묶든, 어느 스레드가 어느 행렬을 맡든 행렬마다 같은 인자로 같은 루틴을 불러요. 그래서 결과가 나누는 방식과 상관없고, 지금은 스레드 수와도 상관없어요. 스레드 결정성 테스트(`tests/array/test_threads.py`)는 1, 2, 3, 7, 10스레드에서 int64 행렬곱, float64 `M[:300] @ M[:300].T`, 그리고 작은 배치 세 종류(64×64 10개, 8×8 1000개, complex 8×8 500개)의 결과 바이트가 같은지 확인해요.
 
 ## tensordot과 vecdot
 
@@ -510,7 +541,7 @@ nb::object vecdot(nb::handle x1, nb::handle x2, nb::handle axis_obj) {
 ## 정확도
 
 - int64와 bool: 정확해요. 정수 곱셈-덧셈은 wrap까지 포함해 결과가 하나로 정해지고, numpy도 wrap해요. 테스트(`tests/array/test_matmul.py`)는 int64·bool 결과를 numpy와 비트까지 비교해요(`assert_same`).
-- float64와 complex128: 합의 순서는 Accelerate가 정해요. stardust는 그 순서를 알지도, 바꾸지도 않아요. 어떤 순서로 더하든 내적 하나의 오차에는 표준적인 한계가 있어요[1].
+- float64와 complex128: 합의 순서는 Accelerate가 정해요(아주 작은 float64 곱은 자체 커널의 $p$ 순서). stardust는 Accelerate의 순서를 알지도, 바꾸지도 않아요. 어떤 순서로 더하든 내적 하나의 오차에는 표준적인 한계가 있어요[1].
 
 $$
 |\hat{c}_{ij} - c_{ij}| \;\le\; \gamma_k \sum_{p=1}^{k} |a_{ip}|\,|b_{pj}|,
@@ -518,8 +549,8 @@ $$
 $$
 
   여기서 $\hat{c}_{ij}$는 계산한 값, $u$는 float64의 단위 반올림(unit roundoff)이에요. $k = 1000$이면 $\gamma_k \approx 1.1 \times 10^{-13}$이에요.
-- numpy와의 비트: 같은 Accelerate 루틴을 같은 인자로 부르면 같은 비트가 나와요. C 순서 (3,4)@(4,5), (300,200)@(200,250), 1000³, 64³, 행렬 × 벡터, 벡터 × 행렬, `a @ a.T`, F 순서 피연산자, 열을 건너뛰는 피연산자(복사 경로), 벡터 · 벡터를 numpy와 비교하면 모두 비트까지 같아요. 하지만 numpy가 어떤 레이아웃에서 어떤 BLAS 인자를 쓰는지는 stardust가 통제할 수 없으므로 보장하지 않아요. 테스트도 float 결과는 상대·절대 $10^{-12}$로 비교해요.
-- 스레드 수: 행렬 하나는 언제나 BLAS 호출 하나이므로 stardust의 스레드 수와 무관해요. Accelerate의 내부 스레드 수도 결과를 바꾸지 않아요. LAPACK 루틴을 `BLASSetThreading`으로 1스레드에 고정해도 기본 설정과 비트가 같아요.
+- numpy와의 비트: 같은 Accelerate 루틴을 같은 인자로 부르면 같은 비트가 나와요. C 순서 (300,200)@(200,250), 1000³, 64³, 행렬 × 벡터, 벡터 × 행렬, `a @ a.T`, F 순서 피연산자, 열을 건너뛰는 피연산자(복사 경로), 벡터 · 벡터를 numpy와 비교하면 지금은 모두 비트까지 같아요. 곱셈-덧셈이 512개 이하인 2차원 float64 곱은 자체 커널이라 끝자리가 달라요. 어느 쪽이든 numpy가 어떤 레이아웃에서 어떤 BLAS 인자를 쓰는지는 stardust가 통제할 수 없으므로 보장하지 않아요. 테스트도 float 결과는 상대·절대 $10^{-12}$로 비교해요.
+- 스레드 수: 행렬 하나는 언제나 BLAS 호출 하나(또는 직렬인 자체 커널 한 번)이므로 stardust의 스레드 수와 상관없어요. Accelerate의 내부 스레드 수도 결과를 바꾸지 않아요. LAPACK 루틴을 `BLASSetThreading`으로 1스레드에 고정해도 기본 설정과 비트가 같아요.
 
 <Callout type="warn" title="Accelerate와 16바이트 정렬">
 Accelerate의 LAPACK 루틴은 배열이 16바이트 정렬인지에 따라 다르게 반올림해요(float64 3×3 배치에서 홀수 번째 행렬이 8바이트 어긋나 다른 비트를 받아요). 그래서 linalg는 LAPACK에 넘기는 배열을 모두 16바이트로 정렬해요. matmul의 배치 결과는 배열 시작(128바이트 정렬)에서 `t·m·n·8`바이트 떨어진 곳에 쓰이므로, 홀수 크기 float64 행렬의 배치에서는 같은 위치 문제가 생길 수 있어요. n = 3, 5, 7, 9, 33인 float64 배치 120개를 행렬 하나씩 계산한 결과와 비교하면 dgemm에서는 차이가 없어요. 다만 표본으로 비교한 것이고, matmul은 따로 정렬을 맞추지 않아요.

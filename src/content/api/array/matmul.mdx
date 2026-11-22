@@ -406,9 +406,9 @@ array([[0.0, 0.0, 0.0],
 
 ### 실수 행렬곱은 스레드 수 설정을 따르지 않아요
 
-실수(float64)와 복소수(complex128) 행렬의 곱이 쓰는 스레드 수는 [`sd.set_num_threads`](/api/array/threads/)로 바꿀 수 없어요. `sd.set_num_threads(1)`로 두어도 큰 행렬의 곱은 여러 코어를 쓸 수 있어요. 작은 행렬을 여러 개 쌓아 한꺼번에 곱할 때와 정수·bool 행렬의 곱은 `sd.set_num_threads`를 따라요.
+실수(float64)와 복소수(complex128) 행렬의 곱이 쓰는 스레드 수는 [`sd.set_num_threads`](/api/array/threads/)로 바꿀 수 없어요. `sd.set_num_threads(1)`로 두어도 큰 행렬의 곱은 여러 코어를 쓸 수 있어요. 작은 행렬을 여러 개 쌓아 한꺼번에 곱할 때와 정수·bool 행렬의 곱은 `sd.set_num_threads`를 따라요. 곱셈-덧셈이 512번 이하인 아주 작은 실수 행렬 두 개의 곱은 stardust가 직접 계산해요.
 
-결과는 설정과 상관없이 언제나 같아요. 이유는 [스레드 수](/api/array/threads/#행렬곱과-cov는-따로예요) 문서에 있어요.
+그래서 결과도 `sd.set_num_threads`에 따라 달라지지 않아요. 이유는 [스레드 수](/api/array/threads/#행렬곱과-cov는-따로예요) 문서에 있어요.
 
 ### `dot` 함수는 없어요
 

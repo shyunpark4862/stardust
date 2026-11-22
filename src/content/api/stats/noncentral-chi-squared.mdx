@@ -148,7 +148,7 @@ TypeError: NoncentralChiSquared(): 'df' must be a real number or an sd.ndarray, 
 array([[ 1.0,  3.0,  9.0],
        [ 3.0,  5.0, 11.0]], dtype=float64)
 >>> Y.cdf(4.0)
-array([[ 0.9544997361036416,  0.7206706485153441, 0.20371363708553145],
+array([[ 0.9544997361036416,  0.7206706485153443, 0.20371363708553145],
        [ 0.7385358700508893, 0.48388135838807445, 0.10363682420953686]], dtype=float64)
 >>> sd.stats.NoncentralChiSquared(df=sd.asarray([1.0, 2.0, 3.0]), nc=sd.asarray([1.0, 2.0]))
 Traceback (most recent call last):
@@ -211,7 +211,7 @@ array([                inf, 0.18393972058572117,                 0.0], dtype=flo
 
 ```python
 >>> X.ccdf(1000.0)
-2.0461997569577225e-199
+2.0461997569577234e-199
 >>> 1 - X.cdf(1000.0)
 0.0
 ```
@@ -397,7 +397,7 @@ $k = 1$이면 $X = (Z + \sqrt{\lambda})^2$이라서 $P(X \le x) = \Phi(\sqrt{x} 
 >>> Z.cdf(x ** 0.5 - mu) - Z.cdf(-x ** 0.5 - mu)
 0.720670648515344
 >>> sd.stats.NoncentralChiSquared(df=1, nc=2).cdf(4.0)
-0.7206706485153441
+0.7206706485153443
 ```
 
 ### 다른 비중심 분포와 special 함수
@@ -426,7 +426,7 @@ True
 | `ilogcdf`, `ilogccdf`의 입력이 $-2^{62}$ 이하 | 결과 |
 | 위 절의 경우 | `entropy` |
 
-`nc`가 클 때 NaN인 곳은 평균을 둘러싼 띠이고, 띠는 `nc`와 함께 넓어져요. `nc = 2.4e9`이면 평균 $\pm 0.5\sqrt{nc}$는 NaN이고 $\pm\sqrt{nc}$는 값이 나오지만, `nc = 4e9`이면 평균 $\pm 80\sqrt{nc}$도 NaN이에요. 띠 밖의 먼 꼬리는 0이나 1이에요.
+`nc`가 클 때 NaN인 곳은 평균을 둘러싼 띠이고, 띠는 `nc`와 함께 넓어져요. `nc = 2.4e9`이면 평균 $\pm 0.5\sqrt{nc}$는 NaN이고 $\pm\sqrt{nc}$는 값이 나오지만, `nc = 4e9`이면 평균 $\pm 120\sqrt{nc}$도 NaN이에요. 띠 밖의 먼 꼬리는 0이나 1이에요.
 
 평균, 분산 같은 닫힌 꼴의 요약값은 이런 매개변수에서도 값이 나와요.
 

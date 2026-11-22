@@ -91,7 +91,7 @@ $$
         }
 ```
 
-- **수정 Gram–Schmidt**(MGS)는 성분을 뺄 때마다 고친 $w$로 다음 내적을 계산해요. 처음 $w$와 모든 내적을 한 번에 계산하는 고전 Gram–Schmidt보다 직교성을 잘 지켜요. `axpy_dot`은 $w \mathrel{-}= h_k v_k$와 다음 내적 $v_{k+1}^{\mathsf H}w$를 메모리 한 번 훑기로 해요. 잎의 경계와 트리가 `dot`과 같아 따로 부른 것과 비트가 같아요.
+- **수정 Gram–Schmidt**(MGS)는 성분을 뺄 때마다 고친 $w$로 다음 내적을 계산해요. 처음 $w$와 모든 내적을 한 번에 계산하는 고전 Gram–Schmidt보다 직교성을 잘 지켜요. `axpy_dot`은 $w \mathrel{-}= h_k v_k$를 한 뒤 다음 내적 $v_{k+1}^{\mathsf H}w$를 구해요. `axpy`와 `dot`을 차례로 부른 것이라 따로 부른 것과 비트가 같아요.
 - **무너짐 표시.** 빼고 남은 길이가 처음 길이의 ε배 이하($h_1 \le \varepsilon h_0$)면 Krylov 공간이 해를 담았다는 뜻(정확한 해의 표시)이라, 그 열의 아래 원소를 0으로 두고 안쪽 반복을 끝내요.
 - **Givens 회전.** $\bar H$를 위 삼각으로 만드는 회전을 열이 생길 때마다 하나씩 더해요. 새 열에는 지난 회전을 모두 차례로 걸고, 그 다음 대각 아래 원소를 없애는 새 회전을 구해 $\bar H$와 우변 $S$(처음 $\beta e_1$)에 걸어요. 회전 뒤의 $|S_{\text{col}+1}|$이 그 시점의 최소 잔차, `presid`예요. 해를 계산하지 않고도 잔차의 크기를 알 수 있어요.
 
@@ -200,7 +200,7 @@ $|f|$, $|g|$가 모두 $[\sqrt{\text{safmin}}, \sqrt{\text{safmax}/2}]$ 안이�
 ## scipy와 다른 점
 
 - 반복 수와 상태는 시험 기록에서 scipy와 같아요(`n_inner`는 scipy의 `callback_type='pr_norm'` 호출 수와 같아요). 단계마다의 `presid × ‖b‖`가 scipy의 `pr_norm × ‖b‖`와 상대 10⁻⁶ 안이에요. SuiteSparse의 memplus에서 GMRES(20)는 안쪽 5,425번으로 scipy와 같고, young1c는 2,809번(scipy 2,822)이에요.
-- 내적·노름은 결정적인 쌍 트리, 해의 갱신은 원소마다의 순차 합이라 numpy와 끝자리가 달라요.
+- 내적·노름은 크기로만 나눈 결정적인 합(짧은 조각은 FMA 잎의 쌍 트리, 긴 조각은 Accelerate의 `ddot`), 해의 갱신은 원소마다의 순차 합이라 numpy와 끝자리가 달라요.
 - 그 끝자리 차이가 크게 드러나는 경우가 특이 행렬이에요. Arnoldi가 정확한 해의 표시로 멈춘 뒤 회전한 대각 H(k, k)가 scipy에서는 정확히 0이라 그 성분을 풀지 않고, 이쪽은 반올림 크기(약 10⁻¹⁷)라 나눗셈이 큰 x를 만들어요. `diags_array([1.0, 1.0, 0.0])`과 b = `ones(3)`에서 scipy는 최소 잔차의 x = [1, 1, 1], 이쪽은 [1.45, 1.45, 2.2 × 10¹⁶]이에요. 둘 다 status 30(`converged=False`)이에요. scipy처럼 정확한 0만 비교하고 상대 문턱은 두지 않아요. 문턱을 두면 scipy와 다른 동작이 되기 때문이에요.
 - `callback`과 `callback_type`이 없어요. scipy의 옛 동작(`callback_type='legacy'`에서 `maxiter`가 안쪽 반복을 세던 것)도 없고, `max_iter`는 언제나 주기의 수예요.
 

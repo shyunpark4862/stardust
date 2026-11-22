@@ -758,6 +758,15 @@ x5는 y를 완전히 가르는 열이라 x5가 든 모형은 모두 분리돼요
         return StepwiseResult(xc, [cols.names[c] for c in xc], steps, call(xc), criterion, direction, skipped)
 ```
 
+여기의 `call`은 고른 열이 전체 모형의 열(X의 모든 항)이면 처음에 맞춘 전체 모형을 그대로 돌려줘요. 같은 열, 같은 옵션의 같은 호출이라 결과가 같고, 큰 $n$에서 적합 하나를 덜어요.
+
+```python
+    # src/stardust/regression/_select.py (_setup)
+    def call_or_full(cs):
+        # the full model's columns: its fit (the same call, so the same result) instead of a refit
+        return full if list(cs) == list(range(cols.p)) else call(cs)
+```
+
 그래서 `fit`의 모든 필드(계수, 표준오차, `cov_type`에 따른 강건 공분산, 진단)는 같은 y, 같은 열, 같은 옵션으로 모형 함수를 부른 것과 비트까지 같아요. 다른 것은 계수 이름뿐이에요. 기준은 `cov_type`을 쓰지 않아요. AIC, BIC, 부분 F, 우도비, 교차검증 오차는 모두 모형의 우도와 제곱합의 값이라, 공분산은 `fit`의 추론에만 들어가요.
 
 선형 모형의 걸음별 기준값은 삼각 인자의 갱신에서 나와 `fit.aic`와 반올림 수준에서 다를 수 있지만, `fit` 자체는 갱신을 거치지 않아요. GLM은 후보가 `glm` 자체라 기준값도 비트까지 같아요.

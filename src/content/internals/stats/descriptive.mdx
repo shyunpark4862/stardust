@@ -2,7 +2,7 @@
 title: 기술통계
 group: 기술통계
 order: 1
-summary: 기술통계 함수 11개가 축을 줄로 펼쳐 네이티브 커널에서 계산하는 방법을 설명해요. 평균을 두 부분으로 나눠 들고 보상 합으로 더해서, 평균이 아주 큰 데이터에서도 왜도와 첨도의 자릿수를 지켜요.
+summary: 기술통계 함수 11개가 축을 줄로 펼쳐 네이티브 커널에서 계산하는 방법을 설명해요. 평균을 두 부분으로 나눠 들고, 결과가 오차를 키우는 합만 보상 합으로 더해서, 평균이 아주 큰 데이터에서도 왜도와 첨도의 자릿수를 지켜요.
 seeAlso: [overview, engine, accuracy-performance]
 ---
 import Callout from '../../../components/Callout.astro';
@@ -14,11 +14,12 @@ import Steps from '../../../components/fig/Steps.astro';
 기술통계는 표본 하나(또는 축을 따라 늘어선 여러 표본)를 숫자 몇 개로 요약하는 함수예요. scipy.stats의 이름과 값을 따르고, 인자 규칙은 stardust의 것을 써요(입력은 위치로, 옵션은 키워드로, 기본 축은 전체, 자유도 인자는 `correction`). 코드는 두 층이에요.
 
 - **Python 층** `src/stardust/stats/_descriptive.py`: 인자를 검사하고, 줄일 축을 끝으로 옮겨 `(줄 수, n)` 행렬을 만들고, 커널의 결과를 결과 모양으로 되돌려요. 왜도·첨도·분산 같은 마지막 몇 줄의 식도 여기서 계산해요.
-- **네이티브 층** `csrc/bind/stats_desc.cpp`: 줄마다 계산하는 커널 다섯 개(`stardust._core.stats.desc_*`)예요.
+- **네이티브 층** `csrc/bind/stats_desc.cpp`: 줄마다 계산하는 커널 여섯 개(`stardust._core.stats.desc_*`)예요.
 
 | 함수 | 커널 | 계산 |
 |---|---|---|
-| `describe`, `skew`, `kurtosis`, `sem`, `zscore`, `moment`(차수 2–4) | `desc_moments` | 평균을 $hi + lo$로, 편차의 거듭제곱 합을 보상 합으로. 고정된 블록으로 나눠 병렬 |
+| `describe`, `skew`, `kurtosis`, `sem`, `zscore`, `moment`(차수 2–4) | `desc_moments` | 평균을 $hi + lo$로, 편차의 거듭제곱 합은 결과가 오차를 키우는 것만 보상 합으로. 고정된 블록으로 나눠 병렬 |
+| `zscore`의 마지막 단계 | `desc_zscore` | $((x - \bar x_{hi}) - \bar x_{lo})/s$를 한 번 훑어 써요 |
 | `moment`(그 밖의 차수, `center`를 준 경우) | `desc_moment` | 줄마다 평균과 편차의 거듭제곱을 보상 합으로 |
 | `rankdata` | `desc_rank` | (값, 위치) 쌍을 정렬하고 동점 묶음마다 순위를 매김 |
 | `mode` | `desc_mode` | 정렬하고 같은 값의 길이를 셈 |
@@ -26,7 +27,7 @@ import Steps from '../../../components/fig/Steps.astro';
 | `iqr` | (없음) | `sd.quantile` 또는 `sd.nanquantile` 두 번 |
 | `entropy` | (없음) | `sd.special.entr`, `rel_entr`와 `sd.sum` |
 
-정렬하는 세 커널은 긴 줄 하나(`axis=None`)도 스레드 풀에서 정렬해요. 모멘트 커널은 줄을 8192개씩 고정된 블록으로 나눠 계산하고 블록 순서대로 합쳐요. 어느 쪽이든 결과는 스레드 수와 상관없이 같은 비트예요.
+정렬하는 세 커널은 긴 줄 하나(`axis=None`)도 스레드 풀에서 정렬해요. 모멘트 커널은 줄을 8192개씩 고정된 블록으로 나눠 계산하고 블록 순서대로 합쳐요. 같은 기계, 같은 스레드 수면 실행마다 같은 비트이고, 나누는 방법이 데이터의 길이에만 달려서 지금은 스레드 수와도 상관없이 같은 비트예요(약속은 아니에요).
 
 ## 축을 줄로 바꾸기
 
@@ -72,14 +73,15 @@ TypeError: skew(): 'x' must be an sd.ndarray, a sequence of numbers or a frame S
 모멘트 커널에서 NaN을 0으로 바꾸는 것은 분기가 아니라 비트 마스크예요. NEON의 `vceqq_f64(x, x)`는 NaN이 아닌 원소에서 모든 비트가 1, NaN에서 0인 마스크를 주므로, 이것과 `x`를 AND하면 NaN만 $+0$이 돼요. 같은 마스크를 64비트 정수로 보면 NaN이 아닌 원소에서 $-1$이라, 누적값에서 빼 나가면 NaN이 아닌 원소의 개수가 돼요.
 
 ```cpp
-// csrc/bind/stats_desc.cpp, sum_block (발췌)
-const float64x2_t x = vld1q_f64(xs + j + 2 * v);
-const uint64x2_t ok = vceqq_f64(x, x);  // all ones where not NaN
-okc = vsubq_u64(okc, ok);
-q.add2(v, vreinterpretq_f64_u64(vandq_u64(vreinterpretq_u64_f64(x), ok)));
+        // csrc/bind/stats_desc.cpp, pass1_contig (발췌)
+        auto masked = [&](const double* p) {
+            const float64x2_t x = vld1q_f64(p);
+            if constexpr (M) okc = vsubq_u64(okc, vceqq_f64(x, x));  // all ones where not NaN
+            return keep<M>(x, x);
+        };
 ```
 
-그래서 `'omit'`은 NaN이 없는 데이터와 거의 같은 비용이에요. scipy 1.18.1의 `'omit'`은 마스크 배열을 만들어 계산해서, 원소 $10^6$개의 `skew`에서 stardust 1스레드가 9–39배 빨라요.
+`keep<M>`이 그 AND예요. 커널은 이 가리기 없이(`M = false`) 먼저 더하고, 합이 NaN으로 나온 블록만 가리기를 켜서(`M = true`) 다시 더해요. NaN이 없는 곳에서는 가린 0을 더하든 원래 값을 더하든 같은 연산이라 비트가 같아요. 그래서 `'omit'`은 NaN이 없는 데이터와 거의 같은 비용이에요. scipy 1.18.1의 `'omit'`은 마스크 배열을 만들어 계산해서 수십 배 느려요.
 
 ```python
 >>> x = sd.asarray([[1.0, 2.0, 4.0], [3.0, sd.nan, 9.0]])
@@ -245,8 +247,8 @@ $$
 
 `desc_moments`는 평균을 두 부분 $hi + lo$로 나눠 계산해요.
 
-1. **첫 번째 훑기**: 개수, 보상 합, (요청하면) 최솟값과 최댓값, NaN 여부를 구해요. $hi = $ 보상 합 $/\, n$이에요. 보상 합의 결과도 double 하나라 $hi$ 자체는 여전히 반올림된 평균이에요.
-2. **두 번째 훑기**: $d_i = x_i - hi$로 $S_k = \frac1n\sum d_i^k$($k = 1, \ldots, k_{\max}$)를 모두 보상 합으로 한 번에 구해요.
+1. **첫 번째 훑기**: 개수, 합, (요청하면) 최솟값과 최댓값, NaN 여부를 구해요. $hi = $ 합 $/\, n$이에요. $hi$는 어림이어도 돼요. 다음 단계의 $lo$가 바로잡기 때문이에요. 그래서 이 합은 보상 없는 단순 사슬이에요([아래](#합의-규칙-단순-사슬과-twosum-사슬)).
+2. **두 번째 훑기**: $d_i = x_i - hi$로 $S_k = \frac1n\sum d_i^k$($k = 1, \ldots, k_{\max}$)를 한 번에 구해요. 결과가 그 오차를 키우는 $S_k$만 보상 합이에요.
 3. **고치기**: 참 평균은 $hi + S_1$이에요($\frac1n\sum(x_i - hi) = \bar x - hi$). 그래서 $lo = S_1$로 두고, $x_i - (hi + lo) = d_i - lo$의 거듭제곱 평균을 이항 전개로 얻어요. 세 번째로 훑지 않아요.
 
 $$
@@ -260,18 +262,18 @@ $$
 전개의 $S_1 = lo$를 넣으면 $m_3$의 $-3lo^2 S_1 + \ldots$ 항이 정리되어 위 꼴이 돼요. $lo$는 $hi$의 반올림 오차 크기라서 보정항은 작고, $hi$의 반올림이 모멘트에 남기던 $3\delta m_2$가 정확히 지워져요.
 
 ```cpp
-// csrc/bind/stats_desc.cpp, moments의 마지막 단계 (발췌)
-const double c = static_cast<double>(pc[r]);
-const double S1 = t[0].value() / c, S2 = t[1].value() / c, S3 = t[2].value() / c, S4 = t[3].value() / c;
-const double lo = S1, l2 = lo * lo;
-pm[r] = h + lo;
-pml[r] = lo - (pm[r] - h);
-p2[r] = S2 - l2;
-p3[r] = kmax >= 3 ? S3 - 3.0 * lo * S2 + 2.0 * l2 * lo : kNaN;
-p4[r] = kmax >= 4 ? S4 - 4.0 * lo * S3 + 6.0 * l2 * S2 - 3.0 * l2 * l2 : kNaN;
+        // csrc/bind/stats_desc.cpp, desc_moments의 finish2 (발췌)
+        const double c = static_cast<double>(pc[r]);
+        const double S1 = S[0] / c, S2 = S[1] / c, S3 = kmax >= 3 ? S[2] / c : 0.0, S4 = kmax >= 4 ? S[3] / c : 0.0;
+        const double lo = S1, l2 = lo * lo;
+        pm[r] = h + lo;
+        pml[r] = lo - (pm[r] - h);
+        p2[r] = S2 - l2;
+        p3[r] = kmax >= 3 ? S3 - 3.0 * lo * S2 + 2.0 * l2 * lo : kNaN;
+        p4[r] = kmax >= 4 ? S4 - 4.0 * lo * S3 + 6.0 * l2 * S2 - 3.0 * l2 * l2 : kNaN;
 ```
 
-평균으로 돌려주는 값은 $hi + lo$를 반올림한 double이고(`pm`), 그 반올림의 나머지 `pml`도 함께 돌려줘요. `zscore`는 이 둘을 모두 써서 $(x - \text{mean}) - \text{mean\_lo}$로 편차를 만들어요. 평균의 반올림이 모든 $z$를 그 크기/표준편차만큼 한쪽으로 미는 것을 막으려는 거예요.
+평균으로 돌려주는 값은 $hi + lo$를 반올림한 double이고(`pm`), 그 반올림의 나머지 `pml`도 함께 돌려줘요. `zscore`는 이 둘을 모두 써서 $(x - \text{mean}) - \text{mean\_lo}$로 편차를 만들어요. 평균의 반올림이 모든 $z$를 그 크기/표준편차만큼 한쪽으로 미는 것을 막으려는 거예요. 줄이 입력의 순서 그대로이면(줄일 축이 이미 끝) 이 마지막 단계는 커널 하나(`desc_zscore`)가 입력을 한 번 훑어 써요. 배열 식과 같은 연산을 같은 순서로 해서 비트가 같아요. 축을 옮긴 경우는 배열 식으로 계산해요.
 
 두 번째 훑기의 뺄셈 $x_i - hi$는 데이터가 평균 근처에 모여 있으면 정확해요. 두 double이 서로 두 배 안에 있으면 그 차는 반올림 없이 double로 나타나기 때문이에요(Sterbenz 보조정리 [2]). 평균이 $10^8$이고 퍼짐이 1이면 모든 $x_i$가 $hi$의 두 배 안이라 $d_i$에는 오차가 없고, 남는 오차는 $d_i^k$의 곱과 합의 반올림뿐이에요. 이 오차는 퍼짐에 비례해서 평균의 크기와 상관없어요.
 
@@ -334,14 +336,14 @@ $d^4$는 $\lvert d\rvert$가 $10^{77}$을 넘으면 double을 넘고, $d^2$는 $
 ```python
 >>> big = sd.asarray([1e150, 2e150, 4e150, 8e150])
 >>> sd.stats.skew(big), sd.stats.skew(sd.asarray([1.0, 2.0, 4.0, 8.0]))
-(0.6568077344996994, 0.6568077344996993)
+(0.6568077344996993, 0.6568077344996993)
 >>> st.skew(np.asarray(big))
 np.float64(nan)
 >>> sd.stats.sem(sd.asarray([1e-200, 2e-200, 4e-200, 8e-200])), st.sem([1e-200, 2e-200, 4e-200, 8e-200])
 (1.5478479684172258e-200, np.float64(0.0))
 ```
 
-두 왜도가 마지막 비트에서 다른 것은 재스케일한 줄의 $y$가 원래의 $x$와 다른 double이라 합의 반올림이 다르기 때문이에요.
+여기서는 두 왜도가 같아요. 재스케일한 줄의 $y$는 원래의 $x$와 다른 double이라 합의 반올림이 달라질 수 있어서, 다른 데이터에서는 마지막 비트가 다를 수도 있어요.
 
 ## 보상 합: TwoSum과 Neumaier
 
@@ -377,34 +379,43 @@ inf
 inf
 ```
 
-### 여덟 사슬과 NEON
+### 합의 규칙: 단순 사슬과 TwoSum 사슬
 
-보상 합 하나는 한 원소의 덧셈이 앞 원소의 결과를 기다리는 의존 사슬이에요. 그래서 커널은 사슬 여덟 개를 나란히 둬요(`Neu4`). 원소 $j$는 사슬 $j \bmod 8$에 더해지고, 끝에 여덟 사슬의 $s$와 $c$를 차례로 Neumaier 합 하나에 모아요(`into`). 합이 유한하지 않은 사슬의 $c$는 NaN이라 빼고 더해요. 사슬 안의 덧셈은 TwoSum이에요. 분기가 없어서 벡터로 바꿀 수 있기 때문이에요.
+보상 합 하나는 한 원소의 덧셈이 앞 원소의 결과를 기다리는 의존 사슬이에요. 그리고 모든 합을 원소마다 TwoSum으로 보상하면 연산이 몇 배로 늘어요. 그래서 커널은 합을 위치 $j$만으로 자르고, 사슬을 두 가지로 둬요.
+
+- **자르는 방법.** 줄을 128원소의 작은 블록(`kSub`)으로 나누고, 작은 블록마다 사슬 여덟 개($j \bmod 8$, 0.0에서 차례로 16항씩)에 더해요. 작은 블록의 결과는 8192원소 블록(`kBlock`) 안에서 Neumaier 합으로 모으고, 블록들의 (합, 보정)은 블록 순서대로 다시 Neumaier 합으로 더해요.
+- **단순 사슬.** 그냥 더해 가다가, 여덟 사슬을 고정된 나무(`tree8`)로 모아요.
+- **TwoSum 사슬.** 덧셈마다의 오차를 따로 지녀요(Knuth의 TwoSum). 여덟 합을 나무로 모을 때의 오차까지 TwoSum으로 꺼내 $hi + lo$로 만들고(`comb8`), $hi$는 블록의 Neumaier 합에, $lo$는 그 보정에 바로 넣어요(`add_comb`).
 
 ```cpp
-// csrc/bind/stats_desc.cpp, Neu4 (발췌)
-void add(std::int64_t j, double x) {
-    const int k = static_cast<int>(j & 7);
-    const double t = s[k] + x, bb = t - s[k];
-    c[k] += (s[k] - (t - bb)) + (x - bb);
-    s[k] = t;
-}
-// chains 2 q and 2 q + 1 take the two lanes of x: the bits of add(2 q, x[0]), add(2 q + 1, x[1])
-void add2(int q, float64x2_t x) {
-    const float64x2_t sv = vld1q_f64(s + 2 * q), cv = vld1q_f64(c + 2 * q);
-    const float64x2_t t = vaddq_f64(sv, x), bb = vsubq_f64(t, sv);
-    vst1q_f64(c + 2 * q, vaddq_f64(cv, vaddq_f64(vsubq_f64(sv, vsubq_f64(t, bb)), vsubq_f64(x, bb))));
-    vst1q_f64(s + 2 * q, t);
+// csrc/bind/stats_desc.cpp
+inline void comb8(const double* s, const double* c, double& hi, double& lo) {
+    double a[4], e[4], b[2], f[2], g;
+    for (int q = 0; q < 4; ++q) two_sum(s[2 * q], s[2 * q + 1], a[q], e[q]);
+    two_sum(a[0], a[1], b[0], f[0]), two_sum(a[2], a[3], b[1], f[1]);
+    two_sum(b[0], b[1], hi, g);
+    lo = ((((e[0] + e[1]) + (e[2] + e[3])) + (f[0] + f[1])) + g) + tree8(c);
 }
 ```
 
-`add2`는 NEON 레지스터 하나(double 두 개)로 사슬 두 개를 함께 갱신해요. 연속인 줄은 원소 여덟 개마다 `add2`를 네 번 부르고, 그 연산은 스칼라 `add`를 원소마다 부른 것과 같은 사슬에 같은 순서로 같은 연산이라 결과의 비트가 같아요. 두 번째 훑기(`moment_block`)는 $d$, $d^2$, $d^3 = d^2 \cdot d$, $d^4 = d^2 \cdot d^2$를 만들어 네 묶음의 사슬에 같은 방식으로 더해요.
+어느 합을 TwoSum 사슬로 할지는 함수가 정해요(`comp`). 결과가 그 합의 오차를 키우는 것만이에요.
 
-**나란한 줄.** 줄일 축이 배열의 마지막 축이 아니면(위의 `axis=0`) 줄 하나의 원소가 메모리에서 멀리 떨어져 있어, 줄 하나씩 걸으면 원소마다 캐시 줄을 하나씩 건드려요. 그런데 이때 이웃한 줄의 같은 위치 $j$는 메모리에서 연속이에요(`strides[0] == 8`). 커널은 줄 64개를 묶어서 행 $j$를 한 번에 읽고, 줄을 벡터 방향으로 놓아 각 줄의 사슬 $j \bmod 8$에 더해요(`side_sum`, `side_moments`). 줄마다 하는 연산은 줄 하나씩 걸을 때와 같아서 비트도 같아요.
+| 함수 | TwoSum 사슬인 합 | 이유 |
+|---|---|---|
+| `describe`, `zscore`(평균) | $\sum d$ | 평균의 낮은 부분 $lo = S_1$은 서로 지워지는 합이에요 |
+| `skew`, `moment`(3차), `describe` | $\sum d$, $\sum d^3$ | $m_3 = S_3 - 3\,lo\,S_2 + \ldots$가 $lo$의 오차 × $S_2$를 지니고, 0 근처의 $S_3$은 크게 상쇄해요 |
+| `kurtosis`, `describe` | $\sum d^2$, $\sum d^4$ | 초과 첨도 $m_4/m_2^2 - 3$이 $m_2$, $m_4$의 오차를 키워요 |
+| 그 밖(`sem`, 분산, 짝수 차수 `moment`) | 없음 | 한 부호의 항이라 단순 사슬로도 몇 ULP 안이에요 |
+
+첫 훑기의 $\sum x$는 언제나 단순 사슬이에요. 그 결과 단순 사슬만 쓰는 `sem`은 몇 ULP 안이고, 0 근처의 왜도와 3차 모멘트는 정확한 값(유리수와 Arb)에 몇 ULP로 가까워요. 상쇄하는 초과 첨도는 $m_2$, $m_4$ 각각의 1–3 ULP를 $m_4/m_2^2 - 3$이 약 16배로 키워서, 0에 가까운 값에서 수십 ULP까지 가요. 계약 안이에요. 홀수 합까지 단순 사슬로 하면 0 근처의 왜도가 수백 ULP가 되기 때문에, 홀수 합은 TwoSum 사슬로 둬요.
+
+**NEON과 나란한 줄.** 연속인 줄은 사슬 $(2q, 2q + 1)$을 NEON 벡터 $q$의 두 lane으로 계산해요(`pass1_contig`, `pass2_contig`). lane마다의 연산은 스칼라 사슬과 같은 순서의 같은 연산이라 비트가 같아요. 줄일 축이 배열의 마지막 축이 아니면(위의 `axis=0`) 줄 하나의 원소가 메모리에서 멀리 떨어져 있어, 줄 하나씩 걸으면 원소마다 캐시 줄을 하나씩 건드려요. 그런데 이때 이웃한 줄의 같은 위치 $j$는 메모리에서 연속이에요(`strides[0] == 8`). 커널은 줄 64개를 묶어서 행 $j$를 한 번에 읽고, 줄을 벡터 방향으로 놓아 각 줄의 사슬에 더해요. 줄마다 하는 연산은 줄 하나씩 걸을 때와 같아요.
+
+**짧은 줄.** $n \le 128$인 연속 줄(작은 블록 하나)은 두 줄을 벡터의 두 lane으로 놓고 레지스터 안의 사슬로 계산해요(`pair_pass1`, `pair_pass2`). 블록이 하나뿐인 줄은 블록 기록 없이 한 작업에서 끝내요. 어느 길이든 같은 사슬에 같은 순서라, 줄을 따로, 나란히, 건너뛰며 읽어도 같은 비트예요.
 
 ### 고정된 블록으로 병렬
 
-줄 하나를 원소 8192개짜리 블록으로 나누고(`kBlock`), (줄, 블록) 쌍을 스레드 풀에 나눠 줘요. 블록마다 자기 `Neu4`를 채우고, 줄마다 블록 순서대로 하나의 Neumaier 합에 모아요. 블록의 경계는 데이터의 길이만으로 정해지고 스레드 수와 무관하니, 어떤 스레드가 어떤 블록을 계산하든 합치는 순서와 값이 같아요. 그래서 `axis=None`의 긴 줄 하나도 병렬로 계산하면서 결과는 1스레드와 같은 비트예요.
+긴 줄은 (줄, 8192원소 블록) 쌍을 스레드 풀에 나눠 주고, 블록마다 자기 합을 채운 뒤 줄마다 블록 순서대로 하나의 Neumaier 합에 모아요. 블록의 경계는 데이터의 길이만으로 정해지니, 어떤 스레드가 어떤 블록을 계산하든 합치는 순서와 값이 같아요. 그래서 `axis=None`의 긴 줄 하나도 병렬로 계산하고, 결과는 지금 스레드 수와 상관없이 같은 비트예요.
 
 정렬하는 커널(`rankdata`, `mode`, `differential_entropy`)은 줄 단위로 나눠요(`each_lane`). 줄 하나의 계산은 한 스레드가 하고, 줄끼리 독립이라 어떻게 나눠도 같은 비트예요. 줄이 하나뿐이면 아래의 samplesort가 그 안에서 풀을 써요.
 
@@ -602,15 +613,15 @@ scipy 1.18.1과는 크기 5, 9, 50, 2000, 20000인 정규 표본에서 네 방�
 
 ## 속도
 
-원소 $10^6$개에서 scipy 1.18.1과 견주면 1스레드에서 `skew`·`kurtosis`·`moment` 6.0–7.6배, `describe` 4.8–6.4배, `zscore` 1.2–1.4배, `rankdata` 1.3–1.7배, `mode` 1.0–2.7배, `iqr` 1.3–2.0배, `differential_entropy` 1.9–3.1배 빨라요. 10스레드에서는 대부분 10–45배예요. 1스레드에서 scipy보다 느린 것은 `sem`(0.67배, `axis=0`은 0.83배)뿐이고, 10스레드에서는 3.9배 빨라요.
+원소가 많은 줄에서 기술통계 함수는 대부분 1스레드에서도 scipy 1.18.1보다 빠르고, 10스레드에서는 모두 빨라요. `iqr`의 `axis=1`(짧은 줄이 많을 때)과 `mode`는 1스레드에서 scipy와 거의 같은 수준이에요.
 
-- 모멘트(`skew`, `kurtosis`, `moment`, `describe`)는 데이터를 두 번 훑는 동안 중간 배열을 만들지 않고, 보상 합을 NEON 사슬 여덟 개로 더해요. `describe`는 최솟값·최댓값도 함께 구해요.
-- `sem`은 첫 훑기의 합, 두 번째 훑기의 $S_1$, $S_2$로 보상 합 셋을 계산해요. scipy의 표준편차는 보상하지 않는 합이라 일이 더 적어요. `sem`이 1스레드에서 느린 이유예요.
+- 모멘트(`skew`, `kurtosis`, `moment`, `describe`, `sem`)는 데이터를 두 번 훑는 동안 중간 배열을 만들지 않고, NEON 사슬 여덟 개로 더해요. 보상 합은 결과가 오차를 키우는 합에만 써서, 분산과 `sem`은 보상 없는 단순 사슬이에요. `describe`는 최솟값·최댓값도 함께 구해요.
+- 짧은 줄이 많으면 두 줄을 한 벡터로 계산하고, 블록이 하나뿐인 줄은 블록 기록 없이 한 작업에서 끝내요.
 - 정렬하는 함수(`rankdata`, `mode`, `differential_entropy`)에서 `axis=None`의 긴 줄 하나는 samplesort가 풀에서 나눠요.
 - `iqr`은 `sd.quantile`을 두 번 불러요. 배열 영역의 `quantile`이 레인 하나를 어떻게 고르고 언제 병렬 정렬로 가는지는 [배열의 통계 함수](/internals/array/statistics/)에 있어요.
 
 <Callout>
-기술통계의 결과는 스레드 수와 상관없이 같은 비트예요. 모멘트은 블록의 경계가, 정렬은 표본과 분할자와 조각의 경계가 데이터만으로 정해지기 때문이에요. `tests/stats/test_descriptive.py`가 1, 3, 10스레드의 결과를 비트로 비교해요.
+기술통계의 결과는 같은 기계, 같은 스레드 수면 실행마다 같은 비트예요. 모멘트는 블록의 경계가, 정렬은 표본과 분할자와 조각의 경계가 데이터만으로 정해져서, 지금은 스레드 수와도 상관없이 같은 비트예요(약속은 아니에요). `tests/stats/test_descriptive.py`가 1, 3, 10스레드의 결과를 비트로 비교해요.
 </Callout>
 
 ## 참고 문헌

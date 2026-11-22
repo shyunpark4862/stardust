@@ -131,7 +131,7 @@ array([ 1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  9.0,  8.0, 10.0], dtype=float6
 ```python
 >>> rho, p = r
 >>> rho, p
-(0.9878787878787879, 9.307459988955292e-08)
+(0.9878787878787879, 9.307459988955287e-08)
 >>> print(r.summary())
                         Spearman rank correlation test
 ==============================================================================
@@ -175,7 +175,7 @@ SpearmanrhoResult(statistic=0.987879, pvalue=0.0002)
 
 ```python
 >>> sd.htest.spearmanrho(dose, resp, alternative='greater').pvalue
-4.653729994477646e-08
+4.6537299944776434e-08
 ```
 
 관측한 방향의 한쪽 p값은 양쪽의 절반이에요.
@@ -222,7 +222,7 @@ ValueError: spearmanrho(): the paired samples must agree in size, not 2 and 3
 
 ## 정확도
 
-중간 순위는 정확한 값이고, 그 순위에서 [`pearsonr`](/api/htest/pearsonr/#정확도)과 같은 계산으로 $\rho$와 p값을 구해요. Arb(구간 산술)로 만든 참값에 견주면 10문제(동점, ±inf, 깊은 꼬리, 음의 상관, 배치 포함)에서 $\rho$는 상대오차 6.8e-17 안, p값은 3.7e-16 안이에요.
+중간 순위는 정확한 값이고, 그 순위에서 [`pearsonr`](/api/htest/pearsonr/#정확도)과 같은 계산으로 $\rho$와 p값을 구해요. Arb(구간 산술)로 만든 참값에 견주면 10문제(동점, ±inf, 깊은 꼬리, 음의 상관, 배치 포함)에서 $\rho$는 상대오차 6.8e-17 안, p값은 2.1e-16 안이에요.
 
 ## scipy·R을 아는 분께
 

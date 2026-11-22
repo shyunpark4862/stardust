@@ -110,7 +110,7 @@ array([inf, 0.0, nan], dtype=float64)
 
 ```python
 >>> sd.exp(sd.asarray([10.0]))
-array([22026.465794806714], dtype=float64)
+array([22026.465794806718], dtype=float64)
 >>> sd.e ** sd.asarray([10.0])
 array([22026.465794806703], dtype=float64)
 ```
@@ -229,7 +229,7 @@ x가 0에서 멀어지면 두 결과는 같아져요. 작은 x가 들어올 수 
 >>> (1 + r) ** 1e12
 array([2.7185234960372378], dtype=float64)
 >>> sd.exp(1e12 * sd.log1p(r))
-array([2.7182818284576857], dtype=float64)
+array([2.718281828457686], dtype=float64)
 ```
 
 수학적으로 이 값은 e(`2.718281828...`)에 아주 가까워야 해요. 첫째 방법은 소수 넷째 자리부터 틀렸어요.
@@ -366,7 +366,7 @@ TypeError: exp(): cannot implicitly convert float64 to int64 (that would lose in
 | `exp` | 3칸 | 1칸 |
 | `log`, `log2`, `log10` | 4칸 | 2칸 |
 
-4칸은 상대오차로 약 8.9e-16이에요. ±0, ±inf, NaN 같은 특수값의 결과는 부호까지 정확하고, 같은 입력이면 배열 안의 위치나 스레드 수와 상관없이 같은 값이 나와요.
+4칸은 상대오차로 약 8.9e-16이에요. `expm1`과 `log1p`는 따로 약속한 칸 수가 없지만, 같은 방법으로 잰 최대는 1칸이에요. ±0, ±inf, NaN 같은 특수값의 결과는 부호까지 정확하고, 같은 입력이면 배열 안의 위치와 상관없이 같은 값이 나와요. 지금은 스레드 수와도 상관없이 같아요(약속은 아니에요).
 
 ## 조심할 점
 
@@ -389,5 +389,5 @@ TypeError: exp(): cannot implicitly convert float64 to int64 (that would lose in
 
 - `exp2`, `logaddexp2` 함수는 없어요. `2.0 ** x`와 `logaddexp(a * log(2), b * log(2)) / log(2)`처럼 계산하세요.
 - 0이나 음수의 로그는 경고 없이 `-inf`나 NaN이에요. `errstate`도 없어요.
-- `exp`, `log`, `log2`, `log10`은 numpy와 마지막 몇 자리가 다를 수 있어요(잰 차이는 최대 2칸). 특수값(±0, ±inf, NaN)의 결과는 부호까지 같아요. `expm1`, `log1p`, `logaddexp`는 지금은 numpy와 비트까지 같아요(약속은 아니에요).
+- `exp`, `expm1`, `log`, `log1p`, `log2`, `log10`은 numpy와 마지막 몇 자리가 다를 수 있어요(잰 차이는 `exp`, `expm1`, `log1p`가 최대 1칸, `log` 계열이 최대 2칸). 특수값(±0, ±inf, NaN)의 결과는 부호까지 같아요. `logaddexp`는 지금은 numpy와 비트까지 같아요(약속은 아니에요).
 - `out`은 keyword-only이고 `where=` 인자는 없어요. Python 숫자를 넣으면 numpy 스칼라가 아니라 Python `float`·`complex`가 나와요.

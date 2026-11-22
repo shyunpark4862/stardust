@@ -20,7 +20,7 @@ import Callout from '../../../components/Callout.astro';
 >>> r
 TtestIndResult(statistic=3.56201, pvalue=0.00347552, df=13)
 >>> r.statistic, r.pvalue, r.df
-(3.562014733011916, 0.0034755247785208912, 13.0)
+(3.562014733011916, 0.003475524778520891, 13.0)
 >>> r.conf_int()
 array([0.6148408018391772,  2.510159198160829], dtype=float64)
 ```
@@ -72,7 +72,7 @@ True
 >>> type(r.df).__name__
 'float'
 >>> sd.htest.ttest_ind(a, b, equal_var=False).df
-12.969675092683447
+12.96967509268345
 ```
 
 ## 필드의 형
@@ -95,7 +95,7 @@ BinomtestResult(k=7, n=20, alternative='two-sided', statistic=0.35, pvalue=0.263
 >>> rb
 Ttest1sampResult(batch shape (2,))
 >>> rb.statistic
-array([  3.172038867115106, -1.3976724838434145], dtype=float64)
+array([ 3.1720388671151056, -1.3976724838434142], dtype=float64)
 >>> rb.df
 array([6.0, 6.0], dtype=float64)
 >>> sd.htest.mannwhitneyu(sd.asarray([a[:5], [1.0, 2, 3, 4, 5]]), [250.0, 251.0, 1.5, 1.5], axis=1).method
@@ -137,9 +137,9 @@ scipy의 결과가 튜플처럼 풀리는 검정은 같은 개수와 순서로 �
 ```python
 >>> stat, p = sd.htest.ttest_ind(a, b)
 >>> stat, p
-(3.562014733011916, 0.0034755247785208912)
+(3.562014733011916, 0.003475524778520891)
 >>> r[0], r[1], len(r)
-(3.562014733011916, 0.0034755247785208912, 2)
+(3.562014733011916, 0.003475524778520891, 2)
 ```
 
 자유도는 튜플에 들지 않아요. 필드로 읽어요. 몇 검정은 scipy처럼 넷으로 풀려요(`chi2_contingency`는 통계량, p값, 자유도, 기대 빈도, `median_test`는 통계량, p값, 중앙값, 표).
@@ -181,7 +181,7 @@ True
 
 ```python
 >>> r.conf_int(alpha=0.1)
-array([0.7856690100591656, 2.3393309899408408], dtype=float64)
+array([0.7856690100591655, 2.3393309899408408], dtype=float64)
 >>> rb.conf_int()
 array([[250.27105388610042, 252.10037468532815],
        [ 248.8997181015065,  250.3002818984935]], dtype=float64)
@@ -206,7 +206,7 @@ array([[250.27105388610042, 252.10037468532815],
 
 ```python
 >>> sd.htest.ttest_ind(a, b, alternative='greater').conf_int()
-array([0.7856690100591656,                inf], dtype=float64)
+array([0.7856690100591655,                inf], dtype=float64)
 >>> sd.htest.ttest_ind(a, b, alternative='less').conf_int()
 array([              -inf, 2.3393309899408408], dtype=float64)
 ```
@@ -217,9 +217,9 @@ array([              -inf, 2.3393309899408408], dtype=float64)
 
 ```python
 >>> bt.conf_int()
-array([0.15390920478454115,  0.5921885345328282], dtype=float64)
+array([0.15390920478454118,  0.5921885345328282], dtype=float64)
 >>> bt.conf_int(method='wilson')
-array([0.1811918241010821, 0.5671457233147638], dtype=float64)
+array([0.18119182410108203,  0.5671457233147638], dtype=float64)
 ```
 
 ### alpha의 검사
@@ -399,7 +399,7 @@ ValueError: assignment destination is read-only
 >>> s = rb.statistic.copy()
 >>> s[0] = 0.0
 >>> s, rb.statistic
-(array([                0.0, -1.3976724838434145], dtype=float64), array([  3.172038867115106, -1.3976724838434145], dtype=float64))
+(array([                0.0, -1.3976724838434142], dtype=float64), array([ 3.1720388671151056, -1.3976724838434142], dtype=float64))
 ```
 
 리스트인 필드(배치의 `method`)는 읽을 때마다 새 리스트라서, 고쳐도 결과는 그대로예요. `conf_int()`가 돌려주는 배열은 부를 때마다 만드는 것이라 쓸 수 있어요.

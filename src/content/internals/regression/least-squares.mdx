@@ -2,7 +2,7 @@
 title: 최소제곱 풀이
 group: 선형 모형
 order: 1
-summary: ols·wls·gls가 계수를 구하는 방법을 설명해요. 정규방정식 대신 Householder QR로 처음 해를 구하고 double-double 잔차로 반복 개선해서, 조건수 10¹¹까지 상대오차 10⁻¹⁴ 안의 참 최소제곱 해를 돌려줘요.
+summary: ols·wls·gls가 계수를 구하는 방법을 설명해요. 정규방정식 대신 Householder QR(키가 크고 조건이 좋은 설계는 CholeskyQR2)로 처음 해를 구하고 double-double 잔차로 반복 개선해서, 조건수 10¹¹까지 상대오차 10⁻¹⁴ 안의 참 최소제곱 해를 돌려줘요.
 seeAlso: [overview, inference, glm, accuracy-performance]
 ---
 import Callout from '../../../components/Callout.astro';
@@ -20,12 +20,13 @@ export const refineErr = {
 
 `ols`, `wls`, `gls`의 계수는 모두 `lsq::fit_one`(`csrc/regression/linear.cpp`) 하나가 구해요. 회귀 하나의 흐름은 이래요.
 
-<Fig column caption="lsq::fit_one의 단계. 굵은 계산은 QR 한 번(geqrf)과 double-double 행 합 서너 번이에요. 겹친 열이 없고 조건이 좋으면 개선은 한 번에 끝나요.">
+<Fig column caption="lsq::fit_one의 단계. 굵은 계산은 QR 한 번(geqrf, 키가 큰 설계는 CholeskyQR2)과 double-double 행 합 서너 번이에요. 겹친 열이 없고 조건이 좋으면 개선은 한 번에 끝나요.">
   <Steps
     steps={[
       { label: '검사와 쓰인 행', note: 'y, X, 가중치의 NaN·inf, 음수 가중치. 가중치가 0보다 큰 행의 번호를 idx에, 백색화 인자 s_t = √w_t를 s에. 쓰인 행이 없으면 NaN 결과(nobs 0)로 끝' },
-      { label: '꾸리기와 열의 노름', note: '백색화한 설계(절편 열 먼저)를 열 우선으로 꾸리고, 열마다 dnrm2로 ‖x_j‖를 재요', where: 'pack' },
-      { label: 'geqrf', note: '피벗 없는 Householder QR', where: 'Accelerate LAPACK' },
+      { label: '꾸리기', note: '백색화한 설계(절편 열 먼저)를 열 우선으로 꾸려요', where: 'pack' },
+      { label: 'CholeskyQR2', note: '쓰인 행 m ≥ 2k이고 m·k ≥ 16,384이면 먼저 해 봐요. R₁의 조건수 어림이 10⁵ 이하이고 겹칠 기미인 열이 없을 때만 이 분해를 써요. 열의 노름은 R₁의 열에서', where: 'ddot·dsyrk, potrf, dtrsm' },
+      { label: 'geqrf', note: '그 밖은 열마다 dnrm2로 ‖x_j‖를 재고 피벗 없는 Householder QR', where: 'Accelerate LAPACK' },
       { label: '겹친 열', note: '|R_jj| ≤ rtol·‖x_j‖인 첫 열을 빼고 뒤의 열만 다시 분해. 하나라도 뺐으면 남은 열로 처음부터 한 번 더 geqrf', depth: 1 },
       { label: '처음 해', note: 'c = Qᵀ(s·y)를 반사를 직접 적용해 구하고, R β₀ = c₁을 trtrs로', where: 'apply_reflectors' },
       { label: '처음 잔차', note: 'r = y − Xβ₀를 Dot2로 구해 반올림하고, 그 나머지를 f에 둬요. 같은 패스에서 가중 평균의 합', where: 'Dot2' },
@@ -92,7 +93,7 @@ array([1.0, 1.0, 1.0, 1.0, 1.0, 1.0], dtype=float64)
 >>> Xc = sd.concat([sd.ones((21, 1)), X], axis=1)
 >>> ne = sd.linalg.solve(Xc.T @ Xc, Xc.T @ y)          # 정규방정식
 >>> f"{float(sd.max(sd.abs(ne - 1.0))):.1e}"
-'1.6e-08'
+'1.3e-07'
 >>> ls = sd.linalg.lstsq(Xc, y).solution               # SVD 최소제곱
 >>> f"{float(sd.max(sd.abs(ls - 1.0))):.1e}"
 '2.9e-10'
@@ -101,7 +102,7 @@ array([1.0, 1.0, 1.0, 1.0, 1.0, 1.0], dtype=float64)
 '1.8e-10'
 ```
 
-QR만으로는 $\kappa u \approx 7\times10^{-10}$ 수준, 정규방정식은 그보다 두 자릿수 더 나빠요. 개선을 한 번 하면 정확히 1이에요. 이 경우 잔차 제곱합이 정확히 0이라 표준오차도 0이고, t와 p는 NaN이에요([겹친 열과 완전 적합](/api/regression/collinearity/)).
+QR만으로는 $\kappa u \approx 7\times10^{-10}$ 수준, 정규방정식은 그보다 세 자릿수 가까이 더 나빠요. 개선을 한 번 하면 정확히 1이에요. 이 경우 잔차 제곱합이 정확히 0이라 표준오차도 0이고, t와 p는 NaN이에요([겹친 열과 완전 적합](/api/regression/collinearity/)).
 
 ## Householder QR
 
@@ -144,13 +145,13 @@ $$
     // initial solution
     if (kk > 0) {
         for (lint t = 0; t < m; ++t) cv[t] = s[t] * rd(d.y + idx[t] * d.ys);
-        apply_reflectors(A, m, kk, tau, cv, true, refl);
+        qt_apply(cv);
         std::copy(cv, cv + kk, beta);
         linalg::lapack::trtrs('U', 'N', 'N', kk, 1, A, m, beta, kk);
     }
 ```
 
-$Q^{\mathsf T}b$는 LAPACK `dormqr` 대신 `apply_reflectors`로 직접 구해요. 벡터 하나에 Accelerate의 `dormqr`를 부르면 (10⁵, 10)·10스레드에서 개선 세 번을 도는 적합 시간의 60%를 그 호출이 차지해요. `apply_reflectors`는 반사 $H_j$ 하나에 벡터를 한 번 훑으며, $H_j$를 적용하는 갱신 $c \leftarrow c - \tau_j (v_j^{\mathsf T}c)\,v_j$와 다음 반사의 내적 $v_{j+1}^{\mathsf T}c$를 같은 루프에서 해요. 내적은 행 수 m으로만 정한 4,096행 덩어리로 나눠 덩어리 순서대로 더하고, 남은 행이 2¹⁵개 이상이면 덩어리를 스레드풀에 보내요.
+`qt_apply`는 Householder QR이면 반사를 적용하고, CholeskyQR2면 얇은 Q로 곱해요([아래](#키가-큰-설계-choleskyqr2)). Householder의 $Q^{\mathsf T}b$는 LAPACK `dormqr` 대신 `apply_reflectors`로 직접 구해요. 벡터 하나에 Accelerate의 `dormqr`를 부르면 개선을 도는 적합 시간의 대부분을 그 호출이 차지해요. `apply_reflectors`는 반사 $H_j$ 하나에 벡터를 한 번 훑으며, $H_j$를 적용하는 갱신 $c \leftarrow c - \tau_j (v_j^{\mathsf T}c)\,v_j$와 다음 반사의 내적 $v_{j+1}^{\mathsf T}c$를 같은 루프에서 해요. 내적은 행 수 m으로만 정한 4,096행 덩어리로 나눠 덩어리 순서대로 더하고, 남은 행이 2¹⁵개 이상이면 덩어리를 스레드풀에 보내요.
 
 ```cpp
     double dot = pass(-1, 0.0, order(0));
@@ -161,6 +162,91 @@ $Q^{\mathsf T}b$는 LAPACK `dormqr` 대신 `apply_reflectors`로 직접 구해�
 ```
 
 `order`는 $Q^{\mathsf T}$이면 $0, 1, \dots$, $Q$이면 거꾸로예요. 같은 함수가 개선의 $Q[h; d_2]$에도 쓰여요.
+
+## 키가 큰 설계: CholeskyQR2
+
+행이 아주 많고 열이 적은 설계에서는 `geqrf`가 제 속도를 내지 못해요. 반사는 열 하나마다 길이 m의 벡터를 훑어 뒤 열에 적용해야 하는데, 열이 적으면 반사를 블록으로 묶어도 행렬곱이 되지 못하고 행렬-벡터 곱 꼴에 머물러요. 그래서 쓰인 행 $m$이 $m \ge 2k$이고 $m k \ge 16{,}384$이면 CholeskyQR2(Fukaya–Nakatsukasa–Yanagisawa–Yamamoto 2014)를 먼저 해 봐요.
+
+### Cholesky QR과 그 약점
+
+$A = QR$이면 $A^{\mathsf T}A = R^{\mathsf T}Q^{\mathsf T}QR = R^{\mathsf T}R$이에요. 그래서 Gram $A^{\mathsf T}A$를 Cholesky로 분해하면 $R$이 나오고, $Q = AR^{-1}$은 오른쪽 삼각 풀이 하나예요. Gram은 행렬곱 꼴이고 나머지는 $k \times k$ 계산과 `dtrsm`이라 키가 큰 행렬에서 빨라요.
+
+약점은 $Q$의 직교성이에요. Gram의 조건수가 $\kappa(A)^2$이라 이렇게 만든 $Q$는 $\lVert Q^{\mathsf T}Q - I\rVert$가 대략 $\kappa(A)^2u$만큼 어긋나요. $\kappa = 10^4$이면 $10^{-8}$이라, 최소제곱에 그대로 쓰기에는 너무 커요.
+
+### 한 번 더 하면
+
+CholeskyQR2는 같은 일을 한 번 더 해요.
+
+$$
+A^{\mathsf T}A = R_1^{\mathsf T}R_1,\quad Y = AR_1^{-1},\qquad Y^{\mathsf T}Y = R_2^{\mathsf T}R_2,\quad Q = YR_2^{-1},\qquad R = R_2R_1
+$$
+
+첫 단계의 $Y$는 직교에서 $\kappa(A)^2u$만큼만 벗어나므로, $\kappa(A)^2 u \ll 1$이면 $Y$의 조건수는 1에 아주 가까워요. 둘째 단계는 그렇게 조건이 좋은 행렬의 Cholesky QR이라 $Q$가 반올림 수준으로 직교해요. Yamamoto–Nakatsukasa–Yanagisawa–Fukaya(2015, *ETNA* 44)는 $8\kappa(A)\sqrt{mku + k(k+1)u} \le 1$이면
+
+$$
+\lVert Q^{\mathsf T}Q - I\rVert_F \le 6\bigl(mku + k(k+1)u\bigr), \qquad \lVert A - QR\rVert_F \le 5k^2\sqrt k\,u\,\lVert A\rVert_2
+$$
+
+임을 보였어요. $\kappa(A)$가 $u^{-1/2} \approx 7\times10^7$보다 충분히 작으면 Householder QR과 같은 자릿수의 분해라는 뜻이에요.
+
+### 이 분해를 쓰는 조건
+
+조건수는 $R_1$에서 `dtrcon`으로 어림해요(1-노름, 아래 "몇 번 하나"의 어림과 같은 방법). 어림이 $10^5$ 이하일 때만 이 분해를 써요. 경계 $u^{-1/2}$보다 훨씬 안쪽에 둔 것은 어림이 참값의 몇 배 틀릴 수 있고, 1-노름과 2-노름의 조건수도 $k$배 안에서 다르기 때문이에요. 겹친 열의 판정도 $R_1$의 대각으로 미리 봐요. 어느 열이든 $\lvert (R_1)_{jj}\rvert \le 2\cdot\text{rtol}\cdot\lVert a_j\rVert_2$(판정의 2배 여유)이면 포기하고, Householder QR이 겹친 열까지 정해요. 열의 노름은 $A^{\mathsf T}A$의 대각, 곧 $R_1$의 열에서 구해요($\lVert a_j\rVert_2^2 = \sum_i (R_1)_{ij}^2$). Cholesky가 실패해도 Householder QR로 가요. 그래서 겹친 열이 있는 설계와 조건이 나쁜 설계(NIST StRD 같은)는 늘 Householder QR이에요.
+
+```cpp
+        // csrc/regression/linear.cpp (lsq::fit_one)
+        if (!gram_chol(R1)) return false;
+        // the norms from the factor: ||a_j||^2 = sum_i R1_ij^2 (column j of R1)
+        for (lint j = 0; j < k; ++j) {
+            double s2 = 0.0;
+            for (lint i = 0; i <= j; ++i) s2 += R1[j * k + i] * R1[j * k + i];
+            nrm[j] = std::sqrt(s2);
+        }
+        const double rc = linalg::lapack::trcon_1('U', k, R1.data(), k);
+        if (!(rc > 0.0) || 1.0 / rc > kCholQRMaxCond) return false;
+        for (lint j = 0; j < k; ++j)
+            if (!(std::fabs(R1[j * k + j]) > 2.0 * tol * nrm[j])) return false;
+```
+
+Gram은 열이 32개까지면 열 쌍마다 `ddot` 하나로, 그보다 많으면 `dsyrk`로 만들어요. Accelerate의 `dsyrk`는 좁고 긴 행렬에서 열 쌍마다의 `ddot`보다 몇 배 느려서예요. $R = R_2R_1$은 `dtrmm`으로 곱해 $A$의 위 삼각 블록(Householder QR이 $R$을 두는 자리)에 두고, 얇은 $Q$($m \times k$)는 따로 둬요.
+
+### 얇은 Q로 하는 개선
+
+반복 개선은 $Q^{\mathsf T}c$와 $Q[c_1;\,d_2]$를 써요. CholeskyQR2에는 반사가 없고 얇은 $\bar Q$만 있어요. 개선은 $Q^{\mathsf T}c$의 뒤 블록 $d_2 = Q_\perp^{\mathsf T}c$를 고치지 않고 그대로 $Q$에 되돌려 넣으므로, $Q_\perp Q_\perp^{\mathsf T} = I - \bar Q\bar Q^{\mathsf T}$에서
+
+$$
+Q\begin{bmatrix} c_1 \\ Q_\perp^{\mathsf T}c \end{bmatrix} = \bar Q c_1 + (I - \bar Q\bar Q^{\mathsf T})\,c = c + \bar Q\,(c_1 - d_1), \qquad d_1 = \bar Q^{\mathsf T}c
+$$
+
+이에요. 그래서 $c$와 $d_1$을 남겨 두면 `dgemv` 둘로 끝나요.
+
+```cpp
+    // csrc/regression/linear.cpp (lsq::fit_one)
+    auto qt_apply = [&](double* c) {
+        if (!explicit_q) return apply_reflectors(A, m, kk, tau, c, true, refl);
+        std::copy(c, c + m, sbuf);
+        cblas_dgemv(
+            CblasColMajor, CblasTrans, static_cast<int>(m), static_cast<int>(kk), 1.0, Q, static_cast<int>(m), sbuf, 1,
+            0.0, dsave, 1
+        );
+        std::copy(dsave, dsave + kk, c);
+    };
+    auto q_apply = [&](double* c) {
+        if (!explicit_q) return apply_reflectors(A, m, kk, tau, c, false, refl);
+        for (lint jj = 0; jj < kk; ++jj) work2q[jj] = c[jj] - dsave[jj];
+        std::copy(sbuf, sbuf + m, c);
+        cblas_dgemv(
+            CblasColMajor, CblasNoTrans, static_cast<int>(m), static_cast<int>(kk), 1.0, Q, static_cast<int>(m),
+            work2q.data(), 1, 1.0, c, 1
+        );
+    };
+```
+
+지렛대, 강건 공분산, GLM의 얇은 Q도 이 $\bar Q$를 바로 써요(`orgqr`가 필요 없어요).
+
+### 분해에 따른 정확도
+
+계수는 어느 분해든 개선이 정해요. 개선의 잔차는 입력을 그대로 읽으므로 분해는 보정을 푸는 전처리일 뿐이에요. 분해가 영향을 주는 것은 $R$에서 바로 읽는 표준오차와 $\bar Q$에서 읽는 지렛대예요. Arb 참값과 견주면($n = 4000$, $k = 5$, 절편과 평균이 3인 열) 표준오차의 최대 상대오차가 $\kappa = 10^3$에서 $1.8\times10^{-15}$(Householder $5.7\times10^{-15}$), 이 분해를 쓰는 끝인 $\kappa = 3\times10^3$에서 $9.1\times10^{-15}$(Householder $3.2\times10^{-14}$)이고, 지렛대는 $6.6\times10^{-13}$(Householder $8.5\times10^{-11}$)이에요. 계수의 오차는 두 분해 모두 0이에요. $\kappa = 10^4$부터는 어림이 문턱을 넘어 Householder QR이에요. 위의 정확도 약속을 잰 문제(NIST StRD와 무작위 조건수 문제)는 이 분해의 크기 문턱 아래라 Householder QR 그대로예요.
 
 ## 겹친 열
 
@@ -174,7 +260,7 @@ $$
 \lvert R_{jj} \rvert \le \text{rtol}\cdot\lVert x_j \rVert_2 \quad\Rightarrow\quad x_j\text{는 겹친 열}
 $$
 
-$\lVert x_j \rVert_2$는 분해 전 백색화한 열의 길이(열마다 `dnrm2` 한 번)예요. `rtol`의 기본은 sd.linalg와 같은 $\max(\text{nobs}, k)\cdot\varepsilon$($\varepsilon = 2^{-52}$)이에요.
+$\lVert x_j \rVert_2$는 분해 전 백색화한 열의 길이(열마다 `dnrm2` 한 번, CholeskyQR2를 쓴 분해는 $R_1$의 열에서)예요. `rtol`의 기본은 sd.linalg와 같은 $\max(\text{nobs}, k)\cdot\varepsilon$($\varepsilon = 2^{-52}$)이에요.
 
 이 규칙은 R의 `dqrdc2`(LINPACK `dqrdc`를 R이 고친 것)와 같은 선택이에요. `dqrdc2`는 Householder 단계마다 남은 열의 노름이 원래 노름의 `tol`배 아래로 떨어진 열을 맨 뒤로 보내요. 그래서 **앞 열이 남고 뒤 열이 빠져요.** 열 피벗 QR(`geqp3`)은 노름이 큰 열을 먼저 고르므로, 같은 겹침에서 어느 열이 빠질지가 열의 척도에 달려요. 사용자가 준 열 순서를 존중하는 쪽이 결과를 읽기 쉬워서 이 규칙을 써요.
 
@@ -210,7 +296,7 @@ array([ 0.9948875828852495, 0.49584816210923005,                 nan,
 (True, True)
 ```
 
-마지막 줄처럼, 열을 뺀 적합은 그 열을 처음부터 주지 않은 적합과 비트까지 같아요.
+마지막 줄처럼, 열을 뺀 적합은 그 열을 처음부터 주지 않은 적합과 비트까지 같아요. 다만 겹친 열이 있는 설계는 늘 Householder QR이라, 열을 뺀 설계가 CholeskyQR2를 타는 큰 문제에서는 분해가 달라요. 계수는 개선이 같은 double로 데려가지만 표준오차는 끝자리가 다를 수 있어요.
 
 ### 빼고 다시 분해하기
 
@@ -248,7 +334,7 @@ array([ 0.9948875828852495, 0.49584816210923005,                 nan,
         }
 ```
 
-마지막으로, 하나라도 뺐으면 남은 열을 처음부터 꾸려 `geqrf`를 한 번 더 해요. 부분 분해를 이어 붙인 $R$은 수학적으로 같아도 비트가 다를 수 있어서, 이렇게 해야 결과가 "그 열을 뺀 적합"과 비트까지 같아요. 겹친 열이 없는 보통의 적합은 이 비용을 내지 않아요.
+마지막으로, 하나라도 뺐으면 남은 열을 처음부터 꾸려 `geqrf`를 한 번 더 해요. 부분 분해를 이어 붙인 $R$은 수학적으로 같아도 비트가 다를 수 있어서, 이렇게 해야 결과가 (같은 Householder 길을 타는) "그 열을 뺀 적합"과 비트까지 같아요. 겹친 열이 없는 보통의 적합은 이 비용을 내지 않아요.
 
 <Callout type="note">
 기본 `rtol`에서 NIST StRD의 11개는 모두 완전 랭크예요. 조건수가 1.8×10¹⁵인 Filip도 11열이 모두 남고, 아래의 반복 개선으로 Arb 참값과 같은 double이 나와요. R의 `lm`(`tol = 1e-7`)은 Filip에서 x¹⁰ 열을 빼요. `rtol=1e-7`을 주면 sd도 같은 열을 빼요.
@@ -279,7 +365,7 @@ $$
 \delta\tilde r + A\,\delta\beta = W^{1/2}f, \qquad A^{\mathsf T}\delta\tilde r = g
 $$
 
-이고, $Q^{\mathsf T}\delta\tilde r = [a;\, b]$, $Q^{\mathsf T}W^{1/2}f = [d_1;\, d_2]$로 두면 둘째 식은 $R^{\mathsf T}a = g$, 첫 식은 $a + R\,\delta\beta = d_1$, $b = d_2$가 돼요. 그래서 한 번의 보정은 삼각 풀이 둘과 반사 적용 둘이에요.
+이고, $Q^{\mathsf T}\delta\tilde r = [a;\, b]$, $Q^{\mathsf T}W^{1/2}f = [d_1;\, d_2]$로 두면 둘째 식은 $R^{\mathsf T}a = g$, 첫 식은 $a + R\,\delta\beta = d_1$, $b = d_2$가 돼요. 그래서 한 번의 보정은 삼각 풀이 둘과 $Q^{\mathsf T}$·$Q$의 적용 둘이에요.
 
 $$
 h = R^{-\mathsf T}g, \qquad d = Q^{\mathsf T}(W^{1/2}f), \qquad \delta\beta = R^{-1}(d_1 - h), \qquad \delta\tilde r = Q\begin{bmatrix} h \\ d_2 \end{bmatrix}
@@ -290,7 +376,7 @@ $$
         std::copy(g, g + kk, h);
         linalg::lapack::trtrs('U', 'T', 'N', kk, 1, A, m, h, kk);
         for (lint t = 0; t < m; ++t) cv[t] = s[t] * f[t];
-        apply_reflectors(A, m, kk, tau, cv, true, refl);
+        qt_apply(cv);
         for (lint jj = 0; jj < kk; ++jj) work[jj] = cv[jj] - h[jj];
 ```
 
@@ -305,7 +391,7 @@ $$
             bn = std::max(bn, std::fabs(beta[jj]));
         }
         if (!use_newton) std::copy(h, h + kk, cv);
-        apply_reflectors(A, m, kk, tau, cv, false, refl);
+        q_apply(cv);
         for (lint t = 0; t < m; ++t) r[t] += cv[t] / s[t];
 ```
 
@@ -417,7 +503,7 @@ $\hat\kappa$는 LAPACK `dtrcon`이 $R$에서 어림한 1-노름 조건수예요.
 
 잔차가 100배 커지면 처음 오차의 $\kappa^2u\rho$ 항이 커져서 두 번째 보정이 필요해요.
 
-보정 한 번의 비용은 적합 시간의 10–25%예요. 조건이 좋은 문제는 한 번에 멈추므로 늘 한 번 분량의 비용만 들어요.
+조건이 좋은 문제는 한 번에 멈추므로 보정 한 번 분량의 비용만 들어요.
 
 ### 정확도
 
@@ -431,7 +517,15 @@ $\hat\kappa$는 LAPACK `dtrcon`이 $R$에서 어림한 1-노름 조건수예요.
 개선이 끝나면 마지막 $\beta$로 한 번 더 모든 행을 훑어요. 가중치가 0인 행도 적합값과 잔차는 계산해요.
 
 ```cpp
-        for (lint t = t0; t < t1; ++t) {
+        // csrc/regression/linear.cpp (lsq::fit_one)
+        DD a4[kAccFinal][4] = {};
+        const bool unit = !pb.has_w && !pb.has_u;
+        lint t = t0;
+        if (unit) {
+            // two rows per vector (lanes), two vectors: the same partial sums by rows mod 4
+            ...
+        }
+        for (; t < t1; ++t) {
             const lint i = idx[t];
             const double yv = rd(d.y + i * d.ys);
             double hh, e;
@@ -443,20 +537,28 @@ $\hat\kappa$는 LAPACK `dtrcon`이 $R$에서 어림한 1-노름 조건수예요.
             o.fitted[i] = fit.hi;
             o.resid[i] = rr;
             r[t] = rr;
-            const double wt = weight(i), ut = uval(i);
-            a[fSsr] = a[fSsr] + (res * res) * wt;
-            const DD yc = DD{yv, 0.0} - ybar * ut;
-            a[fCtss] = a[fCtss] + (yc * yc) * wt;
+            DD* a = &a4[0][t & 3];
             double yh, yl;
             two_prod(yv, yv, yh, yl);
-            a[fUtss] = a[fUtss] + dd_of(yh, yl) * wt;
+            if (unit) {
+                ...
+                continue;
+            }
+            const double wt = weight(i), ut = uval(i);
+            a[fSsr * 4] = a[fSsr * 4] + (res * res) * wt;
+            const DD yc = DD{yv, 0.0} - ybar * ut;
+            a[fCtss * 4] = a[fCtss * 4] + (yc * yc) * wt;
+            a[fUtss * 4] = a[fUtss * 4] + dd_of(yh, yl) * wt;
             const DD fc = fit - ybar * ut;
-            a[fEssC] = a[fEssC] + (fc * fc) * wt;
-            a[fEssU] = a[fEssU] + (fit * fit) * wt;
+            a[fEssC * 4] = a[fEssC * 4] + (fc * fc) * wt;
+            a[fEssU * 4] = a[fEssU * 4] + (fit * fit) * wt;
         }
+        DD a[kAccFinal];
+        for (int q = 0; q < kAccFinal; ++q) a[q] = (a4[q][0] + a4[q][1]) + (a4[q][2] + a4[q][3]);
 ```
-
 적합값 $\hat y_t$와 잔차 $r_t$는 double-double 값을 한 번 반올림한 것이에요. 다섯 가지 합은 모두 double-double로 더해요.
+
+합 하나를 한 사슬로 모든 행에 걸쳐 더하면 행마다 double-double 덧셈의 지연을 기다려야 해서, 열이 적은 적합에서는 이 패스가 시간의 대부분이 돼요. 그래서 행 번호를 4로 나눈 나머지마다 부분합을 따로 두고(`a4[q][t & 3]`), 덩어리 끝에서 $(a_0 + a_1) + (a_2 + a_3)$ 순서로 합쳐요. 네 사슬이 서로 기다리지 않아요. 순서는 행 번호로만 정해지므로 스레드 수와 상관없어요. 가중치가 없으면(`unit`) $w_t = u_t = 1$의 곱을 건너뛰고, 두 행을 NEON 레인 하나에 두고 벡터 둘로 같은 네 부분합을 만들어요(`csrc/regression/dd2.hpp`의 레인마다 double-double). 레인마다의 연산은 스칼라 식과 같아서 값도 같아요. 처음 잔차를 구하는 첫 패스의 가중 평균 합도 같은 네 부분합이에요.
 
 | 이름 | 식 | 필드 |
 |---|---|---|
@@ -605,7 +707,6 @@ t만은 IEEE 연산에 맡기지 않아요. 계수는 정확도 약속 안의 �
 
 ```python
     def _perfect(self):
-        """A perfect fit (ssr 0) with df_resid > 0: t and p are NaN there."""
         z = self._ssr_s() == 0.0
         df = self.df_resid
         if self._batch:
@@ -729,10 +830,19 @@ GLS에서도 같은 해예요. 백색화한 문제의 절편 열은 $L^{-1}\math
         fitted, resid = _sd.broadcast_to(fitted, raw[3].shape), _sd.broadcast_to(resid, raw[3].shape)
     raw[3], raw[4] = _ro(fitted), _ro(resid)
     if const is not None:  # the whitened residuals L^-1 (y - y0 1) are exactly 0 there
-        wr = res._wresid()
-        res._cache["wresid"] = (
-            _sd.where(_sd.expand_dims(const, axis=-1), 0.0, wr) if res._batch else _sd.zeros(tuple(wr.shape))
-        )
+        res._extra["const"] = const
+```
+
+이 표시는 백색화한 잔차를 만드는 `_wresid_raw`가 읽어요. `wresid`와 그것으로 만드는 진단(스튜던트화 잔차, Durbin–Watson, Jarque–Bera 등)이 모두 이 잔차를 쓰므로, 상수 $y$의 GLS에서는 모두 0에서 출발해요.
+
+```python
+            const = self._extra.get("const")
+            if const is not None:
+                if self._batch:
+                    e = _sd.where(_sd.expand_dims(const, axis=-1), 0.0, e)
+                else:
+                    e = _sd.zeros(tuple(e.shape))
+            return e
 ```
 
 ## 극단적인 척도
@@ -819,9 +929,6 @@ array([4.3403891381277555,  2.444902493779801], dtype=float64)
 ```python
     @property
     def tvalues(self):
-        """params / bse; NaN for a perfect fit (an estimated scale of 0 with df_resid > 0: bse
-        is 0, and a coefficient of rounding size over 0 would show a significance the fit cannot
-        have)."""
 
         def make():
             if "beff_params_s" not in self._extra:
@@ -850,8 +957,6 @@ p는 이 t에서 구하므로 넘친 계수의 p도 맞아요.
 
 ```python
     def conf_int(self, *, alpha=0.05):
-        """(..., k, 2): the lower and upper bounds of the 1 - alpha confidence intervals
-        (alpha keyword-only)."""
         alpha = _check_alpha(alpha, "conf_int")
         q = self._dist().iccdf(alpha / 2)
         if "beff_params_s" not in self._extra:
@@ -920,4 +1025,4 @@ Filip은 세 라이브러리 모두 자릿수가 하나도 맞지 않아요(stat
 
 ## 속도
 
-적합 한 번의 계산은 QR(Accelerate `geqrf`) 한 번과 double-double 행 합 세 번(처음 잔차, 개선, 마지막 패스), 반사 적용이에요. QR은 $O(nk^2)$이고 나머지는 $O(nk)$라서, 열이 많을수록 QR이 시간의 대부분을 차지해요.
+적합 한 번의 계산은 분해(Accelerate `geqrf`, 키가 크고 조건이 좋은 설계는 CholeskyQR2) 한 번과 double-double 행 합 세 번(처음 잔차, 개선, 마지막 패스), $Q$의 적용이에요. 분해는 $O(nk^2)$이고 나머지는 $O(nk)$라서, 열이 많을수록 분해가 시간의 대부분을 차지해요. 키가 크고 열이 적은 설계에서는 `geqrf`가 행렬-벡터 꼴에 머무는 것이 걸림돌이라 CholeskyQR2가 행렬곱 꼴로 바꾸고, 그보다 작은 적합에서는 행 합의 지연이 걸림돌이라 네 부분합이 사슬을 나눠요.

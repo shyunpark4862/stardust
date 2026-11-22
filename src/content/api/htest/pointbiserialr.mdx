@@ -78,16 +78,16 @@ P-value:                       0.00105
 
 ## t 검정과의 관계
 
-등분산 t 검정의 $t$와 자유도 $n - 2$에서 $r_{pb} = t/\sqrt{t^2 + n - 2}$예요. p값도 같아요.
+등분산 t 검정의 $t$와 자유도 $n - 2$에서 $r_{pb} = t/\sqrt{t^2 + n - 2}$예요. p값도 같아요. 계산하는 길이 달라 끝자리 몇 개는 다를 수 있어요.
 
 ```python
 >>> t = sd.htest.ttest_ind(score[5:], score[:5])
 >>> t.pvalue, r.pvalue
-(0.0010546049842452855, 0.0010546049842452855)
+(0.0010546049842452855, 0.0010546049842452849)
 >>> t.statistic / (t.statistic ** 2 + 8) ** 0.5
 0.8703312266489667
 >>> r.statistic
-0.8703312266489667
+0.8703312266489666
 ```
 
 평균의 차이 자체와 그 신뢰구간이 필요하면 `ttest_ind`를, 두 집단의 분산이 다를 수 있으면 `ttest_ind(..., equal_var=False)`(Welch)를, 정규분포를 가정하기 어려우면 [`mannwhitneyu`](/api/htest/mannwhitneyu/)를 써요.
@@ -120,7 +120,7 @@ Traceback (most recent call last):
     ...
 TypeError: pointbiserialr(): unexpected keyword argument 'alternative'
 >>> sd.htest.pearsonr(group, score, alternative='greater').pvalue
-0.0005273024921226428
+0.0005273024921226424
 ```
 
 정확도는 `pearsonr`과 같아요. Arb(구간 산술)로 만든 참값의 점 이연 문제 둘(n = 800 포함)도 `pearsonr`의 문제와 함께 계약 안이에요.

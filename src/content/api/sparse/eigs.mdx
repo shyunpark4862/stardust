@@ -98,7 +98,7 @@ import Callout from '../../../components/Callout.astro';
 ```python
 >>> w, v = sd.sparse.eigs(P, k=1)
 >>> w
-array([(0.9999999999999979+0j)], dtype=complex128)
+array([(1.0000000000000009+0j)], dtype=complex128)
 >>> pi = sd.real(v[:, 0])
 >>> pi = pi / sd.sum(pi)
 >>> [round(x, 4) for x in pi[:5].tolist()]
@@ -129,9 +129,9 @@ True
 >>> C = 0.1 * I + 0.9 * shift
 >>> w, v = sd.sparse.eigs(C, k=3)
 >>> w
-array([                  (1.0000000000000004+0j),
-       (0.9889195065356227+0.14079101853620732j),
-       (0.9889195065356227-0.14079101853620732j)], dtype=complex128)
+array([                  (1.0000000000000053+0j),
+       (0.9889195065356252+0.14079101853620699j),
+       (0.9889195065356252-0.14079101853620699j)], dtype=complex128)
 ```
 
 실수 행렬의 복소 고유값은 언제나 켤레쌍($a \pm bi$)으로 나와요. 위의 둘째와 셋째가 그 쌍이에요. 고유벡터도 complex128이고, 정의대로 확인할 수 있어요.
@@ -147,8 +147,8 @@ k가 켤레쌍의 가운데를 가르면(위에서 k = 2) 쌍 가운데 하나�
 
 ```python
 >>> sd.sparse.eigs(C, k=2).eigenvalues
-array([                  (1.0000000000000004+0j),
-       (0.9889195065356227-0.14079101853620732j)], dtype=complex128)
+array([                  (1.0000000000000053+0j),
+       (0.9889195065356252-0.14079101853620699j)], dtype=complex128)
 ```
 
 ## `which`: 어느 쪽 고유값을 구할지
@@ -168,13 +168,13 @@ array([                  (1.0000000000000004+0j),
 
 ```python
 >>> sd.sparse.eigs(C, k=3, which='LR').eigenvalues
-array([                  (1.000000000000011+0j),
-       (0.9889195065356242+0.1407910185362077j),
-       (0.9889195065356242-0.1407910185362077j)], dtype=complex128)
+array([                 (1.0000000000000058+0j),
+       (0.988919506535624+0.14079101853620757j),
+       (0.988919506535624-0.14079101853620757j)], dtype=complex128)
 >>> sd.sparse.eigs(C, k=3, which='LI').eigenvalues
-array([  (0.1000000000000004-0.8999999999999986j),
-         (0.1000000000000004+0.8999999999999986j),
-       (0.24079101853620744-0.8889195065356211j)], dtype=complex128)
+array([(0.0999999999999997-0.8999999999999986j),
+       (0.0999999999999997+0.8999999999999986j),
+       (0.2407910185362082-0.8889195065356225j)], dtype=complex128)
 ```
 
 미분방정식 $x' = Ax$의 안정성을 볼 때는 `'LR'`이 쓸모 있어요. 실수부가 가장 큰 고유값의 부호가 해가 자라는지 줄어드는지를 정해요.
@@ -185,9 +185,9 @@ array([  (0.1000000000000004-0.8999999999999986j),
 
 ```python
 >>> sd.sparse.eigs(C, k=3, sigma=0.5 + 0.5j).eigenvalues
-array([(0.6290067270632249+0.7281152949374515j),
-         (0.736396103067894+0.636396103067894j),
-         (0.736396103067894-0.636396103067894j)], dtype=complex128)
+array([(0.6290067270632259+0.7281152949374529j),
+       (0.7363961030678935+0.6363961030678935j),
+       (0.7363961030678935-0.6363961030678935j)], dtype=complex128)
 ```
 
 실수 행렬에 복소 `sigma`를 주면 계산을 실수로 하려고 $(A - \sigma I)^{-1}$의 실수부(`OPpart='r'`, 기본값)나 허수부(`OPpart='i'`)를 써요. 그 연산자는 $\lambda$와 $\bar\lambda$를 같은 크기로 보므로, `sigma` 근처의 고유값과 함께 그 켤레(`sigma`의 켤레 근처)가 나와요. 위의 셋째가 그래요. 복소 행렬이면 `OPpart` 없이 $(A - \sigma I)^{-1}$를 그대로 써서 이런 일이 없어요.
@@ -251,14 +251,14 @@ array([0.7999999999999987, 0.8013838647570043, 0.8013838647570043,
 >>> sd.sparse.eigs(C, k=3, which='SM')
 EigsResult(converged=False, status=1, n_iter=401, n_converged=0, eigenvalues=<array of shape (0,)>)
 >>> sd.abs(sd.sparse.eigs(C, k=3, sigma=0).eigenvalues)
-array([0.8054873227226305, 0.8054873227226305, 0.8121692099840385], dtype=float64)
+array([0.8054873227227315, 0.8054873227227315, 0.8121692099858895], dtype=float64)
 ```
 
 `ncv`를 키워 부분공간을 넓히면 맞는 셋을 얻어요.
 
 ```python
 >>> sd.abs(sd.sparse.eigs(C, k=3, sigma=0, ncv=30).eigenvalues)
-array([0.7999999999999955, 0.8013838647570061, 0.8013838647570061], dtype=float64)
+array([  0.80000000000251, 0.8013838647565736, 0.8013838647565736], dtype=float64)
 ```
 
 <Callout type="warn" title="고유값이 모여 있으면 확인하세요">
@@ -270,7 +270,7 @@ array([0.7999999999999955, 0.8013838647570061, 0.8013838647570061], dtype=float6
 수렴하지 않을 때의 결과, `status`의 뜻, `tol`과 `max_iter`, 시작 벡터와 결정성은 모두 [eigsh](/api/sparse/eigsh/)와 같아요. 요약하면 이래요.
 
 - 수렴하지 않으면 에러가 아니라 `converged=False`인 결과에 수렴한 쌍만 담겨요. 먼저 `r.converged`를 확인해요. 상한에 걸린 결과의 `n_iter`는 `max_iter`보다 하나 커요(위의 401은 n = 40의 기본 상한 400에 걸린 것이에요).
-- `v0=None`이면 `sd.random.default_rng(0)`의 고정된 시작 벡터라서 같은 호출은 같은 비트의 결과예요. 행렬의 형식과 sd의 스레드 수와도 상관없어요. 다른 시작 벡터는 `rng=`나 `v0=`로 줘요.
+- `v0=None`이면 `sd.random.default_rng(0)`의 고정된 시작 벡터라서 같은 호출은 같은 비트의 결과예요. 행렬의 형식과도 상관없고, 지금은 sd의 스레드 수와도 상관없어요(약속은 아니에요). 다른 시작 벡터는 `rng=`나 `v0=`로 줘요.
 - 행렬 대신 곱하는 함수를 [LinearOperator](/api/sparse/linearoperator/)로 줄 수 있어요. 이때 `sigma`나 `M`의 역은 곱마다 반복법으로 풀어서 비용이 커요. 좋은 방법이 있으면 `OPinv=`, `Minv=`로 줘요.
 
 ## 입력과 에러
@@ -320,12 +320,12 @@ array([0.7999999999999955, 0.8013838647570061, 0.8013838647570061], dtype=float6
 
 ## 정확도
 
-대칭이 아닌 행렬의 고유값은 행렬의 작은 변화에 크게 흔들릴 수 있어요. 그 민감도가 고유값의 조건수 $\kappa(\lambda) = \lVert y\rVert\lVert x\rVert / |y^H x|$예요($x$, $y$는 오른쪽·왼쪽 고유벡터). 약속은 Arb(구간 산술)로 만든 참값과 견주어 $|\hat\lambda - \lambda| \le 1000\,\varepsilon\,\lVert A\rVert_2\,\kappa(\lambda)$($\varepsilon = 2^{-52}$)예요. 잔차 $\lVert Av - \lambda M v\rVert$는 $1000\,\varepsilon\,\lVert A\rVert_2$ 안이에요. 시험 문제에서 잰 가장 큰 오차는 이 한계의 0.011배예요.
+대칭이 아닌 행렬의 고유값은 행렬의 작은 변화에 크게 흔들릴 수 있어요. 그 민감도가 고유값의 조건수 $\kappa(\lambda) = \lVert y\rVert\lVert x\rVert / |y^H x|$예요($x$, $y$는 오른쪽·왼쪽 고유벡터). 약속은 Arb(구간 산술)로 만든 참값과 견주어 $|\hat\lambda - \lambda| \le 1000\,\varepsilon\,\lVert A\rVert_2\,\kappa(\lambda)$($\varepsilon = 2^{-52}$)예요. 잔차 $\lVert Av - \lambda M v\rVert$는 $1000\,\varepsilon\,\lVert A\rVert_2$ 안이에요. 시험 문제에서 잰 가장 큰 오차는 이 한계의 0.021배예요.
 
 ## scipy를 아는 분께
 
 - `scipy.sparse.linalg.eigs`와 같은 함수예요. `sd.sparse.eigs`로 불러요.
-- 계산 방법(ARPACK의 암시적 재시작 Arnoldi)을 scipy가 돌리는 순서 그대로 해서, 같은 `v0`이면 대개 반복 수와 상태가 scipy와 같아요. 위의 "놓치는" 예도 같은 `v0`이면 scipy에서 똑같이 일어나요.
+- 계산 방법(ARPACK의 암시적 재시작 Arnoldi)을 scipy가 돌리는 순서 그대로 해서, 같은 `v0`이면 상태가 scipy와 같고 곱의 수(`n_op`)도 대개 같아요. 벡터 합의 끝자리가 scipy와 달라서 곱의 수가 scipy 자신이 `v0`의 한 ulp에 따라 흔들리는 폭 안에서 다를 수 있어요. 위의 "놓치는" 예도 같은 `v0`이면 scipy에서 똑같이 일어나요.
 - `v0=None`이 고정된 시작 벡터예요(scipy는 실행마다 달라요). 인자는 `A`만 위치이고, `maxiter`는 `max_iter`예요.
 - 수렴하지 않으면 `ArpackNoConvergence` 대신 `converged=False`인 결과예요. `return_eigenvectors=False`여도 `(w, None)`으로 풀려요.
 - 실수 A와 복소 `sigma`로 `return_eigenvectors=False`를 주면 scipy는 고유값이 모두 0이지만, 여기서는 안에서 고유벡터를 구해 맞는 고유값을 돌려줘요.

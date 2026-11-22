@@ -68,7 +68,7 @@ import Steps from '../../../components/fig/Steps.astro';
     { label: 'ttest_ind()', note: '옵션 검사(equal_var, alternative, trim, method)', where: '_parametric.py' },
     { label: 'Samples(...)', note: '두 표본을 float64로 바꾸고, 표본 축을 뒤로 보내고, 배치 축끼리 브로드캐스트해 (lanes, n) 행렬 두 개로', where: '_common.py', depth: 1 },
     { label: '_k.ttest(2, ...)', note: '모든 줄의 적률과 t, p, df, 추정값, 표준오차', where: 'parametric.cpp' },
-    { label: 'lane_moments', note: '줄마다 개수, 평균, 편차 제곱합을 double-double로. (줄, 덩어리) 단위로 스레드풀에서', where: 'moments.hpp', depth: 1 },
+    { label: 'lane_moments', note: '줄마다 개수와 double-double 평균, double 나무의 편차 제곱합. (줄, 덩어리) 단위로 스레드풀에서', where: 'moments.hpp', depth: 1 },
     { label: 'StudentT의 ccdf', note: 'sd.stats 분포의 메서드를 C++에서 그대로', where: 'stats/dist/t_f.hpp', depth: 1 },
     { label: 'TtestIndResult._make(...)', note: '줄마다의 배열을 배치 모양으로, 하나면 Python float로. conf_int는 추정값과 표준오차를 쥔 함수', where: '_result.py' },
   ]} />

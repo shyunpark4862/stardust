@@ -157,7 +157,7 @@ private:
     std::int64_t size_ = 0;
     bool external_ = false;
     Py_buffer view_{};         // 외부 메모리일 때 쥐고 있는 버퍼 프로토콜 뷰
-    alignas(kAlignment) std::byte inline_[kInline];
+    alignas(16) std::byte inline_[kInline + kAlignment - 16];  // 안의 첫 128바이트 경계부터 kInline바이트
 };
 ```
 
@@ -167,9 +167,8 @@ arm64 macOS(CPython 헤더 기준)에서 각 부분의 크기는 이래요.
 |---|:---:|---|
 | `raw_`, `data_`, `size_`, `external_` | 25 | 정렬 때문에 32바이트 자리를 차지해요 |
 | `view_` (`Py_buffer`) | 80 | 외부 메모리일 때만 의미가 있어요 |
-| 채움(padding) | 16 | `inline_`을 128바이트 경계에 놓기 위해 |
-| `inline_` | 256 | 작은 데이터가 들어가는 곳 |
-| **합계** `sizeof(Buffer)` | **384** | `alignof(Buffer)`는 128 |
+| `inline_` | 368 | 256바이트(`kInline`) + 112바이트. 그 안의 첫 128바이트 경계부터 256바이트를 써요 |
+| **합계** `sizeof(Buffer)` | **480** | `alignof(Buffer)`는 16 |
 
 `Buffer`는 복사할 수 없어요(복사 생성자와 대입을 `delete`). 메모리 블록은 하나뿐이고, 공유는 언제나 `shared_ptr`를 복사하는 방식으로 해요.
 
@@ -180,11 +179,12 @@ arm64 macOS(CPython 헤더 기준)에서 각 부분의 크기는 이래요.
 ```cpp
 // csrc/base/buffer.cpp (발췌)
 std::shared_ptr<Buffer> Buffer::allocate(std::int64_t nbytes, bool zeroed) {
-    auto buf = std::make_shared<Buffer>(Key{});   // Buffer와 참조 카운트를 한 번에
+    auto buf = make_buffer();  // Buffer와 참조 카운트를 한 번에 (스레드별 목록에서)
     buf->size_ = nbytes;
-    if (static_cast<std::size_t>(nbytes) <= kInline) {   // 작은 배열: 객체 안
-        buf->data_ = buf->inline_;
-        if (zeroed) std::memset(buf->inline_, 0, static_cast<std::size_t>(nbytes));
+    if (static_cast<std::size_t>(nbytes) <= kInline) {  // 작은 배열: 객체 안의 첫 128바이트 경계부터
+        const auto addr = reinterpret_cast<std::uintptr_t>(buf->inline_);
+        buf->data_ = buf->inline_ + (((addr + kAlignment - 1) & ~(std::uintptr_t{kAlignment} - 1)) - addr);
+        if (zeroed) std::memset(buf->data_, 0, static_cast<std::size_t>(nbytes));
         return buf;
     }
     // 물리 메모리보다 큰 요청은 채울 수 없어요: MemoryError (TooLarge는 std::bad_alloc)
@@ -226,15 +226,16 @@ $$
 
 256바이트(`kInline`) 이하의 데이터는 `Buffer` 객체 안의 `inline_` 배열에 둬요. float64로는 원소 32개, complex128로는 16개까지예요.
 
-- `Buffer`는 `std::make_shared`로 만들어요. `make_shared`는 객체와 `shared_ptr`의 **제어 블록**(참조 카운트가 든 작은 구조체)을 한 번의 할당으로 붙여서 만들어요.
+- `Buffer`는 `std::allocate_shared`로 만들어요. 객체와 `shared_ptr`의 **제어 블록**(참조 카운트가 든 작은 구조체)을 한 번의 할당으로 붙여서 만들어요.
 - 그래서 작은 배열 하나를 만들 때의 할당이 세 번(Buffer 객체, 데이터, 제어 블록)에서 한 번으로 줄어요.
-- `inline_`은 `alignas(128)`이라 객체 안의 데이터도 128바이트 경계에 놓여요. `Buffer` 자체의 정렬이 128이므로, C++17부터의 정렬 지정 `operator new`가 Buffer를 128바이트 경계에 할당해요.
-- 대가로 모든 Buffer 객체가 256바이트 커져요. 데이터가 바깥에 있는 큰 배열에서도 `inline_`은 비어 있는 채로 자리만 차지하지만, 데이터에 비하면 무시할 만한 크기예요.
+- 그 한 블록도 해제할 때 버리지 않고 스레드마다 64개까지 목록에 남겨, 다음 할당이 다시 써요(`base/buffer.cpp`의 `CachedAlloc`). 자기 스레드의 목록이라 잠금이 없고, 스레드가 끝나면 남은 블록을 비워요.
+- 객체 안의 데이터도 128바이트 경계에 놓여요. 다만 `Buffer` 타입 자체는 16바이트 정렬이에요. 타입을 128바이트로 정렬하면 할당이 정렬 할당(`malloc_type_aligned_alloc`)으로 가서 작은 연산에서 눈에 띄는 비용이 되기 때문이에요. 그래서 `inline_`을 112바이트 더 크게 잡고, 그 안의 첫 128바이트 경계를 데이터의 시작으로 써요.
+- 대가로 모든 Buffer 객체가 수백 바이트 커져요. 데이터가 바깥에 있는 큰 배열에서도 `inline_`은 비어 있는 채로 자리만 차지하지만, 데이터에 비하면 무시할 만한 크기예요.
 
 작은 배열에서는 계산보다 할당 횟수와 고정 크기 배열의 복사가 시간을 정해요. 그래서 할당을 한 번 줄이면 그만큼 호출 시간이 줄어요. 자세한 내용은 [작은 배열의 호출 비용](/internals/array/small-arrays/)에 있어요.
 
-<Callout type="note" title="작은 메모리 할당 캐시는 두지 않아요">
-  해제된 작은 Buffer를 모아 두었다가 재사용하는 캐시는 없어요. 캐시를 두면 여러 스레드에서 해제될 때의 처리, 모아 둔 메모리를 운영체제에 돌려줄 시점 같은 복잡도가 함께 들어와요. 그 대신 위의 인라인 데이터로 할당 횟수 자체를 줄여요.
+<Callout type="note" title="할당 캐시는 둘뿐이에요">
+  해제한 메모리를 모아 두었다가 다시 쓰는 캐시는 Buffer 제어 블록의 스레드별 목록과 ndarray 인스턴스 풀 둘뿐이에요. 둘 다 크기가 하나뿐인 블록이고 상한이 있어요. 큰 데이터 블록은 모아 두지 않아요. macOS의 `malloc`이 큰 블록을 이미 다시 써서 첫 쓰기 페이지 폴트도 없었어요.
 </Callout>
 
 ### 외부 메모리: `adopt`
@@ -244,7 +245,7 @@ $$
 ```cpp
 // csrc/base/buffer.cpp (발췌)
 std::shared_ptr<Buffer> Buffer::adopt(const Py_buffer& view) {
-    auto buf = std::make_shared<Buffer>(Key{});
+    auto buf = make_buffer();
     buf->external_ = true;
     buf->view_ = view;                        // 소유권을 넘겨받는다
     buf->data_ = static_cast<std::byte*>(view.buf);
@@ -269,7 +270,7 @@ Buffer::~Buffer() {
 
 ### 공유 소유와 `shared_ptr`를 쓰는 이유
 
-`NDArray`는 `std::shared_ptr<Buffer>`로 메모리를 가리켜요. 뷰를 하나 만들 때마다 이 `shared_ptr`를 복사하므로, 참조 카운트가 원자적으로(atomic) 1 늘어요. 마지막 `shared_ptr`가 사라질 때 Buffer가 해제돼요.
+`NDArray`는 `std::shared_ptr<Buffer>`로 메모리를 가리켜요. 뷰나 외부 메모리 배열의 뷰를 만들 때 이 `shared_ptr`를 복사하므로, 참조 카운트가 원자적으로(atomic) 1 늘어요. 마지막 `shared_ptr`가 사라질 때 Buffer가 해제돼요.
 
 공유 소유를 Python 객체의 참조 카운트에만 맡기지 않고 C++ 쪽에 따로 둔 이유는 이래요.
 
@@ -277,9 +278,9 @@ Buffer::~Buffer() {
 - GIL 없이도 안전해요. `shared_ptr`의 참조 카운트는 원자적 연산이라, GIL을 놓은 스레드에서 복사하거나 버려도 안전해요. 위의 `adopt` 소멸자처럼 Python을 만져야 하는 경우만 따로 GIL을 잡아요.
 - frame의 Copy-on-Write가 참조 카운트를 읽어요. frame은 컬럼에 쓰기 전에 `use_count()`를 보고, 다른 곳에서 그 Buffer를 쥐고 있으면 먼저 복사해요(`csrc/frame/ops/selection.cpp`). 배열 영역의 읽기 전용 뷰가 같은 Buffer를 쥐고 있으면 카운트가 늘어 있으므로, frame이 쓰기 전에 알아서 복사해요.
 
-`shared_ptr`의 대가는 원자적 증감 한 번씩과, 제어 블록용 메모리예요. 제어 블록은 `make_shared` 덕분에 Buffer와 같은 할당에 들어가요.
+`shared_ptr`의 대가는 원자적 증감 한 번씩과, 제어 블록용 메모리예요. 제어 블록은 `allocate_shared` 덕분에 Buffer와 같은 할당에 들어가요. 메모리를 직접 소유한 배열의 뷰는 `shared_ptr`를 복사하지 않아서 이 증감도 없어요(아래 "뷰의 base").
 
-생성자가 받는 `Key` 구조체에도 이유가 있어요. `make_shared`는 `public` 생성자만 부를 수 있어요. 그런데 아무나 `Buffer`를 만들게 두면 `allocate`/`adopt`를 거치지 않아 데이터 포인터가 비어 있는 Buffer가 생길 수 있어요. 그래서 생성자는 `Key`라는 빈 구조체를 받고, `Key`의 기본 생성자는 `explicit`이에요. 바깥 코드도 `Buffer(Key{})`를 쓸 수는 있지만, 공식 경로가 `allocate`/`adopt`라는 의도가 타입에 드러나요("passkey" 관용구).
+생성자가 받는 `Key` 구조체에도 이유가 있어요. `allocate_shared`는 `public` 생성자만 부를 수 있어요. 그런데 아무나 `Buffer`를 만들게 두면 `allocate`/`adopt`를 거치지 않아 데이터 포인터가 비어 있는 Buffer가 생길 수 있어요. 그래서 생성자는 `Key`라는 빈 구조체를 받고, `Key`의 기본 생성자는 `explicit`이에요. 바깥 코드도 `Buffer(Key{})`를 쓸 수는 있지만, 공식 경로가 `allocate`/`adopt`라는 의도가 타입에 드러나요("passkey" 관용구).
 
 ## NDArray: 메모리를 읽는 방법
 
@@ -391,8 +392,8 @@ NDArray& operator=(const NDArray& o) {
 }
 ```
 
-- 대가는 객체 크기예요. `NDArray`는 560바이트이고, 이를 담은 Python 객체는 객체 머리를 더해 512바이트를 넘어요. CPython의 소형 객체 할당기(pymalloc)는 512바이트 이하의 요청만 맡으므로, 배열 객체 하나가 생기고 사라질 때마다 시스템 `malloc`과 `free`를 불러요. macOS의 `free`는 돌려받은 메모리를 0으로 채워서(프로파일러 `sample`에서 `_xzm_free`와 `__bzero`가 가장 뜨거워요) 작은 배열을 돌려주는 호출마다 15~20ns가 더 들어요. 최대 차원이 24이면 객체가 512바이트 밑으로 내려가 이 비용이 사라져요(`zeros(3)`이 92ns 대신 73ns, `x[::2]`가 88ns 대신 74ns).
-- 그래도 32차원을 지켜요. 작은 호출 15~20ns를 얻으려고 numpy 1.x보다 낮은 차원 상한을 두면, 길이 1인 축을 많이 끼워 브로드캐스팅하는 코드처럼 차원이 많은 배열을 쓰는 코드가 stardust에서만 실패해요. 작은 차원만 객체 안에 두고 넘치면 힙에 두는 구조도 맞지 않아요. shape와 strides를 읽는 모든 곳이 두 저장소를 구별해야 하고, 복사와 이동이 힙 소유권까지 다뤄야 해요. 이 비용이 어디서 보이는지는 [작은 배열의 호출 비용](/internals/array/small-arrays/)에 있어요.
+- 대가는 객체 크기예요. `NDArray`는 560바이트이고, 이를 담은 Python 객체는 객체 머리를 더해 512바이트를 넘어요. CPython의 소형 객체 할당기(pymalloc)는 512바이트 이하의 요청만 맡으므로, 배열 객체를 새로 할당하면 시스템 `malloc`으로 가요. macOS의 `free`는 돌려받은 메모리를 0으로 채워요. 그래서 ndarray 객체는 nanobind의 인스턴스 풀(`nb::pooled(256)`)에서 다시 써요. 해제된 객체 256개까지를 모아 두었다가 다음 결과가 쓰므로, 연달아 부르는 작은 호출은 `malloc`과 `free`를 거의 부르지 않아요.
+- 32차원을 지켜요. 최대 차원을 24로 낮추면 객체가 512바이트 밑으로 내려가지만, numpy 1.x보다 낮은 차원 상한을 두면 길이 1인 축을 많이 끼워 브로드캐스팅하는 코드처럼 차원이 많은 배열을 쓰는 코드가 stardust에서만 실패해요. 작은 차원만 객체 안에 두고 넘치면 힙에 두는 구조도 맞지 않아요. shape와 strides를 읽는 모든 곳이 두 저장소를 구별해야 하고, 복사와 이동이 힙 소유권까지 다뤄야 해요. 이 비용이 어디서 보이는지는 [작은 배열의 호출 비용](/internals/array/small-arrays/)에 있어요.
 - `shape_span()`과 `strides_span()`은 살아 있는 부분만 `std::span<const std::int64_t>`(길이 ndim)로 보여 줘요. 함수 인자를 `std::span`으로 받으면 고정 배열, `std::vector`, C 배열 어느 것에서든 복사 없이 넘길 수 있어요.
 
 ### 크기 검사: `checked_size`
@@ -495,13 +496,22 @@ stride가 0인 축(브로드캐스트, `newaxis`)은 레이아웃에 대해 알�
 // csrc/bind/pyutil.cpp
 NDArray view_of(nb::handle x) {
     const NDArray& a = as_ndarray(x);
-    NDArray v = a;                                             // Buffer 공유, 플래그도 복사
-    v.base = a.base.is_valid() ? a.base : nb::borrow(x);       // 최종 소유자로 접는다
+    NDArray v = NDArray::meta_of(a);  // data, dtype, shape, strides, 플래그만 복사
+    if (a.base.is_valid()) {
+        // x가 뷰이거나 외부 메모리: 같은 주인, 같은 Buffer(외부 메모리를 붙잡는 Py_buffer일 수 있어요)
+        v.base = a.base;
+        v.buffer = a.buffer;
+    } else {
+        // x가 메모리를 직접 가져요: x에 대한 참조가 x의 Buffer를 살려 두니 뷰는 Buffer를 갖지 않아요
+        v.base = nb::borrow(x);
+    }
     return v;
 }
 ```
 
 그다음 부르는 쪽이 `data`, `shape`, `strides`를 고치고 `update_flags()`를 불러요. 원본의 `writeable`도 그대로 복사되므로, 쓰기 금지 배열의 뷰는 쓰기 금지예요.
+
+메모리를 직접 가진 배열의 뷰는 Buffer를 갖지 않아요. `base`인 원본 배열이 자기 Buffer를 살려 두기 때문이에요. 뷰는 자주 만들어지고 버려져서, 뷰마다 `shared_ptr`를 복사하면 원자적 증감 두 번이 매번 들어요. 원본이 이미 뷰이거나 외부 메모리이면 그 `base`와 Buffer를 그대로 물려받아요. 버퍼 프로토콜로 가져온 배열의 Buffer는 `Py_buffer` 내보내기 자체라서, 그것을 놓으면 내보낸 쪽(`bytearray` 등)이 메모리를 옮길 수 있기 때문이에요. `NDArray::meta_of(o)`는 소유자를 따로 정하는 뷰를 위해 설명(data, dtype, shape, strides, 플래그)만 복사해요.
 
 ### base는 최종 소유자로 접혀요
 
@@ -532,13 +542,14 @@ numpy 2.x도 같은 방식으로 접어요(numpy 2.5.4에서도 `a.T[1:, ::2].ba
 | 배열이 어디서 왔나 | `buffer` | `base` (`.base`) |
 |---|---|---|
 | stardust가 직접 할당 | 자기 Buffer | `None` |
-| 그 배열의 뷰 | 같은 Buffer (공유) | 메모리를 할당한 배열 |
-| 버퍼 프로토콜로 공유 (`asarray(numpy_array)`) | `adopt`한 Buffer | 내보낸 객체 (예: numpy 배열) |
-| DLPack으로 공유 (`from_dlpack`) | 비어 있음 | 생산자의 텐서를 쥔 capsule |
+| 그 배열의 뷰 | 비어 있음 | 메모리를 할당한 배열 |
+| numpy 배열을 바로 공유 (`asarray(numpy_array)`, `from_dlpack(numpy_array)`) | 비어 있음 | 그 numpy 배열 |
+| 버퍼 프로토콜로 공유 (`asarray(memoryview)` 등) | `adopt`한 Buffer | 내보낸 객체 |
+| DLPack으로 공유 (`from_dlpack`, numpy가 아닌 생산자) | 비어 있음 | 생산자의 텐서를 쥔 capsule |
 | frame 컬럼의 읽기 전용 뷰 (`Series.to_array`) | 컬럼과 같은 Buffer | `None` |
 
-- `buffer`와 `base`는 하는 일이 달라요. `buffer`는 C++ 쪽 수명(커널이 읽는 동안 메모리가 살아 있게)을, `base`는 Python 쪽 의미(`.base`)와 Python 객체가 가진 메모리의 수명을 맡아요. 직접 할당한 배열의 뷰는 둘 모두로 메모리를 붙잡지만, 둘 다 참조 카운트 하나씩이라 비용은 작아요.
-- DLPack 배열은 `buffer`가 비어 있어요. DLPack 텐서의 메모리는 생산자의 deleter를 불러야 놓이는데, 그 일을 하는 capsule 객체(`sd_dlpack_owner`)가 `base`로 붙어 있어요. 그래서 이 경우 메모리 수명은 `base` 하나가 맡아요. `buffer`를 직접 읽는 코드는 이 경우를 고려해야 해요. 배열 영역의 커널은 `data`만 읽으므로 문제가 없어요.
+- `buffer`는 메모리를 붙잡는 데만 쓰고, 아무 코드도 읽지 않아요. 커널은 `data`만 읽어요. 그래서 `base`가 메모리를 붙잡는 배열은 `buffer`가 비어 있어요. 직접 할당한 배열의 뷰는 `base`(원본 배열)가 원본의 Buffer를 살려 두고, numpy 배열을 바로 공유한 배열은 `base`인 numpy 배열에 대한 참조가 메모리를 살려 둬요.
+- DLPack 배열도 `buffer`가 비어 있어요. DLPack 텐서의 메모리는 생산자의 deleter를 불러야 놓이는데, 그 일을 하는 capsule 객체(`sd_dlpack_owner`)가 `base`로 붙어 있어요. 그래서 이 경우 메모리 수명은 `base` 하나가 맡아요.
 - frame 컬럼의 뷰는 Buffer를 공유하지만 base가 `None`이에요. 이 뷰는 쓰기 금지라, 메모리를 바꿀 수 있는 쪽은 frame뿐이고, frame은 위에서 본 Copy-on-Write로 쓰기 전에 복사해요.
 
 ### 외부로 내보낼 때
@@ -805,17 +816,17 @@ x[::2] = tmp            # __setitem__: 같은 뷰를 같은 자리에 대입
 
 | 항목 | 비용 |
 |---|---|
-| 뷰 만들기(전치, 슬라이스, 브로드캐스트) | $O(\text{ndim})$. 배열 크기와 무관해요. 메모리 할당은 Python 객체 하나뿐이에요 |
-| 새 배열 (256바이트 이하) | `malloc` 1번 (Buffer + 데이터 + 제어 블록 함께) |
-| 새 배열 (256바이트 초과) | `malloc` 2번 (Buffer + 제어 블록, 데이터) |
+| 뷰 만들기(전치, 슬라이스, 브로드캐스트) | $O(\text{ndim})$. 배열 크기와 무관해요. 필요한 것은 Python 객체 하나뿐이고, 그것도 인스턴스 풀에서 다시 써요 |
+| 새 배열 (256바이트 이하) | 블록 1개 (Buffer + 데이터 + 제어 블록 함께, 스레드별 목록에서 재사용) |
+| 새 배열 (256바이트 초과) | 블록 1개(Buffer + 제어 블록, 재사용) + 데이터 `malloc` 1번 |
 | `update_flags`, `checked_size` | $O(\text{ndim})$ |
 | 겹침 검사 (`may_share_memory`, `same_view`) | 입력마다 $O(\text{ndim})$. 겹치면 그 입력의 복사 $O(n)$. 엇갈린 뷰 `x[::2] += x[1::2]`는 복사 없이 덧셈 한 번 (위 "비용" 절) |
-| 메모리 오버헤드 | `NDArray` 560바이트 + Buffer 384바이트 + 제어 블록. Python 객체가 512바이트를 넘어 시스템 `malloc`으로 할당돼요 |
+| 메모리 오버헤드 | `NDArray` 560바이트 + Buffer 480바이트 + 제어 블록. Python 객체는 512바이트를 넘지만 인스턴스 풀에서 다시 써요 |
 
 작은 배열에서는 데이터 모델의 고정 비용이 보여요(원소 3개, Apple M4 Pro, numpy 2.5.4). 큰 배열에서는 계산이 시간을 정하므로 이 비용은 보이지 않아요.
 
-- `x[1, 2]`처럼 원소 하나를 꺼내는 경우는 numpy보다 빨라요(25ns 대 33ns). 결과는 `load_python`으로 만든 Python 스칼라이고, 앞쪽 축이 Python int인 키는 키 해석을 건너뛰는 fast path가 있어요([인덱싱](/internals/array/indexing/)).
-- 배열 객체를 새로 돌려주는 `zeros(3)`, `a + b`, `m[1]`은 numpy보다 약 30ns 느려요(91 대 61ns, 179 대 151ns, 72 대 43ns). 그중 15~20ns는 위에서 본 객체 할당(512바이트를 넘어 시스템 `malloc`)이고, 나머지는 nanobind의 인스턴스 등록, `NDArray` 복사, 호출 경로에 고르게 퍼져 있어요. 자세한 분석과 검토한 대안은 [작은 배열의 호출 비용](/internals/array/small-arrays/)에 있어요.
+- `x[1, 2]`처럼 원소 하나를 꺼내는 경우는 numpy보다 빨라요. 결과는 `load_python`으로 만든 Python 스칼라이고, int와 slice만인 키는 키 해석을 건너뛰는 빠른 경로가 있어요([인덱싱](/internals/array/indexing/)).
+- 배열 객체를 새로 돌려주는 `zeros(3)`, `a + b`, `x[5]`도 numpy보다 빠르거나 같아요. 객체는 인스턴스 풀에서, Buffer 블록은 스레드별 목록에서 다시 쓰고, 소유한 배열의 뷰는 Buffer를 갖지 않아요. 자세한 분석은 [작은 배열의 호출 비용](/internals/array/small-arrays/)에 있어요.
 - 큰 배열의 뷰 연산은 배열 크기와 무관하게 상수 시간이에요.
 
 ## 참고 문헌

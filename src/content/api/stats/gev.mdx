@@ -124,7 +124,7 @@ TypeError: GEV(): missing 1 required keyword-only argument: 'c'
 >>> Y.support()
 (array([-2.0, -inf, -inf], dtype=float64), array([inf, inf, 2.0], dtype=float64))
 >>> Y.cdf(1.0)
-array([0.6411803884299545, 0.6922006275553464, 0.7788007830714049], dtype=float64)
+array([0.6411803884299546, 0.6922006275553464, 0.7788007830714049], dtype=float64)
 ```
 
 `sigma` ≤ 0이거나 매개변수 중 하나가 무한대·NaN이면 그 원소의 결과가 모두 NaN이에요.
@@ -209,7 +209,7 @@ $$
 >>> sd.stats.GEV(c=1e-8).cdf(1.5)
 0.8000107150125519
 >>> sd.stats.Gumbel().cdf(1.5)
-0.8000107130043537
+0.8000107130043536
 >>> sd.stats.GEV(c=-1e-8).cdf(1.5)
 0.8000107109961553
 ```

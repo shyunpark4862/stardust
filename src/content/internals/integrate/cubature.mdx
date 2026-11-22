@@ -271,7 +271,7 @@ Genz–Malik의 낮은 규칙은 높은 규칙의 마디 가운데 무리 5를 �
 >>> import math
 >>> r = sd.integrate.cubature(lambda x: sd.exp(-sd.sum(x * x, axis=-1)), [-math.inf, -math.inf], [math.inf, math.inf])
 >>> r.integral, r.subdivisions, r.n_regions
-(3.141592653589794, 16, 52)
+(3.141592653589793, 16, 52)
 >>> sd.integrate.cubature(lambda x: sd.exp(x[:, 0]), [-math.inf], [0.0]).integral
 0.9999999999999996
 ```

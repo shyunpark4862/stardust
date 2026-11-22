@@ -25,7 +25,7 @@ export const slowFisher = [[1, 0.322], [2, 0.057], [3, -0.186], [4, -0.376], [5,
       { label: '검사와 행 준비', note: 'inf는 에러, NaN은 모든 필드 NaN, y의 범위. 적합의 행은 f·v·trials > 0. 그런 행이 없으면 NaN 결과(nobs 0, n_iter 0)', depth: 1 },
       { label: 'start', note: 'R의 family$initialize로 μ₀, η₀ = g(μ₀)', depth: 1 },
       { label: 'irls', note: '작업 반응·가중치 → 정규방정식(Cholesky) 또는 QR → 걸음 반감 → 편차 판정 → 연마', depth: 1 },
-      { label: '마지막 풀이', note: '마지막 반복의 가중치로 최소제곱 핵심 전체(반복 개선, 공분산)', where: 'linear.cpp', depth: 1 },
+      { label: '마지막 풀이', note: '마지막 반복의 가중치로 최소제곱 핵심 전체(반복 개선, 공분산). 정준 링크·고전형 공분산에 조건이 아주 좋으면 오른쪽을 double-double로 더한 정규방정식의 걸음', where: 'linear.cpp, final_chol', depth: 1 },
       { label: '분리', note: '존재 증명서 → 방향 증명서 → 경계 행을 빼고 다시 IRLS', depth: 1 },
       { label: '편차·Pearson χ²·로그우도·귀무 모형', note: '상쇄 없는 단위 편차, 고정 덩어리의 double-double 합', depth: 1 },
       { label: 'GLMResult', note: '척도, z 또는 t, p값과 구간은 처음 읽을 때 sd.stats로', where: '_glm.py' },
@@ -36,7 +36,7 @@ export const slowFisher = [[1, 0.322], [2, 0.057], [3, -0.186], [4, -0.376], [5,
 핵심은 다섯 가지예요.
 
 1. **매 반복은 가중 최소제곱 한 번이에요.** 우도의 Fisher 득점법을 정리하면 작업 반응 $z$를 가중치 $W$로 최소제곱하는 꼴이 돼요(IRLS).
-2. **판정 전 반복은 정규방정식, 정확도는 QR이 정해요.** 편차의 판정 전 반복은 $X^{\mathsf T}WX$의 Cholesky로 싸게 풀고, 마지막 풀이는 QR과 반복 개선으로 풀어요.
+2. **판정 전 반복은 정규방정식, 정확도는 마지막 풀이가 정해요.** 편차의 판정 전 반복은 $X^{\mathsf T}WX$의 Cholesky로 싸게 풀고, 마지막 풀이는 QR과 반복 개선으로 풀어요. 정준 링크이고 $X^{\mathsf T}WX$의 조건이 아주 좋으면 마지막 풀이도 정규방정식의 걸음이지만, 오른쪽을 double-double로 더해서 계수의 정확도는 QR과 같은 자릿수예요.
 3. **판정 뒤에도 계수가 반올림 수준이 될 때까지 이어 가요(연마).** 편차의 판정은 계수를 $\sqrt{\text{tol}}$ 남짓까지만 맞춰요. 그래서 결과가 `tol`과 거의 상관없어요.
 4. **정준이 아닌 링크는 관측 정보의 뉴턴 걸음으로 연마해요.** Fisher 득점법은 거기서 선형으로만 수렴하기 때문이에요. 같은 QR의 얇은 $Q$로 풀어서 $X^{\mathsf T}X$를 만들지 않아요.
 5. **분리는 증명서로 판정해요.** 반복 횟수의 임계값 없이, IRLS가 만든 걸음 하나로 "최대우도 추정이 있다" 또는 "무한대로 가는 방향이 있다"를 증명해요.
@@ -325,7 +325,7 @@ True
 
 ### 판정 전 반복은 정규방정식
 
-편차의 판정 전 반복은 $X^{\mathsf T}WX\,b = X^{\mathsf T}Wz$를 Cholesky 분해(`potrf`)와 삼각 풀이 둘로 풀어요. $X^{\mathsf T}WX$와 $X^{\mathsf T}Wz$는 $n$으로만 정한 4,096행 덩어리마다 $\sqrt W X$의 행을 이어 꾸려 `dsyrk`·`dgemv`로 만들고(덩어리는 스레드풀에), 덩어리의 결과를 순서대로 더해요. 그래서 비트가 스레드 수와 상관없어요. 이 반복의 $\eta = X\beta + o$는 그냥 double로 더해요. 중간 반복의 $\eta$ 오차는 다음 최소제곱에 2차로만 들어가기 때문이에요.
+편차의 판정 전 반복은 $X^{\mathsf T}WX\,b = X^{\mathsf T}Wz$를 Cholesky 분해(`potrf`)와 삼각 풀이 둘로 풀어요. $X^{\mathsf T}WX$와 $X^{\mathsf T}Wz$는 $n$으로만 정한 4,096행 덩어리마다 $\sqrt W X$의 행을 이어 꾸려 `dsyrk`·`dgemv`로 만들고(덩어리는 스레드풀에), 덩어리의 결과를 순서대로 더해요. 그래서 비트가 스레드 수와 상관없어요. 이 반복의 $\eta = X\beta + o$는 그냥 double로 더해요. 중간 반복의 $\eta$ 오차는 다음 최소제곱에 2차로만 들어가기 때문이에요. 모든 열이 쓰이면 $X$를 놓인 그대로(C 순서든 F 순서든) 읽는 `dgemv` 하나를 $n$으로만 정한 덩어리마다 불러요(`dot2::gemv_rows`). BLAS의 더하는 순서는 메모리 순서에 따라 다르므로, 이 반복의 끝자리는 $X$의 메모리 순서에 따라 달라질 수 있어요. 스레드 수와는 상관없어요(덩어리마다 호출 하나). 최종 값은 Dot2로 구하는 연마와 마지막 풀이가 정하므로 두 순서의 결과는 반올림 수준에서 같아요.
 
 정규방정식은 조건수를 제곱해요. 해의 상대오차가 $\kappa(X^{\mathsf T}WX)u$ 정도예요($u = 2^{-53}$). 그래도 중간 반복에서는 괜찮아요. 걸음에 상대오차 $e$가 있으면 이차 수렴 앞에서 반복이 걸음마다 오차를 $e$배로만 줄이는데, 편차의 판정에 필요한 계수 정확도가 $\sqrt{\text{tol}} = 10^{-4}$ 정도라서 $e \le 10^{-4}$이면 반복 수가 QR과 같아요. 그래서 LAPACK `trcon`으로 어림한 Cholesky 인자의 조건수 $\kappa(U)$로 $\kappa(U)^2 \cdot 2^{-53} \gt 10^{-4}$(대략 $\kappa(\sqrt W X) \gtrsim 10^6$)이면 그 반복은 QR로 가요.
 
@@ -347,7 +347,7 @@ True
 
 겹친 열의 판정도 QR의 것을 그대로 따라요. Cholesky 인자 $U$는 같은 열 순서로 한 QR의 $R$과 부호만 달라요. 그래서 [최소제곱 풀이](/internals/regression/least-squares/)의 판정 $\lvert R_{jj}\rvert \le \text{rtol}\cdot\lVert\sqrt W x_j\rVert$를 $U$에 그대로 대어 보고(2는 인자의 반올림 여유), 걸리는 열이 있으면 그 반복은 QR이 풀어서 열을 빼요. 정규방정식은 마지막 QR이 남긴 열만 써요. 결과의 겹친 열은 마지막 풀이(QR)의 판정이에요.
 
-`potrf`가 실패해도 QR로 가요. 행 수 × 열 수가 512 미만이면 처음부터 QR이에요. 그 크기에서는 QR이 Gram 행렬을 꾸리는 비용보다 싸기 때문이에요. (50, 3) 로지스틱이 QR 18.7 µs, Cholesky 19.9 µs이고, (200, 3)은 같고, (500, 5)는 Cholesky가 13% 빨라요.
+`potrf`가 실패해도 QR로 가요. 행 수 × 열 수가 512 미만이면 처음부터 QR이에요. 그 크기에서는 QR이 Gram 행렬을 꾸리는 비용보다 싸거나 비슷하기 때문이에요.
 
 ### QR로 푸는 반복
 
@@ -361,7 +361,30 @@ $$
 X^{\mathsf T}WX\,d = X^{\mathsf T}W\rho, \qquad b_{\text{new}} = b + d.
 $$
 
-정규방정식의 상대오차가 걸음에만 붙으므로, 새 계수의 오차는 $\kappa(X^{\mathsf T}WX)u\lVert d\rVert + u\lVert b\rVert$로 QR의 연마와 같은 수준이에요. 이 반복의 $\eta$는 QR의 연마처럼 Dot2로 구해요. 마지막 풀이의 작업 반응과 가중치(곧 공분산)가 이 $\eta$에서 나오기 때문이에요. 문턱을 넘으면 연마는 QR이에요.
+정규방정식의 상대오차가 걸음에만 붙으므로, 새 계수의 오차는 $\kappa(X^{\mathsf T}WX)u\lVert d\rVert + u\lVert b\rVert$로 QR의 연마와 같은 수준이에요. 문턱을 넘으면 연마는 QR이에요.
+
+이 반복의 $\eta$는 Dot2만큼 정확해야 해요. 마지막 풀이의 작업 반응과 가중치(곧 공분산)가 이 $\eta$에서 나오기 때문이에요. 다만 Dot2로 $X\beta$를 처음부터 다시 구하지 않아도 돼요. 직전 $\eta$가 Dot2로 구한 값(또는 그런 값에 작은 걸음을 더한 값)이면 새 $\eta$는 $\eta + Xd$를 double로 더해요. 이 값의 오차는 $u\lvert\eta\rvert + u\sum_j\lvert x_j d_j\rvert$ 정도라, 연마의 걸음처럼 $d$가 계수보다 아주 작으면 Dot2와 같은 자릿수예요. 상태가 자기 $\eta$의 정확도를 들고 다녀요(`State::exact`). Dot2나 QR이 만든 $\eta$는 참이고, 판정 전 반복과 $\eta$만 반으로 줄인 걸음은 거짓이에요. 거짓인 $\eta$에서 시작하는 걸음은 Dot2로 $X\beta$를 다시 구해요.
+
+```cpp
+    // csrc/regression/glm.cpp (solve_chol)
+    if (base && base_eta && kk == k) {
+        // the step added to the base's eta (within rounding of X base + offset in double-double,
+        // State::exact): eta_t + x_t d in plain double, as accurate as X (base + d) by Dot2 for a
+        // step small against the coefficients (the polish's and the final solve's)
+        std::vector<double> hd(h, h + kk);
+        std::vector<dot2::ColRef> cols;
+        std::vector<double> hb;
+        design_cols(M, beta, cols, hb);
+        for_row_chunks(n, [&](lint, lint i0, lint i1) {
+            if (!dot2::gemv_rows(M.X, M.xrs, M.xcs, M.p, M.intercept, hd.data(), i0, i1, eta + i0))
+                dot2::plain_rows(cols.data(), hd.data(), kk, i1 - i0, [&](lint t) { return i0 + t; }, eta + i0);
+            for (lint i = i0; i < i1; ++i) eta[i] += base_eta[i];
+        });
+        return true;
+    }
+```
+
+여기서도 `dgemv`가 $X$를 놓인 그대로 읽으므로 끝자리가 메모리 순서에 따라 달라질 수 있어요.
 
 ### 반복 개선을 두는 자리
 
@@ -380,7 +403,8 @@ $$
 
 - 판정 전 반복을 정규방정식으로 풀어도 QR로 푼 것과 같은 자릿수이고 반복 수도 같아요.
 - 마지막 풀이를 개선하지 않으면 OLS의 개선 0번처럼 $\kappa u$ 꼴로 나빠져요($\kappa = 10^{10}$에서 $5\times10^{-7}$).
-- 연마 반복을 개선하지 않고 마지막 풀이만 개선하면 $\kappa = 10^{10}$에서 $4.6\times10^{-14}$, $10^{12}$에서 $1.5\times10^{-9}$예요. 연마 반복은 보통 1–2번이라 그 개선의 비용은 6–8%예요.
+- 연마 반복을 개선하지 않고 마지막 풀이만 개선하면 $\kappa = 10^{10}$에서 $4.6\times10^{-14}$, $10^{12}$에서 $1.5\times10^{-9}$예요. 연마 반복은 보통 1–2번이라 그 개선의 비용은 작아요.
+- 이 표는 마지막 풀이가 QR인 경우예요. $\kappa = 1$처럼 조건이 아주 좋으면 마지막 풀이가 아래의 정규방정식 걸음을 탈 수 있고, 그때의 계수 오차도 같은 자릿수예요.
 
 ## 정준이 아닌 링크: 관측 정보의 뉴턴 걸음
 
@@ -472,7 +496,7 @@ $$
 
 $\kappa \le 10^8$에서 $3.5\times10^{-15}$ 안으로 정준 링크와 같은 수준이에요. $10^{10}$의 남은 차이는 반올림한 $\eta_0$에서 구한 점수의 감도예요. Fisher 걸음의 연마는 $\kappa$와 함께 나빠지고, 수렴비가 큰 링크(이항 log, 감마·포아송 identity)는 $\kappa$와 상관없이 편차 판정의 정밀도($10^{-8}$–$10^{-5}$)에 머물러요.
 
-비용은 연마 반복과 마지막 풀이마다 `orgqr` 한 번과 $T$의 `dgemm`이에요. 같은 적합을 처음부터 Fisher 걸음으로 한 것보다 probit (10⁵, 10)이 1스레드 +18%, 10스레드 +30%, (10⁶, 50)이 +34%, +57%이고, 감마 log는 +7%·+11%, +13%·+32%예요(Apple M4 Pro, 3번 가운데 최소). 반복은 1번 줄어요. 정준 링크는 $c = 0$이라 이 길을 타지 않아요.
+비용은 연마 반복과 마지막 풀이마다 `orgqr` 한 번(CholeskyQR2를 탄 큰 설계는 분해가 이미 만든 얇은 Q라 그것도 없어요)과 $T$의 `dgemm`이에요. 같은 적합을 처음부터 Fisher 걸음으로 한 것보다 시간이 더 들지만, 반복은 1번 줄어요. 정준 링크는 $c = 0$이라 이 길을 타지 않아요.
 
 ## 느린 Fisher 득점법에서 뉴턴으로
 
@@ -518,6 +542,31 @@ $\kappa \le 10^8$에서 $3.5\times10^{-15}$ 안으로 정준 링크와 같은 �
 - statsmodels는 마지막 반복 앞의 가중치(마지막 계수를 낸 최소제곱의 가중치)로 공분산을 만들어요. sd는 계수가 수렴한 자리의 가중치를 써요. 그래서 정준 링크에서 표준오차가 $10^{-10}$–$5\times10^{-9}$만큼 달라요. 차이는 statsmodels 쪽 마지막 걸음의 크기에 비례하므로 문제에 따라 더 커요. 공부 시간과 합격의 20행 로지스틱에서는 statsmodels 기본 `tol` 1e-8이면 $6.9\times10^{-6}$, `tol` 1e-14이면 $5\times10^{-11}$이에요.
 - 마지막 풀이의 계수가 유효 범위를 벗어나거나 편차를 올리면 마지막 반복의 계수를 써요.
 - 정규·identity의 마지막 풀이는 OLS의 커널 그대로라, 잔차가 모두 반올림 크기 안이면 [최소제곱 풀이](/internals/regression/least-squares/)와 같은 완전 적합의 판정으로 SSR(곧 편차와 Pearson χ²)이 0이에요.
+
+### 조건이 좋으면 정규방정식의 걸음
+
+QR과 반복 개선은 행마다 몇 번을 더 훑어야 해요. 연마가 끝난 자리에서는 남은 걸음이 반올림 수준이라, 연마와 같은 걸음 꼴을 한 번 더 풀어도 돼요.
+
+$$
+X^{\mathsf T}WX\,d = X^{\mathsf T}W\rho, \qquad \hat\beta = b + d
+$$
+
+그래서 정준 링크, 고전형 공분산(`cov_type='nonrobust'`), 행 수 × 열 수 ≥ 512이고 Cholesky 인자에서 어림한 $\kappa(X^{\mathsf T}WX)\,u$가 $10^{-14}$ 이하이면 마지막 풀이도 이 걸음이에요(`final_chol`). 정준이 아닌 링크는 관측 정보의 뉴턴 걸음이 필요하고, 강건 공분산은 얇은 $Q$의 점수가 필요하고, 정규·identity는 SSR을 최소제곱에서 읽으므로 QR 그대로예요.
+
+걸음 꼴에서 계수의 오차를 정하는 것은 오른쪽 $X^{\mathsf T}W\rho$예요. 해에서는 이 합이 거의 0으로 상쇄되므로, double로 더하면 그 반올림에 $(X^{\mathsf T}WX)^{-1}$를 곱한 것이 계수의 오차가 돼요. 그래서 오른쪽은 QR의 개선처럼 Dot2로 더해요(행의 인자 $w_i\rho_i$도 two-prod로 정확히).
+
+```cpp
+    // csrc/regression/glm.cpp (solve_chol)
+    if (dd_rhs && base) {
+        // the step's right-hand side X_K^T W rho in double-double (Dot2 over the columns, the
+        // row factor w rho formed exactly; per fixed chunk of rows, the chunks added in order):
+        // at the solution it is a sum that cancels, and its rounding, times (X^T W X)^-1, is the
+        // coefficients' error (the QR's refinement sums it so too)
+```
+
+결과의 $R$은 Cholesky 인자예요. 같은 열 순서의 QR의 $R$과 행의 부호만 다르고 $R^{\mathsf T}R$이 같아요. 공분산은 $(R^{\mathsf T}R)^{-1}$을 `potri`로 구해요.
+
+문턱이 $10^{-14}$로 낮은 것은 공분산 때문이에요. Gram의 Cholesky로 만든 공분산은 Gram을 만들 때의 반올림에 $\kappa(X^{\mathsf T}WX)$를 곱한 오차를 지니고, QR의 공분산은 대략 $\kappa(X)u$예요. Arb로 만든 IRLS 참값(이항 logit, 포아송 log, 감마 inverse, $n = 2000$, $k = 6$·51, $\kappa(X) = 1$–300)과 견주면, 어림이 $10^{-14}$ 이하일 때 계수의 최대 상대오차는 $5.5\times10^{-15}$(QR $3.5\times10^{-15}$), 표준오차는 $1.8\times10^{-15}$(QR $1.5\times10^{-15}$)로 두 길이 같은 자릿수예요. 어림이 $3.6\times10^{-12}$($\kappa(X) = 100$)이면 표준오차가 $1.3\times10^{-13}$으로 QR의 $1.1\times10^{-15}$보다 백 배 넘게 나빠져요. 편차와 로그우도는 두 길 모두 참값과 1ulp 안이에요.
 
 ## 분리의 증명서
 
@@ -642,22 +691,44 @@ R 4.6.2의 `glm`은 첫 자료에서 "fitted probabilities numerically 0 or 1 oc
 
 ## 편차와 로그우도
 
-단위 편차는 상쇄 없이 계산해요. $r = (y - \mu)/\mu$, $x = y/\mu = 1 + r$이라 하면 포아송은 $2\mu\,\varphi(r)$, 감마는 $2\psi(r)$이고, $\psi(r) = r - \log(1 + r)$, $\varphi(r) = (1 + r)\log(1 + r) - r$이에요. $y\log(y/\mu) - (y - \mu)$를 그대로 계산하면 $\mu \approx y$에서 두 항이 상쇄돼요. $\psi$는 $[-1/2, 1]$에서 $s = r/(2 + r)$의 atanh 급수로 계산해요. $\log(1 + r) = 2\operatorname{atanh}s$이고 $r - 2s = rs$라서 상쇄가 없어요($\lvert s\rvert \le 1/3$이라 급수의 꼬리가 빨리 줄어, 17항까지 더하면 남는 것이 $2^{-56}$ 아래예요). 밖에서는 상쇄가 3.6배 이하라 그대로 계산해요.
+단위 편차는 상쇄 없이 계산해요. $r = (y - \mu)/\mu$, $x = y/\mu = 1 + r$이라 하면 포아송은 $2\mu\,\varphi(r)$, 감마는 $2\psi(r)$이고, $\psi(r) = r - \log(1 + r)$, $\varphi(r) = (1 + r)\log(1 + r) - r$이에요. $y\log(y/\mu) - (y - \mu)$를 그대로 계산하면 $\mu \approx y$에서 두 항이 상쇄돼요. $\psi$는 $[-1/2, 1]$에서 $s = r/(2 + r)$의 atanh 급수로 계산해요. $\log(1 + r) = 2\operatorname{atanh}s$이고 $r - 2s = rs$라서 상쇄가 없어요($\lvert s\rvert \le 1/3$이라 급수의 꼬리가 빨리 줄어, 18항까지 더하면 남는 것이 $2^{-56}$ 아래예요). 밖에서는 상쇄가 3.6배 이하라 그대로 계산해요.
 
 ```cpp
-// csrc/regression/glm.cpp
+// csrc/regression/unitdev.hpp
 inline double mu_fn(double r, double x) {
     if (r >= -0.5 && r <= 1.0) {
         const double s = r / (2.0 + r), s2 = s * s;
-        double t = 0.0;
-        for (int j = 17; j >= 0; --j) t = 1.0 / (2 * j + 3) + s2 * t;
-        return r * s - 2.0 * s * s2 * t;
+        return r * s - 2.0 * s * s2 * atanh_tail(s2);
     }
     return r > 1.0 ? r - std::log1p(r) : r - std::log(x);
 }
 ```
 
-$\varphi$는 $[-1/2, 1]$에서 $r^2 - (1 + r)\psi(r)$(상쇄 4배 이하)로 구해요. 이항은 $2[\mu\varphi(r_1) + (1 - \mu)\varphi(r_2)]$이고 $y = 0, 1$에서는 $-2\log(1 - \mu)$, $-2\log\mu$예요. $\mu$나 $1 - \mu$가 언더플로한 행은 그 로그를 [$\eta$에서 바로](#언더플로한-μ) 구해요. 로그우도는 statsmodels의 `loglike`(상수항 포함)와 같은 정의예요. 모든 행 합은 $n$으로만 정한 4,096행 덩어리를 double-double로 더해 순서대로 합쳐요.
+`atanh_tail`은 $\sum_{j=0}^{17} s^{2j}/(2j + 3)$이에요. 행마다의 계산은 덧셈과 곱셈의 지연에 묶이므로, 18항을 Horner로 차례로 더하지 않고 Estrin의 방법으로 묶어요. 이웃한 두 항을 먼저 짝짓고($c_0 + c_1x$, …), 그 짝들을 $x^2$, $x^4$, $x^8$로 다시 짝지으면 곱셈-덧셈의 깊이가 18에서 5로 줄어요. 모든 항이 양수라 더하는 순서가 상쇄를 만들지 않아서, 오차는 Horner와 같은 몇 ulp예요. 이 두 함수는 정규화 GLM(`penalized.cpp`)도 함께 써요.
+
+```cpp
+// csrc/regression/unitdev.hpp
+inline double atanh_tail(double x) {
+    constexpr double c[18] = {1.0 / 3,  1.0 / 5,  1.0 / 7,  1.0 / 9,  1.0 / 11, 1.0 / 13, 1.0 / 15, 1.0 / 17, 1.0 / 19,
+                              1.0 / 21, 1.0 / 23, 1.0 / 25, 1.0 / 27, 1.0 / 29, 1.0 / 31, 1.0 / 33, 1.0 / 35, 1.0 / 37};
+    const double x2 = x * x, x4 = x2 * x2, x8 = x4 * x4, x16 = x8 * x8;
+    const double p0 = c[0] + c[1] * x, p1 = c[2] + c[3] * x, p2 = c[4] + c[5] * x, p3 = c[6] + c[7] * x,
+                 p4 = c[8] + c[9] * x, p5 = c[10] + c[11] * x, p6 = c[12] + c[13] * x, p7 = c[14] + c[15] * x,
+                 p8 = c[16] + c[17] * x;
+    const double q0 = p0 + p1 * x2, q1 = p2 + p3 * x2, q2 = p4 + p5 * x2, q3 = p6 + p7 * x2;
+    const double r0 = q0 + q1 * x4, r1 = q2 + q3 * x4;
+    return (r0 + r1 * x8) + p8 * x16;
+}
+```
+
+$\varphi$는 $[-1/2, 1]$에서 $r^2 - (1 + r)\psi(r)$(상쇄 4배 이하)로 구해요. 이항은 $2[\mu\varphi(r_1) + (1 - \mu)\varphi(r_2)]$이고 $y = 0, 1$에서는 $-2\log(1 - \mu)$, $-2\log\mu$예요. $\mu$나 $1 - \mu$가 언더플로한 행은 그 로그를 [$\eta$에서 바로](#언더플로한-μ) 구해요. 로그우도는 statsmodels의 `loglike`(상수항 포함)와 같은 정의예요. 모든 행 합은 $n$으로만 정한 4,096행 덩어리를 double-double로 더해 순서대로 합쳐요. 덩어리 안에서는 행 번호를 4로 나눈 나머지마다 부분합을 따로 두고 끝에 $(p_0 + p_1) + (p_2 + p_3)$로 합쳐요(`DD4`). 한 사슬로 더하면 행마다 double-double 덧셈의 지연을 기다려야 해서예요. 순서는 행 번호로만 정해지므로 스레드 수와 상관없고, 수렴 판정에 쓰는 편차도 같은 합이에요.
+
+같은 값을 여러 번 구하지 않도록 몇 가지를 재사용해요.
+
+- 반복이 상태를 평가할 때(`evaluate`) 구한 쓰인 행의 단위 편차를 상태에 남겨 두고, 출력의 편차 잔차와 편차의 합이 그 값을 읽어요. 같은 호출의 값이라 비트가 같아요.
+- 시행 수가 없는 이항(반응이 0과 1)의 행마다 로그우도는 단위 편차의 $-1/2$배와 정확히 같아서, 적합의 로그우도도 그 값을 읽어요.
+- 귀무 모형처럼 $\mu$가 상수이면 $\log\mu$와 $\log(1 - \mu)$를 한 번만 구해요. 4096 이하의 정수 반응은 $\log\Gamma(y + 1)$(포아송)과 귀무 모형의 단위 편차를 값마다 한 번 구한 표에서 읽어요.
+- log 링크의 $1 - \mu$는 그것을 읽는 이항에서만 정확히(`expm1`로) 구해요.
 
 ## 척도와 검정 분포
 
@@ -719,7 +790,6 @@ array([0.9999999999999997, 1.1547005383792512], dtype=float64)
 
 ```python
     def _perfect(self):
-        """An estimated scale of exactly 0 (a perfect fit) with df_resid > 0: t and p NaN."""
         if self._scale_fixed:
             return False
         z = self._stat(_G_SCALE) == 0.0
@@ -738,7 +808,7 @@ array([0.9999999999999997, 1.1547005383792512], dtype=float64)
 ```cpp
     // csrc/regression/glm.cpp (glm_one)
     // y exactly constant over the fit's rows (y0) with an intercept and no offset, g(y0) finite:
-    // the exact solution (g(y0), 0, ..., 0) for every family and link. With y0
+    // ...
     // inside the family's range (V(y0) > 0) the iterations run and their result is replaced (§5);
     // with y0 on its boundary (V(y0) = 0: poisson identity or sqrt with y = 0, binomial log with
     // y = 1) the iterations only creep towards it (mu -> 0 at a linear rate) and are skipped:
@@ -943,8 +1013,6 @@ True
 
 ```python
             else:
-                # an infinite llf (a zero scale) has no ratio: NaN; Cox-Snell
-                # keeps its limit through exp
                 llf, lln = self.llf, self.llnull
                 v = 1.0 - _div(llf, lln)
                 if isinstance(v, _sd.ndarray):
@@ -1075,11 +1143,11 @@ p값의 최대는 포아송 sqrt예요. p값은 $t$값에 대한 꼬리의 감�
 
 ## 속도
 
-(10⁵, 10)·(10⁶, 50)의 로지스틱·포아송에서 statsmodels(`GLM(...).fit()`)보다 1스레드 1.2–3.1배, 10스레드 3.9–6.8배 빨라요(Apple M4 Pro, '배'는 statsmodels 시간 / sd 시간).
+큰 로지스틱·포아송 적합의 시간은 대부분 행을 훑는 일이에요. 판정 전 반복의 Gram과 $X\beta$, 상태의 평가(링크, 단위 편차), 연마와 마지막 풀이의 Dot2 합이에요. 그래서 위의 장치들은 행 패스를 줄이거나 가볍게 하는 쪽이에요. 판정 전 반복은 정규방정식이고, 그 $X\beta$는 `dgemv`예요. 연마의 $\eta$는 Dot2로 다시 구하지 않고 걸음만 더하며, 조건이 좋으면 마지막 풀이도 QR 대신 걸음 꼴이에요. 출력과 로그우도는 평가가 구한 단위 편차를 다시 읽고, 합은 네 부분합으로 지연을 나눠요.
 
-- 반복은 statsmodels(5번)보다 1–2번 많아요. 늘어난 것은 연마 반복과 반복 개선을 한 마지막 풀이예요. statsmodels는 반복마다 `lstsq`(SVD)를 풀어요.
-- scikit-learn의 `LogisticRegression(penalty=None)`·`PoissonRegressor(alpha=0)`은 lbfgs가 1.9–23배, `solver='newton-cholesky'`가 1.4–7.7배 빨라요. 둘 다 표준오차를 내지 않고, 계수가 lbfgs는 $10^{-4}$–$10^{-2}$, newton-cholesky는 $10^{-7}$–$2\times10^{-6}$ 달라요. newton-cholesky는 모든 반복을 정규방정식으로 풀고 반복 개선이 없어요.
-- 작은 로지스틱 회귀 10,000개((50, 3))를 배치 한 번으로 하면 statsmodels 반복문보다 1스레드 18배, 10스레드 141배 빨라요. 결과는 하나씩 부른 것과 비트까지 같아요.
+- 반복은 statsmodels(5번)보다 1–2번 많아요. 늘어난 것은 연마 반복과 마지막 풀이예요. statsmodels는 반복마다 `lstsq`(SVD)를 풀어요.
+- scikit-learn의 `LogisticRegression(penalty=None)`·`PoissonRegressor(alpha=0)`은 표준오차를 내지 않고, 계수가 lbfgs는 $10^{-4}$–$10^{-2}$, `solver='newton-cholesky'`는 $10^{-7}$–$2\times10^{-6}$ 달라요. newton-cholesky는 모든 반복을 정규방정식으로 풀고 반복 개선이 없어요.
+- 작은 로지스틱 회귀 여러 개는 배치 한 번으로 하면 회귀 하나가 태스크 하나라 스레드에 나뉘어요. 결과는 하나씩 부른 것과 비트까지 같아요.
 
 ## 참고 문헌
 

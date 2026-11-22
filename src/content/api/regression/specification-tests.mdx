@@ -109,7 +109,7 @@ $x$가 0에서 멀수록 오차가 커지는 데이터예요. 분산이 가운�
 >>> y = 2.0 + 1.0 * x + (0.3 + sd.abs(x)) * N.sample(60, rng=rng)
 >>> u = sd.regression.ols(y, x)
 >>> u.breusch_pagan().lm_pvalue
-0.3614851273111792
+0.3614851273111793
 >>> u.white_test()
 WhiteTestResult(lm=18.2712, lm_pvalue=0.000107762, fvalue=12.4789, f_pvalue=3.19977e-05, df=2, df_num=2, df_denom=57)
 ```
@@ -279,7 +279,7 @@ ValueError: goldfeld_quandt(): 'split' as a fraction must be in (0, 1), not 1.5
 
 ```python
 >>> h.goldfeld_quandt(order_by=0, alternative='two-sided').pvalue
-4.216382188720521e-05
+4.216382188720519e-05
 >>> h.goldfeld_quandt(order_by=-xh, alternative='less')
 GoldfeldQuandtResult(fvalue=0.120736, pvalue=2.10819e-05, alternative='less', df_num=18, df_denom=18)
 ```
@@ -493,7 +493,7 @@ Goldfeld–Quandt의 `split`과 `drop`은 적합에 쓰인 행(가중치가 0보
 >>> b.white_test()
 WhiteTestResult(batch shape (2,))
 >>> b.white_test().lm_pvalue
-array([0.0770540089195435, 0.4910432728752864], dtype=float64)
+array([ 0.0770540089195435, 0.49104327287528626], dtype=float64)
 >>> b.reset_test().fvalue
 array([0.5087182746157166, 0.8323298852645116], dtype=float64)
 ```
@@ -502,7 +502,7 @@ array([0.5087182746157166, 0.8323298852645116], dtype=float64)
 
 - Arb(구간 산술)로 정의대로(White는 보조 회귀, Goldfeld–Quandt는 두 부분의 적합, RESET은 확장 적합으로) 만든 참값과 견줘, 조건이 좋은 문제(OLS, 가중치가 0인 행이 있는 WLS, 절편 없음, 세 수준 요인의 더미)에서 모든 값의 상대오차가 5e-15 안이에요. p값은 그 자신에 대한 상대오차예요.
 - 설계의 조건수가 1e8쯤인 문제에서 Goldfeld–Quandt는 3e-16, RESET은 6.6e-12 안이에요. White는 보조 회귀의 열이 원래 열의 제곱이라 조건수도 제곱(1e16쯤)이 되어, 보조 회귀가 열 하나를 빼고 `df`가 하나 줄어요.
-- 같은 입력이면 스레드 수와 상관없이 같은 비트이고, 배치 결과는 하나씩 부른 결과와 같은 비트예요.
+- 같은 기계, 같은 스레드 수에서 같은 입력이면 실행마다 같은 비트예요. 지금은 스레드 수가 달라도 같아요(약속은 아니에요). 배치 결과는 하나씩 부른 결과와 같은 비트예요.
 
 계산 방법은 [진단의 계산](/internals/regression/diagnostics/)에 있어요.
 

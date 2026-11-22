@@ -22,12 +22,12 @@ import Steps from '../../../components/fig/Steps.astro';
 | `ops/elementwise.cpp` | 산술, 비교, Kleene 논리, int64 비트 연산, 문자열 이어 붙이기, 단항 연산 (`binary_op`, `unary_op`) |
 | `ops/reduce.cpp`, `ops/pairwise.hpp` | 리덕션 (`reduce`). float 합은 공통 기반의 `base/pairwise.hpp`를 불러요 |
 | `ops/cast.cpp`, `ops/parse.hpp` | `astype`과 문자열 → 숫자 문법 |
-| `column.cpp`, `bitmap.hpp` | 결과의 validity 비트맵을 만들고 마무리하는 함수 (`and_validity`, `finish_fixed`) |
+| `column.cpp`, `bitmap.hpp` | 결과의 validity 비트맵을 합치고 마무리하는 함수 (`and_validity`, `finish_fixed`) |
 
 설계의 뼈대는 네 가지예요.
 
 1. **행 루프 안에서 아무것도 고르지 않아요.** dtype, 스칼라인지 컬럼인지, 연산 종류는 루프에 들어가기 전에 템플릿 인자로 정해요. 그러면 루프 몸통이 분기 없는 한 줄이 되어 컴파일러가 NEON으로 벡터화해요. 행마다 고르는 구현은 같은 일을 하는데 아래 표들처럼 커널에 따라 1.5배에서 10배 넘게 느려요.
-2. **결측은 비트맵으로, NA 자리의 값은 언제나 0으로 둬요.** 두 입력의 비트맵은 바이트 단위 AND로 합치고, 커널은 NA인지 묻지 않고 모든 행을 계산한 뒤 마지막에 NA 자리를 0으로 지워요. NA 자리가 0이라는 약속 덕분에 float 합은 NA를 건너뛰는 분기 없이 그냥 더해요.
+2. **결측은 비트맵으로, NA 자리의 값은 언제나 0으로 둬요.** 결측이 있는 쪽이 하나뿐이면 그 비트맵을 그대로 공유하고, 둘 다 있으면 바이트 단위 AND로 합쳐요. 커널은 NA인지 묻지 않고 모든 행을 계산하고, NA 자리를 0으로 지우는 일도 값을 쓰는 같은 루프에서 분기 없이 해요. NA 자리가 0이라는 약속 덕분에 float 합은 NA를 건너뛰는 분기 없이 그냥 더해요.
 3. **잘 알려진 알고리즘을 그대로 써요.** float `//`와 `%`는 numpy의 `npy_divmod`, float min/max는 IEEE 754-2019의 minimum/maximum, float → 문자열은 Python `str(float)`이고, 지금 셋 다 상대와 비트까지 같아요. float 합·평균·분산은 모든 영역이 함께 쓰는 pairwise 합이에요. numpy와 같은 알고리즘에 잎이 넓어서 numpy와는 마지막 자리가 다를 수 있고, 배열 영역의 합과는 비트까지 같아요.
 4. **문자열 → 숫자는 엄격한 ASCII 문법 하나예요.** `astype`과 `read_csv`가 같은 코드를 써서, 같은 글자는 어디서 읽어도 같은 값이 되거나 같은 에러가 나요.
 
@@ -41,10 +41,10 @@ import Steps from '../../../components/fig/Steps.astro';
       { label: '_core.frame.binary_op("add", a, b, scalar_side=2)', where: 'frame_bind.cpp', note: '연산 이름, 두 Column, 어느 쪽이 스칼라인지(0, 1, 2)만 넘겨요.' },
       { label: 'parse_op → dtype 조합으로 분기', depth: 1, where: 'elementwise.cpp', note: 'int64 + int64 → int_arith, float가 끼면 float_arith<A, B>, 비교, 논리, 문자열 이어 붙이기 중 하나.' },
       { label: 'map2<R, A, B>(a, b, side, dtype, f)', depth: 1, note: '결과 Column을 잡고, 연산 f를 람다로 받아요.' },
-      { label: 'and_validity', depth: 2, where: 'column.cpp', note: '두 입력의 비트맵을 비트 0으로 맞춰 AND. 둘 다 결측이 없으면 비트맵이 없어요.' },
+      { label: '결과의 비트맵', depth: 2, where: 'elementwise.cpp', note: '결측이 있는 쪽이 하나뿐이고 그 비트맵이 행 0에서 시작하면 공유. 아니면 and_validity로 비트 0에 맞춰 AND. 둘 다 결측이 없으면 비트맵이 없어요.' },
       { label: 'visit_inputs → In<A, false>, In<B, true>', depth: 2, note: '스칼라 쪽을 템플릿 인자로 정해 루프를 고르고' },
-      { label: 'for_chunks(n, 행 루프)', depth: 2, where: 'parallel.hpp', note: '16,384행 청크. 2¹⁷행 이상이면 풀에서 병렬로.' },
-      { label: 'finish_fixed', depth: 2, where: 'column.cpp', note: 'NA 개수를 세고, 0이면 비트맵을 버리고, NA 자리의 값을 0으로.' },
+      { label: 'for_chunks(n, 행 루프)', depth: 2, where: 'parallel.hpp', note: '16,384행 청크. 2¹⁷행 이상이면 풀에서 병렬로. 비트맵이 있으면 NA 자리의 값을 같은 루프에서 0으로.' },
+      { label: 'NA 개수', depth: 2, note: '공유한 비트맵이면 입력의 NA 개수 그대로, 아니면 popcount로 세요. 0이면 비트맵을 버려요.' },
       { label: 'Series._new(Column, index, name)', where: '_series.py', note: '결과 Series.' },
     ]}
   />
@@ -189,13 +189,34 @@ def python_error(op, a, b):
 
 모든 dtype의 결측은 **validity 비트맵**이 나타내요. 행마다 1비트, 1이면 값이 있고 0이면 NA예요. 행 `i`는 바이트 `i / 8`의 비트 `i % 8`이에요(LSB 우선, Arrow와 같아요). 비트맵, NA 자리의 값이 0이라는 약속, 슬라이스가 비트 오프셋을 갖는 방식은 [컬럼과 메모리](/internals/frame/columns/)에 자세히 있어요. 원소별 결과의 비트맵은 세 단계로 만들어요.
 
-1. 두 입력의 비트맵을 비트 0에서 시작하도록 옮긴 뒤 AND해요 (`and_validity`).
-2. 커널이 직접 NA를 만들어요. `int // 0`, `int % 0`, `int ** 음수`가 그래요.
-3. 마무리해요 (`finish_fixed`). NA를 세고, 하나도 없으면 비트맵을 버리고, NA 자리의 값을 0으로 지워요.
+1. 결측이 한쪽 컬럼에만 있고 그 비트맵이 행 0에서 시작하면, 결과는 그 Buffer를 그대로 공유하고 NA 개수도 그대로 써요. 결과의 NA 행은 정확히 그 입력의 NA 행이에요.
+2. 그 밖에는 두 입력의 비트맵을 비트 0에서 시작하도록 옮긴 뒤 AND해요 (`and_validity`). NA 스칼라면 모든 행이 NA예요.
+3. NA 행의 값은 값을 계산하는 루프에서 0이 돼요. 8바이트 결과는 비트맵 바이트마다 NEON 마스크로, 1바이트 결과는 펼친 바이트로 골라요.
+4. 커널이 직접 NA를 만드는 연산(`int // 0`, `int % 0`, `int ** 음수`)은 비트맵을 자기 것으로 만들어 지운 뒤 끝에 `finish_fixed`를 불러요.
+
+공유한 비트맵은 아무도 그 자리에서 고치지 않아요. 쓰기는 언제나 먼저 Buffer를 복사하기 때문이에요(Copy-on-Write, [컬럼과 메모리](/internals/frame/columns/)).
+
+```cpp
+    // csrc/frame/ops/elementwise.cpp
+    std::int64_t known_nulls = -1;
+    if (!CanNA && (a.validity != nullptr) != (b.validity != nullptr)) {
+        // NA on one column side only, its bitmap starting at row 0: the
+        // result's NA rows are exactly its own, so the result shares its
+        // bitmap (never written: Buffers are copied before a write,
+        // docs/design/frame.md §5.2) and its NA count.
+        const int side = a.validity ? 1 : 2;
+        const Column& c = side == 1 ? a : b;
+        if (side != scalar_side && c.offset == 0) {
+            out.validity = c.validity;
+            known_nulls = c.null_count;
+        }
+    }
+    if (known_nulls < 0) out.validity = and_validity(a, b, scalar_side, n);
+```
 
 ### 1단계: 비트 0으로 맞추기
 
-슬라이스(`s[3:13]`, `head`, `tail`)는 데이터를 복사하지 않고 Buffer를 공유하면서 시작 위치 `offset`만 옮겨요. 그래서 슬라이스의 행 0이 비트맵의 비트 3에 있을 수 있어요. 두 입력의 오프셋이 다르면 같은 행이 서로 다른 비트 자리에 있으니 바이트끼리 바로 AND할 수 없어요. 그래서 먼저 각 입력의 비트맵을 비트 0에서 시작하는 새 비트맵으로 옮겨요(`rebased_validity` → `bitmap::copy_bits`).
+슬라이스(`s[3:13]`, `head`, `tail`)는 데이터를 복사하지 않고 Buffer를 공유하면서 시작 위치 `offset`만 옮겨요. 그래서 슬라이스의 행 0이 비트맵의 비트 3에 있을 수 있어요. 두 입력의 오프셋이 다르면 같은 행이 서로 다른 비트 자리에 있으니 바이트끼리 바로 AND할 수 없어요. 그래서 먼저 각 입력의 비트맵을 비트 0에서 시작하는 새 비트맵으로 옮겨요(`rebased_validity`). 오프셋이 8의 배수면 바이트 복사(`memcpy`) 한 번이고, 아니면 `bitmap::copy_bits`예요.
 
 옮기기는 비트 하나씩이 아니라 바이트 단위예요. 오프셋의 바이트 안 자리를 $s$ = `offset & 7`이라고 하면 출력 바이트 $j$는 입력 바이트 둘을 시프트해서 붙인 것이에요.
 
@@ -243,7 +264,7 @@ return out;                                          // 둘 다 결측이 없으
 
 스칼라 쪽은 1행이라 비트가 하나뿐이에요. 그 비트가 0(NA 스칼라)이면 결과의 모든 행이 NA이므로 0으로 채운 비트맵을 바로 돌려줘요. 값이 있는 스칼라는 비트맵이 없어서 아무것도 하지 않아요.
 
-### 2단계: 커널이 만드는 NA
+### 커널이 만드는 NA
 
 정수의 `// 0`, `% 0`, `** 음수`는 결과로 쓸 정수가 없어서 그 행이 NA가 돼요. 이런 연산만 `map2<..., CanNA = true>`로 불러요. 연산 람다가 `bool& na`를 하나 더 받아 켜면 루프가 그 행의 비트를 지워요.
 
@@ -258,15 +279,36 @@ for (std::int64_t i = lo; i < hi; ++i) {
 
 이 경로는 행마다 분기가 있어서 벡터화되지 않지만, 정수 나눗셈 자체가 벡터 명령이 없는 연산이라 잃는 것이 적어요. 결과가 NA가 될 수 없는 연산(나머지 전부)은 `CanNA = false` 판을 써서 이 분기가 코드에 아예 없어요. 청크가 64의 배수(16,384행)라서 두 태스크가 비트맵의 같은 바이트를 동시에 고치는 일이 없어요([병렬화와 결정성](/internals/frame/parallel/)).
 
-### 3단계: `finish_fixed`
+### NA 자리를 0으로: 같은 루프에서
 
-결과를 만드는 고정폭 커널은 모두 끝에 `finish_fixed`를 불러요.
+커널은 NA 행도 그냥 계산하니(예: `NA + 5`의 값 자리에 5) 쓰레기 값이 남아요. NA 자리의 값은 언제나 0이어야 하므로 이것을 지워야 해요. 값을 다 쓴 뒤 한 번 더 훑어 지우면 값 위를 두 번 지나요. 그래서 많이 쓰는 커널은 값을 쓰는 루프에서 함께 지워요.
 
-1. **NA를 세요.** 비트맵의 1인 비트를 `popcount`로 세고, 길이에서 빼요. 바이트마다 `popcount`를 더하는 루프라 벡터화돼요.
-2. **NA가 없으면 비트맵을 버려요.** 예를 들어 `s[s.notna()] + 1`처럼 NA가 있던 컬럼에서 NA를 걸러 낸 뒤의 결과에는 비트맵이 남지 않아요. 그래서 "결측이 없으면 비트맵이 없다"가 모든 결과에서 성립하고, 다음 연산이 NA 검사 없는 루프를 고를 수 있어요.
-3. **NA 자리의 값을 0으로 지워요.** 커널은 NA 행도 그냥 계산했으니(예: `NA + 5`의 값 자리에 5) 쓰레기 값이 남아 있어요. 이것을 분기 없이 지워요.
+**8바이트 결과(int64, float64)**는 비트맵 1바이트(8행)마다 행마다의 64비트 마스크를 NEON 비트 검사(`vtstq_u64`)로 만들어, 결과 둘씩에 AND해요.
 
-세 번째 단계에서는 비트맵을 바이트로 펼치는 표를 써요. `bitmap::kExpand`는 256칸짜리 `uint64_t` 표이고, 칸 `b`에는 "바이트 `k`에 `b`의 비트 `k`(0 또는 1)"가 든 8바이트가 들어 있어요. 비트맵 1바이트로 표를 한 번 읽으면 8행 분량의 0/1 바이트가 한꺼번에 나와요.
+```cpp
+                    // csrc/frame/ops/elementwise.cpp
+                    static const std::uint64_t kBit[8] = {1, 2, 4, 8, 16, 32, 64, 128};
+                    const std::uint8_t* vb = vbits;
+                    std::int64_t i = lo;  // a multiple of 8
+                    for (; i + 8 <= hi; i += 8) {
+                        R r[8];
+                        for (int k = 0; k < 8; ++k) r[k] = f(xx[i + k], yy[i + k]);
+                        const uint64x2_t byte = vdupq_n_u64(vb[i >> 3]);
+                        for (int q = 0; q < 4; ++q) {
+                            uint64x2_t v;
+                            std::memcpy(&v, r + 2 * q, 16);
+                            v = vandq_u64(v, vtstq_u64(byte, vld1q_u64(kBit + 2 * q)));
+                            std::memcpy(oo + i + 2 * q, &v, 16);
+                        }
+                    }
+                    for (; i < hi; ++i) oo[i] = bitmap::get(vb, i) ? f(xx[i], yy[i]) : R{};
+```
+
+- `vdupq_n_u64(vb[i >> 3])`는 비트맵 바이트 하나를 64비트 레인 둘에 복사해요.
+- `vtstq_u64(byte, {1, 2})`는 레인마다 "byte & 비트 무게"가 0이 아니면 모든 비트가 1, 아니면 0인 마스크예요. `kBit`의 넷째 쌍까지 가면 8행의 마스크가 모두 나와요.
+- 결과와 그 마스크를 AND하면 값이 있는 행은 그대로, NA 행은 0이에요. 행마다 0/1 바이트를 메모리에 펼쳐 쓰고 다시 읽는 일이 없어서, NA가 있는 `f + g`가 NA가 없는 것과 거의 같은 시간에 끝나요.
+
+**1바이트 결과(bool, 비교)**는 청크의 비트맵을 행마다 0/1 바이트로 펼친 뒤(`bitmap::expand`) `m[i] ? r : 0`으로 골라요. 비트맵 1바이트로 256칸짜리 표 `kExpand`를 한 번 읽으면 8행 분량의 0/1 바이트가 한꺼번에 나와요.
 
 <Fig caption="kExpand: 비트맵 바이트 0xB5(이진 10110101)를 8바이트로 펼치기. 왼쪽이 비트 0, 행 0이에요. 표의 칸 0xB5에는 0x0100010100010001이 들어 있고, 메모리에서는 아래처럼 바이트 8개로 놓여요.">
   <ArrayFig name="비트맵 바이트 0xB5" data={[1, 0, 1, 0, 1, 1, 0, 1]} tones={['a', '', 'a', '', 'a', 'a', '', 'a']} note="비트 0..7" />
@@ -274,30 +316,28 @@ for (std::int64_t i = lo; i < hi; ++i) {
   <ArrayFig name="펼친 8바이트" data={['01', '00', '01', '00', '01', '01', '00', '01']} tones={['a', '', 'a', '', 'a', 'a', '', 'a']} note="행 0..7, 바이트 하나에 한 행" />
 </Fig>
 
+루프가 끝나면 NA 개수를 정해요. 비트맵을 공유했으면 입력의 개수 그대로이고, 아니면 1인 비트를 popcount로 세요(가운데 바이트는 8바이트씩 64비트 popcount). NA가 하나도 없으면 비트맵을 버려요. 예를 들어 `s[s.notna()] + 1`처럼 NA를 걸러 낸 뒤의 결과에는 비트맵이 남지 않아요. 그래서 "결측이 없으면 비트맵이 없다"가 모든 결과에서 성립하고, 다음 연산이 NA 검사 없는 루프를 고를 수 있어요.
+
+### `finish_fixed`: 따로 지우는 패스
+
+같은 루프에서 지우지 않는 커널(커널이 직접 NA를 만드는 정수 연산, 덜 쓰는 커널)은 끝에 `finish_fixed`를 불러요. NA를 세고, 하나도 없으면 비트맵을 버리고, 청크마다 비트맵을 바이트로 펼쳐 NA 자리의 값을 분기 없이 지워요.
+
 ```cpp
-// column.cpp의 finish_fixed (발췌): 청크마다 펼쳐서 AND
-for_chunks(col.length, [bits, v](std::int64_t lo, std::int64_t hi) {
-    std::uint8_t m[kChunkRows];                       // 16 KB 스택 버퍼
-    const std::int64_t len = hi - lo;
-    bitmap::expand(bits + lo / 8, len, m);            // 8행씩 표 한 번
-    T* w = v + lo;
-    for (std::int64_t i = 0; i < len; ++i) w[i] &= static_cast<T>(0 - static_cast<T>(m[i]));
-});
+        // csrc/frame/column.cpp
+        for_chunks(col.length, [bits, v](std::int64_t lo, std::int64_t hi) {
+            std::uint8_t m[kChunkRows];
+            const std::int64_t len = hi - lo;
+            bitmap::expand(bits + lo / 8, len, m);
+            T* w = v + lo;
+            for (std::int64_t i = 0; i < len; ++i) w[i] &= static_cast<T>(0 - static_cast<T>(m[i]));
+        });
 ```
 
-`0 - m[i]`는 값이 있으면(`m[i] = 1`) 모든 비트가 1인 수, NA면 0이에요. 그것과 AND하면 값은 그대로이거나 0이 돼요. 분기가 없어서 벡터화돼요. int64와 float64는 같은 루프예요. float64의 `0.0`은 모든 비트가 0인 수라서 정수 AND로 지워도 `+0.0`이 돼요.
+`0 - m[i]`는 값이 있으면(`m[i] = 1`) 모든 비트가 1인 수, NA면 0이에요. 그것과 AND하면 값은 그대로이거나 0이 돼요. 분기가 없어서 벡터화돼요. int64와 float64는 같은 루프예요. float64의 `0.0`은 모든 비트가 0인 수라서 정수 AND로 지워도 `+0.0`이 돼요. `m`은 16KB 스택 버퍼 하나예요.
 
 ### 행마다 비트를 읽는 방법과 비교
 
-비트맵은 메모리를 행당 1비트만 써요. 대신 행 `i`의 비트를 꺼내려면 시프트와 마스크가 필요하고, 그 비트로 분기하면 위에서 본 문제가 다시 생겨요. pandas 3.1.1의 nullable 배열(`Int64`, `Float64`, `boolean`)은 행마다 1바이트짜리 numpy bool 마스크를 써서 이 문제가 없어요. `isna`가 마스크 복사 한 번이라 1M 행에 19µs예요. stardust는 메모리를 아끼는 비트맵을 저장 형식으로 두고, 계산할 때만 바이트로 펼쳐요. 두 방법을 같은 조건(1M 행, NA 10%, 1스레드)에서 비교한 값이에요.
-
-| 연산 | 행마다 비트를 꺼내 분기 | 바이트로 펼쳐 분기 없이 |
-|---|---:|---:|
-| `isna` | 377 µs | 47 µs |
-| `int + int` | 487 µs | 305 µs |
-| `bool & bool` (Kleene) | 1.43 ms | 542 µs |
-| float `std` | 1.03 ms | 475 µs |
-| float `min` | 933 µs | 613 µs |
+비트맵은 메모리를 행당 1비트만 써요. 대신 행 `i`의 비트를 꺼내려면 시프트와 마스크가 필요하고, 그 비트로 분기하면 위에서 본 문제가 다시 생겨요. pandas 3.1.1의 nullable 배열(`Int64`, `Float64`, `boolean`)은 행마다 1바이트짜리 numpy bool 마스크를 써서 이 문제가 없어요. `isna`가 마스크 복사 한 번이에요. stardust는 메모리를 아끼는 비트맵을 저장 형식으로 두고, 계산할 때만 바이트로 펼치거나 바이트 하나에서 NEON 마스크를 만들어요. 같은 조건(1M 행, NA 10%, 1스레드)에서 행마다 비트를 꺼내 분기하는 방법과 비교하면, 바이트로 펼치고 루프 경계를 지역 변수로 꺼낸 쪽이 `isna`에서 약 8배, `int + int`와 float `std`에서 약 1.6~2배 빨라요.
 
 Polars 2.1.0은 Arrow 메모리 모델이라 validity가 같은 LSB 우선 비트맵이고, bool 값도 비트로 저장해요. stardust는 bool 값을 바이트로 저장해서(NEON 비교의 결과 바이트를 그대로 쓰려고) 비트맵과 값의 표현이 달라요. 그 선택은 [컬럼과 메모리](/internals/frame/columns/)에서 다뤄요.
 
@@ -564,11 +604,12 @@ dtype: float64
 | 입력 | `sum` | `mean`, `var`, `std` | `min`, `max` |
 |---|---|---|---|
 | float64 | pairwise 합 | pairwise 합 → 나누기 / 두 번 훑기 | IEEE minimum/maximum, NEON |
-| int64 | wrap하는 정수 합 | 배열 영역의 float64 합 → 나누기 | 비교와 선택, NEON |
+| int64 | wrap하는 정수 합 | 정확한 정수 합을 한 번 반올림 → 나누기 / 두 번 훑기 | 비교와 선택, NEON |
 | bool | True의 개수 (int64) | 개수 → 나누기 / 0과 1로 float 경로 | 비교와 선택 |
 | string | TypeError | TypeError | 이긴 행의 슬라이스 |
 
 - `skipna=False`이고 NA가 하나라도 있으면 계산하지 않고 NA예요.
+- DataFrame의 리덕션(`df.sum()`)은 모든 컬럼을 C++ 호출 하나로 넘겨요(`reduce_columns`). 컬럼이 모두 기준값(2¹⁷행) 아래이고 합쳐서는 기준값 이상이면 컬럼 하나가 태스크 하나예요. 10만 행 × 100열 같은 넓은 프레임이 여러 스레드로 돌아요. 컬럼이 길면 컬럼마다 `reduce`가 스스로 나눠요. 결과는 컬럼마다 따로 부른 것과 같고, `reduce`가 낼 수 있는 에러(그 dtype에 없는 연산)는 태스크 전에 컬럼 순서로 검사해서 첫 컬럼의 에러가 나와요.
 - 값이 모자라면(모두 NA인 `mean`, `개수 - correction ≤ 0`인 `var`) NA예요. NaN은 실제 계산에서 나올 때만 결과가 돼요. NaN은 결측이 아니라 평범한 float 값이라서 `skipna`와 상관없이 전파돼요.
 
 ### float 합: pairwise 합
@@ -705,7 +746,7 @@ nan
 - **int64 `sum`**은 `uint64_t`로 더해 wrap해요. wrap하는 덧셈은 결합법칙이 성립하므로 청크 결과를 청크 순서로 접어요. 벡터화돼요. **bool `sum`**은 0/1 바이트를 더한 True의 개수예요. bool을 바이트로 저장한 대가로 1M 행에 바이트 1M 개를 읽어요(44µs). bool을 비트로 저장하는 Polars 2.1.0은 0.09µs예요(1M 행, 1스레드).
 - **string `min`/`max`**는 바이트 순서로 이긴 행(같으면 앞의 행)의 위치를 찾고, 그 행의 1행 슬라이스를 돌려줘요. 문자열을 복사하지 않아요.
 
-청크로 나눈 리덕션은 `over_chunks`가 청크별 결과를 청크 순서로 접어요. 청크는 행 수만으로 정해지므로 결과가 스레드 수와 무관해요. groupby는 같은 함수(`float_sum`, `ieee_minmax`)를 그룹마다 불러서 "그 그룹의 행만 고른 `Series`의 리덕션"과 같은 비트를 내요([groupby와 정렬](/internals/frame/groupby-sort/)).
+청크로 나눈 리덕션은 `over_chunks`가 청크별 결과를 청크 순서로 접어요. 청크는 행 수만으로 정해지므로 결과가 실행마다 같고, 지금은 스레드 수와도 상관없어요. groupby는 같은 함수(`float_sum`, `ieee_minmax`)를 그룹마다 불러서 "그 그룹의 행만 고른 `Series`의 리덕션"과 같은 비트를 내요([groupby와 정렬](/internals/frame/groupby-sort/)).
 
 ## astype
 
@@ -877,10 +918,11 @@ digit   :=  "0" … "9"                                       (ASCII만)
 문법 검사와 값 계산을 따로 하면 글자를 두 번 읽어요. `parse.hpp`는 한 번 훑으며 둘을 함께 해요.
 
 - **`parse_int64(text, v)`**는 1(int64), 0(문법에 맞지 않음), -1(문법은 맞지만 int64 범위 밖)을 돌려줘요. 숫자를 읽으며 `uint64_t`에 쌓고, 앞의 0을 뺀 유효 자릿수가 19를 넘으면 범위 밖이 확실하니 -1, 아니면 $2^{63} - 1$(음수면 $2^{63}$)과 비교해요. CSV 추론은 -1과 0을 구분해서 쓰고(범위 밖 정수는 float64 후보로 남아요), `astype`은 1만 성공으로 봐요.
+- **`parse_double(text, d)`**는 먼저 흔한 십진 꼴(지수 없음, 유효숫자 19자리 이하)을 `fast_decimal`로 읽고, 아니면 `parse_decimal`로 가요. 두 함수 모두 텍스트 끝에서 8바이트(정수는 16바이트)를 한 번에 읽는 길이 있는데, 그러려면 텍스트 앞의 메모리도 읽을 수 있어야 해요. `astype`은 그 시작을 따로 넘기지 않으므로 짧은 텍스트는 자리마다 읽는 길로 가요. 어느 길이든 결과는 같아요.
 - **`parse_decimal(text, d)`**는 `Ok`, `Bad`, `Slow` 중 하나예요. 부호, 정수부, 소수부, 지수를 읽으며 십진 가수 $w$(최대 19자리)와 지수 $q$로 모아요. `Bad`는 문법에 맞지 않는 글자, `Slow`는 문법에는 맞을 수 있지만 이 빠른 길이 맡지 않는 경우(`nan`/`inf`, 유효 숫자가 19자리를 넘는 수, 아래 Eisel–Lemire가 판정하지 못한 수)예요.
 - `Slow`면 `float_grammar`로 문법을 따로 확인하고 `slow_double`로 읽어요. `slow_double`은 `std::from_chars`를 부르고, 범위를 넘어 `result_out_of_range`가 나오면 `strtod`로 다시 읽어 `±inf`나 `±0.0`, 비정규수를 받아요. LLVM libc++의 소스에서 `from_chars`(double)는 글자를 가수와 지수로 읽은 뒤 LLVM libc의 `decimal_exp_to_float`에 변환을 맡겨요.
 
-$w \cdot 10^{q}$를 올바르게 반올림된 double로 바꾸는 부분은 Clinger의 빠른 길(두 수가 모두 double로 정확하면 IEEE 곱셈이나 나눗셈 한 번)과 Eisel–Lemire 알고리즘(5의 거듭제곱을 128비트로 자른 표와 128비트 곱 한 번)이에요. 숫자는 여덟 개를 8바이트 정수 하나로 읽어 곱셈 세 번으로 8자리 십진수로 바꾸는 SWAR 기법으로 읽어요 [13]. 이 셋은 CSV 파싱의 중심이라 [read_csv](/internals/frame/csv/)에서 자세히 다뤄요.
+$w \cdot 10^{q}$를 올바르게 반올림된 double로 바꾸는 부분은 Eisel–Lemire 알고리즘(5의 거듭제곱을 128비트로 자른 표와 128비트 곱 한 번)이에요. `fast_decimal`은 언제나 이것이고, `parse_decimal`은 그 앞에 Clinger의 빠른 길(두 수가 모두 double로 정확하면 IEEE 곱셈이나 나눗셈 한 번)을 먼저 봐요. 숫자는 여덟 개를 8바이트 정수 하나로 읽어 곱셈 세 번으로 8자리 십진수로 바꾸는 SWAR 기법으로 읽어요 [13]. 이 셋은 CSV 파싱의 중심이라 [read_csv](/internals/frame/csv/)에서 자세히 다뤄요.
 
 문자열 → bool은 `"True"`와 `"False"`만 받아요. `"true"`, `"1"`, `"yes"`는 에러예요.
 
@@ -988,7 +1030,9 @@ clang에 `-Rpass=loop-vectorize -Rpass-missed=loop-vectorize`를 주면 루프�
 | float `min`, `max` | numpy | NaN 전파, `-0.0 < 0.0` |
 | float → string | Python `str(float)` | 모든 double |
 | string → float | Python `float(text)` | 받는 문법 안의 모든 글자 |
-| 모든 결과 | 1스레드의 결과 | 스레드 수와 무관 (청크와 트리가 길이로만 정해짐) |
+| 모든 결과 | 1스레드의 결과 | 지금은 스레드 수와 무관 (청크와 트리가 길이로만 정해짐) |
+
+약속하는 것은 같은 기계, 같은 스레드 수, 같은 입력이면 실행마다 같은 비트, 같은 값을 담은 배열의 결과(`sd.sum`, `sd.mean`, `sd.var`, `sd.std`)와 같은 비트, 그리고 정확도예요. 표에서 numpy, pandas, Python과 비트까지 같다고 적은 줄과 스레드 수와 무관하다고 적은 줄은 지금 그렇다는 뜻이고, 약속은 아니에요.
 
 float 합의 오차 한계는 $\gamma_h \sum |x_i|$, $h \lesssim 49 + \lceil \log_2(n/512) \rceil$이에요(1M 행이면 $h \lesssim 60$). 잎 하나($m \le 512$)에서 항 하나가 거치는 덧셈은 16의 배수인 잎이면 최대 $31 + 4 = 35$번(누산기 하나에 32항, 누산기 16개를 합치는 4단계), 나머지가 있는 잎이면 최대 $30 + 4 + 15 = 49$번이에요. 유도의 자세한 과정은 [집계](/internals/array/reductions/)에 있어요. NA 자리의 0은 덧셈 경로를 늘리지 않아요. 트리의 모양이 NA와 상관없이 길이로만 정해지기 때문이에요.
 

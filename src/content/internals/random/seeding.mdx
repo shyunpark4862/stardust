@@ -344,14 +344,16 @@ except (TypeError, ValueError, OverflowError) as e:   # 공용 검사는 "이름
     raise type(e)(str(e).replace(".state(): ", ".state: ", 1)) from None
 pos = ...                                                     # int, 0 <= pos < 2**64
 seq = _SeedSequence(entropy, spawn_key, n_spawned)            # 해시를 다시 해서 엔트로피 풀을 만들고
+k0, k1 = seq.key()
 with self._lock:
-    self._seq, self._key, self._pos = seq, seq.key(), pos     # 세 가지를 한꺼번에 바꿔요
+    self._seq = seq
+    self._st.set(k0, k1, pos)                                 # 키와 위치는 네이티브 상태가 한 잠금 안에서 바꿔요
 ```
 
 - `entropy`는 `default_rng`와 같은 검사를 하지만 `None`은 받지 않아요(`TypeError`). `state`가 내놓는 값에는 `None`이 없고, `None`(OS 엔트로피)을 받으면 대입할 때마다 다른 상태가 되어 "그 상태로 돌아간다"는 뜻이 깨지기 때문이에요.
-- 필드가 빠졌거나 `bit_generator`가 다르거나 값의 타입·범위가 틀리면 `TypeError`·`ValueError`이고, 생성기는 바뀌지 않아요. 모든 검사와 해시를 잠금 밖에서 끝낸 뒤에 대입하기 때문이에요. 잠금 안의 `seq.key()`는 이미 만든 풀에서 단어 넷을 섞어 꺼내는 짧은 계산이에요.
+- 필드가 빠졌거나 `bit_generator`가 다르거나 값의 타입·범위가 틀리면 `TypeError`·`ValueError`이고, 생성기는 바뀌지 않아요. 모든 검사와 해시, 키 만들기(`seq.key()`)를 잠금 밖에서 끝낸 뒤에 대입하기 때문이에요.
 - 에러 메시지는 모두 `.state: `로 시작하고 잘못된 키의 이름을 담아요(`.state: 'entropy' must be non-negative`, `.state: missing key 'position'`). `default_rng`와 함께 쓰는 검사 함수는 `함수이름(): ` 꼴로 메시지를 만들므로, 받은 메시지의 `.state(): `를 `.state: `로 바꿔 다시 던져요. 속성은 함수가 아니라서 괄호를 붙이지 않아요.
-- 시드 수열, 키, 위치를 한 잠금 안에서 바꿔요. 다른 스레드가 `state`를 읽는 도중이어도 옛 키와 새 위치가 섞인 상태를 보지 않아요.
+- 키와 위치는 네이티브 상태의 `set`이 스핀 잠금 아래 함께 바꾸고, 시드 수열은 Python 잠금(`_lock`)이 그것과 함께 지켜요. 다른 스레드가 `state`를 읽거나 예약하는 도중이어도 옛 키와 새 위치가 섞인 상태를 보지 않아요.
 
 ```python
 >>> saved = r.state
@@ -383,7 +385,7 @@ def _restore(state):
 ```
 
 - **피클은 `state` dict 하나예요.** 피클에 들어가는 것은 모듈 함수 `_restore`의 이름과 int·tuple로 된 dict뿐이라, C++ 객체나 버전에 따라 바뀌는 내부 구조가 없어요. 시드 42의 생성기를 기본 프로토콜로 피클하면 144바이트예요.
-- **`__reduce__`가 따로 있어야 하는 이유:** `Generator`는 `threading.Lock`을 속성으로 두는데, 잠금 객체는 피클할 수 없어요. 기본 피클은 속성을 그대로 저장하려다 실패해요. 상태 dict만 저장하고 되살릴 때 새 잠금을 만들어요. 복사도 같은 이유로 잠금을 공유하지 않는 새 객체를 만들어요.
+- **`__reduce__`가 따로 있어야 하는 이유:** `Generator`는 `threading.Lock`과 네이티브 상태 객체를 속성으로 두는데, 둘 다 피클할 수 없어요. 기본 피클은 속성을 그대로 저장하려다 실패해요. 상태 dict만 저장하고 되살릴 때 새 잠금과 새 상태 객체를 만들어요. 복사도 같은 이유로 잠금을 공유하지 않는 새 객체를 만들어요.
 - **복사본은 같은 수열을 이어 가요.** 원본과 같은 키, 같은 위치이니 같은 난수를 다시 내요. 저장해 두었다가 같은 값을 다시 얻는 데는 맞지만, 서로 다른 난수가 필요한 곳에 쓰면 같은 값이 두 번 쓰여요. `n_children_spawned`도 복사되므로, 원본과 복사본이 각자 `spawn`하면 같은 자식이 나와요. 독립된 생성기가 필요하면 `spawn`을 쓰세요.
 
 ```python

@@ -2,7 +2,7 @@
 title: 경계 있는 선형 최소제곱
 group: 최소제곱과 방정식계
 order: 2
-summary: 경계가 있는 선형 최소제곱을 푸는 lsq_linear의 두 방법과 nnls를 설명해요. scipy가 부르는 numpy·LAPACK 호출을 같은 꼴로 불러서, 지금은 결과가 scipy와 비트까지 같아요.
+summary: 경계가 있는 선형 최소제곱을 푸는 lsq_linear의 두 방법과 nnls를 설명해요. lsq_linear은 scipy가 부르는 numpy·LAPACK 호출을 같은 꼴로 불러서 지금은 결과가 scipy와 비트까지 같고, nnls는 scipy와 같은 걸음에서 짧은 내적과 반사만 따로 더해요.
 seeAlso: [least-squares, overview, accuracy-performance]
 ---
 import Fig from '../../../components/fig/Fig.astro';
@@ -245,9 +245,9 @@ P가 바뀔 때마다 비용이 엄격히 줄고 P가 되풀이되지 않으므�
 
 ### 삼각화를 늘려 가기
 
-3의 최소제곱을 매번 처음부터 풀지 않아요. A와 b에 Householder 반사를 차례로 적용해서, P의 열이 위 삼각 꼴이 되게 유지해요. 새 열 j를 P에 넣을 때는 그 열의 아래쪽(행 `nsetp`부터)에 반사 하나를 만들어 대각 아래를 0으로 만들고(LAPACK `dlarfgp`: 대각 β가 0 이상이 되는 반사), 같은 반사를 b와 나머지 열에 적용해요(`dlarf`). 그러면 $z_P$는 삼각 풀이 하나예요. 열을 P에서 뺄 때는 뒤의 열을 한 칸씩 당기고, 생긴 대각 아래의 원소를 Givens 회전(`dlartgp`)으로 없애요. 반사와 회전 모두 직교 변환이라 $\lVert Ax - b\rVert$를 바꾸지 않고, 1의 w는 변환된 A와 b의 아래쪽 행만으로 계산돼요.
+3의 최소제곱을 매번 처음부터 풀지 않아요. A와 b에 Householder 반사를 차례로 적용해서, P의 열이 위 삼각 꼴이 되게 유지해요. 새 열 j를 P에 넣을 때는 그 열의 아래쪽(행 `nsetp`부터)에 반사 하나를 만들어 대각 아래를 0으로 만들고(LAPACK `dlarfgp`: 대각 β가 0 이상이 되는 반사), 같은 반사를 b와 나머지 열에 적용해요(LAPACK `dlarf`가 열 하나에 하는 계산과 같은 식). 그러면 $z_P$는 삼각 풀이 하나예요. 열을 P에서 뺄 때는 뒤의 열을 한 칸씩 당기고, 생긴 대각 아래의 원소를 Givens 회전(`dlartgp`)으로 없애요. 반사와 회전 모두 직교 변환이라 $\lVert Ax - b\rVert$를 바꾸지 않고, 1의 w는 변환된 A와 b의 아래쪽 행만으로 계산돼요.
 
-scipy 1.18.1의 `nnls`는 Lawson–Hanson의 Fortran(H12, G1)을 LAPACK으로 다시 쓴 C 판이에요. 설치본에는 컴파일된 모듈만 있어서, 이쪽의 `nnls_kernel`은 그 기계어에서 읽은 알고리즘(LAPACK 호출의 순서, 판정, 작업 버퍼의 배치)을 따라요. 열을 들이는 두 판정이 그 판의 꼴이에요.
+scipy 1.18.1의 `nnls`는 Lawson–Hanson의 Fortran(H12, G1)을 LAPACK으로 다시 쓴 C 판이에요. 설치본에는 컴파일된 모듈만 있어서, 이쪽의 `nnls_kernel`은 그 기계어에서 읽은 알고리즘(LAPACK 호출의 순서, 판정)을 따라요. 열을 들이는 두 판정이 그 판의 꼴이에요.
 
 ```cpp
             // csrc/optimize/linear.cpp, nnls_kernel
@@ -266,7 +266,7 @@ scipy 1.18.1의 `nnls`는 Lawson–Hanson의 Fortran(H12, G1)을 LAPACK으로 �
             std::memcpy(zz, b, static_cast<std::size_t>(m) * sizeof(double));
             const double save = a[nsetp + j * m];
             a[nsetp + j * m] = 1;
-            dlarf_(&L, &nn, &one, &a[nsetp + j * m], &one, &tau, &zz[nsetp], &nn, &work);
+            nnls_reflect(nn, &a[nsetp + j * m], tau, &zz[nsetp]);
             if (!(zz[nsetp] / beta > 0)) {
                 a[nsetp + j * m] = save;
                 w[j] = 0;
@@ -277,6 +277,37 @@ scipy 1.18.1의 `nnls`는 Lawson–Hanson의 Fortran(H12, G1)을 LAPACK으로 �
 - 첫 판정은 새 열이 P의 열들과 거의 겹치지 않는지 봐요. 반사한 뒤의 대각 $\lvert\beta\rvert$(P의 열이 펼치는 공간 밖에 있는 크기)가 위쪽 부분의 노름 $\lVert a_{0:\text{nsetp}, j}\rVert$의 ULP의 100배보다 커야 해요. Lawson–Hanson 원본의 "$\lvert\beta\rvert$가 위쪽 노름의 0.01배만큼 반올림에 묻히지 않는지"와 같은 뜻이에요.
 - 둘째 판정은 그 열만 새로 풀었을 때의 값 $(Q^{\mathsf T}b)_{\text{nsetp}}/\beta$가 양수인지 봐요. 음수면 넣자마자 3–4에서 다시 빠질 열이에요.
 - 판정에서 떨어진 열은 그 열의 $w_j$를 0으로 두고 다음으로 큰 열을 봐요. 이때 scipy의 판은 반사 벡터의 머리 원소만 되돌리고 `dlarfgp`가 바꾼 꼬리는 그대로 둬요. 그 열의 다음 w가 그 꼬리로 계산되는 것까지 같아요.
+
+1의 쌍대 값 $w_j$(행 `nsetp`부터의 내적)와 열 하나의 반사는 scipy의 판이 `ddot`과 `dlarf`로 해요. 그 길이는 m − nsetp라 대개 짧아서, BLAS·LAPACK을 부르는 고정 비용이 계산보다 커요. 그래서 256항보다 짧으면 누산기 넷의 고리로 더하고, 256항부터 `ddot`을 불러요.
+
+```cpp
+// csrc/optimize/linear.cpp
+// The dot product and the one-column reflection of nnls's inner steps: for short runs a plain
+// four-accumulator loop (Accelerate's per-call cost dominated a (100, 10) problem, the run
+// lengths being m - nsetp), from 256 terms BLAS. The order is fixed by the length, so the bits
+// (and the columns chosen) are the same on every run and thread count.
+inline double nnls_dot(lint n, const double* a, const double* b) {
+    if (n >= 256) return cblas_ddot(n, a, 1, b, 1);
+    double s0 = 0, s1 = 0, s2 = 0, s3 = 0;
+    lint i = 0;
+    for (; i + 4 <= n; i += 4) {
+        s0 += a[i] * b[i];
+        s1 += a[i + 1] * b[i + 1];
+        s2 += a[i + 2] * b[i + 2];
+        s3 += a[i + 3] * b[i + 3];
+    }
+    for (; i < n; ++i) s0 += a[i] * b[i];
+    return (s0 + s1) + (s2 + s3);
+}
+// LAPACK's dlarf for one column: c = (I - tau v v^T) c (v[0] = 1 set by the caller).
+inline void nnls_reflect(lint n, const double* v, double tau, double* c) {
+    if (tau == 0) return;
+    const double t = -tau * nnls_dot(n, v, c);
+    for (lint i = 0; i < n; ++i) c[i] = c[i] + v[i] * t;
+}
+```
+
+합의 순서가 길이로만 정해지므로 같은 입력이면 실행마다 같은 비트이고, 스레드 수와도 상관없어요. 다만 BLAS와 더하는 순서가 달라서 x의 끝자리는 scipy와 달라요. 0인 성분의 자리, `status`, 반복 수는 같아요.
 
 4의 걸음은 α를 2에서 시작해 막는 변수가 없으면 2로 남는 것을 "모두 양수"의 표시로 써요.
 
@@ -299,7 +330,7 @@ scipy 1.18.1의 `nnls`는 Lawson–Hanson의 Fortran(H12, G1)을 LAPACK으로 �
 
 ## scipy와 같은 호출의 꼴
 
-세 방법의 산술은 scipy가 numpy와 LAPACK을 부르는 꼴을 그대로 따라요. 그래서 지금은 결과가 scipy와 비트까지 같아요(약속은 아니에요). 같은 연산이라도 부르는 루틴과 메모리 배치가 다르면 Accelerate(macOS의 BLAS·LAPACK)의 결과가 끝자리에서 달라지기 때문이에요.
+`lsq_linear`의 두 방법은 산술도 scipy가 numpy와 LAPACK을 부르는 꼴을 그대로 따라요. 그래서 지금은 결과가 scipy와 비트까지 같아요(약속은 아니에요). 같은 연산이라도 부르는 루틴과 메모리 배치가 다르면 Accelerate(macOS의 BLAS·LAPACK)의 결과가 끝자리에서 달라지기 때문이에요.
 
 - `A.dot(x)`는 C 순서 A의 `cblas_dgemv`(행 우선), `A.T.dot(r)`은 같은 메모리를 열 우선으로 본 `dgemv`예요. 행이나 열이 하나면 numpy처럼 `ddot`·곱의 길로 가요.
 - 벡터 둘의 `np.dot`은 `0.0 + cblas_ddot`이에요(원소가 하나면 곱). BLAS가 돌려주는 −0.0이 +0.0이 되는 것까지 같아요.
@@ -313,10 +344,10 @@ double npdot(const double* a, const double* b, lint n) {
 }
 ```
 
-- Accelerate의 `ddot`과 `dgelsd`는 넘겨받은 배열의 정렬(16바이트 경계에 놓였는지)에 따라 합의 순서가 달라요. 그래서 numpy의 `lstsq`가 만드는 버퍼 배치(a, b, s를 한 덩어리에, work와 iwork를 다른 덩어리에)와 scipy `nnls` 감싸개의 작업 버퍼 배치(x, A, b, w, zz를 한 덩어리에)를 그대로 써요. 따로 잡은 배열로 하면 무작위 400문제 가운데 m이 홀수이고 m < n인 7문제에서 `dgelsd`의 끝자리가 갈려요.
+- Accelerate의 `ddot`과 `dgelsd`는 넘겨받은 배열의 정렬(16바이트 경계에 놓였는지)에 따라 합의 순서가 달라요. 그래서 numpy의 `lstsq`가 만드는 버퍼 배치(a, b, s를 한 덩어리에, work와 iwork를 다른 덩어리에)를 그대로 써요. 따로 잡은 배열로 하면 무작위 400문제 가운데 m이 홀수이고 m < n인 7문제에서 `dgelsd`의 끝자리가 갈려요.
 - 스칼라 계산은 Python의 산술(FMA 없음)이고, scipy가 컴파일한 부분(`givens_elimination`의 v 회전, `nnls`)만 그 빌드의 FMA를 `std::fma`로 적어요.
 
-그 결과 scipy의 시험 문제 12개 × 세 방법의 모든 필드, 무작위 문제 `'trf'`·`'bvls'` 각 824개(넓고 긴 모양, 계수 부족, 반쪽·상자·무한이 섞인 경계), 작은 모양(1 × 1부터 2 × 2까지) 480개, 큰 크기((1000, 100), (300, 120), (10⁴, 100))에서 x, fun, cost, optimality, active_mask, status, message, 반복 수가 모두 scipy와 같아요. 다만 `'bvls'`에서 scipy의 x가 경계를 반올림만큼 넘은 경우(테스트의 무작위 300번 가운데 84번)는 x가 그것을 경계로 옮긴 값과 비트까지 같고, `fun`·`cost`·`optimality`는 옮긴 x의 것이에요. `nnls`는 무작위 801개(반복 상한을 준 100개 포함)에서 x가 비트까지 같아요. scipy의 `rnorm`은 회전한 b의 꼬리 노름이라 $\sqrt{2\cdot\text{cost}}$와 끝자리가 다를 수 있어요.
+그 결과 scipy의 시험 문제 12개 × 두 방법의 모든 필드, 무작위 문제 `'trf'`·`'bvls'` 각 824개(넓고 긴 모양, 계수 부족, 반쪽·상자·무한이 섞인 경계), 작은 모양(1 × 1부터 2 × 2까지) 480개, 큰 크기((1000, 100), (300, 120), (10⁴, 100))에서 x, fun, cost, optimality, active_mask, status, message, 반복 수가 모두 scipy와 같아요. 다만 `'bvls'`에서 scipy의 x가 경계를 반올림만큼 넘은 경우(테스트의 무작위 300번 가운데 84번)는 x가 그것을 경계로 옮긴 값과 비트까지 같고, `fun`·`cost`·`optimality`는 옮긴 x의 것이에요. `nnls`는 기록된 12문제와 무작위 300번(반복 상한을 준 60번 포함)에서 x의 0인 자리, `status`, 반복 수가 같고, 나머지 성분의 차이는 $64\,\varepsilon\,\mathrm{cond}(A_P)\max(1, \lVert x\rVert_\infty)$ 안이에요($A_P$는 양수인 변수의 열). scipy의 `rnorm`은 회전한 b의 꼬리 노름이라 $\sqrt{2\cdot\text{cost}}$와 끝자리가 다를 수 있어요.
 
 ```python
 >>> import numpy as np
@@ -324,8 +355,9 @@ double npdot(const double* a, const double* b, lint n) {
 >>> An, bn = np.array(A.tolist()), np.array(b.tolist())
 >>> [scipy_lsq_linear(An, bn, bounds=(0, 1), method=m).x.tolist() == sd.optimize.lsq_linear(A, b, bounds=(0, 1), method=m).x.tolist() for m in ('trf', 'bvls')]
 [True, True]
->>> scipy_nnls(An, bn)[0].tolist() == sd.optimize.nnls(A, b).x.tolist()
-True
+>>> xs, xd = scipy_nnls(An, bn)[0].tolist(), sd.optimize.nnls(A, b).x.tolist()
+>>> [v == 0 for v in xs] == [v == 0 for v in xd], [abs(p - q) for p, q in zip(xs, xd)]
+(True, [0.0, 2.220446049250313e-16, 0.0])
 ```
 
 최적성으로 보면, 긴 모양의 무작위 100문제에서 `'bvls'`와 `nnls`의 답은 KKT 조건을 상대 $10^{-9}$ 안에서 만족하고, `'trf'`의 `cost`는 `'bvls'`의 것과 상대 $1.2\times10^{-11}$ 안이에요.
@@ -336,7 +368,7 @@ True
 
 - 작은 문제 (100, 10)의 `'trf'`는 0.04 ms로 scipy(0.35 ms)의 1/9쯤이에요. scipy는 반복마다 `LinearOperator`를 만들고 numpy 연산 수십 개를 Python에서 불러요. `'bvls'`는 반복마다의 `lstsq`(`dgelsd`)가 대부분이라 차이가 작아요(scipy의 1/1.7).
 - 큰 문제((1000, 100)과 (10⁴, 100))는 같은 LAPACK·BLAS 호출이 시간의 대부분이라 같아요. 같은 호출이라 줄일 곳이 거의 없어요.
-- `nnls` (100, 10)은 scipy보다 4 µs쯤 느려요. 커널은 같은 시간이고 차이는 Python 층(입력 확인, 결과 객체의 잔차)이에요.
+- `nnls`는 짧은 내적과 반사를 BLAS·LAPACK 호출 없이 하므로, 작은 문제에서도 호출마다의 고정 비용이 붙지 않아요. 크기마다 scipy와 같거나 빨라요.
 
 ## 참고 문헌
 

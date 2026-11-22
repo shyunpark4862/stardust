@@ -2,7 +2,7 @@
 title: 줄과 병렬
 group: 구조
 order: 2
-summary: 검정 하나가 줄 행렬의 한 줄이고, 커널이 줄을 스레드풀에 나누는 법을 설명해요. 긴 줄 하나를 고정된 덩어리로 자르는 법, NEON의 double-double 합이 한 원소씩 더한 것과 같은 비트인 이유, sd.stats의 분포를 C++에서 부르는 법, 그래서 결과가 스레드 수와 배치에 상관없는 이유를 다뤄요.
+summary: 검정 하나가 줄 행렬의 한 줄이고, 커널이 줄을 스레드풀에 나누는 법을 설명해요. 긴 줄 하나를 고정된 덩어리로 자르는 법, 제곱합의 double 나무, NEON의 double-double 합이 한 원소씩 더한 것과 같은 비트인 이유, sd.stats의 분포를 C++에서 부르는 법, 그래서 지금 결과가 스레드 수와 배치에 상관없는 이유를 다뤄요.
 seeAlso: [overview, ttest, normality, shapiro]
 ---
 import Callout from '../../../components/Callout.astro';
@@ -16,7 +16,7 @@ Python이 넘기는 표본은 (줄 수, 표본 크기)의 float64 배열이고 �
 - **줄이 많으면** 줄을 묶어 스레드풀에 나눠요. 줄 하나의 계산은 한 스레드 안에서 처음부터 끝까지 가요.
 - **줄이 길면** 줄 하나를 표본 크기로만 정해지는 덩어리로 잘라 나누고, 덩어리의 합을 정해진 순서로 더해요.
 
-어느 쪽이든 나누는 단위가 데이터의 모양으로만 정해지고 합치는 순서가 고정이라, 결과가 스레드 수와 상관없이 같은 비트예요. 줄 하나는 배치 안에서나 혼자서나 같은 비트이기도 해요.
+어느 쪽이든 나누는 단위가 데이터의 모양으로만 정해지고 합치는 순서가 고정이라, 같은 스레드 수에서는 실행마다 같은 비트예요. 지금은 스레드 수를 바꿔도 같은 비트이지만(1·3·10스레드의 골든 출력이 같아요), 약속은 아니에요. 줄 하나는 배치 안에서나 혼자서나 같은 비트이기도 해요.
 
 ```python
 >>> import stardust as sd
@@ -75,9 +75,11 @@ void each_lane(std::int64_t lanes, std::int64_t cost, F&& fn) {
 
 밑의 `for_pieces`(배열 영역의 것)는 일이 2¹⁵원소에 못 미치면 부른 스레드에서 차례로 돌고, 넘으면 GIL을 놓고 스레드풀에 조각을 나눠요. 조각의 경계는 `n`과 `per`로만 정해져요.
 
-### 무거운 조각 몇 개: 자는 일꾼 깨우기
+배치의 짧은 줄은 줄마다 작업 버퍼를 따로 잡지 않아요. 줄의 값을 모으는 버퍼는 스레드마다 하나를 다시 쓰고(`LaneBuf`, 2¹⁶원소를 넘게 자란 것은 줄이 끝나면 돌려줘요), 덩어리마다의 부분합은 덩어리가 몇 개 안 되면 스택에 둬요(`SmallBuf`). 짧은 줄에서는 메모리를 잡고 놓는 비용이 줄의 합보다 커요. 연속이고 NaN이 없는 줄은 값을 모으지 않고 그 자리에서 읽어요. 버퍼를 어디에 두든 연산은 같아서 비트는 같아요.
 
-스레드풀은 일이 17개 이상일 때만 자는 일꾼을 깨워요. 깨우는 데 수십 µs가 들어서, 1 µs쯤의 작은 일 몇 개로는 손해이기 때문이에요. 그런데 검정에는 조각 하나가 50 µs를 넘는 무거운 일이 2–16개만 있는 경우가 있어요(배치 몇 줄의 Shapiro–Wilk, 긴 줄 하나의 덩어리 몇 개). 그대로 두면 부른 스레드와 마침 깨어 있던 일꾼만 일해요. `for_pieces_woken`은 그런 경우에 빈 일을 덧붙여 17개로 채워 모든 일꾼을 깨워요.
+### 무거운 조각 몇 개: 일의 길이를 풀에 알리기
+
+스레드풀은 잠든 일꾼을 깨울 만한 일인지 보고 깨워요. 깨우는 데도 부른 스레드의 시간이 들고 일꾼이 일어나기까지 기다려야 해서, 일이 짧으면 깨우는 쪽이 손해예요. 풀의 기준은 모든 작업을 합친 일이 20 µs(`kWakeWorkNs`) 이상인지예요. 일의 길이를 모르면 풀은 작업 수로 짐작하는데, 검정에는 조각 하나하나가 무거운 일이 몇 개뿐인 경우가 있어요(배치 몇 줄의 p값, 긴 줄 하나의 덩어리 몇 개). `for_pieces_woken`은 조각 수와 함께 조각 하나의 길이(원소 하나를 1 ns쯤으로 본 `work / pieces`)를 `parallel_for`에 넘겨요. 풀은 조각 수 × 길이가 20 µs 이상이면 잠든 일꾼을 처음부터 깨우고, 그보다 짧으면 깨우지 않아요.
 
 ```cpp
 // csrc/htest/lanes.hpp
@@ -85,22 +87,21 @@ template <class F>
 void for_pieces_woken(std::int64_t n, std::int64_t per, std::int64_t work, F&& fn) {
     per = std::max<std::int64_t>(per, 1);
     const std::int64_t pieces = (n + per - 1) / per;
-    if (work < kParallelThreshold || pieces < 2 || pieces >= kWakeTasks || work / pieces < kHeavyPiece) {
+    if (work < kParallelThreshold || pieces < 2) {
         for_pieces(n, per, work, fn);
         return;
     }
     const parallel::Unlocked unlocked(true);
+    auto run = [&](std::int64_t t) { fn(t, t * per, std::min(n, (t + 1) * per)); };
     if (!parallel::available()) {
-        for (std::int64_t t = 0; t < pieces; ++t) fn(t, t * per, std::min(n, (t + 1) * per));
+        for (std::int64_t t = 0; t < pieces; ++t) run(t);
         return;
     }
-    parallel::parallel_for(kWakeTasks, [&](std::int64_t t) {
-        if (t < pieces) fn(t, t * per, std::min(n, (t + 1) * per));
-    });
+    parallel::parallel_for(pieces, run, work / pieces);
 }
 ```
 
-조각은 `for_pieces`와 같아서 결과의 비트도 같아요. 바뀌는 것은 몇 개의 스레드가 일하느냐뿐이에요.
+조각은 `for_pieces`와 같아서 결과의 비트도 같아요. 일의 길이는 몇 개의 스레드가 언제 일을 시작하느냐만 정해요.
 
 ### 긴 줄 하나: (줄, 덩어리)
 
@@ -129,16 +130,16 @@ void each_block(std::int64_t lanes, std::int64_t n, F&& body) {
     { label: 'lane_maxabs', note: '줄마다 |x|의 최댓값. 2^500 이상이나 2^-400 아래면 그 줄은 2의 거듭제곱 단위로 계산', where: 'moments.hpp' },
     { label: '첫 훑기: block_sum', note: '덩어리마다 합(double-double)과 개수, NaN을 만났는지', where: 'each_block', depth: 1 },
     { label: '줄마다 차례로', note: '덩어리 순서로 합쳐 개수와 double-double 평균', where: 'lane_moments' },
-    { label: '둘째 훑기: block_ss', note: '덩어리마다 (x - 평균)^2의 double-double 합', where: 'each_block', depth: 1 },
+    { label: '둘째 훑기: block_ss_plain', note: '덩어리마다 (x - 평균)^2의 double 합(고정된 나무). bartlett만 double-double의 block_ss', where: 'each_block', depth: 1 },
     { label: '줄마다 차례로', note: '덩어리 순서로 합쳐 편차 제곱합', where: 'lane_moments' },
   ]} />
 </Fig>
 
-이 두 번 훑기의 수치(double-double 편차와 그 제곱)는 [적률과 t 검정](/internals/htest/ttest/#줄의-적률)에 있어요.
+이 두 번 훑기의 수치(double-double 평균, 편차 제곱의 합)는 [적률과 t 검정](/internals/htest/ttest/#줄의-적률)에 있어요.
 
 정규성 검정의 중심 적률은 같은 생각을 4096원소의 덩어리로 해요(`normality.hpp`의 `central_sums`). 덩어리가 둘 이상이고 줄이 2¹⁶원소 이상이면 덩어리 쌍을 스레드풀에 나눠요. regression의 `resid_stats`도 같은 함수를 부르므로 regression 안에서 줄이 나뉘어도 같은 덩어리, 같은 비트예요.
 
-항이 무거운 합(Anderson–Darling의 A², Cressie–Read 통계량의 칸마다의 항)은 `ordered_sum`처럼 항만 스레드풀에서 계산해 배열에 두고, 더하기는 한 스레드가 0번부터 차례로 해요. 한 스레드로 고리를 돈 것과 같은 연산이 같은 순서로 일어나요.
+항이 무거운 합(Anderson–Darling의 A²)은 `ordered_sum`처럼 항만 스레드풀에서 계산해 배열에 두고, 더하기는 한 스레드가 0번부터 차례로 해요. 한 스레드로 고리를 돈 것과 같은 연산이 같은 순서로 일어나요. Cressie–Read 통계량은 칸을 8192개의 덩어리로 나눠 덩어리마다 합을 내고, 덩어리의 합을 순서대로 더해요([카이제곱과 Cressie–Read](/internals/htest/chisquare/)).
 
 ```cpp
 // csrc/htest/moments.hpp
@@ -162,9 +163,47 @@ Acc ordered_sum(std::int64_t n, std::int64_t cost, Term&& term) {
 
 Shapiro–Wilk, Anderson–Darling, Fligner–Killeen은 줄을 정렬해요. 2¹⁵원소 이하는 한 번에, 그 위는 2¹⁵원소의 조각을 나란히 정렬한 뒤 둘씩 병합해요(`sort_on_pool`). 병합 하나도 출력의 2¹⁵원소 구간으로 잘라 나눠요. 구간마다 두 입력에서 몇 개씩 오는지(co-rank)를 이분 탐색으로 찾으면, 구간들이 서로 기다리지 않고 동시에 `std::merge`를 할 수 있어요. 같은 값이면 첫 입력의 원소가 먼저라는 `std::merge`의 규칙을 co-rank에서도 지켜서, 결과가 한 번에 병합한 것과 같아요. 조각은 길이로만 정해지니 순서도 스레드 수와 상관없어요.
 
+## 제곱합의 double 나무
+
+평균은 double-double이지만, 편차 제곱의 합은 double로 더해요. t, 분산분석, Welch, Alexander–Govern, Levene의 F, Tukey·Dunnett의 합동 분산은 제곱합의 비와 제곱근과 합만 써서, 제곱합의 상대오차가 그만한 크기로 결과에 옮겨 갈 뿐이에요. 그래서 수십 ε의 합이면 계약($10^{-14}$) 안이고, 큰 평균이 일으키는 상쇄는 double-double 평균이 맡아요.
+
+편차는 $d = (x f - m_{hi}) + (l f - m_{lo})$예요($f$는 단위를 옮기는 2의 거듭제곱, $x + l$은 원소, $m_{hi} + m_{lo}$는 평균). double의 뺄셈 하나는 상쇄가 얼마나 크든 결과의 ε/2 안이라 $d$는 double-double 편차의 약 1.5ε 안이고, $d^2$는 2.5ε 안이에요. 이 양수들을 고정된 나무로 더해요. 64원소를 NEON 레지스터 넷의 여덟 칸에 여덟 개씩 더하고(7ε), 칸끼리 짝지어 더하고(3ε), 64원소의 합들을 다시 짝지어 더해요(8192원소의 덩어리에서 7ε 더). 덩어리의 합은 참값의 약 20ε 안이에요. 한 사슬로 차례로 더하면 2048ε까지 갈 수 있어요.
+
+```cpp
+    // csrc/htest/moments.hpp
+    // the squared deviation of the two elements from j, zero where left out
+    auto sq = [&](std::int64_t j) {
+        // ...
+        const float64x2_t d = vaddq_f64(vaddq_f64(vmulq_f64(h, vf), nmh), vaddq_f64(vmulq_f64(l, vf), nml));
+        return vbslq_f64(ok, vmulq_f64(d, d), zero);
+    };
+    double part[kBlock / 64 + 1];
+    int np = 0;
+    std::int64_t j = j0;
+    for (; j + 64 <= j1; j += 64) {
+        float64x2_t a0 = sq(j), a1 = sq(j + 2), a2 = sq(j + 4), a3 = sq(j + 6);
+        for (std::int64_t k = j + 8; k < j + 64; k += 8) {
+            a0 = vaddq_f64(a0, sq(k)), a1 = vaddq_f64(a1, sq(k + 2));
+            a2 = vaddq_f64(a2, sq(k + 4)), a3 = vaddq_f64(a3, sq(k + 6));
+        }
+        const float64x2_t t = vaddq_f64(vaddq_f64(a0, a1), vaddq_f64(a2, a3));
+        part[np++] = vgetq_lane_f64(t, 0) + vgetq_lane_f64(t, 1);
+    }
+    // ...
+    part[np++] = rest;
+    for (int w = 1; w < np; w *= 2)
+        for (int i = 0; i + w < np; i += 2 * w) part[i] += part[i + w];
+    return part[0];
+}
+```
+
+남은 64개 미만은 차례로 더해 마지막 칸에 둬요. 나무의 모양은 덩어리의 길이로만 정해져요. 연속이 아닌 줄은 덩어리의 원소를 먼저 모아(빠진 NaN의 자리까지) 같은 나무로 더해서, 줄 하나가 혼자서나 배치 안에서나 같은 비트예요.
+
+`bartlett`만은 double-double의 합(`block_ss`)을 그대로 써요. 분산이 거의 같으면 $d_i = s_i^2/s_p^2 - 1$이 서로 지워져서, 제곱합의 수십 ε가 통계량에서 크게 불어나기 때문이에요. 어느 합을 쓸지는 검정의 종류로 정해지고 데이터나 스레드와는 상관없어요.
+
 ## NEON의 double-double 합
 
-적률의 합은 double-double이에요. 원소 하나를 더할 때마다 TwoSum(덧셈 여섯 번)이 드는데, 한 사슬로만 더하면 앞 덧셈의 결과를 기다리는 지연에 묶여요. 그래서 두 가지를 해요.
+평균의 합과 `bartlett`의 제곱합은 double-double이에요. 원소 하나를 더할 때마다 TwoSum(덧셈 여섯 번)이 드는데, 한 사슬로만 더하면 앞 덧셈의 결과를 기다리는 지연에 묶여요. 그래서 두 가지를 해요.
 
 **네 사슬.** 원소 j를 j mod 4번째 합에 넣고, 끝에 네 합을 0, 1, 2, 3의 순서로 합쳐요. 사슬은 j로만 정해지니 덩어리를 어떻게 나눠도 같아요.
 

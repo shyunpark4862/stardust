@@ -2,7 +2,7 @@
 title: 카이제곱과 Cressie–Read
 group: 적합도
 order: 1
-summary: chisquare와 power_divergence가 쓰는 Cressie–Read 통계량을 음이 아닌 항의 합과 일차 항으로 나눠 계산하는 법을 따라가요. 관측이 기대와 거의 같을 때 G 통계량이 자릿수를 지키는 이유, 항 g_a를 λ마다 계산하는 세 길, 관측 0의 극한, 분할표 검정과 함께 쓰는 커널을 다뤄요.
+summary: chisquare와 power_divergence가 쓰는 Cressie–Read 통계량을 음이 아닌 항의 합과 일차 항으로 나눠 계산하는 법을 따라가요. 관측이 기대와 거의 같을 때 G 통계량이 자릿수를 지키는 이유, 항 g₁과 g_a를 δ와 λ에 따라 계산하는 꼴(atanh 급수, 이항 급수, ψ), 칸 묶음의 NEON 계산, 관측 0의 극한, 분할표 검정과 함께 쓰는 커널을 다뤄요.
 seeAlso: [normality, edf, overview, anova]
 ---
 import AccuracySummary from '../../../components/fig/AccuracySummary.astro';
@@ -32,15 +32,17 @@ Cressie와 Read(1984)의 멱 발산(power divergence) 통계량은 관측 빈도
 
 ```cpp
     // csrc/htest/gof.cpp
-    const double coef = lam == -1.0 ? -2.0 : (lam == 1.0 ? 0.0 : 2.0 / aa);
-    Acc tot = pos;
-    tot.add(lin.value() * coef);
-    tot.add(raw.value());
-    out.stat = to_double(tot.value());
+    const double coef = lam == -1.0 ? -2.0 : (lam == 1.0 ? 0.0 : 2.0 / (lam + 1.0));
+    Acc sum = tot.pos;
+    sum.add(tot.lin.value() * coef);
+    sum.add(tot.raw.value());
+    out.stat = to_double(sum.value());
     out.p = (out.df > 0.0 && out.stat == out.stat) ? chi2_sf(out.stat, out.df) : kNaN;
 ```
 
-`pos`는 2E·g_a(δ)의 합, `lin`은 O − E의 합이고 둘 다 double-double이에요. O − E는 `two_sum`으로 정확히 빼요. Pearson(λ = 1)은 scipy와 같은 Σ(O − E)²/E이고 이 식도 항이 음이 아니라 둘째 합이 필요 없어요(계수 0). `raw`는 이 꼴이 덮지 못하는 칸(E ≤ 0이나 O < 0)의 scipy 식 그대로의 항이에요.
+`tot.pos`는 2E·g_a(δ)의 합, `tot.lin`은 O − E의 합이고 둘 다 double-double 합이에요. O − E는 `two_sum`으로 정확히 빼서 double-double로 더해요. `tot.raw`는 이 꼴이 덮지 못하는 칸(E ≤ 0이나 O < 0)의 scipy 식 그대로의 항이에요.
+
+Pearson(λ = 1)은 scipy와 같은 Σ(O − E)²/E이고 이 식도 항이 음이 아니라 둘째 합이 필요 없어요(계수 0). 항은 double로 계산해요. 뺄셈 한 번과 곱셈, 나눗셈이라 항마다 몇 ulp이고, 양수의 합이라 그 오차가 통계량에서 불어나지 않아요. 나눗셈을 그대로 두어서, 정수 개수에서 나오는 2.0 같은 정확한 항은 정확하게 남아요.
 
 아래는 E = 10⁶인 세 칸에서 O − E = ±10⁻³일 때의 G 통계량이에요. 참값은 `decimal`의 60자리로 정의 2ΣO·log(O/E)를 계산했어요.
 
@@ -60,9 +62,46 @@ Cressie와 Read(1984)의 멱 발산(power divergence) 통계량은 관측 빈도
 ['3.1e-17', '9.9e-08']
 ```
 
-## 항 g_a(δ)를 계산하는 세 길
+## 항 g_a(δ)를 계산하는 길
 
-g_a(δ) 자체도 작은 δ에서 상쇄가 있어요. (1 + δ)^a − 1 − aδ는 δ²의 크기인데 세 항은 1의 크기예요. a에 따라 세 길로 계산해요.
+g_a(δ) 자체도 작은 δ에서 상쇄가 있어요. (1 + δ)^a − 1 − aδ는 δ²의 크기인데 세 항은 1의 크기예요. 그래서 g₁과 g_a를 δ와 a에 따라 다른 꼴로 계산해요.
+
+### g₁: G 통계량
+
+g₁(δ) = (1 + δ)log1p(δ) − δ는 δ ∈ [−1/2, 1]에서 u = δ/(2 + δ)로 바꿔요. 그러면 log1p(δ) = 2·atanh u, 1 + δ = (1 + u)/(1 − u)이고, atanh u = u(1 + u²S(u²)), S(v) = Σ_(k≥0) vᵏ/(2k + 3)을 넣어 정리하면
+
+g₁ = 2u²(1 + u(1 + u)S(u²))/(1 − u)
+
+예요. u ∈ [−1/3, 1/3]이라 괄호는 [0.92, 1.05]에 머물고 모든 인자가 양수라서, 직접 꼴의 상쇄가 없어요. 1/(1 − u) = (2 + δ)/2이니 나눗셈도 하나 줄어요. S는 v ≤ 1/9에서 18항이면 합의 10⁻¹⁸ 아래까지 가고, 짝수 항과 홀수 항을 v²의 두 Horner 사슬로 나눠 FMA로 계산해요.
+
+u를 double로 반올림하면 그 오차가 u²에서 두 번 세어져요. 그래서 나눗셈의 정확한 나머지 r = δ − u(2 + δ)(FMA 하나와 2 + δ의 낮은 부분)에서 g를 일차까지 되돌려요. u가 r/(2 + δ)만큼 모자라면 g는 g·2r/δ만큼 모자라고, 2 + δ의 낮은 부분은 g·lo/(2 + δ)만큼 움직여요. 이 보정은 g의 10⁻¹⁶ 크기라 몇 비트만 맞으면 되어서, 역수는 NEON의 어림값(`vrecped_f64`, 2⁻⁸)으로 충분해요.
+
+```cpp
+// csrc/htest/divergence.hpp
+inline double g1(double t) {
+    if (t == -1.0) return 1.0;
+    if (!std::isfinite(t)) return t;
+    if (t >= -0.5 && t <= 1.0) {
+        // 1 / (1 - u) = (2 + delta) / 2 (no quotient, the exact u's); the rounded u's in u^2 taken
+        // back to first order: u + r / (2 + delta) = delta / (2 + delta) with r from the exact
+        // remainders moves g by g 2 r / delta, and 2 + delta's low part by g lo / (2 + delta). A
+        // correction ~1e-16 of g needs few bits: the reciprocals are NEON's estimates (2^-8).
+        const DD den = dd::two_sum(2.0, t);
+        const double u = t / den.hi;
+        const double r = std::fma(-u, den.hi, t) - u * den.lo;
+        const double v = u * u;
+        const double g = v * (1.0 + u * (1.0 + u) * atanh_tail(v)) * den.hi;
+        if (!(std::fabs(t) >= 0x1p-500)) return g;
+        return g + g * (2.0 * r * vrecped_f64(t) + den.lo * vrecped_f64(den.hi));
+    }
+    if (t > 1.0 && t <= 4.0) return g1_dd(t);
+    return (1.0 + t) * std::log1p(t) - t;
+}
+```
+
+δ ∈ (1, 4]에서는 직접 꼴이 세 비트까지 잃어서, μ(δ) = δ − log1p(δ)를 sd.special의 double-double `log1pmx_neg`로 구하고 g₁ = δ² − (1 + δ)μ를 double-double로 계산해요(`g1_dd`, 약 1 ulp). δ²는 `two_prod`로 정확하고 (1 + δ)μ = μ + δμ예요. 그 밖의 δ에서는 직접 꼴도 두 비트 넘게 잃지 않아요. 어느 길이든 g₁은 double-double 꼴과 몇 ulp 안이에요.
+
+### g_a: 그 밖의 λ
 
 ```cpp
 // csrc/htest/divergence.hpp
@@ -73,34 +112,42 @@ inline double ga(double a, double t) {
         return (1.0 + t) * ga(1.0 - a, -t / (1.0 + t));
     }
     if (a == 1.0) return g1(t);
-    if (std::fabs(t) <= 0x1p-4 && std::fabs(a) <= 16.0) {
-        // sum_{k >= 2} c_k t^k, c_2 = 1/2, c_(k+1) = c_k (a - k) / (k + 1)
-        double c = 0.5, p = t * t, s = c * p;
-        for (int k = 2; k < 200; ++k) {
-            c *= (a - k) / (k + 1.0);
-            p *= t;
-            const double term = c * p;
-            s += term;
-            if (std::fabs(term) <= 0x1p-60 * std::fabs(s)) break;
+    // (a >= 1: g_1 and the psi term have one sign, the form below keeps the digits for any t)
+    if (a < 1.0 && std::fabs(t) <= 0x1p-4) {
+        // sum_{k >= 2} c_k t^k, c_2 = 1/2, c_(k+1) = c_k (a - k) / (k + 1): for a in [1/2, 1)
+        // and |t| <= 1/16 the term k is below 16^-(k-2) of the first, so 24 terms reach 1e-26 of
+        // it; Horner from the last
+        // (the coefficients of the last a, per thread: a test calls with one a for every cell)
+        thread_local double last = std::numeric_limits<double>::quiet_NaN(), c[25];
+        if (!(a == last)) {
+            c[2] = 0.5;
+            for (int k = 2; k < 24; ++k) c[k + 1] = c[k] * (a - k) / (k + 1.0);
+            last = a;
         }
-        return s;
+        double s = c[24];
+        for (int k = 23; k >= 2; --k) s = s * t + c[k];
+        return s * t * t;
     }
     const double L = std::log1p(t);
-    return (g1(t) + (1.0 + t) * L * psi((a - 1.0) * L)) / a;
+    return ((a < 1.0 ? g1_dd(t) : g1(t)) + (1.0 + t) * L * psi((a - 1.0) * L)) / a;
 }
 ```
 
-**a = 1 (G 통계량).** g₁(δ) = (1 + δ)log1p(δ) − δ = δ² − (1 + δ)μ(δ), μ(δ) = δ − log1p(δ)예요. μ는 sd.special의 double-double `log1pmx_neg`로 계산해요. δ²는 `two_prod`로 정확하고, (1 + δ)μ = μ + δμ도 double-double로 빼서 마지막에 한 번 반올림해요.
+**a < 1/2.** s = −δ/(1 + δ)로 바꾸면 g_a(δ) = (1 + δ)·g_(1−a)(s)라는 항등식이 있어요(정의에 넣어 정리하면 나와요). 1 − a > 1/2이니 아래의 길로 계산해요. 수정 우도비(a = 0)는 g₁로, Neyman(a = −1)은 a = 2로 가요.
 
-**|δ| ≤ 1/16.** 이항 급수 (1 + δ)^a = Σ C(a, k)δᵏ에서 0차와 1차 항이 정확히 빠지니 g_a(δ) = Σ_(k≥2) c_k δᵏ, c_k = C(a, k)/(a(a − 1))예요. c₂ = 1/2이고 c_(k+1) = c_k·(a − k)/(k + 1)이에요. |δ| ≤ 1/16이면 항이 적어도 16배씩 줄어서 수십 항 안에 2⁻⁶⁰ 아래로 가요. 모든 항을 그대로 더하니 상쇄가 없어요.
+**a ∈ [1/2, 1), |δ| ≤ 1/16.** 이항 급수 (1 + δ)^a = Σ C(a, k)δᵏ에서 0차와 1차 항이 정확히 빠지니 g_a(δ) = Σ_(k≥2) c_k δᵏ, c_k = C(a, k)/(a(a − 1))예요. c₂ = 1/2이고 c_(k+1) = c_k·(a − k)/(k + 1)이에요. 이 범위에서 k번째 항은 첫 항의 16^−(k−2) 아래라 24항이면 10⁻²⁶까지 가요. 계수는 스레드마다 마지막 a의 것을 기억해 두고(검정 하나는 모든 칸에 같은 a를 써요) 마지막 항부터 Horner로 더해요.
 
 **그 밖.** L = log1p(δ)라 하면 (1 + δ)^a = (1 + δ)·e^((a−1)L)이고, e^y = 1 + y + y·ψ(y), ψ(y) = (eʸ − 1 − y)/y로 펼치면
 
 g_a(δ) = [g₁(δ) + (1 + δ)·L·ψ((a − 1)L)] / a
 
-예요. g₁은 위의 정확한 꼴이고, ψ는 |y| < 1/2에서 급수, 그 밖에서 `expm1`이에요. 지수의 1을 미리 빼 두었으니 (1 + δ)^a를 직접 만들 때의 상쇄가 없어요.
+예요. ψ는 |y| < 1/2에서 19차까지의 급수(짝수 항과 홀수 항의 두 사슬), 그 밖에서 `expm1`이에요. 지수의 1을 미리 빼 두었으니 (1 + δ)^a를 직접 만들 때의 상쇄가 없어요. a ≥ 1이면 g₁과 ψ의 항이 같은 부호라 위의 g₁으로 자릿수가 지켜지고, a < 1이면 ψ < 0이라 두 항이 맞서서 g₁을 double-double 꼴(`g1_dd`)로 써요. g_a는 Arb 참값과 6 ulp 안이에요.
 
-**a < 1/2.** s = −δ/(1 + δ)로 바꾸면 g_a(δ) = (1 + δ)·g_(1−a)(s)라는 항등식이 있어요(정의에 넣어 정리하면 나와요). 1 − a > 1/2이니 위의 길로 계산해요. 수정 우도비(a = 0)는 g₁로, Neyman(a = −1)은 a = 2로 가요.
+### 칸 묶음과 NEON
+
+`power_divergence`는 칸을 256개씩 묶어 항을 한 번에 계산해요. 묶음의 칸이 모두 이 꼴이 덮는 칸(E > 0, O ≥ 0, 둘 다 유한)이면 (δ, 2E, O − E)를 NEON으로 두 칸씩 만들고, g₁과 g_a(a ≥ 1)도 급수가 맞는 칸(δ ∈ [−1/2, 1], |(a − 1)L| < 1/2)은 위의 스칼라 꼴과 같은 연산을 레지스터의 두 칸에서 해요(`g1_block`, `ga_block`). L = log1p(δ)는 Accelerate의 `vvlog1p`로 묶음 전체에 한 번 구해요(1 ulp 안). 급수 밖의 칸은 그 뒤에 스칼라 꼴로 다시 계산해요. 항의 합 Σ2E·g와 Σ(O − E)는 칸 q를 사슬 q mod 4에 넣는 double-double 네 사슬이고, 끝에 사슬을 순서대로 합쳐요.
+
+분할표 검정(`chi2_contingency`, `median_test`)은 칸이 적어서 묶지 않고 칸마다 `Divergence`의 스칼라 꼴로 더해요. 같은 g₁과 g_a를 부르니 0인 칸의 규칙도 같아요.
 
 ## 관측 0과 기대 0
 
@@ -120,7 +167,7 @@ PowerDivergenceResult(statistic=inf, pvalue=0, df=3)
 
 ## 기대 빈도를 주지 않으면
 
-`f_exp=None`이면 기대 빈도는 관측의 평균이에요. 이 평균을 double-double로 두고 O − E를 `two_sum(O, −E.hi) − E.lo`로 빼요. 그러면 Σ(O − E)가 0에 아주 가깝게 남아서 둘째 합이 첫 합을 흐리지 않아요. double로 반올림한 평균을 쓰면 Σ(O − E)가 k·(평균의 반올림)만큼 남아요.
+`f_exp=None`이면 기대 빈도는 관측의 평균이에요. 이 평균을 double-double로 두고 O − E를 `two_sum(O, −E.hi)`에서 E.lo를 빼 만들어요. 그러면 Σ(O − E)가 0에 아주 가깝게 남아서 둘째 합이 첫 합을 흐리지 않아요. double로 반올림한 평균을 쓰면 Σ(O − E)가 k·(평균의 반올림)만큼 남아요.
 
 ## 자유도, p값, sum_check
 
@@ -130,13 +177,13 @@ PowerDivergenceResult(statistic=inf, pvalue=0, df=3)
 
 ## 긴 줄
 
-칸이 많은 줄 하나는 항을 스레드풀에서 계산해 배열에 두고 차례로 더해요([줄과 병렬](/internals/htest/lanes/#긴-줄-하나-줄-덩어리)의 `ordered_sum`과 같은 생각). 짧은 줄은 항을 만들며 바로 더해요. 두 길은 같은 연산을 같은 순서로 해서 비트가 같아요.
+칸을 8192개의 고정된 덩어리로 나눠 덩어리마다 세 합(`PdSums`)을 내고, 덩어리의 합을 0번부터 차례로 더해요. 칸이 많은 줄 하나는 덩어리를 스레드풀에 나누고([줄과 병렬](/internals/htest/lanes/#긴-줄-하나-줄-덩어리)), 짧은 줄은 덩어리 하나예요. 덩어리의 경계가 칸 수로만 정해지니 지금은 스레드 수와 상관없이 같은 비트예요. 연속인 줄은 값을 모으지 않고 그 자리에서 읽어요. 관측과 기대의 합에 NaN이 보이면 그때만 값을 모아(`nan_policy='omit'`이면 NaN인 칸을 빼고) 다시 계산해요.
 
 ## 정확도
 
 <AccuracySummary area="htest" names={['power_divergence']} caption="chisquare와 power_divergence의 25문제(여섯 이름의 λ와 λ = 0.3, −0.999, O ≈ E의 세 경우 포함)." />
 
-통계량은 Arb 참값에 대해 최대 상대 1.3 × 10⁻¹⁵이고 계약 대비가 가장 큰 곳은 O ≈ E의 λ = 2/3(0.13)이에요. scipy 열의 inf는 관측 0에서 scipy가 NaN을 낸 점이에요.
+통계량은 Arb 참값에 대해 최대 상대 2.4 × 10⁻¹⁶이고, 계약 대비가 가장 큰 곳은 λ가 −1에 아주 가까운 경우(0.024)예요. scipy 열의 inf는 관측 0에서 scipy가 NaN을 낸 점이에요.
 
 ## scipy를 아는 분께
 

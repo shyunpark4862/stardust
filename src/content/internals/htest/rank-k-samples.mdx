@@ -200,13 +200,15 @@ $$
 
 [`median_test`](/api/htest/median_test/)는 모든 표본을 합친 중앙값 M을 구하고, 표본마다 M보다 큰 값과 작은 값의 개수로 2 × k 표를 만들어 카이제곱 검정을 해요.
 
-짝수 개면 M은 가운데 두 값의 평균인데, 이 평균은 double로 나타낼 수 없을 수 있어요. 커널은 `std::nth_element`로 위쪽 가운데 값을 찾고 그 아래 부분의 최댓값으로 아래쪽 가운데 값을 얻은 뒤, 두 값의 TwoSum을 반으로 나눠 M을 double-double로 들어요(반으로 나누기는 정확해요). 그다음 $x > M$을 정확히 견줘요. $x$가 M의 높은 부분과 같은 double이면 M의 낮은 부분의 부호가 판정을 정해요.
+짝수 개면 M은 가운데 두 값의 평균인데, 이 평균은 double로 나타낼 수 없을 수 있어요. 커널은 두 가운데 값을 기수 선택으로 찾고(`select_middle`, [분산분석과 등분산 검정](/internals/htest/anova/)의 중앙값과 같은 함수예요), 두 값의 TwoSum을 반으로 나눠 M을 double-double로 들어요(반으로 나누기는 정확해요). 선택은 값을 고치지 않아서 모은 값을 그대로 읽어요. 그다음 $x > M$을 정확히 견줘요. $x$가 M의 높은 부분과 같은 double이면 M의 낮은 부분의 부호가 판정을 정해요.
 
 ```cpp
             // csrc/htest/rank.cpp
-            DD M{*mid, 0.0};
+            double lo, hi;
+            select_middle(v.data(), N, lo, hi);  // (radix selection, htest/moments.hpp)
+            DD M{hi, 0.0};
             if (N % 2 == 0) {
-                const DD s2 = dd::two_sum(*std::max_element(w.begin(), mid), *mid);
+                const DD s2 = dd::two_sum(lo, hi);
                 M = DD{0.5 * s2.hi, 0.5 * s2.lo};
             }
             med = M.hi;

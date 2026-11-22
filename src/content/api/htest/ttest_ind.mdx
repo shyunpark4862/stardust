@@ -110,7 +110,7 @@ Welch의 검정도 거의 같은 답이에요. 자유도가 정수가 아니라�
 >>> w
 TtestIndResult(statistic=3.61095, pvalue=0.003176, df=12.9697)
 >>> w.conf_int()
-array([ 0.627460551622682, 2.4975394483773243], dtype=float64)
+array([0.6274605516226819, 2.4975394483773243], dtype=float64)
 ```
 
 ## 결과 읽기
@@ -161,7 +161,7 @@ TtestIndResult(statistic=1.18391, pvalue=0.268239, df=8.57135)
 >>> sd.htest.ttest_ind(a, b, alternative='greater')
 TtestIndResult(statistic=3.56201, pvalue=0.00173776, df=13)
 >>> sd.htest.ttest_ind(a, b, alternative='greater').conf_int()
-array([0.7856690100591656,                inf], dtype=float64)
+array([0.7856690100591655,                inf], dtype=float64)
 ```
 
 ## 이상값에 강하게: trim
@@ -255,7 +255,7 @@ TypeError: ttest_ind(): 'rng' must be an sd.random.Generator (sd.random.default_
 >>> rb
 TtestIndResult(batch shape (3,))
 >>> rb.pvalue
-array([0.005587964704194857,  0.39766292081842686,   0.9092886627393877], dtype=float64)
+array([0.005587964704194863,  0.39766292081842686,   0.9092886627393877], dtype=float64)
 >>> rb.conf_int().shape
 (3, 2)
 ```
@@ -298,7 +298,7 @@ TtestIndResult(statistic=nan, pvalue=nan, df=nan)
 
 ## 정확도
 
-- t의 상대오차는 $10^{-14}$ 안이고(잰 최대 $2.1 \times 10^{-16}$), Welch의 `df`도 $10^{-14}$ 안이에요(잰 최대 $1.7 \times 10^{-16}$).
+- t의 상대오차는 $10^{-14}$ 안이고(잰 최대 $2.1 \times 10^{-16}$), Welch의 `df`도 $10^{-14}$ 안이에요(잰 최대 $2.4 \times 10^{-16}$).
 - p값은 t 분포의 꼬리를 직접 계산해서 $10^{-14} \cdot \max(1, \kappa_p)$ 안이에요. 평균이 표준편차만큼 다른 500개씩의 두 표본처럼 p값이 아주 작은 깊은 꼬리까지 쟀어요.
 - 신뢰구간의 끝은 차와 반폭의 크기에 대해 $10^{-14}$ 안이에요.
 - 두 평균을 반올림 오차가 거의 없게 들고 그 차를 구해서, 두 표본의 평균이 $10^8$처럼 크고 차이가 0.5 수준이어도 자릿수를 지켜요. 데이터를 어떤 수로 곱해도 t와 p값은 반올림 차이 안에서 같아요.

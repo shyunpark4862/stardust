@@ -21,7 +21,7 @@ stardust의 계산은 모두 C++에 있고, 사용자는 Python에서 불러요.
 | 배열 타입 | `bind/array_bind.cpp` | `sd.ndarray`는 C++ 구조체 `NDArray`를 담은 Python 타입이에요. 생성자가 없어요 |
 | 인자 해석 | `bind/pyutil.cpp` | 배열과 주 인자는 위치 전용, 옵션은 키워드 전용. int는 `operator.index` 규칙, bool 옵션은 `True`/`False`만 |
 | 에러 메시지 | `bind/errors.{hpp,cpp}` | 공개 함수가 낸 에러는 `name(): `로 시작해요. 헬퍼는 이름을 모르고, 바인딩이 붙여요 |
-| GIL | `parallel/pool.{hpp,cpp}` | 일이 영역의 기준값 이상이면 스레드 수와 상관없이 놓아요. 놓은 구간에서는 Python 객체를 만지지 않아요 |
+| GIL | `parallel/pool.{hpp,cpp}` | 일이 영역의 기준값 이상이면 스레드 수가 몇이든 놓아요. 놓은 구간에서는 Python 객체를 만지지 않아요 |
 | 버퍼 프로토콜 | `bind/array_bind.cpp`, `array/ops/asarray.cpp` | 내보낼 때는 복사 없이, 가져올 때는 타입이 정확히 같고 정렬되어 있으면 복사 없이 |
 | DLPack | `array/ops/dlpack.cpp` | 버전 있는 capsule과 옛 capsule을 모두 읽고 써요 |
 | 수명과 소유권 | `NDArray::buffer`, `NDArray::base` | 메모리는 `shared_ptr<Buffer>`가, Python 쪽 주인은 `base`가 붙잡아요 |
@@ -205,7 +205,7 @@ nanobind에는 numpy, PyTorch 같은 배열을 C++에서 받는 `nb::ndarray`가
 
 ### Python 객체 안의 C++ 구조체
 
-`sd.ndarray`는 `nb::class_<NDArray>`로 바인딩한 타입이에요. Python 객체 하나가 `NDArray` 하나를 값으로 담아요. 결과를 돌려줄 때는 `wrap(NDArray&& a)`(= `nb::cast(std::move(a))`)가 새 Python 객체를 만들고 `NDArray`를 그 안으로 move해요. `shared_ptr` 대신 값으로 담는 이유는 데이터프레임 쪽 측정이 보여 줘요. nanobind에 `shared_ptr`을 돌려주면 Python 객체마다 `shared_ptr<void>` 복사본을 힙에 새로 만들고 전역 keep-alive 표에 등록해서, 원소 10개 Column `add`가 190ns예요. 값 타입으로 담으면 89ns예요.
+`sd.ndarray`는 `nb::class_<NDArray>`로 바인딩한 타입이에요. Python 객체 하나가 `NDArray` 하나를 값으로 담아요. 결과를 돌려줄 때는 `wrap(NDArray&& a)`가 새 Python 객체를 받아 `NDArray`를 그 안으로 move해요. `nb::inst_alloc`으로 인스턴스를 받고, 그 자리에 `NDArray`를 옮겨 만든 뒤 `nb::inst_mark_ready`로 마쳐요. 인스턴스는 nanobind의 인스턴스 풀(`nb::pooled(256)`)에서 나와요. 해제된 ndarray 객체 256개까지를 nanobind의 해시표에 등록된 채로 모아 두었다가 다시 쓰므로, 결과 배열마다 `malloc`·`free`와 해시표 넣고 빼기가 없어요([작은 배열의 비용](/internals/array/small-arrays/)). `shared_ptr` 대신 값으로 담는 이유는 데이터프레임 쪽 측정이 보여 줘요. nanobind에 `shared_ptr`을 돌려주면 Python 객체마다 `shared_ptr<void>` 복사본을 힙에 새로 만들고 전역 keep-alive 표에 등록해서, 원소 10개 Column `add`가 190ns예요. 값 타입으로 담으면 89ns예요.
 
 `NDArray`의 모양은 이래요. 자세한 내용은 [데이터 모델](/internals/array/data-model/)에 있어요.
 
@@ -226,10 +226,18 @@ struct NDArray {
 C++ 쪽에서 Python 객체 안의 `NDArray`를 꺼내는 것은 포인터 계산 하나예요.
 
 ```cpp
-// csrc/bind/pyutil.hpp
-inline bool is_ndarray(nb::handle o) { return nb::isinstance<NDArray>(o); }
+// csrc/bind/pyutil.hpp (발췌)
+extern PyTypeObject* g_ndarray_type;
+
+inline bool is_ndarray(nb::handle o) {
+    PyTypeObject* t = Py_TYPE(o.ptr());
+    return t == g_ndarray_type || (g_ndarray_type != nullptr && PyType_IsSubtype(t, g_ndarray_type));
+}
+
 inline NDArray& as_ndarray(nb::handle o) { return *nb::inst_ptr<NDArray>(o); }
 ```
+
+`g_ndarray_type`은 `bind_ndarray`가 클래스를 만든 직후 한 번 정해요. 타입 검사는 `Py_TYPE(o)`를 저장한 포인터와 비교하는 것이고, 하위 타입일 때만 `PyType_IsSubtype`을 불러요. `nb::isinstance<NDArray>`는 호출마다 nanobind의 `type_info` 해시표를 찾아요.
 
 확장 모듈이 하나라 이 타입 등록도 하나예요. 그래서 linalg와 frame의 C++ 코드도 이 두 함수로 배열을 바로 받아요. 함수가 도는 동안에는 Python 인자 자체가 배열 객체를 살려 두므로, C++은 `const NDArray&`를 복사 없이 빌려 써요.
 
@@ -382,8 +390,8 @@ TypeError: '==' not supported between instances of 'ndarray' and 'list'
 | `__contains__` | TypeError | 없으면 `v in x`가 조용히 반복(`__iter__`)으로 떨어져 첫 축의 원소와 `==`를 해요. `x == v`와 `any()`를 쓰게 해요 |
 | `__delitem__` | TypeError (`'ndarray' object doesn't support item deletion`) | 없으면 "AttributeError: __delitem__"이 나와요. tuple과 같은 메시지를 내요 |
 | `__len__` | `shape[0]` | 0차원이 없으니 언제나 있어요. 위의 슬롯(`sq_length`, `mp_length`)으로 등록해요 |
-| `__iter__` | 첫 축을 따라 `x[0]`, `x[1]`, … | 1차원이면 Python 스칼라, 그 밖에는 뷰를 내요 |
-| `__getitem__` | `None`을 받아요 | `x[None]`은 `newaxis`예요. nanobind의 기본은 `None` 거절이라 `.none()`을 붙여요 |
+| `__iter__` | 첫 축을 따라 `x[0]`, `x[1]`, … | 1차원이면 Python 스칼라, 그 밖에는 뷰를 내요. 반복자(`_ArrayIterator`)는 `tp_iter`/`tp_iternext` 슬롯이라 원소마다 메서드를 찾지 않고, 끝에서는 `StopIteration` 객체를 만들지 않고 NULL을 돌려줘요 |
+| `__getitem__` | `None`을 받아요 | `x[None]`은 `newaxis`예요. nanobind의 기본은 `None` 거절이라 `.none()`을 붙여요. `x[key]`는 바인딩이 끝난 뒤 바꿔 단 타입 슬롯 `mp_subscript`가 먼저 받아요. int와 slice만인 키는 슬롯 안에서 끝나고, 그 밖의 키와 C++ 예외는 바인딩한 `__getitem__`을 vectorcall로 불러 nanobind의 예외 변환을 그대로 써요 |
 | `__repr__`, `__str__` | `stardust._format`의 Python 함수를 불러요 | 문자열 배치는 Python이 읽기 쉬워요 |
 
 ### numpy 스칼라를 피연산자로
@@ -770,15 +778,15 @@ GIL(Global Interpreter Lock)은 CPython에서 한 번에 한 스레드만 Python
 
 stardust의 규칙은 이래요.
 
-1. **일이 영역의 기준값 이상이면 스레드 수와 상관없이 GIL을 놓아요.** 기준값보다 작은 일은 GIL을 쥔 채 그 자리에서 돌아요. 그래서 `sd.set_num_threads(1)`이어도 큰 계산이 도는 동안 다른 Python 스레드가 돌고, 작은 호출은 GIL을 놓았다 다시 잡는 비용을 내지 않아요. 기준값은 스레드풀로 나누기 시작하는 일의 양과 같아요.
+1. **일이 영역의 기준값 이상이면 스레드 수가 몇이든 GIL을 놓아요.** 기준값보다 작은 일은 GIL을 쥔 채 그 자리에서 돌아요. 그래서 `sd.set_num_threads(1)`이어도 큰 계산이 도는 동안 다른 Python 스레드가 돌고, 작은 호출은 GIL을 놓았다 다시 잡는 비용을 내지 않아요. 기준값은 스레드풀로 나누기 시작하는 일의 양과 같아요.
 2. **GIL을 놓은 구간에서는 Python 객체를 만지지 않아요.** 풀의 태스크도, 호출 스레드에서 GIL 없이 도는 구간도 같아요. `NDArray`를 복사하거나 없애는 것조차 `base`(`nb::object`)의 참조 카운트를 바꾸므로, 필요한 `NDArray` 복사는 구간 밖에서 미리 해요. 결과 배열과 namedtuple도 구간이 끝난 뒤 GIL을 다시 쥐고 만들어요.
-3. **에러 위치도 GIL 밖에서 정하고, 메시지는 안에서 만들어요.** 여러 태스크가 검사하다 실패하면 `parallel::FirstRow`가 가장 앞의 위치를 atomic으로 골라요(데이터프레임의 검사가 써요). 메시지(Python 문자열)는 병렬 구간이 끝난 뒤 만들어요. 스레드 수와 무관하게 같은 위치를 보고해요.
+3. **에러 위치도 GIL 밖에서 정하고, 메시지는 안에서 만들어요.** 여러 태스크가 검사하다 실패하면 `parallel::FirstRow`가 가장 앞의 위치를 atomic으로 골라요(데이터프레임의 검사가 써요). 메시지(Python 문자열)는 병렬 구간이 끝난 뒤 만들어요. 그래서 실행마다 같은 위치를 보고하고, 지금은 스레드 수가 달라도 같은 위치예요.
 
 ### 구현
 
 ```cpp
 // csrc/parallel/pool.cpp (줄인 발췌)
-void parallel_for(std::int64_t ntasks, const std::function<void(std::int64_t)>& fn) {
+void parallel_for(std::int64_t ntasks, const std::function<void(std::int64_t)>& fn, std::int64_t task_ns) {
     if (ntasks <= 0) return;
     if (ntasks == 1 || t_in_task) {
         for (std::int64_t t = 0; t < ntasks; ++t) fn(t);  // 하나뿐, 중첩: GIL은 그대로 두고 그냥 루프
@@ -789,7 +797,7 @@ void parallel_for(std::int64_t ntasks, const std::function<void(std::int64_t)>& 
         for (std::int64_t t = 0; t < ntasks; ++t) fn(t);
         return;
     }
-    pool().run(ntasks, fn);  // 풀로 나눠요. 다른 Python 스레드의 일로 풀이 바쁘면 run()이 직렬로 돌려요
+    pool().run(ntasks, fn, task_ns);  // 풀로 나눠요. 다른 Python 스레드의 일로 풀이 바쁘면 run()이 직렬로 돌려요
 }
 
 GilRelease::GilRelease() {
@@ -810,7 +818,7 @@ private:
 
 `PyEval_SaveThread`는 GIL을 놓고 현재 스레드 상태를 돌려주고, `PyEval_RestoreThread`가 그 상태로 GIL을 다시 잡아요 [6]. RAII(객체의 수명에 자원을 묶는 C++ 관용구)라서 태스크가 예외를 던져도 소멸자가 GIL을 되찾아요. 생성자는 태스크 안이 아닌지, `PyGILState_Check`로 GIL을 지금 쥐고 있는지를 먼저 봐서, GIL이 없는 곳에서 만들어지면 아무 일도 하지 않아요. 그래서 놓는 구간이 겹쳐도 돼요.
 
-**놓는 곳은 두 가지예요.** `parallel_for`는 태스크가 둘 이상이면 놓아요. 풀로 나눌 때도, 1스레드라 호출 스레드가 태스크를 차례로 돌 때도 같아요. 태스크 수는 일의 양만으로 정해지므로 놓는지도 스레드 수와 무관해요. 태스크가 하나이면 호출하는 쪽의 크기 판단이라 GIL을 그대로 둬요. 일이 기준값 이상인데 `parallel_for` 없이 호출 스레드에서 도는 구간(1스레드나 바쁜 풀이라 직렬 경로를 고른 경우, 자를 축이 없는 경우, 나누는 경로가 없는 직렬 루프)은 `Unlocked(work >= 기준값)`으로 감싸요. 배열의 이터레이터와 조각 실행기(`for_pieces`), linalg의 배치 드라이버와 긴 합, frame의 직렬 구간이 이것을 써요. 줄마다 불리는 커널 안에는 두지 않고, 호출 한 번에 한 번 지나는 곳에만 둬요.
+**놓는 곳은 두 가지예요.** `parallel_for`는 태스크가 둘 이상이면 놓아요. 풀로 나눌 때도, 1스레드라 호출 스레드가 태스크를 차례로 돌 때도 같아요. 태스크 수는 일의 양만으로 정해지므로 놓는지도 스레드 수와 상관없어요. `task_ns`는 잠든 워커를 깨울지만 정해요([스레드풀과 결정성](/internals/core/threads/)). 태스크가 하나이면 호출하는 쪽의 크기 판단이라 GIL을 그대로 둬요. 일이 기준값 이상인데 `parallel_for` 없이 호출 스레드에서 도는 구간(1스레드나 바쁜 풀이라 직렬 경로를 고른 경우, 자를 축이 없는 경우, 나누는 경로가 없는 직렬 루프)은 `Unlocked(work >= 기준값)`으로 감싸요. 배열의 이터레이터와 조각 실행기(`for_pieces`), linalg의 배치 드라이버와 긴 합, frame의 직렬 구간이 이것을 써요. 줄마다 불리는 커널 안에는 두지 않고, 호출 한 번에 한 번 지나는 곳에만 둬요.
 
 **큰 BLAS 호출도 놓아요.** `matmul`의 float64·complex128 경로는 곱셈-덧셈이 $2^{15}$개(`kBlasTaskWork`) 이상이면, `cov`와 `corrcoef`는 언제나 BLAS를 부르는 동안 GIL을 놓아요. 이 호출은 Accelerate가 안에서 스레드를 정하므로(`sd.set_num_threads`를 따르지 않아요) 1스레드 설정에서도 여러 코어를 쓸 수 있어요. BLAS와 행렬을 모으는 준비 코드는 Python 객체를 만지지 않아요.
 
@@ -820,7 +828,7 @@ private:
 
 | 영역 | GIL을 놓는 일의 양 |
 |:---:|---|
-| array | float64 덧셈 2¹⁵개 분량(`kParallelThreshold`). 원소 하나가 무거운 함수는 그만큼 적은 원소부터, bool 배열은 바이트로 세어 262,144 원소부터 |
+| array | float64 덧셈 2¹⁵개 분량(`kParallelThreshold`). 원소 하나가 무거운 함수는 그만큼 적은 원소부터, 배열 둘만 움직이는 원소별 연산(복사, `abs(x)`)은 1.5배 많은 원소부터, bool 배열은 바이트로 세어 262,144 원소부터 |
 | linalg | 호출 하나의 추정 계산 시간 10µs(`kParallelMinNs`) 이상. 행렬 하나여도 같아요 |
 | special, stats의 분포 함수 | 배열의 이터레이터를 거치므로 배열과 같아요 |
 | random | 배열과 같은 기준을 `for_pieces`로 적용해요(원소 4096개부터). `permutation`과 비복원 추출은 언제나 |
@@ -901,10 +909,11 @@ numpy가 우리 메모리를 읽는 것도 이 길이에요. `np.asarray(x)`는 
 `sd.asarray(obj)`는 입력의 종류를 이 순서로 봐요(`array/ops/asarray.cpp`).
 
 1. `sd.ndarray` → 그대로 돌려주거나, `dtype=`/`copy=True`면 변환·복사
-2. Python 스칼라 → ValueError (0차원 배열은 없어요)
-3. 중첩된 list/tuple → shape를 읽고 dtype을 추론해 복사
-4. `range` → int 리스트로 바꿔 3번 길로. `range`는 버퍼가 아니에요
-5. 버퍼 프로토콜을 지원하는 객체 → 아래
+2. 정확한 `numpy.ndarray`로 아래 조건에 맞는 것 → 버퍼 프로토콜을 거치지 않고 바로 공유(아래 "numpy 배열은 바로 공유해요")
+3. Python 스칼라 → ValueError (0차원 배열은 없어요)
+4. 중첩된 list/tuple → shape를 읽고 dtype을 추론해 복사
+5. `range` → int 리스트로 바꿔 4번 길로. `range`는 버퍼가 아니에요
+6. 버퍼 프로토콜을 지원하는 객체 → 아래
 
 버퍼는 `PyObject_GetBuffer(obj, &view, PyBUF_RECORDS_RO)`로 받아요. strides와 format을 요청하고, 읽기 전용 버퍼도 받겠다는 뜻이에요. 그다음 format 문자열을 해석해요.
 
@@ -957,6 +966,35 @@ Traceback (most recent call last):
   ...
 ValueError: asarray(): copy=False, but this buffer can only be converted by copying
 ```
+
+**numpy 배열은 바로 공유해요.** numpy는 버퍼를 내보낼 때마다 format 문자열을 다시 만들고 캐시와 비교해서, 그것이 `sd.asarray(numpy 배열)` 시간의 절반이었고 `Py_buffer` 관리가 나머지였어요. 그래서 정확히 `numpy.ndarray`(하위 클래스는 아니에요)이면 numpy의 공개 C 구조체에서 바로 읽어요(`share_numpy`).
+
+```cpp
+// csrc/array/ops/asarray.cpp (share_numpy의 앞부분): numpy의 공개 C 구조체에서 읽는 필드
+struct NumpyArrayFields {
+    PyObject_HEAD char* data;
+    int nd;
+    Py_ssize_t* dimensions;
+    Py_ssize_t* strides;
+    PyObject* base;
+    PyObject* descr;
+    int flags;
+};
+struct NumpyDescrHead {
+    PyObject_HEAD PyTypeObject* typeobj;
+    char kind;
+    char type;
+    char byteorder;
+    char former_flags;
+    int type_num;
+};
+```
+
+- 두 구조체는 `numpy/_core/include/numpy/ndarraytypes.h`의 `PyArrayObject_fields`와 `PyArray_Descr`의 앞부분이에요. numpy 1.x와 2.x에서 자리가 같아요. numpy 타입은 이름(`tp_name`이 `"numpy.ndarray"`)으로 한 번 알아보고 포인터를 저장해요. numpy를 import하지 않아요.
+- 조건은 버퍼 경로의 공유 조건과 같아요. 원소 타입이 우리 넷 중 하나(`type_num`: bool 0, long 7·longlong 9, double 12, cdouble 15)이고, native 바이트 순서이고, 시작 주소와 stride가 정렬되어 있고, `dtype=`이 다르지 않고 `copy=True`가 아니어야 해요. bool은 0/1 검사를 똑같이 해요.
+- 원소가 없는 배열은 버퍼 경로로 보내요. numpy의 빈 배열은 stride가 0일 수 있는데 버퍼 내보내기는 C 연속 stride를 주기 때문이에요.
+- 결과의 `base`는 그 numpy 배열이고 Buffer는 없어요. 메모리는 numpy 배열에 대한 참조가 살려 둬요. 버퍼 내보내기도 같은 일을 해요(numpy는 다른 곳이 참조하는 배열의 크기를 바꾸지 않아요). 쓰기 가능 여부도 numpy의 내보내기와 같아요(`WRITEABLE`이고 `WARN_ON_WRITE`가 아닐 때).
+- 조건에 맞지 않으면(big-endian, float32, 하위 클래스, 정렬 안 됨 등) 빈 객체를 돌려주고 버퍼 경로로 가요. 그래서 결과는 어느 길이든 같은 뷰, 같은 `.base`예요.
 
 **uint64는 값을 보지 않고 거절해요.** uint64를 int64로 바꾸면 2⁶³ 이상의 값이 손실돼요. 값을 훑어서 범위 안이면 받는 방법도 있지만, 그러면 같은 코드가 데이터에 따라 성공하거나 실패해요. 암묵적 변환도 값이 아니라 dtype만 보고 판단하므로, 같은 이유로 `dtype=`을 주어도 TypeError예요. 데이터프레임도 같아요.
 
@@ -1030,6 +1068,8 @@ struct Export {                      // capsule이 살려 두는 것
 
 ```cpp
 // csrc/array/ops/dlpack.cpp (from_dlpack의 줄인 발췌)
+// numpy 배열은 생산자를 부르지 않고 asarray와 같은 길로 바로 공유해요
+if (nb::object r = share_numpy_array(x, std::nullopt, copy); r.is_valid()) return r;
 static PyObject* const s_dlpack = PyUnicode_InternFromString("__dlpack__");
 static PyObject* const s_device = PyUnicode_InternFromString("__dlpack_device__");
 static PyObject* const s_kwnames = Py_BuildValue("(ss)", "max_version", "copy");
@@ -1075,6 +1115,7 @@ if (PyCapsule_IsValid(cap.ptr(), "dltensor_versioned")) {
 }
 ```
 
+- **numpy 배열은 바로 공유해요.** 장치 인자를 확인한 뒤, 정확한 `numpy.ndarray`이면 `asarray`와 같은 공유([버퍼 프로토콜](#버퍼-프로토콜)의 numpy 길)를 먼저 해 봐요. `__dlpack__`이 설명할 뷰와 같은 뷰이고, `base`가 capsule 대신 그 numpy 배열이에요. 두 번의 메서드 호출과 capsule 둘을 만들지 않아서 numpy 배열을 가져오는 일이 훨씬 싸요. `copy=True`이거나 그 조건에 맞지 않으면 아래의 일반 경로예요.
 - **장치를 먼저 물어봐요.** `__dlpack_device__`가 있으면 CPU인지 확인하고, 아니면 `BufferError`예요. 그 답이 int 두 개의 tuple이 아니면 `TypeError`예요. 이름, 키워드 이름 tuple, 버전 tuple은 처음 한 번만 만들어요.
 - **Python 수준의 일을 줄여요.** 속성은 `PyObject_GetOptionalAttr`로 한 번씩만 찾아요(있는지 확인하고 다시 꺼내는 두 번이 아니라). 속성 이름은 intern된 문자열이라 조회가 해시 비교로 끝나요. 키워드 인자는 vectorcall(인자를 C 배열과 키워드 이름 tuple로 넘기는 호출 규약)로 넘겨, 호출마다 dict나 tuple을 만들지 않아요.
 - **옛 생산자에게 물러나요.** `__dlpack__(max_version=..., copy=...)`가 TypeError를 내면 키워드 없이 다시 불러요. DLPack 1.0 전의 생산자는 키워드를 몰라요.
@@ -1084,7 +1125,10 @@ if (PyCapsule_IsValid(cap.ptr(), "dltensor_versioned")) {
 - **`copy=True`의 두 번 복사를 피해요.** 생산자가 "복사됨" 표시를 달았으면 다시 복사하지 않아요. 표시가 없으면(옛 형식이거나 생산자가 무시함) 우리가 복사해요.
 
 ```python
->>> k = sd.from_dlpack(np.arange(4.0))
+>>> n = np.arange(4.0)
+>>> sd.from_dlpack(n).base is n
+True
+>>> k = sd.from_dlpack(sd.arange(4.0))
 >>> k.base
 <capsule object "sd_dlpack_owner" at 0x...>
 >>> k.tolist()
@@ -1098,7 +1142,7 @@ BufferError: __dlpack__(): cannot export a read-only array with the legacy DLPac
 <capsule object "dltensor_versioned" at 0x...>
 ```
 
-DLPack으로 가져온 배열의 `buffer`(`shared_ptr<Buffer>`)는 비어 있어요. 메모리를 붙잡는 것은 `base`인 소유자 capsule이에요. 그래서 이 배열의 뷰도 `base`로 같은 capsule을 쥐어서 메모리를 지켜요.
+DLPack의 일반 경로로 가져온 배열의 `buffer`(`shared_ptr<Buffer>`)는 비어 있어요. 메모리를 붙잡는 것은 `base`인 소유자 capsule이에요. 그래서 이 배열의 뷰도 `base`로 같은 capsule을 쥐어서 메모리를 지켜요.
 
 ## 수명과 소유권
 
@@ -1106,31 +1150,42 @@ DLPack으로 가져온 배열의 `buffer`(`shared_ptr<Buffer>`)는 비어 있어
 
 배열이 가리키는 메모리가 살아 있게 하는 고리는 둘이에요.
 
-- **`buffer`** (`std::shared_ptr<Buffer>`): C++ 쪽 소유. 같은 메모리를 보는 모든 `NDArray`가 공유해요. 마지막 `shared_ptr`가 사라지면 Buffer가 메모리를 해제하거나(자기 메모리), 가져온 `Py_buffer`를 놓아요(외부 메모리).
+- **`buffer`** (`std::shared_ptr<Buffer>`): C++ 쪽 소유. 마지막 `shared_ptr`가 사라지면 Buffer가 메모리를 해제하거나(자기 메모리), 가져온 `Py_buffer`를 놓아요(외부 메모리). 메모리를 붙잡는 데만 쓰고 아무 코드도 읽지 않아요. 그래서 `base`가 메모리를 붙잡는 배열은 `buffer`가 비어 있어요.
 - **`base`** (`nb::object`): Python 쪽 주인. 사용자가 `.base`로 보는 객체예요. 배열이 메모리를 직접 가지면 비어 있고(`None`), 다른 Python 객체의 메모리를 보면 그 객체예요.
 
 | 배열을 만든 방법 | `buffer` | `base` (`.base`) | 메모리를 붙잡는 것 |
 |---|---|---|---|
 | 생성 함수, 연산 결과 | 새 Buffer | `None` | Buffer |
-| 뷰 (슬라이스, 전치, `reshape`) | 원본과 같은 Buffer | 원본의 `base`, 없으면 원본 배열 | Buffer (와 `base`) |
+| 메모리를 직접 가진 배열의 뷰 (슬라이스, 전치, `reshape`) | 비어 있음 | 원본 배열 | `base`(원본 배열)가 원본의 Buffer를 살려 둬요 |
+| 뷰나 외부 메모리 배열의 뷰 | 원본과 같은 Buffer | 원본의 `base` | Buffer와 `base` |
+| numpy 배열을 바로 공유 (`asarray`, `from_dlpack`) | 비어 있음 | 그 numpy 배열 | numpy 배열에 대한 참조 |
 | 버퍼 프로토콜로 가져옴 | `Buffer::adopt(Py_buffer)` | 내보낸 객체 (`view.obj`) | `Py_buffer`가 쥔 내보낸 객체 |
-| DLPack으로 가져옴 | 비어 있음 | 소유자 capsule | capsule의 소멸자가 생산자 deleter를 불러요 |
+| DLPack의 일반 경로로 가져옴 | 비어 있음 | 소유자 capsule | capsule의 소멸자가 생산자 deleter를 불러요 |
 | linalg 결과 (`new_array_strided`) | 새 Buffer | `None` | Buffer |
 | `Series.to_array()` (읽기 전용 뷰) | Column의 Buffer와 같은 것 | `None` | Buffer. `use_count()`가 늘어 frame의 쓰기가 먼저 복사해요 |
 
 ### 뷰의 `base`는 최종 주인으로 접어요
 
 ```cpp
-// csrc/bind/pyutil.cpp
+// csrc/bind/pyutil.cpp (발췌)
 NDArray view_of(nb::handle x) {
     const NDArray& a = as_ndarray(x);
-    NDArray v = a;                                         // buffer 공유, shape/strides 복사
-    v.base = a.base.is_valid() ? a.base : nb::borrow(x);   // 사슬을 만들지 않아요
+    NDArray v = NDArray::meta_of(a);  // data, dtype, shape, strides, 플래그만 복사
+    if (a.base.is_valid()) {
+        // x가 뷰이거나 외부 메모리: 같은 주인, 같은 Buffer(외부 메모리를 붙잡는 Py_buffer일 수 있어요)
+        v.base = a.base;
+        v.buffer = a.buffer;
+    } else {
+        // x가 메모리를 직접 가져요: x에 대한 참조가 x의 Buffer를 살려 두니 뷰는 Buffer를 갖지 않아요
+        v.base = nb::borrow(x);
+    }
     return v;
 }
 ```
 
 뷰의 뷰를 만들어도 `base`는 중간 뷰가 아니라 메모리의 최종 주인을 가리켜요. 그러지 않으면 `x[1:][1:][1:]…`가 중간 뷰를 줄줄이 붙잡는 사슬이 되고, 중간 뷰가 쓸데없이 살아남아요. numpy 2.x도 같은 규칙이에요.
+
+메모리를 직접 가진 배열의 뷰는 Buffer를 갖지 않아요. 원본 배열에 대한 참조(`base`)가 이미 원본의 Buffer를 살려 두기 때문이에요. 뷰를 만들고 버릴 때마다 `shared_ptr`의 원자적 증감이 두 번 줄어요. 원본이 이미 뷰이거나 외부 메모리이면 그 `base`와 Buffer를 그대로 물려받아요. 버퍼 프로토콜로 가져온 배열의 Buffer는 `Py_buffer` 내보내기 자체라서, 그것을 놓으면 내보낸 쪽(`bytearray` 등)이 메모리를 옮길 수 있기 때문이에요.
 
 ```python
 >>> base = sd.asarray([[1.0, 2.0], [3.0, 4.0]])
@@ -1164,12 +1219,12 @@ BufferError: Existing exports of data: object cannot be re-sized
 
 `arr`를 지워도 뷰 `tail`이 같은 Buffer를 쥐고 있어서 버퍼는 아직 내보낸 상태예요. 마지막 뷰가 사라져야 `PyBuffer_Release`가 불려요.
 
-<Fig caption="numpy 배열을 가져온 뒤 슬라이스한 모습. 두 stardust 배열이 Buffer 하나를 공유하고, Buffer는 Py_buffer를 통해 numpy 배열을 붙잡아요. 둘의 base는 모두 numpy 배열이에요.">
-  <ArrayFig name="numpy a (메모리 주인)" data={[0, 1, 2, 3]} tones={['a', 'a', 'a', 'a']} note="Py_buffer.obj가 참조" />
-  <Op note="Buffer::adopt">→</Op>
-  <ArrayFig name="y = sd.asarray(a)" data={[0, 1, 2, 3]} tones={['', '', '', '']} note="base: a" />
+<Fig caption="numpy 배열을 가져온 뒤 슬라이스한 모습. numpy 배열은 버퍼 프로토콜 없이 바로 공유해서 두 stardust 배열 모두 Buffer가 없고, base인 numpy 배열에 대한 참조가 메모리를 붙잡아요.">
+  <ArrayFig name="numpy a (메모리 주인)" data={[0, 1, 2, 3]} tones={['a', 'a', 'a', 'a']} note="두 배열의 base가 참조" />
+  <Op note="share_numpy">→</Op>
+  <ArrayFig name="y = sd.asarray(a)" data={[0, 1, 2, 3]} tones={['', '', '', '']} note="Buffer 없음, base: a" />
   <Op note="view_of">→</Op>
-  <ArrayFig name="y[::2]" data={[0, 1, 2, 3]} tones={['b', 'm', 'b', 'm']} note="같은 Buffer, base: a" />
+  <ArrayFig name="y[::2]" data={[0, 1, 2, 3]} tones={['b', 'm', 'b', 'm']} note="Buffer 없음, base: a" />
 </Fig>
 
 - **DLPack으로 내보낼 때**: `Export::keep`(배열의 뷰)이 Buffer와 `base`를 붙잡아요. 소비자가 deleter를 부를 때 놓여요.
@@ -1192,45 +1247,35 @@ C++ 정적 변수가 쥔 Python 객체 가운데는 일부러 놓지 않는 것�
 
 ## 성능
 
-경계를 넘는 비용을 모으면 이래요. 작은 입력의 호출은 계산이 거의 없어서, 시간 대부분이 경계를 넘는 고정 비용이에요.
+작은 입력의 호출은 계산이 거의 없어서, 시간 대부분이 경계를 넘는 고정 비용이에요. 그래서 경계의 각 단계를 줄여요.
 
-| 연산 | sd | numpy |
-|---|---:|---:|
-| 작은 `a + b` | 179ns | 151ns |
-| `x[1, 2]` | 25ns | 33ns |
-| `x.shape` | 19ns | 18ns |
+| 항목 | 줄이는 방법 |
+|---|---|
+| 결과 객체의 할당과 해제 | ndarray 인스턴스 풀(`nb::pooled(256)`)에서 다시 써요. `NDArray`(560바이트)를 담은 객체는 512바이트를 넘어 Python의 소형 할당기를 쓰지 못하지만, 풀이 차 있으면 `malloc`까지 가지 않아요 |
+| 타입 찾기 | `is_ndarray`와 `wrap`이 저장한 타입 포인터를 써요(위 "Python 객체 안의 C++ 구조체") |
+| 속성 읽기 | `shape`, `len()` 같은 속성은 타입 슬롯의 C 함수예요(위 "속성") |
+| `x[key]` | 흔한 키(int와 slice만인 키)는 타입 슬롯 `mp_subscript`가 바로 처리하고, 나머지만 바인딩한 `__getitem__`으로 넘겨요 |
+| numpy 배열 가져오기 | 버퍼 프로토콜과 DLPack 생산자를 거치지 않고 numpy의 C 구조체에서 바로 읽어요(위 "가져오기") |
+| Column을 `shared_ptr` 대신 값 타입으로 | nanobind의 keep-alive 등록을 피해요 |
+| frame 커널의 `func`를 `std::string` 대신 `nb::handle`로 | 호출마다 문자열로 바꾸지 않아요. str의 UTF-8은 캐시돼요 |
+| bool 버퍼 바이트 검사 | 원소별 비교 대신 모든 바이트의 OR 하나예요 |
+| 에러 이름 붙이기 (`named`) | 예외가 날 때만 비용이 들고 정상 경로에서는 0이에요 |
 
-| 항목 | 값 | 비고 |
-|---|---:|---|
-| nanobind 함수 호출 경로 | 약 10ns | `sample` 프로파일러 |
-| `NDArray` + Python 객체 만들기 | 약 75ns | linalg 결과 하나에 남는 비용 |
-| linalg 경계(버퍼 프로토콜 왕복 + `asarray` 감싸기) | 결과 하나에 약 120ns | 확장 모듈이 하나라서 들지 않는 비용 |
-| Column을 `shared_ptr` 대신 값 타입으로 | 원소 10개 `add` 89ns (`shared_ptr`이면 190ns) | nanobind의 keep-alive 등록 비용 |
-| frame 커널의 `func`를 `std::string` 대신 `nb::handle`로 | 약 200ns인 작은 리덕션에서 약 15ns | 호출마다 문자열로 바꾸지 않아요. str의 UTF-8은 캐시돼요 |
-| bool 버퍼 바이트 검사 (원소 100만 개) | 8.3µs | 원소별 비교 235µs |
-| 에러 이름 붙이기 (`named`) | 정상 경로 0 | 예외가 날 때만 비용 |
-
-- `x[1, 2]`가 numpy보다 빠른 것은 앞쪽 축이 모두 Python int인 키에서 일반 키 해석을 건너뛰기 때문이에요.
-- 작은 연산의 남은 비용에서 가장 큰 몫은 결과 배열의 Python 객체 할당이에요. `NDArray`(560바이트)를 담은 객체는 512바이트를 넘어 Python의 소형 할당기(pymalloc)를 쓰지 못하고 시스템 `malloc`으로 가요. 호출당 15~20ns예요. 나머지는 nanobind 인스턴스 등록, `NDArray` 복사, 메서드 호출 경로에 고르게 퍼져 있어요. 자세한 내용은 [작은 배열의 호출 비용](/internals/array/small-arrays/)에 있어요.
-- 큰 배열에서는 경계 비용이 측정 오차 안이에요. 버퍼 프로토콜과 DLPack으로 가져오기는 공유할 수 있으면 원소 수와 무관한 상수 시간이에요.
+- nanobind 함수 호출 경로 자체는 약 10ns로 작아요(`sample` 프로파일러).
+- 큰 배열에서는 경계 비용이 측정 오차 안이에요. 버퍼 프로토콜, numpy 공유, DLPack으로 가져오기는 공유할 수 있으면 원소 수와 무관한 상수 시간이에요.
+- 자세한 내용은 [작은 배열의 호출 비용](/internals/array/small-arrays/)에 있어요.
 
 ### numpy와 배열을 주고받는 고정 비용
 
 복사 없이 주고받을 때도 고정 비용은 들어요. 크기와 상관없는 비용이에요.
 
-**`np.asarray(sd 배열)`과 `np.asarray(numpy 배열)`은 같은 일이 아니에요.** `np.asarray(numpy 배열)`은 이미 numpy 배열이면 같은 객체를 그대로 돌려줘요. `np.asarray(sd 배열)`은 numpy가 남의 객체에서 새 numpy 배열을 만드는 일이에요. stardust 배열에는 `__array__`도 `__array_interface__`도 없어서 numpy는 버퍼 프로토콜로 가져가요. 결과의 `base`가 `memoryview`예요. 그러니 공정한 비교 대상은 numpy가 다른 외부 버퍼를 받는 비용이에요. 그 비용에는 우리 `getbuffer` 한 번과 numpy가 안에서 새로 만드는 `memoryview`가 들어 있어요. 우리 `getbuffer`는 shape와 strides를 복사하지 않고 `NDArray` 안의 배열을 그대로 가리키므로 가벼워요.
+**`np.asarray(sd 배열)`과 `np.asarray(numpy 배열)`은 같은 일이 아니에요.** `np.asarray(numpy 배열)`은 이미 numpy 배열이면 같은 객체를 그대로 돌려줘요. `np.asarray(sd 배열)`은 numpy가 남의 객체에서 새 numpy 배열을 만드는 일이에요. stardust 배열에는 `__array__`도 `__array_interface__`도 없어서 numpy는 버퍼 프로토콜로 가져가요. 결과의 `base`가 `memoryview`예요. 그러니 공정한 비교 대상은 numpy가 다른 외부 버퍼를 받는 비용이에요. 그 비용에는 우리 `getbuffer` 한 번과 numpy가 안에서 새로 만드는 `memoryview`가 들어 있어요. 우리 `getbuffer`는 shape와 strides를 복사하지 않고 `NDArray` 안의 배열을 그대로 가리키므로 `bytearray`의 내보내기와 같은 비용이에요.
 
-**`sd.from_dlpack(numpy 배열)`은 229ns, numpy의 `np.from_dlpack`은 114ns예요.** 코드(위 "가져오기 (`sd.from_dlpack`)")가 하는 일을 세면 이래요.
+**`sd.asarray(numpy 배열)`도 같은 일이 아니에요.** numpy의 `np.asarray`는 입력을 그대로 돌려주지만, stardust는 결과 객체를 하나 만들어야 해요. 그 객체 하나만큼의 시간이 남아요. `sd.from_dlpack(numpy 배열)`도 같은 공유를 해서, `__dlpack__`을 부르고 capsule 둘을 만드는 numpy의 `np.from_dlpack`보다 빨라요.
 
-1. `__dlpack__`, `__dlpack_device__`를 한 번씩 조회해요(intern된 이름).
-2. `__dlpack_device__()`를 불러 돌아온 tuple이 CPU인지 확인해요.
-3. `__dlpack__(max_version=(1, 0), copy=None)`을 vectorcall로 불러요. numpy가 `DLManagedTensorVersioned`를 할당해 capsule에 넣어 줘요.
-4. capsule 이름 바꾸기, 소유자 capsule(`sd_dlpack_owner`) 만들기, `NDArray` 채우기, `wrap`으로 Python 객체 만들기.
-5. 결과가 버려질 때 소유자 capsule의 소멸자가 numpy의 `deleter`를 불러요.
+numpy가 아닌 생산자의 DLPack 가져오기는 위 "가져오기 (`sd.from_dlpack`)"의 일을 다 해요. 속성을 한 번씩만 찾고 vectorcall을 쓰는 것이 그 비용을 줄이는 방법이에요. 어느 쪽이든 한 번에 수백 ns 아래인 비용이라, 큰 배열을 주고받을 때는 문제가 되지 않아요.
 
-1~3단계를 일반 속성 조회와 키워드 호출로 하면 가져오기 한 번이 252ns로, 약 23ns가 더 들어요. 조회를 한 번씩만 하고 vectorcall을 쓰는 이유예요. numpy의 `np.from_dlpack`도 3단계는 해야 해요. 남은 차이의 대부분은 4단계에서 결과 배열 객체를 만드는 비용이에요. 이 객체는 크기 때문에 시스템 `malloc`으로 할당되고, 해제할 때 macOS의 `malloc`이 메모리를 0으로 채워요([작은 배열의 호출 비용](/internals/array/small-arrays/)). 어느 쪽이든 한 번에 수백 ns인 비용이라, 큰 배열을 주고받을 때는 문제가 되지 않아요.
-
-`sd.asarray(numpy 배열)`이 복사 없이 공유할 때의 비용은 [변환과 승격](/internals/array/conversion/)에서 다뤄요. numpy 배열은 타입 이름만 보고 스칼라 검사(`PyObject_IsInstance` 네 번)를 건너뛰어요.
+`sd.asarray`의 다른 입력(리스트, 버퍼)의 비용은 [변환과 승격](/internals/array/conversion/)에서 다뤄요.
 
 ## 참고 문헌
 

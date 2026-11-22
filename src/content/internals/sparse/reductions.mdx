@@ -15,7 +15,7 @@ seeAlso: [products, determinism, elementwise, formats]
 | 전체 합 `sum()` | 저장된 값을 논리적 C 순서(행 우선, 줄 안은 색인 오름차순)로 놓고 pairwise 트리 | CSR이면 `sd.sum(A.data)` |
 | 축 합 `sum(axis=)` | 출력 원소마다 그 줄의 색인 오름차순 순차 합, L = 4096개 넘으면 조각 | SpMV의 합과 같은 규칙 |
 
-두 규칙 모두 결과가 행렬의 값과 모양으로만 정해져요. 형식(CSR, CSC, COO, DOK)과 스레드 수가 비트를 바꾸지 않아요.
+두 규칙 모두 결과가 행렬의 값과 모양으로만 정해져요. 형식(CSR, CSC, COO, DOK)이 비트를 바꾸지 않고, 지금은 스레드 수도 바꾸지 않아요(약속은 아니에요).
 
 ### 전체 합: C 순서의 pairwise
 

@@ -39,7 +39,7 @@ export const zErr = [[0, 2.1], [2, 10.1], [4, 36.0], [6, 72.8], [8, 141.0], [10,
 | [엔트로피와 모멘트의 상쇄](#엔트로피와-모멘트의-상쇄) | 크기 $z\log z$인 항이 지워져 $O(\log z)$가 남는 것 | 감마, 베타, t, F, 베이불, 로그정규 |
 | [범위 밖 역함수의 근 검증](#범위-밖-역함수의-근-검증) | 측정하지 않은 모양에서 틀린 근을 조용히 내는 것 | 감마, 베타, t, F |
 
-여기서 설명하는 것은 각 메서드의 정의, 곧 원소 하나를 계산하는 스칼라 함수예요. 배열을 받으면 같은 정의를 원소마다 부르기 전에, 같은 결과를 더 싸게 내는 묶음 커널이 먼저 시도해요. 그 커널은 오차 상한을 원소마다 세어서 예산 안인 원소만 맡고 나머지는 여기의 정의에 넘겨요. 그 구조는 [원소별 엔진과 빠른 경로](/internals/stats/engine/)에 있어요.
+여기서 설명하는 것은 각 메서드의 정의, 곧 원소 하나를 계산하는 스칼라 함수예요. 묶음 커널이 있는 메서드는 그 정의를 부르기 전에, 계약 안의 값을 더 싸게 내는 커널이 먼저 시도해요. 그 커널은 오차 상한을 원소마다 세어서 예산 안인 원소만 맡고 나머지는 여기의 정의에 넘겨요. Python float 하나로 불러도 같은 커널을 지나요. 커널의 값은 정의의 값과 마지막 몇 비트가 다를 수 있지만 둘 다 계약 안이에요([아래 절](#묶음-커널의-plain-double-밀도), [원소별 엔진과 빠른 경로](/internals/stats/engine/)).
 
 double-double은 값을 반올림하지 않은 두 double의 합 $hi + lo$($\lvert lo\rvert \le \tfrac12\,\text{ulp}(hi)$)로 들고 다니는 약 106비트 산술이에요. TwoSum과 FMA로 반올림 오차를 정확히 꺼내 다음 연산에 넘기는 방식은 [special의 수치 기법](/internals/special/techniques/)에 있어요.
 
@@ -124,7 +124,7 @@ static double pdf(double x, double mu, double sigma) {
 
 여기서 $z = 29.94\ldots$예요. Arb(구간 산술)로 정확한 입력에서 계산한 참값은 $1.16705397790766958\ldots \times 10^{-195}$이고 stardust의 값은 그 반올림이에요. scipy 1.18.1의 `norm.pdf(20.06, -0.9, 0.7)`은 $1.1670539779078184 \times 10^{-195}$로 $1.3 \times 10^{-13}$(1149 ULP)이 틀려요.
 
-`logpdf`는 같은 지수를 지수화하지 않고 `hi + lo`로 돌려줘요. $\lvert z\rvert > 10^{10}$이면 밀도는 0이고 지수의 double-double 정밀도는 쓸모가 없으므로 double로 계산해요.
+정의의 `logpdf`는 같은 지수를 지수화하지 않고 `hi + lo`로 돌려줘요. $\lvert z\rvert > 10^{10}$이면 밀도는 0이고 지수의 double-double 정밀도는 쓸모가 없으므로 double로 계산해요. 실제 호출에서는 대부분의 원소를 plain double 커널이 먼저 맡아요([아래 절](#묶음-커널의-plain-double-밀도)).
 
 ### 누적분포: z.hi에서 계산하고 1차 보정
 
@@ -791,6 +791,23 @@ if (small_shapes(a, b)) {
 return beta_detail::log_tail(a, b, num::DD{x, 0.0}, num::dd::two_sum(1.0, -x), upper);
 ```
 
+$a = b = \tfrac12$(아크사인 분포)는 닫힌 꼴이 있어서 불완전 베타를 부르지 않아요. $P(X \le x) = \tfrac{2}{\pi}\arcsin\sqrt{x}$이고 역함수는 $\sin^2(\pi p/2)$예요. 둘 다 가까운 끝에서 계산해요. $x \gt \tfrac12$이면 정확한 $1 - x$를, $p \gt \tfrac12$이면 정확한 $1 - p$를 넣고 결과를 반대쪽으로 돌려요. 그래서 0과 1 근처의 꼬리도 상대 정확도를 지켜요. log 꼴과 다른 모양은 위의 일반 경로예요.
+
+```cpp
+    // csrc/stats/dist/beta.hpp, Beta
+    static double arcsine_tail(double x, bool upper) {  // 0 < x < 1
+        const bool low = x <= 0.5;
+        const double s = 2.0 * num::kInvPi.hi * std::asin(std::sqrt(low ? x : 1.0 - x));  // the side x is near
+        return low != upper ? s : 1.0 - s;
+    }
+    static double arcsine_root(double p, bool upper) {  // 0 < p < 1
+        const bool low = p <= 0.5;
+        const double h = std::sin(0.5 * num::kPi.hi * (low ? p : 1.0 - p));
+        const double s = h * h;  // the end p is near
+        return low != upper ? s : 1.0 - s;
+    }
+```
+
 F의 log 꼬리도 같은 이유로 두 자유도가 12 이하이면 `fdtr`·`fdtrc`의 값에서 만들어요(special이 그 구간에서 Boost를 불러요. 베타 모양은 자유도의 절반이에요). 먼저 계산할 쪽은 $x \lt 1$이면 아래꼬리예요.
 
 ### 빠른 역함수: Boost의 betainc 위의 Halley
@@ -815,6 +832,8 @@ Q(n + \tfrac12, y) = \operatorname{erfc}(\sqrt y) + \frac{e^{-y}}{\sqrt{\pi y}}\
 $$
 
 합은 double-double Horner이고(비 $y/k$를 나눗셈의 나머지로 만들어서 $y_{hi} + y_{lo}$가 정확히 들어가요), 남는 것은 $e^{-y}$와 `erfc` 같은 libm 호출의 몇 ULP예요. 반올림을 세면 정수 모양 4, 반정수 모양 8 단위($2^{-53}$)예요. 쓰는 곳은 $a \le 30$, $a \le y \le 690$이에요. $y \ge a$면 중앙값이 평균 아래라 $Q$가 작은 쪽이고, $y \le 690$이면 $e^{-y}$가 여유 있는 정규수예요. 연분수(두 번 훑는 수십 항)를 돌리지 않으므로 `ChiSquared(7).cdf`가 반정수가 아닌 `ChiSquared(4.5).cdf`보다 가벼워요. 같은 모양의 위꼬리 역함수도 Boost의 출발점에서 Halley 한 걸음을 이 유한합 위에서 밟아요.
+
+정수 모양 $a \le 30$의 log 위꼬리는 작은 쪽의 log를 값에서 얻지 않고, 유한합의 지수를 떼어 $-y + \log s$($s$는 위의 합)로 바로 내요(`gamma_detail::finite_log_upper`). $a = 1$은 모든 $y$에서 $-y$이고, $a \ge 2$는 $y \ge a$, $y \le 690$, $\log s \le y/2$인 곳이에요. 포아송의 `logcdf` 커널은 $k = 0$을 이 꼴로 보내서, `Poisson(mu).logcdf(0)`이 정확히 $-\mu$예요.
 
 ### 정확하지 않은 a − 1
 
@@ -884,10 +903,10 @@ $x \to 0$에서 첨도의 분자는 $x^2$ 항까지 정확히 지워져 $O(x^4)$
 >>> sd.stats.Weibull(c=1e5).skewness()
 -1.1394874345084645
 >>> sd.stats.Weibull(c=1e5).variance()
-1.6448910372477495e-10
+1.644891037247748e-10
 ```
 
-Arb 참값과의 차는 0, 0, $7.9 \times 10^{-16}$이에요. 같은 점에서 scipy 1.18.1은 첨도 $2.3706$($2.5 \times 10^{-4}$ 틀림), 왜도 $-1.526$(34% 틀림), 분산 $1.9 \times 10^{-6}$ 틀림이에요.
+Arb 참값과의 상대 차는 0, 0, $2.2 \times 10^{-16}$이에요. 같은 점에서 scipy 1.18.1은 첨도 $2.3706$($2.5 \times 10^{-4}$ 틀림), 왜도 $-1.526$(34% 틀림), 분산 $1.9 \times 10^{-6}$ 틀림이에요.
 
 평균 $s\Gamma(1 + 1/c)$에도 작은 함정이 있어요. $1/c$를 반올림하면 그 오차가 $\psi(1 + x)\,x$배로 커져서 $c = 0.013$에서 267 ULP예요(직접 잰 값). 그래서 $x = 1/c$를 double-double로 두고 $\Gamma(1 + x_{hi})(1 + \psi(1 + x_{hi})(x_{lo} + \text{반올림}))$으로 1차 보정해요(`gamma1`).
 
@@ -1021,11 +1040,55 @@ True
 
 극한이 연속 분포가 아니면 정의역 밖 그대로 NaN이에요. 카이제곱은 df와 함께 질량이 무한대로 달아나고, 두 자유도가 모두 inf인 F는 1에 몰린 점질량이에요.
 
+## 묶음 커널의 plain double 밀도
+
+몇몇 밀도와 꼬리는 묶음 커널이 double-double 정의를 흉내 내지 않고 plain double로 값을 내요. 원소마다 오차 상한을 세어 예산(16단위) 안이면 그 값을 쓰고, 아니면 정의로 보내요. 그래서 정의와 비트가 같지는 않지만 계약 안이고, 훨씬 싸요.
+
+| 메서드 | 커널의 계산 | 상한을 건너뛰는 조건 |
+|---|---|---|
+| 정규·라플라스의 `logpdf` | $z = (x - \mu)/\sigma$(2단위), $z^2/2$(5단위), $k = \log\sigma + $ 상수(vForce `log`)를 더해요. 혼합 기준 $\max(1, \lvert v\rvert)$에 대고 원소마다 상한을 세요 | 정규 $k \ge 0$(곧 $\sigma \ge 0.399$), 라플라스 $\sigma \ge \tfrac12$ |
+| 지수의 `logpdf`, `logccdf` | $-x/s$와 상수, `logccdf`는 $-x/s$ | `logpdf`는 scale $\ge 1$ |
+| 지수의 `pdf`·`ccdf`, 라플라스의 `pdf` | 몫 $q = y$와 그 나머지(FMA)로 지수를 두 조각으로 만들어 $e^{-q}(1 - q_l)$ | |
+| 레일리의 `pdf`·`ccdf`·`logccdf`·`logpdf` | $t = y^2/2$를 $q^2$와 그 FMA 오차, $2q\,q_l$로 $2^{-100}$까지 만들어요. `logccdf`는 $-t$, `logpdf`는 vForce `log`로 받은 $\log x$, $\log s$에 혼합 상한 | |
+| 코시의 `pdf`·`logpdf` | `pdf`는 plain $z$(8단위), `logpdf`는 vForce `log`$(1 + z^2)$에 상수 $\log\sigma + \log\pi$ | `logpdf`는 $\sigma \ge 1/\pi$ |
+| 로그정규 밀도의 첫 단계 | $L = \log x$(vForce)에 $r = x e^{-L} - 1$(FMA, $e^{-L}$은 `vm::exp`)을 더해 $\log x$를 절대 1.04단위로 두고, $z$와 지수를 TwoSum으로 모아요. 몸통($\lvert z\rvert/\sigma$가 약 10 이하)만 받고, 나머지는 double-double log 단계, 그다음 정의 | |
+| 균등의 `logcdf`·`logccdf` | 작은 쪽은 vForce `log`, 큰 쪽은 반대쪽 몫의 `ckd::log1p` | |
+
+"상한을 건너뛰는 조건"은 매개변수만으로 상한이 언제나 예산 안이라고 보장되는 경우예요. 그때는 원소별 상한 계산도 빼고 계산만 하는 루프가 돌아요. 정규의 `logpdf`에서 $k = \log(\sigma\sqrt{2\pi}) \ge 0$이면 $\lvert v\rvert = h + k$가 $h$, $k$, $\lvert\log\sigma\rvert - 1$보다 크거나 같아서, 모든 유한한 $z$에서 상한이 예산 안이에요.
+
+```cpp
+    // csrc/stats/dist/normal.hpp, Normal::logpdf_chunk (발췌)
+    static void logpdf_chunk(const Chunk<2>& c, double* out) {
+        double ls[kChunkSize];
+        bool fast[kChunkSize];
+        if (c.same[1]) {
+            double l;
+            ck::log(&l, c.p[1], 1);
+            const double k = l + num::kLogSqrt2Pi.hi;
+            if (k >= 0.0) {
+                // then |v| = h + k >= h, k and |log sigma| - 1: the bound is inside the budget for
+                // every finite z (the same values as the general loop below)
+                const double mu = c.p[0][0], sigma = c.p[1][0];
+                bool all = true;
+                for (int i = 0; i < c.n; ++i) {
+                    const double z = (c.x[i] - mu) / sigma;
+                    out[i] = -(0.5 * (z * z) + k);
+                    all &= std::fabs(z) <= 0x1p500;  // false for NaN
+                }
+                if (all) return;
+```
+
+$\log\sigma$는 스칼라 $\sigma$여도 vForce `log`의 원소 하나 호출로 구해요. 배열 $\sigma$와 같은 함수라 같은 매개변수에서 같은 비트가 나와요.
+
+정규의 `ilogcdf`·`ilogccdf`도 커널이 있어요. $\log p \le \log\tfrac12$이면 $p = e^{\log p}$(`vm::exp`), 위쪽이면 $q = 1 - e^{\log p}$(`ckd::one_minus_exp`)로 작은 쪽 확률을 만들고, special의 `Ndtri::chunk`로 $z$를 내요. 그다음은 `icdf` 커널과 같아요. 상쇄가 없으면 $\mu + \sigma z$를 FMA로, 상쇄가 있고 $\lvert z_0\rvert \le 1$이면 선형 뉴턴 한 걸음(`newton_linear`)이에요. $p$의 반올림이 $z$를 옮기는 양은 조건수 $\kappa$의 $1/\lvert\log p\rvert \le 1.45$배라 역함수 계약 $\max(1, \kappa)$단위 안이에요. 반올림한 $\log\tfrac12$, $\log p \lt -700$, 0, $-\infty$는 위의 정의(`quantile_z_log`)로 가요.
+
+감마·역감마 밀도 커널의 상수 $\log\Gamma(a) + \log s$와 베타·t·F 커널의 $\log B(a, b)$는 `dens::log_gamma`가 구해요. $w \ge 13$까지 이동 곱(서로 독립인 사슬 넷)으로 올리고, Stirling 급수를 Estrin 꼴로 더하고, $w \le 64$에서는 표 기반 `dens::log`(절대 $2^{-55}$ 이하)를 써요. $w \gt 64$와 $z \lt 2^{-1000}$은 double-double `log_gamma_dd`예요. 매개변수가 원소마다 다른 배열에서 특히 이 상수가 비용의 큰 몫이라, 상수는 매개변수가 바뀔 때만 다시 구해요.
+
 ## 분포마다의 경로
 
 | 분포 | pdf·logpdf | cdf·ccdf | 깊은 log 꼬리 | 역함수 | 모멘트·엔트로피 |
 |---|---|---|---|---|---|
-| 정규 | double-double 지수를 한 번 지수화 | `ndtr(z_hi)` + $\varphi z_{lo}$ | `log_ndtr` + 1차 보정 | `ndtri`, 필요하면 log에서 뉴턴 한 걸음, `ndtri_exp` | 닫힌 꼴, 엔트로피 double-double |
+| 정규 | double-double 지수를 한 번 지수화(커널: `pdf`는 plain double 단계와 double-double 지수 단계, `logpdf`는 plain double) | `ndtr(z_hi)` + $\varphi z_{lo}$ | `log_ndtr` + 1차 보정 | `ndtri`, 필요하면 log에서 뉴턴 한 걸음, `ndtri_exp` | 닫힌 꼴, 엔트로피 double-double |
 | 로그정규 | 정규 지수 $+ \log x$ | 정규의 `tail_z` | 정규와 같음 | 정규의 $z$를 지수 안에서 $e^{\mu + \sigma z}$ | $t = e^{\sigma^2} - 1$의 양항 꼴 |
 | 지수 | $e^{-y}/s$, $y$ double-double | $e^{-y}$, $-\operatorname{expm1}(-y)$ | $-y$, $\log x - \log s$ | $-s\log p$, $-s\operatorname{log1p}(-p)$ | 닫힌 꼴 |
 | 균등 | $1/w$(너비가 넘치면 반으로) | $(x - a)/w$ | 두 log의 차 | `fma` 한 번 | 닫힌 꼴, 최빈값 NaN |

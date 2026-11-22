@@ -37,7 +37,7 @@ import Steps from '../../../components/fig/Steps.astro';
       { name: 'adaptive.cpp', note: 'quad_vec_solve, cubature_solve', uses: 'numpy_ops.hpp' },
       { name: 'tanhsinh.cpp', note: 'tanhsinh_solve, nsum_solve', uses: 'elementwise/loop.hpp, numpy_ops.hpp' },
       { name: 'gauss.cpp', note: 'Gauss–Legendre 표와 double-double Newton', uses: 'gauss_table.hpp' },
-      { name: 'samples.cpp', note: '표본 규칙과 fixed_quad의 가중 합', uses: 'array/kernels/reduce.hpp' },
+      { name: 'samples.cpp', note: '표본 규칙과 fixed_quad의 가중 합', uses: 'array/kernels/reduce.hpp, base/pairwise.hpp' },
     ] },
     { title: '바닥', tone: 'dark', items: [
       { name: 'elementwise', note: '원소별 반복 고리 loop.hpp' },
@@ -193,7 +193,7 @@ void for_weighted(std::size_t k, std::size_t w, Fn&& fn) {
 }
 ```
 
-어느 스레드가 어느 조각을 맡든 원소의 산술은 같고, 남은 원소는 순서를 지키며 줄어요. 그래서 결과의 비트가 스레드 수와 상관없어요.
+어느 스레드가 어느 조각을 맡든 원소의 산술은 같고, 남은 원소는 순서를 지키며 줄어요. 그래서 지금은 결과의 비트가 스레드 수와 상관없어요(약속은 아니에요).
 
 QUADPACK 계열과 `quad_vec`·`cubature`는 이 고리를 쓰지 않아요. 적분 하나를 처음부터 끝까지 한 줄로 계산하는 알고리즘이라 배치가 없고, 다음에 나눌 구간이 앞 구간의 결과에 달려 있어서 스레드에 나눠 맡길 일이 없기 때문이에요. 이 함수들은 사용자 함수를 부르는 동안 GIL을 쥔 채 돌고, 호출 사이의 일이 짧아서 GIL을 놓았다 다시 잡는 쪽이 더 비싸요.
 
@@ -276,7 +276,7 @@ TypeError: this IntegrateResult does not unpack (only the quad family's results 
 
 ## scipy와 같은 걸음
 
-영역의 함수들은 scipy 1.18.1의 계산을 같은 차례로 따라가요. 멈춤 판정, status의 뜻, 기본값, 구간을 나누는 순서가 scipy와 같고, 사용자 함수를 부르는 점의 순서와 비트, 호출 수, 값, 오차 추정도 지금은 비트까지 같아요(약속은 아니에요). 다른 것은 아래 상자의 몇 곳과, QAWO·QAWF 오차 추정의 반올림 바닥, `quad` 무리의 유한하지 않은 결과(scipy의 `ier` 0 대신 status −3)예요. 지키는 약속은 다른 영역과 같아요. 같은 입력이면 스레드 수와 상관없이 같은 비트이고, 시험 모음의 Arb(구간 산술)로 만든 참값에 대한 계약을 지켜요([정확도와 성능](/internals/integrate/accuracy-performance/)).
+영역의 함수들은 scipy 1.18.1의 계산을 같은 차례로 따라가요. 멈춤 판정, status의 뜻, 기본값, 구간을 나누는 순서가 scipy와 같고, 사용자 함수를 부르는 점의 순서와 비트, 호출 수, 값, 오차 추정도 지금은 비트까지 같아요(약속은 아니에요). 다른 것은 아래 상자의 몇 곳과, QAWO·QAWF 오차 추정의 반올림 바닥, `quad` 무리의 유한하지 않은 결과(scipy의 `ier` 0 대신 status −3)예요. 지키는 약속은 다른 영역과 같아요. 같은 기계, 같은 스레드 수, 같은 입력이면 실행마다 같은 비트이고(지금은 스레드 수와도 상관없어요), 시험 모음의 Arb(구간 산술)로 만든 참값에 대한 계약을 지켜요([정확도와 성능](/internals/integrate/accuracy-performance/)).
 
 비트까지 맞추는 데 가장 품이 드는 곳은 부동소수점의 축약이에요. scipy의 QUADPACK은 Fortran 원본의 C 판이고 clang의 기본값(`-ffp-contract=on`)으로 빌드되어, 한 식 안의 곱과 합을 FMA 하나로 합쳐요. stardust는 축약을 끄고 빌드하므로, 그 자리마다 `std::fma`를 적어요. 어디가 그 자리인지는 [Gauss–Kronrod 규칙과 오차 어림](/internals/integrate/gauss-kronrod/)과 [가중 함수 루틴](/internals/integrate/weight-routines/)에 있어요. 반대로 `quad_vec`과 `cubature`는 scipy의 Python 코드라 산술이 numpy와 Python의 것이에요. 그래서 FMA를 한 곳도 쓰지 않고, 합의 순서와 노름도 numpy의 것을 따라요([quad_vec의 적응 구적](/internals/integrate/quad-vec/)).
 

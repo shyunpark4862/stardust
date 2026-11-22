@@ -16,7 +16,7 @@ import AccuracySummary from '../../../components/fig/AccuracySummary.astro';
 2. **반올림이 있는 연산은 계약 안.** 합과 곱, 풀이, 고유값, 행렬 지수, 노름은 함수마다 오차의 경계(계약)가 있고, Arb(구간 산술)나 정확한 유리수로 만든 참값과 견줘요.
 3. **반올림이 아닌 동작은 scipy와 같게.** 결과의 형식과 dtype, 저장되는 원소, 상태 값, 반복 수 같은 동작을 scipy 1.18.1의 기록과 그 자리에서 부른 scipy와 견줘요. 다르게 정한 곳은 함수 페이지의 끝 절에 적혀 있어요.
 
-그리고 모든 결과가 sd의 스레드 수(1·3·10)와 행렬의 형식과 상관없이 같은 비트인지를 골든 출력과 테스트가 봐요.
+그리고 결과가 행렬의 형식과 상관없이 같은 비트인지, 지금처럼 sd의 스레드 수(1·3·10)와도 상관없는지를 골든 출력과 테스트가 봐요. 약속은 같은 스레드 수에서 실행마다 같은 비트이고, 스레드 수와 무관한 것은 약속이 아니에요.
 
 ## 시험 행렬
 
@@ -51,7 +51,7 @@ $n \le 2000$인 행렬은 정확한 참값을 만들 수 있는 `small` 태그�
 
 - **직접 풀이.** 정방 일곱 가운데 다섯은 `splu`의 `trans='N'`·`'T'`·`'H'` 풀이가 역오차 $9\times10^{-8}\varepsilon$–$0.28\varepsilon$이에요(scipy의 SuperLU $1.3\times10^{-7}\varepsilon$–$0.74\varepsilon$). sherman3과 cvxqp3은 조건수 어림 $\kappa_1$이 $6.9\times10^{16}$, $2.2\times10^{16}$이라 $\kappa_1\varepsilon \ge 1$이고 `LinAlgError`예요. scipy는 이 두 행렬에서 해를 돌려주지만 앞오차의 경계가 1을 넘어 맞는 자리가 없는 해예요.
 - **반복법.** 열 개의 문제(memplus·young1c의 `gmres`·`bicgstab`, sherman3의 `bicgstab`, cvxqp3의 `minres`, bcsstk14·msc10848의 Jacobi 전처리 `cg`, well1850의 `lsqr`·`lsmr`)를 scipy와 견줘요.
-- **고유값.** bcsstk14 `'LM'` k = 6의 곱 106번, msc10848 `'LM'` k = 4의 37번, memplus `eigs` `'LM'` k = 6의 125번, young1c(복소)의 372번이 scipy와 같아요. bcsstk14와 goodwin의 shift-invert(σ = 0)는 값이 같고, well1850의 `svds`는 밀집 SVD와 상대 $10^{-10}$ 안이에요.
+- **고유값.** bcsstk14 `'LM'` k = 6의 곱 106번, msc10848 `'LM'` k = 4의 37번, memplus `eigs` `'LM'` k = 6의 125번, young1c(복소)의 372번이 scipy와 같아요. bcsstk14의 shift-invert(σ = 0)는 값이 상대 $10^{-9}$ 안에서 같아요. 정규에서 먼 goodwin의 σ = 0 `eigs`는 shift-invert의 풀이를 다듬지 않아 scipy와 상대 $10^{-6}$ 안이에요. well1850의 `svds`는 밀집 SVD와 상대 $10^{-10}$ 안이에요.
 
 ## 참값
 
@@ -78,17 +78,17 @@ $n \le 2000$인 행렬은 정확한 참값을 만들 수 있는 `small` 태그�
 |---|---|---|
 | 변환, 전치, 인덱싱, 만들기, 원소별 연산 | 같은 원소의 밀집 연산과 비트까지 같음 | 테스트가 비트로 확인 |
 | SpMV, SpMM, 리덕션 | 출력 원소마다 $\lvert\hat y - y\rvert \le \gamma_m\sum_j\lvert a_{ij}x_j\rvert$, $m = \min(\ell, 4096) + \lceil\log_2(\ell/4096)\rceil$($\ell$은 줄의 항 수) | 0.83 |
-| 직접 풀이(`spsolve`, `splu`, `factorized`) | 정규화한 역오차 $\lVert b - A\hat x\rVert_\infty/(\lVert A\rVert_\infty\lVert\hat x\rVert_\infty + \lVert b\rVert_\infty) \le 4\varepsilon$, 앞오차 $\le 4\kappa_\infty\varepsilon$ | 역오차 $0.50\varepsilon$, 앞오차 $0.39\kappa_\infty\varepsilon$ |
+| 직접 풀이(`spsolve`, `splu`, `factorized`) | 정규화한 역오차 $\lVert b - A\hat x\rVert_\infty/(\lVert A\rVert_\infty\lVert\hat x\rVert_\infty + \lVert b\rVert_\infty) \le 4\varepsilon$, 앞오차 $\le 4\kappa_\infty\varepsilon$ | 역오차 $3.54\varepsilon$(다듬지 않은 풀이), 앞오차 $1.0\kappa_\infty\varepsilon$ |
 | 삼각 풀이 | 원소마다 $\lvert b - T\hat x\rvert \le \gamma_n\lvert T\rvert\lvert\hat x\rvert$ | 정확한 유리수 잔차로 확인 |
-| 반복법 | 수렴한 결과는 멈춤 판정이 약속하는 앞오차 안($\lVert A^{-1}\rVert_\infty\cdot\mathrm{rtol}\cdot\lVert b\rVert_2$ 등) | `bicgstab` 0.39, `gmres` 0.31, `cg` 0.10, `minres` 0.081, `lsqr`·`lsmr` 0.051 |
-| `eigsh`, `svds` | $\lvert\hat\lambda - \lambda\rvert \le C_{\mathrm{EIG}}\,\varepsilon\,\lVert A\rVert_2$, $C_{\mathrm{EIG}} = 1000$ | 0.50, 0.009 |
-| `eigs` | 위 경계에 고유값의 조건수 $\kappa(\lambda) = \lVert y\rVert\lVert x\rVert/\lvert y^{\mathsf H}x\rvert$를 곱함 | 0.011 |
+| 반복법 | 수렴한 결과는 멈춤 판정이 약속하는 앞오차 안($\lVert A^{-1}\rVert_\infty\cdot\mathrm{rtol}\cdot\lVert b\rVert_2$ 등) | `bicgstab` 0.32, `gmres` 0.31, `cg` 0.10, `minres` 0.081, `lsqr`·`lsmr` 0.051 |
+| `eigsh`, `svds` | $\lvert\hat\lambda - \lambda\rvert \le C_{\mathrm{EIG}}\,\varepsilon\,\lVert A\rVert_2$, $C_{\mathrm{EIG}} = 1000$ | 0.70, 0.010 |
+| `eigs` | 위 경계에 고유값의 조건수 $\kappa(\lambda) = \lVert y\rVert\lVert x\rVert/\lvert y^{\mathsf H}x\rvert$를 곱함 | 0.021 |
 | `expm`, `expm_multiply` | $\max\lvert\hat y - y\rvert \le C_{\mathrm{EXPM}}\,\varepsilon\max(1, \lVert sA\rVert_1)\cdot$척도, $C_{\mathrm{EXPM}} = 10$ | 0.24, 0.20(구간 0.25) |
 | `norm`의 합(1, −1, inf, −inf, `'fro'`) | $\lvert\hat v - v\rvert \le (\gamma_m + 2\varepsilon)\,v$ | 0.17, `'fro'` 0.007 |
-| `norm(ord=2)` | `svds`의 계약 | 0.013 |
+| `norm(ord=2)` | `svds`의 계약 | 0.014 |
 | `onenormest` | 하한(계약 아님) | 42개 중 26개가 참값과 같음, 가장 작은 비율 0.76 |
 
-계약의 상수는 잰 값에 여유를 둔 것이에요. 가장 빠듯한 `eigsh` 0.50은 1000개짜리 1차원 라플라시안의 `'LA'`에서 ARPACK이 762번 재시작하며 $VQ$를 거듭 곱해 쌓인 반올림이에요(같은 문제의 scipy는 0.15). 고유값과 특이값은 잔차 $\lVert Av - \lambda Mv\rVert$, $\lVert A^{\mathsf H}u - \sigma v\rVert$도 $C_{\mathrm{EIG}}\,\varepsilon\,\lVert A\rVert_2$ 안이고 벡터의 직교성 $\lVert V^{\mathsf H}MV - I\rVert$는 $C_{\mathrm{EIG}}\,k\,\varepsilon$ 안인지 테스트가 봐요.
+계약의 상수는 잰 값에 여유를 둔 것이에요. 가장 빠듯한 `eigsh` 0.70은 1000개짜리 1차원 라플라시안의 `'LA'`에서 ARPACK이 760번 넘게 재시작하며 $VQ$를 거듭 곱해 쌓인 반올림이에요(같은 문제의 scipy는 0.15). 고유값과 특이값은 잔차 $\lVert Av - \lambda Mv\rVert$, $\lVert A^{\mathsf H}u - \sigma v\rVert$도 $C_{\mathrm{EIG}}\,\varepsilon\,\lVert A\rVert_2$ 안이고 벡터의 직교성 $\lVert V^{\mathsf H}MV - I\rVert$는 $C_{\mathrm{EIG}}\,k\,\varepsilon$ 안인지 테스트가 봐요.
 
 반복법의 결과는 "멈춤 판정을 만족한 점"이에요. 계약은 판정이 약속하는 앞오차이고, `converged=True`인 결과는 다시 계산한 참 잔차가 판정을 만족하는지 테스트가 봐요. 수렴하지 못한 결과(등급 매긴 행렬, 거의 특이한 행렬 같은 꼴에서 `cg` 2, `minres` 2, `gmres` 6, `bicgstab` 4점)는 스윕에서 빼고 그 수를 세요. `minres`는 판정이 잔차의 어림에 대한 것이라 조건수가 큰 행렬에서 참 잔차가 어림보다 $\varepsilon\kappa\lVert A\rVert\lVert x\rVert$만큼 클 수 있어서, 그 몫을 경계에 더해요.
 
@@ -121,7 +121,7 @@ SpMV는 CSR·CSC·COO의 `A @ x`가 모두 FMA 순차 합과 같아서, 지금�
 
 ## 결정성
 
-같은 입력이면 sd의 스레드 수와 상관없이 같은 비트예요. 희소 커널은 일을 크기로만 나누고(줄 구간, 고정 크기의 잎), 합의 순서는 줄마다 정해져 있어요. 골든 출력(`tests/golden/cases_sparse.py`, 7,296케이스)을 1·3·10스레드에서 모두 같은 비트로 재현해요. 케이스에는 $n = 4\times10^4$의 띠 행렬처럼 스레드풀이 실제로 일을 나누는 크기가 들어 있어요.
+같은 컴퓨터, 같은 스레드 수, 같은 입력이면 실행마다 같은 비트예요. 희소 커널은 일을 크기로만 나누고(줄 구간, 고정 크기의 잎과 조각), 합의 순서는 줄마다 정해져 있어서 지금은 sd의 스레드 수와도 상관없이 같은 비트예요(약속은 아니에요). 골든 출력(`tests/golden/cases_sparse.py`, 7,296케이스)을 1·3·10스레드에서 모두 같은 비트로 재현해요. 케이스에는 $n = 4\times10^4$의 띠 행렬처럼 스레드풀이 실제로 일을 나누는 크기가 들어 있어요.
 
 형식도 비트를 바꾸지 않아요. CSR·CSC·COO의 곱과 합은 같은 순서이고, 직접 풀이는 모든 입력을 CSC로 바꿔 분해해요(Accelerate의 LU는 CSR을 전치 속성으로 넘기면 끝자리가 달라요). 고유값과 반복법은 CSR·CSC·COO·DOK, 밀집 배열, `aslinearoperator`, Python `LinearOperator`가 같은 비트예요.
 
@@ -134,8 +134,9 @@ Accelerate가 계산하는 직접 분해는 Accelerate의 스레드 모드(`VECL
 **빠른 곳**
 - **형식 변환과 만들기.** COO → CSR의 정렬, 중복 더하기, 전치는 1스레드에서도 scipy보다 빠르고 스레드로 더 빨라져요.
 - **SpMM과 원소별 함수, 리덕션.** `A @ X`는 scipy가 열 방향으로 벡터화하지 않아서 sd가 빨라요. 원소별 함수(`A.sin()` 등)와 축 리덕션은 1스레드에서도 빠르고(scipy의 `argmax(axis=)`는 줄마다 Python 반복이에요) 스레드로 더 빨라져요.
-- **직접 풀이.** Accelerate의 LU(AMD 순서)는 큰 격자에서 SuperLU보다 빠르고, 채움이 큰 3차원 격자에서 차이가 더 벌어져요. 작은 행렬에서는 비슷해요. `spsolve_triangular`도 scipy보다 빨라요(scipy는 SuperLU의 풀이를 거쳐요).
-- **반복법.** 반복 전체가 C++이라 같은 반복 수에서 scipy의 Python 반복보다 빠르고, 곱과 내적이 스레드로 나뉘어요.
+- **직접 풀이.** Accelerate의 LU(AMD 순서)는 큰 격자에서 SuperLU보다 빠르고, 채움이 큰 3차원 격자에서 차이가 더 벌어져요. 작은 행렬에서는 비슷해요. `spsolve_triangular`도 scipy보다 빨라요(scipy는 SuperLU의 풀이를 거쳐요). 우변이 여럿이면 Accelerate의 묶은 풀이에서 열 하나의 비용이 가장 작은 여덟 열씩 넘기고, 잘 조건된 행렬은 다듬기 없이 풀이 하나로 끝나서 `inv`와 우변 여럿의 풀이가 특히 빨라요.
+- **반복법.** 반복 전체가 C++이라 같은 반복 수에서 scipy의 Python 반복보다 빠르고, 곱과 내적이 스레드로 나뉘어요. 긴 내적은 Accelerate의 `ddot`을 고정 조각마다 불러요.
+- **Lanczos·Arnoldi·이중대각화.** 시간의 대부분인 기저와의 곱 $V^{\mathsf H}x$, $Vc$를 행 조각마다 Accelerate의 `dgemv`(행렬 장치를 쓰는)로 해서 scipy와 비슷하거나 빨라요. shift-invert는 걸음마다 LU 풀이 하나라 scipy와 같은 일을 해요.
 - **행렬 함수.** `expm_multiply`는 곱이 같은 순서라 같은 곱 수에서 빠르고, 여러 시각의 구간은 scipy가 점마다 Python으로 항을 더해 차이가 커요. `onenormest`도 블록 곱이 스레드로 나뉘어 빨라요.
 - **작은 행렬.** Python 층이 얇아서 nnz가 작을 때 호출 하나의 고정 비용이 scipy보다 작아요.
 
@@ -143,8 +144,7 @@ Accelerate가 계산하는 직접 분해는 Accelerate의 스레드 모드(`VECL
 - **색인이 int64.** 값 8바이트에 색인 8바이트(scipy는 대개 4바이트)라 메모리 대역에 묶인 일(1스레드 SpMV, `vstack`, CSR → CSC)은 옮기는 바이트만큼 손해를 봐요. 1스레드 SpMV는 scipy와 비슷하거나 조금 느려요.
 - **흩뿌리기.** `x @ A`, CSC의 `@`, CSR의 열 합, `norm(A, 1)`은 출력의 여러 자리에 흩어 더하는 일이라, 결정적인 순서를 지키며 나누려면 블록마다 항을 한 번 쓰고 읽어야 해요. 스레드로 빨라지지만 행 방향 일만큼은 아니에요.
 - **SpGEMM.** 결과를 언제나 정렬된 표준 꼴로 만들어서, 정렬하지 않은 결과를 내는 scipy보다 1스레드에서 느려요. scipy의 결과를 정렬까지 하면 이쪽이 빨라요.
-- **작은 $n$의 Lanczos·Arnoldi.** 기저의 내적과 갱신이 시간의 대부분인데, scipy가 부르는 Accelerate BLAS(`dgemv`)는 행렬 곱 전용 장치를 써서 이 일을 훨씬 빨리 해요. 이 라이브러리는 스레드 수와 무관한 합의 순서를 지키려고 자기 커널을 쓰므로 $n = 10^4$ 근처에서 scipy보다 느려요. 스레드를 쓰면 그 차이가 줄고, shift-invert는 큰 행렬에서 Accelerate LU 덕에 빨라요.
-- **`SparseLU.solve`의 작은 행렬.** 풀이마다 반복 다듬기를 한 번 해서(풀이 둘과 SpMV 하나) 작은 행렬에서는 scipy보다 느려요. 다듬기를 빼면 안장점 행렬의 역오차가 계약을 넘어 그대로 둬요.
+- **피벗이 원소를 키우는 행렬의 풀이.** 첫 풀이의 원소별 역오차가 8ε를 넘으면(안장점 행렬 등) 잔차 계산과 풀이를 한 번 더 해서, 풀이 하나로 끝내는 scipy보다 느려요. 잘 조건된 행렬은 풀이 하나로 끝나요.
 - **`norm(ord=2)`.** `svds`를 허용오차 $\varepsilon$로 끝까지 돌려서, $A^{\mathsf T}A$의 ARPACK을 쓰는 scipy보다 1스레드에서 느려요.
 - **`random_array`.** 시간의 대부분이 `sd.random`의 비복원 추출이에요.
 - **`expm`.** 결과가 대개 거의 밀집이라 $n^2$의 메모리와 SpGEMM이 들어요. 작은 격자에서는 scipy보다 빨라요.

@@ -101,7 +101,7 @@ $[0, 1)$의 균등분포의 누적분포는 $F(t) = t$라 `lambda v: v`도 같�
 
 ```python
 >>> r.statistic, r.pvalue
-(0.316432919809902, 0.12139397546064024)
+(0.316432919809902, 0.12139397546064001)
 >>> W2, p = r
 Traceback (most recent call last):
     ...
@@ -123,7 +123,7 @@ P-value:                         0.121
 ```python
 >>> b = sd.stats.Normal().sample((3, 30), rng=sd.random.default_rng(10))
 >>> sd.htest.cramervonmises(b, sd.stats.Normal(), axis=1).pvalue
-array([0.24752736935860076, 0.44918441090424444,  0.4106707586297633], dtype=float64)
+array([0.24752736935860065, 0.44918441090424444,  0.4106707586297633], dtype=float64)
 ```
 
 ## 작은 p값과 특수한 경우
@@ -133,7 +133,7 @@ p값은 근사식의 누적분포 값을 1에서 빼서 얻어요. 그래서 p�
 ```python
 >>> far = sd.stats.Normal(mu=2.0).sample(100, rng=sd.random.default_rng(11))
 >>> sd.htest.cramervonmises(far, sd.stats.Normal()).pvalue
-3.3306690738754696e-16
+5.551115123125783e-16
 >>> sd.htest.ks_1samp(far, sd.stats.Normal()).pvalue
 1.7769266388857778e-47
 ```
@@ -157,7 +157,7 @@ TypeError: cramervonmises(): unexpected keyword argument 'alternative'
 - $W^2$는 양수 항의 합을 정확하게 모아서, Arb(구간 산술)로 계산한 참값과 견줘 7문제(n = 2, 3, 2000, 꼬리, 균등분포 포함)에서 상대오차가 2e-16 안이에요.
 - p값은 Csörgő–Faraway 근사식의 값을 참값으로 보고, 그 1 − cdf의 절대오차가 1e-15 안이에요. 근사식 안의 Bessel 급수는 항이 합의 2⁻⁶⁰ 아래가 될 때까지 더해요. p = 5.2e-11인 꼬리에서 절대오차 4.6e-16(상대 8.9e-6)이에요.
 - 근사식이 참 귀무분포와 얼마나 맞는지는 약속에 들지 않아요.
-- 같은 입력이면 스레드 수와 상관없이 같은 비트예요.
+- 같은 입력이면 실행마다 같은 비트예요. 지금은 스레드 수와도 상관없이 같아요(약속은 아니에요).
 
 ## scipy를 아는 분께
 

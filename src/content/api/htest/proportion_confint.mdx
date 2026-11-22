@@ -51,7 +51,7 @@ export const cov_exact = [[0.005,0.9955],[0.015,0.9968],[0.025,0.987],[0.035,0.9
 
 ```python
 >>> sd.htest.proportion_confint(7, 20, method='wilson')
-array([0.1811918241010821, 0.5671457233147638], dtype=float64)
+array([0.18119182410108203,  0.5671457233147638], dtype=float64)
 ```
 
 참 비율은 0.18에서 0.57 사이쯤이라고 말할 수 있어요. 20명은 적은 수라 구간이 넓어요.
@@ -121,7 +121,7 @@ Wald 구간은 표준오차 √(q(1 − q)/n)가 q = 0에서 0이라 폭이 0인
 >>> sd.htest.proportion_confint(2, 100000, method='normal')
 array([                  0.0, 4.771779930484276e-05], dtype=float64)
 >>> sd.htest.proportion_confint(2, 100000, method='wilson')
-array([5.484738516524052e-06, 7.292683754201225e-05], dtype=float64)
+array([5.484738516524053e-06, 7.292683754201224e-05], dtype=float64)
 ```
 
 ### 'binom_test' 구간
@@ -157,9 +157,9 @@ count와 nobs는 배열도 받고 서로 브로드캐스트해요. 결과의 모
 
 ```python
 >>> sd.htest.proportion_confint([3, 7, 12], 20, method='wilson')
-array([[0.052368745896216616,   0.3604188647407569],
-       [  0.1811918241010821,   0.5671457233147638],
-       [  0.3865815007622532,   0.7811934676271829]], dtype=float64)
+array([[ 0.0523687458962166, 0.36041886474075696],
+       [0.18119182410108203,  0.5671457233147638],
+       [ 0.3865815007622531,   0.781193467627183]], dtype=float64)
 >>> sd.htest.proportion_confint(sd.asarray([[3, 7], [12, 20]]), 20, method='exact').shape
 (2, 2, 2)
 ```
@@ -169,15 +169,15 @@ array([[0.052368745896216616,   0.3604188647407569],
 ```python
 >>> low, upp = sd.htest.proportion_confint(7, 20, method='wilson')
 >>> float(low), float(upp)
-(0.1811918241010821, 0.5671457233147638)
+(0.18119182410108203, 0.5671457233147638)
 ```
 
 nobs가 0인 칸은 비율을 정할 수 없어 [NaN, NaN]이에요. 에러가 아니어서 배열의 다른 칸은 그대로 계산돼요.
 
 ```python
 >>> sd.htest.proportion_confint([3, 0], [20, 0], method='wilson')
-array([[0.052368745896216616,   0.3604188647407569],
-       [                 nan,                  nan]], dtype=float64)
+array([[ 0.0523687458962166, 0.36041886474075696],
+       [                nan,                 nan]], dtype=float64)
 ```
 
 ## 입력과 에러
@@ -207,7 +207,7 @@ ValueError: proportion_confint(): 'alternative' must be 'two-sided', 'less' or '
 
 ## 정확도
 
-구간의 끝은 Arb(구간 산술)로 만든 참값과 견줘요. 시험한 52문제에서 가장 큰 상대오차가 9.5e-15이고(Jeffreys의 0 근처 끝), 계약 대비 0.052예요. `'binom_test'`의 끝은 정확한 유리수 참값과 1 ulp 안이에요.
+구간의 끝은 Arb(구간 산술)로 만든 참값과 견줘요. 시험한 52문제에서 가장 큰 상대오차가 9.5e-15이고(Jeffreys의 0 근처 끝), 계약 대비 0.043이에요. `'binom_test'`의 끝은 정확한 유리수 참값과 1 ulp 안이에요.
 
 ## statsmodels를 아는 분께
 

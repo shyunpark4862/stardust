@@ -16,8 +16,9 @@ import Steps from '../../../components/fig/Steps.astro';
   <Steps steps={[
     { label: 'spsolve_triangular()', note: 'upper·unit_diagonal 검사, A를 CSR로, A와 b를 같은 dtype(float64나 complex128)으로, 읽는 원소만 유한한지 검사', where: '_direct.py' },
     { label: '_sptrsv', note: '', where: 'csrc/sparse/triangular.cpp' },
-    { label: '행마다 대각의 자리 찾기', note: '이분 탐색, 대각이 없거나 0이면 풀기 전에 LinAlgError', where: 'triangular.cpp', depth: 1 },
-    { label: '대입', note: '열 16개씩의 묶음이 한 태스크, 묶음 안에서 행을 차례로', where: 'triangular.cpp', depth: 1 },
+    { label: '우변 하나', note: '행마다 대각 찾기, 특이 판정, 대입을 한 번 훑기. 특이면 훑은 뒤 LinAlgError', where: 'triangular.cpp', depth: 1 },
+    { label: '우변 여럿: 대각의 자리 찾기', note: '이분 탐색, 대각이 없거나 0이면 풀기 전에 LinAlgError', where: 'triangular.cpp', depth: 1 },
+    { label: '우변 여럿: 대입', note: '열 16개씩의 묶음이 한 태스크, 묶음 안에서 행을 차례로', where: 'triangular.cpp', depth: 1 },
   ]} />
 </Fig>
 
@@ -35,7 +36,7 @@ CSR로 바꾸는 이유가 여기 있어요. 행의 원소가 연속이라 $s_i$
 
 ## 고른 삼각만 읽기
 
-`upper`는 꼭 주는 키워드이고, 고른 삼각 밖의 원소는 읽지 않아요. 행 $i$의 원소는 열 번호 오름차순으로 저장돼 있으므로, 열 번호가 $i$ 이상인 첫 원소의 자리 `split[i]`를 이분 탐색으로 찾으면 행이 "대각 왼쪽 / 대각 / 대각 오른쪽"으로 나뉘어요.
+`upper`는 꼭 주는 키워드이고, 고른 삼각 밖의 원소는 읽지 않아요. 행 $i$의 원소는 열 번호 오름차순으로 저장돼 있으므로, 열 번호가 $i$ 이상인 첫 원소의 자리를 이분 탐색으로 찾으면 행이 "대각 왼쪽 / 대각 / 대각 오른쪽"으로 나뉘어요. 우변이 여럿이면 모든 행의 그 자리 `split[i]`를 먼저 찾아 두고 판정한 뒤 풀어요.
 
 ```cpp
     // csrc/sparse/triangular.cpp, sptrsv_typed
@@ -55,7 +56,7 @@ CSR로 바꾸는 이유가 여기 있어요. 행의 원소가 연속이라 $s_i$
     if (singular) throw linalg::LinAlgError(func + "(): singular matrix");
 ```
 
-이 훑기는 태스크 하나예요. `for_tasks`로 감싼 것은 일이 2¹⁵ 단위 이상이면 GIL을 놓기 위해서예요. 대각이 없거나 정확히 0이면(`unit_diagonal=False`일 때) 풀기 전에 `LinAlgError("spsolve_triangular(): singular matrix")`예요. 밀집의 `sd.linalg.solve_triangular`가 대각의 0을 보는 것과 같은 판정이에요. `unit_diagonal=True`면 대각을 읽지 않고 1로 봐요.
+이 훑기는 태스크 하나예요. `for_tasks`로 감싼 것은 일이 2¹⁵ 단위 이상이면 GIL을 놓기 위해서예요. 대각이 없거나 정확히 0이면(`unit_diagonal=False`일 때) `LinAlgError("spsolve_triangular(): singular matrix")`예요. 우변이 여럿이면 풀기 전에, 하나면 대입을 한 번 훑은 뒤에 내고 그때까지의 결과는 버려요. 밀집의 `sd.linalg.solve_triangular`가 대각의 0을 보는 것과 같은 판정이에요. `unit_diagonal=True`면 대각을 읽지 않고 1로 봐요.
 
 유한성도 읽는 원소만 봐요. 다른 직접 풀이는 저장된 NaN·inf가 하나라도 있으면 `ValueError`이지만, 여기서는 고른 삼각과(`unit_diagonal=False`면) 대각에 있는 것만 `ValueError`예요. 읽지 않는 원소는 결과에 영향이 없으니 밀집 `sd.linalg.solve_triangular`의 규칙과 같게 둬요. 저장된 값이 모두 유한하면(흔한 경우) 검사가 값 배열을 한 번 보는 것으로 끝나고, 아닐 때만 원소마다 행과 열을 견줘요.
 
@@ -121,7 +122,24 @@ array([2.0, 3.0, 0.0], dtype=float64)
 
 - **줄 합의 순서.** $s_i$는 `ordered_sum`이에요. 0에서 시작해 열 번호 오름차순으로 항마다 `fma(a, x, acc)`를 하고(복소는 numpy의 복소 곱 뒤 덧셈), 항이 4096개를 넘는 줄은 4096개씩의 고정 조각을 각각 차례로 더한 뒤 조각 합을 쌍 트리로 더해요. SpMV·SpGEMM·리덕션과 같은 규칙이라([곱](/internals/sparse/products/)), 결과가 값과 모양만으로 정해져요. 그 다음 $b_i - s_i$를 한 번 빼고 대각으로 한 번 나눠요. 복소 나눗셈은 배열의 `divide`와 같은 꼴(`ops::cdiv`)이에요.
 - **우변 여럿.** 열끼리는 서로 기대지 않아요. 열 16개(`kColumnBlock`)를 한 태스크로 묶고, 묶음들이 스레드풀에서 돌아요. 묶음 안에서는 행을 차례로 지나며 그 행의 16열을 풀어요. 행의 원소를 한 번 읽어 여러 열에 쓰는 셈이에요. 열 하나의 계산은 같은 행 순서, 같은 줄 합이므로 **열의 비트가 k나 다른 열, 스레드 수와 무관해요**.
-- **우변 하나**는 한 스레드예요. 대입은 행이 앞 행의 결과를 기다리므로 그대로는 나눌 수 없어요. 서로 기대지 않는 행들을 단계로 묶어 단계 안에서 나누는 방법(level scheduling)이 있지만 쓰지 않아요.
+- **우변 하나**는 한 스레드예요. 대입은 행이 앞 행의 결과를 기다리므로 그대로는 나눌 수 없어요. 서로 기대지 않는 행들을 단계로 묶어 단계 안에서 나누는 방법(level scheduling)이 있지만 쓰지 않아요. 그 대신 대각 찾기, 특이 판정, 대입을 행마다 한 번에 해서 행렬을 한 번만 훑어요.
+
+```cpp
+            // csrc/sparse/triangular.cpp, sptrsv_typed
+            auto row = [&](int64_t i) {
+                const int64_t s = ip[i], e = ip[i + 1];
+                const int64_t p = std::lower_bound(ix + s, ix + e, i) - ix;
+                const bool has = p < e && ix[p] == i;
+                if (!unit && (!has || is_zero(v[p]))) singular = true;
+                const int64_t lo = lower ? s : p + (has ? 1 : 0);
+                const int64_t hi = lower ? p : e;
+                auto step = [&](int64_t q, T acc) { return madd(v[q], x[ix[q]], acc); };
+                const T r = minus(bp[i], ordered_sum<T>(lo, hi, step, parts));
+                x[i] = unit ? r : divide(r, has ? v[p] : T(1));
+            };
+```
+
+줄 합과 나눗셈은 우변 여럿의 커널과 같아서, 같은 열이면 두 길의 비트가 같아요. 대각이 없는 행은 1로 나눠 계속 가고, 다 훑은 뒤 `singular`가 참이면 에러를 내요.
 
 ## 정확도
 

@@ -2,7 +2,7 @@
 title: 비율과 이항
 group: 분할표와 비율
 order: 3
-summary: 이항 검정의 양쪽 규칙과 그 규칙을 뒤집은 구간, Wilson 구간의 상쇄 없는 근, 두 포아송 평균의 E-test를 이중 합 없이 더하는 법, 두 비율의 점수 검정이 제한된 최우추정을 오목성으로 찾는 법을 설명해요. 모든 비율과 차는 정수 개수에서 double-double로 만들어 한 번 반올림해요.
+summary: 이항 검정의 양쪽 규칙과 그 규칙을 뒤집은 구간, Wilson 구간의 상쇄 없는 근, 두 포아송 평균의 E-test를 이중 합 없이 더하는 법, 두 비율의 점수 검정이 제한된 최우추정을 오목성으로 찾는 법을 설명해요. 모든 비율과 차는 정수 개수에서 정확한 값을 만들어 한 번 반올림해요.
 seeAlso: [contingency, barnard-boschloo, accuracy-performance]
 ---
 import Fig from '../../../components/fig/Fig.astro';
@@ -21,7 +21,7 @@ import Steps from '../../../components/fig/Steps.astro';
 | [`proportions_ztest`](/api/htest/proportions_ztest/), [`proportions_chisquare`](/api/htest/proportions_chisquare/) | `prop_ztest`, `prop_chisquare` | 귀무값 근처의 차를 double-double로 |
 | [`test_proportions_2indep`](/api/htest/test_proportions_2indep/), [`confint_proportions_2indep`](/api/htest/confint_proportions_2indep/) | `prop2_test`, `prop2_ci` | 점수 검정의 제한된 최우추정과 구간의 뒤집기 |
 
-공통 원칙은 [분할표](/internals/htest/contingency/)와 같아요. 비율, 차, 분산은 정수 개수에서 double-double로 만들어 끝에 한 번 반올림해요. 그래서 귀무값에 아주 가까운 차도 자릿수를 잃지 않아요.
+공통 원칙은 [분할표](/internals/htest/contingency/)와 같아요. 비율과 차는 정수 개수에서 정확한 값을 만들어 끝에 한 번 반올림해요. 그래서 귀무값에 아주 가까운 차도 자릿수를 잃지 않아요. 두 표본의 개수의 곱 $n_1n_2$가 $2^{53}$ 아래이면 차의 분자 $c_1n_2 - c_2n_1$과 분모 $n_1n_2$가 double로 정확한 정수라, 나눗셈 한 번이 올바르게 반올림한 차예요. 그때는 double로 계산하고, 그 위의 개수에서는 double-double로 해요. 분산과 반폭은 양수의 합이라 double이어도 몇 ulp예요.
 
 ## 이항 검정
 
@@ -67,16 +67,16 @@ nan
 - **`'exact'`(Clopper–Pearson)**: Beta 분포의 분위수예요. 아래 끝은 Beta$(k, n - k + 1)$의 `icdf`$(\alpha/2)$, 위 끝은 Beta$(k + 1, n - k)$의 `iccdf`$(\alpha/2)$로, 위쪽 꼬리를 1에서 빼지 않고 직접 뒤집어요.
 - **`'jeffreys'`**: Beta$(k + 1/2, n - k + 1/2)$의 분위수예요.
 - **`'normal'`, `'agresti_coull'`**: $\hat q \mp z\cdot\text{se}$를 double-double로 만들고 [0, 1]로 잘라요.
-- **`'wilson'`, `'wilsoncc'`**: Wilson 구간의 끝은 이차식 $(n + z^2)t^2 - (2x + z^2)t + x^2/n = 0$의 두 근이에요(`'wilsoncc'`는 $x$를 $k \mp 1/2$로). 근의 공식을 그대로 쓰면 작은 근에서 $-b - \sqrt{b^2 - 4ac}$처럼 비슷한 두 수를 빼게 돼요. 그래서 큰 근은 양수의 합으로, 작은 근은 근의 곱 $c/a$를 큰 근으로 나눠 만들어요.
+- **`'wilson'`, `'wilsoncc'`**: Wilson 구간의 끝은 이차식 $(n + z^2)t^2 - (2x + z^2)t + x^2/n = 0$의 두 근이에요(`'wilsoncc'`는 $x$를 $k \mp 1/2$로). 근의 공식을 그대로 쓰면 작은 근에서 $-b - \sqrt{b^2 - 4ac}$처럼 비슷한 두 수를 빼게 돼요. 그래서 큰 근은 양수의 합으로, 작은 근은 근의 곱 $c/a$를 큰 근으로 나눠 만들어요. 그러면 모든 연산이 양수의 덧셈, 곱셈, 나눗셈, 제곱근이라 반올림 여섯 번(제곱근은 인자의 오차를 반으로 줄여요)으로 끝마다 자기 값의 약 4 ulp 안이에요. 계약(끝마다 상대 $10^{-14}$)보다 훨씬 작아서 double로 계산해요.
 
 ```cpp
 // csrc/htest/proportion.cpp
-DD wilson_big(double x, double n, double z, DD z2) {
-    const DD disc = z2 + dd::two_prod(x, n - x) * 4.0 / n;
-    return (D(2.0 * x) + z2 + sqrt_dd(disc) * z) / ((z2 + n) * 2.0);
+double wilson_big(double x, double n, double z, double z2) {
+    const double disc = z2 + 4.0 * (x * (n - x)) / n;
+    return (2.0 * x + z2 + std::sqrt(disc) * z) / (2.0 * (z2 + n));
 }
-DD wilson_small(double x, double n, double z, DD z2) {
-    return dd::two_prod(x, x) / ((z2 + n) * n) / wilson_big(x, n, z, z2);
+double wilson_small(double x, double n, double z, double z2) {
+    return x * x / ((z2 + n) * n) / wilson_big(x, n, z, z2);
 }
 ```
 
@@ -99,7 +99,7 @@ $$
 >>> sd.htest.binomtest(48, 48, p=lo).pvalue
 0.07903043968425646
 >>> sd.htest.binomtest(48, 48, p=math.nextafter(lo, 0)).pvalue
-0.048213386262337364
+0.04821338626233737
 ```
 
 끝점 $0.93007$은 계단점이에요. 그 점에서 p값은 0.079로 채택이고, 바로 아래 double에서는 0.048로 기각이에요.
@@ -167,7 +167,22 @@ PoissonMeansTestResult(statistic=-2.71429, pvalue=0.00639324)
 
 ### Wald 꼴
 
-`test_proportions_2indep`와 `confint_proportions_2indep`의 Wald 꼴(`wald`, `agresti-caffo`, `log`, `log-adjusted`, `logit`, `logit-adjusted`, `logit-smoothed`)은 조정한 개수(Agresti–Caffo는 각 칸에 1, adjusted는 1/2, smoothed는 독립 표의 두 배)에서 비율·비·오즈비를 double-double로 만들어요. 비와 오즈비는 귀무값으로 나눈 double-double의 log를 통계량에 써요. 0인 개수는 IEEE의 끝을 그대로 따라요($\log 0 = -\infty$, 분산 inf).
+`test_proportions_2indep`와 `confint_proportions_2indep`의 Wald 꼴(`wald`, `agresti-caffo`, `log`, `log-adjusted`, `logit`, `logit-adjusted`, `logit-smoothed`)은 조정한 개수(Agresti–Caffo는 각 칸에 1, adjusted는 1/2, smoothed는 독립 표의 두 배)에서 비율·비·오즈비를 double-double로 만들어요. 다만 차의 `wald`·`agresti-caffo`에서 귀무값이 0이고 개수의 곱이 $2^{53}$ 아래이면 정확한 정수 분자를 한 번 나누는 double 길이에요. 결과의 표본 차·비·오즈비도 같은 조건에서 정수의 몫 한 번이에요.
+
+```cpp
+        // csrc/htest/proportion.cpp
+        if (v == 0.0 && n1 * n2 < 0x1p53) {
+            // integer counts whose products are exact in double: the difference is one rounded
+            // quotient of exact integers (no cancellation left), the variance a sum of positive
+            // terms, z within a few ulp
+            const double d = (c1 * n2 - c2 * n1) / (n1 * n2);
+            const double vv = c1 * (n1 - c1) / n1 / n1 / n1 + c2 * (n2 - c2) / n2 / n2 / n2;
+            z = vv > 0.0 ? d / std::sqrt(vv) : kNaN, var = vv;
+            return;
+        }
+```
+
+비와 오즈비는 귀무값으로 나눈 double-double의 log를 통계량에 써요. 0인 개수는 IEEE의 끝을 그대로 따라요($\log 0 = -\infty$, 분산 inf).
 
 ### 점수 검정과 제한된 최우추정
 
@@ -218,7 +233,7 @@ Fraction(-1, 180143985094819840)
 
 ### 구간
 
-점수 구간은 $|z(v)| = z_{\alpha/2}$의 두 근이에요. $z$는 $v$에 대해 감소하므로, 표본값에서 바깥으로 걸음을 두 배씩 늘려(차는 Wald 반폭의 1/4에서, 오즈비는 $e^h$배씩) 경계를 건너는 첫 점을 찾고 이분해요. 경계에 닿지 않으면 정의역의 끝이 구간의 끝이에요. 비의 점수 구간은 statsmodels처럼 Koopman의 삼차식(Nam의 식)의 근에서 만들어요. 삼각함수 꼴로 시작해 double-double로 다듬고, `count2 = nobs2`일 때 이중근이 되는 $p_0 = 1$은 정확히 넣어요. Newcombe의 차 구간은 두 Wilson 구간(위 커널)의 조합이에요.
+점수 구간은 $|z(v)| = z_{\alpha/2}$의 두 근이에요. $z$는 $v$에 대해 감소하므로, 표본값에서 바깥으로 걸음을 두 배씩 늘려(차는 Wald 반폭의 1/4에서, 오즈비는 $e^h$배씩) 경계를 건너는 첫 점을 찾고 이분해요. 경계에 닿지 않으면 정의역의 끝이 구간의 끝이에요. 비의 점수 구간은 statsmodels처럼 Koopman의 삼차식(Nam의 식)의 근에서 만들어요. 삼각함수 꼴로 시작해 double-double로 다듬고, `count2 = nobs2`일 때 이중근이 되는 $p_0 = 1$은 정확히 넣어요. Newcombe의 차 구간은 두 Wilson 구간(위 커널)의 조합이에요. 개수의 곱이 $2^{53}$ 아래이면 차는 정수의 몫 한 번, 비율은 몫 $q_i$와 나눗셈의 정확한 나머지 $r_i$(FMA 하나)의 합 $q_i + r_i$로 들고, 반폭은 양수 제곱의 합의 제곱근이라 double로 계산해요. 끝마다 자기 값과 반폭의 몇 ulp 안이고, 대개는 Wilson 끝의 약 4 ulp가 그 크기를 정해요.
 
 ## statsmodels·scipy와 다른 곳
 

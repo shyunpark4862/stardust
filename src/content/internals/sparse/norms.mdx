@@ -105,7 +105,7 @@ True
 | inf, −inf | 행 절댓값 합의 최댓값, 최솟값 |
 | 2 | `svds(k=1)`의 특이값. 행이나 열이 하나면 그 벡터의 2-노름, 0인 행렬은 0 |
 
-합은 희소 영역의 축 합과 같은 순서(줄마다 4096개까지 FMA 순차 합, 더 긴 줄은 조각 합을 pairwise로)라서 형식과 스레드 수와 상관없이 같은 비트예요. `'nuc'`와 −2는 모든 특이값이 필요해서 희소의 뜻이 없고 받지 않아요. 메시지는 [`sd.linalg.matrix_norm`](/api/linalg/norms/)의 목록에서 둘을 뺀 것이에요.
+합은 희소 영역의 축 합과 같은 순서(줄마다 4096개까지 FMA 순차 합, 더 긴 줄은 조각 합을 pairwise로)라서 형식과 상관없이 같은 비트예요(지금은 스레드 수와도 상관없어요). `'nuc'`와 −2는 모든 특이값이 필요해서 희소의 뜻이 없고 받지 않아요. 메시지는 [`sd.linalg.matrix_norm`](/api/linalg/norms/)의 목록에서 둘을 뺀 것이에요.
 
 ```python
     # src/stardust/sparse/_matfuncs.py, _matrix_norm
@@ -130,7 +130,7 @@ True
 
 ```python
 >>> sd.sparse.norm(A, ord=2)
-3.381277984769363
+3.3812779847693637
 >>> sd.linalg.matrix_norm(A.toarray(), ord=2)
 3.38127798476936
 ```

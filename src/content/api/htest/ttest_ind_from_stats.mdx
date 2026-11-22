@@ -145,9 +145,9 @@ mean difference      -0.504      7.504
 ```python
 >>> g = sd.htest.ttest_ind_from_stats(72.4, 8.1, 40, 68.9, 9.3, 35, alternative='greater')
 >>> g.pvalue
-0.04284070323946906
+0.04284070323946905
 >>> g.conf_int()
-array([0.15313014097442013,                 inf], dtype=float64)
+array([0.15313014097441968,                 inf], dtype=float64)
 ```
 
 ## 여러 비교를 한 번에
@@ -159,7 +159,7 @@ array([0.15313014097442013,                 inf], dtype=float64)
 >>> rb
 TtestIndFromStatsResult(batch shape (3,))
 >>> rb.pvalue
-array([ 0.08568140647893813,   0.5444468732605908, 0.004905265782776903], dtype=float64)
+array([  0.0856814064789381,   0.5444468732605908, 0.004905265782776903], dtype=float64)
 >>> rb.df
 array([73.0, 71.0, 74.0], dtype=float64)
 >>> rb.conf_int().shape

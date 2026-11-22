@@ -78,9 +78,9 @@ McnemarResult(statistic=5, pvalue=0.0413895)
 
 ```python
 >>> sd.htest.binomtest(5, 20).pvalue
-0.04138946533203125
+0.04138946533203126
 >>> r.pvalue
-0.04138946533203125
+0.04138946533203126
 ```
 
 결과는 튜플로 풀리지 않아요. 필드를 이름으로 읽어요.
@@ -139,7 +139,7 @@ McnemarResult(statistic=nan, pvalue=nan)
 >>> B = sd.asarray([[[45, 15], [5, 35]],
 ...                 [[10, 4], [4, 10]]])
 >>> sd.htest.mcnemar(B).pvalue
-array([0.04138946533203125,                 1.0], dtype=float64)
+array([0.04138946533203126,                 1.0], dtype=float64)
 ```
 
 2 × 2 표만 받아요. `exact`·`correction`은 True나 False여야 해요.

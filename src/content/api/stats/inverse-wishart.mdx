@@ -203,8 +203,8 @@ array([[0.4, 0.1],
 >>> z = sd.stats.MultivariateNormal(mu=sd.zeros(2), cov=V).sample(50, rng=sd.random.default_rng(9))
 >>> post = sd.stats.InverseWishart(df=4.0 + 50, scale=sd.eye(2) + z.T @ z)
 >>> post.mean()
-array([[1.7491886578591809, 0.5338264110260644],
-       [0.5338264110260644, 1.0394203802433661]], dtype=float64)
+array([[1.7491886578591813, 0.5338264110260643],
+       [0.5338264110260643, 1.0394203802433657]], dtype=float64)
 ```
 
 참 공분산 V = [[2, 0.5], [0.5, 1]]을 몰라도, 표본 50개로 사후 평균이 그 근처까지 와요.

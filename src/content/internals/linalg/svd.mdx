@@ -398,21 +398,28 @@ stardust는 함수마다 루틴을 하나로 정하고, 입력 값이나 크기�
 </Fig>
 
 ```cpp
-// spectral.cpp의 svd()에서 배치 몸체, 줄임
-const Failure f = run_batch(b, cost(kSVD, double(m) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
-    T* a = s.get<T>(lda * n);                                    // gesdd가 덮어쓸 사본
-    if (!pack(x.dtype(), x.data() + off[0], m, n, x.stride(-2), x.stride(-1), a, lda, true))
-        return kNonFinite;
-    LapackSlot<T> us(uo.as<T>() + i * m * ucols, m * ucols, s, Scratch::kAlign0);
-    LapackSlot<T> vs(vo.as<T>() + i * vrows * n, vrows * n, s, Scratch::kAlign1);
-    LapackSlot<double> ss(so.as<double>() + i * k, k, s, Scratch::kAlign2);
-    if (k == 0) {                                                // 특이값이 없음
-        if (complete) { set_identity(us.get(), m); set_identity(vs.get(), n); }
-        return 0;
-    }
-    return lapack::gesdd(complete ? 'A' : 'S', m, n, a, lda, ss.get(), us.get(), m, vs.get(), vrows, s) > 0
-               ? kNoConvergence : 0;
-});
+            // csrc/linalg/ops/spectral.cpp
+            run_batch(b, cost(kSVD, double(m) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
+                T* a = s.get<T>(static_cast<std::size_t>(lda * n));
+                if (!pack(x.dtype(), x.data() + off[0], m, n, x.stride(-2), x.stride(-1), a, lda, true))
+                    return kNonFinite;
+                LapackSlot<T> us(uo.as<T>() + i * m * ucols, m * ucols, s, Scratch::kAlign0);
+                LapackSlot<T> vs(vo.as<T>() + i * vrows * n, vrows * n, s, Scratch::kAlign1);
+                LapackSlot<double> ss(so.as<double>() + i * k, k, s, Scratch::kAlign2);
+                T* u = us.get();
+                T* vh = vs.get();
+                if (k == 0) {  // no singular values; complete U and Vh are identities
+                    if (complete) {
+                        set_identity(u, m);
+                        set_identity(vh, n);
+                    }
+                    return 0;
+                }
+                // gesdd writes U and Vh straight into their output slots.
+                return lapack::gesdd(complete ? 'A' : 'S', m, n, a, lda, ss.get(), u, m, vh, vrows, s) > 0
+                           ? kNoConvergence
+                           : 0;
+            });
 ```
 
 - **결과 자리에 바로 써요.** 결과 배열은 행렬마다 열 우선이라 LAPACK이 원하는 배치와 같아요. 그래서 `gesdd`의 출력 인자로 결과 배열의 그 자리를 넘기고, 끝난 뒤 옮기지 않아요. 결과 레이아웃과 패킹의 자세한 이야기는 [패킹과 결과 레이아웃](/internals/linalg/packing/)에 있어요.
@@ -425,15 +432,20 @@ const Failure f = run_batch(b, cost(kSVD, double(m) * n), [&](std::int64_t i, co
 LAPACK 루틴은 작업 공간(workspace) 크기 `lwork`를 인자로 받아요. `lwork = -1`로 부르면 계산 없이 최적 크기만 알려 줘요(workspace query). stardust의 래퍼는 이 질의를 `Scratch`마다 한 번만 해요.
 
 ```cpp
-// lapack.hpp의 gesdd 래퍼, 줄임
-lint lwork = s.sizes({kGesdd, m, n, lda, jobz, esize<T>()}, [&] {   // 키: 루틴, 크기 인자, 원소 크기
-    lint q_lwork = -1;
-    T q{};
-    dgesdd_(&jobz, &m, &n, a, &lda, sv, u, &ldu, vt, &ldvt, &q, &q_lwork, iw, &info);  // 크기만 묻기
-    return WorkSizes{work_size(q)};
-}).work;
-T* wk = s.get<T>(lwork, Scratch::kWork);
-dgesdd_(&jobz, &m, &n, a, &lda, sv, u, &ldu, vt, &ldvt, wk, &lwork, iw, &info);
+    // csrc/linalg/lapack.hpp
+    lint lwork = s.sizes({kGesdd, m, n, lda, jobz, esize<T>()}, [&] {
+                      lint q_lwork = -1;
+                      T q{};
+                      if constexpr (std::is_same_v<T, double>)
+                          dgesdd_(&jobz, &m, &n, a, &lda, sv, u, &ldu, vt, &ldvt, &q, &q_lwork, iw, &info);
+                      else zgesdd_(&jobz, &m, &n, a, &lda, sv, u, &ldu, vt, &ldvt, &q, &q_lwork, rw, iw, &info);
+                      return WorkSizes{work_size(q)};
+                  }).work;
+    T* wk = s.get<T>(static_cast<std::size_t>(lwork), Scratch::kWork);
+    if constexpr (std::is_same_v<T, double>)
+        dgesdd_(&jobz, &m, &n, a, &lda, sv, u, &ldu, vt, &ldvt, wk, &lwork, iw, &info);
+    else zgesdd_(&jobz, &m, &n, a, &lda, sv, u, &ldu, vt, &ldvt, wk, &lwork, rw, iw, &info);
+    return checked(info, "gesdd");
 ```
 
 배치 안의 행렬은 모두 크기가 같으므로 첫 행렬만 묻고 나머지는 기억해 둔 값을 써요. 여기서 지키는 성질은 **"행렬마다 물었을 때와 똑같은 `lwork`"**예요. `lwork`가 결과 비트를 바꾸기 때문이에요.
@@ -547,31 +559,32 @@ $$
 이고, $r$은 위의 `rtol` 규칙으로 센 랭크예요. 0으로 보는 특이값은 뒤집지 않아요. $1/\sigma$를 반올림 잡음 크기의 $\sigma$에 그대로 적용하면 잡음이 $10^{16}$배로 부풀어요.
 
 ```cpp
-// spectral.cpp의 pinv() 배치 몸체, 줄임
-if (lapack::gesdd('S', m, n, a, lda, sv, u, m, vh, k, s) > 0) return kNoConvergence;
-const double tol = rtol * sv[0];
-lint rank = 0;
-for (lint j = 0; j < k; ++j) rank += sv[j] > tol;
-// 남긴 값 가운데 2^-1022 아래(역수가 double에 없는 것)는 따로: svals.hpp
-const lint rn = normal_rank(sv, rank);
-constexpr char h = std::is_same_v<T, cplx> ? 'C' : 'T';
-// W = Vh^H S^+ (n x k), a의 자리를 다시 써요
-T* w = a;
-for (lint j = 0; j < k; ++j) {
-    const double inv = sv[j] > tol && sv[j] >= kTinySingular ? 1.0 / sv[j] : 0.0;
-    for (lint r = 0; r < n; ++r) w[j * n + r] = conj_if_complex(vh[r * k + j]) * inv;
-}
-lapack::gemm<T>('N', h, n, m, k, w, n, u, m, out, n);
-if (rank > rn) {  // 드물어요: 남긴 특이값이 서브노멀
-    const lint nh = rank - rn;
-    std::vector<T> wh(static_cast<std::size_t>(n * nh)), oh(static_cast<std::size_t>(n * m));
-    for (lint jj = 0; jj < nh; ++jj) {
-        const double inv = 1.0 / (sv[rn + jj] * kSingularShift);
-        for (lint r = 0; r < n; ++r) wh[jj * n + r] = conj_if_complex(vh[r * k + rn + jj]) * inv;
-    }
-    lapack::gemm<T>('N', h, n, m, nh, wh.data(), n, u + rn * m, m, oh.data(), n);
-    add_shifted(out, oh.data(), n * m);
-}
+                // csrc/linalg/ops/spectral.cpp
+                if (lapack::gesdd('S', m, n, a, lda, sv, u, m, vh, k, s) > 0) return kNoConvergence;
+                const double tol = rtol * sv[0];
+                lint rank = 0;
+                for (lint j = 0; j < k; ++j) rank += sv[j] > tol;
+                // the kept values below 2^-1022 (no double reciprocal) apart: svals.hpp
+                const lint rn = normal_rank(sv, rank);
+                constexpr char h = std::is_same_v<T, cplx> ? 'C' : 'T';
+                // W = Vh^H S^+ (n x k), built in `a`'s storage (no longer needed).
+                T* w = a;
+                for (lint j = 0; j < k; ++j) {
+                    const double inv = sv[j] > tol && sv[j] >= kTinySingular ? 1.0 / sv[j] : 0.0;
+                    for (lint r = 0; r < n; ++r) w[j * n + r] = conj_if_complex(vh[r * k + j]) * inv;
+                }
+                lapack::gemm<T>('N', h, n, m, k, w, n, u, m, out, n);
+                if (rank > rn) {  // rare: a kept singular value in the subnormals
+                    const lint nh = rank - rn;
+                    std::vector<T> wh(static_cast<std::size_t>(n * nh)), oh(static_cast<std::size_t>(n * m));
+                    for (lint jj = 0; jj < nh; ++jj) {
+                        const double inv = 1.0 / (sv[rn + jj] * kSingularShift);
+                        for (lint r = 0; r < n; ++r) wh[jj * n + r] = conj_if_complex(vh[r * k + rn + jj]) * inv;
+                    }
+                    lapack::gemm<T>('N', h, n, m, nh, wh.data(), n, u + rn * m, m, oh.data(), n);
+                    add_shifted(out, oh.data(), n * m);
+                }
+                return 0;
 ```
 
 1. `gesdd` `'S'`로 $U$ ($m\times k$), $\sigma$, $V^H$ ($k\times n$)를 scratch에 구해요. 벡터가 필요하므로 값 전용 모드가 아니라 `svd`와 같은 루틴이에요.
@@ -664,7 +677,7 @@ $$
 | `svdvals(x)` 대 `svd(x).S` | $10^{-15}$ 수준에서 다름 | 값 전용 모드는 다른 계산 |
 | `svdvals(x)` 대 numpy `svdvals` | 다를 수 있음 | `gesvd` `'N'` 대 `gesdd` `'N'` |
 | `matrix_norm(x, 2)`, `cond(x)`, `matrix_rank(x)` 대 `svdvals(x)` | 같음 | 같은 헬퍼, 같은 루틴 |
-| 레이아웃, 배치 위치, 스레드 수 | 같음 | 패킹, 16바이트 정렬, 같은 `lwork` |
+| 레이아웃, 배치 위치 | 같음 (스레드 수와도 지금은 같음) | 패킹, 16바이트 정렬, 같은 `lwork` |
 
 ## 참고 문헌
 

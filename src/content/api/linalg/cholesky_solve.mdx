@@ -229,7 +229,7 @@ array([(1+0j), (1+0j)], dtype=complex128)
 
 ```python
 >>> sd.linalg.cholesky_solve(a, b)
-array([0.33999999999999997, 0.32000000000000006], dtype=float64)
+array([0.33999999999999997,                0.32], dtype=float64)
 ```
 
 정답 `[1, 2]`와 전혀 달라요. 분해와 풀이를 한 줄에 쓰면 이런 실수를 피할 수 있어요.

@@ -2,7 +2,7 @@
 title: 분산분석과 등분산 검정
 group: 모수 검정
 order: 2
-summary: 집단 여럿을 받는 검정 여섯(일원 분산분석, Welch의 분산분석, Alexander–Govern, Bartlett, Levene, Fligner–Killeen)의 식과 계산을 따라가요. 집단 평균의 차를 double-double로 빼는 법, Bartlett의 통계량을 음이 아닌 항의 합으로 고쳐 쓰는 법, 중앙값을 정확한 반으로 들어 동점을 지키는 법을 다뤄요.
+summary: 집단 여럿을 받는 검정 여섯(일원 분산분석, Welch의 분산분석, Alexander–Govern, Bartlett, Levene, Fligner–Killeen)의 식과 계산을 따라가요. 집단 평균의 차를 double-double로 빼는 법, Bartlett의 통계량을 음이 아닌 항의 합으로 고쳐 쓰는 법, 중앙값을 기수 선택으로 찾아 정확한 반으로 들어 동점을 지키는 법을 다뤄요.
 seeAlso: [ttest, lanes, overview, chisquare]
 ---
 import AccuracySummary from '../../../components/fig/AccuracySummary.astro';
@@ -10,7 +10,7 @@ import Callout from '../../../components/Callout.astro';
 
 ## 한눈에 보기
 
-여섯 검정은 커널 함수 `kgroups` 하나의 갈래예요(`csrc/htest/parametric.cpp`). `f_oneway`, Welch의 분산분석, `alexandergovern`, `bartlett`은 집단마다의 적률(개수, double-double 평균, 편차 제곱합)만 있으면 돼요. 그래서 먼저 모든 집단의 적률을 `lane_moments`로 한꺼번에 만들고([적률과 t 검정](/internals/htest/ttest/#줄의-적률)), 줄마다 집단 k개의 적률에서 통계량을 계산해요. `levene`과 `fligner`는 집단의 중심(중앙값 등)과 그로부터의 편차가 필요해서 줄마다 표본을 모아 따로 계산해요.
+여섯 검정은 커널 함수 `kgroups` 하나의 갈래예요(`csrc/htest/parametric.cpp`). `f_oneway`, Welch의 분산분석, `alexandergovern`, `bartlett`은 집단마다의 적률(개수, double-double 평균, 편차 제곱합)만 있으면 돼요. 제곱합은 `bartlett`만 double-double로 받고, 나머지는 double의 고정된 나무로 더한 값이에요([제곱합의 double 나무](/internals/htest/lanes/#제곱합의-double-나무)). 그래서 먼저 모든 집단의 적률을 `lane_moments`로 한꺼번에 만들고([적률과 t 검정](/internals/htest/ttest/#줄의-적률)), 줄마다 집단 k개의 적률에서 통계량을 계산해요. `levene`과 `fligner`는 집단의 중심(중앙값 등)과 그로부터의 편차가 필요해서 줄마다 표본을 모아 따로 계산해요.
 
 ```cpp
     // csrc/htest/parametric.cpp
@@ -133,7 +133,7 @@ T = [(N − k)·log s_p² − Σ(nᵢ − 1)·log sᵢ²] / C, C = 1 + (Σ1/(n�
 
 분자 = Σ(nᵢ − 1)·(dᵢ − log1p(dᵢ))
 
-가 돼요. dᵢ − log1p(dᵢ) ≥ 0이라 모든 항이 음이 아니고, 더하는 동안 지워지는 것이 없어요. sᵢ², s_p², dᵢ는 double-double이고, d − log1p(d)는 sd.special의 double-double 함수 `log1pmx_neg`로 계산해서 dᵢ가 작을 때도 상대오차를 지켜요.
+가 돼요. dᵢ − log1p(dᵢ) ≥ 0이라 모든 항이 음이 아니고, 더하는 동안 지워지는 것이 없어요. sᵢ², s_p², dᵢ는 double-double이에요. 분산이 거의 같으면 dᵢ가 작아서 제곱합의 수십 ε가 dᵢ에서 크게 불어나므로, `bartlett`은 집단의 제곱합을 double-double의 합으로 받아요. d − log1p(d)는 sd.special의 double-double 함수 `log1pmx_neg`로 계산해서 dᵢ가 작을 때도 상대오차를 지켜요.
 
 ```cpp
     // csrc/htest/parametric.cpp
@@ -189,30 +189,37 @@ Levene의 검정은 zᵢⱼ = |xᵢⱼ − cᵢ|의 일원 분산분석이에요
 
 ```cpp
 // csrc/htest/parametric.cpp
-DD center_of(std::vector<double>& v, int center, double ptc) {
-    const auto n = static_cast<std::int64_t>(v.size());
+DD center_of_values(const double* x, std::int64_t n, int center) {
     if (n == 0) return {kNaN, 0.0};
-    if (center == kMean) return moments_of(v.data(), nullptr, n).mean;
-    if (center == kTrimmed) return trimmed(v, ptc).mean;
-    const std::int64_t h = n / 2;
-    std::vector<double> w(v);
-    double hi, lo = kNaN;
-    if (n >= (1 << 16) && parallel::available()) {
-        sort_values(w);
-        hi = w[static_cast<std::size_t>(h)];
-        if (n % 2 == 0) lo = w[static_cast<std::size_t>(h - 1)];
-    } else {
-        std::nth_element(w.begin(), w.begin() + h, w.end());
-        hi = w[static_cast<std::size_t>(h)];
-        if (n % 2 == 0) lo = *std::max_element(w.begin(), w.begin() + h);
+    if (center == kMean) {  // (a long sample: the blocked NEON kernel; one chain of sums is ~1 ns an element)
+        if (n < (1 << 16)) return moments_of(x, nullptr, n).mean;
+        Moments m;
+        lane_moments(Vec{x, nullptr}, 1, n, false, &m);
+        return m.mean;
     }
+    double hi, lo;
+    select_middle(x, n, lo, hi);
     if (n % 2) return {hi, 0.0};
     const DD s = dd::two_sum(lo, hi);
     return {0.5 * s.hi, 0.5 * s.lo};
 }
 ```
 
-중앙값은 정렬 없이 선택으로 찾아요. `nth_element`로 h번째를 제자리에 두면 짝수 n의 다른 가운데 값은 앞쪽 절반의 최댓값이에요. 2¹⁶원소 이상의 긴 집단은 스레드풀의 정렬(`sort_values`)로 찾아요. 어느 길이든 같은 두 값이 나와요.
+중앙값은 정렬하지 않고 기수 선택으로 찾아요(`moments.hpp`의 `select_kth`). double의 비트를 순서를 지키는 64비트 열쇠로 바꾸면(음수는 모든 비트를 뒤집고, 양수는 부호 비트만 세워요) 열쇠의 정수 순서가 값의 순서와 같아요.
+
+```cpp
+// csrc/htest/moments.hpp
+inline std::uint64_t order_key(double x) {
+    const auto u = std::bit_cast<std::uint64_t>(x);
+    return (u >> 63) ? ~u : (u | (1ull << 63));
+}
+```
+
+가장 작은 열쇠와 가장 큰 열쇠가 함께 가진 위쪽 비트는 모든 열쇠가 같으니 한 번의 훑기로 건너뛰어요. 그 아래 11비트로 열쇠를 2048개의 통에 세고, 순위 h가 든 통만 남겨 그 열쇠를 모아요. 남은 열쇠의 다음 11비트로 다시 세기를 되풀이하다가, 512개 이하가 남으면 `nth_element`로 끝내요. 데이터를 두세 번 훑는 일이라, 원소마다 몇 번씩 견주고 옮기는 `nth_element`보다 가벼워요. 2048개 이하의 집단은 세는 일이 오히려 비싸서 사본에서 `nth_element`를 해요.
+
+짝수 n의 다른 가운데 값은 `select_middle`이 한 번 더 훑어 구해요. h번째 값보다 작은 값의 수와 그중 가장 큰 값을 NEON 네 사슬로 세는데, 개수와 최댓값은 어떤 순서로 모아도 정확해요. 작은 값이 정확히 h개이면 그 최댓값이 다른 가운데 값이고, 아니면 h번째 값이 그 아래 순위에도 있다는 뜻이라 h번째 값 자신이에요.
+
+선택은 데이터를 고치지 않아요. 그래서 평균이나 중앙값을 중심으로 쓰는 집단이 연속이고 NaN이 없고 단위를 옮길 필요가 없으면, 값을 모으지 않고 그 자리에서 읽어요(절삭 평균은 값의 순서를 바꾸므로 사본에서 해요). 어느 길이든 같은 두 값이 나와요(−0과 +0은 열쇠의 순서가 갈리지만 같은 값이에요).
 
 ## Fligner–Killeen
 
@@ -232,7 +239,7 @@ s(r) = Φ⁻¹(1/2 + r/(2(N + 1)))
 >>> c - 1.1 == 1.7 - c
 False
 >>> sd.htest.fligner(g1, g2).statistic, float(ss.fligner(g1, g2).statistic)
-(0.43724238140192634, 0.4342357626246835)
+(0.4372423814019263, 0.4342357626246835)
 ```
 
 scipy와 R은 c를 double로 반올림해서 이 동점이 갈려요. 정확한 유리수로 편차를 만들고 중간 순위를 매겨 같은 식을 계산하면 0.4372423814019262이에요.

@@ -33,7 +33,7 @@ Padé 근사, 스케일링과 제곱, 차수 $m \in \{3, 5, 7, 9, 13\}$과 제�
       { label: '가드', where: '_matfuncs.py', note: '‖A‖₁이 inf거나 2¹⁰⁰을 넘으면 2의 거듭제곱으로 먼저 줄여요.' },
       { label: '차수 m과 제곱 수 s', where: '_matfuncs.py', note: 'A² = A @ A(SpGEMM)는 언제나. A⁴, A⁶은 상한이 시험을 못 넘을 때만. n ≥ 100이면 ‖A⁸‖, ‖A¹⁰‖은 onenormest로 어림.' },
       { label: 'U, V', where: '_matfuncs.py', note: '짝수 거듭제곱의 선형 결합(희소 덧셈)과 SpGEMM.' },
-      { label: '(V − U) X = U', where: '_direct.py', note: 'Accelerate LU/AMD, 우변 U를 열 묶음으로, 반복 다듬기 한 번.' },
+      { label: '(V − U) X = U', where: '_direct.py', note: 'Accelerate LU/AMD, 우변 U를 열 묶음으로, 역오차가 크면 반복 다듬기 한 번.' },
       { label: 's번 제곱', where: '_matfuncs.py', note: 'X @ X(SpGEMM). 삼각이면 매번 대각과 첫 부대각을 정확한 값으로.' },
       { label: '결과', where: '_matfuncs.py', note: '정확한 0을 빼고 입력의 형식으로.' },
     ]}
@@ -100,7 +100,7 @@ $U$와 $V$는 밀집과 같은 항의 순서(Higham 2005의 계산법 [4])로 �
     X = _sparse_solve(factor, U, "csr", func) * 2.0 + eye
 ```
 
-$V - U$는 [`splu`](/api/sparse/splu/)와 같은 Accelerate LU/AMD로 한 번 분해하고, 우변 $U$를 정해진 열 묶음으로 나눠 밀집으로 풀어요(반복 다듬기 한 번). 묶음마다 정확한 0을 지워 희소로 모아요. 이 차수들의 $V - U$는 $\theta_m$ 안에서 조건이 좋아 특이가 되지 않지만, 특이로 판정되면 `LinAlgError("expm(): singular matrix")`예요. 제곱은 SpGEMM `X @ X`예요.
+$V - U$는 [`splu`](/api/sparse/splu/)와 같은 Accelerate LU/AMD로 한 번 분해하고, 우변 $U$를 정해진 열 묶음으로 나눠 밀집으로 풀어요(첫 풀이의 원소별 역오차가 8ε를 넘으면 반복 다듬기 한 번, [특이 판정과 풀이](/internals/sparse/solve/#반복-다듬기)). 묶음마다 정확한 0을 지워 희소로 모아요. 이 차수들의 $V - U$는 $\theta_m$ 안에서 조건이 좋아 특이가 되지 않지만, 특이로 판정되면 `LinAlgError("expm(): singular matrix")`예요. 제곱은 SpGEMM `X @ X`예요.
 
 ### 대각과 삼각
 

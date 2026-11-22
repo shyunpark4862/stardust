@@ -109,7 +109,7 @@ double orthogonalize(const T* V, int64_t n, int64_t j, T* x, std::vector<T>& c) 
 }
 ```
 
-`dots`와 `combine`(`gaxpy`)은 `eigsh`와 반복법이 함께 쓰는 결정적인 커널이에요. 직교화한 뒤의 노름이 $\varepsilon\cdot s_1$(지금까지의 가장 큰 Ritz 특이값) 아래이면 그 방향이 기저 안에 있다고 봐요. 행렬의 랭크가 모자라거나 불변 부분공간을 만난 경우예요. 그때는 시작 벡터의 생성기에서 무작위 벡터를 뽑아 직교화해 잇고, 대응하는 $B$의 원소는 0이에요. 세 번 뽑아도 이을 수 없으면 `LinAlgError`예요.
+`dots`와 `combine`(`gaxpy`)은 `eigsh`·`eigs`와 함께 쓰는 결정적인 커널이에요. 행 $2^{14}$개씩의 고정 조각마다 Accelerate의 `dgemv`·`zgemv`를 한 번 불러요([ARPACK](/internals/sparse/arpack/#같은-비트를-내는-벡터-연산)). 직교화한 뒤의 노름이 $\varepsilon\cdot s_1$(지금까지의 가장 큰 Ritz 특이값) 아래이면 그 방향이 기저 안에 있다고 봐요. 행렬의 랭크가 모자라거나 불변 부분공간을 만난 경우예요. 그때는 시작 벡터의 생성기에서 무작위 벡터를 뽑아 직교화해 잇고, 대응하는 $B$의 원소는 0이에요. 세 번 뽑아도 이을 수 없으면 `LinAlgError`예요.
 
 ## Ritz 삼중쌍과 수렴
 
@@ -139,7 +139,7 @@ $\lVert X^{\mathsf H}u_i - s_iv_i\rVert \le \mathrm{tol}\cdot\max(s_i, \varepsil
 >>> r
 SvdsResult(converged=True, status=0, n_iter=5, n_converged=3, S=[3.31261, 3.38298, 4.64795])
 >>> r.S
-array([3.3126115431006293, 3.3829768425279814,  4.647954524455108], dtype=float64)
+array([3.3126115431006204,  3.382976842527982,  4.647954524455107], dtype=float64)
 >>> sd.linalg.svdvals(A.toarray())[:3]
 array([4.6479545244551135, 3.3829768425279867, 3.3126115431006222], dtype=float64)
 ```
@@ -176,7 +176,7 @@ $$
 ```python
 >>> q = sd.sparse.svds(A, k=3, which='SM')
 >>> q.S
-array([0.7469322167854496, 0.8984844184334863, 0.9592937325344384], dtype=float64)
+array([0.7469322167854501, 0.8984844184334876, 0.9592937325344397], dtype=float64)
 >>> q.n_iter, q.n_op
 (11, 368)
 >>> sd.linalg.svdvals(A.toarray())[-3:]
@@ -187,7 +187,7 @@ array([0.9592937325344363, 0.8984844184334859, 0.7469322167854497], dtype=float6
 
 마지막 SVD의 원하는 $k$개(수렴하지 못했으면 수렴한 것만)를 특이값 오름차순으로 골라 $U = QU_B$, $V = PV_B$를 만들어요. $m < n$이었으면 $X = A^{\mathsf H}$의 왼쪽·오른쪽을 맞바꾸고, 결과의 `Vh`는 $V$의 켤레 전치예요. `return_singular_vectors`가 `False`, `'u'`, `'vh'`이면 계산하지 않은 쪽은 None이에요.
 
-시작 벡터는 `eigsh`와 같은 규칙이에요(`v0`가 없으면 `sd.random.default_rng(0)`의 $2u - 1$, `rng=`로 바꿔요). 무너짐에서 뽑는 무작위 방향도 같은 생성기예요. 곱은 희소 SpMV, 내적·노름·갱신은 크기로만 나누는 결정적인 커널이라 스레드 수, 행렬의 형식, 연산자의 꼴과 상관없이 같은 비트예요.
+시작 벡터는 `eigsh`와 같은 규칙이에요(`v0`가 없으면 `sd.random.default_rng(0)`의 $2u - 1$, `rng=`로 바꿔요). 무너짐에서 뽑는 무작위 방향도 같은 생성기예요. 곱은 희소 SpMV, 내적·노름·갱신과 기저와의 곱은 크기로만 나누는 결정적인 커널([ARPACK](/internals/sparse/arpack/#같은-비트를-내는-벡터-연산))이라 행렬의 형식, 연산자의 꼴과 상관없이 같은 비트예요. 지금은 스레드 수와도 상관없어요(약속은 아니에요).
 
 [`norm(A, ord=2)`](/api/sparse/norm/)는 `svds(A, k=1)`의 값이에요([노름과 1-노름 어림](/internals/sparse/norms/)).
 

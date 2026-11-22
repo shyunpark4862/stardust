@@ -141,23 +141,23 @@ $e^x - c\,x$는 $x = \ln c$에서 가장 작아요. c마다 세 점을 찾고, �
 >>> r
 OptimizeResult(batch shape (4,), 4 of 4 converged)
 >>> r.x
-array([-8.631853881842233e-10,    0.6931471958282459,    1.6094379206854648,
-          2.3025850873253324], dtype=float64)
+array([-7.413172649524402e-10,     0.6931471960095391,
+           1.6094379200965077,      2.302585087130776], dtype=float64)
 >>> sd.log(c)
 array([               0.0, 0.6931471805599453, 1.6094379124341003,
        2.3025850929940455], dtype=float64)
 ```
 
-`bracket`은 세 배열 (xl, xm, xr)의 튜플이고, 그대로 `find_minimum`의 `init`으로 넘기면 돼요. 결과의 x는 $\ln c$와 $10^{-9}$ 안쪽에서 맞아요. 최솟값의 위치는 상대 $10^{-8}$쯤까지만 정해져요. 까닭은 [minimize_scalar의 정확도의 한계](/api/optimize/minimize_scalar/#정확도의-한계)와 같아요.
+`bracket`은 세 배열 (xl, xm, xr)의 튜플이고, 그대로 `find_minimum`의 `init`으로 넘기면 돼요. 결과의 x는 $\ln c$와 $2 \times 10^{-8}$ 안에서 맞아요. 최솟값의 위치는 상대 $10^{-8}$쯤까지만 정해져요. 까닭은 [minimize_scalar의 정확도의 한계](/api/optimize/minimize_scalar/#정확도의-한계)와 같아요.
 
 입력이 모두 실수이면 필드는 Python 수예요. `init`의 세 점은 정렬되어 있지 않아도 돼요.
 
 ```python
 >>> r = sd.optimize.find_minimum(lambda x: sd.exp(x) - 5*x, (0.0, 3.0, 1.0))
 >>> r
-OptimizeResult(converged=True, fun=-3.04719, n_iter=13, nfev=16, x=1.60944)
+OptimizeResult(converged=True, fun=-3.04719, n_iter=14, nfev=17, x=1.60944)
 >>> r.bracket
-(1.609437880490787, 1.6094379044732805, 1.609437928455774)
+(1.6094379037940607, 1.6094379277765543, 1.6094379517590482)
 ```
 
 ## minimize_scalar와 무엇이 다른가요
@@ -224,7 +224,7 @@ $$
 >>> f5 = lambda x: sd.exp(x) - 5*x
 >>> r = sd.optimize.find_minimum(f5, (0.0, 1.0, 3.0), xrtol=1e-4)
 >>> r.x, r.nfev
-(1.6093610418897448, 10)
+(1.6093610418896804, 10)
 ```
 
 ### 결과 읽기
@@ -249,7 +249,7 @@ $$
 ```python
 >>> r = sd.optimize.find_minimum(f5, (sd.asarray([0.0, 2.0]), sd.asarray([1.0, 3.0]), sd.asarray([3.0, 4.0])))
 >>> r.status, r.x
-(array([ 0, -1], dtype=int64), array([1.6094379044732805,                nan], dtype=float64))
+(array([ 0, -1], dtype=int64), array([1.6094379277765543,                nan], dtype=float64))
 >>> r = sd.optimize.find_minimum(f5, (0.0, 1.0, 3.0), max_iter=3)
 >>> r.status, r.x
 (-2, 1.600857528514855)
@@ -300,7 +300,7 @@ array([ -1.472997598755292, -1.4729976098975956,   1.346997412557977,
 한계가 있는 쪽으로 가면 걸음을 늘리지 않고, 한계까지 남은 거리를 1/factor씩 줄이며 다가가요. 한계를 넘는 점에서는 f를 부르지 않아요. 한계에 닿을 때까지 f가 내려가기만 하면 `status` −1이에요.
 
 ```python
->>> r = sd.optimize.bracket_minimum(f5, 1.0, xmax=1.2)
+>>> r = sd.optimize.bracket_minimum(lambda x: (x - 3)**2, 1.0, xmax=1.2)
 >>> r.status, r.bracket
 (-1, (1.1999999999999993, 1.1999999999999997, 1.2))
 ```
@@ -339,12 +339,12 @@ ValueError: bracket_minimum(): 'factor' must be > 1
 
 ## 정확도와 비용
 
-- 원소 하나의 계산은 그 원소만 풀 때와 같아요. 배치의 다른 원소나 스레드 수와 상관없이 결과의 비트가 같아요.
+- 같은 기계, 같은 스레드 수, 같은 입력이면 실행마다 결과가 비트까지 같아요. 지금은 원소 하나의 계산이 그 원소만 풀 때와 같아서, 배치의 다른 원소나 스레드 수와도 상관없이 같은 비트예요(약속은 아니에요).
 - 최솟값의 위치는 상대 $\sqrt{\varepsilon} \approx 1.5 \times 10^{-8}$($\varepsilon = 2^{-52}$) 근처까지만 정해져요(f가 최솟값 근처에서 평평하기 때문이에요). `fun`은 끝자리 근처까지 맞아요.
 - 10⁶ 원소에서 `find_minimum` 한 번이 1스레드 189 ms, 10스레드 57 ms, `bracket_minimum`이 54 ms, 27 ms였어요(Apple M4 Pro, $(x - c)^2 + 0.01\,c\,x^4$). 자세한 방법은 [배치 스칼라의 구현](/internals/optimize/batched/)에 있어요.
 
 ## scipy를 아는 분께
 
-- scipy 1.18.1의 `scipy.optimize.elementwise.find_minimum`, `bracket_minimum`과 같은 방법, 같은 걸음이에요. 지금은 원소 하나마다 scipy와 같은 점에서 f를 불러 같은 x, `n_iter`, `nfev`, `status`를 내요(같은 f일 때; 비트까지 같지만 약속은 아니에요). 최솟값 근처에서는 f의 끝자리가 걸음을 바꾸므로, f 안의 수학 함수가 다르면(`sd.exp`와 `np.exp`) 걸음이 갈릴 수 있어요. 위의 $e^x - 5x$도 `np.exp`로 쓴 scipy는 반복 14번, 이쪽은 13번이에요.
+- scipy 1.18.1의 `scipy.optimize.elementwise.find_minimum`, `bracket_minimum`과 같은 방법, 같은 걸음이에요. 지금은 원소 하나마다 scipy와 같은 점에서 f를 불러 같은 x, `n_iter`, `nfev`, `status`를 내요(같은 f일 때; 비트까지 같지만 약속은 아니에요). 최솟값 근처에서는 f의 끝자리가 걸음을 바꾸므로, f 안의 수학 함수가 끝자리에서 다르면(`sd.exp`와 `np.exp`) 걸음이 갈릴 수 있어요. 위의 $e^x - 5x$는 지금 `np.exp`로 쓴 scipy와 반복 수, `nfev`, x가 같아요.
 - scipy의 `f_x`는 `fun`, `success`는 `converged`, `nit`은 `n_iter`예요. 허용오차는 `tolerances` dict 대신 키워드이고, `maxiter`는 `max_iter`, `callback`은 없어요(status −4도 없어요).
 - 처음 세 점의 호출도 늘 1차원 배열 (k,)이에요. 입력이 모두 실수이면 필드는 Python 수예요.

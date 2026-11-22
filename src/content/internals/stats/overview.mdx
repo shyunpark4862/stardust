@@ -25,18 +25,18 @@ import Layers from '../../../components/fig/Layers.astro';
 2. **special 위에 서 있지만 감싸기만 하지 않아요.** 누적분포의 대부분은 [sd.special](/internals/special/overview/)의 불완전 감마·베타와 정규분포 함수예요. 다만 그 함수에 넣을 인자 $x/\text{scale}$, $(x-\mu)/\sigma$를 float64로 반올림하면 꼬리에서 자릿수를 잃어서, stats는 그 인자를 double-double로 만들어 1차 보정까지 더해요.
 3. **정확도는 계약으로 약속해요.** 분포마다 정한 보장 영역 안에서 Arb(구간 산술)로 만든 참값과의 상대오차가 $10^{-14}$ 이하예요. `ccdf`와 log 메서드는 꼬리에서도 상대 정확도예요.
 4. **값 때문에 실패하지 않고, 정해진 시간 안에 끝나요.** 매개변수가 정의역 밖이면 그 원소만 NaN이고, 에러는 내지 않아요. 모든 합·탐색·반복에는 상한이 있고, 상한에 닿으면 중간값 대신 NaN을 내요.
-5. **같은 입력이면 같은 비트예요.** 결과는 배열의 레이아웃, 원소의 위치, 스레드 수에 의존하지 않아요. 표본도 같은 `rng` 상태에서 같은 값이에요.
+5. **같은 입력이면 같은 비트예요.** 같은 기계, 같은 스레드 수면 실행마다 같은 비트예요. 단변량 분포의 메서드는 원소별이라 배열의 레이아웃과 원소의 위치에도 의존하지 않고, 지금은 스레드 수와도 상관없어요(약속은 아니에요). 표본도 같은 `rng` 상태에서 같은 값이에요.
 
 `sd.stats.Gamma(a=2.5).cdf(x)`(`x`는 float64 배열) 호출 하나가 지나는 길은 다음과 같아요.
 
-<Fig column caption="sd.stats.Gamma(a=2.5).cdf(x) 한 번의 흐름. 두 번째부터 다섯 번째 단계는 sd.special의 원소별 함수와 같은 코드이고, 통계 영역만의 부분은 맨 위의 분포 객체와 맨 아래의 DistOp, 분포 구조체예요.">
+<Fig column caption="sd.stats.Gamma(a=2.5).cdf(x) 한 번의 흐름. 세 번째부터 다섯 번째 단계는 sd.special의 원소별 함수와 같은 코드이고, 통계 영역만의 부분은 맨 위의 분포 객체와 맨 아래의 DistOp, 분포 구조체예요.">
   <Steps
     steps={[
-      { label: 'X.cdf(x)', where: 'stats/_distribution.py', note: '분포 객체에 담긴 매개변수 (2.5, 1.0)를 앞에 붙여 _core.stats.gamma_cdf(2.5, 1.0, x, out=None)을 불러요. 커널이 낸 에러의 "gamma_cdf(): "는 "cdf(): "로 바꿔요.' },
-      { label: 'nary_bind::def<DistOp<Gamma, Cdf>>', where: 'bind/nary_bind.hpp', note: '입력 셋(a, scale, x)을 위치 전용으로, out=을 키워드 전용으로 받는 함수예요. special과 같은 바인딩 코드예요.' },
+      { label: 'X.cdf(x)', where: 'stats/_distribution.py', note: 'x가 Python float이 아니라서 기반 클래스의 메서드로 가요. 분포 객체에 담긴 매개변수 (2.5, 1.0)를 앞에 붙여 _core.stats.gamma_cdf(2.5, 1.0, x, out=None)을 불러요. 커널이 낸 에러의 "gamma_cdf(): "는 "cdf(): "로 바꿔요.' },
+      { label: 'def_fast<DistOp<Gamma, Cdf>>', where: 'bind/stats_bind.cpp', note: '입력 셋(a, scale, x)을 위치 전용으로, out=을 키워드 전용으로 받는 함수예요. 입력이 모두 Python float이 아니므로 special과 같은 바인딩 코드(nary_bind::call)로 넘겨요.' },
       { label: 'run_nary', where: 'array/ops/ufunc.cpp', note: '피연산자마다 dtype을 읽고 승격해 float64 루프를 골라요. complex128이면 여기서 TypeError예요.' },
       { label: 'launch', where: 'array/ops/ufunc.cpp', note: 'Python 숫자 2.5와 1.0을 원소 하나짜리 배열로 만들고 x와 브로드캐스트해요. stride가 0인 피연산자가 돼요.' },
-      { label: 'NdIter::run(weight = 226)', where: 'array/iter.cpp', note: '감마 cdf의 원소당 비용(잰 값 42.9 ns)을 덧셈 단위로 바꾼 가중치예요. 원소 145개부터 스레드풀에 나누고, 작업 하나는 원소 18개예요.' },
+      { label: 'NdIter::run(weight)', where: 'array/iter.cpp', note: '감마 cdf의 잰 원소당 비용(비용표)을 덧셈 단위로 바꾼 가중치예요. 원소 수 × 가중치가 문턱을 넘으면 스레드풀에 나눠요.' },
       { label: 'nary_loop<DistOp<Gamma, Cdf>, double>', depth: 1, where: 'array/kernels/elementwise.hpp', note: '조각 하나의 원소마다 DistOp::f(a, scale, x)를 불러요. 감마의 cdf에는 청크 커널이 없어서 이 루프예요.' },
       { label: 'DistOp<Gamma, Cdf>::f', depth: 2, where: 'stats/engine.hpp', note: 'Gamma::valid(a, scale)가 거짓이거나 x가 NaN이면 NaN을 돌려줘요. 아니면 Gamma::cdf를 부르고 + 0.0으로 −0을 +0으로 바꿔요.' },
       { label: 'Gamma::cdf → ratio_tail', depth: 2, where: 'stats/dist/gamma.hpp', note: 'y = x/scale을 double-double로 만들어요. 2a가 정수이고 a ≤ y ≤ 690이면 위꼬리를 유한 합으로, 그 밖은 special의 불완전 감마에 y.hi를 넣고 y.lo를 1차 보정으로 더해요.' },
@@ -51,13 +51,13 @@ import Layers from '../../../components/fig/Layers.astro';
 Gamma(a=2.5, scale=1.0)
 >>> x = sd.asarray([0.5, 2.5, 10.0, 50.0])
 >>> X.cdf(x)
-array([0.03743422675270362,   0.584119813004492,  0.9987502694369687,
+array([0.03743422675270364,   0.584119813004492,  0.9987502694369687,
                        1.0], dtype=float64)
 >>> X.ccdf(x)
-array([   0.9625657732472964,   0.41588018699550794, 0.0012497305630313755,
+array([   0.9625657732472963,   0.41588018699550794, 0.0012497305630313755,
         5.28514836094324e-20], dtype=float64)
 >>> sd._core.stats.gamma_cdf(2.5, 1.0, x)
-array([0.03743422675270362,   0.584119813004492,  0.9987502694369687,
+array([0.03743422675270364,   0.584119813004492,  0.9987502694369687,
                        1.0], dtype=float64)
 >>> X.cdf(2.5) == X.cdf(x)[1]
 True
@@ -157,8 +157,11 @@ class _Distribution:
         ops = {m: getattr(_k, f"{cls._name}_{m}") for m in cls._density + _INPUT_METHODS + _PARAM_METHODS}
         ...
         cls._ops = ops
-        for i, p in enumerate(cls._params):  # read-only attributes
+        cls._s1 = staticmethod(ops["sample1s"])  # sample()'s scalar call, one attribute away
+        for i, p in enumerate(cls._params):  # read-only attributes (T19)
             setattr(cls, p, _parameter(i, p))
+        for m in cls._density + _INPUT_METHODS:
+            setattr(cls, m, _fast_input(m, ops[m], len(cls._params), getattr(cls, m)))
         _calls.keyword_init(cls)
 
     def cdf(self, x, /, *, out=None):
@@ -170,6 +173,8 @@ class _Distribution:
         except _RENAMED as e:
             raise _renamed(e, "cdf", "x", x) from None
 ```
+
+위의 `cdf`는 기반 클래스의 메서드예요. 클래스를 만들 때 `_fast_input`이 입력 메서드마다 그 앞에 짧은 길을 하나 더 만들어 붙여요. 매개변수 개수에 맞춘 함수를 생성해서, 입력이 Python float이고 `out=`이 없으면 매개변수 튜플을 풀어 네이티브 함수를 바로 불러요. 그 밖(int, 배열, `out=`)은 위의 기반 메서드로 가서 int64 검사와 `out=`을 처리해요. 이름, 시그니처, 에러 메시지는 같아요. 네이티브 함수 쪽에도 같은 짧은 길이 있어요([원소별 엔진](/internals/stats/engine/#python-float-하나의-짧은-길)). 생성자도 매개변수가 모두 Python float이나 double 범위 안의 int이면 아래의 검사를 건너뛰어요.
 
 C++ 쪽 분포 구조체는 이렇게 생겼어요.
 
@@ -264,7 +269,7 @@ TypeError: sample(): 'rng' must be an sd.random.Generator (sd.random.default_rng
 
 ```python
 >>> sd.stats.Gamma(a=sd.asarray([2.5, -1.0, float("nan")])).cdf(1.0)
-array([0.15085496391539038,                 nan,                 nan], dtype=float64)
+array([0.1508549639153904,                nan,                nan], dtype=float64)
 >>> sd.stats.Gamma(a=sd.asarray([2.5, -1.0, float("nan")])).mean()
 array([2.5, nan, nan], dtype=float64)
 >>> sd.stats.Normal(mu="a")
@@ -443,7 +448,7 @@ nan
 >>> bool(sd.all(sd.stats.StudentT(df=3.5).cdf(t) == sd.special.stdtr(3.5, t)))
 True
 >>> sd.stats.Gamma(a=2.5).cdf(2.5), sd.special.gammainc(2.5, 2.5)
-(0.584119813004492, 0.5841198130044921)
+(0.584119813004492, 0.5841198130044922)
 ```
 
 두 번째 줄의 참값은 $0.584119813004492079\ldots$이에요. 둘 다 계약 안이고, stats 쪽은 반정수 $a$의 유한 합에서 나온 값이에요.

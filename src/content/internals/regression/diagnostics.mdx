@@ -23,7 +23,7 @@ $h_i$는 지렛대, $t_i$는 외적 스튜던트화 잔차, $s_{(i)}$는 행 $i$
 
 ## 얇은 Q 방식
 
-DFBETAS, GLM의 영향력, Type I의 순서 바꾸기, 내포 검사는 모두 적합과 같은 QR의 얇은 Q가 필요해요. 커널의 `fit`은 `hat_only=True, thin_q=True`로 부르면 적합과 같은 열 선택(겹친 열을 빼는 판정까지)과 같은 QR을 한 뒤, 계수를 풀지 않고 `orgqr`로 Q를 만들어 지렛대, Q, R, 쓰인 열을 내고 멈춰요.
+DFBETAS, GLM의 영향력, Type I의 순서 바꾸기, 내포 검사는 모두 적합과 같은 QR의 얇은 Q가 필요해요. 커널의 `fit`은 `hat_only=True, thin_q=True`로 부르면 적합과 같은 열 선택(겹친 열을 빼는 판정까지)과 같은 분해를 한 뒤, 계수를 풀지 않고 얇은 Q를 만들어 지렛대, Q, R, 쓰인 열을 내고 멈춰요. Householder QR이면 `orgqr`로 Q를 만들고, 키가 크고 조건이 좋아 CholeskyQR2를 탄 설계는 분해가 만든 Q를 그대로 써요([최소제곱 풀이](/internals/regression/least-squares/#키가-큰-설계-choleskyqr2)).
 
 ```cpp
     // csrc/regression/linear.cpp
@@ -240,8 +240,8 @@ $$
 array([ -0.1351251761513582,  0.20765257852616797, -0.04089855919961331,
          0.1994796567999233], dtype=float64)
 >>> r.dfbetas[i]
-array([-0.13512517615135783,  0.20765257852616786,  -0.0408985591996133,
-        0.19947965679992297], dtype=float64)
+array([-0.1351251761513578, 0.20765257852616786, -0.0408985591996133,
+       0.19947965679992297], dtype=float64)
 >>> float(r.dffits[i])
 -0.37871005034461974
 ```
@@ -302,12 +302,22 @@ $m_i$는 `var_weights` × `trials`, $f_i$는 `freq_weights`, $\mu'$은 역링크
 이 가중치로 $\sqrt W X$를 `thin_q` 방식으로 분해해 지렛대, Q, R을 얻어요. 계수를 풀지 않으므로 $y$ 자리에는 0을 넘겨요. 작업 잔차에 $\sqrt{W_i}$를 곱하면 Pearson 잔차($\sqrt{m_i}(y_i - \mu_i)/\sqrt{V(\mu_i)}$)에 $\sqrt{f_i}$를 곱한 것이 돼요. 그래서 백색화한 잔차 자리에 $\tilde e_i = \sqrt{f_i}\,r^{P}_i$를 넣어요.
 
 ```python
-    # src/stardust/regression/_diagnostics.py
-    wt, f, used = _glm_weights(r)
-    X = fa["X"]
-    n = X.shape[-2]
-    y0 = _sd.zeros((n,))
-    hat, Q, R, kept = _k.fit("glm", y0, X, wt, None, r._intercept, fa["rtol"], 0, 0, None, 0, -1, True, True)
+    # src/stardust/regression/_diagnostics.py (_glm_hat_fit)
+    def make():
+        fa = r._fitargs
+        wts = _glm_weights(r)
+        X = fa["X"]
+        n = X.shape[-2]
+        y0 = _sd.zeros((n,))
+        out = _k.fit("glm", y0, X, wts[0], None, r._intercept, fa["rtol"], 0, 0, None, 0, -1, True, True)
+        return wts, tuple(out)
+```
+
+이 분해는 결과에 캐시해요. `leverage`만 읽으면 지렛대만 내고(`glm_leverage`), 나중에 Cook 거리, DFFITS, DFBETAS를 읽으면 같은 캐시를 써서 분해를 다시 하지 않아요. 같은 분해에서 나오니 어느 순서로 읽어도 같은 비트예요.
+
+```python
+    # src/stardust/regression/_diagnostics.py (glm_influence)
+    (wt, f, used), (hat, Q, R, kept) = _glm_hat_fit(r)
     e = _sd.sqrt(f) * r.resid_pearson
     e = _sd.where(used, e, 0.0)
     scale = r.scale
@@ -643,7 +653,7 @@ Arb(구간 산술)로 만든 참값과 견준 원소마다의 최대 상대오�
 | GLM | 지렛대 | Cook | DFFITS | DFBETAS |
 |---|---:|---:|---:|---:|
 | 이항 logit | 1.0e-15 | 8.6e-16 | 4.9e-16 | 5.6e-14 |
-| 이항 probit | 6.6e-16 | 8.4e-16 | 4.6e-16 | 2.4e-14 |
+| 이항 probit | 9.0e-16 | 1.1e-15 | 4.2e-16 | 1.7e-14 |
 | 포아송 log | 2.1e-15 | 1.2e-13 | 5.8e-14 | 5.8e-14 |
 | 감마 log | 9.4e-16 | 1.7e-14 | 8.0e-15 | 8.2e-15 |
 

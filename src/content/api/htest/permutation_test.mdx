@@ -145,7 +145,7 @@ TypeError: permutation_test(): 'rng' must be an sd.random.Generator (sd.random.d
 (0.009950248756218905, (200,))
 ```
 
-무작위 p값은 정확한 p값(0.0216) 둘레에서 흔들려요. 정밀하게 알고 싶으면 `n_resamples`를 늘려요. 재표본 하나하나는 생성기의 상태와 자기 번호만으로 정해져서, 스레드 수나 `batch`를 바꿔도 비트까지 같은 결과예요.
+무작위 p값은 정확한 p값(0.0216) 둘레에서 흔들려요. 정밀하게 알고 싶으면 `n_resamples`를 늘려요. 재표본 하나하나는 생성기의 상태와 자기 번호만으로 정해져서, `batch`를 바꿔도 비트까지 같은 결과예요. 지금은 스레드 수를 바꿔도 같아요(약속은 아니에요).
 
 ```python
 >>> big = list(range(8)), [v + 0.5 for v in range(9)]
@@ -210,7 +210,7 @@ ValueError: permutation_test(): enumerating all 1.55e+08 permutations is more th
 ...     return sd.htest.pearsonr(a, b, axis=axis).statistic
 >>> rp = sd.htest.permutation_test((u, v), corr, permutation_type='pairings', rng=sd.random.default_rng(7))
 >>> rp.statistic, rp.pvalue
-(0.9533588509146754, 0.004)
+(0.9533588509146753, 0.004)
 ```
 
 `'pairings'`는 모든 표본의 순서를 섞어서, 두 표본이면 (7!)² ≈ 2.5 × 10⁷가지예요. 그래서 무작위로 뽑았어요. 상관계수는 한쪽만 섞어도 같은 분포를 주므로, 한쪽만 섞는 [pearsonr](/api/htest/pearsonr/)의 `method=PermutationMethod(...)`가 7! = 5040가지로 나열할 수 있어 더 나아요([다른 검정에 method로 넘기기](/api/htest/methods/)).
@@ -294,7 +294,7 @@ t 통계량은 평균의 차와 순서가 같아서 p값도 같아요. 자세한
 
 ## 정확도
 
-모든 순열을 나열한 p값은 셈의 몫이라, 같은 순열을 Fraction으로 나열한 정확한 유리수 참값과 상대 5.6e-17 안이에요. 무작위 순열의 p값에는 참값이 없어요. 대신 같은 `rng` 상태면 스레드 수(1·3·10)와 `batch`(1·7·1000)에 상관없이 비트까지 같고, 무작위 p값이 정확한 p값의 5 표준오차 안에 드는지를 고정한 시드로 시험해요.
+모든 순열을 나열한 p값은 셈의 몫이라, 같은 순열을 Fraction으로 나열한 정확한 유리수 참값과 상대 5.6e-17 안이에요. 무작위 순열의 p값에는 참값이 없어요. 대신 같은 `rng` 상태면 `batch`(1·7·1000)에 상관없이 비트까지 같고(지금은 스레드 수 1·3·10에서도 같아요), 무작위 p값이 정확한 p값의 5 표준오차 안에 드는지를 고정한 시드로 시험해요.
 
 ## scipy를 아는 분께
 

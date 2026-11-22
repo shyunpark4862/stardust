@@ -2,7 +2,7 @@
 title: 원소별 커널
 group: 연산 엔진
 order: 2
-summary: 덧셈, 비교, 초월함수 같은 원소별 연산이 원소 하나를 어떻게 계산하는지 설명해요. NEON 커널이든 strided 루프든 어느 경로를 타도 값이 같고, 대부분은 numpy와 같은 식을 같은 순서로 써요. vForce 초월함수와 complex 절댓값은 정확도 계약으로 정해요.
+summary: 덧셈, 비교, 초월함수 같은 원소별 연산이 원소 하나를 어떻게 계산하는지 설명해요. NEON 커널이든 strided 루프든 어느 경로를 타도 값이 같고, 대부분은 numpy와 같은 식을 같은 순서로 써요. 초월함수는 자체 NEON 커널(exp, expm1, log1p, cos)과 vForce로 계산하고 정확도 계약으로 정해요.
 seeAlso: [engine, conversion, accuracy, performance, reductions]
 ---
 import Tree from '../../../components/fig/Tree.astro';
@@ -15,13 +15,14 @@ import Op from '../../../components/fig/Op.astro';
 
 [연산 엔진](/internals/array/engine/)은 N차원 문제를 1차원 구간으로 바꾸고 구간마다 **커널**을 불러요. 이 페이지는 그 커널 안, 곧 원소 $n$개를 실제로 계산하는 코드를 다뤄요.
 
-원소별 연산 하나의 의미는 `array/kernels/scalar_ops.hpp`의 구조체 하나에 **원소 하나짜리 함수**(`Op::f`)로 적혀 있어요. 커널은 이 함수를 원소 $n$개에 적용하는데, 연산과 dtype과 레이아웃에 따라 다섯 경로 중 하나를 타요.
+원소별 연산 하나의 의미는 `array/kernels/scalar_ops.hpp`의 구조체 하나에 **원소 하나짜리 함수**(`Op::f`)로 적혀 있어요. 커널은 이 함수를 원소 $n$개에 적용하는데, 연산과 dtype과 레이아웃에 따라 여섯 경로 중 하나를 타요.
 
 | 경로 | 언제 | 어디 | 결과 |
 |---|---|---|---|
-| vForce | float64 초월함수 15개 (`exp`, `log`, `sin`, `atan2` …), 모든 레이아웃 | `array/kernels/vforce.hpp`, `accelerate/vforce.hpp` | Arb 참값에서 함수마다 3–5 ULP (계약), 잰 최대 3 ULP |
+| 자체 NEON 초월함수 | float64 `exp`, `expm1`, `log1p`, `cos`, 모든 레이아웃 | `array/kernels/vmath.hpp` | Arb 참값에서 잰 최대 1 ULP (`exp`의 계약은 3 ULP) |
+| vForce | float64 초월함수 14개 (`log`, `sin`, `atan2` …), 모든 레이아웃 | `array/kernels/vforce.hpp`, `accelerate/vforce.hpp` | Arb 참값에서 함수마다 3–5 ULP (계약), 잰 최대 3 ULP |
 | libm `pow`와 정확한 꼴 | float64 `pow`, 모든 레이아웃 | `array/kernels/elementwise.hpp`, `array/kernels/scalar_ops.hpp` | 보통 지수는 지금 numpy와 비트까지 같음. 지수 2, 0, 1, −1, 0.5는 정확한 꼴 |
-| 손으로 짠 NEON | float64 `maximum`/`minimum`/`clip`, complex128 곱셈. 연속 또는 스칼라 브로드캐스트 | `array/kernels/neon.hpp` | 스칼라 정의와 비트까지 같음 |
+| 손으로 짠 NEON | float64 `maximum`/`minimum`/`clip`, complex128 곱셈, 연속 complex128 `abs`. 연속 또는 스칼라 브로드캐스트 | `array/kernels/neon.hpp`, `array/kernels/elementwise.hpp` | 스칼라 정의와 비트까지 같음 |
 | 인덱스 루프 (컴파일러가 벡터화) | 그 밖의 연산, 모두 연속이거나 한쪽이 스칼라(stride 0) | `array/kernels/elementwise.hpp` | 스칼라 정의와 비트까지 같음 |
 | 일반 strided 루프 | 그 밖의 레이아웃 | `array/kernels/elementwise.hpp` | 스칼라 정의와 비트까지 같음 |
 
@@ -49,7 +50,7 @@ import Op from '../../../components/fig/Op.astro';
 
 1. 어느 경로를 타든 값이 같아요. NEON 커널과 인덱스 루프는 스칼라 정의 `Op::f`와 비트까지 같아야 해요. 테스트가 연속, 스칼라 브로드캐스트, strided 세 레이아웃을 모두 numpy와 비트로 비교하므로, 경로가 갈려도 결과는 갈리지 않아요.
 2. numpy가 식을 적어 둔 연산은 같은 식을 같은 순서로 쓰고, 컴파일러가 식을 바꾸지 못하게 막아요. 그래서 지금은 대부분의 원소별 연산이 numpy 2.5.4와 비트까지 같아요. 다만 이것은 지금의 사실이고 목표는 아니에요. 더 빠르거나 더 정확한 식이 있으면 정확도 계약 안에서 그 식을 써요. complex `abs`([아래](#z-complex-함수-pow))와 complex `expm1`이 그런 경우예요.
-3. 정확도는 계약으로 정해요. 초월함수는 속도를 위해 Apple의 vForce를 쓰고, Arb(구간 산술)로 만든 참값을 float64로 반올림한 값에서 함수마다 3–5 ULP 안을 계약해 둬요. complex `abs`는 3 ULP예요. 특수값은 비트까지 정확하고, 결과가 원소의 위치·배열 길이·스레드 수에 의존하지 않아요.
+3. 정확도는 계약으로 정해요. 초월함수는 속도를 위해 자체 NEON 커널과 Apple의 vForce를 쓰고, Arb(구간 산술)로 만든 참값을 float64로 반올림한 값에서 함수마다 3–5 ULP 안을 계약해 둬요. complex `abs`는 3 ULP예요. 특수값은 비트까지 정확하고, 결과가 원소의 위치와 배열 길이에 의존하지 않아요. 그래서 지금은 스레드 수와도 상관없어요.
 
 ## 연속 fast path
 
@@ -422,6 +423,24 @@ inline c128 cdiv(c128 a, c128 b) {   // |br| >= |bi| 쪽
   ```
 
   계약은 Arb(구간 산술)로 만든 참값을 float64로 반올림한 값에서 3 ULP 안이에요. 참값 2만 9천 점에서 잰 최대는 1 ULP예요. numpy의 SIMD `absolute` 루프가 쓰는 공식 $\max(\lvert a \rvert, \lvert b \rvert) \cdot \sqrt{1 + (\min/\max)^2}$는 같은 점에서 최대 2 ULP이고, 나눗셈과 분기 둘이 있어 계산 부분이 약 2.7배 느렸어요(원소당 0.71 대 0.26ns). 그래서 numpy와 끝자리가 다를 수 있어요.
+
+  `complex_abs`의 분기 때문에 연속 루프도 스칼라로 돌아요. 그래서 연속 complex128 `abs`는 두 값씩 실수부와 허수부를 나눠 싣고(`vld2q_f64`), 두 값 모두 큰 쪽 절댓값이 $[2^{-500}, 2^{500}]$ 안이면 주 경로 `sqrt(fma(re, re, im * im))`를 벡터로 계산해요. 0, inf, NaN, 범위 밖 값이 하나라도 있으면 그 두 값만 `complex_abs`로 가요. 같은 식이라 비트가 같아요.
+
+  ```cpp
+  // unary_loop의 연속 complex abs (array/kernels/elementwise.hpp, 발췌)
+  for (; i + 2 <= n; i += 2) {
+      const float64x2x2_t v = vld2q_f64(xp + 2 * i);
+      const float64x2_t re = vabsq_f64(v.val[0]), im = vabsq_f64(v.val[1]);
+      const float64x2_t larger = vmaxq_f64(re, im);
+      const uint64x2_t ok = vandq_u64(vcleq_f64(larger, big), vcgeq_f64(larger, small));
+      if (vminvq_u32(vreinterpretq_u32_u64(ok)) != 0) {
+          vst1q_f64(o + i, vsqrtq_f64(vfmaq_f64(vmulq_f64(im, im), re, re)));
+      } else {
+          o[i] = Op::f(x[i]);
+          o[i + 1] = Op::f(x[i + 1]);
+      }
+  }
+  ```
 - complex 초월함수: C 라이브러리의 C99 함수(`cexp`, `clog`, `csin` …)를 스칼라로 불러요. numpy가 그 함수들을 부르기 때문이에요. libc++의 `std::exp(std::complex)`는 자체 구현이라 결과가 달라요. C++에는 `<complex.h>`가 없어서 직접 선언하고, `std::complex<double>`과 C의 `double _Complex`가 같은 메모리 배치(`double[2]`)라는 점을 이용해 `memcpy`로 오가요.
 
 ```cpp
@@ -445,54 +464,232 @@ inline c128 call(c99_t (*f)(c99_t), c128 z) { return from_c99(f(to_c99(z))); }  
 
 무작위 입력 20만 개(크기가 $e^{\pm 50}$에 걸치는 값)에 특수값(±0, ±inf, NaN, ±최소 서브노멀, 최대 유한값)의 모든 쌍을 더해 numpy 2.5.4와 비트로 비교하면, complex 곱셈·나눗셈·제곱·`sign`, float `floor_divide`·`remainder`·`maximum`, complex `pow(z, 3)`, 그리고 아래의 Array API 2024 함수가 지금 모두 비트까지 같아요. complex `abs`와 `expm1`은 위의 이유로 끝자리가 다를 수 있어요. 테스트 묶음(`tests/array/`)은 지금 같은 것을 dtype 쌍과 세 레이아웃마다 비트로 비교해요. 고침이나 최적화 때문에 달라지면 그 비교는 허용오차 비교로 바뀌어요.
 
-## vForce: float64 초월함수
+## float64 초월함수: 자체 커널, vForce, libm
 
-### 무엇을 vForce로 보내나
+### 함수마다 구현을 나눠요
 
-vForce는 Apple Accelerate 프레임워크의 배열 단위 초월함수 모음이에요 [7]. `vvexp(y, x, &n)`처럼 배열 하나를 통째로 받아, 이 칩에 맞춘 SIMD 코드로 계산해요. float64 초월함수는 함수마다 구현이 달라요.
+float64 초월함수는 함수마다 구현이 달라요. 고르는 기준은 속도가 먼저이고, 정확도는 Arb 참값에서 1–2 ULP 안이어야 해요.
 
 | 구현 | 함수 | 이유 |
 |---|---|---|
-| vForce (15개) | `exp` `log` `log2` `log10` `sin` `asin` `acos` `atan` `sinh` `cosh` `tanh` `asinh` `acosh` `atanh`, 이항 `atan2` | 아래 검증을 모두 통과 |
+| 자체 NEON 커널 (4개) | `exp` `expm1` `log1p` `cos` | vForce나 libm보다 빠르고, Arb 참값에서 잰 최대가 1 ULP예요. 특수값은 C99 Annex F 그대로예요([아래](#자체-neon-커널-exp-expm1-log1p-cos)) |
+| vForce (14개) | `log` `log2` `log10` `sin` `asin` `acos` `atan` `sinh` `cosh` `tanh` `asinh` `acosh` `atanh`, 이항 `atan2` | 아래 검증을 모두 통과 |
 | libm | `pow` (지수 2, 0, 1, −1, 0.5는 정확한 꼴) | vForce의 `vvpow`보다 정확해요([아래](#float64-pow-libm과-정확한-꼴)) |
-| libm (4개) | `expm1` `log1p` `cos` `tan` | vForce가 IEEE / C99 Annex F의 특수값 의미론을 어겨요. `cos(±0) ≠ 1`이고, `expm1`·`log1p`·`tan`이 $-0$의 부호를 잃고, `expm1`이 서브노멀 입력을 0으로 만들어요 |
+| libm | `tan` | vForce의 `vvtan`은 $-0$의 부호를 잃어요. 자체 커널의 sin/cos 몫은 2 ULP에 조금 빨랐지만 sparse의 시험 허용치를 넘었고, 몫을 double-double로 고쳐 1 ULP로 만들면 libm과 속도가 같았어요 |
 | libm | 모든 complex 함수, `sqrt`(컴파일러가 `fsqrt.2d`로 벡터화) | numpy와 비트를 맞추기 위해 |
 
-어느 연산이 vForce로 가는지는 `array/kernels/vforce.hpp`의 표가 정해요. 변수 템플릿의 기본값을 `nullptr`로 두고, vForce로 가는 연산만 특수화해요.
+`sin`과 `log`는 자체 커널로도 1 ULP를 낼 수 있지만 vForce에 둬요. `vvsin`(최대 3 ULP, 계약 5)이 그 커널보다 훨씬 빠르고, `log`는 자체 커널(최대 1 ULP)과 `vvlog`(최대 2 ULP)의 속도가 같아서 비트를 바꿀 이득이 없기 때문이에요.
+
+어느 연산이 어디로 가는지는 `array/kernels/vforce.hpp`의 두 표가 정해요. 변수 템플릿의 기본값을 `nullptr`로 두고, 그 구현으로 가는 연산만 특수화해요. 자체 커널의 표(`vmath_unary`)를 먼저 봐요.
 
 ```cpp
 // array/kernels/vforce.hpp (발췌)
-template <typename Op> inline constexpr VUnary vforce_unary = nullptr;   // 기본: libm
-template <> inline constexpr VUnary vforce_unary<ops::Exp> = &vvexp;
-template <> inline constexpr VUnary vforce_unary<ops::Sin> = &vvsin;
-// … 14개
+template <typename Op> inline constexpr VMath vmath_unary = nullptr;
+template <> inline constexpr VMath vmath_unary<ops::Exp> = &vmath::exp;
+template <> inline constexpr VMath vmath_unary<ops::Expm1> = &vmath::expm1;
+template <> inline constexpr VMath vmath_unary<ops::Log1p> = &vmath::log1p;
+template <> inline constexpr VMath vmath_unary<ops::Cos> = &vmath::cos;
+
+template <typename Op> inline constexpr VUnary vforce_unary = nullptr;
+template <> inline constexpr VUnary vforce_unary<ops::Log> = &vvlog;
+// … 13개
 template <typename Op> inline constexpr VBinary vforce_binary = nullptr;
 template <> inline constexpr VBinary vforce_binary<ops::Atan2> = &vf_atan2;
 ```
 
-커널은 `if constexpr`로 이 표를 봐요. vForce에 없는 연산과 complex에서는 그 가지가 아예 컴파일되지 않아요.
+커널은 `if constexpr`로 이 표를 봐요. 표에 없는 연산과 complex에서는 그 가지가 아예 컴파일되지 않아요.
 
 ```cpp
-// unary_loop<Op, T>의 첫 줄 (array/kernels/elementwise.hpp)
-if constexpr (ops::is_float<T> && vforce_unary<Op> != nullptr) {
-    vforce_unary_run(vforce_unary<Op>, args[0], s[0], args[1], s[1], n);   // 레이아웃 무관
+// unary_loop<Op, T>의 앞부분 (array/kernels/elementwise.hpp)
+if constexpr (ops::is_float<T> && vmath_unary<Op> != nullptr) {  // the area's NEON kernels, any layout
+    vmath_unary_run(vmath_unary<Op>, args[0], s[0], args[1], s[1], n);
+    return;
+}
+if constexpr (ops::is_float<T> && vforce_unary<Op> != nullptr) {  // Accelerate vForce, any layout
+    vforce_unary_run(vforce_unary<Op>, args[0], s[0], args[1], s[1], n);
     return;
 }
 ```
 
-이항 함수는 `f(out, a, b, n)`이라는 한 모양(`VBinary`)으로 받아요. `vvatan2(z, y, x, n)`은 $\operatorname{atan2}(y, x)$를 계산해서 `atan2(a, b)`와 인자 순서가 같으므로, `accelerate/vforce.hpp`의 래퍼 `vf_atan2`는 인자를 그대로 넘겨요. 층 구조상 `accelerate/`에는 연산과 무관한 부분(함수 타입, `vf_atan2` 래퍼, strided 실행기)만 있고, "어느 연산이 어느 함수로"라는 표는 배열의 연산 정의(`ops::Exp`)에 묶여 있어서 배열 영역에 둬요.
+이항 함수는 `f(out, a, b, n)`이라는 한 모양(`VBinary`)으로 받아요. `vvatan2(z, y, x, n)`은 $\operatorname{atan2}(y, x)$를 계산해서 `atan2(a, b)`와 인자 순서가 같으므로, `accelerate/vforce.hpp`의 래퍼 `vf_atan2`는 인자를 그대로 넘겨요. 층 구조상 `accelerate/`에는 연산과 무관한 부분(함수 타입, `vf_atan2` 래퍼, strided 실행기)만 있고, "어느 연산이 어느 함수로"라는 표와 자체 커널은 배열의 연산 정의(`ops::Exp`)에 묶여 있어서 배열 영역에 둬요.
+
+### 자체 NEON 커널: `exp`, `expm1`, `log1p`, `cos`
+
+넷 모두 같은 틀이에요. 원소 둘을 NEON 레인 하나로 계산하는 함수(`exp_lanes` 등)와, 같은 IEEE 연산을 같은 순서로 하는 스칼라 짝(`exp1` 등)이 있어요. 배열 전체를 도는 `run`은 원소 넷씩 읽어, 넷이 모두 레인이 맡는 범위면 레인으로 계산하고, 아니면 그 넷을 스칼라 짝으로 계산해요. 홀수 끝 원소도 스칼라 짝이에요.
+
+```cpp
+// array/kernels/vmath.hpp (run)
+template <typename Lanes, typename OkV, typename One>
+inline void run(double* out, const double* x, std::int64_t n, Lanes lanes, OkV ok, One one) {
+    std::int64_t i = 0;
+    for (; i + 4 <= n; i += 4) {  // two pairs a step: one branch for both
+        const float64x2_t v0 = vld1q_f64(x + i), v1 = vld1q_f64(x + i + 2);
+        const uint64x2_t good = vandq_u64(ok(v0), ok(v1));
+        if ((vgetq_lane_u64(good, 0) & vgetq_lane_u64(good, 1)) != 0) [[likely]] {
+            const float64x2_t y0 = lanes(v0), y1 = lanes(v1);
+            vst1q_f64(out + i, y0);
+            vst1q_f64(out + i + 2, y1);
+        } else {
+            double t[4];
+            vst1q_f64(t, v0);
+            vst1q_f64(t + 2, v1);
+            for (int k = 0; k < 4; ++k) out[i + k] = one(t[k]);
+        }
+    }
+    for (; i < n; ++i) out[i] = one(x[i]);
+}
+```
+
+- **위치와 상관없는 값.** 레인과 스칼라 짝은 같은 연산을 같은 순서로 하므로 비트가 같아요(NEON의 `vfmaq_f64`와 `std::fma`는 둘 다 반올림 한 번이에요). 그래서 원소의 값은 그 원소가 레인으로 갔는지, 끝 원소였는지, 이웃이 범위 밖이었는지와 상관없어요. `f(x)[i] == f(x[i])`이고, 어떤 분할과 스레드 수에서도 같아요. 짝과 레인이 비트까지 같은지 따로 시험했어요.
+- **레인이 맡지 않는 인자는 libm.** 넘침과 언더플로 구간, NaN, 정의역의 끝, `cos`의 $\lvert x\rvert > 2^{20}$은 스칼라 짝이 libm을 불러요. 특수값(±0, ±inf, NaN, 서브노멀)은 그래서 C99 Annex F와 libm 그대로예요(`expm1(−0) = −0`, `log1p(−0) = −0`, `cos(±0) = 1`, 서브노멀 입력은 그대로). vForce의 `vvexpm1`, `vvlog1p`, `vvcos`는 바로 이 특수값을 어겨서 쓰지 않아요.
+
+**`exp`.** $x = (k + j/128)\log 2 + r$, $\lvert r\rvert \le \log 2 / 256$로 나누면
+
+$$
+e^x = 2^k \cdot 2^{j/128} \cdot (1 + p(r))
+$$
+
+예요. $2^{j/128}$은 128칸짜리 표에서 꺼내요. 칸마다 double $s_j$와 그 상대 꼬리를 Arb로 만들어 두었어요. $p$는 5차 Taylor 다항식이고 절단 오차는 $r^6/720 < 2^{-60}$이에요. ARM optimized-routines의 exp와 같은 방식이에요. $k$와 $j$는 $x \cdot 128/\log 2$에 $1.5 \cdot 2^{52}$를 더해 비트 패턴의 아래쪽에서 바로 읽어요(정수 변환 명령이 없어요). $2^k$는 표의 비트에 $k$를 지수 자리로 밀어 더해서 곱해요.
+
+```cpp
+// array/kernels/vmath.hpp (exp_parts, 스칼라 짝)
+inline ExpParts exp_parts(double x) {
+    const double z = x * kExpInvLn2N + kExpShift;
+    const double kd = z - kExpShift;
+    const std::uint64_t ki = as_bits(z);
+    double r = std::fma(kd, -kExpLn2HiN, x);
+    r = std::fma(kd, -kExpLn2LoN, r);
+    const std::uint64_t j = ki & 127;
+    const double tail = as_double(kExpTable[2 * j]);
+    const double scale = as_double(kExpTable[2 * j + 1] + (ki << 45));
+    const double r2 = r * r;
+    const double p23 = std::fma(r, 1.0 / 6, 0.5);
+    const double p45 = std::fma(r, 1.0 / 120, 1.0 / 24);
+    double t = std::fma(r2, p23, tail + r);
+    t = std::fma(r2 * r2, p45, t);
+    return {scale, t};
+}
+
+inline double exp1(double x) {
+    if (!(std::fabs(x) <= kExpMax)) return std::exp(x);
+    const ExpParts e = exp_parts(x);
+    return std::fma(e.scale, e.t, e.scale);
+}
+```
+
+$\log 2/128$을 두 double(`kExpLn2HiN`, `kExpLn2LoN`)로 나눠 FMA 두 번으로 빼므로 $r$이 거의 정확해요. 결과는 $s(1 + t)$를 `fma(s, t, s)` 한 번으로 반올림해요. $\lvert x\rvert > 708$이면 $2^{k + j/128}$이 정규수를 벗어날 수 있어 libm으로 가요.
+
+**`expm1`.** 같은 축소로 $s = 2^{k + j/128}$, $t = \text{꼬리} + p(r)$이면
+
+$$
+e^x - 1 = (s - 1) + s\,t
+$$
+
+예요. $s \in [1/2, 2]$이면 Sterbenz 보조정리로 $s - 1$이 정확하고, `fma(s, t, s − 1)`가 한 번만 반올림해요. 그래서 0 근처에서도 상대 정확도가 유지돼요. 구간을 셋으로 더 나눠요.
+
+```cpp
+// array/kernels/vmath.hpp (expm1_1, 스칼라 짝)
+inline double expm1_1(double x) {
+    if (!(std::fabs(x) <= kExpMax)) return std::expm1(x);
+    if (std::fabs(x) < kTiny) return x;
+    if (std::fabs(x) < kExpm1Poly) return expm1_poly(x);
+    const ExpParts e = exp_parts(x);
+    if (x < kExpm1Neg) return std::fma(e.scale, e.t, e.scale) - 1.0;
+    return std::fma(e.scale, e.t, e.scale - 1.0);
+}
+```
+
+- $\lvert x\rvert < 2^{-54}$(`kTiny`)이면 $x$ 그대로예요. 올바르게 반올림한 답이 $x$예요.
+- $\lvert x\rvert < 2^{-5}$(`kExpm1Poly`)이면 $x^8$까지의 Taylor 다항식을 FMA 한 번으로 $x$에 더해요(절단 $x^9/9! < 2^{-58}x$). 이 구간에서 표 꼴은 $s - 1$과 $s\,t$가 서로 지워져 2 ULP까지 났어요.
+- $x < -\log 2$(`kExpm1Neg`)이면 $s < 1/2$라 $s - 1$이 더는 정확하지 않아요. 결과가 $[-1, -1/2]$에 있어서 $e^x$를 먼저 구하고 1을 빼는 편이 더 정확해요(최대 1 ULP 대신 0.75 ULP).
+
+**`log1p`.** 핵심은 양의 정규수 $u$의 $\log u$예요. $u = 2^k z$, $z \in [0.684, 1.371)$로 나누고, $z$의 비트 패턴으로 128구간 중 하나를 골라요(1을 담는 구간은 1이 가운데에 오고, 그 구간은 $c = 1$이에요). 구간마다 $1/c$의 double `invc`와 $\log c$의 double-double을 Arb로 만들어 표에 두었어요.
+
+$$
+\log u = k \log 2 + \log c + \operatorname{log1p}(r), \qquad r = z \cdot \mathrm{invc} - 1,\ \lvert r\rvert < 2^{-8}
+$$
+
+$\operatorname{log1p}(r) = r + r^2 q(r)$이고 $q$는 $r^5$까지의 Taylor 다항식이에요(절단 $r^8/8$). `log1p(x)`는 $u = 1 + x$를 만들 때의 반올림 오차 $e$를 TwoSum으로 정확히 구해, 축소에 함께 넣어요($r = z \cdot \mathrm{invc} - 1 + e \cdot 2^{-k} \cdot \mathrm{invc}$). 그래서 $1 + x$를 반올림한 데서 생기는 손실이 없어요.
+
+```cpp
+// array/kernels/vmath.hpp (log_from, log1p_1의 스칼라 짝)
+template <bool Corr>
+inline double log_from(std::uint64_t ub, double e) {
+    const std::uint64_t t = ub - kLogOff;
+    const LogEntry& c = kLogTable[(t >> 45) & 127];
+    const std::int64_t k = static_cast<std::int64_t>(t) >> 52;
+    const double z = as_double(ub - (static_cast<std::uint64_t>(k) << 52));
+    const double invc = as_double(c.invc), lch = as_double(c.logc_hi);
+    double r = std::fma(z, invc, -1.0);
+    if constexpr (Corr) r = std::fma(e * as_double(static_cast<std::uint64_t>(1023 - k) << 52), invc, r);
+    const double kd = static_cast<double>(k);
+    const double a = kd * kLn2Hi;
+    const double w = a + lch;  // exact: both multiples of 2^-42 below 2^10
+    const double hi = w + r;
+    const double lo = (w - hi) + r;
+    const double r2 = r * r;
+    const double low = std::fma(kd, kLn2Lo, as_double(c.logc_lo));
+    return hi + std::fma(r2, log_q(r, r2), lo + low);
+}
+
+inline double log1p_1(double x) {
+    if (!log1p_ok(x)) return std::log1p(x);
+    if (std::fabs(x) < kTiny) return x;
+    const double u = 1.0 + x;
+    const double v = u - x;
+    const double e = (1.0 - v) + (x - (u - v));  // 1 + x - u exactly (TwoSum)
+    return log_from<true>(as_bits(u), e);
+}
+```
+
+- $k \log 2$의 높은 부분(`kLn2Hi`)과 $\log c$의 높은 부분은 둘 다 $2^{-42}$의 배수라서 둘의 합 `w`가 정확해요. `+ r`은 Fast2Sum(`hi`, `lo`)으로 오차 없이 나눠요. 남은 작은 항(낮은 부분 둘, $r^2 q(r)$)을 마지막에 한 번에 더해요.
+- 레인이 맡는 범위는 $-1 < x < 2^{1000}$이에요. 그 밖(정의역 끝, NaN, 아주 큰 $x$)은 libm이에요.
+
+**`cos`.** $x = n\pi/2 + r$로 나누고 $r$을 double-double(`hi`, `lo`)로 구해요. $\pi/2$를 네 조각으로 나눈 Cody–Waite 축소예요. 앞의 두 조각은 33비트라서 $n < 2^{20}$이면 $n \cdot P_1$, $n \cdot P_2$가 정확하고, 그래서 서로 지워지는 단계가 정확해요. 그다음 FreeBSD의 `__kernel_sin`과 `__kernel_cos`(fdlibm의 minimax 다항식, 상대오차 $2^{-58}$ 이하)를 $r$에서 둘 다 계산하고, $n \bmod 4$로 하나를 골라 부호를 붙여요.
+
+```cpp
+// array/kernels/vmath.hpp (reduce, cos1의 스칼라 짝)
+inline Reduced reduce(double x) {
+    const double z = std::fma(x, kInvPio2, kExpShift);
+    const double n = z - kExpShift;
+    const double r1 = std::fma(-n, kPio2_1, x);  // exact
+    const double r2 = std::fma(-n, kPio2_2, r1);
+    const double e2 = std::fma(-n, kPio2_2, r1 - r2);  // r2's rounding error, exactly
+    const double hi = std::fma(-n, kPio2_3, r2);
+    const double lo = std::fma(-n, kPio2_4, std::fma(-n, kPio2_3, r2 - hi) + e2);
+    return {hi, lo, as_bits(z)};
+}
+
+inline double cos1(double x) {
+    if (!trig_ok(x)) return std::cos(x);
+    const Reduced r = reduce(x);
+    const double s = sin_k(r.hi, r.lo), c = cos_k(r.hi, r.lo);
+    return flip(r.q & 1 ? s : c, ((r.q + 1) & 2) << 62);
+}
+```
+
+$\cos(n\pi/2 + r)$는 $n \bmod 4$가 0, 1, 2, 3일 때 $\cos r$, $-\sin r$, $-\cos r$, $\sin r$이에요. `r.q & 1`이 사인과 코사인을 고르고, `(q + 1) & 2`가 부호 비트를 정해요. $\lvert x\rvert > 2^{20}$은 libm이라 큰 인자도 정확해요. `cos`는 상수가 많아 레인 두 쌍을 함께 돌려도 이득이 없어서, 한 쌍씩 도는 `run_pairs`를 써요.
+
+Arb 참값과 견준 정확도(무작위 인자를 전 범위와 0, 1, $\pi/2$의 배수 근처에 몰아 함수마다 10–20만 개)는 최대 ULP와 올바르게 반올림되지 않는 원소의 비율로 이래요. 비교를 위해 같은 점에서 잰 이전 구현(vForce나 libm)의 값도 적어요.
+
+| 함수 | 자체 커널 | vForce·libm |
+|---|---|---|
+| `exp` | 1 ULP / 0.07% | `vvexp` 1 ULP / 20% |
+| `expm1` | 1 ULP / 1.9% | libm 1 ULP / 1.1% |
+| `log1p` | 1 ULP / 0.05% | libm 1 ULP / 0.05% |
+| `cos` | 1 ULP / 2.2% | libm 1 ULP / 2.9% |
+
+`expm1`은 libm보다 올바르게 반올림되지 않는 원소가 조금 많지만 최대는 같은 1 ULP이고, 훨씬 빨라요. 성능을 먼저 두는 원칙에 따라 이 커널을 써요.
 
 ### 왜 vForce인가
 
-이유는 속도예요. libm과 비교하면(1스레드) 대부분 2–10배 빠르고, `sin` 7.6배, `atan2` 10배, `exp` 4.2배예요. 배열 단위로 받으므로 원소마다 함수를 부르는 비용이 없고, 안에서는 이 칩에 맞춘 SIMD 코드가 여러 원소를 함께 계산해요.
-
-직접 짠 SIMD 초월함수는 없어요. ULP 단위로 튜닝한 SIMD 초월함수는 함수마다 정확도와 특수값을 따로 맞추고 검증해야 하는 큰 작업이라, 그 자리를 vForce에 맡겨요.
+나머지 함수는 vForce를 써요. 이유는 속도예요. libm과 비교하면(1스레드) 대부분 몇 배 빨라요. 배열 단위로 받으므로 원소마다 함수를 부르는 비용이 없고, 안에서는 이 칩에 맞춘 SIMD 코드가 여러 원소를 함께 계산해요.
 
 `asinh`/`acosh`는 절충이에요. 두 함수는 입력에 따라 승패가 갈려요. vForce는 입력과 상관없이 거의 일정하고, libm은 입력에 따라 크게 달라요. 큰 입력에서는 libm이 빨라요(`acosh`, $1 + [0, 10^6)$에서 16%). 작은 입력에서는 vForce가 빨라요. 입력 값을 보고 구현을 고르면 같은 연산이 데이터에 따라 다른 코드를 타고, 결과도 몇 ULP씩 달라져요. 그래서 하나로 고정하고, 이득이 큰 쪽인 vForce를 써요.
 
 ### vForce를 써도 되는 근거
 
-확장 모듈과 떨어진 작은 프로그램에서 한 변수씩 바꿔 가며 검사한 결과예요.
+확장 모듈과 떨어진 작은 프로그램에서 한 변수씩 바꿔 가며 검사한 결과예요. 검사는 `exp`를 포함한 15개 함수에서 했고, 지금은 그중 `exp`를 뺀 14개를 써요.
 
 | 항목 | 결과 | 왜 중요한가 |
 |---|---|---|
@@ -502,11 +699,11 @@ if constexpr (ops::is_float<T> && vforce_unary<Op> != nullptr) {
 | 특수값 (±0, ±inf, NaN) | 15개 함수 모두 부호까지 정확 | 특수값은 비트까지 같아야 한다는 계약 |
 | 정확도 | Arb 참값에서 최대 3 ULP (아래 "정확도: ULP로 재기") | 함수마다 3–5 ULP의 계약 안 |
 
-위치 독립성이 가장 중요해요. SIMD 구현 중에는 배열의 앞뒤 나머지 원소를 다른 코드(스칼라 경로)로 계산하는 것도 있는데, 그러면 같은 값이 배열의 어디에 있느냐에 따라 다른 결과가 나올 수 있어요. 그런 함수라면 스레드 조각 경계가 결과를 바꾸고, 결과가 스레드 수와 무관하다는 결정성([스레드풀과 결정성](/internals/core/threads/))이 깨져요. vForce 15개 함수는 그렇지 않아요(위 표의 위치 독립성 검사).
+위치 독립성이 가장 중요해요. SIMD 구현 중에는 배열의 앞뒤 나머지 원소를 다른 코드(스칼라 경로)로 계산하는 것도 있는데, 그러면 같은 값이 배열의 어디에 있느냐에 따라 다른 결과가 나올 수 있어요. 그런 함수라면 스레드 조각 경계가 결과를 바꿔서, 같은 스레드 수에서도 조각을 나누는 방식에 결과가 달려요. vForce의 14개 함수는 그렇지 않아요(위 표의 위치 독립성 검사). 자체 커널은 스칼라 짝을 레인과 비트까지 같게 짜서 같은 성질을 지켜요.
 
 ### 결정성을 지키는 호출 방식
 
-vForce는 연속 배열만 받아요. 그래서 `accelerate/vforce.hpp`의 실행기가 레이아웃을 맞춰 주어, 어떤 레이아웃이든 vForce 경로를 타요.
+vForce와 자체 커널은 연속 배열만 받아요. 그래서 실행기(`vforce_unary_run`, `vmath_unary_run`)가 레이아웃을 맞춰 주어, 어떤 레이아웃이든 같은 경로를 타요. `vmath_unary_run`은 개수를 `int`로 줄일 필요가 없다는 것만 다르고 같은 모양이에요.
 
 ```cpp
 // vforce_unary_run (accelerate/vforce.hpp, 줄이고 다듬은 발췌)
@@ -531,11 +728,11 @@ for (std::int64_t off = 0; off < n; off += kChunk) {
 ```
 
 - 연속 입력·출력은 그대로 넘겨요. vForce의 개수 인자가 `int`라서 한 번에 $2^{24}$개까지 넘기고 나눠 불러요.
-- 비연속 입력, 스칼라(stride 0), 비연속 출력은 커널 안에서 1024원소(8KB) 스택 버퍼에 모으고, 계산하고, 흩어요. 버퍼 캐스팅([연산 엔진](/internals/array/engine/))과 같은 방식을 커널 안에서 쓴 셈이에요. 레이아웃이 무엇이든 같은 vForce 함수가 같은 값에 불리므로, 위치 독립성 덕분에 결과가 같아요.
+- 비연속 입력, 스칼라(stride 0), 비연속 출력은 커널 안에서 1024원소(8KB) 스택 버퍼에 모으고, 계산하고, 흩어요. 버퍼 캐스팅([연산 엔진](/internals/array/engine/))과 같은 방식을 커널 안에서 쓴 셈이에요. 레이아웃이 무엇이든 같은 함수가 같은 값에 불리므로, 위치 독립성 덕분에 결과가 같아요.
 - int/bool 입력은 루프 선택에서 float64 루프로 가고, 버퍼 캐스팅이 float64로 바꿔 이 커널에 넘겨요.
-- Python 스칼라 입력(`sd.exp(1.0)`)도 같은 루프를 `n = 1`로 불러요. 곧 `vvexp`를 원소 하나로 불러요. 그래야 `sd.exp(x)[i] == sd.exp(x[i])`가 성립해요. 스칼라만 libm으로 계산했다면 배열의 원소와 몇 ULP 다른 값이 나올 수 있어요.
+- Python 스칼라 입력(`sd.exp(1.0)`, `sd.sin(1.0)`)도 같은 루프를 `n = 1`로 불러요. 곧 `vmath::exp`나 `vvsin`을 원소 하나로 불러요. 그래야 `sd.exp(x)[i] == sd.exp(x[i])`가 성립해요. 스칼라만 libm으로 계산했다면 배열의 원소와 몇 ULP 다른 값이 나올 수 있어요.
 
-테스트(`tests/array/test_vforce.py`)가 이것을 고정해요. 같은 입력을 Python 스칼라, 오프셋 5, stride 3, 뒤집기, 전치(strided gather 경로)로 넣어 비트가 모두 같은지, 1·3·10스레드에서 `sin`의 바이트가 같은지 확인해요. 스레드 검사에는 libm 경로인 `pow(x, 1.5)`도 함께 들어 있어요.
+테스트(`tests/array/test_vforce.py`, `tests/array/test_ufunc.py`)가 이것을 고정해요. 같은 입력을 Python 스칼라, 오프셋 5, stride 3, 뒤집기, 전치(strided gather 경로)로 넣어 비트가 모두 같은지, 1·3·10스레드에서 `sin`의 바이트가 같은지 확인해요. 스레드 검사에는 libm 경로인 `pow(x, 1.5)`도 함께 들어 있어요.
 
 `sd.special`도 같은 규칙을 따라요. 특수함수 커널 안의 `exp`/`log`를 1024원소 버퍼로 모아 vForce를 한꺼번에 부르고, 스칼라 입력도 `n = 1`로 같은 경로를 타요.
 
@@ -549,7 +746,7 @@ $$
 
 로 바꾸면, 두 값의 ULP 거리는 $\lvert \operatorname{ord}(b_1) - \operatorname{ord}(b_2) \rvert$예요. 테스트와 정확도 측정이 모두 이 거리(`bench/accuracy/common.py`의 `ulp_distance`)를 써요.
 
-계약은 Arb(구간 산술)로 만든 참값을 float64로 반올림한 값에서 함수마다 정한 ULP 안이에요(`exp` `acos` `atan` `atan2` 3, `sin` `atanh` 5, 나머지 4). 특수값(±0, ±inf, NaN)은 비트까지 정확해야 해요. numpy와의 거리는 기록만 해요. 이 Mac의 numpy float64 초월함수는 libm과 비트가 같으므로(`tanh`만 최대 1 ULP 차이) numpy와의 거리는 곧 libm과의 거리예요.
+vForce 함수와 `exp`의 계약은 Arb(구간 산술)로 만든 참값을 float64로 반올림한 값에서 함수마다 정한 ULP 안이에요(`exp` `acos` `atan` `atan2` 3, `sin` `atanh` 5, 나머지 4). `expm1` `log1p` `cos`는 참값 파일이 없어 테스트가 numpy(libm)와의 거리 8 ULP를 봐요. 특수값(±0, ±inf, NaN)은 비트까지 정확해야 해요. numpy와의 거리는 기록만 해요. 이 Mac의 numpy float64 초월함수는 libm과 비트가 같으므로(`tanh`만 최대 1 ULP 차이) numpy와의 거리는 곧 libm과의 거리예요.
 
 아래는 함수마다 약 2만 2천–2만 4천 개의 참값 점(`tests/array/ref/`; `test_vforce.py`와 같은 범위에 오차가 몰리는 곳을 더한 점)에서 잰 값이에요(`bench/array/accuracy.md`).
 
@@ -571,10 +768,10 @@ $$
 | `atanh` | 5 | 3 | 4 |
 | `atan2` | 3 | 1 | 1 |
 
-참값과의 거리는 `sin`과 `atanh`의 3 ULP가 가장 커요. 상대오차로는 $3 \cdot 2^{-52} \approx 6.7 \times 10^{-16}$ 이하예요. 계약의 한계는 잰 최대에 2를 더한 값이에요. numpy와는 `atanh`에서 4 ULP까지 떨어져요.
+`exp`는 자체 커널이고 나머지는 vForce예요. 참값과의 거리는 `sin`과 `atanh`의 3 ULP가 가장 커요. 상대오차로는 $3 \cdot 2^{-52} \approx 6.7 \times 10^{-16}$ 이하예요. 계약의 한계는 잰 최대에 2를 더한 값이에요. numpy와는 `atanh`에서 4 ULP까지 떨어져요.
 
-<Callout type="warn" title="numpy와 비트가 같다는 가정은 이 15개 함수에서 깨져요">
-  `sd.sin(x)`의 결과를 `np.sin(x)`와 `==`로 비교하면 많은 원소가 다를 수 있어요. 차이는 몇 ULP이고 결정적이지만, 비트 비교를 하는 코드라면 이 15개 함수에는 ULP나 상대오차 허용치를 써야 해요.
+<Callout type="warn" title="numpy와 비트가 같다는 가정은 이 18개 함수에서 깨져요">
+  `sd.sin(x)`의 결과를 `np.sin(x)`와 `==`로 비교하면 많은 원소가 다를 수 있어요. 차이는 몇 ULP이고 결정적이지만, 비트 비교를 하는 코드라면 vForce 14개와 자체 커널 4개에는 ULP나 상대오차 허용치를 써야 해요.
 </Callout>
 
 ## float64 `pow`: libm과 정확한 꼴
@@ -751,14 +948,14 @@ Apple M4 Pro, numpy 2.5.4에서 잰 값이에요. 따로 적지 않으면 원소
 - 메모리를 옮기는 일이 대부분인 연산은 1스레드에서 numpy와 같은 수준이에요. 원소 400만 개에서 `f + g`가 0.72ms(numpy 0.73ms), `sqrt(f)`가 0.95ms(numpy 0.92ms)예요. 메모리 대역폭이 시간을 정하므로, `maximum`의 NEON 커널이 줄인 계산량(분기 셋 대 명령 하나)은 캐시 안 크기에서 보여요(원소당 0.77ns 대 0.16ns).
 - 따로 짠 루프는 numpy보다 빨라요. `clip(f, lo, hi)`는 143µs(numpy 230µs), `where(b, f, g)`는 212µs(276µs), `where(b, f, 0.0)`는 156µs(262µs)예요.
 - `astype(f, int64)`: `FCVTZS` 벡터 명령 하나가 "0 방향 자르기, 범위 밖 포화, NaN은 0"이라는 규칙 전체예요. 같은 규칙을 분기 셋으로 적으면 벡터화되지 않아 464µs로 numpy(243µs)보다 느려요. `FCVTZS`로는 89µs예요.
-- 초월함수는 계산에 묶여서 스레드를 늘린 만큼 크게 빨라져요. 10스레드에서 `exp`는 121µs, `sin`은 94µs예요(numpy 1.49ms, 3.81ms).
+- 초월함수는 계산에 묶여서 스레드를 늘린 만큼 크게 빨라져요. 원소 100만 개의 `exp`, `cos`, `log1p`는 10스레드에서 1스레드의 여러 배예요. 자체 커널은 1스레드에서도 `vvexp`나 libm보다 빨라요.
 - `nextafter(f, g)`: vForce가 아니라 위에서 본 비트 연산 커널이에요. 1스레드에서 numpy보다 약 8배 빨라요.
 
 14스레드(E코어 포함)로 올리면 계산에 묶인 연산은 5–27% 더 빨라지지만(원소 400만 개에서 1스레드 대비 `sin`은 9.4배에서 10.9배로), 메모리에 묶인 연산은 3–12% 느려져요. 그래서 기본 스레드 수는 10이에요([스레드풀과 결정성](/internals/core/threads/)).
 
 ### 복잡도
 
-모든 원소별 커널은 원소 $n$개에 시간 $O(n)$이에요. 추가 메모리는 vForce의 strided 경로가 쓰는 스택 버퍼(입력 둘과 출력 하나, 각 8KB)와 버퍼 캐스팅의 스레드별 버퍼뿐이에요. 원소 하나의 비용이 상수가 아닌 함수는 정수 `pow`($O(\log e)$, $e$는 지수)와 complex `pow`의 반복 곱셈(지수 $\lvert n \rvert < 100$에서 곱 $O(\log \lvert n \rvert)$번)이에요.
+모든 원소별 커널은 원소 $n$개에 시간 $O(n)$이에요. 추가 메모리는 vForce와 자체 커널의 strided 경로가 쓰는 스택 버퍼(입력 둘과 출력 하나, 각 8KB)와 버퍼 캐스팅의 스레드별 버퍼뿐이에요. 원소 하나의 비용이 상수가 아닌 함수는 정수 `pow`($O(\log e)$, $e$는 지수)와 complex `pow`의 반복 곱셈(지수 $\lvert n \rvert < 100$에서 곱 $O(\log \lvert n \rvert)$번)이에요.
 
 ## 정확도
 
@@ -768,15 +965,16 @@ Apple M4 Pro, numpy 2.5.4에서 잰 값이에요. 따로 적지 않으면 원소
 | complex 곱셈·나눗셈·제곱·`pow`, complex 초월함수(`expm1` 제외) | 지금은 비트까지 같아요 (같은 식, 같은 FMA 자리, 같은 C99 함수) |
 | complex `abs` | 끝자리가 다를 수 있어요. Arb 참값에서 3 ULP (계약), 잰 최대 1 ULP |
 | complex `expm1` | 끝자리가 다를 수 있어요 (`sd::sincos`) |
-| float64 `expm1`, `log1p`, `cos`, `tan` | 지금은 비트까지 같아요 (libm) |
-| vForce 15개 | 끝자리가 다를 수 있어요(잰 거리 최대 4 ULP, `atanh`). Arb 참값에서 3–5 ULP (계약). 특수값은 비트까지 같아요 |
+| float64 `tan` | 지금은 비트까지 같아요 (libm) |
+| 자체 NEON 커널 `exp`, `expm1`, `log1p`, `cos` | 끝자리가 다를 수 있어요. Arb 참값에서 잰 최대 1 ULP. 특수값은 비트까지 같아요 |
+| vForce 14개 | 끝자리가 다를 수 있어요(잰 거리 최대 4 ULP, `atanh`). Arb 참값에서 3–5 ULP (계약). 특수값은 비트까지 같아요 |
 | float64 `pow` | 비트까지 같아요 (libm `pow`). 지수 2, −1, 0.5를 배열로 줄 때와 스칼라 지수 0.5의 $-0$, $-\infty$만 달라요(정확한 꼴) |
 | Array API 2024 함수 6개 | 비트까지 같아요 (`reciprocal`의 정수 입력은 float64 결과로 의도적으로 달라요) |
 
-어느 경우든 결과는 결정적이에요. 같은 입력이면 레이아웃(연속, 브로드캐스트, strided, 뒤집기)과 스레드 수와 무관하게 같은 비트가 나와요. 테스트는 이것을 세 갈래로 고정해요.
+어느 경우든 결과는 결정적이에요. 같은 입력이면 레이아웃(연속, 브로드캐스트, strided, 뒤집기)과 상관없이 같은 비트가 나오고, 지금은 스레드 수와도 상관없어요. 테스트는 이것을 세 갈래로 고정해요.
 
 - `assert_same`: shape, dtype, 비트까지 같음. NaN은 어떤 NaN과도 같다고 보지만 `-0.0`과 `+0.0`은 달라요.
-- `assert_ulp`: vForce 함수용. 위의 순서 보존 정수 변환으로 numpy와의 ULP 거리를 재고(허용치 8, 가벼운 확인), 특수값은 비트까지 같아야 해요. 정확도 계약은 Arb 참값과 견주는 `test_reference.py`가 확인해요.
+- `assert_ulp`: vForce 함수와 자체 초월함수 커널용. 위의 순서 보존 정수 변환으로 numpy와의 ULP 거리를 재고(허용치 8, 가벼운 확인), 특수값은 비트까지 같아야 해요. 정확도 계약은 Arb 참값과 견주는 `test_reference.py`가 확인해요.
 - 세 레이아웃: 원소별 연산의 dtype 쌍 테스트는 연속, 스칼라 브로드캐스트, strided를 모두 돌아요. 레이아웃마다 커널 경로(NEON, 인덱스 루프, strided 루프)가 갈리기 때문이에요.
 
 검증 방법 전체는 [정확도와 검증](/internals/array/accuracy/)에 있어요.

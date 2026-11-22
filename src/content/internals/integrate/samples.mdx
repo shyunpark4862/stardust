@@ -2,7 +2,7 @@
 title: 표본의 규칙
 group: 고정·표본 규칙
 order: 3
-summary: 이미 있는 표본으로 적분하는 다섯 규칙의 식을 설명해요. 사다리꼴, 점의 수가 짝수일 때 마지막 구간을 보정하는 Simpson, Richardson 외삽의 표로 차수를 올리는 Romberg, 구간마다 이차식을 적분해 이어 더하는 누적 Simpson을 다루고, 줄마다의 합이 축과 스레드에 상관없이 같은 까닭도 설명해요.
+summary: 이미 있는 표본으로 적분하는 다섯 규칙의 식을 설명해요. 사다리꼴, 점의 수가 짝수일 때 마지막 구간을 보정하는 Simpson, Richardson 외삽의 표로 차수를 올리는 Romberg, 구간마다 이차식을 적분해 이어 더하는 누적 Simpson을 다루고, 줄을 읽는 세 가지 길과 줄마다의 합이 지금 축과 스레드에 상관없이 같은 까닭도 설명해요.
 seeAlso: [overview, newton-cotes, gauss-legendre, accuracy-performance]
 ---
 
@@ -190,7 +190,111 @@ $y = x^2$($x = 0, \dots, 4$)의 누적은 $x^3/3$이에요. `cumulative_simpson`
 
 줄마다 항은 sd의 pairwise 합(`csrc/base/pairwise.hpp`: 누산기 16개, 512개 단위의 잎, `sd.sum`이 연속 축에서 하는 나무)으로 첨자 차례대로 더하고, 누적은 `cumulative_sum`의 스캔으로 이어 더해요([리덕션](/internals/array/reductions/)). 항을 만드는 일은 줄의 주소와 걸음으로 직접 읽어서, 축을 옮기거나 배열을 복사하지 않아요.
 
-그래서 줄의 값은 그 줄의 수에만 달려 있어요. 축이 어디에 있든, 배열이 C 순서이든 전치이든 띄엄띄엄한 뷰이든, 스레드가 몇 개이든 같은 비트예요.
+### 줄을 읽는 길
+
+읽는 길은 셋이에요. 어느 길이든 같은 항을 같은 나무로 더하므로 줄의 값은 같은 비트예요.
+
+- **바이트 걸음.** 일반적인 길이에요. 원소마다 줄의 주소에 걸음을 곱해 더한 자리에서 값을 꺼내요.
+- **형이 있는 포인터.** float64 줄이 연속이면(`trapezoid`의 x 없음·연속인 x, 홀수 점의 `simpson`, `fixed_quad`의 가중 합) `double*`로 읽어요. 그러면 pairwise 잎의 사슬 16개가 벡터로 읽혀요.
+
+```cpp
+                    // csrc/integrate/samples.cpp
+                    // contiguous float64: typed loads, so the pairwise leaf's chains load vectors
+                    // (the same terms in the same tree: the same bits)
+                    if (L.ys == static_cast<std::int64_t>(sizeof(double))) {
+                        const double* yp = reinterpret_cast<const double*>(p.y);
+                        if (!p.x)
+                            return lane_sum<T>(
+                                m, [yp, d](std::int64_t i) { return d * (yp[i + 1] + yp[i]) / 2.0; }, mt
+                            );
+                        if (L.xs == static_cast<std::int64_t>(sizeof(double))) {
+                            const double* xp = reinterpret_cast<const double*>(p.x);
+                            return lane_sum<T>(
+                                m, [yp, xp](std::int64_t i) { return (xp[i + 1] - xp[i]) * (yp[i + 1] + yp[i]) / 2.0; },
+                                mt
+                            );
+                        }
+```
+
+- **나란한 줄.** C 순서 행렬의 `axis=0`처럼 줄 여러 개가 메모리에서 나란하면(`trapezoid`, x 없음, `dx`가 수), 줄마다 걸음 하나씩 띄어 읽는 대신 이웃한 줄 64개를 한 덩어리로 묶어 행마다 연속으로 읽어요. 덩어리의 줄마다 `pairwise_sum`과 같은 잎(사슬 16개, 접기, 꼬리)과 같은 나눔으로 더해요.
+
+```cpp
+// csrc/integrate/samples.cpp
+// trapezoid on lanes that lie side by side in memory (the reduced axis outer, as axis=0 of a
+// C-ordered matrix): a block of `w` adjacent lanes is summed row by row, each lane through the
+// very same pairwise tree and leaf as pairwise_sum (base/pairwise.hpp: the 16 chains, their fold,
+// the tail, the splits), so every lane has the bits of the lane-at-a-time sum; the rows are read
+// contiguously across the block instead of one strided element per lane.
+struct SideBySide {
+    const std::byte* y;  // lane 0's first element
+    std::int64_t ys;     // bytes between rows (the reduced axis)
+    std::int64_t w;      // lanes in the block (adjacent doubles)
+    double d;
+
+    double term(std::int64_t i, std::int64_t l) const {
+        const double* r0 = reinterpret_cast<const double*>(y + i * ys);
+        const double* r1 = reinterpret_cast<const double*>(y + (i + 1) * ys);
+        return d * (r1[l] + r0[l]) / 2.0;
+    }
+    // out[l] = the pairwise leaf of terms [b, b + m), m <= kBlock
+    void leaf(std::int64_t b, std::int64_t m, double* out, double* r) const {
+        constexpr int K = pairwise::kLanes;
+        if (m < K) {
+            for (std::int64_t l = 0; l < w; ++l) out[l] = 0.;
+            for (std::int64_t i = 0; i < m; ++i) {
+                const double* r0 = reinterpret_cast<const double*>(y + (b + i) * ys);
+                const double* r1 = reinterpret_cast<const double*>(y + (b + i + 1) * ys);
+                for (std::int64_t l = 0; l < w; ++l) out[l] += d * (r1[l] + r0[l]) / 2.0;
+            }
+            return;
+        }
+        // r[j * w + l]: chain j of lane l
+        for (int j = 0; j < K; ++j) {
+            const double* r0 = reinterpret_cast<const double*>(y + (b + j) * ys);
+            const double* r1 = reinterpret_cast<const double*>(y + (b + j + 1) * ys);
+            double* rj = r + j * w;
+            for (std::int64_t l = 0; l < w; ++l) rj[l] = d * (r1[l] + r0[l]) / 2.0;
+        }
+        std::int64_t i = K;
+        for (; i + K <= m; i += K)
+            for (int j = 0; j < K; ++j) {
+                const double* r0 = reinterpret_cast<const double*>(y + (b + i + j) * ys);
+                const double* r1 = reinterpret_cast<const double*>(y + (b + i + j + 1) * ys);
+                double* rj = r + j * w;
+                for (std::int64_t l = 0; l < w; ++l) rj[l] += d * (r1[l] + r0[l]) / 2.0;
+            }
+        for (int st = 1; st < K; st *= 2)  // fold_lanes, lane by lane
+            for (int j = 0; j < K; j += 2 * st) {
+                double* a = r + j * w;
+                const double* c = r + (j + st) * w;
+                for (std::int64_t l = 0; l < w; ++l) a[l] += c[l];
+            }
+        for (std::int64_t l = 0; l < w; ++l) out[l] = r[l];
+        for (; i < m; ++i) {
+            const double* r0 = reinterpret_cast<const double*>(y + (b + i) * ys);
+            const double* r1 = reinterpret_cast<const double*>(y + (b + i + 1) * ys);
+            for (std::int64_t l = 0; l < w; ++l) out[l] += d * (r1[l] + r0[l]) / 2.0;
+        }
+    }
+    // pairwise::tree over terms [b, b + m), lane by lane; scratch: w * (16 + 2 * depth) doubles
+    void tree(std::int64_t b, std::int64_t m, double* out, double* scratch) const {
+        if (m <= pairwise::kBlock) {
+            leaf(b, m, out, scratch);
+            return;
+        }
+        const std::int64_t m2 = pairwise::split(m);
+        double* left = scratch;
+        double* right = scratch + w;
+        tree(b, m2, left, scratch + 2 * w);
+        tree(b + m2, m - m2, right, scratch + 2 * w);
+        for (std::int64_t l = 0; l < w; ++l) out[l] = left[l] + right[l];
+    }
+};
+```
+
+`leaf`의 `r[j * w + l]`이 줄 l의 사슬 j예요. 한 줄씩 더하는 `pairwise_sum`과 사슬, 접는 차례, 꼬리, 나무의 나눔이 모두 같아서, 덩어리로 읽어도 줄의 값은 한 줄씩 더한 것과 같은 비트예요.
+
+그래서 지금은 줄의 값이 그 줄의 수에만 달려 있어요. 축이 어디에 있든, 배열이 C 순서이든 전치이든 띄엄띄엄한 뷰이든, 스레드가 몇 개이든 같은 비트예요(약속은 아니에요. 약속은 같은 기계, 같은 스레드 수에서 실행마다 같은 비트예요).
 
 ```python
 >>> y = sd.asarray([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
@@ -198,7 +302,9 @@ $y = x^2$($x = 0, \dots, 4$)의 누적은 $x^3/3$이에요. `cumulative_simpson`
 ([2.5, 3.5, 4.5], [2.5, 3.5, 4.5])
 ```
 
-일(줄 수 × 줄의 길이)이 $2^{15}$ 이상이면 GIL을 놓아요. 줄이 둘 이상이면 줄을 스레드에 나누고, 줄이 하나이고 길면 같은 나무의 부분합을 스레드에 나눠요. 나무의 모양이 같으니 결과도 같아요. 복소수 y는 실수 계수를 실수부와 허수부에 따로 곱해요. numpy는 계수를 복소수로 올려 곱해서, 한쪽 부분이 inf나 NaN일 때만 결과가 달라요.
+### 스레드
+
+일(줄 수 × 줄의 길이)이 $2^{15}$ 이상이면 GIL을 놓아요. 줄이 둘 이상이면 줄을 스레드에 나누고(나란한 줄은 64줄 덩어리를), 줄이 하나이고 길면 같은 나무의 부분합을 스레드에 나눠요. 나무의 모양이 같으니 결과도 같아요. 풀에 나눌 때는 작업 하나의 대략 시간을 함께 넘겨서 긴 작업 몇 개가 처음부터 모든 일꾼을 깨우게 해요. 복소수 y는 실수 계수를 실수부와 허수부에 따로 곱해요. numpy는 계수를 복소수로 올려 곱해서, 한쪽 부분이 inf나 NaN일 때만 결과가 달라요.
 
 ## scipy와 같은 점, 다른 점
 

@@ -117,7 +117,7 @@ FlignerResult(statistic=9.86181, pvalue=0.00721996, df=2)
 ```python
 >>> g3 = [19.5, 20.2, 18.9, 20.8, 19.7, 20.4]
 >>> sd.htest.fligner(g1, g2, g3).pvalue, sd.htest.fligner(g1, g2, g3 + [26.0]).pvalue
-(0.6367931997675204, 0.6968069695876931)
+(0.6367931997675202, 0.6968069695876931)
 >>> sd.htest.bartlett(g1, g2, g3 + [26.0]).pvalue
 0.014973817889510674
 ```

@@ -106,8 +106,6 @@ $\bar F$는 위꼬리 확률(`ccdf`), $\bar F^{-1}$은 그 역함수(`iccdf`)예
         return self._cached("pvalues", lambda: 2.0 * self._dist().ccdf(_sd.abs(self.tvalues)))
 
     def conf_int(self, *, alpha=0.05):
-        """(..., k, 2): the lower and upper bounds of the 1 - alpha confidence intervals
-        (alpha keyword-only)."""
         alpha = _check_alpha(alpha, "conf_int")
         q = self._dist().iccdf(alpha / 2)
         if "beff_params_s" not in self._extra:
@@ -133,7 +131,7 @@ $\bar F$는 위꼬리 확률(`ccdf`), $\bar F^{-1}$은 그 역함수(`iccdf`)예
 >>> r.tvalues
 array([10.436628304539708,  225.9633201022047], dtype=float64)
 >>> r.pvalues
-array([  4.60833390194385e-09, 1.5550191275406217e-32], dtype=float64)
+array([4.6083339019438475e-09,  1.555019127540621e-32], dtype=float64)
 >>> T = sd.stats.StudentT(df=r.df_resid)
 >>> 2.0 * (1.0 - T.cdf(r.tvalues[1]))
 0.0
@@ -368,21 +366,25 @@ $$
 h_t = \lVert q_t \rVert_2^2, \qquad \sum_t h_t = \text{rank}
 $$
 
-예요. 결과의 `leverage`는 커널의 두 번째 방식(`hat_only`)을 불러요. 적합과 같은 열 선택, 같은 QR을 하고 `orgqr`로 얇은 Q를 만들어 행마다 제곱합을 내요.
+예요. 결과의 `leverage`는 커널의 두 번째 방식(`hat_only`)을 불러요. 적합과 같은 열 선택, 같은 분해를 하고 얇은 Q를 만들어 행마다 제곱합을 내요. Householder QR이면 `orgqr`로 Q를 만들고(`form_q`), 키가 크고 조건이 좋아 CholeskyQR2를 탄 설계는 분해가 이미 만든 Q를 그대로 써요([최소제곱 풀이](/internals/regression/least-squares/#키가-큰-설계-choleskyqr2)).
 
 ```cpp
-    auto hat_values = [&]() {
+    auto form_q = [&]() {
+        if (explicit_q) return;
         std::copy(A, A + m * kk, Q);
         linalg::lapack::orgqr(m, kk, kk, Q, m, tau, sc);
+    };
+    auto hat_values = [&]() {
+        form_q();
         std::fill(hat, hat + m, 0.0);
         for (lint jj = 0; jj < kk; ++jj)
             for (lint t = 0; t < m; ++t) hat[t] += Q[jj * m + t] * Q[jj * m + t];
     };
 ```
 
-Q는 반올림 수준에서 직교이므로 $h_t$와 $1 - h_t$의 절대오차가 $\kappa$와 상관없이 $u$ 정도예요. $R$로 $R^{-\mathsf T}x_t$를 풀어 $h_t = \lVert R^{-\mathsf T}x_t\rVert^2$로 구하면 $\kappa u$예요. 지렛대가 1에 가까운 행에서 $1 - h_t$가 분모로 쓰이므로(HC2·HC3, 스튜던트화 잔차, Cook) 이 차이가 중요해요. 다만 X의 열공간 자체가 반올림으로 $\kappa u$만큼 움직이므로, 조건이 나쁜 문제에서는 지렛대의 참값과의 오차도 대략 $\kappa u$를 따라요.
+Q는 반올림 수준에서 직교이므로(CholeskyQR2의 Q도 그 조건에서 그래요) $h_t$와 $1 - h_t$의 절대오차가 $\kappa$와 상관없이 $u$ 정도예요. $R$로 $R^{-\mathsf T}x_t$를 풀어 $h_t = \lVert R^{-\mathsf T}x_t\rVert^2$로 구하면 $\kappa u$예요. 지렛대가 1에 가까운 행에서 $1 - h_t$가 분모로 쓰이므로(HC2·HC3, 스튜던트화 잔차, Cook) 이 차이가 중요해요. 다만 X의 열공간 자체가 반올림으로 $\kappa u$만큼 움직이므로, 조건이 나쁜 문제에서는 지렛대의 참값과의 오차도 대략 $\kappa u$를 따라요.
 
-적합 때 Q를 늘 만들지 않는 이유는 비용이에요. `orgqr`는 QR 한 번 꼴이라, 진단을 읽지 않는 적합까지 그만큼 느려져요. 그래서 처음 읽을 때 따로 불러요.
+적합 때 Q를 늘 만들지 않는 이유는 비용이에요. `orgqr`는 QR 한 번 꼴이라, 진단을 읽지 않는 적합까지 그만큼 느려져요. 그래서 처음 읽을 때 같은 열로 분해를 한 번 더 해요.
 
 가중치가 0인 행의 지렛대는 0이에요. 가중 공식 $w_t x_t(X^{\mathsf T}WX)^{-1}x_t^{\mathsf T}$에서 $w_t = 0$이기 때문이에요(statsmodels와 같아요).
 
@@ -650,7 +652,5 @@ Arb(구간 산술)로 만든 참값과 같은 double 입력에서 비교한 값�
 
 ## 속도
 
-오차가 AR(1)인 자료에서 statsmodels 0.15.0(`use_t=True`)과 견주면(Apple M4 Pro, '배'는 statsmodels 시간 / sd 시간), (10⁵, 10)에서 HAC 1.2배(1스레드)·2.3배(10스레드), 군집(1,000개) 1.1배·2.0배, 적합과 진단 1.2배·2.3배, (10⁶, 50)에서 HAC 1.7배·3.1배, 군집 1.8배·2.9배, 적합과 진단 1.5배·2.4배 빨라요. 진단은 지렛대, 내적 스튜던트화 잔차, Cook 거리, Durbin–Watson, Jarque–Bera, Breusch–Pagan이에요.
-
-- HAC와 군집이 고전형 적합에 더하는 계산은 얇은 Q(`orgqr`, QR 한 번 꼴)와, HAC의 Bartlett 필터와 $U^{\mathsf T}V$예요.
-- 진단의 시간은 적합, 지렛대를 위한 QR과 `orgqr`, Breusch–Pagan의 보조 회귀(같은 크기의 적합 한 번)예요. 고전형 적합의 시간은 진단을 읽지 않으면 그대로예요.
+- HAC와 군집이 고전형 적합에 더하는 계산은 얇은 Q(Householder면 `orgqr`, QR 한 번 꼴; CholeskyQR2를 탄 설계는 이미 있어요)와, HAC의 Bartlett 필터와 $U^{\mathsf T}V$예요.
+- 진단의 시간은 적합, 지렛대를 위한 분해와 얇은 Q, Breusch–Pagan의 보조 회귀(같은 크기의 적합 한 번)예요. 고전형 적합의 시간은 진단을 읽지 않으면 그대로예요.
