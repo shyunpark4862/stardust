@@ -18,6 +18,7 @@ AREAS = (
     "sparse",
     "integrate",
     "differentiate",
+    "spatial",
 )
 
 

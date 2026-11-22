@@ -379,6 +379,7 @@ def sweeps(areas=None):
         "sparse": lambda: _module("sparse").sweeps(),
         "integrate": lambda: _module("integrate").sweeps(),
         "differentiate": lambda: _module("differentiate").sweeps(),
+        "spatial": lambda: _module("spatial").sweeps(),
     }
     out = []
     for a in check_areas(areas):

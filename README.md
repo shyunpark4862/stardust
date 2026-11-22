@@ -57,6 +57,7 @@ print([round(b, 12) for b in beta.tolist()])  # [1.0, 1.0]
 | 희소 | `sd.sparse` | 만드는 중: scipy.sparse의 희소 배열(`coo_array csr_array csc_array dok_array`; 지금은 형식과 변환, 연산·곱·리덕션, 인덱싱과 만들기 함수, 직접 풀이, 반복법, 고유값과 특이값)과 scipy.sparse.linalg의 희소 선형대수(직접 풀이, 반복법, 고유값·특이값, 행렬 함수, `LinearOperator`)를 하위 모듈 없이 `sd.sparse`에 | [docs/api/sparse.md](docs/api/sparse.md) |
 | 적분 | `sd.integrate` | 만드는 중: scipy.integrate의 적분(QUADPACK의 `quad`와 겹친 적분, 벡터 값·다차원 적응 구적, 배치 tanh-sinh와 급수, 고정 규칙, 표본의 구적 규칙). 지금은 결과 클래스만 | [docs/api/integrate.md](docs/api/integrate.md) |
 | 미분 | `sd.differentiate` | scipy.differentiate의 배치 수치 미분: `derivative`, `jacobian`, `hessian`(C2, 승인 대기) | [docs/api/differentiate.md](docs/api/differentiate.md) |
+| 공간 | `sd.spatial` | 준비 중(공개 이름은 SPT1부터): scipy.spatial의 거리(`pdist`, `cdist`, `squareform`, 거리 함수 열넷)와 `KDTree`, 전체 거리 행렬 없이 한 번에 끝나는 이웃 찾기(`kneighbors`, `radius_neighbors`). 같은 짝은 어디서든 같은 비트, 동점은 (거리, 색인) 순서, 결과는 스레드 수·계산 길과 무관 | [docs/api/spatial.md](docs/api/spatial.md) |
 
 - 모든 영역이 함께 쓰는 규칙(dtype 객체, 에러 종류와 메시지, 결과의 배열, 스레드와 결정성, 정답지와 같아야 하는 것, 받는 입력, 같은 이름의 다른 뜻)은 [API.md](API.md)에 있다.
 
@@ -66,7 +67,7 @@ print([round(b, 12) for b in beta.tolist()])  # [1.0, 1.0]
 | [API.md](API.md) | 공통 규칙과 영역별 API 문서의 색인 |
 | [DESIGN.md](DESIGN.md) | 통합의 결정과 일관성 규칙 |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | 층 구조, 디렉터리, 공통 부품 |
-| `docs/design/` | 영역의 설계: [배열](docs/design/array.md), [선형대수](docs/design/linalg.md), [데이터프레임](docs/design/frame.md), [특수함수](docs/design/special.md), [통계](docs/design/stats.md), [회귀](docs/design/regression.md), [난수](docs/design/random.md), [최적화](docs/design/optimize.md), [가설검정](docs/design/htest.md), [희소](docs/design/sparse.md), [수치 미적분](docs/design/integrate.md) |
+| `docs/design/` | 영역의 설계: [배열](docs/design/array.md), [선형대수](docs/design/linalg.md), [데이터프레임](docs/design/frame.md), [특수함수](docs/design/special.md), [통계](docs/design/stats.md), [회귀](docs/design/regression.md), [난수](docs/design/random.md), [최적화](docs/design/optimize.md), [가설검정](docs/design/htest.md), [희소](docs/design/sparse.md), [수치 미적분](docs/design/integrate.md), [공간](docs/design/spatial.md) |
 | [ROADMAP.md](ROADMAP.md) | 진행 순서 |
 | [tests/README.md](tests/README.md) | 테스트, 골든, 커버리지의 실행 |
 | [bench/README.md](bench/README.md) | 속도와 정확도 측정 |

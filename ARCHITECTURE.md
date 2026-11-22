@@ -4,15 +4,16 @@
 
 ## 1. 층 구조
 
-영역은 열둘이다: array, linalg, frame, special, stats, regression, random, optimize, htest, sparse, integrate, differentiate(`bench/areas.py`의 순서). Python 하위 모듈 하나와 `csrc/`의 디렉터리 하나가 영역 하나다.
+영역은 열셋이다: array, linalg, frame, special, stats, regression, random, optimize, htest, sparse, integrate, differentiate, spatial(`bench/areas.py`의 순서). Python 하위 모듈 하나와 `csrc/`의 디렉터리 하나가 영역 하나다.
 
 ```
  Python:  sd   sd.linalg   sd.frame   sd.special   sd.stats   sd.regression   sd.random   sd.optimize
-          sd.htest   sd.sparse   sd.integrate   sd.differentiate
+          sd.htest   sd.sparse   sd.integrate   sd.differentiate   sd.spatial
             │       │          │           │            │            │               │            │
  bind/ ─────┴───────┴──────────┴───────────┴────────────┴────────────┴───────────────┴────────────┴──  _core 확장 모듈 하나
                                                         │
                      htest/      ──▶ stats/, special/, random/, array/, parallel/
+                     spatial/    ──▶ array/, base/, parallel/, accelerate/(이웃 찾기의 GEMM 고르기)
                      sparse/     ──▶ linalg/, array/, base/, parallel/, accelerate/(Accelerate의 희소 LU와 BLAS)
                      regression/ ──▶ linalg/, special/, random/, htest/(Jarque–Bera의 중심 합), parallel/
                      optimize/   ──▶ linalg/, differentiate/(차분의 간격), elementwise/(원소별 반복 고리)
@@ -30,6 +31,7 @@
   - `linalg/`는 `array/`의 `NDArray`를 직접 받는다. buffer protocol을 거치지 않는다 (DESIGN §3.1). LAPACK 래퍼(`linalg/lapack.hpp`, `linalg/ops/common.hpp`)는 regression과 optimize도 쓴다.
   - `frame/`은 `array/`를 모른다. 둘을 잇는 코드는 `frame/interop.{hpp,cpp}` 한 곳에만 둔다 (DESIGN §4.3). `array/` 헤더를 include하는 frame 파일은 `interop.cpp` 하나다. 다른 frame 파일은 `interop.hpp`(Column과 nanobind만 쓰는 선언)를 통해 부른다 (docs/design/frame.md §5.4).
   - `stats/`는 special의 커널(불완전 감마·베타, 오차함수 등)과 random의 생성기를 쓴다. `regression/`은 linalg의 LAPACK 래퍼, special의 double-double·오차함수·감마·로지스틱 함수, random의 생성기, htest의 중심 합 커널(`htest/normality.hpp`: `jarque_bera()`), parallel의 스레드풀(`parallel/pool.hpp`)을 쓴다. Python 쪽에서 `regression.nls`는 optimize의 최소제곱(`csrc/optimize/lsq.cpp`)을 쓴다.
+  - `spatial/`은 짝 거리의 합을 자기 순서(타일 순서)로 하므로 linalg의 합에 기대지 않는다(docs/design/spatial.md §3.1). Python 층의 `stardust.spatial`은 `stardust.sparse`(반경 결과의 `tocsr()`)와 `stardust.linalg`(`mahalanobis`의 기본 `VI`)를 쓴다.
   - Python 층에서 `stardust.integrate`와 `stardust.differentiate`는 인자 검사 도우미(`_callable`, `_check_int`, `_real` 등)를 `stardust.optimize._common`에서, 원소별 무리의 입력(`_inputs`, `_args`, `_shaped`)을 `stardust.optimize._elementwise`에서 가져온다. C++의 반복 고리는 바닥 폴더 `csrc/elementwise/`에 있어 optimize를 거치지 않는다(docs/design/integrate.md C16, §6.3).
   - Python 경계의 공용 도우미 `bind/pyutil.hpp`(배열 받기와 만들기)와 `bind/errors.hpp`(에러 메시지에 공개 함수 이름 붙이기)는 모든 영역의 `ops/`가 쓴다. 영역마다의 바인딩 파일(`bind/<영역>_bind.cpp`)은 맨 위 층이다.
 - **새 영역은 디렉터리 하나와 Python 하위 모듈 하나로 붙는다.** 아래 층만 쓰고, 기존 영역을 고치지 않는다.
@@ -58,6 +60,7 @@ stardust/
                                 _interface, _interop, _result, _common
     integrate/                  _quadpack, _quad_vec, _cubature, _tanhsinh, _samples, _rules, _gauss, _result
     differentiate/              _derivative, _weights, _differences, _result
+    spatial/                    __init__.py (공개 이름은 SPT1부터; 계획한 모듈은 docs/design/spatial.md §6)
 
   csrc/
     base/         buffer(참조 카운트 메모리 블록), dtype(DType enum), pairwise(pairwise 합의 정의),
@@ -91,6 +94,7 @@ stardust/
     htest/        parametric rank correlation contingency proportion gof gof2 multicomp resampling와 헤더(정확한 분포, 점근 분포, MLE, 레인)
     sparse/       format canonical convert construct index binop arith spmv spgemm reduce dok triangular direct iterative
                   krylov arpack svds parallel
+    spatial/      pair_kernel(짝 거리의 두 합 순서의 시제품: SPT0의 측정; docs/design/spatial.md §3.1)
     elementwise/  loop(원소별 반복 고리: optimize의 배치 넷, 미분·적분의 원소별 무리; docs/design/integrate.md §6.2)
     bind/         module.cpp(_core와 하위 모듈), <영역>_bind.cpp, stats_{desc,matrix,mv,mvcdf,sample}.cpp,
                   nary_bind.hpp(원소별 함수의 공통 바인딩), pyutil, errors
@@ -117,7 +121,7 @@ stardust/
 
   tools/
     test.py  golden.py  coverage.py    테스트, 골든, 커버리지 (tests/README.md)
-    <영역>_ref.py                      Arb 참값 생성기 (special, stats, array, linalg, regression, optimize, htest, sparse, integrate, differentiate)
+    <영역>_ref.py                      Arb 참값 생성기 (special, stats, array, linalg, regression, optimize, htest, sparse, integrate, differentiate, spatial)
     arbref.py  regref.py  mvref.py  mvcdfref.py   생성기가 함께 쓰는 Arb 도우미와 식
     gen_*.py                           C++ 계수 표(csrc/*/coeffs, frame의 pow5_table)와 다른 라이브러리의 기록(R, scipy, Fortran)
     check.py  format.py  check_refs.py  procrun.py  vendor_boost_math.py
@@ -132,7 +136,7 @@ stardust/
 - **"얇은 Python, 두꺼운 C++"**: 계산은 C++에 있고, Python은 인자 정리, 결과 객체, 메시지를 맡는다.
   - 예외: `Series`, `DataFrame`, 분포 객체(`sd.stats`), 회귀·최적화의 결과 객체는 Python 클래스다.
 - **확장 모듈은 `_core` 하나다** (DESIGN §3.2).
-  - `nb::module_::def_submodule`로 영역마다 `_core.linalg`, `_core.frame`, `_core.special`, `_core.stats`, `_core.regression`, `_core.random`, `_core.optimize`, `_core.differentiate`, `_core.integrate`, `_core.htest`, `_core.sparse`를 만든다(`bind/module.cpp`가 차례로 부른다).
+  - `nb::module_::def_submodule`로 영역마다 `_core.linalg`, `_core.frame`, `_core.special`, `_core.stats`, `_core.regression`, `_core.random`, `_core.optimize`, `_core.differentiate`, `_core.integrate`, `_core.htest`, `_core.sparse`를 만든다(`bind/module.cpp`가 차례로 부른다). spatial의 `_core.spatial`은 공개 함수가 생기는 SPT1부터다.
   - nanobind 타입 테이블이 하나라서, C++ 어디서든 `is_ndarray`/`as_ndarray`(`bind/pyutil.hpp`)로 배열을 직접 받는다.
 - **linalg는 배열을 C++에서 직접 주고받는다.**
   - 입력은 `const NDArray&`이고, 결과는 linalg가 정한 strides로 `new_array_strided(dtype, shape, strides, nbytes)`가 `NDArray`를 직접 만든다. 레이아웃(행렬마다 열 우선, 배치 축은 바깥에 C-order, 길이 0인 축도 그대로 곱함)은 linalg의 정책이라 linalg에 두고, 메모리와 플래그만 배열이 맡는다.

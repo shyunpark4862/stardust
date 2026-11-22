@@ -20,6 +20,7 @@
 | 희소 | `sd.sparse` | [docs/api/sparse.md](docs/api/sparse.md) (초안: 공개된 것은 형식과 변환, 연산·곱·리덕션, 인덱싱과 만들기, 직접 풀이와 `LinearOperator`, 반복법, 고유값과 특이값, 행렬 함수와 노름이다(모든 공개 이름). 희소 배열 `coo_array csr_array csc_array dok_array`와 희소 선형대수 `spsolve splu cg gmres eigsh svds expm norm LinearOperator` 등; 설계 [docs/design/sparse.md](docs/design/sparse.md)) |
 | 적분 | `sd.integrate` | [docs/api/integrate.md](docs/api/integrate.md) (확정: 결과 클래스 `IntegrateResult`와 scipy.integrate의 적분 15개 `quad dblquad tplquad nquad quad_vec cubature tanhsinh nsum fixed_quad newton_cotes trapezoid simpson romb cumulative_trapezoid cumulative_simpson`가 공개되었다; 설계 [docs/design/integrate.md](docs/design/integrate.md)) |
 | 미분 | `sd.differentiate` | [docs/api/differentiate.md](docs/api/differentiate.md) (확정: `derivative jacobian hessian`과 결과 클래스 `DifferentiateResult`가 공개되었다; 설계는 적분과 함께 [docs/design/integrate.md](docs/design/integrate.md)) |
+| 공간 | `sd.spatial` | [docs/api/spatial.md](docs/api/spatial.md) (초안: 공개 이름은 SPT1부터. 거리 `pdist cdist squareform`과 거리 함수 열넷, 한 번에 끝나는 이웃 찾기 `kneighbors radius_neighbors`, `KDTree`; 설계 [docs/design/spatial.md](docs/design/spatial.md)) |
 
 - 설계의 근거와 측정은 `docs/design/<영역>.md`, 통합의 결정은 [DESIGN.md](DESIGN.md), 진행 상황은 [ROADMAP.md](ROADMAP.md)에 있다.
 

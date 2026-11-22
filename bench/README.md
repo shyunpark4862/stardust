@@ -10,7 +10,7 @@
 
 | 관례 | 뜻 |
 |---|---|
-| `AREA …` | 위치 인자. 영역 이름 `array linalg frame special stats regression random optimize htest sparse integrate differentiate`(`bench/areas.py`, README.md의 표 순서) 가운데 그 도구가 다루는 것. 주지 않으면 모두다. 정확도는 참값이 있는 열(array, linalg, special, stats, regression, optimize, htest, sparse, integrate, differentiate)을 다룬다(sparse의 스윕은 `spmv`, `sums`, `solve`, `iterative`, `eig`, `norms`, `matfuncs`의 일곱, integrate는 `samples`, `fixed_quad`, `quad`, `multiple`, `quad_weights`, `tanhsinh`, `nsum`, `quad_vec`, `cubature`, `newton_cotes`의 열, differentiate는 `derivative`, `jacobian`, `hessian`, `gradient`의 넷이다; 나머지는 `list`로 본다). |
+| `AREA …` | 위치 인자. 영역 이름 `array linalg frame special stats regression random optimize htest sparse integrate differentiate spatial`(`bench/areas.py`, README.md의 표 순서) 가운데 그 도구가 다루는 것. 주지 않으면 모두다. 정확도는 참값이 있는 열하나(array, linalg, special, stats, regression, optimize, htest, sparse, integrate, differentiate, spatial)를 다룬다(spatial은 공개 함수가 생기는 SPT1부터 스윕이 있다; sparse의 스윕은 `spmv`, `sums`, `solve`, `iterative`, `eig`, `norms`, `matfuncs`의 일곱, integrate는 `samples`, `fixed_quad`, `quad`, `multiple`, `quad_weights`, `tanhsinh`, `nsum`, `quad_vec`, `cubature`, `newton_cotes`의 열, differentiate는 `derivative`, `jacobian`, `hessian`, `gradient`의 넷이다; 나머지는 `list`로 본다). |
 | `--match PATTERN` | id가 맞는 것만 남긴다. `*`, `?`가 있으면 id 전체와 맞춰 보는 glob이고, 없으면 부분 문자열이다. `[`, `]`는 보통 글자라 표에서 복사한 id(`erf(x) [10^6]`)가 그대로 맞는다. 여러 번 주면 하나만 맞아도 된다. |
 | `--jobs N` | 작업 프로세스 수. 기본 8, 최대 10. |
 | `--out FILE` | 결과를 쓸 파일(폴더가 아니다). |
@@ -187,7 +187,7 @@ Case(area="stats", group="continuous", name="Normal.cdf", size="10^5", n=100_000
 .venv/bin/python -m bench.accuracy table                             # 기준선에서 표만 다시
 ```
 
-- 영역은 참값이 있는 열이다: array, linalg, special, stats(다변량·행렬 분포는 그 안의 묶음, 스윕 id `stats/mv/…`), regression, optimize, htest, sparse, integrate, differentiate. 기준선 파일도 영역마다 하나씩 열 개다(`bench/accuracy/results/<영역>.json`, §2.3). 스윕 id는 `영역/이름`이고 `--match`는 그 id에 맞춘다.
+- 영역은 참값이 있는 열하나다: array, linalg, special, stats(다변량·행렬 분포는 그 안의 묶음, 스윕 id `stats/mv/…`), regression, optimize, htest, sparse, integrate, differentiate, spatial(스윕은 SPT1부터). 기준선 파일은 스윕이 있는 영역마다 하나씩 열 개다(`bench/accuracy/results/<영역>.json`, §2.3). 스윕 id는 `영역/이름`이고 `--match`는 그 id에 맞춘다.
 - `--jobs`개(기본 8, 최대 10) 작업 프로세스가 스윕을 나눠 잰다. 워커는 sd 1스레드이고 몇 스윕마다 새로 띄운다. 결과는 프로세스 수와 무관하다.
 - `run --promote`는 재고 바로 기준선에 넣는다. `-q`는 터미널에 아무것도 쓰지 않는다(로그만).
 - 콘솔은 머리 블록, 스윕마다 sd와 비교 대상의 값을 말로 적은 몇 줄(터미널에서는 그 아래 진행 막대), 끝에 요약 블록·영역별 표·번호 붙은 Notes다. 같은 줄이 시각과 함께 `build/logs/accuracy/<시각>.log`에 남는다.
@@ -206,6 +206,7 @@ Case(area="stats", group="continuous", name="Normal.cdf", size="10^5", n=100_000
 | sparse | `tests/sparse/ref/<묶음>.npz`(다른 라이브러리의 기록은 `tests/sparse/data`; 스윕은 `spmv`, `sums`, `solve`, `iterative`, `eig`, `norms`, `matfuncs`의 일곱이고 기준선은 `bench/accuracy/results/sparse.json`, 표는 `bench/sparse/accuracy.md`) | `tools/sparse_ref.py` (기록은 `tools/gen_sparse_scipy.py`, `tools/gen_sparse_r.py`) |
 | integrate | `tests/integrate/ref/<묶음>.json`(다른 라이브러리의 기록은 `tests/integrate/data`: scipy와 QUADPACK Fortran 원본; 스윕은 `samples`, `fixed_quad`, `quad`, `multiple`, `quad_weights`, `tanhsinh`, `nsum`, `quad_vec`, `cubature`, `newton_cotes`의 열) | `tools/integrate_ref.py` (기록은 `tools/gen_integrate_scipy.py`, `tools/gen_integrate_fortran.py`) |
 | differentiate | `tests/differentiate/ref`(`derivatives.json`, `mgh.npz`; 기록은 `tests/differentiate/data`; 스윕 `derivative`·`jacobian`·`hessian`·`gradient`) | `tools/differentiate_ref.py` (기록은 `tools/gen_differentiate_scipy.py`) |
+| spatial | `tests/spatial/ref/<묶음>.npz`(`distances`, `counting`, `haversine`, `neighbors`; 다른 라이브러리의 기록은 `tests/spatial/data`: scipy, scikit-learn, R; 스윕은 SPT1부터) | `tools/spatial_ref.py` (기록은 `tools/spatial_probe.py`) |
 | array(vForce 15개·pow·복소 abs, 리덕션) | `tests/array/ref` | `tools/array_ref.py` |
 | linalg | `tests/linalg/ref`(행렬, 참값, 조건수) | `tools/linalg_ref.py` |
 | optimize | `tests/optimize/ref`(`scalar_roots.json`, `scalar_minima.json`, `derivatives.npz`), NIST StRD 인증값 | `tools/optimize_ref.py` |
@@ -213,7 +214,7 @@ Case(area="stats", group="continuous", name="Normal.cdf", size="10^5", n=100_000
 - 폴더의 뜻: `ref/`는 Arb나 정확한 산술로 만든 참값, `data/`는 바깥에서 가져온 입력과 다른 라이브러리의 기록(R의 회귀 결과 `tests/regression/data/*_r.json`, scipy·Fortran의 optimize 실행 등)이다. 참값 도구는 Arb(python-flint)나 정확한 산술만 쓴다(mpmath는 쓰지 않는다).
 - npz 참값 파일은 모두 한 형식이다(`tests/reffile.py`): 점의 입력, 묶음 번호와 묶음의 입력, 메서드마다의 참값(hi + lo)과 그 점, 보장 영역·배율 같은 필드, 출처(`arb`, `target_bits`, `tool`). JSON 참값도 `_provenance`에 같은 출처를 적는다.
 - 생성기는 참값이 정해진 정밀도(8192비트)와 반복 상한 안에서 정해지지 않는 점을 버리고, 요청한 점 수(`n_requested`)와 버린 점(`dropped`)을 파일에 적는다. 형식을 바꿔 옮긴 파일은 `n_requested = -1`이다(기록 없음).
-- 참값 폴더의 크기 한도는 영역마다 60MiB이고, 영역의 `tests/<영역>/ref`와 `ref_*` 폴더를 합한 크기다. `tools/check.py`가 잰다. 2026-11-22: stats 35.5, array 20.0, special 11.3, sparse 6.1, linalg 4.3, regression 1.0, integrate 0.5, htest 0.25, optimize 0.08, differentiate 0.06MiB.
+- 참값 폴더의 크기 한도는 영역마다 60MiB이고, 영역의 `tests/<영역>/ref`와 `ref_*` 폴더를 합한 크기다. `tools/check.py`가 잰다. 2026-11-22: stats 35.5, array 20.0, special 11.3, sparse 6.1, linalg 4.3, regression 1.0, spatial 4.6, integrate 0.5, htest 0.25, optimize 0.08, differentiate 0.06MiB.
 - 생성기는 위치 인자로 만들 함수·분포·묶음을 고르고(`--help`), `--jobs`(기본 8, 최대 10; regression 기본 6; optimize는 한 프로세스)를 받는다.
 
 **지표와 계약.**
