@@ -266,6 +266,18 @@ struct Zeta : Real {
     static constexpr std::array<const char*, 1> args{"x"};
     static constexpr double cost_ns = cost::kZeta;
     static double f(double x) {
+        // x > 1 not an even integer of the table: Boost (below), first and without the other tests
+        // (the rest kept out of line: 40% less time there)
+        // (and -1 <= x < 1 away from 0, which general also gives to Boost first)
+        if ((x > 1.0 && x < kInf && !(x <= kZetaEvenLast && 0.5 * x == std::floor(0.5 * x))) ||
+            (x >= -1.0 && x < 1.0 && std::fabs(x) >= 0x1p-30)) [[likely]] {
+            const double r = bst::zeta(x);
+            if (bst::normal(r)) [[likely]]
+                return r;
+        }
+        return general(x);
+    }
+    [[gnu::noinline]] static double general(double x) {
         if (std::isnan(x)) return x;
         if (x == 1.0) return kInf;
         if (x == kInf) return 1.0;

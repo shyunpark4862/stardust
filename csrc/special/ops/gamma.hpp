@@ -107,6 +107,44 @@ inline Scaled rgamma_dd(double hi, double lo) {
     return scaled(-(hi + lo) * s / kPi) * gamma_dd(y, -lo);
 }
 
+// B(a, b) for a, b > 0 by the Lanczos form of the three Gammas at once (gamma_core.hpp:
+// Gamma(z) = L(z) zgh^(z - 1/2) e^-zgh, zgh = z + g - 1/2): the exponentials meet as the
+// constant e^-(g - 1/2), and the powers as
+//     B = L(a) L(b) / L(c) e^-(g - 1/2) cgh^(-1/2) (agh / cgh)^(a - 1/2) (bgh / cgh)^(b - 1/2),
+// c = a + b. Every zgh is exact as hi + lo, and each base agh / cgh, bgh / cgh is its rounded
+// quotient times 1 + e, e from the exact remainder: the power takes e to first order ((a - 1/2) e;
+// a base rounded alone would carry (a - 1/2) eps into it, Boost's form). Two pows and three
+// Lanczos sums where the Gammas one by one take three pows and three exps (and their quotient
+// needs m 2^e from c = 170 on): 25 ns against 45 below c = 170 and 105 above. 0 or not finite
+// where a power or the result leaves the normal doubles (the callers' other forms then).
+// (a = ah + al, b = bh + bl: binom's arguments, sums that need not be doubles; their low parts
+// to first order, al log(agh / cgh) in the power and in the base's remainder)
+inline double beta_lanczos(double ah, double bh, double al = 0.0, double bl = 0.0) {
+    static const double kExpHalfG = std::exp(0.5 - lanczos::kG);
+    const TwoSum c = two_sum(ah, bh);
+    TwoSum ag = two_sum(ah, lanczos::kG - 0.5), bg = two_sum(bh, lanczos::kG - 0.5);
+    ag.err += al, bg.err += bl;
+    const TwoSum cg0 = two_sum(c.s, lanczos::kG - 0.5);
+    const double cg = cg0.s, cgl = cg0.err + c.err + (al + bl);  // c + g - 1/2 = cg + cgl
+    // (x.s + x.err) / (cg + cgl) = r (1 + e)
+    auto ratio = [&](const TwoSum& x, double& e) {
+        const double r = x.s / cg;
+        e = ((std::fma(-r, cg, x.s) + x.err) - r * cgl) / x.s;
+        return r;
+    };
+    double ea, eb;
+    const double ra = ratio(ag, ea), rb = ratio(bg, eb);
+    const double ta = ah - 0.5, tb = bh - 0.5;  // (exact from a = 1/4 up; below, a - 1/2 ~ -1/2 and its log tiny)
+    // (to first order while the correction is below 2^-26; beyond, a huge a, as its exponential)
+    double ce = (ta * ea + tb * eb) - 0.5 * (cgl / cg);
+    if (al != 0.0) ce += al * std::log(ra);
+    if (bl != 0.0) ce += bl * std::log(rb);
+    const double corr = std::fabs(ce) < 0x1p-26 ? 1.0 + ce : std::exp(ce);
+    const double pa = std::pow(ra, ta), pb = std::pow(rb, tb);
+    const double l = lanczos_sum(ah) * (lanczos_sum(bh) / lanczos_sum(c.s));
+    return ((l * kExpHalfG) / std::sqrt(cg)) * (pa * pb) * corr;
+}
+
 // Gamma(x) Gamma(y) / Gamma(x + y) as m 2^e, for x, y not non-positive
 // integers. x + y is kept as hi + lo (its rounding would cost (x + y)
 // log(x + y) / 2 ULP).
@@ -185,6 +223,20 @@ inline Scaled gamma_ratio(double a, double b) {
 // B(a, b) for a > 7000 >= b > 0: Gamma(b) Gamma(a) / Gamma(a + b).
 inline Scaled beta_large(double a, double b) { return gamma_ratio(a, b) * gamma_scaled(b); }
 
+// B(a, b) for a >= 2^20 max(1, b^2) and 0 < b < 171: Gamma(b) Gamma(a) / Gamma(a + b) with
+// DLMF 5.11.13 at z = a,
+//     Gamma(a) / Gamma(a + b) = a^-b (1 + G1 / a + G2 / a^2 + ...),
+//     G1 = -b (b - 1) / 2,  G2 = b (b + 1) (b - 1) (3b - 2) / 24,
+// where the next term is below (b^2 / a)^3 <= 2^-60 (against Arb at a = 1e6, b = 2.5: 5e-18).
+// One pow of exact arguments and one Gamma: the scaled quotient below took 95 ns an element for
+// this (most of beta's reference points with a + b > 170), this 25. The caller checks the range.
+inline double beta_far(double a, double b) {
+    const double g1 = -0.5 * b * (b - 1.0), g2 = b * (b + 1.0) * (b - 1.0) * (3.0 * b - 2.0) / 24.0;
+    const double ia = 1.0 / a, p = std::pow(a, -b);
+    if (!(p >= 0x1p-1022)) return kNaN;  // (a subnormal power has lost its digits)
+    return bst::tgamma(b) * p * std::fma(std::fma(g2, ia, g1), ia, 1.0);
+}
+
 }  // namespace gamma_detail
 
 // Gamma(x): candidate B (Cephes) for x > 0, chosen over A (Lanczos) by the
@@ -195,13 +247,27 @@ struct Gamma : Real {
     static constexpr int nin = 1, nout = 1;
     static constexpr std::array<const char*, 1> args{"x"};
     static constexpr double cost_ns = cost::kGamma;
+    // The Lanczos form in float64 (gamma_plain) for 2^-30 <= |x| <= 170: more accurate than
+    // Boost's tgamma (against Arb on (0, 170]: 10 against 11 ULP at most, 3-4 against 5-6 at the
+    // 99th percentile) and 30% faster; x < 0 by the reflection with -x exact. A result outside
+    // the normal range (the subnormal tail) goes on to the forms below. The positive x first, the
+    // rest out of line (a quarter less time there).
     static double f(double x) {
+        if (x >= 0x1p-30 && x <= 170.0) [[likely]]
+            return gamma_plain(x);
+        return general(x);
+    }
+    [[gnu::noinline]] static double general(double x) {
         using namespace gamma_detail;
         if (std::isnan(x)) return x;
         if (x == kInf) return x;
         if (x == 0.0) return std::copysign(kInf, x);
         if (x > 171.62437695630272) return kInf;
         if (std::fabs(x) < 0x1p-30) return 1.0 / x - kEuler;  // -5e-324: -inf, not inf / inf
+        if (x >= -170.0 && !is_nonpos_int(x)) {
+            const double r = (-kPi / (x * sinpi(x))) / gamma_plain(-x);
+            if (bst::normal(r)) return r;
+        }
         if (x > -170.0 && (x > 0.0 || !is_nonpos_int(x))) {  // Boost (special/boost.hpp): no subnormal tail
             const double r = bst::tgamma(x);
             if (bst::normal(r)) return r;
@@ -221,17 +287,23 @@ struct Rgamma : Real {
     static constexpr std::array<const char*, 1> args{"x"};
     static constexpr double cost_ns = cost::kRgamma;
     static double f(double x) {
+        if (x >= 0x1p-30 && x <= 170.0) [[likely]]
+            return 1.0 / gamma_plain(x);  // (as Gamma)
+        return general(x);
+    }
+    [[gnu::noinline]] static double general(double x) {
         using namespace gamma_detail;
         if (std::isnan(x)) return x;
         if (std::isinf(x)) return 0.0;
         if (x == 0.0) return x;  // keeps the sign
         if (std::fabs(x) < 0x1p-30) return x + kEuler * x * x;
         if (x > 0.0) {
+            if (x <= 170.0) return 1.0 / gamma_plain(x);  // (as Gamma)
             if (x <= 171.6) return 1.0 / gamma_cephes_pos(x);
             return x > 400.0 ? 0.0 : value(Scaled{1.0, 0} / gamma_scaled(x));
         }
         if (x == std::floor(x)) return 0.0;
-        if (x >= -170.0) return (-x * sinpi(x) / kPi) * gamma_cephes_pos(-x);
+        if (x >= -170.0) return (-x * sinpi(x) / kPi) * gamma_plain(-x);
         return value(rgamma_neg(x));
     }
 };
@@ -257,15 +329,21 @@ struct Digamma : Real {
     static constexpr std::array<const char*, 1> args{"x"};
     static constexpr double cost_ns = cost::kDigamma;
     static double f(double x) {
+        if (x > 0.0 && x < kInf)
+            [[likely]] {  // Boost (special/boost.hpp); x < 0 is ours (its reflection loses at the poles)
+            const double r = bst::digamma(x);
+            if (std::isfinite(r)) [[likely]]
+                return r;
+            return digamma_pos(x);
+        }
+        return negative(x);
+    }
+    // x <= 0, NaN, +-inf
+    [[gnu::noinline]] static double negative(double x) {
         if (std::isnan(x)) return x;
         if (x == kInf) return x;
         if (x == -kInf) return kNaN;
         if (x == 0.0) return std::copysign(kInf, -x);
-        if (x > 0.0) {  // Boost (special/boost.hpp); x < 0 is ours (its reflection loses at the poles)
-            const double r = bst::digamma(x);
-            if (std::isfinite(r)) return r;
-            return digamma_pos(x);
-        }
         if (x == std::floor(x)) return kNaN;
         if (x > -1.0) return digamma_pos(x + 1.0) - 1.0 / x;
         return digamma_pos(-x) - 1.0 / x - kPi * cospi(x) / sinpi(x);
@@ -380,15 +458,24 @@ struct Beta : Real {
             if (bst::normal(r)) return r;
         }
         if (std::fabs(a) < std::fabs(b)) std::swap(a, b);
+        if (b > 0.0 && b < 171.0 && a >= 0x1p20 * std::max(1.0, b * b) && a < kInf) {
+            const double r = gamma_detail::beta_far(a, b);
+            if (bst::normal(r)) return r;
+        }
+        if (b > 0.0 && a > 0.0 && a <= 0x1p40) {
+            const double r = beta_lanczos(a, b);
+            if (bst::normal(r)) return r;
+        }
         if (a == kInf)
             return b == kInf ? kNaN : (b > 0.0 ? 0.0 : (Gamma::f(b) > 0 ? kInf : -kInf));  // B(inf, inf): NaN (scipy)
         // Both subnormal: Gamma(a) and Gamma(a + b) overflow, and B = (a + b) / (a b) (1 + O(a + b))
         if (a > 0.0 && b > 0.0 && a < 0x1p-1022) return 1.0 / a + 1.0 / b;
         if (a > 0.0 && b > 0.0 && a + b <= 170.0) {
-            // no Gamma overflows: Cephes' Gamma three times, a + b kept as hi + lo
+            // no Gamma overflows: the Lanczos form in float64 three times (gamma_plain: as accurate
+            // as Cephes' and faster, no reduction loop), a + b kept as hi + lo
             // (Gamma(a)/Gamma(c) <= 1 for c > a, so the order cannot overflow)
             const TwoSum c = two_sum(a, b);
-            const double r = gamma_cephes_pos(a) / gamma_cephes_pos(c.s) * gamma_cephes_pos(b);
+            const double r = gamma_plain(a) / gamma_plain(c.s) * gamma_plain(b);
             return c.err == 0.0 ? r : r * (1.0 - digamma_pos(c.s) * c.err);
         }
         if (std::fabs(a) <= kScaledMax && std::fabs(b) <= kScaledMax) return value(beta_scaled(a, b));
@@ -546,6 +633,15 @@ struct Binom : Real {
             // log|Gamma| term by term and the signs
             const double sign = gamma_sign(n + 1.0) * gamma_sign(k + 1.0) * gamma_sign(d.s);
             return sign * std::exp(lgamma_abs(n + 1.0) - lgamma_abs(k + 1.0) - lgamma_abs(d.s));
+        }
+        if (k > 0.0 && k < n && n <= 0x1p40) {
+            // 1 / ((n + 1) B(k + 1, n - k + 1)), B by beta_lanczos with the arguments' low parts
+            // (n + 1 = n1, k + 1 = k1 and d = n - k + 1, each exact as hi + lo): 2x faster than the
+            // Gammas one by one (and 4x than the scaled quotient below)
+            const TwoSum n1 = two_sum(n, 1.0), k1 = two_sum(k, 1.0);
+            const double bb = beta_lanczos(k1.s, d.s, k1.err, dlo);
+            const double r = 1.0 / (n1.s * bb) * (1.0 - n1.err / n1.s);
+            if (bst::normal(bb) && bst::normal(r)) return r;
         }
         return value(gamma1p(n) / gamma1p(k) * rgamma_dd(d.s, dlo));
     }

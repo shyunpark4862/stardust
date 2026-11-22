@@ -38,7 +38,8 @@ namespace nc_detail {
 // The recurrence for G is stable only in the direction that adds T, so one walk
 // covers every term: from a far end J on the other side (direct values of w, G and
 // T there, the only ones), across the largest terms, to where the terms fade (see
-// mixture). w and T follow their ratios in double-double, so rounding cannot drift.
+// mixture). w and T follow their ratios in "double + error" arithmetic (lite::Lite, ~2^-100 a
+// step), so rounding cannot drift.
 // The Boost.Math versions (what scipy 1.18 calls) were measured first and lose the
 // far tails (zeros, up to 8.8e15 ULP): not used (docs/design/special.md §5.16).
 //
@@ -47,6 +48,11 @@ namespace nc_detail {
 // functions try that first, the wide tails (sd.stats' log forms and inverses) never do.
 
 inline constexpr double kTol = 0x1p-56;
+// The least beta shape (half a degrees of freedom) the bulk's sums (lite) and plain_walk take:
+// above 0. The half of the smallest df, 5e-324, is 0 (dfd: halvable_dfn moves only dfn), a
+// shape b = 0 that first_factor takes for the gamma family's mark (ncfdtr(5e-324, 5e-324, 1,
+// 0.25) was e^-1/2 with ncfdtrc 1, no longer their complements): mixture_walk alone, as before.
+inline constexpr double kMinShape = 0x1p-1074;
 
 // Every loop here ends within a fixed number of steps: a sum takes at most kMaxTerms terms
 // (its walk twice that), and one that has not ended by then gives NaN, never the part
@@ -195,8 +201,58 @@ inline dd::DD recip(dd::DD d) {
 }
 
 
+// "Double + error" arithmetic (Lite: h + l, l a few ULP of h, not renormalized; a product keeps
+// the exact fma remainder and the cross terms, dropping only l l, relative 2^-100): the walk
+// below and the sums of the bulk (lite::lower_sum, upper_sum) follow their ratios in it.
+namespace lite {
+
+struct Lite {
+    double h, l;
+};
+inline Lite mul(Lite a, Lite b) {
+    const double p = a.h * b.h;
+    return {p, std::fma(a.h, b.h, -p) + (a.h * b.l + a.l * b.h)};
+}
+// n / d: the quotient through one reciprocal (so not correctly rounded: no matter, its
+// remainder is taken exactly), then the remainder's share.
+inline Lite quot(Lite n, Lite d) {
+    const double inv = 1.0 / d.h, q = n.h * inv;
+    return {q, ((std::fma(-q, d.h, n.h) + n.l) - q * d.l) * inv};
+}
+inline Lite sum2(double a, double b) {  // a + b exactly
+    const double v = a + b, bb = v - a;
+    return {v, (a - (v - bb)) + (b - bb)};
+}
+inline void bump(Lite& s) {  // s += 1
+    const double v = s.h + 1.0, bb = v - s.h;
+    s.l += (s.h - (v - bb)) + (1.0 - bb);
+    s.h = v;
+}
+inline void add(Lite& s, Lite t) {  // s += t (two_sum of the high parts)
+    const double v = s.h + t.h, bb = v - s.h;
+    s.l += ((s.h - (v - bb)) + (t.h - bb)) + t.l;
+    s.h = v;
+}
+inline double value(Lite a) { return a.h + a.l; }
+
+// s += d for d = +-1 (two_sum of the high parts)
+inline void step(Lite& s, double d) {
+    const double v = s.h + d, bb = v - s.h;
+    s.l += (s.h - (v - bb)) + (d - bb);
+    s.h = v;
+}
+inline Lite of(dd::DD v) { return {v.hi, v.lo}; }
+// a c for an exact double c
+inline Lite mul_d(Lite a, double c) {
+    const double p = a.h * c;
+    return {p, std::fma(a.h, c, -p) + a.l * c};
+}
+
+}  // namespace lite
+
 // P(s, y) or Q(s, y) along s; T(s) = D(s, y).
 struct GammaFamily {
+    static constexpr bool kBeta = false;
     double y;
     bool upper;
     dd::DD inv_y = recip(dd::DD{y, 0.0});
@@ -209,7 +265,7 @@ struct GammaFamily {
         if (!upper) return d * ratio_series([&](int k) { return y / (s + k + 1.0); });  // P = D sum_k y^k / (s+1)_k
         // Q = D s / tail (igam_detail::log_tail's fraction): at most 1e5 terms (it converges in
         // about sqrt(y) + 40 for y > s, and a Q this small has y far above s); not converged: NaN
-        const CfResult tail = lentz_backward(
+        const CfResult tail = cf_fast(
             y + 1.0 - s,
             [&](int n) {
                 const double k = n;
@@ -261,10 +317,96 @@ struct GammaFamily {
     // >= Q(s-1) / Q(s): Gamma(s, y) <= y^(s-1) e^-y y / (y - s + 1) for s >= 1, y > s - 1
     // (t^(s-1) <= y^(s-1) e^((s-1)(t-y)/y)), so Q(s-1) / Q(s) = 1 - T(s-1) / Q(s) <= (s-1) / y.
     double gbound_down(dd::DD s) const { return s.hi >= 1.0 && y > s.hi - 1.0 ? std::min(1.0, (s.hi - 1.0) / y) : 1.0; }
+    // plain_walk's T ratios, from s (exact as hi + lo) in turn: up, T(s+1) / T(s) = y / (s + 1),
+    // then s + 1; down, T(s-1) / T(s) = s / y, then s - 1. The shape's low part enters each
+    // ratio to first order: s0 + j rounded is off by the same amount at every j of a binade,
+    // and that error would add up along the walk (100 ULP and more over a few hundred steps).
+    // For the same reason each ratio is rounded once from its exact value (a quotient through
+    // its remainder, a product by fma): a correction below half an ULP added after a rounding
+    // is lost every time, the same way (measured: d / mu as d (1/mu).hi + d (1/mu).lo drifted by
+    // -0.45 ULP a step).
+    //
+    // Each ratio is taken at s + k or s - k directly (k the step's count, the shape exact by
+    // two_sum), with no state carried from step to step: the walk computes a block of them ahead,
+    // independent of each other, so that a division's latency (~18 cycles here) is not on the
+    // terms' chain (measured: 3x the step's time when it was).
+    struct PlainSteps {
+        double ah, al;  // s + 1 (up) or s (down), exact as hi + lo
+        dd::DD iy;
+        double y;
+        // T(s'+1) / T(s') at s' = s + k: y / a, the quotient corrected by its exact remainder (and
+        // a's low part); with it the weights' ratio rw = mu / dj (+ mu_lo) the same way, one
+        // division for both
+        double up(double k, double mu, double mu_lo, double dj, double& rw) const {
+            const dd::DD a = dd::two_sum(ah, k);
+            const double alo = a.lo + al;
+            const double q = 1.0 / (a.hi * dj), qa = dj * q, qj = a.hi * q;
+            const double r = y * qa, e = std::fma(-r, a.hi, y) - r * alo;
+            const double v = mu * qj;
+            rw = v + (std::fma(-v, dj, mu) + mu_lo) * qj;
+            return r + e * qa;
+        }
+        // T(s'-1) / T(s') at s' = s - k: a / y, one rounding of the exact product and the low parts
+        double down(double k) const {
+            const dd::DD a = dd::two_sum(ah, -k);
+            const double alo = a.lo + al;
+            return std::fma(a.hi, iy.hi, a.hi * iy.lo + alo * iy.hi);
+        }
+    };
+    PlainSteps plain_steps(dd::DD s, bool up) const {
+        const dd::DD a = dd::two_sum(s.hi, up ? 1.0 : 0.0);
+        return {a.hi, a.lo + s.lo, inv_y, y};
+    }
+    // The walk's way out (mixture_walk): mu / q times gbound at shape s (q = j + 1 + h), and
+    // wr times gbound_down, each with a relative margin of 2^-40 over its rounding, in one
+    // division at most.
+    double out_up(double mu, double q, double s) const {
+        const double d = s + 1.0;
+        return (y < d ? (mu * y) / (q * d) : mu / q) * (1.0 + 0x1p-40);
+    }
+    double out_down(double wr, double s) const {
+        return s >= 1.0 && y > s - 1.0 ? wr * std::min(1.0, (s - 1.0) * inv_y.hi * (1.0 + 0x1p-40)) : wr;
+    }
+    // out_up and out_down from the walk's own ratios (plain_walk): rw times gbound (rt, T's
+    // ratio up, is that bound: out_up_simple), or rw times gbound_down, with the same margin
+    static constexpr bool out_up_simple() { return true; }
+    static constexpr bool plain_shapes_ok() { return true; }
+    // plain_walk's density sum_j w_j T(s_j) s_j times this is mixture_walk's (T(s - 1) = T(s) s / y)
+    double dens_factor() const { return inv_y.hi; }
+    double out_down_r(double rw, double s) const {
+        return (s >= 1.0 && y > s - 1.0 ? rw * std::min(1.0, (s - 1.0) * inv_y.hi) : rw) * (1.0 + 0x1p-40);
+    }
+    // The walk's T ratios in turn from shape s: lower, T(s) / T(s+1) for s, s - 1, ... (times
+    // 2^e, constant: y below 2^-900 scaled into [1, 2)); upper, T(s+1) / T(s) for s, s + 1, ...
+    struct Steps {
+        lite::Lite n, c;  // s + 1; 1/y (lower) or y
+        bool lower;
+        lite::Lite next() {
+            if (lower) {
+                const lite::Lite r = lite::mul(n, c);
+                lite::step(n, -1.0);
+                return r;
+            }
+            const lite::Lite r = lite::quot(c, n);
+            lite::step(n, 1.0);
+            return r;
+        }
+    };
+    Steps steps(bool lower, dd::DD s, int& e) const {
+        lite::Lite n = lite::sum2(s.hi, 1.0);
+        n.l += s.lo;
+        e = 0;
+        if (!lower) return {n, {y, 0.0}, false};
+        if (!(y < 0x1p-900)) return {n, lite::of(inv_y), true};
+        const int ey = std::ilogb(y);
+        e = -ey;
+        return {n, lite::of(recip(dd::DD{std::ldexp(y, -ey), 0.0})), true};
+    }
 };
 
 // I_x(s, b) or 1 - I_x(s, b) along s; T(s) = x^s y^b / (s B(s, b)).
 struct BetaFamily {
+    static constexpr bool kBeta = true;
     double b;
     dd::DD x, y;  // y = 1 - x
     bool upper;
@@ -304,6 +446,81 @@ struct BetaFamily {
         return std::min(1.0, r);
     }
     double gbound_down(dd::DD) const { return 1.0; }  // >= (1 - I(s-1)) / (1 - I(s))
+    // as GammaFamily's: for b < 1 the factor e^u, u = (1 - b) / (s + b), by 1 / (1 - u) >= e^u
+    // where u <= 1/2
+    double out_up(double mu, double q, double s) const {
+        double num = x.hi * (s + b), den = s + 1.0;
+        if (b < 1.0) {
+            const double v = s + (2.0 * b - 1.0);  // (s + b) (1 - u)
+            if (!(v >= 0.5 * (s + b))) return mu / q * gbound(dd::DD{s, 0.0}) * (1.0 + 0x1p-40);
+            num *= s + b, den *= v;
+        }
+        return (num < den ? (mu * num) / (q * den) : mu / q) * (1.0 + 0x1p-40);
+    }
+    double out_down(double wr, double) const { return wr; }
+    // (plain_walk, as GammaFamily's; b < 1 takes out_up's own factor)
+    bool out_up_simple() const { return b >= 1.0; }
+    bool plain_shapes_ok() const { return b >= kMinShape; }
+    static constexpr double dens_factor() { return 1.0; }
+    double out_down_r(double rw, double) const { return rw * (1.0 + 0x1p-40); }
+    // as GammaFamily's: up, T(s+1) / T(s) = x (s + b) / (s + 1); down, T(s-1) / T(s) =
+    // s / (x (s - 1 + b)): c n / d either way, n and d exact as hi + lo at the step. The quotient
+    // of the exact product c n.hi through its remainder, the low parts (c's, n's, d's) to first
+    // order. (Not as c + c (b - 1) / d: down, that cancels by b / s.)
+    struct PlainSteps {
+        double nh, nl, dh, dl;  // up: s + b, s + 1; down: s, s - 1 + b
+        double c, crel;  // x (up) or 1/x (down), and its low part's share
+        // c n / d at the shifted counters, for q ~ 1 / d.hi
+        double ratio(const dd::DD& n, double nlo, const dd::DD& d, double dlo, double q) const {
+            const double p = c * n.hi, pl = std::fma(c, n.hi, -p) + (c * nlo + p * crel);
+            const double r = p * q;
+            return r + ((std::fma(-r, d.hi, p) + pl) - r * dlo) * q;
+        }
+        double up(double i, double mu, double mu_lo, double dj, double& rw) const {  // (rw as GammaFamily's)
+            const dd::DD n = dd::two_sum(nh, i), d = dd::two_sum(dh, i);
+            const double q = 1.0 / (d.hi * dj), qd = dj * q, qj = d.hi * q;
+            const double v = mu * qj;
+            rw = v + (std::fma(-v, dj, mu) + mu_lo) * qj;
+            return ratio(n, n.lo + nl, d, d.lo + dl, qd);
+        }
+        double down(double i) const {
+            const dd::DD n = dd::two_sum(nh, -i), d = dd::two_sum(dh, -i);
+            return ratio(n, n.lo + nl, d, d.lo + dl, 1.0 / d.hi);
+        }
+    };
+    PlainSteps plain_steps(dd::DD s, bool up) const {
+        // s - 1 + b: b - 1 exactly first (two_sum), then the shape
+        const dd::DD bm1 = dd::two_sum(b, -1.0);
+        const dd::DD n = dd::two_sum(s.hi, up ? b : 0.0);
+        const dd::DD d = up ? dd::two_sum(s.hi, 1.0) : dd::two_sum(s.hi, bm1.hi);
+        const double nlo = n.lo + s.lo, dlo = d.lo + s.lo + (up ? 0.0 : bm1.lo);
+        if (up) return {n.hi, nlo, d.hi, dlo, x.hi, x.lo / x.hi};
+        return {n.hi, nlo, d.hi, dlo, inv_x.hi, inv_x.lo / inv_x.hi};
+    }
+    // as GammaFamily's: lower, T(s) / T(s+1) = (s + 1) / (x (s + b)); upper, x (s + b) / (s + 1)
+    struct Steps {
+        lite::Lite n, d, c;  // s + 1, s + b; 1/x (lower) or x
+        bool lower;
+        lite::Lite next() {
+            if (lower) {
+                // (d = s + b falls to s0 + b, which may be far below the 1s the steps took off it:
+                // its high part then is 0 or rounding and the value in the low part, hence the
+                // renormalization; ncfdtr(1e-100, 1e-100, 3000, 0.25) was NaN)
+                const lite::Lite r = lite::quot(lite::mul(n, c), lite::sum2(d.h, d.l));
+                lite::step(n, -1.0), lite::step(d, -1.0);
+                return r;
+            }
+            const lite::Lite r = lite::quot(lite::mul(c, d), n);
+            lite::step(n, 1.0), lite::step(d, 1.0);
+            return r;
+        }
+    };
+    Steps steps(bool lower, dd::DD s, int& e) const {
+        lite::Lite n = lite::sum2(s.hi, 1.0), d = lite::sum2(s.hi, b);
+        n.l += s.lo, d.l += s.lo;
+        e = 0;
+        return {n, d, lower ? lite::of(inv_x) : lite::of(x), lower};
+    }
     // log of a bound on G(s): I_x(s, b) <= T(s) / (1 - r) for the ratio bound r < 1 (gbound's),
     // 1 - I_x(s, b) = I_y(b, s) likewise with the roles turned; else 1
     bool deep(double) const { return x.hi < 0x1p-20 || y.hi < 0x1p-20; }
@@ -350,8 +567,11 @@ using dd::Sum;  // the compensated sum (special/dd.hpp)
 // to J takes at most kMaxTerms steps and the walk back, over it and as far beyond j*, at
 // most twice that. A sum that needs more (the weights alone span 18 sqrt(mu) terms: mu
 // beyond 2e8 or so) is NaN.
+//
+// walk_jstar finds j* (and the early ends: false, with the sum's value in `early`); mixture_walk
+// and plain_walk below share it.
 template <class Fam>
-Scaled mixture_walk(double mu, double h, double s0, const Fam& f, double mu_lo, bool wide) {
+bool walk_jstar(double mu, double h, double s0, const Fam& f, bool wide, double& jstar, Scaled& early) {
     const bool lower = !f.upper;
     auto shape = [&](double j) { return dd::two_sum(s0, j); };  // s0 + j exactly
     auto term_ratio = [&](double j) {  // (term j+1) / (term j), with G's ratio taken as T's (deep tails)
@@ -360,11 +580,12 @@ Scaled mixture_walk(double mu, double h, double s0, const Fam& f, double mu_lo, 
     // j*: the weights' mode, moved to where term_ratio crosses 1 if that is further
     // into the tail (below the mode for a lower family, above it for an upper one).
     const double jmode = std::max(0.0, std::floor(mu - h));
-    if (!(jmode < 0x1p52)) return kNotSummed;
+    early = kNotSummed;
+    if (!(jmode < 0x1p52)) return false;
     // The crossing matters only on the tail side of the mode: below it for a lower family
     // (term_ratio(jmode) <= 1), above it for an upper one (> 1). Else j* is the mode itself
     // (one ratio instead of a bisection: most inputs).
-    double jstar = jmode;
+    jstar = jmode;
     const bool past = term_ratio(jmode) <= 1.0;
     if (lower ? (past && jmode > 0.0) : !past) {
         double lo = lower ? 0.0 : jmode, hi = lower ? jmode : std::ceil(std::max(4.0 * mu, jmode + 64.0));  // integers
@@ -376,7 +597,10 @@ Scaled mixture_walk(double mu, double h, double s0, const Fam& f, double mu_lo, 
             // smaller; the terms after it are below their weights, whose sum from hi on is
             // below e^(-hi (log 4 - 1)). So the sum is under e^(-1e15): 0 as a probability.
             // Its own value: not summed.
-            if (term_ratio(hi) > 1.0) return wide ? kNotSummed : scaled(0.0);
+            if (term_ratio(hi) > 1.0) {
+                if (!wide) early = scaled(0.0);
+                return false;
+            }
         }
         if (lower && term_ratio(0.0) <= 1.0) hi = 0.0;
         while (hi - lo > 1.0) {  // (integers below 2^53: the gap halves, at most 53 times)
@@ -393,26 +617,41 @@ Scaled mixture_walk(double mu, double h, double s0, const Fam& f, double mu_lo, 
     // Only where it can happen: j* off the mode, or an argument 2^20 away from the shape.
     if ((jstar != jmode || f.deep(jstar + s0)) &&
         (a > 0.0 ? a * std::log(mu) - mu - std::lgamma(a + 1.0) : -mu) + f.log_gbound(jstar + s0) < -2000.0) {
-        if (!wide) return scaled(0.0);
-        if (jstar > 1e8) return {kNaN, 0};  // a walk of 1e8 terms (a tail at x ~ 1e100): not taken
+        if (!wide) {
+            early = scaled(0.0);
+            return false;
+        }
+        if (jstar > 1e8) return false;  // a walk of 1e8 terms (a tail at x ~ 1e100): not taken
     }
+    return true;
+}
+
+template <class Fam>
+Scaled mixture_walk(double mu, double h, double s0, const Fam& f, double mu_lo, bool wide, Scaled* dens = nullptr) {
+    const bool lower = !f.upper;
+    if (dens) *dens = {kNaN, 0};  // (the early ends below: no density)
+    auto shape = [&](double j) { return dd::two_sum(s0, j); };  // s0 + j exactly
+    double jstar;
+    Scaled early;
+    if (!walk_jstar(mu, h, s0, f, wide, jstar, early)) return early;
 
     // J: past j* on the unstable side (up for a lower family, down for an upper one)
     // until the bound times the bounded tail beyond, prod / (1 - r), is below kTol.
     // (At most kMaxTerms steps: the walk back would take as many.)
     double J = jstar, prod = 1.0;
     bool far = false;
+    const double inv_mu_out = (1.0 / mu) * (1.0 + 0x1p-40);
     for (int n = 0; n < kMaxTerms; ++n) {
         double r;
         if (lower) {
-            r = mu / (J + 1.0 + h) * f.gbound(shape(J));
+            r = f.out_up(mu, J + 1.0 + h, s0 + J);
             J += 1.0;
         } else {
             if (J == 0.0) {
                 far = true;
                 break;
             }
-            r = (J - 1.0 + h + 1.0) / mu * f.gbound_down(shape(J));  // w_(J-1) / w_J = (J + h) / mu
+            r = f.out_down((J + h) * inv_mu_out, s0 + J);  // w_(J-1) / w_J = (J + h) / mu
             J -= 1.0;
         }
         prod *= r;
@@ -439,8 +678,8 @@ Scaled mixture_walk(double mu, double h, double s0, const Fam& f, double mu_lo, 
     auto frame = [](Scaled v, std::int64_t k) {
         return std::ldexp(v.m, static_cast<int>(std::clamp<std::int64_t>(v.e + k, -2200, 2200)));
     };
-    // w and T follow their ratios in double-double (exact to ~2^-100 a step: no drift
-    // over the hundreds of steps from J, and nothing to recompute); G and the sum are
+    // w and T follow their ratios in "double + error" arithmetic (lite::Lite: exact to ~2^-100 a
+    // step, no drift over the hundreds of steps from J, and nothing to recompute); G and the sum are
     // compensated sums of doubles. w is stored times 2^kw, G and T times 2^kg, the terms,
     // their sum and the last term times 2^(kw + kg). Whichever of w and G leaves
     // [2^-500, 2^500] is brought back to about 1 by its own exponent, and the sum and the
@@ -448,7 +687,7 @@ Scaled mixture_walk(double mu, double h, double s0, const Fam& f, double mu_lo, 
     // (s + 1) / y can be 2^1000 and more (mu or y near the smallest doubles), and moved in
     // two parts they would overflow between the parts.
     std::int64_t kw = -wJ.e, kg = k0 - kw;
-    dd::DD w{frame(wJ, kw), 0.0}, t{frame(tJ, kg), 0.0};
+    lite::Lite w{frame(wJ, kw), 0.0}, t{frame(tJ, kg), 0.0};
     // mu as mm 2^em with mm in [1, 2) where 1 / mu, or w times it, could leave the doubles
     int em = 0;
     dd::DD mud{mu, mu_lo};
@@ -456,30 +695,46 @@ Scaled mixture_walk(double mu, double h, double s0, const Fam& f, double mu_lo, 
         em = std::ilogb(mu);
         mud = dd::ldexp(mud, -em);
     }
-    const dd::DD inv_mu = recip(mud);
+    const lite::Lite inv_mu = lite::of(recip(mud)), mul_mu = lite::of(mud);
     const int wstep = lower ? em : -em;  // w's exponent moves by this each step (0 unless mu is scaled)
+    // T's steps as rt 2^er: (s+1)/y passes the double range at y ~ 1e-308
+    int er = 0;
+    auto tsteps = f.steps(lower, shape(lower ? J - 2.0 : J), er);
     Sum g;
     g.add(frame(gJ, kg));
     Sum S;
-    double prev = w.hi * g.total(), j = J;
+    double prev = w.h * g.total(), j = J;
     S.add(prev);
+    // The density (dens): sum_j w_j G'(s0 + j), up to the family's sign and factor (the
+    // argument's derivative, plain double: the inverses' Newton steps): T(s - 1) = T(s) s / y
+    // for the gamma family, T(s) s for the beta one (s = s0 + j). The far end's own term from
+    // T at J - 1 (lower) or J (upper), the one at hand.
+    const bool want = dens != nullptr;
+    double D = 0.0;
+    if (want) {
+        const double sJ = s0 + J;
+        if constexpr (Fam::kBeta) D = w.h * t.h * (lower ? f.ratio(shape(J - 1.0)) * sJ : sJ);
+        else D = w.h * t.h * (lower ? 1.0 : sJ * f.inv_y.hi);
+    }
     const double dir = lower ? -1.0 : 1.0;
-    auto shift = [](dd::DD v, int e) { return dd::DD{std::ldexp(v.hi, e), std::ldexp(v.lo, e)}; };
+    auto shift = [](lite::Lite v, int e) { return lite::Lite{std::ldexp(v.h, e), std::ldexp(v.l, e)}; };
     bool ended = false;  // by the terms (their fading or j = 0), not by the count
     for (int n = 0; n < 2 * kMaxTerms; ++n) {  // (back over the way out, and as far beyond j*)
         if (lower && j == 0.0) {
             ended = true;
             break;
         }
-        const double jn = j + dir;
-        g.add(t);
-        w = lower ? w * (j + h) * inv_mu : w * mud * recip(dd::DD{j + 1.0 + h, 0.0});
-        j = jn;
+        // w's ratio: (j + h) / mu down, mu / (j + 1 + h) up
+        const lite::Lite rw = lower ? lite::mul_d(inv_mu, j + h) : lite::quot(mul_mu, lite::Lite{j + 1.0 + h, 0.0});
+        const lite::Lite rt = tsteps.next();
+        g.add(t.h, t.l);
+        w = lite::mul(w, rw);
+        j += dir;
         double gv = g.total();
         int moved = wstep;  // the terms' frame kw + kg against the last step's
         kw += wstep;
-        if (!(std::fabs(w.hi) <= 0x1p500 && std::fabs(w.hi) >= 0x1p-500) && w.hi != 0.0) {  // w back near 1
-            const int e = std::ilogb(w.hi);
+        if (!(std::fabs(w.h) <= 0x1p500 && std::fabs(w.h) >= 0x1p-500) && w.h != 0.0) {  // w back near 1
+            const int e = std::ilogb(w.h);
             kw -= e, moved -= e;
             w = shift(w, -e);
         }
@@ -501,16 +756,20 @@ Scaled mixture_walk(double mu, double h, double s0, const Fam& f, double mu_lo, 
             }
             prev = std::ldexp(prev, moved);
             S.scale(moved);
+            D = std::ldexp(D, moved);
         }
-        const double term = w.hi * gv + w.lo * gv;
+        const double term = (w.h + w.l) * gv;
         S.add(term);
-        int er = 0;  // T's step as rt 2^er: (s+1)/y passes the double range at y ~ 1e-308
-        const dd::DD rt = lower ? f.down_dd_e(shape(j - 1.0), er) : f.up_dd(shape(j - 1.0));
-        t = t * rt;
+        // (the T at s0 + j for the beta family's density is t before the step down, after the
+        // step up; the gamma family's T(s - 1) the other way round)
+        if (want && Fam::kBeta == lower) D += w.h * t.h * (Fam::kBeta ? s0 + j : 1.0);
+        t = lite::mul(t, rt);
+        if (want && Fam::kBeta != lower) D += w.h * t.h * (Fam::kBeta ? s0 + j : 1.0);
         // past j* and fading: the terms beyond fall at least geometrically (log-concave);
         // or past j* with the terms at 0 (all of them below the frame's range)
         if ((lower ? j < jstar : j > jstar) &&
-            ((term < prev && term <= kTol * S.total() * (1.0 - term / prev)) || (term == 0.0 && prev == 0.0))) {
+            ((term < prev && term <= kTol * S.hi && term <= kTol * S.total() * (1.0 - term / prev)) ||
+             (term == 0.0 && prev == 0.0))) {
             ended = true;
             break;
         }
@@ -519,20 +778,228 @@ Scaled mixture_walk(double mu, double h, double s0, const Fam& f, double mu_lo, 
             kg -= er;
             prev = std::ldexp(prev, -er);
             g.scale(-er), S.scale(-er);
+            D = std::ldexp(D, -er);
         }
     }
     if (!ended) return kNotSummed;
     Scaled r = scaled(S.total());
     r.e -= kw + kg;
+    if (want) {
+        *dens = scaled(D);
+        dens->e -= kw + kg;
+    }
     return r;
 }
+// ---- the walk in plain double (the probabilities)
+//
+// mixture_walk's sum reordered so that no recurrence runs far before it reaches the largest
+// terms: w and T start from their direct values at j* (the largest term) and follow their
+// ratios outward from there, both ways (a product of ratios in either direction: each step's
+// rounding stays a relative ULP of the term, about sqrt(n) ULP n steps out, where the terms
+// have faded). G's recurrence is stable only toward j* (it adds T there), so on the far side
+// (j* to J) the terms are summed in an order that needs no G but the far end's (summation by
+// parts over that side):
+//     lower (J > j*):  sum_(j = j*..J) w_j G_j = G_J W_J + sum_(i = j*..J-1) T_i W_i,      W_i = sum_(j = j*..i) w_j
+//     upper (J < j*):  sum_(j = J..j*) w_j G_j = G_J W'_J + sum_(i = J..j*-1) T_i W'_(i+1),  W'_i = sum_(j = i..j*) w_j
+// (G_j = G_J + sum_(i = j..J-1) T_i, or G_J + sum_(i = J..j-1) T_i), all terms positive. J comes
+// from the same rigorous bound as mixture_walk's, taken in the same loop; G at j* is G_J plus
+// the T's of the way out, and from j* the near side follows G's own stable recurrence to where
+// the terms fade. Three direct values (w and T at j*, G at J) and about 18 sqrt(mu) steps of a
+// few plain operations (mixture_walk: 27 sqrt(mu) steps in double + error arithmetic).
+//
+// Frames: w times 2^kw, T times 2^kt, G times 2^kg (each about 1 at j*: T may lie far below G,
+// a tail near 1 whose terms barely move it). Where w climbs past 2^600 on the far side (j* in a
+// tail, the weights' mode beyond it) 2^600 moves from w to T, the products unchanged; the sum
+// comes out as m 2^e (a probability far below the doubles keeps its exponent). False where a
+// frame would not hold or the walk does not end: mixture_walk then.
+//
+// dens (the inverses' Newton steps): sum_j w_j T(s_j) s_j times the family's dens_factor
+// (1 / y for the gamma family), mixture_walk's density.
+//
+// Its error grows with the walk's length (the terms near j* are a sum over about one width,
+// sqrt(mu), of independently rounded ratios: measured 10-20 ULP at p999 for mu ~ 5000, 1000 ULP
+// at mu = 1e9): kPlainMu bounds it, mixture_walk beyond.
+inline constexpr double kPlainMu = 2e4;
+// (the shapes kMinShape and up: kMinShape's own declaration says why)
+template <class Fam>
+bool plain_walk(double mu, double h, double s0, const Fam& f, double mu_lo, Scaled& out, Scaled* dens = nullptr) {
+    const bool lower = !f.upper;
+    if (!(mu <= kPlainMu && s0 > 0.0 && f.plain_shapes_ok())) return false;
+    double jstar;
+    Scaled early;
+    if (!walk_jstar(mu, h, s0, f, false, jstar, early)) return false;
+    const dd::DD sstar = dd::two_sum(s0, jstar);
+    const Scaled ws = prefix_s(jstar + h, mu, mu_lo), ts = f.T(sstar);
+    if (!(ws.m > 0.0 && ts.m > 0.0 && std::isfinite(ws.m) && std::isfinite(ts.m))) return false;
+    const std::int64_t kw0 = -ws.e, kt0 = -ts.e;
+    std::int64_t kw = kw0, kt = kt0;
+    // the weights' ratios: mu / (j + 1 + h) up, (j + h) / mu down; mu's low part (the t's
+    // nc^2 / 2) in the remainder, 1 / mu as a double-double
+    const dd::DD inv_mu = recip(dd::DD{mu, mu_lo});
+    // (each rounded once from its exact value, as the T ratios: see GammaFamily::PlainSteps; the
+    // ratio up comes with T's, from the same division)
+    auto w_down = [&](double j) {  // w_(j-1) / w_j
+        const double d = j + h;
+        return std::fma(d, inv_mu.hi, d * inv_mu.lo);
+    };
+    const bool want = dens != nullptr;
+    // the far side: S2 = sum T_i W_i (frame kt + kw), Tsum (kt), Wc (kw); D (kt + kw)
+    double t = ts.m, w = ws.m, Wc = lower ? 0.0 : w, Tsum = 0.0, S2 = 0.0, J = jstar, prod = 1.0;
+    double D = want && !lower ? w * t * (s0 + jstar) : 0.0;  // (the upper side's loop starts past j*)
+    const auto far_steps = f.plain_steps(sstar, lower);
+    // the ratios in blocks of kBlock ahead (each independent of the others: see PlainSteps), then
+    // the block's steps
+    constexpr int kBlock = 8;
+    double rts[kBlock], rws[kBlock], rbs[kBlock];
+    // (out_up's own bound where the ratio is not one, a beta family with b < 1: in a pass of its
+    // own, out of the block's loop, which it slows by 2x where it is not even taken)
+    const bool simple = f.out_up_simple();
+    bool far = false;
+    for (int n = 0; n < kMaxTerms && !far;) {
+        for (int k = 0; k < kBlock; ++k) {
+            const double i = n + k;
+            if (lower) {
+                const double Jk = jstar + i;
+                rts[k] = far_steps.up(i, mu, mu_lo, Jk + 1.0 + h, rws[k]);
+                rbs[k] = rws[k] * std::min(1.0, rts[k]) * (1.0 + 0x1p-40);
+            } else {  // (past J = 0 unused: the loop ends there first)
+                const double Jk = jstar - i;
+                rws[k] = w_down(Jk);
+                rts[k] = far_steps.down(i);
+                rbs[k] = f.out_down_r(rws[k], s0 + Jk);
+            }
+        }
+        if (lower && !simple) [[unlikely]] {
+            for (int k = 0; k < kBlock; ++k) rbs[k] = f.out_up(mu, jstar + (n + k) + 1.0 + h, s0 + (jstar + (n + k)));
+        }
+        for (int k = 0; k < kBlock; ++k, ++n) {
+            const double r = rbs[k];
+            if (lower) {  // index J: T_J W_J; then on to J + 1
+                Wc += w;
+                S2 += t * Wc;
+                Tsum += t;
+                if (want) D += w * t * (s0 + J);
+                t *= rts[k];
+                w *= rws[k];
+                J += 1.0;
+            } else {  // on to J - 1: T_(J-1) W'_J, then W'_(J-1)
+                if (J == 0.0) {
+                    far = true;
+                    break;
+                }
+                t *= rts[k];
+                w *= rws[k];
+                J -= 1.0;
+                S2 += t * Wc;
+                Tsum += t;
+                Wc += w;
+                if (want) D += w * t * (s0 + J);
+            }
+            if (Wc > 0x1p600) {  // the weights climbing (toward their mode): 2^600 from w to T
+                Wc *= 0x1p-600, w *= 0x1p-600, t *= 0x1p600, Tsum *= 0x1p600;
+                kw -= 600, kt += 600;
+            }
+            prod *= r;
+            if (r < 1.0 && prod <= kTol * (1.0 - r)) {
+                far = true;
+                break;
+            }
+            if (prod > 0x1p500) prod = 0x1p500;
+        }
+    }
+    if (!far || !std::isfinite(S2) || !std::isfinite(Tsum)) return false;
+    // the far end: G_J W_J (lower: W_J still needs w_J, and its density term)
+    if (lower) {
+        Wc += w;
+        if (want) D += w * t * (s0 + J);
+    }
+    const Scaled gJ = f.G(dd::two_sum(s0, J));
+    if (!(gJ.m == gJ.m && std::isfinite(gJ.m))) return false;
+    auto absolute = [](double v, std::int64_t k) {  // v 2^-k as m 2^e
+        Scaled r = scaled(v);
+        r.e -= k;
+        return r;
+    };
+    const Scaled gstar = add_s(gJ, absolute(Tsum, kt));  // G at j*
+    Scaled sum = add_s(gJ * absolute(Wc, kw), absolute(S2, kw + kt));
+    if (!(gstar.m > 0.0)) return false;
+    // the near side from j*: w and T from their direct values (frames kw0, kt0), G in its own
+    // frame kg; T enters G times 2^(kg - kt0) (<= about 1: T_j <= G_j)
+    const std::int64_t kg = -gstar.e;
+    if (!(kg - kt0 <= 4)) return false;
+    // T below 2^-900 of G (a tail near 1): its additions are nothing (and a subnormal factor would
+    // make every step a slow one, 3x); a T that climbs to 2^800 in its frame would count again:
+    // mixture_walk then
+    const bool t_out = kg - kt0 < -900;
+    const double tg = t_out ? 0.0 : std::ldexp(1.0, static_cast<int>(kg - kt0));
+    double G = gstar.m;
+    t = ts.m, w = ws.m;
+    // the sum so far in the near side's frame kw0 + kg (it holds the term at j*, about 1 there)
+    const Scaled s_far = sum;
+    double S = value(Scaled{s_far.m, s_far.e + kw0 + kg});
+    if (!std::isfinite(S)) return false;
+    const auto near_steps = f.plain_steps(sstar, !lower);
+    double j = jstar, prev = w * G;
+    bool ended = false;
+    for (int n = 0; n < 2 * kMaxTerms && !ended;) {
+        for (int k = 0; k < kBlock; ++k) {
+            const double i = n + k;
+            if (lower) {  // (past j = 0 unused)
+                rws[k] = w_down(jstar - i);
+                rts[k] = near_steps.down(i);
+            } else {
+                rts[k] = near_steps.up(i, mu, mu_lo, jstar + i + 1.0 + h, rws[k]);
+            }
+        }
+        for (int k = 0; k < kBlock; ++k, ++n) {
+            if (lower) {  // down: G_(j-1) = G_j + T_(j-1)
+                if (j == 0.0) {
+                    ended = true;
+                    break;
+                }
+                t *= rts[k];
+                w *= rws[k];
+                j -= 1.0;
+                G += t * tg;
+            } else {  // up: G_(j+1) = G_j + T_j
+                w *= rws[k];
+                j += 1.0;
+                G += t * tg;
+                t *= rts[k];  // T_j for the next step (and the density)
+            }
+            if (t_out && t > 0x1p800) return false;
+            const double term = w * G;
+            S += term;
+            if (want) D += w * t * (s0 + j);
+            // (the quotient only once the term is below kTol S: a division a step otherwise)
+            if ((term < prev && term <= kTol * S && term <= kTol * S * (1.0 - term / prev)) ||
+                (term == 0.0 && prev == 0.0)) {
+                ended = true;
+                break;
+            }
+            prev = term;
+        }
+    }
+    if (!ended || !std::isfinite(S)) return false;
+    out = absolute(S, kw0 + kg);
+    if (want) *dens = absolute(D, kw0 + kt0) * scaled(f.dens_factor());
+    return true;
+}
+
 // mu = 0 (a noncentrality whose half, or half square, is below the doubles) has the
 // weights D(j + h, 0): 1 at j + h = 0 and 0 elsewhere. (Apart from the walk, whose code it
 // would otherwise change: with this test inside, the lower gamma walk is half as slow again.)
 template <class Fam>
-Scaled mixture_s(double mu, double h, double s0, const Fam& f, double mu_lo = 0.0, bool wide = false) {
-    if (mu == 0.0) return h == 0.0 ? f.G(dd::DD{s0, 0.0}) : scaled(0.0);
-    return mixture_walk(mu, h, s0, f, mu_lo, wide);
+Scaled mixture_s(
+    double mu, double h, double s0, const Fam& f, double mu_lo = 0.0, bool wide = false, Scaled* dens = nullptr
+) {
+    if (mu == 0.0) {
+        if (dens) *dens = {kNaN, 0};  // (not summed: the inverses' bracketing then)
+        return h == 0.0 ? f.G(dd::DD{s0, 0.0}) : scaled(0.0);
+    }
+    Scaled v;
+    if (!wide && plain_walk(mu, h, s0, f, mu_lo, v, dens)) return v;
+    return mixture_walk(mu, h, s0, f, mu_lo, wide, dens);
 }
 template <class Fam>
 double mixture(double mu, double h, double s0, const Fam& f, double mu_lo = 0.0) {
@@ -620,35 +1087,6 @@ inline Scaled tiny_upper_s(double mu, double h, double s0, double b, dd::DD logy
 // and the two direct values T(s0) and D(h, mu) (and G(s0) for the upper sum), each one
 // evaluation of the kernels the far-end walk also starts from.
 namespace lite {
-
-struct Lite {
-    double h, l;
-};
-inline Lite mul(Lite a, Lite b) {
-    const double p = a.h * b.h;
-    return {p, std::fma(a.h, b.h, -p) + (a.h * b.l + a.l * b.h)};
-}
-// n / d: the quotient through one reciprocal (so not correctly rounded: no matter, its
-// remainder is taken exactly), then the remainder's share.
-inline Lite quot(Lite n, Lite d) {
-    const double inv = 1.0 / d.h, q = n.h * inv;
-    return {q, ((std::fma(-q, d.h, n.h) + n.l) - q * d.l) * inv};
-}
-inline Lite sum2(double a, double b) {  // a + b exactly
-    const double v = a + b, bb = v - a;
-    return {v, (a - (v - bb)) + (b - bb)};
-}
-inline void bump(Lite& s) {  // s += 1
-    const double v = s.h + 1.0, bb = v - s.h;
-    s.l += (s.h - (v - bb)) + (1.0 - bb);
-    s.h = v;
-}
-inline void add(Lite& s, Lite t) {  // s += t (two_sum of the high parts)
-    const double v = s.h + t.h, bb = v - s.h;
-    s.l += ((s.h - (v - bb)) + (t.h - bb)) + t.l;
-    s.h = v;
-}
-inline double value(Lite a) { return a.h + a.l; }
 
 inline constexpr int kLiteTerms = 400;
 inline constexpr double kLiteArg = 340.0;  // e^(2 * 340) is a double
@@ -750,7 +1188,7 @@ inline bool upper_sum(TR tr, dd::DD mu, double h, double ctotal, double& out, do
 
 // The first terms in the bulk, T(s0) e^-mu (the weights' e^-mu with it: one exponential):
 // the powers by pow, and the factor of the parameters alone (e^-mu / Gamma(a + 1),
-// e^-mu / (a B(a, b))) as e^l, l in double-double from dd::loggamma, kept per thread for the
+// e^-mu / (a B(a, b))) by first_factor (below), kept per thread for the
 // last parameters (an array's are usually one value; a pure function of the key, so a hit and
 // a miss, a scalar parameter and an array of it, give the same bits). In units of 2^-53 (one
 // rounded operation 1, a libm call 2): each pow or exp 2, the factor 4 (exp, 1 + l.lo, their
@@ -764,15 +1202,35 @@ struct Memo3 {
 };
 inline constexpr double kLitePow = 0x1p-400;
 inline bool lite_normal(double v) { return v >= kLitePow && v <= 1.0 / kLitePow; }
+// The memos' values: e^(-mu) / Gamma(a + 1) and e^(-mu) Gamma(a + b) / (Gamma(a + 1) Gamma(b)),
+// for shapes inside ibeta_detail's direct range by its Gamma = e^S F split (Gamma(z) below 13
+// by gamma_small, 1 ULP each, Stirling's S as a double-double above: the shape-only factor
+// in ~40 ns), else by dd::loggamma (three of them were 120 of a nc < 1 ncfdtr's 330 ns).
+inline double first_factor(double a, double b, dd::DD mu) {
+    using namespace ibeta_detail;
+    const bool direct =
+        a >= kDirectShapeLo && a <= kDirectShapeHi && (b == 0.0 || (b >= kDirectShapeLo && b <= kDirectShapeHi));
+    if (direct) {
+        const GammaSplit ga1 = gamma_split(dd::two_sum(a, 1.0));
+        if (b == 0.0) {
+            const dd::DD l = -ga1.s - mu;
+            return std::exp(l.hi) * (1.0 + l.lo) / ga1.f;
+        }
+        const GammaSplit gb = gamma_split(dd::DD{b, 0.0}), gc = gamma_split(dd::two_sum(a, b));
+        const dd::DD l = gc.s - ga1.s - gb.s - mu;
+        return std::exp(l.hi) * (1.0 + l.lo) * (gc.f / (ga1.f * gb.f));
+    }
+    const dd::DD l = b == 0.0 ? -dd::loggamma(dd::DD{a, 0.0} + 1.0) - mu
+                              : dd::loggamma(dd::two_sum(a, b)) - dd::loggamma(dd::DD{a, 0.0} + 1.0) -
+                                    dd::loggamma(dd::DD{b, 0.0}) - mu;
+    return std::exp(l.hi) * (1.0 + l.lo);
+}
 // D(a, y) e^-mu = y^a e^-y e^-mu / Gamma(a + 1), a > 0
 inline double gamma_first(double a, double y, dd::DD mu) {
     const double py = std::pow(y, a), ey = std::exp(-y);
     if (lite_normal(py) && ey >= kLitePow && a <= 0x1p20) {
         thread_local Memo3 m;
-        if (!m.hit(a, 0.0, mu)) {
-            const dd::DD l = -dd::loggamma(dd::DD{a, 0.0} + 1.0) - mu;
-            m = {a, 0.0, mu.hi, mu.lo, std::exp(l.hi) * (1.0 + l.lo)};
-        }
+        if (!m.hit(a, 0.0, mu)) m = {a, 0.0, mu.hi, mu.lo, first_factor(a, 0.0, mu)};
         if (lite_normal(m.v)) return py * ey * m.v;
     }
     return value(gamma_prefix(a, y)) * std::exp(-mu.hi);
@@ -782,11 +1240,7 @@ inline bool beta_first_pow(double a, double b, dd::DD x, dd::DD y, dd::DD mu, do
     const double px = std::pow(x.hi, a), py = std::pow(y.hi, b);
     if (!(px >= kLitePow && py >= kLitePow && a <= 0x1p20 && b <= 0x1p20)) return false;
     thread_local Memo3 m;
-    if (!m.hit(a, b, mu)) {
-        const dd::DD l =
-            dd::loggamma(dd::two_sum(a, b)) - dd::loggamma(dd::DD{a, 0.0} + 1.0) - dd::loggamma(dd::DD{b, 0.0}) - mu;
-        m = {a, b, mu.hi, mu.lo, std::exp(l.hi) * (1.0 + l.lo)};
-    }
+    if (!m.hit(a, b, mu)) m = {a, b, mu.hi, mu.lo, first_factor(a, b, mu)};
     if (!lite_normal(m.v)) return false;
     out = px * py * (1.0 + (a * (x.lo / x.hi) + b * (y.lo / y.hi))) * m.v;
     return true;
@@ -826,15 +1280,18 @@ inline bool lite_pick(
     double z,
     const L& lower,
     const U& upper_sum_of,
-    double& out
+    double& out,
+    double walk_fixed = 70.0
 ) {
     const bool below = z < 0.0, above = z > 0.75;  // (a normal's upper tail at 0.75 is 0.23)
-    // The far-end walk costs about one incomplete function and the prefixes (60 terms' worth)
-    // and four times a term for each of its own (the weights' width, both sides): a lower
-    // sum longer than that is not started (measured: 20, 60 degrees of freedom at nc = 25
-    // took 1.7 us for 350 terms against the walk's 1.1).
-    const double walk = 60.0 + 4.0 * (9.0 * std::sqrt(mu) + 12.0);
-    const bool l_ok = nl <= std::min<double>(lite::kLiteTerms, walk), u_ok = nu <= lite::kLiteTerms;
+    // The walk (plain_walk) costs about one incomplete function and the prefixes (walk_fixed
+    // terms' worth: 70 for the gamma family, more for the beta one and the t's two families) and
+    // under a term for each of its own steps, 18 sqrt(mu) (the weights' width, both sides): a sum
+    // longer than that is not started (measured over the reference points: the walk was the
+    // faster from mu ~ 100 for the gamma family, ~ 20-100 for the beta one and the t).
+    const double walk = walk_fixed + 15.0 * std::sqrt(mu);
+    const bool l_ok = nl <= std::min<double>(lite::kLiteTerms, walk),
+               u_ok = nu + direct <= std::min<double>(lite::kLiteTerms, walk);
     const bool l_cheaper = nl <= nu + direct;  // the upper sum needs one incomplete function (`direct` terms' worth)
     double v;
     if (!upper) {
@@ -851,6 +1308,63 @@ inline bool lite_pick(
         return true;
     }
     return u_ok && upper_sum_of(out);
+}
+
+// The point's distance from the middle of its distribution in standard deviations, roughly
+// (a guide to which tail is the small one: lite_pick's choice of sum, and the probabilities'
+// choice of the side to sum first, small_side below).
+inline double ncx2_z(double df, double nc, double x) { return (x - (df + nc)) / std::sqrt(2.0 * (df + 2.0 * nc)); }
+// log x as a normal variable: the numerator's chi-square over dfn has mean m = 1 + nc / dfn
+// and relative variance vn = 2 (dfn + 2 nc) / (dfn + nc)^2, so its log is about
+// log m - vn / 2 with variance vn; the denominator's log has mean about -1 / dfd and
+// variance trigamma(dfd / 2) ~ 2 / dfd + 2 / dfd^2. (Judged by the numerator alone, a
+// third of the points of F(3, 5, nc = 300) called "above" have an upper tail over 1/4:
+// a whole upper sum would run for nothing before the far-end walk.)
+inline double ncf_z(double dfn, double dfd, double nc, double x) {
+    const double m = dfn + nc, vn = 2.0 * (m + nc) / (m * m);
+    return (std::log(x * dfn / m) + 0.5 * vn - 1.0 / dfd) / std::sqrt(vn + 2.0 * (dfd + 1.0) / (dfd * dfd));
+}
+// T > t is Z + nc > t S with S = sqrt(V / df), mean about 1 - 1 / (4 df) and variance
+// about 1 / (2 df): Z + nc - t S as a normal variable (the width at t, not at nc: for a
+// small df the upper tail is far heavier than the width at nc tells). t >= 0.
+inline double nct_z(double df, double nc, double t) {
+    double z = (t * (df > 1.0 ? 1.0 - 0.25 / df : 0.75) - nc) / std::sqrt(1.0 + 0.5 * t * t / df);
+    if (df < 2.0 && nc > 0.0) {
+        // A small df: S is no normal variable, and the upper tail is S below about
+        // sqrt(nc^2 + 1) / t, P(V < y) ~ (y / 2)^(df/2) / Gamma(df/2 + 1) at y = df (nc^2 + 1) / t^2
+        // (the Gamma factor is within 13% of 1 here): "above" where that is under 0.2.
+        const bool far = 0.5 * df * std::log(0.5 * df * (nc * nc + 1.0) / (t * t)) <= -1.6094379124341003;
+        z = far ? 1.0 : std::min(z, 0.75);
+    }
+    return z;
+}
+// The probabilities past the bulk's sums: where the asked tail is the large one by z (past
+// 1.5 standard deviations: the other is 0.07 for a normal), the other is summed first and its
+// complement taken while it is at most 1/4 (absolute error u there, a relative u of the asked
+// tail). The large side's walk spans the weights' whole bell (its G is near 1 at every term);
+// the small one's terms are those of its own peak, or none at all (below e^-2000: walk_jstar's
+// early end). Measured: nctdtrc(14861, 94.6, 1.74) = 1 took 25 us, its other side 0.1.
+inline constexpr double kSideZ = 1.5;
+inline constexpr double kPairAbove = 1.0 - 0x1p-20;
+//
+// The same rule, after the fact, makes the pair consistent near 1: where the asked side came
+// out above kPairAbove (z did not foresee it, or the bulk's sums took it directly), the other is
+// evaluated and the asked side is 1 minus it. So a tail below 2^-20 and its complement add to 1
+// up to the subtraction's rounding (two sums near 1 each a few ULP off gave cdf + ccdf =
+// 1 - 5.6e-16 at ncfdtr(1e-100, 1e-100, 3000, 10)); in the bulk the two sums agree to their own
+// errors, ~1e-15. (From 3/4 on, the second evaluation cost 25-40% over the reference mix.)
+template <class Tail>
+inline double small_side(double z, bool upper, const Tail& tail) {
+    if (upper ? z < -kSideZ : z > kSideZ) {
+        const double o = tail(!upper);
+        if (o <= 0.25) return 1.0 - o;
+    }
+    const double v = tail(upper);
+    if (v > kPairAbove && v < 1.0) {  // (1 itself: the other side is below the sums' own error, ~1e-15)
+        const double o = tail(!upper);
+        if (o <= 0.25) return 1.0 - o;
+    }
+    return v;
 }
 
 // chndtr (upper: chndtrc) by the sums above; false where they do not apply. pdf (when asked:
@@ -880,8 +1394,7 @@ inline bool ncx2_lite(double df, double nc, double x, bool upper, double& out, d
         return v >= 0x1p-1000;
     };
     if (!lite_pick(
-            upper, mu, lite_terms_gamma(a, y), lite_terms_weights(mu), 30.0,
-            (x - (df + nc)) / std::sqrt(2.0 * (df + 2.0 * nc)), lower, upper_of, out
+            upper, mu, lite_terms_gamma(a, y), lite_terms_weights(mu), 30.0, ncx2_z(df, nc, x), lower, upper_of, out
         ))
         return false;
     if (pdf) *pdf = 0.5 * tw * (a / y + dens);
@@ -892,7 +1405,7 @@ inline bool ncx2_lite(double df, double nc, double x, bool upper, double& out, d
 // the product: 14; the upper one adds 1 - I_w(a, b), fdtrc's kernel). pdf: the density in x.
 inline bool ncf_lite(double dfn, double dfd, double nc, double x, bool upper, double& out, double* pdf = nullptr) {
     const double mu = 0.5 * nc, a = 0.5 * dfn, b = 0.5 * dfd;
-    if (!(mu <= lite::kLiteArg && a <= 1e6 && b <= 1e6)) return false;
+    if (!(mu <= lite::kLiteArg && a <= 1e6 && b <= 1e6 && a >= kMinShape && b >= kMinShape)) return false;
     const distr_detail::Arg g = distr_detail::f_arg(dfn, dfd, x);
     if (!(g.x.hi >= 0x1p-500 && g.y.hi >= 0x1p-500)) return false;
     const double nl = lite_terms_beta(a, b, g.x.hi, g.y.hi), nu = lite_terms_weights(mu);
@@ -916,15 +1429,7 @@ inline bool ncf_lite(double dfn, double dfd, double nc, double x, bool upper, do
         v = at_most_one(q0 + tw * s);
         return v >= 0x1p-1000;
     };
-    // log x as a normal variable: the numerator's chi-square over dfn has mean m = 1 + nc / dfn
-    // and relative variance vn = 2 (dfn + 2 nc) / (dfn + nc)^2, so its log is about
-    // log m - vn / 2 with variance vn; the denominator's log has mean about -1 / dfd and
-    // variance trigamma(dfd / 2) ~ 2 / dfd + 2 / dfd^2. (Judged by the numerator alone, a
-    // third of the points of F(3, 5, nc = 300) called "above" have an upper tail over 1/4:
-    // a whole upper sum would run for nothing before the far-end walk.)
-    const double m = dfn + nc, vn = 2.0 * (m + nc) / (m * m);
-    const double z = (std::log(x * dfn / m) + 0.5 * vn - 1.0 / dfd) / std::sqrt(vn + 2.0 * (dfd + 1.0) / (dfd * dfd));
-    if (!lite_pick(upper, mu, nl, nu, 28.0, z, lower, upper_of, out)) return false;
+    if (!lite_pick(upper, mu, nl, nu, 28.0, ncf_z(dfn, dfd, nc, x), lower, upper_of, out, 110.0)) return false;
     // sum_j D(j, mu) beta(w; a + j, b) dw/dx, beta(w; s, b) = T(s - 1) (s - 1 + b) / v, dw/dx = w v / x
     if (pdf) *pdf = tw * (a + g.x.hi * dens) / x;
     return true;
@@ -952,10 +1457,14 @@ inline Scaled ncx2_s(double df, double nc, double x, bool upper, bool wide = fal
         [&](bool u, bool w) { return mixture_s(0.5 * nc, 0.0, 0.5 * df, GammaFamily{0.5 * x, u}, 0.0, w); }, upper, wide
     );
 }
-inline double ncx2(double df, double nc, double x, bool upper) {
+// (one side: the bulk's sums, else the walk; ncx2 pairs the two)
+inline double ncx2_one(double df, double nc, double x, bool upper) {
     double out;
     if (ncx2_lite(df, nc, x, upper, out)) return out;
     return at_most_one(value(ncx2_s(df, nc, x, upper)));
+}
+inline double ncx2(double df, double nc, double x, bool upper) {
+    return small_side(ncx2_z(df, nc, x), upper, [&](bool u) { return ncx2_one(df, nc, x, u); });
 }
 
 // ncfdtr (upper: ncfdtrc) for finite positive dfn, dfd, nc and 0 < x < inf, as m 2^e.
@@ -985,6 +1494,10 @@ inline Scaled ncf_s(double dfn, double dfd, double nc, double x, bool upper, boo
             const dd::DD lbeta = lgamma_dd(dd::DD{a, 0.0}) + lgamma_dd(dd::DD{b, 0.0}) - lgamma_dd(dd::two_sum(a, b));
             lower = exp_wide(logw * a - dd::log(a) - lbeta - 0.5 * nc);
         }
+        // the upper tail as its own sum, e^-mu (1 - I_w(a, b)) + (1 - e^-mu) (the j >= 1 terms' 1 - I
+        // are 1 to O(w)): as 1 - lower it lost its digits below 1/64 (ncfdtrc(1e-10, 1, 1e-300,
+        // 1e-300) was NaN for 3.6e-8)
+        if (upper && !wide) return scaled(std::exp(-0.5 * nc) * Fdtrc::f(dfn, dfd, x) - std::expm1(-0.5 * nc));
         return upper ? one_minus(lower) : lower;
     }
     return or_complement(
@@ -992,10 +1505,51 @@ inline Scaled ncf_s(double dfn, double dfd, double nc, double x, bool upper, boo
         upper, wide
     );
 }
-inline double ncf(double dfn, double dfd, double nc, double x, bool upper) {
+inline double ncf_one(double dfn, double dfd, double nc, double x, bool upper) {
     double out;
     if (ncf_lite(dfn, dfd, nc, x, upper, out)) return out;
     return at_most_one(value(ncf_s(dfn, dfd, nc, x, upper)));
+}
+// A dfd below 2^-999 (b = dfd/2 below 2^-1000, or not even a double: 0.5 * 5e-324 is 0): every
+// term past j = 0 is I_w(a + j, b) <= b (-log(1 - w)) <= 2^-1000 * 2100 (w < 1 by a factor
+// dfd / (dfn x) of 1e-923 at most), so the sum is e^-mu I_w(a, b), the central F's cdf, to
+// 2^-988 absolute (relative wherever the value is above 2^-930), and its complement
+// e^-mu (1 - I_w(a, b)) + (1 - e^-mu); the pair adds to 1. (The sums took b as 0 or rounded:
+// ncfdtr(1e-320, 1e-320, 1e-300, 1e-300) was 0 with ncfdtrc 0.5, for 0.5 each.)
+inline constexpr double kTinyShape = 0x1p-1000;
+inline double ncf_tiny_dfd(double dfn, double dfd, double nc, double x, bool upper) {
+    const double e = std::exp(-0.5 * nc);
+    return upper ? e * Fdtrc::f(dfn, dfd, x) - std::expm1(-0.5 * nc) : e * Fdtr::f(dfn, dfd, x);
+}
+// A dfn below 2^-71 (a = dfn/2 below 2^-72): a in the terms past j = 0 moves each by a relative
+// a |d log I_w(s, b) / ds| <= a |log w| <= 2100 a < 2^-61, so the sum is the j = 0 term, e^-mu times the central F's tail, plus sum_(j >= 1) D(j, mu)
+// I_w(j, b) -- a mixture from shape 1 with weights D(j + 1, mu) (h = 1) -- or for w below
+// 2^-1000 just the j = 0 term (the rest is O(w)). The pair adds to 1 again (the sums lost
+// ncfdtrc(5e-324, 1, 1e-300, 0.25), NaN against ncfdtr's 1).
+inline constexpr double kTinyDfnShape = 0x1p-72;
+inline bool ncf_tiny_dfn(double dfn, double dfd, double nc, double x, bool upper, double& out) {
+    const distr_detail::Arg g = distr_detail::f_arg(dfn, dfd, x);
+    if (!(g.y.hi >= distr_detail::kTinyArg)) return false;
+    const double mu = 0.5 * nc, e = std::exp(-mu);
+    const double first = upper ? e * Fdtrc::f(dfn, dfd, x) : e * Fdtr::f(dfn, dfd, x);
+    if (g.x.hi < distr_detail::kTinyArg) {
+        out = upper ? first - std::expm1(-mu) : first;
+        return true;
+    }
+    // both sides, the asked one as 1 minus the other where that is the small one (as small_side)
+    auto side = [&](bool u) {
+        const double f0 = u ? e * Fdtrc::f(dfn, dfd, x) : e * Fdtr::f(dfn, dfd, x);
+        return at_most_one(f0 + value(mixture_s(mu, 1.0, 1.0, BetaFamily{0.5 * dfd, g.x, g.y, u})));
+    };
+    (void)first;
+    const double o = side(!upper);
+    out = o <= 0.25 ? 1.0 - o : side(upper);
+    return out == out;
+}
+inline double ncf(double dfn, double dfd, double nc, double x, bool upper) {
+    if (0.5 * dfd < kTinyShape) return ncf_tiny_dfd(dfn, dfd, nc, x, upper);
+    if (double out; 0.5 * dfn < kTinyDfnShape && ncf_tiny_dfn(dfn, dfd, nc, x, upper, out)) return out;
+    return small_side(ncf_z(dfn, dfd, nc, x), upper, [&](bool u) { return ncf_one(dfn, dfd, nc, x, u); });
 }
 
 // The most nodes on a side of the noncentral t's integrals (nct_opposite_s, and sd.stats'
@@ -1026,7 +1580,10 @@ inline double em1mx(double u) {
 // written without cancellation; the integral is the trapezoid rule in u over
 // v - v* = c A sinh(u / A), c = min(sigma, 0.4), A = 8 (sigma = 1/sqrt(-E''(v*)); see
 // the loop for why the step is capped and the map is linear over the peak).
-inline Scaled nct_opposite_s(double df, double a, double t) {
+// dens (the inverses' Newton steps): -dQ/dt = int s phi(z) f_S(s) ds, the same integral with
+// e^E(v) s / sqrt(2 pi) for its integrand (Phi(-z) = erfcx(z / sqrt 2) / 2 e^(-z^2/2)).
+inline Scaled nct_opposite_s(double df, double a, double t, Scaled* dens = nullptr) {
+    if (dens) *dens = {kNaN, 0};
     // (t^2 + df) s^2 + a t s - df = 0; with t taken out where a t + root passes the doubles
     // (t next to the largest of them: the far tail of a small df is no 0 there)
     const double wide = std::sqrt(a * a + 4.0 * df);
@@ -1043,10 +1600,24 @@ inline Scaled nct_opposite_s(double df, double a, double t) {
     const double c1 = (-(zdd * dd::DD{p, 0.0}) - (s2 - 1.0) * df).hi;
     const double kappa = p * p + z * p + 2.0 * df * sstar * sstar;
     const double sigma = 1.0 / std::sqrt(kappa);
-    auto integrand = [&](double delta) {
-        const double em = em1mx(delta), q = p * std::expm1(delta);
-        const double dE = c1 * delta - z * p * em - 0.5 * q * q - 0.5 * df * (sstar * sstar) * em1mx(2.0 * delta);
-        return 0.5 * Erfcx::f((a + p * std::exp(delta)) * 0.70710678118654752440) * std::exp(dE);
+    const bool want = dens != nullptr;
+    double dsum = 0.0;  // the density's integral (plain double: a derivative)
+    // (one exponential of delta for all three of its functions: e^d - 1 - d and e^2d - 1 - 2d
+    // from xm = e^d - 1 off the series' range, where em1mx forms them the same way)
+    auto integrand = [&](double delta, double jac) {
+        double xm, ed, em, em2;
+        if (std::fabs(delta) > 0.5) {
+            ed = std::exp(delta), xm = ed - 1.0;
+            em = xm - delta, em2 = xm * (xm + 2.0) - 2.0 * delta;
+        } else {
+            xm = std::expm1(delta), ed = xm + 1.0;
+            em = em1mx(delta), em2 = em1mx(2.0 * delta);
+        }
+        const double q = p * xm;
+        const double dE = c1 * delta - z * p * em - 0.5 * q * q - 0.5 * df * (sstar * sstar) * em2;
+        const double e = std::exp(dE);
+        if (want) dsum += jac * (sstar * ed * e);
+        return 0.5 * Erfcx::f((a + p * ed) * 0.70710678118654752440) * e;
     };
     // v - v* = c A sinh(u / A): linear over the peak with the step c kStep, exponentially
     // wider in the tails (the left one falls off only as e^(df (v - v*)), slowly for
@@ -1060,21 +1631,36 @@ inline Scaled nct_opposite_s(double df, double a, double t) {
     // double misses the peak by more than its width) the nodes would step over it: NaN.
     if (!(std::fabs(c1) <= std::sqrt(kappa))) return kNotSummed;
     Sum I;
-    I.add(integrand(0.0));
+    I.add(integrand(0.0, 1.0));
+    // The nodes in blocks of kBlock, each evaluated apart from the others (their chains of four
+    // exponentials and erfcx overlap: a node at a time took 3x as long), then added in order.
+    constexpr int kBlock = 8;
     for (int dir = -1; dir <= 1; dir += 2) {
         bool faded = false;
-        for (int k = 1; k < kNctNodes; ++k) {
-            const double u = dir * k * kStep / kA;
-            const double v = integrand(c * kA * std::sinh(u)) * std::cosh(u);
-            I.add(v);
-            if (!(v > 0x1p-60 * I.total()) && k > 8) {  // (a NaN node ends it: the sum is NaN)
-                faded = true;
-                break;
+        for (int k0 = 1; k0 < kNctNodes && !faded; k0 += kBlock) {
+            double vs[kBlock];
+            for (int i = 0; i < kBlock; ++i) {
+                const double u = dir * (k0 + i) * kStep / kA;
+                // sinh u and cosh u from one exponential: expm1 near 0 (no cancellation in sinh),
+                // exp beyond (e^u itself: from e^u - 1 it would be lost below e^-37)
+                double eu, e1;
+                if (std::fabs(u) > 0.5) e1 = std::exp(u), eu = e1 - 1.0;
+                else eu = std::expm1(u), e1 = eu + 1.0;
+                const double sh = 0.5 * (eu + eu / e1), ch = 0.5 * (e1 + 1.0 / e1);
+                vs[i] = integrand(c * kA * sh, ch) * ch;
+            }
+            for (int i = 0; i < kBlock; ++i) {
+                I.add(vs[i]);
+                if (!(vs[i] > 0x1p-60 * I.total()) && k0 + i > 8) {  // (a NaN node ends it: the sum is NaN)
+                    faded = true;
+                    break;
+                }
             }
         }
         if (!faded) return kNotSummed;
     }
     const double integral = I.total() * kStep * c;
+    if (want) *dens = exp_wide(Estar.hi) * scaled((1.0 + Estar.lo) * (dsum * kStep * c * prefix_detail::kInvSqrt2Pi));
     return exp_wide(Estar.hi) * scaled((1.0 + Estar.lo) * integral);
 }
 inline double nct_opposite(double df, double a, double t) { return value(nct_opposite_s(df, a, t)); }
@@ -1132,10 +1718,10 @@ inline Scaled nct_s(double df, double nc, double t, bool upper, bool wide = fals
 // 16 and 15 at most, each on its own positive part (Phi(-nc), the third, is ndtr's).
 inline bool nct_lite(double df, double nc, double t, bool upper, double& out, double* pdf = nullptr) {
     if (t < 0.0) return nct_lite(df, -nc, -t, !upper, out, pdf);  // T(nc) = -T(-nc): the same density
-    if (t == 0.0 || (upper && nc < 0.0)) return false;
+    if (t == 0.0) return false;
     const dd::DD mu = dd::two_prod(nc, nc) * 0.5;
     const double b = 0.5 * df;
-    if (!(mu.hi <= lite::kLiteArg && mu.hi >= 0x1p-500 && b <= 1e6)) return false;
+    if (!(mu.hi <= lite::kLiteArg && mu.hi >= 0x1p-500 && b <= 1e6 && b >= kMinShape)) return false;
     const distr_detail::Arg g = distr_detail::t_arg(df, t);  // g.y = t^2 / (df + t^2): the families' argument
     if (!(g.x.hi >= 0x1p-500 && g.y.hi >= 0x1p-500)) return false;
     const double nl = lite_terms_beta(0.5, b, g.y.hi, g.x.hi), nu = lite_terms_weights(mu.hi);
@@ -1160,8 +1746,9 @@ inline bool nct_lite(double df, double nc, double t, bool upper, double& out, do
         v = at_most_one(value(ndtr_neg_s(nc)) + 0.5 * (tp * sp + sign * (tq * sq)));
         return v >= 0x1p-1000;
     };
-    auto upper_of = [&](double& v) {  // nc > 0
-        if (nc < 0.0) return false;
+    // the two families' upper sums: cp = sum_j D(j, mu) (1 - I_x(j + 1/2, b)), cq = sum_j D(j + 1/2, mu)
+    // (1 - I_x(j + 1, b)); the upper tail is (cp + cq) / 2 for nc > 0, (cp - cq) / 2 for nc < 0
+    auto upper_parts = [&](double& cp, double& cq) {
         double sp, sq;
         // 1 - I_x(1/2, b) = P(|T0| > t) of the central t (stdtr's kernel); 1 - I_x(1, b) = y^b
         const double qp = 2.0 * distr_detail::t_tail(df, t), qq = pw * (1.0 + b * (g.x.lo / g.x.hi));
@@ -1170,29 +1757,130 @@ inline bool nct_lite(double df, double nc, double t, bool upper, double& out, do
         if (!lite::upper_sum(rp, mu, 0.0, em / tp, sp, dp) || !lite::upper_sum(rq, mu, 0.5, wq / tq, sq, dq))
             return false;
         const double eq = std::erf(std::fabs(nc) * 0.70710678118654752440);  // sum_j D(j + 1/2, mu)
-        v = at_most_one(0.5 * ((qp + tp * sp) + (qq * eq + tq * sq)));
+        cp = qp + tp * sp, cq = qq * eq + tq * sq;
+        return true;
+    };
+    auto upper_of = [&](double& v) {  // nc > 0
+        double cp, cq;
+        if (nc < 0.0 || !upper_parts(cp, cq)) return false;
+        v = at_most_one(0.5 * (cp + cq));
         return v >= 0x1p-1000;
     };
-    // T > t is Z + nc > t S with S = sqrt(V / df), mean about 1 - 1 / (4 df) and variance
-    // about 1 / (2 df): Z + nc - t S as a normal variable (the width at t, not at nc: for a
-    // small df the upper tail is far heavier than the width at nc tells)
-    double z = (t * (df > 1.0 ? 1.0 - 0.25 / df : 0.75) - nc) / std::sqrt(1.0 + 0.5 * t * t / df);
-    if (df < 2.0 && nc > 0.0) {
-        // A small df: S is no normal variable, and the upper tail is S below about
-        // sqrt(nc^2 + 1) / t, P(V < y) ~ (y / 2)^(df/2) / Gamma(df/2 + 1) at y = df (nc^2 + 1) / t^2
-        // (the Gamma factor is within 13% of 1 here): "above" where that is under 0.2.
-        const bool far = 0.5 * df * std::log(0.5 * df * (nc * nc + 1.0) / (t * t)) <= -1.6094379124341003;
-        z = far ? 1.0 : std::min(z, 0.75);
+    if (upper && nc < 0.0) {
+        // The tail away from the noncentrality, (cp - cq) / 2: where cq is at most cp / 4 the
+        // difference loses under a bit (its relative error (cp + cq) / (cp - cq) <= 5/3 times the
+        // parts'), and this is far cheaper than nct_opposite's integral (whose tail at a small
+        // df needs a thousand nodes and more). cq / cp grows with |nc| (the second family's
+        // weights are |nc| sqrt(2/pi) e^-mu (1 + ...)) and with df and t: the integral there.
+        // (cp <= 1 and cq >= y^b erf(|nc| / sqrt 2), its first part: past 1/4 no sum is run)
+        const double cq_low = pw * std::erf(std::fabs(nc) * 0.70710678118654752440);
+        double cp, cq;
+        if (!(nu <= lite::kLiteTerms) || !(cq_low <= 0.25) || !upper_parts(cp, cq) || !(cq <= 0.25 * cp)) return false;
+        out = 0.5 * (cp - cq);
+        if (!(out >= 0x1p-1000)) return false;
+        if (pdf) *pdf = (tp * (0.5 + g.y.hi * dp) + sign * (tq * (1.0 + g.y.hi * dq))) / t;
+        return true;
     }
-    if (!lite_pick(upper, mu.hi, nl, nu, 14.0, z, lower, upper_of, out)) return false;
+    if (!lite_pick(upper, mu.hi, nl, nu, 14.0, nct_z(df, nc, t), lower, upper_of, out, 150.0)) return false;
     // d/dt of the lower series: I_x(s, b)' = T(s - 1) (s - 1 + b) / y dx/dt, dx/dt = 2 x y / t
     if (pdf) *pdf = (tp * (0.5 + g.y.hi * dp) + sign * (tq * (1.0 + g.y.hi * dq))) / t;
     return true;
 }
-inline double nct(double df, double nc, double t, bool upper) {
+inline double nct_one(double df, double nc, double t, bool upper) {
     double out;
     if (nct_lite(df, nc, t, upper, out)) return out;
     return value(nct_s(df, nc, t, upper));
+}
+// A tiny df: T = (Z + nc) / S with S = sqrt(V / df) above any s only with probability
+// P(V > df s^2) ~ (df / 2) log(2 / (df s^2)), below 1083 df for every s > 1 / 1.8e308 a t can make
+// count (|t| s ~ 1): T <= t is Z <= -nc to that, Phi(-nc) whatever t, and the upper tail Phi(nc),
+// taken where 1083 df is below 2^-60 of the smaller tail (or both are below 2^-1000). (The opposite tail's integral cannot fade at such a df: nctdtrc(2^-1022, -1,
+// 1e-300) was 0.137 for Phi(-1) = 0.159, against nctdtr's 0.841.)
+inline double nct(double df, double nc, double t, bool upper) {
+    if (df < 0x1p-71) {
+        // (the bound 1083 df on the difference, against 2^-60 of the smaller of Phi(-nc), Phi(nc), or
+        // both below 2^-1000)
+        const double small = value(ndtr_neg_s(std::fabs(nc)));
+        if (1083.0 * df <= 0x1p-60 * small || (small < 0x1p-1000 && df < 0x1p-999))
+            return value(ndtr_neg_s(upper ? -nc : nc));
+    }
+    const double z = t >= 0.0 ? nct_z(df, nc, t) : -nct_z(df, -nc, -t);  // T(nc) = -T(-nc)
+    // (z not trusted where the other side is the tail away from the noncentrality, P(T > t) for
+    // t > 0 > nc or P(T < t) for t < 0 < nc: its integral costs more than this side's series;
+    // the pairing after the fact still applies)
+    const bool opposite_other = upper ? (t < 0.0 && nc > 0.0) : (t > 0.0 && nc < 0.0);
+    // The tail away from the noncentrality itself (P(T > t), t > 0 > nc, or P(T < t), t < 0 < nc):
+    // 1 minus the other side (a series, positive terms) while that is at most 7/8 (7 ULP at most
+    // from the subtraction), else its own form. The integral's step was set for df ~ 1 and up; at
+    // a small df its tail fades so slowly that it lost 1700 ULP (nctdtr(0.001, 1, -10)), and the two
+    // sides of a pair disagreed by 3.8e-14.
+    const bool opposite = upper ? (t > 0.0 && nc < 0.0) : (t < 0.0 && nc > 0.0);
+    if (opposite) {
+        const double o = nct_one(df, nc, t, !upper);
+        if (o <= 0.875) return 1.0 - o;
+        return nct_one(df, nc, t, upper);
+    }
+    return small_side(opposite_other ? 0.0 : z, upper, [&](bool u) { return nct_one(df, nc, t, u); });
+}
+
+// The tail (upper: the upper one) and the density at a point, for the inverses' Newton steps
+// (newton_root): the sums of the bulk where they apply, else the walk with its density, in the
+// forward function's own order (so the root is the forward function's). False where neither
+// gives both: a tail the forward function takes elsewhere (its edges, the tiny arguments, the
+// noncentral t's opposite tail), a sum that did not end, a tail below 2^-1000. The density is
+// handed over as the tail's length tail / density, from the m 2^e values (the density
+// underflows before the tail in a heavy one: the noncentral t's, which falls as |t|^-df).
+inline bool tail_len(double tail, Scaled v, Scaled d, double factor, double& len) {
+    len = value(v / d) * factor;
+    return tail >= 0x1p-1000 && len > 0.0 && std::isfinite(len);
+}
+inline bool tail_len(double tail, double pdf, double& len) {
+    len = tail / pdf;
+    return pdf > 0.0 && len > 0.0 && std::isfinite(len);
+}
+inline bool ncx2_tail_len(double df, double nc, double x, bool upper, double& tail, double& len) {
+    double pdf;
+    if (ncx2_lite(df, nc, x, upper, tail, &pdf)) return tail_len(tail, pdf, len);
+    Scaled d;
+    const Scaled v = mixture_s(0.5 * nc, 0.0, 0.5 * df, GammaFamily{0.5 * x, upper}, 0.0, false, &d);
+    tail = at_most_one(value(v));
+    return tail_len(tail, v, d, 2.0, len);  // d/dx P(s, x/2) = T(s - 1) / 2
+}
+inline bool ncf_tail_len(double dfn, double dfd, double nc, double x, bool upper, double& tail, double& len) {
+    double pdf;
+    if (ncf_lite(dfn, dfd, nc, x, upper, tail, &pdf)) return tail_len(tail, pdf, len);
+    const distr_detail::Arg g = distr_detail::f_arg(dfn, dfd, x);
+    if (!(g.x.hi >= distr_detail::kTinyArg && g.y.hi >= distr_detail::kTinyArg)) return false;
+    Scaled d;
+    const Scaled v = mixture_s(0.5 * nc, 0.0, 0.5 * dfn, BetaFamily{0.5 * dfd, g.x, g.y, upper}, 0.0, false, &d);
+    tail = at_most_one(value(v));
+    return tail_len(tail, v, d, x, len);  // d/dx I_w(s, b) = T(s) s / (w v) dw/dx, dw/dx = w v / x
+}
+inline bool nct_tail_len(double df, double nc, double t, bool upper, double& tail, double& len) {
+    double pdf;
+    if (nct_lite(df, nc, t, upper, tail, &pdf)) return tail_len(tail, pdf, len);
+    if (t < 0.0) nc = -nc, t = -t, upper = !upper;  // T(nc) = -T(-nc): the same density
+    if (!(t > 0.0)) return false;
+    if (upper && nc < 0.0) {  // the tail away from the noncentrality: its integral
+        Scaled d;
+        const Scaled v = nct_opposite_s(df, -nc, t, &d);
+        tail = value(v);
+        return tail_len(tail, v, d, 1.0, len);
+    }
+    const distr_detail::Arg g = distr_detail::t_arg(df, t);
+    if (!(g.x.hi >= distr_detail::kTinyArg && g.y.hi >= distr_detail::kTinyArg)) return false;
+    const dd::DD mu = dd::two_prod(nc, nc) * 0.5;
+    if (!(mu.hi > 0.0)) return false;
+    const BetaFamily fam{0.5 * df, g.y, g.x, upper};
+    Scaled dp, dq;
+    const Scaled sp = mixture_s(mu.hi, 0.0, 0.5, fam, mu.lo, false, &dp);
+    const Scaled sq = mixture_s(mu.hi, 0.5, 1.0, fam, mu.lo, false, &dq);
+    const double sign = std::copysign(1.0, nc);  // (+1 on the upper side: nc > 0 there)
+    const Scaled v = upper ? clamp01(times(add_s(sp, sq), 0.5))
+                           : clamp01(add_s(ndtr_neg_s(nc), times(add_s(sp, times(sq, sign)), 0.5)));
+    tail = value(v);
+    // (1/2) (D_p + sign D_q) / (X Y) dX/dt, X = t^2 / (df + t^2), dX/dt = 2 X Y / t
+    return tail_len(tail, v, add_s(dp, times(dq, sign)), t, len);
 }
 
 // A subnormal p has no inverse here: the forward functions return it with one or a few bits,
@@ -1380,6 +2068,75 @@ inline double invert_real(const L& F, const U& Fc, double p, double t0) {
     );
 }
 
+// The root of F(x) = p by Newton's method on log(tail / target), the smaller tail against its
+// own target as invert_positive (in log x for a positive variable, else in asinh x: a tail that
+// falls as a power of |x| is a line there, the noncentral t's for a small df): eval(x, upper,
+// tail, len) gives the tail and its length tail / f, f the density (a derivative: 1e-8 is enough), by the
+// sums of the bulk or the walk (the forward functions' own, so the root is theirs). The
+// root's error is the tail's, times tail / (x f): invert_positive's, without its bracketing
+// and zeroin (5 to 12 evaluations, against 3 or 4 here). A step d ends it when the next
+// error, K d^2 + 2^-30 d (K = d / d_prev^2 measured from the last two steps, both in the
+// quadratic regime: d_prev below 2^-5 of the scale max(|x|, tail / f) and d below d_prev / 8;
+// 2^-30 for the density's own error), is below 2^-53 of that scale, or d itself is below
+// 2^-50 of it. False (the bracketing solver then): a sum does not apply at an iterate, or
+// no end in 24 steps.
+template <class Eval>
+inline bool newton_root(const Eval& eval, double p, double x0, bool positive, double& out) {
+    const bool upper = p > 0.5;
+    const double target = upper ? 1.0 - p : p;
+    if (!(target >= 0x1p-900 && std::isfinite(x0)) || (positive && !(x0 > 0.0))) return false;
+    // x moved by du on its scale: x e^du, or sinh(asinh x + du), for a short step as x cosh du +
+    // sqrt(1 + x^2) sinh du (no rounding of asinh x; a long one would cancel there)
+    auto move = [&](double x, double du) {
+        if (positive) return x + x * std::expm1(du);
+        if (std::fabs(du) > 0.5) return std::sinh(std::asinh(x) + du);
+        return x + (x * (std::cosh(du) - 1.0) + std::hypot(1.0, x) * std::sinh(du));
+    };
+    // Every iterate narrows a bracket [ulo, uhi] on the scale, and a step past its end is
+    // replaced by a bisection there. A step is at most `cap` on the scale, doubled while the
+    // steps keep being cut in one direction (a start far from a root in a heavy tail: a t with
+    // P(T <= t) = 1e-28 at df = 0.14 is -3e193, 445 on the asinh scale from a start at -1).
+    double x = x0, prev = 0.0, ulo = -kInf, uhi = kInf, cap = 2.0, last_cut = 0.0;
+    for (int it = 0; it < 24; ++it) {
+        double tail, len;
+        if (!eval(x, upper, tail, len) || !(len > 0.0 && tail > 0.0 && std::isfinite(len))) return false;
+        double g = std::log(tail / target);  // made increasing in x
+        if (upper) g = -g;
+        const double u = positive ? std::log(x) : std::asinh(x), jac = positive ? x : std::hypot(1.0, x);
+        if (g > 0.0) uhi = u;
+        else ulo = u;
+        double du = -g * len / jac;  // Newton's step on the scale
+        const double scale = std::max(std::fabs(x), len);
+        double xn = move(x, du), ad = std::fabs(xn - x);
+        if (std::isfinite(xn) && (!positive || xn > 0.0) && std::fabs(du) <= 0x1p-10 &&
+            (ad <= 0x1p-50 * scale || (prev > 0.0 && prev <= 0x1p-5 * scale && ad <= 0x1p-3 * prev &&
+                                       ad * (ad * ad / (prev * prev) + 0x1p-30) <= 0x1p-53 * scale))) {
+            out = xn;
+            return true;
+        }
+        bool newton = true;
+        if (std::fabs(du) > cap) {
+            du = std::copysign(cap, du);
+            newton = false;
+            if (last_cut == du) cap *= 2.0;
+            last_cut = du;
+        } else {
+            last_cut = 0.0;
+        }
+        // (a step below the resolution of u lands on the bracket's end just set: no bisection)
+        if (!((u + du > ulo && u + du < uhi) || std::fabs(du) <= 0x1p-40 * (1.0 + std::fabs(u)))) {
+            if (!(std::isfinite(ulo) && std::isfinite(uhi))) return false;
+            du = 0.5 * (ulo + uhi) - u;
+            newton = false;
+        }
+        xn = move(x, du);
+        if (!std::isfinite(xn) || (positive && !(xn > 0.0)) || xn == x) return false;
+        prev = newton ? std::fabs(xn - x) : 0.0;  // (the quadratic estimate only from two Newton steps)
+        x = xn;
+    }
+    return false;
+}
+
 // Starting points: Patnaik's approximation, chi-square(k, nc) ~ c chi-square(k'),
 // c = (k + 2 nc) / (k + nc), k' = (k + nc)^2 / (k + 2 nc).
 inline double ncx2_start(double df, double nc, double p) {
@@ -1490,9 +2247,17 @@ struct Chndtrix : Real {
         if (p == 1.0 || std::isinf(df) || std::isinf(nc)) return kInf;
         if (p < nc_detail::kMinInverseP) return kNaN;
         if (df == 0.0 && p <= std::exp(-0.5 * nc)) return 0.0;  // inside the point mass at 0
+        const double x0 = nc_detail::ncx2_start(df, nc, p);
+        double r;
+        // (x below 2^-1021 or a tiny df: the forward function's own edges, not the sums)
+        auto eval = [&](double x, bool u, double& t, double& f) {
+            double o;
+            return x >= 0x1p-1000 && df >= 0x1p-960 && !ncx2_obvious(df, nc, x, u, o) &&
+                   nc_detail::ncx2_tail_len(df, nc, x, u, t, f);
+        };
+        if (nc_detail::newton_root(eval, p, x0, true, r)) return r;
         return nc_detail::invert_positive(
-            [&](double x) { return Chndtr::f(df, nc, x); }, [&](double x) { return Chndtrc::f(df, nc, x); }, p,
-            nc_detail::ncx2_start(df, nc, p)
+            [&](double x) { return Chndtr::f(df, nc, x); }, [&](double x) { return Chndtrc::f(df, nc, x); }, p, x0
         );
     }
 };
@@ -1566,6 +2331,16 @@ struct Nctdtrit : Real {
             const double disc = A * A * nc * nc - qa * (nc * nc - z * z);
             if (disc >= 0.0) t0 = (A * nc + std::copysign(std::sqrt(disc), z)) / qa;
         }
+        // A small df: far out the tails fall as |t|^-df, past every normal-type start (P(T <= t) =
+        // 1e-34 at df = 0.22 is t = -6e146): the central quantile's, where it is farther out and the
+        // noncentrality leans the same way (the tail at least as heavy as the central one's).
+        if (df <= 2.0 && std::min(p, 1.0 - p) < 1e-8 && (p < 0.5 ? nc <= 0.0 : nc >= 0.0)) {
+            const double tc = Stdtrit::f(df, p);
+            t0 = p < 0.5 ? std::min(t0, tc) : std::max(t0, tc);
+        }
+        double r;
+        auto eval = [&](double t, bool u, double& v, double& f) { return nc_detail::nct_tail_len(df, nc, t, u, v, f); };
+        if (nc_detail::newton_root(eval, p, t0, false, r)) return r;
         return nc_detail::invert_real(
             [&](double t) { return Nctdtr::f(df, nc, t); }, [&](double t) { return Nctdtrc::f(df, nc, t); }, p, t0
         );
@@ -1579,7 +2354,11 @@ namespace nc_detail {
 // beta shape a = 0 gave NaN for f ~ 1e23-1e173, where w is not tiny; 2026-11-19): the next
 // one, 1e-323. The values move by the j = 0 term's 1 - I_w(a, b) ~ a |log w| alone, below
 // 2^-1063 absolute.
-inline double halvable_dfn(double dfn) { return dfn == 0x1p-1074 ? 0x1p-1073 : dfn; }
+// Not where dfd itself is tiny (ncf's tiny-dfd form, the central F's cdf, takes dfn as it is:
+// moved, ncfdtr(5e-324, 5e-324, nc, f) was e^-mu / 3 for e^-mu / 2, and apart from fdtr at nc = 0).
+inline double halvable_dfn(double dfn, double dfd) {
+    return dfn == 0x1p-1074 && !(0.5 * dfd < kTinyShape) ? 0x1p-1073 : dfn;
+}
 }  // namespace nc_detail
 
 // ncfdtr(dfn, dfd, nc, f) = sum_j Poisson(j; nc/2) I_w(dfn/2 + j, dfd/2),
@@ -1613,7 +2392,7 @@ struct Ncfdtr : Real {
     static constexpr std::array<const char*, 4> args{"dfn", "dfd", "nc", "x"};
     static constexpr double cost_ns = cost::kNcfdtr;
     static double f(double dfn, double dfd, double nc, double x) {
-        dfn = nc_detail::halvable_dfn(dfn);
+        dfn = nc_detail::halvable_dfn(dfn, dfd);
         double out;
         if (ncf_edge(dfn, dfd, nc, x, false, out)) return out;
         return nc_detail::ncf(dfn, dfd, nc, x, false);
@@ -1626,7 +2405,7 @@ struct Ncfdtrc : Real {
     static constexpr std::array<const char*, 4> args{"dfn", "dfd", "nc", "x"};
     static constexpr double cost_ns = cost::kNcfdtrc;
     static double f(double dfn, double dfd, double nc, double x) {
-        dfn = nc_detail::halvable_dfn(dfn);
+        dfn = nc_detail::halvable_dfn(dfn, dfd);
         double out;
         if (ncf_edge(dfn, dfd, nc, x, true, out)) return out;
         return nc_detail::ncf(dfn, dfd, nc, x, true);
@@ -1639,7 +2418,7 @@ struct Ncfdtri : Real {
     static constexpr std::array<const char*, 4> args{"dfn", "dfd", "nc", "p"};
     static constexpr double cost_ns = cost::kNcfdtri;
     static double f(double dfn, double dfd, double nc, double p) {
-        dfn = nc_detail::halvable_dfn(dfn);
+        dfn = nc_detail::halvable_dfn(dfn, dfd);
         if (std::isnan(dfn) || std::isnan(dfd) || std::isnan(nc) || std::isnan(p) || !(dfn > 0.0) || !(dfd > 0.0) ||
             nc < 0.0 || p < 0.0 || p > 1.0)
             return kNaN;
@@ -1652,6 +2431,11 @@ struct Ncfdtri : Real {
         // start: dfn F ~ c chi-square(k') over chi-square(dfd) / dfd (Patnaik), a central F
         const double c = (dfn + 2.0 * nc) / (dfn + nc), k = (dfn + nc) / c;
         const double x0 = c * k / dfn * Fdtri::f(k, dfd, p);
+        double r;
+        auto eval = [&](double x, bool u, double& v, double& f) {
+            return nc_detail::ncf_tail_len(dfn, dfd, nc, x, u, v, f);
+        };
+        if (nc_detail::newton_root(eval, p, x0, true, r)) return r;
         return nc_detail::invert_positive(
             [&](double x) { return Ncfdtr::f(dfn, dfd, nc, x); }, [&](double x) { return Ncfdtrc::f(dfn, dfd, nc, x); },
             p, x0
@@ -1686,7 +2470,7 @@ inline Scaled nctdtr_tail(double df, double nc, double t, bool upper, bool wide 
     return nct_s(df, nc, t, upper, wide);
 }
 inline Scaled ncfdtr_tail(double dfn, double dfd, double nc, double x, bool upper, bool wide = true) {
-    dfn = nc_detail::halvable_dfn(dfn);
+    dfn = nc_detail::halvable_dfn(dfn, dfd);
     double out;
     if (ncf_edge(dfn, dfd, nc, x, upper, out)) return scaled(out);
     return clamp01(ncf_s(dfn, dfd, nc, x, upper, wide));

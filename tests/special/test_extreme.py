@@ -200,7 +200,9 @@ def test_nan_where_no_value():
         assert math.isnan(S.hyp2f1(a, b, c, z)), (a, b, c, z)
     # the noncentral F's small side as the complement of a side within 1/64 of 1 (they were
     # 2.2e-16 for 3.4e-298, 0 for 3.5e-298 and 4e7 ULP off)
-    assert math.isnan(S.ncfdtr(1e7, 1e-300, 2.0, 0.1)) and math.isnan(S.ncfdtrc(1e-300, 100.5, 1e-300, 0.001))
+    assert math.isnan(S.ncfdtr(1e7, 1e-300, 2.0, 0.1))
+    # a tiny dfn: now its own sum (the j = 0 term from fdtrc and the rest from shape 1); Arb 3.49404598971e-298
+    assert S.ncfdtrc(1e-300, 100.5, 1e-300, 0.001) == pytest.approx(3.49404598971e-298, rel=1e-11)
     assert math.isnan(S.ncfdtr(100.5, 1e-10, 1.0, MAXD))
     # the noncentral inverses at a subnormal p (they were 9% and 16% off)
     assert math.isnan(S.chndtrix(14.38, 2.0, 5e-324)) and math.isnan(S.nctdtrit(2.0, 2.0, 5e-324))

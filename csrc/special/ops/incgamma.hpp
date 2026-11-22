@@ -26,12 +26,14 @@
 #include "special/boost.hpp"
 
 #include "special/cf.hpp"
+#include "special/ops/cf_fast.hpp"
 #include "special/coeffs/temme_igamma.hpp"
 #include "special/common.hpp"
 #include "special/cost.hpp"
 #include "special/dd.hpp"
 #include "special/gamma_core.hpp"
 #include "special/halley.hpp"
+#include "special/ops/halley_fast.hpp"
 #include "special/ops/erf.hpp"
 #include "special/ops/expint.hpp"
 #include "special/prefix.hpp"
@@ -99,23 +101,31 @@ inline PQ small_a_upper(double a, double x) {
     return {1.0 - q, q, xa * std::exp(-x) * (a / (tg + 1.0))};
 }
 
+// sum_n x^n / ((a+1)...(a+n)) to 2^-56 of itself, NaN if not ended in kMaxTerms terms. Two terms a
+// step (the second from the first's term times the product of both ratios: the dependent chain
+// is one product and one sum per two terms, a third of the series' time; the ratios' divisions
+// are independent of it).
+inline double lower_series(double a, double x) {
+    double sum = 1.0, term = 1.0, ap = a;
+    for (int n = 0; n < kMaxTerms; n += 2) {
+        const double r1 = x / (ap + 1.0), r2 = x / (ap + 2.0);
+        ap += 2.0;
+        const double t1 = term * r1;
+        term *= r1 * r2;
+        sum += t1 + term;
+        if (term <= sum * 0x1p-56) return sum;
+    }
+    return kNaN;
+}
+
 // P by the series: D sum_n x^n / ((a+1)...(a+n)). x - 1/(3x) < a, so the
 // terms fall at least like (x / (a + n))^n.
 inline PQ series_lower(double a, double x) {
     const Scaled d = gamma_prefix(a, x);
-    double sum = 1.0, term = 1.0, ap = a;
+    double sum = 1.0;
     if (d.m != 0.0) {
-        bool ended = false;
-        for (int n = 0; n < kMaxTerms; ++n) {
-            ap += 1.0;
-            term *= x / ap;
-            sum += term;
-            if (term <= sum * 0x1p-56) {
-                ended = true;
-                break;
-            }
-        }
-        if (!ended) return {kNaN, kNaN, kNaN};
+        sum = lower_series(a, x);
+        if (!(sum == sum)) return {kNaN, kNaN, kNaN};
     }
     const double dv = value(d);
     // (the product in one rounding; through the split form only where it may leave the normals)
@@ -129,7 +139,7 @@ inline PQ cf_upper(double a, double x) {
     const Scaled d = gamma_prefix(a, x);
     double tail = 1.0;
     if (d.m != 0.0) {
-        tail = cf_value(
+        tail = cf_fast_value(
             x + 1.0 - a,
             [&](int n) {
                 const double k = n;
@@ -191,16 +201,64 @@ inline PQ temme(double a, double x, dd::DD E) {
     return {p, 1.0 - p, deriv};
 }
 
+// a = 1/2: P = erf(sqrt x), Q = erfc(sqrt x), the smaller computed (P below x = 0.2275,
+// where erf(sqrt x) = 1/2); Q by erfc_sqrt, whose exponential is e^-x itself (sqrt's rounding
+// does not enter it). x P' = sqrt(x) e^-x / sqrt(pi). (The series and the fraction take up to
+// ~60 terms near x = 1 for this shape: the noncentral and central t's BGRAT, chdtr(1, x).)
+inline constexpr double kInvSqrtPi = 0.56418958354775628695;
+inline PQ half_shape(double x) {
+    const double z = std::sqrt(x), xd = z * std::exp(-x) * kInvSqrtPi;
+    if (x < 0.2275) {
+        const double p = erf_detail::erf_small(z);
+        return {p, 1.0 - p, xd};
+    }
+    const double q = erfc_sqrt(dd::DD{x, 0.0});
+    return {1.0 - q, q, xd};
+}
+
+// Q for 2a an integer, 1 <= a <= kFiniteShape, in the fraction's region (x > a): the finite
+// sums of positive terms
+//     Q(n, x) = sum_{j < n} D(j, x),   Q(n + 1/2, x) = erfc(sqrt x) + sum_{j < n} D(j + 1/2, x)
+// (D(s, x) = x^s e^-x / Gamma(s + 1)), as D(a - 1, x) (1 + (a-1)/x + (a-1)(a-2)/x^2 + ...),
+// D(a - 1, x) = D(a, x) a / x: at most kFiniteShape terms against the fraction's 10 to 60
+// (pdtr's integer shapes, chdtr's half-integers).
+inline constexpr double kFiniteShape = 30.0;
+inline bool finite_shape(double a) { return a >= 1.0 && a <= kFiniteShape && 2.0 * a == std::floor(2.0 * a); }
+inline PQ finite_upper(double a, double x) {
+    const Scaled d = gamma_prefix(a, x);
+    const bool half = a != std::floor(a);
+    // the sum in Horner's form from its last term, 1 + c/x (1 + (c-1)/x (1 + ...)), c = a - 1
+    // (each step's rounding damped by the next c / x < 1; summed forward, the products' roundings
+    // piled up to 3 ULP at a = 30)
+    double sum = 1.0;
+    for (double c = half ? 1.5 : 1.0; c <= a - 1.0; c += 1.0) sum = std::fma(c / x, sum, 1.0);
+    const double dv = value(d), r = (a / x) * sum;
+    double q = dv >= 0x1p-900 ? dv * r : value(d * scaled(r));
+    if (half) q += erfc_sqrt(dd::DD{x, 0.0});
+    return {1.0 - q, q, dv * a};
+}
+
 // P and Q for a > 0, x > 0, both finite.
 inline PQ igam(double a, double x) {
+    // a = 1: P = 1 - e^-x, Q = e^-x, both rounded once (expm1, exp), so log Q is -x to the last
+    // bit (Poisson's logcdf(0) = -mu, the chi-square's logccdf at df = 2 = -x/2); the series' P
+    // carried an ULP, which log1p(-P) turned into one of -x
+    if (a == 1.0) {
+        const double e = std::exp(-x);
+        return {-std::expm1(-x), e, x * e};
+    }
+    if (a == 0.5) return half_shape(x);
     if (x < 1.1) {
-        const bool small = x < 0.5 ? a <= -0.4 / std::log(x) : a <= 0.75 * x;
+        // (from x = 1/2 on, every a < 1 too: Q is the smaller side there or near it, and the
+        // series' 1 - P carried up to 46 ULP of it, this form 6; measured with Arb, a in
+        // (0.2, 1), x in (0.5, 1.1). Boost's rule, a <= 0.75 x, left those to the series.)
+        const bool small = x < 0.5 ? a <= -0.4 / std::log(x) : (a <= 0.75 * x || a < 1.0);
         if (small) return small_a_upper(a, x);
         return series_lower(a, x);
     }
     if (a > 20.0 && std::fabs(x - a) < 0.4 * a) return temme(a, x, gamma_exponent(a, x));
     if (x - 1.0 / (3.0 * x) < a) return series_lower(a, x);
-    return cf_upper(a, x);
+    return finite_shape(a) ? finite_upper(a, x) : cf_upper(a, x);
 }
 
 // scipy's conventions on the edges; NaN for a < 0, x < 0 or NaN.
@@ -247,7 +305,7 @@ inline std::array<double, 2> log_tail(double a, double x, bool lower, dd::DD lt)
         if (!ended) return {kNaN, kNaN};
         return {ld + std::log(sum), a / (x * sum)};
     }
-    const double tail = cf_value(
+    const double tail = cf_fast_value(
         x + 1.0 - a,
         [&](int n) {
             const double k = n;
@@ -277,7 +335,9 @@ inline constexpr double kNormalShape = 1e10;
 //   xw  Wilson-Hilferty: x = a (1 - 1/(9a) + z / sqrt(9a))^3, z the normal deviate
 //   xq  Q ~ x^(a-1) e^-x / Gamma(a) (x >> a): x = -log(Q Gamma(a)) + (a - 1) log x,
 //       by fixed-point steps; below the root for a >= 1, above for a < 1
-inline double igam_inverse(double a, double p, bool upper) {
+// x_start (finite, > 0): a start of the caller's for the Halley steps (Boost's, Gammaincinv),
+// in place of the ones below; not for the deep tail, which keeps its own.
+inline double igam_inverse(double a, double p, bool upper, double x_start = kNaN) {
     const bool lower = upper ? p > 0.5 : p <= 0.5;  // solve P = t (else Q = t)
     const double t = (upper == lower) ? 1.0 - p : p;
     if (a >= kNormalShape) {
@@ -289,28 +349,32 @@ inline double igam_inverse(double a, double p, bool upper) {
         return a + (z * sa + ((z2 - 1.0) / 3.0 +
                               (z * (z2 - 7.0) / (36.0 * sa) - (3.0 * z2 * z2 + 7.0 * z2 - 16.0) / (810.0 * a))));
     }
-    const double lga1 = lgamma_pos(a + 1.0);
-    const double c = 1.0 / (9.0 * a);
     double x;
-    if (lower) {
-        x = std::exp((std::log(t) + lga1) / a);
-        if (a >= 1.0) {
-            const double v = 1.0 - c + ndtri1(t) * std::sqrt(c);
-            if (v > 0.0) x = std::max(x, a * v * v * v);
-        }
+    if (t >= 0x1p-1000 && x_start > 0.0 && x_start < kInf) {
+        x = x_start;
     } else {
-        const double xs = std::exp((std::log1p(-t) + lga1) / a);
-        const double L = std::log(t) + lgamma_pos(a);
-        auto xq = [&] {
-            double y = std::max(1.0, -L);
-            for (int i = 0; i < 5; ++i) y = std::max(1.0, -L + (a - 1.0) * std::log(y));
-            return y;
-        };
-        if (a >= 1.0) {
-            const double v = 1.0 - c - ndtri1(t) * std::sqrt(c);
-            x = std::max(xs, t < 1e-4 && a < 10.0 ? xq() : a * v * v * v);
+        const double lga1 = lgamma_pos(a + 1.0);
+        const double c = 1.0 / (9.0 * a);
+        if (lower) {
+            x = std::exp((std::log(t) + lga1) / a);
+            if (a >= 1.0) {
+                const double v = 1.0 - c + ndtri1(t) * std::sqrt(c);
+                if (v > 0.0) x = std::max(x, a * v * v * v);
+            }
         } else {
-            x = xs < 1.0 ? xs : xq();
+            const double xs = std::exp((std::log1p(-t) + lga1) / a);
+            const double L = std::log(t) + lgamma_pos(a);
+            auto xq = [&] {
+                double y = std::max(1.0, -L);
+                for (int i = 0; i < 5; ++i) y = std::max(1.0, -L + (a - 1.0) * std::log(y));
+                return y;
+            };
+            if (a >= 1.0) {
+                const double v = 1.0 - c - ndtri1(t) * std::sqrt(c);
+                x = std::max(xs, t < 1e-4 && a < 10.0 ? xq() : a * v * v * v);
+            } else {
+                x = xs < 1.0 ? xs : xq();
+            }
         }
     }
     if (x == 0.0) return 0.0;  // the root underflows
@@ -333,28 +397,29 @@ inline double igam_inverse(double a, double p, bool upper) {
         }
         return step <= 0x1p-48 ? x : kNaN;  // (a cycle in the last bits is the root; else no value)
     }
-    return halley(x, t, lower, [&](double y) {
+    return halley_fast(x, t, lower, [&](double y) {
         const PQ r = igam(a, y);
-        return std::array<double, 3>{lower ? r.p : r.q, lower ? r.xderiv : -r.xderiv, (a - 1.0) / y - 1.0};
+        return std::array<double, 4>{
+            lower ? r.p : r.q, lower ? r.xderiv : -r.xderiv, (a - 1.0) / y - 1.0, -(a - 1.0) / (y * y)
+        };
     });
 }
 
-// One Halley step from x (Boost's inverse, which stops its iteration at half
-// the digits and leaves up to ~100 ULP at large a) on the smaller of p, 1 - p:
-// from a relative error e the step leaves ~e^3, below rounding. Skipped in the
-// deep tail, where F rounded to float64 is too coarse (igam_inverse's log path).
-inline double igam_polish(double a, double p, bool upper, double x) {
-    const bool lower = upper ? p > 0.5 : p <= 0.5;
-    const double t = (upper == lower) ? 1.0 - p : p;
-    if (t < 0x1p-1000) return x;
-    const PQ r = igam(a, x);
-    const double F = lower ? r.p : r.q;
-    const double xfp = lower ? r.xderiv : -r.xderiv;
-    if (!(F > 0.0) || xfp == 0.0 || !std::isfinite(xfp)) return x;
-    const double u = x * ((F - t) / xfp);
-    const double den = 1.0 - 0.5 * u * ((a - 1.0) / x - 1.0);
-    const double xn = x - (den > 0.5 && den < 2.0 ? u / den : u);
-    return xn > 0.0 && std::isfinite(xn) ? xn : x;
+// Boost's initial value for the inverse (find_inverse_gamma, the start of gamma_p_inv and
+// gamma_q_inv: DiDonato & Morris's approximations, Temme's for large a), or NaN where it is
+// not taken (a target below 1e-300 or a shape from kNormalShape: igam_inverse's own starts; a
+// start outside the normal doubles). Boost's own inverses iterate from it to half the digits
+// and left up to ~100 ULP at large a, which one Halley step of ours on igam took away (Boost's
+// whole inverse and that step: 360 ns); from the start directly, our steps take 130 ns.
+inline double boost_start(double a, double p, bool upper) {
+    if (!(p >= 1e-300 && a < kNormalShape)) return kNaN;
+    const double r = bst::call([&] {
+        bool ten = false;
+        return boost::math::detail::find_inverse_gamma<double>(
+            a, upper ? 1.0 - p : p, upper ? p : 1.0 - p, bst::Policy(), &ten
+        );
+    });
+    return bst::normal(r) && r >= 1e-300 ? r : kNaN;
 }
 
 }  // namespace igam_detail
@@ -433,11 +498,9 @@ struct Gammaincinv : Real {
     static double f(double a, double p) {
         double out;
         if (igam_inverse_edge(a, p, false, out)) return out;
-        if (p >= 1e-300 && a < igam_detail::kNormalShape) {  // Boost (special/boost.hpp); subnormal roots are ours
-            const double r = bst::gamma_p_inv(a, p);
-            if (bst::normal(r) && r >= 1e-300) return igam_detail::igam_polish(a, p, false, r);
-        }
-        return igam_detail::igam_inverse(a, p, false);
+        // Boost's start (special/boost.hpp: its initial approximation, often to 10 digits), then our
+        // Halley steps to the last bit; subnormal roots are ours
+        return igam_detail::igam_inverse(a, p, false, igam_detail::boost_start(a, p, false));
     }
 };
 
@@ -451,11 +514,7 @@ struct Gammainccinv : Real {
         if (igam_inverse_edge(a, q, true, out)) return out;
         if (a < 0x1p-900) [[unlikely]]
             return tiny_shape_upper_root(a, q);
-        if (q >= 1e-300 && a < igam_detail::kNormalShape) {  // Boost (special/boost.hpp); as gammaincinv
-            const double r = bst::gamma_q_inv(a, q);
-            if (bst::normal(r)) return igam_detail::igam_polish(a, q, true, r);
-        }
-        return igam_detail::igam_inverse(a, q, true);
+        return igam_detail::igam_inverse(a, q, true, igam_detail::boost_start(a, q, true));  // as gammaincinv
     }
 };
 

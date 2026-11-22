@@ -241,6 +241,25 @@ inline bool t_quantile(double df, double q2, double& out) {
     return false;
 }
 
+// The t with P(T <= t) = p for df >= 1000 max(1, z^2), z the normal deviate of p: the
+// Cornish-Fisher expansion t = z + g1(z)/df + g2(z)/df^2 + g3(z)/df^3 + g4(z)/df^4 (A&S 26.7.5),
+// whose next term (~1e-4 z^11 / df^5, plus lower powers of z) is below 2^-56 of t there
+// (measured against stdtrit's Halley root on the tail: 3 to 7 ULP apart, ndtri's own ULPs; a
+// Halley step on the tail took 150 to 350 ns, BGRAT at these shapes). False outside.
+inline bool t_quantile_large_df(double df, double p, double& out) {
+    const double q = p - 0.5, m = p < 0.5 ? p : 1.0 - p;
+    const erf_detail::NdtriParts r = erf_detail::ndtri_parts(q, std::log(m));
+    const double z = r.central ? q * r.ratio : r.tail, z2 = z * z;
+    if (!(df >= 1000.0 * std::max(1.0, z2))) return false;
+    const double v = 1.0 / df;
+    const double g1 = (z2 + 1.0) / 4.0;
+    const double g2 = ((5.0 * z2 + 16.0) * z2 + 3.0) / 96.0;
+    const double g3 = (((3.0 * z2 + 19.0) * z2 + 17.0) * z2 - 15.0) / 384.0;
+    const double g4 = ((((79.0 * z2 + 776.0) * z2 + 1482.0) * z2 - 1920.0) * z2 - 945.0) / 92160.0;
+    out = z + z * ((g1 + (g2 + (g3 + g4 * v) * v) * v) * v);
+    return true;
+}
+
 // (n / d) (dfd / dfn) for fdtri's x = (dfd/dfn) w / (1 - w) and (dfd/dfn) (1 - v) / v, with
 // n, d >= 0 not both 0. Where dfd / dfn is a normal double this is the plain product (its bits
 // are kept); past the normal doubles the quotient lost its bits or was 0 or inf, and an inf
@@ -291,6 +310,7 @@ struct Stdtrit : Real {
         if (p == 1.0) return kInf;
         if (p == 0.5) return 0.0;
         if (std::isinf(df)) return distr_detail::one<Ndtri>(p);
+        if (double t; df >= 1000.0 && distr_detail::t_quantile_large_df(df, p, t)) return t;
         const bool lower = p < 0.5;
         // |t| = sqrt(df) (q2 a B(a, 1/2))^(-1/df) (the far tail below) is past the doubles for
         // every p != 1/2 when df < 2^-1000: -log(q2 a B) >= 2^-54 against 1/df > 2^1000. (For
@@ -639,22 +659,40 @@ struct Nbdtrc : Real {
 
 // ------------------------------------------------------------------ ndtri_exp
 
-// ndtri_exp(y) = ndtri(exp(y)), for y <= 0:
+// ndtri_exp(y) = ndtri(exp(y)), for y <= 0, by AS241 (erf_detail::ndtri_parts) with its
+// L = log(min(p, 1 - p)) known without a log:
 //   |p - 1/2| <= 1/4: q = expm1(y + log 2) / 2 with log 2 as hi + lo (y + hi exact near
 //                  y = -log 2), then ndtri's central rational q R(q^2): exp(y) - 1/2 cancelled
 //                  every bit of q there (ndtri_exp(-0.6931471805599453) was 0 for 2.9e-17).
 //                  Past |q| = 0.3 the paths below were the more accurate (measured with Arb).
-//   y > log(1/2):  -ndtri(-expm1(y))  (1 - p from expm1, without cancellation)
-//   y > -700:      ndtri(exp(y))      (exp(y) normal; x is insensitive to p's rounding there)
-//   below:         Newton on log_ndtr(x) = y from the asymptote
-//                  x^2 = -2y - log(2 pi) - 2 log(-x)
+//   y > log(1/2):  -ndtri(1 - p), 1 - p = -expm1(y) without cancellation
+//   y >= -745:     the tail's L is y itself (the central q = e^y - 1/2 above p = 0.075). AS241's
+//                  tail rational holds to s = sqrt(-L) = 27.3 (p = 5e-324; it is ndtri's), and the
+//                  value is the same as ndtri(exp(y))'s without the exp and the log (57 -> ~15 ns)
+//   below:         Newton on the asymptotic log ndtr(x) = y,
+//                  log ndtr(x) = -x^2/2 - log(-x) - log(2 pi)/2 + log S,
+//                  S = 1 - 1/x^2 + 3/x^4 - 15/x^6 + ... (|x| >= 38.5: eight terms, the ninth
+//                  below 1e-19); the residual's x^2/2 + y exact (two_prod), so its error is
+//                  eps log|x|, a relative eps log|x| / x^2 in x
 struct NdtriExp : Real {
     static constexpr const char* name = "ndtri_exp";
     static constexpr int nin = 1, nout = 1;
     static constexpr std::array<const char*, 1> args{"y"};
     static constexpr double cost_ns = cost::kNdtri + 12;
+    // ndtri of p with q = p - 1/2 and L = log(min(p, 1 - p)) (AS241 as ndtri)
+    static double as241(double q, double L) {
+        const erf_detail::NdtriParts r = erf_detail::ndtri_parts(q, L);
+        return r.central ? q * r.ratio : r.tail;
+    }
+    // log S - log(-x) for x <= -38 (the asymptote's small terms), and its derivative's part
+    static double asym_small(double x, double r) {
+        // S = 1 - r + 3 r^2 - 15 r^3 + 105 r^4 - 945 r^5 + 10395 r^6 - 135135 r^7 + 2027025 r^8
+        const double s1 =
+            r * (-1.0 + r * (3.0 + r * (-15.0 +
+                                        r * (105.0 + r * (-945.0 + r * (10395.0 + r * (-135135.0 + r * 2027025.0)))))));
+        return std::log1p(s1) - std::log(-x);
+    }
     static double f(double y) {
-        using distr_detail::one;
         if (std::isnan(y) || y > 0.0) return kNaN;
         if (y == 0.0) return kInf;
         if (std::isinf(y)) return -kInf;
@@ -664,34 +702,34 @@ struct NdtriExp : Real {
             const double q = 0.5 * std::expm1((y + kLn2Hi) + kLn2Lo);
             if (std::fabs(q) <= 0.25) return q * erf_detail::ndtri_parts(q, 0.0).ratio;
         }
-        if (y > kLogHalf) return -one<Ndtri>(-std::expm1(y));
-        if (y > -700.0) return one<Ndtri>(std::exp(y));
-        constexpr double kLog2Pi = 1.83787706640934548356;
+        if (y > kLogHalf) {
+            const double c = -std::expm1(y);  // 1 - p < 1/2
+            return -as241(c - 0.5, std::log(c));
+        }
+        if (y >= -745.0) return as241(std::exp(y) - 0.5, y);  // (exp(y) - 1/2 used only above p = 0.075)
+        constexpr double kHalfLog2Pi = 0.91893853320467274178;
         constexpr double kSqrt2 = 1.41421356237309504880;
-        // The asymptote log ndtr(x) = -x^2/2 - log(-x) - log(2 pi)/2 + log S,
-        // S = 1 - 1/x^2 + 3/x^4 - ..., as a fixed point for x^2.
-        // Past y = -2^1000, -2y would overflow (from y = -8.99e307): the same fixed point for
-        // x^2 / 2, x = -sqrt(2) sqrt(-y - log(2 pi)/2 - log(-x) + log S).
-        const bool huge = y < -0x1p1000;
-        auto asymptote = [&](double x) {
+        if (y < -1e8) {
+            // x^2 = -2y - log(2 pi) - 2 log(-x) + 2 log S as a fixed point (past y = -2^1000 -2y
+            // would overflow: in x^2 / 2), which contracts by 1/x^2 < 1e-8 a step: three from
+            // the leading term leave below 1e-24.
+            double x = -kSqrt2 * std::sqrt(-y - kHalfLog2Pi);
+            for (int i = 0; i < 3; ++i) {
+                const double r = 1.0 / (x * x);
+                x = -kSqrt2 * std::sqrt(-y - kHalfLog2Pi + asym_small(x, r));
+            }
+            return x;
+        }
+        // x^2 ~ w - log(w - log w), w = -2y - log(2 pi), to ~1e-9; then Newton on the residual
+        // y - log ndtr(x) over the slope -x - 1/x + 2/x^3 (quadratic: two steps to rounding;
+        // a third moved 16 of 1.2e5 points over y in [-1e8, -745] by an ULP, either way)
+        const double w = -2.0 * y - 2.0 * kHalfLog2Pi;
+        double x = -std::sqrt(w - std::log(w - std::log(w)));
+        for (int i = 0; i < 2; ++i) {
             const double r = 1.0 / (x * x);
-            if (huge) return -kSqrt2 * std::sqrt(-y - 0.5 * kLog2Pi - std::log(-x) + std::log1p(r * (-1.0 + 3.0 * r)));
-            return -std::sqrt(-2.0 * y - kLog2Pi - 2.0 * std::log(-x) + 2.0 * std::log1p(r * (-1.0 + 3.0 * r)));
-        };
-        double x = huge ? -kSqrt2 * std::sqrt(-y - 0.5 * kLog2Pi) : -std::sqrt(-2.0 * y - kLog2Pi);
-        for (int i = 0; i < 5; ++i) x = asymptote(x);
-        // For y < -1e8 (|x| > 1.4e4) the series' next term (15/x^6) is far below
-        // the last bit, so the fixed point is the answer. Newton's slope
-        // phi/ndtr subtracts numbers of size x^2/2: past |x| ~ 1e6 that
-        // cancellation ruins it (y = -1e17 gave 2e13 ULP).
-        if (y < -1e8) return x;
-        for (int i = 0; i < 8; ++i) {
-            const double l = one<LogNdtr>(x);
-            // d/dx log ndtr(x) = phi(x) / ndtr(x) = exp(-x^2/2 - log(2 pi)/2 - log ndtr(x))
-            const double slope = std::exp(-(0.5 * x) * x - 0.5 * kLog2Pi - l);
-            const double step = (l - y) / slope;
-            x -= step;
-            if (std::fabs(step) <= 1e-17 * std::fabs(x)) break;
+            const dd::DD x2 = dd::two_prod(x, x);
+            const double res = ((y + 0.5 * x2.hi) + 0.5 * x2.lo) + (kHalfLog2Pi - asym_small(x, r));
+            x += res / (-x - (1.0 - 2.0 * r) / x);
         }
         return x;
     }

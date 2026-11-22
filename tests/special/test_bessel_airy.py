@@ -245,7 +245,10 @@ def test_real_order_at_the_zeros():
         for name, want in (("jv", j), ("yv", y), ("jve", j), ("yve", y)):
             got = getattr(S, name)(v, x)
             assert abs(got - want) <= bound, (name, v, x, got, want)
-    assert S.jv(0.0, 2.404825557695773) == 0.0 and S.jve(0.0, 2.404825557695773) == 0.0
+    # J_0 at the float64 nearest its first zero is -6.1087652597367e-17 (Arb); a few 1e-17 of the
+    # envelope 0.51 off is within the bound (the order-0 rational fit gives -9.6e-17)
+    for name in ("jv", "jve"):
+        assert abs(getattr(S, name)(0.0, 2.404825557695773) + 6.1087652597367304e-17) <= 1e-14 * 0.509924383448479
     assert S.yv(0.0, 2.404825557695773) == pytest.approx(0.509924383448479, rel=1e-14)
 
 

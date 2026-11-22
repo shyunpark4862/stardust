@@ -51,7 +51,13 @@ def test_special_values_unary(name):
     for x in EDGES:
         if name == "logit" and x in (0.25, 0.75):
             continue  # not a special value: 1 ULP apart (2 atanh(+-0.5) vs scipy's log), see test_reference
-        assert bits_equal_any_nan(getattr(S, name)(x), getattr(sp, name)(x)), (name, x)
+        got, want = getattr(S, name)(x), getattr(sp, name)(x)
+        if name == "log_expit" and np.isfinite(want) and want != 0.0:
+            # vForce's exp and log1p (the chunked kernel): within 2 ULP of scipy's libm values
+            # (log_expit(1) is 1 ULP below scipy's, and the correctly rounded one)
+            assert abs(got - want) <= 2 * np.spacing(abs(want)), (name, x, got, want)
+            continue
+        assert bits_equal_any_nan(got, want), (name, x)
 
 
 @pytest.mark.parametrize("name", BINARY)

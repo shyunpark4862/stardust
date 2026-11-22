@@ -19,6 +19,10 @@
 #include "special/coeffs/cephes_ellip.hpp"
 #include "special/common.hpp"
 #include "special/cost.hpp"
+#include "special/kernels/chunked.hpp"
+#include "special/kernels/simd.hpp"
+
+#include <Accelerate/Accelerate.h>
 
 #include <array>
 #include <cmath>
@@ -36,20 +40,57 @@ inline double ellpe(double y) { return horner(y, cephes::kEllpeP) - std::log(y) 
 
 }  // namespace ellip_detail
 
+// The NEON + vForce chunk shared by K and E (kernels/chunked.hpp): y = 1 - m for m >= 0 (1/(1-m)
+// for m < 0) in lanes, log y by one vvlog over the chunk, the polynomials in lanes (simd::horner,
+// the scalar's roundings), and the special values (NaN, m >= 1, -inf) element by element after.
+// 2.5x the scalar libm loop.
+template <bool kE>
+inline void ellip_chunk(const double* m, double* o, int n) {
+    using simd::F2;
+    alignas(16) double y[kChunk], ly[kChunk];
+    auto ybar = [](auto mv) {
+        using V = decltype(mv);
+        const V w = simd::cst<V>(1.0) - mv;
+        return simd::select(mv >= simd::cst<V>(0.0), w, simd::cst<V>(1.0) / w);
+    };
+    int i = 0;
+    for (; i + 2 <= n; i += 2) simd::store(y + i, ybar(simd::load(m + i, F2{})));
+    for (; i < n; ++i) y[i] = ybar(m[i]);
+    vvlog(ly, y, &n);
+    auto value = [](auto mv, auto yv, auto lv) {
+        using V = decltype(mv);
+        const V w = simd::cst<V>(1.0) - mv;
+        if constexpr (kE) {
+            const V e = simd::horner(yv, cephes::kEllpeP) - lv * (yv * simd::horner(yv, cephes::kEllpeQ));
+            return simd::select(mv >= simd::cst<V>(0.0), e, simd::sqrt(w) * e);
+        } else {
+            const V r = simd::horner(yv, cephes::kEllpkP) - lv * simd::horner(yv, cephes::kEllpkQ);
+            const V k = simd::select(
+                yv <= simd::cst<V>(kEps), simd::cst<V>(cephes::kEllpkC1) - simd::cst<V>(0.5) * lv, r
+            );  // (MACHEP: Cephes' form there)
+            return simd::select(mv >= simd::cst<V>(0.0), k, k / simd::sqrt(w));
+        }
+    };
+    i = 0;
+    for (; i + 2 <= n; i += 2)
+        simd::store(o + i, value(simd::load(m + i, F2{}), simd::load(y + i, F2{}), simd::load(ly + i, F2{})));
+    for (; i < n; ++i) o[i] = value(m[i], y[i], ly[i]);
+    for (i = 0; i < n; ++i) {
+        const double v = m[i];
+        if (v < 1.0 && v > -kInf) continue;
+        if (std::isnan(v) || v > 1.0) o[i] = kNaN;
+        else if (v == 1.0) o[i] = kE ? 1.0 : kInf;
+        else o[i] = kE ? kInf : 0.0;  // -inf
+    }
+}
+
 // K(m). ellipk(1) = inf, ellipk(-inf) = 0, m > 1 is NaN (scipy).
 struct Ellipk : Real {
     static constexpr const char* name = "ellipk";
     static constexpr int nin = 1, nout = 1;
     static constexpr std::array<const char*, 1> args{"m"};
     static constexpr double cost_ns = cost::kEllipk;
-    static double f(double m) {
-        if (std::isnan(m) || m > 1.0) return kNaN;
-        if (m == 1.0) return kInf;
-        if (m == -kInf) return 0.0;
-        if (m >= 0.0) return ellip_detail::ellpk(1.0 - m);
-        const double w = 1.0 - m;  // > 1
-        return ellip_detail::ellpk(1.0 / w) / std::sqrt(w);
-    }
+    static void chunk(const double* m, double* o, int n) { ellip_chunk<false>(m, o, n); }
 };
 
 // E(m). ellipe(1) = 1, ellipe(-inf) = inf, m > 1 is NaN (scipy).
@@ -58,14 +99,7 @@ struct Ellipe : Real {
     static constexpr int nin = 1, nout = 1;
     static constexpr std::array<const char*, 1> args{"m"};
     static constexpr double cost_ns = cost::kEllipe;
-    static double f(double m) {
-        if (std::isnan(m) || m > 1.0) return kNaN;
-        if (m == 1.0) return 1.0;
-        if (m == -kInf) return kInf;
-        if (m >= 0.0) return ellip_detail::ellpe(1.0 - m);
-        const double w = 1.0 - m;
-        return std::sqrt(w) * ellip_detail::ellpe(1.0 / w);
-    }
+    static void chunk(const double* m, double* o, int n) { ellip_chunk<true>(m, o, n); }
 };
 
 }  // namespace sd::special

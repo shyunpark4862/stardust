@@ -23,6 +23,10 @@
 #include "special/common.hpp"
 #include "special/cost.hpp"
 #include "special/gamma_core.hpp"
+#include "special/kernels/chunked.hpp"
+#include "stats/vmath.hpp"
+
+#include <arm_neon.h>
 
 #include <array>
 #include <cmath>
@@ -42,17 +46,41 @@ struct FiniteOrZero : Real {
     static double f(double m) { return std::isfinite(m) ? m : 0.0; }
 };
 
-// exp(x - m) with x - m = hi + lo exact.
+// exp(x - m) with x - m = hi + lo exact: e^hi (1 + lo), no correction where hi is not finite
+// (inf - inf = NaN, exp(-inf) = 0) or e^hi is 0. In chunks (kernels/chunked.hpp): x - m in NEON
+// lanes, e^hi by stats/vmath.hpp's NEON exp (0.6 ns an element, 0.52 ULP; libm's exp an element
+// at a time was 2 ns, most of softmax's time), the correction in lanes; the odd last element
+// the same operations in scalar (vmath's twin), so an element's value does not depend on its
+// position.
 struct ExpDiff : Real {
     static constexpr const char* name = "_exp_diff";
     static constexpr int nin = 2, nout = 1;
     static constexpr std::array<const char*, 2> args{"x", "m"};
-    static constexpr double cost_ns = 2.5;
-    static double f(double x, double m) {
-        const TwoSum d = two_sum(x, -m);
-        const double e = std::exp(d.s);
-        if (!std::isfinite(d.s) || e == 0.0) return e;  // inf - inf = NaN, exp(-inf) = 0: no correction
-        return e + e * d.err;
+    static constexpr double cost_ns = 1.0;
+    static void chunk2(const double* x, const double* m, double* o, int n) {
+        alignas(16) double hi[kChunk], lo[kChunk], e[kChunk];
+        int i = 0;
+        for (; i + 2 <= n; i += 2) {
+            const float64x2_t a = vld1q_f64(x + i), b = vnegq_f64(vld1q_f64(m + i));
+            const float64x2_t sv = vaddq_f64(a, b), bb = vsubq_f64(sv, a);
+            vst1q_f64(hi + i, sv);
+            vst1q_f64(lo + i, vaddq_f64(vsubq_f64(a, vsubq_f64(sv, bb)), vsubq_f64(b, bb)));
+        }
+        for (; i < n; ++i) {
+            const TwoSum d = two_sum(x[i], -m[i]);
+            hi[i] = d.s, lo[i] = d.err;
+        }
+        stats::vm::exp(e, hi, n);
+        const float64x2_t inf = vdupq_n_f64(kInf);
+        i = 0;
+        for (; i + 2 <= n; i += 2) {
+            const float64x2_t ev = vld1q_f64(e + i), hv = vld1q_f64(hi + i);
+            // finite hi (false for NaN) and e != 0
+            const uint64x2_t keep = vbicq_u64(vcltq_f64(vabsq_f64(hv), inf), vceqzq_f64(ev));
+            const float64x2_t corr = vaddq_f64(ev, vmulq_f64(ev, vld1q_f64(lo + i)));
+            vst1q_f64(o + i, vbslq_f64(keep, corr, ev));
+        }
+        for (; i < n; ++i) o[i] = (std::fabs(hi[i]) < kInf && e[i] != 0.0) ? e[i] + e[i] * lo[i] : e[i];
     }
 };
 
@@ -97,7 +125,9 @@ struct Log : Real {
 template <typename Op, typename... H>
 nb::object ew(H... hs) {
     const nb::handle objs[] = {hs...};
-    return nary<Op>(objs, nb::none(), weight_of(Op::cost_ns));
+    if constexpr (requires { &Op::chunk2; })
+        return run_nary(chunked_table2<Op>, Op::nout, Op::args, objs, nb::none(), weight_of(Op::cost_ns));
+    else return nary<Op>(objs, nb::none(), weight_of(Op::cost_ns));
 }
 
 }  // namespace reduce_ops

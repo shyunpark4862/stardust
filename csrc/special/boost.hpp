@@ -110,6 +110,14 @@ inline double i(double v, double x) {
 inline double k(double v, double x) {
     return call([&] { return bm::cyl_bessel_k(v, x, Policy()); });
 }
+// Orders 0 and 1 straight to Boost's rational fits (what cyl_bessel_i, cyl_bessel_k pick for
+// those orders, x > 0): through i(v, x) / k(v, x) the order is not a constant where Boost
+// dispatches on it, and the call cost twice the fit (k0 10.8 against 5.6 ns an element). The
+// fits iterate nothing, so they raise no evaluation error.
+inline double i0(double x) { return bm::detail::bessel_i0(x); }
+inline double i1(double x) { return bm::detail::bessel_i1(x); }
+inline double k0(double x) { return bm::detail::bessel_k0(x); }
+inline double k1(double x) { return bm::detail::bessel_k1(x); }
 inline double w0(double x) {
     return call([&] { return bm::lambert_w0(x, Policy()); });
 }

@@ -44,4 +44,25 @@ inline constexpr LoopTable chunked_table = {
     LoopEntry{}, LoopEntry{}, LoopEntry{&chunked_loop<Op>, DType::Float64}, LoopEntry{}
 };
 
+// Two inputs, one output: Op::chunk2(x, y, out, n), each input gathered as above (a broadcast
+// scalar, stride 0, fills its buffer). The same rule for out (it may be x or y).
+template <typename Op>
+void chunked_loop2(std::byte* const* args, std::int64_t n, const std::int64_t* s, void*) {
+    using namespace vforce_detail;
+    double in0[kChunk], in1[kChunk], out[kChunk];
+    for (std::int64_t off = 0; off < n; off += kChunk) {
+        const int m = static_cast<int>(std::min<std::int64_t>(kChunk, n - off));
+        const double* a = gather(args[0] + off * s[0], s[0], m, in0);
+        const double* b = gather(args[1] + off * s[1], s[1], m, in1);
+        const bool direct = s[2] == sizeof(double);
+        double* dst = direct ? reinterpret_cast<double*>(args[2] + off * s[2]) : out;
+        Op::chunk2(a, b, dst, m);
+        if (!direct) scatter(out, args[2] + off * s[2], s[2], m);
+    }
+}
+template <typename Op>
+inline constexpr LoopTable chunked_table2 = {
+    LoopEntry{}, LoopEntry{}, LoopEntry{&chunked_loop2<Op>, DType::Float64}, LoopEntry{}
+};
+
 }  // namespace sd::special

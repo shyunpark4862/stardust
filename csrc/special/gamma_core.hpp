@@ -25,6 +25,7 @@
 #include "special/common.hpp"
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <cstdint>
 
@@ -54,7 +55,13 @@ inline TwoSum two_sum(double a, double b) {
 // sin(pi x) with exact argument reduction: r = x mod 2 (fmod is exact), then
 // folded into [-1/2, 1/2] by exact subtractions (Sterbenz), so only pi r
 // rounds. sinpi(integer) = +-0.
+// On Apple the libm's __sinpi / __cospi (exact reduction too): 1 ULP at most against Arb where
+// these take 2, at half the time; the same zeros, except the sign of sinpi at a negative odd
+// integer (-0 there, IEEE 754's sinPi).
 inline double sinpi(double x) {
+#if defined(__APPLE__)
+    return std::isfinite(x) ? __sinpi(x) : kNaN;
+#endif
     if (!std::isfinite(x)) return kNaN;
     double r = std::fmod(x, 2.0);
     if (r > 1.0) r -= 2.0;
@@ -66,6 +73,9 @@ inline double sinpi(double x) {
 
 // cos(pi x) = sin(pi (1/2 - r)), r = |x| mod 2 folded into [0, 1].
 inline double cospi(double x) {
+#if defined(__APPLE__)
+    return std::isfinite(x) ? __cospi(x) : kNaN;
+#endif
     if (!std::isfinite(x)) return kNaN;
     double r = std::fmod(std::fabs(x), 2.0);
     if (r > 1.0) r = 2.0 - r;
@@ -78,7 +88,13 @@ struct Scaled {
     double m;        // 0.5 <= |m| < 1, or 0, inf, NaN
     std::int64_t e;
 };
+// (frexp by the bits for a normal v: frexp and ldexp are calls, and a Scaled product, quotient or
+// value made a third of gamma_scaled's time; the same m and e.)
 inline Scaled scaled(double v) {
+    const auto bits = std::bit_cast<std::uint64_t>(v);
+    const auto be = static_cast<std::int64_t>((bits >> 52) & 0x7ff);
+    if (be != 0 && be != 0x7ff) [[likely]]
+        return {std::bit_cast<double>((bits & 0x800fffffffffffffULL) | 0x3fe0000000000000ULL), be - 1022};
     int e = 0;
     const double m = std::frexp(v, &e);
     return {m, e};
@@ -96,6 +112,9 @@ inline Scaled operator/(Scaled a, Scaled b) {
 // Rounded to float64 once (ldexp rounds into the subnormals correctly).
 inline double value(Scaled s) {
     if (s.m == 0.0 || !std::isfinite(s.m)) return s.m;
+    // m in [1/2, 1) and a normal result: m times 2^e built from its bits (exact, as ldexp)
+    if (s.e >= -1021 && s.e <= 1024 && std::fabs(s.m) >= 0.5 && std::fabs(s.m) < 1.0) [[likely]]
+        return s.m * 2.0 * std::bit_cast<double>(static_cast<std::uint64_t>(s.e - 1 + 1023) << 52);
     const std::int64_t e = std::clamp<std::int64_t>(s.e, -2200, 2200);
     return std::ldexp(s.m, static_cast<int>(e));
 }
@@ -112,6 +131,7 @@ inline Scaled exp_scaled(double x) {
     // NaN rather than a number made of two clamped exponents (hyp1f1(100.5, 1e16, 1e300)
     // was 0 for inf). Also keeps n's conversion defined.
     if (!(std::fabs(x) < 0x1p57)) return {x > 0.0 ? kInf : (x < 0.0 ? 0.0 : x), 0};
+    if (std::fabs(x) < 700.0) return scaled(std::exp(x));  // in range: libm's exp itself
     const double n = std::nearbyint(x / kLn2Hi);
     double r = std::fma(-n, kLn2Hi, x);
     r = std::fma(-n, kLn2Lo, r);
@@ -128,6 +148,10 @@ inline constexpr std::int64_t kExpLimitInt = std::int64_t{1} << 58;
 // an integer and a fraction; m^t is computed in k equal parts (k a power of
 // two, each part within range), so libm's pow keeps its accuracy on each.
 inline Scaled pow_scaled(double a, double t) {
+    {  // a result in range: libm's pow itself (under 1 ULP there)
+        const double r = std::pow(a, t);
+        if (r >= 0x1p-1022 && r <= 0x1p1022) return scaled(r);
+    }
     int ea = 0;
     double m = std::frexp(a, &ea);
     if (m < kSqrtHalfG) {
@@ -233,15 +257,29 @@ inline constexpr double kFactorial[23] = {
 // the exponential by zgh 2^-53 relative; the two cancel down to g 2^-53 (3 ULP).
 // Then zgh^t = hi^t (1 + lo/hi)^t ~ hi^t (1 + t lo/hi) and e^-zgh = e^-hi (1 - lo).
 // Integers up to 23 come from the table (exact), tiny z from 1/z - euler.
+inline double gamma_plain(double z);
 inline Scaled gamma_scaled(double z) {
     if (z < 0x1p-30) return Scaled{1.0, 0} / scaled(z) * scaled(1.0 - kEuler * z);
-    if (z <= 23.0 && z == std::floor(z)) return scaled(kFactorial[static_cast<int>(z) - 1]);
+    if (z <= 170.0) return scaled(gamma_plain(z));  // the same form in float64 where it is in range
     const TwoSum zgh = two_sum(z, lanczos::kG - 0.5);  // g - 1/2 is exact
     const double t = z - 0.5;
     Scaled r = scaled(lanczos_sum(z)) * pow_scaled(zgh.s, t);
     r = r * scaled(1.0 + t * (zgh.err / zgh.s));
     r = r * exp_scaled(-zgh.s) * scaled(1.0 - zgh.err);
     return r;
+}
+
+// The same Lanczos form in float64 for 0x1p-30 <= z <= 170 (the value in range; the power split
+// in two halves from 100 so that it does not overflow): gamma_scaled's value without the m 2^e
+// arithmetic (5x faster; against Arb on [1, 170] both 6 ULP at most, Boost's tgamma 9).
+inline double gamma_plain(double z) {
+    if (z <= 23.0 && z == std::floor(z)) return kFactorial[static_cast<int>(z) - 1];
+    const TwoSum zgh = two_sum(z, lanczos::kG - 0.5);
+    const double t = z - 0.5;
+    const double r = lanczos_sum(z) * ((1.0 + t * (zgh.err / zgh.s)) * (1.0 - zgh.err));
+    if (z < 100.0) return r * (std::pow(zgh.s, t) * std::exp(-zgh.s));
+    const double hp = std::pow(zgh.s, 0.5 * t);
+    return r * hp * std::exp(-zgh.s) * hp;
 }
 
 // ---- log Gamma for x > 0 -------------------------------------------------

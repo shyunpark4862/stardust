@@ -106,8 +106,35 @@ std::int64_t weight_for(std::span<const nb::handle> objs, nb::handle out) {
     return (kParallelThreshold + n - 1) / n;
 }
 
+// The call. The commonest scalar call, every input a Python float and no out=, takes a shorter
+// way: the Op's float64 loop (the one run_nary selects for those inputs, so the same bits) on
+// one element from the stack, its result a Python float as run_nary's. run_nary's argument
+// handling and 0-d arrays were about 30 ns of a 60 ns erf(x). Anything else (ints, complex,
+// arrays, out=) is run_nary.
 template <typename Op>
 nb::object call(std::span<const nb::handle> objs, nb::handle out) {
+    if constexpr (Op::nout == 1) {
+        const LoopEntry& e = table_of<Op>()[static_cast<std::size_t>(DType::Float64)];
+        if (out.is_none() && e.loop != nullptr && e.out == DType::Float64) {
+            double v[Op::nin + 1];
+            bool floats = true;
+            for (int k = 0; k < Op::nin && floats; ++k) {
+                PyObject* o = objs[static_cast<std::size_t>(k)].ptr();
+                floats = PyFloat_CheckExact(o);
+                if (floats) v[k] = PyFloat_AS_DOUBLE(o);
+            }
+            if (floats) {
+                std::byte* args[Op::nin + 1];
+                std::int64_t st[Op::nin + 1];
+                for (int k = 0; k <= Op::nin; ++k) {
+                    args[k] = reinterpret_cast<std::byte*>(&v[k]);
+                    st[k] = sizeof(double);
+                }
+                e.loop(args, 1, st, nullptr);
+                return nb::steal(PyFloat_FromDouble(v[Op::nin]));
+            }
+        }
+    }
     return run_nary(table_of<Op>(), Op::nout, Op::args, objs, out, weight_for<Op>(objs, out));
 }
 

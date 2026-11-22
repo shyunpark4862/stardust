@@ -177,7 +177,7 @@ inline double I0::f(double x) {
     if (std::isnan(x)) return kNaN;
     x = std::fabs(x);
     if (std::isinf(x)) return kInf;
-    const double r = bst::i(0.0, x);
+    const double r = bst::i0(x);
     return bst::normal(r) ? r : bessel01_detail::i0(x);
 }
 // The scaled forms: Boost's value times e^-+x for 0 < x < 700 (both factors in range there,
@@ -191,7 +191,7 @@ inline double I0e::f(double x) {
     if (std::isnan(x)) return kNaN;
     x = std::fabs(x);
     if (x > 0.0 && x < 700.0) {
-        const double r = boost_scaled(bst::i(0.0, x), x, -1.0);
+        const double r = boost_scaled(bst::i0(x), x, -1.0);
         if (!std::isnan(r)) return r;
     }
     return std::isinf(x) ? 0.0 : bessel01_detail::i0e(x);
@@ -199,7 +199,7 @@ inline double I0e::f(double x) {
 inline double I1::f(double x) {
     if (std::isnan(x)) return kNaN;
     const double a = std::fabs(x);
-    double r = std::isinf(a) ? kInf : bst::i(1.0, a);
+    double r = std::isinf(a) ? kInf : bst::i1(a);
     if (!std::isinf(a) && !bst::normal(r)) r = bessel01_detail::i1(a);
     return x < 0.0 ? -r : r;  // scipy: i1(-0.0) = +0.0
 }
@@ -207,16 +207,19 @@ inline double I1e::f(double x) {
     if (std::isnan(x)) return kNaN;
     const double a = std::fabs(x);
     double r = kNaN;
-    if (a > 0.0 && a < 700.0) r = boost_scaled(bst::i(1.0, a), a, -1.0);
+    if (a > 0.0 && a < 700.0) r = boost_scaled(bst::i1(a), a, -1.0);
     if (std::isnan(r)) r = std::isinf(a) ? 0.0 : bessel01_detail::i1e(a);
     return x < 0.0 ? -r : r;
 }
 inline double K0::f(double x) {
     using namespace bessel01_detail;
+    // (0, 700): K0 is normal (K0(700) = 4.7e-306), so is Boost's value -- the same value as below,
+    // without the tests
+    if (x > 0.0 && x < 700.0) return bst::k0(x);
     if (std::isnan(x) || x < 0.0) return kNaN;
     if (x == 0.0) return kInf;
     if (std::isinf(x)) return 0.0;
-    const double r = bst::k(0.0, x);
+    const double r = bst::k0(x);
     if (bst::normal(r)) return r;
     return x <= 2.0 ? k0_small(x) : value(exp_scaled(-x) * scaled(k0e_large(x)));
 }
@@ -226,17 +229,18 @@ inline double K0e::f(double x) {
     if (x == 0.0) return kInf;
     if (std::isinf(x)) return 0.0;
     if (x < 700.0) {
-        const double r = boost_scaled(bst::k(0.0, x), x, 1.0);
+        const double r = boost_scaled(bst::k0(x), x, 1.0);
         if (!std::isnan(r)) return r;
     }
     return x <= 2.0 ? k0_small(x) * std::exp(x) : k0e_large(x);
 }
 inline double K1::f(double x) {
     using namespace bessel01_detail;
+    if (x >= 0x1p-1000 && x < 700.0) return bst::k1(x);  // normal there (K1 ~ 1/x), as K0
     if (std::isnan(x) || x < 0.0) return kNaN;
     if (x == 0.0) return kInf;
     if (std::isinf(x)) return 0.0;
-    const double r = bst::k(1.0, x);
+    const double r = bst::k1(x);
     if (bst::normal(r)) return r;
     return x <= 2.0 ? k1_small(x) : value(exp_scaled(-x) * scaled(k1e_large(x)));
 }
@@ -246,7 +250,7 @@ inline double K1e::f(double x) {
     if (x == 0.0) return kInf;
     if (std::isinf(x)) return 0.0;
     if (x < 700.0) {
-        const double r = boost_scaled(bst::k(1.0, x), x, 1.0);
+        const double r = boost_scaled(bst::k1(x), x, 1.0);
         if (!std::isnan(r)) return r;
     }
     return x <= 2.0 ? k1_small(x) * std::exp(x) : k1e_large(x);

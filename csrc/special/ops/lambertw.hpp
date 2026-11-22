@@ -36,8 +36,12 @@ inline constexpr double kMinusInvE = -0.36787944117144233;  // the float64 neare
 inline double two_ex_plus_one(double x) { return 2.0 * (std::fma(kEHi, x, 1.0) + kELo * x); }
 
 // Halley on f(w) = w e^w - x from w.
-// (The loops here stop at a fixed point; after 64 steps the iterate is the value if its last
-// step was in its last bits -- a cycle between neighbouring doubles -- and NaN otherwise.)
+// (The loops here stop after a step below kDone of the iterate: Halley's error after a step s is
+// ~K s^3, far below an ULP for s < 2^-26, so that step's result is the value -- before, they
+// waited for a step below 2^-53, which the rounding of f near the root need never give: 11% of
+// complex z in [-1, 3] x [-2, 2] cycled between neighbouring doubles for all 64 steps, 1.6 us.
+// After 64 steps the iterate is the value if its last step was in its last bits, NaN otherwise.)
+inline constexpr double kDone = 0x1p-26;
 inline constexpr double kSettled = 0x1p-48;
 inline double halley(double w, double x) {
     double step = kInf;
@@ -47,7 +51,7 @@ inline double halley(double w, double x) {
         const double wp1 = w + 1.0;
         const double d = ew * wp1 - (w + 2.0) * f / (2.0 * wp1);
         const double wn = w - f / d;
-        if (std::fabs(wn - w) <= 0x1p-53 * std::fabs(wn) || !std::isfinite(wn)) return wn;
+        if (std::fabs(wn - w) <= kDone * std::fabs(wn) || !std::isfinite(wn)) return wn;
         step = std::fabs(wn - w) / std::fabs(wn);
         w = wn;
     }
@@ -64,7 +68,7 @@ inline double halley_log(double w, double L) {
         const double g = w + std::log(-w) - L;
         const double g1 = 1.0 + iw;
         const double wn = w - g / (g1 + g * iw * iw / (2.0 * g1));
-        if (std::fabs(wn - w) <= 0x1p-53 * std::fabs(wn) || !(wn < 0.0)) return wn < 0.0 ? wn : kNaN;
+        if (std::fabs(wn - w) <= kDone * std::fabs(wn) || !(wn < 0.0)) return wn < 0.0 ? wn : kNaN;
         step = std::fabs(wn - w) / std::fabs(wn);
         w = wn;
     }
@@ -114,19 +118,24 @@ inline double wm1(double x) {
 
 // The real branches as the public functions compute them: Boost (special/boost.hpp)
 // away from the branch point, ours near it.
+// (ours out of line: the Boost call alone in the hot path, a sixth less time)
+[[gnu::noinline]] inline double w0_ours(double x) { return w0(x); }
+[[gnu::noinline]] inline double wm1_ours(double x) { return wm1(x); }
 inline double w0_routed(double x) {
-    if (x != 0.0 && std::isfinite(x) && std::fabs(x - kMinusInvE) >= 0.05) {
+    if (x != 0.0 && std::isfinite(x) && std::fabs(x - kMinusInvE) >= 0.05) [[likely]] {
         const double r = bst::w0(x);
-        if (bst::normal(r)) return r;
+        if (bst::normal(r)) [[likely]]
+            return r;
     }
-    return w0(x);
+    return w0_ours(x);
 }
 inline double wm1_routed(double x) {
-    if (x <= kLogFormAbove && std::fabs(x - kMinusInvE) >= 0.05) {
+    if (x <= kLogFormAbove && std::fabs(x - kMinusInvE) >= 0.05) [[likely]] {
         const double r = bst::wm1(x);
-        if (bst::normal(r)) return r;
+        if (bst::normal(r)) [[likely]]
+            return r;
     }
-    return wm1(x);
+    return wm1_ours(x);
 }
 
 // ---- complex argument, any branch k (S8) ---------------------------------------
@@ -154,7 +163,9 @@ inline cplx challey(cplx w, cplx z) {
         const cplx wp1 = w + 1.0;
         const cplx d = mul(ew, wp1) - div(mul(w + 2.0, f), 2.0 * wp1);
         const cplx wn = w - div(f, d);
-        if (norm1(wn - w) <= 0x1p-53 * norm1(wn) || !std::isfinite(wn.real()) || !std::isfinite(wn.imag())) return wn;
+        if (norm1(wn - w) <= lambertw_detail::kDone * norm1(wn) || !std::isfinite(wn.real()) ||
+            !std::isfinite(wn.imag()))
+            return wn;
         step = norm1(wn - w) / norm1(wn);
         w = wn;
     }
@@ -170,7 +181,7 @@ inline cplx challey_log(cplx w, cplx L) {
         const cplx g = w + clog(w) - L;
         const cplx g1 = 1.0 + iw, g2 = -mul(iw, iw);
         const cplx wn = w - div(g, g1 - div(mul(g, g2), 2.0 * g1));
-        if (norm1(wn - w) <= 0x1p-53 * norm1(wn)) return wn;
+        if (norm1(wn - w) <= lambertw_detail::kDone * norm1(wn)) return wn;
         step = norm1(wn - w) / norm1(wn);
         w = wn;
     }

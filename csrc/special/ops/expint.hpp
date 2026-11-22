@@ -115,16 +115,20 @@ struct Expi : Real {
     static constexpr std::array<const char*, 1> args{"x"};
     static constexpr double cost_ns = cost::kExpi;
     static double f(double x) {
+        // Boost (special/boost.hpp); the subnormal tail below, overflow and a subnormal x (its
+        // log there was off by 3e-5 at 2e-323) are ours, out of line
+        if (x >= -700.0 && std::fabs(x) >= 0x1p-1022 && x < kInf) [[likely]] {
+            const double r = bst::expint(x);
+            if (bst::normal(r)) [[likely]]
+                return r;
+        }
+        return ours(x);
+    }
+    [[gnu::noinline]] static double ours(double x) {
         if (std::isnan(x)) return kNaN;
         if (x == 0.0) return -kInf;
         if (x == kInf) return kInf;
         if (x == -kInf) return -0.0;
-        // Boost (special/boost.hpp); the subnormal tail below, overflow and a subnormal x (its
-        // log there was off by 3e-5 at 2e-323) are ours
-        if (x >= -700.0 && std::fabs(x) >= 0x1p-1022) {
-            const double r = bst::expint(x);
-            if (bst::normal(r)) return r;
-        }
         if (x > 0.0) return expint_detail::ei_pos(x);
         return -expint_detail::en(1.0, -x);
     }

@@ -28,6 +28,8 @@
 #include "special/gamma_core.hpp"
 #include "special/ops/bessel.hpp"
 
+#include <algorithm>
+
 #include <array>
 #include <cmath>
 
@@ -73,40 +75,94 @@ inline dd::DD zeta_of(double z) {
     return sq * z * dd::kTwoThirds;
 }
 
-// x > 1: the K, I form.
+// The sums of the large-zeta expansions (DLMF 9.7.2): U+ = sum u_k / zeta^k, U- = sum (-1)^k
+// u_k / zeta^k, and V+, V- with v_k; for zeta >= 20 the terms reach 2^-56 before they turn up
+// (the smallest is ~e^-2zeta).
+struct UV {
+    double up, um, vp, vm;
+};
+inline UV uv_sums(double zh) {
+    UV r{1.0, 1.0, 1.0, 1.0};
+    double u = 1.0, zk = 1.0, sign = 1.0;
+    for (int k = 1; k < 200; ++k) {
+        u *= (6.0 * k - 5.0) * (6.0 * k - 3.0) * (6.0 * k - 1.0) / ((2.0 * k - 1.0) * 216.0 * k);
+        const double v = -(6.0 * k + 1.0) / (6.0 * k - 1.0) * u;
+        zk /= zh;
+        sign = -sign;
+        const double tu = u * zk, tv = v * zk;
+        r.up += tu;
+        r.vp += tv;
+        r.um += sign * tu;
+        r.vm += sign * tv;
+        if (std::fabs(tu) + std::fabs(tv) <= 0x1p-56) break;
+    }
+    return r;
+}
+
+// x > 1. zeta >= 20 (x >= 9.7): the expansions (DLMF 9.7.5-9.7.8)
+//     Ai = e^-zeta U- / (2 sqrt(pi) x^(1/4)),  Ai' = -x^(1/4) e^-zeta V- / (2 sqrt(pi)),
+//     Bi = e^zeta U+ / (sqrt(pi) x^(1/4)),      Bi' = x^(1/4) e^zeta V+ / sqrt(pi)
+// (the recessive part each leaves out is e^-2zeta of it). Below, the K, I form with K_1/3,
+// K_2/3 from one Temme/Steed pair at order -1/3 (K_-1/3 = K_1/3) and I_1/3, I_2/3 by the
+// Wronskian I_v K_(v+1) + I_(v+1) K_v = 1/zeta from their ratios (bessel.hpp: k_pair_scaled,
+// i_ratio), in float64; e^+-zeta as m 2^e.
 inline Airy positive(double x) {
     using namespace bessel_detail;
     const dd::DD zt = zeta_of(x);
     const double zh = zt.hi, zl = zt.lo;
-    const IK a = ik(1.0 / 3.0, zh), b = ik(2.0 / 3.0, zh);
-    // scaled values at zeta = hi + lo: f(hi + lo) = f(hi) + lo f'(hi); for the
-    // scaled e^zeta K: (e^z K)' = e^z K' + e^z K, for e^-zeta I: e^-z I' - e^-z I
-    const double k13 = value(a.k) + zl * (value(a.kp) + value(a.k));
-    const double k23 = value(b.k) + zl * (value(b.kp) + value(b.k));
-    const double i13 = value(a.i) + zl * (value(a.ip) - value(a.i));
-    const double i23 = value(b.i) + zl * (value(b.ip) - value(b.i));
     const Scaled em = exp_scaled(-zh) * scaled(1.0 - zl), ep = exp_scaled(zh) * scaled(1.0 + zl);
+    if (zh >= 20.0) {
+        const UV s = uv_sums(zh);
+        const double q4 = std::sqrt(std::sqrt(x)), a = 0.5 * kInvSqrtPi / q4, ad = 0.5 * kInvSqrtPi * q4;
+        return {
+            value(em * scaled(a * s.um)), value(em * scaled(-ad * s.vm)), value(ep * scaled(2.0 * a * s.up)),
+            value(ep * scaled(2.0 * ad * s.vp))
+        };
+    }
+    double k13, k23;  // e^zeta K_1/3, e^zeta K_2/3 at zh
+    if (!k_pair_scaled(-1.0 / 3.0, zh, k13, k23)) return {kNaN, kNaN, kNaN, kNaN};
+    const double zi = 1.0 / zh;
+    const double k43 = k23 + (2.0 / 3.0) * zi * k13;  // K_(v+1) = K_(v-1) + (2v/zeta) K_v, v = 1/3
+    const double r43 = i_ratio(1.0 / 3.0, zh), r23 = i_ratio(-1.0 / 3.0, zh);  // I_4/3 / I_1/3, I_2/3 / I_-1/3
+    const double i13 = zi / (k43 + r43 * k13), im13 = zi / (k23 + r23 * k13);  // e^-zeta I_1/3, e^-zeta I_-1/3
+    const double i43 = r43 * i13, i23 = r23 * im13;
+    // to zeta = hi + lo at first order: (e^z K)' = e^z (K' + K), (e^-z I)' = e^-z (I' - I), with
+    // K'_1/3 = -K_2/3 - K_1/3 / (3 zeta), K'_2/3 = -K_1/3 - 2 K_2/3 / (3 zeta),
+    // I'_1/3 = I_4/3 + I_1/3 / (3 zeta), I'_2/3 = I_-1/3 - 2 I_2/3 / (3 zeta)
+    const double K13 = k13 + zl * (k13 - k23 - k13 * zi / 3.0);
+    const double K23 = k23 + zl * (k23 - k13 - 2.0 * k23 * zi / 3.0);
+    const double I13 = i13 + zl * (i43 + i13 * zi / 3.0 - i13);
+    const double I23 = i23 + zl * (im13 - 2.0 * i23 * zi / 3.0 - i23);
     const double r = std::sqrt(x / 3.0);
     return {
-        value(em * scaled(r * k13 / kPi)), value(em * scaled(-x * k23 / (kPi * kSqrt3))),
-        value(ep * scaled(r * 2.0 * i13)) + value(em * scaled(r * kSqrt3 * k13 / kPi)),
-        value(ep * scaled(x / kSqrt3 * 2.0 * i23)) + value(em * scaled(x * k23 / kPi))
+        value(em * scaled(r * K13 / kPi)), value(em * scaled(-x * K23 / (kPi * kSqrt3))),
+        value(ep * scaled(r * 2.0 * I13)) + value(em * scaled(r * kSqrt3 * K13 / kPi)),
+        value(ep * scaled(x / kSqrt3 * 2.0 * I23)) + value(em * scaled(x * K23 / kPi))
     };
 }
 
-// -9.7 < x < -2: the J, Y form at zeta for z = -x.
+// -9.7 < x < -2 (zeta in (1.9, 20)): J of the orders +-1/3, +-2/3 at zeta for z = -x (DLMF
+// 9.6.6-9.6.9), from Miller's recurrence on the two lattices -1/3 + k and -2/3 + k with Neumann's
+// sum (bessel.hpp: miller), in float64:
+//     Ai = sqrt(z)/3 (J_1/3 + J_-1/3),   Ai' = z/3 (J_2/3 - J_-2/3),
+//     Bi = sqrt(z/3) (J_-1/3 - J_1/3),   Bi' = z/sqrt3 (J_-2/3 + J_2/3).
+inline constexpr double kRgamma23 = 0.73848811162164831294;  // 1 / Gamma(2/3)
+inline constexpr double kRgamma13 = 0.37328217390739522833;  // 1 / Gamma(1/3)
 inline Airy negative_bessel(double z) {
     using namespace bessel_detail;
     const dd::DD zt = zeta_of(z);
-    const double zh = zt.hi, zl = zt.lo;
-    const JY a = jy(1.0 / 3.0, zh), b = jy(2.0 / 3.0, zh);
-    const double j13 = value(a.j) + zl * value(a.jp), y13 = value(a.y) + zl * value(a.yp);
-    const double j23 = value(b.j) + zl * value(b.jp), y23 = value(b.y) + zl * value(b.yp);
+    const double zh = zt.hi, zl = zt.lo, top = std::max(zh, 2.0);
+    // lattice A: J_-1/3, J_2/3, J_5/3; lattice B: J_-2/3, J_1/3
+    const MillerOut a = miller<true>(-1.0 / 3.0, zh, 2, top), b = miller<true>(-2.0 / 3.0, zh, 0, top);
+    const double na = std::pow(0.5 * zh, -1.0 / 3.0) * kRgamma23 / a.sum;
+    const double nb = std::pow(0.5 * zh, -2.0 / 3.0) * kRgamma13 / b.sum;
+    const double jm13 = a.f0 * na, j23 = a.f1 * na, j53 = a.fn * na, jm23 = b.f0 * nb, j13 = b.f1 * nb;
+    // to zeta = hi + lo at first order: J'_v = J_(v-1) - (v/zeta) J_v = (v/zeta) J_v - J_(v+1)
+    const double t = 1.0 / (3.0 * zh);
+    const double J13 = j13 + zl * (jm23 - t * j13), Jm13 = jm13 + zl * (-t * jm13 - j23);
+    const double J23 = j23 + zl * (2.0 * t * j23 - j53), Jm23 = jm23 + zl * (-2.0 * t * jm23 - j13);
     const double sz = std::sqrt(z);
-    return {
-        0.5 * sz * (j13 - y13 / kSqrt3), 0.5 * z * (j23 + y23 / kSqrt3), -0.5 * sz * (j13 / kSqrt3 + y13),
-        0.5 * z * (j23 / kSqrt3 - y23)
-    };
+    return {sz / 3.0 * (J13 + Jm13), z / 3.0 * (J23 - Jm23), sz / kSqrt3 * (Jm13 - J13), z / kSqrt3 * (Jm23 + J23)};
 }
 
 // x <= -9.7: the oscillatory expansions in 1/zeta with u_k, v_k (DLMF 9.7.2)

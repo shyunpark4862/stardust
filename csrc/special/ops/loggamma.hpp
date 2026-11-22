@@ -70,6 +70,78 @@ inline cplx mu(cplx t) {
     return t - clog1p(t);
 }
 
+// The tails for a split J < kLoggammaJ: sum_{j>J} mu(w / j) = sum_k (-1)^k zeta(k, J + 1) / k w^k,
+// zeta(k, J + 1) = zeta(k, 7) + sum_{j=J+1}^{6} j^-k (positive parts: no cancellation), from the
+// table's d_k (coeffs/loggamma_taylor.hpp) at compile time; k = 2..29, highest power first. Used
+// while |w| / (J + 1) < 1/4, where the terms past k = 29 are below 2^-60 of the first.
+inline constexpr int kShortTail = 28;
+inline constexpr std::array<std::array<double, kShortTail>, kLoggammaJ> kShortTails = [] {
+    std::array<std::array<double, kShortTail>, kLoggammaJ> t{};
+    constexpr std::size_t n = kLoggammaTail.size();  // d_k at index n - 1 - (k - 2)
+    for (int J = 0; J < kLoggammaJ; ++J)
+        for (int k = 2; k < 2 + kShortTail; ++k) {
+            double add = 0.0;
+            for (int j = J + 1; j <= kLoggammaJ; ++j) {
+                double p = 1.0;
+                for (int i = 0; i < k; ++i) p /= j;
+                add += p;
+            }
+            const double d = kLoggammaTail[n - 1 - static_cast<std::size_t>(k - 2)];
+            t[static_cast<std::size_t>(J)][static_cast<std::size_t>(kShortTail - 1 - (k - 2))] =
+                d + (k % 2 == 0 ? add : -add) / k;
+        }
+    return t;
+}();
+
+// log Gamma(1 + w) + euler w for Re w > -1, |w| <= 3.14 (blob): sum_{j<=J} mu(w / j) + the tail of
+// the rest, J = min(6, floor(4 |w|_1)) so that each split-off t = w / j has |t|_1 >= 1/4 and the
+// tail's ratio is |w| / (J + 1) (below 1/4 for J < 6, up to 0.45 at J = 6: 49 terms). The split-
+// off mu = t - log(1 + t) as sum t - log prod (1 + t): one logarithm for them all (log1p of the
+// product less 1, carried apart, where that is below 1/2). Every factor has
+// Re > 0 and an argument of Im w's sign, so the product turns one way and its crossings of the
+// negative axis are counted (as recurrence). (Before: each j apart, the small t by a 26-term
+// series and the 49-term tail always; a third of the time now.)
+inline cplx log_gamma1p_plus_euler(cplx w) {
+    if (std::signbit(w.imag())) return std::conj(log_gamma1p_plus_euler(std::conj(w)));
+    const int J = std::min(kLoggammaJ, static_cast<int>(4.0 * (std::fabs(w.real()) + std::fabs(w.imag()))));
+    // the product as it is, and q = prod - 1 apart from the 1 (log1p's accuracy where it is small)
+    cplx ts = 0.0, prod = 1.0, q = 0.0;
+    int flips = 0;
+    bool neg = false;
+    for (int j = 1; j <= J; ++j) {
+        const cplx t = w / static_cast<double>(j);
+        ts += t;
+        q += t + mul(q, t);
+        prod = mul(prod, 1.0 + t);
+        const bool n = std::signbit(prod.imag());
+        if (n && !neg) ++flips;
+        neg = n;
+    }
+    cplx tail;
+    if (J == kLoggammaJ) {
+        // the terms beyond k = K left out where they are below 2^-56 of the first: |d_k w^k| ~
+        // rho^k / k, rho = |w| / 7, so K = 1 + 49 / log2(1/rho), by thresholds on |w|^2
+        const double m2 = w.real() * w.real() + w.imag() * w.imag();
+        const std::size_t K = m2 < 49.0 * 0.0625   ? 27
+                              : m2 < 49.0 * 0.09   ? 31
+                              : m2 < 49.0 * 0.1225 ? 35
+                              : m2 < 49.0 * 0.16   ? 39
+                              : m2 < 49.0 * 0.2025 ? 45
+                                                   : kLoggammaTail.size() + 1;
+        const std::size_t first = kLoggammaTail.size() + 1 - K;  // d_K's index (d_k at n - 1 - (k - 2))
+        tail = kLoggammaTail[first];
+        for (std::size_t i = first + 1; i < kLoggammaTail.size(); ++i) tail = mul(tail, w) + kLoggammaTail[i];
+    } else {
+        const auto& c = kShortTails[static_cast<std::size_t>(J)];
+        tail = c[0];
+        for (std::size_t i = 1; i < c.size(); ++i) tail = mul(tail, w) + c[i];
+    }
+    tail = mul(mul(w, w), tail);
+    if (J == 0) return tail;
+    const cplx l = std::fabs(q.real()) + std::fabs(q.imag()) < 0.5 ? clog1p(q) : clog(prod);
+    return (ts - cplx{l.real(), l.imag() + kTwoPi * flips}) + tail;
+}
+
 // 0.1 <= Re z <= 4, |Im z| <= 3
 inline cplx blob(cplx z) {
     cplx acc = 0.0;
@@ -77,12 +149,8 @@ inline cplx blob(cplx z) {
         acc += clog1p(z - 2.0);  // log(z - 1)
         z -= 1.0;
     }
-    const cplx w = z - 1.0;  // |w| <= 3.14: the tail's terms fall like 0.45^k (to k = 50)
-    cplx s = -kEuler * w;
-    for (int j = 1; j <= kLoggammaJ; ++j) s += mu(w / static_cast<double>(j));
-    cplx t = kLoggammaTail[0];
-    for (std::size_t i = 1; i < kLoggammaTail.size(); ++i) t = mul(t, w) + kLoggammaTail[i];
-    return acc + (s + mul(mul(w, w), t));
+    const cplx w = z - 1.0;  // |w| <= 3.14
+    return acc + (-kEuler * w + log_gamma1p_plus_euler(w));
 }
 
 // Im z >= +0, 0.1 <= Re z <= 7

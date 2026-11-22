@@ -80,12 +80,55 @@ inline double zero_sum_cancel(double abssum) { return abssum <= 1024.0 ? 1.0 : k
 // region): nothing cancels and the terms rise once and fall once.
 // positive_only: the caller wants the sum itself and every term is positive (a, b, y > 0):
 // once the partial sum is past every double the sum is inf, without the remaining terms.
+// The long series of m_series_positive with the arguments split so that their sums with k are
+// exact (as f_long_positive_split: a = ah + al with ah a multiple of 2^-32, al = a - ah + a_lo
+// to first order; a, b >= 1/16, so |al / (ah + k)| <= 2^-28 and the dropped second order is
+// below 2^-56).
+inline Series m_long_positive_split(double a, double a_lo, double b, double y, bool positive_only) {
+    constexpr double kShift = 0x1p20;
+    const double ah = (a + kShift) - kShift, al = (a - ah) + a_lo;
+    const double bh = (b + kShift) - kShift, bl = b - bh;
+    double th = 1.0, tl = 0.0, abssum = 1.0;
+    dd::Sum sum(1.0);
+    std::int64_t e = 0;
+    for (int k = 0; k < kMaxSeriesTerms; ++k) {
+        const double dk = k, kp = dk + 1.0;
+        const double A = ah + dk, B = bh + dk;  // exact
+        const double n = A * y, e1 = std::fma(al, y, std::fma(A, y, -n));
+        const double d = B * kp, e2 = std::fma(bl, kp, std::fma(B, kp, -d));
+        const double rd = 1.0 / d, q = n * rd;
+        const double ql = (std::fma(-q, d, n) + e1 - q * e2) * rd;  // the ratio is q + ql
+        const double tn = th * q;
+        tl = std::fma(tl, q, std::fma(th, ql, std::fma(th, q, -tn)));
+        th = tn;
+        sum.add(th, tl);
+        abssum += th;
+        if (th == 0.0) break;
+        if (sum.hi > 0x1p600 || th > 0x1p600) {
+            sum.scale(-600);
+            th *= 0x1p-600, tl *= 0x1p-600;
+            abssum *= 0x1p-600;
+            e += 600;
+            if (positive_only && e > 1800) return {{kInf, 0}, 1.0};
+        }
+        if (dk > y && th <= 0x1p-56 * sum.hi) break;  // past the peak
+        if (k + 1 == kMaxSeriesTerms) return kNoSeries;
+    }
+    if (!std::isfinite(sum.hi)) return kNoSeries;
+    Scaled r = scaled(sum.total());
+    r.e += e;
+    return {r, sum.hi == 0.0 ? kInf : abssum / sum.hi};
+}
 inline Series m_series_positive(double a, double b, double y, double a_lo, bool positive_only) {
     // The terms in double-double: by successive products a float64 term k
     // carries ~k ULP (a + k, b + k rounded, then multiplied), and near x ~ 500
     // the sum is made of terms around k ~ x: 120-180 ULP, measured. a + k and
     // b + k are exact as two_sums.
-    if (a_lo == 0.0) {
+    // a, b in [1/16, 2^19), y in (0, 2^19): the long series with split arguments (as
+    // f_long_positive_split), and straight to it where the float64 pass would mostly fail its
+    // test (y > 2, or a first ratio a y / b past 2)
+    const bool split = a >= 0x1p-4 && b >= 0x1p-4 && std::max(a, b) < 0x1p19 && y > 0.0 && y < 0x1p19;
+    if (a_lo == 0.0 && !(split && (y > 2.0 || a * y > 2.0 * b))) {
         // First in float64 with a bound on what the products cost (kFastSeries): where
         // it is small (the terms fall from the start: most inputs) this is the answer, at
         // a fifth of the compensated loop's time.
@@ -114,6 +157,7 @@ inline Series m_series_positive(double a, double b, double y, double a_lo, bool 
     }
     // The long series, compensated (as f_series2 below: the roundings of the product
     // and the quotient by fma, to first order; the term and the sum as hi + lo).
+    if (split) return m_long_positive_split(a, a_lo, b, y, positive_only);
     double th = 1.0, tl = 0.0, abssum = 1.0;
     dd::Sum sum(1.0);
     std::int64_t e = 0;
@@ -649,7 +693,44 @@ inline double hyp1f1(double a, double b, double x) {
 struct PlainSum {
     double s, cancel;
 };
+// The long series below with the arguments split so that their sums with k are exact: v =
+// vh + vl, vh a multiple of 2^-32 (so vh + k is a double for k < 2^20, past kMaxSeriesTerms)
+// and |vl| <= 2^-33, which enters the products to first order (as the two_sum low parts
+// did; |vl / (vh + k)| <= 2^-29 for v >= 1/16, so the dropped second order is 2^-58). Three
+// adds where three two_sums were, the rest as there.
+inline PlainSum f_long_positive_split(double a, double b, double c, double z) {
+    constexpr double kShift = 0x1p20;
+    const double ah = (a + kShift) - kShift, al = a - ah;
+    const double bh = (b + kShift) - kShift, bl = b - bh;
+    const double ch = (c + kShift) - kShift, cl = c - ch;
+    double th = 1.0, tl = 0.0, abssum = 1.0;
+    dd::Sum sum(1.0);
+    for (int k = 0; k < kMaxSeriesTerms; ++k) {
+        const double dk = k, kp = dk + 1.0;
+        const double A = ah + dk, B = bh + dk, C = ch + dk;  // exact
+        const double n1 = A * B, e1 = std::fma(A, bl, std::fma(al, B, std::fma(A, B, -n1)));
+        const double n2 = n1 * z, e2 = std::fma(e1, z, std::fma(n1, z, -n2));
+        const double d1 = C * kp, e3 = std::fma(cl, kp, std::fma(C, kp, -d1));
+        const double rd = 1.0 / d1, q = n2 * rd;
+        const double ql = (std::fma(-q, d1, n2) + e2 - q * e3) * rd;  // the ratio is q + ql
+        const double tn = th * q;
+        tl = std::fma(tl, q, std::fma(th, ql, std::fma(th, q, -tn)));  // (tl's own chain: one fma)
+        th = tn;
+        sum.add(th, tl);
+        abssum += th;
+        if (th == 0.0 || !(th < kInf) || (k > 2 && th <= 0x1p-56 * sum.hi && q < 1.0)) {
+            const double v = sum.total();
+            return {v, v == 0.0 ? kInf : abssum / v};
+        }
+    }
+    return {kNaN, kInf};
+}
 inline PlainSum f_series_positive(double a, double b, double c, double z) {
+    const bool split = std::min({a, b, c}) >= 0x1p-4 && std::max({a, b, c}) < 0x1p19;
+    // From z = 0.4, or where the first ratio a b z / c is past 2 (the terms rise: their mean
+    // index passes the float64 pass's limit), that pass mostly fails its test and the long series
+    // follows it: straight to the long one (a third less time over z in [0.5, 0.9]).
+    if (split && (z > 0.4 || a * b * z > 2.0 * c)) return f_long_positive_split(a, b, c, z);
     {  // the float64 pass (as m_series)
         dd::Sum fsum(1.0);
         double ft = 1.0, fabs_sum = 1.0, weighted = 1.0;
@@ -681,6 +762,7 @@ inline PlainSum f_series_positive(double a, double b, double c, double z) {
     // term and the sum as hi + lo). What is left is second order, k eps^2: as accurate
     // as the double-double loop this replaces (2.7 ULP at most over z in [0.5, 0.9],
     // both, measured) at a third of its time.
+    if (split) return f_long_positive_split(a, b, c, z);
     double th = 1.0, tl = 0.0, abssum = 1.0;
     dd::Sum sum(1.0);
     bool ended = false;

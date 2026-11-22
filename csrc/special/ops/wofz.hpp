@@ -80,6 +80,13 @@ inline CScaled exp_negsq(double x, double y) {
     return {{m * c, m * s}, mag.e};
 }
 
+// -2 / n for n < 64 (the grid series' recurrence: a multiplication where a complex-by-real
+// division took two divisions a term; one rounding more, in a coefficient's ~20th of its sum).
+inline constexpr std::array<double, 64> kMinusTwoOver = [] {
+    std::array<double, 64> t{};
+    for (int n = 1; n < 64; ++n) t[static_cast<std::size_t>(n)] = -2.0 / n;
+    return t;
+}();
 // The Taylor series about the grid point; 0 <= x <= 7, 0 <= y <= 4.
 inline cplx w_grid(double x, double y) {
     const int i = static_cast<int>(std::nearbyint(x * 10.0));
@@ -93,7 +100,7 @@ inline cplx w_grid(double x, double y) {
     cplx hn = h, sum = mul(a, h);
     const double tiny = 0x1p-56 * norm1(a0);
     for (int n = 1; n < 60; ++n) {
-        const cplx next = -(2.0 * mul(z0, a) + 2.0 * prev) / static_cast<double>(n + 1);
+        const cplx next = (mul(z0, a) + prev) * kMinusTwoOver[n + 1];  // -(2 z0 a_n + 2 a_(n-1)) / (n + 1)
         prev = a;
         a = next;
         hn = mul(hn, h);
@@ -112,9 +119,15 @@ inline cplx w_cf(double x, double y) {
     const cplx z{x, y}, iinvsqrtpi{0.0, kInvSqrtPi};
     if (x + y > 3e8) return div(iinvsqrtpi, z);  // the next term, 1/(2z^2), is below 2^-56 relative
     const int nu = static_cast<int>(3.9 + 11.398 / (0.08254 * x + 0.1421 * y + 0.2023)) + kWofzCfMargin;
-    cplx t = z;
-    for (int k = nu - 1; k >= 1; --k) t = z - cx::rdiv(0.5 * k, t);
-    return div(iinvsqrtpi, t);
+    // (k/2) / t as (k/2) conj(t) / |t|^2: one division a level where Smith's took two in a row
+    // (t stays in the upper half plane, |t| >= Im z, and |t|^2 in range for |z| <= 3e8)
+    double tr = x, ti = y;
+    for (int k = nu - 1; k >= 1; --k) {
+        const double r = (0.5 * k) / std::fma(tr, tr, ti * ti);
+        const double nr = std::fma(-r, tr, x), ni = std::fma(r, ti, y);
+        tr = nr, ti = ni;
+    }
+    return div(iinvsqrtpi, cplx{tr, ti});
 }
 
 inline cplx w_upper(double x, double y) {  // x >= 0, y >= 0, finite

@@ -41,10 +41,12 @@
 #include "special/boost.hpp"
 
 #include "special/cf.hpp"
+#include "special/ops/cf_fast.hpp"
 #include "special/common.hpp"
 #include "special/cost.hpp"
 #include "special/dd.hpp"
 #include "special/halley.hpp"
+#include "special/ops/halley_fast.hpp"
 #include "special/ops/erf.hpp"
 #include "special/ops/gamma.hpp"
 #include "special/ops/incgamma.hpp"
@@ -67,7 +69,82 @@ struct IB {
     double i, ic, xderiv;
 };
 
-inline Scaled prefix_of(double a, double b, dd::DD x, dd::DD y) { return beta_prefix(a, b, beta_exponent(a, b, x, y)); }
+// ---- the prefix B = x^a y^b / B(a, b) for moderate shapes, directly
+//
+// prefix.hpp's form e^-E Gamma*(c) / (Gamma*(a) Gamma*(b)) sqrt(ab / (2 pi c)) takes two
+// double-double mu terms for E and three Gamma* (each a double-double log and an exp below 13):
+// 87 of the 176 ns of a typical betainc. For shapes from 2^-19 to 2^12 it is formed instead as
+//     B = e^L F,   L = a log x + b log y + S(c) - S(a) - S(b),   F = F(c) / (F(a) F(b)),
+// with Gamma(z) = e^S(z) F(z): S = 0 and F = Gamma(z) below 13 (gamma_small, Cephes: 1 ULP),
+// Stirling's S = (z - 1/2) log z - z and F = sqrt(2 pi) Gamma*(z) from 13. L is a double-double
+// (the logs of x and y from their double-doubles); its terms are at most ~1e5 there, so the
+// table log's 2^-77 leaves 1e-18 of L, and c = a + b enters exactly: as a double-double in S(c),
+// to first order (Gamma(c.hi) (1 + psi(c.hi) c.lo), psi to 1e-2: c.lo psi is ~eps) in F(c).
+// Shape-only, S and F are kept per thread for the last (a, b) (arrays usually share them; a
+// pure function of the key, so a hit and a miss give the same bits). False outside (the
+// shapes, x or y below 2^-999, |L| beyond 700): prefix.hpp's form.
+inline constexpr double kDirectShapeLo = 0x1p-19, kDirectShapeHi = 0x1p12;
+struct GammaSplit {
+    dd::DD s;
+    double f;
+};
+// psi(z) to ~1e-2 relative for z >= 2^-19 (log z - 1/(2z) - 1/(12 z^2) from 1, the recurrence below)
+inline double psi_rough(double z) {
+    double y = 0.0;
+    if (z < 1.0) y = -1.0 / z, z += 1.0;
+    return y + (std::log(z) - 0.5 / z - 1.0 / (12.0 * z * z));
+}
+inline GammaSplit gamma_split(dd::DD z) {
+    if (z.hi < 13.0) {
+        const double g = prefix_detail::gamma_small(z.hi);
+        return {{0.0, 0.0}, z.lo == 0.0 ? g : g * (1.0 + z.lo * psi_rough(z.hi))};
+    }
+    return {dd::log(z) * (z - 0.5) - z, prefix_detail::kSqrt2Pi * gamma_star(z.hi)};
+}
+struct ShapePart {
+    double a = kNaN, b = kNaN;
+    dd::DD s{0.0, 0.0};
+    double f = 0.0;
+};
+inline const ShapePart& shape_part(double a, double b) {  // (symmetric: kept for (min, max))
+    if (a > b) std::swap(a, b);
+    thread_local ShapePart m;
+    if (m.a == a && m.b == b) return m;
+    const GammaSplit ga = gamma_split(dd::DD{a, 0.0}), gb = gamma_split(dd::DD{b, 0.0}),
+                     gc = gamma_split(dd::two_sum(a, b));
+    m = {a, b, gc.s - ga.s - gb.s, gc.f / (ga.f * gb.f)};
+    return m;
+}
+inline bool direct_prefix(double a, double b, dd::DD x, dd::DD y, Scaled& out) {
+    if (!(a >= kDirectShapeLo && a <= kDirectShapeHi && b >= kDirectShapeLo && b <= kDirectShapeHi &&
+          x.hi >= dd::kLogDirect && y.hi >= dd::kLogDirect))
+        return false;
+    const ShapePart& sp = shape_part(a, b);
+    const dd::DD L = dd::log(x) * a + dd::log(y) * b + sp.s;
+    if (!(std::fabs(L.hi) <= 700.0)) return false;
+    out = scaled(std::exp(L.hi) * (1.0 + L.lo) * sp.f);
+    return true;
+}
+
+// x^a / B(a, b), BPSER's factor B y^-b, by the same form without the b log y term (nothing to
+// take off again by y^-b: a double-double log and an exp fewer); false as direct_prefix, or
+// for a value below 2^-1000.
+inline bool direct_power(double a, double b, dd::DD x, double& out) {
+    if (!(a >= kDirectShapeLo && a <= kDirectShapeHi && b >= kDirectShapeLo && b <= kDirectShapeHi &&
+          x.hi >= dd::kLogDirect))
+        return false;
+    const ShapePart& sp = shape_part(a, b);
+    const dd::DD L = dd::log(x) * a + sp.s;
+    if (!(std::fabs(L.hi) <= 700.0)) return false;
+    out = std::exp(L.hi) * (1.0 + L.lo) * sp.f;
+    return out >= 0x1p-1000 && out <= 0x1p1000;
+}
+
+inline Scaled prefix_of(double a, double b, dd::DD x, dd::DD y) {
+    Scaled d;
+    if (direct_prefix(a, b, x, y, d)) return d;
+    return beta_prefix(a, b, beta_exponent(a, b, x, y));
+}
 
 // BPSER: I_x(a, b) = (B y^-b / a) sum_n (1-b)_n / n! a/(a+n) x^n, B the
 // prefix of (a, b) at x. The low part of x enters to first order (dS/dx).
@@ -93,6 +170,17 @@ inline double bpser(double a, double b, dd::DD x, dd::DD y, Scaled pref) {
     if (pref.m == 0.0) return 0.0;
     const double s = bpser_series(a, b, x);
     return value(pref * scaled(bpser_power(b, y) * s / a));
+}
+
+// bpser where the prefix may not be formed yet (pref() forms it): from direct_power when it applies
+template <class Pref>
+inline double bpser_of(double a, double b, dd::DD x, dd::DD y, const Pref& pref) {
+    double f;
+    if (direct_power(a, b, x, f)) {
+        const double v = f * (bpser_series(a, b, x) / a);
+        if (v >= 0x1p-1000 || !(v == v)) return v;  // (a value near the subnormals: the scaled way)
+    }
+    return bpser(a, b, x, y, pref());
 }
 
 // BUP: I_x(a, b) - I_x(a+n, b) = (B / a) sum_{i<n} prod_{j<i} (a+b+j) x / (a+1+j),
@@ -164,14 +252,14 @@ inline double bgrat(double a, double b, dd::DD x, dd::DD y, double w) {
     const BgratArgs g = bgrat_args(a, b, x, y);
     const dd::DD z = g.z;
     if (!(z.hi > 0.0)) return w;
-    // Q(b, z) and r at z = hi + lo, to first order in lo
+    // Q(b, z) and r = z^b e^-z / Gamma(b) at z = hi + lo, to first order in lo: r at hi is igam's
+    // x P'(x) (its prefix times b, the one Q came from: a second prefix was 40 of BGRAT's 190 ns),
+    // moved by d log r / dz lo = (b / z - 1) lo
     const igam_detail::PQ q = igam_detail::igam(b, z.hi);
     // (z.lo / z.hi first: xderiv / z.hi and b / z.hi overflow for a z near the subnormals)
     const double zr = z.lo / z.hi;
     const double Q = q.q - zr * q.xderiv;
-    dd::DD Ez = gamma_exponent(b, z.hi);
-    Ez = Ez + (z.lo - b * zr);
-    const double r = b * value(gamma_prefix(b, Ez));
+    const double r = q.xderiv * (1.0 - (z.lo - b * zr));
     if (Q == 0.0 && r == 0.0) return w;
     const double G = bgrat_g(a, b, g.nu.hi);
     return w + G * bgrat_series(b, g, Q, r, w / G);
@@ -200,16 +288,18 @@ inline double log_bgrat(double a, double b, dd::DD x, dd::DD y) {
 // The fraction itself (I = B / it), NaN if it has not converged in 1e5 terms.
 inline double bfrac_fraction(double a, double b, dd::DD x, dd::DD y) {
     const double xh = x.hi, yh = y.hi;
+    // (one division a term: 1 / den and 1 / (den + 2) from 1 / (den (den + 2)); the products
+    // carry an ULP more than the quotients, which the fraction's value does not see)
     auto gen = [&](int m) {
         const double md = m;
-        const double den = a + 2.0 * md - 1.0;
+        const double den = a + 2.0 * md - 1.0, den2 = a + 2.0 * md + 1.0;
+        const double r = 1.0 / (den * den2), i1 = den2 * r, i2 = den * r;
         // (... x)(... x): with b = 1e300 the products of the parameters overflow and x^2 underflows
-        const double an = ((a + md - 1.0) * (a + b + md - 1.0) * xh) * (md * (b - md) * xh) / (den * den);
-        const double bn =
-            md + md * (b - md) * xh / den + (a + md) * (a * yh - b * xh + 1.0 + md * (2.0 - xh)) / (a + 2.0 * md + 1.0);
+        const double an = ((a + md - 1.0) * (a + b + md - 1.0) * xh) * (md * (b - md) * xh) * (i1 * i1);
+        const double bn = md + md * (b - md) * xh * i1 + (a + md) * (a * yh - b * xh + 1.0 + md * (2.0 - xh)) * i2;
         return std::pair{an, bn};
     };
-    const CfResult r = lentz_backward(gen(0).second, gen, 100000);
+    const CfResult r = cf_fast(gen(0).second, gen, 100000);
     return r.converged ? r.value : kNaN;
 }
 inline double bfrac(double a, double b, dd::DD x, dd::DD y, Scaled pref) {
@@ -418,6 +508,11 @@ inline bool ibeta_outside(double a, double b, dd::DD x, dd::DD y, bool deriv, IB
 // BRATIO's choice. (a0, b0, x0, y0) is (a, b, x, y) or, `ind`, (b, a, y, x);
 // w = I_x0(a0, b0) and w1 = 1 - w, one computed and the other 1 minus it.
 inline IB ibeta(double a, double b, dd::DD x, dd::DD y, bool deriv = false) {
+    // The symmetric point: I_(1/2)(a, a) = 1/2 exactly (the median of a symmetric beta), which
+    // a discrete quantile turns on: NegativeBinomial(100, 1/2).iccdf(1/2) = 99, where
+    // ccdf(99) = I_(1/2)(100, 100); BFRAC there was a few ULP off 1/2 either way.
+    if (a == b && x.hi == 0.5 && x.lo == 0.0 && a < kPlainShape)
+        return {0.5, 0.5, deriv ? 2.0 * value(prefix_of(a, b, x, y)) : 0.0};
     if (!(x.hi >= kTinyX && y.hi >= kTinyX && a < kPlainShape && b < kPlainShape)) {
         IB r;
         if (ibeta_outside(a, b, x, y, deriv, r)) return r;
@@ -473,15 +568,15 @@ inline IB ibeta(double a, double b, dd::DD x, dd::DD y, bool deriv = false) {
                 if (!above) direct(pref.m == 0.0 ? 0.0 : value(pref * scaled(power * bpser_series(a0, b0, x0) / a0)));
             }
             if (w > 0.5 && a0 < b0) {
-                if (x0.hi >= 0.3) other(bpser(b0, a0, y0, x0, prefix()));
+                if (x0.hi >= 0.3) other(bpser_of(b0, a0, y0, x0, prefix));
                 else other(bgrat(b0 + 20.0, a0, y0, x0, bup(b0, a0, y0, x0, 20)));
             }
         } else if (b0 <= 1.0) {
-            direct(bpser(a0, b0, x0, y0, prefix()));
+            direct(bpser_of(a0, b0, x0, y0, prefix));
         } else if (x0.hi >= 0.3) {
-            other(bpser(b0, a0, y0, x0, prefix()));
+            other(bpser_of(b0, a0, y0, x0, prefix));
         } else if (x0.hi < 0.1 && std::pow(x0.hi * b0, a0) <= 0.7) {
-            direct(bpser(a0, b0, x0, y0, prefix()));
+            direct(bpser_of(a0, b0, x0, y0, prefix));
         } else if (b0 > 15.0) {
             other(bgrat(b0, a0, y0, x0, 0.0));
         } else {
@@ -494,7 +589,7 @@ inline IB ibeta(double a, double b, dd::DD x, dd::DD y, bool deriv = false) {
             lambda = -lambda;
         }
         if (b0 < 40.0 && b0 * x0.hi <= 0.7) {
-            direct(bpser(a0, b0, x0, y0, prefix()));
+            direct(bpser_of(a0, b0, x0, y0, prefix));
         } else if (std::min(a0, b0) > 100.0 && lambda <= 0.03 * std::min(a0, b0)) {
             direct(basym(a0, b0, beta_exponent(a0, b0, x0, y0)));
         } else {
@@ -710,12 +805,13 @@ inline double ibeta_inverse(double a, double b, double t, bool upper) {
     }
     w0 = std::min(w0, 0.5);
     auto solve = [&](double start) {
-        return halley(
+        return halley_fast(
             start, t, inc,
             [&](double v) {
                 const IB r = ibeta(sa, sb, v, true);
-                const double h = (sa - 1.0) / v - (sb - 1.0) / (1.0 - v);
-                return std::array<double, 3>{inc ? r.i : r.ic, inc ? r.xderiv : -r.xderiv, h};
+                const double w = 1.0 - v;
+                const double h = (sa - 1.0) / v - (sb - 1.0) / w, h1 = -(sa - 1.0) / (v * v) - (sb - 1.0) / (w * w);
+                return std::array<double, 4>{inc ? r.i : r.ic, inc ? r.xderiv : -r.xderiv, h, h1};
             },
             0.0, 1.0
         );
