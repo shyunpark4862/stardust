@@ -62,4 +62,26 @@ std::vector<std::uint8_t> render3(
     std::size_t ndiscs
 );
 
+// How well each of a list of camera directions shows a scene (docs/design/plot.md PL46): two
+// numbers a view. The first is the share of the surfaces' area that is seen, each triangle
+// weighted by how much of it the others leave uncovered (a small depth buffer of size x size
+// samples tells) and by the fourth root of the cosine it is seen under, so that a face seen
+// edge on counts for little while a slanted one still counts nearly whole. The second is the spread of the loose points on the screen: the
+// square root of the determinant of their covariance there. xyz: 3 doubles a vertex, in the
+// box's coordinates; views: 9 doubles each (row-major rotation, view = rot * scene); radius:
+// the scene fits in a sphere of it around the origin. The views are scored side by side.
+std::vector<double> view_scores(
+    const double* xyz,
+    std::size_t nvert,
+    const std::int64_t* triangles,
+    std::size_t ntri,
+    const double* points,
+    std::size_t npoints,
+    const double* views,
+    std::size_t nviews,
+    double distance,
+    double radius,
+    int size
+);
+
 }  // namespace sd::plot

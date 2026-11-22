@@ -381,7 +381,7 @@ class Figure:
         return self
 
     def _repr_svg_(self):
-        return self._write("Figure", _svg.write)
+        return self._write("Figure", _svg.write, 200.0)  # the pictures inside at the PNG's resolution
 
     def _repr_png_(self):
         return self._write("Figure", _png.write, 200.0, level=1)

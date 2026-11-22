@@ -432,4 +432,138 @@ std::vector<std::uint8_t> render3(
     return out;
 }
 
+std::vector<double> view_scores(
+    const double* xyz,
+    std::size_t nvert,
+    const std::int64_t* triangles,
+    std::size_t ntri,
+    const double* points,
+    std::size_t npoints,
+    const double* views,
+    std::size_t nviews,
+    double distance,
+    double radius,
+    int size
+) {
+    // the triangles that can be drawn, with their areas in the scene
+    std::vector<std::int64_t> tri;
+    std::vector<double> area;
+    double total = 0.0;
+    for (std::size_t t = 0; t < ntri; ++t) {
+        const std::int64_t* q = triangles + 3 * t;
+        bool ok = true;
+        for (int k = 0; k < 3; ++k) {
+            ok = ok && q[k] >= 0 && static_cast<std::size_t>(q[k]) < nvert;
+            for (int c = 0; ok && c < 3; ++c) ok = std::isfinite(xyz[3 * q[k] + c]);
+        }
+        if (!ok) continue;
+        const double *a = xyz + 3 * q[0], *b = xyz + 3 * q[1], *d = xyz + 3 * q[2];
+        const double u[3] = {b[0] - a[0], b[1] - a[1], b[2] - a[2]}, v[3] = {d[0] - a[0], d[1] - a[1], d[2] - a[2]};
+        const double n[3] = {u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]};
+        const double ar = 0.5 * std::sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
+        if (!(ar > 0.0)) continue;
+        tri.insert(tri.end(), {q[0], q[1], q[2]});
+        area.push_back(ar);
+        total += ar;
+    }
+    const std::size_t nt = area.size();
+    const double scale = 0.5 * size / (1.15 * radius);  // samples per unit at the origin's depth
+    std::vector<double> out(2 * nviews, 0.0);
+    auto one = [&](std::int64_t vi) {
+        const double* r = views + 9 * vi;
+        const auto project = [&](const double* p, double& x, double& y, double& z) {
+            const double vx = r[0] * p[0] + r[1] * p[1] + r[2] * p[2];
+            const double vy = r[3] * p[0] + r[4] * p[1] + r[5] * p[2];
+            z = r[6] * p[0] + r[7] * p[1] + r[8] * p[2];
+            const double f = distance > 0.0 ? distance / std::max(distance - z, 1e-9) : 1.0;
+            x = 0.5 * size + scale * f * vx;
+            y = 0.5 * size - scale * f * vy;
+        };
+        if (nt) {
+            std::vector<double> px(nvert), py(nvert), pz(nvert);
+            for (std::size_t i = 0; i < nvert; ++i) project(xyz + 3 * i, px[i], py[i], pz[i]);
+            const std::size_t n = static_cast<std::size_t>(size) * size;
+            std::vector<float> depth(n, -std::numeric_limits<float>::infinity());
+            std::vector<std::int32_t> who(n, -1);
+            std::vector<double> flat(nt);  // the triangles' areas on the screen
+            for (std::size_t t = 0; t < nt; ++t) {
+                const std::int64_t i0 = tri[3 * t], i1 = tri[3 * t + 1], i2 = tri[3 * t + 2];
+                const double ax = px[i0], ay = py[i0], bx = px[i1], by = py[i1], cx = px[i2], cy = py[i2];
+                const double twice = (bx - ax) * (cy - ay) - (cx - ax) * (by - ay);
+                flat[t] = 0.5 * std::fabs(twice);
+                if (!(twice != 0.0) || !std::isfinite(twice)) continue;
+                const double inv = 1.0 / twice;
+                const int x0 = std::max(0, static_cast<int>(std::floor(std::min({ax, bx, cx}))));
+                const int x1 = std::min(size, static_cast<int>(std::ceil(std::max({ax, bx, cx}))) + 1);
+                const int y0 = std::max(0, static_cast<int>(std::floor(std::min({ay, by, cy}))));
+                const int y1 = std::min(size, static_cast<int>(std::ceil(std::max({ay, by, cy}))) + 1);
+                for (int y = y0; y < y1; ++y) {
+                    const double qy = y + 0.5;
+                    for (int x = x0; x < x1; ++x) {
+                        const double qx = x + 0.5;
+                        const double w0 = ((bx - qx) * (cy - qy) - (cx - qx) * (by - qy)) * inv;
+                        const double w1 = ((cx - qx) * (ay - qy) - (ax - qx) * (cy - qy)) * inv;
+                        const double w2 = 1.0 - w0 - w1;
+                        if (w0 < 0.0 || w1 < 0.0 || w2 < 0.0) continue;
+                        const float d = static_cast<float>(w0 * pz[i0] + w1 * pz[i1] + w2 * pz[i2]);
+                        const std::size_t at = static_cast<std::size_t>(y) * size + x;
+                        if (d > depth[at]) {
+                            depth[at] = d;
+                            who[at] = static_cast<std::int32_t>(t);
+                        }
+                    }
+                }
+            }
+            std::vector<std::int32_t> seen(nt, 0);
+            for (std::size_t i = 0; i < n; ++i) {
+                if (who[i] >= 0) ++seen[who[i]];
+            }
+            double sum = 0.0;
+            for (std::size_t t = 0; t < nt; ++t) {
+                if (!(flat[t] > 0.0)) continue;
+                const double share = std::min(1.0, seen[t] / std::max(flat[t], 1.0));
+                // the size a triangle facing the eye would have there (nearer ones are drawn larger)
+                const double zc = (pz[tri[3 * t]] + pz[tri[3 * t + 1]] + pz[tri[3 * t + 2]]) / 3.0;
+                const double f = distance > 0.0 ? distance / std::max(distance - zc, 1e-9) : 1.0;
+                const double cosine = std::min(1.0, flat[t] / (area[t] * scale * scale * f * f));
+                sum += area[t] * share * std::sqrt(std::sqrt(cosine));
+            }
+            out[2 * vi] = sum / total;
+        }
+        if (npoints >= 2) {
+            double mx = 0.0, my = 0.0;
+            std::vector<double> qx(npoints), qy(npoints);
+            std::size_t m = 0;
+            for (std::size_t i = 0; i < npoints; ++i) {
+                double z;
+                if (!(std::isfinite(points[3 * i]) && std::isfinite(points[3 * i + 1]) &&
+                      std::isfinite(points[3 * i + 2])))
+                    continue;
+                project(points + 3 * i, qx[m], qy[m], z);
+                mx += qx[m];
+                my += qy[m];
+                ++m;
+            }
+            if (m >= 2) {
+                mx /= m;
+                my /= m;
+                double sxx = 0.0, sxy = 0.0, syy = 0.0;
+                for (std::size_t i = 0; i < m; ++i) {
+                    sxx += (qx[i] - mx) * (qx[i] - mx);
+                    sxy += (qx[i] - mx) * (qy[i] - my);
+                    syy += (qy[i] - my) * (qy[i] - my);
+                }
+                const double det = (sxx * syy - sxy * sxy) / (static_cast<double>(m) * m);
+                out[2 * vi + 1] = std::sqrt(std::max(det, 0.0)) / (scale * scale);
+            }
+        }
+    };
+    if (nviews > 1) {
+        sd::parallel::parallel_for(static_cast<std::int64_t>(nviews), one);
+    } else if (nviews == 1) {
+        one(0);
+    }
+    return out;
+}
+
 }  // namespace sd::plot

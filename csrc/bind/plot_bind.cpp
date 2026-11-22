@@ -238,6 +238,22 @@ void bind_plot(nb::module_& core) {
                 nb::bytes(reinterpret_cast<const char*>(xy.data()), xy.size() * sizeof(double))
             );
         });
+    m.def(
+        "view_scores", [](nb::bytes xyz, nb::bytes triangles, nb::bytes points, const std::vector<double>& views,
+                          double distance, double radius, int size) {
+            const std::vector<double> v = doubles(xyz), p = doubles(points);
+            if (v.size() % 3 != 0 || p.size() % 3 != 0 || triangles.size() % (3 * sizeof(std::int64_t)) != 0 ||
+                views.size() % 9 != 0 || !(radius > 0.0) || size < 8 || size > 1024) {
+                throw std::invalid_argument("view_scores: packed triples, 9 numbers a view, a size of 8 to 1024");
+            }
+            std::vector<std::int64_t> tri(triangles.size() / sizeof(std::int64_t));
+            if (!tri.empty()) std::memcpy(tri.data(), triangles.c_str(), triangles.size());
+            return plot::view_scores(
+                v.data(), v.size() / 3, tri.data(), tri.size() / 3, p.data(), p.size() / 3, views.data(),
+                views.size() / 9, distance, radius, size
+            );
+        }
+    );
     m.def("path_text", [](nb::bytes ops, nb::bytes xy, int digits, bool pdf) {
         std::size_t need = 0;
         for (std::size_t i = 0; i < ops.size(); ++i) {

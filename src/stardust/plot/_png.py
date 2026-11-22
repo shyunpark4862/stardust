@@ -128,6 +128,40 @@ def flatten_large(items, dpi):
     return out
 
 
+PIECE = 1 << 18  # bytes of a piece of a picture that is compressed on its own thread
+_pool = None
+
+
+def deflate(data, level=6):
+    """The zlib stream of data. A large input is cut into pieces of PIECE bytes that are
+    compressed side by side (zlib releases the interpreter lock), each with the 32 KB before it
+    as its dictionary and ending on a byte boundary, and joined: the stream is the same whatever
+    the number of threads, since the pieces are cut by size alone."""
+    n = len(data)
+    if n < 2 * PIECE:
+        return zlib.compress(data, level)
+    global _pool
+    if _pool is None:
+        import concurrent.futures
+        import os
+
+        _pool = concurrent.futures.ThreadPoolExecutor(max_workers=min(8, os.cpu_count() or 1))
+    view = memoryview(data)
+    starts = list(range(0, n, PIECE))
+
+    def piece(i):
+        a = starts[i]
+        if a:
+            c = zlib.compressobj(level, zlib.DEFLATED, -15, zdict=bytes(view[max(0, a - 32768) : a]))
+        else:
+            c = zlib.compressobj(level, zlib.DEFLATED, -15)
+        body = c.compress(view[a : a + PIECE])
+        return body + c.flush(zlib.Z_FINISH if i == len(starts) - 1 else zlib.Z_SYNC_FLUSH)
+
+    head = b"\x78\x9c" if level >= 6 else b"\x78\x5e" if level >= 2 else b"\x78\x01"
+    return head + b"".join(_pool.map(piece, range(len(starts)))) + struct.pack(">I", zlib.adler32(data))
+
+
 def encode(w, h, rgba, *, dpi=None, level=6):
     """The PNG file of straight 8-bit RGBA pixels."""
 
@@ -143,7 +177,7 @@ def encode(w, h, rgba, *, dpi=None, level=6):
     if dpi is not None:
         ppm = round(dpi / 0.0254)
         out.append(chunk(b"pHYs", struct.pack(">IIB", ppm, ppm, 1)))
-    out.append(chunk(b"IDAT", zlib.compress(bytes(raw), level)))
+    out.append(chunk(b"IDAT", deflate(bytes(raw), level)))
     out.append(chunk(b"IEND", b""))
     return b"".join(out)
 

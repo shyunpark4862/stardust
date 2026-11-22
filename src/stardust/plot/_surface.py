@@ -28,6 +28,12 @@ LIGHT = (-0.35, 0.45, 0.82)
 GRID = (0.88, 0.88, 0.89, 1.0)  # the grid on the faces behind the scene
 EDGE = (0.72, 0.72, 0.74, 1.0)  # those faces' outlines
 MESH_DARK, MESH_ALPHA = 0.36, 0.62  # mesh lines: the surface's own colour darkened
+# The views an angle that was not given is chosen from; the first of each is the usual one.
+# (no view along an axis of the box: its ticks would fall on one another)
+VIEW_AZIMUTHS = (-60.0, -30.0, 30.0, 60.0, 120.0, 150.0, -150.0, -120.0)
+VIEW_ELEVATIONS = (30.0, 18.0, 42.0)
+VIEW_USUAL = (0.03, 0.07)  # what the usual azimuth and elevation are ahead by (of a score of at most 1)
+VIEW_GRID, VIEW_SIZE = 32, 160  # cells a side of the coarse copy of a surface; samples a side of its depth buffer
 LONE = _color.CMAP  # the colour map of a cell's only surface
 MESH, MESH_WIDTH = 24, 0.42  # cells of the mesh a side; the lines' width (bp)
 CONTOURS, CONTOUR_WIDTH = 14, 0.6  # levels of the floor contours aimed at; their width (bp)
@@ -41,7 +47,9 @@ class Space(_layers.Layer):
     """The 3D content of a cell and its camera."""
 
     def __init__(self, azimuth, elevation, perspective):
-        self.az, self.el, self.perspective = azimuth, elevation, perspective
+        self.az, self.el, self.perspective = azimuth, elevation, perspective  # an angle None: chosen (camera)
+        self._chosen = None  # (what the scene held, (azimuth, elevation)) of the last choice
+        self._picture = None  # (what was rendered, the pixels) of the last picture
         # (X, Y, Z 2-D sd arrays, colour spec, mesh cells, alpha, what _adapt added or None, floor contour levels)
         self.surfaces = []
         self.curves = []  # (x, y, z 1-D arrays, rgba, width)
@@ -80,16 +88,73 @@ class Space(_layers.Layer):
 
     # -- the camera
 
-    def rotation(self):
-        a, e = math.radians(self.az), math.radians(self.el)
-        eye = (math.cos(e) * math.cos(a), math.cos(e) * math.sin(a), math.sin(e))
-        right = (-math.sin(a), math.cos(a), 0.0)
-        up = (
-            eye[1] * right[2] - eye[2] * right[1],
-            eye[2] * right[0] - eye[0] * right[2],
-            eye[0] * right[1] - eye[1] * right[0],
+    def camera(self):
+        """(azimuth, elevation): the angles given, and for one that was not given the best of
+        VIEW_AZIMUTHS or VIEW_ELEVATIONS. A view is good when it shows much of the surfaces'
+        area, little of it hidden behind other parts or seen edge on, and spreads the curves
+        and points over the screen (csrc/plot/zbuffer.hpp, view_scores, on a coarse copy of the
+        scene); the usual view (-60, 30) wins a near tie, so plain surfaces look as ever."""
+        if self.az is not None and self.el is not None:
+            return self.az, self.el
+        key = (len(self.surfaces), len(self.curves), len(self.points), self.zlim, self.equal)
+        if self._chosen is not None and self._chosen[0] == key:
+            return self._chosen[1]
+        lo, hi = self.limits()
+        BOX = self.box_of(lo, hi)
+
+        def box(k, a):
+            return sd.clip((a - lo[k]) * (2.0 * BOX[k] / (hi[k] - lo[k])) - BOX[k], min=-BOX[k], max=BOX[k])
+
+        vert, tri, loose, base = [], [], [], 0
+        for X, Y, Z, *_ in self.surfaces:
+            sy, sx = (max(1, -(-(n - 1) // VIEW_GRID)) for n in X.shape)
+            cols = [sd.reshape(box(k, c[::sy, ::sx]), (-1,)) for k, c in enumerate((X, Y, Z))]
+            ny, nx = X[::sy, ::sx].shape
+            vert.append(bytes(memoryview(sd.reshape(sd.stack(cols, axis=1), (-1,)))))
+            idx = sd.reshape(sd.arange(0, ny * nx), (ny, nx)) + base
+            p00, p01, p10, p11 = (
+                sd.reshape(q, (-1,)) for q in (idx[:-1, :-1], idx[:-1, 1:], idx[1:, :-1], idx[1:, 1:])
+            )
+            tri.append(bytes(memoryview(sd.reshape(sd.stack([p00, p01, p11, p00, p11, p10], axis=1), (-1,)))))
+            base += ny * nx
+        for group, most in ((self.curves, 300), (self.points, 600)):
+            for x, y, z, *_ in group:
+                step = max(1, -(-x.shape[0] // most))
+                cols = [box(k, c[::step]) for k, c in enumerate((x, y, z))]
+                loose.append(bytes(memoryview(sd.reshape(sd.stack(cols, axis=1), (-1,)))))
+        views = [
+            (a, e)
+            for a in (VIEW_AZIMUTHS if self.az is None else (self.az,))
+            for e in (VIEW_ELEVATIONS if self.el is None else (self.el,))
+        ]
+        flat = [v for a, e in views for row in _rot(a, e) for v in row]
+        scores = _core_plot.view_scores(
+            b"".join(vert),
+            b"".join(tri),
+            b"".join(loose),
+            flat,
+            DISTANCE if self.perspective else 0.0,
+            math.sqrt(sum(b * b for b in BOX)),
+            VIEW_SIZE,
         )
-        return right, up, eye
+        spread = max(scores[1::2]) or 1.0
+        best, top = views[0], -1.0
+        for i, (a, e) in enumerate(views):
+            total = scores[2 * i] + (0.15 if tri else 1.0) * scores[2 * i + 1] / spread
+            total += VIEW_USUAL[0] * (a == VIEW_AZIMUTHS[0]) + VIEW_USUAL[1] * (e == VIEW_ELEVATIONS[0])
+            if total > top:
+                best, top = (a, e), total
+        self._chosen = (key, best)
+        return best
+
+    def rotation(self, usual=False):
+        """(right, up, eye) of the camera; `usual`: of the usual view where an angle is to be chosen."""
+        az, el = (
+            (VIEW_AZIMUTHS[0] if self.az is None else self.az, VIEW_ELEVATIONS[0] if self.el is None else self.el)
+            if usual
+            else self.camera()
+        )
+        return _rot(az, el)
 
     def project(self, p, rot, scale=1.0, cx=0.0, cy=0.0):
         """The page position of a box point (and its depth)."""
@@ -100,14 +165,17 @@ class Space(_layers.Layer):
         f = DISTANCE / (DISTANCE - z) if self.perspective else 1.0
         return cx + scale * f * x, cy - scale * f * y, z
 
+    def box_of(self, lo, hi):
+        """The box's half sizes."""
+        if self.equal:  # the box has the data's proportions
+            big = max(hi[k] - lo[k] for k in range(3))
+            return tuple(max((hi[k] - lo[k]) / big, 0.05) for k in range(3))
+        return BOX_GRAPH
+
     def outline(self, lo, hi):
         """The box's half sizes and the bounds (x0, x1, y0, y1) of its projection at scale 1
         (y down, as on the page)."""
-        if self.equal:  # the box has the data's proportions
-            big = max(hi[k] - lo[k] for k in range(3))
-            box = tuple(max((hi[k] - lo[k]) / big, 0.05) for k in range(3))
-        else:
-            box = BOX_GRAPH
+        box = self.box_of(lo, hi)
         rot = self.rotation()
         pr = [
             self.project((sx * box[0], sy * box[1], sz * box[2]), rot)
@@ -205,7 +273,23 @@ class Space(_layers.Layer):
         ]
         vert, tri, lines, counts, widths, discs = self._buffers(lo, hi, th, k, BOX)
         if vert or lines or discs:
-            rgba = _core_plot.render3(iw, ih, SS, view, vert, tri, lines, counts, widths, discs)
+            # A notebook asks for the figure twice (SVG and PNG): the picture of an unchanged scene
+            # at the same size is rendered once.
+            key = (
+                iw,
+                ih,
+                tuple(view),
+                len(vert),
+                len(tri),
+                len(lines),
+                tuple(counts),
+                tuple(widths),
+                len(discs),
+                hash(discs),
+            )
+            if self._picture is None or self._picture[0] != key:
+                self._picture = (key, _core_plot.render3(iw, ih, SS, view, vert, tri, lines, counts, widths, discs))
+            rgba = self._picture[1]
             scene.add(_scene.Image(fr.x, fr.y, fr.w, fr.h, iw, ih, rgba, smooth=True))
 
         # the axes: the bottom edges nearest the eye for x and y, the upright edge at the side for z
@@ -237,9 +321,11 @@ class Space(_layers.Layer):
             dx, dy = m1[0] - m0[0], m1[1] - m0[1]
             dl = math.hypot(dx, dy) or 1.0
             ux, uy = dx / dl, dy / dl
-            text, mult = _ticks.labels(ticks[k_])
+            # an axis seen almost end on (a thin box) has no room for ticks
+            shown = ticks[k_] if math.hypot(pb[0] - pa[0], pb[1] - pa[1]) >= 14.0 else []
+            text, mult = _ticks.labels(shown) if shown else ([], None)
             ops, xy, far = [], array("d"), 0.0
-            for t, s in zip(ticks[k_], text):
+            for t, s in zip(shown, text):
                 p = list(a)
                 p[k_] = box(k_, t)
                 px, py = P(p)
@@ -483,6 +569,19 @@ def _fine(fn, X, Y, P, zlim, mesh, graph, levels):
     return keep, parts, _adapt.mesh_lines(fn, X, Y, asked, *mesh_steps(*X.shape, mesh)) if mesh else None
 
 
+def _rot(azimuth, elevation):
+    """(right, up, eye): the rows of the rotation from the scene to the view."""
+    a, e = math.radians(azimuth), math.radians(elevation)
+    eye = (math.cos(e) * math.cos(a), math.cos(e) * math.sin(a), math.sin(e))
+    right = (-math.sin(a), math.cos(a), 0.0)
+    up = (
+        eye[1] * right[2] - eye[2] * right[1],
+        eye[2] * right[0] - eye[0] * right[2],
+        eye[0] * right[1] - eye[1] * right[0],
+    )
+    return right, up, eye
+
+
 def _unit(v):
     n = math.sqrt(sum(c * c for c in v))
     return [c / n for c in v]
@@ -512,8 +611,9 @@ def _shade(name, t):
 def _space(self, who, azimuth, elevation, perspective):
     """The cell's Space (made with this call's camera when it is the first 3D layer)."""
     cell = self._cell
-    az, el = real(azimuth, who, "azimuth"), real(elevation, who, "elevation")
-    if not -90.0 <= el <= 90.0:
+    az = None if azimuth is None else real(azimuth, who, "azimuth")
+    el = None if elevation is None else real(elevation, who, "elevation")
+    if el is not None and not -90.0 <= el <= 90.0:
         raise ValueError(f"{who}(): 'elevation' must be in [-90, 90]")
     _check_bool(perspective, who, "perspective")
     for layer in cell.layers:
@@ -574,8 +674,8 @@ def surface(
     alpha=1.0,
     samples=None,
     refine=None,
-    azimuth=-60.0,
-    elevation=30.0,
+    azimuth=None,
+    elevation=None,
     perspective=True,
 ):
     who, graph = "surface", True
@@ -624,8 +724,8 @@ def parametric_surface(
     alpha=1.0,
     samples=None,
     refine=None,
-    azimuth=-60.0,
-    elevation=30.0,
+    azimuth=None,
+    elevation=None,
     perspective=True,
 ):
     who, graph, contours = "parametric_surface", False, False
@@ -665,8 +765,8 @@ def curve3d(
     refine=None,
     color=None,
     width=None,
-    azimuth=-60.0,
-    elevation=30.0,
+    azimuth=None,
+    elevation=None,
     perspective=True,
 ):
     who = "curve3d"
@@ -690,7 +790,7 @@ def curve3d(
     span = [max(r[1] - r[0], 1e-300) for r in rs]
     if sp.equal:
         span = [max(span)] * 3
-    right, up, _ = sp.rotation()
+    right, up, _ = sp.rotation(usual=True)
 
     def screen(P):
         q = [(P[k] - mid[k]) / span[k] for k in range(3)]
@@ -707,7 +807,7 @@ def curve3d(
 
 
 def scatter3d(
-    self, x, y, z, /, *, data=None, group=None, color=None, size=None, azimuth=-60.0, elevation=30.0, perspective=True
+    self, x, y, z, /, *, data=None, group=None, color=None, size=None, azimuth=None, elevation=None, perspective=True
 ):
     who = "scatter3d"
     _basic._check_data(who, data)

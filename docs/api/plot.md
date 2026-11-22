@@ -160,10 +160,10 @@ phase(f, re0, re1, im0, im1, /, *, samples=None, contours=True, **figure)
 
 ### §4.5 3D
 ```
-surface(f, x0, x1, y0, y1, /, *, zlim=None, mesh=True, contours=False, color=None, cmap=None, alpha=1.0, samples=None, refine=None, azimuth=-60.0, elevation=30.0, perspective=True, **figure)
-parametric_surface(fx, fy, fz, u0, u1, v0, v1, /, *, mesh=True, color=None, cmap=None, alpha=1.0, samples=None, refine=None, azimuth=-60.0, elevation=30.0, perspective=True, **figure)
-curve3d(fx, fy, fz, a, b, /, *, samples=None, refine=None, color=None, width=None, azimuth=-60.0, elevation=30.0, perspective=True, **figure)
-scatter3d(x, y, z, /, *, data=None, group=None, color=None, size=None, azimuth=-60.0, elevation=30.0, perspective=True, **figure)
+surface(f, x0, x1, y0, y1, /, *, zlim=None, mesh=True, contours=False, color=None, cmap=None, alpha=1.0, samples=None, refine=None, azimuth=None, elevation=None, perspective=True, **figure)
+parametric_surface(fx, fy, fz, u0, u1, v0, v1, /, *, mesh=True, color=None, cmap=None, alpha=1.0, samples=None, refine=None, azimuth=None, elevation=None, perspective=True, **figure)
+curve3d(fx, fy, fz, a, b, /, *, samples=None, refine=None, color=None, width=None, azimuth=None, elevation=None, perspective=True, **figure)
+scatter3d(x, y, z, /, *, data=None, group=None, color=None, size=None, azimuth=None, elevation=None, perspective=True, **figure)
 ```
 - 곡면은 음영과 격자선(`mesh`)이 있는 그림으로 굽고, 상자 축과 눈금과 글자는 벡터로 얹는다(PL9). `cmap`을 주면 높이로 색을 정하고, `color`를 주면 한 색에 음영만 준다. 둘 다 주지 않으면 칸에 곡면이 하나일 때는 `cmap='cool'`(아래 하늘색, 가운데 보라, 위 빨강)이고, 여럿일 때는 곡면마다 팔레트의 색을 차례로 받는다. 빛은 고정이다: 왼쪽 위 앞의 주광, 반대쪽의 보조광, 뒤쪽의 테두리광 셋이고, 넓은 광택과 또렷한 반사광이 얹힌다. 곡면의 두 면을 똑같이 밝힌다.
 - `mesh`는 격자선이다: `True`(한 방향 24칸), `False`, 또는 칸의 수. `contours`는 상자의 바닥에 그리는 등고선이다: `True`(수준 약 14개), `False`, 또는 수준의 수(눈금 규칙으로 고른다). 등고선은 곡면과 같은 색을 받는다.
@@ -171,7 +171,7 @@ scatter3d(x, y, z, /, *, data=None, group=None, color=None, size=None, azimuth=-
 - 꺾이는 곳, 극점의 옆구리, 정의역의 가장자리는 알아서 더 촘촘히 잰다(첫 격자의 16배까지). `f`는 그때마다 배열 하나로 불린다.
 - `curve3d`는 곡선이 꺾이는 곳을 알아서 더 촘촘히 잰다. 값이 달아나는 곳(극점)에서는 선을 끊고, 축은 값의 대부분이 있는 범위로 잡아 상자의 면에서 선을 자른다.
 - 어디나 거친 곡면(칸의 40%가 넘게 모자람)은 격자 전체를 3배로 다시 잰다.
-- `azimuth`, `elevation`은 보는 방향(도)이다. 한 칸에 3D 층을 여럿 겹칠 수 있고 서로 가리는 것은 깊이로 정한다. 시점은 그 칸의 첫 층이 정한다.
+- `azimuth`, `elevation`은 보는 방향(도)이다. 주지 않은 각은 알아서 고른다: 방위각 여덟(±30°, ±60°, ±120°, ±150°: 상자의 축을 정면으로 보는 방향은 뺀다), 고도 18°·30°·42° 가운데 곡면의 넓이가 가장 많이 보이고(다른 부분에 가리거나 옆으로 누워 보이는 것이 적고) 곡선과 점이 화면에 가장 넓게 퍼지는 방향이다. 차이가 작으면 늘 쓰던 방향(−60°, 30°)이다. 한 각만 주면 다른 각만 고른다. 한 칸에 3D 층을 여럿 겹칠 수 있고 서로 가리는 것은 깊이로 정한다. 시점은 그 칸의 첫 층이 정한다.
 
 ### §4.6 `Figure.info`
 - 함수 그림이 한 일을 곡선마다 적은 기록의 튜플이다. 기록은 namedtuple `PlotInfo(kind, n, poles, jumps, ylim, clipped, undefined, oscillating)`다: 그림의 종류(`'function'`, `'parametric'`, `'polar'`), 쓴 표본 수 `n`, 찾은 극점과 뜀의 자리(`poles`, `jumps`; 표본의 가장 좁은 간격까지, 범위의 약 4×10⁻⁶), 그림에 보이는 값의 범위 `ylim`, 그 범위가 아래와 위에서 값을 잘랐는지 `clipped`, 유한하지 않은 값이 나온 구간들 `undefined`, 선 대신 띠로 그린 구간들 `oscillating`.

@@ -421,3 +421,55 @@ def test_mesh_count_and_floor_contours():
     ):
         with pytest.raises(kind, match=text):
             P.surface(f, -1, 1, -1, 1, **bad)
+
+
+def test_the_camera_is_chosen_when_it_is_not_given():
+    wave = lambda x, y: sd.sin(x) * sd.cos(y)  # noqa: E731
+    assert space_of(P.surface(wave, -3, 3, -3, 3)).camera() == (-60.0, 30.0)  # nothing to gain: the usual view
+    assert space_of(P.surface(wave, -3, 3, -3, 3, azimuth=10, elevation=20)).camera() == (10.0, 20.0)
+    # a step facing the far side is looked at from there
+    step = space_of(P.surface(lambda x, y: sd.tanh(6 * (x + y)) + 0.2 * sd.sin(4 * x), -1, 1, -1, 1))
+    az, el = step.camera()
+    assert az in _surface.VIEW_AZIMUTHS and el in _surface.VIEW_ELEVATIONS and az != -60.0
+    right, up, eye = step.rotation()
+    assert eye[0] + eye[1] < 0  # from the side of the lower half: the face of the step is in view
+    # one angle given: only the other is chosen
+    half = space_of(P.surface(lambda x, y: sd.tanh(6 * (x + y)), -1, 1, -1, 1, elevation=55))
+    assert half.camera()[1] == 55.0 and half.camera()[0] in _surface.VIEW_AZIMUTHS
+    assert space_of(P.surface(wave, -3, 3, -3, 3, azimuth=10)).camera()[0] == 10.0
+    # the choice follows the scene: a second surface is taken into account
+    two = P.surface(wave, -3, 3, -3, 3)
+    first = space_of(two).camera()
+    two.surface(lambda x, y: sd.tanh(6 * (x + y)) * 3, -3, 3, -3, 3)
+    assert space_of(two)._chosen[0] != (2, 0, 0, None, False) and space_of(two).camera() in [
+        (a, e) for a in _surface.VIEW_AZIMUTHS for e in _surface.VIEW_ELEVATIONS
+    ]
+    assert first == (-60.0, 30.0)
+    # points alone: the view that spreads them (a flat cloud is not looked at edge on)
+    xs = [math.cos(i) * (1 + i % 7) / 4 for i in range(200)]
+    zs = [math.sin(i * 1.7) * (1 + i % 5) / 3 for i in range(200)]
+    cloud = space_of(P.scatter3d(xs, [0.01 * math.sin(3 * i) for i in range(200)], zs))
+    az, el = cloud.camera()
+    assert abs(math.cos(math.radians(az))) < 0.6  # not along the plane of the points (y = 0)
+    assert cloud.cell is not None and P.scatter3d(xs, xs, zs)._root._build("t") is not None
+
+
+def test_view_scores_in_the_core():
+    v = array("d", [-1, -1, 0, 1, -1, 0, 1, 1, 0, -1, 1, 0]).tobytes()  # a square in the plane z = 0
+    t = array("q", [0, 1, 2, 0, 2, 3]).tobytes()
+    top, slant, edge = (
+        list(r) for r in (_surface._rot(-90.0, 90.0), _surface._rot(-60.0, 30.0), _surface._rot(-60.0, 0.0))
+    )
+    flat = [x for rot in (top, slant, edge) for row in rot for x in row]
+    s = core.view_scores(v, t, b"", flat, 0.0, 1.5, 160)
+    assert s[0] == pytest.approx(1.0, abs=0.02) and 0.7 < s[2] < 0.9 and s[4] < 0.05  # face on, slanted, edge on
+    assert s[1] == s[3] == s[5] == 0.0  # no loose points
+    # a second square just above hides the first: half of the area is seen from the top
+    w = array("d", [-1, -1, 0.5, 1, -1, 0.5, 1, 1, 0.5, -1, 1, 0.5]).tobytes()
+    both = core.view_scores(v + w, t + array("q", [4, 5, 6, 4, 6, 7]).tobytes(), b"", flat[:9], 0.0, 1.5, 160)
+    assert both[0] == pytest.approx(0.5, abs=0.03)
+    pts = array("d", [c for i in range(50) for c in (math.cos(i), math.sin(i), 0.0)]).tobytes()
+    p = core.view_scores(b"", b"", pts, flat, 0.0, 1.5, 160)
+    assert p[1] > p[3] > p[5] == pytest.approx(0.0, abs=1e-9) and p[0] == 0.0  # a ring: widest from the top
+    with pytest.raises(ValueError, match="view_scores"):
+        core.view_scores(v, t, b"", flat[:5], 0.0, 1.5, 160)
