@@ -9,6 +9,9 @@
 //   _coo_to_dense(shape, major, minor, data, /, *, distinct)
 //                                                 C-ordered dense arrays: zeros plus the stored
 //                                                 values, duplicates added in stored order
+//   _dense_update(indptr, indices, data, out, /, *, by_rows, subtract)
+//                                                 out (dense, C order) += (or -=) the stored values
+//                                                 in place (int64 wraps)
 //   _filter_compressed(n_major, indptr, indices, data, new_major, new_minor, /, *, drop_zeros)
 //   _filter_coo(major, minor, data, bound_major, bound_minor, /, *, drop_zeros)
 //                                                 the entries inside the bounds (and nonzero with
@@ -154,6 +157,50 @@ nb::object to_dense(nb::handle shape_h, nb::handle indptr_h, nb::handle indices_
         );
     });
     return wrap(std::move(out));
+}
+
+// out (C-contiguous, the array's shape and data's dtype) plus (or minus) the dense value of every
+// stored entry, in place: A + D as D + 0 plus A's values (the signed zeros come out as in
+// A.toarray() + D; see dense_update in sparse/_ops.py). Lines are disjoint in out: any split.
+void dense_update(
+    nb::handle indptr_h, nb::handle indices_h, nb::handle data_h, nb::handle out_h, bool by_rows, bool subtract
+) {
+    const NDArray& indptr = vector_arg(indptr_h, "_dense_update", DType::Int64);
+    const NDArray& indices = vector_arg(indices_h, "_dense_update", DType::Int64);
+    const NDArray& data = vector_arg(data_h, "_dense_update");
+    NDArray& out = const_cast<NDArray&>(require_ndarray(out_h, "out"));
+    const int64_t n_major = indptr.shape[0] - 1, nnz = indices.shape[0];
+    if (!out.c_contiguous || !out.writeable || out.dtype != data.dtype || out.ndim < 1 || out.ndim > 2 ||
+        data.shape[0] != nnz)
+        throw nb::value_error("_dense_update(): the arrays do not match");
+    const int64_t cols = out.ndim == 2 ? out.shape[1] : out.shape[0];
+    const int64_t* ip = i64(indptr);
+    const int64_t* ix = i64(indices);
+    visit_dtype(data.dtype, [&]<class T>(std::type_identity<T>) {
+        if constexpr (std::is_same_v<T, bool>) {
+            throw nb::type_error("_dense_update(): bool values");
+        } else {
+            const T* v = typed<T>(data);
+            T* o = typed<T>(out);
+            for_chunks(
+                n_major,
+                [&](int64_t, int64_t lo, int64_t hi) {
+                    for (int64_t r = lo; r < hi; ++r)
+                        for (int64_t k = ip[r]; k < ip[r + 1]; ++k) {
+                            const int64_t pos = by_rows ? r * cols + ix[k] : ix[k] * cols + r;
+                            const T a = dense_value(v[k]);
+                            if constexpr (std::is_same_v<T, int64_t>)
+                                o[pos] = static_cast<int64_t>(
+                                    subtract ? static_cast<uint64_t>(o[pos]) - static_cast<uint64_t>(a)
+                                             : static_cast<uint64_t>(o[pos]) + static_cast<uint64_t>(a)
+                                );
+                            else o[pos] = subtract ? o[pos] - a : o[pos] + a;
+                        }
+                },
+                lines_per_task(n_major > 0 ? nnz / n_major : 0), nnz + n_major
+            );
+        }
+    });
 }
 
 const int64_t* opt_index(nb::handle o, const char* func, int64_t n) {
@@ -451,6 +498,10 @@ void bind_convert(nb::module_& m) {
         return readonly(expand(indptr, n_major, nnz));
     });
     m.def("_from_dense", &from_dense, nb::arg("x"), nb::kw_only(), nb::arg("by_rows"));
+    m.def(
+        "_dense_update", &dense_update, nb::arg("indptr"), nb::arg("indices"), nb::arg("data"), nb::arg("out"),
+        nb::kw_only(), nb::arg("by_rows"), nb::arg("subtract")
+    );
     m.def(
         "_to_dense", &to_dense, nb::arg("shape"), nb::arg("indptr"), nb::arg("indices"), nb::arg("data"), nb::kw_only(),
         nb::arg("by_rows")

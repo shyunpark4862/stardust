@@ -16,13 +16,19 @@ from .. import _core as _sd
 from . import _common as C
 from ._common import _core
 
+_CLASSES = None
+
 
 def _classes():
-    from ._compressed import csc_array, csr_array
-    from ._coo import coo_array
-    from ._dok import dok_array
+    global _CLASSES
+    if _CLASSES is None:  # imported on first use: the classes' modules import this one
+        from ._base import sparray
+        from ._compressed import csc_array, csr_array
+        from ._coo import coo_array
+        from ._dok import dok_array
 
-    return {"coo": coo_array, "csr": csr_array, "csc": csc_array, "dok": dok_array}
+        _CLASSES = {"coo": coo_array, "csr": csr_array, "csc": csc_array, "dok": dok_array, "base": sparray}
+    return _CLASSES
 
 
 def _ndims(fmt):
@@ -40,18 +46,16 @@ def build(fmt, arg, shape, dtype, copy, func):
 
 
 def _build(fmt, arg, shape, dtype, copy, func):
-    from ._base import sparray
-
     copy = C.copy_arg(copy, func)
     dtype = C.dtype_arg(dtype, func)
     if shape is not None:
         shape = C.shape_arg(shape, func, _ndims(fmt))
-    if isinstance(arg, sparray):
+    if isinstance(arg, _classes()["base"]):
         return _from_sparse(fmt, arg, shape, dtype, copy, func)
     if C.is_scipy_sparse(arg):
         return _from_scipy(fmt, arg, shape, dtype, copy, func)
     if isinstance(arg, tuple):
-        if arg and all(C.is_int(v) for v in arg):
+        if arg and C.is_int(arg[0]) and all(C.is_int(v) for v in arg):
             return _empty(fmt, C.shape_arg(arg, func, _ndims(fmt), what="arg"), shape, dtype, func)
         if len(arg) == 2 and _is_coords(arg[1]) and not C.is_scalar(arg[0]):
             return _from_coords(fmt, arg[0], arg[1], shape, dtype, copy, func)

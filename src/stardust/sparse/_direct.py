@@ -20,6 +20,9 @@ from . import _common as C
 from ._base import sparray
 from ._common import _core
 
+# The componentwise backward error at or below which a solve is not refined (SP63).
+_REFINE_BERR = 8 * 2.0**-52
+
 _DENSE = {
     "spsolve": "sd.linalg.solve",
     "splu": "sd.linalg.lu",
@@ -92,7 +95,7 @@ class _Factor:
     """An LU factor of a square sparse matrix, or of the 0 x 0 one (no native factor), and the
     matrix itself (its float values) for the refinement step."""
 
-    __slots__ = ("core", "n", "dtype", "A", "_AH")
+    __slots__ = ("core", "n", "dtype", "A", "_Ac")
 
     def __init__(self, A, func):
         n = A.shape[0]
@@ -101,30 +104,41 @@ class _Factor:
         A, data, _ = _compressed(A.tocsc(), func)
         if data is not A.data:
             A = type(A)._new(A.shape, A.indptr, A.indices, data)
-        self.n, self.dtype, self.A, self._AH = n, data.dtype, A, None
+        self.n, self.dtype, self.A, self._Ac = n, data.dtype, A, None
         self.core = _core._lu_factor(A.shape, A.indptr, A.indices, data, csr=False, func=func) if n else None
 
-    def _op(self, trans):
-        if trans == "N":
-            return self.A
-        if trans == "T" or self.dtype != _sd.complex128:
-            return self.A.T
-        if self._AH is None:
-            self._AH = self.A.T.conj()
-        return self._AH
-
-    def solve(self, b, trans, func):
-        """op(A) x = b for a checked dense b (float64 or complex128), with one step of iterative
-        refinement in working precision (decision SP63): x += solve(b - op(A) x). Measured in SP4:
-        threshold pivoting alone left a normwise backward error of 404 eps on saddle/600x150; one
-        step brings every test matrix under 1 eps (docs/design/sparse.md §3.6)."""
+    def solve(self, b, trans, func, refine=True):
+        """op(A) x = b for a checked dense b (float64 or complex128), with iterative refinement in
+        working precision when the first solve needs it (decision SP63): x += solve(b - op(A) x)
+        unless the componentwise backward error max_i |r_i| / (|op(A)| |x| + |b|)_i (LAPACK
+        dgerfs's test) is already at most _REFINE_BERR = 8 eps. Measured in SP4: threshold
+        pivoting alone left a normwise backward error of 404 eps on saddle/600x150, which one step
+        brings under 1 eps; the Laplacians solve to 2-8 eps componentwise at once, and skip the
+        second solve (half the time). refine=False: the LU solve alone (the eigensolvers'
+        shift-invert operator, applied once a Lanczos or Arnoldi step as scipy's and RSpectra's
+        are)."""
         if self.dtype == _sd.complex128 and b.dtype != _sd.complex128:
             b = b.astype(_sd.complex128)
         if self.core is None:
             return b.copy()
         x = self.core.solve(b, trans=trans, func=func)
-        r = b - self._op(trans) @ x
+        if not refine:
+            return x
+        r, berr = _core._residual(
+            self.A.indptr, self.A.indices, self._data_as(x.dtype), x, b if C.contiguous(b) else b.copy(), trans=trans
+        )
+        if berr <= _REFINE_BERR:
+            return x
         return x + self.core.solve(r, trans=trans, func=func)
+
+    def _data_as(self, dtype):
+        """A's values in dtype (a complex right-hand side of a real factor: complex values, kept)."""
+        data = self.A.data
+        if data.dtype == dtype:
+            return data
+        if self._Ac is None:
+            self._Ac = data.astype(dtype)
+        return self._Ac
 
 
 class SparseLU:
@@ -298,8 +312,9 @@ def spbandwidth(A, /):
 def is_sptriangular(A, /):
     """(lower, upper): whether every stored entry is on or below, on or above the diagonal
     (stored zeros count; both for a diagonal pattern)."""
-    below, above = _bandwidth(A, "is_sptriangular")
-    return above == 0, below == 0
+    indptr, indices, swapped = _pattern(A, "is_sptriangular")
+    lower, upper = _core._triangular(indptr, indices)
+    return (upper, lower) if swapped else (lower, upper)
 
 
 __all__ = [

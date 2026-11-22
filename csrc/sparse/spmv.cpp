@@ -117,8 +117,25 @@ void scatter_serial(
         for (int64_t c = 0; c < k; ++c) y[j * ys + c * yc] = T{};
     constexpr bool floating = std::is_same_v<T, double> || std::is_same_v<T, complex128>;
     if (!floating || nnz <= kLine || !track) {  // no output has more than kLine terms
+        // outputs past the cache are updated at random: fetch the one 16 entries ahead (its whole
+        // row; X @ A of 16 rows at nnz 10^7 ran in a third of the time). In cache the fetch only
+        // costs (A.T @ x at nnz 10^4-10^7: 20% more).
+        const int64_t pend = ip[n_lines];
+        const int64_t row_bytes = k * yc * static_cast<int64_t>(sizeof(T));
+        if (n_out * row_bytes <= (int64_t(8) << 20)) {
+            for (int64_t r = 0; r < n_lines; ++r)
+                for (int64_t p = ip[r]; p < ip[r + 1]; ++p) step(p, r, y + ix[p] * ys);
+            return;
+        }
         for (int64_t r = 0; r < n_lines; ++r)
-            for (int64_t p = ip[r]; p < ip[r + 1]; ++p) step(p, r, y + ix[p] * ys);
+            for (int64_t p = ip[r]; p < ip[r + 1]; ++p) {
+                if (p + 16 < pend) {
+                    const char* ahead = reinterpret_cast<const char*>(y + ix[p + 16] * ys);
+                    __builtin_prefetch(ahead, 1);
+                    if (row_bytes > 64) __builtin_prefetch(ahead + row_bytes - 1, 1);
+                }
+                step(p, r, y + ix[p] * ys);
+            }
         return;
     }
     std::vector<std::uint16_t> cnt(static_cast<std::size_t>(n_out), 0);
@@ -319,8 +336,7 @@ nb::object spmv_typed(
         const int64_t pend = lp[lines];
         if (k == 1) {
             over_lines<T>(lines, lp, 1, [&](int64_t lo, int64_t hi, std::vector<T>& parts) {
-                auto step = [lv, li, xp, xr](int64_t p, T acc) { return madd(lv[p], xp[li[p] * xr], acc); };
-                for (int64_t r = lo; r < hi; ++r) o[r * os_r] = ordered_sum<T>(lp[r], lp[r + 1], step, parts);
+                line_dots<T>(lo, hi, lp, li, lv, xp, xr, o, os_r, parts);
             });
             return;
         }
@@ -373,18 +389,55 @@ nb::object spmv_typed(
             work.resize(static_cast<std::size_t>(rows * k));
             y = work.data();
         }
-        auto step = [v, xp, xr, xc, k](int64_t p, int64_t line, T* yr) {
+        // the rows of x as contiguous k values (x @ A hands x's transpose, whose rows are columns
+        // of x: each term would touch k cache lines): a copy, the same values
+        std::vector<T> xbuf;
+        const T* xs = xp;
+        int64_t xsr = xr, xsc = xc;
+        if (xc != 1) {
+            xbuf.resize(static_cast<std::size_t>(n_lines * k));
+            T* b = xbuf.data();
+            constexpr int64_t kTile = 64;
+            for_chunks(
+                n_lines,
+                [&](int64_t, int64_t lo, int64_t hi) {
+                    for (int64_t l0 = lo; l0 < hi; l0 += kTile) {
+                        const int64_t l1 = std::min(hi, l0 + kTile);
+                        for (int64_t c = 0; c < k; ++c)
+                            for (int64_t l = l0; l < l1; ++l) b[l * k + c] = xp[l * xr + c * xc];
+                    }
+                },
+                std::max<int64_t>(kTile, kChunk / k), n_lines * k
+            );
+            xs = b;
+            xsr = k;
+            xsc = 1;
+        }
+        auto step = [v, xs, xsr, xsc, k](int64_t p, int64_t line, T* yr) {
             const T a = v[p];
-            const T* row = xp + line * xr;
-            for (int64_t c = 0; c < k; ++c) yr[c] = madd(a, row[c * xc], yr[c]);
+            const T* row = xs + line * xsr;
+            if (k == kBlockCols && xsc == 1) {
+                for (int c = 0; c < kBlockCols; ++c) yr[c] = madd(a, row[c], yr[c]);
+                return;
+            }
+            for (int64_t c = 0; c < k; ++c) yr[c] = madd(a, row[c * xsc], yr[c]);
         };
         auto make = [ix](int64_t p, int64_t line) { return EntryItem{ix[p], p, line}; };
         auto apply = [&step](const EntryItem& t, T* yr) { step(t.p, t.line, yr); };
         scatter_any<T>(n_lines, n_out, ip, ix, k, y, k, 1, track, step, make, apply);
         if (transpose_out) {
-            const parallel::Unlocked unlocked(rows * k >= kParallelThreshold);
-            for (int64_t j = 0; j < rows; ++j)
-                for (int64_t c = 0; c < k; ++c) o[j * os_r + c * os_c] = y[j * k + c];
+            constexpr int64_t kTile = 64;
+            for_chunks(
+                rows,
+                [&](int64_t, int64_t lo, int64_t hi) {
+                    for (int64_t j0 = lo; j0 < hi; j0 += kTile) {
+                        const int64_t j1 = std::min(hi, j0 + kTile);
+                        for (int64_t c = 0; c < k; ++c)
+                            for (int64_t j = j0; j < j1; ++j) o[j * os_r + c * os_c] = y[j * k + c];
+                    }
+                },
+                std::max<int64_t>(kTile, kChunk / k), rows * k
+            );
         }
     }
     return wrap(std::move(out));

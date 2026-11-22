@@ -382,11 +382,14 @@ nb::tuple select_compressed(
             std::vector<std::pair<int64_t, int64_t>> tmp;
             for (int64_t t = lo; t < hi; ++t) {
                 int64_t b, e, w = op[t];
+                if (w == op[t + 1]) continue;  // nothing selected in this line (pass 1 counted)
                 bounds(lines.source(t), b, e);
+                // one selected entry is in order whatever the selection's order
+                const int line_order = op[t + 1] - w == 1 && order == 0 ? 1 : order;
                 if (minor.unit()) {
                     for (int64_t k = b; k < e; ++k) ox[w + k - b] = ix[k] - shift;
                     std::memcpy(ov + w * size, dv + b * size, static_cast<std::size_t>((e - b) * size));
-                } else if (order > 0 && hits) {
+                } else if (line_order > 0 && hits) {
                     for (int64_t k = b; k < e; ++k) {
                         const int64_t c = ix[k];
                         if (!hits[c]) continue;
@@ -396,14 +399,14 @@ nb::tuple select_compressed(
                             ++w;
                         }
                     }
-                } else if (order > 0) {
+                } else if (line_order > 0) {
                     for (int64_t k = b; k < e; ++k)
                         minor.each(ix[k], [&](int64_t p) {
                             ox[w] = p;
                             copy_value(ov, w, dv, k, size);
                             ++w;
                         });
-                } else if (order < 0) {
+                } else if (line_order < 0) {
                     for (int64_t k = e - 1; k >= b; --k)
                         minor.each(ix[k], [&](int64_t p) {
                             ox[w] = p;

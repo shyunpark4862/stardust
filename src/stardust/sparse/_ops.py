@@ -229,7 +229,33 @@ def dense_pattern_op(A, D, f, reflected=False, func=None):
 
 def dense_result(A, D, f, reflected=False, func=None):
     check_dense(A, D, func)
+    if (f is _sd.add or f is _sd.subtract) and A.format in ("csr", "csc"):
+        out = dense_update(A, D, f, reflected)
+        if out is not None:
+            return out
     return f(D, A.toarray()) if reflected else f(A.toarray(), D)
+
+
+def dense_update(A, D, f, reflected):
+    """A + D, D + A, A - D or D - A (canonical A) as D's dense operation with a zero, then A's
+    values added in place: one dense pass instead of toarray()'s and the operation's. The bits are
+    those of f on A.toarray(), signed zeros included: with v' = 0 + v (never -0.0) the stored
+    value of A.toarray(), v' + d = (d + 0) + v', v' - d = (0 - d) + v' and d - v' = (d - 0) - v'
+    (an exact zero term only turns -0.0 into +0.0 where the other side does too). None when the
+    result dtype is bool."""
+    zero = one(promote(A.dtype, D.dtype))
+    Db = D if tuple(D.shape) == A.shape else _sd.broadcast_to(D, A.shape)
+    if f is _sd.add:
+        out = f(Db, zero)
+    else:
+        out = f(Db, zero) if reflected else f(zero, Db)
+    if out.dtype == _sd.bool or out.dtype != zero.dtype:
+        return None
+    _core._dense_update(
+        A._indptr, A._indices, to_dtype(A._data, out.dtype), out, by_rows=A._by_rows,
+        subtract=f is _sd.subtract and reflected,
+    )  # fmt: skip
+    return out
 
 
 # ---- @ ----

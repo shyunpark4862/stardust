@@ -19,10 +19,12 @@
 // vectors ARPACK asks for when an invariant subspace is found.
 //
 // Vector work is the library's (krylov.hpp): inner products sd.linalg.vecdot's sums, norms
-// sd.linalg.vector_norm's, V * w and V^H x row by row with every element's terms in column
-// order. All are split by size alone, so the result is the same bit for bit for any thread count
-// (API.md §3). The small dense problems are LAPACK's (Accelerate): dsteqr, dlahqr, dtrevc,
-// dtrsen, dgeqr2 and their complex forms, as ARPACK calls them.
+// sd.linalg.vector_norm's, V * w and V^H x Accelerate's gemv over fixed pieces of rows. All are
+// split by size alone, so the result is the same bit for bit for any thread count (API.md §3);
+// the OP counts follow scipy's within its own spread under one-ulp changes of v0 (the sums of
+// the basis products are not its BLAS's in the last bits). The small dense problems are
+// LAPACK's (Accelerate): dsteqr, dlahqr, dtrevc, dtrsen, dgeqr2 and their complex forms, as
+// ARPACK calls them.
 #include "linalg/errors.hpp"
 #include "linalg/lapack.hpp"
 #include "sparse/krylov.hpp"
@@ -93,7 +95,7 @@ void gemv_t(const T* V, int64_t n, int64_t j, const T* x, T* y) {
     dots(V, n, j, x, y);
 }
 
-// y = (zero ? 0 : y) + sum_l coef[l] V[:, l], every element's terms in column order
+// y = (zero ? 0 : y) + sum_l coef[l] V[:, l] (dgemv 'N', zgemv 'N')
 template <class T>
 void gemv_n(const T* V, int64_t n, int64_t j, const T* coef, T* y, bool zero) {
     gaxpy(V, n, j, coef, y, zero);

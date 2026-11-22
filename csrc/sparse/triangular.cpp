@@ -19,6 +19,9 @@
 //       For the CSR arrays of a 2-D matrix: the largest row - col and col - row over the stored
 //       entries (stored zeros count), each at least 0; (0, 0) without entries (scipy's
 //       spbandwidth). A CSC caller swaps the two.
+//   _triangular(indptr, indices, /) -> (lower, upper)
+//       For the CSR arrays of a 2-D matrix: below == 0 and above == 0 of _bandwidth, stopping
+//       early once both are false. A CSC caller swaps the two.
 #include "array/kernels/scalar_ops.hpp"
 #include "bind/pyutil.hpp"
 #include "linalg/errors.hpp"
@@ -29,6 +32,7 @@
 #include <nanobind/stl/string.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -78,6 +82,34 @@ nb::object sptrsv_typed(
     const T* v = typed<T>(data);
     const T* bp = typed<T>(b);
     const int64_t nnz = ip[n];
+    if (k == 1) {
+        // one right-hand side: the search, the singularity check and the substitution in one pass
+        // over the rows (the same sums; a singular matrix raises after the pass, nothing returned)
+        NDArray out = new_array(dtype_of<T>, b.shape_span());
+        T* x = typed<T>(out);
+        bool singular = false;
+        {
+            const parallel::Unlocked unlocked(nnz + n >= kParallelThreshold);
+            std::vector<T> parts;
+            auto row = [&](int64_t i) {
+                const int64_t s = ip[i], e = ip[i + 1];
+                const int64_t p = std::lower_bound(ix + s, ix + e, i) - ix;
+                const bool has = p < e && ix[p] == i;
+                if (!unit && (!has || is_zero(v[p]))) singular = true;
+                const int64_t lo = lower ? s : p + (has ? 1 : 0);
+                const int64_t hi = lower ? p : e;
+                auto step = [&](int64_t q, T acc) { return madd(v[q], x[ix[q]], acc); };
+                const T r = minus(bp[i], ordered_sum<T>(lo, hi, step, parts));
+                x[i] = unit ? r : divide(r, has ? v[p] : T(1));
+            };
+            if (lower)
+                for (int64_t i = 0; i < n; ++i) row(i);
+            else
+                for (int64_t i = n - 1; i >= 0; --i) row(i);
+        }
+        if (singular) throw linalg::LinAlgError(func + "(): singular matrix");
+        return wrap(std::move(out));
+    }
     // split[i]: the first entry of row i with column >= i; diag[i]: whether that entry is (i, i).
     std::vector<int64_t> split(static_cast<std::size_t>(n));
     std::vector<char> diag(static_cast<std::size_t>(n));
@@ -145,16 +177,78 @@ nb::tuple bandwidth_entry(nb::handle indptr_o, nb::handle indices_o) {
     const int64_t n = indptr.shape[0] - 1;
     const int64_t* ip = i64(indptr);
     const int64_t* ix = i64(indices);
-    int64_t below = 0, above = 0;
-    {
-        const parallel::Unlocked unlocked(ip[n] >= kParallelThreshold);
-        for (int64_t i = 0; i < n; ++i) {
-            if (ip[i] == ip[i + 1]) continue;  // the row's first and last columns bound its gaps
-            below = std::max(below, i - ix[ip[i]]);
-            above = std::max(above, ix[ip[i + 1] - 1] - i);
-        }
+    // the row's first and last columns bound its gaps; a maximum per chunk of rows, then over chunks
+    const int64_t nt = num_chunks(n);
+    std::vector<int64_t> below(static_cast<std::size_t>(std::max<int64_t>(nt, 1)), 0), above(below);
+    for_chunks(
+        n,
+        [&](int64_t t, int64_t lo, int64_t hi) {
+            int64_t b = 0, a = 0;
+            for (int64_t i = lo; i < hi; ++i) {
+                if (ip[i] == ip[i + 1]) continue;
+                b = std::max(b, i - ix[ip[i]]);
+                a = std::max(a, ix[ip[i + 1] - 1] - i);
+            }
+            below[static_cast<std::size_t>(t)] = b;
+            above[static_cast<std::size_t>(t)] = a;
+        },
+        kChunk, n + ip[n]
+    );
+    return nb::make_tuple(*std::max_element(below.begin(), below.end()), *std::max_element(above.begin(), above.end()));
+}
+
+// (lower, upper) of the CSR arrays: every stored column <= its row, every one >= its row. Stops
+// as soon as both are false (a few rows of a general matrix: the middle, first and last row are
+// looked at first, as scipy's is_sptriangular does).
+nb::tuple triangular_entry(nb::handle indptr_o, nb::handle indices_o) {
+    const NDArray& indptr = vector_arg(indptr_o, "_triangular", DType::Int64);
+    const NDArray& indices = vector_arg(indices_o, "_triangular", DType::Int64);
+    const int64_t n = indptr.shape[0] - 1;
+    const int64_t* ip = i64(indptr);
+    const int64_t* ix = i64(indices);
+    bool lower = true, upper = true;
+    auto row = [&](int64_t i, bool& lo, bool& up) {
+        if (ip[i] == ip[i + 1]) return;
+        lo = lo && ix[ip[i + 1] - 1] <= i;
+        up = up && ix[ip[i]] >= i;
+    };
+    if (n > 0)
+        for (int64_t i : {n / 2, int64_t(0), n - 1}) row(i, lower, upper);
+    if (!lower && !upper) return nb::make_tuple(false, false);
+    const int64_t nt = num_chunks(n);
+    std::vector<char> lo_ok(static_cast<std::size_t>(std::max<int64_t>(nt, 1)), 1), up_ok(lo_ok);
+    std::atomic<bool> both_failed{false};  // only ends the scan early: the answer is (false, false) then
+    for_chunks(
+        n,
+        [&](int64_t t, int64_t lo, int64_t hi) {
+            bool l = lower, u = upper;
+            for (int64_t i0 = lo; i0 < hi && (l || u); i0 += 1024) {
+                if (both_failed.load(std::memory_order_relaxed)) {
+                    l = u = false;
+                    break;
+                }
+                bool l2 = true, u2 = true;
+                const int64_t i1 = std::min(hi, i0 + 1024);
+                for (int64_t i = i0; i < i1; ++i) {
+                    if (ip[i] == ip[i + 1]) continue;
+                    l2 &= ix[ip[i + 1] - 1] <= i;
+                    u2 &= ix[ip[i]] >= i;
+                }
+                l = l && l2;
+                u = u && u2;
+            }
+            lo_ok[static_cast<std::size_t>(t)] = l;
+            up_ok[static_cast<std::size_t>(t)] = u;
+            if (!l && !u) both_failed.store(true, std::memory_order_relaxed);
+        },
+        kChunk, n + ip[n]
+    );
+    for (int64_t t = 0; t < nt; ++t) {
+        lower = lower && lo_ok[static_cast<std::size_t>(t)];
+        upper = upper && up_ok[static_cast<std::size_t>(t)];
     }
-    return nb::make_tuple(below, above);
+    if (both_failed.load()) lower = upper = false;
+    return nb::make_tuple(lower, upper);
 }
 
 }  // namespace
@@ -165,6 +259,7 @@ void bind_triangular(nb::module_& m) {
         nb::arg("lower"), nb::arg("unit_diagonal"), nb::arg("func")
     );
     m.def("_bandwidth", &bandwidth_entry, nb::arg("indptr"), nb::arg("indices"));
+    m.def("_triangular", &triangular_entry, nb::arg("indptr"), nb::arg("indices"));
 }
 
 }  // namespace sd::sparse

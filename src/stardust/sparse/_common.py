@@ -10,6 +10,7 @@ import sys
 from .. import _core as _sd
 
 _core = _sd.sparse
+_ndarray = _sd.ndarray
 
 FORMATS = ("coo", "csr", "csc", "dok")
 
@@ -88,7 +89,12 @@ def dtype_arg(dtype, func):
 
 def is_int(v):
     """An int by operator.index's rule; bool and numpy.bool are not ints (API.md §2)."""
-    if isinstance(v, bool) or type(v).__name__ == "bool" and type(v).__module__ == "numpy":
+    t = type(v)
+    if t is int:
+        return True
+    if t is _ndarray or t is float or t is bool:  # an sd.ndarray has 1 or 2 dimensions: never an int
+        return False
+    if isinstance(v, bool) or t.__name__ == "bool" and t.__module__ == "numpy":
         return False
     try:
         operator.index(v)
@@ -98,11 +104,23 @@ def is_int(v):
 
 
 def is_scalar(v):
+    t = type(v)
+    if t is _ndarray or t is tuple or t is list:
+        return False
+    if t is int or t is float:
+        return True
     return isinstance(v, numbers.Number)
 
 
 def shape_arg(shape, func, ndims=(1, 2), what="shape"):
     """A shape: an int or a tuple of ints, none negative, of 1 or 2 dimensions (`ndims`)."""
+    if type(shape) is tuple and len(shape) in ndims:  # the common case: Python ints in range
+        if len(shape) == 2:
+            a, b = shape
+            if type(a) is int and type(b) is int and 0 <= a <= 2**63 - 1 and 0 <= b <= 2**63 - 1:
+                return shape
+        elif type(shape[0]) is int and 0 <= shape[0] <= 2**63 - 1:
+            return shape
     if is_int(shape):
         dims = (shape,)
     elif isinstance(shape, tuple):
@@ -114,7 +132,8 @@ def shape_arg(shape, func, ndims=(1, 2), what="shape"):
         dims = shape
     else:
         raise TypeError(f"{func}(): '{what}' must be an int or a tuple of ints, not {type_name(shape)}")
-    dims = tuple(operator.index(d) for d in dims)
+    if not all(type(d) is int for d in dims):
+        dims = tuple(operator.index(d) for d in dims)
     if any(d > 2**63 - 1 for d in dims):
         raise OverflowError(f"{func}(): '{what}' is out of range")
     if any(d < 0 for d in dims):
@@ -170,11 +189,14 @@ def _has_buffer(x):
 def data_array(v, func, dtype, copy, what="data"):
     """The values of a (data, ...) tuple: a 1-D contiguous sd.ndarray by asarray's rules (dtype=
     converts explicitly; copy as asarray's)."""
-    if is_scalar(v) or v is None or isinstance(v, (str, bytes, dict)) or _is_sparse(v):
-        raise TypeError(
-            f"{func}(): '{what}' must be an sd.ndarray, a numpy array or a sequence of numbers, not {type_name(v)}"
-        )
-    x = renamed(func, _sd.asarray, v, dtype=dtype, copy=copy)
+    if type(v) is _ndarray and dtype is None and copy is not True:
+        x = v  # asarray's result: the array itself
+    else:
+        if is_scalar(v) or v is None or isinstance(v, (str, bytes, dict)) or _is_sparse(v):
+            raise TypeError(
+                f"{func}(): '{what}' must be an sd.ndarray, a numpy array or a sequence of numbers, not {type_name(v)}"
+            )
+        x = renamed(func, _sd.asarray, v, dtype=dtype, copy=copy)
     if x.ndim != 1:
         raise ValueError(f"{func}(): '{what}' must have 1 dimension, got {x.ndim}")
     if not contiguous(x):
@@ -186,11 +208,14 @@ def data_array(v, func, dtype, copy, what="data"):
 def index_array(v, func, what):
     """An index array: 1-D int64 by asarray's rules (int32 and the other integer buffers widen;
     an empty sequence is int64)."""
-    if is_scalar(v) or v is None or isinstance(v, (str, bytes, dict)) or _is_sparse(v):
-        raise TypeError(
-            f"{func}(): '{what}' must be an sd.ndarray, a numpy array or a sequence of ints, not {type_name(v)}"
-        )
-    x = renamed(func, _sd.asarray, v)
+    if type(v) is _ndarray:
+        x = v  # asarray's result: the array itself
+    else:
+        if is_scalar(v) or v is None or isinstance(v, (str, bytes, dict)) or _is_sparse(v):
+            raise TypeError(
+                f"{func}(): '{what}' must be an sd.ndarray, a numpy array or a sequence of ints, not {type_name(v)}"
+            )
+        x = renamed(func, _sd.asarray, v)
     if x.ndim != 1:
         raise ValueError(f"{func}(): '{what}' must have 1 dimension, got {x.ndim}")
     if x.dtype != _sd.int64:

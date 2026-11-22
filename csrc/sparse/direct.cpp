@@ -19,12 +19,18 @@
 //   _LuFactor.solve(b, /, *, trans, func)
 //       op(A) x = b, op = 'N', 'T' or 'H', for b of shape (n,) or (n, k) (any strides) of the
 //       factor's dtype, or complex128 for a float64 factor (its real and imaginary parts are
-//       solved as 2k real columns). The columns are solved together by Accelerate (SP64): the
-//       result is fixed by k and the values, and a column may differ in its last bits from the
-//       same column solved alone. A solution that is not finite is LinAlgError("<func>():
-//       singular matrix"). Returns a new C-contiguous array shaped like b.
+//       solved as 2k real columns). The columns are solved together by Accelerate (SP64), in
+//       fixed blocks of kSolveBlock: the result is fixed by k and the values, and a column may
+//       differ in its last bits from the same column solved alone. A solution that is not
+//       finite is LinAlgError("<func>(): singular matrix"). Returns a new C-contiguous array
+//       shaped like b.
 //   _LuFactor.cond      the estimate kappa_1 of the check above.
 //   _LuFactor.n, .dtype
+//
+//   _residual(indptr, indices, data, x, b, /, *, trans) -> (r, berr)
+//       r = b - op(A) x for the CSC of A and LAPACK dgerfs's componentwise backward error berr =
+//       max_i |r_i| / (|op(A)| |x| + |b|)_i (cabs1 for complex), the refinement test of the
+//       Python layer's solve (SP63).
 //
 //   _lu_solve(shape, indptr, indices, data, b, /, *, csr)
 //       SP0's scaffold of the wrapper (tests/sparse/test_accelerate.py): factor and solve with no
@@ -40,11 +46,14 @@
 #include "bind/pyutil.hpp"
 #include "linalg/errors.hpp"
 #include "linalg/lapack.hpp"
+#include "sparse/arith.hpp"
 #include "sparse/format.hpp"
+#include "sparse/parallel.hpp"
 
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/unique_ptr.h>
 
+#include <algorithm>
 #include <cmath>
 #include <complex>
 #include <cstdint>
@@ -66,6 +75,10 @@ using std::int64_t;
 using c128 = std::complex<double>;
 
 constexpr double kEps = std::numeric_limits<double>::epsilon();
+
+// The columns of one Accelerate solve (solve_typed): a right-hand side's bits are fixed by its
+// block of columns, so by k and its place among them.
+constexpr int64_t kSolveBlock = 8;
 
 const NDArray& contiguous(nb::handle o, const char* what, DType dtype, const char* func) {
     const NDArray& a = require_ndarray(o, what);
@@ -221,7 +234,12 @@ nb::object solve_typed(const sparse_solve::Lu<T>& lu, const NDArray& b, char op,
     bool finite = true;
     try {
         nb::gil_scoped_release unlocked;
-        if (k > 0) lu.solve(cols.data(), split ? 2 * k : k, n, op);
+        // in fixed blocks of kSolveBlock columns: Accelerate's blocked solve costs per column
+        // (lap2d/30, n = 900) 35 us alone, 17 in blocks of 8, 29 of 32 and 44 of 64 (lap2d/100:
+        // 404, 175, 281, 471; SDK 26.5, measured 2026-11-22)
+        const int64_t total = split ? 2 * k : k;
+        for (int64_t c0 = 0; c0 < total; c0 += kSolveBlock)
+            lu.solve(cols.data() + c0 * n, std::min(kSolveBlock, total - c0), n, op);
         finite = all_finite(cols.data(), static_cast<int64_t>(cols.size()));
     } catch (const sparse_solve::Error& e) { raise_failure(e, func); } catch (const std::length_error& e) {
         throw nb::value_error((func + "(): " + e.what()).c_str());
@@ -312,9 +330,104 @@ nb::object lu_solve_entry(
     throw nb::type_error("_lu_solve(): 'data' must be float64 or complex128");
 }
 
+// ---- the refinement test ----
+
+template <class T>
+inline double cabs1(T v) {  // LAPACK's cabs1: |re| + |im| (zgerfs), |v| for real
+    if constexpr (std::is_same_v<T, double>) return std::fabs(v);
+    else return std::fabs(v.real()) + std::fabs(v.imag());
+}
+
+// r = b - op(A) x and LAPACK dgerfs's componentwise backward error
+// max_i |r_i| / (|op(A)| |x| + |b|)_i over every entry of every column (0 / 0 counts 0, r / 0 inf,
+// NaN propagates). A is the CSC (indptr, indices, data) of the n x n matrix; x and b C-contiguous
+// (n,) or (n, k) of data's dtype. op 'N' scatters over the columns of A in column order, 'T' and
+// 'H' gather along them: fixed orders, so the bits do not depend on the thread count.
+template <class T>
+nb::tuple residual_typed(
+    const NDArray& indptr, const NDArray& indices, const NDArray& data, const NDArray& x, const NDArray& b, char op
+) {
+    const int64_t n = indptr.shape[0] - 1, k = x.ndim == 2 ? x.shape[1] : 1;
+    const int64_t* ip = i64(indptr);
+    const int64_t* ix = i64(indices);
+    const T* v = typed<T>(data);
+    const T* xp = typed<T>(x);
+    const T* bp = typed<T>(b);
+    NDArray r = new_array(dtype_of<T>, b.shape_span());
+    T* rp = typed<T>(r);
+    double berr = 0.0;
+    {
+        const parallel::Unlocked unlocked((ip[n] + n) * k >= kParallelThreshold);
+        std::vector<T> y(static_cast<std::size_t>(n * k), T{});
+        std::vector<double> d(static_cast<std::size_t>(n * k), 0.0);
+        if (op == 'N') {
+            for (int64_t j = 0; j < n; ++j)
+                for (int64_t p = ip[j]; p < ip[j + 1]; ++p) {
+                    const int64_t i = ix[p];
+                    const T a = v[p];
+                    const double aa = cabs1(a);
+                    for (int64_t c = 0; c < k; ++c) {
+                        y[i * k + c] = madd(a, xp[j * k + c], y[i * k + c]);
+                        d[i * k + c] += aa * cabs1(xp[j * k + c]);
+                    }
+                }
+        } else {
+            for (int64_t j = 0; j < n; ++j)
+                for (int64_t p = ip[j]; p < ip[j + 1]; ++p) {
+                    const int64_t i = ix[p];
+                    T a = v[p];
+                    if constexpr (!std::is_same_v<T, double>)
+                        if (op == 'H') a = std::conj(a);
+                    const double aa = cabs1(a);
+                    for (int64_t c = 0; c < k; ++c) {
+                        y[j * k + c] = madd(a, xp[i * k + c], y[j * k + c]);
+                        d[j * k + c] += aa * cabs1(xp[i * k + c]);
+                    }
+                }
+        }
+        for (int64_t q = 0; q < n * k; ++q) {
+            T rq;
+            if constexpr (std::is_same_v<T, double>) rq = bp[q] - y[q];
+            else rq = T(bp[q].real() - y[q].real(), bp[q].imag() - y[q].imag());
+            rp[q] = rq;
+            const double num = cabs1(rq), den = d[q] + cabs1(bp[q]);
+            const double ratio = den > 0 ? num / den : (num == 0 ? 0.0 : std::numeric_limits<double>::infinity());
+            if (!(ratio <= berr)) berr = ratio;  // NaN stays
+        }
+    }
+    return nb::make_tuple(wrap(std::move(r)), berr);
+}
+
+nb::tuple residual_entry(
+    nb::handle indptr_o,
+    nb::handle indices_o,
+    nb::handle data_o,
+    nb::handle x_o,
+    nb::handle b_o,
+    const std::string& trans
+) {
+    const NDArray& indptr = contiguous(indptr_o, "indptr", DType::Int64, "_residual");
+    const NDArray& indices = contiguous(indices_o, "indices", DType::Int64, "_residual");
+    const NDArray& data = require_ndarray(data_o, "data");
+    const NDArray& x = contiguous(x_o, "x", data.dtype, "_residual");
+    const NDArray& b = contiguous(b_o, "b", data.dtype, "_residual");
+    const int64_t n = indptr.shape[0] - 1;
+    if (!data.c_contiguous || data.ndim != 1 || indices.shape[0] != data.shape[0] || x.ndim < 1 || x.ndim > 2 ||
+        x.ndim != b.ndim || x.shape[0] != n || b.shape[0] != n || (x.ndim == 2 && x.shape[1] != b.shape[1]) ||
+        (trans != "N" && trans != "T" && trans != "H"))
+        throw nb::value_error("_residual(): the arrays do not match");
+    if (data.dtype == DType::Float64) return residual_typed<double>(indptr, indices, data, x, b, trans[0]);
+    if (data.dtype == DType::Complex128) return residual_typed<c128>(indptr, indices, data, x, b, trans[0]);
+    throw nb::type_error("_residual(): 'data' must be float64 or complex128");
+}
+
 }  // namespace
 
 void bind_direct(nb::module_& m) {
+    m.def(
+        "_residual", &residual_entry, nb::arg("indptr"), nb::arg("indices"), nb::arg("data"), nb::arg("x"),
+        nb::arg("b"), nb::kw_only(), nb::arg("trans")
+    );
     nb::class_<LuFactor>(m, "_LuFactor")
         .def_prop_ro("n", [](const LuFactor& f) { return f.n; })
         .def_prop_ro("cond", [](const LuFactor& f) { return f.cond; })

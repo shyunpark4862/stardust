@@ -22,13 +22,18 @@ from . import _common as C
 from ._common import _core
 from ._ops import promote, to_dtype
 
+_CLASSES = None
+
 
 def _classes():
-    from ._compressed import csc_array, csr_array
-    from ._coo import coo_array
-    from ._dok import dok_array
+    global _CLASSES
+    if _CLASSES is None:  # imported on first use: the classes' modules import this one
+        from ._compressed import csc_array, csr_array
+        from ._coo import coo_array
+        from ._dok import dok_array
 
-    return coo_array, csr_array, csc_array, dok_array
+        _CLASSES = (coo_array, csr_array, csc_array, dok_array)
+    return _CLASSES
 
 
 def _readonly(x):
@@ -152,6 +157,32 @@ def diags_array(diagonals, /, *, offsets=0, shape=None, format=None, dtype=None)
 
 
 def _diags(func, diags, offs, shape, out_dtype):
+    m, n = shape
+    parts = []
+    for j, (d, off) in enumerate(zip(diags, offs)):
+        length = min(m + off, n - off, m, n)  # scipy's: an offset just past the corner is an empty diagonal
+        if length < 0:
+            raise ValueError(f"{func}(): offset {off} (diagonal {j}) is outside an array of shape {shape}")
+        if d.shape[0] != 1 and d.shape[0] < length:
+            raise ValueError(
+                f"{func}(): diagonal {j} has {d.shape[0]} values, the diagonal at offset {off} of an array "
+                f"of shape {shape} has {length}"
+            )
+        if d.dtype != out_dtype:
+            d = C.renamed(func, _sd.astype, d, out_dtype)
+        parts.append(_contiguous(d))
+    direct = _core._diags(m, n, offs, parts)  # straight to CSR; None when most diagonals miss most rows
+    if direct is not None:
+        ip, ix, dv, zeros = direct
+        if zeros:  # scipy stores no zeros
+            kept = _core._filter_compressed(m, ip, ix, dv, m, n, drop_zeros=True)
+            if kept is not None:
+                ip, ix, dv = kept
+        return _classes()[1]._new((m, n), ip, ix, dv)
+    return _diags_coo(func, diags, offs, shape, out_dtype)
+
+
+def _diags_coo(func, diags, offs, shape, out_dtype):
     m, n = shape
     rows, cols, vals = [], [], []
     for j, (d, off) in enumerate(zip(diags, offs)):
@@ -315,7 +346,13 @@ def _kronsum(A, B, m, n, loop, func):
     # The entries placed, not multiplied by the identity's ones (SP111): A's in every diagonal
     # block, b_ij on the diagonal of block (i, j); a position both hold (a_pp and b_ii) is their one
     # sum a + b, the rest keep their values (complex inf, -0.0 parts), as sd.linalg.kronsum.
-    a, b = _as_2d_csr(A).tocoo(), _as_2d_csr(B).tocoo()
+    a, b = _as_2d_csr(A), _as_2d_csr(B)
+    if m > 0 and n > 0:  # straight to CSR, row by row
+        ip, ix, dv = _core._kronsum(
+            a._indptr, a._indices, to_dtype(a._data, loop), b._indptr, b._indices, to_dtype(b._data, loop)
+        )
+        return _classes()[1]._new((m * n, m * n), ip, ix, dv)
+    a, b = a.tocoo(), b.tocoo()
     (ra, ca), (rb, cb) = a.coords, b.coords
     base = _sd.arange(n, dtype=_sd.int64)[:, None] * m
     q = _sd.arange(m, dtype=_sd.int64)[None, :]
@@ -519,9 +556,13 @@ def _band(A, k, format, lower, func):
     A = _sparse_arg(A, func, "A", (2,))
     k = C.int64_arg(k, func, "k")
     format = _format_arg(format, func)
+    coo_array = _classes()[0]
+    if A.format in ("csr", "csc"):  # each sorted line keeps a prefix or a suffix
+        by_rows = A.format == "csr"
+        r, c, v = _core._band_compressed(A._indptr, A._indices, A._data, k, lower=lower, by_rows=by_rows)
+        return _as(coo_array._new(A.shape, (r, c), v, True if by_rows else None), format, func)
     coo = A if A.format == "coo" else A._tocoo(None, func)
     kept = _core._band_coo(coo._coords[0], coo._coords[1], coo._data, k, lower=lower)
-    coo_array = _classes()[0]
     if kept is None:
         out = coo_array._new(A.shape, coo._coords, coo._data.copy(), coo._canonical)
     else:

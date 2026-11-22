@@ -10,10 +10,11 @@
 //       A's value times B's value. Exact zeros of the result are dropped (scipy), the lines are
 //       sorted (canonical).
 //
-// Two passes over fixed line ranges (by size alone): the count of distinct positions per line, then
-// the values; a dense accumulator of the line length per thread, and a bit set of the positions met
-// that gives them in ascending order without a sort (scipy's csr_matmat leaves its lines unsorted).
-// The results do not depend on the thread count.
+// One pass (one thread: each fixed range of lines into its own buffers, copied into place after)
+// or two (on the pool: the count of distinct positions per line, then the values) over fixed line
+// ranges (by size alone); a dense accumulator of the line length per thread, and a bit set of the positions
+// met that gives them in ascending order without a sort (scipy's csr_matmat leaves its lines
+// unsorted). The results do not depend on the thread count.
 #include "array/kernels/simd_sort.hpp"
 #include "bind/pyutil.hpp"
 #include "parallel/pool.hpp"
@@ -94,6 +95,7 @@ Workspace<T>& workspace(int64_t n_minor, bool bits) {
     if (static_cast<int64_t>(ws.mark.size()) < n_minor) {
         ws.mark.resize(static_cast<std::size_t>(n_minor), 0);
         ws.acc.resize(static_cast<std::size_t>(n_minor));
+        ws.cols.resize(static_cast<std::size_t>(n_minor));  // the positions of a line
     }
     // empty between calls (every line drains it); exactly n_minor wide, so the scan is no longer
     if (bits && static_cast<int64_t>(ws.positions.word.size()) != ((n_minor + 63) >> 6)) ws.positions.reserve(n_minor);
@@ -129,7 +131,8 @@ nb::tuple spgemm_typed(
     // line r of the product: emit(j, value) for its nonzero entries in ascending j
     auto product_line = [&](int64_t r, Workspace<T>& ws, auto&& emit) {
         const std::uint64_t stamp = ++ws.epoch;
-        ws.cols.clear();
+        int64_t nc = 0;  // positions met (the cols path)
+        int64_t* cols = ws.cols.data();
         for (int64_t p = ap[r]; p < ap[r + 1]; ++p) {
             const int64_t k = ai[p];
             const T a = av[p];
@@ -140,7 +143,7 @@ nb::tuple spgemm_typed(
                 if (m != stamp) {
                     m = stamp;
                     if (bits) ws.positions.insert(j);
-                    else ws.cols.push_back(j);
+                    else cols[nc++] = j;
                     s = T{};
                 }
                 s = swap ? madd(bv[q], a, s) : madd(a, bv[q], s);
@@ -153,8 +156,8 @@ nb::tuple spgemm_typed(
         if (bits) {
             ws.positions.drain(out);
         } else {
-            sort_positions(ws.cols.data(), static_cast<int64_t>(ws.cols.size()));
-            for (const int64_t j : ws.cols) out(j);
+            sort_positions(cols, nc);
+            for (int64_t c = 0; c < nc; ++c) out(cols[c]);
         }
     };
     // the work of each line: the entries of B it visits
@@ -170,63 +173,115 @@ nb::tuple spgemm_typed(
     const std::vector<int64_t> bounds = line_bounds(cost.data(), n_lines, kChunk);
     const int64_t nt = static_cast<int64_t>(bounds.size()) - 1;
     const int64_t work = flops + n_lines + n_minor;
-    // pass 1: distinct positions per line (an upper bound of the stored entries)
-    std::vector<int64_t> upper(static_cast<std::size_t>(n_lines) + 1, 0);
-    for_tasks(nt, work, [&](int64_t t) {
-        Workspace<T>& ws = workspace<T>(n_minor, bits);
-        for (int64_t r = bounds[t]; r < bounds[t + 1]; ++r) {
-            const std::uint64_t stamp = ++ws.epoch;
-            int64_t c = 0;
-            for (int64_t p = ap[r]; p < ap[r + 1]; ++p) {
-                const int64_t k = ai[p];
-                for (int64_t q = bp[k]; q < bp[k + 1]; ++q) {
-                    std::uint64_t& m = ws.mark[static_cast<std::size_t>(bi[q])];
-                    if (m != stamp) {
-                        m = stamp;
-                        ++c;
+    // Two ways, the same arrays: on one thread a single pass, each range of lines into its own
+    // buffers copied into place after (the counting pass visits B a second time: 1.2x at nnz
+    // 10^5-10^6); on the pool the counting pass first (the per-range buffers cost more there:
+    // 1.3x at 10 threads; M4 Pro, 2026-11-22).
+    NDArray indptr, indices, data;
+    if (nt <= 1 || work < kParallelThreshold || !parallel::available()) {
+        // one pass: each task writes its lines (zeros dropped) to its own buffers, then the buffers are
+        // copied into place in task order (a symbolic pass that counts first visits B twice)
+        struct Part {
+            std::vector<int64_t> idx;
+            std::vector<T> val;
+        };
+        std::vector<Part> parts(static_cast<std::size_t>(nt));
+        std::vector<int64_t> kept(static_cast<std::size_t>(n_lines), 0);
+        for_tasks(nt, work, [&](int64_t t) {
+            Workspace<T>& ws = workspace<T>(n_minor, bits);
+            Part& part = parts[static_cast<std::size_t>(t)];
+            const int64_t guess = std::min<int64_t>(
+                cost[static_cast<std::size_t>(bounds[t + 1])] - cost[static_cast<std::size_t>(bounds[t])], int64_t(1)
+                                                                                                               << 16
+            );
+            part.idx.reserve(static_cast<std::size_t>(guess));
+            part.val.reserve(static_cast<std::size_t>(guess));
+            for (int64_t r = bounds[t]; r < bounds[t + 1]; ++r) {
+                const std::size_t before = part.idx.size();
+                product_line(r, ws, [&](int64_t j, T v) {
+                    part.idx.push_back(j);
+                    part.val.push_back(v);
+                });
+                kept[static_cast<std::size_t>(r)] = static_cast<int64_t>(part.idx.size() - before);
+            }
+        });
+        indptr = new_indptr(n_lines);
+        int64_t* op = i64(indptr);
+        op[0] = 0;
+        for (int64_t r = 0; r < n_lines; ++r) op[r + 1] = op[r] + kept[static_cast<std::size_t>(r)];
+        const int64_t total = op[n_lines];
+        indices = new_index(total);
+        const int64_t total_shape[] = {total};
+        data = new_array(dtype_of<T>, total_shape);
+        int64_t* ox = i64(indices);
+        T* ov = typed<T>(data);
+        for_tasks(nt, total, [&](int64_t t) {
+            const Part& part = parts[static_cast<std::size_t>(t)];
+            const int64_t at = op[bounds[t]], n = static_cast<int64_t>(part.idx.size());
+            if (n == 0) return;
+            std::memcpy(ox + at, part.idx.data(), static_cast<std::size_t>(n) * sizeof(int64_t));
+            std::memcpy(static_cast<void*>(ov + at), part.val.data(), static_cast<std::size_t>(n) * sizeof(T));
+        });
+    } else {
+        // pass 1: distinct positions per line (an upper bound of the stored entries)
+        std::vector<int64_t> upper(static_cast<std::size_t>(n_lines) + 1, 0);
+        for_tasks(nt, work, [&](int64_t t) {
+            Workspace<T>& ws = workspace<T>(n_minor, bits);
+            for (int64_t r = bounds[t]; r < bounds[t + 1]; ++r) {
+                const std::uint64_t stamp = ++ws.epoch;
+                int64_t c = 0;
+                for (int64_t p = ap[r]; p < ap[r + 1]; ++p) {
+                    const int64_t k = ai[p];
+                    for (int64_t q = bp[k]; q < bp[k + 1]; ++q) {
+                        std::uint64_t& m = ws.mark[static_cast<std::size_t>(bi[q])];
+                        if (m != stamp) {
+                            m = stamp;
+                            ++c;
+                        }
                     }
                 }
+                upper[static_cast<std::size_t>(r) + 1] = c;
             }
-            upper[static_cast<std::size_t>(r) + 1] = c;
-        }
-    });
-    for (int64_t r = 0; r < n_lines; ++r) upper[static_cast<std::size_t>(r) + 1] += upper[static_cast<std::size_t>(r)];
-    const int64_t cap = upper[static_cast<std::size_t>(n_lines)];
-    NDArray indices = new_index(cap);
-    const int64_t cap_shape[] = {cap};
-    NDArray data = new_array(dtype_of<T>, cap_shape);
-    int64_t* ox = i64(indices);
-    T* ov = typed<T>(data);
-    std::vector<int64_t> kept(static_cast<std::size_t>(n_lines), 0);
-    // pass 2: the values, sorted lines, zeros dropped (each line from its upper-bound offset)
-    for_tasks(nt, work, [&](int64_t t) {
-        Workspace<T>& ws = workspace<T>(n_minor, bits);
-        for (int64_t r = bounds[t]; r < bounds[t + 1]; ++r) {
-            int64_t w = upper[static_cast<std::size_t>(r)];
-            product_line(r, ws, [&](int64_t j, T v) {
-                ox[w] = j;
-                ov[w] = v;
-                ++w;
-            });
-            kept[static_cast<std::size_t>(r)] = w - upper[static_cast<std::size_t>(r)];
-        }
-    });
-    NDArray indptr = new_indptr(n_lines);
-    int64_t* op = i64(indptr);
-    op[0] = 0;
-    for (int64_t r = 0; r < n_lines; ++r) op[r + 1] = op[r] + kept[static_cast<std::size_t>(r)];
-    const int64_t total = op[n_lines];
-    if (total < cap) {  // zeros were dropped: close the gaps, in line order
-        const parallel::Unlocked unlocked(cap >= kParallelThreshold);
-        for (int64_t r = 0; r < n_lines; ++r) {
-            const int64_t src = upper[static_cast<std::size_t>(r)], n = kept[static_cast<std::size_t>(r)];
-            if (src != op[r]) {
-                std::memmove(ox + op[r], ox + src, static_cast<std::size_t>(n) * sizeof(int64_t));
-                std::memmove(static_cast<void*>(ov + op[r]), ov + src, static_cast<std::size_t>(n) * sizeof(T));
+        });
+        for (int64_t r = 0; r < n_lines; ++r)
+            upper[static_cast<std::size_t>(r) + 1] += upper[static_cast<std::size_t>(r)];
+        const int64_t cap = upper[static_cast<std::size_t>(n_lines)];
+        indices = new_index(cap);
+        const int64_t cap_shape[] = {cap};
+        data = new_array(dtype_of<T>, cap_shape);
+        int64_t* ox = i64(indices);
+        T* ov = typed<T>(data);
+        std::vector<int64_t> kept(static_cast<std::size_t>(n_lines), 0);
+        // pass 2: the values, sorted lines, zeros dropped (each line from its upper-bound offset)
+        for_tasks(nt, work, [&](int64_t t) {
+            Workspace<T>& ws = workspace<T>(n_minor, bits);
+            for (int64_t r = bounds[t]; r < bounds[t + 1]; ++r) {
+                int64_t w = upper[static_cast<std::size_t>(r)];
+                product_line(r, ws, [&](int64_t j, T v) {
+                    ox[w] = j;
+                    ov[w] = v;
+                    ++w;
+                });
+                kept[static_cast<std::size_t>(r)] = w - upper[static_cast<std::size_t>(r)];
             }
+        });
+        indptr = new_indptr(n_lines);
+        int64_t* op = i64(indptr);
+        op[0] = 0;
+        for (int64_t r = 0; r < n_lines; ++r) op[r + 1] = op[r] + kept[static_cast<std::size_t>(r)];
+        const int64_t total = op[n_lines];
+        if (total < cap) {  // zeros were dropped: close the gaps, in line order
+            const parallel::Unlocked unlocked(cap >= kParallelThreshold);
+            for (int64_t r = 0; r < n_lines; ++r) {
+                const int64_t src = upper[static_cast<std::size_t>(r)], n = kept[static_cast<std::size_t>(r)];
+                if (src != op[r]) {
+                    std::memmove(ox + op[r], ox + src, static_cast<std::size_t>(n) * sizeof(int64_t));
+                    std::memmove(static_cast<void*>(ov + op[r]), ov + src, static_cast<std::size_t>(n) * sizeof(T));
+                }
+            }
+            indices.shape[0] = total;
+            data.shape[0] = total;
         }
-        indices.shape[0] = total;
-        data.shape[0] = total;
     }
     return nb::make_tuple(readonly(std::move(indptr)), readonly(std::move(indices)), wrap(std::move(data)));
 }

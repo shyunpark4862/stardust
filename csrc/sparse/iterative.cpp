@@ -22,9 +22,10 @@
 // residual norm the method tracks after each step (a float64 array; tests compare it with scipy).
 //
 // The vector operations are this library's (docs/design/sparse.md §3.7): inner products are
-// sd.linalg.vecdot's sums (pairwise trees of fused leaves, conjugating the first vector for
-// complex; numpy's dot and vdot), norms sd.linalg.vector_norm's (the fused sum of squares, its
-// rescaled pass on overflow; a complex vector's real and imaginary parts as one real vector),
+// sd.linalg.vecdot's sums (linalg/fastsum.hpp: chunks fixed by n, Accelerate's ddot / zdotc or
+// fused leaves, conjugating the first vector for complex; numpy's dot and vdot), norms
+// sd.linalg.vector_norm's (the plain sum of squares when it can be trusted, the rescaled pass
+// otherwise; a complex vector's real and imaginary parts as one real vector),
 // updates element by element (fma for a real axpy, ops::cmul then a sum for complex, as the array
 // area's complex product). Every one is split by size alone, so the result is the same bit for
 // bit for any thread count (API.md §3). Scalars follow numpy's arithmetic: a complex quantity

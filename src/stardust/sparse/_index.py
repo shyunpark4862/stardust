@@ -47,12 +47,18 @@ _SEPARATED = (
 )
 
 
-def _classes():
-    from ._compressed import csc_array, csr_array
-    from ._coo import coo_array
-    from ._dok import dok_array
+_CLASSES = None
 
-    return coo_array, csr_array, csc_array, dok_array
+
+def _classes():
+    global _CLASSES
+    if _CLASSES is None:  # imported on first use: the classes' modules import this one
+        from ._compressed import csc_array, csr_array
+        from ._coo import coo_array
+        from ._dok import dok_array
+
+        _CLASSES = (coo_array, csr_array, csc_array, dok_array)
+    return _CLASSES
 
 
 def _is_bool_scalar(v):
@@ -83,6 +89,13 @@ class _Key:
 
 
 def _as_index_array(item):
+    if type(item) is _sd.ndarray:  # the common case: no conversion
+        x = item
+        if x.dtype not in (_sd.int64, _sd.bool):
+            if x.size == 0:
+                return _sd.empty(x.shape, dtype=_sd.int64)
+            raise IndexError(f"arrays used as indices must be of integer or boolean type, not {x.dtype}")
+        return x
     from ._base import sparray
 
     if isinstance(item, sparray) or C.is_scipy_sparse(item):
@@ -352,7 +365,9 @@ def getitem(A, key):
             r, c = pair
             res = select(A, _flat(r), _flat(c))
             return _finish(A, res, k.shape)
-        rows, cols = _sd.broadcast_arrays(k.axes[0][1], k.axes[1][1])
+        rows, cols = k.axes[0][1], k.axes[1][1]
+        if rows.shape != cols.shape:
+            rows, cols = _sd.broadcast_arrays(rows, cols)
         res = pick(A, _flat(rows), _flat(cols))
         return _finish(A, res, k.shape)
     if A.ndim == 1:

@@ -147,7 +147,7 @@ class _Inverse:
 
     def __call__(self, x):
         if self.factor is not None:
-            y = self.factor.solve(x, "N", self.func)
+            y = self.factor.solve(x, "N", self.func, refine=False)
         else:
             from ._iterative import gmres
 

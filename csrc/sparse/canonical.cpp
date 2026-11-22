@@ -665,31 +665,152 @@ const int64_t* opt_major(nb::handle o, const char* func, int64_t nnz) {
 
 std::string prefix(const std::string& func) { return func + "(): "; }
 
+// The fused passes over a user's index arrays: one read and (for a copy) one write per element,
+// two lanes of NEON, no data-dependent branch; an error is located afterwards by a plain scan.
+
+// dst[k] = src[k] for k in [lo, hi) (dst may be null: no copy). Returns whether some value is
+// outside [0, bound) (an unsigned compare), and adds to *desc the number of k in [max(lo, 1), hi)
+// with src[k] <= src[k - 1] (desc may be null).
+inline bool copy_scan(const int64_t* src, int64_t* dst, int64_t lo, int64_t hi, uint64_t bound, int64_t* desc) {
+    uint64_t sbad = 0, sdesc = 0;
+    int64_t k = lo;
+    if (k == 0 && k < hi) {
+        sbad |= static_cast<uint64_t>(src[0]) >= bound;
+        if (dst) dst[0] = src[0];
+        k = 1;
+    }
+    const uint64x2_t b = vdupq_n_u64(bound);
+    uint64x2_t bad0 = vdupq_n_u64(0), bad1 = bad0, cnt0 = bad0, cnt1 = bad0;
+    for (; k + 4 <= hi; k += 4) {
+        const int64x2_t c0 = vld1q_s64(src + k), c1 = vld1q_s64(src + k + 2);
+        if (dst) {
+            vst1q_s64(dst + k, c0);
+            vst1q_s64(dst + k + 2, c1);
+        }
+        bad0 = vorrq_u64(bad0, vcgeq_u64(vreinterpretq_u64_s64(c0), b));
+        bad1 = vorrq_u64(bad1, vcgeq_u64(vreinterpretq_u64_s64(c1), b));
+        if (desc) {
+            const int64x2_t p0 = vld1q_s64(src + k - 1), p1 = vld1q_s64(src + k + 1);
+            cnt0 = vsubq_u64(cnt0, vcleq_s64(c0, p0));  // a true lane is all ones (-1)
+            cnt1 = vsubq_u64(cnt1, vcleq_s64(c1, p1));
+        }
+    }
+    for (; k < hi; ++k) {
+        const int64_t v = src[k];
+        if (dst) dst[k] = v;
+        sbad |= static_cast<uint64_t>(v) >= bound;
+        sdesc += v <= src[k - 1];
+    }
+    const uint64x2_t bad = vorrq_u64(bad0, bad1);
+    if (desc) {
+        const uint64x2_t cnt = vaddq_u64(cnt0, cnt1);
+        *desc += static_cast<int64_t>(sdesc + vgetq_lane_u64(cnt, 0) + vgetq_lane_u64(cnt, 1));
+    }
+    return (sbad | vgetq_lane_u64(bad, 0) | vgetq_lane_u64(bad, 1)) != 0;
+}
+
+// The largest value of src[lo, hi) (-1 when empty) and whether some value is negative. Eight
+// independent lanes: a compare-and-select chain is two operations deep a step.
+inline int64_t max_scan(const int64_t* src, int64_t lo, int64_t hi, bool* negative) {
+    int64x2_t m[4], o[4];  // o: the OR of the values, whose sign bit says "negative"
+    for (int j = 0; j < 4; ++j) {
+        m[j] = vdupq_n_s64(-1);
+        o[j] = vdupq_n_s64(0);
+    }
+    int64_t k = lo;
+    for (; k + 8 <= hi; k += 8)
+        for (int j = 0; j < 4; ++j) {
+            const int64x2_t c = vld1q_s64(src + k + 2 * j);
+            m[j] = vbslq_s64(vcgtq_s64(c, m[j]), c, m[j]);
+            o[j] = vorrq_s64(o[j], c);
+        }
+    int64_t mx = -1, ov = 0;
+    for (int j = 0; j < 4; ++j) {
+        mx = std::max({mx, vgetq_lane_s64(m[j], 0), vgetq_lane_s64(m[j], 1)});
+        ov |= vgetq_lane_s64(o[j], 0) | vgetq_lane_s64(o[j], 1);
+    }
+    for (; k < hi; ++k) {
+        mx = std::max(mx, src[k]);
+        ov |= src[k];
+    }
+    *negative = ov < 0;
+    return mx;
+}
+
+// The first r in [0, n) with ip[r] >= target (n when none), ip non-decreasing: a galloping
+// search from the line where entry `at` would sit if the nnz entries were spread evenly (a
+// binary search over a large indptr misses the cache about twenty times).
+inline int64_t first_at_least(const int64_t* ip, int64_t n, int64_t target, int64_t at, int64_t nnz) {
+    if (n <= 0) return 0;
+    int64_t g = nnz > 0 ? static_cast<int64_t>(static_cast<double>(at) / static_cast<double>(nnz) * n) : 0;
+    g = std::clamp<int64_t>(g, 0, n - 1);
+    // the answer is in (lo, hi]: ip[lo] < target (lo = -1: none), hi = n or ip[hi] >= target
+    int64_t lo, hi;
+    if (ip[g] >= target) {
+        hi = g;
+        int64_t step = 1;
+        lo = g - 1;
+        while (lo >= 0 && ip[lo] >= target) {
+            hi = lo;
+            lo -= step;
+            step *= 2;
+        }
+        lo = std::max<int64_t>(lo, -1);
+    } else {
+        lo = g;
+        int64_t step = 1;
+        hi = g + 1;
+        while (hi < n && ip[hi] < target) {
+            lo = hi;
+            hi += step;
+            step *= 2;
+        }
+        hi = std::min(hi, n);
+    }
+    return std::lower_bound(ip + lo + 1, ip + hi, target) - ip;
+}
+
+// Entries per task of the fused passes (256 KiB of int64 read: a pool task costs about a
+// microsecond, the pass about a nanosecond for 8 entries).
+constexpr int64_t kScanChunk = 1 << 15;
+
 // Reads element k of a 1-D int64 array of any stride.
 inline int64_t at(const NDArray& a, int64_t k) { return *reinterpret_cast<const int64_t*>(a.data + k * a.strides[0]); }
 
 int64_t index_max(nb::handle xh, int axis, const std::string& func) {
     const NDArray& x = require_ndarray(xh, "x");
     const int64_t n = x.shape[0];
-    const int64_t nt = num_chunks(n);
+    const bool contiguous = x.ndim == 1 && (n <= 1 || x.strides[0] == 8);
+    const int64_t nt = num_chunks(n, kScanChunk);
     std::vector<int64_t> mx(static_cast<std::size_t>(std::max<int64_t>(nt, 1)), -1);
-    parallel::FirstRow neg;
-    for_chunks(n, [&](int64_t t, int64_t lo, int64_t hi) {
-        int64_t m = -1;
-        for (int64_t k = lo; k < hi; ++k) {
-            const int64_t v = at(x, k);
-            if (v < 0) {
-                neg.offer(k);
-                return;
+    std::vector<char> negs(static_cast<std::size_t>(std::max<int64_t>(nt, 1)), 0);
+    for_chunks(
+        n,
+        [&](int64_t t, int64_t lo, int64_t hi) {
+            bool neg = false;
+            if (contiguous) {
+                mx[t] = max_scan(i64(x), lo, hi, &neg);
+            } else {
+                int64_t m = -1, o = 0;
+                for (int64_t k = lo; k < hi; ++k) {
+                    const int64_t v = at(x, k);
+                    m = std::max(m, v);
+                    o |= v;
+                }
+                mx[t] = m;
+                neg = o < 0;
             }
-            m = std::max(m, v);
-        }
-        mx[t] = m;
-    });
-    if (neg.any())
-        throw nb::value_error((prefix(func) + "index " + std::to_string(at(x, neg.row())) + " on axis " +
-                               std::to_string(axis) + " is negative")
-                                  .c_str());
+            negs[t] = neg;
+        },
+        kScanChunk
+    );
+    for (int64_t t = 0; t < nt; ++t)
+        if (negs[t])
+            for (int64_t k = t * kScanChunk;; ++k)
+                if (at(x, k) < 0)
+                    throw nb::value_error((prefix(func) + "index " + std::to_string(at(x, k)) + " on axis " +
+                                           std::to_string(axis) + " is negative")
+                                              .c_str());
     int64_t m = -1;
     for (int64_t v : mx) m = std::max(m, v);
     return m;
@@ -698,24 +819,38 @@ int64_t index_max(nb::handle xh, int axis, const std::string& func) {
 nb::object index_copy(nb::handle xh, int64_t bound, int axis, const std::string& func) {
     const NDArray& x = require_ndarray(xh, "x");
     const int64_t n = x.shape[0];
+    const bool contiguous = x.ndim == 1 && (n <= 1 || x.strides[0] == 8);
     NDArray out = new_index(n);
     int64_t* o = i64(out);
-    parallel::FirstRow bad;
-    for_chunks(n, [&](int64_t, int64_t lo, int64_t hi) {
-        for (int64_t k = lo; k < hi; ++k) {
-            const int64_t v = at(x, k);
-            if (v < 0 || v >= bound) {
-                bad.offer(k);
+    const int64_t nt = num_chunks(n, kScanChunk);
+    std::vector<char> bads(static_cast<std::size_t>(std::max<int64_t>(nt, 1)), 0);
+    const uint64_t ub = static_cast<uint64_t>(std::max<int64_t>(bound, 0));
+    for_chunks(
+        n,
+        [&](int64_t t, int64_t lo, int64_t hi) {
+            if (contiguous) {
+                bads[t] = copy_scan(i64(x), o, lo, hi, ub, nullptr);
                 return;
             }
-            o[k] = v;
-        }
-    });
-    if (bad.any())
-        throw nb::value_error((prefix(func) + "index " + std::to_string(at(x, bad.row())) +
-                               " is out of bounds for axis " + std::to_string(axis) + " with size " +
-                               std::to_string(bound))
-                                  .c_str());
+            uint64_t bad = 0;
+            for (int64_t k = lo; k < hi; ++k) {
+                const int64_t v = at(x, k);
+                bad |= static_cast<uint64_t>(v) >= ub;
+                o[k] = v;
+            }
+            bads[t] = bad != 0;
+        },
+        kScanChunk
+    );
+    for (int64_t t = 0; t < nt; ++t)
+        if (bads[t])
+            for (int64_t k = t * kScanChunk;; ++k) {
+                const int64_t v = at(x, k);
+                if (v < 0 || v >= bound)
+                    throw nb::value_error((prefix(func) + "index " + std::to_string(v) + " is out of bounds for axis " +
+                                           std::to_string(axis) + " with size " + std::to_string(bound))
+                                              .c_str());
+            }
     out.writeable = false;
     return wrap(std::move(out));
 }
@@ -742,53 +877,70 @@ nb::tuple compressed_in(
     const int64_t* ixs = i64(ix_in);
     int64_t* ip = i64(indptr);
     int64_t* ix = i64(indices);
-    // indptr: starts at 0, never decreases, ends at nnz
-    parallel::FirstRow down;
-    for_chunks(n_major + 1, [&](int64_t, int64_t lo, int64_t hi) {
-        for (int64_t r = lo; r < hi; ++r) {
-            ip[r] = ips[r];
-            if (r > 0 && ips[r] < ips[r - 1]) {
-                down.offer(r);
-                return;
-            }
-        }
-    });
-    if (ips[0] != 0)
-        throw nb::value_error((prefix(func) + "'indptr' must start at 0, not " + std::to_string(ips[0])).c_str());
-    if (down.any()) throw nb::value_error((prefix(func) + "'indptr' must not decrease").c_str());
-    if (ips[n_major] != nnz)
-        throw nb::value_error((prefix(func) + "'indptr' must end at the number of stored entries, " +
-                               std::to_string(nnz) + ", not " + std::to_string(ips[n_major]))
-                                  .c_str());
-    // indices: in range; lines sorted without duplicates?
-    parallel::FirstRow bad;
-    std::atomic<bool> sorted{true};
-    for_chunks(
-        n_major,
-        [&](int64_t, int64_t lo, int64_t hi) {
-            bool ok = true;
-            for (int64_t r = lo; r < hi; ++r)
-                for (int64_t k = ip[r]; k < ip[r + 1]; ++k) {
-                    const int64_t v = ixs[k];
-                    if (v < 0 || v >= n_minor) {
-                        bad.offer(k);
-                        return;
-                    }
-                    if (k > ip[r] && v <= ixs[k - 1]) ok = false;
-                    ix[k] = v;
+    // indptr: starts at 0, never decreases (no descent past entry 0), ends at nnz
+    {
+        const int64_t nt = num_chunks(n_major + 1, kScanChunk);
+        std::vector<int64_t> down(static_cast<std::size_t>(nt), 0);
+        for_chunks(
+            n_major + 1,
+            [&](int64_t t, int64_t lo, int64_t hi) {
+                int64_t d = 0;
+                const int64_t lo1 = std::max<int64_t>(lo, 1);
+                if (lo == 0) ip[0] = ips[0];
+                for (int64_t r = lo1; r < hi; ++r) {
+                    ip[r] = ips[r];
+                    d += ips[r] < ips[r - 1];
                 }
-            if (!ok) sorted.store(false, std::memory_order_relaxed);
+                down[t] = d;
+            },
+            kScanChunk
+        );
+        if (ips[0] != 0)
+            throw nb::value_error((prefix(func) + "'indptr' must start at 0, not " + std::to_string(ips[0])).c_str());
+        for (int64_t d : down)
+            if (d) throw nb::value_error((prefix(func) + "'indptr' must not decrease").c_str());
+        if (ips[n_major] != nnz)
+            throw nb::value_error((prefix(func) + "'indptr' must end at the number of stored entries, " +
+                                   std::to_string(nnz) + ", not " + std::to_string(ips[n_major]))
+                                      .c_str());
+    }
+    // indices: in range; lines sorted without duplicates? Every k >= 1 with ixs[k] <= ixs[k - 1]
+    // (a descent) must be the start of a line: the lines are sorted when the descents and the
+    // starts of non-empty lines with a descent are as many.
+    const int64_t nt = num_chunks(nnz, kScanChunk);
+    std::vector<int64_t> excess(static_cast<std::size_t>(nt), 0);
+    std::vector<char> bads(static_cast<std::size_t>(nt), 0);
+    for_chunks(
+        nnz,
+        [&](int64_t t, int64_t lo, int64_t hi) {
+            int64_t desc = 0;
+            bads[t] = copy_scan(ixs, ix, lo, hi, static_cast<uint64_t>(n_minor), &desc);
+            // the non-empty lines starting in [max(lo, 1), hi): their first entry may descend
+            const int64_t r0 = first_at_least(ip, n_major, std::max<int64_t>(lo, 1), lo, nnz);
+            const int64_t r1 = first_at_least(ip, n_major, hi, hi, nnz);
+            int64_t starts = 0;
+            for (int64_t r = r0; r < r1; ++r) {
+                const int64_t s = ip[r];
+                starts += (s < ip[r + 1]) & (ixs[s] <= ixs[s - 1]);
+            }
+            excess[t] = desc - starts;
         },
-        kChunk, n_major + nnz
+        kScanChunk
     );
-    if (bad.any())
-        throw nb::value_error((prefix(func) + "index " + std::to_string(ixs[bad.row()]) +
-                               " is out of bounds for axis " + std::to_string(minor_axis) + " with size " +
-                               std::to_string(n_minor))
-                                  .c_str());
+    bool sorted = true;
+    for (int64_t t = 0; t < nt; ++t) {
+        if (bads[t])
+            for (int64_t k = t * kScanChunk;; ++k)
+                if (ixs[k] < 0 || ixs[k] >= n_minor)
+                    throw nb::value_error((prefix(func) + "index " + std::to_string(ixs[k]) +
+                                           " is out of bounds for axis " + std::to_string(minor_axis) + " with size " +
+                                           std::to_string(n_minor))
+                                              .c_str());
+        sorted = sorted && excess[t] == 0;
+    }
     indptr.writeable = false;
     indices.writeable = false;
-    if (sorted.load())
+    if (sorted)
         return nb::make_tuple(
             wrap(std::move(indptr)), wrap(std::move(indices)), share ? nb::borrow(data_h) : copy_of(data)
         );
