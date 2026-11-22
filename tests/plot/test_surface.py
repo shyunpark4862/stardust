@@ -370,3 +370,17 @@ def test_a_surface_rough_everywhere_is_sampled_finer_as_a_whole():
     rough = P.surface(lambda x, y: sd.sin(30 * x) * sd.sin(30 * y), -1, 1, -1, 1)
     X, _, _, _, _, _, fine = space_of(rough).surfaces[0]
     assert tuple(X.shape) == (3 * _surface.N + 1, 3 * _surface.N + 1) and fine is None
+
+
+def test_a_triangle_is_cut_at_the_height_range_before_it_is_projected():
+    """A long triangle seen in perspective: nothing of it shows beyond the cut (a straight
+    interpolation on the screen would let a spike through)."""
+    v = array(
+        "d",
+        [-0.5, -0.5, 0.0, 0, 0, 1, 1, 0, 0, 1, 0.5, -0.5, 0.0, 0, 0, 1, 1, 0, 0, 1, 0.0, 0.0, 5.0, 0, 0, 1, 1, 0, 0, 1],
+    )
+    side = [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -1.0, 0.0]  # looking along y: x right, z up
+    px = render(v.tobytes(), array("q", [0, 1, 2]).tobytes(), rot=side, distance=7.0, zlo=-1.0, zhi=0.5, cy=15.0)
+    rows = [y for y in range(20) if any(pixel(px, 20, x, y)[3] for x in range(20))]
+    top = 15.0 - 10.0 * 0.5 * 7.0 / 7.0  # the row of height 0.5 on the axis (the triangle is in the plane y = 0)
+    assert rows and min(rows) >= top - 1.5 and max(rows) <= 15  # from the base up to the cut, no further

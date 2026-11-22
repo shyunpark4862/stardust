@@ -4,6 +4,8 @@
 #include "parallel/pool.hpp"
 
 #include <algorithm>
+#include <deque>
+#include <array>
 #include <cmath>
 #include <limits>
 
@@ -73,29 +75,25 @@ std::vector<std::uint8_t> render3(
     std::vector<float> depth(n, -std::numeric_limits<float>::infinity());
     std::vector<float> color(n * 4, 0.0f);  // premultiplied
 
-    std::vector<P> pv(nvert);
-    for (std::size_t i = 0; i < nvert; ++i) pv[i] = project(view, vertices + 10 * i, ss);
-
     std::vector<Tri> tris, glass;
     tris.reserve(ntri);
     double zmin = std::numeric_limits<double>::infinity(), zmax = -zmin;
-    for (std::size_t t = 0; t < ntri; ++t) {
+    // A triangle that reaches out of the height range is cut at the range's two planes before it
+    // is projected (the cut of a long triangle seen in perspective is not a straight interpolation
+    // on the screen); the new corners live here.
+    std::deque<std::array<double, 10>> cut;
+    auto emit = [&](const double* a, const double* b, const double* c) {
         Tri tr;
         tr.glass = false;
-        bool ok = true;
+        const double* v[3] = {a, b, c};
         for (int k = 0; k < 3; ++k) {
-            const std::int64_t i = triangles[3 * t + k];
-            if (i < 0 || static_cast<std::size_t>(i) >= nvert || !pv[i].ok) {
-                ok = false;
-                break;
-            }
-            tr.p[k] = pv[i];
-            tr.v[k] = vertices + 10 * i;
-            if (tr.v[k][9] < kSolid) tr.glass = true;
+            tr.p[k] = project(view, v[k], ss);
+            if (!tr.p[k].ok) return;
+            tr.v[k] = v[k];
+            if (v[k][9] < kSolid) tr.glass = true;
         }
-        if (!ok) continue;
         const double ya = std::min({tr.p[0].y, tr.p[1].y, tr.p[2].y}), yb = std::max({tr.p[0].y, tr.p[1].y, tr.p[2].y});
-        if (yb < 0.0 || ya > H) continue;
+        if (yb < 0.0 || ya > H) return;
         tr.y0 = std::max(0, static_cast<int>(std::floor(ya)));
         tr.y1 = std::min(H, static_cast<int>(std::ceil(yb)) + 1);
         for (int k = 0; k < 3; ++k) {
@@ -103,6 +101,52 @@ std::vector<std::uint8_t> render3(
             zmax = std::max(zmax, tr.p[k].depth);
         }
         (tr.glass ? glass : tris).push_back(tr);
+    };
+    for (std::size_t t = 0; t < ntri; ++t) {
+        const double* v[3];
+        bool ok = true, out = false;
+        for (int k = 0; k < 3; ++k) {
+            const std::int64_t i = triangles[3 * t + k];
+            if (i < 0 || static_cast<std::size_t>(i) >= nvert) {
+                ok = false;
+                break;
+            }
+            v[k] = vertices + 10 * i;
+            for (int c = 0; c < 3; ++c) ok = ok && std::isfinite(v[k][c]);
+            out = out || v[k][2] < view.zlo || v[k][2] > view.zhi;
+        }
+        if (!ok) continue;
+        if (!out) {
+            emit(v[0], v[1], v[2]);
+            continue;
+        }
+        // Sutherland-Hodgman against z >= zlo, then z <= zhi
+        const double* poly[8];
+        int n = 3;
+        for (int k = 0; k < 3; ++k) poly[k] = v[k];
+        for (int side = 0; side < 2 && n >= 3; ++side) {
+            const double bound = side == 0 ? view.zlo : view.zhi;
+            const auto in = [&](const double* q) { return side == 0 ? q[2] >= bound : q[2] <= bound; };
+            const double* next[8];
+            int m = 0;
+            for (int k = 0; k < n; ++k) {
+                const double* a = poly[k];
+                const double* b = poly[(k + 1) % n];
+                const bool ia = in(a), ib = in(b);
+                if (ia) next[m++] = a;
+                if (ia != ib) {
+                    const double w = (bound - a[2]) / (b[2] - a[2]);
+                    std::array<double, 10> q;
+                    for (int c = 0; c < 10; ++c) q[c] = a[c] + w * (b[c] - a[c]);
+                    q[2] = bound;
+                    cut.push_back(q);
+                    next[m++] = cut.back().data();
+                }
+            }
+            n = m;
+            for (int k = 0; k < n; ++k) poly[k] = next[k];
+        }
+        for (int k = 1; k + 1 < n; ++k) emit(poly[0], poly[k], poly[k + 1]);
     }
 
     std::vector<Quad> quads;
