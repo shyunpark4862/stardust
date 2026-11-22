@@ -351,7 +351,11 @@ class GLMResult(_RegressionResult):
         """The hat values (..., n) of sqrt(W) X, W the final IRLS weights (the expected
         information's, times the frequency weights; R's hatvalues of a glm). 0 for the rows out
         of the fit."""
-        return self._influence()[0]
+        from . import _diagnostics
+
+        if "influence" in self._cache:
+            return self._influence()[0]
+        return self._cached("leverage", lambda: _diagnostics.glm_leverage(self))
 
     @property
     def cooks_distance(self):

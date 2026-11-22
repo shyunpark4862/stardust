@@ -9,8 +9,8 @@ pool. Each does the scalar operations in the scalar order, so (docs/design/regre
 - a row that repeats an earlier one gets the same fitted value whether it falls in a
   vector group or in a chunk's scalar tail (n = 4096 + 3: the last three rows are a chunk's
   tail, copies of the first three);
-- a row-major X and the same X column-major (the column-outer scalar loop) give the same
-  bits;
+- a row-major X and the same X column-major give the same values to rounding (the GLM's and
+  rlm's inner X beta is a dgemv on X in place, whose order follows the layout);
 - 1 thread and 10 threads give the same bits;
 - a quantile array's 'nid' standard errors are those of the quantiles fitted one by one.
 Sizes 2^12 and 2^13 rows (a power-of-two chunk stride for the packing), with and without
@@ -55,13 +55,19 @@ SIZES = [4096, 8192, 4099]
 
 
 def check_layouts_threads(fit, X, names):
-    """fit(X) at 1 and 10 threads, X row-major and column-major: the same bits."""
+    """fit(X) at 1 and 10 threads: the same bits for each layout; X row-major and column-major:
+    the same values to rounding (the inner iterations' X beta is a dgemv on X in place, whose
+    summation order follows the layout; layout bit equality is no longer required)."""
     ref = at_threads(1, lambda: fields(fit(np.ascontiguousarray(X)), names))
-    for th in (1, 10):
-        for XX in (np.ascontiguousarray(X), np.asfortranarray(X)):
-            got = at_threads(th, lambda: fields(fit(XX), names))
-            for nm, u, v in zip(names, ref, got):
-                assert bits_equal(u, v), (nm, th, XX.flags["C_CONTIGUOUS"])
+    for XX in (np.ascontiguousarray(X), np.asfortranarray(X)):
+        base = at_threads(1, lambda: fields(fit(XX), names))
+        for nm, u, v in zip(names, ref, base):
+            u, v = np.asarray(u, dtype=float), np.asarray(v, dtype=float)
+            scale = np.max(np.abs(u)) if u.size else 0.0
+            np.testing.assert_allclose(v, u, rtol=1e-12, atol=1e-13 * scale, err_msg=nm)
+        got = at_threads(10, lambda: fields(fit(XX), names))
+        for nm, u, v in zip(names, base, got):
+            assert bits_equal(u, v), (nm, 10, XX.flags["C_CONTIGUOUS"])
     return ref
 
 

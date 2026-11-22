@@ -421,12 +421,14 @@ bool chol_wls(
         if (!std::isfinite(h[jj])) return false;
     for (lint j = 0; j < k; ++j) beta[j] = kNaN, kept[j] = 0;
     for (lint jj = 0; jj < kk; ++jj) beta[K[jj]] = h[jj], kept[K[jj]] = 1;
-    // fit in plain double, four rows at a time (each row's sum over the columns in order)
+    // fit in plain double (dgemv per fixed chunk of rows, or the rows' loop)
     std::vector<dot2::ColRef> cols;
     std::vector<double> hb;
     design_cols(D, beta, cols, hb);
     for_row_chunks(n, [&](lint, lint i0, lint i1) {
-        dot2::plain_rows(cols.data(), hb.data(), kk, i1 - i0, [&](lint t) { return i0 + t; }, fit + i0);
+        // every column kept: one dgemv on X in place (C or F order), else the rows' loop
+        if (!(kk == k && dot2::gemv_rows(D.X, D.xrs, D.xcs, D.p, D.intercept, hb.data(), i0, i1, fit + i0)))
+            dot2::plain_rows(cols.data(), hb.data(), kk, i1 - i0, [&](lint t) { return i0 + t; }, fit + i0);
     });
     return true;
 }

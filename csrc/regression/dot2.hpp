@@ -7,6 +7,8 @@
 
 #include <arm_neon.h>
 
+#include <Accelerate/Accelerate.h>
+
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -61,12 +63,40 @@ inline void col_step(float64x2_t& hi, float64x2_t& lo, float64x2_t ah, float64x2
 }
 
 // x beta over the columns c[0 .. nc) for the rows row(t), t in [0, nt): P[t] + S[t], each
-// row's sum from (p0, 0) over the columns in order (four rows at a time).
+// row's sum from (p0, 0) over the columns in order (eight rows at a time, then four).
 template <class Row>
 inline void dot2_rows(
     const ColRef* c, const double* b, lint nc, lint nt, Row&& row, double* P, double* S, double p0 = 0.0
 ) {
     lint t = 0;
+    // eight rows at a time: four independent chains hide the additions' latency (each lane's
+    // operations are still its row's scalar ones, in order)
+    for (; t + 8 <= nt; t += 8) {
+        lint i[8];
+        for (int u = 0; u < 8; ++u) i[u] = row(t + u);
+        float64x2_t PA = vdupq_n_f64(p0), SA = vdupq_n_f64(0.0), PB = PA, SB = SA, PC = PA, SC = SA, PD = PA, SD = SA;
+        for (lint j = 0; j < nc; ++j) {
+            const std::byte* base = c[j].base;
+            const std::int64_t st = c[j].stride;
+            const float64x2_t bj = vdupq_n_f64(b[j]);
+            const float64x2_t xa = {rd(base + i[0] * st), rd(base + i[1] * st)};
+            const float64x2_t xb = {rd(base + i[2] * st), rd(base + i[3] * st)};
+            const float64x2_t xc = {rd(base + i[4] * st), rd(base + i[5] * st)};
+            const float64x2_t xd = {rd(base + i[6] * st), rd(base + i[7] * st)};
+            row_step(PA, SA, xa, bj);
+            row_step(PB, SB, xb, bj);
+            row_step(PC, SC, xc, bj);
+            row_step(PD, SD, xd, bj);
+        }
+        vst1q_f64(P + t, PA);
+        vst1q_f64(P + t + 2, PB);
+        vst1q_f64(P + t + 4, PC);
+        vst1q_f64(P + t + 6, PD);
+        vst1q_f64(S + t, SA);
+        vst1q_f64(S + t + 2, SB);
+        vst1q_f64(S + t + 4, SC);
+        vst1q_f64(S + t + 6, SD);
+    }
     for (; t + 4 <= nt; t += 4) {
         const lint i0 = row(t), i1 = row(t + 1), i2 = row(t + 2), i3 = row(t + 3);
         float64x2_t PA = vdupq_n_f64(p0), SA = vdupq_n_f64(0.0), PB = PA, SB = SA;
@@ -95,6 +125,8 @@ inline void dot2_rows(
 
 // The column sums sum_t (ah_t + al_t) x_{row(t), j} over t in [0, nt), each column's (hi, lo)
 // from (0, 0) over the rows in order (four columns at a time), into out[2 j], out[2 j + 1].
+// (Interleaving the rows of the last columns made the refinement's fixed point drift on
+// kappa = 1e11 designs, fitted values 1.3e-10 -> 2.3e-10 relative: kept in order.)
 // fac(t, ah, al) gives row t's factor.
 template <class Row, class Fac>
 inline void dot2_cols(const ColRef* c, lint nc, lint nt, Row&& row, Fac&& fac, double* out) {
@@ -132,10 +164,33 @@ inline void dot2_cols(const ColRef* c, lint nc, lint nt, Row&& row, Fac&& fac, d
 }
 
 // x h in plain double over the columns, rows row(t), t in [0, nt): each row's sum from 0
-// over the columns in order (four rows at a time), into out[t].
+// over the columns in order (eight rows at a time, then four: the independent chains hide
+// the additions' latency), into out[t].
 template <class Row>
 inline void plain_rows(const ColRef* c, const double* h, lint nc, lint nt, Row&& row, double* out) {
     lint t = 0;
+    for (; t + 8 <= nt; t += 8) {
+        lint i[8];
+        for (int u = 0; u < 8; ++u) i[u] = row(t + u);
+        float64x2_t A = vdupq_n_f64(0.0), B = A, C = A, D = A;
+        for (lint j = 0; j < nc; ++j) {
+            const std::byte* base = c[j].base;
+            const std::int64_t st = c[j].stride;
+            const float64x2_t hj = vdupq_n_f64(h[j]);
+            const float64x2_t xa = {rd(base + i[0] * st), rd(base + i[1] * st)};
+            const float64x2_t xb = {rd(base + i[2] * st), rd(base + i[3] * st)};
+            const float64x2_t xc = {rd(base + i[4] * st), rd(base + i[5] * st)};
+            const float64x2_t xd = {rd(base + i[6] * st), rd(base + i[7] * st)};
+            A = vaddq_f64(A, vmulq_f64(xa, hj));
+            B = vaddq_f64(B, vmulq_f64(xb, hj));
+            C = vaddq_f64(C, vmulq_f64(xc, hj));
+            D = vaddq_f64(D, vmulq_f64(xd, hj));
+        }
+        vst1q_f64(out + t, A);
+        vst1q_f64(out + t + 2, B);
+        vst1q_f64(out + t + 4, C);
+        vst1q_f64(out + t + 6, D);
+    }
     for (; t + 4 <= nt; t += 4) {
         const lint i0 = row(t), i1 = row(t + 1), i2 = row(t + 2), i3 = row(t + 3);
         float64x2_t A = vdupq_n_f64(0.0), B = A;
@@ -157,6 +212,45 @@ inline void plain_rows(const ColRef* c, const double* h, lint nc, lint nt, Row&&
         for (lint j = 0; j < nc; ++j) acc += rd(c[j].base + i * c[j].stride) * h[j];
         out[t] = acc;
     }
+}
+
+// out[t] = h0 + x_t h (h0 = h[0] with an intercept, the columns' coefficients after it) for
+// rows [i0, i1) of X (p columns, all with a term) by one dgemv on X read in place, when X has a
+// unit stride along its rows or its columns (C or F order); false (nothing written) otherwise.
+// BLAS's summation order, not the scalar loop's: the bits depend on the layout (not on the
+// thread count: one call per fixed chunk of rows).
+inline bool gemv_rows(
+    const std::byte* X,
+    std::int64_t xrs,
+    std::int64_t xcs,
+    lint p,
+    bool intercept,
+    const double* h,
+    lint i0,
+    lint i1,
+    double* out
+) {
+    constexpr std::int64_t e = static_cast<std::int64_t>(sizeof(double));
+    const lint len = i1 - i0;
+    if (p <= 0 || len <= 0) return false;
+    const double* a = reinterpret_cast<const double*>(X + i0 * xrs);
+    const double* b = h + (intercept ? 1 : 0);
+    if (xcs == e && xrs % e == 0 && xrs / e >= p) {
+        cblas_dgemv(
+            CblasRowMajor, CblasNoTrans, static_cast<int>(len), static_cast<int>(p), 1.0, a, static_cast<int>(xrs / e),
+            b, 1, 0.0, out, 1
+        );
+    } else if (xrs == e && xcs % e == 0 && xcs / e >= len) {
+        cblas_dgemv(
+            CblasColMajor, CblasNoTrans, static_cast<int>(len), static_cast<int>(p), 1.0, a, static_cast<int>(xcs / e),
+            b, 1, 0.0, out, 1
+        );
+    } else {
+        return false;
+    }
+    if (intercept)
+        for (lint t = 0; t < len; ++t) out[t] += h[0];
+    return true;
 }
 
 }  // namespace sd::regression::dot2

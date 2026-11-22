@@ -4,10 +4,13 @@
 // the same bits for any thread count, docs/design/linalg.md §6):
 //   1. The rows with a positive weight are the fit's (R's lm, G20). Each is whitened by
 //      sqrt(w); the design, intercept column first, is packed column-major.
-//   2. Unpivoted Householder QR (geqrf). A column with |R_jj| <= rtol * ||x_j|| is aliased
-//      (G9, G21; the rule of R's dqrdc2, so the earlier column stays): it is dropped and the
-//      columns after it are factored again. When anything was dropped, the kept columns are
-//      factored once more from scratch, so the fit is the reduced problem's, bit for bit.
+//   2. A tall, well-conditioned design with no aliased column: the Cholesky QR twice
+//      (CholeskyQR2, G200; see cholesky_qr), R in A's top rows and the thin Q explicit.
+//      Otherwise unpivoted Householder QR (geqrf). A column with |R_jj| <= rtol * ||x_j|| is
+//      aliased (G9, G21; the rule of R's dqrdc2, so the earlier column stays): it is dropped
+//      and the columns after it are factored again. When anything was dropped, the kept
+//      columns are factored once more from scratch, so the fit is the reduced problem's, bit
+//      for bit.
 //   3. beta from R beta = (Q^T b)_1, then up to `steps` corrections (fewer when a further one
 //      cannot matter, G15) on the augmented system
 //      [I X; X^T W 0] [r; beta] = [y; 0] (Bjorck 1967): both blocks of its residual,
@@ -19,7 +22,7 @@
 //      whitened residual): HC (sum omega_t q_t q_t^T), HAC (Newey-West lag sums with
 //      Bartlett weights) or cluster (sums over groups) (docs/design/regression.md §3.3).
 //   A second mode (hat_only) stops after step 2 and gives the hat values ||q_t||^2, the
-//   leverages of the result's diagnostics: the same columns, the same QR.
+//   leverages of the result's diagnostics: the same columns, the same factorization.
 //
 // Row sums are cut into chunks whose size depends on the number of columns only, and the
 // chunks' partial sums are added in order: the result does not depend on the thread count
@@ -27,6 +30,7 @@
 #include "regression/linear.hpp"
 #include "regression/lsq.hpp"
 #include "regression/dot2.hpp"
+#include "regression/dd2.hpp"
 
 #include "bind/errors.hpp"
 #include "htest/normality.hpp"
@@ -129,6 +133,12 @@ void for_chunks(lint nchunks, double work, F&& body) {
 // it and forms the next reflector's dot product. The dot products are summed in chunks of
 // rows fixed by m alone and added in order, so the bits do not depend on the thread count.
 constexpr lint kReflChunk = 4096;
+// The Cholesky QR (fit_one): from this many rows x columns, and for a first factor's condition
+// estimate (LAPACK's 1-norm) up to kCholQRMaxCond (CholeskyQR2's Q is orthonormal to rounding
+// for kappa well below u^(-1/2) ~ 7e7; the margin covers the estimate's factor).
+constexpr double kCholQRMinWork = 16384;
+constexpr double kCholQRMaxCond = 1e5;
+constexpr lint kCholQRDotCols = 32;  // Q^T Q by ddot up to this many columns (measured: (10^5, 51) dsyrk wins)
 constexpr lint kReflParallelMin = 1 << 15;  // rows from which a pass goes to the pool
 
 void apply_reflectors(const double* A, lint m, lint kk, const double* tau, double* c, bool qt, double* part) {
@@ -340,6 +350,8 @@ int lsq::fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
     const bool want_T = o.T != nullptr && d.hdiff != nullptr && !pb.hat_only;
     const bool newton = d.newton_b0 != nullptr && d.newton_eta0 != nullptr && d.hdiff != nullptr && !pb.hat_only;
     const bool needQ = robust || pb.hat_only || want_T || newton;
+    // tall enough for the Cholesky QR (below; its explicit thin Q lives in Q's slot)
+    const bool try_cholqr = k >= 1 && m >= 2 * k && double(m) * double(k) >= kCholQRMinWork;
     std::size_t total = 0;
     auto reserve = [&](std::int64_t cnt) {
         const std::size_t at = total;
@@ -352,14 +364,15 @@ int lsq::fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
                       o_AL = reserve(newton ? mm : 0),
                       o_part = reserve(std::max<lint>(nchunks, 1) * 2 * (kk0 + kAccInit + kAccFinal)),
                       o_work = reserve(kk0), o_RR = reserve(kk0 * kk0), o_M = reserve(robust ? kk0 * kk0 : 0),
-                      o_W2 = reserve(robust ? kk0 * kk0 : 0), o_Q = reserve(needQ ? mm * kk0 : 0),
-                      o_hat = reserve(needQ ? mm : 0), o_refl = reserve(mm / kReflChunk + 1);
+                      o_W2 = reserve(robust ? kk0 * kk0 : 0), o_Q = reserve(needQ || try_cholqr ? mm * kk0 : 0),
+                      o_hat = reserve(needQ ? mm : 0), o_refl = reserve(mm / kReflChunk + 1),
+                      o_sb = reserve(try_cholqr ? mm : 0), o_d1 = reserve(try_cholqr ? kk0 : 0);
     double* base = sc.get<double>(total);
     double *s = base + o_s, *A = base + o_A, *tau = base + o_tau, *nrm = base + o_nrm, *beta = base + o_beta,
            *cv = base + o_c, *f = base + o_f, *r = base + o_r, *P = base + o_P, *S = base + o_S, *h = base + o_h,
            *g = base + o_g, *part = base + o_part, *work = base + o_work, *RR = base + o_RR, *M = base + o_M,
            *work2 = base + o_W2, *Q = base + o_Q, *hat = base + o_hat, *refl = base + o_refl, *AH = base + o_AH,
-           *AL = base + o_AL;
+           *AL = base + o_AL, *sbuf = base + o_sb, *dsave = base + o_d1;
     for (lint t = 0; t < m; ++t) s[t] = pb.has_w ? std::sqrt(weight(idx[t])) : 1.0;
 
     // ---- 2. QR with aliased columns dropped
@@ -385,14 +398,80 @@ int lsq::fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
     lint kk = k;
     for (lint c = 0; c < k; ++c) K[c] = c;
     double tol = pb.rtol >= 0 ? pb.rtol : static_cast<double>(std::max(m, k)) * kEps;
+    // The Cholesky QR twice (CholeskyQR2) of the packed A when it is well conditioned: R1 from
+    // the Cholesky factor of A^T A, Q1 = A R1^-1, then the same on Q1 (Q = Q1 R2^-1, R = R2 R1),
+    // by dsyrk, potrf and dtrsm (BLAS 3; the QR of a tall matrix is level-2 bound). For
+    // kappa(A) u^(1/2) << 1 the second pass leaves Q orthonormal and A - Q R at rounding, as the
+    // Householder QR. Taken only when the first factor's condition estimate is at most
+    // kCholQRMaxCond and no column meets the aliasing rule (with a margin of 2); otherwise (or
+    // when a factorization fails) the Householder QR below decides, so aliased and
+    // ill-conditioned designs (NIST StRD) keep that path. R goes into A's top rows (where the
+    // Householder QR leaves it) and the thin Q into Q; tau is unused.
+    bool explicit_q = false;
+    auto cholesky_qr = [&]() -> bool {
+        double* Qx = Q;
+        std::copy(A, A + m * k, Qx);
+        std::vector<double> R1(static_cast<std::size_t>(k * k), 0.0), R2(static_cast<std::size_t>(k * k), 0.0);
+        auto gram_chol = [&](std::vector<double>& G) {
+            // Q^T Q: one ddot per pair of columns for a few columns (Accelerate's dsyrk on a
+            // tall, narrow matrix ran 6-7x slower: (10^5, 11) 860 us against 129), else dsyrk
+            if (k <= kCholQRDotCols) {
+                for (lint b = 0; b < k; ++b)
+                    for (lint a = 0; a <= b; ++a)
+                        G[b * k + a] = cblas_ddot(static_cast<int>(m), Qx + a * m, 1, Qx + b * m, 1);
+            } else {
+                cblas_dsyrk(
+                    CblasColMajor, CblasUpper, CblasTrans, static_cast<int>(k), static_cast<int>(m), 1.0, Qx,
+                    static_cast<int>(m), 0.0, G.data(), static_cast<int>(k)
+                );
+            }
+            return linalg::lapack::potrf('U', k, G.data(), k) == 0;
+        };
+        if (!gram_chol(R1)) return false;
+        // the norms from the factor: ||a_j||^2 = sum_i R1_ij^2 (column j of R1)
+        for (lint j = 0; j < k; ++j) {
+            double s2 = 0.0;
+            for (lint i = 0; i <= j; ++i) s2 += R1[j * k + i] * R1[j * k + i];
+            nrm[j] = std::sqrt(s2);
+        }
+        const double rc = linalg::lapack::trcon_1('U', k, R1.data(), k);
+        if (!(rc > 0.0) || 1.0 / rc > kCholQRMaxCond) return false;
+        for (lint j = 0; j < k; ++j)
+            if (!(std::fabs(R1[j * k + j]) > 2.0 * tol * nrm[j])) return false;
+        cblas_dtrsm(
+            CblasColMajor, CblasRight, CblasUpper, CblasNoTrans, CblasNonUnit, static_cast<int>(m), static_cast<int>(k),
+            1.0, R1.data(), static_cast<int>(k), Qx, static_cast<int>(m)
+        );
+        if (!gram_chol(R2)) return false;
+        cblas_dtrsm(
+            CblasColMajor, CblasRight, CblasUpper, CblasNoTrans, CblasNonUnit, static_cast<int>(m), static_cast<int>(k),
+            1.0, R2.data(), static_cast<int>(k), Qx, static_cast<int>(m)
+        );
+        // R = R2 R1 into A's top rows (upper triangle)
+        for (lint j = 0; j < k; ++j)
+            for (lint i = j + 1; i < k; ++i) R1[j * k + i] = 0.0, R2[j * k + i] = 0.0;
+        cblas_dtrmm(
+            CblasColMajor, CblasLeft, CblasUpper, CblasNoTrans, CblasNonUnit, static_cast<int>(k), static_cast<int>(k),
+            1.0, R2.data(), static_cast<int>(k), R1.data(), static_cast<int>(k)
+        );
+        for (lint j = 0; j < k; ++j)
+            for (lint i = 0; i < k; ++i) A[j * m + i] = i <= j ? R1[j * k + i] : 0.0;
+        return true;
+    };
     if (m > 0 && k > 0) {
         pack(A, K, k);
-        // one dnrm2 call per column (on the pool when large): the same bits for any thread count
-        if (k >= 2 && double(m) * k >= double(1 << 20)) {
-            parallel::parallel_for(k, [&](std::int64_t c) { nrm[c] = cblas_dnrm2(m, A + c * m, 1); });
-        } else {
-            for (lint c = 0; c < k; ++c) nrm[c] = cblas_dnrm2(m, A + c * m, 1);
+        explicit_q = try_cholqr && cholesky_qr();
+        // the column norms of the aliasing rule (the Cholesky QR takes them from A^T A's diagonal):
+        // one dnrm2 call per column (on the pool when large), the same bits for any thread count
+        if (!explicit_q) {
+            if (k >= 2 && double(m) * k >= double(1 << 20)) {
+                parallel::parallel_for(k, [&](std::int64_t c) { nrm[c] = cblas_dnrm2(m, A + c * m, 1); });
+            } else {
+                for (lint c = 0; c < k; ++c) nrm[c] = cblas_dnrm2(m, A + c * m, 1);
+            }
         }
+    }
+    if (m > 0 && k > 0 && !explicit_q) {
         linalg::lapack::geqrf(m, k, A, m, tau, sc);
         bool dropped = false;
         int restarts = 0;
@@ -454,15 +533,20 @@ int lsq::fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
             pack(A, K, kk);
             linalg::lapack::geqrf(m, kk, A, m, tau, sc);
         }
-    } else {
+    } else if (!(m > 0 && k > 0)) {
         kk = 0;
     }
 
     // the hat values h_t = ||q_t||^2 from the thin Q of the fit's own QR (0 for the rows out
     // of the fit: their weighted leverage w_t x_t (X^T W X)^-1 x_t^T is 0)
-    auto hat_values = [&]() {
+    // the thin Q into Q (the Cholesky QR's is there already)
+    auto form_q = [&]() {
+        if (explicit_q) return;
         std::copy(A, A + m * kk, Q);
         linalg::lapack::orgqr(m, kk, kk, Q, m, tau, sc);
+    };
+    auto hat_values = [&]() {
+        form_q();
         std::fill(hat, hat + m, 0.0);
         for (lint jj = 0; jj < kk; ++jj)
             for (lint t = 0; t < m; ++t) hat[t] += Q[jj * m + t] * Q[jj * m + t];
@@ -470,13 +554,10 @@ int lsq::fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
     // T = Q^T diag(hdiff/w) Q (want_T, newton) into Tk (kk x kk column-major), summed by dgemm
     // over fixed chunks of rows in order; copied to o.T when asked
     std::vector<double> Tk;
-    auto make_T = [&](bool form_q = true) {
+    auto make_T = [&](bool with_q = true) {
         Tk.assign(static_cast<std::size_t>(kk * kk), 0.0);
         if (kk == 0) return;
-        if (form_q) {
-            std::copy(A, A + m * kk, Q);
-            linalg::lapack::orgqr(m, kk, kk, Q, m, tau, sc);
-        }
+        if (with_q) form_q();
         // each chunk's Q^T diag(c/w) Q into its own slot (on the pool when large), the slots
         // added in chunk order: the same bits for any thread count
         constexpr lint kTChunk = 4096;
@@ -615,10 +696,32 @@ int lsq::fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
     auto accs = [&](lint ch) { return part + ch * 2 * (kk0 + kAccInit + kAccFinal) + 2 * kk0; };
     const double work_rows = double(m) * double(std::max<lint>(kk, 1));
 
+    // c := Q^T c and c := Q c of the factorization: the reflectors, or with the Cholesky QR's
+    // thin Q1 a pair: Q^T c gives d1 = Q1^T c (keeping c), and Q [c1; d2] (d2 the rest of Q^T c,
+    // untouched) is c + Q1 (c1 - d1), the identity Q2 Q2^T = I - Q1 Q1^T
+    std::vector<double> work2q(static_cast<std::size_t>(kk0));
+    auto qt_apply = [&](double* c) {
+        if (!explicit_q) return apply_reflectors(A, m, kk, tau, c, true, refl);
+        std::copy(c, c + m, sbuf);
+        cblas_dgemv(
+            CblasColMajor, CblasTrans, static_cast<int>(m), static_cast<int>(kk), 1.0, Q, static_cast<int>(m), sbuf, 1,
+            0.0, dsave, 1
+        );
+        std::copy(dsave, dsave + kk, c);
+    };
+    auto q_apply = [&](double* c) {
+        if (!explicit_q) return apply_reflectors(A, m, kk, tau, c, false, refl);
+        for (lint jj = 0; jj < kk; ++jj) work2q[jj] = c[jj] - dsave[jj];
+        std::copy(sbuf, sbuf + m, c);
+        cblas_dgemv(
+            CblasColMajor, CblasNoTrans, static_cast<int>(m), static_cast<int>(kk), 1.0, Q, static_cast<int>(m),
+            work2q.data(), 1, 1.0, c, 1
+        );
+    };
     // initial solution
     if (kk > 0) {
         for (lint t = 0; t < m; ++t) cv[t] = s[t] * rd(d.y + idx[t] * d.ys);
-        apply_reflectors(A, m, kk, tau, cv, true, refl);
+        qt_apply(cv);
         std::copy(cv, cv + kk, beta);
         linalg::lapack::trtrs('U', 'N', 'N', kk, 1, A, m, beta, kk);
     }
@@ -698,7 +801,9 @@ int lsq::fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
     for_chunks(nchunks, work_rows, [&](lint ch) {
         const lint t0 = ch * chunk, t1 = std::min(m, t0 + chunk);
         xbeta(t0, t1, beta);
-        DD a[kAccInit] = {};
+        // four interleaved partial sums per quantity (rows t mod 4), added in order at the end:
+        // independent chains instead of one double-double chain through every row
+        DD a4[kAccInit][4] = {};
         for (lint t = t0; t < t1; ++t) {
             const lint i = idx[t];
             const double yv = rd(d.y + i * d.ys);
@@ -707,14 +812,22 @@ int lsq::fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
             const double v = e - S[t];
             r[t] = hh + v;
             f[t] = (hh - r[t]) + v;
+            DD* a = &a4[0][t & 3];
+            if (!pb.has_w && !pb.has_u) {
+                a[kSwuy * 4] = a[kSwuy * 4] + yv;  // w u = 1: the same terms as below
+                a[kSwuu * 4] = a[kSwuu * 4] + 1.0;
+                continue;
+            }
             const double wt = weight(i), ut = uval(i);
             double ph, pl;
             two_prod(wt, ut, ph, pl);
             const DD wu = dd_of(ph, pl);
-            a[kSwuy] = a[kSwuy] + wu * yv;
-            a[kSwuu] = a[kSwuu] + wu * ut;
-            if (pb.has_w) a[kSlogw] = a[kSlogw] + std::log(wt);
+            a[kSwuy * 4] = a[kSwuy * 4] + wu * yv;
+            a[kSwuu * 4] = a[kSwuu * 4] + wu * ut;
+            if (pb.has_w) a[kSlogw * 4] = a[kSlogw * 4] + std::log(wt);
         }
+        DD a[kAccInit];
+        for (int q = 0; q < kAccInit; ++q) a[q] = (a4[q][0] + a4[q][1]) + (a4[q][2] + a4[q][3]);
         double* ap = accs(ch);
         for (int q = 0; q < kAccInit; ++q) ap[2 * q] = a[q].hi, ap[2 * q + 1] = a[q].lo;
         if (pb.steps > 0) gsum(ch, t0, t1);
@@ -738,7 +851,7 @@ int lsq::fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
         std::copy(g, g + kk, h);
         linalg::lapack::trtrs('U', 'T', 'N', kk, 1, A, m, h, kk);
         for (lint t = 0; t < m; ++t) cv[t] = s[t] * f[t];
-        apply_reflectors(A, m, kk, tau, cv, true, refl);
+        qt_apply(cv);
         for (lint jj = 0; jj < kk; ++jj) work[jj] = cv[jj] - h[jj];
         if (use_newton) {
             // y = (I - T)^-1 (d_1 - h); dbeta = R^-1 y; dr~ = Q [d_1 - y; d_2]
@@ -754,7 +867,7 @@ int lsq::fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
             bn = std::max(bn, std::fabs(beta[jj]));
         }
         if (!use_newton) std::copy(h, h + kk, cv);
-        apply_reflectors(A, m, kk, tau, cv, false, refl);
+        q_apply(cv);
         for (lint t = 0; t < m; ++t) r[t] += cv[t] / s[t];
         const bool converged = !(dn * kappa_u > 0x1p-54 * bn);  // NaN: stop (nothing to refine)
         if (step + 1 < pb.steps && !converged) {
@@ -786,8 +899,52 @@ int lsq::fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
     for_chunks(nchunks, work_rows, [&](lint ch) {
         const lint t0 = ch * chunk, t1 = std::min(m, t0 + chunk);
         xbeta(t0, t1, beta);
-        DD a[kAccFinal] = {};
-        for (lint t = t0; t < t1; ++t) {
+        // four interleaved partial sums per quantity (rows t mod 4), added in order at the end;
+        // without weights (and u) the factors w and u are 1 and their products are skipped (the
+        // same values)
+        DD a4[kAccFinal][4] = {};
+        const bool unit = !pb.has_w && !pb.has_u;
+        lint t = t0;
+        if (unit) {
+            // two rows per vector (lanes), two vectors: the same partial sums by rows mod 4
+            using namespace dd2;
+            const float64x2_t z = vdupq_n_f64(0.0);
+            DD2 v4[kAccFinal][2];
+            for (auto& q : v4) q[0] = q[1] = DD2{z, z};
+            const DD2 nyb{vdupq_n_f64(-ybar.hi), vdupq_n_f64(-ybar.lo)};
+            for (; t + 4 <= t1; t += 4) {
+                for (int h = 0; h < 2; ++h) {
+                    const lint ta = t + 2 * h;
+                    const lint i0 = idx[ta], i1 = idx[ta + 1];
+                    const float64x2_t yv = {rd(d.y + i0 * d.ys), rd(d.y + i1 * d.ys)};
+                    const float64x2_t Pv = vld1q_f64(P + ta), Sv = vld1q_f64(S + ta);
+                    const DD2 hs = two_sum(yv, vnegq_f64(Pv));
+                    const float64x2_t v = vsubq_f64(hs.lo, Sv);
+                    const float64x2_t rr = vaddq_f64(hs.hi, v);
+                    const DD2 res = two_sum(rr, vaddq_f64(vsubq_f64(hs.hi, rr), v));
+                    const DD2 fit = two_sum(Pv, Sv);
+                    o.fitted[i0] = vgetq_lane_f64(fit.hi, 0), o.fitted[i1] = vgetq_lane_f64(fit.hi, 1);
+                    o.resid[i0] = vgetq_lane_f64(rr, 0), o.resid[i1] = vgetq_lane_f64(rr, 1);
+                    vst1q_f64(r + ta, rr);
+                    DD2* q = &v4[0][h];
+                    q[fSsr * 2] = add(q[fSsr * 2], mul(res, res));
+                    const DD2 yc = add(DD2{yv, z}, nyb);
+                    q[fCtss * 2] = add(q[fCtss * 2], mul(yc, yc));
+                    const DD2 yy = two_prod(yv, yv);
+                    q[fUtss * 2] = add(q[fUtss * 2], two_sum(yy.hi, yy.lo));
+                    const DD2 fc = add(fit, nyb);
+                    q[fEssC * 2] = add(q[fEssC * 2], mul(fc, fc));
+                    q[fEssU * 2] = add(q[fEssU * 2], mul(fit, fit));
+                }
+            }
+            // the lanes: rows mod 4 = 0, 1 (vector 0) and 2, 3 (vector 1)
+            for (int q = 0; q < kAccFinal; ++q)
+                for (int h = 0; h < 2; ++h) {
+                    a4[q][2 * h] = DD{vgetq_lane_f64(v4[q][h].hi, 0), vgetq_lane_f64(v4[q][h].lo, 0)};
+                    a4[q][2 * h + 1] = DD{vgetq_lane_f64(v4[q][h].hi, 1), vgetq_lane_f64(v4[q][h].lo, 1)};
+                }
+        }
+        for (; t < t1; ++t) {
             const lint i = idx[t];
             const double yv = rd(d.y + i * d.ys);
             double hh, e;
@@ -799,17 +956,30 @@ int lsq::fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
             o.fitted[i] = fit.hi;
             o.resid[i] = rr;
             r[t] = rr;
-            const double wt = weight(i), ut = uval(i);
-            a[fSsr] = a[fSsr] + (res * res) * wt;
-            const DD yc = DD{yv, 0.0} - ybar * ut;
-            a[fCtss] = a[fCtss] + (yc * yc) * wt;
+            DD* a = &a4[0][t & 3];
             double yh, yl;
             two_prod(yv, yv, yh, yl);
-            a[fUtss] = a[fUtss] + dd_of(yh, yl) * wt;
+            if (unit) {
+                a[fSsr * 4] = a[fSsr * 4] + res * res;
+                const DD yc = DD{yv, 0.0} - ybar;
+                a[fCtss * 4] = a[fCtss * 4] + yc * yc;
+                a[fUtss * 4] = a[fUtss * 4] + dd_of(yh, yl);
+                const DD fc = fit - ybar;
+                a[fEssC * 4] = a[fEssC * 4] + fc * fc;
+                a[fEssU * 4] = a[fEssU * 4] + fit * fit;
+                continue;
+            }
+            const double wt = weight(i), ut = uval(i);
+            a[fSsr * 4] = a[fSsr * 4] + (res * res) * wt;
+            const DD yc = DD{yv, 0.0} - ybar * ut;
+            a[fCtss * 4] = a[fCtss * 4] + (yc * yc) * wt;
+            a[fUtss * 4] = a[fUtss * 4] + dd_of(yh, yl) * wt;
             const DD fc = fit - ybar * ut;
-            a[fEssC] = a[fEssC] + (fc * fc) * wt;
-            a[fEssU] = a[fEssU] + (fit * fit) * wt;
+            a[fEssC * 4] = a[fEssC * 4] + (fc * fc) * wt;
+            a[fEssU * 4] = a[fEssU * 4] + (fit * fit) * wt;
         }
+        DD a[kAccFinal];
+        for (int q = 0; q < kAccFinal; ++q) a[q] = (a4[q][0] + a4[q][1]) + (a4[q][2] + a4[q][3]);
         double* ap = accs(ch) + 2 * kAccInit;
         for (int q = 0; q < kAccFinal; ++q) ap[2 * q] = a[q].hi, ap[2 * q + 1] = a[q].lo;
     });
@@ -911,8 +1081,7 @@ int lsq::fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
     if (hc && (pb.cov == kHC2 || pb.cov == kHC3)) {
         hat_values();
     } else {
-        std::copy(A, A + m * kk, Q);
-        linalg::lapack::orgqr(m, kk, kk, Q, m, tau, sc);
+        form_q();
     }
     // GLM: T = Q^T diag(hdiff / w) Q, the observed information's correction in Q's coordinates
     // (into work2: the Wald F, which uses it otherwise, is not computed for a GLM)
@@ -1324,25 +1493,34 @@ nb::object apply(const std::string& func, nb::handle xo, nb::handle bo, bool int
             double* fi = fo.as<double>() + i * m;
             double* ei = has_y ? eo.as<double>() + i * m : nullptr;
             const std::byte* mb = has_m ? mk->data() + off[3] : nullptr;
-            for (lint t = 0; t < m; ++t) {
-                double Pv = 0, Sv = 0;
-                for (lint c = 0; c < k; ++c) {
-                    if (mb && rd(mb + c * mk->stride(-1)) == 0.0) continue;  // aliased: no term (nor in the fit)
-                    const double bj = rd(bb + c * be.stride(-1));
-                    const double x = (intercept && c == 0)
-                                         ? 1.0
-                                         : rd(xb + t * X.stride(-2) + (c - (intercept ? 1 : 0)) * X.stride(-1));
-                    double hp, ep, q;
-                    two_prod(x, bj, hp, ep);
-                    two_sum(Pv, hp, Pv, q);
-                    Sv += q + ep;
-                }
-                fi[t] = Pv + Sv;
-                if (ei) {
-                    const double yv = rd(y->data() + off[2] + t * y->stride(-1));
-                    double hh, e;
-                    two_sum(yv, -Pv, hh, e);
-                    ei[t] = hh + (e - Sv);
+            // the columns with a term (an aliased one has none, nor in the fit) and their
+            // coefficients; each row's Dot2 sum over them in order, eight rows at a time (each
+            // lane the scalar operations of its row)
+            std::vector<dot2::ColRef> cols;
+            std::vector<double> bv;
+            for (lint c = 0; c < k; ++c) {
+                if (mb && rd(mb + c * mk->stride(-1)) == 0.0) continue;
+                bv.push_back(rd(bb + c * be.stride(-1)));
+                if (intercept && c == 0) cols.push_back({reinterpret_cast<const std::byte*>(&kOneValue), 0});
+                else cols.push_back({xb + (c - (intercept ? 1 : 0)) * X.stride(-1), X.stride(-2)});
+            }
+            constexpr lint kBlk = 256;
+            double P[kBlk], S[kBlk];
+            for (lint t0 = 0; t0 < m; t0 += kBlk) {
+                const lint nt = std::min(kBlk, m - t0);
+                dot2::dot2_rows(
+                    cols.data(), bv.data(), static_cast<lint>(cols.size()), nt, [&](lint t) { return t0 + t; }, P, S
+                );
+                for (lint u = 0; u < nt; ++u) {
+                    const lint t = t0 + u;
+                    const double Pv = P[u], Sv = S[u];
+                    fi[t] = Pv + Sv;
+                    if (ei) {
+                        const double yv = rd(y->data() + off[2] + t * y->stride(-1));
+                        double hh, e;
+                        two_sum(yv, -Pv, hh, e);
+                        ei[t] = hh + (e - Sv);
+                    }
                 }
             }
             return 0;
@@ -1469,6 +1647,47 @@ nb::object cond(nb::handle ro, nb::handle ko) {
 
 void bind_select(nb::module_& m);  // regression/select.cpp
 
+// same_values(a, b) -> whether two float64 arrays of the same shape hold the same values
+// (a == b, or both NaN) element by element, stopping at the first difference: the model
+// comparisons' test of the same data (their columns usually differ in the first element).
+nb::object same_values(nb::handle ao, nb::handle bo) {
+    const char* fn = "same_values";
+    return call_named(fn, [&]() -> nb::object {
+        Input a(ao, fn, "a"), b(bo, fn, "b");
+        const int nd = a.ndim();
+        if (b.ndim() != nd) return nb::cast(false);
+        std::int64_t total = 1;
+        for (int d = 0; d < nd; ++d) {
+            if (a.shape(d) != b.shape(d)) return nb::cast(false);
+            total *= a.shape(d);
+        }
+        if (total == 0) return nb::cast(true);
+        if (a.data() == b.data()) {
+            bool same = true;
+            for (int d = 0; d < nd && same; ++d) same = a.shape(d) == 1 || a.stride(d) == b.stride(d);
+            if (same) return nb::cast(true);
+        }
+        std::vector<std::int64_t> idx(static_cast<std::size_t>(nd), 0);
+        const lint inner = nd ? a.shape(nd - 1) : 1;
+        const std::int64_t sa = nd ? a.stride(nd - 1) : 0, sb = nd ? b.stride(nd - 1) : 0;
+        for (std::int64_t done = 0; done < total; done += inner) {
+            std::int64_t oa = 0, ob = 0;
+            for (int d = 0; d + 1 < nd; ++d) oa += idx[d] * a.stride(d), ob += idx[d] * b.stride(d);
+            const std::byte* pa = a.data() + oa;
+            const std::byte* pb = b.data() + ob;
+            for (lint t = 0; t < inner; ++t) {
+                const double x = rd(pa + t * sa), y = rd(pb + t * sb);
+                if (!(x == y || (std::isnan(x) && std::isnan(y)))) return nb::cast(false);
+            }
+            for (int d = nd - 2; d >= 0; --d) {
+                if (++idx[d] < a.shape(d)) break;
+                idx[d] = 0;
+            }
+        }
+        return nb::cast(true);
+    });
+}
+
 void bind_linear(nb::module_& m) {
     m.def(
         "fit", &fit, nb::arg("func"), nb::arg("y").none(), nb::arg("X").none(), nb::arg("w").none(),
@@ -1482,6 +1701,7 @@ void bind_linear(nb::module_& m) {
     );
     m.def("cond", &cond, nb::arg("R").none(), nb::arg("kept").none());
     m.def("resid_stats", &resid_stats, nb::arg("e").none(), nb::arg("w").none());
+    m.def("same_values", &same_values, nb::arg("a").none(), nb::arg("b").none());
     bind_select(m);
 }
 

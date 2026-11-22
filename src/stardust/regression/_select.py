@@ -815,7 +815,12 @@ def _setup(func, y, X, model, options, intercept, nan_policy, terms, include):
     full = call(list(range(cols.p)))
     if full._batch:
         raise ValueError(f"{func}(): takes one regression, not a batch of shape {tuple(full._batch)}")
-    return cols, tl, inc, full, call
+
+    def call_or_full(cs):
+        # the full model's columns: its fit (the same call, so the same result) instead of a refit
+        return full if list(cs) == list(range(cols.p)) else call(cs)
+
+    return cols, tl, inc, full, call_or_full
 
 
 def _check_cv(func, model, crit, cv, rng):

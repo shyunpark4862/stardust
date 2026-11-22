@@ -506,18 +506,42 @@ def _glm_weights(r):
     return _sd.where(_sd.isfinite(wt), wt, 0.0), f, used
 
 
+def _glm_hat_fit(r):
+    """The final IRLS weights' fit of a GLM for its influence measures (cached on the result):
+    ((wt, f, used), (hat, Q, R, kept)) of sqrt(W) X."""
+
+    def make():
+        fa = r._fitargs
+        wts = _glm_weights(r)
+        X = fa["X"]
+        n = X.shape[-2]
+        y0 = _sd.zeros((n,))
+        out = _k.fit("glm", y0, X, wts[0], None, r._intercept, fa["rtol"], 0, 0, None, 0, -1, True, True)
+        return wts, tuple(out)
+
+    c = r._cache
+    key = ("hat_fit",)  # (a tuple key: the measures' cache, cleared with them)
+    if key not in c:
+        c[key] = make()
+    return c[key]
+
+
+def glm_leverage(r):
+    """The leverage alone (glm_influence's first field, without the other measures)."""
+    hat = _glm_hat_fit(r)[1][0]
+    bad, sep = r._isnan(), r.separation
+    if isinstance(bad, _sd.ndarray) or isinstance(sep, _sd.ndarray):
+        return _sd.where(_expand(_sd.logical_or(bad, sep), 1), math.nan, hat)
+    return hat * math.nan if (bad or sep) else hat
+
+
 def glm_influence(r):
     """(leverage, cooks_distance, dffits, dfbetas) of a GLM: the linear models' measures of the
     final IRLS's weighted least squares, the leverage of sqrt(W) X and the Pearson residuals as
     the whitened ones, with the deleted Pearson scale s_(i) where the scale is estimated and
     sqrt(scale) where it is fixed (R 4.6's influence.measures, dffits and dfbetas of a glm). A
     row with frequency weight f counts as f observations, all deleted together."""
-    fa = r._fitargs
-    wt, f, used = _glm_weights(r)
-    X = fa["X"]
-    n = X.shape[-2]
-    y0 = _sd.zeros((n,))
-    hat, Q, R, kept = _k.fit("glm", y0, X, wt, None, r._intercept, fa["rtol"], 0, 0, None, 0, -1, True, True)
+    (wt, f, used), (hat, Q, R, kept) = _glm_hat_fit(r)
     e = _sd.sqrt(f) * r.resid_pearson
     e = _sd.where(used, e, 0.0)
     scale = r.scale

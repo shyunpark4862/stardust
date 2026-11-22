@@ -21,9 +21,11 @@
 //      non-canonical link, take Newton's steps (the observed information, always through
 //      the thin Q of the weighted fit and its k x k correction T, G42), so that they converge
 //      quadratically.
-//   3. The final solve: one more weighted fit at the last iterate's weights through the
-//      full core (refinement on the augmented system, G15; the covariance (R^T R)^-1 =
-//      (X^T W X)^-1, or a sandwich whose bread is the observed information).
+//   3. The final solve: one more weighted fit at the last iterate's weights. A canonical link
+//      with the nonrobust covariance takes the polish's step form by the normal equations
+//      when well conditioned (G199, final_chol); otherwise the full core (refinement on the
+//      augmented system, G15; the covariance (R^T R)^-1 = (X^T W X)^-1, or a sandwich whose
+//      bread is the observed information).
 //   4. Separation (binomial, poisson with the log link): the last Fisher step d at beta_t
 //      certifies that the MLE exists when every boundary row (y = 0 or 1; poisson y = 0)
 //      has |x_i' d| < |y_i - mu_i| / (2 mu'_i) (the score weights minus the step's stay of
@@ -40,6 +42,7 @@
 
 #include "regression/lsq.hpp"
 #include "regression/dot2.hpp"
+#include "regression/unitdev.hpp"
 
 #include "bind/errors.hpp"
 #include "linalg/ops/common.hpp"
@@ -178,25 +181,8 @@ std::array<DD, W> dd_sums(lint n, F&& body) {
 
 // ---- deviance pieces without cancellation
 
-// r - log1p(r) (>= 0) for r > -1, x = 1 + r given exactly. On [-1/2, 1] by the atanh series
-// in s = r/(2 + r): log1p(r) = 2 atanh(s) and r - 2s = r s, so r - log1p(r) = r s - 2 s^3
-// (1/3 + s^2/5 + ...), no cancellation (|s| <= 1/3: 17 terms leave < 2^-56).
-inline double mu_fn(double r, double x) {
-    if (r >= -0.5 && r <= 1.0) {
-        const double s = r / (2.0 + r), s2 = s * s;
-        double t = 0.0;
-        for (int j = 17; j >= 0; --j) t = 1.0 / (2 * j + 3) + s2 * t;
-        return r * s - 2.0 * s * s2 * t;
-    }
-    return r > 1.0 ? r - std::log1p(r) : r - std::log(x);
-}
-
-// (1 + r) log1p(r) - r = x log x - (x - 1) (>= 0), x = 1 + r = y/mu: r^2 - (1 + r) mu_fn(r)
-// on [-1/2, 1] (cancellation at most 4 times), x log x - r outside.
-inline double phi_fn(double r, double x) {
-    if (r >= -0.5 && r <= 1.0) return r * r - (1.0 + r) * mu_fn(r, x);
-    return x * std::log(x) - r;
-}
+using unitdev::mu_fn;
+using unitdev::phi_fn;
 
 // log mu and log(1 - mu) of the binomial from the two accurate complements.
 inline double log_mu(double mu, double muc) { return mu < 0.5 ? std::log(mu) : std::log1p(-muc); }
@@ -359,7 +345,11 @@ void link_eval(const Model& M, const double* eta, double* mu, double* muc, doubl
                 for (int i = 0; i < len; ++i) u[i] = e[i], uc[i] = 1.0 - e[i], g[i] = 1.0;
                 break;
             case lLog:
-                for (int i = 0; i < len; ++i) u[i] = std::exp(e[i]), uc[i] = -std::expm1(e[i]), g[i] = u[i];
+                // 1 - mu only for the binomial (the other families never read it)
+                if (M.fam == fBinomial)
+                    for (int i = 0; i < len; ++i) u[i] = std::exp(e[i]), uc[i] = -std::expm1(e[i]), g[i] = u[i];
+                else
+                    for (int i = 0; i < len; ++i) u[i] = std::exp(e[i]), uc[i] = 1.0 - u[i], g[i] = u[i];
                 break;
             case lLogit:
                 for (int i = 0; i < len; ++i) neg[i] = -e[i];
@@ -436,11 +426,23 @@ inline bool row_valid(const Model& M, double eta, double mu, double muc) {
     }
 }
 
+// Four interleaved double-double partial sums (rows i mod 4), joined in order at the end:
+// independent chains instead of one through every row (the order is fixed by the rows alone).
+struct DD4 {
+    DD p[4] = {DD{0.0, 0.0}, DD{0.0, 0.0}, DD{0.0, 0.0}, DD{0.0, 0.0}};
+    void add(lint i, DD x) { p[i & 3] = p[i & 3] + x; }
+    DD sum() const { return (p[0] + p[1]) + (p[2] + p[3]); }
+};
+
 // The IRLS state at one iterate.
 struct State {
     double *eta, *mu, *muc, *d1;
+    double* ud = nullptr;  // the fit rows' unit deviances (evaluate), NaN for the other rows
     DD dev{0.0, 0.0};
     bool valid = true;
+    // eta is X beta + offset in double-double (Dot2) or within rounding of it (a small step
+    // added to such an eta): a step from it may be added in plain double (solve_chol)
+    bool exact = false;
 };
 
 // mu, 1 - mu, mu' of every row from eta; the fit rows' validity and deviance (Dot2-free:
@@ -450,16 +452,20 @@ void evaluate(const Model& M, State& s, double* part) {
     std::vector<std::uint8_t> bad(static_cast<std::size_t>(row_chunks(n)), 0);
     for_row_chunks(n, [&](lint c, lint i0, lint i1) {
         link_eval(M, s.eta, s.mu, s.muc, s.d1, i0, i1);
-        DD acc{0.0, 0.0};
+        DD4 acc4;
         std::uint8_t b = 0;
         for (lint i = i0; i < i1; ++i) {
+            if (s.ud) s.ud[i] = kNaN;
             if (!(M.pw[i] > 0.0)) continue;
             if (!row_valid(M, s.eta[i], s.mu[i], s.muc[i])) {
                 b = 1;
                 continue;
             }
-            acc = acc + DD{M.pw[i] * unit_dev(M.fam, M.link, M.y[i], s.eta[i], s.mu[i], s.muc[i]), 0.0};
+            const double u = unit_dev(M.fam, M.link, M.y[i], s.eta[i], s.mu[i], s.muc[i]);
+            if (s.ud) s.ud[i] = u;
+            acc4.add(i, DD{M.pw[i] * u, 0.0});
         }
+        const DD acc = acc4.sum();
         part[2 * c] = acc.hi;
         part[2 * c + 1] = acc.lo;
         bad[static_cast<std::size_t>(c)] = b;
@@ -582,7 +588,7 @@ struct Work {
     bool have_kept = false;  // kept holds the last QR's columns
     Work(lint n_, lint k_) : n(n_), k(k_) {
         const lint nn = std::max<lint>(n, 1), kk = std::max<lint>(k, 1);
-        mem.reset(new double[static_cast<std::size_t>(11 * nn + 2 * row_chunks(n) + 2 * kk + kk * kk)]);
+        mem.reset(new double[static_cast<std::size_t>(13 * nn + 2 * row_chunks(n) + 2 * kk + kk * kk)]);
         double* q = mem.get();
         auto take = [&](lint c) {
             double* r = q;
@@ -591,6 +597,7 @@ struct Work {
         };
         cur.eta = take(nn), cur.mu = take(nn), cur.muc = take(nn), cur.d1 = take(nn);
         nxt.eta = take(nn), nxt.mu = take(nn), nxt.muc = take(nn), nxt.d1 = take(nn);
+        cur.ud = take(nn), nxt.ud = take(nn);
         z = take(nn), w = take(nn), rho = take(nn), part = take(2 * row_chunks(n));
         beta = take(kk), beta_new = take(kk), R = take(kk * kk);
         kmem.reset(new std::uint8_t[static_cast<std::size_t>(2 * kk)]);
@@ -659,6 +666,15 @@ constexpr double kCholPolishMaxErr = 1e-10;
 // the Gram matrix's setup (measured, docs/design/regression.md §3.4: a logistic (50, 3) fit
 // 18.7 us by QR, 19.9 us by Cholesky; (200, 3) the same; (500, 5) 13% faster by Cholesky)
 constexpr double kCholMinWork = 512;
+// The final solve by the normal equations (G199) when kappa(X^T W X) u <= kCholFinalMaxErr (the
+// estimate of solve_chol: trcon's 1-norm estimate of the factor, squared). Its right-hand side is
+// summed in double-double, so the coefficients are as accurate as the QR's; its covariance
+// (R^T R)^-1 from the Gram's Cholesky factor carries the Gram's rounding times kappa(X^T W X),
+// where the QR's carries about kappa(X) u. Measured against Arb IRLS solves (binomial, poisson,
+// gamma; n = 2000, k = 6 and 51): up to this estimate the standard errors are within 1.8e-15,
+// at most twice the QR's; at 5e-14 - 1e-13 three to thirteen times (5.5e-15), at 3.6e-12
+// (kappa(X) = 100) 1.3e-13 against 1.1e-15.
+constexpr double kCholFinalMaxErr = 1e-14;
 
 bool solve_chol(
     const Model& M,
@@ -670,7 +686,10 @@ bool solve_chol(
     double* eta,
     double max_err = kCholMaxErr,
     const double* base = nullptr,
-    const double* rho = nullptr
+    const double* rho = nullptr,
+    std::vector<double>* factor = nullptr,
+    const double* base_eta = nullptr,
+    bool dd_rhs = false
 ) {
     const lint n = M.n, k = M.k;
     std::vector<lint> K;
@@ -682,6 +701,7 @@ bool solve_chol(
         for (const lint j : K)
             if (std::isnan(base[j])) return false;
     const lint nc = row_chunks(n);
+    const bool all_in_place = kk == k && M.xcs == static_cast<std::int64_t>(sizeof(double));
     const std::size_t slot = static_cast<std::size_t>(kk * kk + kk);
     std::vector<double> part(static_cast<std::size_t>(nc) * slot, 0.0);
     std::vector<std::uint8_t> any(static_cast<std::size_t>(nc), 0);
@@ -696,15 +716,29 @@ bool solve_chol(
         // the chunk's sqrt(w) x_K rows, one after another (kk x len column-major: a row of X
         // is read and written contiguously)
         std::vector<double> A(static_cast<std::size_t>(len * kk)), v(static_cast<std::size_t>(len));
-        for (lint t = 0; t < len; ++t) {
-            const lint i = rows[t];
-            const double s = std::sqrt(w[i]);
-            v[t] = s * (base ? rho[i] : z[i]);
-            double* a = A.data() + t * kk;
-            const std::byte* xi = M.X + i * M.xrs;
-            for (lint jj = 0; jj < kk; ++jj) {
-                const lint col = K[jj];
-                a[jj] = s * ((M.intercept && col == 0) ? 1.0 : rd(xi + (col - (M.intercept ? 1 : 0)) * M.xcs));
+        if (all_in_place) {
+            // every column, contiguous in the row: one run per row (the loop vectorizes)
+            const lint j0 = M.intercept ? 1 : 0;
+            for (lint t = 0; t < len; ++t) {
+                const lint i = rows[t];
+                const double s = std::sqrt(w[i]);
+                v[t] = s * (base ? rho[i] : z[i]);
+                double* a = A.data() + t * kk;
+                const std::byte* xi = M.X + i * M.xrs;
+                if (M.intercept) a[0] = s;
+                for (lint j = 0; j < M.p; ++j) a[j0 + j] = s * rd(xi + j * static_cast<std::int64_t>(sizeof(double)));
+            }
+        } else {
+            for (lint t = 0; t < len; ++t) {
+                const lint i = rows[t];
+                const double s = std::sqrt(w[i]);
+                v[t] = s * (base ? rho[i] : z[i]);
+                double* a = A.data() + t * kk;
+                const std::byte* xi = M.X + i * M.xrs;
+                for (lint jj = 0; jj < kk; ++jj) {
+                    const lint col = K[jj];
+                    a[jj] = s * ((M.intercept && col == 0) ? 1.0 : rd(xi + (col - (M.intercept ? 1 : 0)) * M.xcs));
+                }
             }
         }
         double* G = part.data() + static_cast<std::size_t>(c) * slot;
@@ -716,6 +750,37 @@ bool solve_chol(
         if (!any[static_cast<std::size_t>(c)]) continue;
         const double* q = part.data() + static_cast<std::size_t>(c) * slot;
         for (std::size_t e = 0; e < slot; ++e) G[e] += q[e];
+    }
+    if (dd_rhs && base) {
+        // the step's right-hand side X_K^T W rho in double-double (Dot2 over the columns, the
+        // row factor w rho formed exactly; per fixed chunk of rows, the chunks added in order):
+        // at the solution it is a sum that cancels, and its rounding, times (X^T W X)^-1, is the
+        // coefficients' error (the QR's refinement sums it so too)
+        std::vector<dot2::ColRef> ck;
+        for (const lint j : K) {
+            if (M.intercept && j == 0) ck.push_back({reinterpret_cast<const std::byte*>(&kOneValue), 0});
+            else ck.push_back({M.X + (j - (M.intercept ? 1 : 0)) * M.xcs, M.xrs});
+        }
+        std::vector<double> hp(static_cast<std::size_t>(nc) * 2 * kk, 0.0);
+        for_row_chunks(n, [&](lint c, lint i0, lint i1) {
+            dot2::dot2_cols(
+                ck.data(), kk, i1 - i0, [&](lint t) { return i0 + t; },
+                [&](lint t, double& ah, double& al) {
+                    const lint i = i0 + t;
+                    if (w[i] > 0.0) two_prod(w[i], rho[i], ah, al);
+                    else ah = al = 0.0;
+                },
+                hp.data() + static_cast<std::size_t>(c) * 2 * kk
+            );
+        });
+        for (lint jj = 0; jj < kk; ++jj) {
+            DD acc{0.0, 0.0};
+            for (lint c = 0; c < nc; ++c) {
+                const double* q = hp.data() + static_cast<std::size_t>(c) * 2 * kk;
+                acc = acc + special::dd::two_sum(q[2 * jj], q[2 * jj + 1]);
+            }
+            G[kk * kk + jj] = acc.hi + acc.lo;
+        }
     }
     double* U = G.data();
     double* h = G.data() + kk * kk;
@@ -734,23 +799,41 @@ bool solve_chol(
         if (!(std::fabs(U[jj * kk + jj]) > 2.0 * tol * nrm[jj])) return false;
     linalg::lapack::trtrs('U', 'T', 'N', kk, 1, U, kk, h, kk);
     linalg::lapack::trtrs('U', 'N', 'N', kk, 1, U, kk, h, kk);
+    if (factor) factor->assign(U, U + kk * kk);
     for (lint j = 0; j < k; ++j) beta[j] = kNaN, kept[j] = 0;
     for (lint jj = 0; jj < kk; ++jj) {
         if (!std::isfinite(h[jj])) return false;
         beta[K[jj]] = base ? base[K[jj]] + h[jj] : h[jj];
         kept[K[jj]] = 1;
     }
+    if (base && base_eta && kk == k) {
+        // the step added to the base's eta (within rounding of X base + offset in double-double,
+        // State::exact): eta_t + x_t d in plain double, as accurate as X (base + d) by Dot2 for a
+        // step small against the coefficients (the polish's and the final solve's)
+        std::vector<double> hd(h, h + kk);
+        std::vector<dot2::ColRef> cols;
+        std::vector<double> hb;
+        design_cols(M, beta, cols, hb);
+        for_row_chunks(n, [&](lint, lint i0, lint i1) {
+            if (!dot2::gemv_rows(M.X, M.xrs, M.xcs, M.p, M.intercept, hd.data(), i0, i1, eta + i0))
+                dot2::plain_rows(cols.data(), hd.data(), kk, i1 - i0, [&](lint t) { return i0 + t; }, eta + i0);
+            for (lint i = i0; i < i1; ++i) eta[i] += base_eta[i];
+        });
+        return true;
+    }
     if (base) {
         xbeta_all(M, beta, eta);
         return true;
     }
     // eta = X beta + offset in plain double: an inner iterate's error in eta enters the next
-    // least squares fit only at second order (four rows at a time, each row's sum in order)
+    // least squares fit only at second order (by dgemv per fixed chunk of rows)
     std::vector<dot2::ColRef> cols;
     std::vector<double> hb;
     design_cols(M, beta, cols, hb);
     for_row_chunks(n, [&](lint, lint i0, lint i1) {
-        dot2::plain_rows(cols.data(), hb.data(), kk, i1 - i0, [&](lint t) { return i0 + t; }, eta + i0);
+        // every column kept: one dgemv on X in place (C or F order), else the rows' loop
+        if (!(kk == k && dot2::gemv_rows(M.X, M.xrs, M.xcs, M.p, M.intercept, hb.data(), i0, i1, eta + i0)))
+            dot2::plain_rows(cols.data(), hb.data(), kk, i1 - i0, [&](lint t) { return i0 + t; }, eta + i0);
         for (lint i = i0; i < i1; ++i) eta[i] += M.o[i];
     });
     return true;
@@ -806,12 +889,15 @@ IrlsOut irls(
         // kept (G40), the QR when they cannot (failure, ill-conditioning, G21's rule)
         // past it, a canonical link's polishing iterations too when the normal equations are
         // accurate enough (G80); the QR otherwise
-        const bool by_chol = (!conv || canonical(M)) && !polish_newton && inner_chol &&
-                             double(M.n) * double(M.k) >= kCholMinWork &&
-                             solve_chol(
-                                 M, W.z, W.w, W.kept, W.beta_new, W.kept_new, W.nxt.eta,
-                                 conv ? kCholPolishMaxErr : kCholMaxErr, conv ? W.beta : nullptr, W.rho
-                             );
+        const bool by_chol =
+            (!conv || canonical(M)) && !polish_newton && inner_chol && double(M.n) * double(M.k) >= kCholMinWork &&
+            solve_chol(
+                M, W.z, W.w, W.kept, W.beta_new, W.kept_new, W.nxt.eta, conv ? kCholPolishMaxErr : kCholMaxErr,
+                conv ? W.beta : nullptr, W.rho, nullptr, conv && W.cur.exact ? W.cur.eta : nullptr
+            );
+        // the new eta's accuracy: Dot2 (QR, the polish's step from an exact eta) or plain (an
+        // inner normal-equations iterate)
+        W.nxt.exact = !by_chol || conv;
         if (!by_chol) {
             // the polishing iterations refine as the final solve does: their iterate's error is
             // what the final step starts from
@@ -839,12 +925,15 @@ IrlsOut irls(
                 for (lint i = 0; i < M.n; ++i) z0[i] = W.w[i] > 0.0 ? W.cur.eta[i] - M.o[i] : 0.0;
                 double* keep_eta = W.rho;  // the step's eta, kept aside (rho is not needed again)
                 std::copy(W.nxt.eta, W.nxt.eta + M.n, keep_eta);
+                const bool keep_exact = W.nxt.exact;
                 solve_lean(M, z0, W.w, W.beta, W.kept, W.nxt.eta, 0, sc);
+                W.nxt.exact = true;
                 evaluate(M, W.nxt, W.part);
                 if (W.nxt.valid) {
                     W.have_beta = true;
                 } else {
                     std::copy(keep_eta, keep_eta + M.n, W.nxt.eta);
+                    W.nxt.exact = keep_exact;
                     evaluate(M, W.nxt, W.part);
                 }
             }
@@ -860,6 +949,7 @@ IrlsOut irls(
                         W.beta_new[c] = (std::isnan(W.beta_new[c]) && std::isnan(W.beta[c])) ? kNaN : mid;
                     }
                     xbeta_all(M, W.beta_new, W.nxt.eta);
+                    W.nxt.exact = true;
                     evaluate(M, W.nxt, W.part);
                     ok = ok_state(first);
                     if (same) break;
@@ -870,6 +960,7 @@ IrlsOut irls(
                 // eta towards the start; the next iteration's least squares fit starts from there
                 for (int h = 0; h < 64 && !ok; ++h) {
                     for (lint i = 0; i < M.n; ++i) W.nxt.eta[i] = 0.5 * (W.nxt.eta[i] + W.cur.eta[i]);
+                    W.nxt.exact = false;
                     evaluate(M, W.nxt, W.part);
                     ok = ok_state(first);
                 }
@@ -1111,6 +1202,45 @@ std::vector<lint> direction(const Model& M, const double* bdir, std::vector<lint
     return {};
 }
 
+// The final solve by the normal equations (G80's polishing step, once more): the step from the
+// last iterate at its weights, X_K^T W X_K d = X_K^T W rho over the columns K of the last solve
+// (the right-hand side in double-double), when kappa(X^T W X) u <= kCholFinalMaxErr; the new
+// iterate b + d is then as accurate as the QR's (the error relative to the step, which is at
+// rounding after the polish), and the covariance within twice the QR's error (measured, above). The outputs of
+// the least squares core's final fit: params and kept, R = the Cholesky factor (the QR's R up to
+// the signs of its rows: R^T R is the same matrix), the covariance (R^T R)^-1, eta = X b +
+// offset (Dot2; the core's fitted values are without it), the rank. Only for the nonrobust
+// covariance of a canonical link (no Newton step, no scores); false leaves the final solve to
+// the QR.
+bool final_chol(const Model& M, const Work& W, const Outs& o, double* eta, double* fstats) {
+    const lint k = M.k;
+    std::vector<double> U, beta(static_cast<std::size_t>(std::max<lint>(k, 1)));
+    std::vector<std::uint8_t> kept(static_cast<std::size_t>(std::max<lint>(k, 1)));
+    if (!solve_chol(
+            M, W.z, W.w, W.kept, beta.data(), kept.data(), eta, kCholFinalMaxErr, W.beta, W.rho, &U,
+            W.cur.exact ? W.cur.eta : nullptr, true
+        ))
+        return false;
+    std::vector<lint> K;
+    for (lint c = 0; c < k; ++c)
+        if (kept[c]) K.push_back(c);
+    const lint kk = static_cast<lint>(K.size());
+    std::fill(o.R, o.R + k * k, 0.0);
+    std::fill(o.cov, o.cov + k * k, kNaN);
+    for (lint c = 0; c < k; ++c) {
+        o.params[c] = kept[c] ? beta[c] : kNaN;
+        o.kept[c] = kept[c];
+    }
+    for (lint jj = 0; jj < kk; ++jj)
+        for (lint ii = 0; ii <= jj; ++ii) o.R[K[ii] * k + K[jj]] = U[jj * kk + ii];
+    if (linalg::lapack::potri_upper(kk, U.data(), kk) > 0) std::fill(U.begin(), U.end(), kNaN);
+    for (lint jj = 0; jj < kk; ++jj)
+        for (lint ii = 0; ii <= jj; ++ii) o.cov[K[ii] * k + K[jj]] = o.cov[K[jj] * k + K[ii]] = U[jj * kk + ii];
+    std::fill(fstats, fstats + kNStat, kNaN);
+    fstats[kRank] = static_cast<double>(kk);
+    return true;
+}
+
 int glm_one(
     const Opts& op,
     lint n,
@@ -1266,6 +1396,7 @@ int glm_one(
     std::vector<double> eta0;
     std::vector<double> eta_fin(static_cast<std::size_t>(nn)), resid_fin(static_cast<std::size_t>(nn));
     double fstats[kNStat];
+    bool final_by_chol = false;
     {
         Problem pb{n, p, k, op.intercept, true, false, gb != nullptr, op.rtol, op.cov, 3, op.maxlags, op.gtot, false};
         pb.steps = op.final_steps;
@@ -1295,11 +1426,15 @@ int glm_one(
         }
         Dest dst{o.params, o.cov, o.R, eta_fin.data(), resid_fin.data(), o.kept, fstats, nullptr};
         dst.newton = &newton_used;
-        fit_one(pb, d, dst, sc);
+        final_by_chol = op.cov == kNonrobust && canonical(M) && ir.ok && W.have_beta && op.inner_chol &&
+                        !(op.fam == fGaussian && op.link == lIdentity) && double(n) * double(k) >= kCholMinWork &&
+                        final_chol(M, W, o, eta_fin.data(), fstats);
+        if (!final_by_chol) fit_one(pb, d, dst, sc);
     }
     total_iters += 1;
     // the final state (Newton's step for a non-canonical link, G42)
-    for (lint i = 0; i < n; ++i) eta_fin[i] += off[i];
+    if (!final_by_chol)
+        for (lint i = 0; i < n; ++i) eta_fin[i] += off[i];
     std::copy(eta_fin.begin(), eta_fin.begin() + n, W.nxt.eta);
     evaluate(M, W.nxt, W.part);
     // the last iterate has coefficients (at least one iteration, not halved in eta alone)
@@ -1400,7 +1535,7 @@ int glm_one(
     std::vector<double> part(static_cast<std::size_t>(6 * nc));
     const bool gid = op.fam == fGaussian && op.link == lIdentity;
     for_row_chunks(n, [&](lint c, lint i0, lint i1) {
-        DD dv{0, 0}, pe{0, 0}, slw{0, 0};
+        DD4 dv4, pe4, slw4;
         for (lint i = i0; i < i1; ++i) {
             double mu, muc, g, e;
             if (sep[static_cast<std::size_t>(i)]) {
@@ -1422,7 +1557,10 @@ int glm_one(
             o.eta[i] = e;
             const double r = y_minus_mu(op.fam, y[i], mu, muc);
             const double V = variance(op.fam, mu, muc);
-            const double ud = unit_dev(op.fam, op.link, y[i], e, mu, muc);
+            // the fit rows' unit deviance from the state's evaluate (the same call), else here
+            const double ud = (pw[i] > 0.0 && fin->ud && !std::isnan(fin->ud[i]))
+                                  ? fin->ud[i]
+                                  : unit_dev(op.fam, op.link, y[i], e, mu, muc);
             o.rresp[i] = r;
             const bool tiny = V < kTiny;  // mu or 1 - mu underflowed: the ratios from eta
             const double pr = tiny ? pearson_ratio(op.fam, op.link, y[i], e, mu, muc, r, V) : 0.0;
@@ -1431,12 +1569,13 @@ int glm_one(
             o.rdev[i] = std::copysign(std::sqrt(std::max(dd, 0.0)), r);
             o.rwork[i] = working_ratio(op.fam, op.link, y[i], e, mu, muc, r, g);
             if (pw[i] > 0.0) {
-                dv = dv + DD{f[i] * dd, 0.0};
-                pe = pe + DD{tiny ? pw[i] * pr * pr : pw[i] * r * r / V, 0.0};
-                if (op.has_var) slw = slw + DD{f[i] * std::log(v[i]), 0.0};
+                dv4.add(i, DD{f[i] * dd, 0.0});
+                pe4.add(i, DD{tiny ? pw[i] * pr * pr : pw[i] * r * r / V, 0.0});
+                if (op.has_var) slw4.add(i, DD{f[i] * std::log(v[i]), 0.0});
             }
         }
         double* q = part.data() + 6 * c;
+        const DD dv = dv4.sum(), pe = pe4.sum(), slw = slw4.sum();
         q[0] = dv.hi, q[1] = dv.lo, q[2] = pe.hi, q[3] = pe.lo, q[4] = slw.hi, q[5] = slw.lo;
     });
     DD dev{0, 0}, pear{0, 0}, slogw{0, 0};
@@ -1511,6 +1650,17 @@ int glm_one(
     // the log-likelihood's terms free of mu, once for llf and llnull: v lgamma(y + 1)
     // (poisson), lgamma(v/scale) (gamma), v log C(n, s) (binomial); 0 without a lgamma where
     // the value is exactly 0 (y = 0, 1; s = 0, n)
+    // the poisson's lgamma(y + 1) of the small integer counts from a table (the same values: one
+    // call per distinct count instead of one per row)
+    std::vector<double> lgy;
+    if (op.fam == fPoisson) {
+        constexpr double kTableMax = 4096;
+        double ymax = -1.0;
+        for (lint i = 0; i < n; ++i)
+            if (pw[i] > 0.0 && y[i] <= kTableMax && y[i] == std::floor(y[i])) ymax = std::max(ymax, y[i]);
+        lgy.resize(static_cast<std::size_t>(ymax + 1.0));
+        for (std::size_t c = 0; c < lgy.size(); ++c) lgy[c] = special::Gammaln::f(double(c) + 1.0);
+    }
     if (op.fam != fGaussian) {
         for_row_chunks(n, [&](lint, lint i0, lint i1) {
             double vprev = kNaN, gprev = 0.0;
@@ -1518,7 +1668,10 @@ int glm_one(
                 if (!(pw[i] > 0.0)) continue;
                 const double yy = y[i];
                 if (op.fam == fPoisson) {
-                    aux[i] = (yy == 0.0 || yy == 1.0) ? 0.0 : v[i] * special::Gammaln::f(yy + 1.0);
+                    const bool tab = yy < double(lgy.size()) && yy == std::floor(yy);
+                    aux[i] = (yy == 0.0 || yy == 1.0)
+                                 ? 0.0
+                                 : v[i] * (tab ? lgy[static_cast<std::size_t>(yy)] : special::Gammaln::f(yy + 1.0));
                 } else if (op.fam == fGamma) {
                     if (v[i] != vprev) vprev = v[i], gprev = special::Gammaln::f(v[i] / phi);
                     aux[i] = gprev;
@@ -1533,7 +1686,8 @@ int glm_one(
         });
     }
     auto llf_at = [&](const double* mus, const double* mucs, const double* etas, double mconst, double mcconst,
-                      const std::uint8_t* sp, bool concentrated, double ssr_c, double dev_at = kNaN) -> double {
+                      const std::uint8_t* sp, bool concentrated, double ssr_c, double dev_at = kNaN,
+                      const double* uds = nullptr) -> double {
         if (!concentrated && phi == 0.0) {
             // an estimated scale of 0 (a perfect fit): the likelihood's limit, +inf where the
             // model fits every row exactly (its deviance 0), -inf elsewhere (G97, as ols's G22)
@@ -1544,14 +1698,27 @@ int glm_one(
             return -nob / 2.0 * (std::log(2.0 * M_PI) + std::log(ssr_c / nob) + 1.0) + slogw.hi / 2.0;
         }
         std::vector<double> lp(static_cast<std::size_t>(2 * nc));
+        // a constant mu: its logs once (the same calls as per row)
+        const bool cmu = mus == nullptr;
+        const double lm_c =
+            cmu && op.fam != fGaussian && op.fam != fGamma ? log_mu_at(op.fam, op.link, kNaN, mconst, mcconst) : 0.0;
+        const double lmc_c = cmu && op.fam == fBinomial ? log_muc_at(op.link, kNaN, mconst, mcconst) : 0.0;
+        // the binomial of 0/1 responses (no trials): log mu or log(1 - mu) is the state's unit
+        // deviance over -2 (exact), so the fitted llf reads it
+        const bool from_ud = uds && op.fam == fBinomial && !op.has_trials;
         for_row_chunks(n, [&](lint c, lint i0, lint i1) {
-            DD acc{0, 0};
+            DD4 acc4;
             for (lint i = i0; i < i1; ++i) {
                 if (!(pw[i] > 0.0) || (sp && sp[i])) continue;  // separated rows: 0 at the boundary
                 const double mu = mus ? mus[i] : mconst, muc = mucs ? mucs[i] : mcconst;
                 const double et = etas ? etas[i] : kNaN;  // used only where mu or 1 - mu underflowed
                 const double yy = y[i];
                 double l;
+                if (from_ud && !std::isnan(uds[i]) && (yy == 0.0 || yy == 1.0)) {
+                    l = aux[i] + v[i] * (-0.5 * uds[i]);
+                    acc4.add(i, DD{f[i] * l, 0.0});
+                    continue;
+                }
                 switch (op.fam) {
                     case fGaussian: {
                         const double d = yy - mu;
@@ -1559,7 +1726,9 @@ int glm_one(
                         break;
                     }
                     case fPoisson:
-                        l = (v[i] * ((yy == 0.0 ? 0.0 : yy * log_mu_at(op.fam, op.link, et, mu, muc)) - mu) - aux[i]) /
+                        l = (v[i] * ((yy == 0.0 ? 0.0 : yy * (cmu ? lm_c : log_mu_at(op.fam, op.link, et, mu, muc))) -
+                                     mu) -
+                             aux[i]) /
                             phi;
                         break;
                     case fGamma: {
@@ -1570,14 +1739,15 @@ int glm_one(
                     default: {
                         const double nt = tr[i], sv = nt * yy, fl = nt - sv;
                         l = 0.0;
-                        if (sv != 0.0) l += sv * log_mu_at(op.fam, op.link, et, mu, muc);
-                        if (fl != 0.0) l += fl * log_muc_at(op.link, et, mu, muc);
+                        if (sv != 0.0) l += sv * (cmu ? lm_c : log_mu_at(op.fam, op.link, et, mu, muc));
+                        if (fl != 0.0) l += fl * (cmu ? lmc_c : log_muc_at(op.link, et, mu, muc));
                         l = aux[i] + v[i] * l;
                         break;
                     }
                 }
-                acc = acc + DD{f[i] * l, 0.0};
+                acc4.add(i, DD{f[i] * l, 0.0});
             }
+            const DD acc = acc4.sum();
             lp[2 * c] = acc.hi;
             lp[2 * c + 1] = acc.lo;
         });
@@ -1588,7 +1758,7 @@ int glm_one(
     double llf = kNaN;
     if (gid) llf = llf_at(nullptr, nullptr, nullptr, 0, 0, nullptr, true, D);
     else if (gconst) llf = llf_at(nullptr, nullptr, nullptr, y0, muc0, nullptr, false, 0, D);  // at mu = y0 exactly
-    else if (fin) llf = llf_at(fmu, fmuc, feta, 0, 0, sep.data(), false, 0, D);
+    else if (fin) llf = llf_at(fmu, fmuc, feta, 0, 0, sep.data(), false, 0, D, fin->ud);
     else if (separated) llf = 0.0;  // every row at its boundary
 
     // the null model: the intercept alone (closed form without an offset, else IRLS), or
@@ -1605,17 +1775,17 @@ int glm_one(
         if (op.intercept && !has_offset) {
             std::vector<DD> pa(static_cast<std::size_t>(3 * ncn), DD{0.0, 0.0});
             for_row_chunks(n, [&](lint c, lint i0, lint i1) {
-                DD a{0, 0}, b{0, 0}, w{0, 0};
+                DD4 a4, b4, w4;
                 for (lint i = i0; i < i1; ++i)
                     if (pw[i] > 0.0) {
                         double h, l;
                         two_prod(pw[i], y[i], h, l);
-                        a = a + DD{h, l};
+                        a4.add(i, DD{h, l});
                         two_prod(pw[i], 1.0 - y[i], h, l);
-                        b = b + DD{h, l};
-                        w = w + DD{pw[i], 0.0};
+                        b4.add(i, DD{h, l});
+                        w4.add(i, DD{pw[i], 0.0});
                     }
-                pa[3 * c] = a, pa[3 * c + 1] = b, pa[3 * c + 2] = w;
+                pa[3 * c] = a4.sum(), pa[3 * c + 1] = b4.sum(), pa[3 * c + 2] = w4.sum();
             });
             DD sy{0, 0}, sy1{0, 0}, sw{0, 0};
             for (lint c = 0; c < ncn; ++c) sy = sy + pa[3 * c], sy1 = sy1 + pa[3 * c + 1], sw = sw + pa[3 * c + 2];
@@ -1642,18 +1812,34 @@ int glm_one(
         }
         if (okn) {
             std::vector<DD> pd(static_cast<std::size_t>(2 * ncn), DD{0.0, 0.0});
+            // a constant mu: the unit deviance of the small integer responses from a table (the
+            // same calls, one per distinct value)
+            std::vector<double> udt;
+            if (const_mu && op.fam != fGaussian && op.fam != fGamma) {
+                double ymax = -1.0;
+                for (lint i = 0; i < n; ++i)
+                    if (pw[i] > 0.0 && y[i] >= 0.0 && y[i] <= 4096.0 && y[i] == std::floor(y[i]))
+                        ymax = std::max(ymax, y[i]);
+                udt.resize(static_cast<std::size_t>(ymax + 1.0));
+                for (std::size_t c = 0; c < udt.size(); ++c)
+                    udt[c] = unit_dev(op.fam, op.link, double(c), kNaN, mc, mcc);
+            }
             for_row_chunks(n, [&](lint c, lint i0, lint i1) {
-                DD a{0, 0}, b{0, 0};
+                DD4 a4, b4;
                 for (lint i = i0; i < i1; ++i) {
                     if (!(pw[i] > 0.0)) continue;
                     const double mu = const_mu ? mc : mun[i], muc = const_mu ? mcc : mucn[i];
-                    a = a + DD{pw[i] * unit_dev(op.fam, op.link, y[i], const_mu ? kNaN : etan[i], mu, muc), 0.0};
+                    const double yi = y[i];
+                    const bool tab = yi >= 0.0 && yi < double(udt.size()) && yi == std::floor(yi);
+                    const double u = tab ? udt[static_cast<std::size_t>(yi)]
+                                         : unit_dev(op.fam, op.link, yi, const_mu ? kNaN : etan[i], mu, muc);
+                    a4.add(i, DD{pw[i] * u, 0.0});
                     if (gid) {
                         const double d = y[i] - mu;
-                        b = b + DD{pw[i] * d * d, 0.0};
+                        b4.add(i, DD{pw[i] * d * d, 0.0});
                     }
                 }
-                pd[2 * c] = a, pd[2 * c + 1] = b;
+                pd[2 * c] = a4.sum(), pd[2 * c + 1] = b4.sum();
             });
             DD dn{0, 0}, sn{0, 0};
             for (lint c = 0; c < ncn; ++c) dn = dn + pd[2 * c], sn = sn + pd[2 * c + 1];

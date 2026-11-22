@@ -1,11 +1,12 @@
 """Penalized regression: ridge, lasso, elastic_net, their cross-validation and the penalized
 GLM (docs/api/regression.md §4, docs/design/regression.md §3.5).
 
-The fits are the native kernel stardust._core.regression.penalized_path: ridge by one SVD for
-every alpha, the lasso and the elastic net by coordinate descent with the KKT polish, the
-penalized GLM by IRLS with coordinate descent inside. This module checks and converts the
-inputs, draws the cross-validation folds from an sd.random Generator and builds the results,
-which are prediction-focused (G48): no standard errors or p-values.
+The fits are the native kernel stardust._core.regression.penalized_path: ridge by the normal
+equations for few alphas and one SVD for many, the lasso and the elastic net by coordinate
+descent with the KKT polish, the penalized GLM by IRLS with coordinate descent inside. This
+module checks and converts the inputs, draws the cross-validation folds from an sd.random
+Generator and builds the results, which are prediction-focused (G48): no standard errors or
+p-values.
 
 An `alpha` that is a 1-D array is a path: solved largest first with warm starts, and every
 per-fit field gains an axis of the alphas' length just before its own axes (params
@@ -45,8 +46,9 @@ _k = _sd.regression
 
 # the kernel's per-alpha scalars (csrc/regression/penalized.cpp, enum PStat)
 (_NOBS, _SUMW, _NITER, _GAP, _CONV, _DF, _ISNAN, _RSS, _TSS, _TEST_SSE, _TEST_SW, _POLISHED, _GCV) = range(13)
-# the kernel's kinds and families
-_ENET, _RIDGE, _GLMNET = 0, 1, 2
+# the kernel's kinds and families (_RIDGE_GCV: ridge with its residual sum of squares and GCV to
+# rounding, which the Gram route otherwise gives in a closed form that may cancel)
+_ENET, _RIDGE, _GLMNET, _RIDGE_GCV = 0, 1, 2, 3
 _FAMILY_CODE = {"gaussian": 0, "binomial": 1, "poisson": 2}
 _FAMILIES = ("binomial", "poisson")
 # ridge's default alpha grid: alpha_max as if l1_ratio were 1e-3 (glmnet's rule for alpha = 0;
@@ -810,7 +812,7 @@ def _fit(
 def ridge(y, X, /, *, alpha, weights=None, intercept=True, standardize=False, nan_policy="propagate"):
     """Ridge regression: minimizes (1/(2 sw)) sum w (y - b0 - X beta)^2 + alpha/2 ||S beta||^2
     (scikit-learn's ElasticNet objective at l1_ratio = 0; its Ridge's alpha is sw times this
-    one). Solved by one SVD for every alpha."""
+    one). Solved by the normal equations (Cholesky) for few alphas, by one SVD for many."""
     return _fit("ridge", RidgeResult, _RIDGE, y, X, alpha, 0.0, weights, intercept, standardize, 1, 1.0, nan_policy)
 
 
@@ -1023,7 +1025,7 @@ def _cv(
     # fields in y's units
     fy = _fy_of(kind, y)
     if gcv:
-        Pg, Sg, _ = _run(func, kind, y, X, w, grid, l1_ratio, "gaussian", intercept, standardize, max_iter, tol)
+        _, Sg, _ = _run(func, _RIDGE_GCV, y, X, w, grid, l1_ratio, "gaussian", intercept, standardize, max_iter, tol)
         err = Sg[..., _GCV]
         se = err * nan
     else:
@@ -1062,18 +1064,15 @@ def _cv(
         e = err.tolist()
         g = grid.tolist()
         s = se.tolist()
-        pick = None
         if any(math.isnan(v) for v in e):
             amin = a1se = nan
         else:
             imin = min(range(len(e)), key=lambda i: (e[i], i))
-            pick = imin
             amin = g[imin]
             a1se = nan if gcv else g[min(i for i in range(len(e)) if e[i] <= e[imin] + s[imin])]
         bad = math.isnan(amin)
     else:
         imin = _sd.expand_dims(_sd.argmin(err, axis=-1), axis=-1)
-        pick = imin
         emin = _sd.take_along_axis(err, imin, axis=-1)
         amin = _sd.take_along_axis(
             grid if grid.ndim == err.ndim else _sd.broadcast_to(grid, tuple(err.shape)), imin, axis=-1
@@ -1095,15 +1094,9 @@ def _cv(
         refit_alphas = _sd.where(_sd.isnan(chosen), 0.0, _sd.expand_dims(chosen, axis=-1))
     else:
         refit_alphas = _sd.asarray([0.0 if bad else chosen])
-    if gcv and pick is not None:
-        # the grid's fits are the refit (each alpha from the same SVD, as ridge at that alpha)
-        if isinstance(pick, int):
-            P, S = Pg[pick : pick + 1], Sg[pick : pick + 1]
-        else:
-            P = _sd.take_along_axis(Pg, _sd.expand_dims(pick, axis=-1), axis=-2)
-            S = _sd.take_along_axis(Sg, _sd.expand_dims(pick, axis=-1), axis=-2)
-    else:
-        P, S, _ = _run(func, kind, y, X, w, refit_alphas, l1_ratio, "gaussian", intercept, standardize, max_iter, tol)
+    # the refit at the chosen alpha: ridge's own fit at it (the grid's solve may take another route,
+    # the SVD for many alphas, the Gram's Cholesky for few: the refit is the single fit's bits)
+    P, S, _ = _run(func, kind, y, X, w, refit_alphas, l1_ratio, "gaussian", intercept, standardize, max_iter, tol)
     # no choice (a NaN curve): NaN coefficients and scalars, but the rows' count stays (nobs 0
     # for a regression without rows, G96)
     keep_cols = _sd.logical_or(_sd.arange(S.shape[-1]) == _NOBS, _sd.arange(S.shape[-1]) == _SUMW)
@@ -1151,11 +1144,11 @@ def ridge_cv(
     standardize=False,
     nan_policy="propagate",
 ):
-    """ridge with alpha chosen by generalized cross-validation (cv='gcv', the default: one SVD
-    of all the data, no folds) or by k-fold cross-validation (cv an int, folds from `rng`);
+    """ridge with alpha chosen by generalized cross-validation (cv='gcv', the default: one
+    decomposition of all the data, no folds) or by k-fold cross-validation (cv an int, folds from `rng`);
     refit on all the data at the chosen alpha. The default grid
-    reaches eps = 1e-6 of its alpha_max (G87): one SVD serves every alpha, so a wide grid costs
-    nothing, and 1e-3 stopped at the lasso's alpha_max, often above a clear signal's optimum."""
+    reaches eps = 1e-6 of its alpha_max (G87): one SVD serves every alpha of a wide grid, so it costs
+    little, and 1e-3 stopped at the lasso's alpha_max, often above a clear signal's optimum."""
     return _cv(
         "ridge_cv",
         RidgeCVResult,

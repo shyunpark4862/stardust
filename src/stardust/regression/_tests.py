@@ -455,11 +455,17 @@ def wald_test(r, R, q):
 
 
 def _nan_equal(a, b):
+    """The same values element by element (NaN equal to NaN), stopping at the first difference
+    (the model comparisons' columns usually differ in their first element)."""
     if a is None or b is None:
         return a is None and b is None
+    if a is b:
+        return True
     if tuple(a.shape) != tuple(b.shape):
         return False
-    return bool(_sd.all(_sd.logical_or(a == b, _sd.logical_and(_sd.isnan(a), _sd.isnan(b)))))
+    if a.dtype != _sd.float64 or b.dtype != _sd.float64:
+        return bool(_sd.all(_sd.logical_or(a == b, _sd.logical_and(_sd.isnan(a), _sd.isnan(b)))))
+    return _k.same_values(a, b)
 
 
 def _check_pair(func, big, small, *, allow_robust=False):

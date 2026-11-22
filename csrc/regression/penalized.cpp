@@ -17,11 +17,14 @@
 //     constant columns, which leave the fit); the Gram of sqrt(w) [(x - c), y - c_y, 1] by
 //     dsyrk then gives the exactly centered Gram (G - S S^T / sw, S the last column: the
 //     rounding of the means does not stay) and the scales.
-//   - ridge (rho = 0 by the closed form): the QR of the centered whitened scaled design (TSQR
+//   - ridge (rho = 0 by the closed form): with few alphas, all positive, the normal equations
+//     (the Gram's or, with fewer rows than columns, the kernel Z Z^T's Cholesky per alpha;
+//     G198, see ridge_gram_primal and ridge_gram_dual), else the SVD route: the QR of the
+//     centered whitened scaled design (TSQR
 //     over fixed blocks of rows when tall: the blocks' QR on the pool, then the QR of their
 //     stacked R), the SVD of R; b(alpha) = V diag(s/(s^2 + alpha)) U^T v~ for every alpha, the
-//     residual sum of squares, the effective degrees of freedom and GCV in closed form. No
-//     X^T X. When the solution's condition (s_1^2 + alpha)/(s_min^2 + alpha) exceeds
+//     residual sum of squares, the effective degrees of freedom and GCV in closed form. When
+//     the solution's condition (s_1^2 + alpha)/(s_min^2 + alpha) exceeds
 //     kRefineCond k, up to kPolishSteps refinements with residuals from the data in
 //     double-double (G51: the fixed point is the exact problem's solution, as G1's OLS).
 //   - lasso and elastic net: cyclic coordinate descent in column order, covariance updates
@@ -50,6 +53,7 @@
 
 #include "regression/lsq.hpp"
 #include "regression/dot2.hpp"
+#include "regression/unitdev.hpp"
 
 #include "bind/errors.hpp"
 #include "linalg/ops/common.hpp"
@@ -247,6 +251,16 @@ struct Src {
     double twv(lint i) const { return rd(tw + i * tws); }
 };
 
+// The GLM's y must lie in the family's range (y finite).
+int check_range(const Src& s, int fam) {
+    if (fam != fGaussian)
+        for (lint i = 0; i < s.n; ++i) {
+            const double v = s.yv(i);
+            if (fam == fBinomial ? !(v == 0.0 || v == 1.0) : !(v >= 0.0)) return eBadY;
+        }
+    return 0;
+}
+
 // Inf is an error, NaN makes the results NaN (returns -1), negative weights are an error,
 // the GLM's y must lie in the family's range.
 int check(const Src& s, int fam) {
@@ -269,12 +283,7 @@ int check(const Src& s, int fam) {
             else if (v < 0) return eNegW;
         }
     if (nan) return -1;
-    if (fam != fGaussian)
-        for (lint i = 0; i < s.n; ++i) {
-            const double v = s.yv(i);
-            if (fam == fBinomial ? !(v == 0.0 || v == 1.0) : !(v >= 0.0)) return eBadY;
-        }
-    return 0;
+    return check_range(s, fam);
 }
 
 // The fit's rows, weights, centering and scales.
@@ -286,6 +295,7 @@ struct Prep {
     std::vector<double> cx, sc;  // per column: centering constant (0 without the intercept), scale
     std::vector<lint> cols;      // the columns in the fit (not constant), in order
     double cy = 0;               // y's centering constant (0 without the intercept)
+    bool finite = true;          // prep_rows' sums of y and X are finite
 };
 
 // Rows, weights and the weighted means (double sums over fixed chunks; the Gram pass's
@@ -294,38 +304,74 @@ struct Prep {
 void prep_rows(const Src& s, bool intercept, Prep& P) {
     P.idx.clear();
     P.wt.clear();
-    for (lint i = 0; i < s.n; ++i) {
-        const double w = s.wv(i);
-        if (w > 0) {
-            P.idx.push_back(i);
-            P.wt.push_back(w);
+    if (!s.w) {
+        P.idx.resize(static_cast<std::size_t>(s.n));
+        std::iota(P.idx.begin(), P.idx.end(), lint(0));
+        P.wt.assign(static_cast<std::size_t>(s.n), 1.0);
+    } else {
+        for (lint i = 0; i < s.n; ++i) {
+            const double w = s.wv(i);
+            if (w > 0) {
+                P.idx.push_back(i);
+                P.wt.push_back(w);
+            }
         }
     }
     P.m = static_cast<lint>(P.idx.size());
-    P.sw = dd_chunk_sum(static_cast<lint>(P.wt.size()), [&](lint t) { return DD{P.wt[t], 0.0}; }).hi;
+    P.sw = s.w ? dd_chunk_sum(static_cast<lint>(P.wt.size()), [&](lint t) { return DD{P.wt[t], 0.0}; }).hi
+               : double(P.m);  // (exact: a count below 2^53)
     const lint p = s.p, m = P.m;
+    P.finite = true;
     if (m == 0) return;
     // per column: sum w x, whether every value equals the first row's; y's sum
     const lint len = 3 * p + 1;
     std::vector<double> acc(static_cast<std::size_t>(len));
     const lint nch = std::max<lint>(1, (m + kRowChunk - 1) / kRowChunk);
     std::vector<double> parts(static_cast<std::size_t>(nch * len));
-    for_chunks(nch, double(m) * p, [&](lint c) {
+    // rows of contiguous columns (a C-order X) read as one run each (the loop vectorizes)
+    const bool contig = s.xcs == static_cast<std::int64_t>(sizeof(double));
+    auto rows = [&](auto cont, lint c) {
         double* q = parts.data() + c * len;
         const lint i0 = P.idx[0];
         for (lint j = 0; j < p; ++j) q[j] = 0.0, q[p + j] = s.x(i0, j), q[2 * p + j] = 1.0;
         q[3 * p] = 0.0;
-        for (lint t = c * kRowChunk; t < std::min(m, (c + 1) * kRowChunk); ++t) {
-            const lint i = P.idx[t];
-            const double w = P.wt[t];
-            const std::byte* row = s.X + i * s.xrs;
+        double* __restrict sum = q;
+        const double* __restrict first = q + p;
+        double* __restrict same = q + 2 * p;
+        const std::int64_t cs = decltype(cont)::value ? static_cast<std::int64_t>(sizeof(double)) : s.xcs;
+        const lint t1 = std::min(m, (c + 1) * kRowChunk);
+        lint t = c * kRowChunk;
+        // four rows at a time (a pairwise sum of the four, then into the column's sum): a
+        // quarter of the loads and stores of the running sums
+        for (; t + 4 <= t1; t += 4) {
+            const std::byte* r0 = s.X + P.idx[t] * s.xrs;
+            const std::byte* r1 = s.X + P.idx[t + 1] * s.xrs;
+            const std::byte* r2 = s.X + P.idx[t + 2] * s.xrs;
+            const std::byte* r3 = s.X + P.idx[t + 3] * s.xrs;
+            const double w0 = P.wt[t], w1 = P.wt[t + 1], w2 = P.wt[t + 2], w3 = P.wt[t + 3];
             for (lint j = 0; j < p; ++j) {
-                const double x = rd(row + j * s.xcs);
-                q[j] += w * x;
-                if (x != q[p + j]) q[2 * p + j] = 0.0;
+                const double x0 = rd(r0 + j * cs), x1 = rd(r1 + j * cs), x2 = rd(r2 + j * cs), x3 = rd(r3 + j * cs);
+                sum[j] += (w0 * x0 + w1 * x1) + (w2 * x2 + w3 * x3);
+                const double f = first[j];
+                same[j] = ((x0 == f) & (x1 == f) & (x2 == f) & (x3 == f)) ? same[j] : 0.0;
             }
-            q[3 * p] += w * s.yv(i);
+            q[3 * p] +=
+                (w0 * s.yv(P.idx[t]) + w1 * s.yv(P.idx[t + 1])) + (w2 * s.yv(P.idx[t + 2]) + w3 * s.yv(P.idx[t + 3]));
         }
+        for (; t < t1; ++t) {
+            const std::byte* row = s.X + P.idx[t] * s.xrs;
+            const double w = P.wt[t];
+            for (lint j = 0; j < p; ++j) {
+                const double x = rd(row + j * cs);
+                sum[j] += w * x;
+                same[j] = x == first[j] ? same[j] : 0.0;
+            }
+            q[3 * p] += w * s.yv(P.idx[t]);
+        }
+    };
+    for_chunks(nch, double(m) * p, [&](lint c) {
+        if (contig) rows(std::true_type{}, c);
+        else rows(std::false_type{}, c);
     });
     for (lint j = 0; j < p; ++j) acc[j] = 0.0, acc[p + j] = parts[p + j], acc[2 * p + j] = 1.0;
     acc[3 * p] = 0.0;
@@ -337,6 +383,8 @@ void prep_rows(const Src& s, bool intercept, Prep& P) {
         }
         acc[3 * p] += q[3 * p];
     }
+    for (lint j = 0; j < p; ++j) P.finite = P.finite && std::isfinite(acc[j]);
+    P.finite = P.finite && std::isfinite(acc[3 * p]);
     P.cx.assign(static_cast<std::size_t>(p), 0.0);
     P.sc.assign(static_cast<std::size_t>(p), 1.0);
     P.cols.clear();
@@ -350,6 +398,70 @@ void prep_rows(const Src& s, bool intercept, Prep& P) {
         }
     }
     P.cy = intercept ? acc[3 * p] / P.sw : 0.0;
+}
+
+// part[a] += sum w u and part[pc + a] += sum w u^2 over the fit's rows [t0, t1), u = x - c of
+// the fit's columns a (P.cols), four rows at a time (a pairwise sum of the four into the
+// running sums: a quarter of their loads and stores); the columns' offsets are read in place
+// when they are every column in order and contiguous (the loop then vectorizes).
+void centered_sums(const Src& s, const Prep& P, lint t0, lint t1, double* part) {
+    const lint pc = static_cast<lint>(P.cols.size());
+    std::vector<std::int64_t> off(static_cast<std::size_t>(pc));
+    std::vector<double> cc(static_cast<std::size_t>(pc));
+    bool ident = s.xcs == static_cast<std::int64_t>(sizeof(double));
+    for (lint a = 0; a < pc; ++a) {
+        off[a] = P.cols[a] * s.xcs;
+        cc[a] = P.cx[P.cols[a]];
+        ident = ident && P.cols[a] == a;
+    }
+    auto run = [&](auto in_place) {
+        double* __restrict s1 = part;
+        double* __restrict s2 = part + pc;
+        const std::int64_t* __restrict of = off.data();
+        const double* __restrict c = cc.data();
+        auto at = [&](const std::byte* row, lint a) {
+            return rd(row + (decltype(in_place)::value ? a * static_cast<std::int64_t>(sizeof(double)) : of[a]));
+        };
+        lint t = t0;
+        for (; t + 4 <= t1; t += 4) {
+            const std::byte* r0 = s.X + P.idx[t] * s.xrs;
+            const std::byte* r1 = s.X + P.idx[t + 1] * s.xrs;
+            const std::byte* r2 = s.X + P.idx[t + 2] * s.xrs;
+            const std::byte* r3 = s.X + P.idx[t + 3] * s.xrs;
+            const double w0 = P.wt[t], w1 = P.wt[t + 1], w2 = P.wt[t + 2], w3 = P.wt[t + 3];
+            for (lint a = 0; a < pc; ++a) {
+                const double u0 = at(r0, a) - c[a], u1 = at(r1, a) - c[a], u2 = at(r2, a) - c[a], u3 = at(r3, a) - c[a];
+                const double v0 = w0 * u0, v1 = w1 * u1, v2 = w2 * u2, v3 = w3 * u3;
+                s1[a] += (v0 + v1) + (v2 + v3);
+                s2[a] += (v0 * u0 + v1 * u1) + (v2 * u2 + v3 * u3);
+            }
+        }
+        for (; t < t1; ++t) {
+            const std::byte* row = s.X + P.idx[t] * s.xrs;
+            const double w = P.wt[t];
+            for (lint a = 0; a < pc; ++a) {
+                const double u = at(row, a) - c[a];
+                s1[a] += w * u;
+                s2[a] += w * u * u;
+            }
+        }
+    };
+    if (ident) run(std::true_type{});
+    else run(std::false_type{});
+}
+
+// check() and prep_rows() together. Without weights every row is in the fit, and prep_rows'
+// sums of y and X are finite whenever every value is (a sum that overflows sends it to check()
+// too), so the separate scan runs only when a sum is not finite. Returns check()'s code
+// (> 0 a failure, < 0 NaN in the inputs; P is then not to be used).
+int check_prep(const Src& s, int fam, bool intercept, Prep& P) {
+    if (s.w) {
+        if (const int c = check(s, fam)) return c;
+        prep_rows(s, intercept, P);
+        return 0;
+    }
+    prep_rows(s, intercept, P);
+    return P.finite ? check_range(s, fam) : check(s, fam);
 }
 
 // The centered, whitened and scaled design of the fit's columns: pack rows [t0, t1) of
@@ -412,6 +524,21 @@ struct Packer {
         }
         // row-major: element (t, q) at out[q] of row t (row stride q_all)
         const lint cs = 1, rs = q_all;
+        bool ident = s.xcs == static_cast<std::int64_t>(sizeof(double));
+        for (lint q = 0; q < pc && ident; ++q) ident = P.cols[q] == q;
+        if (ident) {
+            // every column in order, contiguous in the row: one run per row (the loop vectorizes)
+            for (lint t = t0; t < t1; ++t) {
+                const lint i = P.idx[t];
+                const double r = std::sqrt(f[t]);
+                const std::byte* row = s.X + i * s.xrs;
+                double* out = buf + (t - t0) * rs;
+                for (lint q = 0; q < pc; ++q) out[q] = r * ((rd(row + q * sizeof(double)) - cc[q]) * is[q]);
+                if (with_y) out[yc] = r * ((yv ? yv[i] : s.yv(i)) - cy);
+                if (with_one) out[oc] = r;
+            }
+            return;
+        }
         for (lint t = t0; t < t1; ++t) {
             const lint i = P.idx[t];
             const double r = std::sqrt(f[t]);
@@ -456,8 +583,18 @@ struct Solver {
     void refresh() {
         if (cov) {
             Gb.assign(static_cast<std::size_t>(pc), 0.0);
-            for (lint k = 0; k < pc; ++k)
-                if (b[k] != 0.0) cblas_daxpy(static_cast<int>(pc), b[k], G.data() + k * pc, 1, Gb.data(), 1);
+            lint nz = 0;
+            for (lint k = 0; k < pc; ++k) nz += b[k] != 0.0;
+            if (4 * nz > pc) {
+                // many nonzero coefficients: one dgemv (the axpys' loop runs at a fraction of it)
+                cblas_dgemv(
+                    CblasColMajor, CblasNoTrans, static_cast<int>(pc), static_cast<int>(pc), 1.0, G.data(),
+                    static_cast<int>(pc), b.data(), 1, 0.0, Gb.data(), 1
+                );
+            } else {
+                for (lint k = 0; k < pc; ++k)
+                    if (b[k] != 0.0) cblas_daxpy(static_cast<int>(pc), b[k], G.data() + k * pc, 1, Gb.data(), 1);
+            }
         } else {
             r = rv;
             for (lint k = 0; k < pc; ++k)
@@ -670,6 +807,21 @@ void active_gram(const Solver& s, const std::vector<lint>& A, double l2, std::ve
     for (lint q = 0; q < a; ++q) H[q * a + q] += l2;
 }
 
+// The effective degrees of freedom from the Cholesky factor L of H (lower): a - l2 ||L^-1||_F^2
+// (one triangular inverse instead of H's factor and inverse).
+double effective_df_factored(std::vector<double> L, lint a, double l2) {
+    if (a == 0) return 0.0;
+    if (l2 == 0.0) return double(a);
+    lint info = 0;
+    char lo = 'L', nd = 'N';
+    dtrtri_(&lo, &nd, &a, L.data(), &a, &info);
+    if (info != 0) return kNaN;
+    double tr = 0.0;
+    for (lint j = 0; j < a; ++j)
+        for (lint i = j; i < a; ++i) tr += L[j * a + i] * L[j * a + i];
+    return double(a) - l2 * tr;
+}
+
 // The effective degrees of freedom tr(Z_A (Z_A^T Omega Z_A + l2 I)^-1 Z_A^T Omega) =
 // a - l2 tr(H^-1) (the number of nonzero coefficients for the lasso).
 double effective_df(std::vector<double> H, lint a, double l2) {
@@ -735,6 +887,7 @@ struct PolishOut {
     double g0 = 0.0;         // the intercept in the centered coordinates (refined)
     lint a = 0;              // the active columns
     std::vector<double> H;   // Z_A^T Omega Z_A + l2 I
+    std::vector<double> L;   // its Cholesky factor (lower; empty when it was not factored)
 };
 
 // Whether the solver's columns j and k are exact copies: the same values over the fit's rows
@@ -809,6 +962,7 @@ PolishOut polish(Solver& s, const Src& src, const Prep& P, bool intercept, doubl
     double g0 = 0.0;
     if (a > 0) {
         if (linalg::lapack::potrf('L', a, L.data(), a) != 0) return o;
+        o.L = L;
         // c_A - l1 sign
         if (s.cov) {
             for (lint q = 0; q < a; ++q) bA[q] = s.c[A[q]] - l1 * sg[q];
@@ -970,6 +1124,8 @@ struct Opts {
     bool polish;
     int family;  // GLM
     double refine_cond;  // the KKT polish refines with the data above this condition number
+    int ridge_solver = -1;  // ridge: -1 the Gram or the SVD by the cost, 0 the SVD, 1 the Gram when possible
+    bool exact_rss = false;  // ridge's Gram route: the residual sum of squares from the data (kind 3)
 };
 
 // The centered Gram (with y and a column of sqrt(w)) of the fit's columns, the exact
@@ -1067,14 +1223,13 @@ int enet_one(
     const Opts& op, const Src& src, const double* alphas, std::int64_t as, lint L, double* params, double* stats
 ) {
     const lint p = src.p, k = p + (op.intercept ? 1 : 0);
-    const int chk = check(src, fGaussian);
+    Prep P;
+    const int chk = check_prep(src, fGaussian, op.intercept, P);
     if (chk > 0) return chk;
     if (chk < 0) {
         fill_nan(L, k, params, stats, kNaN);
         return 0;
     }
-    Prep P;
-    prep_rows(src, op.intercept, P);
     if (P.m == 0) {
         fill_nan(L, k, params, stats, 0.0);
         return 0;
@@ -1142,10 +1297,13 @@ int enet_one(
         const double g0 = po.ok ? po.g0 : 0.0;
         // the gap and the residual sum of squares at the returned coefficients (the Gram's, or
         // the packed design's, residual)
-        st[pGap] = po.ok ? s.gap(l1, l2) : cd.gap;
+        // (a polish inside the descent left its gap at the same coefficients)
+        st[pGap] = po.ok ? (cd.polished ? cd.gap : s.gap(l1, l2)) : cd.gap;
         st[pRss] = s.R2 * P.sw;
-        if (po.ok) {
-            st[pDf] = effective_df(po.H, po.a, l2);
+        if (src.tw) {
+            // a cross-validation fold: only its test rows' errors are read (no df)
+        } else if (po.ok) {
+            st[pDf] = po.L.size() == po.H.size() ? effective_df_factored(po.L, po.a, l2) : effective_df(po.H, po.a, l2);
         } else {
             std::vector<lint> A;
             for (lint j = 0; j < s.pc; ++j)
@@ -1210,6 +1368,334 @@ void tsqr(lint m, lint pc, double* A, double* v, double* R, double* d1, DD& acc)
 }
 
 
+// ---- ridge by the normal equations: one Gram, one Cholesky per alpha
+//
+// With every alpha > 0 and few alphas, ridge solves (Z^T Omega Z + alpha I) b = Z^T Omega v by
+// Cholesky (scikit-learn's Ridge): the Gram by dsyrk over fixed blocks of rows (primal, m >= pc),
+// or the m x m kernel Z Z^T over fixed blocks of columns (dual, m < pc: b = Z^T (Z Z^T +
+// alpha I)^-1 v). The system's condition is estimated from the factor (LAPACK's 1-norm
+// estimate, squared); above kGramMaxCond (or when Cholesky fails) the SVD route below solves
+// the problem instead. Above kRefineCond pc the solution is refined with double-double
+// residuals from the data (G51), as on the SVD route. The effective degrees of freedom
+// pc - alpha tr(A^-1) from the inverse factor (tr(G A^-1) from the inverse itself when that
+// difference cancels); the residual sum of squares alpha^2 ||d||^2 (dual) or (primal) from the
+// data (residual_ss) when it is wanted to rounding (op.exact_rss: ridge_cv's GCV) or when the
+// closed form vv - b^T c - alpha b^T b cancels by more than kRssCancel (it is then only the
+// internal stat of ridge's result, which reads ssr from its residuals).
+constexpr double kGramMaxCond = 1e10;
+constexpr double kRssCancel = 16.0;
+
+inline double alpha_at(const double* alphas, std::int64_t as, lint l) {
+    return rd(reinterpret_cast<const std::byte*>(alphas) + l * as);
+}
+
+// Whether ridge goes by the Gram (op.ridge_solver: -1 by the cost, 0 never, 1 whenever every
+// alpha > 0). The cost: L Cholesky factors and inverse factors (2/3 n^3 each, n = min(m, pc)),
+// and with op.exact_rss (primal) L passes over the data for the residuals (counted as 4 m pc
+// each), against the SVD route's QR (2 m pc^2) and SVD (about 20 pc^3), measured in the same
+// units within a factor of two on Accelerate; the Gram itself (m pc^2 by dsyrk) costs less than
+// the QR. Measured: (10^5, 10) and (10^5, 100) GCV over 100 alphas 7.5 and 93 ms by the SVD, 80
+// and 283 ms by the Gram with the residual passes.
+bool ridge_by_gram(const Opts& op, const double* alphas, std::int64_t as, lint L, lint m, lint pc) {
+    if (op.ridge_solver == 0 || pc == 0 || m == 0) return false;
+    for (lint l = 0; l < L; ++l)
+        if (!(alpha_at(alphas, as, l) > 0.0) || !std::isfinite(alpha_at(alphas, as, l))) return false;
+    if (op.ridge_solver == 1) return true;
+    const double n = double(std::min(m, pc)), big = double(std::max(m, pc));
+    const double passes = op.exact_rss && m >= pc ? 4.0 * double(L) * double(m) * double(pc) : 0.0;
+    return double(L) * (2.0 / 3.0) * n * n * n + passes <= 2.0 * big * n * n + 20.0 * n * n * n;
+}
+
+// The Cholesky factor of M + alpha I (n x n, lower, column-major) into Lf and the system's
+// estimated condition number; false when not positive definite.
+bool chol_shift(
+    const std::vector<double>& M, lint n, double alpha, std::vector<double>& Lf, double& kappa, Scratch& sc
+) {
+    Lf.assign(M.begin(), M.end());
+    for (lint i = 0; i < n; ++i) Lf[i * n + i] += alpha;
+    if (linalg::lapack::potrf('L', n, Lf.data(), n) != 0) return false;
+    const double rc = linalg::lapack::trcon_1('L', n, Lf.data(), n, sc);
+    kappa = rc > 0.0 ? 1.0 / (rc * rc) : INFINITY;
+    return std::isfinite(kappa);
+}
+
+// tr(M (M + alpha I)^-1) = n - alpha tr(A^-1) from the factor Lf of A; when that difference
+// cancels (below n / 2) the sum of M_ij (A^-1)_ij, A^-1 = L^-T L^-1 (no cancellation beyond the
+// matrices' own: both are positive semidefinite). NaN when the inverse fails.
+double shift_df(const std::vector<double>& M, const std::vector<double>& Lf, lint n, double alpha) {
+    std::vector<double> Li(Lf);
+    lint info = 0;
+    char lo = 'L', nd = 'N';
+    dtrtri_(&lo, &nd, &n, Li.data(), &n, &info);
+    if (info != 0) return kNaN;
+    double tr = 0.0;
+    for (lint j = 0; j < n; ++j)
+        for (lint i = j; i < n; ++i) tr += Li[j * n + i] * Li[j * n + i];
+    const double df = double(n) - alpha * tr;
+    if (df >= 0.5 * double(n)) return df;
+    dlauum_(&lo, &n, Li.data(), &n, &info);  // L^-T L^-1 (lower triangle)
+    if (info != 0) return kNaN;
+    double s = 0.0;
+    for (lint j = 0; j < n; ++j) {
+        s += M[j * n + j] * Li[j * n + j];
+        for (lint i = j + 1; i < n; ++i) s += 2.0 * M[j * n + i] * Li[j * n + i];
+    }
+    return s;
+}
+
+// The per-alpha stats of a ridge solution.
+void ridge_stats(double* st, double nobs, double sw, double rss, double vv, double df, double c0, bool refined) {
+    std::fill(st, st + pNStat, kNaN);
+    st[pNobs] = nobs;
+    st[pSumW] = sw;
+    st[pNIter] = 0.0;
+    st[pConv] = 1.0;
+    st[pIsNaN] = 0.0;
+    st[pRss] = rss * sw;
+    st[pTss] = vv * sw;
+    st[pDf] = df;
+    st[pPolished] = refined ? 2.0 : 0.0;
+    const double den = 1.0 - (df + c0) / nobs;
+    st[pGcv] = rss / (den * den);
+}
+
+// sum omega (v - g0 - z b)^2 over the fit's rows in plain double (the fit's columns P.cols):
+// per fixed chunk of rows, the rows packed (sqrt(w) [z, v], row-major) and their fitted parts by
+// dgemv, the chunks added in order. Each residual is rounded once from terms the size of v, so
+// the sum is accurate where the Gram's closed form vv - b^T c - alpha b^T b cancels.
+double residual_ss(const Src& src, const Prep& P, const std::vector<double>& b, double g0) {
+    const lint m = P.m, pc = static_cast<lint>(P.cols.size()), q = pc + 1;
+    const Packer pk{src, P, P.wt.data(), nullptr, P.cy, true, false, true};
+    double tot = 0.0;
+    chunk_sum(m, 1, &tot, double(pc), [&](lint t0, lint t1, double* part) {
+        const lint len = t1 - t0;
+        std::vector<double> buf(static_cast<std::size_t>(len * q)), fit(static_cast<std::size_t>(len));
+        pk(t0, t1, buf.data());
+        if (pc > 0)
+            cblas_dgemv(
+                CblasRowMajor, CblasNoTrans, static_cast<int>(len), static_cast<int>(pc), 1.0, buf.data(),
+                static_cast<int>(q), b.data(), 1, 0.0, fit.data(), 1
+            );
+        double s = 0.0;
+        for (lint t = 0; t < len; ++t) {
+            const double r = buf[t * q + pc] - std::sqrt(P.wt[t0 + t]) * g0 - fit[t];
+            s += r * r;
+        }
+        part[0] += s;
+    });
+    return tot / P.sw;
+}
+
+// The primal Gram route (m >= pc) from prep_rows' state: the Gram of sqrt(w) [(x - c), y - cy,
+// 1] (build()'s, with the exact centering correction), then the alphas. Returns false (P as
+// given) to leave the problem to the SVD route.
+bool ridge_gram_primal(
+    const Opts& op,
+    const Src& src,
+    Prep& P,
+    const double* alphas,
+    std::int64_t as,
+    lint L,
+    double* params,
+    double* stats,
+    Scratch& sc
+) {
+    const lint p = src.p, k = p + (op.intercept ? 1 : 0);
+    const lint m = P.m, pc0 = static_cast<lint>(P.cols.size()), q = pc0 + 2;
+    std::vector<double> Gq(static_cast<std::size_t>(q * q));
+    gram(m, q, Gq.data(), Packer{src, P, P.wt.data(), nullptr, P.cy, true, true, true});
+    const double sw = P.sw;
+    const lint yi = pc0, oi = pc0 + 1;
+    std::vector<double> S1(static_cast<std::size_t>(pc0 + 1));
+    for (lint a = 0; a <= pc0; ++a) S1[a] = op.intercept ? Gq[oi * q + a] : 0.0;
+    auto Gc = [&](lint a, lint b) { return Gq[b * q + a] - S1[a] * S1[b] / sw; };
+    std::vector<lint> keep;
+    std::vector<double> scale;
+    for (lint a = 0; a < pc0; ++a) {
+        const double var = Gc(a, a) / sw;
+        if (!(var > 0.0)) continue;
+        keep.push_back(a);
+        scale.push_back(op.standardize ? std::sqrt(var) : 1.0);
+    }
+    const lint pc = static_cast<lint>(keep.size());
+    if (pc == 0 || pc > m) return false;
+    std::vector<double> G(static_cast<std::size_t>(pc * pc)), c(static_cast<std::size_t>(pc));
+    for (lint b = 0; b < pc; ++b) {
+        for (lint a = b; a < pc; ++a) G[b * pc + a] = G[a * pc + b] = Gc(keep[a], keep[b]) / (sw * scale[a] * scale[b]);
+        c[b] = Gc(keep[b], yi) / (sw * scale[b]);
+    }
+    const double vv = std::max(0.0, Gc(yi, yi)) / sw;
+    // the factors first: a failure leaves P untouched for the SVD route
+    std::vector<std::vector<double>> Ls(static_cast<std::size_t>(L));
+    std::vector<double> kap(static_cast<std::size_t>(L));
+    for (lint l = 0; l < L; ++l)
+        if (!chol_shift(G, pc, alpha_at(alphas, as, l), Ls[l], kap[l], sc) || kap[l] > kGramMaxCond) return false;
+    // the fit's centering and columns (as build())
+    if (op.intercept) {
+        for (lint a = 0; a < pc0; ++a) P.cx[P.cols[a]] += S1[a] / sw;
+        P.cy += S1[yi] / sw;
+    }
+    {
+        std::vector<lint> cols(static_cast<std::size_t>(pc));
+        for (lint a = 0; a < pc; ++a) {
+            cols[a] = P.cols[keep[a]];
+            P.sc[cols[a]] = scale[a];
+        }
+        P.cols = cols;
+    }
+    const double nobs = double(m), c0 = op.intercept ? 1.0 : 0.0;
+    std::vector<double> b(static_cast<std::size_t>(pc)), g(static_cast<std::size_t>(pc)), sums;
+    for (lint l = 0; l < L; ++l) {
+        const double alpha = alpha_at(alphas, as, l);
+        const std::vector<double>& Lf = Ls[l];
+        b = c;
+        linalg::lapack::tri_solve(false, 'L', 'N', 'N', pc, 1, Lf.data(), pc, b.data(), pc);
+        linalg::lapack::tri_solve(false, 'L', 'T', 'N', pc, 1, Lf.data(), pc, b.data(), pc);
+        double g0 = 0.0;
+        bool refined = false;
+        if (kap[l] > kRefineCond * double(pc) && op.polish) {
+            refined = true;
+            double prev = INFINITY;
+            for (int step = 0; step < kPolishSteps; ++step) {
+                residual_pass_dd(src, P, P.cols, b.data(), g0, sums);
+                for (lint j = 0; j < pc; ++j) g[j] = sums[1 + j] / sw - alpha * b[j];
+                linalg::lapack::tri_solve(false, 'L', 'N', 'N', pc, 1, Lf.data(), pc, g.data(), pc);
+                linalg::lapack::tri_solve(false, 'L', 'T', 'N', pc, 1, Lf.data(), pc, g.data(), pc);
+                double dmax = 0.0, bmax = 0.0;
+                for (lint j = 0; j < pc; ++j) {
+                    b[j] += g[j];
+                    dmax = std::max(dmax, std::fabs(g[j]));
+                    bmax = std::max(bmax, std::fabs(b[j]));
+                }
+                if (op.intercept) g0 += sums[0] / sw;
+                if (dmax <= 4 * kU * bmax || dmax >= 0.5 * prev) break;
+                prev = dmax;
+            }
+        }
+        double bc = 0.0, bb = 0.0;
+        for (lint j = 0; j < pc; ++j) bc += b[j] * c[j], bb += b[j] * b[j];
+        double rss = vv - bc - alpha * bb;
+        if (op.exact_rss || !(rss * kRssCancel >= vv)) rss = residual_ss(src, P, b, g0);
+        const double dfv = shift_df(G, Lf, pc, alpha);
+        ridge_stats(stats + l * pNStat, nobs, sw, rss, vv, dfv, c0, refined);
+        write_params(P, p, op.intercept, b, g0, params + l * k);
+    }
+    test_errors(src, op.intercept, L, params, stats);
+    return true;
+}
+
+// The dual Gram route (m < pc) after the sums pass: the design packed row by row (Zt = Z^T,
+// pc x m column-major with leading dimension pc + 1, sqrt(omega) z, and rv = sqrt(omega) v in
+// its last row), K = Z Z^T over fixed blocks of columns (dsyrk per block, the blocks added in
+// order), d = (K + alpha I)^-1 rv, b = Z^T d. Returns false to leave the problem to the SVD route.
+bool ridge_gram_dual(
+    const Opts& op,
+    const Src& src,
+    const Prep& P,
+    const double* alphas,
+    std::int64_t as,
+    lint L,
+    double* params,
+    double* stats,
+    Scratch& sc
+) {
+    const lint p = src.p, k = p + (op.intercept ? 1 : 0);
+    const lint m = P.m, pc = static_cast<lint>(P.cols.size()), ld = pc + 1;
+    std::vector<double> f(static_cast<std::size_t>(m)), Zt(static_cast<std::size_t>(m * ld)),
+        rv(static_cast<std::size_t>(m));
+    for (lint t = 0; t < m; ++t) f[t] = P.wt[t] / P.sw;
+    {
+        const Packer pk{src, P, f.data(), nullptr, P.cy, true, false, true};
+        const lint nch = std::max<lint>(1, (m + kRowChunk - 1) / kRowChunk);
+        for_chunks(nch, double(m) * pc, [&](lint c) {
+            const lint t0 = c * kRowChunk, t1 = std::min(m, t0 + kRowChunk);
+            pk(t0, t1, Zt.data() + t0 * ld);
+        });
+    }
+    double vv = 0.0;
+    for (lint t = 0; t < m; ++t) rv[t] = Zt[t * ld + pc], vv += rv[t] * rv[t];
+    const double* Z = Zt.data();
+    std::vector<double> K(static_cast<std::size_t>(m * m), 0.0);
+    {
+        const lint cols = std::clamp<lint>((1 << 20) / m, 256, 4096);
+        const lint nch = (pc + cols - 1) / cols;
+        const lint S = std::min<lint>(nch, std::clamp<lint>((1 << 22) / (m * m), 1, 8));
+        std::vector<double> slots(static_cast<std::size_t>(S * m * m), 0.0);
+        auto run = [&](lint s) {
+            double* slot = slots.data() + s * m * m;
+            for (lint ch = s; ch < nch; ch += S) {
+                const lint j0 = ch * cols, len = std::min(pc, j0 + cols) - j0;
+                cblas_dsyrk(
+                    CblasColMajor, CblasLower, CblasTrans, static_cast<int>(m), static_cast<int>(len), 1.0, Z + j0,
+                    static_cast<int>(ld), 1.0, slot, static_cast<int>(m)
+                );
+            }
+        };
+        for_chunks(S, double(m) * double(m) * double(pc) / 16.0, run);
+        for (lint s = 0; s < S; ++s)
+            for (lint j = 0; j < m; ++j)
+                for (lint i = j; i < m; ++i) K[j * m + i] += slots[static_cast<std::size_t>(s * m * m + j * m + i)];
+        for (lint j = 0; j < m; ++j)
+            for (lint i = j + 1; i < m; ++i) K[i * m + j] = K[j * m + i];
+    }
+    std::vector<std::vector<double>> Ls(static_cast<std::size_t>(L));
+    std::vector<double> kap(static_cast<std::size_t>(L));
+    for (lint l = 0; l < L; ++l)
+        if (!chol_shift(K, m, alpha_at(alphas, as, l), Ls[l], kap[l], sc) || kap[l] > kGramMaxCond) return false;
+    const double nobs = double(m), c0 = op.intercept ? 1.0 : 0.0, sw = P.sw;
+    std::vector<double> b(static_cast<std::size_t>(pc)), d(static_cast<std::size_t>(m)),
+        g(static_cast<std::size_t>(pc)), t(static_cast<std::size_t>(m)), u(static_cast<std::size_t>(pc)), sums;
+    for (lint l = 0; l < L; ++l) {
+        const double alpha = alpha_at(alphas, as, l);
+        const std::vector<double>& Lf = Ls[l];
+        std::copy_n(rv.data(), m, d.data());
+        linalg::lapack::tri_solve(false, 'L', 'N', 'N', m, 1, Lf.data(), m, d.data(), m);
+        linalg::lapack::tri_solve(false, 'L', 'T', 'N', m, 1, Lf.data(), m, d.data(), m);
+        cblas_dgemv(
+            CblasColMajor, CblasNoTrans, static_cast<int>(pc), static_cast<int>(m), 1.0, Z, static_cast<int>(ld),
+            d.data(), 1, 0.0, b.data(), 1
+        );
+        double dd = 0.0;
+        for (lint i = 0; i < m; ++i) dd += d[i] * d[i];
+        const double rss = alpha * alpha * dd;
+        double g0 = 0.0;
+        bool refined = false;
+        if (kap[l] > kRefineCond * double(pc) && op.polish) {
+            // (Z^T Z + alpha I)^-1 g = (g - Z^T (Z Z^T + alpha I)^-1 Z g) / alpha
+            refined = true;
+            double prev = INFINITY;
+            for (int step = 0; step < kPolishSteps; ++step) {
+                residual_pass_dd(src, P, P.cols, b.data(), g0, sums);
+                for (lint j = 0; j < pc; ++j) g[j] = sums[1 + j] / sw - alpha * b[j];
+                cblas_dgemv(
+                    CblasColMajor, CblasTrans, static_cast<int>(pc), static_cast<int>(m), 1.0, Z, static_cast<int>(ld),
+                    g.data(), 1, 0.0, t.data(), 1
+                );
+                linalg::lapack::tri_solve(false, 'L', 'N', 'N', m, 1, Lf.data(), m, t.data(), m);
+                linalg::lapack::tri_solve(false, 'L', 'T', 'N', m, 1, Lf.data(), m, t.data(), m);
+                cblas_dgemv(
+                    CblasColMajor, CblasNoTrans, static_cast<int>(pc), static_cast<int>(m), 1.0, Z,
+                    static_cast<int>(ld), t.data(), 1, 0.0, u.data(), 1
+                );
+                double dmax = 0.0, bmax = 0.0;
+                for (lint j = 0; j < pc; ++j) {
+                    const double dl = (g[j] - u[j]) / alpha;
+                    b[j] += dl;
+                    dmax = std::max(dmax, std::fabs(dl));
+                    bmax = std::max(bmax, std::fabs(b[j]));
+                }
+                if (op.intercept) g0 += sums[0] / sw;
+                if (dmax <= 4 * kU * bmax || dmax >= 0.5 * prev) break;
+                prev = dmax;
+            }
+        }
+        ridge_stats(stats + l * pNStat, nobs, sw, rss, vv, shift_df(K, Lf, m, alpha), c0, refined);
+        write_params(P, p, op.intercept, b, g0, params + l * k);
+    }
+    test_errors(src, op.intercept, L, params, stats);
+    return true;
+}
+
 int ridge_one(
     const Opts& op,
     const Src& src,
@@ -1221,32 +1707,32 @@ int ridge_one(
     Scratch& sc
 ) {
     const lint p = src.p, k = p + (op.intercept ? 1 : 0);
-    const int chk = check(src, fGaussian);
+    Prep P;
+    const int chk = check_prep(src, fGaussian, op.intercept, P);
     if (chk > 0) return chk;
     if (chk < 0) {
         fill_nan(L, k, params, stats, kNaN);
         return 0;
     }
-    Prep P;
-    prep_rows(src, op.intercept, P);
     if (P.m == 0) {
         fill_nan(L, k, params, stats, 0.0);
         return 0;
     }
+    const bool by_gram = ridge_by_gram(op, alphas, as, L, P.m, static_cast<lint>(P.cols.size()));
+    if (by_gram && P.m >= static_cast<lint>(P.cols.size()) &&
+        ridge_gram_primal(op, src, P, alphas, as, L, params, stats, sc))
+        return 0;
     // the centering correction and the scales (one pass of sums per column), then the packed design
     {
         const lint pc0 = static_cast<lint>(P.cols.size());
         const lint len = 2 * pc0 + 2;
         std::vector<double> sums(static_cast<std::size_t>(len));
         chunk_sum(P.m, len, sums.data(), double(pc0), [&](lint t0, lint t1, double* part) {
+            // the columns' sums, then the response's (at 2 pc0, 2 pc0 + 1)
+            centered_sums(src, P, t0, t1, part);
             for (lint t = t0; t < t1; ++t) {
                 const lint i = P.idx[t];
                 const double w = P.wt[t];
-                for (lint a = 0; a < pc0; ++a) {
-                    const double u = src.x(i, P.cols[a]) - P.cx[P.cols[a]];
-                    part[a] += w * u;
-                    part[pc0 + a] += w * u * u;
-                }
                 const double u = src.yv(i) - P.cy;
                 part[2 * pc0] += w * u;
                 part[2 * pc0 + 1] += w * u * u;
@@ -1266,6 +1752,7 @@ int ridge_one(
         P.cols = cols;
     }
     const lint m = P.m, pc = static_cast<lint>(P.cols.size());
+    if (by_gram && pc > m && ridge_gram_dual(op, src, P, alphas, as, L, params, stats, sc)) return 0;
     std::vector<double> f(static_cast<std::size_t>(m));
     for (lint t = 0; t < m; ++t) f[t] = P.wt[t] / P.sw;
     std::vector<double> Z(static_cast<std::size_t>(m * std::max<lint>(pc, 1) + m));
@@ -1394,21 +1881,8 @@ int ridge_one(
 
 // ---- the penalized GLM (binomial logit, poisson log)
 
-// (1 + r) log1p(r) - r = x log x - (x - 1), x = 1 + r = y / mu, without cancellation (the
-// series of regression/glm.cpp's deviance).
-inline double mu_fn(double r, double x) {
-    if (r >= -0.5 && r <= 1.0) {
-        const double s = r / (2.0 + r), s2 = s * s;
-        double t = 0.0;
-        for (int j = 17; j >= 0; --j) t = 1.0 / (2 * j + 3) + s2 * t;
-        return r * s - 2.0 * s * s2 * t;
-    }
-    return r > 1.0 ? r - std::log1p(r) : r - std::log(x);
-}
-inline double phi_fn(double r, double x) {
-    if (r >= -0.5 && r <= 1.0) return r * r - (1.0 + r) * mu_fn(r, x);
-    return x * std::log(x) - r;
-}
+using unitdev::mu_fn;
+using unitdev::phi_fn;
 // The poisson unit deviance at mu = e^eta.
 inline double poisson_dev(double y, double mu) {
     if (y == 0.0) return 2.0 * mu;
@@ -1600,7 +2074,11 @@ void wgram(const Src& src, const Prep& P, const GlmState& g, const std::vector<l
     out.G.assign(static_cast<std::size_t>(q * q), 0.0);
     std::vector<double> cc(static_cast<std::size_t>(na)), is(static_cast<std::size_t>(na));
     std::vector<std::int64_t> off(static_cast<std::size_t>(na));
-    for (lint a = 0; a < na; ++a) cc[a] = P.cx[cols[a]], is[a] = 1.0 / P.sc[cols[a]], off[a] = cols[a] * src.xcs;
+    bool ident = src.xcs == static_cast<std::int64_t>(sizeof(double));
+    for (lint a = 0; a < na; ++a) {
+        cc[a] = P.cx[cols[a]], is[a] = 1.0 / P.sc[cols[a]], off[a] = cols[a] * src.xcs;
+        ident = ident && cols[a] == a;
+    }
     gram(P.m, q, out.G.data(), [&](lint t0, lint t1, double* buf) {
         for (lint t = t0; t < t1; ++t) {
             const lint i = P.idx[t];
@@ -1609,7 +2087,12 @@ void wgram(const Src& src, const Prep& P, const GlmState& g, const std::vector<l
             const double r = W > 0.0 ? std::sqrt(W) : 0.0;
             const std::byte* row = src.X + i * src.xrs;
             double* o = buf + (t - t0) * q;
-            for (lint a = 0; a < na; ++a) o[a] = r * ((rd(row + off[a]) - cc[a]) * is[a]);
+            if (ident) {  // every column in order, contiguous in the row (the loop vectorizes)
+                for (lint a = 0; a < na; ++a)
+                    o[a] = r * ((rd(row + a * static_cast<std::int64_t>(sizeof(double))) - cc[a]) * is[a]);
+            } else {
+                for (lint a = 0; a < na; ++a) o[a] = r * ((rd(row + off[a]) - cc[a]) * is[a]);
+            }
             o[na] = r;
             o[na + 1] = r * g.eta[t];
             o[na + 2] = r > 0.0 ? std::sqrt(P.wt[t] / var) * (src.yv(i) - g.mu[t]) : 0.0;
@@ -1666,14 +2149,13 @@ int glm_one(
 ) {
     const lint p = src.p, k = p + (op.intercept ? 1 : 0);
     const int fam = op.family;
-    const int chk = check(src, fam);
+    Prep P;
+    const int chk = check_prep(src, fam, op.intercept, P);
     if (chk > 0) return chk;
     if (chk < 0) {
         fill_nan(L, k, params, stats, kNaN);
         return 0;
     }
-    Prep P;
-    prep_rows(src, op.intercept, P);
     const lint m = P.m;
     if (m == 0) {
         fill_nan(L, k, params, stats, 0.0);
@@ -1684,14 +2166,7 @@ int glm_one(
         const lint pc0 = static_cast<lint>(P.cols.size());
         std::vector<double> sums(static_cast<std::size_t>(2 * pc0));
         chunk_sum(m, 2 * pc0, sums.data(), double(pc0), [&](lint t0, lint t1, double* part) {
-            for (lint t = t0; t < t1; ++t) {
-                const lint i = P.idx[t];
-                for (lint a = 0; a < pc0; ++a) {
-                    const double u = src.x(i, P.cols[a]) - P.cx[P.cols[a]];
-                    part[a] += P.wt[t] * u;
-                    part[pc0 + a] += P.wt[t] * u * u;
-                }
-            }
+            centered_sums(src, P, t0, t1, part);
         });
         std::vector<lint> cols;
         for (lint a = 0; a < pc0; ++a) {
@@ -2059,14 +2534,13 @@ int glm_one(
 // ---- alpha_max: the smallest alpha whose solution is 0
 
 int alpha_max_one(const Opts& op, const Src& src, double* out) {
-    const int chk = check(src, op.family);
+    Prep P;
+    const int chk = check_prep(src, op.family, op.intercept, P);
     if (chk > 0) return chk;
     if (chk < 0) {
         *out = kNaN;
         return 0;
     }
-    Prep P;
-    prep_rows(src, op.intercept, P);
     if (P.m == 0) {
         *out = kNaN;
         return 0;
@@ -2128,7 +2602,8 @@ std::vector<std::int64_t> with(std::vector<std::int64_t> shape, std::initializer
     return shape;
 }
 
-// kind: 0 elastic net (coordinate descent), 1 ridge (SVD), 2 penalized GLM.
+// kind: 0 elastic net (coordinate descent), 1 ridge, 2 penalized GLM, 3 ridge whose residual sum
+// of squares (and GCV) are wanted to rounding (ridge_cv's GCV: no closed form that cancels).
 // path(func, kind, y (..., n), X (..., n, p), aux (..., 2, n) | None [weights, test weights],
 //      has_w, has_t, alphas (..., L), l1_ratio, family, intercept, standardize, max_iter, tol, polish)
 // -> (params (..., L, k), stats (..., L, S)). The test weights (cross-validation) mark the
@@ -2149,7 +2624,8 @@ nb::object path(
     int max_iter,
     double tol,
     bool polish,
-    double refine
+    double refine,
+    int ridge_solver
 ) {
     const char* fn = func.c_str();
     return call_named(fn, [&]() -> nb::object {
@@ -2167,6 +2643,8 @@ nb::object path(
         );
         const lint n = X.shape(-2), p = X.shape(-1), k = p + (intercept ? 1 : 0), L = A.shape(-1);
         Opts op{l1_ratio, intercept, standardize, max_iter, tol, polish, family, refine};
+        op.ridge_solver = ridge_solver;
+        op.exact_rss = kind == 3;
         Out po = linalg::alloc_c(with(b.shape(), {L, k}), DType::Float64);
         Out so = linalg::alloc_c(with(b.shape(), {L, pNStat}), DType::Float64);
         const double nk = double(n) * double(std::max<lint>(p, 1));
@@ -2194,7 +2672,7 @@ nb::object path(
             double* st = so.as<double>() + i * L * pNStat;
             int r;
             if (kind == 0) r = enet_one(op, s, al, as, L, pr, st);
-            else if (kind == 1) r = ridge_one(op, s, al, as, L, pr, st, sc);
+            else if (kind == 1 || kind == 3) r = ridge_one(op, s, al, as, L, pr, st, sc);
             else r = glm_one(op, s, al, as, L, pr, st);
             return r < 0 ? 99 : r;
         });
@@ -2261,7 +2739,7 @@ void bind_penalized(nb::module_& m) {
         "penalized_path", &path, nb::arg("func"), nb::arg("kind"), nb::arg("y").none(), nb::arg("X").none(),
         nb::arg("aux").none(), nb::arg("has_w"), nb::arg("has_t"), nb::arg("alphas").none(), nb::arg("l1_ratio"),
         nb::arg("family"), nb::arg("intercept"), nb::arg("standardize"), nb::arg("max_iter"), nb::arg("tol"),
-        nb::arg("polish") = true, nb::arg("refine") = kRefineCond
+        nb::arg("polish") = true, nb::arg("refine") = kRefineCond, nb::arg("ridge_solver") = -1
     );
     m.def(
         "alpha_max", &alpha_max, nb::arg("func"), nb::arg("y").none(), nb::arg("X").none(), nb::arg("w").none(),
