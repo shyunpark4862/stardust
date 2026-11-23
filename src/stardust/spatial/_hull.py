@@ -20,16 +20,6 @@ def _readonly(a):
     return a
 
 
-def _points(points, name):
-    """The points as an (n, d) float64 sd.ndarray, d = 2 or 3 (SPT98, SPT101); finiteness is checked natively."""
-    a = C.data(points, name, "points")
-    if a.ndim != 2:
-        raise ValueError(f"{name}(): 'points' must have 2 dimensions, not {a.ndim}")
-    if a.shape[1] not in (2, 3):
-        raise ValueError(f"{name}(): 'points' must have 2 or 3 columns, not {a.shape[1]}")
-    return a
-
-
 class ConvexHull:
     """The convex hull of the rows of `points` (n, d), d = 2 or 3."""
 
@@ -37,7 +27,7 @@ class ConvexHull:
 
     @method("ConvexHull")
     def __init__(self, points, /):
-        a = _points(points, "ConvexHull")
+        a = C.geometry_points(points, "ConvexHull", check_finite=False)  # finiteness: the native scan
         p, v, s, nb, eq, area, volume, lo, hi = _core._convex_hull(a)
         self._points = _readonly(p)
         self._vertices = _readonly(v)

@@ -16,7 +16,9 @@
 //   vertex_to_simplex    the smallest simplex of every vertex (an atomic minimum: order-free).
 //   build_locator,       the location grid and the walk of find_simplex (§3.5): a closed simplex holding
 //   find_simplex         the point, the smallest such simplex (by the facets through the point), -1 outside.
-//   convex_hull, coplanar_rows, vertex_neighbors (d = 2), transform (d = 2): the attributes made on first use.
+//   sort_parallel,       a merge sort of any records by a total order (runs and rounds fixed by n), and the
+//   brio_order_parallel  BRIO insertion order of sfc.hpp's brio_order made with it (d = 3, SPT157).
+//   convex_hull, coplanar_rows, vertex_neighbors2/3, transform2/3: the attributes made on first use.
 //
 // Vertex indices are int32 inside a build (n < 2^31; the builders check) and int64 in the results (SPT93).
 #pragma once
@@ -96,6 +98,79 @@ inline std::vector<std::int64_t> lex_order_parallel(const double* pts, std::int6
         std::swap(src, dst);
     }
     return std::move(*src);
+}
+
+// Any records sorted by a total order `less`: runs of kSortRun sorted by tasks, then merge rounds of pairs of
+// runs, all fixed by the size alone, so the result is std::sort's for any thread count.
+template <class T, class Less>
+inline void sort_parallel(std::vector<T>& a, Less less, bool split) {
+    const auto n = static_cast<std::int64_t>(a.size());
+    const std::int64_t runs = chunks_of(n, kSortRun);
+    run_tasks(runs, split, [&](std::int64_t r) {
+        std::sort(a.begin() + r * kSortRun, a.begin() + std::min(n, (r + 1) * kSortRun), less);
+    });
+    if (runs <= 1) return;
+    std::vector<T> b(a.size());
+    std::vector<T>*src = &a, *dst = &b;
+    for (std::int64_t w = kSortRun; w < n; w *= 2) {
+        const std::int64_t pairs = chunks_of(n, 2 * w);
+        run_tasks(pairs, split, [&](std::int64_t p) {
+            const std::int64_t lo = 2 * w * p, mid = std::min(n, lo + w), hi = std::min(n, lo + 2 * w);
+            std::merge(
+                src->begin() + lo, src->begin() + mid, src->begin() + mid, src->begin() + hi, dst->begin() + lo,
+                less
+            );  // fmt: skip
+        });
+        std::swap(src, dst);
+    }
+    if (src != &a) a.swap(b);
+}
+
+// sfc.hpp's brio_order with the keys made by tasks and the records sorted by sort_parallel: the same total
+// order (round, Hilbert key, lexicographic rank), so the same insertion order for any thread count.
+inline std::vector<std::int64_t> brio_order_parallel(
+    const double* pts, int d, const std::vector<std::int64_t>& distinct, bool split
+) {  // fmt: skip
+    const auto m = static_cast<std::int64_t>(distinct.size());
+    std::vector<std::int64_t> out(static_cast<std::size_t>(m));
+    if (m == 0) return out;
+    double lo[3], hi[3];
+    for (int k = 0; k < d; ++k) lo[k] = hi[k] = pts[distinct[0] * d + k];
+    for (std::int64_t r = 1; r < m; ++r)
+        for (int k = 0; k < d; ++k) {
+            const double v = pts[distinct[static_cast<std::size_t>(r)] * d + k];
+            lo[k] = std::min(lo[k], v);
+            hi[k] = std::max(hi[k], v);
+        }
+    struct Item {
+        int round;
+        std::uint64_t key;
+        std::int64_t rank;
+    };
+    const int rounds = brio_rounds(m);
+    std::vector<Item> items(static_cast<std::size_t>(m));
+    run_tasks(chunks_of(m, kChunk), split, [&](std::int64_t c) {
+        for (std::int64_t r = c * kChunk, e = std::min(m, (c + 1) * kChunk); r < e; ++r) {
+            const double* p = pts + distinct[static_cast<std::size_t>(r)] * d;
+            std::uint32_t cell[3] = {0, 0, 0};
+            for (int k = 0; k < d; ++k) cell[k] = grid_cell(p[k], lo[k], hi[k], kHilbertBits);
+            const int zeros = std::countr_zero(splitmix64(static_cast<std::uint64_t>(r)) | (std::uint64_t{1} << 63));
+            const int round = rounds - 1 - std::min(zeros, rounds - 1);  // 0 is inserted first
+            items[static_cast<std::size_t>(r)] = {round, hilbert_key(cell, d, kHilbertBits), r};
+        }
+    });
+    sort_parallel(
+        items,
+        [](const Item& a, const Item& b) {
+            if (a.round != b.round) return a.round < b.round;
+            if (a.key != b.key) return a.key < b.key;
+            return a.rank < b.rank;
+        },
+        split
+    );  // fmt: skip
+    for (std::int64_t r = 0; r < m; ++r)
+        out[static_cast<std::size_t>(r)] = distinct[static_cast<std::size_t>(items[static_cast<std::size_t>(r)].rank)];
+    return out;
 }
 
 // The Range of x[0..count), by chunks (the largest hi and the smallest lo: order-free).
@@ -595,6 +670,90 @@ inline void transform2(const Triangulation& T, double* out, bool split) {
             o[3] = (a[0] - r[0]) / D;
             o[4] = r[0];
             o[5] = r[1];
+        }
+    });
+}
+
+// vertex_neighbor_vertices for d = 3: (indptr (n + 1), indices), each row increasing. The star of every
+// vertex (its tetrahedra, a counting sort in any order) gives its neighbours: the other vertices of the
+// star, sorted and unique, by tasks of kChunk vertices whose rows are copied in chunk order. So the arrays
+// do not depend on the thread count. Memory: the stars (4 t int32) and the rows.
+inline void vertex_neighbors3(
+    const Triangulation& T,
+    std::int64_t* indptr,
+    std::vector<std::int64_t>& indices,
+    bool split
+) {  // fmt: skip
+    const std::int64_t n = T.n, t = T.t;
+    std::vector<std::int64_t> start(static_cast<std::size_t>(n) + 1, 0);
+    const std::int64_t tc = chunks_of(t, kChunk);
+    run_tasks(tc, split, [&](std::int64_t c) {
+        for (std::int64_t q = c * kChunk, e = std::min(t, (c + 1) * kChunk); q < e; ++q)
+            for (int j = 0; j < 4; ++j) fetch_add(start[static_cast<std::size_t>(T.simplices[q * 4 + j]) + 1], 1);
+    });
+    for (std::int64_t i = 0; i < n; ++i) start[static_cast<std::size_t>(i) + 1] += start[static_cast<std::size_t>(i)];
+    std::vector<std::int32_t> star(static_cast<std::size_t>(4 * t));
+    {
+        std::vector<std::int64_t> cursor(start.begin(), start.end() - 1);
+        run_tasks(tc, split, [&](std::int64_t c) {
+            for (std::int64_t q = c * kChunk, e = std::min(t, (c + 1) * kChunk); q < e; ++q)
+                for (int j = 0; j < 4; ++j)
+                    star[static_cast<std::size_t>(
+                        fetch_add(cursor[static_cast<std::size_t>(T.simplices[q * 4 + j])], 1)
+                    )] = static_cast<std::int32_t>(q);  // fmt: skip
+        });
+    }
+    const std::int64_t vc = chunks_of(n, kChunk);
+    std::vector<std::vector<std::int64_t>> part(static_cast<std::size_t>(vc));
+    run_tasks(vc, split, [&](std::int64_t c) {
+        std::vector<std::int64_t>& rows = part[static_cast<std::size_t>(c)];
+        std::vector<std::int64_t> buf;
+        for (std::int64_t v = c * kChunk, e = std::min(n, (c + 1) * kChunk); v < e; ++v) {
+            buf.clear();
+            for (std::int64_t k = start[static_cast<std::size_t>(v)]; k < start[static_cast<std::size_t>(v) + 1]; ++k) {
+                const std::int64_t* s = T.simplices + static_cast<std::int64_t>(star[static_cast<std::size_t>(k)]) * 4;
+                for (int j = 0; j < 4; ++j)
+                    if (s[j] != v) buf.push_back(s[j]);
+            }
+            std::sort(buf.begin(), buf.end());
+            buf.erase(std::unique(buf.begin(), buf.end()), buf.end());
+            indptr[v + 1] = static_cast<std::int64_t>(buf.size());
+            rows.insert(rows.end(), buf.begin(), buf.end());
+        }
+    });
+    indptr[0] = 0;
+    for (std::int64_t i = 0; i < n; ++i) indptr[i + 1] += indptr[i];
+    indices.assign(static_cast<std::size_t>(indptr[n]), 0);
+    run_tasks(vc, split, [&](std::int64_t c) {
+        const std::vector<std::int64_t>& rows = part[static_cast<std::size_t>(c)];
+        std::copy(rows.begin(), rows.end(), indices.begin() + indptr[c * kChunk]);
+    });
+}
+
+// transform for d = 3 (SPT106): out (t, 4, 3) with out[q, :3, :] = T^-1 and out[q, 3, :] the vertex 3 (r),
+// T's columns e_k = vertex k - r. Row i of T^-1 is (e_(i+1) x e_(i+2)) / D with D = det T = det3(r, v0, v1,
+// v2); a component of a cross product is det2 of two coordinates of two vertices against r (1.002 u), D is
+// det3 (1.002 u), one division: 3.01 u per entry (§4: 4 u).
+inline void transform3(const Triangulation& T, double* out, bool split) {
+    const bool s2 = T.range.safe(2), s3 = T.range.safe(3);
+    run_tasks(chunks_of(T.t, kChunk), split, [&](std::int64_t c) {
+        for (std::int64_t q = c * kChunk, e = std::min(T.t, (c + 1) * kChunk); q < e; ++q) {
+            const std::int64_t* s = T.simplices + q * 4;
+            const double* v[3] = {T.pts + s[0] * 3, T.pts + s[1] * 3, T.pts + s[2] * 3};
+            const double* r = T.pts + s[3] * 3;
+            const double D = s3 ? det3(r, v[0], v[1], v[2]) : det3_wide(r, v[0], v[1], v[2]);
+            double* o = out + q * 12;
+            for (int i = 0; i < 3; ++i) {
+                const double *a = v[(i + 1) % 3], *b = v[(i + 2) % 3];
+                for (int k = 0; k < 3; ++k) {
+                    const int k1 = (k + 1) % 3, k2 = (k + 2) % 3;
+                    const double pa[2] = {a[k1], a[k2]}, pb[2] = {b[k1], b[k2]}, pr[2] = {r[k1], r[k2]};
+                    o[3 * i + k] = (s2 ? det2(pa, pb, pr) : det2_wide(pa, pb, pr)) / D;
+                }
+            }
+            o[9] = r[0];
+            o[10] = r[1];
+            o[11] = r[2];
         }
     });
 }

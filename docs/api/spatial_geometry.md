@@ -1,6 +1,6 @@
 # sd.spatial API: 계산 기하 (초안)
 
-> 상태: **초안** (2026-11-23, SPT8 마일스톤). 아래 이름은 아직 구현되어 있지 않다: `Delaunay`는 SPT9(d = 2, 구현됨, 2026-11-23)·SPT10(d = 3), `ConvexHull`은 SPT11(구현됨, 2026-11-23), `Voronoi`는 SPT12 마일스톤에서 생긴다. SPT14 마일스톤에서 이 문서를 [spatial.md](spatial.md)에 합치고 이 파일을 지운다(SPT118). 그때까지 `tests/spatial/test_api_surface.py`는 구현된 이름의 시그니처만 이 파일과 견준다(SPT137).
+> 상태: **초안** (2026-11-23, SPT8 마일스톤). 아래 이름은 아직 구현되어 있지 않다: `Delaunay`는 SPT9(d = 2, 구현됨, 2026-11-23)·SPT10(d = 3, 구현됨, 2026-11-23), `ConvexHull`은 SPT11(구현됨, 2026-11-23), `Voronoi`는 SPT12 마일스톤에서 생긴다. SPT14 마일스톤에서 이 문서를 [spatial.md](spatial.md)에 합치고 이 파일을 지운다(SPT118). 그때까지 `tests/spatial/test_api_surface.py`는 구현된 이름의 시그니처만 이 파일과 견준다(SPT137).
 
 - 설계와 결정의 근거는 [docs/design/spatial_geometry.md](../design/spatial_geometry.md)(§1.1 SPT90–SPT123), 공통 규칙은 [API.md](../../API.md), 이 영역의 이미 있는 이름(거리, 이웃 찾기, `KDTree`)은 [spatial.md](spatial.md)다.
 - 비교 대상은 scipy 1.18.1의 `scipy.spatial.Delaunay`, `ConvexHull`, `Voronoi`(안은 Qhull)다.
@@ -39,7 +39,7 @@
 | `Delaunay.simplices`, `neighbors`, `convex_hull`, `vertex_to_simplex`, `coplanar` (int32) | 같은 이름, int64, 표준 꼴 | SPT9 |
 | `Delaunay.vertex_neighbor_vertices` | 같은 이름, `(indptr, indices)`, 행 안은 오름차순 | SPT9 |
 | `Delaunay.transform` | 같은 이름 | SPT9 |
-| `Delaunay.find_simplex(xi, bruteforce=False, tol=None)` | `Delaunay.find_simplex(xi, /)` | SPT9 |
+| `Delaunay.find_simplex(xi, bruteforce=False, tol=None)` | `Delaunay.find_simplex(xi, /)` | SPT9, SPT10 |
 | `Delaunay.equations`, `paraboloid_scale`, `paraboloid_shift`, `good`, `furthest_site`, `plane_distance`, `lift_points`, `add_points`, `close` | 없음 | — |
 | `ConvexHull(points, incremental=False, qhull_options=None)` | `ConvexHull(points, /)` | SPT11 |
 | `ConvexHull.points`, `ndim`, `npoints`, `nsimplex`, `min_bound`, `max_bound`, `vertices`, `simplices`, `neighbors`, `equations`, `area`, `volume` | 같은 이름 | SPT11 |
@@ -80,6 +80,7 @@ Delaunay.max_bound
 - `transform` (t, d + 1, d) float64: scipy의 뜻이다. `transform[i, :d, :]`는 T⁻¹, `transform[i, d, :]`는 꼭짓점 d다. 처음 읽을 때 만든다. 평평한 단체가 없으므로 NaN이 없다.
 - `find_simplex(xi)`: `xi`는 (…, d)이고 결과는 그 앞 모양의 int64 배열이다(점 하나 (d,)는 Python `int`). 평가점을 품은 **닫힌** 단체의 번호이고, 여러 단체가 품으면 가장 작은 번호다. 볼록 껍질 밖(경계 위는 안)과 NaN·inf 좌표는 −1이다. 마지막 축이 d가 아니면 `ValueError`다. `[scipy와 다름]`: `tol`·`bruteforce`가 없다. scipy는 허용오차 때문에 단위 정사각형 밖 10⁻¹⁵의 점을 안으로 치고(10⁻¹⁴은 밖), 걸친 점에서 고르는 단체를 정해 두지 않는다.
 - `repr`는 `Delaunay(n=1000, d=2, nsimplex=1975)`다. 피클과 `copy`는 점으로 다시 만든다.
+- d = 3의 사면체 수는 입력에 따라 O(n)에서 O(n²)이다(균등 입력에서 약 6.7n, 모멘트 곡선 (t, t², t³) 위의 점은 n²에 비례). 만드는 동안 사면체를 세어 이 기기의 물리 메모리에 들지 않으면 `MemoryError`다(`Delaunay(): the triangulation is larger than this machine's physical memory`).
 
 ## §4. `ConvexHull`
 

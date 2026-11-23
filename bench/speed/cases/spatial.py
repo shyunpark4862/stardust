@@ -562,7 +562,75 @@ def _hull_specs():
     return out
 
 
-SPECS = _distance_specs() + _neighbor_specs() + _tree_specs() + _geometry_specs() + _hull_specs()
+# ---- Delaunay for d = 3 (SPT10; docs/design/spatial_geometry.md §5) ----
+
+
+def _space(kind, npts, seed=20261129):
+    """3-D points: 'uniform' in [0, 1)^3 or 'grid' (an integer grid of side npts, shuffled: every cell
+    cospherical); query points uniform in the box, as many as points."""
+
+    def setup():
+        import stardust as sd
+
+        g = np.random.Generator(np.random.PCG64([seed, npts, len(kind)]))
+        if kind == "uniform":
+            x = g.random((npts, 3))
+        else:
+            i, r = np.divmod(np.arange(npts**3), npts * npts)
+            j, k = np.divmod(r, npts)
+            x = np.column_stack([i, j, k]).astype(np.float64)[g.permutation(npts**3)]
+        q = g.random((len(x), 3)) * (x.max(0) - x.min(0)) + x.min(0)
+        return {"x": x, "sx": sd.asarray(x), "q": q, "sq": sd.asarray(q)}
+
+    return setup
+
+
+def _built3(npts):
+    base = _space("uniform", npts)
+
+    def setup():
+        import scipy.spatial as S
+
+        import stardust as sd
+
+        d = base()
+        d["T"], d["sT"] = S.Delaunay(d["x"]), sd.spatial.Delaunay(d["sx"])
+        return d
+
+    return setup
+
+
+def _delaunay3_specs():
+    out = []
+    delaunay = Ref("scipy", lambda d: (lambda S: lambda: S.Delaunay(d["x"]))(_scipy_s()))
+    for npts in (10**3, 10**4, 10**5):
+        exp = int(round(np.log10(npts)))
+        out.append(Spec("SPT10", "delaunay", "Delaunay 3-D uniform", ("Delaunay",), f"10^{exp} points",
+                        _space("uniform", npts), lambda d: lambda: _sp().Delaunay(d["sx"]), (delaunay,),
+                        quick=npts == 10**4, note="sd inserts on one thread (SPT107)" if npts == 10**5 else "",
+                        check=SIMPLICES_CHECK))  # fmt: skip
+    out.append(Spec("SPT10", "delaunay", "Delaunay 3-D grid", ("Delaunay",), "32^3 points", _space("grid", 32),
+                    lambda d: lambda: _sp().Delaunay(d["sx"]), (delaunay,),
+                    note="every cell cospherical: the tie rule decides",
+                    check=Check(skip="the number of tetrahedra of cospherical points is not fixed (a cube: 5 or 6)")))  # fmt: skip
+    for npts in (10**3, 10**4, 10**5):
+        exp = int(round(np.log10(npts)))
+        out.append(Spec("SPT10", "delaunay", "Delaunay.find_simplex 3-D", ("Delaunay.find_simplex",),
+                        f"10^{exp} points", _built3(npts), lambda d: lambda: d["sT"].find_simplex(d["sq"]),
+                        (Ref("scipy", lambda d: lambda: d["T"].find_simplex(d["q"])),),
+                        note="as many uniform query points as points",
+                        check=Check(skip="the simplex numbers differ (sd's canonical order)")))  # fmt: skip
+    for npts in (10**4, 10**5):
+        exp = int(round(np.log10(npts)))
+        out.append(Spec("SPT10", "delaunay", "Delaunay.vertex_neighbor_vertices 3-D",
+                        ("Delaunay.vertex_neighbor_vertices",), f"10^{exp} points", _built3(npts),
+                        lambda d: lambda: d["sT"]._tri.vertex_neighbor_vertices(), (Ref("scipy", _scipy_vnv),),
+                        note="both are made on first use and kept: timed uncached",
+                        check=Check(sd=_vnv, ref=lambda label, v: _vnv(v), rtol=0.0, atol=0.0)))  # fmt: skip
+    return out
+
+
+SPECS = _distance_specs() + _neighbor_specs() + _tree_specs() + _geometry_specs() + _hull_specs() + _delaunay3_specs()
 
 
 def _public(names) -> bool:

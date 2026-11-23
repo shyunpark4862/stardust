@@ -1,10 +1,13 @@
 // sd.spatial's Delaunay for d = 2 (docs/design/spatial_geometry.md §3.3, §3.5, §3.10, §3.11; milestone SPT9,
-// decisions SPT104, SPT124-SPT139) and the native class _Delaunay (the Python class is
-// src/stardust/spatial/_delaunay.py, which checks every argument).
+// decisions SPT104, SPT124-SPT139) and the native class _Delaunay for d = 2 and 3 (the 3-D build is
+// delaunay3.cpp, milestone SPT10; the Python class is src/stardust/spatial/_delaunay.py, which checks every
+// argument).
 //
-//   _Delaunay(points)          points (n, d) C-contiguous float64, finite (checked by the caller), d = 2
-//                              (d = 3 comes with milestone SPT10). ValueError for fewer than 3 distinct
-//                              points or points on one line (SPT97, exact).
+//   _Delaunay(points, max_simplices=-1)
+//                              points (n, d) float64 of any strides, finite (checked by the caller), d = 2 or 3.
+//                              ValueError for fewer than d + 1 distinct points or points on one line (d = 2) or
+//                              plane (d = 3) (SPT97, exact). d = 3: MemoryError when the tetrahedra (ghosts
+//                              included) pass max_simplices (-1: what physical memory holds; tests pass less).
 //   t.n, t.ndim, t.nsimplex, t.ndistinct
 //   t.points(), t.simplices(), t.neighbors(), t.vertex_to_simplex()   the arrays (the same objects each call)
 //   t.convex_hull(), t.vertex_neighbor_vertices(), t.coplanar(), t.transform()   new arrays (made on demand)
@@ -40,6 +43,7 @@
 #include "array/ndarray.hpp"
 #include "bind/pyutil.hpp"
 #include "parallel/pool.hpp"
+#include "spatial/delaunay3.hpp"
 #include "spatial/predicates.hpp"
 #include "spatial/sfc.hpp"
 #include "spatial/spatial.hpp"
@@ -479,12 +483,59 @@ nb::object points_copy(const NDArray& a) {
     return out;
 }
 
-void new_delaunay(DelaunayObj* self, nb::handle ph) {
+// d = 3 (delaunay3.cpp): the build, then the canonical form, the vertex to simplex map and the grid.
+void new_delaunay3(DelaunayObj& obj, std::int64_t max_simplices) {
+    Triangulation& T = obj.T;
+    const std::int64_t n = T.n;
+    const bool unlock = n * 64 >= tri::kParallelWork, split = n > kLeaf;
+    const std::int64_t max_tets = max_simplices < 0 ? tri::default_max_tets(n) : max_simplices;
+    tri::Internal3 in;
+    tri::Build3 st;
+    {
+        const parallel::Unlocked unlocked(unlock);
+        st = tri::build_delaunay3(T, in, max_tets, split);
+    }
+    if (st == tri::Build3::TooFew)
+        throw nb::value_error(("Delaunay(): needs at least 4 distinct points, got " + std::to_string(T.m)).c_str());
+    if (st == tri::Build3::Coplanar) throw nb::value_error("Delaunay(): 'points' are coplanar");
+    if (st == tri::Build3::Memory) {
+        PyErr_SetString(
+            PyExc_MemoryError, "Delaunay(): the triangulation is larger than this machine's physical memory"
+        );
+        throw nb::python_error();
+    }
+    T.t = in.t;
+    obj.simplices = array_of(DType::Int64, {in.t, 4});
+    obj.neighbors = array_of(DType::Int64, {in.t, 4});
+    obj.v2s = array_of(DType::Int64, {n});
+    T.simplices = data_of<std::int64_t>(obj.simplices);
+    T.neighbors = data_of<std::int64_t>(obj.neighbors);
+    T.v2s = data_of<std::int64_t>(obj.v2s);
+    {
+        const parallel::Unlocked unlocked(unlock);
+        tri::canonical_form<3>(n, in.t, in.s.data(), in.nb.data(), T.simplices, T.neighbors, split);
+        in = tri::Internal3();
+        tri::vertex_to_simplex(T, split);
+        tri::build_locator<3>(T, split);
+    }
+}
+
+void new_delaunay(DelaunayObj* self, nb::handle ph, std::int64_t max_simplices) {
     const NDArray& a = points_arg(ph, "_Delaunay", false);
     const std::int64_t n = a.shape[0];
     const int d = static_cast<int>(a.shape[1]);
-    if (d != 2) throw nb::value_error("Delaunay(): 3-D points come with milestone SPT10");
+    if (d != 2 && d != 3) throw nb::value_error("Delaunay(): 'points' must have 2 or 3 columns");
     if (n >= INT32_MAX) throw nb::value_error("Delaunay(): too many points");
+    if (d == 3) {
+        DelaunayObj obj;  // moved into self once complete: an exception leaves nothing half built
+        obj.points = points_copy(a);
+        obj.T.d = 3;
+        obj.T.n = n;
+        obj.T.pts = data_of<const double>(obj.points);
+        new_delaunay3(obj, max_simplices);
+        new (self) DelaunayObj(std::move(obj));
+        return;
+    }
     DelaunayObj obj;  // moved into self once complete: an exception leaves nothing half built
     obj.points = points_copy(a);
     Triangulation& T = obj.T;
@@ -529,7 +580,9 @@ nb::object find_simplex(const DelaunayObj& self, nb::handle xh) {
     nb::object out = array_of(DType::Int64, {q});
     const bool split = q * tri::kQueryWork >= tri::kParallelWork;
     const parallel::Unlocked unlocked(split);
-    tri::find_simplex<2>(T, reinterpret_cast<const double*>(x.data), q, data_of<std::int64_t>(out), split);
+    const auto* px = reinterpret_cast<const double*>(x.data);
+    if (T.d == 2) tri::find_simplex<2>(T, px, q, data_of<std::int64_t>(out), split);
+    else tri::find_simplex<3>(T, px, q, data_of<std::int64_t>(out), split);
     return out;
 }
 
@@ -544,7 +597,7 @@ nb::object int64_rows(const std::vector<std::int64_t>& v, std::int64_t cols) {
 
 void bind_delaunay(nb::module_& m) {
     nb::class_<DelaunayObj>(m, "_Delaunay")
-        .def("__init__", &new_delaunay, nb::arg("points"))
+        .def("__init__", &new_delaunay, nb::arg("points"), nb::arg("max_simplices") = -1)
         .def_prop_ro("n", [](const DelaunayObj& o) { return o.T.n; })
         .def_prop_ro("ndim", [](const DelaunayObj& o) { return o.T.d; })
         .def_prop_ro("nsimplex", [](const DelaunayObj& o) { return o.T.t; })
@@ -564,7 +617,8 @@ void bind_delaunay(nb::module_& m) {
                 const bool split = T.t > 4 * tri::kChunk;
                 {
                     const parallel::Unlocked unlocked(T.t * 8 >= tri::kParallelWork);
-                    tri::vertex_neighbors2(T, data_of<std::int64_t>(indptr), idx, split);
+                    if (T.d == 2) tri::vertex_neighbors2(T, data_of<std::int64_t>(indptr), idx, split);
+                    else tri::vertex_neighbors3(T, data_of<std::int64_t>(indptr), idx, split);
                 }
                 nb::object indices = array_of(DType::Int64, {static_cast<std::int64_t>(idx.size())});
                 if (!idx.empty()) std::memcpy(data_of<std::int64_t>(indices), idx.data(), 8 * idx.size());
@@ -575,15 +629,19 @@ void bind_delaunay(nb::module_& m) {
             "transform",
             [](const DelaunayObj& o) {
                 const Triangulation& T = o.T;
-                nb::object out = array_of(DType::Float64, {T.t, 3, 2});
+                nb::object out = array_of(DType::Float64, {T.t, T.d + 1, T.d});
                 const bool split = T.t > 4 * tri::kChunk;
                 const parallel::Unlocked unlocked(T.t * 16 >= tri::kParallelWork);
-                tri::transform2(T, data_of<double>(out), split);
+                if (T.d == 2) tri::transform2(T, data_of<double>(out), split);
+                else tri::transform3(T, data_of<double>(out), split);
                 return out;
             }
         )
         .def("find_simplex", &find_simplex, nb::arg("x"))
-        .def("_grid", [](const DelaunayObj& o) { return nb::make_tuple(o.T.loc2.g[0], o.T.loc2.g[1]); });
+        .def("_grid", [](const DelaunayObj& o) {
+            if (o.T.d == 2) return nb::make_tuple(o.T.loc2.g[0], o.T.loc2.g[1]);
+            return nb::make_tuple(o.T.loc3.g[0], o.T.loc3.g[1], o.T.loc3.g[2]);
+        });
 }
 
 }  // namespace sd::spatial

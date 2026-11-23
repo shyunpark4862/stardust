@@ -200,6 +200,7 @@ def cases(L):
     yield from _kdtree_radius_cases(L)
     yield from _delaunay_cases(L)
     yield from _hull_cases(L)
+    yield from _delaunay3_cases(L)
 
 
 def _neighbor_cases(L):
@@ -460,6 +461,45 @@ def _delaunay_cases(L):
     yield "error Delaunay columns", lambda: S.Delaunay(a(np.zeros((5, 4))))
     yield "error Delaunay qhull_options", lambda: S.Delaunay(a(grid), qhull_options="Qbb")
     yield "error find_simplex columns", lambda: S.Delaunay(a(grid)).find_simplex(a(np.zeros((2, 3))))
+
+
+def _delaunay3_cases(L):
+    """Delaunay for d = 3 (milestone SPT10, docs/design/spatial_geometry.md §2.3): every attribute and
+    find_simplex on small degenerate sets (a 3^3 integer grid, integer points on one sphere, equal points with
+    -0.0, a plane with points off it, huge and tiny coordinates), 2 * 10^4 uniform points (the parallel sort,
+    canonical form and queries at 3 and 10 threads), the wrong calls."""
+    S = L.sd.spatial
+    a = L.arr
+    r = L.rng(717)
+    grid = np.array([[i, j, k] for i in range(3) for j in range(3) for k in range(3)], dtype=float)[r.permutation(27)]
+    sphere = np.array([[x, y, z] for x in range(-3, 4) for y in range(-3, 4) for z in range(-3, 4)
+                       if x * x + y * y + z * z == 9], dtype=float)  # fmt: skip
+    dup = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [-0.0, 0.0, -0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0],
+                    [1.0, 0.0, 0.0], [1.0, 1.0, 1.0], [0.0, -0.0, 0.0]])  # fmt: skip
+    plane = np.array([[float(i % 4), float(i // 4), 0.0] for i in range(16)] + [[1.5, 1.5, 2.0], [0.5, 2.5, -1.0]])
+    wide = np.array([[1e200, 0.0, 0.0], [-1e200, 3e-300, 0.0], [0.0, 1e200, 1e-300], [5e-324, -1e-310, 1e200],
+                     [2e-300, 7e199, -1e200], [0.0, 0.0, 0.0], [1e-300, 1e-300, 1e-300]])  # fmt: skip
+    big = r.random((20_000, 3))
+    q = np.array([[0.5, 0.5, 0.5], [1.0, 1.0, 1.0], [1.0, 0.5, 0.0], [-1.0, 0.0, 0.0], [NAN, 0.0, 0.0],
+                  [2.0, 2.0, 2.0], [1.5, 1.0, 0.5]])  # fmt: skip
+
+    def attrs(t):
+        return (t.npoints, t.ndim, t.nsimplex, t.points, t.simplices, t.neighbors, t.convex_hull,
+                t.vertex_to_simplex, *t.vertex_neighbor_vertices, t.coplanar, t.transform, t.min_bound,
+                t.max_bound, repr(t))  # fmt: skip
+
+    for name, x in (("grid", grid), ("sphere", sphere), ("dup", dup), ("plane", plane), ("wide", wide)):
+        yield f"Delaunay 3-D attributes {name}", lambda x=x: attrs(S.Delaunay(a(x)))
+    yield "Delaunay 3-D attributes big", lambda: attrs(S.Delaunay(a(big)))
+    yield "Delaunay 3-D find_simplex grid", lambda: S.Delaunay(a(grid)).find_simplex(a(q))
+    yield "Delaunay 3-D find_simplex one point", lambda: S.Delaunay(a(grid)).find_simplex(a(q[0]))
+    yield "Delaunay 3-D find_simplex batch", lambda: S.Delaunay(a(sphere)).find_simplex(a(q[:6].reshape(3, 2, 3)))
+    yield "Delaunay 3-D find_simplex big", lambda: S.Delaunay(a(big)).find_simplex(a(r.random((5000, 3)) * 1.2 - 0.1))
+    yield "error Delaunay 3-D coplanar", lambda: S.Delaunay(a(plane[:16]))
+    yield "error Delaunay 3-D too few", lambda: S.Delaunay(a(dup[:4]))
+    yield "error Delaunay 3-D nan", lambda: S.Delaunay(a(np.array([[0.0, 0.0, 0.0], [1.0, NAN, 0.0], [0.0, 1.0, 0.0],
+                                                                   [0.0, 0.0, 1.0]])))  # fmt: skip
+    yield "error find_simplex 3-D columns", lambda: S.Delaunay(a(grid)).find_simplex(a(np.zeros((2, 2))))
 
 
 def _hull_cases(L):

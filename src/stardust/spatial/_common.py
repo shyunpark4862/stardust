@@ -325,3 +325,20 @@ def tree_other(other, name, m):
     if other.m != m:
         raise ValueError(f"{name}(): 'other' must have the same m as this tree ({m}), not {other.m}")
     return other
+
+
+# ---- the geometry classes (docs/design/spatial_geometry.md §2.1; SPT98, SPT101, SPT149) ----
+
+
+def geometry_points(x, name, *, check_finite=True):
+    """The points of Delaunay and ConvexHull: an (n, d) float64 sd.ndarray, d = 2 or 3, finite when check_finite
+    (ConvexHull checks finiteness in its native scan, with the same message). Not copied here: the native
+    code makes its own C-contiguous copy (the points attribute, SPT135)."""
+    a = data(x, name, "points")
+    if a.ndim != 2:
+        raise ValueError(f"{name}(): 'points' must have 2 dimensions, not {a.ndim}")
+    if a.shape[1] not in (2, 3):
+        raise ValueError(f"{name}(): 'points' must have 2 or 3 columns, not {a.shape[1]}")
+    if check_finite:
+        finite(a, name, "points")
+    return a

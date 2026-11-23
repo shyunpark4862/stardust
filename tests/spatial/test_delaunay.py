@@ -1,7 +1,7 @@
-"""Delaunay for d = 2 (docs/design/spatial_geometry.md §2.3, §3.3, §3.5, §4 items 1-4; milestone SPT9): the
-triangulation by the exact checkers of exactgeom.py, the tie rule against the exhaustive reference, the
-canonical form, the attributes by their definitions, find_simplex, errors, pickle and repr, and scipy's
-simplices on points in general position."""
+"""Delaunay for d = 2 (docs/design/spatial_geometry.md §2.3, §3.3, §3.5, §4 items 1-4; milestone SPT9; d = 3 is
+test_delaunay3.py): the triangulation by the exact checkers of exactgeom.py, the tie rule against the
+exhaustive reference, the canonical form, the attributes by their definitions, find_simplex, errors, pickle
+and repr, and scipy's simplices on points in general position."""
 
 import copy
 import itertools
@@ -357,11 +357,6 @@ def test_pickle_copy_repr():
         for name in ("points", "simplices", "neighbors", "vertex_to_simplex", "coplanar", "convex_hull"):
             assert _np(getattr(E, name)).tobytes() == _np(getattr(D, name)).tobytes(), name
     assert repr(Delaunay(G.get("uniform2/1000").x)) == "Delaunay(n=1000, d=2, nsimplex=1982)"
-
-
-def test_three_d_not_yet():
-    with pytest.raises(ValueError, match="SPT10"):
-        Delaunay(np.random.default_rng(0).random((10, 3)))
 
 
 # ---------------------------------------------------------------- scipy on points in general position

@@ -1,10 +1,11 @@
-"""Delaunay of sd.spatial (docs/api/spatial_geometry.md §3, docs/design/spatial_geometry.md §2.3, §3.3, §3.5;
+"""Delaunay of sd.spatial (docs/api/spatial_geometry.md §3, docs/design/spatial_geometry.md §2.3, §3.3-§3.5;
 milestones SPT9 (d = 2) and SPT10 (d = 3)).
 
-A Python class holding the native triangulation (stardust._core.spatial._Delaunay, csrc/spatial/delaunay2.cpp),
-like KDTree (ARCHITECTURE §3). The points are always copied (SPT98). The triangulation is a function of
-the point set (the exact predicates and the tie rule of §3.2) and its arrays are in the canonical form of
-§2.2, so a pickled or copied Delaunay is rebuilt from its points into the same object (SPT105).
+A Python class holding the native triangulation (stardust._core.spatial._Delaunay, csrc/spatial/delaunay2.cpp;
+the 3-D build is csrc/spatial/delaunay3.cpp), like KDTree (ARCHITECTURE §3). The points are always copied
+(SPT98). The triangulation is a function of the point set (the exact predicates and the tie rule of §3.2) and
+its arrays are in the canonical form of §2.2, so a pickled or copied Delaunay is rebuilt from its points into
+the same object (SPT105).
 
 The arrays the build makes (simplices, neighbors, vertex_to_simplex) are read-only attributes; the others
 (convex_hull, vertex_neighbor_vertices, coplanar, transform) are made on first use and kept (SPT106, SPT132).
@@ -20,26 +21,15 @@ from . import _common as C
 
 _core = _sd.spatial
 
-# Bytes per input point the build may hold at its peak (docs/design/spatial_geometry.md §3.11, SPT136): the
-# copy and sort keys, the edge structure (72 per distinct point), the internal and canonical triangles.
-_BUILD_BYTES = 360
+# Bytes per input point the build holds at its peak (docs/design/spatial_geometry.md §3.11): d = 2 (SPT136) the
+# copy and sort keys, the edge structure (72 per distinct point), the internal and canonical triangles; d = 3
+# (SPT164) at least kPointBytes3 + kTetBytes (delaunay3.hpp) for one tetrahedron per point, the fewest a 3-D
+# triangulation has. The 3-D build also counts its tetrahedra (MemoryError past physical memory's share).
+_BUILD_BYTES = {2: 360, 3: 328}
 
 
 def _readonly(a):
     a._set_readonly()
-    return a
-
-
-def geometry_points(x, name):
-    """The points of a geometry class (SPT98, SPT101): (n, d) float64, d = 2 or 3, finite. Not copied here: the
-    native class makes its own C-contiguous copy (the points attribute)."""
-    a = C.data(x, name, "points")
-    if a.ndim != 2:
-        raise ValueError(f"{name}(): 'points' must have 2 dimensions, not {a.ndim}")
-    d = a.shape[1]
-    if d not in (2, 3):
-        raise ValueError(f"{name}(): 'points' must have 2 or 3 columns, not {d}")
-    C.finite(a, name, "points")
     return a
 
 
@@ -50,10 +40,15 @@ class Delaunay:
 
     @method("Delaunay")
     def __init__(self, points, /):
+        self._build(points, -1)
+
+    def _build(self, points, max_simplices):
+        """max_simplices: the tetrahedra (ghosts included) a 3-D build may hold, -1 for physical memory's share
+        (tests pass less: _limited)."""
         name = "Delaunay"
-        a = geometry_points(points, name)
-        C.check_alloc(_BUILD_BYTES * a.shape[0], name)
-        self._tri = _core._Delaunay(a)
+        a = C.geometry_points(points, name)
+        C.check_alloc(_BUILD_BYTES[a.shape[1]] * a.shape[0], name)
+        self._tri = _core._Delaunay(a, max_simplices)
         self._points = _readonly(self._tri.points())
         self._simplices = _readonly(self._tri.simplices())
         self._neighbors = _readonly(self._tri.neighbors())
@@ -158,12 +153,22 @@ class Delaunay:
             raise ValueError(f"{name}(): 'xi' must have {d} entries on its last axis, not {got}")
         batch = tuple(X.shape[:-1])
         X2 = sd.reshape(X, (math.prod(batch), d))
-        if not X2._flags()["c_contiguous"]:
-            X2 = X2.copy()
+        if not X2._flags()["c_contiguous"]:  # copy() keeps an F-ordered array F-ordered
+            c_ordered = sd.empty(tuple(X2.shape), dtype=X2.dtype)
+            c_ordered[...] = X2
+            X2 = c_ordered
         out = self._tri.find_simplex(X2)
         if not batch:
             return int(out[0])
         return sd.reshape(out, batch)
+
+
+def _limited(points, max_simplices):
+    """A Delaunay whose 3-D build may hold at most max_simplices tetrahedra (ghosts included): the MemoryError
+    path for tests, without exhausting memory."""
+    D = Delaunay.__new__(Delaunay)
+    D._build(points, max_simplices)
+    return D
 
 
 def _rebuild(raw, n, d):

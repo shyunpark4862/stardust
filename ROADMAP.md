@@ -819,7 +819,7 @@
 
 ## 계산 기하 (Delaunay, ConvexHull, Voronoi)와 흩어진 점 보간
 
-> 상태: **진행 중** (SPT8, SPT9, SPT11 완료·승인(위임), 2026-11-23). 설계는 [docs/design/spatial_geometry.md](docs/design/spatial_geometry.md)(설계 초안), API 초안은 [docs/api/spatial_geometry.md](docs/api/spatial_geometry.md)이고 SPT14에서 docs/api/spatial.md에 합친다(SPT118).
+> 상태: **진행 중** (SPT8, SPT9, SPT10, SPT11 완료·승인(위임), 2026-11-23). 설계는 [docs/design/spatial_geometry.md](docs/design/spatial_geometry.md)(설계 초안), API 초안은 [docs/api/spatial_geometry.md](docs/api/spatial_geometry.md)이고 SPT14에서 docs/api/spatial.md에 합친다(SPT118).
 
 - 큰 결정(사용자, 2026-11-23): Qhull 없이 직접 쓴 C++과 정확한 술어(거르기 → 전개식 → 넓은 정수), 범위는 `Delaunay`·`ConvexHull`·`Voronoi`의 2·3차원, 그 위에 `sd.interpolate`의 `LinearNDInterpolator`·`CloughTocher2DInterpolator`·`griddata`(docs/design/spatial_geometry.md §1.1 SPT90–SPT92). 나머지는 추천안이다(SPT93–SPT123, IP108–IP113, 사용자 위임 2026-11-23).
 - 비교 대상은 scipy 1.18.1(Qhull)이다. R의 기하 패키지는 설치되어 있지 않고 설치하지 않는다. 조합 구조의 참값은 유리수 검사기(tests/spatial/exactgeom.py), 실수 출력의 참값은 유리수와 Arb다.
@@ -828,7 +828,7 @@
 |---|---|
 | SPT8 준비와 술어: API 초안, 시험 데이터, 검사기, scipy 기록, `expansion.hpp`·`wideint.hpp`·`predicates.hpp`·`sfc.hpp`, 거르기 상수의 증명, 섭동 규칙, §4 상수 | 완료·승인(위임, 2026-11-23) |
 | SPT9 2차원 Delaunay: 나눠서 합치기, 모든 속성과 `find_simplex`, 표준 꼴, 피클 | 완료·승인(위임, 2026-11-23) |
-| SPT10 3차원 Delaunay: BRIO 순서의 하나씩 넣기와 위치 찾기 | |
+| SPT10 3차원 Delaunay: BRIO 순서의 하나씩 넣기와 위치 찾기 | 완료·승인(위임, 2026-11-23) |
 | SPT11 볼록 껍질: `ConvexHull`(d = 2, 3) | 완료·승인(위임, 2026-11-23) |
 | SPT12 보로노이: `Voronoi`(d = 2, 3) | |
 | SPT13 성능 점검 | |
@@ -844,6 +844,11 @@
 - 결정(추천안, 사용자 위임 2026-11-23): docs/design/spatial_geometry.md §1.1 SPT124–SPT139(병렬 사전 순서 정렬; 깊이의 홀짝으로 축을 번갈아 자르고 축 1은 4분의 1 돌린 사전 순서, 부모는 자식의 껍질을 걸어 끝점을 찾음; 만드는 동안은 쌍대 없는 quad-edge(설계의 삼각형 기반 대신); 다음 후보가 valid일 때만 후보를 지움(섭동 규칙과 같은 점); 2¹⁴점 이하 부분 나무가 태스크이고 위쪽은 층마다 나란히, 노드마다 변 칸 3V; d = 2·3 공용 `canonical_form`; `vertex_to_simplex`는 만들 때, 나머지 속성은 처음 읽을 때; 위치 격자 m/4칸; 걷기와 0인 면 너머의 가장 작은 번호; `find_simplex`의 입력과 결과; 3차원은 SPT10까지 임시 에러; 점의 사본은 네이티브가; 메모리 검사 360n; API 표면 테스트의 초안 이름; 테스트 파일; 속도·골든 사례).
 - 결과: csrc/spatial/triangulation.hpp(SPT10·SPT12가 쓸 공용: 병렬 정렬, `Triangulation`, 표준 꼴, `vertex_to_simplex`, 위치 격자, 걷기와 `find_simplex`, 지연 속성), csrc/spatial/delaunay2.cpp(분할 정복과 `_Delaunay`), src/stardust/spatial/_delaunay.py(`sd.spatial.Delaunay`), tests/spatial/test_delaunay.py·test_delaunay_threads.py, bench/speed/cases/spatial.py의 `delaunay` 묶음, tests/golden/cases_spatial.py의 `_delaunay_cases`(기록하지 않음).
 - 찾은 것: 시험 데이터의 모든 유효한 2차원 점 집합(무작위, 퇴화, 거의 퇴화, 극단 범위)에서 §4의 1–4번이 유리수 검사기로 서고, 작은 집합은 ε 다항식의 전수 참조와 단체가 같고, 행을 섞으면 색인만 바뀌고, 1·3·10스레드에서 모든 배열의 바이트가 같다. 일반 위치에서는 scipy와 단체의 집합이 같다. 시간(Apple M4 Pro, 부하 평균 9–17로 기기를 나눠 씀; sd 1스레드 / 10스레드 대 scipy, ms): 균등 10³ 0.65 / 0.58 대 1.25, 10⁴ 4.0 / 6.0 대 15.3, 10⁵ 60 / 41 대 424, 10⁶ 924 / 266 대 5,459; 정규 10⁵ 46 / 18 대 216; 격자 316² 39 / 13 대 538; 원 위 10⁴ 4.3 / 3.9 대 2,351; `find_simplex`(평가점 n개) 10⁴ 0.42 / 0.074 대 14.3, 10⁵ 8.3 / 0.97 대 572, 10⁶ 217 / 22; `vertex_neighbor_vertices` 10⁶ 49 / 26 대 309. 10⁴점이 10스레드에서 1스레드보다 느려 나누기를 2¹⁴점 위로 미뤘다(SPT128; 뒤에 1·10스레드 모두 3.9 ms). 10⁶점을 만드는 동안 최대 RSS는 332 MB 늘었다(scipy 935 MB). 원 논문의 합치기는 섭동 규칙과 함께 쓰면 같은 점이 둘인 원 판정에서 지우면 안 될 변을 지울 수 있어 고쳤다(SPT127).
+
+### SPT10. 3차원 Delaunay — 완료·승인(위임, 2026-11-23)
+- 결정(추천안, 사용자 위임 2026-11-23): docs/design/spatial_geometry.md §1.1 SPT156–SPT169(사전 순서의 첫 점들로 처음 사면체, 한 직선 위의 3차원 점도 `coplanar`; 병렬로 만든 같은 BRIO 순서; 꼭짓점·이웃 int32와 4 × 사면체 + 면의 이웃 적기, 무한점의 유령 사면체; 유령은 껍질 면의 평면 위에서 건너편 사면체의 섭동 판정을 따름; 3차원에는 SPT127의 같은 점 문제가 없음; 앞 점의 사면체에서 걷기, 너비 우선 충돌 영역과 변 해시로 잇기; 별에서 만드는 `vertex_neighbor_vertices`; 사면체를 세는 메모리 한도와 주입 인자 `max_simplices`; 교차곱의 `transform`; 2차원과 같은 병렬 기준; 입력 검사 도우미 `_common.geometry_points` 하나; 거르기 검사기를 쓰는 테스트; 속도·골든 사례).
+- 결과: csrc/spatial/delaunay3.cpp·delaunay3.hpp(만들기), delaunay2.cpp의 `_Delaunay`가 d = 3을 받음, triangulation.hpp의 `sort_parallel`·`brio_order_parallel`·`vertex_neighbors3`·`transform3`, tests/spatial/test_delaunay3.py, test_delaunay_threads.py의 3차원 함수, bench/speed/cases/spatial.py의 `delaunay` 묶음에 3차원 사례, tests/golden/cases_spatial.py의 `_delaunay3_cases`(기록하지 않음).
+- 찾은 것: 시험 데이터의 모든 유효한 3차원 점 집합(무작위, 격자, 구 위, 같은 점, 평면과 그 밖의 점, 극단 범위, 거의 퇴화)에서 §4의 1–4번이 서고, 작은 집합은 섭동 전수 참조와 단체가 같고, 행을 섞으면 색인만 바뀌고, `transform`이 4u 안이고, 1·3·10스레드에서 바이트가 같다. 일반 위치에서는 scipy와 단체의 집합이 같다. 시간(부하 평균 15–21; sd 1스레드 / 10스레드 대 scipy, ms): 균등 10⁴ 42 / 47 대 151, 10⁵ 564 / 395 대 2,494; 격자 32³ 247 / 310 대 1,116; `find_simplex` 10⁵ 41 / 5.0 대 561; `vertex_neighbor_vertices` 10⁵ 106 / 26 대 120(1스레드가 scipy와 비슷해 SPT13에서 고친다). 10⁵점을 만드는 동안 최대 RSS는 120 MB 늘었다(scipy 466 MB).
 
 ### SPT11. 볼록 껍질 — 완료·승인(위임, 2026-11-23)
 - 결정(추천안, 사용자 위임 2026-11-23): docs/design/spatial_geometry.md §1.1 SPT140–SPT153(네이티브는 배열을 한 번에 돌려주는 함수 `_convex_hull`; 8·14방향 극점의 한 번 훑기와 보수적 범위; 미리 거르기는 증명한 상수 10u·18u의 정적 필터; 후보의 껍질에서 시작하는 퀵헐(같은 점은 정렬 없이 작은 색인이 남음); 평평한 면은 `orient3d` = 0의 합집합 찾기와 사영 `orient2d`로 변 가운데 점 빼기; 합의 차례와 /2·/6을 합 뒤 한 번; 넘침·비정상 수의 법선은 넓은 정수로 배율 맞춤; 3차원 표준 꼴은 셈 정렬; 계약 참값은 테스트 안의 유리수·Arb; 속도 묶음 `hull`, 골든 `_hull_cases`(기록 안 함)).
