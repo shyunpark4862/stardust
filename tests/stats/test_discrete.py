@@ -11,6 +11,8 @@ import scipy.stats as st
 
 import stardust as sd
 
+from . import refdata
+
 S = sd.stats
 
 # (class, parameters, scipy frozen distribution, support)
@@ -396,6 +398,96 @@ def test_sum_cdfs_against_arb(arb):
         assert arb_error(Y.cdf(float(k)), t) < 5e-15, k
 
 
+# Arb (python-flint, 160 bits): the terms from k outwards by their exact ratios, times the pmf
+# from Arb's log-gammas. (total, successes, draws, k, P(X <= k), P(X >= k))
+HYPERGEOMETRIC_LONG_TAILS = [
+    (4 * 10**11 + 10, 2 * 10**11 + 7, 2 * 10**11 + 3, 10**11, 0.4999949537349561836, 0.5000075693975654849),
+    (4 * 10**13 + 10, 2 * 10**13 + 7, 2 * 10**13 + 3, 10**13, 0.4999994953734955962, 0.5000007569397566055),
+    (10**13, 4 * 10**12, 5 * 10**12, 2000002300000, 0.9985075459215661553, 0.001492460349185472659),
+    (4 * 10**14, 2 * 10**14, 2 * 10**14, 99999850000000, 4.906728662803633161e-198, 1.0),
+    (44 * 10**14 + 10, 22 * 10**14 + 7, 22 * 10**14 + 3, 11 * 10**14, 0.4999999518857506509, 0.5000000721713740237),
+]
+
+
+@pytest.mark.parametrize("N, K, n, k, lower, upper", HYPERGEOMETRIC_LONG_TAILS)
+def test_hypergeometric_tails_of_more_than_2_20_terms(N, K, n, k, lower, upper):
+    """A standard deviation of 1.6e5 to 1.7e7: the tails are not added term by term (the integral
+    of the pmf with its Euler-Maclaurin correction, csrc/stats/discrete.hpp smooth_tail_sum)."""
+    import time
+
+    X = S.Hypergeometric(total=N, successes=K, draws=n)
+    start = time.perf_counter()
+    got = (X.cdf(k), X.ccdf(k - 1), X.logcdf(k), X.logccdf(k - 1), X.ccdf(k), X.cdf(k - 1))
+    assert time.perf_counter() - start < 0.1
+    assert got[0] == pytest.approx(lower, rel=5e-15, abs=0.0)
+    assert got[1] == pytest.approx(upper, rel=5e-15, abs=0.0)
+    assert got[2] == pytest.approx(math.log(lower), rel=5e-15, abs=5e-15)
+    assert got[3] == pytest.approx(math.log(upper), rel=5e-15, abs=5e-15)
+    pmf = X.pmf(k)
+    assert got[4] == pytest.approx(1.0 - lower if lower < 0.9 else upper - pmf, rel=1e-12)
+    assert got[5] == pytest.approx(1.0 - upper if upper < 0.9 else lower - pmf, rel=1e-12)
+    # the quantiles search the same tails: a probability between those of k - 1 and k
+    if lower < 0.5:
+        assert X.icdf(0.5 * (got[5] + got[0])) == k
+    else:
+        assert X.iccdf(0.5 * (got[1] + got[4])) == k
+    x = sd.asarray([float(k), float(k - 1)])
+    assert X.cdf(x).tolist() == [got[0], got[5]]
+
+
+@pytest.mark.parametrize("dist", refdata.TAIL_DISTRIBUTIONS)
+def test_long_tail_sums_against_arb(dist):
+    """The cdfs where a side of the pmf has 1e4 to 1e9 terms (tests/stats/ref/tails, tools/
+    stats_ref.py): bells of a standard deviation up to 5e5, and the beta-binomial's power-law
+    ends, U and J shapes and the uniform up to n = 1e8 (to 2^34 near the ends of the support). A
+    long smooth run of terms is an integral with its Euler-Maclaurin correction (csrc/stats/
+    discrete.hpp smooth_tail_sum), the ends of the support and short runs are added term by term:
+    within 5e-15 (of max(1, |log|) for the logs; 45 subnormal steps below the normal range), and a
+    call takes well under a millisecond."""
+    import time
+
+    cls = getattr(S, refdata.CLASSES[dist])
+    names = inspect.signature(cls).parameters
+    worst, points = 0.0, 0
+    start = time.perf_counter()
+    for params, k, ref in refdata.tail_groups(dist):
+        X = cls(**dict(zip(names, params)))
+        for m, (hi, lo) in ref.items():
+            got = np.asarray(getattr(X, m)(sd.asarray(k)))
+            diff = np.abs((got - hi) - lo)
+            if m.startswith("log"):
+                with np.errstate(invalid="ignore"):
+                    err = np.where(np.isinf(hi), np.where(got == hi, 0.0, np.inf), diff / np.maximum(1.0, np.abs(hi)))
+            else:
+                tiny = np.abs(hi) < 2.0**-1022
+                with np.errstate(invalid="ignore", divide="ignore"):
+                    err = np.where(tiny, diff / refdata.SUBNORMAL_ABS * 5e-15, diff / np.abs(hi))
+                err = np.where(diff == 0.0, 0.0, err)
+            assert not np.isnan(got).any(), (dist, params, m, k[np.isnan(got)])
+            bad = err > 5e-15
+            assert not bad.any(), (dist, params, m, k[bad], got[bad], hi[bad], err[bad])
+            worst, points = max(worst, float(err.max())), points + k.size
+            one = float(k[k.size // 2])  # a scalar call is the array's element
+            assert getattr(X, m)(one) == got[k.size // 2]
+    assert points >= 400 and time.perf_counter() - start < 20.0
+
+
+# Arb, as above. Sums of 1e5 to 1e6 terms that fall slowly: the terms left when the sum stops
+# (below 2^-60 of it each, 1 / (1 - ratio) of them) were 3e-14 of these values.
+HYPERGEOMETRIC_SLOW_TAILS = [
+    (932424782597, 258537903787, 243342061157, 67471677254, False, 3.096733521509940357e-7),
+    (74155550401079, 2838515285389, 1259652720278, 48217817259, True, 9.941752266199140963e-7),
+    (1656105621075497, 3283630072363, 1628503789544210, 3228904018848, True, 3.023157958842238832e-8),
+]
+
+
+@pytest.mark.parametrize("N, K, n, k, upper, value", HYPERGEOMETRIC_SLOW_TAILS)
+def test_hypergeometric_slowly_falling_tail_sums(N, K, n, k, upper, value):
+    X = S.Hypergeometric(total=N, successes=K, draws=n)
+    got = X.ccdf(k - 1) if upper else X.cdf(k)
+    assert got == pytest.approx(value, rel=5e-15, abs=0.0)
+
+
 def test_calls_far_outside_the_guaranteed_region_return_at_once():
     """Every sum and search is bounded (csrc/stats/discrete.hpp): a call whose sum would pass
     its bound returns NaN (docs/api/stats.md §2.3) instead of running on."""
@@ -403,7 +495,7 @@ def test_calls_far_outside_the_guaranteed_region_return_at_once():
 
     B = S.BetaBinomial(n=1e12, a=2.5, b=1.7)
     H = S.Hypergeometric(total=1e15, successes=1e14, draws=1e14)
-    W = S.BetaBinomial(n=3e6, a=2.5, b=1.7)  # a pmf, but tail sums of more than 2^20 terms in the middle
+    W = S.BetaBinomial(n=3e6, a=2.5, b=1.7)  # tail sums of more than 2^20 terms in the middle
     calls = [
         lambda: S.Binomial(n=1e15, p=0.3).entropy(),
         lambda: S.NegativeBinomial(n=1e100, p=0.3).entropy(),
@@ -419,10 +511,6 @@ def test_calls_far_outside_the_guaranteed_region_return_at_once():
         lambda: B.ilogcdf(-1.0),
         lambda: B.median(),
         lambda: B.entropy(),
-        lambda: W.cdf(1.5e6),
-        lambda: W.icdf(0.5),
-        lambda: H.cdf(1e13),
-        lambda: H.icdf(0.5),
         lambda: H.entropy(),
         lambda: H.kurtosis(),
         lambda: S.Hypergeometric(total=1e100, successes=1e99, draws=1e99).pmf(1e98),
@@ -436,6 +524,14 @@ def test_calls_far_outside_the_guaranteed_region_return_at_once():
     # the far tails of the same distributions end in a few terms and are values
     assert 0.0 < W.cdf(10.0) < 1e-9 and W.icdf(1e-12) < 1e3 and 14.0 < W.entropy() < 15.0  # 3e6 terms: inside the bound
     assert H.logcdf(1e10) < -1e12 and H.cdf(1e10) == 0.0 and H.ccdf(1e10) == 1.0
+    # a hypergeometric tail of more than 2^20 terms is a value too (the smooth sum), at once
+    start = time.perf_counter()
+    assert H.cdf(1e13) == pytest.approx(0.5, abs=1e-7) and H.icdf(0.5) == 1e13 and H.iccdf(0.5) == 1e13
+    # and so is a beta-binomial's (Arb: P(X <= 1503807) = 0.33413417803759825271)
+    assert W.cdf(1503807.0) == pytest.approx(0.33413417803759825271, rel=5e-15, abs=0.0)
+    m = W.icdf(0.5)
+    assert W.cdf(m - 1.0) < 0.5 <= W.cdf(m) and W.median() == m
+    assert time.perf_counter() - start < 1.0
     # outside the support nothing is summed
     assert (
         B.cdf(-1.0) == 0.0 and B.cdf(1e12) == 1.0 and B.pmf(2e12) == 0.0 and B.icdf(0.0) == 0.0 and B.icdf(1.0) == 1e12

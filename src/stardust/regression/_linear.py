@@ -1066,7 +1066,12 @@ class _LinearResult(_RegressionResult):
 
     def _resid_stat(self, i):
         """The whitened residuals' sums over the fit's rows (the kernel's resid_stats, double-
-        double): 0 Durbin-Watson's numerator, 1-3 the central sums of powers 2, 3, 4, 4 the mean."""
+        double): 0 Durbin-Watson's numerator, 1-3 the central sums of powers 2, 3, 4, 4 the mean.
+        0 is in the residuals' own unit. 1-4 are sd.htest's Jarque-Bera sums: when the largest
+        |residual| is past 2^120 or below 2^-120 they are those of the residuals divided by the
+        power of two of that value (so the fourth powers stay in range), not of the residuals
+        themselves. Only jarque_bera() reads them, and its skewness and kurtosis are ratios of
+        matching powers, the same in either unit."""
 
         def make():
             w = self._fitargs[3]

@@ -121,9 +121,10 @@ def _readonly(v):
 
 
 def _real_option(v, func, arg):
-    """An int-or-float option as a float (API.md §2: numpy integers are ints, bool is not; an
-    int beyond the doubles is OverflowError "'arg' is out of range"), or None when v is not
-    a real number."""
+    """An int-or-float option as a float (API.md §2: numpy integers are ints, bool and numpy's
+    bool are not; numpy's floating scalars of any width are floats, docs/api/array.md §1.4; an
+    int beyond the doubles is OverflowError "'arg' is out of range"), or None when v is not a
+    real number."""
     if isinstance(v, bool):
         return None
     if isinstance(v, float):  # (numpy's float64 too)
@@ -131,6 +132,10 @@ def _real_option(v, func, arg):
     try:
         i = operator.index(v)
     except TypeError:
+        # numpy.float32, numpy.float16, numpy.longdouble, as the kernels' real_value takes them
+        # (numpy's bool is not a Real)
+        if type(v).__module__ == "numpy" and isinstance(v, numbers.Real):
+            return float(v)
         return None
     try:
         return float(i)

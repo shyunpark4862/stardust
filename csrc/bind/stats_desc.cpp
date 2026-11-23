@@ -4,8 +4,10 @@
 // works lane by lane on the pool (lanes are independent: any split gives the same bits).
 //
 // NaN: omit skips them (each lane its own count); otherwise a lane with a NaN gives NaN
-// (the caller has raised already for nan_policy='raise'). Sums are Neumaier-compensated and
-// the moments two-pass (the mean, corrected by the mean of the residuals, then sum (x - m)^k).
+// (the caller has raised already for nan_policy='raise'). The moments are two-pass (the mean,
+// corrected by the mean of the residuals, then sum (x - m)^k). A sum runs in eight chains over
+// sub-blocks, plain adds or TwoSum chains as its terms need (the caller's comp), and Neumaier's
+// compensation joins the sub-blocks and the blocks (the rule above tree8 below).
 #include "bind/stats_bind.hpp"
 
 #include "array/convert.hpp"

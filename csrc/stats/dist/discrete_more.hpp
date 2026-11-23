@@ -9,6 +9,7 @@
 //     kurtosis as a polynomial without the "- 3", in double-double;
 //   * both: cdfs as tail sums (stats/discrete.hpp) of the side below 1/2, from its
 //     largest term outwards by the ratio recurrence in double-double, as double-double logs;
+//     a long smooth run of terms by disc::smooth_tail_sum instead (disc::tail_sum chooses);
 //     over arrays the hypergeometric's pmf near the mean by the binomials' fast path;
 //   * logarithmic series: the tail sum_{j>k} p^j / j directly or, for p >= 0.9, by
 //     Euler-Maclaurin with e^x E_1(x) for the integral; log(L / p) apart, so the log pmf
@@ -189,22 +190,32 @@ inline double kurtosis_of(double m2, double m4) {
 // double-double (exponentiated deep in a tail, a log of size 600 rounded to float64 would
 // cost 70 ULP), lo <= k < hi: the side summed from its largest term outwards (the peak
 // when the side holds it), so every run of terms falls and stops once negligible.
-template <class LogPmf, class Up, class Down>
-DD log_side(double k, bool upper, double mode, double lo, double hi, LogPmf&& logpmf, Up&& up, Down&& down) {
+// factor(j, dir, end, ratio): log sum_i pmf(i) / pmf(j) over i = j, j + dir, ... up to end
+// (disc::log_tail_factor, or a distribution's own for its long tails).
+template <class LogPmf, class Up, class Down, class Factor>
+DD log_side(
+    double k, bool upper, double mode, double lo, double hi, LogPmf&& logpmf, Up&& up, Down&& down, Factor&& factor
+) {
     const double m = std::clamp(std::floor(mode), lo, hi);
     if (!upper) {
-        if (k <= m) return logpmf(k) + disc::log_tail_factor(k, -1.0, lo, down);
+        if (k <= m) return logpmf(k) + factor(k, -1.0, lo, down);
         const DD lm = logpmf(m), d = logpmf(m + 1.0) - lm;  // the peak m < k: [lo, m] and (m, k]
-        const double a = disc::log_tail_factor(m, -1.0, lo, down);
-        const double b = disc::log_tail_factor(m + 1.0, 1.0, k, up);
+        const double a = factor(m, -1.0, lo, down);
+        const double b = factor(m + 1.0, 1.0, k, up);
         return lm + std::log(std::exp(a) + std::exp(d.hi + d.lo + b));
     }
     const double s = k + 1.0;
-    if (s >= m) return logpmf(s) + disc::log_tail_factor(s, 1.0, hi, up);
+    if (s >= m) return logpmf(s) + factor(s, 1.0, hi, up);
     const DD lm = logpmf(m), d = logpmf(m - 1.0) - lm;  // the peak m > s: [m, hi] and [s, m)
-    const double a = disc::log_tail_factor(m, 1.0, hi, up);
-    const double b = disc::log_tail_factor(m - 1.0, -1.0, s, down);
+    const double a = factor(m, 1.0, hi, up);
+    const double b = factor(m - 1.0, -1.0, s, down);
     return lm + std::log(std::exp(a) + std::exp(d.hi + d.lo + b));
+}
+template <class LogPmf, class Up, class Down>
+DD log_side(double k, bool upper, double mode, double lo, double hi, LogPmf&& logpmf, Up&& up, Down&& down) {
+    return log_side(k, upper, mode, lo, hi, logpmf, up, down, [](double j, double dir, double end, auto&& ratio) {
+        return disc::log_tail_factor(j, dir, end, ratio);
+    });
 }
 
 // P(X <= k) (upper: P(X > k)) or its log from side(upper) -> the log of a side summed
@@ -268,6 +279,10 @@ struct Hypergeometric {
     // draws): correctly rounded up to 1.5 ULP, so the ties of the quantiles (cdf exactly
     // 1/2 and the like) come out exact.
     static constexpr double kExactN = 120.0;
+    // A run of more terms than this that count is disc::smooth_tail_sum's (disc::tail_sum): where
+    // the sum by terms (3.9 ns a term) and the smooth sum (~73 us) cost the same, 1.85e4 terms
+    // (measured; both within 2e-15 of Arb there).
+    static constexpr double kSmoothFrom = 0x1p14;
 
     static constexpr char name[] = "hypergeometric";
     static constexpr std::array<const char*, 3> params{"total", "successes", "draws"};
@@ -330,11 +345,12 @@ struct Hypergeometric {
         auto down = [&](double j) {
             return disc::Ratio4{DD{j, 0.0}, DD{N - K - n + j, 0.0}, DD{K - j + 1.0, 0.0}, DD{n - j + 1.0, 0.0}};
         };
-        auto side = [&](bool u) {
-            return disc_sum::log_side(
-                k, u, mode_point(N, K, n), lo, hi, [&](double j) { return log_pmf(j, N, K, n); }, up, down
-            );
+        auto lp = [&](double j) { return log_pmf(j, N, K, n); };
+        // (the pmf is log-concave)
+        auto factor = [&](double j, double dir, double end, auto&& ratio) {
+            return std::log(disc::tail_sum(j, dir, end, lo, hi, lp, ratio, true, kSmoothFrom));
         };
+        auto side = [&](bool u) { return disc_sum::log_side(k, u, mode_point(N, K, n), lo, hi, lp, up, down, factor); };
         return disc_sum::prob(upper, log, (k < mean(N, K, n)) != upper, side);
     }
     static double logcdf(double x, double N, double K, double n) { return tail(x, N, K, n, false, true); }
@@ -529,6 +545,10 @@ struct BetaBinomial {
     // there), doubling with each further power of 2. Beyond, the pmf, and with it the cdfs,
     // the quantiles and the entropy, are NaN rather than that.
     static bool has_pmf(double n, double a, double b) { return n + a + b <= 0x1p35; }
+    // A run of more terms than this is disc::smooth_tail_sum's where it applies: where the sum by
+    // terms (5.4 ns a term: two of the factors are double-double sums) and the smooth sum (45-90 us)
+    // cost the same, 1.1e4-1.3e4 terms (measured; both within 5e-16 of Arb there).
+    static constexpr double kSmoothFrom = 0x1.8p13;
     // Whether the moments' closed forms stay in the normal range: n, a, b and 1 / a, 1 / b up
     // to 2^150 (the kurtosis multiplies five of them). Outside, the moments are NaN.
     static bool has_moments(double n, double a, double b) {
@@ -584,11 +604,16 @@ struct BetaBinomial {
         if (!has_pmf(n, a, b)) return kNaN;  // no pmf to sum
         auto lp = [&](double j) { return log_pmf(j, n, a, b); };
         // the ratios as exact factors (every count is exact: n is below 2^35)
+        // (log-concave for a, b >= 1; else the ratios may rise outwards, a power of the distance
+        // to an end)
+        auto factor = [&](double j, double dir, double end, auto&& ratio) {
+            return std::log(disc::tail_sum(j, dir, end, 0.0, n, lp, ratio, a >= 1.0 && b >= 1.0, kSmoothFrom));
+        };
         auto run = [&](auto&& up, auto&& down) {
             auto side = [&](bool u) -> num::DD {
-                if (a + b > 2.0) return disc_sum::log_side(k, u, split(n, a, b), 0.0, n, lp, up, down);
-                if (!u) return lp(k) + full_sum(k, -1.0, 0.0, down, lp);
-                return lp(k + 1.0) + full_sum(k + 1.0, 1.0, n, up, lp);
+                if (a + b > 2.0) return disc_sum::log_side(k, u, split(n, a, b), 0.0, n, lp, up, down, factor);
+                if (!u) return lp(k) + full_sum(k, -1.0, 0.0, down, lp, n);
+                return lp(k + 1.0) + full_sum(k + 1.0, 1.0, n, up, lp, n);
             };
             return disc_sum::prob(upper, log, (k < mean(n, a, b)) != upper, side);
         };
@@ -610,9 +635,13 @@ struct BetaBinomial {
     // a double-double: toward an end where the pmf rises (small shapes) the sum is far above
     // its first term, and its log rounded to float64 would cost |log| ULP of the probability.
     template <class R, class L>
-    static num::DD full_sum(double k, double dir, double end, R&& ratio, L&& lp) {
+    static num::DD full_sum(double k, double dir, double end, R&& ratio, L&& lp, double n) {
         constexpr num::DD kNone{kNaN, 0.0};
         if constexpr (std::is_same_v<std::invoke_result_t<R&, double>, disc::Ratio4>) {
+            if (std::fabs(end - k) > kSmoothFrom) {  // a long run: the smooth sum, where it applies
+                const double sum = disc::smooth_tail_sum(k, dir, end, 0.0, n, lp, ratio, true);
+                if (sum == sum) return num::log_dd(sum);
+            }
             const double sum = disc::tail_sum_dd(k, dir, end, ratio, true);
             if (!(sum < kInf)) return kNone;
             if (sum > 0.0) return num::log_dd(sum);
@@ -621,7 +650,7 @@ struct BetaBinomial {
                 const disc::Ratio4 r = ratio(j);
                 return (r.a1.hi * r.a2.hi) / (r.b1.hi * r.b2.hi);
             };
-            return full_sum(k, dir, end, rounded, lp);
+            return full_sum(k, dir, end, rounded, lp, n);
         } else {
             // every term is needed: not formed for more than the bound, or past 2^53, where
             // the next integer is not a float64 and j would not move

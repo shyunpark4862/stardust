@@ -182,17 +182,18 @@ def chi2_contingency(observed, /, *, correction=True, lambda_=None, method=None)
 
 def fisher_exact(table, /, *, alternative="two-sided", method=None):
     """Fisher's exact test. A 2 x 2 table: statistic the sample odds ratio ad / bc (inf for bc =
-        0), pvalue from the hypergeometric distribution of the top-left cell given the margins
-        (scipy's two-sided rule: the tables at most (1 + 1e-14) times as probable as the observed
-        one; 1 when it is as probable as the mode). An r x c table: statistic the probability of the
-        observed table, pvalue the exact sum over every table with its margins at most (1 + 1e-7)
-        times as probable (R's fisher.test, the network algorithm; scipy's default is an unseeded Monte
-        Carlo), two-sided only; past the documented work cap a ValueError. A zero row or column of a
-        2 x 2 table gives NaN and pvalue 1. A table's total must be below 2**53 (H150; a 2 x 2 table
-    of any size within it takes bounded work). method: None, or (H9, scipy's) a PermutationMethod or a
-        MonteCarloMethod: for any table (2 x 2 too) statistic the table's probability and pvalue the
-        share of tables with its margins at most as probable (two-sided only). Unpacks as
-        (statistic, pvalue)."""
+    0), pvalue from the hypergeometric distribution of the top-left cell given the margins
+    (scipy's two-sided rule: the tables at most (1 + 1e-14) times as probable as the observed
+    one; 1 when it is as probable as the mode). An r x c table: statistic the probability of the
+    observed table, pvalue the exact sum over every table with its margins at most (1 + 1e-7)
+    times as probable (R's fisher.test, the network algorithm; scipy's default is an unseeded Monte
+    Carlo), two-sided only; past the documented work cap a ValueError. A zero row or column of a
+    2 x 2 table gives NaN and pvalue 1. A table's total must be below 2**53 (H150; a 2 x 2 table
+    of any size within it takes bounded work; past a total of 2**52 its pvalue is NaN, sd.stats'
+    Hypergeometric having no pmf there). method: None, or (H9, scipy's) a PermutationMethod or a
+    MonteCarloMethod: for any table (2 x 2 too) statistic the table's probability and pvalue the
+    share of tables with its margins at most as probable (two-sided only). Unpacks as
+    (statistic, pvalue)."""
     name = "fisher_exact"
     alt = C.alternative(alternative, name)
     if method is not None:

@@ -96,13 +96,33 @@ def test_int_and_bool_inputs():
     assert S.logit(0) == -np.inf
 
 
-@pytest.mark.parametrize("name", ["expit", "logit"])
+# The chunk kernels (kernels/chunked.hpp) and inputs over each one's whole domain.
+CHUNKED = ["expit", "logit", "log_expit", "ellipk", "ellipe"]
+
+
+def chunked_input(name, rng, size):
+    if name == "logit":
+        return rng.uniform(0, 1, size)
+    if name in ("ellipk", "ellipe"):
+        # m < 1: next to 1, around 0, and far below (each branch of the kernel), and one in 16
+        # a special value (NaN, 1, beyond 1, -inf: stored after the lanes, also in place)
+        m = np.where(rng.uniform(size=size) < 0.5, rng.uniform(-1, 1, size), 1.0 - 10.0 ** rng.uniform(-12, 6, size))
+        special = rng.uniform(size=size) < 1 / 16
+        return np.where(special, rng.choice([np.nan, 1.0, 2.5, -np.inf], size), m)
+    return rng.normal(scale=20, size=size)
+
+
+def bits(a):
+    return np.ascontiguousarray(np.asarray(a)).view(np.uint64)
+
+
+@pytest.mark.parametrize("name", CHUNKED)
 @pytest.mark.parametrize("n", [1, 2, 3, 1023, 1024, 1025, 2049, 5000])
 def test_chunked_kernels_every_layout_same_bits(name, n):
     # f(x)[i] == f(x[i]) through every path of kernels/chunked.hpp: contiguous, gathered
-    # (strided input), scattered (strided output), broadcast scalar, chunk boundaries
+    # (strided input), reversed, scattered (strided output), broadcast scalar, chunk boundaries
     rng = np.random.default_rng(n)
-    x = rng.uniform(0, 1, 2 * n) if name == "logit" else rng.normal(scale=20, size=2 * n)
+    x = chunked_input(name, rng, 2 * n)
     f = getattr(S, name)
     contiguous = np.asarray(f(sd.asarray(x[:n].copy())))
     strided = np.asarray(f(sd.asarray(x)[::2]))
@@ -112,17 +132,34 @@ def test_chunked_kernels_every_layout_same_bits(name, n):
     np.testing.assert_array_equal(contiguous.view(np.uint64), scalars.view(np.uint64))
     np.testing.assert_array_equal(strided.view(np.uint64), np.array([f(float(v)) for v in x[::2]]).view(np.uint64))
     np.testing.assert_array_equal(np.asarray(out)[::2].view(np.uint64), scalars.view(np.uint64))
+    np.testing.assert_array_equal(bits(f(sd.asarray(x[:n].copy())[::-1])), scalars[::-1].view(np.uint64))
     b = np.asarray(f(sd.asarray(np.full(3, x[0]))))
     assert all(bits_equal_any_nan(v, f(float(x[0]))) for v in b)
 
 
-@pytest.mark.parametrize("name", ["expit", "logit"])
+@pytest.mark.parametrize("name", CHUNKED)
+@pytest.mark.parametrize("shape", [(3, 5), (37, 61), (2, 1025)])
+def test_chunked_kernels_2d_layouts_same_bits(name, shape):
+    # C order, F order, the transpose and a view strided on both axes give the element's own bits
+    rng = np.random.default_rng(shape[0])
+    x = chunked_input(name, rng, shape[0] * shape[1]).reshape(shape)
+    f = getattr(S, name)
+    want = np.array([f(float(v)) for v in x.ravel()]).reshape(shape)
+    np.testing.assert_array_equal(bits(f(sd.asarray(x))), want.view(np.uint64))
+    np.testing.assert_array_equal(bits(f(sd.asarray(np.asfortranarray(x)))), want.view(np.uint64))
+    np.testing.assert_array_equal(bits(f(sd.asarray(x).T)), np.ascontiguousarray(want.T).view(np.uint64))
+    np.testing.assert_array_equal(
+        bits(f(sd.asarray(x)[::-1, ::2])), np.ascontiguousarray(want[::-1, ::2]).view(np.uint64)
+    )
+
+
+@pytest.mark.parametrize("name", CHUNKED)
 def test_chunked_in_place(name):
-    x = np.random.default_rng(0).uniform(0.01, 0.99, 3000)
+    x = chunked_input(name, np.random.default_rng(0), 3000)
     a = sd.asarray(x.copy())
     want = np.asarray(getattr(S, name)(a))
     getattr(S, name)(a, out=a)
-    np.testing.assert_array_equal(np.asarray(a), want)
+    np.testing.assert_array_equal(np.asarray(a).view(np.uint64), want.view(np.uint64))
 
 
 def test_same_bits_for_any_thread_count():

@@ -7,14 +7,15 @@
 
 namespace sd {
 
-// Below this much work (elements, roughly) everything runs on the calling
-// thread. Measured where 10 threads start to win: f + g at ~16K elements, exp
-// at ~8K, sum at ~32K; one constant for all, so the most demanding one decides.
+// Below this much work everything runs on the calling thread. The work of an
+// elementwise call is its elements times the operation's weight in float64
+// adds (ops/ufunc.hpp, op_weights), so exp starts at ~5.5K elements and f + g at
+// ~32K; the full float reductions have their own constant, kReduceThreshold.
 inline constexpr std::int64_t kParallelThreshold = 1 << 15;
 
-// How much work one task gets. With the pool's fixed cost per job at ~1.5 us
-// (spin and lock-free pickup, docs/design/array.md §10.1), small tasks balance
-// load well.
+// How much work one task gets. The pool's fixed cost per job is a few us at
+// most (spin and lock-free pickup, docs/design/array.md §10.1), so small tasks
+// balance load well.
 inline constexpr std::int64_t kParallelTask = 1 << 12;
 
 // The same for the full reductions that stream at ~0.07 ns per element (sum,

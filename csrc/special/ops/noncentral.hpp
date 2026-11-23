@@ -2146,6 +2146,110 @@ inline double ncx2_start(double df, double nc, double p) {
 
 }  // namespace nc_detail
 
+// ---- a tail that no sum reached: 0 or 1 from a bound
+//
+// The sums and the integral above stop at a fixed count of steps (NaN). Where a rigorous bound
+// puts the asked tail below 2^-1075 (half the smallest double: 0) or the other tail below 2^-54
+// (1 to the last bit), that is the value. The bounds are Chernoff's for the chi-squares and a
+// split of the event for the quotients; they are evaluated with a margin for their own rounding
+// and decide nothing next to the middle of the distribution or where a tail is tiny but still a
+// double (NaN stays there).
+namespace nc_detail {
+
+inline constexpr double kLogZero = -746.5;  // e^-746.5 < 2^-1075 = e^-745.13
+inline constexpr double kLogOne = -39.0;  // e^-39 < 2^-54 = e^-37.43, with room for a second term
+
+// An upper bound of log P(X <= n) (lower) or log P(X >= n) for X the noncentral chi-square(df, nc),
+// nc >= 0: Chernoff's bound -s n + log M(s) with M(s) = (1 - 2s)^(-df/2) e^(nc s / (1 - 2s)) at
+// its best s, 1 / (1 - 2s) = u = 2n / (df + sqrt(df^2 + 4 nc n)):
+//     (df/2) log u + (u - 1) (nc - n / u) / 2,
+// valid for the lower tail when u < 1 (s < 0) and for the upper when u > 1 (0 < s < 1/2). The
+// last term covers the rounding of u and of the two products (2^-48 of their sizes). NaN where
+// it says nothing (the wrong side of the mean, or an overflow): every comparison then fails.
+inline double chi2_log_bound(double df, double nc, double n, bool lower) {
+    if (!(n > 0.0) || !std::isfinite(n)) return kNaN;
+    const double u = 2.0 * n / (df + std::hypot(df, 2.0 * std::sqrt(nc) * std::sqrt(n)));
+    if (!(lower ? u < 1.0 : u > 1.0) || !(u > 0.0) || !std::isfinite(u)) return kNaN;
+    const double lu = std::log(u);
+    return 0.5 * df * lu + 0.5 * (u - 1.0) * (nc - n / u) + 0x1p-48 * ((1.0 + u) * (nc + n / u) + df * std::fabs(lu));
+}
+
+// chndtr (upper: chndtrc): the bound at x itself.
+inline double ncx2_bounded(double df, double nc, double x, bool upper) {
+    const bool below = x < df + nc;
+    const double lb = chi2_log_bound(df, nc, x, below);
+    if (lb < kLogZero) return upper == below ? 1.0 : 0.0;
+    if (lb < kLogOne && upper == below) return 1.0;
+    return kNaN;
+}
+
+// nctdtr (upper: nctdtrc). T = (Z + nc) / S, S = sqrt(V / df). For t > 0 and nc > 0, with any s0:
+//     P(T <= t) <= P(S >= s0) + Phi(t s0 - nc),    P(T > t) <= P(S < s0) + Phi(nc - t s0).
+// s0 = (nc / t) (1 -+ d) puts the normal term at Phi(-d nc), d nc >= 40 (below e^-800) for a 0
+// and >= 10 (below e^-52) for a 1; d is at least 2^-20, so the rounding of s0 (2^-50 of it) does
+// not reach the margin. S's term is the central chi-square's bound at df s0^2. For t > 0 > nc the
+// upper tail is below Phi(nc).
+inline double nct_bounded(double df, double nc, double t, bool upper) {
+    if (t < 0.0) return nct_bounded(df, -nc, -t, !upper);  // T(nc) = -T(-nc)
+    if (!(t > 0.0)) return kNaN;
+    if (nc < 0.0) {
+        if (nc <= -39.0) return upper ? 0.0 : 1.0;  // Phi(-39) < e^-760
+        return nc <= -9.0 && !upper ? 1.0 : kNaN;  // Phi(-9) < 2^-62
+    }
+    for (int pass = 0; pass < 2; ++pass) {
+        const double thr = pass == 0 ? kLogZero : kLogOne;
+        const double d = std::max((pass == 0 ? 40.0 : 10.0) / nc, 0x1p-20);
+        if (!(d <= 0.5)) continue;
+        // the lower tail is small (s0 capped: any smaller s0 above 1 bounds it too)
+        const double sl = std::min((nc / t) * (1.0 - d), 0x1p100);
+        if (sl > 1.0 && chi2_log_bound(df, 0.0, df * sl * sl, false) < thr) {
+            if (pass == 0) return upper ? 1.0 : 0.0;
+            if (upper) return 1.0;
+        }
+        // the upper tail is small (s0 raised off the subnormals: any larger s0 below 1 bounds it too)
+        const double su = std::max((nc / t) * (1.0 + d), 0x1p-500);
+        if (su < 1.0 && chi2_log_bound(df, 0.0, df * su * su, true) < thr) {
+            if (pass == 0) return upper ? 0.0 : 1.0;
+            if (!upper) return 1.0;
+        }
+    }
+    return kNaN;
+}
+
+// ncfdtr (upper: ncfdtrc). X <= x is N <= c D with N the numerator's noncentral chi-square,
+// D the denominator's chi-square and c = x dfn / dfd; for any n0:
+//     P(N <= c D) <= P(N <= n0) + P(D >= n0 / c),    P(N > c D) <= P(N >= n0) + P(D <= n0 / c).
+// n0 is tried at the point where N's own tail is about e^-760 (e^-41 for a 1) -- the mean -+
+// 2 sqrt(v k) (+ 2k above), v = dfn + 2 nc its variance's half -- and at half and twice the
+// mean (a noncentrality so large that the first point's bound is lost in its rounding). Each
+// of the two terms is below e^-0.7 of the limit.
+inline double ncf_bounded(double dfn, double dfd, double nc, double x, bool upper) {
+    const double c = x * (dfn / dfd), m = dfn + nc, v = dfn + 2.0 * nc;
+    if (!(c > 0.0) || !std::isfinite(c)) return kNaN;
+    for (int pass = 0; pass < 2; ++pass) {
+        const double thr = (pass == 0 ? kLogZero : kLogOne) - 0.7, k = pass == 0 ? 760.0 : 41.0;
+        for (const double n0 : {m - 2.0 * std::sqrt(v * k), 0.5 * m}) {  // the lower tail is small
+            const double d0 = n0 / c;
+            if (n0 > 0.0 && d0 > dfd && std::isfinite(d0) && chi2_log_bound(dfn, nc, n0, true) < thr &&
+                chi2_log_bound(dfd, 0.0, d0, false) < thr) {
+                if (pass == 0) return upper ? 1.0 : 0.0;
+                if (upper) return 1.0;
+            }
+        }
+        for (const double n1 : {m + 2.0 * std::sqrt(v * k) + 2.0 * k, 2.0 * m}) {  // the upper tail is small
+            const double d1 = n1 / c;
+            if (d1 > 0.0 && d1 < dfd && chi2_log_bound(dfn, nc, n1, false) < thr &&
+                chi2_log_bound(dfd, 0.0, d1, true) < thr) {
+                if (pass == 0) return upper ? 0.0 : 1.0;
+                if (!upper) return 1.0;
+            }
+        }
+    }
+    return kNaN;
+}
+
+}  // namespace nc_detail
+
 // ---------------------------------------------------------- chi-square
 
 // chndtr(df, nc, x) = sum_j Poisson(j; nc/2) P(df/2 + j, x/2). df = 0 is
@@ -2217,7 +2321,8 @@ struct Chndtr : Real {
     static double f(double df, double nc, double x) {
         double out;
         if (ncx2_edge(df, nc, x, false, out) || ncx2_obvious(df, nc, x, false, out)) return out;
-        return nc_detail::ncx2(df, nc, x, false);
+        out = nc_detail::ncx2(df, nc, x, false);
+        return out == out ? out : nc_detail::ncx2_bounded(df, nc, x, false);
     }
 };
 
@@ -2229,7 +2334,8 @@ struct Chndtrc : Real {
     static double f(double df, double nc, double x) {
         double out;
         if (ncx2_edge(df, nc, x, true, out) || ncx2_obvious(df, nc, x, true, out)) return out;
-        return nc_detail::ncx2(df, nc, x, true);
+        out = nc_detail::ncx2(df, nc, x, true);
+        return out == out ? out : nc_detail::ncx2_bounded(df, nc, x, true);
     }
 };
 
@@ -2295,7 +2401,8 @@ struct Nctdtr : Real {
     static double f(double df, double nc, double t) {
         double out;
         if (nct_edge(df, nc, t, false, out)) return out;
-        return nc_detail::nct(df, nc, t, false);
+        out = nc_detail::nct(df, nc, t, false);
+        return out == out ? out : nc_detail::nct_bounded(df, nc, t, false);
     }
 };
 
@@ -2307,7 +2414,8 @@ struct Nctdtrc : Real {
     static double f(double df, double nc, double t) {
         double out;
         if (nct_edge(df, nc, t, true, out)) return out;
-        return nc_detail::nct(df, nc, t, true);
+        out = nc_detail::nct(df, nc, t, true);
+        return out == out ? out : nc_detail::nct_bounded(df, nc, t, true);
     }
 };
 
@@ -2395,7 +2503,8 @@ struct Ncfdtr : Real {
         dfn = nc_detail::halvable_dfn(dfn, dfd);
         double out;
         if (ncf_edge(dfn, dfd, nc, x, false, out)) return out;
-        return nc_detail::ncf(dfn, dfd, nc, x, false);
+        out = nc_detail::ncf(dfn, dfd, nc, x, false);
+        return out == out ? out : nc_detail::ncf_bounded(dfn, dfd, nc, x, false);
     }
 };
 
@@ -2408,7 +2517,8 @@ struct Ncfdtrc : Real {
         dfn = nc_detail::halvable_dfn(dfn, dfd);
         double out;
         if (ncf_edge(dfn, dfd, nc, x, true, out)) return out;
-        return nc_detail::ncf(dfn, dfd, nc, x, true);
+        out = nc_detail::ncf(dfn, dfd, nc, x, true);
+        return out == out ? out : nc_detail::ncf_bounded(dfn, dfd, nc, x, true);
     }
 };
 

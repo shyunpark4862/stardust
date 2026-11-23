@@ -8,8 +8,9 @@
 //
 // What a task computes never depends on how many threads there are: the
 // callers cut work into tasks by size alone, and combine any partial results
-// in task order. So every result is bit-for-bit the same for any thread count
-// (docs/design/array.md §10.5).
+// in task order. So a result has the same bits for any thread count today
+// (docs/design/array.md §10.5). The promise is narrower: the same machine,
+// thread count and input give the same bits on every run (API.md §3).
 #pragma once
 
 #include <atomic>

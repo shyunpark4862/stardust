@@ -60,7 +60,11 @@ nb::object call_fast(std::span<const nb::handle> objs, nb::handle out) {
                 args[k] = reinterpret_cast<std::byte*>(&v[k]);
                 st[k] = sizeof(double);
             }
-            loop(args, 1, st, nullptr);
+            {
+                // (API.md §3, as nary_bind's call)
+                const parallel::Unlocked unlocked(nary_bind::scalar_unlocked<Op>(v));
+                loop(args, 1, st, nullptr);
+            }
             return nb::steal(PyFloat_FromDouble(v[Op::nin]));
         }
     }

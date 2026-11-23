@@ -262,12 +262,12 @@ def test_every_call_returns_and_an_unfinished_sum_is_nan():
         (S.chndtrc, (3.5, 1e15, 1e15)),
         (S.chndtrix, (3.5, 1e15, 0.5)),
         (S.chndtrix, (3.5, 1e100, 0.01)),
-        (S.nctdtr, (9.0, 1e100, 0.5)),
-        (S.nctdtrc, (9.0, 1e100, 1e30)),
-        (S.nctdtr, (9.0, -1e8, -50.0)),
+        (S.nctdtr, (9.0, 1e100, 1e100)),
+        (S.nctdtrc, (9.0, 1e100, 1e110)),
+        (S.nctdtr, (9.0, -1e8, -1e8)),
         (S.nctdtrit, (9.0, -1e8, 0.5)),
         (S.nctdtrit, (9.0, 1e100, 0.99)),
-        (S.ncfdtr, (4.0, 13.0, 1e100, 1.0)),
+        (S.ncfdtr, (4.0, 13.0, 1e100, 1e100)),
         (S.ncfdtrc, (4.0, 13.0, 1e15, 1e16)),
         (S.ncfdtri, (4.0, 13.0, 1e100, 0.5)),
     ]:
@@ -289,6 +289,134 @@ def test_every_call_returns_and_an_unfinished_sum_is_nan():
     # arrays give the scalar's bits, NaN included
     v = np.asarray(S.chndtr(sd.asarray([3.5, 3.5]), sd.asarray([1e15, 2.0]), sd.asarray([1e15, 1e300])))
     assert math.isnan(v[0]) and v[1] == 1.0
+
+
+# ---- tails that no sum reaches: 0 or 1 from a bound ----
+
+
+def phi_arb(z):
+    return (-z / arb(2).sqrt()).erfc() / 2
+
+
+def gamma_tail_bound(a, y, upper):
+    # P(a, y) <= y^a e^-y / Gamma(a + 1) / (1 - y / (a + 1)) for y < a + 1 (its series against a
+    # geometric one); Q(a, y) <= y^(a-1) e^-y / Gamma(a) / (1 - (a - 1) / y) for y > a - 1 > 0,
+    # and without the last factor for a <= 1
+    if upper:
+        if not y > a - 1:
+            return arb(1)
+        return ((a - 1) * y.log() - y - a.lgamma()).exp() / (1 - (a - 1) / y if a > 1 else 1)
+    return (a * y.log() - y - (a + 1).lgamma()).exp() / (1 - y / (a + 1)) if y < a + 1 else arb(1)
+
+
+def nct_tail_bounds(df, nc, t):
+    # Rigorous bounds of P(T <= t) and P(T > t) for t, nc > 0 (Arb): with any s0,
+    # lower <= P(S >= s0) + Phi(t s0 - nc), upper <= P(S < s0) + Phi(nc - t s0), S = sqrt(V / df)
+    df, nc, t = arb(df), arb(nc), arb(t)
+    lower = upper = arb(1)
+    for z in (9, 12, 20, 40, 60, 300):
+        s0 = (nc - z) / t
+        if s0 > 0:
+            b = gamma_tail_bound(df / 2, df * s0 * s0 / 2, True) + phi_arb(arb(-z))
+            lower = b if b < lower else lower
+        s0 = (nc + z) / t
+        b = gamma_tail_bound(df / 2, df * s0 * s0 / 2, False) + phi_arb(arb(-z))
+        upper = b if b < upper else upper
+    return lower, upper
+
+
+def ncf_lower_bound(dfn, dfd, nc, x):
+    # A rigorous bound of ncfdtr for an integer dfd / 2 (Arb): the terms' I_w(a + j, b) fall with
+    # j, so the sum is at most P(J <= j0) + I_w(a + j0, b), J Poisson(nc / 2) (its tail by
+    # Chernoff's bound) and I_w(a, b) = w^a sum_(i < b) (a)_i (1 - w)^i / i!
+    b = int(dfd) // 2
+    dfn, dfd, nc, x = arb(dfn), arb(dfd), arb(nc), arb(x)
+    a, mu, w = dfn / 2, nc / 2, dfn * x / (dfn * x + dfd)
+    best = arb(1)
+    for z in (9, 12, 20, 40, 60):
+        j0 = (mu - z * mu.sqrt()).floor()
+        total, term = arb(0), arb(1)
+        for i in range(b):
+            total += term
+            term = term * (a + j0 + i) / (i + 1) * (1 - w)
+        bound = (-mu + j0 - j0 * (j0 / mu).log()).exp() + ((a + j0) * w.log()).exp() * total
+        best = bound if bound < best else best
+    return best
+
+
+def test_noncentral_t_tails_beyond_the_sums_are_zero_or_one():
+    # a noncentrality past the sums' reach (nc^2 / 2 beyond 7.3e8): the tails were NaN wherever
+    # the walk did not end, also where the value is 0 or 1 to the last bit
+    ctx.prec = 1000
+    try:
+        zero, one = arb(2) ** -1075, arb(2) ** -54
+        for df, nc, t, lower, upper in [
+            (10.0, 3.9e4, 3e3, 0.0, 1.0),
+            (10.0, 3.9e4, 1e7, 1.0, None),  # the upper tail is tiny, not 0: no sum, no bound
+            (10.0, 3.9e4, 1e50, 1.0, 0.0),
+            (1.0, 4e4, 2e2, 0.0, 1.0),
+            (1e4, 4e4, 2.9e4, 0.0, 1.0),
+            (1e4, 4e4, 6e4, 1.0, 0.0),
+            (9.0, 1e100, 0.5, 0.0, 1.0),
+            (9.0, 1e100, 1e30, 0.0, 1.0),
+            (9.0, 1e100, 1e140, 1.0, 0.0),
+            (10.0, 1e8, 1e10, 1.0, None),
+        ]:
+            lo, up = nct_tail_bounds(df, nc, t)
+            assert (lo < zero) if lower == 0.0 else (up < one)
+            assert bits_equal(S.nctdtr(df, nc, t), lower), (df, nc, t)
+            if upper is None:
+                assert math.isnan(S.nctdtrc(df, nc, t)) and math.isnan(S.nctdtr(df, -nc, -t))
+            else:
+                assert (up < zero) if upper == 0.0 else (lo < one)
+                assert bits_equal(S.nctdtrc(df, nc, t), upper), (df, nc, t)
+                assert bits_equal(S.nctdtr(df, -nc, -t), upper), (df, nc, t)  # T(nc) = -T(-nc)
+    finally:
+        ctx.prec = 53
+    # the tail away from the noncentrality is below Phi(-|nc|): its complement was NaN beside a 0
+    for t in (-1e4, -1e100, -3e3):
+        assert bits_equal(S.nctdtr(10.0, 3.9e4, t), 0.0) and S.nctdtrc(10.0, 3.9e4, t) == 1.0
+        assert bits_equal(S.nctdtrc(10.0, -3.9e4, -t), 0.0) and S.nctdtr(10.0, -3.9e4, -t) == 1.0
+    assert S.nctdtrc(1e4, 4e4, -1e100) == 1.0
+    # next to the middle nothing is decided
+    assert math.isnan(S.nctdtr(10.0, 3.9e4, 4e4)) and math.isnan(S.nctdtrc(10.0, 3.9e4, 4e4))
+    # arrays give the scalar's bits
+    v = np.asarray(S.nctdtr(sd.asarray([10.0, 10.0, 10.0]), 3.9e4, sd.asarray([3e3, 4e4, 1e7])))
+    assert bits_equal(v[0], 0.0) and math.isnan(v[1]) and v[2] == 1.0
+
+
+def test_noncentral_f_tails_beyond_the_sums_are_zero_or_one():
+    ctx.prec = 1000
+    try:
+        zero, one = arb(2) ** -1075, arb(2) ** -54
+        for dfn, dfd, nc, x, lower in [
+            (1.0, 10.0, 1.5e9, 4e6, 0.0),
+            (1.0, 10.0, 1.5e9, 1e8, None),  # ncfdtrc is 1; ncfdtr is tiny, not 0
+            (1.0, 10.0, 4e9, 2e7, 0.0),
+            (0.01, 1e4, 1e16, 2e17, 0.0),
+        ]:
+            bound = ncf_lower_bound(dfn, dfd, nc, x)
+            assert bound < (one if lower is None else zero)
+            assert S.ncfdtrc(dfn, dfd, nc, x) == 1.0, (dfn, dfd, nc, x)
+            got = S.ncfdtr(dfn, dfd, nc, x)
+            assert math.isnan(got) if lower is None else bits_equal(got, 0.0), (dfn, dfd, nc, x)
+    finally:
+        ctx.prec = 53
+    # the other end: the denominator would have to be below dfd N / (dfn x) with N next to nc
+    assert S.ncfdtr(1.0, 10.0, 1.5e9, 1e20) == 1.0 and math.isnan(S.ncfdtrc(1.0, 10.0, 1.5e9, 1e20))
+    assert S.ncfdtr(1.0, 10.0, 1.5e9, 1e80) == 1.0 and bits_equal(S.ncfdtrc(1.0, 10.0, 1.5e9, 1e80), 0.0)
+    assert bits_equal(S.ncfdtr(4.0, 13.0, 1e100, 1.0), 0.0) and S.ncfdtrc(4.0, 13.0, 1e100, 1.0) == 1.0
+    assert S.ncfdtr(4.0, 13.0, 1e100, 1e160) == 1.0 and bits_equal(S.ncfdtrc(4.0, 13.0, 1e100, 1e160), 0.0)
+    assert math.isnan(S.ncfdtr(1.0, 10.0, 1.5e9, 1.5e9)) and math.isnan(S.ncfdtrc(1.0, 10.0, 1.5e9, 1.5e9))
+
+
+def test_noncentral_chi_square_tails_beyond_the_mode_limit():
+    # a noncentrality whose weights' mode is past 2^52: every x the first Chernoff bound (e^-1000
+    # at fixed s) left was NaN; the bound at its best s decides all but the middle
+    assert bits_equal(S.chndtr(3.5, 1e16, 5e15), 0.0) and S.chndtrc(3.5, 1e16, 5e15) == 1.0
+    assert S.chndtr(3.5, 1e16, 1.5e16) == 1.0 and bits_equal(S.chndtrc(3.5, 1e16, 1.5e16), 0.0)
+    assert bits_equal(S.chndtr(3.5, 1e100, 0.7e100), 0.0) and S.chndtr(3.5, 1e100, 1.4e100) == 1.0
+    assert math.isnan(S.chndtr(3.5, 1e16, 1e16)) and math.isnan(S.chndtrc(3.5, 1e16, 1e16))
 
 
 def test_noncentral_chi_square_large_side_from_the_small():

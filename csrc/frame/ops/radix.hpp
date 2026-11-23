@@ -70,9 +70,9 @@ inline std::uint64_t string_prefix(std::string_view s) {
 // its elements to its own places. An element's place is exactly the one the
 // serial pass gives it, so the order is the same for any thread count.
 //
-// Serial: when no pass would be split -- one thread, or too few keys for
-// the scatter to reach the threshold -- all the histograms come from one
-// read of the keys, with no per-chunk tables.
+// Serial: when the sort is not split -- one thread, or fewer keys than
+// kParallelThreshold (2^17) -- all the histograms come from one read of the
+// keys, with no per-chunk tables.
 
 // From this many keys a serial sort may use digits wider than a byte
 // (plan_passes): below it, clearing and summing 2,048-entry histograms

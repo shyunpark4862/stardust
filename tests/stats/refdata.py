@@ -164,6 +164,32 @@ def contract_error(name, got, hi, lo, scale, bounds=None):
     return np.where(sub, absolute, rel) / scale
 
 
+# ---------------------------------------------------------------- long tail sums
+# tests/stats/ref/tails/<distribution>.npz (tools/stats_ref.py <distribution>_tails): the cdfs of
+# the hypergeometric and the beta-binomial where a side of the pmf has 1e4 to 1e7 terms, a group
+# per parameter set.
+
+TAILS = REF / "tails"
+TAIL_DISTRIBUTIONS = ("hypergeometric", "betabinomial")
+
+
+def tail_groups(dist):
+    """[(parameters, k, {method: (hi, lo)})]: the points k (float64) of each parameter set."""
+    r = reffile.read(TAILS / f"{dist}.npz")
+    *params, k = r.args()
+    out = []
+    for i in range(r.ngroups):
+        sel = np.flatnonzero(r.group == i)
+        out.append(
+            (
+                tuple(float(p[sel[0]]) for p in params),
+                k[sel],
+                {m: (mm.hi[sel], mm.lo[sel]) for m, mm in r.methods.items()},
+            )
+        )
+    return out
+
+
 # ---------------------------------------------------------------- multivariate
 # tests/stats/ref/mv/<family>.npz (the densities, entropies and pmfs of the multivariate and
 # matrix distributions: a group per distribution, its points x) and tests/stats/ref/mv/<set>.npz

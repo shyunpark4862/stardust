@@ -450,8 +450,8 @@ KLane bartlett(const Moments* g, std::int64_t k) {
 // The centre of a sample (levene's and fligner's `center`) as a double-double: the median (the
 // middle value, or the exact half sum of the two middle ones), the mean, or scipy's trim_mean
 // (g = int(proportiontocut n), the mean of the middle n - 2g order statistics). v is reordered
-// by the trimmed mean; the median is a selection in a copy (a long sample sorted on the pool, else
-// nth_element: the same values), so v keeps the data's order.
+// by the trimmed mean; the median is select_middle's radix selection (htest/moments.hpp), which
+// reads the values where they are, so v keeps the data's order.
 // (the mean and the median read the values only: x may be the data's row)
 DD center_of_values(const double* x, std::int64_t n, int center) {
     if (n == 0) return {kNaN, 0.0};

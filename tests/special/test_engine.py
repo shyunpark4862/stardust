@@ -263,3 +263,38 @@ def test_heavy_call_on_few_elements_releases_the_gil():
     assert np.all(np.asarray(r) == -INF)
     assert took > 0.05
     assert longest[0] < 0.5 * took, (longest[0], took)
+
+
+@pytest.mark.serial
+def test_heavy_scalar_call_releases_the_gil():
+    # A scalar call takes the shorter way of nary_bind's call, by the same rule as an array: a
+    # function whose one element is above the parallel threshold (nctdtrit, ~6.7 us by the
+    # table) runs without the GIL. These take ~8 ms each (the walk runs out of steps: NaN).
+    old = sd.get_num_threads()
+    sd.set_num_threads(1)
+    longest = [0.0]
+    stop = threading.Event()
+
+    def watch():
+        last = time.perf_counter()
+        while not stop.is_set():
+            now = time.perf_counter()
+            longest[0] = max(longest[0], now - last)
+            last = now
+
+    th = threading.Thread(target=watch)
+    th.start()
+    try:
+        time.sleep(0.01)
+        longest[0] = 0.0
+        t = time.perf_counter()
+        r = [S.nctdtrit(10.0, 3.9e4, 0.5) for _ in range(5)]
+        each = (time.perf_counter() - t) / 5
+        time.sleep(0.01)
+    finally:
+        stop.set()
+        th.join()
+        sd.set_num_threads(old)
+    assert all(math.isnan(v) for v in r)
+    assert each > 0.002
+    assert longest[0] < 0.5 * each, (longest[0], each)

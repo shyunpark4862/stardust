@@ -195,6 +195,11 @@ def test_scalar_options():
     with pytest.raises(OverflowError, match="'n' is out of range"):
         C.count(2**64, "binomtest", "n")
     assert C.real(np.int64(2), "ttest_1samp", "popmean") == 2.0
+    for t in (np.float16, np.float32, np.float64, np.longdouble):  # numpy's floats of any width
+        assert C.real(t(0.5), "ttest_1samp", "popmean") == 0.5
+        assert C.alpha(t(0.25), "tukey_hsd") == 0.25
+    with pytest.raises(TypeError, match="ttest_1samp\\(\\): 'popmean' must be an int or a float, not numpy.bool"):
+        C.real(np.bool_(True), "ttest_1samp", "popmean")
     with pytest.raises(TypeError, match="ttest_1samp\\(\\): 'popmean' must be an int or a float, not str"):
         C.real("0", "ttest_1samp", "popmean")
     assert C.flag(True, "mannwhitneyu", "use_continuity") is True

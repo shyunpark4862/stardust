@@ -227,9 +227,8 @@ private:
         pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
         for (;;) {
             // Spin a little before sleeping: elementwise calls tend to come in
-            // runs, and waking a sleeping thread costs tens of microseconds on
-            // macOS (~25 us per job, docs/design/array.md §10.1), more than a whole
-            // 1M-element add.
+            // runs, and a sleeping thread arrives about 6 us after its signal
+            // (docs/design/array.md §10.1), as long as a 40K-element add takes.
             auto fresh = [&] { return generation(state_.load(std::memory_order_acquire)) != seen; };
             spin_until([&] { return fresh() || stop_flag_; });
             if (!fresh() && !stop_flag_) {

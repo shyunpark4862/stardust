@@ -139,6 +139,8 @@ def test_correction_takes_numpy_numbers():
     s = sd.frame.Series([1.0, 2.0, 4.0])
     assert s.var(correction=np.int64(1)) == s.var(correction=1)
     assert DF.groupby("a").std(correction=np.int8(0))["b"].tolist() == DF.groupby("a").std()["b"].tolist()
+    for t in (np.float16, np.float32, np.float64, np.longdouble):  # numpy's floats of any width, as sd.var
+        assert s.var(correction=t(0.5)) == s.var(correction=0.5)
     for bad, shown in ((True, "bool"), (np.True_, "numpy.bool"), (None, "NoneType"), ("1", "str")):
         with pytest.raises(TypeError, match=rf"^var\(\): 'correction' must be an int or a float, not {shown}$"):
             s.var(correction=bad)

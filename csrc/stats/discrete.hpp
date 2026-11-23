@@ -8,7 +8,8 @@
 //   * tail sums for the distributions with no closed-form cdf (hypergeometric,
 //     beta-binomial): the terms relative to the first by their ratio recurrence, in
 //     double-double (tail_sum_dd), log of the sum kept apart from the log pmf so the log
-//     tails go below the normal range;
+//     tails go below the normal range; a long run of terms, where the pmf is smooth, as an
+//     integral with its Euler-Maclaurin correction instead (smooth_tail_sum; tail_sum chooses);
 //   * the entropy -sum pmf log pmf over the support, from the mode outwards, the terms by the
 //     ratio recurrence in double-double, compensated;
 //   * the bounds: every sum and every search here runs for at most a fixed number of steps
@@ -50,8 +51,10 @@ inline constexpr double kFarCount = 0x1p1000;
 // (docs/api/stats.md §2.3). Inside the guaranteed parameter region no bound below is reached;
 // outside it a sum that would pass its bound is not formed and the method returns NaN (a cut
 // sum would be a wrong value with nothing to show for it).
-//   * kMaxTailTerms: the terms of one tail sum of a cdf (hypergeometric, beta-binomial). The
-//     supports of the guaranteed region have at most 3001 points; 2^20 terms take ~7 ms.
+//   * kMaxTailTerms: the terms of one tail sum of a cdf added one by one (hypergeometric,
+//     beta-binomial). The supports of the guaranteed region have at most 3001 points; 2^20
+//     terms take ~7 ms. A long smooth run is smooth_tail_sum's instead (a few hundred log
+//     pmfs whatever its length), so the bound is reached only by a run that is not smooth.
 //   * kMaxEntropyTerms: the terms of an entropy sum. The widest of the guaranteed region is
 //     the negative binomial's at n = 1e4, p = 1e-4 (sd 1e6): 1.9e7 terms, 0.19 s; 2^25 take
 //     ~0.35 s.
@@ -355,7 +358,10 @@ struct Ratio4 {
 // their ratio recurrence in double-double: t_{j+dir} = t_j (a1 a2) / (b1 b2), every product
 // and quotient to ~2^-104, so thousands of terms need no resynchronizing from the log pmf
 // (which cost a double-double log pmf every 8 terms), and the sum compensated. Stops once a
-// term is below 2^-60 of the sum unless `full` (a pmf that may rise again). Returns a
+// term is below 2^-60 of the sum unless `full` (a pmf that may rise again), and adds the terms
+// left as that term's geometric series in the last ratio rho, t rho / (1 - rho) (at most the
+// points left; the ratios fall on, so the true rest is a little less): with a slow decay the
+// rest is 1 / (1 - rho) terms of that size, 3e-14 of the sum at 1 - rho = 3e-5. Returns a
 // negative value if a term fell below 1e-200 in a full sum (the caller then takes the
 // resynchronizing sum, which recovers from an underflow).
 //
@@ -377,12 +383,15 @@ double tail_sum_dd(double k, double dir, double end, Ratio&& ratio, bool full) {
     num::DD t{1.0, 0.0};
     for (double j = k; dir > 0.0 ? j < last : j > last; j += dir) {
         const Ratio4 r = ratio(j);
-        t = t * ((r.a1 * r.a2) / (r.b1 * r.b2));
+        const num::DD q = (r.a1 * r.a2) / (r.b1 * r.b2);
+        t = t * q;
         sum.add(t.hi);
         sum.c += t.lo;
         if (full) {
             if (t.hi < 1e-200) return -1.0;
         } else if (t.hi <= sum.s * 0x1p-60) {
+            const double left = std::fabs(end - (j + dir));  // the points past this term
+            if (q.hi < 1.0) sum.c += t.hi * q.hi * std::min(1.0 / (1.0 - q.hi), left);
             return sum.s + sum.c;
         }
     }
@@ -396,6 +405,246 @@ double tail_sum_dd(double k, double dir, double end, Ratio&& ratio, bool full) {
 template <class Ratio>
 double log_tail_factor(double k, double dir, double end, Ratio&& ratio) {
     return std::log(tail_sum_dd(k, dir, end, ratio, false));
+}
+
+// ---- a long tail sum of a smooth pmf --------------------------------------------------------
+//
+// sum_j pmf(j) / pmf(k) over j = k, k + dir, ... up to `end` (inclusive), for a run too long to
+// add term by term, where the pmf is smooth: its points at least kSmoothMargin from both ends
+// lo, hi of the support (the zeros of the counts whose gamma functions make the pmf: the
+// derivatives of its logarithm from the third on are of the order of margin^-2 and less) and
+// its logarithm changing by at most kSmoothRate from one point to the next at the two ends of
+// the run. The run is cut in three:
+//     the head, from k to the first point inside the margins, term by term (tail_sum_dd);
+//     the smooth stretch, D steps from there: to `end`, to the margin of the support's far
+//         end, or, unless `full`, to where the terms are below e^-62 of the stretch's first;
+//     the rest, from the stretch's last point on, term by term (nothing after e^-62).
+// With phi(u) = pmf(s + dir u) / pmf(s) on the stretch, the Euler-Maclaurin formula
+//     sum_{i=0}^{D} phi(i) = int_0^D phi + (phi(0) + phi(D)) / 2 + (phi'(D) - phi'(0)) / 12
+//                            - (phi'''(D) - phi'''(0)) / 720 + (phi^(5)(D) - phi^(5)(0)) / 30240
+// leaves a term of rate^7 / 1209600 of an end's phi: 3e-17 of it at kSmoothRate, and the sum
+// near that end is at least 1 / rate times it.
+//
+// The integral is 16-point Gauss-Legendre on kSmoothPanels equal panels, each halved while
+// log phi changes by more than kPanelDrop across it (the rule's error for e^-x over a length d
+// is 3e-55 d^33) or it is longer than its distance to an end of the support (a pmf like a power
+// of that distance near the end: the rule converges as 5.8^-32 there). log phi at a node u is
+// the log pmf at the nearest integer j, where it is defined and its argument exact, moved by the
+// quintic through the logs at j - 2 .. j + 3 (the five ratios there; its error is the sixth
+// derivative's, 0.5 margin^-5). The same quintic at an end gives the derivatives of phi there.
+//
+// logpmf(j): the log pmf as a double-double; ratio(j): the factors of pmf(j + dir) / pmf(j)
+// (Ratio4). NaN when the run is not that smooth or a part summed by terms passes its bound.
+// A few hundred log pmfs (16 a panel).
+inline constexpr double kSmoothRate = 0x1p-5;
+inline constexpr double kSmoothMargin = 4096.0;
+inline constexpr int kSmoothPanels = 16;
+inline constexpr double kPanelDrop = 12.0;
+inline constexpr double kGauss16X[8] = {0.9894009349916499, 0.9445750230732326, 0.8656312023878318,
+                                        0.755404408355003,  0.6178762444026438, 0.45801677765722737,
+                                        0.2816035507792589, 0.09501250983763744};
+inline constexpr double kGauss16W[8] = {0.027152459411754096, 0.062253523938647894, 0.09515851168249279,
+                                        0.12462897125553388,  0.14959598881657674,  0.16915651939500254,
+                                        0.18260341504492358,  0.1894506104550685};
+// 120 c_p of the quintic c_1 t + ... + c_5 t^5 through (m, y_m), m = -2 .. 3, y_0 = 0: rows p = 1 .. 5
+inline constexpr double kQuintic[5][6] = {
+    {6.0, -60.0, -40.0, 120.0, -30.0, 4.0}, {-5.0, 80.0, -150.0, 80.0, -5.0, 0.0},
+    {-5.0, -5.0, 50.0, -70.0, 35.0, -5.0},  {5.0, -20.0, 30.0, -20.0, 5.0, 0.0},
+    {-1.0, 5.0, -10.0, 10.0, -5.0, 1.0},
+};
+template <class LogPmf, class Ratio>
+double smooth_tail_sum(
+    double k, double dir, double end, double lo, double hi, LogPmf&& logpmf, Ratio&& ratio, bool full
+) {
+    constexpr double kDrop = 62.0, kMost = 90.0;
+    const double reach = std::fabs(end - k);
+    const double behind = dir > 0.0 ? k - lo : hi - k, ahead = dir > 0.0 ? hi - k : k - lo;  // to the support's ends
+    double total = 0.0, scale = 1.0;  // the sum so far, and pmf(s) / pmf(k) of the stretch's first point s
+    double s = k, left = reach, back = behind, front = ahead;
+    if (back < kSmoothMargin) {  // the head
+        const double h = std::ceil(kSmoothMargin - back);
+        if (!(h < reach)) return kNaN;
+        const double head = tail_sum_dd(k, dir, k + dir * h, ratio, true);
+        if (!(head > 0.0 && head < kInf)) return kNaN;
+        s = k + dir * h, left -= h, back += h, front -= h;
+        const num::DD d = logpmf(s) - logpmf(k);
+        scale = std::exp(d.hi + d.lo);
+        total = head - scale;
+    }
+    const double room = std::min(left, std::floor(front - kSmoothMargin));  // the stretch at most
+    if (!(room >= 64.0)) return kNaN;
+    const num::DD l0 = logpmf(s);
+    auto rel = [&](double u) {  // log phi at an integer u
+        const num::DD d = logpmf(s + dir * u) - l0;
+        return d.hi + d.lo;
+    };
+    auto rate = [&](double u) {  // log(phi(u + 1) / phi(u))
+        const Ratio4 r = ratio(s + dir * u);
+        return std::log((r.a1.hi * r.a2.hi) / (r.b1.hi * r.b2.hi));
+    };
+    // the quintic of log phi(j + t) - log phi(j) around the integer j: c[p - 1] of t^p
+    struct Quintic {
+        double c[5];
+    };
+    auto quintic = [&](double j) {
+        double y[6] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};  // at j - 2 .. j + 3
+        const double r0 = rate(j - 2.0), r1 = rate(j - 1.0), r2 = rate(j), r3 = rate(j + 1.0), r4 = rate(j + 2.0);
+        y[1] = -r1, y[0] = y[1] - r0, y[3] = r2, y[4] = r2 + r3, y[5] = y[4] + r4;
+        Quintic q;
+        for (int p = 0; p < 5; ++p) {
+            double v = 0.0;
+            for (int m = 0; m < 6; ++m) v += kQuintic[p][m] * y[m];
+            q.c[p] = v / 120.0;
+        }
+        return q;
+    };
+    // (phi', phi''', phi^(5)) / phi at the integer j, and whether the rate there is within the bound
+    struct Ends {
+        double d1, d3, d5;
+        bool ok;
+    };
+    auto ends = [&](double j) {
+        const Quintic q = quintic(j);
+        const double g1 = q.c[0], g2 = 2.0 * q.c[1], g3 = 6.0 * q.c[2], g4 = 24.0 * q.c[3], g5 = 120.0 * q.c[4];
+        const double d3 = g1 * g1 * g1 + 3.0 * g1 * g2 + g3;
+        const double d5 = g1 * g1 * g1 * g1 * g1 + 10.0 * g1 * g1 * g1 * g2 + 15.0 * g1 * g2 * g2 +
+                          10.0 * g1 * g1 * g3 + 10.0 * g2 * g3 + 5.0 * g1 * g4 + g5;
+        return Ends{g1, d3, d5, std::fabs(g1) <= kSmoothRate};
+    };
+    // D: the room, or (not full) the first doubling of 2^10 with log phi <= -kDrop, halved back
+    // while below -kMost
+    double d = room, r = 0.0;
+    bool ended = false;  // the terms past D are negligible
+    if (!full) {
+        double below = 0.0;
+        d = std::min(1024.0, room), r = rel(d);
+        while (d < room && r > -kDrop) {
+            below = d;
+            d = std::min(2.0 * d, room);
+            r = rel(d);
+        }
+        if (!(r == r)) return kNaN;
+        for (int i = 0; i < 12 && r < -kMost; ++i) {
+            const double mid = std::floor(0.5 * (below + d)), rm = rel(mid);
+            if (rm > -kDrop) below = mid;
+            else d = mid, r = rm;
+        }
+        ended = r <= -kDrop;
+    } else {
+        r = rel(d);
+        if (!(r == r)) return kNaN;
+    }
+    const Ends e0 = ends(0.0);
+    if (!e0.ok) return kNaN;
+    Ends e1{0.0, 0.0, 0.0, true};
+    if (!ended) {
+        e1 = ends(d);
+        if (!e1.ok) {  // a steep end: back to the last point within the rate (the rate grows outwards)
+            double a = 0.0, b = d;
+            while (b - a > 1.0) {
+                const double mid = std::floor(0.5 * (a + b));
+                if (std::fabs(rate(mid)) <= 0.5 * kSmoothRate) a = mid;
+                else b = mid;
+            }
+            d = a, r = rel(d), e1 = ends(d);
+            if (!(d >= 64.0) || !e1.ok || !(r == r)) return kNaN;
+        }
+    }
+    // the integral: panels (u0, u1, log phi at both) on a stack, halved by the two rules
+    struct Panel {
+        double u0, u1, l0, l1;
+    };
+    Panel stack[64];
+    int top = 0;
+    double integral = 0.0;
+    auto at = [&](double u) {
+        const double j = std::nearbyint(u), t = u - j;
+        const Quintic q = quintic(j);
+        return rel(j) + t * (q.c[0] + t * (q.c[1] + t * (q.c[2] + t * (q.c[3] + t * q.c[4]))));
+    };
+    double edge[kSmoothPanels + 1], edge_l[kSmoothPanels + 1];
+    for (int p = 0; p <= kSmoothPanels; ++p) {
+        edge[p] = p == kSmoothPanels ? d : std::floor(d * p / kSmoothPanels);
+        edge_l[p] = p == 0 ? 0.0 : (p == kSmoothPanels ? r : rel(edge[p]));
+    }
+    int budget = 4096;  // panels at most
+    for (int p = 0; p < kSmoothPanels; ++p) {
+        stack[top++] = {edge[p], edge[p + 1], edge_l[p], edge_l[p + 1]};
+        while (top > 0) {
+            const Panel q = stack[--top];
+            const double len = q.u1 - q.u0;
+            if (!(q.l0 == q.l0 && q.l1 == q.l1) || --budget < 0) return kNaN;
+            const bool split = std::fabs(q.l1 - q.l0) > kPanelDrop || len > back + q.u0 || len > front - q.u1;
+            if (split) {
+                if (len < 64.0 || top + 2 > 64) return kNaN;
+                const double mid = std::floor(0.5 * (q.u0 + q.u1)), lm = rel(mid);
+                stack[top++] = {mid, q.u1, lm, q.l1};
+                stack[top++] = {q.u0, mid, q.l0, lm};
+                continue;
+            }
+            const double c = 0.5 * (q.u0 + q.u1), half = 0.5 * len;
+            double v = 0.0;
+            for (int i = 7; i >= 0; --i) {  // the small weights first
+                const double o = half * kGauss16X[i];
+                v += kGauss16W[i] * (std::exp(at(c - o)) + std::exp(at(c + o)));
+            }
+            integral += half * v;
+        }
+    }
+    const double f1 = std::exp(r);
+    double sum = integral + 0.5 * (1.0 + f1);
+    sum += (f1 * e1.d1 - e0.d1) / 12.0 - (f1 * e1.d3 - e0.d3) / 720.0 + (f1 * e1.d5 - e0.d5) / 30240.0;
+    if (!ended && d < left) {  // the rest, from the stretch's last point on
+        const double rest = tail_sum_dd(s + dir * d, dir, end, ratio, full);
+        if (!(rest > 0.0 && rest < kInf)) return kNaN;
+        sum += f1 * (rest - 1.0);
+    }
+    return total + scale * sum;
+}
+
+// sum_j pmf(j) / pmf(k) over j = k, k + dir, ... up to `end`, the terms falling away from k (a
+// side of a unimodal pmf, tail_sum_dd's stopping rule): by terms, or by smooth_tail_sum where the
+// run has more than `from` terms that count (the term `from` steps out is above 2^-60 of the
+// first: the sum by terms would take them all) and is smooth. `from` is where the two cost the
+// same for the distribution (measured: a term costs 4-6 ns, a smooth sum 45-90 us). The choice
+// depends on the arguments alone. log_concave: the ratios fall on outwards, so the ratio 256
+// steps out bounds the terms left (256 + 41.6 / rate), and a short run is known from it alone,
+// without a log pmf. NaN as tail_sum_dd when neither sum ends.
+template <class LogPmf, class Ratio>
+double tail_sum(
+    double k,
+    double dir,
+    double end,
+    double lo,
+    double hi,
+    LogPmf&& logpmf,
+    Ratio&& ratio,
+    bool log_concave,
+    double from
+) {
+    bool tried = false;
+    auto smooth = [&] {
+        tried = true;
+        return smooth_tail_sum(k, dir, end, lo, hi, logpmf, ratio, false);
+    };
+    if (std::fabs(end - k) > from) {
+        bool is_long = true;
+        if (log_concave) {
+            const Ratio4 r = ratio(k + dir * 256.0);
+            const double q = (r.a1.hi * r.a2.hi) / (r.b1.hi * r.b2.hi);
+            const double lq = std::log(q);  // (not below 0: a ratio within rounding of 1, not known)
+            is_long = !(lq < 0.0 && 256.0 - 41.6 / lq <= from);
+        }
+        if (is_long) {
+            const num::DD d = logpmf(k + dir * from) - logpmf(k);
+            if (d.hi > -41.6) {
+                const double sum = smooth();
+                if (sum == sum) return sum;
+            }
+        }
+    }
+    const double sum = tail_sum_dd(k, dir, end, ratio, false);
+    return sum != sum && !tried ? smooth() : sum;
 }
 
 // ---- the inverses behind a memo -----------------------------------------------------------

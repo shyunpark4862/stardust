@@ -26,7 +26,7 @@ def _memory_calls():
     # the shuffle's own entries, the elements copied out of an array.
     mem = sd._core._physical_memory()
     return [
-        # a small sample of a huge population: a hash table, at most 64 bytes per element beside the result
+        # a small sample of a huge population: a hash table, at most max(64 k, 256) bytes beside the result
         ("choice", lambda r: r.choice(2**62, shape=mem // 64, replace=False)),
         # a large sample: an array of the whole population beside the result
         ("choice", lambda r: r.choice(mem // 8, shape=mem // 64, replace=False)),

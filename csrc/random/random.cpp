@@ -293,7 +293,9 @@ double uniform1_state(random::State& st) {
 struct Slot {
     std::int64_t key, value;
 };
-inline constexpr std::int64_t kSlotsPerEntry = 2;  // the table's bytes: 16 * bit_ceil(2 k) < 64 k
+// The table's bytes: 16 * bit_ceil(max(2 k, 16)), below 64 k from k = 5 and 256 for k <= 4:
+// max(64 k, 256) bounds it (_shuffle_bytes).
+inline constexpr std::int64_t kSlotsPerEntry = 2;
 inline constexpr std::int64_t kAhead = 16;          // draws made ahead of the table work
 inline constexpr std::int64_t kPrefetchMin = 1 << 19;  // shuffled entries from which the array path prefetches
 

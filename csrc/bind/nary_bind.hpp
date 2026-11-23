@@ -6,6 +6,7 @@
 
 #include "array/ops/ufunc.hpp"
 #include "array/parallel_limits.hpp"
+#include "parallel/pool.hpp"
 #include "bind/pyutil.hpp"
 #include "bind/errors.hpp"
 #include "special/cost.hpp"
@@ -106,6 +107,27 @@ std::int64_t weight_for(std::span<const nb::handle> objs, nb::handle out) {
     return (kParallelThreshold + n - 1) / n;
 }
 
+// Whether a scalar call of the Op (v: its inputs) runs without the GIL: the rule of every call
+// (API.md §3), the work of one element against the parallel threshold, as weight_for gives it to
+// a one-element call. Known when compiling for most Ops, so their scalar calls pay nothing for
+// it. An Op whose cost depends on its scalar parameters (stats' discrete distributions: a narrow
+// support answered from the memo in a few ns, a wide one in tens of us) decides with the cost of
+// the parameters given, so that a call much shorter than releasing the GIL keeps it.
+template <typename Op>
+inline constexpr bool kScalarUnlocked = Op::cost_ns / special::kAddNs >= static_cast<double>(kParallelThreshold);
+template <typename Op>
+bool scalar_unlocked(const double* v) {
+    if constexpr (!kScalarUnlocked<Op>) {
+        return false;
+    } else if constexpr (requires { Op::memo_cost_ns; }) {
+        if constexpr (Op::memo_cost_ns > 0.0)
+            return Op::cost_for(v) / special::kAddNs >= static_cast<double>(kParallelThreshold);
+        return true;
+    } else {
+        return true;
+    }
+}
+
 // The call. The commonest scalar call, every input a Python float and no out=, takes a shorter
 // way: the Op's float64 loop (the one run_nary selects for those inputs, so the same bits) on
 // one element from the stack, its result a Python float as run_nary's. run_nary's argument
@@ -130,7 +152,10 @@ nb::object call(std::span<const nb::handle> objs, nb::handle out) {
                     args[k] = reinterpret_cast<std::byte*>(&v[k]);
                     st[k] = sizeof(double);
                 }
-                e.loop(args, 1, st, nullptr);
+                {
+                    const parallel::Unlocked unlocked(scalar_unlocked<Op>(v));
+                    e.loop(args, 1, st, nullptr);
+                }
                 return nb::steal(PyFloat_FromDouble(v[Op::nin]));
             }
         }

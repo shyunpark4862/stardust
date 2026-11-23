@@ -7,7 +7,6 @@
 //             gives the singular values the result carries (docs/api/linalg.md §4)
 #include "linalg/ops/qr.hpp"
 
-#include <limits>
 #include "bind/errors.hpp"
 
 #include "linalg/args.hpp"

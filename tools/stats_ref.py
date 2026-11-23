@@ -10,6 +10,9 @@ and the multivariate ones (tools/mvref.py, tools/mvcdfref.py).
     .venv/bin/python tools/stats_ref.py --resample zipf       # draw new input sets (else an existing
                                                               # file's inputs are reused, frozen)
     .venv/bin/python tools/stats_ref.py mvnormal bvn          # multivariate families and cdf sets
+    .venv/bin/python tools/stats_ref.py hypergeometric_tails betabinomial_tails
+                                                              # the long tail sums (tests/stats/ref/tails/;
+                                                              # about 25 minutes on one process)
 
 writes tests/stats/ref/<distribution>_<kind>.npz (layout: tests/reffile.py; read by
 tests/stats/refdata.py): one input set per distribution and kind -- x (pdf, logpdf, cdf, ...,
@@ -3878,6 +3881,239 @@ def remask(targets):
     return changed
 
 
+# ---------------------------------------------------------------- long tail sums
+#
+# tests/stats/ref/tails/<distribution>.npz: the cdfs of the hypergeometric and the beta-binomial
+# where a side of the pmf has 1e4 to 1e9 terms (sd sums those as an integral with an
+# Euler-Maclaurin correction, csrc/stats/discrete.hpp smooth_tail_sum; the main input sets
+# stop near the guaranteed region, whose sums are short). The definitions are the term-by-term
+# sums: the pmf at one point from Arb's log-gammas, its neighbours by the exact ratio, each side
+# of k summed apart (no cancellation). A side stops past the mode once the geometric bound on
+# what is left is below 2^-140 of the sum where the pmf is log-concave (the hypergeometric, a
+# beta-binomial with both shapes at least 1: the ratios fall on outwards), and the bound goes
+# into the ball. A beta-binomial side otherwise runs to its end of the support: for n up to 1e8
+# both sides of every k, past that (n = 1e9, 2^34) only points within 3e7 of an end, the side
+# toward that end summed and the other side 1 minus it (no cancellation: the side summed is the
+# smaller or not below 1e-30, and the precision is 256 bits). The log of a side above 1/2 is
+# log1p of minus the other. The inputs are fixed lists (no generator), one group per parameter
+# set.
+
+TAILS_OUT = OUT / "tails"
+TAILS = ("hypergeometric_tails", "betabinomial_tails")
+TAIL_METHODS = ("cdf", "ccdf", "logcdf", "logccdf")
+TAILS_PREC = 256
+
+
+def _hyper_tail_points():
+    """(N, K, n, k): standard deviations 2e3 to 5e5, balanced and skewed margins, k from 30
+    standard deviations below the mode to 12 above."""
+    out = []
+    shapes = ((0.5, 0.5), (0.1, 0.7), (0.98, 0.03), (0.3, 0.001))
+    zs = (-30.0, -6.0, -1.0, 0.0, 0.5, 4.0, 12.0)
+    for sd, nshapes, nz in ((2e3, 4, 7), (1e4, 4, 7), (5e4, 4, 7), (2e5, 2, 7), (5e5, 2, 4)):
+        for fk, fn in shapes[:nshapes]:
+            N = int(sd * sd / (fk * (1 - fk) * fn * (1 - fn)))
+            K, n = int(N * fk), int(N * fn)
+            mode = (n + 1) * (K + 1) // (N + 2)
+            s = math.sqrt(n * (K / N) * (1 - K / N) * (1 - n / N))
+            for z in zs[:nz] if nz == 7 else zs[1:5]:
+                out.append((N, K, n, mode + int(z * s)))
+    return out
+
+
+def _betabinom_tail_points():
+    """(n, a, b, ks, how): bells, power-law ends, U and J shapes, the uniform; k near both ends,
+    around the mean and between. how: "all" (both sides of every k by passes over the whole
+    support), "ends" (k within 3e7 of an end) or "bell" (log-concave, k around the mean, each
+    side from k outwards)."""
+    shapes = (
+        (2.5, 1.7), (0.5, 0.5), (0.3, 1.2), (0.7, 3.0), (50.0, 80.0), (1.0, 1.0), (1000.0, 2000.0), (1.0001, 1.5),
+        (0.01, 0.02), (3.0, 0.6), (200.0, 1.5),
+    )  # fmt: skip
+    out = []
+    for n, nshapes in ((30_000, 11), (300_000, 11), (3_000_000, 11), (10_000_000, 4)):
+        for a, b in shapes[:nshapes]:
+            mean = n * a / (a + b)
+            ks = {5, 3000, 5000, n // 40, int(mean / 2), int(mean), int(mean) + 1, int((mean + n) / 2)}
+            ks |= {n - n // 40, n - 5000, n - 3000, n - 5, n // 3, (2 * n) // 3}
+            out.append((n, a, b, sorted(k for k in ks if 0 <= k < n), "all"))
+    n = 100_000_000
+    for a, b in ((2.5, 1.7), (0.7, 3.0), (0.5, 0.5)):
+        mean = n * a / (a + b)
+        ks = {5, 3000, 2_000_000, int(mean / 2), int(mean), int((mean + n) / 2), n // 3, n - 2_000_000, n - 3000}
+        out.append((n, a, b, sorted(ks), "all"))
+    for n, shapes_far in ((1_000_000_000, ((2.5, 1.7), (0.7, 3.0), (0.5, 0.5))), (2**34, ((1.0001, 1.5),))):
+        for a, b in shapes_far:
+            ks = [5, 3000, 100_000, 3_000_000, 30_000_000]
+            out.append((n, a, b, ks + [n - 1 - k for k in reversed(ks)], "ends"))
+    n, a, b = 1_000_000_000, 1e5, 1e5
+    sd = math.sqrt(n * a * b * (a + b + n) / ((a + b) ** 2 * (a + b + 1)))
+    out.append((n, a, b, [int(n / 2 + z * sd) for z in (-6.0, -1.0, 0.5, 3.0)], "bell"))
+    return out
+
+
+def _hyper_tail(task):
+    """(P(X <= k), P(X > k)) of one hypergeometric point."""
+    N, K, n, k = task
+    M = N - K - n
+    lo, hi = max(0, -M), min(n, K)
+    mode = (n + 1) * (K + 1) // (N + 2)
+    with precision(TAILS_PREC):
+        eps = arb(2) ** -140
+
+        def lg(v):
+            return (arb(v) + 1).lgamma()
+
+        def choose(u, v):
+            return lg(u) - lg(v) - lg(u - v)
+
+        def side(j, down):  # sum of pmf(i) / pmf(j) over i = j, j -+ 1, ...
+            t = s = arb(1)
+            while (j > lo) if down else (j < hi):
+                r = (
+                    arb(j * (M + j)) / ((K - j + 1) * (n - j + 1))
+                    if down
+                    else arb((K - j) * (n - j)) / ((j + 1) * (M + j + 1))
+                )
+                t = t * r
+                j += -1 if down else 1
+                s += t
+                if (j & 1023) == 0 and ((j < mode) if down else (j > mode)) and r < 1:
+                    rest = ar.geometric_tail(t, r)
+                    if rest < eps * s:
+                        return add_error(s, rest)
+            return s
+
+        def at(j):
+            return (choose(K, j) + choose(N - K, n - j) - choose(N, n)).exp()
+
+        lower = at(k) * side(k, True) if k >= lo else arb(0)
+        upper = at(k + 1) * side(k + 1, False) if k < hi else arb(0)
+        return lower, upper
+
+
+def _betabinom_tail(task):
+    """[(P(X <= k), P(X > k)) for k in ks] of one beta-binomial parameter set (how: see
+    _betabinom_tail_points)."""
+    n, a, b, ks, how = task
+    with precision(TAILS_PREC):
+        A, B = arb(a), arb(b)
+        eps = arb(2) ** -140
+
+        def up(j):  # pmf(j + 1) / pmf(j)
+            return (n - j) * (A + j) / ((j + 1) * (B + (n - j - 1)))
+
+        def down(j):  # pmf(j - 1) / pmf(j)
+            return j * (B + (n - j)) / ((n - j + 1) * (A + (j - 1)))
+
+        def log_pmf(j):
+            lg = lambda v: arb(v).lgamma()  # noqa: E731
+            return (
+                lg(arb(n) + 1) - lg(arb(j) + 1) - lg(arb(n - j) + 1) + lg(A + j) + lg(B + (n - j)) - lg(A + B + n)
+                + lg(A + B) - lg(A) - lg(B)
+            )  # fmt: skip
+
+        if how == "bell":  # each side from k outwards, the geometric bound past the mode
+            mode = (n * (a - 1) + 1 - b) / (a + b - 2)
+
+            def side(j, step):
+                t = s = arb(1)
+                while 0 < j < n if step < 0 else j < n:
+                    r = down(j) if step < 0 else up(j)
+                    t, j = t * r, j + step
+                    s += t
+                    if (j & 1023) == 0 and ((j < mode) if step < 0 else (j > mode)) and r < 1:
+                        rest = ar.geometric_tail(t, r)
+                        if rest < eps * s:
+                            return add_error(s, rest)
+                return s
+
+            return [(log_pmf(k).exp() * side(k, -1), log_pmf(k + 1).exp() * side(k + 1, 1)) for k in ks]
+        p0, pn = log_pmf(0).exp(), log_pmf(n).exp()
+        lows = [k for k in ks if how == "all" or k < n // 2]
+        highs = [k for k in ks if how == "all" or k >= n // 2]
+        lower, upper = {}, {}
+        if lows:
+            want, t, s = set(lows), arb(1), arb(1)  # pmf(j) / pmf(0) and its sum from 0
+            for j in range(max(lows) + 1):
+                if j in want:
+                    lower[j] = p0 * s
+                t = t * up(j)
+                s += t
+        if highs:
+            want, t, s = set(highs), arb(1), arb(1)  # pmf(j) / pmf(n) and its sum from n
+            for j in range(n, min(highs), -1):
+                if j - 1 in want:
+                    upper[j - 1] = pn * s
+                t = t * down(j)
+                s += t
+        out = []
+        for k in ks:
+            lo_, up_ = lower.get(k), upper.get(k)
+            out.append((lo_ if lo_ is not None else 1 - up_, up_ if up_ is not None else 1 - lo_))
+        return out
+
+
+def _tail_job(job):
+    """[{method: (hi, lo)}] of one task's points (balls do not pickle: the double-doubles leave
+    the worker)."""
+    name, task = job
+    pairs = [_hyper_tail(task)] if name == "hypergeometric_tails" else _betabinom_tail(task)
+    rows = []
+    with precision(TAILS_PREC):
+        for lower, upper in pairs:
+            row = {}
+            for m, (v, other) in {"cdf": (lower, upper), "ccdf": (upper, lower)}.items():
+                # (a side above 1/2: log1p of minus the other, its log is near 0)
+                lv = (-other).log1p() if v > 0.5 else (v.log() if v > 0 else -INF)
+                for mm, w in ((m, v), ("log" + m, lv)):
+                    if not isinstance(w, float) and not ar.settled(w):
+                        raise NotSettled((name, task, mm))
+                    row[mm] = to_dd(w)
+            rows.append(row)
+    return rows
+
+
+def build_tails(name, jobs):
+    """Write tests/stats/ref/tails/<distribution>.npz."""
+    from tests import reffile
+
+    t0 = time.time()
+    if name == "hypergeometric_tails":
+        tasks = _hyper_tail_points()
+        groups = sorted({t[:3] for t in tasks}, key=[t[:3] for t in tasks].index)
+        points = [(t[:3], t[3]) for t in tasks]
+    else:
+        tasks = _betabinom_tail_points()
+        groups = [t[:3] for t in tasks]
+        points = [(t[:3], k) for t in tasks for k in t[3]]
+    with multiprocessing.get_context("spawn").Pool(jobs, maxtasksperchild=4) as pool:
+        raw = pool.map(_tail_job, [(name, t) for t in tasks], chunksize=1)
+    cols = {m: ([], []) for m in TAIL_METHODS}
+    for row in (row for rows in raw for row in rows):
+        for m in TAIL_METHODS:
+            cols[m][0].append(row[m][0])
+            cols[m][1].append(row[m][1])
+    index = np.arange(len(points), dtype=np.int64)
+    none = np.zeros(0, dtype=np.int64)
+    x = [[float(g[i]) for g, _ in points] for i in range(3)] + [[float(k) for _, k in points]]
+    TAILS_OUT.mkdir(parents=True, exist_ok=True)
+    reffile.write(
+        TAILS_OUT / f"{name.partition('_')[0]}.npz",
+        **ar.provenance(extra="term-by-term sums of the pmf by its exact ratio"),
+        tool=TOOL,
+        n_requested=len(points),
+        inputs={f"x{i}": np.asarray(v, dtype=np.float64) for i, v in enumerate(x)},
+        group=[groups.index(g) for g, _ in points],
+        ngroups=len(groups),
+        methods={
+            m: {"over": "point", "index": index, "dropped": none, "hi": np.asarray(h), "lo": np.asarray(l)}
+            for m, (h, l) in cols.items()
+        },
+    )
+    print(f"{name}: {len(points)} points in {len(groups)} groups, {time.time() - t0:.0f} s")
+
+
 def main(argv=None):
     import argparse
 
@@ -3903,7 +4139,7 @@ def main(argv=None):
     RESAMPLE = a.resample
     targets, mv = [], []
     for name in a.names or list(DISTRIBUTIONS):
-        if name in mv_names:
+        if name in mv_names or name in TAILS:
             mv.append(name)
             continue
         dist, _, ms = name.partition(":")
@@ -3926,7 +4162,10 @@ def main(argv=None):
                 # the noncentral distributions' masks follow their final cdf and ccdf references
                 remask([(d, m) for d, m in targets if d in NC_RANGE and kind(m) == "x"])
             for name in mv:
-                (mvref.write if name in mvref.FAMILIES else mvcdfref.build)(name, a.jobs)
+                if name in TAILS:
+                    build_tails(name, a.jobs)
+                else:
+                    (mvref.write if name in mvref.FAMILIES else mvcdfref.build)(name, a.jobs)
     return 0
 
 

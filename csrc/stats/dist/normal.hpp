@@ -216,8 +216,8 @@ struct Normal {
     // Grade 0, in double: z = (x - mu) / sigma (2 units), z^2 (5), the exponent -z^2 / 2
     // (2.5 z^2 absolute), exp by ck::exp and the product with 1 / (sigma sqrt(2 pi)) (itself 1.5):
     // 2.5 z^2 + kVfExp + 3.5, inside the budget up to |z| = 2.
-    // Grade 1, for the rest: exp of the double-double exponent by vForce, the scalar definition
-    // with libm's exp replaced: relative error kVfExp + 1 whatever z (the exponent is exact to
+    // Grade 1, for the rest: exp of the double-double exponent by ck::exp (ckd::exp_dd), the scalar
+    // definition with libm's exp replaced: relative error kVfExp + 1 whatever z (the exponent is exact to
     // 2^-100). Results below 2^-1000 (where the product with 1 + lo may round a second time
     // into the subnormals) are left to it.
     static void pdf_kernel(const Chunk<2>& c, double* out, bool* fast, int grade) {

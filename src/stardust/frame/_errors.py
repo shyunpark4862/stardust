@@ -12,6 +12,7 @@ options (check_bool), int arguments (check_int), real numbers (check_real),
 string options (check_choice) and lists of column names (name_list).
 """
 
+import numbers
 import operator
 
 from .. import _core as _sd_core
@@ -66,14 +67,18 @@ def check_int(value, what, func):
 
 
 def check_real(value, what, func):
-    """A real-number argument (correction=): a float, or an int as check_int
-    reads it (numpy integers too), as float; TypeError otherwise. An int
-    beyond the double range is an OverflowError naming the argument, as the
-    array area's (var(): 'correction' is out of range, API.md §2)."""
+    """A real-number argument (correction=): a float (numpy's floating scalars
+    of any width too), or an int as check_int reads it (numpy integers too),
+    as float; TypeError otherwise. An int beyond the double range is an
+    OverflowError naming the argument, as the array area's (var():
+    'correction' is out of range, API.md §2)."""
     if isinstance(value, float):
         return value
     v = as_index(value)
     if v is None:
+        # numpy.float32, numpy.float16, numpy.longdouble (numpy's bool is not a Real)
+        if type(value).__module__ == "numpy" and isinstance(value, numbers.Real):
+            return float(value)
         raise TypeError(named(func, f"'{what}' must be an int or a float, not {type_name(value)}"))
     try:
         return float(v)

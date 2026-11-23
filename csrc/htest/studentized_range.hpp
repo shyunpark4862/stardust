@@ -136,9 +136,9 @@ inline double range_sf(double k, double w) {
 // twice the one that reaches 1e-18 for the weight alone (2 pi / sqrt(82 a)); a g that turns faster
 // (many groups) takes more levels. Each level walks out from the peak until a term is below
 // 2^-64 of the largest and decreasing, outside [min(peak, 0) - width, width]. Below v_c (R below
-// t_mixture's r_c) g is p0 to 1e-17 and is not called. Small a (nu < 8: the weight's left tail
-// e^(a v) is long for one step) and very large a, or no agreement in five levels: t_mixture's
-// adaptive Gauss-Kronrod rule.
+// t_mixture's r_c) g is p0 to 1e-17 and is not called. Small a (a < 1, nu < 2: the weight's left
+// tail e^(a v) is long for one step) and very large a (above 1e12), or no agreement in six levels:
+// t_mixture's adaptive Gauss-Kronrod rule.
 template <class G>
 double lattice_mixture(double nu, double p0, double habs, double beta_q2, const double* hs, int nh, G&& g) {
     const double a = 0.5 * nu;

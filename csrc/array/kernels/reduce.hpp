@@ -9,10 +9,10 @@
 //     result row, element by element (vectorizes along the kept axis)
 // The binary operations are the elementwise ones (ops::Add, ops::Maximum, ...).
 //
-// A float/complex sum folds each run with numpy's pairwise summation
-// (8 accumulators in blocks of 128, halves added recursively): faster, since
-// 8 independent chains replace one, and more accurate, since the rounding
-// error grows like log n instead of n. max/min fold with NEON FMAX/FMIN
+// A float/complex sum folds each run by pairwise summation (base/pairwise.hpp:
+// 16 accumulators in leaves of up to 512 doubles, halves added recursively):
+// faster, since 16 independent chains replace one, and more accurate, since the
+// rounding error grows like log n instead of n. max/min fold with NEON FMAX/FMIN
 // (docs/design/array.md §6.2, §6.3).
 #pragma once
 
@@ -176,7 +176,7 @@ double neon_fold(const double* x, std::int64_t n, double acc) {
     };
     std::int64_t i = 0;
     if (n >= 8) {
-        // Four independent registers (8 lanes), like the 8 sum accumulators:
+        // Four independent registers (8 lanes), as the sum's leaf keeps 16 accumulators:
         // FMAX's latency is hidden behind the other three.
         float64x2_t v[4];
         for (int j = 0; j < 4; ++j) v[j] = vld1q_f64(x + 2 * j);

@@ -232,13 +232,13 @@ def _spawn_key_item(v):
 
 def _shuffle_bytes(n, k):
     """The memory _k.fisher_yates(…, n, k) takes, by its path (csrc/random/random.cpp): the
-    result (8 k) and, for k < n, the shuffled entries -- a flat hash table of bit_ceil(2 k)
-    16-byte slots (below 64 bytes per entry; 64 k is the bound) for k <= n / 16, else an
-    array of n."""
+    result (8 k) and, for k < n, the shuffled entries -- a flat hash table of
+    bit_ceil(max(2 k, 16)) 16-byte slots (at most 64 bytes per entry from k = 4; 256 bytes for
+    a smaller k: max(64 k, 256) is the bound) for k <= n / 16, else an array of n."""
     if k == n:
         return 8 * k
     if k <= n // 16:
-        return 8 * k + 64 * k
+        return 8 * k + max(64 * k, 256)
     return 8 * k + 8 * n
 
 

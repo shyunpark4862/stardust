@@ -234,7 +234,7 @@ inline constexpr std::uint64_t kLogOff = 0x3fe5f00000000000ULL;
 inline constexpr double kLn2Hi = 0x1.62e42fefa3800p-1;  // k * kLn2Hi exact for |k| < 2^11
 inline constexpr double kLn2Lo = 0x1.ef35793c76730p-45;
 struct LogEntry {
-    std::uint64_t invc, logc_hi, logc_lo, pad;
+    std::uint64_t invc, logc_hi, logc_lo, pad = 0;  // (pad: 32 bytes a row, two rows a cache line)
 };
 // {1/c, log c as a double-double} per interval (Arb, rounded to nearest)
 alignas(64) inline constexpr LogEntry kLogTable[128] = {

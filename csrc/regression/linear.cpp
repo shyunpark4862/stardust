@@ -1537,7 +1537,9 @@ nb::object apply(const std::string& func, nb::handle xo, nb::handle bo, bool int
 // double-double (special/dd.hpp) and rounded once. The central sums are sd.htest's kernel
 // (htest/normality.hpp, H17): jarque_bera() takes its statistic from them as
 // sd.htest.jarque_bera does. Chunks of rows fixed by n are added in order: the same bits for
-// any thread count. NaN in e gives NaN.
+// any thread count. NaN in e gives NaN. The central sums and the mean are those of e 2^-s when
+// the largest |e| is past 2^120 or below 2^-120 (s its exponent, the kernel's unit: CentralSums::e,
+// not returned), so they serve Jarque-Bera's ratios only; Durbin-Watson's sum is in e's own unit.
 nb::object resid_stats(nb::handle eo, nb::handle wo) {
     const char* fn = "resid_stats";
     return call_named(fn, [&]() -> nb::object {

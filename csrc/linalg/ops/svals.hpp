@@ -1,6 +1,7 @@
-// Singular values only, shared by svdvals, matrix_rank, cond and matrix_norm
-// (2, -2, 'nuc'): one routine, so they all see the same numbers
-// (docs/design/linalg.md §10.5).
+// Singular values only, shared by svdvals, matrix_rank, cond, matrix_norm
+// (2, -2, 'nuc') and lstsq (rtol below eps): one routine, so they all see the
+// same numbers (docs/design/linalg.md §10.5). normal_rank and add_shifted
+// below are pinv's and lstsq's.
 #pragma once
 
 #include "linalg/ops/common.hpp"

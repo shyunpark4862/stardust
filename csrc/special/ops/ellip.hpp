@@ -42,7 +42,8 @@ inline double ellpe(double y) { return horner(y, cephes::kEllpeP) - std::log(y) 
 
 // The NEON + vForce chunk shared by K and E (kernels/chunked.hpp): y = 1 - m for m >= 0 (1/(1-m)
 // for m < 0) in lanes, log y by one vvlog over the chunk, the polynomials in lanes (simd::horner,
-// the scalar's roundings), and the special values (NaN, m >= 1, -inf) element by element after.
+// the scalar's roundings), and the special values (NaN, m >= 1, -inf) element by element: found
+// before anything is written (o may be m itself, out= the input) and stored after.
 // 2.5x the scalar libm loop.
 template <bool kE>
 inline void ellip_chunk(const double* m, double* o, int n) {
@@ -53,6 +54,18 @@ inline void ellip_chunk(const double* m, double* o, int n) {
         const V w = simd::cst<V>(1.0) - mv;
         return simd::select(mv >= simd::cst<V>(0.0), w, simd::cst<V>(1.0) / w);
     };
+    int special_at[kChunk], specials = 0;
+    double special_value[kChunk];
+    for (int j = 0; j < n; ++j) {
+        const double v = m[j];
+        if (v < 1.0 && v > -kInf) [[likely]]
+            continue;
+        special_at[specials] = j;
+        if (std::isnan(v) || v > 1.0) special_value[specials] = kNaN;
+        else if (v == 1.0) special_value[specials] = kE ? 1.0 : kInf;
+        else special_value[specials] = kE ? kInf : 0.0;  // -inf
+        ++specials;
+    }
     int i = 0;
     for (; i + 2 <= n; i += 2) simd::store(y + i, ybar(simd::load(m + i, F2{})));
     for (; i < n; ++i) y[i] = ybar(m[i]);
@@ -75,13 +88,7 @@ inline void ellip_chunk(const double* m, double* o, int n) {
     for (; i + 2 <= n; i += 2)
         simd::store(o + i, value(simd::load(m + i, F2{}), simd::load(y + i, F2{}), simd::load(ly + i, F2{})));
     for (; i < n; ++i) o[i] = value(m[i], y[i], ly[i]);
-    for (i = 0; i < n; ++i) {
-        const double v = m[i];
-        if (v < 1.0 && v > -kInf) continue;
-        if (std::isnan(v) || v > 1.0) o[i] = kNaN;
-        else if (v == 1.0) o[i] = kE ? 1.0 : kInf;
-        else o[i] = kE ? kInf : 0.0;  // -inf
-    }
+    for (int j = 0; j < specials; ++j) o[special_at[j]] = special_value[j];
 }
 
 // K(m). ellipk(1) = inf, ellipk(-inf) = 0, m > 1 is NaN (scipy).

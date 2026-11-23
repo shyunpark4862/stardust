@@ -49,6 +49,40 @@ def test_fisher_one_sided_and_far_tables():
         assert time.perf_counter() - t0 < 0.05
 
 
+# Arb (python-flint, 160 bits): the hypergeometric terms from the observed table outwards by
+# their exact ratios, times the pmf from Arb's log-gammas. (table, P(X <= a), P(X >= a))
+FISHER_LONG_TAILS = [
+    ([[10**11, 10**11 + 7], [10**11 + 3, 10**11]], 0.4999949537349561836, 0.5000075693975654849),
+    ([[10**13, 10**13 + 7], [10**13 + 3, 10**13]], 0.4999994953734955962, 0.5000007569397566055),
+    ([[2000002300000, 1999997700000], [2999997700000, 3000002300000]], 0.9985075459215661553, 0.001492460349185472659),
+    ([[99999850000000, 100000150000000], [100000150000000, 99999850000000]], 4.906728662803633161e-198, 1.0),
+    ([[11 * 10**14, 11 * 10**14 + 7], [11 * 10**14 + 3, 11 * 10**14]], 0.4999999518857506509, 0.5000000721713740237),
+]
+
+
+@pytest.mark.parametrize("table, less, greater", FISHER_LONG_TAILS)
+def test_fisher_one_sided_long_tails(table, less, greater):
+    """Tables whose hypergeometric tails have more than 2^20 terms that count (a total of about
+    4e11 and more): the one-sided p-values are sd.stats' smooth tail sums, in bounded time."""
+    t0 = time.perf_counter()
+    got = [h.fisher_exact(table, alternative=a).pvalue for a in ("less", "greater", "two-sided")]
+    assert time.perf_counter() - t0 < 0.5
+    assert got[0] == pytest.approx(less, rel=1e-14, abs=0.0)
+    assert got[1] == pytest.approx(greater, rel=1e-14, abs=0.0)
+    assert 0.0 < got[2] <= 1.0
+    batch = h.fisher_exact(sd.asarray([table, table], dtype=sd.float64), alternative="less").pvalue
+    assert bits_equal(batch, sd.asarray([got[0], got[0]]))
+
+
+def test_fisher_past_the_hypergeometric_total():
+    """A total above 2^52 (and below 2^53) is past sd.stats' Hypergeometric: the statistic is a
+    value and every p-value NaN (docs/api/htest.md)."""
+    for alt in ("two-sided", "less", "greater"):
+        r = h.fisher_exact([[2**52, 1], [1, 1]], alternative=alt)
+        assert r.statistic == 2.0**52 and math.isnan(r.pvalue)
+        assert h.fisher_exact([[2**52 - 4, 1], [1, 1]], alternative=alt).pvalue > 0.0
+
+
 def test_fisher_matches_scipy_on_moderate_tables():
     """Tables a binary search reaches (|a - mode| past 2^16) and walks (the rest): scipy's rule."""
     rng = np.random.default_rng(11)
@@ -106,6 +140,30 @@ def test_odds_ratio_window():
         assert time.perf_counter() - t0 < 1.0
         assert r.statistic == pytest.approx(N * N / ((N + 7) * (N + 3)), rel=1e-6)
         assert float(ci[0]) == pytest.approx(lo, rel=1e-7)
+
+
+# Arb (python-flint): ad / bc exp(-+ z sqrt(1/a + 1/b + 1/c + 1/d)), z the normal quantile of 0.975
+WOOLF = [
+    ([[2**31 - 1, 2**31 - 1], [2**31 - 3, 2**31 - 1]], 0.99991541565228404999, 1.0000845933656357561),
+    ([[2**31, 2**31 + 7], [2**31 + 3, 2**31]], 0.99991541006490004805, 1.0000845877771488410),
+    ([[10**10, 10**10 + 7], [10**10 + 3, 10**10]], 0.99996080048863502334, 1.0000391990479485048),
+    ([[10**12, 10**12 + 7], [10**12 + 3, 10**12]], 0.99999608006971387159, 1.0000039199256519637),
+    ([[10**13, 10**13 + 7], [10**13 + 3, 10**13]], 0.99999876040970368372, 1.0000012395898328998),
+    ([[2**50, 2**50 + 7], [2**50 + 3, 2**50]], 0.99999988317704087095, 1.0000001168229550131),
+    ([[3 * 10**9, 5], [7, 4 * 10**15]], 1.0881796817236445170e23, 1.0802537704248062826e24),
+]
+
+
+@pytest.mark.parametrize("table, low, high", WOOLF)
+def test_odds_ratio_sample_interval_large_counts(table, low, high):
+    """Woolf's interval for counts whose product abcd is past 128 bits (once a wider interval
+    from 1e10 and NaN from 1e13): kind='sample' is what the conditional estimate's cap points to."""
+    r = h.odds_ratio(table, kind="sample")
+    assert tuple(r.conf_int().tolist()) == pytest.approx((low, high), rel=4e-15, abs=0.0)
+    lo1 = float(r.conf_int(alternative="greater")[0])
+    assert low < lo1 < r.statistic < high
+    batch = h.odds_ratio(sd.asarray([table, [[3.0, 4.0], [5.0, 6.0]]], dtype=sd.float64), kind="sample").conf_int()
+    assert bits_equal(batch[0], r.conf_int())
 
 
 # scipy 1.18.1's contingency.odds_ratio on supports past 2^16 (15-20 s each there: recorded here)
@@ -243,7 +301,7 @@ class Watcher:
 @pytest.mark.parametrize(
     "case",
     [
-        lambda: h.fisher_exact(sd.asarray([[[10**10, 10**10 + 7], [10**10 + 3, 10**10]]] * 200)),
+        lambda: h.fisher_exact(sd.asarray([[[10**10, 10**10 + 7], [10**10 + 3, 10**10]]] * 2000)),
         lambda: h.odds_ratio([[10**9, 10**9 + 7], [10**9 + 3, 10**9]]).conf_int(),
         lambda: h.poisson_means_test(10**11, 1.0, 10**11 + 10**6, 1.0),
     ],

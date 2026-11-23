@@ -343,16 +343,21 @@ inline Scaled gamma_ratio_signed(double b, double a) {
 }
 
 // Large y > 0: Gamma(b)/Gamma(a) e^y y^(a-b) sum (b-a)_s (1-a)_s / s! y^-s; false if not converged.
+// a - b = hi + lo exactly: the rounded difference in the exponent moved the power by
+// log(y) ulp(a - b) / 2 (30 ULP at a - b = 10, y = 640, the whole error of this form), so the low
+// part enters as the factor 1 + lo log y.
 inline bool m_asymptotic(double a, double b, double y, Scaled& out) {
+    const dd::DD amb = dd::two_sum(a, -b);
     double s = 1.0, t = 1.0, prev = 1.0;
     for (int k = 0; k < 500; ++k) {
-        t *= (b - a + k) * (1.0 - a + k) / ((k + 1.0) * y);
+        t *= ((k - amb.hi) - amb.lo) * (1.0 - a + k) / ((k + 1.0) * y);
         const double at = std::fabs(t);
         if (at > prev && k > 2) return false;
         prev = at;
         s += t;
         if (t == 0.0 || at <= 0x1p-56 * std::fabs(s)) {
-            out = gamma_ratio_signed(b, a) * exp_scaled(y) * pow_scaled(y, a - b) * scaled(s);
+            const double low = amb.lo != 0.0 ? 1.0 + amb.lo * std::log(y) : 1.0;
+            out = gamma_ratio_signed(b, a) * exp_scaled(y) * pow_scaled(y, amb.hi) * scaled(s * low);
             return true;
         }
     }

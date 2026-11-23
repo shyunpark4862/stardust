@@ -158,11 +158,12 @@ nb::tuple chi2_contingency(nb::handle tables, bool correction, double lam) {
 // search. Within kWalk of the mode the comparisons are on the exact pmf ratios to the observed
 // table (double-doubles kept with a power of two), walked one table at a time; farther (H150) a
 // binary search on sd.stats' double-double log pmf (its error, about 1e-30, is far below the
-// 1e-14 of the rule). Where the hypergeometric tails are NaN (sd.stats' sum bound, a total of
-// about 4e10 and more) and the tables between the two boundaries are at most kMiddle, the
-// p-value is 1 minus their probability when that is at most 1/2, else NaN. The statistic is the
-// sample odds ratio ad / bc (inf for bc = 0); a zero margin gives NaN and p = 1. The counts are
-// below 2^53 (checked by the caller), the mode a 128-bit product.
+// 1e-14 of the rule). Where a hypergeometric tail is NaN although the pmf is not (sd.stats gives
+// a long tail by its smooth sum, and NaN where that does not apply) and the tables between the
+// two boundaries are at most kMiddle, the p-value is 1 minus their probability when that is at
+// most 1/2, else NaN. Past a total of 2^52 sd.stats has no pmf and every p-value is NaN. The
+// statistic is the sample odds ratio ad / bc (inf for bc = 0); a zero margin gives NaN and p = 1.
+// The counts are below 2^53 (checked by the caller), the mode a 128-bit product.
 constexpr std::int64_t kWalk = 1 << 16;
 constexpr std::int64_t kMiddle = 1 << 21;
 
@@ -605,8 +606,8 @@ nb::tuple cochrans_q(nb::handle tables) {
 // nchg.hpp; 0 at the support's low end, inf at its high end), its exact interval (the omegas
 // with P(X >= x) = alpha and P(X <= x) = alpha; 0 or inf at the ends of the support). kind 1
 // 'sample': ad / bc (inf for bc = 0 and ad > 0) and Woolf's interval OR exp(-+ z se), se^2 =
-// 1/a + 1/b + 1/c + 1/d (exact; inf for a zero cell, so the ends follow IEEE as scipy's: 0 and
-// NaN, NaN and inf). A zero margin: statistic NaN, interval (0, inf).
+// 1/a + 1/b + 1/c + 1/d (woolf_variance; inf for a zero cell, so the ends follow IEEE as scipy's: 0
+// and NaN, NaN and inf). A zero margin: statistic NaN, interval (0, inf).
 double sample_or(std::int64_t a, std::int64_t b, std::int64_t c, std::int64_t d) {
     if (b > 0 && c > 0) return to_double(dd_of(static_cast<i128>(a) * d) / dd_of(static_cast<i128>(b) * c));
     if (a == 0 || d == 0) return kNaN;
@@ -614,6 +615,19 @@ double sample_or(std::int64_t a, std::int64_t b, std::int64_t c, std::int64_t d)
 }
 bool zero_margin(std::int64_t a, std::int64_t b, std::int64_t c, std::int64_t d) {
     return a + b == 0 || c + d == 0 || a + c == 0 || b + d == 0;
+}
+// 1/a + 1/b + 1/c + 1/d for positive counts as a double-double: one quotient of exact 128-bit
+// integers while the product abcd fits (every count below 2^31: abcd < 2^124 and the numerator
+// < 2^95), else the four quotients added (each within 2^-104 of itself, the terms positive; the
+// counts are below 2^53, exact doubles).
+DD woolf_variance(std::int64_t a, std::int64_t b, std::int64_t c, std::int64_t d) {
+    if (std::max({a, b, c, d}) < (std::int64_t{1} << 31)) {
+        const i128 A = a, B = b, Cc = c, Dd = d;
+        return dd_of(B * Cc * Dd + A * Cc * Dd + A * B * Dd + A * B * Cc) / dd_of(A * B * Cc * Dd);
+    }
+    const DD one{1.0, 0.0};
+    auto inv = [&](std::int64_t v) { return one / DD{static_cast<double>(v), 0.0}; };
+    return (inv(a) + inv(d)) + (inv(b) + inv(c));
 }
 
 // the work of one conditional lane in elements: the support or the window, times the solver's
@@ -668,12 +682,7 @@ nb::tuple odds_ratio_ci(nb::handle tables, int kind, double alpha, int alt) {
             } else {
                 const double r = sample_or(a, b, c, d);
                 double se = kInf;
-                if (a > 0 && b > 0 && c > 0 && d > 0) {
-                    const i128 A = a, B = b, Cc = c, Dd = d;
-                    se = to_double(
-                        sqrt_dd(dd_of(B * Cc * Dd + A * Cc * Dd + A * B * Dd + A * B * Cc) / dd_of(A * B * Cc * Dd))
-                    );
-                }
+                if (a > 0 && b > 0 && c > 0 && d > 0) se = to_double(sqrt_dd(woolf_variance(a, b, c, d)));
                 const double z = norm_upper_q(tail);
                 if (alt != kLess) lo = r * std::exp(-z * se);
                 if (alt != kGreater) hi = r * std::exp(z * se);

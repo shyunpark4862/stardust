@@ -437,6 +437,17 @@ def test_descriptive_numeric_options():
     assert S.entropy(x, base=np.int64(2)) == S.entropy(x, base=2)
     assert S.iqr(x, scale=np.int64(2)) == S.iqr(x, scale=2)
     assert S.moment(x, order=2, center=np.int64(2)) == S.moment(x, order=2, center=2)
+    # numpy's floating scalars of any width are floats (API.md §2), numpy's bool is not
+    for t in (np.float16, np.float32, np.float64, np.longdouble):
+        assert S.sem(x, correction=t(1.5)) == S.sem(x, correction=1.5)
+        assert S.entropy(x, base=t(2.5)) == S.entropy(x, base=2.5)
+        assert S.iqr(x, scale=t(0.5)) == S.iqr(x, scale=0.5)
+        assert S.iqr(x, q=[t(0.25), t(0.75)]) == S.iqr(x, q=[0.25, 0.75])
+        assert S.moment(x, order=t(2.0)) == S.moment(x, order=2)
+        assert S.moment(x, order=2, center=t(2.5)) == S.moment(x, order=2, center=2.5)
+        assert S.describe(x, correction=t(0.5)).variance == S.describe(x, correction=0.5).variance
+    with pytest.raises(TypeError, match=r"^sem\(\): 'correction' must be an int or a float, not numpy.bool$"):
+        S.sem(x, correction=np.bool_(True))
     for f, arg in (
         (lambda v: S.sem(x, correction=v), "sem(): 'correction'"),
         (lambda v: S.entropy(x, base=v), "entropy(): 'base'"),
