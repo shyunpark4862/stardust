@@ -233,7 +233,7 @@ ValueError: pagerank(): negative edge weights are not allowed
 >>> sd.graph.pagerank(G, alpha=1.0)
 Traceback (most recent call last):
     ...
-ValueError: pagerank(): 'alpha' must be 0 or more and less than 1, not 1.0
+ValueError: pagerank(): 'alpha' must be >= 0 and < 1, not 1.0
 >>> sd.graph.pagerank(G, tol=0)
 Traceback (most recent call last):
     ...

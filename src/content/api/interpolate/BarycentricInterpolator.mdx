@@ -193,11 +193,13 @@ array([1.0, 2.0, 0.0, 2.0, 3.0], dtype=float64)
 1.0
 ```
 
-노드가 하나면 상수 다항식이에요.
+노드가 하나면 상수 다항식이에요. 유한한 모든 점에서 그 값을 그대로 돌려줘요.
 
 ```python
 >>> sd.interpolate.BarycentricInterpolator([2.0], [7.0])(2.0)
 7.0
+>>> sd.interpolate.BarycentricInterpolator([2.0], [5.0])([0.1, 3.3, 1e300])
+array([5.0, 5.0, 5.0], dtype=float64)
 ```
 
 ### 값의 NaN과 inf
@@ -396,7 +398,7 @@ array([0.20833333333333315,   2.208333333333333], dtype=float64)
 | 평가점이 NaN | NaN |
 | 평가점이 inf나 −inf | NaN |
 | 값에 NaN이 있음 | 그 값이 쓰이는 곳이 NaN, 다른 노드에서는 그 노드의 값 |
-| 노드가 하나 | 상수 다항식 |
+| 노드가 하나 | 상수 다항식(유한한 모든 점에서 그 값 그대로) |
 | 노드 수 이상의 도함수 | 0 (NaN 점에서는 NaN) |
 | 빈 평가점 배열 | 빈 배열 |
 
@@ -444,7 +446,7 @@ TypeError: derivative(): 'der' must be an int, not float
 >>> sd.interpolate.barycentric_interpolate(xi, yi, 2.5, der=-1)
 Traceback (most recent call last):
     ...
-ValueError: barycentric_interpolate(): 'der' must be 0 or more, not -1
+ValueError: barycentric_interpolate(): 'der' must be >= 0, not -1
 ```
 
 ## 결과는 언제나 같아요

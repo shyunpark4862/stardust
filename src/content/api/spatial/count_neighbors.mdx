@@ -201,7 +201,7 @@ ValueError: count_neighbors(): 'weights' must be finite
 >>> t.count_neighbors(t, -1)
 Traceback (most recent call last):
     ...
-ValueError: count_neighbors(): 'r' must be a nonnegative number or inf, not -1
+ValueError: count_neighbors(): 'r' must be a number >= 0 or inf, not -1
 >>> t.count_neighbors(t, [[0.1, 0.2]])
 Traceback (most recent call last):
     ...

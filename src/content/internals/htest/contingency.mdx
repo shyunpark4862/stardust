@@ -95,12 +95,14 @@ $$
         }
 ```
 
-총합이 $4 \times 10^{10}$쯤을 넘으면 `Hypergeometric`의 꼬리가 합의 상한에 닿아 NaN이 될 수 있어요. 그때는 두 경계 사이에 있는 표들(최빈값을 포함해요)의 확률을 최빈값에서 이웃한 비를 곱해 가며 더하고, 1에서 그 합을 빼요. 사이의 표가 $2^{21}$개 이하이고 그 확률이 1/2 이하일 때만 이렇게 해요. 그러면 p값이 1/2 이상이라 뺄셈에서 자릿수를 거의 잃지 않아요. 그 밖의 경우, 곧 이런 큰 표에서 p값이 작을 때는 NaN이에요.
+p값은 `Hypergeometric`의 두 꼬리 `cdf`·`ccdf`의 합이에요. 고른 큰 표(총합이 약 $5 \times 10^7$ 넘는 표)는 무시할 수 없는 항이 $2^{14}$개를 넘어서, 꼬리를 항마다 더하지 않고 적분과 Euler–Maclaurin 보정으로 내요([이산 분포](/internals/stats/discrete/)). 그래서 총합이 $10^{12}$이어도 한쪽·양쪽 p값이 모두 값이에요. 꼬리가 NaN인데 pmf는 값인 경우(매끄럽지 않은 긴 꼬리)를 위한 뒷길도 있어요. 두 경계 사이에 있는 표들(최빈값을 포함해요)의 확률을 최빈값에서 이웃한 비를 곱해 가며 더하고 1에서 빼요. 사이의 표가 $2^{21}$개 이하이고 그 확률이 1/2 이하일 때만이라, 뺄셈에서 자릿수를 거의 잃지 않아요. 총합이 $2^{52}$를 넘으면 `Hypergeometric`에 pmf가 없어 p값이 NaN이에요. 통계량은 값이에요.
 
 ```python
 >>> sd.htest.fisher_exact([[10**12, 10**12 + 10**5], [10**12 + 10**5, 10**12]]).pvalue
-0.9203451213358211
+0.9203451213358222
 >>> sd.htest.fisher_exact([[10**12, 10**12 + 10**6], [10**12 + 10**6, 10**12]]).pvalue
+0.31731111278993734
+>>> sd.htest.fisher_exact([[2**52, 1], [1, 1]]).pvalue
 nan
 ```
 
@@ -286,7 +288,28 @@ ValueError: odds_ratio(): the conditional odds ratio needs more than 4.19e+06 te
 
 ### 표본 오즈비와 위험비
 
-`kind='sample'`은 $ad/bc$와 Woolf 구간 $\text{OR}\cdot\exp(\mp z\,\text{se})$, $\text{se}^2 = 1/a + 1/b + 1/c + 1/d$예요. $\text{se}^2$는 128비트 정수로 분자 $bcd + acd + abd + abc$와 분모 $abcd$를 만들어 double-double로 나누고 제곱근을 구해요. 0인 칸이 있으면 se는 inf이고 구간의 끝은 IEEE 산술 그대로(0과 NaN, NaN과 inf) 나와요.
+`kind='sample'`은 $ad/bc$와 Woolf 구간 $\text{OR}\cdot\exp(\mp z\,\text{se})$, $\text{se}^2 = 1/a + 1/b + 1/c + 1/d$예요. 모든 칸이 $2^{31}$ 아래이면 $\text{se}^2$는 128비트 정수로 분자 $bcd + acd + abd + abc$와 분모 $abcd$를 만들어 double-double로 한 번 나눠요. 그보다 큰 칸이 있으면 $abcd$가 128비트를 넘으므로 네 몫 $1/a$, $1/b$, $1/c$, $1/d$를 double-double로 따로 만들어 더해요(`woolf_variance`). 몫마다 $2^{-104}$ 안이고 항이 모두 양수라 합도 그만큼 정확해요. 그다음 제곱근을 구해요. 0인 칸이 있으면 se는 inf이고 구간의 끝은 IEEE 산술 그대로(0과 NaN, NaN과 inf) 나와요.
+
+```cpp
+// csrc/htest/contingency.cpp
+DD woolf_variance(std::int64_t a, std::int64_t b, std::int64_t c, std::int64_t d) {
+    if (std::max({a, b, c, d}) < (std::int64_t{1} << 31)) {
+        const i128 A = a, B = b, Cc = c, Dd = d;
+        return dd_of(B * Cc * Dd + A * Cc * Dd + A * B * Dd + A * B * Cc) / dd_of(A * B * Cc * Dd);
+    }
+    const DD one{1.0, 0.0};
+    auto inv = [&](std::int64_t v) { return one / DD{static_cast<double>(v), 0.0}; };
+    return (inv(a) + inv(d)) + (inv(b) + inv(c));
+}
+```
+
+```python
+>>> r = sd.htest.odds_ratio([[10**13, 10**13 + 10**6], [10**13 + 10**6, 10**13]], kind='sample')
+>>> r.statistic
+0.99999980000003
+>>> r.conf_int()
+array([0.9999985604110125,  1.000001039590584], dtype=float64)
+```
 
 `relative_risk`의 위험비 $(a/n_1)/(c/n_2) = a n_2/(c n_1)$도 정수의 몫을 한 번 반올림해요. Katz 구간의 $\text{se}^2 = 1/a - 1/n_1 + 1/c - 1/n_2$도 정확한 유리수예요.
 

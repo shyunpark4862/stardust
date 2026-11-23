@@ -52,7 +52,31 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
 
 ### 이미 계산한 값
 
-`implicit`, `region`, `contour`, `density`는 함수 자리에 2차원 배열을 받아요. `given`이 가려요. 부를 수 있으면 함수이고, 배열이면 float64로 바꿔 격자의 값으로 써요. `Z[j, i]`가 $(x_i, y_j)$의 값이고 첫 행이 `y0`이라서, `sd.meshgrid(x, y, indexing="xy")`로 만든 격자에서 계산한 배열이 그대로 맞아요. 꼭짓점은 상자의 끝에서 끝까지 고르게 놓인 것으로 봐요(`values_grid`).
+`implicit`, `region`, `contour`, `density`는 함수 자리에 2차원 배열을 받고, `vectorfield`와 `streamlines`는 두 함수 자리에 같은 모양의 배열 둘을 받아요. `given`이 가려요.
+
+```python
+# src/stardust/plot/_field.py
+def given(f, who, samples=None, refine=None, arg="f"):
+    """A function, or the values of a grid given as a 2-D array (Z[j, i] at x_i, y_j; the first
+    row at y0; an sd.ndarray, nested sequences or a numpy array, as the data of the other plots):
+    None for the first, the float64 array for the second."""
+    if callable(f):
+        return None
+    from ..optimize._common import _as_array
+
+    if isinstance(f, (list, tuple, sd.ndarray)) or (type(f).__module__ == "numpy" and getattr(f, "ndim", 0) > 0):
+        Z = _as_array(f, who, arg)
+        if Z.ndim != 2 or Z.shape[0] < 2 or Z.shape[1] < 2:
+            raise ValueError(
+                f"{who}(): '{arg}' as values must be a 2-D array of at least 2 x 2, not of shape {tuple(Z.shape)}"
+            )
+        if samples is not None or refine is not None:
+            raise ValueError(f"{who}(): 'samples' and 'refine' are for a function; the values given are the grid")
+        return Z if Z.dtype == sd.float64 else Z.astype(sd.float64)
+    raise TypeError(f"{who}(): '{arg}' must be callable or a 2-D array of values, not {_type_name(f)}")
+```
+
+부를 수 있으면 함수이고, 배열이면 float64로 바꿔 격자의 값으로 써요. 배열은 다른 그림의 자료 인자와 같은 규칙이라 `sd.ndarray`, 중첩 리스트, numpy 배열(0차원이 아닌 것)을 받아요. 에러는 인자의 이름(`'f'`, 벡터장이면 `'fu'`와 `'fv'`)으로 말해요. `Z[j, i]`가 $(x_i, y_j)$의 값이고 첫 행이 `y0`이라서, `sd.meshgrid(x, y, indexing="xy")`로 만든 격자에서 계산한 배열이 그대로 맞아요. 꼭짓점은 상자의 끝에서 끝까지 고르게 놓인 것으로 봐요(`values_grid`).
 
 값만 있으면 함수를 다시 부를 수 없으므로 뒤에 나오는 두 단계가 빠져요. 곡선 둘레를 다시 재는 띠가 없고, 교차점은 선형 보간 그대로예요. 그래서 `samples`나 `refine`을 함께 주면 에러예요. 격자의 촘촘함은 준 배열이 정해요.
 
@@ -294,7 +318,17 @@ def _region(f, xs, ys, F, level, who, cells=None):
 정의역에 구멍이 있으면 고리가 닫히지 않아요. $\sqrt{x} - y$는 $x < 0$에서 값이 없고, 유한하지 않은 꼭짓점이 든 칸은 건너뛰므로 곡선이 그 경계에서 끊겨요. `loops`가 열린 조각을 하나라도 만나면 `None`을 돌려주고, `_region`은 감싸지 않은 격자에서 `Levels::inside`의 칸 다각형으로 물러나요.
 
 - 한 행에서 네 꼭짓점이 모두 안이고 유한한 칸이 이어지면, 그 줄을 직사각형 하나로 묶어요.
-- 부호가 갈리는 칸은 꼭짓점을 반시계로 돌며, 안인 꼭짓점과 칸을 떠나는 변의 교차점을 차례로 적은 다각형이에요(세모, 네모, 오각형). 안장 칸은 꼭짓점의 평균으로 육각형 하나로 낼지, 안인 두 꼭짓점을 따로 자른 세모 둘로 낼지 정해요.
+- 부호가 갈리는 칸은 꼭짓점을 반시계로 돌며, 안인 꼭짓점과 칸을 떠나는 변의 교차점을 차례로 적은 다각형이에요(세모, 네모, 오각형). 안장 칸은 육각형 하나로 낼지, 안인 두 꼭짓점을 따로 자른 세모 둘로 낼지를 `curves`와 같은 판정으로 정해요.
+
+```cpp
+        // csrc/plot/levels.cpp, Levels::inside
+        // A saddle whose corners' mean is on the other side of its inside corners (not above zero,
+        // as they are): as the curves do (curves), the two inside corners are cut off apart, each
+        // with its two crossings.
+        const bool apart = count == 6 && !((at(j, i) + at(j, i + 1) + at(j + 1, i + 1) + at(j + 1, i)) / 4.0 > 0.0);
+```
+
+안장 칸에서는 꼭짓점과 교차점을 돌며 적은 점이 여섯이에요(안인 꼭짓점 둘, 교차점 넷). 안인 꼭짓점은 값이 0보다 크므로, 네 꼭짓점의 평균이 0보다 크지 않으면 가운데가 안인 꼭짓점들의 반대쪽이에요. 그러면 `curves`가 안인 두 꼭짓점을 따로 잘라 내는 쌍으로 잇는 경우이므로, 꼭짓점마다 그 앞뒤 변의 교차점과 세모를 하나씩 내요. 평균이 0보다 크면 가운데로 두 꼭짓점이 이어진 것이라 여섯 점을 육각형 하나로 내요. 어느 꼭짓점이 안이든 판정이 안인 꼭짓점에 대한 것이라, 칠한 다각형이 곡선과 같은 쪽으로 갈라져요.
 
 교차점은 이웃한 칸이 공유하는 바로 그 점이라 다각형들이 틈 없이 영역을 덮고, 서로 겹치지 않으므로 보통의 채움 규칙(nonzero)으로 칠해요.
 
@@ -357,6 +391,25 @@ def _region(f, xs, ys, F, level, who, cells=None):
 
 `density`와 `phase`는 곡선을 찾지 않고 화소마다 값 하나를 재요. 표본은 화소의 가운데예요. 가로 DX개의 화소가 [x0, x1]을 덮으면 표본은 $x_0 + (k + \tfrac12)(x_1 - x_0)/DX$예요. 그림은 `Picture` 층이 되어 래스터라이저가 칸의 직사각형에 붙여요.
 
+화소는 값을 같은 너비로 나눈 것이라 로그 축에서는 화면에 고르게 놓이지 않아요. 그래서 축 하나라도 로그이면 `Picture`가 그림을 다시 짜요.
+
+```python
+        # src/stardust/plot/_field.py, Picture._draw_log
+        def along(a, lo, hi, n, most=1024):
+            """(the low and high values shown, the pixel of every new column from the low end)."""
+            if a.scale != "log":
+                return lo, hi, list(range(n))
+            v0, v1 = max(lo, a.lo), min(hi, a.hi)
+            if not 0.0 < v0 < v1:
+                return None
+            m = min(most, max(4 * n, 256))
+            l0, l1 = math.log10(v0), math.log10(v1)
+            at = (10.0 ** (l0 + (k + 0.5) / m * (l1 - l0)) for k in range(m))
+            return v0, v1, [min(n - 1, max(0, int((v - lo) / (hi - lo) * n))) for v in at]
+```
+
+로그 축을 따라 새 열 m개(원래 화소 수의 4배, 256에서 1024 사이)를 화면에 고르게 놓고, 새 열마다 그 가운데의 값이 든 원래 화소를 가져와요. 축이 보이는 범위 $[\max(x_0, \text{축의 아래 끝}),\ \min(x_1, \text{축의 위 끝})]$만 다시 짜고, 그 범위가 양수가 아니면 그리지 않아요. 같은 원래 줄은 한 번만 만들어 다시 써요. 그래서 화소가 제 값의 자리에 서고, 값을 고르게 나눈 칸은 로그 축에서 너비가 다르게 보여요. 축의 범위를 정할 때도 로그 축이면 0보다 큰 첫 화소 경계부터 알려요(`extent`). 2차원 히스토그램의 `Counts` 층도 `Picture`를 이어받아 같은 길로 그려요.
+
 ### 밀도: 색띠 표
 
 `density`는 유한한 값의 최솟값과 최댓값(또는 `vmin`, `vmax`)으로 값을 [0, 1]에 놓고 색띠의 색으로 바꿔요. 색띠는 이름마다 고정점 몇 개(기본 `'cool'`은 7개)를 sRGB에서 선형 보간한 것이고, `_color.table`이 그것을 256칸의 RGBA8 표로 한 번 구워요. C++ `colormap`은 화소마다 표의 가장 가까운 칸을 복사만 해요.
@@ -397,19 +450,58 @@ HSV에서 RGB로는 표준 공식이에요. $h_6 = 6h$의 정수 부분이 여�
 
 [`vectorfield`](/api/plot/vectorfield/)는 벡터장 $(u(x, y), v(x, y))$를 화살표로 그려요. 상자를 가로 21칸(세로는 상자의 비율대로)으로 나누고, 칸의 가운데에서 두 함수를 한 번씩 불러요. 화살표는 그 가운데 점에 중심을 두므로 이웃한 화살표끼리 닿지 않아요.
 
+```python
+    # src/stardust/plot/_field.py, vectorfield
+    # the arrows across (one number: down as many as keep the box's proportions), or both
+    across = (
+        21
+        if samples is None or isinstance(samples, (tuple, list))
+        else _sample.knobs(who, samples, None, 21, 0, most=400)[0]
+    )
+    down = min(400, max(3, round(across * (y1 - y0) / (x1 - x0))))
+    (nx, ny), _ = _sample.knobs(
+        who, samples if isinstance(samples, (tuple, list)) else None, None, (across, down), 0, pair=True, most=400
+    )
+```
+
+`samples`가 정수 하나이면 가로의 칸 수이고, 세로는 상자의 비율대로 정해요(3에서 400). 그래서 납작한 상자에서도 화살표의 가로 간격과 세로 간격이 같아요. `(가로, 세로)`를 주면 그대로 써요. 값 배열을 주면 칸 수는 배열의 모양이고 `samples`는 받지 않아요.
+
 - **길이**: 크기 $m = \sqrt{u^2 + v^2}$가 가장 큰 화살표가 칸의 짧은 변의 90%가 되게 모든 화살표에 같은 배율을 곱하고, `scale`을 더 곱해요. 그래서 화살표의 길이가 크기에 비례해요.
 - **가장 큰 크기**는 최댓값이 아니라 [곡선의 자동 범위](/internals/plot/sampling/)와 같은 분위수 규칙으로 잡은 본체의 위 끝이에요. 극점 가까이의 한두 값이 다른 화살표를 모두 점으로 줄이지 않아요. 그 위 끝을 넘는 벡터는 길이만 위 끝에서 자르고 방향은 그대로 둬요.
 - **색**: `color`를 주지 않으면 크기를 색띠에 놓아요. 색띠를 32단계로 끊어, 같은 색의 화살표들을 경로 둘(몸통의 획 하나, 촉의 채움 하나)로 모아요. 화살표 수백 개가 장면에서는 많아야 64개의 경로예요.
 - **촉**: 길이는 화살표 길이의 40%와 $1.6 + 2.2w$ bp($w$는 선 굵기) 가운데 작은 쪽이고, 몸통은 촉 안에서 끝나요. 화면에서 0.3 bp보다 짧은 화살표는 그리지 않아요.
+- **색 막대**: 크기로 칠하면 칸에 색 막대를 붙여요. 칸에는 막대가 하나뿐이라, 이미 막대가 있는 칸(밀도 그림이나 채운 등고선 위에 얹은 장)에서는 그 막대를 두고 화살표의 색은 막대 없이 그려요(`_field_bar`). 유선도 같아요.
+- **범례**: `label`을 주면 범례의 선 견본이 한 색일 때 그 색, 색띠로 칠할 때 색띠의 가운데 색이에요. 유선과 같은 규칙이에요.
+
+값 배열의 격자 점은 상자의 가장자리 위에 있어서(`values_grid`), 그 점에 가운데를 둔 화살표는 반쯤 상자 밖으로 나가요. 그래서 `Arrows`의 `extent`는 화살표가 상자 밖으로 나간 만큼 축의 범위를 넓혀요.
+
+```python
+    # src/stardust/plot/_field.py, Arrows
+    def extent(self, axis, positive):
+        """The box; wider where the arrows reach past it (those of values given on the box's
+        edge are centred on it), so that none is cut."""
+        lo, hi = (self.box[0], self.box[1]) if axis == "x" else (self.box[2], self.box[3])
+        at, by = (self.x, self.u) if axis == "x" else (self.y, self.v)
+        a = min((p - abs(d) / 2 for p, d in zip(at, by)), default=lo)
+        b = max((p + abs(d) / 2 for p, d in zip(at, by)), default=hi)
+        slack = 1e-9 * (hi - lo)
+        a, b = (a if a < lo - slack else lo), (b if b > hi + slack else hi)
+        return (a, b, tuple(v for v, edge in ((a, lo), (b, hi)) if v == edge))
+```
+
+화살표의 양 끝은 가운데에서 벡터의 절반만큼씩이에요. 그 끝이 상자 밖이면 범위를 끝까지 넓히고, 넓힌 끝은 넓히지 않는 값(sticky)에서 빠지므로 배치가 여백을 더해요. 상자 안에 머무는 끝(함수를 칸의 가운데에서 잰 화살표)은 상자의 끝 그대로이고 넓히지 않는 값이에요.
 
 ```python
 >>> vf = sd.plot.vectorfield(lambda x, y: -y, lambda x, y: x, -2, 2, -1.5, 1.5)
 >>> arrows = vf._cells[0].layers[0]
 >>> len(arrows.x), len(set(arrows.colors)) <= 32, [round(v, 3) for v in vf._cells[0].colorbar[1:]]
 (336, True, [0.0, 2.368])
+>>> flat = sd.plot.vectorfield(lambda x, y: -y, lambda x, y: x, -2, 2, -1, 1, samples=12)
+>>> len(flat._cells[0].layers[0].x)
+72
 ```
 
-21 × 16칸의 화살표 336개예요. 회전하는 장 $(-y, x)$의 크기는 원점에서의 거리이고, 색 막대의 위 끝 2.368이 본체의 위 끝이에요. 상자의 구석(크기 2.5)은 그보다 크므로 같은 길이로 잘려요.
+21 × 16칸의 화살표 336개예요. 회전하는 장 $(-y, x)$의 크기는 원점에서의 거리이고, 색 막대의 위 끝 2.368이 본체의 위 끝이에요. 상자의 구석(크기 2.5)은 그보다 크므로 같은 길이로 잘려요. 가로세로 4 : 2인 상자에 `samples=12`를 주면 12 × 6칸의 화살표 72개예요.
 
 ## 유선
 

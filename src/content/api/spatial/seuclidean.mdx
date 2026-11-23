@@ -138,15 +138,30 @@ array([[0.9632916040881131, 0.9770803703423063],
 
 ### 값이 모두 같은 열이 있으면
 
-기본 `V`를 쓸 때 어떤 열의 값이 모두 같으면 그 열의 분산이 0이에요. 그 열의 차이는 0이라 $0/0$이 되어 모든 거리가 NaN이에요. 그런 열은 거리에 아무 정보도 주지 않으니 빼고 재세요.
+기본 `V`를 쓸 때 어떤 열의 값이 모두 같으면 그 열의 분산이 0이라 나눌 수 없어요. 그래서 계산을 시작하기 전에 `ValueError`예요. 그런 열은 거리에 아무 정보도 주지 않으니 빼고 재거나, `V`를 직접 줘요.
 
 ```python
 >>> X = sd.asarray([[1.0, 0.0], [2.0, 0.0], [4.0, 0.0]])
 >>> sd.spatial.pdist(X, metric='seuclidean')
-array([nan, nan, nan], dtype=float64)
+Traceback (most recent call last):
+    ...
+ValueError: pdist(): the variance of a column of the data is 0, so the default 'V' is not positive; give 'V'
 >>> sd.spatial.pdist(X[:, :1], metric='seuclidean')
 array([0.6546536707079771, 1.9639610121239313, 1.3093073414159542], dtype=float64)
 ```
+
+값이 모두 0.1인 열처럼, 계산한 분산이 평균의 반올림 때문에 0이 아니라 아주 작은 양수($10^{-34}$쯤)로 나오는 열도 있어요. 이런 열도 값이 모두 같은지를 직접 보고 같은 에러로 알려요. 행이 하나뿐인 `pdist`는 짝이 없으니 에러 없이 빈 배열이에요.
+
+```python
+>>> sd.var(sd.asarray([0.1, 0.1, 0.1]), correction=1) > 0
+True
+>>> sd.spatial.cdist([[1.0, 0.1]], [[2.0, 0.1], [4.0, 0.1]], metric='seuclidean')
+Traceback (most recent call last):
+    ...
+ValueError: cdist(): the variance of a column of the data is 0, so the default 'V' is not positive; give 'V'
+```
+
+자료에 NaN이나 inf가 있으면 그 열의 분산이 NaN이라 에러가 아니라 모든 거리가 NaN이에요.
 
 ## 이웃 찾기에서
 
@@ -163,7 +178,7 @@ QueryResult(distances=array([[0.9632916040881131, 0.9770803703423063]], dtype=fl
 
 ## NaN, inf, 빈 벡터, 배치
 
-다른 거리 함수와 같아요. 마지막 축이 좌표이고 앞 축은 브로드캐스트돼요. NaN은 결과까지 퍼지고, 좌표가 0개면 0이에요.
+다른 거리 함수와 같아요. 마지막 축이 좌표이고 앞 축은 브로드캐스트돼요. NaN은 결과까지 퍼지고, 한쪽만 무한대면 inf이고, 좌표가 0개면 0이에요.
 
 ```python
 >>> sd.spatial.seuclidean(people, a, V)
@@ -182,5 +197,6 @@ array([               0.0, 1.4142135623730951, 0.9632916040881131,
 - 뜻과 기본 `V`(pdist는 `X`, cdist는 `XA`와 `XB`를 이은 자료의 열 분산, `ddof=1`)는 scipy와 같아요.
 - 거리 함수에서 `V`가 셋째 자리인 것도 scipy와 같아요. `pdist`·`cdist`에서는 `metric`과 `V` 모두 키워드로만 받아요.
 - 받은 `V`에 0 이하나 NaN·inf가 있으면 `ValueError`예요. scipy는 음수 `V`에서 뜻 없는 값을, 0에서 inf를 내요.
+- 기본 `V`에 값이 모두 같은 열이 있으면 `ValueError`예요. scipy는 $0/0$으로 모든 거리가 NaN이에요.
 - `w`를 주면 `TypeError`예요(scipy도 `seuclidean`에는 `w`가 없어요).
 - 좌표가 $10^{160}$처럼 커도 유한한 거리예요. scipy는 같은 자리에서 inf를 내요.

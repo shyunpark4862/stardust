@@ -19,12 +19,12 @@ params:
     desc: "작은 그림이 들어갈 사각형. 칸의 그림 사각형(축이 둘러싼 곳)에 대한 몫 넷이에요. x, y는 왼쪽 아래 구석의 자리(왼쪽 아래가 0, 0), w, h는 너비와 높이예요. 0 ≤ x, 0 ≤ y, 0 < w, 0 < h이고 x + w와 y + h가 1을 넘지 않아야 해요."
 returns:
   type: Figure
-  desc: "twin은 같은 칸의 둘째 y축을 가리키는 보기예요. 이 보기의 그림 메서드와 ylabel, ylim, yscale, yticks가 오른쪽 축의 것이에요. inset은 작은 그림을 얹은 fig 자신이에요."
+  desc: "twin은 같은 칸의 둘째 y축을 가리키는 보기예요. 이 보기의 그림 메서드와 ylabel, ylim, yscale, yticks가 오른쪽 축의 것이고, title, xlabel, xlim, xscale, xticks, legend, inset은 칸의 것이에요. inset은 작은 그림을 얹은 fig 자신이에요."
 raises:
   - type: TypeError
-    desc: inset의 figure가 칸 하나짜리 Figure가 아닐 때, rect가 수 넷의 튜플이나 리스트가 아닐 때.
+    desc: inset의 figure가 칸 하나짜리 Figure가 아닐 때, rect가 튜플이나 리스트가 아니거나 그 안의 값이 수가 아닐 때.
   - type: ValueError
-    desc: 둘째 축의 보기에서 다시 twin을 부를 때, 3D 그림이 든 칸에서 twin이나 inset을 부를 때, rect가 그림 사각형을 벗어날 때.
+    desc: 둘째 축의 보기에서 다시 twin을 부를 때, 3D 그림이 든 칸에서 twin이나 inset을 부를 때, rect가 값 넷이 아닐 때, rect가 그림 사각형을 벗어날 때.
 seeAlso: [figure, customize, basics, line, bar, facet]
 ---
 import Callout from '../../../components/Callout.astro';
@@ -59,8 +59,9 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
 |---|---|
 | 그림 메서드(`right.line`, `right.scatter`, `right.bar`, …) | 오른쪽 축의 눈금으로 그려요 |
 | `right.ylabel`, `right.ylim`, `right.yscale`, `right.yticks` | 오른쪽 축의 이름, 범위, 척도, 눈금을 정해요 |
+| `right.title`, `right.xlabel`, `right.xlim`, `right.xscale`, `right.xticks`, `right.legend`, `right.inset` | 칸의 것을 정해요. `fig`에서 부른 것과 같아요 |
 
-제목, x축의 이름·범위·눈금, 범례는 칸의 것이라서 원래 그림 `fig`에서 정해요. 내보내기(`save`, `to_svg` 등)는 어느 쪽에서 불러도 그림 전체예요.
+제목, x축의 이름·범위·눈금, 범례, 작은 그림은 칸에 하나씩이라 어느 쪽에서 불러도 같은 칸의 것을 고쳐요. 그래서 둘째 축을 그린 뒤 이어서 `right.title(...)`이나 `right.legend(...)`를 불러도 돼요. 내보내기(`save`, `to_svg` 등)도 어느 쪽에서 불러도 그림 전체예요.
 
 - **x축은 하나예요.** 가로 범위는 두 축의 층을 모두 덮게 잡혀요.
 - **y축은 서로 남남이에요.** 범위와 눈금을 저마다의 자료로 잡아요. 왼쪽 축의 눈금과 오른쪽 축의 눈금이 같은 높이에 서도록 맞추지 않아요.
@@ -70,7 +71,7 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
 
 <Callout type="note" title="보기를 fig에 받지 않아요">
 
-보기의 메서드는 보기 자신을 돌려줘요. `fig = fig.twin().line(...)`처럼 쓰면 그 뒤로 `fig`가 오른쪽 축의 보기가 돼서, `fig.ylabel(...)`이 오른쪽 축의 이름을 바꿔요. 위의 예처럼 보기는 다른 이름(`right`)에 받아요.
+보기의 메서드는 보기 자신을 돌려줘요. `fig = fig.twin().line(...)`처럼 쓰면 그 뒤로 `fig`가 오른쪽 축의 보기가 돼서, `fig.ylabel(...)`과 `fig.line(...)`이 오른쪽 축의 것이 돼요. 위의 예처럼 보기는 다른 이름(`right`)에 받아요.
 
 </Callout>
 
@@ -136,13 +137,17 @@ ValueError: twin(): a second y axis needs a 2D plot's cell
 
 키운 구간을 큰 그림에 표시하는 일은 알아서 하지 않아요. 위의 예처럼 [`line`](/api/plot/line/)으로 사각형을 그려 넣어요.
 
-칸이 여럿인 그림에서는 `fig[i, j].inset(...)`이 그 칸에 얹어요. 둘째 y축이 있는 칸에서는 보기(`right`)가 아니라 원래 그림 `fig`에서 불러요.
+칸이 여럿인 그림에서는 `fig[i, j].inset(...)`이 그 칸에 얹어요. 둘째 y축이 있는 칸에서는 원래 그림 `fig`에서 부르든 보기 `right`에서 부르든 같은 칸에 얹어요.
 
 ### 에러
 
-끼워 넣을 그림은 칸이 하나여야 하고, 사각형은 그림 사각형 안에 있어야 해요.
+끼워 넣을 그림은 칸이 하나여야 하고, 사각형은 수 넷이며 그림 사각형 안에 있어야 해요.
 
 ```python
+>>> fig.inset(zoom, (0.5, 0.5, 0.4))
+Traceback (most recent call last):
+    ...
+ValueError: inset(): 'rect' must hold 4 numbers (x, y, w, h), not 3
 >>> fig.inset(zoom, (0.8, 0.8, 0.5, 0.5))
 Traceback (most recent call last):
     ...
@@ -159,7 +164,7 @@ ValueError: inset(): an inset goes over a 2D plot's cell
 
 ## 다른 것과 함께 쓰기
 
-둘째 축과 작은 그림은 칸에 딸린 것이라, 그 칸을 [`grid`](/api/plot/figure/#grid-그린-그림을-모으기)로 다른 그림에 모을 때 함께 따라가요. `grid`에는 둘째 축의 보기가 아니라 원래 그림(`hist`)을 넘겨요.
+둘째 축과 작은 그림은 칸에 딸린 것이라, 그 칸을 [`grid`](/api/plot/figure/#grid-그린-그림을-모으기)로 다른 그림에 모을 때 함께 따라가요. `grid`에는 원래 그림(`hist`)을 넘겨도, 둘째 축의 보기(`right`)를 넘겨도 두 축을 다 가진 칸이 들어가요.
 
 ```python
 >>> both = sd.plot.grid([hist, fig], labels="a", width=183)

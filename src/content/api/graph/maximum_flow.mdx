@@ -180,7 +180,7 @@ TypeError: maximum_flow(): the capacities must be bool or int64, not float64
 >>> sd.graph.maximum_flow(sd.asarray([[0, -1], [0, 0]]), 0, 1)
 Traceback (most recent call last):
     ...
-ValueError: maximum_flow(): the capacities must be nonnegative
+ValueError: maximum_flow(): the capacities must be >= 0
 ```
 
 int64가 담을 수 있는 가장 큰 값(약 $9.2 \times 10^{18}$)까지의 용량을 그대로 써요. 다만 원점에서 나가는 용량을 다 더한 값이 int64를 넘으면 흐름의 양을 int64로 적지 못할 수 있으므로 계산을 시작하기 전에 `OverflowError`를 내요. "제한 없음"을 나타내려고 아주 큰 수를 쓸 때는 다른 용량의 합보다 조금 큰 수면 충분해요.

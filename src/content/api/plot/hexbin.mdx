@@ -24,7 +24,7 @@ params:
   - name: range
     type: "((x0, x1), (y0, y1)) 또는 None"
     kind: keyword-only
-    desc: "칸을 나눌 상자. 이 밖의 짝은 세지 않아요. None(기본값)이면 유한한 짝의 최솟값과 최댓값이에요."
+    desc: "칸을 나눌 상자. 이 밖의 짝은 세지 않아요. 구간마다 작은 값이 앞이에요(x0 ≤ x1, y0 ≤ y1). None(기본값)이면 유한한 짝의 최솟값과 최댓값이에요."
   - name: cmap
     type: str 또는 None
     kind: keyword-only
@@ -44,7 +44,7 @@ raises:
   - type: TypeError
     desc: "x, y가 수의 배열이 아닐 때, 열 이름을 줬는데 data가 없을 때, data가 DataFrame이 아닐 때, size가 int가 아닐 때, range가 ((x0, x1), (y0, y1)) 꼴이 아니거나 그 안의 값이 수가 아닐 때, colorbar가 True·False가 아닐 때."
   - type: ValueError
-    desc: "x와 y의 길이가 다를 때, 유한한 짝이 하나도 없을 때, size가 2보다 작을 때, data에 그 이름의 열이 없을 때, cmap이 없는 이름일 때."
+    desc: "x와 y의 길이가 다를 때, 유한한 짝이 하나도 없을 때, range의 구간이 거꾸로일 때(x0 > x1이나 y0 > y1), size가 2보다 작을 때, data에 그 이름의 열이 없을 때, cmap이 없는 이름일 때."
 seeAlso: [hist2d, histogram, scatter, heatmap, style]
 ---
 import Callout from '../../../components/Callout.astro';
@@ -113,6 +113,18 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
 >>> fig = sd.plot.hexbin("u", "v", data=df, size=20)
 ```
 
+## 로그 축
+
+`hexbin`은 그릴 축에 맞춰 세요. [`xscale('log')`나 `yscale('log')`](/api/plot/customize/)를 준 축에서는 값의 로그(10진)를 같은 간격으로 나눠 육각형을 놓아요. 그래서 로그 축에서도 육각형이 정육각형으로 보이고 크기가 모두 같아요. 축의 척도는 `hexbin`보다 앞에 정하든 뒤에 정하든 같아요. 여러 자릿수에 걸쳐 퍼진 양수 자료에 써요.
+
+```python
+>>> fig = sd.plot.hexbin(10.0 ** x, 10.0 ** y, size=24).xscale("log").yscale("log")
+```
+
+<PlotImage name="hexbin-log" alt="두 축이 모두 로그 눈금인 육각 칸 그림. 가로와 세로 모두 10의 거듭제곱으로 눈금이 서고, 크기가 같은 정육각형들이 오른쪽 위로 기운 타원 모양으로 모여 있어요." caption="10의 x제곱과 10의 y제곱을 두 로그 축에 센 그림. 값의 로그로 나눴으므로 육각형이 모두 같은 크기의 정육각형이고, 모양은 맨 위의 그림과 같아요." />
+
+로그 축에서 0 이하의 값은 자리가 없으므로 그런 짝은 세지 않아요. `range`의 아래 끝이 0 이하이면 가장 작은 양수 값부터 나눠요.
+
 <Callout type="note" title="셀 수 없는 짝">
 `x`나 `y` 가운데 하나라도 NaN이나 무한대인 짝은 빼고 세요. 남는 짝이 하나도 없으면 `ValueError`예요.
 </Callout>
@@ -120,9 +132,9 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
 ## 조심할 점
 
 - 밀도로 바꾸는 인자는 없어요. 색은 언제나 개수예요. 넓이로 나눈 밀도가 필요하면 [`hist2d`](/api/plot/hist2d/)의 `density=True`를 써요.
-- 색띠는 칸 하나에 하나예요. 한 칸에 `hexbin`을 두 번 겹치면 색띠는 나중 것만 남아요.
-- 육각 칸은 `x`와 `y`의 값을 같은 간격으로 나눈 것이에요. 로그 축에 맞추려면 `sd.log10`으로 바꾼 값을 넘겨요.
-- `range`의 두 구간은 작은 값을 앞에 적어요.
+- 색띠는 칸 하나에 하나예요. 한 칸에 `hexbin`을 두 번 겹치면 색띠는 나중 것만 남아요. 무리마다 견주려면 [`facet`](/api/plot/facet/#개수를-칠하는-그림-hist2d-hexbin)으로 칸을 나눠요. 모든 칸이 같은 격자로 세고 같은 색 범위로 칠해요.
+- 육각 칸은 선형 축에서는 값을, 로그 축에서는 값의 로그를 같은 간격으로 나눈 것이에요. 로그 축의 육각형 하나는 값으로 보면 오른쪽 위로 갈수록 넓은 범위를 덮어요.
+- `range`의 두 구간은 작은 값을 앞에 적어요. 거꾸로 주면 `ValueError`예요.
 - 점이 수백 개뿐이면 [`scatter`](/api/plot/scatter/)가 알맞아요.
 
 ## matplotlib을 아는 분께
@@ -131,3 +143,4 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
 - `extent=(x0, x1, y0, y1)` 대신 `range=((x0, x1), (y0, y1))`예요. [`hist2d`](/api/plot/hist2d/)와 같은 꼴이에요.
 - 빈 육각형은 그리지 않아요(`mincnt=1`을 준 것과 같아요). 색띠가 기본으로 붙어요.
 - 칸의 값은 개수뿐이에요. `C`와 `reduce_C_function`으로 다른 값을 모으는 것, `bins='log'`는 없어요.
+- 로그 축의 칸은 `plt.hexbin(xscale='log', yscale='log')`처럼 값의 로그로 나눠요. 여기서는 인자 대신 칸의 축 척도를 따라요.

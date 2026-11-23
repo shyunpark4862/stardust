@@ -38,12 +38,12 @@ params:
     desc: "글꼴, 테마, 팔레트. Figure의 같은 인자와 같아요. 기본값 'serif', 'paper', 'jco'."
 returns:
   type: Facets
-  desc: "칸들의 묶음. 그림 메서드를 부르면 모든 칸에 그리고 자신을 돌려줘요. 속성 figure가 그 칸들을 담은 Figure예요."
+  desc: "칸들의 묶음. 그림 메서드를 부르면 모든 칸에 그리고 자신을 돌려줘요. 속성 figure가 그 칸들을 담은 Figure이고, axes가 값의 칸마다의 보기예요."
 raises:
   - type: TypeError
     desc: "data가 DataFrame이 아닐 때, by가 문자열이 아닐 때, ncols가 int가 아닐 때. 그림 메서드에 data=를 줬을 때도 TypeError예요."
   - type: ValueError
-    desc: "data에 by라는 열이 없을 때, 그 열에 값이 하나도 없을 때, ncols가 1보다 작을 때, sharex·sharey가 False, True, 'all'이 아닐 때, font·theme·palette가 없는 이름일 때."
+    desc: "data에 by라는 열이 없을 때, 그 열에 값이 하나도 없거나 서로 다른 값이 64개를 넘을 때, ncols가 1보다 작을 때, sharex·sharey가 False, True, 'all'이 아닐 때, font·theme·palette가 없는 이름일 때."
 seeAlso: [figure, pairs, basics, scatter, histogram, customize]
 ---
 import Callout from '../../../components/Callout.astro';
@@ -79,18 +79,24 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
 
 `facet`이 돌려주는 것은 `Figure`가 아니라 칸들의 묶음인 `Facets`예요. `Facets`에 하는 일은 세 가지예요.
 
-**그리기.** [`scatter`](/api/plot/scatter/), [`line`](/api/plot/line/), [`histogram`](/api/plot/histogram/), [`ecdf`](/api/plot/ecdf/), [`boxplot`](/api/plot/boxplot/)처럼 `data=`를 받는 그림 메서드를 부르면 모든 칸에 같은 층을 더해요. 인자는 **열 이름**으로 줘요. `data=`는 칸마다 그 칸의 행으로 채워지니 직접 주지 않아요. 색이나 크기 같은 나머지 인자는 모든 칸에 그대로 전해져요. 메서드는 `Facets` 자신을 돌려줘서 이어 부를 수 있어요.
+**그리기.** [`scatter`](/api/plot/scatter/), [`line`](/api/plot/line/), [`histogram`](/api/plot/histogram/), [`ecdf`](/api/plot/ecdf/), [`boxplot`](/api/plot/boxplot/)처럼 `data=`를 받는 그림 메서드를 부르면 모든 칸에 같은 층을 더해요. 인자는 **열 이름**으로 줘요. `data=`는 칸마다 그 칸의 행으로 채워지니 직접 주지 않아요. 색이나 크기 같은 나머지 인자는 모든 칸에 그대로 전해져요. 메서드는 `Facets` 자신을 돌려줘서 이어 부를 수 있어요. [`hline`](/api/plot/hline-vline/), [`vline`](/api/plot/hline-vline/), [`text`](/api/plot/text-annotate/), [`function`](/api/plot/function/)처럼 `data=`를 받지 않는 메서드는 나눌 자료가 없으니 모든 칸에 같은 것을 그려요.
 
 **축 고치기.** `xlabel`은 맨 아래 칸들에, `ylabel`은 맨 왼쪽 칸들에만 이름을 붙여요. `xlim`, `ylim`, `xscale`, `yscale`, `xticks`, `yticks`, `legend`는 모든 칸에 똑같이 적용해요. 인자는 [`Figure`의 같은 메서드](/api/plot/customize/)와 같아요.
 
-**내보내기.** `save`, `to_svg`, `to_pdf`, `to_png`, `scene`, 노트북 표시는 그림 전체의 것이에요. `width`, `height`, `shape`, `axes`, `info`도 그림의 값을 그대로 보여요.
+**내보내기.** `save`, `to_svg`, `to_pdf`, `to_png`, `scene`, 노트북 표시는 그림 전체의 것이에요. `width`, `height`, `shape`, `info`도 그림의 값을 그대로 보여요. `g.axes`는 값의 칸마다의 보기를 그 순서대로 담은 튜플이에요. 격자에서 남는 빈자리는 들지 않아요.
 
 ```python
+>>> g
+Facets('site': 4 cells, 4 layers; 183 x auto mm)
 >>> g.shape
 (2, 3)
+>>> len(g.axes)
+4
 >>> g.width
 183.0
 ```
+
+`repr`은 나눈 열의 이름, 칸의 수, 모든 칸의 층을 더한 수, 그림의 크기예요. 2 × 3 격자에 칸이 넷이라 빈자리가 둘 남지만, `g.axes`에는 north, south, east, west의 칸 넷만 있어요.
 
 그림 전체를 `Figure`로 다뤄야 할 때는 `g.figure`를 써요. [`grid`](/api/plot/figure/)에 넣거나, 칸 하나만 골라 고칠 때예요.
 
@@ -130,29 +136,67 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
 
 x축은 여전히 함께 쓰니 south의 봉우리가 오른쪽에, west의 봉우리가 왼쪽에 있는 것이 그대로 보여요. `facet`에서는 `True`와 `'all'`이 같은 뜻이에요.
 
-## 칸 하나만 고치기
+함께 쓰는 축은 눈금도 모든 칸이 같아요. 칸의 너비가 달라 한 칸에 눈금이 덜 들어가도, 가장 적게 들어가는 칸에 맞춘 한 벌의 눈금을 모든 칸이 써요.
 
-`Facets`의 메서드는 모든 칸에 같은 일을 해요. 한 칸에만 층을 더하거나 설정을 바꾸려면 `g.figure[i, j]`로 그 칸을 골라요. 줄과 열의 번호는 0부터예요.
+## 개수를 칠하는 그림: `hist2d`, `hexbin`
+
+[`hist2d`](/api/plot/hist2d/)와 [`hexbin`](/api/plot/hexbin/)은 칸을 나눠 짝의 수를 세고 그 수를 색으로 칠해요. `facet`에서 이 둘을 부르면 모든 칸이 같은 격자로 세고 같은 색 범위로 칠해요. `range`를 주지 않으면 모든 행을 덮는 상자 하나를 모든 칸이 나눠 쓰고, 색 범위의 위 끝은 모든 칸을 통틀어 가장 많이 든 칸의 개수예요. 그래서 같은 색은 어느 칸에서나 같은 개수이고, 색 막대는 마지막 칸에 하나만 붙어요.
+
+```python
+>>> g = sd.plot.facet(df, "site").hexbin("length", "weight", size=8)
+>>> g = g.xlabel("length (mm)").ylabel("weight (g)")
+>>> fig = g.figure
+```
+
+<PlotImage name="facet-hexbin" alt="네 지역의 길이와 무게를 육각 칸으로 센 그림. 네 칸의 육각형 크기가 같고, 마지막 칸 west의 오른쪽에만 색 막대가 있어요. south의 육각형들은 오른쪽 위에, west의 육각형들은 왼쪽 아래에 모여 있어요." caption="네 칸이 같은 육각 격자로 세고 한 색 범위로 칠했어요. 색 막대 하나로 모든 칸의 개수를 읽어요." />
+
+`range`를 주면 모든 칸이 그 상자로 세요. 마지막 칸은 색 막대가 들어가는 만큼 그림 영역이 조금 좁아요.
+
+## 모든 칸에 같은 것 더하기
+
+`data=`를 받지 않는 메서드는 칸마다 나눌 자료가 없어요. 그래서 `Facets`로 부르면 모든 칸에 같은 인자로 그려요. 모든 칸에 같은 기준선을 긋거나 같은 함수의 곡선을 겹칠 때 써요.
 
 ```python
 >>> g = sd.plot.facet(df, "site").scatter("length", "weight")
->>> cell = g.figure[0, 1].hline(40.0, color="gray")
+>>> g = g.hline(40.0, color="gray").xlabel("length (mm)").ylabel("weight (g)")
+>>> fig = g.figure
 ```
 
-`hline`, `vline`, `function`, `text`처럼 자료의 열을 받지 않는 메서드는 `Facets`로 한꺼번에 부를 수 없어요. 모든 칸에 같은 기준선을 그으려면 칸을 하나씩 골라 불러요.
+<PlotImage name="facet-hline" alt="north, south, east, west 네 칸의 산점도. 네 칸 모두 무게 40 g 자리에 회색 가로선이 지나가요. south의 점들은 절반 넘게 그 선 위에 있고, 나머지 세 칸의 점들은 거의 모두 그 선 아래에 있어요." caption="hline 한 번으로 네 칸 모두에 무게 40 g의 기준선을 그었어요. 기준선이 같아서 칸마다 선 위에 놓인 점의 몫을 견줄 수 있어요." />
+
+## 칸 하나만 고치기
+
+한 칸에만 층을 더하거나 설정을 바꾸려면 그 칸을 골라요. `g.axes[i]`는 i번째 값의 칸이고, `g.figure[i, j]`는 격자의 i번 줄, j번 열의 칸이에요. 번호는 0부터예요.
 
 ```python
->>> for i, j in [(0, 0), (0, 1), (0, 2), (1, 0)]:
-...     cell = g.figure[i, j].hline(40.0, color="gray")
+>>> cell = g.axes[1].vline(36.0, color="gray")
+```
+
+south는 두 번째 값이라 `g.axes[1]`이고, 격자로는 첫 줄의 두 번째 칸인 `g.figure[0, 1]`과 같은 칸이에요.
+
+칸 하나나 그림 전체의 것인 `title`, `zlabel`, `compare`, `fit`, `twin`, `inset`은 `Facets`에 없어요. 이것들도 칸을 골라 불러요.
+
+```python
+>>> g.twin()
+Traceback (most recent call last):
+    ...
+AttributeError: Facets has no method 'twin'...
 ```
 
 ## 조심할 점
 
-- `by`에는 값의 가짓수가 적은 열을 줘요. 값마다 칸을 만드니, 잰 값처럼 행마다 다른 수가 든 열을 주면 행의 수만큼 칸이 생겨요.
-- `Facets`에는 `title`, `zlabel`, `compare`, `fit`이 없어요(`AttributeError`). 칸의 제목은 `by`의 값이 차지하고 있어요.
-- `Facets`는 `g[i, j]`처럼 직접 고를 수 없어요. `g.figure[i, j]`를 써요.
+- `by`에는 값의 가짓수가 적은 열을 줘요. 값마다 칸을 만드니, 잰 값처럼 행마다 다른 수가 든 열을 주면 행의 수만큼 칸이 생겨요. 값이 64개를 넘으면 그런 실수로 보고 `ValueError`를 내요.
+
+  ```python
+  >>> sd.plot.facet(df, "length")
+  Traceback (most recent call last):
+      ...
+  ValueError: facet(): the column 'length' has 160 values; a facet has at most 64 cells
+  ```
+
+- `Facets`에는 `title`, `zlabel`, `compare`, `fit`, `twin`, `inset`이 없어요(`AttributeError`). 칸의 제목은 `by`의 값이 차지하고 있어요.
+- `Facets`는 `g[i, j]`처럼 직접 고를 수 없어요. `g.axes[i]`나 `g.figure[i, j]`를 써요.
 - 그림 메서드의 인자를 배열로 주면 칸마다 나누어지지 않아요. 열 이름으로 줘요.
-- [`hist2d`](/api/plot/hist2d/)와 [`hexbin`](/api/plot/hexbin/)을 칸마다 그리면 색띠가 칸마다 붙고 그 범위도 칸마다 달라요. 같은 색이 칸마다 다른 개수를 뜻하게 돼요.
 - 변수 여럿을 서로 짝지어 훑어보려면 [`pairs`](/api/plot/pairs/)가 알맞아요. `facet`은 같은 변수를 무리마다 되풀이해 그려요.
 
 ## matplotlib을 아는 분께

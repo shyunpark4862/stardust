@@ -155,7 +155,7 @@ SomersdResult(statistic=1, pvalue=nan, table=<array of shape (2, 2)>)
 >>> sd.htest.somersd([[3, -1], [0, 3]])
 Traceback (most recent call last):
     ...
-ValueError: somersd(): 'x' must hold non-negative integer counts
+ValueError: somersd(): 'x' must hold integer counts >= 0
 >>> sd.htest.somersd([[3, 0], [0, 0]])
 Traceback (most recent call last):
     ...

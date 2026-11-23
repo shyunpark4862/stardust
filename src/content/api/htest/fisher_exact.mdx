@@ -196,7 +196,7 @@ FisherExactResult(statistic=1, pvalue=1)
 >>> sd.htest.fisher_exact([[3.5, 1], [1, 4]])
 Traceback (most recent call last):
     ...
-ValueError: fisher_exact(): 'table' must hold non-negative integer counts
+ValueError: fisher_exact(): 'table' must hold integer counts >= 0
 ```
 
 ## 아주 큰 개수
@@ -212,17 +212,19 @@ Traceback (most recent call last):
 ValueError: fisher_exact(): the table's counts must be below 2**53
 ```
 
-이렇게 큰 표에서는 p값이 NaN일 수 있어요. p값은 [초기하 분포](/api/stats/hypergeometric/)의 꼬리인데, 그 꼬리는 표의 합이 2⁵²를 넘으면 NaN이고, 합이 10¹²에 가까워지면 더할 항이 너무 많아 구하지 못하는 곳이 생겨요. 그런 표의 양쪽 p값은 관측 표와 그 반대편 경계 사이에 있는 표들의 확률을 1에서 빼서 구하고, 그 확률이 1/2보다 크면(p값이 작으면) NaN이에요. 한쪽 p값은 꼬리 그대로라 NaN이에요.
+이렇게 큰 표에서도 p값이 나와요. 한쪽 p값과 양쪽 p값 모두 그래요. 다만 표의 합이 2⁵²를 넘으면 [초기하 분포](/api/stats/hypergeometric/)가 확률을 내지 못해서 p값이 NaN이에요. 통계량은 값이에요.
 
 ```python
 >>> big = [[10**12 + 10**5, 10**12], [10**12, 10**12 + 10**5]]
 >>> sd.htest.fisher_exact(big)
 FisherExactResult(statistic=1, pvalue=0.920345)
 >>> sd.htest.fisher_exact(big, alternative='greater')
-FisherExactResult(statistic=1, pvalue=nan)
+FisherExactResult(statistic=1, pvalue=0.460173)
+>>> sd.htest.fisher_exact([[2**52, 1], [1, 1]])
+FisherExactResult(statistic=4.5036e+15, pvalue=nan)
 ```
 
-개수가 이만큼 크면 [`chi2_contingency`](/api/htest/chi2_contingency/)의 근사가 정확한 p값과 거의 같아요(위 표에서 0.920345). NaN이 나온 표는 그쪽으로 읽어요.
+개수가 이만큼 크면 [`chi2_contingency`](/api/htest/chi2_contingency/)의 근사가 정확한 p값과 거의 같아요(위 표에서 0.920345).
 
 ## 정확도
 

@@ -49,9 +49,9 @@ returns:
   desc: 왼쪽 특이벡터 U((m, k)), 특이값 S((k,), float64, 오름차순), 오른쪽 특이벡터 Vh((k, n)), 수렴 여부(converged, status, message), 셈(n_iter, n_converged, n_op)이 든 읽기 전용 결과 객체예요. U, S, Vh = svds(A)처럼 셋으로 풀려요.
 raises:
   - type: TypeError
-    desc: A가 희소 배열·ndarray·LinearOperator가 아닐 때, which가 문자열이 아닐 때, k·ncv·max_iter가 int가 아닐 때, return_singular_vectors가 받는 값의 형이 아닐 때, rng가 Generator가 아닐 때.
+    desc: A가 희소 배열·ndarray·LinearOperator가 아닐 때, which가 문자열이 아닐 때, k·ncv·max_iter가 int가 아닐 때, return_singular_vectors가 받는 값의 형이 아닐 때, rng가 Generator가 아닐 때, LinearOperator의 함수가 배열로 바꿀 수 없는 것을 돌려줄 때.
   - type: ValueError
-    desc: A가 비었을 때, 저장된 값에 NaN이나 inf가 있을 때, k나 ncv가 범위 밖일 때, which나 return_singular_vectors가 받는 값이 아닐 때, v0의 길이가 틀렸거나 0 벡터일 때, tol이 음수이거나 유한하지 않을 때, rmatvec이 없는 LinearOperator를 줬을 때.
+    desc: A가 비었을 때, 저장된 값에 NaN이나 inf가 있을 때, k나 ncv가 범위 밖일 때, which나 return_singular_vectors가 받는 값이 아닐 때, v0의 길이가 틀렸거나 0 벡터일 때, tol이 음수이거나 유한하지 않을 때, rmatvec이 없는 LinearOperator를 줬을 때, LinearOperator의 함수가 크기가 다른 결과를 돌려줄 때.
 seeAlso: [eigsh, eigs, norm, linearoperator, splu, basics]
 ---
 

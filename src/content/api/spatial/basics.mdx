@@ -143,7 +143,7 @@ array([], dtype=float64)
 
 ## NaN과 inf
 
-거리를 재는 함수(`pdist`, `cdist`, 거리 함수)는 NaN과 inf를 부동소수점의 규칙대로 결과에 그대로 내보내요. 좌표에 NaN이 있으면 그 점이 낀 거리는 NaN이고, inf와 유한한 값의 거리는 inf, inf − inf가 생기면 NaN이에요. 에러를 내지 않으니 결과를 보고 판단할 수 있어요.
+거리를 재는 함수(`pdist`, `cdist`, 거리 함수)는 NaN과 inf를 부동소수점의 규칙대로 결과에 그대로 내보내요. 좌표에 NaN이 있으면 그 점이 낀 거리는 NaN이고, inf − inf가 생기면 NaN이에요. inf와 유한한 값의 거리는 차의 합이나 최댓값인 거리(기본값 `euclidean` 등)에서 inf, `cosine`처럼 비율인 거리에서 NaN이에요([거리 함수 고르기](/api/spatial/metrics/#nan과-inf)). 에러를 내지 않으니 결과를 보고 판단할 수 있어요.
 
 ```python
 >>> sd.spatial.pdist(sd.asarray([[0.0, sd.nan], [1.0, 2.0], [3.0, 3.0]]))
@@ -344,7 +344,7 @@ MemoryError: pdist(): cannot allocate 35999988000000 bytes: more than this machi
 | 에러 | 언제 |
 |---|---|
 | `TypeError` | 데이터가 배열이 아닌 것(문자열 등)이거나 복소수, 옵션을 자리로 넘겼을 때, 모르는 키워드, 그 거리가 쓰지 않는 인자, `metric`이 문자열이 아닐 때, `k`가 bool이나 실수일 때 |
-| `ValueError` | 차원이나 열 수가 맞지 않을 때, 모르는 거리 이름, 이웃 찾기의 데이터에 NaN·inf, 음수나 NaN인 반경·상한, 0 이하의 `k`, 음수·NaN·inf가 든 가중치 `w` |
+| `ValueError` | 차원이나 열 수가 맞지 않을 때, 모르는 거리 이름, 이웃 찾기의 데이터에 NaN·inf, 음수나 NaN인 반경·상한, 0 이하의 `k`, 음수·NaN·inf가 든 가중치 `w`, `seuclidean`의 기본 `V`에 값이 모두 같은 열 |
 | `sd.linalg.LinAlgError` | `metric='mahalanobis'`의 기본 `VI`를 만들 공분산이 특이할 때 |
 | `MemoryError` | 결과가 물리 메모리보다 클 때 |
 
@@ -352,7 +352,7 @@ MemoryError: pdist(): cannot allocate 35999988000000 bytes: more than this machi
 >>> sd.spatial.radius_neighbors(X, X, -1)
 Traceback (most recent call last):
     ...
-ValueError: radius_neighbors(): 'r' must be a nonnegative number or inf, not -1
+ValueError: radius_neighbors(): 'r' must be a number >= 0 or inf, not -1
 >>> sd.spatial.kneighbors(X, X, k=0)
 Traceback (most recent call last):
     ...

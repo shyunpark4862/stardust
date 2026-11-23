@@ -181,7 +181,7 @@ int64_t query_block(int64_t q) {
 
 모양으로 크기가 정해지는 출력은 할당 전에 이 기계의 물리 메모리와 견줘요. `pdist`($8 \cdot m(m - 1)/2$바이트), `cdist`($8 \cdot m_A \cdot m_B$), 거리 함수의 배치($8 \times$ 짝 수), `squareform`의 행렬, `kneighbors`와 `query`(거리와 색인 $16 \times$ 행 수 $\times k$)가 넘으면 아무것도 잡지 않고 `MemoryError`예요.
 
-크기를 미리 알 수 없는 `KDTree`의 목록(`query_ball_point`, `query_ball_tree`, `sparse_distance_matrix`, `query_pairs`)은 찾는 동안 찾은 짝의 수를 원자적으로 세다가 물리 메모리를 넘을 수가 되면 모든 태스크가 찾기를 멈추고 `MemoryError`예요([질의](/internals/spatial/queries/)). 멈추는 시점은 스레드마다 다르지만 결과를 버리니 상관없어요. 개수만 묻는 `return_length`와 `count_neighbors`는 색인을 모으지 않아요.
+크기를 미리 알 수 없는 목록(`KDTree`의 `query_ball_point`, `query_ball_tree`, `sparse_distance_matrix`, `query_pairs`와 `radius_neighbors`의 모든 길)은 찾는 동안 찾은 짝의 수를 원자적으로 세다가 물리 메모리를 넘을 수가 되면 모든 태스크가 찾기를 멈추고 `MemoryError`예요([질의](/internals/spatial/queries/)). 멈추는 시점은 스레드마다 다르지만 결과를 버리니 상관없어요. 개수만 묻는 `return_length`와 `count_neighbors`는 색인을 모으지 않아요.
 
 ## 시험
 

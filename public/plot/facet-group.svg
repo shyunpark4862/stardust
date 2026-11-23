@@ -39,15 +39,10 @@
 <g fill="#efc000" stroke="#ffffff" stroke-width="0.5"><use xlink:href="#m1" x="105.6358" y="85.8577"/><use xlink:href="#m1" x="92.8228" y="82.2881"/><use xlink:href="#m1" x="123.1709" y="52.5459"/><use xlink:href="#m1" x="111.8231" y="67.9151"/><use xlink:href="#m1" x="101.136" y="84.4066"/><use xlink:href="#m1" x="71.5465" y="91.5691"/><use xlink:href="#m1" x="83.6496" y="81.0016"/><use xlink:href="#m1" x="110.3988" y="85.4255"/><use xlink:href="#m1" x="83.0285" y="96.7825"/><use xlink:href="#m1" x="93.5263" y="80.8017"/><use xlink:href="#m1" x="98.3601" y="89.161"/><use xlink:href="#m1" x="104.3068" y="81.5339"/><use xlink:href="#m1" x="89.072" y="88.0728"/><use xlink:href="#m1" x="133.7411" y="75.9607"/><use xlink:href="#m1" x="73.5843" y="93.0477"/><use xlink:href="#m1" x="120.1913" y="81.4256"/><use xlink:href="#m1" x="108.1977" y="87.6186"/><use xlink:href="#m1" x="90.4557" y="92.9461"/><use xlink:href="#m1" x="79.3521" y="91.3714"/><use xlink:href="#m1" x="82.8785" y="84.8892"/></g>
 <path d="M25.44 13.156L25.44 121.511L169.9134 121.511" fill="none" stroke="#212121" stroke-width="0.6" stroke-linecap="square" stroke-miterlimit="10"/>
 <path d="M26.6021 121.511L26.6021 124.311" fill="none" stroke="#212121" stroke-width="0.6"/>
-<g fill="#212121" transform="matrix(1 -0 0 1 26.602107 126.311043)"></g>
 <path d="M60.0101 121.511L60.0101 124.311" fill="none" stroke="#212121" stroke-width="0.6"/>
-<g fill="#212121" transform="matrix(1 -0 0 1 60.010083 126.311043)"></g>
 <path d="M93.4181 121.511L93.4181 124.311" fill="none" stroke="#212121" stroke-width="0.6"/>
-<g fill="#212121" transform="matrix(1 -0 0 1 93.418058 126.311043)"></g>
 <path d="M126.826 121.511L126.826 124.311" fill="none" stroke="#212121" stroke-width="0.6"/>
-<g fill="#212121" transform="matrix(1 -0 0 1 126.826034 126.311043)"></g>
 <path d="M160.234 121.511L160.234 124.311" fill="none" stroke="#212121" stroke-width="0.6"/>
-<g fill="#212121" transform="matrix(1 -0 0 1 160.23401 126.311043)"></g>
 <path d="M25.44 105.0686L22.64 105.0686" fill="none" stroke="#212121" stroke-width="0.6"/>
 <g fill="#212121" transform="matrix(1 -0 0 1 13.63999 107.382075)"><use xlink:href="#g0" transform="matrix(0.702625 0 0 0.702625 0 0)"/><use xlink:href="#g1" transform="matrix(0.702625 0 0 0.702625 3.5 0)"/></g>
 <path d="M25.44 75.8299L22.64 75.8299" fill="none" stroke="#212121" stroke-width="0.6"/>
@@ -72,13 +67,9 @@
 <path d="M331.9656 121.511L331.9656 124.311" fill="none" stroke="#212121" stroke-width="0.6"/>
 <g fill="#212121" transform="matrix(1 -0 0 1 328.465558 131.13054)"><use xlink:href="#g3" transform="matrix(0.702625 0 0 0.702625 0 0)"/><use xlink:href="#g1" transform="matrix(0.702625 0 0 0.702625 3.5 0)"/></g>
 <path d="M180.7134 105.0686L177.9134 105.0686" fill="none" stroke="#212121" stroke-width="0.6"/>
-<g fill="#212121" transform="matrix(1 -0 0 1 175.913386 105.06858)"></g>
 <path d="M180.7134 75.8299L177.9134 75.8299" fill="none" stroke="#212121" stroke-width="0.6"/>
-<g fill="#212121" transform="matrix(1 -0 0 1 175.913386 75.829908)"></g>
 <path d="M180.7134 46.5912L177.9134 46.5912" fill="none" stroke="#212121" stroke-width="0.6"/>
-<g fill="#212121" transform="matrix(1 -0 0 1 175.913386 46.591236)"></g>
 <path d="M180.7134 17.3526L177.9134 17.3526" fill="none" stroke="#212121" stroke-width="0.6"/>
-<g fill="#212121" transform="matrix(1 -0 0 1 175.913386 17.352565)"></g>
 <g fill="#212121" transform="matrix(1 -0 0 1 241.882078 140.136535)"><use xlink:href="#g16" transform="matrix(0.803 0 0 0.803 0 0)"/><use xlink:href="#g6" transform="matrix(0.803 0 0 0.803 2.224 0)"/><use xlink:href="#g13" transform="matrix(0.803 0 0 0.803 5.776 0)"/><use xlink:href="#g8" transform="matrix(0.803 0 0 0.803 9.776 0)"/><use xlink:href="#g10" transform="matrix(0.803 0 0 0.803 13.776 0)"/><use xlink:href="#g9" transform="matrix(0.803 0 0 0.803 16 0)"/><use xlink:href="#g11" transform="matrix(0.803 0 0 0.803 22 0)"/><use xlink:href="#g17" transform="matrix(0.803 0 0 0.803 24.664 0)"/><use xlink:href="#g17" transform="matrix(0.803 0 0 0.803 30.888 0)"/><use xlink:href="#g12" transform="matrix(0.803 0 0 0.803 37.112 0)"/></g>
 <g fill="#212121" transform="matrix(1 -0 0 1 252.01858 9.083995)"><use xlink:href="#g18" transform="matrix(0.903375 0 0 0.903375 0 0)"/><use xlink:href="#g14" transform="matrix(0.903375 0 0 0.903375 3.501 0)"/><use xlink:href="#g19" transform="matrix(0.903375 0 0 0.903375 8.001 0)"/><use xlink:href="#g10" transform="matrix(0.903375 0 0 0.903375 12.501 0)"/><use xlink:href="#g9" transform="matrix(0.903375 0 0 0.903375 15.003 0)"/></g>
 <g fill="#0073c2" stroke="#ffffff" stroke-width="0.5"><use xlink:href="#m4" x="464.4715" y="62.9317"/><use xlink:href="#m4" x="417.4226" y="71.4037"/><use xlink:href="#m4" x="451.1767" y="60.5363"/><use xlink:href="#m4" x="494.0869" y="54.9193"/><use xlink:href="#m4" x="449.8541" y="75.5288"/><use xlink:href="#m4" x="422.6357" y="90.6266"/><use xlink:href="#m4" x="432.3406" y="59.3501"/><use xlink:href="#m4" x="472.0583" y="56.8992"/><use xlink:href="#m4" x="449.9871" y="71.2241"/><use xlink:href="#m4" x="490.1694" y="57.975"/><use xlink:href="#m4" x="463.5932" y="61.9264"/><use xlink:href="#m4" x="453.0836" y="73.7427"/><use xlink:href="#m4" x="477.5823" y="53.1559"/><use xlink:href="#m4" x="438.5177" y="63.4396"/><use xlink:href="#m4" x="456.0335" y="73.011"/><use xlink:href="#m4" x="479.7099" y="61.0634"/><use xlink:href="#m4" x="452.8904" y="66.8241"/><use xlink:href="#m4" x="480.3638" y="60.8404"/><use xlink:href="#m4" x="481.1971" y="52.0854"/><use xlink:href="#m4" x="460.8815" y="70.7306"/></g>
@@ -95,13 +86,9 @@
 <path d="M504.8789 121.511L504.8789 124.311" fill="none" stroke="#212121" stroke-width="0.6"/>
 <g fill="#212121" transform="matrix(1 -0 0 1 501.378944 131.13054)"><use xlink:href="#g3" transform="matrix(0.702625 0 0 0.702625 0 0)"/><use xlink:href="#g1" transform="matrix(0.702625 0 0 0.702625 3.5 0)"/></g>
 <path d="M353.6268 105.0686L350.8268 105.0686" fill="none" stroke="#212121" stroke-width="0.6"/>
-<g fill="#212121" transform="matrix(1 -0 0 1 348.826772 105.06858)"></g>
 <path d="M353.6268 75.8299L350.8268 75.8299" fill="none" stroke="#212121" stroke-width="0.6"/>
-<g fill="#212121" transform="matrix(1 -0 0 1 348.826772 75.829908)"></g>
 <path d="M353.6268 46.5912L350.8268 46.5912" fill="none" stroke="#212121" stroke-width="0.6"/>
-<g fill="#212121" transform="matrix(1 -0 0 1 348.826772 46.591236)"></g>
 <path d="M353.6268 17.3526L350.8268 17.3526" fill="none" stroke="#212121" stroke-width="0.6"/>
-<g fill="#212121" transform="matrix(1 -0 0 1 348.826772 17.352565)"></g>
 <g fill="#212121" transform="matrix(1 -0 0 1 414.795464 140.136535)"><use xlink:href="#g16" transform="matrix(0.803 0 0 0.803 0 0)"/><use xlink:href="#g6" transform="matrix(0.803 0 0 0.803 2.224 0)"/><use xlink:href="#g13" transform="matrix(0.803 0 0 0.803 5.776 0)"/><use xlink:href="#g8" transform="matrix(0.803 0 0 0.803 9.776 0)"/><use xlink:href="#g10" transform="matrix(0.803 0 0 0.803 13.776 0)"/><use xlink:href="#g9" transform="matrix(0.803 0 0 0.803 16 0)"/><use xlink:href="#g11" transform="matrix(0.803 0 0 0.803 22 0)"/><use xlink:href="#g17" transform="matrix(0.803 0 0 0.803 24.664 0)"/><use xlink:href="#g17" transform="matrix(0.803 0 0 0.803 30.888 0)"/><use xlink:href="#g12" transform="matrix(0.803 0 0 0.803 37.112 0)"/></g>
 <g fill="#212121" transform="matrix(1 -0 0 1 427.753467 9.083995)"><use xlink:href="#g6" transform="matrix(0.903375 0 0 0.903375 0 0)"/><use xlink:href="#g20" transform="matrix(0.903375 0 0 0.903375 3.996 0)"/><use xlink:href="#g18" transform="matrix(0.903375 0 0 0.903375 7.992 0)"/><use xlink:href="#g10" transform="matrix(0.903375 0 0 0.903375 11.358 0)"/></g>
 <g fill="#0073c2" stroke="#ffffff" stroke-width="0.5"><use xlink:href="#m6" x="29.5039" y="263.6597"/><use xlink:href="#m6" x="72.9075" y="246.7875"/><use xlink:href="#m6" x="115.2099" y="219.8869"/><use xlink:href="#m6" x="73.7492" y="244.6652"/><use xlink:href="#m6" x="131.1014" y="225.65"/><use xlink:href="#m6" x="65.6311" y="253.4363"/><use xlink:href="#m6" x="77.9373" y="243.3897"/><use xlink:href="#m6" x="53.9924" y="251.7178"/><use xlink:href="#m6" x="77.6311" y="242.9763"/><use xlink:href="#m6" x="61.0103" y="251.3036"/><use xlink:href="#m6" x="67.487" y="243.8172"/><use xlink:href="#m6" x="123.0574" y="222.6404"/><use xlink:href="#m6" x="84.7391" y="239.8069"/><use xlink:href="#m6" x="63.6232" y="249.1184"/><use xlink:href="#m6" x="57.8789" y="252.5548"/><use xlink:href="#m6" x="55.8794" y="255.1524"/><use xlink:href="#m6" x="69.7616" y="253.5944"/><use xlink:href="#m6" x="85.469" y="239.4404"/><use xlink:href="#m6" x="75.392" y="237.0992"/><use xlink:href="#m6" x="91.7792" y="232.7168"/></g>

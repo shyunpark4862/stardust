@@ -603,7 +603,7 @@ ValueError: quantreg(): the input contains NaN (nan_policy='raise')
 
 ### 겹친 열
 
-다른 열의 일차결합인 열(예: x와 2x)은 계수와 그 추론이 NaN이고, 나머지는 그 열을 뺀 적합과 비트까지 같아요. `rank`, `df_model`, `df_resid`는 남은 열로 세요. 판정 규칙은 [겹친 열과 완전 적합](/api/regression/collinearity/)과 같아요.
+다른 열의 일차결합인 열(예: x와 2x)은 계수와 그 추론이 NaN이고, 나머지는 그 열을 뺀 적합과 같아요. 계수는 같고, 행이 아주 많은 문제에서는 표준오차의 끝자리가 다를 수 있어요. `rank`, `df_model`, `df_resid`는 남은 열로 세요. 판정 규칙은 [겹친 열과 완전 적합](/api/regression/collinearity/)과 같아요.
 
 ```python
 >>> yc = [1.2, 1.9, 3.4, 3.9, 5.3, 5.8, 7.4, 8.1]

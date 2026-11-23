@@ -129,7 +129,7 @@ ValueError: xlim(): 'low' must be less than 'high'
 
 점 넷 가운데 범위 안의 $(4, 4)$ 하나만 찍히고, 선은 칸의 테두리에서 잘려요.
 
-한 칸에 세로축을 둘 두는 `fig.twin()`의 보기에서는 `ylabel`, `ylim`, `yscale`, `yticks`가 오른쪽 축을 고쳐요([두 y축과 작은 그림](/api/plot/twin-inset/)). 여러 칸의 범위를 서로 맞추는 일은 [`grid`](/api/plot/figure/)의 `sharex`, `sharey`가 해요.
+한 칸에 세로축을 둘 두는 `fig.twin()`의 보기에서는 `ylabel`, `ylim`, `yscale`, `yticks`가 오른쪽 축을 고치고, 제목과 x축, 범례는 그 보기에서 불러도 칸의 것을 고쳐요([두 y축과 작은 그림](/api/plot/twin-inset/)). 여러 칸의 범위를 서로 맞추는 일은 [`grid`](/api/plot/figure/)의 `sharex`, `sharey`가 해요.
 
 ## 척도: xscale, yscale
 
@@ -208,6 +208,19 @@ ValueError: legend(): 'loc' must be 'best', 'top', 'right', 'bottom', 'upper rig
 ```
 
 범례의 이름과 제목도 LaTeX 원문이에요. `group=`의 무리 값처럼 자료에서 온 이름은 특수 문자를 알아서 숨겨요.
+
+범례의 바탕은 흰색이에요. 흰색이나 아주 옅은 색의 선은 흰 바탕에서 보이지 않으므로, 선 견본의 색이 흰 바탕과 거의 같으면(흰색과의 명암비 1.25 미만) 견본 둘레에 가는 회색 테두리를 둘러요. 색 자체는 바꾸지 않아요. 팔레트의 색은 모두 그보다 진해서 테두리가 붙지 않아요. 짙은 그림 위에 흰 선을 그을 때 그 이름이 범례에서 보여요.
+
+```python
+>>> rng = sd.random.default_rng(3)
+>>> N = sd.stats.Normal(mu=0.0, sigma=1.0)
+>>> u = N.sample(5000, rng=rng)
+>>> w = 0.6 * u + 0.8 * N.sample(5000, rng=rng)
+>>> fig = sd.plot.hist2d(u, w, bins=30, cmap="viridis")
+>>> fig = fig.line([-3, 3], [-1.8, 1.8], color="white", label="$y = 0.6x$").legend(loc="top")
+```
+
+<PlotImage name="customize-faint-swatch" alt="viridis 색의 2차원 히스토그램 위를 흰 직선이 비스듬히 지나요. 칸 위의 범례에는 회색 테두리를 두른 흰 선 견본과 y = 0.6x라는 이름이 있어요" caption="흰 선의 견본은 흰 바탕의 범례에서 회색 테두리를 둘러 보여요. 선의 색은 흰색 그대로예요." />
 
 3D 칸의 범례는 언제나 상자의 오른쪽 밖에 서요. `loc=None`으로 없앨 수 있어요.
 

@@ -107,7 +107,7 @@ TypeError: query_ball_tree(): 'r' must be an int or a float, not list
 >>> homes.query_ball_tree(stops, -0.1)
 Traceback (most recent call last):
     ...
-ValueError: query_ball_tree(): 'r' must be a nonnegative number or inf, not -0.1
+ValueError: query_ball_tree(): 'r' must be a number >= 0 or inf, not -0.1
 ```
 
 결과는 트리의 `leafsize`, [스레드 수](/api/array/threads/)와 상관없이 언제나 같아요.

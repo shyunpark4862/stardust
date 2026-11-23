@@ -374,19 +374,19 @@ stats의 보장 영역은 입력 집합의 영역을 다시 매개변수 범위�
 
 ```python
             # bench/accuracy/__main__.py (발췌)
-            for m in MEASURES:
+            for m in MEASURES + MEASURES_DOWN:
                 new, old = r.get(m), rb.get(m)
                 if old is None or new == old or (new != new and old != old):  # NaN = NaN
                     continue
                 if new is None or new != new:  # a value lost, or turned NaN
                     got_worse.append(f"{m} {tables.num(old)} -> {'none' if new is None else 'NaN'}")
-                elif old != old or new < old:
+                elif old != old or (new > old if m in MEASURES_DOWN else new < old):
                     f["better"] += 1
                 else:
                     got_worse.append(f"{m} {tables.num(old)} -> {tables.num(new)}")
 ```
 
-`MEASURES`는 위 표의 척도 가운데 적분, 미분, 보간에만 있는 것(`converged_max`, `short_max`, `entries`, `error_below_true`, `e2e_rel_max` 등)을 뺀 전부예요. 그 척도는 표에 적히기만 하고 이 비교에는 들지 않아요. 값이 커진 것만이 아니라, 기준선에 있던 값이 없어지거나 NaN이 된 것도 나빠진 거예요. 칸의 점이 기준선보다 적어지거나 칸이 사라져도 나빠진 것으로 쳐요. 비교에는 허용폭이 없어요. 같은 입력이면 실행마다 같은 비트가 나오므로, 측정값이 달라졌다면 결과가 달라진 거예요.
+`MEASURES`는 위 표의 척도 가운데 개수가 줄면 나쁜 둘을 뺀 전부이고, 값이 커지면 나빠진 거예요. 그 둘, 적분의 수렴한 실행 수(`converged_max`)와 미분의 잰 항목 수(`entries`)는 `MEASURES_DOWN`에 있어서 값이 작아지면 나빠진 거예요. 값이 움직인 방향만이 아니라, 기준선에 있던 값이 없어지거나 NaN이 된 것도 나빠진 거예요. 칸의 점이 기준선보다 적어지거나 칸이 사라져도 나빠진 것으로 쳐요. 비교에는 허용폭이 없어요. 같은 입력이면 실행마다 같은 비트가 나오므로, 측정값이 달라졌다면 결과가 달라진 거예요.
 
 출력은 묶음 다섯으로 나와요.
 

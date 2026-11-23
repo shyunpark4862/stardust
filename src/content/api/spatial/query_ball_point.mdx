@@ -195,11 +195,11 @@ array([7, 4, 7], dtype=int64)
 >>> tree.query_ball_point([0.5, 0.5], -1)
 Traceback (most recent call last):
     ...
-ValueError: query_ball_point(): 'r' must be a nonnegative number or inf, not -1
+ValueError: query_ball_point(): 'r' must be a number >= 0 or inf, not -1
 >>> tree.query_ball_point([0.5, 0.5], float("nan"))
 Traceback (most recent call last):
     ...
-ValueError: query_ball_point(): 'r' must be a nonnegative number or inf, not nan
+ValueError: query_ball_point(): 'r' must be a number >= 0 or inf, not nan
 ```
 
 ### 반경이 크면 결과도 커요

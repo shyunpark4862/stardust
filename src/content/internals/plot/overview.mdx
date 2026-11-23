@@ -144,8 +144,15 @@ def module_function(name, method):
         return v
 
     @property
+    def _base(self):
+        """The cell itself: what the title, the x axis, the legend and the insets belong to."""
+        return self._root._cells[self._index]
+
+    @property
     def _cell(self):
-        c = self._root._cells[self._index]
+        """The cell the plotting methods and the y settings act on: of a twin() view, the cell of
+        the second y axis."""
+        c = self._base
         return c.twin if self.__dict__.get("_twinned") else c
     # ...
     def _touch(self):
@@ -153,7 +160,9 @@ def module_function(name, method):
         return self
 ```
 
-메서드는 모두 `self._cell`에 쓰고 `self._touch()`를 돌려줘요. 보기에서 부르면 그 칸에, 뿌리에서 부르면 첫 칸에 쓰고, 어느 쪽이든 뿌리가 지어 둔 장면을 버려요. 그래서 다음 출력이 장면을 다시 지어요. 크기, 글꼴, 테마, 팔레트, 장면 같은 그림 전체의 값은 뿌리에만 있어요. `fig.twin()`이 돌려주는 것도 같은 보기인데 `_twinned` 표시가 붙어 있어서, `_cell`이 칸 대신 그 칸의 두 번째 y축 칸(`cell.twin`)을 내줘요. 그래서 그림 메서드와 `ylabel`·`ylim` 같은 설정이 한 줄도 바뀌지 않고 오른쪽 축에 쓰여요([배치](/internals/plot/layout/)).
+메서드는 칸에 쓰고 `self._touch()`를 돌려줘요. 보기에서 부르면 그 칸에, 뿌리에서 부르면 첫 칸에 쓰고, 어느 쪽이든 뿌리가 지어 둔 장면을 버려요. 그래서 다음 출력이 장면을 다시 지어요. 크기, 글꼴, 테마, 팔레트, 장면 같은 그림 전체의 값은 뿌리에만 있어요.
+
+칸을 내주는 속성은 둘이에요. `_base`는 칸 자체이고, `_cell`은 그림 메서드와 y축 설정이 쓸 칸이에요. 보통의 보기에서는 둘이 같은 칸이에요. `fig.twin()`이 돌려주는 것도 같은 보기인데 `_twinned` 표시가 붙어 있어서, `_cell`이 칸 대신 그 칸의 두 번째 y축 칸(`cell.twin`)을 내줘요. 그래서 그림 메서드와 `ylabel`·`ylim`·`yscale`·`yticks`가 한 줄도 바뀌지 않고 오른쪽 축에 쓰여요. 두 축이 함께 쓰는 것(`title`, `xlabel`·`xlim`·`xscale`·`xticks`, `legend`, `inset`)은 `_base`에 쓰므로, twin 보기에서 불러도 칸의 것이 돼요([배치](/internals/plot/layout/)).
 
 ```python
 >>> fig = sd.plot.Figure(ncols=2)
@@ -164,7 +173,7 @@ True
 ([0, 1], (1, 2))
 ```
 
-`sd.plot.grid`는 받은 그림들의 칸을 복사해 새 그림의 칸 자리에 넣어요. `Cell.copy`가 칸의 설정과 층 목록을 따로 만들므로, 모은 뒤에 원래 그림을 고쳐도 모은 그림은 그대로이고 거꾸로도 같아요. 남는 자리는 축이 없는 빈 칸이에요.
+`sd.plot.grid`는 받은 그림들의 칸을 복사해 새 그림의 칸 자리에 넣어요. 보기를 받으면 그 칸 전체(`_base`)를 복사하므로, twin 보기를 주어도 두 y축이 함께 들어가요. `Cell.copy`가 칸의 설정과 층 목록을 따로 만들므로, 모은 뒤에 원래 그림을 고쳐도 모은 그림은 그대로이고 거꾸로도 같아요. 남는 자리는 축이 없는 빈 칸이에요.
 
 ```python
 >>> a = sd.plot.line([0.0, 1.0], [0.0, 1.0])
@@ -279,7 +288,7 @@ Python은 경로를 `ops` 바이트(`"MLQCZ"` 위의 글자)와 float64를 이�
 - **배열**: 자료는 모두 float64 `sd` 배열로 바꿔 쓰고, 좌표 변환과 표본 계산은 배열 연산이에요. 히스토그램의 막대는 `sd.histogram`, 상자 그림의 사분위와 자동 범위의 분위수는 `sd.quantile`이 내요.
 - **frame**: `data=`에 `DataFrame`을 주면 열 이름으로 자료를 꺼내요.
 - **random**: `strip`의 흩음은 `sd.random`의 생성기예요. 씨를 주지 않으면 0으로 고정해 같은 호출이 같은 그림이에요.
-- **stats**: `qq`의 기본 분포는 표준정규분포이고 분위수는 분포의 `icdf`예요. `distribution`은 분포 객체를 받아요.
+- **stats**: `qq`의 기본 분포는 표준정규분포이고 분위수는 분포의 `icdf`예요. `distribution`은 분포 객체를 받아요. 수 하나를 받는 인자(오차 막대의 `xerr`·`yerr`, `area`의 `y2`)와 함수가 돌려준 상수는 stats의 `_real_option`으로 가려요. numpy의 정수·실수 스칼라도 수로 받고, `bool`과 `numpy.bool`은 수로 보지 않아요. 개수를 받는 인자(`samples`, `refine`, `levels`의 개수, `mesh`, `contours`, `strip`의 `rng` 씨)도 같은 뜻으로 `numbers.Integral`을 받아 `operator.index`로 바꿔요.
 - **regression, htest**: `fit`, `compare`, `diagnostics`, `coefficients`는 결과 객체의 속성(`params`, `predict`, `pvalue` 등)을 읽어요. 검정이나 회귀를 그림 안에서 다시 하지 않아요.
 - **optimize**: 인자 검사 함수(`_check_choice`, `_check_bool`)를 함께 써서 메시지의 꼴이 같아요.
 

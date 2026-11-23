@@ -111,7 +111,7 @@ k = 2이고 표본이 작으면 정확한 p값을 주는 `mcnemar`(기본 `exact
 array([2.6666666666666665,                nan], dtype=float64)
 ```
 
-값은 0과 1만이에요. 음수, 정수가 아닌 값, 1보다 큰 값, inf는 모두 아래의 첫 메시지이고, NaN은 `'x' must hold non-negative integer counts`예요. 둘 다 `ValueError`예요.
+값은 0과 1만이에요. 음수, 정수가 아닌 값, 1보다 큰 값, inf는 모두 아래의 첫 메시지이고, NaN은 `'x' must hold integer counts >= 0`예요. 둘 다 `ValueError`예요.
 
 ```python
 >>> sd.htest.cochrans_q([[1, 2], [0, 1]])

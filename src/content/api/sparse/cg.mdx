@@ -41,9 +41,9 @@ returns:
   desc: "x(해, (n,)), converged, status(0은 수렴, 상한에 닿으면 max_iter), message, n_iter(반복 수), normr(마지막 잔차의 크기). (x, status)로 풀려요."
 raises:
   - type: TypeError
-    desc: A나 M이 희소 배열·sd.ndarray·LinearOperator가 아닐 때, b나 x0이 sd.ndarray가 아닐 때, 허용오차가 수가 아니거나 max_iter가 int가 아닐 때, 옵션을 위치로 주거나 없는 키워드(maxiter, callback 등)를 줬을 때, 실수로 선언한 LinearOperator가 복소수를 돌려줄 때.
+    desc: A나 M이 희소 배열·sd.ndarray·LinearOperator가 아닐 때, b나 x0이 sd.ndarray가 아닐 때, 허용오차가 수가 아니거나 max_iter가 int가 아닐 때, 옵션을 위치로 주거나 없는 키워드(maxiter, callback 등)를 줬을 때, 실수로 선언한 LinearOperator가 복소수를 돌려줄 때, LinearOperator의 함수가 배열로 바꿀 수 없는 것을 돌려줄 때.
   - type: ValueError
-    desc: A가 2차원이 아니거나 정사각이 아닐 때, M의 모양이 A와 다를 때, b나 x0의 모양이 (n,)·(n, 1)이 아닐 때, A·M·b·x0에 NaN·inf가 있을 때, rtol·atol이 음수이거나 유한하지 않을 때, max_iter가 1보다 작을 때.
+    desc: A가 2차원이 아니거나 정사각이 아닐 때, M의 모양이 A와 다를 때, b나 x0의 모양이 (n,)·(n, 1)이 아닐 때, A·M·b·x0에 NaN·inf가 있을 때, rtol·atol이 음수이거나 유한하지 않을 때, max_iter가 1보다 작을 때, LinearOperator의 함수가 크기가 다른 결과를 돌려줄 때.
 seeAlso: [iterative, minres, gmres, spsolve, linearoperator, eigsh]
 ---
 import Callout from '../../../components/Callout.astro';

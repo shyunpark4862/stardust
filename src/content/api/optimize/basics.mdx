@@ -747,7 +747,7 @@ ValueError: root_scalar(): 'bracket' does not enclose a root: f(a) and f(b) have
 - BFGS: 역헤시안을 더 싼 순서로 갱신해요. 그 차이로 반복 수와 `nfev`가 가끔 몇 번 달라요. 위의 [Rosenbrock](#최솟값-찾기)을 scipy는 32번 반복, `nfev` 117로 풀어요.
 - `least_squares`의 `'trf'`: 야코비안을 분해하는 순서가 달라요. 잔차가 변수보다 아주 많은 `'lm'`도 그래요.
 - `hess`와 `hessp`가 없는 newton-cg: 헤시안과 벡터의 곱을 기울기의 차분으로 만들 때 기울기를 덜 불러서 부르는 점이 달라요.
-- `nnls`: 0인 성분의 자리는 scipy와 같고, 나머지 성분은 더하는 순서가 달라서 끝자리 몇 개가 달라요.
+- `nnls`: 0인 성분의 자리는 scipy와 같고, 나머지 성분은 더하는 순서가 달라서 끝자리가 달라요. 그 차이는 남은 열들의 조건수에 비례해서, 열끼리 비슷한 문제에서는 수백 ULP까지 벌어질 수 있어요.
 
 scipy를 일부러 따르지 않는 곳도 있어요. 유한하지 않은 값을 만났거나 scipy가 해가 아닌 점에서 수렴을 알리는 경로, 몇 가지 셈, `max_iter=0`, `bracket_root`의 구간 정렬, `lsq_linear(method='bvls')`의 경계 밖 반올림이에요. 각 함수 페이지의 scipy 절에 있어요.
 

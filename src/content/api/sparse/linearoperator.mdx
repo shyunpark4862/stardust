@@ -214,6 +214,22 @@ Traceback (most recent call last):
 ValueError: lsqr(): the operator was made without 'rmatvec'
 ```
 
+연산자를 받는 함수(반복 풀이, 고유값, [expm_multiply](/api/sparse/expm_multiply/), [onenormest](/api/sparse/onenormest/))가 안에서 곱할 때 사용자의 함수가 크기가 다른 결과나 배열로 바꿀 수 없는 것을 돌려줘도, 메시지는 그 함수의 이름으로 시작해요. 앞의 `bad`를 [cg](/api/sparse/cg/)에 주면 이래요.
+
+```python
+>>> sd.sparse.cg(bad, sd.ones(3))
+Traceback (most recent call last):
+    ...
+ValueError: cg(): the operator's function returned shape (4,), expected (3,)
+>>> none = sd.sparse.LinearOperator((3, 3), lambda x: None, dtype=sd.float64)
+>>> sd.sparse.cg(none, sd.ones(3))
+Traceback (most recent call last):
+    ...
+TypeError: cg(): the operator's function must return an sd.ndarray or a sequence of numbers, not NoneType
+```
+
+사용자의 함수가 스스로 낸 에러(함수 안의 `raise`, 계산 중의 에러)는 바꾸지 않고 그대로 나와요.
+
 ## `matmat`과 `rmatmat`
 
 여러 벡터를 한꺼번에 곱하는 `matmat(X)`는 X가 `(N, k)`이고 결과가 `(M, k)`예요. 주지 않으면 열마다 `matvec`을 불러요. 열을 묶어 한 번에 곱하는 빠른 방법이 있을 때만 따로 주면 돼요. `rmatmat`도 같아요.

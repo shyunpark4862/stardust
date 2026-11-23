@@ -145,7 +145,7 @@ array([0.0, inf, inf, inf, inf, inf], dtype=float64)
 >>> sd.graph.dijkstra(G, directed=False, indices=0, limit=float('nan'))
 Traceback (most recent call last):
     ...
-ValueError: dijkstra(): 'limit' must be a nonnegative number or inf, not nan
+ValueError: dijkstra(): 'limit' must be a number >= 0 or inf, not nan
 ```
 
 ## 가장 가까운 원점: `min_only`
@@ -224,7 +224,7 @@ array([inf, inf, inf, inf, inf, inf], dtype=float64)
 >>> sd.graph.dijkstra(G, directed=False, indices=0, limit=-1)
 Traceback (most recent call last):
     ...
-ValueError: dijkstra(): 'limit' must be a nonnegative number or inf, not -1.0
+ValueError: dijkstra(): 'limit' must be a number >= 0 or inf, not -1.0
 >>> sd.graph.dijkstra(G, directed=False, indices=0, limit='a')
 Traceback (most recent call last):
     ...

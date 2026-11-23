@@ -216,7 +216,7 @@ array([[             1.375,                1.0],
 >>> spl(1.5, nu=-1)
 Traceback (most recent call last):
     ...
-ValueError: BSpline(): 'nu' must be 0 or more, not -1
+ValueError: BSpline(): 'nu' must be >= 0, not -1
 >>> spl(1.5, nu=1.0)
 Traceback (most recent call last):
     ...

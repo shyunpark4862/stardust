@@ -139,15 +139,13 @@ $$
         x = self.core.solve(b, trans=trans, func=func)
         if not refine:
             return x
-        r, berr = _core._residual(
-            self.A.indptr, self.A.indices, self._data_as(x.dtype), x, b if C.contiguous(b) else b.copy(), trans=trans
-        )
+        r, berr = self._residual(x, b, trans)
         if berr <= _REFINE_BERR:
             return x
         return x + self.core.solve(r, trans=trans, func=func)
 ```
 
-$\omega$는 LAPACK의 다듬기 루틴 `dgerfs`·`zgerfs`가 멈춤을 판정하는 성분별 역오차예요(Oettli–Prager의 값, 복소수의 크기는 $|\mathrm{re}| + |\mathrm{im}|$). "구한 해가 A와 b의 각 원소를 상대적으로 $\omega$만큼 흔든 문제의 정확한 해"라는 뜻이라, $\omega$가 몇 ε면 더 다듬어도 얻을 것이 없어요. 우변이 여럿이면 가장 나쁜 열이 정하고, 한 열이라도 문턱을 넘으면 묶음 전체를 다듬어요. NaN도 `berr <= _REFINE_BERR`가 거짓이라 다듬는 쪽으로 가요. `refine=False`는 고유값 함수의 shift-invert 연산자가 쓰는 길이에요([ARPACK](/internals/sparse/arpack/)).
+$\omega$는 LAPACK의 다듬기 루틴 `dgerfs`·`zgerfs`가 멈춤을 판정하는 성분별 역오차예요(Oettli–Prager의 값, 복소수의 크기는 $|\mathrm{re}| + |\mathrm{im}|$). "구한 해가 A와 b의 각 원소를 상대적으로 $\omega$만큼 흔든 문제의 정확한 해"라는 뜻이라, $\omega$가 몇 ε면 더 다듬어도 얻을 것이 없어요. 우변이 여럿이면 가장 나쁜 열이 정하고, 한 열이라도 문턱을 넘으면 묶음 전체를 다듬어요. NaN도 `berr <= _REFINE_BERR`가 거짓이라 다듬는 쪽으로 가요. 잔차와 $\omega$는 `_residual`이 네이티브 `_residual` 하나로 함께 구해요. `refine=False`는 고유값 함수의 shift-invert 연산자가 첫 풀이가 정확할 때 쓰는 길이에요([ARPACK](/internals/sparse/arpack/#역은-희소-lu로)).
 
 잔차와 $\omega$는 C++의 `_residual`이 CSC를 한 번 훑어 같이 구해요.
 

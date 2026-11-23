@@ -136,7 +136,7 @@ Accelerate가 계산하는 직접 분해는 Accelerate의 스레드 모드(`VECL
 - **SpMM과 원소별 함수, 리덕션.** `A @ X`는 scipy가 열 방향으로 벡터화하지 않아서 sd가 빨라요. 원소별 함수(`A.sin()` 등)와 축 리덕션은 1스레드에서도 빠르고(scipy의 `argmax(axis=)`는 줄마다 Python 반복이에요) 스레드로 더 빨라져요.
 - **직접 풀이.** Accelerate의 LU(AMD 순서)는 큰 격자에서 SuperLU보다 빠르고, 채움이 큰 3차원 격자에서 차이가 더 벌어져요. 작은 행렬에서는 비슷해요. `spsolve_triangular`도 scipy보다 빨라요(scipy는 SuperLU의 풀이를 거쳐요). 우변이 여럿이면 Accelerate의 묶은 풀이에서 열 하나의 비용이 가장 작은 여덟 열씩 넘기고, 잘 조건된 행렬은 다듬기 없이 풀이 하나로 끝나서 `inv`와 우변 여럿의 풀이가 특히 빨라요.
 - **반복법.** 반복 전체가 C++이라 같은 반복 수에서 scipy의 Python 반복보다 빠르고, 곱과 내적이 스레드로 나뉘어요. 긴 내적은 Accelerate의 `ddot`을 고정 조각마다 불러요.
-- **Lanczos·Arnoldi·이중대각화.** 시간의 대부분인 기저와의 곱 $V^{\mathsf H}x$, $Vc$를 행 조각마다 Accelerate의 `dgemv`(행렬 장치를 쓰는)로 해서 scipy와 비슷하거나 빨라요. shift-invert는 걸음마다 LU 풀이 하나라 scipy와 같은 일을 해요.
+- **Lanczos·Arnoldi·이중대각화.** 시간의 대부분인 기저와의 곱 $V^{\mathsf H}x$, $Vc$를 행 조각마다 Accelerate의 `dgemv`(행렬 장치를 쓰는)로 해서 scipy와 비슷하거나 빨라요. shift-invert는 첫 풀이가 정확하면(노름 역오차 $768\varepsilon$ 이하) 걸음마다 LU 풀이 하나라 scipy와 같은 일을 해요. 피벗이 원소를 키워 그 문턱을 넘는 행렬만 걸음마다 다듬어요([ARPACK](/internals/sparse/arpack/#역은-희소-lu로)).
 - **행렬 함수.** `expm_multiply`는 곱이 같은 순서라 같은 곱 수에서 빠르고, 여러 시각의 구간은 scipy가 점마다 Python으로 항을 더해 차이가 커요. `onenormest`도 블록 곱이 스레드로 나뉘어 빨라요.
 - **작은 행렬.** Python 층이 얇아서 nnz가 작을 때 호출 하나의 고정 비용이 scipy보다 작아요.
 

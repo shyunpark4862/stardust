@@ -211,9 +211,32 @@ nb::object call(std::span<const nb::handle> objs, nb::handle out) {
                     args[k] = reinterpret_cast<std::byte*>(&v[k]);
                     st[k] = sizeof(double);
                 }
-                e.loop(args, 1, st, nullptr);
+                {
+                    const parallel::Unlocked unlocked(scalar_unlocked<Op>(v));
+                    e.loop(args, 1, st, nullptr);
+                }
                 return nb::steal(PyFloat_FromDouble(v[Op::nin]));
             }
+```
+
+짧은 길도 GIL은 배열과 같은 규칙으로 놓아요. 원소 하나짜리 배열로 불렀을 때 `weight_for`가 주는 작업량, 곧 원소 하나의 비용 `cost_ns / kAddNs`가 병렬 기준 $2^{15}$ 이상이면 GIL을 놓고 계산해요(`scalar_unlocked`). 대부분의 함수는 이 판정이 컴파일할 때 정해져서(`kScalarUnlocked`) 스칼라 호출에 드는 것이 없어요. special에서는 원소 하나의 비용이 기준을 넘는 `nctdtrit`이 GIL을 놓아요. `sd.stats`의 이산 분포처럼 매개변수에 따라 비용이 크게 다른 Op은 그 매개변수의 비용(`cost_for`)으로 정해요. 좁은 지지는 기억해 둔 값으로 몇 ns에 답하므로, GIL을 놓았다 잡는 것보다 짧은 호출은 GIL을 쥔 채 끝나요.
+
+```cpp
+// csrc/bind/nary_bind.hpp
+template <typename Op>
+inline constexpr bool kScalarUnlocked = Op::cost_ns / special::kAddNs >= static_cast<double>(kParallelThreshold);
+template <typename Op>
+bool scalar_unlocked(const double* v) {
+    if constexpr (!kScalarUnlocked<Op>) {
+        return false;
+    } else if constexpr (requires { Op::memo_cost_ns; }) {
+        if constexpr (Op::memo_cost_ns > 0.0)
+            return Op::cost_for(v) / special::kAddNs >= static_cast<double>(kParallelThreshold);
+        return true;
+    } else {
+        return true;
+    }
+}
 ```
 
 함수 이름, 인자 수, 루프, 가중치가 모두 컴파일할 때 정해지는 상수라서, 호출 경로에 실행 중 분기가 거의 없어요. `nary_loop<Op, double>`은 함수마다 따로 인스턴스화되고 그 안에서 `Op::f`가 인라인돼요.
@@ -287,7 +310,7 @@ std::int64_t weight_for(std::span<const nb::handle> objs, nb::handle out) {
 }
 ```
 
-가중치는 나누는 방법만 바꾸므로 결과의 비트는 그대로예요. 비용 표의 값은 전형적인 입력의 원소당 비용이라, 원소 하나만 유난히 느린 입력(Python 숫자 하나로 부른 무거운 원소 등)은 여전히 GIL을 쥔 채 계산해요. `sd.stats`의 분포 메서드도 같은 바인딩이에요.
+가중치는 나누는 방법만 바꾸므로 결과의 비트는 그대로예요. 비용 표의 값은 전형적인 입력의 원소당 비용이라, 원소 하나만 유난히 느린 입력은 표의 비용이 기준 아래인 함수이면 GIL을 쥔 채 계산해요. 아주 큰 차수의 `yv`처럼 한 점만 유난히 느린 호출이 그래요. 호출마다 그 점의 비용을 어림하면 보통 호출이 모두 느려지므로, 판정은 표의 비용으로 해요. `sd.stats`의 분포 메서드도 같은 바인딩이에요.
 
 ### 원소마다 다른 반복 횟수
 

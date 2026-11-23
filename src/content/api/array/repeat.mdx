@@ -315,7 +315,7 @@ ValueError: repeat(): 'repeats' has length 2 but the axis has length 4
 >>> sd.repeat(v, -1)
 Traceback (most recent call last):
     ...
-ValueError: repeat(): 'repeats' must be non-negative
+ValueError: repeat(): 'repeats' must be >= 0
 >>> sd.tile(v, 0)
 array([], dtype=int64)
 ```

@@ -144,6 +144,8 @@ ValueError: scatter(): 'x' and 'y' must have the same length: 2 and 3
 
 범주 축을 쓰는 그림(`bar`, `boxplot`, `strip`)의 범주는 문자열의 시퀀스나 string 열이에요.
 
+수 하나를 받는 인자(오차의 크기, 표본의 수, 수준의 개수, 난수의 씨 등)는 Python의 `int`, `float`과 함께 `numpy.int64`, `numpy.float64` 같은 numpy의 수도 받아요. 배열에서 꺼낸 값을 그대로 넘겨도 돼요. 함수 그림의 함수가 numpy의 수 하나를 돌려줘도 상수로 받아요. `True`, `False`와 `numpy.bool`은 수로 보지 않아요.
+
 ### data=: 열 이름으로 주기
 
 `data=`에 `DataFrame`을 주면 자료 인자 자리에 열 이름을 써요. `group=`도 열 이름을 받아요.

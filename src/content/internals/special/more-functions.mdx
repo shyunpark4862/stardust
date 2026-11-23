@@ -375,8 +375,9 @@ $$
 | $x < 0$ | Kummer 변환 후 급수. $b - a$는 TwoSum으로 정확한 $\mathrm{hi} + \mathrm{lo}$ |
 | $x < -(600 + 2(\lvert a\rvert + \lvert b\rvert))$, $\lvert b\rvert < 170$ | Kummer 꼴의 점근전개 $\frac{\Gamma(b)}{\Gamma(b-a)}\lvert x\rvert^{-a}\sum_s\frac{(a)_s(1+a-b)_s}{s!\,\lvert x\rvert^s}$ |
 
-Boost의 구간이 좁은 이유는 정확도예요. $b < 11$, $a \le 100$에서 Boost는 $x$가 작을 때 계약을 지키고 1스레드에서 우리 급수보다 두 배쯤 빠르지만, $x \ge 18$부터는 점의 4%에서 45 ULP를 넘고 $x \approx 500$에서 297 ULP까지 틀렸어요(무작위 4만 점, $a$ $10^{-2}$–100, $b$ $10^{-3}$–11, $x$ 1–690). 같은 점에서 우리 급수는 최대 48 ULP($x \approx 650$, 상대 $10^{-14}$ 안)이고 그 밖은 20 ULP 아래예요. $a = 10^5$이면 $x$가 작아도 Boost가 83 ULP였어요. 그래서 $x < 16$, $a \le 100$으로 잘랐어요.
+Boost의 구간이 좁은 이유는 정확도예요. $b < 11$, $a \le 100$에서 Boost는 $x$가 작을 때 계약을 지키고 1스레드에서 우리 급수보다 두 배쯤 빠르지만, $x \ge 18$부터는 점의 4%에서 45 ULP를 넘고 $x \approx 500$에서 297 ULP까지 틀렸어요(무작위 4만 점, $a$ $10^{-2}$–100, $b$ $10^{-3}$–11, $x$ 1–690). 같은 범위에서 우리 급수와 점근전개는 최대 7.3 ULP($x \approx 650$의 점근전개)예요. $a = 10^5$이면 $x$가 작아도 Boost가 83 ULP였어요. 그래서 $x < 16$, $a \le 100$으로 잘랐어요.
 
+- 양의 큰 $x$의 점근전개에서는 지수 $a - b$를 TwoSum으로 정확한 $\mathrm{hi} + \mathrm{lo}$로 들고, 거듭제곱을 $x^{\mathrm{hi}}(1 + \mathrm{lo}\log x)$로 만들어요. 반올림한 $a - b$로 거듭제곱하면 $\log x \cdot \mathrm{ulp}(a - b)/2$만큼 틀려서, $a - b = 10$, $x = 640$이면 그것만으로 30 ULP예요. 급수의 항 $(b - a)_s$도 같은 $\mathrm{hi} + \mathrm{lo}$로 만들어요.
 - Kummer 변환의 $b - a$를 반올림하면 급수의 모든 항이 그 오차를 물려받아요. 그래서 $b - a$를 $\mathrm{hi} + \mathrm{lo}$로 만들고 급수의 첫 인자에 $\mathrm{lo}$까지 넣어요(보정 루프의 `a_lo`).
 - 음의 큰 $x$의 점근전개는 $e^{x}$와 $e^{\lvert x\rvert}$를 해석적으로 지운 꼴이에요. 여기서 $1/\Gamma(b - a)$는 $b - a = \mathrm{hi} + \mathrm{lo}$를 1차로 보정해 $\frac{1}{\Gamma(\mathrm{hi})}(1 - \psi(\mathrm{hi})\,\mathrm{lo})$로 써요. 감마의 인자를 반올림하면 $\psi(z)z/2$ ULP를 잃기 때문이에요. 두 감마는 170을 넘으면 가수·지수로 나눈 꼴이라 따로는 넘치는 인수의 곱도 값이 나와요.
 

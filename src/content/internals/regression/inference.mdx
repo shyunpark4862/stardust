@@ -507,7 +507,7 @@ Durbin–Watson $d$는 이웃한 잔차의 차이로 1차 자기상관을 봐요
             out[4] = cs.mean.hi;
 ```
 
-Jarque–Bera의 합은 sd.htest의 정규성 검정과 같은 함수 `htest::central_sums`가 구해요. 먼저 double-double 평균 $\bar e$를 구하고, 행마다 편차 $d = \tilde e_t - \bar e$를 double-double로 만들어 $d^2, d^3, d^4$를 더한 뒤 끝에 한 번 반올림해요. 통계량과 p값도 htest의 `jarque_bera_of`가 내고(`r.jarque_bera()`는 `jb_of_sums`로 이 함수를 불러요), p값은 `ChiSquared(df=2).ccdf`예요.
+Jarque–Bera의 합은 sd.htest의 정규성 검정과 같은 함수 `htest::central_sums`가 구해요. 먼저 double-double 평균 $\bar e$를 구하고, 행마다 편차 $d = \tilde e_t - \bar e$를 double-double로 만들어 $d^2, d^3, d^4$를 더한 뒤 끝에 한 번 반올림해요. 가장 큰 $|\tilde e_t|$가 $2^{120}$을 넘거나 $2^{-120}$보다 작으면 잔차를 그 값의 2의 거듭제곱($2^s$, $s$는 그 지수)으로 나눈 뒤 합을 구해서 4제곱이 double 범위 안에 머물러요. 그래서 이 네 값은 잔차 자체가 아니라 $\tilde e_t\,2^{-s}$의 합과 평균이고, Jarque–Bera만 읽어요. 왜도와 첨도는 같은 차수끼리의 비라 어느 단위에서든 같아요. Durbin–Watson의 합은 잔차 자체의 단위예요. 통계량과 p값도 htest의 `jarque_bera_of`가 내고(`r.jarque_bera()`는 `jb_of_sums`로 이 함수를 불러요), p값은 `ChiSquared(df=2).ccdf`예요.
 
 ```cpp
 // csrc/htest/normality.hpp

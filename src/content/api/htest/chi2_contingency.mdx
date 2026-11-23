@@ -240,7 +240,7 @@ ValueError: chi2_contingency(): 'observed' must have at least 2 dimensions (the 
 >>> sd.htest.chi2_contingency([[12, -5], [7, 16]])
 Traceback (most recent call last):
     ...
-ValueError: chi2_contingency(): 'observed' must hold non-negative finite counts
+ValueError: chi2_contingency(): 'observed' must hold finite counts >= 0
 >>> sd.htest.chi2_contingency(obs, lambda_='foo')
 Traceback (most recent call last):
     ...

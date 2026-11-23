@@ -159,12 +159,25 @@ True
 
 ### 받는 타입
 
-생성자, 메서드, 함수 꼴은 모두 `sd.ndarray`, 수의 리스트나 튜플, numpy 배열, `sd.frame`의 `Series`를 받아요.
+생성자, 메서드, 함수 꼴은 모두 `sd.ndarray`, 수의 리스트나 튜플, numpy 배열, `sd.frame`의 `Series`와 `DataFrame`을 받아요.
 
 ```python
 >>> s = sd.frame.Series([1.0, 1.1, 1.0, 3.0, 3.1, 3.0, 1.5])
 >>> sd.interpolate.CubicSpline([0, 1, 2, 3, 4, 5, 6], s)(2.5)
 1.996205357142857
+```
+
+`DataFrame`은 열을 나란히 둔 float64 2차원 배열로 읽어요(결측은 NaN). 그래서 여러 차원의 흩어진 점(`RBFInterpolator`와 `NearestNDInterpolator`의 점, 그 평가점)으로 써요. 1차원이어야 하는 인자에 주면 차원의 `ValueError`예요.
+
+```python
+>>> df = sd.frame.DataFrame({"x": [0.0, 1.0, 0.0, 1.0], "y": [0.0, 0.0, 1.0, 1.0]})
+>>> rbf = sd.interpolate.RBFInterpolator(df, [1.0, 2.0, 3.0, 4.0])
+>>> rbf(df)
+array([1.0, 2.0, 3.0, 4.0], dtype=float64)
+>>> sd.interpolate.CubicSpline(df, [1.0, 2.0, 3.0, 4.0])
+Traceback (most recent call last):
+    ...
+ValueError: CubicSpline(): 'x' must be 1-D, not 2-D
 ```
 
 [`sd.interp`](/api/array/interp/)만 달라요. 배열 영역의 함수라 `sd.ndarray`와 Python 숫자만 받아요.
@@ -333,7 +346,7 @@ array([nan, 1.0, 1.5, nan], dtype=float64)
 True
 ```
 
-안에서 LAPACK을 쓰는 두 곳([`RBFInterpolator`](/api/interpolate/RBFInterpolator/)의 전체 풀이, [`AAA`](/api/interpolate/AAA/)의 지지점 고르기와 극점)은 같은 기계에서 같은 스레드 수일 때 실행마다 같은 비트예요.
+안에서 LAPACK을 쓰는 곳([`RBFInterpolator`](/api/interpolate/RBFInterpolator/)의 전체 풀이, [`AAA`](/api/interpolate/AAA/)의 지지점 고르기, `AAA`와 [`FloaterHormannInterpolator`](/api/interpolate/FloaterHormannInterpolator/)의 극점·영점·유수)은 같은 기계에서 같은 스레드 수일 때 실행마다 같은 비트예요.
 
 ## 같은 것은 같은 비트
 
@@ -363,7 +376,25 @@ True
 
 **자료의 자리에서는 자료 그대로예요.** 선형 보간, 0차와 1차 B-스플라인, `BarycentricInterpolator`, `AAA`의 지지점, 격자의 `linear`와 `nearest`는 자료의 자리를 물으면 자료의 값을 비트까지 그대로 돌려줘요.
 
+노드(지지점)가 하나인 `BarycentricInterpolator`, `KroghInterpolator`, `FloaterHormannInterpolator`, `AAA`는 상수예요. 유한한 모든 점에서 그 값을 비트까지 그대로 돌려줘요.
+
 다른 라이브러리와 비트가 같다는 약속은 없어요. 지금은 `PchipInterpolator`와 `Akima1DInterpolator`의 계수가 scipy와 같은 비트로 나와요(약속은 아니에요).
+
+## 복사와 저장
+
+모든 보간 객체는 `copy.copy`, `copy.deepcopy`, `pickle`이 돼요. 되살린 객체는 계수, 지지점, 한 번 구해 둔 극점까지 같은 배열을 비트까지 그대로 쥐고, 같은 점에서 같은 비트를 내요. 객체를 고치는 메서드(`add_xi`, `set_yi`, `extend`, `clean_up`)를 복사본에 부르면 복사본만 바뀌어요.
+
+```python
+>>> import copy, pickle
+>>> back = pickle.loads(pickle.dumps(spline))
+>>> type(back).__name__, back(2.5) == spline(2.5)
+('CubicSpline', True)
+>>> bp = sd.interpolate.BarycentricInterpolator([0.0, 1.0, 2.0], [1.0, 3.0, 2.0])
+>>> bq = copy.deepcopy(bp)
+>>> bq.set_yi([0.0, 0.0, 0.0])
+>>> bp(0.5), bq(0.5)
+(2.375, 0.0)
+```
 
 ## 에러와 경고
 
@@ -377,11 +408,11 @@ ValueError: CubicSpline(): 'y' must have as many points as 'x' (3) along axis 0,
 >>> spline("a")
 Traceback (most recent call last):
     ...
-TypeError: CubicSpline(): 'x' must be an sd.ndarray, a sequence of numbers, a numpy array or a frame Series, not str
+TypeError: CubicSpline(): 'x' must be an sd.ndarray, a sequence of numbers, a numpy array or a frame Series or DataFrame, not str
 >>> spline(1.0, nu=-1)
 Traceback (most recent call last):
     ...
-ValueError: CubicSpline(): 'nu' must be 0 or more, not -1
+ValueError: CubicSpline(): 'nu' must be >= 0, not -1
 >>> spline.integrate(0, "a")
 Traceback (most recent call last):
     ...

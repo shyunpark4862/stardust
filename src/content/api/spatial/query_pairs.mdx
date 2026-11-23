@@ -140,7 +140,7 @@ array([[0, 2],
 >>> tree.query_pairs(-1)
 Traceback (most recent call last):
     ...
-ValueError: query_pairs(): 'r' must be a nonnegative number or inf, not -1
+ValueError: query_pairs(): 'r' must be a number >= 0 or inf, not -1
 >>> tree.query_pairs([0.1, 0.2])
 Traceback (most recent call last):
     ...

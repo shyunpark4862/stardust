@@ -172,7 +172,7 @@ $w_i = c^2$은 $i$번째 좌표를 $c$배로 늘린 뒤 잰 거리와 같아요.
 >>> sd.spatial.euclidean([0.0, 0.0], [3.0, 4.0], w=[1.0, -1.0])
 Traceback (most recent call last):
     ...
-ValueError: euclidean(): 'w' must be finite and nonnegative
+ValueError: euclidean(): 'w' must be finite and >= 0
 >>> sd.spatial.euclidean([0.0, 0.0], [3.0, 4.0], w=[1.0])
 Traceback (most recent call last):
     ...

@@ -615,7 +615,9 @@ array([[2.0, 1.0],
 
 - 행 우선(C 순서)으로 놓인 삼각 행렬로 푸는 `solve_triangular`, `lu_solve`, `cholesky_solve`
 - `matrix_power`
-- 메모리에 놓인 순서대로 더하는 합: 긴 `vecdot`, `vector_norm`, `matrix_norm`의 `'fro'`, `1`, `-1`, `inf`, `-inf`
+- 메모리에 놓인 순서대로 더하는 합: 1024개를 넘는 `vecdot`, 여러 축을 한 덩어리 메모리로 읽는 `vector_norm`의 1-노름과 2-노름(6 × 6처럼 짧은 배열에서도), `matrix_norm`의 `'fro'`, `1`, `-1`, `inf`, `-inf`
+
+`cond`는 입력을 계산용 사본으로 옮긴 뒤 노름을 구하므로 모든 `ord`에서 메모리에 놓인 순서와 상관없이 같은 비트예요.
 
 분해와 행렬곱처럼 운영체제의 행렬 계산 라이브러리(Accelerate)에 맡기는 계산은, 그 라이브러리가 혼자 계산하는지 여러 스레드로 나누는지(환경 변수 `VECLIB_MAXIMUM_THREADS`)가 같을 때 같은 결과예요. 이 설정이 다르면 마지막 자리 몇 개가 다를 수 있어요. stardust는 이 설정을 바꾸지 않아요.
 

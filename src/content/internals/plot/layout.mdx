@@ -16,9 +16,10 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
 <Fig column caption="_layout 한 번. 배치는 모두 bp(1/72인치) 단위예요.">
   <Steps steps={[
     { label: 'engine.layout(_static_strings(fig))', note: '제목, 축 이름, 범례 이름, 범주 이름, 사용자가 준 눈금 글자, 층의 글자를 한 묶음으로 조판해요', where: '_figure.py' },
-    { label: '_share(fig, th)', note: '축을 공유하는 칸들의 범위를 합치고, 눈금 숫자를 숨길 안쪽 칸을 표시해요', where: '_figure.py' },
+    { label: '_settle(fig)', note: '그릴 축에 따라 달라지는 층(로그 축의 hexbin)을 다시 세고, 한 색 범위를 쓰는 층(facet의 개수)을 다시 칠해요', where: '_figure.py' },
+    { label: '_share(fig, th)', note: '축을 공유하는 칸들의 범위를 합치고, 눈금을 한 번에 고를 칸 묶음과 눈금 숫자를 숨길 안쪽 칸을 정해요', where: '_figure.py' },
     { label: 'pw, ph의 첫 어림', note: '칸의 너비에서 40 bp를 뺀 너비, 그 4:3의 높이(또는 주어진 높이에서 30 bp를 뺀 것)', where: '_figure.py' },
-    { label: 'solve(pw, ph) × 3', note: '칸마다 _measure: 범위, 눈금, 라벨 상자, 여백. 열과 줄의 여백을 맞추고 그림 사각형을 다시 계산해요', where: '_figure.py' },
+    { label: 'solve(pw, ph) × 3', note: '칸마다 _measure: 범위, 눈금, 라벨 상자, 여백. 공유 축의 눈금 수와 줄의 제목 기준선을 맞추고, 열과 줄의 여백을 맞춰 그림 사각형을 다시 계산해요', where: '_figure.py' },
     { label: '_place_legend × 3까지', note: "loc='best'인 범례마다 구석을 찾아보고, 칸 밖으로 나간 범례가 있으면 두 번 더 풀어요", where: '_figure.py' },
     { label: '높이와 칸의 자리', note: '높이가 없으면 줄의 높이를 더해 그림의 높이를 정해요', where: '_figure.py' },
     { label: '_draw_cell', note: '층, 축 선, 눈금과 라벨, 축 이름, 제목, 범례, 끼워 넣은 칸을 장면에 더해요', where: '_figure.py' },
@@ -220,10 +221,9 @@ def labels(values):
 
     m.xrot = 0.0
     if cell.xticks is None and m.xa.cats is None:
-        want = _wanted("x", pw)
-        while crowded() and want > 2:  # fewer ticks rather than labels that touch
-            want -= 1
-            m.xa = _axis(cell, "x", pw, th, want)
+        while crowded() and m.want[0] > 2:  # fewer ticks rather than labels that touch
+            m.want[0] -= 1
+            m.xa = _axis(cell, "x", pw, th, m.want[0])
             xb = [box(s, ts) for s in m.xa.labels]
     elif crowded():  # labels the user or the data gave: they are turned
         m.xrot = 40.0
@@ -231,7 +231,7 @@ def labels(values):
         xb = [(w * c + (h + d) * sn, 0.0, w * sn + (h + d) * c) for w, h, d in xb]
 ```
 
-자동 눈금이면 바라는 수를 하나씩 줄여 다시 골라요. 숫자는 덜 찍어도 뜻이 같기 때문이에요. 범주 이름이나 사용자가 준 라벨은 하나도 빼면 안 되므로 40° 기울여요. 기울인 라벨은 회전한 상자의 외접 사각형으로 여백을 다시 재고, 눈금 바로 왼쪽 아래에 오른쪽 끝을 맞춰 매달아요.
+자동 눈금이면 바라는 수를 하나씩 줄여 다시 골라요. 숫자는 덜 찍어도 뜻이 같기 때문이에요. 바라는 수는 축의 길이에서 나오는 값(가로 36 bp, 세로 30 bp마다 하나, 2에서 10)에서 시작하고, 줄인 수가 `m.want`에 남아요. 축을 공유하는 칸들이 이 값을 서로 맞춰요([아래](#공유-축의-눈금)). 범주 이름이나 사용자가 준 라벨은 하나도 빼면 안 되므로 40° 기울여요. 기울인 라벨은 회전한 상자의 외접 사각형으로 여백을 다시 재고, 눈금 바로 왼쪽 아래에 오른쪽 끝을 맞춰 매달아요.
 
 ```python
 >>> texts(sd.plot.line([1000.0, 9000.0], [0.0, 1.0]).size(40))[:4]
@@ -259,11 +259,47 @@ def labels(values):
     def solve(pw, ph):
         """Margins of every column and row for plot sizes pw[c], ph[r]."""
         ms = [_measure(fig, fig._cells[r * nc + c], pw[c], ph[r], th, engine) for r in range(nr) for c in range(nc)]
+        # The cells of a shared axis choose their ticks once: all take the fewest any of them asks
+        # for (the narrowest plot's, or the one whose labels would touch).
+        asked = {}
+        for _ in range(3):
+            again = set()
+            for k, members in shared:
+                counts = [ms[i].want[k] for i in members if ms[i].want[k] is not None]
+                if not counts:
+                    continue
+                for i in members:
+                    if ms[i].want[k] is not None and ms[i].want[k] != min(counts):
+                        asked.setdefault(i, [None, None])[k] = min(counts)
+                        again.add(i)
+            if not again:
+                break
+            for i in again:
+                ms[i] = _measure(fig, fig._cells[i], pw[i % nc], ph[i // nc], th, engine, asked[i])
+        # The titles of a row stand on one baseline: each takes the row's tallest and deepest.
+        for r in range(nr):
+            row = [m for m in ms[r * nc : (r + 1) * nc] if m.title is not None]
+            if row:
+                h, d = max(m.title[0] for m in row), max(m.title[1] for m in row)
+                for m in row:
+                    m.top += h + d - sum(m.title)
+                    m.title = (h, d)
         left = [max(ms[r * nc + c].left for r in range(nr)) for c in range(nc)]
         right = [max(ms[r * nc + c].right for r in range(nr)) for c in range(nc)]
         top = [max(ms[r * nc + c].top for c in range(nc)) + panel_h for r in range(nr)]
         bottom = [max(ms[r * nc + c].bottom for c in range(nc)) for r in range(nr)]
         return ms, left, right, top, bottom
+```
+
+`solve`는 칸마다 `_measure`를 부른 뒤 두 가지를 맞춰요. 축을 공유하는 칸들의 눈금 수([아래](#공유-축의-눈금))와 한 줄에 선 칸 제목의 기준선이에요.
+
+칸 제목은 `_measure`가 그 상자의 높이와 깊이(`m.title`)만큼 위 여백을 잡아요. 칸마다 제 제목만 재면 내림 글자(g, y)가 있는 제목과 없는 제목의 기준선이 어긋나요. 그래서 한 줄의 제목들이 그 줄에서 가장 높은 높이와 가장 깊은 깊이를 함께 써요. 모자란 만큼 위 여백을 늘리고 `m.title`을 줄의 값으로 바꿔요. `_draw_cell`은 제목을 `va='baseline'`으로, 그림 사각형의 위 끝에서 제목 간격과 그 줄의 깊이만큼 올린 기준선에 놓아요. 그래서 한 줄의 제목이 한 기준선에 서고, 가장 깊은 내림 글자도 그림 틀에 닿지 않아요.
+
+```python
+    # src/stardust/plot/_figure.py, _draw_cell
+    if cell.title:  # on the baseline the row's titles share (the layout's m.title)
+        ty = top - th["title_pad"] - m.title[1]
+        scene.add(_scene.Text(cell.title, x + w / 2, ty, size=th["title_size"], ha="center", va="baseline"))
 ```
 
 여러 칸의 그림은 열마다 왼쪽·오른쪽 여백을 그 열의 가장 큰 값으로, 줄마다 위·아래 여백을 그 줄의 가장 큰 값으로 맞춰요. 그래서 같은 열의 칸은 왼쪽 축 선이 한 세로줄에 서고, 같은 줄의 칸은 아래 축 선이 한 가로줄에 서요. 칸 이름(A, B)이 있으면 그 높이를 모든 줄의 위 여백에 더해요.
@@ -363,6 +399,37 @@ def _place_legend(cell, m, w, h, th, palette, engine):
 
 3D 칸은 구석을 찾지 않아요. 상자의 투영이 칸을 채워 빈 구석이 없으므로, 범례가 있으면 늘 상자 오른쪽 밖에 두고 그 너비만큼 오른쪽 여백을 늘려요. `legend(loc=None)`이면 그리지 않아요.
 
+### 옅은 선의 견본
+
+범례는 흰 바탕에 서므로, 흰 선이나 아주 옅은 선의 견본은 보이지 않아요(2차원 히스토그램 위에 그은 흰 선이 그래요). 그래서 선 견본은 색이 바탕과 거의 같으면 가는 회색 테두리를 둘러요.
+
+```python
+# src/stardust/plot/_layers.py
+# A legend's line swatch whose colour is nearly the white it stands on (a contrast ratio below
+# FAINT; the lightest colour of every palette is above it) is drawn over a slightly wider grey line,
+# a thin outline that keeps it visible.
+FAINT = 1.25
+OUTLINE = (0.6, 0.6, 0.6, 1.0)
+
+
+def _line_handle(color, width, dash):
+    def handle(scene, x, y, w, th):
+        line = _scene.polyline([(x, y), (x + w, y)])
+        if _color.contrast_on_white(color) < FAINT:
+            scene.add(_scene.Path(*line, stroke=OUTLINE, width=width + 0.6, dash=dash))
+        scene.add(_scene.Path(*line, stroke=color, width=width, dash=dash))
+
+    return handle
+```
+
+"거의 같음"은 WCAG의 명암비로 재요. 견본 색을 알파째 흰 바탕에 얹은 색의 상대 휘도를 $L$이라 하면 흰색과의 명암비는 $(1 + 0.05)/(L + 0.05)$이고, 흰색이 1, 검정이 21이에요. 이 값이 1.25보다 작으면 0.6 bp 더 굵은 회색 선을 먼저 긋고 그 위에 견본을 그어요. 견본의 색은 그대로이고 양옆으로 0.3 bp씩 회색이 비어져 나와요. 문턱 1.25는 모든 팔레트의 가장 옅은 색(nejm의 `#ffdc91`, okabe-ito의 `#f0e442`가 1.32)보다 낮아서, 팔레트 색의 견본은 테두리가 없어요. 선, 계단, 함수 곡선, 벡터장과 유선, 3D 곡선의 범례가 모두 이 견본을 써요.
+
+```python
+>>> from stardust.plot import _color
+>>> [round(_color.contrast_on_white(c), 2) for c in [(1.0, 1.0, 1.0, 1.0), (1.0, 220 / 255, 145 / 255, 1.0), (0.0, 0.0, 0.0, 1.0)]]
+[1.0, 1.32, 21.0]
+```
+
 ## 같은 비율의 칸
 
 평면 곡선(`parametric`, `polar`), 음함수, 영역, 위상 그림의 칸은 자료의 한 단위가 가로와 세로에서 같은 길이여야 원이 원으로 보여요. 이런 칸은 `aspect`가 1이에요.
@@ -375,25 +442,26 @@ def _place_legend(cell, m, w, h, th, palette, engine):
         fw, fh = (m.xa.hi - m.xa.lo) * k, (m.ya.hi - m.ya.lo) * k
         m.fit = (fw, fh)
         if fw < pw - 1e-9 or fh < ph - 1e-9:  # the ticks for the sides as they are drawn
-            cx, cy = _axis(cell, "x", fw, th), _axis(cell, "y", fh, th)
+            cx, cy = _axis(cell, "x", fw, th, want[0]), _axis(cell, "y", fh, th, want[1])
             m.xa, m.ya = cx, cy
+            blank()
         pw, ph = fw, fh
 ```
 
-범위를 넓혀 사각형을 채우지 않고, 사각형을 자료의 모양으로 줄여요. 줄어든 사각형의 변 길이로 눈금을 다시 고르고, 칸이 가진 자리의 가운데에 놓아요.
+범위를 넓혀 사각형을 채우지 않고, 사각형을 자료의 모양으로 줄여요. 줄어든 사각형의 변 길이로 눈금을 다시 고르고(공유 축이 정한 눈금 수 `want`가 있으면 그 수로), 안쪽 칸이면 눈금 숫자를 다시 비워요(`blank`). 그리고 칸이 가진 자리의 가운데에 놓아요.
 
 ```python
 >>> frame(sd.plot.parametric(sd.cos, sd.sin, 0, 2 * math.pi))
 [(49.74, 171.04, 171.04)]
 ```
 
-단위원의 칸은 정사각형이에요. 3D 칸도 같은 자리(`fit`)를 써서 상자의 투영 비율대로 줄어든 사각형을 칸 가운데에 놓아요. 줄어든 사각형은 칸의 자리 가운데에 놓여 위가 비므로, 3D 칸의 제목은 줄어든 사각형이 아니라 그 줄의 그림 띠 위 끝에 맞춰요. 한 줄에 선 칸들의 제목이 같은 높이에 놓여요.
+단위원의 칸은 정사각형이에요. 3D 칸도 같은 자리(`fit`)를 써서 상자의 투영 비율대로 줄어든 사각형을 칸 가운데에 놓아요. 줄어든 사각형은 칸의 자리 가운데에 놓여 위가 비므로, 3D 칸의 제목은 줄어든 사각형이 아니라 그 줄의 그림 띠 위 끝에 맞춰요. 기준선도 2D 칸과 같은 규칙(그 줄의 가장 깊은 제목만큼 올린 자리)이라 한 줄에 선 칸들의 제목이 한 기준선에 서요.
 ## 축 공유
 
 `grid(sharex=, sharey=)`와 `facet`은 칸들의 축 범위를 하나로 맞춰요. 맞추는 일은 배치의 맨 앞, 여백을 풀기 전에 `_share`가 해요. 범위가 먼저 정해져야 눈금과 여백이 그 범위에서 나오기 때문이에요.
 
 ```python
-# src/stardust/plot/_figure.py
+    # src/stardust/plot/_figure.py, _share
     for k, how in enumerate(fig._share):
         if not how:
             continue
@@ -414,19 +482,43 @@ def _place_legend(cell, m, w, h, th, palette, engine):
                 continue
             ranges = [_range(cells[i], axis, th) for i in members]
             span = (min(r[0] for r in ranges), max(r[1] for r in ranges))
-            for i in members:
-                if (cells[i].xlim if k == 0 else cells[i].ylim) == [None, None]:
-                    cells[i].span[k] = span
+            free = [i for i in members if (cells[i].xlim if k == 0 else cells[i].ylim) == [None, None]]
+            for i in free:
+                cells[i].span[k] = span
+            if len(free) > 1:
+                shared.append((k, free))
 ```
 
 - **묶음**: `True`면 x는 같은 열끼리, y는 같은 줄끼리 묶어요. `'all'`이면 모든 칸이 한 묶음이에요.
 - **빠지는 칸**: 축이 없는 칸(3D 칸, 빈 칸), 층이 없는 칸, 그 축이 범주 축인 칸은 묶음에 들지 않아요. 범주의 자리는 수의 범위와 합칠 수 없기 때문이에요.
 - **합친 범위**: 묶음의 칸마다 제 범위(`_range`, 자료에 4%를 넓힌 것)를 구해 가장 작은 아래 끝과 가장 큰 위 끝을 잡아요. 넓힌 뒤에 합치므로 다시 넓히지 않아요.
 - **범위를 준 칸**: `xlim`·`ylim`을 준 칸은 묶음의 범위를 키우는 데는 들어가지만 제 범위는 준 그대로 써요.
+- **눈금을 함께 고를 칸**: 합친 범위를 실제로 쓰는 칸(`free`)이 둘 이상이면 그 칸들을 `shared`에 적어 돌려줘요. 배치가 이 묶음의 눈금을 한 번에 골라요.
 
 합친 범위는 `cell.span`에 적혀 있다가, `_range`가 사용자의 범위가 없을 때 자료의 범위 대신 돌려줘요. 그 뒤의 눈금 고르기와 여백 풀기는 한 칸짜리 그림과 같은 길을 가요.
 
-맞춘 축의 눈금 숫자는 바깥쪽 칸에만 적어요. x를 맞췄으면 아래에 그려진 칸이 있는 칸이, y를 맞췄으면 왼쪽에 그려진 칸이 있는 칸이 안쪽 칸(`cell.inner`)이에요. `_measure`는 안쪽 칸의 눈금 라벨을 빈 문자열로 바꾸고 공통 10의 거듭제곱도 지워요. 눈금 선은 그대로 남고, 숫자가 없으니 그 칸의 아래(왼쪽) 여백이 줄어요.
+맞춘 축의 눈금 숫자는 바깥쪽 칸에만 적어요. 숫자를 지우는 것은 같은 축을 보이는 칸이 아래(x)나 왼쪽(y)에 있을 때뿐이에요.
+
+```python
+    # src/stardust/plot/_figure.py, _share
+        def same(a, b):
+            """Whether two cells show one axis: the same shared range, or the same categories."""
+            ca, cb = (a.xcats, b.xcats) if k == 0 else (a.ycats, b.ycats)
+            if ca is not None or cb is not None:
+                return ca == cb and (a.xlim if k == 0 else a.ylim) == (b.xlim if k == 0 else b.ylim)
+            return a.span[k] is not None and a.span[k] == b.span[k]
+
+        drawn = [c.frame and bool(c.layers) for c in cells]
+        for i, c in enumerate(cells):
+            r, col = divmod(i, nc)
+            if not drawn[i]:
+                continue
+            outer = range((r + 1) * nc + col, nr * nc, nc) if k == 0 else range(r * nc, i)
+            c.inner[k] = any(drawn[j] and same(c, cells[j]) for j in outer)
+    return shared
+```
+
+같은 축이란 같은 합친 범위(`span`)를 쓰는 것, 범주 축이면 같은 범주 목록에 같은 범위인 것이에요. 아래 칸이 제 `xlim`을 따로 주었거나 다른 범주를 보이면 위 칸은 제 숫자를 그대로 가져요. 숫자를 지우면 다른 축을 읽게 되기 때문이에요. 그런 칸이 안쪽 칸(`cell.inner`)이에요. `_measure`는 안쪽 칸의 눈금 라벨을 빈 문자열로 바꾸고 공통 10의 거듭제곱도 지워요. 눈금 선은 그대로 남고, 숫자가 없으니 그 칸의 아래(왼쪽) 여백이 줄어요. `_draw_cell`은 빈 라벨에는 `Text`를 만들지 않아요.
 
 ```python
 >>> t = sd.linspace(0.0, 10.0, 60)
@@ -444,20 +536,45 @@ def _place_legend(cell, m, w, h, th, palette, engine):
 
 <PlotImage name="in-layout-share" alt="세로로 놓인 두 칸. 위 칸의 사인 곡선은 가로 0에서 10까지, 아래 칸의 코사인 곡선은 5에서 15까지 그려져 있고, 두 칸의 가로 범위가 0에서 15로 같아요. 가로 눈금 숫자는 아래 칸에만 있어요." caption="sharex=True로 모은 한 열. 가로 범위는 두 칸을 합친 것이고, 위 칸은 눈금 선만 가져요." />
 
+### 공유 축의 눈금
+
+범위가 같아도 칸마다 축의 길이가 다르면 바라는 눈금 수가 달라 다른 눈금을 고를 수 있어요. 열 너비가 다른 칸, 라벨이 닿아 눈금을 줄인 칸이 그래요. 한 범위를 함께 쓰는 칸들은 같은 눈금이어야 견줄 수 있으므로, `solve`가 `_share`가 돌려준 묶음마다 칸들이 바란 수(`m.want`) 가운데 가장 적은 것을 모두에게 줘요. 가장 좁은 칸, 또는 라벨이 닿은 칸의 수예요. 그 수와 다른 수를 바란 칸만 그 수로 다시 재고(`_measure`의 `want`), 다시 잰 칸에서 라벨이 닿아 수가 더 줄면 그 수가 다시 묶음 전체로 퍼져요. 이 고리는 많아야 세 번이에요.
+
+눈금 수를 맞추는 축은 눈금을 자동으로 고르는 축뿐이에요. 사용자가 준 눈금, 범주 축, 괄호 자리를 둔 세로축은 바라는 수가 없어서(`None`) 묶음의 수에 들지 않아요.
+
+```python
+>>> rs = sd.random.default_rng(3)
+>>> Z = sd.stats.Normal(mu=0.0, sigma=1.0)
+>>> pu, pv = 5.0 + 3.0 * Z.sample(500, rng=rs), Z.sample(500, rng=rs)
+>>> def xlabels(fig):
+...     return [i['s'] for i in fig.scene()['items']
+...             if i['type'] == 'text' and i['va'] == 'baseline' and i['ha'] == 'center' and i['s'].startswith('$')]
+>>> pair = [sd.plot.scatter(pu, pv), sd.plot.hist2d(pu, pv, bins=12)]
+>>> xlabels(sd.plot.grid(pair, ncols=2, width=120))
+['$0$', '$5$', '$10$', '$15$', '$-2.5$', '$0.0$', '$2.5$', '$5.0$', '$7.5$', '$10.0$', '$12.5$']
+>>> xlabels(sd.plot.grid(pair, ncols=2, sharex="all", width=120))
+['$0$', '$5$', '$10$', '$15$', '$0$', '$5$', '$10$', '$15$']
+```
+
+오른쪽 칸은 색 막대만큼 그림 사각형이 좁아요. 따로 두면 두 칸이 범위도 눈금도 달라요. `sharex="all"`이면 범위를 합치고, 두 칸이 바란 눈금 수 가운데 적은 쪽으로 함께 골라 같은 0, 5, 10, 15가 서요. 두 칸이 나란히 있어 아래 칸이 없으므로 숫자는 두 칸 모두에 있어요.
+
 ### facet
 
-[`facet(data, by)`](/api/plot/facet/)는 `DataFrame`을 열 `by`의 값마다 나눠 칸 하나씩을 주고, 그 값을 칸의 제목으로 붙여요. 값이 수이면 크기순, 아니면 처음 나온 순서예요. 돌려주는 `Facets`는 그림이 아니라 그림을 감싼 객체이고, 메서드를 이름으로 받아(`__getattr__`) 세 갈래로 넘겨요.
+[`facet(data, by)`](/api/plot/facet/)는 `DataFrame`을 열 `by`의 값마다 나눠 칸 하나씩을 주고, 그 값을 칸의 제목으로 붙여요. 값이 수이면 크기순, 아니면 처음 나온 순서예요. 칸은 64개(`MOST`)까지이고, 값이 그보다 많으면 `ValueError`예요. 값이 많은 열(연속 변수, 행 번호)을 잘못 주면 칸 수백 개를 그리기 전에 바로 알리려는 것이에요. 돌려주는 `Facets`는 그림이 아니라 그림을 감싼 객체이고, 메서드를 이름으로 받아(`__getattr__`) 네 갈래로 넘겨요.
 
-- **그림 메서드**(`scatter`, `line`, `histogram` 등)는 칸마다 한 번씩, 그 칸의 행을 `data=`로 줘서 불러요. 그래서 인자는 열 이름이에요. `data`를 주면 `TypeError`예요.
+- **그림 메서드**(`scatter`, `line`, `histogram` 등 `data`를 받는 것)는 칸마다 한 번씩, 그 칸의 행을 `data=`로 줘서 불러요. 그래서 인자는 열 이름이에요. `data`를 주면 `TypeError`예요.
+- **나눌 자료가 없는 메서드**(`hline`, `vline`, `text`, `function`, `annotate` 등)는 모든 칸에 같은 인자로 불러요. 칸마다 같은 기준선이나 같은 곡선이 서요. 메서드의 시그니처에 `data`가 있는지(`inspect.signature`)로 두 갈래를 가려요.
 - **축 설정**(`xlim ylim xscale yscale xticks yticks`)과 `legend`는 모든 칸에 그대로 불러요.
 - **출력과 크기**(`save`, `to_svg`, `scene`, `size`, `width` 등)는 안의 `Figure`의 것을 그대로 내줘요.
+
+`title`, `zlabel`, `compare`, `fit`, `twin`, `inset`은 칸 하나나 그림 전체의 것이라 `Facets`에 없어요(`AttributeError`). 칸 하나에 쓰려면 `axes`로 그 칸을 꺼내요. `Facets.axes`는 값의 칸만 그 순서대로 담고, 격자를 채우고 남은 빈 자리는 담지 않아요.
 
 `xlabel`은 아래에 칸이 없는 칸들에만, `ylabel`은 맨 왼쪽 열의 칸들에만 붙여요. 축 공유는 `grid`와 같은 `_share`가 하는데, `facet`의 `True`는 모든 칸이 한 범위(`'all'`)라는 뜻이에요. 칸들이 같은 변수의 다른 부분이므로 한 눈금으로 견줄 수 있어야 하기 때문이에요.
 
 `group=`으로 무리를 나누면 칸마다 든 무리가 다를 수 있어요. 칸이 제 자료만 보고 색을 차례로 주면 같은 무리가 칸마다 다른 색이 돼요. 그래서 `facet`은 문자열 열마다 전체 자료에서 값이 처음 나오는 순서를 적어 두고, 그림 메서드를 부르는 동안 칸의 `order`에 그 순서를 넣어요. 무리를 나누는 `_each`가 그것을 보고 순번대로 팔레트의 색을 줘요.
 
 ```python
-# src/stardust/plot/_basic.py
+    # src/stardust/plot/_basic.py, _each
     order = getattr(fig._cell, "order", None)  # a facet's cell: every group keeps the colour it has in the others
     if order:
         palette = fig._root._palette
@@ -482,11 +599,77 @@ def _place_legend(cell, m, w, h, th, palette, engine):
 
 가운데 칸 `s`는 `b`가 먼저 나오지만 첫 층의 색이 다른 칸의 첫 층(`a`)과 달라요. `b`는 어느 칸에서나 전체 순서의 둘째 색을 받아요.
 
+`hist2d`와 `hexbin`은 칸마다 세면 칸마다 격자와 색 범위가 달라져서 칸끼리 견줄 수 없어요. 그래서 `Facets`는 이 둘에 두 가지를 더 해요.
+
+```python
+            # src/stardust/plot/_facet.py, Facets.__getattr__
+            counted = name in _COUNTED
+            if counted and kw.get("range") is None and len(args) >= 2:
+                box = self._box(name, args[0], args[1])
+                if box is not None:
+                    kw = dict(kw, range=box)
+```
+
+- **한 격자**: `range`를 주지 않았으면 모든 칸의 행에서 유한한 짝의 상자(`_box`)를 구해 `range`로 넘겨요. 모든 칸이 같은 칸 경계로 세요.
+- **한 색 범위**: 그린 뒤 칸마다의 새 층에 같은 열쇠(`share`)를 주고, 마지막 칸이 아닌 칸의 색 막대를 떼요(`_one_colour_range`). 배치의 맨 앞에서 `_settle`이 열쇠가 같은 층들의 가장 큰 개수를 모아 모든 층을 그 위 끝으로 다시 칠하고, 마지막 칸의 색 막대도 그 위 끝으로 바꿔요. 색 막대는 범례처럼 마지막 칸에 하나예요.
+
+```python
+# src/stardust/plot/_figure.py
+def _settle(fig):
+    """The layers that depend on the axes they are drawn on (a hexbin's bins on log axes) made for
+    them, and the colours of the layers that share one colour range (a facet's counts) set by
+    the largest value of all of them."""
+    found = []
+
+    def walk(cell, xscale):
+        for layer in cell.layers:
+            if hasattr(layer, "settle"):
+                layer.settle(xscale == "log", cell.yscale == "log")
+                found.append((cell, layer))
+        if cell.twin is not None:
+            walk(cell.twin, xscale)  # (the x axis is the cell's)
+        for inner, _ in cell.insets:
+            walk(inner, inner.xscale)
+
+    for cell in fig._cells:
+        walk(cell, cell.xscale)
+    tops = {}
+    for _, layer in found:
+        if layer.share is not None:
+            tops[layer.share] = max(tops.get(layer.share, 0.0), layer.most)
+    for cell, layer in found:
+        layer.paint(cell, tops.get(layer.share) if layer.share is not None else None)
+```
+
+`_settle`은 로그 축의 `hexbin`이 다시 세는 곳이기도 해요([통계 그림](/internals/plot/stat/)). 다시 센 뒤의 개수로 위 끝을 모으므로 두 일이 한 번에 맞아요. 두 번째 y축의 층은 칸의 x축을, 끼운 칸의 층은 제 축을 따라요.
+
+```python
+>>> df2 = sd.frame.DataFrame({"x": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 1.5, 2.5],
+...                           "y": [2.0, 1.0, 4.0, 3.0, 6.0, 5.0, 2.0, 2.0],
+...                           "site": ["n", "n", "s", "s", "w", "w", "n", "n"]})
+>>> hf = sd.plot.facet(df2, "site").hist2d("x", "y", bins=4)
+>>> _ = hf.scene()
+>>> [(c.layers[0].box, c.layers[0].most, c.layers[0].top, c.colorbar) for c in hf.figure._cells]
+[((1.0, 6.0, 1.0, 6.0), 3.0, 3.0, None), ((1.0, 6.0, 1.0, 6.0), 1.0, 3.0, None), ((1.0, 6.0, 1.0, 6.0), 2.0, 3.0, ('cool', 0.0, 3.0))]
+```
+
+세 칸이 같은 상자 [1, 6] × [1, 6]을 4 × 4로 세요. 칸마다 가장 큰 개수는 3, 1, 2이지만 모두 위 끝 3으로 칠하고, 색 막대는 마지막 칸에만 있어요.
+
+```python
+>>> lined = sd.plot.facet(df2, "site").scatter("x", "y").hline(3.0)
+>>> lined, [len(c._cell.layers) for c in lined.axes]
+(Facets('site': 3 cells, 6 layers; 183 x auto mm), [2, 2, 2])
+>>> lined.twin()
+Traceback (most recent call last):
+    ...
+AttributeError: Facets has no method 'twin'...
+```
+
 ## 두 번째 y축과 끼워 넣은 칸
 
 ### twin
 
-[`fig.twin()`](/api/plot/twin-inset/)은 칸에 `Cell`을 하나 더 달고(`cell.twin`) 그 칸을 가리키는 보기를 돌려줘요([영역의 구조](/internals/plot/overview/)). 달린 칸은 제 층과 제 y축 설정을 갖고, x축은 원래 칸의 것을 써요. 색 순번은 원래 칸의 다음 색에서 이어 가요.
+[`fig.twin()`](/api/plot/twin-inset/)은 칸에 `Cell`을 하나 더 달고(`cell.twin`) 그 칸을 가리키는 보기를 돌려줘요([영역의 구조](/internals/plot/overview/)). 달린 칸은 제 층과 제 y축 설정(`ylabel ylim yscale yticks`)을 갖고, x축은 원래 칸의 것을 써요. 색 순번은 원래 칸의 다음 색에서 이어 가요. 두 축이 함께 쓰는 설정(`title`, `xlabel xlim xscale xticks`, `legend`, `inset`)은 보기의 `_base`, 곧 원래 칸에 써요. 그래서 twin 보기에서 제목이나 x 범위를 정해도 칸 전체의 것이 되고, 배치가 읽지 않는 달린 칸에 묻히지 않아요. `grid`에 twin 보기를 넣으면 원래 칸(`_base`)을 복사하므로 두 y축이 함께 들어가요.
 
 배치에서 달린 칸이 끼어드는 곳은 넷이에요.
 
@@ -494,6 +677,14 @@ def _place_legend(cell, m, w, h, th, palette, engine):
 - **여백**: `_measure`가 달린 칸의 y축을 같은 높이로 고르고(`m.ya2`), 눈금 길이 + 간격 + 가장 넓은 숫자 + 축 이름을 오른쪽 여백의 하한으로 잡아요.
 - **그리기**: `_draw_cell`이 같은 사각형에 x축은 같고 y축만 `m.ya2`인 `Frame`을 하나 더 만들어 달린 칸의 층을 그려요. 그 뒤 오른쪽 변에 축 선과 눈금과 숫자, 돌려 세운 이름을 그려요.
 - **범례**: 범례의 항목은 두 칸의 층에서 함께 모으고, 범례 자리를 고르는 잉크 지도에도 두 칸의 층을 모두 칠해요.
+
+```python
+>>> v = sd.plot.line([0.0, 1.0], [0.0, 1.0]).twin().xlim(0, 2).title("T")
+>>> v._base.title, v._base.xlim, v._cell.title, v._cell.xlim
+('T', [0.0, 2.0], None, [None, None])
+```
+
+twin 보기에서 부른 `title`과 `xlim`이 원래 칸에 적히고, 달린 칸은 비어 있어요.
 
 ### inset
 

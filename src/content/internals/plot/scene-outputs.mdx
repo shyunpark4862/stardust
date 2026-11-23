@@ -345,10 +345,10 @@ def encode(w, h, rgba, *, dpi=None, level=6):
     # src/stardust/plot/_figure.py
     def _pictured(self):
         """Whether the figure holds a 3D cell or a layer drawn as a picture (a density, a phase
-        portrait): a notebook shows it as PNG, the rest as SVG."""
+        portrait, a heatmap, a hist2d): a notebook shows it as PNG, the rest as SVG."""
         for cell in self._root._cells:
             for layer in cell.layers:
-                if type(layer).__name__ in ("Space", "Picture"):
+                if type(layer).__name__ in ("Space", "Picture", "Counts"):
                     return True
         return False
 
@@ -372,7 +372,7 @@ def encode(w, h, rgba, *, dpi=None, level=6):
 'Figure(89 x auto mm, 1 axes, 1 layer)'
 ```
 
-- 3D 칸이 있거나 화소 그림으로 들어가는 층(밀도, 위상 그림, 열지도, 2차원 히스토그램)이 있으면 PNG, 아니면 SVG예요. 그런 그림의 SVG는 어차피 PNG를 품은 것이라 벡터로 보일 것이 축과 글자뿐이에요.
+- 3D 칸이 있거나 화소 그림으로 들어가는 층(밀도, 위상 그림, 열지도의 `Picture`, 2차원 히스토그램의 `Counts`)이 있으면 PNG, 아니면 SVG예요. 그런 그림의 SVG는 어차피 PNG를 품은 것이라 벡터로 보일 것이 축과 글자뿐이에요.
 - 해상도는 200 dpi예요. SVG 쪽의 200은 큰 점 묶음을 그림으로 바꿀 때 쓰는 값이에요.
 - `repr`은 그림을 짓지 않아요. 높이를 주지 않은 그림은 높이가 배치에서 정해지므로 `auto`로 적어요. 배치가 정한 높이는 `fig.height`가 알려 줘요.
 - 3D 칸은 장면을 다시 지을 때도 같은 크기, 같은 시점, 같은 도형이면 깊이 버퍼를 다시 돌리지 않아요. `Space`가 마지막 그림과 그 열쇠를 쥐고 있어요.

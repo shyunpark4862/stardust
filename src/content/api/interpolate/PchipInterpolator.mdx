@@ -280,7 +280,7 @@ ValueError: PchipInterpolator(): 'y' must be finite
 >>> sd.interpolate.pchip_interpolate([0.0, 1.0, 2.0], [0.0, 1.0, 2.0], 0.5, der=-1)
 Traceback (most recent call last):
     ...
-ValueError: pchip_interpolate(): 'der' must be 0 or more, not -1
+ValueError: pchip_interpolate(): 'der' must be >= 0, not -1
 ```
 
 ## scipy·numpy를 아는 분께

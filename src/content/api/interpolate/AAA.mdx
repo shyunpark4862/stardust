@@ -361,7 +361,7 @@ TypeError: AAA(): takes 2 positional arguments but 3 were given
 >>> sd.interpolate.AAA(x, sd.exp(x), rtol=-1.0)
 Traceback (most recent call last):
     ...
-ValueError: AAA(): 'rtol' must be finite and 0 or more, not -1.0
+ValueError: AAA(): 'rtol' must be finite and >= 0, not -1.0
 >>> sd.interpolate.AAA(x, sd.exp(x), max_terms=0)
 Traceback (most recent call last):
     ...
@@ -381,7 +381,7 @@ ValueError: AAA(): no sample has a finite value
 >>> r.clean_up(cleanup_tol=1e-10)
 Traceback (most recent call last):
     ...
-TypeError: AAA.clean_up() got an unexpected keyword argument 'cleanup_tol'. Did you mean 'clean_up_tol'?
+TypeError: clean_up(): unexpected keyword argument 'cleanup_tol'. Did you mean 'clean_up_tol'?
 ```
 
 ## 계산의 크기

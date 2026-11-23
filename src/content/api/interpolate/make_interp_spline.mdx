@@ -222,6 +222,14 @@ array([1.0, 2.7, 3.1, 2.2, 2.9, 4.8], dtype=float64)
 2.630208333333334
 ```
 
+표준 매듭을 그대로 `t`에 주면 `t` 없이 만든 스플라인과 계수가 비트까지 같아요.
+
+```python
+>>> s0 = sd.interpolate.make_interp_spline(x, y)
+>>> bool(sd.all(sd.interpolate.make_interp_spline(x, y, t=s0.t).c == s0.c))
+True
+```
+
 아무 매듭이나 되는 것은 아니에요. 노드마다 그 노드를 덮는 기저 함수가 있어야 해서, 매듭이 한쪽에 몰리면 연립방정식이 풀리지 않아요. 이 조건을 **Schoenberg–Whitney 조건**이라고 해요. 대략 $i$째 노드가 $t_i$와 $t_{i+k+1}$ 사이에 있어야 한다는 조건이에요.
 
 ```python

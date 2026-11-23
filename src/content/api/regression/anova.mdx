@@ -471,7 +471,7 @@ ValueError: anova(): 'terms' names a column 'price' that 'X' does not have
 >>> sd.regression.anova(m4, terms=[0, 1, 2.0, 3])
 Traceback (most recent call last):
     ...
-TypeError: anova(): a term's columns must be positions (int) or names (str), not float
+TypeError: anova(): 'terms' must give columns as positions (int) or names (str), not float
 >>> sd.regression.anova(m4, test='chisq')
 Traceback (most recent call last):
     ...

@@ -393,7 +393,7 @@ double neon_fold(const double* x, std::int64_t n, double acc) {
     };
     std::int64_t i = 0;
     if (n >= 8) {
-        // Four independent registers (8 lanes), like the 8 sum accumulators:
+        // Four independent registers (8 lanes), as the sum's leaf keeps 16 accumulators:
         // FMAX's latency is hidden behind the other three.
         float64x2_t v[4];
         for (int j = 0; j < 4; ++j) v[j] = vld1q_f64(x + 2 * j);

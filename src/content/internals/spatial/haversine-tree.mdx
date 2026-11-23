@@ -218,7 +218,7 @@ $$
 계산한 값에서는 현의 순서와 `haversine`의 순서가 어긋날 수 있어요. 오차의 출처는 셋이에요.
 
 - **(H) `haversine` 커널.** 보조정리 H의 $\lvert\hat d - d\rvert \le 2^{-46}(1 + d)$예요.
-- **(P) 옮기기.** $\hat P$의 성분마다 libm 값 하나나 둘과 곱 하나라 $\lvert\hat P_i - P_i\rvert \le (1 + 2u)^2(1 + u) - 1 \le 5.1u$이고 $\lVert\hat P - P\rVert \le 7.5u$예요.
+- **(P) 옮기기.** $\hat P$의 성분마다 libm 값 하나나 둘과 곱 하나라 상대오차가 $(1 + 2u)^2(1 + u) - 1 \le 5.1u$ 안이에요. 곧 $\lvert\hat P_i - P_i\rvert \le 5.1u\,\lvert P_i\rvert$예요. $\varphi$와 $\lambda$는 받은 double 그대로라 입력의 오차가 없고, 곱은 언더플로하지 않아요(정의역에서 $\cos\varphi \ge 6\times10^{-17}$이고, $\lvert\cos\lambda\rvert\cdot\lvert\sin\lambda\rvert$는 0이 아니면 $10^{-17}$보다 커요). 그래서 $\lVert\hat P - P\rVert \le 5.1u\,\lVert P\rVert = 5.1u$예요.
 - **(E) 3차원 `euclidean` 커널.** 깊이 3의 합이라 $\lvert\hat b - D\rvert \le \kappa D + 2^{-1074}$, $\kappa = \gamma_6/2 + u$예요.
 
 옮기기는 `XA`와 `XB`의 행마다 한 번 해요. 트리의 점은 사인·코사인을 한 번에 구하는 `sincos`로, `haversine`에 넘기는 $\cos\varphi$는 `cdist`가 쓰는 `std::cos`로 따로 구해요. 앞의 것은 오차 (P)에만 들어가고, 뒤의 것은 거리의 비트를 `cdist`와 같게 해요.
@@ -261,7 +261,7 @@ inline double sphere_cut(double T) {
 }
 ```
 
-상수는 증명한 오차를 모두 네 배 넘게 잡아요. 커널은 $2^{-46}$ 대신 $2^{-44}$, 옮기기는 $7.5u$ 대신 $2^{-48}$이에요. 그래서 libm의 sin·cos·asin이 가정 L보다 네 배 나빠도 증명이 서요.
+상수는 증명한 오차를 모두 네 배 넘게 잡아요. 커널은 $2^{-46}$ 대신 $2^{-44}$, 옮기기는 $5.1u$ 대신 $2^{-48} = 32u$예요. 그래서 libm의 sin·cos·asin이 가정 L보다 네 배 나빠도 증명이 서요.
 
 **정리 4(단위 구의 여유).** $\hat d(x, y) \le T$이면, $\hat P(y)$를 담는 모든 상자(점 하나도 폭 0의 상자로 봐요)에서 $\hat P(x)$까지의 한계 $\hat b$는 $\mathrm{cut}(T)$ 이하예요. 거꾸로 말해 $\hat b \gt \mathrm{cut}(T)$인 노드와 점의 모든 $y$는 $\hat d \gt T$예요.
 

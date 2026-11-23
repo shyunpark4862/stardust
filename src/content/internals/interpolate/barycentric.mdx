@@ -216,6 +216,21 @@ void bary_point(const Bary& B, double v, double* row, double* s) {
 - **노드에 아주 가까운 점.** $x - x_j$가 비정상 수 크기면 $s_j$가 넘쳐 분모가 유한하지 않아요. 그때도 가장 가까운 노드의 값이에요. 그 거리에서는 참 값과 노드 값의 차가 반올림보다 작아요.
 - **무한한 점.** 다항식은 상수가 아니면 무한대로 가니 NaN이에요. 유리식은 분자와 분모의 차수가 같아 극한 $\sum w_jy_j/\sum w_j$가 있고, 만들 때 한 번 구해 둔 그 값을 돌려줘요.
 
+노드가 하나면 이 커널에 들어가기 전에 따로 처리해요. 상수라서 유한한 점마다 그 값을 그대로 복사해요(유리식이면 무한한 점에서도). 커널로 계산하면 $(s_0y_0)/s_0$의 곱과 나눗셈에서 두 번 반올림해 끝자리가 어긋날 수 있어요.
+
+```cpp
+    // csrc/interpolate/polyint.cpp
+    if (n == 1) {  // a constant
+        for (std::int64_t i = 0; i < nq; ++i) {
+            const double v = Q.p[i];
+            double* row = o + i * D;
+            if (v != v || (std::isinf(v) && !limit)) std::fill(row, row + D, kNaN);
+            else std::memcpy(row, Y.p, sizeof(double) * D);
+        }
+        return wrap(std::move(out));
+    }
+```
+
 열이 하나면 점 여덟 개를 한 번에 계산해요.
 
 ```cpp

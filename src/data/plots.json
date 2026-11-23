@@ -191,6 +191,12 @@
   "width": 183.0,
   "height": 48.4963
  },
+ "customize-faint-swatch": {
+  "page": "api/plot/customize",
+  "format": "svg",
+  "width": 89.0,
+  "height": 65.1833
+ },
  "customize-hero": {
   "page": "api/plot/customize",
   "format": "svg",
@@ -201,7 +207,7 @@
   "page": "api/plot/customize",
   "format": "svg",
   "width": 183.0,
-  "height": 53.0698
+  "height": 53.4222
  },
  "density-log": {
   "page": "api/plot/density",
@@ -311,6 +317,18 @@
   "width": 183.0,
   "height": 101.8747
  },
+ "facet-hexbin": {
+  "page": "api/plot/facet",
+  "format": "svg",
+  "width": 183.0,
+  "height": 89.108
+ },
+ "facet-hline": {
+  "page": "api/plot/facet",
+  "format": "svg",
+  "width": 183.0,
+  "height": 101.8747
+ },
  "facet-overview": {
   "page": "api/plot/facet",
   "format": "svg",
@@ -412,6 +430,12 @@
   "format": "svg",
   "width": 89.0,
   "height": 58.6506
+ },
+ "hexbin-log": {
+  "page": "api/plot/hexbin",
+  "format": "svg",
+  "width": 89.0,
+  "height": 58.325
  },
  "hexbin-overview": {
   "page": "api/plot/hexbin",
@@ -1042,6 +1066,12 @@
   "format": "svg",
   "width": 89.0,
   "height": 60.7963
+ },
+ "vectorfield-values": {
+  "page": "api/plot/vectorfield",
+  "format": "svg",
+  "width": 89.0,
+  "height": 50.0
  },
  "view3d-anatomy": {
   "page": "api/plot/view3d",

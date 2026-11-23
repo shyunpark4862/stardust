@@ -33,9 +33,9 @@ returns:
   desc: 어림값 est(float), 단위 벡터 v와 w = A v(compute_v·compute_w가 True일 때만, 아니면 None), 반복 수 n_iter, 곱의 수 n_op가 든 읽기 전용 결과 객체예요. est, v, w = onenormest(A)처럼 셋으로 풀려요.
 raises:
   - type: TypeError
-    desc: A가 희소 배열·ndarray·LinearOperator가 아닐 때, t·max_iter가 int가 아닐 때, compute_v·compute_w가 bool이 아닐 때.
+    desc: A가 희소 배열·ndarray·LinearOperator가 아닐 때, t·max_iter가 int가 아닐 때, compute_v·compute_w가 bool이 아닐 때, LinearOperator의 함수가 배열로 바꿀 수 없는 것을 돌려줄 때.
   - type: ValueError
-    desc: A가 정사각이 아닐 때, t가 1보다 작거나 max_iter가 2보다 작을 때, rmatvec이 없는 LinearOperator를 줬을 때.
+    desc: A가 정사각이 아닐 때, t가 1보다 작거나 max_iter가 2보다 작을 때, rmatvec이 없는 LinearOperator를 줬을 때, LinearOperator의 함수가 크기가 다른 결과를 돌려줄 때.
 seeAlso: [norm, splu, linearoperator, expm, expm_multiply, basics]
 ---
 

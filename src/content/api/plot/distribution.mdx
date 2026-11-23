@@ -130,13 +130,13 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
 ```python
 >>> model = sd.stats.Gamma(a=3.0, scale=2.0)
 >>> x = model.sample((300,), rng=sd.random.default_rng(1))
->>> fig = sd.plot.histogram(x, bins=20, density=True, alpha=0.5, label="sample").ylim(0, None)
+>>> fig = sd.plot.histogram(x, bins=20, density=True, alpha=0.5, label="sample")
 >>> fig = fig.distribution(model, color="C1", label="Gamma(3, 2)").xlabel("$x$").ylabel("density")
 ```
 
 <PlotImage name="distribution-histogram" alt="옅은 파란 막대의 히스토그램 위에 노란 감마 분포의 밀도 곡선이 겹쳐 있어요. 곡선이 막대의 윤곽을 대체로 따라가요." caption="Gamma(a=3, scale=2)에서 뽑은 표본 300개의 히스토그램과 그 분포의 밀도예요. 막대가 곡선을 둘레로 오르내리는 정도가 표본의 흔들림이에요." />
 
-표본의 막대는 밀도의 봉우리보다 높이 솟을 수 있어요. 세로 범위를 정하지 않은 칸에 밀도를 더하면 세로축이 그 밀도의 봉우리에 맞춰지므로, 먼저 `ylim(0, None)`으로 아래만 0에 두고 위는 그려진 것 모두에 맞추게 했어요.
+표본의 막대는 밀도의 봉우리보다 높이 솟을 수 있어요. 밀도가 바라는 세로 범위는 봉우리까지이지만, 같은 칸의 다른 층이 더 높으면 세로축이 그 층까지 넓어져요. 그래서 가장 높은 막대도 잘리지 않아요.
 
 모형을 자료로 추정했다면 그 추정값으로 분포 객체를 만들어 넘기면 돼요. 겹쳐 본 뒤에는 [`qq`](/api/plot/qq/)로 꼬리까지 보거나, [`ks_1samp`](/api/htest/ks_1samp/) 같은 적합도 검정으로 수를 확인하세요.
 
@@ -191,7 +191,7 @@ ValueError: distribution(): a batch of distributions cannot be drawn; give one
 ## 조심할 점
 
 - 매개변수가 배열인 분포(예: `Normal(mu=sd.asarray([0.0, 1.0]), sigma=1.0)`)는 `ValueError`예요. 분포마다 객체를 따로 만들어 메서드로 겹쳐요.
-- 세로 범위를 정하지 않은 칸에 밀도를 그리면 세로축이 그 밀도의 봉우리에 맞춰지고, 뒤에 겹치는 층은 그 범위를 따라요. 봉우리가 더 높은 밀도나 히스토그램을 함께 그릴 때는 가장 높은 것을 먼저 그리거나, `ylim(0, None)`을 먼저 불러 위쪽을 그려진 것 모두에 맞추게 해요.
+- 밀도의 세로 범위는 칸에 못 박지 않아요. 봉우리가 더 높은 밀도나 히스토그램을 같은 칸에 그리면 그리는 차례와 상관없이 세로축이 가장 높은 층까지 넓어져요. 범위를 고정하려면 [`ylim`](/api/plot/customize/)을 줘요.
 - 다변량 분포(`MultivariateNormal` 등)는 `icdf`가 없어서 받지 않아요. 두 변수의 밀도는 `pdf`를 두 변수 x, y의 함수로 감싸 [`density`](/api/plot/density/)나 [`contour`](/api/plot/contour/)로 그려요.
 - 이산 분포의 정수 눈금은 눈금을 정하지 않은 칸에만 놓아요. [`xticks`](/api/plot/customize/)로 먼저 준 눈금이 있으면 그대로 둬요.
 - 이산 분포의 `a`, `b`가 정수가 아니면 그 안의 정수만 그려요. `a=-0.5, b=6.5`는 0부터 6까지예요.

@@ -12,7 +12,7 @@ params:
   - name: fu, fv
     type: 호출 가능한 객체 둘, 또는 2차원 값 배열 둘
     kind: positional-only
-    desc: "벡터의 가로 성분과 세로 성분. 함수면 같은 모양의 float64 sd.ndarray 둘 (x, y)를 받아 같은 모양의 실수 배열(또는 수 하나)을 돌려줘요. 화살표 자리 전체의 격자로 한 번씩 불려요. 함수 대신 모양이 같은 2차원 배열 둘을 주면 그 값마다 화살표 하나를 그려요. 둘 다 함수이거나 둘 다 배열이어야 해요."
+    desc: "벡터의 가로 성분과 세로 성분. 함수면 같은 모양의 float64 sd.ndarray 둘 (x, y)를 받아 같은 모양의 실수 배열(또는 수 하나)을 돌려줘요. 화살표 자리 전체의 격자로 한 번씩 불려요. 함수 대신 모양이 같은 2차원 배열 둘(sd.ndarray, 수의 중첩 시퀀스, numpy 배열)을 주면 그 값마다 화살표 하나를 그려요. 둘 다 함수이거나 둘 다 배열이어야 해요."
   - name: x0, x1
     type: float
     kind: positional-only
@@ -24,7 +24,7 @@ params:
   - name: samples
     type: int, (int, int) 또는 None
     kind: keyword-only
-    desc: "화살표의 수. 정수 하나면 가로세로가 같은 수이고, 쌍이면 (가로, 세로)예요. 한 방향 3 이상 400 이하. 기본값 None은 가로 21개에, 세로는 화살표의 간격이 가로와 같아지는 수(3 이상)예요."
+    desc: "화살표의 수. 정수 하나면 가로의 수이고 세로는 화살표의 간격이 가로와 같아지는 수(3 이상)이며, 쌍이면 (가로, 세로)예요. 한 방향 3 이상 400 이하. 기본값 None은 가로 21개예요. 값 배열을 줬을 때는 줄 수 없어요."
   - name: scale
     type: float
     kind: keyword-only
@@ -44,11 +44,11 @@ params:
   - name: colorbar
     type: bool
     kind: keyword-only
-    desc: "True(기본값)면 칸 오른쪽에 벡터의 크기를 읽는 색 막대를 붙여요. color를 준 그림에는 색 막대가 없어요."
+    desc: "True(기본값)면 칸 오른쪽에 벡터의 크기를 읽는 색 막대를 붙여요. color를 준 그림과, 이미 색 막대가 있는 칸에 얹은 화살표에는 붙이지 않아요."
   - name: label
     type: str 또는 None
     kind: keyword-only
-    desc: "범례에 쓸 이름(LaTeX 원문). 기본값 None이면 범례에 넣지 않아요."
+    desc: "범례에 쓸 이름(LaTeX 원문). 범례의 견본은 color를 줬으면 그 색, 아니면 색띠의 가운데 색의 선이에요. 기본값 None이면 범례에 넣지 않아요."
   - name: "**figure"
     type: 그림 옵션
     kind: keyword-only
@@ -60,7 +60,7 @@ raises:
   - type: TypeError
     desc: fu·fv가 함수도 2차원 값 배열도 아닐 때, 하나는 함수이고 하나는 배열일 때, 함수가 sd.ndarray나 수가 아닌 것을 돌려줄 때, samples가 정수나 정수 쌍이 아닐 때, colorbar가 bool이 아닐 때, 모르는 키워드(refine 등)를 줬을 때.
   - type: ValueError
-    desc: x0 < x1이나 y0 < y1이 아니거나 범위가 유한하지 않을 때, 값 배열 둘의 모양이 다르거나 2 × 2보다 작을 때, 함수가 받은 것과 다른 모양을 돌려줄 때, samples가 범위 밖일 때, scale이나 width가 0 이하일 때, color와 cmap을 함께 줬을 때, cmap이 모르는 이름일 때, 색을 알 수 없을 때, 3D 그림이 든 칸에 그릴 때.
+    desc: x0 < x1이나 y0 < y1이 아니거나 범위가 유한하지 않을 때, 값 배열 둘의 모양이 다르거나 2 × 2보다 작을 때, 값 배열에 samples를 줬을 때, 함수가 받은 것과 다른 모양을 돌려줄 때, samples가 범위 밖일 때, scale이나 width가 0 이하일 때, color와 cmap을 함께 줬을 때, cmap이 모르는 이름일 때, 색을 알 수 없을 때, 3D 그림이 든 칸에 그릴 때.
 seeAlso: [streamlines, contour, density, phase, sampling]
 ---
 import PlotImage from '../../../components/fig/PlotImage.astro';
@@ -95,7 +95,7 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
 
 ## 화살표의 수: samples
 
-`samples`는 화살표의 수예요. 쌍 `(가로, 세로)`로 주거나, 정수 하나로 가로세로에 같은 수를 줘요. 화살표가 적으면 하나하나가 길고 또렷하고, 많으면 장의 잔 구조가 보이는 대신 화살표가 작아져요. 흔들이의 방정식 $\theta'' = -\sin\theta$를 $(\theta,\ \omega)$ 평면의 장 $(\omega,\ -\sin\theta)$로 놓고 두 가지로 그려 볼게요.
+`samples`는 화살표의 수예요. 정수 하나는 가로의 수이고, 세로는 화살표의 간격이 가로와 같아지도록 사각형의 비에 맞춰 정해요. 쌍 `(가로, 세로)`로 두 방향을 따로 줄 수도 있어요. 화살표가 적으면 하나하나가 길고 또렷하고, 많으면 장의 잔 구조가 보이는 대신 화살표가 작아져요. 흔들이의 방정식 $\theta'' = -\sin\theta$를 $(\theta,\ \omega)$ 평면의 장 $(\omega,\ -\sin\theta)$로 놓고 두 가지로 그려 볼게요.
 
 ```python
 >>> pu = lambda th, om: om
@@ -107,7 +107,7 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
 
 <PlotImage name="vectorfield-samples" alt="같은 흔들이 벡터장의 두 그림. a는 가로 12개, 세로 9개의 큰 화살표, b는 가로 32개, 세로 24개의 잔 화살표예요. 둘 다 원점 둘레를 시계 방향으로 돌아요" caption="같은 장을 화살표 12 × 9개(a)와 32 × 24개(b)로 그렸어요. 가장 긴 화살표가 간격의 90%라는 규칙이 같아서, 화살표가 많아지면 저마다 짧아져요." />
 
-사각형이 정사각형이 아닐 때 정수 하나를 주면 가로와 세로의 간격이 달라져요. 화살표의 길이는 좁은 쪽 간격에 맞춰요. 간격을 같게 하려면 사각형의 비에 맞는 쌍을 줘요.
+이 사각형은 가로 8, 세로 6이라 정수 하나로 `samples=12`, `samples=32`를 줘도 세로가 9개, 24개로 정해져 같은 그림이에요. 쌍으로 가로와 세로의 간격을 다르게 주면 화살표의 길이는 좁은 쪽 간격에 맞춰요.
 
 화살표마다 함수를 한 번 계산할 뿐, 적응형으로 더 쪼개지 않아요. 그래서 `refine`은 받지 않아요.
 
@@ -135,9 +135,9 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
 
 <PlotImage name="vectorfield-gradient" alt="채운 등고선 위에 검은 화살표를 얹은 그림. 빨간 봉우리 쪽으로 화살표가 모이고 하늘색 골짜기에서 퍼져 나가요. 오른쪽에 등고선의 색 막대가 있어요" caption="기울기는 값이 가장 빨리 커지는 쪽을 가리켜요. 화살표가 등고선과 수직으로 만나고, 낮은 곳(하늘색)에서 나와 높은 곳(빨강)으로 모여요. 색 막대는 등고선의 것이에요." />
 
-색 막대는 칸에 하나예요. 색 막대가 있는 그림([`density`](/api/plot/density/), 채운 [`contour`](/api/plot/contour/)) 위에 `color` 없이 화살표를 얹으면 색 막대가 화살표의 크기를 읽는 것으로 바뀌어요. 바탕의 색 막대를 남기려면 위처럼 `color`를 주거나 `colorbar=False`를 줘요.
+색 막대는 칸에 하나예요. 색 막대가 있는 그림([`density`](/api/plot/density/), 채운 [`contour`](/api/plot/contour/)) 위에 `color` 없이 화살표를 얹으면 바탕의 색 막대가 그대로 남고, 화살표는 크기에 따른 색으로 그리되 그 색을 읽는 막대는 없어요. 얹은 화살표의 크기는 길이로 읽거나, 위처럼 `color`로 한 색을 줘서 바탕의 색과 섞이지 않게 해요.
 
-`label`을 주면 범례에 그 이름이 선과 함께 들어가요. 한 색의 화살표에 쓰기 좋아요.
+`label`을 주면 범례에 그 이름이 선과 함께 들어가요. 선의 색은 `color`를 준 화살표면 그 색, 크기에 따른 색이면 색띠의 가운데 색이에요.
 
 ## 크기가 한없이 커지는 곳
 
@@ -164,11 +164,11 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
 >>> fig = sd.plot.vectorfield(-Y, X, -2, 2, -1, 1, height=50)
 ```
 
-함수를 줄 때는 화살표가 칸의 가운데에 서지만, 값을 줄 때는 격자의 점이 사각형의 가장자리까지 가요. 그래서 가장자리의 화살표는 절반쯤이 칸 밖으로 나가 잘려요. 온전히 보이게 하려면 [`xlim`, `ylim`](/api/plot/customize/)으로 범위를 반 칸쯤 넓혀요.
+<PlotImage name="vectorfield-values" alt="가로 15개, 세로 8개의 화살표가 원점 둘레를 시계 반대 방향으로 도는 납작한 그림. 가장자리의 화살표도 잘리지 않고 온전해요" caption="값 배열 둘로 그린 회전장. 화살표가 격자의 점에 서므로 가장자리의 화살표가 사각형 밖으로 조금 나가고, 축의 범위가 그만큼 넓어졌어요." />
 
-```python
->>> fig = fig.xlim(-2.2, 2.2).ylim(-1.2, 1.2)
-```
+함수를 줄 때는 화살표가 칸의 가운데에 서지만, 값을 줄 때는 격자의 점이 사각형의 가장자리까지 가요. 가장자리의 화살표는 가운데가 사각형의 변 위에 있어 절반쯤이 사각형 밖으로 나가요. 그래서 축의 범위를 화살표가 나간 만큼 넓혀 화살표가 잘리지 않게 해요. 범위를 준 사각형 그대로 두려면 [`xlim`, `ylim`](/api/plot/customize/)으로 정해요. 그때는 가장자리의 화살표가 칸의 틀에서 잘려요.
+
+값에는 적응형 표본이 없고 화살표의 수가 곧 배열의 모양이라, `samples`를 주면 `ValueError`예요.
 
 ## 겹치기
 
@@ -198,6 +198,14 @@ ValueError: vectorfield(): 'color' and 'cmap' cannot both be given
 Traceback (most recent call last):
     ...
 TypeError: vectorfield(): 'fu' and 'fv' must both be functions or both be 2-D arrays of values
+>>> sd.plot.vectorfield(u, 3, -2, 2, -2, 2)
+Traceback (most recent call last):
+    ...
+TypeError: vectorfield(): 'fv' must be callable or a 2-D array of values, not int
+>>> sd.plot.vectorfield(-Y, X, -2, 2, -1, 1, samples=10)
+Traceback (most recent call last):
+    ...
+ValueError: vectorfield(): 'samples' and 'refine' are for a function; the values given are the grid
 >>> sd.plot.vectorfield(u, v, -2, 2, -2, 2, refine=1)
 Traceback (most recent call last):
     ...

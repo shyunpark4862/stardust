@@ -50,7 +50,7 @@ raises:
   - type: TypeError
     desc: 데이터가 배열로 바꿀 수 없는 것이거나 복소수일 때, k가 bool·실수·문자열일 때, distance_upper_bound가 수가 아닐 때, 옵션을 자리로 넘겼을 때, 그 거리가 쓰지 않는 인자를 주었을 때.
   - type: ValueError
-    desc: XA·XB가 2차원이 아니거나 열 수가 다를 때, 데이터에 NaN·inf가 있을 때, k가 1보다 작거나 빈 시퀀스일 때, distance_upper_bound가 음수나 NaN일 때, 거리의 인자가 규칙에 맞지 않을 때.
+    desc: XA·XB가 2차원이 아니거나 열 수가 다를 때, 데이터에 NaN·inf가 있을 때, k가 1보다 작거나 빈 시퀀스일 때, distance_upper_bound가 음수나 NaN일 때, 거리의 인자가 규칙에 맞지 않을 때, seuclidean의 기본 V에 값이 모두 같은 열(분산 0)이 있을 때.
   - type: sd.linalg.LinAlgError
     desc: metric='mahalanobis'의 기본 VI를 만들 공분산이 특이할 때.
   - type: MemoryError

@@ -69,9 +69,9 @@ returns:
   desc: 고유값 eigenvalues(complex128, (k,))와 고유벡터 eigenvectors((n, k), complex128, 열이 고유벡터; return_eigenvectors=False이면 None), 수렴 여부(converged, status, message), 셈(n_iter, n_converged, n_op)이 든 읽기 전용 결과 객체예요. w, v = eigs(A)처럼 둘로 풀려요.
 raises:
   - type: TypeError
-    desc: A나 M, Minv, OPinv가 희소 배열·ndarray·LinearOperator가 아닐 때, which나 OPpart가 문자열이 아닐 때, k·ncv·max_iter가 int가 아닐 때, sigma가 수가 아닐 때, return_eigenvectors가 bool이 아닐 때, rng가 Generator가 아닐 때.
+    desc: A나 M, Minv, OPinv가 희소 배열·ndarray·LinearOperator가 아닐 때, which나 OPpart가 문자열이 아닐 때, k·ncv·max_iter가 int가 아닐 때, sigma가 수가 아닐 때, return_eigenvectors가 bool이 아닐 때, rng가 Generator가 아닐 때, LinearOperator의 함수가 배열로 바꿀 수 없는 것을 돌려줄 때.
   - type: ValueError
-    desc: A가 정사각이 아니거나 M 등의 모양이 다를 때, 저장된 값에 NaN이나 inf가 있을 때, k나 ncv가 범위 밖일 때, which나 OPpart가 받는 값이 아닐 때, v0의 모양이 틀렸거나 0 벡터일 때, OPpart를 sigma 없이 또는 복소 문제에 줬을 때, Minv·OPinv를 받지 않는 자리에 줬을 때, tol이 음수이거나 유한하지 않을 때.
+    desc: A가 정사각이 아니거나 M 등의 모양이 다를 때, 저장된 값에 NaN이나 inf가 있을 때, k나 ncv가 범위 밖일 때, which나 OPpart가 받는 값이 아닐 때, v0의 모양이 틀렸거나 0 벡터일 때, OPpart를 sigma 없이 또는 복소 문제에 줬을 때, Minv·OPinv를 받지 않는 자리에 줬을 때, tol이 음수이거나 유한하지 않을 때, LinearOperator의 함수가 크기가 다른 결과를 돌려줄 때.
   - type: LinAlgError
     desc: sigma가 정확히 고유값이라 A − sigma·M이 특이일 때.
 seeAlso: [eigsh, svds, linearoperator, splu, basics]
@@ -201,6 +201,8 @@ Traceback (most recent call last):
 stardust.linalg.LinAlgError: eigs(): singular matrix
 ```
 
+`sigma`를 고유값에 너무 가깝게 줄 때의 주의와 부정확한 풀이를 다듬는 규칙도 `eigsh`와 같아요([eigsh의 sigma](/api/sparse/eigsh/#sigma-지정한-값-근처의-고유값)).
+
 `M`, `Minv`, `OPinv`는 `eigsh`와 같은 뜻과 규칙이에요([eigsh의 M](/api/sparse/eigsh/)). `eigs`에는 `mode`가 없어요.
 
 ## 결과 읽기
@@ -251,14 +253,14 @@ array([0.7999999999999987, 0.8013838647570043, 0.8013838647570043,
 >>> sd.sparse.eigs(C, k=3, which='SM')
 EigsResult(converged=False, status=1, n_iter=401, n_converged=0, eigenvalues=<array of shape (0,)>)
 >>> sd.abs(sd.sparse.eigs(C, k=3, sigma=0).eigenvalues)
-array([0.8054873227227315, 0.8054873227227315, 0.8121692099858895], dtype=float64)
+array([0.8054873227226292, 0.8054873227226292, 0.8121692099840363], dtype=float64)
 ```
 
 `ncv`를 키워 부분공간을 넓히면 맞는 셋을 얻어요.
 
 ```python
 >>> sd.abs(sd.sparse.eigs(C, k=3, sigma=0, ncv=30).eigenvalues)
-array([  0.80000000000251, 0.8013838647565736, 0.8013838647565736], dtype=float64)
+array([0.7999999999999976, 0.8013838647570041, 0.8013838647570041], dtype=float64)
 ```
 
 <Callout type="warn" title="고유값이 모여 있으면 확인하세요">

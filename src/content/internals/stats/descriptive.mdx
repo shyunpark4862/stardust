@@ -123,6 +123,10 @@ def _real_option(v, func, arg):
     try:
         i = operator.index(v)
     except TypeError:
+        # numpy.float32, numpy.float16, numpy.longdouble, as the kernels' real_value takes them
+        # (numpy's bool is not a Real)
+        if type(v).__module__ == "numpy" and isinstance(v, numbers.Real):
+            return float(v)
         return None
     try:
         return float(i)
@@ -130,12 +134,14 @@ def _real_option(v, func, arg):
         raise OverflowError(f"{func}(): '{arg}' is out of range") from None
 ```
 
-`None`을 받은 쪽이 옵션마다의 `TypeError`를 내요(`sem(): 'correction' must be an int or a float, not str`). numpy 정수는 `operator.index`로 int가 되고, double을 넘는 int는 `float(i)`에서 넘쳐 `OverflowError`예요. 그래서 `entropy(base=10**400)`도 값 대신 에러예요. `moment`의 `center`만은 bool을 0과 1로 받아요(`_real_option` 앞에서 따로 바꿔요). 배열인 `center`는 줄마다의 중심으로 브로드캐스트해요.
+`None`을 받은 쪽이 옵션마다의 `TypeError`를 내요(`sem(): 'correction' must be an int or a float, not str`). numpy 정수는 `operator.index`로 int가 되고, numpy의 다른 너비 실수(`float32`, `float16`, `longdouble`)는 `float`로 바꿔 받아요. numpy의 bool은 실수가 아니라서 `TypeError`예요. double을 넘는 int는 `float(i)`에서 넘쳐 `OverflowError`예요. 그래서 `entropy(base=10**400)`도 값 대신 에러예요. `moment`의 `center`만은 bool을 0과 1로 받아요(`_real_option` 앞에서 따로 바꿔요). 배열인 `center`는 줄마다의 중심으로 브로드캐스트해요.
 
 ```python
 >>> import numpy as np
 >>> y = [1.0, 2.0, 4.0, 7.0]
 >>> sd.stats.sem(y, correction=np.int64(1)) == sd.stats.sem(y, correction=1)
+True
+>>> sd.stats.sem(y, correction=np.float32(1)) == sd.stats.sem(y, correction=1)
 True
 >>> sd.stats.sem(y, correction=10**400)
 Traceback (most recent call last):

@@ -488,9 +488,9 @@ numpy 2.5.4에서 `np.ones(3) + x`(연산자 쪽)는 numpy의 다른 경로를 �
 | 함수 | 받는 것 | 다른 것을 주면 |
 |---|---|---|
 | 배열, 선형대수, 특수함수의 함수와 분포의 매개변수·메서드, 희소 행렬의 함수, 푸리에 변환의 함수 | `sd.ndarray`만(희소 함수는 희소 배열과 `LinearOperator`도). 원소별 함수와 분포는 Python 스칼라도 받아요 | TypeError (`sum(): 'x' must be an sd.ndarray, not list`, `erf(): 'x' must be an sd.ndarray or a bool, int, float or complex, not list`) |
-| `sd.stats`의 기술통계, `sd.htest`의 검정, `sd.regression`의 모형 함수, `sd.optimize`의 시작점 `x0`, `sd.integrate`의 표본 규칙(`y`, `x`)과 `tanhsinh`·`nsum`의 끝, `sd.differentiate`의 `x`, `sd.spatial`의 점과 질의점, `sd.interpolate`의 생성자·메서드·함수 꼴, `sd.plot`의 자료 | `sd.ndarray`, 수의 리스트·튜플, numpy 배열, `sd.frame`의 열(`Series`, 기술통계·가설검정·회귀·공간은 `DataFrame`도, 그림은 `data=`의 `DataFrame`에서 열 이름으로) | 받은 것을 그 함수가 계산하는 dtype의 배열로 바꿔 써요. frame의 결측값은 NaN이 돼요 |
+| `sd.stats`의 기술통계, `sd.htest`의 검정, `sd.regression`의 모형 함수, `sd.optimize`의 시작점 `x0`, `sd.integrate`의 표본 규칙(`y`, `x`)과 `tanhsinh`·`nsum`의 끝, `sd.differentiate`의 `x`, `sd.spatial`의 점과 질의점, `sd.interpolate`의 생성자·메서드·함수 꼴, `sd.plot`의 자료 | `sd.ndarray`, 수의 리스트·튜플, numpy 배열, `sd.frame`의 열(`Series`, 기술통계·가설검정·회귀·공간과 보간의 흩어진 점은 `DataFrame`도, 그림은 `data=`의 `DataFrame`에서 열 이름으로) | 받은 것을 그 함수가 계산하는 dtype의 배열로 바꿔 써요. frame의 결측값은 NaN이 돼요 |
 
-`sd.differentiate`의 `x`와 `tanhsinh`·`nsum`의 끝은 `sd.optimize`의 배치 스칼라(`find_root` 등)와 같은 검사를 써서 frame의 열은 받지 않아요. 표본 규칙은 `Series`도 받아요. `sd.spatial`은 받은 것을 float64로 바꾸되, `hamming`과 `jaccard`만 bool·int64·float64를 받은 dtype 그대로 비교해요. 개수가 정확해서 어느 dtype이든 같은 값이면 같은 결과이고, int64의 $2^{60}$과 $2^{60} + 1$을 다른 값으로 봐요. 한 변수 선형 보간 `sd.interp`는 배열의 함수라서 첫째 줄처럼 `sd.ndarray`와 Python 스칼라만 받고, 같은 보간을 하는 `sd.interpolate`의 객체는 `Series`까지 받아요(`DataFrame`은 받지 않아요). `sd.graph`의 그래프는 정방 행렬이라 frame의 열을 받지 않아요. 밀집 행렬은 `sd.ndarray`, numpy 배열, 수의 중첩 시퀀스로, 희소 행렬은 `sd.sparse`의 배열로 받고, scipy의 희소 객체는 `sd.sparse.csr_array(A)`로 바꾸라고 짚는 `TypeError`예요.
+`sd.differentiate`의 `x`와 `tanhsinh`·`nsum`의 끝은 `sd.optimize`의 배치 스칼라(`find_root` 등)와 같은 검사를 써서 frame의 열은 받지 않아요. 표본 규칙은 `Series`도 받아요. `sd.spatial`은 받은 것을 float64로 바꾸되, `hamming`과 `jaccard`만 bool·int64·float64를 받은 dtype 그대로 비교해요. 개수가 정확해서 어느 dtype이든 같은 값이면 같은 결과이고, int64의 $2^{60}$과 $2^{60} + 1$을 다른 값으로 봐요. 한 변수 선형 보간 `sd.interp`는 배열의 함수라서 첫째 줄처럼 `sd.ndarray`와 Python 스칼라만 받고, 같은 보간을 하는 `sd.interpolate`의 객체는 `Series`까지 받아요. `sd.interpolate`가 `DataFrame`을 받는 곳은 흩어진 점(`RBFInterpolator`, `NearestNDInterpolator`의 점과 평가점, `RegularGridInterpolator`의 평가점)이고, 열을 나란히 둔 2차원 배열로 읽어요. `sd.graph`의 그래프는 정방 행렬이라 frame의 열을 받지 않아요. 밀집 행렬은 `sd.ndarray`, numpy 배열, 수의 중첩 시퀀스로, 희소 행렬은 `sd.sparse`의 배열로 받고, scipy의 희소 객체는 `sd.sparse.csr_array(A)`로 바꾸라고 짚는 `TypeError`예요.
 
 첫째 줄의 함수는 다른 계산을 짜는 부품이라 작은 입력으로 자주 불려요. 리스트를 몰래 배열로 바꾸면 그때마다 복사와 dtype 추론이 숨어서 일어나고, sd의 dtype은 numpy보다 적어서 어떤 dtype이 나오는지가 코드에 보여야 해요. 그래서 `sd.asarray`로 먼저 바꾸게 해요. 둘째 줄의 함수는 밖에서 가져온 자료를 처음 넣는 자리예요. 바꾸는 비용이 계산에 비해 작아서 그 자리에서 바꿔 줘요.
 
@@ -768,11 +768,11 @@ const char* name_of(const Func& func) {
 
 | 함수 | 꼴 | 예 |
 |---|---|---|
-| Python으로 쓴 무거운 입구: 모듈 수준 함수(`sd.stats`의 기술통계, `sd.regression`, `sd.optimize`, `sd.htest`, `sd.sparse`, `sd.integrate`, `sd.differentiate`, `sd.spatial`, `sd.graph`, `sd.fft`의 모든 함수, `sd.interpolate`의 함수 꼴, `sd.random.default_rng`, `sd.frame`의 `read_csv`·`merge`·`concat`), 생성자(frame의 `Series`·`DataFrame`·`Index`·`RangeIndex`, 분포, 희소 배열, `KDTree`, 보간 객체), 희소 배열·`LinearOperator`·`SparseLU`·`KDTree`의 메서드, frame의 `groupby` | `f(): ` 다음에 Python의 문장 | `minimize(): unexpected keyword argument 'foo'`, `Normal(): takes 0 positional arguments but 1 was given` |
-| 작은 메서드: frame의 메서드, `Generator`의 메서드, 분포의 메서드, 보간 객체의 메서드와 호출, `sd.plot`의 `Figure` 메서드 | Python의 기본 꼴 그대로 | `Series.head() got some positional-only arguments passed as keyword arguments: 'n'`, `sample() missing 1 required keyword-only argument: 'rng'` |
+| Python으로 쓴 무거운 입구: 모듈 수준 함수(`sd.stats`의 기술통계, `sd.regression`, `sd.optimize`, `sd.htest`, `sd.sparse`, `sd.integrate`, `sd.differentiate`, `sd.spatial`, `sd.graph`, `sd.fft`의 모든 함수, `sd.interpolate`의 함수 꼴, `sd.random.default_rng`, `sd.frame`의 `read_csv`·`merge`·`concat`), 생성자(frame의 `Series`·`DataFrame`·`Index`·`RangeIndex`, 분포, 희소 배열, `KDTree`, 보간 객체), 희소 배열·`LinearOperator`·`SparseLU`·`KDTree`·보간 객체의 메서드, 보간 객체의 호출, frame의 `groupby` | `f(): ` 다음에 Python의 문장 | `minimize(): unexpected keyword argument 'foo'`, `Normal(): takes 0 positional arguments but 1 was given` |
+| 작은 메서드: frame의 메서드, `Generator`의 메서드, 분포의 메서드, `sd.plot`의 `Figure` 메서드 | Python의 기본 꼴 그대로 | `Series.head() got some positional-only arguments passed as keyword arguments: 'n'`, `sample() missing 1 required keyword-only argument: 'rng'` |
 | C++ 바인딩으로 바로 묶은 함수: 배열의 함수와 메서드, `sd.linalg`, `sd.special` | nanobind의 메시지와 받을 수 있는 시그니처 | `solve(): incompatible function arguments. The following argument types are supported: 1. solve(a, b, /) ...` |
 
-무거운 입구는 Python이 낸 `TypeError`를 받아 앞부분 `f() got an`을 `f(): `로 바꿔 다시 던져요(`src/stardust/_calls.py`). `KDTree`의 메서드는 메서드 이름으로 시작해요(`query(): takes 1 positional argument but 2 were given`). `sd.plot`의 모듈 함수(`sd.plot.line` 등)는 이 장치를 쓰지 않고, 새 그림을 만들기 전에 인자를 시그니처에 맞춰 보고 그 문장 앞에 함수 이름을 붙여요(`line(): got an unexpected keyword argument 'foo'`). 값이 틀린 에러와 호출이 틀린 에러의 꼴이 같아야 메시지만 보고 어느 함수인지 알 수 있어요.
+무거운 입구는 Python이 낸 `TypeError`를 받아 앞부분 `f() got an`을 `f(): `로 바꿔 다시 던져요(`src/stardust/_calls.py`). `KDTree`와 보간 객체의 메서드는 메서드 이름으로 시작해요(`query(): takes 1 positional argument but 2 were given`). 보간 객체를 부르는 호출은 그 객체의 클래스 이름으로 시작해요(`CubicSpline(): unexpected keyword argument 'foo'`). `CubicSpline`이 `PPoly`의 `__call__`을 물려받아도 부른 객체의 이름이 나와요. `sd.plot`의 모듈 함수(`sd.plot.line` 등)는 이 장치를 쓰지 않고, 새 그림을 만들기 전에 인자를 시그니처에 맞춰 보고 그 문장 앞에 함수 이름을 붙여요(`line(): got an unexpected keyword argument 'foo'`). 값이 틀린 에러와 호출이 틀린 에러의 꼴이 같아야 메시지만 보고 어느 함수인지 알 수 있어요.
 
 ```python
 # src/stardust/_calls.py (발췌)
@@ -789,7 +789,7 @@ def _converted(e, head, name, self_counted):
 - 메서드와 생성자는 Python의 개수에 `self`가 들어 있어서, 하나를 빼고 적어요(`summary(): takes 0 positional arguments but 1 was given`).
 - 분포의 생성자는 키워드 전용 매개변수만 받아요. 같은 `__init__`를 여러 분포가 함께 써도 메시지에는 부른 클래스의 이름이 나와요(`Gamma(): missing 1 required keyword-only argument: 'a'`).
 
-작은 메서드를 감싸지 않는 것은 비용 때문이에요. 꼴을 바꾸는 감싸기는 호출마다 약 60ns를 더하는데, 이 메서드들은 한 번에 수백 ns로 끝나는 일이 많아요. C++ 바인딩의 메시지를 바꾸려면 모든 바인딩이 인자를 `*args, **kwargs`로 받아 직접 풀어야 하고, 그 비용도 호출마다 들어요. 호출 모양은 코드를 쓸 때 한 번 고치는 실수라서 이 둘은 기본 꼴을 남겨요. 그 대신 C++ 바인딩은 `nb::sig`로 문서의 시그니처를 붙여 두어서(위 "이름 없는 인자와 `kw_only`"), nanobind의 메시지에 인자 이름이 보여요. 인자의 **값**이 틀린 것은 어느 함수든 언제나 위의 형식이에요.
+작은 메서드를 감싸지 않는 것은 비용 때문이에요. 꼴을 바꾸는 감싸기는 호출마다 약 60ns를 더하는데, 이 메서드들은 한 번에 수백 ns로 끝나는 일이 많아요. 보간 객체의 메서드와 호출은 인자를 검사하고 배열을 만드느라 한 번에 µs 단위라서 감싸요. C++ 바인딩의 메시지를 바꾸려면 모든 바인딩이 인자를 `*args, **kwargs`로 받아 직접 풀어야 하고, 그 비용도 호출마다 들어요. 호출 모양은 코드를 쓸 때 한 번 고치는 실수라서 이 둘은 기본 꼴을 남겨요. 그 대신 C++ 바인딩은 `nb::sig`로 문서의 시그니처를 붙여 두어서(위 "이름 없는 인자와 `kw_only`"), nanobind의 메시지에 인자 이름이 보여요. 인자의 **값**이 틀린 것은 어느 함수든 언제나 위의 형식이에요.
 
 ### 에러 종류
 
@@ -874,7 +874,7 @@ private:
 |:---:|---|
 | array | float64 덧셈 2¹⁵개 분량(`kParallelThreshold`). 원소 하나가 무거운 함수는 그만큼 적은 원소부터, 배열 둘만 움직이는 원소별 연산(복사, `abs(x)`)은 1.5배 많은 원소부터, bool 배열은 바이트로 세어 262,144 원소부터 |
 | linalg | 호출 하나의 추정 계산 시간 10µs(`kParallelMinNs`) 이상. 행렬 하나여도 같아요 |
-| special, stats의 분포 함수 | 배열의 이터레이터를 거치므로 배열과 같아요 |
+| special, stats의 분포 함수 | 배열의 이터레이터를 거치므로 배열과 같아요. 이터레이터를 거치지 않는 Python 수 하나의 호출도 원소 하나의 일로 같은 판정을 해요(비용이 매개변수에 달린 이산 분포는 받은 매개변수의 비용으로) |
 | random | 배열과 같은 기준을 `for_pieces`로 적용해요(원소 4096개부터). `permutation`과 비복원 추출은 언제나 |
 | frame | 2¹⁷행(`frame/parallel.hpp`의 `Unlocked`) |
 | htest | 배열과 같은 기준을 배치의 줄에 적용해요(줄 수 × 줄 하나의 비용, `htest/lanes.hpp`). 재표본에서 사용자의 `statistic`을 부르는 동안은 Python 층이라 쥐어요 |

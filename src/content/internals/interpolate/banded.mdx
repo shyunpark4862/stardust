@@ -196,6 +196,17 @@ $\lVert D b_2\rVert_\infty \lt 1/2$이라 $\lVert s_2\rVert_\infty \lt 1$이고,
 
 not-a-knot처럼 보간 조건만 있는 배치 행렬 $A_{ij} = B_j(x_i)$는 **완전 비음**(totally nonnegative)이에요. 모든 정사각 소행렬식이 0 이상이라는 뜻이에요(Karlin; de Boor, *A Practical Guide to Splines*). 점과 매듭이 Schoenberg–Whitney 조건($t_i \lt x_i \lt t_{i+k+1}$, 끝은 등호 허용)을 지키면 정칙이기도 해요. 완전 비음인 정칙 행렬은 피벗 없는 소거의 $L$과 $U$가 모두 비음이에요. 피벗 $u_j$는 앞 $j + 1$행·열의 소행렬식의 비라 양수이고, 승수와 $U$의 원소도 소행렬식의 비라 0 이상이에요. 그래서 $\lvert L\rvert\lvert U\rvert = \lvert A\rvert$, 성장이 1이에요(de Boor와 Pinkus, "Backward error analysis for totally positive linear systems", 1977). 삼중대각의 3과 같은 셈으로 성분마다의 역오차가 나와요.
 
+이 증명은 매듭의 꼴에 기대지 않아요. 완전 비음은 어느 매듭의 B-스플라인에서나 서니까, 사용자가 매듭 `t`를 주어도 도함수 조건이 없으면 피벗 없이 풀어요. 그래서 기본 매듭을 `t`로 그대로 주면 `t` 없이 만든 스플라인과 계수가 비트까지 같아요.
+
+```python
+>>> xs = sd.asarray([0.0, 1.0, 2.5, 3.0, 4.5, 6.0])
+>>> ys = sd.asarray([0.0, 0.2, 0.3, 2.0, 2.1, 2.2])
+>>> own = I.make_interp_spline(xs, ys)
+>>> given = I.make_interp_spline(xs, ys, t=own.t)
+>>> bool(sd.all(given.c == own.c))
+True
+```
+
 ### 도함수 조건의 행을 두는 자리
 
 clamped, natural, 사용자가 준 `(차수, 값)`처럼 끝점에서 도함수를 정하는 행은 그 끝의 보간 행 **바로 안쪽**에 둬요. 왼쪽 끝은 차수가 오르는 순서, 오른쪽 끝은 차수가 내리는 순서예요.
@@ -253,11 +264,12 @@ $$
 
 ### 부분 피벗의 길
 
-그 밖의 계는 처음부터 부분 피벗으로 풀어요. 차수 집합이 $1, \dots, r$이 아닌 경우(k = 5의 $\{2, 3\}$, k = 4의 $\{2\}$), 그리고 사용자가 매듭 `t`를 준 경우예요. 앞의 증명은 `make_interp_spline`이 만드는 매듭(끝점 $k + 1$겹)에 기대는데, 주어진 매듭에서는 그 꼴을 보장할 수 없어요. 차수 $\{2, 3\}$을 피벗 없이 소거하면 성장이 첫 간격 $h$에 대해 $1/h^2$으로 자라요.
+그 밖의 계는 처음부터 부분 피벗으로 풀어요. 차수 집합이 $1, \dots, r$이 아닌 경우(k = 5의 $\{2, 3\}$, k = 4의 $\{2\}$), 그리고 사용자가 매듭 `t`와 함께 도함수 조건을 준 경우예요. 도함수 조건의 증명은 `make_interp_spline`이 만드는 매듭(끝점 $k + 1$겹)에 기대는데, 주어진 매듭에서는 그 꼴을 보장할 수 없어요. 차수 $\{2, 3\}$을 피벗 없이 소거하면 성장이 첫 간격 $h$에 대해 $1/h^2$으로 자라요.
 
 ```python
     # src/stardust/interpolate/_bspline.py
-    stable = t is None and all(_prefix_or_natural(sorted(p[0] for p in side), kk) for side in (left, right))
+    plain = not left and not right
+    stable = plain or (t is None and all(_prefix_or_natural(sorted(p[0] for p in side), kk) for side in (left, right)))
 ```
 
 ```python

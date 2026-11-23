@@ -249,7 +249,7 @@ True
 
 ### `correction`의 타입
 
-`correction`에는 int나 float만 써요. `True`/`False`, `None`, 문자열은 `TypeError`예요. 옵션은 모두 이름을 붙여서 줘야 해요.
+`correction`에는 int나 float만 써요. numpy의 정수와 실수 스칼라(`np.int64`, `np.float32` 등)도 받아요. `True`/`False`, `None`, 문자열은 `TypeError`예요. 옵션은 모두 이름을 붙여서 줘야 해요.
 
 ```python
 >>> score.var(correction=True)
@@ -260,6 +260,9 @@ TypeError: var(): 'correction' must be an int or a float, not bool
 Traceback (most recent call last):
     ...
 TypeError: var(): 'correction' must be an int or a float, not NoneType
+>>> import numpy as np
+>>> score.var(correction=np.float32(1)) == score.var(correction=1)
+True
 ```
 
 실수로 바꿀 수 없을 만큼 큰 정수는 `OverflowError`예요. 배열의 `sd.var`와 같은 메시지예요.

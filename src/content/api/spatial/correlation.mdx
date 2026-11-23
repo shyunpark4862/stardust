@@ -215,7 +215,7 @@ ValueError: correlation(): 'u' and 'v' must have the same length on their last a
 >>> sd.spatial.correlation([1.0, 2.0], [2.0, 1.0], w=[1.0, sd.nan])
 Traceback (most recent call last):
     ...
-ValueError: correlation(): 'w' must be finite and nonnegative
+ValueError: correlation(): 'w' must be finite and >= 0
 ```
 
 ## 정확도

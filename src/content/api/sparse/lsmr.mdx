@@ -45,9 +45,9 @@ returns:
   desc: "x(해, (n,)), converged, status(0–7), message, n_iter, normr(‖b − Ax‖), normar(‖Aᴴr‖), norma, conda, normx(‖x‖)의 어림. scipy의 여덟 값 튜플로 풀려요."
 raises:
   - type: TypeError
-    desc: A가 희소 배열·sd.ndarray·LinearOperator가 아닐 때, b나 x0이 sd.ndarray가 아닐 때, 허용오차·damp·conlim이 수가 아니거나 max_iter가 int가 아닐 때, 옵션을 위치로 주거나 없는 키워드(maxiter, show 등)를 줬을 때.
+    desc: A가 희소 배열·sd.ndarray·LinearOperator가 아닐 때, b나 x0이 sd.ndarray가 아닐 때, 허용오차·damp·conlim이 수가 아니거나 max_iter가 int가 아닐 때, 옵션을 위치로 주거나 없는 키워드(maxiter, show 등)를 줬을 때, LinearOperator의 함수가 배열로 바꿀 수 없는 것을 돌려줄 때.
   - type: ValueError
-    desc: A가 2차원이 아닐 때, b의 모양이 (m,)·(m, 1)이 아니거나 x0의 모양이 (n,)·(n, 1)이 아닐 때, A·b·x0에 NaN·inf가 있을 때, damp·atol·btol이 음수이거나 유한하지 않을 때, conlim이 음수이거나 NaN일 때, max_iter가 1보다 작을 때, rmatvec이 없는 LinearOperator를 줬을 때.
+    desc: A가 2차원이 아닐 때, b의 모양이 (m,)·(m, 1)이 아니거나 x0의 모양이 (n,)·(n, 1)이 아닐 때, A·b·x0에 NaN·inf가 있을 때, damp·atol·btol이 음수이거나 유한하지 않을 때, conlim이 음수이거나 NaN일 때, max_iter가 1보다 작을 때, rmatvec이 없는 LinearOperator를 줬을 때, LinearOperator의 함수가 크기가 다른 결과를 돌려줄 때.
 seeAlso: [iterative, lsqr, minres, linearoperator]
 ---
 import Callout from '../../../components/Callout.astro';

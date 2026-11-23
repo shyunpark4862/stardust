@@ -327,7 +327,7 @@ ValueError: integers(): 'high' must be positive
 >>> rng.integers(-1, endpoint=True)
 Traceback (most recent call last):
     ...
-ValueError: integers(): 'high' must be non-negative
+ValueError: integers(): 'high' must be >= 0
 ```
 
 배열 범위는 모든 원소에서 이 조건을 검사해요. 하나라도 어긋나면 전체가 에러예요.

@@ -258,7 +258,7 @@ array([0, 1], dtype=int64)
 >>> tree.query([0.5, 0.5], distance_upper_bound=-1)
 Traceback (most recent call last):
     ...
-ValueError: query(): 'distance_upper_bound' must be a nonnegative number or inf, not -1
+ValueError: query(): 'distance_upper_bound' must be a number >= 0 or inf, not -1
 ```
 
 ## `p`: 거리의 종류

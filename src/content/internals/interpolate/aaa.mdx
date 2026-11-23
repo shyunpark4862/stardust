@@ -576,7 +576,20 @@ inline void cmul(double a, double b, double c, double d, double& re, double& im)
             }
 ```
 
-점마다 $\lambda_j = w_j\cdot(1/(z - z_j))$를 만들며 분모를 더하고, 열마다 분자를 성분당 fma 둘로 더한 뒤 분모의 역수를 곱해요. 지지점 위의 점과 $\lambda_j$가 넘친 점은 가장 가까운 지지점의 값, 무한한 점은 극한 $\sum wf/\sum w$, NaN 점은 NaN이에요.
+점마다 $\lambda_j = w_j\cdot(1/(z - z_j))$를 만들며 분모를 더하고, 열마다 분자를 성분당 fma 둘로 더한 뒤 분모의 역수를 곱해요. 지지점 위의 점과 $\lambda_j$가 넘친 점은 가장 가까운 지지점의 값, 무한한 점은 극한 $\sum wf/\sum w$, NaN 점은 NaN이에요. 지지점이 하나면 실수 커널처럼 고리에 들어가기 전에 상수로 처리해요. 성분에 inf가 있는 점은 무한한 점으로 쳐서 그 값(극한)이고, 그 밖에 NaN 성분이 있으면 NaN, 나머지 점에서는 그 값을 그대로 복사해요.
+
+```cpp
+    // csrc/interpolate/polyint.cpp
+    if (m == 1) {  // one support point: a constant, its value as it is at every point but NaN (and as the limit)
+        for (std::int64_t q = 0; q < nq; ++q) {
+            double* row = o + q * 2 * K;
+            const double zr = Qz[2 * q], zi = Qz[2 * q + 1];
+            if (!std::isinf(zr) && !std::isinf(zi) && (zr != zr || zi != zi)) std::fill(row, row + 2 * K, kNaN);
+            else std::memcpy(row, F.p, sizeof(double) * 2 * K);
+        }
+        return wrap(std::move(out));
+    }
+```
 
 한계는 같은 꼴이고 상수만 커요. 차의 반올림이 $\lvert\hat z - z\rvert \le u\lvert z\rvert$, 역수가 $\gamma_5$, 곱이 $\sqrt 2\gamma_2$라 $\lvert\hat\lambda_j - \lambda_j\rvert \le \gamma_8\lvert\lambda_j\rvert$예요. 분자의 합은 성분마다 항당 fma 둘이라 $\sqrt 2\gamma_{2N} \le \gamma_{3N}$, 분모는 $\sqrt 2\gamma_{N-1} \le \gamma_{2N}$, 마지막의 역수와 곱이 $\gamma_7$이에요. 모아서 $\lvert r\rvert \le \lvert r\rvert\sum\lvert\lambda\rvert/\lvert\sum\lambda\rvert$로 $b$에 넣으면 $(a, b, c) = (3N + 16, 2N + 16, 2N + 8)$이에요.
 

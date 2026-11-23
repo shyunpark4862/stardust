@@ -130,7 +130,7 @@ ValueError: poisson_means_test(): 'n1' must be positive and finite
 >>> sd.htest.poisson_means_test(3, 10.0, 2, 12.0, diff=-1)
 Traceback (most recent call last):
     ...
-ValueError: poisson_means_test(): 'diff' must be non-negative and finite
+ValueError: poisson_means_test(): 'diff' must be a finite number >= 0
 ```
 
 p값은 근사 없이 모든 결과의 확률을 더해요. 더하는 걸음은 횟수의 제곱근에 비례해서 수천억 번의 횟수도 계산하지만, 2·10⁷걸음을 넘으면(횟수가 조 단위) `ValueError`예요. 걸음이 그보다 훨씬 많을 것이 분명하면 더하기 전에 바로 알려 줘요.

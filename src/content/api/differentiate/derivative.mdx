@@ -149,6 +149,31 @@ DifferentiateResult(df=862.319, error=5.70803e-07, converged=True, n_iter=2, nfe
 862.3188722876839
 ```
 
+수렴했다고 나와도 틀린 값일 수 있어요. 멈춤 판정은 이웃한 두 추정이 가까운지를 볼 뿐이라, 처음 간격이 함수가 변하는 척도에 맞지 않으면 두 추정이 우연히 같아 틀린 값에서 멈추기도 해요. $\sin(100x)$는 주기가 0.063쯤인데 처음 간격 0.5가 그 여덟 배라, 6차 공식이 둘째 반복에 −0.458로 수렴해요. 참값은 86.23이에요. 간격을 척도에 맞추면 맞는 값이에요.
+
+```python
+>>> wave = lambda x: sd.sin(100 * x)
+>>> sd.differentiate.derivative(wave, 1.0, order=6)
+DifferentiateResult(df=-0.457861, error=4.88578e-10, converged=True, n_iter=2, nfev=9)
+>>> sd.differentiate.derivative(wave, 1.0, order=6, initial_step=0.01)
+DifferentiateResult(df=86.2319, error=6.41548e-08, converged=True, n_iter=4, nfev=13)
+>>> 100 * math.cos(100)
+86.23188722876839
+```
+
+한쪽 공식(아래 `step_direction`)에서 값이 평평해지는 쪽으로 가는 경우도 그래요. $\arctan x$를 $x = 1000$에서 오른쪽으로만 미분하면 `error`가 0인 채 수렴하지만, 참 오차 $2.3 \times 10^{-11}$은 `atol + rtol·|df|`의 1,550배예요. 처음 간격을 $x$의 척도에 맞추면 허용오차 안이에요.
+
+```python
+>>> r = sd.differentiate.derivative(sd.atan, 1000.0, step_direction=1)
+>>> r, abs(r.df - 1 / (1 + 1000.0**2))
+(DifferentiateResult(df=1.00002e-06, error=0, converged=True, n_iter=8, nfev=23), 2.3166407598361707e-11)
+>>> r = sd.differentiate.derivative(sd.atan, 1000.0, step_direction=1, initial_step=100.0)
+>>> r, abs(r.df - 1 / (1 + 1000.0**2))
+(DifferentiateResult(df=9.99999e-07, error=2.27374e-15, converged=True, n_iter=2, nfev=11), 1.5775442306360365e-15)
+```
+
+결과가 중요하면 `initial_step`을 바꿔 한 번 더 구해 견줘 봐요.
+
 정의역의 끝 가까이에서도 간격을 줄여요. $\log x$를 $x = 10^{-3}$에서 미분하면 $x - 0.5$에서 값이 NaN이라 그 원소가 status −3으로 멈춰요.
 
 ```python
@@ -312,7 +337,7 @@ DifferentiateResult(df=-2.55332e-15, error=2.34275e-15, converged=True, n_iter=2
 
 ## 정확도
 
-Arb(구간 산술)로 만든 참값과 견주면, 초등 함수 11개($x^2$, $x^3$, $x^7$, $1/x$, $\sqrt x$, $\cos$, $\sin$, $e^x$, $\log$, $\arctan$, $\tanh$)를 0.01–100의 9점에서, 그리고 정의역 끝 가까이나 옵션(`order`, `step_factor`, `rtol`, 한쪽 공식)을 바꾼 17경우에서 미분했을 때 수렴한 111경우가 모두 `atol + rtol·|df|` 안이었고 최대 상대오차는 $6.2 \times 10^{-11}$이었어요. 수렴하지 못한 다섯은 위에서 본 $\log$의 $10^{-3}$(중앙과 오른쪽), $\sqrt x$의 $10^{-6}$, 2차 공식의 $e^x$, 간격이 반복마다 커지는 `step_factor=0.5`의 $e^x$(status −1)예요. 오차 추정이 참 오차보다 작은 것은 다섯 경우였어요. 엄밀한 상계가 필요하면 결과를 그대로 믿지 말고 다른 간격으로 한 번 더 확인해요.
+Arb(구간 산술)로 만든 참값과 견주면, 초등 함수 11개($x^2$, $x^3$, $x^7$, $1/x$, $\sqrt x$, $\cos$, $\sin$, $e^x$, $\log$, $\arctan$, $\tanh$)를 0.01–100의 9점에서, 그리고 정의역 끝 가까이나 옵션(`order`, `step_factor`, `rtol`, 한쪽 공식)을 바꾼 17경우에서 미분했을 때 수렴한 111경우가 모두 `atol + rtol·|df|` 안이었고 최대 상대오차는 $6.2 \times 10^{-11}$이었어요. 수렴하지 못한 다섯은 위에서 본 $\log$의 $10^{-3}$(중앙과 오른쪽), $\sqrt x$의 $10^{-6}$, 2차 공식의 $e^x$, 간격이 반복마다 커지는 `step_factor=0.5`의 $e^x$(status −1)예요. 오차 추정이 참 오차보다 작은 것은 다섯 경우였어요. 엄밀한 상계가 필요하면 결과를 그대로 믿지 말고 다른 간격으로 한 번 더 확인해요. 이 약속은 시험한 모음에서 잰 것이고, 처음 간격이 함수의 척도에 맞지 않는 점에서는 위의 [간격](#간격-initial_step과-step_factor)에서 본 것처럼 수렴한 값이 틀릴 수 있어요.
 
 ## scipy를 아는 분께
 
@@ -322,6 +347,6 @@ Arb(구간 산술)로 만든 참값과 견주면, 초등 함수 11개($x^2$, $x^
 - `tolerances` 대신 `atol`·`rtol`, `maxiter` 대신 `max_iter`예요. 결과는 `success` 대신 `converged`, `nit` 대신 `n_iter`예요.
 - `kwargs`, `preserve_shape`, `callback`이 없어요.
 - 첫 호출의 `x`는 $(k,)$ 1차원이에요. 다음부터는 scipy처럼 $(k, p)$예요.
-- 공식의 가중치는 정확한 값을 한 번 반올림한 것이고(scipy는 선형 방정식을 풀어 8차에서 상대 $2.7 \times 10^{-14}$까지 달라요), 중앙 공식은 양쪽 점의 차를 짝마다 더해요. 그래서 `df`는 끝자리가 다를 수 있고, 판정의 경계에서는 반복 수가 갈릴 수 있어요. $x^3$의 0은 여기서 둘째 반복에 수렴하고(`nfev` 11) scipy는 −2예요(`nfev` 27).
+- 공식의 가중치는 정확한 값을 한 번 반올림한 것이고(scipy는 선형 방정식을 풀어 8차에서 상대 $2.7 \times 10^{-14}$까지 달라요), 중앙 공식은 양쪽 점의 차를 짝마다 더해요. 그래서 `df`는 끝자리가 다를 수 있고, 판정의 경계에서는 반복 수가 갈릴 수 있어요. $x^3$의 0은 여기서 둘째 반복에 수렴하고(`nfev` 11) scipy는 −2예요(`nfev` 27). 거꾸로 $\sin x$의 $\pi/2$는 여기서 status −1(`n_iter` 6)이고 scipy는 둘째 반복에 수렴해요. 한쪽 공식의 $\arctan$ 1000처럼 여기서 수렴하고 scipy는 −2인 점도 있어요. 도함수가 0인 점에서 기본 `atol`이 절대 판정을 하지 않는 것은 scipy와 같아요.
 - `step_factor`가 1, 0, 무한대이면 `ValueError`예요. scipy는 1과 무한대에 `LinAlgError`, 0에는 모든 원소가 NaN이에요.
 - `step_direction`이 NaN인 원소는 status −3이에요. scipy도 결과는 같지만 다른 점을 불러요.

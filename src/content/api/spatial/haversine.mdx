@@ -18,7 +18,7 @@ params:
     desc: 둘째 점. u와 같은 꼴이고, 앞 축은 u와 브로드캐스트돼야 해요.
 returns:
   type: float 또는 ndarray
-  desc: 0 이상 π 이하의 중심각(라디안). 두 입력이 1차원이면 Python float, 아니면 배치 모양의 float64 배열이에요. NaN이 있으면 NaN이에요.
+  desc: 0 이상 π 이하의 중심각(라디안). 두 입력이 1차원이면 Python float, 아니면 배치 모양의 float64 배열이에요. NaN이나 inf가 있으면 NaN이에요.
 raises:
   - type: TypeError
     desc: u·v가 배열·수의 시퀀스·DataFrame이 아닐 때, 복소수일 때, w를 비롯한 키워드를 줬을 때.
@@ -274,6 +274,7 @@ array([              0.0, 325.1112588497627, 952.3277227599414, 866.450556117018
 | 경도만 $2\pi$ 다름 | 0(입력의 반올림만큼의 아주 작은 값일 수 있어요) |
 | 위도·경도가 범위 밖 | 에러 없이 공식대로 계산해요 |
 | NaN이 있음 | NaN |
+| inf가 있음 | NaN($\sin\infty$가 NaN) |
 
 ```python
 >>> sd.spatial.haversine([0.0, 0.0], [0.0, 2 * math.pi])

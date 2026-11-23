@@ -243,7 +243,7 @@ ValueError: cosine(): 'w' must have 4 entries (one per column), not 3
 
 ## NaN과 inf
 
-거리 함수와 거리 행렬은 유한하지 않은 값을 IEEE 규칙대로 흘려보내요. NaN이 섞인 짝은 NaN, inf − inf가 생기면 NaN이에요. 한쪽만 무한대인 짝은 합이나 최댓값으로 정의된 거리(`euclidean`, `sqeuclidean`, `cityblock`, `chebyshev`, `minkowski`)에서 inf이고, 비율로 정의된 거리(`canberra`, `braycurtis`, `cosine`, `correlation`)에서는 inf/inf가 생겨 NaN이에요. `chebyshev`와 `canberra`도 NaN을 건너뛰지 않고 퍼뜨려요. `hamming`과 `jaccard`는 NaN을 값 하나로 보고 세요(NaN끼리도 다른 값, NaN은 0이 아닌 값).
+거리 함수와 거리 행렬은 유한하지 않은 값을 IEEE 규칙대로 흘려보내요. NaN이 섞인 짝은 NaN, inf − inf가 생기면 NaN이에요. 한쪽만 무한대인 짝은 차의 합이나 최댓값으로 정의된 거리(`euclidean`, `sqeuclidean`, `cityblock`, `chebyshev`, `minkowski`, `seuclidean`)에서 inf예요. 비율로 정의된 거리(`canberra`, `braycurtis`, `cosine`, `correlation`)에서는 inf/inf가 생겨 NaN이고, `mahalanobis`는 이차식의 $0\cdot\infty$, `haversine`은 $\sin(\infty)$가 생겨 NaN이에요. `chebyshev`와 `canberra`도 NaN을 건너뛰지 않고 퍼뜨려요. `hamming`과 `jaccard`는 NaN과 inf를 값 하나로 보고 세요(`hamming`은 같은지 다른지만, `jaccard`는 0인지만 봐요. NaN끼리도 다른 값, NaN은 0이 아닌 값).
 
 이웃 찾기([`kneighbors`](/api/spatial/kneighbors/), [`radius_neighbors`](/api/spatial/radius_neighbors/), [`KDTree`](/api/spatial/KDTree/))는 데이터와 질의점이 모두 유한해야 해요. NaN이 있으면 "가장 가까운"이 정해지지 않으니 `ValueError`예요. 또 거리가 inf나 NaN인 짝(영벡터의 `cosine` 같은 것)은 `kneighbors`의 이웃으로 나오지 않아요.
 

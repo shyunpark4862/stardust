@@ -45,13 +45,18 @@ import Steps from '../../../components/fig/Steps.astro';
 
 층은 아래로만 기대요. `csrc/spatial/`은 배열, 스레드풀, Accelerate의 BLAS 래퍼, `base/`의 사인·코사인 위에 서고, 다른 영역의 C++ 코드는 `spatial/`을 몰라요. linalg의 합과 노름에도 기대지 않아요. 거리의 합은 이 영역이 정한 타일 순서라서([한 짝 커널](/internals/spatial/pair-kernel/)) 남의 합을 빌려 쓰면 그 순서가 깨지기 때문이에요.
 
-C++ 하위 모듈 `stardust._core.spatial`은 소스 파일마다 하나씩 있는 `bind_*`(`bind_distance`, `bind_kdtree`, `bind_neighbors`, `bind_query`, `bind_dual`, `bind_sphere`)를 차례로 불러 만들어요. 그래서 네이티브 이름은 모두 밑줄로 시작하는 내부 이름이고, 사용자는 Python 함수와 `KDTree` 클래스만 봐요.
+C++ 하위 모듈 `stardust._core.spatial`은 소스 파일마다 하나씩 있는 `bind_*`(`bind_distance`, `bind_kdtree`, `bind_neighbors`, `bind_query`, `bind_dual`, `bind_sphere`)를 차례로 불러 만들어요. 그래서 네이티브 이름은 모두 밑줄로 시작하는 내부 이름이고, 사용자는 Python 함수와 `KDTree` 클래스만 봐요. 아래는 거리와 전수 이웃 찾기(`distance.cpp`, `neighbors.cpp`)의 이름과, KD 트리와 구면 트리(`kdtree.cpp`, `query.cpp`, `dual.cpp`, `sphere.cpp`)의 이름이에요.
 
 ```python
 >>> import math
 >>> import stardust as sd
->>> sorted(n for n in dir(sd._core.spatial) if not n.startswith("__"))
-['_KDTree', '_ball_point', '_ball_tree', '_cdist', '_count', '_kneighbors', '_paired', '_pairs', '_pdist', '_radius_neighbors', '_sphere_kneighbors', '_sphere_radius', '_squareform_tomatrix', '_squareform_tovector']
+>>> names = [n for n in dir(sd._core.spatial) if not n.startswith("__")]
+>>> all(n.startswith("_") for n in names)
+True
+>>> sorted(n for n in names if n.startswith(("_pdist", "_cdist", "_paired", "_squareform", "_kneighbors", "_radius")))
+['_cdist', '_kneighbors', '_paired', '_pdist', '_radius_neighbors', '_squareform_tomatrix', '_squareform_tovector']
+>>> sorted(n for n in names if n.startswith(("_KDTree", "_ball", "_pairs", "_count", "_sphere")))
+['_KDTree', '_ball_point', '_ball_tree', '_count', '_pairs', '_sphere_kneighbors', '_sphere_radius']
 ```
 
 Python 층은 인자를 모두 검사하고 C++ 층은 넘겨받은 배치(dtype, 차원, 연속성)만 확인해요. 검사가 한곳(`_common.py`)에 모여 있어서 `kneighbors`와 `KDTree.query`가 `k`와 `distance_upper_bound`를 같은 함수, 같은 메시지로 검사해요. 공개 함수의 에러는 부른 함수의 이름으로 시작하고, C++ 쪽의 에러는 Python이 이미 막은 배치가 어긋났을 때만 나요.
@@ -60,10 +65,10 @@ Python 층은 인자를 모두 검사하고 C++ 층은 넘겨받은 배치(dtype
 |---|---:|---|
 | `metric.hpp` | 621 | 거리마다의 연산(Op), `tile`·`pair_scalar`, 신중한 경로, `minkowski`·`mahalanobis`·`haversine`의 짝 함수, 정규화와 비트 묶음 |
 | `distance.cpp` | 982 | `_pdist`, `_cdist`, `_paired`(배치 거리 함수), `squareform`, 블록마다의 `cdist`(`CdistBlocks`) |
-| `neighbors.cpp` | 798 | `_kneighbors`, `_radius_neighbors`, $(\hat d, j)$ 최대 힙, 나누기, GEMM 고르기 |
+| `neighbors.cpp` | 828 | `_kneighbors`, `_radius_neighbors`, $(\hat d, j)$ 최대 힙, 나누기, GEMM 고르기 |
 | `kdtree.hpp`, `kdtree.cpp` | 304, 549 | 트리의 꼴, 질의점과 점의 거리, 가지치기의 문턱과 kNN 찾기, 만들기 |
-| `query.cpp`, `dual.cpp` | 229, 648 | `_ball_point`, `_ball_tree`, `_pairs`, `_count` |
-| `sphere.cpp` | 468 | `_sphere_kneighbors`, `_sphere_radius` |
+| `query.cpp`, `dual.cpp` | 253, 648 | `_ball_point`, `_ball_tree`, `_pairs`, `_count` |
+| `sphere.cpp` | 469 | `_sphere_kneighbors`, `_sphere_radius` |
 
 ## 한 번의 호출이 지나는 길
 
@@ -140,7 +145,7 @@ C++는 많아야 $\min(\max k, m_B)$개만 찾아요. $k = 10^9$ 같은 호출�
 False
 ```
 
-반경 질의 셋(`radius_neighbors`, `query_ball_point`, `query_ball_tree`)은 `_radius.py`의 `RadiusResult`를 써요. 생성자는 CSR 꼴의 세 배열과 모양을 받아 검사도 복사도 하지 않고 쓰기 금지로만 만들어요. 꼴(행마다 색인 오름차순, `indptr`의 누적 개수)은 그것을 만든 네이티브 찾기가 보장하니까요. `tocsr()`는 부를 때마다 희소 배열 `sd.sparse.csr_array((distances, indices, indptr), shape=shape)`를 만들어요. 거리는 복사하지 않아서 그 `data`는 결과의 `distances`와 같은 쓰기 금지 배열이에요.
+반경 질의 셋(`radius_neighbors`, `query_ball_point`, `query_ball_tree`)은 `_radius.py`의 `RadiusResult`를 써요. 생성자는 CSR 꼴의 세 배열과 모양을 받아 검사도 복사도 하지 않고 쓰기 금지로만 만들어요. 꼴(행마다 색인 오름차순, `indptr`의 누적 개수)은 그것을 만든 네이티브 찾기가 보장하니까요. `tocsr()`는 부를 때마다 희소 배열 `sd.sparse.csr_array((distances.copy(), indices, indptr), shape=shape)`를 만들어요. 거리는 복사하므로 그 `data`는 쓸 수 있는 새 배열이라, 희소 배열의 제자리 연산(`A.data *= 2`)이 결과 객체의 거리를 건드리지 않아요. 색인 둘은 결과와 함께 써요.
 
 ```python
 >>> rr = sd.spatial.radius_neighbors(XA[:4], XB, 0.05)
@@ -155,7 +160,7 @@ RadiusResult(shape=(4, 5000), nnz=10)
 ## 다른 영역과 만나는 자리
 
 - **sparse.** `RadiusResult.tocsr()`와 `KDTree.sparse_distance_matrix`가 `sd.sparse.csr_array`를 만들어요. 이 의존은 Python 층에만 있어요. C++의 `spatial/`은 `sparse/`를 모르고, CSR의 세 배열을 직접 채운 뒤 Python이 그것을 희소 배열로 감싸요. 정수 인자 판별 하나(`is_int`)도 sparse의 Python 도우미를 빌려 써요.
-- **linalg와 배열.** `mahalanobis`의 기본 `VI`는 `sd.cov(X, rowvar=False, correction=1)`의 역행렬을 `sd.linalg.inv`로 구하고, `seuclidean`의 기본 `V`는 `sd.var(..., correction=1)`이에요. 공분산이 특이하면 `inv`의 `LinAlgError`를 받아 이 영역의 메시지로 바꿔 다시 던져요.
+- **linalg와 배열.** `mahalanobis`의 기본 `VI`는 `sd.cov(X, rowvar=False, correction=1)`의 역행렬을 `sd.linalg.inv`로 구하고, `seuclidean`의 기본 `V`는 `sd.var(..., correction=1)`이에요. 공분산이 특이하면 `inv`의 `LinAlgError`를 받아 이 영역의 메시지로 바꿔 다시 던져요. 기본 `V`는 값이 모두 같은 열이 있으면 `ValueError`예요. 그런 열의 `sd.var`는 평균의 반올림 때문에 0이 아닌 찌꺼기(0.1 세 개에서 $2.9 \times 10^{-34}$)일 수 있어서, 분산이 0인지만 보지 않고 `rows == rows[:1]`의 열마다 `all`로 열 자체를 한 번 봐요. NaN은 자기와 같지 않으니 상수 열로 보지 않고, 그 열의 분산이 NaN이라 거리로 퍼져요.
 - **linalg의 노름과는 비트가 다를 수 있어요.** 거리의 합은 linalg의 합을 쓰지 않으니 `euclidean(x, y)`와 `sd.linalg.vector_norm(x - y)`는 $n \ge 16$에서 끝자리가 갈릴 수 있어요. $n \lt 16$이면 두 순서가 같은 차례 합이라 언제나 같아요.
 
 ```python

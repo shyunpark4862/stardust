@@ -167,7 +167,7 @@ OddsRatioResult(statistic=4.91837)
 >>> sd.htest.odds_ratio([[3.5, 1], [2, 4]])
 Traceback (most recent call last):
     ...
-ValueError: odds_ratio(): 'table' must hold non-negative integer counts
+ValueError: odds_ratio(): 'table' must hold integer counts >= 0
 >>> sd.htest.odds_ratio(table, kind='cond')
 Traceback (most recent call last):
     ...

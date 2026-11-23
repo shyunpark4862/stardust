@@ -500,7 +500,11 @@ nb::object call_fast(std::span<const nb::handle> objs, nb::handle out) {
                 args[k] = reinterpret_cast<std::byte*>(&v[k]);
                 st[k] = sizeof(double);
             }
-            loop(args, 1, st, nullptr);
+            {
+                // (API.md §3, as nary_bind's call)
+                const parallel::Unlocked unlocked(nary_bind::scalar_unlocked<Op>(v));
+                loop(args, 1, st, nullptr);
+            }
             return nb::steal(PyFloat_FromDouble(v[Op::nin]));
         }
     }
@@ -508,7 +512,7 @@ nb::object call_fast(std::span<const nb::handle> objs, nb::handle out) {
 }
 ```
 
-고르는 루프는 디스패처가 같은 입력에 고를 루프(청크 커널이 있으면 `chunk_loop`)와 같아서 비트가 같아요. 입력이 int이거나 배열이거나 `out=`이 있으면 원래의 길로 가요. Python 층도 같은 생각으로 메서드를 만들어요([통계 영역의 구조](/internals/stats/overview/)).
+고르는 루프는 디스패처가 같은 입력에 고를 루프(청크 커널이 있으면 `chunk_loop`)와 같아서 비트가 같아요. 입력이 int이거나 배열이거나 `out=`이 있으면 원래의 길로 가요. GIL은 원소 하나짜리 배열과 같은 규칙으로 놓아요([special의 원소별 엔진](/internals/special/engine/)의 `scalar_unlocked`). 넓은 지지의 베타이항 `cdf`·`icdf` 계열, 초기하와 Zipf의 `icdf`·`iccdf`처럼 원소 하나가 무거운 호출은 GIL을 놓고, 같은 메서드라도 좁은 지지에서 기억해 둔 값으로 답하는 호출은 매개변수의 비용(`cost_for`)이 작아 GIL을 쥔 채 끝나요. Python 층도 같은 생각으로 메서드를 만들어요([통계 영역의 구조](/internals/stats/overview/)).
 
 에러 메시지의 앞머리도 같은 장치가 붙여요. 그래서 커널이 내는 메시지는 `gamma_cdf(): 'x' must be ...`이고, Python 층이 앞머리를 메서드 이름으로 바꿔 `cdf(): 'x' must be ...`로 다시 내요([통계 영역의 구조](/internals/stats/overview/)).
 

@@ -300,7 +300,7 @@ ValueError: tensordot(): 'axes' is larger than an array's number of dimensions
 >>> sd.tensordot(x, y, axes=-1)
 Traceback (most recent call last):
     ...
-ValueError: tensordot(): 'axes' must be non-negative
+ValueError: tensordot(): 'axes' must be >= 0
 ```
 
 정수도 축 목록의 쌍도 아니면 `TypeError`예요. `True`나 `None`도 받지 않아요.

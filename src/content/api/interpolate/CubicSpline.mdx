@@ -34,7 +34,7 @@ raises:
   - type: TypeError
     desc: "자료가 수의 배열이 아닐 때, x가 복소수일 때, bc_type이 문자열도 짝도 아닐 때, 조건의 차수가 int가 아닐 때, axis가 int가 아닐 때, extrapolate가 받는 타입이 아닐 때, 옵션을 자리로 줄 때."
   - type: ValueError
-    desc: "x가 1차원이 아니거나 점이 둘보다 적을 때, x가 유한하지 않거나 엄격히 증가하지 않을 때, y의 axis 축 길이가 x와 다를 때, y에 NaN이나 inf가 있을 때, bc_type이 없는 이름이거나 조건의 차수가 1이나 2가 아니거나 값의 모양이 틀렸을 때, 'periodic'인데 y의 첫 값과 끝 값이 다르거나 한쪽 끝에만 줬을 때, 기울기의 연립방정식이 부동소수점에서 특이할 때, 계수가 float64를 넘칠 때."
+    desc: "x가 1차원이 아니거나 점이 둘보다 적을 때, x가 유한하지 않거나 엄격히 증가하지 않을 때, y의 axis 축 길이가 x와 다를 때, y에 NaN이나 inf가 있을 때, bc_type이 없는 이름이거나 짝의 원소가 이름도 (차수, 값)도 아니거나 조건의 차수가 1이나 2가 아니거나 값의 모양이 틀렸을 때, 'periodic'인데 y의 첫 값과 끝 값이 다르거나 한쪽 끝에만 줬을 때, 기울기의 연립방정식이 부동소수점에서 특이할 때, 계수가 float64를 넘칠 때."
 seeAlso: [basics, PPoly, CubicHermiteSpline, PchipInterpolator, Akima1DInterpolator, make_interp_spline]
 ---
 import Callout from '../../../components/Callout.astro';
@@ -213,7 +213,7 @@ ValueError: CubicSpline(): bc_type='periodic' applies to both ends at once
 
 ### `(차수, 값)`: 끝의 도함수를 알 때
 
-차수는 1(기울기)이나 2(2차 도함수)이고, 값은 그 끝에서의 도함수예요. 이 꼴은 `(왼쪽, 오른쪽)` 짝 안에 넣어요. `(1, 0.0)` 하나만 주면 짝으로 읽어서 두 원소 `1`과 `0.0`이 조건이 아니라는 에러예요. `'clamped'`는 `(1, 0.0)`, `'natural'`은 `(2, 0.0)`과 같아요.
+차수는 1(기울기)이나 2(2차 도함수)이고, 값은 그 끝에서의 도함수예요. 이 꼴은 `(왼쪽, 오른쪽)` 짝 안에 넣어요. `(1, 0.0)` 하나만 주면 왼쪽 끝이 `1`, 오른쪽 끝이 `0.0`인 짝으로 읽어서, 왼쪽 끝 `1`이 조건이 아니라는 에러예요. `'clamped'`는 `(1, 0.0)`, `'natural'`은 `(2, 0.0)`과 같아요.
 
 ```python
 >>> a = sd.interpolate.CubicSpline(x, y, bc_type="clamped")
@@ -225,7 +225,7 @@ True
 >>> sd.interpolate.CubicSpline(x, y, bc_type=(1, 0.0))
 Traceback (most recent call last):
     ...
-ValueError: CubicSpline(): a boundary condition must be a name or an (order, value) pair
+ValueError: CubicSpline(): a pair 'bc_type' is read as (left end, right end), and each end must be a condition name or an (order, value) pair, not 1
 >>> sd.interpolate.CubicSpline(x, y, bc_type=((3, 0.0), "natural"))
 Traceback (most recent call last):
     ...

@@ -141,7 +141,7 @@ array([1, 2], dtype=int64)
 >>> sd.bincount(sd.asarray([1, -1]))
 Traceback (most recent call last):
     ...
-ValueError: bincount(): 'x' must be non-negative
+ValueError: bincount(): 'x' must be >= 0
 ```
 
 음수가 섞인 정수를 세려면 가장 작은 값을 빼서 0부터 시작하게 옮긴 다음 세거나, [`unique_counts`](/api/array/unique/)를 쓰세요.
@@ -208,7 +208,7 @@ TypeError: bincount(): 'weights' must be an sd.ndarray, not list
 >>> sd.bincount(dice, minlength=-1)
 Traceback (most recent call last):
     ...
-ValueError: bincount(): 'minlength' must be non-negative
+ValueError: bincount(): 'minlength' must be >= 0
 ```
 
 ## 비슷한 함수와의 차이

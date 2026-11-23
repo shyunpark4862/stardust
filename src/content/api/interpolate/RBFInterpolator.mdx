@@ -9,7 +9,7 @@ signatures:
 summary: 아무 데나 흩어진 점의 값(관측소의 기온, 시추공의 깊이)으로 매끄러운 곡면을 만들어요. 점마다 거리에 따라 줄어드는 함수(방사 기저 함수)를 놓고 다항식을 더해 모든 점을 지나게 해요. 핵의 종류, 모양 인자, 평활, 가까운 이웃만 쓰는 국소 보간을 골라요.
 params:
   - name: y
-    type: ndarray, 수의 시퀀스, numpy 배열
+    type: ndarray, 수의 시퀀스, numpy 배열, DataFrame
     kind: positional-only
     desc: "자료점. (n, m) 배열이고 행 하나가 m차원 점 하나예요. 1차원 자료도 (n, 1)로 줘요. 모든 좌표가 유한해야 하고 점이 1개 이상이어야 해요."
   - name: d
@@ -365,7 +365,7 @@ array([1.0], dtype=float64)
 >>> sd.interpolate.RBFInterpolator(pts, vals, smoothing=-1.0)
 Traceback (most recent call last):
     ...
-ValueError: RBFInterpolator(): 'smoothing' must be finite and 0 or more, not -1.0
+ValueError: RBFInterpolator(): 'smoothing' must be finite and >= 0, not -1.0
 >>> sd.interpolate.RBFInterpolator(pts, vals, smoothing=sd.ones(3))
 Traceback (most recent call last):
     ...

@@ -287,7 +287,7 @@ if (nrej) finish(nrej);
 커널을 부르기 전에 Python이 인자를 정리해요(`Generator.integers`).
 
 - `low`, `high`는 int(또는 numpy 정수)이면 int64 범위인지, 배열이면 dtype이 int64인지 봐요. 범위 밖이면 `OverflowError`, 그 밖은 `TypeError`예요.
-- `low < high`(`endpoint=True`면 `low <= high`)인지는 받은 그대로의 `low`, `high`로 검사해요. `integers(n)`처럼 인자가 하나뿐이면 사용자가 준 것은 `high`뿐이므로, 메시지도 그 인자를 `high`로 불러요(`integers(): 'high' must be positive`, `endpoint=True`면 `non-negative`). 결과 모양으로 브로드캐스트한 것으로 검사하면 원소 $10^6$개짜리 비교를 한 번 더 하게 돼요.
+- `low < high`(`endpoint=True`면 `low <= high`)인지는 받은 그대로의 `low`, `high`로 검사해요. `integers(n)`처럼 인자가 하나뿐이면 사용자가 준 것은 `high`뿐이므로, 메시지도 그 인자를 `high`로 불러요(`integers(): 'high' must be positive`, `endpoint=True`면 `>= 0`). 결과 모양으로 브로드캐스트한 것으로 검사하면 원소 $10^6$개짜리 비교를 한 번 더 하게 돼요.
 - `shape`가 없으면 `low`, `high`를 브로드캐스트한 모양이 결과 모양이에요. 둘 다 스칼라면 원소 하나를 계산해 Python `int`로 돌려줘요.
 
 ## permutation: Fisher–Yates
@@ -539,19 +539,19 @@ $n = 8$, $k = 3$의 예로 두 경로를 나란히 보면 이래요.
 
 - 해시 표 경로는 시간과 메모리가 $O(k)$라서 모집단 크기와 무관해요([성능과 검증](/internals/random/performance/)).
 - 배열 경로는 $O(n)$의 초기화와 $8n$바이트가 들지만 걸음마다 연속한 배열을 읽고 써요. 해시 표의 찾기·넣기는 배열 접근보다 비싸서, 표본이 모집단의 상당 부분이면 배열이 나아요. 둘을 가르는 기준이 $k \le n/16$이에요.
-- **메모리 검사는 작업 메모리까지 세요.** 결과만 보면 안 돼요. 섞기의 작업 메모리가 결과보다 클 수 있어요. 결과 $8k$바이트에 해시 표 경로는 원소당 64바이트(상한이에요. 표는 16바이트 칸 $2k$ 이상의 2의 거듭제곱 개라 실제로는 원소당 32–64바이트예요), 배열 경로는 $8n$바이트를 더해 물리 메모리와 비교해요(`_shuffle_bytes`). 배열 모집단이면 고른 원소($k$ × 원소 크기)도 더해요. 넘으면 위치를 예약하기 전에 `MemoryError`예요.
+- **메모리 검사는 작업 메모리까지 세요.** 결과만 보면 안 돼요. 섞기의 작업 메모리가 결과보다 클 수 있어요. 결과 $8k$바이트에 해시 표 경로는 $\max(64k, 256)$바이트(상한이에요. 표는 16바이트 칸 $\max(2k, 16)$ 이상의 2의 거듭제곱 개라, $k \ge 4$이면 원소당 32–64바이트이고 $k \le 3$이면 칸 16개, 256바이트예요), 배열 경로는 $8n$바이트를 더해 물리 메모리와 비교해요(`_shuffle_bytes`). 배열 모집단이면 고른 원소($k$ × 원소 크기)도 더해요. 넘으면 위치를 예약하기 전에 `MemoryError`예요.
 
 ```python
 # src/stardust/random/__init__.py
 def _shuffle_bytes(n, k):
     """The memory _k.fisher_yates(…, n, k) takes, by its path (csrc/random/random.cpp): the
-    result (8 k) and, for k < n, the shuffled entries -- a flat hash table of bit_ceil(2 k)
-    16-byte slots (below 64 bytes per entry; 64 k is the bound) for k <= n / 16, else an
-    array of n."""
+    result (8 k) and, for k < n, the shuffled entries -- a flat hash table of
+    bit_ceil(max(2 k, 16)) 16-byte slots (at most 64 bytes per entry from k = 4; 256 bytes for
+    a smaller k: max(64 k, 256) is the bound) for k <= n / 16, else an array of n."""
     if k == n:
         return 8 * k
     if k <= n // 16:
-        return 8 * k + 64 * k
+        return 8 * k + max(64 * k, 256)
     return 8 * k + 8 * n
 ```
 

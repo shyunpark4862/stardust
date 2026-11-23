@@ -41,9 +41,9 @@ returns:
   desc: 시각 인자가 모두 None이면 e^A B(B와 같은 모양). 하나라도 주면 linspace(start, stop, num, endpoint=endpoint)의 점 t마다 e^(tA) B를 쌓은 (num,) + B.shape 배열이에요. A, B, traceA 가운데 복소수가 있으면 complex128, 아니면 float64예요.
 raises:
   - type: TypeError
-    desc: A가 희소 배열·ndarray·LinearOperator가 아닐 때, B가 sd.ndarray가 아닐 때(희소 배열은 B.toarray()를 짚어요), start·stop이 실수가 아닐 때, num이 int가 아닐 때, endpoint가 bool이 아닐 때, traceA가 수가 아닐 때(bool 포함).
+    desc: A가 희소 배열·ndarray·LinearOperator가 아닐 때, B가 sd.ndarray가 아닐 때(희소 배열은 B.toarray()를 짚어요), start·stop이 실수가 아닐 때, num이 int가 아닐 때, endpoint가 bool이 아닐 때, traceA가 수가 아닐 때(bool 포함), LinearOperator의 함수가 배열로 바꿀 수 없는 것을 돌려줄 때.
   - type: ValueError
-    desc: A가 정사각이 아닐 때, B가 1·2차원이 아니거나 행의 수가 n이 아닐 때, A나 B에 NaN이나 inf가 있을 때, start와 stop 가운데 하나만 줬을 때, start·stop·traceA가 유한하지 않을 때, num이 2보다 작을 때.
+    desc: A가 정사각이 아닐 때, B가 1·2차원이 아니거나 행의 수가 n이 아닐 때, A나 B에 NaN이나 inf가 있을 때, start와 stop 가운데 하나만 줬을 때, start·stop·traceA가 유한하지 않을 때, num이 2보다 작을 때, LinearOperator의 함수가 크기가 다른 결과를 돌려줄 때.
 seeAlso: [expm, onenormest, linearoperator, eigsh, basics]
 ---
 import Callout from '../../../components/Callout.astro';

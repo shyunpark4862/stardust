@@ -220,7 +220,7 @@ TypeError: PPoly(): 'nu' must be an int, not float
 >>> pp(1.0, nu=-1)
 Traceback (most recent call last):
     ...
-ValueError: PPoly(): 'nu' must be 0 or more, not -1
+ValueError: PPoly(): 'nu' must be >= 0, not -1
 ```
 
 ### 경계에서는 오른쪽 조각
@@ -592,7 +592,7 @@ TypeError: PPoly(): takes 2 positional arguments but 3 were given
 >>> pp.derivative(2)
 Traceback (most recent call last):
     ...
-TypeError: PPoly.derivative() takes 1 positional argument but 2 were given
+TypeError: derivative(): takes 0 positional arguments but 1 was given
 ```
 
 ### `extend`만 객체를 고쳐요

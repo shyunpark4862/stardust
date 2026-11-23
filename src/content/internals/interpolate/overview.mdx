@@ -28,7 +28,7 @@ import Steps from '../../../components/fig/Steps.astro';
       { name: '_aaa.py', note: 'AAA, FloaterHormannInterpolator' },
       { name: '_grid.py', note: 'RegularGridInterpolator, interpn' },
       { name: '_rbf.py', note: 'RBFInterpolator, NearestNDInterpolator' },
-      { name: '_common.py', note: '입력 정리, 가로축 검사, extrapolate와 axis의 검사, 메시지' },
+      { name: '_common.py', note: '입력 정리, 가로축 검사, extrapolate와 axis의 검사, 메시지, 피클과 복사' },
     ] },
     { title: '커널 (C++)', note: 'csrc/interpolate/', items: [
       { name: 'search.hpp', note: '구간 번호, 바깥의 세 규칙, 주기로 감기' },
@@ -287,9 +287,9 @@ inline double wrap_periodic(double v, double x0, double x1) { return x0 + ops::R
 | `roots` | 조각 묶음 | 조각마다 독립이고 조각 순서로 모아요 |
 | B-스플라인 배치 행렬의 채우기, `from_spline` | 행 조각, 조각 묶음 | 행과 조각마다 독립이에요 |
 | 다항식·유리식의 평가와 무게 | 평가점 조각, 노드 조각 | 점과 노드 하나는 한 커널이에요 |
-| RBF의 전역 풀이, AAA의 SVD와 고유값 | Accelerate | Accelerate의 스레드 모드가 같으면 같아요 |
+| RBF의 전역 풀이, AAA의 SVD, AAA와 Floater–Hormann의 극점·영점·유수 | Accelerate | Accelerate의 스레드 모드가 같으면 같아요 |
 
-마지막 줄만 조건이 붙어요. LAPACK을 부르는 두 곳은 Accelerate 안에서 일이 나뉘니 이 영역이 순서를 정할 수 없어요. 한 변수 쪽에는 그런 곳이 없어요.
+마지막 줄만 조건이 붙어요. LAPACK을 부르는 곳은 Accelerate 안에서 일이 나뉘니 이 영역이 순서를 정할 수 없어요. 스플라인과 다항식 쪽에는 그런 곳이 없어요.
 
 나누기 시작하는 크기는 배열 영역의 규칙이에요. 작업량이 float64 연산 $2^{15}$개 분량 이상이면 태스크로 나누고, 그 크기부터는 스레드 수와 상관없이 GIL을 놓아요. 작업량은 함수마다 어림해요.
 
@@ -325,7 +325,7 @@ inline double wrap_periodic(double v, double x0, double x1) { return x0 + ops::R
 ## 다른 영역과 만나는 자리
 
 - **배열.** `sd.interp`와 이 영역의 선형 길이 `base/lerp.hpp`의 커널과 `base/interval.hpp`의 탐색을 함께 써요. 구간 찾기의 순서 규칙은 `searchsorted`와 같고, `integrate`의 합은 배열의 pairwise 합과 같은 트리(`base/pairwise.hpp`)예요.
-- **linalg.** 스플라인의 띠 연립방정식은 이 영역의 풀이라서 `sd.linalg.solve_banded`와 끝자리가 다를 수 있어요. 둘 다 틀린 것이 아니고 소거의 순서가 달라요. RBF와 AAA만 `linalg/lapack.hpp`의 래퍼로 LAPACK을 불러요.
+- **linalg.** 스플라인의 띠 연립방정식은 이 영역의 풀이라서 `sd.linalg.solve_banded`와 끝자리가 다를 수 있어요. 둘 다 틀린 것이 아니고 소거의 순서가 달라요. RBF, AAA, Floater–Hormann의 극점·영점·유수만 `linalg/lapack.hpp`의 래퍼로 LAPACK을 불러요.
 - **spatial.** `RBFInterpolator(neighbors=k)`와 `NearestNDInterpolator`가 `KDTree`의 이웃 찾기를 써요. 이웃의 동점이 (거리, 색인) 순서로 정해져 있어서 이웃 집합이 실행과 스레드 수와 무관해요.
 - **sparse.** `BSpline.design_matrix`가 `sd.sparse.csr_array`를 돌려줘요. 이 의존은 Python 층에만 있어요. C++는 CSR의 세 배열을 채우고 Python이 그것을 희소 배열로 감싸요.
 - **integrate.** `PPoly.integrate`는 조각 다항식의 정확한 역미분으로 계산하고 `sd.integrate.quad`를 부르지 않아요.

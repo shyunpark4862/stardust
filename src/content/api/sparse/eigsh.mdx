@@ -69,9 +69,9 @@ returns:
   desc: 고유값 eigenvalues(float64, (k,))와 고유벡터 eigenvectors((n, k), 열이 고유벡터; return_eigenvectors=False이면 None), 수렴 여부(converged, status, message), 셈(n_iter, n_converged, n_op)이 든 읽기 전용 결과 객체예요. w, v = eigsh(A)처럼 둘로 풀려요.
 raises:
   - type: TypeError
-    desc: A나 M, Minv, OPinv가 희소 배열·ndarray·LinearOperator가 아닐 때(리스트 등), which나 mode가 문자열이 아닐 때, k·ncv·max_iter가 int가 아닐 때, sigma가 실수가 아닐 때, return_eigenvectors가 bool이 아닐 때, rng가 Generator가 아닐 때.
+    desc: A나 M, Minv, OPinv가 희소 배열·ndarray·LinearOperator가 아닐 때(리스트 등), which나 mode가 문자열이 아닐 때, k·ncv·max_iter가 int가 아닐 때, sigma가 실수가 아닐 때, return_eigenvectors가 bool이 아닐 때, rng가 Generator가 아닐 때, LinearOperator의 함수가 배열로 바꿀 수 없는 것을 돌려줄 때.
   - type: ValueError
-    desc: A가 정사각이 아니거나 M 등의 모양이 다를 때, 저장된 값에 NaN이나 inf가 있을 때, k나 ncv가 범위 밖일 때, which나 mode가 받는 값이 아닐 때, v0의 모양이 틀렸거나 0 벡터일 때, sigma 없이 mode를 'normal' 밖으로 줬을 때, Minv·OPinv를 받지 않는 자리에 줬을 때, tol이 음수이거나 유한하지 않을 때, 복소 문제에 'BE'나 'normal' 밖의 mode를 줬을 때.
+    desc: A가 정사각이 아니거나 M 등의 모양이 다를 때, 저장된 값에 NaN이나 inf가 있을 때, k나 ncv가 범위 밖일 때, which나 mode가 받는 값이 아닐 때, v0의 모양이 틀렸거나 0 벡터일 때, sigma 없이 mode를 'normal' 밖으로 줬을 때, Minv·OPinv를 받지 않는 자리에 줬을 때, tol이 음수이거나 유한하지 않을 때, 복소 문제에 'BE'나 'normal' 밖의 mode를 줬을 때, LinearOperator의 함수가 크기가 다른 결과를 돌려줄 때.
   - type: LinAlgError
     desc: sigma가 정확히 고유값이라 A − sigma·M이 특이일 때.
 seeAlso: [eigs, svds, linearoperator, splu, expm_multiply, basics]
@@ -197,7 +197,7 @@ array([0.9643007502033492, 1.0180118380533556, 1.0726729360293454], dtype=float6
 
 `sigma`에서 본 크기로 고르므로 `which`도 그 뜻이 바뀌어요. 예를 들어 `which='LA'`는 $1/(\lambda - \sigma)$가 큰 것, 곧 $\sigma$ 바로 위의 고유값이에요.
 
-`sigma`가 정확히 고유값이면 $A - \sigma I$가 특이라서 풀 수 없어요. 그때는 `LinAlgError`예요. 고유값과 아주 조금만 다른 값을 주면 돼요.
+`sigma`가 정확히 고유값이면 $A - \sigma I$가 특이라서 풀 수 없어요. 그때는 `LinAlgError`예요. 고유값과 조금 다른 값을 주면 돼요.
 
 ```python
 >>> import math
@@ -206,6 +206,10 @@ Traceback (most recent call last):
     ...
 stardust.linalg.LinAlgError: eigsh(): singular matrix
 ```
+
+다만 너무 가까우면(고유값과의 차이가 $10^{-7}$ 이하) 그 고유값이 아닌, 함께 구한 다른 고유쌍이 덜 정확해질 수 있어요. 그 고유값의 $1/(\lambda - \sigma)$가 아주 커서, 반복이 다른 고유값의 수렴을 그 큰 값에 견줘 재기 때문이에요. 분해의 정확도와는 상관없으니 `sigma`를 조금 떼어 줘요.
+
+분해로 푼 해는 대개 그대로 정확해서 곱마다 풀이 하나로 끝나요. 피벗이 원소를 크게 키우는 행렬처럼 첫 곱의 풀이가 부정확하면, 그 호출의 모든 곱에서 해를 반복 개선으로 다듬어요([직접 풀이](/api/sparse/spsolve/)의 다듬기와 같아요). 곱마다 풀이가 더 들지만, 풀이의 오차가 고유쌍까지 번지지 않아요.
 
 ### `mode`: `sigma`를 쓰는 다른 방식
 

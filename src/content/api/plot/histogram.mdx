@@ -137,13 +137,13 @@ array([ 1,  4,  9, 33, 57, 44, 26, 16,  8,  2], dtype=int64)
 
 ```python
 >>> N = sd.stats.Normal(mu=170.0, sigma=8.0)
->>> fig = sd.plot.histogram(x, bins=15, density=True).ylim(0, None)
+>>> fig = sd.plot.histogram(x, bins=15, density=True)
 >>> fig = fig.distribution(N, label=r"$N(170,\ 8^2)$").xlabel("키 (cm)")
 ```
 
 <PlotImage name="histogram-density" alt="키 자료의 밀도 히스토그램 위에 평균 170, 표준편차 8인 정규분포의 밀도 곡선을 겹친 그림" caption="밀도로 그린 히스토그램과, 자료를 뽑은 정규분포의 밀도. 막대가 곡선을 따라 오르내려요." />
 
-[`fig.distribution`](/api/plot/distribution/)은 분포의 밀도를 같은 칸에 더해요. 세로 범위를 정하지 않은 칸에 밀도를 더하면 세로축이 그 밀도의 봉우리에 맞춰져요. 표본의 막대는 봉우리보다 높이 솟을 수 있으므로(여기서는 가장 높은 막대가 0.059, 밀도의 봉우리가 0.050이에요), 먼저 `ylim(0, None)`으로 아래만 0에 두고 위는 그려진 것 모두에 맞추게 했어요.
+[`fig.distribution`](/api/plot/distribution/)은 분포의 밀도를 같은 칸에 더해요. 표본의 막대는 밀도의 봉우리보다 높이 솟을 수 있어요(여기서는 가장 높은 막대가 0.059, 밀도의 봉우리가 0.050이에요). 세로축은 칸의 모든 층을 덮게 잡히므로 가장 높은 막대까지 보여요.
 
 막대의 넓이를 모두 더하면 1인지 `sd.histogram`으로 확인할 수 있어요.
 

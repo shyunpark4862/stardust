@@ -190,7 +190,7 @@ ValueError: proportion_confint(): 'count' must not exceed 'nobs'
 >>> sd.htest.proportion_confint(7.5, 20)
 Traceback (most recent call last):
     ...
-ValueError: proportion_confint(): 'count' must hold non-negative integer counts
+ValueError: proportion_confint(): 'count' must hold integer counts >= 0
 >>> sd.htest.proportion_confint(3, 2**53)
 Traceback (most recent call last):
     ...

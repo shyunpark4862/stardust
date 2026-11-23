@@ -76,6 +76,20 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
 밀도 그림의 세로 범위는 따로 정해요. 함수 그림의 분위수 규칙은 좁고 높은 봉우리를 "달아난 몇 점"으로 보고 자를 수 있는데, 밀도에서 볼 것은 바로 그 봉우리예요. 그래서 범위에 2001점을 놓아 밀도를 한 번 재고, 안쪽 점이 모두 유한하고 가장 큰 값이 범위의 끝이 아니라 안쪽(양 끝에서 10점 넘게 떨어진 곳)에 있으며 끝 값이 그 1.05배를 넘지 않으면 `ylim=(0, 1.05 × 봉우리)`를 `function`에 넘겨요. 밀도가 범위의 끝에서 달아나는 분포(모양 모수가 1보다 작은 감마 분포의 0)는 이 조건에 걸리지 않아 분위수 규칙이 잘라요.
 
 ```python
+    # src/stardust/plot/_stat.py, distribution
+    held = list(cell.ylim)
+    _function.function(self, f, a, b, ylim=ylim, color=color, label=label)
+    if ylim is not None:
+        # the curve asks for that range; the cell's own stays free, so that a taller layer of the
+        # cell (the histogram under the density, another density) is not cut
+        cell.ylim = held
+        cell.layers[-1].reach = ylim
+    return self
+```
+
+이 범위는 칸의 것이 아니라 곡선 층의 것이에요. `function`이 칸의 `ylim`에 적은 범위를 부르기 전의 값으로 되돌리고, 같은 범위를 곡선 층의 `reach`에 넣어요. 층의 `extent`가 세로 범위로 `reach`를 내므로, 밀도 혼자면 칸의 범위가 봉우리의 1.05배이고, 같은 칸에 더 높은 층(밀도로 그린 히스토그램, 다른 밀도)이 있으면 배치가 층들의 범위를 합칠 때 그 층까지 넓어져요. 밀도 곡선이 밑의 막대를 자르지 않아요.
+
+```python
 >>> _stat._integer_ticks(0.0, 40.0)
 [0.0, 10.0, 20.0, 30.0, 40.0]
 >>> narrow = sd.plot.distribution(sd.stats.Normal(mu=0.0, sigma=0.01), a=-1.0, b=1.0)
@@ -110,24 +124,26 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
     F = sd.reshape(sd.where(counts > 0.0, counts, math.nan), (ny, nx))
 ```
 
-짝마다 가로 칸 번호와 세로 칸 번호를 구해 하나의 번호 $j\,n_x + i$로 합치고, `bincount`가 번호마다의 개수를 세요. 상자의 위 끝과 오른쪽 끝에 놓인 값은 `clip`이 마지막 칸으로 넣어요. `sd.histogram`의 마지막 칸이 오른쪽 끝을 품는 것과 같은 약속이에요. `density=True`면 개수를 (전체 짝의 수 × 칸의 넓이)로 나눠 적분이 1인 밀도로 바꿔요. 빈 칸은 NaN으로 바꾸고, 색 입히기가 NaN을 투명으로 두므로 빈 칸은 바탕이 그대로 보여요. 그림은 [밀도 그림](/internals/plot/fields/)과 같은 `Picture` 층이고 화소 하나가 칸 하나예요. 화소 사이를 보간하지 않아 칸이 네모로 보여요.
+`range`를 주면 그 상자 밖의 짝을 빼요. 두 끝이 거꾸로이면(`x0 > x1`) `ValueError`이고, 너비가 0이면(`x0 == x1`) 양쪽으로 5%(0이면 0.5)씩 넓혀요.
+
+짝마다 가로 칸 번호와 세로 칸 번호를 구해 하나의 번호 $j\,n_x + i$로 합치고, `bincount`가 번호마다의 개수를 세요. 상자의 위 끝과 오른쪽 끝에 놓인 값은 `clip`이 마지막 칸으로 넣어요. `sd.histogram`의 마지막 칸이 오른쪽 끝을 품는 것과 같은 약속이에요. `density=True`면 개수를 (전체 짝의 수 × 칸의 넓이)로 나눠 적분이 1인 밀도로 바꿔요. 빈 칸은 NaN으로 바꾸고, 색 입히기가 NaN을 투명으로 두므로 빈 칸은 바탕이 그대로 보여요. 그림은 [밀도 그림](/internals/plot/fields/)의 `Picture`를 이어받은 `Counts` 층이고 화소 하나가 칸 하나예요. 화소 사이를 보간하지 않아 칸이 네모로 보여요. `Counts`는 색을 입힌 화소와 함께 개수 `F`와 가장 큰 개수 `most`를 지녀요. [`facet`](/internals/plot/layout/)의 칸들이 한 색 범위를 쓸 때 다른 칸의 더 큰 개수를 위 끝으로 다시 칠하려는 것이에요(`paint`). 로그 축에서는 `Picture`처럼 화소를 축을 따라 다시 짜서 그려요. 칸은 값을 같은 너비로 나눈 것이라 로그 축에서는 너비가 다르게 보여요.
 
 ### 육각 칸 나누기
 
 정육각형은 평면을 빈틈없이 덮는 정다각형 가운데 원에 가장 가까워요. 칸의 가운데에서 가장자리까지의 거리가 방향에 따라 덜 달라서, 정사각형 칸에서 보이는 가로세로 줄무늬가 덜해요. 문제는 점이 어느 육각형에 드는지를 찾는 일이에요. 정사각 격자는 나눗셈과 버림으로 끝나지만 육각 격자는 그렇지 않아요.
 
 ```python
-    # src/stardust/plot/_stat.py, hexbin
-    # the lattice in units where a plot of the default shape (4 : 3) shows the hexagons regular
-    W, H = 4.0, 3.0
-    u, v = (X - x0) / (x1 - x0) * W, (Y - y0) / (y1 - y0) * H
-    dx = W / n
-    dy = dx * math.sqrt(3.0)
-    ia, ja = sd.round(u / dx), sd.round(v / dy)  # two rectangular lattices; the nearer centre wins
-    ib, jb = sd.floor(u / dx), sd.floor(v / dy)
-    da = (u - ia * dx) ** 2 + (v - ja * dy) ** 2
-    db = (u - (ib + 0.5) * dx) ** 2 + (v - (jb + 0.5) * dy) ** 2
-    first = da <= db
+        # src/stardust/plot/_stat.py, Hexes.settle
+        # the lattice in units where a plot of the default shape (4 : 3) shows the hexagons regular
+        W, H = 4.0, 3.0
+        u, v = (U - a0) / (a1 - a0) * W, (V - b0) / (b1 - b0) * H
+        dx = W / n
+        dy = dx * math.sqrt(3.0)
+        ia, ja = sd.round(u / dx), sd.round(v / dy)  # two rectangular lattices; the nearer centre wins
+        ib, jb = sd.floor(u / dx), sd.floor(v / dy)
+        da = (u - ia * dx) ** 2 + (v - ja * dy) ** 2
+        db = (u - (ib + 0.5) * dx) ** 2 + (v - (jb + 0.5) * dy) ** 2
+        first = da <= db
 ```
 
 꼭짓점이 위를 향한 정육각형의 가운데들은 **직사각 격자 둘**로 나눠 적을 수 있어요. 가로 간격이 $d_x$이면 줄 사이의 세로 간격은 $\tfrac{\sqrt3}{2}d_x$이고, 한 줄 걸러 반 칸씩 엇갈려요. 짝수 줄만 모으면 간격이 $(d_x,\ \sqrt3\,d_x)$인 직사각 격자이고, 홀수 줄은 그것을 $(\tfrac12 d_x,\ \tfrac{\sqrt3}{2}d_x)$만큼 옮긴 같은 격자예요. 코드의 `dy`가 $\sqrt3\,d_x$예요.
@@ -138,9 +154,9 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
 
 육각 격자에서 정육각형은 가운데들의 보로노이 칸, 곧 "그 가운데가 가장 가까운 점들의 모임"이에요. 점에서 가장 가까운 가운데는 두 직사각 격자의 가장 가까운 가운데 둘 가운데 하나이므로, 이 견줌이 정확히 그 점이 든 육각형을 골라요. 육각형의 변을 따지는 식이 하나도 없고, 모든 점을 배열 연산 몇 번으로 한꺼번에 나눠요.
 
-격자는 자료 좌표가 아니라 4 × 3의 틀에서 잡아요. 상자를 가로 4, 세로 3으로 늘여 놓고 그 안에서 정육각형을 깐 뒤, 가운데와 반지름을 자료 좌표로 되돌려요. 그림의 높이를 주지 않으면 칸이 4:3이므로 화면에서 육각형이 정육각형으로 보여요. `size`가 가로에 놓이는 육각형의 수라서 $d_x = 4/\text{size}$예요.
+격자는 자료 좌표가 아니라 4 × 3의 틀에서 잡아요. 상자 $[a_0, a_1] \times [b_0, b_1]$을 가로 4, 세로 3으로 늘여 놓고 그 안에서 정육각형을 깐 뒤, 가운데와 반지름을 자료 좌표로 되돌려요. 선형 축에서 `U`, `V`는 값 그대로이고 상자는 짝의 상자예요. 그림의 높이를 주지 않으면 칸이 4:3이므로 화면에서 육각형이 정육각형으로 보여요. `size`가 가로에 놓이는 육각형의 수라서 $d_x = 4/\text{size}$예요.
 
-칸마다의 개수는 `hist2d`처럼 번호 하나로 합쳐 `bincount`로 세요(둘째 격자의 번호는 첫 격자의 번호 뒤에 이어 붙여요). 점이 든 칸만 `Hexes` 층에 넘기고, 층은 같은 색의 육각형을 경로 하나에 모아요. 육각형마다 같은 색의 0.25 pt 테두리를 둘러, 이웃한 육각형 사이에 안티에일리어싱이 만드는 실금이 보이지 않게 해요.
+칸마다의 개수는 `hist2d`처럼 번호 하나로 합쳐 `bincount`로 세요(둘째 격자의 번호는 첫 격자의 번호 뒤에 이어 붙여요). 점이 든 칸의 가운데와 개수만 남기고, 그릴 때 같은 색의 육각형을 경로 하나에 모아요. 육각형마다 같은 색의 0.25 pt 테두리를 둘러, 이웃한 육각형 사이에 안티에일리어싱이 만드는 실금이 보이지 않게 해요.
 
 ```python
 >>> rng2 = sd.random.default_rng(5)
@@ -149,7 +165,7 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
 >>> h2 = sd.plot.hist2d(u, w, bins=30)
 >>> pic = h2._cells[0].layers[0]
 >>> type(pic).__name__, pic.iw, pic.ih, h2._cells[0].colorbar
-('Picture', 30, 30, ('cool', 0.0, 64.0))
+('Counts', 30, 30, ('cool', 0.0, 64.0))
 >>> hx = sd.plot.hexbin(u, w, size=24)
 >>> hexes = hx._cells[0].layers[0]
 >>> len(hexes.cx), hx._cells[0].colorbar
@@ -158,6 +174,59 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
 ```
 
 <PlotImage name="in-stat-bins" alt="두 칸. 왼쪽 A는 오른쪽 위로 기운 점 구름을 정사각형 칸으로 센 그림, 오른쪽 B는 같은 자료를 육각형 칸으로 센 그림이에요. 둘 다 가운데가 빨갛고 가장자리로 갈수록 하늘색이며, 점이 없는 칸은 비어 있고 오른쪽에 색 막대가 있어요." caption="같은 4000개의 짝. A는 30 × 30의 사각 칸, B는 가로 24개의 육각 칸이에요. 빈 칸은 칠하지 않아요." />
+
+### 로그 축의 육각형
+
+값의 상자에 깐 육각형은 로그 축에서 찌그러져 보여요. 그래서 `Hexes` 층은 짝과 상자를 들고 있다가 그릴 축에 맞춰 다시 세요(`settle`). 축의 꼴은 그림을 다 지은 뒤에야 정해지므로(`xscale`을 `hexbin` 뒤에 불러도 돼요) 세는 때는 배치의 맨 앞이에요. 배치는 축의 범위를 재기 전에 그림의 모든 칸(두 번째 y축과 끼운 칸까지)에서 `settle`을 불러요([배치](/internals/plot/layout/)). 같은 축이면 다시 세지 않아요.
+
+```python
+        # src/stardust/plot/_stat.py, Hexes.settle
+        if xlog or ylog:
+            keep = ((X > 0.0) if xlog else sd.isfinite(X)) & ((Y > 0.0) if ylog else sd.isfinite(Y))
+            X, Y = X[keep], Y[keep]
+
+        def axis(V, lo, hi, log):
+            """The values along an axis as the lattice takes them, and their box."""
+            if not log:
+                return V, lo, hi
+            if not hi > 0.0:
+                return V, None, None
+            low = lo if lo > 0.0 else (float(sd.min(V)) if V.shape[0] else hi)
+            a, b = math.log10(low), math.log10(hi)
+            if not a < b:
+                a, b = a - 0.05, b + 0.05
+            return sd.log10(V), a, b
+```
+
+로그 축에서는 0 이하의 값이 든 짝을 세지 않고, 값의 $\log_{10}$으로 위의 격자를 짜요. 상자의 아래 끝이 0 이하이면 가장 작은 양수 값에서 시작해요. 축 좌표에서 정육각형이므로 화면에서도 정육각형이에요. 가운데는 $10^{c}$로 값에 되돌리고, 반지름 $r_x$, $r_y$는 자릿수(10의 거듭제곱 하나가 1)로 남겨요. 그릴 때 꼭짓점은 로그 축에서 가운데에 $10^{r u_k}$를 곱한 자리예요($u_k$는 꼭짓점 k의 방향 성분). 선형 축의 꼭짓점은 가운데에 $r u_k$를 더한 자리예요.
+
+```python
+        # src/stardust/plot/_stat.py, Hexes.draw
+        sx = [10.0 ** (ux * self.rx) for ux, _ in _CORNERS] if xlog else None
+        sy = [10.0 ** (uy * self.ry) for _, uy in _CORNERS] if ylog else None
+        for c, pts in groups.items():
+            ops, xy = [], array("d")
+            for x, y in pts:
+                ops.append("MLLLLLZ")
+                for k, (ux, uy) in enumerate(_CORNERS):
+                    px = x * sx[k] if xlog else x + ux * self.rx
+                    py = y * sy[k] if ylog else y + uy * self.ry
+                    xy.extend((fr.px(px), fr.py(py)))
+```
+
+로그 축의 범위는 가장 낮은 육각형의 아래 꼭짓점에서 시작해요(`extent`). 0 이하는 축에 놓을 수 없기 때문이에요.
+
+```python
+>>> lg = sd.plot.hexbin(10.0 ** u, 10.0 ** w, size=24).xscale("log").yscale("log")
+>>> _ = lg.scene()
+>>> lh = lg._cells[0].layers[0]
+>>> lh.scales, len(lh.cx), lg._cells[0].colorbar
+((True, True), 236, ('cool', 0.0, 99.0))
+```
+
+$10^u$와 $10^w$를 두 로그 축에 그리면 $u$와 $w$를 선형 축에 그린 것과 같은 236개의 육각형에 같은 위 끝 99예요. 로그 축에서는 값의 로그로 센다는 뜻이 이것이에요.
+
+`Counts`와 `Hexes`는 열쇠 `share`와 색 막대 `bar`를 가져요. 열쇠가 같은 층들은 한 색 범위를 쓰고, 배치가 그 층들의 가장 큰 개수를 위 끝으로 모두 다시 칠해요(`paint`). 칸이 그 층의 색 막대를 들고 있으면 막대의 위 끝도 함께 바뀌어요. 이 열쇠를 주는 것은 `facet`이에요([배치](/internals/plot/layout/)).
 
 ### 쌓은 막대
 
@@ -330,7 +399,9 @@ def _coef(v):
 ```python
 >>> _stat._coef(1.61), _stat._coef(1.2e-5), _stat._coef(1e6)
 ('1.61', '1.2\\times10^{-5}', '10^{6}')
-``` 배치가 자료와 범례가 가장 적게 덮은 모서리를 골라 그 글을 놓아요.
+```
+
+배치가 자료와 범례가 가장 적게 덮은 모서리를 골라 그 글을 놓아요.
 
 ```python
 >>> x = sd.linspace(0.0, 10.0, 30)
@@ -356,7 +427,22 @@ def _coef(v):
 | (1, 0) Scale–location | `scatter(fittedvalues, sqrt(abs(표준화 잔차)))` |
 | (1, 1) Residuals vs leverage | `scatter(leverage, 표준화 잔차)`와 0의 점선 |
 
-`pairs`는 `DataFrame`의 수 열(`float64`, `int64`) k개로 k × k 칸을 만들어요. `group=`이 열 이름이면 그 열은 빼요. 대각선은 그 열의 `histogram`, 나머지 (i, j) 칸은 열 j를 가로, 열 i를 세로로 한 `scatter`(점 크기 2)예요. 축 이름은 맨 아래 행과 맨 왼쪽 열에만 붙이고, 칸마다 범례를 끈 뒤 무리가 있으면 오른쪽 위 칸에만 범례를 두고, 그 자리는 배치가 그 칸의 빈 구석으로 골라요(없으면 칸 밖). 대각선의 히스토그램은 막대의 높이를 그 줄 변수의 범위에 맞춰 늘이고 범위의 아래 끝에 세워요. 대각선 칸의 세로축이 개수가 아니라 같은 줄의 다른 칸과 같은 변수의 눈금으로 읽혀요. 무리의 색은 칸마다 같은 순서로 팔레트에서 받으므로 모든 칸에서 같은 무리가 같은 색이에요.
+`pairs`는 `DataFrame`의 수 열(`float64`, `int64`) k개로 k × k 칸을 만들어요. `group=`이 열 이름이면 그 열은 빼요. 대각선은 그 열의 `histogram`, 나머지 (i, j) 칸은 열 j를 가로, 열 i를 세로로 한 `scatter`(점 크기 2)예요. 축 이름은 맨 아래 행과 맨 왼쪽 열에만 붙이고, 칸마다 범례를 끈 뒤 무리가 있으면 오른쪽 위 칸에만 범례를 두고, 그 자리는 배치가 그 칸의 빈 구석으로 골라요(없으면 칸 밖). 대각선의 히스토그램은 막대를 그 줄의 산점도와 같은 세로 범위에 맞춰요.
+
+```python
+                # src/stardust/plot/_stat.py, pairs
+                r = _layers.finite_range(cols[ci])
+                if r is not None and r[1] > r[0]:
+                    hists = [layer for layer in cell._cell.layers if isinstance(layer, Hist)]
+                    top = max((max(h.heights, default=0.0) for h in hists), default=0.0)
+                    if top > 0.0:
+                        d = (r[1] - r[0]) * _figure.THEMES[theme]["pad"]
+                        for h in hists:
+                            h.heights = [v * (r[1] - r[0] + d) / top for v in h.heights]
+                            h.base, h.ceiling = r[0] - d, r[1] + d
+```
+
+줄의 산점도는 세로 범위가 그 변수의 값 범위 $[a, b]$에 테마의 여백 $d = (b - a)\cdot\text{pad}$를 양쪽으로 더한 $[a - d,\ b + d]$예요. 막대는 그 아래 끝 $a - d$에 서고, 가장 높은 막대가 위 끝 $b + d$에 닿도록 높이를 늘여요. 층의 `ceiling`이 세로 범위의 위 끝을 그 값으로 알리고, 두 끝이 모두 넓히지 않는 값(sticky)이라 대각선 칸의 범위가 옆 칸과 같아요. 범위가 같으니 눈금도 같아서, 대각선 칸의 세로축이 개수가 아니라 같은 줄의 다른 칸과 같은 변수의 눈금으로 읽혀요. 무리의 색은 칸마다 같은 순서로 팔레트에서 받으므로 모든 칸에서 같은 무리가 같은 색이에요.
 
 ## 결정성
 
