@@ -16,6 +16,15 @@ and the family's inputs, and per method the reference hi + lo (a double-double):
     sphere     query ((latitude, longitude) in radians); method haversine: the distance to every data
                point of the set (tag sphere), in order
 
+The computational geometry's references (SPT187; "set" is a tests/spatial/geompoints.py id, judged by
+bench/accuracy/spatial.py with the contracts of docs/design/spatial_geometry.md §4):
+
+    geom_measure      x (the set); methods area and volume (ConvexHull's, scipy's meanings)
+    voronoi_vertices  x; method vertex: every Voronoi vertex (d values) in sd's numbering, field simplex: the
+                      row of its cell's smallest simplex (the first vertex is the contract's anchor)
+    barycentric       query (geompoints.queries); methods inverse (T^-1, d x d) and barycentric (d + 1) in
+                      the closed simplex holding the query, field simplex: its canonical row
+
 tests/spatial/data holds the other libraries' records (tools/spatial_probe.py: scipy.json,
 sklearn.json, r.json), each with its own "_provenance".
 
@@ -51,7 +60,8 @@ from .. import reffile
 
 REF = pathlib.Path(__file__).parent / "ref"
 DATA = pathlib.Path(__file__).parent / "data"
-FAMILIES = ("distances", "counting", "haversine", "neighbors", "sphere")
+GEOMETRY = ("geom_measure", "voronoi_vertices", "barycentric")  # SPT187
+FAMILIES = ("distances", "counting", "haversine", "neighbors", "sphere", *GEOMETRY)
 U = 2.0**-53
 TILE_BLOCK = 32  # the tile order's block of terms (csrc/spatial/metric.hpp, SPT26)
 C_POW = 2 * U / (1 - 2 * U)  # gamma_2: libm pow within one ULP (SPT0), and p = 3's (a a) a (SPT80)

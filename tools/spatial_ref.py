@@ -8,7 +8,7 @@ tests/spatial/points.py: exact rationals and Arb (python-flint).
 
 writes tests/spatial/ref/<family>.npz (layout: tests/reffile.py), read by tests/spatial/refdata.py.
 Every point names its point set (input "set", the id in tests/spatial/points.py, or "edge/<id>",
-"haversine/<id>" for the pair lists) and the inputs themselves; "digest" is points.digest of the
+"haversine/<id>" for the pair lists, or a geompoints id) and the inputs themselves; "digest" is points.digest of the
 point's inputs, so a changed generator shows. The inputs are doubles taken as exact rationals:
 every difference, sum and product of them is exact, and a reference is the true value of the
 distance of those inputs, rounded once (a double-double hi + lo).
@@ -34,6 +34,18 @@ distance of those inputs, rounded once (a double-double hi + lo).
     sphere     one point per query of a (latitude, longitude) set (tag sphere): the haversine distance
                from the query to every data point, in data order (method haversine), for the haversine
                neighbours of the KD tree on the unit sphere (§4 neighbours 3)
+
+    geom_measure      one point per set of tests/spatial/geompoints.py that the classes take (not the
+                      "large" ones; input x: the set): ConvexHull's area and volume (scipy's meanings; d = 2
+                      perimeter and enclosed area, d = 3 surface area and volume), from sd's hull checked
+                      exactly (exactgeom.check_hull); rationals, the square roots' sums in Arb
+    voronoi_vertices  the same sets up to 1000 rows: method vertex, every Voronoi vertex in sd's (canonical)
+                      numbering, d values each, the exact circumcentre of its cell's smallest simplex (field
+                      simplex: that row); the cells are checked to be the simplices of one circumcentre
+    barycentric       64 query points per set up to 1000 rows (geompoints.queries), those inside the hull:
+                      methods inverse (T^-1 of transform, d x d values in row order) and barycentric (d + 1
+                      values) for the smallest closed simplex holding the query (field simplex: its canonical
+                      row; find_simplex checked against the exact reference)
 
 Settling: an exact rational is exact; an Arb value is settled to 2^-110 relative (a value that is
 exactly 0 is recognised in rationals first). A point that does not settle within the precision
@@ -381,6 +393,141 @@ def sphere_task(p):
     return {"haversine": (np.array([h for h, _ in v]), np.array([lo for _, lo in v]))}
 
 
+# ---------------------------------------------------------------- computational geometry (SPT187)
+# The point sets of tests/spatial/geompoints.py that the classes take ("invalid" ones out), each one point of
+# the family (pair 0; inputs x: the set's points). The combinatorial structure comes from sd (exact and a
+# function of the point set: the canonical form) and is checked here exactly before it is used.
+
+GEOM_MAX = 1000  # the largest set (rows) of the voronoi_vertices and barycentric families
+
+
+def G():
+    from tests.spatial import geompoints
+
+    return geompoints
+
+
+def _geom_ids(limit=None):
+    M = G()
+    return [i for i in M.IDS if not {"invalid", "large"} & M.get(i).tags and (limit is None or M.get(i).m <= limit)]
+
+
+def geom_points(limit=None):
+    return [{"set": i, "pair": 0, "x": G().get(i).x} for i in _geom_ids(limit)]
+
+
+def _sd_array(x):
+    import stardust as sd
+
+    return sd.asarray(np.ascontiguousarray(x, dtype=np.float64))
+
+
+def geom_measure_task(p):
+    """ConvexHull's area and volume (scipy's meanings): d = 2 the perimeter (Arb: a sum of square roots) and
+    the enclosed area (rational); d = 3 the surface area (Arb) and the volume (rational). They are the hull's,
+    whatever triangulates its flat facets."""
+    import stardust as sd
+    from tests.spatial import exactgeom as X
+
+    x = p["x"]
+    h = sd.spatial.ConvexHull(_sd_array(x))
+    v, f = np.asarray(h.vertices).tolist(), np.asarray(h.simplices).tolist()
+    X.check_hull(x, v, f)
+    P = X.fpoints(x)
+    from flint import arb
+
+    if x.shape[1] == 2:
+        sq = [X.dist2(P[i], P[j]) for i, j in f]
+        area = settle(lambda: sum((arb_of(q).sqrt() for q in sq), arb(0)))
+        o = P[v[0]]
+        vol = sum((X.orient_value(o, P[v[k]], P[v[k + 1]]) for k in range(1, len(v) - 1)), Fraction(0)) / 2
+        return {"area": area, "volume": dd_of(vol)}
+    o = P[v[0]]
+    sq, vol = [], Fraction(0)
+    for a, b, c in f:
+        n = X._cross(X._sub(P[b], P[a]), X._sub(P[c], P[a]))
+        sq.append(X._dot(n, n))
+        vol += X.orient_value(o, P[a], P[b], P[c])
+    area = settle(lambda: sum((arb_of(q).sqrt() for q in sq), arb(0)) / 2)
+    return {"area": area, "volume": dd_of(vol / 6)}
+
+
+def voronoi_task(p):
+    """Every Voronoi vertex of sd's numbering (the canonical one: the order of each Delaunay cell's smallest
+    simplex), exactly: the circumcentre of that simplex (fields: its row, whose first vertex is the anchor a of
+    the contract u |v_k| + 4 u |v_k - a_k|). The cells are checked: the simplices of one vertex have one
+    circumcentre, those of different vertices different ones."""
+    import stardust as sd
+    from stardust import _core
+    from tests.spatial import exactgeom as X
+
+    x = p["x"]
+    a = _sd_array(x)
+    sv = np.asarray(_core.spatial._voronoi(a, -1, True)[8])
+    S = np.asarray(sd.spatial.Delaunay(a).simplices)
+    P = X.fpoints(x)
+    centre = [X.circumcenter(*(P[i] for i in row)) for row in S.tolist()]
+    first, seen = {}, {}
+    for t, v in enumerate(sv.tolist()):
+        first.setdefault(v, t)
+        assert seen.setdefault(centre[t], v) == v, ("two vertices with one centre", p["set"], t)
+        assert centre[t] == centre[first[v]], ("one vertex with two centres", p["set"], t)
+    nv = len(first)
+    assert sorted(first) == list(range(nv))
+    hi, lo = [], []
+    for v in range(nv):
+        for c in centre[first[v]]:
+            h, l = dd_of(c)
+            hi.append(h)
+            lo.append(l)
+    rows = np.array([S[first[v]] for v in range(nv)], dtype=np.int64).reshape(nv, x.shape[1] + 1)
+    return {"vertex": (np.array(hi), np.array(lo), {"simplex": rows})}
+
+
+def barycentric_points():
+    M = G()
+    pts = []
+    for sid in _geom_ids(GEOM_MAX):
+        for k, q in enumerate(M.queries(sid)):
+            pts.append({"set": sid, "pair": k, "query": q})
+    return pts
+
+
+def barycentric_task(p):
+    """A query point of the set (geompoints.queries) in its Delaunay simplex (the smallest closed simplex
+    holding it, sd's find_simplex, checked exactly; outside the hull: no value): the inverse T^-1 of
+    transform's T (columns: vertex k minus vertex d, in the canonical row's order) and the barycentric
+    coordinates in that order."""
+    import stardust as sd
+    from tests.spatial import exactgeom as X
+
+    x = G().get(p["set"]).x
+    D = sd.spatial.Delaunay(_sd_array(x))
+    S = np.asarray(D.simplices)
+    q = p["query"]
+    t = int(D.find_simplex(_sd_array(q[None, :]))[0])
+    P = X.fpoints(x)
+    want = X.find_simplex_reference(x, S.tolist(), q)
+    assert t == want, (p["set"], p["pair"], t, want)
+    d = x.shape[1]
+    if t < 0:
+        return {}
+    row = [int(i) for i in S[t]]
+    V = [P[i] for i in row]
+    r = V[d]
+    m = [[V[k][i] - r[i] for k in range(d)] for i in range(d)]  # m[i][k]: coordinate i of column k
+    det = X.det(m)
+    inv = [[X.det([[m[a][b] for b in range(d) if b != i] for a in range(d) if a != j]) * (-1) ** (i + j) / det
+            for j in range(d)] for i in range(d)]  # fmt: skip
+    xq = X.frac(q)
+    c = [sum((inv[i][j] * (xq[j] - r[j]) for j in range(d)), Fraction(0)) for i in range(d)]
+    lam = c + [1 - sum(c, Fraction(0))]
+    ih, il = zip(*(dd_of(v) for rr in inv for v in rr))
+    bh, bl = zip(*(dd_of(v) for v in lam))
+    fields = {"simplex": np.array(row, dtype=np.int64)}
+    return {"inverse": (np.array(ih), np.array(il), fields), "barycentric": (np.array(bh), np.array(bl), fields)}
+
+
 # ---------------------------------------------------------------- driver
 
 FAMILIES = {
@@ -389,6 +536,9 @@ FAMILIES = {
     "haversine": (haversine_points, haversine_task, ("u", "v")),
     "neighbors": (neighbor_points, neighbor_task, ("query",)),
     "sphere": (sphere_points, sphere_task, ("query",)),
+    "geom_measure": (geom_points, geom_measure_task, ("x",)),
+    "voronoi_vertices": (lambda: geom_points(GEOM_MAX), voronoi_task, ("x",)),
+    "barycentric": (barycentric_points, barycentric_task, ("query",)),
 }
 
 
@@ -434,6 +584,9 @@ def write_family(fam, plan, results, dropped):
         los = [results[k][m][1] for k in idx]
         methods[m] = {"over": "point", "index": np.array(idx, np.int64), "hi": his, "lo": los,
                       "dropped": np.array(sorted(dropped), np.int64)}  # fmt: skip
+        for k in idx:  # further fields (the geometry families' simplex rows)
+            for name, v in (results[k][m][2] if len(results[k][m]) > 2 else {}).items():
+                methods[m].setdefault(name, []).append(v)
     from tests import reffile
 
     reffile.write(

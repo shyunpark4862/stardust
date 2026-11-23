@@ -1,5 +1,5 @@
 """Voronoi of sd.spatial (docs/api/spatial_geometry.md §5, docs/design/spatial_geometry.md §2.5, §3.7; milestone
-SPT12, decisions SPT110, SPT111, SPT172-SPT189).
+SPT12, decisions SPT110, SPT111, SPT172-SPT183).
 
 A Python class holding the arrays of the native diagram (stardust._core.spatial._voronoi,
 csrc/spatial/voronoi.cpp), computed in the constructor from the exact Delaunay triangulation, which is not kept

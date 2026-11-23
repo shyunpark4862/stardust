@@ -10,13 +10,15 @@ against. Slow by design: points in the thousands, exhaustive references in the t
 - references: `delaunay_reference` (every (d + 1)-subset whose perturbed sphere is empty),
   `extreme_points`, `voronoi_ridge_exists`, `voronoi_reference`;
 - checkers of §4: `check_delaunay` (1), `check_perturbed` (2), `check_find_simplex` (4), `check_hull` (5),
-  `check_voronoi` (6).
+  `check_voronoi` (6); `check_delaunay3_large` (1 and 2 for thousands of 3-D points: a float filter whose open
+  rows go to the same exact predicates; numpy).
 """
 
 import itertools
 from fractions import Fraction
 
 import flint
+import numpy as np
 
 
 def frac(p):
@@ -529,3 +531,100 @@ def predicate_sign(name: str, row) -> int:
     """The exact sign of predicates.hpp's `name` ('orient2d', 'orient3d', 'incircle', 'insphere') on a row."""
     p = scaled_ints(row)
     return orient(*p) if name.startswith("orient") else sign(lifted(*p))
+
+
+# ---------------------------------------------------------------- a filtered exact checker for large 3-D sets
+
+
+def _det3(A):
+    """det and permanent of (k, 3, 3) float arrays, by the first row's cofactors."""
+    m0 = A[:, 1, 1] * A[:, 2, 2] - A[:, 1, 2] * A[:, 2, 1]
+    m1 = A[:, 1, 0] * A[:, 2, 2] - A[:, 1, 2] * A[:, 2, 0]
+    m2 = A[:, 1, 0] * A[:, 2, 1] - A[:, 1, 1] * A[:, 2, 0]
+    B = np.abs(A)
+    p0 = B[:, 1, 1] * B[:, 2, 2] + B[:, 1, 2] * B[:, 2, 1]
+    p1 = B[:, 1, 0] * B[:, 2, 2] + B[:, 1, 2] * B[:, 2, 0]
+    p2 = B[:, 1, 0] * B[:, 2, 1] + B[:, 1, 1] * B[:, 2, 0]
+    return A[:, 0, 0] * m0 - A[:, 0, 1] * m1 + A[:, 0, 2] * m2, B[:, 0, 0] * p0 + B[:, 0, 1] * p1 + B[:, 0, 2] * p2
+
+
+def _orient_signs(x, pts, R):
+    """The exact orient3d signs of the rows R (k, 4) of point indices: float with a bound far above its rounding
+    (1e-12 of the permanent; the true one is below 10u), Fractions for the rows it leaves open."""
+    val, perm = _det3(x[R[:, 1:]] - x[R[:, :1]])
+    out = np.where(val > 1e-12 * perm, 1, np.where(val < -1e-12 * perm, -1, 0))
+    for r in np.nonzero(np.abs(val) <= 1e-12 * perm)[0]:
+        out[r] = orient(*(pts[int(i)] for i in R[r]))
+    return out
+
+
+def _insphere_open(x, S, E):
+    """Float in_sphere of the simplices S (k, 4) against the points E (k,): +1 / -1 where certain (1e-10 of the
+    permanent), 0 where open. in_sphere = -det[q_i, |q_i|^2] with q_i = p_i - e (exactgeom's sign for d = 3)."""
+    Q = x[S] - x[E][:, None, :]
+    L = (Q * Q).sum(axis=2)
+    val = np.zeros(len(S))
+    perm = np.zeros(len(S))
+    for i in range(4):
+        rows = [j for j in range(4) if j != i]
+        m, p = _det3(Q[:, rows, :])
+        val += (-1) ** (i + 3) * L[:, i] * m
+        perm += L[:, i] * p
+    val = -val
+    return np.where(val > 1e-10 * perm, 1, np.where(val < -1e-10 * perm, -1, 0))
+
+
+def _facets_at(S, t, k):
+    """The facets (len(t), 3) of the simplices t opposite their positions k, in position order."""
+    return S[t][np.arange(4)[None, :] != np.asarray(k)[:, None]].reshape(-1, 3)
+
+
+def check_delaunay3_large(x, S, NB, perturbed=True):
+    """§4 items 1 and 2 for d = 3 without O(t^2) work: the vertices are the distinct points' representatives;
+    every simplex is positive; neighbours match the facets (each facet in one or two simplices); across every
+    inner facet the opposite vertices lie on opposite sides and each is strictly outside the other's perturbed
+    sphere (locally Delaunay); every boundary vertex is on the inner side of every boundary facet. With
+    positive simplices and opposite sides the covering degree is the same on both sides of every inner facet,
+    and the boundary facets lie on the hull (the extreme points are boundary vertices), so the simplices tile
+    the hull once; locally Delaunay then gives the empty spheres. perturbed=False leaves out the tie rule (§4
+    item 1 alone: another library's triangulation). The float filter assumes no overflow or underflow in the
+    determinants (the extreme-range sets go to check_delaunay)."""
+    pts = fpoints(x)
+    rep = representatives(pts)
+    assert sorted(set(S.ravel().tolist())) == sorted(set(rep)), "the vertices are not the distinct points"
+    t = len(S)
+    assert (_orient_signs(x, pts, S) > 0).all(), "a simplex is not positive"
+    tt, kk = np.nonzero(NB >= 0)
+    other = NB[tt, kk]
+    back = NB[other] == tt[:, None]
+    assert (back.sum(axis=1) == 1).all(), "neighbours are not symmetric"
+    kb = np.argmax(back, axis=1)
+    assert (np.sort(_facets_at(S, tt, kk), axis=1) == np.sort(_facets_at(S, other, kb), axis=1)).all(), "shared facet"
+    allt = np.repeat(np.arange(t), 4)
+    keys = np.sort(_facets_at(S, allt, np.tile(np.arange(4), t)), axis=1)
+    _, counts = np.unique(keys, axis=0, return_counts=True)
+    assert counts.max() <= 2, "a facet in more than two simplices"
+    assert (counts == 2).sum() == len(tt) // 2, "a shared facet without neighbours"
+    # Opposite sides: simplex t with vertex k replaced by the other simplex's opposite vertex is negative.
+    opp = S[other, kb]
+    R = S[tt].copy()
+    R[np.arange(len(tt)), kk] = opp
+    assert (_orient_signs(x, pts, R) < 0).all(), "two neighbours on the same side of their facet"
+    # Locally Delaunay with the tie rule: certain negatives pass; open rows go to the exact predicates.
+    s = _insphere_open(x, S[tt], opp)
+    assert (s <= 0).all(), "a neighbour's vertex strictly inside a sphere"
+    ranks = lex_ranks(pts)
+    for r in np.nonzero(s == 0)[0]:
+        sp = [int(i) for i in S[tt[r]]]
+        q = int(opp[r])
+        assert in_sphere(*(pts[i] for i in sp), pts[q]) <= 0, "a neighbour's vertex strictly inside a sphere"
+        if perturbed:
+            assert in_sphere_eps(*(pts[i] for i in sp), pts[q], ranks=[ranks[i] for i in sp] + [ranks[q]]) < 0
+    # Boundary facets against the boundary vertices.
+    bt, bk = np.nonzero(NB < 0)
+    verts = np.unique(_facets_at(S, bt, bk))
+    for c in range(0, len(bt), max(1, 200_000 // len(verts))):
+        a, k = bt[c : c + 200_000 // len(verts) + 1], bk[c : c + 200_000 // len(verts) + 1]
+        R = np.repeat(S[a], len(verts), axis=0)
+        R[np.arange(len(R)), np.repeat(k, len(verts))] = np.tile(verts, len(a))
+        assert (_orient_signs(x, pts, R) >= 0).all(), "a point outside a boundary facet"

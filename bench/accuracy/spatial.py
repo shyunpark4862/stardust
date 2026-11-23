@@ -50,6 +50,32 @@ The haversine tree path (SPT83) adds
              sd.spatial.kneighbors(metric='haversine') (the KD tree on the unit sphere), one region per set,
              judged as `neighbors` on general data with eta = 20u (the haversine contract). Comparator:
              scikit-learn's BallTree(metric='haversine').query.
+
+The computational geometry (docs/design/spatial_geometry.md §4, §7.5; SPT13, decision SPT187) adds four, on the
+point sets of tests/spatial/geompoints.py the classes take, with the references of geom_measure.npz,
+voronoi_vertices.npz and barycentric.npz:
+
+  geom_measure      ConvexHull's area and volume (d = 2 perimeter and enclosed area, d = 3 surface area and
+                    volume), one region per measure and d, one point per set. The contract: relative error
+                    gamma_(s+4) (perimeter), gamma_(s+2) (area), gamma_(s+6) (surface), gamma_(s+3) (volume), s the
+                    additions of the 4,096-term partial sums over sd's own terms, 2^-1074 per term near the
+                    subnormals; an overflowing measure is inf. Comparator: scipy's ConvexHull (Qhull).
+  voronoi_vertices  Voronoi's vertices, one region per set, one point per vertex coordinate: |v^_k - v_k| <=
+                    u |v_k| + 4 u |v_k - a_k| (a the first vertex of the cell's smallest simplex) + 2^-1073.
+                    Comparator: scipy's Voronoi, each of its vertices against the nearest reference vertex (ulp
+                    only: its numbering is Qhull's).
+  barycentric       Delaunay.transform at the query points of geompoints.queries, one region per set: the
+                    contract is transform's (every entry of T^-1 within 4u of the exact one, relative; an entry
+                    that overflows or underflows to 0 is out of the contract and counted in excluded); ulp: those
+                    entries; abs: the barycentric coordinates T^-1 (x - r), 1 - their sum computed the way scipy's
+                    documentation shows. Comparator: scipy's Delaunay, the coordinates only (its simplex must
+                    hold the same vertices, else the query is excluded).
+  delaunay_exact    §4 item 1 (every simplex positive, the simplices tile the hull, every distinct point a
+                    vertex, empty spheres) checked exactly per set: contract 0 when it holds, inf when not (the
+                    worst names the set). By exactgeom.check_delaunay (d = 2, and d = 3 up to 250 rows: the
+                    tests' split), else check_delaunay3_large.
+                    Comparator: scipy's Delaunay (its simplices turned positive and its equal points read as their
+                    representative; a flat simplex is a failure).
 """
 
 from __future__ import annotations
@@ -387,6 +413,287 @@ def _sphere_regions(lib):
     return out
 
 
+# ---------------------------------------------------------------- computational geometry (SPT187)
+
+_U = 2.0**-53
+_TINY = 2.0**-1074
+
+
+def _gamma(k):
+    return k * _U / (1 - k * _U)
+
+
+def _sum_depth(n):
+    """The most additions a term passes in the sum of 4,096-term partial sums (§4's s)."""
+    return min(n, 4096) + -(-n // 4096) - 2
+
+
+def _sd_points(x):
+    import stardust as sd
+
+    return sd.asarray(np.ascontiguousarray(x, dtype=np.float64))
+
+
+def _exact_err(got, hi, lo):
+    """|got - (hi + lo)| in Fractions (inf when got is not finite and the reference is, 0 when both are the same inf)."""
+    from fractions import Fraction
+
+    if not np.isfinite(got) or not np.isfinite(hi):
+        return 0.0 if got == hi else np.inf
+    return abs(Fraction(float(got)) - Fraction(float(hi)) - Fraction(float(lo)))
+
+
+def _geom_measure_regions(lib):
+    from fractions import Fraction
+
+    from tests.spatial import refdata
+
+    r = refdata.ref("geom_measure")
+    names = {(2, "area"): "perimeter", (2, "volume"): "area", (3, "area"): "surface", (3, "volume"): "volume"}
+    rows = {}
+    for k in range(r.points):
+        sid, x = str(r.inputs["set"][k]), r.inputs["x"][k]
+        d = x.shape[1]
+        if lib == "sd":
+            import stardust as sd
+
+            h = sd.spatial.ConvexHull(_sd_points(x))
+            got = {"area": h.area, "volume": h.volume}
+            nf, nv = h.nsimplex, int(np.asarray(h.vertices).size)
+        elif lib == "scipy":
+            from scipy.spatial import ConvexHull
+
+            try:
+                h = ConvexHull(x)
+                got = {"area": float(h.area), "volume": float(h.volume)}
+            except Exception:  # Qhull refuses the set: left out
+                got = {"area": np.nan, "volume": np.nan}
+            nf = nv = 0
+        else:
+            return None
+        for m in ("area", "volume"):
+            j = int(np.nonzero(r.methods[m].index == k)[0][0])
+            hi, lo = float(r.methods[m].hi[j]), float(r.methods[m].lo[j])
+            g = float(got[m])
+            e = rows.setdefault(names[(d, m)], {"where": [], "ulp": [], "rel": [], "units": [], "excl": 0})
+            if not np.isfinite(g) and np.isfinite(hi):
+                e["excl"] += lib != "sd"
+                if lib != "sd":
+                    continue
+            err = _exact_err(g, hi, lo)
+            ref = Fraction(hi) + Fraction(lo) if np.isfinite(hi) else None
+            e["where"].append(sid)
+            e["ulp"].append(float(ulps(g, hi)))
+            e["rel"].append(float(err / abs(ref)) if ref else (0.0 if err == 0 else np.inf))
+            if lib == "sd":
+                terms = {("area", 2): nf, ("volume", 2): nv - 2, ("area", 3): nf, ("volume", 3): nf}[(m, d)]
+                extra = {("area", 2): 4, ("volume", 2): 2, ("area", 3): 6, ("volume", 3): 3}[(m, d)]
+                if ref is None:
+                    e["units"].append(0.0 if err == 0 else np.inf)
+                else:
+                    bound = Fraction(_gamma(_sum_depth(terms) + extra)) * abs(ref) + terms * Fraction(_TINY)
+                    e["units"].append(float(err / bound) if bound else (0.0 if err == 0 else np.inf))
+    out = {}
+    for name, e in rows.items():
+        c = np.array(e["units"]) if lib == "sd" else None
+        out[name] = region(e["where"], ulp=np.array(e["ulp"]), rel=np.array(e["rel"]), contract=c,
+                           bound=1.0 if lib == "sd" else None, excluded=None if lib == "sd" else e["excl"])  # fmt: skip
+    return out
+
+
+def _voronoi_regions(lib):
+    from fractions import Fraction
+
+    from tests.spatial import refdata
+
+    r = refdata.ref("voronoi_vertices")
+    m = r.methods["vertex"]
+    out = {}
+    for j, k in enumerate(m.index):
+        sid, x = str(r.inputs["set"][k]), r.inputs["x"][k]
+        d = x.shape[1]
+        hi, lo = np.asarray(m.hi[j]).reshape(-1, d), np.asarray(m.lo[j]).reshape(-1, d)
+        rows = np.asarray(m.fields["simplex"][j]).reshape(-1, d + 1)
+        where, ul, units = [], [], []
+        excluded = 0
+        if lib == "sd":
+            import stardust as sd
+
+            V = np.asarray(sd.spatial.Voronoi(_sd_points(x)).vertices)
+            if V.shape != hi.shape:  # a different number of vertices: the numbering broke
+                out[sid] = region([f"{sid}#count"], ulp=np.array([np.inf]), contract=np.array([np.inf]), bound=1.0)
+                continue
+            for v in range(len(V)):
+                a = x[rows[v, 0]]
+                for c in range(d):
+                    got, h, low = float(V[v, c]), float(hi[v, c]), float(lo[v, c])
+                    ref = Fraction(h) + Fraction(low) if np.isfinite(h) else None
+                    err = _exact_err(got, h, low)
+                    if ref is None or not np.isfinite(got):
+                        u = 0.0 if got == h else np.inf
+                    else:
+                        bound = Fraction(_U) * (abs(ref) + 4 * abs(ref - Fraction(float(a[c])))) + 2 * Fraction(_TINY)
+                        u = float(err / bound) if bound else (0.0 if err == 0 else np.inf)
+                    where.append(f"{sid}#v{v}")
+                    ul.append(float(ulps(got, h)))
+                    units.append(u)
+            out[sid] = region(where, ulp=np.array(ul), contract=np.array(units), bound=1.0)
+        elif lib == "scipy":
+            from scipy.spatial import Voronoi, cKDTree
+
+            try:
+                V = np.asarray(Voronoi(x).vertices)
+            except Exception:
+                continue
+            ok = np.isfinite(hi).all(axis=1)
+            if not ok.any():
+                continue
+            fin = np.isfinite(V).all(axis=1)
+            dist, near = np.full(len(V), np.inf), np.zeros(len(V), dtype=np.int64)
+            with np.errstate(all="ignore"):
+                dist[fin], near[fin] = cKDTree(hi[ok]).query(V[fin])
+            ref = hi[ok][near]
+            for v in range(len(V)):
+                if not np.isfinite(dist[v]):
+                    excluded += 1
+                    continue
+                where.append(f"{sid}#v{v}")
+                ul.append(float(np.max(ulps(V[v], ref[v]))))
+            if where:
+                out[sid] = region(where, ulp=np.array(ul), excluded=excluded)
+        else:
+            return None
+    return out
+
+
+def _barycentric_regions(lib):
+    from fractions import Fraction
+
+    from tests.spatial import geompoints as G
+    from tests.spatial import refdata
+
+    r = refdata.ref("barycentric")
+    inv, bar = r.methods["inverse"], r.methods["barycentric"]
+    by = {}
+    for j, k in enumerate(inv.index):
+        by.setdefault(str(r.inputs["set"][k]), []).append((j, int(k)))
+    out = {}
+    for sid, items in by.items():
+        x = G.get(sid).x
+        d = x.shape[1]
+        Q = np.array([r.inputs["query"][k] for _, k in items])
+        where, ul, units, ab = [], [], [], []
+        excluded = 0
+        if lib == "sd":
+            import stardust as sd
+
+            D = sd.spatial.Delaunay(_sd_points(x))
+            T, S = np.asarray(D.transform), np.asarray(D.simplices)
+            found = np.asarray(D.find_simplex(_sd_points(Q)))
+        elif lib == "scipy":
+            from scipy.spatial import Delaunay
+
+            try:
+                D = Delaunay(x)
+            except Exception:
+                continue
+            T, S = D.transform, D.simplices
+            found = D.find_simplex(Q)
+        else:
+            return None
+        for (j, k), q, t in zip(items, Q, found):
+            row = np.asarray(inv.fields["simplex"][j])
+            if t < 0 or sorted(S[t].tolist()) != sorted(row.tolist()):
+                if lib == "sd":
+                    where.append(f"{sid}#{r.inputs['pair'][k]}")
+                    ul.append(np.inf), units.append(np.inf), ab.append(np.inf)
+                else:
+                    excluded += 1
+                continue
+            with np.errstate(all="ignore"):
+                c = T[t, :d].dot(q - T[t, d])
+                lam = np.append(c, 1 - c.sum())
+            pos = {int(v): i for i, v in enumerate(S[t])}
+            lam = lam[[pos[int(v)] for v in row]]  # the reference's (canonical) vertex order
+            bh, bl = np.asarray(bar.hi[j]), np.asarray(bar.lo[j])
+            errs = [float(_exact_err(a, h, lo)) for a, h, lo in zip(lam, bh, bl)]
+            if not all(np.isfinite(errs)):
+                excluded += 1
+                continue
+            where.append(f"{sid}#{r.inputs['pair'][k]}")
+            ab.append(max(errs))
+            if lib == "sd":
+                ih, il = np.asarray(inv.hi[j]), np.asarray(inv.lo[j])
+                got = T[t, :d].ravel()
+                worst_u, worst_ulp = 0.0, 0.0
+                for g, h, lo in zip(got, ih, il):
+                    ref = Fraction(float(h)) + Fraction(float(lo)) if np.isfinite(h) else None
+                    if ref is None or not np.isfinite(g) or (g == 0 and ref != 0):
+                        excluded += 1  # overflow or underflow of the result: outside the contract
+                        continue
+                    worst_u = max(
+                        worst_u, float(abs(Fraction(float(g)) - ref) / (4 * Fraction(_U) * abs(ref))) if ref else 0.0
+                    )
+                    worst_ulp = max(worst_ulp, float(ulps(g, h)))
+                units.append(worst_u)
+                ul.append(worst_ulp)
+        if not where:
+            continue
+        if lib == "sd":
+            out[sid] = region(where, ulp=np.array(ul), contract=np.array(units), bound=1.0, abs_err=np.array(ab),
+                              excluded=excluded)  # fmt: skip
+        else:
+            out[sid] = region(where, abs_err=np.array(ab), excluded=excluded)
+    return out
+
+
+def _delaunay_exact_regions(lib):
+    """§4 item 1 per set: 0 (holds) or inf, one region per d."""
+    from tests.spatial import exactgeom as X
+    from tests.spatial import geompoints as G
+
+    ids = [i for i in G.IDS if not {"invalid", "large"} & G.get(i).tags]
+    rows = {}
+    for sid in ids:
+        x = G.get(sid).x
+        d = x.shape[1]
+        try:
+            if lib == "sd":
+                import stardust as sd
+
+                D = sd.spatial.Delaunay(_sd_points(x))
+                S, NB = np.asarray(D.simplices), np.asarray(D.neighbors)
+            elif lib == "scipy":
+                from scipy.spatial import Delaunay
+
+                D = Delaunay(x)
+                S, NB = D.simplices.astype(np.int64), D.neighbors.astype(np.int64)
+                rep = np.array(X.representatives(X.fpoints(x)), dtype=np.int64)
+                S = rep[S]  # scipy's equal points read as their representative
+                for t in range(len(S)):  # positive rows: swap the last two vertices (and their neighbours)
+                    o = X.orient(*X.fpoints(x[S[t]]))
+                    if o < 0:
+                        S[t, [-2, -1]] = S[t, [-1, -2]]
+                        NB[t, [-2, -1]] = NB[t, [-1, -2]]
+            else:
+                return None
+            if d == 2 or len(x) <= 250:  # the float filter of the large checker needs no overflow or underflow
+                X.check_delaunay(x, S, neighbors=NB, exhaustive=60)
+            else:
+                X.check_delaunay3_large(x, S, NB, perturbed=False)
+            units = 0.0
+        except AssertionError:
+            units = np.inf
+        except Exception:  # the library refuses the set (Qhull)
+            if lib == "sd":
+                raise
+            continue
+        e = rows.setdefault(f"d{d}", ([], []))
+        e[0].append(sid)
+        e[1].append(units)
+    return {k: region(w, contract=np.array(u), bound=1.0) for k, (w, u) in rows.items()}
+
+
 def sweeps():
     out = []
     for fam in FAMILIES:
@@ -406,4 +713,7 @@ def sweeps():
                       compare_libs(_ball_regions, ("scipy", "sklearn"), seconds=120.0)))  # fmt: skip
     out.append(Custom("spatial", "sphere", lambda: _sphere_regions("sd"),
                       compare_libs(_sphere_regions, ("sklearn",), seconds=120.0)))  # fmt: skip
+    for name, fn in (("geom_measure", _geom_measure_regions), ("voronoi_vertices", _voronoi_regions),
+                     ("barycentric", _barycentric_regions), ("delaunay_exact", _delaunay_exact_regions)):  # fmt: skip
+        out.append(Custom("spatial", name, lambda fn=fn: fn("sd"), compare_libs(fn, ("scipy",), seconds=600.0)))
     return out

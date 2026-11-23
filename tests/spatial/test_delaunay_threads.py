@@ -1,7 +1,8 @@
 """Delaunay's arrays do not depend on the thread count (docs/design/spatial_geometry.md §3.10; SPT9, SPT10): at
 1, 3 and 10 threads every array has the same bytes, on inputs large enough for the top of the recursion (more
 than 2^14 points: partitions and merges side by side), the sort's merge rounds, the canonical form's passes
-and find_simplex's blocks; for d = 3 the BRIO keys and sort too (the insertion itself is one thread)."""
+and find_simplex's blocks; for d = 3 the BRIO keys and sort and the insertion on lanes (SPT185): their slots differ
+from run to run, the canonical arrays may not."""
 
 import numpy as np
 import pytest
@@ -47,16 +48,22 @@ def test_one_three_ten_threads():
 
 
 def _inputs3():
-    """d = 3 (SPT10): more than 2^14 points for the parallel sort, BRIO keys, canonical form and queries; a
-    shuffled grid (every cell cospherical) and equal points."""
+    """d = 3 (SPT10, SPT185): more than 2^14 points for the parallel sort, BRIO keys, canonical form and queries,
+    more than 2^12 for the insertion on lanes; a shuffled grid (every cell cospherical), equal points, points on
+    a sphere (every insertion changes the hull: the ghosts' locks), clusters and the wide-range predicates."""
     g = np.random.default_rng(37)
     grid = np.array([[i, j, k] for i in range(28) for j in range(28) for k in range(28)], dtype=np.float64)
+    sphere = g.standard_normal((20000, 3))
+    sphere /= np.linalg.norm(sphere, axis=1)[:, None]
     return [
         g.random((40000, 3)),
         g.standard_normal((20000, 3)),
         grid[g.permutation(len(grid))],
         np.concatenate([g.random((18000, 3)), g.random((2000, 3))[:, :1].repeat(3, axis=1)]),
         G.get("dup3").x,
+        sphere,
+        np.concatenate([g.normal(m, 0.01, (2000, 3)) for m in g.random((6, 3))]),
+        g.random((9000, 3)) * np.where(g.random((9000, 3)) < 0.5, 1e150, 1e-150),
     ]
 
 

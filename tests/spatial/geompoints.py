@@ -15,6 +15,8 @@ Point sets: `get(id)`, `ids(tag)`, tags
 - 'small': at most 40 (d = 2) or 16 (d = 3) distinct points, for the exhaustive references;
 - 'd2', 'd3'.
 
+Query points: `queries(id, q)`, uniform in a set's box (the barycentric references of tools/spatial_ref.py).
+
 Predicate rows: `predicate_rows(name, kind, m)` -> (m, points, d) float64 for name in PREDICATES and kind
 in ROW_KINDS (uniform, grid, zero, near, far, dyadic, extreme).
 """
@@ -266,6 +268,16 @@ def get(id_: str) -> PointSet:
 def ids(*tags: str) -> list[str]:
     """The ids carrying every one of `tags`."""
     return [i for i in IDS if all(t in _BUILDERS[i][0] for t in tags)]
+
+
+def queries(id_: str, q: int = 64) -> np.ndarray:
+    """q points uniform in the bounding box of set id_ (the barycentric references, SPT187)."""
+    x = get(id_).x
+    lo, hi = x.min(axis=0), x.max(axis=0)
+    t = rng("geom", "queries", id_).random((q, x.shape[1]))
+    with np.errstate(over="ignore"):
+        span = hi - lo
+    return lo + t * span if np.all(np.isfinite(span)) else lo * (1 - t) + hi * t
 
 
 # ---------------------------------------------------------------- predicate rows

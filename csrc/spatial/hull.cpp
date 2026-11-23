@@ -56,6 +56,7 @@
 #include "spatial/metric.hpp"
 #include "spatial/predicates.hpp"
 #include "spatial/sfc.hpp"
+#include "spatial/triangulation.hpp"
 #include "spatial/spatial.hpp"
 
 #include <algorithm>
@@ -79,8 +80,8 @@ namespace {
 using i32 = std::int32_t;
 using i64 = std::int64_t;
 
-constexpr i64 kParallelWork = 1 << 15;  // the array area's rule: from 2^15 units of work, split and drop the GIL
-constexpr i64 kChunk = 1 << 14;         // points a task scans (steps 1 and 3)
+constexpr i64 kSplitWork = 1 << 13;  // split (and drop the GIL) from n d = 2^13 coordinates: measured (SPT186)
+constexpr i64 kChunk = 1 << 12;         // points a task scans (steps 1 and 3; SPT186)
 constexpr i64 kFacetChunk = 1 << 12;    // facets a task handles (coplanar tests, equations, terms)
 constexpr i64 kSumBlock = 4096;         // terms of one partial sum (§3.6)
 constexpr double kInf = std::numeric_limits<double>::infinity();
@@ -366,7 +367,17 @@ std::vector<i64> hull2(const double* p, i64 n, const Scan<2>& sc, const Predicat
         });
         for (auto& v : part) kept.insert(kept.end(), v.begin(), v.end());
     }
-    sort_lex(p, 2, kept);
+    // Every point may be kept (all extreme, as on a circle): the merge sort by tasks, the total order's result.
+    tri::sort_parallel(
+        kept,
+        [=](i64 i, i64 j) {
+            const double *a = p + 2 * i, *b = p + 2 * j;
+            if (lex_less(a, b, 2)) return true;
+            if (lex_less(b, a, 2)) return false;
+            return i < j;
+        },
+        split
+    );  // fmt: skip
     unique_points(p, 2, kept);
     return monotone_chain(p, kept, P);
 }
@@ -1069,7 +1080,7 @@ nb::tuple convex_hull(nb::handle points) {
     const i64 sh[] = {n, d};
     NDArray copy = new_array(DType::Float64, sh);
     auto* p = reinterpret_cast<double*>(copy.data);
-    const bool split = n * d >= kParallelWork;
+    const bool split = n * d >= kSplitWork;
     Result R;
     R.d = d;
     R.n = n;

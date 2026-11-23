@@ -1,5 +1,6 @@
 // sd.spatial's Delaunay for d = 3: the build (docs/design/spatial_geometry.md §3.4, §3.10, §3.11; milestone
-// SPT10, decisions SPT107, SPT156-SPT171). The native class _Delaunay (delaunay2.cpp) calls build_delaunay3
+// SPT10, decisions SPT107, SPT156-SPT171; the insertion on lanes: SPT13, SPT185). The native class _Delaunay
+// (delaunay2.cpp) calls build_delaunay3
 // for points with 3 columns and then makes the canonical form, the vertex to simplex map and the location
 // grid of triangulation.hpp, which d = 2 and d = 3 share.
 //
@@ -35,13 +36,25 @@
 // Every insphere_sos call has five distinct points (equal points are merged before the build and x is new),
 // so SPT127's case (a repeated point the tie rule may call "inside") cannot arise in 3-D (SPT160).
 //
+// PARALLEL (SPT185). The first kParallelFrom points go in on one thread; then batches as large as the points
+// already in (about the BRIO rounds) go in on lanes: pieces of the batch (stretches of the Hilbert curve)
+// taken by the pool's threads as they come free, every insertion holding locks on the tetrahedra it reads or
+// changes (insert_parallel). An insertion that meets another lane's lock gives up before it changed anything
+// and waits for the serial pass after the batch. Every insertion is Bowyer and Watson's on the triangulation
+// of the points in before it, so the end is the one perturbed triangulation (§3.2) for any thread count and
+// any interleaving; the slot numbers differ from run to run, and the canonical form (triangulation.hpp) does
+// not see them. The extraction of the finite tetrahedra, the sort, the canonical form and the queries are
+// parallel too.
+//
 // MEMORY (§3.4). The tetrahedra (ghosts included) are counted as they are made; past max_tets (what physical
 // memory holds at kTetBytes each after kPointBytes3 per input point, or a test's smaller number) the build
-// stops with Build3::Memory (MemoryError) and frees everything. The build is one thread (SPT107); the sort,
-// the canonical form and the queries are parallel.
+// stops with Build3::Memory (MemoryError) and frees everything. A batch on lanes has room for 7 new slots per
+// point (a lock word each besides; reserved exactly, within the 7 m of the start for uniform points); a point
+// that finds none waits for the serial pass, which meets the limit.
 #include "spatial/delaunay3.hpp"
 
 #include "base/buffer.hpp"
+#include "parallel/pool.hpp"
 #include "spatial/predicates.hpp"
 #include "spatial/sfc.hpp"
 
@@ -56,6 +69,8 @@ namespace sd::spatial::tri {
 namespace {
 
 constexpr std::int32_t kInf = -1;   // the point at infinity
+constexpr std::int64_t kParallelFrom = 1 << 10;  // points inserted on one thread before the lanes start
+constexpr std::int64_t kPieces = 8;              // pieces of a batch per thread
 constexpr std::int32_t kDead = -2;  // v[0] of a free slot
 
 struct Tet {
@@ -220,23 +235,123 @@ public:
         table_.clear();
     }
 
-    // The finite tetrahedra in slot order: input indices (ids[position]) and neighbours (-1 across the hull).
-    void extract(const std::vector<std::int32_t>& ids, Internal3& out) const {
-        std::vector<std::int32_t> fid(tets_.size(), -1);
-        std::int32_t t = 0;
-        for (std::size_t s = 0; s < tets_.size(); ++s)
-            if (tets_[s].v[0] != kDead && inf_pos(tets_[s]) < 0) fid[s] = t++;
-        out.t = t;
-        out.s.assign(static_cast<std::size_t>(4) * static_cast<std::size_t>(t), 0);
-        out.nb.assign(static_cast<std::size_t>(4) * static_cast<std::size_t>(t), -1);
-        for (std::size_t s = 0; s < tets_.size(); ++s) {
-            const std::int32_t q = fid[s];
-            if (q < 0) continue;
-            for (int j = 0; j < 4; ++j) {
-                out.s[static_cast<std::size_t>(4 * q + j)] = ids[static_cast<std::size_t>(tets_[s].v[j])];
-                out.nb[static_cast<std::size_t>(4 * q + j)] = fid[static_cast<std::size_t>(tets_[s].n[j] >> 2)];
-            }
+    // Inserts positions first..last-1 on `lanes` lanes at once (SPT185): lane l takes a contiguous part of the
+    // range (one stretch of the Hilbert curve, so the lanes work in different places), and every insertion
+    // locks the tetrahedra it reads or changes -- the walk hand over hand, the conflict region with the
+    // tetrahedra across its boundary, a ghost's finite neighbour -- by a compare-and-swap of a lock word. A
+    // lock held by another lane abandons the insertion before anything changed (its locks are dropped) and
+    // the point waits for the serial pass after the lanes, as does a point that finds no free slot. Each
+    // insertion is Bowyer and Watson's on the triangulation of the points inserted before it, so the end is
+    // the one triangulation of the perturbed point set (§3.2) whatever the lanes did: only the slot numbers
+    // differ, which the canonical form does not see.
+    void insert_parallel(std::int32_t first, std::int32_t last, int lanes) {
+        const auto top = static_cast<std::int64_t>(tets_.size());
+        // Room: a uniform set's 6.7 tetrahedra per point and the lanes' blocks of new slots; a point that finds
+        // none waits for the serial pass. Reserved exactly: growing by doubling would hold twice the slots.
+        const std::int64_t want = top + kSlotsPerPoint * std::int64_t{last - first} + kSlotBlock * kPieces * lanes;
+        const std::int64_t cap = std::min<std::int64_t>(max_tets_, want);
+        if (cap <= top + 64 * std::int64_t{lanes}) {  // too little room: the serial pass meets the limit
+            for (std::int32_t r = first; r < last; ++r) insert(r);
+            return;
         }
+        if (static_cast<std::size_t>(cap) > tets_.capacity()) {
+            tets_.reserve(static_cast<std::size_t>(cap));
+            stamp_.reserve(static_cast<std::size_t>(cap));
+        }
+        tets_.resize(static_cast<std::size_t>(cap));
+        lock_.assign(static_cast<std::size_t>(cap), -1);
+        top_ = top;
+        cap_ = cap;
+        // kPieces pieces per lane, taken by the threads as they come free (a slow core holds up one piece, not a
+        // tenth of the batch), in an order that keeps the pieces in progress far apart on the curve.
+        const std::int64_t pieces = std::min<std::int64_t>(kPieces * lanes, last - first);
+        if (lanes_.size() < static_cast<std::size_t>(pieces)) lanes_.resize(static_cast<std::size_t>(pieces));
+        const std::int64_t per = (std::int64_t{last - first} + pieces - 1) / pieces;
+        std::int32_t s = hint_;
+        for (std::int64_t q = 0; q < pieces; ++q) {  // each piece starts near its first point (serial walks)
+            Lane& L = lanes_[static_cast<std::size_t>(q)];
+            L.id = static_cast<std::int32_t>(q);
+            L.hint = -1;
+            L.fresh = L.fresh_end = 0;
+            const std::int64_t lo = first + q * per;
+            if (lo >= last) continue;
+            s = locate(s, pt(static_cast<std::int32_t>(lo)));
+            const int k = inf_pos(tets_[static_cast<std::size_t>(s)]);
+            if (k >= 0) s = tets_[static_cast<std::size_t>(s)].n[k] >> 2;  // a ghost: its finite neighbour
+            L.hint = s;
+        }
+        recent_ = hint_;
+        const std::int64_t stride = (pieces + kPieces - 1) / kPieces;
+        parallel::parallel_for(
+            stride * kPieces,  // task -> piece is one to one on [0, stride * kPieces); the pieces past the last skip
+            [&](std::int64_t task) {
+                const std::int64_t q = (task % stride) * kPieces + task / stride;  // stride apart in flight
+                if (q >= pieces) return;
+                Lane& L = lanes_[static_cast<std::size_t>(q)];
+                const std::int64_t lo = first + q * per, hi = std::min<std::int64_t>(last, lo + per);
+                for (std::int64_t r = lo; r < hi; ++r)
+                    if (!insert_locked(L, static_cast<std::int32_t>(r)))
+                        L.deferred.push_back(static_cast<std::int32_t>(r));
+            },
+            std::int64_t{1} << 20
+        );  // fmt: skip
+        // Back to one thread: the slots in use, the lanes' free slots, a live start, the waiting points.
+        tets_.resize(static_cast<std::size_t>(std::min(top_, cap_)));
+        stamp_.resize(tets_.size(), 0);
+        for (Lane& L : lanes_) {
+            for (const std::int32_t f : L.free) free_.push_back(f);
+            L.free.clear();
+            for (std::int64_t f = L.fresh; f < L.fresh_end; ++f) {  // the rest of the lane's block of new slots
+                tets_[static_cast<std::size_t>(f)].v[0] = kDead;
+                free_.push_back(static_cast<std::int32_t>(f));
+            }
+            L.fresh = L.fresh_end = 0;
+        }
+        hint_ = live_finite(recent_);
+        for (Lane& L : lanes_) {
+            for (const std::int32_t r : L.deferred) insert(r);
+            L.deferred.clear();
+        }
+    }
+
+    // The finite tetrahedra in slot order: input indices (ids[position]) and neighbours (-1 across the hull).
+    // Chunks of slots count their tetrahedra, then number and copy them in chunk order.
+    void extract(const std::vector<std::int32_t>& ids, Internal3& out, bool split) const {
+        const auto S = static_cast<std::int64_t>(tets_.size());
+        const std::int64_t nc = chunks_of(S, kChunk);
+        auto live = [&](std::int64_t s) {
+            const Tet& t = tets_[static_cast<std::size_t>(s)];
+            return t.v[0] != kDead && inf_pos(t) < 0;
+        };
+        std::vector<std::int64_t> count(static_cast<std::size_t>(nc) + 1, 0);
+        run_tasks(nc, split, [&](std::int64_t c) {
+            std::int64_t k = 0;
+            for (std::int64_t s = c * kChunk, e = std::min(S, (c + 1) * kChunk); s < e; ++s) k += live(s);
+            count[static_cast<std::size_t>(c) + 1] = k;
+        });
+        for (std::int64_t c = 0; c < nc; ++c)
+            count[static_cast<std::size_t>(c) + 1] += count[static_cast<std::size_t>(c)];
+        const std::int64_t t = count[static_cast<std::size_t>(nc)];
+        std::vector<std::int32_t> fid(static_cast<std::size_t>(S), -1);
+        run_tasks(nc, split, [&](std::int64_t c) {
+            auto q = static_cast<std::int32_t>(count[static_cast<std::size_t>(c)]);
+            for (std::int64_t s = c * kChunk, e = std::min(S, (c + 1) * kChunk); s < e; ++s)
+                if (live(s)) fid[static_cast<std::size_t>(s)] = q++;
+        });
+        out.t = t;
+        out.s.assign(static_cast<std::size_t>(4 * t), 0);
+        out.nb.assign(static_cast<std::size_t>(4 * t), -1);
+        run_tasks(nc, split, [&](std::int64_t c) {
+            for (std::int64_t s = c * kChunk, e = std::min(S, (c + 1) * kChunk); s < e; ++s) {
+                const std::int32_t q = fid[static_cast<std::size_t>(s)];
+                if (q < 0) continue;
+                const Tet& T = tets_[static_cast<std::size_t>(s)];
+                for (int j = 0; j < 4; ++j) {
+                    out.s[static_cast<std::size_t>(4 * q + j)] = ids[static_cast<std::size_t>(T.v[j])];
+                    out.nb[static_cast<std::size_t>(4 * q + j)] = fid[static_cast<std::size_t>(T.n[j] >> 2)];
+                }
+            }
+        });
     }
 
 private:
@@ -306,6 +421,234 @@ private:
         }
     }
 
+    // ---- the parallel insertion (insert_parallel)
+
+    // A lock word is -1 (free) or 4 * lane + flag; the flag (0, kIn or kOut) says what the lane found there.
+    static constexpr std::int32_t kIn = 1, kOut = 2;
+    static constexpr std::int64_t kSlotBlock = 256;    // new slots a lane takes at once (its own cache lines)
+    static constexpr std::int64_t kSlotsPerPoint = 7;  // room per point of a batch
+    static constexpr int kWalkLimit = 1 << 16;          // a walk this long gives up (concurrent changes)
+
+    struct Lane {
+        std::int32_t id = 0, hint = -1;
+        std::int64_t fresh = 0, fresh_end = 0;  // the lane's block of new slots
+        std::vector<std::int32_t> cavity, slot, locked, free, deferred;
+        std::vector<std::pair<std::int32_t, int>> bnd;
+        std::vector<Tet> newt;
+        EdgeTable table;
+    };
+
+    bool try_lock(Lane& L, std::int32_t t) {
+        std::int32_t want = -1;
+        if (!__atomic_compare_exchange_n(
+                &lock_[static_cast<std::size_t>(t)], &want, 4 * L.id, false, __ATOMIC_ACQUIRE, __ATOMIC_RELAXED
+            ))
+            return false;
+        L.locked.push_back(t);
+        return true;
+    }
+    // The flag of t when L holds it, else -1.
+    int held(const Lane& L, std::int32_t t) const {
+        const std::int32_t w = __atomic_load_n(&lock_[static_cast<std::size_t>(t)], __ATOMIC_RELAXED);
+        return w >= 0 && (w >> 2) == L.id ? (w & 3) : -1;
+    }
+    void set_flag(const Lane& L, std::int32_t t, std::int32_t f) {
+        __atomic_store_n(&lock_[static_cast<std::size_t>(t)], 4 * L.id + f, __ATOMIC_RELAXED);
+    }
+    void release(Lane& L) {
+        for (const std::int32_t t : L.locked)
+            __atomic_store_n(&lock_[static_cast<std::size_t>(t)], -1, __ATOMIC_RELEASE);
+        L.locked.clear();
+    }
+
+    // A live finite tetrahedron: s when it is one, else the last one in slot order.
+    std::int32_t live_finite(std::int32_t s) const {
+        auto ok = [&](std::int32_t u) {
+            const Tet& t = tets_[static_cast<std::size_t>(u)];
+            return t.v[0] != kDead && inf_pos(t) < 0;
+        };
+        if (s >= 0 && s < static_cast<std::int32_t>(tets_.size()) && ok(s)) return s;
+        for (auto u = static_cast<std::int32_t>(tets_.size()); u-- > 0;)
+            if (ok(u)) return u;
+        return 0;
+    }
+
+    // locate() with locks: the walk holds its current tetrahedron and takes the next before letting it go.
+    // Returns the (locked) tetrahedron in conflict, or -1 with nothing locked.
+    std::int32_t locate_locked(Lane& L, std::int32_t s, const double* x) {
+        if (s < 0 || !try_lock(L, s)) return -1;
+        const Tet& t0 = tets_[static_cast<std::size_t>(s)];
+        if (t0.v[0] == kDead || inf_pos(t0) >= 0) {
+            release(L);
+            return -1;
+        }
+        std::int32_t prev = -1;
+        int turn = 0;
+        for (int steps = 0;; ++steps) {
+            const Tet& t = tets_[static_cast<std::size_t>(s)];
+            std::int32_t next = -1;
+            for (int j = 0; j < 4; ++j) {
+                const int k = (j + turn) & 3;
+                const std::int32_t nb = t.n[k] >> 2;
+                if (nb == prev) continue;
+                if (orient_at(t, k, x) < 0) {
+                    next = nb;
+                    break;
+                }
+            }
+            if (next < 0) return s;
+            if (steps > kWalkLimit || !try_lock(L, next)) {
+                release(L);
+                return -1;
+            }
+            __atomic_store_n(&lock_[static_cast<std::size_t>(s)], -1, __ATOMIC_RELEASE);  // locked = {s, next}
+            L.locked.front() = next;
+            L.locked.pop_back();
+            if (inf_pos(tets_[static_cast<std::size_t>(next)]) >= 0) return next;
+            prev = s;
+            s = next;
+            turn = (turn + 1) & 3;
+        }
+    }
+
+    // conflict() on a tetrahedron locked by L: 1, 0, or -1 when a ghost's finite neighbour is another lane's.
+    int conflict_locked(Lane& L, std::int32_t s, const double* x) {
+        const Tet& t = tets_[static_cast<std::size_t>(s)];
+        const int k = inf_pos(t);
+        if (k < 0) return pred_.insphere_sos(pt(t.v[0]), pt(t.v[1]), pt(t.v[2]), pt(t.v[3]), x) > 0;
+        const int o = orient_at(t, k, x);
+        if (o != 0) return o > 0;
+        const std::int32_t f = t.n[k] >> 2;
+        if (held(L, f) < 0 && !try_lock(L, f)) return -1;
+        const Tet& F = tets_[static_cast<std::size_t>(f)];
+        return pred_.insphere_sos(pt(F.v[0]), pt(F.v[1]), pt(F.v[2]), pt(F.v[3]), x) > 0;
+    }
+
+    // A free slot for L, locked by it: one it freed before, else a new one; -1 past the capacity.
+    std::int32_t take_slot(Lane& L) {
+        while (!L.free.empty()) {
+            const std::int32_t f = L.free.back();
+            L.free.pop_back();
+            if (try_lock(L, f)) return f;  // else another lane's stale start holds it: left out for good
+        }
+        if (L.fresh == L.fresh_end) {
+            const std::int64_t i = __atomic_fetch_add(&top_, kSlotBlock, __ATOMIC_RELAXED);
+            if (i >= cap_) return -1;
+            L.fresh = i;
+            L.fresh_end = std::min(cap_, i + kSlotBlock);
+        }
+        const auto s = static_cast<std::int32_t>(L.fresh++);
+        __atomic_store_n(&lock_[static_cast<std::size_t>(s)], 4 * L.id, __ATOMIC_RELAXED);
+        L.locked.push_back(s);
+        return s;
+    }
+
+    // insert() under locks. False (nothing changed, nothing locked) when another lane holds a tetrahedron
+    // the insertion needs or no slot is left.
+    bool insert_locked(Lane& L, std::int32_t v) {
+        const double* x = pt(v);
+        std::int32_t t0 = locate_locked(L, L.hint, x);
+        if (t0 < 0) {
+            const std::int32_t r = __atomic_load_n(&recent_, __ATOMIC_RELAXED);
+            if (r == L.hint || (t0 = locate_locked(L, r, x)) < 0) return false;
+        }
+        L.cavity.clear();
+        L.bnd.clear();
+        set_flag(L, t0, kIn);
+        L.cavity.push_back(t0);
+        for (std::size_t h = 0; h < L.cavity.size(); ++h) {
+            const std::int32_t c = L.cavity[h];
+            for (int k = 0; k < 4; ++k) {
+                const std::int32_t nb = tets_[static_cast<std::size_t>(c)].n[k] >> 2;
+                if (const int f = held(L, nb); f >= 0) {
+                    if (f == kIn) continue;
+                    if (f == kOut) {
+                        L.bnd.emplace_back(c, k);
+                        continue;
+                    }  // else locked to read as a ghost's neighbour: not tested yet
+                } else if (!try_lock(L, nb)) {
+                    release(L);
+                    return false;
+                }
+                const int cf = conflict_locked(L, nb, x);
+                if (cf < 0) {
+                    release(L);
+                    return false;
+                }
+                if (cf > 0) {
+                    set_flag(L, nb, kIn);
+                    L.cavity.push_back(nb);
+                } else {
+                    set_flag(L, nb, kOut);
+                    L.bnd.emplace_back(c, k);
+                }
+            }
+        }
+        const std::size_t B = L.bnd.size(), C = L.cavity.size();
+        L.slot.resize(B);
+        for (std::size_t i = 0; i < B; ++i) {
+            if (i < C) {
+                L.slot[i] = L.cavity[i];
+                continue;
+            }
+            const std::int32_t sl = take_slot(L);
+            if (sl < 0) {  // no room: the slots taken go back to L's free list, nothing else changed
+                for (std::size_t j = C; j < i; ++j) {
+                    tets_[static_cast<std::size_t>(L.slot[j])].v[0] = kDead;
+                    L.free.push_back(L.slot[j]);
+                }
+                release(L);
+                return false;
+            }
+            L.slot[i] = sl;
+        }
+        // From here on as insert(): the new tetrahedra, the old ones' free slots, the links.
+        L.newt.resize(B);
+        for (std::size_t i = 0; i < B; ++i) {
+            const auto [c, k] = L.bnd[i];
+            L.newt[i] = tets_[static_cast<std::size_t>(c)];
+            L.newt[i].v[k] = v;
+        }
+        for (std::size_t i = B; i < C; ++i) {
+            tets_[static_cast<std::size_t>(L.cavity[i])].v[0] = kDead;
+            L.free.push_back(L.cavity[i]);
+        }
+        L.table.prepare(3 * B / 2 + 1);
+        std::int32_t first_finite = -1;
+        for (std::size_t i = 0; i < B; ++i) {
+            const std::int32_t sl = L.slot[i];
+            const int k = L.bnd[i].second;
+            Tet& T = tets_[static_cast<std::size_t>(sl)];
+            T = L.newt[i];
+            const std::int32_t outer = T.n[k];
+            tets_[static_cast<std::size_t>(outer >> 2)].n[outer & 3] = 4 * sl + k;
+            if (first_finite < 0 && inf_pos(T) < 0) first_finite = sl;
+        }
+        for (std::size_t i = 0; i < B; ++i) {
+            const std::int32_t sl = L.slot[i];
+            const int k = L.bnd[i].second;
+            for (int j = 0; j < 4; ++j) {
+                if (j == k) continue;
+                int e[2], ne = 0;
+                for (int a = 0; a < 4; ++a)
+                    if (a != j && a != k) e[ne++] = a;
+                const Tet& T = tets_[static_cast<std::size_t>(sl)];
+                const std::int32_t f = L.table.take(edge_key(T.v[e[0]], T.v[e[1]]), 4 * sl + j);
+                if (f >= 0) {
+                    tets_[static_cast<std::size_t>(sl)].n[j] = f;
+                    tets_[static_cast<std::size_t>(f >> 2)].n[f & 3] = 4 * sl + j;
+                }
+            }
+        }
+        L.table.clear();
+        if (first_finite >= 0) {
+            L.hint = first_finite;
+            __atomic_store_n(&recent_, first_finite, __ATOMIC_RELAXED);
+        }
+        release(L);
+        return true;
+    }
+
     const double* X_;
     Predicates pred_;
     std::int64_t max_tets_;
@@ -318,6 +661,11 @@ private:
     EdgeTable table_;
     std::uint32_t gen_ = 0;
     std::int32_t hint_ = 0;
+    // insert_parallel: a lock word per slot (-1 free, else 4 * lane + flag), the next block of new slots, the room.
+    std::vector<std::int32_t> lock_;
+    std::int64_t top_ = 0, cap_ = 0;
+    std::int32_t recent_ = 0;  // a finite tetrahedron some lane made last (a start when a lane's own is gone)
+    std::vector<Lane> lanes_;
 };
 
 }  // namespace
@@ -385,8 +733,17 @@ Build3 build_delaunay3(Triangulation& T, Internal3& out, std::int64_t max_tets, 
     try {
         Builder3 B(X.data(), pred, m, max_tets);
         B.start();
-        for (std::int64_t r = 4; r < m; ++r) B.insert(static_cast<std::int32_t>(r));
-        B.extract(ids, out);
+        // One thread until kParallelFrom points are in, then batches as large as what is in (SPT185).
+        const int lanes = split ? parallel::num_threads() : 1;
+        std::int64_t r = 4;
+        const std::int64_t serial_end = lanes > 1 ? std::min(m, kParallelFrom) : m;
+        for (; r < serial_end; ++r) B.insert(static_cast<std::int32_t>(r));
+        while (r < m) {
+            const std::int64_t end = std::min(m, 2 * r);
+            B.insert_parallel(static_cast<std::int32_t>(r), static_cast<std::int32_t>(end), lanes);
+            r = end;
+        }
+        B.extract(ids, out, split);
     } catch (const MemoryLimit&) {
         out = Internal3();
         return Build3::Memory;

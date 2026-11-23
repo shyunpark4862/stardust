@@ -68,31 +68,55 @@ inline std::vector<std::int64_t> representatives(
     return distinct;
 }
 
-// The Hilbert index of the cell x[0..d) (each below 2^bits; d = 2 or 3, d * bits <= 64).
-inline std::uint64_t hilbert_key(const std::uint32_t* cell, int d, int bits) {
-    std::uint32_t x[3] = {cell[0], cell[1], d == 3 ? cell[2] : 0};
-    const std::uint32_t top = std::uint32_t{1} << (bits - 1);
-    for (std::uint32_t q = top; q > 1; q >>= 1) {
-        const std::uint32_t p = q - 1;
-        for (int i = 0; i < d; ++i) {
-            if (x[i] & q) {
-                x[0] ^= p;
-            } else {
-                const std::uint32_t t = (x[0] ^ x[i]) & p;
-                x[0] ^= t;
-                x[i] ^= t;
-            }
+namespace detail {
+
+// The bits of x (below 2^21) spread to every third position (bit b to 3 b), and to every second (bit b to 2 b).
+inline std::uint64_t spread3(std::uint64_t x) {
+    x &= 0x1fffffULL;
+    x = (x | (x << 32)) & 0x1f00000000ffffULL;
+    x = (x | (x << 16)) & 0x1f0000ff0000ffULL;
+    x = (x | (x << 8)) & 0x100f00f00f00f00fULL;
+    x = (x | (x << 4)) & 0x10c30c30c30c30c3ULL;
+    return (x | (x << 2)) & 0x1249249249249249ULL;
+}
+
+inline std::uint64_t spread2(std::uint64_t x) {
+    x &= 0xffffffffULL;
+    x = (x | (x << 16)) & 0x0000ffff0000ffffULL;
+    x = (x | (x << 8)) & 0x00ff00ff00ff00ffULL;
+    x = (x | (x << 4)) & 0x0f0f0f0f0f0f0f0fULL;
+    x = (x | (x << 2)) & 0x3333333333333333ULL;
+    return (x | (x << 1)) & 0x5555555555555555ULL;
+}
+
+}  // namespace detail
+
+// The Hilbert index of the cell x[0..D) (each below 2^bits; D = 2 or 3, D * bits <= 64). Skilling's transpose
+// form without branches (a bit of x[i] picks "invert" or "exchange" through a mask), then the bits interleaved
+// by spreading (key bit b D + D - 1 - i is bit b of x[i]). The same keys as the loop form, faster (SPT189).
+template <int D>
+inline std::uint64_t hilbert_key_of(const std::uint32_t* cell, int bits) {
+    std::uint32_t x[3] = {cell[0], cell[1], D == 3 ? cell[2] : 0};
+    for (int b = bits - 1; b >= 1; --b) {
+        const std::uint32_t p = (std::uint32_t{1} << b) - 1;
+        for (int i = 0; i < D; ++i) {
+            const std::uint32_t m = 0u - ((x[i] >> b) & 1u);  // all ones: invert the low bits of x[0]
+            const std::uint32_t t = (x[0] ^ x[i]) & p & ~m;   // else exchange them with x[i]'s
+            x[0] ^= (p & m) ^ t;
+            x[i] ^= t;
         }
     }
-    for (int i = 1; i < d; ++i) x[i] ^= x[i - 1];
+    for (int i = 1; i < D; ++i) x[i] ^= x[i - 1];
     std::uint32_t t = 0;
-    for (std::uint32_t q = top; q > 1; q >>= 1)
-        if (x[d - 1] & q) t ^= q - 1;
-    for (int i = 0; i < d; ++i) x[i] ^= t;
-    std::uint64_t key = 0;
-    for (int b = bits - 1; b >= 0; --b)
-        for (int i = 0; i < d; ++i) key = (key << 1) | ((x[i] >> b) & 1);
-    return key;
+    for (int b = bits - 1; b >= 1; --b) t ^= ((std::uint32_t{1} << b) - 1) & (0u - ((x[D - 1] >> b) & 1u));
+    const std::uint32_t mask = (std::uint32_t{1} << bits) - 1;
+    for (int i = 0; i < D; ++i) x[i] = (x[i] ^ t) & mask;
+    if constexpr (D == 2) return detail::spread2(x[0]) << 1 | detail::spread2(x[1]);
+    else return detail::spread3(x[0]) << 2 | detail::spread3(x[1]) << 1 | detail::spread3(x[2]);
+}
+
+inline std::uint64_t hilbert_key(const std::uint32_t* cell, int d, int bits) {
+    return d == 3 ? hilbert_key_of<3>(cell, bits) : hilbert_key_of<2>(cell, bits);
 }
 
 // The cell of x in [lo, hi] cut into 2^bits cells (the halves keep hi - lo finite).

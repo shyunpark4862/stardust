@@ -11,6 +11,8 @@ from fractions import Fraction
 import numpy as np
 import pytest
 
+import stardust as sd
+
 from . import points as P
 from . import refdata
 
@@ -74,6 +76,45 @@ def test_points_are_the_generators_points():
             assert r.inputs["digest"][k] == P.digest(s.queries[int(r.inputs["pair"][k])])
             for m in r.methods.values():
                 assert len(m.hi[k]) == s.m, (family, k)
+
+
+def test_geometry_points_are_the_generators_points():
+    """The geometry families (SPT187) belong to geompoints.py's sets and queries as they are now."""
+    from . import geompoints as G
+
+    for family in ("geom_measure", "voronoi_vertices"):
+        r = REFS[family]
+        for k in range(r.points):
+            x = G.get(str(r.inputs["set"][k])).x
+            assert np.array_equal(r.inputs["x"][k], x) and r.inputs["digest"][k] == P.digest(x), (family, k)
+    r = REFS["barycentric"]
+    for k in range(r.points):
+        q = G.queries(str(r.inputs["set"][k]))[int(r.inputs["pair"][k])]
+        assert np.array_equal(r.inputs["query"][k], q) and r.inputs["digest"][k] == P.digest(q), k
+    assert {str(s) for s in REFS["geom_measure"].inputs["set"]} == {
+        i for i in G.IDS if not {"invalid", "large"} & G.get(i).tags
+    }
+
+
+def test_geometry_volumes_are_exact_rationals():
+    """volume is a rational: hi is it rounded once (lo the rest), for the sets whose volume is finite."""
+    from . import exactgeom as X
+
+    r = REFS["geom_measure"]
+    m = r.methods["volume"]
+    for j, k in enumerate(m.index):
+        x = r.inputs["x"][k]
+        if x.shape[0] > 200 or not math.isfinite(m.hi[j]):
+            continue
+        h = sd.spatial.ConvexHull(x)
+        P_ = X.fpoints(x)
+        v, f = np.asarray(h.vertices).tolist(), np.asarray(h.simplices).tolist()
+        if x.shape[1] == 2:
+            fan = (X.orient_value(P_[v[0]], P_[v[i]], P_[v[i + 1]]) for i in range(1, len(v) - 1))
+            exact = sum(fan, Fraction(0)) / 2
+        else:
+            exact = sum((X.orient_value(P_[v[0]], *(P_[i] for i in t)) for t in f), Fraction(0)) / 6
+        assert fr(m.hi[j]) == Fraction(float(exact)), k
 
 
 def test_every_point_set_is_covered():

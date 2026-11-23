@@ -44,6 +44,7 @@ inline constexpr std::int64_t kChunk = 1 << 13;      // simplices or points a ta
 inline constexpr std::int64_t kQueryBlock = 256;     // find_simplex: query points per task (§3.5)
 inline constexpr std::int64_t kQueryWork = 128;      // work units of one query point
 inline constexpr std::int64_t kPointsPerCell = 4;    // the location grid has about m / 4 cells (§3.5)
+inline constexpr std::int64_t kQueryCellSort = 1 << 12;  // find_simplex: from here the points go cell by cell
 
 template <class F>
 inline void run_tasks(std::int64_t ntasks, bool split, F&& fn) {
@@ -156,7 +157,9 @@ inline std::vector<std::int64_t> brio_order_parallel(
             for (int k = 0; k < d; ++k) cell[k] = grid_cell(p[k], lo[k], hi[k], kHilbertBits);
             const int zeros = std::countr_zero(splitmix64(static_cast<std::uint64_t>(r)) | (std::uint64_t{1} << 63));
             const int round = rounds - 1 - std::min(zeros, rounds - 1);  // 0 is inserted first
-            items[static_cast<std::size_t>(r)] = {round, hilbert_key(cell, d, kHilbertBits), r};
+            const std::uint64_t key =
+                d == 3 ? hilbert_key_of<3>(cell, kHilbertBits) : hilbert_key_of<2>(cell, kHilbertBits);
+            items[static_cast<std::size_t>(r)] = {round, key, r};
         }
     });
     sort_parallel(
@@ -539,28 +542,59 @@ inline void build_locator(Triangulation& T, bool split) {
 }
 
 // find_simplex (SPT103): out[i] the smallest simplex whose closed simplex holds x[i], -1 outside the hull
-// or for a non-finite point. Blocks of kQueryBlock points per task: every answer is the definition's.
+// or for a non-finite point. Blocks of kQueryBlock points per task: every answer is the definition's, so
+// the order the points are taken in changes nothing but the time. On one thread, from kQueryCellSort points,
+// they are taken cell by cell of the location grid (a counting sort; SPT188): the points of one cell walk over
+// the same simplices while those are in cache (10^5 3-D points: 29 ms -> 18 ms). On more threads the
+// counting's atomics cost more than the cache gains, and the points go in their order.
 template <int D>
 inline void find_simplex(const Triangulation& T, const double* x, std::int64_t q, std::int64_t* out, bool split) {
     const Locator<D>& L = detail::locator<D>(T);
-    run_tasks(chunks_of(q, kQueryBlock), split, [&](std::int64_t c) {
-        for (std::int64_t i = c * kQueryBlock, e = std::min(q, (c + 1) * kQueryBlock); i < e; ++i) {
-            const double* p = x + i * D;
-            bool finite = true;
-            for (int k = 0; k < D; ++k) finite = finite && std::isfinite(p[k]);
-            if (!finite) {
-                out[i] = -1;
-                continue;
-            }
-            const std::int64_t t0 = L.start[static_cast<std::size_t>(detail::cell_of<D>(L, p))];
-            if (detail::safe_with<D>(T, p)) {
-                const std::int64_t t = detail::walk<D, true>(T, t0, p, nullptr);
-                out[i] = t < 0 ? -1 : detail::smallest_holding<D, true>(T, t, p);
-            } else {
-                const std::int64_t t = detail::walk<D, false>(T, t0, p, nullptr);
-                out[i] = t < 0 ? -1 : detail::smallest_holding<D, false>(T, t, p);
-            }
+    auto one = [&](std::int64_t i) {
+        const double* p = x + i * D;
+        bool finite = true;
+        for (int k = 0; k < D; ++k) finite = finite && std::isfinite(p[k]);
+        if (!finite) {
+            out[i] = -1;
+            return;
         }
+        const std::int64_t t0 = L.start[static_cast<std::size_t>(detail::cell_of<D>(L, p))];
+        if (detail::safe_with<D>(T, p)) {
+            const std::int64_t t = detail::walk<D, true>(T, t0, p, nullptr);
+            out[i] = t < 0 ? -1 : detail::smallest_holding<D, true>(T, t, p);
+        } else {
+            const std::int64_t t = detail::walk<D, false>(T, t0, p, nullptr);
+            out[i] = t < 0 ? -1 : detail::smallest_holding<D, false>(T, t, p);
+        }
+    };
+    const std::int64_t nb = chunks_of(q, kQueryBlock);
+    if (q < kQueryCellSort || (split && parallel::num_threads() > 1)) {  // threads: the counts' atomics cost more
+        run_tasks(nb, split, [&](std::int64_t c) {
+            for (std::int64_t i = c * kQueryBlock, e = std::min(q, (c + 1) * kQueryBlock); i < e; ++i) one(i);
+        });
+        return;
+    }
+    const auto cells = static_cast<std::int64_t>(L.start.size());
+    std::vector<std::int64_t> start(static_cast<std::size_t>(cells) + 1, 0), cell(static_cast<std::size_t>(q));
+    run_tasks(nb, split, [&](std::int64_t c) {
+        for (std::int64_t i = c * kQueryBlock, e = std::min(q, (c + 1) * kQueryBlock); i < e; ++i) {
+            const std::int64_t k = detail::cell_of<D>(L, x + i * D);  // any cell for a non-finite point
+            cell[static_cast<std::size_t>(i)] = k;
+            fetch_add(start[static_cast<std::size_t>(k) + 1], 1);
+        }
+    });
+    for (std::int64_t k = 0; k < cells; ++k)
+        start[static_cast<std::size_t>(k) + 1] += start[static_cast<std::size_t>(k)];
+    std::vector<std::int64_t> order(static_cast<std::size_t>(q));
+    run_tasks(nb, split, [&](std::int64_t c) {
+        for (std::int64_t i = c * kQueryBlock, e = std::min(q, (c + 1) * kQueryBlock); i < e; ++i)
+            order[static_cast<std::size_t>(
+                fetch_add(start[static_cast<std::size_t>(cell[static_cast<std::size_t>(i)])], 1)
+            )] = i;
+    });
+    run_tasks(nb, split, [&](std::int64_t c) {
+        for (std::int64_t j = c * kQueryBlock, e = std::min(q, (c + 1) * kQueryBlock); j < e; ++j)
+            one(order[static_cast<std::size_t>(j)]);
     });
 }
 
@@ -676,8 +710,9 @@ inline void transform2(const Triangulation& T, double* out, bool split) {
 
 // vertex_neighbor_vertices for d = 3: (indptr (n + 1), indices), each row increasing. The star of every
 // vertex (its tetrahedra, a counting sort in any order) gives its neighbours: the other vertices of the
-// star, sorted and unique, by tasks of kChunk vertices whose rows are copied in chunk order. So the arrays
-// do not depend on the thread count. Memory: the stars (4 t int32) and the rows.
+// star, each kept once by a small open-addressing set (a star of k tetrahedra names about 3 k / 5 distinct
+// vertices five times each; SPT189), then sorted, by tasks of kChunk vertices whose rows are copied in chunk order.
+// So the arrays do not depend on the thread count. Memory: the stars (4 t int32) and the rows.
 inline void vertex_neighbors3(
     const Triangulation& T,
     std::int64_t* indptr,
@@ -703,20 +738,38 @@ inline void vertex_neighbors3(
                     )] = static_cast<std::int32_t>(q);  // fmt: skip
         });
     }
-    const std::int64_t vc = chunks_of(n, kChunk);
+    constexpr std::int64_t kRows = 1 << 10;  // vertices per task: about 30 tetrahedra each (SPT189)
+    const std::int64_t vc = chunks_of(n, kRows);
     std::vector<std::vector<std::int64_t>> part(static_cast<std::size_t>(vc));
     run_tasks(vc, split, [&](std::int64_t c) {
         std::vector<std::int64_t>& rows = part[static_cast<std::size_t>(c)];
-        std::vector<std::int64_t> buf;
-        for (std::int64_t v = c * kChunk, e = std::min(n, (c + 1) * kChunk); v < e; ++v) {
+        std::vector<std::int64_t> buf, set(64, -1);
+        int bits = 6;
+        for (std::int64_t v = c * kRows, e = std::min(n, (c + 1) * kRows); v < e; ++v) {
+            const std::int64_t lo = start[static_cast<std::size_t>(v)], hi = start[static_cast<std::size_t>(v) + 1];
+            while ((std::int64_t{1} << bits) < 8 * (hi - lo)) ++bits;  // load at most 3/8
+            if (set.size() < (std::size_t{1} << bits)) set.assign(std::size_t{1} << bits, -1);
+            const std::uint64_t mask = (std::uint64_t{1} << bits) - 1;
             buf.clear();
-            for (std::int64_t k = start[static_cast<std::size_t>(v)]; k < start[static_cast<std::size_t>(v) + 1]; ++k) {
+            for (std::int64_t k = lo; k < hi; ++k) {
                 const std::int64_t* s = T.simplices + static_cast<std::int64_t>(star[static_cast<std::size_t>(k)]) * 4;
-                for (int j = 0; j < 4; ++j)
-                    if (s[j] != v) buf.push_back(s[j]);
+                for (int j = 0; j < 4; ++j) {
+                    const std::int64_t u = s[j];
+                    if (u == v) continue;
+                    std::uint64_t h = (static_cast<std::uint64_t>(u) * 0x9e3779b97f4a7c15ULL) >> (64 - bits);
+                    while (set[h] >= 0 && set[h] != u) h = (h + 1) & mask;
+                    if (set[h] < 0) {
+                        set[h] = u;
+                        buf.push_back(u);
+                    }
+                }
+            }
+            for (const std::int64_t u : buf) {  // empty the set: each key is ahead of its home slot
+                std::uint64_t h = (static_cast<std::uint64_t>(u) * 0x9e3779b97f4a7c15ULL) >> (64 - bits);
+                while (set[h] != u) h = (h + 1) & mask;
+                set[h] = -1;
             }
             std::sort(buf.begin(), buf.end());
-            buf.erase(std::unique(buf.begin(), buf.end()), buf.end());
             indptr[v + 1] = static_cast<std::int64_t>(buf.size());
             rows.insert(rows.end(), buf.begin(), buf.end());
         }
@@ -726,7 +779,7 @@ inline void vertex_neighbors3(
     indices.assign(static_cast<std::size_t>(indptr[n]), 0);
     run_tasks(vc, split, [&](std::int64_t c) {
         const std::vector<std::int64_t>& rows = part[static_cast<std::size_t>(c)];
-        std::copy(rows.begin(), rows.end(), indices.begin() + indptr[c * kChunk]);
+        std::copy(rows.begin(), rows.end(), indices.begin() + indptr[c * kRows]);
     });
 }
 

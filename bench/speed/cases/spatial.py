@@ -666,8 +666,34 @@ def _voronoi_specs():
     return out
 
 
+def _large_specs():
+    """SPT13: the 10^6 rows of §5 that scipy is not run on (its memory passes 2 GB or it takes minutes)."""
+    return [
+        Spec("SPT13", "delaunay", "Delaunay 3-D uniform", ("Delaunay",), "10^6 points", _space("uniform", 10**6),
+             lambda d: lambda: _sp().Delaunay(d["sx"]), note="scipy not run (about 4.6 GB at 10^6)"),
+        Spec("SPT13", "delaunay", "Delaunay.find_simplex 2-D", ("Delaunay.find_simplex",), "10^6 points",
+             _built_sd("uniform", 10**6), lambda d: lambda: d["sT"].find_simplex(d["sq"]),
+             note="scipy not run (42 s); as many uniform query points as points"),
+        Spec("SPT13", "voronoi", "Voronoi 2-D uniform", ("Voronoi",), "10^6 points", _plane("uniform", 10**6),
+             lambda d: lambda: _sp().Voronoi(d["sx"]), note="scipy not run (its memory passes 2 GB)"),
+    ]  # fmt: skip
+
+
+def _built_sd(kind, npts):
+    base = _plane(kind, npts)
+
+    def setup():
+        import stardust as sd
+
+        d = base()
+        d["sT"] = sd.spatial.Delaunay(d["sx"])
+        return d
+
+    return setup
+
+
 SPECS = (_distance_specs() + _neighbor_specs() + _tree_specs() + _geometry_specs() + _hull_specs()
-         + _delaunay3_specs() + _voronoi_specs())  # fmt: skip
+         + _delaunay3_specs() + _voronoi_specs() + _large_specs())  # fmt: skip
 
 
 def _public(names) -> bool:

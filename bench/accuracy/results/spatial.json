@@ -119,6 +119,58 @@
     "regression": "d18611e3becf4d1273fb0aff2671ad314fe6bd66c918a6db28ce54d01acb18b0",
     "optimize": "28d5e52d860b54463697743fb86962197c0c4b7e5a4b9a670ca0518d9d3588e8"
    }
+  },
+  "20261123-214327-eed868f+": {
+   "commit": "eed868f",
+   "dirty": true,
+   "changed": [
+    "ROADMAP.md",
+    "bench/accuracy/spatial.py",
+    "bench/speed/cases/spatial.py",
+    "csrc/spatial/delaunay2.cpp",
+    "csrc/spatial/delaunay3.cpp",
+    "csrc/spatial/hull.cpp",
+    "csrc/spatial/sfc.hpp",
+    "csrc/spatial/triangulation.hpp",
+    "csrc/spatial/voronoi.cpp",
+    "docs/design/spatial_geometry.md",
+    "src/stardust/spatial/_voronoi.py",
+    "tests/spatial/exactgeom.py",
+    "tests/spatial/geompoints.py",
+    "tests/spatial/refdata.py",
+    "tests/spatial/test_delaunay3.py",
+    "tests/spatial/test_delaunay_threads.py",
+    "tests/spatial/test_reference_data.py",
+    "tools/spatial_ref.py"
+   ],
+   "date": "2026-11-23T21:43:27",
+   "machine": "arm64",
+   "python": "3.15.0",
+   "references": {
+    "array": "aef7e7bf22a5feb65a19c421f4d1b04d578dca8fd4e3122d503043afbc1c9638",
+    "linalg": "ba8d2d9b5e6767d51c11ec21fe26040320b31de4c06ccfe0562a6b1033ff2950",
+    "special": "241d3855ece237ebf086080118d4295238b54dc9b7b60a2822cef413e170064f",
+    "stats": "6f88d53afd2668510257ee4cc6e6ee9df3d20ef72ebfde263aacaefd1855586f",
+    "regression": "d18611e3becf4d1273fb0aff2671ad314fe6bd66c918a6db28ce54d01acb18b0",
+    "optimize": "28d5e52d860b54463697743fb86962197c0c4b7e5a4b9a670ca0518d9d3588e8"
+   },
+   "comparators": {
+    "scipy": "1.18.1",
+    "numpy": "2.5.4",
+    "statsmodels": "0.15.0",
+    "scikit-learn": "1.9.1",
+    "R": "4.6.2",
+    "R mvtnorm": "1.4.2",
+    "R reticulate": "1.47.0",
+    "R minpack.lm": "1.2.4",
+    "R car": "3.1.5",
+    "R lmtest": "0.9.40",
+    "R leaps": "3.2",
+    "R irlba": "2.4.1",
+    "R numDeriv": "2016.8.1.1",
+    "Boost": "boostorg/math 75cb4c4 2026-11-18",
+    "Boost in sd.special": "4682f44"
+   }
   }
  },
  "sweeps": [
@@ -492,6 +544,817 @@
    "run": "20261123-013752-8832c53+"
   },
   {
+   "id": "spatial/barycentric",
+   "area": "spatial",
+   "name": "barycentric",
+   "points": 1807,
+   "regions": {
+    "uniform2/12": {
+     "points": 55,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "abs_max": 2.1240174896574793e-16,
+     "contract": 0.33828740534042545,
+     "bound": 1.0,
+     "excluded": 0,
+     "worst": [
+      "uniform2/12#4"
+     ]
+    },
+    "uniform2/1000": {
+     "points": 64,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "abs_max": 2.1459671501454968e-16,
+     "contract": 0.3527212790669599,
+     "bound": 1.0,
+     "excluded": 0,
+     "worst": [
+      "uniform2/1000#21"
+     ]
+    },
+    "normal2/1000": {
+     "points": 47,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "abs_max": 3.1352728657177364e-16,
+     "contract": 0.4335301704063613,
+     "bound": 1.0,
+     "excluded": 0,
+     "worst": [
+      "normal2/1000#9"
+     ]
+    },
+    "cluster2/1000": {
+     "points": 27,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "abs_max": 1.0082814087714166e-15,
+     "contract": 0.4079360946212946,
+     "bound": 1.0,
+     "excluded": 0,
+     "worst": [
+      "cluster2/1000#59"
+     ]
+    },
+    "ball2/1000": {
+     "points": 45,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "abs_max": 1.840367721802773e-16,
+     "contract": 0.48843210517789,
+     "bound": 1.0,
+     "excluded": 0,
+     "worst": [
+      "ball2/1000#56"
+     ]
+    },
+    "dup2": {
+     "points": 61,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "abs_max": 1.4802973661668753e-16,
+     "contract": 0.125,
+     "bound": 1.0,
+     "excluded": 0,
+     "worst": [
+      "dup2#3"
+     ]
+    },
+    "line2+1": {
+     "points": 8,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "abs_max": 4.440892098500626e-16,
+     "contract": 0.125,
+     "bound": 1.0,
+     "excluded": 0,
+     "worst": [
+      "line2+1#4"
+     ]
+    },
+    "mixed2/1e150": {
+     "points": 34,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "abs_max": 2.746645919667086e-16,
+     "contract": 0.371150911213759,
+     "bound": 1.0,
+     "excluded": 0,
+     "worst": [
+      "mixed2/1e150#5"
+     ]
+    },
+    "mixed2/1e300": {
+     "points": 33,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "abs_max": 0.9995748563471152,
+     "contract": 0.0,
+     "bound": 1.0,
+     "excluded": 124,
+     "worst": [
+      "mixed2/1e300#2"
+     ]
+    },
+    "dblmax2": {
+     "points": 41,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "abs_max": 0.9975970679603491,
+     "contract": 0.0,
+     "bound": 1.0,
+     "excluded": 183,
+     "worst": [
+      "dblmax2#0"
+     ]
+    },
+    "ulp2/200": {
+     "points": 51,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "abs_max": 4.466927674150113e-16,
+     "contract": 0.41304108194293915,
+     "bound": 1.0,
+     "excluded": 0,
+     "worst": [
+      "ulp2/200#20"
+     ]
+    },
+    "minimal2": {
+     "points": 31,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "abs_max": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "excluded": 0,
+     "worst": [
+      "minimal2#1"
+     ]
+    },
+    "minimal2+1": {
+     "points": 64,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "abs_max": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "excluded": 0,
+     "worst": [
+      "minimal2+1#0"
+     ]
+    },
+    "uniform3/12": {
+     "points": 25,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "abs_max": 1.7566023301602947e-15,
+     "contract": 0.49787713602557315,
+     "bound": 1.0,
+     "excluded": 0,
+     "worst": [
+      "uniform3/12#1"
+     ]
+    },
+    "uniform3/1000": {
+     "points": 56,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "abs_max": 1.1020876273164101e-15,
+     "contract": 0.5093550175275171,
+     "bound": 1.0,
+     "excluded": 0,
+     "worst": [
+      "uniform3/1000#50"
+     ]
+    },
+    "normal3/1000": {
+     "points": 22,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "abs_max": 1.8075104719245465e-15,
+     "contract": 0.5921208616487745,
+     "bound": 1.0,
+     "excluded": 0,
+     "worst": [
+      "normal3/1000#26"
+     ]
+    },
+    "cluster3/1000": {
+     "points": 14,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "abs_max": 2.9377238602138555e-15,
+     "contract": 0.43396840082350807,
+     "bound": 1.0,
+     "excluded": 0,
+     "worst": [
+      "cluster3/1000#8"
+     ]
+    },
+    "ball3/1000": {
+     "points": 34,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "abs_max": 4.545949346932501e-16,
+     "contract": 0.6097149846124942,
+     "bound": 1.0,
+     "excluded": 0,
+     "worst": [
+      "ball3/1000#19"
+     ]
+    },
+    "dup3": {
+     "points": 39,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "abs_max": 2.220446049250313e-16,
+     "contract": 0.19999999999999998,
+     "bound": 1.0,
+     "excluded": 0,
+     "worst": [
+      "dup3#56"
+     ]
+    },
+    "mixed3/1e150": {
+     "points": 16,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "abs_max": 0.9975427792382334,
+     "contract": 0.0,
+     "bound": 1.0,
+     "excluded": 129,
+     "worst": [
+      "mixed3/1e150#1"
+     ]
+    },
+    "ulp3/200": {
+     "points": 40,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "abs_max": 1.157844238431969e-15,
+     "contract": 0.5246891838691582,
+     "bound": 1.0,
+     "excluded": 0,
+     "worst": [
+      "ulp3/200#18"
+     ]
+    },
+    "minimal3": {
+     "points": 13,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "abs_max": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "excluded": 0,
+     "worst": [
+      "minimal3#0"
+     ]
+    },
+    "minimal3+1": {
+     "points": 25,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "abs_max": 1.1102230246251565e-16,
+     "contract": 0.0,
+     "bound": 1.0,
+     "excluded": 0,
+     "worst": [
+      "minimal3+1#4"
+     ]
+    },
+    "grid2/30": {
+     "points": 64,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "abs_max": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "excluded": 0,
+     "worst": [
+      "grid2/30#0"
+     ]
+    },
+    "grid2/5": {
+     "points": 64,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "abs_max": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "excluded": 0,
+     "worst": [
+      "grid2/5#0"
+     ]
+    },
+    "grid3/6": {
+     "points": 64,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "abs_max": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "excluded": 0,
+     "worst": [
+      "grid3/6#0"
+     ]
+    },
+    "grid3/2": {
+     "points": 64,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "abs_max": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "excluded": 0,
+     "worst": [
+      "grid3/2#0"
+     ]
+    },
+    "cube/5": {
+     "points": 64,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "abs_max": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "excluded": 0,
+     "worst": [
+      "cube/5#0"
+     ]
+    },
+    "circle2/int": {
+     "points": 55,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "abs_max": 1.2688263138573217e-16,
+     "contract": 0.1796875,
+     "bound": 1.0,
+     "excluded": 0,
+     "worst": [
+      "circle2/int#11"
+     ]
+    },
+    "knight2": {
+     "points": 55,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "abs_max": 1.4802973661668753e-16,
+     "contract": 0.125,
+     "bound": 1.0,
+     "excluded": 0,
+     "worst": [
+      "knight2#2"
+     ]
+    },
+    "sphere3/int": {
+     "points": 35,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "abs_max": 1.3692750637043598e-15,
+     "contract": 0.1818181818181818,
+     "bound": 1.0,
+     "excluded": 0,
+     "worst": [
+      "sphere3/int#11"
+     ]
+    },
+    "sphere3/int9": {
+     "points": 25,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "abs_max": 2.220446049250313e-16,
+     "contract": 0.14285714285714285,
+     "bound": 1.0,
+     "excluded": 0,
+     "worst": [
+      "sphere3/int9#15"
+     ]
+    },
+    "boundary2": {
+     "points": 64,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "abs_max": 2.220446049250313e-16,
+     "contract": 0.16666666666666666,
+     "bound": 1.0,
+     "excluded": 0,
+     "worst": [
+      "boundary2#12"
+     ]
+    },
+    "boundary3": {
+     "points": 64,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "abs_max": 1.7763568394002506e-16,
+     "contract": 0.21428571428571427,
+     "bound": 1.0,
+     "excluded": 0,
+     "worst": [
+      "boundary3#5"
+     ]
+    },
+    "parabola2/int": {
+     "points": 8,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "abs_max": 1.819163376638375e-14,
+     "contract": 0.24537037037037038,
+     "bound": 1.0,
+     "excluded": 0,
+     "worst": [
+      "parabola2/int#59"
+     ]
+    },
+    "plane3+1": {
+     "points": 1,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "abs_max": 1.6579330501069005e-15,
+     "contract": 0.18181818181818182,
+     "bound": 1.0,
+     "excluded": 0,
+     "worst": [
+      "plane3+1#54"
+     ]
+    },
+    "polygon2/200": {
+     "points": 52,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "abs_max": 3.153112564942704e-16,
+     "contract": 0.43592879426680614,
+     "bound": 1.0,
+     "excluded": 0,
+     "worst": [
+      "polygon2/200#13"
+     ]
+    },
+    "grid2/30+1e-13": {
+     "points": 64,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "abs_max": 1.393638592913314e-16,
+     "contract": 0.34894848320047755,
+     "bound": 1.0,
+     "excluded": 0,
+     "worst": [
+      "grid2/30+1e-13#13"
+     ]
+    },
+    "parabola2/1e-9": {
+     "points": 18,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "abs_max": 5.784944751106387e-15,
+     "contract": 0.3134730107132108,
+     "bound": 1.0,
+     "excluded": 0,
+     "worst": [
+      "parabola2/1e-9#32"
+     ]
+    },
+    "parabola2/1e-14": {
+     "points": 9,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "abs_max": 1.132926355494319e-15,
+     "contract": 0.39913337390778986,
+     "bound": 1.0,
+     "excluded": 0,
+     "worst": [
+      "parabola2/1e-14#50"
+     ]
+    },
+    "far2/1e8grid": {
+     "points": 64,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "abs_max": 1.158716656362646e-16,
+     "contract": 1.6093254089355469e-06,
+     "bound": 1.0,
+     "excluded": 0,
+     "worst": [
+      "far2/1e8grid#1"
+     ]
+    },
+    "far2/1e6uniform": {
+     "points": 64,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "abs_max": 1.4157653351682276e-16,
+     "contract": 0.2259798265142037,
+     "bound": 1.0,
+     "excluded": 0,
+     "worst": [
+      "far2/1e6uniform#14"
+     ]
+    },
+    "far3/1e8grid": {
+     "points": 64,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "abs_max": 1.7554208991608742e-16,
+     "contract": 0.4000004529953003,
+     "bound": 1.0,
+     "excluded": 0,
+     "worst": [
+      "far3/1e8grid#5"
+     ]
+    }
+   },
+   "comparators": {
+    "scipy": {
+     "uniform2/12": {
+      "points": 55,
+      "abs_max": 2.3307900058826947e-16,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "uniform2/12#62"
+      ]
+     },
+     "uniform2/1000": {
+      "points": 64,
+      "abs_max": 2.475470866665803e-16,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "uniform2/1000#43"
+      ]
+     },
+     "normal2/1000": {
+      "points": 47,
+      "abs_max": 1.3070665960504162e-15,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "normal2/1000#55"
+      ]
+     },
+     "cluster2/1000": {
+      "points": 27,
+      "abs_max": 9.415946275675525e-16,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "cluster2/1000#59"
+      ]
+     },
+     "ball2/1000": {
+      "points": 45,
+      "abs_max": 1.83131314563121e-16,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "ball2/1000#3"
+      ]
+     },
+     "dup2": {
+      "points": 16,
+      "abs_max": 3.172065784643304e-17,
+      "contract": null,
+      "bound": null,
+      "excluded": 45,
+      "worst": [
+       "dup2#47"
+      ]
+     },
+     "line2+1": {
+      "points": 8,
+      "abs_max": 1.0362081563168128e-15,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "line2+1#34"
+      ]
+     },
+     "minimal2": {
+      "points": 31,
+      "abs_max": 0.0,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "minimal2#1"
+      ]
+     },
+     "uniform3/12": {
+      "points": 25,
+      "abs_max": 4.3925145981456673e-16,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "uniform3/12#54"
+      ]
+     },
+     "uniform3/1000": {
+      "points": 56,
+      "abs_max": 2.2961714495472613e-16,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "uniform3/1000#40"
+      ]
+     },
+     "normal3/1000": {
+      "points": 22,
+      "abs_max": 5.2240375954006745e-16,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "normal3/1000#1"
+      ]
+     },
+     "cluster3/1000": {
+      "points": 14,
+      "abs_max": 5.8155855419492464e-15,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "cluster3/1000#54"
+      ]
+     },
+     "ball3/1000": {
+      "points": 34,
+      "abs_max": 1.1138236189009465e-15,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "ball3/1000#63"
+      ]
+     },
+     "dup3": {
+      "points": 17,
+      "abs_max": 3.3306690738754696e-16,
+      "contract": null,
+      "bound": null,
+      "excluded": 22,
+      "worst": [
+       "dup3#2"
+      ]
+     },
+     "minimal3": {
+      "points": 13,
+      "abs_max": 0.0,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "minimal3#0"
+      ]
+     },
+     "grid2/30": {
+      "points": 28,
+      "abs_max": 0.0,
+      "contract": null,
+      "bound": null,
+      "excluded": 36,
+      "worst": [
+       "grid2/30#0"
+      ]
+     },
+     "grid2/5": {
+      "points": 24,
+      "abs_max": 0.0,
+      "contract": null,
+      "bound": null,
+      "excluded": 40,
+      "worst": [
+       "grid2/5#2"
+      ]
+     },
+     "grid3/6": {
+      "points": 10,
+      "abs_max": 0.0,
+      "contract": null,
+      "bound": null,
+      "excluded": 54,
+      "worst": [
+       "grid3/6#4"
+      ]
+     },
+     "grid3/2": {
+      "points": 25,
+      "abs_max": 0.0,
+      "contract": null,
+      "bound": null,
+      "excluded": 39,
+      "worst": [
+       "grid3/2#0"
+      ]
+     },
+     "cube/5": {
+      "points": 6,
+      "abs_max": 0.0,
+      "contract": null,
+      "bound": null,
+      "excluded": 58,
+      "worst": [
+       "cube/5#20"
+      ]
+     },
+     "circle2/int": {
+      "points": 10,
+      "abs_max": 9.116200788710962e-17,
+      "contract": null,
+      "bound": null,
+      "excluded": 45,
+      "worst": [
+       "circle2/int#21"
+      ]
+     },
+     "knight2": {
+      "points": 55,
+      "abs_max": 1.1102230246251565e-16,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "knight2#35"
+      ]
+     },
+     "sphere3/int9": {
+      "points": 4,
+      "abs_max": 1.1102230246251565e-16,
+      "contract": null,
+      "bound": null,
+      "excluded": 21,
+      "worst": [
+       "sphere3/int9#22"
+      ]
+     },
+     "boundary2": {
+      "points": 51,
+      "abs_max": 2.713878504639272e-16,
+      "contract": null,
+      "bound": null,
+      "excluded": 13,
+      "worst": [
+       "boundary2#55"
+      ]
+     },
+     "boundary3": {
+      "points": 43,
+      "abs_max": 2.220446049250313e-16,
+      "contract": null,
+      "bound": null,
+      "excluded": 21,
+      "worst": [
+       "boundary3#47"
+      ]
+     },
+     "parabola2/int": {
+      "points": 8,
+      "abs_max": 1.5631940186722205e-14,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "parabola2/int#45"
+      ]
+     },
+     "plane3+1": {
+      "points": 1,
+      "abs_max": 1.1990408665951691e-15,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "plane3+1#54"
+      ]
+     },
+     "grid2/30+1e-13": {
+      "points": 24,
+      "abs_max": 1.2705985196000313e-16,
+      "contract": null,
+      "bound": null,
+      "excluded": 40,
+      "worst": [
+       "grid2/30+1e-13#9"
+      ]
+     }
+    }
+   },
+   "comparator_seconds": 600.0,
+   "run": "20261123-214327-eed868f+",
+   "comparators_run": "20261123-214327-eed868f+"
+  },
+  {
    "id": "spatial/counting",
    "area": "spatial",
    "name": "counting",
@@ -610,6 +1473,53 @@
    },
    "comparators_run": "20261122-225345-3e3a1b4+",
    "comparator_seconds": 120.0
+  },
+  {
+   "id": "spatial/delaunay_exact",
+   "area": "spatial",
+   "name": "delaunay_exact",
+   "points": 48,
+   "regions": {
+    "d2": {
+     "points": 26,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "uniform2/12"
+     ]
+    },
+    "d3": {
+     "points": 22,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "uniform3/12"
+     ]
+    }
+   },
+   "comparators": {
+    "scipy": {
+     "d2": {
+      "points": 22,
+      "contract": Infinity,
+      "bound": 1.0,
+      "worst": [
+       "ulp2/200"
+      ]
+     },
+     "d3": {
+      "points": 19,
+      "contract": Infinity,
+      "bound": 1.0,
+      "worst": [
+       "dup3"
+      ]
+     }
+    }
+   },
+   "comparator_seconds": 600.0,
+   "run": "20261123-214327-eed868f+",
+   "comparators_run": "20261123-214327-eed868f+"
   },
   {
    "id": "spatial/distances",
@@ -1294,6 +2204,113 @@
    },
    "comparators_run": "20261122-225345-3e3a1b4+",
    "comparator_seconds": 120.0
+  },
+  {
+   "id": "spatial/geom_measure",
+   "area": "spatial",
+   "name": "geom_measure",
+   "points": 96,
+   "regions": {
+    "perimeter": {
+     "points": 26,
+     "ulp_max": 16.0,
+     "ulp_p999": 16.0,
+     "rel_max": 2.313446003058926e-15,
+     "contract": 0.10264861632825328,
+     "bound": 1.0,
+     "worst": [
+      "polygon2/200"
+     ]
+    },
+    "area": {
+     "points": 26,
+     "ulp_max": 4.0,
+     "ulp_p999": 4.0,
+     "rel_max": 6.085937924643398e-16,
+     "contract": 0.31708283658797765,
+     "bound": 1.0,
+     "worst": [
+      "far2/1e8grid"
+     ]
+    },
+    "surface": {
+     "points": 22,
+     "ulp_max": 9.0,
+     "ulp_p999": 9.0,
+     "rel_max": 1.2517346086366972e-15,
+     "contract": 0.16317678804952543,
+     "bound": 1.0,
+     "worst": [
+      "minimal3+1"
+     ]
+    },
+    "volume": {
+     "points": 22,
+     "ulp_max": 6.0,
+     "ulp_p999": 6.0,
+     "rel_max": 7.484383587336541e-16,
+     "contract": 0.08333333333333327,
+     "bound": 1.0,
+     "worst": [
+      "minimal3"
+     ]
+    }
+   },
+   "comparators": {
+    "scipy": {
+     "perimeter": {
+      "points": 24,
+      "ulp_max": Infinity,
+      "ulp_p999": Infinity,
+      "rel_max": Infinity,
+      "contract": null,
+      "bound": null,
+      "excluded": 2,
+      "worst": [
+       "dblmax2"
+      ]
+     },
+     "area": {
+      "points": 25,
+      "ulp_max": Infinity,
+      "ulp_p999": Infinity,
+      "rel_max": Infinity,
+      "contract": null,
+      "bound": null,
+      "excluded": 1,
+      "worst": [
+       "mixed2/1e300"
+      ]
+     },
+     "surface": {
+      "points": 20,
+      "ulp_max": Infinity,
+      "ulp_p999": Infinity,
+      "rel_max": Infinity,
+      "contract": null,
+      "bound": null,
+      "excluded": 2,
+      "worst": [
+       "mixed3/1e300"
+      ]
+     },
+     "volume": {
+      "points": 21,
+      "ulp_max": Infinity,
+      "ulp_p999": Infinity,
+      "rel_max": Infinity,
+      "contract": null,
+      "bound": null,
+      "excluded": 1,
+      "worst": [
+       "mixed3/1e150"
+      ]
+     }
+    }
+   },
+   "comparator_seconds": 600.0,
+   "run": "20261123-214327-eed868f+",
+   "comparators_run": "20261123-214327-eed868f+"
   },
   {
    "id": "spatial/haversine",
@@ -2139,6 +3156,941 @@
     }
    },
    "run": "20261123-013752-8832c53+"
+  },
+  {
+   "id": "spatial/voronoi_vertices",
+   "area": "spatial",
+   "name": "voronoi_vertices",
+   "points": 109385,
+   "regions": {
+    "uniform2/12": {
+     "points": 26,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "contract": 0.4795897800782439,
+     "bound": 1.0,
+     "worst": [
+      "uniform2/12#v4"
+     ]
+    },
+    "uniform2/1000": {
+     "points": 3964,
+     "ulp_max": 38.0,
+     "ulp_p999": 10.0,
+     "contract": 0.9641290219426472,
+     "bound": 1.0,
+     "worst": [
+      "uniform2/1000#v246"
+     ]
+    },
+    "normal2/1000": {
+     "points": 3976,
+     "ulp_max": 847.0,
+     "ulp_p999": 81.0,
+     "contract": 0.9247171945531912,
+     "bound": 1.0,
+     "worst": [
+      "normal2/1000#v76"
+     ]
+    },
+    "cluster2/1000": {
+     "points": 3970,
+     "ulp_max": 10.0,
+     "ulp_p999": 1.0,
+     "contract": 0.9667401281944324,
+     "bound": 1.0,
+     "worst": [
+      "cluster2/1000#v1895"
+     ]
+    },
+    "ball2/1000": {
+     "points": 3930,
+     "ulp_max": 396.0,
+     "ulp_p999": 19.0,
+     "contract": 0.9227673671316937,
+     "bound": 1.0,
+     "worst": [
+      "ball2/1000#v1906"
+     ]
+    },
+    "dup2": {
+     "points": 82,
+     "ulp_max": 3.0,
+     "ulp_p999": 3.0,
+     "contract": 0.47058823529411764,
+     "bound": 1.0,
+     "worst": [
+      "dup2#v29"
+     ]
+    },
+    "line2+1": {
+     "points": 16,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "contract": 0.47058823529411764,
+     "bound": 1.0,
+     "worst": [
+      "line2+1#v1"
+     ]
+    },
+    "mixed2/1e150": {
+     "points": 146,
+     "ulp_max": 3.0,
+     "ulp_p999": 3.0,
+     "contract": 0.8115362208321582,
+     "bound": 1.0,
+     "worst": [
+      "mixed2/1e150#v9"
+     ]
+    },
+    "mixed2/1e300": {
+     "points": 146,
+     "ulp_max": 6.0,
+     "ulp_p999": 6.0,
+     "contract": 0.5676872618324718,
+     "bound": 1.0,
+     "worst": [
+      "mixed2/1e300#v15"
+     ]
+    },
+    "subnormal2": {
+     "points": 140,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "subnormal2#v0"
+     ]
+    },
+    "dblmax2": {
+     "points": 140,
+     "ulp_max": 29.0,
+     "ulp_p999": 29.0,
+     "contract": 0.6136361942234374,
+     "bound": 1.0,
+     "worst": [
+      "dblmax2#v69"
+     ]
+    },
+    "ulp2/200": {
+     "points": 396,
+     "ulp_max": 4.364730204537841e+18,
+     "ulp_p999": 4.364730204537841e+18,
+     "contract": 0.4640864979589963,
+     "bound": 1.0,
+     "worst": [
+      "ulp2/200#v35"
+     ]
+    },
+    "minimal2": {
+     "points": 2,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "minimal2#v0"
+     ]
+    },
+    "minimal2+1": {
+     "points": 2,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "minimal2+1#v0"
+     ]
+    },
+    "uniform3/12": {
+     "points": 66,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "contract": 0.7941825956482208,
+     "bound": 1.0,
+     "worst": [
+      "uniform3/12#v4"
+     ]
+    },
+    "uniform3/1000": {
+     "points": 19110,
+     "ulp_max": 241.0,
+     "ulp_p999": 8.0,
+     "contract": 0.9344935625835753,
+     "bound": 1.0,
+     "worst": [
+      "uniform3/1000#v888"
+     ]
+    },
+    "normal3/1000": {
+     "points": 19419,
+     "ulp_max": 814.0,
+     "ulp_p999": 46.0,
+     "contract": 0.9380630440409425,
+     "bound": 1.0,
+     "worst": [
+      "normal3/1000#v873"
+     ]
+    },
+    "cluster3/1000": {
+     "points": 18423,
+     "ulp_max": 2208.0,
+     "ulp_p999": 10.0,
+     "contract": 0.983869091020142,
+     "bound": 1.0,
+     "worst": [
+      "cluster3/1000#v1856"
+     ]
+    },
+    "ball3/1000": {
+     "points": 18390,
+     "ulp_max": 385.0,
+     "ulp_p999": 62.0,
+     "contract": 0.9432779914625754,
+     "bound": 1.0,
+     "worst": [
+      "ball3/1000#v834"
+     ]
+    },
+    "dup3": {
+     "points": 396,
+     "ulp_max": 3.0,
+     "ulp_p999": 3.0,
+     "contract": 0.7272727272727272,
+     "bound": 1.0,
+     "worst": [
+      "dup3#v103"
+     ]
+    },
+    "mixed3/1e150": {
+     "points": 492,
+     "ulp_max": 46.0,
+     "ulp_p999": 46.0,
+     "contract": 0.5507514496424196,
+     "bound": 1.0,
+     "worst": [
+      "mixed3/1e150#v51"
+     ]
+    },
+    "mixed3/1e300": {
+     "points": 525,
+     "ulp_max": 294.0,
+     "ulp_p999": 294.0,
+     "contract": 0.7883465696045593,
+     "bound": 1.0,
+     "worst": [
+      "mixed3/1e300#v153"
+     ]
+    },
+    "subnormal3": {
+     "points": 501,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "subnormal3#v0"
+     ]
+    },
+    "dblmax3": {
+     "points": 486,
+     "ulp_max": 88.0,
+     "ulp_p999": 88.0,
+     "contract": 0.7477701625586106,
+     "bound": 1.0,
+     "worst": [
+      "dblmax3#v74"
+     ]
+    },
+    "ulp3/200": {
+     "points": 1722,
+     "ulp_max": 8.733619895440915e+18,
+     "ulp_p999": 8.725671097186537e+18,
+     "contract": 0.5345369465610346,
+     "bound": 1.0,
+     "worst": [
+      "ulp3/200#v461"
+     ]
+    },
+    "minimal3": {
+     "points": 3,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "minimal3#v0"
+     ]
+    },
+    "minimal3+1": {
+     "points": 3,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "minimal3+1#v0"
+     ]
+    },
+    "grid2/30": {
+     "points": 1682,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "grid2/30#v0"
+     ]
+    },
+    "grid2/5": {
+     "points": 32,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "grid2/5#v0"
+     ]
+    },
+    "grid3/6": {
+     "points": 375,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "grid3/6#v0"
+     ]
+    },
+    "grid3/2": {
+     "points": 3,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "grid3/2#v0"
+     ]
+    },
+    "cube/5": {
+     "points": 192,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "cube/5#v0"
+     ]
+    },
+    "circle2/int": {
+     "points": 2,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "circle2/int#v0"
+     ]
+    },
+    "knight2": {
+     "points": 16,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "contract": 0.2222222222222222,
+     "bound": 1.0,
+     "worst": [
+      "knight2#v0"
+     ]
+    },
+    "sphere3/int": {
+     "points": 3,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "sphere3/int#v0"
+     ]
+    },
+    "sphere3/int9": {
+     "points": 3,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "sphere3/int9#v0"
+     ]
+    },
+    "boundary2": {
+     "points": 126,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "contract": 0.5517241379310345,
+     "bound": 1.0,
+     "worst": [
+      "boundary2#v18"
+     ]
+    },
+    "boundary3": {
+     "points": 636,
+     "ulp_max": 14.0,
+     "ulp_p999": 14.0,
+     "contract": 0.8602150537634409,
+     "bound": 1.0,
+     "worst": [
+      "boundary3#v60"
+     ]
+    },
+    "parabola2/int": {
+     "points": 396,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "parabola2/int#v0"
+     ]
+    },
+    "moment3": {
+     "points": 135,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "moment3#v0"
+     ]
+    },
+    "plane3+1": {
+     "points": 135,
+     "ulp_max": 3.0,
+     "ulp_p999": 3.0,
+     "contract": 0.5714285714285714,
+     "bound": 1.0,
+     "worst": [
+      "plane3+1#v41"
+     ]
+    },
+    "polygon2/200": {
+     "points": 396,
+     "ulp_max": 8.724336382921298e+18,
+     "ulp_p999": 8.724336382921298e+18,
+     "contract": 0.47062653298208645,
+     "bound": 1.0,
+     "worst": [
+      "polygon2/200#v9"
+     ]
+    },
+    "grid2/30+1e-13": {
+     "points": 3564,
+     "ulp_max": 2.0,
+     "ulp_p999": 1.0,
+     "contract": 0.864864864916924,
+     "bound": 1.0,
+     "worst": [
+      "grid2/30+1e-13#v1031"
+     ]
+    },
+    "parabola2/1e-9": {
+     "points": 596,
+     "ulp_max": 3746070347667886.0,
+     "ulp_p999": 3746070347667886.0,
+     "contract": 0.3906070783689759,
+     "bound": 1.0,
+     "worst": [
+      "parabola2/1e-9#v296"
+     ]
+    },
+    "parabola2/1e-14": {
+     "points": 596,
+     "ulp_max": 4.38672291604046e+18,
+     "ulp_p999": 4.38672291604046e+18,
+     "contract": 0.4559776341192293,
+     "bound": 1.0,
+     "worst": [
+      "parabola2/1e-14#v4"
+     ]
+    },
+    "far2/1e8grid": {
+     "points": 1682,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "contract": 0.6710886376511896,
+     "bound": 1.0,
+     "worst": [
+      "far2/1e8grid#v1"
+     ]
+    },
+    "far2/1e6uniform": {
+     "points": 1968,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.5239776334278898,
+     "bound": 1.0,
+     "worst": [
+      "far2/1e6uniform#v80"
+     ]
+    },
+    "far3/1e8grid": {
+     "points": 375,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "contract": 0.6710886376511896,
+     "bound": 1.0,
+     "worst": [
+      "far3/1e8grid#v1"
+     ]
+    }
+   },
+   "comparators": {
+    "scipy": {
+     "uniform2/12": {
+      "points": 13,
+      "ulp_max": 2.0,
+      "ulp_p999": 2.0,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "uniform2/12#v11"
+      ]
+     },
+     "uniform2/1000": {
+      "points": 1982,
+      "ulp_max": 44.0,
+      "ulp_p999": 12.0,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "uniform2/1000#v650"
+      ]
+     },
+     "normal2/1000": {
+      "points": 1988,
+      "ulp_max": 800.0,
+      "ulp_p999": 547.0,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "normal2/1000#v697"
+      ]
+     },
+     "cluster2/1000": {
+      "points": 1985,
+      "ulp_max": 25.0,
+      "ulp_p999": 16.0,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "cluster2/1000#v17"
+      ]
+     },
+     "ball2/1000": {
+      "points": 1965,
+      "ulp_max": 1836.0,
+      "ulp_p999": 174.0,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "ball2/1000#v1820"
+      ]
+     },
+     "dup2": {
+      "points": 41,
+      "ulp_max": 2.0,
+      "ulp_p999": 2.0,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "dup2#v10"
+      ]
+     },
+     "line2+1": {
+      "points": 8,
+      "ulp_max": 6.0,
+      "ulp_p999": 6.0,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "line2+1#v1"
+      ]
+     },
+     "ulp2/200": {
+      "points": 14,
+      "ulp_max": 8.747225747754936e+18,
+      "ulp_p999": 8.747225747754936e+18,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "ulp2/200#v1"
+      ]
+     },
+     "minimal2": {
+      "points": 1,
+      "ulp_max": 0.0,
+      "ulp_p999": 0.0,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "minimal2#v0"
+      ]
+     },
+     "minimal2+1": {
+      "points": 1,
+      "ulp_max": 0.0,
+      "ulp_p999": 0.0,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "minimal2+1#v0"
+      ]
+     },
+     "uniform3/12": {
+      "points": 22,
+      "ulp_max": 19.0,
+      "ulp_p999": 19.0,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "uniform3/12#v18"
+      ]
+     },
+     "uniform3/1000": {
+      "points": 6370,
+      "ulp_max": 1045.0,
+      "ulp_p999": 309.0,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "uniform3/1000#v1759"
+      ]
+     },
+     "normal3/1000": {
+      "points": 6473,
+      "ulp_max": 2061.0,
+      "ulp_p999": 476.0,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "normal3/1000#v6401"
+      ]
+     },
+     "cluster3/1000": {
+      "points": 6141,
+      "ulp_max": 543448.0,
+      "ulp_p999": 24312.0,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "cluster3/1000#v66"
+      ]
+     },
+     "ball3/1000": {
+      "points": 6130,
+      "ulp_max": 2309.0,
+      "ulp_p999": 523.0,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "ball3/1000#v1086"
+      ]
+     },
+     "dup3": {
+      "points": 132,
+      "ulp_max": 4.368491638549381e+18,
+      "ulp_p999": 4.368491638549381e+18,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "dup3#v95"
+      ]
+     },
+     "ulp3/200": {
+      "points": 5,
+      "ulp_max": 8.780466491991562e+18,
+      "ulp_p999": 8.780466491991562e+18,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "ulp3/200#v2"
+      ]
+     },
+     "minimal3": {
+      "points": 1,
+      "ulp_max": 0.0,
+      "ulp_p999": 0.0,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "minimal3#v0"
+      ]
+     },
+     "minimal3+1": {
+      "points": 1,
+      "ulp_max": 0.0,
+      "ulp_p999": 0.0,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "minimal3+1#v0"
+      ]
+     },
+     "grid2/30": {
+      "points": 841,
+      "ulp_max": 0.0,
+      "ulp_p999": 0.0,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "grid2/30#v0"
+      ]
+     },
+     "grid2/5": {
+      "points": 16,
+      "ulp_max": 0.0,
+      "ulp_p999": 0.0,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "grid2/5#v0"
+      ]
+     },
+     "grid3/6": {
+      "points": 125,
+      "ulp_max": 0.0,
+      "ulp_p999": 0.0,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "grid3/6#v0"
+      ]
+     },
+     "grid3/2": {
+      "points": 1,
+      "ulp_max": 0.0,
+      "ulp_p999": 0.0,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "grid3/2#v0"
+      ]
+     },
+     "cube/5": {
+      "points": 64,
+      "ulp_max": 0.0,
+      "ulp_p999": 0.0,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "cube/5#v0"
+      ]
+     },
+     "circle2/int": {
+      "points": 1,
+      "ulp_max": 4.384429059593994e+18,
+      "ulp_p999": 4.384429059593994e+18,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "circle2/int#v0"
+      ]
+     },
+     "knight2": {
+      "points": 8,
+      "ulp_max": 0.0,
+      "ulp_p999": 0.0,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "knight2#v0"
+      ]
+     },
+     "sphere3/int": {
+      "points": 1,
+      "ulp_max": 4.370180488409645e+18,
+      "ulp_p999": 4.370180488409645e+18,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "sphere3/int#v0"
+      ]
+     },
+     "sphere3/int9": {
+      "points": 1,
+      "ulp_max": 4.3707434383630664e+18,
+      "ulp_p999": 4.3707434383630664e+18,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "sphere3/int9#v0"
+      ]
+     },
+     "boundary2": {
+      "points": 63,
+      "ulp_max": 1.0,
+      "ulp_p999": 1.0,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "boundary2#v9"
+      ]
+     },
+     "boundary3": {
+      "points": 212,
+      "ulp_max": 12.0,
+      "ulp_p999": 12.0,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "boundary3#v16"
+      ]
+     },
+     "parabola2/int": {
+      "points": 198,
+      "ulp_max": 1.0,
+      "ulp_p999": 1.0,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "parabola2/int#v20"
+      ]
+     },
+     "moment3": {
+      "points": 45,
+      "ulp_max": 1.0,
+      "ulp_p999": 1.0,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "moment3#v15"
+      ]
+     },
+     "plane3+1": {
+      "points": 45,
+      "ulp_max": 3.0,
+      "ulp_p999": 3.0,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "plane3+1#v21"
+      ]
+     },
+     "polygon2/200": {
+      "points": 1,
+      "ulp_max": 2.170954091703953e+17,
+      "ulp_p999": 2.170954091703953e+17,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "polygon2/200#v0"
+      ]
+     },
+     "grid2/30+1e-13": {
+      "points": 862,
+      "ulp_max": 1.7103443130309122e+16,
+      "ulp_p999": 1.7103443130309122e+16,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "grid2/30+1e-13#v438"
+      ]
+     },
+     "parabola2/1e-9": {
+      "points": 1,
+      "ulp_max": 794278550616544.0,
+      "ulp_p999": 794278550616544.0,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "parabola2/1e-9#v0"
+      ]
+     },
+     "parabola2/1e-14": {
+      "points": 1,
+      "ulp_max": 8.793362729783474e+18,
+      "ulp_p999": 8.793362729783474e+18,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "parabola2/1e-14#v0"
+      ]
+     },
+     "far2/1e8grid": {
+      "points": 1,
+      "ulp_max": 0.0,
+      "ulp_p999": 0.0,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "far2/1e8grid#v0"
+      ]
+     },
+     "far2/1e6uniform": {
+      "points": 1,
+      "ulp_max": 81899.0,
+      "ulp_p999": 81899.0,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "far2/1e6uniform#v0"
+      ]
+     },
+     "far3/1e8grid": {
+      "points": 1,
+      "ulp_max": 0.0,
+      "ulp_p999": 0.0,
+      "contract": null,
+      "bound": null,
+      "excluded": 0,
+      "worst": [
+       "far3/1e8grid#v0"
+      ]
+     }
+    }
+   },
+   "comparator_seconds": 600.0,
+   "run": "20261123-214327-eed868f+",
+   "comparators_run": "20261123-214327-eed868f+"
   }
  ]
 }

@@ -1,6 +1,6 @@
 // sd.spatial's Voronoi diagram for d = 2 and 3 (docs/design/spatial_geometry.md §2.5, §3.7, §3.10, §3.11, §4;
-// milestone SPT12, decisions SPT110, SPT111, SPT172-SPT189). The Python class is src/stardust/spatial/_voronoi.py,
-// which checks the arguments.
+// milestone SPT12, decisions SPT110, SPT111, SPT172-SPT183; SPT13: SPT186, SPT189). The Python class is
+// src/stardust/spatial/_voronoi.py, which checks the arguments.
 //
 //   _voronoi(points, max_simplices=-1, simplex_vertex=False)
 //       points (n, d) float64 of any strides, finite (checked by the caller), d = 2 or 3. Returns (points,
@@ -59,8 +59,8 @@
 //
 // PARALLEL (§3.10, SPT180). The cluster tests and the centres go by simplex chunks, the regions and ridges by
 // point chunks of kPointChunk (fixed sizes) whose rows are copied in chunk order; the union-find is one
-// thread over the flagged facets in simplex order. Without the GIL from n * 64 >= 2^15, split past 2^14
-// points (Delaunay's rule, SPT128). Every array is the same for any thread count.
+// thread over the flagged facets in simplex order. Without the GIL from n * 64 >= 2^15, split past 2^10
+// points (Delaunay's rule, SPT128 with SPT186's measured leaf). Every array is the same for any thread count.
 #include "array/ndarray.hpp"
 #include "base/buffer.hpp"
 #include "bind/pyutil.hpp"
@@ -93,7 +93,7 @@ using tri::chunks_of;
 using tri::run_tasks;
 using tri::Triangulation;
 
-constexpr i64 kLeaf = 1 << 14;              // split past this many points (SPT128)
+constexpr i64 kLeaf = 1 << 10;              // split past this many points (SPT128, SPT186)
 constexpr i64 kPointChunk = 1 << 10;        // points a task of the region and ridge pass takes
 constexpr double kNumeratorAccept = 0x1p-30;  // the vertex kernel's acceptance (SPT174)
 // The bytes one tetrahedron stands for after a 3-D build (SPT181): the canonical rows and neighbours 64, the
@@ -597,6 +597,43 @@ Stars stars3(const Diagram& G, i64 n, bool split) {
     return st;
 }
 
+// The fourth vertex of the tetrahedron s besides x, y and z.
+inline i64 fourth(const i64* s, i64 x, i64 y, i64 z) { return ((s[0] + s[1]) + (s[2] + s[3])) - ((x + y) + z); }
+
+// The neighbours j > i of point i with the smallest tetrahedron of each edge (i, j): a small open-addressing
+// set over the star's vertices (each is named by about five tetrahedra), then the few distinct ones sorted.
+struct EdgeSet {
+    std::vector<i64> key, val;  // val: the smallest tetrahedron seen with the key
+    std::vector<std::size_t> used;
+    int bits = 6;
+
+    void prepare(i64 entries) {
+        while ((i64{1} << bits) < 4 * entries) ++bits;
+        if (key.size() < (std::size_t{1} << bits)) key.assign(std::size_t{1} << bits, -1), val.assign(key.size(), 0);
+    }
+    void put(i64 v, i64 q) {
+        std::size_t h = (static_cast<std::uint64_t>(v) * 0x9e3779b97f4a7c15ULL) >> (64 - bits);
+        const std::size_t mask = (std::size_t{1} << bits) - 1;
+        while (key[h] >= 0 && key[h] != v) h = (h + 1) & mask;
+        if (key[h] < 0) {
+            key[h] = v, val[h] = q;
+            used.push_back(h);
+        } else if (q < val[h]) {
+            val[h] = q;
+        }
+    }
+    // The pairs v << 32 | q in increasing v; empties the set.
+    void take(std::vector<i64>& out) {
+        out.clear();
+        for (const std::size_t h : used) {
+            out.push_back(key[h] << 32 | val[h]);
+            key[h] = -1;
+        }
+        used.clear();
+        std::sort(out.begin(), out.end());
+    }
+};
+
 // d = 3: the region of point i and its ridges to j > i.
 void point3(
     const Triangulation& T,
@@ -604,18 +641,20 @@ void point3(
     const Stars& st,
     i64 i,
     Part& P,
-    std::vector<i64>& tmp,
-    std::vector<i64>& nbrs,
-    std::vector<i64>& cyc,
-    std::vector<i64>& back
+    Scratch& W,
+    EdgeSet& E
 ) {  // fmt: skip
     const i64* S = G.S.data();
     const i64* NB = G.NB.data();
     const i64* vid = G.vid.data();
     const i64 lo = st.start[static_cast<std::size_t>(i)], hi = st.start[static_cast<std::size_t>(i) + 1];
+    std::vector<i64>& tmp = W.tmp;
+    std::vector<i64>& nbrs = W.nbrs;
+    std::vector<i64>& cyc = W.cyc;
+    std::vector<i64>& back = W.back;
     // The region: the clusters of the star, -1 when a hull facet holds i.
     tmp.clear();
-    nbrs.clear();
+    E.prepare(3 * (hi - lo));
     bool hull = false;
     for (i64 k = lo; k < hi; ++k) {
         const i64 q = st.tets[static_cast<std::size_t>(k)];
@@ -624,7 +663,7 @@ void point3(
             const i64 v = S[q * 4 + j];
             if (v == i) continue;
             if (NB[q * 4 + j] < 0) hull = true;  // the facet opposite v holds i
-            if (v > i) nbrs.push_back(v << 32 | q);  // the neighbour with a tetrahedron of the edge
+            if (v > i) E.put(v, q);  // the neighbour with the smallest tetrahedron of the edge
         }
     }
     std::sort(tmp.begin(), tmp.end());
@@ -632,28 +671,27 @@ void point3(
     if (hull) P.region.push_back(-1);
     P.region.insert(P.region.end(), tmp.begin(), tmp.end());
     // The ridges to the neighbours j > i, in increasing j, each from its smallest tetrahedron.
-    std::sort(nbrs.begin(), nbrs.end());
-    nbrs.erase(
-        std::unique(nbrs.begin(), nbrs.end(), [](i64 x, i64 y) { return x >> 32 == y >> 32; }), nbrs.end()
-    );  // fmt: skip
+    E.take(nbrs);
     const double* pi = T.pts + i * 3;
     for (const i64 packed : nbrs) {
         const i64 j = packed >> 32;
         i64 q = packed & 0xffffffff;
-        // In q: i, j and a, b with orient3d(i, j, a, b) > 0 (b turns from a positively about j - i).
-        auto frame = [&](i64 u, i64& a, i64& b) {
+        // In q: i, j and a, b with orient3d(i, j, a, b) > 0 (b turns from a positively about j - i). Every
+        // tetrahedron is positive, so the frame of the next one follows without a parity: across the facet
+        // i j a (opposite b) the new vertex c is on the other side of that plane from b, so the frame is
+        // (c, a); across i j b (opposite a) it is (b, c).
+        i64 a, b;
+        {
             int pos[4];
-            pos[0] = position(S + u * 4, i);
-            pos[1] = position(S + u * 4, j);
+            pos[0] = position(S + q * 4, i);
+            pos[1] = position(S + q * 4, j);
             int r = 2;
             for (int m = 0; m < 4; ++m)
                 if (m != pos[0] && m != pos[1]) pos[r++] = m;
             if (odd4(pos)) std::swap(pos[2], pos[3]);
-            a = S[u * 4 + pos[2]];
-            b = S[u * 4 + pos[3]];
-        };
-        i64 a, b;
-        frame(q, a, b);
+            a = S[q * 4 + pos[2]];
+            b = S[q * 4 + pos[3]];
+        }
         const i64 q0 = q, a0 = a, b0 = b;
         // Walk negatively (across the facet i j a): counterclockwise seen from i towards j, all the way round
         // or to the hull (the facet i j last_a).
@@ -670,7 +708,8 @@ void point3(
             }
             if (nq == q0) break;
             q = nq;
-            frame(q, a, b);
+            b = a;
+            a = fourth(S + q * 4, i, j, b);
         }
         if (open) {  // the tetrahedra before q0: positively (across the facet i j b) to the facet i j first_b
             back.clear();
@@ -679,7 +718,8 @@ void point3(
                 const i64 nq = NB[q * 4 + position(S + q * 4, a)];
                 if (nq < 0) break;
                 q = nq;
-                frame(q, a, b);
+                a = b;
+                b = fourth(S + q * 4, i, j, a);
                 back.push_back(vid[q]);
             }
             first_b = b;
@@ -723,11 +763,12 @@ void regions_and_ridges(const Triangulation& T, Diagram& G, Output& O, bool spli
     run_tasks(pc, split, [&](i64 c) {
         Part& P = parts[static_cast<std::size_t>(c)];
         Scratch W;
+        EdgeSet E;
         for (i64 i = c * kPointChunk, e = std::min(n, (c + 1) * kPointChunk); i < e; ++i) {
             const auto before = static_cast<i64>(P.region.size());
             if (T.rep[static_cast<std::size_t>(i)] == i) {
                 if (d == 2) point2(T, G, i, P, W);
-                else point3(T, G, st, i, P, W.tmp, W.nbrs, W.cyc, W.back);
+                else point3(T, G, st, i, P, W, E);
             }
             rind[i + 1] = static_cast<i64>(P.region.size()) - before;
         }

@@ -65,7 +65,7 @@ namespace {
 using tri::Pt;
 using tri::Triangulation;
 
-constexpr std::int64_t kLeaf = 1 << 14;  // a subtree of at most this many points is one task (SPT128)
+constexpr std::int64_t kLeaf = 1 << 10;  // a subtree of at most this many points is one task (SPT128, SPT186)
 
 // ---------------------------------------------------------------- the edge structure
 
