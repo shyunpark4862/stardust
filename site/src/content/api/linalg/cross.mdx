@@ -1,0 +1,419 @@
+---
+title: cross
+names: [cross]
+group: 곱과 거듭제곱
+order: 5
+signatures:
+  - "sd.linalg.cross(x1, x2, /, *, axis=-1)"
+summary: 3차원 벡터 두 개의 벡터곱을 계산해요. 결과는 두 벡터 모두에 직각인 벡터이고, 그 길이는 두 벡터가 만드는 평행사변형의 넓이예요.
+params:
+  - name: x1
+    type: ndarray
+    kind: positional-only
+    desc: 첫째 벡터. axis가 가리키는 축의 길이가 3이어야 해요.
+  - name: x2
+    type: ndarray
+    kind: positional-only
+    desc: 둘째 벡터. 같은 축의 길이가 3이고, 나머지 축은 x1과 브로드캐스팅으로 맞출 수 있어야 해요.
+  - name: axis
+    type: int
+    kind: keyword-only
+    desc: 벡터가 놓인 축. 기본값 -1은 마지막 축이에요. 두 배열을 브로드캐스팅한 모양을 기준으로 세요.
+returns:
+  type: ndarray
+  desc: 두 입력을 브로드캐스팅한 모양의 배열. 벡터 축의 길이는 그대로 3이에요. 실수 입력(bool, int64 포함)은 float64, 복소수가 섞이면 complex128이에요.
+raises:
+  - type: TypeError
+    desc: x1이나 x2가 배열이 아닐 때(리스트 포함), axis가 int가 아닐 때(tuple, None, bool, float 포함), axis를 이름 없이 넘겼을 때.
+  - type: ValueError
+    desc: 벡터 축의 길이가 두 배열 모두에서 3이 아닐 때, 나머지 축이 브로드캐스팅되지 않을 때, axis가 차원 범위를 벗어날 때.
+  - type: OverflowError
+    desc: axis가 int64 범위를 벗어난 정수일 때.
+seeAlso: [vecdot, outer, norms, det, basics]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+`cross`는 3차원 공간의 벡터 두 개로 세 번째 벡터를 만들어요. 이 계산을 **벡터곱**(cross product)이라고 해요. 결과 벡터는 두 입력 벡터 모두에 직각이고, 그 길이는 두 입력 벡터를 두 변으로 하는 평행사변형의 넓이예요.
+
+가장 쉬운 예는 좌표축이에요. x축 방향과 y축 방향의 벡터곱은 z축 방향이에요.
+
+```python
+>>> import stardust as sd
+>>> ex = sd.asarray([1.0, 0.0, 0.0])
+>>> ey = sd.asarray([0.0, 1.0, 0.0])
+>>> sd.linalg.cross(ex, ey)
+array([0.0, 0.0, 1.0], dtype=float64)
+```
+
+일반적인 벡터에서도 마찬가지예요.
+
+```python
+>>> a = sd.asarray([1.0, 2.0, 3.0])
+>>> b = sd.asarray([4.0, 5.0, 6.0])
+>>> c = sd.linalg.cross(a, b)
+>>> c
+array([-3.0,  6.0, -3.0], dtype=float64)
+```
+
+결과 `c`가 `a`, `b`와 직각인지는 내적([`vecdot`](/api/linalg/vecdot/))으로 확인할 수 있어요. 직각인 두 벡터의 내적은 0이에요.
+
+```python
+>>> sd.linalg.vecdot(c, a)
+0.0
+>>> sd.linalg.vecdot(c, b)
+0.0
+```
+
+<Reference />
+
+## 어떻게 계산하나요
+
+결과의 각 성분은 나머지 두 성분을 엇갈려 곱한 것의 차예요.
+
+$$
+x \times y =
+\begin{bmatrix}
+x_2 y_3 - x_3 y_2 \\
+x_3 y_1 - x_1 y_3 \\
+x_1 y_2 - x_2 y_1
+\end{bmatrix}
+$$
+
+위의 `a = [1, 2, 3]`, `b = [4, 5, 6]`을 넣어 보면 이래요.
+
+| 결과의 성분 | 쓰는 성분 | 계산 | 값 |
+|:---:|:---:|---|:---:|
+| 0번 | 1번과 2번 | 2×6 − 3×5 | −3 |
+| 1번 | 2번과 0번 | 3×4 − 1×6 | 6 |
+| 2번 | 0번과 1번 | 1×5 − 2×4 | −3 |
+
+<Fig caption="결과의 0번 성분은 두 벡터의 1번·2번 성분만으로 정해져요(2×6 − 3×5 = −3). 자기 자리의 성분(0번)은 쓰지 않아요.">
+  <ArrayFig name="a" data={[1, 2, 3]} tones={['m', 'a', 'b']} />
+  <Op note="cross">×</Op>
+  <ArrayFig name="b" data={[4, 5, 6]} tones={['m', 'b', 'a']} />
+  <Op>=</Op>
+  <ArrayFig name="cross(a, b)" data={[-3, 6, -3]} tones={['b', '', '']} />
+</Fig>
+
+같은 자리끼리 곱하는 `a * b`와는 전혀 다른 계산이에요.
+
+```python
+>>> a * b
+array([ 4.0, 10.0, 18.0], dtype=float64)
+```
+
+## 방향: 순서를 바꾸면 반대가 돼요
+
+두 벡터 모두에 직각인 방향은 두 개예요(위와 아래). 어느 쪽인지는 **오른손 법칙**으로 정해요. 오른손의 네 손가락을 `x1`에서 `x2` 쪽으로 감아쥘 때 엄지가 가리키는 방향이 결과예요.
+
+그래서 두 인자의 순서를 바꾸면 결과의 부호가 반대가 돼요.
+
+$$
+y \times x = -(x \times y)
+$$
+
+```python
+>>> sd.linalg.cross(ey, ex)
+array([ 0.0,  0.0, -1.0], dtype=float64)
+>>> sd.linalg.cross(b, a)
+array([ 3.0, -6.0,  3.0], dtype=float64)
+```
+
+세 좌표축은 돌아가며 서로를 만들어요. x × y = z, y × z = x, z × x = y예요.
+
+```python
+>>> ez = sd.asarray([0.0, 0.0, 1.0])
+>>> sd.linalg.cross(ey, ez)
+array([1.0, 0.0, 0.0], dtype=float64)
+>>> sd.linalg.cross(ez, ex)
+array([0.0, 1.0, 0.0], dtype=float64)
+```
+
+## 길이: 평행사변형의 넓이
+
+결과의 길이는 두 벡터의 길이와 사이의 각도 $\theta$로 정해져요.
+
+$$
+\|x \times y\| = \|x\|\,\|y\|\,\sin\theta
+$$
+
+이 값이 두 벡터를 두 변으로 하는 평행사변형의 넓이예요. 아래는 밑변이 2이고 높이가 3인 평행사변형이에요.
+
+```python
+>>> p = sd.asarray([2.0, 0.0, 0.0])
+>>> q = sd.asarray([1.0, 3.0, 0.0])
+>>> sd.linalg.cross(p, q)
+array([0.0, 0.0, 6.0], dtype=float64)
+>>> sd.linalg.vector_norm(sd.linalg.cross(p, q))
+6.0
+```
+
+길이는 [`vector_norm`](/api/linalg/norms/)으로 구해요.
+
+### 나란한 벡터끼리는 영벡터
+
+두 벡터가 같은 방향이거나 정반대 방향이면 평행사변형이 납작해져서 넓이가 0이에요. 벡터곱도 영벡터(모든 성분이 0)가 돼요. 자기 자신과의 벡터곱도 그래요.
+
+```python
+>>> sd.linalg.cross(a, a)
+array([0.0, 0.0, 0.0], dtype=float64)
+>>> sd.linalg.cross(a, sd.asarray([2.0, 4.0, 6.0]))
+array([0.0, 0.0, 0.0], dtype=float64)
+```
+
+이 성질로 "두 벡터가 나란한가"를 확인할 수 있어요. 내적이 0이면 직각, 벡터곱이 0이면 나란해요.
+
+## 어디에 쓰나요
+
+### 면에 수직인 방향과 삼각형의 넓이
+
+공간에 점 세 개가 있으면, 한 점에서 나머지 두 점으로 가는 두 벡터의 벡터곱이 그 삼각형이 놓인 면에 수직인 방향(**법선**)이에요. 길이의 절반은 삼각형의 넓이예요.
+
+```python
+>>> p0 = sd.asarray([0.0, 0.0, 0.0])
+>>> p1 = sd.asarray([2.0, 0.0, 0.0])
+>>> p2 = sd.asarray([0.0, 3.0, 0.0])
+>>> normal = sd.linalg.cross(p1 - p0, p2 - p0)
+>>> normal
+array([0.0, 0.0, 6.0], dtype=float64)
+>>> sd.linalg.vector_norm(normal) / 2
+3.0
+```
+
+밑변 2, 높이 3인 직각삼각형이라 넓이가 3이고, 바닥(xy 평면)에 놓여 있어서 법선은 z축 방향이에요. 3차원 그래픽에서 면이 어느 쪽을 보는지, 빛을 얼마나 받는지 계산할 때 이 법선을 써요.
+
+### 회전과 관련된 양
+
+물리에서 돌림힘(위치 × 힘), 각운동량(위치 × 운동량)처럼 회전과 관련된 양이 벡터곱으로 정의돼요. 결과 벡터의 방향이 회전축이에요.
+
+## 벡터 여러 쌍을 한꺼번에
+
+2차원 이상의 배열은 벡터 여러 개를 모아 둔 것으로 봐요. 기본값 `axis=-1`에서는 마지막 축이 벡터라서, 2차원 배열이면 행 하나가 벡터 하나예요. 같은 자리의 벡터끼리 벡터곱을 구해요.
+
+```python
+>>> xs = sd.asarray([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
+>>> ys = sd.asarray([[0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
+>>> sd.linalg.cross(xs, ys)
+array([[0.0, 0.0, 1.0],
+       [1.0, 0.0, 0.0]], dtype=float64)
+```
+
+첫 행은 x × y = z, 둘째 행은 y × z = x예요. 결과의 모양은 입력과 같아요. 벡터 축이 사라지는 [`vecdot`](/api/linalg/vecdot/)과 달리 길이 3인 축이 그대로 남아요.
+
+벡터 축이 아닌 나머지 축은 [브로드캐스팅](/api/array/broadcasting/)으로 맞춰요. 벡터 하나를 여러 벡터와 한꺼번에 곱할 수 있어요.
+
+```python
+>>> sd.linalg.cross(xs, ez)
+array([[ 0.0, -1.0,  0.0],
+       [ 1.0,  0.0,  0.0]], dtype=float64)
+>>> sd.linalg.cross(sd.ones((4, 1, 3)), sd.ones((5, 3))).shape
+(4, 5, 3)
+```
+
+| `x1` | `x2` | 벡터 축 | 나머지 축 맞추기 | 결과 |
+|:---:|:---:|:---:|---|:---:|
+| `(3,)` | `(3,)` | 3과 3 | 없음 | `(3,)` |
+| `(2, 3)` | `(3,)` | 3과 3 | `(2,)`와 `()` → `(2,)` | `(2, 3)` |
+| `(4, 1, 3)` | `(5, 3)` | 3과 3 | `(4, 1)`과 `(5,)` → `(4, 5)` | `(4, 5, 3)` |
+| `(2, 3)` | `(5, 3)` | 3과 3 | `(2,)`와 `(5,)` → 안 맞음 | 에러 |
+
+```python
+>>> sd.linalg.cross(sd.ones((2, 3)), sd.ones((5, 3)))
+Traceback (most recent call last):
+    ...
+ValueError: cross(): batch shapes do not broadcast: (2,) (5,)
+```
+
+### `axis`: 벡터가 다른 축에 있을 때
+
+벡터가 열 방향으로 놓여 있으면(열 하나가 벡터 하나) `axis=0`을 줘요. `axis`가 가리키는 축의 길이가 3이어야 해요.
+
+```python
+>>> cols_x = sd.asarray([[1.0, 0.0],
+...                      [0.0, 1.0],
+...                      [0.0, 0.0]])
+>>> cols_y = sd.asarray([[0.0, 0.0],
+...                      [1.0, 0.0],
+...                      [0.0, 1.0]])
+>>> sd.linalg.cross(cols_x, cols_y, axis=0)
+array([[0.0, 1.0],
+       [0.0, 0.0],
+       [1.0, 0.0]], dtype=float64)
+```
+
+첫 열은 `[0, 0, 1]`(x × y = z), 둘째 열은 `[1, 0, 0]`(y × z = x)이에요. 결과에서도 벡터는 같은 축(열 방향)에 놓여요.
+
+`axis`는 정수 하나만, 그리고 이름을 붙여서 넘겨요. 두 입력과 결과의 벡터 축을 따로 정하는 방법은 없어요. 필요하면 [`permute_dims`](/api/array/permute_dims/)로 축을 먼저 옮기세요.
+
+```python
+>>> sd.linalg.cross(a, b, axis=(0,))
+Traceback (most recent call last):
+    ...
+TypeError: cross(): 'axis' must be an int, not tuple
+>>> sd.linalg.cross(a, b, axis=1)
+Traceback (most recent call last):
+    ...
+ValueError: cross(): axis 1 is out of bounds for an array of dimension 1
+```
+
+<Callout type="warn" title="axis는 맞춘 뒤의 모양에서 세요">
+
+`axis`는 각 배열의 축이 아니라 두 배열을 브로드캐스팅한 모양의 축이에요. 차원이 적은 배열은 앞쪽에 길이 1인 축이 붙기 때문에, 차원 수가 다른 두 배열에 `axis=0`을 주면 뜻밖의 에러가 나요. 그리고 벡터 축 자체는 브로드캐스팅으로 늘려 주지 않아요.
+
+</Callout>
+
+```python
+>>> sd.linalg.cross(sd.ones((3, 4)), sd.ones(3), axis=0)
+Traceback (most recent call last):
+    ...
+ValueError: cross(): 'x1' and 'x2' must have size 3 along the axis, got 3 and 1
+```
+
+`(3,)`은 `(1, 3)`으로 보기 때문에 0번 축의 길이가 1이에요. 열마다 같은 벡터를 곱하려면 세로 모양 `(3, 1)`로 바꿔서 넣어요.
+
+```python
+>>> sd.linalg.cross(sd.ones((3, 4)), sd.reshape(sd.ones(3), (3, 1)), axis=0).shape
+(3, 4)
+```
+
+## 길이 3인 벡터만 받아요
+
+벡터곱은 3차원 공간에서만 정의되는 계산이에요. 벡터 축의 길이가 3이 아니면 `ValueError`예요. 길이 2인 벡터도 받지 않아요.
+
+```python
+>>> sd.linalg.cross(sd.asarray([1.0, 2.0]), sd.asarray([3.0, 4.0]))
+Traceback (most recent call last):
+    ...
+ValueError: cross(): 'x1' and 'x2' must have size 3 along the axis, got 2 and 2
+>>> sd.linalg.cross(sd.ones((3, 4)), sd.ones((3, 4)))
+Traceback (most recent call last):
+    ...
+ValueError: cross(): 'x1' and 'x2' must have size 3 along the axis, got 4 and 4
+```
+
+둘째 예는 모양이 `(3, 4)`라서 마지막 축의 길이가 4예요. 벡터가 0번 축에 있다면 `axis=0`을 주세요.
+
+### 평면(2차원) 벡터라면
+
+평면 위의 두 벡터 `(x₁, x₂)`와 `(y₁, y₂)`에서 흔히 "2차원 벡터곱"이라고 부르는 값은 숫자 하나 $x_1 y_2 - x_2 y_1$이에요. 두 벡터가 만드는 평행사변형의 넓이에 부호를 붙인 값이고, `y`가 `x`의 반시계 방향에 있으면 양수예요. 구하는 방법은 두 가지예요.
+
+세 번째 성분에 0을 붙여 3차원 벡터로 만들면 결과의 마지막 성분이 그 값이에요.
+
+```python
+>>> s = sd.asarray([1.0, 2.0, 0.0])
+>>> t = sd.asarray([3.0, 4.0, 0.0])
+>>> sd.linalg.cross(s, t)
+array([ 0.0,  0.0, -2.0], dtype=float64)
+```
+
+또는 두 벡터를 행으로 놓은 2×2 행렬의 [행렬식](/api/linalg/det/)을 구해요.
+
+```python
+>>> sd.linalg.det(sd.asarray([[1.0, 2.0], [3.0, 4.0]]))
+-2.0
+```
+
+## 결과의 dtype: 정수를 넣어도 float64
+
+`sd.linalg`의 함수는 언제나 실수(float64)나 복소수(complex128)로 계산해요. 정수나 bool 벡터를 넣어도 결과는 float64예요.
+
+```python
+>>> sd.linalg.cross(sd.asarray([1, 2, 3]), sd.asarray([4, 5, 6]))
+array([-3.0,  6.0, -3.0], dtype=float64)
+```
+
+| 입력 | 결과 |
+|:---:|:---:|
+| bool, int64, float64 | float64 |
+| complex128이 하나라도 있으면 | complex128 |
+
+실수로 계산하기 때문에 약 2⁵³(9 × 10¹⁵)을 넘는 정수는 끝자리가 달라질 수 있어요.
+
+```python
+>>> sd.linalg.cross(sd.asarray([2**53 + 1, 0, 0]), sd.asarray([0, 1, 0]))
+array([               0.0,                0.0, 9007199254740992.0], dtype=float64)
+```
+
+복소수 벡터는 위의 식에 적힌 값 그대로 넣어 계산해요. 켤레 복소수(허수부의 부호를 바꾼 수)로 바꾸지 않아요. 첫째 인자의 켤레를 쓰는 [`vecdot`](/api/linalg/vecdot/)과 다른 점이에요.
+
+```python
+>>> sd.linalg.cross(sd.asarray([1j, 0, 0]), sd.asarray([0, 1j, 0]))
+array([     0j,      0j, (-1+0j)], dtype=complex128)
+```
+
+마지막 성분이 `1j × 1j = -1`이에요. 그래서 복소수 벡터에서는 결과와 입력의 `vecdot`이 0이 아닐 수 있어요.
+
+## 조심할 점
+
+### NaN과 inf는 검사하지 않고 그대로 계산해요
+
+`cross`는 곱하고 빼기만 하는 함수라서 입력에 NaN(숫자가 아님)이나 inf(무한대)가 있어도 에러를 내지 않아요. 결과의 각 성분은 나머지 두 자리의 성분으로 계산하기 때문에, NaN이 있는 자리가 아니라 다른 두 자리가 NaN이 돼요.
+
+```python
+>>> sd.linalg.cross(sd.asarray([sd.nan, 0.0, 0.0]), ey)
+array([0.0, nan, nan], dtype=float64)
+```
+
+곱이 float64가 담을 수 있는 범위(약 1.8 × 10³⁰⁸)를 넘으면 에러 없이 inf가 돼요.
+
+```python
+>>> sd.linalg.cross(sd.asarray([1e200, 0.0, 0.0]), sd.asarray([0.0, 1e200, 0.0]))
+array([0.0, 0.0, inf], dtype=float64)
+```
+
+### 거의 나란한 벡터에서는 오차가 커 보일 수 있어요
+
+벡터곱의 각 성분은 비슷한 크기의 두 곱을 빼서 구해요. 두 벡터가 거의 나란하면 결과가 0에 가까운데, 큰 수끼리 빼서 작은 수를 얻는 계산에서는 반올림 오차가 결과에 비해 크게 남아요. "결과가 정확히 0인가"로 나란한지 판단하지 말고, 결과의 길이가 두 벡터 길이의 곱에 비해 충분히 작은지를 보세요.
+
+### 벡터가 0개일 때
+
+벡터가 0개(나머지 축의 길이가 0)면 결과도 빈 배열이에요. 에러가 아니에요.
+
+```python
+>>> sd.linalg.cross(sd.zeros((0, 3)), sd.zeros(3)).shape
+(0, 3)
+```
+
+### 배열만 받아요
+
+리스트는 받지 않아요. 먼저 [`asarray`](/api/array/asarray/)로 배열로 바꾸세요.
+
+```python
+>>> sd.linalg.cross(ex, [0.0, 1.0, 0.0])
+Traceback (most recent call last):
+    ...
+TypeError: cross(): 'x2' must be an sd.ndarray, not list
+```
+
+## 비슷한 함수와의 차이
+
+벡터 두 개를 "곱하는" 방법은 여러 가지이고, 결과의 종류가 모두 달라요. 길이 3인 벡터 `x`, `y`를 넣었을 때를 기준으로 견주면 이래요.
+
+| 계산 | 결과 | 뜻 | 순서를 바꾸면 | 복소수 |
+|---|:---:|---|---|---|
+| `sd.linalg.cross(x, y)` | 길이 3 벡터 | 둘 모두에 직각인 벡터. 길이는 평행사변형의 넓이 | 부호가 반대 | 켤레 없음 |
+| [`sd.linalg.vecdot(x, y)`](/api/linalg/vecdot/) | 숫자 하나 | 같은 자리끼리 곱해서 더한 값. 방향이 비슷할수록 커요 | 같아요(복소수면 켤레) | `x`의 켤레 |
+| [`sd.linalg.outer(x, y)`](/api/linalg/outer/) | 3×3 행렬 | 모든 쌍의 곱을 표로 | 전치 | 켤레 없음 |
+| [`x * y`](/api/array/arithmetic/) | 길이 3 벡터 | 같은 자리끼리 곱하기 | 같아요 | 켤레 없음 |
+
+`vecdot`과 `cross`는 짝을 이뤄요. 내적은 두 벡터가 얼마나 같은 방향인지($\cos\theta$)를, 벡터곱의 길이는 얼마나 다른 방향인지($\sin\theta$)를 재요. 나란하면 벡터곱이 0이고, 직각이면 내적이 0이에요.
+
+| | 나란할 때 | 직각일 때 |
+|---|:---:|:---:|
+| `vecdot(x, y)` | 길이의 곱(가장 커요) | 0 |
+| `cross(x, y)`의 길이 | 0 | 길이의 곱(가장 커요) |
+
+`cross`는 `vecdot`처럼 길이 3인 축 하나를 고르는 `axis`가 있지만, 그 축이 결과에서 사라지지 않아요.
+
+## numpy·scipy를 아는 분께
+
+- 길이 2인 벡터는 `np.cross`처럼 `ValueError`예요. 0을 붙여 길이 3으로 만들거나 `det`을 쓰세요.
+- `axisa`, `axisb`, `axisc` 인자는 없어요. `axis` 하나만 있고 keyword-only예요.
+- **정수와 bool 입력의 결과가 float64예요.** numpy는 정수를 유지해요.
+- **`axis`는 두 배열을 브로드캐스팅한 모양에서 세요.** numpy는 각 배열에서 따로 세기 때문에, 차원 수가 다른 입력에 `axis=0`을 주면 numpy에서는 되는 호출(`(3, 4)`와 `(3,)`)이 여기서는 `ValueError`예요.
+- 리스트와 numpy 배열은 받지 않아요(`TypeError`).

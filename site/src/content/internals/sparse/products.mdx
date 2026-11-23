@@ -1,0 +1,248 @@
+---
+title: 곱
+group: 형식과 연산
+order: 3
+summary: 희소 × 밀집(SpMV·SpMM)과 희소 × 희소(SpGEMM)가 출력 원소 하나를 어떤 순서로 더하는지, 모으기와 흩뿌리기가 같은 순서를 내는 까닭, 4096개보다 긴 줄을 조각으로 나누는 규칙, Gustavson 알고리즘과 정렬 없이 자리를 꺼내는 비트 집합을 설명해요.
+seeAlso: [determinism, reductions, elementwise, formats]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import Steps from '../../../components/fig/Steps.astro';
+
+## 출력 원소 하나의 합
+
+곱의 출력 원소 하나는 여러 항의 합이에요. SpMV `A @ x`라면 yᵢ = Σⱼ aᵢⱼxⱼ이고, 항은 행 i에 저장된 원소마다 하나예요. 이 합의 규칙이 곱의 비트를 정해요.
+
+- 항을 그 줄의 색인 오름차순으로 놓고 0에서 시작해 차례로 더해요.
+- float64의 항 하나는 `fma(a, x, acc)`예요. 곱과 덧셈이 반올림 한 번이에요.
+- int64는 wrap하는 곱과 합, complex128은 `acc + a·x`이고 복소 곱은 numpy의 `cmul`(실수부 `fma(ar, xr, -(ai·xi))`, 허수부 `fma(ar, xi, ai·xr)`)이에요.
+- 희소 쪽 값이 언제나 왼쪽 인수예요. 복소 곱은 인수를 바꾸면 끝자리가 달라지기 때문이에요. 형식이 무엇이든, `A @ x`든 `x @ A`든 이 순서는 그대로예요.
+
+```cpp
+// csrc/sparse/arith.hpp
+template <class T>
+inline T madd(T a, T x, T acc) {
+    if constexpr (std::is_same_v<T, double>) return std::fma(a, x, acc);
+    else if constexpr (std::is_same_v<T, std::int64_t>) return ops::wrap_add(acc, ops::wrap_mul(a, x));
+    else {
+        const complex128 p = ops::cmul(a, x);
+        return {acc.real() + p.real(), acc.imag() + p.imag()};
+    }
+}
+```
+
+```python
+>>> import math
+>>> import stardust as sd
+>>> A = sd.sparse.csr_array(sd.asarray([[1.0, 0.0, 2.0], [0.0, 0.0, 3.0], [4.0, 5.0, 0.0]]))
+>>> x = sd.asarray([0.1, float('nan'), 0.3])
+>>> (A @ x).tolist()
+[0.7, 0.8999999999999999, nan]
+>>> math.fma(2.0, 0.3, math.fma(1.0, 0.1, 0.0)) == (A @ x).tolist()[0]
+True
+```
+
+x₁이 NaN이지만 열 1에 원소를 저장한 행은 행 2뿐이라 행 0과 1은 NaN이 되지 않아요. 저장되지 않은 자리는 항이 아니에요(강한 0).
+
+### 긴 줄은 4096개씩의 조각
+
+한 줄의 항이 L = 4096개를 넘으면, 항을 L개씩의 고정 조각으로 끊어 조각마다 차례로 더하고, 조각들의 합을 `base/pairwise.hpp`의 트리로 더해요. 트리의 모양은 조각 수로만 정해지므로 결과는 여전히 행렬의 값과 모양만으로 정해져요. 긴 줄의 반올림 오차가 항 수에 비례해 자라지 않게 하려는 것이에요.
+
+```cpp
+// csrc/sparse/arith.hpp
+template <class T, class Step>
+inline T ordered_sum(std::int64_t b, std::int64_t e, const Step& step, std::vector<T>& parts) {
+    const std::int64_t n = e - b;
+    if (n <= kLine) {
+        T acc{};
+        for (std::int64_t p = b; p < e; ++p) acc = step(p, acc);
+        return acc;
+    }
+    const std::int64_t nch = (n + kLine - 1) / kLine;
+    parts.resize(static_cast<std::size_t>(nch));
+    for (std::int64_t ch = 0; ch < nch; ++ch) {
+        T acc{};
+        const std::int64_t pe = std::min(e, b + (ch + 1) * kLine);
+        for (std::int64_t p = b + ch * kLine; p < pe; ++p) acc = step(p, acc);
+        parts[static_cast<std::size_t>(ch)] = acc;
+    }
+    return tree_sum(parts.data(), nch);
+}
+```
+
+실제 행렬의 줄은 거의 모두 L보다 짧아서 대개 첫 가지만 타요. 다음 예는 조각이 결과를 바꾸는 줄이에요. 10¹⁶과 저장된 0 4095개가 첫 조각, 1과 1이 둘째 조각이에요.
+
+```python
+>>> data = sd.concat([sd.asarray([1e16]), sd.zeros(4095), sd.asarray([1.0, 1.0])])
+>>> n = data.shape[0]
+>>> L = sd.sparse.csr_array((data, sd.arange(n), sd.asarray([0, n])), shape=(1, n))
+>>> (L @ sd.ones(n)).tolist()
+[1.0000000000000002e+16]
+>>> seq = 0.0
+>>> for t in data.tolist():
+...     seq += t
+>>> seq
+1e+16
+```
+
+차례로 더하면 1이 한 번씩 10¹⁶에 더해지며 반올림으로 사라지지만, 조각으로 나누면 둘째 조각의 합 2가 한 번에 더해져요.
+
+## 모으기와 흩뿌리기
+
+`_spmv`는 압축 배열의 줄을 두 가지로 읽어요.
+
+- **모으기**(gather): 출력 r은 줄 r이에요. 줄 r의 원소마다 x의 해당 행을 모아 더해요. CSR @ x, CSCᵀ @ x가 이 꼴이에요.
+- **흩뿌리기**(scatter): 줄 r의 원소 (j, a)마다 출력 j에 a·x_r을 더해요. CSC @ x, CSRᵀ @ x, x @ CSR이 이 꼴이에요.
+
+흩뿌리기를 줄 순서대로 하면 출력 j가 받는 항은 줄 번호 오름차순이에요. 그런데 CSC의 줄 번호는 원래 행렬의 열 번호이므로, CSC @ x의 출력 i가 받는 항은 열 오름차순, 곧 CSR @ x의 행 i와 같은 순서예요. 그래서 같은 행렬을 어느 형식으로 저장해도 곱의 비트가 같아요. COO와 DOK는 CSR로 한 번 바꾼 뒤 모으기를 해요.
+
+```python
+>>> rng = sd.random.default_rng(7)
+>>> R = sd.sparse.random_array((3000, 3000), density=0.01, rng=rng, format='csr')
+>>> v = rng.random(3000)
+>>> y = (R @ v).tolist()
+>>> (R.tocsc() @ v).tolist() == y, (R.tocoo() @ v).tolist() == y
+(True, True)
+>>> (v @ R).tolist() == (R.T @ v).tolist()
+True
+```
+
+### 모으기의 병렬
+
+모으기는 줄마다 독립이에요. `over_lines`가 `indptr`만으로 줄을 약 2¹⁴ 단위(원소 수 × 열 수)씩의 구간으로 끊어 스레드풀에 나눠요. 줄 하나는 한 태스크가 처음부터 끝까지 더하므로 항의 순서가 한 스레드와 같아요.
+
+구간 안에서 `line_dots`는 줄 넷을 함께 더해요. 줄 하나의 합은 앞 항의 결과를 기다리는 FMA 사슬이라, 사슬 넷을 엇갈려 돌리면 FMA 장치가 쉬지 않아요. 사슬마다 자기 줄의 항을 자기 순서로 더하므로 줄마다의 순서는 그대로예요.
+
+```cpp
+        // csrc/sparse/arith.hpp
+        const std::int64_t m = std::min(std::min(n0, n1), std::min(n2, n3));
+        T a0{}, a1{}, a2{}, a3{};
+        for (std::int64_t j = 0; j < m; ++j) {
+            a0 = step(s0 + j, a0);
+            a1 = step(s1 + j, a1);
+            a2 = step(s2 + j, a2);
+            a3 = step(s3 + j, a3);
+        }
+        for (std::int64_t p = s0 + m; p < s1; ++p) a0 = step(p, a0);
+        for (std::int64_t p = s1 + m; p < s2; ++p) a1 = step(p, a1);
+        for (std::int64_t p = s2 + m; p < s3; ++p) a2 = step(p, a2);
+        for (std::int64_t p = s3 + m; p < e3; ++p) a3 = step(p, a3);
+```
+
+네 줄 가운데 가장 짧은 길이 `m`까지 함께 가고, 남은 항은 줄마다 이어 더해요. 넷 가운데 하나라도 L보다 길면 그 넷은 줄마다 `ordered_sum`으로 더해요.
+
+SpMM(`A @ X`, X는 (n, k))은 출력 원소마다 위와 같은 합이라 결과의 열 j는 `A @ X[:, j]`와 비트까지 같아요. 구현은 X의 행을 열 16개씩 묶어 NEON 레인에 두고 원소 하나(행 하나)를 읽을 때 16개의 합을 함께 갱신해요. 원소 하나의 항 순서는 그대로예요. X의 행은 무작위로 읽히므로 8원소 뒤에 읽을 행을 미리 불러 둬요.
+
+```cpp
+                        // csrc/sparse/spmv.cpp
+                        // the rows of x are gathered at random: fetch the one 8 entries ahead
+                        auto step = [lv, li, xp, xr, c0, pend](int64_t p, T* acc) {
+                            if (p + 8 < pend) {
+                                const T* ahead = xp + li[p + 8] * xr + c0;
+                                __builtin_prefetch(ahead);
+                                __builtin_prefetch(ahead + kBlockCols - 1);
+                            }
+                            const T a = lv[p];
+                            const T* row = xp + li[p] * xr + c0;
+                            for (int c = 0; c < kBlockCols; ++c) acc[c] = madd(a, row[c], acc[c]);
+                        };
+```
+
+```python
+>>> X = rng.random((3000, 20))
+>>> Y = R @ X
+>>> all(Y[:, j].tolist() == (R @ X[:, j]).tolist() for j in range(20))
+True
+```
+
+### 흩뿌리기의 병렬
+
+흩뿌리기는 여러 줄이 같은 출력에 쓰므로 줄 구간으로 나눌 수 없어요. 한 스레드에서는 줄 순서대로 흩어요(`scatter_serial`). 일이 2¹⁶ 단위 이상이고 풀을 쓸 수 있으면 `scatter_blocks`가 출력 쪽을 나눠요.
+
+<Fig column caption="scatter_blocks. 블록 하나는 한 태스크가 맡고, 그 블록의 항을 태스크 순서, 곧 줄 순서로 더해요. 출력 하나가 받는 항의 순서가 한 스레드의 흩뿌리기와 같아요.">
+  <Steps steps={[
+    { label: '출력 블록', note: '출력을 2^s개씩(블록마다 값 4096개 이하)의 블록으로. 블록이 넷보다 적으면 한 스레드의 길', where: 'spmv.cpp' },
+    { label: '줄 구간', note: 'indptr만으로 정한 약 2^14개 원소의 고정 구간', where: 'line_bounds' },
+    { label: '구간마다 블록별 개수', note: '병렬로 세고, 블록 순서 → 구간 순서로 누적', where: 'scatter_blocks' },
+    { label: '항 옮기기', note: '구간마다 원소를 블록별로 안정 계수 정렬. 항마다 출력 색인과 필요한 값(k = 1이면 두 인수)', where: 'scatter_blocks' },
+    { label: '블록마다 더하기', note: '블록의 항을 저장된 순서(구간 순서 = 줄 순서)로 더해요', where: 'scatter_blocks' },
+  ]} />
+</Fig>
+
+출력 하나가 L개 넘는 항을 받으면 모으기의 줄과 같이 L개마다 조각을 끊어야 해요. 그래서 흩뿌리기는 출력마다 16비트 개수를 세다가 L에 닿으면 그때까지의 합을 조각으로 떼어 둬요. 이 개수를 세면 한 스레드의 흩뿌리기가 두 배쯤 느려지므로, 배열마다 어느 색인이 L번 넘게 나오는지를 처음 한 번 세어 두고(`_minor_over`), 그런 색인이 없으면 세지 않아요. 색인 배열은 바뀌지 않으므로 이 답은 `.T`, 복사, 값만 바꾼 배열이 함께 나눠 가져요.
+
+```python
+    # src/stardust/sparse/_compressed.py
+    def _long_across(self):
+        # ...
+        holder = self._long_holder()
+        if holder[0] is None:
+            lines, positions = self._lines()
+            holder[0] = lines > _LINE and _core._minor_over(self._indices, positions, _LINE)
+        return holder[0]
+```
+
+`X @ A`처럼 결과가 전치된 2차원 흩뿌리기는 출력 행의 k개 값이 연속하도록 작업 배열에 더한 뒤 마지막에 옮겨요. 읽는 쪽도 같아요. `X @ A`는 $X^{\mathsf T}$를 흩뿌리는데 그 행은 X의 열이라 항 하나가 캐시 줄 k개를 건드려요. 그래서 먼저 $X^{\mathsf T}$의 행을 연속한 k개 값으로 옮겨 놓고 써요. 작업 배열이 8 MB를 넘어 캐시에 들지 않으면 16항 뒤에 쓸 출력 행을 미리 불러 둬요. 캐시에 드는 크기에서는 미리 부르기가 오히려 손해라 하지 않아요. 모두 같은 값을 다른 자리에 쓰거나 읽는 것뿐이라 비트는 그대로예요.
+
+## 희소 × 희소: Gustavson
+
+`_spgemm`은 Gustavson의 행 단위 알고리즘이에요. C의 행 i는 A의 행 i에 저장된 원소 (k, aᵢₖ)마다, k 오름차순으로, aᵢₖ × (B의 행 k)를 더한 것이에요. 출력 원소 Cᵢⱼ로 보면 k 오름차순의 FMA 순차 합이고, scipy의 `csr_matmat`과 같은 순서예요.
+
+<Fig column caption="SpGEMM의 행 하나. 누산기는 스레드마다 한 줄 길이이고, 표시(stamp)로 비우지 않고 다시 써요.">
+  <Steps steps={[
+    { label: 'stamp = ++epoch', note: '이 행의 표시. 표시가 다른 칸은 아직 이 행에서 만나지 않은 자리예요', where: 'product_line' },
+    { label: 'A의 행 i의 원소 (k, a), k 오름차순', note: 'B의 행 k의 원소 (j, b)마다', where: 'product_line', depth: 1 },
+    { label: '처음 만난 j', note: 'mark[j] = stamp, 누산기 0, 자리 j를 기록', where: 'product_line', depth: 2 },
+    { label: 'acc[j] = madd(a, b, acc[j])', note: 'A의 값이 왼쪽 인수', where: 'product_line', depth: 2 },
+    { label: '자리를 오름차순으로 꺼내기', note: '정확한 0이 아닌 값만 내보내요(scipy처럼 0을 지움)', where: 'PositionSet::drain' },
+  ]} />
+</Fig>
+
+행은 일(행이 방문하는 B의 원소 수)로 나눈 고정 구간으로 나눠요. 스레드풀에서는 두 패스예요. 첫째 패스는 행마다 만나는 서로 다른 자리 수를 세어 결과 배열의 크기(상한)를 정하고, 둘째 패스가 값을 채우고, 정확한 0이 생긴 행은 마지막에 행 순서대로 당겨 붙여요. 풀을 쓸 수 없을 때(1스레드나 작은 일)는 세는 패스가 B를 한 번 더 훑는 만큼 손해라, 구간마다 자기 버퍼에 값을 쓰고(0은 빼고) 끝난 뒤 구간 순서로 제자리에 옮기는 한 패스예요. 어느 길이든 행 하나는 한 태스크가 같은 `product_line`으로 계산하므로 같은 배열이 나오고, 결과는 스레드 수와 무관해요.
+
+### 정렬 없이 자리를 꺼내기
+
+행에서 만난 자리는 만난 순서라 표준 꼴을 만들려면 오름차순으로 꺼내야 해요. 정렬하면 한 스레드의 곱에서 시간의 큰 몫이 정렬이었어요. 그래서 자리를 비트 집합에 넣고(64자리마다 한 단어), 단어마다 요약 비트를 하나 더 둬요. 꺼낼 때는 요약 단어 n/4096개를 훑고 켜진 비트만 따라가요(count trailing zeros). 꺼내면서 비트를 지우므로 다음 행에 그대로 써요.
+
+```cpp
+    // csrc/sparse/spgemm.cpp
+    template <class F>
+    void drain(F&& f) {
+        for (std::size_t a = 0; a < summary.size(); ++a) {
+            std::uint64_t s = summary[a];
+            if (!s) continue;
+            summary[a] = 0;
+            while (s) {
+                const int64_t wi = (static_cast<int64_t>(a) << 6) | __builtin_ctzll(s);
+                s &= s - 1;
+                std::uint64_t w = word[static_cast<std::size_t>(wi)];
+                word[static_cast<std::size_t>(wi)] = 0;
+                while (w) {
+                    f((wi << 6) | __builtin_ctzll(w));
+                    w &= w - 1;
+                }
+            }
+        }
+    }
+```
+
+요약을 훑는 비용은 행마다 n/4096 단어라, 결과 행이 아주 짧고 열이 아주 많으면 정렬보다 비싸요. 그래서 요약 단어 수가 행의 평균 일의 4배 + 16 이하일 때만 비트 집합을 쓰고, 아니면 자리를 정렬해요(32개 아래는 `std::sort`, 넘으면 배열 영역의 NEON 정렬). 자리는 서로 달라 정렬의 불안정이 드러나지 않고, 어느 길이든 순서가 정확히 같아 결과가 같아요.
+
+### CSC × CSC와 결과의 형식
+
+결과는 CSR이고, 왼쪽이 CSC면 CSC예요. CSC × CSC는 C의 열 j가 Σₖ bₖⱼ × (A의 열 k)라서, 같은 커널에 바깥 피연산자로 B의 CSC를, 안쪽으로 A의 CSC를 넘기고 `swap=True`를 줘요. 그러면 `madd(bv[q], a, s)`로 A의 값이 왼쪽 인수가 되고, 출력 원소의 항 순서(k 오름차순)도 CSR × CSR과 같아요.
+
+```python
+>>> P = sd.sparse.csr_array(sd.asarray([[1.0, 1.0]]))
+>>> Q = sd.sparse.csr_array(sd.asarray([[1.0], [-1.0]]))
+>>> C = P @ Q
+>>> C.nnz, C.format, (P.tocsc() @ Q.tocsc()).format
+(0, 'csr', 'csc')
+```
+
+1·1 + 1·(−1) = 0이라 결과에 저장되지 않았어요. 1차원 결과는 COO(scipy와 같아요), 1차원 @ 1차원은 Python 스칼라예요.
+
+## scipy를 아는 분께
+
+- scipy의 `csr_matvec`은 `sum += Ax[jj]*Xx[Aj[jj]]`를 clang이 FMA로 축약한 순차 합이에요. 그래서 줄이 L 이하이면 이쪽의 SpMV는 scipy와 지금은 비트까지 같아요(약속은 아니에요). 복소 `csr_matvec`도 `cmul` 꼴과 같았고, scipy의 CSC `@`도 같은 이유로 CSR과 같은 비트였어요. L보다 긴 줄에서는 이쪽이 조각으로 나누므로 달라요.
+- scipy의 `csr_matmat`은 결과 행을 정렬하지 않아요. 이쪽은 언제나 표준 꼴이에요.
+- `A @ 2`는 scipy에서 `ValueError`, 이쪽에서 `TypeError`예요. numpy 배열은 연산자의 피연산자가 아니라 `TypeError`예요(`sd.ndarray`만 받아요).

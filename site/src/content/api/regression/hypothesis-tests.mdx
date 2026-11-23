@@ -1,0 +1,438 @@
+---
+kind: function
+title: 선형 가설 검정
+names: [TTestResult, WaldTestResult]
+group: 검정과 모형 비교
+order: 1
+signatures:
+  - "r.t_test(R, /, q=None)"
+  - "r.wald_test(R, /, q=None)"
+summary: 적합한 모형의 계수에 대한 가설 Rβ = q를 검정해요. "두 계수가 같은가", "이 계수가 3인가"를 줄마다 t 검정으로(t_test), "이 계수들이 모두 0인가"를 한꺼번에 F나 카이제곱 검정으로(wald_test) 따져요. ols·wls·gls·glm·rlm·quantreg·nls 결과의 메서드예요.
+params:
+  - name: R
+    type: 2차원 (m, k) 또는 1차원 (k,)의 배열이나 수의 시퀀스
+    kind: positional-only
+    desc: "가설의 계수 쪽. 줄 하나가 식 하나이고, 열은 params와 같은 자리예요(k는 절편을 포함한 params의 길이). 1차원이면 식 하나예요. 유한해야 해요."
+  - name: q
+    type: float, 수의 시퀀스, 또는 None
+    desc: "가설의 오른쪽 값. 길이 m의 시퀀스이거나, 모든 줄에 같은 값을 쓰는 수 하나예요. None(기본값)이면 0이에요. 위치로도 키워드로도 줄 수 있어요."
+returns:
+  type: TTestResult, WaldTestResult
+  desc: "t_test()는 줄마다의 effect(Rβ), sd(표준오차), tvalue, pvalue, df와 conf_int(*, alpha=0.05)를 담은 TTestResult예요. R이 1차원이면 각 필드가 수 하나, 2차원이면 길이 m의 배열이에요. wald_test()는 statistic, pvalue, distribution('F' 또는 'chi2')과 자유도(F면 df_num·df_denom, 카이제곱이면 df)를 담은 WaldTestResult예요. 둘 다 summary()가 있어요. 배치면 필드 앞에 배치 모양이 붙어요."
+raises:
+  - type: TypeError
+    desc: R·q가 배열이나 수의 시퀀스가 아닐 때(q가 문자열이나 True·False일 때도), R을 키워드로 줬을 때.
+  - type: ValueError
+    desc: R의 열 수가 params의 길이와 다를 때, R이 0차원이거나 3차원 이상일 때, R에 줄이 없을 때, R·q에 NaN이나 inf가 있을 때, q의 길이가 R의 줄 수와 다를 때.
+seeAlso: [model-comparison, anova, results, covariance, ols, glm]
+---
+import Callout from '../../../components/Callout.astro';
+
+## 무엇을 하나요
+
+회귀 결과의 `pvalues`는 계수마다 "이 계수가 0인가"라는 한 가지 질문에 답해요. 실제로 궁금한 질문은 그보다 다양해요.
+
+- TV 광고와 라디오 광고의 효과가 같은가?
+- TV 광고 1만큼의 효과가 매출 3만큼이라는 업계의 어림이 맞는가?
+- 신문 광고와 SNS 광고를 모형에서 한꺼번에 빼도 되는가?
+
+이런 질문은 모두 계수의 일차식으로 쓸 수 있어요. 계수를 $\beta = (\beta_0, \beta_1, \dots)$라 하면 가설은 행렬 $R$과 벡터 $q$로 이렇게 적어요.
+
+$$
+R\beta = q
+$$
+
+$R$의 줄 하나가 식 하나예요. `t_test`는 줄마다 따로 검정하고, `wald_test`는 모든 줄을 한꺼번에 검정해요.
+
+| 질문 | $R$의 줄 | $q$ | 메서드 |
+|---|---|---|---|
+| 두 계수가 같은가 ($\beta_1 = \beta_2$) | 한쪽 계수 자리에 1, 다른 쪽에 −1 | 0 | `t_test` |
+| 계수가 어떤 값인가 ($\beta_1 = 3$) | 그 계수 자리에 1 | 3 | `t_test` |
+| 계수 여럿이 모두 0인가 | 계수마다 한 줄, 그 자리에 1 | 0 | `wald_test` |
+
+두 메서드는 [`ols`](/api/regression/ols/), [`wls`](/api/regression/wls/), [`gls`](/api/regression/gls/), [`glm`](/api/regression/glm/), [`rlm`](/api/regression/rlm/), [`quantreg`](/api/regression/quantreg/), [`nls`](/api/regression/nls/)의 결과에 있어요. 정규화 회귀(`ridge`, `lasso` 등)는 표준오차가 없어서 이 메서드도 없어요. 열 몇 개를 뺀 모형을 따로 적합해 두 모형을 견주는 방법은 [모형 비교](/api/regression/model-comparison/)에 있어요.
+
+<Reference />
+
+## 예로 쓸 데이터
+
+어느 가게가 30주 동안 주마다 TV, 라디오, 신문, SNS에 쓴 광고비(`tv`, `radio`, `paper`, `sns`)와 매출(`sales`)을 적었어요. 매출은 TV와 라디오에만 기대도록 만들었어요. 참 모형은 매출 = 10 + 3 × TV + 2 × 라디오 + 오차(표준편차 4)이고, 신문과 SNS는 효과가 없어요.
+
+```python
+>>> import stardust as sd
+>>> rng = sd.random.default_rng(6)
+>>> n = 30
+>>> U = sd.stats.Uniform(a=0.0, b=10.0)
+>>> tv, radio, paper, sns = (U.sample(n, rng=rng) for _ in range(4))
+>>> sales = 10.0 + 3.0 * tv + 2.0 * radio + sd.stats.Normal(sigma=4.0).sample(n, rng=rng)
+>>> df = sd.frame.DataFrame({'tv': tv, 'radio': radio, 'paper': paper, 'sns': sns, 'sales': sales})
+>>> r = sd.regression.ols(df['sales'], df[['tv', 'radio', 'paper', 'sns']])
+>>> r.param_names
+['const', 'tv', 'radio', 'paper', 'sns']
+>>> r.params
+array([   9.916738779803785,   2.7465794866182667,   2.0238597630413753,
+       -0.07434829454226229,    0.362190117943975], dtype=float64)
+>>> r.pvalues
+array([ 0.000368926183096873, 2.408974136094436e-10, 7.944162049469485e-10,
+          0.7437569746795543,   0.07448970648753588], dtype=float64)
+```
+
+계수는 다섯 개이고, 첫째가 절편이에요. 그래서 $R$의 줄은 길이가 5이고, 자리마다 `const`, `tv`, `radio`, `paper`, `sns`의 계수에 곱할 수를 적어요.
+
+## 가설을 R과 q로 쓰기
+
+$R$의 줄은 계수와 같은 자리에 같은 순서로 수를 적은 것이에요. 줄과 계수를 곱해 더한 값 $r^\top\beta$가 그 줄이 묻는 양이에요.
+
+- TV와 라디오의 효과가 같은가($\beta_{tv} - \beta_{radio} = 0$): `[0, 1, -1, 0, 0]`
+- TV의 효과가 3인가($\beta_{tv} = 3$): `[0, 1, 0, 0, 0]`과 `q=3`
+- 신문과 SNS가 모두 0인가: 두 줄 `[[0, 0, 0, 1, 0], [0, 0, 0, 0, 1]]`
+
+계수가 많으면 자리를 세다가 틀리기 쉬워요. `param_names`로 이름에서 줄을 만드는 작은 함수를 두면 편해요.
+
+```python
+>>> def row(**w):
+...     return [w.get(name, 0.0) for name in r.param_names]
+...
+>>> row(tv=1, radio=-1)
+[0.0, 1, -1, 0.0, 0.0]
+```
+
+열이 frame의 컬럼이 아니라 배열이면 이름은 `'const'`, `'x1'`, `'x2'`, …예요. `intercept=False`로 적합했으면 `'const'` 자리가 없어서 줄의 길이도 하나 짧아요.
+
+## t_test: 줄마다 하나씩
+
+`t_test`는 줄마다 추정값 $r^\top\hat\beta$와 그 표준오차를 구해서 t 검정을 해요.
+
+$$
+t = \frac{r^\top\hat\beta - q}{\sqrt{r^\top V r}}
+$$
+
+$V$는 결과의 `cov_params()`예요. 결과의 필드는 이래요.
+
+| 필드 | 뜻 |
+|---|---|
+| `effect` | 추정값 $r^\top\hat\beta$ |
+| `sd` | 그 표준오차 $\sqrt{r^\top V r}$ |
+| `tvalue` | $(r^\top\hat\beta - q)/\text{sd}$ |
+| `pvalue` | 두 꼬리 p값 |
+| `df` | t 분포의 자유도. 정규분포로 재는 모형은 `inf` |
+| `conf_int(*, alpha=0.05)` | `effect`의 1 − alpha 신뢰구간 |
+
+TV와 라디오의 효과가 같은지 볼게요.
+
+```python
+>>> t = r.t_test(row(tv=1, radio=-1))
+>>> t
+TTestResult(effect=0.72272, sd=0.310427, tvalue=2.32815, pvalue=0.0282899, df=25)
+>>> t.conf_int()
+array([0.08338290821789152,  1.3620565389358914], dtype=float64)
+```
+
+TV 광고가 라디오 광고보다 1만큼마다 매출을 0.72 더 올린다는 추정이고, p값 0.028은 "두 효과가 같다면 이만큼 차이 나는 일은 드물다"는 뜻이에요. 신뢰구간 [0.08, 1.36]도 0을 품지 않아요. 계수 둘의 p값을 따로 보면 둘 다 아주 작아서 이 질문에는 답하지 못해요. 차이 자체의 표준오차가 필요하고, 그것은 두 계수의 공분산까지 들어간 $r^\top V r$이에요.
+
+TV의 효과가 3인지는 `q`로 물어요. `q`는 위치로 줘도 돼요.
+
+```python
+>>> r.t_test(row(tv=1), q=3.0).pvalue
+0.358324778357929
+>>> r.t_test(row(tv=1), 3.0).pvalue
+0.358324778357929
+```
+
+p값이 0.36이라 "효과가 3"이라는 어림과 데이터가 어긋나지 않아요. 참값이 정말 3인 데이터예요.
+
+### 여러 줄
+
+$R$이 2차원이면 줄마다 따로 검정해서, 필드가 줄 수만큼의 배열이에요. 수 하나로 준 `q`는 모든 줄에 같이 써요. 결과를 그대로 찍으면 수를 유효숫자 여섯 자리로 줄여 보여 주고, 온전한 값은 필드로 읽어요.
+
+```python
+>>> tt = r.t_test([row(tv=1), row(radio=1)], q=[3.0, 2.0])
+>>> tt
+TTestResult(effect=[2.74658, 2.02386], sd=[0.270804, 0.211777], tvalue=[-0.935807, 0.112665], pvalue=[0.358325, 0.911196], df=25)
+>>> tt.effect
+array([2.7465794866182667, 2.0238597630413753], dtype=float64)
+>>> tt.pvalue
+array([ 0.358324778357929, 0.9111961007181048], dtype=float64)
+>>> tt.conf_int()
+array([[ 2.188847838712862, 3.3043111345236715],
+       [ 1.587697841142137, 2.4600216849406134]], dtype=float64)
+```
+
+`conf_int()`는 줄마다 [아래 끝, 위 끝]인 (m, 2) 배열이에요. 줄이 하나인 1차원 $R$이면 (2,)예요.
+
+### 계수 하나만 고르면
+
+한 계수 자리에만 1이 있는 줄은 그 계수의 t 검정이라, 결과의 `tvalues`, `bse`, `conf_int()`와 반올림 몇 번 안에서 같아요.
+
+```python
+>>> one = r.t_test(row(tv=1))
+>>> one.tvalue, r.tvalues[1]
+(10.142308334367806, 10.142308334367806)
+>>> one.sd, r.bse[1]
+(0.2708041794895272, 0.2708041794895272)
+```
+
+### 평균 예측값
+
+줄에 설명변수의 값을 넣으면 그 점에서 모형이 예측하는 평균이에요. TV와 라디오에 5씩, 신문과 SNS에 0을 쓴 주의 평균 매출은 `[1, 5, 5, 0, 0]`이에요(첫 1은 절편). `effect`와 신뢰구간은 [`predict_interval(kind='mean')`](/api/regression/results/#predict_interval)과 같아요.
+
+```python
+>>> m = r.t_test([1.0, 5.0, 5.0, 0.0, 0.0])
+>>> m.effect, m.conf_int()
+(33.76893502810199, array([30.316175654209058, 37.221694401994924], dtype=float64))
+>>> r.predict_interval([[5.0, 5.0, 0.0, 0.0]], kind='mean')
+array([[30.316175654209058, 37.221694401994924]], dtype=float64)
+```
+
+## wald_test: 여러 줄을 한꺼번에
+
+"신문과 SNS가 모두 0인가"는 줄 둘을 동시에 묻는 질문이에요. `wald_test`는 이것을 통계량 하나로 검정해요.
+
+$$
+W = (R\hat\beta - q)^\top \left(R V R^\top\right)^{-1} (R\hat\beta - q)
+$$
+
+$W$는 추정값이 가설에서 떨어진 거리를, 추정값들이 함께 흔들리는 정도($RVR^\top$)로 잰 값이에요. 대부분의 모형에서는 $F = W/m$을 F 분포 $F(m, \nu)$로 재고($m$은 줄 수, $\nu$는 `df_resid_inference`), 정규분포로 재는 모형에서는 $W$를 자유도 $m$의 카이제곱 분포로 재요([아래](#분포는-모형이-정해요)).
+
+```python
+>>> w = r.wald_test([row(paper=1), row(sns=1)])
+>>> w
+WaldTestResult(statistic=1.84206, pvalue=0.179362, distribution='F', df_num=2, df_denom=25)
+>>> w.statistic, w.pvalue, w.df_num, w.df_denom
+(1.8420623432880898, 0.17936185532426888, 2.0, 25.0)
+```
+
+p값 0.18이라 신문과 SNS를 한꺼번에 빼도 데이터와 어긋나지 않아요. 따로 본 p값은 0.74와 0.074였어요. 계수 하나씩 따로 보면 "적어도 하나는 우연히 작은 p값"이 나올 기회가 줄 수만큼 늘고, 두 추정값이 서로 상관되어 있으면 따로 본 p값으로는 함께의 판단을 할 수 없어요. 여러 계수에 대한 질문은 `wald_test` 한 번으로 물어요.
+
+절편을 뺀 계수가 모두 0인지 묻는 검정은 결과의 F 검정(`fvalue`, `f_pvalue`)과 같아요. 단위 행렬에서 첫 줄을 뺀 것이 그 $R$이에요.
+
+```python
+>>> r.wald_test(sd.eye(5)[1:]).statistic, r.fvalue
+(45.33427611800409, 45.33427611800408)
+```
+
+### 겹치는 줄은 빼요
+
+앞 줄들의 일차 결합인 줄은 새로운 제약이 아니라서 빼고 세요. 모두 0인 줄도 빠져요. 그래서 `df_num`은 남은 줄 수예요. 아래의 셋째 줄 `2·paper − sns`는 앞의 두 줄로 만들 수 있어서, 결과가 두 줄의 검정과 같아요.
+
+```python
+>>> r.wald_test([row(paper=1), row(sns=1), row(paper=2, sns=-1)])
+WaldTestResult(statistic=1.84206, pvalue=0.179362, distribution='F', df_num=2, df_denom=25)
+>>> r.wald_test([row(paper=1), [0.0] * 5])
+WaldTestResult(statistic=0.109247, pvalue=0.743757, distribution='F', df_num=1, df_denom=25)
+```
+
+줄이 모두 빠지면 검정할 것이 없어서 `statistic`과 `pvalue`가 NaN이고 `df_num`은 0이에요.
+
+## 분포는 모형이 정해요
+
+어느 분포로 p값을 재는지는 따로 고르지 않아요. 그 결과의 계수 `pvalues`를 재는 규칙을 그대로 따라요.
+
+| 결과 | `t_test` | `wald_test` | 자유도 |
+|---|---|---|---|
+| `ols`, `wls`, `gls`, `rlm`, `quantreg`, `nls` | t | F (`distribution='F'`) | `df_resid_inference` |
+| `glm`, 척도를 추정할 때(기본값의 정규·감마, `scale='X2'`·`'dev'`) | t | F | `df_resid_inference` |
+| `glm`, 척도가 고정일 때(기본값의 이항·포아송, `scale`에 수를 준 모형) | 정규분포 (`df`는 `inf`) | 카이제곱 (`distribution='chi2'`) | 줄 수 |
+
+이항 분포의 로지스틱 회귀로 볼게요. 투약량(`dose`)과 나이(`age`)로 반응 여부를 설명해요.
+
+```python
+>>> rng = sd.random.default_rng(3)
+>>> dose = sd.stats.Uniform(a=0.0, b=4.0).sample(100, rng=rng)
+>>> age = sd.stats.Uniform(a=20.0, b=60.0).sample(100, rng=rng)
+>>> p = 1.0 / (1.0 + sd.exp(-(-2.0 + 1.0 * dose)))
+>>> yb = (rng.random(100) < p) * 1.0
+>>> g = sd.regression.glm(yb, sd.stack([dose, age], axis=-1), family='binomial')
+>>> g.t_test([0, 1, 0])
+TTestResult(effect=1.26519, sd=0.263541, tvalue=4.80073, pvalue=1.58091e-06, df=inf)
+>>> gw = g.wald_test([[0, 1, 0], [0, 0, 1]])
+>>> gw
+WaldTestResult(statistic=23.1895, pvalue=9.21442e-06, distribution='chi2', df=2)
+>>> gw.df
+2.0
+```
+
+카이제곱 꼴의 결과에는 `df_num`, `df_denom`이 없고 `df`가 있어요. 거꾸로 F 꼴에는 `df`가 없어요. 없는 필드를 읽으면 `AttributeError`라서 `hasattr`로 어느 꼴인지 알 수 있어요.
+
+```python
+>>> gw.df_num
+Traceback (most recent call last):
+    ...
+AttributeError: 'WaldTestResult' object has no attribute 'df_num' (the test does not give it for this call)
+>>> hasattr(w, 'df'), w.distribution
+(False, 'F')
+```
+
+### 공분산도 결과의 것
+
+$V$는 결과의 `cov_params()`예요. `cov_type='HC3'` 같은 [강건 표준오차](/api/regression/covariance/)로 적합했으면 검정도 그 공분산으로 해요. 분산이 고르지 않을 때도 쓸 수 있는 검정이 되는 거예요.
+
+```python
+>>> h = sd.regression.ols(df['sales'], df[['tv', 'radio', 'paper', 'sns']], cov_type='HC3')
+>>> h.t_test(row(tv=1, radio=-1)).pvalue
+0.01603301602987671
+>>> h.wald_test([row(paper=1), row(sns=1)])
+WaldTestResult(statistic=2.72369, pvalue=0.0850893, distribution='F', df_num=2, df_denom=25)
+```
+
+`cov_type='cluster'`이면 자유도가 군집 수 − 1이에요. 군집 공분산의 랭크도 군집 수 − 1을 넘지 못해서, 그보다 많은 줄을 한꺼번에 검정하면 $RVR^\top$의 역행렬이 없어 NaN이에요. 결과의 `fvalue`가 NaN인 것과 같은 까닭이에요.
+
+```python
+>>> grp = sd.asarray([0.0] * 10 + [1.0] * 10 + [2.0] * 10)
+>>> c = sd.regression.ols(df['sales'], df[['tv', 'radio', 'paper', 'sns']], cov_type='cluster', groups=grp)
+>>> c.df_resid_inference
+2.0
+>>> c.wald_test([row(paper=1), row(sns=1)]).pvalue
+0.10928522489014154
+>>> c.wald_test([row(tv=1), row(radio=1), row(paper=1)]).pvalue
+nan
+```
+
+## 배치
+
+배치로 적합한 결과에서는 같은 $R$, $q$를 회귀마다 써요. 필드 앞에 배치 모양이 붙고, 결과를 찍으면 배치 모양만 보여요.
+
+```python
+>>> Y = sd.stack([sales, sales + 2.0 * paper], axis=0)
+>>> b = sd.regression.ols(Y, sd.stack([tv, radio, paper, sns], axis=-1))
+>>> bt = b.t_test([0, 0, 0, 1, 0])
+>>> bt
+TTestResult(batch shape (2,))
+>>> bt.effect
+array([-0.07434829454226229,   1.9256517054577378], dtype=float64)
+>>> bt.conf_int().shape
+(2, 2)
+>>> b.wald_test([[0, 0, 0, 1, 0], [0, 0, 0, 0, 1]]).pvalue
+array([  0.17936185532426888, 3.049994731658553e-08], dtype=float64)
+```
+
+둘째 회귀는 신문 광고에 효과 2를 넣은 반응이라 p값이 아주 작아요.
+
+[`quantreg`](/api/regression/quantreg/)에 분위를 여럿 주면 분위 축도 배치처럼 앞에 붙어요. 분위마다 TV와 라디오의 효과 차이를 검정할 수 있어요.
+
+```python
+>>> qr = sd.regression.quantreg(df['sales'], df[['tv', 'radio']], q=[0.25, 0.5, 0.75])
+>>> qt = qr.t_test([0, 1, -1])
+>>> qt.effect
+array([  1.10910862898955, 0.4793992070156978, 0.6978500542632158], dtype=float64)
+>>> qt.pvalue
+array([0.014897277045680526,  0.38173248096207235,  0.24770048965336416], dtype=float64)
+```
+
+## 특수한 경우
+
+- **겹친 열**: 다른 열과 겹쳐 계수가 NaN인 열이 있으면, 그 계수에 0이 아닌 수를 곱하는 줄은 답할 수 없어요. `t_test`는 그 줄만 NaN이고, `wald_test`는 검정 전체가 NaN이에요. 그 계수를 건드리지 않는 줄은 정상이에요.
+- **완전 적합**(점이 모두 모형 위에 있을 때): `effect`는 값이 있지만 표준오차가 0이라 `tvalue`, `pvalue`와 `wald_test`의 통계량이 NaN이에요.
+- **잔차 자유도가 0일 때**(`df_resid` = 0): 오차의 크기를 어림할 수 없어 `sd`부터 NaN이에요. `effect`는 값이 있어요.
+- **NaN**(`nan_policy='propagate'`): 그 회귀의 모든 필드가 NaN이에요. `'omit'`이면 남은 행으로 적합한 결과의 검정이에요.
+
+```python
+>>> x = sd.asarray([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+>>> y = sd.asarray([2.1, 3.9, 6.2, 7.8, 10.1, 12.2])
+>>> a = sd.regression.ols(y, sd.stack([x, 2.0 * x, x * x], axis=-1))
+>>> a.params
+array([ 0.2299999999999999,  1.8325000000000002,                 nan,
+       0.02678571428571424], dtype=float64)
+>>> a.t_test([[0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]).tvalue
+array([ 8.524718266853373,                nan, 0.8910279680247952], dtype=float64)
+>>> a.wald_test([[0, 1, 0, 0], [0, 0, 1, 0]]).statistic
+nan
+>>> a.wald_test([[0, 1, 0, 0], [0, 0, 0, 1]]).statistic
+1058.6517290049385
+>>> perfect = sd.regression.ols(1.0 + 2.0 * x, x)
+>>> perfect.t_test([0, 1])
+TTestResult(effect=2, sd=0, tvalue=nan, pvalue=nan, df=4)
+>>> x3 = sd.asarray([1.0, 2.0, 4.0])
+>>> d0 = sd.regression.ols(sd.asarray([1.0, 3.0, 2.0]), sd.stack([x3, x3 * x3], axis=-1))
+>>> d0.t_test([0, 1, 1])
+TTestResult(effect=3.66667, sd=nan, tvalue=nan, pvalue=nan, df=0)
+```
+
+## 에러
+
+$R$과 $q$의 모양이 맞지 않으면 에러예요. 메시지가 기대한 크기를 알려 줘요.
+
+```python
+>>> r.t_test([0, 1, -1, 0])
+Traceback (most recent call last):
+    ...
+ValueError: t_test(): 'R' must have 5 columns like 'params', not 4
+>>> r.t_test([row(tv=1), row(radio=1)], q=[3.0, 2.0, 1.0])
+Traceback (most recent call last):
+    ...
+ValueError: t_test(): 'q' must have 2 values like the rows of 'R', not 3
+>>> r.t_test([0, float('nan'), 0, 0, 0])
+Traceback (most recent call last):
+    ...
+ValueError: t_test(): 'R' must be finite
+>>> r.wald_test([[[0, 1, 0, 0, 0]]])
+Traceback (most recent call last):
+    ...
+ValueError: wald_test(): 'R' must be 1-dimensional (one constraint) or 2-dimensional (one row per constraint), not 3-dimensional
+>>> r.t_test(R=row(tv=1))
+Traceback (most recent call last):
+    ...
+TypeError: t_test(): got some positional-only arguments passed as keyword arguments: 'R'
+>>> r.t_test(row(tv=1), q='3')
+Traceback (most recent call last):
+    ...
+TypeError: t_test(): 'q' must be a number or a sequence of numbers, not str
+```
+
+공식 문자열(`'tv = radio'`)이나 계수 이름의 목록은 받지 않아요. 위의 `row`처럼 `param_names`에서 줄을 만들어요.
+
+## 결과 클래스
+
+`TTestResult`와 `WaldTestResult`는 `sd.regression`에 있는 결과 클래스예요.
+
+- 필드는 읽기 전용이고, 배열 필드는 쓰기 금지 배열이에요.
+- 튜플처럼 풀리지 않아요. 필드를 이름으로 읽어요.
+- `conf_int`의 `alpha`는 키워드로만 받아요. 부를 때마다 새 배열을 돌려줘요.
+- `repr`는 주된 필드를 한 줄로 보여 줘요. 수는 유효숫자 여섯 자리이고, 배치는 배치 모양만 적어요.
+- `summary()`는 [회귀 결과](/api/regression/results/)와 같은 꼴의 상자를 글로 돌려줘요. `TTestResult`는 `summary(*, alpha=0.05)`이고, 머리에 자유도와 식의 수, 관측 수를 두고 $R$의 줄마다(`c0`, `c1`, …) 추정값 `coef`(= `effect`), 표준오차, t, p값, 1 − alpha 구간을 한 줄씩 적어요. t는 `coef`에서 `q`를 뺀 값을 표준오차로 나눈 것이라, 위처럼 `coef`가 커도 0에 가까울 수 있어요. 정규분포로 재는 모형은 `z`, `P>|z|`예요. `WaldTestResult`의 `summary()`는 인자가 없고, 머리에 통계량, p값, 자유도, 분포만 적어요. 배치면 회귀마다 한 줄인 표예요. 자유도는 모든 회귀가 같으면 머리에 한 번 적고, 회귀마다 다르면 표의 열(`t_test`는 끝의 `df` 열)로 적어요. 관측 수도 모든 회귀가 같으면 머리에 적고, 다르면 적지 않아요.
+
+```python
+>>> print(tt.summary())
+                             Test for Constraints
+==============================================================================
+Df:                                 25  No. Constraints:                     2
+                                        No. Observations:                   30
+==============================================================================
+                 coef    std err          t      P>|t|     [0.025     0.975]
+------------------------------------------------------------------------------
+c0             2.7466      0.271     -0.936      0.358      2.189      3.304
+c1             2.0239      0.212      0.113      0.911      1.588      2.460
+==============================================================================
+```
+
+```python
+>>> isinstance(t, sd.regression.TTestResult), isinstance(w, sd.regression.WaldTestResult)
+(True, True)
+>>> t.conf_int(alpha=0.1)
+array([0.19246634569098509,  1.2529731014627976], dtype=float64)
+>>> t.effect = 0.0
+Traceback (most recent call last):
+    ...
+AttributeError: property 'effect' of 'TTestResult' object has no setter
+>>> tt.effect[0] = 0.0
+Traceback (most recent call last):
+    ...
+ValueError: assignment destination is read-only
+```
+
+## statsmodels·R을 아는 분께
+
+statsmodels 0.15.0, R 4.6.2와 car 3.1.5 기준이에요.
+
+| sd | statsmodels | R |
+|---|---|---|
+| `r.t_test(R, q)` | `res.t_test((R, q))` | 줄 하나씩 `car::linearHypothesis(m, R[i, ], rhs = q[i])`(F = t²) |
+| `r.wald_test(R, q)` | `res.f_test((R, q))`, `res.wald_test((R, q), scalar=True)` | `car::linearHypothesis(m, R, rhs = q)` |
+| `TTestResult`의 `effect`, `sd`, `tvalue`, `pvalue`, `df` | `ContrastResults`의 `effect`, `sd`, `tvalue`, `pvalue`, `df_denom` | |
+
+- 위 예의 고전형 OLS에서 `t_test`, `wald_test`의 값은 statsmodels의 `t_test`, `f_test`와 반올림 차이 안에서 같아요. 위의 TV·라디오 차이는 statsmodels에서도 t = 2.328, p = 0.0283이에요.
+- statsmodels의 `f_test`는 늘 F이고, `wald_test(use_f=None)`는 결과의 `use_t`를 따라요. 강건 공분산으로 적합한 statsmodels 결과의 기본은 정규분포라서 `wald_test`가 카이제곱이에요. 위의 HC3 예에서 statsmodels의 기본 `wald_test`는 χ² = 5.45, p = 0.066이고, sd는 F = 2.72(= 5.45/2), p = 0.085예요. sd는 계수의 `pvalues`처럼 t·F로 재요([표준오차의 종류](/api/regression/covariance/)). statsmodels의 `fit(cov_type='HC3', use_t=True)`와 같은 값이에요.
+- statsmodels는 `'tv = radio'` 같은 공식 문자열도 받아요. sd는 행렬만 받아요.
+- 겹친 열이 있으면 statsmodels는 의사역행렬로 고른 계수 하나로 검정 값을 내요. 위의 `a`(`x`와 `2x`가 겹친 설계)에서 statsmodels는 `x`의 계수를 0.37, `2x`의 계수를 0.73으로 두고 둘 다 t = 8.52를 내요. 그 나눔은 데이터가 정한 것이 아니에요. 두 계수가 모두 0인지 묻는 `f_test`도 경고와 함께 F = 72.7(자유도 1)을 내요. sd는 그런 줄을 NaN으로 둬요. car의 `linearHypothesis`는 겹친 계수가 있는 모형이면 에러예요.
+- 겹치는 줄이 있으면 statsmodels는 경고하고 줄 수를 랭크로 줄여 계산해요. car는 $RVR^\top$의 역행렬을 구하다 에러를 내요. sd는 경고 없이 줄을 빼요.
+- car의 `linearHypothesis`는 `glm`이면 척도를 추정하는 분포족도 기본이 카이제곱이에요(`test = "F"`를 주면 F). sd는 척도를 추정하면 F예요.

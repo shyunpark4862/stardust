@@ -1,0 +1,543 @@
+---
+title: 2D 래스터라이저
+group: 그리기
+order: 2
+summary: PNG 출력의 픽셀을 칠하는 C++ 래스터라이저를 따라가요. 경로의 덮인 넓이를 정확히 쌓는 부호 있는 면적 누적, 곡선을 허용오차 안에서 펴는 Wang의 식, 획을 윤곽 다각형으로 바꾸는 법, 점 기호를 찍는 줄 띠, 그림 붙이기, 큰 자료를 열마다 네 점으로 줄이기, sRGB 값 그대로의 섞기, 스레드 수와 무관한 결과를 설명해요.
+seeAlso: [scene-outputs, text, zbuffer, overview, verification]
+---
+import PlotImage from '../../../components/fig/PlotImage.astro';
+
+## 한눈에 보기
+
+장면([장면과 세 출력](/internals/plot/scene-outputs/))의 도형을 픽셀로 칠하는 것은 C++의 `Canvas` 하나예요(`csrc/plot/raster.hpp`, `raster.cpp`, Python에서는 `stardust._core.plot.Canvas`). PNG 출력이 이것을 쓰고, SVG·PDF 출력도 점이 아주 많은 점 기호 층을 그림 한 장으로 구울 때 이것을 써요. 3D 곡면은 따로 깊이 버퍼가 그려요([깊이 버퍼](/internals/plot/zbuffer/)).
+
+| 메서드 | 칠하는 것 | 장면에서 오는 것 |
+|---|---|---|
+| `fill` | 경로의 안쪽 | 채운 도형, 글자의 글리프, 괘선 |
+| `stroke` | 경로를 따라 정해진 굵기의 띠 | 선, 축, 눈금, 테두리 |
+| `markers` | 한 모양을 여러 점에 찍은 것 | 산점도의 점, 상자 그림의 바깥 점 |
+| `image` | RGBA 그림 한 장을 사각형에 | 밀도·위상 그림, 열지도, 3D 칸의 그림 |
+| `rgba8` | 다 칠한 캔버스를 8비트 RGBA로 | |
+
+모든 도형은 같은 길을 지나요. 경로를 행렬로 픽셀 좌표에 옮기고, 곡선을 선분으로 펴고, 선분마다 픽셀이 덮인 넓이를 쌓고, 그 넓이를 덮임 정도로 삼아 색을 앞에 얹어요(source-over). 표본 점을 쓰지 않으므로 안티에일리어싱에 표본 무늬가 없고, 같은 입력이면 늘 같은 픽셀이에요.
+
+좌표의 약속은 하나예요. x는 오른쪽, y는 아래로 커지고, 픽셀 (i, j)는 [i, i + 1) × [j, j + 1)을 덮어요. PNG 출력은 장면의 bp 좌표에 `dpi / 72`를 곱하는 행렬을 모든 경로에 넘겨요. 89 mm 너비의 그림을 300 dpi로 그리면 캔버스는 가로 1051 픽셀이에요.
+
+## 곡선 펴기
+
+경로는 `M L Q C Z` 다섯 명령으로 와요. 2차(`Q`)와 3차(`C`) 베지어 곡선은 매개변수 t를 n등분한 점들을 이은 선분으로 바꿔요. n은 펴진 선분이 곡선에서 `kFlatness` = 0.05픽셀보다 멀어지지 않을 만큼이에요.
+
+```cpp
+        // csrc/plot/raster.cpp
+        } else if (op == 'Q') {
+            if (!need(4)) return;
+            double x1, y1, x2, y2;
+            map(m, xy[k], xy[k + 1], x1, y1);
+            map(m, xy[k + 2], xy[k + 3], x2, y2);
+            k += 4;
+            const double dd = std::hypot(cx - 2 * x1 + x2, cy - 2 * y1 + y2);
+            const int n = std::clamp(static_cast<int>(std::ceil(std::sqrt(0.25 * dd / kFlatness))), 1, 256);
+            for (int j = 1; j <= n; ++j) {
+                const double t = static_cast<double>(j) / n, u = 1.0 - t;
+                out.pts.push_back(u * u * cx + 2 * u * t * x1 + t * t * x2);
+                out.pts.push_back(u * u * cy + 2 * u * t * y1 + t * t * y2);
+            }
+            cx = x2;
+            cy = y2;
+        } else if (op == 'C') {
+            if (!need(6)) return;
+            double x1, y1, x2, y2, x3, y3;
+            map(m, xy[k], xy[k + 1], x1, y1);
+            map(m, xy[k + 2], xy[k + 3], x2, y2);
+            map(m, xy[k + 4], xy[k + 5], x3, y3);
+            k += 6;
+            const double dd = std::max(
+                std::hypot(cx - 2 * x1 + x2, cy - 2 * y1 + y2), std::hypot(x1 - 2 * x2 + x3, y1 - 2 * y2 + y3)
+            );
+            const int n = std::clamp(static_cast<int>(std::ceil(std::sqrt(0.75 * dd / kFlatness))), 1, 256);
+            for (int j = 1; j <= n; ++j) {
+                const double t = static_cast<double>(j) / n, u = 1.0 - t;
+                const double a = u * u * u, b = 3 * u * u * t, c = 3 * u * t * t, d = t * t * t;
+                out.pts.push_back(a * cx + b * x1 + c * x2 + d * x3);
+                out.pts.push_back(a * cy + b * y1 + c * y2 + d * y3);
+            }
+            cx = x3;
+            cy = y3;
+```
+
+n을 정하는 식은 Wang의 식(Wang Guozhao, 1984)이에요. 근거는 두 가지 사실이에요. 첫째, 매끄러운 곡선 $B(t)$를 간격 $h$의 점들에서 선형 보간하면 오차는 $\frac{h^2}{8}\max\lvert B''\rvert$을 넘지 않아요. 둘째, $d$차 베지어 곡선의 2계 도함수는 조절점의 2계 차분 $\Delta^2 P_i = P_i - 2P_{i+1} + P_{i+2}$로 쓴 $(d-2)$차 베지어 곡선에 $d(d-1)$을 곱한 것이라, 그 크기는 $d(d-1)\max\lvert\Delta^2 P_i\rvert$을 넘지 않아요. $h = 1/n$을 넣으면
+
+$$
+\text{오차} \le \frac{d(d-1)}{8n^2}\max_i \lvert \Delta^2 P_i \rvert \le \varepsilon
+\quad\Longleftarrow\quad
+n \ge \sqrt{\frac{d(d-1)}{8\varepsilon}\max_i \lvert \Delta^2 P_i \rvert}
+$$
+
+이에요. 2차 곡선은 d(d − 1)/8 = 0.25, 3차 곡선은 0.75이고, 코드의 두 상수가 그 값이에요. 2차 차분은 픽셀 좌표로 옮긴 뒤에 재므로, 같은 곡선도 dpi가 높으면 더 잘게 펴져요. n은 256에서 멈춰요.
+
+## 부호 있는 면적 누적
+
+채움의 덮임은 픽셀마다 "도형이 덮은 넓이"예요. 표본 점 몇 개를 찍어 세는 대신 이 넓이를 정확히 구해요. 방법은 FreeType의 회색조 래스터라이저와 font-rs(R. Levien)가 쓰는 누적 방식과 같은 계열이에요.
+
+### 감김수의 넓이
+
+닫힌 경로의 점 $(x, y)$에서의 감김수는, 그 점에서 왼쪽으로 뻗은 수평선이 가로지르는 변들의 방향(아래로 가는 변 +1, 위로 가는 변 −1)의 합이에요. 그러면 픽셀 하나에서 감김수를 적분한 값은 변마다의 몫으로 나뉘어요.
+
+$$
+\iint_{\text{픽셀}} w(x, y)\,dx\,dy \;=\; \sum_{\text{변 } e} \operatorname{dir}(e)\, A_e
+$$
+
+$A_e$는 그 픽셀 안에서, 변 e가 걸친 y 범위 안에서, 변의 오른쪽에 있는 넓이예요. 변의 오른쪽에 통째로 있는 픽셀은 $A_e$가 그 행에서 변이 걸친 높이 dy 전체이고, 변보다 왼쪽의 픽셀은 0이고, 변이 지나는 픽셀만 사다리꼴이나 삼각형의 넓이예요.
+
+래스터라이저는 이 몫을 행마다 "차분"으로 적어요. 픽셀 i에 더할 값이 아니라 픽셀 i와 i − 1의 몫의 차를 적어 두면, 행을 왼쪽부터 누적 합한 값이 몫 자신이 돼요. 그러면 변 하나가 건드리는 칸은 그 변이 지나는 픽셀과 바로 오른쪽 하나뿐이에요. 오른쪽으로 끝까지 dy가 이어지는 것은 누적 합이 알아서 해 줘요.
+
+```cpp
+        // csrc/plot/raster.cpp
+        const float d = dir * static_cast<float>(part);
+        const double xl = std::min(xa, xb), xr = std::max(xa, xb);
+        const double fl = std::floor(xl);
+        const int i0 = static_cast<int>(fl);
+        const int i1 = static_cast<int>(std::ceil(xr));
+        win.lo[r] = std::min(win.lo[r], i0);
+        win.hi[r] = std::max(win.hi[r], std::max(i1, i0 + 1) + 1);
+        if (i1 <= i0 + 1) {
+            const float xm = static_cast<float>(0.5 * (xl + xr) - fl);
+            row[i0] += d - d * xm;
+            row[i0 + 1] += d * xm;
+        } else {
+            const float s = static_cast<float>(1.0 / (xr - xl));
+            const float f0 = static_cast<float>(xl - fl);
+            const float a0 = 0.5f * s * (1.0f - f0) * (1.0f - f0);
+            const float f1 = static_cast<float>(xr - i1 + 1);
+            const float am = 0.5f * s * f1 * f1;
+            row[i0] += d * a0;
+            if (i1 == i0 + 2) {
+                row[i0 + 1] += d * (1.0f - a0 - am);
+            } else {
+                const float a1 = s * (1.5f - f0);
+                row[i0 + 1] += d * (a1 - a0);
+                for (int i = i0 + 2; i < i1 - 1; ++i) row[i] += d * s;
+                const float a2 = a1 + static_cast<float>(i1 - i0 - 3) * s;
+                row[i1 - 1] += d * (1.0f - a2 - am);
+            }
+            row[i1] += d * am;
+        }
+```
+
+여기서 `xa`, `xb`는 변이 이 행에 들어오고 나가는 x, `d`는 방향을 곱한 높이 `dy`예요(변이 창의 왼쪽이나 오른쪽으로 삐져나간 부분은 그 앞에서 잘라 내요). 두 경우가 있어요.
+
+- **변이 픽셀 한 열 안에 있을 때.** 픽셀 $i_0$ 안에서 변의 오른쪽 넓이는 $d\,(1 - x_m)$이고, $x_m$(`xm`)은 픽셀 안에서 변의 x 평균이에요(변이 직선이라 사다리꼴의 넓이가 평균 폭으로 정확히 나와요). 그래서 $i_0$에 $d\,(1 - x_m)$, 다음 칸에 나머지 $d\,x_m$을 적어요. 누적 합은 $i_0$에서 $d\,(1 - x_m)$, 그 오른쪽부터 $d$예요.
+- **여러 열에 걸칠 때.** $s = 1/(x_r - x_l)$은 x가 1 늘 때 변의 높이가 얼마나 쌓이는지의 비율이에요. 첫 픽셀에서 변의 오른쪽은 밑변 $1 - f_0$, 높이 $s(1 - f_0)$인 삼각형이라 $a_0 = s(1 - f_0)^2/2$이에요. 가운데 픽셀은 누적 몫이 한 칸에 $s$씩 늘어요. 마지막 픽셀의 꼬리 삼각형이 `am`이고, 남는 몫이 끝 칸을 채워 누적 합이 정확히 $d$가 되게 해요.
+
+행마다 건드린 열의 범위 `[lo, hi)`를 기억해 두므로, 합치는 단계는 그 범위만 훑어요. 행에 칸이 둘 더 있는 것(`bw + 2`)은 오른쪽 끝 픽셀의 다음 칸에 적는 몫을 받아 두기 위해서예요.
+
+### 합치기
+
+모든 변을 쌓은 뒤 행을 누적 합해 덮임을 얻고 색을 얹어요.
+
+```cpp
+// csrc/plot/raster.cpp
+void Canvas::composite(Window& win, const float rgba[4], const Clip* clip, bool evenodd) {
+    // the coverage of a winding sum: non-zero, or even-odd (a triangle wave of period 2)
+    const auto cover = [evenodd](float sum) {
+        float c = std::abs(sum);
+        if (!evenodd) return std::min(c, 1.0f);
+        c = std::fmod(c, 2.0f);
+        return c > 1.0f ? 2.0f - c : c;
+    };
+    const float a = rgba[3];
+    const float sr = rgba[0] * a, sg = rgba[1] * a, sb = rgba[2] * a;
+    for (int r = 0; r < win.bh; ++r) {
+        int lo = win.lo[r], hi = win.hi[r];
+        if (lo >= hi) continue;
+        float* row = win.acc.data() + static_cast<std::size_t>(r) * (win.bw + 2);
+        // left of the first edge nothing is covered; right of the last the sum is back to zero
+        float sum = 0.0f;
+        const int end = std::min(hi, win.bw + 2);
+        for (int i = lo; i < end; ++i) {
+            sum += row[i];
+            row[i] = cover(sum);
+        }
+        if (std::abs(sum) > 1e-4f) {  // an edge right of the window was cut off: covered to the end
+            const float c = cover(sum);
+            for (int i = end; i < win.bw; ++i) row[i] = c;
+            hi = win.hi[r] = win.bw + 2;
+        }
+```
+
+닫힌 경로라면 행의 오른쪽 끝에서 누적 합이 0으로 돌아와요. 창이 캔버스나 자르기 사각형에 잘려 오른쪽 변이 창 밖에 있으면 합이 0으로 돌아오지 않으니, 그 값으로 행의 끝까지 채워요. 변의 왼쪽 몫이 창 밖에 있는 경우는 그 몫을 창의 첫 칸에 몰아 적어 두므로(창 왼쪽의 변은 창 안의 모든 픽셀을 덮어요) 따로 할 일이 없어요.
+
+넓이가 정확하다는 것은 쉽게 볼 수 있어요. 가로 1.25–3.5, 세로 1–2.5의 사각형을 채우면 둘째 행은 픽셀의 0.75, 1, 0.5가, 셋째 행은 그 절반이 덮여요.
+
+```python
+>>> from array import array
+>>> from stardust._core import plot as core
+>>> ID = [1, 0, 0, 1, 0, 0]
+>>> def pack(*v):
+...     return array("d", v).tobytes()
+>>> c = core.Canvas(6, 3)
+>>> c.fill(b"MLLLZ", pack(1.25, 1.0, 3.5, 1.0, 3.5, 2.5, 1.25, 2.5), ID, [1, 0, 0, 1], [])
+>>> a = c.rgba8()[3::4]
+>>> [list(a[6 * r:6 * r + 6]) for r in range(3)]
+[[0, 0, 0, 0, 0, 0], [0, 191, 255, 128, 0, 0], [0, 96, 128, 64, 0, 0]]
+```
+
+비스듬한 변도 같아요. 12 × 8 캔버스에 삼각형 하나를 채우고 알파 값(덮임)을 열지도로 그려요.
+
+```python
+>>> tri = [(1.3, 0.6), (10.6, 2.2), (4.2, 7.5)]
+>>> cv = core.Canvas(12, 8)
+>>> cv.fill(b"MLLZ", pack(*[v for p in tri for v in p]), ID, [0, 0, 0, 1], [])
+>>> alpha = cv.rgba8()[3::4]
+>>> cov = [[alpha[12 * r + c] / 255 for c in range(12)] for r in range(8)]
+>>> (x0, y0), (x1, y1), (x2, y2) = tri
+>>> round(abs((x1 - x0) * (y2 - y0) - (x2 - x0) * (y1 - y0)) / 2, 4), round(sum(alpha) / 255, 4)
+(29.765, 29.7647)
+>>> fig = sd.plot.heatmap(cov, cmap="magma", vmin=0, vmax=1)
+>>> fig = fig.line([x - 0.5 for x, _ in tri + tri[:1]], [7.5 - y for _, y in tri + tri[:1]], color="white", width=1.0)
+```
+
+<PlotImage name="in-raster-coverage" alt="12 × 8 픽셀의 열지도. 흰 삼각형 윤곽선 안쪽 픽셀은 밝은 노랑(덮임 1), 변이 지나는 픽셀은 덮인 넓이에 따라 보라에서 주황, 바깥은 검정이에요." caption="삼각형 하나를 채운 캔버스의 덮임. 변이 지나는 픽셀의 값이 그 픽셀 안의 넓이이고, 덮임의 합(29.7647)이 삼각형의 넓이(29.765)와 8비트 반올림만큼만 달라요." />
+
+### 채움 규칙
+
+누적 합을 덮임으로 바꾸는 것은 `composite` 첫머리의 `cover`예요. 기본 규칙(nonzero)에서 덮임은 감김수 적분의 절댓값을 1에서 자른 값 `min(|sum|, 1)`이에요. 이 한 줄이 채움 규칙을 정해요.
+
+- 도는 방향이 반대인 안쪽 윤곽은 감김수를 0으로 돌려놓아 구멍이 돼요. 글리프의 구멍(`a`, `o`, `e`의 안쪽)이 그렇게 비어요.
+- 같은 방향으로 겹친 부분은 감김수가 2가 되지만 1에서 잘려서 한 번만 칠해져요. 글리프의 부분 경로나 획의 윤곽 조각이 겹쳐도 그 자리가 더 진해지지 않아요.
+
+```python
+>>> sq = pack(1, 1, 9, 1, 9, 9, 1, 9)
+>>> for inner in (pack(3, 3, 3, 7, 7, 7, 7, 3), pack(3, 3, 7, 3, 7, 7, 3, 7)):
+...     c = core.Canvas(10, 10)
+...     c.fill(b"MLLLZMLLLZ", sq + inner, ID, [0, 0, 0, 1], [])
+...     a = c.rgba8()[3::4]
+...     print(a[10 * 5 + 5], a[10 * 2 + 2])
+0 255
+255 255
+```
+
+첫 줄은 반대 방향의 안쪽 사각형이 구멍을 낸 것이고, 둘째 줄은 같은 방향이라 한 번만 칠해진 것이에요. 픽셀 안이 한 감김수로 고른 곳에서 이것은 SVG와 PDF의 nonzero 규칙과 같아요. 두 윤곽이 겹치기 시작하는 경계가 픽셀 하나 안에 걸치면 그 픽셀은 적분을 자르므로 근사예요. 그런 픽셀은 글리프의 획이 만나는 곳 정도이고 덮임의 차이는 그 픽셀 안에서 끝나요.
+
+### 짝홀 규칙
+
+`fill`에 `evenodd`를 주면 덮임이 달라져요. 짝홀 규칙에서 점은 감김수가 홀수일 때 안이에요. 감김수 적분 $s$를 덮임으로 바꾸는 함수를 주기 2의 세모 물결로 잡으면 그 규칙이 돼요.
+
+$$
+c(s) = \begin{cases} m & m \le 1 \\ 2 - m & m > 1 \end{cases}, \qquad m = |s| \bmod 2
+$$
+
+감김수가 0, 1, 2, 3인 곳에서 $c$는 0, 1, 0, 1이에요. 픽셀 안에 변이 지나 적분이 정수 사이의 값이면 그 사이를 곧게 이은 값이 덮임이라, 변 위의 안티에일리어싱이 nonzero와 같은 모양으로 나와요.
+
+```python
+>>> c = core.Canvas(10, 10)
+>>> c.fill(b"MLLLZMLLLZ", sq + pack(3, 3, 7, 3, 7, 7, 3, 7), ID, [0, 0, 0, 1], [], True)
+>>> a = c.rgba8()[3::4]
+>>> a[10 * 5 + 5], a[10 * 2 + 2]
+(0, 255)
+```
+
+같은 방향으로 겹친 두 사각형인데 안쪽이 비어요. 고리의 방향을 따지지 않고 "고리 안의 고리는 구멍"이 되므로, 등고선을 따라 얻은 닫힌 윤곽선들을 방향을 맞추지 않고 한 번에 칠할 수 있어요. 영역과 채운 등고선이 이 규칙으로 칠해요([두 변수 함수의 그림](/internals/plot/fields/)). SVG의 `fill-rule="evenodd"`, PDF의 `f*`와 같은 규칙이에요.
+
+## 색 섞기
+
+캔버스는 픽셀마다 float 넷, 알파를 곱한(premultiplied) RGBA를 들고 있어요. 색 값은 sRGB로 부호화된 값 그대로예요. 덮임 c, 색 (r, g, b), 알파 a인 도형을 얹으면
+
+$$
+C_{\text{새}} = c\,a\,(r, g, b) + (1 - c\,a)\,C, \qquad A_{\text{새}} = c\,a + (1 - c\,a)\,A
+$$
+
+이고, 이것이 Porter–Duff의 source-over에 덮임을 알파로 곱한 꼴이에요. 마지막에 `rgba8`이 알파로 나눠 알파를 곱하지 않은(straight) 8비트 값으로 반올림해요.
+
+선형 빛의 세기로 바꾸지 않고 sRGB 값 그대로 섞는 것은 SVG와 PDF를 보는 프로그램들이 그렇게 섞기 때문이에요. 같은 장면의 세 출력이 같아 보이려면 PNG도 같은 셈을 해야 해요.
+
+```python
+>>> c = core.Canvas(1, 1)
+>>> c.fill(b"MLLLZ", pack(0, 0, 1, 0, 1, 1, 0, 1), ID, [0, 0, 1, 1], [])
+>>> c.fill(b"MLLLZ", pack(0, 0, 1, 0, 1, 1, 0, 1), ID, [1, 0, 0, 0.5], [])
+>>> list(c.rgba8())
+[128, 0, 128, 255]
+>>> c = core.Canvas(1, 1)
+>>> c.fill(b"MLLLZ", pack(0, 0, 0.5, 0, 0.5, 1, 0, 1), ID, [1, 0, 0, 1], [])
+>>> list(c.rgba8())
+[255, 0, 0, 128]
+```
+
+파랑 위에 반투명 빨강을 얹으면 sRGB 값의 산술 평균 (128, 0, 128)이에요. 선형 빛에서 섞었다면 (188, 0, 188)에 가까운 밝은 자주색이 됐을 거예요. 둘째 예제는 픽셀의 절반만 덮은 빨강이에요. 색은 빨강 그대로이고 알파가 128이에요. 덮임은 알파로만 남아요.
+
+자르기 사각형(그림 칸의 테두리)은 픽셀마다 사각형과 겹치는 길이의 비율을 가로와 세로로 곱해 덮임에 곱해요. 경계가 픽셀 가운데를 지나도 계단 없이 잘려요.
+
+## 획을 윤곽 다각형으로
+
+획은 따로 칠하는 방법이 없어요. 획이 덮는 띠의 윤곽을 다각형으로 만들어 채움과 똑같이 칠해요. 펴진 점들을 한쪽 변을 따라 앞으로, 다른 쪽 변을 따라 뒤로 걸으며 반폭 hw만큼 떨어진 점을 놓고, 안쪽 점마다 이음, 양 끝에 끝 모양을 붙여 닫힌 다각형 하나를 만들어요. 닫힌 경로는 두 변이 각각 고리 하나가 돼요.
+
+이음의 바깥쪽과 안쪽이 다르게 처리돼요.
+
+```cpp
+    // csrc/plot/raster.cpp
+    // the side `s` (+1 or -1) of the joint at p between unit directions u (in, length lu) and v (out, length lv)
+    void corner(double px, double py, double ux, double uy, double lu, double vx, double vy, double lv, double s) {
+        const double nux = s * uy, nuy = -s * ux, nvx = s * vy, nvy = -s * vx;  // the side's normals
+        const double cross = ux * vy - uy * vx, dot = ux * vx + uy * vy;
+        const double half = 1.0 + dot;  // 2 cos^2 of half the turn
+        if (std::abs(cross) < 1e-12 && dot > 0.0) {  // straight on
+            add(px + nux * hw, py + nuy * hw);
+            return;
+        }
+        if (s * cross > 0.0) {  // the outside of the turn
+            if (join == Join::Round) {
+                add(px + nux * hw, py + nuy * hw);
+                arc(px, py, nux, nuy, nvx, nvy);
+                add(px + nvx * hw, py + nvy * hw);
+            } else if (join == Join::Miter && half > 1e-12 && 2.0 / half <= kMiterLimit * kMiterLimit) {
+                add(px + (nux + nvx) * hw / half, py + (nuy + nvy) * hw / half);
+            } else {
+                add(px + nux * hw, py + nuy * hw);
+                add(px + nvx * hw, py + nvy * hw);
+            }
+        } else {  // the inside
+            // the edges meet hw tan(turn / 2) back along each segment
+            if (half > 1e-12 && hw * std::abs(cross) / half <= std::min(lu, lv)) {
+                add(px + (nux + nvx) * hw / half, py + (nuy + nvy) * hw / half);
+            } else {
+                add(px + nux * hw, py + nuy * hw);
+                add(px, py);
+                add(px + nvx * hw, py + nvy * hw);
+            }
+        }
+    }
+```
+
+꺾인 각을 $\theta$, 반폭 `hw`를 $w$라 하면 `dot`은 $\cos\theta$, `cross`는 $\sin\theta$, `half`는 $1 + \cos\theta = 2\cos^2(\theta/2)$예요. 두 변의 법선을 더한 벡터의 길이는 $2\cos(\theta/2)$이므로, `(n_u + n_v) * hw / half`는 꺾인 점에서 $w / \cos(\theta/2)$ 떨어진 점, 곧 두 오프셋 변이 만나는 점이에요.
+
+- **바깥쪽, 마이터.** 그 교점까지의 거리와 반폭의 비 $1/\cos(\theta/2)$가 `kMiterLimit`(10) 이하면 교점 하나를 놓아 뾰족하게 잇고, 넘으면 두 변의 끝을 바로 이어 깎아요. 이 비는 SVG·PDF의 miter limit(마이터 길이와 획 너비의 비)과 같은 양이고, SVG 출력도 같은 한계 10을 적어요.
+- **바깥쪽, 깎은 이음(bevel).** 한계를 넘은 마이터와 같은 길이에요. 교점을 놓지 않고 두 변의 끝을 곧게 이어요.
+- **바깥쪽, 둥근 이음.** 두 법선 사이를 원호로 채워요. 원호는 반지름 $w$의 원을 각 $\varphi$씩 나눈 현으로 펴고, 현과 원호의 거리 $w\,(1 - \cos(\varphi/2))$가 0.05픽셀을 넘지 않게 $\varphi = 2\arccos(1 - 0.05/w)$로 잡아요.
+- **안쪽.** 두 오프셋 변은 꺾인 점에서 $w\tan(\theta/2)$만큼 물러난 곳에서 만나요(`hw * |cross| / half`). 그 거리가 앞뒤 선분의 길이 안이면 교점 하나를 놓아요. 선분이 너무 짧아 교점이 선분 밖이면 변의 끝, 꺾인 점 자신, 다음 변의 시작을 차례로 지나요. 이때 윤곽의 조각들이 겹치는데, 같은 방향으로 돌므로 채움이 한 번만 칠해요.
+
+끝 모양은 butt(선분 끝에서 자름), square(반폭만큼 늘인 사각형), round(반원)예요. 점선은 펴진 점들을 따라 길이를 재며 켜짐 구간마다 따로 윤곽을 만들고, 모든 조각을 한 번의 채움으로 칠해요. 그래서 반투명한 획이 꺾이는 곳이나 점이 촘촘한 곳에서도 두 번 칠해지는 자리가 없어요. 선 그림(`line`)의 층은 둥근 이음으로, 축 선은 마이터 이음과 square 끝으로 그려요.
+
+```python
+>>> pts = [(2.5, 12.5), (9.5, 4.5), (16.5, 12.5)]
+>>> xy = pack(*[v for p in pts for v in p])
+>>> figs = []
+>>> for cap, join in [(0, 0), (1, 1)]:
+...     cv = core.Canvas(19, 16)
+...     cv.stroke(b"MLL", xy, ID, [0, 0, 0, 1], [], 4.0, cap, join, [])
+...     a = cv.rgba8()[3::4]
+...     cov = [[a[19 * r + c] / 255 for c in range(19)] for r in range(16)]
+...     g = sd.plot.heatmap(cov, cmap="magma", vmin=0, vmax=1, colorbar=False)
+...     g = g.line([x - 0.5 for x, _ in pts], [15.5 - y for _, y in pts], color="white", width=0.8)
+...     g = g.xticks([0, 6, 12, 18]).yticks([15, 10, 5, 0], labels=["$0$", "$5$", "$10$", "$15$"])
+...     figs.append(g)
+>>> fig = sd.plot.grid(figs, ncols=2, labels="a")
+```
+
+<PlotImage name="in-raster-stroke" alt="꺾인 선을 굵기 4픽셀로 칠한 두 열지도. 왼쪽은 꼭대기가 뾰족하고 양 끝이 반듯하게 잘렸고, 오른쪽은 꼭대기와 양 끝이 둥글어요. 흰 선이 원래의 꺾인 선이에요." caption="굵기 4픽셀의 획. (a) 마이터 이음과 butt 끝, (b) 둥근 이음과 둥근 끝. 꺾인 점의 안쪽은 두 오프셋 변의 교점에서 만나요." />
+
+## 점 기호 찍기
+
+산점도의 점은 같은 모양을 수천, 수만 번 찍어요. `markers`는 모양을 한 번만 준비해요. 원점 둘레의 모양을 행렬의 선형 부분으로만 옮겨 펴 두고, 테두리가 있으면 그 획의 윤곽(둥근 이음)도 한 번 만들어요. 점 하나를 찍는 일은 이 두 다각형을 그 점만큼 평행 이동해 채우는 것이에요. 점마다 채움, 그다음 테두리를 따로 얹으므로 반투명한 점이 겹친 곳은 더 진해져요. 산점도에서 점이 몰린 곳이 보이는 까닭이에요.
+
+```python
+>>> c = core.Canvas(20, 20)
+>>> c.markers(b"MLLLZ", pack(-2, -2, 2, -2, 2, 2, -2, 2), ID, pack(8, 8, 10, 10), [1, 0, 0, 0.5], [], 0.0, [])
+>>> a = c.rgba8()[3::4]
+>>> a[20 * 7 + 7], a[20 * 9 + 9]
+(128, 191)
+```
+
+알파 0.5의 사각형 두 개가 겹친 픽셀은 0.5 위에 0.5를 얹은 0.75(191)예요.
+
+점이 많으면 캔버스를 64행짜리 줄 띠로 나눠 띠마다 따로 칠해요.
+
+```cpp
+    // csrc/plot/raster.cpp
+    // Stamps are painted in their order within each band of rows, so the picture does not depend
+    // on how the bands are shared out.
+    constexpr int kBand = 64;
+    const std::int64_t tasks = (h_ + kBand - 1) / kBand;
+    std::vector<std::vector<std::uint32_t>> in_band(static_cast<std::size_t>(tasks));
+    std::vector<double> px(n), py(n);
+    for (std::size_t i = 0; i < n; ++i) {
+        const double ax = at[2 * i], ay = at[2 * i + 1];
+        px[i] = m[0] * ax + m[2] * ay + m[4];
+        py[i] = m[1] * ax + m[3] * ay + m[5];
+        if (!std::isfinite(px[i]) || !std::isfinite(py[i]) || px[i] < -r || px[i] > w_ + r || py[i] < -r ||
+            py[i] > h_ + r) {
+            continue;
+        }
+        const int b0 = std::max(0, static_cast<int>(std::floor(py[i] - r)) / kBand);
+        const int b1 = std::min(static_cast<int>(tasks) - 1, static_cast<int>(std::floor(py[i] + r)) / kBand);
+        for (int b = b0; b <= b1; ++b) in_band[b].push_back(static_cast<std::uint32_t>(i));
+    }
+```
+
+점마다 모양이 닿는 반경 r로 어느 띠에 걸치는지 정하고, 띠마다 점의 번호를 원래 차례로 모아요. 캔버스 밖이나 유한하지 않은 점은 여기서 빠져요. 그다음 띠 하나가 태스크 하나예요. 태스크는 자기 띠의 행 `[rmin, rmax)`에만 칠하고(창을 그 행으로 잘라요), 자기 목록의 점을 차례로 칠해요. 띠 경계에 걸친 점은 두 띠가 각자 자기 몫의 행만 칠해요. 한 픽셀은 한 띠에만 속하고 그 띠 안에서 얹는 차례가 원래 점의 차례이므로, 어느 스레드가 어느 띠를 맡든 픽셀은 같아요. 점이 2000개 이상이고 띠가 둘 이상일 때만 스레드풀에 넘겨요.
+
+SVG와 PDF는 점 하나를 `<use>`나 경로 하나로 적어요. 점이 20000개 이상인 층은 파일이 너무 커지고 보는 프로그램이 느려지므로, 그 층만 이 래스터라이저로 출력의 `dpi`에 맞춰 그림 한 장으로 굽고 그림으로 넣어요(`_png.flatten_large`). 축과 글자는 벡터 그대로예요.
+
+## 그림 붙이기
+
+`image`는 RGBA8 그림 한 장(iw × ih)을 캔버스의 사각형에 얹어요. 밀도 그림과 위상 그림, 열지도, 3D 칸의 그림, 위의 구운 점 층이 이 길로 와요. 캔버스 픽셀마다 그 중심을 그림의 좌표로 옮겨 색을 얻어요.
+
+- `smooth=True`이면 이웃한 그림 픽셀 넷의 이중 선형 보간이에요. 네 색에 알파를 곱한 뒤 섞으므로, 투명한 이웃(정의되지 않은 칸)이 색을 끌어들이지 않고 가장자리가 부드럽게 옅어져요.
+- `smooth=False`이면 가장 가까운 그림 픽셀 하나의 색이에요. 열지도의 칸이 반듯한 네모로 보이는 쪽이에요.
+
+사각형의 변이 픽셀 안에 걸치면 겹친 길이의 비율을 덮임으로 써요. 행은 32행짜리 띠로 나눠, 칠할 픽셀이 65536개 이상이면 띠마다 따로 돌려요. 픽셀마다 계산이 서로 독립이라 결과는 띠를 나누는 법과 무관해요.
+
+## 큰 자료 줄이기
+
+점 수십만 개의 선을 그리면 픽셀 하나의 너비 안에 점이 수백 개씩 들어가요. 그 점들을 모두 잇는 대신, x가 같은 열에 드는 연이은 점들 가운데 처음, 가장 낮은 점, 가장 높은 점, 마지막의 네 점만 남겨요.
+
+```cpp
+// csrc/plot/raster.cpp
+std::vector<double> decimate(const double* xy, std::size_t n, double column) {
+    std::vector<double> out;
+    if (n == 0) return out;
+    out.reserve(std::min<std::size_t>(2 * n, 1 << 16));
+    std::size_t i = 0;
+    while (i < n) {
+        const double col = std::floor(xy[2 * i] / column);
+        std::size_t j = i + 1, lo = i, hi = i;
+        while (j < n && std::floor(xy[2 * j] / column) == col) {
+            if (xy[2 * j + 1] < xy[2 * lo + 1]) lo = j;
+            if (xy[2 * j + 1] > xy[2 * hi + 1]) hi = j;
+            ++j;
+        }
+        // the first, the lowest, the highest and the last point of the run, in their order
+        const std::size_t keep[4] = {i, std::min(lo, hi), std::max(lo, hi), j - 1};
+        std::size_t last = n;
+        for (const std::size_t k : keep) {
+            if (k != last) {
+                out.push_back(xy[2 * k]);
+                out.push_back(xy[2 * k + 1]);
+                last = k;
+            }
+        }
+        i = j;
+    }
+    return out;
+}
+```
+
+한 열 안에서 원래 선이 지나는 세로 범위는 가장 낮은 점과 가장 높은 점 사이이고, 열에 들어오고 나가는 자리는 처음과 마지막 점이에요. 이 넷을 원래 차례로 이으면 열 안의 세로 범위와 이웃 열과의 이음이 그대로 남아요. 열은 연이은 점의 묶음이라, x가 거꾸로 가는 곡선이 같은 열로 돌아오면 그때는 다른 묶음이에요.
+
+선 그림의 층은 끊기지 않고 이어진 점이 8000개를 넘으면 장면을 만들 때 이것을 써요. 열의 너비는 0.05 bp로, 600 dpi에서도 픽셀의 절반보다 좁아요. 그래서 줄인 선은 어느 출력에서나 원래 선과 같아 보이고, 세 출력이 모두 줄인 선을 받아요. 아래는 뜻을 보이려고 열의 너비를 자료 좌표 1로 크게 잡은 예예요.
+
+```python
+>>> rng = sd.random.default_rng(7)
+>>> x = sd.linspace(0, 6, 600)
+>>> y = sd.cumulative_sum(rng.random(600) - 0.5)
+>>> walk = array("d", [v for p in zip(x.tolist(), y.tolist()) for v in p])
+>>> kept = array("d")
+>>> kept.frombytes(core.decimate(walk.tobytes(), 1.0))
+>>> len(walk) // 2, len(kept) // 2
+(600, 25)
+>>> fig = sd.plot.line(x, y, color="silver", label="원래 점")
+>>> fig = fig.line(kept[0::2], kept[1::2], color="C0", width=0.8, label="남긴 점")
+>>> fig = fig.scatter(kept[0::2], kept[1::2], size=2.5, color="C0")
+>>> for k in range(1, 6):
+...     fig = fig.vline(k, color="gray", style=":", width=0.5)
+>>> fig = fig.xlabel("$x$").legend(loc="top")
+```
+
+<PlotImage name="in-raster-decimate" alt="회색의 들쭉날쭉한 선 위에 파란 꺾은선이 겹쳐 있어요. 점선으로 나눈 폭 1의 열마다 파란 점이 네 개씩 있고, 각 열의 가장 높은 점과 가장 낮은 점을 지나요." caption="열의 너비 1로 줄인 600개의 점(회색)과 남긴 25개의 점(파랑). 열마다 처음, 가장 낮은 점, 가장 높은 점, 마지막 점이 남아요. 실제 그림에서는 열의 너비가 0.05 bp라 두 선이 겹쳐 보여요." />
+
+### 곧은 줄 위의 점 빼기
+
+열로 줄이는 것은 점이 수천 개를 넘는 선에만 해요. 그보다 훨씬 흔한 것은 매끈한 곡선이에요. 함수 그림의 표본이나 등고선의 윤곽선은 화면에서 거의 곧은 구간에도 점이 촘촘해서, 그대로 쓰면 SVG와 PDF의 경로가 필요 이상으로 길어져요. `simplify`는 Ramer–Douglas–Peucker 알고리즘으로 그런 점을 빼요.
+
+알고리즘은 구간을 반씩 나누며 "꼭 남겨야 할 점"을 찾아요. 구간의 두 끝을 이은 곧은 줄에서 가장 먼 점을 찾고, 그 거리가 허용오차보다 크면 그 점을 남기고 구간을 그 점에서 둘로 나눠 각각 되풀이해요. 허용오차 안이면 구간 안의 점을 모두 버려요. 그러면 버린 점은 모두 남긴 이웃 점을 이은 줄에서 허용오차 안에 있어요.
+
+```cpp
+// csrc/plot/raster.cpp
+std::vector<double> simplify(const double* xy, std::size_t n, double tol) {
+    if (n < 3) return std::vector<double>(xy, xy + 2 * n);
+    std::vector<char> keep(n, 0);
+    keep[0] = keep[n - 1] = 1;
+    const double t2 = tol * tol;
+    std::vector<std::pair<std::size_t, std::size_t>> todo{{0, n - 1}};
+    while (!todo.empty()) {
+        const auto [a, b] = todo.back();
+        todo.pop_back();
+        if (b <= a + 1) continue;
+        const double ax = xy[2 * a], ay = xy[2 * a + 1], dx = xy[2 * b] - ax, dy = xy[2 * b + 1] - ay;
+        const double len2 = dx * dx + dy * dy;
+        double far = -1.0;
+        std::size_t at = a;
+        for (std::size_t i = a + 1; i < b; ++i) {
+            const double px = xy[2 * i] - ax, py = xy[2 * i + 1] - ay;
+            double d2;
+            if (len2 > 0.0) {
+                const double cr = px * dy - py * dx;
+                d2 = cr * cr / len2;  // to the line through a and b
+            } else {
+                d2 = px * px + py * py;  // a and b at one place (a closed run): to that place
+            }
+            if (d2 > far) {
+                far = d2;
+                at = i;
+            }
+        }
+        if (far > t2) {
+            keep[at] = 1;
+            todo.push_back({a, at});
+            todo.push_back({at, b});
+        }
+    }
+    std::vector<double> out;
+    for (std::size_t i = 0; i < n; ++i) {
+        if (keep[i]) out.insert(out.end(), {xy[2 * i], xy[2 * i + 1]});
+    }
+    return out;
+}
+```
+
+- 재귀 대신 할 일 더미(`todo`)를 써요. 구간이 수만 점이어도 호출 깊이가 늘지 않아요.
+- 점과 줄 사이의 거리는 외적으로 재요. 끝점 $a$에서 본 점의 벡터 $p$와 구간의 벡터 $d$에 대해 거리의 제곱은 $(p \times d)^2 / |d|^2$이에요. 제곱끼리 견주므로 제곱근이 없어요.
+- 두 끝이 같은 자리면(닫힌 고리) 줄이 없으므로 그 자리까지의 거리를 써요. 가장 먼 점이 남아 고리가 둘로 나뉘고, 그 뒤는 보통의 구간이에요.
+- 첫 점과 마지막 점은 늘 남아요. 닫힌 꺾은선은 닫힌 채로 남아요.
+
+선 그림의 층과 등고선·영역의 윤곽선은 쪽 좌표로 옮긴 뒤 점이 16개 이상이면 허용오차 0.02 bp로 이것을 지나요. 200 dpi에서 픽셀의 1/20이고 600 dpi에서도 1/6이라, 그린 선이 움직인 것을 어느 출력에서도 볼 수 없어요. 열로 줄인 긴 선도 그 뒤에 한 번 더 이것을 지나요.
+
+```python
+>>> t = sd.linspace(0.0, 6.28, 400)
+>>> wave = array("d", [v for p in zip((40.0 * t).tolist(), (60.0 * sd.sin(t)).tolist()) for v in p])
+>>> thin = array("d")
+>>> thin.frombytes(core.simplify(wave.tobytes(), 0.02))
+>>> len(wave) // 2, len(thin) // 2
+(400, 113)
+```
+
+가로 251 bp, 세로 120 bp로 그린 사인 곡선 한 주기예요. 점 400개 가운데 113개만 이어도 곡선이 0.02 bp 넘게 움직이지 않아요. 굽은 곳에는 점이 촘촘히, 변곡점 둘레의 곧은 곳에는 성기게 남아요.
+
+## 스레드 수와 결정성
+
+`fill`과 `stroke`는 도형 하나를 한 스레드에서 칠해요. 장면의 도형은 차례로 얹어야 하므로(나중 도형이 앞 도형 위에 와요) 도형끼리는 나란히 돌릴 수 없고, 도형 하나는 대개 작아서 나눌 이득이 적어요. 나란히 도는 것은 점 기호와 그림이에요. 둘 다 띠의 크기를 캔버스의 크기로만 정하고(64행, 32행), 띠 안의 계산은 다른 띠와 섞이지 않아요. 누적은 float로 하지만 한 픽셀에 더하는 차례가 언제나 같아요.
+
+그래서 같은 기계, 같은 스레드 수, 같은 입력이면 같은 픽셀이고, 지금은 스레드 수를 바꿔도 같은 픽셀이에요(약속은 아니에요).
+
+```python
+>>> def draw():
+...     cv = core.Canvas(400, 300)
+...     at = array("d")
+...     for i in range(5000):
+...         at.extend((3.0 + (i * 37 % 393), 3.0 + (i * 101 % 293)))
+...     cv.markers(b"MLLLZ", pack(-2, -2, 2, -2, 2, 2, -2, 2), ID, at.tobytes(), [0.1, 0.4, 0.8, 0.3], [0, 0, 0, 0.6], 0.7, [])
+...     return cv.rgba8()
+>>> old = sd.get_num_threads()
+>>> outs = []
+>>> for k in (1, 4):
+...     sd.set_num_threads(k)
+...     outs.append(draw())
+>>> sd.set_num_threads(old)
+>>> outs[0] == outs[1]
+True
+```
+
+PNG 파일의 바이트는 이 픽셀을 zlib로 압축한 것이에요. 압축도 큰 그림을 조각으로 나눠 나란히 하지만 조각을 크기로만 자르므로 바이트가 스레드 수와 무관해요([장면과 세 출력](/internals/plot/scene-outputs/)). 테스트는 파일의 바이트가 아니라 픽셀 버퍼의 해시를 견줘요([검증](/internals/plot/verification/)).
+
+## 잘못된 입력
+
+`Canvas`는 `stardust.plot`의 모듈만 부르는 낮은 층이라 사용자의 입력을 다시 검사하지 않아요. 다만 경로가 깨져 있으면 칠하지 않고 넘어가요. 좌표에 NaN이나 무한대가 하나라도 있는 경로는 아무것도 칠하지 않아요. 선 그림은 유한하지 않은 점을 미리 빼고 그 자리에서 선을 끊으므로([선](/api/plot/line/)) 이 경우는 장면에 오지 않아요. 명령과 좌표의 수가 맞지 않거나 명령이 `MLQCZ` 밖이면 바인딩이 `ValueError`를 내요. 이런 호출은 라이브러리 안의 실수예요.

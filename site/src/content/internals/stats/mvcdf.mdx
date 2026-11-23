@@ -1,0 +1,451 @@
+---
+title: 다변량 정규·t의 누적확률
+group: 표본과 다변량
+order: 3
+summary: 다변량 정규·t의 누적확률을 차원에 따라 다른 방법으로 계산하는 과정을 설명해요. 2차원과 3차원은 시작값에 더해지기만 하는 1차원 적분으로 반올림 몇 번 수준까지 맞추고, 4차원부터는 고정 시드의 준몬테카를로로 구해요.
+seeAlso: [multivariate, matrix, accuracy-performance]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+import Steps from '../../../components/fig/Steps.astro';
+
+## 한눈에 보기
+
+`MultivariateNormal.cdf(x)`와 `MultivariateT.cdf(x)`는 $P(X \le x)$, 곧 모든 좌표가 동시에 $x_i$ 이하일 확률이에요. 아래 끝은 모두 $-\infty$예요. 이 확률은 $d$차원 적분이고 $d \ge 2$에서 닫힌 꼴이 없어서, 차원과 분포에 따라 방법이 달라요.
+
+| | 정규 | t |
+|---|---|---|
+| $d = 1$ | `special.ndtr` | `special.stdtr` |
+| $d = 2$ | Plackett 항등식을 상관계수를 따라 적분(`bvn`) | 같은 항등식의 카이 혼합: 닫힌 꼴 피적분함수 + 1차원 혼합(`bvt`) |
+| $d = 3$ | 상관계수의 경로 적분, 상쇄하면 조건부 적분(`tvn`) | 삼변량 정규를 카이 변수로 혼합한 1차원 적분(`tvt`) |
+| $d \ge 4$ | Genz의 준몬테카를로(`qmc`) | 같은 방법에 카이 변수 하나를 더해요 |
+
+$d \le 3$은 결정적인 수치 적분이라 결과가 반올림 몇 번 수준이고 오차 출력은 0이에요. $d \ge 4$는 고정 시드의 준몬테카를로라서 결과는 결정적이지만 정확도는 `atol`(기본 $10^{-6}$)까지이고, 오차 출력은 표준오차의 3배예요. 알고리즘은 `csrc/stats/mvcdf.hpp`에, 점을 나누고 특수값을 정하는 바인딩은 `csrc/bind/stats_mvcdf.cpp`에 있어요.
+
+```python
+>>> N = sd.stats.MultivariateNormal(mu=sd.asarray([0.0, 0.0]), cov=sd.asarray([[1.0, 0.5], [0.5, 1.0]]))
+>>> N.cdf(sd.asarray([0.0, 0.0]), return_error=True)
+CdfResult(value=0.3333333333333333, error=0.0)
+>>> N.cdf(sd.asarray([-10.0, -10.0]))
+4.416978231552918e-32
+```
+
+첫 값은 Sheppard의 공식 $\tfrac14 + \arcsin(\rho)/(2\pi) = 1/3$이에요. 둘째 값은 Arb로 조건부 적분 $\int_{-\infty}^{-10}\varphi(z)\,\Phi\bigl((-10 - z/2)/\sqrt{3/4}\bigr)\,dz$를 구한 참값 $4.41697823155292041 \times 10^{-32}$과 상대 $6 \times 10^{-16}$ 차이예요. 같은 점에서 scipy 1.18.1의 `multivariate_normal.cdf`는 0.0을 내요. scipy는 모든 $d$에서 절대오차를 목표로 하는 준몬테카를로를 쓰기 때문이에요.
+
+이 글 전체에 걸친 원칙은 세 가지예요.
+
+1. **적분이 더해지는 꼴을 골라요.** 정확한 공식은 모두 "시작값 + 적분"인데, 피적분함수의 부호가 일정하고 적분이 시작값에 더해지도록 시작점을 골라요. 그러면 꼬리에서도 상쇄가 없어서 상대 정확도가 남아요. 상쇄를 피할 수 없으면 다른 꼴(변수 뒤집기, 조건부 적분)로 넘어가요.
+2. **지수는 double-double로 만들어요.** 꼬리에서 피적분함수의 지수는 수백이에요. 지수의 반올림 $\varepsilon$이 피적분함수에서 $700\varepsilon$이 되므로, 지수와 적분 끝점을 hi + lo로 둬요.
+3. **모든 반복에 상한이 있어요.** 적응 적분은 구간 200개, 준몬테카를로는 96단계와 `max_points`까지예요. 결과는 입력만의 함수이고, 지금은 스레드 수와도 무관해요(약속은 아니에요).
+
+## 판정 순서와 표준화
+
+바인딩은 점마다 다음 순서로 정해요.
+
+<Fig column caption="mv_cdf가 점 하나를 처리하는 순서 (csrc/bind/stats_mvcdf.cpp).">
+  <Steps
+    steps={[
+      { label: '행렬과 df', note: '아래 삼각의 float64 촐레스키가 실패하거나 df가 0 이하·NaN이면 값과 오차 모두 NaN' },
+      { label: 'NaN', note: 'x에 NaN이 있으면 NaN (−inf보다 먼저)' },
+      { label: '−inf', note: '어느 좌표든 −inf이면 0' },
+      { label: '+inf', note: '그 좌표를 빼고 남은 좌표의 주변 분포로 (t는 같은 df). 남는 것이 없으면 1' },
+      { label: '남은 좌표 ≤ 3', note: '표준화한 h, 상관계수 r로 정확한 공식. 오차 출력 0', depth: 1 },
+      { label: '남은 좌표 ≥ 4', note: '변수 순서를 바꾼 촐레스키와 준몬테카를로. 오차 출력은 3σ', depth: 1 },
+    ]}
+  />
+</Fig>
+
+그 앞에서 Python 층이 입력과 옵션을 검사해요. `x`는 `sd.ndarray`여야 하고, `atol`은 유한한 양수, `max_points`는 1 이상의 int나 None, `return_error`는 True나 False예요. `max_points`가 int64 밖이면 `cdf(): 'max_points' is out of range`(`OverflowError`), 1 미만이면 `cdf(): 'max_points' must be >= 1`(`ValueError`)이에요. `return_error=True`의 결과는 `CdfResult(value, error)`(`stardust._results`의 이름 붙은 튜플)이고, 배열인 두 칸은 읽기 전용이에요. 에러는 모두 메서드 이름으로 시작해요. `atol`은 기술통계의 수 옵션과 같은 `_real_option`이 읽어요. int와 float을 받고 numpy 정수도 int로 받아요(bool은 아니에요). double로 바꿀 수 없을 만큼 큰 int는 `OverflowError`이고, 0 이하·inf·NaN은 `ValueError`예요.
+
+```python
+>>> N.cdf(sd.asarray([0.0, 0.0]), max_points=1.5)
+Traceback (most recent call last):
+    ...
+TypeError: cdf(): 'max_points' must be an int or None, not float
+>>> N.cdf(sd.asarray([0.0, 0.0]), atol=0.0)
+Traceback (most recent call last):
+    ...
+ValueError: cdf(): 'atol' must be a finite number > 0
+>>> N.cdf(sd.asarray([0.0, 0.0]), atol=float('inf'))
+Traceback (most recent call last):
+    ...
+ValueError: cdf(): 'atol' must be a finite number > 0
+>>> N.cdf(sd.asarray([0.0, 0.0]), atol=10**400)
+Traceback (most recent call last):
+    ...
+OverflowError: cdf(): 'atol' is out of range
+```
+
+정확한 공식은 표준화한 한계 $h_i = x_i/\sigma_i$와 상관계수 $r_{ij} = \Sigma_{ij}/(\sigma_i\sigma_j)$를 받아요($x$는 이미 평균을 뺀 값이에요). $\sigma_i\sigma_j$가 $2^{\pm1000}$ 밖이면 넘치지 않게 두 번 나눠요. 정규의 $h$는 $\pm 10^{100}$으로 잘라요. 그 밖에서 정규의 cdf는 어떤 double로도 0이나 1이고, 잘라 두면 안쪽에서 $h^2$이 넘치지 않아요. t의 $h$는 자르지 않아요. t의 꼬리는 거듭제곱이라 $h = -10^{300}$에서도 확률이 0이 아니에요.
+
+```python
+>>> N3 = sd.stats.MultivariateNormal(mu=sd.zeros(3),
+...     cov=sd.asarray([[1.0, 0.3, 0.2], [0.3, 1.0, 0.4], [0.2, 0.4, 1.0]]))
+>>> N3.cdf(sd.asarray([1.0, float('inf'), 0.5]))
+0.5996632858835462
+>>> N3.cdf(sd.asarray([float('nan'), -float('inf'), 0.5]))
+nan
+```
+
+## 적응 Gauss–Kronrod
+
+$d = 2, 3$의 공식은 모두 1차원 적분이고, 하나의 적분기를 함께 써요. QUADPACK의 21점 Kronrod 규칙과 그 안에 든 10점 Gauss 규칙(`qk21`) [8]이에요. 한 구간 $[a, b]$에서 21점의 가중합 $K$와 그중 10점의 가중합 $G$를 함께 얻고, 오차를 QUADPACK의 추정 $\mathrm{resasc}\cdot\min\bigl(1, (200\lvert K - G\rvert/\mathrm{resasc})^{1.5}\bigr)$로 잡아요. $\mathrm{resasc}$는 피적분함수가 구간 평균에서 벗어난 정도의 적분이에요. Kronrod 규칙은 Gauss 점을 그대로 두고 11점을 더해 차수를 31까지 올린 것이라, 21번의 계산으로 값과 오차 추정을 함께 얻어요.
+
+QUADPACK은 이 추정에 반올림 바닥 $50\varepsilon\cdot\mathrm{resabs}$를 둬요. 그 바닥이 있으면 세분이 $10^{-14}$ 근처에서 멈추는데, 여기의 피적분함수는 매끄러워서 그 아래에서도 추정이 의미가 있으므로 바닥을 두지 않아요.
+
+`adapt`는 오차 추정이 가장 큰 구간을 반으로 나누기를 되풀이해요. 멈추는 조건은 추정의 합이 $10^{-16}(\lvert\text{시작값}\rvert + \lvert\text{적분}\rvert)$ 아래가 되는 것이에요(`kQuadRel`). 기준에 시작값이 들어가는 이유는 결과가 "시작값 + 적분"이기 때문이에요. 적분이 시작값보다 훨씬 작으면 그만큼만 정확하면 돼요. 구간은 200개까지이고(`kMaxPanels`), 나누는 순서는 입력만으로 정해지므로 결과도 입력만의 함수예요.
+
+## 이변량 정규
+
+### Plackett 항등식
+
+이변량 정규 $\Phi_2(h, k; \rho) = P(X \le h, Y \le k)$를 상관계수 $\rho$로 미분하면 밀도가 나와요(Plackett 1954 [1]).
+
+$$
+\frac{\partial\Phi_2(h, k; \rho)}{\partial\rho} = \varphi_2(h, k; \rho) = \frac{e^{-q(\rho)}}{2\pi\sqrt{1 - \rho^2}}, \qquad
+q(\rho) = \frac{h^2 - 2\rho hk + k^2}{2(1 - \rho^2)}
+$$
+
+$\rho = 0$에서는 두 변수가 독립이라 $\Phi_2 = \Phi(h)\Phi(k)$이므로, $\rho$를 0에서 $r$까지 적분하면 원하는 값이에요. $\rho = \sin\theta$로 바꾸면 $d\rho = \sqrt{1 - \rho^2}\,d\theta$가 분모의 제곱근을 지워요.
+
+$$
+\Phi_2(h, k; r) = \Phi(h)\Phi(k) + \frac{1}{2\pi}\int_0^{\arcsin r} e^{-q(\sin\theta)}\,d\theta
+$$
+
+Drezner와 Wesolowsky [2]가 이 꼴을 고정 Gauss 규칙으로 계산했고, Genz [3]가 정확도를 높인 판이 TVPACK의 `bvnd`예요. 고정 규칙은 절대오차 $10^{-15}$ 정도까지만 가서, 꼬리의 작은 확률은 상대 정확도를 잃어요. stardust는 같은 항등식을 위의 적응 적분으로 계산하고, 아래 세 가지를 더해요.
+
+<Fig caption="Plackett 항등식의 피적분함수 e^(−q(sin θ))/(2π)를 θ ∈ (−π/2, π/2)에서 그린 것. (h, k) = (−2, −2)는 θ가 커질수록 자라고, (1, −1)은 θ = π/2(ρ = 1)에서 0으로 떨어지는 계단이 있어요. 계단의 폭은 극점 쪽 변수 t = √(1 − |ρ|)로 |h − k|/2예요.">
+  <Plot
+    curves={[
+      { f: (t) => Math.exp(-4 / (1 + Math.sin(t))) / (2 * Math.PI), label: '(h, k) = (−2, −2)' },
+      { f: (t) => Math.exp(-1 / (1 - Math.sin(t))) / (2 * Math.PI), label: '(h, k) = (1, −1)', dashed: true },
+    ]}
+    domain={[-1.5707, 1.5707]}
+    range={[0, 0.1]}
+    xTicks={[{ v: -1.5708, label: '−π/2' }, { v: 0, label: '0' }, { v: 1.5708, label: 'π/2' }]}
+    yTicks={[{ v: 0.05, label: '0.05' }, { v: 0.1, label: '0.1' }]}
+  />
+</Fig>
+
+### 상쇄하지 않는 시작점
+
+$r \ge 0$이면 피적분함수가 양수이고 적분이 시작값 $\Phi(h)\Phi(k)$에 더해져요. 두 항 모두 음이 아니라 상쇄가 없어요.
+
+$r < 0$이면 0에서 출발한 적분을 빼야 해요. $h, k$가 둘 다 아래 꼬리이고 상관이 음이면 참값은 $\Phi(h)\Phi(k)$보다 훨씬 작아서 큰 두 수의 차가 돼요. 그래서 $r < 0$에서는 시작점을 $\rho = -1$로 옮겨요.
+
+$$
+\Phi_2(h, k; r) = \Phi_2(h, k; -1) + \frac{1}{2\pi}\int_{-\pi/2}^{\arcsin r} e^{-q(\sin\theta)}\,d\theta
+$$
+
+$\rho = -1$이면 $Y = -X$라서 $\Phi_2(h, k; -1) = P(-k \le X \le h)$예요. 이것도 $\Phi$의 차지만, `bvn_minus_one`은 경우마다 두 꼬리의 차로 써서 상쇄를 피해요($h \le 0$이면 $\Phi(h) - \Phi(-k)$, $k \le 0$이면 $\Phi(k) - \Phi(-h)$, 둘 다 양수면 $(1 - \Phi(-h)) - \Phi(-k)$). 그러면 두 항이 다시 음이 아니에요. $-1/2 < r < 0$에서는 0에서 빼는 꼴을 먼저 해 보고, 결과 $v$가 $\Phi(h)\Phi(k) \le 4v$를 만족하면(잃는 자리가 2비트 이하) 그 값을 써요.
+
+지수 $q$도 음이 아닌 두 항의 합으로 써요.
+
+$$
+q = \begin{cases}
+\dfrac{(h - k)^2}{2(1 - s^2)} + \dfrac{hk}{1 + s}, & hk \ge 0 \\[2ex]
+\dfrac{(h + k)^2}{2(1 - s^2)} - \dfrac{hk}{1 - s}, & hk \lt 0
+\end{cases}
+$$
+
+$h^2 - 2hks + k^2 = (h \mp k)^2 \pm 2hk(1 \mp s)$에서 나온 꼴이에요. $h^2 + k^2$과 $2hks$를 따로 계산해 빼면 $h \approx k$, $s \approx 1$에서 지수가 상쇄하는데, 이 꼴에는 빼기가 없어요.
+
+### 극점 쪽 변수와 끝점
+
+적분 변수는 $\theta$가 아니라 가까운 극점($\rho = \pm1$)까지의 거리 $t = \sqrt{1 - \lvert s\rvert}$예요. $s = 1 - t^2$(또는 $t^2 - 1$)이고
+
+$$
+d\theta = \frac{2\,dt}{\sqrt{2 - t^2}}, \qquad 1 - s = t^2, \quad 1 + s = 2 - t^2
+$$
+
+라서 극점에서도 피적분함수가 매끄럽고, $1 \mp s$를 빼기 없이 $t^2$에서 바로 얻어요. $s$가 $\pm1$에서 $10^{-16}$ 안에 있어도 정확해요.
+
+꼬리에서는 피적분함수가 적분의 끝 $s = r$에서 가장 크고, $\lvert d\log f/dt\rvert$가 수백이에요. 그래서 반올림 두 군데를 더 막아요.
+
+- **끝점**: $T = \sqrt{1 \mp r}$을 정확한 $1 \mp r$에서 hi + lo로 구해요(`dd_sqrt`). $T_{hi}$까지 적분하고 $f(T_{hi})\,T_{lo}$를 더해요(`end_part`).
+- **노드**: 구간 중심 $c$에 $x\cdot hl$을 더한 노드는 $t \approx 0.5$에서 $2^{-54}$까지 틀리고, 한 구간의 노드가 모두 같은 반올림을 받아요. 기울기 600인 끝 구간 하나가 이것으로 $3.6 \times 10^{-14}$를 잃어요. 그래서 노드를 끝점에서 잰 거리 $u = \lvert t - T_{hi}\rvert$로 두고, $t^2 = (T_{hi} \pm u)^2$을 $u$에서 hi + lo로 만들어요. 피적분함수가 큰 곳에서 $u$가 작으니 노드가 자기 크기만큼 정확해요.
+
+### 극점의 계단
+
+위 그림의 $(1, -1)$처럼 $\rho \to \pm1$ 쪽에는 $e^{-\delta^2/(4t^2)}$ 꼴의 계단이 있어요($\delta = \lvert h \mp k\rvert/2$). $t$가 $\delta$보다 작으면 0이고 그 위에서는 $t$ 자신의 크기로 변해요. 첫 구간의 노드가 모두 계단 위에 있으면 오차 추정이 계단을 보지 못해요. 그래서 첫 구간들을 $\max(t_a, \delta)$에서 시작해 $[t_a, c], [c, 4c], [4c, 16c], \dots$로 기하적으로 잘라요. 이렇게 하지 않으면 $h + k = 10^{-8}$에서 상대 $2 \times 10^{-8}$을 잃어요. 폭이 $10^{-18}$보다 좁은 계단은 적분의 $10^{-18}$ 아래라 무시해요.
+
+## 삼변량 정규
+
+### 경로 적분
+
+Plackett 항등식은 $d = 3$에도 있어요. $\Phi_3$를 상관 $\sigma_{ik}$로 미분하면 $(i, k)$의 이변량 밀도와 나머지 변수의 조건부 확률의 곱이에요.
+
+$$
+\frac{\partial\Phi_3}{\partial\sigma_{ik}} = \varphi_2(h_i, h_k; \sigma_{ik})\; P(X_j \le h_j \mid X_i = h_i, X_k = h_k)
+$$
+
+Genz [3, §3]를 따라 한 쌍 $\sigma_{ij}$는 그대로 두고, 나머지 둘을 함께 $\sigma_{ik} = tc_1$, $\sigma_{jk} = tc_2$로 0에서 원래 값까지 옮겨요. $t = 0$에서는 $X_k$가 독립이라 시작값이 $\Phi_2(h_i, h_j; r_{ij})\,\Phi(h_k)$이고, 경로를 따라 두 항이 더해져요.
+
+$$
+\Phi_3 = \Phi_2(h_i, h_j; r_{ij})\,\Phi(h_k) + \frac{1}{2\pi}\int_0^{\arcsin c_1} e^{-q_{ik}(s)}\,\Phi(u_j(s))\,d\theta + (\text{같은 꼴의 } jk \text{ 항})
+$$
+
+$u_j$는 $X_i = h_i$, $X_k = h_k$일 때 $X_j$의 표준화한 한계예요. 그 분모의 행렬식 $\det = (1 - a^2)(1 - s^2) - (b - as)^2$은 경로 위의 행렬 $\Sigma(t)$의 행렬식이고, 양정치 행렬의 볼록 결합이라 경로 위에서 양수예요. 코드는 이것을 $(1 - s^2)K - g^2$ 꼴로 바꾸고 상수를 hi + lo로 두어, 거의 특이한 행렬에서 마지막 빼기 말고는 반올림이 없게 해요. 각 항의 적분 변수와 끝점 처리는 이변량과 같아요.
+
+### 어느 쌍을 남길까
+
+- **음의 상관이 하나 이하**: 그 쌍을 남겨요. 움직이는 두 상관이 음이 아니라 두 적분이 모두 더해져요. 음의 상관이 없으면 가장 큰 상관을 남겨요(경로가 짧아요).
+- **음의 상관이 둘이나 셋**: 직접 경로에는 빼기가 들어가요. 항 크기의 합이 값의 4배를 넘으면(2비트 넘게 잃으면) 변수 $X_k$를 뒤집은 꼴도 계산해요.
+  $$
+  \Phi_3 = \Phi_2(h_i, h_j; r_{ij}) - P(X_i \le h_i,\ X_j \le h_j,\ -X_k \lt -h_k)
+  $$
+  둘째 항은 음의 상관이 하나 이하인 문제라 상쇄 없이 계산돼요. 두 꼴 가운데 조건이 좋은 쪽을 써요.
+- **둘 다 2비트 넘게 잃으면**: 조건부 적분으로 넘어가요.
+
+### 조건부 적분
+
+$X_k$에 조건을 걸면
+
+$$
+\Phi_3 = \int_{-\infty}^{h_k}\varphi(z)\,\Phi_2\bigl(a(z), b(z); \rho\bigr)\,dz, \qquad
+a(z) = \frac{h_i - r_{ik}z}{s_i},\ b(z) = \frac{h_j - r_{jk}z}{s_j},\ \rho = \frac{r_{ij} - r_{ik}r_{jk}}{s_is_j}
+$$
+
+($s = \sqrt{1 - r^2}$, $\rho$는 편상관)이에요. 피적분함수가 양수라서 상쇄가 전혀 없고, 안쪽은 위의 이변량 정규라 그 상대 정확도를 물려받아요. 대신 노드마다 `bvn`을 한 번씩, 모두 200–600번 불러야 해서 마지막 수단이에요. $k$는 한계가 가장 작은 변수예요. $\rho$와 $s_i$, $s_j$는 hi + lo로 둬요. 행렬이 거의 특이하면 $\rho$의 분자가 상쇄하고, $\rho$가 $\pm1$에 가까우면 이변량의 끝점 $\sqrt{1 \mp \rho}$가 그 오차를 키우기 때문이에요.
+
+거의 특이한 행렬에서는 피적분함수가 범위보다 훨씬 좁은 뾰족한 봉우리라서, 균등하게 자른 첫 구간들이 0만 보고 적분이 0이 될 수 있어요(가장 작은 고유값 $1.6 \times 10^{-9}$, $h \approx 10^{-6}$에서 참값은 $3.3 \times 10^{-10}$). 그래서 봉우리를 먼저 찾아요.
+
+- 피적분함수는 $z$에 대해 로그 오목이에요(Prékopa: 볼록 집합을 아핀으로 옮긴 가우스 측도에 $\varphi$를 곱한 것). 봉우리가 하나예요.
+- $\Phi_2(a, b; \rho) \le \Phi(-d) \le e^{-d^2/2}/2$이고, $d$는 원점에서 사분면 $\lbrace u \le (a, b)\rbrace$까지의 마할라노비스 거리예요. 그래서 $E(z) = z^2 + d^2(z)$가 피적분함수의 로그를 위에서 눌러요. $E$는 볼록이고 조각마다 이차식이라 닫힌 꼴이에요.
+- $E'$의 근을 이분법(100번까지)으로 찾아 봉우리로 삼고, $E$가 2만큼 오르는 거리(값이 $1/e$로 떨어지는 폭)를 봉우리의 폭으로 삼아요.
+- 같은 방식으로 인수가 꺾이는 세 곳($a = 0$, $b = 0$, 그리고 $\rho$의 부호에 따라 $a + b = 0$이나 $a = b$인 능선)의 위치와 폭을 구해요. 폭이 범위의 1/64보다 좁은 곳만 둘레를 비율 64로 9단계씩 기하적으로 잘라요. 보통의 행렬은 균등한 8구간 그대로예요.
+- $E/2 > 745.2$인 노드는 `bvn`을 부르지 않고 0이에요(상한이 가장 작은 double 아래예요).
+
+능선을 자르지 않으면 이렇게 돼요. 폭 $2.4 \times 10^{-4}$인 능선이 길이 1.25인 구간의 끝에 있으면, 구간의 바깥 노드 간격보다 좁아서 크기와 상관없이 오차 추정에 보이지 않아요. $\kappa = 7.7 \times 10^7$, $P = 0.07$인 잘 조건화된 값에서 이것으로 $1.7 \times 10^{-7}$을 잃어요.
+
+범위는 $[h_k - L, h_k]$이고 $L = 10, 20, 40, 80, 160$으로 두 배씩 늘려요. 빠진 부분은 $\Phi(h_k - L)\min(\Phi(a), \Phi(b))$로 위에서 눌리고, 이 값이 적분의 $10^{-17}$ 아래면 멈춰요.
+
+## 다변량 t의 d = 2, 3
+
+### 카이 변수의 혼합
+
+다변량 t는 정규를 카이 변수로 나눈 것이에요. $X = Z/R$, $R = \sqrt{S/\nu}$, $S \sim \chi^2_\nu$이므로 $X \le h$는 $Z \le Rh$와 같고
+
+$$
+P(X \le h) = E\bigl[\Phi_d(Rh)\bigr] = \int_0^\infty \frac{y^{a-1}e^{-y}}{\Gamma(a)}\,\Phi_d\Bigl(\sqrt{y/a}\,h\Bigr)\,dy, \qquad a = \nu/2
+$$
+
+예요(Genz와 Bretz [6, §4.2]). 무게는 $v = \log(y/a) = \log R^2$에서
+
+$$
+w(v) = \exp\bigl(c(a) - a(e^v - 1 - v)\bigr), \qquad c(a) = a\log a - a - \log\Gamma(a)
+$$
+
+이고, $v = 0$에서 폭 $1/\sqrt a$인 봉우리이거나 작은 $a$에서는 $e^{av}$로 줄어드는 왼쪽 꼬리예요. `t_mixture`가 이 1차원 적분을 위의 적응 적분으로 계산해요.
+
+꼬리에서는 지수 $a(e^v - 1 - v)$와 $R^2h^2/2$가 700까지 가서, 지수의 반올림 $\varepsilon$이 피적분함수에서 $700\varepsilon$이 돼요. 그래서 노드마다 반올림된 $x = e^v$를 그대로 정확한 값으로 받아들이고, 지수 $a(x - 1 - \log x)$를 그 $x$에서 hi + lo로 만들어요. 노드 $v' = \log x$는 $v$와 $10^{-16}$쯤 다르므로, 피적분함수의 로그 도함수로 1차 보정해 $v$로 되돌려요. $c(a)$도 지수라서 hi + lo예요. $a \ge 10$이면 Stirling 꼴 $c(a) = \tfrac12\log a - \log\sqrt{2\pi} - S(a)$로 써서 $a\log a$ 크기의 항이 아예 없어요($a$가 10보다 작으면 세 항을 double-double로 계산해요). 이렇게 하지 않으면 $\nu = 10^{300}$에서 $c$의 반올림만으로 $2 \times 10^{-14}$가 움직여요.
+
+노드는 세 가지 꼴이에요.
+
+- **보통**: 위의 방식이에요.
+- **$a > 10^{13}$**: 무게의 폭 $1/\sqrt a$가 $e^v$의 반올림($1.1 \times 10^{-16}$)과 견줄 만해져서, $x = 1 + \mathrm{expm1}(v)$를 hi + lo로 만들어요. 되돌릴 것이 없어요.
+- **$v < -700$**: $e^v$가 정규수 아래예요. 한계가 $10^{150}$을 넘으면 적분의 주요 부분이 $R \approx 1/\lvert h\rvert$에 있으므로, $\sqrt x\,h$를 로그에서 만들고 지수를 $v$에서 바로 만들어요.
+
+적분의 왼쪽 끝은 $R \le r_c$에서 $\lvert\Phi_d(Rh) - \Phi_d(0)\rvert \le R\sum\lvert h_i\rvert/\sqrt{2\pi}$라는 사실로 닫아요. $r_c = 10^{-17}p_0/(0.4\sum\lvert h_i\rvert)$로 잡으면 그 부분은 $p_0\,P(R \le r_c)$이고, 이 값은 불완전 감마 하나로 구해요($p_0 = \Phi_d(0)$은 직교 확률). 오른쪽 끝 $y = a + 40\sqrt a + 750$ 너머는 $10^{-300}$ 아래예요. 첫 구간은 $v = \pm\sigma 4^k$($\sigma = \min(1, 1/\sqrt a)$)와, 한계가 400보다 크거나 1/400보다 작으면 $\Phi_d$가 꺾이는 $v_i = -2\log\lvert h_i\rvert$ 둘레에서 잘라요.
+
+### 이변량 t: 닫힌 꼴의 피적분함수
+
+이변량 t는 혼합을 Plackett 항등식 안으로 넣어요. 정규의 피적분함수 $e^{-q}$에 $R^2$을 곱한 것의 기댓값이 닫힌 꼴이에요.
+
+$$
+E\bigl[e^{-R^2q}\bigr] = E\bigl[e^{-Sq/a}\bigr] = (1 + q/a)^{-a}
+$$
+
+그래서 Plackett 적분은 $(1 + q/a)^{-a}/(2\pi)$를 $\theta$로 적분하는 것이 되고, 이변량 정규와 같은 변수·시작점·끝점 처리를 그대로 써요. 시작값만 달라요. $r = 0$의 시작값 $E[\Phi(Rh)\Phi(Rk)]$는 `t_mixture` 하나로, $r = -1$의 시작값 $P(-k \le X \le h)$는 `special.stdtr`의 꼬리 차로 구해요. 지수 $a\log(1 + q/a)$는 double-double이에요($q/a < 2^{-8}$이면 급수 꼴 log1p). 극점 쪽에서 피적분함수는 $t^{2a}$처럼 행동해서 작은 $a$에서 0에서 매끄럽지 않으므로, 계단 아래에도 기하 구간을 더 둬요.
+
+### 삼변량 t: 삼변량 정규의 혼합
+
+삼변량 t는 `t_mixture`의 노드마다 삼변량 정규 `tvn`을 불러요(노드당 한계를 $\sqrt x$배). 직교 확률 $p_0 = \Phi_3(0)$은 Sheppard의 $\tfrac18 + \sum\arcsin r_{ij}/(4\pi)$가 거의 특이하고 음의 상관인 행렬에서 상쇄하므로(참값 $3.3 \times 10^{-10}$이 일곱 자리만 맞아요), 입체각으로 계산해요. 직교는 원뿔 $\lbrace z : Lz \le 0\rbrace$이고, 단위 모서리 $e_1, e_2, e_3$인 원뿔의 입체각은 van Oosterom과 Strackee [7]의 공식이에요.
+
+$$
+\tan\frac{\Omega}{2} = \frac{\lvert\det(e_1\, e_2\, e_3)\rvert}{1 + e_1\cdot e_2 + e_1\cdot e_3 + e_2\cdot e_3}, \qquad \Phi_3(0) = \frac{\Omega}{4\pi}
+$$
+
+모서리의 내적과 행렬식을 $R$의 여인자로 쓰면 모든 조각이 곱이나 짧은 합이라 hi + lo로 만들 수 있고, 상쇄가 남지 않아요.
+
+행렬이 거의 특이하면 `tvn`이 노드마다 조건부 적분으로 넘어가서 적분이 세 겹이 돼요. 그래서 한 호출이 쓸 수 있는 `bvn` 횟수를 20000번으로 묶고(`kTvtBudget`), 다 쓰면 결과 전체를 `tvt_condition`으로 계산해요. `tvt_condition`은 t 자신의 조건부 꼴이에요. $X_k = x$가 주어지면 $(X_i, X_j)$는 자유도 $\nu + 1$, 위치 $(r_{ik}, r_{jk})x$, 편상관 $\rho$, 척도 $s\,\tau(x)$, $\tau(x) = \sqrt{(\nu + x^2)/(\nu + 1)}$인 이변량 t예요(Kotz와 Nadarajah [9, §1.11]).
+
+$$
+P = \int_{-\infty}^{h_k} f_\nu(x)\; T_{2,\nu+1}\Bigl(\frac{h_i - r_{ik}x}{s_i\tau},\ \frac{h_j - r_{jk}x}{s_j\tau};\ \rho\Bigr)\,dx
+$$
+
+안쪽은 `bvt`, 곧 닫힌 꼴의 1차원 적분 두 개라서 세 겹이 두 겹이 돼요. 적분 변수는 $u = \mathrm{asinh}(h_k - x)$예요. 끝 근처에서는 선형이고 꼬리에서는 로그라서 t의 거듭제곱 꼬리가 매끄러워져요. 거의 특이한 행렬에서 세 겹 적분으로는 45–215초 걸리는 점들이 이 꼴로는 0.03–0.12초예요. 한계나 $\sqrt\nu$가 $10^{100}$을 넘으면($x^2$이 넘쳐요) 이 경로는 NaN이에요. 이 조합은 df ≤ 1에서 나와요.
+
+```python
+>>> T3 = sd.stats.MultivariateT(mu=sd.zeros(3),
+...     shape=sd.asarray([[1.0, 0.3, 0.2], [0.3, 1.0, 0.4], [0.2, 0.4, 1.0]]), df=4.0)
+>>> T3.cdf(sd.asarray([-1.0, 0.5, 2.0]), return_error=True)
+CdfResult(value=0.14305883336573588, error=0.0)
+>>> T2 = sd.stats.MultivariateT(mu=sd.zeros(2), shape=sd.asarray([[1.0, 0.5], [0.5, 1.0]]), df=1e300)
+>>> T2.cdf(sd.asarray([-3.0, -2.0])) == N.cdf(sd.asarray([-3.0, -2.0]))
+True
+```
+
+$\nu = 10^{300}$에서도 무게의 폭과 지수가 정확해서 정규의 극한과 비트까지 같아요. 같은 3차원 점에서 scipy 1.18.1의 `multivariate_t.cdf`는 준몬테카를로라서 0.14303919846150961을 내요($2 \times 10^{-5}$ 차이).
+
+## d ≥ 4: Genz의 준몬테카를로
+
+### 변수 분리
+
+$X \sim N(0, \Sigma)$, $\Sigma = LL^\top$이면 $X = LZ$이고 $X \le b$는 $Z$에 대한 조건이 차례로 풀리는 꼴이에요. $Z_1 \le b_1/L_{11}$, 그다음 $Z_2 \le (b_2 - L_{21}Z_1)/L_{22}$, … 각 $Z_i$를 조건부 분포에서 균등 변수로 바꾸면 Genz [4]의 변환이 나와요.
+
+$$
+P = \int_{[0,1]^{d-1}} e_1 e_2\cdots e_d\,dw, \qquad
+e_i = \Phi\Bigl(\frac{b_i - \sum_{j<i}L_{ij}y_j}{L_{ii}}\Bigr), \quad y_j = \Phi^{-1}(w_je_j)
+$$
+
+피적분함수는 $[0,1]^{d-1}$의 매끄러운 함수이고 값은 $[0, 1]$에 있어요. t는 좌표 하나를 더해 $r = \sqrt{\chi^{2\,-1}_\nu(w_0)/\nu}$를 만들고 $b_i$ 대신 $rb_i$를 써요($X \le b$는 $Z \le rb$와 같아요).
+
+### 변수 순서
+
+변수의 순서는 적분값을 바꾸지 않지만 피적분함수의 모양을 바꿔요. Genz와 Bretz [5]의 재배열을 써요. 촐레스키의 $i$번째 단계에서 남은 변수 가운데 조건부 한계 $(b_j - \sum_k L_{jk}y_k)/s_j$의 확률이 가장 작은 변수를 고르고, 다음 단계의 $y_i$로 그 조건부 기댓값 $E[Z \mid Z \le t] = -\varphi(t)/\Phi(t)$를 써요. 가장 제약이 강한 변수가 바깥에 오고 안쪽 변수는 거의 영향이 없어져서, 피적분함수가 안쪽 좌표에서 거의 상수가 돼요. 이 분해는 float64로 하고, 피벗이 양수가 아니면 NaN이에요.
+
+### rank-1 격자와 fast-CBC
+
+점은 이동한 rank-1 격자 규칙이에요.
+
+$$
+x_i = \mathrm{frac}\bigl(i\,z/N + \Delta\bigr), \qquad i = 0, \dots, N - 1
+$$
+
+$N$은 소수이고 $z$는 생성 벡터예요. 좋은 $z$는 Nuyens와 Cools [10]의 fast component-by-component(CBC) 구성으로 만들어요. 곱 무게 $\gamma_j$(1, 1, 0.8, 0.64, …)를 둔 Korobov 공간의 최악 오차를 성분 하나씩 탐욕적으로 줄이는데, 커널 $B_2(x) = x^2 - x + 1/6$을 원시근 $g$로 순서를 바꾸면 행렬이 순환 행렬이 되어 단계마다 순환 합성곱 하나와 argmin 하나예요. 합성곱은 vDSP의 2의 거듭제곱 길이 DFT로 계산해요. scipy의 `_cbc_lattice`와 단계마다 같은 구성이에요. CBC는 탐욕적이라 긴 벡터의 앞 $D$개가 짧은 벡터와 같아서, 만든 벡터를 $N$마다 하나씩(가장 긴 것) 잠금 아래 캐시해 두고 짧은 요청에도 써요. 캐시는 $N$ 512개까지예요.
+
+주기화는 텐트 변환(baker's transformation) $x \mapsto \lvert 2x - 1\rvert$예요. 피적분함수를 주기 함수처럼 만들어 격자 규칙의 수렴을 빠르게 해요. 같은 평가 수에서 Genz의 `qsimvnv`가 쓰는 Richtmyer 규칙(소수의 제곱근으로 만든 Kronecker 열)보다 $d = 5$에서 오차가 7.5배 작고, 같은 오차에서 평가가 3–3.5배 적어요. 텐트 변환 위에 대칭 쌍 $1 - w$를 더해도 얻는 것이 없어서 쓰지 않아요.
+
+### 이동, 단계, 3σ
+
+- **이동**: 단계마다 무작위 이동 $\Delta_m$을 12개 둬요(Genz의 `qsimvnv`와 같은 수). 이동은 고정 키 $\lbrace\texttt{0x5eed}, n\rbrace$의 Philox4x64-10에서 받아요($n$은 적분하는 변수 수). 단계 $l$, 이동 $m$의 좌표 $j$는 계수기 $(m, \lfloor j/4\rfloor, l, 0)$인 블록의 단어 $j \bmod 4$예요. 격자는 $(D, N)$만의 함수라서 결과는 입력만의 함수예요.
+- **한 단계의 추정**: 이동마다 $N$점의 평균 $\mu_m$을 내고, 12개의 평균과 그 분산 $\mathrm{var} = \sum(\mu_m - \bar\mu)^2/(12 \cdot 11)$을 단계의 값과 분산으로 삼아요.
+- **단계 합치기**: 격자 규칙은 점을 덧붙여 늘릴 수 없어서 단계마다 새 $N$, 새 이동을 쓰고, 단계를 분산의 역수로 가중 평균해요(Genz의 DKBVRC, scipy의 `_qauto`와 같아요). 오차 출력은 합친 추정의 표준오차의 3배 $3/\sqrt{\sum 1/\mathrm{var}_l}$이에요.
+- **다음 $N$**: 오차가 $N^{-1}$로 준다고 보고, 다음 단계 혼자 `atol`에 닿을 크기로 늘려요. 배율 $g = \mathrm{clamp}(1.2 \cdot 3\sqrt{\mathrm{var}}/\mathrm{atol}, 1.5, 8)$, 새 $N$은 $gN$ 이상의 가장 작은 소수예요. 첫 $N$은 1009예요.
+- **멈춤**: 오차가 `atol` 이하이거나, 남은 평가 수로 1009점짜리 단계 하나도 할 수 없거나, 96단계에 닿으면 멈춰요. $N$이 단계마다 1.5배 이상 크니 96단계는 어떤 `max_points`보다도 많아요. `max_points`의 기본값은 $10^6 \times$(적분하는 변수 수)예요.
+
+```python
+>>> N5 = sd.stats.MultivariateNormal(mu=sd.zeros(5),
+...     cov=sd.asarray([[1.0 if i == j else 0.5 for j in range(5)] for i in range(5)]))
+>>> N5.cdf(sd.zeros(5), return_error=True)
+CdfResult(value=0.1666665550218323, error=4.270669563555311e-07)
+>>> N5.cdf(sd.zeros(5), return_error=True, max_points=50000)
+CdfResult(value=0.16666794173757093, error=4.542394190810558e-06)
+```
+
+상관이 모두 0.5인 직교 확률의 참값은 $1/(d + 1) = 1/6$이에요. 첫 값의 실제 오차는 $1.1 \times 10^{-7}$로 추정 $4.3 \times 10^{-7}$ 안이에요. `max_points`로 평가 수를 줄이면 그만큼 오차 추정이 커져요.
+
+### 거의 특이한 문제
+
+어떤 변수의 조건부 표준편차가 자기 표준편차의 5% 아래이면(앞 변수로 설명되는 몫 $R^2 > 0.9975$) 피적분함수에 얇은 영역이 생기고, 대부분의 이동한 격자가 그 영역을 놓쳐요. 그러면 12개의 이동이 모두 놓친 채로 서로 $10^{-8}$까지 맞아서 분산이 아주 작게 나오고, 그 단계의 무게 $1/\mathrm{var}$가 뒤의 단계를 모두 밀어내요. $\kappa = 2 \times 10^5$, $N = 1009$에서 이 현상이 생기면 추정이 29배 작고 $2 \times 10^{-6}$이 틀려요. 그런 문제에서만 세 가지를 더해요(`kQmcHardRatio = 0.05`).
+
+- 적어도 3단계를 해요.
+- 단계의 분산을 더 촘촘한 단계의 분산을 크기 비로 늘린 값 아래로 두지 않아요. 성긴 규칙이 촘촘한 규칙보다 정확할 수는 없으니, 운 좋은 한 단계가 결과를 끌고 가지 못해요.
+- 분산을 $(1/(36N))^2$ 아래로 두지 않아요. $[0, 1]$의 값 $12N$개로는 부피 $1/(12N)$ 정도의 영역을 배제할 수 없어서, 오차 추정이 적어도 $1/(12N)$이에요. 모든 이동이 0을 보고 "0, 오차 0"이라고 하는 일을 막아요.
+
+### 결정성과 병렬화
+
+문제 하나의 상태는 `QmcRun`이에요. 단계 하나는 세 부분이에요.
+
+1. `prepare()`: 그 단계의 $N$에 맞는 격자와 이동을 만들어요.
+2. 항목(이동, `kQmcItem` = 1024점 조각)마다 `item()`: 그 조각에서 피적분함수를 더해요. 항목은 어느 스레드에서 어떤 순서로 해도 돼요.
+3. `finish()`: 조각의 합을 이동마다 정해진 순서로 Neumaier 보정 합으로 더하고, 단계들을 합쳐 멈출지 정하거나 다음 $N$을 정해요.
+
+`cdf`가 여러 점을 받으면, 끝나지 않은 모든 점의 다음 단계를 한 차례로 모아 그 항목 전부를 스레드 풀에 한꺼번에 올리고, 점 순서로 `finish()`해요. 그래서 어려운 점 하나가 한 스레드에서 혼자 오래 도는 일이 없어요. 이미 풀의 작업 안에서 부르면 단계의 항목을 차례로 돌아요. 항목의 값은 (문제, 단계, 이동, 조각)에만 달리고 `finish()`가 고정된 순서로 읽으므로, 멈춤 판정(단계 수, 다음 $N$)과 모든 비트가 점을 혼자 계산하든 여럿과 함께 계산하든 같아요. 같은 기계, 같은 스레드 수면 실행마다 같은 비트이고, 지금은 스레드 1, 3, 10에서도 같은 비트예요(약속은 아니에요).
+
+### 피적분함수의 Φ와 Φ⁻¹
+
+피적분함수는 128점 블록(`kQmcBlock`)마다 격자 좌표(두 점씩 정수 lane으로), $\Phi^{-1}$, 앞 변수들의 선형 결합, $\Phi$, 곱을 차례로 계산해요. $\Phi$와 $\Phi^{-1}$은 special의 원소별 커널 대신 `mvcdf.hpp`의 `qv::phi`, `qv::ndtri`예요. 알고리즘은 special과 같아요. $\Phi$는 Cephes `ndtr`의 유리식(가운데는 erf의 유리식, 꼬리는 $e^{-x^2/2}$를 hi + lo로 나눈 지수와 P/Q, R/S 유리식)이고, $\Phi^{-1}$은 Wichura의 AS241이에요. 다른 점은 계산하는 모양이에요.
+
+- 두 원소를 NEON 벡터의 두 lane으로 계산해요. 한 쌍은 두 원소에 필요한 영역만 계산하고(둘이 같은 영역이면 하나, 흔한 경우예요), lane마다 분자와 분모를 골라 나눗셈을 한 번만 해요.
+- `exp`는 [원소별 엔진](/internals/stats/engine/#exp-vmathexp)의 청크 커널과 같은 배열 영역의 NEON `exp`(`vmath::exp_lanes`)이고, $\Phi^{-1}$ 꼬리의 `log`는 fdlibm `e_log` 꼴을 lane으로 쓴 `qv::log01`이에요.
+- 원소의 값은 그 원소에만 달려요. 홀수 개의 마지막 원소는 두 lane을 모두 채워 계산해요.
+
+Arb로 만든 참값과 견주면 $\Phi$는 최대 상대 10단위, $\Phi^{-1}$은 5.6단위로 special의 원소별 커널과 같고, `log01`은 2단위 안이에요. 모든 영역을 분기 없이 계산하는 판, 네 쌍을 섞는 판, 계수를 메모리에서 읽는 판은 더 느려요.
+
+```python
+>>> a = N5.cdf(sd.zeros(5))
+>>> threads = sd.get_num_threads()
+>>> sd.set_num_threads(1)
+>>> b = N5.cdf(sd.asarray([[0.0] * 5, [1.0] * 5, [-1.0] * 5]))
+>>> sd.set_num_threads(threads)
+>>> float(b[0]) == a
+True
+```
+
+### t의 역 카이: Chebyshev 표
+
+t의 준몬테카를로는 점마다 $r(w) = \sqrt{P^{-1}(a, w)/a}$를 구해요. 정확한 역함수(`special.gammaincinv`)는 $d = 5$에서 나머지 계산보다 몇 배 비싸요. 그래서 df마다 $\log r$의 조각별 Chebyshev 보간표를 만들어 써요. $\log r$이 매끄럽고, 그 자체로 정확하게 구해지는 변수를 골라요.
+
+- $w \le \Phi(-2)$: $y = \log w$. 왼쪽 끝에서 $\log r \approx (y + \log\Gamma(a + 1))/(2a)$라 매끄럽고, $y$의 오차가 $1/(2a)$배로 줄어서 들어가요.
+- $w > \Phi(-2)$: $z = \Phi^{-1}(w)$. 오른쪽에서 $\log r \approx \log z$예요. $w = \Phi(z)$는 그쪽에서 계단이라 보수 $\Phi(-z)$와 `gammainccinv`로 맞춰요.
+
+왼쪽 끝을 $z$로 하지 않는 이유는 `ndtri`의 몇 ULP 오차가 $z = -8.8$에서 $\lvert z\rvert/(2a)$배로 커져 df = 3에서 $4 \times 10^{-14}$가 되기 때문이에요. 조각은 16노드이고, 8조각에서 시작해 512조각까지 두 배씩 늘리며 사후 검사를 통과할 때까지 맞춰요. 검사는 모든 조각의 양 끝과 노드 사이 15점에서 $w \to (y\ \text{또는}\ z) \to \text{표} \to r$의 전체 경로를 같은 $w$의 `gammaincinv`와 비교해 $\lvert r_{\text{표}}/r - 1\rvert \le 10^{-14}$인지 봐요. 통과하지 못하면(df가 약 0.1 아래라 작은 $w$에서 $r$이 아래로 넘쳐 0이 되는 경우) 정확한 역함수를 써요.
+
+계수는 노드 값의 평균을 뺀 뒤 구해요. $\log r$은 왼쪽 끝에서 −14 근처라, 원래 값으로 합을 만들면 계수마다 $\varepsilon\lvert f\rvert N \approx 2 \times 10^{-14}$의 잡음이 들어가요. 표의 $r$은 조각마다 33점에서 $10^{-14}$ 안이고, 촘촘한 표본 512k개에서 최악 $1.4 \times 10^{-14}$예요. 이것이 $e_i$를 $10^{-14}\lvert rb_i\rvert\varphi/L_{ii}$까지 움직이니 확률은 $d \le 100$에서 $10^{-13}$ 아래로 움직여요. 같은 격자에서 정확한 역함수와 비교하면(평가 $2 \times 10^5$번, $d = 4..100$, df $= 1..30$) 차이는 최대 $8.3 \times 10^{-17}$이고 부호가 섞여 있어요. 표는 정확한 역함수보다 열 배 넘게 빨라요. 블록마다 $\Phi^{-1}$(`qv::ndtri`)은 모든 원소에, `log`는 왼쪽 조각의 원소(약 2%)에만 구하고, `exp`는 `vmath::exp`로 한 번에 해요. 한 호출 안의 서로 다른 df마다 표를 하나씩 만들어 여러 점이 함께 써요.
+
+## 정확도
+
+참값은 `tools/stats_ref.py`가 `tools/mvcdfref.py`로 만들어 `tests/stats/ref/mv/`에 둬요. 이변량·삼변량 정규와 $d = 2, 3$인 t는 Arb(구간 산술)로 교과서의 정의(stardust 코드의 배치가 아닌 꼴)를 계산한 엄밀한 값이고, 삼변량은 점 열 개마다 다른 경로로 다시 계산해 두 구간이 겹치는지 봐요. $d \ge 4$는 한 인자 구조($r_{ij} = l_il_j$)의 정규를 1차원 적분으로 바꾼 Arb 참값($d = 4$–10)이에요. 같은 구조의 t($d = 2$–8)는 $d \le 3$이면 t의 $d = 2, 3$과 같은 척도 혼합을 stardust가 받는 상관(double로 계산한 $l_il_j$) 그대로 Arb로 계산해요. $d \gt 3$만 scipy의 `integrate.quad`를 두 겹으로 써서 적응 구적으로 계산한 약 $10^{-11}$의 값이라, 준몬테카를로의 오차를 재기에 충분하지만 엄밀한 값은 아니에요. 영역별 최대는 `bench/stats/accuracy_multivariate.md`의 `cdf.*` 행에 있고, 아래의 $P$별 표는 같은 참값 점을 $P$의 크기로 나눈 것이에요.
+
+**이변량 정규** (7620점: $h, k \in [-37, 10]$의 격자와 무작위 점, $h + k \approx 0$, $\lvert r\rvert \approx 1$):
+
+| $-\log_{10}P$ | $r \ge 0$ 최대 상대오차 | $r \lt 0$ 최대 상대오차 |
+|---|---:|---:|
+| [0, 1) | $5.5 \times 10^{-16}$ | $7.7 \times 10^{-16}$ |
+| [10, 18) | $4.2 \times 10^{-15}$ | $6.7 \times 10^{-15}$ |
+| [50, 100) | $7.7 \times 10^{-15}$ | $2.8 \times 10^{-14}$ |
+| [200, 308) | $3.7 \times 10^{-14}$ | $5.2 \times 10^{-14}$ |
+
+$P \ge 10^{-15}$이면(보장 영역, 4778점) 모든 $r$에서 $5.2 \times 10^{-15}$ 이하예요. 그 밖의 정규수 범위(2110점)는 $\varepsilon\max(1, -\ln P)$의 1.0배 안이고, $P \lt 10^{-300}$(732점)은 절대오차 $9.4 \times 10^{-315}$ 이하예요. 꼬리에서 오차가 자라는 것은 문제의 조건수 때문이에요. 조건수를 $\sum\lvert\partial\log P/\partial\log x_i\rvert$(입력의 상대 섭동이 결과를 움직이는 배율)로 재면 꼬리에서 약 $-\ln P$이고, 오차는 $u \times$ 조건수의 몇 배 안이에요($u = 2^{-53}$). 입력을 반올림하는 것만으로 생기는 오차와 같은 크기예요.
+
+**삼변량 정규** (2979점, 음의 상관의 수와 거의 특이한 행렬로 나눔):
+
+| 영역 | 최대 상대오차 | $P \ge 10^{-18}$에서 |
+|---|---:|---:|
+| 음의 상관 ≤ 1 | $6.2 \times 10^{-14}$ | $4.1 \times 10^{-15}$ |
+| 음의 상관 2 | $1.5 \times 10^{-13}$ | $8.1 \times 10^{-15}$ |
+| 음의 상관 3 | $1.2 \times 10^{-13}$ | $1.2 \times 10^{-13}$ |
+| 거의 특이(가장 작은 고유값 $10^{-9}$–$10^{-3}$) | $1.2 \times 10^{-13}$ | $1.2 \times 10^{-13}$ |
+
+보장 영역(음의 상관이 하나 이하이고 $P \ge 10^{-15}$, 또는 조건수 100 이하이고 $P \ge 10^{-10}$, 1607점)의 최대는 $9.5 \times 10^{-15}$이고, 그 밖(1205점)에서 오차는 $u \times$ 조건수의 2.17배 안이에요. $1.2 \times 10^{-13}$은 음의 상관 셋이나 거의 특이한 행렬에서 $P \approx 10^{-14}$인 칸의 값이고, 전체 최대 $1.5 \times 10^{-13}$은 음의 상관 둘에 $P$가 $10^{-254}$ 근처인 칸이에요.
+
+**t의 d = 2, 3**: `bvt` 119점의 최대 $4.7 \times 10^{-16}$, `tvt` 59점의 최대 $3.4 \times 10^{-15}$이에요. 한 인자 구조의 t에서 $d \le 3$인 24점은 같은 정확한 경로를 타고 최대 $4.9 \times 10^{-16}$이에요.
+
+**준몬테카를로**: 오차 출력은 통계적 추정이라 실제 오차가 이 값을 넘을 수 있어요.
+
+| | atol | $d$ | 점 | 실제 오차 / 추정 최대 | 실제 오차 / atol 최대 |
+|---|---|---|---:|---:|---:|
+| 정규 | $10^{-6}$ | 4–10 | 84 | 0.87 | 0.24 |
+| 정규 | $10^{-4}$ | 4–10 | 84 | 0.87 | 0.017 |
+| t | $10^{-5}$ | 4–8 | 60 | 1.16 | 0.40 |
+
+정규는 모든 점에서 실제 오차가 추정 안이고, t는 추정을 넘는 점이 있지만 넘은 폭은 1.16배예요.
+
+## 속도
+
+$d \le 3$의 정확한 공식은 scipy의 준몬테카를로보다 훨씬 빨라요. 삼변량 정규는 대개 직접 경로 하나(이변량 정규 하나와 경로 적분 둘)로 끝나요. t의 $d = 3$은 혼합 노드마다 삼변량 정규를 계산해서 정확한 공식 가운데 가장 무거워요.
+
+준몬테카를로의 시간은 목표 `atol`이 작아질수록 빠르게 늘어요. 오차가 $N^{-1}$로 줄면 시간은 대략 $1/\mathrm{atol}$에 비례하고, 어려운 $d = 10$의 점에서는 오차가 $N^{-1/2}$로 줄어 더 빨리 늘어요. 그래서 scipy와는 같은 `atol`끼리 견줘야 해요. 기본 `atol = 1e-6`은 scipy의 기본값($10^{-5}$; t는 실제 오차가 약 $5 \times 10^{-5}$)보다 엄격해서, 기본값끼리 견주면 stardust가 점을 더 많이 써요. scipy의 `multivariate_t.cdf`에는 허용오차 인자가 없어서 작은 `atol`을 요구한 비교는 같은 정확도의 비교가 아니에요. 단계의 항목을 모든 점에 걸쳐 풀에 올리므로 10스레드에서 잘 늘어나요.
+
+첫 단계 $N = 1009$, 이동 12개, 3σ 오차는 쉬운 점과 어려운 점 사이의 절충이에요. 더 작은 첫 단계는 쉬운 점을 빠르게 하지만 성긴 격자의 오차 추정이 약해질 수 있어요.
+
+<Callout type="note" title="atol을 고르는 법">
+오차 출력은 표준오차의 3배이고, 시간은 대략 1/atol에 비례해요. 유효숫자 네다섯 자리면 충분한 계산은 `atol=1e-4`로 하면 기본값보다 훨씬 빨라져요. 정확한 값이 필요하면 $d \le 3$으로 줄일 수 있는지 먼저 보세요. +inf인 좌표는 빠지므로 주변 분포의 확률은 정확한 공식으로 가요.
+</Callout>
+
+## 참고 문헌
+
+1. R. L. Plackett, "A Reduction Formula for Normal Multivariate Integrals", *Biometrika* 41(3/4), 351–360, 1954. https://doi.org/10.2307/2332716
+2. Z. Drezner, G. O. Wesolowsky, "On the Computation of the Bivariate Normal Integral", *Journal of Statistical Computation and Simulation* 35(1–2), 101–107, 1990. https://doi.org/10.1080/00949659008811236
+3. A. Genz, "Numerical Computation of Rectangular Bivariate and Trivariate Normal and t Probabilities", *Statistics and Computing* 14(3), 251–260, 2004. https://doi.org/10.1023/B:STCO.0000035304.20635.31
+4. A. Genz, "Numerical Computation of Multivariate Normal Probabilities", *Journal of Computational and Graphical Statistics* 1(2), 141–149, 1992. https://doi.org/10.1080/10618600.1992.10477010
+5. A. Genz, F. Bretz, "Comparison of Methods for the Computation of Multivariate t Probabilities", *Journal of Computational and Graphical Statistics* 11(4), 950–971, 2002. https://doi.org/10.1198/106186002394
+6. A. Genz, F. Bretz, *Computation of Multivariate Normal and t Probabilities*, Lecture Notes in Statistics 195, Springer, 2009. (§4.1.3 변수 순서, §4.2 t의 혼합) https://doi.org/10.1007/978-3-642-01689-9
+7. A. van Oosterom, J. Strackee, "The Solid Angle of a Plane Triangle", *IEEE Transactions on Biomedical Engineering* BME-30(2), 125–126, 1983. https://doi.org/10.1109/TBME.1983.325207
+8. R. Piessens, E. de Doncker-Kapenga, C. W. Überhuber, D. K. Kahaner, *QUADPACK: A Subroutine Package for Automatic Integration*, Springer, 1983. (`qk21`의 노드와 무게, 오차 추정)
+9. S. Kotz, S. Nadarajah, *Multivariate t Distributions and Their Applications*, Cambridge University Press, 2004. (§1.11 조건부 분포)
+10. D. Nuyens, R. Cools, "Fast Algorithms for Component-by-Component Construction of Rank-1 Lattice Rules in Shift-Invariant Reproducing Kernel Hilbert Spaces", *Mathematics of Computation* 75(254), 903–920, 2006. https://doi.org/10.1090/S0025-5718-06-01785-6
+11. A. Prékopa, "On Logarithmic Concave Measures and Functions", *Acta Scientiarum Mathematicarum* 34, 335–343, 1973.

@@ -1,0 +1,302 @@
+---
+title: 4단계 분해
+group: 복소 변환
+order: 3
+summary: 2의 15제곱 이상인 긴 줄 하나를 길이 n1의 변환 n2개와 길이 n2의 변환 n1개로 나누는 Bailey의 4단계 분해를 설명해요. 색인 분해의 식, n1을 √n 이하의 가장 큰 약수로 정하는 규칙, 열 묶음 단위로 놓은 회전 인자 표, 열 패스와 행 패스가 모으고 흩는 방법, 스레드마다 쥐는 버퍼, 오차의 셈이 단의 셈 그대로인 까닭, 그리고 스레드가 하나여도 같은 분해를 하는 까닭을 다뤄요.
+seeAlso: [stockham, bluestein, overview, determinism]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+배치의 줄이 많으면 줄들을 태스크로 나눠 여러 스레드에 돌리면 돼요. 하지만 `fft(x)`에 줄이 하나뿐이고 그 줄이 길면 나눌 줄이 없어요. 줄 안을 나눠야 해요. 소인수가 31 이하이고 길이가 $n \ge 2^{15}$인 복소 변환은 그래서 4단계 분해(Bailey 1990)로 가요.
+
+- $n = n_1 n_2$로 한 번 나눠요. $n_1$은 $\sqrt n$ 이하인 $n$의 가장 큰 약수예요. $n$만으로 정해져요.
+- **열 패스**는 길이 $n_1$의 변환 $n_2$개를 하고 회전 인자를 곱해요. **행 패스**는 길이 $n_2$의 변환 $n_1$개를 해요. 안쪽 변환은 [Stockham 혼합 기수](/internals/fft/stockham/)예요.
+- 각 패스는 변환 16개씩을 묶은 태스크로 풀에서 돌아요. 태스크들은 서로 독립이에요.
+- 스레드가 하나여도 같은 분해를 같은 순서로 해요. 그래서 긴 줄의 결과가 스레드 수와 무관한 비트예요.
+
+```python
+>>> import stardust as sd
+>>> C = sd._core.fft
+>>> for n in (1 << 15, 1 << 16, 3 << 14, 1 << 20, 3 ** 10):
+...     p = C._plan_info(n)
+...     print(n, p["n1"], n // p["n1"])
+32768 128 256
+65536 256 256
+49152 192 256
+1048576 1024 1024
+59049 243 243
+>>> p = C._plan_info(31 * 31 * 37)
+>>> p["path"], p["m"], p["n1"]
+('bluestein', 72000, 250)
+```
+
+$35557 = 31^2 \cdot 37$은 $2^{15}$보다 길지만 37이 있어 Bluestein이에요. 그 안쪽 길이 $m$이 $2^{15}$ 이상이라 안쪽 변환이 4단계예요.
+
+## 색인 분해
+
+입력 색인을 $j = j_1 n_2 + j_2$($0 \le j_1 \lt n_1$, $0 \le j_2 \lt n_2$), 출력 색인을 $k = k_1 + n_1 k_2$($0 \le k_1 \lt n_1$, $0 \le k_2 \lt n_2$)로 쓰면
+
+$$
+jk = j_1 k_1 n_2 + j_1 k_2 n_1 n_2 + j_2 k_1 + j_2 k_2 n_1
+$$
+
+이고, $w_n^{n_2} = w_{n_1}$, $w_n^{n_1} = w_{n_2}$, $w_n^{n} = 1$이라서
+
+$$
+y_{k_1 + n_1 k_2} = \sum_{j_2=0}^{n_2 - 1} w_{n_2}^{j_2 k_2} \Big[\, w_n^{j_2 k_1} \sum_{j_1=0}^{n_1 - 1} x_{j_1 n_2 + j_2}\, w_{n_1}^{j_1 k_1} \Big]
+$$
+
+예요. 입력을 $n_1 \times n_2$ 행렬(행 $j_1$, 열 $j_2$)로 놓고 보면 이렇게 읽혀요.
+
+1. 열마다($j_2$) 길이 $n_1$의 DFT를 해요. 결과는 $Z[k_1, j_2]$예요.
+2. $Z[k_1, j_2]$에 회전 인자 $w_n^{j_2 k_1}$을 곱해요.
+3. 행마다($k_1$) 길이 $n_2$의 DFT를 해요.
+4. 그 결과 $[k_1, k_2]$를 $y_{k_1 + n_1 k_2}$에 써요. 행렬을 전치해 읽는 순서예요.
+
+Bailey의 원래 꼴은 열 변환을 쉽게 하려고 처음과 끝에 전치를 따로 해요. 여기서는 전치를 따로 하지 않고 열을 모을 때와 결과를 흩을 때 합쳐 놓았어요.
+
+<Fig caption="n = 12, n1 = 3, n2 = 4의 4단계. 왼쪽은 입력을 3 × 4로 놓은 것이고 진한 열 하나가 길이 3 변환 하나예요. 오른쪽은 결과의 자리이고, 진한 행 하나가 길이 4 변환 하나의 출력이에요.">
+  <ArrayFig name="x[j1 n2 + j2]" data={[[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11]]} tones={[['', 'b', '', ''], ['', 'b', '', ''], ['', 'b', '', '']]} note="열 패스: 열마다 길이 n1" />
+  <Op>→</Op>
+  <ArrayFig name="y[k1 + n1 k2]" data={[[0, 3, 6, 9], [1, 4, 7, 10], [2, 5, 8, 11]]} tones={[['', '', '', ''], ['b', 'b', 'b', 'b'], ['', '', '', '']]} note="행 패스: 행마다 길이 n2" />
+</Fig>
+
+같은 일을 공개 함수로 해 볼 수 있어요. 라이브러리의 회전 인자는 정확한 정수 연산으로 접은 표라서 끝자리는 다르지만, 값은 반올림 크기 안에서 같아요.
+
+```python
+>>> F = sd.fft
+>>> n, n1 = 1 << 15, 128
+>>> n2 = n // n1
+>>> rng = sd.random.default_rng(0)
+>>> x = rng.random(n) + 1j * rng.random(n)
+>>> A = F.fft(x.reshape((n1, n2)), axis=0)
+>>> k1 = sd.arange(n1).reshape((n1, 1))
+>>> j2 = sd.arange(n2).reshape((1, n2))
+>>> Y = F.fft(A * sd.exp(-2j * sd.pi * (k1 * j2) / n), axis=1)
+>>> y4 = Y.T.reshape((-1,))
+>>> nrm = lambda v: float(sd.sqrt(sd.sum(sd.abs(v) ** 2)))
+>>> nrm(y4 - F.fft(x)) / nrm(F.fft(x)) < 1e-14
+True
+```
+
+## 나누는 규칙
+
+```cpp
+// csrc/fft/cfft.hpp
+inline int64_t four_step_n1(int64_t n) {
+    int64_t best = 1;
+    for (int64_t d = 2; d <= n / d; ++d) {
+        if (n % d == 0) best = d;
+    }
+    return best;
+}
+```
+
+$n_1 \le \sqrt n \le n_2$이고 둘이 될 수 있는 한 비슷해요. 2의 거듭제곱 $2^k$이면 $n_1 = 2^{\lfloor k/2 \rfloor}$이에요. 시도 나눗셈은 $\sqrt n$번이라 계획을 만들 때 한 번이면 충분해요.
+
+문턱 $2^{15}$와 묶음 크기 16은 고정된 상수예요. 문턱보다 짧은 줄은 나누면 1스레드에서 잃는 것이 여러 스레드에서 얻는 것보다 커서 직접 Stockham으로 가요. 문턱은 길이로만 정해지니 길 고르기의 규칙(한 길이는 한 길)을 지켜요.
+
+$n_1$이나 $n_2$가 다시 $2^{15}$ 이상이면(그러려면 $n \ge 2^{30}$이에요) 안쪽 계획도 4단계예요. 계획은 깊이를 기억해 두고, 깊이마다 다른 버퍼 자리를 써요(아래).
+
+## 계획: 열 묶음 단위의 회전 인자 표
+
+```cpp
+        // csrc/fft/cfft.hpp
+        if (n >= kFourStepMin) {
+            const int64_t n1 = four_step_n1(n), n2 = n / n1;
+            col_ = std::make_unique<CfftPlan>(n1, depth + 1);
+            row_ = std::make_unique<CfftPlan>(n2, depth + 1);
+            radices_ = col_->radices_;
+            radices_.insert(radices_.end(), row_->radices_.begin(), row_->radices_.end());
+            ftw_.resize(static_cast<size_t>(2 * n));
+            for (int64_t j0 = 0; j0 < n2; j0 += kFourStepCols) {  // by column block, as run_four_step reads it
+                const int64_t g = std::min(kFourStepCols, n2 - j0);
+                for (int64_t k1 = 0; k1 < n1; ++k1) {
+                    for (int64_t c = 0; c < g; ++c) {
+                        const Twiddle w = twiddle((j0 + c) * k1, n);
+                        const size_t at = static_cast<size_t>(2 * (j0 * n1 + k1 * g + c));
+                        ftw_[at] = w.re, ftw_[at + 1] = w.im;
+                    }
+                }
+            }
+            return;
+        }
+```
+
+- 계획은 길이 $n_1$과 $n_2$의 계획 둘과 회전 인자 표 하나를 쥐어요. `radices`는 $n_1$의 기수 다음에 $n_2$의 기수를 이은 목록이에요. 오차의 셈이 그 순서로 서요.
+- 회전 인자 $w_n^{j_2 k_1}$은 `twiddle()`이 정수 $j_2 k_1$과 $n$에서 바로 구해요. Stockham의 표와 같은 1ULP 안이에요.
+- 표는 $n$칸 전체(16$n$바이트)이고, 열 패스가 읽는 순서 그대로 놓여요. 열 16개의 묶음 $j_0$마다 $n_1$개의 행이 이어지고, 행마다 그 묶음의 열 $g$개가 이어져요. 그래서 열 패스는 표를 앞에서 뒤로 한 번 읽어요.
+
+## 열 패스
+
+```cpp
+        // csrc/fft/cfft.hpp
+        // the columns j0 .. j0 + g - 1: gather, transform, twiddle, write their block of T
+        auto columns = [&](int64_t b) {
+            const int64_t j0 = b * Gc, g = std::min(Gc, n2 - j0);
+            const detail::FsBuffer bb(slot, Gc * ldb), cb(slot + 1, Gc * ldb), wb(slot + 2, 2 * n1);
+            double* const B = bb.get();
+            double* const C = cb.get();
+            for (int64_t j1 = 0; j1 < n1; ++j1) {
+                const double* src = x + 2 * (j1 * n2 + j0);
+                for (int64_t c = 0; c < g; ++c) {
+                    const float64x2_t v = vld1q_f64(src + 2 * c);
+                    vst1q_f64(B + c * ldb + 2 * j1, Swap ? vextq_f64(v, v, 1) : v);
+                }
+            }
+            for (int64_t c = 0; c < g; ++c) col.run<false>(B + c * ldb, C + c * ldb, wb.get());
+            double* const Tb = T + 2 * j0 * n1;
+            const double* const wbk = tw + 2 * j0 * n1;
+            for (int64_t c = 0; c < g; ++c) vst1q_f64(Tb + 2 * c, vld1q_f64(C + c * ldb));  // k1 = 0: no twiddle
+            for (int64_t k1 = 1; k1 < n1; ++k1) {
+                double* const dst = Tb + 2 * k1 * g;
+                const double* const w = wbk + 2 * k1 * g;
+                int64_t c = 0;
+                if (j0 == 0) {  // j2 = 0: no twiddle
+                    vst1q_f64(dst, vld1q_f64(C + 2 * k1));
+                    c = 1;
+                }
+                for (; c + 1 < g; c += 2) {
+                    const detail::CV a = detail::load_pair<false>(C + c * ldb + 2 * k1, C + (c + 1) * ldb + 2 * k1);
+                    const float64x2x2_t wv = vld2q_f64(w + 2 * c);
+                    detail::store_il2<false>(dst + 2 * c, detail::cmul(a, wv.val[0], wv.val[1]));
+                }
+                if (c < g) {
+                    const detail::CV a = detail::load_il1<false>(C + c * ldb + 2 * k1);
+                    const detail::CV r = detail::cmul(a, vld1q_dup_f64(w + 2 * c), vld1q_dup_f64(w + 2 * c + 1));
+                    detail::store_il1<false>(dst + 2 * c, r);
+                }
+            }
+        };
+```
+
+태스크 `b` 하나가 열 $j_0, \dots, j_0 + g - 1$($g \le 16$)을 맡아요.
+
+1. **모으기.** 입력의 행 $j_1$마다 이웃한 $g$개(256바이트의 이어진 구간)를 읽어 버퍼 `B`의 열 줄 $g$개에 하나씩 놓아요. 입력은 앞에서 뒤로 행 단위로 읽히고, 버퍼에서는 열 하나가 이어진 줄이 돼요. 버퍼의 줄 간격 `ldb`는 16개의 double의 배수에 16을 더한 값이라 2의 거듭제곱에서 비켜 있어요. 줄들이 캐시의 같은 집합으로 몰리지 않게 하려는 것이에요. 역변환이면 이때 실수부와 허수부를 바꿔요(`vextq`로 두 레인을 맞바꿔요).
+2. **열 변환.** 줄마다 길이 $n_1$의 계획을 정변환으로 돌려 `C`에 써요.
+3. **회전 인자와 쓰기.** $k_1$마다 $g$개 열의 값에 표의 회전 인자를 곱해 작업 버퍼 `T`의 이 묶음 자리에 써요. 두 열을 한 레지스터에 싣고(`load_pair`), 남은 하나는 두 레인에 같은 값을 실어요. $k_1 = 0$이나 $j_2 = 0$이면 회전 인자가 정확히 1이라 곱하지 않고 옮기기만 해요. Stockham의 단이 $p = 0$을 건너뛰는 것과 같아요.
+
+`T`는 계획의 작업 버퍼($2n$개의 double)예요. 묶음 $j_0$의 자리는 $2 j_0 n_1$부터이고 그 안에 $k_1$행, 행마다 $g$칸이 이어져요. 표와 같은 배치라 열 패스는 `T`에 앞에서 뒤로 써요.
+
+## 행 패스
+
+```cpp
+        // csrc/fft/cfft.hpp
+        // the rows k0 .. k0 + g - 1: gather from every column block, transform, scatter into y
+        auto rows = [&](int64_t b) {
+            const int64_t k0 = b * Gr, g = std::min(Gr, n1 - k0);
+            const detail::FsBuffer db(slot, Gr * ldd), eb(slot + 1, Gr * ldd), wb(slot + 2, 2 * n2);
+            double* const D = db.get();
+            double* const E = eb.get();
+            for (int64_t j0 = 0; j0 < n2; j0 += Gc) {
+                const int64_t gj = std::min(Gc, n2 - j0);
+                const double* const src = T + 2 * (j0 * n1 + k0 * gj);
+                for (int64_t c = 0; c < g; ++c) {
+                    for (int64_t e = 0; e < gj; ++e)
+                        vst1q_f64(D + c * ldd + 2 * (j0 + e), vld1q_f64(src + 2 * (c * gj + e)));
+                }
+            }
+            for (int64_t c = 0; c < g; ++c) row.run<false>(D + c * ldd, E + c * ldd, wb.get());
+            for (int64_t k2 = 0; k2 < n2; ++k2) {
+                double* const dst = y + 2 * (k0 + n1 * k2);
+                for (int64_t c = 0; c < g; ++c) {
+                    const float64x2_t v = vld1q_f64(E + c * ldd + 2 * k2);
+                    vst1q_f64(dst + 2 * c, Swap ? vextq_f64(v, v, 1) : v);
+                }
+            }
+        };
+```
+
+태스크 `b` 하나가 행 $k_0, \dots, k_0 + g - 1$을 맡아요.
+
+1. **모으기.** 열 묶음마다 이 행들의 칸을 읽어 버퍼 `D`의 행 줄에 놓아요. `T`에서 한 열 묶음의 행 $k_0$부터 $g$개는 $g \times g_j$칸이 이어져 있어서(행마다 $g_j$칸이 붙어 있으니까요), 묶음마다 4KB 안팎의 이어진 구간 하나를 읽어요.
+2. **행 변환.** 줄마다 길이 $n_2$의 계획을 정변환으로 돌려 `E`에 써요.
+3. **흩기.** 결과의 $[k_1, k_2]$를 $y_{k_1 + n_1 k_2}$에 써요. $k_2$마다 이웃한 $g$개가 $y$의 이어진 구간이라 쓰기도 덩어리로 돼요. 역변환이면 여기서 실수부와 허수부를 다시 바꿔요.
+
+두 패스는 차례로 돌아요.
+
+```cpp
+        // csrc/fft/cfft.hpp
+        run_tasks((n2 + Gc - 1) / Gc, columns, ns(n1, Gc));
+        run_tasks((n1 + Gr - 1) / Gr, rows, ns(n2, Gr));
+```
+
+열 패스의 태스크는 $\lceil n_2/16 \rceil$개, 행 패스는 $\lceil n_1/16 \rceil$개예요. 셋째 인자는 태스크 하나의 대략적인 시간으로, 풀이 스레드를 깨울지 정하는 데만 써요. 결과와는 상관없어요. 열 패스가 `T`를 모두 채운 뒤에 행 패스가 시작해요.
+
+## 스레드마다의 버퍼
+
+태스크는 열이나 행 16개의 묶음 버퍼 둘과 안쪽 계획의 작업 버퍼 하나를 써요. 태스크마다 새로 할당하면 첫 접근의 페이지 폴트를 스레드들이 줄 서서 처리하게 되니, 스레드마다 버퍼를 쥐고 호출 사이에 다시 써요.
+
+```cpp
+    // csrc/fft/cfft.hpp
+    FsBuffer(int slot, int64_t count) {
+        constexpr int64_t kKeep = int64_t{1} << 17;
+        struct Kept {
+            double* mem[6] = {};
+            int64_t cap[6] = {};
+            ~Kept() {
+                for (double* p : mem) std::free(p);
+            }
+        };
+        thread_local Kept kept;
+        if (count <= kKeep && slot < 6) {
+            if (kept.cap[slot] < count) {
+                double* const p = alloc(count);  // (may throw: the old buffer stays)
+                std::free(kept.mem[slot]);
+                kept.mem[slot] = p, kept.cap[slot] = count;
+            }
+            p_ = kept.mem[slot];
+        } else {
+            own_ = alloc(count);
+            p_ = own_;
+        }
+    }
+```
+
+- 자리는 스레드마다 여섯이고, 깊이 $d$의 4단계가 $3d$, $3d + 1$, $3d + 2$를 써요. 안쪽 계획이 다시 4단계여도(깊이 1) 바깥 태스크의 버퍼를 덮어쓰지 않아요.
+- 자리마다 $2^{17}$개의 double(1MB)까지 쥐어 두고, 그보다 큰 버퍼는 태스크가 그때 할당해 끝나면 돌려줘요.
+- 태스크는 한 스레드에서 처음부터 끝까지 돌고, 풀은 태스크를 겹쳐 돌리지 않아서 한 자리를 동시에 둘이 쓰는 일이 없어요.
+
+## 오차의 셈
+
+4단계는 오차 한계를 새로 증명할 필요가 없어요. 셈이 Stockham의 단을 이은 것과 같기 때문이에요.
+
+Stockham에서 한 수준은 나비 하나와 회전 인자 곱 하나예요. 마지막 단만 $m = 1$이라 회전 인자가 없어요. 4단계에서는 길이 $n_1$의 열 변환이 그 자체로 Stockham이라 마지막 단에 회전 인자가 없는데, 그 자리를 4단계의 회전 인자 곱 $w_n^{j_2 k_1}$이 채워요. FMA 복소 곱의 $2u$와 회전 인자의 $\mu = 1.5u$가 그 수준에 붙으니 단의 $\eta = \eta_b + (2u + \mu)(1 + \eta_b)$가 그대로예요. 행 변환의 마지막 단은 Stockham처럼 회전 인자가 없어요. 열과 행의 수준을 이으면 기수 $n_1$의 것 다음 $n_2$의 것이고 $\log_2 n_1 + \log_2 n_2 = \log_2 n$이라서
+
+$$
+\lVert \hat y - y \rVert \le \kappa\, L(n)\, u\, \lVert y \rVert
+$$
+
+가 직접 Stockham과 같은 꼴로 서요. 각 단이 $\sqrt r$ 곱하기 유니터리이고 회전 인자의 대각이 유니터리라는 단의 합성 논리가 4단계의 열과 행에도 그대로 적용돼요. 모으기, 흩기, 실수부와 허수부 바꾸기는 정확한 복사예요.
+
+## 스레드가 하나여도 4단계
+
+긴 줄을 나누는 분해는 스레드가 여럿일 때만 쓰고 싶어지지만, 그러면 1스레드의 결과와 여러 스레드의 결과가 다른 알고리즘에서 나와요. 이 영역은 그렇게 하지 않아요.
+
+- **분해가 $n$으로만 정해져요.** $n_1$, 묶음 크기, 태스크의 경계, 연산의 순서가 모두 $n$의 함수예요.
+- **태스크끼리 합치는 단계가 없어요.** 열 패스의 태스크는 `T`의 서로 다른 묶음을, 행 패스의 태스크는 `y`의 서로 다른 칸을 써요. 부분합을 모아 더하는 일이 없으니 태스크를 어느 스레드가 언제 돌리든 같은 비트예요.
+- **스레드가 하나면 같은 태스크를 차례로 돌려요.** 1스레드에서는 직접 Stockham보다 이득이 없거나 조금 느린 길이가 있지만, 그것이 스레드 수와 무관한 비트를 얻는 값이에요.
+
+```python
+>>> z = rng.random(1 << 16) + 1j * rng.random(1 << 16)
+>>> n0 = sd.get_num_threads()
+>>> outs = []
+>>> for t in (1, 4):
+...     sd.set_num_threads(t)
+...     outs.append(F.fft(z).tolist())
+>>> sd.set_num_threads(n0)
+>>> outs[0] == outs[1]
+True
+```
+
+긴 줄이 여럿이면(예를 들어 `(4, 65536)`의 마지막 축) 구동기는 줄을 태스크로 나누지 않고 호출한 스레드에서 하나씩 돌려요. 병렬은 각 줄의 4단계 안에서 일어나요. 계획의 `parallel_inside()`가 그 표시이고, 안쪽 길이가 4단계인 실수, Bluestein, DCT 계획도 참이에요([구조](/internals/fft/overview/)).
+
+## 메모리
+
+- 회전 인자 표는 $16n$바이트예요. 안쪽 계획 둘은 길이 $n_1$, $n_2$의 표라 $16(n_1 + n_2)$바이트쯤이에요.
+- 작업 버퍼 `T`는 $2n$개의 double이라 직접 Stockham의 작업 버퍼와 같아요. 출력 `y`는 흩기에만 쓰여요.
+- 스레드마다 묶음 버퍼 둘(줄 16개씩)과 안쪽 작업 버퍼 하나를 깊이마다 쥐어요. $n = 2^{20}$이면 $n_1 = n_2 = 1024$라 스레드 하나에 1MB가 안 돼요.

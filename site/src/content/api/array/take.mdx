@@ -1,0 +1,323 @@
+---
+title: 위치로 고르기
+names: [take, take_along_axis]
+group: 인덱싱 도구
+order: 1
+signatures:
+  - "sd.take(x, indices, /, *, axis=None)"
+  - "sd.take_along_axis(x, indices, /, *, axis=-1)"
+summary: 위치 번호로 원소를 골라 새 배열을 만들어요. take는 한 축에서 같은 위치들을 고르고, take_along_axis는 줄마다 다른 위치를 골라요.
+params:
+  - name: x
+    type: ndarray
+    kind: positional-only
+    desc: 값을 꺼낼 배열.
+  - name: indices
+    type: int 또는 int64 ndarray
+    kind: positional-only
+    desc: 꺼낼 위치. take는 int나 아무 모양의 int64 배열, take_along_axis는 x와 차원 수가 같은 int64 배열이에요. 음수는 뒤에서 세요.
+  - name: axis
+    type: int 또는 None
+    kind: keyword-only
+    desc: 위치를 셀 축. take는 1차원 x에서만 생략할 수 있어요. take_along_axis의 기본값은 -1(마지막 축)이에요.
+returns:
+  type: ndarray 또는 Python 숫자
+  desc: 고른 값을 담은 새 배열(복사본). take에 int 하나를 주면 그 축이 사라지고, 1차원 x면 Python 숫자예요.
+raises:
+  - type: TypeError
+    desc: x가 배열이 아닐 때, indices가 리스트·실수·bool 배열일 때, axis가 int가 아닐 때.
+  - type: ValueError
+    desc: 2차원 이상에서 take의 axis를 빠뜨렸을 때, axis가 범위를 벗어났을 때, take_along_axis의 indices가 x와 차원 수가 다를 때.
+  - type: IndexError
+    desc: 위치가 축의 길이를 벗어났을 때, take_along_axis의 indices가 x와 모양이 맞지 않을 때(배열 인덱스로 고를 때와 같아요).
+seeAlso: [indexing, sort, argmin, nonzero, searchsorted]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+`take`는 **위치 번호의 목록**을 받아서, 그 자리의 원소를 차례로 꺼낸 새 배열을 만들어요.
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([10, 20, 30, 40])
+>>> sd.take(x, sd.asarray([3, 0, 0]))
+array([40, 10, 10], dtype=int64)
+```
+
+3번 자리의 `40`, 0번 자리의 `10`, 다시 0번 자리의 `10`이에요. 같은 위치를 여러 번 적어도 되고, 순서도 마음대로예요.
+
+<Fig caption="take는 indices에 적힌 순서대로 x에서 값을 꺼내 와요.">
+  <ArrayFig name="x" data={[10, 20, 30, 40]} tones={['a', '', '', 'b']} note="자리 0, 1, 2, 3" />
+  <Op note="indices = [3, 0, 0]">→</Op>
+  <ArrayFig name="sd.take(x, indices)" data={[40, 10, 10]} tones={['b', 'a', 'a']} />
+</Fig>
+
+정수 배열로 인덱싱하는 것과 같은 동작이라, `x[sd.asarray([3, 0, 0])]`도 같은 결과예요. 인덱싱은 [인덱싱과 대입](/api/array/indexing/)에서 자세히 다뤄요.
+
+```python
+>>> x[sd.asarray([3, 0, 0])]
+array([40, 10, 10], dtype=int64)
+```
+
+`take_along_axis`는 2차원 이상에서 **줄마다 다른 위치**를 고르는 함수로, 주로 [`argsort`](/api/array/sort/)나 [`argmax`](/api/array/argmin/)의 결과로 값을 꺼낼 때 써요. 자세한 것은 [아래](#take_along_axis-줄마다-다른-위치를-고르기)에 있어요.
+
+<Reference />
+
+## take: 한 축에서 같은 위치들을 고르기
+
+### `axis`로 축을 골라요
+
+2차원 이상의 배열에서는 어느 축의 위치인지 `axis`로 꼭 알려 줘야 해요. `axis=0`이면 행을, `axis=1`이면 열을 골라요.
+
+```python
+>>> m = sd.asarray([[1, 2, 3], [4, 5, 6]])
+>>> sd.take(m, sd.asarray([2, 0]), axis=1)
+array([[3, 1],
+       [6, 4]], dtype=int64)
+>>> sd.take(m, sd.asarray([1, 0, 0]), axis=0)
+array([[4, 5, 6],
+       [1, 2, 3],
+       [1, 2, 3]], dtype=int64)
+```
+
+<Fig caption="axis=1: 모든 행에서 같은 열(2번, 0번)을 그 순서로 골라요.">
+  <ArrayFig name="m" data={[[1, 2, 3], [4, 5, 6]]} tones={[['a', '', 'b'], ['a', '', 'b']]} axes />
+  <Op note="[2, 0], axis=1">→</Op>
+  <ArrayFig data={[[3, 1], [6, 4]]} tones={[['b', 'a'], ['b', 'a']]} />
+</Fig>
+
+`sd.take(m, idx, axis=1)`은 `m[:, idx]`와 같아요. 축을 번호로 고르기 때문에, 축 번호가 변수에 들어 있을 때는 인덱싱보다 쓰기 편해요.
+
+```python
+>>> m[:, sd.asarray([2, 0])]
+array([[3, 1],
+       [6, 4]], dtype=int64)
+```
+
+1차원 배열은 축이 하나뿐이라 `axis`를 생략해도 돼요. 2차원 이상에서 생략하면 `ValueError`예요. 배열을 한 줄로 펴서 고르지는 않아요.
+
+```python
+>>> sd.take(m, sd.asarray([0]))
+Traceback (most recent call last):
+    ...
+ValueError: take(): 'axis' is required for arrays with more than one dimension
+```
+
+### 결과의 모양
+
+`indices`의 모양이 그 축의 자리에 그대로 들어가요. `indices`가 2차원이면 결과의 차원이 하나 늘어나요.
+
+| `m.shape` | `indices` | `axis` | 결과 모양 |
+|---|---|---|---|
+| `(2, 3)` | 길이 2 배열 | `1` | `(2, 2)` |
+| `(2, 3)` | 길이 3 배열 | `0` | `(3, 3)` |
+| `(2, 3)` | 모양 `(2, 2)` 배열 | `0` | `(2, 2, 3)` |
+| `(2, 3)` | int 하나 | `0` | `(3,)` (축이 사라져요) |
+
+1차원 배열에 여러 차원의 `indices`를 주면, 그 배열을 "번호 → 값" 대응표로 쓸 수 있어요. 결과는 `indices`와 같은 모양이에요.
+
+```python
+>>> lut = sd.asarray([0.0, 0.5, 1.0])
+>>> sd.take(lut, sd.asarray([[2, 0], [1, 1]]))
+array([[1.0, 0.0],
+       [0.5, 0.5]], dtype=float64)
+```
+
+### int 하나를 주면 축이 사라져요
+
+`indices`에 배열 대신 int를 주면 그 위치 하나만 꺼내고 **그 축은 결과에서 사라져요.** 1차원 배열이면 Python 숫자가 나와요. `x[2]`, `m[1]`과 같은 동작이에요.
+
+```python
+>>> sd.take(x, 2)
+30
+>>> sd.take(m, 1, axis=0)
+array([4, 5, 6], dtype=int64)
+>>> sd.take(m, sd.asarray([1]), axis=0)
+array([[4, 5, 6]], dtype=int64)
+```
+
+마지막 두 줄의 차이를 보세요. int `1`은 행 하나를 1차원으로, 배열 `[1]`은 행 하나짜리 2차원 배열로 돌려줘요.
+
+### 음수는 뒤에서 세요
+
+인덱싱과 마찬가지로 `-1`은 마지막 자리, `-2`는 끝에서 둘째 자리예요.
+
+```python
+>>> sd.take(x, sd.asarray([-1, -2]))
+array([40, 30], dtype=int64)
+```
+
+## take_along_axis: 줄마다 다른 위치를 고르기
+
+`take`는 모든 줄에서 **같은** 위치를 골라요. 그런데 `argsort`나 `argmax`를 `axis`와 함께 쓰면 줄마다 다른 위치가 나와요. 이 결과로 값을 꺼낼 때 `take_along_axis`를 써요.
+
+```python
+>>> s = sd.asarray([[3, 1, 2], [0, 7, 1]])
+>>> order = sd.argsort(s, axis=1)
+>>> order
+array([[1, 2, 0],
+       [0, 2, 1]], dtype=int64)
+>>> sd.take_along_axis(s, order, axis=1)
+array([[1, 2, 3],
+       [0, 1, 7]], dtype=int64)
+```
+
+`indices`의 0행 `[1, 2, 0]`은 `s`의 **0행에서** 1, 2, 0번을, 1행 `[0, 2, 1]`은 `s`의 **1행에서** 0, 2, 1번을 꺼내라는 뜻이에요. 결과는 각 행을 정렬한 것과 같아요.
+
+<Fig caption="take_along_axis(axis=1): indices의 각 행은 s의 같은 행 안에서의 위치예요.">
+  <ArrayFig name="s" data={[[3, 1, 2], [0, 7, 1]]} tones={[['a', 'a', 'a'], ['', '', '']]} axes />
+  <ArrayFig name="order" data={[[1, 2, 0], [0, 2, 1]]} tones={[['a', 'a', 'a'], ['', '', '']]} />
+  <Op note="axis=1">→</Op>
+  <ArrayFig data={[[1, 2, 3], [0, 1, 7]]} tones={[['a', 'a', 'a'], ['', '', '']]} />
+</Fig>
+
+같은 `order`를 `take`에 주면 전혀 다른 결과가 나와요. `take`는 `order`의 모든 원소를 **모든 행에** 적용해서 3차원 결과를 만들어요.
+
+```python
+>>> sd.take(s, order, axis=1).shape
+(2, 2, 3)
+```
+
+### 정렬 순서로 다른 배열까지 늘어놓기
+
+`take_along_axis`는 한 배열의 순서를 다른 배열에 적용할 때 특히 쓸모가 있어요. 점수 `s`와 같은 자리에 학생 번호 `ids`가 있다고 하고, 행마다 점수가 낮은 순서로 학생 번호를 늘어놓아 볼게요.
+
+```python
+>>> ids = sd.asarray([[100, 200, 300], [400, 500, 600]])
+>>> sd.take_along_axis(ids, order, axis=1)
+array([[200, 300, 100],
+       [400, 600, 500]], dtype=int64)
+```
+
+### 줄마다 가장 큰 값 몇 개
+
+내림차순 `argsort`의 앞부분만 잘라서 쓰면 줄마다 가장 큰 값 몇 개를 꺼낼 수 있어요.
+
+```python
+>>> top2 = sd.argsort(s, axis=1, descending=True)[:, :2]
+>>> sd.take_along_axis(s, top2, axis=1)
+array([[3, 2],
+       [7, 1]], dtype=int64)
+```
+
+### argmax와 함께: `keepdims=True`가 필요해요
+
+`indices`는 **`x`와 차원 수가 같아야** 해요. `argmax(s, axis=1)`은 축이 하나 줄어든 1차원이라 그대로는 쓸 수 없고, `keepdims=True`로 축을 남겨 둬야 해요.
+
+```python
+>>> sd.take_along_axis(s, sd.argmax(s, axis=1), axis=1)
+Traceback (most recent call last):
+    ...
+ValueError: take_along_axis(): 'indices' must have as many dimensions as 'x' (2), not 1
+>>> best = sd.argmax(s, axis=1, keepdims=True)
+>>> best
+array([[0],
+       [1]], dtype=int64)
+>>> sd.take_along_axis(s, best, axis=1)
+array([[3],
+       [7]], dtype=int64)
+```
+
+값만 필요하면 `sd.max(s, axis=1)`이 더 간단해요. 위 방법은 "가장 큰 점수를 받은 학생의 번호"처럼 같은 자리에 있는 다른 배열의 값이 필요할 때 써요.
+
+```python
+>>> sd.take_along_axis(ids, best, axis=1)
+array([[100],
+       [500]], dtype=int64)
+```
+
+### 모양이 맞아야 해요
+
+`indices`에서 `axis` 방향의 길이는 꺼낼 개수라서 `x`와 달라도 돼요. 나머지 축의 길이는 `x`와 같거나 1이어야 해요. 1이면 모든 줄에 같은 위치를 쓰도록 늘려 줘요([브로드캐스팅](/api/array/broadcasting/)).
+
+```python
+>>> sd.take_along_axis(s, sd.asarray([[0, 0]]), axis=1)
+array([[3, 3],
+       [0, 0]], dtype=int64)
+>>> sd.take_along_axis(s, sd.asarray([[0, 0]]), axis=0)
+Traceback (most recent call last):
+    ...
+IndexError: take_along_axis(): shapes could not be broadcast together: (1, 3) (1, 2)
+```
+
+모양이 맞지 않으면 인덱스 배열 여럿으로 고를 때(`x[i, j]`)처럼 `IndexError`예요.
+
+`axis`의 기본값은 `-1`(마지막 축)이에요. 2차원 배열이면 행마다 고르는 것이 기본이에요.
+
+## 조심할 점
+
+### 위치는 int64 배열로
+
+`indices`에는 int나 int64 배열만 쓸 수 있어요. 리스트, 실수 배열, bool 배열은 받지 않아요. bool 배열을 "참인 자리만 고르기"(마스크)로 써 주지도 않아요. 조건으로 고르려면 `x[x > 15]`처럼 인덱싱을 쓰거나 [`nonzero`](/api/array/nonzero/)로 위치를 먼저 구하세요.
+
+```python
+>>> sd.take(x, [0, 1])
+Traceback (most recent call last):
+    ...
+TypeError: take(): 'indices' must be an int or an int64 array, not list
+>>> sd.take(x, sd.asarray([True, False, True, False]))
+Traceback (most recent call last):
+    ...
+TypeError: take(): 'indices' must be an int or an int64 array, not bool
+```
+
+### 범위를 벗어난 위치
+
+축의 길이보다 큰 위치(또는 너무 작은 음수)는 `IndexError`예요. 자르거나 감아 돌리는 옵션은 없어요.
+
+```python
+>>> sd.take(x, sd.asarray([4]))
+Traceback (most recent call last):
+    ...
+IndexError: take(): index 4 is out of bounds for axis 0 with size 4
+>>> sd.take_along_axis(s, sd.asarray([[5], [0]]), axis=1)
+Traceback (most recent call last):
+    ...
+IndexError: take_along_axis(): index 5 is out of bounds for axis 1 with size 3
+```
+
+### 결과는 복사본이에요
+
+`take`와 `take_along_axis`는 언제나 새 배열을 만들어요. 결과를 고쳐도 원래 배열은 바뀌지 않아요. 반대로 원래 배열의 그 자리에 값을 쓰려면 `x[idx] = ...`처럼 인덱스 대입을 써야 해요.
+
+```python
+>>> t = sd.take(x, sd.asarray([0, 1]))
+>>> t[0] = 99
+>>> x
+array([10, 20, 30, 40], dtype=int64)
+```
+
+### `axis`는 int 하나
+
+한 번에 한 축에서만 고를 수 있어요. tuple은 받지 않아요.
+
+```python
+>>> sd.take(m, sd.asarray([0, 1]), axis=(0,))
+Traceback (most recent call last):
+    ...
+TypeError: take(): 'axis' must be an int, not tuple
+```
+
+## 비슷한 함수와의 차이
+
+| 하고 싶은 일 | 쓸 것 | 다른 점 |
+|---|---|---|
+| 모든 줄에서 같은 위치 | `take` 또는 `x[:, idx]` | 결과는 같아요. `take`는 축을 번호로 골라요. |
+| 줄마다 다른 위치 | `take_along_axis` | `indices`가 `x`와 차원 수가 같고, 줄마다 따로 적용돼요. |
+| 조건에 맞는 원소 | `x[mask]` | 위치 대신 bool 배열로 골라요. |
+| 조건에 맞는 원소의 위치 | `nonzero` | 위치를 축마다 배열로 돌려줘요. 그 결과를 인덱싱에 쓸 수 있어요. |
+| 조건에 따라 두 값 중 하나 | `where` | 모양을 유지한 채 원소마다 고르기만 해요. |
+
+`sort`와 `argsort`의 관계를 떠올리면 기억하기 쉬워요. 1차원에서는 `x[sd.argsort(x)]`, 여러 차원에서는 `sd.take_along_axis(x, sd.argsort(x, axis=k), axis=k)`가 `sd.sort(x, axis=k)`와 같아요.
+
+## numpy를 아는 분께
+
+- `take`의 `axis`를 생략할 수 있는 것은 1차원 배열뿐이에요. numpy는 `axis=None`이면 배열을 펴서 고르지만, stardust는 2차원 이상에서 `ValueError`예요. 펴서 고르려면 `sd.take(sd.ravel(x), idx)`로 쓰세요.
+- `mode='wrap'`, `mode='clip'`, `out=`은 없어요. 범위 밖은 언제나 `IndexError`예요.
+- `indices`에 리스트와 bool 배열을 받지 않아요. int64 배열이나 int만 돼요.
+- `take_along_axis`의 `axis` 기본값은 `-1`이에요. `axis=None`(펴서 고르기)은 없어요.
+- `x.take(...)` 메서드는 없어요.

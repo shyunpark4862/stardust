@@ -1,0 +1,130 @@
+---
+kind: function
+title: diagnostics
+names: [diagnostics]
+group: 결과 객체의 그림
+order: 3
+signatures:
+  - "sd.plot.diagnostics(result, /, *, width=None, height=None, font='serif', theme='paper', palette='jco')"
+summary: 선형 회귀 결과의 진단 그림 넷(잔차–적합값, 정규 QQ, 척도–위치, 잔차–지렛값)을 2 × 2 칸의 그림 하나로 그려요. 모형이 자료의 모양을 놓쳤는지, 오차가 고른지, 튀는 점이 있는지를 한 번에 봐요.
+params:
+  - name: result
+    type: 선형 회귀 결과
+    kind: positional-only
+    desc: "fittedvalues, resid, resid_studentized_internal, leverage가 있는 결과(ols, wls, gls). 적합 하나여야 하고 배치 결과는 받지 않아요."
+  - name: width
+    type: float 또는 None
+    kind: keyword-only
+    desc: "그림의 너비(mm). None(기본값)이면 183이에요. 칸이 넷이라 한 칸짜리 그림의 기본 너비보다 넓어요."
+  - name: height
+    type: float 또는 None
+    kind: keyword-only
+    desc: "그림의 높이(mm). None(기본값)이면 너비에 맞춰 정해요."
+  - name: font, theme, palette
+    type: str
+    kind: keyword-only
+    desc: "글꼴('serif' 기본값), 테마('paper' 기본값), 팔레트('jco' 기본값). Figure와 같은 뜻이에요."
+returns:
+  type: Figure
+  desc: "2 × 2 칸의 새 그림. fig[0, 0]이 잔차–적합값, fig[0, 1]이 QQ, fig[1, 0]이 척도–위치, fig[1, 1]이 잔차–지렛값이에요."
+raises:
+  - type: TypeError
+    desc: "result에 fittedvalues, resid, resid_studentized_internal, leverage 가운데 하나라도 없을 때(rlm, quantreg, glm, ridge 등의 결과), 그림 옵션의 형이 틀릴 때."
+  - type: ValueError
+    desc: "배치 결과(여러 적합)일 때, 그림 옵션의 값이 틀릴 때."
+seeAlso: [fit, coefficients, qq, scatter, figure, basics]
+---
+import PlotImage from '../../../components/fig/PlotImage.astro';
+
+## 한눈에 보기
+
+직선 모형이 맞는 자료에 직선을 맞추고 진단 그림을 그려요.
+
+```python
+>>> import stardust as sd
+>>> rng = sd.random.default_rng(11)
+>>> x = sd.linspace(0.0, 10.0, 60)
+>>> e = sd.stats.Normal(mu=0.0, sigma=1.0).sample((60,), rng=rng)
+>>> res = sd.regression.ols(2.0 + 1.2 * x + e, x)
+>>> fig = sd.plot.diagnostics(res)
+>>> fig.shape, fig.width
+((2, 2), 183.0)
+```
+
+<PlotImage name="diagnostics-good" alt="2 × 2 칸의 그림. 왼쪽 위는 적합값에 대한 잔차가 0의 파선 둘레에 고르게 흩어져 있고, 오른쪽 위 QQ 그림은 점이 파선을 따라 놓이고, 왼쪽 아래 척도–위치 그림은 점이 높이에 경향 없이 흩어져 있고, 오른쪽 아래는 지렛값에 대한 표준화 잔차가 0 둘레에 흩어져 있어요." caption="모형이 맞는 자료의 진단 그림이에요. 네 칸 모두 눈에 띄는 모양이 없어요. 잔차가 우연히 흩어진 모습이 이래요." scale={1} />
+
+<Reference />
+
+## 무엇을 하나요
+
+회귀의 계수와 p값은 모형이 맞다는 가정 위에서 읽어요. 직선이 자료의 모양을 놓쳤거나, 오차의 크기가 x에 따라 달라지거나, 점 하나가 선을 끌고 있으면 그 수들은 믿기 어려워요. `diagnostics`는 그 가정을 눈으로 확인하는 그림 넷을 한 번에 그려요. 모두 결과 객체에 이미 있는 값이고, 그림은 다시 계산하지 않아요.
+
+| 칸 | 가로 | 세로 | 무엇을 보나요 |
+|---|---|---|---|
+| `fig[0, 0]` 잔차–적합값 | `fittedvalues` | `resid` | 모형이 놓친 모양(곡선 등) |
+| `fig[0, 1]` 정규 QQ | 표준정규 분위수 | `resid_studentized_internal` | 잔차가 정규분포를 따르는지 |
+| `fig[1, 0]` 척도–위치 | `fittedvalues` | $\sqrt{\lvert\text{표준화 잔차}\rvert}$ | 오차의 크기가 고른지 |
+| `fig[1, 1]` 잔차–지렛값 | `leverage` | `resid_studentized_internal` | 선을 끄는 점이 있는지 |
+
+필드의 뜻은 [회귀 진단](/api/regression/diagnostics/)과 [결과 객체 읽기](/api/regression/results/)에 있어요.
+
+- **잔차–적합값**: 잔차가 0의 파선 둘레에 띠처럼 고르게 흩어져야 해요. U자나 물결 같은 모양이 보이면 모형이 자료의 굽은 모양을 놓친 거예요.
+- **정규 QQ**: [`qq`](/api/plot/qq/)와 같은 그림이에요. 점이 파선(표본과 표준정규분포의 사분위수를 지나는 선) 위에 놓이면 정규분포에 가까워요. 양 끝이 파선에서 벌어지면 꼬리가 두껍거나 치우쳤다는 뜻이에요.
+- **척도–위치**: 표준화 잔차 크기의 제곱근이에요. 높이가 적합값에 따라 오르거나 내리면 오차의 분산이 고르지 않아요(이분산).
+- **잔차–지렛값**: 지렛값은 그 점의 x가 다른 점들에서 얼마나 떨어졌는지예요. 지렛값이 크면서 잔차도 큰 점이 선을 가장 많이 끌어요.
+
+## 모형이 모양을 놓쳤을 때
+
+같은 x에 곡선을 따르는 자료를 만들고, 일부러 직선을 맞춰 봐요.
+
+```python
+>>> bent = sd.regression.ols(2.0 + 0.15 * x**2 + e, x)
+>>> round(bent.rsquared, 3)
+0.897
+>>> fig = sd.plot.diagnostics(bent)
+```
+
+<PlotImage name="diagnostics-bent" alt="2 × 2 진단 그림. 왼쪽 위의 잔차가 양 끝에서 높고 가운데에서 낮은 U자를 그리고, 오른쪽 아래의 잔차는 지렛값이 클수록 위로 올라가요." caption="곡선 자료에 직선을 맞춘 진단 그림이에요. R²는 높지만 잔차–적합값 칸의 U자가 모형이 굽은 모양을 놓쳤다고 알려 줘요." scale={1} />
+
+$R^2$가 0.9에 가까워 수만 보면 잘 맞은 것 같아요. 그런데 잔차–적합값 칸에 뚜렷한 U자가 있어요. 양 끝의 점은 선보다 위에, 가운데 점은 아래에 몰려 있다는 뜻이고, 이차항을 넣으라는 신호예요. 잔차–지렛값 칸에서 지렛값이 큰 점(x의 양 끝)의 잔차가 대부분 위쪽에, 지렛값이 작은 가운데 점의 잔차가 아래쪽에 있는 것도 같은 이야기예요.
+
+## 칸을 고치고 더하기
+
+돌려받는 것은 보통의 [그림](/api/plot/figure/)이라, `fig[i, j]`로 칸을 골라 고치거나 층을 더할 수 있어요. 잔차–지렛값 칸에 흔히 쓰는 기준 $2p/n$(p는 계수의 수, n은 관측의 수)을 세로선으로 그어 봐요.
+
+```python
+>>> p, n = len(res.params), len(res.resid)
+>>> fig = sd.plot.diagnostics(res, width=140)
+>>> cell = fig[1, 1].vline(2 * p / n, style=":", color="C3")
+>>> cell = fig[0, 0].title("Residuals vs fitted (OLS)")
+```
+
+`fig[1, 1]`의 메서드는 그 칸에 층을 더하고 그 칸을 돌려줘요. 그림 전체는 여전히 `fig`예요. `width`를 줄이면 칸이 좁아지고 글자 크기는 그대로예요.
+
+진단 그림은 모듈 함수만 있어요. 칸을 넷 만드는 그림이라 이미 있는 칸에 얹을 수 없어요. 다른 그림과 나란히 두려면 [`grid`](/api/plot/figure/)로 붙여요.
+
+## 받는 결과
+
+`diagnostics`는 결과의 형을 보지 않고 네 필드 `fittedvalues`, `resid`, `resid_studentized_internal`, `leverage`가 있는지로 가려요. [`ols`](/api/regression/ols/), [`wls`](/api/regression/wls/), [`gls`](/api/regression/gls/)의 결과가 이 넷을 모두 가져요. [`rlm`](/api/regression/rlm/)이나 [`glm`](/api/regression/glm/)의 결과처럼 하나라도 없으면 `TypeError`이고, 메시지가 빠진 필드를 알려 줘요.
+
+```python
+>>> sd.plot.diagnostics(sd.regression.rlm(2.0 + 1.2 * x + e, x))
+Traceback (most recent call last):
+    ...
+TypeError: diagnostics(): 'result' must be a linear regression result (it has no resid_studentized_internal), not RLMResult
+>>> sd.plot.diagnostics(sd.regression.ols(sd.stack([x, 2 * x]), x))
+Traceback (most recent call last):
+    ...
+ValueError: diagnostics(): a batch of fits cannot be drawn; give one fit
+```
+
+## 조심할 점
+
+- 진단 그림은 판정을 내리지 않아요. 무늬가 보이는지는 읽는 사람이 판단해요. 수로 확인하려면 [회귀 진단](/api/regression/diagnostics/)의 검정(Breusch–Pagan, Jarque–Bera 등)을 함께 보세요.
+- 점이 적으면(수십 개 아래) 우연히도 무늬처럼 보이는 모양이 쉽게 생겨요. 한 칸만 보고 결론 내리지 마세요.
+- 칸의 제목과 축 이름은 영어 원문이에요. 바꾸려면 위처럼 칸마다 `title`, `xlabel`, `ylabel`을 다시 불러요.
+
+## matplotlib을 아는 분께
+
+- R의 `plot(lm(...))`이 그리는 네 그림과 같은 구성이에요. R과 달리 잔차–적합값과 척도–위치 칸에 평활 곡선이 없고, 잔차–지렛값 칸에 Cook 거리의 등고선이 없어요. 점 자체를 보여 줘요.
+- matplotlib에는 내장 진단 그림이 없고, statsmodels의 `plot_regress_exog` 등은 각각 다른 그림을 만들어요. 여기서는 그림 하나에 넷이 함께 있어요.

@@ -1,0 +1,161 @@
+---
+kind: function
+title: normaltest
+names: [normaltest]
+group: 분포 적합도
+order: 2
+signatures:
+  - "sd.htest.normaltest(a, /, *, axis=None, nan_policy='propagate', keepdims=False)"
+summary: 왜도와 첨도를 함께 보고 표본이 정규분포에서 왔는지 묻는 D'Agostino–Pearson 검정이에요. skewtest와 kurtosistest의 두 Z를 제곱해서 더한 K²를 자유도 2의 카이제곱 분포와 견줘요. 값이 8개 이상이어야 해요.
+params:
+  - name: a
+    type: ndarray, 실수의 시퀀스, 실수 스칼라, numpy 배열, 또는 frame의 Series·DataFrame
+    kind: positional-only
+    desc: 표본. bool·정수는 float64로 바꿔서 계산해요.
+  - name: axis
+    type: int, int의 tuple·리스트, 또는 None
+    kind: keyword-only
+    desc: 표본을 읽을 축. None(기본값)이면 모든 원소를 표본 하나로 펼쳐요. 축을 주면 그 축을 따라 표본을 읽고, 나머지 축의 칸마다 따로 검정해요.
+  - name: nan_policy
+    type: str
+    kind: keyword-only
+    desc: "'propagate'(기본값, NaN이 있는 표본의 결과가 NaN), 'omit'(NaN을 빼고 계산), 'raise'(ValueError) 중 하나예요."
+  - name: keepdims
+    type: bool
+    kind: keyword-only
+    desc: True면 결과에 표본 축을 길이 1로 남겨요.
+returns:
+  type: NormaltestResult
+  desc: "statistic(K²)과 pvalue가 든 결과 객체예요. 검정 하나면 Python float, 배치면 배치 모양의 배열이에요. (statistic, pvalue) 둘로 풀려요."
+raises:
+  - type: TypeError
+    desc: a가 수의 배열·시퀀스·frame이 아니거나 복소수일 때, axis가 int·tuple·리스트·None이 아닐 때, keepdims가 True·False가 아닐 때, 옵션을 위치로 주거나 없는 키워드(alternative 등)를 줬을 때.
+  - type: ValueError
+    desc: "axis가 범위 밖이거나 겹칠 때, nan_policy 이름이 틀렸을 때, nan_policy='raise'인데 NaN이 있을 때."
+seeAlso: [skewtest, kurtosistest, jarque_bera, shapiro, anderson, basics, results]
+---
+
+## 한눈에 보기
+
+정규분포는 좌우 대칭이고(왜도 0) 꼬리의 두께가 정해져 있어요(첨도 3). `normaltest`는 표본의 왜도와 첨도가 이 두 값에서 함께 얼마나 벗어났는지를 하나의 수로 모아서 정규성을 물어요.
+
+- **귀무가설**: 표본이 정규분포에서 왔어요.
+- **대립가설**: 정규분포에서 오지 않았어요. 왜도나 첨도, 또는 둘 다 정규분포와 달라요.
+
+정규분포, 오른쪽으로 치우친 지수분포, 꼬리가 두꺼운 Laplace 분포, 꼬리가 얇은 균등분포의 표본이에요.
+
+```python
+>>> import stardust as sd
+>>> rng = sd.random.default_rng(2)
+>>> lap = sd.stats.Laplace().sample(200, rng=rng)
+>>> uni = sd.stats.Uniform(a=0.0, b=1.0).sample(100, rng=rng)
+>>> ex = sd.stats.Exponential().sample(200, rng=rng)
+>>> nor = sd.stats.Normal(mu=50.0, sigma=5.0).sample(200, rng=sd.random.default_rng(3))
+>>> sd.htest.normaltest(nor)
+NormaltestResult(statistic=0.327593, pvalue=0.848915)
+>>> sd.htest.normaltest(ex)
+NormaltestResult(statistic=78.9988, pvalue=7.00849e-18)
+>>> sd.htest.normaltest(lap).pvalue, sd.htest.normaltest(uni).pvalue
+(0.00019556999936769421, 1.1266719794907497e-07)
+```
+
+정규분포의 표본만 p값이 크고(0.85), 나머지 셋은 벗어난 방향이 달라도 모두 p값이 작아요.
+
+<Reference />
+
+## 통계량
+
+[`skewtest`](/api/htest/skewtest/)는 표본 왜도를, [`kurtosistest`](/api/htest/kurtosistest/)는 표본 첨도를 각각 정규분포의 표본이면 거의 표준정규분포를 따르는 $Z_s$, $Z_k$로 바꿔요. D'Agostino와 Pearson(1973)은 두 수를 제곱해서 더했어요.
+
+$$
+K^2 = Z_s^2 + Z_k^2
+$$
+
+정규분포의 표본이면 $Z_s$와 $Z_k$가 거의 독립인 표준정규분포라서, $K^2$는 거의 자유도 2의 카이제곱 분포를 따라요. p값은 그 위 꼬리 $P(\chi^2_2 \ge K^2)$예요. 왜도 쪽이든 첨도 쪽이든 크게 벗어나면 $K^2$가 커져요.
+
+```python
+>>> zs = sd.htest.skewtest(lap).statistic
+>>> zk = sd.htest.kurtosistest(lap).statistic
+>>> zs**2 + zk**2, sd.htest.normaltest(lap).statistic
+(17.07918437918572, 17.07918437918572)
+>>> sd.stats.ChiSquared(df=2).ccdf(zs**2 + zk**2)
+0.00019556999936769421
+```
+
+Laplace 표본은 $Z_s = 0.15$로 대칭이지만 $Z_k = 4.13$이라 $K^2$의 거의 전부가 첨도에서 와요. 어느 쪽에서 왔는지 알고 싶으면 두 검정을 따로 봐요.
+
+## 언제 쓰나요
+
+- 정규성을 하나의 검정으로 묻고, 벗어난 까닭을 왜도와 첨도로 나눠 설명하고 싶을 때 좋아요.
+- 표본이 수십 개 이상일 때 써요. 두 변환이 큰 표본을 위한 근사라서 작은 표본에서는 [`shapiro`](/api/htest/shapiro/)가 더 믿을 만해요.
+- 회귀의 잔차처럼 표본이 아주 크면 왜도와 첨도를 그대로 쓰는 [`jarque_bera`](/api/htest/jarque_bera/)도 흔히 써요. 두 검정은 같은 것을 보지만 `jarque_bera`는 왜도와 첨도를 변환하지 않고 큰 표본의 분포를 그대로 써서, 표본이 작거나 중간 크기일 때 꼬리가 얇은 분포에 힘이 약해요. 균등분포의 표본 100개에서 `jarque_bera`의 p값은 0.05 근처지만 `normaltest`는 1e-7이에요.
+
+```python
+>>> sd.htest.jarque_bera(uni).pvalue, sd.htest.normaltest(uni).pvalue
+(0.050469738886538947, 1.1266719794907497e-07)
+```
+
+- 대립가설에 방향이 없어서 `alternative`를 받지 않아요. 한쪽 방향이 궁금하면 `skewtest`나 `kurtosistest`의 `alternative`를 써요.
+
+## 결과 읽기
+
+결과는 `statistic`(K²)과 `pvalue`이고, 둘로 풀 수 있어요. 필드는 읽기만 해요.
+
+```python
+>>> k2, p = sd.htest.normaltest(ex)
+>>> k2
+78.99881914172914
+>>> print(sd.htest.normaltest(nor).summary())
+                      D'Agostino-Pearson normality test
+==============================================================================
+Statistic:                      0.3276  No. Observations:                  200
+P-value:                         0.849
+==============================================================================
+```
+
+결과 객체의 공통 규칙은 [결과 객체 읽기](/api/htest/results/)에 있어요.
+
+## 여러 표본을 한 번에
+
+`axis`를 주면 그 축을 따라 표본을 읽고 나머지 축의 칸마다 따로 검정해요. NaN은 `nan_policy`를 따라요. 공통 규칙은 [가설검정의 기본](/api/htest/basics/)에 있어요.
+
+```python
+>>> b = sd.stats.Normal().sample((4, 60), rng=sd.random.default_rng(6))
+>>> sd.htest.normaltest(b, axis=1).pvalue
+array([0.18458474909213482,  0.6525000617020867, 0.40373731257037604,
+       0.09357857055399933], dtype=float64)
+>>> sd.htest.normaltest(b, axis=1, keepdims=True).pvalue.shape
+(4, 1)
+```
+
+## 작은 표본과 특수한 경우
+
+- **값이 8개 미만**이면 NaN이에요(`skewtest`가 8개를 필요로 해요). 경고는 내지 않아요.
+- **모든 값이 같으면** NaN이에요.
+- 옵션은 키워드로만 받아요.
+
+```python
+>>> sd.htest.normaltest([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 8.0])
+NormaltestResult(statistic=nan, pvalue=nan)
+>>> sd.htest.normaltest([4.0] * 12)
+NormaltestResult(statistic=nan, pvalue=nan)
+>>> sd.htest.normaltest(nor, alternative='less')
+Traceback (most recent call last):
+    ...
+TypeError: normaltest(): unexpected keyword argument 'alternative'
+```
+
+## 정확도
+
+- $K^2$와 p값은 두 변환식을 Arb(구간 산술)로 계산한 참값과 견줘 정확도 약속 안이에요. `skewtest`·`kurtosistest`·`normaltest` 24문제에서 통계량의 상대오차가 5.1e-16, p값이 2.2e-14 안이에요.
+- p값은 자유도 2의 카이제곱 분포의 위 꼬리를 직접 계산해서, 아주 작은 p값도 자릿수를 잃지 않아요.
+- 같은 입력이면 실행마다 같은 비트예요. 지금은 스레드 수와도 상관없이 같아요(약속은 아니에요).
+- 모든 값에 같은 수를 곱해도 통계량은 반올림 차이 안에서 그대로예요. 네제곱하면 float64를 넘는 1e300배나 서브노멀인 1e-310배의 데이터도 2의 거듭제곱 단위로 옮겨 계산해서 NaN이나 0이 되지 않아요.
+
+## scipy를 아는 분께
+
+scipy 1.18.1 기준이에요.
+
+- `scipy.stats.normaltest(a)`와 같은 통계량과 p값이에요. 기본 `axis`는 None이에요(scipy는 0).
+- 왜도가 정확히 0인 표본에서 scipy의 $Z_s$가 0이 아니라서 $K^2$도 달라요([`skewtest`](/api/htest/skewtest/#scipy를-아는-분께)). 평균이 10⁸만큼 떨어진 데이터에서 scipy는 적률의 반올림만큼 틀려요.
+- n < 8과 상수 표본은 경고 없이 NaN이에요. 데이터는 위치로만, 옵션은 키워드로만 받아요.

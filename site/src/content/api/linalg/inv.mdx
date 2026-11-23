@@ -1,0 +1,541 @@
+---
+title: 역행렬과 유사역행렬
+names: [inv, pinv]
+group: 선형 시스템
+order: 6
+signatures:
+  - "sd.linalg.inv(x, /)"
+  - "sd.linalg.pinv(x, /, *, rtol=None)"
+summary: inv는 정사각 행렬의 역행렬을, pinv는 정사각이 아니거나 특이한 행렬에서도 구할 수 있는 유사역행렬을 계산해요.
+params:
+  - name: x
+    type: ndarray
+    kind: positional-only
+    desc: 행렬. inv는 정사각 (..., N, N)만 받고, pinv는 어떤 모양 (..., M, N)이든 받아요. 앞쪽 축은 배치예요.
+  - name: rtol
+    type: None, int 또는 float
+    kind: keyword-only
+    desc: pinv 전용. 가장 큰 특이값의 rtol배 이하인 특이값을 0으로 쳐요. None이면 max(M, N) × eps예요(eps는 약 2.2e-16).
+returns:
+  type: ndarray
+  desc: inv는 (..., N, N), pinv는 행과 열이 뒤바뀐 (..., N, M). 정수 입력이어도 float64이고, 복소수 입력이면 complex128이에요.
+raises:
+  - type: TypeError
+    desc: x가 배열이 아닐 때, rtol이 None·int·float이 아닐 때(bool 포함), rtol을 이름 없이 넘겼을 때.
+  - type: ValueError
+    desc: x가 2차원 미만일 때, inv의 x가 정사각이 아닐 때, x에 NaN·inf가 있을 때, rtol이 음수·NaN·inf일 때.
+  - type: LinAlgError
+    desc: inv의 x가 특이 행렬일 때. pinv는 특이 행렬에서 에러를 내지 않아요.
+  - type: OverflowError
+    desc: rtol이 실수로 바꿀 수 없을 만큼 큰 정수일 때.
+seeAlso: [solve, lstsq, lu_solve, matrix_power, cond, matrix_rank, svd, det, basics, errors]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import FigRow from '../../../components/fig/FigRow.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+## 한눈에 보기
+
+`inv`는 정사각 행렬의 **역행렬**을 계산해요. 역행렬은 원래 행렬에 곱하면 단위행렬(대각선이 1이고 나머지가 0인 행렬)이 되는 행렬이에요.
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([[1.0, 2.0], [1.0, 3.0]])
+>>> xi = sd.linalg.inv(x)
+>>> xi
+array([[ 3.0, -2.0],
+       [-1.0,  1.0]], dtype=float64)
+>>> x @ xi
+array([[1.0, 0.0],
+       [0.0, 1.0]], dtype=float64)
+```
+
+`pinv`는 **유사역행렬**을 계산해요. 역행렬이 없는 행렬(정사각이 아니거나 특이한 행렬)에서도 "역행렬에 가장 가까운 것"을 돌려줘요.
+
+```python
+>>> t = sd.asarray([[1.0, 0.0],
+...                 [0.0, 2.0],
+...                 [0.0, 0.0]])
+>>> sd.linalg.pinv(t)
+array([[1.0, 0.0, 0.0],
+       [0.0, 0.5, 0.0]], dtype=float64)
+```
+
+| | `inv(x)` | `pinv(x)` |
+|---|---|---|
+| 받는 행렬 | 정사각이고 특이하지 않은 행렬 | 어떤 모양이든, 특이해도 |
+| 결과 모양 | `(N, N)` → `(N, N)` | `(M, N)` → `(N, M)` |
+| 특이 행렬 | `LinAlgError` | 에러 없이 계산 |
+| 옵션 | 없음 | `rtol` |
+
+<Reference />
+
+## 역행렬이란
+
+숫자 5에 $\frac{1}{5}$을 곱하면 1이 돼요. 이 $\frac{1}{5}$을 5의 역수라고 해요. 행렬에서 같은 역할을 하는 것이 역행렬이에요. 행렬 $A$에 곱해서 단위행렬 $I$가 되는 행렬을 $A$의 역행렬이라 하고 $A^{-1}$로 써요. 단위행렬은 숫자의 1처럼, 무엇에 곱해도 상대를 바꾸지 않는 행렬이에요.
+
+$$
+AA^{-1} = A^{-1}A = I
+$$
+
+<Fig caption="x와 inv(x)를 행렬곱하면 단위행렬이 돼요. 곱하는 순서를 바꿔도 같아요.">
+  <ArrayFig name="x" data={[[1, 2], [1, 3]]} />
+  <Op>@</Op>
+  <ArrayFig name="inv(x)" data={[[3, -2], [-1, 1]]} tones={[['a', 'a'], ['a', 'a']]} />
+  <Op>=</Op>
+  <ArrayFig name="단위행렬" data={[[1, 0], [0, 1]]} tones={[['b', 'm'], ['m', 'b']]} />
+</Fig>
+
+역행렬은 행렬이 한 일을 되돌려요. 벡터 `v`에 `x`를 곱해서 `w`를 얻었다면, `w`에 `inv(x)`를 곱하면 `v`가 다시 나와요.
+
+```python
+>>> v = sd.asarray([1.0, 2.0])
+>>> w = x @ v
+>>> w
+array([5.0, 7.0], dtype=float64)
+>>> xi @ w
+array([1.0, 2.0], dtype=float64)
+```
+
+### 역행렬이 있으려면
+
+역행렬은 아무 행렬에나 있지 않아요. 두 조건이 모두 맞아야 해요.
+
+- 정사각 행렬이어야 해요. 행과 열의 수가 다르면 `inv`는 `ValueError`를 내요.
+- 특이 행렬이 아니어야 해요. 특이 행렬은 숫자로 치면 0에 해당해요. 0에는 역수가 없듯이 특이 행렬에는 역행렬이 없어요. 한 행이 다른 행의 몇 배일 때처럼 행끼리 서로 겹치면 행렬은 특이해져요. 이런 행렬은 서로 다른 벡터를 같은 결과로 보내 버리기 때문에 되돌릴 방법이 없어요.
+
+```python
+>>> s = sd.asarray([[1.0, 2.0], [2.0, 4.0]])
+>>> sd.linalg.inv(s)
+Traceback (most recent call last):
+    ...
+stardust.linalg.LinAlgError: inv(): singular matrix
+>>> sd.linalg.inv(sd.ones((2, 3)))
+Traceback (most recent call last):
+    ...
+ValueError: inv(): 'x' must be square in its last two dimensions, got 2x3
+```
+
+### 결과는 마지막 자리에서 어긋날 수 있어요
+
+역행렬의 원소는 대개 딱 떨어지는 수가 아니라서, 실수 계산의 반올림 오차가 조금 섞여요. 그래서 `inv(m) @ m`이 정확한 단위행렬이 아닐 수 있어요.
+
+```python
+>>> m = sd.asarray([[1.0, 2.0], [3.0, 4.0]])
+>>> sd.linalg.inv(m) @ m
+array([[    1.0000000000000002,  4.440892098500626e-16],
+       [-5.551115123125783e-17,     0.9999999999999998]], dtype=float64)
+```
+
+`1`이어야 할 자리가 `1.0000000000000002`, `0.9999999999999998`이고 `0`이어야 할 자리에 $10^{-16}$ 크기의 수가 있어요. 틀린 것이 아니라 실수 계산의 한계예요. 그래서 결과를 단위행렬과 `==`로 비교하지 말고, 차이가 충분히 작은지를 보세요.
+
+```python
+>>> float(sd.max(sd.abs(sd.linalg.inv(m) @ m - sd.eye(2)))) < 1e-12
+True
+```
+
+## 역행렬이 정말 필요한가요
+
+수식에 $A^{-1}$이 나온다고 해서 코드에서도 `inv`를 불러야 하는 것은 아니에요. 가장 흔한 경우인 연립방정식 풀기에는 [solve](/api/linalg/solve/)가 더 나아요.
+
+```python
+>>> sd.linalg.inv(x) @ w
+array([1.0, 2.0], dtype=float64)
+>>> sd.linalg.solve(x, w)
+array([1.0, 2.0], dtype=float64)
+```
+
+이 작은 예에서는 답이 같지만, 일반적으로 `solve`가 더 빠르고 더 정확해요. 역행렬을 구하는 일은 우변이 `N`개인 연립방정식을 푸는 것과 같아요. 우변 하나만 풀면 되는 일에 `N`배의 계산을 하고, 반올림 오차도 한 번 더 거치게 돼요. 실제로 `inv(x)`는 `solve(x, 단위행렬)`과 마지막 자리까지 같은 결과예요.
+
+```python
+>>> sd.all(sd.linalg.inv(m) == sd.linalg.solve(m, sd.eye(2)))
+True
+```
+
+| 하려는 일 | 수식 | 쓸 것 |
+|---|:---:|---|
+| 연립방정식 풀기 | $A^{-1}b$ | [`solve(a, b)`](/api/linalg/solve/) |
+| 역행렬을 다른 행렬에 곱하기 | $A^{-1}B$ | `solve(a, B)` |
+| 같은 행렬로 여러 번 풀기 | $A^{-1}b_1,\ A^{-1}b_2,\ \dots$ | [`lu`](/api/linalg/lu/) 한 번 + [`lu_solve`](/api/linalg/lu_solve/) 여러 번 |
+| 역행렬의 거듭제곱 | $A^{-3}$ | [`matrix_power(a, -3)`](/api/linalg/matrix_power/) |
+| 역행렬의 원소 자체를 보기 | $A^{-1}$ | `inv(a)` |
+
+`inv`가 맞는 도구는 역행렬의 원소 자체가 필요할 때예요. 통계에서 추정값의 분산을 읽으려고 역행렬의 대각선을 볼 때, 역행렬을 결과로 보여 주거나 저장해야 할 때가 그래요.
+
+## 유사역행렬이란
+
+역행렬이 없는 행렬에도 "역행렬에 가장 가까운 것"은 있어요. 그것이 **유사역행렬**(pseudoinverse)이고 $A^{+}$로 써요. 무어-펜로즈(Moore–Penrose) 역행렬이라고도 해요.
+
+유사역행렬은 되돌릴 수 있는 부분만 되돌리고, 되돌릴 수 없는 부분은 0으로 둬요. 가장 쉬운 예는 대각 행렬이에요.
+
+```python
+>>> d = sd.asarray([[2.0, 0.0], [0.0, 0.0]])
+>>> sd.linalg.pinv(d)
+array([[0.5, 0.0],
+       [0.0, 0.0]], dtype=float64)
+```
+
+`d`는 첫째 성분을 2배 하고 둘째 성분을 없애 버려요. 둘째 성분은 사라졌으니 되살릴 수 없어요. 그래서 유사역행렬은 첫째 성분만 $\frac{1}{2}$배로 되돌리고 둘째 성분은 0으로 둬요. `inv(d)`는 에러예요.
+
+역행렬이 있는 행렬에서는 유사역행렬이 역행렬과 같아요(반올림 오차만큼만 달라요).
+
+```python
+>>> sd.linalg.pinv(sd.asarray([[2.0, 0.0], [0.0, 4.0]]))
+array([[ 0.5,  0.0],
+       [ 0.0, 0.25]], dtype=float64)
+```
+
+### 정확한 정의
+
+모든 행렬은 [특이값 분해](/api/linalg/svd/)로 $A = U\Sigma V^{\mathsf H}$처럼 나눌 수 있어요. 가운데의 $\Sigma$는 대각선에 **특이값**(행렬이 각 방향을 몇 배로 늘이는지 나타내는 0 이상의 수)이 놓인 행렬이에요. 유사역행렬은 이 분해에서 0이 아닌 특이값만 역수로 바꾸고, 순서를 뒤집어 다시 곱한 것이에요.
+
+$$
+A^{+} = V\Sigma^{+}U^{\mathsf H}, \qquad \sigma_i^{+} = \begin{cases} 1/\sigma_i & (\sigma_i > 0) \\ 0 & (\sigma_i = 0) \end{cases}
+$$
+
+역행렬이라면 모든 특이값을 $1/\sigma$로 바꾸겠지만, 0은 역수가 없으니 0으로 남겨 둬요. 아래 그림에서 실선이 `pinv`가 특이값을 바꾸는 규칙이에요.
+
+<Fig caption="pinv는 특이값 σ를 1/σ로 바꾸되, 기준(여기서는 0.5) 이하의 특이값은 0으로 둬요. 기준은 rtol로 정해요.">
+  <Plot
+    curves={[
+      { f: (s) => (s > 0.5 ? 1 / s : 0), label: 'pinv: 기준 이하는 0' },
+      { f: (s) => 1 / s, label: '1/σ', dashed: true },
+    ]}
+    domain={[0, 3]}
+    range={[0, 4]}
+    xTicks={[
+      { v: 0.5, label: '기준' },
+      { v: 1, label: '1' },
+      { v: 2, label: '2' },
+    ]}
+    yTicks={[
+      { v: 1, label: '1' },
+      { v: 2, label: '2' },
+    ]}
+  />
+</Fig>
+
+이렇게 만든 $A^{+}$는 $AA^{+}A = A$를 만족해요. "$A$를 적용하고, 되돌리고, 다시 적용하면 처음 적용한 것과 같다"는 뜻이에요. 완전한 역행렬은 아니어도 할 수 있는 만큼은 되돌린다는 것을 보여 주는 성질이에요.
+
+```python
+>>> d @ sd.linalg.pinv(d) @ d
+array([[2.0, 0.0],
+       [0.0, 0.0]], dtype=float64)
+```
+
+### 정사각이 아닌 행렬: 모양이 뒤집혀요
+
+`(M, N)` 행렬의 유사역행렬은 `(N, M)`이에요. 원래 행렬이 길이 `N`인 벡터를 길이 `M`인 벡터로 보내니까, 되돌리는 행렬은 그 반대여야 하기 때문이에요.
+
+<Fig caption="3행 2열 행렬의 유사역행렬은 2행 3열이에요. 0이 아닌 값 1과 2가 역수 1과 0.5가 됐어요.">
+  <ArrayFig name="t" data={[[1, 0], [0, 2], [0, 0]]} tones={[['a', ''], ['', 'a'], ['', '']]} note="shape (3, 2)" />
+  <Op note="pinv">→</Op>
+  <ArrayFig name="pinv(t)" data={[[1, 0, 0], [0, 0.5, 0]]} tones={[['b', '', ''], ['', 'b', '']]} note="shape (2, 3)" />
+</Fig>
+
+정사각이 아닌 행렬에서는 한쪽으로 곱했을 때만 단위행렬이 돼요. 세로로 긴 행렬 `t`는 왼쪽에 곱하면 단위행렬이지만 오른쪽에 곱하면 아니에요.
+
+```python
+>>> tp = sd.linalg.pinv(t)
+>>> tp @ t
+array([[1.0, 0.0],
+       [0.0, 1.0]], dtype=float64)
+>>> t @ tp
+array([[1.0, 0.0, 0.0],
+       [0.0, 1.0, 0.0],
+       [0.0, 0.0, 0.0]], dtype=float64)
+```
+
+`t`는 길이 2인 벡터를 길이 3인 벡터로 보내는데, 결과의 셋째 성분은 언제나 0이에요. 그래서 `t @ tp`는 셋째 성분을 버리는 행렬이 돼요.
+
+### 어디에 쓰나요: 가장 잘 맞는 해
+
+유사역행렬의 대표적인 쓰임은 딱 맞는 해가 없거나 해가 여러 개인 연립방정식이에요. `pinv(a) @ b`는 이런 뜻의 해예요.
+
+- 식이 미지수보다 많아서 모든 식을 만족하는 해가 없으면, 오차(`a @ x - b`의 크기)가 가장 작은 `x`를 줘요. 최소제곱해라고 불러요.
+- 식이 미지수보다 적어서 해가 끝없이 많으면, 그 가운데 크기가 가장 작은 `x`를 줘요.
+
+```python
+>>> sd.linalg.pinv(t) @ sd.asarray([3.0, 4.0, 5.0])
+array([3.0, 2.0], dtype=float64)
+```
+
+`t`의 셋째 식은 `0 = 5`라서 만족할 방법이 없어요. 그 식은 포기하고, 나머지 두 식 `x₀ = 3`, `2x₁ = 4`를 정확히 맞춘 해가 나왔어요.
+
+다만 여기에도 `inv(a) @ b`와 `solve`의 관계가 그대로 들어맞아요. 해만 필요하면 유사역행렬을 거치지 않는 [lstsq](/api/linalg/lstsq/)가 더 빠르고 정확해요.
+
+```python
+>>> sd.linalg.lstsq(t, sd.asarray([3.0, 4.0, 5.0])).solution
+array([3.0, 2.0], dtype=float64)
+```
+
+`pinv`는 유사역행렬 자체가 필요할 때 써요.
+
+## `rtol`: 어디까지를 0으로 볼까요
+
+수학에서는 특이값이 "0이냐 아니냐"가 분명하지만, 컴퓨터의 실수 계산에서는 0이어야 할 특이값이 반올림 때문에 $10^{-17}$ 같은 아주 작은 수로 나와요. 이것을 0이 아니라고 보고 역수를 취하면 $10^{17}$이라는 터무니없는 값이 결과에 섞여요.
+
+그래서 `pinv`는 가장 큰 특이값의 `rtol`배 이하인 특이값을 0으로 쳐요.
+
+$$
+\sigma_i \le \text{rtol} \times \sigma_{\max} \quad\Rightarrow\quad \sigma_i\text{를 0으로 본다}
+$$
+
+`rtol=None`(기본)이면 `max(M, N) × eps`예요. `eps`는 float64가 구별할 수 있는 가장 작은 상대 차이로, 약 $2.2 \times 10^{-16}$이에요. "반올림 오차 수준의 특이값은 0으로 본다"는 뜻이에요.
+
+이 기본값 덕분에, 수학적으로는 특이하지만 반올림 때문에 그렇게 보이지 않는 행렬도 `pinv`는 제대로 다뤄요. 아래 `near`는 둘째 행이 첫째 행의 정확히 3배인 특이 행렬이에요. 하지만 `0.1`, `0.3` 같은 수가 컴퓨터 안에서 조금씩 어긋나 있어서 `inv`는 특이하다는 것을 알아채지 못해요.
+
+```python
+>>> near = sd.asarray([[0.1, 0.2], [0.3, 0.6]])
+>>> sd.linalg.inv(near)
+array([[ 5.4043195528445965e+17,  -1.801439850948199e+17],
+       [-2.7021597764222982e+17,   9.007199254740995e+16]], dtype=float64)
+>>> sd.linalg.pinv(near)
+array([[0.20000000000000018,  0.6000000000000005],
+       [0.40000000000000024,  1.2000000000000006]], dtype=float64)
+```
+
+`inv`의 결과는 $10^{17}$ 크기의 뜻 없는 수예요. `pinv`는 아주 작은 특이값을 0으로 쳐서 쓸 만한 답을 줬어요.
+
+### `rtol`을 직접 정하기
+
+데이터에 측정 오차가 있어서 "이 정도로 작은 것은 잡음"이라고 볼 기준이 따로 있으면 `rtol`을 키워요. 아래 `e`는 특이값이 `4`와 `1`인 행렬이에요. 가장 큰 특이값이 4이니, 기준은 `rtol × 4`예요.
+
+```python
+>>> e = sd.asarray([[4.0, 0.0], [0.0, 1.0]])
+>>> sd.linalg.pinv(e)
+array([[0.25,  0.0],
+       [ 0.0,  1.0]], dtype=float64)
+>>> sd.linalg.pinv(e, rtol=0.1)
+array([[0.25,  0.0],
+       [ 0.0,  1.0]], dtype=float64)
+>>> sd.linalg.pinv(e, rtol=0.25)
+array([[0.25,  0.0],
+       [ 0.0,  0.0]], dtype=float64)
+```
+
+| `rtol` | 기준 (`rtol × 4`) | 특이값 `1`은 | 결과의 둘째 대각 원소 |
+|:---:|:---:|---|:---:|
+| `None` | 약 $1.8 \times 10^{-15}$ | 기준보다 커요. 살아남아요 | `1.0` |
+| `0.1` | `0.4` | 기준보다 커요. 살아남아요 | `1.0` |
+| `0.25` | `1.0` | 기준과 같아요. 0으로 쳐요 | `0.0` |
+| `1` 이상 | `4.0` 이상 | 모든 특이값이 0이 돼요 | `0.0` |
+
+기준과 정확히 같은 특이값은 0으로 쳐요("이하"). 그리고 `rtol`이 1 이상이면 가장 큰 특이값까지 기준 이하가 되므로 결과는 영행렬이에요.
+
+```python
+>>> sd.linalg.pinv(e, rtol=1)
+array([[0.0, 0.0],
+       [0.0, 0.0]], dtype=float64)
+```
+
+<Callout type="warn" title="rtol=0은 위험해요">
+
+`rtol=0`이면 정확히 0인 특이값만 0으로 쳐요. 반올림으로 생긴 아주 작은 특이값이 그대로 역수가 되어 결과가 폭발해요. 특이한 행렬을 다루려고 `pinv`를 쓴다면 `rtol=0`을 주지 마세요.
+
+</Callout>
+
+```python
+>>> sd.linalg.pinv(s)
+array([[0.03999999999999999, 0.07999999999999999],
+       [0.07999999999999997, 0.15999999999999998]], dtype=float64)
+>>> sd.linalg.pinv(s, rtol=0)
+array([[ 4409081616917742.0, -2204540808458871.2],
+       [-2204540808458871.0,  1102270404229435.8]], dtype=float64)
+```
+
+남긴 특이값이 아주 작아서 역수가 float64의 범위를 넘으면, 그 성분은 `inf`예요. 정확히 0이어야 하는 성분은 0으로 남아요.
+
+```python
+>>> tiny = sd.asarray([[1.0, 0.0], [0.0, 5e-324]])
+>>> sd.linalg.pinv(tiny, rtol=0)
+array([[1.0, 0.0],
+       [0.0, inf]], dtype=float64)
+>>> sd.linalg.pinv(tiny)
+array([[1.0, 0.0],
+       [0.0, 0.0]], dtype=float64)
+```
+
+`rtol`은 [matrix_rank](/api/linalg/matrix_rank/)와 [lstsq](/api/linalg/lstsq/)에서도 같은 뜻이에요. 세 함수가 "0으로 보는 특이값"을 같은 기준으로 정하기 때문에, `matrix_rank(x)`가 말하는 랭크는 `pinv(x)`가 살려 둔 특이값의 개수예요.
+
+`rtol`은 0 이상의 유한한 수여야 하고, 이름을 붙여서만 줄 수 있어요.
+
+```python
+>>> sd.linalg.pinv(e, rtol=-1)
+Traceback (most recent call last):
+    ...
+ValueError: pinv(): 'rtol' must be a finite number >= 0
+>>> sd.linalg.pinv(e, rtol=True)
+Traceback (most recent call last):
+    ...
+TypeError: pinv(): 'rtol' must be None, an int or a float, not bool
+```
+
+## 여러 행렬을 한꺼번에: 배치
+
+3차원 이상의 배열은 행렬 여러 장으로 봐요. 마지막 두 축이 행렬 한 장이고, 앞쪽 축은 배치예요. 행렬마다 따로 계산해서 같은 순서로 쌓아 줘요.
+
+```python
+>>> stack = sd.asarray([[[1.0, 2.0], [1.0, 3.0]],
+...                     [[2.0, 0.0], [0.0, 4.0]]])
+>>> sd.linalg.inv(stack)
+array([[[ 3.0, -2.0],
+        [-1.0,  1.0]],
+
+       [[ 0.5,  0.0],
+        [ 0.0, 0.25]]], dtype=float64)
+>>> sd.linalg.pinv(sd.ones((5, 3, 2))).shape
+(5, 2, 3)
+```
+
+`pinv`의 `rtol`은 배치 전체에 하나예요. 기준이 되는 "가장 큰 특이값"은 행렬마다 따로 구해요.
+
+## 결과의 dtype
+
+결과는 언제나 float64나 complex128이에요. 정수 행렬을 넣어도 float64예요. 역행렬의 원소는 대개 정수가 아니기 때문이에요.
+
+```python
+>>> sd.linalg.inv(sd.asarray([[2, 0], [0, 4]]))
+array([[ 0.5,  0.0],
+       [ 0.0, 0.25]], dtype=float64)
+>>> sd.linalg.inv(sd.asarray([[1j, 0], [0, 2]]))
+array([[     -1j,       0j],
+       [      0j, (0.5+0j)]], dtype=complex128)
+```
+
+결과는 언제나 새 배열이에요. 입력은 바뀌지 않아요.
+
+## 조심할 점
+
+### `1 / x`와 `x ** -1`은 역행렬이 아니에요
+
+<Callout type="warn" title="원소마다 역수를 취하는 것과 역행렬은 달라요">
+
+수식의 $A^{-1}$을 보고 `x ** -1`이나 `1 / x`라고 쓰면 원소 하나하나의 역수가 나와요. 에러가 나지 않아서 알아채기 어려워요. 역행렬은 언제나 `sd.linalg.inv(x)`예요.
+
+</Callout>
+
+```python
+>>> 1 / x
+array([[               1.0,                0.5],
+       [               1.0, 0.3333333333333333]], dtype=float64)
+>>> sd.linalg.inv(x)
+array([[ 3.0, -2.0],
+       [-1.0,  1.0]], dtype=float64)
+```
+
+### 거의 특이한 행렬은 `inv`가 에러 없이 엉뚱한 값을 내요
+
+`inv`가 `LinAlgError`를 내는 것은 계산 도중 정확히 0으로 나눠야 할 때뿐이에요. 위의 `near`처럼 거의 특이한 행렬은 에러도 경고도 없이 아주 큰 값을 돌려줘요. 행렬이 얼마나 위험한지는 조건수([cond](/api/linalg/cond/))로 알 수 있어요. 조건수가 $10^{16}$ 근처이면 역행렬에 믿을 수 있는 자리가 하나도 없어요.
+
+```python
+>>> sd.linalg.cond(near)
+1.797568610089646e+16
+>>> sd.linalg.cond(x)
+14.933034373659241
+```
+
+조건수가 큰 행렬에서는 `inv` 대신 `pinv`나 [lstsq](/api/linalg/lstsq/)를 쓰거나, 문제를 다시 세워서 행끼리 겹치지 않게 하는 쪽이 좋아요. 특이 판정의 자세한 규칙은 [실패와 에러](/api/linalg/errors/)에 있어요.
+
+### `pinv`는 `inv`보다 느리고, 마지막 자리가 어긋날 수 있어요
+
+`pinv`는 특이값 분해를 거치기 때문에 `inv`보다 계산이 훨씬 많아요. 그리고 역행렬이 있는 행렬에서도 결과가 `inv`와 마지막 자리에서 다를 수 있어요.
+
+```python
+>>> sd.linalg.pinv(x)
+array([[ 2.9999999999999987, -1.9999999999999991],
+       [-0.9999999999999997,                 1.0]], dtype=float64)
+```
+
+정사각이고 특이하지 않은 것이 분명한 행렬이면 `inv`를 쓰세요. `pinv`를 "혹시 모르니 더 안전한 `inv`"로 쓰면 진짜 문제(행렬이 특이해진 원인)가 가려질 수 있어요. 특이 행렬이 들어왔을 때 `inv`가 내는 에러는 유용한 신호예요.
+
+### 배치 중 하나만 특이해도 `inv` 전체가 실패해요
+
+일부만 계산한 결과는 돌려주지 않아요. 메시지 끝에 몇 번째 행렬인지 나와요.
+
+```python
+>>> sd.linalg.inv(sd.asarray([[[1.0, 2.0], [1.0, 3.0]],
+...                           [[1.0, 2.0], [2.0, 4.0]]]))
+Traceback (most recent call last):
+    ...
+stardust.linalg.LinAlgError: inv(): singular matrix (at batch index (1,))
+```
+
+`LinAlgError`는 `ValueError`의 한 종류라서 둘 중 어느 이름으로도 잡을 수 있어요.
+
+### NaN과 inf가 있으면 에러
+
+두 함수 모두 입력에 NaN이나 무한대가 하나라도 있으면 계산하지 않고 `ValueError`를 내요.
+
+```python
+>>> sd.linalg.inv(sd.asarray([[1.0, sd.nan], [2.0, 4.0]]))
+Traceback (most recent call last):
+    ...
+ValueError: inv(): 'x' contains NaN or infinity
+>>> sd.linalg.pinv(sd.asarray([[1.0, sd.inf], [2.0, 4.0]]))
+Traceback (most recent call last):
+    ...
+ValueError: pinv(): 'x' contains NaN or infinity
+```
+
+### 리스트와 1차원 배열은 받지 않아요
+
+```python
+>>> sd.linalg.inv([[1.0, 2.0], [1.0, 3.0]])
+Traceback (most recent call last):
+    ...
+TypeError: inv(): 'x' must be an sd.ndarray, not list
+>>> sd.linalg.pinv(sd.asarray([1.0, 2.0]))
+Traceback (most recent call last):
+    ...
+ValueError: pinv(): 'x' must have at least 2 dimensions, got 1
+```
+
+벡터의 유사역행렬이 필요하면 `(N, 1)`이나 `(1, N)` 모양의 행렬로 바꿔서 넣으세요.
+
+### 빈 행렬과 영행렬
+
+크기가 0인 행렬은 에러 없이 그 모양의 빈 배열을 돌려줘요. `pinv`는 빈 행렬에서도 행과 열을 뒤바꿔요. 영행렬의 유사역행렬은 영행렬이에요.
+
+```python
+>>> sd.linalg.inv(sd.zeros((0, 0)))
+array([], shape=(0, 0), dtype=float64)
+>>> sd.linalg.pinv(sd.zeros((0, 3)))
+array([], shape=(3, 0), dtype=float64)
+>>> sd.linalg.pinv(sd.zeros((2, 2)))
+array([[0.0, 0.0],
+       [0.0, 0.0]], dtype=float64)
+```
+
+## 비슷한 함수와의 차이
+
+| 하고 싶은 일 | 쓸 것 | `inv`·`pinv`와 다른 점 |
+|---|---|---|
+| 정사각 행렬의 역행렬 | `inv(x)` | 특이하면 `LinAlgError`예요. |
+| 정사각이 아니거나 특이한 행렬의 "역행렬" | `pinv(x)` | 에러 없이 가장 가까운 것을 줘요. 더 느려요. |
+| $Ax = b$ 풀기 | [`solve(a, b)`](/api/linalg/solve/) | 역행렬을 만들지 않고 해만 구해요. `inv(a) @ b`보다 빠르고 정확해요. |
+| 해가 없거나 여러 개인 $Ax = b$ | [`lstsq(a, b)`](/api/linalg/lstsq/) | `pinv(a) @ b`와 같은 해를 더 빠르고 정확하게 구해요. 랭크와 특이값도 함께 줘요. |
+| 역행렬의 거듭제곱 | [`matrix_power(x, -n)`](/api/linalg/matrix_power/) | `matrix_power(x, -1)`은 `inv(x)`와 마지막 자리까지 같아요. |
+| 원소마다 역수 | `1 / x` | 행렬의 연산이 아니라 원소별 연산이에요. |
+| 역행렬이 있는지 미리 알기 | [`cond(x)`](/api/linalg/cond/), [`matrix_rank(x)`](/api/linalg/matrix_rank/) | 조건수가 아주 크거나 랭크가 `N`보다 작으면 역행렬을 믿을 수 없어요. [`det`](/api/linalg/det/)이 0에 가까운지로 판단하는 것은 권하지 않아요. 행렬 전체에 작은 수를 곱하기만 해도 행렬식은 작아지기 때문이에요. |
+
+행렬이 정사각이고 특이하지 않아야 정상인 상황이면 `inv`를 쓰고, 정사각이 아니거나 특이할 수 있음을 알면서도 그 경우에 답이 필요하면 `pinv`를 써요.
+
+## 희소 행렬에서는
+
+희소 행렬(0이 아닌 원소만 저장한 행렬)의 역행렬은 [`sd.sparse.inv`](/api/sparse/inv/)예요. 다만 희소 행렬의 역행렬은 대부분 꽉 차서 저장을 아끼지 못해요. 연립방정식을 풀려면 역행렬 대신 [`sd.sparse.spsolve`](/api/sparse/spsolve/)나 [`sd.sparse.splu`](/api/sparse/splu/)를 써요. 희소 배열을 `inv`에 넣으면 `sd.sparse.inv`를 알려 주는 `TypeError`예요.
+
+## numpy·scipy를 아는 분께
+
+- `inv`는 `np.linalg.inv`, `pinv`는 `np.linalg.pinv`에 해당해요. 배치를 받는 것도 같아요.
+- `pinv`의 기본 허용오차가 `np.linalg.pinv`와 달라요. numpy의 기본은 `rcond=1e-15`이고, 여기서는 `max(M, N) × eps`예요(`scipy.linalg.pinv`의 기본과 같아요). 옵션 이름은 `rtol` 하나뿐이고 `rcond=`, `atol=`은 없어요.
+- `rtol`이 1 이상이면 결과는 영행렬이에요. 기준과 같은 특이값도 0으로 쳐요(`<=`).
+- 남긴 특이값의 역수가 넘쳐도 정확한 0은 0이에요. `np.linalg.pinv(np.diag([1.0, 5e-324]), rcond=0)`과 `scipy.linalg.pinv(..., atol=0, rtol=0)`은 `[[nan, nan], [nan, inf]]`이고, 여기서는 `[[1.0, 0.0], [0.0, inf]]`예요.
+- `rtol`에 배열을 줄 수 없어요(배치마다 다른 허용오차는 없어요). `hermitian=` 옵션도 없어요.
+- NaN·inf가 있으면 두 함수 모두 `ValueError`예요. numpy는 검사하지 않고, scipy의 `check_finite=`에 해당하는 옵션은 없어요.
+- scipy의 "ill-conditioned" 경고에 해당하는 것이 없어요. 필요하면 `cond`로 직접 확인하세요.
+- 특이 행렬의 에러는 `sd.linalg.LinAlgError`예요. `ValueError`의 하위 클래스이고, `np.linalg.LinAlgError`와는 다른 클래스예요.
+- 리스트와 numpy 배열은 받지 않아요(`TypeError`). `overwrite_a=`도 없어요.

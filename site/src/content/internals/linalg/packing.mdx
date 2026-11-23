@@ -1,0 +1,757 @@
+---
+title: 패킹과 결과 레이아웃
+group: 구조
+order: 2
+summary: 어떤 메모리 배치의 입력이든 LAPACK이 읽는 열 우선 작업 버퍼로 옮기는 패킹을 설명해요. 패킹하는 함수는 모든 배치가 같은 버퍼로 바뀌니 결과가 입력 배치와 무관하게 같은 비트이고, 읽기만 하는 삼각 인수는 C 순서여도 그 자리에서 읽어요. 결과는 C 순서로 되돌리지 않고 열 우선 그대로 돌려줘요.
+seeAlso: [overview, batch, lu, symmetric]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import FigRow from '../../../components/fig/FigRow.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+import Steps from '../../../components/fig/Steps.astro';
+
+## 한눈에 보기
+
+LAPACK은 행렬을 한 가지 형태로만 받아요. 원소가 **열 우선**(column-major)으로 놓여 있고, 한 열 안의 원소는 메모리에서 이어져 있으며, 열과 열 사이 간격은 정수 하나(leading dimension, `lda`)로 적을 수 있어야 해요. 원소 타입은 `double` 또는 `std::complex<double>`이고, 대부분의 루틴은 받은 행렬을 결과로 덮어써요 [1].
+
+stardust의 배열은 이 조건을 하나도 보장하지 않아요. 기본 배치는 행 우선(C 순서)이고, 전치나 슬라이싱으로 만든 뷰는 원소 사이를 건너뛰거나 거꾸로 걷거나(음수 stride) 같은 원소를 되풀이해 가리켜요(stride 0, 브로드캐스트). dtype도 bool이나 int64일 수 있어요.
+
+이 간극을 메우는 것이 **패킹**(packing)이에요. 입력 행렬 하나를 LAPACK이 읽는 형태의 작업 버퍼로 복사하는 단계예요. 이 글은 그 복사를 어떻게 하는지와, 반대 방향인 결과 배열을 어떤 배치로 만드는지를 설명해요.
+
+요점은 다섯 가지예요.
+
+1. 한 패스에 세 가지 일을 해요. 배치를 열 우선으로 바꾸고, dtype을 계산 타입으로 바꾸고, NaN·inf를 찾아요. 메모리를 한 번만 읽어요(`csrc/linalg/pack.hpp`의 `pack`).
+2. 입력 배치에 따라 빠른 경로가 셋이에요. F 순서는 열마다 통째로 복사하고, C 순서는 32×32 타일로 나눠 전치하고(큰 float64는 타일 안을 4×4 레지스터 블록으로), 그 밖의 배치는 원소마다 읽어요. 어느 경로든 원소 $(i, j)$는 같은 자리로 가므로 결과가 같아요.
+3. 덮어쓸 자리에 바로 패킹해요. LAPACK이 입력을 결과로 덮어쓰는 함수는 입력을 결과 배열의 자리에 복사하고 LAPACK을 그 자리에서 불러요. 작업 버퍼 하나와 복사 한 번이 줄어요.
+4. 결과는 LAPACK이 쓴 열 우선 배치 그대로 돌려줘요. C 순서로 되돌리는 복사가 없고, 그래도 뒤따르는 배열 연산이 느려지지 않아요.
+5. 패킹하는 함수의 결과 비트는 입력 배치와 무관해요. 모든 배치가 같은 버퍼로 바뀌고 복사가 정확하기 때문이에요. 읽기만 하는 삼각 인수는 C 순서여도 복사하지 않고 행 우선으로 그 자리에서 읽어서, 이런 풀이는 끝 비트가 레이아웃에 달릴 수 있어요. LAPACK에 넘기는 배열의 16바이트 경계 위치를 정해 두는 것은 배치 안의 위치와 무관한 비트를 위해서예요.
+
+<Fig column caption="pack(src_dtype, p, m, n, rs, cs, dst, ld, check)이 경로를 고르는 순서. rs, cs는 행과 열의 바이트 stride, sz는 원본 원소의 크기예요.">
+  <Steps
+    steps={[
+      { label: 'm·n ≥ 2¹⁷ ?', where: 'pack.hpp', note: '큰 행렬이면 함수 밖의 pack_large로 가요. C 순서 원본은 거기서 열 32개씩 스레드풀에 나눠 전치해요.' },
+      { label: 'visit_storage(src)', note: '원본 dtype(bool, int64, float64, complex128)마다 타입이 정해진 루프 하나를 골라요.' },
+      { label: 'rs == sz', depth: 1, note: '열이 연속(F 순서): 열마다 copy_run 한 번. 복사와 유한성 검사를 한 루프에서 해요.' },
+      { label: 'cs == sz', depth: 1, note: '행이 연속(C 순서): 32×32 타일 단위로 전치한 뒤, 써 넣은 열에 비트 검사를 해요. 4096원소 이상의 float64는 함수 밖의 transpose_f64가 타일 안을 4×4 레지스터 블록으로 전치해요.' },
+      { label: '그 밖', depth: 1, note: '두 stride 모두 원소 크기가 아님(건너뛴 뷰, 음수 stride 등): 원소마다 읽어요.' },
+      { label: 'dst[j·ld + i]', note: '어느 경로든 원소 (i, j)가 가는 곳은 같아요. 유한하지 않은 원소가 있으면 false를 돌려줘요.' },
+    ]}
+  />
+</Fig>
+
+## 메모리 배치와 strides
+
+### 행 우선, 열 우선, 그리고 뷰
+
+2차원 배열은 메모리에서는 한 줄이에요. 그 줄 위에 원소 $(i, j)$를 어디에 둘지는 **strides**가 정해요. stride는 "그 축의 인덱스가 1 늘 때 주소가 몇 바이트 움직이는가"예요. 행 stride를 $r_s$, 열 stride를 $c_s$라고 하면 원소 $(i, j)$의 주소는 이래요.
+
+$$
+\text{addr}(i, j) = p + i \cdot r_s + j \cdot c_s
+$$
+
+아래 그림은 float64(8바이트) 2×3 행렬이에요.
+
+<Fig column caption="같은 2×3 행렬의 세 가지 배치. 위는 C 순서(행 우선, strides (24, 8)), 가운데는 F 순서(열 우선, strides (8, 16)), 아래는 2×6 배열에서 열을 한 칸씩 건너뛴 뷰예요. 점선 칸은 이 행렬에 속하지 않는 원소예요.">
+  <FigRow>
+    <ArrayFig name="A" data={[['a', 'b', 'c'], ['d', 'e', 'f']]} tones={[['a', 'a', 'a'], ['b', 'b', 'b']]} note="2×3" />
+    <Op note="C 순서">→</Op>
+    <ArrayFig name="메모리" data={['a', 'b', 'c', 'd', 'e', 'f']} tones={['a', 'a', 'a', 'b', 'b', 'b']} note="행 0, 행 1" />
+  </FigRow>
+  <FigRow>
+    <ArrayFig name="A" data={[['a', 'b', 'c'], ['d', 'e', 'f']]} tones={[['a', 'b', ''], ['a', 'b', '']]} note="2×3" />
+    <Op note="F 순서">→</Op>
+    <ArrayFig name="메모리" data={['a', 'd', 'b', 'e', 'c', 'f']} tones={['a', 'a', 'b', 'b', '', '']} note="열 0, 열 1, 열 2" />
+  </FigRow>
+  <FigRow>
+    <ArrayFig name="A" data={[['a', 'b', 'c'], ['d', 'e', 'f']]} tones={[['a', 'a', 'a'], ['b', 'b', 'b']]} note="2×3" />
+    <Op note="건너뛴 뷰">→</Op>
+    <ArrayFig name="메모리" data={['a', '·', 'b', '·', 'c', '·', 'd', '·', 'e', '·', 'f', '·']} tones={['a', 'g', 'a', 'g', 'a', 'g', 'b', 'g', 'b', 'g', 'b', 'g']} note="2×6 배열의 x[:, ::2], strides (48, 16)" />
+  </FigRow>
+</Fig>
+
+`sd.ndarray`의 `strides`로 직접 볼 수 있어요.
+
+```python
+>>> x = sd.asarray([[4.0, 1.0, 0.0], [1.0, 4.0, 1.0], [0.0, 1.0, 4.0]])
+>>> x.strides            # C 순서
+(24, 8)
+>>> x.T.strides          # 전치는 복사 없이 strides만 바꾼 뷰: 열 우선
+(8, 24)
+>>> x[::-1, :].strides   # 행을 뒤집은 뷰: 음수 stride
+(-24, 8)
+>>> x[:, ::2].strides    # 열을 하나 건너뛴 뷰
+(24, 16)
+```
+
+stride가 0이면 그 축을 따라 같은 원소가 되풀이돼요. 브로드캐스트한 배열이 그래요. 선형대수 함수는 이 다섯 가지(C, F, 건너뛴 뷰, 음수 stride, stride 0)를 모두 받아요([선형대수 영역의 구조](/internals/linalg/overview/)).
+
+### LAPACK이 읽는 형태
+
+LAPACK의 행렬 인자는 포인터 `a`와 leading dimension `lda` 둘이에요. 원소 $(i, j)$는 `a[i + j·lda]`에 있어요. strides로 말하면 행 stride가 원소 하나 크기(8바이트 또는 16바이트), 열 stride가 `lda`개 원소인 배치예요. F 순서 배열은 이 조건을 만족하고(`lda` = 행 수), C 순서 배열은 "전치된 F 순서"로 볼 수 있어요. 그 밖의 배치(건너뛴 뷰, 음수 stride, 브로드캐스트)는 이 형태로 표현할 수 없어요.
+
+### 왜 언제나 복사하나
+
+입력이 이미 F 순서라면 LAPACK에 그대로 넘기면 될 것 같지만, 그렇게 하지 않아요.
+
+- **LAPACK은 입력을 덮어써요.** `getrf`는 A 자리에 L과 U를, `geqrf`는 R과 반사 벡터를, `syevd`는 고유벡터를 써요. 사용자의 배열을 망가뜨리지 않으려면 복사본이 어차피 필요해요.
+- **복사본을 열 우선으로 만드는 비용은 보통 복사와 비슷해요.** 읽은 원소를 어디에 쓸지만 다르기 때문이에요. C 순서 원본에서도 타일 전치(아래)를 쓰면 캐시 효율이 연속 복사에 가까워요.
+- **같은 패스에서 dtype 변환과 유한성 검사까지 해요.** 복사를 따로 하지 않았다면 이 두 일을 위해 메모리를 어차피 한 번 더 읽어야 해요.
+
+복사는 $O(mn)$이고 LAPACK의 분해는 $O(n^3)$이에요. 큰 행렬에서는 복사가 무시할 만하고, 작은 행렬에서는 복사보다 호출 경로의 고정비가 더 커요. 복사가 눈에 띄는 것은 계산도 $O(n^2)$인 삼각 풀기와 `matrix_power`의 밑뿐이에요(뒤의 "읽기만 하는 삼각은 그 자리에서").
+
+예외는 **LAPACK이 읽기만 하는 입력**이에요. 삼각 풀기의 삼각 행렬(`solve_triangular`의 `a`, `cholesky_solve`의 `l`, `lu_solve`의 `l`과 `u`)은 LAPACK이 덮어쓰지 않으므로, 열 우선이나 행 우선이면 복사하지 않고 그 자리에서 읽어요. 이 경우는 따로 다뤄요. `matrix_power`의 밑도 BLAS가 읽기만 하므로 그 자리에서 읽어요([LAPACK 없이 계산하는 함수](/internals/linalg/basic/)).
+
+## `pack`: 한 패스에 세 가지
+
+```cpp
+// csrc/linalg/pack.hpp
+template <class T>
+bool pack(
+    DType src,
+    const std::byte* p,
+    std::int64_t m,
+    std::int64_t n,
+    std::int64_t rs,
+    std::int64_t cs,
+    T* dst,
+    std::int64_t ld,
+    bool check
+) {
+    // ...
+    if (m * n >= detail::kPackParallelMin) [[unlikely]]
+        return detail::pack_large(src, p, m, n, rs, cs, dst, ld, check);
+    return visit_storage(src, [&]<class S>(std::type_identity<S>) {
+        if constexpr (std::is_same_v<S, cplx> && !std::is_same_v<T, cplx>) return false;  // unreachable
+        else return detail::pack_loop<T, S>(p, m, 0, n, rs, cs, dst, ld, check);
+    });
+}
+```
+
+`T`는 계산 타입(`double` 또는 `cplx`), `S`는 원본의 저장 타입이에요.
+
+`pack`은 원본 `p`에 있는 $m \times n$ 행렬(행 stride `rs`, 열 stride `cs`, 바이트 단위, 음수와 0도 됨)을 `dst`에 열 우선으로, leading dimension `ld`로 복사해요. 하는 일은 세 가지예요.
+
+1. 어떤 행·열 stride로든 읽어서 열 우선으로 써요.
+2. 원본 dtype을 계산 타입으로 바꿔요(`convert`).
+3. `check`이면 NaN·inf를 찾아요. 있으면 false를 돌려줘요.
+
+`visit_storage`는 원본 dtype을 보고 그 dtype이 메모리에 저장된 C++ 타입(`std::uint8_t`, `std::int64_t`, `double`, `cplx`)으로 제네릭 람다를 불러요. 그래서 안쪽 루프 `pack_loop<T, S>`는 원본 타입 `S`와 계산 타입 `T`가 모두 컴파일할 때 정해진 코드예요. 루프 안에서 dtype을 묻는 분기가 없어요. 조합은 원본 4가지 × 계산 2가지이고, complex 원본이 실수 버퍼로 가는 조합은 생기지 않아요. 계산 타입은 모든 인자를 승격해서 정하므로, complex 인자가 하나라도 있으면 계산 타입이 complex이기 때문이에요. 그 가지는 `if constexpr`로 아예 컴파일되지 않게 막아 두었어요.
+
+### 세 경로
+
+`pack_loop`는 원본의 stride를 보고 세 경로 중 하나를 골라요.
+
+```cpp
+    // csrc/linalg/pack.hpp
+    constexpr std::int64_t sz = sizeof(S);
+    bool ok = true;
+    if (rs == sz) {
+        for (std::int64_t j = j0; j < j1; ++j) ok &= copy_run<T, S>(p + j * cs, m, dst + j * ld, check);
+        return ok;
+    }
+    if (cs == sz && m > 1) {
+        if constexpr (std::is_same_v<S, double> && std::is_same_v<T, double>) {
+            // a larger float64 matrix: 4 x 4 register transposes, out of line (inside this
+            // loop they slowed the small packs down by up to a third: kron, block_diag, det of
+            // 3 x 3 batches)
+            if (rs % 8 == 0 && m * (j1 - j0) >= kTransposeNeonMin)
+                return transpose_f64(reinterpret_cast<const double*>(p), m, j0, j1, rs / 8, dst, ld, check);
+        }
+        constexpr std::int64_t tile = 32;
+        for (std::int64_t i0 = 0; i0 < m; i0 += tile) {
+            const std::int64_t i1 = std::min(m, i0 + tile);
+            for (std::int64_t jt = j0; jt < j1; jt += tile) {
+                const std::int64_t jt1 = std::min(j1, jt + tile);
+                for (std::int64_t j = jt; j < jt1; ++j)
+                    for (std::int64_t i = i0; i < i1; ++i) dst[j * ld + i] = convert<T>(load<S>(p + i * rs + j * sz));
+            }
+        }
+        if constexpr (std::is_same_v<S, double> || std::is_same_v<S, cplx>) {
+            if (check)
+                for (std::int64_t j = j0; j < j1; ++j)
+                    ok &= all_finite(
+                        reinterpret_cast<const double*>(dst + j * ld),
+                        m * static_cast<std::int64_t>(sizeof(T) / sizeof(double))
+                    );
+        }
+        return ok;
+    }
+    for (std::int64_t j = j0; j < j1; ++j) {
+        const std::byte* col = p + j * cs;
+        T* out = dst + j * ld;
+        for (std::int64_t i = 0; i < m; ++i) {
+            const S v = load<S>(col + i * rs);
+            if constexpr (std::is_same_v<S, double> || std::is_same_v<S, cplx>) {
+                if (check) ok &= finite(v);
+            }
+            out[i] = convert<T>(v);
+        }
+    }
+    return ok;
+```
+
+`pack_loop`는 버퍼의 열 `[j0, j1)`을 맡아요. 열이 연속(F 순서)이면 열마다 복사, 행이 연속(C 순서)이면 타일 전치, 그 밖이면 원소마다 읽어요.
+
+어느 경로든 원소 $(i, j)$는 `dst[j·ld + i]`로 가요. 산술은 없고 값을 옮길 뿐이라, 경로가 달라도 버퍼의 내용은 바이트까지 같아요. 이 점이 "결과가 입력 배치와 무관하다"는 성질의 바탕이에요.
+
+F 경로를 가장 먼저 확인해요. 열이 연속이면 행 방향이 어떻든 열마다 통째로 복사할 수 있기 때문이에요. 음수 stride(예: `-24`)는 `rs == sz`도 `cs == sz`도 아니므로 셋째 경로로 가요. 배치 축의 브로드캐스트(stride 0)는 패킹과 상관이 없어요. `Batch`가 배치 원소마다 같은 행렬의 시작 주소를 넘겨줄 뿐이고, 패킹이 보는 것은 마지막 두 축의 stride뿐이에요.
+
+### F 순서: 열마다 복사하며 비트로 검사
+
+열이 연속이면 열 하나가 메모리의 연속 구간 하나예요. `copy_run`이 그 구간을 복사하면서 유한성을 검사해요. 원본과 계산 타입이 같을 때(float64 → `double`, complex128 → `cplx`)는 원소를 부동소수점 값이 아니라 64비트 정수로 다뤄요.
+
+```cpp
+        // csrc/linalg/pack.hpp
+        const std::int64_t nd = n * static_cast<std::int64_t>(sizeof(T) / sizeof(double));
+        double* d = reinterpret_cast<double*>(dst);
+        std::uint64_t bad = 0;
+        for (std::int64_t i = 0; i < nd; ++i) {
+            std::uint64_t u;
+            std::memcpy(&u, src + i * 8, sizeof u);
+            bad |= static_cast<std::uint64_t>((u & 0x7ff0000000000000ull) == 0x7ff0000000000000ull);
+            std::memcpy(d + i, &u, sizeof u);
+        }
+        return !check || bad == 0;
+```
+
+complex는 double 두 개로 세고(`nd`), 비트를 그대로 읽어 그대로 써요.
+
+이 검사가 맞는 이유는 IEEE 754 double의 비트 배치에 있어요 [2]. 64비트는 부호 1비트, 지수 11비트, 가수 52비트로 나뉘고, **지수 11비트가 모두 1인 값이 정확히 inf와 NaN**이에요. 가수가 0이면 ±inf, 0이 아니면 NaN이에요. 그래서 "지수 필드를 마스크로 잘라 냈을 때 모두 1인가"만 보면 유한성을 알 수 있어요.
+
+<Fig caption="float64의 비트 배치. 지수 필드(0x7ff0000000000000로 잘라 내는 11비트)가 모두 1이면 inf 또는 NaN이에요.">
+  <ArrayFig name="비트" data={[['부호 1', '지수 11', '가수 52']]} tones={[['m', 'b', '']]} note="63 … 0" />
+</Fig>
+
+루프 안은 64비트 정수의 AND, 비교, OR뿐이에요. 순서를 바꿔도 결과가 같은 연산이라 컴파일러가 이 루프를 NEON 벡터 명령으로 바꿔요. 복사와 검사가 한 루프라서 원본을 한 번만 읽어요.
+
+비트를 그대로 옮기는 데는 다른 이점도 있어요. `-0.0`의 부호, NaN의 가수(payload)까지 그대로 복사돼요. 같은 타입끼리의 패킹은 값을 전혀 바꾸지 않아요.
+
+원본과 계산 타입이 다를 때(bool이나 int64를 float64로, float64를 complex로)는 원소마다 읽어 `convert`로 바꾸고, 원본이 float일 때만 `finite`로 검사해요.
+
+### C 순서: 32×32 타일로 전치
+
+C 순서 원본에서 열 우선 버퍼를 채우려면 원본의 **열**을 읽어야 해요. 그런데 C 순서에서 한 열의 원소들은 메모리에서 한 행 길이만큼씩 떨어져 있어요. 1000×1000 float64이면 원소마다 8000바이트를 건너뛰어요. 이렇게 읽으면 원소 하나를 읽을 때마다 캐시 라인(Apple M4 Pro에서 128바이트) 하나를 통째로 가져오고, 그 라인의 나머지 15개 원소는 다음 열을 읽을 때까지 캐시에서 밀려나기 쉬워요. 읽은 메모리의 대부분을 버리는 셈이에요.
+
+타일 전치는 행렬을 32×32 블록으로 나눠, 블록 하나 안에서 전치를 끝내요 [3][4].
+
+<Fig caption="C 순서 원본의 타일 하나(진한 칸)를 열 우선 버퍼로 옮기는 모습. 타일 안에서는 원본의 행 32개 조각과 버퍼의 열 32개 조각만 건드려요. 그림은 4×4 행렬을 2×2 타일로 나눈 축소판이에요.">
+  <ArrayFig name="원본 (C 순서)" data={[['a', 'b', '·', '·'], ['c', 'd', '·', '·'], ['·', '·', '·', '·'], ['·', '·', '·', '·']]} tones={[['b', 'b', 'm', 'm'], ['b', 'b', 'm', 'm'], ['m', 'm', 'm', 'm'], ['m', 'm', 'm', 'm']]} note="행 단위로 이어짐" />
+  <Op note="타일 하나 전치">→</Op>
+  <ArrayFig name="버퍼 (열 우선)" data={[['a', 'b', '·', '·'], ['c', 'd', '·', '·'], ['·', '·', '·', '·'], ['·', '·', '·', '·']]} tones={[['b', 'b', 'm', 'm'], ['b', 'b', 'm', 'm'], ['m', 'm', 'm', 'm'], ['m', 'm', 'm', 'm']]} note="열 단위로 이어짐" />
+</Fig>
+
+float64 타일 하나는 원본 쪽이 행 32개 × 256바이트, 버퍼 쪽이 열 32개 × 256바이트예요. 각각 8KB, 합쳐 16KB이고 캐시 라인으로는 128개예요. M4 Pro 성능 코어의 L1 데이터 캐시(128KB) 안에 넉넉히 들어가므로, 타일을 처리하는 동안 가져온 라인을 버리지 않고 끝까지 써요. complex128이면 32KB로 역시 들어가요.
+
+타일 크기 8, 16, 64는 32와 차이가 잡음 수준이에요. 32는 그 가운데 값이에요. 이 정도 크기에서는 캐시가 병목이 아니게 되고, 남는 시간은 원소를 옮기는 데 드는 시간이에요.
+
+타일 안의 루프는 원소마다 `convert`만 하고 검사는 하지 않아요. 유한성 검사는 전치가 끝난 뒤 써 넣은 열을 따로 훑어요(`all_finite`, F 경로와 같은 비트 검사). 버퍼의 열은 연속 메모리라서 비트 검사가 빠르게 돌아요.
+
+### 큰 float64: 4×4 레지스터 전치
+
+float64 → float64이고 맡은 열 범위의 원소가 4096개(`kTransposeNeonMin`) 이상이면, 타일 안을 다시 4×4 블록으로 나눠 레지스터 안에서 전치해요(`transpose_f64`).
+
+```cpp
+// csrc/linalg/pack.hpp
+inline void transpose4(const double* p, std::int64_t rs, double* d, std::int64_t ld) {
+    const float64x2_t r0a = vld1q_f64(p), r0b = vld1q_f64(p + 2);
+    const float64x2_t r1a = vld1q_f64(p + rs), r1b = vld1q_f64(p + rs + 2);
+    const float64x2_t r2a = vld1q_f64(p + 2 * rs), r2b = vld1q_f64(p + 2 * rs + 2);
+    const float64x2_t r3a = vld1q_f64(p + 3 * rs), r3b = vld1q_f64(p + 3 * rs + 2);
+    vst1q_f64(d, vtrn1q_f64(r0a, r1a));
+    vst1q_f64(d + 2, vtrn1q_f64(r2a, r3a));
+    vst1q_f64(d + ld, vtrn2q_f64(r0a, r1a));
+    vst1q_f64(d + ld + 2, vtrn2q_f64(r2a, r3a));
+    vst1q_f64(d + 2 * ld, vtrn1q_f64(r0b, r1b));
+    vst1q_f64(d + 2 * ld + 2, vtrn1q_f64(r2b, r3b));
+    vst1q_f64(d + 3 * ld, vtrn2q_f64(r0b, r1b));
+    vst1q_f64(d + 3 * ld + 2, vtrn2q_f64(r2b, r3b));
+}
+```
+
+NEON 레지스터 하나는 double 두 개를 담아요. 원본의 행 넷을 레지스터 여덟 개로 읽고(행마다 앞 두 원소와 뒤 두 원소), `trn1`/`trn2`로 두 레지스터의 같은 자리 원소를 짝지어요. `vtrn1q_f64(r0a, r1a)`는 행 0과 행 1의 첫 원소, `vtrn2q_f64(r0a, r1a)`는 둘째 원소를 모은 것이라, 버퍼의 열 0과 열 1의 위 두 칸이 돼요. 이렇게 열 넷의 16칸을 레지스터 저장 여덟 번으로 써요. 원소마다 읽고 쓰는 루프보다 큰 행렬에서 빨라요. 타일 가장자리의 4로 나누어떨어지지 않는 부분은 원소 루프예요.
+
+이 경로는 `pack_loop` 밖의 함수예요(`[[gnu::noinline]]`). 작은 패킹 루프 안에 두었더니 3×3 배치의 `kron`, `block_diag`, `det`가 눈에 띄게 느려졌기 때문이에요. 복사뿐이라 어느 경로든 버퍼의 내용은 같아요.
+
+### 그 밖의 배치: 원소마다
+
+행 stride도 열 stride도 원소 크기가 아닌 배치(건너뛴 뷰, 음수 stride, 행렬 축 안의 브로드캐스트 등)는 원소마다 주소를 계산해 읽어요. 이런 입력은 흔하지 않고, 특별한 경로를 더 두면 작은 행렬의 코드가 커져요. 결과는 다른 경로와 똑같아요.
+
+### dtype 변환
+
+`convert<T, S>`는 원본 값 하나를 계산 타입으로 바꿔요(`types.hpp`).
+
+| 원본 → 계산 타입 | 규칙 |
+|---|---|
+| bool → `double`, `cplx` | `True`는 1, `False`는 0 |
+| int64 → `double`, `cplx` | `static_cast<double>`: 가장 가까운 double로 반올림. $\lvert v\rvert \le 2^{53}$이면 정확해요 |
+| float64 → `double` | 그대로 (비트 복사) |
+| float64 → `cplx` | 허수부 0 |
+| complex128 → `cplx` | 그대로 (비트 복사) |
+
+변환을 패킹 안에서 하므로 정수 배열을 받아도 float64 사본을 따로 만들지 않아요.
+
+```python
+>>> xi = sd.asarray([[4, 1], [1, 3]])
+>>> xi.dtype
+int64
+>>> sd.linalg.solve(xi, sd.asarray([True, False]))
+array([  0.2727272727272727, -0.09090909090909091], dtype=float64)
+```
+
+### 유한성 검사와 실패
+
+`check`가 참이면 원본이 float64나 complex128일 때 NaN·inf를 찾아요. bool과 int64는 유한하지 않은 값을 가질 수 없으므로 검사하지 않아요.
+
+유한하지 않은 원소를 찾아도 **복사는 끝까지 해요.** 첫 NaN에서 멈추려면 안쪽 루프마다 조건 분기가 생기고, 그러면 루프가 벡터화되지 않아요. 유한하지 않은 입력은 어차피 에러로 끝나는 드문 경우라서, 흔한 경우의 속도를 위해 실패하는 경우에 복사를 조금 더 하는 쪽을 택해요. 몸체는 false를 받으면 실패 코드(`kNonFinite`, `kNonFiniteB` 등)를 돌려주고, 에러 메시지는 배치가 끝난 뒤에 만들어져요.
+
+검사를 끄는 호출(`check = false`)은 LAPACK을 부르지 않는 경로뿐이에요. `matrix_power`의 0 이상 지수, `kron`, `kronsum`은 BLAS 곱이나 원소 곱, 덧셈만 하므로 NaN을 그대로 전파해요. `cond`(2, −2 외의 `ord`)가 노름을 구하려고 입력을 한 번 더 패킹할 때도 검사를 끄는데, 같은 원소를 첫 패킹(`lu_factor`)에서 이미 검사했기 때문이에요.
+
+## 삼각만 읽기: `pack_triangle`
+
+대칭(에르미트) 행렬을 받는 함수는 **아래 삼각만** 읽어요. 대칭 행렬은 아래 삼각만 있으면 전체가 정해지고, LAPACK의 대칭 루틴도 `uplo = 'L'`이면 아래 삼각만 읽어요. 그래서 패킹도 그 삼각만 복사하고 검사해요(`pack_triangle`).
+
+<Fig caption="pack_triangle(lower = true, with_diag = true)이 복사하는 원소(진한 칸). 위 삼각(점선)은 읽지도 검사하지도 않아요. 버퍼의 그 자리도 건드리지 않고 남겨 둬요.">
+  <ArrayFig name="입력" data={[['a₀₀', '·', '·', '·'], ['a₁₀', 'a₁₁', '·', '·'], ['a₂₀', 'a₂₁', 'a₂₂', '·'], ['a₃₀', 'a₃₁', 'a₃₂', 'a₃₃']]} tones={[['b', 'g', 'g', 'g'], ['b', 'b', 'g', 'g'], ['b', 'b', 'b', 'g'], ['b', 'b', 'b', 'b']]} note="4×4, 아래 삼각" />
+</Fig>
+
+| 함수 | 읽는 원소 | 패킹 방법 |
+|---|---|---|
+| `cholesky`, `eigh`, `eigvalsh`, `ldl` | 입력의 아래 삼각과 대각 | `pack_triangle` |
+| `eigh(a, b)`, `eigvalsh(a, b)` | `a`, `b` 모두 아래 삼각과 대각 | `pack_triangle` 두 번 |
+| `solve_triangular` | 지정한 삼각. `unit_diagonal=True`이면 대각 제외 | `triangle_operand` |
+| `cholesky_solve` | 인수의 삼각(대각 포함) | `triangle_operand` |
+| `lu_solve` | `l`의 대각 아래, `u`의 대각과 그 위 | `triangle_operand` |
+
+이렇게 하면 좋은 점이 두 가지예요.
+
+- **패킹이 절반이에요.** $n^2$개 대신 $n(n+1)/2$개를 옮겨요.
+- **읽지 않는 원소는 무엇이 들어 있든 결과에 영향이 없어요.** NaN이어도 에러가 아니에요. 사용자가 위 삼각에 쓰레기 값이 든 배열(예: 다른 계산의 작업 공간)을 넘겨도 돼요.
+
+```python
+>>> y = sd.asarray([[2.0, float("nan")], [1.0, 2.0]])   # 위 삼각의 NaN은 읽지 않아요
+>>> sd.linalg.eigvalsh(y)
+array([1.0, 3.0], dtype=float64)
+```
+
+열 $j$에서 복사할 행의 범위는 간단한 식이에요. 아래 삼각이면 $[j, n)$(대각 제외면 $[j+1, n)$), 위 삼각이면 $[0, j+1)$(대각 제외면 $[0, j)$)예요. F 경로는 이 범위를 열마다 `copy_run` 한 번으로 복사해요. C 경로는 타일 전치를 하되, 타일 안의 각 열에서 삼각 범위와 타일의 행 범위가 겹치는 구간을 먼저 계산하고 그 구간만 돌아요.
+
+```cpp
+                // csrc/linalg/pack.hpp
+                for (std::int64_t j = jt; j < jt1; ++j) {
+                    // this column's rows of the triangle, clipped to the tile
+                    const std::int64_t a = std::max(r0, lower ? (with_diag ? j : j + 1) : 0);
+                    const std::int64_t e = std::min(r1, lower ? n : (with_diag ? j + 1 : j));
+                    for (std::int64_t i = a; i < e; ++i) dst[j * ld + i] = convert<T>(load<S>(p + i * rs + j * cs));
+                }
+```
+
+원소마다 "삼각 안인가"를 묻는 분기를 두는 방법도 있지만, 그쪽이 더 느려요. 분기가 안쪽 루프를 벡터화하지 못하게 막기 때문이에요.
+
+버퍼에서 삼각 밖의 자리는 채우지 않고 남겨 둬요. 작업 메모리(`Scratch`)는 0으로 초기화하지 않으므로 그 자리에는 이전 계산의 값이 남아 있을 수 있어요. 뒤따르는 LAPACK 루틴(`potrf('L')`, `syevd`의 `uplo = 'L'`, `sytrf('L')`, `trtrs`)이 그 자리를 읽지 않으므로 상관없어요. 결과에 그 자리가 드러나는 `cholesky`는 `potrf` 뒤에 위 삼각을 0으로 채워요.
+
+## 출력 자리에 바로 패킹
+
+### 아이디어
+
+LAPACK의 많은 루틴은 입력 자리에 결과를 써요. `getrs`와 `trsv`는 우변 B를 해 X로, `potrf`는 A를 L로, `syevd`는 A를 고유벡터로, `gees`는 A를 Schur 형식 T로 덮어써요. 그렇다면 입력을 별도의 작업 버퍼가 아니라 **결과 배열에서 그 결과가 놓일 자리**에 패킹하면, LAPACK이 끝나는 순간 결과가 이미 제자리에 있어요. 작업 버퍼 하나와 "작업 버퍼 → 결과" 복사 한 번이 없어져요.
+
+이것이 되는 이유는 결과 배열의 행렬이 모두 열 우선이기 때문이에요(뒤의 "결과 레이아웃"). 결과 배열의 한 행렬 자리는 그 자체로 `lda` = 행 수인 LAPACK 행렬이에요.
+
+<Fig column caption="cholesky(x)의 배치 원소 하나. 입력의 아래 삼각이 결과 자리로 바로 가고, potrf가 그 자리를 L로 바꾼 뒤, 위 삼각을 0으로 채우면 끝이에요.">
+  <Steps
+    steps={[
+      { label: 'LapackSlot os(결과 자리)', where: 'ops/factor.cpp', note: '결과 배열에서 이 원소의 n×n 자리. 16바이트 경계가 아니면 정렬된 대역을 대신 써요.' },
+      { label: 'pack_triangle(x → 결과 자리)', where: 'pack.hpp', note: '입력의 아래 삼각만 복사하고 검사해요.' },
+      { label: "potrf('L')", where: 'lapack.hpp', note: '그 자리에서 A = LLᴴ. info > 0이면 양정치가 아니에요.' },
+      { label: '위 삼각 = 0', note: '결과에 보이는 자리를 정리해요. 남은 복사는 없어요.' },
+    ]}
+  />
+</Fig>
+
+### 함수별 배치
+
+함수마다 무엇을 어디에 패킹하는지는 아래 표와 같아요. "결과 자리"는 결과 배열에서 그 배치 원소의 자리, "작업"은 `Scratch`의 작업 메모리예요.
+
+| 함수 | 패킹 | LAPACK이 덮어쓰는 것 |
+|---|---|---|
+| `solve` | `a` → 작업, `b` → 결과 자리 | `getrs`(우변 두 열 이하는 `trsv` 두 번)가 결과 자리의 `b`를 해로 |
+| `inv` | `a` → 작업, 결과 자리를 단위행렬로 채움 | `solve`와 같은 풀이가 결과 자리의 단위행렬을 $A^{-1}$로 |
+| `solve_triangular`, `cholesky_solve` | 삼각 → 그 자리에서 또는 작업, `b` → 결과 자리 | `trtrs`/`potrs`(우변 두 열 이하는 `trsv`)가 결과 자리를 해로 |
+| `lu_solve` | `l`, `u` → 그 자리에서 또는 작업, `b[perm]` → 결과 자리 | 삼각 풀기 두 번이 결과 자리를 해로 |
+| `cholesky` | 아래 삼각 → 결과 자리 (`upper=True`이면 작업) | `potrf`가 결과 자리를 L로 |
+| `eigh` | `a`의 아래 삼각 → 고유벡터 결과 자리 | `syevd`가 그 자리를 고유벡터로 |
+| `schur` | `x` → T의 결과 자리 | `gees`가 그 자리를 T로, Z는 Z의 결과 자리에 바로 |
+| `svd` | `x` → 작업 | `gesdd`가 U, S, Vh를 각자의 결과 자리에 바로 |
+| `qr`, `qr_pivoted` | `x` → 작업 | `geqrf` 뒤 R을 결과로 옮기고, 반사 벡터를 Q의 결과 자리에 복사한 뒤 `orgqr`가 그 자리를 Q로 |
+| `hessenberg` | `x` → 작업 | `gehrd` 뒤 H를 옮기고, 반사 벡터를 Q의 결과 자리에 복사한 뒤 `orghr`가 그 자리를 Q로 |
+| `solve_tridiagonal`, `solve_banded` | 대각들·띠 → 작업, `b` → 결과 자리 | `gtsv`/`gbsv`가 결과 자리를 해로 |
+| `solve_sylvester` | `a`, `b` → 작업, `c` → 결과 자리 | `trsyl3`가 그 자리를 해로, 마지막 `gemm`도 그 자리에 |
+| `lstsq` | `a`, `b` → 작업 | `gelsd`가 작업의 `b`를 해로, 결과로 복사 (`rtol` < ε이면 마지막 `gemm`이 결과 자리에 바로) |
+
+몇 가지는 바로 패킹할 수 없어요.
+
+- **`lstsq`**: `gelsd`는 우변 버퍼에 $\max(m, n)$행이 필요하고(입력 `b`는 $m$행, 해는 $n$행), 해를 그 버퍼의 앞 $n$행에 남겨요. 결과 자리는 $n$행뿐이라 $m > n$이면 들어가지 않아요. 그래서 작업 버퍼에서 풀고 해를 복사해요.
+- **`lu`, `ldl`**: LAPACK은 L과 U(또는 L과 D)를 한 행렬에 겹쳐 쓰고 피벗은 교환 목록으로 줘요. 결과는 L, U, `perm`이 따로이므로 작업 버퍼에서 분해한 뒤 풀어 옮겨요.
+- **`eig`**: 고유값을 (실수부, 허수부) 순으로 정렬하고 고유벡터 열도 같이 옮겨야 해서, 작업 메모리에 받은 뒤 정렬하며 복사해요.
+- **`cholesky(upper=True)`**: L을 작업 메모리에서 구하고, 결과 자리에 $U = L^{H}$를 써요. 전치하며 옮기는 복사 한 번이 남지만, `potrf('U')`를 따로 부르지 않으므로 `cholesky(x, upper=True)`가 `cholesky(x)`의 켤레 전치와 비트까지 같아요([대칭 행렬의 분해](/internals/linalg/symmetric/)).
+
+## 16바이트 정렬: `LapackSlot`
+
+### 배치 안의 위치가 결과를 바꾸는 문제
+
+Accelerate는 같은 행렬이라도 **배열의 시작 주소가 16바이트 경계에 있는지에 따라** 다르게 반올림할 수 있어요. 원인은 Accelerate 내부라 공개돼 있지 않지만, 결과는 재현돼요.
+
+이것이 문제가 되는 곳은 배치예요. float64 배치 결과에서 행렬 하나는 $n^2 \times 8$바이트를 차지해요. $n$이 홀수이면 이 크기가 16의 배수가 아니에요. 3×3이면 72바이트라서, 결과 배열의 시작이 정렬돼 있어도 홀수 번째 행렬의 자리는 8바이트 어긋나요.
+
+<Fig column caption="(4, 3, 3) float64 결과 배열에서 행렬 네 개의 시작 주소(바이트)와 그 값을 16으로 나눈 나머지. 홀수 번째 행렬(진한 칸)은 16바이트 경계에서 8바이트 어긋나요.">
+  <FigRow>
+    <ArrayFig name="시작 주소" data={['0', '72', '144', '216']} tones={['a', 'b', 'a', 'b']} note="행렬 0, 1, 2, 3" />
+    <Op note="mod 16">→</Op>
+    <ArrayFig name="나머지" data={['0', '8', '0', '8']} tones={['a', 'b', 'a', 'b']} />
+  </FigRow>
+</Fig>
+
+결과 자리에 바로 패킹하면 LAPACK이 이 어긋난 자리에서 계산해요. 그러면 **같은 행렬이 배치 안의 위치에 따라 다른 비트를 받아요.** Apple M4 Pro에서 $n$ = 3, 5, 7, 9의 무작위 행렬 120개를 배치의 홀수 자리에 넣어 계산하고 하나씩 따로 계산한 결과와 비교하면, 실수 `schur`는 18–30개, `svd`는 3–17개, `eigh`는 27–45개가 마지막 비트에서 달랐어요. `eigh(a, b)`도 마찬가지였어요. complex128은 0개였어요. 원소가 16바이트라서 행렬 자리가 언제나 16의 배수이기 때문이에요. 16의 배수이지만 64의 배수는 아닌 자리($n$ = 2, 6, 10, 14, 18, 30)도 모두 같았어요. 그래서 맞출 경계는 16바이트면 충분해요.
+
+### 구현
+
+**LAPACK과 BLAS에 넘기는 배열은 모두 16바이트 경계에서 시작해요.** 출력 자리는 `LapackSlot`(`ops/common.hpp`)이 맡아요. 예외는 둘이에요. `lstsq`의 우변은 numpy와 같은 위치(경계에서 $8mn \bmod 16$바이트)에 둬서 지금은 numpy와 비트까지 같은 해를 내요([QR 분해와 최소제곱](/internals/linalg/qr/#b의-자리-numpy와-같은-정렬)). 그리고 scratch 안에서 위치가 원소마다 같은 하위 배열 몇 개가 16바이트 경계가 아닐 수 있어요. `lstsq` SVD 풀이(`rtol` < ε)의 `vh`(`u` 뒤 $m \cdot \min(m, n)$개)와 그 행 `rn`부터의 부분(`vh + rn`), `pinv`의 `u`의 열 `rn`부터의 부분(`u + rn·m`)이에요. 뒤의 둘은 비정규 특이값이 있을 때만 지나요. 어느 쪽이든 위치가 모양만으로 정해지므로 배치 안의 위치와는 무관해요. 같은 행렬은 어디서나 같은 비트를 받아요.
+
+```cpp
+// csrc/linalg/ops/common.hpp
+inline bool aligned16(const void* p) { return reinterpret_cast<std::uintptr_t>(p) % 16 == 0; }
+// ...
+// An output slot handed to LAPACK/BLAS: the slot itself when it is 16-byte
+// aligned, else scratch memory that is copied to the slot when this object goes
+// out of scope. Everything written for the slot goes through get().
+template <class T>
+class LapackSlot {
+public:
+    LapackSlot(T* slot, std::int64_t count, Scratch& s, int scratch_slot)
+        : slot_(slot),
+          n_(count),
+          p_(aligned16(slot) ? slot : s.get<T>(static_cast<std::size_t>(count), scratch_slot)) {}
+    ~LapackSlot() {
+        if (p_ != slot_) std::copy(p_, p_ + n_, slot_);
+    }
+    LapackSlot(const LapackSlot&) = delete;
+    LapackSlot& operator=(const LapackSlot&) = delete;
+    T* get() const { return p_; }
+
+private:
+    T* slot_;
+    std::int64_t n_;
+    T* p_;
+};
+```
+
+- 자리가 정렬돼 있으면 `get()`이 그 자리를 그대로 줘요. 비용이 없어요.
+- 어긋나 있으면 `Scratch`의 정렬된 대역(stand-in)을 주고, 객체가 사라질 때(소멸자) 대역의 내용을 자리로 복사해요. 그 자리에 쓰는 모든 것은 `get()`을 거치므로, 패킹·LAPACK·후처리가 모두 정렬된 메모리에서 일어나요.
+- 대역은 `Scratch`의 슬롯 6–8(`kAlign0`, `kAlign1`, `kAlign2`)이에요. 결과가 셋인 `svd`(U, Vh, S)가 세 슬롯을 다 써요.
+- 복사 생성자를 지워서, 소멸자의 복사가 두 번 일어나는 일을 막아요.
+
+C++의 RAII(자원의 수명을 객체의 수명에 묶는 관용구)를 쓴 이유는 몸체의 출구가 여러 개이기 때문이에요. 몸체는 실패 코드로 중간에 `return`할 수 있는데, 소멸자에 복사를 두면 어느 출구로 나가든 복사가 빠지지 않아요(실패한 원소의 결과는 어차피 버려지지만, 복사 여부를 출구마다 신경 쓸 필요가 없어요).
+
+어긋난 자리에 드는 추가 비용은 결과 행렬 하나의 복사예요. 홀수 $n$의 float64 배치에서 원소의 절반이 이 복사를 해요. $O(n^2)$이고 LAPACK 계산에 비하면 작아요.
+
+나머지 배열도 같은 규칙을 지켜요.
+
+- **결과 배열의 시작**은 배열 영역의 `Buffer`라서 128바이트에 맞춰져 있어요.
+- **작업 메모리**(`Scratch`)는 4KB보다 작은 버퍼를 128바이트 경계에서 시작하고, 큰 버퍼는 보통의 `new[]`로 받아요. arm64 macOS의 `new[]`는 16바이트 정렬을 보장해요(`__STDCPP_DEFAULT_NEW_ALIGNMENT__`가 16).
+- **작업 메모리 안의 하위 배열**은 `pad2`로 크기를 짝수 개의 double로 올려서 다음 배열도 16바이트 경계에서 시작하게 해요. `gees`의 `wr`/`wi`, `geev`의 `wr`/`wi`, `solve_sylvester`의 R/S/U/W, 삼중대각의 세 대각, `expm`의 작업 행렬 여덟 개가 그래요.
+
+```cpp
+// csrc/linalg/ops/common.hpp
+// n doubles rounded up to a whole number of 16-byte units, for sub-arrays of scratch.
+inline std::size_t pad2(std::int64_t n) { return static_cast<std::size_t>((n + 1) & ~std::int64_t(1)); }
+```
+
+그 결과 **모든 함수에서 배치 결과가 행렬 하나씩 부른 결과와 비트까지 같아요.** 테스트(`tests/linalg/test_optimizations.py`의 `test_batch_equals_one_by_one`)가 $n$ = 3, 5, 7, 40으로 확인해요.
+
+<Callout type="warn" title="정렬은 결과의 일부예요">
+16바이트 정렬은 속도 최적화가 아니라 결과 비트를 정하는 조건이에요. LAPACK에 포인터를 넘기는 코드를 새로 쓸 때는 그 포인터가 `LapackSlot`, `Scratch`의 시작, 또는 `pad2`로 맞춘 하위 배열인지 확인해야 해요(일부러 numpy의 위치를 따르는 `lstsq`의 우변과, 위치가 모양으로 정해지는 scratch 하위 배열 몇 개만 예외예요). 하나라도 어긋나면 배치 안의 위치에 따라 결과가 달라지는데, 그 차이는 마지막 비트에만 나타나서 잔차 검사로는 잡히지 않아요.
+</Callout>
+
+## 읽기만 하는 삼각은 그 자리에서: `triangle_operand`
+
+삼각 풀기의 삼각 행렬은 LAPACK·BLAS(`trtrs`, `potrs`, `trsv`)가 읽기만 하고 덮어쓰지 않아요. 그래서 입력이 이미 읽을 수 있는 형태이면 복사하지 않고 사용자의 배열을 그대로 넘겨요. 대상은 `solve_triangular`의 `a`, `cholesky_solve`의 `l`, `lu_solve`의 `l`과 `u`예요.
+
+삼각 풀기는 계산이 $O(n^2)$이라 패킹($O(n^2)$)이 계산과 같은 규모예요. 큰 행렬에서는 패킹을 없애는 것이 눈에 띄는 차이가 돼요.
+
+```cpp
+// csrc/linalg/ops/common.hpp
+template <class T>
+bool triangle_operand(
+    const Input& x,
+    std::int64_t off,
+    lint n,
+    bool lower,
+    bool with_diag,
+    T* buf,
+    const T*& a,
+    lint& lda,
+    bool* row_major = nullptr
+) {
+    constexpr std::int64_t sz = sizeof(T);
+    const std::byte* p = x.data() + off;
+    if (row_major) *row_major = false;
+    // in place only when 16-byte aligned, every column (row) too (see aligned16)
+    if (x.dtype() == dtype_of<T>() && aligned16(p)) {
+        if (x.stride(-2) == sz && x.stride(-1) % 16 == 0 && x.stride(-1) / sz >= std::max<lint>(n, 1)) {
+            a = reinterpret_cast<const T*>(p);
+            lda = x.stride(-1) / sz;
+            return triangle_finite(a, n, lda, lower, with_diag);
+        }
+        if (row_major && x.stride(-1) == sz && x.stride(-2) % 16 == 0 && x.stride(-2) / sz >= std::max<lint>(n, 1)) {
+            a = reinterpret_cast<const T*>(p);
+            lda = x.stride(-2) / sz;
+            *row_major = true;
+            // the row-major triangle is the other one of the column-major transpose
+            return triangle_finite(a, n, lda, !lower, with_diag);
+        }
+    }
+    a = buf;
+    lda = std::max<lint>(n, 1);
+    return pack_triangle(x.dtype(), p, n, x.stride(-2), x.stride(-1), buf, lda, lower, with_diag, true);
+}
+```
+
+조건마다 이유가 있어요.
+
+- **원소 타입이 같아야 해요.** int64 행렬이나, complex 계산에 쓰이는 float64 행렬은 변환이 필요해요.
+- **시작과 모든 열(행)이 16바이트 경계여야 해요.** 앞 절의 정렬 규칙이에요. 열 간격이 16의 배수이면 모든 열의 시작이 정렬돼요.
+- **열 우선이거나 행 우선이어야 해요.** 열 우선이면 원소 $(i, j)$가 `a[i + j·lda]`라서 그대로 LAPACK의 형태예요. 행 우선(C 순서)이면 `a[i·lda + j]`인데, 같은 메모리를 열 우선으로 보면 $A^{\mathsf T}$예요.
+- **간격이 $n$ 이상이어야 해요.** LAPACK은 `lda`가 행 수 이상이기를 요구해요. 이보다 작으면 열들이 겹치는 이상한 뷰예요.
+
+조건을 만족하면 읽을 삼각만 비트로 검사하고(`triangle_finite`) 사용자의 메모리를 그대로 넘겨요. 행 우선이면 열 우선으로 본 $A^{\mathsf T}$의 반대쪽 삼각을 검사해요. 아래 삼각인 C 순서 $L$은 메모리에서 위 삼각인 $L^{\mathsf T}$이기 때문이에요. 만족하지 않으면 `pack_triangle`로 작업 메모리에 복사해요.
+
+$n^2 \ge 2^{18}$(패킹의 병렬 문턱의 두 배)인 큰 삼각은 이 검사도 열 32개씩 풀에서 해요(`triangle_finite_large`). 큰 `lu_solve`에서는 두 삼각의 검사가 호출 시간의 큰 몫이에요. 검사뿐이라 결과는 직렬과 같아요.
+
+### 열 우선과 행 우선의 풀이
+
+풀기는 `tri_solve`(`lapack.hpp`)가 해요. 인수가 행 우선이었는지(`row_major`)를 함께 받아요.
+
+```cpp
+// csrc/linalg/lapack.hpp
+template <class T>
+void tri_solve(bool row_major, char uplo, char trans, char diag, lint n, lint k, const T* a, lint lda, T* b, lint ldb) {
+    if (n == 0 || k == 0) return;
+    if (k <= kTrsvMaxK) {
+        const auto lay = row_major ? CblasRowMajor : CblasColMajor;
+        const auto ul = uplo == 'U' ? CblasUpper : CblasLower;
+        const auto tr = trans == 'N' ? CblasNoTrans : (trans == 'T' ? CblasTrans : CblasConjTrans);
+        const auto dg = diag == 'U' ? CblasUnit : CblasNonUnit;
+        for (lint j = 0; j < k; ++j) {
+            if constexpr (std::is_same_v<T, double>) cblas_dtrsv(lay, ul, tr, dg, n, a, lda, b + j * ldb, 1);
+            else cblas_ztrsv(lay, ul, tr, dg, n, a, lda, b + j * ldb, 1);
+        }
+        return;
+    }
+    if (row_major) {  // A^T column-major: the other triangle, the other op
+        if (trans == 'C' && std::is_same_v<T, cplx>) throw std::logic_error("tri_solve: row-major A with op 'C'");
+        trtrs(uplo == 'U' ? 'L' : 'U', trans == 'N' ? 'T' : 'N', diag, n, k, a, lda, b, ldb);
+        return;
+    }
+    trtrs(uplo, trans, diag, n, k, a, lda, b, ldb);
+}
+```
+
+- 우변이 두 열 이하이면 CBLAS의 `trsv`를 열마다 불러요. CBLAS는 행 우선 행렬을 받는 인터페이스(`CblasRowMajor`)가 있어서 행 우선 인수를 그대로 넘겨요.
+- 우변이 세 열 이상이면 LAPACK `trtrs`예요. LAPACK은 열 우선만 받으므로, 행 우선 인수는 열 우선으로 본 전치로 넘겨요. 아래 삼각 $L$을 푸는 일은 위 삼각 $L^{\mathsf T}$에 `trans='T'`를 주는 일과 같아요(반대쪽 삼각, `'N'` ↔ `'T'`).
+- complex 인수에 켤레 전치(`'C'`)가 필요하고 우변이 세 열 이상이면 이 바꾸기가 통하지 않아요. $A^{\mathsf H}$를 $A^{\mathsf T}$의 무엇으로 풀려면 켤레만 하는 연산이 필요한데 LAPACK에는 없어요. 그래서 `lu_solve(trans='H')`와 complex `cholesky_solve`는 이 경우 행 우선 인수도 패킹해요(`row_major_ok`).
+
+열 우선 인수를 그 자리에서 읽으면 패킹한 사본과 같은 값을 같은 호출에 넣으므로 결과 비트가 같아요. 행 우선 인수는 BLAS가 같은 방정식을 다른 순서로 풀어서 **반올림 수준에서 다를 수 있어요**(`trans='N'`과 `'T'`는 수학적으로 같은 해를 내지만 원소를 더하는 순서가 달라요). 그래서 이 세 함수는 같은 행렬을 C 순서로 넘겼는지 F 순서로 넘겼는지에 따라 끝 비트가 달라질 수 있어요. 대신 큰 C 순서 삼각 풀기에서 전치 패킹이 사라져요. 테스트(`test_triangle_in_place_or_packed`)는 F 순서와 건너뛴 뷰를 바이트로, C 순서를 허용오차로 비교해요.
+
+`lu`의 결과 L, U는 열 우선 배열이에요. 그래서 `lu_solve(*lu(a), b)`처럼 `lu`의 결과를 그대로 넘기면 두 인수 모두 그 자리에서 열 우선으로 읽혀서 `solve(a, b)`와 비트까지 같아요. scipy처럼 L과 U를 한 행렬에 겹친 압축 형식으로 다시 붙일 필요가 없어요.
+
+## 큰 C 순서 행렬은 풀에서 전치
+
+원소가 $2^{17}$개(`kPackParallelMin` = 131072) 이상인 C 순서 행렬 하나는, 패킹을 스레드풀에 나눠요. 버퍼의 열 32개를 태스크 하나로 묶어요.
+
+```cpp
+// csrc/linalg/pack.hpp
+template <class Block>
+[[gnu::noinline]] bool on_pool_by_columns(std::int64_t n, const Block& block) {
+    constexpr std::int64_t kCols = 32;
+    if (n <= kCols || !begin_parallel()) return block(std::int64_t(0), n);
+    const std::int64_t ntasks = (n + kCols - 1) / kCols;
+    std::vector<unsigned char> ok(static_cast<std::size_t>(ntasks), 1);
+    run_tasks(ntasks, [&](std::int64_t t) {
+        ok[static_cast<std::size_t>(t)] = block(t * kCols, std::min(n, (t + 1) * kCols));
+    });
+    return std::all_of(ok.begin(), ok.end(), [](unsigned char v) { return v != 0; });
+}
+```
+
+나눌 수 없으면(열 32개 이하, 이미 태스크 안, 1스레드) 직렬로 돌고, 나누면 태스크마다 버퍼의 열 `[j0, j1)`만 써요.
+
+- **결과는 직렬과 같아요.** 태스크마다 자기 열만 쓰고, 복사뿐이라 순서가 결과를 바꾸지 않아요. 유한성 결과는 태스크마다 따로 적고 끝에 모아요. 공유 변수 하나에 여러 스레드가 쓰는 경쟁이 없어요.
+- **열 32개**는 타일 너비와 같아요. 태스크 하나가 타일 열 하나를 통째로 맡아서, 타일이 태스크 경계에서 잘리지 않아요.
+- **배치를 나눈 태스크 안에서는 나누지 않아요.** `begin_parallel()`은 이미 태스크 안이면 거짓이에요([스레드풀과 결정성](/internals/core/threads/)). 큰 행렬의 배치는 배치 쪽에서 이미 코어를 다 쓰고 있어요.
+
+문턱 $2^{17}$은 측정으로 정했어요. 계산이 $O(n^2)$인 함수에서는 풀 전치가 큰 행렬에서 직렬 전치보다 빨랐지만, `inv`는 181²–300²에서 풀 전치가 7–11% 느렸고 362²에서 같았어요. `inv`는 계산이 $O(n^3)$이라 패킹이 차지하는 몫이 작고, 태스크를 나누는 고정비가 그 몫을 넘기 때문이에요. 그 경계에 맞춰 362²(= 131044)의 바로 위인 $2^{17}$로 두었어요. 정사각 행렬은 363²부터 풀에서 전치해요. 지금 이 병렬 전치를 쓰는 것은 입력을 패킹하는 함수(`solve`, `inv`, `det`, `slogdet`, `lu`, 분해들)예요. C 순서 삼각 인수는 패킹하지 않고 그 자리에서 읽어요(앞 절).
+
+**F 순서와 건너뛴 뷰는 나누지 않아요.** F 순서는 열마다 연속 복사라 이미 메모리 대역폭에 가깝고, 건너뛴 뷰는 나누면 0.77–0.96배로 오히려 느렸어요. 이득은 캐시 효율이 나쁜 전치에서만 나요.
+
+### 작은 행렬의 경로를 지키기
+
+큰 행렬을 위한 코드는 작은 행렬의 호출에 비용을 더하면 안 돼요. 3×3 행렬 1000개의 배치에서는 `pack`이 1000번 불리고, 호출당 몇 ns가 전체 시간의 몇 %가 돼요.
+
+그래서 큰 행렬의 경로는 두 겹으로 떼어 두었어요.
+
+- `pack`의 맨 앞, dtype 분기보다 **먼저** 크기 비교 하나만 둬요. `[[unlikely]]`로 표시해서 컴파일러가 작은 행렬 쪽을 직선 경로로 배치하게 해요.
+- 큰 행렬의 처리 전부(`pack_large`, `pack_triangle_large`, `on_pool_by_columns`)는 `[[gnu::noinline]]`으로 함수 밖에 둬요. 컴파일러가 이 코드를 `pack` 안으로 끌어들이지 못하게 해서, 작은 행렬의 경로에는 크기 비교 하나만 남아요.
+
+나누는 코드를 패킹 함수 안에 두면 작은 호출마다 3–10ns가 늘어요. 1스레드의 `solve_tridiagonal` (1000, 3, 3)이 1.36배 느려질 만큼이에요. 분기만 함수 밖으로 빼도 일부만 회복되고(문턱을 `constexpr`로 해도 같아요), 크기 비교를 dtype 분기 앞에 두고 나머지를 모두 함수 밖으로 보내야 남는 비용이 호출당 3ns 이하가 돼요.
+
+`kPackParallelMin`은 `constexpr`이 아니라 변수예요. 측정 실험에서 문턱을 옮길 수 있게 하려는 것이고(`_core.linalg._set_pack_parallel_min`), 다른 코드는 이 값을 바꾸지 않아요. 테스트(`tests/linalg/test_optimizations_small.py`의 `test_pool_packing_changes_nothing`)가 이 함수로 풀 전치를 끈 결과와 켠 결과를 C 순서, F 순서, 건너뛴 뷰에서 바이트로 비교하고, 나뉜 패킹에서도 읽는 원소의 NaN을 찾는지 확인해요.
+
+## 결과 레이아웃
+
+### 열 우선 행렬, 바깥은 C 순서
+
+결과 배열은 `outblock.cpp`의 세 함수가 만들어요.
+
+| 함수 | 모양 | 배치 |
+|---|---|---|
+| `alloc_matrices` | `(배치..., m, n)` | 행렬마다 열 우선, 배치 축은 바깥에 C 순서 |
+| `alloc_vectors` | `(배치..., m)` | 벡터마다 연속, 배치 축은 C 순서 |
+| `alloc_c` | 아무 모양 | C 순서 (`det`, 노름, 랭크처럼 행렬이 아닌 결과) |
+
+행렬 결과에서 원소 $(b_0, \ldots, i, j)$의 자리는 이래요.
+
+$$
+\text{offset} = (k \cdot mn + j \cdot m + i) \cdot s
+$$
+
+$k$는 배치 인덱스 $(b_0, \ldots)$의 C 순서 번호, $s$는 원소 크기(8 또는 16바이트)예요. 행렬 하나는 `lda` = $m$인 LAPACK 행렬이고, 행렬들은 배치 순서대로 빈틈없이 이어져요. 그래서 배치 원소 `i`의 자리가 `res + i·m·n`이라는 간단한 식이 되고, 그 자리를 LAPACK에 그대로 줄 수 있어요(앞 절의 "출력 자리에 바로 패킹").
+
+```cpp
+// csrc/linalg/outblock.cpp
+Out alloc_matrices(const std::vector<std::int64_t>& batch, std::int64_t m, std::int64_t n, DType dt, bool zeroed) {
+    const std::int64_t isz = itemsize(dt);
+    std::vector<std::int64_t> shape = batch, strides(batch.size() + 2);
+    shape.push_back(m);
+    shape.push_back(n);
+    check_shape(shape, dt);
+    strides[batch.size()] = isz;
+    strides[batch.size() + 1] = isz * m;
+    const std::int64_t total = fill_c_strides(shape, batch.size(), strides, isz * m * n);
+    return alloc(shape, std::move(strides), total, dt, zeroed);
+}
+```
+
+행 stride는 원소 하나, 열 stride는 원소 $m$개이고, 배치 축은 바깥에서 C 순서예요(가장 안쪽 배치 축의 stride가 행렬 하나의 크기).
+
+strides를 정하는 것은 선형대수이고, 메모리와 플래그는 배열 영역의 `new_array_strided`가 맡아요. 결과는 보통의 `sd.ndarray`예요.
+
+`zeroed`는 결과가 거의 모두 0인 함수(`block_diag`, `kronsum`)가 0으로 채운 메모리를 달라는 표시예요. 1 MiB 이상인 결과에만 그렇게 줘요(`Buffer::allocate(…, true)`, 곧 `calloc`). 운영체제가 새로 내주는 페이지는 처음부터 0이라, 0을 직접 쓰는 것보다 싸요. 작은 결과는 `calloc`이 이미 쓰던 메모리에 0을 직접 써야 하고, 중간 크기의 새 페이지는 처음 닿을 때의 비용이 들어서 오히려 느렸어요. 받았는지는 `Out::zeroed`가 알려 주고, 못 받은 호출자는 0을 직접 써요.
+
+```python
+>>> sd.linalg.inv(x).strides                       # 행렬 하나: 열 우선
+(8, 24)
+>>> sd.linalg.inv(x)._flags()
+{'c_contiguous': False, 'f_contiguous': True, 'writeable': True}
+>>> sd.linalg.inv(sd.stack([x, x])).strides        # 배치: 바깥은 C 순서, 행렬은 열 우선
+(72, 8, 24)
+>>> sd.linalg.eigvalsh(sd.stack([x, x])).strides   # 벡터 결과는 C 순서
+(24, 8)
+```
+
+배치 결과는 전체로 보면 C 순서도 F 순서도 아니에요(두 플래그가 모두 거짓). 하지만 메모리는 빈틈없이 이어져 있고, 원소마다의 배치는 규칙적이에요.
+
+길이 0인 축이 있어도 공식은 그대로예요. 0을 곱하므로 그 바깥 축의 stride가 0이 돼요. 예를 들어 `inv(sd.ones((2, 0, 0)))`의 strides는 `(0, 8, 0)`이에요. 배열 영역의 새 배열은 길이 0인 축을 1로 쳐서 strides를 만들기 때문에 값이 달라요. 원소가 하나도 없으니 어느 쪽이든 읽고 쓰는 값은 같고, strides 값만 달라요.
+
+### C 순서로 되돌리지 않는 이유
+
+LAPACK은 결과를 열 우선으로 써요. 이 결과를 numpy처럼 C 순서 배열로 돌려주려면 결과마다 전치 복사가 한 번 더 필요해요. stardust는 이 복사를 하지 않아요.
+
+값은 numpy와 같고, 다른 것은 메모리 순서(`_flags()`)뿐이에요. 그리고 **뒤따르는 배열 연산이 느려지지 않아요.**
+
+- 원소별 연산의 이터레이터는 strides의 크기 순서로 축을 재정렬하고 이어진 축을 합쳐요([연산 엔진](/internals/array/engine/)). F 순서 입력도 C 순서 입력처럼 연속 메모리 하나로 보고 돌아요. 원소별 연산의 새 결과도 F 순서 입력의 배치를 따라가요.
+- `matmul`은 F 순서 행렬을 전치 플래그로 BLAS에 복사 없이 넘겨요([행렬곱](/internals/array/matmul/)).
+
+`(64, 256, 256)` float64 배열로, F 순서 결과와 C 순서 결과를 입력으로 같은 연산을 재면 이래요(Apple M4 Pro).
+
+| 연산 | F 순서 결과를 입력으로 | C 순서 결과를 입력으로 |
+|---|---:|---:|
+| `add` | 249µs | 253µs |
+| `matmul` | 2401µs | 2375µs |
+| `sum(axis=-1)` | 156µs | 127µs |
+| `sum(axis=-2)` | 127µs | 157µs |
+
+`add`와 `matmul`은 같고, `sum`은 연속인 축이 바뀌는 만큼 빠른 축과 느린 축이 서로 바뀔 뿐이에요. 열 우선 행렬에서는 열 방향(`axis=-2`) 합이 연속 메모리 합이에요.
+
+```python
+>>> r = sd.linalg.inv(x)
+>>> (r + 1.0)._flags()        # 원소별 연산의 결과도 F 순서를 따라가요
+{'c_contiguous': False, 'f_contiguous': True, 'writeable': True}
+```
+
+버린 대안은 두 가지예요.
+
+- **결과를 C 순서로 되돌리기.** 결과마다 복사가 한 번 더 생겨요. 큰 행렬에서는 메모리를 두 배로 잠깐 쓰고, 작은 행렬의 배치에서는 원소마다 고정비가 늘어요. 얻는 것은 플래그 모양뿐이에요.
+- **분해에 "C 순서 $A$ = F 순서 $A^{T}$" 트릭 쓰기.** C 순서 입력을 전치된 F 순서로 보고 LAPACK에 넘기면 복사 없이 $A^{T}$에 대한 문제를 풀어요. `solve`($A^{T}$의 분해로 $A$를 풀기), `cholesky`($A$가 대칭이므로 $A^{T} = A$), `svd`($A^{T}$의 SVD에서 $U$와 $V$를 바꾸기)에는 통하지만, `qr`이나 `eig`에는 통하지 않아요($A^{T}$의 QR에서 $A$의 QR을 얻을 수 없어요). 함수마다 방식이 달라져요. 그래서 이 트릭은 입력을 읽기만 하는 곳(삼각 풀이의 인수, `matrix_power`의 밑)에만 써요.
+
+## 레이아웃 불변성
+
+**패킹을 거치는 함수의 결과는 입력의 메모리 배치(C 순서, F 순서, 건너뛴 뷰, 음수 stride, 브로드캐스트)와 무관하게 비트까지 같아요.** 분해(`lu`, `cholesky`, `qr`, `eigh`, `svd`, …)와 `solve`, `inv`, `det`가 그래요.
+
+```python
+>>> a = sd.asarray([[4.0, 1.0], [2.0, 3.0]])          # C 순서
+>>> f = sd.asarray([[4.0, 2.0], [1.0, 3.0]]).T        # 같은 값, F 순서
+>>> a.strides, f.strides
+((16, 8), (8, 16))
+>>> bool(sd.all(sd.linalg.inv(a) == sd.linalg.inv(f)))
+True
+```
+
+이 성질은 이 글의 장치들이 함께 만들어요.
+
+| 장치 | 지키는 것 |
+|---|---|
+| 모든 배치가 같은 열 우선 버퍼로 | LAPACK이 받는 행렬이 같아요 |
+| 같은 타입은 비트 복사, 변환은 원소마다 같은 `convert` | 버퍼의 값이 바이트까지 같아요 |
+| 세 경로 모두 원소 $(i, j)$를 `dst[j·ld + i]`로 | 경로가 달라도 버퍼가 같아요 |
+| 열 우선 입력을 그 자리에서 읽는 것은 같은 산술일 때만 | 복사하든 안 하든 같은 호출이에요 |
+| 16바이트 정렬 | 버퍼가 놓인 주소가 반올림을 바꾸지 않아요 |
+
+레이아웃과 무관한 비트는 약속이 아니에요. 입력을 패킹하지 않고 놓인 그대로 읽는 곳은 끝 비트가 레이아웃에 달릴 수 있어요. 값은 반올림 수준에서 같아요.
+
+- C 순서 삼각 인수를 행 우선으로 그 자리에서 읽는 풀이: `solve_triangular`, `lu_solve`, `cholesky_solve`(앞 절)
+- 밑을 그 자리에서 읽는 `matrix_power`(C 순서 밑은 전치로 `gemm`에 넘겨요)
+- 메모리에 놓인 순서로 더하는 노름과 긴 내적(`vecdot`, `vector_norm`, `matrix_norm`의 fro, ±1, ±inf, [LAPACK 없이 계산하는 함수](/internals/linalg/basic/))
+
+테스트가 이 구분을 고정해요. `tests/linalg/test_factorizations.py`의 `test_results_do_not_depend_on_input_layout`은 같은 행렬을 C, F, 건너뛴 뷰, 뒤집은 뷰로 넣어 `cholesky`, `solve`, `lu`, `inv`, `det`의 결과 바이트를 비교하고, C 순서 인수를 그 자리에서 읽는 `solve_triangular`은 허용오차로 봐요. 함수별 테스트도 대부분 `conftest.py`의 `with_layout`으로 입력 배치를 바꿔 가며 돌아요.
+
+## 성능
+
+패킹의 비용은 원소 수에 비례해요. 행렬 하나에 $mn$개를 읽고 $mn$개를 써요(삼각만 읽으면 약 절반). 메모리는 배치 원소 하나에 작업 버퍼 하나($n^2$ 원소)이고, `Scratch`가 배치 안에서 재사용되므로 배치 크기와 무관해요(나눈 배치는 태스크마다 하나). 결과 자리에 바로 패킹하는 입력에는 작업 버퍼가 필요 없어요.
+
+| 상황 | 패킹이 차지하는 몫 |
+|---|---|
+| 큰 행렬 하나의 분해 ($O(n^3)$) | 작아요. 시간의 대부분이 LAPACK 안이에요 |
+| 작은 행렬의 배치 | 원소마다 몇 ns. 호출 경로의 고정비와 같은 규모예요 |
+| 큰 삼각 풀기 ($O(n^2)$) | 계산과 같은 규모예요. 열 우선이든 행 우선이든 그 자리에서 읽어 없애요. 남는 것은 읽는 삼각의 유한성 검사예요(큰 삼각은 풀에서) |
+
+큰 삼각 풀기에서는 삼각 인수가 C 순서(numpy로 만든 배열)든 F 순서(`sd.linalg.lu`의 결과)든 그 자리에서 읽혀요. 남는 $O(n^2)$ 일은 읽는 삼각의 NaN·inf 검사예요. scipy의 `lu_solve`는 이 검사를 하지 않아서, 우변이 여러 열인 큰 `lu_solve`는 1스레드에서 그만큼 느려요([LU 분해와 선형 시스템](/internals/linalg/lu/)).
+
+## 정확도
+
+패킹은 값을 바꾸지 않아요.
+
+- 같은 타입끼리(float64 → `double`, complex128 → `cplx`)는 비트를 그대로 옮겨요. `-0.0`과 NaN의 비트까지 같아요.
+- bool은 0과 1로 정확히 바뀌어요.
+- int64는 $\lvert v\rvert \le 2^{53}$이면 정확히, 그보다 크면 가장 가까운 double로 바뀌어요. 배열 영역의 `astype(float64)`와 numpy의 변환과 같은 규칙이에요.
+- float64를 complex로 바꿀 때는 허수부가 정확한 0이에요.
+
+반올림이 일어나는 곳은 LAPACK 안뿐이고, 패킹한 버퍼는 입력 배치와 무관하게 같아요. 정렬로 버퍼의 주소 조건까지 맞추므로, 같은 입력은 배치 안의 어디에 있든 같은 비트를 받아요. 패킹하는 함수는 어떤 배치로 들어오든 같은 비트이고, 그 자리에서 읽는 곳은 앞 절대로 반올림 수준에서 같아요. 결과 레이아웃도 값에는 영향이 없어요. 열 우선 결과는 LAPACK이 쓴 바이트 그대로예요.
+
+## 참고 문헌
+
+1. E. Anderson, Z. Bai, C. Bischof, S. Blackford, J. Demmel, J. Dongarra, J. Du Croz, A. Greenbaum, S. Hammarling, A. McKenney, D. Sorensen, *LAPACK Users' Guide*, 3rd ed., SIAM, 1999. (열 우선 저장, leading dimension, 입력을 덮어쓰는 인터페이스) https://www.netlib.org/lapack/lug/
+2. IEEE, *IEEE Standard for Floating-Point Arithmetic*, IEEE Std 754-2019. (binary64의 부호·지수·가수 배치, inf와 NaN의 인코딩)
+3. M. S. Lam, E. E. Rothberg, M. E. Wolf, "The Cache Performance and Optimizations of Blocked Algorithms", *Proceedings of the Fourth International Conference on Architectural Support for Programming Languages and Operating Systems (ASPLOS IV)*, ACM, 63–74, 1991. (블록화로 캐시 재사용을 높이는 방법) https://doi.org/10.1145/106972.106981
+4. U. Drepper, *What Every Programmer Should Know About Memory*, Red Hat, 2007. (캐시 라인, 접근 순서와 캐시 효율, 블록화)

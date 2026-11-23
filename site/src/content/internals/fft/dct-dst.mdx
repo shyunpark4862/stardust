@@ -1,0 +1,521 @@
+---
+title: DCT와 DST
+group: 실수와 코사인·사인 변환
+order: 2
+summary: 이산 코사인·사인 변환의 형 1–4가 실수 FFT 위에서 계산되는 형별 알고리즘을 따라가요. 형 1의 짝·홀 확장, 형 2·3의 Makhoul 순서 바꿈, 짝수 길이 형 4의 반 길이 복소 FFT, 홀수 길이 형 4의 부호 붙인 순열을 유도하고, DST가 같은 형 DCT와 비트까지 같아지는 까닭, 정규화와 orthogonalize, 다차원 패스, 오차 한계를 다뤄요.
+seeAlso: [real-hermitian, overview, stockham, bluestein, accuracy-performance]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+정의는 scipy와 같아요. `norm='backward'`의 정변환은 다음과 같고, 길이 $N$의 줄 $x_0, \dots, x_{N-1}$에서 $y_0, \dots, y_{N-1}$을 내요.
+
+| 형 | $y_k$ |
+|---|---|
+| DCT-I ($N \ge 2$) | $x_0 + (-1)^k x_{N-1} + 2\sum_{n=1}^{N-2} x_n\cos\dfrac{\pi kn}{N-1}$ |
+| DCT-II | $2\sum_n x_n\cos\dfrac{\pi k(2n+1)}{2N}$ |
+| DCT-III | $x_0 + 2\sum_{n\ge 1} x_n\cos\dfrac{\pi n(2k+1)}{2N}$ |
+| DCT-IV | $2\sum_n x_n\cos\dfrac{\pi(2k+1)(2n+1)}{4N}$ |
+| DST-I | $2\sum_n x_n\sin\dfrac{\pi(k+1)(n+1)}{N+1}$ |
+| DST-II | $2\sum_n x_n\sin\dfrac{\pi(k+1)(2n+1)}{2N}$ |
+| DST-III | $(-1)^k x_{N-1} + 2\sum_{n\le N-2} x_n\sin\dfrac{\pi(2k+1)(n+1)}{2N}$ |
+| DST-IV | $2\sum_n x_n\sin\dfrac{\pi(2k+1)(2n+1)}{4N}$ |
+
+Accelerate의 vDSP에는 DCT가 float 판뿐이라 쓸 수 없어요. 모든 형을 이 라이브러리의 알고리즘으로 실수 FFT 위에 만들어요. 길은 형과 $N$으로만 정해요.
+
+| 형 | 알고리즘 | 계획의 종류와 길이 |
+|---|---|---|
+| DCT-I | 짝 확장의 실수 FFT, 실수부 | 실수 종류 $2(N-1)$ |
+| DST-I | 홀 확장의 실수 FFT, 허수부 | 실수 종류 $2(N+1)$ |
+| DCT-II, DCT-III | Makhoul의 순서 바꿈과 길이 $N$의 실수 FFT | `Dct2` 종류 $N$ |
+| DCT-IV, 짝수 $N$ | 길이 $N/2$의 복소 FFT와 앞뒤의 회전 인자 | `Dct4` 종류 $N$ |
+| DCT-IV, 홀수 $N$ | 부호를 붙인 순열 위의 길이 $N$ 실수 FFT | `Dct4` 종류 $N$ |
+| DST-II, III, IV | 같은 형의 DCT에 부호 바꾸기와 뒤집기 | 그 DCT의 계획 |
+
+코드는 `csrc/fft/r2r.hpp`(줄 커널과 표), `csrc/fft/r2r.cpp`(인자 검사와 다차원 패스), `csrc/fft/driver.cpp`의 `r2r_axis`(구동기)에 있어요. `Dct2`와 `Dct4` 종류의 계획은 안쪽의 실수·복소 계획과 그 형의 표를 쥐어요. 안쪽 길이가 31보다 큰 소인수를 가지면 그 안쪽 계획이 Bluestein이에요.
+
+## 형 1: 짝·홀 확장
+
+DCT-I은 줄을 끝에서 거울처럼 접어 붙인 짝 확장
+
+$$
+v = (x_0, x_1, \dots, x_{N-1}, x_{N-2}, \dots, x_1)
+$$
+
+(길이 $2(N-1)$)의 실수 FFT $V$에서 $y_k = \mathrm{Re}\,V_k$를 읽어요. $v$가 $v_j = v_{-j}$인 짝수열이라 $V$가 실수이고, $j$와 $2(N-1) - j$의 두 항이 합쳐져 정의의 $2x_n\cos$가 돼요. DST-I은 0과 부호를 바꾼 거울을 붙인 홀 확장
+
+$$
+v = (0, x_0, \dots, x_{N-1}, 0, -x_{N-1}, \dots, -x_0)
+$$
+
+(길이 $2(N+1)$)의 실수 FFT에서 $y_k = -\mathrm{Im}\,V_{k+1}$이에요. $N = 1$이면 길이 4의 확장 $(0, x_0, 0, -x_0)$이라 $y_0 = 2x_0$이에요.
+
+<Fig caption="N = 4의 짝 확장(위)과 홀 확장(아래). 흐린 칸은 붙인 거울이고, 홀 확장의 0은 거울의 축이에요.">
+  <ArrayFig name="DCT-I: v" data={['x0', 'x1', 'x2', 'x3', 'x2', 'x1']} tones={['b', 'b', 'b', 'b', 'g', 'g']} note="길이 2(N - 1) = 6" />
+  <ArrayFig name="DST-I: v" data={['0', 'x0', 'x1', 'x2', 'x3', '0', '-x3', '-x2', '-x1', '-x0']} tones={['m', 'b', 'b', 'b', 'b', 'm', 'g', 'g', 'g', 'g']} note="길이 2(N + 1) = 10" />
+</Fig>
+
+```cpp
+// csrc/fft/r2r.hpp
+inline void dct1(const Plan& p, int64_t n, const double* x, double* y, double* tmp, double* work) {
+    double* const v = tmp;              // 2n - 2
+    double* const X = tmp + 2 * n + 2;  // n complex
+    run_chunks(n, [&](int64_t i0, int64_t i1) {
+        std::memcpy(v + i0, x + i0, static_cast<size_t>(i1 - i0) * sizeof(double));
+        for (int64_t i = i0; i < std::min(i1, n - 2); ++i) v[n + i] = x[n - 2 - i];
+    });
+    p.r2c(v, X, work);
+    run_chunks(n, [&](int64_t k0, int64_t k1) {
+        for (int64_t k = k0; k < k1; ++k) y[k] = X[2 * k];
+    });
+}
+```
+
+확장의 길이는 언제나 짝수라 실수 종류의 계획([실수와 에르미트 변환](/internals/fft/real-hermitian/))이 받아요. 확장과 읽기는 복사뿐이니 `norm='backward'`의 DCT-I은 확장한 줄의 `rfft` 실수부와 비트까지 같아요.
+
+```python
+>>> import stardust as sd
+>>> import math, cmath
+>>> F = sd.fft
+>>> x = sd.asarray([1.0, 2.0, 3.0, 4.0])
+>>> F.dct(x, type=1)
+array([                  15.0,                   -4.0,
+       -2.220446049250313e-16,                   -1.0], dtype=float64)
+>>> v = sd.asarray([1.0, 2.0, 3.0, 4.0, 3.0, 2.0])
+>>> F.dct(x, type=1).tolist() == sd.real(F.rfft(v))[:4].tolist()
+True
+>>> u = sd.asarray([0.0, 1.0, 2.0, 3.0, 4.0, 0.0, -4.0, -3.0, -2.0, -1.0])
+>>> F.dst(x, type=1).tolist() == (-sd.imag(F.rfft(u))[1:5]).tolist()
+True
+>>> F.dst(sd.asarray([5.0]), type=1)
+array([10.0], dtype=float64)
+```
+
+확장은 일을 두 배로 늘리는 대신 실수 FFT 하나로 끝나요. 안쪽 길이는 확장의 반인 $N - 1$(DST-I은 $N + 1$)의 복소 변환이라, 그 수에 31보다 큰 소인수가 있으면 Bluestein을 타요. 길이 $N - 1$의 실수 FFT로 DCT-I을 계산하는 꼴도 알려져 있지만 수치적으로 불안정해서 쓰지 않아요.
+
+## 형 2와 3: Makhoul의 순서 바꿈
+
+DCT-II는 짝 원소를 앞에서부터, 홀 원소를 뒤에서부터 놓는 순서 바꿈
+
+$$
+v_m = x_{2m}, \qquad v_{N-1-m} = x_{2m+1}
+$$
+
+과 길이 $N$의 실수 FFT $V$ 하나로 계산해요(Makhoul 1980). 예를 들어 $N = 6$이면 $v = (x_0, x_2, x_4, x_5, x_3, x_1)$이에요.
+
+정의를 $y_k = 2\,\mathrm{Re}\sum_n x_n e^{-i\pi k(2n+1)/2N}$로 쓰고 $n$을 짝·홀로 나눠요. 짝 원소 $n = 2m$은 위상이 $\pi k(4m + 1)/2N$이에요. 홀 원소 $n = 2m + 1$은 $p = N - 1 - m$의 자리에 놓였고 $2n + 1 = 4N - (4p + 1)$이라 위상이 $2\pi k - \pi k(4p+1)/2N$인데, 실수부만 보니 부호가 바뀐 위상과 같아요. 그래서 모든 항이 $v_p$와 위상 $\pi k(4p+1)/2N$으로 모여
+
+$$
+y_k = 2\,\mathrm{Re}\Big(e^{-i\pi k/2N}\sum_p v_p\,e^{-2\pi i kp/N}\Big) = 2\,\mathrm{Re}\big(e^{-i\pi k/2N}\,V_k\big)
+$$
+
+예요. $V$는 에르미트라 앞쪽 반만 있으면 돼요. $(c, s) = (\cos, \sin)(\pi k/2N)$이라 하면 $V_k$ 하나에서 두 칸이 나와요.
+
+$$
+y_k = 2\,(c\,\mathrm{Re}\,V_k + s\,\mathrm{Im}\,V_k), \qquad y_{N-k} = 2\,(s\,\mathrm{Re}\,V_k - c\,\mathrm{Im}\,V_k)
+$$
+
+둘째 식은 $V_{N-k} = \overline{V_k}$와 $e^{-i\pi(N-k)/2N} = -i\,e^{i\pi k/2N}$에서 나와요. 칸마다 곱 하나와 FMA 하나, 그리고 정확한 2배예요.
+
+```cpp
+// csrc/fft/r2r.hpp
+inline void dct2(const Plan& p, int64_t n, const double* x, double* y, double* tmp, double* work) {
+    double* const v = tmp;          // n
+    double* const V = tmp + n;      // n / 2 + 1 complex
+    double* const t = tmp + 2 * n + 2;  // 4n (odd n)
+    run_chunks((n + 1) / 2, [&](int64_t i0, int64_t i1) {
+        for (int64_t i = i0; i < i1; ++i) v[i] = x[2 * i];
+        for (int64_t i = i0; i < std::min(i1, n / 2); ++i) v[n - 1 - i] = x[2 * i + 1];
+    });
+    real_forward(*p.half(), v, V, t, work);
+    const double* const w = p.table();
+    y[0] = 2.0 * V[0];
+    run_chunks(n / 2, [&](int64_t k0, int64_t k1) {
+        for (int64_t k = k0 + 1; k <= k1; ++k) {
+            const double c = w[2 * k], s = w[2 * k + 1], re = V[2 * k], im = V[2 * k + 1];
+            y[k] = 2.0 * std::fma(s, im, c * re);
+            if (2 * k != n) y[n - k] = 2.0 * std::fma(-c, im, s * re);
+        }
+    });
+}
+```
+
+`real_forward`는 짝수 $N$이면 실수 계획, 홀수 $N$이면 복소 계획과 에르미트 부분이에요. 실수 변환의 홀짝 길과 같아요. 표 `w`는 $k = 0, \dots, \lfloor N/2\rfloor$의 $(c, s)$이고 회전 인자 함수의 $e^{-2\pi i k/4N}$에서 와요.
+
+같은 일을 Python으로 따라가면 같은 값이 나와요.
+
+```python
+>>> x6 = sd.asarray([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+>>> v6 = sd.asarray([1.0, 3.0, 5.0, 6.0, 4.0, 2.0])
+>>> V = F.rfft(v6).tolist()
+>>> c = [math.cos(math.pi * k / 12) for k in range(4)]
+>>> s = [math.sin(math.pi * k / 12) for k in range(4)]
+>>> y = [2 * V[0].real] + [0.0] * 5
+>>> for k in range(1, 4):
+...     y[k] = 2 * (c[k] * V[k].real + s[k] * V[k].imag)
+...     y[6 - k] = 2 * (s[k] * V[k].real - c[k] * V[k].imag)
+>>> [round(t, 12) for t in y]
+[42.0, -14.419537040215, -0.0, -1.414213562373, -0.0, -0.277401416484]
+>>> [round(t, 12) for t in F.dct(x6).tolist()]
+[42.0, -14.419537040215, -0.0, -1.414213562373, -0.0, -0.277401416484]
+```
+
+DCT-III은 이 단계를 거꾸로 밟아요. $V_0 = x_0$, $V_k = (x_k - i\,x_{N-k})\,e^{+i\pi k/2N}$이 에르미트 반쪽 스펙트럼이고($k = N/2$에서는 $x_{N-k} = x_k$라 저절로 맞아요), 정규화 없는 역실수 FFT $v$의 순서를 되돌려 $y_{2m} = v_m$, $y_{2m+1} = v_{N-1-m}$이에요. 계획은 DCT-II와 같은 `Dct2`예요.
+
+```cpp
+// csrc/fft/r2r.hpp
+inline void dct3(const Plan& p, int64_t n, const double* x, double* y, double* tmp, double* work) {
+    double* const V = tmp;              // n / 2 + 1 complex
+    double* const v = tmp + n + 2;      // n
+    double* const t = tmp + 2 * n + 2;  // n (even n) or 4n (odd n)
+    const double* const w = p.table();
+    V[0] = x[0], V[1] = 0.0;
+    run_chunks(n / 2, [&](int64_t k0, int64_t k1) {
+        for (int64_t k = k0 + 1; k <= k1; ++k) {
+            const double c = w[2 * k], s = w[2 * k + 1], a = x[k], b = x[n - k];
+            V[2 * k] = std::fma(s, b, c * a);
+            V[2 * k + 1] = std::fma(-c, b, s * a);
+        }
+    });
+    real_inverse(*p.half(), V, v, t, work);
+    run_chunks((n + 1) / 2, [&](int64_t i0, int64_t i1) {
+        for (int64_t i = i0; i < i1; ++i) y[2 * i] = v[i];
+        for (int64_t i = i0; i < std::min(i1, n / 2); ++i) y[2 * i + 1] = v[n - 1 - i];
+    });
+}
+```
+
+정규화하지 않은 DCT-III은 DCT-II의 $2N$배 역이에요.
+
+```python
+>>> F.dct(F.dct(x6), type=3).tolist()
+[11.999999999999996, 24.0, 36.0, 48.0, 60.0, 72.0]
+```
+
+## 형 4, 짝수 $N$: 반 길이의 복소 FFT
+
+DCT-IV의 위상 $\pi(2k+1)(2n+1)/4N$은 $k = 2p$, $n = 2j$에서
+
+$$
+\frac{\pi(4p+1)(4j+1)}{4N} = \frac{2\pi pj}{N/2} + \frac{\pi(8p+1)}{8N} + \frac{\pi(8j+1)}{8N}
+$$
+
+으로 갈라져요. 가운데가 길이 $N/2$ DFT의 위상이고 양쪽은 $p$와 $j$에 따로 붙는 회전이에요. 그래서 $w_j = e^{-i\pi(8j+1)/8N}$으로
+
+$$
+z_j = (x_{2j} + i\,x_{N-1-2j})\,w_j, \qquad Z = \mathrm{DFT}_{N/2}(z), \qquad u_p = Z_p\,w_p
+$$
+
+를 만들면 $y_{2p} = 2\,\mathrm{Re}\,u_p$, $y_{N-1-2p} = -2\,\mathrm{Im}\,u_p$예요. 홀수 자리의 입력 $x_{N-1-2j}$과 출력 $y_{N-1-2p}$은 $2n + 1$이나 $2k + 1$이 $2N$에서 $4j + 1$을 뺀 꼴이라, 그 코사인이 같은 위상의 사인이 되어 허수부로 들어가요. 표는 $w_j$ 하나이고 앞뒤에서 같이 써요.
+
+```cpp
+    // csrc/fft/r2r.hpp
+    if (n % 2 == 0) {
+        const int64_t h = n / 2;
+        double* const z = tmp;      // h complex
+        double* const Z = tmp + n;  // h complex
+        const double* const w = p.table();
+        run_chunks(h, [&](int64_t j0, int64_t j1) {
+            for (int64_t j = j0; j < j1; ++j) {
+                const double a = x[2 * j], b = x[n - 1 - 2 * j], wr = w[2 * j], wi = w[2 * j + 1];
+                z[2 * j] = std::fma(-b, wi, a * wr);
+                z[2 * j + 1] = std::fma(b, wr, a * wi);
+            }
+        });
+        p.half()->execute(z, Z, work, false);
+        run_chunks(h, [&](int64_t q0, int64_t q1) {
+            for (int64_t q = q0; q < q1; ++q) {
+                const double a = Z[2 * q], b = Z[2 * q + 1], wr = w[2 * q], wi = w[2 * q + 1];
+                y[2 * q] = 2.0 * std::fma(-b, wi, a * wr);
+                y[n - 1 - 2 * q] = -2.0 * std::fma(b, wr, a * wi);
+            }
+        });
+        return;
+    }
+```
+
+크기 1인 대각 둘 사이에 길이 $N/2$의 복소 FFT가 있는 꼴이라, 오차는 그 복소 FFT의 것에 회전 인자 곱 두 번이 더해질 뿐이에요.
+
+## 형 4, 홀수 $N$: 부호를 붙인 순열
+
+홀수 $N$은 반으로 나눌 수 없어요. 대신 정수론으로 위상을 갈라 길이 $N$의 실수 FFT 하나로 계산해요. 길이 $2N$이나 $4N$으로 확장하는 방법보다 변환 길이가 짧아요.
+
+$a = 2k + 1$, $b = 2n + 1$이라 하면 위상은 $2\pi ab/8N$이에요. $N$이 홀수라 $\gcd(N, 8) = 1$이고 $\alpha N + 8\beta = 1$인 정수 $\alpha$, $\beta$가 있어요. 홀수의 제곱은 8로 나눠 1이 남으니 $\alpha = N \bmod 8$이면 돼요. 그러면 $1/8N = \alpha/8 + \beta/N$이고
+
+$$
+\frac{2\pi ab}{8N} = A + B, \qquad A = \frac{2\pi\,\alpha ab}{8}, \qquad B = \frac{2\pi\,\beta ab}{N}
+$$
+
+예요. $\alpha ab$는 홀수라 $A$는 $\pi/4$의 홀수 배예요. 곱셈 지표 $\chi_1$($r \equiv \pm 1 \pmod 8$이면 $+1$, $\pm 3$이면 $-1$)과 $\chi_4$($r \equiv 1 \pmod 4$이면 $+1$, $3$이면 $-1$)로 쓰면
+
+$$
+\cos A = \frac{\chi_1(\alpha ab)}{\sqrt 2}, \qquad \sin A = \frac{\chi_1(\alpha ab)\,\chi_4(\alpha ab)}{\sqrt 2}
+$$
+
+예요($r = 1, 3, 5, 7$에서 $\cos(\pi r/4)$의 부호가 $+, -, -, +$, $\sin(\pi r/4)$의 부호가 $+, +, -, -$). 두 지표가 곱셈적이라 $\chi(\alpha ab) = \chi(\alpha a)\chi(b)$로 나눠지고, $\cos(A + B)$를 펼치면
+
+$$
+y_k = \sqrt 2\,\chi_1(\alpha a)\sum_n \chi_1(b)\,x_n\big(\cos B - \chi_4(\alpha a)\,\chi_4(b)\sin B\big)
+$$
+
+가 돼요. 이제 $u_j = \chi_1(b)\,x_n$을 $\chi_4(b) = 1$이면 $j = b \bmod N$에, $\chi_4(b) = -1$이면 $j = -b \bmod N$에 둬요. 뒤쪽은 $B$의 부호가 바뀌어 $\sin B$ 앞의 $\chi_4(b)$를 지워요. $b \mapsto 2N - b$가 $\chi_4$를 지키는 대합이라 $j$는 $0, \dots, N-1$의 전단사예요. 그러면 $U = \mathrm{DFT}_N(u)$로
+
+$$
+y_k = \sqrt 2\,\chi_1(\alpha a)\,\big(\mathrm{Re}\,U_l + \chi_4(\alpha a)\,\mathrm{Im}\,U_l\big), \qquad l = \beta a \bmod N
+$$
+
+예요. $u$가 실수라 $U$는 에르미트이고 $l > N/2$이면 $U_l = \overline{U_{N-l}}$로 앞쪽 반에서 읽어요.
+
+$N = 5$면 $\alpha = 5$, $\beta = 2$예요($5\cdot 5 + 8\cdot(-3) = 1$이고 $-3 \equiv 2$). 입력의 자리와 부호, 출력이 읽는 칸은 이래요.
+
+<Fig caption="N = 5의 홀수 DCT-IV. 입력 x를 부호를 붙여 u로 옮기고(위), 출력 y_k는 U의 l = 2(2k + 1) mod 5 칸에서 읽어요(아래). 진한 칸이 부호가 바뀐 원소예요.">
+  <ArrayFig name="u" data={['-x2', 'x0', '-x1', 'x3', 'x4']} tones={['b', 'a', 'b', 'a', 'a']} note="u_j, j = 0 .. 4" />
+  <ArrayFig name="l" data={['2', '1', '0', '4', '3']} note="y_k가 읽는 칸, k = 0 .. 4" />
+</Fig>
+
+Python으로 이 식을 따라가면 DCT-IV의 값이 나와요.
+
+```python
+>>> x5 = sd.asarray([1.0, 2.0, 3.0, 4.0, 5.0])
+>>> N = 5
+>>> alpha = N % 8
+>>> beta = ((1 - alpha * N) // 8) % N
+>>> alpha, beta
+(5, 2)
+>>> chi1 = lambda r: 1 if r % 8 in (1, 7) else -1
+>>> chi4 = lambda r: 1 if r % 4 == 1 else -1
+>>> slot = [None] * N
+>>> for n in range(N):
+...     b = 2 * n + 1
+...     j = b % N if chi4(b) == 1 else (-b) % N
+...     slot[j] = (chi1(b), n)
+>>> slot
+[(-1, 2), (1, 0), (-1, 1), (1, 3), (1, 4)]
+>>> xs = x5.tolist()
+>>> uu = [sg * xs[n] for sg, n in slot]
+>>> U = [sum(uu[j] * cmath.exp(-2j * cmath.pi * j * l / N) for j in range(N)) for l in range(N)]
+>>> ls = [beta * (2 * k + 1) % N for k in range(N)]
+>>> ls
+[2, 1, 0, 4, 3]
+>>> yy = [math.sqrt(2) * chi1(alpha * (2 * k + 1)) * (U[ls[k]].real + chi4(alpha * (2 * k + 1)) * U[ls[k]].imag) for k in range(N)]
+>>> [round(t, 12) for t in yy]
+[14.978312113382, -14.276301500738, 7.071067811865, -6.458721197344, 5.488378830686]
+>>> [round(t, 12) for t in F.dct(x5, type=4).tolist()]
+[14.978312113382, -14.276301500738, 7.071067811865, -6.458721197344, 5.488378830686]
+```
+
+코드에서는 순열과 부호를 계획을 만들 때 원소마다 정수 하나의 표로 만들어 둬요. 앞 $N$칸은 $u_j$의 원천 $n$과 부호, 뒤 $N$칸은 $y_k$가 읽을 $l' = \min(l, N - l)$과 두 부호예요. 곱셈은 $\alpha$, $\beta$로 나머지를 구할 때 넘치지 않게 128비트 정수로 해요.
+
+```cpp
+// csrc/fft/r2r.hpp
+inline std::vector<int64_t> dct4_odd_tables(int64_t n) {
+    auto chi1 = [](int64_t r) { return (r & 7) == 1 || (r & 7) == 7 ? 1 : -1; };
+    auto chi4 = [](int64_t r) { return (r & 3) == 1 ? 1 : -1; };
+    const int64_t alpha = n & 7;  // n^-1 mod 8: the odd squares are 1 mod 8
+    // beta = (1 - alpha n) / 8 (exact) reduced mod n: 8^-1 mod n
+    __int128 br = ((static_cast<__int128>(1) - static_cast<__int128>(alpha) * n) / 8) % n;
+    if (br < 0) br += n;
+    const int64_t beta = static_cast<int64_t>(br);
+    std::vector<int64_t> t(static_cast<size_t>(2 * n));
+    for (int64_t i = 0; i < n; ++i) {
+        const int64_t b = 2 * i + 1;
+        const int64_t bm = b % n;
+        const int64_t j = chi4(b) == 1 ? bm : (n - bm) % n;
+        t[static_cast<size_t>(j)] = (i << 1) | (chi1(b) < 0 ? 1 : 0);
+    }
+    for (int64_t k = 0; k < n; ++k) {
+        const int64_t a = 2 * k + 1;
+        const int64_t l = static_cast<int64_t>(static_cast<__int128>(beta) * (a % n) % n);
+        const int64_t aa = (alpha * (a & 7)) & 7;
+        int sigma = chi4(aa);
+        int64_t lp = l;
+        if (2 * l > n) lp = n - l, sigma = -sigma;
+        t[static_cast<size_t>(n + k)] = (lp << 2) | (chi1(aa) < 0 ? 2 : 0) | (sigma < 0 ? 1 : 0);
+    }
+    return t;
+}
+```
+
+줄 커널은 표대로 부호를 붙여 옮기고, 길이 $N$의 복소 변환과 에르미트 부분으로 $U$의 앞쪽 반을 구한 뒤, 칸마다 $\pm\sqrt 2\,(\mathrm{Re}\,U_{l'} \pm \mathrm{Im}\,U_{l'})$ 하나를 계산해요. 부호를 붙인 순열은 등거리이고 $U$에서 $y$로 가는 사상은 $\sqrt 2$ 곱하기 등거리라, 실수 FFT의 오차를 그대로 옮겨요.
+
+## DST는 같은 형의 DCT
+
+형 2, 3, 4의 DST는 같은 형의 DCT에 정확한 부호 바꾸기와 뒤집기를 더한 것이에요.
+
+$$
+\mathrm{DST\text{-}II}(x)_k = \mathrm{DCT\text{-}II}\big((-1)^n x_n\big)_{N-1-k}, \qquad
+\mathrm{DST\text{-}III}(x)_k = (-1)^k\,\mathrm{DCT\text{-}III}(x_{N-1-n})_k
+$$
+
+이고 DST-IV는 DST-III과 같은 꼴이에요. 예를 들어 DST-II는 $\sin(\pi(k+1)(2n+1)/2N)$에서 $k + 1 = N - k'$로 두면 $\sin(\pi(2n+1)/2 - \pi k'(2n+1)/2N) = (-1)^n\cos(\pi k'(2n+1)/2N)$이 돼요. 줄 커널은 정확히 그렇게 계산해요. 입력을 고치고, DCT를 하고, 결과를 고쳐요.
+
+```cpp
+// csrc/fft/r2r.hpp
+inline void r2r_line(
+    const Plan& plan, const R2r& r, int64_t n, double s, double* x, double* y, double* tmp, double* work
+) {
+    if (r.type == 1) {
+        if (r.sine) {
+            detail::dst1(plan, n, x, y, tmp, work);
+            scale_reals(y, n, s);
+            return;
+        }
+        if (r.ortho) x[0] *= kSqrt2, x[n - 1] *= kSqrt2;
+        detail::dct1(plan, n, x, y, tmp, work);
+        scale_reals(y, n, s);
+        if (r.ortho) y[0] /= kSqrt2, y[n - 1] /= kSqrt2;
+        return;
+    }
+    if (r.sine) {  // the DCT's input: DST-II (-1)^n x_n, DST-III and DST-IV the reversed x
+        if (r.type == 2) {
+            detail::negate_odd(x, n);
+        } else {
+            detail::reverse(x, n);
+        }
+    }
+    if (r.type == 2) {
+        detail::dct2(plan, n, x, y, tmp, work);
+    } else if (r.type == 3) {
+        if (r.ortho) x[0] *= kSqrt2;
+        detail::dct3(plan, n, x, y, tmp, work);
+    } else {
+        detail::dct4(plan, n, x, y, tmp, work);
+    }
+    scale_reals(y, n, s);
+    if (r.ortho && r.type == 2) y[0] /= kSqrt2;
+    if (r.sine) {  // DST-II the reversed result, DST-III and DST-IV (-1)^k y_k
+        if (r.type == 2) {
+            detail::reverse(y, n);
+        } else {
+            detail::negate_odd(y, n);
+        }
+    }
+}
+```
+
+부호 바꾸기와 뒤집기는 정확하니 DST의 비트는 그 DCT의 비트에서 바로 나와요. 같은 까닭으로 `idct`와 `idst`는 형 2와 3을 맞바꿔 계산하고 역방향 인자를 곱해요. 인자가 1인 `idct(x, type=3, norm='forward')`는 `dct(x, type=2)`와 비트까지 같아요.
+
+```python
+>>> rng = sd.random.default_rng(1)
+>>> w = rng.random(8)
+>>> sgn = sd.asarray([1.0, -1.0] * 4)
+>>> F.dst(w, type=2).tolist() == F.dct(w * sgn, type=2)[::-1].tolist()
+True
+>>> F.dst(w, type=3).tolist() == (F.dct(w[::-1], type=3) * sgn).tolist()
+True
+>>> F.dst(w, type=4).tolist() == (F.dct(w[::-1], type=4) * sgn).tolist()
+True
+>>> F.idct(w, type=3, norm="forward").tolist() == F.dct(w, type=2).tolist()
+True
+```
+
+## 정규화와 `orthogonalize`
+
+정규화는 결과에 인자 $s$ 하나를 곱해요. $s$는 $1$, $1/N'$, $\mathrm{fl}(1/\mathrm{fl}(\sqrt{N'}))$ 가운데 하나이고 $N'$은 논리 길이예요(DCT-I은 $2(N-1)$, DST-I은 $2(N+1)$, 그 밖은 $2N$). 확장한 줄의 길이를 세는 셈이에요.
+
+`norm='ortho'`의 인자만으로는 형 1–3의 행렬이 직교가 되지 않아요. 첫(과 끝) 행이나 열이 $\sqrt 2$만큼 어긋나 있어서예요. `orthogonalize`가 참이면(`norm='ortho'`의 기본) 그것을 바로잡아요.
+
+- DCT-II: 인자를 곱한 뒤 $y_0$을 $\mathrm{fl}(\sqrt 2)$로 나눠요.
+- DCT-III: 변환 전에 $x_0$에 $\mathrm{fl}(\sqrt 2)$를 곱해요.
+- DCT-I: $x_0$, $x_{N-1}$에 곱하고 $y_0$, $y_{N-1}$을 나눠요.
+- DST-II와 DST-III: 뒤집기를 거치니 $y_{N-1}$과 $x_{N-1}$이에요.
+- DCT-IV와 DST-I은 원래 직교라 하지 않아요.
+
+곱셈과 나눗셈은 정규화 인자와 따로 한 번씩 반올림해요.
+
+```python
+>>> I = sd.eye(5)
+>>> C = F.dct(I, type=2, axis=0, norm="ortho")
+>>> float(sd.max(sd.abs(C.T @ C - I)))
+1.1604411062522099e-16
+>>> C0 = F.dct(I, type=2, axis=0, norm="ortho", orthogonalize=False)
+>>> [round(t, 12) for t in (C0.T @ C0)[0].tolist()]
+[1.2, 0.2, 0.2, 0.2, 0.2]
+>>> C1 = F.dct(I, type=1, axis=0, norm="ortho")
+>>> float(sd.max(sd.abs(C1.T @ C1 - I)))
+2.220446049250313e-16
+```
+
+## 복소 입력과 다차원
+
+복소 입력은 실수부와 허수부를 따로 변환해요. complex128 배열의 실수부(시작 0바이트)와 허수부(시작 8바이트)를 같은 간격의 float64 보기로 읽고 결과의 같은 부분에 써요. 복사가 없고, `dct(x)`는 `dct(x.real) + 1j * dct(x.imag)`와 비트까지 같아요.
+
+```cpp
+// csrc/fft/r2r.cpp
+NDArray part_view(const NDArray& a, int part) {
+    NDArray v = NDArray::meta_of(a);
+    v.dtype = DType::Float64;
+    v.data = a.data + 8 * part;
+    v.update_flags();
+    return v;
+}
+```
+
+다차원 변환은 `axes`의 뒤에서 앞으로 축마다 1차원 판을 거듭해요. 첫 패스가 입력을 읽어 새 float64 배열에 쓰고, 축의 길이가 그대로인 뒤 패스는 그 배열을 제자리에서 변환하고, 마지막 패스가 결과에 써요. 인자 하나는 마지막 패스가 곱해요.
+
+```cpp
+// csrc/fft/r2r.cpp
+void r2r_passes(
+    const NDArray& x,
+    const std::vector<int>& axes,
+    const std::vector<int64_t>& len,
+    const R2r& r,
+    double scale,
+    NDArray& out
+) {
+    const int k = static_cast<int>(axes.size());
+    NDArray cur = x;
+    bool own = false;
+    for (int i = k - 1; i >= 0; --i) {
+        const int ax = axes[static_cast<size_t>(i)];
+        const int64_t n = len[static_cast<size_t>(i)];
+        if (i == 0) {
+            r2r_axis(cur, ax, n, r, scale, out);
+        } else if (own && cur.shape[static_cast<size_t>(ax)] == n) {
+            r2r_axis(cur, ax, n, r, 1.0, cur);
+        } else {
+            NDArray next = new_result(cur, ax, n, DType::Float64);
+            r2r_axis(cur, ax, n, r, 1.0, next);
+            cur = std::move(next);
+            own = true;
+        }
+    }
+}
+```
+
+제자리 패스가 되는 까닭은 구동기가 줄을 언제나 묶음 버퍼로 모으기 때문이에요. 줄 커널이 제 사본을 고쳐 쓰니(부호, 뒤집기, $\sqrt 2$) 입력에서 바로 읽을 수 없고, 묶음 전체를 모은 뒤에 쓰니 결과가 입력 자신이어도 돼요. 결과의 줄이 연속이면 바로 쓰고 아니면 흩어요.
+
+```python
+>>> zc = w + 1j * w[::-1]
+>>> F.dct(zc).tolist() == (F.dct(sd.real(zc)) + 1j * F.dct(sd.imag(zc))).tolist()
+True
+>>> M = rng.random((4, 6))
+>>> F.dctn(M).tolist() == F.dct(F.dct(M, axis=1), axis=0).tolist()
+True
+>>> F.dctn(M, axes=(1,)).tolist() == F.dct(M, axis=1).tolist()
+True
+```
+
+긴 줄에서는 앞뒤 처리(확장, 순서 바꿈, 회전 인자 곱)를 $2^{14}$칸씩 풀에서 나누고, 안쪽 실수·복소 변환은 길이가 $2^{15}$ 이상이면 4단계 분해예요. 칸마다 따로 계산하니 비트가 같아요.
+
+## 오차 한계
+
+계약은 $M = 2N + 2$로
+
+$$
+\lVert \hat y - y\rVert \le (\kappa L(M) + c_2)\,u\,\lVert T\rVert\,\lVert x\rVert + \tau, \qquad c_2 = 8
+$$
+
+이에요. $\lVert T\rVert$는 정규화를 포함한 변환 행렬의 2-노름이에요. 증명은 안쪽 실수 FFT가 전체 스펙트럼에서 제 계약 $(\kappa L(n) + c_0)\,u\sqrt n\,\lVert v\rVert$를 지킨다는 데서 출발해요. 스펙트럼에서 $y$로 가는 사상은 형마다 에르미트 스펙트럼 위에서 등거리의 배수이고, 그 배수가 $\lVert T\rVert/(\sqrt n\,\lVert v\rVert)$를 넘지 않아요.
+
+- **DCT-I**: 앞 $N$칸의 실수부예요. $\lVert v\rVert \le \sqrt 2\,\lVert x\rVert$, $\lVert T\rVert \le 2\sqrt{N-1}$이에요.
+- **DST-I**: $N$칸의 허수부인데 그 거울 칸이 같은 오차를 가지니 전체 스펙트럼 오차의 $1/\sqrt 2$ 이하예요.
+- **DCT-II**: $2\,\mathrm{Re}(w_kV_k)$라 2 곱하기 등거리이고 $\lVert T\rVert = 2\sqrt N$이에요. DCT-III은 그 역이고 $\lVert V\rVert_H \le \sqrt 2\,\lVert x\rVert$예요.
+- **DCT-IV**: 홀수 $N$은 $\sqrt 2$ 곱하기 등거리($\lVert T\rVert = \sqrt{2N}$), 짝수 $N$은 크기 1인 두 대각 사이의 길이 $N/2$ 복소 FFT예요.
+
+안쪽 길이는 $M$ 이하이고 그 단 수는 $L(M) - 1$ 이하라서 $\kappa u$ 하나가 남아요. 앞뒤 처리(회전 인자 곱 $2u + \mu = 3.5u$, 덧셈 하나, $\sqrt 2$ 곱)와 `orthogonalize`의 $\sqrt 2$가 그것과 $c_2$ 안에 들어요. 넘침의 정의역도 복소 변환과 같아요. 확장과 2배가 중간값을 $\lVert x\rVert_1$의 4배까지만 키우기 때문이에요.
+
+안쪽 길이(DCT-I은 $N - 1$, DST-I은 $N + 1$, 형 2·3·4는 짝수 $N$이면 $N/2$, 홀수 $N$이면 $N$)에 13–31의 소인수가 있으면 $\kappa = 17$, 31보다 큰 소인수가 있으면 그 Bluestein의 $\rho$와 안쪽 길이 $m$으로 $L(M)$ 대신 $2L(m) + 3$을 세요. 잰 값은 [정확도와 성능](/internals/fft/accuracy-performance/)에 있어요.

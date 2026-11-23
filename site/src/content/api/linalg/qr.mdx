@@ -1,0 +1,477 @@
+---
+title: QR 분해
+names: [qr, qr_pivoted]
+group: 분해
+order: 3
+signatures:
+  - "sd.linalg.qr(x, /, *, mode='reduced')"
+  - "sd.linalg.qr_pivoted(x, /, *, mode='reduced')"
+summary: 행렬을 열끼리 서로 수직인 행렬 Q와 위 삼각 행렬 R의 곱으로 나눠요. 최소제곱 문제를 안정적으로 푸는 도구예요. qr_pivoted는 열의 순서를 바꿔 가며 분해해서 랭크를 드러내요.
+params:
+  - name: x
+    type: ndarray
+    kind: positional-only
+    desc: 분해할 행렬. 모양은 (..., M, N)이고 정사각이 아니어도 돼요. 앞쪽 축이 있으면 행렬 여러 개로 봐요.
+  - name: mode
+    type: str
+    kind: keyword-only
+    desc: "'reduced'(기본값)면 필요한 만큼만, 'complete'면 Q를 M×M 정사각으로 채워서 돌려줘요."
+returns:
+  type: QRResult(Q, R) 또는 QRPivotedResult(Q, R, perm)
+  desc: "이름 있는 튜플. K = min(M, N)일 때 'reduced'는 Q (..., M, K), R (..., K, N)이고 'complete'는 Q (..., M, M), R (..., M, N)이에요. qr_pivoted의 perm은 열의 순서를 담은 int64 배열 (..., N)이고, x[:, perm]이 Q @ R과 같아요. 결과의 배열은 쓰기 금지예요."
+raises:
+  - type: TypeError
+    desc: x가 배열이 아닐 때, mode가 문자열이 아닐 때.
+  - type: ValueError
+    desc: "x가 2차원보다 작을 때, mode가 'reduced'나 'complete'가 아닌 문자열일 때, x에 NaN이나 inf가 있을 때."
+seeAlso: [lstsq, solve_triangular, matrix_rank, svd, lu, cholesky, basics, errors]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import FigRow from '../../../components/fig/FigRow.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+`qr`은 행렬 하나를 두 행렬의 곱 $A = QR$로 나눠요.
+
+- `Q`는 열끼리 서로 수직이고 열마다 길이가 1인 행렬이에요. 이런 열을 정규직교 열이라고 하고, 정사각이면서 이런 열을 가진 행렬을 직교 행렬이라고 해요.
+- `R`은 위 삼각 행렬이에요. 대각선 아래쪽이 모두 0이에요.
+
+행렬 `A`의 열은 보통 서로 비스듬히 놓여 있어요. QR 분해는 그 열이 가리키는 방향을 서로 수직인 방향(`Q`의 열)으로 다시 정리하고, 원래의 열이 그 방향을 얼마씩 섞은 것인지를 `R`에 적어 둬요. 수직인 방향으로 정리해 두면 계산이 단순해지고 반올림 오차에도 강해져요.
+
+```python
+>>> import stardust as sd
+>>> a = sd.asarray([[4.0, 1.0],
+...                 [3.0, 7.0]])
+>>> r = sd.linalg.qr(a)
+>>> r.Q
+array([[-0.8, -0.6],
+       [-0.6,  0.8]], dtype=float64)
+>>> r.R
+array([[-5.0, -5.0],
+       [ 0.0,  5.0]], dtype=float64)
+```
+
+둘을 곱하면 `a`가 다시 나와요.
+
+```python
+>>> r.Q @ r.R
+array([[4.0, 1.0],
+       [3.0, 7.0]], dtype=float64)
+```
+
+<Fig caption="a = Q × R. Q의 두 열은 서로 수직이고 길이가 1이에요. R의 흐린 칸은 정확히 0이에요.">
+  <ArrayFig name="a" data={[[4, 1], [3, 7]]} />
+  <Op>=</Op>
+  <ArrayFig name="Q" data={[[-0.8, -0.6], [-0.6, 0.8]]} tones={[['a', 'b'], ['a', 'b']]} note="열끼리 수직, 길이 1" />
+  <Op>×</Op>
+  <ArrayFig name="R" data={[[-5, -5], [0, 5]]} tones={[['a', 'a'], ['m', 'a']]} note="위 삼각" />
+</Fig>
+
+결과는 이름 있는 튜플이에요. `r.Q`, `r.R`로 꺼내도 되고 변수 둘에 풀어 담아도 돼요.
+
+```python
+>>> Q, R = sd.linalg.qr(a)
+```
+
+`qr_pivoted`는 같은 분해를 하되 열의 순서를 바꿔 가며 해요. 결과가 `Q`, `R`, `perm` 셋이에요. 아래 [qr_pivoted 절](#qr_pivoted-열을-바꿔-가며-분해하기)에서 설명해요.
+
+<Reference />
+
+## Q는 어떤 행렬인가요
+
+`Q`의 열을 $q_1, q_2, \dots$라고 하면, 서로 다른 두 열의 내적은 0이고(수직) 자기 자신과의 내적은 1이에요(길이 1). 이것을 한 줄로 쓰면
+
+$$Q^{\mathsf T} Q = I$$
+
+예요. $I$는 대각선이 1이고 나머지가 0인 단위행렬이에요.
+
+```python
+>>> Q.T @ Q
+array([[                    1.0, -2.6645352591003756e-17],
+       [-2.6645352591003756e-17,                     1.0]], dtype=float64)
+```
+
+대각선은 1이고, 0이어야 할 자리에는 $10^{-17}$ 크기의 수가 남았어요. `0.8`, `0.6` 같은 수는 2진수로 정확히 담기지 않아서, 이렇게 작은 행렬에서도 $Q^{\mathsf T}Q$가 단위행렬과 마지막 자리에서 달라요. 그래서 `==` 대신 차이의 크기로 확인해요.
+
+```python
+>>> float(sd.max(sd.abs(Q.T @ Q - sd.eye(2)))) < 1e-12
+True
+```
+
+이 성질 때문에 `Q`는 다루기가 아주 쉬워요.
+
+- 전치가 역행렬 구실을 해요. $Q$를 없애고 싶으면 왼쪽에 $Q^{\mathsf T}$를 곱하면 돼요. 정사각인 `Q`라면 $Q^{\mathsf T}$가 곧 역행렬이에요. 방정식을 풀 필요가 없어요.
+- 길이를 바꾸지 않아요. 정사각인 `Q`를 벡터에 곱하면 방향만 돌아가고 길이는 그대로예요. 그래서 계산하는 동안 오차가 불어나지 않아요.
+
+## `mode`: Q를 어디까지 만들까
+
+행이 열보다 많은 "세로로 긴" 행렬에서 두 모드가 달라져요. `M`행 `N`열 행렬에서 `K = min(M, N)`이라고 하면 두 모드의 결과 모양은 이래요.
+
+| `mode` | `Q` | `R` | 설명 |
+|:---:|:---:|:---:|---|
+| `'reduced'` (기본값) | `(M, K)` | `(K, N)` | `x`를 다시 만드는 데 필요한 만큼만 |
+| `'complete'` | `(M, M)` | `(M, N)` | `Q`를 정사각으로 채우고, `R` 아래에 0인 행을 붙여요 |
+
+데이터 네 점에 직선을 맞출 때 쓰는 4행 2열 행렬로 볼게요.
+
+```python
+>>> A = sd.asarray([[1.0, 1.0],
+...                 [1.0, 2.0],
+...                 [1.0, 3.0],
+...                 [1.0, 4.0]])
+>>> Q, R = sd.linalg.qr(A)
+>>> Q.shape, R.shape
+((4, 2), (2, 2))
+>>> Qc, Rc = sd.linalg.qr(A, mode='complete')
+>>> Qc.shape, Rc.shape
+((4, 4), (4, 2))
+```
+
+<Fig column caption="4행 2열 행렬의 두 모드. 'complete'는 Q에 수직인 열 두 개를 더 채우고(진한 칸), R에는 그만큼 0인 행이 붙어요(흐린 칸). 곱한 결과는 둘 다 A예요.">
+  <FigRow>
+    <ArrayFig name="A" data={[['·', '·'], ['·', '·'], ['·', '·'], ['·', '·']]} note="(4, 2)" />
+    <Op note="'reduced'">=</Op>
+    <ArrayFig name="Q" data={[['·', '·'], ['·', '·'], ['·', '·'], ['·', '·']]} tones={[['a', 'a'], ['a', 'a'], ['a', 'a'], ['a', 'a']]} note="(4, 2)" />
+    <Op>×</Op>
+    <ArrayFig name="R" data={[['·', '·'], ['0', '·']]} tones={[['a', 'a'], ['m', 'a']]} note="(2, 2)" />
+  </FigRow>
+  <FigRow>
+    <ArrayFig name="A" data={[['·', '·'], ['·', '·'], ['·', '·'], ['·', '·']]} note="(4, 2)" />
+    <Op note="'complete'">=</Op>
+    <ArrayFig name="Q" data={[['·', '·', '·', '·'], ['·', '·', '·', '·'], ['·', '·', '·', '·'], ['·', '·', '·', '·']]} tones={[['a', 'a', 'b', 'b'], ['a', 'a', 'b', 'b'], ['a', 'a', 'b', 'b'], ['a', 'a', 'b', 'b']]} note="(4, 4)" />
+    <Op>×</Op>
+    <ArrayFig name="R" data={[['·', '·'], ['0', '·'], ['0', '0'], ['0', '0']]} tones={[['a', 'a'], ['m', 'a'], ['m', 'm'], ['m', 'm']]} note="(4, 2)" />
+  </FigRow>
+</Fig>
+
+`'complete'`에서 더 생기는 `Q`의 열은 `R`의 0인 행과 곱해지므로 `A`를 다시 만드는 데는 쓰이지 않아요. 대부분의 계산에는 `'reduced'`로 충분하고 메모리도 덜 써요. `'complete'`는 `A`의 열이 닿지 못하는 나머지 방향(직교 여공간)까지 필요할 때 써요.
+
+두 모드 모두 `Q @ R`은 `A`와 같아요.
+
+```python
+>>> float(sd.max(sd.abs(Q @ R - A))) < 1e-12
+True
+>>> float(sd.max(sd.abs(Qc @ Rc - A))) < 1e-12
+True
+```
+
+가로로 길거나 정사각인 행렬(`M`이 `N` 이하)에서는 두 모드의 결과가 같아요. `Q`가 이미 정사각이라 더 채울 것이 없어요.
+
+```python
+>>> wide = sd.asarray([[4.0, 1.0, 5.0],
+...                    [3.0, 7.0, 10.0]])
+>>> sd.linalg.qr(wide).Q.shape, sd.linalg.qr(wide).R.shape
+((2, 2), (2, 3))
+>>> sd.linalg.qr(wide, mode='complete').Q.shape
+(2, 2)
+```
+
+`mode`의 이름과 기본값은 [svd](/api/linalg/svd/)와 같아요.
+
+## 어디에 쓰나요
+
+### 최소제곱: 데이터에 직선 맞추기
+
+방정식의 수가 미지수보다 많으면 모든 식을 정확히 만족하는 해가 보통 없어요. 그 대신 어긋난 정도의 제곱합이 가장 작은 해를 찾는데, 이런 문제를 **최소제곱** 문제라고 해요. 데이터에 직선이나 곡선을 맞추는 일이 대표적이에요.
+
+$x$ 좌표가 `1, 2, 3, 4`이고 $y$ 값이 `1, 3, 4, 6`인 네 점에 직선 $y = c_0 + c_1 x$를 맞춰 볼게요. 위의 `A`가 바로 이 문제의 행렬이에요(첫 열은 $c_0$에 곱해지는 1, 둘째 열은 $c_1$에 곱해지는 $x$).
+
+$A = QR$을 구해 두면 최소제곱해는 삼각 방정식 하나로 나와요.
+
+$$Rc = Q^{\mathsf T} y$$
+
+```python
+>>> y = sd.asarray([1.0, 3.0, 4.0, 6.0])
+>>> c = sd.linalg.solve_triangular(R, Q.T @ y, upper=True)
+>>> c
+array([-0.5000000000000002,                 1.6], dtype=float64)
+```
+
+마지막 자리의 반올림 오차를 빼면 가장 잘 맞는 직선은 $y = -0.5 + 1.6x$예요. 이 직선 위의 값, 곧 맞춘 값은 `Q @ (Q.T @ y)`로도 구할 수 있어요. `y`를 `A`의 열이 만드는 평면에 수직으로 내린 그림자예요.
+
+```python
+>>> Q @ (Q.T @ y)
+array([1.1, 2.7, 4.3, 5.9], dtype=float64)
+```
+
+이 풀이에는 `'reduced'` 모드의 `Q`와 `R`이면 돼요. 한 번만 풀 거라면 [lstsq](/api/linalg/lstsq/)가 더 간단하고, 열이 서로 독립이 아닐 때(랭크가 부족할 때)도 알아서 처리해 줘요. 같은 `A`로 `y`만 바꿔 가며 여러 번 풀 때 QR을 직접 쓰는 것이 이득이에요.
+
+<Callout type="tip" title="X.T @ X를 만들어 푸는 것보다 정확해요">
+
+최소제곱 문제를 `X.T @ X`를 만들어서 [cholesky](/api/linalg/cholesky/)로 푸는 방법(정규방정식)도 있어요. 빠르지만, `X.T @ X`를 만드는 순간 행렬의 조건수가 제곱이 되어 반올림 오차에 훨씬 약해져요. 열끼리 서로 비슷해서 까다로운 문제일수록 QR이 더 정확한 답을 줘요.
+
+</Callout>
+
+### 수직인 기저 만들기
+
+`x`의 열이 서로 독립이면, `Q`의 열은 `x`의 열과 같은 공간을 만들어 내면서 서로 수직이고 길이가 1인 벡터예요. 여러 벡터를 "서로 수직이 되게 다듬고" 싶을 때 `qr(x).Q`를 쓰면 돼요.
+
+### 정사각 행렬의 방정식과 행렬식
+
+정사각 행렬이라면 $Ax = b$를 $Rx = Q^{\mathsf T} b$로 바꿔 풀 수 있어요. [solve](/api/linalg/solve/)보다 느리지만 까다로운 행렬에서 더 안정적이에요.
+
+```python
+>>> sd.linalg.solve_triangular(r.R, r.Q.T @ sd.asarray([5.0, 10.0]), upper=True)
+array([1.0, 1.0], dtype=float64)
+```
+
+행렬식의 절댓값은 `R`의 대각 원소 곱의 절댓값과 같아요(`Q`의 행렬식은 `1` 아니면 `-1`이에요). 부호까지 필요하면 [det](/api/linalg/det/)를 쓰세요.
+
+```python
+>>> abs(sd.prod(sd.linalg.diagonal(r.R)))
+25.0
+>>> sd.linalg.det(a)
+25.0
+```
+
+## `qr_pivoted`: 열을 바꿔 가며 분해하기
+
+`qr_pivoted`는 단계마다 남은 열 가운데 가장 긴 열을 앞으로 가져와서 분해해요. 그래서 분해되는 것은 `x` 자체가 아니라 열의 순서를 바꾼 행렬이고, 그 순서가 `perm`에 담겨 나와요.
+
+$$A P = QR$$
+
+코드로는 `x[:, perm]`이 `Q @ R`과 같아요.
+
+```python
+>>> m = sd.asarray([[3.0, 6.0, 0.0],
+...                 [4.0, 8.0, 0.0],
+...                 [0.0, 0.0, 2.0]])
+>>> p = sd.linalg.qr_pivoted(m)
+>>> p.perm
+array([1, 2, 0], dtype=int64)
+>>> m[:, p.perm]
+array([[6.0, 0.0, 3.0],
+       [8.0, 0.0, 4.0],
+       [0.0, 2.0, 0.0]], dtype=float64)
+>>> float(sd.max(sd.abs(m[:, p.perm] - p.Q @ p.R))) < 1e-12
+True
+```
+
+### `perm` 읽는 법
+
+`perm[j]`는 늘어놓은 행렬의 j번째 열이 원래 행렬의 몇 번째 열인지를 나타내요. `perm = [1, 2, 0]`은 "첫 자리에 원래의 1번 열, 둘째 자리에 2번 열, 셋째 자리에 0번 열"이라는 뜻이에요. 가장 긴 열 `[6, 8, 0]`(길이 10)이 맨 앞으로 왔어요.
+
+<Fig caption="m[:, perm]은 perm에 적힌 차례대로 m의 열을 가져와요. 가장 긴 1번 열이 맨 앞으로 왔어요.">
+  <ArrayFig name="m" data={[[3, 6, 0], [4, 8, 0], [0, 0, 2]]} tones={[['', 'b', ''], ['', 'b', ''], ['', 'b', '']]} note="열 0, 1, 2" />
+  <Op note="m[:, perm]">→</Op>
+  <ArrayFig name="m[:, perm]" data={[[6, 0, 3], [8, 0, 4], [0, 2, 0]]} tones={[['b', '', ''], ['b', '', ''], ['b', '', '']]} note="원래의 열 1, 2, 0" />
+</Fig>
+
+[lu](/api/linalg/lu/)의 `perm`은 **행**의 순서이고(`x[perm]`), `qr_pivoted`의 `perm`은 **열**의 순서예요(`x[:, perm]`). 인덱싱하는 자리가 달라요.
+
+`Q @ R`에서 `m`을 되찾으려면 열의 순서를 거꾸로 돌려요. 거꾸로 가는 순서는 [`sd.argsort(perm)`](/api/array/sort/)이에요.
+
+```python
+>>> back = (p.Q @ p.R)[:, sd.argsort(p.perm)]
+>>> float(sd.max(sd.abs(back - m))) < 1e-12
+True
+```
+
+세 값으로 풀어 담을 수도 있어요. 순서는 언제나 `Q`, `R`, `perm`이에요.
+
+```python
+>>> Qp, Rp, perm = sd.linalg.qr_pivoted(m)
+>>> perm
+array([1, 2, 0], dtype=int64)
+```
+
+### 무엇이 좋아지나요: 랭크가 드러나요
+
+**랭크**는 행렬의 열 가운데 서로 독립인 것이 몇 개인지를 센 수예요. 위 `m`은 1번 열이 0번 열의 두 배라서, 열이 셋이지만 랭크는 2예요.
+
+`qr_pivoted`의 `R`은 대각 원소가 절댓값이 큰 것부터 작은 것 순서로 놓여요. 그래서 독립인 방향이 바닥나면 그 뒤의 대각이 0(또는 반올림 수준의 아주 작은 값)이 돼요.
+
+```python
+>>> sd.abs(sd.linalg.diagonal(p.R))
+array([                 10.0,                   2.0, 2.220446049250313e-16], dtype=float64)
+```
+
+앞의 둘은 뚜렷하게 크고 마지막 하나가 사실상 0이니, 랭크가 2임을 대각에서 바로 읽을 수 있어요. 그냥 `qr`은 열을 주어진 순서대로 처리해서 이런 보장이 없어요. 같은 행렬에서 0에 가까운 값이 가운데에 나타나요.
+
+```python
+>>> sd.abs(sd.linalg.diagonal(sd.linalg.qr(m).R))
+array([                  5.0, 4.440892098500626e-16,                   2.0], dtype=float64)
+```
+
+| | `qr` | `qr_pivoted` |
+|---|---|---|
+| 관계 | `x = Q @ R` | `x[:, perm] = Q @ R` |
+| 결과 | `Q`, `R` | `Q`, `R`, `perm` |
+| `R`의 대각 | 순서에 규칙이 없어요 | 절댓값이 큰 것부터 |
+| 언제 쓰나요 | 열이 서로 독립이라고 믿을 수 있을 때. 더 빨라요. | 열이 서로 독립인지 모를 때, 어느 열이 군더더기인지 알고 싶을 때 |
+
+`perm`의 앞쪽에 온 열일수록 "새로운 방향"을 많이 보태는 열이에요. 서로 겹치는 변수가 많은 데이터에서 독립적인 변수를 고르는 데 쓸 수 있어요. 랭크 숫자만 필요하면 [matrix_rank](/api/linalg/matrix_rank/)가 더 간단하고 판정도 더 믿을 만해요.
+
+`mode`는 `qr`과 똑같이 동작해요.
+
+## 행렬 여러 개를 한꺼번에
+
+3차원 이상의 배열은 마지막 두 축이 행렬이고 앞쪽 축은 배치예요. 행렬마다 따로 분해해요.
+
+```python
+>>> stack = sd.asarray([[[4.0, 1.0], [3.0, 7.0]],
+...                     [[1.0, 4.0], [7.0, 3.0]]])
+>>> rb = sd.linalg.qr(stack)
+>>> rb.Q.shape, rb.R.shape
+((2, 2, 2), (2, 2, 2))
+>>> pb = sd.linalg.qr_pivoted(stack)
+>>> pb.perm
+array([[1, 0],
+       [0, 1]], dtype=int64)
+```
+
+배치에서는 행렬마다 `perm`이 달라서 `stack[:, pb.perm]`처럼 쓸 수 없어요. 열 축(`axis=-1`)을 따라 행렬마다 다른 순서로 가져오려면 [`sd.take_along_axis`](/api/array/take/)를 써요.
+
+```python
+>>> moved = sd.take_along_axis(stack, pb.perm[..., None, :], axis=-1)
+>>> moved
+array([[[1.0, 4.0],
+        [7.0, 3.0]],
+
+       [[1.0, 4.0],
+        [7.0, 3.0]]], dtype=float64)
+>>> float(sd.max(sd.abs(moved - pb.Q @ pb.R))) < 1e-12
+True
+```
+
+## 조심할 점
+
+### `Q`와 `R`의 부호는 정해져 있지 않아요
+
+QR 분해는 하나로 정해지지 않아요. `Q`의 어떤 열과 `R`의 같은 번호 행에 함께 `-1`을 곱해도 곱은 그대로이기 때문이에요. 그래서 `R`의 대각이 음수일 수 있어요. 맨 위 예에서도 `R`의 첫 대각이 `-5.0`이었어요.
+
+`Q`나 `R`의 값을 다른 프로그램의 결과와 그대로 비교하면 부호가 달라 보일 수 있어요. 값 대신 성질(`Q @ R`이 `x`인지, `Q.T @ Q`가 단위행렬인지)로 확인하세요.
+
+### 세로로 긴 행렬의 `Q @ Q.T`는 단위행렬이 아니에요
+
+<Callout type="warn" title="Q.T @ Q와 Q @ Q.T는 달라요">
+
+`'reduced'` 모드에서 세로로 긴 행렬의 `Q`는 `(M, K)` 직사각형이에요. `Q.T @ Q`는 `K×K` 단위행렬이지만, 순서를 바꾼 `Q @ Q.T`는 `M×M`이고 단위행렬이 아니에요. `Q.T`는 `Q`의 왼쪽에 곱할 때만 `Q`를 없애 줘요. `Q`가 정사각일 때(정사각 입력이거나 `'complete'`)만 양쪽 모두 단위행렬이에요.
+
+</Callout>
+
+```python
+>>> float(sd.max(sd.abs(Q.T @ Q - sd.eye(2)))) < 1e-12
+True
+>>> float(sd.max(sd.abs(Q @ Q.T - sd.eye(4)))) < 1e-12
+False
+>>> float(sd.max(sd.abs(Qc @ Qc.T - sd.eye(4)))) < 1e-12
+True
+```
+
+### 열들이 독립이 아니어도 에러가 나지 않아요
+
+랭크가 부족한 행렬, 심지어 모든 값이 0인 행렬도 에러 없이 분해해요. `R`의 대각에 0이나 아주 작은 값이 나타날 뿐이에요.
+
+```python
+>>> d = sd.linalg.qr(sd.asarray([[4.0, 8.0],
+...                              [3.0, 6.0]]))
+>>> d.R
+array([[                 -5.0,                 -10.0],
+       [                  0.0, 2.220446049250313e-16]], dtype=float64)
+```
+
+수학적으로는 `0`이어야 할 자리에 `2.2e-16`이 남았어요. 이런 `R`로 `solve_triangular`를 부르면 에러 없이 엄청나게 큰 해가 나와요. 열이 서로 독립인지 확실하지 않다면 [lstsq](/api/linalg/lstsq/)를 쓰거나 `qr_pivoted`로 대각을 살펴보세요.
+
+### `mode`에 다른 값을 주면
+
+`mode`는 `'reduced'`와 `'complete'` 둘뿐이에요. 다른 문자열은 `ValueError`, 문자열이 아니면 `TypeError`예요. `R`만 돌려주는 모드는 없어요.
+
+```python
+>>> sd.linalg.qr(a, mode='full')
+Traceback (most recent call last):
+    ...
+ValueError: qr(): 'mode' must be 'reduced' or 'complete', not 'full'
+>>> sd.linalg.qr(a, mode=None)
+Traceback (most recent call last):
+    ...
+TypeError: qr(): 'mode' must be 'reduced' or 'complete', not NoneType
+```
+
+`mode`는 이름을 붙여서만 넘길 수 있어요. `sd.linalg.qr(a, 'complete')`는 `TypeError`예요.
+
+### 정수 행렬을 넣어도 결과는 실수예요
+
+정수나 bool 행렬은 float64로 바꿔서 계산해요. `Q`와 `R`은 언제나 float64(복소수 입력이면 complex128)이고, `perm`만 int64예요.
+
+```python
+>>> sd.linalg.qr(sd.asarray([[4, 1], [3, 7]])).R
+array([[-5.0, -5.0],
+       [ 0.0,  5.0]], dtype=float64)
+```
+
+복소수 행렬에서는 `Q`의 성질이 전치 대신 켤레 전치로 바뀌어요. `sd.conj(Q).T @ Q`가 단위행렬이에요.
+
+### NaN과 inf는 받지 않아요
+
+```python
+>>> sd.linalg.qr(sd.asarray([[1.0, sd.nan], [3.0, 4.0]]))
+Traceback (most recent call last):
+    ...
+ValueError: qr(): 'x' contains NaN or infinity
+>>> sd.linalg.qr_pivoted(sd.asarray([[1.0, sd.inf], [3.0, 4.0]]))
+Traceback (most recent call last):
+    ...
+ValueError: qr_pivoted(): 'x' contains NaN or infinity
+```
+
+### 배열만 받아요
+
+리스트는 먼저 [`sd.asarray`](/api/array/asarray/)로 바꾸세요. 1차원 배열은 행렬이 아니라서 `ValueError`예요.
+
+```python
+>>> sd.linalg.qr([[1.0, 2.0]])
+Traceback (most recent call last):
+    ...
+TypeError: qr(): 'x' must be an sd.ndarray, not list
+>>> sd.linalg.qr(sd.asarray([1.0, 2.0]))
+Traceback (most recent call last):
+    ...
+ValueError: qr(): 'x' must have at least 2 dimensions, got 1
+```
+
+### 빈 행렬
+
+행이나 열이 0개인 행렬은 에러 없이 그 모양의 결과를 돌려줘요. `'complete'`에서 열이 0개이면 `Q`는 단위행렬이에요.
+
+```python
+>>> e = sd.linalg.qr(sd.zeros((3, 0)))
+>>> e.Q.shape, e.R.shape
+((3, 0), (0, 0))
+>>> sd.linalg.qr(sd.zeros((3, 0)), mode='complete').Q
+array([[1.0, 0.0, 0.0],
+       [0.0, 1.0, 0.0],
+       [0.0, 0.0, 1.0]], dtype=float64)
+```
+
+## 비슷한 함수와의 차이
+
+| 하고 싶은 일 | 쓸 것 | QR과 다른 점 |
+|---|---|---|
+| 최소제곱 문제를 한 번 풀기 | [lstsq](/api/linalg/lstsq/) | 분해 없이 해를 바로 줘요. 랭크가 부족해도 가장 작은 해를 골라 줘요. |
+| 정사각 방정식 풀기 | [solve](/api/linalg/solve/) | 더 빨라요. 보통은 이것으로 충분해요. |
+| 방정식을 여러 번 풀려고 분해해 두기 | [lu](/api/linalg/lu/), [cholesky](/api/linalg/cholesky/) | 두 인자가 모두 삼각이에요. QR보다 빠르지만 정사각 행렬용이에요. |
+| 랭크 구하기 | [matrix_rank](/api/linalg/matrix_rank/) | 특이값으로 판정해서 `qr_pivoted`의 대각보다 믿을 만해요. 숫자 하나만 줘요. |
+| 행렬의 구조를 가장 자세히 보기 | [특이값 분해](/api/linalg/svd/) | 양쪽 인자(`U`의 열, `Vh`의 행)가 모두 서로 수직이고 길이가 1이며, 가운데가 대각이에요. 더 많은 것을 알려 주지만 더 느려요. |
+
+QR, LU, Cholesky는 모두 "행렬을 풀기 쉬운 조각으로 나눈다"는 점이 같아요. 고르는 기준은 행렬의 모양과 성질이에요.
+
+| 행렬 | 분해 |
+|---|---|
+| 대칭이고 양정치 | `cholesky` |
+| 정사각이고 특별한 성질 없음 | `lu` |
+| 세로로 긴 행렬(최소제곱), 또는 정확도가 더 중요할 때 | `qr` |
+| 열이 서로 독립인지 모를 때 | `qr_pivoted`, `svd` |
+
+## numpy·scipy를 아는 분께
+
+- `mode`의 이름은 `np.linalg.qr`의 `'reduced'`, `'complete'`와 같아요. `'r'`, `'raw'`는 없어요. `R`만 필요해도 `Q`를 함께 받아요.
+- scipy와 기본값이 달라요. `scipy.linalg.qr`의 기본은 `mode='full'`(여기의 `'complete'`)이고, stardust의 기본은 `'reduced'`(scipy의 `'economic'`)예요.
+- 열 피벗은 옵션(`pivoting=True`)이 아니라 다른 함수 `qr_pivoted`예요. 결과의 개수가 옵션에 따라 바뀌지 않게 하려는 것이에요. `perm`의 뜻은 scipy의 `P`와 같아요(`a[:, P] = Q @ R`).
+- 결과는 이름 있는 튜플이에요. `QRResult(Q, R)`, `QRPivotedResult(Q, R, perm)`.
+- `overwrite_a=`, `check_finite=`, `lwork=` 옵션은 없어요. NaN·inf 검사는 끌 수 없어요.
+- `Q`와 `R`의 부호는 numpy·scipy의 결과와 다를 수 있어요.
+- 리스트와 numpy 배열은 받지 않아요(`TypeError`).

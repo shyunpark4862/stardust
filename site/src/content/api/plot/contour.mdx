@@ -1,0 +1,201 @@
+---
+kind: function
+title: contour
+names: [contour]
+group: 함수 그림
+order: 7
+signatures:
+  - "sd.plot.contour(f, x0, x1, y0, y1, /, *, levels=10, filled=False, labels=True, samples=None, refine=None, cmap=None, color=None, **figure)"
+  - "fig.contour(f, x0, x1, y0, y1, /, *, levels=10, filled=False, labels=True, samples=None, refine=None, cmap=None, color=None)"
+summary: 두 변수 함수 f(x, y)의 등고선을 사각형 [x0, x1] × [y0, y1] 안에서 그려요. 수준은 값의 대부분이 있는 범위에서 고르게 고르고, 선 위에 그 값을 적어요. filled=True면 수준 사이를 색으로 칠하고 색 막대를 붙여요.
+params:
+  - name: f
+    type: 호출 가능한 객체 또는 2차원 배열
+    kind: positional-only
+    desc: "f(x, y). 같은 모양의 float64 sd.ndarray 둘을 받아 같은 모양의 실수 배열(또는 수 하나)을 돌려줘요. 함수 대신 이미 계산한 값의 2차원 배열(2 × 2 이상)을 줘도 돼요. Z[j, i]가 사각형을 고르게 나눈 격자의 점 (x_i, y_j)의 값이에요."
+  - name: x0, x1
+    type: float
+    kind: positional-only
+    desc: 가로 범위. 유한하고 x0 < x1이어야 해요.
+  - name: y0, y1
+    type: float
+    kind: positional-only
+    desc: 세로 범위. 유한하고 y0 < y1이어야 해요.
+  - name: levels
+    type: int 또는 수의 시퀀스
+    kind: keyword-only
+    desc: "정수면 수준의 대략적인 개수(1 이상)이고, 눈금처럼 끝자리가 고운 값을 골라요. 시퀀스면 그 값들을 수준으로 써요(정렬해서). 기본값 10."
+  - name: filled
+    type: bool
+    kind: keyword-only
+    desc: True면 이웃한 수준 사이를 색으로 칠하고, 선은 가는 짙은 선이 되고, 숫자 대신 색 막대를 붙여요. 기본값 False.
+  - name: labels
+    type: bool
+    kind: keyword-only
+    desc: True면 선 위에 수준의 값을 적어요(filled=False일 때만). 서로 닿지 않는 자리가 없는 수준은 숫자 없이 둬요. 기본값 True.
+  - name: samples
+    type: int, (int, int) 또는 None
+    kind: keyword-only
+    desc: "격자의 점의 수. 정수 하나면 가로세로가 같고, 쌍이면 (가로, 세로)예요. 한 방향 3 이상 4000 이하. 기본값 None은 (321, 241)이에요. 값의 배열에는 줄 수 없어요."
+  - name: refine
+    type: int 또는 None
+    kind: keyword-only
+    desc: "1이면 한 칸 안에서 수준 간격의 반보다 많이 변하는 칸과 그 둘레를 가로세로 4배로 다시 재요. 0이면 격자를 그대로 써요. 기본값 None은 1이에요. 값의 배열에는 줄 수 없어요."
+  - name: cmap
+    type: str 또는 None
+    kind: keyword-only
+    desc: "수준의 색을 고르는 연속 색띠의 이름. 'cool'(기본값), 'viridis', 'magma', 'cividis', 'rdbu', 'spectral', 'coolwarm', 'sunrise', 'lagoon'."
+  - name: color
+    type: 색 또는 None
+    kind: keyword-only
+    desc: 모든 선을 한 색으로 그릴 때의 색. cmap과 함께 줄 수 없어요.
+  - name: "**figure"
+    type: 그림 옵션
+    kind: keyword-only
+    desc: "새 그림의 width, height, font, theme, palette. 모듈 함수만 받아요. 뜻은 그림의 기본에 있어요."
+returns:
+  type: Figure
+  desc: 모듈 함수는 새 Figure를, 메서드는 등고선을 더한 그 Figure 자신을 돌려줘요.
+raises:
+  - type: TypeError
+    desc: f가 함수도 2차원 값 배열도 아닐 때, f가 sd.ndarray나 수가 아닌 것이나 복소수를 돌려줄 때, 값의 배열이 복소수일 때, levels가 정수나 수의 시퀀스가 아닐 때, filled·labels가 bool이 아닐 때, samples·refine이 정수가 아닐 때.
+  - type: ValueError
+    desc: x0 < x1이나 y0 < y1이 아니거나 범위가 유한하지 않을 때, levels가 1보다 작거나 빈 시퀀스일 때, cmap이 모르는 이름일 때, color와 cmap을 함께 줬을 때, f가 격자에서 유한한 값을 하나도 내지 않을 때, samples·refine이 범위 밖일 때, 값의 배열이 2차원이 아니거나 2 × 2보다 작을 때, 값의 배열과 함께 samples나 refine을 줬을 때.
+seeAlso: [density, implicit, region, heatmap, sampling, vectorfield]
+---
+import PlotImage from '../../../components/fig/PlotImage.astro';
+
+## 한눈에 보기
+
+지도의 등고선처럼, 함수 $f(x, y)$의 값이 같은 점들을 이은 곡선을 여러 수준에서 그려요. 함수와 사각형만 주면 수준을 고르고, 수준마다 색을 주고, 선 위에 값을 적어요.
+
+```python
+>>> import math
+>>> f = lambda x, y: sd.sin(x) * sd.cos(y) + 0.1 * x
+>>> fig = sd.plot.contour(f, -3, 3, -2, 2)
+```
+
+<PlotImage name="contour-default" alt="사인과 코사인을 곱한 함수의 등고선. 왼쪽에 하늘색 골짜기, 오른쪽에 빨간 봉우리가 있고 선마다 −1.00부터 1.00까지의 값이 적혀 있어요" caption="수준은 −1에서 1까지 0.25 간격으로 골랐어요. 색은 기본 색띠 cool에서 낮은 수준이 하늘색, 높은 수준이 빨강이에요. 숫자는 서로 닿지 않는 자리에 서고 그 밑의 선은 비워요." />
+
+<Reference />
+
+## 수준: levels
+
+`levels`가 정수(기본 10)이면 수준의 **대략적인 개수**예요. 축의 눈금을 고르는 것과 같은 규칙으로, 끝자리가 고운 값(0.25, 0.5, 1, 2, 5의 배수 같은)을 골라요. 그래서 정확히 그 개수가 아닐 수 있어요. 위 그림은 `levels=10`에서 아홉 수준(−1, −0.75, …, 1)이 골라졌어요.
+
+수준은 값 전체가 아니라 **값의 대부분이 있는 범위**에서 골라요. 극점 둘레의 아주 큰 값이 수준을 다 가져가지 않게 하려는 것이에요. $1/(x^2 + y^2)$은 원점에서 한없이 커지지만 수준은 바깥의 넓은 곳에 고르게 퍼져요.
+
+```python
+>>> fig = sd.plot.contour(lambda x, y: 1 / (x * x + y * y), -1, 1, -1, 1, height=80)
+```
+
+<PlotImage name="contour-pole" alt="원점을 중심으로 한 동심원 등고선. 바깥 수준은 2, 안으로 갈수록 4, 6, 8, …로 값이 적혀 있어요" caption="1/(x² + y²)의 등고선이에요. 원점의 극점 근처의 값은 수준 고르기에서 빠지고, 수준은 2에서 14까지 고르게 놓여요. 칸이 정사각형에 가깝도록 height를 줬어요." />
+
+원하는 값이 있으면 수의 시퀀스로 줘요. 간격이 고르지 않아도 돼요.
+
+```python
+>>> fig = sd.plot.contour(f, -3, 3, -2, 2, levels=[-0.9, -0.5, 0, 0.5, 0.9])
+```
+
+## 선 위의 숫자: labels
+
+`labels=True`(기본)이면 수준마다 가장 긴 선 위에 그 값을 적어요. 숫자는 선의 방향으로 눕고, 그 밑의 선은 흰 바탕으로 끊어요. 숫자의 자리는 선을 따라 여러 곳을 차례로 보고, 칸 안에 있으면서 앞서 적은 숫자와 닿지 않는 첫 자리를 골라요. 그런 자리가 없는 수준(아주 짧은 선이나 빽빽한 곳)은 숫자 없이 둬요. 숫자는 같은 수준들의 자릿수를 맞춰 적어요(0.50, 1.00).
+
+선만 보고 싶으면 `labels=False`, 모든 선을 한 색으로 그리려면 `color`를 줘요.
+
+```python
+>>> fig = sd.plot.contour(f, -3, 3, -2, 2, color="black", labels=False)
+```
+
+## 칠한 등고선: filled
+
+`filled=True`면 이웃한 수준 사이의 띠를 색으로 칠해요. 가장 낮은 수준 아래와 가장 높은 수준 위도 칠해요. 선은 가는 짙은 선이 되고, 숫자 대신 칸 오른쪽에 색 막대가 붙어요. 띠의 가장자리와 선은 같은 점들이라 서로 어긋나지 않아요. 로젠브록 함수의 휘어진 골짜기를 칠해 보고, 최솟값 $(1, 1)$에 점을 찍어 볼게요.
+
+```python
+>>> rosen = lambda x, y: (1 - x) ** 2 + 100 * (y - x * x) ** 2
+>>> fig = sd.plot.contour(rosen, -2, 2, -1, 3, levels=[1, 5, 20, 50, 100, 300, 800], filled=True)
+>>> fig = fig.scatter([1.0], [1.0], color="white")
+```
+
+<PlotImage name="contour-filled" alt="로젠브록 함수의 칠한 등고선. 바나나 모양으로 휜 하늘색 골짜기가 가운데 있고, 바깥으로 갈수록 보라와 빨강이에요. 오른쪽에 색 막대가 있어요" caption="수준 일곱을 직접 줬어요. 띠의 색은 그 띠의 가운데 값의 색이고, 색 막대는 값에 비례해요. 흰 점이 최솟값 (1, 1)이에요." />
+
+색 막대는 값에 비례하는 눈금이라, 위처럼 간격이 고르지 않은 수준은 낮은 띠들이 막대의 아래쪽에 몰려 비슷한 색으로 보여요. 색의 차이를 고르게 보이고 싶으면 수준을 고른 간격으로 주거나 `levels`에 개수를 줘요.
+
+## 색: cmap과 color
+
+`cmap`은 연속 색띠의 이름이에요. 가장 낮은 수준이 색띠의 한쪽 끝, 가장 높은 수준이 다른 쪽 끝의 색을 받아요. 기본은 `'cool'`(하늘색에서 보라를 지나 빨강)이고, 그 밖에 `'viridis'`, `'magma'`, `'cividis'`, `'rdbu'`, `'spectral'`, `'coolwarm'`, `'sunrise'`, `'lagoon'`이 있어요. 색띠들을 견준 그림은 [스타일](/api/plot/style/)에 있어요. `color`는 모든 선을 한 색으로 그리고, `cmap`과 함께 줄 수 없어요.
+
+## 표본
+
+함수는 $321 \times 241$점의 격자에서 한 번 계산하고, 그 격자를 모든 수준이 함께 써요. 수준선이 칸의 변을 지나는 자리는 직선 보간으로 어림한 뒤 함수를 한 번 더 계산해 다듬어요. 한 칸 안에서 함수가 수준 간격의 반보다 많이 변하면(수준선 여럿이 한 칸을 지나 가릴 수 없는 곳) 그 칸과 둘레만 가로세로 4배로 다시 재요. `samples`, `refine`의 뜻은 [함수 그림의 표본](/api/plot/sampling/)에 있어요.
+
+`contour`의 칸은 가로세로 비가 그림의 기본(4:3)이에요. `implicit`처럼 한 단위를 같은 길이로 맞추지 않아요. 원이 원으로 보여야 하면 `height`로 칸의 모양을 맞춰요.
+
+## 값의 배열로 그리기
+
+함수 자리에 이미 계산한 값의 2차원 배열을 줄 수 있어요. 잰 값이나 시뮬레이션의 결과처럼 식이 없는 자료의 등고선을 그릴 때 써요. `Z[j, i]`는 사각형을 고르게 나눈 격자의 점 $(x_i, y_j)$의 값이고, 첫 줄이 `y0`이에요. `sd.meshgrid(x, y, indexing="xy")`의 격자에서 계산한 값이 그대로 맞아요.
+
+```python
+>>> x = sd.linspace(-3.0, 3.0, 48)
+>>> y = sd.linspace(-2.0, 2.0, 32)
+>>> X, Y = sd.meshgrid(x, y, indexing="xy")
+>>> Z = f(X, Y)
+>>> Z.shape
+(32, 48)
+>>> fig = sd.plot.contour(Z, -3, 3, -2, 2, filled=True)
+```
+
+<PlotImage name="contour-values" alt="사인과 코사인을 곱한 함수의 칠한 등고선. 왼쪽에 하늘색 골짜기, 오른쪽에 빨간 봉우리가 있고 띠의 경계에 가는 짙은 선이 있어요. 오른쪽에 색 막대가 있어요" caption="맨 위 그림과 같은 함수를 48 × 32점에서 미리 계산한 값으로 그렸어요. 수준 고르기와 색은 함수일 때와 같아요. 0 수준의 선들이 만나는 곳(가운데 위아래)은 격자가 성겨서 조금 어긋나 보여요." />
+
+수준을 고르는 법, 숫자, 칠, 색은 함수일 때와 같아요. 다만 값만 있으면 다시 잴 수 없어서, 수준선의 자리는 격자의 값을 칸 안에서 직선으로 이어 어림한 것이에요. `samples`와 `refine`은 줄 수 없어요. 격자가 성기면 선이 그만큼 각져요.
+
+## 겹치기
+
+메서드 `fig.contour`로 다른 그림 위에 등고선을 얹어요. [density](/api/plot/density/)의 색 그림 위에 몇 수준의 선을 얹는 것이 흔한 쓰임이에요. 등고선 위에는 `scatter`로 점을, `implicit`으로 제약 곡선을 얹을 수 있어요.
+
+```python
+>>> fig = sd.plot.contour(rosen, -2, 2, -1, 3, levels=[1, 10, 100], labels=False)
+>>> fig = fig.implicit(lambda x, y: x * x + y * y, -2, 2, -1, 3, level=2, style="--", color="gray")
+```
+
+## 에러
+
+```python
+>>> sd.plot.contour(Z, -3, 3, -2, 2, samples=11)
+Traceback (most recent call last):
+    ...
+ValueError: contour(): 'samples' and 'refine' are for a function; the values given are the grid
+>>> sd.plot.contour(f, -3, 3, -2, 2, levels=0)
+Traceback (most recent call last):
+    ...
+ValueError: contour(): 'levels' must be at least 1
+>>> sd.plot.contour(f, -3, 3, -2, 2, levels=[])
+Traceback (most recent call last):
+    ...
+ValueError: contour(): 'levels' is empty
+>>> sd.plot.contour(f, -3, 3, -2, 2, cmap="jet")
+Traceback (most recent call last):
+    ...
+ValueError: contour(): 'cmap' must be 'cool', 'viridis', 'magma', 'cividis', 'rdbu', 'spectral', 'coolwarm', 'sunrise' or 'lagoon', not 'jet'
+>>> sd.plot.contour(f, -3, 3, -2, 2, cmap="magma", color="red")
+Traceback (most recent call last):
+    ...
+ValueError: contour(): 'color' and 'cmap' cannot both be given
+>>> sd.plot.contour(lambda x, y: x * math.nan, -2, 2, -2, 2)
+Traceback (most recent call last):
+    ...
+ValueError: contour(): 'f' has no finite value on the grid
+```
+
+## 조심할 점
+
+- **수준의 개수는 대략이에요.** 정확한 값이 필요하면 시퀀스로 줘요.
+- **극점 둘레는 수준을 받지 않아요.** 값의 대부분이 있는 범위에서 수준을 고르므로, 아주 큰 값의 수준이 필요하면 시퀀스로 직접 줘요.
+- **칸의 비율은 자유예요.** 한 단위를 가로세로 같은 길이로 맞추지 않아요.
+- **값의 배열은 준 격자만큼만 정확해요.** 식이 있으면 함수로 넘겨요. 그림이 수준선 둘레를 골라 더 촘촘히 재요.
+- 기울기의 방향을 함께 보이려면 [vectorfield](/api/plot/vectorfield/)를 겹쳐요.
+
+## matplotlib을 아는 분께
+
+- `plt.contour(X, Y, Z)`는 미리 계산한 격자를 받아요. 여기서는 함수와 사각형을 받고, 격자와 다시 잴 곳은 그림이 정해요. 값의 배열도 받지만 `X`, `Y` 대신 사각형의 범위를 주고, 격자는 그 사각형을 고르게 나눈 것으로 봐요.
+- `plt.contourf`는 `filled=True`, `plt.clabel`은 `labels=True`(기본)예요. 수준이 정수일 때 고운 값을 고르는 것은 같지만, 여기서는 값의 대부분이 있는 범위에서 골라 극점이 수준을 다 가져가지 않아요.

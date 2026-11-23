@@ -1,0 +1,327 @@
+---
+title: 적응 분할과 ε-알고리즘
+group: QUADPACK
+order: 2
+summary: QAGS(dqagse)가 오차 어림이 가장 큰 구간을 반으로 나누는 전역 적응 분할, 구간의 순위 목록 dqpsrt, 끝점 특이점의 수렴을 앞당기는 Wynn ε-알고리즘(dqelg)과 그것을 부르는 때, 반올림과 발산의 판정, 무한 구간의 QAGI와 중단점의 QAGP를 코드를 따라 설명해요.
+seeAlso: [gauss-kronrod, weight-routines, overview, nested, quad-vec]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Steps from '../../../components/fig/Steps.astro';
+
+## 한눈에 보기
+
+QAGS는 QUADPACK에서 가장 많이 쓰는 루틴이에요. 생각은 둘이에요.
+
+1. **전역 적응 분할.** 구간마다 [21점 규칙](/internals/integrate/gauss-kronrod/)의 값과 오차 어림을 들고, 오차 어림이 가장 큰 구간을 반으로 나누기를 되풀이해요. 오차 어림의 합이 허용오차 max(atol, rtol·|I|) 아래로 내려가면 멈춰요.
+2. **외삽.** 끝점 특이점이 있으면 분할이 특이점 쪽으로만 몰려 수렴이 느려요. 그때 나눌 때마다의 적분 어림이 이루는 수열을 Wynn의 ε-알고리즘으로 외삽해 극한을 미리 어림해요.
+
+QAGI(무한 구간)는 같은 고리에 15점 규칙을 끼운 것이고, QAGP(중단점)는 처음 구간을 중단점으로 나누고 외삽의 기준을 구간의 크기 대신 나눈 횟수로 잡은 판이에요. 셋 모두 원본의 제어 흐름(라벨 포함)을 그대로 따라서 `goto`가 남아 있어요.
+
+<Fig column caption="QAGS의 한 바퀴. 나누기, 목록 정리, 판정, 외삽의 차례예요.">
+  <Steps steps={[
+    { label: '나누기', note: '오차 어림이 가장 큰 구간 maxerr를 반으로 나누고 두 반쪽에 21점 규칙', where: 'qags_loop' },
+    { label: '합 고치기', note: 'area와 errsum에서 옛 구간의 몫을 빼고 두 반쪽의 몫을 더함. 반올림 판정의 셈 iroff1·2·3', where: 'qags_loop', depth: 1 },
+    { label: '목록 정리', note: '두 반쪽의 오차 어림을 순위 목록 iord에 끼우고 다음 maxerr를 고름', where: 'qpsrt', depth: 1 },
+    { label: '판정', note: 'errsum ≤ errbnd면 구간 값의 합으로 끝. 상한·반올림·작은 구간이면 끝맺음으로', where: 'qags_loop' },
+    { label: '큰 구간 먼저', note: '외삽할 때가 되었는데 아직 큰 구간의 오차가 크면 그것부터 나눔', where: 'qags_loop' },
+    { label: '외삽', note: 'area를 ε 표에 더하고 외삽 값과 그 오차 어림을 얻음. 더 나으면 받아들이고 판정', where: 'qelg', depth: 1 },
+  ]} />
+</Fig>
+
+## 전역 적응 분할
+
+`qags_loop`는 `dqagse`와 `dqagie`가 함께 쓰는 고리예요. 두 원본은 규칙만 다르고 문장이 같아서, 규칙을 인자로 받는 템플릿 하나로 둬요. 한 바퀴의 앞부분이 나누기와 합 고치기예요.
+
+```cpp
+    // csrc/integrate/quadpack.hpp
+    for (last = 2; last <= limit; ++last) {
+        w.grow(last);
+        a1 = alist[maxerr];
+        b1 = 0.5 * (alist[maxerr] + blist[maxerr]);
+        a2 = b1;
+        b2 = blist[maxerr];
+        erlast = errmax;
+        rule(a1, b1, area1, error1, resabs, defab1);
+        rule(a2, b2, area2, error2, resabs, defab2);
+        area12 = area1 + area2;
+        erro12 = error1 + error2;
+        errsum = errsum + erro12 - errmax;
+        area = area + area12 - rlist[maxerr];
+```
+
+전체 값 `area`와 전체 오차 `errsum`은 모든 구간을 다시 더하지 않고, 나눈 구간의 몫을 빼고 두 반쪽의 몫을 더해 고쳐요. 이렇게 쌓인 반올림은 끝에서 지워요. 오차 판정으로 멈추면(라벨 115) 구간 값 `rlist`를 처음부터 다시 더해 결과로 내요.
+
+나눈 두 반쪽 가운데 오차 어림이 큰 쪽이 원래 구간의 칸 `maxerr`에, 작은 쪽이 다음 칸 `last`에 들어가요. 구간 배열은 원본처럼 1부터 세고, `last`에 따라 자라므로 큰 `limit`을 줘도 쓴 구간만큼만 메모리를 잡아요.
+
+### 순위 목록: dqpsrt
+
+다음에 나눌 구간을 찾으려고 매번 전부를 훑지 않아요. `iord`가 구간의 번호를 오차 어림의 내림차순으로 들고 있고, `qpsrt`는 나눈 뒤의 두 오차 어림을 끼워 넣기만 해요. 칸 `maxerr`와 칸 `last`가 저마다 제자리를 찾아 들어가요.
+
+목록 전체를 정렬해 두지 않는 점이 하나 있어요. `last`가 `limit`/2 + 2를 넘으면 남은 나누기 횟수가 `limit` − `last`이므로, 나눌 가능성이 있는 것은 위에서 `limit` + 3 − `last`개뿐이에요. 그 아래의 순서는 맞추지 않아요. 결과의 구간 필드는 이 순위를 그대로 쓰고, 순위 밖의 구간은 그 뒤에 오차 어림의 내림차순으로 붙여요([구조](/internals/integrate/overview/)).
+
+## 끝점 특이점이 느린 까닭
+
+$\int_0^1 x^{-1/2}\,dx = 2$를 생각해 볼게요. 특이점이 있는 맨 왼쪽 구간 [0, h]의 오차가 늘 가장 커서 분할은 그 구간만 반으로 나눠요. $x^{-1/2}$는 척도를 바꾸어도 꼴이 같으므로, [0, h]에서 21점 규칙의 오차는 정확히 $c\sqrt{h}$예요. h를 반으로 줄일 때마다 오차가 $1/\sqrt{2}$배로만 줄어서, 15자리를 얻으려면 100번 가까이 나눠야 해요. 기본 `limit` 50으로는 닿지 않아요.
+
+그런데 오차가 정확히 등비로 줄어든다는 것은 오히려 기회예요. 수열 $S_k = S + c\lambda^k$의 세 항이면 극한 S를 정확히 풀 수 있어요. 21점 규칙 하나로 수열을 만들어 확인해 볼게요. `limit=1`이면 `quad`는 첫 규칙 한 번으로 끝나요.
+
+```python
+>>> import math
+>>> f = lambda x: x**-0.5
+>>> def k21(a, b):
+...     return sd.integrate.quad(f, a, b, limit=1).integral
+>>> S, tail = [], 0.0
+>>> for k in range(7):
+...     h = 2.0**-k
+...     S.append(tail + k21(0.0, h))
+...     tail += k21(h / 2, h)
+>>> [round(s - 2, 6) for s in S]
+[-0.032474, -0.022963, -0.016237, -0.011481, -0.008119, -0.005741, -0.004059]
+>>> s0, s1, s2 = S[-3:]
+>>> (s2 * s0 - s1 * s1) / (s2 + s0 - 2 * s1) - 2
+0.0
+```
+
+$S_k$는 [0, 2⁻ᵏ]에 규칙 하나, 나머지 매끄러운 조각들은 정확한 값을 둔 어림이에요. 오차가 한 걸음마다 1/√2배씩 줄고, 마지막 세 항에 Aitken의 Δ² 공식 $(S_2S_0 - S_1^2)/(S_2 + S_0 - 2S_1)$을 쓰면 오차가 반올림 수준으로 떨어져요(여기서는 0). `quad`는 같은 적분을 6구간, 함숫값 231개로 끝내요.
+
+```python
+>>> sd.integrate.quad(f, 0, 1)
+IntegrateResult(integral=2, error=3.77476e-15, converged=True, nfev=231)
+```
+
+실제 특이점의 오차는 등비 항 하나가 아니라 여러 등비 항의 합 $\sum_i c_i \lambda_i^k$에 가까워요. 이런 수열을 한꺼번에 다루는 것이 ε-알고리즘이고, 적응 분할과 ε-알고리즘을 묶은 QAGS의 생각은 de Doncker(1978)의 적응 외삽 알고리즘이에요.
+
+## Wynn의 ε-알고리즘: dqelg
+
+Shanks 변환 $e_m(S_n)$은 $S_n = S + \sum_{i=1}^{m} a_i \lambda_i^n$ 꼴의 수열에서 극한 S를 정확히 내는 변환이에요. m = 1이 Aitken의 Δ²예요. Wynn(1956)은 이 변환을 행렬식 없이 계산하는 점화식을 찾았어요.
+
+$$
+\varepsilon_{-1}^{(n)} = 0,\qquad \varepsilon_{0}^{(n)} = S_n,\qquad
+\varepsilon_{k+1}^{(n)} = \varepsilon_{k-1}^{(n+1)} + \frac{1}{\varepsilon_{k}^{(n+1)} - \varepsilon_{k}^{(n)}}
+$$
+
+짝수 열 $\varepsilon_{2m}^{(n)}$이 $e_m(S_n)$이고 홀수 열은 계산의 중간값이에요. `dqelg`는 짝수 열만 들고 다니며, 이웃한 짝수 열 원소 다섯 사이의 관계(Wynn의 십자 규칙)로 다음 원소를 내요. 가운데 $e_1$, 그 둘레 $e_0, e_2, e_3$에서
+
+$$
+e_{\text{new}} = e_1 + \left(\frac{1}{e_2 - e_1} + \frac{1}{e_1 - e_3} - \frac{1}{e_1 - e_0}\right)^{-1}
+$$
+
+이에요. 수열에 원소 하나가 더해질 때마다 표의 마지막 대각선을 이 규칙으로 다시 계산해요.
+
+```cpp
+    // csrc/integrate/quadpack.hpp
+    for (i = 1; i <= newelm; ++i) {
+        k2 = k1 - 1;
+        k3 = k1 - 2;
+        res = epstab[k1 + 2];
+        e0 = epstab[k3];
+        e1 = epstab[k2];
+        e2 = res;
+        e1abs = std::abs(e1);
+        delta2 = e2 - e1;
+        err2 = std::abs(delta2);
+        tol2 = std::max(std::abs(e2), e1abs) * kEpmach;
+        delta3 = e1 - e0;
+        err3 = std::abs(delta3);
+        tol3 = std::max(e1abs, std::abs(e0)) * kEpmach;
+        if (!(err2 > tol2 || err3 > tol3)) {
+            // e0, e1 and e2 are equal to within machine accuracy: convergence is assumed
+            result = res;
+            abserr = err2 + err3;
+            goto L100;
+        }
+        e3 = epstab[k1];
+        epstab[k1] = e1;
+        delta1 = e1 - e3;
+        err1 = std::abs(delta1);
+        tol1 = std::max(e1abs, std::abs(e3)) * kEpmach;
+        if (err1 <= tol1 || err2 <= tol2 || err3 <= tol3) goto L20;
+        ss = 1.0 / delta1 + 1.0 / delta2 - 1.0 / delta3;
+        epsinf = std::abs(ss * e1);
+        if (epsinf > 1.0e-4) goto L30;
+    L20:
+        n = i + i - 1;
+        goto L50;
+    L30:
+        res = e1 + 1.0 / ss;
+        epstab[k1] = res;
+        k1 = k1 - 2;
+        error = err2 + std::abs(res - e2) + err3;
+        if (error > abserr) continue;
+        abserr = error;
+        result = res;
+    }
+```
+
+대각선을 따라가며 세 가지를 봐요.
+
+- **수렴.** 한 열의 세 원소 $e_0, e_1, e_2$가 ε 안에서 같으면 그 값을 결과로 하고 멈춰요.
+- **불규칙.** 차가 반올림 수준이거나 $|ss \cdot e_1| \le 10^{-4}$이면 다음 원소가 거의 무한대에 가까운 나눗셈에서 나와 믿을 수 없어요. 표를 그 열에서 잘라요(`n = i + i - 1`).
+- **고르기.** 대각선의 원소마다 오차의 어림 $|e_2 - e_1| + |e_{\text{new}} - e_2| + |e_1 - e_0|$를 매기고, 가장 작은 것을 결과로 해요.
+
+표는 원소 50개(`limexp`)까지이고, 넘치면 오래된 원소를 버리고 당겨요. 결과의 오차 어림은 넷째 호출부터 앞선 세 번의 외삽 값과 지금 값의 차 $|r - r_1| + |r - r_2| + |r - r_3|$이고, 하한은 $5\varepsilon|r|$이에요. 셋째 호출까지는 세 원소가 같아 수렴한 경우 말고는 어림이 아주 큰 값이라 외삽 값을 받아들이지 않아요. 외삽 값이 흔들려도 이 어림이 커져서 받아들이지 않아요.
+
+## 외삽을 언제 하는가
+
+ε 표에 넣을 수열은 "특이점 둘레가 한 단계 더 촘촘해진" 어림들이어야 등비 꼴이 돼요. QAGS는 그렇게 되도록 나누는 차례를 조절해요. 기준은 크기 `small`이에요. 처음 `small`은 0.375|b − a|이고 외삽을 한 번 할 때마다 반으로 줄어요. 폭이 `small`보다 큰 구간을 "큰 구간"이라 하고, 그 오차 어림의 합을 `erlarg`로 따로 세요.
+
+```cpp
+        // csrc/integrate/quadpack.hpp
+        if (noext) continue;
+        erlarg = erlarg - erlast;
+        if (std::abs(b1 - a1) > small) erlarg = erlarg + erro12;
+        if (!extrap) {
+            if (std::abs(blist[maxerr] - alist[maxerr]) > small) continue;
+            extrap = true;
+            nrmax = 2;
+        }
+        if (ierro != 3 && erlarg > ertest) {
+            id = nrmax;
+            jupbnd = last;
+            if (last > (2 + limit / 2)) jupbnd = (limit - last) + 3;
+            bool more = false;
+            for (k = id; k <= jupbnd; ++k) {
+                maxerr = iord[nrmax];
+                errmax = elist[maxerr];
+                if (std::abs(blist[maxerr] - alist[maxerr]) > small) {
+                    more = true;
+                    break;
+                }
+                nrmax = nrmax + 1;
+            }
+            if (more) continue;
+        }
+        numrl2 = numrl2 + 1;
+        rlist2[numrl2] = area;
+        qelg(numrl2, rlist2, reseps, abseps, res3la, nres);
+        ktmin = ktmin + 1;
+        if (ktmin > 5 && abserr < 1.0e-3 * errsum) ier = 5;
+        if (abseps < abserr) {
+            ktmin = 0;
+            abserr = abseps;
+            result = reseps;
+            correc = erlarg;
+            ertest = std::max(epsabs, epsrel * std::abs(reseps));
+            if (abserr <= ertest) goto L100;
+        }
+        if (numrl2 == 1) noext = true;
+        if (ier == 5) goto L100;
+        maxerr = iord[1];
+        errmax = elist[maxerr];
+        nrmax = 1;
+        extrap = false;
+        small = small * 0.5;
+        erlarg = errsum;
+    }
+```
+
+차례는 이래요.
+
+1. 나눌 차례가 된 구간이 큰 구간이면 그냥 나눠요. 작은 구간(폭 ≤ `small`)이 차례가 되면 외삽 단계(`extrap`)로 들어가요.
+2. 외삽 단계에서 큰 구간의 오차 `erlarg`가 `ertest`보다 크면, 순위 목록을 `nrmax`부터 훑어 가장 오차가 큰 큰 구간을 골라 나눠요. 작은 구간은 건너뛰어요.
+3. 큰 구간이 충분히 맞으면 지금의 `area`를 ε 표의 다음 원소로 넣고 `qelg`를 불러요. 외삽 값의 오차 어림 `abseps`가 지금까지의 것보다 작으면 받아들이고, `ertest`를 외삽 값의 허용오차로 바꿔 판정해요.
+4. 다음 단계로 `small`을 반으로 줄이고 목록의 맨 위부터 다시 나눠요.
+
+이렇게 하면 ε 표에 들어가는 `area`는 특이점에서 먼 곳은 이미 충분히 맞고, 특이점 둘레만 한 단계씩 촘촘해진 어림들이에요. 위의 $x^{-1/2}$ 실험이 만든 수열과 같은 꼴이에요.
+
+결과의 구간과 적분값을 견주면 외삽이 한 일이 보여요.
+
+```python
+>>> g = lambda x: x**-0.5 * math.log(1 / x)
+>>> r = sd.integrate.quad(g, 0, 1)
+>>> r.integral - 4
+-1.687538997430238e-14
+>>> float(sd.sum(r.interval_integrals)) - 4
+-0.04557059938689667
+>>> print(r.intervals[0], r.interval_errors[0])
+[      0.0 0.0078125] 0.7833612023554014
+```
+
+구간 여덟 개의 값을 더하면 4보다 0.046 작아요. 맨 왼쪽 [0, 1/128]의 21점 규칙이 특이점을 제대로 적분하지 못해 오차 어림이 0.78이에요. 그래도 `integral`은 14자리까지 맞는데, 구간 값의 합이 아니라 ε-알고리즘의 외삽 값이기 때문이에요. 오차 어림 2.7×10⁻¹³도 외삽 값의 것이에요.
+
+## 멈춤과 status
+
+고리가 끝나는 길은 여럿이고, 원본은 안에서 쓰는 번호(1–6)를 끝에서 한 칸씩 당겨 바깥의 `ier`로 내요(`if (ier > 2) ier = ier - 1`).
+
+| 바깥 `ier` (status) | 안의 번호 | 조건 |
+|---|---|---|
+| 0 | 0 | errsum ≤ errbnd이거나 외삽 값의 오차 ≤ ertest |
+| 1 | 1 | `last == limit` |
+| 2 | 2 또는 3 | 반올림: 나눠도 값이 거의 안 바뀌는데 오차가 줄지 않은 횟수(`iroff1 + iroff2 ≥ 10`, `iroff3 ≥ 20`), 또는 외삽 단계에서 그런 일이 다섯 번(`ierro = 3`) |
+| 3 | 4 | 구간이 너무 작아 나눌 수 없음: max(\|a₁\|, \|b₂\|) ≤ (1 + 100ε)(\|a₂\| + 1000·u_min) |
+| 4 | 5 | 외삽이 다섯 번 넘게 나아지지 않는데 그 오차가 errsum의 1/1000보다 작음 |
+| 5 | 6 | 발산의 판정: 외삽 값과 구간 합의 비가 [10⁻², 10²] 밖이거나 errsum > \|area\| |
+
+첫 규칙 한 번에서도 판정이 있어요. 오차 어림이 이미 100ε·∫|f| 이하인데 허용오차보다 크면 반올림(2)이고, 오차가 허용오차 안이면서 경험식의 상한에 걸리지 않았으면(`abserr != resasc`) 나누지 않고 끝나요.
+
+반올림의 판정은 두 반쪽의 합이 옛 값과 상대 10⁻⁵ 안으로 같은데 오차의 합이 옛 오차의 0.99배보다 줄지 않은 경우를 세요. 반쪽 어느 하나가 경험식의 상한에 걸렸으면(`defab == error`) 그 바퀴는 세지 않아요. 규칙이 아직 구간을 풀어내지 못한 것이지 반올림이 아니기 때문이에요.
+
+끝맺음(라벨 100)에서는 외삽 값과 구간 값의 합 가운데 하나를 골라요. 외삽 값을 한 번도 얻지 못했으면 구간 합이 결과예요. 얻었는데 실패로 끝났으면 둘의 상대 오차 어림을 견줘 구간 합이 나을 때 구간 합을 내요. 외삽 값을 내는 경우는 발산의 판정을 거쳐요. 발산의 판정은 f가 한 부호에 가까운 경우(`ksgn`이 1)이거나 값이 ∫|f|의 1/100보다 클 때만 해요.
+
+## 무한 구간: QAGI
+
+`dqagie`는 [0, 1]을 첫 구간으로, [15점 규칙](/internals/integrate/gauss-kronrod/)을 규칙으로, `small`의 시작을 0.375로 같은 고리를 돌려요.
+
+```cpp
+// csrc/integrate/quadpack.hpp
+template <class F>
+void qagie(F& f, double bound, int inf, double epsabs, double epsrel, int limit, Work& w) {
+    w.reset(limit);
+    const double boun = inf == 2 ? 0.0 : bound;
+    auto rule = [&](double x, double y, double& r, double& e, double& ra, double& rs) {
+        qk15i(f, boun, inf, x, y, r, e, ra, rs);
+    };
+    qags_loop(rule, 0.0, 1.0, 0.375, epsabs, epsrel, limit, w);
+    w.neval = 30 * static_cast<std::int64_t>(w.last) - 15;
+    if (inf == 2) w.neval = 2 * w.neval;
+}
+```
+
+x = a + (1 − t)/t로 바꾸면 무한히 먼 꼬리가 t = 0 둘레로 모여요. 꼬리가 거듭제곱으로 줄면 바꾼 피적분 함수는 t = 0에서 끝점 특이점과 같은 꼴이 되고, 외삽이 같은 이유로 도와요.
+
+```python
+>>> r = sd.integrate.quad(lambda x: math.log(x) / (1 + 100 * x * x), 0, math.inf)
+>>> r
+IntegrateResult(integral=-0.361689, error=2.0371e-09, converged=True, nfev=465)
+>>> r.integral + math.pi * math.log(10) / 20
+-3.2529534621517087e-14
+```
+
+QUADPACK이 QAGI의 예로 드는 적분이에요. 참값은 −π log 10 / 20이에요. 진동하며 천천히 줄어드는 꼬리(sin x / x 같은)는 이 변환 뒤에 t = 0 둘레에서 끝없이 진동하므로 QAGI가 맞지 않아요. 그런 적분은 가중 함수 루틴 QAWF가 맡아요([가중 함수 루틴](/internals/integrate/weight-routines/)).
+
+## 중단점: QAGP
+
+`points`를 주면 `dqagpe`가 그 점들로 처음 구간을 나눠요. 점이 k개면 처음 구간이 k + 1개이고, 21점 규칙을 구간마다 한 번씩 써요. Gauss–Kronrod 규칙은 구간의 끝을 계산하지 않으므로 중단점에서는 f를 부르지 않아요. 그 점에서 f가 무한이어도 괜찮은 까닭이에요.
+
+나머지는 QAGS와 같고, 외삽의 기준만 달라요. 처음 구간들의 길이가 제각각이라 크기 `small`로는 "한 단계"를 잴 수 없어서, 구간마다 나눈 횟수 `level`을 들고 다니며 `levmax`보다 덜 나눈 구간을 큰 구간으로 봐요.
+
+```cpp
+        // csrc/integrate/quadpack.hpp
+        if (noext) continue;
+        erlarg = erlarg - erlast;
+        if (levcur + 1 <= levmax) erlarg = erlarg + erro12;
+        if (!extrap) {
+            if (level[maxerr] + 1 <= levmax) continue;
+            extrap = true;
+            nrmax = 2;
+        }
+```
+
+외삽을 한 번 할 때마다 `small`을 반으로 줄이는 대신 `levmax`를 하나 올려요. 또 처음 구간 가운데 21점 규칙이 풀어내지 못한 것(오차 어림이 경험식의 상한 `resasc`에 걸린 것)은 오차를 모든 처음 구간의 오차 합으로 바꿔서, 순위 목록의 위쪽에 오게 해요.
+
+QUADPACK이 QAGP의 예로 드는 $\int_0^3 x^3 \log|(x^2 - 1)(x^2 - 2)|\,dx$는 x = 1, √2에 로그 특이점이 있어요.
+
+```python
+>>> h = lambda x: x**3 * math.log(abs((x * x - 1) * (x * x - 2)))
+>>> sd.integrate.quad(h, 0, 3)
+IntegrateResult(integral=52.7407, error=4.08844e-07, converged=True, nfev=1827)
+>>> sd.integrate.quad(h, 0, 3, points=[1, math.sqrt(2)])
+IntegrateResult(integral=52.7407, error=2.62476e-07, converged=True, nfev=1029)
+```
+
+중단점이 없어도 QAGS가 특이점을 찾아 나누지만, 자리를 알려 주면 그 둘레의 나누기가 처음부터 맞게 시작해 호출이 적어요.
+
+<Callout title="중단점은 scipy처럼 다듬어요">
+`quad`는 `points`를 scipy처럼 정렬하고 겹친 점을 뺀 뒤 (a, b) 안의 것만 넘겨요. 남은 점이 하나도 없어도 QAGP예요. `dqagpe` 안에도 원본의 정렬이 남아 있지만, 이미 정렬된 점이 들어오므로 순서를 바꾸지 않아요.
+</Callout>

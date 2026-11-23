@@ -1,0 +1,72 @@
+---
+import { getCollection, render } from 'astro:content';
+import Docs from '../../../layouts/Docs.astro';
+import Related from '../../../components/docs/Related.astro';
+import Pager from '../../../components/docs/Pager.astro';
+import {
+  internalsAreaNav,
+  internalsCrumbs,
+  internalsGroups,
+  internalsHref,
+  internalsSidebar,
+  splitInternalsId,
+} from '../../../data/internals';
+
+export async function getStaticPaths() {
+  const entries = await getCollection('internals');
+  return entries.map((entry) => {
+    const [area, slug] = splitInternalsId(entry);
+    return { params: { area, slug }, props: { entry } };
+  });
+}
+
+const { entry } = Astro.props;
+const { area } = Astro.params;
+const { data } = entry;
+const { Content, headings: rawHeadings, remarkPluginFrontmatter } = await render(entry);
+// Headings with math carry their text and TeX pieces for the table of contents.
+const headingParts = remarkPluginFrontmatter.headingParts ?? {};
+const bodyHeadings = rawHeadings.map((h) => ({ ...h, parts: headingParts[h.slug] }));
+
+const ordered = (await internalsGroups(area)).flatMap((g) => g.entries);
+const at = ordered.findIndex((e) => e.id === entry.id);
+const prev = ordered[at - 1];
+const next = ordered[at + 1];
+const related = data.seeAlso
+  .map((slug) => ordered.find((e) => splitInternalsId(e)[1] === slug))
+  .filter((e) => e !== undefined);
+const link = (e: (typeof ordered)[number]) => ({ href: internalsHref(e), title: e.data.title });
+// Reading time from the prose alone: code, data and markup do not count.
+// About 500 Korean characters a minute.
+const prose = (entry.body ?? '')
+  .replace(/^---[\s\S]*?---/, '')
+  .replace(/```[\s\S]*?```/g, '')
+  .replace(/^(import|export) .*$/gm, '')
+  .replace(/<[^>]+>/g, '')
+  .replace(/\$\$[\s\S]*?\$\$|\$[^$\n]*\$/g, '')
+  .replace(/\s+/g, '');
+const minutes = Math.max(1, Math.round(prose.length / 500));
+const sections = bodyHeadings.filter((h) => h.depth === 2).length;
+const meta = [`읽는 데 약 ${minutes}분`, `${sections}개 절`];
+
+const headings = [
+  ...bodyHeadings.filter((h) => h.depth <= 3),
+  ...(related.length > 0 ? [{ depth: 2, slug: '함께-보기', text: '함께 보기' }] : []),
+];
+---
+
+<Docs
+  title={data.title}
+  description={data.summary}
+  section="internals"
+  crumbs={internalsCrumbs(area, data.group)}
+  groups={await internalsSidebar(area)}
+  area={await internalsAreaNav(area)}
+  headings={headings}
+  meta={meta}
+>
+  <Content />
+
+  <Related items={related.map((e) => ({ ...link(e), summary: e.data.summary, tag: e.data.group }))} />
+  <Pager label="이전·다음 글" prev={prev && link(prev)} next={next && link(next)} />
+</Docs>

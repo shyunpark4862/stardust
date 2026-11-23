@@ -1,0 +1,352 @@
+---
+title: 선형 커널과 sd.interp
+group: 한 변수
+order: 1
+summary: 두 끝값 사이의 값을 계산하는 커널 하나가 끝에서 정확하고, 같은 끝값이면 그 값이고, 위치에 대해 단조이고, 두 끝값 사이에 있다는 것의 증명과 오차 한계, 유한하지 않은 끝값의 갈래, 256점 블록 꼴, numpy의 뜻을 따르는 sd.interp의 반복 노드와 주기, 그리고 이 커널 하나 때문에 sd.interp, k = 1 B-스플라인, 격자의 선형 보간이 서로 같은 비트가 되는 까닭을 설명해요.
+seeAlso: [overview, bspline, cubic, grid, accuracy-performance]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+import AccuracySummary from '../../../components/fig/AccuracySummary.astro';
+
+export const monoNaive = [[0, -1], [1, -1], [2, 0], [3, -1], [4, 0], [5, 0], [6, 0], [7, 1], [8, 0], [9, 1], [10, 1], [11, 1], [12, 1], [13, 1], [14, 1], [15, 1], [16, 1], [17, 1], [18, 1], [19, 1], [20, 1], [21, 1], [22, 2], [23, 1], [24, 2], [25, 2], [26, 2], [27, 3], [28, 2], [29, 3], [30, 3], [31, 3], [32, 3], [33, 3], [34, 3], [35, 3], [36, 3], [37, 3], [38, 3], [39, 3], [40, 3]];
+export const monoSd = [[0, -1], [1, 0], [2, 0], [3, 0], [4, 0], [5, 0], [6, 0], [7, 0], [8, 0], [9, 0], [10, 1], [11, 1], [12, 1], [13, 1], [14, 1], [15, 1], [16, 1], [17, 1], [18, 1], [19, 1], [20, 1], [21, 2], [22, 2], [23, 2], [24, 2], [25, 2], [26, 2], [27, 2], [28, 2], [29, 2], [30, 3], [31, 3], [32, 3], [33, 3], [34, 3], [35, 3], [36, 3], [37, 3], [38, 3], [39, 3], [40, 3]];
+
+## 한눈에 보기
+
+두 노드 $(x_0, a)$와 $(x_1, b)$ 사이의 점 $x$에서 꺾은선의 값은 $y = a + t(b - a)$, $t = (x - x_0)/(x_1 - x_0)$예요. 식은 간단하지만 double로 계산하면 어느 꼴로 쓰느냐에 따라 깨지는 성질이 달라요. 이 영역의 선형 커널은 네 가지를 **정확한 성질로** 지켜요.
+
+1. 노드에서는 노드의 값 그대로예요. $x = x_0$이면 $a$, $x = x_1$이면 $b$예요.
+2. 두 끝값이 같으면 구간 안 어디서나 그 값이에요.
+3. 값은 $x$에 대해 단조예요. $a \lt b$인 구간에서 $x$가 커지면 값이 줄지 않아요.
+4. 구간 안의 값은 $a$와 $b$ 사이에 있어요.
+
+그리고 정확한 값과의 차이는 $\gamma_6(\lvert a\rvert + \lvert b\rvert)$ 안이에요($\gamma_k = ku/(1 - ku)$, $u = 2^{-53}$).
+
+커널은 `csrc/base/lerp.hpp` 하나이고 `sd.interp`, 이 영역의 선형 길(k = 1 B-스플라인), 격자의 `linear`·`slinear`가 모두 이것을 불러요. 1이 있어서 노드에 놓인 점을 어느 구간으로 쳐도 값이 같고, 그래서 구간을 고르는 규칙이 서로 다른 이 함수들이 정의역 안에서 비트까지 같아요.
+
+## 쉬운 식들이 깨는 것
+
+교과서의 세 꼴을 double로 계산해 볼게요. 첫째, $a + t(b - a)$는 $t = 1$에서 $b$가 아닐 수 있어요. $b - a$를 반올림한 뒤 다시 $a$에 더하니 $b$로 돌아오지 않아요.
+
+```python
+>>> import math
+>>> import stardust as sd
+>>> a, b = 0.2, 0.9
+>>> a + 1.0 * (b - a)
+0.8999999999999999
+>>> sd.interp(1.0, sd.asarray([0.0, 1.0]), sd.asarray([a, b]))
+0.9
+```
+
+같은 꼴이 노드에서 구간을 넘기도 해요. 아래 $0.29000000000000004$는 $b = 0.29$보다 커서, 단조인 자료의 꺾은선이 노드에서 튀어 오른 셈이에요.
+
+```python
+>>> a, b = 0.03, 0.29
+>>> a + 1.0 * (b - a)
+0.29000000000000004
+>>> sd.interp(1.0, sd.asarray([0.0, 1.0]), sd.asarray([a, b]))
+0.29
+```
+
+둘째, $(1 - t)a + tb$는 양 끝에서 정확하지만 $a = b$에서 $a$가 아닐 수 있고, $t$에 대해 단조가 아니에요.
+
+```python
+>>> a, t = 0.1, 0.2
+>>> (1 - t) * a + t * a
+0.10000000000000002
+>>> sd.interp(t, sd.asarray([0.0, 1.0]), sd.asarray([a, a]))
+0.1
+>>> a, b = 0.6, 0.7
+>>> t1 = 0.5000000000000002
+>>> t2 = math.nextafter(t1, 1.0)
+>>> (1 - t1) * a + t1 * b, (1 - t2) * a + t2 * b
+(0.65, 0.6499999999999999)
+>>> sd.interp(sd.asarray([t1, t2]), sd.asarray([0.0, 1.0]), sd.asarray([a, b])).tolist()
+[0.65, 0.65]
+```
+
+$t$가 한 칸 커졌는데 값이 한 칸 작아졌어요. 아래 그림은 $t = 0.5$에서 시작해 이웃 double 40개를 차례로 밟으며 두 꼴의 값을 $0.65$의 ULP 단위로 그린 것이에요.
+
+<Fig caption="a = 0.6, b = 0.7, t = 0.5부터 이웃 double을 하나씩 늘리며 계산한 값(세로축: 0.65에서 몇 ULP인지). (1 - t)a + tb는 네 번 거꾸로 내려가고, sd의 커널은 한 번도 내려가지 않는 계단이에요.">
+  <Plot
+    curves={[
+      { points: monoNaive, label: '(1 - t)a + tb', dashed: true },
+      { points: monoSd, label: 'sd.interp' },
+    ]}
+    domain={[0, 40]}
+    range={[-1.5, 3.5]}
+    xTicks={[
+      { v: 0, label: '0' },
+      { v: 10, label: '10' },
+      { v: 20, label: '20' },
+      { v: 30, label: '30' },
+      { v: 40, label: '40' },
+    ]}
+    yTicks={[
+      { v: -1, label: '-1' },
+      { v: 0, label: '0' },
+      { v: 1, label: '1' },
+      { v: 2, label: '2' },
+      { v: 3, label: '3' },
+    ]}
+  />
+</Fig>
+
+셋째, numpy의 `interp`는 기울기 $s = (f_{j+1} - f_j)/(x_{j+1} - x_j)$를 먼저 구해 $f_j + s(x - x_j)$로 계산해요. 왼쪽 노드에서는 정확하지만 오른쪽 노드 바로 왼쪽에서 구간의 범위를 넘을 수 있고, 노드 간격이 비정상 수면 $s$가 넘쳐 구간 안이 inf가 돼요.
+
+이 커널은 두 꼴을 나눠 써요. $a$와 $b$의 부호가 같으면 $a + t(b - a)$를 쓰고 $b$를 넘은 값을 $b$로 자르고, 부호가 다르면 $tb + (1 - t)a$를 쓰고, $t$가 정확히 0이나 1이면 끝값을 그대로 내요. C++20의 `std::lerp`(제안서 P0811)가 같은 구성을 써요. 이 영역은 거기에 양 끝의 갈래를 더했어요.
+
+## 커널
+
+```cpp
+// csrc/base/lerp.hpp
+inline double lerp_t(double x, double x0, double x1) {
+    const double w = x1 - x0, d = x - x0;
+    if (std::isinf(w) || std::isinf(d)) [[unlikely]] {
+        if (std::isinf(x)) return x;  // a point at +-inf: t is +-inf (the width is positive)
+        return (0.5 * x - 0.5 * x0) / (0.5 * x1 - 0.5 * x0);
+    }
+    return d / w;
+}
+```
+
+$t = \mathrm{fl}(\mathrm{fl}(x - x_0)/\mathrm{fl}(x_1 - x_0))$예요. 폭 $x_1 - x_0$이 넘치는 구간(끝이 DBL_MAX 둘레)이나 $x - x_0$이 넘치는 점(정의역에서 아주 먼 늘이기)은 세 값에 $1/2$을 곱해 같은 식을 써요. $1/2$을 곱한 두 값의 차는 넘치지 않고, 2의 거듭제곱을 곱하는 것은 정상 수에서 정확하니 비율이 그대로예요.
+
+```cpp
+// csrc/base/lerp.hpp
+inline double lerp_finite(double a, double b, double t) {
+    const double r1 = t * b + (1.0 - t) * a;  // opposite signs: no cancellation
+    double r2 = a + t * (b - a);              // same sign: exact for a == b
+    // r2 past b is cut back to b: for t <= 1 on b's side of a, for t > 1 on the other side
+    r2 = ((t > 1.0) == (b > a)) ? std::fmax(r2, b) : std::fmin(r2, b);
+    const bool opposite = ((a <= 0.0) & (b >= 0.0)) | ((a >= 0.0) & (b <= 0.0));  // bitwise: no branches
+    double r = opposite ? r1 : r2;
+    r = (t == 1.0) ? b : r;
+    r = (t == 0.0) ? a : r;
+    return (t != t) ? t : r;  // a NaN t (a NaN point) stays NaN: fmin and fmax would drop it
+}
+```
+
+두 식을 모두 계산하고 고르기로 결과를 정해요. `if`로 갈라 한쪽만 계산해도 결과는 같은 비트예요. 고르는 꼴을 쓰는 까닭은 속도예요. 평가점이 무작위 순서면 끝값의 부호와 $t$로 가르는 갈래를 프로세서가 예측하지 못해 매번 되돌아가는데, 고르는 꼴에는 되돌아갈 갈래가 없고 컴파일러가 고리 전체를 벡터로 묶을 수 있어요. 부호 판정을 `&&`가 아니라 비트 연산 `&`, `|`로 쓴 것도 갈래를 만들지 않으려는 것이에요.
+
+모든 연산은 반올림 한 번이에요. 빌드가 `-ffp-contract=off`라 컴파일러가 곱과 합을 FMA 하나로 합치지 않아요. 아래 증명이 연산마다 반올림 하나를 세기 때문에 이것이 필요해요.
+
+`fmin`·`fmax`는 NaN 인자를 버리고 다른 쪽을 돌려주니, NaN인 $t$(NaN 평가점)를 마지막 줄에서 다시 NaN으로 돌려요.
+
+## 네 성질의 증명
+
+쓰는 것은 반올림의 두 성질뿐이에요. 반올림은 단조예요($u \le v$면 $\mathrm{fl}(u) \le \mathrm{fl}(v)$). 그리고 표현 가능한 수 $c$에 대해 $\lvert v\rvert \le \lvert c\rvert$면 $\lvert \mathrm{fl}(v)\rvert \le \lvert c\rvert$예요.
+
+**$t$의 단조와 끝.** 폭 $w = \mathrm{fl}(x_1 - x_0)$은 양수로 고정이고 $x \mapsto \mathrm{fl}(x - x_0)$은 단조라 $t$는 $x$에 대해 줄지 않아요. $x = x_0$이면 분자가 0이라 $t = 0$이고, $x = x_1$이면 분자와 분모가 같은 수라 $t = 1$이에요. $x_0 \le x \le x_1$이면 $0 \le \mathrm{fl}(x - x_0) \le w$라 $0 \le t \le 1$이에요. $1/2$을 곱하는 갈래도 같은 논증이에요.
+
+**양 끝에서 정확.** $t = 0$과 $t = 1$은 끝값을 그대로 고르는 갈래예요. 0의 부호까지 그대로예요.
+
+**$a = b$면 $a$.** 0이 아니면 같은 부호 갈래이고 $\mathrm{fl}(b - a) = 0$이라 $r = \mathrm{fl}(a + 0) = a$예요. 둘 다 0이면 반대 부호 갈래이고 $tb$와 $(1 - t)a$가 $a$와 같은 부호의 0이라 합도 그 0이에요. 둘 다 $-0$이면 $-0$이에요.
+
+**$t$에 대해 단조.** $b \gt a$라고 할게요($b \lt a$는 대칭이에요). 같은 부호 갈래에서 $D = \mathrm{fl}(b - a) \gt 0$이 고정이라 $t \mapsto \mathrm{fl}(t \cdot D)$가 줄지 않고, $\mathrm{fl}(a + \cdot)$도 단조이고, 상수 $b$와의 `fmin`도 단조를 지켜요. $0 \lt t \lt 1$에서 $\mathrm{fl}(tD) \ge 0$이라 $r \ge a$이고, 자른 값은 $b$ 이하라서 $t = 0$의 $a$와 $t = 1$의 $b$에 끊김 없이 이어져요. 반대 부호 갈래($a \le 0 \le b$)에서 $t \mapsto \mathrm{fl}(tb)$는 줄지 않고, $t \mapsto \mathrm{fl}(1 - t)$는 늘지 않는데 $a \le 0$을 곱하면 줄지 않는 함수가 되니 두 항의 합과 그 반올림도 줄지 않아요. 이 식의 $t = 0$, $1$에서의 값은 $a$, $b$와 0의 부호만 다를 수 있어요. 어느 갈래인지는 $a$, $b$로만 정해지니 $t$가 움직여도 갈래가 바뀌지 않아요.
+
+**$0 \le t \le 1$이면 $a$와 $b$ 사이.** 반대 부호 갈래에서 $\lvert tb\rvert \le \lvert b\rvert$라 $\mathrm{fl}(tb)$는 0과 $b$ 사이, $\mathrm{fl}(1 - t) \in [0, 1]$이라 $\mathrm{fl}(\mathrm{fl}(1 - t)a)$는 $a$와 0 사이예요. 그 합은 $a$와 $b$ 사이이고 반올림도 그래요. 같은 부호 갈래는 앞 문단의 $r \ge a$와 자르기예요.
+
+$t$가 $x$에 대해 단조이고 $r$이 $t$에 대해 단조이니 값은 $x$에 대해 단조예요. 단조인 자료의 꺾은선은 구간마다 단조이고 노드에서 정확히 이어지니 전체가 단조예요.
+
+## 오차 한계
+
+$t$는 뺄셈 둘과 나눗셈 하나라 $\hat t = t(1 + \theta_3)$, $\lvert \theta_3\rvert \le \gamma_3$이에요. 정확한 값을 $y = a + t(b - a)$, $M = \max(\lvert a\rvert, \lvert b\rvert)$라 할게요.
+
+- **같은 부호 갈래.** $\hat r = (a + t(b - a)(1 + \theta_5))(1 + \delta)$라 $\lvert \hat r - y\rvert \le \gamma_5(1 + u)\lvert t\rvert\lvert b - a\rvert + u\lvert y\rvert$이고, 같은 부호라 $\lvert b - a\rvert \le M$이에요. $0 \le t \le 1$이면 $\lvert y\rvert \le M$이라 $(\gamma_5(1 + u) + u)M \le \gamma_6 M$이에요. 정확한 $y$는 자르는 쪽의 안에 있으니 자르기가 오차를 늘리지 않아요.
+- **반대 부호 갈래.** $\mathrm{fl}(\hat t b)$와 $tb$의 차는 합의 반올림까지 $\gamma_5\lvert t\rvert\lvert b\rvert$ 안이고, $\mathrm{fl}(\mathrm{fl}(1 - \hat t)a)$와 $(1 - t)a$의 차는 $(\gamma_3\lvert t\rvert + \gamma_3\lvert 1 - t\rvert + \gamma_3^2\lvert t\rvert)\lvert a\rvert$ 안이에요. $0 \le t \le 1$이면 합쳐 $\gamma_5(\lvert a\rvert + \lvert b\rvert)$ 안이에요.
+- **늘이기**($t \lt 0$ 또는 $t \gt 1$). $T = \max(1, \lvert t\rvert)$로 $\lvert y\rvert \le 2TM$, $\lvert 1 - t\rvert \le 2T$를 넣으면 같은 부호 갈래가 $\gamma_7 TM$, 반대 부호 갈래가 $\gamma_{10}T(\lvert a\rvert + \lvert b\rvert)$예요. $-1 \lt t \lt 0$에서는 마지막 합의 반올림 $u\lvert y\rvert \approx u\lvert a\rvert$가 $\lvert t\rvert$에 비례하지 않아서, 한계의 배수를 $\lvert t\rvert$가 아니라 $\max(1, \lvert t\rvert)$로 적어야 해요.
+- **비정상 수.** 곱이 비정상 수가 되면 그 반올림은 상대가 아니라 절대 $\eta = 2^{-1075}$ 안이에요. 곱이 많아야 둘이고 마지막 합의 $(1 + u)$를 더해도 $3\eta$ 아래예요.
+
+모으면 이래요.
+
+$$
+\lvert \hat r - y\rvert \le
+\begin{cases}
+\gamma_6(\lvert a\rvert + \lvert b\rvert) + 3\eta & 0 \le t \le 1 \\
+\gamma_{10}\max(1, \lvert t\rvert)(\lvert a\rvert + \lvert b\rvert) + 3\eta & \text{그 밖}
+\end{cases}
+$$
+
+노드에서는 0이에요. 정확도 기준선에서 `sd.interp`는 곡선 안의 점에서 이 한계의 0.23배, 선형 커널을 노리는 구간(끝점 둘레의 이웃 double, 반대 부호, 거의 같은 끝값, $\pm 0$, 비정상 수와 넘치는 폭)의 안쪽 점에서 0.5배였어요. 같은 점에서 numpy는 0.26과 0.72, scipy의 k = 1 스플라인은 0.23과 0.5, R의 `approx`는 0.23과 0.72였어요. 0.5는 끝값이 비정상 수인 구간에서 나온 값이에요. 그 크기에서는 반올림 반 칸 자체가 한계의 반이에요.
+
+<AccuracySummary area="interpolate" names={['linear']} caption="선형 보간의 정확도 기준선. curves는 실수 곡선의 정의역 안 평가점, intervals는 선형 커널을 노리는 구간의 안쪽 점이에요. 계약 대비가 1 이하면 위의 한계 안이에요." />
+
+## 유한하지 않은 끝값
+
+끝값 $a$나 $b$가 유한하지 않으면 다른 함수로 가요.
+
+```cpp
+// csrc/base/lerp.hpp
+inline double lerp_nonfinite(double a, double b, double t) {
+    if (t == 0.0) return a;
+    if (t == 1.0) return b;
+    if (t > 0.0 && t < 1.0) return a + b;
+    return a + t * (b - a);  // outside (or a NaN t): IEEE
+}
+```
+
+구간 안에서 `a + b`를 돌려주는 것은 이 경우에 맞는 답이 그 합이기 때문이에요. 한쪽만 $\pm\infty$면 그 무한대, 같은 부호의 무한대 둘이면 그 무한대, 반대 부호면 NaN, NaN이 섞이면 NaN이에요. numpy의 결과와 같아요. 노드에서는 그 노드의 값이고, 바깥은 IEEE로 계산한 $a + t(b - a)$예요.
+
+```python
+>>> xs = sd.asarray([0.0, 1.0])
+>>> sd.interp(sd.asarray([0.0, 0.5, 1.0]), xs, sd.asarray([1.0, math.inf])).tolist()
+[1.0, inf, inf]
+>>> sd.interp(0.5, xs, sd.asarray([-math.inf, math.inf]))
+nan
+>>> sd.interp(0.5, xs, sd.asarray([-0.0, -0.0]))
+-0.0
+```
+
+마지막 줄은 끝값이 둘 다 $-0$인 구간이에요. 반대 부호 갈래의 두 곱이 $-0$이라 합도 $-0$이에요. numpy는 $\mathrm{fma}(s, d, -0) = +0$이라 $+0$을 내요.
+
+## 256점 블록 꼴
+
+평가 함수는 평가점을 256점 블록으로 끊어 구간을 찾은 뒤, 블록 전체에 커널을 한 번의 고리로 돌려요.
+
+```cpp
+// csrc/base/lerp.hpp
+inline bool lerp_block(
+    const double* x, const double* x0, const double* x1, const double* a, const double* b, double* out, std::int64_t m
+) {
+    bool all = true;
+    for (std::int64_t i = 0; i < m; ++i) {
+        out[i] = detail::lerp_finite(a[i], b[i], (x[i] - x0[i]) / (x1[i] - x0[i]));
+        all &= lerp_block_covers(x[i], x0[i], x1[i], a[i], b[i]);
+    }
+    return all;
+}
+```
+
+고리 안은 `lerp_t`의 흔한 길(넘치지 않는 나눗셈)과 `lerp_finite` 그대로라 스칼라 커널과 같은 비트예요. `lerp_block_covers`는 $x - x_0$, $x_1 - x_0$, $a$, $b$가 모두 유한한지 봐요. 하나라도 아닌 점(NaN이나 무한한 점, 넘치는 폭, 유한하지 않은 끝값)이 있으면 `false`를 돌려주고, 부르는 쪽이 그 점만 스칼라 `lerp_t`와 `lerp`로 다시 계산해요. 흔한 블록은 갈래 없는 벡터 고리 하나로 끝나요.
+
+## sd.interp
+
+`sd.interp(x, xp, fp)`는 배열 영역의 함수이고 numpy의 뜻을 따라요. `csrc/array/ops/interp.cpp`에 있어요. 구간을 찾는 법은 [영역의 구조](/internals/interpolate/overview/)의 노드 수 $c$(점 아래, 같은 값 포함의 노드 수)이고, 값은 $c$로 이렇게 정해요.
+
+```cpp
+    // csrc/array/ops/interp.cpp
+    if (c == 0) return L.left;
+    if (c == L.n) return x == L.xp[L.n - 1] ? L.fp[L.n - 1] : L.right;
+    const std::int64_t j = c - 1;
+    return lerp(L.fp[j], L.fp[j + 1], lerp_t(x, L.xp[j], L.xp[j + 1]));
+```
+
+NaN인 점은 이 앞에서 NaN을 돌려줘요(복소 값이면 numpy처럼 실수부만 NaN). $c = 0$은 첫 노드 왼쪽이라 `left`(기본 `fp[0]`), $c = n$은 마지막 노드이거나 그 오른쪽이라 `fp[-1]`이나 `right`(기본 `fp[-1]`)예요. 그 밖은 구간 $[x_{c-1}, x_c]$이에요. $c$가 "$x$ 아래 노드의 수"이니 $x_{c-1} \le x \lt x_c$이고 이 구간의 폭은 언제나 양수예요.
+
+`xp`는 줄지 않기만 하면 돼요. 같은 값이 반복된 노드는 계단이 되고, 그 노드에서의 값은 오른쪽 값이에요. $c$가 반복된 노드를 모두 세니 구간이 반복의 마지막 노드에서 시작하기 때문이에요.
+
+```python
+>>> sd.interp(sd.asarray([0.5, 1.0, 1.5]), sd.asarray([0.0, 1.0, 1.0, 2.0]), sd.asarray([0.0, 10.0, 20.0, 30.0])).tolist()
+[5.0, 20.0, 25.0]
+>>> sd.interp(sd.asarray([-1.0, 5.0]), xs, sd.asarray([3.0, 4.0]), left=-9.0, right=9.0).tolist()
+[-9.0, 9.0]
+>>> sd.interp(0.5, sd.asarray([0.0, 2.0, 1.0]), sd.asarray([0.0, 1.0, 2.0]))
+Traceback (most recent call last):
+    ...
+ValueError: interp(): 'xp' must be nondecreasing
+```
+
+`xp`의 검사는 한 번 훑기라 평가의 비용에 견줘 작아요. numpy는 검사하지 않고, 정렬되지 않은 `xp`에서 뜻 없는 값을 내요.
+
+`period`가 있으면 numpy처럼 `xp`를 $[0, \text{period}]$로 감아 정렬하고 양 끝에 한 노드씩 더해요. 감은 뒤 같은 자리에 겹친 노드는 안정 정렬로 원래 순서를 지켜요.
+
+```cpp
+    // csrc/array/ops/interp.cpp
+    Periodic(const double* x, const T* f, std::int64_t n, double period) : xp(n + 2), fp(n + 2) {
+        std::vector<double> w(n);
+        for (std::int64_t i = 0; i < n; ++i) w[i] = wrap_period(x[i], period);
+        std::vector<std::int64_t> order(n);
+        std::iota(order.begin(), order.end(), 0);
+        std::stable_sort(order.begin(), order.end(), [&](std::int64_t a, std::int64_t b) { return w[a] < w[b]; });
+        for (std::int64_t i = 0; i < n; ++i) {
+            xp[i + 1] = w[order[i]];
+            fp[i + 1] = f[order[i]];
+        }
+        xp[0] = xp[n] - period;
+        fp[0] = fp[n];
+        xp[n + 1] = xp[1] + period;
+        fp[n + 1] = fp[1];
+    }
+```
+
+평가점도 같은 나머지 연산(나누는 수의 부호를 따르는 나머지)으로 $[0, \text{period}]$에 감은 뒤 위의 `value_at`으로 계산해요. 더한 두 노드 덕분에 감은 점은 언제나 어떤 구간의 안이에요.
+
+```python
+>>> sd.interp(sd.asarray([-0.25, 0.25, 1.0, 3.75]), sd.asarray([0.0, 0.5]), sd.asarray([1.0, 2.0]), period=1.0).tolist()
+[1.5, 1.5, 1.0, 1.5]
+```
+
+`x`가 Python 스칼라면 블록을 만들지 않고 8점 나란한 탐색의 한 점짜리(`count_le_lanes<1>`)로 $c$를 세고 같은 `value_at`을 불러요. 배열의 원소 하나로 부른 것과 같은 비트예요.
+
+## 이 영역의 선형 길
+
+이 영역 안에서 꺾은선을 계산하는 곳은 `csrc/interpolate/linear.cpp`의 `linear` 하나예요. 노드는 엄격히 증가하고 값은 $(n, K)$ 배치이며, 바깥은 `extrapolate`의 세 규칙이에요.
+
+```cpp
+        // csrc/interpolate/linear.cpp
+        for (std::int64_t i = 0; i < m; ++i) {
+            T* row = out + (b0 + i) * P.k;
+            const double p = v[i];
+            if (p != p || (P.rule == Extrapolate::Nan && (p < lo || p > hi))) {
+                std::fill(row, row + P.k, nan_value<T>());
+                continue;
+            }
+            const std::int64_t j = interval_of(c[i], P.n);
+            const double t = lerp_t(p, P.x[j], P.x[j + 1]);
+            const T* a = P.y + j * P.k;
+            const T* b = a + P.k;
+            for (std::int64_t col = 0; col < P.k; ++col) row[col] = lerp(a[col], b[col], t);
+        }
+```
+
+점마다 구간과 $t$를 한 번 구하고 모든 열이 같은 $t$를 써요. 그래서 배치의 한 열은 그 열만 따로 계산한 것과 같은 비트예요. 열이 하나인 실수 값은 `lerp_block`으로 블록 전체를 계산하고, 덮지 못한 점만 위의 고리로 다시 해요. 구간 규칙은 이 영역의 것(오른쪽 열린 구간, 바깥은 끝 구간)이라 정의역 밖은 끝 조각의 직선이 늘어나요.
+
+`BSpline`은 차수가 1이고 미분하지 않으면 이 길로 가요.
+
+```python
+    # src/stardust/interpolate/_bspline.py
+    def _eval(self, flat, nu, rule):
+        if self._k == 1 and nu == 0:
+            lin = self._linear_parts()
+            if lin:
+                return _core.linear(flat, lin[0], lin[1], rule)
+        return _core.bspline_eval(self._t, self._c2(), self._k, flat, nu, rule)
+```
+
+k = 1 B-스플라인의 함수는 노드 $t_1, \dots, t_n$에서 값 $c_0, \dots, c_{n-1}$을 지나는 꺾은선이에요(차수 1의 B-스플라인 $B_j$는 $t_{j+1}$에서 1인 삼각형 모자예요). `_linear_parts`는 그 노드가 엄격히 증가하면 노드와 값을 꺼내 두고, 안쪽 매듭이 겹쳐 꺾은선이 뛰는 경우에만 de Boor 평가로 가요. 정의역 $[t_1, t_n]$, 끝 조각의 직선, 그 정의역으로 감기가 모두 B-스플라인의 뜻 그대로예요.
+
+격자의 `linear`와 `slinear`는 축마다 구간과 $t$를 같은 `lerp_t`로 구하고, 꼭짓점 값 $2^d$개를 마지막 축부터 같은 `lerp`로 줄여요. 1차원이면 꼭짓점이 둘이라 위의 고리와 같은 연산이에요.
+
+## 같은 비트인 까닭
+
+정의역 $[x_0, x_{n-1}]$ 안에서 다섯 길이 비트까지 같아요.
+
+```python
+>>> rng = sd.random.default_rng(7)
+>>> xp = sd.sort(rng.random(101))
+>>> fp = rng.random(101) * 2.0 - 1.0
+>>> xq = xp[0] + (xp[100] - xp[0]) * rng.random(10000)
+>>> ref = sd.interp(xq, xp, fp).tolist()
+>>> col = sd.reshape(xq, (10000, 1))
+>>> I = sd.interpolate
+>>> knots = sd.concat([xp[0:1], xp, xp[100:101]])
+>>> paths = [
+...     I.make_interp_spline(xp, fp, k=1)(xq),
+...     I.BSpline(knots, fp, 1)(xq),
+...     I.RegularGridInterpolator((xp,), fp, method="linear")(col),
+...     I.RegularGridInterpolator((xp,), fp, method="slinear")(col),
+...     I.interpn((xp,), fp, col),
+... ]
+>>> [p.tolist() == ref for p in paths]
+[True, True, True, True, True]
+```
+
+구간을 고르는 규칙은 서로 달라요. `sd.interp`는 반복 노드에서 폭이 0인 구간을 피하도록 $[x_{c-1}, x_c]$를 고르고 마지막 노드를 따로 다루며, 이 영역의 선형 길과 격자는 $c - 1$을 첫 구간과 끝 구간으로 잘라요. 두 규칙이 다른 구간을 고르는 점은 노드에 놓인 점뿐이에요. 노드 $x_i$를 왼쪽 구간으로 치면 $t = 1$이라 $f_i$, 오른쪽 구간으로 치면 $t = 0$이라 또 $f_i$예요. 노드가 아닌 점은 두 규칙이 같은 구간을 고르고, 같은 구간이면 같은 `lerp_t`와 같은 `lerp`라서 같은 비트예요.
+
+정의역 밖은 뜻이 달라요. `sd.interp`는 numpy처럼 끝값(`left`, `right`)을 내고, k = 1 B-스플라인과 격자의 `fill_value=None`은 끝 조각을 늘려요. 늘이는 둘끼리는 같은 커널이라 1차원에서 바깥도 같은 비트예요.
+
+## 병렬화
+
+`sd.interp`와 선형 길은 평가점을 크기로만 정한 태스크(`sd.interp`는 1024점, 선형 길은 $1024/K$점)로 나눠요. 점 하나의 값은 그 점의 $c$와 커널로만 정해지고, $c$는 블록이 질주 탐색을 탔든 나란한 탐색을 탔든 같은 수예요. 그래서 결과는 스레드 수와 무관하게 같은 비트예요. 나누기 시작하는 작업량과 GIL을 놓는 기준은 [영역의 구조](/internals/interpolate/overview/)의 표에 있어요.

@@ -1,0 +1,418 @@
+---
+title: AAA
+names: [AAA, AAA.support_points, AAA.support_values, AAA.weights, AAA.errors, AAA.converged, AAA.poles, AAA.residues, AAA.roots, AAA.clean_up]
+group: 다항식과 유리식
+order: 4
+signatures:
+  - "sd.interpolate.AAA(x, y, /, *, rtol=None, max_terms=100, clean_up=True, clean_up_tol=1e-13)"
+  - "r(z, /)"
+  - "r.poles()"
+  - "r.residues()"
+  - "r.roots()"
+  - "r.clean_up(*, clean_up_tol=1e-13)"
+summary: 표본에서 몇 개의 지지점을 차례로 골라 함수를 유리식으로 근사해요(AAA 알고리즘). 적은 항으로 아주 정확하고, 극점 가까이나 뾰족한 곳이 있는 함수, 복소평면 위의 자료도 잘 따라가요. 멈춤 기준 rtol과 max_terms, converged, 극점·유수·영점, 가짜 극점을 지우는 clean_up을 설명해요.
+params:
+  - name: x
+    type: ndarray, 수의 시퀀스, numpy 배열, Series
+    kind: positional-only
+    desc: "표본의 자리를 담은 1차원 배열. 실수나 복소수이고 유한해야 해요. 순서는 상관없어요. 같은 자리가 되풀이되면 처음 표본만 써요."
+  - name: y
+    type: ndarray, 수의 시퀀스, numpy 배열, Series
+    kind: positional-only
+    desc: "표본의 값을 담은 1차원 배열. x와 길이가 같아야 해요. 실수나 복소수이고, 값이 NaN이나 inf인 표본은 버려요."
+  - name: rtol
+    type: float 또는 None
+    kind: keyword-only
+    desc: "멈춤 기준. 모든 표본에서 |f − r|이 rtol × max|f| 이하가 되면 멈춰요. 유한하고 0 이상이어야 해요. None이면 ε^(3/4)(약 1.8e-12)이에요. 기본값 None."
+  - name: max_terms
+    type: int
+    kind: keyword-only
+    desc: "고를 지지점의 최대 개수(걸음 수). 1 이상이어야 해요. 표본 수가 더 적으면 표본 수까지예요. 기본값 100."
+  - name: clean_up
+    type: bool
+    kind: keyword-only
+    desc: "True면 만든 뒤 가짜 극점(Froissart 쌍)을 지우고 무게를 다시 맞춰요. 기본값 True."
+  - name: clean_up_tol
+    type: float
+    kind: keyword-only
+    desc: "가짜 극점을 가르는 문턱. 유수의 크기를 극점과 표본의 거리로 나눈 값이 이 수 × |y|의 기하평균보다 작은 극점을 지워요. 유한하고 0 이상이어야 해요. 기본값 1e-13."
+  - name: z
+    type: float, complex, ndarray, 수의 시퀀스
+    kind: positional-only
+    desc: "부를 때 값을 구할 자리. 실수와 복소수 모두 받고 어떤 모양이든 돼요."
+returns:
+  type: AAA
+  desc: "유리식 객체. 함수처럼 부르면 값을, poles·residues·roots로 극점·유수·영점을 계산해요. 속성 support_points, support_values, weights, errors, converged를 읽고, clean_up()으로 가짜 극점을 지워요."
+raises:
+  - type: TypeError
+    desc: "x·y·z가 수의 배열이 아닐 때, max_terms가 int가 아닐 때, clean_up이 True·False가 아닐 때, 옵션을 자리로 줄 때, 없는 인자(cleanup_tol 등)를 줄 때."
+  - type: ValueError
+    desc: "x나 y가 1차원이 아닐 때, 길이가 다를 때, x에 NaN이나 inf가 있을 때, 값이 유한한 표본이 하나도 없을 때(빈 입력 포함), rtol이나 clean_up_tol이 음수이거나 유한하지 않을 때, max_terms가 1보다 작을 때."
+seeAlso: [basics, FloaterHormannInterpolator, BarycentricInterpolator, KroghInterpolator]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+import PlaneFig from '../../../components/fig/PlaneFig.astro';
+
+export const errTan = [[1, 1.45], [2, 0.942], [3, -0.683], [4, -2.445], [5, -4.349], [6, -6.645], [7, -8.999], [8, -11.33]];
+export const errExp = [[1, 0.371], [2, -1.478], [3, -3.521], [4, -6.23], [5, -9.487], [6, -12.32]];
+export const errAbs = [[1, 0], [2, 0.944], [3, -1.068], [4, 0.666], [5, -1.415], [6, -0.717], [7, -2.014], [8, -2.211], [9, -2.306], [10, -2.495], [11, -3.241], [12, -2.95], [13, -3.13], [14, -3.427], [15, -3.833], [16, -3.135], [17, -4.634], [18, -4.546], [19, -5.591], [20, -4.153], [21, -6.142], [22, -5.654], [23, -6.387], [24, -3.797], [25, -7.288], [26, -7.352], [27, -6.377], [28, -6.17], [29, -8.244], [30, -7.553], [31, -8.398], [32, -9.32], [33, -10.033], [34, -9.699], [35, -9.927], [36, -7.7], [37, -11.469], [38, -11.31], [39, -12.162]];
+export const unitCircle = [[1.0, 0.0], [0.9979, 0.0654], [0.9914, 0.1305], [0.9808, 0.1951], [0.9659, 0.2588], [0.9469, 0.3214], [0.9239, 0.3827], [0.8969, 0.4423], [0.866, 0.5], [0.8315, 0.5556], [0.7934, 0.6088], [0.7518, 0.6593], [0.7071, 0.7071], [0.6593, 0.7518], [0.6088, 0.7934], [0.5556, 0.8315], [0.5, 0.866], [0.4423, 0.8969], [0.3827, 0.9239], [0.3214, 0.9469], [0.2588, 0.9659], [0.1951, 0.9808], [0.1305, 0.9914], [0.0654, 0.9979], [0.0, 1.0], [-0.0654, 0.9979], [-0.1305, 0.9914], [-0.1951, 0.9808], [-0.2588, 0.9659], [-0.3214, 0.9469], [-0.3827, 0.9239], [-0.4423, 0.8969], [-0.5, 0.866], [-0.5556, 0.8315], [-0.6088, 0.7934], [-0.6593, 0.7518], [-0.7071, 0.7071], [-0.7518, 0.6593], [-0.7934, 0.6088], [-0.8315, 0.5556], [-0.866, 0.5], [-0.8969, 0.4423], [-0.9239, 0.3827], [-0.9469, 0.3214], [-0.9659, 0.2588], [-0.9808, 0.1951], [-0.9914, 0.1305], [-0.9979, 0.0654], [-1.0, 0.0], [-0.9979, -0.0654], [-0.9914, -0.1305], [-0.9808, -0.1951], [-0.9659, -0.2588], [-0.9469, -0.3214], [-0.9239, -0.3827], [-0.8969, -0.4423], [-0.866, -0.5], [-0.8315, -0.5556], [-0.7934, -0.6088], [-0.7518, -0.6593], [-0.7071, -0.7071], [-0.6593, -0.7518], [-0.6088, -0.7934], [-0.5556, -0.8315], [-0.5, -0.866], [-0.4423, -0.8969], [-0.3827, -0.9239], [-0.3214, -0.9469], [-0.2588, -0.9659], [-0.1951, -0.9808], [-0.1305, -0.9914], [-0.0654, -0.9979], [-0.0, -1.0], [0.0654, -0.9979], [0.1305, -0.9914], [0.1951, -0.9808], [0.2588, -0.9659], [0.3214, -0.9469], [0.3827, -0.9239], [0.4423, -0.8969], [0.5, -0.866], [0.5556, -0.8315], [0.6088, -0.7934], [0.6593, -0.7518], [0.7071, -0.7071], [0.7518, -0.6593], [0.7934, -0.6088], [0.8315, -0.5556], [0.866, -0.5], [0.8969, -0.4423], [0.9239, -0.3827], [0.9469, -0.3214], [0.9659, -0.2588], [0.9808, -0.1951], [0.9914, -0.1305], [0.9979, -0.0654]];
+
+## 한눈에 보기
+
+함수를 많은 자리에서 재 두었는데, 그 함수를 짧은 식으로 적어 두고 싶다고 해 볼게요. 다항식은 극점(값이 무한대로 가는 자리)이 가까이 있거나 뾰족한 곳이 있으면 항이 아주 많이 필요해요. **유리식**(다항식 나누기 다항식)은 그런 함수도 적은 항으로 따라가요. `AAA`는 표본에서 좋은 유리식을 알아서 찾아 줘요.
+
+$[-1, 1]$의 1000개 자리에서 잰 $\tan(1.5x)$를 근사해 볼게요. 이 함수는 $x = \pi/3 \approx 1.047$에 극점이 있어서 구간 끝 가까이에서 가파르게 올라가요.
+
+```python
+>>> import stardust as sd
+>>> import math
+>>> x = sd.linspace(-1.0, 1.0, 1000)
+>>> r = sd.interpolate.AAA(x, sd.tan(1.5 * x))
+>>> r
+AAA(support_points=8, converged=True)
+>>> r(0.3), math.tan(0.45)
+(0.48305506561268824, 0.4830550656165784)
+>>> xs = sd.linspace(-1.0, 1.0, 3001)
+>>> float(sd.max(sd.abs(r(xs) - sd.tan(1.5 * xs))))
+4.668931907758633e-12
+```
+
+표본 1000개 가운데 8개만 골라 만든 유리식이 구간 전체에서 $5 \times 10^{-12}$ 안으로 맞아요.
+
+<Reference />
+
+## 무엇을 계산하나요
+
+`AAA`가 만드는 유리식은 [`BarycentricInterpolator`](/api/interpolate/BarycentricInterpolator/)와 같은 무게중심 꼴이에요. 고른 표본의 자리 $z_j$를 **지지점**, 거기서의 값 $f_j$를 **지지값**이라 해요.
+
+$$
+r(z) = \frac{\displaystyle\sum_{j=1}^{m} \frac{w_j}{z - z_j}\, f_j}{\displaystyle\sum_{j=1}^{m} \frac{w_j}{z - z_j}}
+$$
+
+지지점이 $m$개면 분자와 분모가 $m - 1$차인 유리식이에요. 다항식 보간과 다른 점은 무게 $w_j$를 노드의 식으로 정하지 않고 자료에 맞춰 고른다는 것이에요.
+
+알고리즘은 걸음마다 지지점을 하나씩 더해요.
+
+1. 지금의 유리식과 표본의 차 $|f - r|$이 가장 큰 표본을 새 지지점으로 골라요(처음에는 표본의 평균과 견줘요).
+2. 지지점이 아닌 모든 표본에서 $f \cdot (\text{분모}) - (\text{분자})$가 가장 작아지도록 무게를 최소제곱으로 골라요(무게 벡터의 길이는 1로 둬요). 차 $f - r$을 분모로 곱해 무게에 대해 선형으로 만든 것이라 한 번의 특이값 분해로 풀려요.
+3. 모든 표본에서 $|f - r| \le \mathrm{rtol} \cdot \max|f|$이면 멈춰요. 아니면 1로 돌아가요.
+
+지지점에서는 값을 그대로 지나고, 나머지 표본은 근사해요. 그래서 `AAA`는 모든 표본을 지나는 보간이 아니라 표본에 맞추는 **근사**예요. 멈출 때는 모든 표본에서 차가 `rtol` 기준 안에 들어와 있어요.
+
+이름 AAA는 adaptive Antoulas–Anderson의 머리글자예요. Nakatsukasa, Sète, Trefethen이 제안한 알고리즘이에요.
+
+## 걸음마다 줄어드는 오차: `errors`, `converged`
+
+`errors`는 걸음마다 모든 표본에서의 가장 큰 차 $\max|f - r|$이에요. 길이가 걸음 수이고, 마지막 값이 다 만든 유리식의 오차예요. `converged`는 `rtol` 기준을 채워서 멈췄는지예요.
+
+```python
+>>> r.converged, r.errors.shape
+(True, (8,))
+>>> r.errors
+array([     28.20283989434344,      8.745299087123358,
+           0.2076086096040033,   0.003586350545638939,
+        4.480672548012876e-05, 2.2671476251900913e-07,
+       1.0027836339077112e-09,  4.665823283289683e-12], dtype=float64)
+```
+
+매끄러운 함수는 걸음마다 오차가 몇 자릿수씩 줄어요. 뾰족한 곳이 있는 $|x|$는 더 많은 걸음이 들고 줄어드는 모양도 들쭉날쭉해요.
+
+```python
+>>> e = sd.interpolate.AAA(x, sd.exp(x))
+>>> e, e.errors[-1]
+(AAA(support_points=6, converged=True), 4.800604358479177e-13)
+>>> a = sd.interpolate.AAA(x, sd.abs(x))
+>>> a, a.errors[-1]
+(AAA(support_points=39, converged=True), 6.891015535970269e-13)
+```
+
+<Fig caption="걸음마다의 가장 큰 오차(로그 눈금, 10의 지수). exp(x)는 6걸음, tan(1.5x)는 8걸음에 기본 기준 아래로 내려가고, 0에서 뾰족한 |x|는 39걸음이 들어요.">
+  <Plot
+    curves={[
+      { points: errExp, label: 'exp(x)' },
+      { points: errTan, label: 'tan(1.5x)' },
+      { points: errAbs, label: '|x|', dashed: true },
+    ]}
+    domain={[1, 39]}
+    range={[-13, 2]}
+    xTicks={[{ v: 1, label: '1' }, { v: 10, label: '10' }, { v: 20, label: '20' }, { v: 30, label: '30' }, { v: 39, label: '39' }]}
+    yTicks={[{ v: 0, label: '1' }, { v: -4, label: '1e-4' }, { v: -8, label: '1e-8' }, { v: -12, label: '1e-12' }]}
+  />
+</Fig>
+
+$|x|$의 지지점은 뾰족한 0 둘레에 몰려 있어요. `AAA`가 오차가 큰 곳에 지지점을 알아서 더 두기 때문이에요.
+
+```python
+>>> sd.sort(sd.abs(a.support_points))[:6]
+array([0.0010010010010009784, 0.0010010010010010895,  0.005005005005005003,
+        0.005005005005005003,   0.00700700700700696,  0.009009009009009028], dtype=float64)
+```
+
+## 멈춤 기준: `rtol`, `max_terms`
+
+`rtol`은 얼마나 정확해야 멈출지예요. 기본값은 $\varepsilon^{3/4} \approx 1.8 \times 10^{-12}$($\varepsilon = 2^{-52}$)이라 반올림보다 조금 위까지 맞춰요. 거친 근사로 충분하면 크게 해서 지지점을 줄여요.
+
+```python
+>>> e3 = sd.interpolate.AAA(x, sd.exp(x), rtol=1e-3)
+>>> e3, e3.errors
+(AAA(support_points=3, converged=True), array([   2.3504023872876028,  0.033241857785917706, 0.0003010858210690248], dtype=float64))
+```
+
+`max_terms`는 걸음 수(지지점 수)의 한계예요. 그 안에 기준을 채우지 못하면 거기서 멈추고 `converged`가 `False`예요. 경고는 내지 않으니 결과를 쓰기 전에 `converged`를 확인해요.
+
+```python
+>>> a20 = sd.interpolate.AAA(x, sd.abs(x), max_terms=20)
+>>> a20, a20.errors[-1]
+(AAA(support_points=20, converged=False), 7.023978026270139e-05)
+```
+
+`rtol=0`이면 기준을 채울 수 없으니 언제나 `max_terms`(또는 표본 수)까지 가요. 반올림 크기까지 내려간 뒤의 걸음은 반올림을 맞추느라 가짜 극점을 만들기 쉬워요. 아래의 `clean_up`이 그것을 지워요.
+
+## 지지점과 무게: 속성
+
+| 속성 | 뜻 | 타입 |
+|---|---|---|
+| `support_points` | 고른 지지점. 고른 순서예요 | 읽기 전용 (m,) 배열, 자료가 실수면 float64 |
+| `support_values` | 지지점에서의 표본 값 | 읽기 전용 (m,) 배열 |
+| `weights` | 무게중심 무게 | 읽기 전용 (m,) 배열 |
+| `errors` | 걸음마다의 $\max\lvert f - r\rvert$ | 읽기 전용 float64 배열 |
+| `converged` | `rtol` 기준을 채워 멈췄는지 | `bool` |
+
+```python
+>>> r.support_points[:4]
+array([               -1.0,                 1.0,  0.8258258258258258,
+       -0.9719719719719719], dtype=float64)
+>>> r.support_values[:4]
+array([-14.10141994717172,  14.10141994717172,  2.900017686066505,
+       -8.824588989307683], dtype=float64)
+>>> r(r.support_points[0]) == r.support_values[0]
+True
+```
+
+`tan(1.5x)`의 첫 두 지지점은 값이 가장 큰 양 끝이에요. 지지점에서는 지지값을 비트까지 그대로 돌려줘요.
+
+## 극점, 유수, 영점
+
+유리식의 극점을 보면 함수의 성질을 읽을 수 있어요. `poles()`는 유한한 극점, `residues()`는 극점마다의 유수, `roots()`는 유한한 영점이에요. 모두 complex128 배열이고, 순서는 계산이 내놓은 순서예요.
+
+```python
+>>> r.poles()
+array([(-430.24328040447705+0j),     (6.2056505054334+0j),
+        (-6.115264080524804+0j),  (3.1462079963705905+0j),
+       (-3.1453096668207987+0j),  (1.0471975511969502+0j),
+       (-1.0471975511967444+0j)], dtype=complex128)
+>>> r.residues()
+array([(-10172.572759639668+0j),  (-1.797426977924216+0j),
+        (-1.702074839938547-0j), (-0.6789333452925383-0j),
+       (-0.6768199749143329+0j), (-0.6666666666828277+0j),
+       (-0.6666666666733001-0j)], dtype=complex128)
+```
+
+$\tan(1.5x)$의 극점은 $x = \pi/3 + 2k\pi/3$이고 유수는 모두 $-2/3$이에요. 표본 구간 $[-1, 1]$에 가까운 극점 $\pm\pi/3 \approx \pm 1.0472$와 그 유수는 거의 정확하고, 먼 극점일수록 거칠어요. 맨 앞의 $-430$은 자료와 상관없는 먼 극점이에요.
+
+이렇게 근사한 극점 덕분에 표본 범위를 조금 벗어나 극점 너머까지도 함수를 따라가요. $x = 1.2$는 극점 $\pi/3$ 너머에 있어요.
+
+```python
+>>> r(1.2), math.tan(1.8)
+(-4.286261678680649, -4.286261674628062)
+```
+
+## 복소평면에서
+
+평가점 `z`에 복소수를 주면 복소수 결과예요. 실수축의 표본으로 만든 유리식도 복소평면에서 함수를 이어 가요.
+
+```python
+>>> import cmath
+>>> r(0.3 + 0.2j), cmath.tan(1.5 * (0.3 + 0.2j))
+((0.43347776310280833+0.35231161762748037j), (0.4334777631134705+0.35231161763488983j))
+```
+
+표본의 자리와 값이 복소수여도 돼요. 단위원 위의 200개 자리에서 $1/(z - 0.5) + 1/(z - 2)$를 재면, 지지점 셋으로 극점 0.5와 2, 유수 1, 영점 1.25를 찾아요.
+
+```python
+>>> th = sd.linspace(0.0, 2 * sd.pi, 200, endpoint=False)
+>>> z = sd.exp(1j * th)
+>>> c = sd.interpolate.AAA(z, 1.0 / (z - 0.5) + 1.0 / (z - 2.0))
+>>> c
+AAA(support_points=3, converged=True)
+>>> c.poles()
+array([(1.9999999999999993+1.8216476898477106e-16j),
+       (0.5000000000000002-3.4677754217219284e-17j)], dtype=complex128)
+>>> c.residues()
+array([(0.9999999999999986+6.501522257796685e-16j),
+                        (1-9.008410695123156e-17j)], dtype=complex128)
+>>> c.roots()
+array([(1.2500000000000002-9.52791784236211e-17j)], dtype=complex128)
+```
+
+<Fig caption="단위원(점선) 위의 표본 200개로 만든 유리식의 극점(네모)과 영점(마름모). 극점 0.5는 원 안에, 2는 원 밖에 있어요. 표본은 원 위에만 있지만 원 밖의 극점도 찾아요.">
+  <PlaneFig
+    label="복소평면에서 단위원과 AAA가 찾은 극점 둘과 영점 하나"
+    domain={[-1.3, 2.4]}
+    range={[-1.3, 1.3]}
+    width={520}
+    xTicks={[-1, 0, 0.5, 1, 1.25, 2]}
+    yTicks={[-1, 0, 1]}
+    layers={[
+      { kind: 'hline', y: 0, tone: 'faint' },
+      { kind: 'line', pts: unitCircle, tone: 'base', dashed: true, closed: true },
+      { kind: 'points', pts: [[0.5, 0], [2, 0]], tone: 'main', shape: 'square', size: 4, labels: ['극점 0.5', '극점 2'] },
+      { kind: 'points', pts: [[1.25, 0]], tone: 'ink', shape: 'diamond', size: 4, labels: ['영점 1.25'] },
+    ]}
+    legend={[
+      { label: '표본(단위원)', tone: 'base', shape: 'dash' },
+      { label: '극점', tone: 'main', shape: 'square' },
+      { label: '영점', tone: 'ink', shape: 'diamond' },
+    ]}
+  />
+</Fig>
+
+자료가 실수면 지지점·지지값·무게가 float64이고, 자리나 값이 하나라도 복소수면 complex128이에요. 극점·유수·영점은 언제나 complex128이에요.
+
+## 가짜 극점 지우기: `clean_up`
+
+반올림이나 잡음까지 맞추려고 하면 유리식이 아주 가까이 붙은 극점과 영점의 짝을 만들 수 있어요. 이런 짝을 **Froissart 쌍**이라 해요. 극점의 유수가 아주 작아서 함수의 모양을 크게 바꾸지는 않지만, 표본 사이에 극점이 끼어 그 둘레의 값을 망치고 극점을 읽을 때도 방해가 돼요.
+
+`clean_up=True`(기본)면 만든 뒤 이런 극점을 찾아, 극점마다 가장 가까운 지지점을 빼고 남은 표본으로 무게를 다시 맞춰요. 유수의 크기를 극점에서 가장 가까운 표본까지의 거리로 나눈 값이 `clean_up_tol` × ($\lvert y \rvert$의 기하평균)보다 작으면 가짜로 봐요. 기본 문턱 $10^{-13}$은 반올림이 만든 짝만 잡아요.
+
+`clean_up=False`로 만든 뒤 `clean_up()`을 부르면 지운 쌍의 수를 돌려줘요. 아래는 $10^{-6}$ 크기의 잡음이 섞인 $e^x$를 `rtol=0`으로 30걸음까지 맞춘 경우예요. 잡음이 만든 짝은 기본 문턱으로는 잡히지 않고, 문턱을 잡음 크기로 키우면 잡혀요.
+
+```python
+>>> rng = sd.random.default_rng(3)
+>>> noisy = sd.exp(x) + 1e-6 * (rng.random(1000) - 0.5)
+>>> b = sd.interpolate.AAA(x, noisy, rtol=0.0, max_terms=30, clean_up=False)
+>>> b
+AAA(support_points=30, converged=False)
+>>> float(sd.max(sd.abs(b(x) - sd.exp(x))))
+0.001177063248686272
+>>> b.clean_up()
+0
+>>> b.clean_up(clean_up_tol=1e-6)
+8
+>>> b
+AAA(support_points=22, converged=False)
+>>> float(sd.max(sd.abs(b(x) - sd.exp(x))))
+8.47065565448002e-05
+```
+
+여덟 쌍을 지우자 참 함수 $e^x$와의 차가 열 배 넘게 줄었어요. 지울 쌍이 없으면 0을 돌려주고 객체는 그대로예요. `clean_up()`은 객체를 고치는 메서드라 지운 뒤의 지지점과 무게가 객체에 남아요.
+
+잡음이 있는 자료는 처음부터 `rtol`을 잡음 크기쯤으로 주는 편이 더 좋아요. 잡음을 맞추기 전에 멈추므로 가짜 극점이 생기지 않고 지지점도 적어요.
+
+```python
+>>> g = sd.interpolate.AAA(x, noisy, rtol=1e-6)
+>>> g, float(sd.max(sd.abs(g(x) - sd.exp(x))))
+(AAA(support_points=4, converged=True), 1.4233402185759303e-06)
+```
+
+## 표본: `x`, `y`
+
+값이 NaN이나 inf인 표본은 버리고 남은 표본으로 만들어요. 표본은 자리 순서로 정렬해서 쓰고(복소수는 실수부, 허수부 순), 같은 자리가 되풀이되면 처음 표본만 써요.
+
+```python
+>>> dup = sd.interpolate.AAA([0.0, 1.0, 1.0, 2.0, 3.0], [1.0, 3.0, 99.0, 2.0, 0.0])
+>>> dup, dup(1.0)
+(AAA(support_points=3, converged=True), 3.0)
+```
+
+값이 모두 같으면 지지점 하나로 바로 멈춰요. 상수 유리식이라 극점도 영점도 없어요.
+
+```python
+>>> k1 = sd.interpolate.AAA(x, sd.ones(1000))
+>>> k1, k1.errors, k1(5.0), k1.poles(), k1.roots()
+(AAA(support_points=1, converged=True), array([0.0], dtype=float64), 1.0, array([], dtype=complex128), array([], dtype=complex128))
+```
+
+## 결과의 모양
+
+평가점이 수 하나면 Python `float`(자료나 평가점이 복소수면 `complex`), 배열이면 같은 모양의 배열이에요.
+
+```python
+>>> r(sd.asarray([[0.1, 0.2], [0.3, 0.4]])).shape
+(2, 2)
+```
+
+## 경계의 값
+
+| 상황 | 결과 |
+|---|---|
+| 평가점이 지지점 | 그 지지값 그대로 |
+| 평가점이 NaN | NaN |
+| 평가점이 inf나 −inf | 극한 $\sum w_j f_j / \sum w_j$ |
+| 값이 유한하지 않은 표본 | 버려요 |
+| 같은 자리의 표본 | 처음 표본만 |
+| 값이 모두 같음 | 지지점 하나, 극점과 영점 없음 |
+| `max_terms`에 이름 | `converged`가 `False` |
+
+```python
+>>> r(float("inf")), r(float("nan"))
+(23.631847359835252, nan)
+```
+
+## 에러
+
+```python
+>>> sd.interpolate.AAA(x, sd.exp(x), 1e-3)
+Traceback (most recent call last):
+    ...
+TypeError: AAA(): takes 2 positional arguments but 3 were given
+>>> sd.interpolate.AAA(x, sd.exp(x), rtol=-1.0)
+Traceback (most recent call last):
+    ...
+ValueError: AAA(): 'rtol' must be finite and >= 0, not -1.0
+>>> sd.interpolate.AAA(x, sd.exp(x), max_terms=0)
+Traceback (most recent call last):
+    ...
+ValueError: AAA(): 'max_terms' must be 1 or more, not 0
+>>> sd.interpolate.AAA(x, sd.exp(x), clean_up=1)
+Traceback (most recent call last):
+    ...
+TypeError: AAA(): 'clean_up' must be True or False, not int
+>>> sd.interpolate.AAA([0.0, float("inf")], [1.0, 2.0])
+Traceback (most recent call last):
+    ...
+ValueError: AAA(): 'x' must be finite
+>>> sd.interpolate.AAA([0.0, 1.0], [float("nan"), float("nan")])
+Traceback (most recent call last):
+    ...
+ValueError: AAA(): no sample has a finite value
+>>> r.clean_up(cleanup_tol=1e-10)
+Traceback (most recent call last):
+    ...
+TypeError: clean_up(): unexpected keyword argument 'cleanup_tol'. Did you mean 'clean_up_tol'?
+```
+
+## 계산의 크기
+
+걸음마다 (표본 수) × (지금까지의 지지점 수) 행렬의 특이값 분해를 한 번 해요. 그래서 시간은 거의 표본 수와 걸음 수로 정해져요. 표본 수천 개, 지지점 수십 개면 금방이에요. 극점과 영점은 크기가 (지지점 수 + 1)인 일반화 고유값 문제를 풀어 구해요. 시간이 지지점 수의 세제곱에 비례하므로 `max_terms`를 아주 크게 하면 `poles()`가 오래 걸려요. 극점, 유수, 영점은 처음 부를 때 한 번 구해 객체에 담아 둬요.
+
+## 결과는 언제나 같아요
+
+같은 표본, 같은 옵션이면 같은 기계에서 같은 스레드 수일 때 언제나 같은 비트예요. 지지점을 고를 때 차가 같은 표본이 여럿이면 앞의 표본을 골라요. 무게와 극점은 LAPACK의 특이값 분해와 고유값 계산으로 구해요.
+
+시험 자료에서 평가의 오차는 계산한 지지점·값·무게의 정확한 유리식 대비 계약 한계의 0.31배 이하예요. 수렴했다면 표본에서의 차는 언제나 $\mathrm{rtol} \cdot \max|f|$ 이하예요. 자세한 것은 [정확도와 성능](/internals/interpolate/accuracy-performance/)과 [AAA](/internals/interpolate/aaa/)에 있어요.
+
+## 조심할 점
+
+### 보간이 아니라 근사예요
+
+지지점이 아닌 표본은 지나지 않아요. 모든 표본을 지나야 하면 [`FloaterHormannInterpolator`](/api/interpolate/FloaterHormannInterpolator/)나 [`BarycentricInterpolator`](/api/interpolate/BarycentricInterpolator/)를 써요. 표본에 잡음이 있으면 기본 `rtol`로는 잡음까지 맞추려고 해서 지지점이 많아지고 가짜 극점이 생겨요. 잡음의 크기쯤으로 `rtol`을 키워요.
+
+### 표본 밖에서는 극점을 조심해요
+
+유리식은 표본이 없는 곳에 극점을 둘 수 있어요. 실수축의 표본으로 만들었어도 표본 범위 밖의 실수축이나 복소평면에 극점이 있을 수 있으니, 범위 밖에서 쓸 때는 `poles()`를 확인해요.
+
+### `converged`를 확인해요
+
+`max_terms`에 이르러도 경고는 없어요. `converged`가 `False`면 `errors[-1]`이 기준보다 커요.
+
+## scipy·numpy를 아는 분께
+
+- 이름, 메서드, 속성은 `scipy.interpolate.AAA`와 같고 알고리즘의 단계도 그대로예요. 지금은 시험 자료에서 scipy와 같은 지지점을 같은 순서로 골라요(약속은 아니에요). 오차가 반올림 크기까지 내려간 뒤의 걸음은 반올림에 따라 갈릴 수 있어요.
+- `max_terms`에 이르러도 `RuntimeWarning`을 내지 않고 `converged`가 `False`예요. scipy는 마지막 걸음에서 기준을 채워도 경고하지만, 여기서는 기준을 채웠으면 `True`예요.
+- `clean_up()`은 지운 수를 돌려주고 경고는 내지 않아요. 인자 이름은 생성자와 같은 `clean_up_tol`이에요. scipy의 메서드는 `cleanup_tol`이라, 그 이름을 주면 `TypeError`예요.
+- `rtol`과 `clean_up_tol`이 음수이거나 유한하지 않으면 `ValueError`예요. scipy는 검사하지 않아요. 유한한 표본이 없으면 `ValueError`예요(scipy는 빈 배열의 `argmax` 에러).
+- 옵션은 키워드로만 받아요. `AAA(x, y, 1e-3)`은 `TypeError`예요.
+- 0차원 결과는 Python `float`·`complex`예요.

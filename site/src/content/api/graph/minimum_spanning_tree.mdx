@@ -1,0 +1,239 @@
+---
+kind: function
+title: minimum_spanning_tree
+names: [minimum_spanning_tree]
+group: 트리, 흐름, 매칭
+order: 1
+signatures:
+  - "sd.graph.minimum_spanning_tree(csgraph, /)"
+summary: 모든 노드를 잇되 변 무게의 합이 가장 작은 변들을 골라요. 그래프를 무향으로 읽고, 이어지지 않은 그래프에서는 덩어리마다 트리를 하나씩 만들어요. 무게가 같은 변이 있어도 답은 언제나 하나예요.
+params:
+  - name: csgraph
+    type: sd.sparse 배열, ndarray, numpy 배열, 또는 수의 중첩 시퀀스
+    kind: positional-only
+    desc: (n, n) 인접 행렬. 행 i, 열 j의 원소가 i와 j를 잇는 변의 무게예요. 희소 배열은 저장된 원소가 변이고(저장된 0도 무게 0의 변), 밀집 배열은 0도 NaN도 ±inf도 아닌 원소가 변이에요. 무게는 음수여도 돼요. 대각 원소는 읽지 않아요.
+returns:
+  type: csr_array
+  desc: (n, n) float64 희소 배열. 고른 변만 저장돼 있고, 변마다 그 무게를 준 입력의 자리에 입력의 값 그대로 있어요.
+raises:
+  - type: TypeError
+    desc: csgraph가 sd.sparse 배열이나 밀집 행렬이 아닐 때(scipy의 희소 객체, DataFrame), 복소수일 때, 키워드 인자를 줬을 때.
+  - type: ValueError
+    desc: csgraph가 2차원 정방 행렬이 아닐 때, 희소 배열에 저장된 무게에 NaN이나 ±inf가 있을 때.
+seeAlso: [basics, connected_components, breadth_first_order, shortest_path, maximum_flow]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import PlaneFig from '../../../components/fig/PlaneFig.astro';
+
+export const mstPts = [[0, 2], [2, 3], [2, 1], [4, 2], [6, 3], [6, 1]];
+export const mstAll = [[0, 2, 2, 3], [2, 3, 4, 2], [2, 3, 6, 3], [4, 2, 6, 1]];
+export const mstTree = [[0, 2, 2, 1], [2, 3, 2, 1], [2, 1, 4, 2], [4, 2, 6, 3], [6, 3, 6, 1]];
+
+## 무엇을 계산하나요
+
+마을 여섯 곳을 통신선으로 이으려고 해요. 선을 놓을 수 있는 구간이 아홉 곳이고 구간마다 공사비가 달라요. 어느 마을에서든 다른 모든 마을로 신호가 가기만 하면 되니, 가장 싸게 잇는 구간만 고르고 싶어요.
+
+이렇게 **모든 노드를 잇는 변 가운데 무게의 합이 가장 작은 것**을 고른 결과가 최소 신장 트리예요. 노드 $n$개를 이으려면 변이 적어도 $n - 1$개 필요하고, 딱 $n - 1$개로 이으면 순환이 없는 트리가 돼요. 순환이 있다면 그 순환의 변 하나를 빼도 여전히 이어져 있으니, 가장 싼 답에는 순환이 없어요.
+
+```python
+>>> import stardust as sd
+>>> lines = [(0, 1, 4), (0, 2, 3), (1, 2, 2), (1, 3, 6), (1, 4, 9),
+...          (2, 3, 5), (3, 4, 4), (3, 5, 7), (4, 5, 3)]
+>>> G = sd.zeros((6, 6))
+>>> for i, j, cost in lines:
+...     G[i, j] = cost
+>>> T = sd.graph.minimum_spanning_tree(G)
+>>> T
+<csr_array of shape (6, 6), float64, 5 stored elements>
+>>> T.toarray()
+array([[0.0, 0.0, 3.0, 0.0, 0.0, 0.0],
+       [0.0, 0.0, 2.0, 0.0, 0.0, 0.0],
+       [0.0, 0.0, 0.0, 5.0, 0.0, 0.0],
+       [0.0, 0.0, 0.0, 0.0, 4.0, 0.0],
+       [0.0, 0.0, 0.0, 0.0, 0.0, 3.0],
+       [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]], dtype=float64)
+>>> T.sum()
+17.0
+```
+
+아홉 구간 가운데 다섯을 골랐고 공사비의 합은 17이에요. 변 0–1(무게 4)은 0–2와 1–2로 이미 이어진 두 마을을 다시 잇는 것이라 빠졌어요.
+
+<Fig caption="여섯 마을과 아홉 구간. 굵은 파란 선이 고른 다섯 구간이고 회색 선은 빠진 구간이에요. 숫자는 구간의 공사비예요. 고른 구간만 따라가도 모든 마을에 닿고, 순환은 없어요.">
+  <PlaneFig
+    label="노드 여섯 개와 변 아홉 개의 그래프에서 최소 신장 트리의 변 다섯 개를 굵게 그린 그림"
+    domain={[-0.6, 6.8]}
+    range={[0.3, 3.7]}
+    width={560}
+    layers={[
+      { kind: 'segments', segs: mstAll, tone: 'faint', width: 1.4 },
+      { kind: 'segments', segs: mstTree, tone: 'main', width: 2.4 },
+      { kind: 'points', pts: mstPts, tone: 'ink', size: 4.5, labels: ['0', '1', '2', '3', '4', '5'] },
+      { kind: 'text', at: [1, 2.5], text: '4', dy: -8, anchor: 'middle', tone: 'base' },
+      { kind: 'text', at: [1, 1.5], text: '3', dy: 18, anchor: 'middle', tone: 'main' },
+      { kind: 'text', at: [2, 2], text: '2', dx: -10, dy: 4, anchor: 'end', tone: 'main' },
+      { kind: 'text', at: [3, 2.5], text: '6', dy: -8, anchor: 'middle', tone: 'base' },
+      { kind: 'text', at: [3, 1.5], text: '5', dy: 18, anchor: 'middle', tone: 'main' },
+      { kind: 'text', at: [4, 3], text: '9', dy: -8, anchor: 'middle', tone: 'base' },
+      { kind: 'text', at: [5, 2.5], text: '4', dy: 18, anchor: 'middle', tone: 'main' },
+      { kind: 'text', at: [5, 1.5], text: '7', dy: 18, anchor: 'middle', tone: 'base' },
+      { kind: 'text', at: [6, 2], text: '3', dx: 10, dy: 4, anchor: 'start', tone: 'main' },
+    ]}
+    legend={[
+      { label: '고른 변', tone: 'main', shape: 'line' },
+      { label: '빠진 변', tone: 'faint', shape: 'line' },
+    ]}
+  />
+</Fig>
+
+<Reference />
+
+## 결과 읽기
+
+결과는 입력과 모양이 같은 [`csr_array`](/api/sparse/csr_array/)예요. 고른 변만 저장돼 있어서 `nnz`가 고른 변의 수예요. 어떤 변을 골랐는지는 `nonzero()`나 COO 꼴로 읽어요.
+
+```python
+>>> T.nnz
+5
+>>> rows, cols = T.nonzero()
+>>> list(zip(rows.tolist(), cols.tolist(), T.data.tolist()))
+[(0, 2, 3.0), (1, 2, 2.0), (2, 3, 5.0), (3, 4, 4.0), (4, 5, 3.0)]
+```
+
+결과에는 변마다 한 방향만 들어 있어요. 양쪽 방향이 다 있는 대칭 행렬이 필요하면 전치와 더해요.
+
+```python
+>>> S = T + T.T
+>>> S.toarray()[2]
+array([3.0, 2.0, 0.0, 5.0, 0.0, 0.0], dtype=float64)
+```
+
+트리를 따라 걷는 순서가 필요하면 결과를 [`breadth_first_order`](/api/graph/breadth_first_order/)에 `directed=False`로 넘겨요.
+
+```python
+>>> sd.graph.breadth_first_order(T, 0, directed=False).node_array
+array([0, 2, 1, 3, 4, 5], dtype=int64)
+```
+
+## 방향은 보지 않아요
+
+이 함수는 그래프를 언제나 무향으로 읽어요. $i$와 $j$를 잇는 변은 `G[i, j]`와 `G[j, i]` 가운데 있는 쪽이고, 둘 다 있으면 **작은 무게**예요. 그래서 위 예제처럼 위 삼각에만 적어도 되고, 대칭 행렬로 적어도 같은 트리가 나와요.
+
+고른 변은 그 무게를 준 자리에 그대로 놓여요. 아래에서 0과 1 사이는 `G[0, 1] = 5`와 `G[1, 0] = 2` 가운데 작은 2가 변의 무게이고, 결과에도 `[1, 0]` 자리에 있어요. 두 방향의 무게가 같으면 위 삼각($i \lt j$)의 자리예요.
+
+```python
+>>> D = sd.asarray([[0.0, 5.0, 0.0],
+...                 [2.0, 0.0, 1.0],
+...                 [0.0, 1.0, 0.0]])
+>>> sd.graph.minimum_spanning_tree(D).toarray()
+array([[0.0, 0.0, 0.0],
+       [2.0, 0.0, 1.0],
+       [0.0, 0.0, 0.0]], dtype=float64)
+```
+
+## 무게가 같은 변이 있을 때
+
+무게가 같은 변이 여럿이면 합이 같은 신장 트리가 여러 개일 수 있어요. 이 함수는 그 가운데 하나를 정해진 규칙으로 골라서, 같은 그래프면 언제나 같은 트리를 돌려줘요. 변을 (무게, 작은 끝 번호, 큰 끝 번호)의 순서로 견줘요. 무게가 같으면 번호가 앞선 변이 먼저예요.
+
+세 변의 무게가 모두 1인 삼각형에서는 어느 둘을 골라도 합이 2예요. 규칙에 따라 0–1과 0–2가 뽑혀요.
+
+```python
+>>> tri = sd.asarray([[0, 1, 1],
+...                   [1, 0, 1],
+...                   [1, 1, 0]])
+>>> sd.graph.minimum_spanning_tree(tri).toarray()
+array([[0.0, 1.0, 1.0],
+       [0.0, 0.0, 0.0],
+       [0.0, 0.0, 0.0]], dtype=float64)
+```
+
+같은 변을 적은 그래프면 희소로 주든 밀집으로 주든, 스레드를 몇 개 쓰든 같은 트리예요.
+
+## 이어지지 않은 그래프
+
+그래프가 여러 덩어리로 나뉘어 있으면 모든 노드를 잇는 트리는 없어요. 이때는 덩어리(연결 요소)마다 최소 신장 트리를 하나씩 만든 **숲**을 돌려줘요. 변의 수는 $n$에서 덩어리의 수를 뺀 값이에요.
+
+```python
+>>> two = sd.zeros((5, 5))
+>>> two[0, 1] = 2.0; two[1, 2] = 1.0; two[0, 2] = 4.0     # 덩어리 {0, 1, 2}
+>>> two[3, 4] = 7.0                                        # 덩어리 {3, 4}
+>>> F = sd.graph.minimum_spanning_tree(two)
+>>> F.nnz
+3
+>>> sd.graph.connected_components(two, directed=False).n_components
+2
+```
+
+노드 5개, 덩어리 2개라서 변이 3개예요. 결과의 변 수가 $n - 1$인지 보면 그래프가 한 덩어리인지도 알 수 있어요.
+
+## 무게 0과 음수 무게
+
+음수 무게도 받아요. 합이 가장 작은 트리를 고르는 일은 무게의 부호와 상관없이 뜻이 분명해요.
+
+```python
+>>> neg = sd.asarray([[0.0, -3.0, 2.0],
+...                   [0.0, 0.0, -1.0],
+...                   [0.0, 0.0, 0.0]])
+>>> sd.graph.minimum_spanning_tree(neg).toarray()
+array([[ 0.0, -3.0,  0.0],
+       [ 0.0,  0.0, -1.0],
+       [ 0.0,  0.0,  0.0]], dtype=float64)
+```
+
+밀집 행렬에서 0은 "변이 없다"는 뜻이에요. 무게가 0인 변은 희소 배열에 0을 저장해서 적어요. 아래는 0–1의 무게가 0, 1–2의 무게가 3, 0–2의 무게가 1인 삼각형이에요.
+
+```python
+>>> Z = sd.sparse.coo_array(([0.0, 3.0, 1.0], ([0, 1, 0], [1, 2, 2])), shape=(3, 3))
+>>> Tz = sd.graph.minimum_spanning_tree(Z)
+>>> Tz.nnz
+2
+>>> Tz.tocoo().coords
+(array([0, 0], dtype=int64), array([1, 2], dtype=int64))
+>>> Tz.data
+array([0.0, 1.0], dtype=float64)
+```
+
+무게 0의 변 0–1이 트리에 들어 있고, 결과에도 저장된 0으로 남아요. `toarray()`로 펼치면 변 없음과 구별되지 않으니, 무게 0의 변이 있는 그래프에서는 `nnz`와 좌표로 읽으세요.
+
+<Callout type="note" title="아주 작은 무게도 변이에요">
+
+밀집 행렬의 원소는 정확히 0일 때만 변이 아니에요. `1e-12` 같은 작은 무게도 그대로 변으로 읽어요.
+
+</Callout>
+
+## 경계의 값
+
+| 입력 | 결과 |
+|---|---|
+| 노드가 없는 (0, 0) 행렬 | 저장된 원소가 없는 (0, 0) 배열 |
+| 노드 하나 | 저장된 원소가 없는 (1, 1) 배열 |
+| 변이 없는 그래프 | 저장된 원소가 없는 (n, n) 배열 |
+| 대각 원소(자기 고리) | 읽지 않아요 |
+| 밀집 행렬의 NaN, ±inf | 변 없음 |
+| 희소 배열에 저장된 NaN, ±inf | `ValueError` |
+
+```python
+>>> sd.graph.minimum_spanning_tree(sd.zeros((0, 0)))
+<csr_array of shape (0, 0), float64, 0 stored elements>
+>>> bad = sd.sparse.coo_array(([1.0, sd.inf], ([0, 1], [1, 2])), shape=(3, 3))
+>>> sd.graph.minimum_spanning_tree(bad)
+Traceback (most recent call last):
+    ...
+ValueError: minimum_spanning_tree(): stored edge weights must be finite
+>>> sd.graph.minimum_spanning_tree(sd.ones((2, 3)))
+Traceback (most recent call last):
+    ...
+ValueError: minimum_spanning_tree(): 'csgraph' must be a square matrix, not of shape (2, 3)
+```
+
+입력은 고치지 않아요. 결과는 언제나 float64이고, 정수나 bool 행렬을 줘도 무게를 float64로 바꿔 담아요.
+
+## scipy·networkx를 아는 분께
+
+- `scipy.sparse.csgraph.minimum_spanning_tree`와 이름과 뜻이 같아요. 결과가 고른 변을 원래 자리에 담은 CSR인 것도 같아요.
+- `overwrite` 인자가 없어요. 입력을 고치지 않아요.
+- 무게가 같은 변이 있을 때 고르는 트리가 정해져 있어요. 변을 (무게, 작은 끝, 큰 끝)으로 견줘요. 동점이 있으면 scipy가 고른 트리와 다를 수 있어요(무게의 합은 같아요).
+- 밀집 입력의 작은 원소를 버리지 않아요. scipy는 밀집 입력에서 크기가 `1e-8` 아래인 원소를 변 없음으로 읽어요.
+- 희소 배열에 저장된 NaN·±inf는 `ValueError`예요. scipy는 그런 변도 트리에 넣어요.
+- scipy의 희소 객체는 받지 않아요. `sd.sparse.csr_array(A)`로 바꿔서 넘겨요.
+- networkx의 `minimum_spanning_tree(G)`는 그래프 객체를 돌려줘요. 여기서는 인접 행렬을 받고 인접 행렬을 돌려줘요. `maximum_spanning_tree`는 무게의 부호를 바꾼 그래프의 최소 신장 트리예요.

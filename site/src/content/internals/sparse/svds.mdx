@@ -1,0 +1,204 @@
+---
+title: svds의 Golub–Kahan–Lanczos
+group: 고유값과 특이값
+order: 2
+summary: svds가 쓰는 Golub–Kahan–Lanczos 이중대각화와 두꺼운 재시작(Baglama–Reichel, R irlba의 방법)을 설명해요. AᴴA의 고유값으로 돌아가지 않아서 작은 특이값의 정확도를 지켜요.
+seeAlso: [arpack, norms, accuracy-performance, overview]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import Steps from '../../../components/fig/Steps.astro';
+
+## 한눈에 보기
+
+[`svds`](/api/sparse/svds/)는 $m \times n$ 행렬 $A$의 가장 큰(`'LM'`) 또는 가장 작은(`'SM'`) 특이값 $k$개와 특이벡터를 구해요. 곱 $Av$와 $A^{\mathsf H}u$만 쓰므로 `LinearOperator`도 받아요. 알고리즘은 하나예요(`csrc/sparse/svds.cpp`).
+
+1. **Golub–Kahan–Lanczos 이중대각화**(Golub–Kahan 1965) [1]. 두 정규직교 기저 $P$, $Q$와 작은 위 삼각 행렬 $B$를 $XP = QB$, $X^{\mathsf H}Q = PB^{\mathsf T} + f e_w^{\mathsf T}$가 되게 번갈아 늘려요.
+2. **작은 SVD.** $B = U_B S V_B^{\mathsf T}$(LAPACK `dgesdd`)에서 Ritz 특이 삼중쌍 $(QU_B, S, PV_B)$를 얻어요. 각 삼중쌍의 잔차는 $B$의 SVD만으로 알아요.
+3. **두꺼운 재시작**(Baglama–Reichel 2005) [2]. 기저가 `ncv`개로 차면 원하는 Ritz 벡터만 남기고, $B$를 화살 꼴로 바꿔 이어서 늘려요. R의 `irlba`가 쓰는 방법이에요.
+4. 새 벡터마다 모든 기저 벡터에 대해 다시 직교화하고(DGKS 판정), 기저가 막히면 정해진 생성기의 무작위 방향으로 이어 가요.
+
+$m < n$이면 $X = A^{\mathsf H}$($n \times m$)를 이중대각화해요. 그래서 언제나 $X$의 행이 열보다 많거나 같고, 시작 벡터 `v0`는 $\min(m, n)$개예요.
+
+<Fig column caption="svds 한 번의 흐름.">
+  <Steps
+    steps={[
+      { label: 'svds(A, k=, which=, ...)', where: '_eigen.py', note: 'k와 ncv(기본 min(max(2k + 1, 20), min(m, n))), dtype, 시작 벡터. m < n이면 X = Aᴴ.' },
+      { label: '_svds(X, Xᴴ, v0, draw)', where: 'svds.cpp', note: '두 연산자를 C++의 Op로 풀어요. 일이 크면 GIL을 놓아요.' },
+      { label: '이중대각화', where: 'svds.cpp', note: 'q = X p, f = Xᴴ q − α p를 번갈아 ncv걸음까지. 새 벡터는 전체 재직교화.', depth: 1 },
+      { label: 'gesdd(B)', where: 'lapack.hpp', note: 'w × w 실수 행렬의 SVD, 내림차순.', depth: 1 },
+      { label: '수렴 세기', where: 'svds.cpp', note: '‖f‖·|U_B(w, i)| ≤ tol·max(sᵢ, ε^(2/3)s₁)', depth: 1 },
+      { label: '두꺼운 재시작', where: 'svds.cpp', note: '원하는 kk개를 남기고 B를 화살 꼴로', depth: 1 },
+      { label: 'SvdsResult', where: '_result.py', note: 'S 오름차순, U, Vh. (U, S, Vh)로 풀려요.' },
+    ]}
+  />
+</Fig>
+
+## 왜 $A^{\mathsf H}A$로 가지 않나
+
+$A$의 특이값 $\sigma_i$는 $A^{\mathsf H}A$의 고유값 $\sigma_i^2$의 제곱근이라서, $A^{\mathsf H}A$에 [`eigsh`](/api/sparse/eigsh/)를 쓰면 특이값이 나와요. scipy의 기본 `solver='arpack'`이 그렇게 해요. 하지만 대칭 고유값 풀이의 오차는 $\lVert A^{\mathsf H}A\rVert = \sigma_1^2$에 비례하는 절대오차예요. $\sigma_i^2$이 $\varepsilon\sigma_1^2$ 크기의 절대오차를 가지면 $\sigma_i$의 오차는
+
+$$
+\delta\sigma_i \approx \frac{\varepsilon\,\sigma_1^2}{2\sigma_i}
+$$
+
+이라서, $\sigma_i/\sigma_1$이 $\sqrt\varepsilon \approx 10^{-8}$보다 작은 특이값은 맞는 자리가 하나도 남지 않아요. 이중대각화는 $A$에 직접 곱하므로 오차가 $\varepsilon\sigma_1$ 크기에 머물러요([특이값 분해](/internals/linalg/svd/)에서 밀집 SVD가 $A^{\mathsf H}A$를 만들지 않는 것과 같은 이유예요). 랭크가 모자란 80 × 30 시험 행렬의 `'SM'`에서 scipy의 `'arpack'`은 계약 $C_{\mathrm{EIG}}\,\varepsilon\,\lVert A\rVert_2$의 $2\times10^{12}$배 틀렸고, sd는 계약의 0.009배였어요.
+
+## Golub–Kahan–Lanczos 이중대각화
+
+### 점화식
+
+$p_1$을 단위 벡터로 두고 두 점화식을 번갈아 돌려요.
+
+$$
+\alpha_j q_j = X p_j - \beta_{j-1} q_{j-1},\qquad \beta_j p_{j+1} = X^{\mathsf H} q_j - \alpha_j p_j
+$$
+
+$\alpha_j$, $\beta_j$는 왼쪽 벡터를 단위 벡터로 만드는 노름이에요. $w$걸음을 모으면
+
+$$
+X P_w = Q_w B_w,\qquad X^{\mathsf H} Q_w = P_w B_w^{\mathsf T} + f\,e_w^{\mathsf T},\qquad
+B_w = \begin{bmatrix}\alpha_1 & \beta_1 & & \\ & \alpha_2 & \ddots & \\ & & \ddots & \beta_{w-1}\\ & & & \alpha_w\end{bmatrix}
+$$
+
+이에요. 이 과정은 대칭 행렬 $\begin{bmatrix}0 & X\\ X^{\mathsf H} & 0\end{bmatrix}$에 시작 벡터 $(0, p_1)$로 Lanczos를 한 것과 같고, $P_w$는 $X^{\mathsf H}X$의 Krylov 부분공간, $Q_w$는 $XX^{\mathsf H}$의 Krylov 부분공간의 기저예요. 다만 $X^{\mathsf H}X$를 곱하지 않고 $X$와 $X^{\mathsf H}$를 하나씩 곱해요.
+
+$B$의 원소는 노름(과 재시작 뒤의 실수 곱)뿐이라 복소 $X$에서도 실수예요. 그래서 작은 SVD는 언제나 실수 `dgesdd`예요.
+
+```cpp
+            // csrc/sparse/svds.cpp, Gkl::run
+            for (int64_t j = kk; j < w; ++j) {
+                // f = X^H Q(:, j) - alpha_j P(:, j)
+                XH.apply(q(j), f.data());
+                ++nmv;
+                axpy(T(-b(j, j)), p(j), f.data(), n);
+                if (j + 1 < w) {
+                    std::memcpy(p(j + 1), f.data(), static_cast<std::size_t>(n) * sizeof(T));
+                    b(j, j + 1) = next(p(j + 1), P.data(), n, j + 1, scale);
+                    X.apply(p(j + 1), q(j + 1));
+                    ++nmv;
+                    axpy(T(-b(j, j + 1)), q(j), q(j + 1), m);
+                    b(j + 1, j + 1) = next(q(j + 1), Q.data(), m, j + 1, scale);
+                } else {
+                    beta = orthogonalize(P.data(), n, w, f.data(), c);
+                }
+            }
+```
+
+`next`가 새 벡터를 앞의 모든 기저 벡터에 대해 직교화하고 노름으로 나눠요. 그 노름이 $\beta_j$, $\alpha_{j+1}$이에요. 마지막 걸음의 $f$는 단위 벡터로 만들지 않고 그 노름 `beta`만 남겨요.
+
+### 전체 재직교화
+
+Lanczos처럼 이중대각화도 부동소수점에서 직교성을 잃어요. 새 벡터는 **모든** 기저 벡터에 대해 고전 Gram–Schmidt로 직교화하고, 노름이 0.717배 아래로 줄면 한 번 더 해요. ARPACK의 DGKS 판정과 같은 문턱이에요([ARPACK의 Lanczos와 Arnoldi](/internals/sparse/arpack/#직교성을-지키기-dgks)).
+
+```cpp
+// csrc/sparse/svds.cpp
+template <class T>
+double orthogonalize(const T* V, int64_t n, int64_t j, T* x, std::vector<T>& c) {
+    double before = nrm2(x, n);
+    if (j == 0) return before;
+    c.resize(static_cast<std::size_t>(j));
+    for (int pass = 0; pass < 2; ++pass) {
+        dots(V, n, j, x, c.data());
+        for (int64_t l = 0; l < j; ++l) c[l] = neg(c[l]);
+        combine(V, n, j, c.data(), x, false);
+        const double after = nrm2(x, n);
+        if (after > 0.717 * before) return after;
+        before = after;
+    }
+    return before;
+}
+```
+
+`dots`와 `combine`(`gaxpy`)은 `eigsh`·`eigs`와 함께 쓰는 결정적인 커널이에요. 행 $2^{14}$개씩의 고정 조각마다 Accelerate의 `dgemv`·`zgemv`를 한 번 불러요([ARPACK](/internals/sparse/arpack/#같은-비트를-내는-벡터-연산)). 직교화한 뒤의 노름이 $\varepsilon\cdot s_1$(지금까지의 가장 큰 Ritz 특이값) 아래이면 그 방향이 기저 안에 있다고 봐요. 행렬의 랭크가 모자라거나 불변 부분공간을 만난 경우예요. 그때는 시작 벡터의 생성기에서 무작위 벡터를 뽑아 직교화해 잇고, 대응하는 $B$의 원소는 0이에요. 세 번 뽑아도 이을 수 없으면 `LinAlgError`예요.
+
+## Ritz 삼중쌍과 수렴
+
+$B = U_B S V_B^{\mathsf T}$이면 $u_i = QU_B(:, i)$, $v_i = PV_B(:, i)$에서
+
+$$
+X v_i = Q B V_B(:, i) = s_i u_i,\qquad
+X^{\mathsf H} u_i = P B^{\mathsf T} U_B(:, i) + f\,U_B(w, i) = s_i v_i + f\,U_B(w, i)
+$$
+
+예요. 첫 식은 정확히 맞고, 둘째 식의 잔차는 $\lVert f\rVert\,|U_B(w, i)|$예요. 작은 SVD의 왼쪽 특이벡터 행렬의 마지막 행만으로 모든 삼중쌍의 잔차를 알아요. 수렴 판정은 ARPACK의 판정을 특이값에 옮긴 것이에요.
+
+```cpp
+            // csrc/sparse/svds.cpp, Gkl::run
+            const double floor = std::pow(kEps, 2.0 / 3.0) * s[0];
+            auto converged = [&](int64_t i) {
+                return beta * std::fabs(U[(w - 1) + i * w]) <= tol * std::max(s[i], floor);
+            };
+```
+
+$\lVert X^{\mathsf H}u_i - s_iv_i\rVert \le \mathrm{tol}\cdot\max(s_i, \varepsilon^{2/3}s_1)$이에요. `tol = 0`이면 $\varepsilon = 2^{-52}$이고, 바닥 $\varepsilon^{2/3}s_1$은 0에 가까운 특이값에서 상대 판정이 이룰 수 없게 엄격해지는 것을 막아요. 원하는 쪽 $k$개(`'LM'`은 큰 쪽, `'SM'`은 작은 쪽)가 모두 수렴하거나 재시작이 `max_iter`(기본 $10\min(m, n)$)에 닿으면 끝나요. 상태는 0(수렴)이나 1(상한)이에요.
+
+```python
+>>> g = sd.random.default_rng(1)
+>>> A = sd.sparse.random_array((300, 80), density=0.05, rng=g)
+>>> r = sd.sparse.svds(A, k=3)
+>>> r
+SvdsResult(converged=True, status=0, n_iter=5, n_converged=3, S=[3.31261, 3.38298, 4.64795])
+>>> r.S
+array([3.3126115431006204,  3.382976842527982,  4.647954524455107], dtype=float64)
+>>> sd.linalg.svdvals(A.toarray())[:3]
+array([4.6479545244551135, 3.3829768425279867, 3.3126115431006222], dtype=float64)
+```
+
+결과의 `S`는 scipy처럼 오름차순이에요. 밀집 SVD와 끝자리가 다른 것은 서로 다른 계산이기 때문이고, 차이는 $10^{-14}$ 아래예요.
+
+## 두꺼운 재시작
+
+### 남길 벡터와 화살 꼴
+
+기저가 $w$ = `ncv`개로 차고 원하는 것이 다 수렴하지 않았으면, 원하는 쪽 Ritz 벡터 $kk$개만 남겨요.
+
+$$
+P \leftarrow P V_B(:, \text{want}),\qquad Q \leftarrow Q U_B(:, \text{want}),\qquad
+B \leftarrow \begin{bmatrix} s_1 & & & \rho_1\\ & \ddots & & \vdots\\ & & s_{kk} & \rho_{kk}\end{bmatrix},\quad \rho_i = \lVert f\rVert\,U_B(w, i)
+$$
+
+남긴 벡터는 위의 두 식을 그대로 만족하고, $p_{kk+1} = f/\lVert f\rVert$가 다음 방향이에요. 이어서 $q_{kk+1} = Xp_{kk+1} - \sum_i \rho_i q_i$부터 다시 늘리면 $B$의 첫 $kk$행은 대각과 마지막 열만 있는 화살 꼴이고 그 아래는 다시 이중대각이에요. Baglama–Reichel은 Ritz 벡터로 기저를 늘리는 이 방법이 정확한 이동의 암시적 재시작과 수학적으로 같은 부분공간을 준다는 것을 보였어요 [2]. 대칭 Lanczos의 두꺼운 재시작(Wu–Simon 2000) [3]을 이중대각화에 옮긴 꼴이에요. 암시적 QR을 하지 않으므로 화살 꼴의 $B$를 그대로 `dgesdd`에 넘겨요.
+
+```cpp
+            // csrc/sparse/svds.cpp, Gkl::run
+            kk = k + std::min(nconv, (w - k) / 2);
+            if (kk == 1 && w >= 6) kk = w / 2;
+            else if (kk == 1 && w > 2) kk = 2;
+            kk = std::min(kk, w - 1);
+```
+
+남길 수는 ARPACK `dsaup2`의 nev 조정과 같아요. 수렴한 것이 많을수록 더 남겨서, 이미 맞은 방향을 버렸다가 다시 만드는 정체를 막아요.
+
+### 작은 특이값
+
+`'SM'`도 같은 재시작이에요. 남기는 벡터가 Ritz 벡터라서, 작은 특이값이 촘촘히 모여 있으면 수렴이 느려요. 1차원 라플라시안 200 × 200의 `'SM'`은 기본 `ncv`로는 상한까지 수렴하지 못해요(scipy도 그래요). 위의 무작위 행렬처럼 작은 특이값이 떨어져 있으면 잘 돼요.
+
+```python
+>>> q = sd.sparse.svds(A, k=3, which='SM')
+>>> q.S
+array([0.7469322167854501, 0.8984844184334876, 0.9592937325344397], dtype=float64)
+>>> q.n_iter, q.n_op
+(11, 368)
+>>> sd.linalg.svdvals(A.toarray())[-3:]
+array([0.9592937325344363, 0.8984844184334859, 0.7469322167854497], dtype=float64)
+```
+
+## 결과와 결정성
+
+마지막 SVD의 원하는 $k$개(수렴하지 못했으면 수렴한 것만)를 특이값 오름차순으로 골라 $U = QU_B$, $V = PV_B$를 만들어요. $m < n$이었으면 $X = A^{\mathsf H}$의 왼쪽·오른쪽을 맞바꾸고, 결과의 `Vh`는 $V$의 켤레 전치예요. `return_singular_vectors`가 `False`, `'u'`, `'vh'`이면 계산하지 않은 쪽은 None이에요.
+
+시작 벡터는 `eigsh`와 같은 규칙이에요(`v0`가 없으면 `sd.random.default_rng(0)`의 $2u - 1$, `rng=`로 바꿔요). 무너짐에서 뽑는 무작위 방향도 같은 생성기예요. 곱은 희소 SpMV, 내적·노름·갱신과 기저와의 곱은 크기로만 나누는 결정적인 커널([ARPACK](/internals/sparse/arpack/#같은-비트를-내는-벡터-연산))이라 행렬의 형식, 연산자의 꼴과 상관없이 같은 비트예요. 지금은 스레드 수와도 상관없어요(약속은 아니에요).
+
+[`norm(A, ord=2)`](/api/sparse/norm/)는 `svds(A, k=1)`의 값이에요([노름과 1-노름 어림](/internals/sparse/norms/)).
+
+## scipy·R과 다른 곳
+
+- scipy의 `svds`는 `solver='arpack'`(기본), `'lobpcg'`, `'propack'`을 고르고 `'arpack'`은 $A^{\mathsf H}A$나 $AA^{\mathsf H}$의 `eigsh`(허용오차 tol²)예요. sd는 이중대각화 하나뿐이고 `solver`·`options`가 없어요. 작은 특이값은 위처럼 이중대각화가 훨씬 정확해요.
+- `v0`가 $\min(m, n)$개인 것은 scipy의 `'arpack'`과 같아요.
+- R의 `irlba` 2.4.1도 Baglama–Reichel 방법이에요. 정확도 스윕에서 큰 특이값의 비교 대상으로 RSpectra의 `svds`와 함께 써요.
+
+## 참고 문헌
+
+1. G. Golub, W. Kahan, "Calculating the singular values and pseudo-inverse of a matrix," *SIAM J. Numer. Anal.* 2 (1965) 205–224.
+2. J. Baglama, L. Reichel, "Augmented implicitly restarted Lanczos bidiagonalization methods," *SIAM J. Sci. Comput.* 27 (2005) 19–42.
+3. K. Wu, H. Simon, "Thick-restart Lanczos method for large symmetric eigenvalue problems," *SIAM J. Matrix Anal. Appl.* 22 (2000) 602–616.

@@ -1,0 +1,314 @@
+---
+title: 분산과 표준편차
+names: [var, std]
+group: 집계
+order: 4
+signatures:
+  - "sd.var(x, /, *, axis=None, correction=0, keepdims=False)"
+  - "sd.std(x, /, *, axis=None, correction=0, keepdims=False)"
+  - "x.var(*, axis=None, correction=0, keepdims=False)"
+  - "x.std(*, axis=None, correction=0, keepdims=False)"
+summary: 값들이 평균에서 얼마나 퍼져 있는지를 재요. var는 분산, std는 그 제곱근인 표준편차이고, 기본은 원소 수 N으로 나누는 모분산이에요.
+params:
+  - name: x
+    type: ndarray
+    kind: positional-only
+    desc: 퍼짐을 잴 배열. 어떤 dtype이든 받아요.
+  - name: axis
+    type: int, int의 tuple·list, 또는 None
+    kind: keyword-only
+    desc: 줄여서 없앨 축. None이면 모든 원소로 계산해요.
+  - name: correction
+    type: int 또는 float
+    kind: keyword-only
+    desc: 나누는 수를 N - correction으로 만들어요. 기본값 0은 N으로 나누는 모분산, 1은 N - 1로 나누는 표본 분산이에요.
+  - name: keepdims
+    type: bool
+    kind: keyword-only
+    desc: True면 줄인 축을 없애지 않고 길이 1로 남겨요.
+returns:
+  type: ndarray 또는 Python float
+  desc: 분산 또는 표준편차. 입력이 복소수여도 언제나 float64 실수예요. 모든 축으로 계산하면 Python float이에요.
+raises:
+  - type: TypeError
+    desc: x가 배열이 아닐 때, axis·keepdims의 타입이 틀렸을 때, correction이 int나 float가 아닐 때(bool, None 포함).
+  - type: ValueError
+    desc: axis가 배열의 차원 범위를 벗어나거나 같은 축을 두 번 썼을 때.
+  - type: OverflowError
+    desc: correction이 float64로 바꿀 수 없을 만큼 큰 정수일 때(예 10**400).
+seeAlso: [mean, sum, cov, quantile, nan-reductions]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+평균이 같아도 값들이 모여 있는 정도는 다를 수 있어요. 아래 두 배열은 평균이 모두 10이지만, `a`는 모두 10이고 `b`는 0부터 20까지 넓게 흩어져 있어요.
+
+```python
+>>> import stardust as sd
+>>> a = sd.asarray([10.0, 10.0, 10.0, 10.0])
+>>> b = sd.asarray([0.0, 5.0, 15.0, 20.0])
+>>> sd.mean(a), sd.mean(b)
+(10.0, 10.0)
+>>> sd.std(a), sd.std(b)
+(0.0, 7.905694150420948)
+```
+
+이 "흩어진 정도"를 재는 값이 **분산**(`var`)과 **표준편차**(`std`)예요. 값이 평균 가까이 모여 있을수록 작고, 넓게 퍼져 있을수록 커요. 모든 값이 같으면 0이에요.
+
+<Reference />
+
+## 분산은 어떻게 계산할까요
+
+분산은 세 단계로 구해요.
+
+1. 각 값에서 평균을 빼요(평균에서 얼마나 떨어져 있는지).
+2. 그 차이를 제곱해요(위아래 방향을 없애고, 멀리 떨어진 값을 더 크게 쳐요).
+3. 제곱한 값의 평균을 내요.
+
+```python
+>>> s = sd.asarray([2, 4, 4, 4, 5, 5, 7, 9])
+>>> sd.mean(s)
+5.0
+>>> dev = s - sd.mean(s)
+>>> dev ** 2
+array([ 9.0,  1.0,  1.0,  1.0,  0.0,  0.0,  4.0, 16.0], dtype=float64)
+>>> sd.mean(dev ** 2)
+4.0
+>>> sd.var(s)
+4.0
+```
+
+<Fig caption="평균 5에서 뺀 차이를 제곱해서 평균 내면 분산 4가 나와요.">
+  <ArrayFig name="s" data={[2, 4, 4, 4, 5, 5, 7, 9]} />
+  <Op note="− 평균 5">→</Op>
+  <ArrayFig name="차이" data={[-3, -1, -1, -1, 0, 0, 2, 4]} tones={['a', '', '', '', '', '', '', 'a']} />
+  <Op note="제곱">→</Op>
+  <ArrayFig name="제곱" data={[9, 1, 1, 1, 0, 0, 4, 16]} tones={['b', '', '', '', '', '', '', 'b']} note="평균 = 32 / 8 = 4" />
+</Fig>
+
+### 표준편차는 분산의 제곱근이에요
+
+분산은 차이를 제곱했기 때문에 단위도 제곱이 돼요. 키를 cm로 쟀다면 분산의 단위는 cm²예요. 원래 단위로 되돌리려고 제곱근을 씌운 값이 표준편차예요.
+
+```python
+>>> sd.std(s)
+2.0
+>>> sd.sqrt(sd.var(s))
+2.0
+```
+
+"값들이 평균에서 대략 2 정도 떨어져 있다"고 읽으면 돼요. 원래 데이터와 같은 단위라서 결과를 해석할 때는 보통 표준편차를 써요. 두 함수는 옵션도 동작도 같고, `std`가 마지막에 제곱근을 씌운다는 점만 달라요.
+
+## `correction`: N으로 나눌까요, N - 1로 나눌까요
+
+위에서는 제곱한 차이의 합 `32`를 원소 수 `8`로 나눴어요. 그런데 분산을 구할 때 N - 1로 나누는 방법도 널리 쓰여요. `correction`은 이 나누는 수를 정하는 옵션이에요. 나누는 수는 `N - correction`이에요.
+
+| `correction` | 나누는 수 | 이름 | 이럴 때 |
+|:---:|:---:|---|---|
+| `0` (기본값) | N | 모분산 | 가진 데이터가 관심 대상의 **전부**일 때 |
+| `1` | N - 1 | 표본 분산 | 가진 데이터가 더 큰 집단에서 뽑은 **일부**이고, 그 집단의 퍼짐을 짐작하고 싶을 때 |
+
+```python
+>>> sd.var(s, correction=1)
+4.571428571428571
+>>> sd.std(s, correction=1)
+2.138089935299395
+```
+
+`32 / 7 = 4.571...`이에요.
+
+어느 쪽으로 나눌지는 데이터가 무엇을 대표하느냐에 달려 있어요. 우리 반 학생 30명의 키가 궁금하다면 30명을 모두 재면 되고, 그 30명의 분산이 곧 답이에요(모분산).
+
+하지만 전국 학생의 키가 얼마나 퍼져 있는지 알고 싶어서 30명만 뽑아 쟀다면 사정이 달라요. 뽑힌 30명의 평균은 그 30명에게 가장 잘 맞춰진 값이라서, 그 평균에서 잰 차이는 전국 평균에서 잰 차이보다 조금 작게 나오는 경향이 있어요. 그래서 N 대신 조금 작은 N - 1로 나눠 그만큼 키워 주는 거예요(표본 분산). 데이터가 많을수록 둘의 차이는 작아져요.
+
+<Callout type="warn" title="기본값이 다른 도구와 다를 수 있어요">
+
+배열의 `var`, `std`(그리고 데이터프레임의 `var`, `std`)는 기본값이 `correction=0`(N으로 나누기)이에요. 그런데 많은 도구가 기본으로 N - 1로 나눠요. stardust 안에서도 통계 영역의 `describe`와 `sem`은 scipy.stats처럼 `correction=1`이 기본이에요. 스프레드시트의 `STDEV.S`·`VAR.S`, R의 `sd`·`var`, pandas의 `std`·`var`, Python 표준 라이브러리의 `statistics.variance`가 그래요. 다른 도구와 결과가 조금 다르면 이 차이부터 확인하고, 같은 값이 필요하면 `correction=1`을 주세요.
+
+</Callout>
+
+Python 표준 라이브러리로 확인해 볼 수 있어요. `statistics.variance`는 N - 1로, `statistics.pvariance`는 N으로 나눠요.
+
+```python
+>>> import statistics
+>>> statistics.variance([2, 4, 4, 4, 5, 5, 7, 9])
+4.571428571428571
+>>> statistics.pvariance([2, 4, 4, 4, 5, 5, 7, 9])
+4
+```
+
+`correction`에는 정수뿐 아니라 실수도 쓸 수 있어요. 나누는 수가 `N - 1.5`가 될 뿐이에요.
+
+```python
+>>> sd.var(sd.asarray([1.0, 2.0, 3.0]), correction=1.5)
+1.3333333333333333
+```
+
+### 나누는 수가 0 이하가 되면 NaN이에요
+
+`N - correction`이 0이거나 음수가 되면 분산을 정할 수 없어서 결과는 NaN(숫자가 아님)이에요. 에러는 나지 않아요. 가장 흔한 경우는 원소가 하나뿐인데 `correction=1`을 준 때예요. 값 하나로는 퍼짐을 짐작할 수 없다는 뜻이에요.
+
+```python
+>>> sd.var(sd.asarray([5.0]))
+0.0
+>>> sd.var(sd.asarray([5.0]), correction=1)
+nan
+>>> sd.std(sd.asarray([1.0, 2.0]), correction=2)
+nan
+```
+
+축을 따라 계산할 때는 그 축의 길이가 N이에요. 열이 하나뿐인 표에서 행마다 표본 분산을 구하면 모든 행이 NaN이에요.
+
+```python
+>>> sd.var(sd.asarray([[1.0], [3.0]]), axis=1, correction=1)
+array([nan, nan], dtype=float64)
+```
+
+### `correction`의 타입
+
+`correction`에는 int나 float만 써요. `True`/`False`나 `None`은 `TypeError`예요. 다른 옵션처럼 이름을 붙여서 써야 해요.
+
+```python
+>>> sd.var(s, correction=True)
+Traceback (most recent call last):
+    ...
+TypeError: var(): 'correction' must be an int or a float, not bool
+>>> sd.var(s, correction=None)
+Traceback (most recent call last):
+    ...
+TypeError: var(): 'correction' must be an int or a float, not NoneType
+```
+
+실수로 바꿀 수 없을 만큼 큰 정수는 `OverflowError`예요.
+
+```python
+>>> sd.var(s, correction=10**400)
+Traceback (most recent call last):
+    ...
+OverflowError: var(): 'correction' is out of range
+```
+
+## `axis`와 `keepdims`
+
+`axis`와 `keepdims`의 뜻은 [`sum`](/api/array/sum/)과 똑같아요. `axis`는 "줄여서 없앨 축"이고, tuple이나 list를 주면 여러 축을 한꺼번에 줄여요. `keepdims=True`면 줄인 축이 길이 1로 남아요. 자세한 설명과 그림은 `sum` 문서에 있어요.
+
+행마다 학생 한 명의 세 과목 점수가 들어 있는 배열로 해 볼게요.
+
+```python
+>>> scores = sd.asarray([[60, 70, 80], [65, 70, 75]])
+>>> sd.std(scores, axis=1)
+array([8.16496580927726, 4.08248290463863], dtype=float64)
+```
+
+두 학생 모두 평균은 70이지만, 첫째 학생의 점수가 과목에 따라 더 크게 오르내려요.
+
+메서드로도 쓸 수 있어요.
+
+```python
+>>> scores.var(axis=1)
+array([ 66.66666666666667, 16.666666666666668], dtype=float64)
+```
+
+### 표준화: 평균 0, 표준편차 1로 맞추기
+
+`keepdims=True`는 평균과 표준편차로 원래 배열을 다시 계산할 때 쓸모가 있어요. 각 값에서 평균을 빼고 표준편차로 나누면 "평균에서 표준편차 몇 개만큼 떨어져 있는가"가 돼요. 이렇게 바꾸는 것을 표준화라고 해요.
+
+```python
+>>> x = sd.asarray([[1, 2, 3], [4, 5, 6]])
+>>> (x - x.mean(axis=0, keepdims=True)) / x.std(axis=0, keepdims=True)
+array([[-1.0, -1.0, -1.0],
+       [ 1.0,  1.0,  1.0]], dtype=float64)
+```
+
+열별 평균과 표준편차가 `(1, 3)` 모양으로 남아서 `x`의 모든 행과 짝이 맞아요. 모양을 맞추는 규칙은 [브로드캐스팅](/api/array/broadcasting/) 문서에 있어요.
+
+## 결과는 언제나 실수예요
+
+입력의 dtype이 무엇이든 결과는 float64예요. 정수 배열과 bool 배열도 실수로 계산해요.
+
+```python
+>>> sd.var(sd.asarray([True, False]))
+0.25
+```
+
+복소수 배열도 결과는 실수예요. 복소수에서는 "평균과의 차이를 제곱"하는 대신 평균과의 거리(차이의 절댓값)를 제곱해서 평균 내요. 거리는 실수이므로 분산도 실수예요.
+
+```python
+>>> sd.var(sd.asarray([1 + 1j, -1 - 1j]))
+2.0
+>>> sd.std(sd.asarray([1j, -1j]))
+1.0
+```
+
+첫째 예에서 평균은 0이고, 두 값은 0에서 각각 √2만큼 떨어져 있어요. 거리의 제곱 2를 평균 내면 2예요.
+
+## 조심할 점
+
+### 빈 배열은 NaN이에요
+
+원소가 하나도 없으면 `N - correction`이 0 이하라서 NaN이에요. 에러도 경고도 없어요.
+
+```python
+>>> sd.var(sd.asarray([]))
+nan
+>>> sd.std(sd.asarray([]))
+nan
+```
+
+### NaN과 무한대
+
+NaN이 하나라도 있으면 결과도 NaN이에요. 무한대가 있어도 평균과의 차이를 정할 수 없어서 NaN이에요.
+
+```python
+>>> sd.var(sd.asarray([1.0, sd.nan, 3.0]))
+nan
+>>> sd.std(sd.asarray([1.0, sd.inf]))
+nan
+```
+
+NaN을 빼고 계산하려면 [`nanvar`, `nanstd`](/api/array/nan-reductions/)를 써요. 이때 N은 NaN이 아닌 원소 수예요.
+
+```python
+>>> sd.nanvar(sd.asarray([1.0, sd.nan, 3.0]))
+1.0
+```
+
+### 아주 큰 정수
+
+정수는 실수로 바꿔서 계산해요. 실수의 유효숫자는 약 16자리라서, 약 9 × 10¹⁵보다 큰 정수는 작은 차이가 사라질 수 있어요.
+
+```python
+>>> sd.var(sd.asarray([2**62, 2**62 + 2]))
+0.0
+```
+
+정확한 답은 `1.0`이지만, 두 값이 실수로 바뀌면서 같은 값이 돼 버렸어요. 이렇게 크고 서로 가까운 값이라면 먼저 공통된 큰 값을 빼서 크기를 줄인 다음 계산하세요. 분산은 모든 값에 같은 수를 더하거나 빼도 변하지 않아요.
+
+```python
+>>> sd.var(sd.asarray([2**62, 2**62 + 2]) - 2**62)
+1.0
+```
+
+## 비슷한 함수와의 차이
+
+| 하고 싶은 일 | 쓸 것 | `var`·`std`와 다른 점 |
+|---|---|---|
+| 가운데가 어디인지 | `mean` | 퍼짐이 아니라 중심을 재요. |
+| NaN을 빼고 퍼짐 재기 | `nanvar`, `nanstd` | NaN이 아닌 원소만으로 계산해요. |
+| 두 변수가 함께 움직이는 정도 | `cov`, `corrcoef` | 한 변수의 퍼짐이 아니라 변수 사이의 관계를 재요. `cov`의 대각선이 각 변수의 분산이에요. |
+| 튀는 값에 덜 흔들리는 퍼짐 | `quantile` | 위·아래 25% 지점의 간격 같은 값을 구할 수 있어요. |
+
+[공분산](/api/array/cov/)의 `correction`도 같은 뜻이고 기본값도 0이에요.
+
+## numpy를 아는 분께
+
+- numpy의 `ddof`가 stardust에서는 `correction`이에요. `ddof=`라는 이름은 받지 않아요(`TypeError`). 기본값 0은 numpy와 같아요.
+- `N - correction`이 0 이하면 언제나 `nan`이에요. numpy는 경우에 따라 `inf`를 내고 경고를 띄워요(예: `[1.0, 2.0]`에 `ddof=2`). stardust는 경고가 없어요.
+- `correction`에 bool은 `TypeError`예요.
+- 복소수 입력의 결과가 실수(float64)인 것은 numpy와 같아요.
+- `dtype=`, `out=`, `where=`, `mean=` 인자는 없어요. 옵션은 모두 keyword-only예요.
+- 모든 축으로 계산한 결과는 numpy 스칼라가 아니라 Python `float`예요.

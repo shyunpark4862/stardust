@@ -1,0 +1,632 @@
+---
+title: 두 변수 함수의 표본
+group: 함수 그림
+order: 2
+summary: implicit, region, contour, density, phase, vectorfield, streamlines가 두 변수 함수를 재고 그리는 방법을 설명해요. 격자를 한 번에 계산하는 호출과 값 배열 입력, C++ levels.cpp의 marching squares와 안장 칸의 판정, 교차점을 할선 한 걸음으로 다듬는 일, 곡선 둘레만 4배로 다시 재는 띠, 닫힌 윤곽선을 짝홀 규칙으로 칠하는 영역과 채운 등고선, 등고선 수준과 그 숫자의 자리, 밀도와 위상 그림의 색 입히기, 벡터장의 화살표와 streams.cpp의 고르게 퍼진 유선을 코드를 따라가며 봐요.
+seeAlso: [sampling, raster, layout, overview, surface]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import Steps from '../../../components/fig/Steps.astro';
+import PlotImage from '../../../components/fig/PlotImage.astro';
+
+## 한눈에 보기
+
+두 변수 함수의 그림은 일곱이고, 모두 `src/stardust/plot/_field.py`에 있어요. 곡선과 영역을 그리는 셋은 격자 위의 marching squares를 쓰고, 그 고리는 C++ `csrc/plot/levels.cpp`의 `Levels` 클래스예요. 둘은 격자의 값을 그대로 그림(래스터 이미지)으로 바꿔요. 나머지 둘은 함수 둘로 된 벡터장을 그리고, 유선을 따라가는 고리는 C++ `csrc/plot/streams.cpp`예요.
+
+| 그림 | 격자(기본 `samples`) | 하는 일 |
+|---|---|---|
+| [`implicit`](/api/plot/implicit/) | 321 × 241 꼭짓점 | f(x, y) = level인 곡선 |
+| [`region`](/api/plot/region/) | 321 × 241 | f(x, y) > 0인 곳을 칠하기 |
+| [`contour`](/api/plot/contour/) | 321 × 241 | 여러 수준의 곡선, 채운 띠 |
+| [`density`](/api/plot/density/) | 480 × 360 화소 | 값을 연속 색으로 |
+| [`phase`](/api/plot/phase/) | 480 × 360 화소 | 복소 함수의 위상을 색상으로 |
+| [`vectorfield`](/api/plot/vectorfield/) | 21 × 16 칸의 가운데(4:3 상자) | 벡터장의 화살표 |
+| [`streamlines`](/api/plot/streamlines/) | 151 × 113 꼭짓점, 유선의 칸 25 × 19(4:3 상자) | 상자에 고르게 퍼진 유선 |
+
+<Fig column caption="implicit 한 번의 흐름.">
+  <Steps steps={[
+    { label: 'grid()', note: 'meshgrid로 만든 X, Y로 f를 한 번 부르기', where: '_field.py' },
+    { label: 'near()', note: '곡선이 지나가는 칸과 그 둘레만 4 × 4로 다시 재기(f를 한 번 더)', where: '_field.py', depth: 1 },
+    { label: 'Levels.edges', note: '부호가 바뀌는 칸의 변마다 선형 보간한 교차점', where: 'levels.cpp' },
+    { label: 'Cells.__init__', note: '교차점에서 f를 한 번 불러 할선 한 걸음으로 다듬기', where: '_field.py', depth: 1 },
+    { label: 'Levels.curves', note: '칸 안의 교차점을 잇고, 이은 것을 곡선으로 걸어 NaN으로 가르기', where: 'levels.cpp' },
+    { label: 'Line 층', note: '칸의 가로세로 비 1', where: '_field.py' },
+  ]} />
+</Fig>
+
+사용자 함수는 언제나 배열로 불러요. `implicit`는 격자 한 번, 다시 재는 띠 한 번, 교차점 다듬기 한 번으로 많아야 세 번이에요.
+
+```python
+>>> calls = []
+>>> def f(x, y):
+...     calls.append(x.size)
+...     return sd.sin(3 * x) * sd.sin(3 * y)
+>>> fig = sd.plot.implicit(f, -1, 2, -1, 2, level=0.97, samples=31)
+>>> calls
+[961, 5301, 140]
+```
+
+## 격자 한 번
+
+`grid`는 꼭짓점 좌표 $x_0, \ldots, x_{n_x}$와 $y_0, \ldots, y_{n_y}$를 `sd.linspace`로 만들고, `sd.meshgrid(..., indexing="xy")`의 두 배열로 함수를 한 번 불러요. 결과 $F_{j,i} = f(x_i, y_j)$는 행이 y, 열이 x인 배열이에요. 기본 칸 수는 320 × 240(꼭짓점 321 × 241)이고, `samples`가 꼭짓점의 수를 정해요(한 방향 3에서 4000까지).
+
+### 이미 계산한 값
+
+`implicit`, `region`, `contour`, `density`는 함수 자리에 2차원 배열을 받고, `vectorfield`와 `streamlines`는 두 함수 자리에 같은 모양의 배열 둘을 받아요. `given`이 가려요.
+
+```python
+# src/stardust/plot/_field.py
+def given(f, who, samples=None, refine=None, arg="f"):
+    """A function, or the values of a grid given as a 2-D array (Z[j, i] at x_i, y_j; the first
+    row at y0; an sd.ndarray, nested sequences or a numpy array, as the data of the other plots):
+    None for the first, the float64 array for the second."""
+    if callable(f):
+        return None
+    from ..optimize._common import _as_array
+
+    if isinstance(f, (list, tuple, sd.ndarray)) or (type(f).__module__ == "numpy" and getattr(f, "ndim", 0) > 0):
+        Z = _as_array(f, who, arg)
+        if Z.ndim != 2 or Z.shape[0] < 2 or Z.shape[1] < 2:
+            raise ValueError(
+                f"{who}(): '{arg}' as values must be a 2-D array of at least 2 x 2, not of shape {tuple(Z.shape)}"
+            )
+        if samples is not None or refine is not None:
+            raise ValueError(f"{who}(): 'samples' and 'refine' are for a function; the values given are the grid")
+        return Z if Z.dtype == sd.float64 else Z.astype(sd.float64)
+    raise TypeError(f"{who}(): '{arg}' must be callable or a 2-D array of values, not {_type_name(f)}")
+```
+
+부를 수 있으면 함수이고, 배열이면 float64로 바꿔 격자의 값으로 써요. 배열은 다른 그림의 자료 인자와 같은 규칙이라 `sd.ndarray`, 중첩 리스트, numpy 배열(0차원이 아닌 것)을 받아요. 에러는 인자의 이름(`'f'`, 벡터장이면 `'fu'`와 `'fv'`)으로 말해요. `Z[j, i]`가 $(x_i, y_j)$의 값이고 첫 행이 `y0`이라서, `sd.meshgrid(x, y, indexing="xy")`로 만든 격자에서 계산한 배열이 그대로 맞아요. 꼭짓점은 상자의 끝에서 끝까지 고르게 놓인 것으로 봐요(`values_grid`).
+
+값만 있으면 함수를 다시 부를 수 없으므로 뒤에 나오는 두 단계가 빠져요. 곡선 둘레를 다시 재는 띠가 없고, 교차점은 선형 보간 그대로예요. 그래서 `samples`나 `refine`을 함께 주면 에러예요. 격자의 촘촘함은 준 배열이 정해요.
+
+```python
+>>> x, y = sd.linspace(-2.0, 2.0, 81), sd.linspace(-2.0, 2.0, 81)
+>>> X, Y = sd.meshgrid(x, y, indexing="xy")
+>>> given = sd.plot.implicit(X * X + Y * Y, -2, 2, -2, 2, level=1.0)
+>>> cx, cy = given._cells[0].layers[0].x, given._cells[0].layers[0].y
+>>> round(float(sd.max(sd.abs(sd.sqrt(cx * cx + cy * cy) - 1.0))), 5)
+0.00031
+>>> sd.plot.implicit(X * X + Y * Y, -2, 2, -2, 2, samples=50)
+Traceback (most recent call last):
+    ...
+ValueError: implicit(): 'samples' and 'refine' are for a function; the values given are the grid
+```
+
+간격 0.05의 격자에서 선형 보간만 한 단위원은 반지름이 0.0003까지 어긋나요. 함수를 주었다면 할선 한 걸음이 줄였을 오차예요.
+
+`density`는 값 하나를 화소 하나의 가운데 값으로 봐요. 곡면([`surface`](/internals/plot/surface/))도 같은 꼴의 배열을 받아요.
+
+## Marching squares
+
+### 칸의 경우
+
+Marching squares는 Lorensen과 Cline(1987)의 marching cubes를 평면으로 내린 방법이에요. 격자 함수의 수준 집합 $\{f = c\}$를 칸 하나씩 다뤄요. 꼭짓점마다 $f > c$이면 안(1), 아니면 밖(0)으로 적으면 칸의 네 꼭짓점이 4비트, 곧 16가지 경우가 돼요. 모두 안(15)이나 모두 밖(0)이면 칸을 지나는 곡선이 없어요. 나머지는 부호가 바뀌는 변이 2개나 4개예요.
+
+- **변이 2개**(14가지): 곡선 조각 하나가 두 교차점을 잇고, 그 조각은 안인 꼭짓점들을 밖인 꼭짓점들과 갈라요.
+- **변이 4개**(대각선의 두 꼭짓점만 안인 2가지): **안장 칸**이에요. 네 교차점을 두 쌍으로 잇는 방법이 둘이고, 꼭짓점 값만으로는 어느 쪽인지 정할 수 없어요.
+
+변 위의 교차점은 두 꼭짓점 값 $p = f_a - c$, $r = f_b - c$의 선형 보간 $t = p/(p - r)$로 어림해요. 칸 안의 함수를 꼭짓점 값의 쌍선형 보간 $\tilde f(s, u) = (1-s)(1-u)f_{00} + s(1-u)f_{10} + (1-s)u f_{01} + su f_{11}$로 보면, 그 함수는 변 위에서 일차라서 이 t가 정확히 그 교차점이에요.
+
+### 변을 한 번씩만
+
+`prepare`는 격자를 행 순서로 한 번 걸으며 부호가 갈리는 칸을 모으고, 그 칸의 네 변(아래, 오른쪽, 위, 왼쪽 순서) 가운데 부호가 바뀌는 변의 교차점을 구해요.
+
+```cpp
+// csrc/plot/levels.cpp
+void Levels::prepare(double level) {
+    if (ready_ && level == level_) return;
+    level_ = level;
+    ready_ = true;
+    cells_.clear();
+    index_.clear();
+    edges_.clear();
+    const std::size_t w = nx_ + 1;
+    for (std::size_t j = 0; j < ny_; ++j) {
+        const double* r0 = F_.data() + j * w;
+        const double* r1 = r0 + w;
+        for (std::size_t i = 0; i < nx_; ++i) {
+            const double a = r0[i], b = r0[i + 1], c = r1[i + 1], d = r1[i];
+            const int in = (a > level) + (b > level) + (c > level) + (d > level);
+            if (in == 0 || in == 4) continue;
+            if (!(std::isfinite(a) && std::isfinite(b) && std::isfinite(c) && std::isfinite(d))) continue;
+            cells_.push_back(static_cast<std::uint32_t>(j * nx_ + i));
+            Edge e[4];
+            cell_edges(nx_, j, i, e);
+            for (const Edge& q : e) {
+                const double p = at(q.ja, q.ia), r = at(q.jb, q.ib);
+                if ((p > 0.0) == (r > 0.0)) continue;
+                if (!index_.emplace(q.key, static_cast<std::int32_t>(index_.size())).second) continue;
+                const double t = p / (p - r);
+                const double ax = xs_[q.ia], ay = ys_[q.ja], bx = xs_[q.ib], by = ys_[q.jb];
+                edges_.insert(edges_.end(), {ax + t * (bx - ax), ay + t * (by - ay), ax, ay, p, bx, by, r});
+            }
+        }
+    }
+}
+```
+
+변 하나는 이웃한 두 칸이 함께 가져요. 변마다 열쇠(가로 변은 꼭짓점 번호의 두 배, 세로 변은 두 배 더하기 1)를 두고 `index_`에 처음 나온 순서대로 번호를 매기므로, 두 칸이 같은 교차점을 공유해요. 이웃한 칸의 곡선 조각이 같은 점에서 만나니 곡선을 이을 때 좌표를 견줄 필요가 없어요. 네 꼭짓점 가운데 하나라도 유한하지 않은 칸은 건너뛰어요. 함수가 정의되지 않는 곳에서 곡선이 끊겨요.
+
+교차점마다 8개의 수를 돌려줘요. 어림한 점 (x, y)와, 변의 두 끝점의 좌표와 그 값에서 수준을 뺀 것이에요. Python 쪽이 이 목록으로 교차점을 다듬은 뒤 같은 순서로 돌려주면, `curves`와 `inside`가 그 점으로 곡선과 다각형을 만들어요. 마지막에 물은 수준의 칸 목록을 들고 있어서, 한 수준에 세 번 불러도 격자는 한 번만 걸어요.
+
+### 안장 칸의 판정
+
+```cpp
+        // csrc/plot/levels.cpp, Levels::curves
+        if (count == 2) {
+            join(id[found[0]], id[found[1]]);
+        } else if (count == 4) {  // a saddle: the corners' mean decides which pairs of edges are joined
+            const double centre = (at(j, i) + at(j, i + 1) + at(j + 1, i + 1) + at(j + 1, i)) / 4.0;
+            if ((centre > 0.0) == (at(j, i) > 0.0)) {
+                join(id[0], id[1]);
+                join(id[2], id[3]);
+            } else {
+                join(id[0], id[3]);
+                join(id[2], id[1]);
+            }
+        }
+```
+
+안장 칸에서는 네 꼭짓점의 평균을 칸 가운데의 값으로 보고 판정해요. 평균은 쌍선형 보간 $\tilde f$의 가운데 $(s, u) = (\tfrac12, \tfrac12)$ 값과 같아요. 가운데가 왼쪽 아래 꼭짓점과 같은 쪽이면 가운데를 지나 그 꼭짓점과 맞은편 꼭짓점이 이어진 것으로 보고, 아래 변을 오른쪽 변과, 위 변을 왼쪽 변과 이어요. 아니면 왼쪽 아래 꼭짓점을 잘라 내는 쪽(아래 변과 왼쪽 변, 위 변과 오른쪽 변)으로 이어요.
+
+이 판정은 쌍선형 함수의 실제 위상과 다를 때가 있어요. Nielson과 Hamann(1991)의 asymptotic decider는 칸 가운데가 아니라 쌍선형 함수의 안장점 값 $\tilde f^{\ast} = (f_{00}f_{11} - f_{10}f_{01})/(f_{00} + f_{11} - f_{10} - f_{01})$으로 판정하는데, 그것이 쌍선형 보간의 수준 곡선과 정확히 같은 연결이에요. 가운데 값 판정은 두 값의 부호가 갈리는 드문 칸에서 그와 다른 쪽을 고를 수 있어요. 아래의 다시 재는 띠가 교차점 둘레의 칸을 4배로 잘게 만들어서, 안장 칸이 작아지고 어느 쪽을 골라도 화면에서 차이가 거의 없어요.
+
+### 곡선으로 걷기
+
+칸 안에서 이은 교차점 쌍이 그래프의 변이에요. 교차점마다 이웃이 많아야 둘이에요(`link`에 두 칸). 걷기는 먼저 이웃이 하나뿐인 교차점(격자 가장자리나 정의되지 않는 곳에서 끝나는 열린 곡선의 끝)에서 시작해 이웃을 따라가고, 남은 교차점은 닫힌 곡선이라 아무 데서나 시작해요. 걷기가 시작점의 이웃에서 멈추면 닫힌 곡선이라 첫 점을 한 번 더 적어요. 점이 하나뿐인 조각은 버려요. 곡선 사이에는 NaN 쌍을 넣어요. 선 층은 NaN에서 획을 끊으므로 곡선 여럿이 층 하나예요.
+
+## 교차점 다듬기: 할선 한 걸음
+
+선형 보간은 함수가 변 위에서 곧을 때만 정확해요. 휘는 함수는 교차점이 어긋나고, 그 어긋남은 변의 길이 h에 대해 $O(h^2)$예요. `Cells`는 어림한 교차점에서 함수를 한 번 불러(모든 교차점을 배열 하나로) 한 걸음 더 가요.
+
+```python
+        # src/stardust/plot/_field.py, Cells.__init__
+        if polish and n and f is not None:  # a grid given as values has nothing to polish with
+            # a secant step between the crossing estimate and the corner on the other side of the level
+            v = call2(f, sd.reshape(px, (n, 1)), sd.reshape(py, (n, 1)), who)
+            v = sd.reshape(v, (n,)) - level
+            first = (E[:, 4] > 0.0) != (v > 0.0)  # the corner on the other side: the first, or the second
+            cx, cy = sd.where(first, E[:, 2], E[:, 5]), sd.where(first, E[:, 3], E[:, 6])
+            t = v / (v - sd.where(first, E[:, 4], E[:, 7]))
+            use = sd.isfinite(v) & (v != 0.0) & (t >= 0.0) & (t <= 1.0)
+            t = sd.where(use, t, 0.0)
+            px, py = px + t * (cx - px), py + t * (cy - py)
+```
+
+어림한 점 P의 값 v의 부호를 보고, 변의 두 끝점 가운데 v와 부호가 반대인 쪽을 골라요. 근은 P와 그 끝점 사이에 갇혀 있으므로, 두 점을 잇는 직선의 영점으로 가요. 근을 가둔 채 할선을 긋는 regula falsi(거짓 위치법)의 한 걸음이에요. 함수가 매끄러우면 할선 걸음의 오차는 대략 $e_1 \approx \frac{f''}{2f'}\,e_P\,e_B$예요($e_P$, $e_B$는 P와 고른 끝점이 근에서 떨어진 거리). $e_P = O(h^2)$이고 $e_B = O(h)$이니 오차가 $O(h^3)$으로 줄어요. v가 0이거나 유한하지 않거나 t가 [0, 1] 밖이면 그 점은 그대로 둬요.
+
+아래 그림은 단위원 $x^2 + y^2 = 1$을 4 × 4 칸의 격자(회색 선)로 잰 것이에요. 점선이 선형 보간만 한 교차점, 실선이 다듬은 교차점, 가는 회색 원이 참 곡선이에요.
+
+```python
+>>> import math
+>>> from stardust.plot import _field
+>>> circle = lambda x, y: x * x + y * y - 1.0
+>>> xs, ys, F = _field.grid(circle, -1.5, 1.5, -1.5, 1.5, 4, 4, "demo")
+>>> X0, Y0 = _field.Cells(circle, xs, ys, F, 0.0, "demo", polish=False).arrays()
+>>> X1, Y1 = _field.Cells(circle, xs, ys, F, 0.0, "demo").arrays()
+>>> [round(float(sd.max(sd.abs(sd.sqrt(X * X + Y * Y) - 1.0))), 4) for X, Y in ((X0, Y0), (X1, Y1))]
+[0.0556, 0.0114]
+>>> fig = sd.plot.parametric(sd.cos, sd.sin, 0, 2 * math.pi, color="gray", width=0.5)
+>>> for v in xs:
+...     fig = fig.vline(v, width=0.3, color="#d0d0d0").hline(v, width=0.3, color="#d0d0d0")
+>>> fig = fig.line(X0, Y0, style="--", label="linear").line(X1, Y1, label="secant").scatter(X1, Y1, size=2)
+```
+
+<PlotImage name="in-fields-polish" alt="4 × 4 칸의 격자 위에 단위원과 두 다각형. 점선 다각형은 원 안쪽으로 크게 들어가 있고, 실선 다각형의 꼭짓점은 원 위에 거의 놓여 있어요." caption="꼭짓점이 0.75 간격인 거친 격자에서도 할선 한 걸음이 교차점을 원에 붙여요. 반지름의 최대 오차는 0.056에서 0.011로 줄어요." />
+
+## 다시 재는 띠: 곡선 둘레만 4배로
+
+격자 한 칸보다 작은 모양(칸 하나 안에 들어가는 고리, 한 점에서 스치는 곡선, 두 가지의 교차)은 꼭짓점 값만으로는 보이지 않아요. `near`는 곡선이 지나가거나 지나갈 만한 칸을 골라 그 칸만 가로세로 4배(`FINE` = 4)로 다시 재요.
+
+```python
+    # src/stardust/plot/_field.py, near
+    G = F - level
+    fin = sd.isfinite(G)
+    c = (G[:-1, :-1], G[:-1, 1:], G[1:, :-1], G[1:, 1:])
+    k = (fin[:-1, :-1], fin[:-1, 1:], fin[1:, :-1], fin[1:, 1:])
+    every, some = k[0] & k[1] & k[2] & k[3], k[0] | k[1] | k[2] | k[3]
+    low = sd.minimum(sd.minimum(c[0], c[1]), sd.minimum(c[2], c[3]))
+    high = sd.maximum(sd.maximum(c[0], c[1]), sd.maximum(c[2], c[3]))
+    band = every & (low - (high - low) <= 0.0) & (high + (high - low) >= 0.0) | some & ~every
+    return _again(f, xs, ys, F, band, who)
+```
+
+칸의 네 값의 범위 [low, high]를 그 폭만큼 양쪽으로 넓혀 수준을 품으면 그 칸을 골라요. 부호가 바뀌는 칸은 물론이고, 바뀌지 않지만 수준에 가까운 칸도 들어가요. 칸 안의 변화가 그 칸의 값과 수준의 거리만큼은 된다는 뜻이라, 꼭짓점 사이에 수준을 넘는 봉우리가 숨었을 수 있는 칸이에요. 꼭짓점 일부만 유한한 칸(정의역의 끝)도 골라요. `_again`은 고른 칸 둘레로 한 칸씩 넓히고(3 × 3), 고른 칸이 없거나 격자의 35%(`MAX_NEAR`)를 넘으면 아무것도 하지 않아요. 어디서나 거친 함수는 띠가 격자 전체가 되어 이득이 없기 때문이에요.
+
+```python
+    # src/stardust/plot/_field.py, _again
+    x = sd.reshape(_stretch(sd.reshape(sd.asarray(xs), (1, -1)), 1), (-1,))
+    y = sd.reshape(_stretch(sd.reshape(sd.asarray(ys), (1, -1)), 1), (-1,))
+    fine = _stretch(_stretch(F, 1), 0)
+    nodes = _spread(sd.repeat(sd.repeat(band, FINE, axis=0), FINE, axis=1))
+    jj, ii = sd.nonzero(nodes)
+    n = jj.shape[0]
+    fine[nodes] = sd.reshape(call2(f, sd.reshape(x[ii], (n, 1)), sd.reshape(y[jj], (n, 1)), who), (n,))
+    return x.tolist(), y.tolist(), fine
+```
+
+결과는 격자 전체를 4배로 잘게 만든 격자예요. `_stretch`가 두 방향으로 한 번씩 선형 보간해서(쌍선형 보간) 모든 꼭짓점에 값을 채우고, 띠 안의 칸의 꼭짓점만 함수의 참값으로 바꿔요. 띠 밖의 보간 값은 틀려도 괜찮아요. 띠 밖의 칸은 수준에서 멀어 네 꼭짓점이 모두 한쪽이고, 보간 값도 같은 쪽에 있으니 marching squares가 그 칸에서 할 일이 없어요. 참값은 꼭짓점들을 `(n, 1)` 배열 둘로 모아 한 번에 불러요. marching squares는 이 잘게 만든 격자 전체(기본이면 1281 × 961 꼭짓점)를 걸어요.
+
+아래 그림은 $\sin 3x \sin 3y = 0.97$을 31 × 31 꼭짓점의 격자로 그린 것이에요. 수준 곡선은 함수의 봉우리마다 지름 0.16쯤의 작은 고리이고, 격자 간격은 0.1이에요. 왼쪽은 `refine=0`으로 격자만 쓴 것, 오른쪽은 띠를 다시 잰 것이에요.
+
+```python
+>>> f = lambda x, y: sd.sin(3 * x) * sd.sin(3 * y)
+>>> a = sd.plot.implicit(f, -1, 2, -1, 2, level=0.97, samples=31, refine=0).title("refine=0")
+>>> b = sd.plot.implicit(f, -1, 2, -1, 2, level=0.97, samples=31).title("refine=1")
+>>> fig = sd.plot.grid([a, b], ncols=2, labels="A", width=120)
+```
+
+<PlotImage name="in-fields-near" alt="두 칸. 왼쪽 A는 다섯 곳에 모서리가 진 작은 오각형, 오른쪽 B는 같은 자리에 둥근 고리 다섯." caption="A: 꼭짓점 몇 개만 수준을 넘어서 고리가 모서리진 다각형이 돼요. B: 띠 안을 4배로 잘게 재면 둥근 고리가 돼요." />
+
+`implicit`와 `region`의 `refine`은 0이나 1이에요(기본 1). 띠를 한 번 더 잘게 나누는 단계는 없어요.
+
+## 영역: 닫힌 윤곽선과 짝홀 채움
+
+`region`은 $f > 0$인 곳을 칠해요. 칠할 것은 수준 0의 곡선이 둘러싼 안쪽이므로, 곡선을 닫힌 고리로 얻으면 그 고리들을 경로 하나로 채우면 돼요. 걸리는 것은 상자의 가장자리예요. 영역이 상자 밖으로 이어지면 곡선은 가장자리에서 끝나는 열린 선이고, 열린 선은 채울 수 없어요.
+
+### 한 겹 감싸기
+
+그래서 격자를 모든 수준보다 낮은 값으로 한 겹 감싸요.
+
+```python
+# src/stardust/plot/_field.py
+def framed(xs, ys, F, below):
+    """The grid with a border of value `below` (under every level) at the same coordinates as
+    its edge: a level set of it closes along the edge of the box, and its loops bound regions."""
+    ny, nx = F.shape
+    G = sd.full((ny + 2, nx + 2), below)
+    G[1:-1, 1:-1] = F
+    return [xs[0], *xs, xs[-1]], [ys[0], *ys, ys[-1]], G
+```
+
+테두리의 꼭짓점은 격자 가장자리의 꼭짓점과 **같은 좌표**에 있어요. 폭이 0인 칸이 한 줄 둘러선 셈이에요. 가장자리의 꼭짓점이 안($f > 0$)이면 그 꼭짓점과 테두리 꼭짓점 사이의 변에서 부호가 바뀌고, 두 끝의 좌표가 같으니 교차점이 정확히 가장자리 위에 놓여요. marching squares가 그 교차점들을 이으면 곡선이 상자의 가장자리를 따라 돌아 스스로 닫혀요. 테두리 값은 격자의 가장 작은 값과 수준 가운데 작은 쪽보다 $1 + \lvert\cdot\rvert$만큼 아래라서 어느 수준에서도 밖이에요.
+
+### 고리를 한 번에 칠하기
+
+```python
+# src/stardust/plot/_field.py
+def _region(f, xs, ys, F, level, who, cells=None):
+    """(ops, xy, fill rule) of where f is above the level: its outline, or cell by cell."""
+    cells = cells or Cells(f, *framed(xs, ys, F, _below(F, [level])), level, who, polish=f is not None)
+    out = loops(*cells.arrays())
+    if out is not None:
+        return out[0], out[1], "evenodd"
+    ops, xy = Cells(f, xs, ys, F, level, who, polish=f is not None).inside()
+    return ops, xy, "nonzero"
+```
+
+`loops`는 감싼 격자의 곡선들(NaN으로 가른 꺾은선)을 `M L … Z`의 닫힌 부분 경로로 바꿔요. 닫힌 곡선은 첫 점을 한 번 더 적어 두었으므로 첫 점과 끝 점이 같은지로 알아봐요. 이 경로를 **짝홀 규칙**으로 채워요. 점에서 바깥으로 나가며 윤곽선을 홀수 번 건너면 안이에요. 고리 안에 고리가 있으면 안쪽 고리의 속은 두 번 건너므로 비어요. marching squares의 걷기는 고리의 방향을 맞추지 않는데, 짝홀 규칙은 방향을 보지 않으므로 구멍이 저절로 뚫려요. 세 출력이 모두 이 규칙을 알아요([장면과 세 출력](/internals/plot/scene-outputs/), [2D 래스터라이저](/internals/plot/raster/)).
+
+칸마다 다각형을 내던 방식과 견주면 경로의 점이 영역의 넓이가 아니라 둘레에 비례해요. 그리고 그릴 때 고리마다 [곧은 줄 위의 점을 빼므로](/internals/plot/raster/) 상자 가장자리를 따라 걷는 수백 점이 모서리 몇 개로 줄어요.
+
+```python
+>>> ring = lambda x, y: (x * x + y * y - 0.25) * (2.25 - x * x - y * y)
+>>> band = sd.plot.region(ring, -2, 2, -2, 2)
+>>> layer = band._cells[0].layers[0]
+>>> layer.rule, layer.ops.count("M"), len(layer.xy) // 2
+('evenodd', 2, 4480)
+>>> path = next(i for i in band.scene()['items'] if i.get('rule') == 'evenodd')
+>>> path['ops'].count("M"), len(path['xy']) // 2
+(2, 268)
+```
+
+반지름 0.5와 1.5 사이의 고리 띠예요. 윤곽선은 원 둘이고, 4배로 다시 잰 격자에서 4480점이던 것이 장면에서는 268점이에요.
+
+### 고리가 열릴 때
+
+정의역에 구멍이 있으면 고리가 닫히지 않아요. $\sqrt{x} - y$는 $x < 0$에서 값이 없고, 유한하지 않은 꼭짓점이 든 칸은 건너뛰므로 곡선이 그 경계에서 끊겨요. `loops`가 열린 조각을 하나라도 만나면 `None`을 돌려주고, `_region`은 감싸지 않은 격자에서 `Levels::inside`의 칸 다각형으로 물러나요.
+
+- 한 행에서 네 꼭짓점이 모두 안이고 유한한 칸이 이어지면, 그 줄을 직사각형 하나로 묶어요.
+- 부호가 갈리는 칸은 꼭짓점을 반시계로 돌며, 안인 꼭짓점과 칸을 떠나는 변의 교차점을 차례로 적은 다각형이에요(세모, 네모, 오각형). 안장 칸은 육각형 하나로 낼지, 안인 두 꼭짓점을 따로 자른 세모 둘로 낼지를 `curves`와 같은 판정으로 정해요.
+
+```cpp
+        // csrc/plot/levels.cpp, Levels::inside
+        // A saddle whose corners' mean is on the other side of its inside corners (not above zero,
+        // as they are): as the curves do (curves), the two inside corners are cut off apart, each
+        // with its two crossings.
+        const bool apart = count == 6 && !((at(j, i) + at(j, i + 1) + at(j + 1, i + 1) + at(j + 1, i)) / 4.0 > 0.0);
+```
+
+안장 칸에서는 꼭짓점과 교차점을 돌며 적은 점이 여섯이에요(안인 꼭짓점 둘, 교차점 넷). 안인 꼭짓점은 값이 0보다 크므로, 네 꼭짓점의 평균이 0보다 크지 않으면 가운데가 안인 꼭짓점들의 반대쪽이에요. 그러면 `curves`가 안인 두 꼭짓점을 따로 잘라 내는 쌍으로 잇는 경우이므로, 꼭짓점마다 그 앞뒤 변의 교차점과 세모를 하나씩 내요. 평균이 0보다 크면 가운데로 두 꼭짓점이 이어진 것이라 여섯 점을 육각형 하나로 내요. 어느 꼭짓점이 안이든 판정이 안인 꼭짓점에 대한 것이라, 칠한 다각형이 곡선과 같은 쪽으로 갈라져요.
+
+교차점은 이웃한 칸이 공유하는 바로 그 점이라 다각형들이 틈 없이 영역을 덮고, 서로 겹치지 않으므로 보통의 채움 규칙(nonzero)으로 칠해요.
+
+```python
+>>> cut = sd.plot.region(lambda x, y: sd.sqrt(x) - y, -1, 2, -1, 2)
+>>> cut._cells[0].layers[0].rule
+'nonzero'
+```
+
+## 등고선
+
+### 수준 고르기
+
+`contour`의 `levels`가 개수이면 격자 전체의 값에 [곡선의 자동 범위](/internals/plot/sampling/)와 같은 분위수 규칙(`robust_range`)을 써서 값의 본체를 잡고, 그 범위에 눈금과 같은 확장 Wilkinson 알고리즘(`_ticks.linear`)으로 고운 값 약 n개를 골라요. 범위의 양 끝과 같은 값은 빼요(그 수준의 곡선은 격자 끝의 점이에요). 극점이 있는 함수에서 큰 값 몇 개가 수준을 모두 가져가지 않아요.
+
+```python
+>>> from stardust.plot import _sample, _ticks
+>>> xs, ys, F = _field.grid(lambda x, y: 1 / (x * x + y * y), -1, 1, -1, 1, 320, 240, "demo")
+>>> lo, hi, _, top = _sample.robust_range(sd.reshape(F, (-1,)))
+>>> round(lo, 3), round(hi, 3), top
+(0.5, 14.807, True)
+>>> [v for v in _ticks.linear(lo, hi, 10) if lo < v < hi]
+[2.0, 4.0, 6.0, 8.0, 10.0, 12.0, 14.0]
+```
+
+### 빨리 변하는 칸
+
+수준이 여럿이면 `swift`가 띠를 골라요. 한 칸 안에서 값이 가장 가까운 두 수준 간격의 절반보다 크게 변하면, 그 칸에는 수준 곡선 둘 이상이 지나갈 수 있어 꼭짓점 넷으로는 갈라 그릴 수 없어요. 그런 칸(값이 수준들의 범위 근처에 있는 것만)과 정의역 끝의 칸을 `near`와 같은 `_again`으로 4배로 다시 재요. 함수가 고르게 변하면 띠가 비어 함수를 한 번 더 부르지 않아요. 잘게 만든 격자는 `Grid` 하나로 C++에 넘기고, 모든 수준이 그것을 함께 써요.
+
+### 숫자의 자리
+
+수준의 숫자는 `_ticks.labels`가 한꺼번에 만들어 소수 자릿수가 모두 같아요(`$0.50$`, `$1.00$`처럼). 수준마다 가장 긴 곡선을 골라, 점이 12개 이상이면 그 곡선의 길이 비율 0.5, 0.33, 0.67, 0.2, 0.8, 0.42, 0.58, 0.1, 0.9인 자리를 후보로 둬요(0부터 센 번호가 홀수인 수준은 0.33부터 시작해서, 이웃한 두 수준의 첫 후보가 엇갈려요). 후보마다 앞뒤 두 점의 차로 곡선의 방향도 적어요.
+
+배치가 끝나 화면 좌표를 알게 되면 `ContourLabels.draw`가 후보를 차례로 봐요. 글자 상자를 감싸는 원의 반지름 r로, 후보가 칸 안에 r만큼 들어와 있고 이미 놓은 숫자들과 $r + r' + 2$ bp 넘게 떨어져 있으면 그 자리를 써요. 숫자는 곡선의 방향으로 돌리되 각을 −90°에서 90° 사이로 접어 거꾸로 서지 않게 하고, 같은 각으로 돌린 흰 직사각형을 먼저 깔아 그 밑의 선을 가려요. 맞는 후보가 없는 수준은 숫자 없이 둬요.
+
+```python
+>>> fig = sd.plot.contour(lambda x, y: 1 / (x * x + y * y), -1, 1, -1, 1)
+```
+
+<PlotImage name="in-fields-contour" alt="원점에 극점이 있는 1/(x²+y²)의 등고선. 2에서 14까지 2 간격의 일곱 고리(가로로 늘어난 타원)가 원점 둘레에 겹겹이 있고, 고리마다 곡선 방향으로 돌린 숫자가 적혀 있어요." caption="수준은 값의 본체 0.5에서 14.8 사이에서 고른 2, 4, …, 14예요. 극점 둘레의 큰 값은 수준을 가져가지 않아요. 숫자는 서로 닿지 않는 자리에 서요. contour는 가로세로 단위를 맞추지 않아서 원이 타원으로 보여요." />
+
+### 채운 등고선
+
+`filled=True`면 아래 수준부터 차례로 칠해요. 먼저 상자 전체를 가장 낮은 수준 아래 띠의 색으로 칠하고, 수준마다 그 수준보다 높은 영역을 그 수준과 다음 수준의 가운데 값의 색으로 덮어요. 위의 수준이 아래 수준의 영역 일부를 다시 덮으므로, 마지막에 남는 색이 그 자리의 띠예요. 띠마다 두 수준 사이의 다각형을 따로 만들지 않아도 되는 화가 알고리즘이에요.
+
+수준마다의 영역은 `region`과 같은 길로 얻어요. `contour`는 격자를 처음부터 한 겹 감싸 두고(`framed`), 수준마다 `Cells` 하나를 만들어 곡선과 칠을 함께 내요. 칠은 그 수준의 닫힌 고리를 짝홀 규칙으로 채운 것이고, 수준 곡선은 **같은 고리**에서 상자 가장자리를 따라 걷는 구간만 뺀 것이에요(`off_edge`가 두 끝과 가운데가 모두 가장자리 위에 있는 선분마다 NaN을 넣어 끊어요). 칠의 경계와 선이 같은 점들이라 둘 사이에 틈이나 어긋남이 없고, 교차점을 다듬는 함수 호출도 수준마다 한 번이에요. 채운 그림에서는 곡선을 글자색의 가는 선(0.5 pt)으로 긋고, 숫자 대신 색 막대를 붙여요.
+
+```python
+>>> fc = sd.plot.contour(lambda x, y: sd.sin(x) * sd.cos(y), -3, 3, -2, 2, levels=6, filled=True)
+>>> [type(layer).__name__ + ":" + getattr(layer, "rule", "") for layer in fc._cells[0].layers]
+['Fill:nonzero', 'Fill:evenodd', 'Fill:evenodd', 'Fill:evenodd', 'Fill:evenodd', 'Fill:evenodd', 'Line:', 'Line:', 'Line:', 'Line:', 'Line:']
+>>> fig = sd.plot.grid([band, fc], ncols=2, labels="A", width=150)
+```
+
+첫 층이 상자 전체의 바탕, 그 뒤 다섯이 수준마다의 영역, 마지막 다섯이 수준 곡선이에요.
+
+<PlotImage name="in-fields-evenodd" alt="두 칸. 왼쪽 A는 안이 뚫린 고리 모양의 옅은 파란 영역. 오른쪽 B는 sin x cos y의 채운 등고선으로, 왼쪽의 하늘색 골짜기와 오른쪽의 빨간 봉우리를 가는 검은 선의 고리가 겹겹이 둘러싸고 오른쪽에 색 막대가 있어요." caption="A: 원 둘을 짝홀 규칙으로 한 번에 칠한 고리 띠. B: 낮은 수준부터 겹쳐 칠한 띠와, 같은 고리에서 가장자리를 뺀 수준 곡선." />
+
+## 밀도 그림과 위상 그림
+
+`density`와 `phase`는 곡선을 찾지 않고 화소마다 값 하나를 재요. 표본은 화소의 가운데예요. 가로 DX개의 화소가 [x0, x1]을 덮으면 표본은 $x_0 + (k + \tfrac12)(x_1 - x_0)/DX$예요. 그림은 `Picture` 층이 되어 래스터라이저가 칸의 직사각형에 붙여요.
+
+화소는 값을 같은 너비로 나눈 것이라 로그 축에서는 화면에 고르게 놓이지 않아요. 그래서 축 하나라도 로그이면 `Picture`가 그림을 다시 짜요.
+
+```python
+        # src/stardust/plot/_field.py, Picture._draw_log
+        def along(a, lo, hi, n, most=1024):
+            """(the low and high values shown, the pixel of every new column from the low end)."""
+            if a.scale != "log":
+                return lo, hi, list(range(n))
+            v0, v1 = max(lo, a.lo), min(hi, a.hi)
+            if not 0.0 < v0 < v1:
+                return None
+            m = min(most, max(4 * n, 256))
+            l0, l1 = math.log10(v0), math.log10(v1)
+            at = (10.0 ** (l0 + (k + 0.5) / m * (l1 - l0)) for k in range(m))
+            return v0, v1, [min(n - 1, max(0, int((v - lo) / (hi - lo) * n))) for v in at]
+```
+
+로그 축을 따라 새 열 m개(원래 화소 수의 4배, 256에서 1024 사이)를 화면에 고르게 놓고, 새 열마다 그 가운데의 값이 든 원래 화소를 가져와요. 축이 보이는 범위 $[\max(x_0, \text{축의 아래 끝}),\ \min(x_1, \text{축의 위 끝})]$만 다시 짜고, 그 범위가 양수가 아니면 그리지 않아요. 같은 원래 줄은 한 번만 만들어 다시 써요. 그래서 화소가 제 값의 자리에 서고, 값을 고르게 나눈 칸은 로그 축에서 너비가 다르게 보여요. 축의 범위를 정할 때도 로그 축이면 0보다 큰 첫 화소 경계부터 알려요(`extent`). 2차원 히스토그램의 `Counts` 층도 `Picture`를 이어받아 같은 길로 그려요.
+
+### 밀도: 색띠 표
+
+`density`는 유한한 값의 최솟값과 최댓값(또는 `vmin`, `vmax`)으로 값을 [0, 1]에 놓고 색띠의 색으로 바꿔요. 색띠는 이름마다 고정점 몇 개(기본 `'cool'`은 7개)를 sRGB에서 선형 보간한 것이고, `_color.table`이 그것을 256칸의 RGBA8 표로 한 번 구워요. C++ `colormap`은 화소마다 표의 가장 가까운 칸을 복사만 해요.
+
+```cpp
+// csrc/plot/raster.cpp
+void colormap(
+    const double* v, std::size_t n, double vmin, double vmax, const std::uint8_t* table, int entries, std::uint8_t* out
+) {
+    const double scale = vmax > vmin ? (entries - 1) / (vmax - vmin) : 0.0;
+    for (std::size_t i = 0; i < n; ++i) {
+        const double x = v[i];
+        if (std::isnan(x)) {
+            out[4 * i] = out[4 * i + 1] = out[4 * i + 2] = out[4 * i + 3] = 0;
+            continue;
+        }
+        const double t =
+            std::clamp((x - vmin) * scale, 0.0, static_cast<double>(entries - 1));  // an infinity takes an end
+        std::memcpy(out + 4 * i, table + 4 * static_cast<std::size_t>(t + 0.5), 4);
+    }
+}
+```
+
+NaN은 투명이고, 무한대와 범위 밖의 값은 표의 끝 색이에요. [`heatmap`](/api/plot/heatmap/)도 같은 함수로 칸의 색을 만들어요.
+
+### 위상: 정의역 색칠
+
+`phase`는 복소 함수 w = f(z)를 정의역 색칠(domain colouring)로 그려요. 화소마다 $\arg w$를 색상(hue)으로, $\lvert w\rvert$를 밝기로 써서 HSV 색을 만들어요.
+
+- 색상 $h = \arg w / 2\pi$를 [0, 1)로 접어요. 양의 실수가 빨강, 그다음 노랑, 초록, 청록, 파랑, 자홍 순이에요. 영점 둘레를 한 바퀴 돌면 색상이 한 바퀴 돌고, 극점 둘레는 반대로 돌아요. 위수 k의 영점은 색이 k바퀴 돌아요.
+- `contours=True`면 밝기 $V = 0.62 + 0.38\,\{\log_2\lvert w\rvert\}$예요. 크기가 두 배가 될 때마다 밝기가 0.62에서 1까지 오른 뒤 뚝 떨어져서, 크기의 등고선이 띠의 경계로 보여요. 영점 쪽으로 갈수록 띠가 촘촘해지고, 극점 쪽도 같아요. `False`면 V = 1이에요.
+- 채도는 0.85로 고정이에요.
+- $w = 0$은 검정, 무한대는 흰색, NaN은 투명이에요.
+
+HSV에서 RGB로는 표준 공식이에요. $h_6 = 6h$의 정수 부분이 여섯 구간 가운데 하나를 고르고, 소수 부분 f로 $p = V(1 - S)$, $q = V(1 - Sf)$, $t = V(1 - S(1 - f))$를 만들어 구간마다 (V, t, p), (q, V, p), (p, V, t), (p, q, V), (t, p, V), (V, p, q)를 R, G, B로 써요.
+
+## 벡터장: 화살표
+
+[`vectorfield`](/api/plot/vectorfield/)는 벡터장 $(u(x, y), v(x, y))$를 화살표로 그려요. 상자를 가로 21칸(세로는 상자의 비율대로)으로 나누고, 칸의 가운데에서 두 함수를 한 번씩 불러요. 화살표는 그 가운데 점에 중심을 두므로 이웃한 화살표끼리 닿지 않아요.
+
+```python
+    # src/stardust/plot/_field.py, vectorfield
+    # the arrows across (one number: down as many as keep the box's proportions), or both
+    across = (
+        21
+        if samples is None or isinstance(samples, (tuple, list))
+        else _sample.knobs(who, samples, None, 21, 0, most=400)[0]
+    )
+    down = min(400, max(3, round(across * (y1 - y0) / (x1 - x0))))
+    (nx, ny), _ = _sample.knobs(
+        who, samples if isinstance(samples, (tuple, list)) else None, None, (across, down), 0, pair=True, most=400
+    )
+```
+
+`samples`가 정수 하나이면 가로의 칸 수이고, 세로는 상자의 비율대로 정해요(3에서 400). 그래서 납작한 상자에서도 화살표의 가로 간격과 세로 간격이 같아요. `(가로, 세로)`를 주면 그대로 써요. 값 배열을 주면 칸 수는 배열의 모양이고 `samples`는 받지 않아요.
+
+- **길이**: 크기 $m = \sqrt{u^2 + v^2}$가 가장 큰 화살표가 칸의 짧은 변의 90%가 되게 모든 화살표에 같은 배율을 곱하고, `scale`을 더 곱해요. 그래서 화살표의 길이가 크기에 비례해요.
+- **가장 큰 크기**는 최댓값이 아니라 [곡선의 자동 범위](/internals/plot/sampling/)와 같은 분위수 규칙으로 잡은 본체의 위 끝이에요. 극점 가까이의 한두 값이 다른 화살표를 모두 점으로 줄이지 않아요. 그 위 끝을 넘는 벡터는 길이만 위 끝에서 자르고 방향은 그대로 둬요.
+- **색**: `color`를 주지 않으면 크기를 색띠에 놓아요. 색띠를 32단계로 끊어, 같은 색의 화살표들을 경로 둘(몸통의 획 하나, 촉의 채움 하나)로 모아요. 화살표 수백 개가 장면에서는 많아야 64개의 경로예요.
+- **촉**: 길이는 화살표 길이의 40%와 $1.6 + 2.2w$ bp($w$는 선 굵기) 가운데 작은 쪽이고, 몸통은 촉 안에서 끝나요. 화면에서 0.3 bp보다 짧은 화살표는 그리지 않아요.
+- **색 막대**: 크기로 칠하면 칸에 색 막대를 붙여요. 칸에는 막대가 하나뿐이라, 이미 막대가 있는 칸(밀도 그림이나 채운 등고선 위에 얹은 장)에서는 그 막대를 두고 화살표의 색은 막대 없이 그려요(`_field_bar`). 유선도 같아요.
+- **범례**: `label`을 주면 범례의 선 견본이 한 색일 때 그 색, 색띠로 칠할 때 색띠의 가운데 색이에요. 유선과 같은 규칙이에요.
+
+값 배열의 격자 점은 상자의 가장자리 위에 있어서(`values_grid`), 그 점에 가운데를 둔 화살표는 반쯤 상자 밖으로 나가요. 그래서 `Arrows`의 `extent`는 화살표가 상자 밖으로 나간 만큼 축의 범위를 넓혀요.
+
+```python
+    # src/stardust/plot/_field.py, Arrows
+    def extent(self, axis, positive):
+        """The box; wider where the arrows reach past it (those of values given on the box's
+        edge are centred on it), so that none is cut."""
+        lo, hi = (self.box[0], self.box[1]) if axis == "x" else (self.box[2], self.box[3])
+        at, by = (self.x, self.u) if axis == "x" else (self.y, self.v)
+        a = min((p - abs(d) / 2 for p, d in zip(at, by)), default=lo)
+        b = max((p + abs(d) / 2 for p, d in zip(at, by)), default=hi)
+        slack = 1e-9 * (hi - lo)
+        a, b = (a if a < lo - slack else lo), (b if b > hi + slack else hi)
+        return (a, b, tuple(v for v, edge in ((a, lo), (b, hi)) if v == edge))
+```
+
+화살표의 양 끝은 가운데에서 벡터의 절반만큼씩이에요. 그 끝이 상자 밖이면 범위를 끝까지 넓히고, 넓힌 끝은 넓히지 않는 값(sticky)에서 빠지므로 배치가 여백을 더해요. 상자 안에 머무는 끝(함수를 칸의 가운데에서 잰 화살표)은 상자의 끝 그대로이고 넓히지 않는 값이에요.
+
+```python
+>>> vf = sd.plot.vectorfield(lambda x, y: -y, lambda x, y: x, -2, 2, -1.5, 1.5)
+>>> arrows = vf._cells[0].layers[0]
+>>> len(arrows.x), len(set(arrows.colors)) <= 32, [round(v, 3) for v in vf._cells[0].colorbar[1:]]
+(336, True, [0.0, 2.368])
+>>> flat = sd.plot.vectorfield(lambda x, y: -y, lambda x, y: x, -2, 2, -1, 1, samples=12)
+>>> len(flat._cells[0].layers[0].x)
+72
+```
+
+21 × 16칸의 화살표 336개예요. 회전하는 장 $(-y, x)$의 크기는 원점에서의 거리이고, 색 막대의 위 끝 2.368이 본체의 위 끝이에요. 상자의 구석(크기 2.5)은 그보다 크므로 같은 길이로 잘려요. 가로세로 4 : 2인 상자에 `samples=12`를 주면 12 × 6칸의 화살표 72개예요.
+
+## 유선
+
+[`streamlines`](/api/plot/streamlines/)는 장의 방향을 따라가는 곡선, 곧 $\dot{\mathbf p} = \mathbf F(\mathbf p)$의 궤적을 그려요. 어려운 것은 궤적 하나를 따라가는 일이 아니라 어디서 시작할지예요. 씨앗을 고른 격자에 두면 선들이 흐름이 모이는 곳에 뭉치고 퍼지는 곳은 비어요. 그림이 읽히려면 선들이 상자에 고르게 퍼져야 해요.
+
+Jobard와 Lefer(1997)의 고르게 퍼진 유선은 선 위의 모든 점이 다른 선의 점과 정해진 거리 $d_\text{sep}$ 넘게 떨어지게 해요. 새 점을 놓을 때마다 가까운 점들과의 거리를 재려고 격자에 점을 담아 둬요. 여기서는 그 생각을 더 성긴 꼴로 써요. 거리를 재지 않고, 상자를 정사각형 칸으로 나눠 **한 칸에 선 하나**만 지나게 해요. 칸 하나가 곧 선 사이의 간격이에요. 커널은 `csrc/plot/streams.cpp`의 `streamlines` 하나예요.
+
+### 장 읽기
+
+Python 쪽은 장을 격자에 한 번 재요. 기본은 가로 `6 * cells + 1`점(칸 하나에 여섯 점)이고 `samples`로 바꿔요. 커널은 격자 사이의 값을 쌍선형 보간으로 읽어요. 네 꼭짓점 가운데 하나라도 유한하지 않으면 그 점에는 장이 없어요.
+
+따라가는 것은 장 자체가 아니라 **방향**이에요.
+
+```cpp
+    // csrc/plot/streams.cpp
+    // the unit direction of the field in mask coordinates (sign: +1 along, -1 against)
+    bool dir(double gx, double gy, double sign, double& dx, double& dy) const {
+        double fu, fv;
+        if (!at(gx, gy, fu, fv)) return false;
+        const double du = fu * sx, dv = fv * sy, n = std::hypot(du, dv);
+        if (!(n > 1e-300)) return false;
+        dx = sign * du / n;
+        dy = sign * dv / n;
+        return true;
+    }
+```
+
+좌표는 칸 좌표예요. 상자의 가로가 0에서 `mx`, 세로가 0에서 `my`이고 칸 하나의 변이 1이에요. 자료 좌표의 벡터 $(u, v)$에 축마다 칸 좌표의 배율 `sx`, `sy`를 곱한 뒤 길이로 나눠 단위 벡터를 만들어요. 그러면 풀 방정식이 $\mathrm{d}\mathbf p/\mathrm{d}s = \mathbf F/\lvert\mathbf F\rvert$가 되고 $s$는 칸 좌표에서의 호의 길이예요. 궤적의 모양은 같고, 장이 빠른 곳이든 느린 곳이든 한 걸음에 같은 길이를 가요. 걸음의 크기를 장의 크기에 맞춰 고를 일이 없어요. 크기가 0이면 방향이 없으므로 거기서 선이 끝나요. 정지점에서 선이 멈추는 것이 그 때문이에요.
+
+### 한 걸음: 가운데점 방법
+
+```cpp
+            // csrc/plot/streams.cpp
+            for (int s = 0; s < most; ++s) {
+                double ax, ay, bx, by;
+                if (!F.dir(gx, gy, sign, ax, ay)) break;
+                const double mxp = gx + 0.5 * h * ax, myp = gy + 0.5 * h * ay;
+                if (mxp < 0 || mxp > mx || myp < 0 || myp > my || !F.dir(mxp, myp, sign, bx, by)) break;
+                const double nxp = gx + h * bx, nyp = gy + h * by;
+                if (nxp < 0 || nxp > mx || nyp < 0 || nyp > my) break;
+                const int ci = std::min(static_cast<int>(nxp), mx - 1), cj = std::min(static_cast<int>(nyp), my - 1);
+                const int c = cj * mx + ci;
+                if (c != cell) {
+                    if (mask[c]) break;  // another line's cell, or this line's own: stop here
+                    mask[c] = 1;
+                    own.push_back(c);
+                    cell = c;
+                }
+                gx = nxp;
+                gy = nyp;
+                path.insert(path.end(), {gx, gy});
+                length += h;
+            }
+```
+
+적분은 2차 Runge–Kutta 가운데 가운데점 방법이에요. 지금 점 $\mathbf p$에서의 방향 $\mathbf a$로 반 걸음 간 가운데점 $\mathbf m = \mathbf p + \tfrac{h}{2}\mathbf a$에서 방향 $\mathbf b$를 다시 읽고, 그 방향으로 온 걸음을 가요($\mathbf p' = \mathbf p + h\,\mathbf b$). 오일러 방법은 걸음의 처음 방향으로만 가서 굽은 궤적에서 바깥으로 밀려나요. 한 걸음의 오차가 $O(h^2)$이라 원을 도는 장에서 선이 나선으로 벌어져요. 가운데점 방법은 한 걸음의 오차가 $O(h^3)$, 선 전체에서 $O(h^2)$예요. 걸음 $h$는 0.2칸이므로 칸 하나를 다섯 걸음에 지나고, 그 사이의 오차는 칸보다 훨씬 작아요. 선 사이의 간격이 칸 하나이니 그것으로 충분해요.
+
+걸음마다 네 가지로 멈춰요.
+
+- 지금 점이나 가운데점에 장이 없거나 0이에요.
+- 가운데점이나 새 점이 상자 밖이에요.
+- 새 점이 든 칸이 지금 칸과 다르고, 그 칸을 이미 어느 선이 차지했어요. 다른 선의 칸일 수도 있고 이 선이 앞서 지난 칸일 수도 있어요. 닫힌 궤도를 도는 선은 한 바퀴를 돌아 제 칸에 닿으면 멈추므로, 같은 원을 끝없이 덧그리지 않아요.
+- 걸음 수가 $4(m_x + m_y)/h$에 닿았어요. 칸을 바꾸지 않고 한 칸 안을 맴도는 선을 끝내는 한계예요.
+
+새 칸에 들어가면 그 칸을 차지했다고 적고(`mask`), 이 선이 차지한 칸의 목록(`own`)에 더해요.
+
+### 씨앗의 차례
+
+```cpp
+    // csrc/plot/streams.cpp
+    // the seeds: the cells from the edge of the box inwards, ring by ring
+    std::vector<int> seeds;
+    seeds.reserve(static_cast<std::size_t>(mx) * my);
+    for (int r = 0; 2 * r < std::min(mx, my) + 1; ++r) {
+        const int a = r, b = mx - 1 - r, c = r, d = my - 1 - r;
+        if (a > b || c > d) break;
+        for (int i = a; i <= b; ++i) seeds.push_back(c * mx + i);
+        for (int j = c + 1; j <= d; ++j) seeds.push_back(j * mx + b);
+        if (d > c)
+            for (int i = b - 1; i >= a; --i) seeds.push_back(d * mx + i);
+        if (b > a)
+            for (int j = d - 1; j > c; --j) seeds.push_back(j * mx + a);
+    }
+```
+
+씨앗은 칸의 가운데이고, 차례는 바깥 고리부터 안쪽으로예요. 고리 하나는 아래 줄을 왼쪽에서 오른쪽으로, 오른쪽 열을 위로, 위 줄을 오른쪽에서 왼쪽으로, 왼쪽 열을 아래로 돌아요. 이미 차지된 칸은 씨앗이 되지 못해요.
+
+가장자리부터 시작하는 까닭은 선의 길이예요. 상자로 들어오고 나가는 흐름은 가장자리의 칸에서 시작해야 상자를 가로지르는 긴 선이 돼요. 가운데에서 먼저 시작하면 짧은 선들이 칸을 차지해서, 뒤에 오는 긴 선이 그 칸에서 끊겨요. 바깥 고리의 선들이 큰 흐름을 먼저 그리고, 안쪽 고리의 씨앗은 남은 빈 칸(소용돌이의 안쪽, 정지점 둘레)을 채워요.
+
+씨앗 하나에서 선은 두 번 자라요. 장의 방향으로 한 번(`fwd`), 거꾸로 한 번(`bwd`). 내보낼 때는 거꾸로 간 점들을 뒤집어 앞에 붙이므로 선 하나가 상류에서 하류로 이어진 점의 열이에요. 화살촉이 흐름의 방향을 가리킬 수 있는 것이 그 때문이에요.
+
+### 짧은 선 버리기
+
+```cpp
+        // csrc/plot/streams.cpp
+        if (length < min_cells) {  // too short to show a flow: its cells are free again
+            for (const int c : own) mask[c] = 0;
+            mask[seed] = 1;  // but the seed is not tried again
+            continue;
+        }
+```
+
+두 방향을 합친 길이가 2칸(`min_cells`)보다 짧은 선은 흐름을 보여 주지 못하는 토막이라 버려요. 그 선이 차지한 칸은 돌려줘서 뒤의 선이 지날 수 있게 하고, 씨앗 칸만은 차지한 채로 둬요. 같은 씨앗을 다시 시도하지 않게 하려는 것이에요. 씨앗의 수는 칸의 수이고 선 하나의 걸음에는 한계가 있으므로 고리는 반드시 끝나요.
+
+### 그리기
+
+커널은 점마다 수 셋(x, y, 그 점에서 장의 크기)을 돌려주고 선 사이에 NaN 셋을 둬요. `Streams` 층이 그것을 그려요.
+
+- **색**은 화살표와 같아요. 크기를 본체의 위 끝으로 나눠 색띠의 32단계에 놓아요. 선 하나를 같은 색이 이어지는 구간으로 나누고, 구간은 앞 구간의 마지막 점에서 시작해서 색이 바뀌는 곳에 틈이 없어요. 같은 색의 구간은 모두 경로 하나에 모여요. 이음과 끝이 둥글어서 구간이 만나는 곳이 매끈해요.
+- **화살촉**은 선마다 하나, 화면에서 잰 길이의 한가운데에 흐름 방향으로 놓아요. 화면에서 6 bp보다 짧은 선에는 달지 않아요. `arrows=False`면 없어요.
+- 구간마다 [곧은 줄 위의 점을 빼요](/internals/plot/raster/). 0.2칸씩 걸은 점은 그리기에는 훨씬 촘촘해요.
+
+```python
+>>> st = sd.plot.streamlines(lambda x, y: 1 - x * x + 0 * y, lambda x, y: x * y - 0.3, -3, 3, -2.25, 2.25)
+>>> xyz = st._cells[0].layers[0].xyz
+>>> n = len(xyz) // 3
+>>> n, 1 + sum(1 for i in range(n) if xyz[3 * i] != xyz[3 * i])
+(1954, 58)
+>>> fig = sd.plot.grid([vf, st], ncols=2, labels="A", width=160)
+```
+
+가로 25칸, 세로 19칸의 칸에 선 58개가 들어갔어요.
+
+<PlotImage name="in-fields-streams" alt="두 칸. 왼쪽 A는 원점 둘레를 도는 화살표들로, 가운데는 짧고 하늘색, 가장자리로 갈수록 길고 빨개요. 오른쪽 B는 곡선들이 상자에 고르게 퍼진 유선 그림으로, x가 −1과 1인 세로줄 둘레에서 흐름이 갈라지고 모이며 선마다 가운데에 화살촉이 하나씩 있어요." caption="A: 칸 가운데마다 놓은 화살표. 길이와 색이 크기를 따라요. B: 한 칸에 선 하나만 지나게 퍼뜨린 유선. 색은 크기, 화살촉은 흐름의 방향이에요." />
+
+## 결정성
+
+격자와 띠의 선택, 교차점의 순서(행 순서와 칸 안의 변 순서), 걷기의 시작점이 모두 입력으로만 정해져요. 해시 표 `index_`는 번호를 찾는 데만 쓰고 순회하지 않으므로 순서에 들어가지 않아요. 유선도 같아요. 씨앗의 차례와 걸음의 크기가 고정이고 커널은 한 스레드에서 돌아요. 같은 기계, 같은 스레드 수, 같은 입력이면 같은 곡선과 같은 그림이에요.

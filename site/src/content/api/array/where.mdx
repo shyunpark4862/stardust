@@ -1,0 +1,325 @@
+---
+title: where
+names: [where]
+group: 고르기와 판별
+order: 1
+signatures:
+  - "sd.where(condition, x1, x2, /, *, out=None)"
+summary: 조건이 참인 자리에는 x1의 값을, 거짓인 자리에는 x2의 값을 골라 담은 새 배열을 만들어요.
+params:
+  - name: condition
+    type: bool ndarray 또는 Python bool
+    kind: positional-only
+    desc: 어느 쪽 값을 고를지 정하는 조건. bool만 받아요.
+  - name: x1
+    type: ndarray 또는 Python 숫자
+    kind: positional-only
+    desc: 조건이 참인 자리에 쓸 값.
+  - name: x2
+    type: ndarray 또는 Python 숫자
+    kind: positional-only
+    desc: 조건이 거짓인 자리에 쓸 값.
+  - name: out
+    type: ndarray 또는 None
+    kind: keyword-only
+    desc: 결과를 적어 넣을 배열. None이면 새 배열을 만들어요.
+returns:
+  type: ndarray 또는 Python 숫자
+  desc: 세 인자를 브로드캐스트한 모양의 배열. dtype은 x1과 x2를 승격한 것이에요. 세 인자가 모두 Python 값이면 Python 숫자예요.
+raises:
+  - type: TypeError
+    desc: condition이 bool이 아닐 때, 인자가 셋이 아닐 때, 리스트처럼 배열도 숫자도 아닌 것을 넣었을 때, out의 dtype이 결과를 담을 수 없을 때.
+  - type: ValueError
+    desc: 세 인자나 out의 모양이 서로 맞지 않을 때.
+seeAlso: [comparison, logical, isnan, maximum, clip, nonzero, indexing, broadcasting]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+`sd.where(condition, x1, x2)`는 자리마다 "조건이 참이면 `x1`, 거짓이면 `x2`"를 골라서 새 배열을 만들어요. 엑셀의 `IF` 함수를 배열 전체에 한꺼번에 적용한다고 생각하면 돼요.
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([3, -1, 4, -5])
+>>> sd.where(x > 0, x, 0)
+array([3, 0, 4, 0], dtype=int64)
+```
+
+"양수는 그대로 두고, 나머지는 0으로" 바꿨어요. 원래 배열 `x`는 바뀌지 않아요.
+
+<Fig caption="조건이 True인 자리는 x1에서, False인 자리는 x2에서 값을 가져와요.">
+  <ArrayFig name="x > 0" data={[true, false, true, false]} tones={['a', '', 'a', '']} />
+  <ArrayFig name="x1 = x" data={[3, -1, 4, -5]} tones={['a', 'm', 'a', 'm']} />
+  <ArrayFig name="x2 = 0" data={[0, 0, 0, 0]} tones={['m', 'g', 'm', 'g']} />
+  <Op>→</Op>
+  <ArrayFig name="결과" data={[3, 0, 4, 0]} tones={['a', '', 'a', '']} />
+</Fig>
+
+`x1`과 `x2`에는 배열도, 숫자 하나도 쓸 수 있어요. 둘 다 배열이면 자리마다 둘 중 하나를 골라요.
+
+```python
+>>> sd.where(x > 0, x, -x)
+array([3, 1, 4, 5], dtype=int64)
+```
+
+<Reference />
+
+## 자주 쓰는 모양
+
+### 특정 값을 다른 값으로 바꾸기
+
+조건 자리에 [비교](/api/array/comparison/)나 [`isnan`](/api/array/isnan/)의 결과를 넣으면 "이런 값은 저렇게 바꿔라"를 한 줄로 쓸 수 있어요. 예를 들어 NaN(숫자가 아님)을 0으로 바꾸려면 이렇게 해요.
+
+```python
+>>> t = sd.asarray([12.5, sd.nan, -3.0])
+>>> sd.where(sd.isnan(t), 0.0, t)
+array([12.5,  0.0, -3.0], dtype=float64)
+```
+
+### 값을 범주로 나누기
+
+`where`를 겹쳐 쓰면 셋 이상의 경우로 나눌 수 있어요. 점수를 80점 이상은 2, 60점 이상은 1, 나머지는 0으로 나눠 볼게요.
+
+```python
+>>> score = sd.asarray([45, 72, 88, 60])
+>>> sd.where(score >= 80, 2, sd.where(score >= 60, 1, 0))
+array([0, 1, 2, 1], dtype=int64)
+```
+
+안쪽의 `where`가 먼저 "60 이상이면 1, 아니면 0"을 만들고, 바깥쪽이 "80 이상인 자리는 2로" 덮어요.
+
+### 여러 조건을 묶어서
+
+조건이 여럿이면 `&`, `|`로 묶어서 bool 배열 하나로 만든 다음 넣어요. 각 비교를 괄호로 감싸는 것을 잊지 마세요. 이유는 [논리 연산](/api/array/logical/)에 있어요.
+
+```python
+>>> sd.where((score >= 60) & (score < 80), 1, 0)
+array([0, 1, 0, 1], dtype=int64)
+```
+
+## 세 인자는 서로 브로드캐스트해요
+
+`condition`, `x1`, `x2`의 모양이 서로 달라도 [브로드캐스팅](/api/array/broadcasting/) 규칙으로 맞출 수 있으면 돼요. 결과의 모양은 세 인자를 함께 브로드캐스트한 모양이에요. 숫자 하나는 어떤 모양에도 맞춰지므로 가장 자주 써요.
+
+```python
+>>> m = sd.asarray([[1, -2], [-3, 4]])
+>>> sd.where(m > 0, m, 0)
+array([[1, 0],
+       [0, 4]], dtype=int64)
+```
+
+`x2` 자리에 행 하나를 주면 모든 행에 그 행이 쓰여요. 아래에서 음수인 자리는 그 **열**의 대체값(첫 열 10, 둘째 열 20)으로 바뀌었어요.
+
+```python
+>>> sd.where(m > 0, m, sd.asarray([10, 20]))
+array([[ 1, 20],
+       [10,  4]], dtype=int64)
+```
+
+조건보다 `x1`이나 `x2`의 모양이 더 클 수도 있어요. 그러면 결과도 커져요.
+
+```python
+>>> c = sd.asarray([True, False, True])
+>>> sd.where(c, sd.asarray([1, 2, 3]), sd.asarray([[10], [20]]))
+array([[ 1, 10,  3],
+       [ 1, 20,  3]], dtype=int64)
+```
+
+<Fig caption="조건 (3,), x1 (3,), x2 (2, 1)을 모두 (2, 3)으로 늘려서 자리마다 골라요. 점선 칸은 늘어나서 생긴 값이에요.">
+  <ArrayFig name="c" data={[[true, false, true], [true, false, true]]} tones={[['', '', ''], ['g', 'g', 'g']]} note="shape (3,)" />
+  <ArrayFig name="x1" data={[[1, 2, 3], [1, 2, 3]]} tones={[['', '', ''], ['g', 'g', 'g']]} note="shape (3,)" />
+  <ArrayFig name="x2" data={[[10, 10, 10], [20, 20, 20]]} tones={[['', 'g', 'g'], ['', 'g', 'g']]} note="shape (2, 1)" />
+  <Op>→</Op>
+  <ArrayFig name="결과" data={[[1, 10, 3], [1, 20, 3]]} note="shape (2, 3)" />
+</Fig>
+
+세 모양을 맞출 수 없으면 `ValueError`예요. 메시지에 세 모양이 차례로 나와요.
+
+```python
+>>> sd.where(x > 0, x, sd.asarray([1, 2]))
+Traceback (most recent call last):
+    ...
+ValueError: where(): shapes could not be broadcast together: (4,) (4,) (2,)
+```
+
+## 결과의 dtype
+
+결과의 dtype은 **`x1`과 `x2`의 dtype을 승격한 것**이에요. 조건의 dtype(언제나 bool)은 영향을 주지 않아요. 승격 순서는 `bool` → `int64` → `float64` → `complex128`이고, 둘 중 높은 쪽을 따라요.
+
+| `x1` | `x2` | 결과 |
+|---|---|---|
+| int64 배열 | `0` (int) | int64 |
+| int64 배열 | `0.5` (float) | float64 |
+| `True` | `False` | bool |
+| `1j` (complex) | `0` (int) | complex128 |
+
+```python
+>>> sd.where(x > 0, x, 0.5)
+array([3.0, 0.5, 4.0, 0.5], dtype=float64)
+>>> sd.where(x > 0, True, False)
+array([ True, False,  True, False], dtype=bool)
+```
+
+첫째 예처럼 한쪽만 실수여도 **결과 전체가 실수**가 돼요. 정수 배열을 정수로 유지하려면 대체값도 정수로 쓰세요(`0.5`가 아니라 `0`).
+
+세 인자가 모두 Python 값이면 결과도 Python 숫자예요.
+
+```python
+>>> sd.where(True, 1, 0)
+1
+>>> sd.where(False, 1, 2.5)
+2.5
+```
+
+## 조건은 bool이어야 해요
+
+`condition`에는 bool 배열이나 Python `bool`만 쓸 수 있어요. 정수나 실수를 넣으면 `TypeError`예요. "0이 아니면 참"으로 쳐 주지 않아요.
+
+```python
+>>> sd.where(x, 1, 0)
+Traceback (most recent call last):
+    ...
+TypeError: where(): 'condition' must be bool, not int64; compare explicitly, e.g. x != 0
+```
+
+메시지가 알려 주듯, 무엇을 참으로 볼지 비교로 직접 적으면 돼요.
+
+```python
+>>> sd.where(x != 0, 1, 0)
+array([1, 1, 1, 1], dtype=int64)
+```
+
+이렇게 엄격하게 막는 것은 잘못을 일찍 잡기 위해서예요. `sd.where(x > 0, ...)`라고 써야 할 것을 `sd.where(x, ...)`라고 써도 에러 없이 돌아간다면, 틀린 결과를 한참 뒤에야 알아채게 돼요.
+
+## 인자는 꼭 셋이에요
+
+`where`는 언제나 `condition`, `x1`, `x2` 세 인자를 받아요. 조건 하나만 넣거나 둘만 넣으면 `TypeError`예요. 인자는 자리로만 넘기고, `x1=`처럼 이름을 붙일 수 없어요.
+
+"조건이 참인 자리의 번호"가 필요했다면 [`nonzero`](/api/array/nonzero/)를 쓰고, "조건이 참인 값만" 필요했다면 bool 배열로 인덱싱하세요.
+
+```python
+>>> sd.nonzero(x > 0)
+(array([0, 2], dtype=int64),)
+>>> x[x > 0]
+array([3, 4], dtype=int64)
+```
+
+## 두 갈래 모두 계산돼요
+
+`where`는 함수라서, Python은 `where`를 부르기 **전에** 세 인자를 모두 계산해요. 고르지 않을 쪽의 값도 배열 전체에서 다 계산해 둔 다음, 자리마다 하나를 골라요.
+
+0으로 나누는 자리를 피하려고 이렇게 썼다고 해 볼게요.
+
+```python
+>>> v = sd.asarray([2.0, 0.0, -4.0])
+>>> sd.where(v != 0, 1 / v, 0.0)
+array([  0.5,   0.0, -0.25], dtype=float64)
+```
+
+결과는 맞아요. 하지만 `1 / v`는 `v`가 0인 자리까지 포함해서 먼저 다 계산됐어요. 그 자리의 값은 무한대(`inf`)였고, `where`가 그 값을 버렸을 뿐이에요.
+
+```python
+>>> 1 / v
+array([  0.5,   inf, -0.25], dtype=float64)
+```
+
+stardust에서는 0으로 나누거나 음수의 제곱근을 구해도 에러나 경고가 나지 않으므로(결과가 `inf`나 NaN일 뿐), 버려지는 쪽에 이런 값이 생겨도 결과는 맞아요. 다만 두 가지는 알아 두세요.
+
+- 계산 비용은 그대로 들어요. 고르지 않을 자리까지 계산하므로, 비싼 계산이면 그만큼 손해예요.
+- 값이 아니라 타입 때문에 나는 에러는 막아 주지 못해요. 버려질 쪽의 식이 에러를 내면 `where`가 시작되기도 전에 멈춰요.
+
+버려질 자리의 계산 자체를 피하고 싶다면, 입력을 먼저 안전한 값으로 바꿔 두는 방법이 있어요. 아래는 0인 자리를 1로 바꾼 다음 나누고, 그 자리를 다시 0으로 고르는 식이에요.
+
+```python
+>>> safe = sd.where(v != 0, v, 1.0)
+>>> sd.where(v != 0, 1 / safe, 0.0)
+array([  0.5,   0.0, -0.25], dtype=float64)
+```
+
+<Callout type="warn" title="마스크를 곱하는 방법은 무한대에서 틀려요">
+
+`where` 대신 `v * (v > 0)`처럼 bool 배열을 곱해서 값을 지우는 방법도 있어요. 대부분은 같은 결과가 나오지만, 지울 자리의 값이 무한대나 NaN이면 `inf * 0`이 NaN이라서 지워지지 않아요. 값을 고를 때는 `where`를 쓰세요.
+
+</Callout>
+
+```python
+>>> w = sd.asarray([sd.inf, 1.0])
+>>> w * sd.asarray([False, True])
+array([nan, 1.0], dtype=float64)
+>>> sd.where(sd.asarray([False, True]), w, 0.0)
+array([0.0, 1.0], dtype=float64)
+```
+
+## `out`: 결과를 기존 배열에 쓰기
+
+`out=`에 배열을 주면 그 배열에 결과를 적고 그 배열을 돌려줘요. 결과의 dtype이 `out`의 dtype으로 손실 없이 바뀔 수 있어야 해요.
+
+```python
+>>> sd.where(x > 0, x, 0, out=sd.zeros(4))
+array([3.0, 0.0, 4.0, 0.0], dtype=float64)
+>>> sd.where(x > 0, x, 0.5, out=sd.zeros(4, dtype=sd.int64))
+Traceback (most recent call last):
+    ...
+TypeError: where(): cannot implicitly convert float64 to int64 (that would lose information); convert explicitly with astype
+```
+
+## 조심할 점
+
+### NaN은 조건에서 거짓이 돼요
+
+NaN과의 비교는 언제나 거짓이에요. 그래서 `sd.where(t > 0, t, 0.0)`처럼 쓰면 NaN인 자리는 **거짓 쪽 값**을 받아요. 의도한 것인지 확인하세요.
+
+```python
+>>> sd.where(t > 0, t, 0.0)
+array([12.5,  0.0,  0.0], dtype=float64)
+```
+
+NaN이 0이 된 것은 NaN을 0 이하로 봐서가 아니라, NaN과의 비교가 언제나 거짓이라서예요. NaN을 다르게 다루고 싶으면 `sd.isnan`으로 조건을 따로 만드세요.
+
+### 원래 배열은 바뀌지 않아요
+
+`where`는 언제나 새 배열을 만들어요. 원래 배열을 바로 고치고 싶다면 bool 배열로 인덱싱해서 대입하세요.
+
+```python
+>>> y = sd.asarray([3, -1, 4, -5])
+>>> y[y < 0] = 0
+>>> y
+array([3, 0, 4, 0], dtype=int64)
+```
+
+### 리스트는 받지 않아요
+
+세 인자 모두 배열이나 Python 값이어야 해요. 리스트는 먼저 [`asarray`](/api/array/asarray/)로 바꾸세요.
+
+```python
+>>> sd.where([True, False], 1, 0)
+Traceback (most recent call last):
+    ...
+TypeError: where(): 'condition' must be an sd.ndarray or a bool, int, float or complex, not list
+```
+
+## 비슷한 함수와의 차이
+
+| 하고 싶은 일 | 쓸 것 | `where`와 다른 점 |
+|---|---|---|
+| 조건에 맞는 값만 꺼내기 | `x[mask]` | 맞는 값만 모은 1차원 배열이 나와요. 모양이 바뀌어요. |
+| 조건에 맞는 자리를 제자리에서 바꾸기 | `x[mask] = 값` | 새 배열을 만들지 않고 `x`를 고쳐요. |
+| 조건에 맞는 자리의 번호 | `nonzero` | 값 대신 위치를 돌려줘요. |
+| 일정 값보다 작으면 그 값으로 | `maximum`, `clip` | NaN이 없다면 `sd.where(x > 0, x, 0)`은 `sd.maximum(x, 0)`과 같아요(NaN인 자리는 `where`가 0, `maximum`이 NaN을 돌려줘요). 범위로 자를 때는 `clip`이 더 짧아요. |
+
+```python
+>>> sd.maximum(x, 0)
+array([3, 0, 4, 0], dtype=int64)
+```
+
+## numpy를 아는 분께
+
+- 인자 하나짜리 `np.where(c)`는 없어요. 위치가 필요하면 `sd.nonzero(c)`를 쓰세요.
+- `condition`은 bool만 받아요. numpy처럼 0이 아닌 수를 참으로 봐 주지 않아요.
+- numpy의 `where`에는 없는 `out=`이 있어요(keyword-only).
+- 세 인자가 모두 Python 값이면 결과는 0차원 배열이 아니라 Python 숫자예요.
+- 결과 dtype은 `x1`, `x2`를 승격한 것이에요. 정수 배열과 Python 실수를 섞으면 float64예요.

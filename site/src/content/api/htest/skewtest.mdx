@@ -1,0 +1,186 @@
+---
+kind: function
+title: skewtest
+names: [skewtest]
+group: 분포 적합도
+order: 3
+signatures:
+  - "sd.htest.skewtest(a, /, *, axis=None, alternative='two-sided', nan_policy='propagate', keepdims=False)"
+summary: 표본의 왜도가 정규분포의 왜도 0과 다른지 보는 D'Agostino 검정이에요. 표본 왜도를 표준정규분포를 따르는 Z로 바꿔서 좌우가 치우쳤는지를 물어요. 값이 8개 이상이어야 해요.
+params:
+  - name: a
+    type: ndarray, 실수의 시퀀스, 실수 스칼라, numpy 배열, 또는 frame의 Series·DataFrame
+    kind: positional-only
+    desc: 표본. bool·정수는 float64로 바꿔서 계산해요.
+  - name: axis
+    type: int, int의 tuple·리스트, 또는 None
+    kind: keyword-only
+    desc: 표본을 읽을 축. None(기본값)이면 모든 원소를 표본 하나로 펼쳐요. 축을 주면 그 축을 따라 표본을 읽고, 나머지 축의 칸마다 따로 검정해요.
+  - name: alternative
+    type: str
+    kind: keyword-only
+    desc: "'two-sided'(기본값, 왜도가 0이 아님), 'less'(왜도가 0보다 작음, 왼쪽 꼬리가 긺), 'greater'(왜도가 0보다 큼, 오른쪽 꼬리가 긺) 중 하나예요."
+  - name: nan_policy
+    type: str
+    kind: keyword-only
+    desc: "'propagate'(기본값, NaN이 있는 표본의 결과가 NaN), 'omit'(NaN을 빼고 계산), 'raise'(ValueError) 중 하나예요."
+  - name: keepdims
+    type: bool
+    kind: keyword-only
+    desc: True면 결과에 표본 축을 길이 1로 남겨요.
+returns:
+  type: SkewtestResult
+  desc: "statistic(Z)과 pvalue가 든 결과 객체예요. 검정 하나면 Python float, 배치면 배치 모양의 배열이에요. (statistic, pvalue) 둘로 풀려요."
+raises:
+  - type: TypeError
+    desc: a가 수의 배열·시퀀스·frame이 아니거나 복소수일 때, axis가 int·tuple·리스트·None이 아닐 때, alternative·nan_policy가 문자열이 아닐 때, keepdims가 True·False가 아닐 때, 옵션을 위치로 주거나 없는 키워드를 줬을 때.
+  - type: ValueError
+    desc: "axis가 범위 밖이거나 겹칠 때, alternative·nan_policy 이름이 틀렸을 때, nan_policy='raise'인데 NaN이 있을 때."
+seeAlso: [kurtosistest, normaltest, jarque_bera, shapiro, basics, results]
+---
+import Callout from '../../../components/Callout.astro';
+
+## 한눈에 보기
+
+**왜도**는 분포가 좌우로 얼마나 치우쳤는지를 재는 수예요. 정규분포는 좌우 대칭이라 왜도가 0이에요. `skewtest`는 표본의 왜도가 0에서 우연이라고 보기 어려울 만큼 떨어졌는지를 물어요.
+
+- **귀무가설**: 표본이 나온 분포의 왜도가 정규분포와 같아요(0).
+- **대립가설**: 왜도가 0이 아니에요(`alternative='two-sided'`). 한쪽만 물으려면 `'less'`나 `'greater'`예요.
+
+오른쪽으로 길게 늘어진 지수분포의 표본과, 좌우 대칭인 정규분포의 표본을 견줘요.
+
+```python
+>>> import stardust as sd
+>>> rng = sd.random.default_rng(2)
+>>> lap = sd.stats.Laplace().sample(200, rng=rng)
+>>> uni = sd.stats.Uniform(a=0.0, b=1.0).sample(100, rng=rng)
+>>> ex = sd.stats.Exponential().sample(200, rng=rng)
+>>> nor = sd.stats.Normal(mu=50.0, sigma=5.0).sample(200, rng=sd.random.default_rng(3))
+>>> sd.htest.skewtest(ex)
+SkewtestResult(statistic=7.6084, pvalue=2.77501e-14)
+>>> sd.htest.skewtest(nor)
+SkewtestResult(statistic=0.15487, pvalue=0.876924)
+```
+
+지수분포의 표본은 $Z = 7.6$, p = 2.8e-14로 분명히 치우쳤고, 정규분포의 표본은 p = 0.88이에요.
+
+<Reference />
+
+## 통계량
+
+표본 왜도는 평균에서의 편차의 세제곱 평균을 표준편차의 세제곱으로 나눈 값이에요.
+
+$$
+b_1 = \frac{m_3}{m_2^{3/2}}, \qquad m_k = \frac{1}{n}\sum_{i=1}^{n} (x_i - \bar x)^k
+$$
+
+[`sd.stats.skew`](/api/stats/skew-kurtosis/)(기본 `bias=True`)와 같은 값이에요. 정규분포에서 뽑아도 $b_1$은 정확히 0이 아니고, 그 퍼짐은 $n$에 따라 달라요. 게다가 $b_1$의 분포는 작은 $n$에서 정규분포보다 꼬리가 두꺼워요. D'Agostino(1970)의 변환은 $b_1$을 표본 크기에 맞춰 늘이고 줄여서 정규분포에서 뽑은 표본이면 거의 표준정규분포를 따르는 $Z$로 바꿔요.
+
+$$
+Z = \delta \,\operatorname{asinh}\!\left(\frac{y}{\alpha}\right), \qquad y = b_1 \sqrt{\frac{(n + 1)(n + 3)}{6(n - 2)}}
+$$
+
+$\delta$와 $\alpha$는 $n$만으로 정해지는 상수예요. $Z$의 부호는 $b_1$의 부호와 같아서, 오른쪽 꼬리가 길면 양수예요. p값은 표준정규분포의 꼬리예요.
+
+```python
+>>> sd.stats.skew(ex), sd.stats.skew(nor)
+(1.7908652927648845, 0.025932806394481707)
+>>> z, p = sd.htest.skewtest(ex)
+>>> 2 * sd.stats.Normal().ccdf(abs(z)) == p
+True
+```
+
+## 언제 쓰나요
+
+- 정규성의 여러 측면 가운데 치우침만 보고 싶을 때 써요. 예를 들어 꼬리가 두꺼운 것은 괜찮지만 대칭인지는 알아야 할 때예요.
+- 대칭이지만 꼬리가 다른 분포는 이 검정이 잡지 못해요. 꼬리가 두꺼운 Laplace 분포와 꼬리가 얇은 균등분포의 표본은 둘 다 왜도가 0 근처예요. 꼬리는 [`kurtosistest`](/api/htest/kurtosistest/)가 봐요.
+
+```python
+>>> sd.htest.skewtest(lap).pvalue, sd.htest.skewtest(uni).pvalue
+(0.8838920408076114, 0.7581389830417609)
+>>> sd.htest.kurtosistest(lap).pvalue, sd.htest.kurtosistest(uni).pvalue
+(3.625803653435373e-05, 1.6208026788439973e-08)
+```
+
+- 치우침과 꼬리를 함께 보는 검정 하나가 필요하면 둘을 합친 [`normaltest`](/api/htest/normaltest/)나 [`jarque_bera`](/api/htest/jarque_bera/), 정규성 전체를 보는 [`shapiro`](/api/htest/shapiro/)를 써요.
+
+## `alternative`: 한쪽 검정
+
+치우친 방향을 미리 안다면 한쪽 검정이 더 힘이 있어요. 소득이나 대기 시간처럼 오른쪽으로 늘어질 것이 예상되면 `'greater'`예요.
+
+```python
+>>> sd.htest.skewtest(ex, alternative='greater').pvalue
+1.3875035050529418e-14
+>>> sd.htest.skewtest(ex, alternative='less').pvalue
+0.9999999999999861
+```
+
+- `'greater'`의 p값은 $P(Z' \ge Z)$, `'less'`는 $P(Z' \le Z)$예요($Z'$는 표준정규분포). 양쪽 p값은 작은 쪽 꼬리의 두 배예요.
+- 방향을 데이터를 보고 나서 고르면 p값이 실제보다 작게 나와요. 방향은 데이터를 보기 전에 정해요.
+
+## 결과 읽기
+
+결과는 `statistic`(Z)과 `pvalue`이고, 둘로 풀 수 있어요. 필드는 읽기만 해요.
+
+```python
+>>> print(sd.htest.skewtest(ex, alternative='greater').summary())
+                           D'Agostino skewness test
+==============================================================================
+Statistic:                       7.608  Alternative:                   greater
+P-value:                      1.39e-14  No. Observations:                  200
+==============================================================================
+```
+
+머리 오른쪽에 대립가설과 표본 크기가 있어요. 결과 객체의 공통 규칙은 [결과 객체 읽기](/api/htest/results/)에 있어요.
+
+## 여러 표본을 한 번에
+
+`axis`를 주면 그 축을 따라 표본을 읽고 나머지 축의 칸마다 따로 검정해요. NaN은 `nan_policy`를 따라요. 공통 규칙은 [가설검정의 기본](/api/htest/basics/)에 있어요.
+
+```python
+>>> b = sd.stats.Exponential().sample((3, 50), rng=sd.random.default_rng(5))
+>>> sd.htest.skewtest(b, axis=1).statistic
+array([ 3.040522458537034, 3.0095692326190475,  2.872963799829056], dtype=float64)
+>>> v = [2.1, 3.4, float('nan'), 1.8, 2.9, 3.3, 2.2, 4.0, 2.7, 3.1]
+>>> sd.htest.skewtest(v), sd.htest.skewtest(v, nan_policy='omit')
+(SkewtestResult(statistic=nan, pvalue=nan), SkewtestResult(statistic=0.0890642, pvalue=0.929031))
+```
+
+## 작은 표본과 특수한 경우
+
+- **값이 8개 미만**이면 변환을 쓸 수 없어서 NaN이에요. 경고는 내지 않아요.
+- **모든 값이 같으면**(분산이 0이면) 왜도가 정해지지 않아 NaN이에요. 값이 거의 같아서 분산이 반올림 크기밖에 안 되는 표본도 [`sd.stats.skew`](/api/stats/skew-kurtosis/)와 같은 기준으로 NaN이에요.
+- **왜도가 정확히 0인 표본**(1부터 9처럼 완전히 대칭인 표본)은 $Z = 0$, p = 1이에요.
+
+```python
+>>> sd.htest.skewtest([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0])
+SkewtestResult(statistic=nan, pvalue=nan)
+>>> sd.htest.skewtest([3.0] * 10)
+SkewtestResult(statistic=nan, pvalue=nan)
+>>> sd.htest.skewtest([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0])
+SkewtestResult(statistic=0, pvalue=1)
+>>> sd.htest.skewtest(ex, alternative='larger')
+Traceback (most recent call last):
+    ...
+ValueError: skewtest(): 'alternative' must be 'two-sided', 'less' or 'greater', not 'larger'
+```
+
+<Callout type="note" title="변환은 근사예요">
+$Z$가 표준정규분포를 따른다는 것은 근사이고, 표본이 작을수록 거칠어요. p값의 정확도(아래)는 이 근사식의 값을 얼마나 정확히 계산하는지에 대한 것이고, 근사가 참 분포와 얼마나 맞는지는 다른 문제예요.
+</Callout>
+
+## 정확도
+
+- $Z$와 p값은 D'Agostino의 변환식을 Arb(구간 산술)로 계산한 참값과 견줘 정확도 약속 안이에요. 왜도의 입력인 중심 적률은 정확한 유리수로 계산한 값과 견줘요. `skewtest`·`kurtosistest`·`normaltest` 24문제에서 통계량의 상대오차가 5.1e-16, p값이 2.2e-14 안이에요(오프셋 10⁸, 깊은 꼬리 포함).
+- 평균이 아주 큰 데이터(예: 10⁸ 근처)에서도 편차의 합을 정확하게 모아서 자릿수를 잃지 않아요.
+- 같은 입력이면 실행마다 같은 비트예요. 지금은 스레드 수와도 상관없이 같아요(약속은 아니에요).
+- 모든 값에 같은 수를 곱해도 통계량은 반올림 차이 안에서 그대로예요. 네제곱하면 float64를 넘는 1e300배나 서브노멀인 1e-310배의 데이터도 2의 거듭제곱 단위로 옮겨 계산해서 NaN이나 0이 되지 않아요.
+
+## scipy를 아는 분께
+
+scipy 1.18.1 기준이에요.
+
+- `scipy.stats.skewtest(a)`와 같은 변환이에요. 기본 `axis`는 None이에요(scipy는 0).
+- 왜도가 정확히 0인 표본에서 $Z = 0$, p = 1이에요. scipy 1.18.1은 그 경우 $y = 0$을 1로 바꿔서 0이 아닌 값을 내요. 1부터 9의 표본에서 scipy는 $Z = 1.018$, p = 0.308이에요.
+- scipy는 $\log(y/\alpha + \sqrt{(y/\alpha)^2 + 1})$로 계산해서 $y < 0$에서 자릿수를 잃어요. 여기서는 같은 값을 $\operatorname{asinh}$로 계산해요. 평균이 10⁸만큼 떨어진 데이터에서 scipy는 적률의 반올림 때문에 통계량이 7.7e-10–2.8e-8 틀려요.
+- n < 8은 경고 없이 NaN이에요. 데이터는 위치로만, 옵션은 키워드로만 받아요.

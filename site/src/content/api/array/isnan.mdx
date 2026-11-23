@@ -1,0 +1,300 @@
+---
+title: 특수값 판별
+names: [isnan, isinf, isfinite]
+group: 고르기와 판별
+order: 4
+signatures:
+  - "sd.isnan(x, /, *, out=None)"
+  - "sd.isinf(x, /, *, out=None)"
+  - "sd.isfinite(x, /, *, out=None)"
+summary: 원소마다 NaN(숫자가 아님)인지, 무한대인지, 평범한 유한한 수인지를 판별해서 bool 배열로 돌려줘요.
+params:
+  - name: x
+    type: ndarray 또는 Python 숫자
+    kind: positional-only
+    desc: 판별할 값. 모든 dtype을 받아요.
+  - name: out
+    type: ndarray 또는 None
+    kind: keyword-only
+    desc: 결과를 적어 넣을 배열. None이면 새 bool 배열을 만들어요.
+returns:
+  type: ndarray 또는 Python bool
+  desc: x와 같은 모양의 bool 배열. x가 Python 숫자면 Python bool이에요.
+raises:
+  - type: TypeError
+    desc: 리스트나 None처럼 배열도 숫자도 아닌 것을 넣었을 때, out의 dtype이 결과를 담을 수 없을 때.
+  - type: ValueError
+    desc: out의 모양이 x와 맞지 않을 때.
+seeAlso: [comparison, where, nan-reductions, constants, logical]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+실수(float64)에는 평범한 수 말고도 특별한 값이 세 가지 있어요.
+
+- **NaN**(Not a Number, 숫자가 아님): `0 / 0`처럼 답을 정할 수 없는 계산의 결과. stardust에서는 `sd.nan`.
+- **inf**(무한대): `1 / 0`처럼 한없이 커지는 계산의 결과. `sd.inf`.
+- **-inf**(음의 무한대): `-1 / 0`처럼 한없이 작아지는 계산의 결과. `-sd.inf`.
+
+세 함수는 원소마다 이런 값인지를 판별해서 bool 배열을 돌려줘요.
+
+```python
+>>> import stardust as sd
+>>> v = sd.asarray([1.0, sd.nan, sd.inf, -sd.inf, 0.0])
+>>> sd.isnan(v)
+array([False,  True, False, False, False], dtype=bool)
+>>> sd.isinf(v)
+array([False, False,  True,  True, False], dtype=bool)
+>>> sd.isfinite(v)
+array([ True, False, False, False,  True], dtype=bool)
+```
+
+| 값 | `isnan` | `isinf` | `isfinite` |
+|---|:---:|:---:|:---:|
+| 평범한 수 (`1.0`, `0.0`) | False | False | **True** |
+| `nan` | **True** | False | False |
+| `inf` | False | **True** | False |
+| `-inf` | False | **True** | False |
+
+실수라면 어느 값이든 세 함수 중 정확히 하나만 참이에요. `isfinite`는 "NaN도 아니고 무한대도 아닌, 평범한 수"라는 뜻이에요.
+
+<Fig caption="세 함수는 값을 세 무리로 나눠요. 모든 값은 셋 중 한 무리에만 들어가요.">
+  <ArrayFig name="v" data={['1.0', 'nan', 'inf', '-inf', '0.0']} tones={['', 'b', 'a', 'a', '']} />
+  <Op>→</Op>
+  <ArrayFig name="isnan" data={[false, true, false, false, false]} tones={['', 'b', '', '', '']} />
+  <ArrayFig name="isinf" data={[false, false, true, true, false]} tones={['', '', 'a', 'a', '']} />
+  <ArrayFig name="isfinite" data={[true, false, false, false, true]} tones={['a', '', '', '', 'a']} />
+</Fig>
+
+<Reference />
+
+## 이런 값은 어디서 생기나요
+
+stardust의 계산은 값 때문에 에러를 내지 않아요. 0으로 나누거나, 음수의 제곱근을 구하거나, 실수의 범위를 넘어도 에러나 경고 없이 NaN이나 무한대가 결과에 섞여요.
+
+```python
+>>> sd.asarray([1.0]) / 0.0
+array([inf], dtype=float64)
+>>> sd.asarray([0.0]) / 0.0
+array([nan], dtype=float64)
+>>> sd.sqrt(sd.asarray([-1.0]))
+array([nan], dtype=float64)
+>>> sd.asarray([1e308]) * 10
+array([inf], dtype=float64)
+>>> sd.asarray([sd.inf]) - sd.inf
+array([nan], dtype=float64)
+```
+
+NaN은 한 번 생기면 계산을 따라 퍼져요. NaN이 섞인 배열의 합이나 평균도 NaN이에요. 그래서 결과가 이상할 때나 받은 데이터로 계산하기 전에는 이 함수들로 확인해 두면 좋아요.
+
+```python
+>>> sd.mean(v)
+nan
+```
+
+## `x == sd.nan`으로는 찾을 수 없어요
+
+NaN을 찾으려고 `==`를 쓰면 언제나 거짓이에요. NaN은 "알 수 없는 값"이라서 자기 자신을 포함해 무엇과도 같지 않다고 정해져 있기 때문이에요.
+
+```python
+>>> v == sd.nan
+array([False, False, False, False, False], dtype=bool)
+>>> sd.nan == sd.nan
+False
+```
+
+NaN을 찾을 때는 반드시 `isnan`을 쓰세요.
+
+```python
+>>> sd.isnan(v)
+array([False,  True, False, False, False], dtype=bool)
+```
+
+<Callout title="v != v라는 요령">
+
+NaN만 자기 자신과 다르기 때문에 `v != v`도 NaN인 자리를 찾아 줘요. 하지만 처음 보는 사람은 무슨 뜻인지 알기 어려워요. `sd.isnan(v)`가 뜻도 분명하고 결과도 같아요.
+
+</Callout>
+
+무한대는 NaN과 달리 `==`로 비교할 수 있어요. `+inf`와 `-inf`를 구별해야 할 때는 비교를 써요.
+
+```python
+>>> v == sd.inf
+array([False, False,  True, False, False], dtype=bool)
+```
+
+## 판별 결과로 할 수 있는 일
+
+결과가 bool 배열이라서, [비교](/api/array/comparison/)의 결과처럼 세거나 고르거나 바꾸는 데 바로 써요.
+
+### 몇 개인지, 있는지 없는지
+
+bool 배열을 더하면 `True`의 개수가 되고, `any`와 `all`은 하나라도 있는지, 모두 그런지를 알려 줘요.
+
+```python
+>>> sd.sum(sd.isnan(v))
+1
+>>> sd.any(sd.isnan(v))
+True
+>>> sd.all(sd.isfinite(v))
+False
+```
+
+2차원 데이터라면 축을 정해서 열마다, 행마다 셀 수도 있어요.
+
+```python
+>>> d = sd.asarray([[1.0, sd.nan, 3.0], [sd.nan, sd.nan, 6.0]])
+>>> sd.sum(sd.isnan(d), axis=0)
+array([1, 2, 0], dtype=int64)
+>>> sd.any(sd.isnan(d), axis=1)
+array([True, True], dtype=bool)
+```
+
+### 걸러 내기
+
+`~`로 판별 결과를 뒤집어서 인덱싱하면 특수값을 뺀 값만 남아요. NaN만 빼려면 `~sd.isnan(v)`, NaN과 무한대를 모두 빼려면 `sd.isfinite(v)`를 써요.
+
+```python
+>>> v[~sd.isnan(v)]
+array([ 1.0,  inf, -inf,  0.0], dtype=float64)
+>>> v[sd.isfinite(v)]
+array([1.0, 0.0], dtype=float64)
+>>> sd.mean(v[sd.isfinite(v)])
+0.5
+```
+
+### 다른 값으로 바꾸기
+
+[`where`](/api/array/where/)와 함께 쓰면 특수값을 원하는 값으로 바꿀 수 있어요.
+
+```python
+>>> sd.where(sd.isnan(v), 0.0, v)
+array([ 1.0,  0.0,  inf, -inf,  0.0], dtype=float64)
+>>> sd.where(sd.isfinite(v), v, 0.0)
+array([1.0, 0.0, 0.0, 0.0, 0.0], dtype=float64)
+```
+
+### 위치 알아내기
+
+어느 자리에 NaN이 있는지 번호가 필요하면 [`nonzero`](/api/array/nonzero/)를 써요.
+
+```python
+>>> sd.nonzero(sd.isnan(v))
+(array([1], dtype=int64),)
+```
+
+## 입력의 종류
+
+### 정수와 bool도 받아요
+
+세 함수는 모든 dtype을 받아요. 정수와 bool에는 NaN이나 무한대가 있을 수 없으므로, 결과는 언제나 `isnan`과 `isinf`가 거짓, `isfinite`가 참이에요.
+
+```python
+>>> sd.isnan(sd.asarray([1, 2]))
+array([False, False], dtype=bool)
+>>> sd.isfinite(sd.asarray([True, False]))
+array([True, True], dtype=bool)
+```
+
+그래서 dtype을 미리 알 수 없는 배열에도 걱정 없이 쓸 수 있어요.
+
+### 복소수
+
+복소수는 실수부와 허수부 두 개의 실수로 이뤄져 있어요. 판별은 두 부분을 각각 보고 이렇게 정해요.
+
+| 함수 | 복소수에서 참이 되는 때 |
+|---|---|
+| `isnan` | 실수부나 허수부 중 **하나라도** NaN |
+| `isinf` | 실수부나 허수부 중 **하나라도** 무한대 |
+| `isfinite` | 실수부와 허수부가 **둘 다** 유한 |
+
+```python
+>>> z = sd.asarray([1 + 1j, complex(sd.nan, 0), complex(1, sd.inf), complex(sd.inf, sd.nan)])
+>>> sd.isnan(z)
+array([False,  True, False,  True], dtype=bool)
+>>> sd.isinf(z)
+array([False, False,  True,  True], dtype=bool)
+>>> sd.isfinite(z)
+array([ True, False, False, False], dtype=bool)
+```
+
+마지막 원소처럼 한 부분은 무한대, 다른 부분은 NaN이면 `isnan`과 `isinf`가 둘 다 참이에요. 실수에서는 셋 중 하나만 참이었지만, 복소수에서는 이런 예외가 있어요.
+
+### 숫자 하나도 받아요
+
+Python 숫자를 넣으면 결과는 Python `bool`이에요. 리스트나 `None`은 받지 않아요.
+
+```python
+>>> sd.isnan(sd.nan)
+True
+>>> sd.isinf(1e308 * 10)
+True
+>>> sd.isnan([1.0, sd.nan])
+Traceback (most recent call last):
+    ...
+TypeError: isnan(): 'x' must be an sd.ndarray or a bool, int, float or complex, not list
+```
+
+## `out`: 결과를 기존 배열에 쓰기
+
+`out=`에 배열을 주면 그 배열에 결과를 적어요. bool 결과는 정수나 실수 배열에도 담을 수 있어요(`True`는 `1`, `False`는 `0`).
+
+```python
+>>> sd.isnan(v, out=sd.zeros(5, dtype=sd.int64))
+array([0, 1, 0, 0, 0], dtype=int64)
+```
+
+## 조심할 점
+
+### `isinf`는 양쪽 무한대를 모두 잡아요
+
+`isinf`는 `inf`와 `-inf`를 구별하지 않아요. 한쪽만 찾으려면 `v == sd.inf`나 `v == -sd.inf`를 쓰세요.
+
+### `isfinite`는 `isnan`의 반대가 아니에요
+
+`~sd.isnan(v)`는 무한대를 남기고, `sd.isfinite(v)`는 무한대도 뺀다는 점이 달라요. "계산에 쓸 수 있는 평범한 수만" 원한다면 대개 `isfinite`가 맞아요.
+
+```python
+>>> ~sd.isnan(v)
+array([ True, False,  True,  True,  True], dtype=bool)
+>>> sd.isfinite(v)
+array([ True, False, False, False,  True], dtype=bool)
+```
+
+<Callout type="warn" title="정수로 바꾸기 전에 확인하세요">
+
+NaN이나 무한대가 든 실수 배열을 `astype`으로 정수로 바꾸면 에러 없이 값이 바뀌어요. NaN은 `0`, `inf`는 int64의 가장 큰 값이 돼요. 이런 값이 진짜 데이터처럼 섞여 버리므로, 정수로 바꾸기 전에 `sd.all(sd.isfinite(v))`로 확인하세요.
+
+</Callout>
+
+```python
+>>> sd.asarray([1.0, sd.nan, sd.inf]).astype(sd.int64)
+array([                  1,                   0, 9223372036854775807], dtype=int64)
+```
+
+## 비슷한 함수와의 차이
+
+| 하고 싶은 일 | 쓸 것 | 판별 함수와 다른 점 |
+|---|---|---|
+| NaN을 건너뛰고 합·평균 | `nansum`, `nanmean` 등 | 판별해서 거르는 일을 함수가 대신 해 줘요. 무한대는 건너뛰지 않아요. |
+| 특정 값과 같은지 | `==` (`equal`) | NaN에는 쓸 수 없어요. 무한대에는 쓸 수 있어요. |
+| 특수값을 다른 값으로 | `where` | 판별 결과를 조건으로 넣어서 함께 써요. |
+| 부호 비트 보기 | `signbit` | `-0.0`과 `0.0`을 구별해요. |
+
+무한대까지 빼고 더하려면 판별 함수와 `nansum`을 함께 써요.
+```python
+>>> sd.nansum(v[~sd.isinf(v)])
+1.0
+```
+
+## numpy를 아는 분께
+
+- 복소수의 규칙(하나라도 NaN이면 `isnan`, 하나라도 무한대면 `isinf`, 둘 다 유한해야 `isfinite`)은 numpy와 같아요.
+- Python 숫자를 넣으면 `np.bool_`이 아니라 Python `bool`이 나와요.
+- `isposinf`, `isneginf`, `isnat`, `isreal`, `iscomplex`는 없어요. `v == sd.inf`, `v == -sd.inf`로 쓰세요.
+- `out`은 keyword-only이고 `where=` 인자는 없어요.
+- 경고는 없어요. `errstate`나 `seterr`로 NaN이 생기는 순간을 잡을 수 없으니, 필요한 곳에서 이 함수들로 확인하세요.

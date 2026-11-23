@@ -1,0 +1,278 @@
+---
+title: 누적 합과 누적 곱
+names: [cumulative_sum, cumulative_prod]
+group: 집계
+order: 9
+signatures:
+  - "sd.cumulative_sum(x, /, *, axis=None, dtype=None, include_initial=False)"
+  - "sd.cumulative_prod(x, /, *, axis=None, dtype=None, include_initial=False)"
+summary: 처음부터 차례로 더한(곱한) 중간 결과를 모두 담은 배열을 돌려줘요. 결과의 마지막 값이 전체 합(곱)이에요.
+params:
+  - name: x
+    type: ndarray
+    kind: positional-only
+    desc: 누적할 배열. 어떤 dtype이든 받아요.
+  - name: axis
+    type: int 또는 None
+    kind: keyword-only
+    desc: 누적할 방향. 정수 하나만 받아요. 1차원 배열이면 생략할 수 있고, 2차원 이상이면 꼭 줘야 해요.
+  - name: dtype
+    type: dtype 또는 None
+    kind: keyword-only
+    desc: 계산할 원소 종류. None이면 x의 dtype을 따라요(bool만 int64가 돼요).
+  - name: include_initial
+    type: bool
+    kind: keyword-only
+    desc: True면 맨 앞에 시작값(합은 0, 곱은 1)을 넣어요. 그 축의 길이가 1 늘어나요.
+returns:
+  type: ndarray
+  desc: 누적 결과. include_initial=False면 x와 같은 모양이에요.
+raises:
+  - type: TypeError
+    desc: x가 배열이 아닐 때, axis가 int·None이 아닐 때(tuple·list 포함), dtype이 틀렸거나 sd.bool일 때, include_initial이 True/False가 아닐 때.
+  - type: ValueError
+    desc: 2차원 이상인데 axis를 주지 않았을 때, axis가 배열의 차원 범위를 벗어날 때.
+seeAlso: [sum, prod, diff, nan-reductions]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+[`sum`](/api/array/sum/)은 원소를 모두 더한 최종 결과 하나를 돌려줘요. `cumulative_sum`은 처음부터 하나씩 더해 가는 동안의 중간 결과를 모두 돌려줘요. `cumulative_prod`는 같은 일을 곱셈으로 해요.
+
+```python
+>>> import stardust as sd
+>>> c = sd.asarray([1, 2, 3, 4])
+>>> sd.cumulative_sum(c)
+array([ 1,  3,  6, 10], dtype=int64)
+>>> sd.cumulative_prod(c)
+array([ 1,  2,  6, 24], dtype=int64)
+```
+
+누적 합의 각 자리는 "처음부터 그 자리까지의 합"이에요. 2번 자리의 `6`은 `1 + 2 + 3`이에요. 그래서 마지막 값은 전체 합과 같아요.
+
+<Fig caption="누적 합의 각 칸은 처음부터 그 칸까지 더한 값이에요. 마지막 칸이 전체 합이에요.">
+  <ArrayFig name="c" data={[1, 2, 3, 4]} tones={['a', 'a', 'a', '']} />
+  <Op note="cumulative_sum">→</Op>
+  <ArrayFig name="결과" data={[1, 3, 6, 10]} tones={['', '', 'b', '']} note="6 = 1 + 2 + 3" />
+</Fig>
+
+결과의 모양은 원래 배열과 같아요. `sum`처럼 축이 사라지지 않아요.
+
+### 언제 쓰나요
+
+입금과 출금 기록에서 매번의 잔액을 구할 때가 대표적이에요.
+
+```python
+>>> flow = sd.asarray([100, -30, 50, -80, 20])
+>>> sd.cumulative_sum(flow)
+array([100,  70, 120,  40,  60], dtype=int64)
+```
+
+연도별 성장률을 차례로 곱하면 해마다 처음보다 몇 배가 됐는지 알 수 있어요. 이때는 `cumulative_prod`를 써요.
+
+```python
+>>> sd.cumulative_prod(sd.asarray([1.05, 1.02, 0.97]))
+array([              1.05, 1.0710000000000002, 1.0388700000000002], dtype=float64)
+```
+
+bool 배열을 누적하면 "지금까지 `True`가 몇 번 나왔는가"가 돼요.
+
+```python
+>>> hits = sd.asarray([True, False, True, True, False])
+>>> sd.cumulative_sum(hits)
+array([1, 1, 2, 3, 3], dtype=int64)
+```
+
+<Reference />
+
+## `axis`: 어느 방향으로 쌓을까요
+
+1차원 배열에서는 방향이 하나뿐이라 `axis`를 생략해도 돼요. 하지만 2차원 이상이면 `axis`를 꼭 줘야 해요. 행 방향으로 쌓을지 열 방향으로 쌓을지 알 수 없기 때문이에요.
+
+```python
+>>> x = sd.asarray([[1, 2, 3], [4, 5, 6]])
+>>> sd.cumulative_sum(x)
+Traceback (most recent call last):
+    ...
+ValueError: cumulative_sum(): 'axis' is required for arrays with more than one dimension
+```
+
+`axis=0`은 열마다 위에서 아래로, `axis=1`은 행마다 왼쪽에서 오른쪽으로 쌓아요.
+
+```python
+>>> sd.cumulative_sum(x, axis=0)
+array([[1, 2, 3],
+       [5, 7, 9]], dtype=int64)
+>>> sd.cumulative_sum(x, axis=1)
+array([[ 1,  3,  6],
+       [ 4,  9, 15]], dtype=int64)
+```
+
+<Fig caption="axis=1: 행마다 왼쪽에서 오른쪽으로 쌓아요. 모양은 그대로이고, 각 행의 마지막 칸이 그 행의 합이에요.">
+  <ArrayFig name="x" data={[[1, 2, 3], [4, 5, 6]]} tones={[['a', 'a', 'a'], ['', '', '']]} axes note="shape (2, 3)" />
+  <Op note="axis=1">→</Op>
+  <ArrayFig name="sd.cumulative_sum(x, axis=1)" data={[[1, 3, 6], [4, 9, 15]]} tones={[['', '', 'b'], ['', '', 'b']]} note="shape (2, 3)" />
+</Fig>
+
+`sum`에서 `axis`는 "더해서 없앨 축"이었지만, 누적에서는 축이 없어지지 않아요. "그 축을 따라가며 쌓는다"고 생각하면 돼요. 음수 축(`axis=-1`은 마지막 축)도 쓸 수 있어요.
+
+`axis`에는 정수 하나만 써요. 여러 축을 한꺼번에 쌓을 수는 없어요. 2차원 배열 전체를 한 줄로 이어서 쌓고 싶으면 먼저 `sd.ravel`로 한 줄로 펴요.
+
+```python
+>>> sd.cumulative_sum(x, axis=(0, 1))
+Traceback (most recent call last):
+    ...
+TypeError: cumulative_sum(): 'axis' must be an int, not tuple
+>>> sd.cumulative_sum(sd.ravel(x))
+array([ 1,  3,  6, 10, 15, 21], dtype=int64)
+```
+
+## `include_initial`: 맨 앞에 시작값 넣기
+
+`include_initial=True`를 주면 맨 앞에 **시작값**을 하나 더 넣어요. 누적 합의 시작값은 `0`, 누적 곱의 시작값은 `1`이에요. 그만큼 결과가 한 칸 길어져요.
+
+```python
+>>> sd.cumulative_sum(c, include_initial=True)
+array([ 0,  1,  3,  6, 10], dtype=int64)
+>>> sd.cumulative_prod(c, include_initial=True)
+array([ 1,  1,  2,  6, 24], dtype=int64)
+```
+
+이렇게 하면 k번 자리의 값은 "앞의 k개를 더한 값"이 돼요. 0번 자리는 "아무것도 더하지 않은 값"이라 `0`이에요.
+
+이 모양은 구간의 합을 구할 때 편해요. 앞 5개의 합에서 앞 2개의 합을 빼면 2번부터 4번까지(3개)의 합이 돼요. 구간 합을 여러 번 구해야 한다면 누적 합을 한 번만 만들어 두고 뺄셈만 하면 돼요.
+
+```python
+>>> c = sd.asarray([3, 1, 4, 1, 5, 9])
+>>> s = sd.cumulative_sum(c, include_initial=True)
+>>> s
+array([ 0,  3,  4,  8,  9, 14, 23], dtype=int64)
+>>> s[5] - s[2]
+10
+>>> sd.sum(c[2:5])
+10
+```
+
+2차원에서는 지정한 축의 길이만 1 늘어나요.
+
+```python
+>>> sd.cumulative_sum(x, axis=1, include_initial=True)
+array([[ 0,  1,  3,  6],
+       [ 0,  4,  9, 15]], dtype=int64)
+```
+
+`include_initial`에는 `True`나 `False`만 쓸 수 있어요.
+
+```python
+>>> sd.cumulative_sum(c, include_initial=1)
+Traceback (most recent call last):
+    ...
+TypeError: cumulative_sum(): 'include_initial' must be True or False, not int
+```
+
+## 결과의 dtype과 `dtype=`
+
+결과는 [`sum`](/api/array/sum/)·[`prod`](/api/array/prod/)와 같은 규칙을 따라요. 입력과 같은 dtype이고, bool만 int64가 돼요(앞에서 본 `hits`의 예).
+
+`dtype=`을 주면 원소를 먼저 그 종류로 바꾼 다음 쌓아요.
+
+```python
+>>> sd.cumulative_sum(c, dtype=sd.float64)
+array([ 3.0,  4.0,  8.0,  9.0, 14.0, 23.0], dtype=float64)
+>>> sd.cumulative_sum(sd.asarray([1.5, 1.5, 1.5]), dtype=sd.int64)
+array([1, 2, 3], dtype=int64)
+```
+
+둘째 예는 `1.5`를 각각 `1`로 자른 다음 쌓은 결과예요. `dtype=sd.bool`은 쓸 수 없어요. stardust는 bool의 덧셈과 곱셈을 언제나 int64로 올려서 계산해요(bool 배열끼리 더하면 int64 배열이 돼요). 그래서 bool인 채로 쌓아 갈 계산이 없어요. 하나라도 참인지, 모두 참인지가 궁금하면 [`sd.any`와 `sd.all`](/api/array/any-all/)을 쓰세요.
+
+```python
+>>> sd.cumulative_sum(c, dtype=sd.bool)
+Traceback (most recent call last):
+    ...
+TypeError: cumulative_sum(): cannot accumulate in bool; use any() or all()
+```
+
+## 조심할 점
+
+### 정수가 너무 커지면
+
+정수 누적은 int64 범위(약 ±9.2 × 10¹⁸)를 넘으면 에러 없이 반대쪽 끝으로 넘어가서 엉뚱한 값이 돼요. 곱은 특히 빨리 커져요.
+
+```python
+>>> sd.cumulative_prod(sd.asarray([10**10, 10**10]))
+array([        10000000000, 7766279631452241920], dtype=int64)
+```
+
+10²⁰이어야 할 둘째 값이 엉뚱한 수가 됐어요. 값이 클 수 있다면 `dtype=sd.float64`로 실수 계산을 하세요.
+
+```python
+>>> sd.cumulative_prod(sd.asarray([10**10, 10**10]), dtype=sd.float64)
+array([10000000000.0,         1e+20], dtype=float64)
+```
+
+실수의 누적 곱도 아주 큰 값과 아주 작은 값이 섞이면 중간에 `inf`나 `0`이 될 수 있어요. 이 점은 [`prod`](/api/array/prod/)와 같아요.
+
+### NaN을 만나면 그 뒤가 모두 NaN이에요
+
+NaN(숫자가 아님)을 한 번 더하면 그 뒤의 누적값은 모두 NaN이에요. 앞쪽 값은 영향을 받지 않아요.
+
+```python
+>>> sd.cumulative_sum(sd.asarray([1.0, sd.nan, 2.0, 3.0]))
+array([1.0, nan, nan, nan], dtype=float64)
+```
+
+NaN을 건너뛰고 쌓으려면 [`nancumulative_sum`, `nancumulative_prod`](/api/array/nan-reductions/)를 써요. NaN 자리에는 그때까지의 누적값이 들어가요.
+
+```python
+>>> sd.nancumulative_sum(sd.asarray([1.0, sd.nan, 2.0, 3.0]))
+array([1.0, 1.0, 3.0, 6.0], dtype=float64)
+```
+
+누적 곱에서는 `0`도 비슷하게 퍼져요. 한 번 `0`을 곱하면 그 뒤는 모두 `0`이에요.
+
+```python
+>>> sd.cumulative_prod(sd.asarray([2.0, 3.0, 0.0, 5.0]))
+array([2.0, 6.0, 0.0, 0.0], dtype=float64)
+```
+
+### 빈 배열
+
+빈 배열을 누적하면 빈 배열이 나와요. `include_initial=True`면 시작값 하나만 담긴 배열이에요.
+
+```python
+>>> sd.cumulative_sum(sd.asarray([]))
+array([], dtype=float64)
+>>> sd.cumulative_sum(sd.asarray([]), include_initial=True)
+array([0.0], dtype=float64)
+```
+
+### 메서드는 없어요
+
+`sum`, `prod`와 달리 `x.cumulative_sum()` 같은 메서드는 없어요. 언제나 `sd.cumulative_sum(x)`로 써요.
+
+## 비슷한 함수와의 차이
+
+| 하고 싶은 일 | 쓸 것 | 누적과 다른 점 |
+|---|---|---|
+| 최종 합·곱 하나만 | `sum`, `prod` | 중간 결과 없이 값 하나(또는 축이 줄어든 배열)를 돌려줘요. |
+| 이웃한 값의 차이 | `diff` | 누적 합을 되돌리는 계산이에요. 결과가 한 칸 짧아져요. |
+| NaN을 건너뛰고 누적 | `nancumulative_sum`, `nancumulative_prod` | NaN을 0(곱이면 1)으로 보고 쌓아요. |
+
+`cumulative_sum`과 [`diff`](/api/array/diff/)는 서로 반대 방향의 계산이에요. 시작값을 넣은 누적 합의 차이를 구하면 원래 배열이 돌아와요.
+
+```python
+>>> sd.diff(sd.cumulative_sum(c, include_initial=True))
+array([3, 1, 4, 1, 5, 9], dtype=int64)
+```
+
+## numpy를 아는 분께
+
+- 이름이 `cumsum`, `cumprod`가 아니라 `cumulative_sum`, `cumulative_prod`예요. `x.cumsum()` 같은 메서드도 없어요.
+- 2차원 이상에서 `axis`를 생략하면 `ValueError`예요. numpy의 `cumsum`은 `axis=None`이면 배열을 평탄화해서 누적해요. stardust에서 그렇게 하려면 `sd.ravel`을 먼저 써요. 이 점과 `include_initial=`은 numpy 2.1부터 있는 `np.cumulative_sum`과 같아요.
+- `axis`는 int만 받아요.
+- `out=` 인자는 없어요. 옵션은 모두 keyword-only예요.
+- 실수 누적 곱의 계산 순서가 numpy와 같다고 보장하지 않아요. 중간값이 실수 범위를 넘는 입력에서는 결과가 다를 수 있어요.

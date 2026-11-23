@@ -1,0 +1,166 @@
+---
+kind: function
+title: boxplot
+names: [boxplot]
+group: 통계 그림
+order: 3
+signatures:
+  - "sd.plot.boxplot(x, y, /, *, data=None, group=None, points=False, color=None, width=0.6, **figure)"
+  - "fig.boxplot(x, y, /, *, data=None, group=None, points=False, color=None, width=0.6)"
+summary: 범주마다 값의 사분위를 상자로, 1.5 IQR 안의 가장 먼 값까지를 수염으로, 그 밖의 값을 점으로 그려요. 사분위는 sd.quantile의 값 그대로예요.
+params:
+  - name: x
+    type: 범주의 시퀀스, 열 이름 또는 None
+    kind: positional-only
+    desc: "값마다의 범주(문자열의 시퀀스나 string 열). 수를 주면 수를 글자로 바꿔 범주로 써요. None이면 모든 값이 상자 하나예요."
+  - name: y
+    type: 1차원 수의 배열 또는 열 이름
+    kind: positional-only
+    desc: "값. x와 길이가 같아야 해요. NaN과 무한대는 빼고 계산해요."
+  - name: data
+    type: DataFrame 또는 None
+    kind: keyword-only
+    desc: "주면 x, y, group을 이 DataFrame의 열 이름으로 읽어요. 기본값 None."
+  - name: group
+    type: 열 이름, 시퀀스 또는 None
+    kind: keyword-only
+    desc: "범주 안을 다시 나누는 라벨. 한 범주 안에 무리의 상자가 나란히 서고, 무리마다 팔레트의 다음 색과 범례를 받아요. 기본값 None."
+  - name: points
+    type: bool
+    kind: keyword-only
+    desc: "True면 모든 값을 상자의 가운데 세로줄 위에 점으로 찍어요. False(기본값)면 수염 밖의 값만 찍어요."
+  - name: color
+    type: 색 또는 None
+    kind: keyword-only
+    desc: "상자의 색. 테두리와 수염은 이 색, 상자 안은 이 색을 옅게 칠해요. None이면 팔레트의 다음 색이에요. group과 함께 줄 수 없어요."
+  - name: width
+    type: float
+    kind: keyword-only
+    desc: "한 범주에 상자들이 차지하는 너비(범주 사이의 간격이 1, 0보다 커야 해요). 무리가 k개면 무리마다 width/k예요. 기본값 0.6."
+  - name: "**figure"
+    type: 그림 옵션
+    kind: keyword-only
+    desc: "모듈 함수만 받는 height, font, theme, palette. 뜻은 기본 개념 페이지에 있어요. 상자 너비 width와 이름이 같으니, 그림의 너비는 Figure(width=...)로 정해요."
+returns:
+  type: Figure
+  desc: "상자 층을 더한 그림. 모듈 함수는 새 그림을, 메서드는 그 그림 자신을 돌려줘요."
+raises:
+  - type: TypeError
+    desc: "data 없이 x나 y에 문자열(열 이름)을 줬을 때, data가 DataFrame이 아닐 때, y가 수가 아닐 때, points가 True·False가 아닐 때."
+  - type: ValueError
+    desc: "x와 y의 길이가 다를 때, y가 1차원이 아닐 때, width가 0 이하일 때, group의 길이가 y와 다를 때, color를 group과 함께 줬을 때."
+seeAlso: [basics, strip, histogram, compare, facet, bar]
+---
+import Callout from '../../../components/Callout.astro';
+import PlotImage from '../../../components/fig/PlotImage.astro';
+
+## 한눈에 보기
+
+투여량이 다른 세 무리에서 반응을 40번씩 쟀어요. 무리마다 값이 어디에 몰려 있고 얼마나 퍼져 있는지를 한 그림에 견주려면 **상자 그림**이 알맞아요. 첫 인자가 범주, 둘째 인자가 값이에요.
+
+```python
+>>> import stardust as sd
+>>> rng = sd.random.default_rng(7)
+>>> a = sd.stats.Normal(mu=5.0, sigma=1.0).sample(40, rng=rng)
+>>> b = sd.stats.Normal(mu=6.2, sigma=1.3).sample(40, rng=rng)
+>>> c = sd.stats.Normal(mu=7.8, sigma=0.9).sample(40, rng=rng)
+>>> df = sd.frame.DataFrame({"dose": ["control"] * 40 + ["low"] * 40 + ["high"] * 40, "response": sd.concat([a, b, c])})
+>>> fig = sd.plot.boxplot("dose", "response", data=df).ylabel("response")
+```
+
+<PlotImage name="boxplot-dose" alt="control, low, high 세 범주의 상자 그림. 상자와 가운데 굵은 선이 control에서 high로 갈수록 위로 올라가요." caption="세 무리의 상자 그림. 상자가 가운데 절반의 값, 굵은 선이 중앙값, 수염이 나머지 값의 퍼짐이에요." />
+
+범주는 처음 나온 순서대로 왼쪽부터 놓여요. 상자의 가운데 굵은 선을 보면 중앙값이 control, low, high 순으로 올라가는 것이 한눈에 보여요. 상자의 높이는 가운데 절반의 값이 퍼진 폭이에요.
+
+<Reference />
+
+## 상자가 그리는 수
+
+상자 하나는 값들의 다섯 가지 수를 보여요. 값 아홉 개로 하나씩 짚어 볼게요. `x`에 `None`을 주면 범주 없이 상자 하나를 그려요.
+
+```python
+>>> y = sd.asarray([4.1, 4.8, 5.0, 5.2, 5.5, 5.9, 6.1, 6.4, 9.8])
+>>> fig = sd.plot.Figure(width=60).boxplot(None, y)
+```
+
+<PlotImage name="boxplot-parts" alt="값 아홉 개의 상자 그림 하나. 상자는 5.0에서 6.1, 중앙값 5.5, 수염은 4.1과 6.4까지, 9.8은 점으로 따로 찍혀요." caption="값 아홉 개의 상자. 9.8은 수염 밖에 있어서 점으로 따로 찍혀요." />
+
+- **상자의 아래와 위**는 첫째 사분위 Q1과 셋째 사분위 Q3이에요. 값의 가운데 절반이 이 안에 있어요.
+- **상자 안의 굵은 선**은 중앙값(둘째 사분위)이에요.
+- **수염**은 상자에서 1.5 IQR(IQR = Q3 − Q1) 안에 있는 값 가운데 가장 먼 값까지 뻗어요. 울타리 자리까지가 아니라 실제 값까지예요.
+- **점**은 수염 밖의 값이에요. 다른 값들에서 많이 떨어져 있어 따로 볼 만한 값이에요.
+
+사분위는 [`sd.quantile`](/api/array/quantile/)의 기본 방법 `'linear'`로 구한 값 그대로예요.
+
+```python
+>>> q1, q2, q3 = sd.quantile(y, sd.asarray([0.25, 0.5, 0.75])).tolist()
+>>> q1, q2, q3
+(5.0, 5.5, 6.1)
+>>> iqr = q3 - q1
+>>> round(q1 - 1.5 * iqr, 2), round(q3 + 1.5 * iqr, 2)
+(3.35, 7.75)
+```
+
+울타리는 3.35와 7.75예요. 그 안에서 가장 작은 값이 4.1, 가장 큰 값이 6.4이니 수염은 4.1부터 6.4까지예요. 9.8은 7.75 밖이라 점이에요. 그림에서 읽은 수를 글에 적어야 할 때는 이렇게 `sd.quantile`로 구하면 그림과 같은 수를 얻어요.
+
+## 무리 나누기: `group`
+
+범주 안을 다시 나눌 때는 `group=`을 줘요. 열 이름 대신 값과 길이가 같은 라벨의 시퀀스를 줘도 돼요. 한 범주 안에 무리의 상자가 나란히 서고, 무리마다 다른 색과 범례가 붙어요.
+
+```python
+>>> sex = (["F"] * 20 + ["M"] * 20) * 3
+>>> fig = sd.plot.boxplot("dose", "response", data=df, group=sex).ylabel("response")
+```
+
+<PlotImage name="boxplot-group" alt="세 범주마다 F와 M 두 상자가 나란히 선 상자 그림" caption="범주마다 무리 둘의 상자가 나란히 서요. 무리는 팔레트의 색 순서대로 색을 받아요." />
+
+한 범주에 상자들이 차지하는 너비가 `width`(기본 0.6, 범주 사이의 간격이 1)예요. 무리가 k개면 그 너비를 k로 나눠 나란히 세워요. 무리의 순서는 라벨이 처음 나온 순서예요.
+
+## 값 보이기: `points`와 `strip`
+
+상자는 값의 수를 숨겨요. 값이 다섯 개인 상자와 오백 개인 상자가 똑같이 보여요. 값이 많지 않을 때는 값을 함께 찍어 두면 좋아요.
+
+`points=True`면 모든 값을 상자의 가운데 세로줄 위에 점으로 찍어요. 값이 많으면 점이 겹치므로, 옆으로 흩어 찍으려면 같은 그림에 [`strip`](/api/plot/strip/)을 더해요.
+
+```python
+>>> fig = sd.plot.boxplot("dose", "response", data=df)
+>>> fig = fig.strip("dose", "response", data=df, color="gray", alpha=0.5, size=2.0).ylabel("response")
+```
+
+<PlotImage name="boxplot-strip" alt="세 범주의 상자 그림 위에 회색 반투명 점으로 모든 값을 옆으로 흩어 찍은 그림" caption="상자 위에 strip으로 모든 값을 흩어 찍은 그림. 값의 수와 몰린 곳이 함께 보여요." />
+
+두 그림이 같은 범주 축을 함께 써요. 범주의 라벨이 같으면 같은 자리에 놓여요.
+
+## 검정 결과 얹기
+
+무리 사이의 차이를 검정했다면 그 결과를 상자 위에 괄호와 p값으로 얹을 수 있어요. 그림이 검정을 고르거나 다시 계산하지 않고, 준 결과를 그대로 보여요. 자세한 것은 [`compare`](/api/plot/compare/)에 있어요.
+
+```python
+>>> fig = sd.plot.boxplot("dose", "response", data=df).compare(sd.htest.tukey_hsd(a, b, c)).ylabel("response")
+```
+
+<PlotImage name="boxplot-compare" alt="세 범주의 상자 그림 위에 범주 쌍마다 괄호와 p값을 쌓은 그림. 이웃한 범주를 잇는 짧은 괄호가 아래, control과 high를 잇는 긴 괄호가 맨 위에 있어요." caption="Tukey HSD의 결과를 얹은 상자 그림. 괄호 하나가 범주 한 쌍의 비교이고, 가까운 짝의 괄호가 아래에 놓여요." />
+
+## 색과 너비
+
+`color=`는 상자의 색이에요. 테두리, 수염, 중앙값의 선, 바깥 점이 이 색이고, 상자 안은 이 색을 옅게 칠해요. `width=`는 상자가 차지하는 너비예요.
+
+`sd.plot.boxplot`의 `width`는 상자의 너비라서 그림의 너비로 쓸 수 없어요. 그림의 크기를 정하려면 `Figure`를 먼저 만들고 메서드를 부르거나, 그린 뒤에 `fig.size(너비, 높이)`를 불러요. 앞의 상자 하나짜리 그림이 앞의 방법으로 만든 것이에요.
+
+```python
+>>> fig = sd.plot.Figure(width=70, height=50).boxplot(None, y, color="C3", width=0.3)
+>>> fig.width, fig.height
+(70.0, 50.0)
+```
+
+## 조심할 점
+
+- `x`에 수를 주면 수를 글자로 바꿔 범주로 써요(`1.0`은 `1`). 수의 크기대로 자리를 잡지 않고 처음 나온 순서대로 놓여요.
+- 범주 축이 있는 칸에 수 축의 그림(`bar`에 수를 준 것 등)을 더하면 `ValueError`예요.
+- 범례의 이름(`label=`)을 받지 않아요. 범례가 필요하면 `group=`으로 무리를 나눠요.
+- 값이 모두 NaN인 범주는 상자를 그리지 않아요.
+
+## matplotlib을 아는 분께
+
+- 인자의 순서가 범주, 값이에요. 무리마다의 배열의 목록이 아니라, 긴 자료 두 열(범주와 값)을 받아요.
+- 수염은 1.5 IQR로 고정이에요(`whis`가 없어요). 노치, 평균 표시, 가로 상자는 없어요.

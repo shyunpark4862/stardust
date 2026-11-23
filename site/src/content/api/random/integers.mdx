@@ -1,0 +1,413 @@
+---
+title: integers
+names: []
+group: 난수 뽑기
+order: 2
+signatures:
+  - "rng.integers(low, high=None, /, *, shape=None, endpoint=False)"
+summary: 정해진 범위의 정수를 고르게 뽑아요. 범위의 모든 정수가 정확히 같은 확률로 나오고, 원소마다 범위를 다르게 줄 수도 있어요.
+params:
+  - name: low
+    type: int 또는 int64 배열
+    kind: positional-only
+    desc: 범위의 아래 끝(포함). high를 생략하면 이 값이 위 끝이 되고 아래 끝은 0이에요.
+  - name: high
+    type: int, int64 배열, 또는 None
+    kind: positional-only
+    desc: 범위의 위 끝. 기본은 포함하지 않고, endpoint=True면 포함해요.
+  - name: shape
+    type: int, int의 tuple, 또는 None
+    kind: keyword-only
+    desc: 결과의 모양. None이면 low·high가 숫자일 때 Python int 하나, 배열일 때 둘을 브로드캐스트한 모양이에요.
+  - name: endpoint
+    type: bool
+    kind: keyword-only
+    desc: True면 high도 결과에 나올 수 있어요. 기본값 False.
+returns:
+  type: ndarray(int64) 또는 Python int
+  desc: 범위 안의 정수. shape가 None이고 low·high가 모두 숫자면 int 하나, 아니면 int64 배열이에요.
+raises:
+  - type: TypeError
+    desc: low·high가 int나 int64 배열이 아닐 때(float, bool, float64 배열 등), endpoint가 True·False가 아닐 때, shape의 타입이 틀렸거나 shape를 자리로 넘겼을 때.
+  - type: ValueError
+    desc: 어느 원소에서든 low가 high보다 작지 않을 때(endpoint=True면 low가 high보다 클 때), low·high·shape를 브로드캐스트할 수 없을 때, shape에 음수가 있을 때.
+  - type: OverflowError
+    desc: low나 high가 int64 범위(-2⁶³ 이상 2⁶³ 미만)를 벗어날 때.
+seeAlso: [basics, generator, random, choice, permutation]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import FigRow from '../../../components/fig/FigRow.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+`rng.integers(low, high)`는 `low` 이상 `high` 미만의 정수를 하나 뽑아요. 여기서 `rng`는 [`sd.random.default_rng(시드)`](/api/random/default_rng/)로 만든 생성기([Generator](/api/random/generator/))예요. 주사위를 한 번 굴리려면 1 이상 7 미만(1부터 6까지)에서 뽑으면 돼요.
+
+```python
+>>> import stardust as sd
+>>> rng = sd.random.default_rng(42)
+>>> rng.integers(1, 7)
+3
+```
+
+`shape=`을 주면 그 모양의 배열로 한꺼번에 받아요. 주사위를 열 번 굴린 결과예요.
+
+```python
+>>> rng.integers(1, 7, shape=10)
+array([4, 5, 5, 1, 1, 2, 6, 2, 4, 2], dtype=int64)
+```
+
+인자를 하나만 주면 그 값이 위 끝이 되고 아래 끝은 0이에요. `rng.integers(10)`은 0부터 9까지예요. 배열의 인덱스처럼 0부터 세는 값이 필요할 때 편해요.
+
+```python
+>>> rng.integers(10, shape=(2, 5))
+array([[8, 4, 7, 2, 6],
+       [7, 7, 9, 6, 6]], dtype=int64)
+```
+
+범위 안의 정수는 모두 정확히 같은 확률로 나와요. 이런 성질을 "치우침(bias)이 없다"고 말해요. 당연해 보이지만, 흔히 쓰는 간단한 방법으로는 지켜지지 않는 성질이에요. 아래 "치우침이 없다는 것" 절에서 자세히 설명해요.
+
+<Reference />
+
+## `high`는 포함하지 않아요: `endpoint`
+
+기본으로 `high`는 결과에 나오지 않아요. 범위를 수학 기호로 쓰면 `[low, high)`예요. 대괄호는 포함, 소괄호는 포함하지 않는다는 뜻이에요. Python의 `range(low, high)`와 같은 약속이라 `integers(n)`이 `range(n)`의 원소 가운데 하나를 고른다고 생각하면 쉬워요.
+
+`endpoint=True`를 주면 `high`도 나올 수 있어요. 범위가 `[low, high]`가 돼요. "1부터 6까지"처럼 양 끝을 모두 말하는 쪽이 자연스러울 때 써요.
+
+```python
+>>> sd.random.default_rng(42).integers(1, 6, shape=10, endpoint=True)
+array([3, 4, 5, 5, 1, 1, 2, 6, 2, 4], dtype=int64)
+>>> sd.random.default_rng(42).integers(1, 7, shape=10)
+array([3, 4, 5, 5, 1, 1, 2, 6, 2, 4], dtype=int64)
+```
+
+두 호출은 가리키는 범위가 1부터 6까지로 같아서, 같은 시드면 값도 같아요. `endpoint`는 범위를 적는 방법만 바꿔요.
+
+| 호출 | 나올 수 있는 값 |
+|---|:---:|
+| `rng.integers(10)` | 0, 1, …, 9 |
+| `rng.integers(1, 7)` | 1, 2, …, 6 |
+| `rng.integers(1, 6, endpoint=True)` | 1, 2, …, 6 |
+| `rng.integers(-3, 3)` | -3, -2, …, 2 |
+| `rng.integers(5, 5, endpoint=True)` | 5 |
+
+마지막 줄처럼 `endpoint=True`에서 `low`와 `high`가 같으면 그 값 하나만 나와요. `endpoint=False`에서 둘이 같으면 고를 정수가 없어서 에러예요(아래 "조심할 점" 참고).
+
+`endpoint`가 꼭 필요한 경우도 있어요. int64가 담을 수 있는 가장 큰 수까지 범위에 넣고 싶을 때예요. 이 이야기는 아래 "int64 전체 범위" 절에 있어요.
+
+## `shape`: 숫자 하나 또는 배열
+
+`shape`는 [`random`](/api/random/random/)과 같은 규칙을 따라요. 다만 `integers`에서는 `low`·`high` 다음에 와서 이름을 붙여 넘겨요(`shape=10`).
+
+| `shape` | `low`·`high`가 숫자일 때 결과 |
+|:---:|---|
+| `None` (기본값) | Python `int` 하나 |
+| int `n` | 길이 `n`인 1차원 int64 배열 |
+| int의 tuple | 그 모양의 int64 배열 |
+
+`shape=None`과 `shape=1`은 달라요. `None`이면 Python 숫자, `1`이면 원소가 하나인 배열이에요.
+
+```python
+>>> type(sd.random.default_rng(42).integers(1, 7))
+<class 'int'>
+>>> sd.random.default_rng(42).integers(1, 7, shape=1)
+array([3], dtype=int64)
+```
+
+결과 배열의 dtype은 언제나 int64예요.
+
+## 원소마다 다른 범위
+
+`low`와 `high`에는 숫자 대신 int64 배열을 줄 수 있어요. 그러면 결과의 원소마다 자기 자리의 `low`·`high`를 범위로 써요. 예를 들어 면의 수가 4, 6, 8, 12, 20인 주사위 다섯 개를 한 번씩 굴리면 이래요.
+
+```python
+>>> dice = sd.asarray([4, 6, 8, 12, 20])
+>>> sd.random.default_rng(42).integers(1, dice, endpoint=True)
+array([ 2,  4,  7, 10,  2], dtype=int64)
+```
+
+첫 원소는 1~4, 둘째는 1~6, …, 마지막은 1~20에서 뽑은 값이에요. `shape`를 주지 않으면 결과는 `low`와 `high`의 모양을 따라요.
+
+### 브로드캐스팅
+
+`low`와 `high`의 모양이 달라도 [브로드캐스팅](/api/array/broadcasting/) 규칙으로 맞출 수 있으면 괜찮아요. 길이 1인 축이 상대에 맞춰 늘어난다고 생각하면 돼요. 아래에서 `low`는 모양 `(2, 1)`, `high`는 `(2, 3)`이라서 결과는 `(2, 3)`이에요. 첫 행은 0 이상, 둘째 행은 100 이상에서 시작해요.
+
+```python
+>>> low = sd.asarray([[0], [100]])
+>>> high = low + sd.asarray([10, 20, 30])
+>>> high
+array([[ 10,  20,  30],
+       [110, 120, 130]], dtype=int64)
+>>> sd.random.default_rng(42).integers(low, high)
+array([[  4,  10,  23],
+       [107, 101, 104]], dtype=int64)
+```
+
+<Fig caption="low의 각 행 값이 열 방향으로 늘어나 high와 짝을 이뤄요. 점선 칸은 계산할 때 늘어난 것처럼 다뤄지는 값이에요. 칸마다 자기 범위에서 하나씩 뽑아요.">
+  <ArrayFig name="low" data={[[0, 0, 0], [100, 100, 100]]} tones={[['a', 'g', 'g'], ['a', 'g', 'g']]} note="shape (2, 1)" />
+  <ArrayFig name="high" data={[[10, 20, 30], [110, 120, 130]]} note="shape (2, 3)" />
+  <Op note="칸마다 [low, high)">→</Op>
+  <ArrayFig name="결과" data={[[4, 10, 23], [107, 101, 104]]} tones={[['b', 'b', 'b'], ['b', 'b', 'b']]} note="shape (2, 3)" />
+</Fig>
+
+숫자와 배열을 섞어도 돼요. 숫자는 모든 원소에 같은 값으로 쓰여요. 인자를 하나만 주고 그 인자가 배열이면 원소마다 `[0, n)`이에요.
+
+```python
+>>> sd.random.default_rng(42).integers(sd.asarray([2, 10, 1000]))
+array([  0,   5, 794], dtype=int64)
+```
+
+### 배열 범위와 `shape`를 함께 쓰기
+
+`low`·`high`가 배열일 때 `shape`를 주면, 두 배열이 그 모양으로 브로드캐스트될 수 있어야 해요. 같은 범위 묶음으로 여러 번 뽑을 때 써요. 아래는 다섯 주사위를 세 번 굴린 거예요. 행이 한 번의 굴림이에요.
+
+```python
+>>> sd.random.default_rng(42).integers(1, dice, shape=(3, 5), endpoint=True)
+array([[ 2,  4,  7, 10,  2],
+       [ 1,  2,  7,  3, 11],
+       [ 2,  6,  4, 10,  5]], dtype=int64)
+```
+
+`dice`의 모양 `(5,)`는 `(3, 5)`로 늘어날 수 있어요. 반대로 `shape=(5, 3)`은 맞지 않아서 에러예요. `shape`는 결과의 모양을 정하는 것이지, 배열을 그 모양으로 바꿔 주는 것이 아니에요.
+
+```python
+>>> sd.random.default_rng(42).integers(1, dice, shape=(5, 3), endpoint=True)
+Traceback (most recent call last):
+    ...
+ValueError: integers(): 'low' and 'high' cannot be broadcast to the shape (5, 3)
+```
+
+## int64 전체 범위
+
+`low`와 `high`는 int64가 담을 수 있는 범위($-2^{63}$ 이상 $2^{63}$ 미만) 안이면 무엇이든 돼요. 범위가 아무리 넓어도 치우침 없이 정확하게 뽑아요.
+
+int64 전체에서 뽑고 싶으면 `high`를 int64의 가장 큰 수 $2^{63} - 1$로 두고 `endpoint=True`를 줘요.
+
+```python
+>>> big = sd.random.default_rng(42).integers(-2**63, 2**63 - 1, shape=3, endpoint=True)
+>>> big
+array([-898341722540299893,  517131869062203519, 5438580236051130336], dtype=int64)
+```
+
+`endpoint` 없이 `high=2**63`으로 쓰고 싶어지지만, $2^{63}$ 자체는 int64로 담을 수 없어서 `OverflowError`예요. 가장 큰 수를 범위에 넣는 방법은 `endpoint=True`뿐이에요.
+
+```python
+>>> rng.integers(0, 2**63)
+Traceback (most recent call last):
+    ...
+OverflowError: integers(): 'high' is out of range
+```
+
+범위가 넓어도 결과가 넘쳐서 엉뚱한 값이 되는 일은 없어요. 많이 뽑아 보면 음수와 양수가 반반쯤 나와요.
+
+```python
+>>> wide = sd.random.default_rng(42).integers(-2**63, 2**63 - 1, shape=200_000, endpoint=True)
+>>> round(float(sd.mean(wide < 0)), 2)
+0.5
+```
+
+## 치우침이 없다는 것
+
+**치우침이 없다**는 것은 범위 안의 정수가 모두 정확히 같은 확률로 나온다는 뜻이에요. 1부터 6까지라면 각 눈이 정확히 6분의 1씩이에요. 6만 번 굴려 보면 눈마다 1만 번 안팎이 나와요.
+
+```python
+>>> rolls = sd.random.default_rng(42).integers(1, 7, shape=60_000)
+>>> sd.bincount(rolls)
+array([    0, 10100, 10075,  9864, 10002,  9963,  9996], dtype=int64)
+```
+
+[`sd.bincount`](/api/array/bincount/)는 0, 1, 2, …가 각각 몇 번 나왔는지 세요. 0은 주사위에 없으니 0번이고, 1부터 6까지가 고르게 나왔어요.
+
+### 나머지(`%`)로 만들면 치우치는 이유
+
+난수를 만드는 장치는 기본적으로 정해진 개수의 값을 고르게 내요. 0부터 7까지 여덟 가지 값을 똑같은 확률로 내는 장치가 있다고 해요. 여기서 0, 1, 2 가운데 하나를 뽑고 싶으면 가장 먼저 떠오르는 방법은 3으로 나눈 나머지(`x % 3`)를 쓰는 거예요.
+
+여덟 가지 값을 모두 3으로 나눠 보면 이래요.
+
+```python
+>>> source = sd.arange(8)
+>>> source % 3
+array([0, 1, 2, 0, 1, 2, 0, 1], dtype=int64)
+>>> sd.bincount(source % 3)
+array([3, 3, 2], dtype=int64)
+```
+
+<Fig caption="0~7을 3으로 나누면 0, 1, 2가 두 바퀴 돌고 6, 7이 남아요. 남은 두 값이 0과 1에 한 번씩 더 붙어서, 2만 덜 나와요.">
+  <ArrayFig name="x" data={[0, 1, 2, 3, 4, 5, 6, 7]} tones={['', '', '', '', '', '', 'b', 'b']} note="8가지, 똑같은 확률" />
+  <Op note="% 3">→</Op>
+  <ArrayFig name="x % 3" data={[0, 1, 2, 0, 1, 2, 0, 1]} tones={['', '', '', '', '', '', 'b', 'b']} note="0: 3번, 1: 3번, 2: 2번" />
+</Fig>
+
+8은 3으로 나누어떨어지지 않아서, 0·1·2가 두 바퀴 돈 뒤 6과 7이 남아요. 남은 값은 다시 0과 1이 되니, 0과 1은 여덟 가지 중 세 가지에서, 2는 두 가지에서만 나와요. 확률로 쓰면 0과 1은 3/8(37.5%), 2는 2/8(25%)이에요. 1/3(33.3%)씩이어야 할 확률이 어긋났어요. 이렇게 어긋나는 것이 치우침이에요.
+
+실제로 많이 뽑아 보면 그 비율이 그대로 보여요. 아래는 "0부터 7까지 고르게" 뽑은 값에 `% 3`을 한 결과와, `integers`로 처음부터 0부터 2까지 뽑은 결과를 비교한 거예요.
+
+```python
+>>> rng = sd.random.default_rng(42)
+>>> eight = rng.integers(0, 8, shape=80_000)
+>>> sd.bincount(eight % 3)
+array([29980, 30235, 19785], dtype=int64)
+>>> sd.bincount(rng.integers(0, 3, shape=80_000))
+array([26480, 26835, 26685], dtype=int64)
+```
+
+나머지로 만든 쪽은 3 : 3 : 2에 가깝게 2가 확연히 적고, `integers`로 뽑은 쪽은 셋이 고르게 나와요.
+
+### 실제 생성기에서는
+
+실제 생성기는 여덟 가지가 아니라 $2^{64}$가지(약 1.8 × 10¹⁹가지) 값을 내요. 원리는 같아요. 범위의 크기 $n$으로 $2^{64}$가 나누어떨어지지 않으면 남는 값이 생기고, 그 값이 앞쪽 결과에 한 번씩 더 붙어요.
+
+- 범위가 작으면(주사위처럼 $n = 6$) 남는 값이 기껏해야 $n - 1$개라, 치우침이 $10^{-18}$보다도 작아요. 실험으로는 보이지 않지만, 정확하지 않은 것은 같아요.
+- 범위가 크면 치우침도 커져요. 예를 들어 $n = 3 \times 2^{61}$이면 $2^{64} = 2n + 2^{62}$라서, 결과의 앞쪽 2/3 구간(0 이상 $2^{62}$ 미만)이 세 번씩, 나머지가 두 번씩 나와요. 앞쪽 2/3 구간에 들어갈 확률이 2/3이어야 하는데 3/4(75%)이 돼요.
+
+| 방법 | 앞쪽 2/3 구간의 확률 |
+|---|:---:|
+| 올바른 값 | 2/3 ≈ 0.67 |
+| 64비트 값의 나머지 `% n` | 3/4 = 0.75 |
+| `rng.integers(0, n)` | 2/3 ≈ 0.67 |
+
+`integers`로 직접 확인하면 기대한 대로 2/3이에요.
+
+```python
+>>> n = 3 * 2**61
+>>> z = sd.random.default_rng(42).integers(0, n, shape=100_000)
+>>> round(float(sd.mean(z < 2**62)), 2)
+0.67
+```
+
+`integers`는 이렇게 남는 값이 결과에 영향을 주지 않게 처리해요. 그래서 범위의 크기가 얼마든, 작은 주사위부터 int64 전체까지 모든 정수가 정확히 같은 확률로 나와요.
+
+<Callout type="warn" title="random()에 곱하고 내림해도 같은 문제가 있어요">
+
+`sd.floor(rng.random(k) * n)`처럼 실수를 정수로 바꾸는 방법도 흔히 쓰여요. 하지만 [`random`](/api/random/random/)이 낼 수 있는 값은 2⁵³가지로 정해져 있어서, $n$으로 나누어떨어지지 않으면 똑같이 어떤 정수가 조금 더 자주 나와요. 게다가 결과가 float64라 $2^{53}$보다 큰 정수는 정확히 담지도 못해요. 정수가 필요하면 `integers`를 쓰세요.
+
+</Callout>
+
+### 치우침을 없애도 수열의 위치는 그대로예요
+
+치우침을 없애는 처리를 해도 원소 하나는 수열의 한 자리만 써요. 그래서 [`random`](/api/random/random/)처럼 `integers`도 한 번에 뽑든 나눠 뽑든 같은 값이 나와요.
+
+```python
+>>> sd.random.default_rng(42).integers(0, 100, shape=6)
+array([45, 52, 79, 76,  8, 14], dtype=int64)
+>>> r = sd.random.default_rng(42)
+>>> r.integers(0, 100, shape=3), r.integers(0, 100, shape=3)
+(array([45, 52, 79], dtype=int64), array([76,  8, 14], dtype=int64))
+```
+
+범위가 달라도 마찬가지예요. 몇 개를 뽑았는지만으로 다음 위치가 정해지니, 어떤 범위로 몇 번 불렀는지만 같으면 언제나 같은 결과를 다시 얻을 수 있어요. 결과는 계산에 쓰는 스레드 수와도 상관없어요.
+
+## 조심할 점
+
+### 범위가 비어 있으면 에러예요
+
+`endpoint=False`(기본값)에서는 `low < high`, `endpoint=True`에서는 `low <= high`여야 해요. 고를 정수가 하나도 없으면 `ValueError`예요.
+
+```python
+>>> rng.integers(5, 5)
+Traceback (most recent call last):
+    ...
+ValueError: integers(): 'low' must be less than 'high'
+>>> rng.integers(5, 3, endpoint=True)
+Traceback (most recent call last):
+    ...
+ValueError: integers(): 'low' must be less than or equal to 'high'
+```
+
+인자를 하나만 줄 때도 같아요. 그 인자는 위 끝(`high`)이고 아래 끝은 0이라서, `rng.integers(0)`은 범위 `[0, 0)`이 비어 에러예요. 이때 메시지는 하나뿐인 인자를 `high`로 불러서, 양수여야 한다고 알려 줘요. `endpoint=True`이면 0도 되니 음수만 에러예요.
+
+```python
+>>> rng.integers(0)
+Traceback (most recent call last):
+    ...
+ValueError: integers(): 'high' must be positive
+>>> rng.integers(-1, endpoint=True)
+Traceback (most recent call last):
+    ...
+ValueError: integers(): 'high' must be >= 0
+```
+
+배열 범위는 모든 원소에서 이 조건을 검사해요. 하나라도 어긋나면 전체가 에러예요.
+
+```python
+>>> rng.integers(sd.asarray([0, 5]), sd.asarray([3, 4]))
+Traceback (most recent call last):
+    ...
+ValueError: integers(): 'low' must be less than 'high'
+```
+
+### 실수는 받지 않아요
+
+`low`·`high`에 `1.5` 같은 float이나 float64 배열을 주면 `TypeError`예요. 값을 몰래 버림해서 범위가 바뀌는 일을 막기 위해서예요. 정수처럼 보이는 `3.0`도 안 돼요.
+
+```python
+>>> rng.integers(0, 3.0)
+Traceback (most recent call last):
+    ...
+TypeError: integers(): 'high' must be an int or an int64 array, not float
+>>> rng.integers(0, sd.asarray([1.0, 2.0]))
+Traceback (most recent call last):
+    ...
+TypeError: integers(): 'high' must be an int or an int64 array, not float64
+```
+
+실수 배열을 범위로 쓰고 싶으면 [`sd.astype`](/api/array/astype/)으로 int64로 바꾼 뒤 넘기세요. `True`·`False`도 정수로 받지 않아요.
+
+### `shape`와 `endpoint`는 이름을 붙여서
+
+`shape`와 `endpoint`는 이름으로만 넘기는 인자(keyword-only)예요. 세 번째 자리에 모양을 넣으면 `TypeError`예요. `rng.integers(0, 10, 3)`이 "3개"인지 다른 무엇인지 읽는 사람이 알기 어렵기 때문이에요.
+
+```python
+>>> rng.integers(0, 10, (3,))
+Traceback (most recent call last):
+    ...
+TypeError: Generator.integers() takes from 2 to 3 positional arguments but 4 were given
+```
+
+`endpoint`에는 `True`나 `False`만 써요. `1`이나 `0`은 받지 않아요.
+
+```python
+>>> rng.integers(0, 10, endpoint=1)
+Traceback (most recent call last):
+    ...
+TypeError: integers(): 'endpoint' must be True or False, not int
+```
+
+### 브로드캐스트할 수 없는 배열
+
+`low`와 `high`의 모양이 서로 맞지 않으면 `ValueError`예요.
+
+```python
+>>> rng.integers(sd.asarray([0, 1]), sd.asarray([3, 4, 5]))
+Traceback (most recent call last):
+    ...
+ValueError: integers(): 'low' and 'high' could not be broadcast together
+```
+
+### 값이 겹칠 수 있어요
+
+`integers`는 원소마다 따로 뽑기 때문에 같은 값이 여러 번 나올 수 있어요. 위의 주사위 열 번에서도 2가 세 번 나왔어요. 한 번 뽑은 것을 다시 뽑지 않는 방식을 비복원 추출이라고 하는데, 서로 다른 정수 여러 개가 필요하면 [`choice`](/api/random/choice/)에 `replace=False`를 주거나 [`permutation`](/api/random/permutation/)을 쓰세요.
+
+## 비슷한 함수와의 차이
+
+| 하고 싶은 일 | 쓸 것 | 다른 점 |
+|---|---|---|
+| 범위의 정수 하나씩(겹쳐도 됨) | `rng.integers` | 원소마다 따로 뽑아요. 원소마다 범위를 달리할 수 있어요. |
+| 0 이상 1 미만의 실수 | [`rng.random`](/api/random/random/) | 결과가 float64예요. |
+| 주어진 배열의 원소 고르기 | [`rng.choice`](/api/random/choice/) | 배열에서 골라요. 확률(`p`)을 달리할 수 있어요. |
+| 서로 다른 정수 여러 개 | [`rng.choice`](/api/random/choice/)(`replace=False`) | 같은 값을 두 번 고르지 않아요. |
+| `0`부터 `n-1`까지를 한 번씩 섞은 순서 | [`rng.permutation`](/api/random/permutation/) | 모든 값이 정확히 한 번씩 나와요. |
+
+`rng.integers(n, shape=k)`와 `rng.choice(n, shape=k)`는 둘 다 0부터 `n-1`까지에서 겹침을 허용하며 뽑아요. 정수 범위만 필요하면 `integers`가, 배열의 원소를 고르거나 확률을 다르게 주거나 겹치지 않게 뽑아야 하면 `choice`가 맞아요.
+
+## numpy를 아는 분께
+
+- 인자 이름이 `size`가 아니라 `shape`고, keyword-only예요. `low`·`high`는 자리로만 넘겨요.
+- `dtype=` 인자가 없어요. 결과는 언제나 int64이고, `shape=None`이면 numpy 스칼라가 아니라 Python `int`예요.
+- `low`·`high`에 float(`1.5`)를 주면 numpy는 버림해서 받지만 stardust는 `TypeError`예요. 배열도 int64 배열만 받아요.
+- int64의 끝까지 넣으려고 `high=2**63`을 쓸 수 없어요(`OverflowError`). `high=2**63 - 1, endpoint=True`를 쓰세요.
+- `low`·`high` 배열의 브로드캐스팅과 `endpoint`의 뜻은 numpy와 같아요.
+- 치우침 없는 결과라는 점은 numpy와 같지만, 생성기 종류가 달라서 **같은 시드여도 값은 numpy와 달라요**.

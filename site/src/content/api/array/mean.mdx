@@ -1,0 +1,263 @@
+---
+title: mean
+names: [mean]
+group: 집계
+order: 3
+signatures:
+  - "sd.mean(x, /, *, axis=None, keepdims=False)"
+  - "x.mean(*, axis=None, keepdims=False)"
+summary: 배열 원소의 평균(산술평균)을 구해요. 전체 평균도 행별·열별 평균도 구할 수 있고, 정수 배열의 평균도 실수로 나와요.
+params:
+  - name: x
+    type: ndarray
+    kind: positional-only
+    desc: 평균을 구할 배열. 어떤 dtype이든 받아요.
+  - name: axis
+    type: int, int의 tuple·list, 또는 None
+    kind: keyword-only
+    desc: 평균을 내서 없앨 축. None이면 모든 원소의 평균이에요.
+  - name: keepdims
+    type: bool
+    kind: keyword-only
+    desc: True면 평균을 낸 축을 없애지 않고 길이 1로 남겨요.
+returns:
+  type: ndarray 또는 Python 숫자
+  desc: 평균. bool·정수·실수 입력은 float64, 복소수 입력은 complex128이에요. 모든 축의 평균이면 Python float·complex예요.
+raises:
+  - type: TypeError
+    desc: x가 배열이 아닐 때, axis·keepdims의 타입이 틀렸을 때, 없는 옵션(dtype= 등)을 줬을 때.
+  - type: ValueError
+    desc: axis가 배열의 차원 범위를 벗어나거나 같은 축을 두 번 썼을 때.
+seeAlso: [sum, var, quantile, nan-reductions]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+`mean`은 원소를 모두 더한 다음 원소 수로 나눈 값, 곧 평균을 구해요. 아무 옵션 없이 부르면 모든 원소의 평균 하나를 돌려줘요.
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([[1, 2, 3], [4, 5, 6]])
+>>> sd.mean(x)
+3.5
+```
+
+`(1 + 2 + 3 + 4 + 5 + 6) / 6 = 21 / 6 = 3.5`예요. `axis`를 주면 그 방향으로만 평균을 내요. 2차원 배열에서 `axis=0`은 **열마다**, `axis=1`은 **행마다** 평균을 내요.
+
+```python
+>>> sd.mean(x, axis=0)
+array([2.5, 3.5, 4.5], dtype=float64)
+>>> sd.mean(x, axis=1)
+array([2.0, 5.0], dtype=float64)
+```
+
+<Fig caption="axis=0: 위에서 아래로 내려가며 평균을 내요. 열마다 평균이 하나씩 남아요.">
+  <ArrayFig name="x" data={[[1, 2, 3], [4, 5, 6]]} tones={[['a', '', ''], ['a', '', '']]} axes note="shape (2, 3)" />
+  <Op note="axis=0">→</Op>
+  <ArrayFig name="sd.mean(x, axis=0)" data={[2.5, 3.5, 4.5]} tones={['b', '', '']} note="shape (3,)" />
+</Fig>
+
+같은 일을 하는 메서드도 있어요.
+
+```python
+>>> x.mean(axis=0)
+array([2.5, 3.5, 4.5], dtype=float64)
+```
+
+<Reference />
+
+## `axis`와 `keepdims`
+
+`axis`와 `keepdims`의 뜻은 [`sum`](/api/array/sum/)과 똑같아요. `axis`는 "평균을 내서 없앨 축"이고, tuple이나 list를 주면 여러 축을 한꺼번에 평균 내요. `keepdims=True`면 평균을 낸 축이 길이 1로 남아요. 자세한 설명과 그림은 `sum` 문서에 있어요.
+
+`keepdims=True`는 각 값에서 평균을 뺄 때 특히 쓸모 있어요. 각 행에서 그 행의 평균을 빼면 원소마다 "행 평균보다 얼마나 큰가"가 나와요.
+
+```python
+>>> x - sd.mean(x, axis=1, keepdims=True)
+array([[-1.0,  0.0,  1.0],
+       [-1.0,  0.0,  1.0]], dtype=float64)
+```
+
+행별 평균이 `(2, 1)` 모양으로 남아 있어서 `(2, 3)`인 `x`의 각 행과 짝이 맞아요. `keepdims=True`가 없으면 모양이 `(2,)`가 되어 에러가 나요. 모양을 맞추는 규칙은 [브로드캐스팅](/api/array/broadcasting/) 문서에 있어요.
+
+남는 축이 하나도 없으면 결과는 Python 숫자예요. `keepdims=True`면 언제나 배열이에요.
+
+```python
+>>> type(sd.mean(x))
+<class 'float'>
+>>> sd.mean(x, keepdims=True)
+array([[3.5]], dtype=float64)
+```
+
+## 결과의 dtype
+
+`sum`은 정수 배열에서 정수를 돌려주지만, `mean`은 정수 배열에서도 실수(float64)를 돌려줘요. 평균은 나눗셈이 들어가서 소수가 나오는 일이 많기 때문이에요.
+
+| `x`의 dtype | 평균의 dtype |
+|---|---|
+| bool | float64 |
+| int64 | float64 |
+| float64 | float64 |
+| complex128 | complex128 |
+
+```python
+>>> sd.mean(sd.asarray([1, 2, 3, 4]))
+2.5
+```
+
+### bool의 평균은 "참의 비율"이에요
+
+bool 배열은 `True`를 1, `False`를 0으로 보고 평균을 내요. 그래서 결과는 `True`인 원소의 비율이에요.
+
+```python
+>>> sd.mean(sd.asarray([True, False, True, True]))
+0.75
+```
+
+비교 연산과 함께 쓰면 "조건에 맞는 원소가 몇 %인가"를 바로 구할 수 있어요.
+
+```python
+>>> sd.mean(x > 2)
+0.6666666666666666
+>>> sd.mean(x > 2, axis=1)
+array([0.3333333333333333,                1.0], dtype=float64)
+```
+
+전체의 약 67%가 2보다 크고, 첫 행은 3분의 1, 둘째 행은 전부가 2보다 크다는 뜻이에요.
+
+### 복소수의 평균
+
+복소수는 실수부와 허수부를 각각 평균 낸 복소수가 나와요.
+
+```python
+>>> sd.mean(sd.asarray([1 + 2j, 3 + 4j]))
+(2+3j)
+```
+
+### 큰 정수도 넘치지 않아요
+
+정수 배열의 평균은 넘치지 않는 방법으로 계산해요. 그래서 `sum`처럼 int64 범위를 넘어 엉뚱한 값이 되는 일이 없어요.
+
+```python
+>>> big = sd.asarray([2**62, 2**62])
+>>> sd.sum(big)
+-9223372036854775808
+>>> sd.mean(big)
+4.611686018427388e+18
+```
+
+`sum`은 넘쳐서 음수가 됐지만 `mean`은 제대로 된 크기가 나왔어요. 평균이 필요하면 `sd.sum(x) / n`으로 직접 나누지 말고 `sd.mean(x)`를 쓰는 편이 안전해요.
+
+모든 원소의 평균과, 메모리에서 원소가 이어져 놓인 축(새로 만든 배열이면 마지막 축 `axis=-1`)의 평균은 정수를 정수 그대로 정확히 더한 뒤, 마지막에 한 번만 실수로 바꿔 개수로 나눠요. 합이 아무리 커도 반올림은 그 한 번뿐이에요.
+
+```python
+>>> sd.mean(sd.asarray([2**53, 1, 1, 1, 1]))
+1801439850948199.2
+```
+
+`(2⁵³ + 4) / 5`를 가장 가까운 실수로 나타낸 값이에요. 그 밖의 축(2차원 배열의 열마다 평균 등)은 원소를 실수로 바꿔서 더해요. 이때는 아주 큰 정수(약 9 × 10¹⁵ 이상)의 끝자리가 정확하지 않을 수 있어요. 실수는 유효숫자가 약 16자리뿐이기 때문이에요.
+
+```python
+>>> cols = sd.asarray([[2**53, 2**53], [1, 1], [1, 1], [1, 1], [1, 1]])
+>>> sd.mean(cols, axis=0)
+array([1801439850948198.5, 1801439850948198.5], dtype=float64)
+```
+
+합이 2⁵³(약 9 × 10¹⁵)을 넘지 않으면 두 방법의 결과는 같아요. 어느 쪽이든 같은 설정이면 결과가 실행마다 같고, 지금은 스레드 수와도 상관없어요.
+
+## 조심할 점
+
+### 빈 배열의 평균은 NaN이에요
+
+원소가 하나도 없으면 "0을 0으로 나누는" 셈이라 평균을 정할 수 없어요. 이때 `mean`은 에러를 내지 않고 NaN(숫자가 아님)을 돌려줘요. 경고도 없어요.
+
+```python
+>>> sd.mean(sd.asarray([]))
+nan
+>>> sd.mean(sd.zeros((2, 0)), axis=1)
+array([nan, nan], dtype=float64)
+```
+
+<Callout type="warn" title="에러 없이 NaN이 나와요">
+
+데이터를 걸러 낸 결과가 비어 있어도 `mean`은 조용히 `nan`을 돌려줘요. 그 `nan`이 뒤의 계산으로 퍼져 나가면 어디서 생겼는지 찾기 어려워요. 걸러 낸 배열의 평균을 구할 때는 크기(`.size`)가 0인지 먼저 확인하세요.
+
+</Callout>
+
+### NaN이 하나라도 있으면
+
+NaN이 하나라도 섞이면 평균도 NaN이에요. NaN을 빼고 나머지만으로 평균을 내고 싶으면 [`nanmean`](/api/array/nan-reductions/)을 써요. 이때는 NaN이 아닌 원소 수로 나눠요.
+
+```python
+>>> v = sd.asarray([1.0, sd.nan, 3.0])
+>>> sd.mean(v)
+nan
+>>> sd.nanmean(v)
+2.0
+```
+
+무한대가 섞여도 조심해야 해요. `inf`가 있으면 평균도 `inf`이고, `inf`와 `-inf`가 함께 있으면 NaN이에요.
+
+```python
+>>> sd.mean(sd.asarray([sd.inf, 1.0]))
+inf
+>>> sd.mean(sd.asarray([sd.inf, -sd.inf]))
+nan
+```
+
+### 합이 실수 범위를 넘으면
+
+평균은 합을 먼저 구한 다음 나눠요. 그래서 평균 자체는 실수 범위 안이어도 합이 범위(약 1.8 × 10³⁰⁸)를 넘으면 `inf`가 돼요.
+
+```python
+>>> sd.mean(sd.asarray([1e308, 1e308]))
+inf
+```
+
+평균은 `1e308`이어야 하지만 합 `2e308`이 범위를 넘었어요. 이렇게 큰 값을 다룰 때는 미리 적당한 수로 나눠서 크기를 줄인 다음 평균을 내고 다시 곱하면 돼요.
+
+```python
+>>> sd.mean(sd.asarray([1e308, 1e308]) / 2) * 2
+1e+308
+```
+
+### 평균은 튀는 값에 끌려가요
+
+평균은 모든 값을 똑같이 반영하므로 유난히 큰 값 하나가 결과를 크게 움직여요. 이럴 때는 가운데 값인 [중앙값](/api/array/quantile/)이 "보통의 값"을 더 잘 보여 줘요.
+
+```python
+>>> sc = sd.asarray([1, 2, 3, 100])
+>>> sd.mean(sc)
+26.5
+>>> sd.median(sc)
+2.5
+```
+
+### `dtype=` 옵션은 없어요
+
+`sum`·`prod`와 달리 `mean`에는 `dtype=` 옵션이 없어요. 결과는 위의 표대로 언제나 float64나 complex128이에요. `dtype=`을 주면 `TypeError`예요. `axis`와 `keepdims`는 `sum`에서처럼 이름을 붙여서 써야 해요.
+
+## 비슷한 함수와의 차이
+
+| 하고 싶은 일 | 쓸 것 | `mean`과 다른 점 |
+|---|---|---|
+| 합 구하기 | `sum` | 나누지 않아요. 정수 배열의 합은 정수예요. |
+| NaN을 빼고 평균 | `nanmean` | NaN이 아닌 원소만 더하고, 그 개수로 나눠요. |
+| 가운데 값 | `median` | 정렬해서 가운데 값을 골라요. 튀는 값에 덜 흔들려요. |
+| 값이 평균에서 얼마나 퍼져 있는지 | `var`, `std` | 평균과의 차이를 제곱해서 평균 내요. |
+| 조건에 맞는 원소의 개수 | `count_nonzero` | 비율이 아니라 개수를 정수로 돌려줘요. |
+
+[분산과 표준편차](/api/array/var/)는 평균을 바탕으로 계산하는 값이라 함께 쓰는 일이 많아요.
+
+## numpy를 아는 분께
+
+- `axis`, `keepdims`는 keyword-only예요.
+- `dtype=`, `out=`, `where=` 인자는 없어요. 결과는 언제나 float64(복소수 입력이면 complex128)예요.
+- 빈 배열의 평균은 numpy처럼 `nan`이지만 경고가 없어요.
+- 모든 축의 평균은 numpy 스칼라가 아니라 Python `float`·`complex`예요.
+- 실수 배열의 평균은 더하는 순서가 numpy와 달라서 마지막 자리가 다를 수 있어요. 오차의 크기는 같은 수준이에요.
+- 정수 배열의 평균(모든 원소, 원소가 이어져 놓인 축)은 정확한 정수 합을 한 번 반올림해요. numpy는 원소를 float64로 바꿔 더해서, 합이 2⁵³을 넘으면 마지막 자리가 달라요. 위의 `[2**53, 1, 1, 1, 1]`에서 numpy는 `1801439850948198.5`예요.

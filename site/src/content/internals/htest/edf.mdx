@@ -1,0 +1,186 @@
+---
+title: Anderson–Darling과 Cramér–von Mises
+group: 적합도
+order: 4
+summary: 경험분포와 가설의 분포 사이의 제곱 거리를 재는 두 검정을 따라가요. anderson은 분포족을 표본에 맞춘 뒤 logcdf와 logccdf로 A²를 만들고, 로지스틱과 Gumbel의 최우추정을 끝자리까지 풀고, scipy의 임계값 표에서 p값을 보간해요. cramervonmises는 Csörgő와 Faraway의 유한 표본 분포를 Bessel 급수로 계산해요.
+seeAlso: [ks-1samp, shapiro, normality, lanes]
+---
+import AccuracySummary from '../../../components/fig/AccuracySummary.astro';
+import Callout from '../../../components/Callout.astro';
+
+## 한눈에 보기
+
+두 검정은 정렬한 표본의 경험분포 Fₙ과 가설의 분포 F 사이의 거리를 F에 대한 적분으로 재요.
+
+- **Cramér–von Mises**: W² = n∫(Fₙ − F)² dF. 모든 곳에 같은 무게예요.
+- **Anderson–Darling**: A² = n∫(Fₙ − F)²/(F(1 − F)) dF. 꼬리(F가 0이나 1에 가까운 곳)에 큰 무게를 줘서 꼬리의 어긋남에 민감해요.
+
+`cramervonmises`는 사용자가 준 분포 하나(모수가 정해진)와 견주고, `anderson`은 분포족(정규, 지수, 로지스틱, Gumbel, Weibull)을 표본에 맞춘 뒤 그 분포와 견줘요. 모수를 표본에서 추정하면 통계량의 귀무분포가 달라져서, `anderson`의 p값은 분포족마다의 표에서 와요.
+
+커널 함수는 `anderson`과 `cvm`(`csrc/htest/gof.cpp`)이에요. `cvm`의 귀무분포는 `csrc/htest/cvm.hpp`에 있어요.
+
+## Anderson–Darling
+
+### A²의 합
+
+정렬한 표본 w₍₁₎ ≤ … ≤ w₍ₙ₎(맞춘 분포로 표준화한 값)에서
+
+A² = −N − Σᵢ (2i − 1)/N · [log F(w₍ᵢ₎) + log(1 − F(w₍N+1−i₎))]
+
+예요(Anderson과 Darling 1954). 두 로그를 sd.stats 분포의 `logcdf`와 `logccdf`로 계산해요. 꼬리의 관측에서 log(1 − F)를 1 − F로부터 만들면 F가 1에 가까울 때 자릿수가 사라지는데, `logccdf`는 위쪽 꼬리를 직접 계산해요. 표본 전체를 `method_array`로 한 번에 불러서([줄과 병렬](/internals/htest/lanes/#분포를-c에서-부르기)) 원소마다 `method_of`의 비트예요.
+
+```cpp
+    // csrc/htest/gof.cpp
+    Acc s;
+    for (std::int64_t i = 0; i < n; ++i) {
+        const double c = (2.0 * static_cast<double>(i + 1) - 1.0) / N;
+        s.add(c * (L[static_cast<std::size_t>(i)] + U[static_cast<std::size_t>(n - 1 - i)]));
+    }
+    o.a2 = -N - to_double(s.value());
+```
+
+A²는 −N과 크기 N쯤의 합이 지워져 1 크기로 남는 값이에요. 합을 double-double로 해도 항마다의 로그가 이미 반올림된 값이라, 남는 상대오차는 그 반올림에 조건수 κ = (N + Σ|항|)/A²를 곱한 크기예요. n = 2000에서 κ가 10⁴쯤이라 A²의 상대오차가 10⁻¹³ 근처예요. 이것은 A²의 정의가 가진 성질이라 scipy도 같아요. 정확도 계약도 이 κ를 곱한 꼴이에요.
+
+A²는 맞춘 분포로 표준화한 값에서 나오므로 표본의 척도와 상관없어요. 가장 큰 |x|가 2⁵⁰⁰ 이상이거나 2⁻⁴⁰⁰ 아래인 표본은 [Shapiro–Wilk](/internals/htest/shapiro/)처럼 먼저 그 지수의 단위 2ᵉ로 옮겨서, 편차의 제곱이 넘치거나 서브노멀로 내려가지 않게 해요. 2의 거듭제곱을 곱하는 것은 정확해서 2의 거듭제곱 배 한 표본의 A²는 원래 표본과 비트까지 같아요.
+
+### 분포족 맞추기
+
+- **정규**: 평균과 표준편차(n − 1로 나눈)예요. 둘 다 double-double 적률에서 나와요.
+- **지수**: 위치 0, 척도는 표본 평균(최우추정)이에요.
+- **로지스틱**: 최우추정이에요. 표본을 평균과 표준편차로 표준화한 z에서 w = βz − α로 두면(β = 1/척도, α = 위치/척도) 로그우도
+
+  ℓ(α, β) = Σ[−|w| − 2·log(1 + e^(−|w|))] + N·log β
+
+  가 (α, β)에 대해 오목해요. 로지스틱의 로그 밀도가 w에 대해 오목하고 w가 (α, β)의 일차식이며 log β도 오목하기 때문이에요. 그래서 뉴턴 걸음(헤시안이 음의 정부호)에 로그우도가 늘 때까지 걸음을 반으로 줄이는 것만으로 유일한 최대에 가요. 걸음이 4 × 10⁻¹⁶의 상대 크기 아래가 되면 멈춰요.
+- **Gumbel**(최댓값의 분포): 척도 b의 최우 방정식 mean(z) − Σz·e^(−z/b)/Σe^(−z/b) − b = 0은 b에 대해 감소해요. 근을 낀 구간을 찾고 그 구간을 지키는 뉴턴(나간 걸음은 이분)으로 구간이 2 × 10⁻¹⁶의 상대 폭이 될 때까지 좁혀요. 위치는 닫힌 꼴 −b·log(mean(e^(−z/b)))예요. 지수의 인자에서 최솟값을 빼 넘침을 막아요.
+- **Weibull**: 위치를 포함한 세 모수의 최우추정이에요. [`goodness_of_fit`](/api/htest/goodness_of_fit/)과 같은 맞춤(`mle.hpp`)을 써요. p값은 Lockhart와 Stephens(1994)의 표를 모양 모수의 역수 c = 1/m으로 보간한 임계값에서 와요(scipy와 같아요).
+
+```cpp
+// csrc/htest/mle.hpp
+inline bool logistic_fit(const std::vector<double>& z, double& alpha, double& beta) {
+    const double N = static_cast<double>(z.size());
+    auto loglik = [&](double al, double be) {
+        Acc s;
+        for (double v : z) {
+            const double w = std::fabs(be * v - al);
+            s.add(-w - 2.0 * std::log1p(std::exp(-w)));
+        }
+        return to_double(s.value()) + N * std::log(be);
+    };
+```
+
+scipy는 로지스틱을 `fsolve`의 `xtol=1e-5`로 풀어서, 맞춘 모수가 다섯째 자리쯤에서 멈춰요. A²는 최우추정에서 모수에 대해 정류하지 않으니 그 어긋남이 A²에 들어가요.
+
+```python
+>>> import stardust as sd
+>>> import scipy.stats as ss
+>>> rng = sd.random.default_rng(9)
+>>> x = sd.stats.Logistic(mu=2.0, sigma=0.5).sample(60, rng=rng).tolist()
+>>> mine = sd.htest.anderson(x, dist=sd.stats.Logistic).statistic
+>>> theirs = float(ss.anderson(x, dist='logistic', method='interpolate').statistic)
+>>> mine, theirs
+(0.4316779027737212, 0.4316779025954105)
+```
+
+### p값: 표의 보간
+
+모수를 맞춘 A²의 귀무분포는 분포족마다 Stephens(1974, 1977, 1979)가 시뮬레이션과 근사로 만든 임계값 표가 있어요. scipy와 같은 표, 같은 보정을 써요. 표의 임계값을 크기 보정(정규 1 + 0.75/N + 2.25/N², 지수 1 + 0.6/N, 로지스틱 1 + 0.25/N, Gumbel 1 + 0.2/√N)으로 나누고 소수 셋째 자리로 반올림한 뒤, A²를 그 임계값과 유의수준 사이에서 선형 보간해요(numpy `interp`의 규칙).
+
+```cpp
+// csrc/htest/gof.cpp
+double interp(double x, const double* xp, const double* fp, int k) {
+    if (x != x) return x;
+    if (x < xp[0]) return fp[0];
+    if (x > xp[k - 1]) return fp[k - 1];
+    if (x == xp[k - 1]) return fp[k - 1];
+    int j = 0;
+    while (j + 1 < k && xp[j + 1] <= x) ++j;
+    if (x == xp[j]) return fp[j];
+    const double slope = (fp[j + 1] - fp[j]) / (xp[j + 1] - xp[j]);
+    return slope * (x - xp[j]) + fp[j];
+}
+```
+
+표 밖은 끝값으로 잘라서 p값은 표의 수준 범위 안에 있어요. 정규는 0.01–0.15, 로지스틱은 0.005–0.25예요. 그 밖의 p값이 필요하면 `method=MonteCarloMethod(...)`로 맞춘 분포에서 표본을 뽑아 다시 맞추는 몬테카를로 p값을 쓸 수 있어요([`goodness_of_fit`](/api/htest/goodness_of_fit/)과 같은 길).
+
+```python
+>>> sd.htest.anderson(x)
+AndersonResult(statistic=0.751932, pvalue=0.0479309)
+>>> sd.htest.anderson(x, dist=sd.stats.Gumbel)
+AndersonResult(statistic=2.907, pvalue=0.01)
+```
+
+반올림(`round3`)은 `nearbyint(v·1000)/1000`이라 numpy `around`처럼 반올림의 동점에서 짝수 쪽으로 가요.
+
+## Cramér–von Mises
+
+### 통계량
+
+정렬한 표본과 그 점의 F 값 Fᵢ에서
+
+W² = 1/(12n) + Σᵢ ((2i − 1)/(2n) − Fᵢ)²
+
+이에요. 항이 모두 음이 아니라 상쇄가 없고, 제곱은 `two_prod`로 정확히 만들어 double-double로 더해요. 가설의 분포는 sd.stats의 분포 객체나 호출 가능한 `cdf(x)`이고, Python이 정렬한 표본 전체(배치 모양)에 대해 `cdf`를 한 번 불러 그 값을 커널에 넘겨요. `ks_1samp`도 같은 길이에요.
+
+### 귀무분포: Csörgő와 Faraway
+
+W²의 극한 분포 V(x)는 Anderson과 Darling(1952)이 수정 Bessel 함수 K의 급수로 썼어요.
+
+V(x) = 1/(π√x) · Σₖ Γ(k + 1/2)/(Γ(1/2)·k!) · √(4k + 1) · e^(−y) · K_(1/4)(y), y = (4k + 1)²/(16x)
+
+Csörgő와 Faraway(1996)는 유한한 n의 분포에 1/n 차수의 보정을 붙였어요. scipy의 `_psi1_mod`처럼 그 보정 ψ₁에서 V/12를 떼어 내면
+
+Fₙ(x) ≈ V(x)·(1 + 1/(12n)) + ψ₁′(x)/n, 1/(12n) < x < n/3
+
+이에요(x가 그 범위 밖이면 0이나 1; W²의 최솟값과 최댓값이에요). ψ₁′도 K_(1/4), K_(3/4), K_(5/4)의 급수예요.
+
+```cpp
+// csrc/htest/cvm.hpp
+inline double cdf_inf(double x) {
+    if (!(x > 0.0)) return x == x ? 0.0 : kNaN;
+    double tot = 0.0;
+    for (int k = 0; k < kMaxTerms; ++k) {
+        const double y = 4.0 * k + 1.0;
+        const double q = y * y / (16.0 * x);
+        const double u = std::exp(std::lgamma(k + 0.5) - std::lgamma(k + 1.0)) / (std::pow(kPi, 1.5) * std::sqrt(x));
+        const double t = u * std::sqrt(y) * ek(0.25, q);
+        tot += t;
+        if (t <= 0x1p-60 * tot) return tot;
+    }
+    return kNaN;
+}
+```
+
+e^(−y)K(y)는 큰 y에서 두 인자가 각각 넘치거나 0이 되므로, sd.special의 지수 배율 Bessel `kve`(= e^y·K(y))를 쓰고 e^(−2y)를 곱해요(`ek`). 급수는 항이 합의 2⁻⁶⁰ 아래가 될 때 멈춰요.
+
+p값은 max(0, 1 − Fₙ(x))예요. 1 − Fₙ은 1 근처의 값에서 빼는 것이라 p값의 오차는 상대가 아니라 절대 10⁻¹⁶쯤이에요. 그래서 이 p값의 계약은 상대 10⁻¹⁴ 또는 절대 10⁻¹⁵예요. 근사식 자체가 먼 꼬리에서 0 아래로 내려가는 곳은 0이에요.
+
+scipy는 두 급수를 항이 절대 10⁻⁷ 아래가 될 때 멈춰서 p값이 그만큼 틀릴 수 있어요. 작은 p값에서는 그 차이가 상대적으로 커요.
+
+```python
+>>> N = sd.stats.Normal()
+>>> rng = sd.random.default_rng(12)
+>>> for mu, n in ((0.3, 30), (1.0, 30), (1.5, 40)):
+...     y = sd.stats.Normal(mu=mu).sample(n, rng=rng).tolist()
+...     a = sd.htest.cramervonmises(y, N).pvalue
+...     b = float(ss.cramervonmises(y, ss.norm.cdf).pvalue)
+...     print(f'{a:.15e}  {b:.15e}')
+2.424275585851032e-02  2.424275585851066e-02
+2.310856430309816e-05  2.310856430753905e-05
+0.000000000000000e+00  2.233652152128229e-10
+```
+
+마지막 표본(W² = 7.07)에서 Csörgő–Faraway의 1 − Fₙ은 10⁻¹⁵ 아래의 음수라 p값은 0이에요. scipy의 2.2 × 10⁻¹⁰은 급수를 일찍 멈춘 나머지예요.
+
+## 정확도
+
+<AccuracySummary area="htest" names={['anderson', 'cramervonmises']} caption="Anderson–Darling 11문제와 Cramér–von Mises 7문제." />
+
+Anderson–Darling의 통계량은 Arb 참값에 대해 최대 상대 4.3 × 10⁻¹³이고, 이것은 합의 조건수 κ(n = 2000에서 1.6 × 10⁴)만큼이라 계약 대비 0.007이에요. scipy의 7.8 × 10⁻⁹는 로지스틱의 `fsolve` 허용오차에서 와요. Cramér–von Mises의 p값은 꼬리(p = 5.2 × 10⁻¹¹)에서 절대 4.6 × 10⁻¹⁶이라 계약 대비 1이에요. 1 − Fₙ의 절대 오차가 그대로 보이는 곳이고, 이 계약의 경계에 있어요. scipy 열의 상대 0.016은 같은 꼬리에서 급수를 일찍 멈춘 오차예요.
+
+## scipy를 아는 분께
+
+- `anderson`의 `dist`는 sd.stats의 분포 클래스(`sd.stats.Logistic`)예요. 결과는 `statistic`과 `pvalue`이고 임계값 표를 필드로 두지 않아요. `method`의 기본값은 `'interpolate'`예요.
+- 로지스틱과 Gumbel의 최우추정을 끝자리까지 풀어서 A²가 scipy와 10⁻⁹–10⁻¹⁰ 크기로 달라요.
+- `cramervonmises`의 급수는 2⁻⁶⁰의 상대 크기까지 더해서 작은 p값이 scipy와 달라요.
+- `cdf`는 sd.stats의 분포 객체나 호출 가능한 객체이고, scipy의 분포 이름 문자열과 `args=()`는 받지 않아요.

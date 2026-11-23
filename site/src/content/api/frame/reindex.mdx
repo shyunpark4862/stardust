@@ -1,0 +1,255 @@
+---
+title: reindex
+names: [Series.reindex, DataFrame.reindex]
+group: 선택과 대입
+order: 5
+signatures:
+  - "Series.reindex(labels, /)"
+  - "DataFrame.reindex(labels, /)"
+summary: 주어진 라벨 목록의 순서대로 행을 다시 늘어놓아요. 원래 없던 라벨의 행은 NA로 채워요. DataFrame에서는 행만 다시 배열해요.
+params:
+  - name: labels
+    type: list, tuple, range, numpy 배열, stardust 배열, 또는 Index
+    kind: positional-only
+    desc: 결과의 행 라벨. 이 순서대로 행이 놓여요. 원래 라벨과 같은 종류(정수 또는 문자열)여야 하고, 같은 라벨을 여러 번 적어도 돼요.
+returns:
+  type: Series 또는 DataFrame
+  desc: 행 라벨이 labels인 새 객체. 컬럼과 dtype, Series의 이름은 그대로예요.
+raises:
+  - type: TypeError
+    desc: labels가 받는 종류(list, tuple, range, 배열, Index)가 아닐 때, 라벨 타입이 원래 라벨과 맞지 않을 때(문자열 라벨에 정수 등), float·bool 라벨일 때, 주 인자를 키워드로 줬을 때.
+  - type: ValueError
+    desc: 원래 라벨이 고유하지 않을 때, labels에 NA(None)가 있을 때.
+  - type: OverflowError
+    desc: labels에 int64 범위를 벗어난 정수가 있을 때.
+seeAlso: [loc-iloc, alignment, fillna, index, isna, mask, sort_index]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import FrameFig from '../../../components/fig/FrameFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+`reindex`는 "행 라벨이 이 목록이 되도록" 표를 다시 짜요. 목록에 있고 원래 표에도 있는 라벨은 그 행을 가져오고, 원래 표에 없는 라벨은 빈 값(`NA`) 행을 만들어요. 목록에 없는 원래 행은 빠져요.
+
+가게의 요일별 판매량이 월·화·수만 기록돼 있다면, 월요일부터 금요일까지 모든 요일이 있는 표로 맞출 수 있어요.
+
+```python
+>>> import stardust as sd
+>>> sales = sd.frame.Series([12, 7, 30], index=["mon", "tue", "wed"], name="sales")
+>>> sales.reindex(["mon", "tue", "wed", "thu", "fri"])
+mon      12
+tue       7
+wed      30
+thu    <NA>
+fri    <NA>
+Name: sales, dtype: int64
+```
+
+<Fig caption="목록에 있는 라벨은 원래 행을 가져오고, 원래 없던 thu와 fri는 NA 행이 돼요.">
+  <FrameFig name="sales" index={['mon', 'tue', 'wed']} data={[12, 7, 30]} rowTones={['1', '2', '3']} />
+  <Op note='reindex(["mon", …, "fri"])'>→</Op>
+  <FrameFig index={['mon', 'tue', 'wed', 'thu', 'fri']} data={[12, 7, 30, null, null]} rowTones={['1', '2', '3', 'g', 'g']} note="dtype: int64" />
+</Fig>
+
+목록의 순서가 곧 결과의 순서라서, 행을 원하는 순서로 늘어놓거나 일부만 고를 때도 써요.
+
+```python
+>>> sales.reindex(["wed", "mon"])
+wed    30
+mon    12
+Name: sales, dtype: int64
+```
+
+<Reference />
+
+## 빈 행은 `NA`이고 dtype은 그대로예요
+
+새로 생긴 행은 모든 컬럼이 `NA`예요. `NA`는 어떤 dtype에도 들어갈 수 있어서 컬럼의 dtype이 바뀌지 않아요. 위의 판매량도 빈 행이 생겼지만 그대로 int64예요([NA와 NaN](/api/frame/na/) 참고).
+
+DataFrame은 행만 다시 배열하고, 컬럼은 그대로 둬요.
+
+```python
+>>> weather = sd.frame.DataFrame(
+...     {"city": ["Seoul", "Busan"], "temp": [3.5, 8.0], "rain": [0, 2]},
+...     index=["mon", "tue"],
+... )
+>>> weather.reindex(["tue", "wed", "mon"])
+      city  temp  rain
+tue  Busan   8.0     2
+wed   <NA>  <NA>  <NA>
+mon  Seoul   3.5     0
+>>> weather.reindex(["tue", "wed", "mon"]).dtypes
+{'city': string, 'temp': float64, 'rain': int64}
+```
+
+빈 행을 다른 값으로 채우고 싶으면 [`fillna`](/api/frame/fillna/)를 이어서 써요. `reindex`에는 채울 값을 정하는 옵션이 없어요.
+
+```python
+>>> sales.reindex(["mon", "tue", "wed", "thu", "fri"]).fillna(0)
+mon    12
+tue     7
+wed    30
+thu     0
+fri     0
+Name: sales, dtype: int64
+```
+
+### float 컬럼의 NaN과는 다른 값이에요
+
+float 컬럼에 원래 있던 NaN은 그대로 NaN이고, 새로 생긴 행은 `NA`예요. 둘은 출력에서도 `NaN`과 `<NA>`로 달라 보이고, `isna()`는 `NA`만, `isnan()`은 NaN만 찾아요([결측값 찾기](/api/frame/isna/)).
+
+```python
+>>> f = sd.frame.Series([1.5, float("nan")], index=["a", "b"])
+>>> g = f.reindex(["b", "c"])
+>>> g
+b    NaN
+c   <NA>
+dtype: float64
+>>> g.isna()
+b    False
+c     True
+dtype: bool
+```
+
+## 무엇을 라벨 목록으로 줄 수 있나요
+
+라벨 목록은 list, tuple, range, numpy 배열, stardust 배열, Index를 받아요. generator나 set처럼 순서가 정해지지 않았거나 한 번만 읽을 수 있는 것, 문자열 하나, Series는 `TypeError`예요.
+
+```python
+>>> sales.reindex(("tue", "mon"))
+tue     7
+mon    12
+Name: sales, dtype: int64
+>>> sales.reindex("tue")
+Traceback (most recent call last):
+    ...
+TypeError: reindex(): labels must be a list, tuple, range, numpy array, sd.ndarray or Index, not str
+```
+
+라벨이 하나여도 `["tue"]`처럼 리스트로 줘요. Series의 값을 라벨 목록으로 쓰려면 `.tolist()`로 바꿔서 줘요.
+
+라벨 목록은 주 인자라서 위치로만 줘요. `labels=`로 주면 `TypeError`예요.
+
+```python
+>>> sales.reindex(labels=["mon"])
+Traceback (most recent call last):
+    ...
+TypeError: Series.reindex() got some positional-only arguments passed as keyword arguments: 'labels'
+```
+
+### 결과의 Index
+
+결과의 행 라벨은 준 목록 그대로예요. 어떤 종류의 Index가 되는지는 무엇을 줬는지로 정해져요.
+
+| 준 것 | 결과의 Index |
+|---|---|
+| range, RangeIndex | RangeIndex |
+| list, tuple, 배열 | Index (이름 없음) |
+| Index | 그 Index (이름도 그대로) |
+
+```python
+>>> nums = sd.frame.Series([1.5, 2.5, 3.5])
+>>> nums.reindex(range(1, 5))
+1    2.5
+2    3.5
+3   <NA>
+4   <NA>
+dtype: float64
+>>> nums.reindex(range(1, 5)).index
+RangeIndex(start=1, stop=5, step=1)
+>>> sales.reindex(sd.frame.Index(["tue", "mon"], name="day"))
+day
+tue     7
+mon    12
+Name: sales, dtype: int64
+```
+
+원래 행 라벨에 이름이 있었더라도, list로 준 결과의 Index는 이름이 없어요. 행 라벨은 통째로 준 목록이 되기 때문이에요. 이름을 남기려면 이름이 붙은 Index로 줘요.
+
+## 라벨 규칙
+
+### 원래 라벨은 고유해야 해요
+
+`reindex`는 라벨마다 "원래 표의 어느 행인가"를 찾아요. 원래 표에 같은 라벨이 여러 행 있으면 어느 행을 가져올지 정할 수 없어서 `ValueError`예요.
+
+```python
+>>> dup = sd.frame.Series([1, 2], index=["a", "a"])
+>>> dup.reindex(["a"])
+Traceback (most recent call last):
+    ...
+ValueError: reindex(): cannot reindex or align from an index with duplicate labels
+```
+
+반대로 목록에는 같은 라벨을 여러 번 적어도 돼요. 그 행이 여러 번 나와요.
+
+```python
+>>> sales.reindex(["mon", "mon"])
+mon    12
+mon    12
+Name: sales, dtype: int64
+```
+
+### 라벨의 종류가 맞아야 해요
+
+라벨은 정수나 문자열이에요. 원래 라벨과 종류가 다르면 `TypeError`예요. float와 bool은 라벨이 될 수 없고, `None`(`NA`)도 라벨이 될 수 없어요([Index와 RangeIndex](/api/frame/index/)).
+
+```python
+>>> sales.reindex([0, 1])
+Traceback (most recent call last):
+    ...
+TypeError: reindex(): cannot align string labels with int64 labels
+>>> nums.reindex([1.5])
+Traceback (most recent call last):
+    ...
+TypeError: reindex(): index labels must be int64 or string, not float64
+>>> sales.reindex(["mon", None])
+Traceback (most recent call last):
+    ...
+ValueError: reindex(): an index cannot hold NA
+```
+
+빈 목록에는 라벨이 없으니 종류를 따질 것도 없어요. 결과는 행이 하나도 없는 같은 모양의 객체이고, 라벨의 종류는 원래 표의 것을 그대로 이어받아요. `.iloc[[]]`로 행을 하나도 고르지 않은 것과 같아요. 목록을 list, tuple, `range`, numpy 배열, `sd.ndarray` 어느 것으로 주어도 같아요. 원래 라벨이 정수일 때 빈 `range`를 주면 결과의 라벨은 빈 RangeIndex예요.
+
+```python
+>>> sales.reindex([])
+Series([], Name: sales, dtype: int64)
+>>> sales.reindex([]).index
+Index([], dtype=string)
+```
+
+## 조심할 점
+
+### 결과를 고쳐도 원래 표는 그대로예요
+
+`reindex`의 결과는 새 객체예요. 목록이 원래 라벨과 똑같아도 원래 객체를 그대로 돌려주지 않아요. 결과를 고쳐도 원래 표는 바뀌지 않아요([대입과 복사](/api/frame/assign/)).
+
+```python
+>>> same = nums.reindex([0, 1, 2])
+>>> same is nums
+False
+>>> same.iloc[0] = 100.0
+>>> nums.tolist()
+[1.5, 2.5, 3.5]
+```
+
+## 비슷한 기능과의 차이
+
+| 하고 싶은 일 | 쓰는 것 | 없는 라벨 |
+|---|---|---|
+| 라벨 목록대로 행 고르기 | [`.loc[labels]`](/api/frame/loc-iloc/) | `KeyError` |
+| 라벨 목록대로 행 맞추기 | `reindex(labels)` | `NA` 행 |
+| 라벨 순서로 정렬 | [`sort_index`](/api/frame/sort_index/) | (없음) |
+| 컬럼 고르기·순서 바꾸기 | `df[["b", "a"]]` ([대괄호로 고르기](/api/frame/selection/)) | `KeyError` |
+
+- `.loc[labels]`는 "있다고 믿는 라벨"을 고를 때 써요. 오타 같은 실수를 `KeyError`로 바로 알려 줘요. `reindex`는 "없을 수도 있는 라벨"까지 포함한 틀에 맞출 때 써요.
+- 라벨이 고유한 두 Series를 더하면 라벨을 합친 결과가 나와요. 양쪽을 합친 라벨로 `reindex`한 다음 위치대로 더한 것과 같아요([라벨과 정렬](/api/frame/alignment/)). 원하는 라벨 목록이 정해져 있으면 `reindex`로 미리 맞춰 둘 수 있어요.
+
+## pandas를 아는 분께
+
+- 빈 행이 `NA`이고 dtype이 그대로예요. pandas 3.1.1은 int64 Series에 없는 라벨이 생기면 float64로 바꾸고 NaN을 넣어요(DataFrame의 int 컬럼도 마찬가지예요).
+- `fill_value`, `method`, `limit`, `tolerance`가 없어요. 채우기는 `fillna`로 따로 해요.
+- `columns=`, `axis=`, `index=`가 없어요. `DataFrame.reindex`는 행만 다시 배열하고, 컬럼은 `df[[...]]`로 골라요.
+- 라벨 목록은 위치로만 줘요.
+- 원래 라벨이 고유하지 않으면 에러인 것은 pandas와 같아요.

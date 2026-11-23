@@ -1,0 +1,81 @@
+---
+/**
+ * A figure drawn by sd.plot from the example just above it on the page.
+ * tools/plot_figures.py runs the page's examples, draws the Figure in the
+ * variable `of` (default `fig`) into public/plot/<name>.svg (or .png with
+ * format="png") and records its size in src/data/plots.json.
+ *
+ *   name     file name, unique across the site
+ *   alt      what the figure shows, for screen readers
+ *   caption  optional text under the figure
+ *   of       the variable holding the Figure (read by the tool only)
+ *   format   'svg' (default) or 'png' (read by the tool only)
+ *   scale    display size relative to the figure's real size (default 1.5)
+ */
+import plots from '../../data/plots.json';
+
+interface Props {
+  name: string;
+  alt: string;
+  caption?: string;
+  of?: string;
+  format?: 'svg' | 'png';
+  scale?: number;
+}
+const { name, alt, caption, scale = 1.5 } = Astro.props;
+const entry = (plots as Record<string, { page: string; format: string; width: number; height: number }>)[name];
+if (!entry) throw new Error(`PlotImage: no figure '${name}'; run tools/plot_figures.py`);
+// 1 mm is 96 / 25.4 CSS pixels at the figure's real size.
+const px = (mm: number) => Math.round(((mm * 96) / 25.4) * scale);
+const width = px(entry.width);
+const height = px(entry.height);
+---
+
+<figure class="plot">
+  <div class="plot__stage">
+    <img
+      src={`/plot/${name}.${entry.format}`}
+      alt={alt}
+      width={width}
+      height={height}
+      style={`max-width: min(100%, ${width}px)`}
+      loading="lazy"
+      decoding="async"
+    />
+  </div>
+  {caption && <figcaption class="plot__caption">{caption}</figcaption>}
+</figure>
+
+<style>
+  .plot {
+    margin: var(--space-6) 0;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    background: #ffffff;
+    overflow: hidden;
+  }
+  .plot__stage {
+    display: flex;
+    justify-content: center;
+    padding: var(--space-5) var(--space-4);
+  }
+  .plot__stage img {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+  .plot__caption {
+    padding: var(--space-3) var(--space-5);
+    border-top: 1px solid var(--line);
+    background: var(--bg);
+    font-size: var(--text-sm);
+    line-height: 1.6;
+    color: var(--fg-muted);
+    text-align: center;
+  }
+  @media (max-width: 640px) {
+    .plot__stage {
+      padding: var(--space-4) var(--space-2);
+    }
+  }
+</style>

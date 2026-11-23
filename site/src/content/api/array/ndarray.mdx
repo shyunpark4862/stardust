@@ -1,0 +1,616 @@
+---
+title: ndarray
+names: [ndarray]
+group: ndarray 객체
+order: 1
+signatures:
+  - "x.reshape(shape, /, *, copy=None)"
+  - "x.astype(dtype, /, *, copy=True)"
+  - "x.copy()"
+  - "x.tolist()"
+  - "x.sum(*, axis=None, dtype=None, keepdims=False)"
+  - "x.prod(*, axis=None, dtype=None, keepdims=False)"
+  - "x.min(*, axis=None, keepdims=False)"
+  - "x.max(*, axis=None, keepdims=False)"
+  - "x.mean(*, axis=None, keepdims=False)"
+  - "x.var(*, axis=None, correction=0, keepdims=False)"
+  - "x.std(*, axis=None, correction=0, keepdims=False)"
+  - "x.argmin(*, axis=None, keepdims=False)"
+  - "x.argmax(*, axis=None, keepdims=False)"
+  - "x.any(*, axis=None, keepdims=False)"
+  - "x.all(*, axis=None, keepdims=False)"
+summary: stardust 배열의 타입이에요. 배열의 속성·메서드·연산자, 그리고 배열을 Python 기본 기능(len, 반복, 출력)과 함께 쓰는 방법을 설명해요.
+raises:
+  - type: TypeError
+    desc: "sd.ndarray(...)를 직접 부를 때, bool()·int()·float()·if x: 처럼 배열을 숫자 하나로 바꾸려 할 때, 해싱·pickle·copy.copy, 리스트나 numpy 배열과 연산할 때, 제자리 연산자의 결과를 x의 dtype에 담을 수 없을 때."
+  - type: ValueError
+    desc: 2차원이 아닌 배열에 .T를, 2차원 미만 배열에 .mT를 쓸 때, 연산하는 두 배열의 모양이 맞지 않을 때, 읽기 전용 배열에 쓸 때.
+  - type: AttributeError
+    desc: shape·dtype 같은 속성에 대입할 때, 없는 메서드(x.sort, x.flip 등)를 부를 때.
+seeAlso: [basics, views, indexing, dtypes, asarray, reshape, permute_dims, astype]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+stardust의 배열은 모두 `sd.ndarray` 타입의 객체예요. 이름은 "n차원 배열(n-dimensional array)"에서 왔어요. 이 페이지는 배열 객체에 딸린 속성·메서드·연산자와, 배열을 Python 기본 기능과 함께 쓰는 방법을 다뤄요.
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+>>> type(x)
+<class 'stardust._core.ndarray'>
+>>> isinstance(x, sd.ndarray)
+True
+```
+
+`sd.ndarray`는 어떤 값이 stardust 배열인지 `isinstance`로 검사할 때 써요. 배열을 만드는 데는 쓰지 않아요. 직접 부르면 `TypeError`예요. 배열은 [`asarray`](/api/array/asarray/), `zeros`, `arange` 같은 생성 함수로 만들어요.
+
+```python
+>>> sd.ndarray()
+Traceback (most recent call last):
+    ...
+TypeError: ndarray(): there is no constructor; use asarray() or another creation function
+```
+
+모양을 읽고, 집계하고, 연산하고, 원소를 꺼내는 일을 모두 배열에서 바로 할 수 있어요.
+
+```python
+>>> x.shape
+(2, 3)
+>>> x.sum(axis=0)
+array([5.0, 7.0, 9.0], dtype=float64)
+>>> x * 2
+array([[ 2.0,  4.0,  6.0],
+       [ 8.0, 10.0, 12.0]], dtype=float64)
+>>> x[1, 2]
+6.0
+```
+
+<Reference />
+
+## 속성
+
+속성은 배열의 모양이나 원소 종류 같은 정보예요. 괄호 없이 `x.shape`처럼 읽어요.
+
+| 속성 | 뜻 | `x`의 값 |
+|---|---|---|
+| `dtype` | 원소의 종류 | `float64` |
+| `shape` | 축마다의 길이 (tuple) | `(2, 3)` |
+| `ndim` | 차원 수 (축의 개수) | `2` |
+| `size` | 원소의 총 개수 | `6` |
+| `itemsize` | 원소 하나의 바이트 수 | `8` |
+| `nbytes` | 원소 전체의 바이트 수 (`size * itemsize`) | `48` |
+| `strides` | 축마다 한 칸 옮길 때 건너뛰는 바이트 수 | `(24, 8)` |
+| `base` | 뷰일 때 메모리의 주인인 배열. 뷰가 아니면 `None` | `None` |
+| `T` | 행과 열을 바꾼 뷰 (2차원 전용) | 3행 2열 |
+| `mT` | 마지막 두 축을 바꾼 뷰 | 3행 2열 |
+
+```python
+>>> x.dtype
+float64
+>>> x.ndim
+2
+>>> x.size
+6
+>>> x.nbytes
+48
+```
+
+<Fig caption="shape (2, 3)인 x. ndim은 축의 개수 2, size는 칸의 개수 6이에요.">
+  <ArrayFig name="x" data={[['1.0', '2.0', '3.0'], ['4.0', '5.0', '6.0']]} axes note="shape (2, 3), ndim 2, size 6" />
+</Fig>
+
+### `dtype`과 `itemsize`
+
+`dtype`은 `sd.bool`, `sd.int64`, `sd.float64`, `sd.complex128` 넷 중 하나예요. `is`나 `==`로 dtype 객체와 비교해요. 이름 문자열과 `==`로 비교하면 언제나 `False`이니 조심하세요.
+
+```python
+>>> x.dtype is sd.float64
+True
+>>> x.dtype == "float64"
+False
+>>> str(x.dtype) == "float64"
+True
+```
+
+원소 하나의 크기는 dtype이 정해요. bool은 1바이트, int64와 float64는 8바이트, complex128은 16바이트예요. 자세한 것은 [원소 종류(dtype)](/api/array/dtypes/)에 있어요.
+
+```python
+>>> sd.asarray([True]).itemsize
+1
+>>> sd.asarray([1j]).itemsize
+16
+```
+
+### `shape`, `ndim`, `size`
+
+`shape`는 언제나 길이 1 이상의 tuple이에요. stardust에는 차원이 0인 배열이 없어서 `ndim`은 1 이상이에요([배열의 기본](/api/array/basics/) 참고). 길이 0인 축은 있을 수 있고, 그러면 `size`가 0이에요.
+
+```python
+>>> sd.zeros((2, 0)).size
+0
+```
+
+### `strides`
+
+`strides`는 "각 축을 따라 한 칸 옆으로 가려면 메모리에서 몇 바이트를 건너뛰는가"예요. 평소에는 몰라도 되는 값이지만, 뷰가 메모리를 어떻게 보고 있는지 짐작할 때 도움이 돼요. 뒤집은 뷰에서는 음수가 나오고, 브로드캐스트한 뷰에서는 같은 값을 되풀이해 보여 주므로 0이 나와요.
+
+```python
+>>> x.strides
+(24, 8)
+>>> x.T.strides
+(8, 24)
+>>> sd.flip(sd.arange(3)).strides
+(-8,)
+>>> sd.broadcast_to(sd.arange(3), (2, 3)).strides
+(0, 8)
+```
+
+### `base`
+
+`base`는 뷰일 때 그 메모리의 주인인 배열이고, 뷰가 아니면 `None`이에요. 결과를 고치면 원본이 바뀌는지 확인할 때 써요. 자세한 것은 [뷰와 복사](/api/array/views/)에 있어요.
+
+```python
+>>> r = x.reshape((3, 2))
+>>> r.base is x
+True
+>>> x.copy().base is None
+True
+```
+
+### `T`와 `mT`
+
+`x.T`는 2차원 배열의 행과 열을 바꾼(전치한) 뷰예요. 2차원이 아니면 `ValueError`예요. 1차원 배열에는 행과 열의 구분이 없고, 3차원 이상에서는 "어느 축끼리 바꿀지"가 하나로 정해지지 않기 때문이에요.
+
+```python
+>>> x.T
+array([[1.0, 4.0],
+       [2.0, 5.0],
+       [3.0, 6.0]], dtype=float64)
+>>> sd.arange(3).T
+Traceback (most recent call last):
+    ...
+ValueError: .T: the array must have 2 dimensions, got 1; use permute_dims or matrix_transpose (.mT)
+```
+
+`x.mT`는 마지막 두 축만 바꿔요. 3차원 이상 배열을 "행렬 여러 개를 쌓은 것"으로 보고 각 행렬을 전치할 때 써요. 2차원 미만이면 `ValueError`예요.
+
+```python
+>>> sd.zeros((5, 2, 3)).mT.shape
+(5, 3, 2)
+```
+
+축 순서를 마음대로 바꾸려면 `sd.permute_dims`를 써요([축 순서 바꾸기](/api/array/permute_dims/) 참고).
+
+### 속성은 바꿀 수 없어요
+
+속성은 모두 읽기 전용이에요. 모양을 바꾸려면 `reshape`, 종류를 바꾸려면 `astype`으로 새 배열을 만들어요.
+
+```python
+>>> x.shape = (3, 2)
+Traceback (most recent call last):
+    ...
+AttributeError: property 'shape' of 'ndarray' object has no setter
+```
+
+## 메서드
+
+배열의 메서드는 몇 개뿐이에요. stardust의 기능은 `sd.sum(x)` 같은 **모듈 함수**가 기본이고, 자주 쓰는 것만 메서드로도 있어요.
+
+| 메서드 | 하는 일 | 같은 함수 |
+|---|---|---|
+| `x.reshape(shape)` | 모양 바꾸기 | `sd.reshape(x, shape)` |
+| `x.astype(dtype)` | 원소 종류 바꾸기 | `sd.astype(x, dtype)` |
+| `x.copy()` | 독립된 복사본 | `sd.asarray(x, copy=True)` |
+| `x.tolist()` | 중첩 리스트로 바꾸기 | (없음) |
+| `x.sum()` `x.prod()` `x.min()` `x.max()` `x.mean()` `x.var()` `x.std()` `x.argmin()` `x.argmax()` `x.any()` `x.all()` | 집계 | 같은 이름의 `sd` 함수 |
+
+### `reshape`, `astype`과 집계 메서드
+
+같은 이름의 모듈 함수와 완전히 같아요. `x`가 첫 인자 자리에 들어가고 나머지 인자는 그대로예요. 옵션은 메서드에서도 `axis=1`처럼 이름을 붙여 넘기고, 에러 메시지도 같아요.
+
+```python
+>>> x.reshape((3, 2))
+array([[1.0, 2.0],
+       [3.0, 4.0],
+       [5.0, 6.0]], dtype=float64)
+>>> x.astype(sd.int64)
+array([[1, 2, 3],
+       [4, 5, 6]], dtype=int64)
+>>> x.mean(axis=1)
+array([2.0, 5.0], dtype=float64)
+>>> x.std(correction=1)
+1.8708286933869707
+```
+
+`reshape`의 모양은 tuple 하나로 줘요. `x.reshape(3, 2)`처럼 숫자를 따로 넘기면 `TypeError`예요.
+
+```python
+>>> x.reshape(3, 2)
+Traceback (most recent call last):
+    ...
+TypeError: reshape(): incompatible function arguments. ...
+```
+
+`astype`의 기본값은 `copy=True`라서 dtype이 같아도 언제나 새 배열을 만들어요. 자세한 것은 [astype](/api/array/astype/), [모양 바꾸기](/api/array/reshape/)에 있어요.
+
+### `copy`
+
+`x.copy()`는 원본과 메모리를 함께 쓰지 않는 새 배열을 언제나 돌려줘요. 읽기 전용 배열을 복사해도 결과는 쓸 수 있어요.
+
+```python
+>>> y = x.copy()
+>>> y[0, 0] = 100.0
+>>> x[0, 0]
+1.0
+```
+
+### `tolist`
+
+배열을 Python의 중첩 리스트로 바꿔요. 원소는 Python 숫자(`bool`, `int`, `float`, `complex`)가 돼요. 결과를 JSON으로 저장하거나, 배열을 모르는 다른 코드에 넘길 때 써요.
+
+```python
+>>> x.tolist()
+[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]
+>>> type(x.tolist()[0][0])
+<class 'float'>
+>>> sd.asarray([True, False]).tolist()
+[True, False]
+```
+
+### 그 밖의 기능은 함수로
+
+`sort`, `flip`, `transpose`, `clip` 같은 기능은 메서드로는 없고 모듈 함수로만 써요.
+
+```python
+>>> x.sort()
+Traceback (most recent call last):
+    ...
+AttributeError: 'ndarray' object has no attribute 'sort'
+>>> sd.sort(x, descending=True)
+array([[3.0, 2.0, 1.0],
+       [6.0, 5.0, 4.0]], dtype=float64)
+```
+
+## 연산자
+
+연산자는 모두 아래 표에서 짝지은 함수를 부르는 것과 같아요. 모양이 다르면 [브로드캐스팅](/api/array/broadcasting/) 규칙으로 맞추고, 결과의 dtype도 그 함수의 규칙을 따라요.
+
+| 연산자 | 같은 함수 |
+|---|---|
+| `a + b` `a - b` `a * b` `a / b` | `add` `subtract` `multiply` `divide` |
+| `a // b` `a % b` `a ** b` | `floor_divide` `remainder` `pow` |
+| `a @ b` | `matmul` |
+| `-a` `+a` `abs(a)` | `negative` `positive` `abs` |
+| `a == b` `a != b` `a < b` `a <= b` `a > b` `a >= b` | `equal` `not_equal` `less` `less_equal` `greater` `greater_equal` |
+| `a & b` `a \| b` `a ^ b` `~a` | `bitwise_and` `bitwise_or` `bitwise_xor` `bitwise_invert` |
+| `a << b` `a >> b` | `bitwise_left_shift` `bitwise_right_shift` |
+
+```python
+>>> a = sd.asarray([1, 2, 3])
+>>> a + 10
+array([11, 12, 13], dtype=int64)
+>>> a / 2
+array([0.5, 1.0, 1.5], dtype=float64)
+>>> a ** 2
+array([1, 4, 9], dtype=int64)
+>>> a > 1
+array([False,  True,  True], dtype=bool)
+```
+
+숫자가 왼쪽에 와도 돼요.
+
+```python
+>>> 10 - a
+array([9, 8, 7], dtype=int64)
+>>> 1 / a
+array([               1.0,                0.5, 0.3333333333333333], dtype=float64)
+```
+
+`&`, `|`, `^`, `~`는 정수에서는 비트 연산, bool 배열에서는 논리 연산(그리고, 또는, 둘 중 하나만, 아니다)이에요. 조건을 합칠 때 자주 써요.
+
+```python
+>>> (a > 1) & (a < 3)
+array([False,  True, False], dtype=bool)
+>>> ~(a > 1)
+array([ True, False, False], dtype=bool)
+```
+
+`@`는 행렬곱이에요. 원소별 곱인 `*`와 다르니 조심하세요. 1차원끼리의 `@`는 내적이라 숫자 하나가 나와요.
+
+```python
+>>> m = sd.asarray([[1, 2], [3, 4]])
+>>> m @ m
+array([[ 7, 10],
+       [15, 22]], dtype=int64)
+>>> m * m
+array([[ 1,  4],
+       [ 9, 16]], dtype=int64)
+>>> a @ a
+14
+```
+
+### 함께 쓸 수 있는 것
+
+연산자의 다른 쪽에는 stardust 배열과 Python 숫자(`bool`, `int`, `float`, `complex`, numpy 스칼라 포함)만 올 수 있어요. 리스트나 numpy 배열은 어느 쪽에 있든 `TypeError`예요. 먼저 `sd.asarray`로 바꿔요.
+
+```python
+>>> a + [1, 2, 3]
+Traceback (most recent call last):
+    ...
+TypeError: unsupported operand type(s) for +: 'ndarray' and 'list'
+>>> a + sd.asarray([1, 2, 3])
+array([2, 4, 6], dtype=int64)
+```
+
+`==`와 `!=`도 마찬가지예요. 리스트나 `None`과 비교하면 `False`가 나오는 대신 `TypeError`예요. 어떤 값이 `None`인지는 `x is None`으로 확인해요.
+
+```python
+>>> a == [1, 2, 3]
+Traceback (most recent call last):
+    ...
+TypeError: '==' not supported between instances of 'ndarray' and 'list'
+>>> a == None
+Traceback (most recent call last):
+    ...
+TypeError: '==' not supported between instances of 'ndarray' and 'NoneType'
+```
+
+`divmod(a, b)`와 `in`은 지원하지 않아요. 몫과 나머지는 `//`와 `%`를 따로 쓰고, "이 값이 들어 있는가"는 `(a == 값).any()`로 물어요.
+
+```python
+>>> 2 in a
+Traceback (most recent call last):
+    ...
+TypeError: `in` is not supported for arrays; compare with == and use any()
+>>> (a == 2).any()
+True
+```
+
+### 제자리 연산자
+
+`+=`, `-=`, `*=`, `/=`, `//=`, `%=`, `**=`, `@=`, `&=`, `|=`, `^=`, `<<=`, `>>=`는 제자리(in-place) 연산자예요. 새 배열을 만들지 않고 결과를 `x` 자신에 써요. `x`가 뷰라면 원본도 바뀌어요.
+
+```python
+>>> k = sd.asarray([1, 2, 3])
+>>> k += 10
+>>> k
+array([11, 12, 13], dtype=int64)
+```
+
+`x`의 dtype과 모양은 바뀌지 않아요. 그래서 지켜야 할 규칙이 두 가지 있어요.
+
+**1. 결과를 `x`의 dtype에 잃는 것 없이 담을 수 있어야 해요.** 정수 배열에 `/=`를 하면 결과가 실수라서 담을 수 없어요. bool 배열에 `+=`를 하면 결과가 정수라서 역시 안 돼요. 값이 아니라 dtype으로만 판단해요. 이렇게 막는 이유는 [원소 종류(dtype)](/api/array/dtypes/)의 암묵적 변환 설명에 있어요.
+
+```python
+>>> k /= 2
+Traceback (most recent call last):
+    ...
+TypeError: cannot implicitly convert float64 to int64 (that would lose information); convert explicitly with astype
+>>> k //= 2
+>>> k
+array([5, 6, 6], dtype=int64)
+>>> flags = sd.asarray([True, False])
+>>> flags += True
+Traceback (most recent call last):
+    ...
+TypeError: cannot implicitly convert int64 to bool (that would lose information); convert explicitly with astype
+>>> flags |= True
+>>> flags
+array([True, True], dtype=bool)
+```
+
+실수 결과가 필요하면 `k = k / 2`처럼 새 배열을 만들거나, 처음부터 `astype(sd.float64)`로 바꾼 배열에 쓰세요.
+
+| `x`의 dtype | 담을 수 있는 결과 |
+|---|---|
+| bool | bool |
+| int64 | bool, int64 |
+| float64 | bool, int64, float64 |
+| complex128 | 모두 |
+
+**2. 오른쪽 값은 `x`의 모양으로 늘어날 수 있어야 해요.** `x`의 모양은 바뀌지 않아요.
+
+```python
+>>> grid = sd.zeros((2, 3))
+>>> grid += sd.asarray([1.0, 2.0, 3.0])
+>>> grid
+array([[1.0, 2.0, 3.0],
+       [1.0, 2.0, 3.0]], dtype=float64)
+>>> row = sd.zeros(3)
+>>> row += grid
+Traceback (most recent call last):
+    ...
+ValueError: operand of shape (2, 3) cannot be broadcast to (3,)
+```
+
+`@=`도 결과가 `x`와 같은 모양일 때만 돼요. 정사각 행렬끼리는 되지만, 1차원끼리는 결과가 숫자 하나라서 안 돼요.
+
+```python
+>>> k @= k
+Traceback (most recent call last):
+    ...
+ValueError: x @= y needs a result with the shape of x
+```
+
+이 밖에 읽기 전용 배열에는 쓸 수 없고(`ValueError`), 오른쪽이 `x`와 메모리를 함께 써도 결과는 오른쪽을 다 읽은 뒤 쓴 것과 같아요. 둘 다 [뷰와 복사](/api/array/views/)에 있어요.
+
+## Python 기본 기능과 함께 쓰기
+
+### `len`과 반복
+
+`len(x)`는 첫 축의 길이 `x.shape[0]`이에요. `for`로 돌면 첫 축을 따라 하나씩 나와요. 1차원 배열이면 Python 숫자, 2차원 이상이면 한 단계 낮은 배열(뷰)이에요.
+
+```python
+>>> len(x)
+2
+>>> for row in x:
+...     print(row)
+[1.0 2.0 3.0]
+[4.0 5.0 6.0]
+>>> list(sd.asarray([1, 2, 3]))
+[1, 2, 3]
+```
+
+`for`로 원소를 하나씩 꺼내 계산하면 느려요. 원소마다 하는 계산은 `x * 2`, `sd.sqrt(x)`처럼 배열째로 하세요. 같은 이유로 Python 내장 `sum`, `max` 대신 `sd.sum`, `sd.max`를 쓰세요.
+
+### 숫자 하나로 바꿀 수 없어요
+
+`bool(x)`, `int(x)`, `float(x)`, `complex(x)`는 원소가 하나뿐인 배열이라도 언제나 `TypeError`예요. 원소가 여럿인 배열을 참이나 거짓 하나로 정할 방법이 없고, "원소가 하나일 때만 된다"는 규칙은 데이터 크기에 따라 갑자기 깨지는 코드를 만들기 때문이에요.
+
+```python
+>>> bool(sd.asarray([1]))
+Traceback (most recent call last):
+    ...
+TypeError: the truth value of an array is ambiguous; use any() or all()
+>>> float(sd.asarray([1.0]))
+Traceback (most recent call last):
+    ...
+TypeError: an array cannot be converted to float
+```
+
+숫자 하나가 필요하면 인덱싱으로 꺼내요. `sd.asarray([1.0])[0]`은 Python `float`예요.
+
+<Callout type="warn" title="if x == y: 는 에러예요">
+
+`if` 문은 조건을 `bool()`로 바꾸므로, 배열을 조건에 바로 쓰면 에러가 나요. 두 배열이 같은지 묻고 싶다면 "모든 원소가 같은가"(`.all()`)인지 "하나라도 같은가"(`.any()`)인지를 분명히 써야 해요.
+
+```python
+>>> p = sd.asarray([1, 2, 3])
+>>> q = sd.asarray([1, 2, 3])
+>>> if p == q:
+...     print("same")
+Traceback (most recent call last):
+    ...
+TypeError: the truth value of an array is ambiguous; use any() or all()
+>>> if (p == q).all():
+...     print("same")
+same
+```
+
+</Callout>
+
+### 해싱, 복사 모듈, pickle
+
+배열은 내용을 바꿀 수 있는 객체라서 해싱할 수 없어요. 그래서 딕셔너리의 키나 집합의 원소로 쓸 수 없어요. Python의 `copy.copy`, `copy.deepcopy`, `pickle`도 지원하지 않아요. 복사는 `x.copy()`로 하고, 파일로 남기려면 `x.tolist()`로 바꾸거나 numpy 배열로 넘겨서 저장하세요.
+
+```python
+>>> hash(x)
+Traceback (most recent call last):
+    ...
+TypeError: unhashable type: 'ndarray'
+>>> import copy
+>>> copy.copy(x)
+Traceback (most recent call last):
+    ...
+TypeError: cannot pickle 'ndarray' object
+```
+
+## 화면에 보이는 모습: `repr`과 `str`
+
+대화형 창에 배열 이름만 치면 `repr(x)`가 보여요. `array([...], dtype=...)` 모양이라 원소 종류까지 알 수 있어요. `print(x)`는 `str(x)`를 보여 주고, 대괄호 안의 값만 나와요.
+
+```python
+>>> x
+array([[1.0, 2.0, 3.0],
+       [4.0, 5.0, 6.0]], dtype=float64)
+>>> print(x)
+[[1.0 2.0 3.0]
+ [4.0 5.0 6.0]]
+```
+
+모든 원소는 배열에서 가장 넓은 원소에 맞춰 오른쪽 정렬돼요. 실수는 정수처럼 보이는 값에도 `1.0`처럼 소수점을 붙이므로 정수 배열과 구별돼요.
+
+```python
+>>> sd.asarray([1.5, -20.0, 3.0])
+array([  1.5, -20.0,   3.0], dtype=float64)
+```
+
+빈 배열은 2차원 이상이면 모양을 함께 보여 줘요. 원소가 1000개를 넘으면 양 끝 세 개씩만 보이고 가운데는 `...`으로 줄여요.
+
+```python
+>>> sd.zeros((2, 0))
+array([], shape=(2, 0), dtype=float64)
+>>> sd.arange(2000)
+array([   0,    1,    2, ..., 1997, 1998, 1999], dtype=int64)
+```
+
+## numpy와 주고받기
+
+numpy 배열을 stardust 배열로 바꿀 때는 `sd.asarray`, 반대로 stardust 배열을 numpy 배열로 바꿀 때는 `np.asarray`를 써요. 두 방향 모두 할 수 있으면 복사 없이 메모리를 함께 써요.
+
+```python
+>>> import numpy as np
+>>> s = sd.asarray([1, 2, 3])
+>>> n = np.asarray(s)
+>>> n
+array([1, 2, 3], dtype=int64)
+>>> n[0] = 100
+>>> s
+array([100,   2,   3], dtype=int64)
+```
+
+<Fig caption="np.asarray(s)는 s의 메모리를 numpy 배열로 보여 줘요. 한쪽을 고치면 다른 쪽도 바뀌어요.">
+  <ArrayFig name="s (stardust)" data={[100, 2, 3]} tones={['b', '', '']} note="메모리의 주인" />
+  <Op note="같은 메모리">⇄</Op>
+  <ArrayFig name="n (numpy)" data={[100, 2, 3]} tones={['b', '', '']} note="np.asarray(s)" />
+</Fig>
+
+읽기 전용 stardust 배열은 읽기 전용 numpy 배열로 넘어가요. numpy 쪽에서도 고칠 수 없어요.
+
+```python
+>>> np.asarray(sd.broadcast_to(s, (2, 3))).flags.writeable
+False
+```
+
+numpy의 함수와 연산자에 stardust 배열을 그대로 넣으면 `TypeError`예요. 어느 라이브러리의 규칙으로 계산되는지 헷갈리지 않게 막아 두었어요. numpy로 계산하고 싶으면 `np.asarray(s)`로 먼저 바꿔서 넣어요.
+
+```python
+>>> np.sin(s)
+Traceback (most recent call last):
+    ...
+TypeError: operand 'ndarray' does not support ufuncs (__array_ufunc__=None)
+>>> np.sin(np.asarray(s))
+array([-0.50636564,  0.90929743,  0.14112001])
+```
+
+## 조심할 점
+
+### `.T`로 1차원 배열을 세울 수 없어요
+
+1차원 배열을 세로로 세우려고 `v.T`를 쓰면 `ValueError`예요. 세로 모양이 필요하면 `v[:, sd.newaxis]`나 `sd.reshape(v, (-1, 1))`을 써요([인덱싱과 대입](/api/array/indexing/) 참고).
+
+### `x = x / 2`와 `x /= 2`는 달라요
+
+정수 배열에서 `x = x / 2`는 되는데 `x /= 2`는 `TypeError`예요. 앞의 것은 새 실수 배열을 만들어 `x`라는 이름을 그쪽으로 옮기고, 뒤의 것은 원래 정수 배열에 실수를 써넣으려 하기 때문이에요. `x`가 뷰일 때도 차이가 있어요. `x = x / 2`는 원본을 그대로 두고, `x /= 2`는 원본을 바꿔요([뷰와 복사](/api/array/views/) 참고).
+
+## 비슷한 기능과의 차이
+
+| 하고 싶은 일 | 쓸 것 | 차이 |
+|---|---|---|
+| 2차원 배열 전치 | `x.T` | 2차원 전용 |
+| 마지막 두 축 바꾸기 | `x.mT`, `sd.matrix_transpose(x)` | 3차원 이상도 돼요 |
+| 축 순서를 마음대로 | `sd.permute_dims(x, axes)` | 모든 축의 순서를 정해요 |
+| 복사본 | `x.copy()` | `sd.asarray(x, copy=True)`와 같아요 |
+| 리스트로 | `x.tolist()` | 모든 단계가 리스트, 원소는 Python 숫자 |
+| 첫 축만 풀기 | `list(x)` | 2차원 이상이면 배열(뷰)의 리스트 |
+| 원소별 곱 | `x * y` | 같은 자리끼리 곱해요 |
+| 행렬곱 | `x @ y` | 행과 열을 곱해 더해요 |
+
+## numpy를 아는 분께
+
+- `sd.ndarray(...)`로 직접 만들 수 없어요. 생성 함수를 쓰세요.
+- 메서드가 적어요. `reshape`, `astype`, `copy`, `tolist`와 집계 11개뿐이에요. `x.sort()`, `x.flatten()`, `x.transpose()`, `x.fill()`, `x.item()` 등은 없어요.
+- `x.reshape(3, 2)`처럼 모양을 여러 인자로 줄 수 없어요. `x.reshape((3, 2))`로 쓰세요.
+- `x.T`는 2차원 전용이에요. numpy처럼 모든 축을 뒤집지 않아요.
+- `bool(x)`, `int(x)`, `float(x)`는 원소가 하나여도 `TypeError`예요. numpy는 크기 1이면 받아요.
+- `x == [1, 2]`, `x == None`은 `TypeError`예요. 리스트와 연산하려면 먼저 `sd.asarray`로 바꾸세요.
+- `in`과 `divmod`는 지원하지 않아요.
+- 제자리 연산자는 결과 dtype이 `x`의 dtype과 같거나 좁을 때만 돼요(`bool < int64 < float64 < complex128`). numpy의 `casting` 인자 같은 선택지는 없어요. 특히 stardust에서는 bool끼리 더하면 int64가 되므로, numpy에서는 되는 bool 배열의 `+=`가 `TypeError`예요. 논리합은 `|=`로 쓰세요.
+- pickle, `copy.copy`, `flags`, `__array_interface__`는 없어요. numpy와는 버퍼 프로토콜과 DLPack으로 복사 없이 주고받아요(`np.asarray(x)`, `np.from_dlpack(x)`).
+- `x.__array_ufunc__`가 `None`이라서 numpy의 함수와 연산자는 stardust 배열을 받지 않아요.
+- 모든 축을 정수로 인덱싱하거나 모든 축을 집계하면 numpy 스칼라가 아니라 Python 숫자가 나와요.

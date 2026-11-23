@@ -1,0 +1,453 @@
+---
+title: matrix_power
+names: [matrix_power]
+group: 곱과 거듭제곱
+order: 6
+signatures:
+  - "sd.linalg.matrix_power(x, n, /)"
+summary: 정사각 행렬을 정수 번 거듭해서 행렬곱해요. n이 0이면 단위행렬, 음수면 역행렬의 거듭제곱이에요. 원소마다 거듭제곱하는 `**` 연산자와는 다른 계산이에요.
+params:
+  - name: x
+    type: ndarray
+    kind: positional-only
+    desc: 정사각 행렬. 모양은 (..., N, N). 3차원 이상이면 행렬 여러 개를 쌓은 것으로 봐요.
+  - name: n
+    type: int
+    kind: positional-only
+    desc: 지수. 양수면 x를 n번 곱하고, 0이면 단위행렬, 음수면 역행렬을 -n번 곱해요.
+returns:
+  type: ndarray
+  desc: x와 같은 모양의 행렬. 실수 입력(bool, int64 포함)은 float64, 복소수 입력은 complex128이에요.
+raises:
+  - type: TypeError
+    desc: x가 배열이 아닐 때(리스트 포함), n이 int가 아닐 때(float, bool, None 포함), n을 이름을 붙여 넘겼을 때.
+  - type: ValueError
+    desc: x가 2차원 미만이거나 정사각 행렬이 아닐 때. n이 음수인데 x에 NaN이나 inf가 있을 때.
+  - type: LinAlgError
+    desc: n이 음수인데 x가 특이 행렬(역행렬이 없는 행렬)일 때.
+  - type: OverflowError
+    desc: n이 int64 범위를 벗어난 정수일 때.
+seeAlso: [inv, solve, expm, eig, kron, errors, basics]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import FigRow from '../../../components/fig/FigRow.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+`matrix_power(x, n)`은 정사각 행렬 `x`를 **`n`번 행렬곱**한 결과예요. 숫자의 거듭제곱 $a^3 = a \cdot a \cdot a$를 행렬로 옮긴 것이에요.
+
+$$
+A^n = \underbrace{A\,A \cdots A}_{n\text{번}}
+$$
+
+```python
+>>> import stardust as sd
+>>> A = sd.asarray([[2.0, 1.0], [1.0, 1.0]])
+>>> sd.linalg.matrix_power(A, 3)
+array([[13.0,  8.0],
+       [ 8.0,  5.0]], dtype=float64)
+>>> A @ A @ A
+array([[13.0,  8.0],
+       [ 8.0,  5.0]], dtype=float64)
+```
+
+행렬은 "벡터를 다른 벡터로 바꾸는 변환"으로 볼 수 있어요. 그렇게 보면 `matrix_power(A, n)`은 같은 변환을 `n`번 되풀이한 것을 한 번에 해 주는 행렬이에요. 한 달 뒤의 상태를 알려 주는 행렬이 있다면 그 행렬의 12제곱은 1년 뒤의 상태를 알려 줘요.
+
+<Callout type="warn" title="**는 행렬의 거듭제곱이 아니에요">
+
+`x ** 2`는 **원소 하나하나를** 제곱해요. 행렬을 두 번 곱하는 `x @ x`와 다른 계산이고, 모양이 같아서 에러 없이 엉뚱한 결과가 나와요. 행렬의 거듭제곱은 언제나 `matrix_power`예요.
+
+</Callout>
+
+```python
+>>> M = sd.asarray([[1.0, 2.0], [3.0, 4.0]])
+>>> M ** 2
+array([[ 1.0,  4.0],
+       [ 9.0, 16.0]], dtype=float64)
+>>> sd.linalg.matrix_power(M, 2)
+array([[ 7.0, 10.0],
+       [15.0, 22.0]], dtype=float64)
+```
+
+<Fig column caption="**는 같은 자리의 원소를 제곱해요. matrix_power는 행렬곱 M @ M이에요. 0행 0열은 1×1 + 2×3 = 7이에요.">
+  <FigRow>
+    <ArrayFig name="M" data={[[1, 2], [3, 4]]} tones={[['a', ''], ['', '']]} />
+    <Op note="** 2">→</Op>
+    <ArrayFig data={[[1, 4], [9, 16]]} tones={[['a', ''], ['', '']]} note="원소마다" />
+  </FigRow>
+  <FigRow>
+    <ArrayFig name="M" data={[[1, 2], [3, 4]]} tones={[['b', 'b'], ['', '']]} />
+    <Op note="matrix_power(M, 2)">→</Op>
+    <ArrayFig data={[[7, 10], [15, 22]]} tones={[['b', ''], ['', '']]} note="M @ M" />
+  </FigRow>
+</Fig>
+
+<Reference />
+
+## `n`에 따라 무엇이 나오나요
+
+`n`은 정수예요. 양수, 0, 음수가 각각 다른 뜻이에요.
+
+| `n` | 결과 | 식 |
+|:---:|---|:---:|
+| 양수 | `x`를 `n`번 곱한 것 | $A^n$ |
+| `1` | `x` 그대로(새 배열) | $A$ |
+| `0` | 단위행렬 | $I$ |
+| `-1` | 역행렬 | $A^{-1}$ |
+| 음수 | 역행렬을 `-n`번 곱한 것 | $(A^{-1})^{-n}$ |
+
+### `n = 0`: 단위행렬
+
+어떤 숫자든 0제곱은 1인 것처럼, 행렬의 0제곱은 **단위행렬**(대각선이 1이고 나머지가 0인 행렬)이에요. 단위행렬은 곱해도 상대를 바꾸지 않는, 행렬곱에서의 1이에요.
+
+```python
+>>> sd.linalg.matrix_power(A, 0)
+array([[1.0, 0.0],
+       [0.0, 1.0]], dtype=float64)
+```
+
+`x`의 값은 결과에 영향을 주지 않아요. 크기만 써요.
+
+### `n`이 음수: 역행렬의 거듭제곱
+
+`matrix_power(x, -1)`은 `x`의 **역행렬**이에요. 역행렬은 `x`와 곱하면 단위행렬이 되는 행렬이에요. `x`가 한 변환을 되돌리는 행렬이라고 봐도 돼요. [`inv(x)`](/api/linalg/inv/)와 정확히 같은 결과예요.
+
+```python
+>>> sd.linalg.matrix_power(A, -1)
+array([[ 1.0, -1.0],
+       [-1.0,  2.0]], dtype=float64)
+>>> sd.linalg.inv(A)
+array([[ 1.0, -1.0],
+       [-1.0,  2.0]], dtype=float64)
+```
+
+`n`이 `-2`, `-3`이면 그 역행렬을 2번, 3번 곱해요. 변환을 두 번, 세 번 되돌리는 것이에요. 그래서 `-n`제곱과 `n`제곱을 곱하면 단위행렬로 돌아와요.
+
+```python
+>>> sd.linalg.matrix_power(A, -2)
+array([[ 2.0, -3.0],
+       [-3.0,  5.0]], dtype=float64)
+>>> sd.linalg.matrix_power(A, -2) @ sd.linalg.matrix_power(A, 2)
+array([[1.0, 0.0],
+       [0.0, 1.0]], dtype=float64)
+```
+
+숫자에서처럼 지수 법칙 $A^{m+n} = A^m A^n$이 성립해요. 같은 행렬의 거듭제곱끼리는 곱하는 순서를 바꿔도 돼요.
+
+음수 지수는 역행렬이 있어야 계산할 수 있어요. 역행렬이 없는 행렬(특이 행렬)이면 에러예요. [아래](#음수-지수는-역행렬이-있어야-해요)에서 설명해요.
+
+## 어디에 쓰나요
+
+### 한 단계씩 나아가는 규칙을 여러 단계 건너뛰기
+
+피보나치 수열(1, 1, 2, 3, 5, 8, ...)은 "앞의 두 수를 더하면 다음 수"라는 규칙으로 만들어요. 이 규칙은 행렬 하나로 쓸 수 있어요. `[[1, 1], [1, 0]]`을 벡터 `(뒤의 수, 앞의 수)`에 곱하면 한 칸 나아가요. 그러니 이 행렬의 `n`제곱을 곱하면 `n`칸을 한 번에 나아가요.
+
+```python
+>>> F = sd.asarray([[1.0, 1.0], [1.0, 0.0]])
+>>> sd.linalg.matrix_power(F, 10)
+array([[89.0, 55.0],
+       [55.0, 34.0]], dtype=float64)
+```
+
+결과의 0행 1열 `55`가 10번째 피보나치 수예요. 이웃한 `34`와 `89`가 9번째와 11번째예요.
+
+### 확률이 여러 단계 뒤에 어떻게 되는지
+
+날씨가 "맑음"과 "비" 둘뿐이고, 내일 날씨가 오늘 날씨에만 달려 있다고 해 볼게요. 맑은 날 다음에는 반반, 비 온 날 다음에는 맑을 확률이 25%예요. 이 규칙을 행렬로 쓰면 행은 오늘, 열은 내일이에요.
+
+```python
+>>> T = sd.asarray([[0.5, 0.5],
+...                 [0.25, 0.75]])
+```
+
+`T`의 2제곱은 이틀 뒤의 확률이에요. 오늘 맑으면 이틀 뒤에 맑을 확률은 37.5%예요.
+
+```python
+>>> sd.linalg.matrix_power(T, 2)
+array([[ 0.375,  0.625],
+       [0.3125, 0.6875]], dtype=float64)
+```
+
+지수를 키우면 두 행이 같아져요. 오늘 날씨가 무엇이든 먼 훗날의 날씨 확률은 같다는 뜻이에요. 맑을 확률은 1/3, 비가 올 확률은 2/3로 수렴해요.
+
+```python
+>>> sd.linalg.matrix_power(T, 60)
+array([[0.3333333333333333, 0.6666666666666666],
+       [0.3333333333333333, 0.6666666666666666]], dtype=float64)
+```
+
+이렇게 "한 단계의 규칙"을 행렬로 쓸 수 있는 문제(인구 이동, 점화식, 그래프에서 `n`번 만에 가는 길의 수)는 모두 행렬의 거듭제곱으로 여러 단계를 한 번에 계산할 수 있어요.
+
+## 3차원 이상: 행렬 여러 개를 한꺼번에
+
+3차원 이상의 배열은 행렬을 여러 장 쌓아 둔 것으로 봐요. 마지막 두 축이 행렬이고 그 앞의 축은 "몇 번째 행렬인가"를 나타내는 배치 축이에요. 행렬마다 따로 거듭제곱해요. 지수 `n`은 모든 행렬에 같아요.
+
+```python
+>>> stack = sd.asarray([[[1.0, 1.0], [0.0, 1.0]],
+...                     [[2.0, 0.0], [0.0, 3.0]]])
+>>> sd.linalg.matrix_power(stack, 2)
+array([[[1.0, 2.0],
+        [0.0, 1.0]],
+
+       [[4.0, 0.0],
+        [0.0, 9.0]]], dtype=float64)
+```
+
+결과의 모양은 언제나 입력과 같아요.
+
+## 결과의 dtype: 정수를 넣어도 float64
+
+`sd.linalg`의 함수는 언제나 실수(float64)나 복소수(complex128)로 계산해요. 정수나 bool 행렬을 넣어도 결과는 float64예요. `n`이 양수라서 정수끼리의 곱만으로 계산할 수 있을 때도 그래요.
+
+```python
+>>> Fi = sd.asarray([[1, 1], [1, 0]])
+>>> sd.linalg.matrix_power(Fi, 10)
+array([[89.0, 55.0],
+       [55.0, 34.0]], dtype=float64)
+```
+
+배열 영역의 [`@`](/api/array/matmul/)는 정수를 정수로 계산해요.
+
+```python
+>>> Fi @ Fi @ Fi
+array([[3, 2],
+       [2, 1]], dtype=int64)
+```
+
+| 입력 | `sd.linalg.matrix_power(x, n)` | `x @ x @ ...` | `x ** n` (원소마다) |
+|:---:|:---:|:---:|:---:|
+| bool | float64 | int64 | int64 |
+| int64 | float64 | int64 | int64 |
+| float64 | float64 | float64 | float64 |
+| complex128 | complex128 | complex128 | complex128 |
+
+결과 dtype은 `n`의 부호와 상관없어요. 음수 지수에서 역행렬에 분수가 나오든 안 나오든 언제나 float64(또는 complex128)예요. 공통 규칙은 [선형대수의 기본](/api/linalg/basics/)에 있어요.
+
+복소수 행렬도 그대로 거듭제곱해요. 켤레 복소수로 바꾸지 않아요.
+
+```python
+>>> sd.linalg.matrix_power(sd.asarray([[1j, 0], [0, 2]]), 2)
+array([[(-1+0j),      0j],
+       [     0j,  (4+0j)]], dtype=complex128)
+```
+
+### 큰 정수 결과는 끝자리가 달라질 수 있어요
+
+float64는 약 2⁵³(9 × 10¹⁵)을 넘는 정수를 모두 정확히 담지는 못해요. 거듭제곱은 값이 빨리 커지기 때문에 이 한계를 금방 넘어요. 80번째 피보나치 수는 23,416,728,348,467,685인데, `matrix_power`의 결과는 끝자리가 달라요.
+
+```python
+>>> int(sd.linalg.matrix_power(Fi, 80)[0, 1])
+23416728348467688
+```
+
+정확한 정수가 필요하고 결과가 int64 범위(약 9.2 × 10¹⁸) 안이라면 정수 행렬을 `@`로 직접 곱하세요.
+
+```python
+>>> P = Fi
+>>> for _ in range(79):
+...     P = P @ Fi
+>>> P[0, 1]
+23416728348467685
+```
+
+## 조심할 점
+
+### 음수 지수는 역행렬이 있어야 해요
+
+`n`이 음수인데 `x`가 특이 행렬(역행렬이 없는 행렬)이면 `LinAlgError`예요. 한 행이 다른 행의 배수인 행렬이 그런 예예요.
+
+```python
+>>> S = sd.asarray([[1.0, 2.0], [2.0, 4.0]])
+>>> sd.linalg.matrix_power(S, -1)
+Traceback (most recent call last):
+    ...
+stardust.linalg.LinAlgError: matrix_power(): singular matrix
+```
+
+`n`이 0 이상이면 역행렬이 필요 없으니 특이 행렬이어도 괜찮아요.
+
+```python
+>>> sd.linalg.matrix_power(S, 2)
+array([[ 5.0, 10.0],
+       [10.0, 20.0]], dtype=float64)
+```
+
+쌓아 둔 행렬 가운데 하나라도 특이하면 전체가 실패하고, 메시지에 몇 번째 행렬인지 나와요.
+
+```python
+>>> two = sd.asarray([[[1.0, 1.0], [0.0, 1.0]],
+...                   [[1.0, 2.0], [2.0, 4.0]]])
+>>> sd.linalg.matrix_power(two, -1)
+Traceback (most recent call last):
+    ...
+stardust.linalg.LinAlgError: matrix_power(): singular matrix (at batch index (1,))
+```
+
+`LinAlgError`는 `sd.linalg.LinAlgError`이고 `ValueError`의 한 종류예요. 잡는 방법은 [실패와 에러](/api/linalg/errors/)에 있어요.
+
+<Callout type="warn" title="거의 특이한 행렬은 에러 없이 큰 값을 내요">
+
+에러가 나는 것은 계산 도중 정확히 0으로 나누게 될 때뿐이에요. 특이 행렬에 아주 가깝지만 정확히 특이하지는 않은 행렬은 에러 없이 아주 큰 값을 돌려주고, 그 값은 믿기 어려워요. 음수 지수를 쓰기 전에 [`cond`](/api/linalg/cond/)로 조건수(값이 클수록 역행렬 계산이 불안정해요)를 확인해 보세요.
+
+</Callout>
+
+```python
+>>> near = sd.asarray([[1.0, 1.0], [1.0, 1.0 + 1e-15]])
+>>> sd.linalg.matrix_power(near, -1)
+array([[ 900719925474100.2, -900719925474099.2],
+       [-900719925474099.2,  900719925474099.2]], dtype=float64)
+```
+
+### NaN과 inf: 지수의 부호에 따라 달라요
+
+`n`이 음수면 역행렬을 구해야 해서, 계산 전에 `x`에 NaN(숫자가 아님)이나 inf(무한대)가 있는지 검사해요. 있으면 `ValueError`예요.
+
+```python
+>>> bad = sd.asarray([[sd.nan, 1.0], [0.0, 1.0]])
+>>> sd.linalg.matrix_power(bad, -1)
+Traceback (most recent call last):
+    ...
+ValueError: matrix_power(): 'x' contains NaN or infinity
+```
+
+`n`이 0 이상이면 행렬곱만 하므로 검사하지 않고 그대로 계산해요. NaN은 곱셈을 따라 퍼져요.
+
+```python
+>>> sd.linalg.matrix_power(bad, 2)
+array([[nan, nan],
+       [nan, 1.0]], dtype=float64)
+```
+
+`n = 0`이면 `x`의 값을 쓰지 않으니, NaN이 있어도 결과는 단위행렬이에요.
+
+```python
+>>> sd.linalg.matrix_power(bad, 0)
+array([[1.0, 0.0],
+       [0.0, 1.0]], dtype=float64)
+```
+
+| `n` | 특이 행렬 | NaN·inf가 있는 행렬 |
+|:---:|---|---|
+| 음수 | `LinAlgError` | `ValueError` |
+| `0` | 단위행렬 | 단위행렬 |
+| 양수 | 그대로 계산 | 그대로 계산(NaN이 퍼져요) |
+
+### 값이 아주 빨리 커지거나 작아져요
+
+거듭제곱은 지수에 따라 값이 기하급수적으로 변해요. float64가 담을 수 있는 범위(약 1.8 × 10³⁰⁸)를 넘으면 에러 없이 inf가 돼요.
+
+```python
+>>> sd.linalg.matrix_power(sd.asarray([[2.0, 0.0], [0.0, 0.5]]), 1100)
+array([[inf, 0.0],
+       [0.0, 0.0]], dtype=float64)
+```
+
+2의 1100제곱은 inf가 됐고, 0.5의 1100제곱은 너무 작아서 0이 됐어요.
+
+### 직접 여러 번 곱한 결과와 마지막 자리가 다를 수 있어요
+
+`matrix_power`는 `x`를 하나씩 `n`번 곱하지 않아요. 제곱한 것을 다시 제곱하는 식으로 묶어서 곱셈 횟수를 줄여요(그래서 `n`이 커도 빨라요). 곱하는 순서가 달라지면 실수 계산의 반올림도 달라져서, `x @ x @ x @ ...`로 직접 곱한 결과와 마지막 자리가 다를 수 있어요. 둘 다 같은 정도로 정확한 결과예요.
+
+```python
+>>> W = sd.asarray([[0.9, 0.1], [0.5, 0.5]])
+>>> sd.linalg.matrix_power(W, 5)
+array([[ 0.8350400000000002, 0.16496000000000002],
+       [             0.8248,              0.1752]], dtype=float64)
+>>> W @ W @ W @ W @ W
+array([[ 0.8350400000000002, 0.16496000000000005],
+       [ 0.8248000000000001, 0.17520000000000002]], dtype=float64)
+```
+
+실수 결과를 비교할 때는 `==` 대신 차이가 충분히 작은지를 보세요.
+
+```python
+>>> float(sd.max(sd.abs(sd.linalg.matrix_power(W, 5) - W @ W @ W @ W @ W))) < 1e-12
+True
+```
+
+### 정사각 행렬만
+
+같은 행렬을 거듭 곱하려면 행 수와 열 수가 같아야 해요. 정사각 행렬이 아니면 `ValueError`예요. `n = 0`이어도 마찬가지예요. 1차원 배열도 받지 않아요.
+
+```python
+>>> sd.linalg.matrix_power(sd.ones((2, 3)), 2)
+Traceback (most recent call last):
+    ...
+ValueError: matrix_power(): 'x' must be square in its last two dimensions, got 2x3
+>>> sd.linalg.matrix_power(sd.ones(3), 2)
+Traceback (most recent call last):
+    ...
+ValueError: matrix_power(): 'x' must have at least 2 dimensions, got 1
+```
+
+### `n`은 정수만
+
+`n`에는 Python `int`만 쓸 수 있어요. `2.0`처럼 값이 정수인 float도, `True`도 받지 않아요.
+
+```python
+>>> sd.linalg.matrix_power(A, 2.0)
+Traceback (most recent call last):
+    ...
+TypeError: matrix_power(): 'n' must be an int, not float
+>>> sd.linalg.matrix_power(A, 0.5)
+Traceback (most recent call last):
+    ...
+TypeError: matrix_power(): 'n' must be an int, not float
+```
+
+`0.5`제곱(행렬의 제곱근)처럼 정수가 아닌 거듭제곱은 계산하지 않아요. 원소마다 제곱근을 구하는 `sd.sqrt(x)`는 행렬의 제곱근이 아니에요.
+
+`n`은 자리로만 넘겨요. `n=2`처럼 이름을 붙이면 `TypeError`예요. 리스트도 받지 않으니 먼저 [`asarray`](/api/array/asarray/)로 배열로 바꾸세요.
+
+```python
+>>> sd.linalg.matrix_power([[2.0, 1.0], [1.0, 1.0]], 2)
+Traceback (most recent call last):
+    ...
+TypeError: matrix_power(): 'x' must be an sd.ndarray, not list
+```
+
+### 빈 행렬
+
+0행 0열 행렬의 거듭제곱은 0행 0열 행렬이에요. 음수 지수에서도 에러가 아니에요.
+
+```python
+>>> sd.linalg.matrix_power(sd.zeros((0, 0)), 3)
+array([], shape=(0, 0), dtype=float64)
+>>> sd.linalg.matrix_power(sd.zeros((0, 0)), -1).shape
+(0, 0)
+```
+
+## 비슷한 함수와의 차이
+
+| 하고 싶은 일 | 쓸 것 | `matrix_power`와 다른 점 |
+|---|---|---|
+| 원소마다 거듭제곱 | [`x ** n`](/api/array/pow/) (`sd.pow`) | 행렬곱이 아니에요. 정사각 행렬이 아니어도 되고, `n`이 실수나 배열이어도 돼요. 정수는 int64로 남아요. |
+| 행렬곱 한 번 | [`x @ y`](/api/array/matmul/) | 서로 다른 행렬을 곱할 수 있어요. 정수는 int64로 남아요. |
+| 역행렬 | [`inv(x)`](/api/linalg/inv/) | `matrix_power(x, -1)`과 결과가 정확히 같아요. 역행렬만 필요하면 `inv`가 뜻이 분명해요. |
+| `x`의 역행렬을 곱해서 방정식 풀기 | [`solve(x, b)`](/api/linalg/solve/) | 역행렬을 만들지 않고 바로 풀어서 더 빠르고 정확해요. |
+| 행렬의 지수 함수 $e^{A}$ | [`expm(x)`](/api/linalg/expm/) | 행렬이 **밑**이 아니라 **지수** 자리에 있어요. 모든 거듭제곱 $A^k / k!$의 합이에요. |
+
+`matrix_power(x, -1) @ b`로 연립방정식을 풀 수 있지만, 같은 답을 [`solve`](/api/linalg/solve/)가 더 적은 계산으로, 더 작은 오차로 구해요.
+
+```python
+>>> rhs = sd.asarray([5.0, 3.0])
+>>> sd.linalg.matrix_power(A, -1) @ rhs
+array([2.0, 1.0], dtype=float64)
+>>> sd.linalg.solve(A, rhs)
+array([2.0, 1.0], dtype=float64)
+```
+
+아주 큰 `n`에서 거듭제곱이 어떻게 되는지(커지는지, 줄어드는지, 어디로 수렴하는지)는 행렬의 고유값이 정해요. 고유값은 [일반 행렬의 고유값](/api/linalg/eig/)에서 다뤄요.
+
+## numpy·scipy를 아는 분께
+
+- `n`의 뜻(0은 단위행렬, 음수는 역행렬의 거듭제곱)과 배치 처리는 `np.linalg.matrix_power`와 같아요.
+- 정수와 bool 입력의 결과가 float64예요. numpy는 `n`이 0 이상이면 입력의 dtype을 유지해요.
+- `n`은 positional-only예요. `n=2`로 넘길 수 없어요.
+- 음수 지수에서 NaN·inf가 있으면 `ValueError`예요. numpy는 검사하지 않아요.
+- 특이 행렬의 에러는 `sd.linalg.LinAlgError`예요. `ValueError`의 하위 클래스이고, numpy의 `LinAlgError`와는 다른 클래스예요.
+- 분수 지수는 없어요(`scipy.linalg.fractional_matrix_power`, `sqrtm`에 해당하는 함수가 없어요).
+- 리스트와 numpy 배열은 받지 않아요(`TypeError`). numpy 정수(`np.int64(2)`)는 `n`으로 쓸 수 있어요.

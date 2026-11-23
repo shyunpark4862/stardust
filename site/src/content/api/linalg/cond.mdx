@@ -1,0 +1,388 @@
+---
+title: cond
+names: [cond]
+group: 노름과 지표
+order: 3
+signatures:
+  - "sd.linalg.cond(x, /, *, ord=2)"
+summary: 행렬의 조건수를 구해요. 조건수는 입력의 작은 오차가 답에서 최대 몇 배로 커질 수 있는지를 말해 줘요. 1에 가까우면 안심해도 되고, 아주 크면 계산 결과를 믿기 어려워요.
+params:
+  - name: x
+    type: ndarray
+    kind: positional-only
+    desc: 행렬. 모양은 (..., M, N). ord가 2나 -2가 아니면 정사각이어야 해요. 3차원 이상이면 행렬 여러 개를 쌓은 것으로 봐요.
+  - name: ord
+    type: "'fro', 'nuc', 1, -1, 2, -2, inf, -inf 가운데 하나"
+    kind: keyword-only
+    desc: 조건수를 정의하는 노름의 종류. matrix_norm의 ord와 같은 목록이에요. 기본값 2는 가장 큰 특이값을 가장 작은 특이값으로 나눈 값이에요.
+returns:
+  type: ndarray 또는 Python float
+  desc: 조건수. 언제나 float64예요. 행렬 하나면 Python float, 여러 개면 모양이 (...)인 배열이에요. 특이 행렬이면 inf예요.
+raises:
+  - type: TypeError
+    desc: x가 배열이 아닐 때, ord의 타입이 틀렸을 때(None, True 포함), ord를 이름 없이 자리로 넘겼을 때.
+  - type: ValueError
+    desc: x가 2차원 미만일 때, ord가 목록에 없는 값일 때, ord가 2·-2가 아닌데 정사각이 아닐 때, x에 NaN이나 inf가 있을 때, 행이나 열이 0개인 빈 행렬일 때.
+seeAlso: [norms, det, matrix_rank, svd, solve, inv, errors]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+## 한눈에 보기
+
+**조건수**(condition number)는 "이 행렬로 계산한 답을 얼마나 믿을 수 있는가"를 말해 주는 숫자예요. 연립방정식 `a @ x = b`를 풀 때, `b`가 조금 달라지면 답 `x`가 최대 몇 배나 크게 달라질 수 있는지를 나타내요.
+
+```python
+>>> import stardust as sd
+>>> sd.linalg.cond(sd.eye(3))
+1.0
+>>> sd.linalg.cond(sd.asarray([[6.0, -4.0], [8.0, 3.0]]))
+2.0
+>>> sd.linalg.cond(sd.asarray([[10.0, 10.0], [10.0, 11.0]]))
+42.07623361422573
+```
+
+- 조건수는 언제나 1 이상이에요. 1이 가장 좋은 값이에요.
+- 조건수가 크면 입력의 작은 오차가 답에서 크게 불어나요. 이런 행렬을 "조건이 나쁘다"고 해요.
+- [특이 행렬](/api/linalg/det/)의 조건수는 `inf`예요. 조건수가 클수록 특이 행렬에 가까워요.
+
+<Reference />
+
+## 조건수가 경고하는 것
+
+아래 두 연립방정식은 둘 다 답이 `x = 1, y = 1`이에요.
+
+```python
+>>> good = sd.asarray([[6.0, -4.0], [8.0, 3.0]])
+>>> bad = sd.asarray([[10.0, 10.0], [10.0, 11.0]])
+>>> sd.linalg.solve(good, sd.asarray([2.0, 11.0]))
+array([1.0, 1.0], dtype=float64)
+>>> sd.linalg.solve(bad, sd.asarray([20.0, 21.0]))
+array([1.0, 1.0], dtype=float64)
+```
+
+이제 우변의 둘째 값을 1만큼만 바꿔요. 측정값에 오차가 조금 섞였다고 생각하면 돼요.
+
+```python
+>>> sd.linalg.solve(good, sd.asarray([2.0, 12.0]))
+array([1.08, 1.12], dtype=float64)
+>>> sd.linalg.solve(bad, sd.asarray([20.0, 22.0]))
+array([0.0, 2.0], dtype=float64)
+```
+
+`good`의 답은 조금 움직였어요. `bad`의 답은 `(1, 1)`에서 `(0, 2)`로 완전히 다른 값이 됐어요. 우변은 5%도 안 바뀌었는데 답은 100% 바뀐 셈이에요.
+
+왜 그런지는 그림으로 보면 분명해요. 연립방정식의 식 하나는 직선 하나이고, 답은 두 직선이 만나는 점이에요. `bad`의 두 직선은 거의 나란해요. 거의 나란한 두 직선은 한쪽을 살짝만 밀어도 만나는 점이 멀리 달아나요.
+
+<Fig caption="bad의 두 식을 직선으로 그렸어요. 두 직선이 거의 나란해서, 둘째 직선을 조금 올리자(점선) 만나는 점이 (1, 1)에서 (0, 2)로 옮겨 갔어요.">
+  <Plot
+    curves={[
+      { f: (t) => 2 - t, label: '10x + 10y = 20' },
+      { f: (t) => (21 - 10 * t) / 11, label: '10x + 11y = 21' },
+      { f: (t) => (22 - 10 * t) / 11, label: '10x + 11y = 22', dashed: true },
+    ]}
+    domain={[-1, 3]}
+    range={[-0.6, 3]}
+    xTicks={[
+      { v: 0, label: '0' },
+      { v: 1, label: '1' },
+      { v: 2, label: '2' },
+    ]}
+    yTicks={[
+      { v: 1, label: '1' },
+      { v: 2, label: '2' },
+    ]}
+  />
+</Fig>
+
+조건수는 이 위험을 숫자로 미리 알려 줘요. `good`은 2, `bad`는 42예요.
+
+```python
+>>> sd.linalg.cond(good)
+2.0
+>>> sd.linalg.cond(bad)
+42.07623361422573
+```
+
+<Callout title="문제는 계산 방법이 아니라 행렬 자체에 있어요">
+  위에서 `solve`는 두 번 다 정확한 답을 냈어요. 답이 크게 달라진 것은 문제가 원래 그렇게 민감하기 때문이에요. 조건수는 행렬의 성질이라서, 어떤 함수로 풀든, 다른 프로그램으로 풀든 같은 일이 일어나요. 입력에 오차가 전혀 없더라도 컴퓨터의 실수 계산에는 반올림 오차가 있으니, 조건이 나쁜 행렬에서는 그 작은 오차가 답에서 불어나요.
+</Callout>
+
+## 정확한 정의
+
+행렬에 벡터를 곱하면 벡터의 길이가 달라져요. 몇 배가 되는지는 벡터의 방향에 따라 다른데, 그 가운데 가장 큰 배율과 가장 작은 배율이 각각 가장 큰 **특이값**과 가장 작은 특이값이에요. 조건수는 가장 큰 특이값을 가장 작은 특이값으로 나눈 값이에요.
+
+$$\kappa(A) = \frac{\sigma_{\max}}{\sigma_{\min}}$$
+
+어느 방향은 많이 늘이고 어느 방향은 거의 납작하게 누르는 행렬일수록 조건수가 커요. 납작하게 눌린 방향의 정보는 되살리기 어렵기 때문이에요. 완전히 눌러 버리면(가장 작은 특이값이 0) 특이 행렬이고, 조건수는 무한대예요.
+
+`good`의 특이값은 10과 5라서 조건수가 2예요.
+
+```python
+>>> sd.linalg.svdvals(good)
+array([10.0,  5.0], dtype=float64)
+>>> sd.linalg.matrix_norm(good, ord=2) / sd.linalg.matrix_norm(good, ord=-2)
+2.0
+```
+
+정사각 행렬에서는 같은 값을 [노름](/api/linalg/norms/)으로도 쓸 수 있어요. 행렬의 노름과 역행렬의 노름을 곱한 값이에요.
+
+$$\kappa(A) = \|A\| \cdot \|A^{-1}\|$$
+
+조건수가 "오차가 불어나는 배율의 한계"라는 말은 이런 뜻이에요. `b`가 $\Delta b$만큼 달라질 때 답이 $\Delta x$만큼 달라진다면 다음 부등식이 성립해요.
+
+$$\frac{\|\Delta x\|}{\|x\|} \le \kappa(A)\,\frac{\|\Delta b\|}{\|b\|}$$
+
+왼쪽은 답이 달라진 비율, 오른쪽은 입력이 달라진 비율에 조건수를 곱한 것이에요. 조건수는 가장 나쁜 경우의 한계라서 실제 오차는 이보다 작을 때가 많아요.
+
+## 조건수 읽는 법
+
+float64는 유효숫자가 약 16자리예요. 조건수가 $10^k$쯤이면 답에서 믿을 수 있는 자릿수가 k자리쯤 줄어든다고 어림하면 돼요.
+
+| 조건수 | 뜻 |
+|:---:|---|
+| 1 | 가장 좋아요. 단위행렬, 회전 행렬이 여기에 들어요. |
+| 수십 ~ 수천 | 보통이에요. 걱정할 것 없어요. |
+| $10^6$ ~ $10^{10}$ | 답의 뒤쪽 자릿수는 믿을 수 없어요. 입력의 측정 오차가 크게 불어나요. |
+| $10^{16}$ 근처나 그 이상 | 사실상 특이 행렬이에요. 답에 믿을 수 있는 자리가 하나도 없을 수 있어요. |
+| `inf` | 특이 행렬이에요. |
+
+조건이 나쁘기로 이름난 힐베르트 행렬(원소가 `1 / (i + j + 1)`인 행렬)에서 정답이 모두 1이 되도록 우변을 만든 뒤 풀어서, 조건수와 실제 오차를 나란히 찍어요.
+
+```python
+>>> def hilbert(n):
+...     return sd.asarray([[1.0 / (i + j + 1) for j in range(n)] for i in range(n)])
+>>> for n in (4, 8, 12):
+...     h = hilbert(n)
+...     x = sd.linalg.solve(h, h @ sd.ones((n,)))
+...     print(n, f"{sd.linalg.cond(h):.1e}", f"{float(sd.max(sd.abs(x - 1))):.1e}")
+4 1.6e+04 2.5e-13
+8 1.5e+10 3.5e-07
+12 1.7e+16 4.3e-01
+```
+
+조건수가 $10^{4}$일 때는 오차가 $10^{-13}$, $10^{10}$일 때는 $10^{-7}$이에요. 조건수가 $10^{16}$에 이른 12×12에서는 오차가 0.43으로, 답이 1인지 0.57인지도 알 수 없게 됐어요. 에러는 한 번도 나지 않았어요.
+
+### 조건이 나쁘면 어떻게 하나요
+
+- 특이 행렬로 다뤄요. 조건수가 $10^{15}$를 넘으면 [`solve`](/api/linalg/solve/) 대신 [`lstsq`](/api/linalg/lstsq/)나 [`pinv`](/api/linalg/inv/)를 써요. 이 함수들은 납작하게 눌린 방향을 버리고 풀어요.
+- 문제를 다시 세워요. 거의 같은 열이 둘 있다면 하나를 빼요. 열마다 단위가 크게 다르면(미터와 밀리미터처럼) 단위를 맞춰요.
+- 답의 자릿수를 낮춰 잡아요. 조건수가 $10^8$이면 답의 앞 8자리쯤만 믿어요.
+
+## 특이 행렬은 `inf`, 거의 특이한 행렬은 아주 큰 수
+
+특이 행렬의 조건수는 `inf`예요. 에러가 아니에요.
+
+```python
+>>> sd.linalg.cond(sd.asarray([[1.0, 0.0], [0.0, 0.0]]))
+inf
+>>> sd.linalg.cond(sd.zeros((2, 2)))
+inf
+```
+
+그런데 수학적으로는 특이 행렬인데도 `inf`가 아니라 아주 큰 유한한 수가 나올 때가 많아요. 아래 행렬은 둘째 행이 첫째 행의 2배라서 특이 행렬이에요.
+
+```python
+>>> s = sd.asarray([[1.0, 2.0], [2.0, 4.0]])
+>>> sd.linalg.cond(s)
+2.7556760105735884e+16
+>>> sd.linalg.svdvals(s)
+array([                   5.0, 1.8144368136220992e-16], dtype=float64)
+```
+
+가장 작은 특이값이 정확한 0이 아니라 반올림 오차만큼의 아주 작은 수로 계산됐기 때문이에요. `cond`는 가장 작은 특이값이 정확히 0일 때만 `inf`를 돌려줘요. 그래서 "특이한가"를 `cond(x) == sd.inf`로 확인하면 안 돼요.
+
+<Callout type="warn" title="inf와 비교하지 말고 큰 수와 비교하세요">
+  조건수가 $10^{15}$쯤을 넘으면 특이 행렬로 다루세요. 기준으로는 float64 정밀도의 역수인 `1 / sd.finfo(sd.float64).eps`(약 `4.5e15`)를 흔히 써요. `inf`도 이 비교에 걸려요.
+</Callout>
+
+```python
+>>> limit = 1 / sd.finfo(sd.float64).eps
+>>> limit
+4503599627370496.0
+>>> sd.linalg.cond(s) > limit
+True
+>>> sd.linalg.cond(bad) > limit
+False
+```
+
+## `ord`: 어떤 노름으로 잴까요
+
+`ord`는 [`matrix_norm`](/api/linalg/norms/)의 `ord`와 같은 여덟 가지를 받아요. 어느 것을 골라도 "클수록 나쁘다"는 뜻은 같고, 값은 조금씩 달라요.
+
+| `ord` | 계산 | 정사각이 아닌 행렬 |
+|:---:|---|:---:|
+| `2` (기본) | 가장 큰 특이값 ÷ 가장 작은 특이값 | 돼요 |
+| `-2` | 가장 작은 특이값 ÷ 가장 큰 특이값 (`ord=2`의 역수) | 돼요 |
+| `'fro'`, `'nuc'`, `1`, `-1`, `sd.inf`, `-sd.inf` | `matrix_norm(x, ord=…) * matrix_norm(inv(x), ord=…)` | 안 돼요 |
+
+```python
+>>> sd.linalg.cond(good, ord=1)
+3.08
+>>> sd.linalg.cond(good, ord='fro')
+2.5
+>>> sd.linalg.cond(good, ord=sd.inf)
+3.08
+>>> sd.linalg.cond(good, ord=-2)
+0.5
+```
+
+특별한 이유가 없으면 기본값 `2`를 쓰세요. 뜻이 가장 분명하고, 정사각이 아닌 행렬에도 쓸 수 있어요.
+
+```python
+>>> tall = sd.asarray([[4.0, 0.0], [0.0, 2.0], [0.0, 0.0]])
+>>> sd.linalg.cond(tall)
+2.0
+>>> sd.linalg.cond(tall, ord=1)
+Traceback (most recent call last):
+    ...
+ValueError: cond(): 'x' must be square in its last two dimensions, got 3x2
+```
+
+`ord`에 따라 특이 행렬에서 나오는 값도 조금 달라요. `2`가 아닌 `ord`는 역행렬을 거쳐 계산하는데, 역행렬을 구하다가 특이 행렬임이 드러나면 `inf`를 돌려줘요. 위의 `s`는 `ord=2`에서 큰 유한값이었지만 `ord=1`에서는 `inf`예요. 반올림 오차가 어떻게 쌓이느냐에 따라 달라지니, 어느 쪽이든 "특이 행렬"로 읽으면 돼요.
+
+```python
+>>> sd.linalg.cond(s, ord=1)
+inf
+>>> sd.linalg.cond(sd.asarray([[1.0, 2.0], [3.0, 6.0]]), ord=1)
+2.161727821137838e+17
+```
+
+특이 행렬이 아니어도 역행렬이 float64에 담기지 않을 만큼 크면 `ord=2`, `-2`가 아닌 `ord`의 조건수는 `inf`예요. 아래 행렬의 역행렬에는 `1 / 5e-324`가 들어가야 하는데, 이 값은 float64의 범위를 넘어요.
+
+```python
+>>> tiny = sd.asarray([[1.0, 0.0], [0.0, 5e-324]])
+>>> sd.linalg.cond(tiny, ord=1)
+inf
+```
+
+`ord=-2`는 방향이 거꾸로예요. 0과 1 사이의 값이고, 작을수록 나빠요. 특이 행렬이면 `0.0`이에요.
+
+```python
+>>> sd.linalg.cond(sd.asarray([[1.0, 0.0], [0.0, 0.0]]), ord=-2)
+0.0
+```
+
+## 여러 행렬을 한 번에
+
+3차원 이상의 배열은 행렬 여러 개를 쌓은 것으로 보고, 행렬마다 조건수를 하나씩 돌려줘요.
+
+```python
+>>> stack = sd.asarray([[[1.0, 0.0], [0.0, 1.0]],
+...                     [[4.0, 0.0], [0.0, 2.0]],
+...                     [[1.0, 0.0], [0.0, 0.0]]])
+>>> sd.linalg.cond(stack)
+array([1.0, 2.0, inf], dtype=float64)
+```
+
+## 조심할 점
+
+### 조건수는 원소의 크기와 상관없어요
+
+행렬 전체에 같은 수를 곱해도 조건수는 그대로예요. 역행렬의 조건수도 원래 행렬과 같아요.
+
+```python
+>>> sd.linalg.cond(good * 1000)
+2.0
+>>> sd.linalg.cond(sd.linalg.inv(good))
+2.0
+```
+
+[행렬식](/api/linalg/det/)은 그렇지 않아요. 원소가 작으면 행렬식도 작아져서, 멀쩡한 행렬이 특이 행렬처럼 보여요. 아래 행렬은 단위행렬에 작은 수를 곱한 것이라 조건이 가장 좋은 행렬인데, 행렬식은 0에 가까워요.
+
+```python
+>>> tiny = sd.eye(2) * 1e-8
+>>> sd.linalg.det(tiny)
+1.0000000000000001e-16
+>>> sd.linalg.cond(tiny)
+1.0
+```
+
+"특이에 가까운가"는 행렬식이 아니라 조건수로 판단하세요.
+
+### 조건이 나빠도 다른 함수는 에러를 내지 않아요
+
+`solve`와 `inv`는 행렬이 정확히 특이할 때만 `LinAlgError`를 내요. 조건이 아무리 나빠도 경고 없이 계산해서 결과를 돌려줘요. 아래 행렬은 특이 행렬인데도 엉뚱한 큰 수가 답으로 나와요.
+
+```python
+>>> t = sd.asarray([[1.0, 2.0], [3.0, 6.0]])
+>>> sd.linalg.solve(t, sd.asarray([1.0, 1.0]))
+array([-1.2009599006321322e+16,      6004799503160662.0], dtype=float64)
+>>> sd.linalg.cond(t)
+2.3240312535155864e+16
+```
+
+답이 이상하게 크거나 입력을 조금 바꿀 때마다 답이 크게 흔들리면 `cond`로 확인해 보세요. 특이 행렬을 어떻게 판정하는지는 [실패와 에러](/api/linalg/errors/) 문서에 있어요.
+
+### 계산이 가볍지 않아요
+
+조건수를 구하는 일은 연립방정식을 한 번 푸는 것보다 오래 걸려요. 큰 행렬을 풀 때마다 습관처럼 부르기보다, 결과가 의심스러울 때나 문제를 처음 살펴볼 때 쓰세요.
+
+### NaN과 inf, 빈 행렬
+
+NaN이나 inf가 있으면 어떤 `ord`에서든 `ValueError`예요.
+
+```python
+>>> sd.linalg.cond(sd.asarray([[1.0, sd.nan], [0.0, 1.0]]))
+Traceback (most recent call last):
+    ...
+ValueError: cond(): 'x' contains NaN or infinity
+```
+
+행이나 열이 0개인 빈 행렬은 조건수가 정의되지 않아서 `ValueError`예요. 빈 행렬에서 에러를 내는 것은 `sd.linalg`에서 이 함수뿐이에요.
+
+```python
+>>> sd.linalg.cond(sd.zeros((0, 0)))
+Traceback (most recent call last):
+    ...
+ValueError: cond(): the condition number of an empty matrix is not defined
+```
+
+행렬은 멀쩡한데 쌓은 개수가 0개인 경우는 에러가 아니에요. 빈 배열이 나와요.
+
+```python
+>>> sd.linalg.cond(sd.zeros((0, 2, 2)))
+array([], dtype=float64)
+```
+
+### `ord`는 이름을 붙여서, 정해진 값만
+
+`ord`는 반드시 이름과 함께 써야 해요. `cond(x, 1)`처럼 자리로 넘기면 `TypeError`예요. 목록에 없는 값은 `ValueError`, `None`이나 `True`는 `TypeError`예요.
+
+```python
+>>> sd.linalg.cond(good, ord=3)
+Traceback (most recent call last):
+    ...
+ValueError: cond(): 'ord' must be 'fro', 'nuc', 1, -1, 2, -2, inf or -inf, not 3
+>>> sd.linalg.cond(good, ord=None)
+Traceback (most recent call last):
+    ...
+TypeError: cond(): 'ord' must be a str, an int or a float, not NoneType
+```
+
+정수 행렬도 받아요. 결과는 언제나 실수예요.
+
+```python
+>>> sd.linalg.cond(sd.asarray([[6, -4], [8, 3]]))
+2.0
+```
+
+## 비슷한 함수와의 차이
+
+| 알고 싶은 것 | 쓸 것 | `cond`와 다른 점 |
+|---|---|---|
+| 답을 얼마나 믿을 수 있는가, 특이에 얼마나 가까운가 | `cond` | |
+| 독립인 행·열이 몇 개인가 | [`matrix_rank`](/api/linalg/matrix_rank/) | "얼마나"가 아니라 "몇 개"를 정수로 답해요. 허용오차로 잘라서 판단해요. |
+| 넓이·부피가 몇 배가 되는가 | [`det`](/api/linalg/det/) | 원소의 크기에 따라 값이 달라져서 특이에 가까운지는 알 수 없어요. |
+| 행렬이 벡터를 최대 몇 배로 늘이는가 | [`matrix_norm`](/api/linalg/norms/) | 조건수는 이 노름과 역행렬의 노름을 곱한 값이에요. |
+| 늘이는 배율 전부 | [`svdvals`](/api/linalg/svd/) | 조건수는 그중 가장 큰 것과 가장 작은 것의 비예요. |
+
+## numpy·scipy를 아는 분께
+
+- 노름을 고르는 인자의 이름이 `p`가 아니라 `ord`이고 keyword-only예요. `np.linalg.cond(x, 1)`은 `sd.linalg.cond(x, ord=1)`이에요. 기본값도 `None`이 아니라 `2`예요(뜻은 같아요).
+- NaN이나 inf가 있으면 `ValueError`예요. numpy는 `nan`을 돌려줘요.
+- 빈 행렬과 정사각이 아닌 행렬(`ord`가 `±2`가 아닐 때)의 에러는 `LinAlgError`가 아니라 `ValueError`예요.
+- 특이 행렬에서 `inf`를 돌려주는 것, 반올림 때문에 큰 유한값이 나올 수 있는 것은 numpy와 같아요.
+- 행렬 하나의 결과는 numpy 스칼라가 아니라 Python `float`이에요.
+- 리스트와 numpy 배열은 받지 않아요. `sd.asarray`로 먼저 바꾸세요.

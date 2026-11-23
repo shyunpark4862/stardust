@@ -1,0 +1,398 @@
+---
+title: 삼각함수
+names: [sin, cos, tan, asin, acos, atan, atan2]
+group: 삼각함수와 쌍곡선함수
+order: 1
+signatures:
+  - "sd.sin(x, /, *, out=None)"
+  - "sd.cos(x, /, *, out=None)"
+  - "sd.tan(x, /, *, out=None)"
+  - "sd.asin(x, /, *, out=None)"
+  - "sd.acos(x, /, *, out=None)"
+  - "sd.atan(x, /, *, out=None)"
+  - "sd.atan2(x1, x2, /, *, out=None)"
+summary: 각도에서 비율을 구하는 sin·cos·tan과, 비율에서 각도를 되찾는 asin·acos·atan·atan2예요. 배열의 원소마다 따로 계산해요.
+params:
+  - name: x
+    type: ndarray 또는 Python 숫자
+    kind: positional-only
+    desc: sin·cos·tan에서는 라디안 단위의 각도, asin·acos·atan에서는 비율.
+  - name: x1, x2
+    type: ndarray 또는 Python 숫자
+    kind: positional-only
+    desc: atan2의 두 인자. x1이 세로(y), x2가 가로(x) 좌표예요. 순서에 주의하세요.
+  - name: out
+    type: ndarray 또는 None
+    kind: keyword-only
+    desc: 결과를 적어 넣을 배열. None이면 새 배열을 만들어요.
+returns:
+  type: ndarray 또는 Python 숫자
+  desc: 입력과 같은 모양의 결과. 실수 입력은 float64, 복소수 입력은 complex128이에요. 입력이 Python 숫자면 결과도 Python 숫자예요.
+raises:
+  - type: TypeError
+    desc: 리스트처럼 배열도 숫자도 아닌 것을 넣었을 때, atan2에 복소수를 넣었을 때, out의 dtype이 결과를 담을 수 없을 때.
+  - type: ValueError
+    desc: atan2의 두 인자나 out의 모양이 서로 맞지 않을 때.
+seeAlso: [deg2rad, broadcasting, asarray]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+## 한눈에 보기
+
+이 페이지의 함수는 모두 **원소별 함수**예요. 배열을 넣으면 원소 하나하나에 같은 계산을 해서, 같은 모양의 배열을 돌려줘요.
+
+```python
+>>> import stardust as sd
+>>> angles = sd.asarray([0.0, sd.pi / 2, sd.pi])
+>>> sd.cos(angles)
+array([                  1.0, 6.123233995736766e-17,                  -1.0], dtype=float64)
+```
+
+가운데 값이 `0`이 아니라 `6.1e-17`인 것은 잘못이 아니에요. 이유는 [조심할 점](#조심할-점)에 있어요.
+
+일곱 함수는 두 묶음으로 나뉘어요.
+
+| 묶음 | 함수 | 받는 것 | 돌려주는 것 |
+|---|---|---|---|
+| 각도 → 비율 | `sin`, `cos`, `tan` | 각도 (라디안) | 비율 |
+| 비율 → 각도 | `asin`, `acos`, `atan`, `atan2` | 비율 | 각도 (라디안) |
+
+<Reference />
+
+## 각도의 단위는 라디안이에요
+
+가장 먼저 알아 둘 점이에요. stardust의 삼각함수는 각도를 **도(°)가 아니라 라디안**으로 받아요. 라디안은 한 바퀴를 360이 아니라 2π(약 6.283)로 재는 단위예요.
+
+| 도 | 0° | 30° | 90° | 180° | 360° |
+|---|:---:|:---:|:---:|:---:|:---:|
+| 라디안 | 0 | π/6 | π/2 | π | 2π |
+
+π의 값은 `sd.pi`에 있어요. 각도가 도 단위라면 [`deg2rad`](/api/array/deg2rad/)로 라디안으로 바꾼 다음 넣어야 해요. `π / 180`을 곱하는 것과 같아요.
+
+```python
+>>> deg = sd.asarray([0.0, 30.0, 90.0])
+>>> sd.sin(sd.deg2rad(deg))
+array([               0.0, 0.4999999999999999,                1.0], dtype=float64)
+```
+
+바꾸지 않고 그대로 넣어도 에러는 나지 않아요. 90을 "90 라디안"으로 읽고 계산할 뿐이에요. 그래서 결과가 이상한데 에러가 없다면 단위부터 의심해 보세요.
+
+```python
+>>> sd.sin(sd.asarray([90.0]))
+array([0.8939966636005577], dtype=float64)
+```
+
+반대로 `asin`, `acos`, `atan`, `atan2`가 돌려주는 각도도 라디안이에요. 도로 보고 싶으면 [`rad2deg`](/api/array/deg2rad/)를 써요(`180 / π`를 곱해요).
+
+```python
+>>> sd.rad2deg(sd.asin(sd.asarray([0.5])))
+array([30.000000000000004], dtype=float64)
+```
+
+## sin, cos, tan
+
+<Fig caption="sin과 cos는 -1과 1 사이를 2π마다 되풀이해요. cos는 sin을 왼쪽으로 π/2만큼 옮긴 모양이에요.">
+  <Plot
+    curves={[
+      { f: Math.sin, label: 'sin' },
+      { f: Math.cos, label: 'cos' },
+    ]}
+    domain={[-2 * Math.PI, 2 * Math.PI]}
+    range={[-1.3, 1.3]}
+    xTicks={[
+      { v: -2 * Math.PI, label: '-2π' },
+      { v: -Math.PI, label: '-π' },
+      { v: 0, label: '0' },
+      { v: Math.PI, label: 'π' },
+      { v: 2 * Math.PI, label: '2π' },
+    ]}
+    yTicks={[
+      { v: -1, label: '-1' },
+      { v: 1, label: '1' },
+    ]}
+  />
+</Fig>
+
+`sin(x)`은 사인, `cos(x)`는 코사인이고, 결과는 -1에서 1 사이예요. `tan(x)`는 탄젠트로 `sin(x) / cos(x)`와 같고, 결과에 범위 제한이 없어요.
+
+```python
+>>> x = sd.linspace(0, 2 * sd.pi, 5)
+>>> x
+array([               0.0, 1.5707963267948966,  3.141592653589793,
+         4.71238898038469,  6.283185307179586], dtype=float64)
+>>> sd.sin(x) ** 2 + sd.cos(x) ** 2
+array([1.0, 1.0, 1.0, 1.0, 1.0], dtype=float64)
+```
+
+모양이 어떻든 원소마다 계산해요. 2차원 배열을 넣으면 2차원 배열이 나와요.
+
+```python
+>>> grid = sd.asarray([[0.0, sd.pi / 2], [sd.pi, 3 * sd.pi / 2]])
+>>> sd.sin(grid).shape
+(2, 2)
+```
+
+<Fig caption="tan은 π마다 되풀이하고, π/2 근처에서 한없이 커져요. 그 지점에서는 값이 정의되지 않아요.">
+  <Plot
+    curves={[{ f: Math.tan, label: 'tan' }]}
+    domain={[-Math.PI, Math.PI]}
+    range={[-5, 5]}
+    xTicks={[
+      { v: -Math.PI, label: '-π' },
+      { v: -Math.PI / 2, label: '-π/2' },
+      { v: 0, label: '0' },
+      { v: Math.PI / 2, label: 'π/2' },
+      { v: Math.PI, label: 'π' },
+    ]}
+    yTicks={[
+      { v: -4, label: '-4' },
+      { v: 4, label: '4' },
+    ]}
+  />
+</Fig>
+
+## asin, acos, atan
+
+세 함수는 앞의 sin·cos·tan을 거꾸로 계산해서, 비율을 주면 그 비율이 나오는 각도를 돌려줘요. 같은 비율이 나오는 각도는 무수히 많기 때문에, 그중 정해진 범위 안의 하나만 골라요.
+
+| 함수 | 받는 값의 범위 | 돌려주는 각도의 범위 |
+|---|---|---|
+| `asin(x)` | -1 ≤ x ≤ 1 | -π/2 에서 π/2 |
+| `acos(x)` | -1 ≤ x ≤ 1 | 0 에서 π |
+| `atan(x)` | 모든 실수 | -π/2 에서 π/2 |
+
+```python
+>>> sd.asin(sd.asarray([-1.0, 0.0, 1.0]))
+array([-1.5707963267948966,                 0.0,  1.5707963267948966], dtype=float64)
+>>> sd.acos(sd.asarray([-1.0, 0.0, 1.0]))
+array([ 3.141592653589793, 1.5707963267948966,                0.0], dtype=float64)
+```
+
+<Fig caption="asin과 acos는 -1과 1 사이에서만 값이 있어요. 그 밖에서는 선이 끊겨 있어요.">
+  <Plot
+    curves={[
+      { f: Math.asin, label: 'asin' },
+      { f: Math.acos, label: 'acos' },
+    ]}
+    domain={[-1.5, 1.5]}
+    range={[-1.8, 3.4]}
+    xTicks={[
+      { v: -1, label: '-1' },
+      { v: 0, label: '0' },
+      { v: 1, label: '1' },
+    ]}
+    yTicks={[
+      { v: -Math.PI / 2, label: '-π/2' },
+      { v: Math.PI / 2, label: 'π/2' },
+      { v: Math.PI, label: 'π' },
+    ]}
+  />
+</Fig>
+
+### 범위 밖의 값을 넣으면
+
+사인이나 코사인이 2가 되는 각도는 없어요. 그래서 `asin`과 `acos`에 -1과 1 사이를 벗어난 값을 넣으면 결과는 NaN(숫자가 아님)이에요. 에러가 나지 않는다는 점에 주의하세요.
+
+```python
+>>> sd.asin(sd.asarray([0.5, 2.0]))
+array([0.5235987755982989,                nan], dtype=float64)
+```
+
+<Callout type="warn" title="계산 오차로 1을 살짝 넘는 경우">
+  다른 계산의 결과를 `acos`에 넣을 때 자주 생기는 문제예요. 수학적으로는 정확히 1이어야 할 값이 계산 오차 때문에 `1.0000000000000002`가 되면 결과가 NaN이 돼요. 이럴 때는 `sd.clip(v, min=-1.0, max=1.0)`으로 먼저 범위 안에 넣어 주세요.
+</Callout>
+
+`atan`은 어떤 실수든 받아요. 값이 아주 커지면 결과는 π/2에 가까워져요.
+
+```python
+>>> sd.atan(sd.asarray([-sd.inf, -1.0, 0.0, 1.0, sd.inf]))
+array([-1.5707963267948966, -0.7853981633974483,                 0.0,
+        0.7853981633974483,  1.5707963267948966], dtype=float64)
+```
+
+## atan2: 좌표에서 방향 구하기
+
+점 `(x, y)`가 원점에서 어느 방향에 있는지 각도로 알고 싶을 때 쓰는 함수예요. `sd.atan2(y, x)`처럼 세로 좌표를 먼저, 가로 좌표를 나중에 넣어요.
+
+`sd.atan(y / x)`로 계산하면 정보를 잃어요. `y / x`를 계산하는 순간 두 부호가 합쳐져서, 오른쪽 위에 있는 점 `(1, 1)`과 왼쪽 아래에 있는 점 `(-1, -1)`이 구별되지 않아요. 둘 다 비율이 1이니까요. 게다가 `x`가 0이면 나눗셈부터 문제가 돼요.
+```python
+>>> y = sd.asarray([1.0, 1.0, -1.0, -1.0])
+>>> x = sd.asarray([1.0, -1.0, -1.0, 1.0])
+>>> sd.atan(y / x) * (180 / sd.pi)
+array([ 45.0, -45.0,  45.0, -45.0], dtype=float64)
+>>> sd.atan2(y, x) * (180 / sd.pi)
+array([  45.0,  135.0, -135.0,  -45.0], dtype=float64)
+```
+
+`atan`은 네 점을 두 가지 각도로만 답하지만, `atan2`는 네 점을 모두 다른 각도로 답해요.
+
+| 점 `(x, y)` | 있는 곳 | `atan(y / x)` | `atan2(y, x)` |
+|---|---|---|---|
+| `(1, 1)` | 오른쪽 위 | 45° | 45° |
+| `(-1, 1)` | 왼쪽 위 | -45° | 135° |
+| `(-1, -1)` | 왼쪽 아래 | 45° | -135° |
+| `(1, -1)` | 오른쪽 아래 | -45° | -45° |
+
+`atan2`의 결과는 -π에서 π 사이예요. 가로축의 양의 방향이 0이고, 반시계 방향이 양수예요. `x`가 0이어도 문제없어요.
+
+```python
+>>> sd.atan2(1.0, 0.0)
+1.5707963267948966
+```
+
+`atan2`는 입력이 둘이에요. 두 입력의 모양이 다르면 [브로드캐스팅](/api/array/broadcasting/) 규칙으로 맞춰요.
+
+```python
+>>> ys = sd.asarray([[1.0], [2.0]])
+>>> xs = sd.asarray([1.0, 2.0, 3.0])
+>>> sd.atan2(ys, xs).shape
+(2, 3)
+```
+
+<Callout type="warn" title="인자 순서">
+  `atan2(y, x)`예요. 좌표를 `(x, y)` 순서로 쓰는 습관대로 `atan2(x, y)`라고 쓰면 에러 없이 틀린 각도가 나와요.
+</Callout>
+
+## 입력과 결과의 종류
+
+### 정수와 bool도 받아요
+
+정수나 bool 배열을 넣으면 실수로 바꿔서 계산하고, 결과는 float64예요.
+
+```python
+>>> sd.sin(sd.asarray([0, 1, 2]))
+array([               0.0, 0.8414709848078965, 0.9092974268256816], dtype=float64)
+```
+
+### 숫자 하나도 받아요
+
+Python 숫자를 넣으면 결과도 배열이 아니라 Python 숫자예요.
+
+```python
+>>> sd.cos(0)
+1.0
+>>> sd.sin(0.5)
+0.47942553860420295
+```
+
+### 리스트는 받지 않아요
+
+리스트나 numpy 배열은 받지 않아요. 먼저 [`asarray`](/api/array/asarray/)로 배열로 바꾸세요. 이유는 [배열의 기본](/api/array/basics/)에 있어요.
+
+```python
+>>> sd.sin([0.0, 1.0])
+Traceback (most recent call last):
+    ...
+TypeError: sin(): 'x' must be an sd.ndarray or a bool, int, float or complex, not list
+```
+
+### 복소수
+
+`atan2`를 뺀 여섯 함수는 복소수 배열도 받아요. 결과는 복소수(complex128)예요. 복소수에서는 `asin`과 `acos`에 범위 제한이 없어서, 실수로는 NaN이던 계산도 값이 나와요.
+
+```python
+>>> sd.asin(sd.asarray([2.0]))
+array([nan], dtype=float64)
+>>> sd.asin(sd.asarray([2.0 + 0j]))
+array([(1.5707963267948966+1.3169578969248166j)], dtype=complex128)
+```
+
+같은 `2.0`이라도 배열의 dtype이 float64인지 complex128인지에 따라 결과가 달라요. 실수 배열은 실수 결과만 내고, 복소수 답을 원하면 복소수 배열을 넣어야 해요.
+
+`atan2`는 복소수를 받지 않아요. 방향이라는 개념이 실수 좌표에만 있기 때문이에요.
+
+```python
+>>> sd.atan2(sd.asarray([1 + 1j]), 1.0)
+Traceback (most recent call last):
+    ...
+TypeError: atan2(): not supported for complex128 and float64
+```
+
+## `out`: 결과를 기존 배열에 쓰기
+
+`out=`에 배열을 주면 새 배열을 만들지 않고 그 배열에 결과를 적어서 돌려줘요. `out`의 dtype은 결과를 손실 없이 담을 수 있어야 해요. 삼각함수의 결과는 실수라서 정수 배열에는 담을 수 없어요. 그 밖의 규칙은 [사칙연산의 `out`](/api/array/arithmetic/#out-결과를-기존-배열에-쓰기)과 같아요.
+
+```python
+>>> buf = sd.zeros(3)
+>>> sd.sin(sd.asarray([0.0, 1.0, 2.0]), out=buf) is buf
+True
+>>> buf
+array([               0.0, 0.8414709848078965, 0.9092974268256816], dtype=float64)
+>>> sd.sin(sd.asarray([0.0, 1.0]), out=sd.zeros(2, dtype=sd.int64))
+Traceback (most recent call last):
+    ...
+TypeError: sin(): cannot implicitly convert float64 to int64 (that would lose information); convert explicitly with astype
+```
+
+## 얼마나 정확한가요
+
+`sin`, `asin`, `acos`, `atan`, `atan2`의 결과는 정확한 값을 float64로 반올림한 값에서 정해진 칸 수 안에 있어요. 한 칸은 이웃한 두 float64 사이의 간격(ULP)이에요([`nextafter`](/api/array/nextafter/)). 0칸이면 정확한 값에 가장 가까운 float64 그대로예요. 약속하는 칸 수와, 정밀한 참값과 견줘 잰 최대는 이래요.
+
+| 함수 | 약속 | 잰 최대 |
+|---|:---:|:---:|
+| `sin` | 5칸 | 3칸 |
+| `asin` | 4칸 | 2칸 |
+| `acos` | 3칸 | 1칸 |
+| `atan` | 3칸 | 1칸 |
+| `atan2` | 3칸 | 1칸 |
+
+5칸은 상대오차로 약 1.1e-15예요. `cos`는 따로 약속한 칸 수가 없지만, 같은 방법으로 잰 최대는 1칸이에요. ±0, ±inf, NaN 같은 특수값의 결과는 부호까지 정확하고, 같은 입력이면 배열 안의 위치와 상관없이 같은 값이 나와요. 지금은 스레드 수와도 상관없이 같아요(약속은 아니에요).
+
+## 조심할 점
+
+### 정확히 0이 나오지 않아요
+
+`sin(π)`는 수학적으로 0이지만 계산 결과는 0이 아니에요.
+
+```python
+>>> sd.sin(sd.pi)
+1.2246467991473532e-16
+>>> sd.cos(sd.pi / 2)
+6.123233995736766e-17
+```
+
+함수가 틀린 것이 아니에요. π는 소수점 아래가 끝없이 이어지는 수라서, `sd.pi`는 π에 아주 가깝지만 정확히 π는 아니에요. 그 차이만큼 결과도 0에서 벗어나요. 그래서 삼각함수의 결과를 `== 0`으로 비교하면 안 돼요. "충분히 작은가"로 판단하세요.
+
+```python
+>>> abs(sd.sin(sd.pi)) < 1e-12
+True
+```
+
+같은 이유로 `tan(π/2)`도 무한대가 아니라 아주 큰 수가 나와요.
+
+```python
+>>> sd.tan(sd.pi / 2)
+1.633123935319537e+16
+```
+
+### 무한대와 NaN
+
+무한대의 사인이나 코사인은 정할 수 없어서 NaN이에요. NaN을 넣으면 NaN이 나와요. 어느 경우에도 에러나 경고는 없어요.
+
+```python
+>>> sd.sin(sd.asarray([sd.inf, sd.nan]))
+array([nan, nan], dtype=float64)
+```
+
+결과에 NaN이 섞였는지 확인하려면 [`sd.isnan`](/api/array/isnan/)을 써요.
+
+## 비슷한 함수와의 차이
+
+| 함수 | 관계 |
+|---|---|
+| [`sinh`, `cosh`, `tanh`](/api/array/hyperbolic/) | 이름은 비슷하지만 다른 함수인 쌍곡선함수예요. 지수함수로 정의되고 주기가 없어요. |
+| [`asinh`, `acosh`, `atanh`](/api/array/hyperbolic/) | 쌍곡선함수의 역함수예요. |
+| [`hypot(x, y)`](/api/array/pow/) | 점 `(x, y)`까지의 거리예요. `atan2(y, x)`가 주는 방향과 짝을 이뤄요. |
+| [`deg2rad`, `rad2deg`](/api/array/deg2rad/) | 도와 라디안을 서로 바꿔요. 삼각함수에 도 단위의 각도를 넣기 전에 써요. |
+
+좌표 `(x, y)`를 거리와 방향으로 바꾸려면 `sd.hypot(x, y)`와 `sd.atan2(y, x)`를 함께 쓰면 돼요.
+
+## numpy를 아는 분께
+
+- 역함수의 이름이 `arcsin`, `arccos`, `arctan`, `arctan2`가 아니라 `asin`, `acos`, `atan`, `atan2`예요. 별칭은 없어요.
+- `asin(2.0)`처럼 정의역 밖의 값은 경고 없이 NaN이에요. `errstate` 같은 설정도 없어요.
+- `out`은 keyword-only예요. `where=` 인자는 없어요. 도와 라디안을 바꾸는 함수는 [`deg2rad`, `rad2deg`](/api/array/deg2rad/)이고, 별칭 `degrees`, `radians`는 없어요.
+- Python 숫자를 넣으면 numpy 스칼라가 아니라 Python `float`가 나와요.
+- `sin`, `cos`, `asin`, `acos`, `atan`, `atan2`의 값은 numpy와 마지막 몇 자리가 다를 수 있어요(잰 차이는 `cos`가 최대 1칸, 나머지가 최대 3칸). `tan`은 지금은 numpy와 비트까지 같아요(약속은 아니에요). ±0, ±inf, NaN 같은 특수값의 결과는 부호까지 같아요.

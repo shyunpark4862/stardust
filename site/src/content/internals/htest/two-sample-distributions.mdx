@@ -1,0 +1,351 @@
+---
+title: 두 표본의 분포 비교
+group: 순위와 표본 비교
+order: 3
+summary: 두 표본 Kolmogorov–Smirnov와 Cramér–von Mises의 통계량을 정수 격자에서 만들고, 정확한 귀무분포를 합친 표본의 블록 위 동적 계획으로 세는 방법을 설명해요. 확률을 양수로만 쌓아서 깊은 꼬리도 자릿수를 지키고, 동점이 있으면 관측한 블록에 조건부인 분포가 돼요. k 표본 Anderson–Darling과 Epps–Singleton도 다뤄요.
+seeAlso: [rank-tests, rank-k-samples, correlation, edf, ks-1samp]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import Steps from '../../../components/fig/Steps.astro';
+import AccuracySummary from '../../../components/fig/AccuracySummary.astro';
+
+## 한눈에 보기
+
+두 표본이 같은 분포에서 왔는지 보는 검정 넷은 Python 층 `src/stardust/htest/_gof.py`에서 인자를 확인하고, C++ 커널(`csrc/htest/gof2.cpp`)을 한 번 불러요. 정확한 귀무분포는 `csrc/htest/ks2.hpp`(Kolmogorov–Smirnov)와 `csrc/htest/cvm2.hpp`(Cramér–von Mises)에 있어요.
+
+| 함수 | 통계량 | 정확하게 만드는 것 | p값 |
+|---|---|---|---|
+| [`ks_2samp`](/api/htest/ks_2samp/) | D | 정수 간격 $g = i a - j b$, $D = h/\mathrm{lcm}(n_1, n_2)$ | 블록 동적 계획, 같은 크기는 Hodges의 닫힌 꼴, 또는 점근 |
+| [`cramervonmises_2samp`](/api/htest/cramervonmises_2samp/) | T | 4U(정수) | 창 동적 계획 또는 Anderson의 점근 |
+| [`anderson_ksamp`](/api/htest/anderson_ksamp/) | 표준화한 $A^2_{kN}$ | 항마다 정수의 몫 | Scholz–Stephens 표의 보간 |
+| [`epps_singleton_2samp`](/api/htest/epps_singleton_2samp/) | W | double-double 인자의 cos·sin | 카이제곱 |
+
+<Fig column caption="ks_2samp 한 줄의 흐름. cramervonmises_2samp도 같은 꼴이에요.">
+  <Steps steps={[
+    { label: 'ks_2samp()', note: "alternative, method('auto', 'exact', 'asymp') 확인, 표본을 줄 행렬로", where: '_gof.py' },
+    { label: 'ks2_lane', note: '두 표본을 정렬하고 병합하며 정수 간격 g와 블록(같은 값의 묶음) 크기를 모아요', where: 'gof2.cpp' },
+    { label: '방법 고르기', note: "'auto'는 max(n₁, n₂) ≤ 10⁴에서 정확, 일을 미리 세어 상한 10⁹와 견줘요", where: 'gof2.cpp', depth: 1 },
+    { label: 'tail / equal_tail', note: '블록 위의 동적 계획, 또는 같은 크기·동점 없음의 닫힌 꼴', where: 'ks2.hpp', depth: 1 },
+    { label: 'kstwo_sf / Hodges', note: '점근: 양쪽은 한 표본 분포, 한쪽은 Hodges의 식', where: 'ks.hpp, gof2.cpp', depth: 1 },
+    { label: 'Ks2sampResult', note: 'statistic, pvalue, statistic_location, statistic_sign, method', where: '_gof.py' },
+  ]} />
+</Fig>
+
+## Kolmogorov–Smirnov: 통계량
+
+두 경험 분포 함수 $F_1, F_2$의 차의 최댓값 D는 "x의 값 i개, y의 값 j개를 지난 뒤"의 차 $i/n_1 - j/n_2$들 가운데서 나와요. $L = \mathrm{lcm}(n_1, n_2)$, $a = L/n_1$, $b = L/n_2$로 두면 이 차는 $g/L$이고 $g = ia - jb$는 정수예요. 그래서 커널은 두 정렬한 표본을 병합하며 g의 최댓값과 최솟값을 정수로 찾고, 마지막에 $D = h/L$을 한 번 나눠요.
+
+```cpp
+    // csrc/htest/gof2.cpp
+    while (i < n1 || j < n2) {
+        const double v = (j >= n2 || (i < n1 && x[static_cast<std::size_t>(i)] <= y[static_cast<std::size_t>(j)]))
+                             ? x[static_cast<std::size_t>(i)]
+                             : y[static_cast<std::size_t>(j)];
+        const std::int64_t i0 = i, j0 = j;
+        while (i < n1 && x[static_cast<std::size_t>(i)] == v) ++i;
+        while (j < n2 && y[static_cast<std::size_t>(j)] == v) ++j;
+        const std::int64_t t = (i - i0) + (j - j0);
+        ties = ties || t > 1;
+        blocks.push_back(t);
+        const std::int64_t g = i * a - j * b;
+        if (first || g > gmax) gmax = g, vmax = v;
+        if (first || g < gmin) gmin = g, vmin = v;
+        first = false;
+    }
+```
+
+같은 값은 두 표본에서 모두 넘긴 뒤에 g를 봐요. 경험 분포 함수는 오른쪽 연속이라 같은 값의 묶음 안쪽에서는 보이지 않기 때문이에요. 이 묶음의 크기(`blocks`)가 정확 분포의 입력이에요. `statistic_location`은 극값에 처음 닿는 값이고, 양쪽 검정은 $D^- > D^+$일 때만 $D^-$(부호 −1)를 골라요. 둘 다 scipy의 규칙이에요.
+
+정확 검정은 "관측만큼 극단"을 정수 h로 견줘요. scipy는 D를 double로 만들어 견주므로, 수학적으로 같은 두 D가 반올림으로 갈릴 수 있어요.
+
+## Kolmogorov–Smirnov: 정확한 분포
+
+### 격자 경로와 블록
+
+귀무가설 아래에서 합친 표본의 순서는 그대로이고 두 표본의 꼬리표만 고르게 섞여요. 꼬리표의 배치 하나는 (0, 0)에서 (n₁, n₂)로 가는 격자 경로 하나이고, D ≥ h/L은 그 경로가 간격 g의 띠 밖에 한 번이라도 닿는 일이에요. 동점이 없으면 모든 경로가 같은 확률이라 $\binom{n_1 + n_2}{n_1}$으로 나눈 경로 수를 세면 되는데, 이 수는 n이 조금만 커도 double을 넘어요.
+
+커널은 경로 수 대신 확률을 앞에서부터 쌓아요. 상태는 작은 표본(상태 수가 적은 쪽)의 지금까지 개수 c이고, 무게는 그 앞부분이 나올 확률이에요. 남은 자리가 R개, 그 가운데 작은 표본의 값이 r = n_c − c개 남았으면 다음 값이 작은 표본일 확률은 r/R이에요. 띠 밖에 닿은 상태는 그 무게를 꼬리에 더하고 지워요(흡수).
+
+```cpp
+                // csrc/htest/ks2.hpp
+                for (; c <= mid_end; ++c) {
+                    const DD v =
+                        wp[c - 1] * static_cast<double>(F.nc - c + 1) + wp[c] * static_cast<double>(R - (F.nc - c));
+                    out[c] = v * inv;
+                }
+```
+
+이렇게 하면 p값은 흡수된 무게의 합, 곧 양수의 합이에요. $1 - P(\text{띠 안})$으로 얻지 않으므로 아주 작은 p값도 자릿수를 지키고, 확률이라 넘치지도 않아요. 한 단계의 상대오차가 약 2⁻¹⁰⁴라 블록 수 × 2⁻¹⁰⁴ 안이에요. 무게가 0으로 아래넘친 상태는 살아 있는 범위에서 빠지므로, 일은 (n₁ + n₂) × 띠의 폭이에요.
+
+띠의 경계는 c의 구간으로 바로 계산해요. p개를 지난 뒤의 간격이 $\pm(c(a + b) - pq)$이므로, $c(a + b) - pq < h$와 $> -h$를 c에 대해 풀면 정수 나눗셈 둘이에요.
+
+```cpp
+        // csrc/htest/ks2.hpp
+        const std::int64_t pq = p * q;
+        // c apb - pq < h  <=>  c <= floor((pq + h - 1) / apb);  c apb - pq > -h  <=>  c >= floor((pq - h) / apb) + 1
+        const std::int64_t up = fdiv(pq + h - 1, apb), down = fdiv(pq - h, apb) + 1;
+```
+
+한쪽 검정은 경계 하나만 써요. 'greater'는 $D^+$, 곧 $g \ge h$에 닿는 경로이고 'less'는 반대쪽이에요.
+
+### 동점: 블록의 초기하 확률
+
+동점이 있으면 같은 값 t개의 묶음(블록)이 한 번에 지나가요. 경험 분포 함수는 블록의 끝에서만 보이고, 블록이 작은 표본의 값을 k개 가질 확률은 초기하 확률 $\binom{t}{k}\binom{R - t}{r - k}/\binom{R}{r}$이에요. 이 분포는 관측한 블록에 조건부인 분포이고, R의 `psmirnov`(`ks.test(exact = TRUE)`)가 동점일 때 쓰는 것과 같아요.
+
+초기하 확률은 최빈값에서 1로 시작해 이웃 항의 비 $\frac{(t - k)(r - k)}{(k + 1)(R - t - r + k + 1)}$를 곱하고 나눠 양쪽으로 쌓은 뒤, 합으로 나눠 정규화해요. 최빈값에서 멀어질수록 비가 1 이하라 넘치지 않고, 0으로 내려가면 멈춰요.
+
+```cpp
+    // csrc/htest/ks2.hpp
+    at(mode) = {1.0, 0.0};
+    for (std::int64_t k = mode; k < kmax; ++k) {
+        at(k + 1) = at(k) * ratio(k);
+        if (at(k + 1).hi == 0.0) break;
+    }
+    for (std::int64_t k = mode; k > kmin; --k) {
+        at(k - 1) = at(k) / ratio(k - 1);
+        if (at(k - 1).hi == 0.0) break;
+    }
+```
+
+```python
+>>> x = [1.0, 2.0, 2.0, 3.0, 3.0, 3.0]
+>>> y = [2.0, 3.0, 4.0, 4.0, 5.0]
+>>> sd.htest.ks_2samp(x, y)
+Ks2sampResult(statistic=0.6, pvalue=0.108225, statistic_location=3, statistic_sign=1, method='exact')
+>>> sd.htest.ks_2samp(x, y, alternative='greater')
+Ks2sampResult(statistic=0.6, pvalue=0.0930736, statistic_location=3, statistic_sign=1, method='exact')
+```
+
+### 같은 크기: Hodges의 닫힌 꼴
+
+$n_1 = n_2 = n$이고 동점이 없으면 경로 수에 닫힌 꼴이 있어요(Gnedenko–Korolyuk, Hodges 1957). 반사 원리로 한쪽은
+
+$$
+P(D^+ \ge h/n) = \binom{2n}{n - h}\Big/\binom{2n}{n}
+$$
+
+이고, 양쪽은 포함과 배제로
+
+$$
+P(D \ge h/n) = 2\sum_{k \ge 1} (-1)^{k-1} \binom{2n}{n - kh}\Big/\binom{2n}{n}
+$$
+
+예요. 커널은 이항계수의 비를 $\prod_{j < kh} (n - j)/(n + j + 1)$로 이어 곱해 double-double로 들어요. 항이 빠르게 줄어 몇 항이면 끝나고 일은 O(n)이에요.
+
+```cpp
+// csrc/htest/ks2.hpp
+inline double equal_tail(std::int64_t n, std::int64_t h, bool two_sided) {
+    if (h <= 0) return 1.0;
+    if (h > n) return 0.0;
+    DD A{1.0, 0.0};
+    std::int64_t j = 0;
+    auto advance = [&](std::int64_t to) {
+        for (; j < to; ++j) A = A * (DD{static_cast<double>(n - j), 0.0} / static_cast<double>(n + j + 1));
+    };
+    advance(h);
+    if (!two_sided) return A.hi + A.lo;
+    DD s{0.0, 0.0};
+    for (std::int64_t k = 1; k * h <= n; ++k) {
+        advance(k * h);
+        if (A.hi == 0.0) break;
+        s = (k & 1) ? s + A : s - A;
+    }
+    const DD r = s * 2.0;
+    return std::clamp(r.hi + r.lo, 0.0, 1.0);
+}
+```
+
+### 깊은 꼬리
+
+```python
+>>> r = sd.htest.ks_2samp(sd.arange(200.0), sd.arange(250.0) + 1000)
+>>> r.pvalue
+2.9418062937446744e-133
+```
+
+완전히 갈린 200 × 250은 D = 1이고 p값이 $2/\binom{450}{200}$이에요. 경로 수를 double로 세면 $\binom{450}{200} \approx 10^{133}$에서는 아직 되지만, 표본이 더 커지면 $10^{308}$을 넘어 세지 못해요. 확률로 쌓는 셈은 그런 한계가 없어요.
+
+### 상한과 점근
+
+정확 계산의 일은 블록마다 닿을 수 있는 상태 수 × 고르는 수(양쪽은 띠의 폭까지)로 미리 재서 상한 10⁹와 견줘요. 'auto'의 범위 max(n₁, n₂) ≤ 10⁴(scipy의 `MAX_AUTO_N`)는 언제나 이 상한 안이라, 'auto'는 그 범위에서 언제나 정확 분포를 써요. `method='exact'`가 상한을 넘으면 `method='asymp'`를 알려 주는 `ValueError`예요.
+
+점근 p값은 scipy의 식이에요. 양쪽은 한 표본 Kolmogorov–Smirnov 분포를 $n = \mathrm{round}(n_1 n_2/(n_1 + n_2))$에서 쓰고, 이것은 [한 표본 검정](/internals/htest/ks-1samp/)의 double-double Durbin 행렬(`csrc/htest/ks.hpp`)로 계산해요. 한쪽은 Hodges의 근사 $\exp\bigl(-2z^2 - 2z(m + 2n)/(3\sqrt{mn(m + n)})\bigr)$, $z = D\sqrt{mn/(m + n)}$, m ≥ n이에요.
+
+## Cramér–von Mises: 통계량
+
+두 표본 Cramér–von Mises 통계량(Anderson 1962)은
+
+$$
+T = \frac{U}{kN} - \frac{4k - 1}{6N},\qquad U = n_x\sum_i (r_i - i)^2 + n_y\sum_j (s_j - j)^2
+$$
+
+예요($k = n_x n_y$, $N = n_x + n_y$, $r_i$는 x의 i번째로 작은 값의 합친 순위, $s_j$는 y의 것). 중간 순위가 반정수라 4U가 정수예요. 같은 값 t개의 블록(위치 $p_0$부터)이 x의 값 $m = 1..k_x$번째를 담으면, 그 항은 $(2R - 2(c + m))^2$($2R = 2p_0 + t + 1$, c는 블록 앞까지의 x 개수)이고 m에 대한 합은 닫힌 꼴이에요.
+
+```cpp
+// csrc/htest/cvm2.hpp
+// sum_{m=1..k} (A - 2m)^2 = k A^2 - 2 A k (k + 1) + 2 k (k + 1)(2k + 1)/3
+inline std::int64_t run_sum(std::int64_t A, std::int64_t k) {
+    return k * A * A - 2 * A * k * (k + 1) + 2 * k * (k + 1) * (2 * k + 1) / 3;
+}
+```
+
+커널은 4U를 128비트 정수로 모으고 $T = (6\cdot 4U - 4k(4k - 1))/(24kN)$을 double-double로 한 번 나눠요. U/(kN)과 (4k − 1)/(6N)을 따로 반올림해 빼면 둘이 비슷한 크기라 상쇄가 생겨요.
+
+## Cramér–von Mises: 정확한 분포
+
+### 부분합의 목록
+
+정확 분포도 블록 위의 동적 계획이에요. KS와 다른 점은 상태(작은 표본의 개수 c)마다 하나의 무게가 아니라 "지금까지의 4U 부분합과 그 확률"의 목록을 들어야 한다는 것이에요. 동점이 없으면 이것은 Burr(1963)의 격자 경로 셈과 같아요. 블록 하나가 지나가면 각 부분합에 그 블록의 증가분을 더해 다음 상태의 목록에 병합해요.
+
+목록이 커지는 것을 막는 것은 미리 잰 경계예요. 증가분은 언제나 0 이상이고, 각 (블록, 상태)에서 앞으로 더해질 증가분의 가장 작은 합 `rem_lo`와 가장 큰 합 `rem_hi`를 뒤에서부터 한 번씩 훑어(min-plus·max-plus) 구해 둬요. 그러면 부분합 s에 대해
+
+- $s + \text{rem\_lo} \ge v$면 무엇이 와도 관측값 v에 닿으므로 그 확률을 바로 꼬리에 더하고 지워요.
+- $s + \text{rem\_hi} < v$면 무엇이 와도 닿지 못하므로 버려요.
+
+목록에는 아직 정해지지 않은 창 $[v - \text{rem\_hi},\, v - \text{rem\_lo})$의 부분합만 남아요.
+
+```cpp
+// csrc/htest/cvm2.hpp
+inline void merge_into(
+    List& out,
+    List& tmp,
+    const List& src,
+    std::int64_t s,
+    DD f,
+    std::int64_t keep,
+    std::int64_t absorb,
+    PosSum& absorbed
+) {
+    tmp.clear();
+    tmp.reserve(out.size() + src.size());
+    std::size_t i = 0, j = 0;
+    while (j < src.size() && src[j].first + s < keep) ++j;
+    while (j < src.size() && src[j].first + s < absorb) {
+        const std::int64_t key = src[j].first + s;
+        while (i < out.size() && out[i].first < key) tmp.push_back(out[i++]);
+        const DD add = src[j].second * f;
+        if (i < out.size() && out[i].first == key) {
+            tmp.emplace_back(key, out[i].second + add);
+            ++i;
+        } else {
+            tmp.emplace_back(key, add);
+        }
+        ++j;
+    }
+    while (i < out.size()) tmp.push_back(out[i++]);
+    for (; j < src.size(); ++j) absorbed.add(src[j].second * f);
+    out.swap(tmp);
+}
+```
+
+목록은 부분합의 오름차순이라 병합이 선형이고, 버릴 앞부분과 흡수할 뒷부분이 목록의 양 끝에 모여요. 확률(`f`는 블록의 초기하 확률)은 모두 양수의 double-double이라 KS와 같은 이유로 꼬리가 자릿수를 지켜요. 부분합은 $G = \gcd(n_x, n_y)$로 나눠 들고, 동점이 없으면 증가분이 모두 4의 배수라 4로 더 나눠요. 그래서 표본마다 100개 남짓까지 정확 분포를 낼 수 있어요.
+
+### 상한
+
+계획 단계(`plan`)가 상태마다 창의 폭으로 병합할 항목 수의 위 경계와 동시에 드는 항목 수를 미리 재요. 상한은 합친 항목 10⁹개와 동시에 드는 항목 10⁷개예요. 위 경계는 실제 일보다 훨씬 커서, `method='exact'`가 그 경계를 넘으면 바로 거절하지 않고 한도 안에서 실제로 계산해 봐요. 시도의 한도는 합친 항목 10⁹개와 목록들의 저장 공간 256 MiB(두 단계의 목록과 병합의 임시 목록의 용량)예요. 그 한도도 넘으면 `method='asymptotic'`을 알려 주는 `ValueError`예요.
+
+시도 하나는 저장 한도만큼 메모리를 쓸 수 있어요. 배치의 줄들은 스레드풀에서 함께 도니까, 시도마다 따로 돌면 스레드 수만큼 메모리가 늘어요. 그래서 시도는 뮤텍스로 한 번에 하나만 해요. 시도의 결과는 순서와 상관없어서 p값은 그대로이고, 메모리는 스레드 수와 상관없이 한 시도의 크기에 머물러요. 위 경계 안의 줄은 이 뮤텍스를 지나지 않아요.
+
+```cpp
+            // csrc/htest/gof2.cpp
+            double p = -1.0;
+            if (plan.ok) {
+                const std::lock_guard<std::mutex> one(try_mutex());
+                p = cvm2::tail(plan, cap, kTryBytes);
+            }
+``` 'auto'는 scipy의 문턱 max(n_x, n_y) ≤ 20에서만 정확을 골라요.
+
+```python
+>>> rng = sd.random.default_rng(1)
+>>> N = sd.stats.Normal()
+>>> a = N.sample(30, rng=rng)
+>>> b = N.sample(26, rng=rng) + 0.5
+>>> sd.htest.cramervonmises_2samp(a, b)
+Cramervonmises2sampResult(statistic=0.113965, pvalue=0.535996, method='asymptotic')
+>>> sd.htest.cramervonmises_2samp(a, b, method='exact')
+Cramervonmises2sampResult(statistic=0.113965, pvalue=0.535344, method='exact')
+```
+
+### 점근
+
+점근 p값은 scipy의 것이에요. Anderson의 정규화 $t_n = 1/6 + (T - \mathbb E T)/\sqrt{45\,\mathrm{Var}\,T}$에서 $T - \mathbb E T$는 정수의 몫이라 정확하고, p값은 [한 표본 검정](/internals/htest/edf/)의 극한 분포 V로 $\max(0, 1 - V(t_n))$($t_n < 0.003$이면 1)이에요. 1 − V라 p값의 오차는 절대 약 10⁻¹⁶이고, 아주 작은 p값에서는 상대오차가 커요(정확도 표의 상대오차 열). 계약도 이곳은 절대 오차로 재요.
+
+## k 표본 Anderson–Darling
+
+[`anderson_ksamp`](/api/htest/anderson_ksamp/)는 Scholz와 Stephens(1987)의 $A^2_{kN}$을 계산해요. 합친 표본의 서로 다른 값 $z_j$(개수 $l_j$)마다, 표본 i의 그 값 이하 개수 $M_{ij}$가 기대 비율 $n_i B_j/N$에서 얼마나 벗어나는지를 가중해 더하는 통계량이에요. 세 꼴이 있어요.
+
+- `'midrank'`(기본, 식 7): 동점의 중간 위치를 쓰는 $A^2_{akN}$. 두 배 개수 $2M = M_< + M_\le$, $2B = 2\,\text{left} + l$로 쓰면 항이 $\frac{l_j (N\cdot 2M - 2B\,n_i)^2}{N\,(2B(2N - 2B) - Nl_j)}$이고 분자·분모가 정수예요. 표본마다의 합을 $n_i$로 나눠 더하고 끝에 $(N - 1)/N$을 곱해요.
+- `'right'`(식 6): 오른쪽 연속인 개수로, 마지막 값을 뺀 서로 다른 값마다.
+- `'continuous'`(식 3): 동점을 펼친 합친 표본의 위치 j = 1..N − 1마다.
+
+```cpp
+                // csrc/htest/gof2.cpp
+                if (variant == kMidrank) {
+                    // eq. 7 doubled: X = N (2M - f) - (2 left + l) n_i, D = (2B)(2N - 2B) - N l
+                    const i128 twoM = static_cast<i128>(q) + static_cast<i128>(qlt), twoB = 2 * left + lj;
+                    const i128 X = static_cast<i128>(N) * twoM - twoB * ni;
+                    const i128 D = twoB * (2 * static_cast<i128>(N) - twoB) - static_cast<i128>(N) * lj;
+                    si.add(dd_of(X * X) * static_cast<double>(lj) / (dd_of(D) * Nd));
+```
+
+항마다 정수의 몫 하나를 double-double로 만들어 double-double로 더하므로 통계량이 거의 정확해요. 표준화에는 귀무 분산 $\sigma_N^2$(식 4)이 필요한데, 그 안의 조화합 $H = \sum 1/n_i$, $h = \sum_{i < N} 1/i$, $g = \sum_{i \le N - 2}\sum_{j = i + 1}^{N - 1} 1/((N - i)j)$도 double-double이에요. g의 이중 합은 $1/j$의 꼬리합을 한 번 만들어 두면 O(N)이에요. 통계량은 $(A^2_{kN} - (k - 1))/\sigma_N$을 한 번 반올림한 값이에요.
+
+p값은 scipy의 규칙이에요. Scholz–Stephens의 표 2에서 유의수준 7개의 임계값 $b_0 + b_1/\sqrt{k - 1} + b_2/(k - 1)$을 만들고, 통계량이 가장 작은 임계값보다 작으면 0.25, 가장 큰 값보다 크면 0.001, 그 사이면 log(유의수준)을 임계값의 2차식에 최소제곱으로 맞춘 값의 exp예요. scipy는 `np.polyfit`으로 맞추고, 여기서는 같은 double 임계값에서 정규방정식을 double-double의 가우스 소거로 풀어요. 이 p값은 "그 보간식의 값"이 참값이에요.
+
+```python
+>>> sd.htest.anderson_ksamp([a, b])
+AndersonKsampResult(statistic=-0.465073, pvalue=0.25)
+```
+
+빈 표본, NaN, 합쳐서 4개 미만, 서로 다른 값이 하나뿐이면 NaN이에요.
+
+## Epps–Singleton
+
+[`epps_singleton_2samp`](/api/htest/epps_singleton_2samp/)는 두 표본의 경험 특성함수를 몇 점 $t_k/\sigma$에서 견줘요(Epps와 Singleton 1986). σ는 합친 표본 사분위 범위의 반(numpy의 선형 백분위수를 double-double로)이고, 관측 x마다 벡터 $g(x) = (\cos(t_k x/\sigma), \sin(t_k x/\sigma))_k$를 만들어 표본마다 평균과 편향 공분산을 구해요. 통계량은 $W = N\,d^{\mathsf T} S^{+} d$이고, d는 두 평균의 차, $S = (N/n_x)\Sigma_x + (N/n_y)\Sigma_y$예요.
+
+cos의 인자 $t_k x/\sigma$는 x가 크면(오프셋이 크면) double로 반올림하는 것만으로 각도가 틀려져요. 그래서 인자를 double-double $(\theta_{hi}, \theta_{lo})$로 만들고, 낮은 부분은 1차 테일러로 고쳐요.
+
+```cpp
+        // csrc/htest/gof2.cpp
+        for (int k = 0; k < T; ++k) {
+            const DD arg = ts[static_cast<std::size_t>(k)] * x[static_cast<std::size_t>(i)];
+            const double c = std::cos(arg.hi), s = std::sin(arg.hi);
+            g[static_cast<std::size_t>(k * n + i)] = dd::two_sum(c, -s * arg.lo);
+            g[static_cast<std::size_t>((T + k) * n + i)] = dd::two_sum(s, c * arg.lo);
+        }
+```
+
+$|\theta_{lo}| \le 2^{-53}|\theta_{hi}|$라 2차 항은 버려도 되는 크기예요. 평균과 공분산의 합도 double-double이에요.
+
+$S^{+}$는 numpy `pinv`의 규칙을 따라요. S가 대칭이라 Jacobi 회전으로 고윳값을 구하고, 가장 큰 고윳값의 10⁻¹⁵배 이하를 버려요. 모두 남으면 $S^{+}d$를 double-double의 가우스 소거로 풀고, 버린 것이 있으면 남은 고유벡터 방향의 $(u^{\mathsf T}d)^2/\lambda$를 더해요. 자유도는 numpy `matrix_rank(pinv(S))`의 규칙(보통 $2\cdot\mathrm{len}(t)$)이고 결과의 `df` 필드예요. max(n_x, n_y) < 25면 Epps–Singleton의 작은 표본 보정 $1/(1 + N^{-0.45} + 10.1(n_x^{-1.7} + n_y^{-1.7}))$을 곱하고, p값은 그 자유도의 카이제곱 꼬리예요.
+
+```python
+>>> sd.htest.epps_singleton_2samp(a, b)
+EppsSingleton2sampResult(statistic=2.16335, pvalue=0.705744, df=4)
+```
+
+표본이 5개 미만이거나, 유한하지 않은 값이 있거나, 사분위 범위가 0이면 NaN이에요. 두 표본이 저마다 상수이면(분산 0의 규칙) 사분위 범위는 0이 아니어도 NaN이에요. 그때 g 벡터는 표본 안에서 모두 같아서 공분산이 평균의 반올림(10⁻⁶⁶쯤)뿐이고, 의사역행렬이 그것을 뒤집으면 W가 10⁶⁵쯤의 뜻 없는 값이 돼요. 같은 까닭으로 S의 가장 큰 고윳값이 $N \cdot 2^{-104}$ 이하여도(g의 성분은 크기 1 이하라 반올림 크기의 공분산이에요) NaN이에요.
+
+W는 $x/\sigma$로만 정해지므로 척도와 상관없어요. 가장 큰 |x|가 2⁵⁰⁰ 이상이거나 2⁻⁴⁰⁰ 아래인 줄은 두 표본을 그 지수의 단위 2ᵉ로 옮겨 계산하고, 2의 거듭제곱 배 한 표본은 원래 표본과 비트까지 같아요.
+
+```python
+>>> sd.htest.epps_singleton_2samp([1.0] * 6, [2.0] * 7)
+EppsSingleton2sampResult(statistic=nan, pvalue=nan, df=nan)
+>>> sd.htest.epps_singleton_2samp(a * 2.0**-1000, b * 2.0**-1000).statistic == sd.htest.epps_singleton_2samp(a, b).statistic
+True
+```
+
+## 정확도
+
+정수 꼴의 통계량(D = h/L, T, $A^2_{kN}$의 항)은 한 번의 반올림이라 상대 8.5e-17 안이고, 정확 분포의 p값은 확률의 양수 합이라 상대 10⁻¹⁶ 안이에요(깊은 꼬리 2.9e-133, 동점의 조건부 분포, 997 × 1000, 동점이 있는 2000 × 1500). 참값은 꼬리표 배치를 정수로 센 것(동점이면 블록마다 $\binom{t}{k}$의 조건부), Cramér–von Mises는 부분합을 사전으로 센 정수, 점근은 Arb(구간 산술)로 만든 참값이에요. Cramér–von Mises의 점근 p값은 1 − V라 절대 오차로 재요.
+
+<AccuracySummary area="htest" names={['ks_2samp', 'cramervonmises_2samp', 'anderson_ksamp', 'epps_singleton_2samp']} caption="두 표본의 분포 비교. cramervonmises_2samp의 p값 상대오차가 큰 줄은 참값 1.9e-24인 점근 꼬리이고, 그 영역의 계약은 절대 오차예요." />
+
+## scipy·R과 다른 곳
+
+- scipy `ks_2samp`의 정확 분포는 동점을 무시해서, 동점이 있는 문제들에서 참(조건부) 분포와 상대 0.22–8.5 달라요. R 4.6.2 `ks.test(exact = TRUE)`(`psmirnov`)는 같은 조건부 분포라 18문제에서 1.1e-15 안이에요. 완전 분리의 꼬리(2.9e-133)에서 R은 1 − cdf라 0이에요.
+- scipy는 경로 수를 double로 세어 $\binom{N}{n} > 10^{308}$이면 정확 계산을 포기하고 경고와 함께 점근으로 넘어가요. 여기서는 넘치지 않아 'auto'의 범위에서 언제나 정확이에요.
+- scipy의 양쪽 점근 `kstwo`는 n > 140에서 Pelz–Good 근사라 1e-7쯤 틀려요(3000 × 2500에서 4.8e-8). R의 점근은 Kolmogorov의 극한과 $\exp(-2nD^2)$이라 정의가 달라요.
+- scipy `cramervonmises_2samp`의 정확 분포는 모든 부분합을 나열해서 'auto'를 20 × 20에 묶어 둬요. 동점이 있으면 동점이 없는 분포에 중간 순위의 U를 넣어 1.2–7.4% 달라요. 통계량은 U/(kN) − (4k − 1)/(6N)의 상쇄로 2000 × 3000에서 상대 8.5e-14 틀리고, 점근 p값은 급수를 1e-7에서 멈춰 꼬리(참 1.9e-24)에서 1.1e-10을 내요.
+- scipy `epps_singleton_2samp`은 cos의 인자를 반올림해서, 오프셋 10⁸의 데이터에서 통계량이 상대 9.6e-10 틀려요. 저마다 상수인 두 표본(1이 6개, 2가 7개)에서는 통계량 8.8e31, p값 0을 내요.
+- scipy 1.18.1의 `anderson_ksamp`은 빈 표본·서로 다른 값 하나에서 `ValueError`이고, 여기서는 NaN이에요.

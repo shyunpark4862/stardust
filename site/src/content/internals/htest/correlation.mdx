@@ -1,0 +1,322 @@
+---
+title: 상관 검정
+group: 상관
+order: 1
+summary: Pearson의 p값을 정하는 1 − r²을 상쇄 없이 만드는 방법, Spearman이 같은 커널에 정수 순위를 넘기는 방법, Kendall의 τ를 병합 정렬의 역순 쌍으로 세고 정확한 분포를 Mahonian 수로 쌓는 방법, 그리고 가중 τ·Somers' D·Chatterjee ξ를 정수와 double-double로 계산하는 방법을 설명해요.
+seeAlso: [rank-tests, rank-k-samples, two-sample-distributions]
+---
+import AccuracySummary from '../../../components/fig/AccuracySummary.astro';
+
+## 한눈에 보기
+
+상관 검정은 Python 층 `src/stardust/htest/_correlation.py`에서 짝지은 두 표본을 줄 행렬로 맞추고, C++ 커널(`csrc/htest/correlation.cpp`)을 한 번 불러요. Kendall의 정확 분포만 `csrc/htest/kendall.hpp`에 따로 있어요.
+
+| 함수 | 커널 | 통계량을 정확하게 만드는 것 | p값 |
+|---|---|---|---|
+| [`pearsonr`](/api/htest/pearsonr/), [`pointbiserialr`](/api/htest/pointbiserialr/) | `pearson` | 2의 거듭제곱 단위, double-double 교차곱 합, 잔차로 만든 1 − r² | r의 베타 분포 $I_q((n-2)/2, 1/2)$ |
+| [`spearmanrho`](/api/htest/spearmanrho/), [`spearmanr`](/api/htest/spearmanr/) | `pearson`(순위), `corr_matrix` | 정수 중간 순위 | 같은 베타 분포 |
+| [`kendalltau`](/api/htest/kendalltau/) | `kendall` | 역순 쌍과 동점 쌍(128비트 정수) | 정확(Mahonian 수) 또는 정규 |
+| [`weightedtau`](/api/htest/weightedtau/) | `weightedtau` | double-double 가중 합 | 없음(NaN) |
+| [`somersd`](/api/htest/somersd/) | `crosstab`, `somersd` | 2차원 누적합의 정수 | 정규(ASE) |
+| [`chatterjeexi`](/api/htest/chatterjeexi/) | `chatterjee` | 정수 순위 차의 합 | 정규 |
+
+## Pearson: 1 − r²이 p값을 정해요
+
+### 왜 1 − r²인가
+
+$t = r\sqrt{(n - 2)/(1 - r^2)}$의 양쪽 꼬리를 정규화 불완전 베타로 쓰면
+
+$$
+P(|T| \ge |t|) = I_{q}\Bigl(\frac{n - 2}{2}, \frac12\Bigr),\qquad q = \frac{n - 2}{n - 2 + t^2} = 1 - r^2
+$$
+
+이에요. p값은 r이 아니라 q의 함수예요. |r|이 1에 가까우면 q가 아주 작고, 그 꼬리에서 p값의 상대오차는 q의 상대오차를 그대로 따라가요. 그런데 반올림한 r에서 $1 - r^2$을 계산하면 r의 반올림 오차(약 10⁻¹⁶)가 q로 옮겨 가서, q가 10⁻¹⁶ 근처면 자릿수가 하나도 남지 않아요. 그래서 이 커널은 r보다 q를 정확하게 만드는 데 공을 들여요.
+
+### 단위와 제곱합
+
+줄마다 x와 y를 따로 $2^{-e}$배 해요(e는 가장 큰 절댓값의 지수). 2의 거듭제곱 곱이라 정확하고, 10³⁰⁰ 같은 값의 제곱도 넘치지 않아요. 상관은 각 변수의 배율과 상관없으므로 단위를 되돌릴 필요도 없어요. 가장 큰 절댓값이 서브노멀 크기(지수가 −1000 아래)인 변수는 $2^{-e}$가 double을 넘치므로, 먼저 그 변수에 $2^{600}$을 곱한 사본을 만들고 같은 계산을 해요. 평균은 double-double이고, 중심화한 값 $x_c = x - \bar x$도 TwoSum으로 double-double이라 오프셋이 커도(10⁹ 근처의 데이터) 차가 정확해요. $S_{xy}$는 r이 0에 가까울수록 서로 지워지는 합이라 double-double 곱의 double-double 합이에요. $S_{xx}$와 $S_{yy}$는 양수인 제곱의 합이라 중심화한 값을 double로 반올림해 제곱하고 고정된 나무로 더해요(64개를 NEON 여덟 칸에 여덟 개씩, 64개의 합끼리 짝지어; [제곱합의 double 나무](/internals/htest/lanes/#제곱합의-double-나무)와 같은 꼴). 이 합은 참값의 약 20ε 안이라 r과 $q = 1 - r^2$(r² < 1/2에서)도 4 × 10⁻¹⁵ 안에 머물러요. 합은 고정된 크기의 블록마다 모아(교차곱은 네 줄의 사슬, NEON으로 두 칸씩) 블록 순서대로 더하므로, 긴 줄 하나도 스레드풀에서 나눠 돌고 지금은 스레드 수와 상관없이 같은 비트예요.
+
+### q를 만드는 두 갈래
+
+r = $S_{xy}/\sqrt{S_{xx}S_{yy}}$는 double-double이에요. 그다음 q는 r²의 크기에 따라 두 갈래예요.
+
+- $r^2 < 1/2$: double-double r에서 $1 - r^2$. q가 1/2보다 커서 상쇄가 없어요.
+- $r^2 \ge 1/2$: 중심화한 y를 중심화한 x에 사영한 잔차 $e = y_c - (S_{xy}/S_{xx})x_c$로 $q = \lVert e\rVert^2/S_{yy}$. 회귀의 $1 - R^2$을 잔차 제곱합으로 얻는 것과 같은 방법이에요. 이 갈래는 세 합을 모두 double-double로 다시 구해서 써요. 잔차 제곱합은 $q\,S_{yy}$인데 기울기 $b = S_{xy}/S_{xx}$가 d만큼 틀리면 잔차 제곱합에 $d^2 S_{xx}$가 더해져서, q가 작을 때는 b에 $S_{xx}$의 모든 자리가 필요하기 때문이에요.
+
+```cpp
+    // csrc/htest/correlation.cpp
+    o.r = clip_unit(Sxy / sqrt_dd(Sxx * Syy));
+    const DD w = o.r * o.r;
+    if (w.hi < 0.5) {
+        o.w = w;
+        o.q = DD{1.0, 0.0} - w;
+    } else {
+        // (the products again, all in double-doubles: the residuals' sum is q times Syy, and a
+        // slope off by d adds d^2 Sxx to it, so b needs Sxx's every digit when q is small)
+        Acc sd2[3];
+        block_sums<3>(n, sd2, [&](std::int64_t j0, std::int64_t j1, Acc4* a) {
+            for4(products_dd_neon(x, y, fx, fy, mxd, myd, j0, j1, a), j1, [&](std::int64_t j, auto k) {
+                const DD u = xc(j), v = yc(j);
+                const DD uu = u * u, vv = v * v, uv = u * v;
+                a[0].c[k].add(uu.hi, uu.lo);
+                a[1].c[k].add(vv.hi, vv.lo);
+                a[2].c[k].add(uv.hi, uv.lo);
+            });
+        });
+        const DD b = sd2[2].value() / sd2[0].value();
+        Acc s3[1];
+        block_sums<1>(n, s3, [&](std::int64_t j0, std::int64_t j1, Acc4* a) {
+            for4(residuals_neon(x, y, fx, fy, mxd, myd, b, j0, j1, a), j1, [&](std::int64_t j, auto k) {
+                const DD e = yc(j) - b * xc(j);
+                const DD e2 = e * e;
+                a[0].c[k].add(e2.hi, e2.lo);
+            });
+        });
+        o.q = s3[0].value() / sd2[1].value();
+        if (o.q.hi > 0.5) o.q = DD{1.0, 0.0} - w;  // (rounding past the branch's side: take 1 - r^2)
+        if (o.q.hi < 0.0) o.q = DD{0.0, 0.0};
+        o.w = DD{1.0, 0.0} - o.q;
+    }
+```
+
+잔차 꼴은 각 잔차를 double-double로 만들어 제곱해 더하므로 q의 상대오차가 약 $2^{-105}/\sqrt q$예요. $1 - r^2 = 10^{-18}$(r = 1 − 5·10⁻¹⁹)에서도 q의 자릿수가 남아요. 중심화한 값은 저장하지 않고 다시 더하는 훑기와 잔차의 훑기에서 같은 식으로 다시 만들어요. 같은 연산이라 같은 비트이고 메모리가 들지 않아요.
+
+### p값과 Fisher z
+
+p값은 sd.special의 불완전 베타(TOMS 708을 double-double로 옮긴 `ibeta_detail::ibeta`, [불완전 함수](/internals/special/incomplete/))에 q와 $w = r^2 = 1 - q$를 둘 다 넘겨 얻어요. 함수 안에서 $1 - q$를 다시 반올림하지 않아요. 한쪽 p값은 관측 쪽이면 그 반, 반대쪽이면 $\tfrac12 + \tfrac12(1 - I)$이고, $1 - I$도 함수가 직접 주는 여함수예요.
+
+```cpp
+    // csrc/htest/correlation.cpp
+    if (alt == 0) return i;
+    const bool upper = (c.r.hi >= 0.0) == (alt == 2);
+    return upper ? 0.5 * i : 0.5 + 0.5 * ic;
+```
+
+신뢰구간에 쓰는 Fisher z = atanh r은 $\tfrac12\log\frac{1 + |r|}{1 - |r|}$이고, 분모 $1 - |r|$을 $q/(1 + |r|)$로 얻어 역시 상쇄를 피해요. 구간의 끝은 scipy의 꼴 $\tanh(z \mp z_{\alpha/2}/\sqrt{n - 3})$이에요.
+
+```python
+>>> rng = sd.random.default_rng(0)
+>>> N = sd.stats.Normal()
+>>> x = N.sample(10, rng=rng)
+>>> y = x + 1e-9 * N.sample(10, rng=rng)
+>>> r = sd.htest.pearsonr(x, y)
+>>> r
+PearsonrResult(statistic=1, pvalue=8.92668e-74)
+>>> r.statistic == 1.0
+True
+```
+
+r을 double로 반올림하면 1이지만, q는 잔차에서 따로 만들어서 p값이 살아 있어요.
+
+### 참값이 0인 상관
+
+반대쪽 끝도 있어요. 참 $S_{xy}$가 정확히 0이어도 double-double 합은 반올림 크기($10^{-32}$쯤)의 값을 남겨서, r이 0이 아니라 $10^{-33}$쯤으로 나와요. 상대오차로는 무한대예요. 그래서 $|S_{xy}|$가 $2^{-80}\sqrt{S_{xx}S_{yy}}$ 이하(|r| ≤ 2⁻⁸⁰)이면 0인지를 정확히 판정해 봐요. 모든 값이 공통의 $2^{-k}$의 정수배이고 그 정수가 $2^{40}$ 아래인 짧은 2진 값의 자료(정수, 반정수 같은)이고 $n \le 2^{20}$이면, $n\sum xy = \sum x\sum y$를 128비트 정수로 넘치지 않고 계산할 수 있어요. 같으면 $S_{xy}$를 0으로 둬요.
+
+```cpp
+// csrc/htest/correlation.cpp
+bool exact_zero_sxy(const double* x, const double* y, std::int64_t n) {
+    int kx, ky;
+    if (!small_dyadic(x, n, kx) || !small_dyadic(y, n, ky)) return false;
+    i128 sx = 0, sy = 0, sxy = 0;
+    for (std::int64_t j = 0; j < n; ++j) {
+        const i128 u = dyadic_int(x[j], kx), v = dyadic_int(y[j], ky);
+        sx += u, sy += v, sxy += u * v;
+    }
+    return static_cast<i128>(n) * sxy == sx * sy;
+}
+```
+
+판정은 0인지만 정하고 다른 값은 건드리지 않아요. 짧은 2진 값이 아닌 자료(0.1을 더한 값처럼)는 double-double의 값 그대로예요.
+
+```python
+>>> u = [float(i) for i in range(-10, 11)]
+>>> sd.htest.pearsonr(u, [t * t for t in u])
+PearsonrResult(statistic=0, pvalue=1)
+```
+
+### 퇴화한 입력
+
+한 표본의 분산이 0이면(sd.stats `skew`의 규칙: $m_2 \le (\varepsilon\,\bar x)^2$) NaN이에요. 쌍이 2개 미만이거나 무한대가 있어도 NaN이에요. n = 2는 scipy의 약속대로 r = ±1, p = 1이에요. 정확히 한 직선 위의 점은 q = 0이라 |r| = 1, p = 0이에요. [`pointbiserialr`](/api/htest/pointbiserialr/)은 같은 커널의 통계량과 양쪽 p값이에요.
+
+## Spearman: 같은 커널에 순위를
+
+[`spearmanrho`](/api/htest/spearmanrho/)는 쌍을 맞춘 뒤(`'omit'`이면 NaN이 든 쌍을 빼고) x와 y를 따로 두 배 중간 순위로 바꾸고 Pearson 커널을 그대로 불러요. 순위는 [순위 검정과 같은](/internals/htest/rank-tests/) 꼬리표 정렬이고, 꼬리표가 원래 위치라 순위를 제자리에 돌려놓을 수 있어요.
+
+```cpp
+// csrc/htest/correlation.cpp
+void midranks2(const std::vector<double>& v, std::vector<double>& out) {
+    const auto n = static_cast<std::int64_t>(v.size());
+    std::vector<Key> k(static_cast<std::size_t>(n));
+    for (std::int64_t j = 0; j < n; ++j)
+        k[static_cast<std::size_t>(j)] = Key{v[static_cast<std::size_t>(j)], 0.0, static_cast<std::int32_t>(j)};
+    sort_keys(k);
+    out.assign(static_cast<std::size_t>(n), 0.0);
+    std::int64_t i = 0;
+    while (i < n) {
+        std::int64_t e = i + 1;
+        while (e < n && key_equal(k[static_cast<std::size_t>(e)], k[static_cast<std::size_t>(i)])) ++e;
+        const double rk = static_cast<double>(i + e + 1);  // 2b + t + 1, t = e - i
+        for (std::int64_t t = i; t < e; ++t) out[static_cast<std::size_t>(k[static_cast<std::size_t>(t)].tag)] = rk;
+        i = e;
+    }
+}
+```
+
+순위가 정수라 Pearson 커널 안의 모든 합이 정확하고, ρ는 정확한 유리수(의 제곱근 몫)를 한 번 반올림한 값이에요. 두 배는 상관을 바꾸지 않아요. ±inf는 순서대로 순위를 받아요. p값은 Pearson과 같은 t 근사(scipy의 정의)이고 정확 분포는 없어요.
+
+[`spearmanr`](/api/htest/spearmanr/)는 scipy의 옛 꼴로 여러 변수의 상관 행렬을 내요. 변수마다 순위를 한 번 매기고(`corr_matrix`), 모든 쌍을 `spearmanrho`와 같은 줄 계산으로 해서 (i, j) 원소가 `spearmanrho(변수 i, 변수 j)`와 같은 비트예요. `'omit'`이면 쌍마다 NaN이 든 관측을 빼고 순위를 다시 매겨요.
+
+## Kendall의 τ
+
+### 역순 쌍 세기
+
+τ-b의 분자는 일치 쌍 수 − 불일치 쌍 수예요. 커널은 먼저 x와 y를 따로 조밀한 정수 부호 0, 1, 2, …로 바꾸면서 동점 합 $\sum t(t - 1)/2$ 등을 정수로 모아요. 그다음 (x 부호, y 부호)를 64비트 하나로 묶어 정렬하면 x 순, x가 같으면 y 순이 돼요. 이 순서로 늘어놓은 y의 역순 쌍(앞이 뒤보다 큰 쌍)이 정확히 불일치 쌍이에요. x가 같은 쌍은 y 순으로 놓여 역순이 아니고, y가 같은 쌍은 엄격한 부등호라 세지 않아요(Knight 1966의 방법).
+
+```cpp
+    // csrc/htest/correlation.cpp
+    std::vector<std::uint64_t> pk(static_cast<std::size_t>(n));
+    for (std::int64_t j = 0; j < n; ++j)
+        pk[static_cast<std::size_t>(j)] =
+            (static_cast<std::uint64_t>(cx[static_cast<std::size_t>(j)]) << 32) | cy[static_cast<std::size_t>(j)];
+    std::sort(pk.begin(), pk.end());
+```
+
+역순 쌍은 아래에서 위로 가는 병합 정렬로 O(n log n)에 세요. 오른쪽 조각의 원소가 왼쪽 조각의 남은 원소보다 작아 먼저 나가면, 왼쪽에 남은 수만큼 역순 쌍이 늘어요.
+
+```cpp
+            // csrc/htest/correlation.cpp
+            while (i < mid && j < hi) {
+                if (v[static_cast<std::size_t>(j)] < v[static_cast<std::size_t>(i)]) {
+                    inv += mid - i;
+                    buf[static_cast<std::size_t>(o++)] = v[static_cast<std::size_t>(j++)];
+                } else {
+                    buf[static_cast<std::size_t>(o++)] = v[static_cast<std::size_t>(i++)];
+                }
+            }
+```
+
+일치 쌍 − 불일치 쌍은 $\text{tot} - t_x - t_y + t_{xy} - 2\,\text{dis}$로, 모든 항이 128비트 정수예요($t_{xy}$는 x와 y가 모두 같은 쌍). τ-b $= (\text{con} - \text{dis})/\sqrt{(\text{tot} - t_x)(\text{tot} - t_y)}$는 분모의 곱을 double-double로 만들어 제곱근 하나와 나눗셈 하나로 한 번 반올림해요. τ-c $= 2(\text{con} - \text{dis})\,m/(n^2(m - 1))$은 정수의 몫이에요.
+
+### 정확한 분포: Mahonian 수
+
+동점이 없으면 귀무가설 아래에서 y의 순서는 1..n의 무작위 순열이고, 불일치 쌍의 수 K는 그 순열의 역순 쌍 수예요. 그 분포의 개수 $M_n(k)$가 Mahonian 수예요. j − 1개의 순열에 j번째로 큰 원소를 끼우는 자리가 j개이고, 그 자리마다 역순 쌍이 0, 1, …, j − 1개 늘어나므로
+
+$$
+M_j(k) = \sum_{i=0}^{j-1} M_{j-1}(k - i),\qquad \sum_k M_n(k)\,q^k = \prod_{j=1}^{n}(1 + q + \cdots + q^{j-1})
+$$
+
+예요. 분포가 대칭이라 커널은 언제나 가까운 쪽 아래 꼬리 $P(K \le c)$, $c = \min(\text{con}, \text{tot} - \text{con})$만 세고, 계수열도 c에서 잘라요. 일은 n(c + 1)이에요.
+
+n! < 2¹²⁷(n ≤ 33, scipy 'auto'의 정확 범위)이면 128비트 정수로 세요. 길이 j의 창 합은 누적합에 하나를 더하고 하나를 빼는 미끄러지는 창이고, 정수라 그 뺄셈이 정확해요.
+
+그보다 크면 확률 $g_j = M_j/j!$을 double-double로 쌓아요. 이때 미끄러지는 창의 뺄셈을 쓰면 오른쪽 꼬리가 자릿수를 잃으므로, 계수열을 길이 j의 블록으로 나눠 블록 안의 앞쪽 누적합(`pre`)과 뒤쪽 누적합(`suf`)을 만들어 둬요. 창 $[k - j + 1, k]$는 블록 둘에 걸치므로 앞 블록의 뒤쪽 합과 뒤 블록의 앞쪽 합 하나씩을 더하면 돼요. 뺄셈이 없어 한 단계의 상대오차가 2⁻¹⁰⁵ 몇 배예요.
+
+```cpp
+        // csrc/htest/kendall.hpp
+        for (std::int64_t k = 0; k <= c; ++k) {
+            const std::int64_t a = k - j + 1;  // the window [a, k]
+            DD w = pre[static_cast<std::size_t>(k)];
+            if (a > 0 && a % j != 0) w = suf[static_cast<std::size_t>(a)] + w;
+            // (the division by j: exact for j a power of 2, else the double-double quotient)
+            g[static_cast<std::size_t>(k)] =
+                (j & (j - 1)) == 0 ? DD{w.hi * inv, w.lo * inv} : w / static_cast<double>(j);
+            top = std::max(top, g[static_cast<std::size_t>(k)].hi);
+        }
+        if (top > 0.0 && top < 0x1p-600) {
+            for (DD& v : g) v = dd::ldexp(v, 600);
+            scale += 600;
+        }
+```
+
+a가 블록의 시작이면(`a % j == 0`) 창이 블록 하나라 `pre[k]`만으로 돼요. 가장 큰 항이 2⁻⁶⁰⁰ 밑으로 내려가면 계수열 전체에 2⁶⁰⁰을 곱해 두고 끝에 되돌려요. 그래서 double 범위 밑의 꼬리(1/200! ≈ 1.3·10⁻³⁷⁵)도 도중에 자릿수를 잃지 않고 서브노멀이나 0으로 바르게 나와요.
+
+양쪽·한쪽 p값은 scipy `_kendall_p_exact`의 규칙이에요. 양쪽은 가까운 꼬리의 두 배를 1로 자른 값이고, 한쪽은 관측이 대립가설 쪽이면 그 꼬리, 반대쪽이면 $1 - P(K \le c) + P(K = c)$예요.
+
+```python
+>>> t = sd.htest.kendalltau(sd.arange(60.0), sd.arange(60.0))
+>>> t
+KendalltauResult(statistic=1, pvalue=2.40356e-82, method='exact')
+```
+
+완전히 같은 순서인 60쌍은 불일치 쌍이 0개라 'auto'가 정확을 고르고(scipy의 규칙: 불일치나 일치가 1개 이하), 양쪽 p값이 $2/60!$이에요.
+
+작업 상한은 n(c + 1) ≤ 10⁹와 계수 10⁷개예요. n = 1500쯤까지 정확 분포를 낼 수 있어요. 넘으면 'auto'는 정규 근사, `method='exact'`는 `ValueError`예요. 동점이 있는 `'exact'`는 scipy처럼 `ValueError`예요. x와 y 모두의 동점에 조건부인 개수는 일반적으로 다루기 어려워서 정확 분포를 두지 않아요. 정규 근사는 scipy의 동점 분산이고, 그 항들도 정수에서 double-double로 만들어요.
+
+## 가중 τ
+
+[`weightedtau`](/api/htest/weightedtau/)는 Vigna(2015)의 가중 τ예요. 쌍 (i, j)마다 무게 $w_{ij}$(기본은 순위 r의 쌍곡선 무게 1/(r + 1)의 합)를 주어, 순위가 높은(중요한) 원소끼리의 일치·불일치를 더 크게 쳐요. 모든 쌍을 보면 O(n²)이지만, Vigna의 알고리즘은 Knight의 병합 정렬을 무게로 넓혀 O(n log n)이에요. (x, y, 위치)로 안정 정렬한 뒤 y에 대한 병합 정렬을 하면서, 오른쪽 원소 b가 왼쪽에 남은 원소들을 넘어설 때 그 교환들의 무게를 한 번에 더해요. 더하는 무게(additive)라면 $w_b \times (\text{왼쪽에 남은 수}) + (\text{왼쪽에 남은 무게의 합})$이에요.
+
+```cpp
+        // csrc/htest/correlation.cpp
+        while (j < len0 && k < len1) {
+            const std::int64_t a = perm[static_cast<std::size_t>(off + j)], b = perm[static_cast<std::size_t>(mid + k)];
+            if (y[a] <= y[b]) {
+                temp[static_cast<std::size_t>(i)] = a;
+                residual = residual - w[a];
+                ++j;
+            } else {
+                temp[static_cast<std::size_t>(i)] = b;
+                exch = exch + (additive ? w[b] * static_cast<double>(len0 - j) + residual : w[b] * residual);
+                ++k;
+            }
+            ++i;
+        }
+```
+
+"왼쪽에 남은 무게의 합" `residual`은 왼쪽 원소가 하나 나갈 때마다 그 무게를 빼서 유지해요. 이 뺄셈을 double로 되풀이하면 큰 무게에서 작은 무게를 뺄 때마다 작은 무게의 자릿수가 사라지므로, 여기서는 residual, 교환의 합, 동점의 무게 합, 쌍곡선 무게 1/(r + 1)까지 모두 double-double이에요. x 동점, y 동점, 결합 동점의 무게도 같은 정렬 순서에서 묶음마다 모아요. `rank=True`는 (x, y)와 (y, x)의 두 사전식 순위로 각각 τ를 내어 평균해요. `weigher`를 주면 순위 0..n − 1에서 Python으로 한 번씩 불러 표로 넘기므로, 커널 안에서는 Python을 부르지 않아요. p값은 scipy처럼 정의가 없어 NaN이에요.
+
+## Somers' D
+
+[`somersd`](/api/htest/somersd/)는 두 순위 변수에서 교차표를 만들거나 표를 바로 받아요. 칸 (i, j)의 개수 $a_{ij}$에 대해 왼쪽 위와 오른쪽 아래 칸의 합 $A_{ij}$(일치), 왼쪽 아래와 오른쪽 위의 합 $D_{ij}$(불일치)가 필요해요. 칸마다 그 블록을 다시 더하면 O((rc)²)이지만, 표의 2차원 누적합을 한 번 만들면 네 블록이 모두 누적합의 몇 칸의 차라 전체가 O(rc)예요.
+
+```cpp
+    // csrc/htest/correlation.cpp
+    for (std::int64_t i = 0; i < R; ++i) {
+        const i128 ri = at(i + 1, C) - at(i, C);
+        rows2 += ri * ri;
+        for (std::int64_t j = 0; j < C; ++j) {
+            const std::int64_t a = cell(i, j);
+            if (a == 0) continue;
+            const std::int64_t ul = at(i, j), lr = N - at(i + 1, C) - at(R, j + 1) + at(i + 1, j + 1);
+            const std::int64_t ll = at(R, j) - at(i + 1, j), ur = at(i, C) - at(i, j + 1);
+            const i128 A = ul + lr, D = ll + ur;
+            P += a * A;
+            Q += a * D;
+            T += a * (A - D) * (A - D);
+        }
+    }
+```
+
+P와 Q는 일치·불일치 쌍의 두 배이고 $D(Y \mid X) = (P - Q)/(N^2 - \sum_i r_i^2)$예요. p값은 scipy의 점근 표준오차(ASE)로 $Z = (P - Q)/\sqrt{4S}$, $S = \sum a(A - D)^2 - (P - Q)^2/N$이에요. $S\cdot N = TN - (P - Q)^2$은 N이 10⁹ 아래면 128비트 정수로 정확해요. 행이나 열이 하나뿐이면 NaN이고, S = 0이면 p값이 NaN이에요(scipy는 Z = inf, p = 0). 두 표본에서 만드는 표의 칸이 10⁷개를 넘으면 표를 만들기 전에 `ValueError`예요.
+
+## Chatterjee ξ
+
+[`chatterjeexi`](/api/htest/chatterjeexi/)(Chatterjee 2021)는 y가 x의 함수인 정도를 재요. 쌍을 x의 순서로 늘어놓고(x의 동점은 위치로 갈라요) $r_i = \#\{j : y_j \le y_{(i)}\}$, $l_i = \#\{j : y_j \ge y_{(i)}\}$를 정렬한 y에서 이분 탐색으로 얻어요. 그러면
+
+$$
+\xi = 1 - \frac{n\sum_i |r_{i+1} - r_i|}{2\sum_i l_i(n - l_i)}
+$$
+
+이고(`y_continuous=True`면 $1 - 3\sum|r_{i+1} - r_i|/(n^2 - 1)$), 분자와 분모가 모두 정수라 ξ는 정확한 유리수를 한 번 반올림한 값이에요. 귀무 분산은 scipy `_xi_std`의 식을 정수로 모은 $\tau^2 = (An^2 - 2Bn + C^2)/D^2$이에요($A = \sum(2n - 2i + 1)u_i^2$, $B = \sum(v_i + (n - i)u_i)^2$, $C = \sum(2n - 2i + 1)u_i$, $D = \sum l(n - l)$, u는 정렬한 r, v는 그 누적합). p값은 큰 ξ 쪽의 정규 꼬리 $P(Z \ge \xi\sqrt n\,D/\sqrt{An^2 - 2Bn + C^2})$예요.
+
+```python
+>>> sd.htest.chatterjeexi(sd.arange(10.0), (sd.arange(10.0) - 4.5) ** 2)
+ChatterjeexiResult(statistic=0.5, pvalue=0.0108907)
+```
+
+y가 x의 대칭인 함수라 Pearson의 r은 0이지만 ξ는 의존을 잡아요. y가 상수이거나 쌍이 2개 미만이면 NaN이에요.
+
+## 정확도
+
+통계량은 상대 1.8e-16 안이에요. Pearson의 r은 제곱합의 double 나무 때문에 반올림 몇 번이고, 다른 통계량은 정확한 유리수(나 그 제곱근)를 한 번 반올림한 값이에요. Pearson·Spearman의 p값은 q = 1 − r²에 대한 조건수로 재서, $1 - r^2 = 10^{-18}$의 깊은 상관과 10⁻²²⁰의 꼬리까지 1.6e-15 안이에요. Kendall의 정확 분포는 깊은 꼬리 $2/60!$, $200/100!$까지 맞아요. 참값은 r²과 1 − r²을 정확한 유리수로, p값을 Arb(구간 산술)의 불완전 베타로, Kendall의 개수를 쌍을 하나씩 센 정수와 Mahonian 수의 정수 꼬리로 만든 것이에요.
+
+<AccuracySummary area="htest" names={['pearsonr', 'spearmanrho', 'kendalltau', 'weightedtau', 'somersd', 'chatterjeexi']} caption="상관 검정의 정확도. pearsonr의 conf_int는 Fisher z 구간이에요. scipy·R 열의 큰 값은 r ≈ 1의 p값(1 − r²의 상쇄)에서 나와요." />
+
+## scipy·R과 다른 곳
+
+- scipy `pearsonr`은 반올림한 r에서 1 − r²을 만들어, y = x + 10⁻⁹·잡음(n = 10, 참 p 1.2e-74)에서 p = 0이에요. 10⁻⁴·잡음에서도 상대 5.4e-7 틀려요. R `cor.test`는 같은 자리에서 상대 5.6e10 틀려요. R은 오프셋 10⁸·10⁹에서 r이 6.1e-10·2.2e-9 틀리고, 배율 1e±200에서는 제곱이 넘쳐 NA예요.
+- R `cor.test`의 Spearman 기본은 AS 89의 정확 분포라 작은 표본에서 정의가 달라요(n = 10에서 상대 1.5 차이). sd와 scipy는 t 근사예요.
+- R의 Kendall 정확 분포(n < 50의 기본)는 개수를 double로 세어(`ckendall`) n = 33에서 p값이 2.1e-9 틀리고, 꼬리를 1 − cdf로 얻어 불일치 0개(n = 60)·1개(n = 100)의 깊은 꼬리에서 0 근처의 반올림(음수도)이 나와요. scipy는 n ≤ 33에서 맞아요.
+- scipy `weightedtau`는 합을 double로 하고 잔여 무게에서 빼기를 되풀이해, 동점이 있는 n = 40에서 통계량이 1.0e-14 틀려요. scipy는 NaN을 모든 수보다 큰 값으로 순위 매기고, 여기서는 `nan_policy`를 따라요.
+- scipy `chatterjeexi`는 x의 동점을 `argsort`가 임의로 가르고, 여기서는 위치로 갈라요. 꼬리(n = 500, 참 1.6e-195)에서 scipy의 p값은 상대 1.6e-12 틀려요.
+- scipy `somersd`의 계산은 칸마다 블록을 다시 더하는 O((rc)²)이에요.

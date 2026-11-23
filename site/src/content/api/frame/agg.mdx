@@ -1,0 +1,273 @@
+---
+title: GroupBy.agg
+names: []
+group: groupby
+order: 3
+signatures:
+  - "GroupBy.agg(func=None, /, **named)"
+summary: 그룹 집계를 이름(문자열)으로 골라 한 번에 해요. 모든 컬럼에 같은 집계, 컬럼마다 다른 집계, 결과 컬럼 이름을 직접 붙인 여러 집계의 세 형태가 있어요.
+params:
+  - name: func
+    type: str 또는 dict
+    kind: positional-only
+    desc: '집계 이름 하나(모든 값 컬럼에 적용), 또는 {컬럼: 집계 이름} dict(컬럼마다 하나씩).'
+  - name: "**named"
+    type: '결과 이름=(컬럼, 집계 이름)'
+    kind: keyword-only
+    desc: 결과 컬럼의 이름을 직접 정하는 집계. 같은 컬럼에 여러 집계를 할 때 써요. func와 함께 쓸 수 없어요.
+returns:
+  type: DataFrame
+  desc: 키 컬럼이 먼저, 그다음 집계 결과 컬럼이 오는 표. 그룹 하나가 한 행이고 라벨은 RangeIndex예요.
+raises:
+  - type: TypeError
+    desc: 집계 이름의 리스트나 Python 함수를 줬을 때, func와 이름 붙인 집계를 함께 줬거나 둘 다 주지 않았을 때, 이름 붙인 집계가 (컬럼, 이름) 튜플이 아닐 때, 집계할 수 없는 dtype일 때(문자열의 sum 등).
+  - type: ValueError
+    desc: 모르는 집계 이름일 때(median 등), 결과 컬럼 이름이 키 컬럼과 겹칠 때.
+  - type: KeyError
+    desc: 값 컬럼이 아닌 이름(없는 컬럼, 키 컬럼, 고르지 않은 컬럼)을 줬을 때.
+seeAlso: [groupby, groupby-agg, merge, value_counts]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import FrameFig from '../../../components/fig/FrameFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+[그룹 집계](/api/frame/groupby-agg/)의 메서드(`g.sum()`, `g.mean()` …)는 모든 값 컬럼에 같은 집계 하나를 해요. 그런데 실제 보고서에는 "판매량은 합계, 가격은 평균"처럼 컬럼마다 다른 집계나, "판매량의 합계와 최댓값"처럼 한 컬럼에 여러 집계가 필요할 때가 많아요. `agg`는 이런 집계를 이름(문자열)으로 골라 한 번에 해 줘요.
+
+```python
+>>> import stardust as sd
+>>> sales = sd.frame.DataFrame({"fruit": ["apple", "pear", "apple", "kiwi", "pear", "apple"],
+...                             "qty": [3, 1, 5, 2, 4, 2],
+...                             "price": [1.5, 2.0, 1.25, 0.5, 2.25, 1.5]})
+>>> g = sales.groupby("fruit")
+>>> g.agg({"qty": "sum", "price": "mean"})
+   fruit  qty     price
+0  apple   10  1.416667
+1   kiwi    2  0.500000
+2   pear    5  2.125000
+```
+
+`agg`에는 세 가지 형태가 있어요.
+
+| 형태 | 예 | 결과 컬럼 |
+|---|---|---|
+| 이름 하나 | `g.agg("sum")` | 모든 값 컬럼에 같은 집계. `g.sum()`과 같아요. |
+| dict | `g.agg({"qty": "sum", "price": "mean"})` | dict에 적은 컬럼만, 컬럼마다 집계 하나. |
+| 이름 붙인 집계 | `g.agg(total=("qty", "sum"))` | 결과 컬럼 이름을 직접 정해요. 한 컬럼에 여러 집계도 돼요. |
+
+<Reference />
+
+## 형태 1: 이름 하나
+
+집계 이름 하나를 주면 모든 값 컬럼에 그 집계를 해요. 같은 이름의 메서드를 부른 것과 결과가 똑같아요.
+
+```python
+>>> g.agg("sum")
+   fruit  qty  price
+0  apple   10   4.25
+1   kiwi    2   0.50
+2   pear    5   4.25
+```
+
+`g.agg("sum")`은 `g.sum()`과 같아요. 이 형태는 집계를 변수에 담아 고를 때 편해요. 예를 들어 `how = "max"`처럼 정해 두고 `g.agg(how)`로 부를 수 있어요.
+
+## 형태 2: dict로 컬럼마다
+
+`{컬럼 이름: 집계 이름}` dict를 주면 컬럼마다 다른 집계를 해요. 결과에는 dict에 적은 컬럼만, 적은 순서대로 들어가요. 적지 않은 값 컬럼은 빠져요.
+
+```python
+>>> g.agg({"price": "max"})
+   fruit  price
+0  apple   1.50
+1   kiwi   0.50
+2   pear   2.25
+```
+
+dict의 값은 집계 이름 하나예요. 한 컬럼에 여러 집계를 하려면 다음 형태를 써요.
+
+```python
+>>> g.agg({"qty": ["sum", "max"]})
+Traceback (most recent call last):
+    ...
+TypeError: agg(): one function name per column; for several, use named aggregations (got ['sum', 'max'])
+```
+
+## 형태 3: 이름 붙인 집계
+
+`결과 이름=(컬럼, 집계 이름)` 꼴의 키워드 인자를 원하는 만큼 줘요. 결과 컬럼의 이름을 직접 정하므로, 같은 컬럼에 여러 집계를 해도 이름이 겹치지 않아요. 결과 컬럼은 키워드를 쓴 순서대로 와요.
+
+```python
+>>> g.agg(total=("qty", "sum"), best=("qty", "max"),
+...       sales=("qty", "size"), avg_price=("price", "mean"))
+   fruit  total  best  sales  avg_price
+0  apple     10     5      3   1.416667
+1   kiwi      2     2      1   0.500000
+2   pear      5     4      2   2.125000
+```
+
+<Fig caption="이름 붙인 집계는 (컬럼, 집계) 짝마다 결과 컬럼 하나를 만들어요. qty 한 컬럼에서 total, best, sales 세 컬럼이 나왔어요.">
+  <FrameFig name="sales" columns={['fruit', 'qty', 'price']}
+    data={[['apple', 3, 1.5], ['pear', 1, 2.0], ['apple', 5, 1.25], ['kiwi', 2, 0.5], ['pear', 4, 2.25], ['apple', 2, 1.5]]}
+    rowTones={['1', '3', '1', '2', '3', '1']} colTones={['', 'a', '']} />
+  <Op note="agg(total=…, best=…, sales=…)">→</Op>
+  <FrameFig columns={['fruit', 'total', 'best', 'sales']}
+    data={[['apple', 10, 5, 3], ['kiwi', 2, 2, 1], ['pear', 5, 4, 2]]}
+    rowTones={['1', '2', '3']} colTones={['', 'a', 'a', 'a']} />
+</Fig>
+
+결과 이름은 Python 키워드 인자라서 보통은 `total`처럼 영문자와 밑줄로 써요. 공백이 든 이름이 필요하면 `g.agg(**{"total qty": ("qty", "sum")})`처럼 dict를 풀어서 넘길 수 있어요.
+
+튜플은 꼭 `(컬럼, 집계 이름)` 두 칸이에요. 집계 이름만 주면 `TypeError`예요.
+
+```python
+>>> g.agg(n="size")
+Traceback (most recent call last):
+    ...
+TypeError: agg(): a named aggregation is name=(column, function), got n='size'
+```
+
+## 쓸 수 있는 집계 이름
+
+`agg`는 집계를 이름으로만 받아요. 쓸 수 있는 이름은 GroupBy의 집계 메서드와 같은 열 가지예요.
+
+| 이름 | 뜻 | 같은 메서드 |
+|---|---|---|
+| `"sum"` | 합 | `g.sum()` |
+| `"mean"` | 평균 | `g.mean()` |
+| `"min"`, `"max"` | 가장 작은 값, 가장 큰 값 | `g.min()`, `g.max()` |
+| `"std"`, `"var"` | 표준편차, 분산 (`correction=0`) | `g.std()`, `g.var()` |
+| `"count"` | NA가 아닌 값의 개수 | `g.count()` |
+| `"size"` | 그룹의 행 수 | `g.size()` |
+| `"first"`, `"last"` | NA가 아닌 처음, 마지막 값 | `g.first()`, `g.last()` |
+
+각 집계의 규칙(NA 건너뛰기, NaN 전파, 결과 dtype)은 [그룹 집계](/api/frame/groupby-agg/)와 같아요.
+
+### 인자는 언제나 기본값이에요
+
+이름으로 고른 집계는 기본 인자로 계산해요. `"std"`는 `g.std()`와 같아서 `correction=0`(모표준편차)이고, `"sum"`은 `skipna=True`예요. 이름만 주는 방법으로는 인자를 바꿀 수 없어요.
+
+```python
+>>> g.agg(price_sd=("price", "std"))
+   fruit  price_sd
+0  apple  0.117851
+1   kiwi  0.000000
+2   pear  0.125000
+```
+
+표본표준편차(`correction=1`)가 필요하면 메서드로 따로 구한 뒤 키 컬럼으로 [`merge`](/api/frame/merge/)해서 붙여요. 결과에 키가 보통 컬럼으로 들어 있어서 바로 합칠 수 있어요.
+
+```python
+>>> summary = g.agg(avg=("price", "mean"))
+>>> summary.merge(g["price"].std(correction=1), on="fruit")
+   fruit       avg     price
+0  apple  1.416667  0.144338
+1   kiwi  0.500000      <NA>
+2   pear  2.125000  0.176777
+```
+
+### `"size"`
+
+`"size"`는 다른 집계와 달리 컬럼의 값을 보지 않고 그룹의 행 수를 세요. 그래서 쓰는 자리에 따라 결과가 이렇게 달라요.
+
+- `g.agg("size")`는 `g.size()`와 같아요. 값 컬럼 대신 `size` 컬럼 하나가 나와요.
+- dict나 이름 붙인 집계에서는 그 자리에 행 수가 들어가요. 어느 컬럼을 적든 결과는 같아요.
+
+```python
+>>> g.agg("size")
+   fruit  size
+0  apple     3
+1   kiwi     1
+2   pear     2
+>>> g.agg({"qty": "size", "price": "mean"})
+   fruit  qty     price
+0  apple    3  1.416667
+1   kiwi    1  0.500000
+2   pear    2  2.125000
+```
+
+두 번째 결과의 `qty` 컬럼은 판매량이 아니라 행 수예요. 헷갈리지 않게 이름 붙인 집계(`n=("qty", "size")`)로 이름을 따로 붙이는 편이 좋아요.
+
+## 조심할 점
+
+### 리스트와 함수는 받지 않아요
+
+집계 이름의 리스트(`["sum", "mean"]`)는 `TypeError`예요. 한 컬럼에 집계 여러 개를 하면 결과 컬럼 이름이 겹치는데, 데이터프레임에는 컬럼 이름을 두 층으로 쌓는 기능이 없기 때문이에요. 이름 붙인 집계로 이름을 직접 정해요.
+
+```python
+>>> g.agg(["sum", "mean"])
+Traceback (most recent call last):
+    ...
+TypeError: agg(): a list of functions is not supported (no MultiIndex); use named aggregations
+```
+
+Python 함수(`sum`, `lambda s: ...`)도 받지 않고 `TypeError`예요. 메시지가 받는 형태 셋(이름, dict, 이름 붙인 집계)을 알려 줘요. 집계는 위 표의 이름으로만 골라요. 모르는 이름은 `ValueError`이고, 메시지에 쓸 수 있는 이름이 나와요.
+
+```python
+>>> g.agg(sum)
+Traceback (most recent call last):
+    ...
+TypeError: agg(): a callable is not supported; pass a function name (a str such as 'sum'), a dict of {column: function name}, or named aggregations (name=(column, function name))
+>>> g.agg("median")
+Traceback (most recent call last):
+    ...
+ValueError: agg(): unknown aggregation 'median'; use one of sum, mean, min, max, count, std, var, first, last, size
+```
+
+### 형태를 섞을 수 없어요
+
+`func`(이름 하나나 dict)와 이름 붙인 집계는 함께 쓸 수 없어요. 아무것도 주지 않아도 `TypeError`예요.
+
+```python
+>>> g.agg("sum", n=("qty", "size"))
+Traceback (most recent call last):
+    ...
+TypeError: agg(): pass either one function name / dict, or named aggregations (name=(column, function))
+>>> g.agg()
+Traceback (most recent call last):
+    ...
+TypeError: agg(): pass either one function name / dict, or named aggregations (name=(column, function))
+```
+
+### 값 컬럼만 집계할 수 있어요
+
+dict의 키와 이름 붙인 집계의 컬럼은 값 컬럼이어야 해요. 없는 컬럼, 키 컬럼, `g[[...]]`로 고를 때 빠진 컬럼은 `KeyError`예요.
+
+```python
+>>> g.agg({"color": "max"})
+Traceback (most recent call last):
+    ...
+KeyError: "agg(): 'color' is not a value column of this groupby"
+>>> g.agg(n=("fruit", "size"))
+Traceback (most recent call last):
+    ...
+KeyError: "agg(): 'fruit' is not a value column of this groupby"
+```
+
+결과 컬럼 이름이 키 컬럼과 같으면 `ValueError`예요. 결과 표에 같은 이름의 컬럼이 두 개 생기기 때문이에요.
+
+```python
+>>> g.agg(fruit=("qty", "sum"))
+Traceback (most recent call last):
+    ...
+ValueError: agg(): result column 'fruit' would repeat a key column
+```
+
+## 비슷한 함수와의 차이
+
+| 하고 싶은 일 | 쓸 것 |
+|---|---|
+| 모든 값 컬럼에 같은 집계, 인자를 바꿔서 | 메서드: `g.std(correction=1)`, `g.sum(skipna=False)` |
+| 모든 값 컬럼에 같은 집계, 이름을 변수로 | `g.agg("sum")` |
+| 컬럼마다 다른 집계 하나씩 | `g.agg({"qty": "sum", "price": "mean"})` |
+| 한 컬럼에 여러 집계, 결과 이름 직접 | `g.agg(total=("qty", "sum"), best=("qty", "max"))` |
+| 값마다 개수만 | [`value_counts`](/api/frame/value_counts/) |
+
+## pandas를 아는 분께
+
+- 이름 붙인 집계(`name=(column, func)`)와 dict 형태는 pandas와 같은 문법이에요.
+- 집계 이름의 리스트는 `TypeError`예요. pandas는 `agg(["sum", "mean"])`이나 `agg({"qty": ["sum", "max"]})`로 두 층짜리 컬럼(MultiIndex)을 만들지만, stardust에는 MultiIndex가 없어요.
+- Python 함수를 받지 않아요. pandas의 `agg(lambda s: ...)`, `agg(np.sum)`, `pd.NamedAgg`는 없어요. 집계는 열 가지 이름으로만 골라요.
+- `agg("std")`는 `correction=0`이에요. pandas의 `agg("std")`는 `ddof=1`이에요.
+- 결과는 키를 보통 컬럼으로 둔 DataFrame이에요(pandas의 `as_index=False` 모양). `agg("size")`도 Series가 아니라 `size` 컬럼이 있는 DataFrame이에요.

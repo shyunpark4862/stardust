@@ -1,0 +1,217 @@
+---
+kind: function
+title: goodness_of_fit
+names: [goodness_of_fit]
+group: 재표본
+order: 5
+signatures:
+  - "sd.htest.goodness_of_fit(dist, data, /, *, known_params=None, fit_params=None, statistic='ad', n_mc_samples=9999, rng)"
+summary: 자료가 어떤 분포족(정규, 지수, 와이블 등)을 따르는지를, 모수를 자료에서 추정한 채로 정확하게 검정해요. 분포를 최우추정으로 맞추고, 맞춘 분포에서 뽑은 표본마다 다시 맞추며 통계량(Anderson–Darling, Kolmogorov–Smirnov, Cramér–von Mises, Filliben)의 귀무분포를 몬테카를로로 만들어요.
+params:
+  - name: dist
+    type: sd.stats의 분포 클래스
+    kind: positional-only
+    desc: "검정할 분포족. sd.stats.Normal, Exponential, Logistic, Gumbel, Weibull, LogNormal, Laplace, Rayleigh 중 하나예요(객체가 아니라 클래스예요)."
+  - name: data
+    type: 1차원 배열 또는 수의 시퀀스
+    kind: positional-only
+    desc: 표본. 1차원이고 유한하며 관측이 둘 이상이어야 해요.
+  - name: known_params
+    type: dict 또는 None
+    kind: keyword-only
+    desc: "알고 있는 모수. {'mu': 0.0}처럼 sd.stats의 모수 이름으로 줘요. 맞출 때와 귀무분포의 표본을 다시 맞출 때 모두 고정해요."
+  - name: fit_params
+    type: dict 또는 None
+    kind: keyword-only
+    desc: 귀무분포를 정할 때만 고정할 모수. 통계량을 계산할 때는 이 모수도 다시 맞춰요. known_params와 겹치면 안 돼요.
+  - name: statistic
+    type: str 또는 callable
+    kind: keyword-only
+    desc: "'ad'(Anderson–Darling, 기본값), 'ks'(Kolmogorov–Smirnov), 'cvm'(Cramér–von Mises), 'filliben'(확률그림 상관, 작은 값이 극단), 또는 맞춘 분포를 받는 statistic(dist, data, axis)예요."
+  - name: n_mc_samples
+    type: int
+    kind: keyword-only
+    desc: 귀무분포에서 뽑을 표본의 수(기본값 9999). 양의 int예요.
+  - name: rng
+    type: sd.random.Generator
+    kind: keyword-only
+    desc: 귀무분포의 표본을 뽑을 생성기. 꼭 줘야 해요.
+returns:
+  type: GoodnessOfFitResult
+  desc: "fit_result(맞춘 귀무분포: sd.stats의 분포 객체, 맞추기에 실패하면 None), statistic, pvalue, null_distribution((n_mc_samples,))와 summary()가 있어요. 튜플로 풀리지 않아요."
+raises:
+  - type: TypeError
+    desc: dist가 분포 클래스가 아닐 때(문자열, 분포 객체), known_params·fit_params가 dict가 아닐 때, 모수 값이 수가 아닐 때, rng가 없거나 sd.random.Generator가 아닐 때, 없는 키워드를 줬을 때.
+  - type: ValueError
+    desc: dist가 받지 않는 분포 클래스일 때, 그 족에 없는 모수 이름을 줬을 때, 한 모수가 known_params와 fit_params에 모두 있을 때, statistic 이름이 틀렸을 때, data가 1차원이 아니거나 관측이 둘 미만이거나 NaN·inf가 있을 때, n_mc_samples가 1보다 작을 때.
+seeAlso: [anderson, ks_1samp, cramervonmises, shapiro, monte_carlo_test, methods, basics, results]
+---
+
+## 무엇을 묻는 검정인가요
+
+측정 오차 12개가 정규분포를 따르는지 알고 싶어요. 평균과 표준편차는 몰라요.
+
+```python
+>>> x = [0.42, -1.10, 0.85, 2.31, -0.27, 0.66, 1.94, -0.58, 0.12, 3.05, 0.77, -0.91]
+```
+
+- **귀무가설**: 자료가 `dist` 족의 어떤 분포에서 왔어요(모수는 모름).
+- **대립가설**: 그 족의 어떤 분포에서도 오지 않았어요.
+
+흔한 실수는 자료로 평균과 표준편차를 추정한 뒤, 그 정규분포와 [ks_1samp](/api/htest/ks_1samp/)으로 견주는 것이에요. 그러면 분포를 자료에 맞춘 만큼 통계량이 작아져서 p값이 너무 커요(검정이 거의 기각하지 않아요). 바른 귀무분포는 "맞춘 분포에서 표본을 뽑고, **그 표본에 다시 맞춘 뒤** 통계량을 계산한 값"의 분포예요. `goodness_of_fit`은 그 과정을 몬테카를로로 해요.
+
+1. `data`에 분포를 최우추정으로 맞춰요(`known_params`는 고정).
+2. 맞춘 분포와 `data`로 통계량을 계산해요.
+3. 맞춘 분포에서 `data`와 같은 크기의 표본을 `n_mc_samples`개 뽑아, 표본마다 1–2를 되풀이해요.
+4. 관측한 통계량이 그 분포에서 얼마나 극단인지가 p값이에요.
+
+<Reference />
+
+## 기본 사용
+
+```python
+>>> r = sd.htest.goodness_of_fit(sd.stats.Normal, x, n_mc_samples=1000, rng=sd.random.default_rng(8))
+>>> r
+GoodnessOfFitResult(fit_result=<Normal>, statistic=0.262854, pvalue=0.675325, null_distribution=<array of shape (1000,)>)
+>>> r.fit_result
+Normal(mu=0.605, sigma=1.2933079503913423)
+```
+
+p = 0.68이라 정규분포라는 가설을 기각할 근거는 없어요. `fit_result`는 맞춘 정규분포이고 sd.stats의 분포 객체라 `cdf`, `icdf`, `sample` 등을 그대로 쓸 수 있어요. 정규분포의 표준편차는 n − 1로 나눈 표본 표준편차예요.
+
+```python
+>>> print(r.summary())
+                        Goodness of fit (Monte Carlo)
+==============================================================================
+Statistic:                      0.2629  No. Observations:                   12
+P-value:                         0.675  Distribution:                   Normal
+                                        Statistic type:                     ad
+                                        Samples:                          1000
+==============================================================================
+```
+
+머리의 왼쪽 `Statistic:`은 통계량의 값, 오른쪽 `Statistic type:`은 통계량의 종류(`'ad'`)예요. `repr`에서 `fit_result`는 `<Normal>`처럼 분포의 이름만 짧게 보이고, 맞추기에 실패하면 `None`이에요.
+
+## 맞춘 모수로 ks_1samp을 하면
+
+같은 자료에서 맞춘 분포를 그대로 [ks_1samp](/api/htest/ks_1samp/)에 주면 p값이 두 배쯤 커요.
+
+```python
+>>> rk = sd.htest.goodness_of_fit(sd.stats.Normal, x, statistic='ks', n_mc_samples=1000, rng=sd.random.default_rng(8))
+>>> rk.statistic, rk.pvalue
+(0.17487527840075268, 0.3906093906093906)
+>>> sd.htest.ks_1samp(x, rk.fit_result.cdf).pvalue
+0.7976553498864277
+```
+
+통계량은 같지만 `ks_1samp`은 분포를 미리 정했다고 보고 p값을 구해요. 모수를 자료로 추정했다면 `goodness_of_fit`의 p값(0.39)이 맞는 값이에요(정규분포의 이 경우를 Lilliefors 검정이라고 불러요).
+
+## 통계량
+
+| statistic | 통계량 | 극단 |
+|---|---|---|
+| `'ad'`(기본값) | Anderson–Darling A². 꼬리의 어긋남에 무게를 둬요 | 큰 값 |
+| `'ks'` | Kolmogorov–Smirnov D. 누적분포의 가장 큰 차이 | 큰 값 |
+| `'cvm'` | Cramér–von Mises W². 누적분포 차이의 제곱 평균 | 큰 값 |
+| `'filliben'` | 확률그림(정렬한 자료와 이론 분위수)의 상관계수 | 작은 값 |
+
+```python
+>>> for s in ['ad', 'ks', 'cvm', 'filliben']:
+...     t = sd.htest.goodness_of_fit(sd.stats.Normal, x, statistic=s, n_mc_samples=1000, rng=sd.random.default_rng(8))
+...     print(f"{s:9s}{t.statistic:9.4f}{t.pvalue:8.3f}")
+ad          0.2629   0.675
+ks          0.1749   0.391
+cvm         0.0412   0.641
+filliben    0.9794   0.662
+```
+
+`'ad'`의 통계량은 [anderson](/api/htest/anderson/)과 같아요. `anderson(x, method=MonteCarloMethod(...))`도 이 함수로 p값을 구해요.
+
+직접 만든 통계량도 돼요. `statistic(dist, data, axis)`는 맞춘 분포 `dist`(재표본마다 모수가 다른 분포의 묶음)와 `data`를 받아 `axis`를 따라 계산해요. 작은 값이 극단이면 함수에 `alternative = 'less'` 속성을 달아요(기본은 `'greater'`).
+
+```python
+>>> def max_gap(dist, data, axis):
+...     s = sd.sort(data, axis=axis)
+...     n = data.shape[axis]
+...     return sd.max(sd.abs(dist.cdf(s) - (sd.arange(1, n + 1) - 0.5) / n), axis=axis)
+>>> sd.htest.goodness_of_fit(sd.stats.Normal, x, statistic=max_gap, n_mc_samples=500, rng=sd.random.default_rng(8)).pvalue
+0.3912175648702595
+```
+
+## 분포족
+
+| dist | 모수(sd.stats의 이름) | 맞추기 |
+|---|---|---|
+| `Normal` | `mu`, `sigma` | 평균과 n − 1의 표준편차 |
+| `Exponential` | `scale` | 평균 |
+| `Logistic` | `mu`, `sigma` | 최우추정 |
+| `Gumbel` | `mu`, `sigma` | 최우추정 |
+| `Weibull` | `c`, `scale` | 최우추정 |
+| `LogNormal` | `mu`, `sigma` | log x의 평균과 n의 표준편차 |
+| `Laplace` | `mu`, `sigma` | 중앙값과 평균 절대편차 |
+| `Rayleigh` | `scale` | √(Σx²/2n) |
+
+최우추정의 방정식은 모수마다 단조로워서 시작값 없이 끝자리까지 풀어요. 시작값에 따라 답이 바뀌지 않아요.
+
+```python
+>>> y = [0.3, 1.9, 0.7, 0.1, 2.8, 0.5, 1.2, 0.05, 4.1, 0.9]
+>>> rw = sd.htest.goodness_of_fit(sd.stats.Weibull, y, n_mc_samples=1000, rng=sd.random.default_rng(8))
+>>> rw.fit_result, rw.pvalue
+(Weibull(c=0.9242793227963293, scale=1.2105569798293525), 0.994005994005994)
+```
+
+받침 밖의 자료(지수분포에 음수)는 맞출 수 없어 결과가 NaN이고 `fit_result`가 None이에요.
+
+```python
+>>> bad = sd.htest.goodness_of_fit(sd.stats.Exponential, [-1., 2, 3], n_mc_samples=10, rng=sd.random.default_rng(1))
+>>> bad.fit_result, bad.pvalue
+(None, nan)
+```
+
+## 아는 모수: known_params와 fit_params
+
+평균이 0이라는 것을 알고 표준편차만 모른다면 `known_params={'mu': 0.0}`이에요. 그 모수는 맞출 때도, 귀무분포의 표본을 다시 맞출 때도 고정해요.
+
+```python
+>>> r0 = sd.htest.goodness_of_fit(sd.stats.Normal, x, known_params={'mu': 0.0}, n_mc_samples=1000, rng=sd.random.default_rng(8))
+>>> r0.fit_result, r0.pvalue
+(Normal(mu=0.0, sigma=1.3781448883674507), 0.21978021978021978)
+```
+
+모수를 모두 알면 맞추는 것이 없어요. 그때는 분포가 정해진 검정과 같아요.
+
+```python
+>>> r01 = sd.htest.goodness_of_fit(sd.stats.Normal, x, known_params={'mu': 0.0, 'sigma': 1.0}, n_mc_samples=1000, rng=sd.random.default_rng(8))
+>>> r01.pvalue
+0.08691308691308691
+```
+
+`fit_params`는 귀무분포를 정할 때만 그 값을 쓰고, 통계량은 그 모수까지 다시 맞춰서 계산해요. 귀무가설은 그대로 "족의 어떤 분포"이고, 몬테카를로 표본을 어느 분포에서 뽑을지만 정해요. 정규분포처럼 위치와 척도를 다시 맞추면 통계량이 모수와 상관없어지는 족에서는 p값이 바뀌지 않아요.
+
+## 입력과 에러
+
+```python
+>>> sd.htest.goodness_of_fit(sd.stats.Gamma, x, rng=sd.random.default_rng(1))
+Traceback (most recent call last):
+    ...
+ValueError: goodness_of_fit(): 'dist' must be one of the classes sd.stats.Normal, Exponential, Logistic, Gumbel, Weibull, LogNormal, Laplace or Rayleigh, not sd.stats.Gamma
+>>> sd.htest.goodness_of_fit(sd.stats.Normal, x, known_params={'loc': 0.0}, rng=sd.random.default_rng(1))
+Traceback (most recent call last):
+    ...
+ValueError: goodness_of_fit(): 'known_params' has 'loc', not a parameter of the family (mu, sigma)
+>>> sd.htest.goodness_of_fit(sd.stats.Normal, [1., sd.nan, 2], rng=sd.random.default_rng(1))
+Traceback (most recent call last):
+    ...
+ValueError: goodness_of_fit(): 'data' must hold finite values (no NaN or inf)
+```
+
+## 정확도
+
+시험한 36문제(여덟 족과 네 통계량, 모수를 고정한 경우)에서 맞춘 모수는 Arb(구간 산술)로 만든 참값(닫힌 꼴이나 점수 방정식을 정밀하게 푼 값)과 상대 9.3e-16 안이에요. 통계량은 계약 대비 0.52 안이에요(가장 큰 것은 Gumbel의 Cramér–von Mises로 상대 5.2e-15). Anderson–Darling은 합의 상쇄 정도를 곱한 계약이라 가장 큰 상대오차 1.9e-14(로지스틱)도 계약 대비 0.005예요. 몬테카를로 p값은 무작위라 참값이 없고, 귀무가설에서의 기각률이 이항 한계 안인지를 고정한 시드로 100번 시험해요.
+
+## scipy를 아는 분께
+
+- `dist`는 scipy 분포가 아니라 sd.stats의 클래스이고, 모수 이름도 sd.stats의 것이에요(`loc`·`scale` 대신 `mu`·`sigma` 등).
+- 족은 여덟 개예요. 맞추기는 족마다의 최우추정이라 시작값이 필요 없어서 `guessed_params`가 없어요.
+- `rng`가 꼭 필요해요(`random_state`는 없어요).
+- 맞춘 모수와 통계량은 scipy와 반올림 크기까지 같아요. 다른 곳은 Weibull뿐이에요. scipy는 위치를 둔 범용 최적화로 맞춰서 통계량이 5e-6에서 5.4e-5만큼 달라요.

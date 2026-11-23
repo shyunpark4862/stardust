@@ -1,0 +1,771 @@
+---
+title: 선형 가설과 모형 비교
+group: 검정과 진단
+order: 1
+summary: t_test·wald_test가 선형 가설 Rβ = q를 적합의 삼각 인자에서 푸는 방법, compare_f_test·compare_lr_test가 두 적합이 같은 자료의 내포 모형인지 검사하는 방법, anova의 Type I·III 표를 만드는 방법을 설명해요. 고전형 공분산에서는 R C Rᵀ를 만들지 않아서 오차가 κ²가 아니라 κ를 따라요.
+seeAlso: [inference, diagnostics, least-squares, glm, accuracy-performance]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import Steps from '../../../components/fig/Steps.astro';
+
+## 한눈에 보기
+
+적합한 모형을 받는 검정은 모두 적합이 이미 가진 것에서 출발해요. 계수, 삼각 인자 $U$(백색화한 설계의 QR에서 나온 위 삼각 행렬), 공분산, 잔차 제곱합(GLM은 편차), 그리고 적합할 때 복사해 둔 $y$, $X$, 가중치예요. 다시 분해하는 것은 내포 검사와 순서를 바꾼 Type I뿐이고, 다시 적합하는 것은 GLM의 Type I뿐이에요.
+
+| 호출 | 계산하는 것 | 무엇에서 | 비용 |
+|---|---|---|---|
+| `t_test(R, q)` | 줄마다 $r_i\beta - q_i$와 그 표준오차 | 계수와 $U$(고전형), 공분산(강건형) | $O(mk^2)$ |
+| `wald_test(R, q)` | 결합 통계량 $W$ | $U^{-\mathsf T}R^{\mathsf T}$의 QR(고전형), $RCR^{\mathsf T}$의 고윳값(강건형) | $O(mk^2)$ |
+| `compare_f_test`, `compare_lr_test` | 두 SSR(편차)의 F, 우도비 | 두 적합의 SSR·`llf`, 큰 모형의 얇은 Q(내포 검사) | 검사 $O(nk^2)$ |
+| `anova(r1, r2, …)` | 이웃끼리의 F 또는 χ² | 각 적합의 SSR, 자유도가 가장 작은 모형의 척도 | 검사 $O(nk^2)$ |
+| `anova(r, typ=1)` | 항마다의 순차 제곱합 | $U\beta$ 또는 그 순서의 얇은 Q(선형), 다시 적합한 편차(GLM) | $O(k^2)$ – $O(nk^2)$ |
+| `anova(r, typ=3)` | 항마다의 Wald 검정 | `wald_test`와 같은 계산 | 항마다 $O(mk^2)$ |
+
+$k$는 계수의 수(절편 포함), $m$은 가설의 줄 수, $n$은 행 수예요. `t_test`와 `wald_test`는 행을 다시 읽지 않아서 비용이 $n$과 상관없어요. 모든 검정이 배치를 받고(필드가 배치 모양), `anova`만 회귀 하나를 받아요.
+
+<Fig column caption="wald_test 한 번의 흐름(고전형 공분산). 강건 공분산이면 셋째 단계가 R C Rᵀ의 고윳값 분해로 바뀌어요.">
+  <Steps
+    steps={[
+      { label: '_hypothesis', note: 'R을 (m, k)로, q를 (m,)로. 열 수, 길이, 유한성 검사', where: '_tests.py' },
+      { label: '_independent_rows', note: '앞 줄들의 일차 결합인 줄(0인 줄도)을 빼요. m은 남은 줄 수', where: '_tests.py' },
+      { label: '_lincomb', note: '줄마다 2의 거듭제곱으로 옮긴 R, Rβ − q를 Dot2로 한 번 반올림', where: 'apply' },
+      { label: 'U⁻ᵀRᵀ의 QR', note: '삼각 풀이 둘과 m열의 QR. W = ‖T⁻ᵀd‖²/s²', depth: 1 },
+      { label: '분포', note: 'F(m, df_resid_inference) 또는 χ²(m)의 ccdf', where: 'sd.stats' },
+    ]}
+  />
+</Fig>
+
+## 가설 Rβ = q
+
+### 결과에서 이어받는 것
+
+가설은 계수의 일차 결합이에요. $R$은 $(m, k)$ 행렬(열 순서는 `params`, 절편이 첫 열)이고 $q$는 길이 $m$이에요. `t_test`는 줄마다 따로, `wald_test`는 모든 줄을 함께 검정해요.
+
+공분산과 기준 분포는 따로 정하지 않고 결과에서 그대로 이어받아요. 그래서 한 계수만 고르는 단위 벡터 줄의 `t_test`는 그 계수의 `tvalues`, `bse`, `conf_int()`와 반올림 몇 번 안에서 같은 값이에요.
+
+| 결과 | 공분산 | `t_test`의 분포 | `wald_test`의 분포 |
+|---|---|---|---|
+| `ols`, `wls`, `gls` | `cov_params()`(강건 포함) | t(`df_resid_inference`) | F($m$, `df_resid_inference`) |
+| `rlm`, `quantreg`, `nls` | `cov_params()` | t(`df_resid_inference`) | F($m$, `df_resid_inference`) |
+| `glm`, 척도를 추정(정규, 감마) | `cov_params()` | t(`df_resid_inference`) | F($m$, `df_resid_inference`) |
+| `glm`, 척도가 고정(이항, 포아송) | `cov_params()` | 정규분포 | χ²($m$) |
+
+`df_resid_inference`는 군집 공분산이면 군집 수 − 1이고, 그 밖에는 `df_resid`예요. 분포를 고르는 부분은 결과의 메서드(`_df_inference`, `_dist`, `_normal`)를 그대로 불러요.
+
+```python
+    # src/stardust/regression/_tests.py
+    df_inf = r._df_inference()
+    if _chi2_model(r):
+        p = _ChiSquared(df=float(m) if m else math.nan).ccdf(_arg(W))
+        return WaldTestResult._make(
+            batch=lead,
+            info=_model_info(r),
+            statistic=W,
+            pvalue=r._scalar(p) if not lead else p,
+            distribution="chi2",
+            df=float(m),
+        )
+    Fv = W / m if m else W
+    p = _F(dfn=float(m) if m else math.nan, dfd=_arg(df_inf)).ccdf(_arg(Fv))
+    return WaldTestResult._make(
+        batch=lead,
+        info=_model_info(r),
+        statistic=Fv,
+        pvalue=r._scalar(p) if not lead else p,
+        distribution="F",
+        df_num=float(m),
+        df_denom=df_inf,
+    )
+```
+
+χ²인 모형에는 `df_num`과 `df_denom`이 없고 `df`만 있어요. 그 호출에 없는 필드를 읽으면 `AttributeError`예요.
+
+```python
+>>> rng = sd.random.default_rng(7)
+>>> N = sd.stats.Normal()
+>>> X = N.sample((30, 3), rng=rng)
+>>> y = 1.0 + X @ sd.asarray([0.8, 0.0, -0.5]) + N.sample(30, rng=rng)
+>>> r = sd.regression.ols(y, X)
+>>> tt = r.t_test([0.0, 0.0, 1.0, 0.0])
+>>> tt
+TTestResult(effect=0.19373, sd=0.127618, tvalue=1.51804, pvalue=0.141071, df=26)
+>>> tt.tvalue, float(r.tvalues[2])
+(1.5180401216442156, 1.5180401216442159)
+```
+
+두 t값은 반올림 몇 번만큼 달라요. `tvalues`는 공분산 행렬의 대각에서, `t_test`는 아래처럼 삼각 인자에서 구하기 때문이에요.
+
+### 적합의 단위에서
+
+열이나 $y$가 아주 크거나 작으면 적합은 열마다 2의 거듭제곱 $f_{x_j}$, $y$에 $f_y$를 곱해 크기 1 근처로 옮긴 문제를 풀어요([최소제곱 풀이](/internals/regression/least-squares/)). 데이터 단위의 계수는 $\beta_j = \beta'_j\,f_y/f_{x_j}$이고, 이 배율 하나만으로도 double을 벗어날 수 있어요. 그래서 가설도 적합의 단위에서 계산해요.
+
+줄 $r$을 데이터 단위의 계수에 곱한 값은 $\sum_j r_j 2^{g_j}\beta'_j$예요($g_j = \log_2 f_y - \log_2 f_{x_j}$). 줄마다 0이 아닌 칸의 가장 큰 지수 $c = \max_j g_j$를 밖으로 빼면
+
+$$
+r\beta = 2^{c}\sum_j \big(r_j 2^{g_j - c}\big)\beta'_j = 2^{c}\,r'\beta'
+$$
+
+이고, $r'$의 칸은 $r_j$보다 작거나 같아서 넘치지 않아요. $q$에는 $2^{-c}$를 곱해요. 2의 거듭제곱을 곱하는 것은 정확하므로, t와 $W$는 이 옮기기와 상관없이 같은 값이에요. 마지막에 효과와 표준오차에만 $2^c$를 곱해 돌려줘요.
+
+```python
+    # src/stardust/regression/_tests.py
+    b, ge, kept = _fit_units(r)
+    touches = _sd.any(_sd.logical_and(R2 != 0.0, _sd.logical_not(_sd.expand_dims(kept, axis=-2))), axis=-1)  # (..., m)
+    c = None
+    if ge is None:
+        Rp, qs = R2, q
+    else:
+        E = _sd.where(R2 != 0.0, _sd.expand_dims(ge, axis=-2), -math.inf)  # (..., m, k)
+        c = _sd.max(E, axis=-1)
+        c = _sd.where(_sd.isfinite(c), c, 0.0)
+        Rp = R2 * (2.0 ** _sd.where(R2 != 0.0, _sd.expand_dims(ge, axis=-2) - _sd.expand_dims(c, axis=-1), 0.0))
+        qs = _scale2(q, 0.0 - c)
+    Rp = _sd.where(_sd.expand_dims(kept, axis=-2), Rp, 0.0)
+    effect, qd = _k.apply("t_test", Rp, b, False, qs)
+    d = 0.0 - qd
+```
+
+$r'\beta' - q'$는 커널의 `apply`가 Dot2(곱과 합을 double-double로 쌓아 한 번 반올림)로 구해요. 그래서 효과의 상대오차는 계수 자체의 오차에 반올림 한 번이 더해진 정도예요.
+
+### 표준오차: 삼각 인자에서
+
+고전형 공분산은 $C = s^2(U^{\mathsf T}U)^{-1}$이에요($s^2$은 척도, 겹친 열의 자리에는 $U$에 단위 행렬을 채워요). 그러면 줄 $r$의 분산은
+
+$$
+rCr^{\mathsf T} = s^2\, r\,U^{-1}U^{-\mathsf T}r^{\mathsf T} = s^2\,\lVert U^{-\mathsf T}r^{\mathsf T}\rVert_2^2
+$$
+
+이라서 아래 삼각 풀이 한 번($U^{\mathsf T}z = r^{\mathsf T}$)의 제곱합이에요. $C$의 칸으로 $rCr^{\mathsf T}$를 더하면 큰 칸끼리 지워지는 줄에서 상대오차가 커지지만, 제곱합에는 지워짐이 없어요. 강건 공분산과 `rlm`·`quantreg`·`nls`는 공분산이 이 꼴이 아니어서(`_cov_factor()`가 None) $rCr^{\mathsf T}$를 직접 더해요.
+
+```python
+    # src/stardust/regression/_tests.py
+    Ck, nanC = _cov_kept(r, kept)
+    fac = r._cov_factor()
+    if fac is None:
+        var = _sd.sum(_sd.matmul(Rp, Ck) * Rp, axis=-1)
+    else:
+        U, s = fac
+        U, badU = _safe_triangle(U)
+        Z = _linalg.solve_triangular(_sd.matrix_transpose(U), _sd.matrix_transpose(Rp), upper=False)
+        var = _sd.sum(Z * Z, axis=-2) * _expand(s * s, 1)
+        var = _nan_mask(var, _expand(badU, 1) if isinstance(badU, _sd.ndarray) else badU)
+    return effect, d, var, touches, Rp, nanC, c
+```
+
+`_safe_triangle`은 대각에 0이 있거나 유한하지 않은 삼각 인자를 단위 행렬로 바꿔 배치의 풀이가 끝까지 가게 하고, 그 회귀의 값은 NaN으로 둬요.
+
+### 겹친 열
+
+다른 열들의 일차 결합이라 빠진 열(겹친 열)의 계수는 추정되지 않았어요. 그 계수에 0이 아닌 가중치를 주는 줄은 어떤 값을 내도 어느 열을 뺐는지에 달린 값이라 NaN이에요. `t_test`는 그 줄만, `wald_test`는 검정 전체가 NaN이에요. 판정은 $R$의 칸이 0인지만 봐요(`touches`). 그 밖에 완전 적합(척도가 정확히 0)과 `df_resid` = 0도 계수의 t·p와 같은 규칙으로 NaN이에요.
+
+```python
+    # src/stardust/regression/_tests.py
+    e = _sd.where(touches, math.nan, e)
+    sdv = _sd.where(_sd.logical_or(touches, _expand(nanC, 1)), math.nan, _sd.sqrt(var))
+    t = d / sdv
+    perfect = r._perfect()
+    t = _nan_mask(t, _expand(perfect, 1) if isinstance(perfect, _sd.ndarray) else perfect)
+    p = 2.0 * r._dist(1).ccdf(_sd.abs(t))
+```
+
+```python
+>>> c = r.t_test([0.0, 1.0, -1.0, 0.0])
+>>> c.effect, c.tvalue
+(0.526957306364114, 3.168918819664437)
+>>> c.conf_int()
+array([0.18514474574632966,  0.8687698669818983], dtype=float64)
+>>> Xa = sd.concat([X, X[:, :1] + X[:, 1:2]], axis=1)
+>>> ra = sd.regression.ols(y, Xa)
+>>> R2 = sd.asarray([[0.0, 1.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0, 1.0]])
+>>> ra.t_test(R2).tvalue
+array([5.45318093973199,              nan], dtype=float64)
+>>> ra.wald_test(R2).statistic
+nan
+```
+
+`ra`의 마지막 열은 첫 두 열의 합이라 겹친 열이에요. 첫 줄은 계수 $\beta_1$만 보므로 값이 있고, 둘째 줄은 겹친 열의 계수를 보므로 NaN이에요. 구간 `conf_int()`의 두 끝은 줄의 단위에서 $e \mp q\cdot\text{sd}$로 구한 뒤 $2^c$를 곱해서, 넘친 끝도 제 부호를 지켜요.
+
+## 결합 검정
+
+$m$개의 줄을 함께 검정하는 통계량은
+
+$$
+W = d^{\mathsf T}\big(RCR^{\mathsf T}\big)^{-1}d, \qquad d = R\beta - q
+$$
+
+이에요. 계수가 t인 모형은 $W/m$을 F($m$, `df_resid_inference`)와, 정규분포인 모형은 $W$를 χ²($m$)과 견줘요.
+
+### 일차 종속인 줄
+
+$RCR^{\mathsf T}$는 줄이 일차 종속이면 특이해요. 같은 가설을 두 번 적거나(β₁ = β₂, β₂ = β₃, β₁ = β₃) 0인 줄을 넣는 일은 흔해서, 그런 줄을 먼저 빼고 자유도 $m$을 남은 줄 수로 둬요. 판정은 적합이 겹친 열을 찾는 규칙(R `dqrdc2`의 규칙)을 줄에 쓴 것이에요. 줄 $j$를 앞에서 남긴 줄들의 정규직교 기저에 대해 Gram–Schmidt로 두 번 직교화하고, 나머지의 노름이 $\max(m, k)\,\epsilon\,\lVert r_j\rVert$($\epsilon = 2^{-52}$) 이하이면 빼요.
+
+```python
+    # src/stardust/regression/_tests.py
+    m, k = R2.shape
+    tol = max(m, k) * _EPS
+    rows, basis = [], None
+    for i in range(m):
+        v = R2[i]
+        nv = float(_sd.sqrt(_sd.sum(v * v)))
+        if nv == 0.0:
+            continue
+        res = v
+        if basis is not None:
+            for _ in range(2):
+                res = res - _sd.matmul(_sd.matmul(basis, res), basis)
+        nr = float(_sd.sqrt(_sd.sum(res * res)))
+        if not nr > tol * nv:
+            continue
+        b = _sd.reshape(res / nr, (1, k))
+        basis = b if basis is None else _sd.concat([basis, b], axis=0)
+        rows.append(i)
+    return rows
+```
+
+Gram–Schmidt를 두 번 하는 것은 줄들이 거의 평행할 때 한 번으로는 나머지의 직교성이 무너지고, 두 번이면 반올림 수준으로 돌아오기 때문이에요(Kahan과 Parlett의 "twice is enough"). 줄 수는 보통 몇 개라 비용은 무시할 만해요.
+
+```python
+>>> R3 = sd.asarray([[0.0, 1.0, -1.0, 0.0], [0.0, 0.0, 1.0, -1.0], [0.0, 1.0, 0.0, -1.0]])
+>>> r.wald_test(R3)
+WaldTestResult(statistic=33.3943, pvalue=6.56487e-08, distribution='F', df_num=2, df_denom=26)
+>>> slopes = sd.asarray([[0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]])
+>>> r.wald_test(slopes).statistic, r.fvalue
+(22.271166417054683, 22.271166417054687)
+```
+
+셋째 줄은 앞 두 줄의 합이라 빠지고 `df_num`이 2예요. 절편을 뺀 모든 계수가 0이라는 가설은 모형의 F와 같은 통계량이에요.
+
+statsmodels의 `wald_test`·`f_test`는 $RCR^{\mathsf T}$를 만들어 의사역행렬(`pinv`)로 풀고, 그 행렬의 랭크(`matrix_rank`)가 줄 수보다 작으면 경고하고 자유도를 랭크로 둬요. car의 `linearHypothesis`는 $LVL^{\mathsf T}$를 만들어 `solve`로 풀어서 종속인 줄이 있으면 에러이고, 겹친 계수가 있는 모형은 `singular.ok = TRUE`를 주지 않으면 멈춰요. 두 쪽 모두 $\kappa(X)^2$인 행렬을 거쳐요.
+
+### 고전형: U⁻ᵀRᵀ의 QR
+
+고전형 공분산이면 $RCR^{\mathsf T}$를 만들지 않아요. $Z = U^{-\mathsf T}R^{\mathsf T}$($k \times m$)를 풀고 $Z = Q_ZT$로 QR하면
+
+$$
+RCR^{\mathsf T} = s^2\,Z^{\mathsf T}Z = s^2\,T^{\mathsf T}T
+\quad\Rightarrow\quad
+W = \frac{\lVert T^{-\mathsf T}d \rVert_2^2}{s^2}
+$$
+
+예요. 삼각 풀이 두 번과 $m$열의 QR 하나이고, 거치는 행렬의 조건수는 $\kappa(T) = \kappa(Z) \le \kappa(U)\,\kappa(R)$이에요. $RCR^{\mathsf T}$의 조건수는 그 제곱이에요.
+
+```python
+    # src/stardust/regression/_tests.py
+    fac = r._cov_factor()
+    if fac is not None:
+        U, s = fac
+        # a regression whose rows touch an aliased parameter is NaN: its rows are replaced by
+        # independent ones so that the batch's solve stays nonsingular
+        k = Rp.shape[-1]
+        safe = _sd.where(_sd.arange(k) == _sd.reshape(_sd.arange(m), (m, 1)), 1.0, 0.0)
+        Rs = _sd.where(_expand(_sd.any(touches, axis=-1), 2), safe, Rp)
+        U, badU = _safe_triangle(U)
+        Z = _linalg.solve_triangular(_sd.matrix_transpose(U), _sd.matrix_transpose(Rs), upper=False)
+        T, badT = _safe_triangle(_linalg.qr(Z)[1])
+        y = _linalg.solve_triangular(_sd.matrix_transpose(T), _sd.expand_dims(d, axis=-1), upper=False)[..., 0]
+        W = _div(_sd.sum(y * y, axis=-1), s * s)
+        W = _nan_mask(
+            W,
+            _sd.logical_or(badU, badT)
+            if isinstance(badU, _sd.ndarray) or isinstance(badT, _sd.ndarray)
+            else (badU or badT),
+        )
+```
+
+배치에서는 겹친 계수를 건드리는 회귀의 줄을 단위 벡터로 바꿔 한 번의 배치 풀이가 특이하지 않게 하고, 그 회귀의 $W$는 뒤에서 NaN으로 둬요.
+
+### 강건형: 고윳값
+
+강건 공분산(HC, HAC, 군집)과 `rlm`·`quantreg`·`nls`의 공분산은 $s^2(U^{\mathsf T}U)^{-1}$ 꼴이 아니라서 $V = RCR^{\mathsf T}$를 만들어요. 대칭으로 맞춘 뒤 고윳값 분해 $V = \sum_i \lambda_i v_iv_i^{\mathsf T}$로 $W = \sum_i (v_i^{\mathsf T}d)^2/\lambda_i$를 구해요.
+
+```python
+# src/stardust/regression/_tests.py
+def _quad_inv(V, d, m):
+    """d^T V^-1 d for symmetric V (..., m, m) through its eigenvalues; NaN where V is not
+    positive definite to rounding (a singular robust covariance: the model's own fvalue is NaN
+    there too)."""
+    lam, vec = _linalg.eigh(V)
+    z = _sd.sum(vec * _sd.expand_dims(d, axis=-1), axis=-2)
+    lo = _sd.min(lam, axis=-1)
+    hi = _sd.max(lam, axis=-1)
+    W = _sd.sum(z * z / lam, axis=-1)
+    ok = _sd.logical_and(hi > 0.0, lo > max(m, 1) * 8 * _EPS * hi)
+    return _sd.where(ok, W, math.nan)
+```
+
+가장 작은 고윳값이 $8\max(m, 1)\,\epsilon\,\lambda_{\max}$ 이하이면 $V$가 반올림 수준에서 양정치가 아니라고 보고 NaN이에요. 군집 수 − 1이 줄 수보다 작은 군집 공분산이 그런 경우예요. 고기의 랭크가 군집 수 − 1을 넘지 못하기 때문이고, 모형의 `fvalue`도 같은 경우에 NaN이에요([추론과 진단](/internals/regression/inference/)의 강건형 Wald F).
+
+### GLM
+
+GLM의 고전형 공분산도 $\phi\,(U^{\mathsf T}U)^{-1}$이에요($U$는 마지막 IRLS의 가중 설계의 삼각 인자, $\phi$는 척도). 그래서 선형 모형과 같은 길로 가고, 척도가 고정이면 $W$를 χ²로 견줘요.
+
+```python
+>>> rg = sd.random.default_rng(11)
+>>> Xg = N.sample((80, 2), rng=rg)
+>>> eta = -0.3 + Xg @ sd.asarray([1.0, -0.6])
+>>> yb = sd.where(sd.random.default_rng(12).random(80) < 1.0 / (1.0 + sd.exp(-eta)), 1.0, 0.0)
+>>> g = sd.regression.glm(yb, Xg, family="binomial")
+>>> wg = g.wald_test(sd.asarray([[0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]))
+>>> wg
+WaldTestResult(statistic=20.731, pvalue=3.1501e-05, distribution='chi2', df=2)
+>>> wg.df_num
+Traceback (most recent call last):
+    ...
+AttributeError: 'WaldTestResult' object has no attribute 'df_num' (the test does not give it for this call)
+>>> g.t_test([0.0, 1.0, 0.0]).df
+inf
+```
+
+## 내포 모형의 비교
+
+### 두 통계량
+
+큰 모형 $b$와 그 안에 든 작은 모형 $s$를 같은 자료에 적합했으면
+
+$$
+F = \frac{(\text{SSR}_s - \text{SSR}_b)/(r_b - r_s)}{\text{SSR}_b/\text{df}_b} \sim F(r_b - r_s,\ \text{df}_b),
+\qquad
+\text{LR} = -2(\ell_s - \ell_b) \sim \chi^2(r_b - r_s)
+$$
+
+예요. $r$은 랭크, $\text{df}_b$는 큰 모형의 `df_resid`, SSR은 백색화한 잔차 제곱합이에요. GLM의 F는 편차의 차를 큰 모형의 척도로 나눈 것이고(R `anova.glm`의 `test = "F"`), 척도가 고정인 모형(이항, 포아송)은 편차의 F가 곧 우도비 검정이라 `compare_f_test`가 `ValueError`로 `compare_lr_test`를 가리켜요.
+
+선형 모형의 `llf`는 $-\tfrac n2\big(\log(2\pi\,\text{SSR}/n) + 1\big)$(가중치와 GLS의 $\log\lvert\Sigma\rvert$ 항은 두 모형에 같아요)이라
+
+$$
+-2(\ell_s - \ell_b) = n\log\frac{\text{SSR}_s}{\text{SSR}_b} = n\,\operatorname{log1p}\!\left(\frac{\text{SSR}_s - \text{SSR}_b}{\text{SSR}_b}\right)
+$$
+
+예요. 두 `llf`는 $n$에 비례하는 큰 수라서 그 차를 빼면 두 모형이 비슷할 때 앞자리가 지워져요. 그래서 SSR의 상대 차를 `log1p`에 넣어요. GLM은 두 `llf`를 그대로 빼요(statsmodels와 같아요). 감마의 `llf`는 Pearson 척도의 값이라 편차/n 척도를 쓰는 R `lmtest::lrtest`와 통계량이 달라요.
+
+```python
+    # src/stardust/regression/_tests.py
+    df = _df_num(big, small)
+    if isinstance(big, GLMResult):
+        lr = -2.0 * (small.llf - big.llf)
+    else:
+        # -2 (llf_s - llf_b) = nobs log(ssr_s / ssr_b): the same rows, weights and sigma
+        Ss, Sb = _ssr_s(small), _ssr_s(big)
+        ratio = _div(Ss - Sb, Sb)
+        lr = big.nobs * (_sd.log1p(ratio) if isinstance(ratio, _sd.ndarray) else _log1p(ratio))
+```
+
+큰 모형이 완전 적합이거나 $r_b = r_s$이면 F와 LR은 NaN이에요.
+
+```python
+>>> small = sd.regression.ols(y, X[:, [0, 2]])
+>>> f = r.compare_f_test(small)
+>>> f
+CompareFTestResult(fvalue=2.30445, pvalue=0.141071, df_num=1, df_denom=26)
+>>> f.fvalue, tt.tvalue ** 2
+(2.304445810921585, 2.304445810921585)
+>>> lr = r.compare_lr_test(small)
+>>> lr.statistic, -2.0 * (small.llf - r.llf)
+(2.5476705024522075, 2.5476705024522204)
+```
+
+열 하나를 뺀 비교의 F는 그 계수의 t의 제곱이에요(위에서 `tt`가 셋째 계수의 `t_test`였어요). 같은 두 SSR에서 정확히 계산한 우도비는 2.54767050245220713…이에요. `log1p`로 구한 앞의 값은 반올림 한 번 안이고, 두 `llf`(−33.8과 −32.5)를 뺀 뒤의 값은 30 ulp쯤 틀려요.
+
+### 같은 자료인지: 비트로 견줘요
+
+F와 LR은 두 적합이 같은 $y$, 같은 행, 같은 가중치일 때만 뜻이 있어요. 다른 자료의 두 적합도 수 하나는 내므로, 틀린 비교가 검정처럼 보이게 돼요. 두 적합이 사용자의 같은 배열에서 나왔으면 적합할 때 복사해 둔 값도 비트까지 같아야 하므로, 허용오차 없이 비트로 견줘요(NaN은 같은 자리에 있으면 같다고 봐요). 비용은 많아야 $O(n)$이에요.
+
+- 선형: 적합 함수, $y$(적합의 단위), 가중치, GLS의 백색화한 1의 열 $L^{-1}\mathbf 1$과 $\log\lvert\Sigma\rvert$.
+- GLM: 분포족, 링크, 척도 설정(추정 방법과 고정값), $y$, 그리고 `var_weights`·`freq_weights`·`trials`·`offset`을 묶은 블록.
+
+```python
+# src/stardust/regression/_tests.py
+def _same_data(big, small):
+    from ._glm import GLMResult
+
+    if isinstance(big, GLMResult):
+        a, b = big._fitargs, small._fitargs
+        if (a["family"], a["link"], a["smode"], a["svalue"]) != (b["family"], b["link"], b["smode"], b["svalue"]):
+            return False
+        return _nan_equal(a["y"], b["y"]) and _nan_equal(a["aux"], b["aux"])
+    fa, fb = big._fitargs, small._fitargs
+    if fa[0] != fb[0]:
+        return False
+    if not (_nan_equal(fa[1], fb[1]) and _nan_equal(fa[3], fb[3]) and _nan_equal(fa[4], fb[4])):
+        return False
+    la, lb = big._extra.get("logdet"), small._extra.get("logdet")
+    if la is None or lb is None:
+        return la is None and lb is None
+    if isinstance(la, _sd.ndarray) or isinstance(lb, _sd.ndarray):
+        return _nan_equal(_sd.asarray(la) + 0.0, _sd.asarray(lb) + 0.0)
+    return la == lb or (math.isnan(la) and math.isnan(lb))
+```
+
+`_nan_equal`은 같은 객체이면 바로 참이고, float64 배열은 커널 `same_values`가 원소를 차례로 견주다 첫 차이에서 멈춰요. 같은 메모리(주소, 간격, 모양이 같음)를 보는 두 배열도 바로 참이에요. 다른 자료는 보통 첫 원소에서 갈리므로, 비교 하나의 검사가 거의 공짜예요.
+
+```python
+# src/stardust/regression/_tests.py
+def _nan_equal(a, b):
+    """The same values element by element (NaN equal to NaN), stopping at the first difference
+    (the model comparisons' columns usually differ in their first element)."""
+    if a is None or b is None:
+        return a is None and b is None
+    if a is b:
+        return True
+    if tuple(a.shape) != tuple(b.shape):
+        return False
+    if a.dtype != _sd.float64 or b.dtype != _sd.float64:
+        return bool(_sd.all(_sd.logical_or(a == b, _sd.logical_and(_sd.isnan(a), _sd.isnan(b)))))
+    return _k.same_values(a, b)
+```
+
+적합마다 $y$와 열의 지문(해시)을 만들어 두면 이 검사도 $O(1)$이지만, 비교 한 번의 $O(n)$을 없애려고 모든 적합에 그 비용을 다는 것은 손해라 두지 않아요.
+
+형이 다르면(`OLSResult`와 `WLSResult`) `TypeError`, 배치 모양이 다르면 `ValueError`예요. 강건 공분산의 결과도 `ValueError`예요. F와 우도비는 강건 공분산을 쓰지 않으니, 그 공분산으로 검정하려면 `wald_test`를 쓰라고 알려요.
+
+R의 `anova(m1, m2)`(`anova.lmlist`)는 잔차의 길이가 같은지만 보고(반응 변수의 이름이 다르면 그 모형을 빼고 경고해요), statsmodels의 `compare_f_test`와 `compare_lr_test`는 자료를 검사하지 않고 강건 공분산이면 경고만 해요.
+
+### 내포인지: ‖(I − QQᵀ)x‖
+
+작은 모형의 열(그 적합에서 쓰인 것)마다 큰 모형에 비트까지 같은 열이 있으면 통과해요. 보통의 비교(열 몇 개를 뺀 모형)는 여기서 끝나요. 같은 열이 없는 열만 큰 모형의 열공간에 드는지 재요. 큰 모형의 백색화한 설계를 적합과 같은 열 선택으로 다시 QR해 얇은 Q를 만들고(커널의 `thin_q` 방식, [영향력과 설정 검정](/internals/regression/diagnostics/)), 그 열을 같은 방식으로 백색화한 $\tilde x$의 사영 나머지를
+
+$$
+\lVert(I - QQ^{\mathsf T})\tilde x\rVert_2 \le \tau\,\lVert\tilde x\rVert_2, \qquad \tau = \max\big(\max(n, k)\,\epsilon,\ \text{rtol}\big)
+$$
+
+로 판정해요. rtol은 큰 모형의 겹친 열 판정 문턱이에요.
+
+```python
+    # src/stardust/regression/_tests.py
+    Q, w, tol = _span_basis(big)
+    n = Q.shape[-2]
+    for j, c in pending:
+        x = _sd.ones(tuple(Q.shape[:-2]) + (n,)) if c is None else c
+        if w is not None:
+            x = x * w
+        proj = _sd.matmul(Q, _sd.expand_dims(_sd.sum(Q * _sd.expand_dims(x, axis=-1), axis=-2), axis=-1))[..., 0]
+        res = x - proj
+        nr = _sd.sqrt(_sd.sum(res * res, axis=-1))
+        nx = _sd.sqrt(_sd.sum(x * x, axis=-1))
+        ok = nr <= tol * nx
+        bad = _sd.logical_and(skept[..., j], _sd.logical_not(ok))
+        if bool(_sd.any(bad)) if isinstance(bad, _sd.ndarray) else bool(bad):
+            name = small._param_names[j] if small._param_names else f"column {j}"
+            raise ValueError(
+                f"{func}(): the models are not nested: '{name}' of the smaller model is not in the span of the "
+                "larger model's columns (call the comparison on the larger model, with the smaller one as its argument)"
+            )
+```
+
+문턱이 이 꼴인 이유는 둘이에요. 얇은 Q는 반올림 수준에서 정규직교라서, 열공간에 정확히 든 열도 계산한 나머지가 $\max(n, k)\,\epsilon\,\lVert\tilde x\rVert$ 정도는 남아요. 그리고 큰 모형의 적합은 $\lvert R_{jj}\rvert \le \text{rtol}\,\lVert x_j\rVert$인 열을 겹쳤다고 보고 빼므로, 나머지가 rtol 안인 열은 큰 모형에 넣어도 겹친 열로 빠졌을 열이에요. 그런 열이 작은 모형에 있으면 큰 모형의 열공간에 든다고 보는 것이 적합의 판정과 맞아요.
+
+```python
+    # src/stardust/regression/_tests.py
+    if isinstance(big, GLMResult):
+        fa = big._fitargs
+        X = fa["X"]
+        aux = fa["aux"]
+        pw = aux[..., 0, :] * aux[..., 1, :] * aux[..., 2, :]
+        w = _sd.where(pw > 0.0, 1.0, 0.0)
+        n = X.shape[-2]
+        y0 = _sd.zeros((n,))
+        _, Q, _, _ = _k.fit("glm", y0, X, w, None, big._intercept, fa["rtol"], 0, 0, None, 0, -1, True, True)
+        k = Q.shape[-1]
+        rt = fa["rtol"]
+        return Q, w, max(max(n, k) * _EPS, rt if rt >= 0 else 0.0)
+    func, y, X, w, u, tol, _, _ = big._fitargs
+    _, Q, _, _ = _k.fit(func, y, X, w, u, big._intercept, tol, 0, 0, None, 0, -1, True, True)
+    n, k = Q.shape[-2], Q.shape[-1]
+    ws = None if w is None else _sd.sqrt(w)
+    return Q, ws, max(max(n, k) * _EPS, tol if tol >= 0 else 0.0)
+```
+
+GLM은 쓰인 행에 0/1 가중치를 준 설계의 열공간을 봐요. 마지막 IRLS의 가중치는 쓰인 행에서 모두 양수라 열공간을 바꾸지 않고, 열공간이 같은지는 가중치와 상관없기 때문이에요.
+
+```python
+>>> both = sd.regression.ols(y, X[:, :1] + X[:, 1:2])
+>>> r.compare_f_test(both)
+CompareFTestResult(fvalue=24.518, pvalue=1.03788e-06, df_num=2, df_denom=26)
+>>> small.compare_f_test(r)
+Traceback (most recent call last):
+    ...
+ValueError: compare_f_test(): the models are not nested: 'x2' of the smaller model is not in the span of the larger model's columns (call the comparison on the larger model, with the smaller one as its argument)
+>>> r.compare_f_test(sd.regression.ols(y + 1.0, X[:, [0, 2]]))
+Traceback (most recent call last):
+    ...
+ValueError: compare_f_test(): the models must be fitted to the same data (y, the rows used and their weights)
+```
+
+`both`의 열 $x_1 + x_2$는 `r`에 같은 열이 없지만 열공간에 들어서 통과해요. 거꾸로 부르면 큰 모형의 열 $x_2$가 작은 모형의 열공간 밖이라 에러이고, 메시지가 큰 모형에서 부르라고 알려요. R과 statsmodels는 내포를 검사하지 않아요. 내포가 아닌 두 모형의 F는 음수가 되기도 하고, 양수여도 뜻이 없는 값이에요.
+
+## anova: 여러 모형
+
+`anova(r1, r2, …)`는 이웃한 두 모형마다 위의 검사를 하고(어느 쪽이 크든) 앞 줄과 견준 표를 만들어요. 줄마다 `df_resid`, `ssr`(GLM은 편차), `df_diff`(앞 줄의 `df_resid` − 이 줄의 것), `ss_diff`, 통계량, p값이고, 첫 줄의 비교 칸은 NaN이에요.
+
+F의 분모는 모든 줄이 같은 척도, 곧 `df_resid`가 가장 작은 모형의 $\text{SSR}/\text{df}$(GLM은 그 모형의 척도)이고 분모 자유도도 그 모형의 `df_resid`예요. 가장 큰 모형이 오차의 분산을 가장 덜 치우치게 추정하기 때문이고, R `anova.lmlist`와 같아요.
+
+```python
+    # src/stardust/regression/_tests.py
+    dfr = [m.df_resid for m in models]
+    big_i = min(range(len(models)), key=lambda i: (dfr[i], i))
+    big = models[big_i]
+    test = _test_option(func, test, [big])
+    ssr = [_ssr_s(m) for m in models]
+    if isinstance(big, GLMResult):
+        scale = _scale_s(big)
+    else:
+        scale = _div(ssr[big_i], dfr[big_i])
+    df_scale = dfr[big_i]
+```
+
+```python
+        # src/stardust/regression/_tests.py
+        if test == "F":
+            v = _div(_div(ssd, dfd), scale)
+            if v < 0:
+                v = math.nan
+            stat.append(v)
+            pv.append(float(_F(dfn=abs(dfd), dfd=float(df_scale)).ccdf(v)) if not math.isnan(v) else math.nan)
+        else:
+            v = _div(ssd, scale) * math.copysign(1.0, dfd)
+            if v < 0:
+                v = math.nan
+            stat.append(v)
+            pv.append(float(_ChiSquared(df=abs(dfd)).ccdf(v)) if not math.isnan(v) else math.nan)
+```
+
+통계량이 음수가 되면(내포 검사를 통과한 뒤에도 반올림으로 SSR이 거꾸로 설 때) NaN이에요. `test`는 None이면 선형과 척도를 추정하는 GLM은 `'F'`, 척도가 고정인 GLM은 `'Chisq'`예요(R 4.6의 `anova.glm` 기본). `'Chisq'`는 `ss_diff`를 척도로 나눈 값을 χ²(`df_diff`)와 견줘요.
+
+```python
+>>> one = sd.regression.ols(y, X[:, :1])
+>>> a = sd.regression.anova(one, small, r)
+>>> a.df_resid.tolist(), a.statistic.tolist(), a.pvalue.tolist()
+([28.0, 27.0, 26.0], [nan, 28.76560363545615, 2.304445810921585], [nan, 1.29136025415576e-05, 0.14107114704254978])
+```
+
+첫 모형은 견줄 앞 모형이 없어서 그 줄의 통계량과 p값이 NaN이에요.
+
+statsmodels의 `anova_lm(m1, m2, m3)`은 척도를 마지막 모형에서 가져와요(모형을 복잡해지는 순서로 주면 같은 모형이에요). 그런데 p값의 분모 자유도로는 줄마다 제 `df_resid`를 써요. 그래서 모형이 셋 이상이면 가운데 줄의 p값이 달라요(위에서 둘째 줄이 F(1, 27)로 계산돼요). 또 모형이 복잡해지는 순서로 주지 않으면 에러예요.
+
+## anova: 항의 표
+
+`anova(r)`는 모형 하나의 항마다 한 줄인 표예요. 항은 열(X에서의 위치나 이름)의 목록이고, `terms`를 주지 않으면 열 하나가 항 하나예요. 목록이 아닌 항은 열 하나예요. 이름은 `str`, 위치는 `operator.index`가 받는 정수(`int`, numpy의 정수와 0차원 정수 배열)이고, 정수 배열은 열의 목록이에요. 그 밖의 스칼라(실수, bool, bytes)는 순회하지 않고 열 하나로 받아 열의 형 검사가 `TypeError`를 내요. 더미 세 개처럼 함께 들고 나는 열은 한 항으로 묶어요. 절편은 항이 아니고, 마지막 줄 `'Residual'`은 `df_resid`, SSR, 척도예요.
+
+### Type I, 선형: 효과
+
+Type I은 항을 주어진 순서로 하나씩 넣을 때 SSR이 줄어드는 양이에요. 백색화한 설계를 그 순서로 놓고 $\tilde X = QU$로 분해하면 $c = Q^{\mathsf T}\tilde y$(효과)의 앞 $j$칸이 앞 $j$열의 적합을 정해요.
+
+$$
+\text{SSR}(\text{앞 } j\text{열}) = \lVert\tilde y\rVert_2^2 - \sum_{i \le j} c_i^2
+\quad\Rightarrow\quad
+\text{SS}(\text{항}) = \sum_{i \in \text{항}} c_i^2
+$$
+
+그래서 다시 적합하지 않고 효과 하나로 모든 항의 제곱합이 나와요. R `anova.lm`이 `lm`의 `effects`로 하는 계산이에요.
+
+항의 순서가 적합의 열 순서와 같으면 효과를 다시 분해해 구하지도 않아요. 최소제곱 해에서 $U\hat\beta = Q_1^{\mathsf T}\tilde y$가 정확히 성립하므로, 적합이 가진 삼각 인자와 반복 개선한 계수로 $c = U\hat\beta$를 Dot2로 한 번 반올림해 구해요($O(k^2)$). 순서가 다르면 그 순서로 놓은 설계를 커널의 `thin_q` 방식으로 분해하고 $Q^{\mathsf T}\tilde y$를 Dot2로 구해요. 그 순서에서 겹친 열은 효과가 0이고 자유도도 더하지 않아요.
+
+```python
+    # src/stardust/regression/_tests.py
+    func, y, X, w, u, tol, _, _ = r._fitargs
+    order = [c for _, cols in parsed for c in cols]
+    p = X.shape[-1]
+    if order == list(range(p)):
+        kept = r._raw[5]
+        Rt = r._raw[2]
+        fx = r._xfactor()
+        if fx is not None:  # the fit's units (powers of two, exact)
+            Rt = Rt / _sd.expand_dims(fx, axis=-2)
+        b, _, _ = _fit_units(r)
+        both = _sd.logical_and(_sd.expand_dims(kept, axis=-1), _sd.expand_dims(kept, axis=-2))
+        c = _k.apply("anova", _sd.where(both, Rt, 0.0), b, False, None)[0]
+    else:
+        Xo = _sd.take(X, _sd.asarray(order, dtype=_sd.int64), axis=-1)
+        _, Q, _, kept = _k.fit(func, y, Xo, w, u, r._intercept, tol, 0, 0, None, 0, -1, True, True)
+        yt = y if w is None else _sd.sqrt(w) * y
+        c = _k.apply("anova", _sd.matrix_transpose(Q), yt, False, None)[0]
+    j0 = 1 if r._intercept else 0
+    out = []
+    at = j0
+    for _, cols in parsed:
+        sl = slice(at, at + len(cols))
+        cc = c[sl]
+        kk = kept[sl]
+        out.append((float(_sd.sum(_sd.where(kk, 1.0, 0.0))), float(_sd.sum(cc * cc))))
+        at += len(cols)
+    return out
+```
+
+```python
+>>> a1 = sd.regression.anova(r)
+>>> print(a1.summary())
+                     Analysis of Variance Table (Type I)
+==============================================================================
+Model:                             OLS  No. Observations:                   30
+Type:                                I  Df Residuals:                       26
+Test:                                F
+==============================================================================
+                   df     sum_sq    mean_sq          F     Pr(>F)
+------------------------------------------------------------------------------
+x1                  1    21.1295    21.1295     35.743      0.000
+x2                  1     0.2868     0.2868      0.485      0.492
+x3                  1    18.0801    18.0801     30.585      0.000
+Residual           26    15.3697     0.5911
+==============================================================================
+>>> s1, s2 = sd.regression.ols(y, X[:, :1]), sd.regression.ols(y, X[:, :2])
+>>> s1.ssr - s2.ssr, float(a1.sum_sq[1])
+(0.28677427375023967, 0.28677427375023684)
+>>> a2 = sd.regression.anova(r, terms=[[2], [0, 1]])
+>>> a2.terms
+['x3', 'x1 + x2', 'Residual']
+>>> a2.sum_sq.tolist()
+[21.744551133033745, 17.751801014653513, 15.369725689408156]
+```
+
+$x_2$의 제곱합 0.2868은 두 적합의 SSR을 빼서 구할 수도 있지만, 33.7과 16.7 같은 큰 SSR의 차라 앞자리가 지워져요. 효과의 제곱은 그 작은 양을 직접 계산해요. 순서를 바꾸면 값이 달라지는 것이 Type I의 정의예요.
+
+`summary()`는 R의 열 그대로인 표를 회귀 모형과 같은 상자에 넣어요([summary의 상자](/internals/regression/overview/#summary의-상자)). 표의 p값은 소수 3자리라 아주 작은 값은 0.000으로 보이고, 끝까지의 값은 필드(`pvalue`)에 있어요. `Residual` 줄처럼 해당하지 않는 칸은 비워요.
+
+statsmodels의 `anova_lm(typ=1)`은 공식으로 만든 모형만 받고, 효과를 `np.linalg.qr(exog)`로 가중치 없는 설계에서 다시 구해요. 그래서 WLS 결과의 항 제곱합은 가중치를 쓰지 않은 값인데 `Residual` 줄은 가중 SSR이에요. 자유도도 랭크가 아니라 항의 열 수라, 겹친 열이 있으면 R과 다르게 세요.
+
+### Type I, GLM: 다시 적합
+
+GLM의 편차는 효과의 제곱합으로 나뉘지 않아요. IRLS의 가중치가 모형마다 달라서예요. 그래서 항을 하나씩 더한 모형을 같은 설정(분포족, 링크, 가중치, offset, 수렴 조건, 척도 설정)으로 glm 커널에 다시 적합하고 편차가 줄어든 양을 써요. 처음은 적합이 가진 귀무 편차, 마지막은 적합 자체의 편차라서, 다시 적합하는 것은 가운데 모형들이에요.
+
+```python
+    # src/stardust/regression/_tests.py
+    fa = r._fitargs
+    prev_dev = r._stat(_G_NULLDEV)
+    prev_rank = 1.0 if r._intercept else 0.0
+    out = []
+    cols = []
+    for i, (_, tcols) in enumerate(parsed):
+        cols = cols + tcols
+        if i == len(parsed) - 1:
+            dev, rank = r._stat(_G_DEV), r._stat(_G_RANK)
+        else:
+            raw = _glm_refit(fa, cols, r._intercept)
+            st = raw[6]
+            dev, rank = float(st[_G_DEV]), float(st[_G_RANK])
+        out.append((rank - prev_rank, prev_dev - dev))
+        prev_dev, prev_rank = dev, rank
+    return out
+```
+
+R `anova.glm`도 같은 계산이에요. `glm.fit`을 앞 항들의 열로 다시 부르고, 귀무 편차에서 시작하고, 감소가 음수면 0으로 잘라요(`pmax(0, ·)`).
+
+```python
+>>> ag = sd.regression.anova(g)
+>>> ag.test, ag.statistic.tolist(), ag.pvalue.tolist()
+('Chisq', [29.813975830764747, 6.67139006289338, nan], [4.7555146094260485e-08, 0.009797274576806184, nan])
+>>> g1 = sd.regression.glm(yb, Xg[:, :1], family="binomial")
+>>> g.null_deviance - g1.deviance, g1.deviance - g.deviance
+(29.813975830764747, 6.67139006289338)
+```
+
+이항이라 척도가 1로 고정이고, 기본 검정이 χ²예요. 마지막 항의 줄은 `g.compare_lr_test(g1)`과 같은 통계량이에요.
+
+### Type III: 항마다 Wald
+
+Type III는 다른 모든 항이 들어 있을 때 그 항의 계수가 모두 0인지를 보는 `wald_test`예요. 항의 열 가운데 적합에서 쓰인 것만 줄로 넣고(겹친 열은 빼요), 모두 겹쳤으면 자유도 0의 NaN 줄이에요.
+
+```python
+        # src/stardust/regression/_tests.py
+        kept = r._raw[5]
+        k = r.params.shape[-1]
+        chi2 = _chi2_model(r)
+        for _, cols in parsed:
+            pos = [j0 + c for c in cols if bool(kept[j0 + c])]
+            if not pos:
+                rows_df.append(0.0)
+                rows_ss.append(math.nan)
+                rows_stat.append(math.nan)
+                rows_p.append(math.nan)
+                continue
+            R = _sd.zeros((len(pos), k))
+            R = _sd.where(_sd.arange(k) == _sd.reshape(_sd.asarray(pos, dtype=_sd.int64), (len(pos), 1)), 1.0, 0.0)
+            W, m = _wald_statistic(r, R, _sd.zeros((len(pos),)))
+            W = float(W)
+            dfm = float(m)
+            Fv = W / dfm if dfm else math.nan
+            # statsmodels' back-out of a sum of squares from the test, scale x df x F
+            ss = Fv * dfm * scale if not chi2 else W * scale
+            rows_df.append(dfm)
+            rows_ss.append(ss)
+            if test == "F" and not chi2:
+                rows_stat.append(Fv)
+                rows_p.append(float(_F(dfn=dfm, dfd=float(r._df_inference())).ccdf(Fv)) if dfm else math.nan)
+            else:
+                rows_stat.append(W)
+                rows_p.append(float(_ChiSquared(df=dfm).ccdf(W)) if dfm else math.nan)
+```
+
+`sum_sq`는 statsmodels처럼 통계량에서 되돌린 $F\cdot m\cdot s^2$이에요. 고전형 선형 모형에서 이 값은 그 항을 뺀 적합과의 SSR 차와 정확히 같은 양이에요(위의 F = t²와 같은 항등식). 척도가 고정인 GLM은 $W\cdot\phi$예요. Type I과 달리 강건 공분산의 결과도 받고, 그때는 그 공분산의 Wald F예요.
+
+```python
+>>> a3 = sd.regression.anova(r, typ=3)
+>>> a3.statistic.tolist(), a3.pvalue.tolist()
+([29.737182361456274, 2.3044458109215853, 30.58493141186105, nan], [1.0204040719316083e-05, 0.14107114704254975, 8.337813489041549e-06, nan])
+>>> small.ssr - r.ssr, float(a3.sum_sq[1])
+(1.3622576915373266, 1.3622576915373268)
+>>> sd.regression.anova(sd.regression.ols(y, X, cov_type="HC3"))
+Traceback (most recent call last):
+    ...
+ValueError: anova(): Type I sums of squares do not use the robust covariance (cov_type='HC3'); use typ=3 (Wald tests with that covariance)
+```
+
+비교 대상과 견주면 이래요.
+
+- car `Anova(type = 3)`는 lm이면 항마다 `linearHypothesis`를 불러 같은 F를 내지만, 절편도 한 줄로 넣고, 겹친 계수가 있으면 멈춰요. `white.adjust`를 주면 HC 공분산의 Wald예요. glm은 기본 `test.statistic = "LR"`이 항을 뺀 모형을 다시 적합한 우도비이고, 여기의 값은 `test.statistic = "Wald"`와 같아요.
+- R `drop1(m, test = "F")`(lm)은 항마다 그 항을 뺀 설계로 `lm.fit`을 다시 불러 SSR의 차를 써요. 고전형이면 같은 F예요. glm의 `drop1`은 우도비라 Wald와 달라요.
+- statsmodels `anova_lm(typ=3)`은 항마다 `f_test`를 부르고 같은 식으로 제곱합을 되돌려요. `robust='hc3'` 같은 인자로 HC 공분산을 쓰고, 공식으로 만든 모형만 받아요.
+
+Type III의 값은 더미의 부호화에 달려 있어요. 처리 대비(기준 수준이 0)로 만든 더미에서 주효과의 검정은 상호작용의 다른 수준이 아니라 기준 수준에서의 효과를 봐요. car도 Type III에는 합 대비를 권해요.
+
+### 척도와 자유도
+
+| 표 | 통계량 | 척도 | 분모 자유도 |
+|---|---|---|---|
+| 여러 모형, `'F'` | $(\Delta\text{SS}/\Delta\text{df})/\hat\phi$ | `df_resid`가 가장 작은 모형 | 그 모형의 `df_resid` |
+| 여러 모형, `'Chisq'` | $\Delta\text{SS}/\hat\phi$ | 같음 | (χ²의 자유도 $\Delta\text{df}$) |
+| Type I, `'F'` | $(\text{SS}/\text{df})/\hat\phi$ | 그 모형의 척도(GLM은 Pearson 척도) | `df_resid` |
+| Type I, `'Chisq'` | $\text{SS}/\phi$ | 그 모형의 척도 | (χ²의 자유도 df) |
+| Type III, F | $W/m$ | 공분산 안에 | `df_resid_inference` |
+| Type III, χ² | $W$ | 공분산 안에 | (χ²의 자유도 $m$) |
+
+Type III의 분모 자유도만 `df_resid_inference`인 것은 그 값이 `wald_test`이고, 군집 공분산의 Wald는 군집 수 − 1을 쓰기 때문이에요. 표의 `mean_sq`는 `sum_sq / df`예요. `'Residual'` 줄만은 통계량의 분모인 척도예요. 선형 모형은 `ssr / df_resid`가 곧 척도이고, GLM의 `'Residual'` 줄은 `sum_sq`가 편차, `df`가 `df_resid`, `mean_sq`가 모형의 `scale`이에요. 편차 ÷ `df_resid`는 GLM의 척도가 아니라서(Pearson 척도이거나 고정된 1) 그 줄에 두면 항의 `mean_sq`를 나눠도 F가 나오지 않아요. 척도를 두면 F = 항의 `mean_sq` ÷ `'Residual'`의 `mean_sq`로 다시 셀 수 있어요.
+
+```python
+    # src/stardust/regression/_tests.py (_anova_terms)
+    mean = [_div(s, d) if d else math.nan for s, d in zip(ss_out, df_out)]
+    if glm:
+        # ...
+        mean[-1] = float(r.scale)
+```
+
+집단 더미를 한 항으로 묶은 OLS의 표는 일원 분산분석이고, `sd.htest.f_oneway`와 같은 F·p예요. 다만 계산이 달라서(이쪽은 적합의 QR, `f_oneway`는 집단마다의 합) 비트까지 같지는 않고 두 쪽의 정확도 안에서 같아요.
+
+```python
+>>> grp = [i % 3 for i in range(24)]
+>>> yy = N.sample(24, rng=sd.random.default_rng(5)) + sd.asarray([0.0, 0.5, 1.0] * 8)
+>>> D = sd.asarray([[1.0 if v == 1 else 0.0, 1.0 if v == 2 else 0.0] for v in grp])
+>>> ow = sd.regression.anova(sd.regression.ols(yy, D), terms=[[0, 1]])
+>>> float(ow.statistic[0]), sd.htest.f_oneway(yy[0::3], yy[1::3], yy[2::3]).statistic
+(0.6470089449659727, 0.6470089449659729)
+```
+
+## 정확도
+
+Arb(구간 산술)로 만든 참값과 견준 상대오차예요(`bench/regression/accuracy.md`의 `model_tests`). 참값은 정의대로 만들어요. 비교와 분산분석은 비교하는 적합들의 SSR·편차(Type I은 항을 하나씩 더한 적합, Type III는 항을 뺀 적합)로, GLM은 증명한 최대우도 추정과 그 기대 정보로 계산해요.
+
+| 문제 | t (`t_test`) | Wald | `compare_f_test` | `compare_lr_test` | Type I | Type III |
+|---|---:|---:|---:|---:|---:|---:|
+| OLS | 2.0e-16 | 1.4e-16 | 2.5e-16 | 3.2e-16 | 5.0e-16 | 2.9e-16 |
+| WLS(가중치 0인 행) | 5.3e-17 | 1.6e-18 | 7.1e-16 | 6.4e-16 | 4.4e-16 | 6.3e-16 |
+| 절편 없음 | 1.5e-16 | 2.9e-16 | 2.0e-16 | 2.0e-16 | 3.9e-16 | 3.3e-16 |
+| 세 수준 요인의 항 | 1.5e-16 | 2.1e-16 | 6.9e-16 | 6.4e-16 | 4.4e-16 | 5.1e-16 |
+| κ ≈ 10⁸ | 9.0e-10 | 1.8e-9 | 1.2e-16 | 1.1e-16 | 2.7e-9 | 1.4e-10 |
+| 이항 logit | 2.5e-16 | 2.3e-16 | | 4.3e-16 | 4.3e-16 | 1.3e-16 |
+| 이항 probit | 9.4e-16 | 4.3e-16 | | 2.3e-17 | 9.5e-16 | 7.8e-16 |
+| 포아송 log | 6.4e-17 | 8.6e-18 | | 8.6e-16 | 1.5e-16 | 1.5e-16 |
+| 감마 log | 2.1e-16 | 8.8e-16 | 1.2e-16 | 2.2e-16 | 1.3e-16 | 8.4e-16 |
+
+- 표의 값은 통계량(Type I·III는 제곱합, GLM은 편차의 감소와 Wald 통계량)의 최대 상대오차예요. p값은 그 자신에 대한 상대오차로 모든 조건이 좋은 문제에서 2×10⁻¹⁴ 안이에요.
+- κ ≈ 10⁸에서 t, Wald, Type I·III는 $\kappa u$ 꼴로 나빠져요. 공분산 $(U^{\mathsf T}U)^{-1}$과 효과 $U\hat\beta$가 삼각 인자의 반올림을 $\kappa$배로 키우기 때문이고, 계수의 `bse`와 같은 꼴이에요.
+- 같은 문제에서 두 SSR로 구하는 `compare_f_test`와 `compare_lr_test`는 반올림 수준 그대로예요. 각 적합의 잔차를 double-double로 반복 개선해서 SSR이 $\kappa$와 거의 상관없이 정확하기 때문이에요. 조건이 나쁜 설계에서 열 몇 개를 빼는 가설은 같은 값을 주는 Wald보다 두 적합의 비교로 검정하는 편이 정확해요.
+- statsmodels는 같은 κ ≈ 10⁸ 문제에서 t의 상대오차가 4.2×10⁻², Wald F가 2.8×10⁻², 비교의 F가 4.5×10⁻¹¹이에요. 계수와 공분산을 설계의 의사역행렬로 만들고 반복 개선하지 않기 때문이에요.

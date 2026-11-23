@@ -1,0 +1,567 @@
+---
+title: 영역의 구조
+group: 구조
+order: 1
+summary: sd.optimize가 Python 층과 C++ 커널로 나뉜 모습, 사용자 함수를 부르는 경계와 GIL, 같은 점을 다시 계산하지 않는 기억, 셈과 결과 객체, 그리고 scipy와 같은 알고리즘을 어떻게 따르고 확인하는지 설명해요.
+seeAlso: [derivatives, batched, quasi-newton, least-squares, root, accuracy-performance]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Layers from '../../../components/fig/Layers.astro';
+import Steps from '../../../components/fig/Steps.astro';
+
+## 한눈에 보기
+
+`sd.optimize`의 공개 함수는 모두 Python이고, 반복은 C++ 커널(`stardust._core.optimize`)이 돌려요. 사용자 함수는 Python이라서 커널이 반복 중에 Python으로 되돌아와 불러요. 그래서 한 번의 호출 안에서 Python과 C++ 사이를 수십에서 수만 번 오가요. 이 경계를 싸고 정확하게 만드는 것이 영역 구조의 큰 줄기예요.
+
+<Fig column caption="sd.optimize의 층. 위가 사용자가 부르는 것, 아래가 그 밑바탕이에요.">
+  <Layers layers={[
+    { title: '공개 함수 (Python)', note: 'src/stardust/optimize/', items: [
+      { name: '_scalar.py', note: 'root_scalar, minimize_scalar' },
+      { name: '_elementwise.py', note: 'find_root, bracket_root, find_minimum, bracket_minimum' },
+      { name: '_minimize.py', note: 'minimize' },
+      { name: '_lsq.py', note: 'least_squares' },
+      { name: '_linear.py', note: 'lsq_linear, nnls' },
+      { name: '_root.py', note: 'root' },
+      { name: '_diff.py', note: 'approx_fprime, check_grad' },
+    ] },
+    { title: '공통 (Python)', items: [
+      { name: '_common.py', note: '입력·옵션 검사와 메시지' },
+      { name: '_result.py', note: 'OptimizeResult' },
+      { name: '../_results.py', note: '결과의 바탕 _FieldResult' },
+      { name: '../differentiate/_differences.py', note: '간격을 고르는 5점 차분(C++ 고리 accurate.hpp를 만들어요)' },
+    ] },
+    { title: '커널 (C++)', note: 'csrc/optimize/', items: [
+      { name: 'scalar.cpp', note: '스칼라 근과 최솟값' },
+      { name: 'batch.cpp', note: '배치 스칼라', uses: 'elementwise/loop.hpp' },
+      { name: 'nelder_mead.cpp, bfgs.cpp, lbfgsb.cpp, newton_cg.cpp, trust.cpp', note: 'minimize', uses: 'objective.hpp, hessian.hpp, wolfe.hpp' },
+      { name: 'lsq.cpp', note: "least_squares, root('lm'), regression.nls", uses: 'differentiate/steps.hpp, minpack.hpp' },
+      { name: 'hybrd.cpp', note: "root('hybr')", uses: 'minpack.hpp' },
+      { name: 'linear.cpp', note: 'lsq_linear, nnls' },
+    ] },
+    { title: '바닥', tone: 'dark', items: [
+      { name: 'linalg', note: 'LAPACK, BLAS (Accelerate)' },
+      { name: 'parallel', note: '스레드풀, GIL 놓기' },
+    ] },
+  ]} />
+</Fig>
+
+| 공개 함수 | Python | 커널 함수 | 같은 걸음을 가는 scipy 1.18.1의 코드 |
+|---|---|---|---|
+| `root_scalar` | `_scalar.py` | `root_solve` | `brentq`·`bisect`의 C 코드, `TOMS748Solver`, `newton()` |
+| `minimize_scalar` | `_scalar.py` | `min_solve` | `Brent`, `_minimize_scalar_golden`, `_minimize_scalar_bounded` |
+| `find_root` 등 넷 | `_elementwise.py` | `find_root_solve` 등 | `elementwise`의 `_chandrupatla`, `_chandrupatla_minimize`, `_bracket_root`, `_bracket_minimum` |
+| `minimize` | `_minimize.py` | `nelder_mead_solve`, `bfgs_solve`, `lbfgsb_solve`, `newton_cg_solve`, `trust_solve` | `_minimize_neldermead`, `_minimize_bfgs`, C 판 L-BFGS-B, `_minimize_newtoncg`, `_minimize_trust_region` |
+| `least_squares` | `_lsq.py` | `lsq_solve` | `trf`, MINPACK `lmder` |
+| `root` | `_root.py` | `hybr_solve`, `lm_solve` | MINPACK `hybrd`·`hybrj`, `leastsq` |
+| `lsq_linear`, `nnls` | `_linear.py` | `lsq_linear_solve`, `nnls_solve` | `trf_linear`, `bvls`, `_slsqplib.nnls` |
+| `approx_fprime`, `check_grad` | `_diff.py` | `AccurateDiff`(differentiate 영역) | `approx_fprime`, `check_grad` |
+
+`lsq_linear`과 `nnls`는 사용자 함수가 없어서 계산 전체가 C++이에요. `approx_fprime`과 `check_grad`는 반복이 없고, 간격을 고르는 5점 차분의 고리(`csrc/differentiate/accurate.hpp`의 `AccurateDiff`)를 Python에서 만들어 불러요. 그 고리 안에서 Python은 사용자 함수뿐이에요.
+
+## 한 번의 호출이 지나는 길
+
+`minimize(rosen, x0, jac=grad)`가 지나는 길을 따라가 볼게요.
+
+<Fig column caption="minimize 한 번의 흐름. 사용자 함수는 커널 안에서 불리고, 결과 객체는 Python에서 만들어요.">
+  <Steps steps={[
+    { label: 'minimize()', note: '입력 검사(x0, method, bounds, options), 방법 고르기(bounds가 없으면 bfgs), tol을 옵션의 허용오차로 넣기', where: '_minimize.py' },
+    { label: '_bfgs()', note: 'gtol, norm, max_iter, c1·c2 같은 옵션의 기본값과 검사', where: '_minimize.py', depth: 1 },
+    { label: 'bfgs_solve', note: 'BFGS의 반복. x0에서 fun과 jac을 계산하고, 유한하지 않으면 ValueError', where: 'bfgs.cpp' },
+    { label: 'Objective', note: 'scipy ScalarFunction처럼 같은 점이면 다시 부르지 않는 기억. 부를 때마다 nfev·njev를 세요', where: 'objective.hpp', depth: 1 },
+    { label: 'fun(x), jac(x)', note: '사용자의 Python 함수. x는 호출마다 새 float64 sd.ndarray', where: '사용자', depth: 2 },
+    { label: 'check(value, what)', note: '돌려받은 값이 Python float나 맞는 모양의 float64 배열이 아닐 때만 불러, 값을 바꾸거나 에러를 내요', where: '_minimize.py', depth: 2 },
+    { label: '_line_search_wolfe12', note: 'scipy의 Wolfe 선 탐색(wolfe1, 실패하면 wolfe2)', where: 'wolfe.hpp', depth: 1 },
+    { label: '역헤시안 갱신', note: 'O(n²)의 BFGS 갱신. n이 크면 GIL을 놓고 계산', where: 'bfgs.cpp', depth: 1 },
+    { label: 'OptimizeResult(...)', note: '커널의 status를 scipy의 message로, converged = status 0이고 fun이 유한함', where: '_minimize.py, _result.py' },
+  ]} />
+</Fig>
+
+Python 층은 반복 전과 후만 맡아요. 반복 전에는 인자를 검사하고 기본값을 정해 커널에 넘기고, 반복 뒤에는 커널이 돌려준 번호(`status`)를 scipy의 글로 바꾸고 결과 객체를 만들어요. 반복 안에서 Python으로 돌아오는 것은 사용자 함수를 부를 때와, 돌려받은 값이 빠른 길에 맞지 않아 검사가 필요할 때뿐이에요.
+
+## 사용자 함수를 부르는 경계
+
+### 넘기는 값
+
+다변수 함수에 넘기는 `x`는 호출마다 새로 만든 float64 `sd.ndarray`예요. 커널의 작업 배열을 그대로 넘기지 않아서, 사용자 함수가 `x`를 고치거나 붙잡아 두어도 반복에는 영향이 없어요.
+
+```cpp
+// csrc/optimize/objective.hpp
+inline nb::object out_vector(const double* v, std::size_t n) {
+    const std::int64_t shape[1] = {static_cast<std::int64_t>(n)};
+    NDArray a = new_array(DType::Float64, shape);
+    if (n) std::memcpy(a.data, v, n * sizeof(double));
+    return wrap(std::move(a));
+}
+```
+
+새 배열 하나를 만드는 비용은 0.1 µs쯤이에요. 사용자 함수 자체(Python 호출과 그 안의 계산)가 대개 그보다 훨씬 커요.
+
+```python
+>>> import stardust as sd
+>>> def plain(x):
+...     return float(sd.sum((x - 1.0)**2))
+>>> seen = []
+>>> def messy(x):
+...     seen.append(x)
+...     v = plain(x)
+...     x[0] = 100.0
+...     return v
+>>> a = sd.optimize.minimize(plain, [0.0, 0.0], method='nelder-mead')
+>>> b = sd.optimize.minimize(messy, [0.0, 0.0], method='nelder-mead')
+>>> a.x.tolist() == b.x.tolist(), a.nfev == b.nfev == len(seen)
+(True, True)
+>>> len({id(x) for x in seen}) == len(seen)
+True
+```
+
+`messy`는 받은 배열의 첫 원소를 100으로 덮어쓰지만, 커널은 자기 배열로 계속 가므로 결과가 `plain`과 같아요. 불린 배열도 모두 서로 다른 객체예요.
+
+스칼라 함수(`root_scalar`, `minimize_scalar`)에는 Python `float`를 넘겨요. 배치 함수에는 아직 끝나지 않은 원소만 모은 새 배열을 넘겨요.
+
+### 돌려받는 값: 빠른 길과 검사
+
+사용자 함수가 돌려준 값은 두 길로 읽어요. 실수 하나를 기대하는 자리에서 Python `float`를 받으면, 또는 배열을 기대하는 자리에서 모양이 맞는 float64 `sd.ndarray`를 받으면 C++에서 바로 읽어요. 그 밖의 값(정수, numpy 수, 리스트, numpy 배열, 모양이 틀린 배열)은 Python의 검사 함수 `check`로 보내요. 검사 함수는 받을 수 있는 값을 float64로 바꾸고, 받을 수 없는 값에는 다른 영역과 같은 꼴의 에러를 내요.
+
+```cpp
+    // csrc/optimize/objective.hpp
+    double real(nb::handle o) const {
+        if (PyFloat_CheckExact(o.ptr())) return PyFloat_AS_DOUBLE(o.ptr());
+        nb::object c = check(o, "fun");
+        return PyFloat_AsDouble(c.ptr());
+    }
+```
+
+검사 함수는 공개 함수가 만들어 커널에 넘겨요. 함수의 이름과 기대하는 모양을 알고 있어서 메시지가 `minimize(): 'fun' must return a real number, not shape (3,)`처럼 그 함수의 꼴이에요. 흔한 경우(Python `float`, `sd` 배열 연산의 결과)는 Python으로 돌아가지 않아요.
+
+### 사용자 함수의 에러
+
+사용자 함수가 예외를 내면 커널의 반복이 그 자리에서 끝나고(C++의 예외로 스택을 거슬러 올라가요) 원래의 예외가 그대로 사용자에게 가요. 커널이 에러를 감싸거나 바꾸지 않아요.
+
+## GIL과 스레드
+
+### 반복은 GIL을 쥐고 돌아요
+
+사용자 함수를 부르려면 GIL이 있어야 해요. 그래서 반복 전체를 GIL을 쥔 채 돌리고, 사용자 함수를 부르는 사이의 계산이 클 때만 GIL을 놓아요. 다른 영역과 같은 규칙이에요. 작은 계산은 GIL을 놓고 다시 잡는 비용도 치르지 않고, 큰 계산 동안에는 다른 Python 스레드가 돌 수 있어요. 기준은 linalg와 같은 "계산 시간이 10 µs 이상"이고, 플롭으로 대략 $2 \times 10^5$이에요.
+
+| 커널 | GIL을 놓는 계산 | 기준 |
+|---|---|---|
+| BFGS | 방향 $Hg$와 역헤시안 갱신 | $8n^2 > 2 \times 10^5$ ($n \ge 159$) |
+| Nelder–Mead | 무게중심과 멈춤 판정 | $N^2 > 2 \times 10^5$ |
+| L-BFGS-B | 방향 계산과 메모리 갱신 | $10n(m + 1) > 2 \times 10^5$ |
+| Newton-CG | 헤시안과 벡터의 곱 | $2n^2 > 2 \times 10^5$ |
+| trust-ncg, trust-exact | 헤시안과 벡터의 곱, 삼각 풀이 | $2n^2 > 2 \times 10^5$ |
+| trust-exact | Cholesky 분해 | $n^3/3 > 2 \times 10^5$ |
+| `least_squares`(nls의 길) | 야코비안의 QR | $2mn^2 > 2 \times 10^5$ |
+| `lsq_linear`, `nnls` | 계산 전체 | $2mn^2 > 2 \times 10^5$ |
+
+BFGS의 갱신이 그 예예요. `big`은 반복 전에 한 번 정해요.
+
+```cpp
+        // csrc/optimize/bfgs.cpp
+        const bool big = 8.0 * double(n) * double(n) > 2e5;  // the 10 us rule (the update's flops)
+```
+
+```cpp
+            // csrc/optimize/bfgs.cpp
+            {
+                std::optional<nb::gil_scoped_release> rel;
+                if (big) rel.emplace();
+```
+
+GIL을 놓은 동안에는 Python 객체를 건드리지 않아요. 갱신에 쓰는 배열은 모두 커널의 `std::vector`예요.
+
+### 배치 함수의 스레드
+
+배치 함수는 사용자 함수를 한 번 부를 때마다 남은 원소 모두의 상태를 갱신하고 다음 점을 계산해요. 원소 하나의 일이 수 ns라서 원소가 적으면 한 스레드로 하고, 남은 원소가 $2^{15} = 32{,}768$개 이상이면 $2^{13}$개씩 나눠 스레드풀에 맡겨요. 이때 GIL을 놓아요. 이 반복의 틀(원소를 나눠 지나가기, 사용자 함수 부르기, 셈)은 `sd.differentiate`와 `sd.integrate`의 원소별 반복과 함께 쓰는 `csrc/elementwise/loop.hpp`에 있어요.
+
+```cpp
+// csrc/elementwise/loop.hpp
+constexpr std::size_t kParallel = std::size_t{1} << 15;
+constexpr std::size_t kTask = std::size_t{1} << 13;
+
+// fn(r0, r1) over [0, k) in pieces (no Python objects inside)
+template <class Fn>
+void for_elements(std::size_t k, Fn&& fn) {
+    if (k >= kParallel && parallel::available()) {
+        const auto tasks = static_cast<std::int64_t>((k + kTask - 1) / kTask);
+        parallel::parallel_for(tasks, [&](std::int64_t t) {
+            const std::size_t r0 = static_cast<std::size_t>(t) * kTask;
+            fn(r0, std::min(k, r0 + kTask));
+        });
+    } else {
+        parallel::Unlocked u(k >= kParallel);
+        fn(std::size_t{0}, k);
+    }
+}
+```
+
+원소마다의 계산은 어느 스레드에서 해도 같고, 계속 가는 원소는 순서를 지켜 모으므로 지금은 결과가 스레드 수와 상관없이 비트까지 같아요(약속은 아니에요). MINPACK의 `qrfac`(`least_squares`와 `root`의 `'lm'`)도 큰 단계($4 \times 10^5$ 플롭부터)는 열을 스레드에 나누는데, 열마다의 합은 제 순서 그대로라 역시 비트가 같아요. 풀에 나눌 때는 작업 하나의 대략 시간(열 노름은 원소당 약 1 ns, 열 반사는 원소당 약 4 플롭)을 함께 넘겨서, 긴 작업 몇 개가 처음부터 모든 일꾼을 깨우게 해요. 비트는 그것과 상관없어요.
+
+## 같은 점을 다시 계산하지 않기
+
+`minimize`의 방법들은 같은 점의 함숫값과 기울기를 여러 번 요청해요. 선 탐색이 받아들인 점의 값은 다음 반복의 시작에서 다시 필요하고, 차분 기울기는 그 점의 함숫값을 한 번 더 써요. scipy는 `ScalarFunction`이 마지막 점과 그 점의 값을 기억해서, 다른 점이거나 아직 계산하지 않았을 때만 사용자 함수를 불러요. 커널의 `Objective`가 같은 기억을 해요.
+
+```cpp
+    // csrc/optimize/objective.hpp
+    void set_x(const double* v) {
+        bool same = x.size() == n;
+        for (std::size_t i = 0; same && i < n; ++i) same = v[i] == x[i];
+        if (same) return;
+        x.assign(v, v + n);
+        f_updated = g_updated = false;
+        ++point;
+    }
+
+    void update_fun() {
+        if (f_updated) return;
+        f = call_f(x.data());
+        ++nfev;
+        f_updated = true;
+    }
+
+    void update_grad() {
+        if (g_updated) return;
+        g.resize(n);
+        if (mode == kGradCallable) {
+            vector(jac(array(x.data())), g.data());
+        } else if (mode == kGradWithFun) {
+            memo(x.data());
+            g = mg;
+        } else {
+            update_fun();
+            differences();
+        }
+        ++ngev;
+        g_updated = true;
+    }
+```
+
+같은 점인지는 원소마다 `==`로 봐요. C++의 `==`는 NaN을 어느 것과도 같지 않다고 보고 $-0.0$과 $+0.0$을 같다고 봐서, scipy가 쓰는 `np.array_equal`과 판정이 같아요. 이 판정이 다르면 한쪽은 부르고 한쪽은 부르지 않는 점이 생겨 호출의 순서가 갈려요.
+
+`jac=True`(사용자 함수가 함숫값과 기울기를 함께 돌려줘요)는 scipy의 `MemoizeJac`처럼 마지막으로 부른 점의 두 값을 따로 기억해요.
+
+```cpp
+    // csrc/optimize/objective.hpp
+    void memo(const double* v) {
+        bool same = m_valid;
+        for (std::size_t i = 0; same && i < n; ++i) same = v[i] == mx[i];
+        if (same) return;
+        mx.assign(v, v + n);
+        nb::object r = fun(array(v));
+        if (!(PyTuple_CheckExact(r.ptr()) && PyTuple_GET_SIZE(r.ptr()) == 2)) r = check(r, "pair");
+        nb::handle f0 = PyTuple_GET_ITEM(r.ptr(), 0), g0 = PyTuple_GET_ITEM(r.ptr(), 1);
+        mg.resize(n);
+        vector(g0, mg.data());
+        mf = real(f0);
+        m_valid = true;
+    }
+```
+
+그래서 같은 점에서 함숫값과 기울기를 둘 다 요청해도 사용자 함수는 한 번만 불려요. 셈은 요청의 수라서 `nfev`와 `njev`가 각각 오르고, 사용자 함수를 부른 수와 같아요.
+
+```python
+>>> def rosen_and_grad(x):
+...     f = (1 - x[0])**2 + 100 * (x[1] - x[0]**2)**2
+...     g = [-2 * (1 - x[0]) - 400 * x[0] * (x[1] - x[0]**2), 200 * (x[1] - x[0]**2)]
+...     return f, g
+>>> calls = []
+>>> def counted(x):
+...     calls.append(x.tolist())
+...     return rosen_and_grad(x)
+>>> r = sd.optimize.minimize(counted, [-1.2, 1.0], jac=True, method='l-bfgs-b')
+>>> len(calls), r.nfev, r.njev, len(set(map(tuple, calls)))
+(44, 44, 44, 44)
+```
+
+44번 모두 서로 다른 점이에요. 헤시안(`hess`)도 `Hessian`이 같은 식으로 기억해요. `Objective`의 점이 바뀔 때마다 오르는 번호(`point`)를 함께 적어 두고, 번호가 같으면 다시 부르지 않아요.
+
+`least_squares`와 `root`의 MINPACK 계 방법은 이런 기억이 없어요. MINPACK은 같은 점을 다시 부르지 않도록 짜여 있고, 걸음이 반올림에 묻혀 $x$가 그대로인 시험점은 MINPACK대로 다시 불러요.
+
+## 셈
+
+커널은 사용자 함수를 부를 때마다 셈을 올려요. `Objective`에서는 `update_fun`이 `nfev`를, `update_grad`가 `ngev`(결과의 `njev`)를 올리고, 차분 기울기는 부른 수만큼 `nfev`를 더 올려요. 그래서 `nfev`는 언제나 사용자 함수를 실제로 부른 수예요.
+
+- `least_squares`와 `root`는 시작점에서의 값을 Python에서 먼저 계산해요. 돌려받은 값의 개수와 모양을 알아야 작업 배열을 만들 수 있어서예요. 이 값을 커널에 넘겨 다시 계산하지 않고, `nfev`에 한 번 세요.
+- 배치 함수의 `nfev`는 원소마다 계산한 함숫값의 수예요. 사용자 함수는 남은 원소를 모은 배열로 한 번에 불리니 호출 수와 달라요.
+- scipy와 셈이 다른 곳은 결정한 자리예요. `least_squares`의 `nfev`는 차분의 호출을 세고(scipy는 세지 않아요), `root`의 `nfev`는 scipy가 시작점에서 두 번 더 부른 것이 없어 2 적어요. 자세한 것은 [결과 객체 읽기](/api/optimize/results/#scipy를-아는-분께)에 있어요.
+
+## 결과 객체
+
+`OptimizeResult`는 필드 이름의 고정된 목록(`FIELDS`)과 dict 하나(`_fields`)로 된 작은 클래스예요. 바탕 클래스 `_FieldResult`가 필드마다 읽기 전용 프로퍼티를 만들어 붙이고, 그 프로퍼티가 없는 필드에는 `AttributeError`를, 배열에는 읽기 전용으로 만든 그 배열을 돌려줘요. `sd.integrate`와 `sd.differentiate`의 결과도 같은 바탕 클래스를 쓰고, `OptimizeResult`는 필드 목록과 없는 필드의 까닭(`its method does not give it`)만 정해요.
+
+```python
+# src/stardust/_results.py
+def _own(v):
+    """An array field (or a tuple of them) made read-only, as the result keeps and gives it."""
+    if isinstance(v, _core.ndarray):
+        v._set_readonly()
+    elif isinstance(v, tuple):
+        v = tuple(_own(e) for e in v)
+    return v
+```
+
+결과가 가진 배열은 이렇게 쓰기를 막아 두고, 필드의 프로퍼티는 그것을 그대로 돌려줘요.
+
+```python
+# src/stardust/_results.py
+def _result_field(name):
+    def get(self):
+        try:
+            v = self._fields[name]
+        except KeyError:
+            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}' ({self._ABSENT})") from None
+        if isinstance(v, _Lazy):
+            v = self._fields[name] = _own(v.make())
+        return v
+```
+
+- **없는 필드**: 방법이 주지 않는 필드는 `_fields`에 없어서 `AttributeError`예요. `None`을 넣어 두지 않으니 `hasattr`가 "이 방법이 주는가"를 정확히 답해요.
+- **읽기 전용 배열**: 결과의 배열은 쓰기를 막아 두고, 읽을 때마다 복사하지 않고 같은 배열을 돌려줘요. 원소에 쓰면 `ValueError: assignment destination is read-only`이고, 고치려면 `.copy()`를 해요. 풀이 함수는 커널이 막 만든 배열을 `OptimizeResult._make`로 복사 없이 넘겨요. 사용자가 `OptimizeResult(...)`를 직접 만드는 공개 생성자는 아래의 다른 길이에요.
+- **처음 읽을 때 계산**: L-BFGS-B의 `hess_inv`는 저장해 둔 걸음의 쌍으로 $(n, n)$ 행렬을 만들어야 해요. $n = 10^4$이면 800 MB라, 결과를 만들 때는 계산하지 않고 `_Lazy`로 두었다가 처음 읽을 때 만들어 `_fields`에 넣어요.
+
+공개 생성자와 `_make`는 같은 `_set`을 지나고, 받은 값을 고치는지만 달라요.
+
+```python
+    # src/stardust/_results.py
+    def _set(self, batch, fields, copy):
+        unknown = sorted(set(fields) - self._FIELD_SET)
+        if unknown:
+            raise TypeError(f"{type(self).__name__}(): unexpected keyword argument {unknown[0]!r}")
+        stored = {}
+        cls = type(self)
+        for k in self._FIELDS:  # a fixed order, whatever the caller's
+            if k in fields:
+                v = _given(cls, k, fields[k]) if copy else fields[k]  # copy: the public constructor
+                stored[k] = _own(v)  # the result owns its arrays, read-only
+        self._fields = stored
+        self._batch = tuple(batch)
+```
+
+- **공개 생성자의 복사**: `copy`가 참이면(공개 생성자) `_given`이 필드마다 받은 값을 결과 자신의 것으로 바꿔요. `sd.ndarray`는 복사하고, numpy 배열과 수의 리스트는 새 `sd.ndarray`로 만들고(numpy 배열은 `asarray`가 메모리를 함께 쓰므로 한 번 더 복사해요), 0차원 numpy 배열은 그 수로, 튜플은 원소마다 바꿔요. 사용자가 넘긴 배열을 아직 쥐고 있으니, 그것을 고쳐도 결과는 그대로여야 해서예요.
+- **종류 검사**: 같은 `_given`이 공통 필드의 종류를 봐요. `message`·`method`는 str, `converged`는 bool이나 bool 배열, `status n_iter nfev njev nhev`는 int나 정수 배열, 나머지는 str·bool·dict·set이 아닌 값(수, 배열, 튜플, 결과, `None`)이에요. 틀리면 `OptimizeResult(): 'method' must be a str, not int` 같은 `TypeError`예요. 수로 바꿀 수 없는 리스트는 `'x' must be a number or an array of numbers, not list`예요.
+- **키워드로만**: 하위 클래스가 생길 때 `__init_subclass__`가 `_calls.keyword_init`으로 생성자를 감싸서, 위치 인자는 `OptimizeResult(): takes 0 positional arguments but 1 was given`처럼 클래스 이름으로 시작하는 Python 꼴의 메시지예요. 모르는 필드 이름은 `_set`이 `unexpected keyword argument`로 막아요.
+
+```python
+>>> import numpy as np
+>>> a = np.array([1.0, 2.0])
+>>> r = sd.optimize.OptimizeResult(x=a, fun=0.5)
+>>> a[0] = 9.0
+>>> r.x
+array([1.0, 2.0], dtype=float64)
+>>> sd.optimize.OptimizeResult(r.x)
+Traceback (most recent call last):
+    ...
+TypeError: OptimizeResult(): takes 0 positional arguments but 1 was given
+>>> sd.optimize.OptimizeResult(n_iter=2.5)
+Traceback (most recent call last):
+    ...
+TypeError: OptimizeResult(): 'n_iter' must be an int or an array of ints, not float
+```
+
+`repr`는 회귀와 가설검정의 결과와 같은 꼴의 한 줄이고, 같은 함수(`one_line`)가 적어요. `method`, `converged`, `cost`나 `fun`(실수일 때만; `root`처럼 배열이면 빼요), `n_iter`, `nfev`, `x`를 있는 것만 차례로 보여 줘요. 수는 유효숫자 6자리(`f'{v:.6g}'`, 그래서 2.0은 `2`)이고, 원소가 6개까지인 1차원 배열은 `[v, v]`, 더 긴 배열은 `<array of shape (7,)>`처럼 모양만 적어요. 배치 결과는 모양과 수렴한 수만 보여 줘요. 여러 줄의 `summary()`는 회귀 결과와 같은 상자 그리기([summary의 상자](/internals/regression/overview/#summary의-상자))로 만들어요. 머리에 방법, 수렴, 상태, 함숫값(최소제곱은 `cost`와 `optimality`), 셈, 메시지를 두고, 표는 x의 원소마다 한 줄이에요(`root`는 그 점의 f(x) 열이 붙어요). 배치 스칼라 함수는 원소마다 한 줄이에요.
+
+## 옵션과 입력의 검사
+
+인자의 검사와 메시지는 `_common.py` 한곳에 모았어요. 메시지의 꼴(`함수(): 'arg' must be ...`)은 다른 영역과 같은 규칙이고, 모든 공개 함수가 같은 검사 함수를 써서 같은 실수에는 같은 메시지가 나와요. 방법마다의 `options`는 그 방법이 아는 키의 목록으로 검사하고, scipy의 상한 이름에는 이쪽 이름을 알려 줘요.
+
+```python
+    # src/stardust/optimize/_common.py
+    if options is None:
+        return {}
+    if not isinstance(options, dict):
+        raise TypeError(f"{func}(): 'options' must be a dict or None, not {_type_name(options)}")
+    table = _CAP_HINTS if hints is None else {**_CAP_HINTS, **hints}
+    for key in options:
+        if key not in known:
+            raise ValueError(f"{func}(): method={method!r} has no option {key!r}{table.get(key, '')}")
+    return {k: v for k, v in options.items() if v is not None}
+```
+
+`_CAP_HINTS`는 scipy의 상한 이름(`maxiter`, `maxfev`, `maxfun`, `maxls`, `subproblem_maxiter`)마다 이쪽 이름을 짚는 꼬리말이에요. `root`처럼 상한이 `max_nfev` 하나뿐인 함수는 `hints`로 `maxiter`의 꼬리말을 바꿔요. 값이 `None`인 키는 돌려주는 dict에서 빼요. 그래서 어느 옵션이든 `None`은 기본값이고, `tol`과의 충돌도 `None`이 아닌 값끼리만 봐요.
+
+인자를 잘못 넘긴 호출(모르는 키워드, 빠진 인자, 위치 인자의 수)은 Python 자신의 `TypeError`인데, 공개 함수마다 얇은 감싸개(`src/stardust/_calls.py`)를 씌워 그 에러만 `minimize(): unexpected keyword argument 'foo'`처럼 같은 꼴로 바꿔요. 함수 안에서 난 `TypeError`는 그대로 지나가요.
+
+방법 이름은 소문자만 받고, 대소문자만 다르면 소문자 꼴을 짚어 줘요.
+
+```python
+    # src/stardust/optimize/_common.py
+    if isinstance(v, str) and v not in choices and v.lower() in choices:
+        raise ValueError(f"{func}(): 'method' must be lowercase: {v.lower()!r}, not {v!r}")
+    return _check_choice(v, func, "method", choices)
+```
+
+## scipy와 같은 걸음
+
+각 방법은 scipy 1.18.1의 같은 방법과 **같은 알고리즘, 같은 멈춤 판정**을 써요. `status`의 번호와 뜻, 옵션의 기본값도 scipy의 것이에요. 그래서 같은 문제에서 사용자 함수를 부르는 점, 반복 수, 멈춘 이유가 scipy와 같아요. 이 영역에서 가장 큰 설계 선택이에요.
+
+반올림 크기의 결과는 정확도 안이면 돼요. 이 라이브러리가 약속하는 것은 같은 기계, 같은 스레드 수에서 실행마다 같은 비트, 자신의 골든 출력과 같은 비트, 그리고 정확도예요. 지금은 이 영역의 모든 결과가 스레드 수와도 상관없이 같지만 약속은 아니에요. scipy와의 비트 동일은 약속이 아니에요. 그래서 더 빠르거나 더 정확한 계산 순서가 있으면 그것을 쓸 수 있고, 그때는 끝자리가 scipy와 다르며 반복 방법에서는 그 차이로 반복 경로와 반복 수가 조금 달라질 수 있어요.
+
+그래도 지금은 대부분의 방법이 scipy와 같은 계산 순서를 써서, 부르는 점이 차례대로 **비트까지** 같아요. 일부러 깨지는 않지만, 고치거나 빠르게 하는 데 필요하면 바꿔요.
+
+```python
+>>> import numpy as np
+>>> import scipy.optimize as so
+>>> def rosen(x):
+...     return (1 - x[0])**2 + 100 * (x[1] - x[0]**2)**2
+>>> def logged(log):
+...     def f(x):
+...         log.append(np.asarray(x, dtype=float).tolist())
+...         return rosen(x)
+...     return f
+>>> for sp, mine in (('Nelder-Mead', 'nelder-mead'), ('L-BFGS-B', 'l-bfgs-b'), ('BFGS', 'bfgs')):
+...     a, b = [], []
+...     _ = so.minimize(logged(a), np.array([-1.2, 1.0]), method=sp)
+...     _ = sd.optimize.minimize(logged(b), [-1.2, 1.0], method=mine)
+...     same = next((i for i, (p, q) in enumerate(zip(a, b)) if p != q), min(len(a), len(b)))
+...     print(f'{mine:12s} scipy {len(a):3d}  sd {len(b):3d}  same points {same}')
+nelder-mead  scipy 159  sd 159  same points 159
+l-bfgs-b     scipy 138  sd 138  same points 138
+bfgs         scipy 117  sd 114  same points 9
+```
+
+Nelder–Mead와 L-BFGS-B는 159개, 138개의 점이 모두 같아요. BFGS는 처음 9개(시작점과 그 차분, 첫 선 탐색)가 같고, 첫 역헤시안 갱신 뒤부터 끝자리가 갈려요. 그 이유는 [아래](#반올림만큼-다른-곳)에 있어요.
+
+### 비트가 같은 곳에서 맞춘 것
+
+같은 알고리즘을 같은 식으로 적어도 비트가 저절로 같아지지는 않아요. 부동소수점 계산은 순서와 반올림의 횟수에 따라 끝자리가 달라지고, 반복 방법은 그 차이를 다음 걸음으로 키워요. 지금 비트까지 같은 방법들은 다음을 scipy와 같게 계산해요.
+
+**계산의 순서.** 합의 순서, 괄호, 나눗셈과 곱셈의 순서를 scipy의 소스 그대로 적어요. numpy의 합(`np.sum`)은 쌍별 합이라 그것도 따르고, Nelder–Mead의 꼭짓점 정렬은 numpy `argsort`의 introsort와 같은 정렬을 해요(17개 미만은 삽입 정렬이라 같은 값의 순서가 그대로이고, 그 위는 아니에요).
+
+**FMA.** scipy의 C 코드(Brent법, 이분법, L-BFGS-B, MINPACK)는 clang의 기본값 `-ffp-contract=on`으로 빌드되어 있어요. 한 식 안의 $ab + c$를 곱셈과 덧셈을 한 번에 반올림하는 FMA 하나로 계산해요. 이 라이브러리는 기본으로 축약을 끄고 빌드하고 FMA는 코드가 정한 곳에서만 쓰므로, scipy의 C 코드를 따르는 커널은 FMA를 직접 적거나 파일 단위로 축약을 켜요. 반대로 scipy의 Python 코드(BFGS, Newton-CG, 신뢰 영역, Nelder–Mead)에는 FMA가 없으니 그 커널은 축약 없이 빌드해요.
+
+scipy의 빌드는 Brent법의 외삽 분자 $f_{\text{blk}} d_{\text{blk}} - f_{\text{pre}} d_{\text{pre}}$를 FMA 하나로 계산해요. 커널도 그 자리에 `fma`를 적어요.
+
+```cpp
+                // csrc/optimize/scalar.cpp
+                stry = -fcur * std::fma(fblk, dblk, -(fpre * dpre)) / (dblk * dpre * (fblk - fpre));
+```
+
+축약 없이 계산하면 스칼라 근 문제 204개 가운데 192개만 부르는 점이 scipy와 같고, 다른 쪽을 축약하면 185개예요. L-BFGS-B와 MINPACK의 `hybrd`는 식이 길어서 파일 머리에서 같은 축약을 켜요.
+
+```cpp
+// csrc/optimize/lbfgsb.cpp
+#pragma clang fp contract(on)
+```
+
+L-BFGS-B는 이 축약 없이는 경계 없는 114경우 가운데 13경우만 부르는 점이 같아요. MINPACK의 C 판은 소스가 scipy에 설치되어 있지 않아서, 설치된 기계어에서 읽은 축약의 꼴을 따라요. 한 식의 $ab + c$는 FMA, MINPACK에서 `t**2`로 적힌 제곱은 따로 반올림, 누적 합은 FMA인데 clang이 벡터화한 `qrfac`의 내적만 8개씩의 곱을 따로 반올림해 차례로 더해요. 노름 `enorm`의 상수도 기계어의 값이에요.
+
+```cpp
+// csrc/optimize/minpack.hpp
+// scipy's enorm constants: 2^-64.5 and 2^63.5, as double
+inline const double kRdwarf = std::bit_cast<double>(std::uint64_t{0x3be6a09e667f3bccULL});
+inline const double kRgiant = std::bit_cast<double>(std::uint64_t{0x43e6a09e667f3bcdULL});
+```
+
+**BLAS 호출.** numpy와 `scipy.linalg`가 부르는 BLAS·LAPACK 루틴을 같은 꼴로 불러요. 벡터 둘의 `np.dot`은 원소가 하나면 곱, 아니면 `0.0 + cblas_ddot`이에요. 앞의 `0.0 +`가 BLAS가 돌려주는 $-0.0$을 $+0.0$으로 바꿔요. trust-ncg의 경계 교점은 $2z^{\mathsf T}d$의 부호를 `copysign`으로 보므로 $z = 0$에서 이 차이가 걸음을 바꿔요(`0.0 +`를 빼면 MGH 8경우가 끝자리에서 갈려요).
+
+```cpp
+// csrc/optimize/hessian.hpp
+inline double np_dot(const double* a, const double* b, std::size_t n) {
+    if (n == 1) return a[0] * b[0];
+    return 0.0 + cblas_ddot(static_cast<linalg::lint>(n), a, 1, b, 1);
+}
+```
+
+**작업 배열의 자리.** Accelerate의 `ddot`은 둘째 인자가 16바이트 정렬인지에 따라 합의 순서가 달라서, 길이 5 이상에서 끝자리가 달라져요. scipy의 L-BFGS-B는 numpy 배열 하나를 작업 공간으로 나눠 쓰므로 부분마다 정렬이 달라요. 그래서 여기서도 작업 공간 하나를 scipy와 같은 위치로 나눠요. `nnls`와 `lsq_linear`이 쓰는 numpy `lstsq`의 버퍼 배치도 같은 이유로 따라요.
+
+**기억의 판정.** 앞 절의 `Objective`처럼, 같은 점을 다시 부를지의 판정이 scipy와 같아서 호출의 차례도 같아요.
+
+### 반올림만큼 다른 곳
+
+같은 알고리즘이지만 지금 계산 순서가 scipy와 달라 끝자리가 다른 곳이에요.
+
+- **BFGS**: 역헤시안 $H$의 갱신 $(I - \rho s y^{\mathsf T}) H (I - \rho y s^{\mathsf T}) + \rho s s^{\mathsf T}$을 scipy는 행렬곱 두 번($n^3$)으로 계산해요. 여기서는 같은 식을 $v = Hy$를 써서 $H - \rho(s v^{\mathsf T} + v s^{\mathsf T}) + (\rho^2 y^{\mathsf T} v + \rho) s s^{\mathsf T}$로 펼쳐 $n^2$으로 계산해요. $n = 1000$에서 반복 하나의 자기 비용이 행렬곱 꼴로는 8.8 ms, 펼친 꼴로는 0.29 ms예요(Apple M4 Pro, 1스레드). 반올림의 순서가 달라서 첫 갱신 뒤부터 끝자리가 갈리고, 반복 수가 조금 다를 수 있어요. MGH 110경우와 Rosenbrock 4경우에서 멈춘 이유가 같은 것은 114경우 가운데 113경우, 반복 수와 `nfev`까지 같은 것은 80경우예요. 자세한 것은 [준뉴턴 방법](/internals/optimize/quasi-newton/)에 있어요.
+- **`least_squares`의 `'trf'`**: 야코비안 $J$ $(m \times n)$를 먼저 LAPACK의 Householder QR로 $R_0$ $(n \times n)$까지 줄이고 그 뒤를 $n$ 크기에서 계산해요. scipy는 $m \times n$에서 SVD를 해요. 같은 문제의 계산이지만 반올림의 순서가 달라서, 시작점과 첫 야코비안의 점은 같고 첫 시험점부터 끝자리가 달라요. 해석적 야코비안으로 푼 MGH 110경우 가운데 103경우는 호출 수가 같고 부른 점이 모두 상대 $10^{-10}$ 안이에요. 이 길은 `sd.regression.nls`와 같은 계산이고, 야코비안마다 $m$ 크기의 일이 QR 하나뿐이에요([최소제곱](/internals/optimize/least-squares/)).
+- **잔차가 아주 많은 `least_squares('lm')`**: $m \ge 10n$이고 $mn \ge 2000$이면 아래의 nls 빌드를 써요. 야코비안 하나에 (1000, 100)에서 1.9배 빨라서예요. 끝자리가 scipy와 다르고 반복 수가 가끔 하나 둘 달라요.
+- **`hess`와 `hessp`가 없는 newton-cg**: 헤세 곱의 차분 $(g(x + hp) - g(x))/h$마다 $g(x)$를 다시 부르지 않고 그 반복의 기울기를 써요. scipy는 곱마다 $g(x)$를 다시 불러요. 기울기 호출이 절반쯤으로 줄고, 부르는 점이 scipy와 달라요.
+- **'lm'의 파생 필드**: `cost`, `grad`, `optimality`는 이 라이브러리의 내적과 행렬곱으로 계산해서, 같은 `x`·`fun`·`jac`에서도 scipy와 끝자리가 다를 수 있어요.
+- **F 순서로 돌려준 헤시안**: 커널은 언제나 C 순서로 복사해 계산하고, scipy는 그 배치 그대로 곱하고 더해서 끝자리가 다를 수 있어요.
+
+### scipy를 일부러 따르지 않는 곳
+
+scipy가 끝나지 않거나, 예외를 내거나, 해가 아닌 점에서 수렴을 알리는 경로는 일부러 다르게 했어요. 성공 경로의 걸음은 그대로 두고 그 경로만 달라요.
+
+- **유한하지 않은 값과 거짓 수렴**: 신뢰 영역의 ρ가 NaN이면 반지름을 줄여요(scipy는 같은 부분문제를 `max_iter`까지 되풀이해요). trust-exact는 시험점의 헤시안이 유한하지 않으면 걸음을 거절해요(scipy는 예외). newton-cg는 NaN인 시험점에서 마지막 유한한 반복점을 돌려주고, 첫 CG 걸음의 곡률이 0이면 가장 가파른 내리막으로 선 탐색을 해요(scipy는 걸음 0으로 수렴을 알려요). L-BFGS-B가 걸음 없이 상대 감소 판정을 통과하면 `converged=False`예요(scipy는 True).
+- **`bracket_root`의 구간**: 언제나 xl ≤ xr로 정렬하고, `status` 0이면 근을 껴요. scipy는 두 쪽이 같은 너비로 함께 끝나면 두 쪽의 끝을 섞은 뒤집힌 구간을 돌려줘요.
+- **`'bvls'`의 끝 x**: 반올림으로 경계를 조금 넘은 x를 경계로 옮겨요(scipy는 그 값 그대로예요).
+- **셈과 상한**: `least_squares`·`root`의 `nfev`, `nhev`, newton-cg 끝의 기울기 호출 하나, `max_iter=0`에서 반복 없이 멈추기, Nelder–Mead의 `n_iter`(scipy의 `nit` − 1), 상한을 예외가 아니라 `converged=False`로 알리기(`nnls`)예요.
+
+각 방법의 구현 글에 자세히 적었어요.
+
+### scipy와 견주는 방법
+
+scipy와 같은 걸음인지는 테스트가 두 가지로 확인해요.
+
+- **기록과 견주기**: scipy 1.18.1을 문제 모음(Moré–Garbow–Hillstrom 35문제의 110경우, MINPACK의 방정식계 55경우, 스칼라 근 204개와 최솟값 57개, scipy의 시험 함수)에 기본값으로 돌린 결과 3,781번을 `tests/optimize/data/scipy_*.json`에 고정해 두고, 결과의 모든 필드를 견줘요. 설치된 scipy가 기록과 같은지도 표본으로 다시 확인해요.
+- **실행하며 견주기**: scipy와 이 라이브러리를 같은 문제에 나란히 돌리며 사용자 함수가 불린 점을 차례대로 기록해, 두 목록이 비트까지 같은지 봐요. 위의 예와 같은 방법이에요. 옵션과 가장자리(차분의 꼴, 상한, 고정 변수, 시험점의 NaN과 무한대 등)도 같은 식으로 견줘요.
+
+지금 방법마다 확인한 범위는 이래요(수는 견준 실행의 수).
+
+| 방법 | 부르는 점이 비트까지 같음 |
+|---|---|
+| `root_scalar` 6방법 | 1,244번 모두 |
+| `minimize_scalar` 3방법 | 399번 모두 |
+| 배치 함수 넷 | 원소 하나의 실행 621번, 2,000원소 배치 7가지 모두 |
+| `minimize` nelder-mead, l-bfgs-b | MGH 110경우와 시험 함수 4경우, 상자 경계 51경우씩 모두 |
+| `minimize` newton-cg, trust-ncg, trust-exact | 열 묶음 1,130번과 무작위 사차 함수 2,100번 모두 |
+| `least_squares` lm | MGH 110경우 가운데 해석적 야코비안 108, 2점 차분 104(나머지는 결정한 자리) |
+| `root` hybr, lm | 55계 × (해석적, 차분) 모두 |
+| `lsq_linear` | 무작위 문제 수천 번에서 결과의 모든 필드(`'bvls'`가 경계 밖의 x를 옮긴 경우는 빼고) |
+| `approx_fprime(epsilon=2**-26)` | MGH 47경우 모두 |
+
+측정의 자세한 내용과 Fortran 원본(MINPACK, L-BFGS-B 3.0)과의 거리, 속도는 [정확도와 성능](/internals/optimize/accuracy-performance/)에 있어요.
+
+## nls와 함께 쓰는 커널
+
+비선형 최소제곱의 커널 `lsq.cpp`는 세 곳이 함께 써요. `least_squares`, `root(method='lm')`, 그리고 `sd.regression.nls`예요. nls는 이 커널로 해를 찾고, 그 위에 다듬기와 통계 추론을 더해요.
+
+함께 쓰되 계산은 둘로 나뉘어요. Levenberg–Marquardt(MINPACK `lmder`)의 산술이 한 소스의 두 빌드로 있어요.
+
+```cpp
+// csrc/optimize/lsq.cpp
+template <bool Fu>
+inline double mad(double a, double b, double c) {
+    if constexpr (Fu) return std::fma(a, b, c);
+    else return a * b + c;
+}
+
+template <bool Fu>
+inline double norm(lint n, const double* v) {
+    if constexpr (Fu) return minpack::enorm(n, v);
+    else return enorm(v, n);
+}
+```
+
+- `Fu = true`는 scipy의 빌드예요. FMA와 MINPACK의 `enorm`을 쓰고 $m \times n$의 $J$를 MINPACK의 열 피벗 QR로 바로 분해해요. `root('lm')`과 `least_squares('lm')`이 이것을 써서 지금은 scipy와 부르는 점이 비트까지 같아요. 다만 `least_squares('lm')`은 $m \ge 10n$이고 $mn \ge 2000$이면 아래의 nls 빌드를 써요. 모양으로만 정하므로 스레드 수와 상관없이 같은 빌드예요.
+- `Fu = false`는 nls의 빌드예요. 축약 없이, LAPACK의 QR로 $J$를 $n \times n$의 $R_0$까지 줄인 뒤 그것에 MINPACK의 피벗 QR을 해요. nls의 결과는 이 빌드로 늘 같은 비트예요(NIST StRD 27문제 등 338적합의 골든 출력이 바이트까지 같아요).
+
+두 벌을 복사하지 않고 템플릿 인자 하나로 갈라서, 알고리즘을 고치면 두 빌드가 함께 바뀌어요. `'trf'`는 빌드가 하나라 `least_squares`와 nls가 같은 계산을 해요.
+
+차분도 함께 써요. `approx_fprime`의 기본인 간격을 고르는 5점 차분(`differentiate/accurate.hpp`의 `AccurateDiff`, 그것을 만드는 `differentiate/_differences.py`의 `Differences`)은 nls가 해의 야코비안을 구할 때도 쓰는 것이에요. 차이는 하나, 반올림 수준에 묻힌 열을 0으로 두는 처리(`zero_noise`)를 nls만 켜요. 자세한 것은 [수치 미분](/internals/optimize/derivatives/)에 있어요.
+
+다른 영역의 전용 풀이는 이 영역의 범용 방법으로 바꾸지 않았어요. special과 stats의 역함수가 쓰는 근 찾기, glm과 rlm의 IRLS, 정규화 회귀의 좌표 하강, quantreg의 내부점법과 단체법은 문제의 구조를 쓰는 풀이라, 범용 최적화로 바꾸면 느려지고 정확도를 잃어요.
+
+## 파일 지도
+
+| 파일 | 하는 일 |
+|---|---|
+| `src/stardust/optimize/_common.py` | 입력과 옵션의 검사, 메시지 |
+| `src/stardust/optimize/_result.py` | `OptimizeResult` |
+| `src/stardust/optimize/_scalar.py`, `csrc/optimize/scalar.cpp` | `root_scalar`, `minimize_scalar` |
+| `src/stardust/optimize/_elementwise.py`, `csrc/optimize/batch.cpp` | 배치 스칼라 넷 |
+| `csrc/elementwise/loop.hpp` | 원소별 반복의 틀(`for_elements`, `Call`; 미분·적분과 함께) |
+| `src/stardust/optimize/_minimize.py` | `minimize`의 검사와 결과 |
+| `csrc/optimize/objective.hpp` | 함숫값과 기울기의 기억, 차분 기울기 |
+| `csrc/optimize/hessian.hpp` | 헤시안의 기억, 차분 헤시안, numpy 꼴의 `dot`과 행렬·벡터 곱 |
+| `csrc/optimize/wolfe.hpp` | BFGS와 Newton-CG의 Wolfe 선 탐색 |
+| `csrc/optimize/nelder_mead.cpp`, `bfgs.cpp`, `lbfgsb.cpp`, `newton_cg.cpp`, `trust.cpp` | `minimize`의 여섯 방법 |
+| `src/stardust/optimize/_lsq.py`, `csrc/optimize/lsq.cpp` | `least_squares`, `root('lm')`, nls의 반복 |
+| `csrc/optimize/minpack.hpp` | scipy 빌드의 MINPACK 산술(`enorm`, 8개 묶음 내적, 열 반사) |
+| `src/stardust/optimize/_root.py`, `csrc/optimize/hybrd.cpp` | `root('hybr')` |
+| `src/stardust/optimize/_linear.py`, `csrc/optimize/linear.cpp` | `lsq_linear`, `nnls` |
+| `csrc/differentiate/steps.hpp` | scipy `approx_derivative`의 간격과 경계 조정 |
+| `src/stardust/optimize/_diff.py` | `approx_fprime`, `check_grad` |
+| `csrc/differentiate/accurate.hpp`, `src/stardust/differentiate/_differences.py` | 간격을 고르는 5점 차분의 C++ 고리와 그것을 만드는 함수(`approx_fprime`의 기본, nls의 야코비안) |
+| `src/stardust/_results.py` | 결과의 바탕 클래스 `_FieldResult` |
+| `csrc/bind/optimize_bind.cpp` | `stardust._core.optimize` 모듈 |

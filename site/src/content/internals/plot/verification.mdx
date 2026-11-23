@@ -1,0 +1,270 @@
+---
+title: 그림을 검증하는 법
+group: 검증
+order: 1
+summary: 그림에는 참값이 없어서 sd.plot은 다른 것을 봐요. TeX 없이 도는 고정한 글자 기록, 장면 요약과 해시로 된 골든, 파일이 아니라 화소의 해시, 실제 TeX와 견주는 테스트, 눈금·범례·래스터·표본의 성질 테스트, 세 출력을 바깥 프로그램으로 구워 겹쳐 보기, API 표면 테스트를 설명해요.
+seeAlso: [overview, scene-outputs, text, layout, raster]
+---
+import Callout from '../../../components/Callout.astro';
+import PlotImage from '../../../components/fig/PlotImage.astro';
+
+## 한눈에 보기
+
+계산 영역은 참값과 견줘요. 그림에는 참값이 없어요. 그래서 `sd.plot`의 검증은 세 가지를 물어요. **전과 같은가**(골든), **지켜야 할 성질을 지키는가**(눈금이 범위 안, 라벨이 서로 겹치지 않음, 극점에서 선이 끊김, 화소가 칠한 넓이와 같음), **세 출력이 같은 그림인가**(겹쳐 보기)예요. 보기에 좋은지는 테스트가 판정하지 못해요.
+
+| 무엇 | 어디 | 등급 | TeX |
+|---|---|---|---|
+| 성질 테스트 | `tests/plot/test_*.py` | quick | 기록만 읽어요 |
+| 장면·출력·화소 골든 | `tests/golden/cases_plot.py` | 골든 도구 | 기록만 읽어요 |
+| 실제 TeX와 견주기 | `tests/plot/test_text_tex.py` | deep | 불러요 |
+| 세 출력 겹쳐 보기 | `tests/plot/test_outputs.py`의 끝 | deep | 기록만 읽어요(`rsvg-convert`, `gs`를 불러요) |
+| API 표면 | `tests/plot/test_api_surface.py` | quick | 쓰지 않아요 |
+
+## 고정한 글자 기록
+
+그림 하나를 그리려면 모든 문자열의 배치와 글리프의 윤곽선이 있어야 해요. 테스트가 TeX를 부르면 테스트가 느리고, TeX Live의 판에 따라 결과가 달라지고, TeX가 없는 기계에서 돌지 않아요. 그래서 테스트 그림이 쓰는 모든 문자열의 배치와 윤곽선을 저장소의 `tests/plot/data/text/`에 기록해 두고, 테스트는 그 폴더를 **얼린 캐시**로 읽어요.
+
+```python
+# tests/plot/conftest.py
+@pytest.fixture(autouse=True)
+def text_cache(request, tmp_path_factory):
+    if request.node.get_closest_marker("tex"):
+        with _text.cache(tmp_path_factory.mktemp("text")):
+            yield
+    else:
+        with _text.cache(TEXT, frozen=True):
+            yield
+```
+
+`_text.cache(path, frozen=True)`인 동안 엔진은 그 폴더의 배치(`serif/strings.jsonl`, `sans/strings.jsonl`)와 윤곽선(`glyphs/<글꼴>.json`)만 읽고, 없는 문자열을 만나면 TeX를 부르는 대신 그 문자열을 이름에 담은 `FrozenMiss`를 내요. 기록은 `tools/plot_text.py`가 만들어요. 손으로 지은 장면의 문자열, 따로 적은 문자열과 숫자, 테스트 그림(`tests/plot/figures.py`)이 배치 중에 조판하는 문자열을 모두 이 기계의 TeX로 조판해 그 폴더에 넣어요. TeX Live를 올린 뒤에는 `--fresh`로 처음부터 다시 만들어요.
+
+```python
+>>> import tempfile
+>>> from stardust.plot import _text
+>>> with tempfile.TemporaryDirectory() as d, _text.cache(d, frozen=True):
+...     _text.engine('serif').layout(['never recorded'])
+Traceback (most recent call last):
+    ...
+stardust.plot._text.FrozenMiss: the frozen text cache does not hold 'never recorded' (serif)
+```
+
+얼린 캐시에서도 눈금 숫자는 기록에 없는 값이어도 돼요. 숫자는 한 글자의 배치(`$0$`…`$9$`, `$-$`, `$.$`와 첨자 크기)를 이어 붙여 만들므로 그 글자들만 기록에 있으면 돼요([글자](/internals/plot/text/)). 그래서 표본이나 범위가 조금 바뀌어 눈금 값이 바뀌어도 기록을 다시 만들 필요가 없어요.
+
+## 골든
+
+### 무엇을 적나
+
+골든 도구(`tools/golden.py`, [테스트 체계](/internals/core/testing/))는 케이스마다 결과를 형과 비트까지 기록하고, 바뀐 뒤에 한 비트라도 다른 곳을 알려요. `sd.plot`의 케이스는 모두 얼린 글자 기록 안에서 돌아서, TeX의 판이 바뀌어도 기록은 그대로예요.
+
+| 케이스 | 적는 것 |
+|---|---|
+| `scene/<장면>/<글꼴>` | 손으로 지은 장면 둘(감쇠 코사인 곡선과 글자 기준점 표)의 `to_dict` 전체 |
+| `svg/…`, `pdf/…` | 그 장면의 SVG·PDF의 SHA-256과 크기(SVG는 앞 200글자도) |
+| `png/…/<dpi>` | 72, 100, 300 dpi로 칠한 화소 버퍼의 SHA-256과 알파의 합 |
+| `raster/strokes` | 끝 셋 × 이음 둘 × 굵기 셋(가장 굵은 것은 점선)의 획을 칠한 화소의 해시, 곡선이 든 채움을 자르기 사각형 안에 칠한 화소 전체 |
+| `figure/<그림>/<글꼴>` | 테스트 그림마다 높이, 장면 요약, SVG·PDF의 해시, 150 dpi 화소의 해시 |
+| `each/<이름>` | 공개 이름마다 작은 그림 하나의 `repr`과 장면 요약 |
+| `info/<함수>` | tan, √x, floor, sin(1/x), Γ의 `Figure.info`(찾은 극점, 뜀, 범위) |
+| `layout/<글꼴>/<문자열>` | 문자열과 숫자의 배치(상자, 글꼴, 글리프의 자리, 괘선) |
+| `error/…` | 잘못된 호출의 예외와 메시지 |
+
+### 장면은 요약과 해시로
+
+테스트 그림 하나의 장면 전체는 좌표 수만 개라서 그대로 적으면 기록이 너무 커요. 그래서 그림의 장면은 요약으로 적어요.
+
+```python
+# tests/golden/cases_plot.py
+def _scene_summary(d):
+    """A figure's scene in short: its size, the count of each kind of item, every string, and the
+    hash of the whole (the exact numbers as float.hex), so the record stays small."""
+
+    def exact(o):
+        if isinstance(o, float):
+            return o.hex()
+        if isinstance(o, dict):
+            return {k: exact(v) for k, v in o.items()}
+        if isinstance(o, list):
+            return [exact(v) for v in o]
+        return o
+
+    kinds = {}
+    for item in d["items"]:
+        kinds[item["type"]] = kinds.get(item["type"], 0) + 1
+    text = json.dumps(exact(d), sort_keys=True, ensure_ascii=False)
+    return {
+        "size": [d["width"], d["height"]],
+        "items": kinds,
+        "strings": [i["s"] for i in d["items"] if i["type"] == "text"],
+        "sha256": hashlib.sha256(text.encode()).hexdigest(),
+    }
+```
+
+해시는 모든 수를 `float.hex`로 적은 글의 해시라서 좌표의 마지막 비트가 바뀌어도 달라져요. 해시만으로는 무엇이 바뀌었는지 알 수 없으므로 크기, 항목 종류별 개수, 문자열 목록을 함께 적어요. 눈금 하나가 바뀌면 문자열 목록에서 바로 보이고, 층이 하나 늘면 개수에서 보여요. 손으로 지은 장면 둘만 전체를 적어서 장면의 꼴 자체(항목의 필드, 기본값을 빼는 규칙)를 지켜요.
+
+공개 함수로 같은 것을 해 보면 이래요. 같은 호출은 같은 장면이에요.
+
+```python
+>>> import math, collections
+>>> def make():
+...     return sd.plot.function(sd.tan, -2 * math.pi, 2 * math.pi, asymptotes=True).xticks("pi").title(r"$\tan x$")
+>>> fig = make()
+>>> d = fig.scene()
+>>> dict(collections.Counter(i['type'] for i in d['items']))
+{'path': 19, 'text': 13}
+>>> [i['s'] for i in d['items'] if i['type'] == 'text'][:5]
+['$-2\\pi$', '$-\\pi$', '$0$', '$\\pi$', '$2\\pi$']
+>>> d == make().scene()
+True
+```
+
+<PlotImage name="in-verification-poles" alt="-2π에서 2π까지의 tan x. 극점 넷에서 곡선이 끊기고 그 자리에 세로 점선(점근선)이 있어요. 가로 눈금은 -2π, -π, 0, π, 2π." caption="골든의 테스트 그림 하나(poles). 경로 19개와 글자 13개의 장면이고, 극점의 자리와 잘린 범위는 info 케이스에도 적혀요." />
+
+### 화소는 버퍼의 해시
+
+PNG는 파일이 아니라 래스터라이저가 칠한 화소 버퍼(`_png.pixels`)의 해시를 적어요. PNG 파일의 바이트는 zlib이 정하는데, zlib의 판이 바뀌면 같은 화소도 다르게 압축될 수 있어요. 화소 버퍼는 라이브러리의 래스터라이저만 정해요.
+
+```python
+# tests/golden/cases_plot.py
+def _figure_case(name, family):
+    fig = figures.FIGURES[name](family)
+    svg, pdf = fig.to_svg(), fig.to_pdf()
+    w, h, px = _png.pixels(fig._build("golden"), 150)
+    return {
+        "repr": repr(fig),
+        "height": fig.height,
+        "scene": _scene_summary(fig.scene()),
+        "svg": hashlib.sha256(svg.encode()).hexdigest(),
+        "pdf": hashlib.sha256(pdf).hexdigest(),
+        "png": [w, h, hashlib.sha256(px).hexdigest()],
+    }
+```
+
+### 스레드 수
+
+골든 도구는 모든 케이스를 스레드 1, 3, 10의 프로세스에서 따로 돌리고, 결과가 셋 다 같아야 기록과 견줘요. 케이스 파일은 스레드 수에 따라 달라도 되는 케이스를 따로 적을 수 있는데, `cases_plot.py`에는 그런 케이스가 없어요. 래스터라이저, 깊이 버퍼, PNG 압축이 모두 일을 고정 크기의 조각으로 나누기 때문이에요([장면과 세 출력](/internals/plot/scene-outputs/)). 그래서 장면, SVG, PDF, 화소 모두가 스레드 1, 3, 10에서 같은지를 골든이 돌 때마다 봐요.
+
+## 실제 TeX와 견주기
+
+얼린 기록은 TeX와 무관하게 돌지만, 그 기록이 지금 TeX가 만드는 것과 같은지, 글자 엔진이 TeX를 제대로 읽는지는 따로 봐야 해요. `tests/plot/test_text_tex.py`는 `tex` 표시가 붙어 deep 등급으로 돌고, 위의 고정 장치에 따라 빈 임시 캐시에서 실제 TeX를 불러요.
+
+| 테스트 | 보는 것 |
+|---|---|
+| `test_numbers_by_hand_are_tex_glyph_for_glyph` | 한 글자 배치를 이어 붙인 숫자 20개(`$-273.15$`, `$10^{-3}$`, `$7^{11}$` 등)가 TeX가 직접 조판한 것과 상자와 모든 글리프의 자리까지 sp 단위로 같아요 |
+| `test_the_two_paths_agree_on_latin_widths` | 같은 영문·수식 문자열의 너비가 pdfLaTeX 길과 XeLaTeX 길에서 1 sp 안으로 같아요 |
+| `test_cache_saves_the_run_and_survives_the_process` | 영문과 한글이 섞인 첫 묶음은 두 길을 한 번씩 부르고, 같은 문자열과 새 숫자를 다시 물으면 TeX를 부르지 않아요. 같은 폴더를 다시 여는 엔진(새 프로세스와 같아요)도 그 배치를 읽어요 |
+| `test_errors_name_the_string_and_tex_reason` | 묶음 가운데 실패한 문자열과 TeX의 첫 오류 줄을 두 길 모두에서 집어 내고, 실패한 묶음의 문자열은 하나도 캐시에 남기지 않아요 |
+| `test_strings_that_would_break_the_batch_are_refused_before_tex` | 숨기지 않은 `%`, 짝이 맞지 않는 중괄호를 TeX를 부르기 전에 막아요 |
+| `test_recorded_cache_is_what_this_tex_makes` | 저장소의 기록이 이 기계의 TeX가 지금 만드는 배치·윤곽선과 같아요 |
+| `test_missing_tool_message` | TeX 프로그램이 없을 때의 메시지 |
+
+`test_recorded_cache_is_what_this_tex_makes`가 실패하면 TeX Live가 글리프를 옮긴 것이에요. 그때는 기록을 `--fresh`로 다시 만들고 골든도 다시 기록해요. 다른 테스트와 골든은 그 전까지 영향을 받지 않아요.
+
+## 성질 테스트
+
+quick 등급의 테스트는 지켜야 할 성질을 직접 물어요. 영역마다 몇 가지만 보이면 이래요.
+
+| 파일 | 성질 |
+|---|---|
+| `test_raster.py` | 채움의 덮임이 도형의 정확한 넓이, 거꾸로 도는 안쪽 윤곽은 구멍, 가는 선은 굵기만큼의 덮임, 끝과 이음과 점선, 곡선을 펴는 허용오차, 스레드 수와 무관한 화소, 잘못된 호출은 `ValueError` |
+| `test_figure.py` | 모든 글자가 쪽 안, 같은 그림은 같은 SVG·PDF·PNG, 너비가 정확하고 기본 높이는 4:3, 라벨이 그림과 서로를 가리지 않음, 눈금이 범위 안의 둥근 수, 범례가 고른 빈 구석이나 칸 밖에 그려짐, 닿는 가로 라벨은 줄이거나 기울임, 바꾸면 장면을 버림, `grid`가 칸을 복사함, 공유한 축의 범위와 한 번 고른 눈금, 같은 축일 때만 숨긴 숫자, 한 줄의 제목이 한 기준선, 두 번째 y축의 보기가 칸의 제목·x축·범례·끼운 칸을 정함, `facet`의 자료 없는 메서드와 칸 64개, 바탕만큼 옅은 범례 견본의 테두리, 노트북은 한 꼴만 |
+| `test_function.py` | 극점과 뜀에서 선을 끊고 세로선을 긋지 않음, 정의역의 끝까지 닿음, 빠른 증가는 극점이 아님, 주기 함수와 첫 격자가 박자를 맞추지 않음, 빠른 진동은 띠, 수준선은 그 수준 위, 영역의 넓이, 값 배열이 함수와 같은 그림(numpy 배열과 numpy 스칼라도), 안장 칸의 칠이 곡선과 같게 갈림, 첫 격자 사이의 좁은 봉우리가 범위를 정함, 가장 긴 화살표가 칸의 90%, 값 배열의 화살표가 잘리지 않음, 고른 흐름의 유선이 칸의 줄마다 하나 |
+| `test_stat.py` | 히스토그램의 막대는 `sd.histogram`, 상자는 `sd.quantile`의 사분위, QQ의 점은 분포의 `icdf`, 회귀선은 결과의 `predict`, 괄호는 가까운 쌍이 아래, 밀도의 범위가 봉우리까지이고 더 높은 층에는 범위를 넘김, `hist2d`의 칸마다의 개수와 비워 둔 빈 칸, 로그 축의 `hexbin`이 화면에서 같은 크기의 육각형, `facet`의 한 격자와 한 색 범위, `pairs` 대각선이 그 줄의 축으로 읽힘 |
+| `test_surface.py` | 그리는 순서와 무관하게 가까운 곡면이 이김, 반투명 곡면의 깊이 순서, 교차하는 삼각형, 두 면의 음영, 선과 점의 깊이 검사, 선과 점이 서로를 가림, 스레드 수와 무관한 그림, 주지 않은 시점의 선택, 3D 칸이 2D 층을 거절하고 범례를 그림, 두 축의 눈금 숫자가 꼭짓점에서 떨어져 있음 |
+
+모든 테스트 그림에 대해 한꺼번에 묻는 테스트도 있어요.
+
+```python
+# tests/plot/test_figure.py
+@pytest.mark.parametrize("name", NAMES)
+@pytest.mark.parametrize("font", _text.FAMILIES)
+def test_every_text_is_inside_the_page_and_the_output_is_the_same_every_time(name, font):
+    fig = figures.FIGURES[name](font)
+    sc = scene_of(fig)
+    assert sc.width == pytest.approx(fig.width * MM) and sc.height == pytest.approx(fig.height * MM)
+    for s, x0, y0, x1, y1 in text_boxes(sc):
+        assert -0.01 <= x0 and x1 <= sc.width + 0.01 and -0.01 <= y0 and y1 <= sc.height + 0.01, s
+    assert fig.to_svg() == figures.FIGURES[name](font).to_svg()
+    assert fig.to_pdf() == figures.FIGURES[name](font).to_pdf()
+    assert fig.to_png(dpi=72) == figures.FIGURES[name](font).to_png(dpi=72)
+```
+
+`text_boxes`는 장면의 글자마다 배치의 상자를 `place`의 행렬로 쪽에 옮긴 사각형이에요. 배치가 여백을 모자라게 잡으면 이 테스트에서 글자가 쪽 밖으로 나가요. 두 번째 반은 같은 호출로 한 번 더 만든 그림과 세 출력이 바이트까지 같은지 봐요.
+
+스레드 수와의 무관함은 테스트가 직접 스레드 수를 바꿔 가며 봐요.
+
+```python
+# tests/plot/test_raster.py
+def test_pixels_do_not_depend_on_the_thread_count():
+    def draw():
+        c = core.Canvas(200, 120)
+        c.fill(*rect(0, 0, 200, 120), ID, (1.0, 1.0, 1.0, 1.0), ())
+        pts = []
+        for i in range(400):
+            pts += [i * 0.5, 60 + 40 * ((i * 37 % 17) / 17 - 0.5)]
+        line(c, pts, 1.3, join=RJOIN, rgba=(0.0, 0.3, 0.7, 0.8))
+        return c.rgba8()
+
+    old = sd.get_num_threads()
+    try:
+        out = []
+        for n in (1, 3, 10):
+            sd.set_num_threads(n)
+            out.append(draw())
+    finally:
+        sd.set_num_threads(old)
+    assert out[0] == out[1] == out[2]
+```
+
+## 세 출력 겹쳐 보기
+
+장면이 같으면 세 출력이 같은 그림이어야 해요. 자체 PNG는 자체 래스터라이저가 그리지만, SVG와 PDF는 보는 프로그램이 그려요. 그래서 deep 등급의 테스트가 손으로 지은 장면 둘을 두 글꼴로 세 출력에 쓰고, SVG는 Cairo의 `rsvg-convert`로, PDF는 Ghostscript로 144 dpi에 구워 자체 PNG와 화소마다 견줘요. 두 프로그램이 없으면 건너뛰어요.
+
+- `rsvg-convert`는 SVG의 1 pt를 96 dpi에서 4/3 화소로 그리므로 `-z 1.5`로 144 dpi를 맞춰요. Ghostscript는 `-r144`에, 글자와 도형의 안티에일리어싱(`-dTextAlphaBits=4 -dGraphicsAlphaBits=4`)을 켜요.
+- 세 프로그램이 쪽의 크기를 저마다 반올림하므로 크기는 한 화소까지 달라도 되고, 겹치는 부분만 견줘요.
+- 알파가 있는 화소는 흰 바탕에 얹은 색으로 바꾸고, 화소의 차이는 세 채널 차이의 최댓값(0–255)이에요.
+
+```python
+# tests/plot/test_outputs.py
+def _difference(mine, other, w, h, ch):
+    """(mean absolute difference, share of pixels more than 80 levels apart) on white."""
+    total = far = 0
+    for y in range(h):
+        a, b = mine[y], other[y]
+        for x in range(w):
+            al = a[4 * x + 3] / 255.0
+            d = 0
+            for k in range(3):
+                va = a[4 * x + k] * al + 255.0 * (1.0 - al)
+                if ch == 4:
+                    bl = b[4 * x + 3] / 255.0
+                    vb = b[4 * x + k] * bl + 255.0 * (1.0 - bl)
+                else:
+                    vb = b[3 * x + k]
+                d = max(d, abs(va - vb))
+            total += d
+            far += d > 80
+    return total / (w * h), far / (w * h)
+```
+
+| 견주는 것 | 평균 차이 | 80단계 넘게 다른 화소 |
+|---|---|---|
+| 자체 PNG와 SVG(`rsvg-convert`) | 1.0 미만 | 0.2% 미만 |
+| 자체 PNG와 PDF(Ghostscript) | 4.0 미만 | 1% 미만 |
+
+평균 차이는 모서리의 안티에일리어싱 차이를 재고, 크게 다른 화소의 몫은 빠진 글리프나 뒤집힌 그림처럼 그림이 달라진 곳을 잡아요. Ghostscript는 글자와 가는 선을 조금 더 진하게 칠해서 PDF 쪽 허용치가 넓어요. 래스터라이저가 색을 sRGB 값 그대로 섞는 것도(선형 빛 공간이 아니에요) 이 두 프로그램이 그렇게 섞기 때문이에요([래스터라이저](/internals/plot/raster/)).
+
+PDF 파일 자체의 짜임은 quick 테스트가 봐요. 교차 참조 표의 위치마다 그 번호의 객체가 시작하는지, `/MediaBox`가 장면의 크기인지, `/Font`·`/CreationDate`·`/ID`가 없는지, 쓴 글리프마다 Form XObject가 하나씩 있고 모두 `Do`로 불리는지예요. PNG는 손으로 짠 해독기로 풀어 화소가 `_png.pixels`와 같은지, `pHYs`가 dpi인지 봐요.
+
+## API 표면
+
+`docs/api/plot.md`의 시그니처 블록과 코드가 같은지는 `test_api_surface.py`가 봐요. 다른 영역과 같은 방식에 `sd.plot`의 두 규칙이 더해져요.
+
+- 문서의 모듈 이름과 `sd.plot.__all__`이 같고, 시그니처가 `inspect.signature`의 글과 글자까지 같아요. 그림 옵션은 `**figure`로 적어요.
+- `Figure`의 공개 멤버는 문서의 `Figure.<이름>` 줄과 모듈 함수 이름을 합친 것과 같아요. 문서에 인자 없이 적은 이름(`Figure.width`)은 속성이어야 해요.
+- 칸 여럿을 스스로 만드는 함수(`Figure`, `grid`, `diagnostics`, `pairs`, `facet`)를 뺀 모든 모듈 함수는 같은 이름의 메서드가 있고, 그 시그니처는 모듈 함수에서 `**figure`를 뺀 것이에요. `compare`와 `fit`은 메서드로만 있어야 해요.
+- 자료와 주 인자는 `/` 앞(위치로만), 옵션은 `*` 뒤(키워드로만)에 기본값과 함께 오고, `**figure`는 맨 끝이에요.
+- 인자의 수나 이름이 틀린 호출은 모듈 함수와 `Figure(...)`에서 다른 영역과 같은 꼴의 `TypeError`예요(`line(): unexpected keyword argument 'foo'`).
+
+<Callout type="note">
+quick 등급의 테스트는 모두 TeX 없이 돌아요. TeX, `rsvg-convert`, Ghostscript가 필요한 것은 deep 등급의 두 묶음뿐이에요.
+</Callout>

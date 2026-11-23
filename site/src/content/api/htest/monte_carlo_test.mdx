@@ -1,0 +1,186 @@
+---
+kind: function
+title: monte_carlo_test
+names: [monte_carlo_test]
+group: 재표본
+order: 3
+signatures:
+  - "sd.htest.monte_carlo_test(data, rvs, statistic, /, *, vectorized=None, n_resamples=9999, batch=None, alternative='two-sided', axis=None, rng)"
+summary: 자료가 정해진 분포에서 왔다는 귀무가설을 몬테카를로로 검정해요. 그 분포에서 같은 크기의 표본을 n_resamples번 뽑아 통계량의 귀무분포를 만들고, 관측한 통계량과 견줘 p값을 구해요. 귀무분포의 공식을 몰라도 어떤 통계량이든 쓸 수 있어요.
+params:
+  - name: data
+    type: 배열, 수의 시퀀스, 또는 표본의 list·tuple
+    kind: positional-only
+    desc: rvs가 호출 하나면 표본 하나, rvs가 호출의 list·tuple이면 같은 수의 표본이에요.
+  - name: rvs
+    type: callable 또는 callable의 list·tuple
+    kind: positional-only
+    desc: "귀무가설의 분포에서 표본을 뽑는 함수 rvs(size, *, rng). sd.stats 분포의 X.sample이 이 꼴이에요. 표본마다 하나씩 줄 수도 있어요."
+  - name: statistic
+    type: callable
+    kind: positional-only
+    desc: 통계량. 표본 수만큼의 배열을 받아 수를 돌려줘요. axis 인자가 있으면 statistic(*samples, axis=-1)로 여러 표본을 한 번에 불러요.
+  - name: vectorized
+    type: bool 또는 None
+    kind: keyword-only
+    desc: statistic이 axis를 받는지. None(기본값)이면 시그니처로 정해요.
+  - name: n_resamples
+    type: int
+    kind: keyword-only
+    desc: 귀무분포에서 뽑을 표본의 수(기본값 9999). 양의 int예요.
+  - name: batch
+    type: int 또는 None
+    kind: keyword-only
+    desc: rvs와 statistic을 한 번 부를 때의 표본 수. None이면 한 호출의 데이터가 약 4백만(2²²) 개 값 이하가 되게 정해요.
+  - name: alternative
+    type: str
+    kind: keyword-only
+    desc: "'two-sided'(기본값), 'less'(작은 통계량이 극단), 'greater'(큰 통계량이 극단) 중 하나예요."
+  - name: axis
+    type: int 또는 None
+    kind: keyword-only
+    desc: None(기본값)이면 표본마다 펼쳐요. 정수면 그 축을 따라 표본을 읽고 나머지 축은 배치예요.
+  - name: rng
+    type: sd.random.Generator
+    kind: keyword-only
+    desc: 귀무분포의 표본을 뽑을 생성기. 꼭 줘야 해요. 표본마다 이 생성기의 자식(spawn)에서 뽑아요.
+returns:
+  type: MonteCarloTestResult
+  desc: "statistic(관측한 통계량), pvalue, null_distribution((n_resamples,): 배치의 모든 줄이 함께 써요)와 summary()가 있어요. 튜플로 풀리지 않아요."
+raises:
+  - type: TypeError
+    desc: rng가 없거나 sd.random.Generator가 아닐 때, rvs가 호출이 아닐 때(분포 객체를 그대로 줬을 때 포함), statistic이 호출할 수 없을 때나 수가 아닌 것을 돌려줄 때, 없는 키워드를 줬을 때.
+  - type: ValueError
+    desc: rvs의 수와 표본의 수가 다를 때, rvs가 요청한 모양의 배열을 돌려주지 않을 때, statistic이 맞지 않는 모양을 돌려줄 때, alternative 이름이 틀렸을 때, n_resamples·batch가 1보다 작을 때.
+seeAlso: [permutation_test, bootstrap, goodness_of_fit, methods, skewtest, basics, results]
+---
+
+## 무엇을 하나요
+
+어떤 측정기의 오차 12개예요. 제조사는 오차가 표준정규분포를 따른다고 해요.
+
+```python
+>>> x = [0.42, -1.10, 0.85, 2.31, -0.27, 0.66, 1.94, -0.58, 0.12, 3.05, 0.77, -0.91]
+```
+
+큰 양의 오차가 몇 개 있어 분포가 오른쪽으로 치우친 것 같아요. 표본 왜도를 통계량으로 쓰고 싶지만, 정규분포에서 n = 12인 표본 왜도가 어떻게 퍼지는지 공식을 모른다면 어떻게 할까요? 컴퓨터로 표준정규분포에서 12개짜리 표본을 수천 개 뽑아 왜도를 계산하면 돼요. 그것이 귀무분포이고, 관측한 왜도가 그 안에서 얼마나 극단인지가 p값이에요.
+
+- **귀무가설**: 자료가 `rvs`가 뽑는 분포에서 왔어요(모수까지 정해진 분포예요).
+- **대립가설**: 아니에요. 어느 쪽이 극단인지는 통계량과 `alternative`가 정해요.
+
+<Reference />
+
+## 기본 사용
+
+`rvs`는 `rvs(size, *, rng)` 꼴의 함수예요. sd.stats 분포의 `sample` 메서드를 그대로 넘기면 돼요.
+
+```python
+>>> N = sd.stats.Normal()
+>>> def skew(a, axis):
+...     return sd.stats.skew(a, axis=axis)
+>>> r = sd.htest.monte_carlo_test(x, N.sample, skew, n_resamples=2000, rng=sd.random.default_rng(5))
+>>> r
+MonteCarloTestResult(statistic=0.48648, pvalue=0.377811, null_distribution=<array of shape (2000,)>)
+```
+
+왜도 0.49는 정규분포의 12개짜리 표본에서도 흔한 값이에요(p = 0.38). 왜도를 정규 근사로 검정하는 [skewtest](/api/htest/skewtest/)도 비슷한 답을 줘요.
+
+```python
+>>> sd.htest.skewtest(x).pvalue
+0.36390039721682976
+>>> print(r.summary())
+                               Monte Carlo test
+==============================================================================
+Statistic:                      0.4865  Alternative:                 two-sided
+P-value:                         0.378  No. Observations:                   12
+                                        Resamples:                        2000
+==============================================================================
+```
+
+p값은 [permutation_test](/api/htest/permutation_test/)의 무작위 순열과 같은 정의예요. 한쪽은 귀무분포에서 관측만큼 극단인 표본 수 b로 (b + 1)/(n_resamples + 1), 양쪽은 작은 한쪽 p값의 두 배(1에서 잘라요)예요.
+
+## 모수가 정해진 분포만
+
+몬테카를로 검정의 귀무분포는 `rvs`가 뽑는 **하나의 분포**예요. "어떤 정규분포든"처럼 모수를 자료에서 추정해야 하는 가설이라면, 뽑은 표본마다 모수를 다시 추정해야 해요. 그것은 [goodness_of_fit](/api/htest/goodness_of_fit/)이 해 줘요. 지수분포의 척도가 1이라고 믿을 때처럼 모수를 알 때 이 함수를 써요.
+
+```python
+>>> E = sd.stats.Exponential()
+>>> y = [0.3, 1.9, 0.7, 0.1, 2.8, 0.5, 1.2, 0.05, 4.1, 0.9]
+>>> def largest(a, axis):
+...     return sd.max(a, axis=axis)
+>>> sd.htest.monte_carlo_test(y, E.sample, largest, n_resamples=2000, alternative='greater', rng=sd.random.default_rng(5)).pvalue
+0.16141929035482258
+```
+
+10개 중 가장 큰 값 4.1은 척도 1인 지수분포에서 드물지 않아요.
+
+## 여러 표본
+
+`rvs`를 표본마다 하나씩 리스트로 주면 표본이 여럿인 통계량도 돼요. 표본마다 생성기의 자식(`rng.spawn`)에서 따로 뽑아요.
+
+```python
+>>> def mean_diff(a, b, axis):
+...     return sd.mean(a, axis=axis) - sd.mean(b, axis=axis)
+>>> sd.htest.monte_carlo_test(([1., 2, 3, 4], [2., 3, 4, 5, 6]), [N.sample, N.sample], mean_diff, n_resamples=500, rng=sd.random.default_rng(1)).pvalue
+0.031936127744510975
+```
+
+## rvs와 통계량의 모양
+
+`rvs`는 `size=(B, n)`을 받으면 그 모양의 배열을 돌려줘야 해요(B는 한 번에 뽑는 표본의 수). 통계량은 (B, n) 배열을 받아 `axis=-1`을 따라 계산하고 (B,)를 돌려줘요. `axis`를 받지 않는 통계량은 표본마다 하나씩 불러요.
+
+```python
+>>> def bad(size, *, rng):
+...     return N.sample(5, rng=rng)
+>>> sd.htest.monte_carlo_test(x, bad, skew, n_resamples=100, rng=sd.random.default_rng(1))
+Traceback (most recent call last):
+    ...
+ValueError: monte_carlo_test(): 'rvs' must return an array of shape (100, 12), not (5,)
+>>> sd.htest.monte_carlo_test(x, N, skew, n_resamples=100, rng=sd.random.default_rng(1))
+Traceback (most recent call last):
+    ...
+TypeError: monte_carlo_test(): 'rvs' must be a callable or a list or tuple of callables, not Normal
+```
+
+분포 객체 `N` 대신 그 메서드 `N.sample`을 넘겨요.
+
+## 배치와 재현성
+
+`axis`를 주면 줄마다 독립인 검정이고, 귀무분포 하나를 모든 줄이 함께 써요(줄마다 표본 크기가 같기 때문이에요).
+
+```python
+>>> X = sd.asarray([x, [v * v for v in x]])
+>>> rb = sd.htest.monte_carlo_test(X, N.sample, skew, axis=1, n_resamples=1000, rng=sd.random.default_rng(5))
+>>> rb.pvalue, rb.null_distribution.shape
+(array([ 0.3936063936063936, 0.00999000999000999], dtype=float64), (1000,))
+```
+
+제곱한 둘째 줄은 정규분포에서 오지 않았고 p값도 작아요.
+
+같은 시드면 같은 결과예요. 표본마다 자기 자식 생성기에서 차례로 뽑으므로 `batch`를 바꿔도 같은 값이 나와요.
+
+```python
+>>> r1 = sd.htest.monte_carlo_test(x, N.sample, skew, n_resamples=300, rng=sd.random.default_rng(5))
+>>> r2 = sd.htest.monte_carlo_test(x, N.sample, skew, n_resamples=300, rng=sd.random.default_rng(5), batch=7)
+>>> bool(sd.all(r1.null_distribution == r2.null_distribution))
+True
+```
+
+## NaN
+
+관측한 통계량이 NaN이면 p값은 NaN이에요. NaN을 다루는 정책은 없으니 표본에서 미리 빼요.
+
+```python
+>>> sd.htest.monte_carlo_test([1., sd.nan, 2], N.sample, skew, n_resamples=100, rng=sd.random.default_rng(1)).pvalue
+nan
+```
+
+## 정확도
+
+몬테카를로 p값은 무작위라 참값과 견주지 않아요. 같은 `rng` 상태면 `batch`에 상관없이 비트까지 같고(지금은 스레드 수와도 상관없어요), 귀무가설에서 크기 0.1의 검정이 300번 중 몇 번 기각하는지가 이항 한계 안인지를 고정한 시드로 시험해요.
+
+## scipy를 아는 분께
+
+- scipy에는 `rng` 인자가 없고 `rvs(size=...)`가 자기 생성기를 들고 있어요. 여기서는 `rvs(size, *, rng)` 꼴이고 `rng`를 꼭 줘야 해요. 표본마다 그 자식 생성기를 `rvs`에 넘겨요. sd.stats 분포의 `sample`이 이 꼴이라 그대로 넘기면 돼요.
+- 관측한 통계량이 NaN이면 p값이 NaN이에요. scipy는 비교가 모두 거짓이 되어 수를 내요.
+- `axis`의 기본값은 None이에요. 결과의 필드는 scipy와 같고 튜플로 풀리지 않아요.

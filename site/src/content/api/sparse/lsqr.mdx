@@ -1,0 +1,236 @@
+---
+kind: function
+title: lsqr
+names: [lsqr]
+group: 반복법
+order: 6
+signatures:
+  - "sd.sparse.lsqr(A, b, /, *, damp=0.0, atol=1e-06, btol=1e-06, conlim=100000000.0, max_iter=None, x0=None)"
+summary: 아무 모양(m × n)의 희소 행렬 A로 최소제곱 문제 min ‖Ax − b‖²(+ damp²‖x − x0‖²)를 LSQR로 풀어요. 방정식이 미지수보다 많거나 적어도, 랭크가 모자라도 돼요. 반복마다 A와 Aᴴ의 곱을 한 번씩만 써요.
+params:
+  - name: A
+    type: 희소 배열, 2차원 ndarray, 또는 LinearOperator
+    kind: positional-only
+    desc: 계수 행렬 (m, n). 정사각이 아니어도 돼요. LinearOperator면 matvec과 rmatvec(Aᴴ의 곱)이 모두 있어야 해요.
+  - name: b
+    type: ndarray
+    kind: positional-only
+    desc: 우변. 모양이 (m,)이나 (m, 1)인 sd.ndarray예요.
+  - name: damp
+    type: float
+    kind: keyword-only
+    desc: 감쇠 계수. 0보다 크면 ‖Ax − b‖² + damp²‖x − x0‖²를 최소화해요(능형 회귀와 같은 정규화). 유한한 0 이상의 수이고 기본값은 0.0이에요.
+  - name: atol
+    type: float
+    kind: keyword-only
+    desc: 멈춤 판정의 허용오차. A의 값이 이만큼 믿을 만하다는 뜻이에요(아래 '멈춤 판정'). 유한한 0 이상의 수이고 기본값은 1e-06이에요.
+  - name: btol
+    type: float
+    kind: keyword-only
+    desc: 멈춤 판정의 허용오차. b의 값이 이만큼 믿을 만하다는 뜻이에요. 유한한 0 이상의 수이고 기본값은 1e-06이에요.
+  - name: conlim
+    type: float
+    kind: keyword-only
+    desc: 조건수의 한계. 조건수의 어림이 이것을 넘으면 멈춰요. 0 이상의 수이고, 0이나 inf면 한계가 없어요. 기본값은 1e8이에요.
+  - name: max_iter
+    type: int 또는 None
+    kind: keyword-only
+    desc: 반복의 상한(1 이상). None(기본값)이면 2n이에요. 닿으면 그때의 x와 status = 7, converged=False를 돌려줘요.
+  - name: x0
+    type: ndarray 또는 None
+    kind: keyword-only
+    desc: 시작점 (n,)이나 (n, 1). None(기본값)이면 0 벡터예요. damp는 x − x0에 걸려요.
+returns:
+  type: LsqrResult
+  desc: "x(해, (n,)), converged, status(0–7), message, n_iter, normr(‖b − Ax‖), normr_damped(√(‖b − Ax‖² + damp²‖x − x0‖²)), norma, conda, normar(‖Aᴴr‖), normx(‖x‖)의 어림, var(정규방정식의 역행렬의 대각 어림). scipy의 열 값 튜플로 풀려요."
+raises:
+  - type: TypeError
+    desc: A가 희소 배열·sd.ndarray·LinearOperator가 아닐 때, b나 x0이 sd.ndarray가 아닐 때, 허용오차·damp·conlim이 수가 아니거나 max_iter가 int가 아닐 때, 옵션을 위치로 주거나 없는 키워드(iter_lim, calc_var, M 등)를 줬을 때, LinearOperator의 함수가 배열로 바꿀 수 없는 것을 돌려줄 때.
+  - type: ValueError
+    desc: A가 2차원이 아닐 때, b의 모양이 (m,)·(m, 1)이 아니거나 x0의 모양이 (n,)·(n, 1)이 아닐 때, A·b·x0에 NaN·inf가 있을 때, damp·atol·btol이 음수이거나 유한하지 않을 때, conlim이 음수이거나 NaN일 때, max_iter가 1보다 작을 때, rmatvec이 없는 LinearOperator를 줬을 때, LinearOperator의 함수가 크기가 다른 결과를 돌려줄 때.
+seeAlso: [iterative, lsmr, cg, linearoperator]
+---
+import Callout from '../../../components/Callout.astro';
+
+## 무엇을 하나요
+
+방정식이 미지수보다 많으면 모든 식을 맞추는 x가 대개 없어요. 그럴 때는 어긋남의 제곱합 $\lVert Ax - b\rVert^2$가 가장 작은 x, 최소제곱 해를 찾아요. 밀집 행렬이면 [`sd.linalg.lstsq`](/api/linalg/lstsq/)로 풀지만, A가 크고 희소하면 분해하지 않고 곱만 쓰는 LSQR이 맞아요.
+
+LSQR(Paige–Saunders)은 수학적으로는 정규방정식 $A^{\mathsf H}Ax = A^{\mathsf H}b$에 [`cg`](/api/sparse/cg/)를 쓴 것과 같아요. 그런데 $A^{\mathsf H}A$를 만들지 않고 A와 Aᴴ를 번갈아 곱하며 쌍대각화(Golub–Kahan)로 기저를 만들어서, 조건수가 제곱되는 반올림을 피해요. 반복마다 A와 Aᴴ의 곱을 한 번씩 하고, 잔차 ‖b − Ax‖가 반복마다 줄어요.
+
+- **m > n**(식이 많음): 보통의 최소제곱 해예요.
+- **m < n**(식이 적음) 또는 **랭크가 모자람**: 해가 여럿이면 x0 = 0에서 시작한 LSQR은 그 가운데 크기 ‖x‖가 가장 작은 해에 다가가요.
+- **damp > 0**: $\lVert Ax - b\rVert^2 + \text{damp}^2\lVert x\rVert^2$를 최소화해요. 능형 회귀(티호노프 정규화)와 같아요.
+
+<Reference />
+
+## 기본 사용: 경기 결과로 팀의 실력 매기기
+
+여섯 팀이 열두 경기를 했어요. 경기마다 "홈팀 실력 − 원정팀 실력 ≈ 점수 차"라는 식이 하나씩 생겨요. 식 12개, 미지수 6개이고, 행마다 +1과 −1 두 개만 있는 희소 행렬이에요.
+
+```python
+>>> games = [(0, 1, 3), (0, 2, 10), (1, 2, 4), (1, 3, -2), (2, 3, -7), (3, 4, 1),
+...          (4, 5, 6), (0, 5, 14), (2, 4, -3), (3, 5, 9), (1, 4, 2), (0, 3, 5)]
+>>> g = len(games)
+>>> home = sd.asarray([h for h, a, d in games])
+>>> away = sd.asarray([a for h, a, d in games])
+>>> rows = sd.concat([sd.arange(g), sd.arange(g)])
+>>> cols = sd.concat([home, away])
+>>> vals = sd.concat([sd.ones(g), -sd.ones(g)])
+>>> A = sd.sparse.coo_array((vals, (rows, cols)), shape=(g, 6)).tocsr()
+>>> b = sd.asarray([float(d) for h, a, d in games])
+>>> A
+<csr_array of shape (12, 6), float64, 24 stored elements>
+>>> r = sd.sparse.lsqr(A, b)
+>>> r
+LsqrResult(converged=True, status=2, n_iter=4, normr=3.42377, x=[6.41667, 1.55556, -3.44444, 2.33333, -0.0833333, -6.77778])
+>>> r.message
+'the least-squares solution is good enough, given atol'
+```
+
+0번 팀이 가장 강하고(+6.4) 5번 팀이 가장 약해요(−6.8). 모든 경기의 점수 차를 맞추는 실력은 없어서 잔차 `normr`이 3.4로 남아요.
+
+이 문제는 랭크가 모자라요. 모든 팀의 실력에 같은 수를 더해도 "차"는 그대로라 해가 하나로 정해지지 않아요. 0에서 시작한 LSQR은 그 가운데 크기가 가장 작은 해, 곧 실력의 합이 0인 해를 돌려줘요. 밀집 최소제곱의 최소 노름 해와 같아요.
+
+```python
+>>> abs(float(sd.sum(r.x))) < 1e-12
+True
+>>> ref = sd.linalg.lstsq(A.toarray(), b).solution
+>>> float(sd.max(sd.abs(r.x - ref))) < 1e-12
+True
+```
+
+식이 미지수보다 적은 문제에서도 같아요. 해가 무수히 많으면 크기가 가장 작은 해예요.
+
+```python
+>>> W = sd.asarray([[1.0, 1.0, 0.0, 0.0], [0.0, 1.0, 1.0, 1.0]])
+>>> sd.sparse.lsqr(W, sd.asarray([2.0, 3.0]))
+LsqrResult(converged=True, status=1, n_iter=2, normr=2.08655e-15, x=[0.6, 1.4, 0.8, 0.8])
+```
+
+## 멈춤 판정: atol, btol, conlim
+
+LSQR은 반복마다 세 가지를 봐요. ‖A‖와 cond(A)는 반복이 만든 쌍대각 행렬에서 어림한 값이에요.
+
+| `status` | 판정 | `message` |
+|---|---|---|
+| 1 | ‖r‖ ≤ btol·‖b‖ + atol·‖A‖·‖x‖ (계가 풀렸어요) | `'Ax - b is small enough, given atol, btol'` |
+| 2 | ‖Aᴴr‖ ≤ atol·‖A‖·‖r‖ (최소제곱 해예요) | `'the least-squares solution is good enough, given atol'` |
+| 3 | cond(A)의 어림 ≥ conlim | `'the estimate of cond(Abar) has exceeded conlim'` |
+| 4, 5, 6 | 1, 2, 3과 같지만 atol·btol 대신 반올림의 한계(ε)로 | `'... for this machine'` |
+| 7 | 반복이 `max_iter`에 닿았어요 | `'the iteration limit was reached'` |
+| 0 | b = 0이라 x = 0이 답이에요 | `'the exact solution is x = 0'` |
+
+`converged`는 `status`가 0, 1, 2, 4, 5일 때 True예요. 3과 6(조건수 한계)과 7(상한)은 False예요.
+
+- 해가 있는 계(Ax = b를 맞출 수 있음)는 보통 1에서, 해가 없는 최소제곱 문제는 2에서 멈춰요.
+- `atol`과 `btol`은 "A와 b의 값이 상대적으로 몇 자리까지 믿을 만한가"로 고르면 돼요. 자료가 유효숫자 세 자리라면 `1e-3`으로 충분하고, 그보다 작게 잡아도 정확도는 늘지 않고 반복만 늘어요. 0으로 두면 그 판정을 끄고 반올림의 한계(4, 5)까지 가요.
+- `conlim`은 조건수가 너무 큰 문제를 일찍 끊는 안전장치예요. 조건수가 큰 문제에서 반복을 계속하면 x가 잡음을 따라 커지기 때문이에요. 일부러 작게 잡아 정규화처럼 쓸 수도 있어요. 0이나 inf면 한계를 두지 않아요.
+
+```python
+>>> r3 = sd.sparse.lsqr(A, b, conlim=2.0)
+>>> r3.status, r3.converged, r3.n_iter
+(3, False, 2)
+```
+
+## damp: 정규화
+
+`damp > 0`이면 x가 커지는 것에 벌점을 줘요. 경기 수가 적은 팀의 실력처럼 자료가 적어 흔들리는 값을 0 쪽으로 당겨요.
+
+```python
+>>> rd = sd.sparse.lsqr(A, b, damp=1.0)
+>>> [round(v, 3) for v in rd.x.tolist()]
+[5.314, 1.065, -3.101, 2.0, 0.114, -5.393]
+>>> round(rd.normr, 4), round(rd.normr_damped, 4)
+(5.223, 9.9685)
+```
+
+큰 실력이 0 쪽으로 줄었어요(6.4 → 5.3, −6.8 → −5.4). `normr`은 맞추지 못한 정도 ‖b − Ax‖, `normr_damped`는 벌점까지 넣은 $\sqrt{\lVert b - Ax\rVert^2 + \text{damp}^2\lVert x\rVert^2}$예요. damp는 A의 값과 같은 단위예요.
+
+## var: 계수의 분산 어림
+
+`var`는 $(A^{\mathsf H}A + \text{damp}^2 I)^{-1}$의 대각을 어림한 값이에요. 최소제곱 계수의 표준오차가 $\hat\sigma\sqrt{\text{var}_j}$이므로, 계수가 얼마나 흔들리는지 대략 보는 데 써요. 반복의 부산물로 늘 계산해요.
+
+<Callout type="warn" title="var는 거친 어림이에요">
+`var`는 반복이 지나간 방향에서만 모은 값이라, 해가 판정을 통과해 일찍 멈추면 참값보다 작게 나와요. 크기를 가늠하는 데만 쓰고, 정확한 표준오차가 필요하면 밀집 회귀([`sd.regression.ols`](/api/regression/ols/))를 써요.
+</Callout>
+
+```python
+>>> rng = sd.random.default_rng(7)
+>>> R = sd.sparse.random_array((200, 50), density=0.1, format='csr', rng=rng)
+>>> y = R @ sd.linspace(-1, 1, 50) + 0.01 * sd.stats.Normal().sample(200, rng=rng)
+>>> rv = sd.sparse.lsqr(R, y, atol=1e-10, btol=1e-10)
+>>> exact = sd.linalg.diagonal(sd.linalg.inv((R.T @ R).toarray()))
+>>> [round(v, 3) for v in (rv.var / exact).tolist()[:5]]
+[0.824, 0.708, 0.881, 0.371, 0.59]
+```
+
+앞의 다섯 계수에서 `var`가 참값의 37–88%예요. 순위를 볼 수는 있어도 값 그대로 쓰기에는 모자라요. 랭크가 모자란 A(위의 팀 문제)에서는 정규방정식의 역행렬이 없어서 `var`에 뜻이 없어요.
+
+## 시작점 x0
+
+`x0`를 주면 $x = x_0 + \delta$로 두고 $\lVert A\delta - (b - Ax_0)\rVert^2 + \text{damp}^2\lVert\delta\rVert^2$를 풀어요. 그래서 damp의 벌점은 x0에서 멀어지는 것에 걸리고, 랭크가 모자라면 x0에 가장 가까운 해가 나와요.
+
+```python
+>>> r0 = sd.sparse.lsqr(A, b, x0=sd.full(6, 10.0))
+>>> round(float(sd.mean(r0.x)), 6)
+10.0
+```
+
+팀 문제를 모든 팀 10에서 시작하면 실력의 평균이 10인 해가 나와요. 차는 위와 같아요.
+
+## 결과 읽기
+
+| 필드 | 뜻 |
+|---|---|
+| `x` | 해 (n,). 쓰기 금지 배열이에요 |
+| `converged` | `status`가 0, 1, 2, 4, 5인지 |
+| `status` | 위 표의 0–7 |
+| `message` | 멈춘 까닭 |
+| `n_iter` | 반복 수 |
+| `normr` | ‖b − Ax‖의 어림 |
+| `normr_damped` | √(‖b − Ax‖² + damp²‖x − x0‖²)의 어림 |
+| `norma`, `conda` | ‖A‖와 cond(A)의 어림(반복이 본 부분에서) |
+| `normar` | ‖Aᴴr‖의 어림 |
+| `normx` | ‖x‖ |
+| `var` | (AᴴA + damp²I)⁻¹의 대각 어림 (n,) |
+
+결과는 scipy의 열 값으로 풀려요.
+
+```python
+>>> x, istop, itn, r1norm, r2norm, anorm, acond, arnorm, xnorm, var = sd.sparse.lsqr(A, b)
+>>> istop, itn, round(r1norm, 5)
+(2, 4, 3.42377)
+```
+
+## 입력과 에러
+
+A는 정사각이 아니어도 되고, `LinearOperator`라면 `rmatvec`이 있어야 해요. `lsqr`에는 전처리기 `M`이 없어요. 열마다 크기가 크게 다르면 열을 미리 나눠서 풀어요.
+
+```python
+>>> sd.sparse.lsqr(A, sd.ones(5))
+Traceback (most recent call last):
+    ...
+ValueError: lsqr(): 'b' must have shape (12,) or (12, 1) for 'A' of shape (12, 6), got (5,)
+>>> sd.sparse.lsqr(A, b, iter_lim=10)
+Traceback (most recent call last):
+    ...
+TypeError: lsqr(): unexpected keyword argument 'iter_lim'
+>>> sd.sparse.lsqr(A, b, conlim=-1)
+Traceback (most recent call last):
+    ...
+ValueError: lsqr(): 'conlim' must be a number >= 0
+```
+
+나머지 입력 규칙은 [반복법의 기본](/api/sparse/iterative/#입력)과 같아요.
+
+## lsmr과 견주기
+
+[`lsmr`](/api/sparse/lsmr/)은 같은 문제를 같은 판정으로 풀어요. LSQR은 ‖r‖을, LSMR은 ‖Aᴴr‖을 반복마다 줄여요. 끝까지 풀면 답은 같지만, 일찍 멈추면 LSMR의 x가 대개 더 믿을 만해요(‖Aᴴr‖이 매끄럽게 줄어서요). `var`가 필요하면 `lsqr`, 판정을 느슨히 해 일찍 멈출 생각이면 `lsmr`이 좋아요.
+
+## scipy를 아는 분께
+
+- `scipy.sparse.linalg.lsqr`과 같은 알고리즘과 판정(`istop` 0–7)이에요. `status`가 `istop`, `n_iter`가 `itn`이에요.
+- `iter_lim`은 `max_iter`예요. `show`, `calc_var`이 없고 `var`를 언제나 계산해요(scipy의 `calc_var=True`와 같은 값). 복소 행렬에서는 $\lvert d_k\rvert^2$를 더해 실수 `var`를 내요(scipy는 $d_k^2$를 더해 복소수가 돼요).
+- 결과는 scipy의 `(x, istop, itn, r1norm, r2norm, anorm, acond, arnorm, xnorm, var)`로 풀려요. 필드 이름은 `normr`, `normr_damped`, `norma`, `conda`, `normar`, `normx`예요.
+- 반복이 수백 번인 문제에서는 반올림의 차이로 반복 수가 scipy와 조금 다를 수 있어요(scipy 자신도 b를 10⁻¹⁶ 바꾸면 그만큼 달라져요).

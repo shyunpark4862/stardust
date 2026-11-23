@@ -1,0 +1,288 @@
+---
+title: 최솟값·최댓값의 위치
+names: [argmin, argmax]
+group: 집계
+order: 6
+signatures:
+  - "sd.argmin(x, /, *, axis=None, keepdims=False)"
+  - "sd.argmax(x, /, *, axis=None, keepdims=False)"
+  - "x.argmin(*, axis=None, keepdims=False)"
+  - "x.argmax(*, axis=None, keepdims=False)"
+summary: 가장 작은 값(argmin)이나 가장 큰 값(argmax)이 몇 번째 자리에 있는지 알려 줘요. 값이 같으면 앞쪽 자리를 골라요.
+params:
+  - name: x
+    type: ndarray
+    kind: positional-only
+    desc: 찾을 배열. bool, int64, float64를 받아요. 복소수는 받지 않아요.
+  - name: axis
+    type: int 또는 None
+    kind: keyword-only
+    desc: 찾을 방향. 정수 하나만 받아요. None이면 배열을 한 줄로 폈을 때의 위치를 돌려줘요.
+  - name: keepdims
+    type: bool
+    kind: keyword-only
+    desc: True면 줄인 축을 없애지 않고 길이 1로 남겨요.
+returns:
+  type: ndarray 또는 Python int
+  desc: 위치(int64). axis=None이거나 1차원 배열이면 Python int예요.
+raises:
+  - type: TypeError
+    desc: x가 배열이 아닐 때, 복소수 배열일 때, axis가 int·None이 아닐 때(tuple·list 포함), keepdims가 True/False가 아닐 때.
+  - type: ValueError
+    desc: 비교할 원소가 하나도 없을 때(빈 배열, 길이 0인 축), axis가 배열의 차원 범위를 벗어날 때.
+seeAlso: [min-max, sort, take, nonzero, nan-reductions]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+[`max`](/api/array/min-max/)가 "가장 큰 값이 무엇인가"를 알려 준다면, `argmax`는 "가장 큰 값이 어디 있는가"를 알려 줘요. 결과는 값이 아니라 0부터 세는 **자리 번호**예요. `argmin`은 가장 작은 값의 자리예요.
+
+```python
+>>> import stardust as sd
+>>> v = sd.asarray([3, 9, 2, 9])
+>>> sd.argmax(v)
+1
+>>> sd.argmin(v)
+2
+```
+
+가장 큰 값 `9`는 1번과 3번 자리에 두 번 나와요. 이렇게 같은 값이 여럿이면 가장 앞의 자리를 골라요.
+
+<Fig caption="argmax는 가장 큰 값이 처음 나오는 자리를 알려 줘요. 9가 두 번 있지만 앞쪽인 1번이 답이에요.">
+  <ArrayFig name="v" data={[3, 9, 2, 9]} tones={['', 'b', '', 'a']} note="자리 0, 1, 2, 3" />
+  <Op note="argmax">→</Op>
+  <ArrayFig name="sd.argmax(v)" data={[1]} tones={['b']} note="Python 숫자 1" />
+</Fig>
+
+자리를 알면 그 자리의 값도, 같은 자리에 있는 다른 배열의 값도 꺼낼 수 있어요. `argmax`는 대개 이렇게 써요. 요일별 매출에서 매출이 가장 많은 요일을 찾아볼게요.
+
+```python
+>>> days = ["월", "화", "수", "목"]
+>>> sales = sd.asarray([120, 340, 90, 340])
+>>> i = sd.argmax(sales)
+>>> i
+1
+>>> sales[i], days[i]
+(340, '화')
+```
+
+<Reference />
+
+## `axis`: 행마다, 열마다 찾기
+
+2차원 이상의 배열에서 `axis`를 주면 그 방향을 따라 따로따로 찾아요. 결과의 각 숫자는 그 열(또는 행) 안에서의 자리예요.
+
+```python
+>>> t = sd.asarray([[3, 7, 1], [8, 2, 5]])
+>>> sd.argmax(t, axis=0)
+array([1, 0, 1], dtype=int64)
+>>> sd.argmax(t, axis=1)
+array([1, 0], dtype=int64)
+```
+
+`axis=0`은 열마다 위에서 아래로 보면서 "몇 번째 행에 가장 큰 값이 있는가"를, `axis=1`은 행마다 왼쪽에서 오른쪽으로 보면서 "몇 번째 열에 있는가"를 알려 줘요.
+
+<Fig caption="axis=1: 각 행에서 가장 큰 값의 열 번호를 알려 줘요. 첫 행은 7이 있는 1번 열, 둘째 행은 8이 있는 0번 열이에요.">
+  <ArrayFig name="t" data={[[3, 7, 1], [8, 2, 5]]} tones={[['', 'b', ''], ['b', '', '']]} axes note="shape (2, 3)" />
+  <Op note="axis=1">→</Op>
+  <ArrayFig name="sd.argmax(t, axis=1)" data={[[1], [0]]} tones={[['b'], ['b']]} note="shape (2,)" />
+</Fig>
+
+메서드로도 쓸 수 있어요.
+
+```python
+>>> t.argmin(axis=1)
+array([2, 1], dtype=int64)
+```
+
+`axis`에는 정수 하나만 쓸 수 있어요. `sum`처럼 tuple이나 list로 여러 축을 한꺼번에 줄 수는 없어요. 여러 축을 함께 줄인 "자리"는 정수 하나로 나타내기 어렵기 때문이에요.
+
+```python
+>>> sd.argmax(t, axis=(0, 1))
+Traceback (most recent call last):
+    ...
+TypeError: argmax(): 'axis' must be an int, not tuple
+```
+
+### 행마다 찾은 자리로 값 꺼내기
+
+찾은 자리가 행마다 다르므로 `t[...]`에 바로 넣을 수 없어요. 이럴 때는 `keepdims=True`로 축을 남겨 두고 [`take_along_axis`](/api/array/take/)로 꺼내요.
+
+```python
+>>> idx = sd.argmax(t, axis=1, keepdims=True)
+>>> idx
+array([[1],
+       [0]], dtype=int64)
+>>> sd.take_along_axis(t, idx, axis=1)
+array([[7],
+       [8]], dtype=int64)
+```
+
+값만 필요했다면 `sd.max(t, axis=1, keepdims=True)`와 같은 결과예요. `keepdims`의 뜻은 [`sum`](/api/array/sum/)과 같아요.
+
+## `axis=None`: 한 줄로 폈을 때의 자리
+
+`axis`를 주지 않으면 배열 전체에서 찾아요. 이때 결과는 행과 열 두 개가 아니라 숫자 하나예요. 배열을 첫 행부터 차례로 읽어서 한 줄로 늘어놓았을 때의 자리예요.
+
+```python
+>>> sd.argmax(t)
+3
+>>> sd.ravel(t)
+array([3, 7, 1, 8, 2, 5], dtype=int64)
+```
+
+<Fig caption="axis=None이면 배열을 행 순서로 한 줄로 편 다음의 자리를 돌려줘요. 8은 한 줄에서 3번 자리예요.">
+  <ArrayFig name="t" data={[[3, 7, 1], [8, 2, 5]]} tones={[['', '', ''], ['b', '', '']]} note="(행 1, 열 0)" />
+  <Op note="한 줄로">→</Op>
+  <ArrayFig name="sd.ravel(t)" data={[3, 7, 1, 8, 2, 5]} tones={['', '', '', 'b', '', '']} note="자리 3" />
+</Fig>
+
+### 한 줄의 자리를 행과 열로 되돌리기
+
+한 줄의 자리를 2차원의 (행, 열)로 바꾸려면 열의 개수로 나눈 몫과 나머지를 구하면 돼요. 몫이 행, 나머지가 열이에요. Python의 `divmod`가 몫과 나머지를 한꺼번에 줘요.
+
+```python
+>>> row, col = divmod(sd.argmax(t), t.shape[1])
+>>> row, col
+(1, 0)
+>>> t[row, col]
+8
+```
+
+한 행에 3개씩 있으니 3번 자리는 "3개짜리 행을 한 번 다 채우고(몫 1), 다음 행의 0번째(나머지 0)"라는 뜻이에요.
+
+3차원 이상이면 뒤쪽 축부터 차례로 나눠요. 모양 `(2, 3, 4)`인 배열에서 23번 자리는, 먼저 `3 × 4 = 12`로 나눠 첫째 번호를 구하고, 나머지를 `4`로 나눠 둘째와 셋째 번호를 구해요.
+
+```python
+>>> c = sd.reshape(sd.arange(24), (2, 3, 4))
+>>> k = sd.argmax(c)
+>>> k
+23
+>>> i, rest = divmod(k, 12)
+>>> j, l = divmod(rest, 4)
+>>> (i, j, l), c[i, j, l]
+((1, 2, 3), 23)
+```
+
+<Callout title="자리는 보이는 순서로 세요">
+
+한 줄의 자리는 언제나 화면에 보이는 행 순서로 세요. 전치(`.T`)하거나 잘라 낸 배열도 마찬가지예요. 그래서 위의 `divmod` 방법은 어떤 배열에든 그대로 쓸 수 있어요.
+
+</Callout>
+
+```python
+>>> t.T
+array([[3, 8],
+       [7, 2],
+       [1, 5]], dtype=int64)
+>>> sd.argmax(t.T)
+1
+```
+
+`axis=None`에 `keepdims=True`를 주면 한 줄의 자리가 모든 축이 길이 1인 배열에 담겨 나와요.
+
+```python
+>>> sd.argmax(t, keepdims=True)
+array([[3]], dtype=int64)
+```
+
+## 조심할 점
+
+### bool 배열에서는 "처음 나오는 True"를 찾아요
+
+bool 배열에서 `False`는 `True`보다 작아요. 그래서 `argmax`는 처음 나오는 `True`의 자리를 알려 줘요. "처음으로 조건을 만족하는 자리"를 찾을 때 편해요.
+
+```python
+>>> scores = sd.asarray([40, 55, 72, 90])
+>>> sd.argmax(scores >= 60)
+2
+```
+
+그런데 `True`가 하나도 없으면 모든 값이 `False`로 같으므로 가장 앞의 자리인 0이 나와요. "0번 자리가 처음으로 만족했다"와 구별되지 않아요.
+
+```python
+>>> sd.argmax(sd.asarray([40, 55]) >= 60)
+0
+```
+
+<Callout type="warn" title="하나도 없을 때도 0이 나와요">
+
+조건을 만족하는 원소가 없어도 `argmax`는 에러 없이 `0`을 돌려줘요. 만족하는 원소가 없을 수 있다면 `sd.any(조건)`으로 먼저 확인하세요. 만족하는 자리를 모두 알고 싶으면 [`nonzero`](/api/array/nonzero/)를 써요.
+
+</Callout>
+
+```python
+>>> sd.any(sd.asarray([40, 55]) >= 60)
+False
+```
+
+### NaN이 있으면 NaN의 자리가 나와요
+
+NaN(숫자가 아님)이 있으면 `argmax`와 `argmin` 모두 첫 NaN의 자리를 돌려줘요. `max`와 `min`이 NaN을 돌려주는 것과 짝이 맞아요.
+
+```python
+>>> w = sd.asarray([1.0, sd.nan, 5.0, sd.nan])
+>>> sd.argmax(w)
+1
+>>> sd.argmin(w)
+1
+```
+
+NaN을 건너뛰고 찾으려면 [`nanargmax`, `nanargmin`](/api/array/nan-reductions/)을 써요.
+
+```python
+>>> sd.nanargmax(w)
+2
+```
+
+### 빈 배열에서는 에러예요
+
+비교할 원소가 하나도 없으면 자리를 정할 수 없어서 `ValueError`예요. 축을 따라 찾을 때 그 축의 길이가 0인 경우도 마찬가지예요.
+
+```python
+>>> sd.argmax(sd.asarray([]))
+Traceback (most recent call last):
+    ...
+ValueError: argmax(): undefined for an empty array (or along an empty axis)
+```
+
+결과 자체가 비어 있으면(모양 `(0, 3)`에서 `axis=1`처럼 답할 행이 없으면) 에러 없이 빈 배열이 나와요.
+
+```python
+>>> sd.argmax(sd.zeros((0, 3)), axis=1)
+array([], dtype=int64)
+```
+
+### 복소수는 받지 않아요
+
+복소수에는 크고 작음이 없어서 `TypeError`예요. 크기가 가장 큰 원소의 자리가 필요하면 `sd.argmax(sd.abs(z))`처럼 크기를 먼저 구하세요.
+
+```python
+>>> sd.argmax(sd.asarray([1j, 2j]))
+Traceback (most recent call last):
+    ...
+TypeError: argmax(): not supported for complex128
+```
+
+## 비슷한 함수와의 차이
+
+| 하고 싶은 일 | 쓸 것 | `argmax`·`argmin`과 다른 점 |
+|---|---|---|
+| 가장 큰·작은 값 | `max`, `min` | 자리가 아니라 값을 돌려줘요. |
+| 크기 순서 전체 | `argsort` | 모든 원소의 순서를 돌려줘요. 첫 원소가 `argmin`과 같아요. |
+| 조건을 만족하는 자리 모두 | `nonzero` | 0이 아닌(참인) 원소의 자리를 전부 돌려줘요. |
+| NaN을 건너뛰고 찾기 | `nanargmax`, `nanargmin` | NaN을 무시해요. 전부 NaN이면 에러예요. |
+
+`max`와 `argmax`의 관계는 [`sort`와 `argsort`](/api/array/sort/)의 관계와 같아요. `arg`가 붙은 쪽은 값 대신 자리를 돌려줘요.
+
+## numpy를 아는 분께
+
+- `axis`는 int나 `None`만 받아요(tuple·list는 `TypeError`). `axis=None`이면 numpy처럼 평탄화한 위치예요.
+- 동점이면 첫 위치, NaN이 있으면 첫 NaN의 위치인 것은 numpy와 같아요.
+- 복소수는 numpy처럼 사전순으로 비교하지 않고 `TypeError`예요.
+- `np.unravel_index`는 없어요. 위에서 본 `divmod`로 (행, 열)을 구하세요.
+- `out=` 인자는 없어요. `axis`, `keepdims`는 keyword-only예요. 결과가 0차원이면 Python `int`예요.

@@ -1,0 +1,324 @@
+---
+title: 복소수의 부분
+names: [real, imag, conj]
+group: 복소수
+order: 1
+signatures:
+  - "sd.real(x, /, *, out=None)"
+  - "sd.imag(x, /, *, out=None)"
+  - "sd.conj(x, /, *, out=None)"
+summary: 복소수 배열에서 실수부(real)와 허수부(imag)를 꺼내거나, 허수부의 부호를 뒤집은 켤레복소수(conj)를 만들어요.
+params:
+  - name: x
+    type: ndarray 또는 Python 숫자
+    kind: positional-only
+    desc: 입력. 복소수가 아니어도 받아요.
+  - name: out
+    type: ndarray 또는 None
+    kind: keyword-only
+    desc: 결과를 적어 넣을 배열. None이면 아래 규칙대로 결과를 돌려줘요.
+returns:
+  type: ndarray 또는 Python 숫자
+  desc: x와 같은 모양. 복소수 입력의 real·imag는 원본을 함께 쓰는 float64 배열(뷰), conj는 새 complex128 배열이에요. 복소수가 아닌 입력은 dtype이 그대로예요. x가 Python 숫자면 Python 숫자예요.
+raises:
+  - type: TypeError
+    desc: 리스트처럼 배열도 숫자도 아닌 것을 넣었을 때, out의 dtype이 결과를 담을 수 없을 때.
+  - type: ValueError
+    desc: out의 모양이 맞지 않을 때, 복소수가 아닌 배열의 imag 결과(쓰기 금지)에 값을 쓰려 할 때.
+  - type: OverflowError
+    desc: int64 범위를 벗어난 Python 정수를 넣었을 때.
+seeAlso: [sign, astype, views, trig, dtypes]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+import FigRow from '../../../components/fig/FigRow.astro';
+
+## 한눈에 보기
+
+복소수는 `3+4j`처럼 **실수부**(여기서는 3)와 **허수부**(4) 두 부분으로 이뤄진 수예요. Python에서는 허수 단위를 `j`로 써요. stardust의 복소수 배열(complex128)은 원소마다 이 두 부분을 함께 담고 있어요.
+
+세 함수는 이 두 부분을 다뤄요.
+
+- `real(x)`: 실수부만 꺼내요.
+- `imag(x)`: 허수부만 꺼내요. 결과는 `j`가 붙지 않은 실수예요.
+- `conj(x)`: 켤레복소수를 만들어요. 허수부의 부호만 뒤집은 수예요(`3+4j` → `3-4j`).
+
+```python
+>>> import stardust as sd
+>>> z = sd.asarray([3 + 4j, 1 - 2j, 5j])
+>>> sd.real(z)
+array([3.0, 1.0, 0.0], dtype=float64)
+>>> sd.imag(z)
+array([ 4.0, -2.0,  5.0], dtype=float64)
+>>> sd.conj(z)
+array([(3-4j), (1+2j),    -5j], dtype=complex128)
+```
+
+<Fig column caption="complex128 배열의 원소 하나는 실수부와 허수부 두 칸으로 이뤄져요. real과 imag는 그중 한 칸씩을 꺼내요.">
+  <FigRow>
+    <ArrayFig name="z" data={['3+4j', '1-2j', '0+5j']} />
+    <Op note="real">→</Op>
+    <ArrayFig name="sd.real(z)" data={[3.0, 1.0, 0.0]} tones={['a', 'a', 'a']} note="float64" />
+  </FigRow>
+  <FigRow>
+    <ArrayFig name="z" data={['3+4j', '1-2j', '0+5j']} />
+    <Op note="imag">→</Op>
+    <ArrayFig name="sd.imag(z)" data={[4.0, -2.0, 5.0]} tones={['b', 'b', 'b']} note="float64" />
+  </FigRow>
+</Fig>
+
+배열에는 `.real`, `.imag` 같은 속성이 없어요. 언제나 함수로 꺼내요.
+
+```python
+>>> z.real
+Traceback (most recent call last):
+    ...
+AttributeError: 'ndarray' object has no attribute 'real'
+```
+
+<Reference />
+
+## 실수부와 허수부로 무엇을 하나요
+
+### 크기와 방향
+
+복소수를 평면 위의 점 `(실수부, 허수부)`로 보면, 원점에서의 거리(크기)와 방향(각도)을 구할 수 있어요. 크기는 `sd.abs`, 각도는 [`atan2`](/api/array/trig/)에 허수부와 실수부를 차례로 넣어서 구해요.
+
+```python
+>>> sd.abs(z)
+array([             5.0, 2.23606797749979,              5.0], dtype=float64)
+>>> sd.atan2(sd.imag(z), sd.real(z))
+array([ 0.9272952180016122, -1.1071487177940904,  1.5707963267948966], dtype=float64)
+```
+
+### 켤레복소수와 곱하면 크기의 제곱
+
+복소수에 그 켤레복소수를 곱하면 허수부가 사라지고 크기의 제곱만 남아요. 결과의 dtype은 여전히 complex128이라서, 실수로 쓰려면 `real`로 꺼내요.
+
+```python
+>>> z * sd.conj(z)
+array([(25+0j),  (5+0j), (25+0j)], dtype=complex128)
+>>> sd.real(z * sd.conj(z))
+array([25.0,  5.0, 25.0], dtype=float64)
+```
+
+### 두 부분으로 복소수 만들기
+
+거꾸로, 실수 배열 두 개로 복소수 배열을 만들려면 허수부에 `1j`를 곱해서 더해요.
+
+```python
+>>> re = sd.asarray([2.0, 0.5])
+>>> im = sd.asarray([1.0, -1.0])
+>>> re + 1j * im
+array([  (2+1j), (0.5-1j)], dtype=complex128)
+```
+
+### 복소수를 실수로 바꾸기
+
+복소수 배열을 `astype`으로 실수 배열로 바꾸려 하면 `TypeError`예요. 허수부를 조용히 버리면 잘못 쓴 코드를 알아채기 어렵기 때문이에요. 실수부만 필요하다면 `real`로 분명히 꺼내세요.
+
+```python
+>>> sd.asarray([1 + 2j]).astype(sd.float64)
+Traceback (most recent call last):
+    ...
+TypeError: astype(): cannot convert complex128 to float64: the imaginary part would be lost (take the real part explicitly)
+>>> sd.real(sd.asarray([1 + 2j]))
+array([1.0], dtype=float64)
+```
+
+## real과 imag는 원본을 함께 써요
+
+복소수 배열의 `real(z)`와 `imag(z)`는 값을 복사하지 않아요. 원본의 메모리에서 실수부 칸이나 허수부 칸만 골라 보는 배열이에요. 이런 배열을 [뷰](/api/array/views/)(view)라고 해요. 그래서 결과에 값을 쓰면 원본 `z`가 바뀌어요.
+
+```python
+>>> w = sd.asarray([3 + 4j, 1 - 2j, 5j])
+>>> re_w = sd.real(w)
+>>> re_w[0] = 100.0
+>>> w
+array([(100+4j),   (1-2j),       5j], dtype=complex128)
+```
+
+이 성질을 이용하면 복소수 배열의 한 부분만 제자리에서 고칠 수 있어요. 예를 들어 허수부를 모두 0으로 만들거나, 실수부만 두 배로 할 수 있어요.
+
+```python
+>>> sd.imag(w)[:] = 0.0
+>>> w
+array([(100+0j),   (1+0j),       0j], dtype=complex128)
+>>> sd.real(w)[...] *= 2
+>>> w
+array([(200+0j),   (2+0j),       0j], dtype=complex128)
+```
+
+여러 차원에서도 마찬가지예요. 일부 자리만 골라서 쓸 수도 있어요.
+
+```python
+>>> t = sd.asarray([[1 + 1j, 2 + 2j], [3 + 3j, 4 + 4j]])
+>>> sd.imag(t)[:, 0] = -1.0
+>>> t
+array([[(1-1j), (2+2j)],
+       [(3-1j), (4+4j)]], dtype=complex128)
+```
+
+<Callout type="warn" title="꺼낸 실수부를 고쳤더니 원본이 바뀌었어요">
+
+`re = sd.real(z)`로 꺼낸 다음 `re`를 고치면 `z`도 함께 바뀌어요. 원본과 상관없는 실수 배열이 필요하다면 `sd.real(z).copy()`로 복사본을 만드세요.
+
+</Callout>
+
+```python
+>>> u = sd.asarray([3 + 4j])
+>>> part = sd.real(u).copy()
+>>> part[0] = 9.0
+>>> u
+array([(3+4j)], dtype=complex128)
+```
+
+뷰인지는 `base` 속성으로 확인할 수 있어요. 뷰의 `base`는 메모리의 주인인 원본 배열이에요.
+
+```python
+>>> sd.real(u).base is u
+True
+```
+
+`conj`는 뷰가 아니라 언제나 새 배열이에요. 결과를 고쳐도 원본은 바뀌지 않아요.
+
+## 복소수가 아닌 배열을 넣으면
+
+세 함수는 복소수가 아닌 배열도 받아요. 실수는 "허수부가 0인 복소수"로 볼 수 있기 때문이에요. 다만 돌려주는 것이 조금씩 달라요.
+
+| 함수 | 복소수 배열 | 복소수가 아닌 배열 |
+|---|---|---|
+| `real` | 원본을 함께 쓰는 float64 뷰 | 입력 배열 자신 |
+| `imag` | 원본을 함께 쓰는 float64 뷰 | 같은 dtype의 0 배열(새로 만듦, 쓰기 금지) |
+| `conj` | 새 complex128 배열 | 값이 같은 새 배열(사본) |
+
+### real은 입력 자신을 돌려줘요
+
+실수 배열의 실수부는 그 배열 자체예요. 그래서 `real`은 새 배열을 만들지 않고 입력을 그대로 돌려줘요. 결과를 고치면 입력이 바뀌어요.
+
+```python
+>>> x = sd.asarray([1.0, 2.0])
+>>> sd.real(x) is x
+True
+```
+
+### imag는 쓰기 금지인 0 배열이에요
+
+실수 배열의 허수부는 모두 0이에요. `imag`는 같은 dtype의 0 배열을 새로 만들어 돌려주는데, 이 배열에는 **값을 쓸 수 없어요**. 복소수 배열의 `imag`처럼 "써 넣으면 원본의 허수부가 바뀐다"고 기대하기 쉽지만, 실수 배열에는 허수부를 담을 자리가 없어서 써 넣은 값이 갈 곳이 없어요. 그래서 조용히 무시하는 대신 에러를 내요.
+
+```python
+>>> ix = sd.imag(x)
+>>> ix
+array([0.0, 0.0], dtype=float64)
+>>> ix[0] = 5.0
+Traceback (most recent call last):
+    ...
+ValueError: assignment destination is read-only
+>>> ix += 1
+Traceback (most recent call last):
+    ...
+ValueError: output array is read-only
+```
+
+읽어서 새 값을 계산하는 것은 괜찮아요. 결과는 평범한 새 배열이에요.
+
+```python
+>>> ix + 1
+array([1.0, 1.0], dtype=float64)
+```
+
+실수 배열에 허수부를 붙이고 싶다면 복소수 배열을 새로 만들어야 해요. `x + 1j * 허수부`처럼 쓰세요.
+
+### 결과의 dtype
+
+| 입력 | `real`, `imag` | `conj` |
+|---|---|---|
+| bool | bool | bool |
+| int64 | int64 | int64 |
+| float64 | float64 | float64 |
+| complex128 | float64 | complex128 |
+
+```python
+>>> sd.imag(sd.asarray([1, 2]))
+array([0, 0], dtype=int64)
+>>> sd.conj(sd.asarray([1, 2]))
+array([1, 2], dtype=int64)
+```
+
+## 숫자 하나도 받아요
+
+Python 숫자를 넣으면 결과도 배열이 아니라 Python 숫자예요. 결과의 타입은 위 표의 dtype을 따라요.
+
+```python
+>>> sd.real(3 - 4j)
+3.0
+>>> sd.imag(3 - 4j)
+-4.0
+>>> sd.conj(3 + 4j)
+(3-4j)
+>>> sd.imag(3)
+0
+>>> sd.real(True)
+True
+```
+
+`sd.imag(3)`이 `0.0`이 아니라 `0`인 것은 입력이 정수라서 결과도 정수이기 때문이에요.
+
+리스트나 numpy 배열은 받지 않아요. 먼저 [`asarray`](/api/array/asarray/)로 배열로 바꾸세요. 이유는 [배열의 기본](/api/array/basics/)에 있어요.
+
+```python
+>>> sd.real([1j])
+Traceback (most recent call last):
+    ...
+TypeError: real(): 'x' must be an sd.ndarray or a bool, int, float or complex, not list
+```
+
+## `out`: 결과를 기존 배열에 쓰기
+
+`out=`에 배열을 주면 그 배열에 결과를 적은 다음, 그 배열을 돌려줘요. `real`과 `imag`도 이때는 뷰를 만들지 않고 값을 복사해 적어요. 그래서 원본과 메모리를 함께 쓰지 않는 결과가 필요할 때 쓸 수 있어요.
+
+```python
+>>> buf = sd.zeros(3)
+>>> sd.real(z, out=buf) is buf
+True
+>>> buf
+array([3.0, 1.0, 0.0], dtype=float64)
+```
+
+`out`의 dtype은 결과를 손실 없이 담을 수 있어야 해요. `conj`의 결과는 복소수라서 실수 배열에는 담을 수 없어요. 그 밖의 규칙은 [사칙연산의 `out`](/api/array/arithmetic/#out-결과를-기존-배열에-쓰기)과 같아요.
+
+```python
+>>> sd.conj(z, out=sd.zeros(3))
+Traceback (most recent call last):
+    ...
+TypeError: conj(): cannot implicitly convert complex128 to float64 (that would lose information); convert explicitly with astype
+```
+
+## 비슷한 함수와의 차이
+
+| 하고 싶은 일 | 쓸 것 | 차이 |
+|---|---|---|
+| 복소수의 크기 | `abs` | 실수부·허수부가 아니라 원점에서의 거리를 float64로 돌려줘요. |
+| 복소수의 각도 | `atan2(imag(z), real(z))` | 따로 각도 함수는 없어요. 두 부분을 꺼내서 `atan2`에 넣어요. |
+| 복소수를 실수 배열로 | `real` | `astype(sd.float64)`는 `TypeError`예요. |
+| 부호 뒤집기 | `negative` (`-z`) | 실수부와 허수부의 부호를 **모두** 뒤집어요. `conj`는 허수부만 뒤집어요. |
+
+마지막 줄의 차이를 `3+4j`로 확인해 볼게요.
+
+```python
+>>> -u
+array([(-3-4j)], dtype=complex128)
+>>> sd.conj(u)
+array([(3-4j)], dtype=complex128)
+```
+
+## numpy를 아는 분께
+
+- 배열에 `.real`, `.imag` 속성이 없어요. `sd.real(z)`, `sd.imag(z)`를 쓰세요. 결과는 numpy처럼 원본을 함께 쓰는 뷰라서 쓰면 원본이 바뀌어요.
+- 복소수가 아닌 배열의 `real`은 입력 객체 자신(`sd.real(x) is x`)이에요.
+- 복소수가 아닌 배열의 `imag`는 쓰기 금지인 0 배열이에요.
+- `conj`만 있고 `conjugate`라는 이름은 없어요. `angle`도 없어요. `sd.atan2(sd.imag(z), sd.real(z))`로 구하세요.
+- 복소수에서 실수로의 `astype`은 경고 대신 `TypeError`예요.
+- Python 숫자를 넣으면 numpy 스칼라가 아니라 Python 숫자가 나와요.

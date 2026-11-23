@@ -1,0 +1,214 @@
+---
+kind: function
+title: compare
+names: [Figure.compare]
+group: 결과 객체의 그림
+order: 1
+signatures:
+  - "fig.compare(result, /, *, groups=None, format='p', y=None)"
+summary: sd.htest의 검정 결과를 범주 축 그림(boxplot, strip, bar) 위에 괄호와 p값으로 얹어요. 그림이 검정을 고르거나 다시 계산하지 않고, 받은 결과의 p값을 그대로 적어요. tukey_hsd 같은 다중 비교의 결과는 모든 짝의 괄호가, dunnett의 결과는 대조군과의 괄호가 돼요.
+params:
+  - name: result
+    type: 검정의 결과 객체
+    kind: positional-only
+    desc: "pvalue가 있는 결과. pvalue가 수 하나이면 괄호 하나, k × k 배열(tukey_hsd 등 다중 비교)이면 모든 짝의 괄호, dunnett의 결과이면 첫 범주(대조군)와 나머지 범주를 잇는 괄호를 그려요. 수 하나와 k × k는 형이 아니라 pvalue라는 필드로 가리므로, pvalue를 가진 어떤 객체든 돼요."
+  - name: groups
+    type: 범주 라벨 둘의 튜플·리스트, 또는 None
+    kind: keyword-only
+    desc: "괄호가 이을 두 범주. 순서는 상관없어요. 범주가 둘뿐이면 생략해도 돼요(None, 기본값). 다중 비교와 dunnett의 결과에는 줄 수 없어요."
+  - name: format
+    type: str
+    kind: keyword-only
+    desc: "p값을 적는 꼴. 'p'(기본값)는 p = 0.012처럼 소수 셋째 자리까지, 0.001보다 작으면 p < 0.001이에요. 'stars'는 ns, *, **, ***(p ≤ 0.05, 0.01, 0.001)예요. p값이 NaN이면 어느 꼴이든 n/a라고 적어요."
+  - name: y
+    type: None
+    kind: keyword-only
+    desc: "None만 받아요. 괄호의 높이는 그림이 자료 위에 정해요."
+returns:
+  type: Figure
+  desc: "괄호를 더한 그 그림(fig 자신)이에요."
+raises:
+  - type: TypeError
+    desc: "result에 pvalue가 없을 때, groups가 둘짜리 튜플·리스트가 아닐 때."
+  - type: ValueError
+    desc: "칸에 범주 축이 없을 때, 범주가 셋 이상인데 groups를 주지 않았을 때, 없는 범주를 groups에 줬을 때, 다중 비교나 dunnett의 결과에 groups를 줬을 때, 결과가 견준 무리의 수와 범주의 수가 맞지 않을 때, pvalue가 수 하나도 k × k도 아닌 배치 결과일 때, format이 'p'나 'stars'가 아닐 때, y가 None이 아닐 때."
+seeAlso: [boxplot, strip, bar, fit, basics, customize]
+---
+import PlotImage from '../../../components/fig/PlotImage.astro';
+
+## 한눈에 보기
+
+대조군과 약을 준 무리를 스무 개씩 재고, 두 평균이 같은지 t 검정을 했어요. 상자 그림을 그리고 그 결과를 `compare`에 넘기면 두 상자 위에 괄호와 p값이 붙어요.
+
+```python
+>>> import stardust as sd
+>>> rng = sd.random.default_rng(7)
+>>> control = sd.stats.Normal(mu=5.0, sigma=1.0).sample((20,), rng=rng)
+>>> drug = sd.stats.Normal(mu=6.2, sigma=1.0).sample((20,), rng=rng)
+>>> r = sd.htest.ttest_ind(control, drug)
+>>> r
+TtestIndResult(statistic=-2.17243, pvalue=0.0361284, df=38)
+>>> group = ["control"] * 20 + ["drug"] * 20
+>>> fig = sd.plot.boxplot(group, sd.concat([control, drug])).ylabel("Response")
+>>> fig = fig.compare(r)
+```
+
+<PlotImage name="compare-two" alt="control과 drug 두 상자 그림 위에 두 상자를 잇는 괄호가 있고, 괄호 위에 p = 0.036이 적힌 그림" caption="ttest_ind의 p값 0.0361을 소수 셋째 자리까지 적었어요. 괄호가 들어갈 만큼 세로축이 위로 늘어났지만 눈금은 자료의 범위에만 있어요." />
+
+<Reference />
+
+## 무엇을 하나요
+
+`compare`는 그림에 무리 사이의 검정 결과를 적어요. 그리는 것은 두 범주를 잇는 괄호와 그 위의 글자 하나예요.
+
+- **검정은 사용자가 해요.** `compare`는 `result.pvalue`를 읽어 적을 뿐, 어떤 검정을 쓸지 고르거나 자료로 p값을 다시 계산하지 않아요. 그래서 그림에 적힌 수는 언제나 손에 든 결과의 수와 같고, 같은 자료라도 t 검정, [`mannwhitneyu`](/api/htest/mannwhitneyu/), 순열 검정 가운데 무엇을 했는지는 코드에 그대로 남아요.
+- **범주 축 위에만 그려요.** [`boxplot`](/api/plot/boxplot/), [`strip`](/api/plot/strip/), [`bar`](/api/plot/bar/)처럼 가로축이 범주인 칸에 메서드로 불러요. 모듈 함수 `sd.plot.compare`는 없어요. 얹을 그림이 먼저 있어야 하니까요.
+- **괄호는 자료 위에 쌓여요.** 괄호를 하나 얹을 때마다 세로축이 그만큼 위로 늘어나 괄호가 상자나 점을 가리지 않아요.
+
+괄호의 글자는 [그림의 다른 글자](/api/plot/basics/)처럼 LaTeX가 조판해요. `p`는 수식 글꼴의 기울인 글자예요.
+
+## 범주가 셋 이상일 때: groups
+
+범주가 둘이면 괄호가 이을 곳이 정해져 있어요. 셋 이상이면 `groups=`에 두 범주의 라벨을 줘요. 순서는 상관없어요.
+
+```python
+>>> low = sd.stats.Normal(mu=5.6, sigma=1.0).sample((20,), rng=rng)
+>>> high = sd.stats.Normal(mu=6.8, sigma=1.0).sample((20,), rng=rng)
+>>> g3 = ["control"] * 20 + ["low"] * 20 + ["high"] * 20
+>>> v3 = sd.concat([control, low, high])
+>>> fig = sd.plot.boxplot(g3, v3)
+>>> fig = fig.compare(sd.htest.ttest_ind(control, high), groups=("control", "high"))
+```
+
+`groups`의 라벨은 범주 축에 적힌 그대로의 문자열이에요. 없는 라벨이면 `ValueError: compare(): no category 'hihg'`처럼 알려 줘요.
+
+`compare`를 여러 번 부르면 괄호가 한 층씩 쌓여요. 먼저 부른 괄호가 자료 바로 위의 맨 아래 층이고, 다음 괄호는 그 위 층에 놓여요. 층이 하나 늘 때마다 세로축도 한 층만큼 더 늘어나요.
+
+## 다중 비교의 결과: 모든 짝을 한 번에
+
+[`tukey_hsd`](/api/htest/tukey_hsd/)처럼 k개 무리의 모든 짝을 견준 결과는 `pvalue`가 k × k 배열이에요. 이런 결과를 넘기면 `groups` 없이 모든 짝의 괄호를 그려요. i번째 무리는 범주 축의 i번째 범주로 읽어요.
+
+```python
+>>> t = sd.htest.tukey_hsd(control, low, high)
+>>> t.pvalue.shape
+(3, 3)
+>>> fig = sd.plot.boxplot(g3, v3).strip(g3, v3, color="gray", size=2, alpha=0.5)
+>>> fig = fig.ylabel("Response").compare(t)
+```
+
+<PlotImage name="compare-tukey" alt="control, low, high 세 상자 그림과 그 위의 회색 점들. 아래에서부터 control–low에 p = 0.096, low–high에 p = 0.009, control–high에 p < 0.001이 적힌 괄호 셋이 있는 그림" caption="tukey_hsd의 3 × 3 p값에서 세 짝을 그렸어요. 이웃한 짝이 상자에 가까운 아래 층, 멀리 떨어진 짝이 맨 위 층이에요. 0.001보다 작은 p값은 p < 0.001로 적어요." />
+
+짝의 차례는 이웃한 짝(범주 거리 1)부터 먼 짝 순서예요. 그래서 짧은 괄호가 아래에, 긴 괄호가 그 위를 덮듯이 놓여 서로 엇갈려 보이지 않아요. 무리가 다섯이면 괄호가 열 개라 칸의 위쪽 대부분을 괄호가 차지해요. 그럴 때는 그림의 `height`를 늘리거나 보고 싶은 짝만 `groups`로 골라 그리세요.
+
+결과가 견준 무리의 수가 그림의 범주 수와 다르면 `ValueError`예요. 무리의 차례는 검정에 표본을 넘긴 차례이고, 범주의 차례는 그림에 처음 나온 차례예요. 둘을 같게 맞춰 주세요.
+
+## p값의 꼴: format
+
+`format='p'`(기본값)는 `p = 0.036`처럼 소수 셋째 자리까지 적고, 0.001보다 작으면 `p < 0.001`로 적어요. `format='stars'`는 별의 수로 적어요.
+
+| p값 | `'stars'` |
+|---|---|
+| p > 0.05 | ns |
+| 0.01 < p ≤ 0.05 | * |
+| 0.001 < p ≤ 0.01 | ** |
+| p ≤ 0.001 | *** |
+
+막대 그림에도 얹을 수 있어요. 무리마다 평균과 표준오차를 막대와 오차 막대로 그리고, 대조군과의 비교를 별로 적어 봐요. [`bar`](/api/plot/bar/)의 `err=`가 막대마다의 오차를 받아요.
+
+```python
+>>> names = ["control", "low", "high"]
+>>> means = [sd.mean(v) for v in (control, low, high)]
+>>> sems = [sd.stats.sem(v) for v in (control, low, high)]
+>>> fig = sd.plot.bar(names, means, err=sems)
+>>> fig = fig.compare(sd.htest.ttest_ind(control, low), groups=("control", "low"), format="stars")
+>>> fig = fig.compare(sd.htest.ttest_ind(control, high), groups=("control", "high"), format="stars")
+```
+
+<PlotImage name="compare-stars" alt="control, low, high의 평균을 나타낸 파란 막대 셋과 막대 끝의 오차 막대. 아래 층에 control–low를 잇는 괄호와 ns, 위 층에 control–high를 잇는 괄호와 ***가 있는 그림" caption="compare를 두 번 불렀어요. 먼저 부른 control–low가 아래 층이에요. 별은 p값의 크기만 알려 주므로, 논문에는 어떤 검정을 했는지 함께 적어요." />
+
+별은 한눈에 읽히지만 수가 사라져요. 0.051과 0.9가 모두 `ns`예요. p값 자체가 궁금한 독자를 위해서는 `'p'`가 나아요.
+
+검정이 p값을 내지 못해 `pvalue`가 NaN이면 두 꼴 모두 `n/a`라고 적어요. `ns`(유의하지 않음)와는 다른 뜻이라 따로 적어요.
+
+## 괄호가 들어갈 자리
+
+괄호를 얹은 칸은 세로축의 위쪽 끝이 괄호의 층 수만큼 늘어나요. 로그 세로축이면 로그 척도에서 같은 높이만큼 늘어나요. 이때 눈금과 눈금 라벨은 자료의 범위에만 두고, 괄호 옆에는 눈금이 없어요. 세로축이 늘어난 것은 괄호의 자리일 뿐 자료의 값이 아니니까요.
+
+세로축의 위쪽 한계를 [`ylim`](/api/plot/customize/)으로 직접 주면 그 범위를 그대로 쓰고 자리를 더 만들지 않아요. 괄호는 칸의 맨 위에서부터 층마다 일정한 간격으로 놓이므로, 위쪽 한계를 줄 때는 괄호가 들어갈 여유를 함께 남겨 주세요. 막대 그림처럼 0에서 시작하게만 하고 싶으면 `ylim(0, None)`으로 아래만 고정해요. 위쪽은 그대로 괄호만큼 늘어나요.
+
+```python
+>>> fig = sd.plot.bar(names, means).ylim(0, None).compare(t)
+```
+
+## 받는 결과
+
+`compare`는 결과의 형을 보지 않고 `pvalue`라는 필드만 읽어요.
+
+- `pvalue`가 수 하나: [`ttest_ind`](/api/htest/ttest_ind/), [`mannwhitneyu`](/api/htest/mannwhitneyu/), [`ttest_rel`](/api/htest/ttest_rel/) 같은 두 표본 검정. [`f_oneway`](/api/htest/f_oneway/)나 [`kruskal`](/api/htest/kruskal/) 같은 전체 검정도 p값이 하나라서 받지만, 괄호는 두 범주만 이어요. 셋 이상을 함께 본 검정을 두 범주 사이의 괄호로 그리면 읽는 사람이 오해하기 쉬우니, 그런 결과는 제목이나 글로 적는 편이 나아요.
+- `pvalue`가 k × k: [`tukey_hsd`](/api/htest/tukey_hsd/) 같은 모든 짝의 비교.
+- [`dunnett`](/api/htest/dunnett/)의 결과: 대조군과 견준 p값이 무리마다 하나씩 있어요. 범주 축의 첫 범주를 대조군으로 보고, 나머지 범주마다 첫 범주와 잇는 괄호를 그려요. `groups`는 받지 않아요.
+
+```python
+>>> d = sd.htest.dunnett(low, high, control=control)
+>>> d
+DunnettResult(statistic=[2.1127, 5.19742], pvalue=[0.0710821, 5.63488e-06], df=57)
+>>> fig = sd.plot.boxplot(g3, v3).ylabel("Response").compare(d)
+```
+
+<PlotImage name="compare-dunnett" alt="control, low, high 세 상자 그림 위에 control–low를 잇는 괄호와 p = 0.071, 그 위에 control–high를 잇는 괄호와 p < 0.001이 있는 그림" caption="dunnett의 결과는 대조군과의 괄호만 그려요. 대조군인 control이 범주 축의 첫 범주여야 해요." />
+
+대조군을 범주 축의 첫 자리에 두고, 나머지 범주는 `dunnett`에 표본을 넘긴 차례와 같게 맞춰 주세요. 견준 무리의 수가 범주의 수보다 하나 적지 않으면 `ValueError`예요.
+
+그 밖의 꼴(길이가 있는 `pvalue`, 여러 검정을 한 번에 한 배치 결과)은 `ValueError`예요. 이런 값이나, [`multipletests`](/api/htest/multipletests/)로 보정한 p값을 그리려면 `pvalue` 필드 하나를 가진 작은 객체로 하나씩 넘기면 돼요.
+
+```python
+>>> import types
+>>> raw = [sd.htest.ttest_ind(control, v).pvalue for v in (low, high)]
+>>> adj = sd.htest.multipletests(raw, method="holm").pvalues_corrected
+>>> fig = sd.plot.boxplot(g3, v3)
+>>> for name, p in zip(["low", "high"], adj.tolist()):
+...     fig = fig.compare(types.SimpleNamespace(pvalue=p), groups=("control", name))
+```
+
+여러 검정의 p값을 그대로 그리면 여러 번 견준 만큼 우연히 작은 값이 나올 기회가 늘어나요. 그림에 보정한 값을 적었다면 어떤 보정인지 캡션에 함께 적어 주세요.
+
+## 에러
+
+```python
+>>> sd.plot.line([0.0, 1.0], [0.0, 1.0]).compare(r)
+Traceback (most recent call last):
+    ...
+ValueError: compare(): the figure has no category axis (compare draws over boxplot, strip or bar)
+>>> sd.plot.boxplot(g3, v3).compare(r)
+Traceback (most recent call last):
+    ...
+ValueError: compare(): 'groups' must name the two categories compared (the figure has 3)
+>>> sd.plot.boxplot(group, sd.concat([control, drug])).compare(t)
+Traceback (most recent call last):
+    ...
+ValueError: compare(): the result compares 3 groups, the figure has 2 categories
+>>> sd.plot.boxplot(g3, v3).compare(t, groups=("control", "low"))
+Traceback (most recent call last):
+    ...
+ValueError: compare(): 'groups' cannot be given for a multiple comparison (its groups are the categories in order)
+>>> sd.plot.boxplot(g3, v3).compare(3)
+Traceback (most recent call last):
+    ...
+TypeError: compare(): 'result' must be a test result with a pvalue, not int
+>>> both = sd.htest.ttest_ind(sd.stack([control, low]), sd.stack([high, high]), axis=1)
+>>> sd.plot.boxplot(group, sd.concat([control, drug])).compare(both)
+Traceback (most recent call last):
+    ...
+ValueError: compare(): 'result' has a pvalue of shape (2,); a batch of tests cannot be drawn, give one
+```
+
+## 조심할 점
+
+- 괄호의 위치는 범주 축의 범주로만 정해요. `boxplot(..., group=...)`처럼 한 범주 안에 상자가 여럿이어도 괄호는 범주의 가운데를 이어요. 범주 안의 무리끼리 견준 결과를 그리면 괄호가 가리키는 것과 검정이 견준 것이 달라져요.
+- 가로 막대(`bar(..., horizontal=True)`)는 범주가 세로축에 있어서 `compare`가 받지 않아요.
+- 그림의 p값은 받은 결과의 값이에요. 자료를 바꾸고 검정을 다시 하지 않으면 그림의 수도 그대로예요.
+
+## matplotlib을 아는 분께
+
+- matplotlib에는 이런 기능이 없어 보통 `ax.plot`과 `ax.text`로 괄호를 손으로 그리거나 statannotations 같은 확장을 써요. ggplot2의 ggpubr에 있는 `stat_compare_means`가 가장 가까운데, 그것은 그림이 검정을 골라 직접 계산해요. `compare`는 검정을 따로 하고 그 결과를 넘기는 방식이에요.
+- `geom_signif`처럼 괄호의 높이를 손으로 정하는 인자는 없어요. 괄호는 그림이 자료 위에 층으로 쌓아요.

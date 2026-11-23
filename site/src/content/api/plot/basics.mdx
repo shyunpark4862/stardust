@@ -1,0 +1,343 @@
+---
+kind: concept
+title: 그림의 기본
+group: 기본 개념
+order: 1
+summary: sd.plot을 처음 쓸 때 읽는 페이지예요. 그림 하나가 Figure 객체라는 것, 같은 이름의 메서드로 겹쳐 그리는 법, 모든 그림 함수가 받는 그림 옵션, 자료를 넘기는 꼴(data=, group=, color=), NaN, 색과 선과 점의 꼴, LaTeX로 조판하는 글자, TeX가 필요하다는 것과 에러의 꼴을 설명해요.
+seeAlso: [figure, customize, export, style, line, scatter, function]
+---
+import Callout from '../../../components/Callout.astro';
+import PlotImage from '../../../components/fig/PlotImage.astro';
+
+## 그림 하나가 Figure예요
+
+`sd.plot`의 그림 함수는 모두 그림 한 장을 `Figure` 객체로 돌려줘요. 한 번 부르면 축, 눈금, 글자가 갖춰진 그림이 나오고, 그 객체의 메서드로 선을 더 얹거나 축 이름을 붙여요.
+
+```python
+>>> import stardust as sd
+>>> x = sd.linspace(0, 5, 200)
+>>> fig = sd.plot.line(x, sd.exp(-x), label=r"$e^{-x}$")
+>>> fig = fig.line(x, x * sd.exp(-x), style="--", label=r"$x e^{-x}$")
+>>> fig = fig.xlabel(r"$x$").title("두 함수")
+```
+
+<PlotImage name="basics-hero" alt="0에서 5까지 감소하는 파란 실선 e^-x와 x=1에서 꼭대기를 이루는 노란 점선 x e^-x, 오른쪽 위에 범례, 위에 '두 함수' 제목" caption="선 두 개를 한 칸에 겹치고 축 이름과 제목을 붙인 그림이에요. 이름(label)을 준 선이 있으니 범례가 저절로 생겼어요." />
+
+몇 가지가 matplotlib의 pyplot과 달라요.
+
+- **지금 그림이라는 전역 상태가 없어요.** 그리는 대상은 언제나 손에 쥔 `Figure`예요. 두 그림을 번갈아 고쳐도 서로 섞이지 않아요.
+- **창을 띄우는 `show()`가 없어요.** 노트북에서는 셀의 마지막 값이 `Figure`면 그 그림이 보이고, 파일로는 `fig.save("fig1.pdf")`로 내보내요([내보내기](/api/plot/export/)).
+- **그리는 일은 내보낼 때 해요.** `line`이나 `xlabel`은 그림에 할 일을 적어 둘 뿐이고, 눈금을 고르고 글자를 조판하고 여백을 푸는 일은 `save`, `to_svg` 같은 출력 메서드를 부를 때(노트북이 그림을 보일 때도) 한꺼번에 해요.
+
+그림의 크기는 mm, 글자 크기와 선 굵기는 pt, 각은 도(°)로 재요. 기본 너비 89 mm는 두 단으로 짠 학술지의 한 단 너비예요.
+
+## 겹치기: 같은 이름의 메서드
+
+모듈 함수마다 같은 이름의 `Figure` 메서드가 있어요. `sd.plot.line(x, y)`는 새 그림을 만들고, `fig.line(x, y)`는 같은 인자를 받아 `fig`의 칸에 선을 한 층 더 얹어요. 메서드는 `fig` 자신을 돌려주므로 이어서 쓸 수 있어요.
+
+```python
+>>> fig = sd.plot.scatter([1, 2, 3, 4], [1.2, 1.9, 3.2, 3.9]).line([1, 4], [1, 4])
+>>> len(fig.axes)
+1
+```
+
+모듈 함수 `sd.plot.f(...)`는 "그림 옵션으로 빈 `Figure`를 만들고 그 `f` 메서드를 부른다"와 같아요. 그래서 한 칸에 무엇을 몇 층 겹치든 같은 인자, 같은 규칙이에요. 층마다 색을 주지 않으면 칸이 팔레트의 색을 차례로 나눠 줘요. 위 그림에서 첫 선이 파랑, 둘째 선이 노랑인 까닭이에요.
+
+모든 그림 함수가 두 꼴을 다 갖지는 않아요.
+
+| 꼴 | 함수 | 까닭 |
+|---|---|---|
+| 모듈 함수만 | [`grid`](/api/plot/figure/), [`diagnostics`](/api/plot/diagnostics/), [`pairs`](/api/plot/pairs/), [`facet`](/api/plot/facet/) | 칸 여럿을 스스로 만들어요 |
+| 메서드만 | [`Figure.compare`](/api/plot/compare/), [`Figure.fit`](/api/plot/fit/) | 이미 그린 자료 위에 얹어요 |
+| 메서드만 | [`Figure.twin`](/api/plot/twin-inset/), [`Figure.inset`](/api/plot/twin-inset/) | 있는 칸에 둘째 세로축이나 작은 그림을 더해요 |
+| 둘 다 | 나머지 모두 | |
+
+<Callout type="note" title="셸에서 찍히는 한 줄">
+
+메서드가 그림을 돌려주니, 대화형 셸에서 `fig.line(...)`을 그냥 부르면 그 그림의 repr 한 줄이 찍혀요. 크기(mm), 칸의 수, 층의 수예요. 높이를 주지 않은 그림은 `auto`라고 적어요. 높이는 그릴 때 배치가 정하고, 그 값은 `fig.height`로 읽어요.
+
+```python
+>>> fig.line([1, 4], [2, 3])
+Figure(89 x auto mm, 1 axes, 3 layers)
+>>> sd.plot.Figure(width=120, height=80)
+Figure(120 x 80 mm, 1 axes, 0 layers)
+```
+
+노트북에서는 셀의 마지막 줄이면 그림이 보여요. 이 사이트의 예제는 `fig = fig.line(...)`처럼 결과를 다시 이름에 받아 그 줄을 감춰요. 둘은 같은 객체예요.
+
+</Callout>
+
+여러 칸으로 된 그림은 `fig[0, 1].line(...)`처럼 칸을 골라 그려요. 칸과 여러 그림 모으기는 [Figure와 칸](/api/plot/figure/)에 있어요.
+
+한 칸은 2D이거나 3D예요. 곡면이나 공간 곡선을 그린 [3D 칸](/api/plot/view3d/)에는 `line` 같은 2D 층을 얹을 수 없고, 2D 칸에 3D 층을 얹을 수도 없어요.
+
+```python
+>>> sd.plot.surface(lambda x, y: x * y, -1, 1, -1, 1).line([0, 1], [0, 1])
+Traceback (most recent call last):
+    ...
+ValueError: line(): the cell already holds a 3D plot
+```
+
+## 그림 옵션: \*\*figure
+
+새 그림을 만드는 모듈 함수는 그림 전체에 걸리는 다섯 옵션을 받아요. 각 함수의 시그니처에는 `**figure`로 줄여 적어요.
+
+| 옵션 | 기본값 | 뜻 |
+|---|---|---|
+| `width` | `89.0` | 그림 전체의 바깥 너비(mm). 저장한 PDF의 너비가 정확히 이 값이에요 |
+| `height` | `None` | 바깥 높이(mm). `None`이면 칸의 그림 영역이 가로 4, 세로 3의 비가 되게 정해요 |
+| `font` | `'serif'` | 글꼴 벌. `'serif'`나 `'sans'` |
+| `theme` | `'paper'` | 축 선과 격자의 테마. `'paper'`, `'boxed'`, `'grid'` |
+| `palette` | `'jco'` | 층마다 차례로 주는 범주 색의 이름 |
+
+`font`, `theme`, `palette`의 모양은 [테마, 팔레트, 글꼴](/api/plot/style/)에서 그림으로 견줘 봐요.
+
+```python
+>>> fig = sd.plot.scatter([1, 2, 3], [3, 1, 2], width=60, height=45, font="sans")
+>>> fig.width, fig.height
+(60.0, 45.0)
+```
+
+그림 옵션은 그림을 만들 때 한 번 정해요. 메서드는 받지 않아요.
+
+```python
+>>> fig.line([1, 3], [3, 2], theme="grid")
+Traceback (most recent call last):
+    ...
+TypeError: Figure.line() got an unexpected keyword argument 'theme'
+```
+
+<Callout type="warning" title="width가 선의 굵기인 함수">
+
+`line`, `step`, `hline`, `vline`, `function`, `parametric`, `polar`, `implicit`, `ecdf`, `curve3d`, `vectorfield`, `streamlines`에서 `width=`는 선의 굵기(pt)이고, `bar`와 `boxplot`에서는 막대와 상자의 너비예요. 이 함수들에 준 `width=`는 그림의 너비가 되지 않아요. 그림의 너비는 `Figure(width=...)`로 만든 그림에 메서드로 그리거나, 다 그린 뒤 `fig.size(...)`로 정해요.
+
+```python
+>>> fig = sd.plot.line([0, 1], [0, 1], width=2.0)
+>>> fig.width
+89.0
+>>> fig = sd.plot.Figure(width=120).line([0, 1], [0, 1], width=2.0)
+>>> fig.width
+120.0
+```
+
+</Callout>
+
+모든 그림의 기본값을 한꺼번에 바꾸는 전역 설정은 없어요. 지금 그림이 없는 것과 같은 까닭이에요. 같은 옵션을 여러 그림에 쓰려면 dict 하나에 담아 `**opts`로 넘기면 돼요.
+
+## 받는 자료
+
+자료 인자(`x`, `y` 등)는 1차원의 수이고, 이런 꼴을 받아요.
+
+- `sd.ndarray`
+- 수의 리스트와 튜플
+- numpy 배열
+- frame의 `Series`
+
+어느 것이든 float64로 바꿔 써요. 2차원 배열이나 길이가 다른 짝은 에러예요.
+
+```python
+>>> sd.plot.scatter([1, 2], [1, 2, 3])
+Traceback (most recent call last):
+    ...
+ValueError: scatter(): 'x' and 'y' must have the same length: 2 and 3
+```
+
+범주 축을 쓰는 그림(`bar`, `boxplot`, `strip`)의 범주는 문자열의 시퀀스나 string 열이에요.
+
+수 하나를 받는 인자(오차의 크기, 표본의 수, 수준의 개수, 난수의 씨 등)는 Python의 `int`, `float`과 함께 `numpy.int64`, `numpy.float64` 같은 numpy의 수도 받아요. 배열에서 꺼낸 값을 그대로 넘겨도 돼요. 함수 그림의 함수가 numpy의 수 하나를 돌려줘도 상수로 받아요. `True`, `False`와 `numpy.bool`은 수로 보지 않아요.
+
+### data=: 열 이름으로 주기
+
+`data=`에 `DataFrame`을 주면 자료 인자 자리에 열 이름을 써요. `group=`도 열 이름을 받아요.
+
+```python
+>>> df = sd.frame.DataFrame({
+...     "height": [158.0, 162, 171, 175, 168, 181, 177, 165],
+...     "weight": [51.0, 56, 63, 72, 60, 80, 74, 58],
+...     "sex": ["F", "F", "F", "M", "F", "M", "M", "F"],
+... })
+>>> fig = sd.plot.scatter("height", "weight", data=df, group="sex")
+>>> fig = fig.xlabel("키 (cm)").ylabel("몸무게 (kg)")
+```
+
+<PlotImage name="basics-data" alt="키와 몸무게의 산점도. F인 다섯 점은 파랑, M인 세 점은 노랑이고 왼쪽 위에 F, M 범례" caption="group='sex'로 나눈 무리마다 팔레트의 색이 하나씩 가고, 무리의 값(F, M)이 범례의 이름이 돼요." />
+
+`data=` 없이 문자열 하나를 주면 열 이름으로 볼 수 없어서 에러예요. 범주는 문자열의 *시퀀스*이지 문자열 하나가 아니에요.
+
+```python
+>>> sd.plot.scatter("height", "weight")
+Traceback (most recent call last):
+    ...
+TypeError: scatter(): 'x' is a column name ('height'), which needs 'data'
+>>> sd.plot.scatter("height", "age", data=df)
+Traceback (most recent call last):
+    ...
+ValueError: scatter(): no column 'age'
+```
+
+`data=`를 쓰지 않아도 열을 직접 넘길 수 있어요. `sd.plot.scatter(df["height"], df["weight"])`는 위와 같은 점을 찍어요.
+
+### group=과 color=
+
+`group=`은 자료를 무리로 나누는 값이에요. 열 이름이거나 자료와 길이가 같은 시퀀스예요. 무리마다 층이 하나씩 생기고, 처음 나온 순서대로 팔레트의 색을 받고, 무리의 값이 범례의 이름이 돼요. 무리 값이 `None`이나 NaN인 행은 어느 무리에도 들지 않아 그리지 않아요.
+
+`color=`는 층 하나의 색 하나예요. 열 이름을 받지 않아요. 무리는 팔레트의 색으로 가르므로 `group=`과 `color=`를 함께 주면 에러예요. 이름도 마찬가지로, 무리는 제 값이 이름이라 `label=`과 함께 줄 수 없어요.
+
+```python
+>>> sd.plot.scatter("height", "weight", data=df, group="sex", color="red")
+Traceback (most recent call last):
+    ...
+ValueError: scatter(): 'color' and 'group' cannot both be given (a group takes the palette's colours)
+```
+
+### NaN인 점
+
+유한하지 않은 값(NaN, inf)이 든 점은 그리지 않고, 선은 그 자리에서 끊겨요. 에러도 경고도 아니에요. frame의 결측값은 NaN으로 들어와요.
+
+```python
+>>> t = sd.linspace(0, 10, 101)
+>>> y = sd.where((t > 4) & (t < 5.5), sd.nan, sd.sin(t))
+>>> fig = sd.plot.line(t, y).scatter(t[::5], y[::5])
+```
+
+<PlotImage name="basics-nan" alt="사인 곡선이 t=4와 5.5 사이에서 끊겨 있고, 5칸마다 노란 점이 찍혀 있음. 끊긴 구간에는 점도 없음" caption="4 < t < 5.5인 값을 NaN으로 바꿨어요. 선은 그 구간에서 끊기고, 점도 찍히지 않아요." />
+
+곡선을 이어 그리고 싶으면 NaN인 점을 미리 빼고 넘겨요.
+
+## 색
+
+`color=`는 네 꼴로 줘요.
+
+| 꼴 | 예 |
+|---|---|
+| 이름 | `'black'`, `'white'`, `'gray'`(`'grey'`), `'silver'`, `'red'`, `'green'`, `'blue'`, `'yellow'`, `'orange'`, `'purple'`, `'brown'`, `'pink'`, `'cyan'`, `'magenta'` |
+| 16진수 | `'#0073c2'`, 불투명도까지 `'#0073c280'` |
+| 0과 1 사이의 수 셋이나 넷 | `(0.8, 0.3, 0.3)`, `(0.8, 0.3, 0.3, 0.5)` |
+| 팔레트의 번호 | `'C0'`부터 `'C9'`. 그 그림의 `palette`에서 그 번째 색이에요 |
+
+이름은 CSS의 같은 이름과 같은 색이에요. 한 글자 줄임(`'r'`, `'k'`)은 없어요.
+
+```python
+>>> sd.plot.line([0, 1], [0, 1], color="r")
+Traceback (most recent call last):
+    ...
+ValueError: line(): 'color' must be a colour name, '#rrggbb', '#rrggbbaa', 'C0' to 'C9' or 3 or 4 numbers in [0, 1], not 'r'
+```
+
+`'C1'`은 팔레트를 바꾸면 따라 바뀌어요. 범례나 본문에서 "둘째 선과 같은 색"을 뜻할 때 쓰기 좋아요. 투명도는 색의 넷째 값이나 층의 `alpha=`로 줘요. 팔레트와 연속 색띠의 목록은 [테마, 팔레트, 글꼴](/api/plot/style/)에 있어요.
+
+## 선의 꼴과 점의 꼴
+
+선을 긋는 층은 `style=`로 선의 꼴을, 점을 찍는 층은 `shape=`로 점의 꼴을 받아요.
+
+| 인자 | 값 |
+|---|---|
+| `style=` | `'-'` 실선(기본), `'--'` 파선, `':'` 점선, `'-.'` 일점쇄선 |
+| `shape=` | `'o'` 원(기본), `'s'` 네모, `'^'` 위 세모, `'v'` 아래 세모, `'D'` 마름모, `'+'` 더하기, `'x'` 곱하기 |
+
+```python
+>>> fig = sd.plot.Figure(height=50)
+>>> for k, s in enumerate(["-", "--", ":", "-."]):
+...     fig = fig.line([0, 6], [4 - k, 4 - k], style=s, color="C0")
+>>> for k, s in enumerate(["o", "s", "^", "v", "D", "+", "x"]):
+...     fig = fig.scatter([k], [0], shape=s, size=6, color="C3")
+```
+
+<PlotImage name="basics-styles" alt="위에서부터 실선, 파선, 점선, 일점쇄선의 파란 가로줄 넷과, 맨 아래 줄에 왼쪽부터 원, 네모, 위 세모, 아래 세모, 마름모, 더하기, 곱하기의 붉은 점 일곱" caption="위의 네 줄은 style이 '-', '--', ':', '-.'인 선이고, 아래 줄은 shape가 'o', 's', '^', 'v', 'D', '+', 'x'인 점이에요." />
+
+선 굵기(`width=`)와 점 크기(`size=`)는 pt예요. 주지 않으면 테마의 값이에요. 다른 값은 에러이고 메시지에 받는 값이 모두 적혀요.
+
+```python
+>>> sd.plot.line([0, 1], [0, 1], style="dotted")
+Traceback (most recent call last):
+    ...
+ValueError: line(): 'style' must be '-', '--', ':' or '-.', not 'dotted'
+```
+
+## 글자는 LaTeX 원문이에요
+
+그림의 모든 글자(제목, 축 이름, 눈금 숫자, 범례, 주석)는 LaTeX가 조판해요. 그래서 넘기는 문자열은 LaTeX 원문이에요.
+
+- 수식은 `$...$` 안에 써요. `r"$\Gamma(x)$"`처럼 백슬래시가 그대로 남는 raw 문자열(`r"..."`)로 쓰면 편해요.
+- LaTeX의 특수 문자 `%`, `_`, `&`, `#`, `$`, `{`, `}`, `^`, `~`는 글자로 쓰려면 숨겨요. `r"50\% 구간"`, `r"run\_1"`처럼요.
+- `\textbf{...}`, `\textit{...}`, `\mathrm{...}` 같은 명령을 그대로 써요.
+- 한글을 그대로 써요. 수식과 섞어도 돼요(`r"시간 $t$ (s)"`).
+- LaTeX의 규칙을 그대로 따라요. `'--'`는 짧은 줄표(–)가 되고 `'`는 닫는 따옴표(’)가 돼요. 기호를 그대로 보이려면 `r"\texttt{-{}-}"`처럼 써요.
+
+```python
+>>> fig = sd.plot.line([0, 1], [0, 1]).xlabel(r"$x_1$ (50\% 지점)").ylabel(r"$\sqrt{x}$")
+```
+
+사용자가 직접 쓰는 문자열은 이렇게 원문 그대로지만, **자료에서 온 문자열은 알아서 숨겨요.** `group=`의 무리 값과 범주 축의 범주 이름(`'a_1'`, `'50%'`)은 쓴 글자 그대로 보여요. 자료의 값이 LaTeX 명령으로 읽힐 일이 없어요.
+
+### 조판 오류
+
+조판은 그릴 때 해요. 그래서 조판 오류는 글자를 준 메서드(`xlabel`)가 아니라 그리는 메서드의 이름으로 나요. `ValueError`이고 TeX가 낸 첫 오류 줄이 붙어요.
+
+```python
+>>> fig = sd.plot.line([0, 1], [0, 1]).xlabel("x_1")
+>>> fig.to_svg()
+Traceback (most recent call last):
+    ...
+ValueError: to_svg(): LaTeX could not typeset 'x_1': ! Missing $ inserted.
+```
+
+`_`는 수식 안에서만 아래 첨자예요. `r"$x_1$"`이나 `r"x\_1"`로 고쳐요. 숨기지 않은 `%`나 짝이 맞지 않는 중괄호는 TeX에 넘기기 전에 같은 꼴의 에러로 막아요. 다른 글자까지 망가뜨리기 때문이에요.
+
+```python
+>>> sd.plot.line([0, 1], [0, 1]).xlabel("50% of").to_png()
+Traceback (most recent call last):
+    ...
+ValueError: to_png(): LaTeX could not typeset '50% of': an unescaped % (write \%)
+```
+
+처음 보는 문자열은 조판에 잠깐 들지만, 한 번 조판한 문자열과 글리프는 사용자의 캐시 폴더(`~/Library/Caches/stardust/plot/`)에 남아 다음부터는 TeX를 부르지 않아요.
+
+## TeX가 있어야 해요
+
+글자를 조판하려면 TeX Live의 `latex`, `xelatex`, `tex`, `xetex`, `dvisvgm`, `kpsewhich`가 `PATH`(또는 macOS의 `/Library/TeX/texbin`)에 있어야 해요. 없으면 그릴 때 `RuntimeError`예요.
+
+```text
+RuntimeError: save(): sd.plot needs 'latex', 'xelatex', 'tex', 'xetex', 'dvisvgm' and 'kpsewhich' (TeX Live) on PATH; 'latex' was not found
+```
+
+`import stardust`와 그림을 짓는 일(`sd.plot.line(...)`, `fig.xlabel(...)`)은 TeX 없이도 돼요. TeX는 처음 그릴 때 찾아요. 글꼴은 [테마, 팔레트, 글꼴](/api/plot/style/#글꼴)에 있는 것을 써요.
+
+## 경고를 내지 않아요
+
+`sd.plot`은 경고를 내지 않아요. 그릴 수 없으면 에러이고, 그릴 수는 있지만 알아 둘 일은 값으로 알려 줘요. 함수 그림은 극점에서 선을 끊거나 범위 밖의 값을 자르는데, 그 기록이 `fig.info`에 남아요.
+
+```python
+>>> fig = sd.plot.function(sd.tan, -3, 3)
+>>> rec = fig.info[0]
+>>> rec.kind, len(rec.poles), rec.clipped
+('function', 2, (True, True))
+```
+
+$\tan x$의 극점 둘($\pm\pi/2$)을 찾았고, 세로 범위가 위아래 모두 값을 잘랐다는 뜻이에요. 필드 하나하나는 [function](/api/plot/function/)에 있어요.
+
+## 에러의 꼴
+
+에러 메시지는 stardust의 다른 영역과 같은 꼴이에요. 앞에 부른 함수나 메서드의 이름이 붙고, 인자 이름은 작은따옴표 안에 있어요.
+
+| 에러 | 언제 |
+|---|---|
+| `TypeError` | 인자의 형이 틀렸을 때(수 자리에 문자열, 모르는 키워드 인자, `data=` 없이 준 열 이름) |
+| `ValueError` | 값이 틀렸을 때(길이가 다른 자료, 모르는 색이나 선의 꼴, `low`가 `high` 이상인 범위, 3D 칸에 얹는 2D 층, 조판 오류) |
+| `IndexError` | 그림에 없는 칸을 고를 때 |
+| `RuntimeError` | TeX가 없을 때 |
+
+## matplotlib을 아는 분께
+
+| matplotlib | sd.plot |
+|---|---|
+| `plt.plot(x, y)`가 "지금 그림"에 그려요 | `sd.plot.line(x, y)`가 `Figure`를 돌려줘요. 겹치기는 `fig.line(...)` |
+| `plt.show()` | 없어요. 노트북이 값을 보이거나 `fig.save(...)` |
+| `figsize`는 인치 | `width`, `height`는 mm |
+| `ax.set_xlabel(...)` | `fig.xlabel(...)`. 여러 칸이면 `fig[i, j].xlabel(...)` |
+| 수식은 mathtext, LaTeX는 `usetex=True`일 때만 | 모든 글자가 LaTeX. 특수 문자는 직접 숨겨요 |
+| `hist`, `imshow`, `plot` | `histogram`, `heatmap`·`density`, `line` |
+| `'r'`, `'k'`, `lw=`, `ls=`, `c=` | `'red'`, `'black'`, `width=`, `style=`, `color=`. 줄임이 없어요 |
+| `tight_layout()` | 없어요. 바깥 크기를 고정하고 글자를 재서 여백을 늘 푸는 쪽이 기본이에요 |
+| `rcParams`로 전역 기본값 | 없어요. 그림 옵션은 그림마다 줘요 |
+| 경고 | 없어요. 에러이거나 `fig.info` |

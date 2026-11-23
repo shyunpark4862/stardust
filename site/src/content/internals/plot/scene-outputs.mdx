@@ -1,0 +1,404 @@
+---
+title: 장면과 세 출력
+group: 그리기
+order: 1
+summary: 세 출력이 함께 읽는 장면(bp 좌표의 도형 목록)과 글자의 자리 잡기, 장면을 SVG로 쓰는 법, 글꼴 객체 없이 직접 짜는 PDF의 짜임, PNG 파일과 조각을 나란히 압축하는 deflate, 큰 점 묶음, 노트북 표시, 같은 바이트가 나오는 까닭을 설명해요.
+seeAlso: [overview, raster, text, layout, verification]
+---
+import Callout from '../../../components/Callout.astro';
+import PlotImage from '../../../components/fig/PlotImage.astro';
+
+## 한눈에 보기
+
+배치가 끝나면 그림은 **장면** 하나가 돼요. 장면은 쪽의 크기와 도형의 목록이고, SVG·PDF·PNG 쓰기는 장면만 읽어요. 축이 무엇인지, 어느 층에서 왔는지는 장면에 남지 않아요. 그래서 장면이 같으면 세 출력이 같은 그림이고, 출력 셋을 따로 맞출 일이 없어요.
+
+| 출력 | 쓰는 곳 | 글자 | 그림(3D, 큰 점 묶음) | 압축 |
+|---|---|---|---|---|
+| SVG | `_svg.write` | 글리프 윤곽선을 `<defs>`에 한 번, `<use>`로 참조 | PNG를 base64로 넣은 `<image>` | 넣은 PNG만 |
+| PDF | `_pdf.write` | 글리프마다 Form XObject 하나, `Do`로 놓기 | Image XObject(알파는 SMask) | 스트림마다 Flate |
+| PNG | `_png.write` | C++ 래스터라이저가 윤곽선을 채워요 | 그대로 붙여요 | 조각을 나란히 deflate |
+
+아래 그림은 반투명한 점 200개예요. 세 출력은 모두 이 그림 하나의 장면에서 나와요.
+
+```python
+>>> rng = sd.random.default_rng(7)
+>>> x = sd.stats.Normal(mu=0.0, sigma=1.0).sample(200, rng=rng)
+>>> y = 0.6 * x + sd.stats.Normal(mu=0.0, sigma=0.6).sample(200, rng=rng)
+>>> fig = sd.plot.scatter(x, y, alpha=0.5).xlabel(r"$x$").ylabel(r"$y$")
+>>> svg, pdf, png = fig.to_svg(), fig.to_pdf(), fig.to_png()
+>>> svg[:39], pdf[:9], png[1:4]
+('<svg xmlns="http://www.w3.org/2000/svg"', b'%PDF-1.4\n', b'PNG')
+>>> fig.to_svg() == svg, fig.to_pdf() == pdf, fig.to_png() == png
+(True, True, True)
+```
+
+<PlotImage name="in-scene-outputs-points" alt="반투명한 파란 점 200개가 오른쪽 위로 기운 띠를 이룬 산점도. 가로축 x, 세로축 y." caption="반투명한 점 200개. SVG에서는 점 기호 하나를 <defs>에 두고 200번 참조하고, PDF에서는 채움과 테두리의 알파 0.5를 담은 그래픽 상태 둘을 모든 점이 함께 써요." />
+
+## 장면
+
+장면의 길이는 모두 bp(1/72인치)예요. PDF와 SVG의 pt가 bp라서 장면의 수를 그대로 쓸 수 있어요. 원점은 쪽의 왼쪽 위이고 y는 아래로 자라요. 글자의 줄과 화면의 행이 위에서 아래로 가는 것과 같은 방향이에요. 항목은 칠하는 차례대로 놓이고 뒤의 것이 앞의 것을 덮어요.
+
+| 항목 | 가진 것 |
+|---|---|
+| `Path` | 연산 글자 `ops`(`M L C Q Z`)와 좌표, 채움 색과 채움 규칙(`nonzero evenodd`), 획 색·굵기·점선·끝(`butt round square`)·이음(`miter round bevel`), 자르기 사각형 |
+| `Markers` | 원점 둘레의 도형 하나와 그것을 찍을 점들 `at`, 채움과 테두리, 자르기 |
+| `Image` | `iw × ih` 화소의 RGBA8 그림과 그것을 펼 사각형, 화소 사이를 보간할지(`smooth`) |
+| `Text` | LaTeX 원문 문자열, 기준점, 크기(bp), 가로·세로 기준(`ha`, `va`), 회전(도), 색 |
+
+색은 0과 1 사이의 sRGB 값 넷(r, g, b, 알파)이고, 알파를 미리 곱하지 않은 값이에요. 채움 규칙은 경로가 제 안을 어떻게 정하는지예요. 기본인 `nonzero`는 감긴 수가 0이 아닌 곳을, `evenodd`는 윤곽선을 홀수 번 건너야 닿는 곳을 칠해요. 구멍이 뚫린 영역(고리 안의 고리)을 고리의 방향을 따지지 않고 칠하려고 영역과 채운 등고선이 `evenodd`를 써요([두 변수 함수의 그림](/internals/plot/fields/)). 자르기는 사각형 하나(x, y, w, h)뿐이에요. 칸의 그림 사각형 밖으로 나가는 자료를 자르는 데 그것으로 충분해요.
+
+`Text`는 문자열로 남아 있어요. `fig.scene()`과 골든 기록이 보는 것이 이 꼴이라서, TeX의 판이 바뀌어 글리프 모양이 달라져도 장면은 같아요. `Image`는 화소 대신 화소 바이트의 SHA-256을 적어요.
+
+```python
+>>> d = fig.scene()
+>>> d['font'], sorted({i['type'] for i in d['items']})
+('serif', ['markers', 'path', 'text'])
+>>> m = next(i for i in d['items'] if i['type'] == 'markers')
+>>> m['ops'], len(m['at']) // 2, m['fill'][3]
+('MCCCCZ', 200, 0.5)
+```
+
+점 기호 `'o'`는 3차 베지어 넷으로 된 원이에요. 사분원 하나를 $\kappa = \frac{4}{3}(\sqrt2 - 1) \approx 0.5523$의 조절점으로 근사하면 반지름에서의 벗어남이 반지름의 0.03%쯤이라, 점 크기에서는 보이지 않아요.
+
+### 글자의 자리
+
+출력이 장면을 읽을 때 `resolve`가 장면의 모든 `Text`를 한 묶음으로 조판하고(캐시에 있으면 TeX를 부르지 않아요), 각 `Text`를 `Glyphs`로 바꿔요. `Glyphs`는 글자 자신의 틀(기준선의 왼쪽 끝이 원점, y 아래)에서의 글리프와 괘선, 그리고 그 틀을 쪽에 놓는 행렬이에요.
+
+```python
+# src/stardust/plot/_scene.py
+def place(text, lay):
+    """The Glyphs of a Text given its layout."""
+    k0 = text.size / _text.UNIT_BP
+    k = _text.SP_TO_BP * k0
+    w, h, d = lay.width * k, lay.height * k, lay.depth * k
+    dx = {"left": 0.0, "center": -w / 2, "right": -w}[text.ha]
+    dy = {"baseline": 0.0, "bottom": -d, "center": (h - d) / 2, "top": h}[text.va]
+    top = lay.height
+    glyphs = [
+        (lay.fonts[fi][0], code, lay.fonts[fi][1] / _text.TEN_PT * k0, hh * k, (v - top) * k)
+        for fi, code, hh, v in lay.glyphs
+    ]
+    rules = [(hh * k, (v - top - ht) * k, ww * k, ht * k) for hh, v, ww, ht in lay.rules]
+    a = math.radians(text.rotation)
+    c, s = math.cos(a), math.sin(a)
+    if text.rotation == 90.0:
+        c, s = 0.0, 1.0
+    # y is down: a counter-clockwise rotation by a is (c, -s; s, c) on (x, y)
+    m = (c, -s, s, c, text.x + c * dx + s * dy, text.y - s * dx + c * dy)
+    return Glyphs(glyphs, rules, m, text.color)
+```
+
+- 배치는 TeX의 10pt로 조판한 것이고 단위는 sp(1pt의 1/65536, TeX의 pt는 1/72.27인치)예요. `k0`은 원하는 크기를 10pt(bp로 9.963)로 나눈 배율, `k`는 sp를 그 크기의 bp로 바꾸는 배율이에요.
+- `dx`, `dy`는 기준점을 상자의 어디에 맞출지예요. `va='top'`이면 상자의 위 끝이 기준점에 오도록 기준선을 높이 `h`만큼 내려요. `'center'`는 상자 높이와 깊이의 가운데예요.
+- y가 아래로 자라는 좌표에서 시계 반대 방향(화면에서 보이는 방향) 회전은 $(x, y) \mapsto (cx + sy,\ -sx + cy)$예요. 행렬 $(a, b, c, d, e, f)$는 SVG·PDF와 같은 순서로 $x' = ax + cy + e$, $y' = bx + dy + f$를 뜻해요.
+- 90°는 따로 둬요. `math.cos(math.radians(90))`은 $6.1 \times 10^{-17}$이라, 세로 축 이름의 행렬에 0이 아닌 작은 수가 끼면 출력의 숫자가 길어지고 장면의 기록도 그 오차를 안고 가요.
+
+## SVG
+
+SVG는 장면을 거의 그대로 옮겨요.
+
+- 뿌리의 `width`와 `height`는 `pt` 단위이고 `viewBox`는 bp라서, 사용자 단위 하나가 1 pt예요. 장면의 좌표를 바꾸지 않고 써요.
+- 수는 소수 넷째 자리까지 쓰고 끝의 0을 버려요(`2.5`, `-0`은 `0`). 글리프 윤곽선은 여섯째 자리까지예요. 1 bp의 1/10000은 0.035 µm라서 어느 출력 장치에서도 보이지 않고, 자릿수가 정해져 있으므로 같은 장면이 같은 글이에요.
+- 경로의 좌표를 글자로 쓰는 것은 C++의 `path_text`예요. `printf`의 `%.4f`를 쓰지 않고, 값에 $10^4$를 곱해 반올림한 정수를 자릿수대로 적어요. 수가 아주 많은 경로(긴 선, 등고선)에서 숫자 쓰기가 출력의 대부분이기 때문이에요.
+- 글리프는 (글꼴, 글자 번호)마다 `<path id="g…">` 하나를 `<defs>`에 두고, 글자마다 `<use>`에 배율과 자리를 담은 `matrix`를 붙여요. 문자열 하나는 놓는 행렬을 가진 `<g>` 하나예요. 눈금 숫자처럼 같은 글리프가 되풀이되면 윤곽선은 한 번만 적혀요.
+- 점 묶음은 도형을 `<defs>`에 한 번 두고 점마다 `<use x= y=>`예요.
+- 채움 규칙이 `evenodd`인 경로에는 `fill-rule="evenodd"`를 붙여요.
+- 모서리가 있는 획(이음이 `miter`이고 선분이 둘 이상)에는 `stroke-miterlimit="10"`을 붙여요. SVG의 기본 한계는 4인데 PNG와 PDF는 10이라서, 붙이지 않으면 뾰족한 모서리에서 SVG만 이음이 잘려요.
+- 자르기 사각형은 다른 것마다 `<clipPath>` 하나를 두고 같은 사각형은 같은 id를 다시 써요.
+- 그림은 PNG로 압축해 `data:` URI로 넣어요. `smooth`가 아니면 `image-rendering="pixelated"`로 화소를 네모로 보이게 해요.
+
+```python
+        # src/stardust/plot/_svg.py
+        else:
+            parts = []
+            for key, code, scale, x, y in item.glyphs:
+                gid = glyph_ids.get((key, code))
+                if gid is None:
+                    ops, xy = engine.outline(key, code)
+                    if not ops:
+                        continue
+                    gid = glyph_ids[key, code] = f"g{len(glyph_ids)}"
+                    defs.append(f'<path id="{gid}" d="{path_data(ops, xy, 6)}"/>')
+                s = f"{scale:.6f}".rstrip("0").rstrip(".")
+                parts.append(f'<use xlink:href="#{gid}" transform="matrix({s} 0 0 {s} {num(x)} {num(y)})"/>')
+            for x, y, w, h in item.rules:
+                parts.append(f'<rect x="{num(x)}" y="{num(y)}" width="{num(w)}" height="{num(h)}"/>')
+            m = " ".join(f"{v:.6f}".rstrip("0").rstrip(".") or "0" for v in item.matrix)
+            body.append(f'<g{_paint("fill", item.color)} transform="matrix({m})">' + "".join(parts) + "</g>")
+```
+
+id는 처음 쓰는 차례대로 `g0`, `g1`, …, `m0`, `c0`이에요. 사전의 차례나 메모리 주소에 기대지 않으므로 같은 장면이면 같은 글이에요.
+
+```python
+>>> svg.count('<path id="g'), svg.count('<path id="m'), svg.count('<use')
+(7, 1, 218)
+```
+
+글리프 7개(숫자, 빼기, 소수점, $x$, $y$)로 글자 18개를 쓰고, 점 기호 하나를 200번 찍어 `<use>`가 218개예요.
+
+## PDF
+
+PDF는 바깥 라이브러리 없이 직접 써요. 글자가 윤곽선이므로 글꼴 객체가 하나도 없고, 그래서 쓰는 것이 경로, 채움, 획, 자르기, 투명도, 그림뿐이에요.
+
+### 파일의 짜임
+
+PDF 파일은 네 부분이에요(PDF 1.4의 꼴).
+
+1. **머리**: `%PDF-1.4`와, 127보다 큰 바이트 넷이 든 주석 줄 `%âãÏÓ`. 뒤의 줄은 전송 프로그램이 이 파일을 글이 아니라 바이너리로 다루게 하려는 관례예요.
+2. **몸통**: 번호가 붙은 간접 객체들 `n 0 obj … endobj`. 사전(`<< /Key value >>`)과 스트림(사전 뒤의 `stream … endstream` 바이트)이 있어요.
+3. **교차 참조 표** `xref`: 객체마다 파일 안의 바이트 위치를 적은 줄. 한 줄은 정확히 20바이트(10자리 위치, 5자리 세대 번호, `n`, 줄 끝 두 글자)라서 읽는 프로그램이 n번 객체의 줄로 바로 뛰어요.
+4. **꼬리**: `trailer` 사전(객체 수 `/Size`, 뿌리 `/Root`), 교차 참조 표의 위치 `startxref`, `%%EOF`.
+
+`_pdf.write`가 만드는 객체는 늘 같은 차례예요. 1 카탈로그, 2 쪽 묶음, 3 쪽, 4 쪽의 내용 스트림, 그 뒤에 글리프의 Form XObject들, 점 기호의 Form XObject들, 그림의 Image XObject들(알파가 있으면 회색조 SMask가 앞에)이에요. 투명도는 그래픽 상태 사전(ExtGState)의 `/ca`(채움)와 `/CA`(획)로 주고, 같은 (종류, 값)은 하나를 함께 써요.
+
+```python
+    # src/stardust/plot/_pdf.py
+    objects[catalog - 1] = f"<< /Type /Catalog /Pages {pages} 0 R >>".encode()
+    objects[pages - 1] = f"<< /Type /Pages /Kids [{page} 0 R] /Count 1 >>".encode()
+    objects[page - 1] = (
+        f"<< /Type /Page /Parent {pages} 0 R /MediaBox [0 0 {_n(scene.width)} {_n(scene.height)}] "
+        f"/Contents {content} 0 R /Resources << {' '.join(res)} >> >>"
+    ).encode()
+
+    out = bytearray(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
+    offsets = []
+    for i, data in enumerate(objects, 1):
+        offsets.append(len(out))
+        out += f"{i} 0 obj\n".encode() + data + b"\nendobj\n"
+    xref = len(out)
+    out += f"xref\n0 {len(objects) + 1}\n".encode() + b"0000000000 65535 f \n"
+    for off in offsets:
+        out += f"{off:010d} 00000 n \n".encode()
+    out += f"trailer\n<< /Size {len(objects) + 1} /Root {catalog} 0 R >>\nstartxref\n{xref}\n%%EOF\n".encode()
+    return bytes(out)
+```
+
+교차 참조 표의 0번은 언제나 비어 있는 객체(`65535 f`)예요. 쪽의 크기 `/MediaBox`는 장면의 bp 그대로라서, `width=89`인 그림의 PDF는 정확히 89 mm예요. 정보 사전(`/Info`), 만든 날짜(`/CreationDate`), 파일 식별자(`/ID`)를 쓰지 않아요. 셋 모두 PDF를 읽는 데 필요 없고, 날짜와 식별자는 쓸 때마다 달라지는 값이에요.
+
+### 내용 스트림
+
+PDF의 기본 좌표는 왼쪽 아래가 원점이고 y가 위로 자라요. 내용 스트림의 첫 줄 `1 0 0 -1 0 H cm`이 쪽을 한 번 뒤집어, 그 뒤로는 장면의 좌표를 그대로 써요. 손으로 지은 작은 장면으로 보면 이래요.
+
+```python
+>>> import re, zlib
+>>> from stardust.plot import _scene, _pdf
+>>> sc = _scene.Scene(40, 30)
+>>> _ = sc.add(_scene.Path("MQ", [4, 26, 20, -10, 36, 26], stroke=(0, 0.45, 0.76, 1), width=1.5, cap="round"))
+>>> _ = sc.add(_scene.Path(*_scene.rect(10, 12, 20, 10), fill=(0.8, 0.33, 0.3, 0.5)))
+>>> data = _pdf.write(sc)
+>>> body = zlib.decompress(re.search(rb"stream\n(.*?)\nendstream", data, re.S).group(1)).decode()
+>>> print(body)
+1 0 0 -1 0 30 cm
+q
+0 0.45 0.76 RG 1.5 w 1 J 0 j
+4 26 m
+14.6667 2 25.3333 2 36 26 c
+S
+Q
+q
+0.8 0.33 0.3 rg
+/A0 gs
+10 12 m
+30 12 l
+30 22 l
+10 22 l
+h
+f
+Q
+```
+
+- `q … Q`는 그래픽 상태를 저장하고 되돌려요. 항목 하나가 한 쌍이라 색, 굵기, 자르기가 다음 항목으로 새지 않아요.
+- `RG`·`rg`는 획·채움의 RGB 색, `w`는 굵기, `J`는 끝(0 butt, 1 round, 2 square), `j`는 이음, `d`는 점선이에요.
+- `m l c h`는 경로를 짓고, `f`(채움), `S`(획), `B`(둘 다)가 칠해요. `f`와 `B`는 0이 아닌 감김 규칙이고, 채움 규칙이 `evenodd`인 경로는 짝홀 규칙의 `f*`와 `B*`로 칠해요. 자르기는 `x y w h re W n`이에요.
+- PDF에는 2차 베지어가 없어서 `Q`는 같은 곡선의 3차 베지어로 바꿔 써요. 2차의 조절점 $P_1$과 양 끝 $P_0, P_2$에서 3차의 조절점은 $C_1 = P_0 + \frac23(P_1 - P_0)$, $C_2 = P_2 + \frac23(P_1 - P_2)$예요. 위의 `14.6667 2 25.3333 2 36 26 c`가 (4, 26)–(20, −10)–(36, 26)의 2차 곡선이에요.
+
+```cpp
+            // csrc/plot/raster.cpp
+            } else if (op == 'Q') {
+                const double x1 = xy[i], y1 = xy[i + 1], x2 = xy[i + 2], y2 = xy[i + 3];
+                const double cb[6] = {
+                    x + 2 * (x1 - x) / 3, y + 2 * (y1 - y) / 3, x2 + 2 * (x1 - x2) / 3, y2 + 2 * (y1 - y2) / 3, x2, y2
+                };
+                run(cb, 6);
+                out += " c";
+                x = x2;
+                y = y2;
+```
+
+### 글리프, 점, 그림
+
+글리프 하나는 Form XObject 하나예요. Form XObject는 자기 경계 상자(`/BBox`)를 가진 작은 내용 스트림이라서 `/G3 Do`로 몇 번이고 부를 수 있어요. 글자마다 `q s 0 0 s x y cm /G3 Do Q`로 배율과 자리를 주고 불러요. 윤곽선은 글리프의 y 아래 틀에서 적었지만 쪽이 이미 뒤집혀 있으므로 바로 써요. 점 기호도 같은 방식으로 점마다 `Do` 한 번이에요.
+
+그림은 Image XObject예요. PDF의 그림은 단위 정사각형에 펴지고 첫 행이 위로 가므로, 뒤집힌 쪽에서는 `w 0 0 -h x y+h cm`으로 세로를 다시 뒤집어 바로 세워요. 알파가 255보다 작은 화소가 있으면 알파만 뽑은 회색조 그림을 `/SMask`로 붙여요. 내용 스트림과 모든 XObject는 `zlib` 수준 9로 압축해요(`/FlateDecode`).
+
+## PNG
+
+### 화소
+
+PNG는 장면을 C++ 래스터라이저 `Canvas`에 칠해 얻어요. 쪽 크기는 `round(bp × dpi / 72)` 화소이고, 장면의 좌표에 `dpi / 72`를 곱하는 행렬로 칠해요. 글리프는 같은 윤곽선을 채움으로 칠하고, 괘선(분수 막대, 근호의 윗줄)은 사각형이에요. 경로를 화소로 바꾸는 방법은 [래스터라이저](/internals/plot/raster/)에서 다뤄요.
+
+```python
+        # src/stardust/plot/_png.py
+        else:
+            m = _svgpath.compose(base, item.matrix)
+            for key, code, scale, x, y in item.glyphs:
+                ops, xy = engine.packed(key, code)
+                if ops:
+                    canvas.fill(ops, xy, _svgpath.compose(m, (scale, 0.0, 0.0, scale, x, y)), item.color, ())
+            for x, y, rw, rh in item.rules:
+                canvas.fill(
+                    _RECT, array("d", (x, y, x + rw, y, x + rw, y + rh, x, y + rh)).tobytes(), m, item.color, ()
+                )
+```
+
+`Canvas`는 알파를 미리 곱한 float 화소를 쌓고, `rgba8`이 마지막에 알파로 나눠 PNG가 바라는 곱하지 않은 8비트 값으로 바꿔요. 2억 6800만 화소($2^{28}$)나 한 변 65536을 넘는 그림은 칠하기 전에 `ValueError`예요.
+
+### 파일
+
+PNG 파일은 8바이트 서명 `\x89PNG\r\n\x1a\n` 뒤에 덩어리(chunk)들이 이어진 것이에요. 덩어리는 길이(4바이트), 종류(4글자), 내용, 종류와 내용의 CRC-32예요.
+
+```python
+# src/stardust/plot/_png.py
+def encode(w, h, rgba, *, dpi=None, level=6):
+    """The PNG file of straight 8-bit RGBA pixels."""
+
+    def chunk(tag, body):
+        return struct.pack(">I", len(body)) + tag + body + struct.pack(">I", zlib.crc32(tag + body))
+
+    stride = 4 * w
+    raw = bytearray((stride + 1) * h)  # every row with filter 0 in front
+    view = memoryview(rgba)
+    for y in range(h):
+        raw[y * (stride + 1) + 1 : (y + 1) * (stride + 1)] = view[y * stride : (y + 1) * stride]
+    out = [b"\x89PNG\r\n\x1a\n", chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 6, 0, 0, 0))]
+    if dpi is not None:
+        ppm = round(dpi / 0.0254)
+        out.append(chunk(b"pHYs", struct.pack(">IIB", ppm, ppm, 1)))
+    out.append(chunk(b"IDAT", deflate(bytes(raw), level)))
+    out.append(chunk(b"IEND", b""))
+    return b"".join(out)
+```
+
+- `IHDR`: 너비, 높이, 채널당 8비트, 색 종류 6(RGBA), 압축 0(deflate), 거르기 0, 비월 없음.
+- `pHYs`: 해상도를 미터당 화소로 적어요(단위 1이 미터). 300 dpi는 11811이에요. 그림을 문서에 넣는 프로그램이 이 값으로 실제 크기를 알아요.
+- `IDAT`: 행마다 앞에 거르기 종류 한 바이트를 붙인 화소를 zlib로 압축한 것이에요. PNG는 행마다 이웃 화소와의 차를 적는 거르기 다섯 가지 가운데 하나를 고를 수 있는데, 여기서는 모든 행이 거르기 0(없음)이에요. 행마다 거르기를 고르는 단계가 없으므로 파일은 화소와 deflate만으로 정해져요.
+- `IEND`: 끝.
+
+### 조각을 나란히 압축하기
+
+화소가 많으면 압축이 PNG 쓰기의 대부분이에요. 그래서 압축할 바이트가 512 KB 이상이면 256 KB 조각으로 잘라 스레드에서 나란히 압축하고 이어 붙여요. 그렇게 해도 올바른 zlib 스트림이 되는 까닭은 형식에 있어요.
+
+- **zlib 스트림**(RFC 1950)은 머리 2바이트, deflate 데이터, 원래 바이트 전체의 Adler-32(4바이트)예요. 머리의 첫 바이트 `0x78`은 "deflate, 창 32 KB"이고, 둘째 바이트는 두 바이트를 큰 수로 읽은 값이 31로 나누어떨어지게 맞춘 검사 비트와 압축 수준의 표시(읽을 때는 쓰지 않는 정보)예요. `0x789c`, `0x785e`, `0x7801`은 모두 31의 배수예요.
+- **deflate**(RFC 1951)는 블록의 연속이고, 블록마다 "마지막 블록" 비트가 있어요. 블록 안에서는 LZ77의 되짚기(앞에 나온 바이트열을 거리와 길이로 가리키기)를 Huffman 부호로 적는데, 거리는 32768바이트를 넘지 못해요.
+- 그래서 조각마다 바로 앞 32 KB를 **미리 정한 사전**으로 주면(`zdict`), 조각의 첫 바이트부터 앞 조각의 내용을 되짚을 수 있어요. 한 줄로 압축할 때 닿을 수 있는 거리가 꼭 그만큼이에요. 머리 없는 deflate(`wbits=-15`)로 압축하므로 사전의 식별 번호가 스트림에 들어가지 않아요.
+- 조각의 끝은 `Z_SYNC_FLUSH`로 맺어요. 남은 블록을 내보내고 빈 저장 블록(`00 00 ff ff`)을 덧붙여 바이트 경계에서 끝나요. 다음 조각의 비트가 바이트 경계에서 시작하므로 바이트를 그대로 이어도 한 deflate 스트림이에요. 마지막 조각만 `Z_FINISH`로 "마지막 블록" 비트를 세워요.
+- Adler-32는 조각과 상관없이 원래 바이트 전체에서 한 번 계산해요.
+
+```python
+    # src/stardust/plot/_png.py
+    view = memoryview(data)
+    starts = list(range(0, n, PIECE))
+
+    def piece(i):
+        a = starts[i]
+        if a:
+            c = zlib.compressobj(level, zlib.DEFLATED, -15, zdict=bytes(view[max(0, a - 32768) : a]))
+        else:
+            c = zlib.compressobj(level, zlib.DEFLATED, -15)
+        body = c.compress(view[a : a + PIECE])
+        return body + c.flush(zlib.Z_FINISH if i == len(starts) - 1 else zlib.Z_SYNC_FLUSH)
+
+    head = b"\x78\x9c" if level >= 6 else b"\x78\x5e" if level >= 2 else b"\x78\x01"
+    return head + b"".join(_pool.map(piece, range(len(starts)))) + struct.pack(">I", zlib.adler32(data))
+```
+
+`zlib`는 압축하는 동안 인터프리터 잠금(GIL)을 놓으므로 Python 스레드 8개까지가 실제로 나란히 돌아요. 조각은 크기로만 자르므로 스레드가 몇 개든 같은 조각, 같은 바이트예요. 한 줄로 압축한 `zlib.compress(data)`와는 바이트가 다르지만(조각의 첫머리는 새 압축기가 시작해요) 풀면 같은 바이트예요.
+
+```python
+>>> from stardust.plot import _png
+>>> raw = bytes(range(256)) * 4096 * 3
+>>> packed = _png.deflate(raw)
+>>> len(raw) // _png.PIECE, packed[:2], zlib.decompress(packed) == raw
+(12, b'x\x9c', True)
+```
+
+## 큰 자료
+
+점이 2만 개 이상인 점 묶음은 SVG와 PDF에서 그 묶음만 그림 한 장으로 바꿔 넣어요. 도형 백만 개짜리 SVG는 보는 프로그램이 열기 어렵기 때문이에요. 점들이 차지하는 사각형(자르기 사각형 안)을 출력의 `dpi`로 `Canvas`에 찍고, 그 그림을 같은 자리에 `Image`로 놓아요. 축과 글자와 다른 층은 벡터로 남아요. PNG는 원래 화소이므로 바꾸지 않고 그대로 찍어요.
+
+```python
+>>> rng = sd.random.default_rng(1)
+>>> n = sd.stats.Normal(mu=0.0, sigma=1.0)
+>>> big = sd.plot.scatter(n.sample(25000, rng=rng), n.sample(25000, rng=rng), size=1.0)
+>>> s = big.to_svg()
+>>> s.count('<image'), s.count('<path id="m')
+(1, 0)
+```
+
+점이 아주 많은 선(8천 점 넘게)은 모든 출력에서 0.05 bp 너비의 열마다 처음·최소·최대·마지막 점만 남겨요. 그리고 점이 16개 이상인 선과 윤곽선은 이웃한 점을 이은 곧은 줄에서 0.02 bp 안에 있는 점을 버려요. 200 dpi에서 화소의 1/20이라 어느 출력에서도 차이가 보이지 않고, 매끈한 곡선의 SVG와 PDF가 그만큼 작아져요. 둘 다 그리기 전에 층이 하는 일이라 장면에도 줄인 선이 들어가요([래스터라이저](/internals/plot/raster/)).
+
+## 노트북
+
+노트북은 셀의 마지막 값을 보일 때 `_repr_mimebundle_`을 불러요. 형식마다 메서드를 따로 두면(`_repr_svg_`, `_repr_png_`) 노트북이 있는 것을 모두 불러 그림을 두 번 만들게 돼요. 묶음 하나를 돌려주는 이 메서드는 그림 한 꼴과 한 줄짜리 `repr`만 담아요.
+
+```python
+    # src/stardust/plot/_figure.py
+    def _pictured(self):
+        """Whether the figure holds a 3D cell or a layer drawn as a picture (a density, a phase
+        portrait, a heatmap, a hist2d): a notebook shows it as PNG, the rest as SVG."""
+        for cell in self._root._cells:
+            for layer in cell.layers:
+                if type(layer).__name__ in ("Space", "Picture", "Counts"):
+                    return True
+        return False
+
+    def _repr_mimebundle_(self, include=None, exclude=None):
+        """The notebook's view: one image, PNG at 200 dpi or SVG (docs/api/plot.md §2.4), and
+        the one-line repr as plain text. Only one of the two is made."""
+        if self._pictured():
+            data = {"image/png": self._write("Figure", _png.write, 200.0, level=1)}
+        else:
+            data = {"image/svg+xml": self._write("Figure", _svg.write, 200.0)}
+        data["text/plain"] = repr(self)
+        return data
+```
+
+```python
+>>> sorted(fig._repr_mimebundle_())
+['image/svg+xml', 'text/plain']
+>>> sorted(sd.plot.heatmap([[1.0, 2.0], [3.0, 4.0]])._repr_mimebundle_())
+['image/png', 'text/plain']
+>>> repr(fig)
+'Figure(89 x auto mm, 1 axes, 1 layer)'
+```
+
+- 3D 칸이 있거나 화소 그림으로 들어가는 층(밀도, 위상 그림, 열지도의 `Picture`, 2차원 히스토그램의 `Counts`)이 있으면 PNG, 아니면 SVG예요. 그런 그림의 SVG는 어차피 PNG를 품은 것이라 벡터로 보일 것이 축과 글자뿐이에요.
+- 해상도는 200 dpi예요. SVG 쪽의 200은 큰 점 묶음을 그림으로 바꿀 때 쓰는 값이에요.
+- `repr`은 그림을 짓지 않아요. 높이를 주지 않은 그림은 높이가 배치에서 정해지므로 `auto`로 적어요. 배치가 정한 높이는 `fig.height`가 알려 줘요.
+- 3D 칸은 장면을 다시 지을 때도 같은 크기, 같은 시점, 같은 도형이면 깊이 버퍼를 다시 돌리지 않아요. `Space`가 마지막 그림과 그 열쇠를 쥐고 있어요.
+- 노트북의 PNG는 압축 수준 1이에요. 화면에 한 번 보일 그림이라 파일 크기보다 반응이 중요해요. `save`와 `to_png`는 수준 6이에요.
+- 에러 메시지의 함수 이름은 `Figure`예요(`Figure(): LaTeX could not typeset …`).
+
+## 같은 바이트
+
+같은 기계, 같은 스레드 수, 같은 입력이면 세 출력은 같은 바이트예요. 그렇게 되도록 지킨 것들이에요.
+
+- 시각, 난수, 임시 파일 이름, 메모리 주소가 출력에 들어가지 않아요. PDF에 날짜와 식별자가 없고, SVG·PDF의 이름(`g0`, `A0`, `I0`)은 처음 쓰는 차례로 매겨요.
+- 수를 글로 쓸 때 자릿수가 정해져 있어요. 좌표를 넷째 자리에서 반올림하므로 마지막 비트의 차이는 대개 글에 닿지 않지만, 닿을 수 있으므로 약속은 장면이 같을 때예요.
+- 래스터라이저와 깊이 버퍼는 그림을 고정 크기의 줄 띠로 나눠 스레드풀이 그리고, 띠마다 도형을 같은 차례로 칠해요. PNG의 압축 조각도 크기로만 잘라요. 그래서 지금은 스레드 수가 달라도 같은 바이트예요(약속은 아니에요). 골든 도구는 스레드 1, 3, 10에서 돌려 이것을 봐요.
+- PNG와 PDF의 압축은 시스템의 zlib이 해요. zlib의 판이 바뀌면 압축된 바이트가 달라질 수 있어요. 그래서 골든 기록은 PNG 파일이 아니라 화소 버퍼의 해시를 적어요([검증](/internals/plot/verification/)).
+
+```python
+>>> old = sd.get_num_threads()
+>>> outs = []
+>>> for t in (1, 4):
+...     sd.set_num_threads(t)
+...     outs.append(fig.to_png(dpi=600))
+>>> sd.set_num_threads(old)
+>>> outs[0] == outs[1]
+True
+```
+
+<Callout type="note">
+세 출력이 같은 그림인지는 따로 재요. 자체 PNG와, 같은 장면의 SVG를 Cairo(`rsvg-convert`)로, PDF를 Ghostscript로 구운 그림을 화소마다 견줘요([검증](/internals/plot/verification/)).
+</Callout>

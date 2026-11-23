@@ -1,0 +1,396 @@
+---
+title: describe
+names: [describe, DescribeResult]
+group: 기술통계
+order: 1
+signatures:
+  - "sd.stats.describe(x, /, *, axis=None, correction=1, bias=True, nan_policy='propagate')"
+summary: 데이터의 개수, 최솟값과 최댓값, 평균, 분산, 왜도, 첨도를 한 번에 구해요. 결과는 이름으로도 꺼낼 수 있는 튜플 DescribeResult예요.
+params:
+  - name: x
+    type: ndarray, 실수의 시퀀스, 실수 스칼라, numpy 배열, 또는 frame의 Series·DataFrame
+    kind: positional-only
+    desc: 요약할 데이터. bool·정수는 float64로 바꿔서 계산해요. frame의 결측값은 NaN으로 읽어요.
+  - name: axis
+    type: int, int의 tuple·리스트, 또는 None
+    kind: keyword-only
+    desc: 요약해서 없앨 축. None(기본값)이면 모든 원소를 한 묶음으로 요약해요.
+  - name: correction
+    type: int 또는 float(numpy 정수도 돼요)
+    kind: keyword-only
+    desc: 분산을 나누는 수를 n - correction으로 만들어요. 기본값 1은 표본 분산(n - 1로 나눔)이에요. 왜도와 첨도에는 영향이 없어요.
+  - name: bias
+    type: bool
+    kind: keyword-only
+    desc: False면 왜도와 첨도에 표본 크기 보정을 해요. 기본값 True는 보정하지 않은 값이에요.
+  - name: nan_policy
+    type: str
+    kind: keyword-only
+    desc: "NaN을 다루는 방법. 'propagate'(그 줄의 결과가 NaN), 'omit'(NaN을 빼고 계산), 'raise'(ValueError) 중 하나예요."
+returns:
+  type: DescribeResult
+  desc: "(nobs, minmax, mean, variance, skewness, kurtosis) 여섯 칸의 이름 붙은 튜플. minmax는 (최솟값, 최댓값) 튜플이에요. 남는 축이 없으면 칸마다 Python 숫자, 있으면 배열이에요. kurtosis는 초과 첨도(정규분포에서 0)예요."
+raises:
+  - type: TypeError
+    desc: x가 배열, 숫자의 시퀀스, frame의 Series·DataFrame이 아닐 때, 복소수일 때, 숫자가 아닌 열이 있을 때, axis가 int·tuple·리스트·None이 아닐 때, bias가 True·False가 아닐 때, correction이 int·float가 아닐 때(bool 포함), 없는 옵션(keepdims 등)을 줬을 때, nan_policy에 문자열이 아닌 값을 줬을 때.
+  - type: ValueError
+    desc: 중첩 리스트의 길이가 들쭉날쭉할 때, nan_policy 이름이 틀렸을 때, nan_policy='raise'인데 NaN이 있을 때, axis가 범위를 벗어나거나 같은 축을 두 번 썼을 때.
+  - type: OverflowError
+    desc: correction이 float로 나타낼 수 없을 만큼 큰 int일 때(10**400 등).
+seeAlso: [skew-kurtosis, moment, sem, iqr, mode, zscore]
+---
+import Callout from '../../../components/Callout.astro';
+
+## 한눈에 보기
+
+데이터를 처음 받으면 "몇 개인지, 어디서 어디까지인지, 가운데가 어디인지, 얼마나 퍼져 있는지, 모양이 어떤지"부터 보고 싶어요. `describe`는 이 여섯 가지를 한 번에 계산해 줘요.
+
+아래는 시험 점수 여덟 개를 요약한 결과예요.
+
+```python
+>>> import stardust as sd
+>>> scores = sd.asarray([72.0, 85.0, 90.0, 66.0, 85.0, 78.0, 95.0, 61.0])
+>>> sd.stats.describe(scores)
+DescribeResult(nobs=8, minmax=(61.0, 95.0), mean=79.0, variance=141.71428571428572, skewness=-0.22758454097545974, kurtosis=-1.2220018210197712)
+```
+
+칸마다 뜻은 이래요.
+
+| 칸 | 값 | 뜻 |
+|---|---|---|
+| `nobs` | 8 | 관측값의 개수 |
+| `minmax` | (61.0, 95.0) | 가장 작은 값과 가장 큰 값 |
+| `mean` | 79.0 | 평균 |
+| `variance` | 141.71… | 표본 분산(n − 1로 나눔). 제곱근을 씌우면 약 11.9점이에요. |
+| `skewness` | −0.23 | 왜도. 0보다 조금 작아서 왼쪽(낮은 점수 쪽) 꼬리가 약간 길어요. |
+| `kurtosis` | −1.22 | 초과 첨도. 0보다 작아서 정규분포보다 꼬리가 얇고 고르게 퍼져 있어요. |
+
+리스트를 바로 넣어도 돼요. 정수는 실수로 바꿔서 계산해요. [`sd.mean`](/api/array/mean/) 같은 배열 함수는 `sd.ndarray`만 받지만, 기술통계 함수는 눈앞의 데이터를 바로 요약하는 함수라 리스트, numpy 배열, [frame](/api/frame/series/)의 열도 받아요.
+
+```python
+>>> sd.stats.describe([1, 2, 3, 4])
+DescribeResult(nobs=4, minmax=(1.0, 4.0), mean=2.5, variance=1.6666666666666667, skewness=0.0, kurtosis=-1.36)
+```
+
+frame의 `Series`를 그대로 넣으면 그 열을 요약해요. 빈 칸(결측값)은 NaN으로 읽으므로, 아래의 `nan_policy`를 따라요.
+
+```python
+>>> df = sd.frame.DataFrame({'math': [72.0, 85.0, 90.0, None],
+...                          'art': [85.0, 78.0, 95.0, 61.0]})
+>>> sd.stats.describe(df['art'])
+DescribeResult(nobs=4, minmax=(61.0, 95.0), mean=79.75, variance=204.91666666666666, skewness=-0.3812932509682595, kurtosis=-1.1112221729573628)
+>>> sd.stats.describe(df['math'], nan_policy='omit')
+DescribeResult(nobs=3, minmax=(72.0, 90.0), mean=82.33333333333333, variance=86.33333333333334, skewness=-0.4838211809911218, kurtosis=-1.5000000000000002)
+```
+
+`DataFrame`은 행이 0번 축, 열이 1번 축인 2차원 데이터로 읽어요. 열마다 요약하려면 `axis=0`을 줘요.
+
+<Reference />
+
+## 결과 읽기: `DescribeResult`
+
+결과는 **이름이 붙은 튜플**(namedtuple)이에요. 칸을 이름으로 꺼낼 수도 있고, 보통 튜플처럼 번호로 꺼내거나 풀어서 받을 수도 있어요.
+
+```python
+>>> r = sd.stats.describe(scores)
+>>> r.mean
+79.0
+>>> r.minmax
+(61.0, 95.0)
+>>> r[3]
+141.71428571428572
+>>> n, (lo, hi), mean, var, skew, kurt = r
+>>> n, lo, hi
+(8, 61.0, 95.0)
+```
+
+`minmax`만 칸이 둘인 튜플이라, 풀어 받을 때 `(lo, hi)`처럼 괄호를 하나 더 써요. 칸 이름의 목록과 사전(dict)도 얻을 수 있어요.
+
+```python
+>>> r._fields
+('nobs', 'minmax', 'mean', 'variance', 'skewness', 'kurtosis')
+>>> r._asdict()['variance']
+141.71428571428572
+```
+
+`sd.stats.DescribeResult`는 이 튜플의 클래스예요. 직접 만들 일은 거의 없고, `isinstance`로 결과인지 확인할 때 써요.
+
+```python
+>>> isinstance(r, sd.stats.DescribeResult)
+True
+>>> isinstance(r, tuple)
+True
+```
+
+## 각 값은 어떻게 계산할까요
+
+데이터가 $x_1, \dots, x_n$일 때 평균은 $\bar x = \frac1n\sum_i x_i$이고, 평균에서 떨어진 정도의 $k$제곱 평균을 $m_k = \frac1n\sum_i (x_i - \bar x)^k$라고 쓸게요($k$차 중심 모멘트). 그러면
+
+$$
+\text{variance} = \frac{1}{n - c}\sum_i (x_i - \bar x)^2, \qquad
+\text{skewness} = \frac{m_3}{m_2^{3/2}}, \qquad
+\text{kurtosis} = \frac{m_4}{m_2^{2}} - 3
+$$
+
+이에요. $c$가 `correction`이에요.
+
+- **분산**은 퍼진 정도예요. 단위가 데이터의 제곱이라서, 데이터와 같은 단위로 보고 싶으면 제곱근(표준편차)을 써요.
+- **왜도**는 좌우 대칭이 얼마나 깨졌는지예요. 오른쪽(큰 값 쪽) 꼬리가 길면 양수, 왼쪽이 길면 음수, 대칭이면 0이에요.
+- **첨도**는 꼬리가 얼마나 두꺼운지예요. `describe`는 정규분포를 0으로 맞춘 **초과 첨도**를 줘요. 양수면 정규분포보다 극단값이 자주 나오고, 음수면 덜 나와요.
+
+왜도와 첨도의 자세한 뜻과 그림은 [`skew`와 `kurtosis`](/api/stats/skew-kurtosis/)에 있어요. 평균, 분산, 왜도, 첨도는 그 값 하나만 구하는 함수의 결과와 같아요.
+
+```python
+>>> sd.mean(scores), sd.var(scores, correction=1)
+(79.0, 141.71428571428572)
+>>> sd.stats.skew(scores), sd.stats.kurtosis(scores)
+(-0.22758454097545974, -1.2220018210197712)
+```
+
+## `correction`과 `bias`: 보정은 어떻게 할까요
+
+### 분산의 `correction`
+
+표본 분산을 $n$으로 나누면 모집단의 분산을 평균적으로 조금 작게 어림해요. 표본의 평균이 그 표본에 가장 가깝게 놓이기 때문이에요. 그래서 데이터가 더 큰 집단에서 뽑은 표본이면 보통 $n - 1$로 나눠요. `describe`의 기본값 `correction=1`이 이것이에요.
+
+`correction=0`이면 $n$으로 나눠요. 데이터가 관심 있는 집단 전체일 때 써요.
+
+```python
+>>> sd.stats.describe(scores, correction=0).variance
+124.0
+```
+
+<Callout type="warn" title="sd.var와 기본값이 달라요">
+`sd.var`와 `sd.std`의 기본값은 `correction=0`(n으로 나눔)이고, `describe`는 `correction=1`(n − 1로 나눔)이에요. 같은 데이터인데 분산이 다르게 나오면 이 기본값을 먼저 보세요. 인자 이름은 두 곳 모두 `correction`이라서 값을 맞춰 주면 결과가 같아요.
+
+```python
+>>> sd.var(scores)
+124.0
+>>> sd.var(scores, correction=1)
+141.71428571428572
+```
+</Callout>
+
+`correction`은 분산에만 쓰여요. 왜도와 첨도는 언제나 $m_k$($n$으로 나눈 모멘트)로 계산해요.
+
+### 왜도·첨도의 `bias`
+
+표본이 작을 때 왜도와 첨도도 한쪽으로 치우치게 어림해요. `bias=False`를 주면 표본 크기로 보정한 값을 줘요. 왜도는 $n > 2$, 첨도는 $n > 3$일 때 보정해요.
+
+```python
+>>> r2 = sd.stats.describe(scores, bias=False)
+>>> r2.skewness, r2.kurtosis
+(-0.28384779295212853, -1.1662038241415194)
+```
+
+`bias`는 이름과 달리 "편향을 넣는다"가 아니라 "편향이 있는 그대로 둔다"는 뜻이에요. 기본값 `True`가 보정하지 않은 값이에요. 보정식은 [`skew`와 `kurtosis`](/api/stats/skew-kurtosis/)에 있어요.
+
+## `axis`: 줄마다 요약하기
+
+기본값 `axis=None`은 배열의 **모든 원소를 한 묶음**으로 요약해요. `sd.mean`, `sd.var`와 같은 규칙이에요. 2차원 배열에서 행마다, 열마다 따로 요약하려면 `axis`를 줘요. 그러면 `nobs`를 뺀 칸이 배열이 돼요.
+
+```python
+>>> t = sd.asarray([[72.0, 85.0, 90.0, 66.0],
+...                 [85.0, 78.0, 95.0, 61.0]])
+>>> r = sd.stats.describe(t, axis=1)
+>>> r.nobs
+4
+>>> r.mean
+array([78.25, 79.75], dtype=float64)
+>>> r.minmax
+(array([66.0, 61.0], dtype=float64), array([90.0, 95.0], dtype=float64))
+```
+
+배열인 칸은 읽기 전용이에요. 값을 고쳐 쓰려면 `.copy()`로 사본을 만들어요.
+
+```python
+>>> r.mean[0] = 0.0
+Traceback (most recent call last):
+    ...
+ValueError: assignment destination is read-only
+>>> m = r.mean.copy()
+>>> m[0] = 0.0
+>>> m
+array([  0.0, 79.75], dtype=float64)
+```
+
+`axis=1`은 1번 축(열이 늘어선 방향)을 따라 요약하고 그 축을 없애요. 그래서 행마다 값이 하나씩 남아요. 축 고르는 법은 [`sd.sum`](/api/array/sum/)의 `axis`와 같아요. `axis=(0, 1)`이나 `axis=[0, 1]`처럼 tuple이나 리스트로 여러 축을 한꺼번에 줄일 수도 있어요.
+
+```python
+>>> sd.stats.describe(t, axis=(0, 1)).mean
+79.0
+>>> sd.stats.describe(t, axis=[0, 1]).mean
+79.0
+```
+
+`describe`에는 `keepdims`가 없어요. 축을 남겨 두고 싶으면 [`skew`](/api/stats/skew-kurtosis/)나 [`sem`](/api/stats/sem/)처럼 값 하나를 구하는 함수에 `keepdims=True`를 주세요.
+
+## NaN이 있으면: `nan_policy`
+
+빠진 값을 NaN으로 표시한 데이터가 많아요. `nan_policy`로 NaN을 어떻게 다룰지 골라요.
+
+```python
+>>> y = sd.asarray([72.0, 85.0, sd.nan, 66.0, 85.0])
+```
+
+**`'propagate'`(기본값)**: NaN이 하나라도 있는 줄은 개수 말고 모든 값이 NaN이에요. 빠진 값을 모르고 지나치지 않게 해 줘요.
+
+```python
+>>> sd.stats.describe(y)
+DescribeResult(nobs=5, minmax=(nan, nan), mean=nan, variance=nan, skewness=nan, kurtosis=nan)
+```
+
+**`'omit'`**: NaN을 빼고 나머지로 계산해요. `nobs`도 NaN을 뺀 개수예요.
+
+```python
+>>> sd.stats.describe(y, nan_policy='omit')
+DescribeResult(nobs=4, minmax=(66.0, 85.0), mean=77.0, variance=91.33333333333333, skewness=-0.19049689366323827, kurtosis=-1.750173157866695)
+```
+
+**`'raise'`**: NaN이 있으면 `ValueError`를 내요. NaN이 있으면 안 되는 데이터를 검사할 때 써요.
+
+```python
+>>> sd.stats.describe(y, nan_policy='raise')
+Traceback (most recent call last):
+    ...
+ValueError: describe(): the input contains NaN (nan_policy='raise')
+```
+
+`axis`와 `'omit'`을 함께 쓰면 줄마다 NaN의 개수가 다를 수 있어요. 그래서 이때는 `nobs`도 줄마다의 개수를 담은 정수 배열이에요.
+
+```python
+>>> u = sd.asarray([[1.0, sd.nan, 3.0],
+...                 [1.0, 2.0, 4.0]])
+>>> r = sd.stats.describe(u, axis=1, nan_policy='omit')
+>>> r.nobs
+array([2, 3], dtype=int64)
+>>> r.mean
+array([               2.0, 2.3333333333333335], dtype=float64)
+```
+
+## 조심할 점
+
+### 빈 입력은 개수 0과 NaN이에요
+
+요약할 값이 하나도 없으면 `nobs`는 0이고 나머지 칸은 모두 NaN이에요. 다른 기술통계 함수가 빈 데이터에 NaN을 내는 것과 같아요.
+
+```python
+>>> sd.stats.describe([])
+DescribeResult(nobs=0, minmax=(nan, nan), mean=nan, variance=nan, skewness=nan, kurtosis=nan)
+```
+
+### 값이 하나뿐이거나 모두 같으면 NaN이 섞여요
+
+값이 하나면 n − 1 = 0으로 나눠야 해서 분산이 NaN이에요. 퍼짐이 없으니 왜도와 첨도도 정할 수 없어서 NaN이에요.
+
+```python
+>>> sd.stats.describe([5.0])
+DescribeResult(nobs=1, minmax=(5.0, 5.0), mean=5.0, variance=nan, skewness=nan, kurtosis=nan)
+```
+
+모든 값이 같으면 분산은 0이고, 왜도와 첨도는 0을 0으로 나누는 꼴이라 NaN이에요.
+
+```python
+>>> sd.stats.describe([3.0, 3.0, 3.0])
+DescribeResult(nobs=3, minmax=(3.0, 3.0), mean=3.0, variance=0.0, skewness=nan, kurtosis=nan)
+```
+
+### 평균이 아주 커도 정확해요
+
+측정값이 모두 1억 근처이고 차이는 몇 단위뿐인 데이터(센서 시각, 큰 금액 등)에서는 평균을 빼는 순간 자릿수가 많이 사라지기 쉬워요. `describe`는 평균을 반올림한 값으로 빼지 않아서, 1억을 더해도 분산·왜도·첨도가 거의 그대로예요.
+
+```python
+>>> small = sd.asarray([1.0, 2.0, 4.0, 8.0, 3.0])
+>>> sd.stats.describe(small).skewness
+0.8978957037987336
+>>> sd.stats.describe(small + 1e8).skewness
+0.8978957037987333
+```
+
+어떻게 계산하는지는 [기술통계의 구현](/internals/stats/descriptive/)을 보세요.
+
+### 결과는 Python 숫자예요
+
+남는 축이 없으면 각 칸은 Python `int`와 `float`예요. 0차원 배열은 나오지 않아요.
+
+```python
+>>> r = sd.stats.describe(scores)
+>>> type(r.nobs), type(r.mean), type(r.minmax)
+(<class 'int'>, <class 'float'>, <class 'tuple'>)
+```
+
+### 옵션은 이름을 붙여서
+
+`axis`부터 모든 옵션은 이름과 함께 줘야 해요. `bias`에는 `True`나 `False`만 써요.
+
+```python
+>>> sd.stats.describe(scores, bias=0)
+Traceback (most recent call last):
+    ...
+TypeError: describe(): 'bias' must be True or False, not int
+>>> sd.stats.describe(scores, correction=True)
+Traceback (most recent call last):
+    ...
+TypeError: describe(): 'correction' must be an int or a float, not bool
+>>> sd.stats.describe(scores, correction=10**400)
+Traceback (most recent call last):
+    ...
+OverflowError: describe(): 'correction' is out of range
+```
+
+`correction`에는 numpy 정수도 줄 수 있어요. float로 나타낼 수 없을 만큼 큰 int는 위처럼 `OverflowError`예요.
+
+`axis`는 int, int의 tuple이나 리스트, None만 받아요. 범위를 벗어나거나 같은 축을 두 번 쓰면 `ValueError`예요.
+
+```python
+>>> sd.stats.describe(scores, axis=1)
+Traceback (most recent call last):
+    ...
+ValueError: describe(): axis 1 is out of bounds for an array of dimension 1
+>>> sd.stats.describe(t, axis=[1, 1])
+Traceback (most recent call last):
+    ...
+ValueError: describe(): repeated axis
+```
+
+`nan_policy`는 정확한 이름 셋 중 하나여야 해요. 대문자로 쓴 이름도 받지 않아요.
+
+```python
+>>> sd.stats.describe(scores, nan_policy='Omit')
+Traceback (most recent call last):
+    ...
+ValueError: describe(): 'nan_policy' must be 'propagate', 'omit' or 'raise', not 'Omit'
+```
+
+## 비슷한 기능과의 차이
+
+| 하고 싶은 일 | 쓸 것 | `describe`와 다른 점 |
+|---|---|---|
+| 평균 하나만 | [`sd.mean`](/api/array/mean/) | NaN 처리 옵션이 없어요. NaN을 빼려면 [`sd.nanmean`](/api/array/nan-reductions/)이에요. |
+| 분산·표준편차 하나만 | [`sd.var`, `sd.std`](/api/array/var/) | 기본이 `correction=0`(n으로 나눔)이에요. |
+| 최솟값·최댓값 | [`sd.min`, `sd.max`](/api/array/min-max/) | 빈 배열이면 에러예요. |
+| 왜도·첨도 하나만 | [`skew`, `kurtosis`](/api/stats/skew-kurtosis/) | `keepdims`가 있고, 첨도는 `fisher=False`로 정규분포를 3으로 둘 수도 있어요. |
+| 중앙값과 사분위수 | [`sd.quantile`](/api/array/quantile/), [`iqr`](/api/stats/iqr/) | 순서로 정하는 값이라 튀는 값에 덜 흔들려요. `describe`에는 없어요. |
+| 가장 흔한 값 | [`mode`](/api/stats/mode/) | |
+| 분포 객체의 평균·분산·왜도·첨도 | `X.mean()`, `X.variance()`, `X.skewness()`, `X.kurtosis()` | 데이터가 아니라 **분포 자체**의 이론값이에요. |
+
+`sd.stats.Normal(mu=0.0, sigma=1.0)` 같은 분포 객체의 메서드는 수식으로 정해진 참값을 줘요. `describe`는 주어진 데이터에서 그 값을 **어림**해요. 표준정규분포에서 뽑은 표본이라도 표본의 왜도·첨도는 정확히 0이 되지 않아요.
+
+```python
+>>> X = sd.stats.Normal(mu=0.0, sigma=1.0)
+>>> X.skewness(), X.kurtosis()
+(0.0, 0.0)
+>>> data = X.sample(10000, rng=sd.random.default_rng(7))
+>>> r = sd.stats.describe(data)
+>>> abs(r.skewness) < 0.1, abs(r.kurtosis) < 0.1
+(True, True)
+```
+
+## scipy를 아는 분께
+
+- `axis`의 기본값이 `None`(전체)이에요. scipy는 `axis=0`이라 2차원 배열을 열마다 요약하지만, stardust는 `axis=0`을 직접 줘야 열마다 요약해요.
+- 자유도 인자 `ddof`는 `correction`이에요(`sd.var`와 같은 이름). 기본값 1은 scipy와 같아요.
+- `DescribeResult`의 칸 이름과 순서, `bias=True` 기본값, 초과 첨도는 scipy와 같아요. 칸 값은 numpy 스칼라가 아니라 Python `int`·`float`이고, `nobs`는 `nan_policy='omit'`에 축이 남을 때만 int64 배열이에요.
+- 빈 데이터는 scipy에서 `ValueError`지만, stardust에서는 `nobs=0`이고 나머지 칸이 NaN이에요.
+- 평균이 퍼짐보다 아주 큰 데이터에서 scipy보다 정확해요. 위의 `small + 1e8` 예에서 scipy의 왜도는 `0.8978957111981068`(여덟째 자리부터 틀림)이에요.
+- `x`는 위치로만, 나머지 옵션은 이름으로만 받아요.

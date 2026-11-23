@@ -1,0 +1,379 @@
+---
+title: 경계 있는 선형 최소제곱
+group: 최소제곱과 방정식계
+order: 2
+summary: 경계가 있는 선형 최소제곱을 푸는 lsq_linear의 두 방법과 nnls를 설명해요. lsq_linear은 scipy가 부르는 numpy·LAPACK 호출을 같은 꼴로 불러서 지금은 결과가 scipy와 비트까지 같고, nnls는 scipy와 같은 걸음에서 짧은 내적과 반사만 따로 더해요.
+seeAlso: [least-squares, overview, accuracy-performance]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+import Steps from '../../../components/fig/Steps.astro';
+
+export const trfDist = [[1,-1.279],[2,-1.71],[3,-2.486],[4,-3.893],[5,-6.678],[6,-12.241],[7,-23.371],[8,-38.532],[9,-54.009]];
+
+## 한눈에 보기
+
+$$
+\min_x \ \tfrac12\lVert Ax - b\rVert^2 \quad \text{s.t.} \quad l \le x \le u
+$$
+
+는 볼록한 이차 함수를 상자 안에서 최소화하는 문제예요. 최소점의 조건(KKT 조건)은 성분마다 이래요. $g = A^{\mathsf T}(Ax - b)$가 기울기일 때
+
+- $l_j \lt x_j \lt u_j$이면 $g_j = 0$,
+- $x_j = l_j$이면 $g_j \ge 0$(아래로 가면 상자를 벗어나므로 기울기가 위를 가리켜도 돼요),
+- $x_j = u_j$이면 $g_j \le 0$.
+
+어느 변수가 경계에 붙는지만 알면 나머지는 그 변수들만의 선형 최소제곱이에요. 어려운 것은 그 집합을 찾는 일이고, 세 방법이 그것을 다르게 해요. `'bvls'`와 `nnls`는 집합을 한 변수씩 바꾸는 **활성 집합법**이고, `'trf'`는 집합을 정하지 않고 상자 안쪽에서 다가가는 **내부점 방식**의 방법이에요.
+
+<Fig column caption="lsq_linear 한 번의 흐름. 사용자 함수가 없어서 계산 전체가 C++이에요.">
+  <Steps steps={[
+    { label: 'lsq_linear()', note: 'A (m, n), b (m,) 검사, 경계, tol, max_iter', where: '_linear.py' },
+    { label: 'lsq_linear_solve', note: '큰 문제(2mn² > 2×10⁵)면 GIL을 놓음. A와 b가 유한한지 읽으며 확인', where: 'csrc/optimize/linear.cpp' },
+    { label: 'Problem::lstsq', note: "경계 없는 해: numpy의 lstsq(A, b, rcond=-1), LAPACK dgelsd. 경계 안이면 status 3", where: 'linear.cpp', depth: 1 },
+    { label: 'trf_linear / bvls', note: "경계 밖이면 'trf' 또는 'bvls'", where: 'linear.cpp', depth: 1 },
+    { label: 'OptimizeResult', note: 'x cost fun optimality active_mask status message n_iter', where: '_linear.py' },
+  ]} />
+</Fig>
+
+| 무엇 | 어떻게 | 근거 |
+|---|---|---|
+| 첫 풀이 | numpy `lstsq(A, b, rcond=-1)`(LAPACK `dgelsd`), 경계 안이면 끝 | scipy `lsq_linear` |
+| `'trf'` | A의 열 피벗 QR 하나, 반복마다 Coleman–Li 척도와 Givens 소거로 정규화한 가우스–뉴턴 걸음, 반사 | scipy `trf_linear` (Branch–Coleman–Li) |
+| `'bvls'` | 자유 변수만의 `lstsq`를 되풀이하는 활성 집합법 | scipy `bvls` (Stark–Parker 1995) |
+| `nnls` | Householder 반사로 삼각화를 늘려 가는 활성 집합법, 빼는 열은 Givens 회전 | scipy 1.18.1의 C 판 `__nnls` (Lawson–Hanson 1974) |
+
+## 첫 풀이: 경계 없는 해
+
+scipy처럼 먼저 경계를 잊고 풀어요. 그 해가 이미 상자 안이면 KKT 조건이 모든 성분에서 $g_j = 0$으로 서므로 그대로 답이에요.
+
+```cpp
+            // csrc/optimize/linear.cpp, lsq_linear_solve
+            // the unbounded solution: numpy's lstsq(A, b, rcond=-1)
+            vec x_lsq(static_cast<std::size_t>(n));
+            P.lstsq(P.A.data(), m, n, P.b.data(), -1.0, x_lsq.data());
+            if (in_bounds(x_lsq, lb, ub)) {
+                x = x_lsq;
+                r.assign(static_cast<std::size_t>(m), 0.0);
+                g.assign(static_cast<std::size_t>(n), 0.0);
+                cost = P.residual(x, r, &g);
+                for (lint j = 0; j < n; ++j) g[j] = std::abs(g[j]);
+                optimality = npmax(g.data(), n);
+                active.assign(static_cast<std::size_t>(n), 0);
+                status = 3;
+```
+
+`dgelsd`는 A의 SVD로 최소제곱 해를 구하는 LAPACK 루틴이에요. 먼저 A를 이중 대각 꼴로 줄이고, 분할 정복으로 특이값 분해를 한 뒤, 기준(`rcond`·최대 특이값) 이하인 특이값의 방향을 버린 해를 내요. `rcond`가 음수면 LAPACK이 기계 정밀도를 기준으로 써요. 그래서 열이 반올림 수준에서 겹칠 때만 방향을 버리고, 그때 답은 노름이 가장 작은 최소제곱 해예요. 이 결과의 `optimality`는 $\lVert A^{\mathsf T}r\rVert_\infty$예요(반올림 수준). `dgelsd`의 특이값 분해가 수렴하지 않으면(info > 0) numpy처럼 `LinAlgError`(`lsq_linear(): SVD did not converge`)예요.
+
+## 'trf': 신뢰 영역 반사법을 이차 함수에
+
+scipy의 `trf_linear`는 [비선형 최소제곱의 TRF](/internals/regression/nls/)(Branch–Coleman–Li)를 선형 잔차에 맞게 줄인 거예요. 잔차가 일차라 이차 모형이 목적함수와 정확히 같아서, 모형을 얼마나 믿을지 정하는 신뢰 영역의 반지름이 없어요. 남는 일은 경계를 다루는 것뿐이에요.
+
+### Coleman–Li 척도와 뉴턴 걸음
+
+KKT 조건은 성분마다 "기울기가 0이거나, 경계에 있고 기울기가 바깥을 향함"이에요. Coleman–Li는 이것을 방정식 하나로 써요.
+
+$$
+v(x) \odot g(x) = 0, \qquad
+v_j = \begin{cases} u_j - x_j & g_j \lt 0,\ u_j \lt \infty \\ x_j - l_j & g_j \gt 0,\ l_j \gt -\infty \\ 1 & \text{그 밖} \end{cases}
+$$
+
+$v_j$는 기울기가 내려가라고 하는 쪽 경계까지의 거리예요. 변수를 $x = x_k + D\hat p$, $D = \operatorname{diag}(\sqrt{v})$로 바꾸면 이 방정식의 뉴턴 걸음은
+
+$$
+\min_{\hat p}\ \tfrac12\lVert A D\hat p + r\rVert^2 + \tfrac12\hat p^{\mathsf T}\operatorname{diag}(g\odot\partial v)\,\hat p
+$$
+
+의 해예요($r = Ax - b$, $\partial v_j \in \{-1, 0, 1\}$은 $v_j$를 $x_j$로 미분한 것). $g_j$와 $\partial v_j$의 부호가 늘 같아서 $g\odot\partial v \ge 0$이고, 둘째 항은 정규화 항이에요. 경계 가까이에서 $v_j$가 작으면 그 방향의 걸음이 저절로 짧아지고, 경계를 미는 기울기가 큰 변수일수록 정규화가 커져요. 결국 걸음은 증강한 최소제곱
+
+$$
+\min_{\hat p}\ \left\lVert \begin{bmatrix} A D \\ \operatorname{diag}(\sqrt{g\odot\partial v}) \end{bmatrix} \hat p + \begin{bmatrix} r \\ 0 \end{bmatrix} \right\rVert
+$$
+
+이에요.
+
+### QR 하나로 모든 반복을
+
+A는 반복 동안 바뀌지 않으니, 처음에 열 피벗 QR $AP = QR$을 한 번만 해요(scipy의 `qr(A, mode='economic', pivoting=True)`: LAPACK `geqp3`와 `orgqr`). 그러면 $ADP = QR\,D_P$($D_P$는 피벗 순서로 늘어놓은 D)이고 $Q$는 노름을 바꾸지 않으므로, 위의 증강 문제는 n × n의
+
+$$
+\begin{bmatrix} R D_P \\ \operatorname{diag}(\sqrt{g\odot\partial v})_P \end{bmatrix}\hat p_P \approx -\begin{bmatrix} Q^{\mathsf T}r \\ 0 \end{bmatrix}
+$$
+
+로 줄어요. 아래의 대각 행을 Givens 회전으로 위 삼각 행렬에 하나씩 녹여 넣으면(`givens_elimination`) 다시 위 삼각 행렬이 되고, 삼각 풀이 한 번이면 걸음이에요. 반복 하나의 비용이 m에 거의 기대지 않아요($Q^{\mathsf T}r$, $Ax$, $A^{\mathsf T}r$의 행렬·벡터 곱만 m 크기예요).
+
+```cpp
+// csrc/optimize/linear.cpp
+// givens_elimination(S, v, diag): zero out diag(diag) below the upper triangular S (n x n,
+// C-ordered) by Givens rotations (LAPACK dlartg, BLAS drot), applied to v as well
+void givens_elimination(lint n, double* S, double* v, const double* diag) {
+    vec diag_row(static_cast<std::size_t>(n));
+    const lint one = 1;
+    for (lint i = 0; i < n; ++i) {
+        if (diag[i] == 0) continue;
+        for (lint k = i + 1; k < n; ++k) diag_row[k] = 0;
+        diag_row[i] = diag[i];
+        double u = 0;
+        for (lint j = i; j < n; ++j) {
+            if (diag_row[j] == 0) continue;
+            double f = S[j * n + j], g = diag_row[j], cs, sn, r;
+            dlartg_(&f, &g, &cs, &sn, &r);
+            S[j * n + j] = r;
+            lint k = n - j - 1;
+            if (k > 0) drot_(&k, &S[j * n + j + 1], &one, &diag_row[j + 1], &one, &cs, &sn);
+            f = v[j];
+            v[j] = std::fma(cs, f, sn * u);
+            u = std::fma(-sn, f, cs * u);
+        }
+    }
+}
+```
+
+scipy의 이 함수는 Cython으로 컴파일된 코드라 오른쪽 벡터 v의 회전이 FMA예요. 그 자리만 `std::fma`로 적어요. 녹인 뒤 대각이 $\varepsilon\cdot\max(m, n)\cdot\max_j\lvert r_{jj}\rvert$ 이하인 열은 풀이에서 빼요(그 성분의 걸음은 0). A의 랭크가 모자라도 걸음이 정해지게 하는 거예요.
+
+### 걸음 고르기와 반사
+
+뉴턴 걸음 $p = D\hat p$가 상자 안이면 그대로 써요. 넘으면 세 후보 가운데 이차 함수 값이 가장 작은 것을 골라요(`select_step`).
+
+1. 경계에 처음 닿는 데까지 줄인 걸음에 $\theta = 1 - \min(0.005, \lVert v\odot g\rVert_\infty)$를 곱한 것. 경계 바로 앞에서 멈춰요.
+2. **반사 걸음**: 닿은 경계의 성분 부호를 뒤집은 방향으로, 닿은 점에서 다음 경계까지(의 θ배) 1차원 이차 함수를 최소화해요.
+3. 척도를 맞춘 기울기의 반대 방향 $-D^2 g$로, 경계까지(의 θ배) 1차원 최소화해요.
+
+θ가 1보다 작아서 반복점은 늘 상자 안쪽에 있고($v_j \gt 0$이어야 척도가 정의돼요), 기울기가 작아질수록 θ가 1에 다가가 경계에 더 가까이 가요. 처음 점은 경계 없는 해를 상자 안으로 **반사**한 점이에요. 경계 $[l, u]$를 넘은 거리만큼 되접어($y \mapsto l + \min(t, 2d - t)$, $t = (y - l) \bmod 2d$, $d = u - l$), 경계에 붙으면 안쪽으로 조금 옮겨요.
+
+고른 걸음이 오히려 비용을 늘리면(반사 걸음이 그럴 수 있어요) 뉴턴 방향 p를 따라 걸음을 반씩 줄이며 Armijo 조건(비용 감소 $\gt -0.1\,\alpha\, p^{\mathsf T}g$)을 찾아요. scipy의 이 `backtracking`은 새 x를 계산해 놓고 받은 x를 그대로 돌려줘서, 그 반복의 x가 바뀌지 않아요. 걸음 자체가 버려지는 셈이고, 이쪽도 같아요.
+
+```cpp
+        // csrc/optimize/linear.cpp, trf_linear
+        if (cost_change < 0) {
+            // scipy's backtracking returns the x it was given: the iterate stays
+            auto [st, cc] = T.backtracking(g, x, p, theta, p_dot_g);
+            step = std::move(st);
+            cost_change = cc;
+        } else {
+```
+
+멈춤은 scipy의 것이에요. 반복을 시작할 때 $\lVert v\odot g\rVert_\infty \lt$ `tol`이면 1, 반복의 비용 감소가 `tol`·`cost`보다 작으면 2, 뉴턴 방향이 오르막($p^{\mathsf T}g \gt 0$)이면 −1, `max_iter`(기본 100)에 닿으면 0이에요.
+
+### 수렴: 경계로 2차로 다가가요
+
+Coleman–Li의 방법은 경계에 걸린 변수의 기울기가 0이 아니면(엄격한 상보성) 국소적으로 2차 수렴해요. [lsq_linear의 문서](/api/optimize/lsq_linear/)에 있는 세 성분 섞임 문제에서, 아래 경계 0에 붙어야 할 셋째 성분이 반복마다 0에 다가가는 거리를 보면 지수가 반복마다 두 배가 돼요.
+
+```python
+>>> A = sd.asarray([[1.0, 0.2, 0.0], [0.8, 0.5, 0.1], [0.3, 1.0, 0.3],
+...                 [0.1, 0.6, 0.9], [0.0, 0.2, 1.0], [0.4, 0.4, 0.4]])
+>>> b = sd.asarray([0.95, 1.05, 0.80, 0.35, 0.05, 0.55])
+>>> [f'{sd.optimize.lsq_linear(A, b, bounds=(0, 1), max_iter=k, tol=0.0).x[2]:.1e}' for k in range(3, 9)]
+['3.3e-03', '1.3e-04', '2.1e-07', '5.7e-13', '4.3e-24', '2.9e-39']
+```
+
+<Fig caption="'trf'의 반복 수와 셋째 성분의 경계까지의 거리(log₁₀). 해 근처에서 log 거리가 반복마다 거의 두 배가 돼요(2차 수렴). 기본 tol = 10⁻¹⁰에서는 7번째 반복을 시작할 때 척도를 곱한 기울기가 tol보다 작아져 5.7×10⁻¹³에서 멈춰요.">
+  <Plot
+    curves={[{ points: trfDist, label: 'log₁₀ x₃' }]}
+    domain={[1, 9]}
+    range={[-56, 0]}
+    xTicks={[{ v: 1, label: '1' }, { v: 3, label: '3' }, { v: 5, label: '5' }, { v: 7, label: '7' }, { v: 9, label: '9' }]}
+    yTicks={[{ v: -50, label: '10⁻⁵⁰' }, { v: -40, label: '10⁻⁴⁰' }, { v: -30, label: '10⁻³⁰' }, { v: -20, label: '10⁻²⁰' }, { v: -10, label: '10⁻¹⁰' }]}
+  />
+</Fig>
+
+그래서 `'trf'`의 x는 정확히 경계에 있지 않아요. 결과의 `active_mask`는 scipy의 `find_active_constraints(rtol=tol)`이라, 경계에서 `tol`·max(1, |경계|) 안에 들어온 변수만 걸린 것으로 쳐요.
+
+## 'bvls': Stark–Parker
+
+`'bvls'`(Bounded-Variable Least Squares, Stark–Parker 1995)는 Lawson–Hanson의 NNLS를 위·아래 경계로 넓힌 활성 집합법이에요. 변수를 "경계에 고정"(아래 −1, 위 +1)과 "자유"(0)로 나누고, 자유 변수만의 선형 최소제곱
+
+$$
+\min_{x_F}\ \lVert A_F x_F - (b - A_B x_B)\rVert
+$$
+
+을 되풀이해 풀어요($F$는 자유, $B$는 고정 변수). scipy의 판은 이래요.
+
+1. **시작**: 경계 없는 해를 경계로 잘라 넘은 변수를 고정해요. 그 뒤 자유 변수만의 `lstsq`를 풀고, 그 해가 경계를 넘으면 넘은 변수를 또 고정하는 일을 해가 상자 안이 될 때까지 해요. 여기까지의 횟수도 반복 수에 들어가요.
+2. **KKT 판정**: 자유 변수의 $\lvert g_j\rvert$와 고정 변수의 $g_j s_j$($s_j$는 아래 경계 −1, 위 경계 +1)의 최댓값이 `optimality`예요. $g_j s_j \gt 0$이면 그 변수를 상자 안쪽으로 풀어 줄 때 비용이 줄어요. `tol`보다 작으면 끝이에요.
+3. **풀어 주기**: $g_j s_j$가 가장 큰(풀어 주면 비용이 가장 빨리 주는) 고정 변수 하나를 자유로 바꿔요.
+4. **안쪽 고리**: 자유 변수의 `lstsq` 해 z가 상자 안이면 받아들여요. 넘는 변수가 있으면 지금의 $x_F$에서 z 쪽으로 가다가 처음 경계에 닿는 비율 $\alpha = \min_j (\text{경계}_j - x_j)/(z_j - x_j)$만큼만 가서($x_F \leftarrow (1 - \alpha)x_F + \alpha z$) 그 변수를 고정하고, 다시 풀어요.
+5. 반복의 비용 감소가 `tol`·`cost`보다 작으면 2로 멈춰요. `max_iter`의 기본은 n이고, 1의 반복 수에 더해요.
+
+반복마다 비용이 줄고 같은 활성 집합이 다시 나오지 않으므로 유한한 단계에서 끝나요. 자유 변수의 `lstsq`는 numpy의 기본(`rcond=None`, 기준 $\varepsilon\cdot\max(m, k)$)이에요.
+
+4의 갱신은 경계에 닿는 변수도 $(1 - \alpha)x_j + \alpha z_j$로 계산하고 경계값을 대입하지 않아요. 그래서 그 변수는 반올림으로 경계를 아주 조금 넘을 수 있어요. scipy는 그 값을 그대로 고정해 돌려줘요. [nnls의 문서](/api/optimize/nnls/)의 지수 성분 문제를 `bounds=(0, inf)`로 풀면 scipy의 x에는 고정된 변수 하나가 $-1.4\times10^{-17}$이에요. 무작위 300문제 가운데 84문제가 그래요.
+
+여기서는 반복이 끝난 뒤 x를 경계 안으로 옮겨요. 고정된 변수(`on_bound` ±1)는 정확히 그 경계값으로, 그 밖에 반올림만큼 넘은 값은 경계로 잘라요. x가 바뀌었으면 잔차, 기울기, `cost`, KKT 최적성을 옮긴 x에서 다시 계산해요. 반복과 `status`는 scipy 그대로예요.
+
+```cpp
+    // csrc/optimize/linear.cpp
+    bool moved = false;
+    for (lint j = 0; j < n; ++j) {
+        double v = on_bound[j] < 0 ? lb[j] : on_bound[j] > 0 ? ub[j] : std::min(std::max(x[j], lb[j]), ub[j]);
+        if (v != x[j]) {
+            x[j] = v;
+            moved = true;
+        }
+    }
+    if (moved) {
+        np_matvec(P.A.data(), m, n, x.data(), r.data());
+        for (lint i = 0; i < m; ++i) r[i] = r[i] - P.b[i];
+        cost = 0.5 * npdot(r.data(), r.data(), m);
+        np_rmatvec(P.A.data(), m, n, r.data(), g.data());
+        optimality = kkt();
+    }
+```
+
+그래서 돌려주는 x는 언제나 경계 안이고, `active_mask`가 ±1인 변수는 정확히 그 경계값이에요. 그런 경우만 `x`, `fun`, `cost`, `optimality`의 끝자리가 scipy와 달라요(`cost`는 상대 $10^{-12}$ 안). 같은 무작위 문제에서 `'trf'`(안쪽 점)와 `nnls`는 경계를 넘지 않았어요.
+
+## nnls: Lawson–Hanson
+
+### 알고리즘
+
+Lawson–Hanson(1974)의 NNLS는 x ≥ 0 전용의 활성 집합법이에요. 양수로 둘 변수의 집합 P(처음에는 비어 있음)와 0에 둘 집합 Z로 나눠요.
+
+1. $w = A^{\mathsf T}(b - Ax)$를 계산해요. $w = -g$라서, $w_j \gt 0$인 $j \in Z$는 키우면 비용이 주는 변수예요. Z가 비었거나 Z의 모든 $w_j \le 0$이면 KKT 조건이 서서 끝이에요.
+2. $w_j$가 가장 큰 $j$를 P로 옮겨요.
+3. P의 열만으로 최소제곱 해 $z_P$를 구해요($z_Z = 0$). 모든 $z_j \gt 0$이면 $x = z$로 두고 1로 가요.
+4. 아니면 x에서 z 쪽으로 가다가 처음 0에 닿는 비율 $\alpha = \min_{z_q \le 0} x_q/(x_q - z_q)$만큼 가서($x \leftarrow x + \alpha(z - x)$) 0이 된 변수를 Z로 돌려보내고 3으로 가요.
+
+P가 바뀔 때마다 비용이 엄격히 줄고 P가 되풀이되지 않으므로 유한한 단계에서 끝나요. 끝난 x는 KKT 조건을 반올림 안에서 만족해요. 섞임 문제의 x를 반복마다 보면(`max_iter`로 끊어서) 이래요.
+
+```python
+>>> [[round(v, 4) for v in sd.optimize.nnls(A, b, max_iter=k).x.tolist()] for k in (1, 2)]
+[[1.2026, 0.0, 0.0], [0.9014, 0.5111, 0.0]]
+>>> [round(v, 3) for v in sd.matmul(A.T, b).tolist()]
+[2.285, 1.955, 0.93]
+```
+
+`max_iter=k`이면 3의 풀이를 k번까지 해요. x = 0에서 $w = A^{\mathsf T}b$가 가장 큰 첫째 변수를 넣고(풀이 1번), 다음에 둘째를 넣어요(풀이 2번). 그 뒤 셋째의 $w_3$는 0 이하라 끝나요(`n_iter` 2).
+
+### 삼각화를 늘려 가기
+
+3의 최소제곱을 매번 처음부터 풀지 않아요. A와 b에 Householder 반사를 차례로 적용해서, P의 열이 위 삼각 꼴이 되게 유지해요. 새 열 j를 P에 넣을 때는 그 열의 아래쪽(행 `nsetp`부터)에 반사 하나를 만들어 대각 아래를 0으로 만들고(LAPACK `dlarfgp`: 대각 β가 0 이상이 되는 반사), 같은 반사를 b와 나머지 열에 적용해요(LAPACK `dlarf`가 열 하나에 하는 계산과 같은 식). 그러면 $z_P$는 삼각 풀이 하나예요. 열을 P에서 뺄 때는 뒤의 열을 한 칸씩 당기고, 생긴 대각 아래의 원소를 Givens 회전(`dlartgp`)으로 없애요. 반사와 회전 모두 직교 변환이라 $\lVert Ax - b\rVert$를 바꾸지 않고, 1의 w는 변환된 A와 b의 아래쪽 행만으로 계산돼요.
+
+scipy 1.18.1의 `nnls`는 Lawson–Hanson의 Fortran(H12, G1)을 LAPACK으로 다시 쓴 C 판이에요. 설치본에는 컴파일된 모듈만 있어서, 이쪽의 `nnls_kernel`은 그 기계어에서 읽은 알고리즘(LAPACK 호출의 순서, 판정)을 따라요. 열을 들이는 두 판정이 그 판의 꼴이에요.
+
+```cpp
+            // csrc/optimize/linear.cpp, nnls_kernel
+            const lint nn = m - nsetp;
+            beta = a[nsetp + j * m];
+            dlarfgp_(&nn, &beta, &a[nsetp + 1 + j * m], &one, &tau);
+            double spacing = 0;
+            if (nsetp >= 1) {
+                const double unorm = cblas_dnrm2(nsetp, &a[j * m], 1);
+                if (unorm > 0) spacing = std::nextafter(unorm, 2 * unorm) - unorm;
+            }
+            if (!(std::abs(beta) > 100 * spacing)) {
+                w[j] = 0;
+                continue;
+            }
+            std::memcpy(zz, b, static_cast<std::size_t>(m) * sizeof(double));
+            const double save = a[nsetp + j * m];
+            a[nsetp + j * m] = 1;
+            nnls_reflect(nn, &a[nsetp + j * m], tau, &zz[nsetp]);
+            if (!(zz[nsetp] / beta > 0)) {
+                a[nsetp + j * m] = save;
+                w[j] = 0;
+                continue;
+            }
+```
+
+- 첫 판정은 새 열이 P의 열들과 거의 겹치지 않는지 봐요. 반사한 뒤의 대각 $\lvert\beta\rvert$(P의 열이 펼치는 공간 밖에 있는 크기)가 위쪽 부분의 노름 $\lVert a_{0:\text{nsetp}, j}\rVert$의 ULP의 100배보다 커야 해요. Lawson–Hanson 원본의 "$\lvert\beta\rvert$가 위쪽 노름의 0.01배만큼 반올림에 묻히지 않는지"와 같은 뜻이에요.
+- 둘째 판정은 그 열만 새로 풀었을 때의 값 $(Q^{\mathsf T}b)_{\text{nsetp}}/\beta$가 양수인지 봐요. 음수면 넣자마자 3–4에서 다시 빠질 열이에요.
+- 판정에서 떨어진 열은 그 열의 $w_j$를 0으로 두고 다음으로 큰 열을 봐요. 이때 scipy의 판은 반사 벡터의 머리 원소만 되돌리고 `dlarfgp`가 바꾼 꼬리는 그대로 둬요. 그 열의 다음 w가 그 꼬리로 계산되는 것까지 같아요.
+
+1의 쌍대 값 $w_j$(행 `nsetp`부터의 내적)와 열 하나의 반사는 scipy의 판이 `ddot`과 `dlarf`로 해요. 그 길이는 m − nsetp라 대개 짧아서, BLAS·LAPACK을 부르는 고정 비용이 계산보다 커요. 그래서 256항보다 짧으면 누산기 넷의 고리로 더하고, 256항부터 `ddot`을 불러요.
+
+```cpp
+// csrc/optimize/linear.cpp
+// The dot product and the one-column reflection of nnls's inner steps: for short runs a plain
+// four-accumulator loop (Accelerate's per-call cost dominated a (100, 10) problem, the run
+// lengths being m - nsetp), from 256 terms BLAS. The order is fixed by the length, so the bits
+// (and the columns chosen) are the same on every run and thread count.
+inline double nnls_dot(lint n, const double* a, const double* b) {
+    if (n >= 256) return cblas_ddot(n, a, 1, b, 1);
+    double s0 = 0, s1 = 0, s2 = 0, s3 = 0;
+    lint i = 0;
+    for (; i + 4 <= n; i += 4) {
+        s0 += a[i] * b[i];
+        s1 += a[i + 1] * b[i + 1];
+        s2 += a[i + 2] * b[i + 2];
+        s3 += a[i + 3] * b[i + 3];
+    }
+    for (; i < n; ++i) s0 += a[i] * b[i];
+    return (s0 + s1) + (s2 + s3);
+}
+// LAPACK's dlarf for one column: c = (I - tau v v^T) c (v[0] = 1 set by the caller).
+inline void nnls_reflect(lint n, const double* v, double tau, double* c) {
+    if (tau == 0) return;
+    const double t = -tau * nnls_dot(n, v, c);
+    for (lint i = 0; i < n; ++i) c[i] = c[i] + v[i] * t;
+}
+```
+
+합의 순서가 길이로만 정해지므로 같은 입력이면 실행마다 같은 비트이고, 지금은 스레드 수와도 상관없어요(약속은 아니에요). 다만 BLAS와 더하는 순서가 달라서 x의 끝자리는 scipy와 달라요. 0인 성분의 자리, `status`, 반복 수는 같아요.
+
+4의 걸음은 α를 2에서 시작해 막는 변수가 없으면 2로 남는 것을 "모두 양수"의 표시로 써요.
+
+```cpp
+            // csrc/optimize/linear.cpp, nnls_kernel
+            double alpha = 2;
+            lint jj = 0;
+            for (lint ip = 0; ip < nsetp; ++ip) {
+                if (!(zz[ip] <= 0)) continue;
+                const lint l = idx[ip];
+                const double t = -x[l] / (zz[ip] - x[l]);
+                if (alpha > t) {
+                    alpha = t;
+                    jj = ip;
+                }
+            }
+```
+
+셈은 scipy의 판처럼 안쪽 고리를 한 번 돌 때마다(3의 풀이마다) 하나예요. 상한은 Lawson–Hanson 원본처럼 `iter > max_iter`에서 status 0(`The maximum number of iterations is exceeded.`, `lsq_linear`의 글)으로 멈춰요. scipy의 C 판은 `iter >= maxiter`라 하나 일찍 멈추고 `RuntimeError`를 내요. 기본 `max_iter`는 3n − 1이라 scipy의 기본 3n과 같은 곳에서 멈춰요. 상한에 닿지 않는 문제의 x는 같아요. 다른 곳이 하나 있어요. 열을 빼다가 P가 비면 scipy의 고리는 음수의 개수로 계속 가며 색인 배열 앞을 써요. 여기서는 그 자리에서 안쪽 고리를 끝내요. 무작위 문제 800개에서는 그런 경우가 나오지 않아요.
+
+## scipy와 같은 호출의 꼴
+
+`lsq_linear`의 두 방법은 산술도 scipy가 numpy와 LAPACK을 부르는 꼴을 그대로 따라요. 그래서 지금은 결과가 scipy와 비트까지 같아요(약속은 아니에요). 같은 연산이라도 부르는 루틴과 메모리 배치가 다르면 Accelerate(macOS의 BLAS·LAPACK)의 결과가 끝자리에서 달라지기 때문이에요.
+
+- `A.dot(x)`는 C 순서 A의 `cblas_dgemv`(행 우선), `A.T.dot(r)`은 같은 메모리를 열 우선으로 본 `dgemv`예요. 행이나 열이 하나면 numpy처럼 `ddot`·곱의 길로 가요.
+- 벡터 둘의 `np.dot`은 `0.0 + cblas_ddot`이에요(원소가 하나면 곱). BLAS가 돌려주는 −0.0이 +0.0이 되는 것까지 같아요.
+
+```cpp
+// csrc/optimize/linear.cpp
+// np.dot of two vectors: the product of one element, else 0.0 + ddot (BLAS's -0.0 becomes 0.0)
+double npdot(const double* a, const double* b, lint n) {
+    if (n == 1) return a[0] * b[0];
+    return 0.0 + cblas_ddot(n, a, 1, b, 1);
+}
+```
+
+- Accelerate의 `ddot`과 `dgelsd`는 넘겨받은 배열의 정렬(16바이트 경계에 놓였는지)에 따라 합의 순서가 달라요. 그래서 numpy의 `lstsq`가 만드는 버퍼 배치(a, b, s를 한 덩어리에, work와 iwork를 다른 덩어리에)를 그대로 써요. 따로 잡은 배열로 하면 무작위 400문제 가운데 m이 홀수이고 m < n인 7문제에서 `dgelsd`의 끝자리가 갈려요.
+- 스칼라 계산은 Python의 산술(FMA 없음)이고, scipy가 컴파일한 부분(`givens_elimination`의 v 회전, `nnls`)만 그 빌드의 FMA를 `std::fma`로 적어요.
+
+그 결과 scipy의 시험 문제 12개 × 두 방법의 모든 필드, 무작위 문제 `'trf'`·`'bvls'` 각 824개(넓고 긴 모양, 계수 부족, 반쪽·상자·무한이 섞인 경계), 작은 모양(1 × 1부터 2 × 2까지) 480개, 큰 크기((1000, 100), (300, 120), (10⁴, 100))에서 x, fun, cost, optimality, active_mask, status, message, 반복 수가 모두 scipy와 같아요. 다만 `'bvls'`에서 scipy의 x가 경계를 반올림만큼 넘은 경우(테스트의 무작위 300번 가운데 84번)는 x가 그것을 경계로 옮긴 값과 비트까지 같고, `fun`·`cost`·`optimality`는 옮긴 x의 것이에요. `nnls`는 기록된 12문제와 무작위 300번(반복 상한을 준 60번 포함)에서 x의 0인 자리, `status`, 반복 수가 같고, 나머지 성분의 차이는 $64\,\varepsilon\,\mathrm{cond}(A_P)\max(1, \lVert x\rVert_\infty)$ 안이에요($A_P$는 양수인 변수의 열). scipy의 `rnorm`은 회전한 b의 꼬리 노름이라 $\sqrt{2\cdot\text{cost}}$와 끝자리가 다를 수 있어요.
+
+```python
+>>> import numpy as np
+>>> from scipy.optimize import lsq_linear as scipy_lsq_linear, nnls as scipy_nnls
+>>> An, bn = np.array(A.tolist()), np.array(b.tolist())
+>>> [scipy_lsq_linear(An, bn, bounds=(0, 1), method=m).x.tolist() == sd.optimize.lsq_linear(A, b, bounds=(0, 1), method=m).x.tolist() for m in ('trf', 'bvls')]
+[True, True]
+>>> xs, xd = scipy_nnls(An, bn)[0].tolist(), sd.optimize.nnls(A, b).x.tolist()
+>>> [v == 0 for v in xs] == [v == 0 for v in xd], [abs(p - q) for p, q in zip(xs, xd)]
+(True, [0.0, 2.220446049250313e-16, 0.0])
+```
+
+최적성으로 보면, 긴 모양의 무작위 100문제에서 `'bvls'`와 `nnls`의 답은 KKT 조건을 상대 $10^{-9}$ 안에서 만족하고, `'trf'`의 `cost`는 `'bvls'`의 것과 상대 $1.2\times10^{-11}$ 안이에요.
+
+## 성능
+
+사용자 함수가 없어서 전체 시간이 곧 방법의 비용이에요. Apple M4 Pro, 1스레드, scipy 1.18.1·numpy 2.5.4(Accelerate), A는 표준정규, 경계는 x ≥ 0이에요.
+
+- 작은 문제 (100, 10)의 `'trf'`는 0.04 ms로 scipy(0.35 ms)의 1/9쯤이에요. scipy는 반복마다 `LinearOperator`를 만들고 numpy 연산 수십 개를 Python에서 불러요. `'bvls'`는 반복마다의 `lstsq`(`dgelsd`)가 대부분이라 차이가 작아요(scipy의 1/1.7).
+- 큰 문제((1000, 100)과 (10⁴, 100))는 같은 LAPACK·BLAS 호출이 시간의 대부분이라 같아요. 같은 호출이라 줄일 곳이 거의 없어요.
+- `nnls`는 짧은 내적과 반사를 BLAS·LAPACK 호출 없이 하므로, 작은 문제에서도 호출마다의 고정 비용이 붙지 않아요. 크기마다 scipy와 같거나 빨라요.
+
+## 참고 문헌
+
+1. C. L. Lawson, R. J. Hanson, *Solving Least Squares Problems*, Prentice-Hall, 1974, 23장(NNLS).
+2. P. B. Stark, R. L. Parker, "Bounded-variable least-squares: an algorithm and applications", *Computational Statistics* 10(2), 1995, 129–141.
+3. M. A. Branch, T. F. Coleman, Y. Li, "A subspace, interior, and conjugate gradient method for large-scale bound-constrained minimization problems", *SIAM J. Sci. Comput.* 21(1), 1999, 1–23.
+4. T. F. Coleman, Y. Li, "An interior trust region approach for nonlinear minimization subject to bounds", *SIAM J. Optim.* 6(2), 1996, 418–445.
+5. scipy 1.18.1, `scipy/optimize/_lsq/lsq_linear.py`, `trf_linear.py`, `bvls.py`, `common.py`, `givens_elimination`(Cython); `scipy/optimize/_nnls.py`와 컴파일된 `_slsqplib`의 `nnls`.

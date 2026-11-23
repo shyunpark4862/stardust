@@ -1,0 +1,323 @@
+---
+kind: function
+title: cosine
+names: [cosine]
+group: 거리 함수
+order: 20
+signatures:
+  - "sd.spatial.cosine(u, v, /, *, w=None)"
+summary: 두 벡터가 가리키는 방향이 얼마나 다른지를 1 − cos θ로 재요. 길이는 보지 않고 방향만 보므로 같은 방향이면 0, 직각이면 1, 정반대면 2예요. 문서의 단어 수, 임베딩 벡터처럼 크기보다 비율이 뜻을 가진 자료에 써요.
+params:
+  - name: u
+    type: ndarray, 수의 시퀀스, numpy 배열, 또는 frame의 DataFrame
+    kind: positional-only
+    desc: 첫째 벡터. 마지막 축이 좌표예요. 2차원 이상이면 앞 축이 벡터 여러 개를 늘어놓은 배치예요. bool·int64는 float64로 바꿔 계산하고, 복소수는 받지 않아요.
+  - name: v
+    type: ndarray, 수의 시퀀스, numpy 배열, 또는 frame의 DataFrame
+    kind: positional-only
+    desc: 둘째 벡터. 마지막 축의 길이가 u와 같아야 하고, 앞 축은 u와 브로드캐스트돼야 해요.
+  - name: w
+    type: 1차원 배열 또는 None
+    kind: keyword-only
+    desc: 좌표마다의 가중치. 길이가 좌표 수와 같고 모든 값이 유한하며 0 이상이어야 해요. 내적과 두 길이를 모두 Σ wᵢ(…)로 재요. None(기본값)이면 모두 1이에요.
+returns:
+  type: float 또는 ndarray
+  desc: 0 이상 2 이하의 거리. 두 입력이 1차원이면 Python float, 아니면 배치 모양의 float64 배열이에요. 영벡터가 끼거나 NaN·inf가 있으면 NaN이에요.
+raises:
+  - type: TypeError
+    desc: u·v가 배열·수의 시퀀스·DataFrame이 아닐 때(수 하나 포함), 복소수일 때, w를 위치로 줬을 때, 없는 키워드를 줬을 때.
+  - type: ValueError
+    desc: 마지막 축의 길이가 다를 때, 앞 축이 브로드캐스트되지 않을 때, w가 1차원이 아니거나 길이가 틀렸거나 음수·NaN·inf를 담았을 때.
+seeAlso: [metrics, correlation, euclidean, cdist, pdist, kneighbors, basics]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import PlaneFig from '../../../components/fig/PlaneFig.astro';
+
+export const cosP = [[6.044, 3.484], [9.766, 5.332], [4.688, 4.261], [3.63, 2.374], [1.387, 5.12], [3.028, 9.86], [1.007, 7.602], [8.023, 5.277], [1.027, 0.37327], [1.404, 0.238], [9.327, 4.38], [6.895, 5.57], [8.412, 9.717], [4.206, 8.157], [6.074, 7.09], [6.149, 5.139], [7.331, 7.638], [5.213, 7.058], [6.823, 8.05], [1.8, 7.242], [2.096, 9.354], [9.149, 6.699], [2.579, 2.017], [7.307, 4.491], [2.37, 7.73], [5.42, 3.638], [9.145, 2.095], [7.208, 7.498], [0.09911, 2.972], [9.259, 5.748], [2.872, 5.995], [8.908, 9.483], [6.62, 1.736], [5.143, 9.567], [2.222, 4.433], [7.763, 7.746], [4.04, 4.839], [7.405, 8.957], [4.838, 4.858], [1.489, 5.749], [7.623, 3.256], [0.62093, 9.745], [1.239, 6.191], [3.719, 7.149], [9.717, 3.979], [3.506, 2.175], [5.8, 8.129], [0.62918, 6.647], [7.626, 9.515], [9.423, 2.893], [9.356, 0.32367], [6.314, 5.349], [8.109, 9.127], [8.737, 7.753], [7.363, 4.72], [5.479, 8.12], [4.166, 5.501], [3.138, 9.307], [5.099, 9.374], [2.998, 4.23]];
+export const cosNearE = [[6.62, 1.736], [6.044, 3.484], [5.42, 3.638], [7.623, 3.256], [3.63, 2.374], [3.506, 2.175]];
+export const cosNearC = [[9.423, 2.893], [1.027, 0.37327], [6.62, 1.736], [9.717, 3.979], [7.623, 3.256], [9.145, 2.095]];
+
+## 무엇을 재나요
+
+두 벡터 사이의 각을 $\theta$라고 하면 코사인 거리는 이래요.
+
+$$
+d(u, v) = 1 - \cos\theta = 1 - \frac{u \cdot v}{\|u\|\,\|v\|}
+$$
+
+$\cos\theta$는 두 벡터가 같은 방향이면 1, 직각이면 0, 정반대 방향이면 $-1$이에요. 그래서 거리는 0에서 2 사이에 놓여요.
+
+```python
+>>> import stardust as sd
+>>> sd.spatial.cosine([1.0, 0.0], [3.0, 0.0])     # 같은 방향
+0.0
+>>> sd.spatial.cosine([1.0, 0.0], [0.0, 2.0])     # 직각
+1.0
+>>> sd.spatial.cosine([1.0, 0.0], [1.0, 1.0])     # 45도
+0.2928932188134524
+>>> sd.spatial.cosine([1.0, 2.0], [-1.0, -2.0])   # 정반대
+1.9999999999999998
+```
+
+45도에서는 $1 - \cos 45^\circ = 1 - 1/\sqrt{2} \approx 0.293$이에요. 정반대 방향의 값이 2보다 1 ULP(마지막 자리 하나) 작은 까닭은 아래 '거의 나란한 벡터'에서 다뤄요.
+
+<Reference />
+
+## 길이는 보지 않아요
+
+코사인 거리는 방향만 봐요. 한 벡터에 양수를 곱해 길이를 바꿔도 거리는 그대로예요.
+
+```python
+>>> sd.spatial.cosine([1.0, 2.0, 3.0], [2.0, 4.0, 6.0])
+0.0
+>>> sd.spatial.cosine([1.0, 2.0, 3.0], [100.0, 200.0, 300.0])
+0.0
+```
+
+이 성질이 쓸모 있는 곳은 "얼마나 많이"보다 "어떤 비율로"가 중요한 자료예요. 문서를 단어마다 나온 횟수로 적은 벡터가 대표적이에요. 같은 내용을 두 배 길이로 쓴 문서는 모든 횟수가 두 배이지만 주제는 같아요. 아래 네 문서의 열은 차례로 "별", "망원경", "요리", "양념"이 나온 횟수예요.
+
+```python
+>>> docs = sd.asarray([[3, 0, 1, 0],     # 별 이야기
+...                    [6, 0, 2, 0],     # 같은 이야기를 두 배 길이로
+...                    [0, 2, 0, 5],     # 요리 이야기
+...                    [1, 1, 1, 1]])    # 이것저것
+>>> sd.spatial.squareform(sd.spatial.pdist(docs, metric="cosine"))
+array([[                0.0,                 0.0,  1.0000000000000002,
+         0.3675444679663241],
+       [                0.0,                 0.0,  1.0000000000000002,
+         0.3675444679663241],
+       [ 1.0000000000000002,  1.0000000000000002,                 0.0,
+        0.35006631638031854],
+       [ 0.3675444679663241,  0.3675444679663241, 0.35006631638031854,
+                        0.0]], dtype=float64)
+```
+
+0번과 1번 문서는 거리가 0이에요. 겹치는 단어가 하나도 없는 0번과 2번은 직각이라 1이에요(반올림으로 끝자리 하나가 붙었어요). 정수 횟수를 그대로 넣어도 float64로 바꿔 계산해요. 행렬 꼴로 보려고 [`pdist`](/api/spatial/pdist/)의 결과를 [`squareform`](/api/spatial/squareform/)으로 펼쳤어요.
+
+### 가장 가까운 점이 달라져요
+
+같은 점들에서도 어떤 거리로 재느냐에 따라 "가장 가까운 점"이 달라요. 아래는 평면의 점 60개에서 빨간 마름모 `q`에 가장 가까운 여섯 점을 [`kneighbors`](/api/spatial/kneighbors/)로 찾은 거예요.
+
+```python
+>>> rng = sd.random.default_rng(7)
+>>> P = 10.0 * rng.random((60, 2))
+>>> q = sd.asarray([[6.0, 2.0]])
+>>> near_e = sd.spatial.kneighbors(q, P, k=6).indices[0]
+>>> near_c = sd.spatial.kneighbors(q, P, k=6, metric="cosine").indices[0]
+>>> near_e
+array([32,  0, 25, 40,  3, 45], dtype=int64)
+>>> near_c
+array([49,  8, 32, 44, 40, 26], dtype=int64)
+```
+
+
+<Fig caption="같은 60개의 점에서 q(◆)와 가장 가까운 여섯 점(파랑). euclidean은 q 둘레에 모인 점을, cosine은 원점에서 q를 지나는 반직선(점선)과 각이 작은 점을 골라요. 원점 가까이의 점도, 멀리 떨어진 점도 방향만 맞으면 이웃이에요.">
+  <PlaneFig
+    title="euclidean"
+    label="euclidean로 고른 가장 가까운 여섯 점"
+    domain={[0, 10.5]}
+    range={[0, 10.5]}
+    xTicks={[0, 5, 10]}
+    yTicks={[0, 5, 10]}
+    width={320}
+    layers={[
+      { kind: 'points', pts: cosP, tone: 'faint', size: 3 },
+      { kind: 'points', pts: cosNearE, tone: 'main', size: 3.8 },
+      { kind: 'points', pts: [[6, 2]], tone: 'ink', shape: 'diamond', size: 4 },
+      { kind: 'text', at: [6, 2], text: 'q', dx: 9, dy: 14 },
+    ]}
+  />
+  <PlaneFig
+    title="cosine"
+    label="cosine로 고른 가장 가까운 여섯 점"
+    domain={[0, 10.5]}
+    range={[0, 10.5]}
+    xTicks={[0, 5, 10]}
+    yTicks={[0, 5, 10]}
+    width={320}
+    layers={[
+      { kind: 'line', pts: [[0, 0], [15, 5]], tone: 'base', dashed: true },
+      { kind: 'points', pts: cosP, tone: 'faint', size: 3 },
+      { kind: 'points', pts: cosNearC, tone: 'main', size: 3.8 },
+      { kind: 'points', pts: [[6, 2]], tone: 'ink', shape: 'diamond', size: 4 },
+      { kind: 'text', at: [6, 2], text: 'q', dx: 9, dy: 14 },
+    ]}
+  />
+</Fig>
+
+유클리드 거리의 이웃은 `q`를 둘러싼 원 안에 모이고, 코사인 거리의 이웃은 원점에서 `q`를 지나는 반직선을 따라 늘어서요. 코사인 거리에서는 원점이 특별한 자리라는 것도 이 그림에서 보여요. 자료를 평균이 0이 되게 옮긴 뒤 방향을 재고 싶으면 [`correlation`](/api/spatial/correlation/)이에요.
+
+## 여러 짝을 한꺼번에
+
+`u`와 `v`의 마지막 축이 좌표이고, 앞 축은 벡터를 늘어놓은 배치예요. 앞 축은 브로드캐스트로 맞춰요. 같은 자리의 짝끼리 거리를 재고, 결과는 앞 축의 모양이에요.
+
+```python
+>>> U = sd.asarray([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]])
+>>> sd.spatial.cosine(U, [1.0, 0.0])            # 세 벡터 각각과 [1, 0]
+array([               0.0,                1.0, 0.2928932188134524], dtype=float64)
+>>> sd.spatial.cosine(sd.ones((2, 1, 3)), sd.ones((4, 3))).shape
+(2, 4)
+```
+
+모든 짝(행 i와 행 j의 모든 조합)이 필요하면 [`cdist`](/api/spatial/cdist/)나 [`pdist`](/api/spatial/pdist/)에 `metric="cosine"`을 줘요. 이웃 찾기는 [`kneighbors`](/api/spatial/kneighbors/), [`radius_neighbors`](/api/spatial/radius_neighbors/)에 같은 이름을 줘요. 같은 두 벡터의 거리는 이 함수, `cdist`, `pdist`, 이웃 찾기가 모두 비트까지 같은 값을 내요.
+
+```python
+>>> A = sd.asarray([[1.0, 0.0], [0.0, 2.0]])
+>>> B = sd.asarray([[3.0, 3.0], [1.0, 0.1]])
+>>> sd.spatial.cdist(A, B, metric="cosine")
+array([[  0.2928932188134525, 0.004962809790010865],
+       [ 0.29289321881345254,   0.9004962809790011]], dtype=float64)
+```
+
+<Callout type="warn" title="KDTree에는 줄 수 없어요">
+
+[`KDTree`](/api/spatial/KDTree/)는 민코프스키 계열 거리만 받아요. 코사인 거리로 이웃을 찾으려면 `kneighbors(..., metric="cosine")`을 써요. 행을 길이 1로 맞춰 둔 자료라면 수학으로는 유클리드 거리의 순서가 코사인 거리의 순서와 같아서 KDTree를 쓸 수도 있어요. 길이 1인 두 벡터에서는 $\|u - v\|^2 = 2(1 - \cos\theta)$이기 때문이에요. 다만 반올림 때문에 거리가 아주 가까운 두 이웃의 순서는 다를 수 있어요.
+
+</Callout>
+
+## 가중치 `w`
+
+`w`를 주면 내적과 길이를 좌표마다 가중치를 곱해 재요.
+
+$$
+d_w(u, v) = 1 - \frac{\sum_i w_i u_i v_i}{\sqrt{\sum_i w_i u_i^2}\,\sqrt{\sum_i w_i v_i^2}}
+$$
+
+가중치 0인 좌표는 없는 것과 같아요. 아래 둘째 줄은 둘째 좌표를 빼고 재서, 첫 좌표만 남은 두 벡터가 같은 방향이 돼요.
+
+```python
+>>> sd.spatial.cosine([1.0, 2.0], [3.0, 4.0])
+0.016130089900092525
+>>> sd.spatial.cosine([1.0, 2.0], [3.0, 4.0], w=[1.0, 0.0])
+0.0
+```
+
+`w`는 키워드로만 받고, 길이가 좌표 수와 같으며 모든 값이 유한하고 0 이상이어야 해요.
+
+```python
+>>> sd.spatial.cosine([1.0, 2.0], [3.0, 4.0], w=[1.0, -1.0])
+Traceback (most recent call last):
+    ...
+ValueError: cosine(): 'w' must be finite and >= 0
+>>> sd.spatial.cosine([1.0, 2.0], [3.0, 4.0], w=[1.0])
+Traceback (most recent call last):
+    ...
+ValueError: cosine(): 'w' must have 2 entries (one per column), not 1
+```
+
+## 각도로 바꾸기
+
+거리 $d$에서 각 $\theta$(라디안)를 되찾으려면 `acos(1 - d)`보다 `2 * asin(sqrt(d / 2))`가 좋아요. 두 식은 수학으로는 같지만, 작은 각에서 `1 - d`가 1로 반올림되면 `acos`는 0을 내요.
+
+```python
+>>> import math
+>>> d = sd.spatial.cosine([1.0, 1e-8], [1.0, 0.0])
+>>> d
+5.0000000000000005e-17
+>>> math.acos(1 - d)
+0.0
+>>> 2 * math.asin(math.sqrt(d / 2))
+1e-08
+```
+
+두 벡터의 각은 약 $10^{-8}$ 라디안이에요. 둘째 식이 맞는 까닭은 길이 1로 맞춘 두 벡터 $\hat u = u/\|u\|$, $\hat v = v/\|v\|$ 사이의 거리가 $\|\hat u - \hat v\| = 2\sin(\theta/2)$이고, 코사인 거리가 그 제곱의 절반 $2\sin^2(\theta/2)$이기 때문이에요.
+
+## 거의 나란한 벡터
+
+위의 `d = 5e-17`은 정의식을 그대로 계산해서는 얻을 수 없는 값이에요. 내적을 길이의 곱으로 나눈 값이 1에 아주 가까워서 반올림하면 1이 되고, 1에서 빼면 0이 남아요.
+
+```python
+>>> u = sd.asarray([1.0, 1e-8])
+>>> v = sd.asarray([1.0, 0.0])
+>>> 1 - sd.linalg.vecdot(u, v) / (sd.linalg.vector_norm(u) * sd.linalg.vector_norm(v))
+0.0
+>>> sd.spatial.cosine(u, v)
+5.0000000000000005e-17
+```
+
+`cosine`은 1에서 빼지 않고, 앞 절의 식 $\|\hat u - \hat v\|^2 / 2$로 거리를 구해요. 차이를 먼저 구하고 제곱하므로 작은 거리의 자릿수가 남아요. 그래서 거의 같은 방향의 벡터들 사이에서도 이웃의 순서가 뭉개지지 않아요.
+
+대신 길이 1로 맞춘 벡터 $\hat u$, $\hat v$에 반올림이 들어가서, 정반대 방향의 거리가 정확히 2가 아니라 2보다 1 ULP 작은 값으로 나올 수 있어요. 직각인 두 벡터도 1에서 끝자리 하나가 다를 수 있어요. 계산한 값은 0과 2 사이로 잘라서 돌려줘요.
+
+## 경계의 값
+
+| 입력 | 결과 | 까닭 |
+|---|:---:|---|
+| 같은 방향 | 0 | |
+| 직각 | 1(끝자리가 반올림으로 하나 다를 수 있어요) | |
+| 정반대 방향 | 2(또는 2보다 1 ULP 작은 값) | |
+| 한쪽이 영벡터 | NaN | 방향이 없어요 |
+| 좌표가 없음(길이 0) | NaN | 영벡터와 같아요 |
+| NaN이 있음 | NaN | |
+| inf가 있음 | NaN | inf/inf로 방향을 정할 수 없어요 |
+| 가중치가 모두 0 | NaN | 남는 좌표가 없어요 |
+
+```python
+>>> sd.spatial.cosine([0.0, 0.0], [1.0, 1.0])
+nan
+>>> sd.spatial.cosine([1.0, sd.inf], [1.0, 1.0])
+nan
+>>> sd.spatial.cosine([], [])
+nan
+```
+
+아주 크거나 아주 작은 좌표도 넘치거나 0으로 사라지지 않아요. 길이를 재기 전에 2의 거듭제곱으로 비율을 맞추기 때문이에요.
+
+```python
+>>> sd.spatial.cosine([1e200, 1e200], [1e200, -1e200])
+0.9999999999999998
+>>> sd.spatial.cosine([1e-300, 0.0], [1e-300, 1e-300])
+0.2928932188134525
+```
+
+<Callout type="warn" title="거리의 공리를 다 지키지는 않아요">
+
+코사인 거리는 방향이 같은 서로 다른 두 벡터에 0을 주고, 삼각 부등식 $d(u, w) \le d(u, v) + d(v, w)$도 성립하지 않을 수 있어요. 순위를 매기거나 이웃을 고르는 데는 문제가 없지만, 삼각 부등식에 기대는 방법(가지치기로 찾는 트리 같은 것)에 그대로 넣으면 안 돼요.
+
+</Callout>
+
+## 에러
+
+```python
+>>> sd.spatial.cosine([1.0, 2.0], [1.0, 2.0, 3.0])
+Traceback (most recent call last):
+    ...
+ValueError: cosine(): 'u' and 'v' must have the same length on their last axis, not 2 and 3
+>>> sd.spatial.cosine(1.0, 2.0)
+Traceback (most recent call last):
+    ...
+TypeError: cosine(): 'u' must be an sd.ndarray, a sequence of numbers, a numpy array or a frame DataFrame, not float
+>>> sd.spatial.cosine([1 + 1j, 2.0], [1.0, 2.0])
+Traceback (most recent call last):
+    ...
+TypeError: cosine(): 'u' must be real, not a complex128 array
+>>> sd.spatial.cosine([1.0, 2.0], [3.0, 4.0], [1.0, 1.0])
+Traceback (most recent call last):
+    ...
+TypeError: cosine(): takes 2 positional arguments but 3 were given
+```
+
+수 하나는 벡터가 아니라서 받지 않아요. 가중치는 `w=`로 이름을 붙여 줘요.
+
+## 정확도
+
+참값은 Arb(구간 산술)로 구한 정확한 코사인 거리예요. 거리가 0에 가까울 때는 상대오차로 약속할 수 없어서(참값 0을 상대오차로 맞히려면 계산 결과도 정확히 0이어야 해요), 약속은 절대오차와 상대오차를 섞은 꼴이에요. 대략 거리 $d$가 크면 $d$에 비례하고, 작으면 $\sqrt{d}$에 $u = 2^{-53}$을 곱한 크기가 한계예요.
+
+| | 시험한 짝 | 약속 대비 최대 오차 |
+|---|---:|---:|
+| `cosine` | 626 | 0.41 |
+| `cosine`, 가중치 | 586 | 0.25 |
+
+약속 대비 1 이하면 약속 안이에요. 시험한 짝에는 정확히 나란하거나 거의 나란한 짝이 들어 있어서, 참값이 0에 가까운 짝의 상대오차는 크게 나와요(가장 큰 상대오차 0.128). 이것은 거리가 아주 작은 짝에서 절대오차가 그만큼 작다는 뜻이고, 약속 안이에요.
+
+같은 짝은 이 함수, `pdist`, `cdist`, `kneighbors`, `radius_neighbors`에서 비트까지 같은 값이에요. 스레드 수와도 상관없어요.
+
+## scipy·sklearn을 아는 분께
+
+- `scipy.spatial.distance.cosine`과 이름, 뜻이 같아요. `sd.spatial.cosine`처럼 `sd.spatial`에 바로 있어요(`sd.spatial.distance`는 없어요).
+- `w`는 키워드로만 받아요. NaN·inf 가중치는 `ValueError`예요. scipy는 음수만 막고 NaN·inf 가중치로 NaN·inf 거리를 내요.
+- 배치를 받아요. `cosine(U, V)`가 같은 자리의 짝마다 거리를 재요. sklearn의 `paired_distances(U, V, metric="cosine")`와 같은 일이에요. scipy 1.18.1의 `cosine`은 1차원만 받아요.
+- 거의 나란한 벡터에서도 작은 거리의 자릿수가 남아요. scipy의 `cosine`과 sklearn의 `cosine_distances`는 $1 - \cos$를 그대로 계산해서 이런 짝에서 0이나 상대오차가 큰 값을 낼 수 있어요. 같은 시험 짝에서 sklearn의 `cosine_distances`는 약속의 $3.24 \times 10^{15}$배, scipy의 `cosine`은 넘침과 언더플로가 있는 짝(좌표 $10^{160}$, $10^{-160}$, 비정상 수)에서 inf·0·NaN을 내서 약속을 넘었어요.
+- 거리 이름 문자열은 `"cosine"` 하나예요. `"cos"`, `"Cosine"`은 `ValueError`이고 `metric`은 키워드로만 받아요(`cdist(A, B, "cosine")`은 `TypeError`).
+- 복소수는 `TypeError`예요.

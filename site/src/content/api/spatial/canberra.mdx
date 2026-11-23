@@ -1,0 +1,186 @@
+---
+kind: function
+title: canberra
+names: [canberra]
+group: 거리 함수
+order: 22
+signatures:
+  - "sd.spatial.canberra(u, v, /, *, w=None)"
+summary: 좌표마다 차이를 두 값의 크기의 합으로 나눈 상대 차이 |uᵢ − vᵢ|/(|uᵢ| + |vᵢ|)를 더해요. 항마다 0과 1 사이라 큰 값의 좌표가 거리를 독차지하지 않고, 0 근처의 작은 차이에 민감해요.
+params:
+  - name: u
+    type: ndarray, 수의 시퀀스, numpy 배열, 또는 frame의 DataFrame
+    kind: positional-only
+    desc: 첫째 벡터. 마지막 축이 좌표예요. 2차원 이상이면 앞 축이 벡터 여러 개의 배치예요. bool·int64는 float64로 바꿔 계산하고, 복소수는 받지 않아요.
+  - name: v
+    type: ndarray, 수의 시퀀스, numpy 배열, 또는 frame의 DataFrame
+    kind: positional-only
+    desc: 둘째 벡터. 마지막 축의 길이가 u와 같아야 하고, 앞 축은 u와 브로드캐스트돼야 해요.
+  - name: w
+    type: 1차원 배열 또는 None
+    kind: keyword-only
+    desc: 좌표마다의 가중치. 길이가 좌표 수와 같고 모든 값이 유한하며 0 이상이어야 해요. 항마다 wᵢ를 곱해 더해요. None(기본값)이면 모두 1이에요.
+returns:
+  type: float 또는 ndarray
+  desc: 0 이상 n(좌표 수, 가중치가 있으면 Σwᵢ) 이하의 거리. 두 입력이 1차원이면 Python float, 아니면 배치 모양의 float64 배열이에요. NaN·inf가 있으면 NaN이에요.
+raises:
+  - type: TypeError
+    desc: u·v가 배열·수의 시퀀스·DataFrame이 아닐 때, 복소수일 때, w를 위치로 줬을 때, 없는 키워드를 줬을 때.
+  - type: ValueError
+    desc: 마지막 축의 길이가 다를 때, 앞 축이 브로드캐스트되지 않을 때, w가 1차원이 아니거나 길이가 틀렸거나 음수·NaN·inf를 담았을 때.
+seeAlso: [metrics, cityblock, braycurtis, cdist, pdist, kneighbors, basics]
+---
+import Callout from '../../../components/Callout.astro';
+
+## 무엇을 재나요
+
+캔버라 거리는 좌표마다 "두 값이 상대적으로 얼마나 다른가"를 재서 더해요.
+
+$$
+d(u, v) = \sum_{i} \frac{|u_i - v_i|}{|u_i| + |v_i|}
+$$
+
+분모가 0인 항(두 값이 모두 0)은 0으로 쳐요. 분자 $|u_i - v_i|$는 $|u_i| + |v_i|$를 넘을 수 없어서, 항 하나는 언제나 0과 1 사이예요. 그래서 거리는 0에서 좌표 수 n 사이에 놓여요.
+
+```python
+>>> import stardust as sd
+>>> sd.spatial.canberra([1.0, 2.0], [3.0, 2.0])
+0.5
+```
+
+첫 항은 $|1 - 3|/(1 + 3) = 0.5$, 둘째 항은 차이가 없어 0이에요.
+
+<Reference />
+
+## 큰 값보다 상대 차이를 봐요
+
+[`cityblock`](/api/spatial/cityblock/)은 차이의 절댓값을 더해서, 값이 큰 좌표에서 생긴 차이와 작은 좌표에서 생긴 차이를 똑같이 쳐요. 캔버라 거리는 그 차이를 값의 크기로 나눠요. 아래 두 짝은 좌표마다 1씩 달라서 `cityblock`으로는 거리가 같지만, 캔버라 거리로는 크게 달라요.
+
+```python
+>>> sd.spatial.cityblock([100.0, 200.0], [101.0, 201.0])
+2.0
+>>> sd.spatial.canberra([100.0, 200.0], [101.0, 201.0])
+0.007468889964144365
+>>> sd.spatial.cityblock([0.01, 0.02], [1.01, 1.02])
+2.0
+>>> sd.spatial.canberra([0.01, 0.02], [1.01, 1.02])
+1.9419306184012064
+```
+
+100과 101은 거의 같은 값이지만, 0.01과 1.01은 백 배 차이예요. 좌표마다 단위나 크기가 크게 다른 자료(몇 개의 큰 값과 많은 작은 값이 섞인 개수 자료 같은 것)에서 큰 좌표가 거리를 독차지하지 않게 할 때 써요.
+
+### 비율이 같으면 항이 같아요
+
+항 $|u_i - v_i| / (|u_i| + |v_i|)$는 두 값을 함께 몇 배 해도 그대로예요. 부호가 같은 두 값의 비율이 $v_i/u_i = c$면 항은 $|1 - c|/(1 + c)$예요.
+
+```python
+>>> sd.spatial.canberra([1.0, 2.0, 3.0], [2.0, 4.0, 6.0])
+1.0
+```
+
+세 좌표 모두 두 배라서 항마다 1/3이고, 더하면 1이에요.
+
+## 0과 부호
+
+0과 0이 아닌 값의 항은 그 값이 아무리 작아도 1이에요. 하나는 "없음"이고 하나는 "있음"이라 상대 차이가 가장 커요. 두 값이 모두 0인 항은 0이라 거리에 아무것도 더하지 않아요.
+
+```python
+>>> sd.spatial.canberra([0.0], [1e-300])
+1.0
+>>> sd.spatial.canberra([3.0, 0.0, 1.0], [3.0, 0.0, 2.0])
+0.3333333333333333
+```
+
+둘째 예의 가운데 좌표는 두 값이 모두 0이라 0이고, 셋째 항 $|1 - 2|/3$만 남아요.
+
+부호가 다른 두 값은 차이가 크기의 합과 같아서 항이 1이에요.
+
+```python
+>>> sd.spatial.canberra([1.0, -1.0], [-1.0, 1.0])
+2.0
+```
+
+<Callout type="warn" title="0 근처의 잡음에 민감해요">
+
+0에 가까운 값끼리의 항은 작은 잡음에도 0에서 1까지 크게 흔들려요. 측정 잡음이 있는 연속 자료에서 0 근처의 값이 많으면 거리가 그 좌표들의 잡음에 끌려가요. 0이 "정말 없음"을 뜻하는 개수 자료에서 이 성질이 쓸모 있어요.
+
+</Callout>
+
+## 여러 짝을 한꺼번에
+
+마지막 축이 좌표이고 앞 축은 배치예요. 앞 축은 브로드캐스트로 맞춰요. 모든 행의 짝이 필요하면 [`pdist`](/api/spatial/pdist/)나 [`cdist`](/api/spatial/cdist/)에 `metric="canberra"`를 줘요.
+
+```python
+>>> X = sd.asarray([[1.0, 2.0], [3.0, 2.0], [1.0, 0.0]])
+>>> sd.spatial.canberra(X, [1.0, 2.0])
+array([0.0, 0.5, 1.0], dtype=float64)
+>>> sd.spatial.pdist(X, metric="canberra")
+array([0.5, 1.0, 1.5], dtype=float64)
+```
+
+이웃 찾기([`kneighbors`](/api/spatial/kneighbors/), [`radius_neighbors`](/api/spatial/radius_neighbors/))에도 `metric="canberra"`를 줄 수 있어요. [`KDTree`](/api/spatial/KDTree/)는 받지 않아요. 같은 두 벡터의 거리는 이 함수, `pdist`, `cdist`, 이웃 찾기가 모두 비트까지 같은 값을 내요.
+
+## 가중치 `w`
+
+`w`를 주면 항마다 $w_i$를 곱해 더해요. 가중치 0인 좌표는 빠져요.
+
+```python
+>>> sd.spatial.canberra([1.0, 2.0], [3.0, 2.0], w=[2.0, 1.0])
+1.0
+```
+
+## 경계의 값
+
+| 입력 | 항의 값 |
+|---|:---:|
+| 두 값이 모두 0 | 0 |
+| 한 값만 0 | 1 |
+| 부호가 다름 | 1 |
+| NaN이 있음 | NaN(거리 전체가 NaN) |
+| inf가 있음 | NaN(inf/inf) |
+
+```python
+>>> sd.spatial.canberra([1.0, sd.nan], [1.0, 1.0])
+nan
+>>> sd.spatial.canberra([1.0, sd.inf], [1.0, 1.0])
+nan
+```
+
+NaN은 항을 건너뛰지 않고 거리 전체로 퍼져요. 결측값이 있는 자료는 미리 빼거나 채워야 해요.
+
+아주 작은 값(비정상 수)도 비율을 그대로 지켜요.
+
+```python
+>>> sd.spatial.canberra([1e-300, 1e-300], [3e-300, 1e-300])
+0.5000000000000001
+```
+
+## 에러
+
+```python
+>>> sd.spatial.canberra([1.0, 2.0], [1.0])
+Traceback (most recent call last):
+    ...
+ValueError: canberra(): 'u' and 'v' must have the same length on their last axis, not 2 and 1
+>>> sd.spatial.canberra([1.0, 2.0], [3.0, 2.0], [2.0, 1.0])
+Traceback (most recent call last):
+    ...
+TypeError: canberra(): takes 2 positional arguments but 3 were given
+```
+
+## 정확도
+
+참값은 Arb(구간 산술)로 구한 정확한 캔버라 거리예요. 약속은 상대오차 $\gamma_{m+3}$ 이하예요. 여기서 $\gamma_k = ku/(1 - ku)$, $u = 2^{-53}$이고 m은 덧셈이 거치는 반올림의 수로, 좌표 수 n이 32 이하면 $m = n$이에요(n이 크면 $m = 32 + \lceil n/32 \rceil - 1$). 좌표 10개면 상대오차 약 1.4×10⁻¹⁵ 이하예요. 항이 모두 0 이상이라 더하는 중에 상쇄가 없어요.
+
+| | 시험한 짝 | 최대 ULP | 최대 상대오차 | 약속 대비 |
+|---|---:|---:|---:|---:|
+| `canberra` | 645 | 3 | 4.50×10⁻¹⁶ | 0.36 |
+| `canberra`, 가중치 | 645 | 2 | 4.28×10⁻¹⁶ | 0.46 |
+
+## scipy·sklearn을 아는 분께
+
+- `scipy.spatial.distance.canberra`와 이름, 뜻(0/0 항은 0)이 같아요. `w`는 키워드로만 받아요.
+- NaN을 퍼뜨려요. scipy의 함수 `canberra`(와 가중 `pdist`)는 NaN 항을 건너뛰어 더하고, 가중치 없는 `pdist`는 퍼뜨려요. 여기서는 어디서나 NaN이에요.
+- NaN·inf 가중치는 `ValueError`예요. scipy는 음수만 막아요.
+- 배치를 받아요. scipy 1.18.1의 `canberra`는 1차원만 받아요.
+- R의 `dist(method="canberra")`는 분모가 $|u_i + v_i|$이고, 분모가 0이거나 아주 작은 항을 빼고 남은 항의 수로 비율을 다시 맞춰요. 부호가 섞인 자료와 0이 있는 자료에서 값이 달라요.

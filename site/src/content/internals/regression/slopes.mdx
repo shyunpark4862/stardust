@@ -1,0 +1,289 @@
+---
+title: Theil–Sen과 Siegel 기울기
+group: 강건과 분위
+order: 2
+summary: theilslopes와 siegelslopes가 쌍 기울기의 중앙값을 구하는 방법을 설명해요. scipy와 같은 식의 기울기에서 정렬 대신 정확한 선택으로 골라 지금은 scipy와 0의 부호만 빼고 비트까지 같은 값을 내고, 기울기가 아주 많으면 저장하지 않고 훑어 메모리를 O(n)으로 줄여요.
+seeAlso: [robust, quantile, overview, accuracy-performance]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Steps from '../../../components/fig/Steps.astro';
+
+## 한눈에 보기
+
+[`theilslopes`](/api/regression/theilslopes/)와 [`siegelslopes`](/api/regression/siegelslopes/)는 점 $(x_i, y_i)$ 두 개를 잇는 직선의 기울기를 모든 쌍에서 구해, 그 중앙값으로 직선의 기울기를 정해요. 점의 29%(Theil–Sen)나 50%(Siegel) 가까이가 엉뚱해도 기울기가 크게 흔들리지 않아요.
+
+- **Theil–Sen**(Theil 1950, Sen 1968): $x_i \ne x_j$인 쌍 $i < j$의 기울기 $s_{ij} = (y_i - y_j)/(x_i - x_j)$ 전체의 중앙값이에요. Sen의 신뢰구간도 기울기의 순위 통계량 두 개예요.
+- **Siegel**(Siegel 1982): 점마다 다른 점들로의 기울기의 중앙값을 구하고, 그 $n$개의 중앙값을 구해요(반복 중앙값).
+
+기울기 값은 scipy가 만드는 double 그대로이고, 중앙값과 순위 통계량을 정렬 대신 정확한 선택으로 골라요. 같은 식과 정확한 선택을 쓰니, 잰 자료에서 결과가 scipy 1.18.1의 `scipy.stats.theilslopes`, `siegelslopes`와 0의 부호만 빼고 비트까지 같아요. 코드는 `csrc/regression/slopes.cpp` 하나(`stardust._core.regression.slopes`)이고, Python 층 `src/stardust/regression/_robust.py`는 인자를 검사하고 빠진 점을 정리하고 $z = \Phi^{-1}(a/2)$($a$는 0.5 이하로 접은 `alpha`)를 계산해 넘겨요(아래 [입력 정리](#입력-정리)).
+
+| 계산 | 방법 | 시간 | 메모리 |
+|---|---|---|---|
+| Siegel | 점마다 $n - 1$개 기울기의 선택, 그 중앙값의 선택 | $O(n^2)$ | 태스크마다 $O(n)$ |
+| Theil–Sen, 기울기 $\le 2^{23}$개 | 한 배열에 모아 순위마다 선택 | $O(n^2)$ | 기울기 수(최대 64 MiB) |
+| Theil–Sen, 기울기 $> 2^{23}$개 | 쌍을 저장하지 않고 훑기: 피벗 사이를 정확히 세고 좁혀요 | 훑기마다 $O(n^2)$, 보통 1–3번 | $O(n)$ + 피벗 사이의 값 |
+| scipy(둘 다) | $n\times n$ 배열을 만들고 정렬이나 행마다 `quantile` | $O(n^2\log n)$ | $n\times n$ double 여러 개 |
+
+## 입력 정리
+
+두 함수의 꼴은 `theilslopes(y, x=None, /, *, alpha=0.05, method='separate', nan_policy='propagate')`, `siegelslopes(y, x=None, /, *, method='hierarchical', nan_policy='propagate')`예요. `y`와 `x`만 위치 인자이고 옵션은 모두 키워드 전용이에요. scipy의 `axis`·`keepdims`는 없고, 배치는 늘 마지막 축이 점이에요(앞 축은 브로드캐스트). `alpha`는 이 영역의 `conf_int(alpha=0.05)`처럼 유의수준이고 구간은 1 − `alpha`예요. scipy는 같은 이름이 신뢰수준(기본 0.95)이지만, 둘 다 0.5를 넘는 값을 접어 읽으니 같은 수를 주면 같은 구간이에요.
+
+입력은 `_slopes_input`이 정리해요.
+
+- `x`가 None이면 `arange(n)`이에요.
+- `nan_policy='omit'`이면 $x$나 $y$가 NaN인 점을 빼요. 남은 점의 $x$는 원래 값 그대로라, `x=None`이어도 자기 원래 위치(0, 2, 3, …)를 $x$로 써요. scipy는 빠진 점을 뺀 $y$에 새로 `arange`를 매겨요. 남은 점이 원래 자리에 있다고 보아야 `x`를 직접 준 결과와 같아져요. 빠지는 점이 회귀마다 다르므로 omit은 배치를 받지 않아요.
+- $x$와 $y$의 inf는 정책과 상관없이 `ValueError`예요. `'omit'`이면 NaN인 점을 빼기 전에 봐요. 같은 점의 NaN이 inf를 함께 지워 잘못된 입력이 조용히 통과하지 않게 하려는 거예요.
+- 남은 점이 2개 미만이면 기울기 쌍이 하나도 없어서 모든 값이 NaN인 결과예요(`_too_few`; 다른 회귀의 빈 입력과 같은 규칙이에요). scipy도 NaN을 내지만 경고를 함께 내요.
+
+```python
+>>> y = [1.0, float("nan"), 3.0, 4.0, 7.0]
+>>> sd.regression.theilslopes(y, nan_policy="omit")
+TheilslopesResult(slope=1.25, intercept=0.375, low_slope=1, high_slope=3)
+>>> sd.regression.theilslopes(y, [0.0, 1, 2, 3, 4], nan_policy="omit")
+TheilslopesResult(slope=1.25, intercept=0.375, low_slope=1, high_slope=3)
+>>> sd.regression.theilslopes([1.0])
+TheilslopesResult(slope=nan, intercept=nan, low_slope=nan, high_slope=nan)
+```
+
+같은 자료에서 scipy의 `theilslopes(y, nan_policy='omit')`는 $x$를 0, 1, 2, 3으로 다시 매겨 기울기 2.0을 내요.
+
+## 쌍 기울기와 중앙값
+
+기울기는 scipy가 만드는 값과 같아요. 차 $y_i - y_j$와 $x_i - x_j$를 각각 한 번 반올림하고, 몫을 한 번 반올림해요. $x_i = x_j$인 쌍은 기울기가 없어요(scipy는 NaN으로 두고 빼요). 차가 넘치면 기울기가 $\pm\infty$일 수 있는데, 이 값도 보통 값처럼 순위에 들어가요. $x$의 차와 $y$의 차가 둘 다 넘치면 몫이 $\infty/\infty$ = NaN이에요. 이 쌍도 기울기가 없다고 보고 $x$가 같은 쌍처럼 빼요. 두 점을 잇는 직선의 기울기를 double로 나타낼 수 없는 쌍이라, 어떤 값으로 순위에 넣든 자료에 근거가 없는 값이 되기 때문이에요. scipy도 기울기의 중앙값을 `nanmedian`으로 구해 같은 쌍을 빼요.
+
+중앙값은 scipy가 쓰는 `quantile(..., 0.5)`(`method='linear'`)와 같은 식이에요. 개수 $c$가 홀수면 가운데 값, 짝수면 가운데 두 값 $a \le b$의 $0.5a + 0.5b$예요.
+
+```cpp
+// csrc/regression/slopes.cpp
+double qmedian(double* v, lint c) {
+    if (c == 0) return kNaN;
+    const lint m = (c - 1) / 2;
+    std::nth_element(v, v + m, v + c);
+    const double a = v[m];
+    if (c % 2) return a;
+    const double b = *std::min_element(v + m + 1, v + c);
+    return 0.5 * a + 0.5 * b;
+}
+```
+
+`nth_element`는 $m$번째 값을 제자리에 두고 그 뒤를 모두 크거나 같은 값으로 채우므로, 다음 값 $b$는 뒷부분의 최솟값이에요. $0.5a + 0.5b$는 numpy `median`의 $(a + b)/2$와 넘침에서 달라요. $a = b = 1.7\times10^{308}$이면 $(a + b)/2$는 inf이지만 $0.5a + 0.5b$는 $1.7\times10^{308}$이에요. scipy의 `quantile`이 이 꼴이라 그대로 따라요.
+
+## Siegel: 점마다 선택
+
+Siegel은 점 $i$마다 길이 $n - 1$의 기울기 배열을 채우고 `qmedian`으로 중앙값을 골라요. `method='separate'`면 같은 쌍의 절편 $y_i - s_{ij}x_i$도 함께 모아 그 중앙값을 골라요. 점은 32개씩 묶어 태스크로 나누고($n^2 \ge 10^6$이면 스레드풀), 태스크마다 자기 배열 두 개만 써요. 점마다의 값은 어느 태스크가 계산해도 같으므로 결과는 스레드 수와 상관없어요.
+
+그 뒤 $n$개 중앙값의 중앙값이 기울기예요. 점 하나의 기울기가 모두 없으면(그 점과 $x$가 같은 점만 있으면) 그 점의 중앙값은 NaN이고, 마지막 중앙값은 scipy의 `median`처럼 NaN을 전파해요. 절편은 `'hierarchical'`(기본)이면 $\operatorname{median}(y - \text{slope}\cdot x)$, `'separate'`면 점마다 구한 절편 중앙값의 중앙값이에요.
+
+## Theil–Sen: 순위 통계량 최대 4개
+
+Theil–Sen에 필요한 값은 기울기 $N$개(유한·무한 모두, $x$가 같은 쌍과 $\infty/\infty$인 쌍은 빼고) 가운데 많아야 4개의 순위 통계량이에요. 중앙값(짝수 $N$이면 순위 $m$과 $m + 1$, $m = \lfloor (N - 1)/2\rfloor$)과 신뢰구간의 두 끝 $R_l$, $R_u$예요. 순위를 오름차순으로 중복 없이 모아 `select_slopes`에 넘겨요.
+
+### 한 배열에 모아 선택
+
+$N \le 2^{23}$이면 기울기를 한 배열에 모으고, 순위가 작은 것부터 `nth_element`로 골라요. 순위 $r$을 고른 뒤에는 $r$ 뒤의 원소가 모두 그 값 이상이므로, 다음 순위는 $[r, N)$ 구간에서만 고르면 돼요.
+
+```cpp
+        // csrc/regression/slopes.cpp
+        lint from = 0;
+        for (std::size_t t = 0; t < want.size(); ++t) {
+            const lint r = static_cast<lint>(want[t]);
+            std::nth_element(v.begin() + from, v.begin() + r, v.end());
+            out[t] = v[static_cast<std::size_t>(r)] + 0.0;  // +0 for a zero (scipy's sign is its sort's)
+            from = r;
+        }
+```
+
+$2^{23}$개는 double로 64 MiB이고, 같은 $x$가 없으면 $n = 4{,}096$까지가 이 안이에요($4096\cdot4095/2 = 8{,}386{,}560$).
+
+### 저장하지 않고 훑기
+
+그보다 많으면 기울기를 저장하지 않아요. 쌍을 여러 번 훑으며 각 순위가 어느 구간에 있는지를 정확히 세고, 구간을 좁혀 가요.
+
+**순서를 보존하는 정수 키.** 기울기 $v$를 64비트 정수 키로 바꿔 비교해요. IEEE double의 비트를 부호 있는 정수로 읽으면 양수끼리는 크기 순서와 같고, 음수는 순서가 거꾸로예요. 음수의 비트를 부호 비트만 빼고 뒤집으면(`b ^ INT64_MAX`) 전체가 크기 순서대로 놓여요. $v + 0.0$을 먼저 해서 $-0$을 $+0$으로 만들어요(같은 값이 같은 키가 되게). $x$가 같은 쌍과 $\infty/\infty$인 쌍은 가장 큰 키 `INT64_MAX`로 두어, 셀 때 맨 위에 모이게 해요. 원하는 순위는 모두 $N$ 아래라 그 키에 닿지 않아요.
+
+```cpp
+// csrc/regression/slopes.cpp
+inline std::int64_t okey(double v) {
+    v = v + 0.0;
+    std::int64_t b;
+    std::memcpy(&b, &v, sizeof b);
+    return b >= 0 ? b : b ^ std::numeric_limits<std::int64_t>::max();
+}
+```
+
+**표본에서 피벗.** 쌍 $2^{16}$개를 고정 키 Philox4×64-10(키는 상수와 $n$; [난수 생성기](/internals/random/generator/))로 뽑아 그 기울기 키를 정렬해요. 같은 $n$이면 늘 같은 표본이에요. 순위 $r$이 전체 $N$개 가운데 위치 $r/N$에 있으면, 표본 $m$개에서는 위치 $\text{pos} = (r + 0.5)/N\cdot m$ 근처에 있을 거예요. 그 위치에서 $\pm(4\sqrt m + 4)$만큼 떨어진 표본 값 두 개를 피벗 `lo`, `hi`로 잡아요. 표본 안 순위의 표준편차는 $\sqrt{m\,p(1 - p)} \le \sqrt m/2$라서 $\pm4\sqrt m$은 8 표준편차예요. 답이 두 피벗 사이에 들 확률이 아주 커요.
+
+**한 번의 훑기.** 행 $i$를 쌍의 수가 거의 같은 128개 덩어리로 나눠요(나누는 자리는 $n$만으로 정해요). 덩어리 안에서 행 $i$마다 $j > i$의 기울기 키를 한 배열에 계산하고, 순위마다 네 수를 분기 없이 세요.
+
+```cpp
+                    // csrc/regression/slopes.cpp
+                    for (lint j = i + 1; j < n; ++j) {
+                        const std::int64_t q = kq[j];
+                        a0 += q < l;
+                        a1 += q <= l;
+                        a2 += q < h;
+                        a3 += q <= h;
+                    }
+```
+
+`a0`–`a3`는 `lo`보다 작은, `lo` 이하인, `hi`보다 작은, `hi` 이하인 키의 수예요. 비교 결과(0 또는 1)를 더하므로 분기 예측이 빗나가지 않고, 컴파일러가 벡터화할 수 있어요. 두 피벗 사이에 드는 키가 그 행에 있으면(`a2 > a1`) 느린 길로 그 키들을 모아요. 피벗 사이에 들 것으로 내다본 수가 $2^{22}$ 이하면 모두 모으고, 넘으면 쌍 $(i, j)$의 해시(splitmix64의 마무리 함수)로 고른 약 $2^{16}$개의 부분표본만 모아요. 쌍 하나의 비용은 대부분 나눗셈과 피벗 비교 4 × 4개예요.
+
+**다음 단계 고르기.** 덩어리의 수를 덩어리 순서대로 더하면 순위마다 네 칸의 수가 나와요. `lo` 아래인 $c_0$, `lo`와 같은 $c_1$, 둘 사이인 $c_2$, `hi`와 같은 $c_3$이에요. 순위 $r$이 어느 칸에 드는지에 따라 다음 단계가 정해져요.
+
+<Fig column caption="훑기 한 번 뒤 순위 하나의 다음 단계. 세는 수가 정확하므로 표본이 빗나가도 답은 같고 훑기만 늘어요.">
+  <Steps
+    steps={[
+      { label: 'r < c₀', note: '답이 lo 아래: 위 끝을 lo로 좁히고, 아는 아래 끝과 lo 사이를 다음 훑기에서 정확히 세요(모으거나 부분표본)' },
+      { label: 'r < c₀ + c₁', note: '답이 lo와 같아요: 끝' },
+      { label: 'r < c₀ + c₁ + c₂, 모두 모음', note: '모은 값에서 순위 r − c₀ − c₁을 nth_element로 골라요: 끝' },
+      { label: 'r < c₀ + c₁ + c₂, 부분표본', note: '부분표본을 정렬해 그 안에서 새 피벗을 잡고 다시 훑어요' },
+      { label: 'r < c₀ + … + c₃', note: '답이 hi와 같아요: 끝' },
+      { label: '그 밖', note: '답이 hi 위: 아래 끝을 hi로 좁히고 hi와 아는 위 끝 사이를 다시 세요' },
+    ]}
+  />
+</Fig>
+
+순위마다 "답은 $L$과 $H$ 사이에 있다"는 경계와 $\#(\text{key} \le L)$, $\#(\text{key} < H)$를 기억해 두므로, 표본이 빗나가 답이 피벗 밖이어도 이미 아는 경계와 그 피벗 사이로 정확히 좁혀요. 세는 수가 모두 정확하므로 결과는 표본과 상관없이 같아요. 표본은 훑기 횟수만 바꿔요. $n = 10^4$($5\times10^7$쌍)은 피벗 사이의 예상 수가 약 $1.6\times10^6$이라 첫 훑기에서 모두 모아 끝나요. $n = 10^5$($5\times10^9$쌍)은 예상 수가 $2^{22}$을 넘어 첫 훑기가 부분표본을 모으고, 그것으로 좁힌 피벗으로 다시 훑어요. 두 번째 훑기 뒤의 사이 값은 약 $5\times10^6$개로 모으기 한계 $2^{22}$ 근처라, 그것을 넘으면 한 번 더 좁혀요. 그래서 $n = 10^5$는 훑기를 2–3번 해요.
+
+테스트(`tests/regression/test_robust.py`의 `test_theil_passes`)는 커널의 한계(한 배열 한계 0, 모으기 한계 40–5,000)를 낮춰 작은 문제(n = 200–3,000)로도 훑기를 돌려 지금 scipy와 비트까지 같은지를 봐요.
+
+### 무한대 기울기
+
+scipy는 신뢰구간의 순위를 유한한 기울기 수 `nt`로 정해요(무한대는 정렬하면 양 끝에 놓이지만 순위를 정할 때 세지 않아요). 그래서 첫 훑기에서 $\pm\infty$의 수를 함께 세고(키 비교 두 번), 무한대가 있으면 유한한 수 $N - n_{\infty}$로 구간의 순위를 다시 정해 한 번 더 골라요. 아래는 $y$의 차 하나가 넘쳐 기울기 하나가 $-\infty$인 자료예요.
+
+```python
+>>> import scipy.stats as st
+>>> x = [0.0, 1, 2, 3, 4, 5, 6]
+>>> y = [1e308, -1e308, 0.0, 1, 2, 4, 3]
+>>> sd.regression.theilslopes(y, x)
+TheilslopesResult(slope=1, intercept=-1, low_slope=-3.33333e+307, high_slope=2.5e+307)
+>>> [float(v) for v in st.theilslopes(y, x)]
+[1.0, -1.0, -3.333333333333333e+307, 2.5e+307]
+>>> list(sd.regression.theilslopes(y, x)) == [float(v) for v in st.theilslopes(y, x)]
+True
+```
+
+### 기울기가 없는 쌍 세기
+
+$x$가 같은 쌍의 수는 $x$를 정렬해 동률을 세는 것으로 정확히 알아요(아래 신뢰구간 절의 동률 합과 같은 계산). $\infty/\infty$인 쌍은 $x$의 차가 넘칠 때만 생기므로, $x$의 범위($\max x - \min x$)가 넘치는지 먼저 보고 그때만 모든 쌍을 훑어 세요. 보통의 자료는 이 $O(n^2)$ 훑기를 하지 않아요.
+
+```cpp
+    // csrc/regression/slopes.cpp
+    std::int64_t nnan = 0;
+    if (n > 1 && std::isinf(*std::max_element(P.x, P.x + n) - *std::min_element(P.x, P.x + n)))
+        for (lint i = 0; i + 1 < n; ++i)
+            for (lint j = i + 1; j < n; ++j) {
+                const double dx = P.x[i] - P.x[j];
+                nnan += dx != 0.0 && std::isnan((P.y[i] - P.y[j]) / dx);
+            }
+    const std::int64_t N = std::int64_t(n) * (n - 1) / 2 - px - nnan;
+```
+
+한 배열에 모을 때와 표본을 뽑을 때는 그런 쌍을 건너뛰고, 훑을 때는 가장 큰 키로 둬요. Siegel도 점마다 그 쌍을 빼고 중앙값을 골라요.
+
+```python
+>>> xo = [-1e308, 1e308, 0.0, 1, 2, 3, 4]
+>>> yo = [-1e308, 1e308, 0.0, 1, 2, 4, 3]
+>>> list(sd.regression.theilslopes(yo, xo))
+[1.0, 0.0, 0.6666666666666666, 1.3333333333333333]
+>>> list(sd.regression.theilslopes(yo, xo)) == [float(v) for v in st.theilslopes(yo, xo)]
+True
+>>> list(sd.regression.siegelslopes(yo, xo)) == [float(v) for v in st.siegelslopes(yo, xo)]
+True
+```
+
+첫 두 점의 쌍만 $x$의 차와 $y$의 차가 둘 다 넘쳐 기울기가 없어요. 나머지 20쌍의 기울기로 scipy와 같은 값이에요.
+
+## Sen의 신뢰구간
+
+Sen(1968)의 구간은 Kendall 순위 상관의 분포에서 나와요. 기울기 $\beta$를 가정하고 잔차 $y_i - \beta x_i$와 $x_i$의 Kendall 통계량을 보면, 그 값이 0이 되는 $\beta$가 쌍 기울기의 중앙값이에요. 통계량이 정규 근사의 $\pm z\sigma$ 안에 드는 $\beta$의 범위가 쌍 기울기의 순위 통계량 두 개 사이로 나타나요. 분산은 $x$와 $y$의 동률을 보정한 식이에요.
+
+$$
+\sigma^2 = \frac{1}{18}\Bigl[n(n - 1)(2n + 5) - \sum_{x\text{의 동률}} t(t - 1)(2t + 5) - \sum_{y\text{의 동률}} t(t - 1)(2t + 5)\Bigr]
+$$
+
+$t$는 같은 값이 $t$개인 묶음의 크기예요. 순위(0부터)는 scipy의 식 그대로예요.
+
+$$
+R_u = \min\bigl(\operatorname{round}((N_t - z\sigma)/2),\; N_t - 1\bigr), \qquad R_l = \max\bigl(\operatorname{round}((N_t + z\sigma)/2) - 1,\; 0\bigr)
+$$
+
+$z = \Phi^{-1}(a/2)$이고, $a$는 `alpha`를 0.5 이하로 접은 값이에요(0.5보다 크면 $1 - $`alpha`). 그래서 `alpha=0.1`과 `alpha=0.9`는 같은 90% 구간이에요. $N_t$는 유한한 기울기 수이고, round는 짝수로 반올림해요(C의 `nearbyint`와 numpy의 `round`가 같은 규칙이에요). 동률의 합은 `x`, `y`를 정렬해 같은 값의 묶음을 세는 64비트 정수 계산이라 정확해요.
+
+동률이 많아 $\sigma^2 < 0$이면 구간은 NaN이에요. 아래는 $x$ 넷 가운데 셋이 같고 $y$가 모두 같은 자료예요. 기울기는 모두 0이고 구간은 NaN이에요.
+
+```python
+>>> sd.regression.theilslopes([1.0, 1, 1, 1], [1.0, 1, 1, 2])
+TheilslopesResult(slope=0, intercept=1, low_slope=nan, high_slope=nan)
+>>> r1 = sd.regression.theilslopes([1.0, 3, 2, 5, 4, 6], alpha=0.1)
+>>> r2 = sd.regression.theilslopes([1.0, 3, 2, 5, 4, 6], alpha=0.9)
+>>> r1 == r2
+True
+```
+
+절편은 `method='separate'`(기본)면 $\operatorname{median}(y) - \text{slope}\cdot\operatorname{median}(x)$, `'joint'`면 $\operatorname{median}(y - \text{slope}\cdot x)$이고, 중앙값은 모두 `qmedian`이에요.
+
+## scipy와 같은 비트, 다른 0의 부호
+
+`x`를 주었을 때 결과가 지금 scipy와 비트까지 같은 이유는 셋이에요(`x=None`의 omit만 위의 입력 정리대로 달라요). 약속하는 것은 같은 식과 정확한 선택, 그리고 같은 스레드 수에서 실행마다 같은 비트예요(정확한 선택이라 지금은 스레드 수와도 상관없어요). scipy의 비트는 scipy의 계산이 바뀌면 따라 바뀔 수 있어요.
+
+1. 기울기 값이 같아요. 같은 순서(차 두 개, 몫 하나)의 IEEE 연산이에요.
+2. 순위 통계량은 값 자체예요. 정렬이든 선택이든 순위 $r$의 값은 하나로 정해져요.
+3. 중앙값과 구간을 합치는 식($0.5a + 0.5b$, 순위 식, 절편 식)이 같아요.
+
+남는 차이는 0의 부호예요. $y_i = y_j$이고 $x_i < x_j$이면 $(+0)/(\text{음수}) = -0$이고, $x_i > x_j$면 $+0$이에요. $-0$과 $+0$은 같은 값이라 정렬은 둘 사이의 순서를 정하지 않고, scipy의 결과 부호는 정렬이 어느 쪽을 그 자리에 두는지에 달려 있어요. sd는 결과의 0을 늘 $+0$으로 내요.
+
+```python
+>>> st.theilslopes([1.0, 1.0, 1.0], [0.0, 1.0, 2.0]).slope
+np.float64(-0.0)
+>>> sd.regression.theilslopes([1.0, 1.0, 1.0], [0.0, 1.0, 2.0]).slope
+0.0
+>>> import numpy as np
+>>> rng = np.random.default_rng(0)
+>>> xs = rng.standard_normal(300)
+>>> ys = 2 * xs + rng.standard_normal(300)
+>>> [float(a) == float(b) for a, b in zip(st.theilslopes(ys, xs), sd.regression.theilslopes(ys, xs))]
+[True, True, True, True]
+```
+
+테스트(`test_slopes_against_scipy`)는 n = 2–1,000의 무작위·동률·격자·평평한 자료, 두 방법, `alpha` 0.95·0.1·0.5·0.999(같은 수를 두 라이브러리에 줘요)에서 지금 scipy와 비트까지 같은지를 봐요(0의 부호 빼고).
+
+쌍 기울기의 정확한 유리수 값(입력 double을 정확한 유리수로 보고 계산한 값)의 중앙값과 견주면, 작은 n에서 결과가 4ulp 안이에요(`test_slopes_exact_rational`). double 기울기 자체가 반올림한 값이라 그 반올림이 순서를 바꿀 수 있기 때문이에요. 작은 정수 자료처럼 기울기가 double로 정확하면 중앙값도 정확한 값과 같아요.
+
+## 메모리
+
+scipy는 $x$의 차와 $y$의 차를 $n\times n$ 배열로 만들고(`x[:, None] - x[None, :]`), Theil–Sen이면 위 삼각 마스크($n\times n$ double의 `ones`를 `triu`해서 bool로)로 쌍을 골라 기울기 $n(n - 1)/2$개를 만든 뒤 정렬해요. $n\times n$ double 배열 하나가 $8n^2$바이트라 $n = 10^4$에서 800 MB, $n = 10^5$에서 80 GB예요. 이런 배열이 동시에 여러 개 있어요.
+
+sd의 메모리는 이래요.
+
+- Siegel: 태스크마다 길이 $n$의 double 배열 두 개($O(n)$).
+- Theil–Sen, 기울기 $\le 2^{23}$개: 기울기 배열 하나(최대 64 MiB).
+- Theil–Sen, 훑기: 실행 중인 덩어리마다 한 행의 키 배열($8n$바이트), 표본 $2^{16}$개, 그리고 피벗 사이에서 모은 값(순위마다 예상 $2^{22}$개 이하, 32 MiB). $n = 10^5$도 수백 MB 안에서 돌아요.
+
+## 속도
+
+Apple M4 Pro에서 scipy 1.18.1과 견준 값이에요. 자료는 $y = 2x$ + 표준정규 잡음, $n$개 점이에요. 두 숫자를 나란히 적은 곳은 sd 1스레드와 10스레드예요.
+
+- Theil–Sen은 scipy보다 $n = 10^3$에서 11배, $n = 10^4$에서 36배·138배 빨라요.
+- Siegel은 $n = 10^3$–$10^4$에서 2.3–2.7배·16–23배 빨라요.
+- $n = 10^5$에서는 scipy가 $n\times n$ 배열을 만들 수 없고, sd는 Theil–Sen 37 s·4.2 s, Siegel 68 s·7.9 s예요.
+
+스레드에 따른 차이는 구조에서 와요.
+
+- n = 1,000의 Theil–Sen(쌍 $5\times10^5$개)은 한 배열에 모아 한 스레드로 골라서 스레드 수와 상관없는 시간이에요.
+- n = 10⁴부터 Theil–Sen은 훑기이고, 덩어리 128개가 스레드풀에 나눠져요.
+- Siegel은 점마다 $n - 1$개의 선택이라 $O(n^2)$이고, scipy는 $n\times n$ 기울기 행렬을 만든 뒤 행마다 `quantile`을 불러요.
+
+<Callout>
+두 함수 모두 결과는 지금 스레드 수와 상관없이 같은 비트예요. 덩어리의 경계는 $n$만으로 정하고 덩어리의 수를 순서대로 더하며, 피벗의 표본은 고정 키로 뽑고, 순위 통계량은 계산 순서와 상관없는 값이에요. `test_slopes_threads_bit_identical`이 n = 5,000에서 1스레드와 10스레드를 비트로 비교해요.
+</Callout>
+
+## 참고 문헌
+
+1. H. Theil, "A rank-invariant method of linear and polynomial regression analysis", *Proceedings of the Koninklijke Nederlandse Akademie van Wetenschappen* 53, 386–392, 521–525, 1397–1412, 1950.
+2. P. K. Sen, "Estimates of the regression coefficient based on Kendall's tau", *Journal of the American Statistical Association* 63(324), 1379–1389, 1968. doi:10.1080/01621459.1968.10480934 (신뢰구간과 동률 보정, 식 2.6)
+3. A. F. Siegel, "Robust regression using repeated medians", *Biometrika* 69(1), 242–244, 1982. doi:10.1093/biomet/69.1.242
+4. C. A. R. Hoare, "Algorithm 65: Find", *Communications of the ACM* 4(7), 321–322, 1961. doi:10.1145/366622.366647 (선택)
+5. J. K. Salmon, M. A. Moraes, R. O. Dror, D. E. Shaw, "Parallel random numbers: as easy as 1, 2, 3", *SC '11*, 2011. doi:10.1145/2063384.2063405 (Philox)
+6. G. L. Steele Jr., D. Lea, C. H. Flood, "Fast splittable pseudorandom number generators", *OOPSLA '14*, 453–472, 2014. doi:10.1145/2660193.2660195 (splitmix64)

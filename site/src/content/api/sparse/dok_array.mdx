@@ -1,0 +1,251 @@
+---
+title: dok_array
+names: [dok_array]
+group: 희소 배열
+order: 5
+signatures:
+  - "sd.sparse.dok_array(arg, /, *, shape=None, dtype=None, copy=None)"
+summary: (행, 열) → 값의 표로 원소를 저장하는 DOK 형식의 희소 배열이에요. A[i, j] = v로 원소를 하나씩 넣고 고치는 일이 빨라서, 반복문 안에서 행렬을 조금씩 만들 때 써요. 다 만들면 CSR로 바꿔서 계산해요.
+params:
+  - name: arg
+    type: tuple, 희소 배열, ndarray, numpy 배열, 시퀀스
+    kind: positional-only
+    desc: "모양 tuple (M, N)이나 (N,)(빈 배열), (data, (row, col)) 꼴의 좌표(1차원은 (data, (i,))), 다른 희소 배열이나 scipy의 희소 객체, 또는 1·2차원 밀집 배열이나 수의 시퀀스예요."
+  - name: shape
+    type: int, int의 tuple, 또는 None
+    kind: keyword-only
+    desc: "배열의 모양. None(기본값)이면 좌표에서는 축마다 가장 큰 좌표 + 1이에요. 다른 입력에서는 입력의 모양과 같아야 해요."
+  - name: dtype
+    type: dtype, 그 이름, 또는 None
+    kind: keyword-only
+    desc: "값의 dtype. None(기본값)이면 입력에서 정해요(빈 배열은 float64). 주면 그 dtype으로 바꿔요."
+  - name: copy
+    type: bool 또는 None
+    kind: keyword-only
+    desc: "다른 DOK를 받았을 때 표를 복사할지. None(기본값)이면 같은 표를 나눠 쓰는 새 객체, True면 복사본이에요. 다른 형식에서 바꾸는 것은 언제나 복사라서 False면 ValueError예요."
+returns:
+  type: dok_array
+  desc: DOK 형식의 희소 배열.
+raises:
+  - type: TypeError
+    desc: "arg가 받는 꼴이 아닐 때, 좌표가 정수가 아닐 때, 원소 자리에 Python 수가 아닌 값(리스트 등)을 넣을 때, 넣는 값을 배열의 dtype으로 말없이 바꿀 수 없을 때(float을 int64에, complex를 float64에), 원소의 번호가 bool일 때."
+  - type: ValueError
+    desc: "좌표가 범위 밖일 때, shape가 입력과 맞지 않을 때, 3차원 이상일 때, 다른 형식에서 copy=False로 바꿀 때."
+  - type: IndexError
+    desc: "A[i, j]의 번호가 범위 밖일 때."
+seeAlso: [basics, sparray, coo_array, csr_array, indexing]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+DOK(dictionary of keys, 키의 사전) 형식은 원소마다 (행, 열)이라는 자리를 열쇠로, 값을 그 열쇠에 붙은 내용으로 적어요. 빈 배열을 만들고 원소를 하나씩 넣어 가며 행렬을 조립할 때 써요.
+
+```python
+>>> import stardust as sd
+>>> D = sd.sparse.dok_array((3, 3))
+>>> D[0, 1] = 2.0
+>>> D[2, 2] = 5.0
+>>> D[1, 0] = 1.0
+>>> D
+<dok_array of shape (3, 3), float64, 3 stored elements>
+>>> D[0, 1], D[1, 1]
+(2.0, 0.0)
+>>> D.toarray()
+array([[0.0, 2.0, 0.0],
+       [1.0, 0.0, 0.0],
+       [0.0, 0.0, 5.0]], dtype=float64)
+```
+
+<Fig caption="DOK는 자리 → 값의 표예요. 넣는 순서는 상관없고, 자리를 찾는 데 원소 수와 상관없는 짧은 시간이 들어요.">
+  <ArrayFig name="D" data={[['(0, 1)', '2.0'], ['(2, 2)', '5.0'], ['(1, 0)', '1.0']]} tones={[['a', 'b'], ['a', 'b'], ['a', 'b']]} note="자리 → 값" />
+  <Op>=</Op>
+  <ArrayFig data={[[0, 2, 0], [1, 0, 0], [0, 0, 5]]} tones={[['m', 'b', 'm'], ['b', 'm', 'm'], ['m', 'm', 'b']]} />
+</Fig>
+
+원소 하나를 넣거나 읽는 데 드는 시간이 배열의 크기와 저장한 원소 수에 상관없이 짧아요. 그래서 자리를 미리 모르고 반복문에서 하나씩 정해지는 행렬을 만들기 좋아요. 다 만들면 [`tocsr()`](/api/sparse/sparray/#형식-바꾸기)로 바꿔서 계산해요.
+
+```python
+>>> n = 5
+>>> T = sd.sparse.dok_array((n, n))
+>>> for i in range(n):
+...     T[i, i] = 2.0
+...     if i > 0:
+...         T[i, i - 1] = -1.0
+...     if i < n - 1:
+...         T[i, i + 1] = -1.0
+>>> T
+<dok_array of shape (5, 5), float64, 13 stored elements>
+>>> T.tocsr() @ sd.ones(n)
+array([1.0, 0.0, 0.0, 0.0, 1.0], dtype=float64)
+```
+
+<Reference />
+
+## 원소 읽고 쓰기
+
+`A[i, j]`(1차원은 `A[i]`)로 읽고, `A[i, j] = v`로 써요. 번호는 축마다 정수 하나이고, 음수는 끝에서 세요(`-1`은 마지막). numpy의 정수도 받아요. 범위 밖은 `IndexError`예요.
+
+```python
+>>> D[-1, -1]
+5.0
+>>> D[3, 0]
+Traceback (most recent call last):
+    ...
+IndexError: index 3 is out of bounds for axis 0 with size 3
+>>> D[True, 0]
+Traceback (most recent call last):
+    ...
+IndexError: a bool is not a valid index; use an int, or a boolean array
+```
+
+읽은 값은 Python의 수예요(`float`, `int`, `bool`, `complex`). 저장하지 않은 자리는 그 dtype의 0이에요.
+
+```python
+>>> type(D[0, 1])
+<class 'float'>
+>>> I = sd.sparse.dok_array((2, 2), dtype=sd.int64)
+>>> I[0, 0] = 3
+>>> I[0, 0], I[1, 1]
+(3, 0)
+```
+
+넣는 값은 Python의 수(bool, int, float, complex, numpy의 스칼라)예요. 밀집 배열에 원소 하나를 대입할 때와 같은 규칙으로 배열의 dtype이 돼요. 정보를 잃는 변환(float을 int64에, complex를 float64에)은 말없이 하지 않고 `TypeError`예요.
+
+```python
+>>> I[0, 1] = 2.5
+Traceback (most recent call last):
+    ...
+TypeError: cannot implicitly convert float64 to int64 (that would lose information); convert explicitly with astype
+>>> D[0, 0] = [3.0]
+Traceback (most recent call last):
+    ...
+TypeError: only a bool, int, float or complex can be assigned to a single element, not list
+```
+
+### 0을 넣으면 지워요
+
+DOK에 0(−0.0 포함)을 넣으면 그 자리를 표에서 지워요. 그래서 DOK에 원소를 하나씩 넣어 만든 배열에는 저장된 0이 없어요.
+
+```python
+>>> D[0, 1] = 0.0
+>>> D.nnz
+2
+```
+
+다른 형식에서 DOK로 바꿀 때는 저장된 0도 그대로 남아요. 지울지는 넣을 때만 정해요.
+
+```python
+>>> E = sd.sparse.csr_array(([1.0, 0.0], [0, 1], [0, 2, 2]), shape=(2, 2))
+>>> E.todok().nnz
+2
+```
+
+### 슬라이스와 배열로 고르기
+
+`D[0:2, 0]`, `D[[0, 2]]`처럼 정수 하나가 아닌 번호도 쓸 수 있어요. 결과는 희소 배열이에요. 규칙은 [인덱싱과 대입](/api/sparse/indexing/)에 있어요.
+
+```python
+>>> D[:, 0]
+<coo_array of shape (3,), float64, 1 stored element>
+>>> D[0:2, 0:2]
+<dok_array of shape (2, 2), float64, 1 stored element>
+```
+
+## 만드는 법
+
+대개는 모양 tuple로 빈 배열을 만들어요. `dtype`을 주지 않으면 float64예요. 좌표 `(data, (row, col))`, 밀집 배열, 다른 희소 배열도 받아요.
+
+```python
+>>> sd.sparse.dok_array((2, 3), dtype=sd.complex128)
+<dok_array of shape (2, 3), complex128, 0 stored elements>
+>>> sd.sparse.dok_array(([1.0, 2.0], ([0, 0], [1, 1])), shape=(2, 2))[0, 1]
+3.0
+>>> sd.sparse.dok_array([[0, 1], [2, 0]])
+<dok_array of shape (2, 2), int64, 2 stored elements>
+```
+
+좌표에 같은 자리가 여러 번 나오면 넣은 순서대로 더한 값 하나가 돼요.
+
+다른 DOK를 생성자에 넣으면 **같은 표를 나눠 쓰는** 새 객체예요. 한쪽에 넣은 원소가 다른 쪽에도 보여요. 따로 쓰려면 `copy=True`나 `copy()`를 써요. 다른 형식에서 DOK로 바꾸는 것은 언제나 새 표를 만들어요.
+
+```python
+>>> F = sd.sparse.dok_array((2, 2))
+>>> G = sd.sparse.dok_array(F)
+>>> G[1, 1] = 7.0
+>>> F[1, 1]
+7.0
+>>> H = sd.sparse.dok_array(F, copy=True)
+>>> H[0, 0] = 1.0
+>>> F.nnz, H.nnz
+(1, 2)
+```
+
+나눠 쓰는 두 객체 가운데 한쪽의 모양을 `resize`로 바꾸면, 그쪽은 표를 복사한 뒤 바꿔요. 다른 쪽의 모양과 원소는 그대로이고, 그 뒤로 두 객체는 표를 나누지 않아요.
+
+```python
+>>> G.resize((1, 1))
+>>> F.shape, F[1, 1]
+((2, 2), 7.0)
+>>> G[0, 0] = 5.0
+>>> F[0, 0]
+0.0
+```
+
+## DOK로 계산하기
+
+DOK도 다른 형식처럼 연산자, 리덕션, 원소별 함수를 쓸 수 있어요. 스칼라 곱 `D * 2`와 `-D`는 DOK를 돌려주고, 희소끼리의 연산, `@`, 원소별 함수는 CSR을 돌려줘요. 다만 DOK의 계산은 대개 안에서 CSR로 바꿔서 하므로, 같은 배열로 여러 번 계산할 때는 한 번 `tocsr()`로 바꿔 두는 편이 빨라요.
+
+```python
+>>> D * 2
+<dok_array of shape (3, 3), float64, 2 stored elements>
+>>> D + D
+<csr_array of shape (3, 3), float64, 2 stored elements>
+>>> D.sum(axis=0)
+array([1.0, 0.0, 5.0], dtype=float64)
+```
+
+DOK에서 다른 형식으로 바꾸면 원소가 행 우선 순서(행 번호, 같은 행이면 열 번호 순)로 정렬돼요. 넣은 순서와 상관없어요.
+
+```python
+>>> D.tocoo().coords
+(array([1, 2], dtype=int64), array([0, 2], dtype=int64))
+```
+
+## DOK에 없는 것
+
+- **dict의 메서드가 없어요.** `keys()`, `items()`, `get()`, `pop()`, `update()`를 쓰지 않아요. 저장한 자리와 값은 `tocoo()`의 `coords`와 `data`, 또는 [`find`](/api/sparse/find/)로 읽어요.
+- **`data` 같은 배열 속성이 없어요.** 표로 저장해서 값 배열이 따로 없어요.
+- **`eliminate_zeros()`가 없어요.** 0을 넣으면 바로 지우므로, 저장된 0은 다른 형식에서 바꿀 때만 생겨요. 지우려면 다른 형식으로 바꿔서 지워요.
+
+```python
+>>> D.keys()
+Traceback (most recent call last):
+    ...
+AttributeError: 'dok_array' object has no attribute 'keys'
+>>> rows, cols = D.tocoo().coords
+>>> rows, cols, D.tocoo().data
+(array([1, 2], dtype=int64), array([0, 2], dtype=int64), array([1.0, 5.0], dtype=float64))
+```
+
+## 다른 만드는 법과 비교
+
+원소를 미리 다 알면 [`coo_array`](/api/sparse/coo_array/)에 좌표 목록을 한 번에 넘기는 편이 빨라요. 원소마다 Python에서 `A[i, j] = v`를 부르지 않아도 되기 때문이에요. 위의 삼중 대각 행렬은 [`diags_array`](/api/sparse/diags_array/) 한 번으로도 만들어요. DOK는 자리가 계산 도중에 하나씩 정해지거나, 같은 자리를 여러 번 고쳐 써야 할 때 써요.
+
+```python
+>>> L = sd.sparse.diags_array([-1.0, 2.0, -1.0], offsets=[-1, 0, 1], shape=(n, n))
+>>> bool(sd.all(L.toarray() == T.toarray()))
+True
+```
+
+## scipy를 아는 분께
+
+- **dict의 하위 클래스가 아니에요.** scipy의 `dok_array`는 Python `dict`를 물려받아 `keys()`, `items()`, `get()` 등이 있지만 여기는 없어요. `len(D)`도 저장 수가 아니라 `TypeError`예요(`D.nnz`를 써요).
+- **좌표 `(data, (row, col))`로 만들 수 있어요.** scipy의 DOK는 받지 않아요.
+- **다른 형식으로 바꾸면 행 우선 순서예요.** scipy는 dict의 넣은 순서예요.
+- **원소 하나의 자리에 리스트를 넣을 수 없어요.** scipy는 `D[0, 0] = [3]`을 받아요. float을 int64 배열에 넣는 것도 scipy는 버림으로 받지만 여기는 `TypeError`예요.
+- **슬라이스로 고를 때 저장된 0을 빼지 않아요.** scipy의 DOK는 경로에 따라 빼기도 해요.
+- **희소끼리 더하면 CSR이에요.** scipy의 `dok + 희소`는 DOK예요.

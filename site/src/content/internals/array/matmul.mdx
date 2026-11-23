@@ -1,0 +1,574 @@
+---
+title: 행렬곱
+group: 행렬곱
+order: 1
+summary: "`matmul`이 shape와 dtype을 정하고 행렬마다 계산을 맡기는 방식을 설명해요. float64·complex128은 되도록 복사 없이 Accelerate BLAS에 넘기고, 행렬 하나는 늘 한 스레드에서 계산해서 배치를 어떻게 나눠도 결과가 같아요."
+seeAlso: [engine, conversion, performance, accuracy]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+`sd.matmul(x1, x2)`와 `x1 @ x2`는 같은 C++ 함수 `matmul`(`csrc/array/ops/matmul.cpp`)을 불러요. 이 함수 하나가 shape 계산, dtype 결정, 배치 순회, 커널 선택까지 모두 해요. 원소별 연산과 달리 nd 이터레이터([연산 엔진](/internals/array/engine/))를 쓰지 않아요. 행렬곱의 커널은 "원소 하나"가 아니라 "행렬 하나"를 단위로 하기 때문이에요.
+
+설계의 뼈대는 네 가지예요.
+
+1. dtype마다 계산하는 곳이 달라요. float64와 complex128은 Apple Accelerate의 BLAS(Basic Linear Algebra Subprograms, 행렬·벡터 연산의 표준 인터페이스)에 맡기고, BLAS가 없는 int64(그리고 int64로 계산하는 bool)는 직접 짠 루프로 계산해요. 곱셈-덧셈이 512개 이하인 2차원 float64 행렬 둘의 곱은 BLAS를 부르지 않고 자체 FMA 커널로 계산해요.
+2. 메모리를 되도록 옮기지 않아요. BLAS는 "포인터, leading dimension, 전치 플래그"로 행렬을 읽어요. 행이든 열이든 한 방향이 연속이면 그 표현으로 바로 넘기고, 그렇지 않을 때만 복사해요.
+3. 행렬 하나는 언제나 한 번에, 한 스레드에서 계산해요. 그래서 배치를 어떻게 나누든 결과 비트가 같아요.
+4. 두 스레드풀이 부딪치지 않게 해요. Accelerate는 큰 행렬에서 자기 스레드를 써요. 그래서 큰 행렬의 배치는 차례로 돌리고, Accelerate가 한 스레드로 도는 작은 행렬의 배치만 stardust의 풀에 나눠요.
+
+| 계산 dtype | 행렬 × 행렬 | 한 행 또는 한 열 | 벡터 · 벡터 | 배치 병렬 |
+|---|---|---|---|---|
+| float64 | `cblas_dgemm` (2차원 둘이고 곱셈-덧셈 512개 이하면 자체 `tiny_matmul`) | `cblas_dgemv` | `cblas_ddot` | 작은 행렬(곱셈-덧셈 $256^3$개 이하)만 풀에서 |
+| complex128 | `cblas_zgemm` | `cblas_zgemv` | `cblas_zdotu_sub` | 같음 |
+| int64, bool | 자체 i-k-j 루프 | 같은 루프 | 같은 루프 | 출력 행 묶음을 풀에서 |
+
+전체 흐름은 이래요.
+
+1. 두 인자가 `sd.ndarray`인지 확인해요(Python 스칼라는 받지 않아요).
+2. 계산 dtype `d`를 정하고, dtype이 다른 피연산자는 `d`로 바꾼 복사본을 만들어요.
+3. 마지막 두 축(벡터는 한 축)에서 `m, k, n`을 읽고 `k`가 맞는지 확인해요. float64 2차원 둘이고 $m n k \le 512$이면 여기서 자체 커널로 계산하고 끝나요.
+4. 앞쪽 배치 축을 브로드캐스트해서 결과 shape를 정하고, C 순서 결과 배열을 하나 할당해요.
+5. 배치마다 두 피연산자 행렬의 시작 주소를 미리 계산해 둬요.
+6. int64면 출력 행 묶음을 태스크로 풀에 나누고, float/complex면 배치마다 BLAS를 한 번씩 불러요.
+7. 벡터였던 축을 결과에서 지워요. 결과가 연속이라 shape와 strides만 다시 적으면 돼요.
+
+## shape 규칙
+
+### 기본 형태와 벡터
+
+matmul의 형태는 Array API를 따라요.
+
+$$
+(\ldots,\; m,\; k)\;@\;(\ldots,\; k,\; n)\;\to\;(\ldots,\; m,\; n)
+$$
+
+1차원 피연산자는 특별히 다뤄요. 왼쪽이면 행 벡터 $(1, k)$, 오른쪽이면 열 벡터 $(k, 1)$로 보고 계산한 다음, 그 길이 1인 축을 결과에서 지워요. 둘 다 벡터면 결과는 원소 하나인데, stardust에는 0차원 배열이 없으므로 Python 스칼라를 돌려줘요.
+
+| `x1.shape` | `x2.shape` | 계산할 때 | 결과 |
+|:---:|:---:|:---:|:---:|
+| `(3, 4)` | `(4, 5)` | `(3,4) @ (4,5)` | `(3, 5)` |
+| `(4,)` | `(4, 5)` | `(1,4) @ (4,5)` | `(5,)` |
+| `(3, 4)` | `(4,)` | `(3,4) @ (4,1)` | `(3,)` |
+| `(4,)` | `(4,)` | `(1,4) @ (4,1)` | Python 스칼라 |
+| `(2, 1, 3, 4)` | `(5, 4, 2)` | 배치 `(2, 5)` | `(2, 5, 3, 2)` |
+
+`k`가 맞지 않으면 `ValueError`이고, 메시지는 두 길이를 모두 보여 줘요("the last axis of 'x1' (3) must match the second-to-last axis of 'x2' (2)"). 함수 이름 접두사(`matmul(): `)는 바인딩 층이 붙여요([Python과 C++의 경계](/internals/core/python-boundary/)).
+
+### 배치 축의 브로드캐스팅
+
+행렬 축 앞의 축은 "배치"예요. 두 피연산자의 배치 shape를 원소별 연산과 같은 브로드캐스팅 규칙(`broadcast_shapes`)으로 합쳐요. 길이가 다르고 어느 쪽도 1이 아니면 에러예요. 예를 들어 `(2, 2, 3) @ (3, 3, 2)`는 배치가 `(2,)`와 `(3,)`이라 `ValueError`예요.
+
+브로드캐스트되는 배치 축에서는 그 피연산자의 stride를 0으로 둬요. 그래서 `(1000, 8, 8) @ (8, 8)`처럼 한쪽이 행렬 하나뿐이어도 그 행렬을 1000번 복사하지 않고, 1000개 배치가 모두 같은 주소를 가리켜요.
+
+배치마다 두 행렬의 시작 주소는 계산 전에 한 번에 구해 둬요. 배치 축 위를 C 순서의 odometer(가장 안쪽 자리부터 하나씩 올리고, 끝에 닿으면 0으로 돌리며 다음 자리를 올리는 방식)로 돌면서 `(a의 시작, b의 시작)` 쌍을 `starts` 배열에 채워요.
+
+```cpp
+    // csrc/array/ops/matmul.cpp, matmul() (줄인 발췌)
+    auto batch_stride = [&](const NDArray& x, int nbatch, int dd) {  // stride of broadcast batch axis dd
+        const int xd = dd - (bd - nbatch);
+        return xd < 0 || x.shape[xd] == 1 ? 0 : x.strides[xd];
+    };
+    // ...
+    for (std::int64_t t = 0; t < count; ++t) {
+        starts[t] = {pa, pb};
+        for (int dd = bd - 1; dd >= 0; --dd) {  // C-order odometer over the batch axes
+            pa += batch_stride(a, a_batch, dd);
+            pb += batch_stride(b, b_batch, dd);
+            if (++idx[dd] < batch[dd]) break;
+            pa -= batch_stride(a, a_batch, dd) * batch[dd];
+            pb -= batch_stride(b, b_batch, dd) * batch[dd];
+            idx[dd] = 0;
+        }
+    }
+```
+
+이 계산을 호출한 스레드에서 미리 해 두면, 풀의 태스크는 배치 번호 `t`만 받아 `starts[t]`를 읽으면 돼요. 태스크 안에서는 `NDArray`를 복사하지도, Python 객체를 만지지도 않아요(태스크는 GIL 없이 돌아요, [스레드풀과 결정성](/internals/core/threads/)).
+
+### 결과 배열
+
+결과는 언제나 C 순서의 새 배열이에요(`new_array`). 원소별 연산은 입력의 메모리 순서를 따라 결과를 만들지만, 행렬곱은 그럴 이유가 없어요. BLAS의 출력 인자는 언제나 행 우선(row-major)이고(`ldc = n`), 배치 `t`의 결과는 `out.data + t·m·n·itemsize`에서 시작하는 연속 블록이에요.
+
+계산은 벡터 축까지 포함한 `batch + (m, n)` shape으로 하고, 마지막에 벡터였던 축을 지워요. 지워지는 축의 길이가 1이고 결과가 연속이므로 데이터를 옮길 필요가 없어요. shape와 strides만 다시 적고 연속성 플래그를 다시 계산해요(`update_flags`). 축이 하나도 남지 않으면(벡터 @ 벡터) 원소 하나를 `load_python`으로 Python 숫자로 꺼내요.
+
+### `@`와 `@=`
+
+`@`는 배열만 받아요. 상대가 배열이 아니면 `NotImplemented`를 돌려주고, Python이 반대쪽의 `__rmatmul__`을 시도한 뒤 `TypeError`를 내요. 그래서 `x @ 2`의 메시지는 Python 형식인 "unsupported operand type(s) for @: 'ndarray' and 'int'"예요.
+
+`x @= y`는 다른 제자리 연산자와 같은 규칙을 따라요(`bind/array_bind.cpp`의 `__imatmul__`).
+
+1. 먼저 `matmul(x, y)`로 새 배열에 계산해요.
+2. 결과 shape가 x의 shape와 다르면 `ValueError`예요.
+3. `assign_checked`로 x에 복사해요. 이 함수가 쓰기 금지 검사와 "위로만 변환" 규칙을 맡으므로, int64 배열에 `@= float 행렬`은 `TypeError`예요.
+
+행렬곱은 결과의 원소 하나가 입력의 행 하나와 열 하나 전체에 의존하므로, 출력을 입력 위에 바로 쓸 수 없어요. BLAS 인터페이스도 출력 C가 입력 A, B와 겹치는 경우의 결과를 정의하지 않아요. 그래서 "새 배열에 계산 → 복사"가 유일하게 안전한 방법이에요.
+
+## dtype
+
+### 계산 dtype 정하기
+
+```cpp
+const DType d = promote(promote(a0.dtype, b0.dtype), DType::Int64);
+```
+
+두 dtype을 승격한 결과와 int64 중 높은 쪽이에요. 승격 순서가 `bool < int64 < float64 < complex128`인 일직선이라([변환과 승격](/internals/array/conversion/)), 이 한 줄로 다음 표가 나와요.
+
+| `x1` | `x2` | 계산·결과 dtype |
+|:---:|:---:|:---:|
+| bool | bool | int64 |
+| bool | int64 | int64 |
+| int64 | float64 | float64 |
+| float64 | complex128 | complex128 |
+
+`bool @ bool`이 int64인 이유는 배열의 산술 연산에 bool 루프가 없기 때문이에요. `True + True == 2`인 것과 같아요. 행렬곱은 곱셈과 덧셈이므로 bool끼리도 개수를 세는 int64 계산이 돼요.
+
+### dtype이 다른 피연산자는 통째로 바꿔요
+
+dtype이 `d`와 다른 피연산자는 `cast_copy`로 `d`의 새 배열을 만들어요. 새 배열은 원본의 메모리 축 순서를 따르므로(`new_array_like`), F 순서 int64 행렬은 F 순서 float64 행렬이 되어 아래의 BLAS 경로에서 다시 복사 없이 읽혀요.
+
+원소별 연산은 같은 상황에서 입력 전체를 바꾸지 않고 4096원소씩 작은 버퍼에 바꿔 가며 계산해요(버퍼 단위 캐스팅, [연산 엔진](/internals/array/engine/)). 행렬곱이 그렇게 하지 않는 이유는 두 가지예요.
+
+- BLAS는 타입이 정해진 배열 전체를 한 번에 받아요. 4096원소씩 나눠 넘기면 행렬곱이 되지 않아요.
+- 비용의 차수가 달라요. 변환은 $O(mk + kn)$이고 곱셈은 $O(mnk)$예요. $n = 1000$이면 변환은 곱셈의 약 500분의 1이라, 변환을 아껴 얻을 것이 거의 없어요.
+
+### 정수는 wrap하고, complex는 켤레를 취하지 않아요
+
+- int64 곱셈과 덧셈은 조용히 wrap해요(2의 보수로 $2^{64}$를 법으로 계산). C++의 부호 있는 오버플로는 정의되지 않은 동작이라, `wrap_mul`/`wrap_add`가 부호 없는 정수로 계산한 뒤 되돌려요. 예를 들어 `[[2**62, 2**62]] @ [[2], [2]]`는 $2^{64}$가 0으로 wrap되어 `[[0]]`이에요. numpy의 정수 matmul도 wrap하므로 결과가 같아요.
+- complex의 matmul은 켤레를 취하지 않아요. 그래서 벡터 · 벡터는 켤레를 취하는 `cblas_zdotc_sub`가 아니라 `cblas_zdotu_sub`(u는 unconjugated)를 불러요. `[1j, 1] @ [1j, 2]`는 $1j \cdot 1j + 1 \cdot 2 = 1$이에요.
+
+## BLAS 경로 (float64, complex128)
+
+### BLAS가 행렬을 읽는 방법
+
+CBLAS의 행 우선 인터페이스에서 행렬 인자는 세 값으로 정해져요.
+
+- 포인터 `a`
+- 전치 플래그: `CblasNoTrans` 또는 `CblasTrans`
+- leading dimension `lda`: 저장된 행렬에서 한 행의 시작과 다음 행의 시작 사이의 원소 수
+
+`NoTrans`이면 원소 $(i, j)$는 `a[i·lda + j]`에 있어요. `Trans`이면 BLAS는 메모리에 저장된 행렬의 전치를 계산에 쓰므로, 계산에 쓰는 원소 $(i, j)$는 `a[j·lda + i]`에 있어요. 어느 쪽이든 한 방향은 반드시 원소 간격 1이고, 다른 방향의 간격만 `lda`로 자유롭게 정할 수 있어요.
+
+stardust의 배열에는 축마다 바이트 단위 stride가 있어요. matmul은 행렬 하나를 이렇게 적어요.
+
+```cpp
+// csrc/array/ops/matmul.cpp
+struct Mat {
+    const std::byte* p;
+    std::int64_t rows, cols, rs, cs;
+};
+```
+
+그러면 질문은 "`rs`와 `cs`를 BLAS의 (전치 플래그, `lda`)로 옮길 수 있는가"예요.
+
+- 열 방향이 연속(`cs == itemsize`)이면 `NoTrans`, `lda = rs / itemsize`예요.
+- 행 방향이 연속(`rs == itemsize`)이면, 이 행렬은 "cols × rows 행 우선 행렬의 전치"예요. `Trans`, `lda = cs / itemsize`예요.
+- 둘 다 아니면 BLAS로 표현할 수 없어요. 연속 행 우선 복사본을 만들어 넘겨요.
+
+<Fig caption="2×4 C 순서 행렬의 앞 두 열 x[:, :2]. 열 방향 간격은 8바이트(원소 하나), 행 방향 간격은 4원소예요. 복사 없이 NoTrans, lda = 4로 넘겨요. 쓰이지 않는 c, d, g, h는 lda가 건너뛰어요.">
+  <ArrayFig name="메모리" data={['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']} tones={['a', 'a', 'm', 'm', 'a', 'a', 'm', 'm']} note="rs = 32B, cs = 8B" />
+  <Op note="NoTrans, lda=4">→</Op>
+  <ArrayFig name="x[:, :2]" data={[['a', 'b'], ['e', 'f']]} tones={[['a', 'a'], ['a', 'a']]} note="shape (2, 2)" />
+</Fig>
+
+<Fig caption="F 순서 2×3 행렬(또는 C 순서 행렬의 .T). 행 방향이 연속이라 '3×2 행 우선 행렬의 전치'로 읽어요. Trans, lda = 2예요.">
+  <ArrayFig name="메모리" data={['a', 'd', 'b', 'e', 'c', 'f']} tones={['a', 'b', 'a', 'b', 'a', 'b']} note="rs = 8B, cs = 16B" />
+  <Op note="Trans, lda=2">→</Op>
+  <ArrayFig name="x" data={[['a', 'b', 'c'], ['d', 'e', 'f']]} tones={[['a', 'a', 'a'], ['b', 'b', 'b']]} note="shape (2, 3)" />
+</Fig>
+
+### `blas_view`: 판정 규칙
+
+이 판정을 하는 함수가 `blas_view`예요.
+
+```cpp
+// csrc/array/ops/matmul.cpp
+std::optional<BlasView> blas_view(const Mat& a, std::int64_t item) {
+    auto unit = [&](std::int64_t s, std::int64_t extent) { return extent == 1 || s == item; };
+    auto lead = [&](std::int64_t s, std::int64_t extent, std::int64_t inner) -> std::optional<blas_int> {
+        if (extent == 1) return std::max<std::int64_t>(inner, 1);
+        if (s <= 0 || s % item != 0 || s / item < std::max<std::int64_t>(inner, 1)) return std::nullopt;
+        return s / item;
+    };
+    if (unit(a.cs, a.cols))
+        if (auto ld = lead(a.rs, a.rows, a.cols)) return BlasView{CblasNoTrans, *ld};
+    if (unit(a.rs, a.rows))
+        if (auto ld = lead(a.cs, a.cols, a.rows)) return BlasView{CblasTrans, *ld};
+    return std::nullopt;
+}
+```
+
+`lead`의 세 조건에는 각각 이유가 있어요.
+
+- 양수: BLAS의 `lda`는 양수만 받아요. 뒤집힌 축(음수 stride)과 브로드캐스트된 축(stride 0)은 여기서 걸러져요.
+- 원소 크기의 배수: `lda`는 원소 단위예요. 원소 크기의 배수가 아닌 stride는 원소 단위로 적을 수 없어요. stardust가 만드는 배열에서는 생기지 않지만, 버퍼 프로토콜로 가져온 배열은 이론적으로 그럴 수 있어서 검사해요.
+- `lda`가 연속 방향의 길이 이상: 행 우선 BLAS는 `lda ≥ max(1, 열 수)`를 요구해요. 행들이 서로 겹치지 않아야 한다는 뜻이에요.
+
+`std::optional`(C++17)은 "BLAS 표현이 있으면 그 값, 없으면 비어 있음"을 반환형 하나로 나타내요. 호출하는 쪽은 비어 있으면 복사본을 만들어요.
+
+| 레이아웃 | 예 | 처리 |
+|---|---|---|
+| C 순서 | `m` | `NoTrans`, `lda = n`, 복사 없음 |
+| F 순서, 전치 | `m.T`, F 순서 배열 | `Trans`, 복사 없음 |
+| 행이나 열 일부 | `m[:, :k]`, `m[::2, :]` | `NoTrans`, `lda`가 건너뜀, 복사 없음 |
+| 열을 건너뛰는 뷰 | `m[:, ::2]` | 두 방향 모두 간격이 1이 아님 → 복사 |
+| 뒤집힌 축 | `m[::-1]` | 음수 stride → 복사 |
+| 브로드캐스트된 행렬 | `broadcast_to(m[:1], m.shape)` | stride 0 → 복사 |
+
+그래서 흔한 `x @ x.T`는 `gemm(NoTrans, Trans)` 호출 하나로 복사 없이 돌아요. `m[:, ::2]`는 BLAS가 "행렬 안의 원소 간격"을 표현할 방법이 없어서 복사가 필요해요. BLAS의 행렬 인자에는 간격이 하나(`lda`)뿐이고 다른 방향은 1로 고정이기 때문이에요.
+
+복사본은 `packed<T>`가 만들어요. 행 우선 연속 배열을 `std::make_unique_for_overwrite<T[]>`(C++20)로 할당하는데, 이 함수는 `make_unique<T[]>`와 달리 원소를 0으로 초기화하지 않아요. 곧바로 모든 원소를 덮어쓸 것이라 초기화는 낭비예요. 원소는 `load_as<T>`로 읽어서, 정렬되지 않은 주소에서도 안전해요.
+
+### gemv와 dot
+
+행렬 × 행렬이 아닌 경우는 더 가벼운 루틴으로 보내요.
+
+- `m == 1`이고 `n == 1`: 원소 하나예요. 내적이므로 `dot`을 불러요. 벡터 @ 벡터뿐 아니라 `(1, k) @ (k, 1)`도 여기로 와요.
+- `n == 1` (행렬 × 열): $y = A x$. `gemv`에 a를 행렬로, b의 열을 벡터로 넘겨요.
+- `m == 1` (행 × 행렬): $y^T = x^T B$이고, 전치하면 $y = B^T x$예요. 그래서 b를 전치한 `Mat`(행과 열, `rs`와 `cs`를 맞바꾼 것)을 만들어 `gemv`에 넘겨요. 메모리는 그대로이고 설명만 바꾼 거예요.
+
+`gemv`는 계산에 쓰는 행렬이 아니라 저장된 행렬의 크기를 받아요. 그래서 `Trans`이면 행과 열 수를 바꿔 넘겨요.
+
+```cpp
+        // csrc/array/ops/matmul.cpp, blas_matmul() (발췌)
+        const blas_int sr = v->trans == CblasNoTrans ? mt.rows : mt.cols;
+        const blas_int sc = v->trans == CblasNoTrans ? mt.cols : mt.rows;
+        blas::gemv<T>(v->trans, sr, sc, ap, v->ld, x, inc, c);
+```
+
+벡터는 (포인터, 증분 `inc`)로 넘겨요(`blas_vector`). stride가 양수이고 원소 크기의 배수이면 그대로 넘기고, stride가 0이거나 음수이면 복사해요. 기준 BLAS(netlib)의 `dgemv`는 증분 0을 인자 오류로 보고해요. 음수 증분은 "벡터를 메모리의 높은 주소 쪽에서부터 읽는다"는 뜻이라, 포인터가 메모리상 가장 낮은 원소를 가리켜야 해요. stardust의 data 포인터는 논리적 원소 0을 가리키므로 그대로 넘기면 틀린 곳을 읽어요[3]. 길이 n짜리 벡터의 복사는 $O(n)$이라 비용이 작아요.
+
+### 특수한 크기
+
+- `m == 0` 또는 `n == 0`: 결과가 비어 있으므로 아무것도 하지 않아요.
+- `k == 0`: 빈 합이므로 결과를 0으로 채워요. BLAS에 `k = 0`을 넘기지 않아요. `lda`의 하한 조건(`lda ≥ max(1, k)`) 같은 경계 사례를 피하는 가장 단순한 방법이에요.
+
+### BLAS 래퍼와 ILP64
+
+BLAS 호출은 `csrc/accelerate/blas.hpp`의 템플릿 넷(`blas::dot`, `blas::gemv`, `blas::gemm`, `blas::syrk_upper`)을 거쳐요. 함수 하나가 float64와 complex128을 `if constexpr`로 갈라요.
+
+```cpp
+// csrc/accelerate/blas.hpp (줄임)
+template <class T>
+void gemm(Trans ta, Trans tb, Int m, Int n, Int k, const T* a, Int lda, const T* b, Int ldb, T* c, Int ldc) {
+    const T one(1), zero(0);
+    if constexpr (std::is_same_v<T, std::complex<double>>)
+        cblas_zgemm(CblasRowMajor, ta, tb, m, n, k, &one, a, lda, b, ldb, &zero, c, ldc);
+    else cblas_dgemm(CblasRowMajor, ta, tb, m, n, k, one, a, lda, b, ldb, zero, c, ldc);
+}
+```
+
+- 모두 행 우선이고 $\alpha = 1$, $\beta = 0$이에요. complex 루틴은 스칼라를 포인터로 받으므로 `&one`을 넘겨요. `if constexpr`(C++17)는 템플릿 인스턴스마다 한쪽 가지만 컴파일하므로, double 인스턴스에서 `cblas_zgemm`의 인자 타입이 맞지 않아도 에러가 나지 않아요.
+- 정수 인자 타입 `Int`는 Accelerate의 `__LAPACK_int`예요. 빌드에서 `ACCELERATE_NEW_LAPACK`과 `ACCELERATE_LAPACK_ILP64`를 정의해 Accelerate의 새 인터페이스와 64비트 정수 인자(ILP64)를 써요[2]. 32비트 인자(LP64)라면 원소가 $2^{31}$개를 넘는 행렬의 크기나 `lda`를 넘길 수 없어요.
+- 링크나 ILP64 설정이 틀리면 조용히 틀린 결과가 나올 수 있어요. 그래서 빌드 정보 함수(`bind/module.cpp`의 `_build_info`)가 `cblas_ddot`을 한 번 불러 보고, 빌드 테스트가 그 값을 확인해 문제를 바로 드러내요.
+- `syrk_upper`는 matmul이 아니라 `cov`가 써요([통계 함수](/internals/array/statistics/)).
+
+<Callout title="큰 BLAS 호출 동안 GIL">
+int64 경로와 작은 배치 경로는 `parallel_for`를 거치므로, 태스크가 둘 이상이면 1스레드여도 GIL을 놓아요. 행렬 하나이거나 큰 행렬의 배치를 차례로 도는 BLAS 경로는 `parallel_for`를 거치지 않는 대신, 곱셈-덧셈이 모두 합쳐 $2^{15}$개(`kBlasTaskWork`) 이상이면 그 루프 동안 `nb::gil_scoped_release`로 GIL을 놓아요. 이 호출은 Accelerate가 스레드 수를 정하므로 `sd.set_num_threads(1)`이어도 오래 걸리면서 여러 코어를 쓸 수 있어요. GIL을 놓는 것은 그동안 다른 Python 스레드가 돌 수 있게 하려는 거예요. BLAS 호출과, 행렬을 연속으로 모으는 복사는 Python 객체를 만지지 않으므로 GIL 없이 돌아도 돼요. 그보다 작은 호출은 GIL을 놓고 잡는 비용이 더 커서 쥔 채 돌아요. 같은 BLAS를 부르는 `cov`도 호출 동안 GIL을 놓아요.
+</Callout>
+
+### float64 1000³이 numpy와 같은 이유
+
+1000³ float64 행렬곱은 numpy와 stardust가 같은 함수를 불러요. 시간도 그 함수의 시간이에요.
+
+- Apple M4 Pro의 numpy 2.5.4는 BLAS로 Accelerate를 쓰도록 빌드되어 있어요(`np.show_config()`의 "Build Dependencies → blas: accelerate"). C 순서 1000×1000 두 개의 곱에서 numpy도 `cblas_dgemm`을 불러요.
+- `sd.set_num_threads`는 stardust의 풀만 정해요. Accelerate의 내부 스레드는 바꾸지 않아요. Accelerate는 정사각 dgemm을 256까지는 한 스레드로, 288부터는 여러 스레드로 돌려요(CPU 시간 / 경과 시간이 256에서 1.00, 288에서 1.62, 512에서 1.86). 그래서 1000³은 stardust 스레드 수와 상관없이 Accelerate가 알아서 여러 코어를 써요. 큰 float64 행렬곱에서는 stardust의 스레드 수 설정에 뜻이 없어요.
+- Accelerate가 `sd.set_num_threads`를 따르지 않는 것은 의도한 동작이에요. Accelerate의 스레드 수를 바꾸는 `BLASSetThreading`은 프로세스 전체 설정이에요. 호출마다 바꾸고 되돌리면 그 사이에 같은 프로세스의 다른 BLAS 호출(linalg, numpy, 다른 Python 스레드)까지 설정이 바뀌어요. 따르지 않아도 잃는 것이 없어요. Accelerate의 스레드 수는 결과의 비트를 바꾸지 않고([정확도](#정확도)), 큰 BLAS 호출은 stardust의 풀이 쉬는 동안 호출한 스레드에서 부르므로 두 스레드풀이 코어를 다투지 않아요. 자세한 것은 [스레드풀과 결정성](/internals/core/threads/)에 있어요.
+
+Accelerate가 내부에서 어떤 하드웨어 유닛을 쓰는지는 공개되어 있지 않아요. 배치 측정의 모양은 행렬 연산 유닛(AMX)을 쓴다고 보면 설명돼요([배치](#배치) 절).
+
+## 아주 작은 float64 행렬: `tiny_matmul`
+
+3×4 @ 4×3 같은 아주 작은 곱에서는 계산보다 BLAS 호출과 일반 경로의 준비(배치 shape 벡터 넷)가 시간의 절반을 넘어요. 그래서 2차원 float64 행렬 둘의 곱이고 곱셈-덧셈 $m n k$가 512(`kTinyMatmul`) 이하이면 BLAS를 부르지 않아요.
+
+```cpp
+// csrc/array/ops/matmul.cpp (tiny_matmul)
+void tiny_matmul(const Mat& a, const Mat& b, double* c) {
+    const std::int64_t m = a.rows, k = a.cols, n = b.cols;
+    for (std::int64_t i = 0; i < m; ++i) {
+        double* crow = c + i * n;
+        for (std::int64_t j = 0; j < n; ++j) crow[j] = 0.0;
+        for (std::int64_t p = 0; p < k; ++p) {
+            const double aip = load_as<double>(a.p + i * a.rs + p * a.cs);
+            const std::byte* brow = b.p + p * b.rs;
+            if (b.cs == sizeof(double)) {
+                const double* bp = reinterpret_cast<const double*>(brow);
+                for (std::int64_t j = 0; j < n; ++j) crow[j] = std::fma(aip, bp[j], crow[j]);
+            } else {
+                for (std::int64_t j = 0; j < n; ++j) crow[j] = std::fma(aip, load_as<double>(brow + j * b.cs), crow[j]);
+            }
+        }
+    }
+}
+```
+
+- 원소마다 $\sum_p a_{ip} b_{pj}$를 $p$ 순서로 `fma`로 쌓아요. 루프 순서는 int64 커널과 같은 i-p-j라서 b의 행과 c의 행을 함께 걸어요.
+- 피연산자는 strides 그대로 읽어요. 레이아웃 때문에 복사하지 않아요.
+- 직렬이고 결정적이에요. 다만 BLAS의 비트가 아니라서 numpy와 끝자리가 달라요. 3×4 @ 4×5, 4×4, 8×8을 무작위로 20번씩 곱해 견주면 모두 어딘가 끝자리가 달라요. 300×200 @ 200×250, 64³은 BLAS 경로라 지금도 모두 같아요.
+- 정확도는 계약 안이에요. 내적 하나의 오차 한계(아래 "정확도")는 순서와 상관없고, `bench.accuracy`의 matmul 8×8 sweep에서 최대 상대오차가 $7.19 \times 10^{-15}$($0.848\,u\cdot$조건수)예요. R과 같은 값이에요.
+- 이 크기에서는 BLAS를 부르는 것보다 빨라요.
+
+## int64 커널
+
+### 직접 짠 루프를 쓰는 이유
+
+- BLAS에는 정수 행렬곱이 없어요. 표준 BLAS는 실수와 복소수(s, d, c, z)만 정의해요. numpy도 정수 matmul에는 BLAS를 쓰지 못하고 자체 루프로 계산해요.
+- NEON에는 64비트 정수 벡터 곱셈이 없어요. AArch64 Advanced SIMD의 정수 곱셈 명령은 8·16·32비트 원소까지만 있고, `vmulq_s64` 같은 intrinsic이 없어요[6]. 64비트 원소의 벡터 곱셈은 SVE에 있지만 M4에는 SVE가 없어요. 그래서 곱셈은 스칼라 `mul` 명령으로 해요. 덧셈은 벡터로 할 수 있지만, 곱셈이 스칼라인 이상 벡터 덧셈을 섞으면 레지스터 사이 이동만 늘어요.
+
+### 루프 순서: i-k-j
+
+세 겹 루프의 순서는 여섯 가지가 가능해요. stardust는 **i-k-j**를 써요.
+
+```cpp
+    // csrc/array/ops/matmul.cpp, int_matmul() (발췌)
+    for (std::int64_t i = 0; i < m; ++i) {
+        std::int64_t* crow = c + i * n;
+        std::fill(crow, crow + n, 0);
+        for (std::int64_t p = 0; p < k; ++p) {
+            const std::int64_t aip = load_as<std::int64_t>(a.p + i * a.rs + p * a.cs);
+            const std::byte* brow = b.p + p * b.rs;
+            std::int64_t j = 0;
+            if (b.cs == sizeof(std::int64_t)) {
+                // ...
+                const std::int64_t* bp = reinterpret_cast<const std::int64_t*>(brow);
+                for (; j + 4 <= n; j += 4) {
+                    crow[j] = ops::wrap_add(crow[j], ops::wrap_mul(aip, bp[j]));
+                    crow[j + 1] = ops::wrap_add(crow[j + 1], ops::wrap_mul(aip, bp[j + 1]));
+                    crow[j + 2] = ops::wrap_add(crow[j + 2], ops::wrap_mul(aip, bp[j + 2]));
+                    crow[j + 3] = ops::wrap_add(crow[j + 3], ops::wrap_mul(aip, bp[j + 3]));
+                }
+            }
+            for (; j < n; ++j)
+                crow[j] = ops::wrap_add(crow[j], ops::wrap_mul(aip, load_as<std::int64_t>(brow + j * b.cs)));
+        }
+    }
+```
+
+<Fig caption="i-k-j 순서의 한 걸음. a[i, p] 하나를 레지스터에 두고, b의 p번째 행 전체를 곱해 c의 i번째 행 전체에 더해요. 가장 안쪽 루프가 두 행을 연속으로 걸어요.">
+  <ArrayFig name="a" data={[['', '', ''], ['', 'a[i,p]', ''], ['', '', '']]} tones={[['m', 'm', 'm'], ['m', 'b', 'm'], ['m', 'm', 'm']]} note="스칼라 하나" />
+  <Op>×</Op>
+  <ArrayFig name="b" data={[['', '', ''], ['b', 'b', 'b'], ['', '', '']]} tones={[['m', 'm', 'm'], ['a', 'a', 'a'], ['m', 'm', 'm']]} note="p번째 행" />
+  <Op>→ 더하기</Op>
+  <ArrayFig name="c" data={[['', '', ''], ['c', 'c', 'c'], ['', '', '']]} tones={[['m', 'm', 'm'], ['a', 'a', 'a'], ['m', 'm', 'm']]} note="i번째 행" />
+</Fig>
+
+이 순서가 좋은 이유는 가장 안쪽 루프 하나를 보면 알 수 있어요.
+
+- 메모리를 순서대로 읽어요. C 순서 b의 행과 c의 행은 연속이에요. 하드웨어 prefetcher가 다음 캐시 라인을 미리 가져오고, 캐시 라인(128바이트) 하나에 든 int64 16개를 모두 써요.
+- 의존 사슬이 없어요. `c[j]`마다 따로 더하므로 반복끼리 의존이 없어요. CPU가 여러 곱셈-덧셈을 동시에 진행할 수 있어요.
+- `a[i, p]`는 반복 내내 레지스터에 있어요.
+
+교과서식 i-j-k 순서(원소 `c[i, j]`마다 내적을 구하는 방식)에는 문제가 두 가지 있어요. 가장 안쪽 루프가 b의 열을 걸으므로 매번 `n × 8`바이트씩 건너뛰어 캐시 라인 하나에서 원소 하나만 써요. 그리고 누산기 하나에 계속 더하므로 반복마다 앞 덧셈이 끝나기를 기다리는 의존 사슬이 생겨요.
+
+numpy의 정수 matmul이 바로 이 i-j-k 순서예요. numpy 소스 `numpy/_core/src/umath/matmul.c.src`의 `@TYPE@_matmul_inner_noblas`는 출력 원소마다 0에서 시작해 k 방향으로 `*op += val1 * val2`를 반복하고, 두 번째 피연산자를 `is2_n`(b의 행 stride) 간격으로 걸어요[4].
+
+### 4배 언롤
+
+가장 안쪽 루프는 손으로 4번 펼쳐 써요. 이유는 둘이에요.
+
+1. 곱셈기를 바쁘게 하려고요. 독립적인 곱셈-덧셈 네 개가 한 반복 안에 있으면, 곱셈 하나의 지연을 기다리는 동안 다른 곱셈이 진행돼요.
+2. 코드가 놓인 주소에 둔감해지려고요. 펼치지 않은 루프는 명령어 7개짜리예요. 이렇게 짧은 루프는 반복마다 명령 인출(fetch) 속도에 묶이는데, 루프 몸체가 64바이트 인출 블록의 경계를 가로지르면 1.7배 느려져요. 같은 소스라도 링커가 루프를 어디에 놓느냐에 따라 7.5ms와 12.9ms로 갈려요. `-falign-loops=64`로 루프를 64바이트 경계에 맞춰 빌드하면 느린 쪽이 사라지므로, 원인이 코드의 위치라는 것을 알 수 있어요. 몸체가 커지면 경계를 한 번 넘어도 반복당 인출 비용에서 차지하는 비율이 작아져요.
+
+정렬 옵션(`-falign-loops=64`)은 빌드에 넣지 않아요. 이 루프 하나를 위해 확장 모듈 전체의 코드 배치를 바꾸는 것보다, 루프 몸체를 키워 위치에 둔감하게 만드는 쪽이 영향 범위가 좁기 때문이에요.
+
+언롤은 b의 열 간격이 원소 하나일 때(`b.cs == 8`)만 해요. 그 밖의 레이아웃은 `load_as`로 바이트 stride를 따라 한 원소씩 읽는 루프로 가요. int64 경로는 BLAS와 달리 어떤 stride든 그대로 읽으므로 복사본을 만들지 않아요. 다만 F 순서 b처럼 행이 연속이 아니면 가장 안쪽 루프가 큰 간격으로 걸어 느려져요.
+
+### 쓰지 않는 기법: 블로킹, 패킹, 레지스터 타일
+
+고성능 BLAS의 gemm은 행렬을 캐시 크기에 맞는 블록으로 나누고(blocking), 블록을 연속 버퍼로 다시 배치하고(packing), 출력의 작은 타일(예: 4×4)을 레지스터에 쌓아 두는 마이크로커널을 써요[5]. stardust의 int64 커널은 이 중 아무것도 하지 않아요. c의 한 행 전체를 메모리(실제로는 L1 캐시)에 두고, 곱셈-덧셈마다 b 하나를 읽고 c 하나를 읽고 쓰는 단순한 루프예요.
+
+300³에서 그 비용을 따져 보면 이래요.
+
+- c의 한 행은 $300 \times 8 = 2.4$KB라 L1(P코어 128KB)에 늘 남아요.
+- b 전체는 $300 \times 300 \times 8 = 720$KB라 L1에는 안 들어가지만 L2(클러스터당 16MB)에는 들어가요. b의 행은 a의 행마다 한 번씩, 모두 300번 L2에서 다시 읽혀요.
+- 곱셈-덧셈 하나에 load 2개(b, c)와 store 1개(c)가 따라요.
+
+레지스터 타일을 쓰면 c를 레지스터에 쌓아 load·store를 크게 줄일 수 있어요. 이 커널은 그렇게 하지 않아도 300³에서 1스레드 5.16ms로 numpy(8.47ms)보다 빠르고, 10스레드에서는 784µs예요.
+
+### 처리량
+
+$300^3$ 행렬곱의 곱셈-덧셈 수는
+
+$$
+mnk = 300^3 = 2.7 \times 10^7
+$$
+
+이에요. 이것을 잰 시간으로 나누면 이래요.
+
+| | 시간 | 곱셈-덧셈 / 초 | 곱셈-덧셈 하나 |
+|---|---:|---:|---:|
+| numpy | 8.47 ms | $3.2 \times 10^9$ | 0.31 ns |
+| stardust 1스레드 | 5.16 ms | $5.2 \times 10^9$ | 0.19 ns |
+| stardust 10스레드 | 784 µs | $3.4 \times 10^{10}$ | 0.029 ns |
+
+P코어 클럭을 4.5GHz 전후로 잡으면 1스레드는 사이클당 곱셈-덧셈 약 1.2개예요. 곱셈 하나, 덧셈 하나, load 둘, store 하나가 반복마다 필요한 것을 생각하면, 언롤로 의존을 없앤 스칼라 루프가 낼 수 있는 수준이에요. numpy보다 빠른 이유는 위에서 본 루프 순서 차이(연속 접근, 의존 사슬 없음)예요.
+
+500³(곱셈-덧셈 $1.25 \times 10^8$개)의 스레드 수별 배율은 이래요(1스레드 대비).
+
+| 스레드 | 1 | 2 | 4 | 6 | 8 | 10 | 12 | 14 |
+|:---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| int64 500³ | 34.0 ms | 1.8 | 3.3 | 4.7 | 6.0 | 7.5 | 7.7 | 8.1 |
+
+같은 측정에서 numpy는 37.0ms예요. 출력 행 묶음으로 나누므로 10스레드에서 1스레드의 7배 안팎이 돼요(300³은 6.6배, 500³은 7.5배).
+
+### 병렬화: 출력 행 묶음
+
+int64 경로는 출력 행 묶음을 태스크로 해요. 출력의 행끼리는 서로 독립이에요. 행 i는 a의 행 i와 b 전체만 읽고, c의 행 i에만 써요.
+
+```cpp
+        // csrc/array/ops/matmul.cpp, matmul() (발췌)
+        const std::int64_t rows = std::max<std::int64_t>(1, kParallelTask / std::max<std::int64_t>(k * n, 1));
+        const std::int64_t per_batch = (m + rows - 1) / rows;
+        parallel::parallel_for(count * per_batch, [&](std::int64_t task) {
+            const std::int64_t t = task / per_batch, r0 = (task % per_batch) * rows, r1 = std::min(m, r0 + rows);
+            const Mat am{starts[t].first + r0 * a_rs, r1 - r0, k, a_rs, a_cs}, bm{starts[t].second, k, n, b_rs, b_cs};
+            int_matmul(am, bm, reinterpret_cast<std::int64_t*>(out.data + (t * m + r0) * n * item));
+        });
+```
+
+- 행 하나의 일은 곱셈-덧셈 $k \cdot n$개예요. 태스크 하나가 약 `kParallelTask` = $2^{12}$ = 4096개 분량이 되도록 행을 묶어요. 300³이면 행 하나가 이미 90,000개라 태스크 하나가 행 하나이고, 태스크는 300개예요.
+- 태스크는 배치를 넘지 않아요. 배치 수 × 배치당 태스크 수가 전체 태스크 수예요.
+- 태스크가 하나뿐이면 `parallel_for`가 호출한 스레드에서 그냥 돌려요. 그 밖의 경우 풀이 atomic 카운터로 태스크를 나눠 가져가요([스레드풀과 결정성](/internals/core/threads/)).
+- 정수의 wrap 덧셈은 결합법칙이 정확히 성립하고, 무엇보다 행 하나는 한 태스크가 처음부터 끝까지 계산해요. 그래서 나누는 방식이 결과 비트를 바꾸지 않고, numpy와도 비트까지 같아요.
+
+## 배치
+
+### 큰 행렬은 차례로, 작은 행렬은 풀로
+
+float/complex 배치에는 두 갈래가 있어요.
+
+- 큰 행렬의 배치는 차례로 돌아요. Accelerate가 행렬 하나에 이미 여러 스레드를 쓰므로, stardust의 풀에서 배치를 나누면 두 스레드풀이 같은 코어를 두고 경쟁해요(과다 구독).
+- 작은 행렬(곱셈-덧셈 $m \cdot n \cdot k \le 256^3$, `kSmallBlas`)의 배치는 풀로 나눠요. Accelerate는 이 크기를 호출한 스레드 하나로 돌리므로 경쟁이 없어요. 경계 256은 위에서 본 측정(256에서 CPU/경과 1.00, 288에서 1.62)에 맞춘 값이에요.
+
+배치가 둘 이상이고, 행렬이 `kSmallBlas` 이하이고, `parallel::available()`(스레드가 둘 이상이고, 태스크 안이 아니고, 다른 Python 스레드가 풀을 쓰고 있지 않음)이 참일 때만 풀로 나눠요.
+
+```cpp
+// csrc/array/ops/matmul.cpp, matmul() (발췌)
+inline constexpr std::int64_t kSmallBlas = 256 * 256 * 256;
+inline constexpr std::int64_t kBlasTaskWork = 1 << 15;
+        // ...
+        const std::int64_t work = m * n * k;
+        if (count > 1 && work <= kSmallBlas && parallel::available()) {
+            const std::int64_t per_task = std::max<std::int64_t>(1, kBlasTaskWork / std::max<std::int64_t>(work, 1));
+            parallel::parallel_for((count + per_task - 1) / per_task, [&](std::int64_t task) {
+                for (std::int64_t t = task * per_task; t < std::min(count, (task + 1) * per_task); ++t) one_batch(t);
+            });
+        } else {
+            // On the calling thread (Accelerate may thread inside): a call of real
+            // size lets other Python threads run meanwhile, as cov's BLAS call does.
+            // BLAS and the packing touch no Python objects.
+            const parallel::Unlocked unlocked(count * work >= kBlasTaskWork);
+            for (std::int64_t t = 0; t < count; ++t) one_batch(t);
+        }
+```
+
+태스크 하나는 곱셈-덧셈 약 $2^{15}$개(`kBlasTaskWork`) 분량의 행렬을 묶어요. 8×8이면 행렬 하나가 512개라 64개씩, 4×4면 512개씩 묶여요. BLAS 호출 하나에는 인자 검사와 분기 같은 고정 비용이 있어서, 단위가 int64 경로의 4096보다 커요.
+
+### 측정
+
+| 배치 | 1스레드 | 10스레드 | 배율 | numpy |
+|---|---:|---:|---:|---:|
+| 4000 × 4×4 | 113 µs | 28 µs | 4.1× | — |
+| 1000 × 8×8 | 65 µs | 14 µs | 4.6× | 66 µs |
+| 500 × 16×16 | 96 µs | 17 µs | 5.5× | — |
+| 200 × 32×32 | 75 µs | 28 µs | 2.7× | 77 µs |
+| 100 × 64×64 | 150 µs | 64 µs | 2.3× | — |
+| 10 × 256×256 | 735 µs | 474 µs | 1.6× | — |
+
+Apple M4 Pro, float64예요. 배율은 1스레드 대비 10스레드이고, numpy 칸이 빈 크기는 numpy 측정값이 없어요.
+
+1스레드는 numpy와 같아요. numpy도 같은 Accelerate를 행렬마다 부르기 때문이에요. 10스레드의 이득은 배치를 나눈 만큼이에요.
+
+32×32부터는 배율이 2.7배, 2.3배, 1.6배로 떨어져 2배 안팎에 머물러요. Accelerate가 이 크기의 행렬 연산을 클러스터마다 하나인 행렬 유닛(AMX)으로 보낸다고 보면, P코어 클러스터가 둘이라 배율이 2배 안팎에 머무는 것이 설명돼요. Accelerate의 내부 동작은 공개되어 있지 않아서 측정의 모양에서 추론한 설명이에요.
+
+### 결과는 나누는 방식과 상관없어요
+
+어느 갈래든 행렬 하나는 BLAS 호출 하나(또는 자체 커널 한 번)예요. 배치를 태스크에 어떻게 묶든, 어느 스레드가 어느 행렬을 맡든 행렬마다 같은 인자로 같은 루틴을 불러요. 그래서 결과가 나누는 방식과 상관없고, 지금은 스레드 수와도 상관없어요. 스레드 결정성 테스트(`tests/array/test_threads.py`)는 1, 2, 3, 7, 10스레드에서 int64 행렬곱, float64 `M[:300] @ M[:300].T`, 그리고 작은 배치 세 종류(64×64 10개, 8×8 1000개, complex 8×8 500개)의 결과 바이트가 같은지 확인해요.
+
+## tensordot과 vecdot
+
+### tensordot: matmul 하나로 줄이기
+
+`sd.tensordot(x1, x2, axes=2)`(`csrc/array/ops/dtype_info.cpp`)는 여러 축을 한꺼번에 축약(contraction)해요. 구현은 "축을 재배치하고 2차원으로 펴서 matmul 한 번"이에요.
+
+1. 축약할 축 쌍을 정해요.
+   - `axes`가 정수 n이면 x1의 마지막 n축과 x2의 처음 n축이에요.
+   - `axes`가 시퀀스 두 개의 쌍이면 그 목록을 차례로 짝지어요. 축 번호는 음수를 허용하고(`normalize_axis`), 같은 축이 두 번 나오면 `ValueError`예요.
+   - 짝지은 축의 길이가 다르면 "shape mismatch: axis 1 of 'x1' has length 3, axis 0 of 'x2' has 4" 형식의 `ValueError`예요.
+2. 축을 재배치한 뷰를 만들어요. x1은 (남는 축, 축약할 축) 순서로, x2는 (축약할 축, 남는 축) 순서로요. shape와 strides만 바꾸므로 복사가 없어요.
+3. 2차원으로 펴요. x1을 $(M, K)$로, x2를 $(K, N)$으로 `reshape`해요. $M$은 남는 축 길이의 곱, $K$는 축약할 축 길이의 곱이에요. 재배치한 뷰가 연속이 아니면 `reshape`가 복사해요(strides로 표현할 수 없는 reshape).
+4. matmul을 한 번 불러 $(M, N)$을 얻어요.
+5. 결과를 (x1의 남는 축, x2의 남는 축) shape으로 펴요. 모든 축을 축약했으면 결과는 원소 하나이고, Python 스칼라로 돌려줘요.
+
+그래서 tensordot은 dtype 규칙(`bool`은 int64), BLAS 경로, int64 루프, 결정성을 모두 matmul에서 그대로 물려받아요. 예를 들어 `tensordot(a, a, axes=1)`은 `a @ a`와 같고, 2차원 int64 `a`의 `tensordot(a, a)`(기본 `axes=2`)는 모든 원소의 곱의 합인 Python int예요.
+
+### vecdot: matmul이 아니에요
+
+최상위 `sd.vecdot`은 배열의 dtype 규칙을 따르는 함수예요(`csrc/array/ops/matmul.cpp`). 선형대수의 `sd.linalg.vecdot`과는 다른 함수이고, 정수와 bool 입력에서 결과의 dtype이 달라요. 이름은 비슷해도 matmul 위에 서 있지 않고, 계산 방식도 달라요.
+
+| | 벡터 `x @ y` (matmul) | `sd.vecdot(x, y)` |
+|---|---|---|
+| 계산 | BLAS `ddot` / `zdotu` | float·complex: `sd.linalg.vecdot`에 넘겨 곱을 합에 융합한 pairwise 합. 정수·bool: `sum(x1 * x2, axis)` |
+| complex | 켤레 없음 | x1에 켤레(Array API) |
+| int64 입력 | int64 결과 | int64 결과(wrap). `sd.linalg.vecdot`은 float64 |
+| 비트 | Accelerate의 합 순서 | float·complex는 `sd.linalg.vecdot`과 같음 |
+| 배치 | matmul의 배치 규칙 | 나머지 축을 브로드캐스트 |
+
+```cpp
+// csrc/array/ops/matmul.cpp (발췌)
+nb::object vecdot(nb::handle x1, nb::handle x2, nb::handle axis_obj) {
+    const bool integral =
+        is_ndarray(x1) && is_ndarray(x2) && promote(as_ndarray(x1).dtype, as_ndarray(x2).dtype) <= DType::Int64;
+    if (!integral) {
+        static PyObject* const linalg_vecdot =
+            nb::object(nb::module_::import_("stardust.linalg").attr("vecdot")).release().ptr();  // kept for the process
+        nb::dict kw;
+        kw["axis"] = axis_obj;
+        return nb::handle(linalg_vecdot)(x1, x2, **kw);
+    }
+    // ...
+}
+```
+
+- float64와 complex128 입력은 두 함수가 같은 계산이라, `sd.linalg.vecdot`을 그대로 불러요. 그래서 결과의 비트, 모양 규칙, 메시지가 같아요. 그쪽은 곱을 합에 융합하는 잎(`fma_dot_leaf`)으로 pairwise 트리를 지나요. 곱마다의 반올림 하나가 없어서 `sd.sum(conj(x1) * x2, axis=-1)`과는 끝 비트가 다를 수 있어요([linalg의 기본 연산](/internals/linalg/basic/)).
+- 정수와 bool 입력은 `multiply`와 `sum`으로 계산해요. 켤레는 정수에서 아무 일도 하지 않아요. 축 길이와 브로드캐스트를 먼저 검사해서 메시지는 float 경로와 같아요. 결과는 `matmul`, `tensordot`처럼 int64이고 넘치면 wrap해요.
+
+## 성능
+
+- 시간 복잡도: 행렬 하나에 곱셈-덧셈 $mnk$개, $O(mnk)$예요. 배치 B개면 $O(Bmnk)$예요. int64 루프는 Strassen 같은 점근적으로 빠른 알고리즘을 쓰지 않아요.
+- 추가 메모리: 결과 $O(Bmn)$. dtype이 다른 피연산자의 변환 복사본은 그 피연산자 크기만큼. BLAS가 읽을 수 없는 레이아웃의 행 우선 복사본은 행렬 하나 크기이고, 행렬마다 할당했다가 BLAS 호출이 끝나면 놓아요. 배치 시작 주소 배열 $O(B)$.
+- int64: 300³에서 1스레드 5.16ms, 10스레드 784µs, numpy 8.47ms예요. 500³은 1스레드 34.0ms, numpy 37.0ms예요. numpy는 BLAS가 없는 정수에서 열 방향 내적 루프를 돌고, stardust는 행 방향 i-k-j 루프와 언롤을 써요.
+- float64 큰 행렬: numpy와 같은 Accelerate dgemm이에요. `sd.set_num_threads`와 상관없이 Accelerate가 스레드를 정해요.
+- float64 작은 행렬의 배치: 1스레드는 numpy와 같고(1000 × 8×8에서 65µs 대 66µs), 10스레드에서 1스레드의 1.6~5.5배예요. numpy는 배치를 한 스레드에서 차례로 돌려요.
+
+다른 연산과 함께 본 성능의 이유는 [성능 종합](/internals/array/performance/)에 있어요.
+
+## 정확도
+
+- int64와 bool: 정확해요. 정수 곱셈-덧셈은 wrap까지 포함해 결과가 하나로 정해지고, numpy도 wrap해요. 테스트(`tests/array/test_matmul.py`)는 int64·bool 결과를 numpy와 비트까지 비교해요(`assert_same`).
+- float64와 complex128: 합의 순서는 Accelerate가 정해요(아주 작은 float64 곱은 자체 커널의 $p$ 순서). stardust는 Accelerate의 순서를 알지도, 바꾸지도 않아요. 어떤 순서로 더하든 내적 하나의 오차에는 표준적인 한계가 있어요[1].
+
+$$
+|\hat{c}_{ij} - c_{ij}| \;\le\; \gamma_k \sum_{p=1}^{k} |a_{ip}|\,|b_{pj}|,
+\qquad \gamma_k = \frac{k\,u}{1 - k\,u},\quad u = 2^{-53}
+$$
+
+  여기서 $\hat{c}_{ij}$는 계산한 값, $u$는 float64의 단위 반올림(unit roundoff)이에요. $k = 1000$이면 $\gamma_k \approx 1.1 \times 10^{-13}$이에요.
+- numpy와의 비트: 같은 Accelerate 루틴을 같은 인자로 부르면 같은 비트가 나와요. C 순서 (300,200)@(200,250), 1000³, 64³, 행렬 × 벡터, 벡터 × 행렬, `a @ a.T`, F 순서 피연산자, 열을 건너뛰는 피연산자(복사 경로), 벡터 · 벡터를 numpy와 비교하면 지금은 모두 비트까지 같아요. 곱셈-덧셈이 512개 이하인 2차원 float64 곱은 자체 커널이라 끝자리가 달라요. 어느 쪽이든 numpy가 어떤 레이아웃에서 어떤 BLAS 인자를 쓰는지는 stardust가 통제할 수 없으므로 보장하지 않아요. 테스트도 float 결과는 상대·절대 $10^{-12}$로 비교해요.
+- 스레드 수: 행렬 하나는 언제나 BLAS 호출 하나(또는 직렬인 자체 커널 한 번)이므로 stardust의 스레드 수와 상관없어요. Accelerate의 내부 스레드 수도 결과를 바꾸지 않아요. LAPACK 루틴을 `BLASSetThreading`으로 1스레드에 고정해도 기본 설정과 비트가 같아요.
+
+<Callout type="warn" title="Accelerate와 16바이트 정렬">
+Accelerate의 LAPACK 루틴은 배열이 16바이트 정렬인지에 따라 다르게 반올림해요(float64 3×3 배치에서 홀수 번째 행렬이 8바이트 어긋나 다른 비트를 받아요). 그래서 linalg는 LAPACK에 넘기는 배열을 모두 16바이트로 정렬해요. matmul의 배치 결과는 배열 시작(128바이트 정렬)에서 `t·m·n·8`바이트 떨어진 곳에 쓰이므로, 홀수 크기 float64 행렬의 배치에서는 같은 위치 문제가 생길 수 있어요. n = 3, 5, 7, 9, 33인 float64 배치 120개를 행렬 하나씩 계산한 결과와 비교하면 dgemm에서는 차이가 없어요. 다만 표본으로 비교한 것이고, matmul은 따로 정렬을 맞추지 않아요.
+</Callout>
+
+## 참고 문헌
+
+1. N. J. Higham, *Accuracy and Stability of Numerical Algorithms*, 2nd ed., SIAM, 2002. (3장, 내적과 행렬곱의 반올림 오차 한계)
+2. Apple, Accelerate 프레임워크의 BLAS(CBLAS 인터페이스). `ACCELERATE_NEW_LAPACK`, `ACCELERATE_LAPACK_ILP64` 매크로와 `__LAPACK_int`는 Accelerate 헤더에 정의되어 있어요.
+3. 기준 BLAS(netlib), `dgemv.f`의 인자 검사(증분 0은 오류)와 음수 증분의 정의. https://www.netlib.org/blas/
+4. numpy 소스, `numpy/_core/src/umath/matmul.c.src`의 `@TYPE@_matmul_inner_noblas`(BLAS를 쓰지 않는 matmul 내부 루프).
+5. K. Goto, R. A. van de Geijn, "Anatomy of High-Performance Matrix Multiplication", *ACM Transactions on Mathematical Software* 34(3), 2008. (블로킹, 패킹, 마이크로커널)
+6. Arm, *Neon Intrinsics Reference*. (정수 벡터 곱셈 `vmulq`는 8·16·32비트 원소만 있어요)

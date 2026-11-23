@@ -1,0 +1,134 @@
+---
+kind: function
+title: pairs
+names: [pairs]
+group: 통계 그림
+order: 7
+signatures:
+  - "sd.plot.pairs(data, /, *, columns=None, group=None, width=None, height=None, font='serif', theme='paper', palette='jco')"
+summary: DataFrame의 수 열들을 짝지어 k × k 칸에 그려요. 대각선 칸은 그 열의 히스토그램, 나머지 칸은 두 열의 산점도예요. 변수 여럿의 관계를 처음 훑어볼 때 써요.
+params:
+  - name: data
+    type: DataFrame
+    kind: positional-only
+    desc: "그릴 자료. 열 하나가 변수 하나예요."
+  - name: columns
+    type: 열 이름의 리스트·튜플 또는 None
+    kind: keyword-only
+    desc: "그릴 열과 그 순서. None(기본값)이면 float64와 int64인 열을 모두, DataFrame의 순서대로 써요(group으로 준 열은 빼요). 2개 이상이어야 해요."
+  - name: group
+    type: 열 이름, 시퀀스 또는 None
+    kind: keyword-only
+    desc: "행을 무리로 나누는 라벨. 모든 칸이 무리마다 팔레트의 다음 색으로 그리고, 첫 줄 마지막 칸에 범례를 하나 붙여요. 기본값 None."
+  - name: width
+    type: float 또는 None
+    kind: keyword-only
+    desc: "그림 전체의 너비(mm). None이면 183이에요."
+  - name: height
+    type: float 또는 None
+    kind: keyword-only
+    desc: "그림 전체의 높이(mm). None이면 칸의 가로세로 비가 4:3이 되게 정해요."
+  - name: font, theme, palette
+    type: str
+    kind: keyword-only
+    desc: "글꼴, 테마, 팔레트. Figure의 같은 인자와 같아요. 기본값 'serif', 'paper', 'jco'."
+returns:
+  type: Figure
+  desc: "k × k 칸의 새 그림. fig[i, j]로 칸 하나를 골라 고치거나 층을 더할 수 있어요."
+raises:
+  - type: TypeError
+    desc: "data가 DataFrame이 아닐 때, columns가 열 이름의 리스트·튜플이 아닐 때(문자열 하나 포함), 고른 열이 수가 아닐 때."
+  - type: ValueError
+    desc: "그릴 수 열이 2개보다 적을 때, group의 길이가 행의 수와 다를 때."
+seeAlso: [basics, figure, facet, histogram, scatter, heatmap]
+---
+import Callout from '../../../components/Callout.astro';
+import PlotImage from '../../../components/fig/PlotImage.astro';
+
+## 한눈에 보기
+
+60명의 키, 몸무게, 나이를 잰 표가 있어요. 세 변수가 서로 어떻게 얽혀 있는지 처음 훑어볼 때, 모든 짝의 산점도를 한 번에 늘어놓으면 편해요. 이런 그림이 **짝 그림**(pair plot, 산점도 행렬)이에요.
+
+```python
+>>> import stardust as sd
+>>> rng = sd.random.default_rng(11)
+>>> N = sd.stats.Normal(mu=0.0, sigma=1.0)
+>>> z1, z2, z3 = N.sample(60, rng=rng), N.sample(60, rng=rng), N.sample(60, rng=rng)
+>>> sex = ["F", "M"] * 30
+>>> shift = sd.asarray([0.0, 1.0] * 30)
+>>> df = sd.frame.DataFrame({
+...     "height": 163 + 12 * shift + 6 * z1,
+...     "weight": 56 + 14 * shift + 0.6 * 6 * z1 + 5 * z2,
+...     "age": 40 + 10 * z3,
+...     "sex": sex,
+... })
+>>> fig = sd.plot.pairs(df)
+>>> fig.shape
+(3, 3)
+```
+
+<PlotImage name="pairs-body" alt="height, weight, age 세 열의 3 × 3 짝 그림. 대각선은 히스토그램이고, height와 weight의 산점도는 오른쪽 위로 오르며, age와의 산점도는 고르게 흩어져 있어요." caption="세 수 열의 짝 그림. 대각선은 열마다의 히스토그램, 나머지 칸은 두 열의 산점도예요." />
+
+i번째 줄 j번째 칸은 j번째 열을 가로축에, i번째 열을 세로축에 둔 산점도예요. 같은 열끼리 만나는 대각선 칸에는 산점도 대신 그 열의 히스토그램을 그려요. 히스토그램의 막대는 그 줄의 세로 범위의 아래 끝에 서고 가장 높은 막대가 위 끝에 닿도록 높이를 맞춰요. 그래서 대각선 칸은 그 줄의 다른 칸과 세로 범위가 같고, 세로 눈금도 같은 그 열의 값이에요. height와 weight의 칸은 점이 오른쪽 위로 몰려 있고, age와의 칸은 고르게 흩어져 있어요. 대각선을 사이에 두고 마주 보는 두 칸은 같은 짝의 가로와 세로를 바꾼 그림이에요.
+
+<Reference />
+
+## 그리는 열: `columns`
+
+`columns`를 주지 않으면 float64와 int64인 열을 모두, DataFrame의 순서대로 그려요. 위의 `sex`처럼 문자열 열은 빠져요. 열을 고르거나 순서를 바꾸려면 `columns`에 열 이름의 리스트를 줘요.
+
+```python
+>>> fig = sd.plot.pairs(df, columns=["weight", "height"], width=120)
+>>> fig.shape
+(2, 2)
+```
+
+열이 k개면 칸이 k × k개예요. 칸의 수는 열의 수의 제곱으로 늘어나므로, 열이 여섯을 넘으면 칸이 작아져 읽기 어려워요. 그럴 때는 관심 있는 열만 골라요. 열 사이의 상관계수만 보려면 [`heatmap`](/api/plot/heatmap/)이 칸 하나로 보여 줘요.
+
+## 무리 나누기: `group`
+
+`group=`에 무리를 나누는 열을 주면 모든 칸이 무리마다 다른 색으로 그려요. 대각선의 히스토그램은 무리마다 반투명 막대를 겹치고, 산점도는 무리마다 색을 달리해 점을 찍어요. 범례는 첫 줄 마지막 칸에 하나만 붙여요.
+
+```python
+>>> fig = sd.plot.pairs(df, group="sex")
+```
+
+<PlotImage name="pairs-group" alt="F와 M 두 무리를 색으로 나눈 3 × 3 짝 그림. M 무리의 점이 height와 weight 모두에서 더 큰 쪽에 있고, 오른쪽 위 칸의 왼쪽 위 구석에 범례가 있어요." caption="sex로 무리를 나눈 짝 그림. M 무리가 키와 몸무게 모두 큰 쪽에 몰려 있어요." />
+
+범례는 그 칸에서 점을 가리지 않는 구석을 골라 놓이고, 그런 구석이 없으면 칸 밖으로 나가요. 이 예에서는 오른쪽 위에 M 무리의 점이 있어서 왼쪽 위에 놓였어요. 자리를 직접 정하려면 `fig[0, 2].legend(loc="right")`처럼 그 칸의 범례를 다시 불러요. 고를 수 있는 자리는 [제목·축·범례 고치기](/api/plot/customize/)에 있어요.
+
+`group`으로 준 열은 그리는 열에서 빠져요. 열 이름 대신 행의 수와 길이가 같은 라벨의 시퀀스를 줘도 돼요.
+
+## 칸 고치기
+
+`pairs`가 돌려주는 것은 보통의 `Figure`라서, `fig[i, j]`로 칸 하나를 골라 고치거나 층을 더할 수 있어요. 칸의 번호는 0부터 세요. 위 그림에서 weight를 가로축, height를 세로축에 둔 칸 `fig[0, 1]`에 키 175 cm의 기준선을 그어 볼게요.
+
+```python
+>>> fig = sd.plot.pairs(df, columns=["height", "weight"], width=120)
+>>> fig = fig[0, 1].hline(175.0, style="--", color="gray")
+>>> fig.shape
+(2, 2)
+```
+
+<PlotImage name="pairs-cell" alt="height와 weight의 2 × 2 짝 그림. 오른쪽 위 칸에 높이 175의 회색 점선이 있어요." caption="오른쪽 위 칸에만 기준선을 더한 그림." />
+
+`fig[0, 1]`은 그 칸만 가리키는 보기이고, 그 메서드는 그 칸에 그린 뒤 그 보기를 돌려줘요. 보기도 그림 전체를 알고 있어서, 보기의 `shape`은 그림의 것이고 보기를 저장하면 그림 전체가 저장돼요. 칸과 보기에 대한 것은 [Figure와 칸](/api/plot/figure/)에 있어요.
+
+## 그림의 크기와 꼴
+
+`pairs`는 칸을 스스로 만드는 함수라 메서드가 없고, 그림 옵션을 이름으로 다 받아요. `width`를 주지 않으면 두 단 너비인 183 mm예요. `height`를 주지 않으면 칸마다 가로세로 비가 4:3이 되게 높이를 정해요. `font`, `theme`, `palette`는 [`Figure`](/api/plot/figure/)와 같아요.
+
+한 변수의 짝을 범주마다 칸을 나눠 보려면 [`facet`](/api/plot/facet/)이 열의 값마다 칸을 만들어 줘요.
+
+대각선 히스토그램은 구간 10개, 산점도의 점은 작게 찍어요. 이 값들은 바꿀 수 없어요. 구간이나 점의 꼴을 정해서 그리고 싶으면 `sd.plot.Figure(nrows=k, ncols=k)`를 만들어 칸마다 [`histogram`](/api/plot/histogram/)과 [`scatter`](/api/plot/scatter/)를 직접 불러요.
+
+## 조심할 점
+
+- 대각선 칸의 막대 높이에는 눈금이 없어요. 세로 눈금은 그 줄의 변수의 값이고, 막대는 가장 높은 막대가 그 범위의 위 끝에 닿도록 늘인 것이라 구간끼리의 높이만 견줄 수 있어요. 구간마다의 개수가 필요하면 [`sd.histogram`](/api/array/histogram/)이나 [`histogram`](/api/plot/histogram/)을 따로 불러요.
+- 축 이름은 맨 아래 줄과 맨 왼쪽 열에만 붙어요. 가운데 칸의 축은 같은 열의 아래 칸, 같은 줄의 왼쪽 칸에서 읽어요.
+- 열마다 NaN이 있으면 그 열의 히스토그램과 그 열이 든 산점도에서 그 값만 빠져요. 행 전체를 빼고 싶으면 먼저 `dropna`로 행을 지워요.
+
+## matplotlib을 아는 분께
+
+- matplotlib에는 없고 pandas의 `scatter_matrix`, seaborn의 `pairplot`, R의 `pairs`에 해당해요.
+- 대각선은 히스토그램 하나로 정해져 있어요. 핵밀도 곡선이나 위·아래 삼각형을 다르게 그리는 옵션은 없어요.

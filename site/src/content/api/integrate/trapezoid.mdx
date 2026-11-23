@@ -1,0 +1,225 @@
+---
+kind: function
+title: trapezoid
+names: [trapezoid]
+group: 표본의 규칙
+order: 1
+signatures:
+  - "sd.integrate.trapezoid(y, /, x=None, *, dx=1.0, axis=-1)"
+summary: 표본 y를 직선으로 이어 그 아래 넓이를 더해요(합성 사다리꼴 규칙). 함수 없이 측정값만 있을 때 쓰는 가장 단순한 적분이고, 위치 x를 주면 간격이 고르지 않아도 돼요.
+params:
+  - name: y
+    type: ndarray, 수의 시퀀스, numpy 배열, 또는 frame의 Series
+    kind: positional-only
+    desc: "적분할 표본. 1차원 이상이어야 해요. bool·정수는 float64로 바꾸고, 복소수는 complex128로 계산해요. 결측값은 NaN이에요."
+  - name: x
+    type: ndarray, 실수의 시퀀스, numpy 배열, Series, 또는 None
+    kind: positional-or-keyword
+    desc: "표본의 위치. axis를 따라 y와 길이가 같은 1차원이거나, y와 차원 수가 같고 y의 모양으로 브로드캐스트되는 배열이에요. None(기본값)이면 간격 dx예요."
+  - name: dx
+    type: float 또는 ndarray
+    kind: keyword-only
+    desc: "x가 없을 때의 간격. 수 하나이거나, y의 모양에서 axis만 1인 배열(줄마다의 간격)이에요. 기본값 1.0. x와 함께 1.0이 아닌 값을 주면 ValueError예요."
+  - name: axis
+    type: int
+    kind: keyword-only
+    desc: "적분할 축. 기본값 -1(마지막 축)이에요."
+returns:
+  type: float, complex, 또는 ndarray
+  desc: "axis를 뺀 모양의 적분값. y가 1차원이면 Python 수(float 또는 complex)예요."
+raises:
+  - type: TypeError
+    desc: y·x가 배열로 바꿀 수 없는 값(문자열, None)이거나 문자열 배열일 때, x가 복소수일 때, dx가 수나 배열이 아니거나 복소수일 때, axis가 int가 아닐 때.
+  - type: ValueError
+    desc: y나 x가 스칼라일 때, 시퀀스의 길이가 들쭉날쭉할 때, x의 길이나 차원 수가 y와 맞지 않거나 y의 모양으로 브로드캐스트되지 않을 때, dx 배열의 모양이 틀렸을 때, x와 함께 dx를 줬을 때, axis가 범위 밖일 때.
+seeAlso: [simpson, cumulative_trapezoid, romb, basics]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+## 무엇을 하나요
+
+함수의 식은 없고 몇 군데서 잰 값만 있을 때가 많아요. 1초마다 기록한 속도에서 달린 거리를 구하거나, 몇 개의 깊이에서 잰 농도로 총량을 구하는 경우예요. `trapezoid`는 이웃한 표본을 직선으로 잇고, 그 직선 아래의 사다리꼴 넓이를 모두 더해요.
+
+$$
+\int_{x_0}^{x_{n-1}} f(x)\,dx \approx \sum_{i=0}^{n-2} (x_{i+1} - x_i)\,\frac{y_i + y_{i+1}}{2}
+$$
+
+<Fig caption="sin x를 다섯 점에서 재고 직선으로 이었어요. 사다리꼴 규칙은 꺾은선 아래의 넓이를 계산해요. 곡선이 위로 볼록하면 꺾은선이 곡선 아래로 지나가서 값이 조금 작아져요.">
+  <Plot
+    curves={[
+      { f: (x) => Math.sin(x), label: 'sin x' },
+      { points: [[0, 0], [0.7854, 0.7071], [1.5708, 1], [2.3562, 0.7071], [3.1416, 0]], label: '꺾은선 (5점)', dashed: true },
+    ]}
+    domain={[0, 3.1416]}
+    range={[0, 1.1]}
+    xTicks={[
+      { v: 0, label: '0' },
+      { v: 1.5708, label: 'π/2' },
+      { v: 3.1416, label: 'π' },
+    ]}
+    yTicks={[
+      { v: 0.5, label: '0.5' },
+      { v: 1, label: '1' },
+    ]}
+  />
+</Fig>
+
+## 기본 사용
+
+위치를 `x`로 주면 그 간격을 써요. 간격이 고르지 않아도 돼요.
+
+```python
+>>> import stardust as sd
+>>> sd.integrate.trapezoid([1, 2, 3], [0, 1, 3])
+6.5
+```
+
+$[0, 1]$의 사다리꼴 $1 \times (1 + 2)/2 = 1.5$와 $[1, 3]$의 $2 \times (2 + 3)/2 = 5$를 더한 값이에요. 위치가 같은 간격이면 `x` 대신 간격 `dx`만 줘도 돼요. 둘 다 없으면 간격은 1이에요.
+
+```python
+>>> sd.integrate.trapezoid([1, 2, 3])
+4.0
+>>> sd.integrate.trapezoid([1, 2, 3], dx=0.5)
+2.0
+```
+
+`x`는 두 번째 위치 인자로도, 키워드로도 줄 수 있어요. `dx`는 키워드로만 받아요. `x`와 `dx`를 함께 주면 어느 간격을 써야 할지 모호하니 `ValueError`예요.
+
+```python
+>>> sd.integrate.trapezoid([1, 2, 3], x=[0, 1, 3])
+6.5
+>>> sd.integrate.trapezoid([1, 2, 3], [0, 1, 3], dx=0.5)
+Traceback (most recent call last):
+    ...
+ValueError: trapezoid(): 'dx' is not used with 'x' (the spacing comes from 'x')
+```
+
+표본이 하나뿐이면 넓이가 없으니 0이에요. 빈 표본도 0이에요.
+
+```python
+>>> sd.integrate.trapezoid([5.0])
+0.0
+```
+
+### 속도에서 거리 구하기
+
+10초 동안 2초마다 잰 자동차의 속도(m/s)예요. 속도를 시간으로 적분하면 달린 거리예요.
+
+```python
+>>> t = [0, 2, 4, 6, 8, 10]
+>>> v = [0.0, 3.1, 7.8, 12.0, 14.9, 16.2]
+>>> sd.integrate.trapezoid(v, t)
+91.8
+```
+
+시각마다의 누적 거리가 필요하면 [`cumulative_trapezoid`](/api/integrate/cumulative_trapezoid/)를 써요.
+
+## 정확도: 간격을 반으로 줄이면 오차는 4분의 1
+
+직선은 정확히 적분해요. 곡선이면 표본 사이에서 직선과 곡선이 벌어진 만큼 틀려요. 매끄러운 함수에서 오차는 대략
+
+$$
+-\frac{(b - a)\,h^2}{12} f''(\xi)
+$$
+
+라서 간격 $h$를 반으로 줄이면 오차가 4분의 1이 돼요. $\int_0^\pi \sin x\,dx = 2$로 확인해 봐요.
+
+```python
+>>> import math
+>>> for n in (5, 9, 17, 33):
+...     x = sd.linspace(0, math.pi, n)
+...     print(n, sd.integrate.trapezoid(sd.sin(x), x) - 2)
+5 -0.10388110206295975
+9 -0.025768398054449415
+17 -0.006429656227660674
+33 -0.0016066390298554722
+```
+
+오차가 음수인 것은 $\sin x$가 위로 볼록해 꺾은선이 곡선 아래로 지나가기 때문이에요. 같은 표본으로 더 정확한 값이 필요하면 [`simpson`](/api/integrate/simpson/)(이차식으로 이어요)이나, 표본이 $2^k + 1$개이고 같은 간격이면 [`romb`](/api/integrate/romb/)을 써요. 함수를 직접 부를 수 있으면 표본 규칙보다 [`quad`](/api/integrate/quad/)가 알맞아요.
+
+### 주기 함수의 한 주기는 아주 정확해요
+
+예외가 하나 있어요. 매끄러운 주기 함수를 정확히 한 주기에 걸쳐 적분하면, 사다리꼴 규칙의 오차는 $h^2$보다 훨씬 빨리 줄어요. 양 끝의 오차가 서로 지워지기 때문이에요. $\int_0^{2\pi} e^{\cos x}\,dx = 2\pi I_0(1)$로 견줘 봐요.
+
+```python
+>>> exact = 2 * math.pi * sd.special.i0(1.0)
+>>> for n in (5, 9, 17):
+...     x = sd.linspace(0, 2 * math.pi, n)
+...     y = sd.exp(sd.cos(x))
+...     print(n, sd.integrate.trapezoid(y, x) - exact, sd.integrate.simpson(y, x) - exact)
+5 0.03439691880919149 -0.5343157920716273
+9 1.251688931169781e-06 -0.011463970684490121
+17 -8.881784197001252e-16 -4.1722964549961716e-07
+```
+
+17점에서 사다리꼴은 반올림 오차만 남았는데 Simpson은 아직 $4 \times 10^{-7}$ 틀려요. 주기 신호의 한 주기를 고르게 잰 표본이라면 사다리꼴이 가장 좋은 선택이에요.
+
+## 여러 줄을 한 번에: axis
+
+`y`가 2차원 이상이면 `axis`를 따라 줄마다 따로 적분해요. 결과는 `axis`를 뺀 모양이에요.
+
+```python
+>>> y = sd.asarray([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+>>> sd.integrate.trapezoid(y)
+array([ 4.0, 10.0], dtype=float64)
+>>> sd.integrate.trapezoid(y, axis=0)
+array([2.5, 3.5, 4.5], dtype=float64)
+```
+
+`x`가 1차원이면 모든 줄이 같은 위치를 써요. 줄마다 위치가 다르면 `y`와 차원 수가 같은 `x`를 줘요. `y`의 모양으로 브로드캐스트되면 돼요.
+
+```python
+>>> sd.integrate.trapezoid(y, [0, 1, 3])
+array([ 6.5, 15.5], dtype=float64)
+>>> sd.integrate.trapezoid(y, x=[[0, 1, 2], [0, 2, 4]])
+array([ 4.0, 20.0], dtype=float64)
+```
+
+`dx`도 줄마다 다르게 줄 수 있어요. `y`의 모양에서 `axis`만 1인 배열이에요. 여기서는 모양 (2, 1)이에요.
+
+```python
+>>> sd.integrate.trapezoid(y, dx=[[1.0], [2.0]])
+array([ 4.0, 20.0], dtype=float64)
+>>> sd.integrate.trapezoid(y, dx=[1.0, 2.0])
+Traceback (most recent call last):
+    ...
+ValueError: trapezoid(): 'dx' must be a number or an array of shape (2, 1) (the shape of 'y' with 1 along 'axis'), not shape (2,)
+```
+
+## 받는 데이터
+
+`y`는 `sd.ndarray`, 수의 시퀀스, numpy 배열, frame의 `Series`를 받아요. 정수와 bool은 float64로 바꿔 계산해요. 복소수 표본은 실수부와 허수부를 따로 적분한 것과 같아요.
+
+```python
+>>> sd.integrate.trapezoid([1 + 1j, 2, 3j])
+(2.5+2j)
+```
+
+결측값은 NaN이고, 줄에 NaN이 하나라도 있으면 그 줄의 값은 NaN이에요. 결측값을 빼고 적분하려면 그 표본과 위치를 함께 빼야 해요(위치를 빼지 않으면 간격이 틀려져요).
+
+```python
+>>> s = sd.frame.Series([0.0, 1.5, 2.0, None, 3.0])
+>>> sd.integrate.trapezoid(s)
+nan
+```
+
+`x`는 실수여야 해요. 복소수 `x`는 `TypeError`예요.
+
+<Callout type="note" title="x의 순서">
+`x`가 줄어드는 방향이면 간격이 음수라 값의 부호가 바뀌어요. 끝을 바꾼 적분 $\int_b^a = -\int_a^b$와 같은 뜻이라 에러가 아니에요. 정렬되지 않은 `x`도 그대로 받으니, 위치를 섞어 넣지 않았는지 확인해요.
+</Callout>
+
+## 합의 순서
+
+넓이 조각들은 줄마다 첨자 순서로 짝지어 더하는 pairwise 합으로 더해요([`sd.sum`](/api/array/sum/)이 하는 방식). 그래서 아주 긴 표본에서도 반올림 오차가 거의 쌓이지 않아요. 지금은 같은 입력이면 축의 방향, 메모리 배치, 스레드 수와도 상관없이 같은 비트가 나와요(약속은 아니에요). 일이 크면(대략 $2^{15}$ 이상) 줄이나 긴 줄의 부분합을 여러 스레드에 나누고 그동안 GIL을 놓아요.
+
+결과는 계산한 식의 정확한 값과 $(\lceil \log_2 n \rceil + 10)\,\varepsilon \sum |d_i|(|y_i| + |y_{i+1}|)$ 안이에요. 구적의 오차(꺾은선과 곡선의 차이)는 여기에 들지 않아요.
+
+## scipy를 아는 분께
+
+- 식과 연산 순서는 scipy 1.18.1의 `scipy.integrate.trapezoid`(numpy의 `np.trapezoid`와 같은 함수)와 같아요. 넓이 조각을 더하는 순서가 달라서 끝자리가 다를 수 있어요.
+- `dx`는 키워드로만 받아요. scipy는 `x`와 `dx`를 함께 주면 `dx`를 무시하지만 여기서는 `ValueError`예요.
+- `dx`에 줄마다의 배열을 줄 수 있어요(scipy의 `cumulative_simpson`이 받는 꼴).
+- sd 배열 쪽에는 `trapezoid`가 없어요. numpy의 `np.trapezoid` 자리에 이 함수를 써요.

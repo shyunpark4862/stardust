@@ -1,0 +1,191 @@
+---
+title: block_array
+names: [block_array]
+group: 인덱싱과 만들기
+order: 7
+signatures:
+  - "sd.sparse.block_array(blocks, /, *, format=None, dtype=None)"
+summary: 작은 행렬들을 바둑판처럼 이어 붙여 큰 희소 행렬 하나를 만들어요. 빈 블록은 None으로 비워 둘 수 있어요.
+params:
+  - name: blocks
+    type: 블록 행의 리스트
+    kind: positional-only
+    desc: 블록 행의 리스트(리스트의 리스트). 각 블록은 희소 배열, 밀집 sd.ndarray, 또는 None(0으로 채운 블록)이에요. 1차원 블록은 한 행으로 봐요.
+  - name: format
+    type: str 또는 None
+    kind: keyword-only
+    desc: 결과의 형식. 'coo', 'csr', 'csc', 'dok' 중 하나예요. None이면 블록이 모두 CSR일 때 CSR, 모두 CSC일 때 CSC, 그 밖에는 COO예요.
+  - name: dtype
+    type: dtype 또는 None
+    kind: keyword-only
+    desc: 값의 dtype. None이면 블록들의 dtype을 승격한 것이에요.
+returns:
+  type: 희소 배열
+  desc: 블록을 이어 붙인 희소 배열. 블록 행마다의 높이와 블록 열마다의 너비를 더한 모양이에요.
+raises:
+  - type: TypeError
+    desc: blocks가 리스트나 tuple이 아닐 때, 블록이 희소 배열, sd.ndarray, None이 아닐 때.
+  - type: ValueError
+    desc: blocks가 2단 리스트가 아닐 때, 블록 행마다 블록 수가 다를 때, 같은 블록 행의 높이나 같은 블록 열의 너비가 다를 때, 블록이 모두 None일 때.
+  - type: OverflowError
+    desc: 이은 결과의 행이나 열의 수가 int64를 넘을 때.
+seeAlso: [hstack, vstack, block_diag, kron, basics]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+`block_array`는 작은 행렬(블록)을 바둑판 모양으로 늘어놓아 큰 행렬을 만들어요. `blocks`는 블록 행의 리스트예요. 바깥 리스트의 원소 하나가 블록 한 줄이고, 그 안에 왼쪽부터 블록을 적어요.
+
+```python
+>>> import stardust as sd
+>>> A = sd.sparse.csr_array(sd.asarray([[1.0, 2.0], [0.0, 3.0]]))
+>>> B = sd.sparse.csr_array(sd.asarray([[4.0], [5.0]]))
+>>> C = sd.sparse.csr_array(sd.asarray([[6.0, 0.0]]))
+>>> X = sd.sparse.block_array([[A, B],
+...                            [C, None]])
+>>> X
+<coo_array of shape (3, 3), float64, 6 stored elements>
+>>> X.toarray()
+array([[1.0, 2.0, 4.0],
+       [0.0, 3.0, 5.0],
+       [6.0, 0.0, 0.0]], dtype=float64)
+```
+
+<Fig caption="blocks의 모양 그대로 블록이 놓여요. None 자리(오른쪽 아래)는 아무것도 저장하지 않은 빈 블록이에요.">
+  <ArrayFig name="[[A, B], [C, None]]" data={[[1, 2, 4], [0, 3, 5], [6, 0, 0]]} tones={[['a', 'a', 'b'], ['g', 'a', 'b'], ['m', 'g', 'g']]} note="shape (3, 3)" />
+</Fig>
+
+`None`은 "여기는 0만 있는 블록"이라는 뜻이에요. 크기는 같은 블록 행의 다른 블록(높이)과 같은 블록 열의 다른 블록(너비)이 정해요. 위에서 `None`의 높이는 `C`의 높이 1, 너비는 `B`의 너비 1이에요.
+
+<Reference />
+
+## 모양 맞추기
+
+같은 블록 행의 블록은 높이(행 수)가 같아야 하고, 같은 블록 열의 블록은 너비(열 수)가 같아야 해요. 어긋나면 `ValueError`이고, 메시지가 어느 블록이 어긋났는지 알려 줘요.
+
+```python
+>>> sd.sparse.block_array([[A, B],
+...                        [B, None]])
+Traceback (most recent call last):
+    ...
+ValueError: block_array(): blocks[:,0] has incompatible column dimensions: blocks[1,0].shape[1] is 1, expected 2
+```
+
+`blocks[:,0]`은 0번째 블록 열, `blocks[1,0]`은 1번째 블록 행의 0번째 블록이에요. 블록 열 0의 너비는 `A`의 2인데 `B`의 너비가 1이라는 뜻이에요.
+
+블록 행마다 블록의 수도 같아야 해요. 모자란 자리는 `None`으로 채워요.
+
+```python
+>>> sd.sparse.block_array([[A, B], [C]])
+Traceback (most recent call last):
+    ...
+ValueError: block_array(): every row of 'blocks' must have the same number of blocks
+```
+
+## 어디에 쓰나요: 블록으로 된 연립방정식
+
+제약이 있는 최적화나 유체 계산에서는 행렬이 블록으로 나뉘어 나오는 일이 많아요. 예를 들어 등식 제약이 있는 이차 계획의 KKT 행렬은 이런 꼴이에요.
+
+$$
+\begin{bmatrix} H & E^\mathsf{T} \\ E & 0 \end{bmatrix}
+$$
+
+`block_array`로 그대로 옮겨 적을 수 있어요. 오른쪽 아래의 0 블록은 `None`이에요.
+
+```python
+>>> H = sd.sparse.diags_array(sd.asarray([2.0, 2.0, 2.0]))
+>>> E = sd.sparse.csr_array(sd.asarray([[1.0, 1.0, 1.0]]))
+>>> KKT = sd.sparse.block_array([[H, E.T], [E, None]], format='csr')
+>>> KKT.toarray()
+array([[2.0, 0.0, 0.0, 1.0],
+       [0.0, 2.0, 0.0, 1.0],
+       [0.0, 0.0, 2.0, 1.0],
+       [1.0, 1.0, 1.0, 0.0]], dtype=float64)
+```
+
+이렇게 만든 행렬을 [`spsolve`](/api/sparse/spsolve/)로 풀어요.
+
+## 블록에 쓸 수 있는 것
+
+블록은 희소 배열, 밀집 `sd.ndarray`, `None`이에요. 밀집 배열은 0이 아닌 값만 저장해요. 1차원 블록은 한 행(1 × n)으로 봐요.
+
+```python
+>>> sd.sparse.block_array([[A, B], [C, sd.asarray([[7.0]])]])
+<coo_array of shape (3, 3), float64, 7 stored elements>
+>>> sd.sparse.block_array([[A], [sd.asarray([7.0, 8.0])]]).toarray()
+array([[1.0, 2.0],
+       [0.0, 3.0],
+       [7.0, 8.0]], dtype=float64)
+```
+
+리스트는 블록이 될 수 없어요. 블록을 적는 리스트와 헷갈리기 때문이에요. 값은 `sd.asarray`로 배열을 만들어 넣어요.
+
+```python
+>>> sd.sparse.block_array([[A, [1.0, 2.0]]])
+Traceback (most recent call last):
+    ...
+TypeError: block_array(): blocks[0,1] must be a sparse array, an sd.ndarray or None, not list
+```
+
+블록이 모두 `None`이면 크기를 정할 수 없어서 `ValueError`예요. `blocks`는 언제나 2단 리스트예요. 블록 한 줄만 있어도 `[[A, B]]`처럼 써요(한 줄을 옆으로 잇는 것은 [`hstack`](/api/sparse/hstack/)이 더 간단해요).
+
+```python
+>>> sd.sparse.block_array([A, B])
+Traceback (most recent call last):
+    ...
+ValueError: block_array(): 'blocks' must be 2-D (a list of rows of blocks), and some block must be given
+```
+
+## 결과의 형식
+
+`format=None`일 때 결과의 형식은 블록이 정해요.
+
+| 블록 | 결과 |
+|---|---|
+| 모두 CSR(None 없이) | CSR |
+| 모두 CSC(None 없이) | CSC |
+| 그 밖(형식이 섞이거나, 밀집 블록이나 None이 있을 때) | COO |
+
+CSR끼리, CSC끼리는 압축된 줄을 그대로 이어 붙이므로 따로 변환하지 않아요. 특정 형식이 필요하면 `format`을 주세요. 어느 형식이든 값은 같아요.
+
+```python
+>>> sd.sparse.block_array([[A, B]])
+<csr_array of shape (2, 3), float64, 5 stored elements>
+>>> sd.sparse.block_array([[A.tocsc(), B.tocsc()]])
+<csc_array of shape (2, 3), float64, 5 stored elements>
+>>> sd.sparse.block_array([[A, B.tocoo()]])
+<coo_array of shape (2, 3), float64, 5 stored elements>
+```
+
+## 값의 dtype
+
+`dtype=None`이면 블록들의 dtype을 배열의 규칙으로 승격해요. `dtype`을 주면 그 dtype으로 바꿔요.
+
+```python
+>>> I = sd.sparse.csr_array(sd.asarray([[1, 2]]))
+>>> sd.sparse.block_array([[I, sd.sparse.csr_array(sd.asarray([[0.5]]))]]).dtype
+float64
+>>> sd.sparse.block_array([[A, B]], dtype=sd.complex128).dtype
+complex128
+```
+
+## 밀집 배열의 짝: sd.block
+
+밀집 배열을 블록으로 잇는 함수는 [`sd.block(arrays)`](/api/array/block/)예요. 리스트의 모양이 같고, 같은 블록이면 `block_array(...).toarray()`와 값이 비트까지 같아요. `sd.block`에는 `None`이 없으므로 빈 블록은 `sd.zeros`로 직접 만들어 넣어요.
+
+```python
+>>> D = sd.block([[A.toarray(), B.toarray()],
+...               [C.toarray(), sd.zeros((1, 1))]])
+>>> bool(sd.all(D == X.toarray()))
+True
+```
+
+## scipy를 아는 분께
+
+- `scipy.sparse.block_array`와 같은 꼴이고, 결과 형식의 규칙(모두 CSR이면 CSR, 모두 CSC면 CSC, 아니면 COO)도 같아요.
+- 블록은 희소 배열, `sd.ndarray`, `None`이에요. 리스트와 numpy 배열은 `TypeError`예요(scipy는 받아요).
+- 옛 함수 `scipy.sparse.bmat`은 없어요.

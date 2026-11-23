@@ -1,0 +1,47 @@
+---
+/** An operator or arrow between two arrays in a Fig: "+", "=", "→". */
+interface Props {
+  /** Small text under the symbol, e.g. "axis=0". */
+  note?: string;
+}
+const { note } = Astro.props;
+// Arrows turn to point down when their figure is stacked vertically.
+const symbol = await Astro.slots.render('default');
+const isArrow = /[→⇄⟶]/.test(symbol);
+---
+
+<span class:list={['op', note && 'op--noted', isArrow && 'op--arrow']}>
+  {note && <span class="op__pad" aria-hidden="true">{note}</span>}
+  <span class="op__sym"><slot /></span>
+  {note && <span class="op__note">{note}</span>}
+</span>
+
+<style>
+  /* A note sits under the symbol and an invisible copy of it sits above, so
+     the symbol stays on the middle line of the neighbouring grids while the
+     operator is as wide as its note and never runs into its neighbours. */
+  .op {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-1);
+    padding-inline: var(--space-1);
+  }
+  .op__sym {
+    font-family: var(--font-mono);
+    font-size: var(--text-xl);
+    line-height: 1;
+    color: var(--slate-400);
+  }
+  .op__note,
+  .op__pad {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    line-height: 1.2;
+    color: var(--fg-subtle);
+    white-space: nowrap;
+  }
+  .op__pad {
+    visibility: hidden;
+  }
+</style>

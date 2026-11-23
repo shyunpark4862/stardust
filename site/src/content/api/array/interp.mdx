@@ -1,0 +1,376 @@
+---
+title: interp
+names: [interp]
+group: 정렬, 탐색, 집합
+order: 4
+signatures:
+  - "sd.interp(x, xp, fp, /, *, left=None, right=None, period=None)"
+summary: 측정한 점들을 곧은 선으로 이은 꺾은선에서, 측정하지 않은 자리의 값을 읽어요. 점 사이는 직선으로 잇고 바깥은 끝값으로 채워요. left·right로 바깥 값을 바꾸고 period로 각도처럼 도는 가로축을 다뤄요.
+params:
+  - name: x
+    type: ndarray 또는 Python 숫자
+    kind: positional-only
+    desc: 값을 읽을 자리. 배열이면 원소마다 읽어요. 모양은 자유예요.
+  - name: xp
+    type: ndarray
+    kind: positional-only
+    desc: 측정한 자리(노드)를 담은 1차원 배열. 유한하고 줄지 않아야 해요. period를 주면 순서는 상관없어요.
+  - name: fp
+    type: ndarray
+    kind: positional-only
+    desc: 노드마다의 값. xp와 길이가 같은 1차원 배열이에요. complex128도 받아요.
+  - name: left
+    type: 숫자 또는 None
+    kind: keyword-only
+    desc: "x가 xp[0]보다 작을 때의 값. 기본값 None이면 fp[0]이에요."
+  - name: right
+    type: 숫자 또는 None
+    kind: keyword-only
+    desc: "x가 xp[-1]보다 클 때의 값. 기본값 None이면 fp[-1]이에요."
+  - name: period
+    type: 숫자 또는 None
+    kind: keyword-only
+    desc: 가로축의 주기. 주면 xp와 x를 이 주기로 감아서 계산하고 left와 right는 쓰지 않아요.
+returns:
+  type: ndarray 또는 Python float·complex
+  desc: x와 같은 모양의 배열. dtype은 fp가 complex128이면 complex128, 아니면 float64예요. x가 Python 숫자면 Python float(또는 complex)예요.
+raises:
+  - type: TypeError
+    desc: "xp나 fp가 sd.ndarray가 아닐 때(리스트 포함), x가 배열도 숫자도 아닐 때, x나 xp가 complex일 때, left·right·period를 자리로 줄 때."
+  - type: ValueError
+    desc: "xp가 비었거나 1차원이 아닐 때, fp의 길이가 xp와 다를 때, xp에 NaN이나 inf가 있을 때, xp가 줄어드는 곳이 있을 때(period가 없을 때), period가 0이거나 유한하지 않을 때."
+seeAlso: [searchsorted, linspace, where, clip]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import PlaneFig from '../../../components/fig/PlaneFig.astro';
+
+export const hourPts = [[0, 12], [3, 10.5], [6, 14], [9, 21], [12, 19.5]];
+
+## 한눈에 보기
+
+세 시간마다 기온을 쟀다고 해 볼게요. 0시, 3시, 6시, 9시, 12시의 값은 있는데 7시 30분의 기온이 궁금해요. 가장 간단한 답은 6시의 점과 9시의 점을 곧은 선으로 잇고, 그 선 위에서 7.5시의 높이를 읽는 거예요. 이것이 **선형 보간**이고 `interp`가 하는 일이에요.
+
+```python
+>>> import stardust as sd
+>>> hours = sd.asarray([0.0, 3.0, 6.0, 9.0, 12.0])
+>>> temps = sd.asarray([12.0, 10.5, 14.0, 21.0, 19.5])
+>>> sd.interp(7.5, hours, temps)
+17.5
+>>> sd.interp(sd.asarray([1.0, 6.0, 7.5, 11.0]), hours, temps)
+array([11.5, 14.0, 17.5, 20.0], dtype=float64)
+```
+
+6시에 14도, 9시에 21도였으니 그 한가운데인 7.5시는 17.5도예요. 측정한 자리(6시)를 물으면 측정한 값 그대로 돌려줘요.
+
+<Fig caption="측정한 다섯 점(노드)을 곧은 선으로 이은 꺾은선. 7.5시의 값은 6시와 9시를 잇는 선분 위에서 읽어요. 측정 범위 밖(점선)은 끝값을 그대로 이어요.">
+  <PlaneFig
+    label="다섯 측정 점을 이은 꺾은선과 그 위에서 읽은 7.5시의 값, 양 끝 밖으로 평평하게 이어지는 점선"
+    domain={[-3, 15]}
+    range={[8, 23]}
+    equal={false}
+    width={600}
+    height={300}
+    xTicks={[0, 3, 6, 9, 12].map((v) => ({ v, label: `${v}시` }))}
+    yTicks={[10, 14, 17.5, 21].map((v) => ({ v, label: String(v) }))}
+    layers={[
+      { kind: 'segments', segs: [[-3, 12, 0, 12], [12, 19.5, 15, 19.5]], tone: 'base', dashed: true },
+      { kind: 'line', pts: hourPts, tone: 'main', width: 1.8 },
+      { kind: 'segments', segs: [[7.5, 8, 7.5, 17.5], [-3, 17.5, 7.5, 17.5]], tone: 'faint', dashed: true },
+      { kind: 'points', pts: hourPts, tone: 'main', size: 3.8 },
+      { kind: 'points', pts: [[7.5, 17.5]], tone: 'ink', shape: 'cross', size: 4 },
+      { kind: 'text', at: [7.5, 17.5], text: '(7.5, 17.5)', dx: -8, dy: -8, anchor: 'end' },
+      { kind: 'text', at: [-1.5, 12], text: 'left', dx: 0, dy: -8, anchor: 'middle' },
+      { kind: 'text', at: [13.5, 19.5], text: 'right', dx: 0, dy: -8, anchor: 'middle' },
+    ]}
+    legend={[
+      { label: '노드 (xp, fp)', tone: 'main', shape: 'dot' },
+      { label: '읽는 자리 x', tone: 'ink', shape: 'cross' },
+      { label: '바깥', tone: 'base', shape: 'dash' },
+    ]}
+  />
+</Fig>
+
+<Reference />
+
+## 무엇을 계산하나요
+
+`xp`의 점을 **노드**라고 불러요. `x`가 이웃한 두 노드 $x_j \le x \le x_{j+1}$ 사이에 있으면, 그 구간에서 얼마나 나아갔는지의 비율 $t$를 구해 두 값 사이를 그 비율로 나눠요.
+
+$$
+t = \frac{x - x_j}{x_{j+1} - x_j}, \qquad f(x) = f_j + t\,(f_{j+1} - f_j)
+$$
+
+$t = 0$이면 왼쪽 노드의 값, $t = 1$이면 오른쪽 노드의 값, $t = 0.5$면 두 값의 평균이에요.
+
+```python
+>>> sd.interp(6.0, hours, temps), sd.interp(9.0, hours, temps)
+(14.0, 21.0)
+>>> sd.interp(7.0, hours, temps)                # t = 1/3
+16.333333333333332
+>>> 14.0 + (1 / 3) * (21.0 - 14.0)
+16.333333333333332
+```
+
+끝자리가 손으로 쓴 식과 다를 수 있어요. `interp`는 아래의 [값이 지키는 성질](#값이-지키는-성질)을 지키는 식으로 계산하기 때문이에요.
+
+## `x`: 읽을 자리
+
+`x`는 수 하나이거나 배열이에요. 배열이면 원소마다 따로 읽고, 결과는 `x`와 같은 모양이에요. 순서대로일 필요도 없어요.
+
+```python
+>>> q = sd.asarray([[11.0, 0.5], [7.5, 4.0]])
+>>> sd.interp(q, hours, temps)
+array([[              20.0,              11.75],
+       [              17.5, 11.666666666666666]], dtype=float64)
+```
+
+`x`가 Python 숫자면 결과도 Python `float`예요. 정수와 bool은 float64로 바꿔 계산해요.
+
+```python
+>>> type(sd.interp(7, hours, temps))
+<class 'float'>
+>>> sd.interp(sd.asarray([1, 2, 3]), hours, temps)
+array([11.5, 11.0, 10.5], dtype=float64)
+```
+
+## `xp`와 `fp`: 노드와 값
+
+`xp`와 `fp`는 길이가 같은 1차원 `sd.ndarray`예요. 정수 배열은 float64로 바꿔요. `xp`는 유한하고 **줄지 않아야** 해요. 꺾은선을 왼쪽에서 오른쪽으로 그릴 수 있어야 하기 때문이에요.
+
+```python
+>>> sd.interp(1.5, sd.asarray([0, 2, 1, 3]), sd.asarray([0, 10, 20, 30]))
+Traceback (most recent call last):
+    ...
+ValueError: interp(): 'xp' must be nondecreasing
+>>> sd.interp(1.5, sd.asarray([0.0, sd.inf]), sd.asarray([0.0, 1.0]))
+Traceback (most recent call last):
+    ...
+ValueError: interp(): 'xp' must be finite
+>>> sd.interp(1.5, sd.asarray([0.0, 1.0, 2.0]), sd.asarray([0.0, 1.0]))
+Traceback (most recent call last):
+    ...
+ValueError: interp(): 'fp' must be as long as 'xp'
+```
+
+정렬되지 않은 자료는 먼저 정렬해요. [`argsort`](/api/array/sort/)로 순서를 구해 `xp`와 `fp`에 함께 적용하면 돼요.
+
+```python
+>>> xs = sd.asarray([2.0, 0.0, 3.0, 1.0])
+>>> fs = sd.asarray([20.0, 0.0, 30.0, 10.0])
+>>> order = sd.argsort(xs)
+>>> sd.interp(1.5, xs[order], fs[order])
+15.0
+```
+
+노드가 하나뿐이어도 돼요. 그 점에서는 `fp[0]`, 왼쪽은 `left`, 오른쪽은 `right`예요. `left`와 `right`를 주지 않으면 모두 `fp[0]`이라 어디서나 같은 값이에요.
+
+```python
+>>> one = sd.asarray([5.0])
+>>> sd.interp(sd.asarray([4.0, 5.0, 6.0]), one, sd.asarray([7.0]))
+array([7.0, 7.0, 7.0], dtype=float64)
+>>> sd.interp(sd.asarray([4.0, 5.0, 6.0]), one, sd.asarray([7.0]), left=-1.0, right=1.0)
+array([-1.0,  7.0,  1.0], dtype=float64)
+```
+
+### 같은 노드가 되풀이되면 계단이에요
+
+`xp`에 같은 값이 두 번 있으면 그 자리에서 값이 뛰어요. 뛰는 자리 자체를 물으면 오른쪽 값이에요.
+
+```python
+>>> xp = sd.asarray([0.0, 1.0, 1.0, 2.0])
+>>> fp = sd.asarray([0.0, 1.0, 5.0, 6.0])
+>>> sd.interp(sd.asarray([0.5, 1.0, 1.5]), xp, fp)
+array([0.5, 5.0, 5.5], dtype=float64)
+```
+
+### `fp`는 복소수여도 돼요
+
+`fp`가 complex128이면 실수부와 허수부를 같은 자리에서 따로 읽어요. 결과는 complex128이에요. `x`와 `xp`는 실수여야 해요.
+
+```python
+>>> z = sd.asarray([1 + 0j, 0 + 1j, -1 + 0j])
+>>> sd.interp(0.5, sd.asarray([0.0, 1.0, 2.0]), z)
+(0.5+0.5j)
+>>> sd.interp(1 + 0j, sd.asarray([0.0, 1.0, 2.0]), z)
+Traceback (most recent call last):
+    ...
+TypeError: interp(): 'x' must be real, not complex
+```
+
+## `left`와 `right`: 바깥의 값
+
+`x`가 `xp[0]`보다 작으면 `left`, `xp[-1]`보다 크면 `right`를 돌려줘요. 주지 않으면 각각 `fp[0]`, `fp[-1]`이라 끝값이 평평하게 이어져요. 선을 밖으로 늘이지는 않아요.
+
+```python
+>>> out = sd.asarray([-2.0, 0.0, 12.0, 20.0])
+>>> sd.interp(out, hours, temps)
+array([12.0, 12.0, 19.5, 19.5], dtype=float64)
+>>> sd.interp(out, hours, temps, left=sd.nan, right=sd.nan)
+array([ nan, 12.0, 19.5,  nan], dtype=float64)
+>>> sd.interp(out, hours, temps, left=0.0)
+array([ 0.0, 12.0, 19.5, 19.5], dtype=float64)
+```
+
+측정 범위를 벗어난 자리를 눈에 띄게 하고 싶으면 `left=sd.nan, right=sd.nan`이 편해요. 끝점 자체(`xp[0]`, `xp[-1]`)는 안쪽이라 `fp`의 값이에요.
+
+끝 구간의 직선을 밖으로 늘이고 싶으면 [`sd.interpolate.make_interp_spline(xp, fp, k=1)`](/api/interpolate/make_interp_spline/)을 써요.
+
+## `period`: 한 바퀴 돌아 이어지는 가로축
+
+방위각이나 하루의 시각처럼 가로축이 한 바퀴 돌면 제자리인 자료가 있어요. 350도와 10도 사이에는 0도가 있고, 그 값은 350도의 값과 10도의 값 사이여야 해요. `period`를 주면 `xp`와 `x`를 그 주기로 감은 뒤 양 끝을 이어서 계산해요.
+
+```python
+>>> deg = sd.asarray([10.0, 100.0, 200.0, 350.0])
+>>> val = sd.asarray([1.0, 2.0, 3.0, 4.0])
+>>> sd.interp(0.0, deg, val, period=360)       # 350도(4.0)와 10도(1.0)의 가운데
+2.5
+>>> sd.interp(0.0, deg, val)                   # period가 없으면 왼쪽 바깥
+1.0
+>>> sd.interp(sd.asarray([-10.0, 370.0, 730.0]), deg, val, period=360)
+array([4.0, 1.0, 1.0], dtype=float64)
+```
+
+`period`가 있으면 바깥이 없으므로 `left`와 `right`는 쓰지 않아요. 감은 뒤에 정렬하므로 `xp`가 순서대로가 아니어도 돼요(유한하기는 해야 해요). 음수 주기는 그 절댓값이에요. 0, NaN, inf는 에러예요.
+
+```python
+>>> sd.interp(0.0, sd.asarray([350.0, 10.0, 200.0, 100.0]), sd.asarray([4.0, 1.0, 3.0, 2.0]), period=-360)
+2.5
+>>> sd.interp(0.0, deg, val, period=0)
+Traceback (most recent call last):
+    ...
+ValueError: interp(): 'period' must be finite and nonzero
+```
+
+## 값이 지키는 성질
+
+꺾은선에서 읽은 값이라면 마땅히 그래야 하는 세 가지를 반올림 오차와 상관없이 정확히 지켜요.
+
+- **노드에서는 `fp`의 값 그대로예요.** 비트까지 같아요.
+- **두 노드 사이의 값은 두 끝값 사이에 있어요.** 끝값보다 조금이라도 크거나 작은 값이 나오지 않아요.
+- **`fp`가 오르는 구간에서는 `x`가 커질 때 결과가 줄지 않아요.** 내리는 구간에서는 늘지 않아요.
+
+```python
+>>> a, b = 0.1, 0.7
+>>> xp2, fp2 = sd.asarray([0.0, 1.0]), sd.asarray([a, b])
+>>> t = sd.linspace(0.0, 1.0, 100001)
+>>> v = sd.interp(t, xp2, fp2)
+>>> v[0] == a, v[-1] == b
+(True, True)
+>>> bool(sd.all((v >= a) & (v <= b)))
+True
+>>> bool(sd.all(v[1:] >= v[:-1]))
+True
+```
+
+두 끝값이 같으면 그 구간의 값은 모두 그 값이에요. 둘 다 $-0$이면 구간 안도 $-0$이에요.
+
+```python
+>>> sd.interp(0.3, sd.asarray([0.0, 1.0]), sd.asarray([2.5, 2.5]))
+2.5
+>>> sd.interp(0.3, sd.asarray([0.0, 1.0]), sd.asarray([-0.0, -0.0]))
+-0.0
+```
+
+값의 오차는 정확한 값 $y$에 대해 $\lvert \hat y - y \rvert \le \gamma_6(\lvert a \rvert + \lvert b \rvert) + 3\eta$예요. $a$, $b$는 구간의 두 끝값, $\gamma_6 = 6u/(1 - 6u)$, $u = 2^{-53}$, $\eta = 2^{-1075}$이에요. 두 끝값의 크기에 견주어 마지막 몇 비트 안이라는 뜻이에요.
+
+## NaN과 무한대
+
+`x`의 NaN은 NaN이에요. 노드가 하나뿐이어도, `period`가 있어도 같아요.
+
+```python
+>>> sd.interp(sd.asarray([1.0, sd.nan]), hours, temps)
+array([11.5,  nan], dtype=float64)
+>>> sd.interp(sd.nan, one, sd.asarray([7.0]))
+nan
+```
+
+`x`가 $\pm\infty$면 바깥이라 `left`나 `right`예요.
+
+```python
+>>> sd.interp(sd.asarray([-sd.inf, sd.inf]), hours, temps)
+array([12.0, 19.5], dtype=float64)
+```
+
+`fp`에는 NaN과 inf가 있어도 돼요. 그 노드가 끝인 구간에만 영향을 줘요. 노드를 정확히 물으면 그 값이고, 구간 안에서는 한쪽 끝이 inf면 그 inf, 한쪽 끝이 NaN이거나 두 끝이 부호가 다른 inf면 NaN이에요.
+
+```python
+>>> xp3 = sd.asarray([0.0, 1.0, 2.0, 3.0])
+>>> sd.interp(sd.asarray([0.5, 1.0, 1.5, 2.0, 2.5]), xp3, sd.asarray([0.0, 1.0, sd.nan, 3.0]))
+array([0.5, 1.0, nan, nan, nan], dtype=float64)
+>>> sd.interp(sd.asarray([0.5, 1.5, 2.5]), xp3, sd.asarray([0.0, sd.inf, -sd.inf, 3.0]))
+array([ inf,  nan, -inf], dtype=float64)
+```
+
+## 스레드 수와 상관없이 같은 결과
+
+`x`의 원소마다 따로 계산하는 함수라, [스레드 수](/api/array/threads/)를 바꿔도 결과의 비트가 같아요.
+
+`sd.interpolate`에서 선형 보간을 하는 다른 길도 같은 계산을 써요. 그래서 `xp[0]`과 `xp[-1]` 사이에서는 어느 길로 구해도 비트까지 같아요(`xp`에 같은 값이 없을 때).
+
+```python
+>>> t = sd.linspace(0.0, 12.0, 1001)
+>>> v = sd.interp(t, hours, temps)
+>>> s = sd.interpolate.make_interp_spline(hours, temps, k=1)(t)
+>>> g = sd.interpolate.RegularGridInterpolator((hours,), temps)(sd.reshape(t, (-1, 1)))
+>>> bool(sd.all(v == s)), bool(sd.all(v == g))
+(True, True)
+```
+
+## 조심할 점
+
+### 리스트는 받지 않아요
+
+`interp`는 배열 영역의 함수라 `sd.ndarray`와 Python 숫자만 받아요. 리스트는 [`asarray`](/api/array/asarray/)로 먼저 배열로 만들어요.
+
+```python
+>>> sd.interp(1.5, [0.0, 3.0], [12.0, 10.5])
+Traceback (most recent call last):
+    ...
+TypeError: interp(): 'xp' must be an sd.ndarray, not list
+>>> sd.interp([1.5], hours, temps)
+Traceback (most recent call last):
+    ...
+TypeError: interp(): 'x' must be an sd.ndarray or a bool, int or float, not list
+```
+
+### `left`, `right`, `period`는 이름으로 줘요
+
+```python
+>>> sd.interp(1.5, hours, temps, 0.0, 0.0)
+Traceback (most recent call last):
+    ...
+TypeError: interp(): incompatible function arguments. The following argument types are supported:
+    1. interp(x, xp, fp, /, *, left=None, right=None, period=None)
+<BLANKLINE>
+Invoked with types: float, stardust._core.ndarray, stardust._core.ndarray, float, float
+```
+
+### 꺾은선이라 꺾이는 곳이 있어요
+
+노드에서 기울기가 갑자기 바뀌어요. 매끄러운 곡선이 필요하면 [`CubicSpline`](/api/interpolate/CubicSpline/)이나 [`PchipInterpolator`](/api/interpolate/PchipInterpolator/)를 써요. 무엇을 고를지는 [보간의 기본](/api/interpolate/basics/)에 있어요.
+
+### 여러 열을 한 번에 읽지는 않아요
+
+`fp`는 1차원이에요. 같은 `xp`에 값의 열이 여럿이면 열마다 부르거나, `axis`를 받는 [`make_interp_spline(xp, fp, k=1, axis=0)`](/api/interpolate/make_interp_spline/)을 써요.
+
+## 비슷한 함수와의 차이
+
+| 하고 싶은 일 | 쓸 것 |
+|---|---|
+| 꺾은선에서 읽고 바깥은 끝값이나 정한 값으로 | `sd.interp` |
+| 꺾은선에서 읽고 바깥은 끝 구간의 직선을 늘여서 | [`make_interp_spline(xp, fp, k=1)`](/api/interpolate/make_interp_spline/) |
+| 노드 사이를 매끄러운 곡선으로 | [`CubicSpline`](/api/interpolate/CubicSpline/), [`PchipInterpolator`](/api/interpolate/PchipInterpolator/), [`Akima1DInterpolator`](/api/interpolate/Akima1DInterpolator/) |
+| 격자 위의 여러 변수 자료 | [`RegularGridInterpolator`](/api/interpolate/RegularGridInterpolator/) |
+| `x`가 어느 구간에 드는지만 | [`searchsorted`](/api/array/searchsorted/) |
+
+## numpy를 아는 분께
+
+- `numpy.interp`와 같은 뜻이고 인자 이름도 같아요. `left`, `right`, `period`는 이름으로만 받아요. numpy의 `interp(x, xp, fp, 0, 1)`은 `TypeError`예요.
+- `xp`가 유한하고 줄지 않는지 검사해요. numpy는 검사하지 않아서 정렬되지 않은 `xp`에 뜻 없는 값을 말없이 내요.
+- `period`가 NaN이나 inf면 `ValueError`예요. numpy는 0만 에러예요.
+- 리스트를 받지 않아요. `x`는 `sd.ndarray`나 Python 숫자, `xp`와 `fp`는 `sd.ndarray`예요.
+- `x`가 Python 숫자면 결과는 Python `float`(또는 `complex`)예요. numpy는 `numpy.float64`예요.
+- 노드 사이의 값이 두 끝값 사이에 있고 단조예요. numpy의 식은 오른쪽 노드 바로 왼쪽에서 끝값을 넘는 값을 낼 수 있어요. 그래서 구간 안의 끝자리가 numpy와 다를 수 있어요.
+- 두 끝값이 모두 $-0$이면 구간 안도 $-0$이에요. numpy는 $+0$이에요.
+- 노드가 하나일 때 `x`의 NaN은 NaN이에요. numpy는 `fp[0]`을 내요.

@@ -1,0 +1,163 @@
+---
+kind: function
+title: curve3d
+names: [curve3d]
+group: 3D
+order: 4
+signatures:
+  - "sd.plot.curve3d(fx, fy, fz, a, b, /, *, samples=None, refine=None, color=None, width=None, label=None, azimuth=None, elevation=None, perspective=True, **figure)"
+  - "fig.curve3d(fx, fy, fz, a, b, /, *, samples=None, refine=None, color=None, width=None, label=None, azimuth=None, elevation=None, perspective=True)"
+summary: 매개변수 t의 함수 셋으로 주어진 공간 곡선 (x(t), y(t), z(t))를 3D 칸에 그려요. 곡선이 화면에서 꺾이는 곳만 더 촘촘히 재고, 값이 달아나는 극점에서는 선을 끊으며, 상자를 벗어나는 선은 상자의 면에서 잘라요.
+params:
+  - name: fx, fy, fz
+    type: 호출 가능한 객체
+    kind: positional-only
+    desc: "x(t), y(t), z(t). 1차원 float64 sd.ndarray t를 받아 같은 모양의 실수 배열을 돌려줘요. 수 하나를 돌려주면 상수예요. 정의되지 않는 점은 NaN을 돌려줘요."
+  - name: a, b
+    type: 실수
+    kind: positional-only
+    desc: t의 범위. 유한하고 a < b여야 해요.
+  - name: samples
+    type: int 또는 None
+    kind: keyword-only
+    desc: "첫 격자의 점의 수(3–200000). None(기본값)이면 257이에요."
+  - name: refine
+    type: int 또는 None
+    kind: keyword-only
+    desc: "첫 격자의 한 구간을 반으로 나누는 횟수의 한계(0–10). 0이면 적응형 표본을 끄고 첫 격자만 써요. None(기본값)이면 10이에요."
+  - name: color
+    type: 색 또는 None
+    kind: keyword-only
+    desc: "선의 색. None(기본값)이면 팔레트의 다음 색이에요."
+  - name: width
+    type: 실수 또는 None
+    kind: keyword-only
+    desc: "선의 굵기(pt). 0보다 커야 해요. None(기본값)이면 1 pt예요."
+  - name: label
+    type: str 또는 None
+    kind: keyword-only
+    desc: "범례에 적을 이름(LaTeX 원문). 주면 상자 오른쪽 밖의 범례에 들어요."
+  - name: azimuth, elevation
+    type: 실수 또는 None
+    kind: keyword-only
+    desc: "보는 방향의 방위각과 고도(도). elevation은 −90–90이에요. None(기본값)이면 장면에 맞게 골라요. 칸의 첫 3D 층의 값만 쓰여요."
+  - name: perspective
+    type: bool
+    kind: keyword-only
+    desc: "True(기본값)는 원근 투영, False는 직교 투영이에요."
+  - name: "**figure"
+    type: 그림 옵션
+    kind: keyword-only
+    desc: "height, font, theme, palette. 모듈 함수만 받아요. 여기서 width는 선의 굵기라서 그림의 너비가 되지 않아요(그림의 너비는 Figure(width=...)에 메서드로 그리거나 fig.size로 정해요). 뜻은 그림의 기본에 있어요."
+returns:
+  type: Figure
+  desc: 곡선을 그린 그림. 메서드로 부르면 그 그림 자신이에요.
+raises:
+  - type: TypeError
+    desc: "fx·fy·fz가 호출 가능하지 않을 때, 그 함수가 배열이나 수가 아닌 것이나 복소수를 돌려줄 때, a·b·width·각이 수가 아닐 때, label이 문자열이 아닐 때, samples·refine이 정수가 아닐 때, perspective가 bool이 아닐 때. 함수 안에서 난 에러도 그대로 나와요."
+  - type: ValueError
+    desc: "a, b가 유한하지 않거나 a < b가 아닐 때, 함수가 다른 모양의 배열을 돌려줄 때, 모르는 색, width가 0 이하일 때, samples·refine·elevation이 범위 밖일 때, 2D 층이 있는 칸에 더할 때."
+seeAlso: [view3d, parametric, scatter3d, parametric_surface, sampling]
+---
+import PlotImage from '../../../components/fig/PlotImage.astro';
+
+## 한눈에 보기
+
+`curve3d(fx, fy, fz, a, b)`는 $t$가 $a$에서 $b$까지 움직일 때 점 $(x(t), y(t), z(t))$가 그리는 공간 곡선이에요. 평면의 [`parametric`](/api/plot/parametric/)에 좌표 하나를 더한 3D 판이에요. 아래는 세잎 매듭이에요.
+
+```python
+>>> import math
+>>> fig = sd.plot.curve3d(lambda t: sd.sin(t) + 2 * sd.sin(2 * t),
+...                       lambda t: sd.cos(t) - 2 * sd.cos(2 * t),
+...                       lambda t: -sd.sin(3 * t),
+...                       0, 2 * math.pi, width=1.5)
+```
+
+<PlotImage name="curve3d-trefoil" format="png" alt="파란 선으로 그린 세잎 매듭. 고리 셋이 서로 위아래로 엇갈리며 지나가요. 상자는 가로세로 약 5.5, 높이 2로 납작해요." caption="세잎 매듭을 위에서 비스듬히 내려다봤어요. 높이가 −1에서 1뿐이라 상자가 납작해요." />
+
+곡선만 든 칸의 상자는 자료의 비율을 따라요. 위 매듭은 높이가 $-1$에서 $1$이라 상자가 납작해요. 같은 칸에 [`surface`](/api/plot/surface/)가 있으면 상자는 그래프의 비율(1 : 1 : 0.72)이에요.
+
+<Reference />
+
+## 함수 셋 넘기기
+
+`fx`, `fy`, `fz`는 저마다 $t$의 1차원 배열을 받아 같은 모양의 배열을 돌려줘요. 점마다 부르지 않고 배열로 몇 번만 불러요. 수 하나를 돌려주면 상수예요. 바닥에 놓인 원은 `lambda t: 0.0`을 `fz`로 쓰면 돼요.
+
+```python
+>>> calls = []
+>>> def fx(t):
+...     calls.append(t.shape[0])
+...     return sd.sin(t) + 2 * sd.sin(2 * t)
+>>> fig = sd.plot.curve3d(fx, lambda t: sd.cos(t) - 2 * sd.cos(2 * t),
+...                       lambda t: -sd.sin(3 * t), 0, 2 * math.pi)
+>>> calls
+[257, 50, 307]
+```
+
+첫 호출은 첫 격자 257점이에요. 곡선이 꺾이는 곳에 점 50개를 더 넣었고, 마지막 호출에서 고른 307점의 좌표를 한 번에 다시 재요.
+
+## 표본: samples와 refine
+
+곡선의 표본은 평면 곡선([`parametric`](/api/plot/parametric/))과 같은 법으로 골라요. 다만 꺾임을 3D 그대로가 아니라 **화면에 비친 모양**에서 재요.
+
+1. 첫 격자 `samples`점(기본 257)에서 세 좌표를 재요. 점은 거의 고르지만 간격을 조금씩 흩어서, 주기 함수와 박자가 맞아 꼭짓점만 골라 밟는 일을 피해요.
+2. 표본을 기준 시점의 화면에 투영해요. 기준 시점은 준 각은 그대로, 주지 않은 각은 방위각 −60°, 고도 30°로 둔 시점이에요. 화면에서 이웃한 두 마디가 크게 꺾이는 곳의 구간을 반으로 나눠요. 이것을 `refine`번(기본 10)까지 되풀이해요.
+3. 그래도 가장 좁은 구간에서 값이 뛰면 그 자리에서 선을 끊어요.
+
+곧은 선은 첫 격자로 끝나고, 많이 감기는 곡선은 감긴 만큼 점이 늘어요. 200바퀴 감긴 나선은 바퀴마다 백 점이 넘게 받아요.
+
+| 인자 | 기본값 | 뜻 |
+|---|---|---|
+| `samples` | 257 | 첫 격자의 점의 수, 3–200000 |
+| `refine` | 10 | 한 구간을 반으로 나누는 횟수의 한계. `0`이면 첫 격자를 그대로 이어요 |
+
+모든 함수 그림이 같은 두 인자를 받아요([표본 고르기](/api/plot/sampling/)).
+
+## 극점과 상자 밖의 선
+
+좌표가 무한대로 달아나는 곳(극점)이 있으면 그 자리에서 선을 끊어요. 축의 범위는 좌표마다 **값의 대부분**이 있는 범위로 잡아서, 극점 근처의 아주 큰 값이 상자를 다 차지하지 않아요. 상자를 벗어나는 선은 상자의 면에서 잘리고, 다시 들어오는 곳에서 이어져요.
+
+```python
+>>> fig = sd.plot.curve3d(lambda t: t, lambda t: 0.0 * t, sd.tan, -3, 3)
+```
+
+$z = \tan t$는 $t = \pm\pi/2$에서 극점이에요. 선은 세 가지로 끊기고, 높이 축은 대략 $-15$에서 $15$로 잡혀 위아래로 달아나는 선은 상자의 천장과 바닥에서 끝나요.
+
+정의되지 않는 점에서 NaN을 돌려주면 그 구간에서도 선이 끊겨요.
+
+## 색과 굵기
+
+- `color`를 주지 않으면 팔레트의 다음 색이에요. 같은 칸에 곡선을 여럿 더하면 차례로 다른 색을 받아요.
+- `width`는 선의 굵기(pt)이고 기본은 1 pt예요.
+- 선은 깊이를 견줘 그려요. 곡면 뒤로 지나가는 부분은 가려져요. 곡면 위를 지나는 길을 보이려면 곡선을 곡면보다 조금 띄워요([3D 칸과 시점](/api/plot/view3d/)의 첫 그림).
+- 선과 선, 선과 점([`scatter3d`](/api/plot/scatter3d/))도 깊이를 견줘요. 곡선 둘이 화면에서 엇갈리거나 한 곡선이 스스로 엇갈리는 곳에서는 보는 사람에게 가까운 쪽이 위에 와요. 위의 매듭에서 고리가 위아래로 엇갈려 보이는 것이 그래서예요.
+- `label`을 주면 그 이름이 범례에 들어요. 범례는 상자의 오른쪽 밖에 서요.
+
+```python
+>>> fig = sd.plot.curve3d(sd.cos, sd.sin, lambda t: t / 6, 0, 4 * math.pi, label="right-handed")
+>>> fig = fig.curve3d(sd.cos, lambda t: -sd.sin(t), lambda t: t / 6, 0, 4 * math.pi, label="left-handed")
+```
+
+<PlotImage name="curve3d-labels" format="png" alt="같은 원기둥을 서로 반대 방향으로 감아 오르는 파란 나선과 노란 나선. 두 나선이 만나는 곳마다 앞에 있는 쪽이 위에 보여요. 상자 오른쪽 밖에 right-handed와 left-handed 두 줄의 범례가 있어요." caption="label을 준 두 나선이에요. 색은 팔레트에서 차례로 받고, 범례는 상자 밖에 서요." />
+
+선의 꼴(`style`)과 불투명도(`alpha`)는 받지 않아요.
+
+## 다른 층과 겹치기
+
+```python
+>>> helix = sd.plot.curve3d(sd.cos, sd.sin, lambda t: t / 6, 0, 8 * math.pi,
+...                         perspective=False)
+>>> helix = helix.scatter3d([0.0, 0.5, -0.5], [0.0, 0.5, -0.5], [1.0, 2.0, 3.0],
+...                         color="C1", size=5)
+```
+
+메서드로 곡선, 곡면, 점을 같은 칸에 더해요. 2D 그림(`line` 등)은 3D 칸에 더할 수 없어요. 시점은 첫 층의 것이 쓰여요. 곡선만 있는 칸에서 시점을 주지 않으면 곡선이 화면에 가장 넓게 퍼지는 방향을 골라요([3D 칸과 시점](/api/plot/view3d/#시점-azimuth와-elevation)).
+
+## 조심할 점
+
+- 표본은 기준 시점의 화면에서 골라요. 시점을 주지 않아 다른 방향이 골라지면 화면에서 거의 곧게 보이던 부분이 굽어 보일 수 있지만, 첫 격자 257점이 대부분의 곡선에 넉넉해요. 아주 빨리 감기는 곡선은 `samples`를 키워요.
+- 상자의 비율이 자료를 따르므로, 한 좌표가 다른 좌표보다 아주 작게 변하는 곡선은 납작한 상자 안에 그려져요. 거의 정면으로 보여 아주 짧아진 축에는 눈금이 붙지 않아요.
+
+## matplotlib을 아는 분께
+
+matplotlib에서는 `t = np.linspace(...)`로 표본을 정하고 `ax.plot(x, y, z)`로 이어요. `curve3d`는 함수 셋과 범위를 받아 표본을 스스로 고르고, 극점에서 끊고, 상자에서 잘라요. 선이 곡면 뒤로 지나갈 때는 깊이 버퍼로 가려지므로, matplotlib처럼 곡면과 선의 그리는 순서 때문에 앞뒤가 뒤바뀌지 않아요. 이미 계산한 좌표의 점들을 선으로 잇는 3D 판의 `line`은 없어요.

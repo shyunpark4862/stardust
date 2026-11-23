@@ -1,0 +1,242 @@
+---
+kind: function
+title: fisher_exact
+names: [fisher_exact]
+group: 분할표
+order: 2
+signatures:
+  - "sd.htest.fisher_exact(table, /, *, alternative='two-sided', method=None)"
+summary: 분할표의 행과 열이 독립인지 보는 Fisher의 정확 검정이에요. 행합과 열합을 고정한 표들의 정확한 확률로 p값을 구하므로 개수가 작아도 근사가 없어요. 2 × 2 표는 한쪽 검정과 오즈비를, 더 큰 r × c 표는 정확한 양쪽 p값을 줘요.
+params:
+  - name: table
+    type: ndarray, 정수의 중첩 시퀀스, numpy 배열, 또는 frame의 DataFrame
+    kind: positional-only
+    desc: 관측 개수의 표. 마지막 두 축이 표이고 앞의 축이 배치예요. 음이 아닌 정수 값이어야 해요(정수 값의 float도 받아요).
+  - name: alternative
+    type: str
+    kind: keyword-only
+    desc: "대립가설. 'two-sided'(기본값), 'greater'(오즈비 > 1), 'less'(오즈비 < 1) 중 하나예요. 2 × 2가 아닌 표와 재표본 method는 'two-sided'만 받아요."
+  - name: method
+    type: None, PermutationMethod, 또는 MonteCarloMethod
+    kind: keyword-only
+    desc: None(기본값)이면 정확한 계산, PermutationMethod·MonteCarloMethod면 주변합을 고정해 뽑은 표들로 어림한 p값이에요.
+returns:
+  type: FisherExactResult
+  desc: "statistic과 pvalue를 가진 결과 객체. (statistic, pvalue) 둘로 풀려요. 2 × 2 표의 statistic은 표본 오즈비 ad/bc, r × c 표(와 재표본 method)의 statistic은 관측 표의 확률이에요."
+raises:
+  - type: TypeError
+    desc: table이 배열·수의 시퀀스·frame이 아닐 때, method가 None·PermutationMethod·MonteCarloMethod가 아닐 때, 없는 인자를 줬을 때.
+  - type: ValueError
+    desc: "table이 2차원보다 작을 때, 행이나 열이 없을 때, 음수·정수가 아닌 값·NaN이 있을 때, 표의 합이 2⁵³ 이상일 때, 2 × 2가 아닌 표나 재표본 method에 'two-sided'가 아닌 alternative를 줬을 때, r × c 표의 정확한 계산이 작업량 상한 2·10⁸을 넘을 때."
+seeAlso: [chi2_contingency, barnard_exact, boschloo_exact, odds_ratio, basics, results]
+---
+## 무엇을 묻는 검정인가요
+
+새 치료를 받은 10명 가운데 8명이, 받지 않은 6명 가운데 1명이 나았어요.
+
+| | 나음 | 낫지 않음 | 합 |
+|---|---:|---:|---:|
+| 치료 | 8 | 2 | 10 |
+| 대조 | 1 | 5 | 6 |
+| 합 | 9 | 7 | 16 |
+
+표가 작아서 기대 빈도가 5보다 작은 칸이 있어요. 카이제곱 근사([`chi2_contingency`](/api/htest/chi2_contingency/))를 믿기 어려운 크기예요.
+
+**Fisher의 정확 검정**은 행합(10, 6)과 열합(9, 7)을 고정해요. 나은 9명이 정해져 있을 때, 치료와 나음이 무관하다면 그 9명 가운데 치료 집단에서 몇 명이 나올지는 **초기하 분포**를 따라요. 16명 가운데 10명이 치료 집단이고 9명을 뽑는 셈이에요. 관측한 표와 같거나 더 극단인 표들의 확률을 정확히 더한 것이 p값이에요.
+
+- **귀무가설**: 행과 열이 독립이에요. 2 × 2 표에서는 모집단의 오즈비가 1이에요(치료 여부와 나음이 무관해요).
+- **대립가설**: 독립이 아니에요(기본값). 2 × 2 표는 `alternative`로 오즈비 > 1이나 < 1을 고를 수 있어요.
+
+이런 때 써요.
+
+- 표가 작거나 기대 빈도가 작은 칸이 있을 때.
+- 근사 없는 p값이 필요할 때. 표가 커도 계산할 수 있으면 언제나 맞는 값이에요.
+
+두 집단의 크기(행합)만 실험에서 정해지고 성공의 총수(열합)는 우연으로 정해지는 2 × 2 실험이면, 열합까지 고정하는 Fisher 검정은 보수적이에요(p값이 크게 나오는 편). 그럴 때는 [`barnard_exact`](/api/htest/barnard_exact/)나 [`boschloo_exact`](/api/htest/boschloo_exact/)가 더 예민해요. 짝지은 관측의 2 × 2 표(같은 사람의 전후)는 [`mcnemar`](/api/htest/mcnemar/)예요.
+
+<Reference />
+
+## 기본 사용: 2 × 2 표
+
+```python
+>>> import stardust as sd
+>>> table = [[8, 2],
+...          [1, 5]]
+>>> r = sd.htest.fisher_exact(table)
+>>> r
+FisherExactResult(statistic=20, pvalue=0.034965)
+```
+
+p값 0.035가 유의수준 0.05보다 작아서 치료와 나음이 무관하다는 귀무가설을 기각해요. 같은 표의 카이제곱 근사(Yates 보정)는 0.051이라 결론이 갈려요. 표가 작을 때는 정확한 쪽을 믿어요.
+
+```python
+>>> sd.htest.chi2_contingency(table).pvalue
+0.050961936967763334
+```
+
+## 결과 읽기
+
+2 × 2 표의 `statistic`은 **표본 오즈비** $ad/bc$예요. 치료 집단의 나을 오즈 8/2를 대조 집단의 오즈 1/5로 나눈 $4 / 0.2 = 20$이에요. $bc = 0$이면 inf예요.
+
+```python
+>>> odds, p = r
+>>> odds, p
+(20.0, 0.03496503496503497)
+>>> print(r.summary())
+                             Fisher's exact test
+==============================================================================
+Statistic:                       20.00  Alternative:                 two-sided
+P-value:                        0.0350
+==============================================================================
+```
+
+오즈비의 신뢰구간과 최우추정값(조건부 MLE)은 [`odds_ratio`](/api/htest/odds_ratio/)가 줘요. 이 검정의 p값과 짝이 맞는 정확한 구간이에요.
+
+## `alternative`: 한쪽 검정
+
+한쪽 p값은 표의 왼쪽 위 칸 $a$의 초기하 분포의 꼬리예요. `'greater'`는 $a$가 관측 이상일 확률(치료 집단에서 더 많이 나음, 오즈비 > 1), `'less'`는 이하일 확률이에요.
+
+```python
+>>> sd.htest.fisher_exact(table, alternative='greater').pvalue
+0.024475524475524476
+>>> sd.htest.fisher_exact(table, alternative='less').pvalue
+0.9991258741258742
+```
+
+초기하 분포로 직접 구해도 같아요. 총 16명, 치료 집단 10명, 나은 사람 9명이에요.
+
+```python
+>>> H = sd.stats.Hypergeometric(total=16, successes=10, draws=9)
+>>> H.ccdf(7)
+0.024475524475524476
+```
+
+양쪽 p값은 반대편에서 관측 표보다 확률이 작은 표들을 더해요. 관측 표의 확률과 반올림 크기로만 다른 표는 같은 확률로 보고 넣어요(상대 10⁻¹⁴의 허용). 관측 표가 가장 그럴듯한 표(최빈값)와 같은 확률이면 p값은 1이에요.
+
+차를 맛보는 부인의 실험이 유명한 예예요. 여덟 잔 가운데 네 잔은 우유를 먼저 넣었고, 부인은 그 네 잔을 맞히라는 말을 듣고 셋을 맞혔어요.
+
+```python
+>>> tea = [[3, 1],
+...        [1, 3]]
+>>> sd.htest.fisher_exact(tea, alternative='greater')
+FisherExactResult(statistic=9, pvalue=0.242857)
+```
+
+셋 이상 맞힐 확률이 $17/70 = 0.243$이라 우연으로도 흔히 일어나는 일이에요.
+
+## r × c 표
+
+2 × 2보다 큰 표도 정확한 p값을 구해요. 행합과 열합이 같은 모든 표 가운데 관측 표보다 확률이 크지 않은 표의 확률을 모두 더해요. 이때는 관측 표의 확률의 $1 + 10^{-7}$배까지를 같은 확률로 봐요. 통계량은 관측 표의 확률이에요.
+
+```python
+>>> rc = [[3, 1, 0],
+...       [1, 4, 2],
+...       [0, 2, 5]]
+>>> r3 = sd.htest.fisher_exact(rc)
+>>> r3
+FisherExactResult(statistic=0.000839846, pvalue=0.0465503)
+>>> sd.htest.chi2_contingency(rc).pvalue
+0.022316022463536853
+```
+
+같은 표의 카이제곱 근사는 0.022로 정확한 값의 반이에요. 기대 빈도가 작은 표에서는 근사가 이만큼 빗나갈 수 있어요.
+
+r × c 표에는 방향이 없어서 `alternative`는 `'two-sided'`만 받아요.
+
+```python
+>>> sd.htest.fisher_exact(rc, alternative='less')
+Traceback (most recent call last):
+    ...
+ValueError: fisher_exact(): 'alternative' must be 'two-sided' for a table that is not 2 x 2, not 'less'
+```
+
+표가 크고 개수가 많으면 셀 표가 폭발적으로 늘어요. 계산의 작업량이 상한(2·10⁸)을 넘으면 몇 초 안에 멈추고, 다른 길을 알려 주는 에러를 내요.
+
+```text
+ValueError: fisher_exact(): the exact r x c test needs more than its cap of 2e+08 operations for this table; use chi2_contingency
+```
+
+그런 표는 개수가 충분히 커서 카이제곱 근사가 맞거나, 아래의 몬테카를로 p값을 쓸 수 있어요. 흔한 크기(예를 들어 4 × 5 표에 100명)는 상한 안이에요.
+
+## `method`: 순열과 몬테카를로 p값
+
+`PermutationMethod`나 `MonteCarloMethod`를 주면 주변합을 고정한 표를 뽑아서, 관측 표보다 확률이 크지 않은 표의 비율로 p값을 어림해요. 이때는 2 × 2 표도 통계량이 관측 표의 확률이고 `alternative`는 `'two-sided'`만이에요.
+
+```python
+>>> pm = sd.htest.PermutationMethod(n_resamples=5000, rng=sd.random.default_rng(0))
+>>> sd.htest.fisher_exact(rc, method=pm)
+FisherExactResult(statistic=0.000839846, pvalue=0.0479904)
+```
+
+정확한 계산이 상한 안이면 그쪽이 언제나 나아요. 재표본은 상한을 넘는 큰 표를 위한 길이에요. 설정은 [재표본 방법 객체](/api/htest/methods/)에 있어요.
+
+## 배치와 퇴화한 표
+
+마지막 두 축이 표이고 앞의 축이 배치예요. 표마다 따로 검정해요.
+
+```python
+>>> B = sd.asarray([[[8, 2], [1, 5]],
+...                 [[3, 1], [1, 3]]])
+>>> sd.htest.fisher_exact(B).pvalue
+array([0.03496503496503497,  0.4857142857142857], dtype=float64)
+```
+
+모두 0인 행이나 열이 있으면 주변합이 같은 표가 관측 표 하나뿐이라 검정할 것이 없어요. 2 × 2 표는 오즈비가 NaN, p값이 1이에요. r × c 표는 0인 행과 열을 뺀 뒤 행이나 열이 하나만 남으면 통계량과 p값이 1이에요.
+
+```python
+>>> sd.htest.fisher_exact([[3, 0], [5, 0]])
+FisherExactResult(statistic=nan, pvalue=1)
+>>> sd.htest.fisher_exact([[5, 0, 1], [0, 0, 0]])
+FisherExactResult(statistic=1, pvalue=1)
+```
+
+개수는 음이 아닌 정수 값이어야 해요.
+
+```python
+>>> sd.htest.fisher_exact([[3.5, 1], [1, 4]])
+Traceback (most recent call last):
+    ...
+ValueError: fisher_exact(): 'table' must hold integer counts >= 0
+```
+
+## 아주 큰 개수
+
+2 × 2 표는 개수가 수십억이어도 짧은 시간에 끝나요. 표의 합(그래서 모든 칸)은 float64로 정확히 나타낼 수 있는 정수의 범위인 2⁵³ 아래여야 하고, 넘으면 `ValueError`예요.
+
+```python
+>>> sd.htest.fisher_exact([[1900000000, 1900000003], [1900000001, 1900000000]])
+FisherExactResult(statistic=1, pvalue=0.999982)
+>>> sd.htest.fisher_exact([[2**53, 1], [1, 1]])
+Traceback (most recent call last):
+    ...
+ValueError: fisher_exact(): the table's counts must be below 2**53
+```
+
+이렇게 큰 표에서도 p값이 나와요. 한쪽 p값과 양쪽 p값 모두 그래요. 다만 표의 합이 2⁵²를 넘으면 [초기하 분포](/api/stats/hypergeometric/)가 확률을 내지 못해서 p값이 NaN이에요. 통계량은 값이에요.
+
+```python
+>>> big = [[10**12 + 10**5, 10**12], [10**12, 10**12 + 10**5]]
+>>> sd.htest.fisher_exact(big)
+FisherExactResult(statistic=1, pvalue=0.920345)
+>>> sd.htest.fisher_exact(big, alternative='greater')
+FisherExactResult(statistic=1, pvalue=0.460173)
+>>> sd.htest.fisher_exact([[2**52, 1], [1, 1]])
+FisherExactResult(statistic=4.5036e+15, pvalue=nan)
+```
+
+개수가 이만큼 크면 [`chi2_contingency`](/api/htest/chi2_contingency/)의 근사가 정확한 p값과 거의 같아요(위 표에서 0.920345).
+
+## 정확도
+
+2 × 2 표의 p값은 초기하 분포의 정확한 꼬리이고, 양쪽 규칙의 비교는 확률의 정확한 비로 해요. r × c 표도 확률을 근사 없이 더해서, 관측 표와 확률이 같은 표를 하나도 빠뜨리지 않아요. 정확한 유리수 계산으로 만든 참값에 견주면 18문제(r × c 9개, 2/C(1000, 500) = 7.4e-300의 깊은 꼬리, 0인 행·열 포함)에서 통계량은 상대오차 1.5e-16 안, p값은 6.1e-16 안이에요.
+
+## scipy·R을 아는 분께
+
+2 × 2 표는 `scipy.stats.fisher_exact`와 같은 통계량, 같은 양쪽 규칙(허용 10⁻¹⁴)이에요. 다른 점이에요.
+
+- r × c 표의 p값이 정확한 값이에요. scipy의 기본은 시드 없는 몬테카를로라 부를 때마다 달라요. 규칙은 R의 `fisher.test`와 같아요(허용 10⁻⁷).
+- r × c 표의 정확한 계산에 작업량 상한이 있어요. R은 기본 작업 공간이 모자라면 에러를 내는 표(4 × 5에 100명 같은)가 있고, 작업 공간을 늘리면 값을 내지만 정확한 값과 상대 1.7e-10쯤 달라요.
+- R `fisher.test`의 2 × 2 양쪽 규칙은 허용이 10⁻⁷이라, 확률이 아주 가까운 표가 있으면 scipy·sd와 p값이 다를 수 있어요.
+- `alternative`의 기본값은 `'two-sided'`예요(scipy의 None과 같아요).
+- 표의 배치가 있어요(앞 축).
+- scipy는 행합과 열합이 수십억이면 2 × 2 표의 최빈값 계산이 넘쳐서 위의 `[[1900000000, 1900000003], [1900000001, 1900000000]]`에 경고와 함께 p = 0.50을 내요(맞는 값은 0.99998).

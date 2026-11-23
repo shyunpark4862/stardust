@@ -1,0 +1,305 @@
+---
+title: fillna
+names: [Series.fillna, DataFrame.fillna]
+group: 결측값
+order: 2
+signatures:
+  - "Series.fillna(value, /)"
+  - "DataFrame.fillna(value, /)"
+summary: 결측값 NA를 주어진 값으로 채운 새 Series나 DataFrame을 돌려줘요. 값은 컬럼의 dtype으로 바뀌는데, 정보를 잃지 않는 방향으로만 바뀌어요.
+params:
+  - name: value
+    type: bool, int, float, str, NA, None. DataFrame은 {컬럼 이름 → 값} dict도
+    kind: positional-only, 필수
+    desc: NA 자리에 넣을 값. 컬럼 dtype으로 암묵적으로 바뀌어요(bool → int64 → float64 방향으로만). NA나 None이면 아무것도 채우지 않아요. DataFrame에 dict를 주면 그 컬럼만 채워요.
+returns:
+  type: Series 또는 DataFrame
+  desc: NA 자리를 채운 새 객체. dtype, 라벨, 이름, 컬럼 순서는 원래와 같고, 원래 객체는 바뀌지 않아요. NaN은 채우지 않아요.
+raises:
+  - type: TypeError
+    desc: 값이 컬럼 dtype으로 내려가야 할 때(int64 컬럼에 float, bool 컬럼에 int), string 컬럼에 str이 아닌 값이나 숫자 컬럼에 str을 줄 때, value가 list·Series 같은 스칼라가 아닌 값일 때, value를 키워드로 줄 때.
+  - type: OverflowError
+    desc: int64 범위 밖의 Python int를 int64 컬럼에 채울 때.
+  - type: KeyError
+    desc: DataFrame에 준 dict에 없는 컬럼 이름이 있을 때.
+seeAlso: [isna, dropna, na, astype, assign]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import FrameFig from '../../../components/fig/FrameFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+`fillna(value)`는 결측값 `NA`인 칸을 `value`로 채워요. 나머지 칸은 그대로예요.
+
+빈칸의 뜻이 분명할 때 써요. "판매 기록이 없는 날은 0개 팔린 것"이라면 그 자리에 0을 채워 넣어요. 그러면 합계나 평균을 낼 때 그 행도 0으로 계산에 들어가고, 출력에서도 빈칸이 사라져요.
+
+```python
+>>> import stardust as sd
+>>> sold = sd.frame.Series([3, None, 5, None], index=["mon", "tue", "wed", "thu"], name="sold")
+>>> sold
+mon       3
+tue    <NA>
+wed       5
+thu    <NA>
+Name: sold, dtype: int64
+>>> sold.fillna(0)
+mon    3
+tue    0
+wed    5
+thu    0
+Name: sold, dtype: int64
+```
+
+<Fig caption="NA인 칸만 0으로 채워요. 라벨, 이름, dtype은 그대로예요.">
+  <FrameFig name="sold" data={[3, null, 5, null]} index={['mon', 'tue', 'wed', 'thu']} rowTones={['', 'a', '', 'a']} note="dtype: int64" />
+  <Op note="fillna(0)">→</Op>
+  <FrameFig data={[3, 0, 5, 0]} index={['mon', 'tue', 'wed', 'thu']} rowTones={['', 'b', '', 'b']} note="dtype: int64" />
+</Fig>
+
+`fillna`는 새 Series를 돌려줘요. 원래 `sold`는 바뀌지 않아요. 결과를 쓰려면 이름에 다시 담아요(`sold = sold.fillna(0)`).
+
+```python
+>>> sold.isna().sum()
+2
+```
+
+<Reference />
+
+## 채우는 값은 컬럼 dtype으로 바뀌어요
+
+컬럼에는 dtype이 하나뿐이므로, 채우는 값도 컬럼의 dtype으로 바뀌어야 들어가요. 이 변환은 사용자가 따로 요청하지 않았는데 일어나는 **암묵적** 변환이에요. 그래서 정보를 잃지 않는 방향, 곧 bool → int64 → float64로 올라가는 방향으로만 바꿔 줘요. 배열 영역에서 배열에 값을 대입할 때와 같은 규칙이에요([원소 종류](/api/array/dtypes/)).
+
+| 컬럼 dtype \ 값 | bool | int | float | str |
+|---|:---:|:---:|:---:|:---:|
+| **bool** | 그대로 | `TypeError` | `TypeError` | `TypeError` |
+| **int64** | 0, 1로 | 그대로 | `TypeError` | `TypeError` |
+| **float64** | 0.0, 1.0으로 | 실수로 | 그대로 | `TypeError` |
+| **string** | `TypeError` | `TypeError` | `TypeError` | 그대로 |
+
+올라가는 방향은 바꿔 줘요. float64 컬럼에 정수 `0`을 주면 `0.0`으로 들어가요.
+
+```python
+>>> temp = sd.frame.Series([21.5, None, 19.0])
+>>> temp.fillna(0)
+0    21.5
+1     0.0
+2    19.0
+dtype: float64
+>>> sd.frame.Series([1, None]).fillna(True)
+0    1
+1    1
+dtype: int64
+```
+
+내려가는 방향은 값과 상관없이 `TypeError`예요. int64 컬럼에 `1.5`는 물론이고 `2.0`도 안 돼요. `2.0`은 손실 없이 `2`가 될 수 있지만, 값이 아니라 dtype(float)만 보고 판단해요. 값을 보고 판단하면 같은 코드가 어떤 데이터에서는 되고 어떤 데이터에서는 에러가 나서, 코드만 보고 결과를 알 수 없기 때문이에요.
+
+```python
+>>> sold.fillna(2.0)
+Traceback (most recent call last):
+    ...
+TypeError: fillna(): cannot implicitly convert float64 to int64 (that would lose information); convert explicitly with astype
+>>> sd.frame.Series([True, None]).fillna(1)
+Traceback (most recent call last):
+    ...
+TypeError: fillna(): cannot implicitly convert int64 to bool (that would lose information); convert explicitly with astype
+```
+
+string과 다른 dtype은 서로 오가지 않아요. string 컬럼에는 `str`만, 다른 컬럼에는 `str`이 아닌 값만 들어가요.
+
+```python
+>>> names = sd.frame.Series(["ann", None, "cid"])
+>>> names.fillna("unknown")
+0        ann
+1    unknown
+2        cid
+dtype: string
+>>> names.fillna(0)
+Traceback (most recent call last):
+    ...
+TypeError: fillna(): cannot store int64 values in a column of dtype string
+```
+
+int64 범위 밖의 Python 정수는 float64 컬럼에서는 실수가 되고, int64 컬럼에서는 `OverflowError`예요.
+
+```python
+>>> sold.fillna(2**70)
+Traceback (most recent call last):
+    ...
+OverflowError: fillna(): Python int too large to convert to int64
+```
+
+numpy 스칼라(`numpy.int64(0)`, `numpy.float32(0.5)` 등)도 같은 규칙으로 받아요.
+
+### dtype을 바꿔서 채우고 싶다면: `astype` 먼저
+
+`fillna`는 컬럼의 dtype을 절대 바꾸지 않아요. 다른 dtype으로 채우고 싶다면 먼저 [`astype`](/api/frame/astype/)으로 컬럼을 바꾼 뒤 채워요. `astype`은 **명시적** 변환이라서, 사용자가 요청한 것으로 보고 손실이 있어도 바꿔 줘요.
+
+가장 흔한 경우는 정수 컬럼의 빈칸을 평균으로 채우는 것이에요. 평균은 실수라서 int64 컬럼에 그대로 넣을 수 없어요.
+
+```python
+>>> sold.mean()
+4.0
+>>> sold.fillna(sold.mean())
+Traceback (most recent call last):
+    ...
+TypeError: fillna(): cannot implicitly convert float64 to int64 (that would lose information); convert explicitly with astype
+>>> sold.astype("float64").fillna(sold.mean())
+mon    3.0
+tue    4.0
+wed    5.0
+thu    4.0
+Name: sold, dtype: float64
+```
+
+| | `fillna`, 행에 대입 | `astype` |
+|---|---|---|
+| 변환의 종류 | 암묵적 | 명시적 |
+| 방향 | 위로만 (bool → int64 → float64) | 어느 쪽이든 |
+| 손실이 있으면 | `TypeError` | 그래도 바꿔요 (예: `1.5`는 `1`) |
+
+행에 값을 대입할 때(`s.loc["tue"] = 2.0`)도 `fillna`와 똑같은 규칙이에요([대입과 복사](/api/frame/assign/)).
+
+## NaN은 채우지 않아요
+
+`fillna`는 `NA`만 채워요. NaN은 결측값이 아니라 실수 값이라서 그대로 남아요([NA와 NaN](/api/frame/na/)).
+
+```python
+>>> v = sd.frame.Series([1.0, float("nan"), None])
+>>> v.fillna(0.0)
+0    1.0
+1    NaN
+2    0.0
+dtype: float64
+```
+
+NaN을 다른 값으로 바꾸려면 [`isnan`](/api/frame/isna/)으로 고른 행에 대입해요. `isnan()`은 `NA`인 행이 `NA`라서, 그 행은 고르지 않아요.
+
+```python
+>>> w = v.fillna(0.0)
+>>> w.loc[w.isnan()] = -1.0
+>>> w
+0    1.0
+1   -1.0
+2    0.0
+dtype: float64
+```
+
+반대로 `fillna`에 NaN을 주면 `NA` 자리가 NaN으로 채워져요. `NA`와 NaN을 NaN 하나로 모아 다루고 싶을 때 써요.
+
+```python
+>>> v.fillna(float("nan"))
+0    1.0
+1    NaN
+2    NaN
+dtype: float64
+```
+
+## `NA`나 `None`을 주면 그대로예요
+
+`value`가 `NA`나 `None`이면 채울 것이 없으므로 결과는 원래와 같아요.
+
+```python
+>>> sold.fillna(None)
+mon       3
+tue    <NA>
+wed       5
+thu    <NA>
+Name: sold, dtype: int64
+```
+
+## DataFrame: 모든 컬럼, 또는 컬럼마다
+
+DataFrame에 값 하나를 주면 모든 컬럼의 `NA`를 그 값으로 채워요. 모든 컬럼에 들어갈 수 있는 값이어야 해요.
+
+```python
+>>> df = sd.frame.DataFrame({
+...     "name": ["ann", "bob", None],
+...     "math": [90, None, 70],
+...     "eng": [85.0, None, 60.0],
+... })
+>>> df[["math", "eng"]].fillna(0)
+   math   eng
+0    90  85.0
+1     0   0.0
+2    70  60.0
+```
+
+dtype이 다른 컬럼이 섞여 있으면 값 하나로는 채울 수 없는 경우가 많아요. 위에서 `0`은 string 컬럼 `name`에 들어갈 수 없어서 `df.fillna(0)`은 에러예요. 이때는 `{컬럼 이름: 값}` dict로 컬럼마다 값을 줘요. dict에 없는 컬럼은 그대로예요.
+
+```python
+>>> df.fillna(0)
+Traceback (most recent call last):
+    ...
+TypeError: fillna(): cannot store int64 values in a column of dtype string
+>>> df.fillna({"name": "?", "math": 0})
+  name  math   eng
+0  ann    90  85.0
+1  bob     0  <NA>
+2    ?    70  60.0
+```
+
+dict에 없는 컬럼 이름이 있으면 `KeyError`예요. 오타를 조용히 넘기지 않아요.
+
+```python
+>>> df.fillna({"maths": 0})
+Traceback (most recent call last):
+    ...
+KeyError: "fillna(): no column 'maths'"
+```
+
+## 조심할 점
+
+### `value`는 위치로만 줘요
+
+`value`는 주 인자라서 위치로만 받아요. `fillna(value=0)`은 `TypeError`예요. 주 인자를 위치로만 받는 이유는 [데이터프레임의 기본](/api/frame/basics/)에 있어요.
+
+```python
+>>> sold.fillna(value=0)
+Traceback (most recent call last):
+    ...
+TypeError: Series.fillna() got some positional-only arguments passed as keyword arguments: 'value'
+```
+
+### 값은 스칼라 하나예요
+
+list, 배열, Series를 주어 행마다 다른 값으로 채우는 기능은 없어요. 그렇게 하려면 마스크로 행을 골라 대입해요.
+
+```python
+>>> sold.fillna([0, 0])
+Traceback (most recent call last):
+    ...
+TypeError: fillna(): 'value' must be None, a bool, int, float or str, not list
+```
+
+앞이나 뒤의 값으로 채우는 기능(pandas의 `ffill`, `bfill`)도 없어요.
+
+### 채우는 것이 맞는지 먼저 생각하세요
+
+빈칸을 0으로 채우면 평균이 달라져요. "측정하지 못한 기온"을 0도로 채우면 평균 기온이 크게 내려가요. 리덕션(`sum`, `mean` 등)은 기본으로 `NA`를 건너뛰므로, 빈칸의 뜻이 분명하지 않으면 채우지 않고 그대로 두는 것이 나을 때가 많아요.
+
+```python
+>>> temp.mean()
+20.25
+>>> temp.fillna(0).mean()
+13.5
+```
+
+## 비슷한 함수와의 차이
+
+| 하고 싶은 것 | 쓸 것 |
+|---|---|
+| `NA`를 값 하나로 채우기 | `fillna(value)` |
+| 컬럼마다 다른 값으로 채우기 | `df.fillna({"a": 0, "b": "?"})` |
+| `NA`가 있는 행을 지우기 | [`dropna`](/api/frame/dropna/) |
+| dtype을 바꾸기 (손실이 있어도) | [`astype`](/api/frame/astype/) |
+| 조건에 맞는 칸에 값 넣기 | 마스크로 대입 `s.loc[mask] = v` ([대입과 복사](/api/frame/assign/)) |
+| NaN을 다른 값으로 바꾸기 | `s.loc[s.isnan()] = v` |
+
+## pandas를 아는 분께
+
+- `value`는 위치로만 받아요. `axis`, `inplace`, `limit`이 없어요.
+- 채우는 값은 dtype만 보고 위로만 바꿔요. pandas의 nullable `Int64`는 값을 보고 판단해서 `fillna(2.0)`은 받고 `fillna(1.5)`만 `TypeError`예요. 여기서는 둘 다 `TypeError`예요.
+- string 컬럼에 숫자를 채우면 `TypeError`예요. pandas는 object 컬럼으로 바꾸고 경고를 내요. DataFrame의 `fillna(0)`도 pandas는 문자열 컬럼에 `0`을 넣어요.
+- NaN은 채우지 않아요. pandas의 기본 float 컬럼에서는 NaN이 결측값이라 채워져요.
+- 값으로 Series나 DataFrame을 받지 않아요. dict는 DataFrame에서만 받아요.

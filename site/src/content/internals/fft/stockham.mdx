@@ -1,0 +1,530 @@
+---
+title: Stockham 혼합 기수
+group: 복소 변환
+order: 1
+summary: 소인수가 모두 31 이하인 길이의 복소 변환을 계산하는 자체 Stockham 혼합 기수 FFT를 설명해요. 한 단의 식과 그것이 자연 순서로 끝나는 까닭, 기수의 순서, 기수 2·4와 홀수 기수의 나비, FMA로 적은 복소 곱, 정확한 정수 연산으로 각을 접는 회전 인자 표, 엮은 꼴과 나눈 꼴을 오가는 메모리 배치, 나비마다 증명한 오차 한계, 두 줄 커널이 같은 비트를 내는 까닭을 다뤄요.
+seeAlso: [overview, bluestein, four-step, determinism]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import PlaneFig from '../../../components/fig/PlaneFig.astro';
+
+export const sBase = [[0, 7, 1, 7], [0, 5, 1, 7], [0, 3, 1, 7], [0, 1, 1, 7], [0, 7, 1, 5], [0, 5, 1, 5], [0, 3, 1, 5], [0, 1, 1, 5], [0, 7, 1, 4], [0, 5, 1, 4], [0, 3, 1, 4], [0, 1, 1, 4], [0, 6, 1, 3], [0, 4, 1, 3], [0, 2, 1, 3], [0, 0, 1, 3], [0, 6, 1, 1], [0, 4, 1, 1], [0, 2, 1, 1], [0, 0, 1, 1], [0, 6, 1, 0], [0, 4, 1, 0], [0, 2, 1, 0], [0, 0, 1, 0], [1, 7, 2, 7], [1, 3, 2, 7], [1, 6, 2, 6], [1, 2, 2, 6], [1, 5, 2, 5], [1, 1, 2, 5], [1, 4, 2, 4], [1, 0, 2, 4], [1, 7, 2, 3], [1, 3, 2, 3], [1, 5, 2, 1], [1, 1, 2, 1], [1, 4, 2, 0], [1, 0, 2, 0]];
+export const sMain = [[0, 7, 1, 6], [0, 5, 1, 6], [0, 3, 1, 6], [0, 1, 1, 6], [0, 6, 1, 2], [0, 4, 1, 2], [0, 2, 1, 2], [0, 0, 1, 2], [1, 6, 2, 2], [1, 2, 2, 2]];
+export const sCol = (c) => [0, 1, 2, 3, 4, 5, 6, 7].map((i) => [c, 7 - i]);
+export const sIdx = ['0', '1', '2', '3', '4', '5', '6', '7'];
+
+## 한눈에 보기
+
+길이 $n$의 이산 푸리에 변환은
+
+$$
+y_k = \sum_{j=0}^{n-1} x_j\, w_n^{jk}, \qquad w_n = e^{-2\pi i/n}, \qquad k = 0, \dots, n-1
+$$
+
+이에요. 정의대로 더하면 출력 하나에 곱셈 $n$번, 전체에 $n^2$번이 들어요. FFT는 $n = r_1 r_2 \cdots r_S$로 나눠 길이 $r_i$의 작은 변환(나비)을 단마다 $n/r_i$번 돌리고, 그 사이에 회전 인자 $w_n^t$를 곱해요. 그러면 일이 $n \sum_i r_i$에 비례하고, 기수가 작으면 $n \log n$에 가까워져요.
+
+`sd.fft`의 혼합 기수는 이 분해를 Stockham 꼴로 해요.
+
+- **소인수가 모두 31 이하인 길이**를 직접 계산해요. 기수는 4, 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31이에요. 그보다 큰 소인수가 있는 길이는 [Bluestein](/internals/fft/bluestein/)으로, $2^{15}$ 이상은 [4단계 분해](/internals/fft/four-step/)로 가지만 두 길의 안쪽 변환도 결국 이 커널이에요.
+- **비트 뒤집기 순열이 없어요.** 단마다 출력을 다른 버퍼에 쓰면서 자리를 바꿔 놓아서, 마지막 단이 끝나면 결과가 이미 자연 순서예요.
+- **나비는 NEON 레지스터의 두 레인을 모두 써요.** 단 사이의 버퍼를 실수부 배열과 허수부 배열로 나눠 두고, 한 레지스터에 이웃한 두 부분 변환의 같은 자리를 실어요.
+- **결과는 $n$만의 함수예요.** 기수의 순서, 회전 인자 표, 연산의 순서가 모두 $n$에서 정해지고 정렬, 간격, 배치, 값으로 고르는 것이 없어요.
+
+파일은 `csrc/fft/cfft.hpp`(단, 나비, 계획)와 `csrc/fft/twiddle.hpp`(회전 인자)예요.
+
+## 한 단의 식
+
+단 하나가 하는 일을 식으로 적어 볼게요. 어떤 단에 들어오는 배열은 길이 $L$의 부분 변환 $s = n/L$개를 품고 있어요. 부분 변환 $q$($0 \le q \lt s$)의 $i$번째 원소는 $x[q + s\,i]$에 있어요. 첫 단은 $s = 1$, $L = n$이라 입력 전체가 부분 변환 하나예요.
+
+길이 $L$의 변환 하나 $U_K = \sum_{i=0}^{L-1} u_i\, w_L^{iK}$를 기수 $r$로 쪼개요. $L = rm$이라 하고 입력 색인을 $i = p + jm$($0 \le p \lt m$, $0 \le j \lt r$), 출력 색인을 $K = k + r\kappa$($0 \le k \lt r$, $0 \le \kappa \lt m$)로 적으면
+
+$$
+w_L^{(p + jm)(k + r\kappa)} = w_L^{pk}\, w_m^{p\kappa}\, w_r^{jk}\, w_L^{jmr\kappa} = w_L^{pk}\, w_m^{p\kappa}\, w_r^{jk}
+$$
+
+이에요($w_L^{r} = w_m$, $w_L^{m} = w_r$, $w_L^{rm} = 1$). 그래서
+
+$$
+U_{k + r\kappa} = \sum_{p=0}^{m-1} w_m^{p\kappa} \underbrace{\Big[\, w_L^{pk} \sum_{j=0}^{r-1} u_{p + jm}\, w_r^{jk} \Big]}_{v^{(k)}_p}
+$$
+
+이고, 대괄호 안이 길이 $m$의 새 부분 변환 $v^{(k)}$의 입력이에요. 길이 $L$의 문제 하나가 길이 $m$의 문제 $r$개가 돼요. 대괄호는 길이 $r$의 변환(나비) 하나와 회전 인자 $w_L^{pk}$ 곱이에요. 출력을 먼저 나누고 회전 인자를 나비 뒤에 곱하니 주파수 솎음(decimation in frequency)이에요.
+
+Stockham 꼴은 새 부분 변환을 놓는 자리에 있어요. 새 간격은 $s' = sr$이고, 옛 부분 변환 $q$의 $k$번째 자식을 새 부분 변환 $q' = q + sk$로 둬요. 그 $p$번째 원소의 자리는 $q' + s'p = q + s(rp + k)$라서 한 단의 식이 이렇게 돼요.
+
+$$
+y[q + s(rp + k)] = w_L^{pk} \sum_{j=0}^{r-1} x[q + s(p + jm)]\, w_r^{jk}, \qquad 0 \le q \lt s,\ 0 \le p \lt m,\ 0 \le k \lt r
+$$
+
+다음 단은 $L/r$과 $sr$로 같은 일을 해요. 마지막 단은 $m = 1$이라 $p = 0$뿐이고 회전 인자가 없어요.
+
+**왜 자연 순서로 끝나는가.** 마지막 단 뒤에 부분 변환은 원소가 하나씩이고, 부분 변환 $q'$의 값이 출력 $y_{q'}$이에요. 단 $i$의 기수를 $r_i$, 그 단에서 고른 자식 번호를 $k_i$라 하면 위의 규칙 $q' = q + sk$를 따라 $q' = k_0 + r_0(k_1 + r_1(k_2 + \cdots))$가 돼요. 한편 출력 색인은 단마다 $K = k + r\kappa$로 쪼갰으니 원래 변환의 출력 색인도 $K = k_0 + r_0(k_1 + r_1(k_2 + \cdots))$예요. 두 혼합 기수 전개가 같으니 $q' = K$이고, 순열을 따로 할 필요가 없어요. 대신 단마다 입력과 출력이 다른 버퍼여야 해요(제자리 계산이 안 돼요).
+
+<Fig caption="n = 8, 기수 4 다음 2의 데이터 흐름. 1단은 간격 2로 떨어진 넷을 묶고 2단은 간격 4로 떨어진 둘을 묶어요. 진한 선은 출력 2에 닿는 계산이고, 마지막 열은 이미 자연 순서예요.">
+  <PlaneFig
+    label="길이 8 Stockham 변환의 세 열(입력, 1단 뒤, 2단 뒤)과 그 사이를 잇는 선, 출력 2로 가는 선만 진하게"
+    domain={[-0.5, 2.5]}
+    range={[-0.6, 7.6]}
+    equal={false}
+    width={420}
+    height={300}
+    xTicks={[{ v: 0, label: '입력' }, { v: 1, label: '1단 (r=4)' }, { v: 2, label: '2단 (r=2)' }]}
+    layers={[
+      { kind: 'segments', segs: sBase, tone: 'faint', width: 1 },
+      { kind: 'segments', segs: sMain, tone: 'main', width: 1.8 },
+      { kind: 'points', pts: sCol(0), tone: 'ink', size: 3 },
+      { kind: 'points', pts: sCol(1), tone: 'base', size: 3 },
+      { kind: 'points', pts: sCol(2), tone: 'ink', size: 3, labels: sIdx },
+    ]}
+  />
+</Fig>
+
+## 기수의 순서
+
+기수의 순서는 $n$의 소인수 분해에서 정해져요. 4를 되는 데까지, 2의 지수가 홀수면 2 하나, 그다음 3, 5, 7, …, 31을 작은 것부터예요.
+
+```cpp
+// csrc/fft/cfft.hpp
+inline std::vector<int> mixed_radices(int64_t n) {
+    std::vector<int> out;
+    if (n < 2) return out;
+    int64_t rest = n;
+    int twos = 0;
+    while (rest % 2 == 0) rest /= 2, ++twos;
+    for (; twos >= 2; twos -= 2) out.push_back(4);
+    if (twos == 1) out.push_back(2);
+    for (int p : kOddRadices) {
+        while (rest % p == 0) rest /= p, out.push_back(p);
+    }
+    if (rest != 1) out.clear();
+    return out;
+}
+```
+
+나누고 남은 것이 1이 아니면 빈 목록을 돌려주고, 그 길이는 혼합 기수가 아니에요(`is_mixed_length`가 거짓). 길이 1은 단이 없어요.
+
+```python
+>>> import stardust as sd
+>>> C = sd._core.fft
+>>> [(n, C._plan_info(n)["radices"]) for n in (8, 32, 360, 1001, 3 * 5 * 7 * 11 * 13)]
+[(8, [4, 2]), (32, [4, 4, 2]), (360, [4, 2, 3, 3, 5]), (1001, [7, 11, 13]), (15015, [3, 5, 7, 11, 13])]
+```
+
+4를 2보다 앞세우는 것은 기수 4의 나비가 곱셈 없이 두 수준($\log_2 4 = 2$)을 처리하기 때문이에요. 기수 2를 두 번 하는 것보다 메모리를 한 번 덜 지나고, 수준 하나에 드는 오차도 작아요(아래 표의 3.750u 대 4.914u).
+
+## 나비
+
+### 기수 2와 4
+
+```cpp
+// csrc/fft/cfft.hpp
+template <>
+struct Butterfly<4> {
+    static inline void run(CV* a) {
+        const CV t0 = cadd(a[0], a[2]), t1 = csub(a[0], a[2]);
+        const CV t2 = cadd(a[1], a[3]), t3 = mul_neg_i(csub(a[1], a[3]));
+        a[0] = cadd(t0, t2);
+        a[2] = csub(t0, t2);
+        a[1] = cadd(t1, t3);
+        a[3] = csub(t1, t3);
+    }
+};
+```
+
+$w_4 = -i$라서 길이 4의 변환은 $y_1 = (a_0 - a_2) - i(a_1 - a_3)$처럼 덧셈과 $-i$ 곱만으로 돼요. $-i(a + bi) = b - ai$는 실수부와 허수부를 바꾸고 부호 하나를 뒤집는 일이라 정확해요(`mul_neg_i`). 기수 2는 $a_0 \pm a_1$ 둘이에요.
+
+### 홀수 기수의 실수 꼴
+
+홀수 $p$의 나비는 길이 $p$의 변환을 정의대로 하되, $j$와 $p - j$를 짝지어 일을 반으로 줄여요. $w_p^{(p-j)k} = \overline{w_p^{jk}}$이므로
+
+$$
+a_j w_p^{jk} + a_{p-j} \overline{w_p^{jk}} = (a_j + a_{p-j})\cos\tfrac{2\pi jk}{p} - i\,(a_j - a_{p-j})\sin\tfrac{2\pi jk}{p}
+$$
+
+예요. $h = (p - 1)/2$, $t_j = a_j + a_{p-j}$, $d_j = a_j - a_{p-j}$로 쓰면
+
+$$
+y_0 = a_0 + \sum_{j=1}^{h} t_j, \qquad A_k = a_0 + \sum_{j=1}^{h} \cos\tfrac{2\pi jk}{p}\, t_j, \qquad B_k = \sum_{j=1}^{h} \sin\tfrac{2\pi jk}{p}\, d_j,
+$$
+
+$$
+y_k = A_k - iB_k, \qquad y_{p-k} = A_k + iB_k \qquad (k = 1, \dots, h)
+$$
+
+이에요. 복소수에 실수 상수를 곱하니 실수부와 허수부에 같은 곱이 하나씩이고, 복소 곱셈은 하나도 없어요.
+
+```cpp
+// csrc/fft/cfft.hpp
+template <int R>
+struct Butterfly {
+    // The odd radices: the real form of the header comment.
+    static inline void run(CV* a) {
+        constexpr int H = (R - 1) / 2;
+        CV t[H + 1], d[H + 1];
+        for (int j = 1; j <= H; ++j) {
+            t[j] = cadd(a[j], a[R - j]);
+            d[j] = csub(a[j], a[R - j]);
+        }
+        CV y[R];
+        y[0] = a[0];
+        for (int j = 1; j <= H; ++j) y[0] = cadd(y[0], t[j]);
+        for (int k = 1; k <= H; ++k) {
+            CV A = a[0];
+            for (int j = 1; j <= H; ++j) {
+                const V c = vdupq_n_f64(OddConst<R>::c[(j * k) % R]);
+                A = {vfmaq_f64(A.re, t[j].re, c), vfmaq_f64(A.im, t[j].im, c)};
+            }
+            const V s1 = vdupq_n_f64(OddConst<R>::s[k % R]);
+            CV B = {vmulq_f64(d[1].re, s1), vmulq_f64(d[1].im, s1)};
+            for (int j = 2; j <= H; ++j) {
+                const V s = vdupq_n_f64(OddConst<R>::s[(j * k) % R]);
+                B = {vfmaq_f64(B.re, d[j].re, s), vfmaq_f64(B.im, d[j].im, s)};
+            }
+            y[k] = {vaddq_f64(A.re, B.im), vsubq_f64(A.im, B.re)};  // A - i B
+            y[R - k] = {vsubq_f64(A.re, B.im), vaddq_f64(A.im, B.re)};  // A + i B
+        }
+        for (int k = 0; k < R; ++k) a[k] = y[k];
+    }
+};
+```
+
+- **$A_k$와 $B_k$는 FMA 사슬이에요.** $A_k$는 $a_0$에서 출발해 $t_j \cdot c$를 하나씩 FMA로 더하고, $B_k$는 첫 곱 뒤에 FMA를 이어요. 더하는 순서는 $j = 1, \dots, h$로 고정이에요.
+- **$A - iB$는 덧셈 둘이에요.** $(A_r + iA_i) - i(B_r + iB_i) = (A_r + B_i) + i(A_i - B_r)$라서 곱셈 없이 실수부와 허수부를 엇갈려 더하고 빼요.
+- **상수는 표 하나예요.** `OddConst<R>`는 $\cos(2\pi m/p)$와 $\sin(2\pi m/p)$($m = 0, \dots, p - 1$)를 Arb(구간 산술)로 300비트까지 구해 가장 가까운 double로 한 번 반올림한 값이에요. 색인 $(jk) \bmod p$로 찾으니 $j$와 $k$가 바뀌어도 같은 상수를 써요. 표는 $c_m = c_{p-m}$, $s_m = -s_{p-m}$를 정확히 지키고, 테스트가 그것과 "가장 가까운 double"임을 확인해요.
+
+일의 양은 $k$마다 FMA $2h$개(실수부와 허수부에 각각)라서 나비 하나에 $p^2$에 비례하고, 원소 하나로 나누면 $p$에 비례해요. 반올림도 $A_k$와 $B_k$의 사슬 길이 $h$만큼 쌓이니, 기수가 커질수록 수준($\log_2 p$) 하나에 드는 오차가 커져요. 이것이 기수에 상한을 두는 까닭이에요(아래 "오차 한계").
+
+## 복소 곱과 FMA
+
+회전 인자를 곱하는 복소 곱은 실수부와 허수부마다 곱 하나와 FMA 하나예요.
+
+```cpp
+// csrc/fft/cfft.hpp
+inline CV cmul(CV a, V wr, V wi) {
+    return {vfmsq_f64(vmulq_f64(a.re, wr), a.im, wi), vfmaq_f64(vmulq_f64(a.re, wi), a.im, wr)};
+}
+```
+
+실수부는 $\mathrm{fl}(a_r w_r)$에서 $a_i w_i$를 FMA로 빼고, 허수부는 $\mathrm{fl}(a_r w_i)$에 $a_i w_r$을 FMA로 더해요. 이 꼴의 상대오차는 $2u$ 이하라는 것이 증명되어 있어요(Jeannerod, Kornerup, Louvet, Muller 2017). 빌드가 `-ffp-contract=off`라서 컴파일러가 다른 곱과 덧셈을 FMA로 합치는 일은 없고, FMA는 이렇게 코드에 적은 자리에만 있어요.
+
+## 회전 인자
+
+$w_n^t = e^{-2\pi i t/n}$은 정수 $t$와 $n$에서 계산해요. `double`로 $2\pi t/n$을 만들면 각을 만드는 순간 반올림이 들어가고, $t$가 크면 그 오차가 $t$에 비례해 커져요. `twiddle()`은 각을 정확한 정수 연산으로 접은 뒤에야 실수로 바꿔요.
+
+```cpp
+// csrc/fft/twiddle.hpp
+inline Twiddle twiddle(int64_t k, int64_t n) {
+    k %= n;
+    if (k < 0) k += n;
+    const int64_t o = (8 * k) / n;
+    const int64_t r = 8 * k - o * n;
+    SinCos a;     // (sin, cos) of the angle measured from the quarter turn q
+    int64_t q;    // quarter turns
+    if (o % 2 == 0) {
+        q = o / 2;
+        a = detail::octant_sincos(r, n);
+    } else {
+        q = (o + 1) / 2;
+        const SinCos b = detail::octant_sincos(n - r, n);
+        a = {-b.s, b.c};
+    }
+    double c, s;  // cos and sin of 2 pi k / n
+    switch (q & 3) {
+        case 0: c = a.c, s = a.s; break;
+        case 1: c = -a.s, s = a.c; break;
+        case 2: c = -a.c, s = -a.s; break;
+        default: c = a.s, s = -a.c; break;
+    }
+    return {c, -s};
+}
+```
+
+1. **팔분원 접기.** $o = \lfloor 8k/n \rfloor$, $r = 8k - on$이면 $2\pi k/n = o\cdot\frac{\pi}{4} + \frac{\pi}{4}\cdot\frac{r}{n}$이에요. 짝수 팔분원은 사분원 $o/2$개 더하기 $\theta = \frac{\pi}{4}\frac{r}{n}$이고, 홀수 팔분원은 사분원 $(o + 1)/2$개 빼기 $\theta' = \frac{\pi}{4}\frac{n - r}{n}$이에요. 어느 쪽이든 실제로 sin과 cos을 구하는 각은 $[0, \pi/4]$에 있어요.
+2. **사분원은 정확해요.** $\pi/2$를 더하는 것은 $(\cos, \sin)$을 $(-\sin, \cos)$로 바꾸는 일이라 부호와 자리만 바뀌어요.
+3. **작은 각은 double-double로 만들어요.**
+
+```cpp
+// csrc/fft/twiddle.hpp
+inline SinCos octant_sincos(int64_t num, int64_t den) {
+    if (num == 0) return {0.0, 1.0};
+    const double dn = static_cast<double>(num), dd = static_cast<double>(den);
+    const double q = dn / dd;
+    const double e = std::fma(-q, dd, dn) / dd;  // num - q den is exact (num, den < 2^53)
+    const double h = kQuarterPiHi * q;
+    const double l = std::fma(kQuarterPiHi, q, -h) + (kQuarterPiHi * e + kQuarterPiLo * q);
+    const double th = h + l;
+    const double tl = l - (th - h);
+    const SinCos sc = sd::sincos(th);
+    return {sc.s + tl * sc.c, sc.c - tl * sc.s};
+}
+```
+
+$q = \mathrm{fl}(r/n)$의 나머지 $r - qn$은 FMA로 정확히 구해지니 $q + e$가 $r/n$의 double-double이에요. 여기에 $\pi/4$의 double-double(`kQuarterPiHi`, `kQuarterPiLo`)을 곱해 $\theta = t_h + t_l$을 얻고, 높은 부분 $t_h$의 sin과 cos을 한 번의 호출(`sd::sincos`, 인자 환원 한 번으로 둘을 함께 구해요)로 구한 뒤 낮은 부분으로 1차 보정해요. $\sin(h + l) = \sin h + l\cos h$, $\cos(h + l) = \cos h - l\sin h$이고 버린 $l^2$ 항은 $2^{-106}$ 아래예요.
+
+그래서 $w$는 $k \bmod n$과 $n$만의 함수이고, 실수부와 허수부가 각각 참값의 약 1ULP 안이에요. 계획들의 표를 Arb와 견준 테스트에서 $\lvert \hat w - w \rvert$는 $1.04u$ 이하였고, 증명에서는 여유를 두어 $\mu \le 1.5u$로 놓아요. 사분원의 경계($k$가 $n/4$의 배수)에서는 접은 각이 0이라 값이 정확해요.
+
+```python
+>>> C._twiddles(8).tolist()
+[[1.0, -0.0], [0.7071067811865475, -0.7071067811865476], [-0.0, -1.0], [-0.7071067811865476, -0.7071067811865475], [-1.0, 0.0], [-0.7071067811865475, 0.7071067811865476], [0.0, 1.0], [0.7071067811865476, 0.7071067811865475]]
+```
+
+$k = 0, 2, 4, 6$은 사분원이라 0과 $\pm 1$이 정확히 나와요. $k = 1$의 각은 홀수 팔분원의 끝, 곧 $\theta' = \pi/4$라서 sin과 cos을 따로 구해요. 참값은 둘 다 $\sqrt 2/2$이고 가장 가까운 double은 `0.7071067811865476`인데, cos 쪽은 그보다 1ULP 작아요. 표의 값은 칸마다 1ULP 안이라는 것이 약속이고, 가장 가까운 double이라는 약속은 아니에요. 정확도 계약의 증명은 그 1ULP($\mu$)를 셈에 넣어요.
+
+### 단마다의 표
+
+계획은 단마다 그 단이 쓰는 $w_L^{pk} = e^{-2\pi i\, pks/n}$을 모두 미리 계산해 둬요.
+
+```cpp
+        // csrc/fft/cfft.hpp
+        radices_ = mixed_radices(n);
+        int64_t s = 1;
+        for (size_t i = 0; i < radices_.size(); ++i) {
+            const int r = radices_[i];
+            const int64_t L = n / s, m = L / r;
+            Table t;
+            t.r = r, t.s = s, t.m = m;
+            const bool has = i == 0 ? m > 1 || radices_.size() > 1 : m > 1;
+            if (has) {
+                t.re.resize(static_cast<size_t>(m * (r - 1)));
+                t.im.resize(t.re.size());
+                for (int64_t p = 0; p < m; ++p) {
+                    for (int k = 1; k < r; ++k) {
+                        const Twiddle w = twiddle(p * k * s, n);  // w_L^(p k) = e^(-2 pi i p k s / n)
+                        const size_t at =
+                            i == 0 ? static_cast<size_t>((k - 1) * m + p) : static_cast<size_t>(p * (r - 1) + k - 1);
+                        t.re[at] = w.re, t.im[at] = w.im;
+                    }
+                }
+            }
+            stages_.push_back(std::move(t));
+            s *= r;
+        }
+```
+
+- **표의 값은 언제나 `twiddle(t, n)`이에요.** 단 $i$의 $w_L^{pk}$를 $w_L$의 거듭제곱으로 쌓아 가지 않고 정수 $pks$에서 바로 구해요. 곱해 가며 만들면 오차가 거듭제곱마다 쌓이지만, 이렇게 하면 표의 모든 칸이 같은 1ULP 안이에요.
+- **놓는 순서가 단마다 달라요.** 첫 단은 $(k - 1)m + p$라서 $p$가 이웃해요. 첫 단은 이웃한 $p$ 둘을 한 레지스터에 싣기 때문에 회전 인자도 `vld1q` 한 번으로 둘을 읽어요. 나머지 단은 $p(r - 1) + k - 1$이라 한 $p$의 $r - 1$개가 이웃해요. 이 단들은 $p$ 하나를 잡고 $q$를 도니, 회전 인자는 $p$마다 한 번 레지스터 두 레인에 복사해 두고 써요.
+- **크기는 $n - 1$칸이에요.** 단 $i$의 표는 $m_i(r_i - 1) = L_i - L_{i+1}$칸이고($m_i = L_{i+1}$), 단을 모두 더하면 $L_0 - L_S = n - 1$로 맞줄임돼요. 칸 하나가 double 둘이라 혼합 기수 계획이 원소 하나에 약 16바이트인 까닭이에요.
+
+## 엮은 꼴과 나눈 꼴
+
+`sd.ndarray`의 complex128은 실수부와 허수부가 번갈아 놓인 엮은 꼴(re, im, re, im, …)이에요. 그대로 NEON 레지스터에 실으면 한 레지스터에 복소수 하나의 실수부와 허수부가 들어가서, 복소 곱마다 레인을 섞어야 해요. 그래서 단 사이에는 실수부 $n$개 다음에 허수부 $n$개를 두는 나눈 꼴(split)을 써요. 그러면 한 레지스터의 두 레인이 이웃한 두 부분 변환의 같은 자리를 담고, 나비의 모든 연산이 두 레인을 모두 쓰면서 레인을 섞지 않아요.
+
+엮은 꼴에서 나눈 꼴로 바꾸는 패스는 따로 없어요. 첫 단이 읽을 때 `vld2q`(두 개씩 엇갈려 읽어 둘로 푸는 적재)로 풀고, 마지막 단이 쓸 때 `vst2q`로 엮어요.
+
+```cpp
+// csrc/fft/cfft.hpp
+template <int R, bool Swap>
+void stage_first(const double* x, double* yr, double* yi, int64_t m, const double* twr, const double* twi) {
+    int64_t p = 0;
+    for (; p + 1 < m; p += 2) {
+        CV a[R];
+        for (int j = 0; j < R; ++j) a[j] = load_il2<Swap>(x + 2 * (p + j * m));
+        Butterfly<R>::run(a);
+        for (int k = 1; k < R; ++k) {
+            a[k] = cmul(a[k], vld1q_f64(twr + (k - 1) * m + p), vld1q_f64(twi + (k - 1) * m + p));
+        }
+        if constexpr (R == 2) {
+            vst2q_f64(yr + 2 * p, (float64x2x2_t{{a[0].re, a[1].re}}));
+            vst2q_f64(yi + 2 * p, (float64x2x2_t{{a[0].im, a[1].im}}));
+        } else if constexpr (R == 3) {
+            vst3q_f64(yr + 3 * p, (float64x2x3_t{{a[0].re, a[1].re, a[2].re}}));
+            vst3q_f64(yi + 3 * p, (float64x2x3_t{{a[0].im, a[1].im, a[2].im}}));
+        } else if constexpr (R == 4) {
+            vst4q_f64(yr + 4 * p, (float64x2x4_t{{a[0].re, a[1].re, a[2].re, a[3].re}}));
+            vst4q_f64(yi + 4 * p, (float64x2x4_t{{a[0].im, a[1].im, a[2].im, a[3].im}}));
+        } else {
+            for (int k = 0; k < R; ++k) {
+                yr[R * p + k] = vgetq_lane_f64(a[k].re, 0);
+                yi[R * p + k] = vgetq_lane_f64(a[k].im, 0);
+                yr[R * p + R + k] = vgetq_lane_f64(a[k].re, 1);
+                yi[R * p + R + k] = vgetq_lane_f64(a[k].im, 1);
+            }
+        }
+    }
+    if (p < m) {
+        CV a[R];
+        for (int j = 0; j < R; ++j) a[j] = load_il1<Swap>(x + 2 * (p + j * m));
+        Butterfly<R>::run(a);
+        for (int k = 1; k < R; ++k) {
+            a[k] = cmul(a[k], vld1q_dup_f64(twr + (k - 1) * m + p), vld1q_dup_f64(twi + (k - 1) * m + p));
+        }
+        for (int k = 0; k < R; ++k) store_split1(yr, yi, R * p + k, a[k]);
+    }
+}
+```
+
+- **첫 단($s = 1$)은 $p$를 안쪽에서 돌아요.** 출력 자리가 $rp + k$라서 이웃한 $p$ 둘의 출력은 $2r$칸의 이어진 구간이에요. 레지스터 $r$개(각각 $k$ 하나, 두 레인이 $p$와 $p + 1$)를 `vst2q`, `vst3q`, `vst4q`로 엇갈려 쓰면 그 구간이 한 번에 채워져요. 기수 5 이상은 레인을 하나씩 꺼내 써요.
+- **나머지 단은 $q$를 안쪽에서 돌아요.** 출력 자리 $q + s(rp + k)$에서 $q$가 이웃하니 두 레인이 $q$와 $q + 1$이고, 읽기와 쓰기가 모두 `vld1q`, `vst1q` 한 번이에요. 회전 인자는 $p$에만 달려 있어 고리 밖에서 한 번 복사해요. $p = 0$이면 회전 인자가 1이라 곱하지 않아요.
+- **고리의 길이가 홀수면 마지막 자리 하나가 남아요.** 남은 자리는 두 레인에 같은 값을 넣어(`load_il1`, `load_split1`) 같은 벡터 코드로 계산하고 첫 레인만 저장해요. 레인별 연산은 레인마다 독립이라 짝이 있던 자리와 혼자 남은 자리가 같은 연산을 거쳐요([결정성](/internals/fft/determinism/)의 "홀수 길이의 꼬리").
+- **`Swap`은 역변환이에요.** `load_il2<true>`는 읽으면서 실수부와 허수부를 바꾸고, 마지막 단의 `store_il2<true>`도 쓰면서 바꿔요. $\mathrm{swap}(z) = i\bar z$라서 $\mathrm{swap}(F(\mathrm{swap}(x)))$가 부호 $+$의 변환이 되고, 가운데 단들은 정변환과 똑같아요.
+
+첫 단은 $p = 0$에도 표의 1을 곱해요. 유한한 값에는 $a_r \cdot 1 - a_i \cdot 0 = a_r$이 정확해서 곱하지 않는 것과 같은 비트예요. 이 차이는 두 줄 커널에서 다시 나와요.
+
+### 버퍼를 오가는 순서
+
+단은 입력과 출력이 다른 버퍼여야 해요. 계획은 작업 버퍼 $2n$개의 double 하나와 출력 배열 자신을 번갈아 써요.
+
+```cpp
+    // csrc/fft/cfft.hpp
+    template <bool Swap>
+    void run(const double* x, double* y, double* work) const {
+        if (col_) {
+            run_four_step<Swap>(x, y, work);
+            return;
+        }
+        const int64_t n = n_;
+        const int S = static_cast<int>(stages_.size());
+        if (S == 0) {  // n = 1
+            y[0] = x[0], y[1] = x[1];
+            return;
+        }
+        if (S == 1) {
+            switch (stages_[0].r) {
+                case 2: detail::stage_single<2, Swap>(x, y); break;
+                case 3: detail::stage_single<3, Swap>(x, y); break;
+                case 4: detail::stage_single<4, Swap>(x, y); break;
+                case 5: detail::stage_single<5, Swap>(x, y); break;
+                case 7: detail::stage_single<7, Swap>(x, y); break;
+                case 11: detail::stage_single<11, Swap>(x, y); break;
+                case 13: detail::stage_single<13, Swap>(x, y); break;
+                case 17: detail::stage_single<17, Swap>(x, y); break;
+                case 19: detail::stage_single<19, Swap>(x, y); break;
+                case 23: detail::stage_single<23, Swap>(x, y); break;
+                case 29: detail::stage_single<29, Swap>(x, y); break;
+                default: detail::stage_single<31, Swap>(x, y); break;
+            }
+            return;
+        }
+        double* const A[2] = {y, y + n};  // the output's memory as a split buffer
+        double* const B[2] = {work, work + n};  // the work buffer
+        const double* in_r = nullptr;
+        const double* in_i = nullptr;
+        for (int i = 0; i < S; ++i) {
+            const Table& t = stages_[static_cast<size_t>(i)];
+            double* const* out = ((S - 2 - i) % 2 == 0) ? B : A;  // the last stage reads B
+            if (i == 0) {
+                first<Swap>(t, x, out[0], out[1]);
+            } else if (i == S - 1) {
+                inner<true, Swap>(t, in_r, in_i, nullptr, nullptr, y);
+            } else {
+                inner<false, false>(t, in_r, in_i, out[0], out[1], nullptr);
+            }
+            in_r = out[0], in_i = out[1];
+        }
+    }
+```
+
+- 출력 배열 `y`($2n$개의 double)를 나눈 꼴 버퍼 `A`로 빌려 써요. 단의 출력 버퍼는 뒤에서부터 정해서, 끝에서 두 번째 단이 언제나 `B`(작업 버퍼)에 쓰게 해요. 그래야 마지막 단이 `B`를 읽으며 `y`에 엮은 꼴로 쓸 수 있어요.
+- 단이 하나뿐인 길이(2, 3, 4, 5, 7, 11, 13, 17, 19, 23, 29, 31)는 `stage_single`이 엮은 꼴에서 엮은 꼴로 바로 가요. 작업 버퍼를 쓰지 않아요.
+- 그래서 계획의 작업 메모리는 줄마다 $2n$개의 double이고, 입력 `x`와 출력 `y`는 겹치면 안 돼요. 축 구동기가 제자리 패스에서 줄을 버퍼에 먼저 읽어 두는 까닭이에요([구조](/internals/fft/overview/)).
+
+정의대로 더한 값과 견주면 이렇게 돼요. 차이의 노름이 반올림 몇 번 크기예요.
+
+```python
+>>> n = 360
+>>> rng = sd.random.default_rng(0)
+>>> x = rng.random(n) + 1j * rng.random(n)
+>>> k = sd.arange(n)
+>>> d = sd.exp(-2j * sd.pi * (k.reshape((n, 1)) * k % n) / n) @ x
+>>> y = sd.fft.fft(x)
+>>> nrm = lambda v: float(sd.sqrt(sd.sum(sd.abs(v) ** 2)))
+>>> nrm(y - d) / nrm(d) < 1e-13
+True
+```
+
+지수 $jk$는 $n$으로 나눈 나머지로 줄여 각이 $[0, 2\pi)$에 들게 했어요. 그래도 정의대로 한 쪽($n^2$번의 곱과 각마다의 `exp`)이 오히려 덜 정확할 수 있어서, 이 비교는 둘이 반올림 크기 안에서 같다는 것만 보여 줘요. 정확도는 Arb로 만든 참값과 견줘요([정확도와 성능](/internals/fft/accuracy-performance/)).
+
+## 오차 한계
+
+혼합 기수의 정확도 계약은 노름 상대오차예요.
+
+$$
+\lVert \hat y - y \rVert \le \kappa\, L(n)\, u\, \lVert y \rVert, \qquad L(n) = \lceil \log_2 n \rceil,\quad u = 2^{-53}
+$$
+
+$\kappa = 8$이고, 기수 13–31이 하나라도 있는 길이는 $\kappa = 17$이에요. 원소마다의 상대오차가 아니라 노름인 까닭은 출력 칸 하나가 크기 $\lVert x \rVert$인 항들의 상쇄로 0에 가까울 수 있어서예요. 그런 칸은 회전 인자 하나만 반올림해도 상대오차가 1을 넘어요([정확도와 성능](/internals/fft/accuracy-performance/)). 이 한계는 측정이 아니라 코드의 연산을 따라간 증명에서 나와요.
+
+**단의 합성.** 단 하나는 나비(길이 $r$의 DFT, $\sqrt r$ 곱하기 유니터리), 회전 인자의 대각(크기 1이라 유니터리), Stockham의 자리 바꿈(순열)을 이은 것이라 정확하게는 $\sqrt{r}$ 곱하기 유니터리 사상이에요. 정확한 단을 $\Phi$라 할 때 계산한 단이
+
+$$
+\hat z = \Phi(z) + e, \qquad \lVert e \rVert \le \eta\,\sqrt{r}\,\lVert z \rVert
+$$
+
+를 지키면, 뒤의 단들이 노름을 정확히 $\sqrt{\prod r}$배 하므로 오차들이 그 배율로 옮겨 가고, 단을 모두 지나면
+
+$$
+\lVert \hat y - y \rVert \le \Big(\prod_j (1 + \eta_j) - 1\Big) \lVert y \rVert
+$$
+
+예요. $\eta_j \le \kappa\, u \log_2 r_j$이면 $\sum_j \log_2 r_j = \log_2 n \le L(n)$이라 오른쪽이 $(\kappa L(n) + O(L^2 u))\,u$ 아래예요. 어떻게 인수분해하든 $\log_2 r_j$의 합은 $\log_2 n$이에요. 그러니 증명할 것은 기수마다 **수준 하나당 $\eta / \log_2 r \le \kappa u$** 하나예요.
+
+**나비마다의 셈.** 테스트의 증명 도구(`tests/fft/proof.py`)가 나비를 C++가 계산하는 연산 그대로 따라가요. 모든 중간값 $v$(실수부나 허수부 하나)에 정확한 선형식 $\ell_v$($v = \ell_v \cdot x$)와 오차 한계 $E_v \ge 0$(1차까지 $\lvert \hat v - v \rvert \le E_v \cdot \lvert x \rvert$)을 붙이고, 연산마다 이렇게 밀어 가요.
+
+| 연산 | $E$ |
+|---|---|
+| 덧셈 $a \pm b$ | $E_a + E_b + u\lvert \ell_v \rvert$ |
+| 반올림한 상수 $\hat c = c + e$의 곱 | $\lvert c \rvert E_a + \lvert e \rvert \lvert \ell_a \rvert + u\lvert \ell_v \rvert$ |
+| FMA $\hat c\, a + b$ | $\lvert c \rvert E_a + E_b + \lvert e \rvert \lvert \ell_a \rvert + u\lvert \ell_v \rvert$ |
+| $-i$ 곱, 부호 | 그대로(정확해요) |
+
+상수의 오차 $e$는 Arb로 구한 정확한 값이에요. 출력의 $E$를 모은 음이 아닌 행렬 $M$에 대해 $\lVert \hat y - y \rVert \le \lVert M \lvert x \rvert \rVert \le \lVert M \rVert_2 \lVert x \rVert$이고 정확한 나비는 $\lVert y \rVert = \sqrt r \lVert x \rVert$이므로 $\eta_b = \lVert M \rVert_2 / \sqrt r$예요. 나비 뒤의 회전 인자 곱은 FMA 복소 곱의 $2u$와 회전 인자 자체의 $\mu = 1.5u$를 더해서 단의 $\eta = \eta_b + (2u + \mu)(1 + \eta_b)$가 돼요. 2차 항은 한 경로의 반올림이 서른 번이 안 되어 한계를 거의 움직이지 않아요.
+
+| 기수 $r$ | $\eta_b$ | 단의 $\eta$ | $\eta / \log_2 r$ |
+|---:|---:|---:|---:|
+| 2 | 1.414u | 4.914u | 4.914u |
+| 4 | 4.000u | 7.500u | 3.750u |
+| 3 | 5.768u | 9.268u | 5.847u |
+| 5 | 9.912u | 13.412u | 5.776u |
+| 7 | 13.669u | 17.169u | 6.116u |
+| 11 | 22.875u | 26.375u | 7.624u |
+| 13 | 26.921u | 30.421u | 8.221u |
+| 17 | 37.424u | 40.924u | 10.012u |
+| 19 | 42.930u | 46.430u | 10.930u |
+| 23 | 54.338u | 57.838u | 12.786u |
+| 29 | 72.666u | 76.166u | 15.679u |
+| 31 | 79.861u | 83.361u | 16.826u |
+
+- 기수 2–11은 수준 하나에 $7.624u$ 이하라 $\kappa = 8$ 안이에요.
+- 기수 13–31은 $8.221u$에서 $16.826u$라 $\kappa = 8$은 넘고 $\kappa = 17$ 안이에요. 그래서 그런 기수가 하나라도 있는 길이는 $17\,L(n)\,u$로 세요.
+- 기수 37의 단은 수준 하나에 약 $20u$가 들어 $\kappa = 17$도 넘어요. 그래서 37 이상의 소인수는 Bluestein으로 보내요. $\kappa = 17$의 한계도 그 길이들을 Bluestein으로 계산할 때의 한계(수준 수가 두 배이고 $\rho \approx 2$가 곱해져요)보다 모든 길이에서 좁아요.
+- 정규화(`1/n`이나 `1/sqrt(n)`의 곱)는 계약의 상수 $c_0 = 4$가 맡고, 엮기와 풀기, 실수부와 허수부 바꾸기는 정확한 복사예요.
+
+`next_fast_len`이 돌려주는 길이(소인수가 11 이하)는 이 표에서 수준 하나가 가장 싼 기수만 쓰는 길이예요.
+
+## 두 줄 커널
+
+마지막 축이 아닌 축을 변환하면 줄의 원소들이 메모리에서 띄엄띄엄 놓이고, 이웃한 두 줄의 같은 자리는 서로 붙어 있어요. 두 줄 커널은 이 배치를 그대로 이용해요. 레지스터의 두 레인이 **두 줄의 같은 자리**를 담고, 단을 자리 하나씩 차례로 돌아요.
+
+```cpp
+// csrc/fft/cfft.hpp
+template <int R, bool Swap, bool Adj>
+void pair_first(const Lines& L, double* yr, double* yi, int64_t m, const double* twr, const double* twi) {
+    for (int64_t p = 0; p < m; ++p) {
+        CV a[R];
+        for (int j = 0; j < R; ++j) a[j] = load_lines<Swap, Adj>(L.xa, L.xb, (p + j * m) * L.xs);
+        Butterfly<R>::run(a);
+        for (int k = 1; k < R; ++k) {
+            a[k] = cmul(a[k], vld1q_dup_f64(twr + (k - 1) * m + p), vld1q_dup_f64(twi + (k - 1) * m + p));
+        }
+        for (int k = 0; k < R; ++k) store_pairbuf(yr, yi, R * p + k, a[k]);
+    }
+}
+```
+
+한 줄 커널과 같은 비트인 까닭은 각 레인이 그 자리에 한 줄 커널이 하는 연산을 하나도 빼지도 더하지도 않고 그대로 하기 때문이에요.
+
+- 같은 `Butterfly<R>`, 같은 표의 같은 회전 인자를 써요.
+- 첫 단은 한 줄 커널처럼 $p = 0$에도 표의 1을 곱하고, 가운데 단(`pair_inner`)은 한 줄 커널처럼 $p = 0$을 건너뛰어요.
+- 정규화 인자는 마지막 단이 쓸 때 곱해요(`store_lines`). 한 줄 커널의 결과에 구동기가 인자를 곱하는 것과 같은 한 번의 반올림이에요.
+- 레인별 연산은 레인마다 독립이라 한 줄의 비트는 짝이 된 줄과 무관해요. 줄이 홀수 개면 마지막 줄은 두 레인에 같은 줄을 실어요(`xb == xa`).
+
+이웃한 두 줄이 메모리에서 붙어 있으면(`Adj`, 간격 16바이트) `vld2q` 한 번으로 두 줄의 같은 자리를 나눈 꼴로 읽고, 아니면 두 번 읽어 `zip`으로 짝지어요. 작업 메모리는 줄 짝마다 $8n$개의 double(나눈 꼴 버퍼 둘, 각각 두 레인)이에요. 첫 단이 입력을 모두 읽은 뒤에야 마지막 단이 출력을 쓰니 제자리 변환도 돼요. 4단계 길이와 Bluestein 길이, 0을 채우거나 켤레를 취하는 입력은 두 줄 커널을 쓰지 않아요.
+
+```python
+>>> X = rng.random((1001, 6)) + 1j * rng.random((1001, 6))
+>>> Y = sd.fft.fft(X, axis=0)
+>>> all(Y[:, j].tolist() == sd.fft.fft(X[:, j].copy()).tolist() for j in range(6))
+True
+```
+
+길이 $1001 = 7 \cdot 11 \cdot 13$의 열 여섯 개를 두 줄씩 변환한 결과가 열 하나씩 꺼내 한 줄 커널로 변환한 것과 바이트까지 같아요.

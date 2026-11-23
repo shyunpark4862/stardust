@@ -1,0 +1,156 @@
+---
+title: cityblock
+names: [cityblock]
+group: 거리 함수
+order: 4
+signatures:
+  - "sd.spatial.cityblock(u, v, /, *, w=None)"
+summary: 좌표 차이의 절댓값을 더한 Σ|uᵢ − vᵢ|를 구해요. 바둑판 같은 길을 따라 걷는 거리라 맨해튼 거리, L1 거리라고도 불러요.
+params:
+  - name: u
+    type: 수의 배열
+    kind: positional-only
+    desc: 첫째 점. 모양은 (..., n)이고 마지막 축이 좌표예요. 리스트, sd.ndarray, numpy 배열, frame의 DataFrame·Series를 받아요. 정수와 bool은 float64로 바꿔요.
+  - name: v
+    type: 수의 배열
+    kind: positional-only
+    desc: 둘째 점. 마지막 축의 길이가 u와 같아야 하고, 앞 축은 u의 앞 축과 브로드캐스트돼요.
+  - name: w
+    type: 수의 배열 또는 None
+    kind: keyword-only
+    desc: 좌표마다의 가중치. 1차원, 길이 n, 모두 유한하고 0 이상이어야 해요. 주면 Σ wᵢ|uᵢ − vᵢ|예요.
+returns:
+  type: float 또는 ndarray
+  desc: 거리. u와 v가 모두 1차원이면 Python float, 아니면 앞 축을 브로드캐스트한 모양의 float64 배열이에요.
+raises:
+  - type: TypeError
+    desc: u·v·w가 수의 배열이 아닐 때(문자열, 수 하나), 복소수일 때, w를 키워드 없이 줬을 때, 모르는 키워드를 줬을 때.
+  - type: ValueError
+    desc: u와 v의 마지막 축 길이가 다를 때, 앞 축이 브로드캐스트되지 않을 때, w가 1차원이 아니거나 길이가 n이 아니거나 음수·NaN·inf가 있을 때.
+  - type: MemoryError
+    desc: 결과 배열이 이 기계의 물리 메모리보다 클 때.
+seeAlso: [metrics, euclidean, chebyshev, minkowski, cdist, kneighbors]
+---
+
+## 한눈에 보기
+
+반듯한 바둑판 모양의 도시에서는 건물을 가로질러 갈 수 없어서, 가로로 몇 블록, 세로로 몇 블록을 따로 걸어야 해요. (0, 0)에서 (3, 4)까지는 가로 3블록과 세로 4블록, 모두 7블록이에요. `cityblock`은 이 거리예요.
+
+```python
+>>> import stardust as sd
+>>> sd.spatial.cityblock([0.0, 0.0], [3.0, 4.0])
+7.0
+```
+
+직선 거리 [`euclidean`](/api/spatial/euclidean/)은 5이니, 같은 두 점이라도 어떤 길로 재느냐에 따라 거리가 달라요. 가로세로로만 꺾어 가는 길은 어느 길을 고르든 7이에요. 세 거리의 길을 한 그림에 견준 것은 [거리 함수 고르기](/api/spatial/metrics/)에 있어요.
+
+<Reference />
+
+## 무엇을 재나요
+
+$$
+d(u, v) = \sum_{i=1}^{n} \lvert u_i - v_i \rvert
+$$
+
+맨해튼 거리(Manhattan distance), 택시 거리(taxicab distance), $L_1$ 거리라고도 불러요. 좌표마다의 차이를 그대로 더하니, 좌표 하나의 차이가 크다고 해서 더 무겁게 치지 않아요. 유클리드 거리는 차이를 제곱해서 더하므로 큰 차이 하나가 거리를 좌우해요.
+
+좌표 열 개짜리 두 점을 견줘 볼게요. 한 좌표만 10 다른 점과, 열 좌표가 모두 1씩 다른 점이에요.
+
+```python
+>>> origin = sd.zeros(10)
+>>> one = sd.asarray([10.0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+>>> spread = sd.ones(10)
+>>> sd.spatial.cityblock(origin, one), sd.spatial.cityblock(origin, spread)
+(10.0, 10.0)
+>>> sd.spatial.euclidean(origin, one), sd.spatial.euclidean(origin, spread)
+(10.0, 3.1622776601683795)
+```
+
+`cityblock`은 둘을 같은 거리로 보고, `euclidean`은 한 곳에 몰린 차이를 세 배쯤 멀게 봐요. 그래서 `cityblock`은 이런 자료에 잘 맞아요.
+
+- **격자 위의 이동**: 길이 가로세로로만 난 지도, 체스판의 룩, 화소 격자.
+- **튀는 값이 섞인 자료**: 좌표 몇 개가 크게 틀려도 거리가 덜 흔들려요.
+- **좌표가 많은 자료**: 차원이 높으면 유클리드 거리는 점들 사이의 거리가 서로 비슷해지기 쉬운데, $L_1$은 그 정도가 덜하다고 알려져 있어요.
+- **히스토그램과 확률 분포**: 두 분포의 칸마다 차이를 더한 값이에요.
+
+### 중앙값과의 관계
+
+여러 점까지의 거리 합을 가장 작게 하는 점은 유클리드 제곱 거리라면 평균이지만, `cityblock`이라면 좌표마다의 **중앙값**이에요. 수직선 위의 1, 2, 10에서 거리 합을 재 보면 중앙값 2가 평균 4.33보다 작아요.
+
+```python
+>>> x = sd.asarray([[1.0], [2.0], [10.0]])
+>>> sd.sum(sd.spatial.cityblock(x, [2.0]))
+9.0
+>>> sd.sum(sd.spatial.cityblock(x, [sd.mean(x)]))
+11.333333333333332
+```
+
+평균은 10 하나에 끌려가지만 중앙값은 그렇지 않아요. `cityblock`이 튀는 값에 덜 흔들리는 까닭이 이것이에요.
+
+### 두 확률 분포의 차이
+
+확률 벡터 둘의 `cityblock` 거리를 2로 나눈 값은 두 분포의 **전변동 거리**(total variation distance)예요. 어떤 사건을 골라도 두 분포가 그 사건에 주는 확률의 차이는 이 값을 넘지 않아요.
+
+```python
+>>> p = [0.5, 0.3, 0.2]
+>>> q = [0.2, 0.3, 0.5]
+>>> sd.spatial.cityblock(p, q) / 2
+0.3
+```
+
+## 가중치 w
+
+`w`를 주면 $\sum w_i \lvert u_i - v_i \rvert$예요. 좌표마다 한 칸을 움직이는 값이 다를 때 쓰면 맞아요. 가로 한 블록이 세로 한 블록보다 두 배 걸린다면 이렇게 재요.
+
+```python
+>>> sd.spatial.cityblock([0.0, 0.0], [3.0, 4.0], w=[2.0, 1.0])   # 2·3 + 1·4
+10.0
+```
+
+규칙은 다른 거리 함수와 같아서, 1차원, 길이 $n$, 유한하고 0 이상이어야 하고 키워드로만 받아요. 무게 0인 좌표는 거리에 들어가지 않아요.
+
+## 여러 짝, 거리 행렬
+
+마지막 축이 좌표이고 앞 축은 브로드캐스트돼요. 점 집합의 모든 짝은 `metric='cityblock'`으로 [`cdist`](/api/spatial/cdist/)나 [`pdist`](/api/spatial/pdist/)에서 구하고, 같은 짝은 `cityblock(u, v)`와 비트까지 같아요.
+
+```python
+>>> P = sd.asarray([[0.0, 0.0], [1.0, 2.0], [3.0, 4.0]])
+>>> sd.spatial.cityblock(P, [0.0, 0.0])
+array([0.0, 3.0, 7.0], dtype=float64)
+>>> sd.spatial.cdist(P, P, metric='cityblock')
+array([[0.0, 3.0, 7.0],
+       [3.0, 0.0, 4.0],
+       [7.0, 4.0, 0.0]], dtype=float64)
+```
+
+[`minkowski(p=1)`](/api/spatial/minkowski/)은 이 거리와 비트까지 같아요. 이웃 찾기에서는 `kneighbors(..., metric='cityblock')`이나 [`KDTree`](/api/spatial/KDTree/)의 `query(..., p=1)`로 써요.
+
+```python
+>>> u, v = [0.1, 0.7, 0.2], [0.4, 0.2, 0.9]
+>>> sd.spatial.minkowski(u, v, p=1) == sd.spatial.cityblock(u, v)
+True
+```
+
+## 경계의 값
+
+제곱하지 않으니 좌표가 커도 중간 계산이 넘치지 않아요. 결과가 `inf`가 되는 것은 참 거리가 float64의 최댓값을 넘을 때뿐이에요. NaN은 결과까지 퍼지고, 같은 부호의 무한대끼리는 inf − inf가 NaN이라 NaN이에요. 좌표가 0개면 0이에요.
+
+```python
+>>> sd.spatial.cityblock([1e308, 1e308], [0.0, 0.0])
+inf
+>>> sd.spatial.cityblock([sd.inf, 0.0], [sd.inf, 1.0])
+nan
+>>> sd.spatial.cityblock([], [])
+0.0
+```
+
+## 정확도
+
+상대오차는 좌표 수에 따라 정해지는 작은 한계 안이에요. 더하는 항이 모두 0 이상이라 상쇄가 없어요. 시험 645짝에서 Arb(구간 산술)로 만든 참값과 견준 최대 오차는 3 ULP(한계의 0.36), 가중치를 주면 3 ULP(한계의 0.35)였어요.
+
+## scipy·sklearn을 아는 분께
+
+- 뜻과 `w`의 뜻은 `scipy.spatial.distance.cityblock`과 같아요. `w`는 키워드로만 받고, NaN·inf 가중치는 `ValueError`예요.
+- sklearn의 `manhattan_distances(X, Y)`는 `cdist(X, Y, metric='cityblock')`, R의 `dist(x, method="manhattan")`은 `pdist(x, metric='cityblock')`예요.
+- 거리 이름은 `'cityblock'` 하나만 받아요. `'manhattan'`, `'l1'`, `'cb'` 같은 별칭은 `ValueError`예요.
+- 정상 범위의 짝에서는 지금은 scipy와 같거나 마지막 자리 몇 개가 다른 값이 나와요(약속은 아니에요).

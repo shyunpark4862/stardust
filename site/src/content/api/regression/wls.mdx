@@ -1,0 +1,380 @@
+---
+kind: function
+title: wls
+names: [wls, WLSResult]
+group: 선형 회귀
+order: 2
+signatures:
+  - "sd.regression.wls(y, X, /, *, weights, intercept=True, cov_type='nonrobust', maxlags=None, groups=None, rtol=None, nan_policy='propagate')"
+summary: 가중 최소제곱(WLS) 회귀예요. 행마다 가중치를 주어, 오차가 작은(믿을 만한) 행이 적합에 더 크게 반영되게 해요. 결과 WLSResult의 필드는 ols의 OLSResult와 같아요.
+params:
+  - name: y
+    type: ndarray, 실수의 시퀀스, frame Series, 또는 열 하나의 DataFrame
+    kind: positional-only
+    desc: "설명하려는 값. 모양은 (n,)이고, 앞에 축이 더 있으면 배치예요. 열이 하나인 DataFrame은 그 열로 읽어요."
+  - name: X
+    type: ndarray, 실수의 시퀀스, frame Series, 또는 DataFrame
+    kind: positional-only
+    desc: "설명변수. (n, k) 또는 (n,)이에요. 절편 열은 넣지 않아요."
+  - name: weights
+    type: ndarray, 실수의 시퀀스, 또는 frame Series
+    kind: keyword-only
+    desc: "행마다의 가중치(0 이상). 꼭 줘야 해요. 보통 오차 분산의 역수 1/σᵢ²예요. 0인 행은 적합과 nobs·자유도에서 빠지고 적합값·잔차만 계산돼요. 모두 0이면 결과가 NaN이에요(nobs 0). 배치 모양은 y·X와 브로드캐스트해요."
+  - name: intercept
+    type: bool
+    kind: keyword-only
+    desc: True(기본값)면 절편을 넣어요. params[0]이 절편이에요.
+  - name: cov_type
+    type: str
+    kind: keyword-only
+    desc: "표준오차의 종류. 'nonrobust'(기본값), 'HC0'–'HC3', 'HAC', 'cluster' 중 하나예요."
+  - name: maxlags
+    type: int 또는 None
+    kind: keyword-only
+    desc: cov_type='HAC'의 지연 수. 다른 cov_type과 함께 주면 ValueError예요.
+  - name: groups
+    type: ndarray, 레이블의 시퀀스, 또는 frame Series
+    kind: keyword-only
+    desc: cov_type='cluster'의 군집 레이블.
+  - name: rtol
+    type: float 또는 None
+    kind: keyword-only
+    desc: 겹친 열의 기준. None(기본값)이면 max(nobs, k)·eps예요. 가중치를 곱한 열로 판정해요.
+  - name: nan_policy
+    type: str
+    kind: keyword-only
+    desc: "'propagate'(기본값), 'omit', 'raise' 중 하나예요. 'omit'은 y·X·weights 가운데 하나라도 NaN인 행을 빼요."
+returns:
+  type: WLSResult
+  desc: "적합 결과. 필드는 OLSResult와 같아요(params, bse, pvalues, conf_int, rsquared, llf, predict, predict_interval, 진단, summary 등). 제곱합과 R²는 가중치를 곱한 값이고, resid는 가중치를 곱하지 않은 y − ŷ예요."
+raises:
+  - type: TypeError
+    desc: weights를 주지 않았을 때(None 포함), y·X·weights가 배열·숫자의 시퀀스·frame이 아니거나 복소수일 때, 옵션의 형이 틀렸을 때(ols와 같아요).
+  - type: ValueError
+    desc: weights에 음수가 있을 때, weights의 길이가 y와 다르거나 스칼라일 때, weights·y·X에 inf가 있을 때(음수와 inf는 nan_policy='omit'이어도), X에 열이 없는데 intercept=False일 때, nan_policy='raise'인데 NaN이 있을 때, 그 밖에 ols와 같은 경우.
+seeAlso: [ols, gls, basics, results, covariance, diagnostics]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+export const wlsLine = [[0, 0.21727], [4.5, 8.8523], [9, 17.487]];
+export const olsLine = [[0, 0.29286], [4.5, 9.1], [9, 17.907]];
+export const wlsData = [[0.93, 2.3], [1, 2.7], [1.07, 2.3], [1, 1.9], [0.93, 2.3], [1, NaN], [1.93, 3.8], [2, 4.2], [2.07, 3.8], [2, 3.4], [1.93, 3.8], [2, NaN], [2.93, 6.4], [3, 6.8], [3.07, 6.4], [3, 6], [2.93, 6.4], [3, NaN], [3.93, 7.5], [4, 7.9], [4.07, 7.5], [4, 7.1], [3.93, 7.5], [4, NaN], [4.93, 11.2], [5, 11.6], [5.07, 11.2], [5, 10.8], [4.93, 11.2], [5, NaN], [5.93, 11.1], [6, 11.5], [6.07, 11.1], [6, 10.7], [5.93, 11.1], [6, NaN], [6.93, 15.9], [7, 16.3], [7.07, 15.9], [7, 15.5], [6.93, 15.9], [7, NaN], [7.93, 14.6], [8, 15], [8.07, 14.6], [8, 14.2], [7.93, 14.6], [8, NaN], [0.88, 1.8], [1.12, 1.8], [1, NaN], [1, 1.8], [1, 2.8], [1, NaN], [0.88, 2.8], [1.12, 2.8], [1, NaN], [1.88, 3.3], [2.12, 3.3], [2, NaN], [2, 3.3], [2, 4.3], [2, NaN], [1.88, 4.3], [2.12, 4.3], [2, NaN], [2.88, 5.4], [3.12, 5.4], [3, NaN], [3, 5.4], [3, 7.4], [3, NaN], [2.88, 7.4], [3.12, 7.4], [3, NaN], [3.88, 6.5], [4.12, 6.5], [4, NaN], [4, 6.5], [4, 8.5], [4, NaN], [3.88, 8.5], [4.12, 8.5], [4, NaN], [4.88, 9.2], [5.12, 9.2], [5, NaN], [5, 9.2], [5, 13.2], [5, NaN], [4.88, 13.2], [5.12, 13.2], [5, NaN], [5.88, 9.1], [6.12, 9.1], [6, NaN], [6, 9.1], [6, 13.1], [6, NaN], [5.88, 13.1], [6.12, 13.1], [6, NaN], [6.88, 12.9], [7.12, 12.9], [7, NaN], [7, 12.9], [7, 18.9], [7, NaN], [6.88, 18.9], [7.12, 18.9], [7, NaN], [7.88, 11.6], [8.12, 11.6], [8, NaN], [8, 11.6], [8, 17.6], [8, NaN], [7.88, 17.6], [8.12, 17.6], [8, NaN]];
+
+## 무엇을 하나요
+
+[`ols`](/api/regression/ols/)는 모든 행을 똑같이 믿어요. 그런데 행마다 오차의 크기가 다를 때가 있어요.
+
+- 측정 장비가 달라서 어떤 값은 ±0.5, 어떤 값은 ±3까지 흔들려요.
+- 각 행이 크기가 다른 집단의 평균이에요. 100명의 평균은 5명의 평균보다 덜 흔들려요.
+- $x$가 커질수록 $y$의 흩어짐도 커져요(매출이 큰 가게일수록 매출의 변동도 큰 것처럼).
+
+이럴 때 모든 행을 똑같이 다루면, 크게 흔들리는 행이 직선을 제멋대로 끌고 가요. **가중 최소제곱**은 행마다 가중치 $w_i$를 곱한 잔차 제곱합
+
+$$
+\sum_{i=1}^{n} w_i \bigl(y_i - \beta_0 - \beta_1 x_{i1} - \cdots - \beta_k x_{ik}\bigr)^2
+$$
+
+을 가장 작게 해요. 오차의 표준편차가 $\sigma_i$인 행에 $w_i = 1/\sigma_i^2$을 주면, 정밀한 행일수록 적합에 크게 반영돼요. 오차의 크기를 바르게 알려 주면 가중 최소제곱이 가장 정밀한 일차 추정이에요.
+
+아래 그림에서 왼쪽 네 점은 오차 막대가 짧고(±0.5, ±1), 오른쪽 네 점은 길어요(±2, ±3). 가중 최소제곱(실선)은 정밀한 왼쪽 점을 더 따라가고, 크게 흔들리는 오른쪽 점에는 덜 끌려가요. 이 데이터에서는 두 직선이 가깝지만, 가중 최소제곱이 정밀한 점의 정보를 더 잘 써서 계수의 표준오차가 작아요([기본 사용](#기본-사용)).
+
+<Fig caption="오차의 크기가 다른 데이터. 세로 막대는 각 점의 ±σ예요. 실선은 w = 1/σ²의 가중 최소제곱, 점선은 보통 최소제곱이에요.">
+  <Plot
+    curves={[
+      { points: wlsLine, label: 'wls (w = 1/sigma^2)' },
+      { points: wlsData, label: '데이터와 ±sigma' },
+      { points: olsLine, label: 'ols', dashed: true },
+    ]}
+    domain={[0, 9]}
+    range={[0, 20]}
+    xTicks={[
+      { v: 2, label: '2' },
+      { v: 4, label: '4' },
+      { v: 6, label: '6' },
+      { v: 8, label: '8' },
+    ]}
+    yTicks={[
+      { v: 5, label: '5' },
+      { v: 10, label: '10' },
+      { v: 15, label: '15' },
+    ]}
+  />
+</Fig>
+
+<Reference />
+
+## 기본 사용
+
+`weights`는 키워드로 꼭 줘야 해요. 나머지는 [`ols`](/api/regression/ols/)와 같아요.
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0])
+>>> y = sd.asarray([2.3, 3.8, 6.4, 7.5, 11.2, 11.1, 15.9, 14.6])
+>>> sigma = sd.asarray([0.5, 0.5, 1.0, 1.0, 2.0, 2.0, 3.0, 3.0])
+>>> w = 1.0 / (sigma * sigma)
+>>> r = sd.regression.wls(y, x, weights=w)
+>>> r
+WLSResult(nobs=8, rank=2, rsquared=0.97612, params=[0.217267, 1.9189])
+>>> r.params, r.bse
+(array([0.21726682986942655,  1.9189027327051025], dtype=float64), array([ 0.3192873664823822, 0.12252984288643752], dtype=float64))
+```
+
+같은 데이터를 보통 최소제곱으로 맞추면 이래요.
+
+```python
+>>> o = sd.regression.ols(y, x)
+>>> o.params, o.bse
+(array([0.2928571428571428,  1.957142857142857], dtype=float64), array([0.9110713585708657, 0.1804190134330727], dtype=float64))
+```
+
+기울기는 비슷하지만, 가중 최소제곱의 표준오차가 더 작아요. 정밀한 행의 정보를 더 잘 쓰기 때문이에요. 결과를 읽는 법(표준오차, p값, 구간, R²)은 [`ols`](/api/regression/ols/)와 [결과 객체 읽기](/api/regression/results/)에 있어요.
+
+## 가중치의 뜻
+
+### 분산의 역수예요
+
+$w_i$는 "이 행의 오차 분산이 $1/w_i$에 비례한다"는 뜻이에요. 표준편차 $\sigma_i$를 알면 `1 / sigma**2`, 분산이 $x$에 비례한다고 보면 `1 / x`, 각 행이 $m_i$개의 평균이면 `m`을 줘요.
+
+### 상대적인 크기만 계수와 표준오차에 들어가요
+
+가중치에 같은 수를 곱해도 계수, 표준오차, t, p, R², 로그우도는 그대로예요(반올림 차이만 있어요). `scale`(오차 분산의 어림)만 그 수만큼 바뀌어요. 오차 분산의 절대 크기는 데이터에서 다시 어림하기 때문이에요.
+
+```python
+>>> r10 = sd.regression.wls(y, x, weights=10.0 * w)
+>>> r10.params.tolist() == r.params.tolist()
+True
+>>> r10.bse
+array([ 0.3192873664823824, 0.12252984288643756], dtype=float64)
+>>> r.scale, r10.scale
+(0.32526900221552735, 3.252690022155274)
+>>> r.llf, r10.llf
+(-7.905593593639585, -7.905593593639585)
+```
+
+<Callout type="warn" title="반복 횟수가 아니에요">
+가중치 3은 "이 행이 세 번 나왔다"와 계수는 같지만 표준오차는 달라요. `nobs`는 가중치의 합이 아니라 가중치가 0보다 큰 행의 수이기 때문이에요. 같은 행이 여러 번 나온 데이터라면 행을 실제로 늘려서 [`ols`](/api/regression/ols/)에 주세요.
+
+```python
+>>> wf = sd.asarray([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 3.0])
+>>> a = sd.regression.wls(y, x, weights=wf)
+>>> b = sd.regression.ols(sd.concat([y, sd.asarray([14.6, 14.6])]), sd.concat([x, sd.asarray([8.0, 8.0])]))
+>>> a.params, b.params
+(array([ 0.661038961038961, 1.8344155844155843], dtype=float64), array([ 0.661038961038961, 1.8344155844155843], dtype=float64))
+>>> a.nobs, b.nobs
+(8.0, 10.0)
+>>> a.bse, b.bse
+(array([0.9567804473453305, 0.1660516707597921], dtype=float64), array([ 0.8285961732452954, 0.14380496521882957], dtype=float64))
+```
+</Callout>
+
+### 가중치가 모두 1이면 `ols`와 같아요
+
+비트까지 같아요.
+
+```python
+>>> r1 = sd.regression.wls(y, x, weights=sd.ones(8))
+>>> r1.params.tolist() == o.params.tolist(), r1.bse.tolist() == o.bse.tolist(), r1.llf == o.llf
+(True, True, True)
+```
+
+## 가중치가 0인 행
+
+가중치 0은 "이 행은 적합에 쓰지 말라"는 뜻이에요. 그 행은
+
+- 계수를 정하는 데 쓰이지 않고,
+- `nobs`와 자유도(`df_resid`)에서도 빠지고,
+- 그래도 `fittedvalues`와 `resid`는 계산돼요.
+
+그래서 적합에 쓰지 않은 행의 예측값을 같은 결과에서 바로 볼 수 있어요.
+
+```python
+>>> w0 = sd.asarray([1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0])
+>>> z = sd.regression.wls(y, x, weights=w0)
+>>> z.nobs, z.df_resid
+(7.0, 5.0)
+>>> z.fittedvalues.shape
+(8,)
+>>> z.fittedvalues[3], z.resid[3]
+(8.215068493150685, -0.7150684931506845)
+```
+
+가중치 0인 행이 있는 적합은 그 행을 빼고 맞춘 적합과 비트까지 같아요. 표준오차, 강건 표준오차, 진단도 마찬가지예요.
+
+```python
+>>> keep = w0 > 0
+>>> d = sd.regression.wls(y[keep], x[keep], weights=w0[keep])
+>>> z.params.tolist() == d.params.tolist(), z.bse.tolist() == d.bse.tolist()
+(True, True)
+>>> z.durbin_watson == d.durbin_watson
+True
+```
+
+진단에서 가중치 0인 행의 `leverage`, 스튜던트화 잔차, Cook 거리, `dffits`, `dfbetas`, `wresid`는 0이에요. 잔차가 음수인 행도 `-0.0`이 아니라 `0.0`이에요([회귀 진단](/api/regression/diagnostics/)).
+
+가중치가 0보다 큰 행의 `y`가 모두 같은 값 $y_0$이면, 절편이 있는 모형의 계수는 정확히 $(y_0, 0, \dots, 0)$이에요. 적합값은 모든 행에서 $y_0$이고, 잔차는 쓰인 행에서 0, 가중치 0인 행에서 $y - y_0$이에요. 쓰인 행의 잔차가 모두 0이라 완전 적합이고, 결과의 값은 [`ols`](/api/regression/ols/#특수한-경우)의 "반응이 모두 같을 때"와 같아요.
+
+```python
+>>> c = sd.regression.wls([3.0, 3.0, 3.0, 7.0, 3.0, 3.0, 3.0, 3.0], x, weights=w0)
+>>> c.params, c.bse
+(array([3.0, 0.0], dtype=float64), array([0.0, 0.0], dtype=float64))
+>>> c.fittedvalues.tolist(), c.resid.tolist()
+([3.0, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0], [0.0, 0.0, 0.0, 4.0, 0.0, 0.0, 0.0, 0.0])
+```
+
+가중치가 모두 0이면 적합에 쓸 행이 없어요. 에러가 아니라 빈 입력과 같은 NaN 결과예요. `nobs`는 0, `df_model`과 `df_resid`는 NaN이고, 계수를 모르니 적합값과 잔차도 NaN이에요. 배치에서는 그 회귀만 NaN이에요.
+
+```python
+>>> e = sd.regression.wls(y, x, weights=sd.zeros(8))
+>>> e.nobs, e.df_model, e.df_resid, e.params
+(0.0, nan, nan, array([nan, nan], dtype=float64))
+>>> e.fittedvalues.tolist()
+[nan, nan, nan, nan, nan, nan, nan, nan]
+>>> eb = sd.regression.wls(y, x, weights=sd.stack([w, sd.zeros(8)], axis=0))
+>>> eb.nobs
+array([8.0, 0.0], dtype=float64)
+>>> eb.params
+array([[0.21726682986942655, 1.9189027327051025],
+       [                nan,                nan]], dtype=float64)
+```
+
+## 잘못된 가중치
+
+음수는 분산의 역수가 될 수 없어서 `ValueError`예요. 길이가 다르거나, 행마다가 아닌 수 하나를 주거나, inf가 있어도 `ValueError`예요. 모든 행에 같은 가중치를 주는 것은 `ols`와 같은 적합이라 수 하나는 받지 않아요.
+
+```python
+>>> sd.regression.wls(y, x, weights=[1.0, 1.0, 1.0, -1.0, 1.0, 1.0, 1.0, 1.0])
+Traceback (most recent call last):
+    ...
+ValueError: wls(): 'weights' must be >= 0
+>>> sd.regression.wls(y, x, weights=[1.0] * 7)
+Traceback (most recent call last):
+    ...
+ValueError: wls(): 'weights' must have 8 values like 'y', not 7
+>>> sd.regression.wls(y, x, weights=2.0)
+Traceback (most recent call last):
+    ...
+ValueError: wls(): 'weights' must have 8 values like 'y', not a scalar
+>>> sd.regression.wls(y, x, weights=[1.0, 1.0, 1.0, float('inf'), 1.0, 1.0, 1.0, 1.0])
+Traceback (most recent call last):
+    ...
+ValueError: wls(): 'weights' contains infinity
+>>> sd.regression.wls(y, x)
+Traceback (most recent call last):
+    ...
+TypeError: wls(): missing 1 required keyword-only argument: 'weights'
+>>> sd.regression.wls(y, x, weights=None)
+Traceback (most recent call last):
+    ...
+TypeError: wls(): 'weights' must be an sd.ndarray, a sequence of numbers or a frame Series or DataFrame, not NoneType
+```
+
+음수와 inf는 `nan_policy='omit'`이 뺄 행(`y`나 `X`에 NaN이 있는 행)에 있어도 `ValueError`예요. 행을 빼기 전에 확인하기 때문에, 잘못된 가중치가 NaN 뒤에 숨지 않아요.
+
+```python
+>>> yn0 = sd.asarray([float('nan'), 3.8, 6.4, 7.5, 11.2, 11.1, 15.9, 14.6])
+>>> sd.regression.wls(yn0, x, weights=[-1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0], nan_policy='omit')
+Traceback (most recent call last):
+    ...
+ValueError: wls(): 'weights' must be >= 0
+```
+
+가중치의 NaN은 `y`, `X`의 NaN과 같이 `nan_policy`를 따라요. `'omit'`이면 그 행을 빼요.
+
+```python
+>>> wn = sd.asarray([1.0, 1.0, 1.0, float('nan'), 1.0, 1.0, 1.0, 1.0])
+>>> sd.regression.wls(y, x, weights=wn).params
+array([nan, nan], dtype=float64)
+>>> m = sd.regression.wls(y, x, weights=wn, nan_policy='omit')
+>>> m.params, m.nobs
+(array([0.4205479452054794, 1.9486301369863013], dtype=float64), 7.0)
+```
+
+가중치 0과 달리 `'omit'`으로 뺀 행은 `fittedvalues`와 `resid`에도 없어요.
+
+```python
+>>> m.fittedvalues.shape
+(7,)
+```
+
+## 결과 필드
+
+`WLSResult`의 필드는 [`OLSResult`](/api/regression/ols/#결과-필드)와 같아요. 가중치가 들어가는 곳은 이래요.
+
+| 필드 | WLS에서의 값 |
+|---|---|
+| `resid`, `fittedvalues` | 가중치를 곱하지 않은 $y_i - \hat y_i$, $\hat y_i$ |
+| `ssr` | $\sum w_i (y_i - \hat y_i)^2$ |
+| `centered_tss` | $\sum w_i (y_i - \bar y_w)^2$, $\bar y_w$는 가중 평균 |
+| `rsquared`, `ess` | 위의 가중 제곱합으로 구한 값 |
+| `nobs` | 가중치가 0보다 큰 행의 수 |
+| `llf` | 정규 오차의 로그우도에 $\tfrac12\sum \log w_i$를 더한 값 |
+| `condition_number` | $\sqrt{w_i}$를 곱한 열(절편 열 포함)의 조건수 |
+| 진단 | $\sqrt{w_i}$를 곱한 잔차와 열로 구한 값([회귀 진단](/api/regression/diagnostics/)) |
+
+```python
+>>> r.ssr
+1.951614013293164
+>>> float(sd.sum(w * r.resid * r.resid))
+1.9516140132931643
+>>> r.rsquared, o.rsquared
+(0.9761201089667729, 0.9514853492852073)
+```
+
+가중 R²는 "가중치를 준 흩어짐"을 기준으로 한 값이라, 같은 데이터의 보통 R²와 견주지 않아요.
+
+<Callout type="note" title="새 관측의 예측 구간">
+`predict_interval(X_new, kind='observation')`은 가중치가 1인 새 관측의 구간이에요. 가중치 $w$인 관측이라면 오차 분산이 `scale / w`예요.
+
+```python
+>>> r.predict_interval(sd.asarray([9.0]))
+array([[15.399834833257517, 19.574948015173185]], dtype=float64)
+>>> r.predict_interval(sd.asarray([9.0]), kind='observation')
+array([[14.976335697900819,  19.99844715052988]], dtype=float64)
+```
+</Callout>
+
+## 표준오차의 종류와 배치
+
+`cov_type`은 [`ols`](/api/regression/ols/)와 같이 쓸 수 있어요. 가중치를 주어도 분산이 고르지 않을까 걱정되면 `'HC3'` 같은 강건 표준오차를 함께 써요. 가중치 0인 행은 HAC의 지연 합과 군집의 합에서도 빠져요. 자세한 것은 [표준오차의 종류](/api/regression/covariance/)에 있어요.
+
+```python
+>>> sd.regression.wls(y, x, weights=w, cov_type='HC3').bse
+array([0.4527146850442554, 0.1449247472119852], dtype=float64)
+```
+
+배치에서는 `weights`의 앞 축도 `y`, `X`와 브로드캐스트해요. 같은 데이터에 가중치 두 벌을 한 번에 줄 수 있어요.
+
+```python
+>>> W = sd.stack([w, sd.ones(8)], axis=0)
+>>> rb = sd.regression.wls(y, x, weights=W)
+>>> rb.params
+array([[0.21726682986942655,  1.9189027327051025],
+       [ 0.2928571428571428,   1.957142857142857]], dtype=float64)
+```
+
+배치 모양이 맞지 않으면 `ValueError`이고, 메시지가 인자마다의 배치 모양을 알려 줘요.
+
+```python
+>>> sd.regression.wls(sd.stack([y, y, y]), x, weights=W)
+Traceback (most recent call last):
+    ...
+ValueError: wls(): the batch shapes of 'y' (3,), 'X' (), 'weights' (2,) do not broadcast
+```
+
+## 정확도
+
+[`ols`](/api/regression/ols/#정확도)와 같아요. 조건수는 $\sqrt{w_i}$를 곱한 열의 것(`condition_number`)이고, $\kappa \le 10^{11}$이면 계수 벡터의 상대오차가 1e-14 이하예요. 같은 기계, 같은 스레드 수에서 같은 입력이면 실행마다 같은 비트예요. 지금은 스레드 수가 달라도 같아요(약속은 아니에요).
+
+## statsmodels·scikit-learn을 아는 분께
+
+statsmodels 0.15.0, scikit-learn 1.9.1 기준이에요.
+
+- statsmodels의 `sm.WLS(y, sm.add_constant(X), weights=w).fit()`이 `sd.regression.wls(y, X, weights=w)`예요. 가중치의 뜻(분산의 역수)이 같고, 위 예에서 계수, 표준오차, R², `llf`, `ssr`가 반올림 차이 안에서 같아요.
+- 가중치가 0인 행을 statsmodels는 `nobs`에 세요. 위의 `w0` 예에서 statsmodels는 `nobs` 8, `df_resid` 6, 표준오차 `[0.912, 0.176]`이고, sd는 7, 5, `[0.9995, 0.1929]`예요. sd는 R의 `lm(..., weights=)`과 같아요(R 4.6에서 `nobs` 7, 같은 표준오차).
+- 가중치가 모두 0이면 statsmodels는 에러 없이 계수 `[0, 0]`, 표준오차 `[0, 0]`, `nobs` 8을 내요. sd는 쓸 행이 없다는 뜻으로 NaN 결과(`nobs` 0)를 내요.
+- statsmodels의 WLS 결과에는 `get_influence()`가 없어요. sd의 `WLSResult`는 `leverage`, 스튜던트화 잔차, Cook 거리, `dffits`, `dfbetas`를 가중 적합의 식으로 줘요.
+- statsmodels의 `get_prediction`은 새 관측의 가중치를 `weights=`로 받을 수 있어요(기본 1). sd의 `predict_interval`은 가중치 1인 새 관측만 줘요. 기본값끼리는 같은 구간이에요.
+- scikit-learn의 `LinearRegression().fit(X, y, sample_weight=w)`는 같은 계수를 줘요. 표준오차, p값, 구간은 없어요.

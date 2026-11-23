@@ -1,0 +1,191 @@
+---
+kind: function
+title: proportions_chisquare
+names: [proportions_chisquare]
+group: 비율과 이항
+order: 4
+signatures:
+  - "sd.htest.proportions_chisquare(count, nobs, /, *, value=None)"
+summary: 여러 집단의 비율이 모두 같은지(또는 모두 주어진 값인지)를 카이제곱 검정으로 봐요. 집단마다 (성공, 실패)의 k × 2 표를 만들어 Pearson 카이제곱을 계산하고, 표와 기대 빈도도 함께 돌려줘요.
+params:
+  - name: count
+    type: int, 정수 값의 배열, 시퀀스
+    kind: positional-only
+    desc: 집단마다의 성공 횟수. 마지막 축이 집단(표본)이고 앞의 축은 배치예요. 스칼라는 집단 하나예요. 0 이상의 정수 값이고 nobs 이하예요.
+  - name: nobs
+    type: int, 정수 값의 배열, 시퀀스
+    kind: positional-only
+    desc: 집단마다의 시도 횟수. count와 브로드캐스트해요.
+  - name: value
+    type: float 또는 None
+    kind: keyword-only
+    desc: None(기본값)이면 모든 집단의 비율이 같은지를 봐요. [0, 1]의 값을 주면 모든 집단의 비율이 그 값인지를 봐요.
+returns:
+  type: ProportionsChisquareResult
+  desc: "statistic(카이제곱), pvalue, df(자유도: value가 없으면 k − 1, 있으면 k), table((…, k, 2): 성공과 실패), expected_freq(같은 모양의 기대 빈도)와 summary()가 있어요. statsmodels처럼 (statistic, pvalue, (table, expected_freq))로 풀려요."
+raises:
+  - type: TypeError
+    desc: count·nobs가 배열로 바꿀 수 없을 때, value가 수가 아닐 때, 없는 키워드를 줬을 때.
+  - type: ValueError
+    desc: count·nobs가 음이 아닌 정수 값이 아닐 때, count가 nobs보다 클 때, 브로드캐스트되지 않을 때, 마지막 축의 길이가 0일 때, value가 [0, 1] 밖일 때.
+seeAlso: [proportions_ztest, chi2_contingency, test_proportions_2indep, binomtest, basics, results]
+---
+
+## 무엇을 묻는 검정인가요
+
+세 공장에서 만든 부품을 검사했어요. 불량이 각각 100개 중 45개, 90개 중 30개, 110개 중 52개예요. 세 공장의 불량률이 같다고 볼 수 있을까요?
+
+집단마다 (성공, 실패)를 한 행으로 두면 3 × 2 표가 돼요. 모든 집단의 비율이 같다면 각 칸에 기대하는 개수는 (그 행의 합) × (전체의 성공 비율)이에요. 관측한 개수와 기대 개수의 차이를
+
+$$
+\chi^2 = \sum_{\text{칸}} \frac{(O - E)^2}{E}
+$$
+
+로 모아 자유도 k − 1의 카이제곱 분포와 견줘요.
+
+- **귀무가설**: 모든 집단의 비율이 같아요(`value`를 주면 모두 `value`예요).
+- **대립가설**: 적어도 한 집단의 비율이 달라요.
+
+카이제곱 검정은 방향이 없어요. "어느 집단이 다른가"는 알려 주지 않아요. 두 집단에서 방향이 궁금하면 [proportions_ztest](/api/htest/proportions_ztest/)나 [test_proportions_2indep](/api/htest/test_proportions_2indep/)를 써요.
+
+<Reference />
+
+## 기본 사용
+
+```python
+>>> r = sd.htest.proportions_chisquare([45, 30, 52], [100, 90, 110])
+>>> r
+ProportionsChisquareResult(statistic=4.37684, pvalue=0.112094, df=2, table=<array of shape (3, 2)>, expected_freq=<array of shape (3, 2)>)
+>>> r.df
+2.0
+```
+
+p = 0.112라서 세 공장의 불량률이 다르다고 말할 근거는 약해요. 표와 기대 빈도를 보면 어느 칸이 기대에서 벗어났는지 알 수 있어요.
+
+```python
+>>> r.table
+array([[45.0, 55.0],
+       [30.0, 60.0],
+       [52.0, 58.0]], dtype=float64)
+>>> r.expected_freq
+array([[42.333333333333336, 57.666666666666664],
+       [              38.1,               51.9],
+       [ 46.56666666666667,  63.43333333333333]], dtype=float64)
+```
+
+둘째 공장의 불량이 기대(38.1)보다 적은 30개예요. 카이제곱 값의 대부분이 이 행에서 나와요.
+
+`summary()`는 머리에 통계량을, 아래에 두 표를 보여 줘요.
+
+```python
+>>> print(r.summary())
+                       Chi-squared test of proportions
+==============================================================================
+Statistic:                       4.377  No. Samples:                         3
+P-value:                         0.112
+Df:                                  2
+==============================================================================
+table             [0]        [1]
+------------------------------------------------------------------------------
+[0]                45         55
+[1]                30         60
+[2]                52         58
+==============================================================================
+expected_freq         [0]        [1]
+------------------------------------------------------------------------------
+[0]                42.333     57.667
+[1]                38.100     51.900
+[2]                46.567     63.433
+==============================================================================
+```
+
+결과는 statsmodels와 같은 꼴의 세 값으로 풀려요.
+
+```python
+>>> stat, p, (table, expected) = r
+>>> stat, p
+(4.376843856157497, 0.11209350072292644)
+```
+
+## 분할표 검정과의 관계
+
+`value=None`이면 이것은 k × 2 분할표의 독립성 검정과 같아요. [chi2_contingency](/api/htest/chi2_contingency/)에 같은 표를 연속성 보정 없이 주면 통계량과 p값이 비트까지 같아요.
+
+```python
+>>> c = sd.htest.chi2_contingency(r.table, correction=False)
+>>> c.statistic == r.statistic, c.pvalue == r.pvalue
+(True, True)
+```
+
+두 집단이면 카이제곱 통계량은 [proportions_ztest](/api/htest/proportions_ztest/)의 z의 제곱이고 p값도 같아요(양쪽 검정).
+
+```python
+>>> sd.htest.proportions_chisquare([45, 30], [100, 90]).statistic
+2.698550724637681
+>>> sd.htest.proportions_ztest([45, 30], [100, 90]).statistic ** 2
+2.698550724637681
+```
+
+이 함수에는 Yates의 연속성 보정이 없어요. 두 집단의 작은 표에서 보정한 검정이 필요하면 `chi2_contingency(table)`(기본 `correction=True`)를 써요.
+
+## 주어진 비율과 견주기
+
+`value`를 주면 모든 집단의 비율이 그 값인지를 봐요. 기대 빈도는 (nobs·value, nobs·(1 − value))이고, 비율을 자료에서 추정하지 않으므로 자유도가 k예요.
+
+```python
+>>> r2 = sd.htest.proportions_chisquare([45, 30, 52], [100, 90, 110], value=0.4)
+>>> r2.statistic, r2.pvalue, r2.df
+(5.132575757575756, 0.162342750145566, 3.0)
+>>> r2.expected_freq
+array([[40.0, 60.0],
+       [36.0, 54.0],
+       [44.0, 66.0]], dtype=float64)
+```
+
+집단 하나와 `value`는 비율 하나의 점수 검정이에요. 귀무가설의 비율로 분산을 만든 `proportions_ztest(..., prop_var=value)`와 p값이 같아요(계산의 순서가 달라 끝자리만 달라요).
+
+```python
+>>> sd.htest.proportions_chisquare(58, 100, value=0.5).pvalue
+0.10959858339911599
+>>> sd.htest.proportions_ztest(58, 100, value=0.5, prop_var=0.5).pvalue
+0.10959858339911596
+```
+
+## 여러 검정을 한 번에
+
+마지막 축이 집단이고 앞의 축은 서로 독립인 검정이에요. 결과의 수 필드는 배치 모양, `table`과 `expected_freq`는 (배치 모양, k, 2)예요.
+
+```python
+>>> rb = sd.htest.proportions_chisquare([[45, 30], [20, 25]], [[100, 90], [50, 50]])
+>>> rb.statistic, rb.table.shape
+(array([ 2.698550724637681, 1.0101010101010102], dtype=float64), (2, 2, 2))
+```
+
+## 퇴화한 입력
+
+집단이 하나이고 `value`가 없으면 견줄 것이 없어요. 통계량 0, p값 1, 자유도 0이에요. 어떤 집단의 nobs가 0이거나 모든 집단이 다 성공(또는 다 실패)해서 기대 빈도가 0인 열이 생기면 NaN이에요.
+
+```python
+>>> sd.htest.proportions_chisquare(58, 100)
+ProportionsChisquareResult(statistic=0, pvalue=1, df=0, table=<array of shape (1, 2)>, expected_freq=<array of shape (1, 2)>)
+>>> sd.htest.proportions_chisquare([0, 0], [10, 20]).pvalue
+nan
+```
+
+카이제곱 근사는 기대 빈도가 작으면(대략 5 미만인 칸이 있으면) 믿기 어려워요. 그럴 때는 [fisher_exact](/api/htest/fisher_exact/)를 써요.
+
+## 정확도
+
+통계량은 Arb(구간 산술)와 정확한 유리수로 만든 참값과 상대 8e-17 안이고, p값은 상대 7.8e-16 안이에요(계약 대비 0.021).
+
+## statsmodels를 아는 분께
+
+- 결과가 튜플이 아니라 결과 객체이고, statsmodels와 같은 `(statistic, pvalue, (table, expected_freq))`로 풀려요. 자유도 `df`를 필드로 더 줘요.
+- 연속성 보정은 statsmodels처럼 없어요(R의 `prop.test(correct = FALSE)`와 같아요).
+- 개수는 정수 값만 받고, 개수의 배열은 마지막 축이 집단인 배치로 읽어요.
+
+```python
+>>> from statsmodels.stats.proportion import proportions_chisquare as sm_chisq
+>>> [float(v) for v in sm_chisq([45, 30, 52], [100, 90, 110])[:2]]
+[4.376843856157496, 0.11209350072292648]
+```

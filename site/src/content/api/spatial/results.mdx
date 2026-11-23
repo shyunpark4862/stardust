@@ -1,0 +1,274 @@
+---
+kind: concept
+title: 결과 객체 읽기
+group: 기본 개념
+order: 2
+summary: 이웃 찾기가 돌려주는 두 결과 객체를 읽는 법을 설명해요. k개 이웃의 QueryResult(distances, indices)와 반경 안 이웃의 RadiusResult(indptr, indices, distances, shape)의 필드, 튜플로 풀기와 행마다 꺼내기, 쓰기 금지 규칙, 희소 행렬로 바꾸는 tocsr(), 거리가 0인 짝이 저장된 0으로 남는 까닭, 한 줄 repr를 다뤄요.
+seeAlso: [basics, kneighbors, radius_neighbors, query, query_ball_point, query_ball_tree, sparse_distance_matrix]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+
+## 한눈에 보기
+
+이웃 찾기의 결과는 두 가지 꼴이에요. 점마다 가장 가까운 k개를 찾으면 이웃의 수가 모든 점에서 k로 같으니 (점 수, k)의 표 두 장이면 돼요. 반경 r 안의 점을 찾으면 이웃의 수가 점마다 달라서 표 대신 이어 붙인 목록과 행마다의 시작 자리로 적어요.
+
+| 결과 | 돌려주는 곳 | 필드 |
+|---|---|---|
+| `QueryResult` | [`kneighbors`](/api/spatial/kneighbors/), [`KDTree.query`](/api/spatial/query/) | `distances`, `indices` |
+| `RadiusResult` | [`radius_neighbors`](/api/spatial/radius_neighbors/), [`KDTree.query_ball_point`](/api/spatial/query_ball_point/), [`KDTree.query_ball_tree`](/api/spatial/query_ball_tree/) | `indptr`, `indices`, `distances`, `shape`, 메서드 `tocsr()` |
+
+```python
+>>> import stardust as sd
+>>> X = sd.asarray([[0.0, 0.0], [3.0, 4.0], [6.0, 8.0], [0.0, 1.0], [0.0, 1.0]])
+>>> sd.spatial.kneighbors(X, X, k=2)
+QueryResult(distances=array([[              0.0,               1.0],
+       [              0.0, 4.242640687119285],
+       [              0.0,               5.0],
+       [              0.0,               0.0],
+       [              0.0,               0.0]], dtype=float64), indices=array([[0, 3],
+       [1, 3],
+       [2, 1],
+       [3, 4],
+       [3, 4]], dtype=int64))
+>>> sd.spatial.radius_neighbors(X, X, 1.0)
+RadiusResult(shape=(5, 5), nnz=11)
+```
+
+점 3과 점 4는 같은 자리 (0, 1)에 있어요. 이 페이지의 예제는 모두 이 다섯 점을 써요.
+
+## QueryResult
+
+`QueryResult`는 이름 붙은 튜플(namedtuple)이에요. 필드는 둘이에요.
+
+| 필드 | dtype | 뜻 |
+|---|---|---|
+| `distances` | float64 | 이웃까지의 거리. 행마다 가까운 순서 |
+| `indices` | int64 | 이웃의 색인(데이터 점의 행 번호). 같은 자리의 거리와 짝 |
+
+이름으로 읽어도 되고, 튜플처럼 두 변수로 풀어도 돼요. 푸는 순서는 거리 먼저, 색인 다음이에요.
+
+```python
+>>> r = sd.spatial.kneighbors(X, X, k=2)
+>>> r.indices[1]
+array([1, 3], dtype=int64)
+>>> d, i = r
+>>> d[1]
+array([              0.0, 4.242640687119285], dtype=float64)
+>>> r[0] is r.distances
+True
+```
+
+점 1에서 가장 가까운 점은 거리 0인 자기 자신, 둘째는 거리 $\sqrt{18} \approx 4.24$인 점 3이에요.
+
+### 행 안의 순서
+
+각 행은 (거리, 색인)의 사전 순서예요. 거리가 작은 이웃이 먼저이고, 거리가 같으면 색인이 작은 이웃이 먼저예요. 위 결과에서 점 4의 행이 `[3, 4]`인 것도 이 규칙이에요. 점 3과 점 4는 점 4에서 둘 다 거리 0이라 색인이 작은 3이 먼저 와요. 그래서 "첫 열은 언제나 자기 자신"이라고 기대하면 같은 점이 있는 데이터에서 틀려요. 자세한 것은 [kneighbors의 조심할 점](/api/spatial/kneighbors/#자기-자신을-빼고-찾기)에 있어요.
+
+### 모양
+
+모양은 `k`를 어떻게 주었는지로 정해져요. 질의점이 mA개일 때 이래요.
+
+| `k` | `distances`, `indices`의 모양 |
+|---|---|
+| int $k \ge 2$ | (mA, k) |
+| `k=1`(기본값) | (mA,) 마지막 축을 없애요 |
+| 순위의 시퀀스(`k=[1, 3]`) | (mA, 시퀀스 길이) |
+
+```python
+>>> sd.spatial.kneighbors(X, X).indices
+array([0, 1, 2, 3, 3], dtype=int64)
+>>> sd.spatial.kneighbors(X, X, k=[2]).indices
+array([[3],
+       [3],
+       [1],
+       [4],
+       [4]], dtype=int64)
+```
+
+`KDTree.query`에 점 하나 (m,)을 주고 `k=1`이면 배열이 아니라 Python의 `float`와 `int`가 나와요.
+
+```python
+>>> tree = sd.spatial.KDTree(X)
+>>> tree.query([0.0, 0.5])
+QueryResult(distances=0.5, indices=0)
+>>> d, i = tree.query([0.0, 0.5])
+>>> type(d), type(i)
+(<class 'float'>, <class 'int'>)
+```
+
+### 채움 값
+
+찾은 이웃이 k개보다 적으면 남은 자리는 거리 inf, 색인 mB(데이터 점의 수)로 채워요. 데이터 점이 k개보다 적을 때와 `distance_upper_bound`보다 가까운 점이 모자랄 때 생겨요. 색인 mB는 실제 점의 행 번호가 될 수 없는 값이라 채움 자리를 가려내기 쉬워요.
+
+```python
+>>> f = sd.spatial.kneighbors(X[:1], X[:3], k=5)
+>>> f
+QueryResult(distances=array([[ 0.0,  5.0, 10.0,  inf,  inf]], dtype=float64), indices=array([[0, 1, 2, 3, 3]], dtype=int64))
+>>> f.indices < 3
+array([[ True,  True,  True, False, False]], dtype=bool)
+```
+
+## RadiusResult
+
+반경 질의는 행마다 이웃의 수가 달라요. `RadiusResult`는 행들의 이웃 목록을 한 줄로 이어 붙이고, 행마다 어디서 시작하는지를 따로 적어요. 희소 행렬의 CSR 형식과 같은 꼴이에요.
+
+| 필드 | dtype | 뜻 |
+|---|---|---|
+| `indptr` | int64, 길이 행 수 + 1 | 행 i의 이웃이 `indices`와 `distances`의 `indptr[i]`부터 `indptr[i+1]` 앞까지라는 표시 |
+| `indices` | int64 | 이웃의 색인을 행 순서로 이어 붙인 것. 행 안은 색인 오름차순 |
+| `distances` | float64 | 같은 자리의 이웃까지의 거리 |
+| `shape` | int 둘의 튜플 | (질의점 수, 데이터 점 수) |
+
+```python
+>>> rr = sd.spatial.radius_neighbors(X, X, 1.0)
+>>> rr.indptr
+array([ 0,  3,  4,  5,  8, 11], dtype=int64)
+>>> rr.indices
+array([0, 3, 4, 1, 2, 0, 3, 4, 0, 3, 4], dtype=int64)
+>>> rr.distances
+array([0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0], dtype=float64)
+>>> rr.shape
+(5, 5)
+```
+
+<Fig caption="indptr가 이어 붙인 목록을 행으로 끊어요. 행 0은 자리 0–2, 행 1은 자리 3, 행 2는 자리 4, 행 3은 자리 5–7, 행 4는 자리 8–10이에요.">
+  <ArrayFig name="indptr" data={[[0, 3, 4, 5, 8, 11]]} />
+  <ArrayFig name="indices" data={[[0, 3, 4, 1, 2, 0, 3, 4, 0, 3, 4]]} tones={[['a', 'a', 'a', 'b', 'a', 'b', 'b', 'b', 'a', 'a', 'a']]} note="행마다 색을 번갈아 칠했어요" />
+</Fig>
+
+행 i의 이웃은 `indices[indptr[i]:indptr[i+1]]`이고, 그 거리는 `distances`의 같은 범위예요.
+
+```python
+>>> s, e = rr.indptr[3], rr.indptr[4]
+>>> rr.indices[s:e], rr.distances[s:e]
+(array([0, 3, 4], dtype=int64), array([1.0, 0.0, 0.0], dtype=float64))
+```
+
+점 3 (0, 1)에서 반경 1 안에는 거리 1인 점 0, 그리고 거리 0인 자기 자신과 점 4가 있어요. 행 안은 거리 순서가 아니라 **색인 순서**예요. 반경 안의 점은 모두 답이라 순위가 없으니, 언제나 같은 순서로 주려고 색인으로 줄을 세워요. 거리 순서가 필요하면 그 행을 정렬해요.
+
+```python
+>>> o = sd.argsort(rr.distances[s:e])
+>>> rr.indices[s:e][o]
+array([3, 4, 0], dtype=int64)
+```
+
+행마다의 이웃 수는 `indptr`의 차이예요. 개수만 필요하면 처음부터 `return_length=True`로 받는 편이 목록을 모으지 않아 메모리가 적게 들어요.
+
+```python
+>>> sd.diff(rr.indptr)
+array([3, 1, 1, 3, 3], dtype=int64)
+>>> sd.spatial.radius_neighbors(X, X, 1.0, return_length=True)
+array([3, 1, 1, 3, 3], dtype=int64)
+```
+
+`RadiusResult`는 튜플이 아니라서 풀 수 없어요. 필드를 이름으로 읽어요.
+
+```python
+>>> indptr, indices, distances = rr
+Traceback (most recent call last):
+    ...
+TypeError: cannot unpack non-iterable RadiusResult object
+```
+
+`KDTree.query_ball_point`는 질의점 하나만 줘도 행이 하나인 `RadiusResult`를 돌려줘요.
+
+```python
+>>> b = tree.query_ball_point([0.0, 0.5], 1.0)
+>>> b
+RadiusResult(shape=(1, 5), nnz=3)
+>>> b.indices
+array([0, 3, 4], dtype=int64)
+```
+
+## 쓰기 금지
+
+두 결과의 배열은 모두 쓰기 금지예요. 결과를 받은 뒤 실수로 고쳐서 거리와 색인의 짝이 어긋나는 일을 막으려는 것이에요. 필드를 읽을 때 복사하지 않으므로 큰 결과도 읽는 비용이 없어요.
+
+```python
+>>> r.distances[0, 0] = 1.0
+Traceback (most recent call last):
+    ...
+ValueError: assignment destination is read-only
+```
+
+고친 값이 필요하면 `copy()`로 복사해서 고쳐요. 복사본은 보통의 배열이라 쓸 수 있어요.
+
+```python
+>>> dd = r.distances.copy()
+>>> dd[:, 0] = sd.inf
+>>> dd[0]
+array([inf, 1.0], dtype=float64)
+```
+
+결과 객체가 아닌 결과(`pdist`, `cdist`, `squareform`의 배열, `query_pairs`의 짝 배열, `count_neighbors`의 개수, `return_length`의 개수)는 보통의 새 배열이라 바로 고칠 수 있어요.
+
+## 희소 행렬로: tocsr()
+
+`RadiusResult.tocsr()`는 같은 내용을 [`sd.sparse.csr_array`](/api/sparse/csr_array/)로 줘요. 행 i, 열 j의 원소가 질의점 i와 데이터 점 j의 거리이고, 반경 밖의 칸은 저장하지 않은 0이에요. 이웃 관계를 그래프(점이 꼭짓점, 이웃 짝이 변)로 보고 희소 행렬의 계산으로 넘길 때 써요.
+
+```python
+>>> A = rr.tocsr()
+>>> A
+<csr_array of shape (5, 5), float64, 11 stored elements>
+>>> A.toarray()
+array([[0.0, 0.0, 0.0, 1.0, 1.0],
+       [0.0, 0.0, 0.0, 0.0, 0.0],
+       [0.0, 0.0, 0.0, 0.0, 0.0],
+       [1.0, 0.0, 0.0, 0.0, 0.0],
+       [1.0, 0.0, 0.0, 0.0, 0.0]], dtype=float64)
+```
+
+행 안의 색인이 이미 오름차순이고 중복이 없어서 희소 배열의 [표준 꼴](/api/sparse/basics/#표준-꼴)을 그대로 만족해요. 부를 때마다 새 희소 배열을 만들고, 그 `data`는 결과의 `distances`를 복사한 배열이에요. 그래서 `data`를 그 자리에서 고쳐도(`B.data *= 2` 같은 것) 돼요. 고쳐도 결과 객체의 거리는 그대로예요.
+
+```python
+>>> B = rr.tocsr()
+>>> B.data *= 2
+>>> B.data[:3]
+array([0.0, 2.0, 2.0], dtype=float64)
+>>> rr.distances[:3]
+array([0.0, 1.0, 1.0], dtype=float64)
+```
+
+### 거리가 0인 짝은 저장된 0
+
+위 `toarray()`를 보면 11개를 저장했는데 0이 아닌 칸은 4개뿐이에요. 자기 자신과의 짝(대각선 다섯)과 같은 자리의 점 3, 4의 짝 둘은 거리가 0이라, 저장은 되어 있지만 값이 0인 **저장된 0**이에요. `nnz`는 저장한 원소를 세고, `count_nonzero()`는 값이 0이 아닌 것만 세요.
+
+```python
+>>> A.nnz, A.count_nonzero()
+(11, 4)
+```
+
+일부러 지우지 않은 것이에요. 희소 행렬에서 저장한 자리 하나가 이웃 그래프의 변 하나예요. 거리가 0이라고 지우면 중복된 점과 자기 자신이 이웃 목록에서 사라져서, `rr.indices`가 말하는 이웃과 `tocsr()`의 자리가 서로 다른 그래프가 돼요. 저장된 0이 필요 없으면(값으로만 계산할 때) `eliminate_zeros()`로 지워요.
+
+```python
+>>> A.eliminate_zeros()
+>>> A.nnz
+4
+>>> rr.distances.shape
+(11,)
+```
+
+`eliminate_zeros()`는 그 희소 배열만 바꾸고, 원래의 `RadiusResult`는 그대로예요. 저장된 0의 일반적인 규칙은 [희소 행렬의 기본](/api/sparse/basics/#저장된-0)에 있어요. [`KDTree.sparse_distance_matrix`](/api/spatial/sparse_distance_matrix/)의 결과도 같은 규칙이에요.
+
+## repr
+
+두 결과 모두 `repr`가 한 줄이에요. `QueryResult`는 두 배열을 그대로 보이고, `RadiusResult`는 모양과 이웃 짝의 수(`nnz`)만 보여요. 반경 결과는 수백만 짝이 될 수 있어서 목록을 늘어놓지 않아요.
+
+```python
+>>> rr
+RadiusResult(shape=(5, 5), nnz=11)
+```
+
+검정이나 회귀의 결과와 달리 표로 적는 `summary()`는 없어요. 두 결과 모두 피클할 수 없어요(안의 `sd.ndarray`가 피클되지 않아요). 저장하려면 필드의 배열을 따로 저장해요.
+
+`QueryResult`와 `RadiusResult` 클래스는 `sd.spatial`에서 꺼내 쓰는 이름이 아니에요. 결과를 만들지 말고 받아서 읽기만 하고, 종류는 `isinstance` 대신 필드로 가려요.
+
+## scipy·sklearn을 아는 분께
+
+- `d, i = tree.query(x)`로 푸는 것은 scipy와 같아요. 점 하나에 `k=1`이면 scipy는 `float`와 `numpy.int64`, 여기서는 `float`와 `int`예요. 채움 값 (inf, n)도 scipy와 같아요(sklearn은 k가 점 수보다 크면 에러예요).
+- sklearn의 `pairwise_distances_argmin_min(X, Y)`가 돌려주는 `(argmin, distances)`는 `kneighbors(X, Y)`의 `(distances, indices)`예요. 푸는 순서가 반대예요.
+- 반경 질의의 결과는 언제나 `RadiusResult`예요. scipy의 `query_ball_point`는 점 하나면 list, 여럿이면 list를 담은 object 배열이고, sklearn의 `radius_neighbors`는 행마다 배열을 담은 object 배열 둘이에요.
+- 행 안은 언제나 색인 오름차순이에요. scipy는 `return_sorted`의 기본이 점 하나면 정렬하지 않고, sklearn은 `sort_results=False`가 기본이에요. `return_sorted`, `sort_results`는 없어요.
+- sklearn의 `radius_neighbors_graph(mode='distance')`는 `radius_neighbors(X, Y, r).tocsr()`예요. scipy의 `sparse_distance_matrix`처럼 거리 0인 짝을 저장된 0으로 둬요.
+- 결과 배열은 쓰기 금지예요. scipy와 sklearn의 배열은 쓸 수 있어요.

@@ -1,0 +1,285 @@
+---
+title: 방정식계의 근
+group: 최소제곱과 방정식계
+order: 3
+summary: 방정식계의 근을 찾는 Powell 혼성법을 설명해요. 가우스–뉴턴 걸음과 가장 가파른 내리막 사이를 dogleg로 잇고, 야코비안을 매번 새로 계산하지 않고 Broyden 갱신으로 고쳐 써요.
+seeAlso: [least-squares, derivatives, overview, accuracy-performance]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import Steps from '../../../components/fig/Steps.astro';
+
+## 한눈에 보기
+
+[`root`](/api/optimize/root/)는 n개 식의 방정식계 $F(x) = 0$을 MINPACK(Moré, Garbow, Hillstrom 1980)의 두 루틴으로 풀어요.
+
+- `'hybr'`: hybrj(사용자 야코비안)와 hybrd(앞쪽 차분). Powell(1970)의 혼성법이에요. 반복마다 야코비안의 QR 인자로 **dogleg** 걸음을 만들고, 걸음 뒤에는 야코비안을 다시 구하지 않고 QR 인자를 **Broyden의 랭크 1 공식**으로 고쳐요.
+- `'lm'`: lmder(lmdif의 차분)로 ‖F‖²를 줄이는 Levenberg–Marquardt예요. [`least_squares`](/api/optimize/least_squares/)의 `'lm'`과 같은 커널이고, [비선형 최소제곱의 구현](/internals/optimize/least-squares/)에서 다뤄요.
+
+<Fig column caption="root 한 번의 흐름.">
+  <Steps steps={[
+    { label: 'root()', note: "옵션 검사(scipy의 이름과 기본값, 반복 상한만 max_nfev), jac의 꼴(호출 가능, True, 차분)", where: '_root.py' },
+    { label: 'fun(x0)', note: 'Python에서 먼저 불러 모양과 유한성을 확인하고, 그 값을 커널에 넘겨요(nfev에 1)', where: '_root.py', depth: 1 },
+    { label: 'hybr_solve', note: "'hybr': hybrid() 고리, qrfac·qform·dogleg·r1updt·r1mpyq, fdjac1", where: 'csrc/optimize/hybrd.cpp' },
+    { label: 'lm_solve', note: "'lm': levenberg_marquardt<true>(scipy의 빌드), fdjac2, lmder의 info 1–8", where: 'csrc/optimize/lsq.cpp' },
+    { label: 'OptimizeResult', note: 'x fun converged status message n_iter nfev njev method, scipy의 글', where: '_root.py' },
+  ]} />
+</Fig>
+
+| 옵션 | MINPACK의 인자 | 쓰는 곳 |
+|---|---|---|
+| `xtol` (또는 `tol`) | `xtol` | 둘 다 |
+| `ftol`, `gtol` | `ftol`, `gtol` | `'lm'` |
+| `max_nfev` | `maxfev` | 둘 다 |
+| `band` | `ml`, `mu` | `'hybr'`의 차분 |
+| `eps` | `epsfcn` | 차분 |
+| `factor` | `factor` | 둘 다 |
+| `diag` | `diag`, `mode` = 2 (없으면 `mode` = 1) | 둘 다 |
+
+## Powell의 혼성법
+
+뉴턴 방법은 $J(x)s = -F(x)$의 걸음을 해요. 근 근처에서는 2차로 수렴하지만, 멀면 걸음이 엉뚱한 곳으로 가고 야코비안이 특이하면 풀 수 없어요. 반대로 $\tfrac12\lVert F\rVert^2$의 가장 가파른 내리막 $-J^{\mathsf T}F$는 늘 줄어드는 방향이지만 느려요. Powell의 혼성법은 둘 사이를 걸음 한계 Δ로 잇고, 야코비안을 걸음마다 구하는 대신 싸게 고쳐 써요.
+
+### 야코비안의 QR과 척도
+
+반복의 처음(야코비안을 새로 구할 때)에 $J = QR$을 Householder 반사로 분해하고(`qrfac`, 피벗 없음), $Q^{\mathsf T}F$(`qtf`)와 명시적인 Q(`qform`)를 만들어요. 변수의 척도 $D = \operatorname{diag}(d_j)$는 `mode` 1이면 첫 야코비안의 열 노름에서 시작해 $d_j \leftarrow \max(d_j, \lVert J_{:,j}\rVert)$로만 커지고, `diag`를 주면(`mode` 2) 그 값이에요. 걸음의 크기는 늘 $\lVert Ds\rVert$로 재요. 변수의 단위를 바꿔도($x_j \to c\,x_j$) 걸음이 같은 꼴이 되게 하는 척도예요. 처음 걸음 한계는 $\Delta_0 = \text{factor}\cdot\lVert Dx_0\rVert$(0이면 factor)이고, 첫 걸음의 길이로 한 번 줄여요.
+
+### 걸음: dogleg
+
+`dogleg`는 모형 $\min_s \lVert F + Js\rVert$를 $\lVert Ds\rVert \le \Delta$ 안에서 어림하는 걸음을 만들어요.
+
+1. **가우스–뉴턴 걸음** $s_N = -R^{-1}Q^{\mathsf T}F$. $\lVert Ds_N\rVert \le \Delta$이면 이것을 써요. R의 대각이 0이면(야코비안이 특이하면) 그 자리를 $\varepsilon\cdot$(그 열의 최대 원소)로 바꿔 풀어요. 걸음이 아주 길어지지만 한계 안으로 줄여지니 쓸 수 있어요.
+2. **척도를 둔 가장 가파른 내리막**. 방향은 $g = D^{-1}J^{\mathsf T}F$의 반대이고, 그 방향으로 모형을 최소화하는 점(Cauchy 점)까지의 척도 거리는 $\sigma = \lVert g\rVert/\lVert J D^{-1}\hat g\rVert^2$($\hat g = g/\lVert g\rVert$)예요. $\sigma \ge \Delta$이면 그 방향으로 길이 Δ만큼 가요.
+3. 둘 사이면 Cauchy 점과 $s_N$을 잇는 선분 위에서 $\lVert Ds\rVert = \Delta$인 점이에요. $s = (1 - \alpha)\,\sigma\,(-D^{-1}\hat g) + \alpha\, s_N$의 α는 이차방정식의 근인데, MINPACK은 상쇄를 피하는 꼴로 계산해요.
+
+```cpp
+        // csrc/optimize/hybrd.cpp, dogleg
+        double temp = enorm(n, wa2);
+        sgnorm = (gnorm / temp) / temp;
+        alpha = 0;
+        if (sgnorm < delta) {
+            const double bnorm = enorm(n, qtb);
+            const double dq = delta / qnorm, sd2 = sq(sgnorm / delta);
+            temp = (bnorm / gnorm) * (bnorm / qnorm) * (sgnorm / delta);
+            temp = temp - dq * sd2 + std::sqrt(sq(temp - dq) + (1.0 - sq(dq)) * (1.0 - sd2));
+            alpha = (dq * (1.0 - sd2)) / temp;
+        }
+    }
+    const double temp = (1.0 - alpha) * std::min(sgnorm, delta);
+    for (lint j = 0; j < n; ++j) x[j] = temp * wa1[j] + alpha * x[j];
+```
+
+여기서 $q = \lVert Ds_N\rVert$, $b = \lVert Q^{\mathsf T}F\rVert$예요. α의 식은 이차방정식 근의 공식을 분자에서 유리화한 꼴 $\alpha = c/(\ldots + \sqrt{\ldots})$이라, 두 항이 거의 같아 빼기에서 자릿수를 잃는 일이 없어요. α = 0이면 내리막 걸음, α = 1이면 가우스–뉴턴 걸음이에요. 반지름이 클수록 걸음이 가우스–뉴턴 쪽으로 가요.
+
+### 걸음의 평가와 Δ
+
+시험점 $x + s$에서 실제 감소와 모형의 예측 감소를 ‖F‖에 대한 비로 견줘요.
+
+$$
+\text{actred} = 1 - \left(\frac{\lVert F(x+s)\rVert}{\lVert F(x)\rVert}\right)^2, \qquad
+\text{prered} = 1 - \left(\frac{\lVert Q^{\mathsf T}F + Rs\rVert}{\lVert F(x)\rVert}\right)^2, \qquad
+\rho = \frac{\text{actred}}{\text{prered}}
+$$
+
+‖F‖가 늘면 actred = −1이에요.
+
+```cpp
+            // csrc/optimize/hybrd.cpp, hybrid
+            if (ratio < 0.1) {
+                ncsuc = 0;
+                ++ncfail;
+                delta = 0.5 * delta;
+            } else {
+                ncfail = 0;
+                ++ncsuc;
+                if (ratio >= 0.5 || ncsuc > 1) delta = std::max(delta, pnorm / 0.5);
+                if (std::abs(ratio - 1.0) <= 0.1) delta = pnorm / 0.5;
+            }
+            if (ratio >= 1e-4) {
+```
+
+- ρ < 0.1이면 실패로 세고 Δ를 반으로 줄여요.
+- 아니면 성공으로 세고, ρ ≥ 0.5이거나 성공이 두 번 이어졌으면 Δ를 $2\lVert Ds\rVert$ 이상으로 넓혀요. 예측이 10% 안에서 맞았으면($\lvert\rho - 1\rvert \le 0.1$) 정확히 $2\lVert Ds\rVert$로 둬요.
+- ρ ≥ $10^{-4}$이면 걸음을 받아요.
+- 실패가 두 번 이어지면 고쳐 쓰던 야코비안이 더는 믿을 만하지 않다고 보고 새로 구해요.
+
+### Broyden 갱신을 QR 인자에
+
+걸음 뒤에 야코비안을 새로 구하는 대신, 걸음 $s$와 함숫값의 변화 $y = F(x+s) - F(x)$로 고쳐요. Broyden(1965)의 갱신은 새 야코비안이 $J_+ s = y$(할선 조건)를 만족하면서, $s$에 수직인 방향 z에서는 $J_+z = Jz$로 그대로 두는 랭크 1 변화예요. 할선 조건을 만족하는 행렬 가운데 J에서 가장 적게 바뀐 것이에요. MINPACK은 척도 D를 넣은 꼴을 써요.
+
+$$
+J_+ = J + \frac{(y - Js)\,(D^2 s)^{\mathsf T}}{\lVert Ds\rVert^2}
+$$
+
+J를 직접 갖고 있지 않고 $J = QR$로 갖고 있으므로, 양변에 $Q^{\mathsf T}$를 곱하면
+
+$$
+Q^{\mathsf T}J_+ = R + u\,v^{\mathsf T}, \qquad u = \frac{Q^{\mathsf T}(y - Js)}{\lVert Ds\rVert}, \quad v = \frac{D^2 s}{\lVert Ds\rVert}
+$$
+
+예요. `r1updt`는 왼쪽에서 곱하는 Givens 회전 $Q_2^{\mathsf T}$로 $R + uv^{\mathsf T}$를 다시 위 삼각 꼴로 만들어요. 먼저 행 (j, n)의 회전으로 u의 성분을 아래에서부터 마지막 성분 하나로 모아요. 같은 회전을 받은 R은 마지막 행에 0이 아닌 원소가 생기고(스파이크), 이제 랭크 1 항은 마지막 행에만 더해져요. 그 스파이크를 왼쪽부터 다시 행 (j, n)의 회전으로 지우면 위 삼각 꼴이에요. 회전은 2(n − 1)개이고 비용은 $O(n^2)$예요. 새 QR의 $O(n^3)$보다 훨씬 싸요. `r1mpyq`가 같은 회전을 Q와 $Q^{\mathsf T}F$에 적용해요.
+
+```cpp
+            // csrc/optimize/hybrd.cpp, hybrid
+            if (ncfail == 2) break;  // the Jacobian again
+            jeval = false;
+            if (!finite) continue;  // no rank-one update from non-finite values
+            for (lint j = 0; j < n; ++j) {
+                double sum = 0;
+                for (lint i = 0; i < n; ++i) sum = std::fma(F(i, j), wa4[i], sum);
+                wa2[j] = (sum - wa3[j]) / pnorm;
+                wa1[j] = diag[j] * ((diag[j] * wa1[j]) / pnorm);
+                if (ratio >= 1e-4) qtf[j] = sum;
+            }
+            {
+                std::optional<nb::gil_scoped_release> rel;
+                if (big2) rel.emplace();
+                r1updt(n, r.data(), wa1.data(), wa2.data(), wa3.data());
+                r1mpyq(n, n, fjac.data(), n, wa2.data(), wa3.data());
+                r1mpyq(1, n, qtf.data(), 1, wa2.data(), wa3.data());
+            }
+```
+
+`fjac`은 Q이고, `wa3`는 그 앞에서 계산한 모형의 값 $Q^{\mathsf T}F + Rs$, `sum`은 $(Q^{\mathsf T}F(x + s))_j$예요. 그래서 `wa2`가 u, `wa1`이 v예요. 회전은 n이 크면(`big2`, 10 µs 규칙) GIL을 놓고 해요. 갱신은 걸음을 받지 않았을 때도 해요. 거절한 시험점의 함숫값도 야코비안에 대한 정보이기 때문이에요. $Q^{\mathsf T}F$는 받았을 때만 새 점의 것으로 바꿔요.
+
+Broyden 갱신은 정칙인 근 근처에서 초선형 수렴을 내요(Broyden, Dennis, Moré 1973). 걸음이 근에 다가갈수록 고친 야코비안이 걸음 방향에서 참 야코비안에 가까워지기 때문이에요. [root의 문서](/api/optimize/root/)의 원과 포물선 문제에서 해석적 야코비안을 한 번만 구하고 푼 ‖F‖의 비를 보면, 비가 0으로 줄어요(선형 수렴이면 비가 일정해요).
+
+```python
+>>> norms = []
+>>> def F(x):
+...     a, b = x.tolist()
+...     v = [a * a + b * b - 4, b - a * a + 1]
+...     norms.append(math.hypot(*v))
+...     return v
+>>> import math
+>>> r = sd.optimize.root(F, [1.0, 1.0], jac=lambda x: [[2 * x[0], 2 * x[1]], [-2 * x[0], 1.0]])
+>>> r.njev, [f'{q / p:.0e}' for p, q in zip(norms[1:], norms[2:])]
+(1, ['2e-01', '6e-02', '9e-02', '8e-02', '7e-03', '1e-03', '8e-04'])
+```
+
+### 멈춤 info 1–5
+
+걸음을 하나 시도할 때마다 hybrd의 순서로 판정해요.
+
+```cpp
+            // csrc/optimize/hybrd.cpp, hybrid
+            ++nslow1;
+            if (actred >= 0.001) nslow1 = 0;
+            if (jeval) ++nslow2;
+            if (actred >= 0.1) nslow2 = 0;
+            if (delta <= xtol * xnorm || fnorm == 0) info = 1;
+            if (info != 0) return info;
+            if (S.nfev >= maxfev) info = 2;
+            if (0.1 * std::max(0.1 * delta, pnorm) <= kEps * xnorm) info = 3;
+            if (nslow2 == 5) info = 4;
+            if (nslow1 == 10) info = 5;
+            if (info != 0) return info;
+```
+
+| info | 조건 | 뜻 |
+|---:|---|---|
+| 1 | $\Delta \le \text{xtol}\cdot\lVert Dx\rVert$ 또는 $F = 0$ | 걸음 한계가 x에 비해 작아져 더 움직일 여지가 없음(수렴) |
+| 2 | `nfev` ≥ `max_nfev` | 호출 상한 |
+| 3 | $0.1\max(0.1\Delta, \lVert Ds\rVert) \le \varepsilon\lVert Dx\rVert$ | `xtol`이 너무 작아 걸음이 반올림 아래 |
+| 4 | 야코비안을 다섯 번 새로 구하는 동안 actred ≥ 0.1인 걸음이 없음 | 새 야코비안으로도 진전이 없음 |
+| 5 | actred ≥ 0.001인 걸음 없이 열 번 | 반복으로 진전이 없음 |
+
+info 1은 "x가 상대 `xtol` 안에서 정해졌다"는 판정이에요. 근 근처에서는 예측이 잘 맞아 Δ가 걸음 길이의 두 배로 따라 줄어서, 걸음이 xtol·‖Dx‖의 절반 아래로 작아지면 멈춰요. ‖F‖ 자체를 보는 판정은 F = 0뿐이에요. 근이 아닌 곳에서는 실패한 걸음마다 Δ가 반으로 주는데, Δ가 xtol·‖Dx‖까지 줄려면 수십 번이 필요해서 그 전에 진전 없는 걸음 열 번(info 5)이나 새 야코비안 다섯 번(info 4)에 걸리는 것이 보통이에요. `converged`는 info 1일 때만 참이에요.
+
+### 차분: fdjac1과 띠
+
+`jac`이 없으면 hybrd는 `fdjac1`의 앞쪽 차분 $(F(x + h_j e_j) - F(x))/h_j$, $h_j = \sqrt{\max(\text{epsfcn}, \varepsilon)}\,\lvert x_j\rvert$(0이면 그 상수)예요. MINPACK처럼 $h_j$로 나눠요.
+
+`band` = (ml, mu)이면 식 i가 변수 $i - \text{ml}, \dots, i + \text{mu}$에만 의존한다는 뜻이에요. 그러면 열 $j$와 $j + (\text{ml} + \text{mu} + 1)$은 서로 다른 행에만 값이 있으니, 두 변수를 함께 움직이고 한 번 불러도 열마다의 값을 갈라낼 수 있어요(Curtis–Powell–Reid의 생각). 야코비안 하나에 n번 대신 ml + mu + 1번이에요.
+
+```cpp
+        // csrc/optimize/hybrd.cpp, System::fdjac1
+        for (lint k = 0; k < msum; ++k) {
+            double sign = 1;
+            bool ok = false;
+            for (int side = 0; side < 2 && !ok; ++side) {
+                if (side == 1) sign = -1;
+                for (lint j = k; j < n; j += msum) {
+                    wa2[j] = x[j];
+                    double h = eps * std::abs(wa2[j]);
+                    if (h == 0) h = eps;
+                    x[j] = wa2[j] + sign * h;
+                }
+                ok = eval(x, wa1);
+                for (lint j = k; j < n; j += msum) x[j] = wa2[j];
+            }
+            if (!ok) return false;
+            for (lint j = k; j < n; j += msum) {
+                double h = eps * std::abs(wa2[j]);
+                if (h == 0) h = eps;
+                h = sign * h;
+                for (lint i = 0; i < n; ++i) {
+                    fjac[i + j * n] = 0;
+                    if (i >= j - mu && i <= j + ml) fjac[i + j * n] = (wa1[i] - fvec[i]) / h;
+                }
+            }
+        }
+```
+
+`side` 고리는 MINPACK에 없는 것이에요. 한쪽에서 F가 유한하지 않으면 반대쪽으로 한 번 더 해 봐요(`least_squares`의 2점 차분과 같은 규칙). 양쪽 모두 안 되면 에러예요.
+
+## scipy와 같은 반올림의 꼴
+
+scipy 1.15부터의 MINPACK은 C 판(`_minpack` 모듈)이고 clang의 기본 축약(`-ffp-contract=on`)으로 빌드되어 있어요. 그 소스는 설치되어 있지 않아요. 커널은 netlib의 Fortran 원본을 0부터 세는 C++로 적은 것이고, 반올림의 꼴 셋은 scipy의 기계어에서 읽은 것을 따라요. 그래서 지금은 부르는 점까지 scipy와 비트까지 같아요(약속은 아니에요).
+
+- **enorm의 상수**: $r_\text{dwarf} = 2^{-64.5}$, $r_\text{giant} = 2^{63.5}$를 double로 반올림한 값(원본의 3.834e-20, 1.304e19와 끝자리가 달라요). enorm의 생각은 [비선형 최소제곱의 구현](/internals/optimize/least-squares/)에 있어요.
+- **따로 반올림하는 제곱**: MINPACK에서 `t**2`로 적힌 제곱(dogleg의 α 식, r1updt의 회전, actred·prered, enorm의 척도)은 합에 합쳐지지 않아요(`minpack::sq`).
+- **누적 합의 FMA**: 합의 고리는 모두 FMA인데, qrfac의 내적만 clang이 벡터화해서 8개씩의 곱을 따로 반올림해 더해요.
+
+이 파일은 같은 축약을 켜고(`#pragma clang fp contract(on)`), 합은 `std::fma`로 적어요. 이쪽 clang도 합의 고리를 벡터화하며 FMA를 풀 수 있어서, 그 자리를 명시적으로 적어요. 이 셋 없이 원본의 식만 옮기면 55경우 가운데 12경우가 첫 시험점부터 끝자리가 달라요(n ≥ 9의 가우스–뉴턴 걸음, 컴파일러가 합의 고리를 벡터화하며 FMA를 푼 곳).
+
+그 결과 HYBRD·HYBRJ 드라이버의 14개 방정식계 55경우 × (해석적, 차분)의 110번 모두, `fun`과 `jac`을 부른 점이 차례대로 scipy와 비트까지 같고 `x`, `fun`, `status`, `message`, `njev`도 같아요. 옵션 7가지(`factor`, `xtol`, `max_nfev`, `diag`, `eps`, `band` 둘)를 6계에서 바꾼 42번과 `jac=True`도 같아요. `'lm'`도 55계 × 2의 110번과 옵션 6가지 × 6계가 같아요.
+
+scipy의 감싸개는 MINPACK이 시작하기 전에 x0에서 `fun`을 두 번 더 불러요(모양 확인과 C 감싸개). 이쪽은 Python 층의 모양 확인 호출 한 번의 값을 커널에 넘겨 MINPACK의 첫 호출로 써요. 그래서 `nfev`는 MINPACK의 셈과 같고 scipy보다 2 적어요.
+
+```python
+>>> from scipy.optimize import root as scipy_root
+>>> def G(x):
+...     a, b = x.tolist()
+...     return [a * a + b * b - 4, b - a * a + 1]
+>>> for method in ('hybr', 'lm'):
+...     mine, theirs = sd.optimize.root(G, [1.0, 1.0], method=method), scipy_root(G, [1.0, 1.0], method=method)
+...     print(method, mine.x.tolist() == theirs.x.tolist(), mine.fun.tolist() == theirs.fun.tolist(), mine.nfev, theirs.nfev)
+hybr True True 11 13
+lm True True 16 18
+```
+
+원본 Fortran(gfortran, 축약 없음)과 견주면 scipy의 C 판은 같은 알고리즘이지만 첫 시험점부터 끝자리가 달라요. 그래서 원본과의 거리는 scipy와 같아요(HYBRJ1: 55경우 가운데 같은 info 50, x가 상대 $10^{-6}$ 안 44).
+
+## 유한하지 않은 값
+
+- x0에서 F가 유한하지 않으면 Python 층이 `ValueError`를 내요.
+- 시험점에서 F가 유한하지 않으면 MINPACK의 산술이 그대로 실패한 걸음으로 만들어요. ‖F(x + s)‖가 inf나 NaN이라 "‖F‖가 줄었는지"의 비교가 거짓이 되고 actred = −1, ρ ≤ 0, Δ는 반이에요. 다만 그 값으로 하는 Broyden 갱신은 건너뛰어요(위 발췌의 `if (!finite) continue`). scipy는 NaN으로 갱신해서 QR 인자 전체가 NaN이 돼요.
+- 야코비안(사용자의 것이나 차분)이 유한하지 않으면 커널이 −1을 돌려주고 Python 층이 그 점을 적은 `ValueError`를 내요.
+
+## 'lm': m = n의 lmder
+
+`'lm'`은 `least_squares('lm')`과 같은 `levenberg_marquardt<true>`(scipy의 빌드)를 m = n으로 불러요. 다른 것은 옵션과 결과의 꼴이에요.
+
+- 차분은 MINPACK `fdjac2`(lmdif)라 $h_j = \sqrt{\max(\text{eps}, \varepsilon)}\,\lvert x_j\rvert$로 나눠요(`least_squares`는 scipy의 2점 차분이에요).
+- `factor`와 `diag`(`mode` 2)를 받아요.
+- 결과는 lmder의 info 1–8 그대로예요. `least_squares`는 이것을 자기 status(0–4)로 바꾸고 6–8을 수렴으로 세지만, `root`는 scipy의 `leastsq`처럼 1–4만 수렴이에요.
+- `jac=True`이면 Python의 작은 감싸개가 마지막으로 부른 x의 (F, J)를 기억해서, 커널이 F와 J를 따로 달라고 해도 같은 점에서는 한 번만 불러요(scipy의 `MemoizeJac`). n ≥ 2에서 둘째 항목이 수 하나이면 쌍이 아니라 F만 돌려준 것으로 보고 `TypeError`예요. n = 1이면 `jac`이 수 하나를 돌려줘도 (1, 1) 야코비안이에요.
+- 옵션은 모두 사용자 함수를 부르기 전에 검사해요(`'lm'`의 `ftol`·`gtol`도).
+
+`n_iter`는 `'hybr'`에서 시험한 걸음 수, `'lm'`에서 반복이 계산한 야코비안 수예요. `njev`는 차분 야코비안도 세요.
+
+## 성능
+
+scipy의 `root`도 반복 전체가 C이고 콜백만 Python이라, 반복 하나의 자기 비용은 비슷해요. Apple M4 Pro, 1스레드, scipy 1.18.1, 해석적 야코비안에서 n = 100의 반복 하나가 `'hybr'` 24 µs(scipy 28 µs), `'lm'` 0.11 ms(scipy 0.17 ms)예요.
+
+- n = 100의 `'hybr'`는 QR(qrfac, $n^3$)과 Broyden 갱신($n^2$)이 대부분이에요. qrfac과 qform은 서로 독립인 열 여덟 개를 한 번에 반사해요(열마다의 합은 제 순서라 비트가 같아요). n = 300에서 자기 비용 전체가 scipy의 0.55배예요.
+- 작은 n의 `'lm'`이 scipy의 절반쯤으로 싼 것은 scipy가 `fun`을 호출 수를 세는 Python 함수로 한 번 더 감싸기 때문이에요. n = 100의 `'lm'`은 m = n이라 LAPACK QR을 먼저 하지 않고 lmder의 QR 하나로 끝나요.
+
+## 참고 문헌
+
+1. M. J. D. Powell, "A hybrid method for nonlinear equations", in P. Rabinowitz (ed.), *Numerical Methods for Nonlinear Algebraic Equations*, Gordon and Breach, 1970, 87–114.
+2. C. G. Broyden, "A class of methods for solving nonlinear simultaneous equations", *Mathematics of Computation* 19(92), 1965, 577–593.
+3. C. G. Broyden, J. E. Dennis, J. J. Moré, "On the local and superlinear convergence of quasi-Newton methods", *IMA J. Appl. Math.* 12(3), 1973, 223–245.
+4. J. J. Moré, B. S. Garbow, K. E. Hillstrom, *User Guide for MINPACK-1*, Argonne National Laboratory ANL-80-74, 1980. (hybrd, hybrj, dogleg, r1updt, r1mpyq, qform, fdjac1)
+5. A. R. Curtis, M. J. D. Powell, J. K. Reid, "On the estimation of sparse Jacobian matrices", *J. Inst. Math. Appl.* 13(1), 1974, 117–119.
+6. scipy 1.18.1, `scipy/optimize/_root.py`, `_minpack_py.py`(`_root_hybr`, `leastsq`).

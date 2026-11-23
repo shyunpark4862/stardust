@@ -1,0 +1,267 @@
+---
+kind: function
+title: pagerank
+names: [pagerank]
+group: 구조와 중심성
+order: 3
+signatures:
+  - "sd.graph.pagerank(csgraph, /, *, alpha=0.85, personalization=None, dangling=None, directed=True, unweighted=False, tol=1e-12)"
+summary: 링크를 따라 무작위로 돌아다니는 사람이 오래 돌아다닌 뒤 각 노드에 머무를 확률을 구해요. 중요한 노드에서 많이 가리키는 노드일수록 값이 커요. 결과는 참값과의 거리를 증명된 한계로 보장해요.
+params:
+  - name: csgraph
+    type: sd.sparse 배열, ndarray, numpy 배열, 또는 수의 중첩 시퀀스
+    kind: positional-only
+    desc: (n, n) 인접 행렬. 행 i, 열 j의 원소가 i에서 j로 가는 링크의 무게예요. 희소 배열은 저장된 원소가 링크이고, 밀집 배열은 0도 NaN도 ±inf도 아닌 원소가 링크예요. 무게는 0 이상이어야 해요. 대각 원소(자기 고리)도 링크로 세요.
+  - name: alpha
+    type: float
+    kind: keyword-only
+    desc: 링크를 따라갈 확률(감쇠 계수). 0 이상 1 미만이고 기본값은 0.85예요. 나머지 1 − alpha의 확률로는 personalization 분포에 따라 아무 노드로 건너가요.
+  - name: personalization
+    type: None 또는 길이 n의 1차원 배열
+    kind: keyword-only
+    desc: 건너갈 때 노드를 고르는 분포. 음이 아닌 유한한 수이고 합이 0보다 커야 해요. 합이 1이 되게 나눠서 써요. None(기본값)이면 모든 노드가 같은 확률이에요.
+  - name: dangling
+    type: None 또는 길이 n의 1차원 배열
+    kind: keyword-only
+    desc: 나가는 링크가 없는 노드에서 다음 노드를 고르는 분포. 조건은 personalization과 같아요. None(기본값)이면 personalization을 써요.
+  - name: directed
+    type: bool
+    kind: keyword-only
+    desc: True(기본값)면 (i, j) 원소를 i에서 j로만 가는 링크로 읽어요. False면 양쪽으로 다닐 수 있는 링크로 읽고, 두 방향이 모두 있으면 작은 무게를 써요.
+  - name: unweighted
+    type: bool
+    kind: keyword-only
+    desc: True면 무게를 읽지 않고 링크마다 무게 1로 봐요. 기본값은 False예요.
+  - name: tol
+    type: float
+    kind: keyword-only
+    desc: 결과와 참값의 거리(원소마다의 차이의 절댓값을 더한 ℓ1 거리)의 목표. 양의 유한한 수이고 기본값은 1e-12예요.
+returns:
+  type: ndarray
+  desc: (n,) float64 배열. i번째 값이 노드 i의 PageRank이고, 모두 더하면 1과 반올림만큼만 달라요.
+raises:
+  - type: TypeError
+    desc: csgraph가 sd.sparse 배열이나 밀집 행렬이 아닐 때(scipy의 희소 객체, DataFrame), 복소수일 때, alpha·tol이 실수가 아닐 때, directed·unweighted가 True나 False가 아닐 때, personalization·dangling이 수의 배열이 아닐 때, 없는 키워드(max_iter 등)를 줬을 때.
+  - type: ValueError
+    desc: csgraph가 2차원 정방 행렬이 아닐 때, alpha가 0 이상 1 미만이 아닐 때, tol이 양의 유한한 수가 아닐 때, 음수 무게가 있을 때, 희소 배열에 저장된 무게에 NaN이나 ±inf가 있을 때, personalization·dangling의 길이가 n이 아니거나 음수·NaN·inf가 있거나 합이 0일 때.
+seeAlso: [betweenness_centrality, core_number, connected_components, basics]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import PlaneFig from '../../../components/fig/PlaneFig.astro';
+
+export const prPts = [[0, 2], [2.5, 3], [2.5, 1], [0, 0], [5, 0]];
+export const prSegs = [[0, 2, 2.5, 3], [0, 2, 2.5, 1], [2.5, 3, 2.5, 1], [2.5, 1, 0, 2], [0, 0, 0, 2], [0, 0, 2.5, 1], [0, 0, 5, 0]];
+export const prHeads = [[2.2, 2.88], [2.2, 1.12], [2.5, 1.3], [0.3, 1.88], [0, 1.7], [2.2, 0.88], [4.7, 0]];
+
+## 무엇을 계산하나요
+
+웹 페이지 다섯 개가 서로 링크로 이어져 있어요. 어떤 페이지가 가장 중요할까요? 링크를 많이 받는 페이지가 중요하다고 볼 수 있지만, 아무도 찾지 않는 페이지가 보낸 링크와 많은 사람이 찾는 페이지가 보낸 링크를 같게 셀 수는 없어요.
+
+PageRank는 이렇게 생각해요. 어떤 사람이 페이지를 보다가 그 페이지의 링크 가운데 하나를 골라 따라가기를 끝없이 해요. 다만 가끔은(확률 $1 - \alpha$) 링크를 따르지 않고 아무 페이지로 건너가요. 아주 오래 돌아다니면 각 페이지에 머무른 시간의 비율이 일정한 값으로 다가가요. 그 비율이 PageRank예요. 많이 찾는 페이지에서 링크를 받으면 그만큼 자주 오게 되니, 중요한 페이지가 가리키는 페이지가 중요해져요.
+
+```python
+>>> import stardust as sd
+>>> links = [(0, 1), (0, 2), (1, 2), (2, 0), (3, 0), (3, 2), (3, 4)]
+>>> G = sd.zeros((5, 5))
+>>> for i, j in links:
+...     G[i, j] = 1
+>>> pr = sd.graph.pagerank(G)
+>>> pr
+array([ 0.35823863913662185,  0.19062277102551145,  0.36352400872509827,
+       0.038371349392453645, 0.049243231720315514], dtype=float64)
+>>> float(pr.sum())
+1.0000000000000007
+```
+
+페이지 2가 링크를 셋(0, 1, 3에서) 받아 가장 높아요. 페이지 0은 링크를 둘(2와 3에서) 받는데, 가장 높은 2가 링크를 0에게만 보내서 2와 거의 비슷해요. 페이지 3은 아무에게서도 링크를 받지 않아서, 건너가기로만 닿아 가장 낮아요. 페이지 4는 나가는 링크가 없어요. 그런 페이지에서는 다음 페이지를 `dangling` 분포(기본은 균등)로 골라요.
+
+<Fig caption="다섯 페이지와 링크. 작은 점이 있는 쪽이 링크가 가리키는 쪽이에요. 노드 옆의 수가 PageRank예요. 링크를 셋 받는 2가 가장 높고, 링크를 하나도 받지 않는 3이 가장 낮아요.">
+  <PlaneFig
+    label="노드 다섯 개의 유향 그래프와 노드마다의 PageRank"
+    domain={[-1.2, 6.2]}
+    range={[-0.7, 3.6]}
+    width={500}
+    layers={[
+      { kind: 'segments', segs: prSegs, tone: 'base', width: 1.4 },
+      { kind: 'points', pts: prHeads, tone: 'base', size: 2.4 },
+      { kind: 'points', pts: prPts, tone: 'ink', size: 4.5, labels: ['0', '1', '2', '3', '4'] },
+      { kind: 'text', at: [0, 2], text: '0.358', dx: -12, dy: 4, anchor: 'end', tone: 'main' },
+      { kind: 'text', at: [2.5, 3], text: '0.191', dx: 12, dy: 4, anchor: 'start', tone: 'main' },
+      { kind: 'text', at: [2.5, 1], text: '0.364', dx: 12, dy: 4, anchor: 'start', tone: 'main' },
+      { kind: 'text', at: [0, 0], text: '0.038', dx: -12, dy: 4, anchor: 'end', tone: 'main' },
+      { kind: 'text', at: [5, 0], text: '0.049', dx: 12, dy: 4, anchor: 'start', tone: 'main' },
+    ]}
+  />
+</Fig>
+
+<Reference />
+
+## 결과 읽기
+
+결과는 노드 번호 차례의 float64 배열이고 모두 더하면 1이에요. 확률이라 언제나 0보다 커요(`alpha`가 1보다 작으면 어느 노드에든 건너가기로 닿을 수 있어요). 높은 순서로 늘어놓으려면 부호를 바꿔 정렬해요.
+
+```python
+>>> order = sd.argsort(-pr)
+>>> order
+array([2, 0, 1, 4, 3], dtype=int64)
+>>> [(int(i), round(float(pr[i]), 4)) for i in order]
+[(2, 0.3635), (0, 0.3582), (1, 0.1906), (4, 0.0492), (3, 0.0384)]
+```
+
+값 자체보다 순서와 비율을 읽는 일이 많아요. 노드 수가 다른 그래프의 값을 견줄 때는 합이 1이라는 점을 생각해야 해요. 노드가 많을수록 노드 하나의 값은 작아져요.
+
+PageRank는 다음 식을 만족하는 확률 벡터 $x$예요.
+
+$$
+x = \alpha P^{\mathsf T} x + (1 - \alpha) v
+$$
+
+$P$는 전이 행렬로, 행 $i$를 노드 $i$에서 나가는 무게의 합으로 나눈 것이에요. 나가는 링크가 없는 행은 `dangling` 분포로 채워요. $v$는 `personalization` 분포예요.
+
+## 따라갈 확률: `alpha`
+
+`alpha`는 링크를 따라갈 확률이에요. 0.85(기본값)면 열 번에 여덟 번 반쯤 링크를 따라가고 나머지는 건너가요.
+
+```python
+>>> sd.graph.pagerank(G, alpha=0.5)
+array([ 0.2786647314950713, 0.18287373004349658,  0.2931785195935076,
+       0.11320754716981132, 0.13207547169811323], dtype=float64)
+>>> sd.graph.pagerank(G, alpha=0.0)
+array([0.2, 0.2, 0.2, 0.2, 0.2], dtype=float64)
+>>> sd.graph.pagerank(G, alpha=0.99)
+array([   0.3970325173545329,   0.19924605278693394,    0.3973955807558271,
+       0.0027149566964406943, 0.0036108924062661233], dtype=float64)
+```
+
+`alpha`가 작으면 건너가기가 잦아 값이 고르게 퍼지고, 0이면 링크를 전혀 따르지 않아 `personalization` 분포(기본은 균등) 그대로예요. `alpha`가 1에 가까울수록 링크 구조가 값을 더 많이 정하고, 링크가 갇히는 곳(밖으로 나가지 않는 고리)에 값이 몰려요. `alpha=1`은 답이 하나로 정해지지 않을 수 있어서 받지 않아요. `alpha`가 1에 가까울수록 계산도 오래 걸려요.
+
+## 링크의 무게
+
+링크에 무게가 있으면 나가는 무게에 비례해서 따라가요. 아래에서 페이지 0이 1로 가는 링크의 무게를 3으로 늘리면, 0에서 1로 갈 확률이 1/2에서 3/4으로 커져요.
+
+```python
+>>> Gw = G.copy()
+>>> Gw[0, 1] = 3
+>>> sd.graph.pagerank(Gw)
+array([  0.3311858649765595,  0.24950233831505905,   0.3316972155956131,
+       0.038371349392453645, 0.049243231720315514], dtype=float64)
+>>> sd.graph.pagerank(Gw, unweighted=True)
+array([ 0.35823863913662185,  0.19062277102551145,  0.36352400872509827,
+       0.038371349392453645, 0.049243231720315514], dtype=float64)
+```
+
+`unweighted=True`면 무게를 읽지 않고 링크마다 1로 봐서, 처음 결과와 같아요. 무게는 0 이상이어야 해요. 희소 배열에 무게 0으로 저장된 링크는 따라갈 확률이 0이에요. 나가는 무게가 모두 0인 노드는 나가는 링크가 없는 노드처럼 `dangling` 분포를 따라요.
+
+대각 원소(자기 고리)는 자기에게 돌아오는 링크로 세요. 링크를 따라갈 때 그 확률로 같은 노드에 머물러요.
+
+## 건너갈 곳 고르기: `personalization`
+
+기본으로는 건너갈 때 모든 노드를 같은 확률로 골라요. `personalization`을 주면 그 분포로 골라요. 어떤 노드에서 가까운 노드들이 높아져서, 특정 주제나 특정 사용자에게 맞춘 순위를 매길 때 써요.
+
+```python
+>>> near3 = sd.graph.pagerank(G, personalization=[0, 0, 0, 1, 0])
+>>> near3
+array([0.31224423058665235,  0.1327037979993469, 0.30148446318128924,
+       0.19758507135016468, 0.05598243688254665], dtype=float64)
+>>> sd.graph.pagerank(G, personalization=[0, 0, 0, 5, 0])
+array([0.31224423058665235,  0.1327037979993469, 0.30148446318128924,
+       0.19758507135016468, 0.05598243688254665], dtype=float64)
+```
+
+건너갈 때 언제나 3으로 가니 3의 값이 0.038에서 0.198로 크게 올랐고, 3에서 바로 닿는 4도 조금 올랐어요. 3에서 두 걸음 떨어진 1은 낮아졌어요. 분포는 합이 1이 되게 나눠서 쓰므로 `[0, 0, 0, 5, 0]`도 같은 뜻이에요. 기본으로는 나가는 링크가 없는 노드(여기서는 4)에서도 이 분포를 따라 건너가요.
+
+## 막다른 노드: `dangling`
+
+나가는 링크가 없는 노드에서는 다음 노드를 `dangling` 분포로 골라요. 기본은 `personalization`과 같아요. 따로 주면 그 분포를 써요.
+
+```python
+>>> sd.graph.pagerank(G, dangling=[1, 0, 0, 0, 0])
+array([   0.378745053702667,  0.19096664782363765,  0.36178829847369576,
+       0.030000000000000006, 0.038500000000000006], dtype=float64)
+```
+
+페이지 4에서 언제나 0으로 가게 하니 0의 값이 커졌어요.
+
+## 방향 없는 그래프: `directed=False`
+
+`directed=False`면 링크를 양쪽으로 다닐 수 있다고 봐요. `G[i, j]`와 `G[j, i]` 가운데 있는 쪽이 $i$와 $j$를 잇고, 둘 다 있으면 작은 무게예요. 방향 없는 그래프에서 PageRank는 대체로 이웃이 많은 노드일수록 커요. 아래에서 이웃이 셋인 0, 2, 3이 높고 이웃이 하나인 4가 가장 낮아요.
+
+```python
+>>> sd.graph.pagerank(G, directed=False)
+array([0.24007910554672188, 0.16604482647648933, 0.24007910554672188,
+       0.25230932137408846, 0.10148764105597813], dtype=float64)
+```
+
+## 정확도와 `tol`
+
+결과 $\hat x$와 식의 참 해 $x^\ast$ 사이의 $\ell_1$ 거리(원소마다 차이의 절댓값을 더한 값)는 다음을 넘지 않아요.
+
+$$
+\lVert \hat x - x^\ast \rVert_1 \le \mathrm{tol} + F
+$$
+
+$F$는 걸음 하나에서 생기는 반올림을 $1 - \alpha$로 나눈 크기로, 기본 `alpha`에서 $(2\text{–}4) \times 10^{-14}$쯤이에요. 계산은 이 한계가 증명될 때 멈춰요. 그래서 `tol`을 $10^{-14}$보다 작게 주어도 결과가 더 정확해지지 않고, 그때는 `alpha`와 `tol`이 정하는 횟수만큼 돌고 멈춰요. 반복 횟수는 $\lceil \log(\mathrm{tol}/2) / \log \alpha \rceil + 1$을 넘지 않아요(기본값에서 176). 그래서 반복 횟수의 상한을 따로 주는 인자가 없어요.
+
+```python
+>>> loose = sd.graph.pagerank(G, tol=1e-4)
+>>> float(abs(loose - pr).sum()) < 1e-4
+True
+```
+
+Arb(구간 산술)로 만든 참값과 견주어 보면, 여러 시험 그래프에서 오차가 모두 이 한계 안이었어요.
+
+## 경계의 값
+
+| 입력 | 결과 |
+|---|---|
+| 노드가 없는 (0, 0) 행렬 | 빈 배열 |
+| 링크가 없는 그래프 | `personalization` 분포 그대로(기본은 모두 $1/n$) |
+| 음수 무게 | `ValueError` |
+| 희소 배열에 저장된 NaN, ±inf | `ValueError` |
+| `alpha=1`, `tol=0` | `ValueError` |
+
+```python
+>>> sd.graph.pagerank(sd.zeros((0, 0)))
+array([], dtype=float64)
+>>> sd.graph.pagerank(sd.zeros((3, 3)))
+array([0.3333333333333333, 0.3333333333333333, 0.3333333333333333], dtype=float64)
+>>> sd.graph.pagerank(-G)
+Traceback (most recent call last):
+    ...
+ValueError: pagerank(): negative edge weights are not allowed
+>>> sd.graph.pagerank(G, alpha=1.0)
+Traceback (most recent call last):
+    ...
+ValueError: pagerank(): 'alpha' must be >= 0 and < 1, not 1.0
+>>> sd.graph.pagerank(G, tol=0)
+Traceback (most recent call last):
+    ...
+ValueError: pagerank(): 'tol' must be positive and finite, not 0
+>>> sd.graph.pagerank(G, personalization=[1, 0, 0])
+Traceback (most recent call last):
+    ...
+ValueError: pagerank(): 'personalization' must have one entry per node (5), not 3
+>>> sd.graph.pagerank(G, personalization=[0, 0, 0, 0, 0])
+Traceback (most recent call last):
+    ...
+ValueError: pagerank(): 'personalization' must have a positive sum
+>>> sd.graph.pagerank(G, max_iter=100)
+Traceback (most recent call last):
+    ...
+TypeError: pagerank(): unexpected keyword argument 'max_iter'
+```
+
+<Callout type="note" title="같은 입력이면 같은 비트예요">
+
+같은 그래프와 인자면 스레드를 몇 개 쓰든 결과가 비트까지 같아요. 큰 그래프를 여러 스레드로 나눠 계산해도 더하는 차례가 정해져 있어요.
+
+</Callout>
+
+## scipy·networkx를 아는 분께
+
+- scipy에는 없는 함수예요. 이름과 뜻은 networkx의 `pagerank`를 따랐어요. `alpha`, `personalization`, `dangling`의 뜻과 기본값, 자기 고리를 링크로 세는 것이 같아요.
+- 멈추는 규칙이 달라요. networkx는 `tol=1e-6`, `max_iter=100`이고 연속한 두 반복의 차이로 멈추며, 수렴하지 못하면 예외를 내요. 여기서는 참값과의 거리를 증명된 한계로 보장하고 `max_iter`가 없어요. 기본 `tol`도 1e-12로 작아요.
+- networkx는 노드에서 값으로 가는 사전을 돌려줘요. 여기서는 노드 번호 차례의 배열을 돌려줘요. `personalization`·`dangling`도 사전이 아니라 길이 n의 배열로 줘요.
+- networkx의 `weight='weight'`는 여기서 `unweighted=False`(기본값)이고, `weight=None`은 `unweighted=True`예요.
+- 방향 없는 그래프는 `directed=False`로 읽어요. 두 방향의 무게가 다르면 작은 쪽을 써요.

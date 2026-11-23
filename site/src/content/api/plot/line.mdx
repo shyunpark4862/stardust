@@ -1,0 +1,191 @@
+---
+kind: function
+title: line
+names: [line]
+group: 기본 그림
+order: 1
+signatures:
+  - "sd.plot.line(x, y, /, *, data=None, group=None, color=None, width=None, style='-', alpha=1.0, label=None, **figure)"
+  - "fig.line(x, y, /, *, data=None, group=None, color=None, width=None, style='-', alpha=1.0, label=None)"
+summary: 점 (x, y)를 주어진 순서대로 이은 꺾은선을 그려요. 모듈 함수는 새 그림을, 같은 이름의 메서드는 있는 그림의 칸에 선을 더해요. group으로 무리마다 선을 나누고, NaN인 점에서는 선이 끊겨요.
+params:
+  - name: x, y
+    type: 수의 시퀀스, ndarray, numpy 배열, Series, 또는 열 이름
+    kind: positional-only
+    desc: "점의 좌표. 1차원이고 길이가 같아야 해요. float64로 바꿔 써요. data를 주면 열 이름(str)을 줄 수 있어요. 순서를 바꾸지 않고 주어진 차례로 이어요."
+  - name: data
+    type: DataFrame 또는 None
+    kind: keyword-only
+    desc: "주면 x, y, group에 열 이름을 쓸 수 있어요. 기본값 None."
+  - name: group
+    type: 열 이름, 시퀀스, 또는 None
+    kind: keyword-only
+    desc: "점을 무리로 나누는 값. 길이가 자료와 같아야 해요. 무리마다 따로 선을 긋고 팔레트의 색을 차례로 주며, 무리의 값이 범례의 이름이 돼요. color, label과 함께 줄 수 없어요."
+  - name: color
+    type: 색 또는 None
+    kind: keyword-only
+    desc: "선의 색. 이름, '#rrggbb', '#rrggbbaa', 0과 1 사이의 수 셋이나 넷의 튜플, 'C0'–'C9'. None(기본값)이면 칸의 팔레트에서 다음 색을 받아요."
+  - name: width
+    type: float 또는 None
+    kind: keyword-only
+    desc: "선의 굵기(pt). 0보다 커야 해요. None(기본값)이면 테마의 굵기예요."
+  - name: style
+    type: str
+    kind: keyword-only
+    desc: "선의 꼴. '-'(실선, 기본값), '--'(파선), ':'(점선), '-.'(일점쇄선)."
+  - name: alpha
+    type: float
+    kind: keyword-only
+    desc: "불투명도. 0 이상 1 이하이고 기본값 1.0이에요."
+  - name: label
+    type: str 또는 None
+    kind: keyword-only
+    desc: "범례에 적을 이름(LaTeX 원문). 주면 범례가 생겨요. 기본값 None."
+  - name: "**figure"
+    type: 그림 옵션
+    kind: keyword-only
+    desc: "모듈 함수만 받아요. height, font, theme, palette(그림의 기본). width는 선의 굵기라서 그림의 너비로 쓸 수 없어요."
+returns:
+  type: Figure
+  desc: "모듈 함수는 새 그림을, 메서드는 선을 더한 그 그림(fig 자신)을 돌려줘요."
+raises:
+  - type: TypeError
+    desc: data 없이 자료 인자에 문자열을 줬을 때, data가 DataFrame이 아닐 때, 수가 아닌 열을 줬을 때, 옵션의 형이 틀릴 때, 모르는 키워드를 줬을 때.
+  - type: ValueError
+    desc: x와 y의 길이가 다를 때, 자료가 1차원이 아닐 때, 없는 열 이름일 때, group의 길이가 자료와 다를 때, group과 color나 label을 함께 줬을 때, 색이나 style을 알 수 없을 때, alpha가 [0, 1] 밖일 때, width가 0 이하일 때, 3D 층이 있는 칸에 그릴 때.
+seeAlso: [basics, scatter, step, area, customize]
+---
+import PlotImage from '../../../components/fig/PlotImage.astro';
+
+## 무엇을 하나요
+
+`line(x, y)`는 점 $(x_0, y_0), (x_1, y_1), \dots$를 차례로 곧은 선분으로 이어요. 곡선을 그리고 싶으면 점을 촘촘히 주면 돼요. 함수의 그래프를 그릴 때 표본까지 알아서 고르게 하려면 [`function`](/api/plot/function/)을 쓰세요. `line`은 이미 가진 수를 그대로 이어요.
+
+모듈 함수 `sd.plot.line`은 새 그림을 만들어 돌려주고, 메서드 `fig.line`은 그 그림의 칸에 선을 하나 더 얹고 `fig`를 돌려줘요. 그림과 칸, 메서드로 겹치는 법은 [그림의 기본](/api/plot/basics/)에 있어요.
+
+<Reference />
+
+## 한눈에 보기
+
+```python
+>>> import stardust as sd
+>>> import math
+>>> x = sd.linspace(0.0, 2 * math.pi, 200)
+>>> fig = sd.plot.line(x, sd.sin(x), label=r"$\sin x$")
+>>> fig = fig.line(x, sd.cos(x), label=r"$\cos x$")
+>>> fig = fig.xlabel(r"$x$").xticks("pi")
+```
+
+<PlotImage name="line-sin-cos" alt="0에서 2π까지 사인과 코사인 두 곡선이 파랑과 노랑으로 그려지고, 왼쪽 아래에 범례가 있는 그림" caption="두 번째 선은 메서드로 겹쳤어요. 색을 주지 않으면 팔레트의 다음 색을 받고, label을 준 선이 있으면 범례가 생겨요. 범례는 곡선이 지나지 않는 구석을 알아서 골라요." />
+
+200개의 점이면 사인 곡선이 매끈해 보여요. 색을 주지 않은 선은 칸마다 팔레트의 색을 차례로 받아요. 첫 선은 `'C0'`, 다음 선은 `'C1'`이에요. 축의 범위는 자료의 범위에 조금 여유를 둬서 잡히고, [`xlim`, `ylim`](/api/plot/customize/)으로 바꿀 수 있어요.
+
+메서드는 모두 `fig`를 돌려주므로 한 줄로 이어 써도 돼요.
+
+```python
+>>> fig = sd.plot.line(x, sd.sin(x)).line(x, sd.cos(x)).xlabel(r"$x$")
+>>> fig.shape
+(1, 1)
+```
+
+## 점은 주어진 순서로 이어요
+
+`line`은 `x`를 정렬하지 않아요. 점을 주어진 차례 그대로 잇기 때문에, 매개변수로 만든 곡선도 바로 그릴 수 있어요.
+
+```python
+>>> t = sd.linspace(0.0, 2 * math.pi, 300)
+>>> fig = sd.plot.line(sd.cos(3 * t), sd.sin(2 * t), width=0.8)
+>>> fig.info
+()
+```
+
+$(\cos 3t, \sin 2t)$의 리사주 곡선이에요. 거꾸로, 측정값처럼 `x`가 뒤섞여 있으면 선이 앞뒤로 오가니, 먼저 `x`의 순서로 정렬해서 주세요(`sd.argsort(x)`로 얻은 순서로 `x`와 `y`를 함께 고르면 돼요). 매개변수 곡선의 표본까지 알아서 고르려면 [`parametric`](/api/plot/parametric/)이 있어요.
+
+`fig.info`는 함수 그림이 한 일을 적는 곳이라 `line`만 그린 그림에서는 비어 있어요.
+
+## 색, 굵기, 꼴
+
+`color`는 색 하나, `width`는 선의 굵기(pt), `style`은 선의 꼴, `alpha`는 불투명도예요.
+
+```python
+>>> x = sd.linspace(0.0, 10.0, 50)
+>>> fig = sd.plot.line(x, x * 0 + 4, style="-", label=r"\texttt{'-'}")
+>>> fig = fig.line(x, x * 0 + 3, style="--", label=r"\texttt{'{-}{-}'}")
+>>> fig = fig.line(x, x * 0 + 2, style=":", label=r"\texttt{':'}")
+>>> fig = fig.line(x, x * 0 + 1, style="-.", label=r"\texttt{'-.'}")
+>>> fig = fig.line(x, sd.sin(x) * 0.3 + 5.5, color="#cd534c", width=2.5, alpha=0.5)
+```
+
+<PlotImage name="line-styles" alt="가로선 넷이 실선, 파선, 점선, 일점쇄선으로 그려지고 그 위에 굵고 반투명한 붉은 물결선이 있는 그림. 범례는 칸 위에 한 줄로 있어요." caption="style의 네 꼴과, color·width·alpha를 준 선. 굵기를 주지 않은 선은 모두 테마의 굵기예요. 선이 칸을 끝에서 끝까지 가로질러 빈 구석이 없으니 범례가 칸 위로 나갔어요." />
+
+색의 꼴은 이름(`'gray'`, `'red'` 등 CSS의 이름 열다섯), `'#rrggbb'`, 투명도까지 담은 `'#rrggbbaa'`, 0과 1 사이의 수 셋이나 넷의 튜플, 팔레트의 번호 `'C0'`–`'C9'`예요. `'C0'`은 그림의 `palette`에서 첫 색이라, 다른 층과 색을 맞출 때 써요. 색 이름의 목록과 팔레트는 [그림의 기본](/api/plot/basics/)과 [스타일](/api/plot/style/)에 있어요.
+
+`alpha`는 색에 실린 투명도에 곱해져요(`'#cd534c80'`에 `alpha=0.5`를 주면 불투명도가 약 0.25예요). 반투명한 선끼리 겹친 곳은 더 진하게 보이므로, 많은 선을 겹칠 때 밀도를 드러내는 데 써요.
+
+## 무리마다 선 하나: group과 data
+
+긴 꼴의 표(한 행이 점 하나이고, 어느 무리인지 적은 열이 있는 표)라면 `group=`에 그 열을 주면 돼요. 무리마다 선을 따로 긋고, 팔레트의 색을 차례로 주고, 무리의 값을 범례의 이름으로 써요. `data=`에 `DataFrame`을 주면 자료 인자에 열 이름을 쓸 수 있어요.
+
+```python
+>>> days = [float(d) for d in range(13)]
+>>> rows = [(d, 12 / (1 + math.exp(-r * (d - 6))), s)
+...         for s, r in (("wild", 0.9), ("mutant", 0.5), ("control", 0.25)) for d in days]
+>>> df = sd.frame.DataFrame({"day": [r[0] for r in rows],
+...                          "mass": [r[1] for r in rows],
+...                          "strain": [r[2] for r in rows]})
+>>> df.shape
+(39, 3)
+>>> fig = sd.plot.line("day", "mass", data=df, group="strain")
+>>> fig = fig.xlabel("day").ylabel("mass (mg)").legend(title="strain")
+```
+
+<PlotImage name="line-group" alt="0일에서 12일까지 무게가 S자로 느는 세 곡선 wild, mutant, control이 파랑, 노랑, 회색으로 그려지고 왼쪽 위에 strain이라는 제목의 범례가 있는 그림" caption="group의 무리는 처음 나온 차례로 색을 받아요. 범례의 이름은 무리의 값을 글자 그대로 적어요." />
+
+무리는 표에 처음 나온 차례로 색과 범례 자리를 받아요. 무리의 값에 든 `_`, `%`, `&` 같은 LaTeX 특수 문자는 알아서 숨겨서 글자 그대로 보여요. 값이 비어 있는(`None`이나 NaN인) 행은 어느 무리에도 들지 않아 그려지지 않아요.
+
+`group`은 열 이름 말고 자료와 길이가 같은 시퀀스로 줘도 돼요. 무리가 색과 이름을 정하므로 `color`나 `label`을 함께 주면 `ValueError`예요. 무리의 색을 바꾸려면 그림의 `palette`를 바꾸거나, 무리마다 `fig.line(..., color=...)`을 따로 불러요.
+
+`data` 없이 문자열을 주면 열 이름으로 읽을 표가 없어서 `TypeError`예요.
+
+```python
+>>> sd.plot.line("day", "mass")
+Traceback (most recent call last):
+    ...
+TypeError: line(): 'x' is a column name ('day'), which needs 'data'
+>>> sd.plot.line("day", "strain", data=df)
+Traceback (most recent call last):
+    ...
+TypeError: line(): 'y' must be numeric, not a Series of string
+```
+
+## NaN에서는 선이 끊겨요
+
+`x`나 `y`가 NaN이거나 무한대인 점은 그리지 않고, 선은 그 자리에서 끊겨요. 에러도 경고도 아니에요. frame의 결측값도 NaN으로 읽혀요. 정의되지 않는 구간이 있는 값을 그대로 넘기면 그 구간이 비어 보여요.
+
+```python
+>>> x = sd.linspace(-3.0, 3.0, 121)
+>>> y = sd.sqrt(1.0 - (x / 2) ** 2) * 2
+>>> int(sd.sum(sd.isnan(y)))
+40
+>>> fig = sd.plot.line(x, y).line(x, -y)
+```
+
+`y`는 $|x| > 2$에서 NaN이라, 반원 둘만 그려지고 바깥은 비어요. 축의 범위도 유한한 값만 보고 잡아요.
+
+## 점이 아주 많을 때
+
+점이 수만, 수십만 개여도 그대로 넘기면 돼요. 그릴 때 가로로 어느 화소보다도 좁은 폭에 잇달아 놓인 점은 그 폭의 처음, 가장 낮은, 가장 높은, 마지막 점만 남기고 덜어 내요. 그리고 점의 수와 상관없이, 빼도 선이 0.02 pt 넘게 움직이지 않는 점은 솎아 내요. 곧은 구간에 촘촘히 놓인 점이 그래요. 그래서 보이는 모양은 그대로이고 SVG·PDF 파일은 점의 수만큼 커지지 않아요.
+
+## 조심할 점
+
+- `width`는 메서드와 모듈 함수 모두 선의 굵기(pt)예요. 그림 옵션의 너비도 `width`라는 이름이지만 `line`에서는 선의 굵기가 그 이름을 가져요. 그림의 너비를 바꾸려면 `fig.size(120)`을 쓰거나 `sd.plot.Figure(width=120)`로 그림을 먼저 만들고 `.line(...)`을 부르세요.
+- 곡면이나 공간 곡선을 그린 3D 칸에는 선을 얹을 수 없어요(`ValueError`). 공간의 선은 [`curve3d`](/api/plot/curve3d/)로 그려요.
+- 로그 축에서는 0 이하의 값이 NaN과 같이 다뤄져 선이 끊겨요([축 고치기](/api/plot/customize/)).
+- 범례의 이름은 LaTeX 원문이에요. 수식은 `$...$`에 넣고, `%`, `_`, `&`, `#`은 `\`로 숨겨요. 조판 오류는 그릴 때(`save`, `to_svg`, 노트북 표시) 나요.
+
+## matplotlib을 아는 분께
+
+- `plt.plot(x, y)` 대신 `sd.plot.line(x, y)`가 그림을 돌려주고, 겹칠 때는 `fig.line(...)`을 불러요. "지금 그림"이 없어요.
+- `'r--'` 같은 형식 문자열, `lw=`, `ls=`, `c=` 같은 줄임 인자, 한 글자 색 이름 `'r'`은 없어요. `color='red'`, `style='--'`, `width=2`로 써요.
+- 점 기호가 있는 선은 `line`과 [`scatter`](/api/plot/scatter/)를 함께 불러 그려요.
+- ggplot2처럼 긴 꼴의 표를 `data=`와 `group=`으로 바로 넘길 수 있어요.

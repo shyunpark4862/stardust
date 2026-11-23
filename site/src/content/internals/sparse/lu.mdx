@@ -1,0 +1,320 @@
+---
+title: Accelerate의 희소 LU
+group: 직접 풀이
+order: 1
+summary: spsolve·splu·factorized·inv가 함께 쓰는 Accelerate Sparse Solvers의 LU를 어떻게 부르는지 설명해요. AMD 순서와 문턱 부분 피벗, int32 색인으로 좁히기, 오류 콜백, 그리고 Accelerate를 직접 재 보고 찾은 제약에 맞춘 처리를 다뤄요.
+seeAlso: [solve, triangular, overview, determinism]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Steps from '../../../components/fig/Steps.astro';
+
+## 한눈에 보기
+
+희소 행렬의 직접 풀이 넷([`spsolve`](/api/sparse/spsolve/), [`splu`](/api/sparse/splu/), [`factorized`](/api/sparse/factorized/), [`inv`](/api/sparse/inv/))은 모두 같은 LU 분해 하나 위에 있어요. 분해 자체는 macOS의 Accelerate 프레임워크에 든 Sparse Solvers(`Solve.h`)의 `SparseFactor`가 하고, 이 라이브러리는 그 앞뒤를 맡아요. 영역 전체에서 Accelerate가 맡는 몫은 [영역의 구조](/internals/sparse/overview/)에 있어요. 입력을 Accelerate가 받는 꼴로 바꾸고, 옵션을 고정하고, Accelerate가 알려 주지 않는 실패를 스스로 찾아요.
+
+<Fig column caption="splu(A) 한 번의 흐름. Accelerate를 부르는 곳은 csrc/accelerate/sparse.hpp 한 파일뿐이에요.">
+  <Steps steps={[
+    { label: 'splu(A)', note: 'A가 2차원 정사각 희소 배열인지 보고, 모든 형식을 CSC로 바꾸고, 값을 float64나 complex128로', where: '_direct.py' },
+    { label: '_lu_factor', note: 'GIL을 놓고 아래를 차례로', where: 'csrc/sparse/direct.cpp' },
+    { label: 'Csc::narrow', note: 'int64 행 색인을 int32로 한 번 복사', where: 'accelerate/sparse.hpp', depth: 1 },
+    { label: 'Lu::factor', note: 'SparseFactor(LU, AMD, 문턱 0.01, zeroTolerance 0), 오류 콜백으로 메시지를 모음', where: 'accelerate/sparse.hpp', depth: 1 },
+    { label: '특이 판정', note: 'κ₁ 추정, 유한하지 않은 풀이', where: 'direct.cpp', depth: 1 },
+    { label: 'SparseLU', note: '인수와 원래 행렬(다듬기용)을 쥔 객체', where: '_direct.py' },
+  ]} />
+</Fig>
+
+| 무엇 | 어떻게 | 왜 |
+|---|---|---|
+| 분해 | `SparseFactorizationLU`(문턱 부분 피벗) | scipy의 직접 풀이가 모두 LU라서, 대칭 분해는 실행마다 비트가 달라서 |
+| 순서 | `SparseOrderAMD` 고정 | 실행마다, 동시 호출에서도 같은 비트를 주는 순서가 AMD뿐이라서 |
+| 피벗 문턱 | `pivotTolerance = 0.01` | Accelerate의 double 기본값 |
+| 0 문턱 | `zeroTolerance = 0` | 정확히 0인 피벗이 틀린 유한한 값 대신 inf를 내게 |
+| 입력 형식 | 언제나 CSC | CSR을 전치 속성으로 넘기면 끝자리가 달라지고 여러 우변 풀이가 틀려서 |
+| 오류 | `reportError` 콜백을 언제나 넘김 | NULL이면 매개변수 오류에서 프로세스가 멈춰서 |
+
+## 희소 LU가 하는 일
+
+밀집 LU는 $PA = LU$의 $L$, $U$를 n²개 자리에 채워요. 희소 행렬에서 같은 일을 하면 소거하는 동안 0이던 자리가 0이 아닌 값으로 차요(채움, fill-in). 열 하나를 소거할 때 그 열과 행에 원소가 있는 자리들이 서로 연결되기 때문이에요. 채움의 양은 **소거 순서**에 크게 달려요. 화살촉 모양 행렬(첫 행과 첫 열이 꽉 차고 나머지는 대각뿐)을 첫 열부터 소거하면 행렬 전체가 차지만, 마지막 열부터 소거하면 하나도 차지 않아요.
+
+그래서 희소 LU는 두 단계예요.
+
+1. **기호 분해**: 값을 보지 않고 패턴만으로 행·열의 순서를 정하고, 그 순서에서 L과 U가 어디에 원소를 갖는지 미리 계산해요.
+2. **수치 분해**: 그 패턴 안에서 값을 계산해요. 이때 수치 안정성 때문에 피벗을 바꾸면 패턴이 달라질 수 있어서, 패턴을 지키는 것과 안정성 사이에서 타협해요.
+
+Accelerate의 LU는 헤더의 설명으로 이런 꼴이에요(소스는 공개되지 않아서 헤더와 잰 동작으로만 써요).
+
+$$
+S_r\,A\,S_c = P\,\bar A\,Q
+$$
+
+$S_r$, $S_c$는 대각 척도(LU의 기본은 척도 없음), $P$, $Q$는 행·열 치환이에요. $\bar A$는 Dulmage–Mendelsohn 분해로 만든 블록 아래 삼각 꼴이고, 대각 블록 하나하나가 강연결 성분이에요. 행 하나·열 하나뿐인 부분(singleton)은 그 자체로 삼각이라 분해가 필요 없고, 나머지 대각 블록 $A_{ii}$마다 $A_{ii} = L_{ii}U_{ii}$를 계산해요. 피벗하는 변형은 블록 안에서 행·열을 더 바꿔요. 블록 삼각 꼴로 나누면 서로 영향을 주지 않는 부분을 따로 분해하므로 채움과 일이 줄어요.
+
+### AMD 순서
+
+소거 순서를 고르는 것은 채움을 가장 적게 하는 순서를 찾는 문제이고, 이것은 NP-완전이에요. 그래서 모두 휴리스틱을 써요. **최소 차수(minimum degree)** 방법은 대칭 패턴을 그래프로 보고(행·열 하나가 꼭짓점, 원소 $a_{ij}$가 변), 매 단계 이웃이 가장 적은 꼭짓점을 소거해요. 꼭짓점 $v$를 소거하면 $v$의 이웃끼리 모두 연결되는데(그것이 채움이에요), 이웃이 적은 꼭짓점을 먼저 고르면 그 단계의 채움이 작아요.
+
+정확한 차수를 매번 다시 세면 비싸요. Amestoy, Davis, Duff의 **AMD**(approximate minimum degree)는 소거된 꼭짓점들을 "원소"로 묶은 몫 그래프(quotient graph)에서 차수의 위쪽 어림만 갱신해요. 차수가 같고 이웃이 같은 꼭짓점들은 한꺼번에 소거하고(mass elimination), 다른 원소에 포함된 원소는 흡수해요. 그래서 그래프를 키우지 않고 원래 원소 수 크기의 메모리 안에서 거의 선형 시간으로 순서를 내요. AMD는 대칭 패턴의 알고리즘이고, Accelerate의 헤더는 LU에서 AMD를 어느 패턴에 쓰는지 밝히지 않아요.
+
+Accelerate가 주는 다른 순서는 Metis와 MTMetis(중첩 분할, nested dissection)예요. 큰 3차원 격자에서는 중첩 분할이 채움이 더 적지만, 아래의 잰 값처럼 결정성을 지키지 못해서 쓰지 않아요. 순서를 고르는 옵션은 두지 않아요.
+
+### 문턱 부분 피벗
+
+밀집 LU의 부분 피벗은 열에서 크기가 가장 큰 원소를 피벗으로 골라 $|l_{ij}| \le 1$을 지켜요. 희소 LU에서 이렇게 하면 기호 분해가 정한 순서를 자주 깨고 채움이 늘어요. **문턱 부분 피벗**(threshold partial pivoting, TPP)은 조건을 늦춰요. 문턱 $\tau \in (0, 1]$에 대해 후보 피벗 $a_{kk}$가
+
+$$
+|a_{kk}| \ \ge\ \tau \max_{i} |a_{ik}|
+$$
+
+이면(같은 열의 남은 원소 가운데 가장 큰 것의 $\tau$배 이상이면) 순서를 그대로 두고 받아들여요. 아니면 조건을 만족하는 다른 행으로 바꿔요. 그러면 $|l_{ij}| \le 1/\tau$이고, 한 단계에서 원소가 자라는 비율이 많아야 $1 + 1/\tau$예요. $\tau = 1$이 보통의 부분 피벗이고, $\tau$를 줄일수록 순서를 더 지키는 대신 성장이 커질 수 있어요.
+
+Accelerate는 `pivotTolerance`를 $[0, 0.5]$로 잘라요. 이 라이브러리는 Accelerate의 double 기본값 0.01을 그대로 넘겨요. 문턱이 낮은 만큼 성장이 생길 수 있고, 그것은 첫 해의 역오차가 클 때 하는 반복 다듬기가 갚아요([특이 판정과 풀이](/internals/sparse/solve/#반복-다듬기)).
+
+## 부르는 코드
+
+분해 한 번은 이 함수예요. 기호 분해와 수치 분해를 한 번에 하는 `SparseFactor`를 부르고, 옵션은 모두 여기서 정해요.
+
+```cpp
+    // csrc/accelerate/sparse.hpp
+    // Factors the square matrix a with values (in a's stored order). Throws Error.
+    static Lu factor(const Csc& a, const T* values) {
+        SparseSymbolicFactorOptions so{};
+        so.control = SparseDefaultControl;
+        so.orderMethod = SparseOrderAMD;
+        so.order = nullptr;
+        so.ignoreRowsAndColumns = nullptr;
+        so.malloc = std::malloc;
+        so.free = std::free;
+        so.reportError = &detail::report;
+        SparseNumericFactorOptions no{};
+        no.control = SparseDefaultControl;
+        no.scalingMethod = SparseScalingDefault;
+        no.scaling = nullptr;
+        no.pivotTolerance = 0.01;  // Accelerate's default for double
+        no.zeroTolerance = 0.0;
+        ErrorScope errors;
+        Lu lu;
+        lu.f_ = SparseFactor(SparseFactorizationLU, Ty::matrix(a, values), so, no);
+        lu.owned_ = true;
+        check(lu.f_.status, errors.messages());
+        lu.n_ = a.rows;
+        lu.transposed_ = a.transpose;
+        return lu;
+    }
+```
+
+`SparseFactorizationLU`는 헤더에서 "기본 LU, 지금은 TPP"예요. 인수는 Accelerate가 가진 불투명한 객체이고, `Lu`가 그것을 쥐고 소멸자에서 `SparseCleanup`을 불러요. `owned_`를 `check` 앞에서 켜므로 분해가 실패해도 Accelerate가 잡은 메모리가 풀려요.
+
+### int32 색인으로 좁히기
+
+Accelerate의 행렬 구조는 열 압축(CSC)이고 행 수·열 수와 **행 색인이 `int`(32비트)**, 열 시작은 `long`이에요. sd.sparse의 색인은 언제나 int64라서, 분해할 때 행 색인을 int32로 한 번 복사해요.
+
+```cpp
+    // csrc/accelerate/sparse.hpp
+    // From sd.sparse's int64 arrays of a stored rows x cols CSC (indptr has cols + 1 entries).
+    // Throws std::length_error when a dimension does not fit Accelerate's int.
+    static Csc narrow(
+        std::int64_t rows, std::int64_t cols, const std::int64_t* indptr, const std::int64_t* indices, bool transpose
+    ) {
+        constexpr std::int64_t kMax = std::numeric_limits<int>::max();
+        if (rows > kMax || cols > kMax)
+            throw std::length_error("the matrix has more than 2147483647 rows or columns, Accelerate's limit");
+        Csc a;
+        a.rows = static_cast<int>(rows);
+        a.cols = static_cast<int>(cols);
+        a.transpose = transpose;
+        a.col_starts.assign(indptr, indptr + cols + 1);
+        const std::int64_t nnz = indptr[cols];
+        a.row_indices.resize(static_cast<std::size_t>(nnz));
+        for (std::int64_t k = 0; k < nnz; ++k)
+            a.row_indices[static_cast<std::size_t>(k)] = static_cast<int>(indices[k]);
+        return a;
+    }
+```
+
+행 색인은 행 수보다 작으므로 행 수가 $2^{31} - 1$ 이하면 모든 색인이 int에 들어가요. 그보다 큰 행렬은 Accelerate에 넘길 수 없어 `ValueError`예요. 원소 수는 `long`인 열 시작이 세므로 $2^{31}$을 넘어도 돼요. 복사는 O(nnz)이고 분해의 일에 비하면 작아요. 값 배열은 복사하지 않고 그대로 가리켜요.
+
+### 오류 콜백
+
+Accelerate는 매개변수가 틀리면 `reportError` 콜백을 불러요. 이 콜백이 NULL이면 메시지를 로그에 남기고 `__builtin_trap()`으로 **프로세스를 멈춰요**. Python에서 부른 함수가 인터프리터를 통째로 죽이면 안 되므로, 언제나 콜백을 넘기고 메시지를 모아 예외로 바꿔요.
+
+```cpp
+// csrc/accelerate/sparse.hpp
+// The messages of the current thread's call in progress (ErrorScope); Accelerate reports a
+// parameter error on the thread that made the call.
+inline thread_local std::string* sink = nullptr;
+
+inline void report(const char* message) {
+    if (sink == nullptr) return;
+    std::string m = message ? message : "";
+    while (!m.empty() && (m.back() == '\n' || m.back() == ' ')) m.pop_back();
+    if (!sink->empty()) *sink += "; ";
+    *sink += m;
+}
+```
+
+콜백은 C 함수 포인터라 사용자 자료를 받지 못해요. 그래서 메시지를 쌓을 곳을 스레드마다 하나씩 두고(`thread_local`), 호출 하나를 감싸는 `ErrorScope`가 그 자리를 자기 문자열로 바꿨다가 끝나면 되돌려요. 분해는 GIL 없이 도므로 사용자의 Python 스레드 여럿이 동시에 분해할 수 있는데, Accelerate가 매개변수 오류를 호출한 스레드에서 알리므로 메시지가 섞이지 않아요.
+
+모은 메시지와 status는 함께 봐요.
+
+```cpp
+// csrc/accelerate/sparse.hpp
+// The status of a factorization or a solve and the messages of its call, as an Error (or none).
+inline void check(SparseStatus_t status, const std::string& messages) {
+    if (status == SparseStatusOK && messages.empty()) return;
+    switch (status) {
+        case SparseMatrixIsSingular:
+            throw Error(Failure::Singular, messages.empty() ? "the matrix is structurally singular" : messages);
+        case SparseParameterError: throw Error(Failure::Parameter, messages.empty() ? "invalid parameter" : messages);
+        case SparseFactorizationFailed:
+            throw Error(Failure::Failed, messages.empty() ? "the factorization failed" : messages);
+        case SparseStatusOK:  // a message without a failing status (an option Accelerate ignored)
+            throw Error(Failure::Parameter, messages);
+        default:  // SparseInternalError, SparseStatusReleased, anything newer
+            throw Error(Failure::Internal, messages.empty() ? "Accelerate's sparse solver failed" : messages);
+    }
+}
+```
+
+status가 성공인데 메시지가 있는 경우를 실패로 다루는 데는 이유가 있어요. LU에 COLAMD 순서를 주면 Accelerate는 "not supported for this factorization type"을 콜백으로 보내지만 status는 0이고 다른 순서로 분해해요. 옵션이 조용히 무시되는 셈이라, 메시지가 하나라도 있으면 그 호출을 믿지 않아요. 이 라이브러리가 넘기는 옵션은 모두 받아들여지는 값이라 보통은 이 길에 들지 않지만, 다른 판의 Accelerate가 어떤 옵션을 무시하면 틀릴 수 있는 결과 대신 에러가 나요.
+
+`direct.cpp`는 이 `Error`를 Python의 예외로 옮겨요. 구조적으로 특이하면 `LinAlgError("<함수>(): singular matrix")`, 매개변수 오류는 `ValueError`, 그 밖의 실패는 Accelerate의 메시지를 단 `LinAlgError`예요.
+
+## 재어 보고 찾은 제약
+
+Accelerate의 문서만으로는 알 수 없는 동작이 있어요. 같은 행렬 열 가지 꼴(2·3차원 라플라시안, 대류-확산, 대각 우세 무작위, 띠, 밀집 블록 대각, 안장점, Neumann + 10⁻⁸I, 직사각, 복소)을 세 크기로 만들어, 같은 프로세스에서 같은 입력을 20번 분해하고 풀어 결과의 바이트를 견줬어요(SDK 26.5, macOS 26.6). 아래의 처리는 모두 그 결과에 맞춘 것이에요.
+
+### 결정성: 순서와 분해
+
+| 분해 / 순서 | 기본 스레드 모드 | `VECLIB_MAXIMUM_THREADS=1` | 스레드 4개에서 동시에 |
+|---|---|---|---|
+| LU 네 변형 / AMD | 같아요 | 같아요 | 같아요 |
+| LU / Metis | 작은 꼴 셋에서 20번 중 2가지 | 같아요 | 20번이 20가지 |
+| LU / MTMetis(LU의 기본 순서) | 모든 꼴에서 달라요 | 같아요 | 프로세스가 죽어요 |
+| Cholesky, LDLᵀ / 모든 순서 | 양정치 꼴 모두에서 달라요 | 같아요 | 달라요 |
+| QR / COLAMD | 같아요 | 같아요 | 같아요 |
+| 같은 인수로 다시 풀기 | 같아요 | 같아요 | |
+
+LU의 기본 순서(`SparseOrderDefault` = MTMetis)는 같은 입력에서도 실행마다 끝자리가 달라요(노름 상대 10⁻¹⁶–10⁻¹³). 여러 스레드에서 동시에 부르면 SIGSEGV·SIGBUS로 프로세스가 죽어요. 떨어진 성분이 많은 행렬에서는 분해가 AMD보다 아주 느렸어요. Metis는 한 스레드에서는 대체로 같지만 동시 호출에서 실행마다 달라요. **LU/AMD는 잰 모든 경우에 한 번도 깨지지 않았어요.** 이 라이브러리는 분해를 GIL 없이 부르므로 사용자 스레드가 동시에 풀 수 있어야 하고, 그 조건에서 결정적이고 안전한 것이 AMD뿐이라 AMD로 고정했어요.
+
+Cholesky와 LDLᵀ는 기본 스레드 모드에서 실행마다 비트가 달라요. `BLASSetThreading(BLAS_THREADING_SINGLE_THREADED)`를 불러도 결정적이 되지 않고, 희소 풀이의 스레드는 환경 변수 `VECLIB_MAXIMUM_THREADS`만 따라요. 이 라이브러리는 그 환경 변수를 정하지도 바꾸지도 않으므로, 프로세스 안에서 대칭 분해를 결정적으로 만들 길이 없어요. 그래서 대칭 행렬도 LU로 풀어요. scipy.sparse.linalg의 공개 함수도 모두 LU(SuperLU)라서 범위는 줄지 않아요.
+
+두 스레드 모드 사이에서는 LU도 비트가 달라요. BLAS·LAPACK을 부르는 밀집 선형대수와 같은 규칙이에요. 약속은 "같은 Accelerate 스레드 모드, 같은 sd 스레드 수에서 같은 입력이면 같은 비트"예요. 지금은 sd의 스레드 수와도 상관없어요(약속은 아니에요).
+
+### 수치적으로 특이한 행렬의 성공
+
+구조적으로 특이하면(어떤 순서로도 0이 아닌 대각을 만들 수 없으면) Accelerate는 `SparseMatrixIsSingular`를 돌려줘요. 그런데 **값으로 특이한 행렬은 성공(status 0)을 돌려줘요.** `zeroTolerance`가 0보다 크면 그 아래 피벗을 0으로 보고 틀린 유한한 값을 내고(2 × 2 [[1, 2], [2, 4]]에서 x = (1, −0)으로 Ax ≠ b), 0이면 정확히 0인 피벗에서 ±inf가 나와요. 반올림 때문에 피벗이 정확히 0이 되지 않으면 0에서도 크기 1/ε 근처의 유한한 해가 나와요.
+
+비공개 진입점 `_lu_solve`는 Accelerate의 status 말고는 아무것도 보지 않고 분해하고 풀어요. 같은 열이 둘인 5 × 5 행렬을 주면 이래요.
+
+```python
+>>> from stardust.sparse._common import _core
+>>> rng = sd.random.default_rng(0)
+>>> D = rng.random((5, 5))
+>>> D[:, 4] = D[:, 1]                  # 같은 열 둘: 정확히 특이해요
+>>> A = sd.sparse.csc_array(D)
+>>> b = sd.ones(5)
+>>> x = _core._lu_solve(A.shape, A.indptr, A.indices, A.data, b)
+>>> float(sd.max(sd.abs(x)))
+2300567789335206.5
+>>> float(sd.max(sd.abs(A @ x - b)))
+0.2627067061992847
+```
+
+status는 성공인데 해의 크기가 10¹⁵이고 잔차가 0.26이에요. 공개 함수는 분해 뒤에 스스로 특이를 판정해서 이 행렬을 받지 않아요.
+
+```python
+>>> sd.sparse.splu(A)
+Traceback (most recent call last):
+    ...
+stardust.linalg.LinAlgError: splu(): singular matrix
+```
+
+판정의 방법은 [특이 판정과 풀이](/internals/sparse/solve/)에 있어요. `zeroTolerance = 0`으로 둔 것도 이 판정 때문이에요. 정확히 0인 피벗이 inf를 내면 판정이 그것을 바로 봐요.
+
+### 전치 풀이와 여러 우변
+
+전치로 도는 풀이(CSC 인수의 `SparseGetTranspose`, 또는 CSR을 전치 속성으로 넘겨 만든 인수의 보통 풀이)는 **우변이 둘 이상이면 틀린 답**을 내요. 모든 시험 행렬에서 k = 2, 5의 잔차가 1 크기였고, 실수·복소·대칭 행렬 모두 그랬어요. 우변이 하나면 맞아요. 복소 LU에서 `SparseGetConjugateTranspose`로 풀면 몇백 행짜리 행렬에서 **프로세스가 멈춰요**(SIGTRAP).
+
+그래서 `Lu::solve`는 전치로 도는 풀이를 열마다 따로 부르고, $A^{\mathsf H}x = b$는 켤레를 두 번 씌운 전치 풀이로 바꿔요. $A^{\mathsf H}x = b$의 켤레는 $A^{\mathsf T}\bar x = \bar b$이므로, b의 켤레로 전치 풀이를 하고 결과의 켤레를 취하면 돼요.
+
+```cpp
+        // csrc/accelerate/sparse.hpp, Lu::solve
+        if (nrhs > 1 && (transposed_ != (op != 'N'))) {
+            for (std::int64_t j = 0; j < nrhs; ++j) solve(xb + j * ld, 1, ld, op);
+            return;
+        }
+```
+
+`transposed_`는 인수를 CSR의 전치 속성으로 만들었는지예요. 그런 인수의 보통 풀이와 CSC 인수의 전치 풀이가 모두 "전치로 도는 풀이"라서 조건이 두 경우를 함께 잡아요. 공개 함수는 아래처럼 언제나 CSC를 넘기므로 `transposed_`는 늘 거짓이고, 실제로 걸리는 것은 `trans='T'`·`'H'`의 여러 우변이에요. 전치 속성의 길은 래퍼의 시험에서만 써요. 전치 풀이는 이렇게 해요.
+
+```cpp
+            // csrc/accelerate/sparse.hpp, Lu::solve
+            constexpr bool cplx = std::is_same_v<T, std::complex<double>>;
+            const bool conj = cplx && op == 'H';
+            if (conj) conjugate(xb, nrhs, ld);
+            typename Ty::Factor t = SparseGetTranspose(f_);
+            SparseSolve(t, d);
+            SparseCleanup(t);
+            if (conj) conjugate(xb, nrhs, ld);
+```
+
+`SparseGetTranspose`는 인수를 복사하지 않고 참조를 세는 전치 객체를 줘요. 쓰고 나면 `SparseCleanup`으로 그 참조만 놓아요.
+
+보통 풀이(`trans='N'`)에서 우변이 여럿이면 여덟 열씩 묶어 Accelerate가 함께 풀어요([우변 다루기](/internals/sparse/solve/#우변-다루기)). 이때 열 하나의 결과가 그 열만 따로 푼 것과 반올림 크기만큼 달라요. 결정적이긴 해서(같은 k, 같은 값이면 같은 비트) 그대로 두고 문서에 적어요. 전치 풀이는 열마다 따로 푸므로 혼자 푼 것과 같아요.
+
+```python
+>>> rng = sd.random.default_rng(1)
+>>> A = sd.sparse.random_array((300, 300), density=0.02, rng=rng, format="csc") + sd.sparse.eye_array(300, format="csc") * 4.0
+>>> B = rng.random((300, 4))
+>>> lu = sd.sparse.splu(A)
+>>> X = lu.solve(B)
+>>> [bool(sd.all(X[:, j] == lu.solve(B[:, j]))) for j in range(4)]
+[False, False, False, False]
+>>> XT = lu.solve(B, trans="T")
+>>> [bool(sd.all(XT[:, j] == lu.solve(B[:, j], trans="T"))) for j in range(4)]
+[True, True, True, True]
+>>> float(sd.max(sd.abs(X[:, 0] - lu.solve(B[:, 0]))))
+1.3877787807814457e-16
+```
+
+### 모든 입력을 CSC로
+
+Accelerate는 CSR을 받지 않지만, CSR 배열은 그 전치의 CSC와 같은 배열이므로 구조에 `transpose` 속성을 켜서 복사 없이 넘길 수 있어요. 그런데 그렇게 분해한 인수와 같은 행렬의 CSC로 분해한 인수는 풀이의 끝자리가 달라요(상대 10⁻¹⁶–10⁻¹⁵). 저장 형식이 결과의 비트를 바꾸면 안 되고, 전치 속성의 인수는 위의 여러 우변 결함을 보통 풀이에서도 타요. 그래서 Python 층이 모든 형식을 CSC로 바꿔 넘겨요.
+
+```python
+    # src/stardust/sparse/_direct.py
+    def __init__(self, A, func):
+        n = A.shape[0]
+        # always CSC: Accelerate's factor of a CSR (its transpose flag) differs in the last bits,
+        # so the format would change the result, and its blocked solve is wrong when transposed
+        A, data, _ = _compressed(A.tocsc(), func)
+        if data is not A.data:
+            A = type(A)._new(A.shape, A.indptr, A.indices, data)
+        self.n, self.dtype, self.A, self._Ac = n, data.dtype, A, None
+        self.core = _core._lu_factor(A.shape, A.indptr, A.indices, data, csr=False, func=func) if n else None
+```
+
+CSR → CSC는 O(nnz)의 계수 정렬이라 분해에 비하면 작아요. 값은 bool·int64면 float64로 바꾸고, 저장된 NaN·inf가 있으면 `ValueError`예요. 이 객체는 CSC로 바꾼 행렬을 쥐고 있다가 풀이 뒤에 잔차와 원소별 역오차를 계산하는 데 써요.
+
+### 그 밖의 제약
+
+- **0 × 0 행렬**을 받지 않아요(`rowCount must be > 0`, 매개변수 오류). 그래서 n = 0이면 Accelerate를 부르지 않고(`self.core = None`) 빈 결과로 답해요.
+- **직사각 행렬**의 LU는 매개변수 오류예요. 공개 함수는 정사각인지 먼저 봐요.
+- **인수가 불투명해요.** LU는 P, Q, S_r, S_c를 곱하거나 푸는 객체로만 꺼낼 수 있고 L과 U를 희소 행렬로 꺼내는 API가 없어요. 그래서 [`SparseLU`](/api/sparse/splu/)에는 scipy `SuperLU`의 `L`, `U`, `perm_r`, `perm_c`, `nnz`가 없어요.
+- **안장점 행렬**([[A, Bᵀ], [B, 0]])에서 LDLᵀ(기본 TPP)·LUSPP·LUUnpivoted는 status 0에 NaN 해를, LDLᵀSBK는 잔차가 아주 큰 해를 냈어요. LU/TPP만 잔차가 작았어요. status 0이 성공을 뜻하지 않는다는 또 하나의 예이고, LU/TPP를 고른 이유 하나예요.
+
+<Callout type="note" title="Accelerate에 있지만 쓰지 않는 것">
+Accelerate의 Sparse Solvers에는 CG, GMRES, LSMR 반복법도 있어요. 멈춤 판정이 처음 잔차에 대한 상대이고, 반복 수를 돌려주지 않고, GMRES의 기본이 DQGMRES라서 scipy와 같은 판정과 상태를 줄 수 없어요. 반복법은 이 라이브러리가 짜요([반복법의 바탕](/internals/sparse/krylov/)). 삼각 풀이도 Solve.h의 행렬로는 할 수 없어 이 라이브러리가 짜요([삼각 풀이](/internals/sparse/triangular/)).
+</Callout>
+
+## scipy와 다른 점
+
+scipy의 `spsolve`·`splu`는 SuperLU예요. 기본 열 순서는 COLAMD이고, `diag_pivot_thresh`의 기본 1.0은 대각을 먼저 보되 부분 피벗과 같은 조건이에요. Accelerate는 문턱을 0.5 위로 줄 수 없어 SuperLU의 기본과 같은 피벗을 만들 수 없어요. 그 대신 풀이 뒤에 반복 다듬기를 한 번 해서, 정규화한 역오차가 모든 시험 행렬에서 0.50ε 이하가 돼요(SuperLU는 같은 행렬에서 0.10–4.4ε). scipy의 순서·피벗 옵션(`permc_spec`, `diag_pivot_thresh`, `relax`, `panel_size`, `options`)은 없어요.
+
+## 참고 문헌
+
+1. P. R. Amestoy, T. A. Davis, I. S. Duff, An approximate minimum degree ordering algorithm, *SIAM J. Matrix Anal. Appl.* 17(4), 1996.
+2. I. S. Duff, A. M. Erisman, J. K. Reid, *Direct Methods for Sparse Matrices*, 2판, Oxford, 2017(문턱 부분 피벗과 블록 삼각 꼴).
+3. T. A. Davis, *Direct Methods for Sparse Linear Systems*, SIAM, 2006.
+4. Apple, Accelerate `Sparse/Solve.h`, `Sparse/SolveImplementation.h`(SDK 26.5).

@@ -1,0 +1,146 @@
+---
+title: chebyshev
+names: [chebyshev]
+group: 거리 함수
+order: 5
+signatures:
+  - "sd.spatial.chebyshev(u, v, /, *, w=None)"
+summary: 좌표 차이의 절댓값 가운데 가장 큰 것 max|uᵢ − vᵢ|를 구해요. 체스의 킹이 움직이는 횟수와 같아서 체스판 거리, L∞ 거리라고도 불러요.
+params:
+  - name: u
+    type: 수의 배열
+    kind: positional-only
+    desc: 첫째 점. 모양은 (..., n)이고 마지막 축이 좌표예요. 리스트, sd.ndarray, numpy 배열, frame의 DataFrame·Series를 받아요. 정수와 bool은 float64로 바꿔요.
+  - name: v
+    type: 수의 배열
+    kind: positional-only
+    desc: 둘째 점. 마지막 축의 길이가 u와 같아야 하고, 앞 축은 u의 앞 축과 브로드캐스트돼요.
+  - name: w
+    type: 수의 배열 또는 None
+    kind: keyword-only
+    desc: 좌표마다의 가중치. 1차원, 길이 n, 모두 유한하고 0 이상이어야 해요. 무게가 0보다 큰 좌표만 최댓값에 넣고, 차이에 무게를 곱하지는 않아요.
+returns:
+  type: float 또는 ndarray
+  desc: 거리. u와 v가 모두 1차원이면 Python float, 아니면 앞 축을 브로드캐스트한 모양의 float64 배열이에요.
+raises:
+  - type: TypeError
+    desc: u·v·w가 수의 배열이 아닐 때(문자열, 수 하나), 복소수일 때, w를 키워드 없이 줬을 때, 모르는 키워드를 줬을 때.
+  - type: ValueError
+    desc: u와 v의 마지막 축 길이가 다를 때, 앞 축이 브로드캐스트되지 않을 때, w가 1차원이 아니거나 길이가 n이 아니거나 음수·NaN·inf가 있을 때.
+  - type: MemoryError
+    desc: 결과 배열이 이 기계의 물리 메모리보다 클 때.
+seeAlso: [metrics, cityblock, euclidean, minkowski, cdist, KDTree]
+---
+
+## 한눈에 보기
+
+체스의 킹은 한 번에 가로, 세로, 대각선으로 한 칸씩 움직여요. (0, 0)에서 (3, 4)까지 가려면 대각선으로 세 번 가서 가로와 세로를 함께 줄이고, 남은 세로 한 칸을 한 번 더 가면 돼요. 모두 네 번이고, 이 수는 가로 차이 3과 세로 차이 4 가운데 큰 쪽이에요. `chebyshev`는 이 거리예요.
+
+```python
+>>> import stardust as sd
+>>> sd.spatial.chebyshev([0.0, 0.0], [3.0, 4.0])
+4.0
+```
+
+<Reference />
+
+## 무엇을 재나요
+
+$$
+d(u, v) = \max_{i} \lvert u_i - v_i \rvert
+$$
+
+체비쇼프 거리(Chebyshev distance), 체스판 거리, $L_\infty$ 거리, 최대 거리라고도 불러요. 가장 많이 어긋난 좌표 하나만 보고 나머지는 보지 않아요. 그래서 "모든 좌표가 얼마 안에 드는가"를 묻는 일에 꼭 맞아요.
+
+- **허용 오차 검사**: 모든 치수가 규격에서 0.05 안에 들어야 한다면, `chebyshev(부품, 규격) <= 0.05`가 바로 그 조건이에요.
+- **두 곡선의 최대 차이**: 같은 점에서 잰 두 곡선의 가장 큰 어긋남(최대 오차, 균등 노름)이에요.
+- **축마다 따로 움직이는 기계**: 가로와 세로 모터가 동시에 움직이는 크레인이 닿는 시간은 더 먼 축의 이동 시간이에요.
+
+부품 세 개의 치수를 규격과 견줘 볼게요.
+
+```python
+>>> spec = [10.0, 20.0, 5.0]
+>>> parts = sd.asarray([[10.02, 19.97, 5.01],
+...                     [10.01, 20.08, 4.99],
+...                     [ 9.96, 20.00, 5.03]])
+>>> sd.spatial.chebyshev(parts, spec)
+array([0.030000000000001137,   0.0799999999999983,  0.03999999999999915], dtype=float64)
+>>> sd.spatial.chebyshev(parts, spec) <= 0.05
+array([ True, False,  True], dtype=bool)
+```
+
+둘째 부품은 둘째 치수가 0.08 어긋나서 걸려요. 결과의 끝자리가 0.03, 0.08과 조금 다른 것은 10.02 같은 소수가 2진수로 정확히 적히지 않아서예요. 차이 자체는 정확히 구한 값이에요(아래 정확도).
+
+$e^t$와 그 2차 테일러 다항식 $1 + t + t^2/2$를 $[0, 1]$에서 견주면, 가장 크게 어긋나는 곳의 차이가 나와요.
+
+```python
+>>> t = sd.linspace(0.0, 1.0, 101)
+>>> sd.spatial.chebyshev(sd.exp(t), 1 + t + t * t / 2)
+0.2182818284590451
+```
+
+## 정확한 거리
+
+`chebyshev`는 더하지 않고 최댓값만 고르니, 반올림이 일어나는 곳은 좌표의 차이를 구하는 뺄셈 한 번뿐이에요. 그 뺄셈은 참 차이를 올바르게 반올림한 값이고, 반올림은 크기 순서를 바꾸지 않으므로 결과는 **참 거리를 올바르게 반올림한 값**이에요. 좌표가 몇 개든 그래요.
+
+```python
+>>> sd.spatial.chebyshev([0.1], [0.3])
+0.19999999999999998
+>>> 0.3 - 0.1
+0.19999999999999998
+```
+
+0.2가 아닌 것은 0.1과 0.3이 2진수로 정확히 적히지 않기 때문이고, 결과는 두 double 사이의 참 차이에 가장 가까운 double이에요. 넘침과 언더플로가 걸리는 짝까지 넣은 시험 645짝에서 Arb(구간 산술)로 만든 참값과 견준 오차는 모두 0 ULP였어요. 가중치를 준 경우도 0 ULP예요.
+
+## 가중치 w
+
+`chebyshev`의 `w`는 다른 거리와 뜻이 달라요. **무게가 0보다 큰 좌표만 최댓값에 넣고, 차이에 무게를 곱하지는 않아요.** 무게 2와 1은 둘 다 "넣는다"는 뜻이라 결과가 같아요.
+
+```python
+>>> sd.spatial.chebyshev([0.0, 0.0], [3.0, 4.0], w=[2.0, 1.0])
+4.0
+>>> sd.spatial.chebyshev([0.0, 0.0], [3.0, 4.0], w=[1.0, 0.0])
+3.0
+>>> sd.spatial.chebyshev([0.0, 0.0], [3.0, 4.0], w=[0.0, 0.0])
+0.0
+```
+
+좌표마다 허용 오차가 다르다면 `w` 대신 차이를 허용 오차로 나눈 뒤 재세요. 예를 들어 `chebyshev(parts / tol, spec / tol) <= 1`처럼요. `w`의 규칙은 다른 거리 함수와 같아서, 1차원, 길이 $n$, 유한하고 0 이상이어야 하고 키워드로만 받아요.
+
+## 여러 짝, 이웃 찾기
+
+마지막 축이 좌표이고 앞 축은 브로드캐스트돼요. 점 집합의 모든 짝은 `metric='chebyshev'`로 [`pdist`](/api/spatial/pdist/)나 [`cdist`](/api/spatial/cdist/)에서 구하고, 같은 짝은 `chebyshev(u, v)`와 비트까지 같아요.
+
+```python
+>>> X = sd.asarray([[0.0, 0.0], [3.0, 4.0], [1.0, -1.0]])
+>>> sd.spatial.pdist(X, metric='chebyshev')
+array([4.0, 1.0, 5.0], dtype=float64)
+```
+
+[`minkowski`](/api/spatial/minkowski/)에서 `p=sd.inf`는 이 거리와 비트까지 같아요. [`KDTree`](/api/spatial/KDTree/)의 질의에서는 `p=sd.inf`, [`kneighbors`](/api/spatial/kneighbors/)에서는 `metric='chebyshev'`로 써요.
+
+```python
+>>> sd.spatial.KDTree(X).query([2.9, 3.0], p=sd.inf)
+QueryResult(distances=1.0, indices=1)
+```
+
+## NaN, inf, 빈 벡터
+
+NaN이 있는 좌표가 하나라도 있으면 결과는 NaN이에요. NaN을 건너뛰고 나머지의 최댓값을 내지 않아요. 한쪽만 무한대면 inf이고, 같은 부호의 무한대끼리는 inf − inf가 NaN이라 NaN이에요. 좌표가 0개면 0이에요.
+
+```python
+>>> sd.spatial.chebyshev([sd.nan, 0.0], [1.0, 5.0])
+nan
+>>> sd.spatial.chebyshev([1.0, sd.inf], [0.0, 0.0]), sd.spatial.chebyshev([sd.inf], [sd.inf])
+(inf, nan)
+>>> sd.spatial.chebyshev([], [])
+0.0
+```
+
+## scipy·sklearn을 아는 분께
+
+- 뜻과 `w`의 뜻(무게가 0보다 큰 좌표의 최댓값)은 `scipy.spatial.distance.chebyshev`와 같아요. `w`는 키워드로만 받고, NaN·inf 가중치는 `ValueError`예요.
+- NaN을 퍼뜨려요. scipy의 `cdist`는 NaN을 건너뛰어 `[nan, 0]`과 `[1, 5]`의 거리를 5로 내요.
+- 좌표가 0개인 두 점의 거리는 0이에요. scipy의 함수 `chebyshev`는 이때 `ValueError`예요.
+- R의 `dist(x, method="maximum")`은 `pdist(x, metric='chebyshev')`예요.
+- 거리 이름은 `'chebyshev'` 하나만 받아요. `'chebychev'`, `'infinity'` 같은 별칭은 `ValueError`예요.

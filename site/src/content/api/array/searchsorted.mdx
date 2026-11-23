@@ -1,0 +1,298 @@
+---
+title: searchsorted
+names: [searchsorted]
+group: 정렬, 탐색, 집합
+order: 3
+signatures:
+  - "sd.searchsorted(x1, x2, /, *, side='left', sorter=None)"
+summary: 정렬된 배열에서, 주어진 값을 끼워 넣어도 순서가 깨지지 않는 자리를 찾아요. 구간 나누기, 등급 매기기, 정렬된 목록에서 값 찾기에 써요.
+params:
+  - name: x1
+    type: ndarray
+    kind: positional-only
+    desc: 오름차순으로 정렬된 1차원 배열. sorter를 주면 정렬돼 있지 않아도 돼요.
+  - name: x2
+    type: ndarray 또는 Python 숫자
+    kind: positional-only
+    desc: 자리를 찾을 값. 배열이면 원소마다 찾아요.
+  - name: side
+    type: str
+    kind: keyword-only
+    desc: "'left'(기본)면 같은 값들의 앞자리, 'right'면 뒷자리를 돌려줘요."
+  - name: sorter
+    type: ndarray 또는 None
+    kind: keyword-only
+    desc: x1을 정렬하는 순서를 담은 int64 배열(argsort의 결과). 주면 x1을 이 순서로 정렬된 것으로 봐요.
+returns:
+  type: ndarray 또는 Python int
+  desc: 찾은 자리(0부터 len(x1)까지). x2가 배열이면 x2와 같은 모양의 int64 배열, 숫자면 Python int예요.
+raises:
+  - type: TypeError
+    desc: x1이 배열이 아닐 때, x2가 리스트처럼 배열도 숫자도 아닐 때, 복소수가 있을 때, side가 문자열이 아닐 때, sorter가 int64 배열이 아닐 때.
+  - type: ValueError
+    desc: x1이 1차원이 아닐 때, side가 'left'·'right'가 아닐 때, sorter의 길이가 x1과 다를 때.
+  - type: IndexError
+    desc: sorter에 x1의 범위를 벗어난 위치(음수 포함)가 있을 때.
+seeAlso: [sort, histogram, unique, take, quantile]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+import FigRow from '../../../components/fig/FigRow.astro';
+
+## 한눈에 보기
+
+`searchsorted`는 **이미 정렬된 배열**에서, 어떤 값을 끼워 넣는다면 몇 번 자리에 넣어야 순서가 유지되는지를 알려 줘요.
+
+```python
+>>> import stardust as sd
+>>> a = sd.asarray([10, 20, 20, 30])
+>>> sd.searchsorted(a, 25)
+3
+```
+
+`25`는 `20`보다 크고 `30`보다 작으니, 3번 자리(지금 `30`이 있는 자리)에 넣으면 `10, 20, 20, 25, 30`으로 순서가 맞아요. 결과를 "그 자리 앞에 있는 원소의 수"로 읽어도 돼요. `25`보다 작은 원소가 셋이에요.
+
+<Fig caption="자리는 원소 사이의 틈에 번호를 붙인 것이에요. 25는 색칠한 20과 30 사이, 3번 틈에 들어가요.">
+  <ArrayFig name="a" data={[10, 20, 20, 30]} tones={['', '', 'a', 'a']} note="틈 0 | 10 | 1 | 20 | 2 | 20 | 3 | 30 | 4" />
+  <Op note="25가 들어갈 자리">→</Op>
+  <ArrayFig data={[3]} tones={['b']} />
+</Fig>
+
+자리는 **0부터 `len(a)`까지** 나올 수 있어요. 모든 원소보다 작으면 0(맨 앞), 모든 원소보다 크면 `len(a)`(맨 뒤)예요.
+
+```python
+>>> sd.searchsorted(a, 5)
+0
+>>> sd.searchsorted(a, 99)
+4
+```
+
+찾은 자리에 실제로 값을 끼워 넣으면 정렬된 배열이 그대로 유지돼요.
+
+```python
+>>> i = sd.searchsorted(a, 25)
+>>> sd.concat([a[:i], sd.asarray([25]), a[i:]])
+array([10, 20, 20, 25, 30], dtype=int64)
+```
+
+<Reference />
+
+## 여러 값을 한꺼번에
+
+`x2`에 배열을 주면 원소마다 자리를 찾아서, `x2`와 **같은 모양**의 int64 배열로 돌려줘요. 숫자 하나를 주면 결과도 Python `int` 하나예요.
+
+```python
+>>> sd.searchsorted(a, sd.asarray([5, 20, 35]))
+array([0, 1, 4], dtype=int64)
+>>> sd.searchsorted(a, sd.asarray([[5, 20], [25, 35]]))
+array([[0, 1],
+       [3, 4]], dtype=int64)
+>>> type(sd.searchsorted(a, 25))
+<class 'int'>
+```
+
+`x2`는 정렬돼 있지 않아도 돼요. 정렬돼 있어야 하는 것은 `x1`뿐이에요.
+
+## `side`: 같은 값이 있으면 앞인가요, 뒤인가요
+
+찾는 값과 **같은 값**이 이미 배열에 있으면, 그 앞에 넣어도 뒤에 넣어도 순서가 유지돼요. `side`로 어느 쪽을 돌려줄지 골라요.
+
+- `side='left'` (기본값): 같은 값들의 **맨 앞** 자리
+- `side='right'`: 같은 값들의 **맨 뒤** 자리
+
+```python
+>>> sd.searchsorted(a, 20)
+1
+>>> sd.searchsorted(a, 20, side='right')
+3
+```
+
+<Fig column caption="20이 이미 두 개 있어요. left는 그 앞의 틈 1, right는 그 뒤의 틈 3을 돌려줘요.">
+  <FigRow>
+    <ArrayFig name="a" data={[10, 20, 20, 30]} tones={['', 'b', 'b', '']} />
+    <Op note="side='left'">→</Op>
+    <ArrayFig data={[1]} tones={['a']} />
+  </FigRow>
+  <FigRow>
+    <ArrayFig name="a" data={[10, 20, 20, 30]} tones={['', 'b', 'b', '']} />
+    <Op note="side='right'">→</Op>
+    <ArrayFig data={[3]} tones={['a']} />
+  </FigRow>
+</Fig>
+
+두 결과의 차이는 **그 값이 배열에 몇 개 있는지**와 같아요. 같은 값이 없으면 차이가 0이라 두 결과가 같아요.
+
+```python
+>>> v = sd.asarray([5, 20, 35])
+>>> sd.searchsorted(a, v, side='right') - sd.searchsorted(a, v)
+array([0, 2, 0], dtype=int64)
+```
+
+### 정확히 어떤 기준인가요
+
+찾는 값을 `v`, 돌려주는 자리를 `i`라고 하면 기준은 아래와 같아요.
+
+| `side` | 돌려주는 자리 `i` | 다른 말로 |
+|---|---|---|
+| `'left'` | `a[i - 1] < v <= a[i]` | `v`보다 **작은** 원소의 수 |
+| `'right'` | `a[i - 1] <= v < a[i]` | `v` **이하**인 원소의 수 |
+
+## 쓰임새: 구간 나누기와 등급 매기기
+
+경계값을 정렬해 두고 `searchsorted`를 쓰면, 값마다 몇 번째 구간에 드는지 알 수 있어요. 60, 70, 80, 90점을 경계로 다섯 등급을 매겨 볼게요.
+
+```python
+>>> cut = sd.asarray([60, 70, 80, 90])
+>>> scores = sd.asarray([55, 60, 75, 89, 90, 100])
+>>> grade = sd.searchsorted(cut, scores, side='right')
+>>> grade
+array([0, 1, 2, 3, 4, 4], dtype=int64)
+```
+
+0이 가장 낮은 등급(60점 미만), 4가 가장 높은 등급(90점 이상)이에요. 경계에 딱 걸린 60점과 90점이 **위쪽 등급**에 들어가도록 `side='right'`를 썼어요. `side='left'`면 경계값이 아래쪽 등급에 들어가요.
+
+```python
+>>> sd.searchsorted(cut, scores)
+array([0, 0, 2, 3, 3, 4], dtype=int64)
+```
+
+등급 번호로 다른 배열에서 값을 꺼내면 점수를 평점으로 바꿀 수 있어요.
+
+```python
+>>> points = sd.asarray([0.0, 1.0, 2.0, 3.0, 4.0])
+>>> points[grade]
+array([0.0, 1.0, 2.0, 3.0, 4.0, 4.0], dtype=float64)
+```
+
+<Callout type="tip" title="경계에 걸린 값을 어디에 넣을지부터 정하세요">
+  "60점 이상이면 D"처럼 **경계값이 위쪽 구간에 속하면** `side='right'`, "60점 이하면 F"처럼 **아래쪽 구간에 속하면** `side='left'`예요.
+</Callout>
+
+## `sorter`: 정렬하지 않은 배열에서 찾기
+
+`x1`이 정렬돼 있지 않은데 원래 순서를 바꾸고 싶지 않다면, 정렬 순서만 [`argsort`](/api/array/sort/)로 구해서 `sorter`에 줘요. 그러면 `x1`을 그 순서로 정렬된 것처럼 보고 자리를 찾아요.
+
+```python
+>>> u = sd.asarray([30, 10, 20])
+>>> order = sd.argsort(u)
+>>> order
+array([1, 2, 0], dtype=int64)
+>>> sd.searchsorted(u, 15, sorter=order)
+1
+```
+
+돌려주는 자리는 `u`가 아니라 **정렬한 배열 `u[order]`(`10, 20, 30`) 기준**이에요. `15`는 정렬한 배열에서 `10`과 `20` 사이, 1번 자리예요. `sd.searchsorted(u[order], 15)`와 같은 결과예요.
+
+`sorter`는 `x1`과 길이가 같은 int64 배열이어야 해요. 리스트는 받지 않아요.
+
+```python
+>>> sd.searchsorted(u, 15, sorter=sd.asarray([1, 2]))
+Traceback (most recent call last):
+    ...
+ValueError: searchsorted(): 'sorter' must be a 1-D int64 array as long as 'x1'
+```
+
+`sorter`의 위치는 0부터 `len(x1) - 1`까지여야 해요. 인덱싱과 달리 음수를 뒤에서 세지 않아요. `argsort`가 주는 위치에는 음수가 없으니, 음수가 있다면 무언가 잘못 만든 `sorter`예요.
+
+```python
+>>> sd.searchsorted(u, 15, sorter=sd.asarray([1, 2, -1]))
+Traceback (most recent call last):
+    ...
+IndexError: searchsorted(): index -1 is out of bounds for axis 0 with size 3
+```
+
+## NaN과 무한대
+
+크고 작음을 따지는 기준은 [`sort`](/api/array/sort/)와 같아요. **NaN(숫자가 아님)은 무한대보다도 큰 값**으로 쳐요. 그래서 NaN이 섞인 배열을 정렬하면 NaN이 맨 끝에 오고, `searchsorted`도 그 순서를 그대로 따라요.
+
+```python
+>>> f = sd.asarray([1.0, 2.0, sd.inf, sd.nan])
+>>> sd.searchsorted(f, sd.asarray([sd.nan, sd.inf, 3.0]))
+array([3, 2, 2], dtype=int64)
+>>> sd.searchsorted(sd.asarray([1.0, 2.0, 3.0]), sd.nan)
+3
+```
+
+NaN의 자리를 찾으면 NaN이 모인 구간의 맨 앞(`'left'`)이나 맨 뒤(`'right'`)가 나와요. `sd.sort`로 정렬한 배열은 NaN이 있어도 그대로 `x1`로 쓸 수 있어요.
+
+## 조심할 점
+
+### `x1`이 정렬돼 있지 않으면 틀린 답이 나와요
+
+`searchsorted`는 `x1`이 정렬돼 있다고 **믿고** 계산해요. 정렬됐는지 확인하지 않으므로, 정렬되지 않은 배열을 넣으면 에러 없이 뜻 없는 자리가 나와요.
+
+```python
+>>> sd.searchsorted(sd.asarray([3, 1, 2]), 2)
+2
+```
+
+<Callout type="warn" title="정렬은 직접 챙겨야 해요">
+
+  `x1`은 미리 [`sd.sort`](/api/array/sort/)로 정렬해 두거나, 정렬 순서를 `sorter`로 주세요. 내림차순으로 정렬된 배열도 안 돼요. 오름차순이어야 해요.
+
+</Callout>
+
+### 찾은 자리에 그 값이 있다는 뜻은 아니에요
+
+`searchsorted`는 "들어갈 자리"만 알려 줘요. 값이 실제로 있는지는 그 자리의 원소와 비교해서 확인해야 해요. 자리가 `len(x1)`이면 인덱스 범위를 벗어나니 먼저 걸러야 해요.
+
+```python
+>>> i = sd.searchsorted(a, 25)
+>>> bool(a[i] == 25)
+False
+>>> i = sd.searchsorted(a, 30)
+>>> bool(a[i] == 30)
+True
+```
+
+### dtype이 달라도 돼요
+
+`x1`과 `x2`의 dtype이 다르면 둘을 [승격](/api/array/numerics/)한 dtype으로 비교해요. 정수 배열에서 실수 값의 자리도 찾을 수 있어요. 복소수는 크고 작음이 없어서 받지 않아요.
+
+```python
+>>> sd.searchsorted(sd.asarray([1, 2, 3]), 2.5)
+2
+>>> sd.searchsorted(a, 1 + 0j)
+Traceback (most recent call last):
+    ...
+TypeError: searchsorted(): not supported for complex128
+```
+
+### 받는 것과 받지 않는 것
+
+`x1`은 1차원 배열이어야 하고, `x2`에 리스트는 안 돼요. `side`는 이름을 붙여서 `'left'`나 `'right'`만 써요.
+
+```python
+>>> sd.searchsorted(sd.asarray([[1, 2]]), 1)
+Traceback (most recent call last):
+    ...
+ValueError: searchsorted(): 'x1' must be 1-D
+>>> sd.searchsorted(a, [5, 20])
+Traceback (most recent call last):
+    ...
+TypeError: searchsorted(): 'x2' must be an sd.ndarray or a bool, int, float or complex, not list
+>>> sd.searchsorted(a, 20, side='middle')
+Traceback (most recent call last):
+    ...
+ValueError: searchsorted(): 'side' must be 'left' or 'right', not 'middle'
+```
+
+## 비슷한 함수와의 차이
+
+| 하고 싶은 일 | 쓸 것 | `searchsorted`와 다른 점 |
+|---|---|---|
+| 값을 정렬하기 | `sort`, `argsort` | 배열 전체의 순서를 정해요. `searchsorted`는 정렬된 배열을 받아요. |
+| 구간마다 개수 세기 | `histogram` | 원소마다 구간 번호를 주는 대신 구간별 개수를 세요. |
+| 고유한 값과 원소의 번호 | `unique_inverse` | 고유한 값 목록과, 원소마다 그 목록의 몇 번째인지를 한꺼번에 줘요. |
+| 같은 값의 자리를 모두 찾기 | `nonzero` | `sd.nonzero(x == v)`는 정렬되지 않은 배열에서도 같은 값의 자리를 모두 찾아요. |
+
+## numpy를 아는 분께
+
+- `x1`, `x2`에 리스트를 받지 않아요. `x2`는 `sd.ndarray`나 Python 숫자예요.
+- `x2`가 숫자면 numpy 스칼라가 아니라 Python `int`를 돌려줘요.
+- `side`, `sorter`는 keyword-only예요.
+- `sorter`에 음수나 범위 밖의 위치가 있으면 `IndexError`예요. numpy는 음수 위치를 에러 없이 받아요.
+- NaN의 순서는 numpy와 같아요(가장 큰 값).
+- `ndarray.searchsorted` 메서드는 없어요. `sd.searchsorted(x1, x2)`로 쓰세요.

@@ -1,0 +1,232 @@
+---
+title: nextafter
+names: [nextafter]
+group: 산술
+order: 5
+signatures:
+  - "sd.nextafter(x1, x2, /, *, out=None)"
+summary: x1에서 x2 쪽으로 가장 가까운 다음 실수를 원소마다 구해요. 실수로 나타낼 수 있는 값 사이를 한 칸씩 움직일 때 써요.
+params:
+  - name: x1
+    type: ndarray 또는 Python 숫자
+    kind: positional-only
+    desc: 출발점.
+  - name: x2
+    type: ndarray 또는 Python 숫자
+    kind: positional-only
+    desc: 움직일 방향을 정하는 값. x1보다 크면 위로, 작으면 아래로 한 칸 움직여요. 모양이 다르면 브로드캐스팅 규칙으로 맞춰요.
+  - name: out
+    type: ndarray 또는 None
+    kind: keyword-only
+    desc: 결과를 적어 넣을 배열. None이면 새 배열을 만들어요.
+returns:
+  type: ndarray 또는 Python 숫자
+  desc: 두 입력을 브로드캐스트한 모양의 float64 결과. 두 입력이 모두 Python 숫자면 결과도 Python float예요.
+raises:
+  - type: TypeError
+    desc: 복소수를 넣었을 때, 배열도 숫자도 아닌 것을 넣었을 때, out의 dtype이 float64를 담을 수 없을 때.
+  - type: ValueError
+    desc: 두 입력이나 out의 모양이 브로드캐스팅으로 맞지 않을 때.
+seeAlso: [finfo, arithmetic, sign, clip]
+---
+
+## 한눈에 보기
+
+컴퓨터의 실수(float64)는 모든 실수를 나타내지 못하고, 띄엄띄엄 놓인 값만 나타내요. `nextafter(x1, x2)`는 `x1`에서 `x2` 쪽으로 **바로 다음에 놓인 실수**를 돌려줘요. 그 사이에는 float64로 나타낼 수 있는 값이 하나도 없어요.
+
+```python
+>>> import stardust as sd
+>>> sd.nextafter(1.0, 2.0)
+1.0000000000000002
+>>> sd.nextafter(1.0, 0.0)
+0.9999999999999999
+```
+
+`1.0` 바로 위의 실수는 `1.0000000000000002`예요. 그 사이에 있는 `1.0000000000000001` 같은 값은 float64로 나타낼 수 없어서, 둘 중 가까운 쪽으로 반올림돼요.
+
+배열을 넣으면 원소마다 따로 계산해요. `x2`는 방향만 정할 뿐, 얼마나 움직일지는 정하지 않아요. 언제나 딱 한 칸이에요.
+
+```python
+>>> sd.nextafter(sd.asarray([1.0, 1.0, 1.0]), sd.asarray([2.0, 0.0, 1.0]))
+array([1.0000000000000002, 0.9999999999999999,                1.0], dtype=float64)
+>>> sd.nextafter(1.0, sd.inf)
+1.0000000000000002
+```
+
+| `x1`과 `x2`의 관계 | 결과 |
+|---|---|
+| `x2`가 더 큼 | `x1` 바로 위의 실수 |
+| `x2`가 더 작음 | `x1` 바로 아래의 실수 |
+| 같음 | `x2` |
+| 어느 한쪽이 NaN | NaN |
+
+<Reference />
+
+## 한 칸의 크기는 값마다 달라요
+
+실수 사이의 간격은 일정하지 않아요. 값이 클수록 넓어져서, 대략 값의 크기 × 2.2 × 10⁻¹⁶이에요. 그래서 `1e16` 근처에서는 한 칸이 `2.0`이나 돼요.
+
+```python
+>>> v = sd.asarray([1.0, 1e8, 1e16])
+>>> sd.nextafter(v, sd.inf) - v
+array([ 2.220446049250313e-16, 1.4901161193847656e-08,
+                          2.0], dtype=float64)
+```
+
+| 값 | 바로 위 실수까지의 간격 |
+|:---:|:---:|
+| 1 | 약 2.2 × 10⁻¹⁶ |
+| 10⁸ | 약 1.5 × 10⁻⁸ |
+| 10¹⁶ | 2 |
+
+이 때문에 `1e16`에 `1.0`을 더해도 값이 바뀌지 않아요. `1.0`은 한 칸(`2.0`)의 정확히 절반이라, 정확한 합은 이웃한 두 실수 `1e16`과 `1e16 + 2`의 한가운데에 놓여요. 이렇게 한가운데에 놓이면 이진수로 쓴 끝자리가 0인(짝수인) 쪽으로 반올림하는데, 여기서는 `1e16`이 그쪽이에요. 한 칸의 절반보다 작게 더하면 언제나 원래 값으로 돌아와요.
+
+```python
+>>> sd.asarray([1e16]) + 1.0
+array([1e+16], dtype=float64)
+```
+
+`1.0`에서의 간격 `2.220446049250313e-16`을 **머신 엡실론**이라고 불러요. [`finfo`](/api/array/finfo/)에서도 볼 수 있어요.
+
+```python
+>>> sd.finfo(sd.float64).eps
+2.220446049250313e-16
+>>> sd.nextafter(1.0, 2.0) - 1.0
+2.220446049250313e-16
+```
+
+## 어디에 쓰나요
+
+### 경계를 "미만"으로 바꾸기
+
+"1.0 이하"가 아니라 "1.0 미만"인 가장 큰 실수가 필요할 때가 있어요. 예를 들어 `[0, 1]` 범위의 값을 10개 구간 번호(0~9)로 바꾸면, 정확히 `1.0`인 값만 번호 `10`이 되어 범위를 벗어나요.
+
+```python
+>>> x = sd.asarray([0.0, 0.55, 1.0])
+>>> sd.floor(x * 10)
+array([ 0.0,  5.0, 10.0], dtype=float64)
+```
+
+`1.0` 바로 아래의 실수로 위쪽을 잘라 두면 마지막 구간에 들어가요.
+
+```python
+>>> below_one = sd.nextafter(1.0, 0.0)
+>>> sd.floor(sd.clip(x, max=below_one) * 10)
+array([0.0, 5.0, 9.0], dtype=float64)
+```
+
+### 가장 작은 양수, 가장 큰 유한수
+
+`0.0`에서 한 칸 위는 float64가 나타낼 수 있는 가장 작은 양수예요. 무한대에서 한 칸 아래는 가장 큰 유한한 수예요.
+
+```python
+>>> sd.nextafter(sd.asarray([0.0, 0.0]), sd.asarray([1.0, -1.0]))
+array([ 5e-324, -5e-324], dtype=float64)
+>>> sd.nextafter(sd.asarray([sd.inf, -sd.inf]), 0.0)
+array([ 1.7976931348623157e+308, -1.7976931348623157e+308], dtype=float64)
+```
+
+반대로 가장 큰 유한수에서 한 칸 더 위로 가면 무한대예요.
+
+```python
+>>> sd.nextafter(1.7976931348623157e308, sd.inf)
+inf
+```
+
+### 계산이 얼마나 정확한지 재기
+
+두 결과가 "몇 칸" 차이 나는지로 오차를 말할 때가 있어요. 예를 들어 `0.1 + 0.2`는 `0.3`에서 정확히 한 칸 위예요.
+
+```python
+>>> sd.nextafter(0.3, 1.0)
+0.30000000000000004
+>>> 0.1 + 0.2
+0.30000000000000004
+```
+
+## 입력과 결과의 종류
+
+결과는 언제나 float64예요. 정수나 bool을 넣으면 실수로 바꾼 다음 한 칸 움직여요. 두 입력이 모두 Python 숫자면 결과도 배열이 아니라 Python `float`예요.
+
+```python
+>>> sd.nextafter(sd.asarray([1, 2]), 10)
+array([1.0000000000000002, 2.0000000000000004], dtype=float64)
+>>> sd.nextafter(1, 2)
+1.0000000000000002
+```
+
+복소수는 받지 않아요. 복소수에는 크고 작음이 없어서 "다음 값"을 정할 수 없어요.
+
+```python
+>>> sd.nextafter(sd.asarray([1 + 0j]), 1.0)
+Traceback (most recent call last):
+    ...
+TypeError: nextafter(): not supported for complex128 and float64
+```
+
+두 입력의 모양이 다르면 [브로드캐스팅](/api/array/broadcasting/) 규칙으로 맞춰요. 출발점 하나에서 여러 방향으로 움직여 볼 수도 있어요.
+
+```python
+>>> sd.nextafter(1.0, sd.asarray([0.0, 1.0, 2.0]))
+array([0.9999999999999999,                1.0, 1.0000000000000002], dtype=float64)
+```
+
+### `out`: 결과를 기존 배열에 쓰기
+
+`out=`에 배열을 주면 새 배열을 만들지 않고 그 배열에 결과를 적어서 돌려줘요. `out`의 dtype은 결과를 손실 없이 담을 수 있어야 해요. 결과가 실수라서 정수 배열에는 담을 수 없어요. 그 밖의 규칙은 [사칙연산의 `out`](/api/array/arithmetic/#out-결과를-기존-배열에-쓰기)과 같아요.
+
+```python
+>>> sd.nextafter(sd.asarray([1.0]), 2.0, out=sd.zeros(1, dtype=sd.int64))
+Traceback (most recent call last):
+    ...
+TypeError: nextafter(): cannot implicitly convert float64 to int64 (that would lose information); convert explicitly with astype
+```
+
+## 조심할 점
+
+### 0의 부호
+
+`0.0`과 `-0.0`은 값이 같지만 부호가 달라요. `x1`과 `x2`가 같으면 `x2`를 돌려주기 때문에, `0.0`에서 `-0.0` 쪽으로 가면 `-0.0`이 나와요. 값으로는 움직이지 않은 것과 같아요.
+
+```python
+>>> sd.nextafter(0.0, -0.0)
+-0.0
+>>> sd.nextafter(-0.0, 0.0)
+0.0
+```
+
+### 한 칸은 "엡실론을 더한 것"이 아니에요
+
+`x + eps`는 `x`가 `1.0` 근처일 때만 한 칸이에요. 값이 크면 `eps`를 더해도 아무 변화가 없고, 값이 작으면 여러 칸을 건너뛰어요. 정확히 한 칸이 필요하면 언제나 `nextafter`를 쓰세요.
+
+```python
+>>> eps = sd.finfo(sd.float64).eps
+>>> sd.asarray([1e8]) + eps
+array([100000000.0], dtype=float64)
+>>> sd.nextafter(sd.asarray([1e8]), sd.inf)
+array([100000000.00000001], dtype=float64)
+```
+
+### NaN
+
+어느 한쪽이라도 NaN이면 결과는 NaN이에요. 에러는 나지 않아요.
+
+```python
+>>> sd.nextafter(sd.asarray([1.0, sd.nan]), sd.asarray([sd.nan, 1.0]))
+array([nan, nan], dtype=float64)
+```
+
+## 비슷한 함수와의 차이
+
+| 함수 | 하는 일 |
+|---|---|
+| `nextafter(x1, x2)` | `x1`에서 정확히 한 칸 움직인 실수 |
+| `x + finfo(float64).eps` | `1.0` 근처에서만 한 칸. 다른 크기에서는 다른 결과 |
+| [`finfo`](/api/array/finfo/) | `eps`, 가장 큰 수, 가장 작은 정규화 수 같은 float64의 한계값 |
+| [`copysign`](/api/array/sign/) | 값은 그대로, 부호만 바꿔요 |
+
+## numpy를 아는 분께
+
+- 결과는 numpy의 `nextafter`와 비트까지 같아요. 정수와 bool은 float64로 바꿔서 계산해요.
+- 복소수는 `TypeError`예요. `spacing` 함수는 없어요. `nextafter(x, inf) - x`로 계산하세요.
+- `out`은 keyword-only이고 `where=` 인자는 없어요. 두 입력이 모두 Python 숫자면 numpy 스칼라가 아니라 Python `float`를 돌려줘요.

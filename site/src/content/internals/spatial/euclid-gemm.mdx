@@ -1,0 +1,381 @@
+---
+title: 유클리드 혼합 계산
+group: 거리
+order: 2
+summary: 유클리드 이웃 찾기가 행렬 곱(GEMM)의 빠르기와 직접 계산의 정확도를 함께 얻는 방법이에요. 전개식 ‖x‖² + ‖y‖² − 2x·y가 자릿수를 잃는 까닭, GEMM이 하는 일과 그 결과의 끝자리가 덧셈 순서에 달린 까닭, GEMM으로는 후보만 고르고 거리는 직접 계산하는 규칙, 고르기가 참 이웃을 절대 빠뜨리지 않는다는 정리 3의 진술과 증명, 중심 빼기, 블록 공통 한계를 설명해요.
+seeAlso: [pair-kernel, overview, queries, parallel]
+---
+## 한눈에 보기
+
+유클리드 거리의 제곱은 $\lVert x - y \rVert^2 = \lVert x \rVert^2 + \lVert y \rVert^2 - 2\,x \cdot y$로 펼칠 수 있어요. 오른쪽의 $x \cdot y$를 모든 짝에 대해 구하는 것은 행렬 곱 하나(GEMM)이고, GEMM은 컴퓨터가 가장 빨리 하는 계산이에요. 그래서 많은 라이브러리가 이웃 찾기에 이 전개식을 써요. 그런데 이 식은 점들이 원점에서 멀고 서로 가까우면 자릿수를 다 잃어요.
+
+이 영역은 둘을 나눠요. **GEMM은 후보를 빨리 고르는 데만 쓰고, 돌려주는 거리와 경계의 판정은 모두 [한 짝 커널](/internals/spatial/pair-kernel/)이 직접 계산해요.** 고르기는 "이 짝의 직접 거리는 지금의 문턱보다 엄격히 크다"가 증명될 때만 짝을 버려요. 그러면 답은 직접 계산만으로 정해지고, 빠르기는 GEMM에 가까워요. 이 페이지는 그 증명(정리 3)이 중심이에요.
+
+이 길을 타는 것은 가중치 없는 `euclidean`·`sqeuclidean`(`minkowski` $p = 2$ 포함)의 `kneighbors`·`radius_neighbors`, 그리고 그 길로 가는 `KDTree.query`예요. 조건은 [영역의 구조](/internals/spatial/overview/)의 길 고르기 표에 있어요. `pdist`·`cdist`는 모든 거리를 돌려주니 고를 것이 없어 이 길을 쓰지 않아요.
+
+## 전개식이 잃는 것
+
+두 점 $(10^8, 10^8)$과 $(10^8 + 1, 10^8)$의 거리는 1이에요. 전개식으로 구하면 0이 나와요.
+
+```python
+>>> import math
+>>> import stardust as sd
+>>> x, y = [1e8, 1e8], [1e8 + 1, 1e8]
+>>> (x[0] ** 2 + x[1] ** 2) + (y[0] ** 2 + y[1] ** 2) - 2 * (x[0] * y[0] + x[1] * y[1])
+0.0
+>>> sd.spatial.cdist([x], [y]).tolist()
+[[1.0]]
+```
+
+$\lVert x \rVert^2$과 $\lVert y \rVert^2$은 $2 \times 10^{16}$ 둘레이고, 그 크기의 double은 간격이 4예요. 각 항이 반올림될 때 생긴 오차가 4 둘레이니, 빼고 남은 1은 그 오차에 묻혀요. 일반적으로 전개식의 오차는 $u(\lVert x \rVert + \lVert y \rVert)^2$ 크기이고 상대오차는 $u(\lVert x \rVert + \lVert y \rVert)^2 / \lVert x - y \rVert^2$이에요. 점들이 원점에서 $R$만큼 떨어진 곳에 크기 $r$로 모여 있으면 상대오차가 $u(R/r)^2$으로 커져요.
+
+이웃 찾기에서는 순서가 통째로 무너져요. $10^8 + [0, 1)^3$의 점 200개와 질의 20개에서 전개식으로 가장 가까운 점을 고르면 하나도 맞히지 못해요.
+
+```python
+>>> rng = sd.random.default_rng(5)
+>>> X, Y = 1e8 + rng.random((20, 3)), 1e8 + rng.random((200, 3))
+>>> def expanded(x, y):
+...     return (sum(a * a for a in x) + sum(b * b for b in y)) - 2 * sum(a * b for a, b in zip(x, y))
+>>> E = [[expanded(x, y) for y in Y.tolist()] for x in X.tolist()]
+>>> sorted(set(v for row in E for v in row))[:5]
+[-16.0, -8.0, 0.0, 8.0, 16.0]
+>>> guess = [min(range(200), key=lambda j: (row[j], j)) for row in E]
+>>> r = sd.spatial.kneighbors(X, Y)
+>>> sum(g == i for g, i in zip(guess, r.indices.tolist()))
+0
+>>> [round(d, 3) for d in r.distances.tolist()[:5]]
+[0.139, 0.101, 0.093, 0.023, 0.104]
+```
+
+전개식의 값은 8의 배수뿐이에요. 참 거리의 제곱은 0.02 둘레인데, 그 차이가 반올림의 간격보다 훨씬 작아 남지 않아요. 음수도 나와요.
+
+## GEMM이 하는 일
+
+GEMM은 $C = AB^\top$ 같은 행렬 곱이에요. 여기서 $A$의 행은 질의점, $B$의 행은 데이터 점이라 $C$의 원소 $c_{ij}$가 $x_i \cdot y_j$예요. 빠른 BLAS 구현은 대개 Goto와 van de Geijn이 정리한 꼴로 이 곱을 짜요.
+
+1. 공통 차원 $n$을 $k_c$개씩, $B$의 행을 $n_c$개씩 자르고, $B$의 $k_c \times n_c$ 조각을 연속된 버퍼로 옮겨 담아요(패킹). 큰 캐시에 머무는 크기예요.
+2. $A$의 행을 $m_c$개씩 잘라 $m_c \times k_c$ 조각을 역시 패킹해요. L2 캐시에 머무는 크기예요.
+3. 마이크로커널이 $C$의 $m_r \times n_r$ 작은 블록을 레지스터에 들고, 패킹된 $A$의 $m_r$줄과 $B$의 $n_r$줄을 $p = 1, \dots, k_c$ 차례로 읽으며 바깥곱을 더해요(rank-1 갱신, FMA). $k_c$걸음이 끝나면 그 블록을 메모리의 $C$에 더해요.
+
+그래서 원소 하나 $c_{ij}$는 "$k_c$개씩의 덩어리 안에서는 차례로, 덩어리의 합은 $C$에 차례로" 더해진 값이에요. 이 영역의 타일 순서와 닮았지만 $k_c, m_c, n_c, m_r, n_r$은 구현이 칩과 행렬 모양과 스레드 수를 보고 정하고, 스레드가 많으면 일을 나누는 방법도 바뀌어요. Apple 칩의 Accelerate는 이 일을 CPU 코어 곁의 행렬 연산 장치로 보내기도 해요. 무엇보다 Accelerate는 이진 파일이라 어떤 묶음과 순서로 더하는지 소스로 확인할 수 없어요.
+
+덧셈의 순서는 결과의 끝자리를 바꿔요. 부동소수 덧셈은 결합 법칙이 서지 않기 때문이에요.
+
+```python
+>>> (0.1 + 0.2) + 0.3, 0.1 + (0.2 + 0.3)
+(0.6000000000000001, 0.6)
+```
+
+그래서 GEMM의 값 $\hat g$에 대해 이 영역이 믿는 것은 하나뿐이에요.
+
+**가정 A (GEMM).** 출력 원소 하나는 $n$개 곱의 어떤 순서·묶음의 합이고, 곱과 덧셈은 각각 반올림하거나 FMA로 합쳐 한 번 반올림해요. Strassen 같은 빠른 행렬 곱이 아니에요. 그러면 순서와 묶음이 무엇이든 내적의 오차 한계(Higham, 『Accuracy and Stability of Numerical Algorithms』 3장)가 서요.
+
+$$
+\lvert \hat g - x\cdot y\rvert \le \gamma_n \sum_i \lvert x_i y_i\rvert + n\cdot 2^{-1074} \le \gamma_n \lVert x\rVert\,\lVert y\rVert + n\cdot 2^{-1074}
+$$
+
+이 가정은 소스로 보일 수 없어요. 그래서 여유를 넉넉히 잡고(아래의 상수는 꼭 필요한 것보다 커요), 가정이 깨지는 입력을 찾는 적대적인 시험(먼 군집, 1 ULP씩 다른 껍질, 넘치기 직전의 좌표 등)을 돌려요.
+
+## 고르기의 규칙
+
+질의 $x$와 후보 $y_j$마다 직접 거리의 아래 한계 $\tilde L_j$를 GEMM의 값으로 싸게 구해요. 정리 3이 $\tilde L_j \le \hat d_j$($\hat d_j$는 한 짝 커널의 거리)를 보이니, <strong>$\tilde L_j \gt T$이면 $\hat d_j \gt T$</strong>예요. 버리는 것은 이런 짝뿐이에요.
+
+- **$k$개 이웃.** 질의마다 지금까지의 $(\hat d, \text{색인})$ 최대 힙(크기 $k$)을 들고, 그 맨 위의 거리를 $T$로 해요(힙이 덜 찼으면 $T = \infty$). $\tilde L_j \gt T$인 짝은 버리고, 나머지는 원래 점으로 $\hat d_j$를 직접 계산해 힙에 넣어요. $T$는 줄기만 하니 한 번 버린 짝은 끝까지 버려도 돼요. 버린 짝은 $\hat d \gt (\text{버릴 때의 } T) \ge (\text{마지막 } T) \ge (\text{참 } k\text{번째 } \hat d)$라서 답에 들 수 없고, 부등호가 엄격하니 $k$번째와의 동점(같은 거리에 색인이 작은 점)도 빠지지 않아요. 그래서 결과는 같은 커널로 모든 점을 직접 계산해 $(\hat d, \text{색인})$으로 정렬한 것과 같아요.
+- **반경.** $T = r$이에요. 판정은 $\hat d \le r$이고 버리기는 $\tilde L \gt r$이에요.
+- **상한.** `distance_upper_bound`의 판정은 $\hat d \lt \text{상한}$이니 $\tilde L \ge \text{상한}$이면 버려요.
+
+## 오차의 모형
+
+$u = 2^{-53}$, $\gamma_k = ku/(1 - ku)$예요. 부동소수 연산 하나는
+
+$$
+\mathrm{fl}(a \circ b) = (a \circ b)(1 + \delta) + \eta,\qquad \lvert\delta\rvert \le u,\quad \lvert\eta\rvert \le 2^{-1075}
+$$
+
+이고(FMA도 반올림 한 번이에요) $\eta$는 결과가 비정상 수 범위일 때만 생겨요. 덧셈과 뺄셈은 $\eta = 0$이에요(점진적 언더플로에서 두 double의 합이 비정상 수면 정확해요). 넘치지 않는 2의 거듭제곱 곱은 정확해요. 넘침은 따로 다뤄요(아래의 대체 길).
+
+$x, y \in \mathbb{R}^n$는 double 벡터이고 $X = \lVert x \rVert$, $Y = \lVert y \rVert$, $D = \lVert x - y \rVert$는 참값이에요. $\hat n_x = \mathrm{fl}(\lVert x \rVert^2)$은 한 짝 커널이 구한 제곱합, $\hat g$는 GEMM의 $x \cdot y$, 추정값은 $\hat E = \mathrm{fl}(\mathrm{fl}(\hat n_x + \hat n_y) - 2\hat g)$예요($2\hat g$는 정확해요). 직접 거리는 $\hat d = \mathrm{fl}(\sqrt{\hat s})$, $\hat s$는 직접 제곱합이에요. 아래에서 $1 \le n \le 2^{21} - 2$예요. 이 범위에서 $\gamma_k \le ku(1 + 2^{-30}) \le (k + 1)u$이고 $\gamma_j + ku \le \gamma_{j+k}$예요.
+
+### 보조정리 1 (전개식의 오차)
+
+$$
+\lvert \hat E - D^2\rvert \le \gamma_{n+2}(X + Y)^2 + (6n + 1)\cdot 2^{-1075} =: \Delta(x, y)
+$$
+
+*증명.* 음이 아닌 항의 합이라 어떤 순서로 더해도 $\lvert \hat n_x - X^2\rvert \le \gamma_n X^2 + n\cdot 2^{-1075}(1 + \gamma_n)$이고 $y$도 같아요. $s = \mathrm{fl}(\hat n_x + \hat n_y) = (\hat n_x + \hat n_y)(1 + \theta_1)$, $\hat E = (s - 2\hat g)(1 + \theta_2)$, $\lvert\theta_i\rvert \le u$예요. $D^2 = X^2 + Y^2 - 2\,x\cdot y$이니
+
+$$
+s - 2\hat g - D^2 = (\hat n_x - X^2) + (\hat n_y - Y^2) + \theta_1(\hat n_x + \hat n_y) - 2(\hat g - x\cdot y)
+$$
+
+예요. 반올림의 몫은 $\gamma_n(X^2 + Y^2) + 2\gamma_n XY + u(1 + \gamma_n)(X^2 + Y^2) \le (\gamma_n + u(1 + \gamma_n))(X + Y)^2 \le \gamma_{n+1}(X + Y)^2$예요. 언더플로의 몫은 두 제곱합에서 $2n\cdot 2^{-1075}(1 + \gamma_n)(1 + u)$, $2\hat g$에서 $2n\cdot 2^{-1074} = 4n\cdot 2^{-1075}$이라 모두 $6n(1 + \gamma_n)(1 + u)\cdot 2^{-1075}$ 이하예요. 마지막으로 $\hat E - D^2 = (s - 2\hat g - D^2)(1 + \theta_2) + \theta_2 D^2$이고 $D \le X + Y$이니 반올림의 몫은 $\gamma_{n+1}(1 + u) + u \le \gamma_{n+2}$배, 언더플로의 몫은 $6n(1 + \gamma_n)(1 + u)^2\cdot 2^{-1075} \le (6n + 1)\cdot 2^{-1075}$예요($n \lt 2^{21}$이면 $6n(\gamma_n + 3u) \lt 1$). ∎
+
+### 보조정리 2 (직접 계산의 아래 한계)
+
+$D \ge 2^{-501}$이면 $\hat s \ge (1 - \gamma_{n+6})D^2$이고 $\hat d \ge (1 - \gamma_{n+7})D$예요.
+
+*증명.* $z_i = \mathrm{fl}(x_i - y_i) = (x_i - y_i)(1 + \delta_i)$(뺄셈은 $\eta$가 없어요)이고 어떤 순서의 합이든 $\hat s \ge (1 - \gamma_n)\sum z_i^2 - n\cdot 2^{-1074} \ge (1 - \gamma_{n+2})D^2 - n\cdot 2^{-1074}$예요. $D^2 \ge 2^{-1002}$이고 $n \lt 2^{21}$이라 $n\cdot 2^{-1074} \lt 2^{-1053} = 2^{-51}\cdot 2^{-1002} \le 4uD^2$이니 $\hat s \ge (1 - \gamma_{n+2} - 4u)D^2 \ge (1 - \gamma_{n+6})D^2$예요. $\sqrt{\cdot}$는 상대오차를 줄이고($\sqrt{1 - t} \ge 1 - t$) 마지막 반올림이 $u$를 더해 $\hat d \ge (1 - \gamma_{n+6})(1 - u)D \ge (1 - \gamma_{n+7})D$예요. ∎
+
+제곱합이 넘치거나 $2^{-968}$ 아래여서 신중한 경로로 가도 같은 한계가 서요. $2^k$로 비율을 맞춘 같은 순서의 합이고 비율의 곱과 되돌림이 정확하니까요. 이 보조정리는 합의 순서를 묻지 않아요(합의 깊이 $m \le n$).
+
+두 보조정리를 합치면 $L_j = (1 - \gamma_{n+7})\sqrt{\max(\hat E_j - \Delta_j, 0)}$이 $D_j \ge 2^{-501}$일 때 $\hat d_j$의 아래 한계예요. 실제로 계산하는 값은 이것을 정해진 double 연산으로 적은 $\tilde L_j$이고, 그 $\tilde L_j$가 정말 $\hat d_j$ 아래라는 것이 정리 3이에요.
+
+## 중심 빼기
+
+여유의 상대 크기는 $\Delta/D^2 \approx (n + 3)u(\lVert x \rVert + \lVert y \rVert)^2/D^2$예요. 점들이 원점 근처에 퍼져 있으면 아주 작아서 다시 계산하는 후보가 $k$개를 거의 넘지 않아요. 하지만 $10^8 + [0, 1)^3$처럼 원점에서 멀고 서로 가까우면 여유가 퍼짐보다 커져서 아무것도 버릴 수 없어요. 그래서 GEMM에 넣기 전에 중심을 빼요. $c$는 XB의 열 평균이고, $x' = \mathrm{fl}(x - c)$, $y' = \mathrm{fl}(y - c)$를 GEMM과 노름에 써요. 다시 계산은 언제나 옮기지 않은 원래 점으로 해요.
+
+평균은 XB를 4096행씩 끊은 부분합을 그 순서로 더해 구해요. 증명은 $c$가 무엇이든 서니 $c$의 값이 정확할 필요는 없고, 결정적이기만 하면 돼요. 원점 근처의 자료에서도 손해가 없어서 GEMM 길은 언제나 중심을 빼요.
+
+옮김의 반올림은 원소마다 $\lvert (x_i - c_i) - x'_i\rvert \le u\lvert x'_i\rvert/(1 - u)$라서 원래 거리 $D$와 옮긴 거리 $D' = \lVert x' - y' \rVert$ 사이에 $D \ge D' - u(X' + Y')/(1 - u)$가 서요($X' = \lVert x' \rVert$). 이 몫이 아래 꼴의 $e$예요.
+
+## 계산하는 꼴과 상수
+
+모든 상수는 정확한 double이에요. $(n + 3)u$와 $(n + 4)\cdot 2^{-1070}$은 정수와 2의 거듭제곱의 곱이고, $1 - ku$는 1 아래의 간격이 $u$라서, $1 + 2ku$는 1 위의 간격이 $2u$라서 정확해요. 그래서 증명에 상수의 반올림이 끼어들지 않아요.
+
+```cpp
+// csrc/spatial/neighbors.cpp
+struct Consts {
+    double c1, eta0, c2, c5, c3;
+    explicit Consts(int64_t n)
+        : c1(static_cast<double>(n + 3) * 0x1p-53),
+          eta0(static_cast<double>(n + 4) * 0x1p-1070),
+          c2(1.0 - static_cast<double>(n + 16) * 0x1p-53),
+          c5(1.0 - static_cast<double>(n + 24) * 0x1p-53),
+          c3(1.0 + static_cast<double>(2 * (n + 6)) * 0x1p-53) {}
+};
+constexpr double kRho = 0x1p-525;
+constexpr double kVMin = 0x1p-500;
+```
+
+행마다 한 번(XA와 XB의 옮긴 행 $x'$), $\hat n = \sum_i x_i'^2$(한 짝 커널의 제곱합)과 $R = \mathrm{fl}(\mathrm{fl}(\mathrm{fl}(\sqrt{\hat n})\, c_3) + \rho)$를 구해 둬요. 짝마다는 이래요.
+
+```cpp
+// csrc/spatial/neighbors.cpp
+// R = fl(fl(fl(sqrt(nhat)) c3) + rho) >= ||x'|| (theorem 3, step 1)
+inline double radius_of(double nhat, const Consts& K) {
+    const double r = std::sqrt(nhat);
+    const double rc = r * K.c3;
+    return rc + kRho;
+}
+
+// The lower bound L~ of a pair from G = x'.y', or -inf when the pair cannot be dropped (t > 0 fails,
+// NaN included, or v < 2^-500). sq: sqeuclidean (L~ bounds s^), else euclidean (bounds d^).
+inline double lower_one(double g, double ny, double ry, double nx, double rx, const Consts& K, bool sq) {
+    const double sn = nx + ny;
+    const double e_hat = sn - (g + g);
+    const double a = rx + ry;
+    const double aa = a * a;
+    const double delta = K.c1 * aa + K.eta0;
+    const double t = e_hat - delta;
+    if (!(t > 0.0)) return -kInf;
+    const double e = 0x1p-50 * a + 0x1p-1074;
+    const double v = std::sqrt(t) - e;
+    if (!(v >= kVMin)) return -kInf;
+    if (sq) {
+        const double vv = v * v;
+        return vv * K.c5;
+    }
+    return K.c2 * v;
+}
+```
+
+식으로 적으면 이래요($\mathrm{fl}$은 한 연산씩).
+
+- $\hat E = \mathrm{fl}(\mathrm{fl}(\hat n_x + \hat n_y) - 2\hat g)$, $\hat a = \mathrm{fl}(R_x + R_y)$
+- $\tilde\Delta = \mathrm{fl}(\mathrm{fl}(c_1 \cdot \mathrm{fl}(\hat a \cdot \hat a)) + \eta_0)$, $c_1 = (n + 3)u$, $\eta_0 = (n + 4)\cdot 2^{-1070}$
+- $t = \mathrm{fl}(\hat E - \tilde\Delta)$. $t \gt 0$이 아니면(NaN 포함) 버리지 않아요.
+- $e = \mathrm{fl}(\mathrm{fl}(2^{-50} \cdot \hat a) + 2^{-1074})$, $v = \mathrm{fl}(\mathrm{fl}(\sqrt{t}) - e)$. $v \ge 2^{-500}$이 아니면 버리지 않아요.
+- `euclidean`은 $\tilde L = \mathrm{fl}(c_2 \cdot v)$, $c_2 = 1 - (n + 16)u$. `sqeuclidean`은 $\tilde L = \mathrm{fl}(\mathrm{fl}(v \cdot v) \cdot c_5)$, $c_5 = 1 - (n + 24)u$.
+
+비교는 모두 NaN이면 거짓이 되게 적었어요. 넘침으로 $\infty - \infty$가 나도 "버린다"로 흘러가지 않고 "버리지 않는다"로 가요. $v$의 문턱 $2^{-500}$은 거리가 약 $3 \times 10^{-151}$ 아래인 자료를 고르기 없이 모두 다시 계산하게 해요. 답은 같고 빠르기만 잃어요.
+
+## 정리 3
+
+**정리 3.** 위의 $\tilde L$는 $\tilde L \le \hat d$(`sqeuclidean`은 $\tilde L \le \hat s$)를 만족해요. 그래서 $\tilde L \gt T$이면 $\hat d \gt T$예요.
+
+*증명.* 여섯 걸음이에요. $A = X' + Y'$라 둘게요.
+
+1. <strong>$R \ge X'$.</strong> 제곱합의 아래 한계 $\hat n \ge (1 - \gamma_n)X'^2 - n\cdot 2^{-1074}$에서 $X' \le \sqrt{\hat n}(1 + \gamma_n) + 2^{-526}$이에요($\sqrt{a + b} \le \sqrt{a} + \sqrt{b}$, $n \lt 2^{21}$). $r = \mathrm{fl}(\sqrt{\hat n}) \ge \sqrt{\hat n}(1 - u)$, $\mathrm{fl}(r c_3) \ge r c_3(1 - u) - 2^{-1075}$, $R \ge (\mathrm{fl}(r c_3) + \rho)(1 - u)$이니 $R \ge \sqrt{\hat n}\,c_3(1 - u)^3 + (\rho - 2^{-1075})(1 - u)$예요. $c_3(1 - u)^3 \ge 1 + (2n + 8)u \ge 1 + \gamma_n$이고 $(\rho - 2^{-1075})(1 - u) \ge 2^{-526}$이라 $R \ge X'$예요.
+2. <strong>$\tilde\Delta \ge \Delta(x', y')$.</strong> $\hat a \ge (R_x + R_y)(1 - u) \ge A(1 - u)$, $\mathrm{fl}(\hat a \cdot \hat a) \ge \hat a^2(1 - u) - 2^{-1075}$, $\mathrm{fl}(c_1 \cdot \ldots) \ge c_1\hat a^2(1 - u)^2 - 2^{-1074}$($c_1 \lt 1$)이니 $\tilde\Delta \ge (c_1\hat a^2(1 - u)^2 - 2^{-1074} + \eta_0)(1 - u) \ge c_1(1 - u)^5A^2 + (\eta_0 - 2^{-1074})(1 - u)$예요. $\gamma_{n+2} \le (n + 2)u(1 + 2^{-30})$이고 $(n + 3)(1 - u)^5 > (n + 2)(1 + 2^{-30})$이라 $c_1(1 - u)^5 \ge \gamma_{n+2}$예요. 또 $(\eta_0 - 2^{-1074})(1 - u) = (32(n + 4) - 2)(1 - u)\cdot 2^{-1075} \ge (6n + 1)\cdot 2^{-1075}$이에요. 그래서 $\tilde\Delta$는 보조정리 1의 $\Delta(x', y')$ 이상이에요.
+3. <strong>$t \gt 0$이면 $D' \ge \mathrm{fl}(\sqrt{t})(1 - 2u)$.</strong> 뺄셈은 $\eta$가 없어 $\hat E - \tilde\Delta = t/(1 + \delta) \ge t/(1 + u)$이고, 보조정리 1에서 $D'^2 \ge \hat E - \Delta \ge \hat E - \tilde\Delta$이에요. 그래서 $D' \ge \sqrt{t}(1 - u) \ge \mathrm{fl}(\sqrt{t})(1 - 2u)$예요.
+4. **중심 빼기.** $D \ge D' - uA/(1 - u)$이고 $A \le \hat a/(1 - u)$예요. $e \ge (2^{-50}\hat a + 2^{-1075})(1 - u) \ge 8u\hat a(1 - u) \ge u\hat a(1 + 5u) \ge uA/((1 - u)(1 - 2u))$라서 $D \ge (1 - 2u)(\mathrm{fl}(\sqrt{t}) - e)$예요. 중심을 빼지 않으면 $e = 0$이고 $D = D'$예요.
+5. <strong>$v$로.</strong> $v \gt 0$이면 $v \le (\mathrm{fl}(\sqrt{t}) - e)(1 + u)$이니 $D \ge (1 - 2u)v/(1 + u) \ge (1 - 3u)v$예요.
+6. **마무리.** $v \ge 2^{-500}$이면 $D \ge 2^{-501}$이라 보조정리 2가 서고 $\hat d \ge (1 - \gamma_{n+7})(1 - 3u)v \ge (1 - (n + 11)u)v$예요. $v c_2$는 정상 범위라 $\eta$가 없으니 $\tilde L = \mathrm{fl}(c_2 v) \le c_2 v(1 + u) \le (1 - (n + 15)u)v \lt \hat d$예요. 제곱이면 $\hat s \ge (1 - \gamma_{n+6})(1 - 3u)^2 v^2 \ge (1 - (n + 13)u)v^2$이고 $\tilde L \le c_5 v^2(1 + u)^2 \le (1 - (n + 21)u)v^2 \lt \hat s$예요. ∎
+
+증명의 걸음마다 쓴 부등식은 어느 것도 빡빡하지 않아요. 상수는 각 걸음에 필요한 것보다 몇 $u$씩 넉넉하고, 그만큼 덜 버릴 뿐 답에는 영향이 없어요. 여유를 줄이면($\gamma$ 대신 합의 깊이 $m$을 쓰는 것처럼) 고르기가 조금 더 날카로워지지만 빠르기만 바뀌어요.
+
+### Python으로 확인하기
+
+위의 꼴을 Python으로 그대로 옮기면 정리를 눈으로 볼 수 있어요. 아래의 `gemm` 자리는 Python의 `sum`이에요. 곱마다 반올림하고 차례로 더하니 가정 A를 만족하는 한 가지 순서예요.
+
+```python
+>>> u = 2.0 ** -53
+>>> def sumsq(z):
+...     s = 0.0
+...     for b in range(0, len(z), 32):
+...         t = 0.0
+...         for v in z[b:b + 32]:
+...             t = math.fma(v, v, t)
+...         s = t if b == 0 else s + t
+...     return s
+>>> def lower(x, y, c):
+...     n = len(x)
+...     c1, eta0 = (n + 3) * u, (n + 4) * 2.0 ** -1070
+...     c2, c3 = 1 - (n + 16) * u, 1 + 2 * (n + 6) * u
+...     xm, ym = [a - b for a, b in zip(x, c)], [a - b for a, b in zip(y, c)]
+...     nx, ny = sumsq(xm), sumsq(ym)
+...     rx, ry = math.sqrt(nx) * c3 + 2.0 ** -525, math.sqrt(ny) * c3 + 2.0 ** -525
+...     g = sum(a * b for a, b in zip(xm, ym))
+...     a = rx + ry
+...     t = ((nx + ny) - (g + g)) - (c1 * (a * a) + eta0)
+...     if not t > 0:
+...         return -math.inf
+...     e = 2.0 ** -50 * a + 2.0 ** -1074 if any(c) else 0.0
+...     v = math.sqrt(t) - e
+...     return c2 * v if v >= 2.0 ** -500 else -math.inf
+>>> Xl, Yl = X.tolist(), Y.tolist()
+>>> D = sd.spatial.cdist(X, Y).tolist()
+>>> centre = [sum(col) / len(Yl) for col in zip(*Yl)]
+>>> for c in (centre, [0.0, 0.0, 0.0]):
+...     L = [[lower(x, y, c) for y in Yl] for x in Xl]
+...     usable = [l / d for Lr, Dr in zip(L, D) for l, d in zip(Lr, Dr) if l > -math.inf]
+...     print(len(usable), max(usable, default=None), all(l <= d for Lr, Dr in zip(L, D) for l, d in zip(Lr, Dr)))
+4000 0.9999999999999969 True
+0 None True
+```
+
+위의 먼 군집($10^8 + [0, 1)^3$)에서 중심을 빼면 4000짝 모두 쓸 만한 한계가 나오고, 한계와 직접 거리의 비는 많아야 $1 - 3 \times 10^{-15}$예요. 여유는 꼭 필요한 만큼에 가까워요. 중심을 빼지 않으면 $t \gt 0$인 짝이 하나도 없어 고르기가 아무것도 버리지 못해요. 어느 쪽이든 $\tilde L \le \hat d$는 모든 짝에서 서요.
+
+## 블록 공통 한계
+
+짝마다 $\tilde L$를 구하는 데는 $\sqrt{\cdot}$와 열댓 번의 연산이 들어요. 힙이 차서 $T$가 작아진 뒤에는 대부분의 짝이 버려지니, 더 싼 판정으로 먼저 걸러요.
+
+XB의 블록(2048행까지) 하나와 질의 $x$에 대해 $a_{\max} = \mathrm{fl}(R_x + \text{블록의 최대 } R_y)$를 한 번 구해요. $\tilde L$의 모든 단계는 $a$에 대해 단조예요(반올림은 단조이고, $\tilde\Delta$와 $e$는 $a$와 함께 자라고 $t$와 $v$는 줄어요). 그래서 $a_{\max}$로 구한 $L'(t') = \mathrm{fl}(c_2 \cdot \mathrm{fl}(\mathrm{fl}(\sqrt{t'}) - e_{\max}))$, $t' = \mathrm{fl}(\hat E - \tilde\Delta(a_{\max}))$는 그 짝의 $\tilde L$ 이하예요. 또 $t' \gt 0$, $v' \ge 2^{-500}$이면 그 짝의 $t \gt 0$, $v \ge 2^{-500}$도 서니 $\tilde L$가 정리 3의 한계예요. $L'$은 $t'$에 대해 줄지 않으니, $L'(\mathrm{next}(\tau)) \gt T$인 $\tau$를 하나 찾아 두면 $t' \gt \tau$인 짝은 모두 $\tilde L \ge L' \gt T$라서 버려요. 짝마다 덧셈 하나, 뺄셈 하나, 비교 하나예요.
+
+```cpp
+// csrc/spatial/neighbors.cpp
+struct Fast {
+    double dmax = 0.0, emax = 0.0;
+    bool sq = false;
+    const Consts* K = nullptr;
+
+    void set(double amax, const Consts& k, bool s) {
+        K = &k;
+        sq = s;
+        const double aa = amax * amax;
+        dmax = k.c1 * aa + k.eta0;
+        emax = 0x1p-50 * amax + 0x1p-1074;
+    }
+    // L'(t) (-inf when the pair could not be dropped)
+    double lower(double t) const {
+        if (!(t > 0.0)) return -kInf;
+        const double v = std::sqrt(t) - emax;
+        if (!(v >= kVMin)) return -kInf;
+        if (sq) {
+            const double vv = v * v;
+            return vv * K->c5;
+        }
+        return K->c2 * v;
+    }
+    // A tau with L'(next(tau)) > T (inf: none found, nothing is dropped fast).
+    double tau(double T) const {
+        if (!(T < kInf) || !(T >= 0.0)) return kInf;
+        const double r = sq ? std::sqrt(T / K->c5) : T / K->c2;
+        double t = (r * (1.0 + 0x1p-40) + emax) * (1.0 + 0x1p-40);
+        t = t * t * (1.0 + 0x1p-40);
+        for (int it = 0; it < 64 && t < kInf; ++it) {
+            if (lower(std::nextafter(t, kInf)) > T) return t;
+            t = t * (1.0 + 0x1p-20) + 0x1p-1000;
+        }
+        return kInf;
+    }
+};
+```
+
+$\tau$는 $L'$을 거꾸로 풀어 어림하고 조금 키운 뒤, $L'(\mathrm{next}(\tau)) \gt T$를 실제로 계산해 확인해요. 확인이 실패하면 조금씩 키우며 다시 보고, 64번 안에 못 찾으면 $\infty$(빠른 거르기 없음)예요. 안전은 어림이 아니라 확인에서 나와요. 거르기를 지난 짝만 짝마다의 $\tilde L$(정리 3의 꼴 그대로)로 다시 견줘요.
+
+## 후보를 다시 계산하는 순서
+
+블록 안에서 후보를 어떤 순서로 다시 계산하든 힙은 "버리지 않은 짝 가운데 $(\hat d, \text{색인})$이 가장 작은 $k$개"로 끝나요. 그래서 순서는 빠르기만 정해요. 빨리 $T$를 낮출수록 더 많이 버려요.
+
+- **힙이 덜 찬 블록.** 모자라는 수만큼 $\hat E$가 가장 작은 짝을 먼저 다시 계산해 $T$를 정해요. $\hat E$는 $\tilde L$에 가깝고 훨씬 싸요. 그래도 차지 않으면 블록 전체의 $\tilde L$를 구해 $T$와 견줘요.
+- **힙이 찬 블록.** 블록 공통 한계로 대부분을 거르고, 남은 짝 가운데 $\tilde L \le T$인 것을 모아요. $2k$개를 넘으면 $\tilde L$가 가장 작은 $k$개(`nth_element`)를 먼저 다시 계산해 $T$를 낮춘 뒤 나머지를 견줘요. 질의에서 먼 점부터 가까운 점 순으로 정렬된 XB처럼 블록마다 $T$가 내려가는 적대적인 순서에서 이 차례가 효과가 커요.
+
+```cpp
+            // csrc/spatial/neighbors.cpp
+            double T = h.bound();
+            const int64_t cnt = survivors(g, ny, w, nx, fast, fast.tau(T), idx.data());
+            cand.clear();
+            for (int64_t e = 0; e < cnt; ++e) {
+                const int64_t q = idx[static_cast<size_t>(e)];
+                if (picked && taken[static_cast<size_t>(q)]) continue;
+                const double l = lower_one(g[q], ny[q], ry[q], nx, rx, hy.K, hy.sq);
+                if (l <= T) cand.push_back({l, q});  // -inf too: a pair that cannot be dropped
+            }
+            if (picked)
+                for (int64_t q = 0; q < w; ++q) taken[static_cast<size_t>(q)] = 0;
+            if (static_cast<int64_t>(cand.size()) > 2 * k) {
+                std::nth_element(cand.begin(), cand.begin() + (k - 1), cand.end(), before);
+                for (int64_t e = 0; e < k; ++e) take(j0 + cand[static_cast<size_t>(e)].j);
+                T = h.bound();
+                for (size_t e = static_cast<size_t>(k); e < cand.size(); ++e) {
+                    if (cand[e].d > T) continue;
+                    take(j0 + cand[e].j);
+                    T = h.bound();
+                }
+                return;
+            }
+            for (const Nb& e : cand) {
+                if (e.d > T) continue;
+                take(j0 + e.j);
+                T = h.bound();
+            }
+```
+
+`take(j)`는 원래 점으로 한 짝 커널의 거리 $\hat d$를 구하고(`pair_scalar<SqOp>`와 `euclid_finish`·`sq_finish`, `cdist`의 레인과 같은 비트) $\hat d \lt \text{상한}$이면 힙에 넣어요. 반경 질의는 힙이 없으니 $T = r$로 거르고 남은 짝을 $\hat d \le r$로 판정해요.
+
+## 대체 길
+
+노름 $\hat n$이나 $(\max R_x + \max R_y)^2$이 유한하지 않으면(좌표가 약 $10^{154}$를 넘으면) 그 블록은 GEMM을 부르지 않고 모든 짝을 다시 계산해요. 아래의 `ok`가 그 판정이에요. 넘친 노름으로는 한계를 증명할 수 없기 때문이에요. 이웃 찾기의 입력은 유한해야 하니 NaN은 여기 오지 않아요.
+
+```cpp
+        // csrc/spatial/neighbors.cpp
+        if (ok) {
+            const double* yb = hy.moved.data() + j0 * n;
+            if (!keep) {
+                for (int64_t q = 0; q < w; ++q) {
+                    double* o = bp.data() + q * n;
+                    for (int64_t i = 0; i < n; ++i) o[i] = B[(j0 + q) * n + i] - c[i];
+                }
+                yb = bp.data();
+            }
+            blas::gemm<double>(CblasNoTrans, CblasTrans, rows, w, n, ap.data(), n, yb, n, g.data(), w);
+        }
+```
+
+옮긴 XB는 호출마다 한 번 만들어 태스크가 함께 읽어요($2^{27}$개 double 이하일 때. 넘으면 블록마다 옮겨요). 태스크마다 XA 조각의 옮긴 행(256행까지)과 노름과 $R$을 한 번 구하고, XB의 블록마다 $G = X'Y'^\top$를 `cblas_dgemm` 한 번으로 구해요.
+
+## Accelerate의 스레드 모드와 무관한 까닭
+
+GEMM이 고르기에만 쓰이고 고르기는 증명된 짝만 버리니, 마지막 답은 한 짝 커널과 $(\hat d, \text{색인})$의 전순서만으로 정해져요. $\hat g$의 끝자리가 무엇이든(가정 A만 서면) 답은 같아요. 그래서 Accelerate가 GEMM을 몇 개의 스레드로 나누든(`VECLIB_MAXIMUM_THREADS`), 블록을 어떻게 자르든, 이 영역의 GEMM 블록 크기와 태스크 수가 무엇이든 결과는 같아요. 테스트는 Accelerate를 한 스레드로 묶은 자식 프로세스와 기본 모드의 자식 프로세스가 같은 결과(SHA-256까지)를 내는지 봐요. 결과를 Accelerate의 계산에 맡기는 linalg와 다른 점이에요.
+
+고르기가 길을 바꿔도 답은 그대로라는 것을 먼 군집에서 확인해 볼게요. 숨은 인자 `path`가 1이면 직접 전수, 2면 GEMM 고르기예요.
+
+```python
+>>> from stardust.spatial import _neighbors as N
+>>> far_q, far_d = 1e8 + rng.random((300, 3)), 1e8 + rng.random((5000, 3))
+>>> a = N._knn("kneighbors", far_q, far_d, 5, "euclidean", None, None, None, None, math.inf, path=1)
+>>> b = N._knn("kneighbors", far_q, far_d, 5, "euclidean", None, None, None, None, math.inf, path=2)
+>>> a.indices.tolist() == b.indices.tolist(), a.distances.tolist() == b.distances.tolist()
+(True, True)
+>>> ra = N._radius("radius_neighbors", far_q, far_d, 0.05, "sqeuclidean", None, None, None, None, False, path=1)
+>>> rb = N._radius("radius_neighbors", far_q, far_d, 0.05, "sqeuclidean", None, None, None, None, False, path=2)
+>>> [x.tolist() == y.tolist() for x, y in ((ra.indptr, rb.indptr), (ra.indices, rb.indices), (ra.distances, rb.distances))]
+[True, True, True]
+```
+
+## 언제 이 길을 쓰나
+
+GEMM 고르기에는 준비가 들어요. XB의 열 평균, 옮긴 사본, 행마다의 노름과 R(XB의 행마다 double 둘), XA 조각마다의 같은 준비, 그리고 블록마다의 GEMM이에요. $n$이 크면 짝 하나의 직접 계산($n$번의 `fma`)이 GEMM의 몫보다 훨씬 비싸서 고르기가 크게 이득이에요. 반대로 XB가 작거나(1000행 남짓 아래) XA가 몇십 행이면 준비가 질의보다 커서 직접 전수가 빨라요. 그래서 $1 \le n \le 2^{16}$, $m_A \ge 64$, $m_B \ge 2048$($n \ge 8$이면 1024)일 때만 이 길을 타요. 상수가 정확한 범위는 $n \le 2^{21} - 2$까지이지만 그보다 훨씬 긴 행은 태스크의 메모리만 늘고 이득이 없어요.
+
+같은 틀은 고르기를 위한 다른 변환에도 쓸 수 있어요. 변환의 반올림을 여유에 넣으면 돼요. 가중 `euclidean`과 `seuclidean`(좌표에 $\sqrt{w}$를 곱함), `mahalanobis`(VI의 Cholesky 인자로 옮김), `cosine`(정규화한 행의 유클리드)이 그런 후보예요. 지금은 가중치 없는 `euclidean`과 `sqeuclidean`만 이 길을 타요.

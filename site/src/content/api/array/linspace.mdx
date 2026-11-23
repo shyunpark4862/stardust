@@ -1,0 +1,290 @@
+---
+title: linspace
+names: [linspace]
+group: 배열 만들기
+order: 4
+signatures:
+  - "sd.linspace(start, stop, num, /, *, dtype=None, endpoint=True)"
+summary: 시작값과 끝값 사이를 고른 간격으로 나눈 num개의 수를 담은 1차원 배열을 만들어요. 간격 대신 개수를 정하므로, 실수 구간을 나눌 때 arange보다 안전해요.
+params:
+  - name: start
+    type: bool, int, float 또는 complex
+    kind: positional-only
+    desc: 첫 값. 언제나 결과의 맨 앞에 들어가요(num이 0이 아니면).
+  - name: stop
+    type: bool, int, float 또는 complex
+    kind: positional-only
+    desc: 끝값. endpoint=True면 결과의 맨 끝에 들어가요.
+  - name: num
+    type: int
+    kind: "positional-only, 필수"
+    desc: 만들 수의 개수. 0 이상의 정수예요.
+  - name: dtype
+    type: dtype 또는 None
+    kind: keyword-only
+    desc: 결과의 원소 종류. None이면 float64, start나 stop이 복소수면 complex128이에요.
+  - name: endpoint
+    type: bool
+    kind: keyword-only
+    desc: True면 stop을 포함해요. False면 stop 바로 앞에서 멈춰요.
+returns:
+  type: ndarray
+  desc: 길이 num인 1차원 배열.
+raises:
+  - type: TypeError
+    desc: num이 정수가 아닐 때(실수, bool), start·stop이 숫자가 아닐 때, endpoint가 True/False가 아닐 때, num을 빠뜨리거나 이름을 붙여 넘겼을 때, 복소수 결과를 실수·정수 dtype으로 바꾸려 할 때.
+  - type: ValueError
+    desc: num이 음수일 때.
+  - type: OverflowError
+    desc: num이 int64 범위를 벗어날 때.
+seeAlso: [arange, meshgrid, filled, trig]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import FigRow from '../../../components/fig/FigRow.astro';
+
+## 한눈에 보기
+
+`linspace`는 구간을 고른 간격으로 나눈 수를 만들어요. 시작값, 끝값, 개수를 주면 그 사이에 수를 개수만큼 고르게 놓아요.
+
+```python
+>>> import stardust as sd
+>>> sd.linspace(0, 1, 5)
+array([ 0.0, 0.25,  0.5, 0.75,  1.0], dtype=float64)
+```
+
+0과 1 사이에 수 다섯 개를 고르게 놓았어요. 양 끝 `0`과 `1`이 모두 들어가고, 간격은 `0.25`예요. 간격은 직접 정하지 않고 `linspace`가 계산해요. 시작값이 끝값보다 크면 줄어드는 수열이 돼요.
+
+```python
+>>> sd.linspace(10, 20, 3)
+array([10.0, 15.0, 20.0], dtype=float64)
+>>> sd.linspace(-1, 1, 5)
+array([-1.0, -0.5,  0.0,  0.5,  1.0], dtype=float64)
+>>> sd.linspace(5, 1, 3)
+array([5.0, 3.0, 1.0], dtype=float64)
+```
+
+<Fig caption="sd.linspace(0, 1, 5): 양 끝을 포함해 다섯 점을 고르게 놓아요. 다섯 점 사이의 칸은 네 개라서 간격은 1 / 4 = 0.25예요.">
+  <ArrayFig name="sd.linspace(0, 1, 5)" data={['0.0', '0.25', '0.5', '0.75', '1.0']} tones={['b', '', '', '', 'b']} note="양 끝(진한 칸)이 start와 stop" />
+</Fig>
+
+<Reference />
+
+## num: 몇 개로 나눌까요
+
+`num`은 결과의 길이예요. 결과가 정확히 몇 개일지 미리 알 수 있다는 것이 `linspace`의 가장 큰 장점이에요.
+
+`num`은 생략할 수 없고, 자리로만 넘겨요. `sd.linspace(0, 1)`이나 `sd.linspace(0, 1, num=5)`는 `TypeError`예요.
+
+```python
+>>> sd.linspace(0, 100, 5)
+array([  0.0,  25.0,  50.0,  75.0, 100.0], dtype=float64)
+>>> sd.linspace(0, 10, 4)
+array([               0.0, 3.3333333333333335,  6.666666666666667,
+                     10.0], dtype=float64)
+```
+
+`endpoint=True`(기본값)일 때 간격은 `(stop - start) / (num - 1)`이에요. 점이 `num`개면 점 사이의 칸은 `num - 1`개이기 때문이에요. 위의 둘째 예는 0과 10 사이를 세 칸으로 나눠서 간격이 `10 / 3`이에요.
+
+`num`이 2 이하일 때는 이렇게 돼요.
+
+```python
+>>> sd.linspace(0, 1, 2)
+array([0.0, 1.0], dtype=float64)
+>>> sd.linspace(0, 1, 1)
+array([0.0], dtype=float64)
+>>> sd.linspace(0, 1, 0)
+array([], dtype=float64)
+```
+
+`num`이 2면 양 끝만, 1이면 `start` 하나만 들어가요. 0이면 빈 배열이에요.
+
+## endpoint: 끝값을 넣을까요
+
+기본값 `endpoint=True`는 `stop`을 결과의 마지막 값으로 넣어요. `endpoint=False`를 주면 `stop`은 빠지고, 구간을 `num`칸으로 나눈 각 칸의 시작점이 돼요. 간격은 `(stop - start) / num`이에요.
+
+```python
+>>> sd.linspace(0, 10, 5)
+array([ 0.0,  2.5,  5.0,  7.5, 10.0], dtype=float64)
+>>> sd.linspace(0, 10, 5, endpoint=False)
+array([0.0, 2.0, 4.0, 6.0, 8.0], dtype=float64)
+```
+
+<Fig column caption="같은 0~10, 같은 다섯 개라도 endpoint에 따라 간격이 달라요. False면 10은 들어가지 않고 다섯 칸의 시작점만 남아요.">
+  <FigRow>
+    <ArrayFig name="endpoint=True" data={['0.0', '2.5', '5.0', '7.5', '10.0']} tones={['b', '', '', '', 'b']} note="간격 10 / 4 = 2.5" />
+  </FigRow>
+  <FigRow>
+    <ArrayFig name="endpoint=False" data={['0.0', '2.0', '4.0', '6.0', '8.0', '10.0']} tones={['b', '', '', '', '', 'g']} note="간격 10 / 5 = 2 (점선은 빠진 stop)" />
+  </FigRow>
+</Fig>
+
+### endpoint=False는 언제 쓰나요
+
+한 바퀴 도는 값을 나눌 때 자주 써요. 각도 0과 2π(360°)는 같은 방향이라서, 원 위에 점 네 개를 고르게 놓으려면 2π를 넣으면 안 돼요. 넣으면 첫 점과 마지막 점이 겹쳐요.
+
+```python
+>>> sd.linspace(0, 2 * sd.pi, 4, endpoint=False)
+array([               0.0, 1.5707963267948966,  3.141592653589793,
+         4.71238898038469], dtype=float64)
+```
+
+0, π/2, π, 3π/2로 네 방향이 고르게 나뉘었어요. 하루 24시간이나 1년 열두 달처럼 끝이 다시 처음으로 이어지는 값도 같은 방법으로 나눠요.
+
+## 결과의 dtype
+
+`dtype=`을 주지 않으면 결과는 실수(float64)예요. `start`와 `stop`이 정수여도 그래요. 간격이 정수로 나누어떨어지지 않는 일이 흔하기 때문이에요.
+
+```python
+>>> sd.linspace(0, 6, 4)
+array([0.0, 2.0, 4.0, 6.0], dtype=float64)
+```
+
+예외는 복소수예요. `start`나 `stop` 중 하나라도 복소수면 결과는 복소수(complex128)예요. 복소평면 위의 두 점을 잇는 선분을 고르게 나눈 점이 나와요.
+
+```python
+>>> sd.linspace(0, 1+1j, 3)
+array([        0j, (0.5+0.5j),     (1+1j)], dtype=complex128)
+>>> sd.linspace(1j, 1, 3)
+array([        1j, (0.5+0.5j),     (1+0j)], dtype=complex128)
+```
+
+### dtype을 주면 계산한 뒤에 바꿔요
+
+`dtype=`을 주면 실수로 계산한 값을 나중에 그 종류로 바꿔요. 직접 요청한 변환이라서 값이 달라지더라도 바꿔요(규칙은 [원소 종류(dtype)](/api/array/dtypes/)에 있어요). 정수로 바꿀 때는 소수점 아래를 버리기 때문에(0에 가까운 쪽으로) 간격이 고르지 않을 수 있어요.
+
+```python
+>>> sd.linspace(0, 10, 5, dtype=sd.int64)
+array([ 0,  2,  5,  7, 10], dtype=int64)
+```
+
+`2.5`와 `7.5`가 각각 `2`와 `7`이 되어 간격이 2, 3, 2, 3으로 들쭉날쭉해요. 고른 정수 수열이 필요하면 [`arange`](/api/array/arange/)를 쓰세요.
+
+복소수 결과는 실수나 정수로 바꿔 주지 않아요. 허수부가 사라지기 때문이에요.
+
+```python
+>>> sd.linspace(0, 1j, 3, dtype=sd.float64)
+Traceback (most recent call last):
+    ...
+TypeError: linspace(): cannot convert complex128 to float64: the imaginary part would be lost (take the real part explicitly)
+```
+
+## 함수의 값을 구간에서 구하기
+
+`linspace`는 어떤 함수의 값을 구간 전체에서 고르게 구할 때 가장 많이 써요. 그래프를 그리거나 수치 계산을 할 때 x축의 점을 만들어요.
+
+```python
+>>> x = sd.linspace(0, sd.pi, 5)
+>>> sd.sin(x)
+array([                   0.0,     0.7071067811865476,
+                          1.0,     0.7071067811865477,
+       1.2246467991473532e-16], dtype=float64)
+```
+
+0에서 π까지를 다섯 점으로 나눠 사인값을 구했어요. 마지막 값이 정확히 0이 아닌 이유는 [삼각함수](/api/array/trig/) 페이지에 있어요. 2차원 평면의 격자에서 값을 구하려면 `linspace` 두 개를 [`meshgrid`](/api/array/meshgrid/)로 엮어요.
+
+## 조심할 점
+
+### num은 정수여야 해요
+
+`num`에 실수를 주면 `TypeError`예요. 나눗셈 `/`의 결과는 나누어떨어져도 실수라는 점을 조심하세요. 정수 나눗셈 `//`를 쓰거나 `int(...)`로 바꿔요.
+
+```python
+>>> n = 6
+>>> sd.linspace(0, 1, n / 2)
+Traceback (most recent call last):
+    ...
+TypeError: linspace(): 'num' must be an int, not float
+>>> sd.linspace(0, 1, n // 2)
+array([0.0, 0.5, 1.0], dtype=float64)
+```
+
+음수 개수는 `ValueError`, `True`·`False`는 정수로 받지 않아서 `TypeError`예요.
+
+```python
+>>> sd.linspace(0, 1, -1)
+Traceback (most recent call last):
+    ...
+ValueError: linspace(): 'num' must be >= 0
+>>> sd.linspace(0, 1, True)
+Traceback (most recent call last):
+    ...
+TypeError: linspace(): 'num' must be an int, not bool
+```
+
+### endpoint에는 True나 False만
+
+`1`이나 `0`은 받지 않아요. 이름 `endpoint=`도 꼭 붙여야 해요.
+
+```python
+>>> sd.linspace(0, 1, 5, endpoint=1)
+Traceback (most recent call last):
+    ...
+TypeError: linspace(): 'endpoint' must be True or False, not int
+```
+
+### 양 끝은 정확하지만 가운데는 조금 어긋날 수 있어요
+
+`start`와 `stop`은 준 값 그대로 들어가요. 그 사이의 값은 실수 계산의 오차 때문에 끝자리가 조금 어긋날 수 있어요.
+
+```python
+>>> sd.linspace(0, 1, 11)
+array([                0.0,                 0.1,                 0.2,
+       0.30000000000000004,                 0.4,                 0.5,
+        0.6000000000000001,  0.7000000000000001,                 0.8,
+                       0.9,                 1.0], dtype=float64)
+```
+
+`0.30000000000000004`는 잘못이 아니에요. 컴퓨터의 실수가 `0.3`을 정확히 담지 못해서 생기는 차이예요. `arange`와 달리 이 오차가 길이를 바꾸지는 않아요. 결과는 언제나 11개이고, 끝값 `1.0`도 그대로 들어가요.
+
+### 아주 큰 양 끝도 유한한 값이에요
+
+양 끝이 유한하면 결과도 모두 유한해요. `stop - start`가 float64로 나타낼 수 있는 가장 큰 수(약 1.8 × 10³⁰⁸)를 넘는 경우에도 그래요.
+
+```python
+>>> sd.linspace(-1e308, 1e308, 5)
+array([-1e+308, -5e+307,     0.0,  5e+307,  1e+308], dtype=float64)
+```
+
+### NaN을 넣어도 에러가 나지 않아요
+
+`arange`와 달리 `linspace`는 길이를 `num`으로 이미 알고 있어서, `start`나 `stop`에 NaN(숫자가 아님)이 있어도 에러를 내지 않아요. 대신 결과가 NaN으로 채워져요.
+
+```python
+>>> sd.linspace(0, sd.nan, 3)
+array([nan, nan, nan], dtype=float64)
+```
+
+## 비슷한 함수와의 차이
+
+| | `linspace(start, stop, num)` | `arange(start, stop, step)` |
+|---|---|---|
+| 정하는 것 | 개수 | 간격 |
+| 끝값 | 기본으로 들어가요 (`endpoint=False`면 빠져요) | 들어가지 않아요 |
+| 길이 | `num` 그대로 | 계산해서 나와요. 실수 간격이면 흔들릴 수 있어요 |
+| 기본 dtype | float64 (복소수면 complex128) | 인자가 모두 정수면 int64 |
+| 복소수 | 받아요 | 받지 않아요 |
+| 잘 맞는 곳 | 실수 구간 나누기, 그래프의 x축 | 정수 수열, 위치 목록 |
+
+같은 수열을 두 함수로 만들 수도 있어요. `endpoint=False`인 `linspace`는 "칸의 시작점"이라서 `arange`와 같은 값이 나와요.
+
+```python
+>>> sd.linspace(0, 1, 5, endpoint=False)
+array([               0.0,                0.2,                0.4,
+       0.6000000000000001,                0.8], dtype=float64)
+>>> sd.arange(0, 1, 0.2)
+array([               0.0,                0.2,                0.4,
+       0.6000000000000001,                0.8], dtype=float64)
+```
+
+여기서는 결과가 같지만, 실수 간격의 `arange`는 길이가 흔들릴 수 있어요([arange](/api/array/arange/) 참고). 개수가 정해진 실수 구간이라면 `linspace`를 고르세요.
+
+## numpy를 아는 분께
+
+- `num`은 필수이고 positional-only예요. numpy의 기본값 50이 없어요. `num=50`처럼 이름을 붙일 수도 없어요.
+- `endpoint`는 keyword-only이고 `True`/`False`만 받아요.
+- `retstep=`, `axis=` 인자는 없어요. `start`, `stop`에 배열을 줄 수 없고 숫자 하나만 받아요.
+- 정수 `dtype=`으로 바꿀 때 0 쪽으로 잘라요. numpy 2는 음의 무한대 쪽으로 내리기(floor) 때문에 음수에서 결과가 달라요. 예: `sd.linspace(-1, 0, 3, dtype=sd.int64)`는 `[-1, 0, 0]`, numpy는 `[-1, -1, 0]`이에요.
+- `num`이 0이면 numpy처럼 빈 배열이에요.
+- `stop - start`가 float64 범위를 넘어도 값이 유한해요. numpy는 `np.linspace(-1e308, 1e308, 5)`에서 경고와 함께 `nan`과 `inf`를 내요.

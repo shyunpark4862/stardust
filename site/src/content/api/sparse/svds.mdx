@@ -1,0 +1,277 @@
+---
+kind: function
+title: svds
+names: [svds]
+group: 고유값과 특이값
+order: 3
+signatures:
+  - "sd.sparse.svds(A, /, *, k=6, ncv=None, tol=0, which='LM', v0=None, max_iter=None, return_singular_vectors=True, rng=None)"
+summary: 큰 희소 행렬의 특이값 가운데 가장 큰(또는 작은) k개와 그 특이벡터를 구해요. 행렬 전체를 분해하지 않고 A와 Aᴴ의 곱만으로 계산하고, 결과의 특이값은 작은 것부터 놓여요.
+params:
+  - name: A
+    type: 희소 배열, ndarray, 또는 LinearOperator
+    kind: positional-only
+    desc: m × n 행렬(정사각이 아니어도 돼요). 희소 배열은 형식을 가리지 않고, 2차원 밀집 배열도 받아요. LinearOperator는 rmatvec(Aᴴ의 곱)이 있어야 해요. 비어 있으면 안 되고, 저장된 값에 NaN이나 inf가 있으면 안 돼요.
+  - name: k
+    type: int
+    kind: keyword-only
+    desc: 구할 특이값의 수. 1 ≤ k < min(m, n)이에요. 기본값은 6이에요.
+  - name: ncv
+    type: int 또는 None
+    kind: keyword-only
+    desc: 안에서 쓰는 부분공간의 크기. k < ncv ≤ min(m, n)이에요. None이면 min(max(2k + 1, 20), min(m, n))이에요.
+  - name: tol
+    type: float
+    kind: keyword-only
+    desc: 수렴 판정의 상대 허용오차. 0 이상의 유한한 수이고, 0(기본값)이면 기계 엡실론 2⁻⁵²이에요.
+  - name: which
+    type: str
+    kind: keyword-only
+    desc: "'LM'(가장 큰 것, 기본값) 또는 'SM'(가장 작은 것)."
+  - name: v0
+    type: ndarray 또는 None
+    kind: keyword-only
+    desc: 시작 벡터. 길이는 min(m, n)이고 0 벡터가 아니어야 해요. None이면 고정된 난수 벡터라서 같은 호출은 언제나 같은 결과예요.
+  - name: max_iter
+    type: int 또는 None
+    kind: keyword-only
+    desc: 재시작 수의 상한. None이면 10·min(m, n)이에요.
+  - name: return_singular_vectors
+    type: True, False, 'u', 또는 'vh'
+    kind: keyword-only
+    desc: "어느 특이벡터를 돌려줄지. True(기본값)는 U와 Vh 둘 다, 'u'는 U만, 'vh'는 Vh만, False는 둘 다 없이 특이값만이에요. 돌려주지 않는 쪽은 None이에요."
+  - name: rng
+    type: sd.random.Generator 또는 None
+    kind: keyword-only
+    desc: v0이 None일 때 시작 벡터를 뽑을 생성기. None이면 sd.random.default_rng(0)이에요.
+returns:
+  type: SvdsResult
+  desc: 왼쪽 특이벡터 U((m, k)), 특이값 S((k,), float64, 오름차순), 오른쪽 특이벡터 Vh((k, n)), 수렴 여부(converged, status, message), 셈(n_iter, n_converged, n_op)이 든 읽기 전용 결과 객체예요. U, S, Vh = svds(A)처럼 셋으로 풀려요.
+raises:
+  - type: TypeError
+    desc: A가 희소 배열·ndarray·LinearOperator가 아닐 때, which가 문자열이 아닐 때, k·ncv·max_iter가 int가 아닐 때, return_singular_vectors가 받는 값의 형이 아닐 때, rng가 Generator가 아닐 때, LinearOperator의 함수가 배열로 바꿀 수 없는 것을 돌려줄 때.
+  - type: ValueError
+    desc: A가 비었을 때, 저장된 값에 NaN이나 inf가 있을 때, k나 ncv가 범위 밖일 때, which나 return_singular_vectors가 받는 값이 아닐 때, v0의 길이가 틀렸거나 0 벡터일 때, tol이 음수이거나 유한하지 않을 때, rmatvec이 없는 LinearOperator를 줬을 때, LinearOperator의 함수가 크기가 다른 결과를 돌려줄 때.
+seeAlso: [eigsh, eigs, norm, linearoperator, splu, basics]
+---
+
+## 한눈에 보기
+
+어떤 모양의 행렬이든 $A = U\,\mathrm{diag}(S)\,V^H$로 나눌 수 있어요. 이것이 특이값 분해이고, $S$의 값이 특이값이에요. "돌리기 × 축마다 늘이기 × 돌리기"라는 뜻과 쓰임새는 밀집 행렬의 [svd](/api/linalg/svd/) 페이지가 처음부터 설명해요.
+
+`svds`는 이 분해의 **가장 큰 k개**만 구해요. 사용자 × 상품의 평점, 문서 × 단어의 빈도처럼 크고 대부분이 0인 행렬에서는 특이값 몇 개가 행렬의 큰 줄기를 담고, 나머지는 잡음인 경우가 많아요. 그 몇 개만 있으면 되니, 행렬 전체를 분해할 필요가 없어요.
+
+200 × 80 행렬에 원소 800개(5%)를 무작위로 채운 것으로 해 봐요.
+
+```python
+>>> rng = sd.random.default_rng(1)
+>>> A = sd.sparse.random_array((200, 80), density=0.05, format='csr', rng=rng)
+>>> A
+<csr_array of shape (200, 80), float64, 800 stored elements>
+>>> U, s, Vh = sd.sparse.svds(A, k=3)
+>>> s
+array([ 2.888724346361584, 2.9332749649543346, 3.7007479097921205], dtype=float64)
+>>> U.shape, Vh.shape
+((200, 3), (3, 80))
+```
+
+특이값은 **작은 것부터** 놓여요. 가장 큰 특이값이 `s[-1]`이에요. 밀집 `sd.linalg.svd`는 큰 것부터라서 순서가 반대예요.
+
+```python
+>>> sd.linalg.svdvals(A.toarray())[:3]
+array([3.7007479097921236, 2.9332749649543346, 2.8887243463615824], dtype=float64)
+```
+
+<Reference />
+
+## 가장 큰 k개로 근사하기
+
+특이값이 큰 쪽의 k개로 다시 만든 행렬 $A_k = U_k\,\mathrm{diag}(S_k)\,V_k^H$는 랭크가 k인 행렬 가운데 A에 가장 가까운 것이에요. 그때 남는 오차의 2-노름은 바로 다음 특이값 $\sigma_{k+1}$과 같아요.
+
+```python
+>>> A3 = (U * s) @ Vh
+>>> sd.linalg.matrix_norm(A.toarray() - A3, ord=2)
+2.818021937093172
+>>> sd.sparse.svds(A, k=4).S[0]
+2.818021937093175
+```
+
+`U * s`는 `U`의 각 열에 그 특이값을 곱해요. `A3`는 200 × 80의 밀집 배열이지만, 실제로 저장할 것은 `U`, `s`, `Vh`의 (200 + 1 + 80) × 3개뿐이에요. 추천 시스템의 잠재 요인, 문서 검색의 잠재 의미 분석(LSA), 주성분 분석(평균을 뺀 행렬의 SVD)이 이 근사를 써요.
+
+## 결과 읽기
+
+결과는 읽기 전용 결과 객체이고 셋으로 풀려요.
+
+```python
+>>> r = sd.sparse.svds(A, k=3)
+>>> r
+SvdsResult(converged=True, status=0, n_iter=4, n_converged=3, S=[2.88872, 2.93327, 3.70075])
+>>> print(r.summary())
+                            Singular Value Results
+==============================================================================
+Converged:                        True  No. Restarts:                        4
+Status:                              0  No. A x, A^H x:                    138
+                                        No. Converged:                       3
+Message:                                the 3 wanted singular values converged
+==============================================================================
+                value
+------------------------------------------------------------------------------
+[0]          2.888724
+[1]          2.933275
+[2]          3.700748
+==============================================================================
+```
+
+| 필드 | 뜻 |
+|---|---|
+| `U` | 왼쪽 특이벡터 (m, k). `i`번째 열이 `S[i]`의 짝 |
+| `S` | 특이값 (k,), float64, 작은 것부터 |
+| `Vh` | 오른쪽 특이벡터를 켤레 전치한 것 (k, n). `i`번째 **행**이 `S[i]`의 짝 |
+| `converged` | k개가 모두 수렴했는지(`status == 0`) |
+| `status` | 0(모두 수렴), 1(반복 상한) |
+| `message` | `status`의 글 |
+| `n_iter` | 재시작 수. 상한에 걸리면 `max_iter`와 같아요 |
+| `n_converged` | 돌려준 특이값의 수 |
+| `n_op` | `A @ x`와 `Aᴴ @ x`를 합한 곱의 수 |
+
+정의대로 확인하면 $A v_i = \sigma_i u_i$, $A^H u_i = \sigma_i v_i$이고, `U`의 열끼리 직교해요.
+
+```python
+>>> U, s, Vh = r
+>>> float(sd.max(sd.abs(A @ Vh.mT - U * s))) < 1e-14
+True
+>>> float(sd.max(sd.abs(A.T @ U - Vh.mT * s))) < 1e-14
+True
+>>> float(sd.max(sd.abs(U.mT @ U - sd.eye(3)))) < 1e-14
+True
+```
+
+특이벡터의 부호(복소수면 위상)는 정해져 있지 않아요. `u`와 `v`를 함께 뒤집어도 분해는 같아요.
+
+### 필요한 특이벡터만
+
+`return_singular_vectors`로 돌려줄 쪽을 골라요. 돌려주지 않는 쪽은 None이고, 결과는 언제나 셋으로 풀려요.
+
+```python
+>>> U, s, Vh = sd.sparse.svds(A, k=2, return_singular_vectors='u')
+>>> U.shape, Vh is None
+((200, 2), True)
+>>> U, s, Vh = sd.sparse.svds(A, k=2, return_singular_vectors=False)
+>>> U is None, Vh is None, s
+(True, True, array([2.9332749649543395, 3.7007479097921205], dtype=float64))
+```
+
+특이값만 필요하면 `False`가 가장 가벼워요.
+
+## 작은 특이값: `which='SM'`
+
+`which='SM'`은 가장 작은 특이값을 구해요. 위의 무작위 행렬처럼 작은 특이값들이 서로 떨어져 있으면 잘 돼요.
+
+```python
+>>> sd.sparse.svds(A, k=3, which='SM').S
+array([0.5565761817500023, 0.5703004747744886, 0.6457454871414197], dtype=float64)
+>>> sd.linalg.svdvals(A.toarray())[-3:]
+array([0.6457454871414158, 0.5703004747744855, 0.5565761817500026], dtype=float64)
+```
+
+하지만 작은 특이값은 큰 특이값보다 훨씬 늦게 수렴해요. 0 근처에 특이값이 촘촘히 모여 있으면 상한까지 수렴하지 못하기도 해요. 1차원 라플라시안이 그런 예예요.
+
+```python
+>>> n = 200
+>>> L = sd.sparse.diags_array([-1.0, 2.0, -1.0], offsets=[-1, 0, 1], shape=(n, n), format='csr')
+>>> sd.sparse.svds(L, k=3, which='SM')
+SvdsResult(converged=False, status=1, n_iter=2000, n_converged=0, S=[])
+```
+
+이럴 때 쓸 수 있는 방법이 둘 있어요.
+
+- **대칭 행렬**이면 특이값이 고유값의 절댓값이에요. [eigsh](/api/sparse/eigsh/)에 `sigma=0`을 주면 0에 가까운 고유값을 금방 구해요.
+- **정사각이고 특이가 아닌 행렬**이면 $A^{-1}$의 가장 큰 특이값이 $1/\sigma_{\min}$이에요. [splu](/api/sparse/splu/)로 한 번 분해하고, 그 풀이를 [LinearOperator](/api/sparse/linearoperator/)로 감싸서 `'LM'`으로 구해요. `rmatvec`에는 전치의 풀이를 줘요.
+
+```python
+>>> lu = sd.sparse.splu(L)
+>>> inv = sd.sparse.LinearOperator(L.shape, lu.solve, rmatvec=lambda x: lu.solve(x, trans='T'))
+>>> r = sd.sparse.svds(inv, k=3)
+>>> r.n_iter
+1
+>>> 1 / r.S
+array([ 0.0021982170285771404,  0.0009770847990681678,
+       0.00024428611869398983], dtype=float64)
+>>> sd.linalg.svdvals(L.toarray())[-3:]
+array([0.0021982170285773307, 0.0009770847990678933, 0.0002442861186941181], dtype=float64)
+```
+
+## 수렴, 시작 벡터, 결정성
+
+- 특이값 $\sigma$와 그 벡터 $u$, $v$는 $\lVert A^H u - \sigma v\rVert \le$ `tol`·$\max(\sigma, \varepsilon^{2/3}\sigma_1)$일 때 수렴한 것으로 봐요($\sigma_1$은 지금까지 찾은 가장 큰 특이값, $\varepsilon = 2^{-52}$). `tol=0`(기본값)이면 `tol`이 $\varepsilon$이에요.
+- 수렴하지 않으면 에러가 아니라 `converged=False`인 결과에 수렴한 것만 담겨요. `ncv`나 `max_iter`를 키워 보세요.
+- `v0=None`이면 `sd.random.default_rng(0)`의 고정된 시작 벡터라서 같은 호출은 같은 비트의 결과예요. 행렬의 형식(CSR, CSC, COO, DOK, 밀집)과도 상관없고, 지금은 sd의 스레드 수와도 상관없어요(약속은 아니에요). `v0`의 길이는 m이나 n이 아니라 min(m, n)이에요.
+- 행렬 대신 [LinearOperator](/api/sparse/linearoperator/)를 줄 수 있어요. `svds`는 $A$와 $A^H$를 번갈아 곱하므로 `rmatvec`이 꼭 있어야 해요.
+
+```python
+>>> sd.sparse.svds(sd.sparse.LinearOperator(L.shape, lu.solve), k=3)
+Traceback (most recent call last):
+    ...
+ValueError: svds(): the operator was made without 'rmatvec'
+```
+
+## 입력과 에러
+
+희소 배열의 형식과 dtype, 저장된 0과 NaN, 결정성 같은 공통 규칙은 [기본 개념](/api/sparse/basics/)에 있어요.
+
+- `k`는 min(m, n)보다 작아야 해요. 특이값이 모두 필요하면 밀집 `svd`를 써요.
+
+  ```python
+  >>> sd.sparse.svds(L, k=200)
+  Traceback (most recent call last):
+      ...
+  ValueError: svds(): 'k' must satisfy 1 <= k < min(A.shape) = 200, got 200
+  ```
+
+- `which`는 `'LM'`과 `'SM'`만이에요.
+
+  ```python
+  >>> sd.sparse.svds(L, which='LA')
+  Traceback (most recent call last):
+      ...
+  ValueError: svds(): 'which' must be 'LM' or 'SM', not 'LA'
+  ```
+
+- `return_singular_vectors`는 True, False, `'u'`, `'vh'`만이에요.
+
+  ```python
+  >>> sd.sparse.svds(L, return_singular_vectors='v')
+  Traceback (most recent call last):
+      ...
+  ValueError: svds(): 'return_singular_vectors' must be True, False, 'u' or 'vh', not 'v'
+  ```
+
+- 빈 행렬, 저장된 NaN·inf, 0인 `v0`는 `ValueError`예요. 리스트는 받지 않아요(`TypeError`).
+
+## `svd`와 `svds`, 언제 무엇을
+
+| 상황 | 쓸 것 |
+|---|---|
+| 특이값이 모두(또는 대부분) 필요해요 | [sd.linalg.svd](/api/linalg/svd/), [svdvals](/api/linalg/svd/)(`A.toarray()`) |
+| m × n 밀집 배열이 메모리에 넉넉히 들어가요 | `sd.linalg.svd` |
+| 크고 희소한 행렬에서 큰 쪽의 몇 개만 필요해요 | `svds` |
+| 가장 큰 특이값 하나(2-노름)만 필요해요 | [norm](/api/sparse/norm/)(`ord=2`) |
+| 행렬은 없고 곱하는 함수만 있어요 | `svds(LinearOperator)` |
+
+두 함수의 특이값은 반올림 차이 안에서 같지만 **순서가 반대**예요. `sd.linalg.svd`의 `S`는 큰 것부터, `svds`의 `S`는 작은 것부터예요. `U`의 열과 `Vh`의 행도 그 순서를 따라요. `sd.linalg.svd`에 희소 배열을 주면 `svds`를 짚는 `TypeError`예요.
+
+## 정확도
+
+특이값과 잔차 $\lVert A^H u - \sigma v\rVert$를 Arb(구간 산술)로 만든 참값과 견줘요. 약속은 $|\hat\sigma - \sigma| \le 1000\,\varepsilon\,\lVert A\rVert_2$($\varepsilon = 2^{-52}$)이고, 시험 문제에서 잰 가장 큰 오차는 이 한계의 0.01배예요.
+
+$A^H A$의 고유값을 구해서 특이값을 얻지 않고 $A$와 $A^H$를 따로 곱하므로, 작은 특이값도 이 한계 안에서 구해요. $A^H A$를 거치면 조건수가 제곱되어 $\sigma_1$에 견주어 $\sqrt{\varepsilon}$보다 작은 특이값은 반올림에 묻혀요. 시험 행렬 가운데 랭크가 모자란 80 × 30 행렬의 `'SM'`이 그런 예로, 여기서도 한계의 0.01배 안이에요.
+
+## scipy를 아는 분께
+
+- `scipy.sparse.linalg.svds`와 같은 함수예요. `sd.sparse.svds`로 불러요.
+- `solver=`가 없어요. 계산은 Golub–Kahan–Lanczos 이중대각화에 두꺼운 재시작(Baglama–Reichel의 방법, R `irlba`와 같은 방법)을 쓴 것 하나예요. scipy의 기본 `'arpack'`은 $A^H A$의 `eigsh`라서 작은 특이값의 정확도를 잃어요. 위의 80 × 30 행렬의 `'SM'`에서 scipy의 오차는 같은 한계의 2×10¹²배예요.
+- 특이값의 순서(오름차순)와 `which`, `tol`의 뜻은 scipy와 같아요. 수렴 판정은 위의 잔차 판정이에요.
+- `return_singular_vectors=False`여도 결과는 `(None, S, None)`으로 풀려요. scipy는 `s` 하나를 돌려줘요. `'u'`, `'vh'`의 꼴은 scipy와 같아요.
+- `ncv`는 min(m, n)까지 받아요(scipy는 그 미만).
+- `v0=None`이 고정된 시작 벡터예요(scipy는 실행마다 달라요). 인자는 `A`만 위치이고 `maxiter`는 `max_iter`예요.
+- 수렴하지 않으면 예외 대신 `converged=False`인 결과예요.

@@ -1,0 +1,821 @@
+---
+title: 변수 선택의 구현
+group: 변수 선택
+order: 1
+summary: stepwise와 best_subset이 후보 모형을 재는 방법을 설명해요. 선형 모형의 후보는 적합하지 않고 삼각 인자 하나를 갱신해 n과 상관없는 비용으로 재고, 부분집합 탐색은 Furnival–Wilson의 leaps and bounds로 가지를 잘라요. GLM 후보는 glm 자체라 기준값이 그 적합과 비트까지 같아요.
+seeAlso: [overview, least-squares, glm, penalized, accuracy-performance]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Steps from '../../../components/fig/Steps.astro';
+import Tree from '../../../components/fig/Tree.astro';
+
+## 한눈에 보기
+
+[`stepwise`](/api/regression/stepwise/)와 [`best_subset`](/api/regression/best-subset/)은 회귀 하나(`ols`, `wls`, `gls`, `glm`)의 모형들 가운데 X의 열(항)을 고르는 함수예요. 두 함수의 Python 층은 `src/stardust/regression/_select.py`이고, 선형 모형의 후보를 재는 커널 넷(`select_qr`, `select_merge`, `select_eval`, `select_subsets`)은 `csrc/regression/select.cpp`에 있어요. GLM의 후보는 [`glm`](/internals/regression/glm/)의 커널 `glm_fit`이 적합해요.
+
+이 구현의 뼈대는 다섯 가지예요.
+
+1. **후보 하나는 그 모형 함수를 그 열에 부른 것이에요.** 모든 후보가 같은 행, 같은 옵션을 써요. 결과의 `fit`은 고른 열로 모형 함수를 실제로 부른 결과라서, 같은 열로 직접 부른 적합과 비트까지 같아요.
+2. **선형 후보는 적합하지 않아요.** 전체 모형을 한 번 적합하고 백색화한 [절편 X y]의 삼각 인자 R((p + 2) × (p + 2))를 한 번 만들면, 어떤 열 집합의 잔차 제곱합도 R의 같은 열에서 나와요. 걸음 하나의 후보들은 지금 모형의 인수분해 하나를 갱신해 재므로, 걸음의 비용이 행 수 n과 상관없어요.
+3. **`best_subset`의 선형 탐색은 leaps and bounds예요.** 열의 순서를 바꾼 삼각 인자는 모든 접두사의 잔차 제곱합을 한꺼번에 주고, 영역 안의 가장 큰 집합의 잔차 제곱합이 그 안의 모든 집합의 하한이라 이길 수 없는 영역은 찾지 않아요.
+4. **교차검증의 겹은 `lasso_cv`와 같아요.** 선형 모형은 겹마다 시험 행의 삼각 인자와 학습 행의 삼각 인자를 만들어 두고, 후보의 계수를 학습 인자에서 같은 갱신으로 구해 시험 인자에서 오차를 재요.
+5. **GLM 후보는 처음부터 적합해요.** 따뜻하게 시작하지 않으므로 후보의 우도가 그 열로 부른 `glm`의 것과 비트까지 같고, 분리되거나 수렴하지 않은 후보는 고르지 않고 `skipped`에 남겨요.
+
+`stepwise(y, X)`(OLS, AIC) 한 번이 지나는 길은 이래요.
+
+<Fig column caption="stepwise(y, X)가 고른 모형을 돌려주기까지. 모형 함수는 전체 모형과 고른 모형에서 두 번만 불리고, 그 사이의 모든 걸음은 삼각 인자 하나 위의 계산이에요.">
+  <Steps
+    steps={[
+      { label: 'stepwise(y, X)', where: 'regression/_select.py', note: 'direction, criterion, alpha_enter·alpha_remove, max_steps를 검사하고, criterion="cv"면 rng와 cv를 봐요.' },
+      { label: '_setup', where: 'regression/_select.py', note: '모형 함수의 키워드를 검사하고 항과 include를 읽어요. nan_policy="omit"이면 X의 어느 열에든 NaN이 있는 행을 y에 NaN으로 실어 둬요. 그리고 모든 열로 모형 함수를 한 번 불러요(전체 모형).' },
+      { label: '_Linear(full)', where: 'regression/_select.py', note: '전체 모형의 잔차 e를 열에 더 직교하게 다듬고, 백색화한 [절편 X (y − e)]의 삼각 인자를 만들어요.' },
+      { label: 'select_qr', depth: 1, where: 'regression/select.cpp', note: '행 블록을 쌓아 가며 geqrf로 (p + 2) × (p + 2) 삼각 인자를 만들어요. 행을 읽는 것은 여기서 한 번뿐이에요.' },
+      { label: '걸음마다 select_eval', where: 'regression/select.cpp', note: '지금 모형을 Householder로 인수분해하고, 넣는 후보는 그 인수분해를 이어 가고, 빼는 후보는 R_UU⁻¹ 하나에서 잔차 제곱합의 증가를 구해요.' },
+      { label: '_step_choice', depth: 1, where: 'regression/_select.py', note: '기준이 1e-7보다 크게 주는 후보 가운데 가장 좋은 것으로 옮겨요. 동률은 열 순서가 앞인 항이에요.' },
+      { label: 'call(고른 열)', where: 'regression/_select.py', note: '고른 열로 모형 함수를 부르고 계수 이름만 X의 이름으로 바꿔 StepwiseResult에 담아요.' },
+    ]}
+  />
+</Fig>
+
+```python
+>>> rng = sd.random.default_rng(5)
+>>> N = sd.stats.Normal()
+>>> X = N.sample((60, 6), rng=rng)
+>>> y = 1.0 + 2.0 * X[:, 0] - 1.5 * X[:, 2] + 0.4 * X[:, 4] + N.sample(60, rng=rng)
+>>> r = sd.regression.stepwise(y, X)
+>>> r
+StepwiseResult(criterion='aic', 4 columns selected in 2 steps)
+>>> for s in r.steps:
+...     print(s)
+SelectionStep(action='start', term=None, criterion=195.16407587614643)
+SelectionStep(action='drop', term='x2', criterion=193.27008565910512)
+SelectionStep(action='drop', term='x6', criterion=191.53647311526308)
+>>> r.selected, r.fit.param_names
+([0, 2, 3, 4], ['const', 'x1', 'x3', 'x4', 'x5'])
+```
+
+## 모형 함수와 후보
+
+### 키워드는 모형 함수의 것
+
+선택 함수는 모형 함수의 옵션을 따로 정의하지 않아요. `_model_options`가 `inspect.signature`로 그 함수의 키워드 전용 인자를 읽고, `intercept`와 `nan_policy`(선택 함수 자신의 인자)만 빼고 그대로 받아요. 모르는 키워드와 빠진 필수 키워드(`wls`의 `weights`, `gls`의 `sigma`, `glm`의 `family`)는 `TypeError`예요. 모형 함수가 내는 입력 검사의 에러는 `_renamed`가 앞의 `wls(): `를 `stepwise(): `로 바꿔 다시 내요. 그래서 모형 함수에 옵션이 더해지면 선택 함수도 따로 고치지 않고 받아요.
+
+```python
+>>> sd.regression.stepwise(y, X, model="wls")
+Traceback (most recent call last):
+    ...
+TypeError: stepwise(): model='wls' needs the keyword argument 'weights' (an option of wls())
+>>> sd.regression.stepwise(y, X, model="wls", weights=-sd.ones(60))
+Traceback (most recent call last):
+    ...
+ValueError: stepwise(): 'weights' must be >= 0
+```
+
+### 모든 후보가 같은 행
+
+후보는 열 집합 하나를 받아 모형 함수를 부르는 `call`이에요(`_setup` 안).
+
+```python
+    # src/stardust/regression/_select.py
+    yfit = y
+    if nan_policy == "omit" and cols.p and _has_nan(cols.array):
+        bad = _sd.any(_sd.isnan(cols.array), axis=-1)
+        if ya.shape[-1] == bad.shape[-1]:
+            yfit = _sd.where(bad, math.nan, ya)
+    fn = _model_function(model)
+
+    def call(cs):
+        r = _renamed(func, model, lambda: fn(yfit, cols.take(cs), intercept=intercept, nan_policy=nan_policy, **opts))
+        names = (["const"] if intercept else []) + [cols.names[c] for c in cs]
+        if len(r._param_names) == len(names):
+            r._param_names = names
+        return r
+```
+
+`nan_policy='omit'`을 모형 함수에 그대로 맡기면 후보마다 빠지는 행이 달라져요. x3에 NaN이 있는 행은 x3을 쓰는 후보에서만 빠지니까요. 그러면 후보들의 AIC가 서로 다른 자료의 값이라 견줄 수 없어요(R `step`은 이때 "number of rows in use has changed"로 멈춰요). 그래서 X의 어느 열에든 NaN이 있는 행을 처음에 한 번 골라 y에 NaN으로 실어요. 그 y로 부르면 어떤 열을 고르든 모형 함수가 같은 행을 빼요. 결과의 `fit`도 같은 `call`이라, 고른 열에 NaN이 없어도 그 행을 뺀 적합이에요.
+
+계수 이름은 모형 함수가 붙인 `'x1'`, `'x2'`, …(넘긴 열 수대로 다시 센 이름)를 X에서의 이름으로 바꿔요. 바꾸는 것은 이름뿐이고 적합의 값은 그대로예요.
+
+```python
+>>> f = sd.regression.ols(y, X[:, r.selected])
+>>> f.param_names
+['const', 'x1', 'x2', 'x3', 'x4']
+>>> bool(sd.all(r.fit.params == f.params)), bool(sd.all(r.fit.bse == f.bse)), r.fit.aic == f.aic
+(True, True, True)
+```
+
+### 항, include, 시작 모형
+
+`terms`는 함께 들고 나는 열의 묶음이에요. `_parse_terms`가 X의 모든 열을 한 번씩 덮는 `[[열], …]`로 바꾸고(없으면 열 하나가 항 하나. 목록이 아닌 항은 `anova`처럼 열 하나이고, 위치는 `operator.index`가 받는 정수예요), `include`와 `start`는 `_term_set`이 항의 번호로 바꿔요. 항의 일부만 이름 대면 에러예요. 항은 통째로 들고 나니까요. 항의 이름은 열 이름을 `' + '`로 이은 것이에요.
+
+시작 모형은 방향에 따라 달라요. `'forward'`는 `include`만, `'backward'`는 모든 항이에요. `'both'`는 모든 항에서 시작하되, 모수 수(절편 포함)가 `nobs` 이상이면 남는 자유도가 없어 잔차가 0이고 AIC가 $-\infty$라 견줄 수 없으므로 `include`만에서 시작해요. 절편도 열도 없는 모형은 모수가 없어서, 시작이면 에러이고 후보로는 만들지 않아요(빼는 후보를 만들 때 `intercept or len(chosen) > 1`을 봐요).
+
+## stepwise의 한 걸음
+
+### 후보와 순서
+
+걸음마다 지금 모형에 든 항은 빼는 후보, 없는 항은 넣는 후보예요(방향이 허락할 때). 후보 목록은 항의 첫 열 순서대로 놓여요. 넣기와 빼기가 섞여 있어도 열 순서 하나예요. 동률이면 이 목록에서 앞의 후보가 이기므로, 동률은 열 순서가 앞인 항이에요.
+
+### 겹친 항을 먼저 빼기
+
+후보를 재기 전에 지금 모형에서 랭크를 하나도 더하지 않는 항(모든 열이 겹친 열)을 찾아요. 있으면 기준과 상관없이 그 가운데 열 순서가 가장 뒤인 항을 빼는 걸음을 해요.
+
+```python
+        # src/stardust/regression/_select.py
+        # a term of the model that adds no rank goes first, the last one first (R's step)
+        zero = []
+        if drops_ok:
+            zero = [t for t in sorted(chosen, key=lambda t: terms_l[t][0], reverse=True)
+                    if t not in inc and not any(cur.used[j0 + c] == 1 for c in terms_l[t])]  # fmt: skip
+        if zero:
+            t = zero[0]
+            chosen = chosen - {t}
+            visited.add(frozenset(chosen))
+            steps.append(SelectionStep("drop", tname[t], math.nan if criterion == "pvalue" else steps[-1].criterion))
+            moves += 1
+            continue
+```
+
+`cur.used`는 지금 모형을 인수분해할 때 열마다 남긴 표시예요(1은 쓰인 열, 2는 고른 열 가운데 겹친 열). 겹친 열은 계수가 NaN이고 적합에 아무것도 더하지 않으므로, 그 항을 빼도 잔차 제곱합과 랭크가 그대로예요. 그래서 기준값도 그대로 두고 걸음만 하나 세요. 이런 항을 남겨 두면 빼는 후보의 갱신 공식(아래)을 쓸 수 없어요. R `step`도 `drop1` 표에서 자유도 0인 항을 같은 방식으로(표의 뒤에서부터) 먼저 빼요.
+
+```python
+>>> Xa = sd.concat([X, X[:, 0:1] + X[:, 1:2]], axis=1)
+>>> for s in sd.regression.stepwise(y, Xa).steps:
+...     print(s)
+SelectionStep(action='start', term=None, criterion=195.16407587614643)
+SelectionStep(action='drop', term='x7', criterion=195.16407587614643)
+SelectionStep(action='drop', term='x2', criterion=193.27008565910512)
+SelectionStep(action='drop', term='x6', criterion=191.53647311526308)
+```
+
+x7 = x1 + x2라서 열 순서로 마지막인 x7이 겹친 열이 되고 첫 걸음에 빠져요. 그 뒤의 길은 x7이 없는 자료와 같아요.
+
+### 옮길지 정하기
+
+AIC와 BIC는 기준이 $10^{-7}$보다 크게 줄 때만, 교차검증은 오차가 줄 때만 옮겨요.
+
+```python
+    # src/stardust/regression/_select.py
+    best = None
+    for (t, d), s in zip(cands, stats):
+        if not s.ok:
+            continue
+        # from a start that separated or did not converge (no criterion): the best candidate
+        dv = _delta(ev, criterion, cur, s) if cur.ok else _criterion_value(ev, criterion, s)
+        if math.isnan(dv):
+            continue
+        if best is None or dv < best[0]:
+            best = (dv, t, d, s)
+    if best is None:
+        return None, None
+    if cur.ok and not best[0] < (-_DROP if criterion in ("aic", "bic") else 0.0):  # G168
+        return None, None
+    return (best[1], best[2]), _criterion_value(ev, criterion, best[3])
+```
+
+`dv < best[0]`이 엄격한 부등호라 같은 값이면 먼저 본 후보(열 순서가 앞인 것)가 남아요. 견주는 값은 기준값 자체가 아니라 차이 $\Delta$이고, `_delta`가 그 차이를 기준값의 큰 상수 없이 만들어요.
+
+```python
+# src/stardust/regression/_select.py
+def _delta(ev, crit, cur, cand):
+    """cand's criterion minus cur's, formed without the criterion's large constants."""
+    if crit == "cv":
+        return cand.value - cur.value
+    k = 2.0 if crit == "aic" else _log(ev.nobs)
+    dr = cand.rank - cur.rank
+    if ev.glm:
+        a, b = cand.llf, cur.llf
+    else:
+        a, b = cand.value, cur.value
+        if a == b:
+            return k * dr
+        if b == 0.0 or a == 0.0:
+            return math.inf if a > b else -math.inf
+        return ev.nobs * math.log(a / b) + k * dr
+    if a == b:
+        return k * dr
+    return -2.0 * (a - b) + k * dr
+```
+
+선형 모형은 같은 행과 같은 가중치라서 두 AIC의 차이가 $n\log(\mathrm{SSR}_a/\mathrm{SSR}_b) + k\,\Delta\mathrm{rank}$뿐이에요. AIC 자체는 $n\log 2\pi$, $\sum\log w$, GLS의 $\log\lvert\Sigma\rvert$ 같은 큰 상수를 담아 값이 수백, 수천이고, 두 값을 빼면 그 크기의 반올림(수백이면 $10^{-14}$ 남짓)이 차이에 그대로 남아요. 제곱합의 비의 로그는 그 상수와 상관없이 상대 정확도로 나오므로, $10^{-7}$ 문턱을 기준값의 크기와 상관없이 같은 뜻으로 적용할 수 있어요. GLM은 두 후보의 `llf`의 차이예요.
+
+$10^{-7}$은 R `step`의 수예요. 다만 R은 표의 가장 작은 AIC가 지금 모형의 것보다 조금이라도 작으면 옮기고, 옮긴 뒤 새 AIC가 지금 AIC + $10^{-7}$ 이상일 때만 멈춰요. 표의 AIC와 옮긴 적합의 AIC가 같으므로 R은 사실상 줄기만 하면 옮겨요. 줄어든 폭이 $(0, 10^{-7}]$이면 R은 옮기고 stardust는 멈춰요. 반올림 크기의 차이로 모형을 바꾸지 않으려는 것이에요.
+
+겹친 열을 하나 더 넣는 후보는 잔차 제곱합과 랭크가 그대로라 $\Delta = 0$이고, 그래서 옮기지 않아요. 같은 열이 두 번 있으면 앞의 것이 들어가요.
+
+```python
+>>> Xd = sd.concat([X[:, 0:1], X[:, 1:2], X[:, 0:1]], axis=1)
+>>> rd = sd.regression.stepwise(y, Xd, direction="forward")
+>>> [(s.action, s.term) for s in rd.steps]
+[('start', None), ('add', 'x1')]
+```
+
+### 그 밖의 규칙
+
+- **p값 기준**: 먼저 뺄 항(뺐을 때의 p가 가장 크고 `alpha_remove`보다 큰 것)을 찾고, 없으면 넣을 항(p가 가장 작고 `alpha_enter` 이하인 것)을 찾아요. p는 `_pvalue`가 내요. 선형은 큰 모형의 척도로 나눈 부분 F $\frac{(\mathrm{SSR}_s - \mathrm{SSR}_b)/\Delta r}{\mathrm{SSR}_b/(n - r_b)}$(R `add1`·`drop1`의 `test = "F"`와 같은 꼴), GLM은 우도비 $-2(\ell_s - \ell_b)$의 χ²(Δr)예요. 걸음의 기준값 자리에는 그 검정의 p를 적어요.
+- **지나온 모형**: 옮길 모형이 이미 지나온 모형(`visited`)이면 멈춰요. AIC·BIC·교차검증은 걸음마다 값이 엄격히 줄어서 돌아올 수 없지만, p값 기준은 넣은 항이 다음 걸음에 빠질 수 있어 이 검사가 끝없는 순환을 막아요.
+- **`max_steps`**: 걸음 수(겹친 항을 빼는 걸음도 세요)의 상한이에요. 0이면 시작 모형을 그대로 돌려줘요.
+
+## 선형 후보: 삼각 인자 하나에서
+
+### 잔차 제곱합은 삼각 인자의 같은 열에서
+
+백색화한 행렬 $A = [\mathbf 1\ X\ y]$(WLS는 행마다 $\sqrt{w}$를 곱하고, GLS는 $L^{-1}$로 백색화한 것)를 $A = QR$로 분해하면 $A^{\mathsf T}A = R^{\mathsf T}R$이에요. 열 집합 $S$의 가중 최소제곱은
+
+$$
+\min_b \lVert A_S b - a_y \rVert^2 = \min_b \lVert R_S b - r_y \rVert^2
+$$
+
+예요($Q$를 곱해도 노름이 그대로라서요). 오른쪽은 행이 $m = p + 2$개인 문제라, n이 백만이어도 후보 하나를 재는 데 n이 들어가지 않아요. 커널 `select_qr`이 이 $R$을 만들어요.
+
+```python
+>>> R = sd._core.regression.select_qr(y, X, None, None, True, None, 1)[0]
+>>> R.shape
+(8, 8)
+>>> small = sd.regression.ols(R[:, 7], R[:, [0, 1, 3]], intercept=False)
+>>> small.ssr, sd.regression.ols(y, X[:, [0, 2]]).ssr
+(85.68115438128241, 85.68115438128241)
+```
+
+$R$의 0열은 절편, 1–6열은 X, 7열은 y예요. 8행짜리 문제(절편, x1, x3)의 잔차 제곱합이 60행 자료의 `ols`와 같아요.
+
+`select_qr`은 쓰인 행(가중치 > 0)을 $\max(1024, 4m)$행씩 블록에 모아, 지금까지의 삼각 인자 아래에 블록을 쌓고 `geqrf`로 다시 삼각 인자를 만들어요(`stack_qr`). 블록의 크기는 n과 m으로만 정하므로 스레드 수와 상관없이 같은 비트예요. 메모리는 블록 하나와 $m \times m$뿐이에요.
+
+### 전체 모형의 잔차를 빼 둔 y
+
+실제로 선택이 쓰는 $R$은 y가 아니라 $y - e$의 삼각 인자예요. $e$는 전체 모형(모든 열)의 잔차예요.
+
+```python
+        # src/stardust/regression/_select.py
+        # the triangle of [intercept X y - e] (e the full model's residual, in the fit's units,
+        # orthogonal to every column): a model's residual sum of squares is that triangle's plus
+        # the full model's (refined, summed in double-double), so its rounding scales with the
+        # increase over the full model, not with the sum itself
+        e = full.wresid if full._fitargs[0] == "gls" else full.resid
+        if self.fy != 1.0:
+            e = e / self.fy
+        self.ssr_full = float(full._ssr_s())
+        Rf = full._raw[2]  # the fit's triangle (kept columns), in the fit's units
+        fx = full._xfactor()
+        if fx is not None:
+            Rf = Rf / _sd.expand_dims(fx, axis=-2)
+        e2 = _orthogonal(e, Xs, w, u, intercept, Rf, full._raw[5])
+        self.R = _k.select_qr(ys - (e if e2 is None else e2), Xs, w, u, intercept, None, 1)
+```
+
+이유는 상쇄예요. $e$가 모든 열에 직교하면, 어떤 부분집합 $S$의 잔차는
+
+$$
+\lVert y - A_S b\rVert^2 = \lVert (y - e) - A_S b\rVert^2 + \lVert e\rVert^2
+$$
+
+로 나뉘어요($y - e$는 전체 모형의 적합값이라 열공간 안에 있고, 교차항 $2e^{\mathsf T}((y - e) - A_S b)$가 0이에요). 첫 항은 $y - e$의 삼각 인자에서, 둘째 항은 전체 모형을 반복 개선한 적합이 double-double로 더한 `ssr`이에요. 그래서 삼각 인자의 반올림은 잔차 제곱합 전체가 아니라 전체 모형보다 늘어난 양에 비례해요. 전체 모형에 가까운 후보일수록 늘어난 양이 작아 그 반올림도 작아요. y를 그대로 넣은 삼각 인자로 재면, 공선 열이 든 모형에서 잔차 제곱합이 $\kappa u$ 꼴로 틀려요.
+
+이 분해는 $e$의 직교성에 기대요. 반복 개선한 적합의 잔차는 $\lVert A^{\mathsf T}e\rVert$가 $\kappa u\,\lVert A\rVert\lVert e\rVert$ 수준까지만 작아요(계수의 반올림이 $A^{\mathsf T}A$를 거쳐 남아요). 그러면 교차항이 $2(\beta_{\text{full}} - b_S)^{\mathsf T}A^{\mathsf T}e$로 남아 전체 모형에서 먼 후보일수록 커요. 그래서 `_orthogonal`이 수정 반정규식(corrected seminormal equations, Björck)의 한 걸음으로 $e$를 한 번 더 다듬어요. $d = D^{\mathsf T}e$를 Dot2로 정확히 구하고, 적합의 삼각 인자로 $R^{\mathsf T}R\,\delta = d$를 풀어 $e - D\delta$를 한 번 반올림해요($D$는 백색화한 설계). 한 걸음이 $D^{\mathsf T}e$를 대략 $\kappa^2 u$배로 더 줄여요($\kappa^2u \lt 1$인 한).
+
+교차검증(아래)은 겹마다 학습 행과 시험 행이 달라 이 분해를 쓰지 않고 y 그대로의 삼각 인자를 써요.
+
+### 지금 모형의 인수분해
+
+`select_eval`은 걸음 하나의 지금 모형과 모든 후보를 한 번에 재요. 먼저 지금 모형의 열(`sel`, 오름차순)을 $R$ 위에서 Householder로 차례로 인수분해해요.
+
+```cpp
+// csrc/regression/select.cpp
+void factor(const double* R, const double* nrm, lint m, const std::vector<lint>& sel, double tol, Factor& F) {
+    F.m = m;
+    F.s = 0;
+    F.W.assign(R, R + m * m);
+    F.used.clear();
+    F.in.assign(static_cast<std::size_t>(std::max<lint>(m - 1, 0)), 0);
+    F.aliased = false;
+    std::vector<double> v(static_cast<std::size_t>(m));
+    for (lint j : sel) {
+        double* cj = F.W.data() + j * m;
+        const lint s = F.s, len = m - s;
+        const double nr = cblas_dnrm2(len, cj + s, 1);
+        if (!(nr > tol * nrm[j])) {
+            F.in[j] = 2;
+            F.aliased = true;
+            continue;
+        }
+        const double tau = house(cj + s, len, v.data());
+        for (lint c = 0; c < m; ++c) {
+            if (c == j || (c < m - 1 && F.in[c] == 1)) continue;
+            reflect(v.data(), tau, F.W.data() + c * m + s, len);
+        }
+        F.in[j] = 1;
+        F.used.push_back(j);
+        ++F.s;
+    }
+}
+```
+
+열 $j$의 남은 부분(앞의 열들에 직교하는 부분)의 노름이 $\text{tol}\cdot\lVert x_j\rVert$ 이하이면 겹친 열로 건너뛰어요. `nrm[j]`는 $R$의 $j$열의 노름, 곧 백색화한 열의 노름이고, `tol`은 `rtol`이 없으면 $\max(n_{\text{obs}}, k)\cdot 2^{-52}$예요. 모형 함수의 적합과 같은 판정이라, 앞의 열이 남고 뒤의 열이 겹친 열이 되는 것도 같아요. 반사는 모형에 든 열을 뺀 모든 열(후보의 열과 y)에 적용해요. 그래서 인수분해가 끝나면 $W$의 위 $s$행에 $R_{UU}$(지금 모형의 삼각 인자)와 $z = W_{:s,\,y}$가 있고, 지금 모형의 잔차 제곱합은 y 열의 $s$행 아래의 제곱합, 계수는 $R_{UU}\beta = z$의 풀이예요.
+
+### 넣는 후보: 인수분해를 이어 가기
+
+열 집합 $C$를 넣는 후보는 $W$에서 $C$의 열과 y 열의 아랫부분($s$행부터)만 떼어 그 블록에서 Householder를 이어 가요.
+
+```cpp
+    // csrc/regression/select.cpp
+    for (lint q = 0; q < t; ++q) {
+        double* col = B.data() + q * len;
+        const double nr = cblas_dnrm2(len - r, col + r, 1);
+        if (!(nr > tol * nrm[C[q]])) continue;
+        const double tau = house(col + r, len - r, v.data());
+        for (lint c = q + 1; c <= t; ++c) reflect(v.data(), tau, B.data() + c * len + r, len - r);
+        acc.push_back(q);
+        ++r;
+    }
+    rank_add = r;
+    const double ssr = sumsq(B.data() + t * len + r, len - r);
+```
+
+지금 모형의 인수분해는 그대로 두고 블록 $(m - s) \times (|C| + 1)$만 다루므로 후보 하나가 $O(m\,t^2)$($t = |C|$)예요. 겹친 열의 판정도 같은 규칙이라, 지금 모형에 겹치는 열을 넣으면 `rank_add`가 0이고 잔차 제곱합이 그대로예요. 제곱합은 Dot2로 더해 한 번 반올림해요(`sumsq`).
+
+### 빼는 후보: 계수의 이차 형식
+
+열 집합 $D \subset U$를 빼면 잔차 제곱합이 얼마나 느는지는 다시 인수분해하지 않고 구해요. $\beta_D = 0$이라는 제약 아래의 최소제곱이므로 증가량은
+
+$$
+\Delta\mathrm{SSR} = \beta_D^{\mathsf T}\bigl[(R_{UU}^{\mathsf T}R_{UU})^{-1}\bigr]_{DD}^{-1}\beta_D
+$$
+
+예요(부분 F의 분자와 같은 양이에요). $V$를 $R_{UU}^{-1}$의 $D$ 행($t \times s$)이라 하면 $[(R_{UU}^{\mathsf T}R_{UU})^{-1}]_{DD} = (R_{UU}^{-1}R_{UU}^{-\mathsf T})_{DD} = VV^{\mathsf T}$이에요. $V^{\mathsf T} = QT$($T$는 $t \times t$ 위삼각)로 QR하면 $VV^{\mathsf T} = T^{\mathsf T}T$이므로
+
+$$
+\Delta\mathrm{SSR} = \beta_D^{\mathsf T}(T^{\mathsf T}T)^{-1}\beta_D = \lVert u\rVert^2,\qquad T^{\mathsf T}u = \beta_D
+$$
+
+예요. $VV^{\mathsf T}$를 만들어 역행렬을 구하면 조건수가 제곱되지만, $V^{\mathsf T}$를 QR하면 그렇지 않아요.
+
+```cpp
+    // csrc/regression/select.cpp
+    for (lint q = 0; q < t; ++q)
+        for (lint i = 0; i < s; ++i) Vt[q * s + i] = i >= pos[q] ? Ri[i * s + pos[q]] : 0.0;
+    for (lint q = 0; q < t; ++q) {
+        double* col = Vt.data() + q * s;
+        double* v = refl.data() + q * s;
+        taus[q] = house(col + q, s - q, v + q);
+        for (lint c = q + 1; c < t; ++c) reflect(v + q, taus[q], Vt.data() + c * s + q, s - q);
+    }
+    for (lint q = 0; q < t; ++q) {
+        double r = beta[pos[q]];
+        for (lint a = 0; a < q; ++a) r -= Vt[q * s + a] * u[a];
+        u[q] = r / Vt[q * s + q];
+    }
+    const double inc = sumsq(u.data(), t);
+```
+
+`Ri`는 $R_{UU}^{-1}$(위삼각, 열 우선)이라 $V$의 $q$번째 행은 `pos[q]` 앞이 0이에요. $R_{UU}^{-1}$은 빼는 후보가 하나라도 있으면 걸음마다 한 번 만들고(`tri_inverse`, $O(s^3)$) 모든 빼는 후보가 함께 써요. 빼는 후보 하나는 $O(s\,t^2)$예요. 교차검증처럼 뺀 모형의 계수가 필요하면 같은 $Q$와 $u$로 $\beta' = \beta - R_{UU}^{-1}Q\,[u; 0]$을 만들어요(제약 최소제곱의 해이고, $D$ 자리는 정확히 0으로 둬요).
+
+지금 모형에 겹친 열이 있으면 $R_{UU}$가 고른 열 모두의 삼각 인자가 아니라서 이 공식이 맞지 않아요. 그때는 뺀 뒤의 열로 다시 인수분해해요. 겹친 항을 먼저 빼는 규칙 덕에 이 길은 드물어요.
+
+### 비용과 정확도
+
+걸음 하나는 지금 모형의 인수분해 $O(m^2 s)$, 삼각 역행렬 $O(s^3)$, 후보마다 $O(m\,t^2)$이라 모두 $O(p^3)$ 꼴이고 n이 들어가지 않아요. n이 드는 일은 전체 모형의 적합, `select_qr`, 고른 열의 적합 셋뿐이에요(셋 다 $O(nk^2)$). 후보가 많고 일이 크면($\text{후보 수} \times m^2 \ge 10^6$) 후보를 스레드풀에 나눠요. 후보마다 자기 버퍼에서 같은 계산을 하므로 결과는 스레드 수와 상관없어요.
+
+기준값은 모형 함수의 적합을 거치지 않고 이 갱신에서 나오므로, 그 열로 부른 적합의 `aic`와 반올림 수준에서 다를 수 있어요. 아래 `forward`의 둘째 걸음은 1ulp 달라요.
+
+```python
+>>> rf = sd.regression.stepwise(y, X, direction="forward")
+>>> paths = [[], [0], [0, 2], [0, 2, 4], [0, 2, 3, 4]]
+>>> [s.criterion - sd.regression.ols(y, X[:, c]).aic for s, c in zip(rf.steps, paths)]
+[0.0, 2.842170943040401e-14, 0.0, 0.0, 0.0]
+```
+
+AIC는 `_Linear.llf`가 결과의 `llf`와 같은 식(같은 상수와 같은 연산 순서)으로 잔차 제곱합에서 만들어요. 그래서 차이는 잔차 제곱합의 반올림에서만 와요.
+
+## best_subset: leaps and bounds
+
+### 크기마다 SSR이 가장 작은 부분집합
+
+`best_subset`은 크기(절편과 `include` 밖에서 더한 랭크) 0, 1, …, `max_size`마다 가장 좋은 부분집합을 찾고, 그 가운데 기준이 가장 좋은 크기를 골라요. 선형 모형에서는 같은 크기 안의 최선이 기준과 상관없이 하나예요. 같은 행, 같은 가중치에서 랭크가 $k$인 모형의 네 기준은 모두 잔차 제곱합 SSR과 $k$만의 함수이고, $k$를 고정하면 SSR에 단조예요.
+
+$$
+\begin{aligned}
+\mathrm{AIC} &= n\log\mathrm{SSR} + 2k + c, &\quad \mathrm{BIC} &= n\log\mathrm{SSR} + k\log n + c,\\
+C_p &= \mathrm{SSR}/\hat\sigma^2_{\text{full}} - n + 2k, &\quad \bar R^2 &= 1 - \frac{n - i}{n - k}\cdot\frac{\mathrm{SSR}}{\mathrm{TSS}}
+\end{aligned}
+$$
+
+($c$는 $n$, 가중치, $\Sigma$로만 정해지는 상수, $\hat\sigma^2_{\text{full}}$은 모든 열의 모형의 척도, $i$는 절편이 있으면 1)예요. 앞의 셋은 SSR이 작을수록 작고 $\bar R^2$은 SSR이 작을수록 커요. 그래서 크기마다 SSR이 가장 작은 부분집합만 찾으면 되고, 기준은 크기 사이를 고를 때만 써요(`_linear_values`). 동률이면 작은 크기예요. 교차검증 오차는 SSR의 함수가 아니어서 따로 다뤄요(아래 교차검증 절).
+
+남는 일은 크기마다 SSR이 가장 작은 부분집합을 찾는 것이에요. 항이 $p$개면 부분집합이 $2^p$개예요.
+
+### Furnival과 Wilson의 방법
+
+Furnival과 Wilson(1974)은 모든 부분집합의 SSR을 거의 최소의 연산으로 구하는 방법과, 그것을 가지치기와 묶은 leaps and bounds를 내놓았어요. 부분집합을 이진 나무로 늘어놓고 나무의 마디마다 적률 행렬(교차곱 행렬)의 부분행렬을 둬요. 자식은 부모에서 변수 하나를 피벗(Gauss–Jordan 소거)하거나 지워서 얻으므로, 부분집합 하나의 SSR이 피벗 하나 꼴의 비용이에요.
+
+가지치기는 SSR의 단조성 하나에 기대요. 변수를 더하면 SSR은 늘지 않아요. 그러니 어떤 마디 아래의 모든 부분집합은 "그 마디에서 쓸 수 있는 변수를 모두 넣은 집합"의 부분집합이고, 그 큰 집합의 SSR이 마디 아래 모든 부분집합의 SSR의 하한이에요. 그 하한이 이미 찾은 크기별 최선보다 나쁘지 않으면, 그 마디 아래에서는 어느 크기의 최선도 나올 수 없으므로 통째로 건너뛰어요. 원 논문은 부분집합을 내는 나무와 하한을 내는 나무를 함께 걸어요.
+
+Miller(2002, *Subset Selection in Regression*)는 같은 탐색을 적률 행렬 대신 삼각 인자 위에서 해요. 적률 행렬의 피벗은 조건수를 제곱한 행렬 위의 계산이라 반올림이 커지는데, 삼각 인자의 열 순서를 바꾸는 평면 회전은 그렇지 않아요. R의 leaps 패키지가 Miller의 Fortran 코드예요. stardust의 `select_subsets`도 이 꼴이에요.
+
+### 접두사의 SSR은 한꺼번에
+
+열을 어떤 순서로 놓은 삼각 인자 $W$에서, 처음 $j$개 열의 최소제곱은 $W$의 위 $j$행만 쓰는 삼각 문제라 잔차가 y 열의 $j$행 아래 전부예요.
+
+$$
+\mathrm{SSR}(\text{처음 } j\text{개 열}) = \sum_{i \ge j} W_{i,y}^2
+$$
+
+그래서 순서 하나가 접두사 $m - 1$개의 SSR을 한꺼번에 줘요. `refresh`가 이 꼬리 합(`suffix`)을 아래에서부터 Dot2로 쌓아요.
+
+```cpp
+    // csrc/regression/select.cpp
+    void refresh() {
+        suffix.assign(static_cast<std::size_t>(m + 1), 0.0);
+        const lint y = m - 1;
+        double P = 0.0, S = 0.0;
+        for (lint i = m - 1; i >= 0; --i) {
+            dot2::row_step(P, S, at(i, y), at(i, y));
+            suffix[i] = P + S;
+        }
+```
+
+순서를 바꾸는 것은 이웃한 두 열의 교환이에요. 열 $j$와 $j + 1$을 바꾸면 $(j + 1, j)$ 자리에 0이 아닌 값이 하나 생기고, 행 $j$, $j + 1$에 Givens 회전 하나를 걸면 다시 삼각이에요. 다른 행은 그대로라, 바뀌는 접두사는 길이 $j + 1$의 것 하나뿐이에요.
+
+```cpp
+    // csrc/regression/select.cpp
+    void swap(lint j) {
+        for (lint i = 0; i <= j + 1; ++i) std::swap(at(i, j), at(i, j + 1));
+        std::swap(colat[j], colat[j + 1]);
+        const double a = at(j, j), b = at(j + 1, j);
+        if (b == 0.0) return;
+        const double r = std::hypot(a, b), cs = a / r, sn = b / r;
+        for (lint c = j; c < m; ++c) {
+            const double u = at(j, c), v = at(j + 1, c);
+            at(j, c) = cs * u + sn * v;
+            at(j + 1, c) = -sn * u + cs * v;
+        }
+        at(j + 1, j) = 0.0;
+    }
+```
+
+여러 열의 항(블록)은 블록째 움직여요. `move_block(g, lim)`은 블록 위치 $g$의 블록을 이웃 교환으로 위치 `lim`까지 밀고, 그 사이의 블록을 하나씩 당겨요.
+
+### 탐색
+
+`include`의 열을 맨 앞에 두고(겹친 것은 Python에서 미리 빼요), 그 뒤에 항들을 처음 순서로 놓아 삼각 인자를 만든 다음, 그 순서의 접두사를 모두 보고하고 `explore(0, nblocks − 1, max_size)`를 불러요.
+
+```cpp
+    // csrc/regression/select.cpp
+    void explore(lint i, lint lim, lint cap) {
+        for (lint g = lim - 1; g >= i; --g) {
+            // the sets searched have the fixed blocks and at least one more, each adding rank (a
+            // set with a block that adds none is not reported): sizes from one past the fixed part's
+            const lint lo = rank_upto(colstart(g)) - base_rank + 1;
+            if (lo > cap || lo > max_size) continue;  // nothing wanted there: no move either
+            move_block(g, lim);
+            const lint e = colstart(lim);
+            const lint top = reach(suffix[e], lo, rank_upto(e) - base_rank, cap);
+            if (top < 0) continue;
+            report(g, lim - 1);
+            explore(g, lim - 1, top);
+        }
+    }
+```
+
+`explore(i, lim, cap)`에서 위치 $i$ 앞의 블록은 들어 있기로 정해졌고, 영역 $[i, \text{lim}]$의 블록은 정해지지 않았어요. 이 영역의 접두사는 이미 보고됐어요. 루프는 $g$를 뒤에서부터 돌며 위치 $g$의 블록을 영역의 끝(`lim`)으로 보내요. 그러면 위치 $g$부터 `lim − 1`까지의 접두사는 "앞의 블록들 + 그 블록을 뺀 나머지의 앞부분"이라 아직 보지 못한 집합이에요. 이것들을 보고하고, 끝으로 보낸 블록은 빼 둔 채 영역 $[g, \text{lim} - 1]$을 재귀로 찾아요. 블록 셋 a, b, c의 경우는 이래요.
+
+<Fig column caption="블록 a, b, c의 탐색. 마디마다 순서와 그때 보고하는 집합이에요. 여덟 부분집합이 정확히 한 번씩 접두사로 나와요. a를 끝으로 보낸 마디(강조한 마디)의 영역(a를 뺀 c, b의 집합)은 하한이 RSS(cb)이고, 이 값이 크기 1과 2의 최선보다 나쁘지 않으면 c, cb, b를 보지 않고 건너뛰어요.">
+  <Tree
+    root={{
+      label: 'a b c',
+      note: '처음 순서. ∅, a, ab, abc를 보고해요',
+      children: [
+        { label: 'g = 1: a c b', note: 'b를 끝으로. ac를 보고해요. 하한은 RSS(ac)' },
+        {
+          label: 'g = 0: c b a',
+          note: 'a를 끝으로. c, cb를 보고해요. 하한은 RSS(cb)',
+          tone: 'a',
+          children: [{ label: 'g = 0: b c a', note: 'c를 끝으로. b를 보고해요. 하한은 RSS(b)' }],
+        },
+      ],
+    }}
+  />
+</Fig>
+
+가지치기는 상한과 하한을 견줘요. 지금까지 찾은 크기별 최선 `best[k]`는 크기 $k$의 참 최솟값의 상한이고, 영역에 남은 블록을 모두 넣은 집합의 SSR은 그 영역 안 모든 집합의 하한이에요. 견주는 때는 블록을 끝으로 보낸 직후예요. 그때 위치 `lim` 앞의 접두사가 바로 그 큰 집합이라 하한 $L$은 `suffix[e]`예요. 영역에서 나올 수 있는 크기는 `lo`(앞의 블록에 하나를 더 넣은 랭크)부터 그 큰 집합의 랭크까지예요. `reach`는 그 범위에서 $L$이 아직 최선을 이길 수 있는 가장 큰 크기 `top`을 찾아요.
+
+```cpp
+    // csrc/regression/select.cpp
+    lint reach(double lb, lint lo, lint hi, lint cap) const {
+        for (lint k = std::min({hi, max_size, cap}); k >= std::max<lint>(lo, 0); --k)
+            if (lb < best[k]) return k;
+        return -1;
+    }
+```
+
+`top`보다 큰 크기는 최선이 이미 $L$ 이하라 그 영역에서 나아질 수 없어요. 그래서 재귀에는 `cap = top`을 넘겨, 그보다 큰 집합만 남는 영역은 블록을 옮기지도 않아요(`lo > cap`). 모든 크기에서 이길 수 없으면(`top < 0`) 영역 전체를 건너뛰어요. 하한이 최선과 같을 때도 건너뛰므로(`lb < best[k]`의 엄격한 부등호), 크기 안의 동률은 먼저 만난 집합이 남아요.
+
+### 처음 순서
+
+가지치기가 얼마나 듣는지는 처음 순서에 크게 달려 있어요. `_subsets_linear`는 전체 모형에서 뺐을 때 SSR이 가장 많이 느는 항을 앞에 둬요(이 증가량은 `stepwise`의 빼는 후보와 같은 `select_eval` 한 번으로 구해요).
+
+```python
+    # src/stardust/regression/_select.py
+    # the search's starting order: first the terms whose drop from the full model costs most
+    full_stat, drops = ev.evaluate(
+        _design(intercept, terms_l, set(range(len(terms_l)))),
+        [([j0 + c for c in terms_l[t]], True) for t in free],
+        True,
+    )
+    gain = [s.value - full_stat.value for s in drops]
+    order = sorted(range(len(free)), key=lambda b: (-gain[b] if not math.isnan(gain[b]) else math.inf, b))
+```
+
+중요한 항이 앞에 있으면 탐색 초반의 접두사가 좋은 집합이라 크기별 최선이 일찍 작아지고, 중요한 항을 끝으로 보낸(뺀) 영역은 하한이 커서 일찍 잘려요. 커널은 블록을 옮긴 횟수를 세어 돌려줘요. 효과가 뒤쪽 열에 몰린 열두 열의 자료에서 열 순서 그대로와 그 반대(중요한 열이 앞)를 견주면 이래요.
+
+```python
+>>> k = sd._core.regression
+>>> rng = sd.random.default_rng(2)
+>>> X12 = N.sample((200, 12), rng=rng)
+>>> y12 = X12 @ sd.asarray([0.0] * 6 + [0.3, 0.5, 0.8, 1.0, 1.5, 2.0]) + N.sample(200, rng=rng)
+>>> R12 = k.select_qr(y12, X12, None, None, True, None, 1)[0]
+>>> i64 = lambda v: sd.asarray(v, dtype=sd.int64)
+>>> blocks = (i64([0]), i64(list(range(1, 13))), i64(list(range(13))))
+>>> [k.select_subsets(R12, 200.0, -1.0, *blocks, i64(order), 12)[2] for order in (list(range(12)), list(range(11, -1, -1)))]
+[511, 34]
+```
+
+부분집합은 $2^{12} = 4096$개인데, 좋은 순서에서는 블록을 34번 옮겨 모든 크기의 최선을 찾아요. 가지치기가 듣지 않는 자료(모든 열의 효과가 비슷해서 영역의 하한이 최선과 거의 같은 자료)에서는 옮기는 횟수가 $2^p$에 가까워지고 시간이 항 수의 지수로 늘어요. 작업량의 상한은 두지 않고, 고를 항이 50개를 넘으면 받지 않아요(leaps의 `really.big` 경계와 같은 수예요).
+
+### 겹친 열과 크기
+
+접두사의 크기는 열 수가 아니라 랭크로 세요(`cumrank`). 겹친 열이 든 접두사는 보고하지 않아요. 삼각 인자에서 겹친 열의 대각은 반올림 크기인데, 그 행을 그대로 쓰면 집합의 열공간 밖의 방향이 하나 더 있는 셈이라 SSR이 실제보다 작게 나와요.
+
+```cpp
+            // csrc/regression/select.cpp
+            if (dead) continue;
+            const lint size = rank_upto(col) - base_rank;
+            if (size < 0 || size > max_size) continue;
+            const double rss = suffix[col];
+            if (rss < best[size]) {
+                best[size] = rss;
+                auto& set = best_set[size];
+                std::fill(set.begin(), set.end(), 0);
+                for (lint b = 0; b <= q; ++b) set[blk[b]] = 1;
+            }
+```
+
+`dead`는 접두사 안의 블록 가운데 겹친 열을 가진 것이 있다는 표시예요. 열 하나짜리 항이면 그 열이 없는 같은 적합의 작은 집합이 따로 있으니 잃는 것이 없어요. 여러 열의 항이 일부만 겹치는 부분집합은 후보에서 빠져요. 하한으로는 그런 접두사도 그대로 써요. 더 작은 값이라 하한으로서는 여전히 맞으니까요. 커널이 돌려주는 SSR은 $y - e$의 삼각 인자의 값이라 Python이 전체 모형의 SSR을 더해 기준값을 만들어요.
+
+## 교차검증
+
+### 겹
+
+겹은 [`lasso_cv`](/internals/regression/penalized/#교차검증)와 같아요. 쓰인 행 n개에 $0, 1, \dots, n - 1 \bmod \text{cv}$의 이름표를 달고 `rng.permutation(n)`으로 섞어요(`_folds`). 모든 후보와 모든 걸음이 이 겹 하나를 써요.
+
+```python
+    # src/stardust/regression/_select.py
+    if cv > n:
+        raise ValueError(f"{func}(): 'cv' must be <= the number of rows ({n}), not {cv}")
+    labels = _sd.asarray([i % cv for i in range(n)], dtype=_sd.int64)
+    return _sd.take(labels, rng.permutation(n))
+```
+
+오차는 겹마다 학습 행으로 적합해 시험 행에서 잰 가중 평균 제곱오차 $\sum w(y - \hat y)^2/\sum w$의 겹 평균이에요. 시험 행의 가중치가 모두 0인 겹은 잴 것이 없어 평균에서 빠져요. 1-SE 규칙은 없어요. GLS는 백색화 $L^{-1}$이 행을 섞어서 겹으로 나눈 행이 서로 독립이 아니므로 `'cv'`를 받지 않아요.
+
+### 선형: 겹마다 삼각 인자 둘
+
+`select_qr`에 이름표를 주면 겹마다 그 겹의 행만으로 삼각 인자 $T_f$를 만들어요(행은 여전히 한 번만 읽어요). `select_merge(T, True)`는 겹 $f$를 뺀 나머지 $T_g$를 순서대로 쌓아 QR한 학습 행의 삼각 인자 $R_f$를 만들어요. $\sum_{g \ne f} T_g^{\mathsf T}T_g$가 학습 행의 $A^{\mathsf T}A$이므로 $R_f$는 학습 행 자체의 삼각 인자와 같은 역할이에요.
+
+후보의 계수는 $R_f$ 위에서 같은 인수분해와 같은 갱신(넣기는 이어 가기, 빼기는 $\beta - R_{UU}^{-1}Q[u; 0]$)으로 구하고, 시험 오차는 $T_f$에서 재요. 시험 행 $A_f = Q_fT_f$라서
+
+$$
+\sum_{i \in f} w_i(y_i - x_i^{\mathsf T}\beta)^2 = \lVert A_f[\beta; -1]\rVert^2 = \lVert T_f[\beta; -1]\rVert^2
+$$
+
+이에요. 시험 행이 몇 개든 $m$행짜리 계산이에요.
+
+```cpp
+// csrc/regression/select.cpp
+double test_sse(const double* T, lint m, const std::vector<lint>& cols, const double* beta) {
+    std::vector<double> r(static_cast<std::size_t>(m));
+    const lint y = m - 1, nc = static_cast<lint>(cols.size());
+    for (lint i = 0; i < m; ++i) {
+        double P = 0.0, S = 0.0;
+        dot2::row_step(P, S, T[y * m + i], -1.0);
+        for (lint q = 0; q < nc; ++q)
+            if (cols[q] >= i) dot2::row_step(P, S, T[cols[q] * m + i], beta[q]);
+        r[i] = P + S;
+    }
+    return sumsq(r.data(), m);
+}
+```
+
+행마다의 합은 Dot2예요. 겹의 학습 적합은 반복 개선을 하지 않는 삼각 풀이라 계수가 $\kappa u$ 꼴로 맞고, 그만큼이 오차에 들어가요. Python의 `error`가 겹마다 시험 가중치의 합으로 나눠 평균하고, 적합의 단위를 데이터의 단위로 돌려요($f_y^2$, 정확한 곱).
+
+```python
+        # src/stardust/regression/_select.py
+        m = [s / w for s, w in zip(sse, self.sw) if w > 0]
+        return self.fy * self.fy * (sum(m) / len(m)) if m else math.nan
+```
+
+겹마다 학습 행으로 다시 적합한 `ols`의 예측으로 직접 재도 같은 값이에요.
+
+```python
+>>> c = sd.regression.stepwise(y, X, criterion="cv", rng=sd.random.default_rng(1))
+>>> [(s.action, s.term) for s in c.steps], c.selected
+([('start', None), ('drop', 'x4'), ('drop', 'x6'), ('drop', 'x2')], [0, 2, 4])
+>>> labels = sd.take(sd.asarray([i % 5 for i in range(60)], dtype=sd.int64), sd.random.default_rng(1).permutation(60))
+>>> Xs = X[:, c.selected]
+>>> errs = []
+>>> for f in range(5):
+...     tr, te = labels != f, labels == f
+...     pred = sd.regression.ols(y[tr], Xs[tr]).predict(Xs[te])
+...     errs.append(float(sd.mean((y[te] - pred) ** 2)))
+>>> sum(errs) / 5, c.steps[-1].criterion
+(1.511758767709279, 1.5117587677092785)
+```
+
+두 값은 반올림 몇 번 안에서 같아요(삼각 인자에서 잰 것과 행을 다시 적합한 것의 차이예요).
+
+### best_subset: 겹마다 최선을 다시
+
+교차검증 오차는 SSR의 함수가 아니라 크기마다의 최선을 SSR로 정할 수 없어요. 그래서 겹마다 학습 행의 삼각 인자 $R_f$에서 leaps and bounds로 크기마다의 최선을 다시 찾고(처음 순서는 모든 행의 것과 같아요), 그 집합을 그 겹의 시험 행에서 재요. 크기의 오차는 그 겹 평균이에요(James 외, *An Introduction to Statistical Learning* 6.5절의 방법). 고른 크기의 부분집합은 모든 행에서 찾은 그 크기의 최선이에요.
+
+```python
+    # src/stardust/regression/_select.py
+    sse = [[None] * ev.cv for _ in range(max_size + 1)]
+    for f in range(ev.cv):
+        fsets, _ = _leaps(ev.Rtr[f], ev.nobs_tr[f], ev.rtol, terms_l, free, base_cols, j0, max_size, order)
+        for k, s in enumerate(fsets):
+            if s is not None and not (k == 0 and empty) and ev.sw[f] > 0:
+                sse[k][f] = ev.fold_sse(f, _design(intercept, terms_l, base | set(s)))
+    values = []
+    for k in range(max_size + 1):
+        if any(v is None for v, w in zip(sse[k], ev.sw) if w > 0):
+            values.append(None)  # a fold without a subset of this size
+        else:
+            values.append(ev.error([0.0 if v is None else v for v in sse[k]]))
+    return sets, values
+```
+
+겹마다 고른 집합이 다를 수 있으므로, `values[k]`는 "크기 k의 어느 한 집합"의 오차가 아니라 "크기 k를 고르는 절차"의 오차예요. 어떤 겹에 그 크기의 집합이 없으면(겹친 열 때문에) 그 크기는 NaN이에요.
+
+```python
+>>> b = sd.regression.best_subset(y, X, criterion="cv", rng=sd.random.default_rng(1))
+>>> b.selected, [round(v, 4) for v in b.values.tolist()]
+([0, 2, 4], [7.566, 3.345, 1.619, 1.5118, 1.5732, 1.6184, 1.6296])
+```
+
+## GLM 후보
+
+### 후보마다 처음부터
+
+GLM에는 적합 없이 우도를 갱신하는 공식이 없어요. `_GLM`은 후보의 열마다 glm의 커널 `glm_fit`을 `glm()`과 같은 옵션(분포족, 링크, 가중치, `trials`, offset, `rtol`, `max_iter`, `tol`, 척도)으로 불러요. 시작값은 넘기지 않아요. IRLS는 수렴 판정을 지나고도 계수가 반올림 수준이 될 때까지 걸음을 이어 가지만([GLM](/internals/regression/glm/)), 시작점이 다르면 멈추는 반복과 마지막 비트가 달라질 수 있어요. 지금 모형의 해에서 따뜻하게 시작하면 빨라지는 대신 후보의 `llf`가 그 열로 부른 `glm`의 것과 비트로 같지 않게 돼요. 처음부터 적합하므로 걸음의 기준값이 그 모형의 `aic`·`bic` 자체예요.
+
+```python
+>>> rng = sd.random.default_rng(11)
+>>> Xg = N.sample((150, 4), rng=rng)
+>>> pg = 1.0 / (1.0 + sd.exp(-(0.3 + 1.2 * Xg[:, 0] - 0.8 * Xg[:, 2])))
+>>> yg = sd.where(sd.random.default_rng(12).random(150) < pg, 1.0, 0.0)
+>>> g = sd.regression.stepwise(yg, Xg, model="glm", family="binomial")
+>>> [(s.action, s.term) for s in g.steps], g.selected
+([('start', None), ('drop', 'x4'), ('drop', 'x2')], [0, 2])
+>>> fg = sd.regression.glm(yg, Xg[:, g.selected], family="binomial")
+>>> g.steps[-1].criterion == fg.aic, bool(sd.all(g.fit.params == fg.params))
+(True, True)
+```
+
+R의 `add1.glm`·`drop1.glm`도 후보마다 `glm.fit`을 시작값 없이 불러요. 다만 표의 AIC는 후보의 편차를 지금 모형의 산포로 나눈 값에 $k\cdot\text{df}$를 더하고, 지금 모형의 줄이 `extractAIC`와 같아지게 상수를 옮긴 것이에요. 산포가 1로 고정인 이항·포아송은 이것이 후보의 AIC 차이와 같아요. 감마는 후보의 AIC(statsmodels처럼 Pearson 척도의 `llf`)와 달라서 R과 다른 모형을 고를 수 있어요.
+
+### 배치와 캐시
+
+한 걸음의 후보들은 열 수가 같은 것끼리 배치 하나로 커널에 넘겨요. 배치는 회귀 하나가 태스크 하나라 스레드에 나뉘고, 결과는 하나씩 부른 것과 비트까지 같아요([회귀 영역의 구조](/internals/regression/overview/#배치와-스레드)). 한 배치가 동시에 드는 메모리는 double $2^{22}$개 남짓으로 잘라요.
+
+```python
+                # src/stardust/regression/_select.py
+                raw = _k.glm_fit(
+                    "glm",
+                    fa["y"],
+                    Xb,
+                    aux,
+                    None,
+                    0,
+                    fa["family_code"],
+                    fa["link_code"],
+                    fa["has"][0],
+                    True if cvfolds else fa["has"][1],
+                    fa["has"][2],
+                    fa["has"][3],
+                    self.intercept,
+                    fa["rtol"],
+                    0,
+                    -1,
+                    fa["max_iter"],
+                    fa["tol"],
+                    fa["smode"],
+                    fa["svalue"],
+                )
+```
+
+적합 결과는 열 집합을 열쇠로 `cache`에 남겨요. 지난 걸음의 후보였던 모형이 다음 걸음의 지금 모형이 되고, 넣었다 뺀 이웃 모형도 여러 걸음에 되풀이해 나오기 때문이에요. 커널이 적합의 단위로 낸 `llf`는 `glm()`의 결과와 같은 이동(`llshift`)으로 데이터의 단위로 돌려요.
+
+`best_subset`의 GLM은 가지치기 없이 모든 부분집합을 적합해요(그래서 고를 항이 15개까지예요). 크기는 랭크로 세고, 겹친 열이 있는 부분집합은 선형처럼 후보가 아니에요. 같은 크기 안에서도 기준(AIC·BIC)으로 고르는데, 같은 랭크면 둘 다 $-2\ell$이 작은 쪽이라 고르는 집합이 같아요.
+
+### 분리와 미수렴
+
+커널의 스칼라에서 분리 표시(`separation`)가 켜졌거나 수렴하지 않은 후보는 `ok=False`가 되고 이유와 함께 `skipped`에 남아요. 고르지 않을 뿐 걸음은 계속돼요. 지금 모형이 분리되면 그 기준값은 NaN이고, 그 걸음은 차이 대신 후보 자신의 기준값으로 가장 좋은 후보로 옮겨요(`_step_choice`의 `cur.ok` 분기).
+
+```python
+>>> sep = sd.where(yg > 0, 1.0, -1.0) * (1.0 + sd.abs(Xg[:, 1]))
+>>> gs = sd.regression.stepwise(yg, sd.concat([Xg, sd.expand_dims(sep, axis=1)], axis=1), model="glm", family="binomial")
+>>> [(s.action, s.term) for s in gs.steps], gs.steps[0].criterion
+([('start', None), ('drop', 'x5'), ('drop', 'x4'), ('drop', 'x2')], nan)
+>>> gs.skipped[:2]
+[SkippedFit(step=0, action='drop', term='x1', reason='separation'), SkippedFit(step=0, action='drop', term='x2', reason='separation')]
+```
+
+x5는 y를 완전히 가르는 열이라 x5가 든 모형은 모두 분리돼요. 첫 걸음의 후보 가운데 분리되지 않는 것은 x5를 뺀 모형뿐이라 그리로 옮기고, 그 뒤로 x5를 다시 넣는 후보는 걸음마다 `skipped`에 남아요.
+
+### GLM의 교차검증
+
+겹의 적합은 시험 행의 `freq_weights`를 0으로 둔 적합이에요. 빈도 가중치가 0인 행은 적합에 없는 것과 같아서, cv개의 적합이 같은 행렬의 배치 하나가 돼요. 커널은 모든 행(가중치 0인 행도)의 편차 잔차 $\operatorname{sign}(y - \hat\mu)\sqrt{m\,d(y, \hat\mu)}$를 내므로, 시험 행의 편차를 그 자리에서 읽어요.
+
+```python
+        # src/stardust/regression/_select.py
+        rd = raw[9][b]  # (cv, n): sign(y - mu) sqrt(m d), the test rows' too
+        num = _sd.sum(self.test_f * rd * rd, axis=-1).tolist()
+        errs = [self.dev2 * a / d if d > 0 else None for a, d in zip(num, self.fold_den)]
+        m = [e for e in errs if e is not None]
+        err = sum(m) / len(m) if m else math.nan
+```
+
+겹의 오차는 평균 편차 $\sum f\,m\,d(y, \hat\mu)/\sum f\,m$($m$은 `var_weights` × `trials`, $f$는 `freq_weights`)이고, `dev2`가 적합의 단위를 데이터의 단위로 돌려요. 겹의 적합 하나라도 분리되거나 수렴하지 않으면 그 후보 전체를 건너뛰어요. `best_subset`의 GLM 교차검증은 겹마다 학습 편차가 가장 작은 부분집합을 크기마다 골라 그 시험 오차를 평균해요(선형의 다시 찾기와 같은 뜻이에요).
+
+## fit은 같은 열로 부른 적합
+
+결과의 `fit`은 선택이 만든 값에서 꾸미지 않아요. 고른 항의 열을 X의 순서로 모아 `call`로 모형 함수를 부른 결과 그대로예요.
+
+```python
+    # src/stardust/regression/_select.py
+    def result(chosen, steps, skipped):
+        xc = _x_columns(terms_l, chosen)
+        return StepwiseResult(xc, [cols.names[c] for c in xc], steps, call(xc), criterion, direction, skipped)
+```
+
+여기의 `call`은 고른 열이 전체 모형의 열(X의 모든 항)이면 처음에 맞춘 전체 모형을 그대로 돌려줘요. 같은 열, 같은 옵션의 같은 호출이라 결과가 같고, 큰 $n$에서 적합 하나를 덜어요.
+
+```python
+    # src/stardust/regression/_select.py (_setup)
+    def call_or_full(cs):
+        # the full model's columns: its fit (the same call, so the same result) instead of a refit
+        return full if list(cs) == list(range(cols.p)) else call(cs)
+```
+
+그래서 `fit`의 모든 필드(계수, 표준오차, `cov_type`에 따른 강건 공분산, 진단)는 같은 y, 같은 열, 같은 옵션으로 모형 함수를 부른 것과 비트까지 같아요. 다른 것은 계수 이름뿐이에요. 기준은 `cov_type`을 쓰지 않아요. AIC, BIC, 부분 F, 우도비, 교차검증 오차는 모두 모형의 우도와 제곱합의 값이라, 공분산은 `fit`의 추론에만 들어가요.
+
+선형 모형의 걸음별 기준값은 삼각 인자의 갱신에서 나와 `fit.aic`와 반올림 수준에서 다를 수 있지만, `fit` 자체는 갱신을 거치지 않아요. GLM은 후보가 `glm` 자체라 기준값도 비트까지 같아요.
+
+`nan_policy='propagate'`(기본)에서 자료에 NaN이 있으면 걸음 없이 `stepwise`는 시작 모형, `best_subset`은 전체 모형의 NaN 적합을 `fit`으로 돌려줘요. 전체 모형의 `_isnan()`으로 미리 보고, 삼각 인자를 만들지 않아요.
+
+## R·scikit-learn과 다른 점
+
+| 대상 | 그쪽의 계산 | stardust |
+|---|---|---|
+| R `step`(`MASS::stepAIC`) | 걸음마다 `drop1`·`add1` 표를 AIC로 정렬해 첫 줄이 지금 모형이 아니면 옮기고, 옮긴 AIC가 지금 AIC + $10^{-7}$ 이상이면 멈춰요. 동률은 표의 앞 줄(지금 모형, 빼기, 넣기 순) | $10^{-7}$보다 크게 줄 때만 옮겨요. 동률은 열 순서가 앞인 항이고, 지금 모형은 줄지 않으면 이겨요 |
+| R의 AIC | `extractAIC`, lm은 $n\log(\mathrm{RSS}/n) + 2\,\text{edf}$이고 $n$은 `length(residuals)` | 결과의 `aic`(우도 그대로). 같은 행이면 후보끼리 상수만 달라 고르는 모형이 같아요. 가중치 0인 행이 있으면 R은 그 행도 $n$에 세어 AIC 차이가 $n$의 비만큼 달라요 |
+| R `add1.lm`·`drop1.lm` | 후보마다 `lm.fit`(설계 전체의 QR)으로 다시 적합해요 | 삼각 인자 하나의 갱신이라 후보 하나가 n과 상관없어요 |
+| R `add1`·`drop1`의 `test = "F"` | 큰 모형의 척도로 나눈 부분 F | 같아요 |
+| R의 항 | 공식의 항, 주효과와 상호작용의 계층을 지켜요 | `terms`의 열 묶음, 계층은 없어요 |
+| R `add1.glm`·`drop1.glm` | 후보마다 `glm.fit`을 시작값 없이. 표의 AIC는 편차/지금 모형의 산포 | 후보마다 `glm_fit`을 시작값 없이. 기준은 후보 자신의 `aic` |
+| leaps `regsubsets(method = "exhaustive")` | Miller의 Fortran. 행을 한 번 읽는 Givens 갱신(AS 274의 `d`, `rbar`, `thetab`)으로 삼각 인자를 만들고 leaps and bounds. `nvmax` 기본 8, 변수가 50개를 넘으면 `really.big` | 전체 모형을 모형 함수로 적합하고 $y - e$의 Householder 삼각 인자 위에서 같은 탐색. 크기는 모든 열까지, 처음 순서는 뺄 때의 비용, 여러 열의 항 |
+| leaps의 Cp·수정 결정계수 | `summary.regsubsets`: $C_p = \mathrm{RSS}/\hat\sigma^2 - (n - 2\cdot\text{모수 수})$, $\hat\sigma^2$은 모든 변수의 모형 | 같아요 |
+| scikit-learn `SequentialFeatureSelector` | 첫 걸음은 늘 옮겨요(이전 점수가 $-\infty$). `tol`이 없으면 열의 절반을 골라요. 후보마다 `cross_val_score`로 겹마다 다시 적합해요(기본 점수는 겹마다의 결정계수, 겹은 섞지 않는 `KFold`). 방향은 앞으로나 뒤로 하나 | 시작 모형과 견줘 나아질 때만 옮기고, 오차는 가중 평균 제곱오차의 겹 평균이에요. 후보의 겹 적합은 삼각 인자의 갱신이고, `'both'`가 있어요 |
+
+scikit-learn에 같은 겹(`cv=`)과 `scoring='neg_mean_squared_error'`, 아주 작은 `tol`을 주면 앞으로·뒤로 모두 같은 열을 골라요. 첫 걸음이 나아지지 않는 자료에서는 scikit-learn이 그래도 옮기므로 달라요.
+
+## 정확도
+
+Arb(구간 산술)로 만든 참값은 문제마다 모든 부분집합의 SSR, 우도, AIC, BIC(선형은 겹마다의 학습 SSR과 시험 오차, 교차검증 오차까지)를 정의대로 계산하고, 그 값으로 `stepwise`(방향 셋 × 기준)와 `best_subset`(기준 다섯)이 고를 걸음과 부분집합을 시뮬레이션해 둔 것이에요. 문제는 선형 넷(공선이 조금 있는 OLS, 가중치 0이 있는 WLS, 절편 없음, $\kappa \approx 2.3 \times 10^5$)과 GLM 셋(이항 logit, 포아송 log, 감마 log)이에요. 모든 걸음과 부분집합이 참값의 선택과 같고, 걸음마다·크기마다의 기준값의 최대 상대오차는 이래요(`bench/regression/accuracy.md`의 `selection/*` 행). $C_p$ 열만은 $n$에 대한 상대오차 $\lvert\Delta\rvert/n$이에요.
+
+| 문제 | AIC·BIC | $C_p$ | 수정 결정계수 | 교차검증 오차 |
+|---|---:|---:|---:|---:|
+| ols | 2.5e-16 | 3.1e-16 | 4.2e-16 | 9.9e-17 |
+| wls_zero (가중치 0 포함) | 1.3e-16 | 3.1e-16 | 1.7e-16 | 3.2e-16 |
+| noint (절편 없음) | 2.0e-16 | 1.5e-16 | 3.0e-16 | 3.1e-16 |
+| cond ($\kappa \approx 2.3 \times 10^5$) | 1.4e-16 | 8.0e-16 | 8.8e-16 | 3.0e-12 |
+| glm_logit | 1.1e-16 | | | |
+| glm_poisson | 6.1e-17 | | | |
+| glm_gamma | 5.5e-17 | | | |
+
+- AIC·BIC는 조건이 나쁜 cond에서도 반올림 수준이에요. $y - e$의 삼각 인자 덕에 SSR의 반올림이 전체 모형보다 늘어난 양에 비례하기 때문이에요.
+- $C_p = \mathrm{SSR}/\hat\sigma^2 - n + 2k$는 크기가 $n$인 항들의 차라서, $C_p$ 자신에 대한 상대오차는 $C_p$가 0에 가까울 때 뜻이 없어요. 그래서 $n$에 대한 상대오차로 재요. $C_p$에 대한 상대오차로는 가장 큰 것이 noint의 $4.7\times10^{-15}$예요.
+- 교차검증 오차는 겹의 학습 적합을 반복 개선하지 않는 삼각 풀이로 구해 cond에서 $\kappa u$ 꼴($3 \times 10^{-12}$)이에요. 다른 문제는 반올림 수준이에요.
+- GLM의 기준값은 후보가 `glm` 자체라 그 적합의 `aic`·`bic`와 비트까지 같고, 참값과는 0–1ulp예요.
+
+## 참고 문헌
+
+1. G. M. Furnival, R. W. Wilson, "Regressions by leaps and bounds", *Technometrics* 16(4), 499–511, 1974. doi:10.1080/00401706.1974.10489231
+2. A. J. Miller, *Subset Selection in Regression*, 2nd ed., Chapman & Hall/CRC, 2002. doi:10.1201/9781420035933
+3. A. J. Miller, "Algorithm AS 274: Least squares routines to supplement those of Gentleman", *Applied Statistics* 41(2), 458–478, 1992. doi:10.2307/2347583
+4. C. L. Mallows, "Some comments on Cp", *Technometrics* 15(4), 661–675, 1973. doi:10.1080/00401706.1973.10489103
+5. H. Akaike, "A new look at the statistical model identification", *IEEE Transactions on Automatic Control* 19(6), 716–723, 1974. doi:10.1109/TAC.1974.1100705
+6. G. Schwarz, "Estimating the dimension of a model", *The Annals of Statistics* 6(2), 461–464, 1978. doi:10.1214/aos/1176344136
+7. Å. Björck, *Numerical Methods for Least Squares Problems*, SIAM, 1996. doi:10.1137/1.9781611971484 (수정 반정규식, 삼각 인자의 갱신)
+8. W. N. Venables, B. D. Ripley, *Modern Applied Statistics with S*, 4th ed., Springer, 2002. (R `step`·`stepAIC`)
+9. G. James, D. Witten, T. Hastie, R. Tibshirani, *An Introduction to Statistical Learning*, 2nd ed., Springer, 2021, 6.5절.

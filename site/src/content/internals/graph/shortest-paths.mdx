@@ -1,0 +1,615 @@
+---
+title: 최단 경로의 정의와 계산
+group: 경로
+order: 1
+summary: 최단 거리를 원점에서부터 차례로 더한 합의 최솟값으로 정의하면 Dijkstra, Bellman–Ford, Johnson, 힙 없는 밀집 Dijkstra가 모두 같은 비트에 닿는 까닭, 4진 색인 힙, Johnson의 퍼텐셜을 우선순위에만 쓰는 방법, 거리만으로 정하는 선행 노드 규칙과 그것이 언제나 트리인 까닭, 모든 방법이 함께 쓰는 음수 순환 검사, 원점 태스크와 construct_dist_matrix를 설명해요.
+seeAlso: [overview, floyd-warshall, yen, centrality]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import PlaneFig from '../../../components/fig/PlaneFig.astro';
+
+export const spPts = [[0, 1], [3, 1], [2, 1], [-1, 1], [1, 2], [1, 0]];
+export const spMain = [[0, 1, 1, 2], [0, 1, 1, 0], [1, 2, 2, 1], [2, 1, 3, 1]];
+export const spSoft = [[1, 0, 2, 1]];
+export const spFaint = [[-1, 1, 0, 1]];
+
+## 한눈에 보기
+
+[`shortest_path`](/api/graph/shortest_path/)의 방법 다섯 가운데 `'D'`, `'BF'`, `'J'`, `'auto'`와 [`dijkstra`](/api/graph/dijkstra/), [`bellman_ford`](/api/graph/bellman_ford/), [`johnson`](/api/graph/johnson/)은 같은 입력에서 거리와 선행 노드가 비트까지 같아요. 방법은 빠르기만 바꿔요. 이 쪽은 그것이 어떻게 서는지를 따라가요.
+
+1. 거리를 알고리즘이 아니라 식으로 정해요. 원점에서 $v$까지의 거리는 $v$로 가는 경로의 무게를 **원점에서부터 차례로** 더한 float64 값 가운데 가장 작은 것이에요.
+2. 이 값은 이완 방정식의 가장 작은 고정점이라서, 이완만 하다가 더 이완할 변이 없을 때 멈추는 알고리즘은 이완의 순서와 상관없이 모두 여기에 닿아요.
+3. 선행 노드는 거리만 보고 정해요. 거리에 꼭 맞는 변 가운데, 원점에서 변 수가 가장 적고 그다음 번호가 가장 작은 것이에요.
+4. 음수 순환은 모든 방법이 같은 검사 하나로 찾아요. 그래서 에러 메시지의 노드도 방법과 무관해요.
+
+`'FW'`와 [`floyd_warshall`](/api/graph/floyd_warshall/)만 경로를 가운데에서 잇는 합이라 따로 다뤄요([블록 Floyd–Warshall](/internals/graph/floyd-warshall/)).
+
+## 거리의 정의
+
+원점 $s$에서 $v$로 가는 경로 $p = (s = v_0, v_1, \ldots, v_k = v)$의 변 무게를 $w_1, \ldots, w_k$라 할 때, 그 경로의 길이를 이렇게 정해요.
+
+$$
+L(p) = \mathrm{fl}(\cdots\mathrm{fl}(\mathrm{fl}(0 + w_1) + w_2) \cdots + w_k)
+$$
+
+왼쪽부터 한 변씩 더하고 덧셈마다 반올림해요($0 + w_1 = w_1$은 정확해요). 거리는 $\hat d(v) = \min_p L(p)$이고 원점은 $0$, 닿지 않는 노드는 $\infty$예요. 이 정의는 원점에서 한 걸음씩 나아가는 탐색이 자연스럽게 계산하는 값이고, 정확한 실수 합과는 반올림만큼 달라요. 그 차이의 한계는 [정확도와 성능](/internals/graph/accuracy-performance/)에 있어요.
+
+### 이완의 고정점
+
+이완은 변 $(u, v)$를 보고 $d(v) \leftarrow \min(d(v),\ \mathrm{fl}(d(u) + w(u, v)))$로 고치는 일이에요. 원점을 $0$, 나머지를 $\infty$로 두고 이완만 되풀이하다가 어떤 변으로도 값이 줄지 않을 때 멈추는 알고리즘을 생각해 볼게요. 그 끝값 $d$는 언제나 $\hat d$와 같아요.
+
+- **$d \ge \hat d$**: 알고리즘이 쥐는 값은 언제나 어떤 경로의 $L$이에요. 처음 값 $0$은 길이 0의 경로이고, $d(u) = L(q)$일 때 이완이 쓰는 $\mathrm{fl}(d(u) + w)$는 $q$에 변 $(u, v)$를 이은 경로의 $L$이에요. 그러니 끝값도 어떤 경로의 길이이고, 가장 작은 길이보다 작을 수 없어요.
+- **$d \le \hat d$**: 끝났을 때는 모든 변에서 $d(v) \le \mathrm{fl}(d(u) + w)$예요. 아무 경로 $p$를 잡고 앞에서부터 $d(v_i) \le L(v_0, \ldots, v_i)$를 보여요. $i = 0$이면 $0 \le 0$이고, 그다음은
+  $$
+  d(v_{i+1}) \le \mathrm{fl}(d(v_i) + w_{i+1}) \le \mathrm{fl}(L(v_0, \ldots, v_i) + w_{i+1}) = L(v_0, \ldots, v_{i+1})
+  $$
+  이에요. 가운데 부등식은 반올림이 단조라서 서요($x \le y$면 $\mathrm{fl}(x + w) \le \mathrm{fl}(y + w)$). 모든 경로에서 $d(v) \le L(p)$이니 $d(v) \le \hat d(v)$예요.
+
+두 부등식에서 $d = \hat d$예요. 이완의 순서는 증명 어디에도 나오지 않아요. 이 성질 덕분에 Dijkstra, Bellman–Ford, Johnson, 밀집 Dijkstra를 섞어 써도 거리가 비트까지 같아요.
+
+음이 아닌 무게에서는 한 가지가 더 서요. $w \ge 0$이면 $\mathrm{fl}(x + w) \ge x$라서(정확한 합이 $x$ 이상이고, $x$ 자신이 double이니 반올림도 $x$ 아래로 내려가지 않아요) 순환을 돌아도 길이가 줄지 않아요. 그래서 최솟값이 단순 경로에서 나오고, 키가 작은 노드부터 확정하는 Dijkstra의 정당성이 반올림 아래에서도 그대로 서요.
+
+## 네 가지 계산
+
+### 4진 색인 힙의 Dijkstra
+
+음수 무게가 없으면 Dijkstra를 써요. 큐는 노드마다 한 칸인 **색인 힙**이에요. `pos[v]`가 노드 $v$의 힙 안 자리를 쥐고 있어서, 더 작은 키가 오면 같은 항목을 그 자리에서 위로 올려요.
+
+```cpp
+    // csrc/graph/paths.hpp
+    void q_set(int64_t v, double k) {
+        int64_t i = pos[static_cast<size_t>(v)];
+        if (i < 0) i = hn++;
+        while (i > 0) {
+            const int64_t p = (i - 1) >> 2;
+            if (!(k < hk[static_cast<size_t>(p)])) break;
+            place(i, hk[static_cast<size_t>(p)], hv[static_cast<size_t>(p)]);
+            i = p;
+        }
+        place(i, k, v);
+    }
+    Item q_pop() {
+        const Item top{hk[0], hv[0]};
+        pos[static_cast<size_t>(top.v)] = -1;
+        if (--hn > 0) {
+            const double k = hk[static_cast<size_t>(hn)];
+            const int64_t v = hv[static_cast<size_t>(hn)];
+            int64_t i = 0;
+            for (;;) {
+                const int64_t c = 4 * i + 1;
+                if (c >= hn) break;
+                int64_t m = c;
+                for (int64_t x = c + 1, e = std::min(c + 4, hn); x < e; ++x)
+                    if (hk[static_cast<size_t>(x)] < hk[static_cast<size_t>(m)]) m = x;
+                if (!(hk[static_cast<size_t>(m)] < k)) break;
+                place(i, hk[static_cast<size_t>(m)], hv[static_cast<size_t>(m)]);
+                i = m;
+            }
+            place(i, k, v);
+        }
+        return top;
+    }
+```
+
+흔한 구현은 키가 작아질 때마다 새 항목을 넣고 낡은 항목은 꺼낼 때 버려요(게으른 지우기). 그러면 힙의 크기가 변의 수까지 커지고 버릴 항목도 꺼내야 해요. 색인 힙은 크기가 노드 수를 넘지 않아요. 자식을 넷으로 두면 높이가 이진 힙의 절반이라 올리기가 짧고, 내리기에서 보는 자식 넷은 연속한 자리라 한 번에 캐시로 들어와요.
+
+```cpp
+// csrc/graph/paths.cpp
+void dijkstra(const WGraph& g, const int64_t* src, int64_t m, double limit, double* d, Work& w) {
+    const int64_t n = g.n;
+    std::fill(d, d + n, kInf);
+    for (int64_t i = 0; i < m; ++i) {
+        d[src[i]] = 0.0;
+        w.q_set(src[i], 0.0);
+    }
+    bool cut = false;
+    while (!w.q_empty()) {
+        const Work::Item it = w.q_pop();
+        const int64_t u = it.v;
+        const double du = it.key;
+        if (du > limit) {
+            d[u] = kInf;
+            cut = true;
+            break;
+        }
+        for (int64_t k = g.ip[u], e = g.ip[u + 1]; k < e; ++k) {
+            const int64_t v = g.ix[k];
+            const double t = du + g.weight(k);
+            if (t < d[v]) {  // never a node already taken: fl(du + w) >= du >= d(v) for w >= 0
+                d[v] = t;
+                w.q_set(v, t);
+            }
+        }
+    }
+    if (cut) {  // the nodes still queued are past the limit
+        for (int64_t i = 0; i < w.hn; ++i) d[w.hv[static_cast<size_t>(i)]] = kInf;
+        w.q_clear();
+    }
+}
+```
+
+꺼낸 노드 $u$의 행을 오름차순으로 훑으며 이완해요. 주석의 말처럼 이미 꺼낸 노드는 다시 줄지 않아요. 꺼낸 순서대로 키가 커지고 $\mathrm{fl}(d_u + w) \ge d_u$이기 때문이에요. `limit`을 넘는 키를 꺼내면 멈추고, 아직 큐에 남은 노드는 모두 `limit` 너머라 $\infty$로 돌려요. 경계는 넣어요(`du > limit`일 때만 멈춰요). `indices`를 여럿 주고 `min_only=True`면 모든 원점을 처음부터 큐에 넣고 한 번 돌아요.
+
+무게 없는 탐색(`unweighted=True`)은 무게 1의 차례 합이 곧 변의 수라서 너비 우선 한 번으로 구해요. 변의 수는 정수라 정확해요.
+
+### 큐 Bellman–Ford
+
+`'BF'`와 `bellman_ford`는 음수 무게도 받아요. 고전 Bellman–Ford는 $n - 1$번 동안 모든 변을 이완하지만, 여기서는 값이 바뀐 노드만 고리 큐에 넣고 그 노드의 행만 다시 봐요.
+
+```cpp
+// csrc/graph/paths.cpp
+bool bellman_ford(const WGraph& g, int64_t s, double* d, Work& w) {
+    const int64_t n = g.n;
+    std::fill(d, d + n, kInf);
+    std::fill(w.flag.begin(), w.flag.end(), uint8_t{0});
+    std::fill(w.count.begin(), w.count.end(), int64_t{0});
+    int64_t* ring = w.order.data();
+    int64_t head = 0, size = 1;
+    ring[0] = s;
+    d[s] = 0.0;
+    w.flag[static_cast<size_t>(s)] = 1;
+    while (size > 0) {
+        const int64_t u = ring[head];
+        head = head + 1 == n ? 0 : head + 1;
+        --size;
+        w.flag[static_cast<size_t>(u)] = 0;
+        const double du = d[u];
+        for (int64_t k = g.ip[u], e = g.ip[u + 1]; k < e; ++k) {
+            const int64_t v = g.ix[k];
+            if (v == u) continue;
+            const double t = du + g.weight(k);
+            if (!(t < d[v])) continue;
+            d[v] = t;
+            if (w.flag[static_cast<size_t>(v)]) continue;
+            if (++w.count[static_cast<size_t>(v)] > n) return false;
+            w.flag[static_cast<size_t>(v)] = 1;
+            int64_t tail = head + size;
+            if (tail >= n) tail -= n;
+            ring[tail] = v;
+            ++size;
+        }
+    }
+    return true;
+}
+```
+
+`flag`가 큐에 있는 노드를 표시해서 한 노드가 큐에 두 번 들어가지 않아요. 그래서 고리 큐의 크기 $n$이면 넉넉해요. 바뀐 노드만 보니 양수 무게에서는 너비 우선과 비슷한 양만 일하고, 최악은 고전 꼴과 같은 $O(nE)$예요. 한 노드가 $n$번 넘게 들어가면 `false`를 돌려요. 음수 순환은 계산 전에 따로 걸러 두므로([음수 순환](#음수-순환)) 이 갈래는 반올림이 만드는 드문 경우에만 써요.
+
+### Johnson: 퍼텐셜은 순서에만
+
+고전 Johnson 알고리즘은 퍼텐셜 $h$(가상 뿌리에서의 Bellman–Ford 거리)로 무게를 $w'(u, v) = w(u, v) + h(u) - h(v) \ge 0$으로 바꾸고, 바뀐 무게로 Dijkstra를 돌린 뒤 $d(v) = d'(v) - h(s) + h(v)$로 되돌려요. 정확한 산술에서는 맞지만 float64에서는 무게를 바꿀 때와 되돌릴 때 반올림이 들어가 거리가 차례 합과 달라져요.
+
+여기서는 퍼텐셜을 **우선순위에만** 써요. 거리는 원래 무게의 차례 합으로 쥐고, 큐의 키만 $d(v) - h(v)$예요.
+
+```cpp
+// csrc/graph/paths.cpp
+bool johnson(const WGraph& g, int64_t s, const double* h, double* d, Work& w) {
+    const int64_t n = g.n;
+    std::fill(d, d + n, kInf);
+    std::fill(w.count.begin(), w.count.end(), int64_t{0});
+    d[s] = 0.0;
+    w.q_set(s, 0.0 - h[s]);
+    while (!w.q_empty()) {
+        const int64_t u = w.q_pop().v;  // a node taken leaves the queue and comes back if d(u) drops
+        if (++w.count[static_cast<size_t>(u)] > n + 1) {
+            w.q_clear();
+            return false;
+        }
+        const double du = d[u];
+        for (int64_t k = g.ip[u], e = g.ip[u + 1]; k < e; ++k) {
+            const int64_t v = g.ix[k];
+            if (v == u) continue;
+            const double t = du + g.weight(k);
+            if (!(t < d[v])) continue;
+            d[v] = t;
+            w.q_set(v, t - h[v]);
+        }
+    }
+    return true;
+}
+```
+
+정확한 산술이라면 키 $d(v) - h(v)$는 바뀐 무게의 거리 $d'(v) - h(s)$와 같아서 Dijkstra처럼 키가 커지는 순서로 꺼내지고 노드마다 한 번이면 끝나요. 반올림 때문에 순서가 조금 어긋나면 이미 꺼낸 노드의 거리가 나중에 줄 수 있어요. 그때는 그 노드를 다시 넣어요. 이완만 하다가 멈추니 끝값은 앞의 고정점 그대로이고, 퍼텐셜이 좋으면 다시 넣기는 드물어요. 한 노드를 $n + 1$번 넘게 꺼내면 `false`예요. 퍼텐셜 $h$는 음수 순환 검사가 남긴 값을 그대로 써요.
+
+음수 무게가 없으면 `'J'`는 퍼텐셜 없이 Dijkstra를 불러요. 같은 고정점이니 결과도 같아요.
+
+### 힙 없는 밀집 Dijkstra
+
+`method='auto'`는 음수 무게가 있으면 `'J'`, 없으면 `'D'`예요. 다만 음수 무게가 없고 `indices`를 주지 않았고 저장된 원소가 $n^2/4$개 이상이면, 같은 정의를 밀집 행렬 위에서 계산하는 힙 없는 Dijkstra로 해요.
+
+```python
+    # src/stardust/graph/_paths.py
+    if method == "D":
+        _no_negative(name, negative, "use method='BF', 'J' or 'auto'")
+    src, flat = _sources(indices, n, name)
+    code = method
+    if method == "auto":
+        dense = src is None and n > 0 and 4 * ix.size >= n * n
+        code = "J" if negative else ("dense" if dense else "D")
+    return _paths(name, n, indptr, ix, data, src, flat, code, directed, unweighted, preds, math.inf, False, negative)
+```
+
+밀도가 높으면 노드 하나를 꺼낼 때마다 이웃이 노드 수에 가깝게 많아서 힙을 고치는 일이 커져요. 그럴 때는 힙 대신 길이 $n$의 키 배열을 두고, 꺼낸 노드의 행 이완과 다음 노드 찾기를 한 번의 훑기로 해요.
+
+```cpp
+// csrc/graph/paths.cpp
+void dense_dijkstra(const double* W, int64_t n, int64_t s, double* d, double* key) {
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    std::fill(key, key + n, kInf);
+    std::fill(d, d + n, kInf);
+    key[s] = 0.0;
+    int64_t u = s;
+    double du = 0.0;
+    for (int64_t step = 0; step < n; ++step) {
+        d[u] = du;
+        key[u] = nan;
+        const double* row = W + u * n;
+        const float64x2_t vdu = vdupq_n_f64(du);
+        double best = kInf;
+        int64_t best_block = -1, arg = -1;
+        int64_t j = 0;
+        for (; j + 64 <= n; j += 64) {
+            float64x2_t m0 = vdupq_n_f64(kInf), m1 = m0, m2 = m0, m3 = m0;
+            for (int q = 0; q < 64; q += 8) {
+                const int64_t o = j + q;
+                const float64x2_t k0 = vminq_f64(vld1q_f64(key + o), vaddq_f64(vdu, vld1q_f64(row + o)));
+                const float64x2_t k1 = vminq_f64(vld1q_f64(key + o + 2), vaddq_f64(vdu, vld1q_f64(row + o + 2)));
+                const float64x2_t k2 = vminq_f64(vld1q_f64(key + o + 4), vaddq_f64(vdu, vld1q_f64(row + o + 4)));
+                const float64x2_t k3 = vminq_f64(vld1q_f64(key + o + 6), vaddq_f64(vdu, vld1q_f64(row + o + 6)));
+                vst1q_f64(key + o, k0);
+                vst1q_f64(key + o + 2, k1);
+                vst1q_f64(key + o + 4, k2);
+                vst1q_f64(key + o + 6, k3);
+                m0 = vminnmq_f64(m0, k0);
+                m1 = vminnmq_f64(m1, k1);
+                m2 = vminnmq_f64(m2, k2);
+                m3 = vminnmq_f64(m3, k3);
+            }
+            const double bm = vminnmvq_f64(vminnmq_f64(vminnmq_f64(m0, m1), vminnmq_f64(m2, m3)));
+            if (bm < best) {
+                best = bm;
+                best_block = j;
+            }
+        }
+        for (int64_t t = j; t < n; ++t) {  // the tail, one at a time (a NaN key stays NaN)
+            const double kt = key[t];
+            if (kt != kt) continue;
+            const double k = std::min(kt, du + row[t]);
+            key[t] = k;
+            if (k < best) {
+                best = k;
+                best_block = -1;
+                arg = t;
+            }
+        }
+        if (!(best < kInf)) break;  // the rest is unreachable
+        if (best_block >= 0)
+            for (arg = best_block; !(key[arg] == best); ++arg) {}
+        u = arg;
+        du = best;
+    }
+}
+```
+
+밀집 행렬 `W`는 변이 없는 자리와 대각이 $+\infty$예요. 꺼낸 노드의 키를 NaN으로 두는 것이 이 커널의 요령이에요. NEON의 두 최솟값 명령이 NaN을 다르게 다뤄요.
+
+- `vminq_f64`(FMIN)는 한쪽이 NaN이면 NaN을 내요. 그래서 `min(key, du + w)`가 꺼낸 노드의 키를 NaN 그대로 두어, 가림 배열 없이도 확정한 노드를 건드리지 않아요.
+- `vminnmq_f64`(FMINNM)는 NaN을 건너뛰고 다른 쪽을 내요. 그래서 블록 64칸의 최솟값을 구할 때 꺼낸 노드가 저절로 빠져요.
+
+훑기는 64칸 블록마다 최솟값만 기억하고, 가장 작은 블록을 찾은 뒤 그 블록 안에서 키가 그 값과 같은 첫 자리를 다시 찾아요. 키가 같은 노드가 여럿이면 번호가 작은 것을 먼저 꺼내지만, 앞의 증명대로 꺼내는 순서는 끝값을 바꾸지 않아요. 이 커널도 이완만 하니 결과가 힙 Dijkstra와 비트까지 같아요.
+
+```python
+>>> import math
+>>> import stardust as sd
+>>> g = sd.graph
+>>> rng = sd.random.default_rng(5)
+>>> W = rng.random((200, 200)) * (rng.random((200, 200)) < 0.4)
+>>> a = g.shortest_path(W, return_predecessors=True)
+>>> d = g.shortest_path(W, method="D", return_predecessors=True)
+>>> a.dist_matrix.tolist() == d.dist_matrix.tolist(), a.predecessors.tolist() == d.predecessors.tolist()
+(True, True)
+```
+
+## 선행 노드
+
+거리가 정해져도 선행 노드는 하나로 정해지지 않아요. 같은 거리로 닿는 길이 여럿일 수 있어서예요. 알고리즘이 먼저 찾은 쪽을 고르면 방법마다 답이 달라져요. 그래서 선행 노드도 거리만으로 정해요.
+
+1. **꼭 맞는 변**의 집합 $T = \{(u, v) : \mathrm{fl}(\hat d(u) + w(u, v)) = \hat d(v),\ u \ne v\}$를 만들어요. 비교는 정확한 같음이에요.
+2. $T$ 위에서 원점으로부터의 너비 우선 변 수 $h(v)$를 매겨요.
+3. $\mathrm{pred}(v) = \min\{u : (u, v) \in T,\ h(u) = h(v) - 1\}$이에요. 원점과 닿지 않는 노드는 $-9999$예요.
+
+```cpp
+// csrc/graph/paths.cpp
+void predecessors(
+    const WGraph& g, const double* d, const int64_t* src, int64_t m, int64_t* pred, int64_t* source_of, Work& w
+) {
+    const int64_t n = g.n;
+    int64_t* level = w.level.data();
+    int64_t* order = w.order.data();
+    std::fill(level, level + n, int64_t{-1});
+    std::fill(pred, pred + n, kNoNode);
+    int64_t qn = 0;
+    for (int64_t i = 0; i < m; ++i) {
+        if (level[src[i]] != 0) {
+            level[src[i]] = 0;
+            order[qn++] = src[i];
+        }
+    }
+    for (int64_t h = 0; h < qn; ++h) {
+        const int64_t u = order[h];
+        const double du = d[u];
+        const int64_t lu = level[u];
+        for (int64_t k = g.ip[u], e = g.ip[u + 1]; k < e; ++k) {
+            const int64_t v = g.ix[k];
+            const double dv = d[v];
+            if (v == u || !(dv < kInf) || du + g.weight(k) != dv) continue;
+            const int64_t lv = level[v];
+            if (lv < 0) {
+                level[v] = lu + 1;
+                pred[v] = u;
+                order[qn++] = v;
+            } else if (lv == lu + 1 && u < pred[v]) {
+                pred[v] = u;
+            }
+        }
+    }
+    if (source_of) {
+        std::fill(source_of, source_of + n, kNoNode);
+        for (int64_t i = 0; i < qn; ++i) {
+            const int64_t v = order[i];
+            source_of[v] = pred[v] == kNoNode ? v : source_of[pred[v]];
+        }
+    }
+}
+```
+
+$T$ 위의 너비 우선 하나로 세 단계를 함께 해요. 큐에서 꺼낸 $u$의 행을 훑다가 꼭 맞는 변 $(u, v)$를 만나면, $v$를 처음 보는 경우 층 $h(u) + 1$과 선행 노드 $u$를 적고 큐에 넣어요. 이미 층 $h(u) + 1$에 있는 $v$면 번호가 더 작은 $u$로 바꿔요. 너비 우선은 층의 순서로 노드를 꺼내니, $v$보다 한 층 위의 노드는 모두 $v$의 층이 끝나기 전에 자기 행을 훑어요. 후보를 하나도 빠뜨리지 않아요. 비용은 원점마다 $O(n + E)$의 한 번 훑기예요.
+
+이 규칙에서 두 가지가 따라 나와요.
+
+- **선행 노드 그래프는 언제나 트리예요.** $h(\mathrm{pred}(v)) = h(v) - 1$이라 사슬을 따라가면 $h$가 하나씩 줄어 원점($h = 0$)에서 끝나요. 순환이 생길 수 없어요.
+- **거리는 선행 경로의 차례 합과 같아요.** $T$의 정의에서 $\hat d(v) = \mathrm{fl}(\hat d(\mathrm{pred}(v)) + w)$이니, 원점부터 사슬을 따라 차례로 더하면 한 걸음마다 $\hat d$가 그대로 나와요.
+
+"같은 거리의 가장 작은 번호"만 보는 규칙이면 첫째가 깨져요. 무게 0의 변(희소 행렬의 저장된 0)이 두 방향에 있으면 두 노드가 서로 꼭 맞는 변이 되기 때문이에요. 아래 그래프에서 노드 1과 2는 무게 0의 변으로 서로 이어져 거리가 같아요. 번호만 보면 $\mathrm{pred}(2) = 1$, $\mathrm{pred}(1) = 2$가 되어 둘 다 원점으로 돌아가지 않아요. 변 수를 먼저 보면 $h(2) = 2$, $h(1) = 3$이라 노드 1의 선행 노드만 2가 되고, 노드 2는 한 층 위의 4와 5 가운데 작은 4를 골라요. 반올림이 작은 무게를 삼키는 흡수($\mathrm{fl}(d + w) = d$)도 같은 상황을 만드는데, 같은 규칙이 함께 막아요.
+
+```python
+>>> rows, cols = [0, 0, 4, 5, 2, 1, 3], [4, 5, 2, 2, 1, 2, 0]
+>>> G = sd.sparse.coo_array(([1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 1.0], (rows, cols)), shape=(6, 6))
+>>> r = g.dijkstra(G, indices=0, return_predecessors=True)
+>>> r
+ShortestPathResult(dist_matrix=array([0.0, 2.0, 2.0, inf, 1.0, 1.0], dtype=float64), predecessors=array([-9999,     2,     4, -9999,     0,     0], dtype=int64))
+```
+
+<Fig caption="노드 0에서 본 거리와 선행 노드. 괄호 안은 (거리, 꼭 맞는 변 위의 변 수)예요. 변은 왼쪽에서 오른쪽으로 가고, 1과 2 사이는 두 방향 모두 무게 0이에요. 진한 선이 선행 노드 트리, 옅은 파란 선이 트리에 들지 않은 꼭 맞는 변, 회색 선이 원점에서 닿지 않는 변(3에서 0으로)이에요.">
+  <PlaneFig
+    label="노드 여섯 개의 그래프에서 노드 0부터의 거리, 변 수, 선행 노드 트리"
+    domain={[-1.6, 3.6]}
+    range={[-0.5, 2.5]}
+    width={480}
+    layers={[
+      { kind: 'segments', segs: spFaint, tone: 'faint', width: 1.5, dashed: true },
+      { kind: 'segments', segs: spSoft, tone: 'soft', width: 2 },
+      { kind: 'segments', segs: spMain, tone: 'main', width: 2.5 },
+      { kind: 'points', pts: spPts, tone: 'ink', size: 4, labels: ['0 (0, 0)', '1 (2, 3)', '2 (2, 2)', '3 (inf, -)', '4 (1, 1)', '5 (1, 1)'] },
+    ]}
+    legend={[
+      { label: '선행 노드 트리', tone: 'main', shape: 'line' },
+      { label: '그 밖의 꼭 맞는 변', tone: 'soft', shape: 'line' },
+      { label: '닿지 않는 변', tone: 'faint', shape: 'dash' },
+    ]}
+  />
+</Fig>
+
+모든 방법이 같은 $\hat d$에서 같은 $T$, $h$, $\mathrm{pred}$를 만들어요. 그래서 선행 노드도 방법과 무관해요.
+
+```python
+>>> outs = [g.shortest_path(G, method=m, indices=0, return_predecessors=True) for m in ("D", "BF", "J", "auto")]
+>>> [o.predecessors.tolist() for o in outs]
+[[-9999, 2, 4, -9999, 0, 0], [-9999, 2, 4, -9999, 0, 0], [-9999, 2, 4, -9999, 0, 0], [-9999, 2, 4, -9999, 0, 0]]
+```
+
+`min_only=True`는 모든 원점을 층 0에 두고 같은 너비 우선을 해요. 노드를 찾은 순서대로 선행 노드의 원점을 물려받으면 `sources`가 돼요.
+
+## 음수 순환
+
+음수 무게가 있으면 `'BF'`, `'J'`, `'auto'`(음수면 `'J'`), `yen`은 계산 전에 같은 검사 하나를 해요.
+
+1. 요청한 원점에서 패턴만 따라 닿는 노드를 모아요(`reach`, 너비 우선).
+2. 그 노드들을 무게 0의 변으로 잇는 가상 뿌리를 생각하고, 큐 Bellman–Ford를 돌려요. 가상 뿌리에서 한 걸음이면 모든 노드가 $0$이니, 처음 값을 모두 $0$으로 두고 닿는 노드를 오름차순으로 큐에 넣는 것과 같아요.
+3. 한 노드가 닿는 노드 수 $r$보다 많이 큐에 들어가면, 부모 포인터를 따라가 순환을 찾아 그 순환의 가장 작은 노드를 알려요.
+
+```cpp
+// csrc/graph/paths.cpp
+int64_t parent_cycle(const std::vector<int64_t>& parent, int64_t v, std::vector<int64_t>& stamp, int64_t id) {
+    int64_t x = v;
+    while (x >= 0 && stamp[static_cast<size_t>(x)] != id) {
+        stamp[static_cast<size_t>(x)] = id;
+        x = parent[static_cast<size_t>(x)];
+    }
+    if (x < 0) return -1;
+    int64_t low = x;
+    for (int64_t y = parent[static_cast<size_t>(x)]; y != x; y = parent[static_cast<size_t>(y)]) low = std::min(low, y);
+    return low;
+}
+```
+
+```cpp
+// csrc/graph/paths.cpp
+int64_t negative_cycle(const WGraph& g, const std::vector<uint8_t>& in, std::vector<double>& h) {
+    const int64_t n = g.n;
+    h.assign(static_cast<size_t>(n), 0.0);
+    std::vector<int64_t> parent(static_cast<size_t>(n), -1), count(static_cast<size_t>(n), 0);
+    std::vector<int64_t> stamp(static_cast<size_t>(n), -1);
+    std::vector<int64_t> ring(static_cast<size_t>(std::max<int64_t>(n, 1)));
+    std::vector<uint8_t> inq(static_cast<size_t>(n), 0);
+    int64_t head = 0, size = 0, r = 0, checks = 0;
+    for (int64_t v = 0; v < n; ++v) {
+        if (!in[static_cast<size_t>(v)]) continue;
+        ++r;
+        ring[static_cast<size_t>(size++)] = v;
+        inq[static_cast<size_t>(v)] = 1;
+    }
+    while (size > 0) {
+        const int64_t u = ring[static_cast<size_t>(head)];
+        head = head + 1 == n ? 0 : head + 1;
+        --size;
+        inq[static_cast<size_t>(u)] = 0;
+        const double hu = h[static_cast<size_t>(u)];
+        for (int64_t k = g.ip[u]; k < g.ip[u + 1]; ++k) {
+            const int64_t v = g.ix[k];
+            const double w = g.weight(k);
+            if (v == u) {
+                if (w < 0) return u;  // a negative self loop is a cycle by itself
+                continue;
+            }
+            const double t = hu + w;
+            if (!(t < h[static_cast<size_t>(v)])) continue;
+            h[static_cast<size_t>(v)] = t;
+            parent[static_cast<size_t>(v)] = u;
+            if (inq[static_cast<size_t>(v)]) continue;
+            if (++count[static_cast<size_t>(v)] > r) {
+                // queued more often than a path of the marked nodes has edges: the parent pointers hold a
+                // cycle once the values keep dropping; look for it, and go on when it is not there yet
+                const int64_t c = parent_cycle(parent, v, stamp, checks++);
+                if (c >= 0) return c;
+                if (checks > r + 1) return v;  // never found: report the node that keeps dropping
+                count[static_cast<size_t>(v)] = 0;
+            }
+            inq[static_cast<size_t>(v)] = 1;
+            int64_t tail = head + size;
+            if (tail >= n) tail -= n;
+            ring[static_cast<size_t>(tail)] = v;
+            ++size;
+        }
+    }
+    return -1;
+}
+```
+
+횟수의 문턱이 $r$인 까닭은 이래요. 큐 Bellman–Ford를 "큐에 든 노드를 한 바퀴 다 꺼내는 것"을 한 회로 보면, $k$회가 끝났을 때 변 $k$개 이하의 경로가 주는 값은 모두 반영되어 있어요. 음수 순환이 없으면 최단 경로는 가상 뿌리에서 변 $r$개 이하이고, 한 노드는 한 회에 많아야 한 번 큐에 들어가요(`inq`). 그러니 순환이 없으면 어떤 노드도 $r$번 넘게 들어가지 않아요.
+
+부모 포인터의 순환은 음수 순환이에요. 정확한 산술로 보면, 부모 변 $(p, v)$는 $h(v)$를 $h(p) + w$로 정할 때 생기고 그 뒤 $h(p)$는 줄기만 하니 늘 $h(v) \ge h(p) + w$예요. 순환을 한 바퀴 돌며 더하면 왼쪽과 오른쪽의 $h$가 서로 지워져 $0 \ge \sum w$이고, 순환을 닫은 마지막 변은 그 순간 $h(v)$를 줄였으니 어딘가 엄밀한 부등식이 있어 $\sum w \lt 0$이에요. 다만 값이 줄기 시작한 직후에는 포인터가 아직 순환을 이루지 않았을 수 있어요. 그래서 찾지 못하면 그 노드의 횟수를 0으로 되돌리고 계속 가요. 음수 자기 고리는 그 자체로 순환이라 바로 알려요.
+
+이 검사는 정해진 순서로 한 번 훑는 직렬 계산이에요. 그래서 메시지의 노드가 방법과 스레드 수와 무관해요. 이 노드는 검사가 찾은 순환의 가장 작은 노드이고, 그래프의 모든 음수 순환 가운데 가장 작은 노드라는 뜻은 아니에요. 검사가 순환 없이 끝나면 $h$는 모든 변에서 $h(v) \le \mathrm{fl}(h(u) + w)$인 값이라 Johnson의 퍼텐셜로 그대로 써요.
+
+`'FW'`는 계산이 끝난 뒤 대각이 음수인 노드로 순환을 알아채고, 같은 검사를 모든 노드에서 돌려 노드를 정해요.
+
+```python
+>>> N = sd.sparse.coo_array(([1.0, -2.0, 1.0, 2.0], ([0, 1, 2, 0], [1, 2, 1, 3])), shape=(4, 4))
+>>> for f in (g.bellman_ford, g.johnson, g.shortest_path):
+...     try:
+...         f(N, indices=0)
+...     except g.NegativeCycleError as e:
+...         print(e)
+bellman_ford(): negative cycle through node 1
+johnson(): negative cycle through node 1
+shortest_path(): negative cycle through node 1
+>>> g.bellman_ford(N, indices=3).tolist()
+[inf, inf, inf, 0.0]
+```
+
+원점 3에서는 순환에 닿지 않으니 에러가 아니에요. 정확한 합이 음수인 순환은 언제나 걸려요. 정확한 합이 0인데 차례 합의 반올림이 계속 줄어드는 순환은 이론상 걸릴 수 있어요(정수 무게에서는 생기지 않아요). 검사가 그런 순환을 놓치고 원점마다의 탐색이 끝나지 않으면, 멈춘 원점 가운데 가장 작은 것에서 같은 검사를 다시 돌려 알려요.
+
+## 원점 태스크
+
+원점이 여럿이면(`indices`가 배열이거나 `None`) 원점마다 독립인 탐색이라 나눠 돌려요. 태스크 하나가 맡는 원점 수는 크기로만 정해요.
+
+```cpp
+            // csrc/graph/paths.cpp
+            std::atomic<int64_t> overflow{INT64_MAX};
+            // a task takes a few sources when one is small (the split depends on the sizes alone)
+            const int64_t per = std::max<int64_t>(1, std::min<int64_t>(64, 4096 / std::max<int64_t>(1, n + g.nnz())));
+            const int64_t ntasks = (rows + per - 1) / per;
+            auto task = [&](int64_t t) {
+                Work w(n);
+                std::vector<double> key(method == Method::Dense ? static_cast<size_t>(n) : 0);
+                for (int64_t r = t * per, e = std::min(rows, (t + 1) * per); r < e; ++r) {
+                    const int64_t s = src.p[r];
+                    double* d = D + r * n;
+                    bool ok = true;
+                    switch (method) {
+                        case Method::D: paths::dijkstra(g, &s, 1, limit, d, w); break;
+                        case Method::U: paths::bfs(g, &s, 1, limit, d, w); break;
+                        case Method::BF: ok = paths::bellman_ford(g, s, d, w); break;
+                        case Method::J:
+                            if (negative) ok = paths::johnson(g, s, h.data(), d, w);
+                            else paths::dijkstra(g, &s, 1, kInf, d, w);
+                            break;
+                        case Method::Dense: dense_dijkstra(W.data(), n, s, d, key.data()); break;
+                    }
+                    if (!ok) {
+                        int64_t cur = overflow.load();
+                        while (s < cur && !overflow.compare_exchange_weak(cur, s)) {}
+                        continue;
+                    }
+                    if (P) paths::predecessors(g, d, &s, 1, P + r * n, nullptr, w);
+                }
+            };
+            if (ntasks > 1 && work >= kParallelWork) parallel::parallel_for(ntasks, task);
+            else
+                for (int64_t t = 0; t < ntasks; ++t) task(t);
+```
+
+원점 하나에 드는 일이 $n + E$에 비례하니, 태스크 하나가 대략 4096만큼 일하도록 원점을 1–64개 묶어요. 원점마다 자기 행만 쓰고, 원점 하나의 답은 정의로 정해져 있어요. 나누는 방법도 스레드 수도 결과의 바이트를 바꾸지 않아요. 작업 공간(색인 힙, 층, 순서)은 태스크마다 한 벌이라 원점 사이에 다시 써요.
+
+```python
+>>> n0 = sd.get_num_threads()
+>>> res = []
+>>> for t in (1, 4, 10):
+...     sd.set_num_threads(t)
+...     res.append(g.johnson(W, indices=list(range(0, 200, 7)), return_predecessors=True).predecessors.tolist())
+>>> sd.set_num_threads(n0)
+>>> res[0] == res[1] == res[2]
+True
+```
+
+## construct_dist_matrix
+
+[`construct_dist_matrix`](/api/graph/reconstruct_path/)는 선행 노드 행렬이 그리는 경로를 따라 거리를 다시 계산해요. 경로를 **원점에서부터** 더해야 `shortest_path`의 거리와 비트가 같아요. 행 $i$마다 아직 거리를 모르는 노드에서 선행 노드를 따라 거슬러 올라가, 거리를 아는 노드에 닿으면 거기서부터 내려오며 더해요.
+
+```cpp
+            // csrc/graph/paths.cpp
+            for (int64_t j = 0; j < n; ++j) {
+                if (state[static_cast<size_t>(j)] >= 2) continue;
+                walk.clear();
+                int64_t x = j;
+                for (;;) {
+                    const uint8_t st = state[static_cast<size_t>(x)];
+                    if (st == 1) return fail(3, x, x);  // the predecessors go round
+                    if (st >= 2) break;
+                    state[static_cast<size_t>(x)] = 1;
+                    walk.push_back(x);
+                    if (p[x] == kNoNode) break;
+                    x = p[x];
+                }
+                if (state[static_cast<size_t>(x)] == 1) {  // x has no predecessor and is not i
+                    if (walk.size() > 1) return fail(4, j, x);
+                    state[static_cast<size_t>(x)] = 3;
+                    d[x] = null;
+                    continue;
+                }
+                if (state[static_cast<size_t>(x)] == 3) return fail(4, j, x);
+                for (size_t q = walk.size(); q-- > 0;) {  // from the end the path reached, toward j
+                    const int64_t v = walk[q], u = p[v];
+                    double w;
+                    if (!paths::edge_weight(g, u, v, w)) return fail(2, v, u);
+                    d[v] = d[u] + w;
+                    state[static_cast<size_t>(v)] = 2;
+                }
+            }
+```
+
+거슬러 오른 길을 거꾸로 걸으니 `d[u]`는 언제나 원점에서 `u`까지의 차례 합이고, `d[v] = d[u] + w`가 한 변을 더 이어요. 앞에서 본 대로 $\hat d(v) = \mathrm{fl}(\hat d(\mathrm{pred}(v)) + w)$이니 결과가 `shortest_path`의 거리와 같아요. 걷는 동안 상태를 표시해 두어 순환이나 원점이 아닌 곳에서 끝나는 사슬을 그 자리에서 알아채고, 없는 변은 이진 탐색(`edge_weight`)이 실패해서 알아요. 행마다 독립이라 $n^2 \ge 2^{15}$이면 행 하나를 태스크 하나로 나눠요. 틀린 선행 노드가 여럿이면 행 순서로 가장 앞선 것을 알려요.
+
+```python
+>>> P = sd.sparse.coo_array(([0.1, 0.2, 0.3], ([0, 2, 1], [2, 1, 3])), shape=(4, 4))
+>>> r = g.shortest_path(P, return_predecessors=True)
+>>> r.dist_matrix[0, 3], (0.1 + 0.2) + 0.3, 0.1 + (0.2 + 0.3)
+(0.6000000000000001, 0.6000000000000001, 0.6)
+>>> g.construct_dist_matrix(P, r.predecessors).tolist() == r.dist_matrix.tolist()
+True
+```
+
+경로 $0 \to 2 \to 1 \to 3$의 무게 $0.1, 0.2, 0.3$을 앞에서부터 더하면 `0.6000000000000001`, 뒤에서부터 더하면 `0.6`이에요. 거리는 앞에서부터의 합이고, `construct_dist_matrix`도 같은 순서로 더해요.
+
+[`reconstruct_path`](/api/graph/reconstruct_path/)는 선행 노드 하나의 배열을 트리로 만들어요. 변마다 이진 탐색으로 무게를 찾고, 노드를 오름차순으로 돌며 부모의 줄에 넣어 정렬 없이 표준 꼴 CSR을 만들어요.

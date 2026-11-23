@@ -1,0 +1,366 @@
+---
+kind: function
+title: fft와 ifft
+names: [fft, ifft]
+group: 복소 변환
+order: 1
+signatures:
+  - "sd.fft.fft(x, /, *, n=None, axis=-1, norm='backward')"
+  - "sd.fft.ifft(x, /, *, n=None, axis=-1, norm='backward')"
+summary: fft는 한 축을 따라 놓인 값의 줄을 주파수마다의 복소수 줄로 바꾸는 이산 푸리에 변환이고, ifft는 그것을 되돌리는 역변환이에요. 길이가 어떤 수여도 받고, 실수 입력이면 결과가 정확한 켤레 대칭이에요.
+params:
+  - name: x
+    type: ndarray
+    kind: positional-only
+    desc: 변환할 배열. 1차원 이상이고 bool, int64, float64, complex128을 받아요. bool과 int64는 float64로 바꿔 계산해요. 2차원 이상이면 axis를 따라 놓인 줄마다 따로 변환해요.
+  - name: n
+    type: int 또는 None
+    kind: keyword-only
+    desc: 변환의 길이. 1 이상이어야 해요. 입력의 그 축이 n보다 길면 앞의 n개만 쓰고, 짧으면 끝에 0을 채워요. None(기본값)이면 입력의 길이예요.
+  - name: axis
+    type: int
+    kind: keyword-only
+    desc: 변환할 축. 음수는 뒤에서 세요. 기본값은 마지막 축(-1)이에요.
+  - name: norm
+    type: "'backward', 'ortho' 또는 'forward'"
+    kind: keyword-only
+    desc: 정규화. 'backward'(기본값)는 fft에 1, ifft에 1/n을 곱하고, 'ortho'는 양쪽에 1/√n을, 'forward'는 fft에 1/n, ifft에 1을 곱해요.
+returns:
+  type: ndarray
+  desc: complex128 배열. 모양은 입력과 같고, n을 줬으면 그 축의 길이만 n이에요. 언제나 새 배열이에요.
+raises:
+  - type: TypeError
+    desc: x가 sd.ndarray가 아닐 때, n이 int나 None이 아닐 때(bool, float 포함), axis가 int가 아닐 때, norm이 문자열이 아닐 때, 옵션을 위치로 줬거나 모르는 키워드를 줬을 때.
+  - type: ValueError
+    desc: 변환할 축의 길이가 0일 때, n이 0 이하일 때, axis가 범위 밖일 때, norm이 세 값이 아닌 문자열일 때.
+  - type: OverflowError
+    desc: n이나 axis가 int64 범위 밖일 때.
+  - type: MemoryError
+    desc: n으로 요청한 결과가 기계의 메모리보다 클 때.
+seeAlso: [basics, rfft, fft2, fftn, hfft, fftfreq, fftshift, next_fast_len, dct]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import AccuracySummary from '../../../components/fig/AccuracySummary.astro';
+
+## 한눈에 보기
+
+`fft`는 값의 줄을 **주파수마다의 성분**으로 바꿔요. 결과의 칸 $k$는 줄 전체에서 $k$번 도는 물결이 입력에 얼마나 들어 있는지를 복소수 하나로 알려 줘요. `ifft`는 그 성분들에서 원래 줄을 다시 만들어요.
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([1.0, 2.0, 3.0, 4.0])
+>>> y = sd.fft.fft(x)
+>>> y
+array([(10+0j), (-2+2j), (-2+0j), (-2-2j)], dtype=complex128)
+>>> sd.fft.ifft(y)
+array([(1+0j), (2+0j), (3+0j), (4+0j)], dtype=complex128)
+```
+
+칸 0의 10은 네 값의 합이에요. 결과는 입력이 실수여도 언제나 복소수(complex128)예요. 푸리에 변환을 처음 본다면 [푸리에 변환 영역의 기본](/api/fft/basics/)을 먼저 읽어 보세요.
+
+<Reference />
+
+## 무엇을 계산하나요
+
+길이 $n$인 줄 $x_0, \dots, x_{n-1}$에 대해 `fft`와 `ifft`는 이 합을 계산해요(`norm='backward'`일 때).
+
+$$
+\texttt{fft:}\quad y_k = \sum_{j=0}^{n-1} x_j \, e^{-2\pi i\, jk/n}
+\qquad\qquad
+\texttt{ifft:}\quad x_j = \frac{1}{n} \sum_{k=0}^{n-1} y_k \, e^{+2\pi i\, jk/n}
+$$
+
+두 식은 지수의 부호와 $1/n$만 달라요. $e^{2\pi i\,jk/n}$은 복소평면의 단위원 위를 $j$가 0에서 $n$까지 가는 동안 $k$바퀴 도는 점이에요. `fft`는 입력을 이 회전들과 견주고, `ifft`는 회전들을 $y_k$만큼씩 더해 입력을 다시 만들어요.
+
+정의대로 더하면 곱셈이 $n^2$번 들지만, 실제 계산은 $n \log n$에 비례하는 횟수로 끝나요. 길이가 2의 거듭제곱이 아니어도, 소수여도 그래요.
+
+## 결과 읽기
+
+### 칸과 주파수
+
+1초 동안 8번 잰 신호를 생각해 봐요. 1초에 2번 오르내리는 코사인 물결을 넣으면 이렇게 나와요.
+
+```python
+>>> c = sd.asarray([1.0, 0.0, -1.0, 0.0, 1.0, 0.0, -1.0, 0.0])
+>>> sd.fft.fft(c)
+array([    0j,     0j, (4+0j),    -0j,     0j,     0j, (4-0j),    -0j], dtype=complex128)
+```
+
+칸 2와 칸 6에 4가 있고 나머지는 0이에요. 칸 2는 1초에 2번 도는 회전이고, 칸 6은 **거꾸로** 2번 도는 회전이에요. 8칸에서 6번 도는 것과 거꾸로 2번 도는 것은 표본 자리에서 같은 값이기 때문이에요. 실수 코사인은 반대로 도는 두 회전의 평균이라서 두 칸이 반씩 나눠 가져요. 크기 1의 물결이 칸마다 $n/2 = 4$로 보여요.
+
+결과의 앞쪽 절반은 0과 양의 주파수이고, 뒤쪽 절반은 음의 주파수예요. 칸마다의 주파수는 [`fftfreq`](/api/fft/fftfreq/)가 알려 줘요. 둘째 인자 `d`는 표본 사이의 간격(여기서는 1/8초)이에요.
+
+```python
+>>> sd.fft.fftfreq(8, d=1 / 8)
+array([ 0.0,  1.0,  2.0,  3.0, -4.0, -3.0, -2.0, -1.0], dtype=float64)
+```
+
+<Fig caption="길이 8인 결과의 칸 번호와 그 칸의 주파수. 앞쪽은 0과 양의 주파수, 뒤쪽은 음의 주파수예요. 짝수 길이에서 가운데 칸(여기서는 4)은 표본 둘에 한 번 오르내리는 가장 빠른 물결이고 음수 쪽으로 적어요." column>
+  <ArrayFig name="칸 번호" data={[0, 1, 2, 3, 4, 5, 6, 7]} tones={['b', 'a', 'a', 'a', 'm', 'm', 'm', 'm']} />
+  <ArrayFig name="주파수" data={[0, 1, 2, 3, -4, -3, -2, -1]} tones={['b', 'a', 'a', 'a', 'm', 'm', 'm', 'm']} note="칸 0은 합(주파수 0), 뒤쪽 절반은 음의 주파수" />
+</Fig>
+
+주파수 0을 가운데 두고 음에서 양으로 늘어놓고 싶으면 [`fftshift`](/api/fft/fftshift/)로 칸을 옮겨요.
+
+### 세기와 위상
+
+복소수의 절댓값은 그 주파수 성분의 세기이고, 각도는 물결이 어디서 시작하는지(위상)예요. 같은 주파수의 사인 물결은 코사인을 4분의 1바퀴 늦춘 것이라서 절댓값은 같고 값이 허수로 나와요.
+
+```python
+>>> s = sd.asarray([0.0, 1.0, 0.0, -1.0, 0.0, 1.0, 0.0, -1.0])
+>>> ys = sd.fft.fft(s)
+>>> ys
+array([ 0j,  0j, -4j, -0j,  0j,  0j,  4j, -0j], dtype=complex128)
+>>> sd.abs(ys)
+array([0.0, 0.0, 4.0, 0.0, 0.0, 0.0, 4.0, 0.0], dtype=float64)
+```
+
+세기만 필요하면 [`sd.abs`](/api/array/sign/)를, 실수부와 허수부는 [`sd.real`과 `sd.imag`](/api/array/complex/)를 써요.
+
+### 복소 입력은 도는 방향을 가려요
+
+입력이 복소수면 양의 주파수와 음의 주파수가 따로예요. 한 방향으로만 2번 도는 회전 $e^{2\pi i \cdot 2j/8}$은 칸 2에만 나와요.
+
+```python
+>>> z = sd.asarray([1, 1j, -1, -1j, 1, 1j, -1, -1j])
+>>> sd.fft.fft(z)
+array([    0j,     0j, (8+0j),     0j,     0j,     0j,     0j,     0j], dtype=complex128)
+```
+
+## 되돌리기: `ifft`
+
+`ifft`는 `fft`의 역이에요. 같은 `norm`으로 짝지으면 원래 값이 돌아와요. 결과는 복소수라서, 입력이 실수였다면 허수부는 0이거나 반올림 크기예요.
+
+```python
+>>> w = sd.asarray([1 + 2j, 3 - 1j, 0.5j, 2.0])
+>>> sd.fft.fft(w)
+array([ (6+1.5j),      0.5j, (-4+3.5j),  (2+2.5j)], dtype=complex128)
+>>> sd.fft.ifft(sd.fft.fft(w))
+array([(1+2j), (3-1j),   0.5j, (2+0j)], dtype=complex128)
+```
+
+변환한 뒤 칸을 고치고 되돌리는 것이 흔한 쓰임이에요. 아래는 느린 물결(주파수 1)에 빠른 물결(주파수 4)이 얹힌 신호에서 빠른 쪽을 지우는 예예요.
+
+```python
+>>> t = sd.arange(8)
+>>> slow = sd.asarray([0.0, 1.0, 2.0, 1.0, 0.0, -1.0, -2.0, -1.0])
+>>> noisy = slow + 0.5 * (-1.0) ** t
+>>> noisy
+array([ 0.5,  0.5,  2.5,  0.5,  0.5, -1.5, -1.5, -1.5], dtype=float64)
+>>> Yn = sd.fft.fft(noisy)
+>>> Yn[4] = 0
+>>> sd.real(sd.fft.ifft(Yn))
+array([                0.0,  0.9999999999999999,                 2.0,
+        0.9999999999999999,                 0.0, -0.9999999999999999,
+                      -2.0, -0.9999999999999999], dtype=float64)
+```
+
+빠른 물결이 빠지고 느린 물결 `slow`가 남았어요. 0.9999999999999999는 1의 반올림 끝자리예요. 실수 신호를 다룰 때는 [`rfft`와 `irfft`](/api/fft/rfft/)가 더 알맞아요. 절반만 계산하고, 되돌린 결과가 바로 실수예요.
+
+## 길이 `n`
+
+`n`을 주면 입력을 그 길이로 맞춘 뒤 변환해요. 짧게 주면 앞의 `n`개만 남기고, 길게 주면 끝에 0을 채워요.
+
+```python
+>>> sd.fft.fft(x, n=2)
+array([ (3+0j), (-1+0j)], dtype=complex128)
+>>> sd.fft.fft(sd.asarray([1.0, 2.0]))
+array([ (3+0j), (-1+0j)], dtype=complex128)
+>>> sd.fft.fft(x, n=8).shape
+(8,)
+>>> bool(sd.all(sd.fft.fft(x, n=8) == sd.fft.fft(sd.concat([x, sd.zeros(4)]))))
+True
+```
+
+0을 채우면 칸이 더 촘촘해져요. 길이 4의 변환에서 칸 사이의 주파수 간격이 1/4이었다면 길이 8에서는 1/8이에요. 짝수 번째 칸은 채우기 전의 칸과 같은 값이고, 그 사이 칸이 생겨요. 새 정보가 생기는 것은 아니고 같은 스펙트럼을 더 촘촘히 읽는 것이에요.
+
+```python
+>>> sd.fft.fft(x, n=8)[::2]
+array([(10+0j), (-2+2j), (-2+0j), (-2-2j)], dtype=complex128)
+```
+
+<Callout type="tip" title="길이에 따라 빠르기가 달라요">
+
+어떤 길이든 받지만, 길이의 소인수가 작을수록 빨라요. 2, 3, 5, 7, 11만 곱해서 만든 길이가 가장 빠르고, 큰 소수가 낀 길이는 더 걸려요. 길이를 고를 수 있으면 [`next_fast_len`](/api/fft/next_fast_len/)으로 빠른 길이를 찾아 `n`으로 주세요. 끝에 0이 붙는 것이 괜찮은 계산(합성곱, 스펙트럼 보기)에서 쓸 수 있어요.
+
+```python
+>>> sd.fft.next_fast_len(1009)
+1024
+```
+
+</Callout>
+
+## 축 `axis`
+
+2차원 이상의 배열은 `axis`를 따라 놓인 줄마다 따로 변환해요. 나머지 축은 배치예요. 줄 하나의 결과는 그 줄만 꺼내 변환한 것과 같은 비트예요.
+
+```python
+>>> X = sd.asarray([[1.0, 2.0, 3.0, 4.0],
+...                 [1.0, 0.0, 0.0, 0.0],
+...                 [1.0, 1.0, 1.0, 1.0]])
+>>> sd.fft.fft(X)
+array([[(10+0j), (-2+2j), (-2+0j), (-2-2j)],
+       [ (1+0j),  (1+0j),  (1+0j),  (1-0j)],
+       [ (4+0j),      0j,      0j,     -0j]], dtype=complex128)
+>>> sd.fft.fft(X, axis=0).shape
+(3, 4)
+>>> bool(sd.all(sd.fft.fft(X)[0] == sd.fft.fft(X[0])))
+True
+```
+
+둘째 행은 맨 앞에만 1이 있는 줄(충격)이고 모든 주파수가 같은 세기로 들어 있어요. 셋째 행은 상수라서 칸 0에만 값이 있어요. 두 축을 모두 변환하려면 [`fft2`](/api/fft/fft2/)를 써요.
+
+## 정규화 `norm`
+
+| `norm` | `fft`에 곱하는 수 | `ifft`에 곱하는 수 |
+|---|:---:|:---:|
+| `'backward'`(기본값) | $1$ | $1/n$ |
+| `'ortho'` | $1/\sqrt{n}$ | $1/\sqrt{n}$ |
+| `'forward'` | $1/n$ | $1$ |
+
+$n$은 변환의 길이예요(`n=`을 줬으면 그 값).
+
+```python
+>>> sd.fft.fft(x, norm='ortho')
+array([ (5+0j), (-1+1j), (-1+0j), (-1-1j)], dtype=complex128)
+>>> sd.fft.fft(x, norm='forward')
+array([   (2.5+0j), (-0.5+0.5j),   (-0.5+0j), (-0.5-0.5j)], dtype=complex128)
+>>> sd.fft.ifft(sd.fft.fft(x, norm='ortho'), norm='ortho')
+array([(1+0j), (2+0j), (3+0j), (4+0j)], dtype=complex128)
+```
+
+`'forward'`의 칸 0은 평균(2.5)이에요. `'ortho'`는 제곱합을 지켜요.
+
+```python
+>>> float(sd.sum(x ** 2)), float(sd.sum(sd.abs(sd.fft.fft(x, norm='ortho')) ** 2))
+(30.0, 30.0)
+```
+
+## 실수 입력
+
+입력이 실수(bool, int64, float64)이면 결과는 **켤레 대칭**이에요. 칸 $n-k$가 칸 $k$의 켤레예요. 이 대칭은 반올림까지 정확해요. 칸 0의 허수부는 정확히 +0이에요.
+
+```python
+>>> r = sd.asarray([3.0, 1.0, 4.0, 1.0, 5.0, 9.0])
+>>> yr = sd.fft.fft(r)
+>>> bool(sd.all(yr[1:] == sd.conj(yr[1:][::-1])))
+True
+>>> float(sd.imag(yr)[0])
+0.0
+```
+
+앞쪽 $\lfloor n/2 \rfloor + 1$칸은 [`rfft`](/api/fft/rfft/)의 결과와 같은 비트예요. 뒤쪽 칸이 필요 없으면 `rfft`를 쓰세요.
+
+```python
+>>> bool(sd.all(yr[:4] == sd.fft.rfft(r)))
+True
+```
+
+실수 입력의 `ifft`도 켤레 대칭이고, `fft`의 켤레에 정규화만 바꾼 것과 같은 비트예요.
+
+```python
+>>> bool(sd.all(sd.fft.ifft(r, norm='forward') == sd.conj(sd.fft.fft(r))))
+True
+```
+
+같은 값을 complex128로 바꿔 넣으면 실수 입력과 끝자리가 다를 수 있어요. 둘 다 정확도 약속 안의 값이에요.
+
+## 경계의 값
+
+| 입력 | 결과 |
+|---|---|
+| 길이 1 | 입력을 complex128로 바꾼 값 그대로 |
+| 변환할 축의 길이가 0 | `ValueError` |
+| 다른 축의 길이가 0 | 빈 결과 |
+| 줄에 NaN이나 inf | 그 줄의 결과 칸에 NaN이나 inf가 섞여요. 어느 칸이 NaN이고 어느 칸이 inf인지는 약속하지 않아요 |
+| bool, int64 | float64로 바꿔 변환 |
+
+```python
+>>> sd.fft.fft(sd.asarray([7.0]))
+array([(7+0j)], dtype=complex128)
+>>> sd.fft.fft(sd.asarray([True, False, False, False]))
+array([(1+0j), (1+0j), (1+0j), (1-0j)], dtype=complex128)
+>>> sd.fft.fft(sd.asarray([1.0, sd.inf, 3.0, 4.0]))
+array([  (inf+0j), (nan+nanj),  (-inf+0j), (nan+nanj)], dtype=complex128)
+>>> sd.fft.fft(sd.zeros((0, 4)))
+array([], shape=(0, 4), dtype=complex128)
+```
+
+## 에러
+
+```python
+>>> sd.fft.fft([1.0, 2.0])
+Traceback (most recent call last):
+    ...
+TypeError: fft(): 'x' must be an sd.ndarray, not list
+>>> sd.fft.fft(x, 8)
+Traceback (most recent call last):
+    ...
+TypeError: fft(): takes 1 positional argument but 2 were given
+>>> sd.fft.fft(x, n=0)
+Traceback (most recent call last):
+    ...
+ValueError: fft(): 'n' must be at least 1, not 0
+>>> sd.fft.fft(x, n=4.0)
+Traceback (most recent call last):
+    ...
+TypeError: fft(): 'n' must be an int or None, not float
+>>> sd.fft.fft(x, axis=1)
+Traceback (most recent call last):
+    ...
+ValueError: fft(): axis 1 is out of bounds for an array of dimension 1
+>>> sd.fft.fft(sd.zeros((0,)))
+Traceback (most recent call last):
+    ...
+ValueError: fft(): cannot transform an axis of length 0
+>>> sd.fft.ifft(x, norm='backwards')
+Traceback (most recent call last):
+    ...
+ValueError: ifft(): 'norm' must be 'backward', 'ortho' or 'forward', not 'backwards'
+```
+
+## 정확도와 같은 결과
+
+정확도는 줄 전체로 약속해요. 계산한 줄 $\hat y$와 참값 $y$에 대해
+
+$$
+\lVert \hat y - y \rVert \le (8 \lceil \log_2 n \rceil + 4)\, u \,\lVert y \rVert, \qquad u = 2^{-53}
+$$
+
+이에요($\lVert\cdot\rVert$는 제곱합의 제곱근). 길이에 13에서 31 사이의 소인수가 있으면 8 대신 17이고, 31보다 큰 소인수가 있으면 한계가 그보다 몇 배 커요. 아주 작은 수(비정상 수)만 담은 줄을 위한 절대오차 바닥 $8n \cdot 2^{-1074}$가 더해져요. 중간 합이 넘치지 않는 입력에서의 약속이에요.
+
+칸 하나의 상대오차는 약속하지 않아요. 참값이 0인 칸에는 다른 칸의 반올림 크기만 한 값이 남을 수 있어요.
+
+```python
+>>> g = sd.random.default_rng(1).random(1000)
+>>> back = sd.fft.ifft(sd.fft.fft(g))
+>>> float(sd.max(sd.abs(back - g))) < 1e-15
+True
+```
+
+<AccuracySummary area="fft" names={['c2c']} caption="복소 변환을 Arb(구간 산술)로 만든 참값과 견준 결과. 점 하나가 줄 하나이고, 상대오차는 줄 전체의 노름 상대오차예요. forward는 fft, backward는 정규화하지 않은 역변환이에요. pow2는 2의 거듭제곱 길이, f2k는 3·5·15에 2의 거듭제곱을 곱한 길이, mixed는 소인수가 31 이하인 그 밖의 길이, bluestein은 31보다 큰 소인수가 있는 길이예요. 가장 큰 상대오차는 비정상 수만 담은 줄에서 나오고, 그런 줄은 절대오차 바닥으로 판정해요. 계약 대비가 1 이하면 약속 안이에요." />
+
+같은 입력이면 스레드 수, 함께 넘긴 다른 줄, 배열이 메모리에 놓인 모양과 상관없이 같은 비트의 결과예요. 지키는 관계도 몇 가지 있어요.
+
+- 2의 거듭제곱을 곱한 입력의 변환은 변환에 그 수를 곱한 것과 같은 비트예요(넘침과 언더플로가 없을 때).
+- `ifft(x, norm='forward')`는 실수부와 허수부를 맞바꾼 입력을 `fft`하고 다시 맞바꾼 것과 같은 비트예요.
+
+```python
+>>> bool(sd.all(sd.fft.fft(8 * w) == 8 * sd.fft.fft(w)))
+True
+```
+
+## numpy·scipy를 아는 분께
+
+- `numpy.fft.fft`·`scipy.fft.fft`와 정의가 같아요. `n`, `axis`, `norm`은 키워드로만 받아요. `fft(x, 8)`은 `TypeError`예요.
+- 리스트와 numpy 배열은 받지 않아요. `sd.asarray`로 바꿔 주세요.
+- `norm=None`, `out`, `workers`, `overwrite_x`, `plan`이 없어요.
+- 범위 밖의 `axis`는 `ValueError`예요. numpy와 scipy는 `IndexError`예요.
+- `n=True`는 `TypeError`예요. scipy는 1로 받아요.
+- 실수 입력의 칸 0 허수부는 +0이에요. numpy와 같고, scipy는 −0이에요.
+- 실수 입력의 앞쪽 절반이 `rfft`와 같은 비트인 것은 scipy와 같아요. numpy는 길이 6 이상에서 같지 않아요.
+- float32 입력이 없어서 결과는 언제나 complex128이에요.
+- 값은 반올림 크기의 끝자리가 numpy, scipy와 다를 수 있어요. NaN·inf가 있는 줄에서 어느 칸이 NaN인지도 다를 수 있어요.
+- R의 `fft(z)`는 `fft(z)`와, `fft(z, inverse=TRUE)`는 `ifft(z, norm='forward')`와 같아요. R의 역변환은 $1/n$을 곱하지 않아요. `mvfft(Z)`는 `fft(Z, axis=0)`이에요.

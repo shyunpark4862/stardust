@@ -1,0 +1,195 @@
+---
+title: depth_first_order
+names: [depth_first_order, depth_first_tree]
+group: 순회와 연결 요소
+order: 3
+signatures:
+  - "sd.graph.depth_first_order(csgraph, i_start, /, *, directed=True, return_predecessors=True)"
+  - "sd.graph.depth_first_tree(csgraph, i_start, /, *, directed=True)"
+summary: 시작 노드에서 출발해 갈 수 있는 데까지 깊이 들어갔다가 막히면 되돌아오며 노드를 늘어놓아요(깊이 우선 탐색). depth_first_order는 찾은 차례와 노드마다의 부모를, depth_first_tree는 그 부모 관계를 원래 무게의 희소 행렬(트리)로 줘요. 언제나 아직 찾지 않은 가장 작은 번호의 이웃으로 들어가서 결과가 정해져 있어요.
+params:
+  - name: csgraph
+    type: sd.sparse의 희소 배열 또는 밀집 행렬(ndarray, numpy 배열, 수의 중첩 시퀀스)
+    kind: positional-only
+    desc: "(n, n) 인접 행렬. 희소 배열은 저장된 원소가 모두 변이고(저장된 0도), 밀집 행렬은 0, NaN, ±inf가 아닌 원소가 변이에요. depth_first_order는 이어짐만 보고, depth_first_tree는 트리에 원래 무게를 옮겨 적어요."
+  - name: i_start
+    type: int
+    kind: positional-only
+    desc: "시작 노드. 0 이상 n 미만의 int예요."
+  - name: directed
+    type: bool
+    kind: keyword-only
+    desc: "True(기본값)면 변의 방향대로만 가요. False면 방향 없는 그래프로 읽어 두 방향 이웃을 합쳐 봐요."
+  - name: return_predecessors
+    type: bool
+    kind: keyword-only
+    desc: "depth_first_order만. True(기본값)면 찾은 차례와 부모를 함께, False면 찾은 차례만 돌려줘요."
+returns:
+  type: TraversalResult, ndarray(int64), 또는 csr_array(float64)
+  desc: "depth_first_order: TraversalResult(node_array, predecessors). node_array는 닿은 노드를 찾은 차례대로 적은 int64 배열, predecessors는 노드마다 깊이 우선 트리의 부모(int64 (n,); 시작 노드와 닿지 않은 노드는 −9999)이고 둘 다 쓰기 금지예요. return_predecessors=False면 node_array만이에요. depth_first_tree: (n, n) csr_array float64. 닿은 노드마다 부모 → 자식 자리에 그 변의 원래 무게를 저장해요."
+raises:
+  - type: TypeError
+    desc: "csgraph가 받는 꼴이 아닐 때(scipy 희소 행렬, DataFrame, 문자열, 복소수), i_start가 int가 아닐 때(실수, bool), directed나 return_predecessors가 True·False가 아닐 때, 옵션을 자리로 넘기거나 i_start를 이름으로 넘겼을 때."
+  - type: ValueError
+    desc: "csgraph가 2차원 정방이 아닐 때, i_start가 0 이상 n 미만이 아닐 때(노드가 없는 그래프도)."
+seeAlso: [breadth_first_order, topological_sort, connected_components, articulation_points, basics, results]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import PlaneFig from '../../../components/fig/PlaneFig.astro';
+
+export const dNodes = [[2, 3], [0.8, 2], [2, 2], [3.2, 2], [0.3, 1], [1.3, 1], [2.3, 1], [2.3, 0]];
+export const dTree = [[2, 3, 0.8, 2], [0.8, 2, 0.3, 1], [0.8, 2, 1.3, 1], [1.3, 1, 2.3, 1], [2.3, 1, 2, 2], [2.3, 1, 2.3, 0], [2, 3, 3.2, 2]];
+export const dOther = [[2, 3, 2, 2]];
+export const dOrder = [
+  { kind: 'text', at: [2, 3], text: '1번째', dx: 10, dy: -6, tone: 'main' },
+  { kind: 'text', at: [0.8, 2], text: '2번째', dx: -10, dy: -6, anchor: 'end', tone: 'main' },
+  { kind: 'text', at: [0.3, 1], text: '3번째', dx: -10, dy: 4, anchor: 'end', tone: 'main' },
+  { kind: 'text', at: [1.3, 1], text: '4번째', dx: -4, dy: 18, anchor: 'middle', tone: 'main' },
+  { kind: 'text', at: [2.3, 1], text: '5번째', dx: 10, dy: 4, tone: 'main' },
+  { kind: 'text', at: [2, 2], text: '6번째', dx: 10, dy: -6, tone: 'main' },
+  { kind: 'text', at: [2.3, 0], text: '7번째', dx: 10, dy: 4, tone: 'main' },
+  { kind: 'text', at: [3.2, 2], text: '8번째', dx: 10, dy: -6, tone: 'main' },
+];
+
+## 한눈에 보기
+
+**깊이 우선 탐색**은 시작 노드에서 출발해 아직 가 보지 않은 이웃으로 계속 들어가다가, 더 갈 데가 없으면 한 걸음씩 되돌아와 다른 갈래로 들어가요. 미로에서 한쪽 벽을 짚고 끝까지 가 보는 방식이에요. 순환 찾기, 일의 선후 정리, 그래프를 끊는 노드 찾기처럼 "한 갈래를 끝까지 따라간 뒤"의 구조가 필요한 계산의 바탕이 돼요.
+
+```python
+>>> import stardust as sd
+>>> def undirected(n, edges):
+...     A = sd.zeros((n, n), dtype=sd.int64)
+...     for i, j in edges:
+...         A[i, j] = A[j, i] = 1
+...     return A
+>>> T = undirected(8, [(0, 1), (0, 2), (0, 3), (1, 4), (1, 5), (2, 6), (5, 6), (6, 7)])
+>>> sd.graph.depth_first_order(T, 0)
+TraversalResult(node_array=array([0, 1, 4, 5, 6, 2, 7, 3], dtype=int64), predecessors=array([-9999,     0,     6,     0,     1,     1,     5,     6], dtype=int64))
+```
+
+[`breadth_first_order`](/api/graph/breadth_first_order/)와 같은 그래프예요. 노드 0에서 가장 작은 이웃 1로, 1에서 4로 들어가요. 4는 막다른 곳이라 1로 돌아와 5로, 5에서 6으로, 6에서 2로 들어가요. 2의 이웃 0과 6은 이미 찾았으니 6으로 돌아와 7을 찾고, 끝까지 되돌아와 마지막으로 3을 찾아요. 노드 2의 부모가 0이 아니라 6인 것이 너비 우선과 달라요.
+
+<Fig caption="노드 0에서 시작한 깊이 우선 탐색. 옆의 파란 글자가 찾은 차례예요. 굵은 선이 부모 관계(깊이 우선 트리)이고, 점선인 0–2는 2를 6 쪽에서 먼저 찾아 트리에 들지 않은 변이에요.">
+  <PlaneFig
+    label="노드 여덟 개의 그래프와 깊이 우선 탐색의 찾은 차례, 깊이 우선 트리의 변을 굵게 표시"
+    domain={[-0.5, 4.0]}
+    range={[-0.35, 3.35]}
+    width={400}
+    layers={[
+      { kind: 'segments', segs: dOther, tone: 'base', dashed: true },
+      { kind: 'segments', segs: dTree, tone: 'main', width: 2.2 },
+      ...dOrder,
+      { kind: 'points', pts: dNodes, tone: 'ink', size: 4.2, labels: ['0', '1', '2', '3', '4', '5', '6', '7'] },
+    ]}
+    legend={[
+      { label: '깊이 우선 트리의 변', tone: 'main', shape: 'line' },
+      { label: '트리에 들지 않은 변', tone: 'base', shape: 'dash' },
+    ]}
+  />
+</Fig>
+
+<Reference />
+
+## 결과 읽기
+
+결과는 [`TraversalResult`](/api/graph/results/#traversalresult)이고 읽는 법은 너비 우선과 같아요.
+
+- `node_array`: 시작 노드에서 닿은 노드를 **찾은 차례대로** 적은 배열. 첫 원소는 시작 노드예요.
+- `predecessors`: 노드마다 깊이 우선 트리의 부모. 시작 노드와 닿지 않은 노드는 −9999예요.
+
+깊이 우선 트리의 경로는 가장 짧은 경로가 아니에요. 노드 2는 0과 바로 이어져 있지만 트리에서는 0 → 1 → 5 → 6 → 2로 내려가요. 변의 수로 센 가장 짧은 경로가 필요하면 너비 우선을 써요.
+
+```python
+>>> p = sd.graph.depth_first_order(T, 0).predecessors
+>>> v = 2
+>>> path = [v]
+>>> while p[v] != -9999:
+...     v = int(p[v])
+...     path.append(v)
+>>> path[::-1]
+[0, 1, 5, 6, 2]
+```
+
+찾은 차례만 필요하면 `return_predecessors=False`로 쓸 수 있는 보통의 배열 하나를 받아요.
+
+```python
+>>> sd.graph.depth_first_order(T, 0, return_predecessors=False)
+array([0, 1, 4, 5, 6, 2, 7, 3], dtype=int64)
+```
+
+### 가장 작은 이웃부터
+
+갈래가 여럿이면 **아직 찾지 않은 이웃 가운데 번호가 가장 작은 것**으로 들어가요. 재귀 함수로 짠 교과서의 깊이 우선 탐색이 이웃을 번호 오름차순으로 볼 때와 같은 차례예요. 안에서는 재귀 대신 스택을 써서 깊이가 수십만인 긴 사슬에서도 넘치지 않아요.
+
+```python
+>>> n = 100_000
+>>> chain = sd.sparse.csr_array((sd.ones(n - 1), (sd.arange(n - 1), sd.arange(1, n))), shape=(n, n))
+>>> order = sd.graph.depth_first_order(chain, 0, return_predecessors=False)
+>>> order[:5], order[-1]
+(array([0, 1, 2, 3, 4], dtype=int64), 99999)
+```
+
+## 방향
+
+`directed=True`(기본값)면 변의 방향대로만 들어가요. `directed=False`면 나가는 이웃과 들어오는 이웃을 합쳐 번호 오름차순으로 봐요.
+
+```python
+>>> def directed(n, edges):
+...     A = sd.zeros((n, n), dtype=sd.int64)
+...     for i, j in edges:
+...         A[i, j] = 1
+...     return A
+>>> P = directed(5, [(0, 1), (1, 2), (3, 1), (4, 0)])
+>>> sd.graph.depth_first_order(P, 0)
+TraversalResult(node_array=array([0, 1, 2], dtype=int64), predecessors=array([-9999,     0,     1, -9999, -9999], dtype=int64))
+>>> sd.graph.depth_first_order(P, 0, directed=False)
+TraversalResult(node_array=array([0, 1, 2, 3, 4], dtype=int64), predecessors=array([-9999,     0,     1,     1,     0], dtype=int64))
+```
+
+방향 없이 읽으면 노드 1의 이웃은 0, 2(나가는 변)와 3(들어오는 변)이라 1에서 2로, 2에서 막혀 1로 돌아와 3으로 들어가요. 그다음 0으로 돌아와 4를 찾아요.
+
+## depth_first_tree: 트리를 행렬로
+
+`depth_first_tree`는 같은 탐색의 부모 관계를 $(n, n)$ 희소 행렬로 줘요. 닿은 노드마다 부모 → 자식 자리 하나에 원래 변의 무게를 적어요. 방향 없이 읽을 때 두 방향 무게가 다르면 작은 쪽이고, 무게 0의 변은 저장된 0으로 남아요. 규칙은 [`breadth_first_tree`](/api/graph/breadth_first_order/#breadth_first_tree-트리를-행렬로)와 같아요.
+
+```python
+>>> W = sd.asarray([[0, 4.0, 1.0],
+...                 [0, 0, 2.0],
+...                 [0, 0, 0]])
+>>> sd.graph.depth_first_tree(W, 0).toarray()
+array([[0.0, 4.0, 0.0],
+       [0.0, 0.0, 2.0],
+       [0.0, 0.0, 0.0]], dtype=float64)
+>>> sd.graph.breadth_first_tree(W, 0).toarray()
+array([[0.0, 4.0, 1.0],
+       [0.0, 0.0, 0.0],
+       [0.0, 0.0, 0.0]], dtype=float64)
+```
+
+깊이 우선은 0 → 1 → 2로 내려가서 2의 부모가 1이고, 너비 우선은 0에서 1과 2를 함께 찾아 2의 부모가 0이에요. 트리의 값은 그 변의 원래 무게예요.
+
+## 경계의 값
+
+시작 노드는 0 이상 $n$ 미만의 int예요. 범위 밖과 음수는 `ValueError`, 실수와 bool은 `TypeError`예요. 노드가 없는 그래프에는 시작 노드가 없어 `ValueError`예요.
+
+```python
+>>> sd.graph.depth_first_order(P, 2)
+TraversalResult(node_array=array([2], dtype=int64), predecessors=array([-9999, -9999, -9999, -9999, -9999], dtype=int64))
+>>> sd.graph.depth_first_order(P, 7)
+Traceback (most recent call last):
+    ...
+ValueError: depth_first_order(): 'i_start' must be a node of the graph (0 .. 4), not 7
+>>> sd.graph.depth_first_order(P, True)
+Traceback (most recent call last):
+    ...
+TypeError: depth_first_order(): 'i_start' must be an int, not bool
+```
+
+노드 2에서는 나가는 변이 없어 자기 자신만 찾아요.
+
+## scipy·networkx를 아는 분께
+
+- 방향 없는 순회는 나가는 이웃과 들어오는 이웃을 합친 번호 오름차순이에요. scipy는 나가는 이웃을 먼저 봐서 차례가 다를 수 있어요. 방향 있는 순회의 차례는 scipy와 같아요.
+- 범위 밖이나 음수 시작 노드는 `ValueError`예요(scipy는 빈 결과나 `OverflowError`).
+- `node_array`와 `predecessors`는 int64예요(scipy는 int32). 방향 없는 `depth_first_tree`의 무게 0인 변은 저장된 0으로 남아요(scipy는 inf나 다른 쪽 무게로 바꿔요).
+- networkx의 `dfs_preorder_nodes`, `dfs_tree`, `dfs_predecessors`와 같은 일을 해요. 이웃 차례는 언제나 노드 번호 오름차순이에요.

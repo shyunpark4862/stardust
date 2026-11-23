@@ -1,0 +1,154 @@
+---
+title: 정확도와 성능
+group: 정확도와 성능
+order: 1
+summary: sd.sparse가 맞게 계산하는지를 식으로 만든 시험 행렬 64개, SuiteSparse의 실제 행렬 여덟 개, Arb와 정확한 유리수로 만든 참값, scipy·R의 기록으로 확인하는 방법과 함수마다의 정확도 계약을 모았어요. 끝에 어디가 빠르고 어디가 느린지를 적었어요.
+seeAlso: [overview, arpack, svds, expm, norms]
+---
+import Callout from '../../../components/Callout.astro';
+import AccuracySummary from '../../../components/fig/AccuracySummary.astro';
+
+## 한눈에 보기
+
+희소 영역의 결과는 세 가지로 확인해요.
+
+1. **반올림이 없는 연산은 비트까지.** 형식 변환, 전치, 인덱싱, 만들기, 원소 하나의 산술과 원소별 함수는 같은 원소의 밀집 배열 연산과 비트까지 같아야 해요. 테스트가 밀집 결과와 견줘요.
+2. **반올림이 있는 연산은 계약 안.** 합과 곱, 풀이, 고유값, 행렬 지수, 노름은 함수마다 오차의 경계(계약)가 있고, Arb(구간 산술)나 정확한 유리수로 만든 참값과 견줘요.
+3. **반올림이 아닌 동작은 scipy와 같게.** 결과의 형식과 dtype, 저장되는 원소, 상태 값, 반복 수 같은 동작을 scipy 1.18.1의 기록과 그 자리에서 부른 scipy와 견줘요. 다르게 정한 곳은 함수 페이지의 끝 절에 적혀 있어요.
+
+그리고 결과가 행렬의 형식과 상관없이 같은 비트인지, 지금처럼 sd의 스레드 수(1·3·10)와도 상관없는지를 골든 출력과 테스트가 봐요. 약속은 같은 스레드 수에서 실행마다 같은 비트이고, 스레드 수와 무관한 것은 약속이 아니에요.
+
+## 시험 행렬
+
+모든 테스트, 참값 도구, scipy·R의 기록, 측정이 같은 행렬 목록(`tests/sparse/matrices.py`)에서 아이디로 행렬을 가져와요. 64개 모두 식과 고정 시드로 만들고 내려받는 것이 없어요. 행렬은 좌표(`row`, `col`, `data`)로 들고 있어서 CSR·CSC·밀집·scipy 어느 꼴로든 바꿀 수 있고, 태그(`spd`, `singular`, `ill`, `long_rows` 등)로 골라요.
+
+| 묶음 | 행렬 | 무엇을 보려고 |
+|---|---|---|
+| 격자 | 1·2·3차원 라플라시안(Dirichlet은 양정치, Neumann은 정확히 특이), 대류-확산 | 닫힌 꼴의 고유값, 큰 크기의 풀이와 고유값 |
+| 무작위 | 대각 우세 비대칭, 양정치, 대칭 부정, 복소 에르미트, 복소 비대칭 | 모든 dtype과 대칭성 |
+| 구조 | 띠, 밀집 블록 대각, 안장점 $[[A, B^{\mathsf T}], [B, 0]]$ | 피벗, 0 대각 블록 |
+| 어려운 것 | 등급 매긴 삼중대각(조건수 $10^8$–$10^{12}$), 거의 특이, 구조적 특이(빈 열), 값으로 특이(같은 열 둘), 직사각(랭크 부족 하나), 4096개보다 긴 행, 합이 상쇄하는 행, 빈 행·열과 0 × n | 특이 판정, 조건수에 따른 오차, 조각 합 |
+| 표준 꼴이 아닌 COO | 정렬되지 않은 것, 중복(`[1, 1e16, 1, −1e16]` 포함), 저장된 0, int64, bool, complex, NaN·±inf·−0 | 표준화와 특수값 |
+
+$n \le 2000$인 행렬은 정확한 참값을 만들 수 있는 `small` 태그예요. $n \ge 9\times10^4$인 여섯은 시간 재기에만 쓰고 테스트는 만들지 않아요. 참값 파일과 기록 파일은 행렬마다 그 좌표의 해시(`digest`)를 적어 두어, 행렬을 만드는 식이 바뀌면 테스트가 바로 알아요.
+
+### SuiteSparse의 실제 행렬
+
+식으로 만든 행렬은 실제 문제의 구조(긴 행, 넓은 값의 범위, 거의 특이함)를 다 담지 못해요. 그래서 SuiteSparse Matrix Collection의 실제 행렬 여덟 개를 함께 써요.
+
+| 행렬 | 꼴 | n | nnz | 쓰임 |
+|---|---|---:|---:|---|
+| `HB/bcsstk14` | 구조, 대칭 양정치 | 1,806 | 63,454 | 직접 풀이, `cg`, `eigsh` |
+| `Boeing/msc10848` | 구조, 대칭 양정치 | 10,848 | 1,229,776 | 큰 양정치, 긴 행 |
+| `HB/sherman3` | 유체, 비대칭 | 5,005 | 20,033 | 거의 특이한 LU |
+| `Goodwin/goodwin` | 유체, 비대칭 | 7,320 | 324,772 | LU, `gmres` |
+| `Hamm/memplus` | 회로, 비대칭 | 17,758 | 99,147 | 회로 꼴의 LU·`gmres` |
+| `GHS_indef/cvxqp3` | 최적화 KKT, 대칭 부정 | 17,500 | 114,962 | 안장점, `minres` |
+| `HB/well1850` | 최소제곱, 직사각 | 1,850 × 712 | 8,755 | `lsqr`, `lsmr`, `svds` |
+| `HB/young1c` | 음향, 복소 비대칭 | 841 | 4,089 | 복소 LU, `eigs` |
+
+파일은 저장소에 넣지 않고, 받는 도구(`tools/sparse_suitesparse.py`)가 주소와 받은 압축 파일의 sha256을 들고 있어요. 이 행렬을 쓰는 테스트는 external 등급이고 파일이 없으면 받는 명령을 적고 건너뛰어요. 이 행렬들에서 본 것은 이래요.
+
+- **직접 풀이.** 정방 일곱 가운데 다섯은 `splu`의 `trans='N'`·`'T'`·`'H'` 풀이가 역오차 $9\times10^{-8}\varepsilon$–$0.28\varepsilon$이에요(scipy의 SuperLU $1.3\times10^{-7}\varepsilon$–$0.74\varepsilon$). sherman3과 cvxqp3은 조건수 어림 $\kappa_1$이 $6.9\times10^{16}$, $2.2\times10^{16}$이라 $\kappa_1\varepsilon \ge 1$이고 `LinAlgError`예요. scipy는 이 두 행렬에서 해를 돌려주지만 앞오차의 경계가 1을 넘어 맞는 자리가 없는 해예요.
+- **반복법.** 열 개의 문제(memplus·young1c의 `gmres`·`bicgstab`, sherman3의 `bicgstab`, cvxqp3의 `minres`, bcsstk14·msc10848의 Jacobi 전처리 `cg`, well1850의 `lsqr`·`lsmr`)를 scipy와 견줘요.
+- **고유값.** bcsstk14 `'LM'` k = 6의 곱 106번, msc10848 `'LM'` k = 4의 37번, memplus `eigs` `'LM'` k = 6의 125번, young1c(복소)의 372번이 scipy와 같아요. bcsstk14의 shift-invert(σ = 0)는 값이 상대 $10^{-9}$ 안에서 같아요. 정규에서 먼 goodwin의 σ = 0 `eigs`는 shift-invert의 풀이를 다듬지 않아 scipy와 상대 $10^{-6}$ 안이에요. well1850의 `svds`는 밀집 SVD와 상대 $10^{-10}$ 안이에요.
+
+## 참값
+
+참값은 python-flint(Arb)와 Python의 정확한 유리수로 만들어요(`tools/sparse_ref.py`). 값은 모두 상대 $2^{-110}$까지 정해진 공을 double-double(hi + lo)로 저장해서, float64 결과의 오차를 잴 때 참값 자신의 오차가 보이지 않아요. Arb는 정밀도를 128비트에서 시작해 공의 폭이 목표에 닿을 때까지 두 배씩 올려요.
+
+| 묶음 | 점 | 만드는 법 |
+|---|---:|---|
+| `spmv` | 112 | $y = Ax$, $z = A^{\mathsf T}w$의 정확한 이진 유리수 합(실수·복소) |
+| `sums` | 55 | 행 합, 열 합, 전체 합(정확) |
+| `norms` | 53 | 1, −1, inf, −inf(정확한 합의 Arb 크기), Frobenius(정확한 제곱합과 Arb의 제곱근), 2-노름(min(m, n) ≤ 220: $A^{\mathsf H}A$의 Rayleigh 몫을 역반복으로 다듬고 Kato–Temple 경계로 감쌈) |
+| `solve` | 30 | Rump 꼴의 검증된 풀이(근사 역행렬 $R$로 $\lVert A^{-1}\rVert$의 경계를 얻고 정확한 잔차로 다듬음; 조건수 $7.5\times10^{14}$의 행렬과 복소 포함) |
+| `lstsq` | 2 | 정확한 정규방정식에 같은 검증 |
+| `eig` | 23 | 대칭·에르미트 행렬의 양 끝 고유값 6개씩(n ≤ 220은 Arb의 `eig`, Dirichlet 격자는 닫힌 꼴 $\sum_d (2 - 2\cos(\pi j_d/(g+1)))$), 직사각 행렬의 특이값, 비대칭 실수·복소 행렬 셋의 모든 고유값 |
+| `expm` | 38 | `arb_mat.exp`·`acb_mat.exp`(n ≤ 200), 1-노름이 1과 30 근처가 되게 2의 거듭제곱을 곱한 두 척도 |
+| `expmv` | 38 | `expm`의 점마다 $e^{sA}b$와 $t = 0, \tfrac14, \tfrac12, \tfrac34, 1$의 $e^{tsA}b$ |
+
+크기의 한계(밀집 Arb의 비용) 때문에 $n > 220$의 고유값과 2-노름, $n > 200$의 행렬 지수는 참값이 없어요. 그 크기는 scipy와 밀집 결과와의 견줌, 잔차와 직교성으로 확인해요.
+
+## 계약
+
+계약은 테스트와 정확도 스윕이 함께 쓰는 한 곳(`tests/sparse/refdata.py`)에 있어요. $u = 2^{-53}$, $\varepsilon = 2^{-52}$, $\gamma_m = mu/(1 - mu)$예요.
+
+| 연산 | 계약 | 잰 가장 큰 값(계약 단위) |
+|---|---|---|
+| 변환, 전치, 인덱싱, 만들기, 원소별 연산 | 같은 원소의 밀집 연산과 비트까지 같음 | 테스트가 비트로 확인 |
+| SpMV, SpMM, 리덕션 | 출력 원소마다 $\lvert\hat y - y\rvert \le \gamma_m\sum_j\lvert a_{ij}x_j\rvert$, $m = \min(\ell, 4096) + \lceil\log_2(\ell/4096)\rceil$($\ell$은 줄의 항 수) | 0.83 |
+| 직접 풀이(`spsolve`, `splu`, `factorized`) | 정규화한 역오차 $\lVert b - A\hat x\rVert_\infty/(\lVert A\rVert_\infty\lVert\hat x\rVert_\infty + \lVert b\rVert_\infty) \le 4\varepsilon$, 앞오차 $\le 4\kappa_\infty\varepsilon$ | 역오차 $3.54\varepsilon$(다듬지 않은 풀이), 앞오차 $1.0\kappa_\infty\varepsilon$ |
+| 삼각 풀이 | 원소마다 $\lvert b - T\hat x\rvert \le \gamma_n\lvert T\rvert\lvert\hat x\rvert$ | 정확한 유리수 잔차로 확인 |
+| 반복법 | 수렴한 결과는 멈춤 판정이 약속하는 앞오차 안($\lVert A^{-1}\rVert_\infty\cdot\mathrm{rtol}\cdot\lVert b\rVert_2$ 등) | `bicgstab` 0.32, `gmres` 0.31, `cg` 0.10, `minres` 0.081, `lsqr`·`lsmr` 0.051 |
+| `eigsh`, `svds` | $\lvert\hat\lambda - \lambda\rvert \le C_{\mathrm{EIG}}\,\varepsilon\,\lVert A\rVert_2$, $C_{\mathrm{EIG}} = 1000$ | 0.70, 0.010 |
+| `eigs` | 위 경계에 고유값의 조건수 $\kappa(\lambda) = \lVert y\rVert\lVert x\rVert/\lvert y^{\mathsf H}x\rvert$를 곱함 | 0.021 |
+| `expm`, `expm_multiply` | $\max\lvert\hat y - y\rvert \le C_{\mathrm{EXPM}}\,\varepsilon\max(1, \lVert sA\rVert_1)\cdot$척도, $C_{\mathrm{EXPM}} = 10$ | 0.24, 0.20(구간 0.25) |
+| `norm`의 합(1, −1, inf, −inf, `'fro'`) | $\lvert\hat v - v\rvert \le (\gamma_m + 2\varepsilon)\,v$ | 0.17, `'fro'` 0.007 |
+| `norm(ord=2)` | `svds`의 계약 | 0.014 |
+| `onenormest` | 하한(계약 아님) | 42개 중 26개가 참값과 같음, 가장 작은 비율 0.76 |
+
+계약의 상수는 잰 값에 여유를 둔 것이에요. 가장 빠듯한 `eigsh` 0.70은 1000개짜리 1차원 라플라시안의 `'LA'`에서 ARPACK이 760번 넘게 재시작하며 $VQ$를 거듭 곱해 쌓인 반올림이에요(같은 문제의 scipy는 0.15). 고유값과 특이값은 잔차 $\lVert Av - \lambda Mv\rVert$, $\lVert A^{\mathsf H}u - \sigma v\rVert$도 $C_{\mathrm{EIG}}\,\varepsilon\,\lVert A\rVert_2$ 안이고 벡터의 직교성 $\lVert V^{\mathsf H}MV - I\rVert$는 $C_{\mathrm{EIG}}\,k\,\varepsilon$ 안인지 테스트가 봐요.
+
+반복법의 결과는 "멈춤 판정을 만족한 점"이에요. 계약은 판정이 약속하는 앞오차이고, `converged=True`인 결과는 다시 계산한 참 잔차가 판정을 만족하는지 테스트가 봐요. 수렴하지 못한 결과(등급 매긴 행렬, 거의 특이한 행렬 같은 꼴에서 `cg` 2, `minres` 2, `gmres` 6, `bicgstab` 4점)는 스윕에서 빼고 그 수를 세요. `minres`는 판정이 잔차의 어림에 대한 것이라 조건수가 큰 행렬에서 참 잔차가 어림보다 $\varepsilon\kappa\lVert A\rVert\lVert x\rVert$만큼 클 수 있어서, 그 몫을 경계에 더해요.
+
+### 정확도 스윕
+
+`bench/accuracy/sparse.py`가 참값 묶음마다 스윕을 돌려요(`spmv`, `sums`, `solve`, `iterative`, `eig`, `norms`, `matfuncs`). 점 하나는 출력 원소 하나(또는 값 하나)이고, 오차를 계약의 경계로 나눈 값을 기록해요. 1 이하면 계약 안이에요. 같은 점에서 비교 패키지의 오차도 같은 단위로 재요.
+
+| 스윕 | 비교 패키지와 그 오차(계약 단위) |
+|---|---|
+| `spmv`, `sums` | scipy와 R Matrix(`%*%`, `crossprod`, `rowSums`, `colSums`, `sum`) 모두 계약 안 |
+| `solve` | scipy `spsolve`(0.29), R `solve`(CSparse LU, 0.26) |
+| `iterative` | scipy(같은 허용오차; `bicgstab` 0.32, 나머지는 sd와 같은 크기). R Matrix에는 반복법이 없어요 |
+| `eig` | scipy(`eigsh` 0.15, `eigs` 0.020, `svds`는 랭크 부족한 80 × 30의 `'SM'`에서 $2\times10^{12}$), R RSpectra(`eigsh` 2.4: 허용오차 $10^{-12}$에서 멈춘 값, `eigs` 0.27, `svds` 0.011), R irlba |
+| `norms` | scipy(sd와 같은 크기; 2-노름은 0인 행이 있는 행렬에서 `ArpackError`라 그 점을 빼요), R Matrix |
+| `matfuncs` | scipy(`expm` 0.48, `expm_multiply`는 sd와 같은 값), R Matrix(`expm` 0.42) |
+
+스윕은 일곱 개, 줄은 (함수, 영역) 26개, 점은 64만 개쯤이에요. 26줄 모두 계약 안이고 가장 큰 계약 대비는 `rmatvec`의 0.83이에요. 아래 표는 결과 파일(`bench/accuracy/results/sparse.json`)에서 그대로 만든 것이에요.
+
+<AccuracySummary area="sparse" caption="희소 영역 전체. 영역 열은 함수(고유값·반복법·행렬 함수·풀이), 노름의 ord, 곱과 합의 종류예요. 계약 대비가 1 이하면 계약 안이에요." />
+
+`eig`, `expm`, 전체 합(`total`)의 최대 ULP와 최대 상대오차가 아주 큰 것은 참값이(복소수면 그 실수부나 허수부가) 0이거나 0에 아주 가까운 점이 있어서예요. 랭크가 부족한 행렬의 특이값 0, 상쇄로 거의 0이 되는 합과 지수의 원소, 허수부가 거의 0인 복소 값 같은 것이에요. 0 근처에는 double이 아주 촘촘해서 반올림 크기의 절대오차도 ULP와 상대오차로는 커져요. 그래서 이 영역은 행렬의 노름 같은 척도에 대한 오차, 곧 계약 대비로 판정해요.
+
+### scipy와 R의 기록
+
+scipy의 기록(`tests/sparse/data/scipy.json`, 661개)은 반올림이 아닌 동작(결과 형식·형·dtype, `nnz`와 0 지우기, NaN 규칙, 예외), SpMV·SpMM의 비트, 반복법의 반복 수·상태·해, 고정한 `v0`의 `eigsh`·`eigs`·`svds`, 직접 풀이와 특이 행렬, `expm`, `norm`을 담아요. R의 기록은 Matrix 1.7.6(`%*%`, `crossprod`, `kronecker`, 행·열 합, `solve`, `lu`, `qr`, `expm`, `norm`, `rcond`)과 고유값의 RSpectra 0.16.2·irlba 2.4.1(18개)이에요. Matrix에는 복소 희소 클래스가 없어 복소 행렬은 빠져요.
+
+참값과 견주면 scipy와 R의 모든 값이 상대 $10^{-13}$ 안이에요(`expm`은 $10^{-14}$, 풀이는 $\kappa\varepsilon$ 크기). 기록 파일마다 만든 도구와 패키지의 판(`_provenance`)이 있고, 테스트가 그것과 행렬의 `digest`를 확인해요.
+
+SpMV는 CSR·CSC·COO의 `A @ x`가 모두 FMA 순차 합과 같아서, 지금은 scipy와 비트까지 같아요(약속은 아니에요). 합의 순서 자체가 계약의 정의라 같은 순서의 다른 구현과는 비트까지 같아지는 거예요.
+
+## 결정성
+
+같은 컴퓨터, 같은 스레드 수, 같은 입력이면 실행마다 같은 비트예요. 희소 커널은 일을 크기로만 나누고(줄 구간, 고정 크기의 잎과 조각), 합의 순서는 줄마다 정해져 있어서 지금은 sd의 스레드 수와도 상관없이 같은 비트예요(약속은 아니에요). 골든 출력(`tests/golden/cases_sparse.py`, 7,296케이스)을 1·3·10스레드에서 모두 같은 비트로 재현해요. 케이스에는 $n = 4\times10^4$의 띠 행렬처럼 스레드풀이 실제로 일을 나누는 크기가 들어 있어요.
+
+형식도 비트를 바꾸지 않아요. CSR·CSC·COO의 곱과 합은 같은 순서이고, 직접 풀이는 모든 입력을 CSC로 바꿔 분해해요(Accelerate의 LU는 CSR을 전치 속성으로 넘기면 끝자리가 달라요). 고유값과 반복법은 CSR·CSC·COO·DOK, 밀집 배열, `aslinearoperator`, Python `LinearOperator`가 같은 비트예요.
+
+Accelerate가 계산하는 직접 분해는 Accelerate의 스레드 모드(`VECLIB_MAXIMUM_THREADS`)가 같을 때 같은 비트예요. 같은 모드에서 실행마다 비트가 달라지는 Accelerate의 경로(Metis·MTMetis 순서, 희소 Cholesky·LDLᵀ)는 쓰지 않고 LU/AMD만 써요.
+
+## 성능
+
+속도는 scipy 1.18.1(희소 커널이 1스레드)과 R Matrix를 같은 기기에서 견줘요(`bench/speed/cases/sparse.py`). 수치는 다시 잴 때마다 바뀌므로 여기서는 어디가 빠르고 느린지와 그 까닭만 적어요.
+
+**빠른 곳**
+- **형식 변환과 만들기.** COO → CSR의 정렬, 중복 더하기, 전치는 1스레드에서도 scipy보다 빠르고 스레드로 더 빨라져요.
+- **SpMM과 원소별 함수, 리덕션.** `A @ X`는 scipy가 열 방향으로 벡터화하지 않아서 sd가 빨라요. 원소별 함수(`A.sin()` 등)와 축 리덕션은 1스레드에서도 빠르고(scipy의 `argmax(axis=)`는 줄마다 Python 반복이에요) 스레드로 더 빨라져요.
+- **직접 풀이.** Accelerate의 LU(AMD 순서)는 큰 격자에서 SuperLU보다 빠르고, 채움이 큰 3차원 격자에서 차이가 더 벌어져요. 작은 행렬에서는 비슷해요. `spsolve_triangular`도 scipy보다 빨라요(scipy는 SuperLU의 풀이를 거쳐요). 우변이 여럿이면 Accelerate의 묶은 풀이에서 열 하나의 비용이 가장 작은 여덟 열씩 넘기고, 잘 조건된 행렬은 다듬기 없이 풀이 하나로 끝나서 `inv`와 우변 여럿의 풀이가 특히 빨라요.
+- **반복법.** 반복 전체가 C++이라 같은 반복 수에서 scipy의 Python 반복보다 빠르고, 곱과 내적이 스레드로 나뉘어요. 긴 내적은 Accelerate의 `ddot`을 고정 조각마다 불러요.
+- **Lanczos·Arnoldi·이중대각화.** 시간의 대부분인 기저와의 곱 $V^{\mathsf H}x$, $Vc$를 행 조각마다 Accelerate의 `dgemv`(행렬 장치를 쓰는)로 해서 scipy와 비슷하거나 빨라요. shift-invert는 첫 풀이가 정확하면(노름 역오차 $768\varepsilon$ 이하) 걸음마다 LU 풀이 하나라 scipy와 같은 일을 해요. 피벗이 원소를 키워 그 문턱을 넘는 행렬만 걸음마다 다듬어요([ARPACK](/internals/sparse/arpack/#역은-희소-lu로)).
+- **행렬 함수.** `expm_multiply`는 곱이 같은 순서라 같은 곱 수에서 빠르고, 여러 시각의 구간은 scipy가 점마다 Python으로 항을 더해 차이가 커요. `onenormest`도 블록 곱이 스레드로 나뉘어 빨라요.
+- **작은 행렬.** Python 층이 얇아서 nnz가 작을 때 호출 하나의 고정 비용이 scipy보다 작아요.
+
+**느리거나 비슷한 곳**
+- **색인이 int64.** 값 8바이트에 색인 8바이트(scipy는 대개 4바이트)라 메모리 대역에 묶인 일(1스레드 SpMV, `vstack`, CSR → CSC)은 옮기는 바이트만큼 손해를 봐요. 1스레드 SpMV는 scipy와 비슷하거나 조금 느려요.
+- **흩뿌리기.** `x @ A`, CSC의 `@`, CSR의 열 합, `norm(A, 1)`은 출력의 여러 자리에 흩어 더하는 일이라, 결정적인 순서를 지키며 나누려면 블록마다 항을 한 번 쓰고 읽어야 해요. 스레드로 빨라지지만 행 방향 일만큼은 아니에요.
+- **SpGEMM.** 결과를 언제나 정렬된 표준 꼴로 만들어서, 정렬하지 않은 결과를 내는 scipy보다 1스레드에서 느려요. scipy의 결과를 정렬까지 하면 이쪽이 빨라요.
+- **피벗이 원소를 키우는 행렬의 풀이.** 첫 풀이의 원소별 역오차가 8ε를 넘으면(안장점 행렬 등) 잔차 계산과 풀이를 한 번 더 해서, 풀이 하나로 끝내는 scipy보다 느려요. 잘 조건된 행렬은 풀이 하나로 끝나요.
+- **`norm(ord=2)`.** `svds`를 허용오차 $\varepsilon$로 끝까지 돌려서, $A^{\mathsf T}A$의 ARPACK을 쓰는 scipy보다 1스레드에서 느려요.
+- **`random_array`.** 시간의 대부분이 `sd.random`의 비복원 추출이에요.
+- **`expm`.** 결과가 대개 거의 밀집이라 $n^2$의 메모리와 SpGEMM이 들어요. 작은 격자에서는 scipy보다 빨라요.
+
+<Callout>
+Accelerate의 직접 분해는 sd의 스레드풀을 쓰지 않아서 `sd.set_num_threads`와 상관없이 같은 빠르기예요. Accelerate 자신의 스레드 수는 환경 변수 `VECLIB_MAXIMUM_THREADS`만 따르고, 이 라이브러리는 그 값을 정하지도 바꾸지도 않아요.
+</Callout>

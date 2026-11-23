@@ -1,0 +1,789 @@
+---
+title: 표본 뽑기
+group: 표본과 다변량
+order: 1
+summary: 단변량 분포 31개의 sample이 표본을 만드는 방법을 설명해요. 표본 하나가 생성기 스트림의 원소 하나에서 나오므로 스레드 수와 상관없이 같은 값이고, 분포마다 근사 없이 정확한 기각이나 조합 방법을 써요.
+seeAlso: [discrete, continuous, multivariate, matrix, accuracy-performance]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+import Steps from '../../../components/fig/Steps.astro';
+
+export const zig8 = [[0, 1], [0.7384, 1.0], [0.7384, 0.7614], [1.0274, 0.7614], [1.0274, 0.5899], [1.263, 0.5899], [1.263, 0.4504], [1.4854, 0.4504], [1.4854, 0.3318], [1.7165, 0.3318], [1.7165, 0.2292], [1.9819, 0.2292], [1.9819, 0.1403], [2.3384, 0.1403], [2.3384, 0.065], [2.3384, 0]];
+
+## 한눈에 보기
+
+`X.sample(shape, rng=rng)`은 분포 `X`에서 표본을 뽑아요. `shape`를 주지 않으면(None) 매개변수 집합마다 하나예요. 쓰는 법은 [표본 뽑기 API](/api/stats/sample/)에 있고, 이 글은 그 안에서 일어나는 일을 다뤄요.
+
+- **표본 하나는 생성기 스트림의 원소 하나예요.** 호출의 원소 $i$(C 순서)는 스트림의 원소 $e = \text{pos} + i$이고, 그 원소가 쓰는 64비트 단어는 모두 (키, $e$)로 정해진 Philox 블록에서 나와요. 그래서 표본은 (키, $e$, 매개변수)만의 함수예요. 스레드 수, 작업 분할, 호출을 나누어 부르는 것과 무관해요.
+- **분포마다 정확한 방법을 써요.** 기각(rejection)이나 조합(composition)이고, 근사는 없어요. 받아들인 표본의 분포가 수학적으로 목표 분포와 같아요.
+- **모든 반복에 끝이 있어요.** 기각 한 라운드가 받아들여질 확률에 하한이 있고, 역변환의 걸음 수에는 상한이 있어요. 뽑을 수 없는 매개변수는 NaN이에요.
+
+| 분포 | 방법 |
+|---|---|
+| 정규, 로그정규 | 정규 ziggurat(256층) |
+| 지수, Gumbel, GEV, 베이불, 파레토, 레일리 | 지수 ziggurat(256층)와 닫힌 꼴 변환 |
+| 균등, 라플라스, 코시, 로지스틱 | 닫힌 꼴 역함수 |
+| 감마, 카이제곱 | Marsaglia–Tsang($a \ge 1$), $G(a+1)\,e^{-E/a}$($a < 1$) |
+| 역감마, t, F | 감마와 정규의 조합 |
+| 베타 | $X/(X+Y)$(두 모양 ≥ 1), Jöhnk(두 모양 < 1), log 감마(섞인 경우), 두 점(모양 < $2^{-1021}$) |
+| 비중심 카이제곱, t, F | 감마·정규·포아송의 조합 |
+| 베르누이, 이산 균등, 기하 | $u < p$, Lemire의 정수, $\lceil \log U/\log q\rceil$ |
+| 포아송 | $\mu < 10$은 0부터의 역변환, 그 위는 PTRS |
+| 이항 | $np < 10$은 0부터의 역변환, 그 위는 BTRS($p > 1/2$이면 $n - X$) |
+| 음이항, 베타이항 | 포아송–감마, 이항–베타 혼합 |
+| 초기하 | 최빈값에서 바깥으로 가는 역변환 |
+| 로그 급수 | Kemp의 LK |
+| Zipf | Devroye의 기각 |
+
+코드는 셋으로 나뉘어요. `csrc/stats/sample.hpp`가 원소의 단어(`Words`)와 기본 방법(역함수 법)을, `csrc/stats/sample_dist.hpp`가 분포마다의 방법(`Custom<D>`)을, `csrc/bind/stats_sample.cpp`가 배열 호출과 병렬 분할을 맡아요. Python 쪽 `sample` 메서드(`src/stardust/stats/_distribution.py`)는 인자를 검사하고 위치를 예약해요. 생성기 자체와 원소–계수기 배치는 [계수기형 생성기](/internals/random/generator/)에, `random`·`integers`의 알고리즘은 [뽑기 알고리즘](/internals/random/sampling/)에 있어요.
+
+## 원소 하나, 스트림의 원소 하나
+
+### 호출의 흐름
+
+<Fig column caption="X.sample(shape, rng=rng) 한 번의 흐름. 위치 예약만 잠금 안이고, 계산은 GIL을 놓고 스레드 풀에서 해요.">
+  <Steps steps={[
+    { label: 'X.sample()', note: 'rng가 Generator인지 검사. 결과 모양 = shape + 매개변수의 브로드캐스트 모양(shape=None이면 매개변수의 모양, shape=()는 ValueError)', where: '_distribution.py' },
+    { label: 'rng._take(n, "sample")', note: '결과가 물리 메모리보다 크면 여기서 MemoryError(위치는 그대로). 아니면 원소 수 n만큼 스트림 위치 [pos, pos + n)을 예약(생성기의 네이티브 상태에서 원자적으로). shape=None이고 매개변수가 스칼라면 이 단계 대신 <dist>_sample1s가 원소 하나를 예약하고 바로 뽑아요', depth: 1 },
+    { label: '<dist>_sample(k0, k1, pos, shape, params…)', note: 'float64 배열을 만들고 GIL을 놓아요', where: 'stats_sample.cpp' },
+    { label: 'for_pieces', note: '원소를 조각으로 나눠 스레드 풀에 줘요. 원소당 일의 추정은 64', depth: 1 },
+    { label: 'in_domain<D>, Custom<D>::prep', note: '매개변수가 스칼라면 조각마다 한 번. 정의역 밖이면 조각 전체가 NaN. df = inf 같은 극한은 통과시켜 표본기가 직접 뽑아요', depth: 1 },
+    { label: 'each_first', note: '원소 16개의 첫 단어를 Philox 블록 넷으로 한 번에', where: 'sample.hpp', depth: 1 },
+    { label: 'Custom<D>::draw(Words&, state)', note: '원소 하나의 표본. 단어가 더 필요하면 그 원소의 추가 블록에서', where: 'sample_dist.hpp', depth: 2 },
+  ]} />
+</Fig>
+
+### 원소의 단어
+
+원소 $e$가 쓰는 단어는 두 종류예요.
+
+- **첫 단어**: 계수기 $(\lfloor e/4\rfloor, 0, 0, 0)$의 Philox 블록이 내는 64비트 넷 가운데 $e \bmod 4$번째예요. `sd.random`의 `random()`이 원소 $e$에 쓰는 단어와 같아요.
+- **추가 단어 $k$** ($k = 0, 1, 2, \dots$): 계수기 $(e, 1 + \lfloor k/4\rfloor, 0, 0)$ 블록의 $k \bmod 4$번째예요. 기각을 다시 하거나 조합에 변수가 더 필요할 때 차례로 받아요.
+
+`Words`가 이 규칙을 감싸요.
+
+```cpp
+    // csrc/stats/sample.hpp
+    std::uint64_t next() {
+        if (!used_) {
+            used_ = true;
+            return have_ ? first_ : s_.first(e_);
+        }
+        if (k_ < npre_) return pre_[k_++];
+        const std::uint64_t j = 1 + (k_ >> 2);  // extra word k: word k mod 4 of block (e, 1 + k / 4)
+        if (j != block_) refill(j);
+        return words_[k_++ & 3];
+    }
+    // (0, 1), symmetric about 1/2: (m + 1/2) 2^-53
+    double u() { return (static_cast<double>(next() >> 11) + 0.5) * 0x1p-53; }
+    // [0, 1): m 2^-53 (sd.random's random())
+    double u01() { return static_cast<double>(next() >> 11) * 0x1p-53; }
+```
+
+균등 변수는 두 가지예요. `u01()`은 위 53비트 $m$으로 만든 $m \cdot 2^{-53} \in [0, 1)$이고 `random()`과 같아요. `u()`는 $(m + \tfrac12) \cdot 2^{-53}$이라 0과 1이 나오지 않고 1/2에 대해 대칭이에요. 그래서 $1 - u$가 정확하고, $\log u$가 언제나 유한해요. 역함수 법과 log를 취하는 방법이 `u()`를 써요.
+
+### 그래서 생기는 성질
+
+기각이 단어를 몇 개 쓰든 다음 원소의 첫 단어는 바뀌지 않아요. 그래서 원소마다의 값이 서로 독립적으로 정해지고, 다음이 모두 성립해요.
+
+```python
+>>> rng = sd.random.default_rng(42)
+>>> sd.stats.Normal().sample(3, rng=rng).tolist()
+[-0.9831886524290735, 0.34281218788631146, -0.8591331347114931]
+>>> rng.state["position"]
+3
+```
+
+**나눠 불러도 같아요.** 여섯 개를 한 번에 뽑은 것과 둘, 넷으로 나눠 뽑은 것이 같아요. 원소 번호가 같기 때문이에요.
+
+```python
+>>> X = sd.stats.Poisson(mu=3.5)
+>>> X.sample(6, rng=sd.random.default_rng(7)).tolist()
+[4.0, 3.0, 8.0, 3.0, 3.0, 3.0]
+>>> r = sd.random.default_rng(7)
+>>> X.sample(2, rng=r).tolist(), X.sample(4, rng=r).tolist()
+([4.0, 3.0], [8.0, 3.0, 3.0, 3.0])
+```
+
+**스레드 수와 무관해요.** 조각을 어떻게 나누든 원소 $e$의 단어는 같아요.
+
+```python
+>>> X = sd.stats.Gamma(a=0.5)
+>>> before = sd.get_num_threads()
+>>> sd.set_num_threads(1); a = X.sample(100000, rng=sd.random.default_rng(5))
+>>> sd.set_num_threads(10); b = X.sample(100000, rng=sd.random.default_rng(5))
+>>> sd.set_num_threads(before)
+>>> bool((a == b).all())
+True
+```
+
+**매개변수 배열도 같은 규칙이에요.** 매개변수의 브로드캐스트 모양이 $P$이면 결과는 `shape + P`이고, 원소 $i$는 매개변수의 $i \bmod \lvert P\rvert$번째와 스트림의 원소 $\text{pos} + i$를 써요. 매개변수가 (3,)이고 `shape=(2,)`이면 원소 $(i, j)$는 스트림의 원소 $3i + j$예요. 그래서 위치만 같으면 스칼라 호출의 원소와 비트까지 같아요.
+
+```python
+>>> mu = sd.asarray([0.0, 10.0, 100.0])
+>>> A = sd.stats.Normal(mu=mu).sample(2, rng=sd.random.default_rng(3))
+>>> A.shape
+(2, 3)
+>>> z = sd.stats.Normal().sample(6, rng=sd.random.default_rng(3))
+>>> (sd.reshape(z, (2, 3)) + mu).tolist() == A.tolist()
+True
+```
+
+정규 표본은 `fma(sigma, z, mu)`이고 $\sigma = 1$이면 $\mathrm{fl}(z + \mu)$라서 두 쪽이 같은 연산이에요.
+
+스칼라 매개변수가 배열 매개변수 옆에 있으면, Python 쪽이 그 스칼라를 브로드캐스트 모양으로 넓혀 커널에 넘겨요. 커널은 매개변수 집합의 수를 매개변수에서 읽으므로 모든 매개변수가 같은 모양이어야 해요. `shape`를 주지 않으면 결과는 매개변수의 모양 그대로, 매개변수 집합마다 하나예요.
+
+```python
+>>> sigma = sd.asarray([1.0, 10.0, 100.0])
+>>> sd.stats.Normal(mu=0.0, sigma=sigma).sample(rng=sd.random.default_rng(3)).tolist()
+[-0.05591110736495433, -1.3107646883385446, -46.87077495747134]
+```
+
+### 매개변수의 검사와 준비
+
+- **스칼라 매개변수**(보통의 호출): 조각마다 정의역을 한 번 보고(`in_domain`), 방법에 준비 단계가 있으면(`prep`: 감마의 $d, c$, PTRS의 상수 등) 한 번 계산해요. 정의역 밖이면 조각 전체가 NaN이에요.
+- **배열 매개변수**: 원소마다 검사하고 준비해요. 정의역 밖인 원소만 NaN이에요.
+
+```python
+>>> sd.stats.Gamma(a=sd.asarray([2.0, -1.0])).sample(2, rng=sd.random.default_rng(1)).tolist()
+[[3.731983022214118, nan], [1.6688571033680708, nan]]
+```
+
+`in_domain`은 분포의 `valid`에, 정의역 밖이지만 다른 분포의 극한인 매개변수(`at_limit`, t의 df = inf 같은 것)를 더한 거예요. 그런 매개변수는 NaN으로 막지 않고 표본기에 넘기고, 표본기의 준비 단계가 극한 분포의 꼴을 골라요([아래](#감마로-만드는-분포)).
+
+```cpp
+// csrc/bind/stats_sample.cpp
+template <class D, class... P>
+bool in_domain(P... p) {
+    if constexpr (stats::has_limit<D, P...>) {
+        if (D::at_limit(p...)) return true;
+    }
+    return D::valid(p...);
+}
+```
+
+- **`shape=None`이고 매개변수가 모두 스칼라**: 배열을 만들지 않고 Python float 하나를 바로 돌려줘요. `rng`가 `sd.random.Generator` 그 자체이면 분포 클래스가 들고 있는 네이티브 함수(`_s1`, 곧 `<dist>_sample1s`)를 `(rng._st, 매개변수 튜플)`로 불러요. 커널이 생성기의 네이티브 상태에서 원소 하나를 예약하고, Python float의 튜플을 직접 읽어 뽑아요. Python 쪽의 잠금, 키 튜플, 인자 펼치기가 없어요. 그 밖(다른 `rng`, 배열 매개변수, `shape`)은 검사와 메시지가 있는 일반 길이에요. 값은 같은 위치에서 배열로 뽑은 첫 원소와 비트까지 같아요(같은 원소, 같은 단어예요).
+
+```python
+>>> sd.stats.Gamma(a=2.5).sample(rng=sd.random.default_rng(1))
+4.442038968696807
+>>> sd.stats.Gamma(a=2.5).sample(1, rng=sd.random.default_rng(1)).tolist()
+[4.442038968696807]
+```
+
+`shape=()`는 stardust에 0차원 배열이 없어서 `ValueError`예요. 결과가 이 컴퓨터의 물리 메모리보다 크면, 스트림 위치를 예약하기 전에(`rng._take`) `MemoryError`를 내요. 그래서 거절된 호출은 생성기의 위치를 움직이지 않아요.
+
+```python
+>>> rng = sd.random.default_rng(1)
+>>> sd.stats.Normal().sample((), rng=rng)
+Traceback (most recent call last):
+  ...
+ValueError: sample(): 0-dimensional arrays are not supported (stardust has no 0-d arrays)
+>>> sd.stats.Normal().sample(10**15, rng=rng)
+Traceback (most recent call last):
+  ...
+MemoryError: sample(): cannot allocate 8000000000000000 bytes: more than this machine's physical memory
+>>> rng.state["position"]
+0
+```
+
+### 기본 방법: 역함수 법
+
+전용 방법이 없는 분포를 위한 기본은 역함수 법이에요(`by_inverse`).
+
+```cpp
+// csrc/stats/sample.hpp
+template <class D, class... P>
+double by_inverse(Words& w, P... p) {
+    const double u = w.u();
+    return u <= 0.5 ? D::icdf(u, p...) : D::iccdf(1.0 - u, p...);
+}
+```
+
+$U$가 균등이면 $F^{-1}(U)$는 분포 $F$를 따라요. $u > 1/2$이면 정확한 $1 - u$로 `iccdf`를 불러 위꼬리도 아래꼬리처럼 $2^{-54}$까지 닿아요. 정확하지만 비싸요. 감마와 초기하의 역함수는 numpy의 전용 방법보다 수십–수백 배 느려요. 그래서 31개 분포 모두에 전용 방법(`Custom<D>`)이 있고, 그중 넷(균등, 라플라스, 코시, 로지스틱)은 역함수가 닫힌 꼴이라 그 식을 바로 써요.
+
+## 연속 분포
+
+### 정규: ziggurat
+
+**ziggurat**[1]는 밀도 아래를 넓이가 같은 가로 띠(층) $N$개로 덮는 기각 방법이에요. 반쪽 밀도 $f(x) = e^{-x^2/2}$($x \ge 0$, 정규화하지 않음)를 생각해요.
+
+- **바닥층**은 직사각형 $[0, R] \times [0, f(R)]$과 꼬리 $x > R$을 합친 것이고, 넓이가 $V$예요. 뽑을 때는 폭을 넓이가 $V$인 직사각형의 폭 $V/f(R)$로 늘려서 다른 층과 같이 다뤄요.
+- **그 위의 층** $i$는 폭 $x_i$, 높이 $f(x_{i-1}) - f(x_i)$인 직사각형이고, 넓이가 모두 $V$예요. 폭은 위로 갈수록 좁아져요. $x_{i-1} = f^{-1}(V/x_i + f(x_i))$로 위층의 폭을 정해요.
+- $R$과 $V$는 맨 위층이 정확히 $f = 1$에서 닫히도록 정해요. 256층이면 $R = 3.6541528853610088$, $V = 4.92867323399 \times 10^{-3}$이에요.
+
+<Fig caption="8층 ziggurat(그림을 위해 층을 줄였어요. 실제는 256층). 실선은 f(x) = exp(−x²/2), 점선은 층의 오른쪽 끝을 이은 계단이에요. 층 i에서 x가 위층의 폭보다 작으면 그 점은 반드시 곡선 아래라 바로 받아들여요. 계단이 곡선 밖으로 나온 작은 쐐기에서만 f(x)를 계산해요. 맨 아래 띠는 x = R 너머의 꼬리를 포함해요.">
+  <Plot
+    curves={[
+      { f: (x) => Math.exp(-x * x / 2), label: 'f(x) = exp(−x²/2)' },
+      { points: zig8, label: '층(8층, R = 2.338)', dashed: true },
+    ]}
+    domain={[0, 3.5]}
+    range={[0, 1.05]}
+    xTicks={[{ v: 1, label: '1' }, { v: 2, label: '2' }, { v: 2.3384, label: 'R' }, { v: 3, label: '3' }]}
+    yTicks={[{ v: 0.5, label: '0.5' }, { v: 1, label: '1' }]}
+  />
+</Fig>
+
+뽑는 법은 이래요.
+
+1. 층 $i$를 균등하게 고르고, $x = U \cdot x_i$를 만들어요. 층의 넓이가 모두 같으므로 층을 균등하게 고르면 넓이에 비례해서 고른 것과 같아요.
+2. $x < x_{i-1}$(위층의 폭)이면 점 $(x, y)$는 층의 어느 높이 $y$에서도 곡선 아래예요. 바로 받아들여요. 256층에서는 약 99%가 이 경우예요.
+3. 그렇지 않으면 쐐기 안이에요. $y$를 $[f(x_i), f(x_{i-1})]$에서 균등하게 뽑아 $y < f(x)$이면 받아들이고, 아니면 처음부터 다시 해요.
+4. 바닥층에서 $x > R$이면 꼬리예요. Marsaglia의 꼬리 방법[2]으로 $\xi = -\log U_1/R$, $\eta = -\log U_2$를 뽑아 $2\eta > \xi^2$이면 $R + \xi$를 내요. 이 방법은 $R$ 너머의 정규 꼬리를 지수분포로 덮은 기각이에요.
+
+이렇게 받아들인 $x$는 반쪽 정규분포를 정확히 따라요. 각 점이 곡선 아래의 영역에서 균등하게 뽑힌 것이기 때문이에요. 부호는 단어의 비트 하나로 붙여요.
+
+```cpp
+// csrc/stats/sample_dist.hpp
+inline double std_normal(Words& w) {
+    const ZigNormal& z = zig_normal();
+    std::uint64_t r = w.next();
+    const int idx = static_cast<int>(r & 0xff);
+    r >>= 8;
+    const bool neg = r & 1;
+    const std::uint64_t rabs = (r >> 1) & 0x000fffffffffffffULL;
+    // the sign by its bit (a branch on a random bit mispredicts half the time: 3 ns)
+    const double x = std::bit_cast<double>(
+        std::bit_cast<std::uint64_t>(static_cast<double>(rabs) * z.wi[idx]) | (static_cast<std::uint64_t>(neg) << 63)
+    );
+    if (rabs < z.ki[idx]) [[likely]]
+        return x;  // inside the layer's rectangle (~99%)
+    return std_normal_rest(w, idx, neg, x);
+}
+```
+
+단어 하나에서 아래 8비트가 층, 다음 1비트가 부호, 그 위 52비트가 가로 위치예요. 표 `wi[i]`는 $x_i/2^{52}$, `ki[i]`는 $x_{i-1}/x_i \cdot 2^{52}$이라서, 비교 `rabs < ki[idx]`가 곧 $x < x_{i-1}$이에요. 부호를 `if`로 붙이면 무작위 비트라 분기 예측이 절반 틀리므로, 비트 연산으로 부호 비트를 직접 넣어요. 표는 numpy의 `random_standard_normal`과 같은 구성이고 모듈을 불러올 때 한 번 만들어요. 흔한 경로(약 99%)는 인라인되고, 쐐기와 꼬리는 따로 둔 함수(`std_normal_rest`)예요. 그래야 흔한 경로가 작게 유지되어 원소의 단어가 레지스터에 남아요.
+
+로그정규는 $\exp(\mu + \sigma Z)$예요.
+
+### 지수: ziggurat
+
+$f(x) = e^{-x}$에 같은 구성을 해요. 256층에서 $R = 7.69711747013104972$, $V = 3.949659822581572 \times 10^{-3}$이에요. 단어의 위 61비트 중 아래 8비트가 층, 그 위 53비트가 가로 위치예요. 꼬리는 더 간단해요. 지수분포는 기억이 없으므로($X - R \mid X > R$이 다시 지수분포) 꼬리 표본은 $R - \log U$예요. 지수 ziggurat는 log 없이 표준 지수 $E$를 내므로, 아래의 많은 방법이 이것을 부품으로 써요.
+
+| 분포 | 표본 |
+|---|---|
+| 지수 | $\text{scale} \cdot E$ |
+| Gumbel | $\mu - \sigma\log E$ |
+| GEV | $\mu - \sigma\,\operatorname{expm1}(c\log E)/c$ ($c = 0$이면 Gumbel) |
+| 베이불 | $\text{scale} \cdot E^{1/c}$ |
+| 파레토 | $\text{scale} \cdot \exp(E/b)$ |
+| 레일리 | $\text{scale} \cdot \sqrt{2E}$ |
+| 균등 | $a + (b - a)U$, $b - a$가 넘치면 $2(a/2 + (b/2 - a/2)U)$, $b$로 반올림되면 $a$ |
+| 라플라스 | $\mu \pm \sigma\log(2\min(u, 1-u))$ |
+| 코시 | $\mu + \sigma\tan(\pi(u - \tfrac12))$ |
+| 로지스틱 | $\mu + \sigma\log(u/(1-u))$ |
+
+GEV에서 $T = (1 - cz)^{1/c}$는 표준 지수를 따라요. 그래서 $z = (1 - E^c)/c = -\operatorname{expm1}(c\log E)/c$이고, `expm1` 덕에 $c \to 0$에서 상쇄 없이 Gumbel의 $-\log E$로 이어져요. 균등의 마지막 조건은 반올림이 $b$를 만들면 $a$로 바꿔 $[a, b)$를 지켜요(`random()`과 같은 반열린 구간).
+
+### 감마: Marsaglia–Tsang
+
+모양 $a \ge 1$인 감마는 Marsaglia–Tsang의 방법[3]이에요.
+
+1. $d = a - 1/3$, $c = 1/\sqrt{9d}$를 준비해요.
+2. $x \sim N(0, 1)$을 뽑고 $v = (1 + cx)^3$을 만들어요. $v \le 0$이면 다시 뽑아요.
+3. $u \sim U(0, 1)$을 뽑아, $u < 1 - 0.0331x^4$이면 $dv$를 내요(빠른 받아들임).
+4. 아니면 $\log u < x^2/2 + d(1 - v + \log v)$일 때 $dv$를 내고, 아니면 1로 돌아가요.
+
+**왜 맞나요.** $Y = dv = d(1 + cx)^3$으로 변수를 바꾸면, 감마 밀도 $y^{a-1}e^{-y}$에 야코비안 $dy/dx = 3dc(1 + cx)^2$을 곱한 $x$의 밀도는
+
+$$
+g(x) \propto v^{a-1}\cdot v^{2/3}\cdot e^{-dv} = v^{d}\,e^{-dv} \;\propto\; h(x) = \exp\bigl(d\log v - dv + d\bigr)
+$$
+
+예요($a - 1 + 2/3 = d$). Marsaglia와 Tsang은 $h(x) \le e^{-x^2/2}$임을 보였어요. 그래서 정규 $x$를 제안하고 확률 $h(x)/e^{-x^2/2}$로 받아들이는 기각이 되고, 그 조건이 4단계의 $\log u < x^2/2 + d(1 - v + \log v)$예요. 받아들인 $x$에서 $dv$는 감마 분포를 정확히 따라요. $c = 1/\sqrt{9d}$는 Wilson–Hilferty 근사(감마의 세제곱근이 거의 정규)에서 온 척도라 $h$와 정규 밀도가 아주 가까워요. 3단계의 $1 - 0.0331x^4$는 $h(x)e^{x^2/2}$의 값싼 아래 경계(squeeze)라서, 대부분의 라운드는 log 없이 끝나요. 한 라운드가 이 빠른 받아들임만으로 끝날 확률이 어떤 $a \ge 1$에서도 0.92 이상이에요.
+
+```cpp
+// csrc/stats/sample_dist.hpp
+// the first round inline (accepted ~96%: no call, the words in registers), then the loop
+inline double gamma_mt(Words& w, double d, double c) {
+    const double x = std_normal(w), v1 = 1.0 + c * x;
+    if (v1 > 0.0) [[likely]] {
+        const double v = v1 * v1 * v1, u = w.u01(), x2 = x * x;
+        if (u < 1.0 - 0.0331 * x2 * x2) [[likely]]
+            return d * v;
+        if (std::log(u) < 0.5 * x2 + d * (1.0 - v + std::log(v))) return d * v;
+    }
+    return gamma_mt_loop(w, d, c);
+}
+```
+
+첫 라운드는 인라인되고, 다시 뽑아야 하는 경우만 따로 둔 루프로 가요. 정규 $x$와 $u$는 같은 원소의 단어에서 차례로 받아요(첫 단어가 $x$의 ziggurat, 추가 단어가 $u$).
+
+### 모양이 1보다 작을 때: $G(a+1)\,e^{-E/a}$
+
+$a < 1$이면 $d = a - 1/3$이 너무 작아 위 방법을 그대로 쓸 수 없어요. 대신 Stuart의 정리[4]를 써요.
+
+$$
+G(a) \overset{d}{=} G(a + 1)\cdot U^{1/a}
+$$
+
+$G(a+1)$과 $U$가 독립이면 곱이 $G(a)$를 따라요. $U^{1/a} = \exp(\log U/a) = \exp(-E/a)$이고, $E = -\log U$는 표준 지수라 지수 ziggurat에서 log 없이 나와요. $G(a+1)$은 모양이 1 이상이라 Marsaglia–Tsang으로 뽑아요.
+
+모양이 아주 작으면 $e^{-E/a}$가 언더플로해요. 참값도 0에 아주 가까우므로 그 자체는 맞지만, 베타처럼 감마 둘의 비를 만드는 분포에서는 0/0이 돼요. 그래서 $a < 1/16$(`kDirectShape`)이면 $\log G(a) = \log G(a+1) - E/a$를 log로 계산해 두고, 비를 만드는 쪽에서 log의 차로 써요. $a \ge 1/16$에서는 $E/a > 700$일 확률이 $e^{-43}$이라 곱을 바로 계산해도 돼요.
+
+감마 하나의 표본이 0으로 반올림되는 것은 맞는 결과예요. $a = 10^{-3}$이면 질량의 47.5%가 가장 작은 double($5 \times 10^{-324}$) 아래에 있어요.
+
+```python
+>>> G = sd.stats.Gamma(a=1e-3)
+>>> G.cdf(5e-324)
+0.4752740574266902
+>>> x = G.sample(200000, rng=sd.random.default_rng(7))
+>>> sd.mean(x == 0.0)
+0.47491
+```
+
+### 감마로 만드는 분포
+
+| 분포 | 표본 |
+|---|---|
+| 카이제곱 | $2\,G(\text{df}/2)$ |
+| 역감마 | $\text{scale}/G(a)$, 작은 모양은 $\exp(\log\text{scale} - \log G)$ |
+| t | $Z\sqrt{(\text{df}/2)/G(\text{df}/2)}$ |
+| F | $\dfrac{G_1}{G_2}\cdot\dfrac{\text{dfd}/2}{\text{dfn}/2}$, 작은 모양은 $\exp(\log G_1 - \log G_2 + \log(\text{dfd}/\text{dfn}))$ |
+| 베타 | 아래 |
+| 비중심 카이제곱 | $\text{df} > 1$: $\chi^2_{\text{df}-1} + (Z + \sqrt{\text{nc}})^2$, $\text{df} = 1$: $(Z + \sqrt{\text{nc}})^2$, $\text{df} < 1$: $2\,G(\text{df}/2 + N)$, $N \sim \text{Poisson}(\text{nc}/2)$ |
+| 비중심 t | $(Z + \text{nc})\sqrt{(\text{df}/2)/G(\text{df}/2)}$ |
+| 비중심 F | $(X_1/\text{dfn})/(2G_2/\text{dfd})$, $X_1$은 비중심 카이제곱 |
+
+비중심 카이제곱의 $\text{df} > 1$ 꼴은 비중심도를 정규 좌표 하나에 몰아넣은 거예요. $\sum_i (Z_i + \mu_i)^2$의 분포는 $\sum\mu_i^2$에만 기대므로, 비중심도 전체를 첫 좌표에 두면 나머지 $\text{df} - 1$ 좌표는 중심 카이제곱이에요. 감마 하나와 정규 하나로 끝나요. $\text{df} = 1$이면 남는 좌표가 없어서 정규 하나의 제곱이에요. $\text{df} < 1$이면 $\text{df} - 1$이 음수라 이 꼴을 쓸 수 없어서, 포아송 혼합 $2G(\text{df}/2 + N)$을 써요.
+
+```cpp
+        // csrc/stats/sample_dist.hpp, Custom<NoncentralChiSquared>::draw
+        if (s.snc == 0.0) return Custom<ChiSquared>::draw(w, {s.g0, s.df < kMinSampleDf});
+        if (s.df >= 1.0) {
+            const double z = std_normal(w) + s.snc;
+            return s.df == 1.0 ? z * z : 2.0 * gamma_draw(w, s.g1) + z * z;
+        }
+        const double n = poisson_draw(w, s.pn);
+        return 2.0 * gamma_draw(w, n == 0.0 ? s.g0 : gamma_prep(s.h + n));
+```
+
+`g1`은 모양 $(\text{df} - 1)/2$의 감마 준비이고, $2G((\text{df}-1)/2)$가 $\chi^2_{\text{df}-1}$이에요.
+
+첫 줄은 $\text{nc} = 0$인 경우예요. 위 꼴도 nc = 0에서 카이제곱 분포를 뽑지만, 단어를 쓰는 방법이 달라서 같은 `rng` 상태에서 `ChiSquared`와 다른 값이 나와요. 그래서 nc = 0이면 카이제곱의 표본기를 그대로 불러요. 비중심 F도 준비 단계에서 nc = 0을 알아보고(`lim` = 4) `Custom<F>`의 준비와 뽑기를 써요. 비중심 t는 $Z + \text{nc}$가 nc = 0에서 $Z$와 같은 비트라 따로 둘 것이 없어요. 셋 모두 다른 메서드처럼 중심 분포와 비트까지 같아요.
+
+```python
+>>> a = sd.stats.NoncentralChiSquared(df=3.0, nc=0.0).sample(3, rng=sd.random.default_rng(1))
+>>> b = sd.stats.ChiSquared(df=3.0).sample(3, rng=sd.random.default_rng(1))
+>>> a.tolist() == b.tolist()
+True
+>>> a = sd.stats.NoncentralF(dfn=3.0, dfd=11.0, nc=0.0).sample(3, rng=sd.random.default_rng(1))
+>>> b = sd.stats.F(dfn=3.0, dfd=11.0).sample(3, rng=sd.random.default_rng(1))
+>>> a.tolist() == b.tolist()
+True
+```
+
+**무한한 자유도**는 극한 분포의 표본이에요. $\chi^2_\text{df}/\text{df}$는 $\text{df} \to \infty$에서 1로 모이므로, 그 인자를 1로 두면 돼요.
+
+| 분포 | 자유도 | 표본 | 같은 분포 |
+|---|---|---|---|
+| t | df = inf | $Z$ | `Normal()` |
+| 비중심 t | df = inf | $Z + \text{nc}$ | `Normal(mu=nc)` |
+| F | dfd = inf | $G_1/(\text{dfn}/2)$ | $\chi^2_\text{dfn}/\text{dfn}$ |
+| F, 비중심 F | dfn = inf | $(\text{dfd}/2)/G_2$ | `InverseGamma(a=dfd/2, scale=dfd/2)` |
+| 비중심 F | dfd = inf | $X_1/\text{dfn}$ | 비중심 $\chi^2(\text{dfn}, \text{nc})/\text{dfn}$ |
+
+준비 단계가 어느 꼴인지 정해 두고(t의 `kind`, F의 `lim`), 뽑을 때는 그 꼴의 단어만 써요. 그래서 같은 위치에서 뽑으면 극한 분포의 표본과 비트까지 같아요.
+
+```python
+>>> inf = float("inf")
+>>> a = sd.stats.StudentT(df=inf).sample(3, rng=sd.random.default_rng(1))
+>>> b = sd.stats.Normal().sample(3, rng=sd.random.default_rng(1))
+>>> a.tolist() == b.tolist()
+True
+>>> sd.stats.F(dfn=inf, dfd=4).sample(rng=sd.random.default_rng(1))
+0.5359081185780519
+>>> sd.stats.InverseGamma(a=2, scale=2).sample(rng=sd.random.default_rng(1))
+0.5359081185780519
+```
+
+`ChiSquared(df=inf)`(질량이 무한대로 달아나요)와 두 자유도가 모두 inf인 F는 극한 분포로 두지 않아서 정의역 밖이고, 표본도 NaN이에요.
+
+반대쪽 끝도 있어요. 카이제곱, t, 비중심 t는 df가 $2^{-1021}$(`kMinSampleDf`) 아래이면 NaN이에요(비중심 카이제곱은 nc = 0일 때). 표본은 모양 df/2의 감마에서 나오는데, 그 아래의 df는 절반이 double로 정확하지 않기 때문이에요. 서브노멀 df는 반으로 나누면 비트를 잃거나 0이 되고, 가장 작은 정규수 구간 $[2^{-1022}, 2^{-1021})$의 df도 절반이 서브노멀이라 마지막 비트가 1이면 반올림돼요. $2^{-1021}$ 이상이면 절반이 정규수라 언제나 정확해요. 값 메서드의 경계(`StudentT::halvable`)와 같은 상수라서, 카이제곱, t, F, 비중심 t·F는 같은 df에서 값 메서드와 표본이 함께 NaN이에요.
+
+```cpp
+// csrc/stats/sample_dist.hpp
+inline constexpr double kMinSampleDf = 0x1p-1021;
+```
+
+카이제곱은 준비 단계에서 이 경계를 보고 표시를 남겨 두고, 뽑을 때 그 표시가 있으면 감마를 뽑지 않고 NaN을 내요. 위의 비중심 카이제곱 첫 줄이 nc = 0에서 같은 표시를 넘기므로 둘의 표본은 이 경계 아래에서도 같아요.
+
+```cpp
+// csrc/stats/sample_dist.hpp
+template <>
+struct Custom<ChiSquared> {
+    static constexpr bool kExtra = true;  // draws extra words
+    struct State {
+        GammaPrep g;
+        bool nan;  // df < 2^-1021: NaN, as the value methods (user decision 2026-11-19; was 0)
+    };
+    static State prep(double df) { return {gamma_prep(0.5 * df), df < kMinSampleDf}; }
+    static double draw(Words& w, const State& s) {
+        return s.nan ? std::numeric_limits<double>::quiet_NaN() : 2.0 * gamma_draw(w, s.g);
+    }
+};
+```
+
+F는 두 자유도 중 하나라도 이 경계 아래이면 NaN이에요(`lim` = 3). 두 감마의 모양이 자유도의 절반이라 카이제곱과 같은 까닭이에요. 극한 분포와 겹치는 곳은 값 메서드를 따라요. dfd = inf이면 표본이 $\chi^2_\text{dfn}/\text{dfn}$이라 작은 dfn은 카이제곱처럼 NaN이에요. dfn = inf이면 역감마 `InverseGamma(a=dfd/2, scale=dfd/2)`의 극한이고, 역감마는 서브노멀 모양에서도 값 메서드가 값을 내므로 작은 dfd에서도 그 극한에서 뽑아요.
+
+```cpp
+    // csrc/stats/sample_dist.hpp, Custom<F>
+    static State prep(double dfn, double dfd) {
+        const bool tiny = dfn < kMinSampleDf || dfd < kMinSampleDf;
+        const int lim = dfd == kInf ? (tiny ? 3 : 1) : (dfn == kInf ? 2 : (tiny ? 3 : 0));
+        return {
+            gamma_prep(lim == 2 ? 1.0 : 0.5 * dfn), gamma_prep(lim == 1 ? 1.0 : 0.5 * dfd),
+            lim == 0 ? log_ratio(dfd, dfn) : 0.0, lim
+        };
+    }
+    static double draw(Words& w, const State& s) {
+        if (s.lim == 3) return std::numeric_limits<double>::quiet_NaN();
+        // ...
+    }
+```
+
+비중심 F도 두 자유도 중 하나라도 이 경계 아래이면 NaN이에요. nc = 0이면 준비 단계가 `Custom<F>`에 넘기므로(`kind` = 4), 이 경계 아래에서도 두 분포의 표본이 같아요. 준비 단계가 inf인 자유도를 먼저 보므로, 다른 자유도가 inf이면 위 표의 극한 분포를 뽑아요.
+
+```cpp
+        // csrc/stats/sample_dist.hpp, Custom<NoncentralF>::prep
+        const int lim = dfd == kInf ? 1 : (dfn == kInf ? 2 : (dfn < kMinSampleDf || dfd < kMinSampleDf ? 3 : 0));
+        const int kind = nc == 0.0 && lim != 3 ? 4 : lim;
+```
+
+```python
+>>> rng = sd.random.default_rng
+>>> sd.stats.StudentT(df=2**-1022).sample(rng=rng(1)), sd.stats.StudentT(df=2**-1021).sample(rng=rng(1))
+(nan, inf)
+>>> sd.stats.ChiSquared(df=2**-1022).sample(rng=rng(1)), sd.stats.NoncentralChiSquared(df=2**-1022, nc=0.0).sample(rng=rng(1))
+(nan, nan)
+>>> sd.stats.NoncentralF(dfn=5.0, dfd=1e-310, nc=0.0).sample(rng=rng(1)), sd.stats.F(dfn=5.0, dfd=1e-310).sample(rng=rng(1))
+(nan, nan)
+>>> inf = float("inf")
+>>> sd.stats.F(dfn=1e-310, dfd=inf).sample(rng=rng(1)), sd.stats.F(dfn=inf, dfd=1e-310).sample(rng=rng(1))
+(nan, inf)
+```
+
+비중심 카이제곱은 nc > 0이면 이 경계 아래에서도 뽑아요. 값 메서드도 이 영역을 df = 0의 극한, 곧 0에 질량 $e^{-\text{nc}/2}$가 놓인 분포로 계산해요. df < 1의 포아송 혼합 꼴에서 $N = 0$이면 모양 df/2의 감마가 0이라 0의 점질량(확률 $e^{-\text{nc}/2}$)이 되고, $N \ge 1$이면 모양이 $N$에 가까운 보통 감마예요.
+
+```python
+>>> x = sd.stats.NoncentralChiSquared(df=2**-1022, nc=1.0).sample(100000, rng=rng(1))
+>>> sd.mean(x == 0.0)
+0.60826
+```
+
+$e^{-1/2} = 0.6065$예요.
+
+**베타**는 네 갈래예요.
+
+- **모양 하나라도 $2^{-1021}$ 미만**: 값 메서드와 같은 두 점 분포예요([작은 모양의 두 점](/internals/stats/engine/#작은-모양의-두-점-two_point)). 준비 단계에서 값 메서드와 같은 `two_point::of_shapes`로 두 질량을 정해 두고, 균등 단어 하나 $u$로 $u < q$이면 1, 아니면 0을 내요. 한쪽 질량이 0으로 반올림됐으면 단어를 보지 않고 그 점을 내요.
+- **두 모양 ≥ 1**: $X/(X+Y)$, $X \sim G(a)$, $Y \sim G(b)$예요.
+- **두 모양 < 1**: Jöhnk의 방법[5]이에요. $X = U^{1/a}$, $Y = V^{1/b}$를 뽑아 $X + Y \le 1$이면 $X/(X+Y)$를 내요. 그 조건 아래에서 $X/(X+Y)$가 $\text{Beta}(a, b)$를 따라요. 받아들일 확률은 $\Gamma(a+1)\Gamma(b+1)/\Gamma(a+b+1)$이라 두 모양이 1보다 작으면 1/2 이상이에요($a = b = 1/2$에서 $\pi/4 \approx 0.79$). 거듭제곱은 $\exp(-E/a)$로 만들고, 모양이 1/16보다 작으면 log에서 판정해요.
+- **섞인 경우**: 두 감마를 log로 뽑아 $1/(1 + e^{\log Y - \log X})$로 합쳐요(지수가 넘치지 않는 쪽을 골라요).
+
+```cpp
+    // csrc/stats/sample_dist.hpp, Custom<Beta>
+    static State prep(double a, double b) {
+        const bool at = Beta::at_limit(a, b);
+        return {gamma_prep(a), gamma_prep(b), at, at ? two_point::of_shapes(a, b, 0.0, 1.0, false) : two_point::Law{}};
+    }
+    static double draw(Words& w, const State& s) {
+        if (s.at) return s.t.q == 0.0 ? 0.0 : (s.t.qc == 0.0 ? 1.0 : (w.u01() < s.t.q ? 1.0 : 0.0));
+        // ...
+    }
+```
+
+Jöhnk 갈래의 거듭제곱은 log에서 $-E/a$예요. 경계 바로 위의 모양($2^{-1021}$의 몇 배)에서는 $E/a$가 double을 넘어 두 log가 모두 −inf가 될 수 있어요. 그때는 더 작은 모양으로 두 지수의 크기를 맞춰 비교해서 0, 1, 1/2 중 하나를 내요. 질량이 두 끝으로 갈라지는 극한에서의 판정이에요.
+
+```python
+>>> x = sd.stats.Beta(a=1e-310, b=3e-310).sample(100000, rng=rng(1))
+>>> sorted(set(x.tolist())), sd.mean(x)
+([0.0, 1.0], 0.24972)
+```
+
+베타이항도 모양 하나라도 $2^{-1021}$ 미만이면 같은 `Law`로 0과 $n$ 중 하나를 내요([음이항과 베타이항](#음이항과-베타이항-혼합)).
+
+## 이산 분포
+
+### 베르누이, 이산 균등, 기하
+
+- **베르누이**: $u_{01} < p$이면 1이에요.
+- **이산 균등**: Lemire의 곱셈과 기각으로 $[0, \text{high} - \text{low})$의 정수를 뽑아 더해요(`random::bounded`, [뽑기 알고리즘](/internals/random/sampling/)). 폭이 $2^{64}$ 이상이면 단어 하나로 셀 수 없어 NaN이에요.
+- **기하**: $\lceil \log U/\log(1 - p)\rceil$이에요. $P(K > k) = P(U < q^k) = q^k$이라 정확해요. $1/\log(1 - p)$는 준비 단계에서 한 번 구해요.
+
+### 포아송: 역변환과 PTRS
+
+$\mu < 10$이면 0부터 역변환해요. $P(0) = e^{-\mu}$에서 시작해 $P(k+1) = P(k)\mu/(k+1)$로 누적합이 $u$를 넘을 때까지 걸어요. 평균 $\mu$걸음이고, pmf가 언더플로하면($k$가 약 230) 멈춰요.
+
+$\mu \ge 10$이면 Hörmann의 PTRS(transformed rejection with squeeze)[6]예요. 균등 변수를 닫힌 꼴로 변환해 pmf를 덮는 "모자" 분포의 표본을 만들고, 그 표본을 기각으로 걸러요.
+
+$$
+x(U) = \left(\frac{2a}{u_s} + b\right)U + \mu + 0.43, \qquad U \sim U(-\tfrac12, \tfrac12),\quad u_s = \tfrac12 - \lvert U\rvert
+$$
+
+$k = \lfloor x(U)\rfloor$를 제안해요. $x(U)$의 도함수는 $dx/dU = a/u_s^2 + b$이므로, $x$의 밀도(모자)는 $1/(a/u_s^2 + b)$에 비례해요. 그래서 $V \sim U(0, 1)$을 뽑아
+
+$$
+\log\frac{V\,\alpha^{-1}}{a/u_s^2 + b} \le \log P(k) = k\log\mu - \mu - \log k!
+$$
+
+이면 $k$를 받아들여요. 모자 밀도 아래에서 균등하게 뽑은 점이 pmf 아래에 있는지 보는 표준 기각이에요. 상수는 Hörmann이 맞춘 값이에요.
+
+$$
+b = 0.931 + 2.53\sqrt\mu,\quad a = -0.059 + 0.02483\,b,\quad \alpha^{-1} = 1.1239 + \frac{1.1328}{b - 3.4},\quad v_r = 0.9277 - \frac{3.6224}{b - 2}
+$$
+
+$u_s \ge 0.07$이고 $V \le v_r$인 영역은 모자가 언제나 pmf 아래에 있도록 고른 squeeze라, pmf를 계산하지 않고 받아들여요. 한 라운드가 이 squeeze만으로 끝날 확률이 0.34 이상이에요.
+
+```cpp
+    // csrc/stats/sample_dist.hpp, poisson_draw (발췌)
+    for (;;) {
+        const double U = w.u01() - 0.5, V = w.u01();
+        const double us = 0.5 - std::fabs(U);
+        const double k = std::floor((2.0 * s.a / us + s.b) * U + s.mu + 0.43);
+        if (us >= 0.07 && V <= s.vr) return k;
+        if (k < 0.0 || (us < 0.013 && V > us)) continue;
+        // log pmf(k) = k log mu - mu - log k!, in plain double first
+        const double lhs = std::log(V) + s.log_ia - std::log(s.a / (us * us) + s.b);
+        const double klm = k * s.log_mu, lf = log_fact(k);
+        const int quick = quick_accept(lhs, (klm - s.mu) - lf, std::fabs(klm) + s.mu + lf + 2.0 * k + 1.0);
+        if (quick > 0) return k;
+        if (quick < 0) continue;
+        const num::DD l = Poisson::log_pmf_dd(k, s.mu);
+        if (lhs <= l.hi + l.lo) return k;
+    }
+```
+
+### 이항: 역변환과 BTRS
+
+$p > 1/2$이면 $q$로 뽑고 $n - X$를 내요. $q$는 two_sum으로 정확한 $1 - p$라서 바꿔도 정보를 잃지 않아요. $np < 10$이면 0부터 역변환해요. $P(0) = q^n$에서 $P(k+1)/P(k) = (n-k)p/((k+1)q)$로 걸어요. 걸음은 $\min(n, 1024)$에서 끊어요. $np < 10$이면 $k \approx 230$부터 pmf가 가장 작은 double 아래이고, 반올림 때문에 $u$가 전체 합보다 큰 드문 경우($10^{-16}$ 정도)에 $n$까지 걸으면 $2^{53}$걸음이 될 수 있기 때문이에요.
+
+$np \ge 10$이면 Hörmann의 BTRS[7]예요. PTRS와 같은 변환 기각이고, 상수와 비교 대상만 달라요.
+
+$$
+b = 1.15 + 2.53\sqrt{npq},\quad a = -0.0873 + 0.0248\,b + 0.01\,p,\quad c = np + 0.5,\quad \alpha = \Bigl(2.83 + \frac{5.1}{b}\Bigr)\sqrt{npq},\quad v_r = 0.92 - \frac{4.2}{b}
+$$
+
+$k = \lfloor (2a/u_s + b)U + c\rfloor$를 제안하고, $\log(V\alpha/(a/u_s^2 + b)) \le \log P(k) - \log P(m)$이면 받아들여요($m = \lfloor (n+1)p\rfloor$는 최빈값). pmf를 최빈값의 pmf에 대한 비로 비교하므로 정규화 상수가 필요 없어요. squeeze만으로 끝날 확률이 0.26 이상이에요.
+
+### 기각 판정: 두 단계
+
+PTRS와 BTRS의 판정은 $\log P(k)$와의 비교예요. 이것을 `lgamma` 같은 double 함수로 계산하면 큰 매개변수에서 틀려요. $\mu \sim 10^{12}$이면 $k\log\mu$와 $\log k!$의 크기가 $3 \times 10^{13}$ 정도라 그 차의 반올림 오차가 $10^{-3}$에 이르러요. 그러면 받아들일 확률이 그만큼 어긋나고, 표본의 분포가 정확하지 않아요. 그래서 판정은 double-double log pmf(Loader 꼴, [이산 분포](/internals/stats/discrete/))로 해요.
+
+그런데 double-double log pmf는 판정 한 번에 비해 비싸요. 그래서 먼저 double 값 $\ell_d$와 그 오차 한계로 판정해요(`quick_accept`).
+
+```cpp
+// csrc/stats/sample_dist.hpp
+inline int quick_accept(double v, double ld, double mag) {
+    const double margin = 1e-11 + 0x1p-48 * mag;
+    if (v <= ld - margin) return 1;
+    if (v > ld + margin) return -1;
+    return 0;
+}
+```
+
+$\ell_d$는 Stirling 급수($1/(1260k^5)$까지, 16 미만은 표)로 만든 $\log k!$에서 계산해요. 그 오차는 항의 크기 합 `mag`에 $2^{-48}$(반올림 32번 분)을 곱한 것과 급수의 자르기 오차 $10^{-11}$ 안이에요. $v$가 $\ell_d$에서 그보다 멀면 판정이 확실하고, 가까울 때만(0) double-double로 다시 판정해요. 어느 쪽이든 결과는 double-double 판정과 같아요. $\mu = 10^{15}$처럼 아주 큰 매개변수에서는 `mag`가 커서 여유가 수백이 되고, 거의 언제나 double-double로 가요.
+
+### 음이항과 베타이항: 혼합
+
+- **음이항**: $\lambda = G(n)\cdot q/p$를 뽑고 $\text{Poisson}(\lambda)$를 뽑아요. 실패 횟수가 감마 비율을 가진 포아송의 혼합이라는 고전적 성질이에요. $\lambda$가 원소마다 달라 포아송 준비는 원소마다 해요. $q/p$가 $2^{\pm 500}$ 밖이거나 $n < 1$이면 $\exp(\log G + \log(q/p))$로 만들어요. $p = 1$과 $n = 0$은 0의 점질량이라, 준비 단계에서 표시해 두고 단어를 쓰지 않고 0을 내요.
+- **베타이항**: $B \sim \text{Beta}(a, b)$와 $1 - B$를 감마 두 개 $X \sim \Gamma(a)$, $Y \sim \Gamma(b)$에서 만들고 $\text{Binomial}(n, B)$를 뽑아요. 두 모양이 1 이상이면 $p = X/(X + Y)$, $q = Y/(X + Y)$를 바로 나눠요. 모양이 1보다 작으면 감마를 log로 뽑아 $p$와 $q$를 둘 다 log 차에서 만들어요. 어느 쪽이든 $q$를 $1 - p$로 빼지 않고 직접 만들어 작은 쪽을 정확히 유지하고, 작은 쪽으로 이항을 뽑아요. 모양 하나라도 $2^{-1021}$ 미만이면 값 메서드와 같은 두 점 분포라, 베타처럼 준비 단계의 두 질량으로 0이나 $n$을 내요.
+
+### 초기하: 최빈값에서 바깥으로
+
+초기하는 지지집합의 점을 최빈값에서 바깥으로, pmf가 큰 이웃부터 늘어놓은 순서로 역변환해요.
+
+```cpp
+// csrc/stats/sample_dist.hpp
+template <class Up, class Down>
+double from_mode(
+    double u, double mode, double lo, double hi, double pmode, double nl, double nh, Up&& up, Down&& down
+) {
+    double s = pmode;
+    if (u < s) return mode;
+    double kl = mode, kh = mode, pl = pmode, ph = pmode;
+    for (;;) {  // at most hi - lo steps
+        if (nl <= 0.0 && nh <= 0.0) return mode;  // rounding left u past the sum: the mode
+        if (nh >= nl) {
+            kh += 1.0, ph = nh, s += ph;
+            if (u < s) return kh;
+            nh = kh < hi ? ph * up(kh) : 0.0;
+        } else {
+            kl -= 1.0, pl = nl, s += pl;
+            if (u < s) return kl;
+            nl = kl > lo ? pl * down(kl) : 0.0;
+        }
+    }
+}
+```
+
+역변환은 지지집합을 어떤 고정된 순서로 늘어놓아도 정확해요. 누적합이 $u$를 처음 넘는 점이 나올 확률은 그 점의 pmf이기 때문이에요. 최빈값에서 큰 쪽부터 가면 누적합이 가장 빨리 커져서, 걸음 수가 표준편차 정도예요. 0부터 걸으면 평균만큼 걸어야 해요. 이웃의 pmf는 비율 점화식 $P(k+1)/P(k) = (K-k)(n-k)/((k+1)(N-K-n+k+1))$로 만들고, 최빈값의 pmf와 두 이웃의 pmf는 준비 단계에서 한 번 계산해요.
+
+걸음에는 끝이 있어요. $u$는 $2^{-53}$의 배수이므로 필요한 꼬리는 정규로 치면 8.3 표준편차 안이에요. 걸음은 최빈값에서 $2^{20}$(`kModeReach`) 안으로 자르고, 표준편차가 $65536 = 2^{20}/16$을 넘으면 걷지 않고 NaN을 내요. 보장 영역(전체 ≤ 3000)의 표준편차는 14 이하예요.
+
+```python
+>>> H = sd.stats.Hypergeometric(total=1e12, successes=5e11, draws=5e11)
+>>> H.standard_deviation()
+250000.000000125
+>>> H.sample(2, rng=sd.random.default_rng(1)).tolist()
+[nan, nan]
+```
+
+### 로그 급수: Kemp의 LK
+
+Kemp의 LK 알고리즘[8]은 로그 급수를 기하 분포의 혼합으로 봐요. $q = 1 - (1-p)^U$($U$ 균등)라 두고, $q$가 주어졌을 때 $P(X > k \mid q) = q^k$인 기하 변수를 뽑으면
+
+$$
+P(X = k) = \int_0^1 (1-q)\,q^{k-1}\,dU = \int_0^p \frac{t^{k-1}}{L}\,dt = \frac{p^k}{kL}
+$$
+
+이에요($s = (1-p)^U$, $t = 1 - s$로 치환, $L = -\log(1-p)$). 로그 급수의 pmf 그대로예요. 기하 변수는 $\lfloor 1 + \log V/\log q\rfloor$예요.
+
+```cpp
+        // csrc/stats/sample_dist.hpp, Custom<LogSeries>::draw
+        for (;;) {
+            const double V = w.u01();
+            if (V >= s.p) return 1.0;
+            const double U = w.u01();
+            const double q = -std::expm1(s.r * U);
+            if (V <= q * q) {
+                const double k = std::floor(1.0 + std::log(V) / std::log(q));
+                if (k < 1.0 || V == 0.0) continue;
+                return k;
+            }
+            return V >= q ? 1.0 : 2.0;
+        }
+```
+
+지름길 둘이 있어요. $q \le p$이므로 $V \ge p$이면 $V \ge q$이고, 그러면 $\log V/\log q < 1$이라 답이 1이에요. $U$를 뽑지 않아도 돼요($p$가 작으면 거의 언제나 여기서 끝나요). $q^2 < V < q$이면 답이 2라서 log를 계산하지 않아요. $q = 1 - (1-p)^U$는 `expm1`로 만들어 $p$가 작아도 자릿수를 잃지 않아요. 다시 뽑는 것은 $V = 0$이거나 $q$가 1로 반올림되는 경우뿐이라 확률이 $2^{-50}$보다 작아요.
+
+### Zipf: Devroye의 기각
+
+Devroye의 방법[9]은 파레토 분포의 floor를 제안 분포로 써요. $U \in (0, 1]$에서 $X = \lfloor U^{-1/(a-1)}\rfloor$이면
+
+$$
+q(k) = P(X = k) = k^{1-a} - (k+1)^{1-a} = k^{1-a}\,\frac{T - 1}{T}, \qquad T = \Bigl(1 + \frac1k\Bigr)^{a-1}
+$$
+
+이에요. 목표 $p(k) = k^{-a}/\zeta(a)$와의 비는
+
+$$
+\frac{p(k)}{q(k)} = \frac{T}{k(T - 1)\,\zeta(a)}
+$$
+
+이고 $k = 1$($T = b = 2^{a-1}$)에서 가장 커요. 그래서 확률 $\dfrac{p/q}{\max p/q} = \dfrac{T}{k(T-1)}\cdot\dfrac{b-1}{b}$로 받아들이면 돼요. 판정은 $V\,k\,(T - 1)/(b - 1) \le T/b$예요. 받아들일 확률은 $1/\max(p/q) = (1 - 2^{1-a})\zeta(a)$이고, 이 값은 $\log 2 = 0.69$ 이상이에요.
+
+```cpp
+        // csrc/stats/sample_dist.hpp, Custom<Zipf>::draw (발췌)
+        for (;;) {
+            const double U = 1.0 - w.u01(), V = w.u01();  // U in (0, 1]
+            const double X = std::floor(std::exp(-std::log(U) * s.inv));
+            if (std::isinf(X)) {  // beyond float64: the test's limit, X (T - 1) -> a - 1, T -> 1
+                if (V * s.am1 / s.bm1 <= 1.0 / s.b) return X;
+                continue;
+            }
+            if (X < 1.0) continue;
+            const double tm1 = std::expm1(s.am1 * std::log1p(1.0 / X));
+            if (V * X * tm1 / s.bm1 <= (1.0 + tm1) / s.b) return X;
+        }
+```
+
+$T - 1$과 $b - 1$은 `expm1`로 만들어요. $X$가 크면 $T$가 1에 아주 가까워 $T - 1$을 뺄셈으로 만들면 자릿수가 모두 사라지기 때문이에요. $a$가 1에 가까우면 $X$가 double을 넘을 수 있어요($a = 1.01$에서 $X$가 가장 큰 double을 넘을 확률이 $8.2 \times 10^{-4}$). 그 표본은 `inf`예요(`icdf`가 double 밖에서 inf인 것과 같아요). 이때도 판정은 $X \to \infty$의 극한($X(T-1) \to a - 1$, $T \to 1$)으로 해요. 극한 판정 없이 inf를 언제나 받아들이면 inf의 비율이 0.125%가 되는데, 참값은 0.082%예요.
+
+```python
+>>> Z = sd.stats.Zipf(a=1.01)
+>>> Z.ccdf(1.7976931348623157e308)
+0.0008221481685314238
+>>> sd.mean(sd.isinf(Z.sample(1000000, rng=sd.random.default_rng(3))))
+0.000799
+```
+
+$a > 1025$이면 $b = 2^{a-1}$이 double을 넘어요. 그때 $P(X > 1) < 2^{-1024}$이므로 1을 내요.
+
+## 반복의 상한과 NaN
+
+모든 반복은 정해진 횟수 안에, 또는 기하 분포를 따르는 횟수 안에 끝나요. 기각의 각 라운드는 새 단어를 받고, 받아들여질 확률에는 하한이 있어요. 이 하한은 매개변수에 따라 NaN이나 inf가 될 수 있는 양을 쓰지 않는 판정만으로 보장돼요. 그래서 판정의 다른 부분이 NaN이 되어도 그 라운드를 버릴 뿐이고 영원히 돌지 않아요.
+
+| 방법 | 한 라운드가 받아들여질 확률의 하한 |
+|---|---|
+| 정규 ziggurat | 쐐기에서 0.5, 꼬리에서 0.93 |
+| 지수 ziggurat | 쐐기에서 0.5(꼬리는 직접) |
+| Marsaglia–Tsang | 빠른 받아들임만으로 0.92($d \ge 2/3$, 모든 크기) |
+| PTRS ($\mu \ge 10$) | squeeze만으로 0.34 |
+| BTRS ($np \ge 10$, $p \le 1/2$) | squeeze만으로 0.26 |
+| Jöhnk ($a, b < 1$) | $\Gamma(a+1)\Gamma(b+1)/\Gamma(a+b+1) \ge 1/2$ |
+| Kemp LK | 다시 뽑을 확률 $< 2^{-50}$ |
+| Devroye (Zipf) | $(1 - 2^{1-a})\zeta(a) \ge \log 2$ |
+| Lemire 정수 | 1/2 |
+
+역변환은 걸음 수에 상한이 있어요. 포아송($\mu < 10$)과 이항($np < 10$)은 pmf가 언더플로할 때까지(약 230걸음, 이항은 1024에서 자름), 초기하는 최빈값에서 $2^{20}$ 안이에요.
+
+뽑을 수 없는 매개변수는 NaN이에요. 값 메서드가 NaN인 매개변수에서는 표본도 NaN이고, 값 메서드가 극한 분포의 값을 내는 매개변수에서는 표본도 그 극한 분포에서 뽑아요. 값 메서드는 NaN인데 표본만 0이나 inf 같은 극한값을 내는 표본기는 없어요.
+
+| 분포 | 경우 | 결과 |
+|---|---|---|
+| 모든 분포 | 매개변수가 정의역 밖이거나 NaN | NaN |
+| `Hypergeometric` | 표준편차 > 65536, 또는 전체 ≥ $2^{53}$ | NaN |
+| `DiscreteUniform` | 폭 ≥ $2^{64}$ | NaN |
+| `Zipf` | $a > 1025$ | 1 |
+| `Zipf` | 표본이 double을 넘음 | inf |
+| `ChiSquared`, `StudentT`, `NoncentralT` | df $< 2^{-1021}$ | NaN |
+| `F` | dfn이나 dfd가 $2^{-1021}$ 미만(dfn = inf가 아닐 때) | NaN |
+| `NoncentralChiSquared` | df $< 2^{-1021}$이고 nc = 0 | NaN |
+| `NoncentralChiSquared` | df $< 2^{-1021}$이고 nc > 0 | 값(약 $e^{-\text{nc}/2}$의 비율로 0) |
+| `NoncentralF` | dfn이나 dfd가 $2^{-1021}$ 미만(nc = 0 포함, 다른 자유도가 inf가 아닐 때) | NaN |
+| `Beta`, `BetaBinomial` | a나 b가 $2^{-1021}$ 미만 | 두 점 분포(0과 1, 0과 $n$)의 표본 |
+| `StudentT`, `NoncentralT`, `F`, `NoncentralF` | 자유도 inf | 극한 분포의 표본 |
+| `NegativeBinomial` | $n = 0$ | 0 |
+
+```python
+>>> sd.stats.DiscreteUniform(low=0, high=2.0**64).sample(2, rng=sd.random.default_rng(1)).tolist()
+[nan, nan]
+>>> sd.stats.Zipf(a=2000.0).sample(3, rng=sd.random.default_rng(1)).tolist()
+[1.0, 1.0, 1.0]
+>>> x = sd.stats.Beta(a=5e-324, b=5e-324).sample(4000, rng=sd.random.default_rng(1))
+>>> sorted(set(x.tolist())), sd.mean(x)
+([0.0, 1.0], 0.497)
+```
+
+## 속도 기법
+
+결과를 바꾸지 않고 시간을 줄이는 기법이에요. 모두 원소 $e$가 받는 단어를 그대로 두므로 비트가 같아요.
+
+- **첫 단어를 16개씩**: 원소마다 스트림에서 첫 단어를 찾으면 그 조회가 표본기의 상태를 메모리로 밀어내요. `each_first`가 원소 16개의 첫 단어를 Philox 블록 넷(`philox4`)으로 한 번에 만들어 나눠 줘요.
+- **추가 블록을 넷씩**: Philox 블록 하나는 의존 사슬이 길어 지연 시간에 묶여요. 추가 단어를 쓰는 방법(`kExtra`)은 이웃한 원소 넷의 첫 추가 블록을 `philox4`로 함께 계산해요. 사슬 넷이 섞여 원소당 시간이 약 1/3이 돼요. 포아송과 이항은 준비 단계에서 역변환인지(단어 하나) 보고, 역변환이면 추가 블록을 만들지 않아요.
+- **흔한 경로를 인라인**: ziggurat와 Marsaglia–Tsang의 첫 라운드는 인라인되고, 드문 경로는 `noinline` 함수로 따로 둬요.
+- **준비는 한 번**: 스칼라 매개변수의 호출은 검사와 준비(감마의 $d$, $c$, PTRS·BTRS의 상수, 초기하의 최빈값과 이웃 pmf)를 조각마다 한 번만 해요.
+- **Python float 하나**: `shape=None`이고 매개변수가 스칼라인 호출은 배열을 만들지 않는 `<dist>_sample1s` 경로예요. 위치 예약도 네이티브 상태에서 해요.
+
+다변량 분포와 행렬 분포의 표본도 같은 `Words`를 써요. 행 하나가 원소 하나이고, 행이 쓰는 정규·감마 변수를 그 원소의 첫 단어와 추가 단어에서 차례로 받아요(`each_words`가 원소 넷의 추가 블록 여러 개를 함께 계산해요). 분포마다의 조립은 [다변량 분포의 밀도](/internals/stats/multivariate/)와 [행렬 분포](/internals/stats/matrix/)에 있어요.
+
+## 분포 검사
+
+방법마다 원리상 정확하지만, 구현의 실수는 표본의 분포로 드러나요. 그래서 62개 경우에서 표본을 $10^6$개씩 뽑아, 연속 분포는 자기 cdf에 대한 Kolmogorov–Smirnov 검정, 이산 분포는 cdf 계단 위의 카이제곱 검정을 해요. 경우에는 방법이 바뀌는 경계(포아송 $\mu = 9.9$와 10, 이항 $np$가 10 근처)와 극단(감마 $a = 10^6$, 기하 $p = 10^{-6}$, 포아송 $\mu = 10^{12}$, 이항 $n = 10^9$, 초기하 전체 $10^7$, Zipf $a = 1.3$)이 들어 있어요.
+
+맞는 표본기의 p값은 0과 1 사이에 균등하게 퍼져요. 62개 p값 가운데 가장 작은 것은 0.0159(`Beta(a=0.5, b=3)`)이고, 나머지는 모두 0.03 이상이에요. 균등한 p값 62개 중 최솟값이 0.016 아래일 확률은 $1 - 0.984^{62} \approx 0.63$이라 이상한 값이 아니에요. $10^{-3}$ 아래의 p값이 하나라도 나오면 의심할 신호인데, 하나도 없어요.
+
+테스트(`tests/stats/test_sample.py`)는 이것 말고도 스레드 수 1, 3, 10의 비트 일치, 나눠 부른 호출의 일치, 배열 매개변수와 스칼라 매개변수의 일치, float 하나와 배열 첫 원소의 일치, 기각 판정의 두 단계 경계 근처와 $\mu = 10^{15}$·$n = 10^{15}$에서의 분포, 극단 매개변수에서 정해진 시간 안에 끝나는지를 확인해요.
+
+## 속도
+
+표본 $10^6$개에서 numpy 2.5.4의 `Generator(PCG64)`와 같은 매개변수로 견줘요(Apple M4 Pro).
+
+- 1스레드에서는 numpy와 비슷하거나 빠르고, 10스레드에서는 모두 numpy보다 빨라요. Python float 하나를 뽑는 호출도 대개 numpy의 스칼라보다 빨라요. 코시만 `tan`이 비용이라 비슷한 수준이에요.
+- 1스레드에서 numpy보다 조금 느린 것은 코시, 베이불, 감마, 카이제곱, 베타, t, 비중심 카이제곱, 비중심 F, 이산 균등, 포아송($\mu = 100$), 큰 $n$의 이항이에요. 원소마다 첫 단어와 추가 블록의 Philox4×64-10 라운드가 비용의 대부분이에요. 단어를 둘 이상 쓰는 방법은 원소마다 Philox 블록 하나를 더 계산하는데, PCG64는 이어지는 두 단어를 싸게 내요. 표본 하나의 단어가 (키, $e$)로 정해진다는 성질을 위해 치르는 값이에요.
+
+## 참고 문헌
+
+1. G. Marsaglia, W. W. Tsang, "The Ziggurat Method for Generating Random Variables", *Journal of Statistical Software* 5(8), 2000. doi:10.18637/jss.v005.i08
+2. G. Marsaglia, "Generating a Variable from the Tail of the Normal Distribution", *Technometrics* 6(1), 101–102, 1964.
+3. G. Marsaglia, W. W. Tsang, "A Simple Method for Generating Gamma Variables", *ACM Transactions on Mathematical Software* 26(3), 363–372, 2000. doi:10.1145/358407.358414
+4. A. Stuart, "Gamma-Distributed Products of Independent Random Variables", *Biometrika* 49(3/4), 564–565, 1962.
+5. M. D. Jöhnk, "Erzeugung von betaverteilten und gammaverteilten Zufallszahlen", *Metrika* 8, 5–15, 1964.
+6. W. Hörmann, "The Transformed Rejection Method for Generating Poisson Random Variables", *Insurance: Mathematics and Economics* 12(1), 39–45, 1993.
+7. W. Hörmann, "The Generation of Binomial Random Variates", *Journal of Statistical Computation and Simulation* 46(1–2), 101–110, 1993.
+8. A. W. Kemp, "Efficient Generation of Logarithmically Distributed Pseudo-Random Variables", *Applied Statistics* 30(3), 249–253, 1981.
+9. L. Devroye, *Non-Uniform Random Variate Generation*, Springer, 1986, §X.6.
+10. D. Lemire, "Fast Random Integer Generation in an Interval", *ACM Transactions on Modeling and Computer Simulation* 29(1), 2019.

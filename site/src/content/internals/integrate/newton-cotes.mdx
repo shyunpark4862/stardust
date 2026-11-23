@@ -1,0 +1,132 @@
+---
+title: Newton–Cotes 가중치
+group: 고정·표본 규칙
+order: 2
+summary: newton_cotes가 닫힌 Newton–Cotes 규칙의 가중치와 오차 계수를 라그랑주 기저의 정확한 유리수 적분으로 구해 한 번만 반올림하는 방법을 설명해요. 점이 많아지면 가중치의 부호가 섞이고 커지는 까닭과, 같은 입력을 기억하는 길도 다뤄요.
+seeAlso: [overview, gauss-legendre, samples]
+---
+
+## 한눈에 보기
+
+닫힌 Newton–Cotes 규칙은 N + 1개의 점에서 값을 보간한 다항식을 적분해요. 점의 위치를 간격 $\Delta x$ 단위의 상대 위치 $r_0 = 0 < r_1 < \dots < r_N = N$으로 쓰면
+
+$$
+\int_{x_0}^{x_N} f(x)\,dx = \Delta x \sum_{i=0}^{N} a_i\, f(x_i) + B\,\Delta x^{p+1} f^{(p)}(\xi)
+$$
+
+이에요. [`newton_cotes`](/api/integrate/newton_cotes/)는 가중치 $a_i$와 오차 계수 $B$를 돌려줘요. 사다리꼴(N = 1)과 Simpson(N = 2)이 이 무리의 처음 둘이에요.
+
+계산은 모두 `src/stardust/integrate/_rules.py`에 있어요. 가중치와 $B$를 `fractions.Fraction`의 정확한 유리수로 계산하고, 값마다 마지막에 한 번 반올림해요.
+
+```python
+>>> for N in (1, 2, 3, 4):
+...     an, B = sd.integrate.newton_cotes(N)
+...     print(N, an.tolist(), B)
+1 [0.5, 0.5] -0.08333333333333333
+2 [0.3333333333333333, 1.3333333333333333, 0.3333333333333333] -0.011111111111111112
+3 [0.375, 1.125, 1.125, 0.375] -0.0375
+4 [0.3111111111111111, 1.4222222222222223, 0.5333333333333333, 1.4222222222222223, 0.3111111111111111] -0.008465608465608466
+```
+
+$B$는 차례로 $-1/12$, $-1/90$, $-3/80$, $-8/945$의 반올림이에요. 사다리꼴, Simpson, Simpson 3/8, Boole 규칙의 교과서 오차항과 같아요.
+
+## 가중치: 라그랑주 기저의 정확한 적분
+
+보간 다항식은 라그랑주 기저 $L_i(s) = \prod_{j \ne i}(s - r_j)/(r_i - r_j)$의 합 $\sum_i f(x_i)L_i(s)$이니, 가중치는 기저의 적분이에요.
+
+$$
+a_i = \int_0^N L_i(s)\,ds = \frac{1}{\prod_{j \ne i}(r_i - r_j)}\int_0^N \frac{W(s)}{s - r_i}\,ds, \qquad W(s) = \prod_{j=0}^{N}(s - r_j)
+$$
+
+코드는 이 식을 그대로 따라가요.
+
+1. $W(s)$의 계수를 상수항부터 만들어요(일차식을 하나씩 곱해요).
+2. 점마다 $W(s)/(s - r_i)$를 조립제법으로 나눠 차수 N의 몫 $Q_i(s)$를 얻어요. $r_i$가 $W$의 근이라 나머지는 0이에요.
+3. $\int_0^N s^k\,ds = N^{k+1}/(k + 1)$로 몫을 적분하고 분모 $\prod_{j \ne i}(r_i - r_j)$로 나눠요.
+
+```python
+# src/stardust/integrate/_rules.py
+def _weights_exact(n, pos):
+    """a_i = the integral over [0, N] of the Lagrange basis polynomial of node i, exactly."""
+    # W(s) = prod (s - r_j), coefficients from the constant term up
+    coef = [Fraction(1)]
+    for r in pos:
+        nxt = [Fraction(0)] * (len(coef) + 1)
+        for k, c in enumerate(coef):
+            nxt[k + 1] += c
+            nxt[k] -= r * c
+        coef = nxt
+    big = Fraction(n)
+    powers = [big ** (k + 1) / (k + 1) for k in range(n + 1)]  # integral of s^k over [0, N]
+    out = []
+    for i, r in enumerate(pos):
+        # Q(s) = W(s) / (s - r) by synthetic division (degree n), highest coefficient first
+        q = [Fraction(0)] * (n + 1)
+        acc = Fraction(0)
+        for k in range(n + 1, 0, -1):
+            acc = coef[k] + acc * r
+            q[k - 1] = acc
+        den = Fraction(1)
+        for j, s in enumerate(pos):
+            if j != i:
+                den *= r - s
+        out.append(sum(q[k] * powers[k] for k in range(n + 1)) / den)
+    return out
+```
+
+위치를 double로 주면 그 double의 정확한 유리수가 위치예요. 그래서 같은 간격이 아니어도 결과는 "그 double 위치의 정확한 가중치를 반올림한 값"이에요.
+
+```python
+>>> an, B = sd.integrate.newton_cotes([0, 0.5, 2])
+>>> an.tolist(), B
+([-0.3333333333333333, 1.7777777777777777, 0.5555555555555556], -0.1111111111111111)
+```
+
+## 오차 계수
+
+규칙은 차수 N(같은 간격의 짝수 N이면 대칭 덕분에 N + 1)까지의 다항식을 정확히 적분해요. 그 다음 차수의 단항식 $s^p$($p$는 같은 간격의 짝수 N이면 N + 2, 아니면 N + 1)에서 처음 틀리고, 그 틀린 양이 오차항을 정해요. $s^p$의 p계 도함수는 상수 $p!$이니
+
+$$
+B = \frac{1}{p!}\Bigl(\frac{N^{p+1}}{p + 1} - \sum_i a_i\, r_i^{\,p}\Bigr)
+$$
+
+예요. 이것도 정확한 가중치로 계산하고 한 번 반올림해요.
+
+```python
+    # src/stardust/integrate/_rules.py
+    a = _weights_exact(n, pos)
+    p = n + 2 if (n % 2 == 0 and equally) else n + 1  # scipy's power of the error term
+    big = Fraction(n)
+    b = (big ** (p + 1) / (p + 1) - sum(ai * r**p for ai, r in zip(a, pos))) / math.factorial(p)
+    return tuple(float(v) for v in a), float(b)
+```
+
+$f^{(p)}$가 상수인 함수에서는 오차항이 정확해요. Simpson으로 $\int_0^1 x^4\,dx$를 계산하면 틀린 양이 $B\,\Delta x^5 \cdot 4!$와 반올림 수준으로 같아요.
+
+```python
+>>> an, B = sd.integrate.newton_cotes(2)
+>>> x = sd.asarray([0.0, 0.5, 1.0])
+>>> rule = 0.5 * float(sd.sum(an * x**4))
+>>> 0.2 - rule, B * 0.5**5 * 24
+(-0.008333333333333304, -0.008333333333333333)
+```
+
+## 점이 많으면
+
+N이 커지면 가중치의 부호가 섞이고 절댓값이 커져요. N = 8에 이미 음의 가중치가 있고, N = 30에서는 가장 큰 가중치가 $8.8 \times 10^5$이에요.
+
+```python
+>>> sd.integrate.newton_cotes(8)[0].tolist()[:4]
+[0.27908289241622575, 1.6615167548500882, -0.2618694885361552, 2.9618342151675483]
+>>> an, B = sd.integrate.newton_cotes(30)
+>>> float(sd.max(sd.abs(an))), float(sd.sum(an))
+(884120.8135388002, 29.999999999963293)
+```
+
+가중치의 합은 정확히 N(상수 1의 적분)이어야 하지만, 크기 $10^6$인 항들이 서로 지워 남는 값이라 가중치 하나하나는 올바로 반올림했는데도 double의 합이 30에서 $4 \times 10^{-11}$ 벗어나요. 함숫값의 반올림 오차도 같은 배율로 커져요. 같은 간격의 고차 보간이 끝에서 흔들리는 Runge 현상의 다른 얼굴이에요. 높은 정확도가 필요하면 N을 키우는 대신 낮은 차수 규칙을 이어 붙이거나(표본 규칙), [Gauss–Legendre](/internals/integrate/gauss-legendre/)를 써요.
+
+scipy는 같은 간격 N ≤ 14에 정확한 유리수의 표를 두고, 그 밖에서는 Vandermonde 계를 double로 풀어요. N ≤ 14는 scipy의 표도 정확한 값을 한 번 반올림한 것이라 지금은 비트까지 같아요(약속은 아니에요). Vandermonde 계는 N이 크면 조건수가 아주 커서, scipy의 가중치는 N = 15에서 상대 $1.2 \times 10^{-12}$, N = 20에서 $1.9 \times 10^{-11}$ 틀리고, 크게 상쇄하는 $B$는 N = 20에서 9%, N = 30에서 $10^6$배 틀려요. sd의 값은 어느 N에서나 정확한 값의 반올림이에요.
+
+## 비용과 기억
+
+정확한 유리수의 계산은 분자와 분모가 커지며 대략 $N^3$으로 늘어요. 그래서 N은 256까지 받아요. 같은 위치는 64개까지 기억하고, int N은 따로 둔 사전에서 가중치 배열의 사본을 바로 돌려줘요. 돌려준 배열을 고쳐도 다음 호출은 그대로예요.

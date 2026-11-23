@@ -1,0 +1,864 @@
+---
+title: 분포 함수
+group: 함수별 알고리즘
+order: 5
+summary: 분포 함수를 불완전 감마·베타로 조합할 때 정확도를 잃는 곳과 그것을 막는 방법을 설명해요. 계산해서 만든 인자를 반올림하지 않고 작은 쪽 꼬리를 직접 구해서, scipy가 0을 내는 먼 꼬리에서도 상대 정확도를 지켜요.
+seeAlso: [incomplete, erf-gamma, techniques, accuracy-performance]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+import Steps from '../../../components/fig/Steps.astro';
+import Tree from '../../../components/fig/Tree.astro';
+
+## 한눈에 보기
+
+분포 함수는 확률변수 $X$의 누적분포 $F(x) = P(X \le x)$, 그 보수(위꼬리) $1 - F(x) = P(X > x)$, 그리고 $F(x) = p$를 푸는 역함수(분위수 함수)예요. 통계 검정의 p값이 위꼬리이고, 신뢰구간의 끝점이 역함수예요. `sd.special`에는 scipy.special과 같은 이름으로 24개가 있어요.
+
+| 분포 | 함수 | 무엇으로 계산하나 | 코드 |
+|---|---|---|---|
+| Student t | `stdtr`, `stdtrit` | 불완전 베타 $I_x(\tfrac{\nu}{2}, \tfrac12)$ | `ops/distr.hpp` |
+| 카이제곱 | `chdtr`, `chdtrc`, `chdtri` | 불완전 감마 $P(\tfrac{v}{2}, \tfrac{x}{2})$ | `ops/distr.hpp` |
+| F | `fdtr`, `fdtrc`, `fdtri` | 불완전 베타 $I_w(\tfrac{d_1}{2}, \tfrac{d_2}{2})$ | `ops/distr.hpp` |
+| 포아송 | `pdtr`, `pdtrc` | 불완전 감마 $Q(k+1, m)$ | `ops/distr.hpp` |
+| 이항 | `bdtr`, `bdtrc` | 불완전 베타 $1 - I_p(k+1, n-k)$ | `ops/distr.hpp` |
+| 음이항 | `nbdtr`, `nbdtrc` | 불완전 베타 $I_p(n, k+1)$ | `ops/distr.hpp` |
+| 정규분포의 역함수 | `ndtri_exp` | `ndtri`(그 가운데 유리식), `log_ndtr`, 점근식 | `ops/distr.hpp` |
+| 비중심 카이제곱 | `chndtr`, `chndtrc`, `chndtrix` | 불완전 감마의 포아송 혼합 | `ops/noncentral.hpp` |
+| 비중심 t | `nctdtr`, `nctdtrc`, `nctdtrit` | 불완전 베타의 두 혼합, 반대쪽 꼬리는 적분 | `ops/noncentral.hpp` |
+| 비중심 F | `ncfdtr`, `ncfdtrc`, `ncfdtri` | 불완전 베타의 포아송 혼합 | `ops/noncentral.hpp` |
+
+(경로는 `stardust/csrc/special/` 아래예요.) 새로 만든 근사식은 하나도 없어요. 모두 [불완전 감마와 베타](/internals/special/incomplete/), [정규분포 함수](/internals/special/erf-gamma/)의 조합이에요. 그런데 조합은 생각보다 쉽게 정확도를 잃어요. scipy 1.18.1의 같은 함수들은 꼬리에서 수백 ULP를 잃거나 아예 0을 내요(아래 [정확도](#정확도)). 이 글의 거의 전부가 "조합하면서 비트를 잃지 않는 방법"이에요. 방법은 다섯 가지예요.
+
+1. **인자를 반올림하지 않아요.** t의 $x = \nu/(\nu + t^2)$, F의 $w = d_1 x/(d_1 x + d_2)$를 double-double(유효숫자 약 106비트)로 만들고 그대로 불완전 베타의 핵심에 넘겨요. 매개변수가 크면 $I_x$가 $x$에 아주 민감하기 때문이에요.
+2. **작은 쪽 꼬리를 직접 계산해요.** $1 - F$를 빼서 만들지 않아요. 보수 함수(`betaincc`, `gammaincc`)나 보수 쪽 인자로 계산하므로 $10^{-300}$ 꼬리도 상대 정확도를 지켜요.
+3. **역함수도 작은 쪽을 풀어요.** $x$와 $1 - x$ 중 작은 쪽을 근으로 삼고, 먼 꼬리에서는 급수를 거꾸로 풀어 double-double 지수로 계산해요.
+4. **비중심 분포는 양의 항만 더해요.** 포아송 가중 합을 두 꼬리 모두 양의 항으로 쓰고, 불완전 함수의 점화식은 안정한 방향으로만 걸어요. 흔한 크기($\mu \le 2 \times 10^4$)는 가장 큰 항에서 양쪽으로 float64로 걷되 비율을 정확한 값에서 한 번만 반올림하고, 그 밖은 먼 끝에서 "double + 오차" 산술로 걸어요.
+5. **상쇄가 피할 수 없는 곳은 다른 식으로 바꿔요.** 비중심 t의 반대쪽 꼬리는 두 급수가 상쇄하므로, 다른 쪽 꼬리가 충분히 작으면 1에서 빼고, 아니면 정의에서 나온 양의 적분을 사다리꼴 규칙으로 계산해요.
+
+`stdtr` 호출 하나가 거치는 길은 이래요.
+
+<Fig column caption="stdtr(df, t) 호출 하나의 길. 특수값을 먼저 정하고, 작은 쪽 꼬리 P(T ≤ −|t|)만 계산한 뒤 t > 0이면 1에서 빼요(그 값은 1/2 이상이라 빼기가 안전해요).">
+  <Steps steps={[
+    { label: 'Stdtr::f(df, t)', note: 'NaN, df ≤ 0, t = ±inf, df = inf나 df > 2⁵⁴(1 + t²)²(정규분포), t = 0을 먼저 정해요', where: 'ops/distr.hpp' },
+    { label: 't_tail(df, t)', note: 'P(T ≤ −|t|) = ½ I_x(df/2, ½)', where: 'ops/distr.hpp' },
+    { label: 't_arg', note: 'x = df/(df+t²), y = t²/(df+t²)를 double-double로', depth: 1 },
+    { label: 'x < 2⁻¹⁰⁰⁰', note: '작은 인자 급수 x^a/(a·B(a, ½))', depth: 1 },
+    { label: 'a = df/2 ≤ 6', note: 'Boost.Math ibeta / ibetac에 작은 쪽 인자를 double로', where: 'ops/incbeta.hpp', depth: 1 },
+    { label: 'a > 6', note: 'ibeta_detail::ibeta(a, ½, x, y): BRATIO 핵심에 double-double 쌍 그대로', where: 'ops/incbeta.hpp', depth: 1 },
+    { label: 't < 0 ? tail : 1 − tail', note: '1/2보다 작은 값만 계산하고, 큰 쪽은 정확한 빼기로' },
+  ]} />
+</Fig>
+
+함수마다 C++ 구조체 하나(`Stdtr`, `Chndtr` …)가 원소 하나를 계산하는 `static double f(...)`가 있고, 배열 엔진의 n항 디스패처가 이 함수를 원소마다 불러요. 브로드캐스팅, 스레드 분할, 비용 가중치는 다른 특수함수와 같아요([원소별 엔진과 병렬화](/internals/special/engine/)). 경로는 원소의 값으로만 정해지므로 결과는 위치·레이아웃과 상관없이 같은 비트이고, 지금은 스레드 수와도 상관없어요(약속은 같은 기계·같은 스레드 수에서 실행마다 같은 비트예요).
+
+## 분포 함수와 불완전 함수
+
+### 불완전 감마와 베타로 나타내는 이유
+
+불완전 감마와 베타는 정규화된 꼴로 써요(정의는 [불완전 감마와 베타](/internals/special/incomplete/)).
+
+$$
+P(a, x) = \frac{1}{\Gamma(a)} \int_0^x t^{a-1} e^{-t}\,dt, \qquad
+I_x(a, b) = \frac{1}{B(a, b)} \int_0^x t^{a-1} (1-t)^{b-1}\,dt
+$$
+
+$Q = 1 - P$, $I_{1-x}(b, a) = 1 - I_x(a, b)$(대칭, DLMF 8.17.4 [3])예요. 흔한 분포의 누적분포는 거의 모두 이 둘로 나타낼 수 있어요.
+
+- **카이제곱.** 자유도 $v$인 카이제곱의 밀도는 $t^{v/2-1}e^{-t/2}$에 비례해요. $t = 2u$로 바꾸면 감마 밀도이므로 $P(X \le x) = P(\tfrac{v}{2}, \tfrac{x}{2})$예요.
+- **포아송.** 평균 $m$인 포아송에서 "사건이 $k$번 이하"는 "사건 사이 시간이 지수분포인 과정에서 $k+1$번째 사건이 시각 $m$보다 늦게 온다"와 같은 사건이에요. $k+1$번째 사건의 시각은 감마$(k+1)$ 분포라서 $P(X \le k) = Q(k+1, m)$이에요(DLMF 8.4.10: $Q(n+1, m) = e^{-m}\sum_{j \le n} m^j/j!$).
+- **이항.** 같은 생각으로, 성공 확률 $p$인 시행 $n$번에서 성공이 $k+1$번 이상일 확률은 $(k+1)$번째로 작은 균등 순서통계량이 $p$ 아래에 있을 확률이고, 그 순서통계량은 베타 분포를 따라요. DLMF 8.17.5 [3]가 이 관계 $\sum_{j \ge m} \binom{n}{j} p^j (1-p)^{n-j} = I_p(m, n-m+1)$를 줘요. 그래서 $P(X \le k) = 1 - I_p(k+1, n-k)$예요.
+- **음이항.** $n$번째 성공 전의 실패 수가 $k$ 이하일 확률은 처음 $n+k$번에 성공이 $n$번 이상일 확률이라 $I_p(n, k+1)$이에요.
+- **t와 F.** $T = Z/\sqrt{V/\nu}$에서 $T^2$는 F$(1, \nu)$이고, F 분포는 두 카이제곱의 비라서 $w = d_1 x/(d_1 x + d_2)$가 베타$(\tfrac{d_1}{2}, \tfrac{d_2}{2})$를 따라요. 그래서 F의 누적분포는 $I_w(\tfrac{d_1}{2}, \tfrac{d_2}{2})$, t의 아래꼬리는 $P(T \le -|t|) = \tfrac12 I_x(\tfrac{\nu}{2}, \tfrac12)$, $x = \nu/(\nu + t^2)$예요.
+
+### 정수 인자의 규칙
+
+`pdtr`, `bdtr`, `nbdtr`의 $k$는 개수라서 내림해요(`std::floor`). "$X \le 2.7$"은 "$X \le 2$"와 같은 사건이기 때문이에요. 나머지 규칙은 참값이나 극한을 따라요.
+
+- $k < 0$이면 $P(X \le k) = 0$이에요(`pdtrc`, `bdtrc`은 1). scipy는 NaN을 내요.
+- `bdtr`에서 $k \ge n$이면 1이에요. 성공은 $n$번을 넘을 수 없어요. scipy는 $k > n$에서 NaN이에요.
+- `bdtr`의 $n$은 시행 횟수라서 음이 아닌 정수가 아니면 NaN이에요. scipy는 $n$을 내려서 써요.
+- `nbdtr`의 $n$은 실수를 받아요. $I_p(n, k+1)$은 실수 $n$에서도 뜻이 있어요(Pólya 분포). $n = 0$이면 실패가 없으므로 1이에요.
+
+이 규칙은 코드에서 `count_edge`, `binom_edge` 두 함수가 맡아요. 불완전 함수를 부르기 전에 끝나므로 계산 경로에 섞이지 않아요.
+
+## 조합에서 정확도를 잃는 두 곳
+
+### 1 − F는 꼬리의 숫자를 지워요
+
+$F = 1 - 10^{-12}$를 double로 저장하면, 1 근처의 double 간격이 $2^{-53} \approx 1.1 \times 10^{-16}$이라 $10^{-12}$ 부분은 약 4자리만 남아요. 거기서 $1 - F$를 계산하면 빼기 자체는 정확하지만(Sterbenz 보조정리 [9]) 이미 잃은 자리는 돌아오지 않아요. 이런 현상이 소거(catastrophic cancellation)예요. 꼬리 확률 $q$를 $1 - F$로 만들면 맞는 자리 수가 대략 $16 + \log_{10} q$로 줄고, $q < 10^{-16}$이면 0이 돼요.
+
+그래서 모든 분포 함수는 두 꼬리 중 **작은 쪽**을 직접 계산해요.
+
+- `chdtrc`은 `gammaincc`를, `pdtr`은 `gammaincc`를, `bdtr`은 `betaincc`를 불러요. 1에서 빼지 않아요.
+- `stdtr`은 언제나 $P(T \le -|t|) \le \tfrac12$를 계산하고, $t > 0$이면 그때만 $1 - \text{tail}$을 해요. 결과가 $\tfrac12$ 이상이라 1에서 빼도 잃는 것이 결과의 반올림 한 번뿐이에요.
+- `bdtr`은 $1 - I_p(k+1, n-k)$를 `betaincc(k+1, n-k, p)`로 계산해요. $1 - p$를 만들어 $I_{1-p}(n-k, k+1)$로 가지 않아요. $1 - p$는 $p$가 작으면 $p$의 정보를 잃기 때문이에요.
+
+불완전 함수 쪽도 같은 규칙으로 만들어져 있어요. `gammainc`와 `gammaincc`, `betainc`와 `betaincc`는 작은 쪽을 계산하고 큰 쪽만 1에서 빼요([불완전 감마와 베타](/internals/special/incomplete/)).
+
+### 인자의 반올림: 조건수
+
+두 번째는 덜 알려진 함정이에요. `stdtr`의 인자 $x = \nu/(\nu + t^2)$는 계산해서 만드는 값이라 double로 저장하면 반올림돼요. 상대오차는 많아야 $2^{-53}$이에요. 문제는 $I_x$가 $x$에 얼마나 민감한가예요. 이 민감도를 **조건수**로 재요.
+
+$$
+\kappa_x = \left| \frac{x \, I'(x)}{I(x)} \right|, \qquad \frac{\Delta I}{I} \approx \kappa_x \frac{\Delta x}{x}
+$$
+
+입력의 상대 변화가 출력에서 몇 배로 커지는지예요. 꼬리에서 $I_x(a, b) \approx x^a/(aB)$처럼 거듭제곱이면 $\kappa_x \approx a$예요. $x$를 1 ULP 바꾸면 결과가 약 $a$ ULP 움직인다는 뜻이에요. Arb로 몇 점을 재면 이래요.
+
+| 경우 | 인자 | $\kappa$ | 결과 | $x$를 반올림하면 잃는 양 |
+|---|:---:|:---:|:---:|:---:|
+| `stdtr(30, -12)` | $x = 0.172$ | 15 | $2.8 \times 10^{-13}$ | ~8 ULP |
+| `stdtr(200, -15)` | $x = 0.471$ | 100 | $7.1 \times 10^{-35}$ | ~50 ULP |
+| `stdtr(10⁴, -30)` | $x = 0.917$ | 5006 | $1.0 \times 10^{-189}$ | ~2500 ULP |
+| `stdtr(10⁴, -3)` | $x = 0.999$ | 5472 | $1.4 \times 10^{-3}$ | ~2700 ULP |
+| `fdtr(1000, 1000, 0.7)` | $w = 0.412$ | 154 | $9.4 \times 10^{-9}$ | ~80 ULP |
+
+(마지막 열은 $\kappa \cdot 2^{-53}$을 ULP로 바꾼 크기예요. 반올림 오차는 0.5 ULP 이하라 실제 잃는 양은 이것의 절반 이하로 흩어져요.) scipy 1.18.1의 `stdtr`과 `fdtr`은 Boost.Math의 분포 함수를 불러요. Boost의 `students_t` CDF는 $z = \nu/(\nu + t^2)$(또는 $t^2/(\nu + t^2)$)를 double로 만든 뒤 `ibeta`에 넘겨요 [12]. 그래서 같은 점에서 scipy는 `stdtr(10⁴, -30)`에 527 ULP, `stdtr(200, -15)`에 16 ULP, `fdtr(1000, 1000, 0.7)`에 7 ULP가 틀렸어요(stardust는 셋 다 1 ULP).
+
+### 해결: 인자를 double-double 쌍으로 넘기기
+
+stardust는 인자를 반올림하지 않아요. $x$와 $y = 1 - x$를 둘 다 double-double(값을 반올림되지 않은 두 double의 합 $hi + lo$로 들고 다니는 표현, [공통 수치 기법](/internals/special/techniques/))로 만들고, 불완전 베타의 핵심 `ibeta_detail::ibeta(a, b, x, y)`가 그 쌍을 그대로 받아요.
+
+```cpp
+// csrc/special/ops/distr.hpp, t_arg (발췌)
+struct Arg {
+    dd::DD x, y;
+};
+// ...
+// x = df / (df + t^2), y = t^2 / (df + t^2), t != 0 finite, df > 0 finite.
+inline Arg t_arg(double df, double t) {
+    const double at = std::fabs(t);
+    if (std::ilogb(at) > 500 || df > 1e300) {
+        if (std::ilogb(df) + 64 < 2 * std::ilogb(at)) {
+            // t^2 dwarfs df: x = df / t^2 to the last bit (the next term, x^2, is below it).
+            const double x = (df / at) / at;
+            return {{x, 0.0}, dd::two_sum(1.0, -x)};
+        }
+        // Both large: the same ratios of copies scaled by 2^-512 and 2^-1024.
+        return t_arg(std::ldexp(df, -1024), std::ldexp(at, -512));
+    }
+    const dd::DD z = dd::two_prod(at, at);
+    const dd::DD s = z + df;
+    return {dd::DD{df, 0.0} / s, z / s};
+}
+```
+
+- `two_prod(at, at)`은 $t^2$을 정확히 $hi + lo$로 나눠요. $lo = \text{fma}(t, t, -hi)$로 반올림 오차를 정확히 꺼내는 곱이에요(Dekker [8]의 정확한 곱을 fma로 쓴 것).
+- $x$와 $y$를 각각 나눗셈으로 만들어요. $y = 1 - x$로 만들면 $x$가 1에 가까울 때 $y$가 $x$의 절대오차(약 $2^{-106}$)만큼만 정확해요. 따로 나누면 둘 다 자기 크기 대비 정확해요.
+- $|t| > 2^{500}$이면 $t^2$이 넘쳐요. $\nu$가 $t^2$보다 $2^{64}$배 넘게 작으면 $x = \nu/t^2$이 마지막 비트까지 맞아요($x = \nu/(\nu + t^2)$의 다음 항 $x^2$이 그보다 훨씬 작아요). 아니면 $\nu$를 $2^{-1024}$, $t$를 $2^{-512}$배해서 비율을 바꾸지 않고 다시 불러요.
+
+불완전 베타의 핵심은 이 쌍을 쓰는 곳마다 반올림 없이 써요. 앞 인자 $x^a y^b/B(a, b)$의 지수 $E$를 double-double $x$, $y$에서 만들고, 거듭제곱급수는 $x$의 아래 부분을 1차까지 보정하고, 연분수는 작은 쪽인 $y$를 쓰는 식이에요. 자세한 것은 [불완전 감마와 베타](/internals/special/incomplete/)에 있어요. 결과가 $\kappa$와 상관없이 몇 ULP에 머무는 것도 이 때문이에요.
+
+F도 같아요. `f_arg`가 $u = d_1 x$(정확한 곱)와 $s = u + d_2$를 double-double로 만들고 $w = u/s$, $v = d_2/s$를 따로 나눠요. $d_1 x$가 넘치면 $v = (d_2/x)/d_1$, $w = 1 - v$로 가요.
+
+### 작은 매개변수는 Boost.Math로
+
+$\kappa_x \approx a$이므로 $a$가 작으면 반올림해도 잃는 것이 작아요. `t_tail`은 $a = \nu/2 \le 6$이면 작은 쪽 인자를 double로 반올림해서 Boost.Math의 `ibeta`/`ibetac`(`Betainc::f`, `Betaincc::f`를 거쳐)를 불러요. 반올림 비용은 많아야 $\kappa/2 \le 3$ ULP예요. 이 구간은 Boost가 참값 파일의 모든 점에서 계약을 지키고 1스레드에서 우리 BRATIO 핵심보다 느리지 않아서 Boost에 맡긴 구간이에요. `f_value`도 $a, b \le 6$이면 같아요. `bdtr`, `nbdtr`은 인자가 입력 $p$ 자체라 반올림할 것이 없으므로 처음부터 `Betainc::f`/`Betaincc::f`를 불러요. 그 안에서 $a, b \le 6$이면 Boost예요.
+
+```cpp
+    // csrc/special/ops/distr.hpp, t_tail (발췌)
+    if (g.y.hi == 0.0) return 0.5;  // t^2 below df's last bit
+    if (g.x.hi < kTinyArg) {
+        // ...
+        const double r = std::sqrt(df) / std::fabs(t);
+        // (the exponent as hi + lo: it reaches -700, and its rounding would enter that many times)
+        const double xa =
+            r >= 0x1p-1000 ? std::pow(r, df) : exp_dd((dd::log_pos(df) * 0.5 - dd::log_pos(std::fabs(t))) * df);
+        return 0.5 * xa / shape_beta(a, 0.5);
+    }
+    if (a <= 6.0) {
+        // ...
+        return 0.5 * (g.x.hi <= g.y.hi ? Betainc::f(a, 0.5, g.x.hi) : Betaincc::f(0.5, a, g.y.hi));
+    }
+    return 0.5 * ibeta_detail::ibeta(a, 0.5, g.x, g.y).i;
+```
+
+Boost가 그 구간에서 무엇을 하는지는 아래 [Boost.Math의 불완전 베타](#boostmath의-불완전-베타-작은-매개변수)에 따로 정리했어요.
+
+### 작은 인자 급수
+
+$x$가 $2^{-1000}$보다 작으면 $I_x(a, b) = \dfrac{x^a}{aB(a, b)}(1 + O(x))$의 첫 항만으로 마지막 비트까지 맞아요(다음 항이 $x$배 작아요). 이 경로가 필요한 이유는 $x$ 자체가 double로 표현되지 않을 수 있어서예요. `stdtr(1, -1e200)`의 참값은 $3.18 \times 10^{-201}$인데 $x = \nu/t^2 = 10^{-400}$은 언더플로해요. 그래서 $x^a$를 $(\sqrt{\nu}/|t|)^{\nu}$로 입력에서 바로 만들어요. 자유도가 아주 작고 $|t|$가 거대하면 비 $\sqrt{\nu}/|t|$ 자체가 언더플로하는데, 그곳에서는 거듭제곱이 오히려 1 근처예요(`stdtr(1e-300, -1.7e308)`은 약 0.5). 그래서 비가 $2^{-1000}$ 아래이면 지수 $\nu(\tfrac12\log\nu - \log|t|)$를 double-double로 만들어 `exp_dd`로 한 번만 반올림해요.
+
+```python
+>>> sd.special.stdtr(1, -1e200)
+3.1830988618379063e-201
+```
+
+scipy 1.18.1은 여기서 0을 내요. Boost의 `students_t` CDF가 $|t| > \sqrt{\text{DBL\_MAX}}$이면 바로 0이나 1을 돌려주기 때문이에요 [12]. F의 두 끝(`f_value`의 $w < 2^{-1000}$, $v < 2^{-1000}$)은 불완전 베타의 `ibeta_tiny`에 인자의 로그 $\log d_1 + \log x - \log d_2$를 넘겨요. 첫 항 $w^a/(aB)$만 쓰면 $a$가 작을 때 1에 가까운 $I$에서 $1 - I$를 빼서 만들게 되는데($d_1 = 2.7 \times 10^{-4}$, $x = 3.7 \times 10^{-299}$에서 $I = 0.91$이고 그렇게 만든 $1 - I$는 $10^{-14}$ 틀려요), `ibeta_tiny`는 두 쪽을 빼지 않고 줘요. $w$ 자체가 double 아래로 떨어져도($x = 10^{-320}$, $d_1/d_2 = 10^{-5}$) 로그만 쓰므로 괜찮아요. 다른 모양이 $2^{900}$ 이상이면 F가 카이제곱 극한이라 감마 극한(`gamma_limit`)으로 가요(`fdtr(2, 1e308, 1)`은 $1 - 1/e$). 한 자유도가 가장 작은 double이라 그 절반이 0이 되는 경우도 따로 다뤄요. 두 자유도가 모두 $2^{-699}$ 아래이면 $I_w = d_2/(d_1 + d_2)$이고, 아니면 그 모양과 함께 사라지는 쪽이 모양에 비례하므로 그 double을 모양으로 넣은 값의 절반이에요(`fdtr(1e-300, 5e-324, x)`는 $4.9 \times 10^{-24}$).
+
+## Boost.Math의 불완전 베타 (작은 매개변수)
+
+`stdtr`(자유도 ≤ 12), `fdtr`·`fdtrc`(두 자유도 ≤ 12), `bdtr`·`nbdtr`(두 베타 매개변수 ≤ 6)이 부르는 Boost.Math `ibeta`/`ibetac`가 안에서 하는 일을 정리해요. 읽은 소스는 stardust가 옮겨 둔 헤더(`third_party/boost_math/`, boostorg/math develop의 커밋 4682f44, Boost Software License 1.0)의 `special_functions/beta.hpp`의 `ibeta_imp`이고, 구조는 DiDonato와 Morris의 TOMS 708 [1]을 따른다고 Boost 문서가 밝혀요 [11]. 결과가 $2^{-960}$ 아래이거나 1보다 크면 stardust는 그 값을 버리고 자기 BRATIO 핵심으로 다시 계산해요. 서브노멀 인자, 두 모양이 모두 $2^{-700}$ 아래인 경우, Boost가 1에서 빼서 만드는 쪽은 처음부터 Boost를 부르지 않아요(자세한 것은 [불완전 감마와 베타](/internals/special/incomplete/)).
+
+### 닫힌 꼴
+
+- **$a = b = \tfrac12$**: $I_x(\tfrac12, \tfrac12) = \tfrac{2}{\pi}\arcsin\sqrt{x}$(아크사인 분포)예요. 자유도 1인 t, 곧 Cauchy 분포가 여기에 걸려요. $x > 0.75$이면 $1 - \tfrac{2}{\pi}\arcsin\sqrt{1-x}$로 계산해서 1 근처의 $\arcsin$ 기울기 폭발을 피해요.
+- **$a = 1$ 또는 $b = 1$**: $a = 1$이면 대칭으로 바꿔 $b = 1$로 만들고, $I_x(a, 1) = x^a$를 써요. $y < \tfrac12$이면 $x^a = e^{a \log(1 - y)}$를 `log1p`로, 보수는 $-\operatorname{expm1}(a \log(1-y))$로 계산해서 $x$가 1 근처일 때도 $y$의 정보를 써요. 자유도 2인 t($a = 1$)가 여기예요.
+
+### 한 매개변수가 1 이하일 때: 급수, 보수, 옆걸음
+
+t는 $b = \tfrac12$이라 언제나 이 갈래예요. 먼저 $x > \tfrac12$이면 $(a, b, x) \leftrightarrow (b, a, y)$로 바꾸고 보수 여부를 뒤집어요. 그다음 순서는 이래요.
+
+1. **거듭제곱급수** (`ibeta_series`). $b \le 1$이거나 ($x < 0.1$이고 $(bx)^a \le 0.7$)이면
+
+   $$
+   I_x(a, b) = \frac{x^a}{B(a, b)} \sum_{n \ge 0} \frac{(1-b)_n}{n!} \frac{x^n}{a + n}
+   $$
+
+   이에요. $(1-b)_n$은 상승 계승이에요. 항의 비가 대략 $x(n - b)/n$이라 $x \le \tfrac12$에서 기하급수처럼 줄어요. 앞 인자 $x^a/B(a, b)$는 Lanczos 근사로 감마 셋을 한 식에 모아 계산해요(아래). 합은 Neumaier의 보상 합 [10]이고, $|\text{항}| \le \varepsilon\,|\text{합}|$이면 멈춰요.
+2. **보수가 필요하면** (`ibeta_series_complement`) 급수 $S$를 먼저 만들고, $S > \tfrac12$이고 $x \ge 0.02$이면 $1 - S$ 대신 매개변수를 바꾼 연분수(아래 4번)로 보수를 직접 계산해요. $1 - S$는 $S$의 반올림을 $S/(1-S)$배 키우기 때문이에요. 그 밖에는 $1 - S$예요.
+3. **옆걸음 + BGRAT**. 위 조건이 안 맞으면 다시 $(a, b, x) \leftrightarrow (b, a, y)$로 바꿔요. $y \ge 0.3$이면 급수, 아니면 `ibeta_a_step`으로 $I_x(a, b) - I_x(a + 20, b)$를 유한합
+
+   $$
+   I_x(a, b) - I_x(a+n, b) = \frac{x^a y^b}{aB(a, b)} \sum_{i=0}^{n-1} \prod_{j<i} \frac{(a+b+j)\,x}{a+1+j}
+   $$
+
+   으로 구하고(모든 항이 양수, DLMF 8.17.20 [3]을 $n$번 쓴 것), 나머지 $I_x(a+20, b)$를 `beta_small_b_large_a_series`로 구해요. 이 함수는 DiDonato–Morris의 BGRAT으로, $a$가 크고 $b$가 작을 때 $I_x$를 불완전 감마 $Q(b, u)$, $u = -(a + \tfrac{b-1}{2})\log x$의 급수로 전개해요. $a$를 20 올리는 이유는 그 전개가 $a$가 클수록 빨리 수렴하기 때문이에요(Boost는 $a \ge 15$이면 옆걸음 없이 바로 써요).
+
+### 두 매개변수가 1보다 클 때: 유한합, 급수, 연분수
+
+먼저 $\lambda = a - (a+b)x$(또는 대칭으로)가 음수이면, 곧 $x$가 평균 $a/(a+b)$ 위이면 바꿔서 언제나 평균 아래쪽을 계산해요. 그다음 순서는 이래요.
+
+1. **두 매개변수가 정수이면 이항 유한합** (`binomial_ccdf`). DLMF 8.17.5로 $I_x(a, b) = \sum_{i=a}^{n} \binom{n}{i} x^i y^{n-i}$, $n = a + b - 1$이에요. 맨 위 항 $x^n$(또는 $y < \tfrac12$이면 $e^{n \log(1-y)}$)에서 시작해 비 $\tfrac{(i+1)\,y}{(n-i)\,x}$를 곱하며 내려와요. 첫 항이 언더플로하면 최빈값 $i \approx nx$ 근처에서 시작해 양쪽으로 걸어요. `bdtr(k, n, p)`에서 $k+1 \le 6$, $n-k \le 6$이면 정확히 이 길이라, 이항 확률을 말 그대로 더해요.
+2. **$bx \le 0.7$이면 거듭제곱급수**(위와 같은 `ibeta_series`).
+3. **그 밖은 연분수** (`ibeta_fraction2`). DiDonato–Morris의 연분수 [1]
+
+   $$
+   I_x(a, b) = \frac{x^a y^b / B(a, b)}{\beta_0 + \dfrac{\alpha_1}{\beta_1 + \dfrac{\alpha_2}{\beta_2 + \cdots}}}, \quad
+   \alpha_m = \frac{(a+m-1)(a+b+m-1)\,m\,(b-m)\,x^2}{(a+2m-1)^2}
+   $$
+
+   이에요($\beta_m$은 $m + \tfrac{m(b-m)x}{a+2m-1} + \tfrac{(a+m)(ay - bx + 1 + m(2-x))}{a+2m+1}$). $x$가 평균 아래이므로 빨리 수렴해요(double에서 많아야 약 80항이라고 소스 주석이 적어요). 수정 Lentz 방법 [7]으로 앞에서부터 계산해 필요한 항 수 $m$을 알아낸 뒤, **$2m$항을 꼬리부터 거꾸로** 다시 계산해요. 앞으로 가는 Lentz는 항마다 곱하는 비율의 반올림이 쌓이고, 꼬리부터 가는 계산은 그 오차가 줄어들기 때문이에요. stardust의 BFRAC도 같은 이유로 꼬리부터 계산해요(`cf.hpp`의 `lentz_backward`).
+
+### 앞 인자: Lanczos로 모으기
+
+급수와 연분수의 앞 인자 $x^a y^b/B(a, b)$를 그대로 만들면 넘치고 소거해요. Boost는 Lanczos 근사 $\Gamma(z) = L(z)\,\big(\tfrac{z+g-1/2}{e}\big)^{z-1/2}$($g \approx 6.02$, `lanczos13m53`)를 세 감마에 넣고 큰 거듭제곱끼리 묶어요(`ibeta_power_terms`).
+
+$$
+\frac{x^a y^b}{B(a,b)} = \frac{L(c)}{L(a)L(b)} \sqrt{\frac{(a+g-\tfrac12)(b+g-\tfrac12)}{e\,(c+g-\tfrac12)}} \left(\frac{x\,(c+g-\tfrac12)}{a+g-\tfrac12}\right)^{a} \left(\frac{y\,(c+g-\tfrac12)}{b+g-\tfrac12}\right)^{b}, \quad c = a+b
+$$
+
+두 괄호가 모두 1에서 0.5 안이면(평균 근처) 두 로그를 한 번에 모으는 경로로, 하나만 1에 가까우면 그쪽 지수를 `log1p`로 계산해요. stardust의 앞 인자(`prefix.hpp`)는 같은 생각을 Lanczos 대신 Stirling의 정규화와 double-double 지수로 해요([불완전 감마와 베타](/internals/special/incomplete/)). 큰 $a, b$에서 Boost의 앞 인자는 거듭제곱 둘의 반올림을 $a$배, $b$배로 키우는데, $a, b \le 6$에서는 그 증폭이 작아요. 구간을 고를 때 잰 결과, Boost는 $a, b \le 6$ 안에서는 참값 파일의 모든 점에서 계약을 지켰고 그 밖에는 계약을 넘는 점이 있었어요(`betainc` 최대 911 ULP, `bench/special/accuracy.md`의 Boost 열). 그래서 stardust는 Boost를 이 구간에만 써요.
+
+## 카이제곱과 포아송: 불완전 감마
+
+`chdtr(df, x)`는 `gammainc(df/2, x/2)`, `chdtrc`은 `gammaincc(df/2, x/2)`, `pdtr(k, m)`은 `gammaincc(floor(k) + 1, m)`, `pdtrc`은 `gammainc(floor(k) + 1, m)`이에요. 이 순방향 불완전 감마는 Boost를 부르지 않는 stardust의 코드예요. 작은 $a$의 보수 공식, 급수, 연분수, 큰 $a$에서 $x \approx a$의 Temme 균등 점근전개의 네 갈래와 double-double 지수의 앞 인자를 써요([불완전 감마와 베타](/internals/special/incomplete/)). Boost의 불완전 감마는 큰 $a$(약 $10^6$)에서 $5 \times 10^5$ ULP를 잃어서, 모든 참값 점에서 계약을 지켜야 한다는 구간 선택 기준을 통과하지 못했어요(`bench/special/accuracy.md`의 Boost 열).
+
+인자를 반으로 나누는 것은 지수만 1 줄이는 일이라 정확해요. 예외는 서브노멀 $x$예요. $x/2$가 반올림되거나 0이 돼요. 그래서 $x < 2^{-1021}$이면 급수의 첫 항
+
+$$
+P(a, y) = \frac{y^a}{\Gamma(a+1)}\,(1 + O(y)), \qquad y = x/2
+$$
+
+를 쓰고, $a \log y$를 double-double로 만들어 지수를 한 번만 반올림해요.
+
+```cpp
+// csrc/special/ops/distr.hpp
+inline double exp_dd(dd::DD e) {
+    const double e0 = std::exp(e.hi);
+    if (e0 == 0.0 || std::isinf(e0)) return e0;
+    return e0 * (1.0 + e.lo);
+}
+// ...
+inline dd::DD log_product(double v, double c) {
+    if (v >= 0x1p-960) return dd::log(dd::two_prod(v, c));
+    // ...
+    return dd::log_pos(v) + dd::log_pos(c);
+}
+// ...
+inline double chi2_tiny(double v, double x) {
+    if (v == 0.0) return 1.0;
+    const double a = 0.5 * v;
+    const dd::DD e = log_product(x, 0.5) * a;
+    if (!(e.hi > -1e4)) return 0.0;  // (a huge v: the product is -inf, or NaN as a double-double)
+    return exp_dd(e) * Rgamma::f(a + 1.0);
+}
+```
+
+위꼬리는 이 값을 1에서 빼지 않아요(`chi2_tiny_upper`). $a$가 작으면 $y^a/\Gamma(a+1)$이 1과 반올림 하나 차이라 빼면 모두 사라지기 때문이에요(`chdtrc(1e-100, 5e-324)`의 참값은 $3.7 \times 10^{-98}$). 그래서 $a < 1$이고 지수 $e = a\log y - \log\Gamma(1 + a)$가 $-0.5$보다 크면 $-\operatorname{expm1}(e)$로 계산해요. $a$가 $2^{-1000}$ 아래이면 $a = v/2$ 자체가 반올림되므로 $\log\Gamma(1 + a) = -\gamma a$를 써서 $e = v(\log y + \gamma)/2$로 만들어요. 자유도가 $2^{-1021}$ 아래이고 끝 비트가 홀수이면(가장 작은 double 5e-324가 그래요) 그 절반이 double로 정확히 나오지 않아요. 그대로 반올림하면 서브노멀 결과의 자릿수가 크게 틀려요(`chdtrc(1.5e-323, 1e-300)`의 참값은 $5.12 \times 10^{-321}$인데 절반을 반올림하면 $6.8 \times 10^{-321}$, 5e-324의 절반은 0이라 결과도 0). $a \to 0$에서 $Q(a, y)$는 $a$에 비례하므로(상대 $O(a)$) $Q(v/2, x/2) = \tfrac12 Q(v, x/2)$, 곧 `0.5 * gammaincc(v, x/2)`로 계산해요. Arb 참값과 서브노멀 한 칸($2^{-1074}$) 안에서 맞아요.
+
+```python
+>>> sd.special.chdtrc(1.5e-323, 1e-300)
+5.12e-321
+>>> sd.special.chdtrc(5e-324, 1e-300)
+1.71e-321
+```
+
+`exp_dd`가 필요한 이유는 이래요. $e^{E}$의 상대오차는 $E$의 절대오차와 같아요. $E \approx -700$을 double로 반올림하면 절대오차가 $700 \cdot 2^{-53}$이라 결과가 약 350 ULP 흔들려요. $E = hi + lo$로 들고 $e^{hi}(1 + lo)$로 계산하면 $lo$의 기여는 1차까지 정확하고, 반올림은 `exp`와 곱 하나뿐이에요. `exp_dd`와 `log_product`가 분포 함수 곳곳에서 먼 꼬리를 지키는 도구예요. 예를 들어 `chdtr(0.18, 5e-324)`의 참값은 $7.85 \times 10^{-30}$이에요. `x/2`를 그대로 쓰면 5e-324의 절반이 0으로 반올림돼 결과가 0이 돼요.
+
+자유도 $v = 0$인 카이제곱은 0에 몰린 분포라서 $x > 0$이면 1이에요(서브노멀 $x$에서도). `chdtr(0, 0)`은 `gammainc(0, 0)`과 같이 NaN이에요.
+
+## 역함수
+
+역함수는 모두 "작은 쪽 꼬리를 푼다"는 같은 틀이에요. $p > \tfrac12$이면 $1 - p$(이때는 Sterbenz 보조정리로 정확해요)를 위꼬리의 목표로 삼아요. 목표가 작을수록 상대 정확도가 그대로 근으로 옮겨 가요. 정확도 계약도 이것을 반영해요. 역함수는 $|\Delta x/x| \le 10^{-14}\max(1, \kappa)$를 보장하고, $\kappa = |F/(xF')|$는 입력 $p$에 대한 근 $x$의 조건수예요. $p$의 마지막 비트가 허용하는 만큼 정확하다는 뜻이에요.
+
+### chdtri: Boost의 출발점과 우리 Halley
+
+`chdtri(df, q)`는 scipy와 같이 **`chdtrc`의** 역함수이고, `2 * gammainccinv(df/2, q)`로 계산해요. `gammainccinv`는 $q \ge 10^{-300}$이고 $2^{-900} \le a < 10^{10}$이면 Boost.Math의 `find_inverse_gamma`로 출발점만 얻어요(`boost_start`). Boost의 `gamma_q_inv`가 반복을 시작하는 바로 그 값이에요. 그 뒤는 stardust의 불완전 감마에 대한 Halley 걸음이에요. 출발점이 $10^{-300}$ 아래이거나 정상 수가 아니면(서브노멀 근, 0) stardust의 초기값으로 풀어요. Boost가 출발점을 만드는 방법은 이래요(`special_functions/detail/igamma_inverse.hpp`, Boost 문서 [11]).
+
+1. **DiDonato–Morris(1986) [2]의 식들.** $a = 1$이면 $x = -\log q$(정확한 답)예요. $a < 1$이면 $b = q\,\Gamma(a)$의 크기로 다섯 식(논문의 식 21–25) 중 하나를 골라요. 예를 들어 $b$가 아주 작으면 $y = -\log b$에 대한 점근 전개 $x \approx y + c_1 + c_2/y + c_3/y^2 + c_4/y^3 + c_5/y^4$, $c_1 = (a-1)\log y$예요. $a > 1$이면 정규 편차 $s$(식 32의 유리 근사로 $p$나 $q$에서 구해요)로 Cornish–Fisher형 전개
+
+   $$
+   w = a + s\sqrt{a} + \frac{s^2 - 1}{3} + \frac{s^3 - 7s}{36\sqrt{a}} - \frac{3s^4 + 7s^2 - 16}{810a} + \frac{9s^5 + 256s^3 - 433s}{38880\,a\sqrt{a}}
+   $$
+
+   (식 31)을 만들고, $w$가 꼬리 쪽으로 멀면 식 33·35·36의 보정을 더해요. $a \ge 500$이고 $w$가 $a$에 가까우면 이것만으로 10자리가 맞아요.
+2. **큰 $a$는 Temme의 균등 점근 역전개**로 출발점을 만들어요.
+
+Boost의 `gamma_q_inv`는 이 출발점에서 자기 순방향 함수로 Halley를 돌리되, 걸음이 $x$의 약 $2^{-25}$배 아래(double 53비트의 절반 남짓)가 되면 멈춰요. 큰 $a$에서는 그 근이 100 ULP쯤 남아서 stardust의 함수로 한 걸음 더 다듬어야 했어요. 출발점에서 바로 stardust의 Halley를 하면 그 평가들이 빠지고, 근은 처음부터 stardust의 `gammaincc`의 근이에요. Halley는 걸음이 남길 오차를 걸음의 크기와 닫힌 꼴의 2차 도함수로 어림해, 마지막 비트에 닿을 것이 보이면 확인 평가 없이 끝내요([불완전 감마와 베타](/internals/special/incomplete/)).
+
+카이제곱의 자유도가 짝수면 $a = v/2$가 정수, 홀수면 반정수예요. 순방향 `gammaincc`는 $1 \le a \le 30$의 그런 모양에서 연분수 대신 유한합 $Q(n, x) = e^{-x}\sum_{j<n} x^j/j!$(DLMF 8.4.10)와 $Q(n + \tfrac12, x) = \operatorname{erfc}(\sqrt{x}) + \sum_{j<n} D(j + \tfrac12, x)$를 써서, `chdtri`의 Halley 평가도 흔히 이 유한합이에요($x$가 $a$보다 큰 쪽). 잰 정확도는 `chdtri` 최대 5.71 ULP/κ예요.
+
+### fdtri: 작은 쪽 근과 Temme의 초기값
+
+`fdtri(d₁, d₂, p)`는 $I_w(a, b) = p$($a = d_1/2$, $b = d_2/2$)를 풀고 $x = \tfrac{w}{1-w}\cdot\tfrac{d_2}{d_1}$로 바꿔요. 여기서 함정은 **어느 쪽을 풀지**예요.
+
+- $w$가 작으면 $w$를, $w$가 1에 가까우면 $v = 1 - w$를 근으로 삼아야 해요. 1 근처의 $w$를 근으로 삼으면 $1 - w$가 자리를 잃어서 $x$가 망가져요.
+- 어느 쪽이 작은지는 $p$만 보고는 몰라요. $p \le \tfrac12$이어도 분포가 치우쳐 있으면 $w > \tfrac12$일 수 있어요. 그래서 $p$를 $I_{1/2}(a, b)$와 비교해요. $I$가 $w$에 대해 증가하므로 $p < I_{1/2}(a, b)$이면 정확히 $w < \tfrac12$예요. $p \le \tfrac12$로 고르면 `fdtri(0.019, 262, 0.70)`(참값 $1.2 \times 10^{-14}$)처럼 $p > \tfrac12$인데 $w$가 아주 작은 점에서 $1 - w$를 풀게 되어 $w$의 자리가 모두 사라지고 0이 나와요.
+
+```cpp
+        // csrc/special/ops/distr.hpp, Fdtri::f (발췌)
+        if (p < Betainc::f(a, b, 0.5)) {
+            const double w = Betaincinv::f(a, b, p);
+            // p = w^a / (a B) (1 + O((b + 1) w)): x = (dfd/dfn) w from logs in double-double
+            if (w < 0x1p-60 && w * b < 0x1p-56) {
+                const dd::DD l = distr_detail::log_product(p, distr_detail::shape_beta(a, b));
+                // ...
+                if (!(l.hi / a > -0x1p1000)) return 0.0;
+                return distr_detail::exp_dd(l / a + dd::log(dfd) - dd::log(dfn));
+            }
+            return distr_detail::scaled_ratio(w, 1.0 - w, dfd, dfn);
+        }
+        const double v = Betainccinv::f(b, a, p);  // 1 - I_v(b, a) = p, i.e. I_w(a, b) = p
+        // 1 - p = v^b / (b B) (1 + O((a + 1) v)), 1 - p exact here: x = (dfd/dfn) / v
+        if (v < 0x1p-60 && v * a < 0x1p-56 && p >= 0.5) {
+            const dd::DD l = distr_detail::log_product(1.0 - p, distr_detail::shape_beta(b, a));
+            if (!(l.hi / b > -0x1p1000)) return kInf;  // (as above: fdtri(1, 1e-310, 0.5))
+            return distr_detail::exp_dd(dd::log(dfd) - dd::log(dfn) - l / b);
+        }
+        return distr_detail::scaled_ratio(1.0 - v, v, dfd, dfn);
+```
+
+마지막 곱 $x = \tfrac{w}{1-w}\cdot\tfrac{d_2}{d_1}$는 `scaled_ratio`가 만들어요. $d_2/d_1$이 정규 double이면 그 곱 그대로예요. 몫이 서브노멀이나 0, inf로 벗어나면 몫 자체가 비트를 잃었거나, $w/(1 - w)$가 inf인데 몫이 0이라 곱이 NaN이 되므로, 네 수의 가수를 곱하고 지수를 정수로 더해 `ldexp` 한 번으로 내요. 그래서 분모 자유도가 5e-324이고 근이 double 밖인 `fdtri(2, 5e-324, 0.1)`도 inf예요.
+
+```cpp
+// csrc/special/ops/distr.hpp, distr_detail::scaled_ratio
+inline double scaled_ratio(double n, double d, double dfd, double dfn) {
+    const double q = dfd / dfn;
+    if (q >= std::numeric_limits<double>::min() && q <= std::numeric_limits<double>::max()) return (n / d) * q;
+    if (n == 0.0) return 0.0;
+    if (d == 0.0) return kInf;
+    int en, ed, eu, el;
+    const double mn = std::frexp(n, &en), md = std::frexp(d, &ed), mu = std::frexp(dfd, &eu), ml = std::frexp(dfn, &el);
+    return std::ldexp((mn * mu) / (md * ml), en - ed + eu - el);
+}
+```
+
+한 자유도가 다른 자유도보다 엄청나게 크면(불완전 베타의 감마 극한과 같은 조건) 이 앞에서 감마의 역함수로 풀어요. $b$가 거대하면 $P(a, z) = p$의 $z$에서 $x = (z/a)/(1 - z/b)$, $a$가 거대하면 $Q(b, z) = p$의 $z$에서 $x = (b/z)(1 - z/a)$예요. 몫 $z/b$를 먼저 만들지 않는 것은 $b$가 double의 끝 근처이면 그 몫이 서브노멀이 되기 때문이에요.
+
+**먼 꼬리의 거듭제곱.** 근이 $2^{-60}$ 아래이고 $bw < 2^{-56}$이면 급수 $p = w^a/(aB)\,(1 + O((b + 1)w))$의 다음 항이 마지막 비트보다 작아서 $w = (paB)^{1/a}$가 정확해요. 그런데 이 값을 `pow(p*a*B, 1/a)`로 계산하면 지수 $1/a$의 반올림이 $|\log(paB)|$배로 커져요. $\log(paB) \approx -450$이면 약 200 ULP예요. 그래서 $\log x = \log(paB)/a + \log d_2 - \log d_1$을 double-double로 모으고 `exp_dd`로 한 번만 반올림해요. 서브노멀 $p$는 `log_product`가 $p$와 $aB$의 로그를 따로 만들어 더해요(곱 자체가 언더플로할 수 있어서요).
+
+**역 불완전 베타 자체.** `betaincinv`는 $10 \le a, b \le 10^6$이면, `betainccinv`는 $1 \le a, b \le 10^6$이면(확률이 $10^{-300}$ 이상일 때) Boost.Math의 `ibeta_inv`/`ibetac_inv`를 불러요. 나머지는 stardust의 AS 109 초기값 [5] + Halley예요([불완전 감마와 베타](/internals/special/incomplete/)). Boost의 방법은 이래요(`special_functions/detail/ibeta_inverse.hpp`, 문서 [11]).
+
+<Fig column caption="Boost.Math ibeta_inv의 초기값 고르기(a + b > 5인 경우). 그 밖의 작은 a, b는 변곡점·거듭제곱·'찌그러진 사분원' 근사를 써요. 어느 길이든 마지막은 Halley 반복이에요.">
+  <Tree root={{ label: 'ibeta_inv(a, b, p)', note: 'p > 1/2이면 (a, b, p)와 (b, a, q)를 바꿔요', children: [
+    { label: 'b = 1/2 (t 분포)', note: 't 분위수의 빠른 근사에서 x' },
+    { label: 'p < 1e-20', note: '급수 앞 두 항으로 작은 x 추정' },
+    { label: '√min > max − min, min > 5', note: 'Temme 2절: 거의 대칭, 역 erfc', tone: 'a' },
+    { label: '0.2 ≤ min/(a+b) ≤ 0.8, a+b ≥ 10', note: 'Temme 3절: θ = asin √(a/r)의 역 erfc 전개', tone: 'a' },
+    { label: '그 밖', note: 'Temme 4절: 역 불완전 감마로 (a > b로 바꿔서)', tone: 'a' },
+    { label: 'Halley 반복', note: 'f = I − p, f″/f′ = (a−1)/x − (b−1)/(1−x), 53/2비트까지', tone: 'b' },
+  ] }} />
+</Fig>
+
+Temme의 세 방법 [13]은 $a + b$가 클 때 $I_x$를 오차함수나 불완전 감마 하나로 바꾸는 균등 점근전개를 거꾸로 푸는 거예요. 큰 매개변수에서 베타 분포는 정규분포(대칭일 때)나 감마 분포(치우칠 때)에 가까워지므로, 그 분포의 역함수로 보조 변수 $\eta$를 구하고 $1/r$의 다항식으로 보정한 뒤 $\eta \mapsto x$ 관계를 Newton으로 풀어요. 이 초기값이 이미 몇 자리 맞아서 Halley가 보통 1–2번이면 끝나요. Boost는 근이 기계 엡실론이나 최소 정규수 아래로 가는 경우를 다루지 않고 하한에 붙으면 0을 돌려줘요. stardust는 그 0을 받지 않고 자기 역함수로 풀어요. 그래서 `fdtri`의 깊은 꼬리(근이 서브노멀)도 순방향 함수로 확인한 값이 나와요.
+
+### stdtrit: 큰 자유도의 전개, Hill의 근사에서 한두 걸음
+
+자유도가 크면 평가 없이 끝나요. $z = \Phi^{-1}(p)$(정규 편차)라 할 때 $\nu \ge 1000\max(1, z^2)$이면 Cornish–Fisher 전개(A&S 26.7.5 [20])
+
+$$
+t = z + \frac{g_1(z)}{\nu} + \frac{g_2(z)}{\nu^2} + \frac{g_3(z)}{\nu^3} + \frac{g_4(z)}{\nu^4}, \qquad g_1 = \frac{z(z^2 + 1)}{4},\ g_2 = \frac{z(5z^4 + 16z^2 + 3)}{96}
+$$
+
+을 그대로 내요($g_3$, $g_4$는 $z$의 7차, 9차 다항식이에요). 이 범위에서 다음 항(대략 $10^{-4}z^{11}/\nu^5$)은 $t$의 $2^{-56}$ 아래예요. $z$는 `ndtri`와 같은 AS241의 유리식에서 얻어요. 이런 모양에서 꼬리 함수 한 번은 BGRAT이라 비싸서, 평가를 아예 하지 않는 이 길이 이득이에요.
+
+그보다 작은 자유도에서 `stdtrit(df, p)`의 일반적인 길은 $x = \nu/(\nu + t^2)$를 `betaincinv`로 푸는 것인데, 그 길은 순방향 평가가 네댓 번 들어가요. 대부분의 입력에는 더 좋은 출발점이 있어요. **Hill의 알고리즘 396** [4]은 양쪽 꼬리 확률 $q_2 = 2\min(p, 1-p)$에서 $|t|$의 근삿값을 주는 식이에요. stardust의 `t_quantile`이 쓰는 꼴은 이래요.
+
+- $\nu = 1$이면 $t = 1/\tan(\pi q_2/2)$(Cauchy, 정확), $\nu = 2$이면 $t = \sqrt{2/(q_2(2 - q_2)) - 2}$(정확).
+- 그 밖에는 $a = 1/(\nu - \tfrac12)$로 만든 계수와 $y = (d \cdot q_2)^{2/\nu}$를 보고, 꼬리가 아니면 정규 편차 $x = \Phi^{-1}(q_2/2)$에서 출발하는 점근 전개(`expm1(a·y²)`로 끝나는 Cornish–Fisher형 식), 꼬리이면 $y$의 거듭제곱 식을 써요.
+
+이 출발점의 상대오차는 자유도 3 이상에서 $1.3 \times 10^{-5}$ 안이에요(무작위 2만 점, scipy `stdtrit` 대비). 자유도가 3보다 작으면 커져서 1 근처에서는 수십 %에 이르고, 그만큼 Halley 걸음이 늘어요. 여덟 걸음 안에 끝나지 않으면 아래의 일반적인 길로 가요.
+
+거기서 꼬리 함수 $F(t) = P(T > t)$에 대해 Halley 걸음을 해요. $F' = -f$(밀도), $F''/F' = -(\nu+1)t/(\nu + t^2)$라서 걸음은
+
+$$
+r = \frac{F(t) - q}{F'(t)}, \qquad t_{\text{new}} = t - \frac{r}{1 + \tfrac12 r\,(\nu+1)\,t/(\nu + t^2)}
+$$
+
+예요. 출발점이 6자리 맞으면 첫 걸음이 $|t|$의 $10^{-6}$ 정도이고, 3차 수렴이라 그 뒤 남는 오차는 대략 $(10^{-6})^3$이에요. 그래서 걸음이 $4 \times 10^{-6}|t|$ 아래이면 거기서 끝내요(남는 오차 약 $10^{-17}$). 대부분 꼬리 평가 한 번이에요.
+
+이 빠른 길은 $\nu \ge 1$이고 $q_2 > 10^{-12}$일 때만 써요. 더 깊은 꼬리에서는 꼬리 함수와 밀도를 만드는 $w = \nu/(\nu + t^2)$가 $t^2$ 대비 $\nu$를 잃어 Halley가 믿을 수 없어요. 그때와 $\nu < 1$은 일반적인 길로 가요. $x$와 $y$ 중 작은 쪽을 `betaincinv`/`betainccinv`로 풀고(어느 쪽이 작은지는 `fdtri`처럼 $q_2$를 $I_{1/2}(a, \tfrac12)$와 비교해서), $x < 2^{-60}$이면 $\log t = \tfrac12\log\nu - \log(q_2 aB)/\nu$를 double-double로 계산해요.
+
+```python
+>>> sd.special.stdtrit(10, 0.025)
+-2.2281388519862744
+>>> sd.special.stdtrit(3, 5e-324)
+-6.065761977939858e+107
+```
+
+두 번째는 참값이에요. scipy 1.18.1은 `inf`를 내요.
+
+### 서브노멀 자유도
+
+t와 F의 먼 꼬리 식에 들어가는 $aB(a, b) = \Gamma(a+1)\Gamma(b)/\Gamma(a+b)$는 $a \to 0$에서 1로 유한해요. 그런데 곱 `a * Beta::f(a, b)`로 만들면 $B$가 넘치는 서브노멀 $a$에서 inf나 NaN이 돼요. 그래서 `shape_beta`는 $B$가 넘치면 $B = (a + b)/(ab)\,(1 + O(a + b))$에서 나온 $1 + a/b$를 써요.
+
+자유도가 가장 작은 double 5e-324이면 그 절반이 double이 아니라(0으로 반올림돼요) 극한을 써요.
+
+- `stdtr`은 0.5예요. 자유도가 0으로 가면 질량이 $\pm\infty$로 반씩 가요.
+- `stdtrit`은 $\nu < 2^{-1000}$이면 $p < \tfrac12$에서 $-\infty$, $p > \tfrac12$에서 $\infty$예요. 위의 먼 꼬리 식 $|t| = \sqrt\nu\,(q_2\,aB)^{-1/\nu}$에서 $-\log(q_2\,aB) \ge 2^{-54}$인데 $1/\nu > 2^{1000}$이라 $|t|$가 double을 넘어요.
+- `fdtri`은 분자 쪽이 5e-324이면 0이에요(분포가 0에 몰려요). 두 자유도가 모두 $2^{-699}$ 아래이면 `fdtr`이 $0 < x < \infty$에서 0에 몰린 몫 $d_2/(d_1 + d_2)$와 같으므로 $p$를 그 몫과 비교해 0이나 $\infty$예요. 분모 쪽만 5e-324이면 `fdtr`이 $b$에 선형이라, $b = d_2/2$인 문제의 근은 $b = d_2$인 문제에서 $2p$의 근이에요. 그 근은 $p$가 서브노멀일 만큼 작지 않으면 double 밖이라 inf예요(`scaled_ratio`, 위).
+- `chdtri`은 `chdtrc`처럼 끝 비트가 홀수인 서브노멀 자유도에서 $Q(\nu/2, y) = Q(\nu, y)/2$를 써서 $Q(\nu, y) = 2q$의 근을 풀어요. $q > \tfrac12$이면 근이 모든 double 아래라 0이에요. `chdtr(df, 0)`은 $df > 0$이면 바로 0이에요(0에 몰린 확률이 없어요).
+
+`exp_dd`도 여기서 하나를 챙겨요. $e^{hi}$가 0이나 inf이면 그 값을 그대로 내요. 그런 거대한 지수에서는 $lo$가 수천에 이를 수 있어서, $1 + lo$가 음수가 되면 결과의 부호를 뒤집기 때문이에요. `stdtrit(1e-20, 0.3)`의 지수가 그런 크기예요.
+
+### ndtri_exp: 로그 확률에서 정규 분위수
+
+`ndtri_exp(y) = ndtri(exp(y))`는 확률을 로그로 들고 다니는 계산(우도, 매우 작은 p값)에서 써요. $e^y$가 언더플로하는 $y$도 double의 끝(약 $-1.8 \times 10^{308}$)까지 받아요. `ndtri`의 Wichura AS241 [19]은 꼬리에서 $L = \log\min(p, 1 - p)$의 함수 $s = \sqrt{-L}$로 유리식을 계산하는데, 여기서는 $L$을 로그 없이 알 수 있다는 것이 출발점이에요. 구간은 넷이에요.
+
+| 구간 | 계산 | 이유 |
+|---|---|---|
+| $\lvert e^y - \tfrac12\rvert \le \tfrac14$ | $q = \tfrac12\operatorname{expm1}(y + \log 2)$를 `ndtri`의 가운데 유리식 $q\,R(q^2)$에 | $e^y - \tfrac12$는 $e^y$의 반올림이 작은 $q$를 덮어요. $\log 2$를 $hi + lo$로 더하면 $y = -\log 2$ 근처에서 $y + hi$가 정확해요 |
+| 그 밖의 $y > \log\tfrac12$ | 위꼬리 $1 - p = -\operatorname{expm1}(y)$로 $-\Phi^{-1}(1 - p)$ | $1 - p$를 소거 없이 만들어요 |
+| 그 밖의 $-745 \le y \le \log\tfrac12$ | AS241에 $L = y$를 그대로 | 꼬리 유리식은 $s = \sqrt{-y}$만 있으면 되므로 `exp`와 `log`를 거치지 않아요. 이 유리식은 $s = 27.3$($p = 5 \times 10^{-324}$)까지 맞아서, 값은 `ndtri(exp(y))`와 같은 식이에요. $p = e^y \ge 0.075$인 곳만 가운데 유리식이라 $q = e^y - \tfrac12$를 만들어요 |
+| $y < -745$ | 점근식에 대한 Newton 두 걸음($y < -10^8$은 고정점 세 걸음) | $e^y$가 언더플로해요 |
+
+첫 줄 덕분에 반올림한 $\log\tfrac12$(−0.6931471805599453)에서도 근 $2.9 \times 10^{-17}$이 나와요. $e^y$를 먼저 만들면 0.5로 반올림되어 0이에요. 첫 줄은 $\lvert q\rvert \le \tfrac14$에서만 써요. 그 위에서는 아래 두 줄이 더 정확해요(Arb 참값과 견준 값).
+
+네 번째 구간은 점근식
+
+$$
+\log\Phi(x) = -\frac{x^2}{2} - \log(-x) - \tfrac12\log 2\pi + \log S, \qquad S = 1 - x^{-2} + 3x^{-4} - 15x^{-6} + \cdots
+$$
+
+을 $\log\Phi(x) = y$에 대해 풀어요. $\lvert x\rvert \ge 38.5$에서 $S$는 여덟 항이면 되고 아홉째 항은 $10^{-19}$ 아래예요. 출발점은 $w = -2y - \log 2\pi$로 만든 $x^2 = w - \log(w - \log w)$(약 $10^{-9}$까지 맞아요)이고, 잔차 $y - \log\Phi(x)$에 기울기 $-x - 1/x + 2/x^3$로 Newton을 두 번 해요(이차 수렴이라 두 번이면 반올림까지 와요). 잔차의 $x^2/2 + y$는 크기 $x^2/2$인 두 수의 차라서, `two_prod`로 $x^2$를 $hi + lo$로 만들어 정확히 빼요. 그래서 남는 오차는 $\varepsilon\log\lvert x\rvert$, $x$에 대해 상대 $\varepsilon\log\lvert x\rvert/x^2$예요. `log_ndtr`을 그대로 부르는 Newton은 기울기 $\varphi/\Phi$가 크기 $x^2/2$인 두 수의 차여서 $\lvert x\rvert > 10^6$부터 자릿수를 잃어요($y = -10^{17}$에서 $2 \times 10^{13}$ ULP).
+
+$y < -10^8$($\lvert x\rvert > 1.4 \times 10^4$)이면 고정점
+
+$$
+x \leftarrow -\sqrt2\,\sqrt{-y - \tfrac12\log 2\pi - \log(-x) + \log S}
+$$
+
+을 세 번 돌려요. 한 번에 $1/x^2 < 10^{-8}$배씩 줄어서 세 번이면 $10^{-24}$ 아래예요. $x^2$ 대신 $x^2/2$에 대해 푸는 꼴이라 $-2y$가 넘치는 $y \le -8.99 \times 10^{307}$에서도 그대로 돼요. 그래서 `ndtri_exp(-1.7e308)`도 유한한 $-1.84 \times 10^{154}$예요.
+
+```python
+>>> sd.special.ndtri_exp(-0.6931471805599453)
+2.906494156890034e-17
+>>> sd.special.ndtri_exp(-1000.0)
+-44.6157477319694
+>>> sd.special.ndtri_exp(-1e10)
+-141421.35614695234
+```
+
+## 비중심 분포
+
+### 포아송 혼합
+
+비중심 카이제곱은 정규변수 $Z_i$에 평균 $\mu_i$를 더한 $\sum (Z_i + \mu_i)^2$의 분포예요. 비중심 모수 $\lambda = \sum \mu_i^2$이에요. 이 분포는 "자유도가 $v + 2J$인 중심 카이제곱, $J \sim$ 포아송$(\lambda/2)$"의 혼합과 같아요 [6]. 그래서
+
+$$
+\texttt{chndtr}(v, \lambda, x) = \sum_{j \ge 0} D(j, \tfrac{\lambda}{2})\; P\!\left(\tfrac{v}{2} + j,\, \tfrac{x}{2}\right), \qquad D(j, \mu) = \frac{\mu^j e^{-\mu}}{j!}
+$$
+
+예요. 비중심 F는 분자가 비중심 카이제곱이라 같은 무게로 $I_w(\tfrac{d_1}{2} + j, \tfrac{d_2}{2})$를 섞어요. 비중심 t $T = (Z + \delta)/\sqrt{V/\nu}$는 $t \ge 0$에서 두 가족의 합이에요 [6].
+
+$$
+P(T \le t) = \Phi(-\delta) + \tfrac12 \sum_{j \ge 0} \Big[ D(j, \tfrac{\delta^2}{2})\, I_x(j + \tfrac12, \tfrac{\nu}{2}) + \operatorname{sign}(\delta)\, D(j + \tfrac12, \tfrac{\delta^2}{2})\, I_x(j + 1, \tfrac{\nu}{2}) \Big], \quad x = \frac{t^2}{\nu + t^2}
+$$
+
+여기서 $D(a, \mu) = \mu^a e^{-\mu}/\Gamma(a+1)$은 반정수 $a$에도 쓰는 일반형이에요. stardust의 코드는 세 분포를 하나의 틀 `mixture(mu, h, s0, family)`로 계산해요. 합은 $S = \sum_j w_j\,G(s_0 + j)$, $w_j = D(j + h, \mu)$이고, $G$는 모양 $s$를 따라 늘어선 불완전 함수의 가족이에요(`GammaFamily`: $P(s, y)$나 $Q(s, y)$, `BetaFamily`: $I_x(s, b)$나 $1 - I_x(s, b)$).
+
+### 양의 항만: 위꼬리는 위꼬리 가족으로
+
+아래꼬리 합은 모든 항이 양수예요. 위꼬리 $P(X > x) = 1 - S$는 빼기로 만들면 앞 절의 소거가 그대로 생겨요. 그런데 무게의 합이 1이므로
+
+$$
+1 - \sum_j w_j\, P(s_0 + j, y) = \sum_j w_j\, Q(s_0 + j, y)
+$$
+
+예요. 위꼬리도 같은 꼴의 **양의 항의 합**이에요. 그래서 `chndtrc`, `ncfdtrc`, `nctdtrc`은 가족만 $Q$, $1 - I$로 바꿔 같은 `mixture`를 불러요. scipy.special에는 이 위꼬리 함수들이 없고(`scipy.stats`의 `sf`가 Boost를 불러요), stardust는 꼬리의 상대 정확도를 위해 이 셋을 공개 함수로 둬요.
+
+비중심 t에서 $\delta > 0$이고 $t > 0$이면 위꼬리도 두 위꼬리 가족의 양의 합이에요. $\delta < 0$의 아래꼬리는 $\Phi(-\delta) \ge \tfrac12$에 두 급수를 더하는 꼴인데, 결과가 $\tfrac12$ 이상이라 상쇄해도 상대적으로 잃는 것이 없어요. 남은 문제는 $\delta < 0$의 위꼬리 $P(T > t)$ 하나예요. 아래 [반대쪽 꼬리](#비중심-t의-반대쪽-꼬리-적분)에서 다뤄요.
+
+### 점화식의 방향과 한 번의 걷기
+
+합을 더하는 길은 셋이에요. 항이 적은 분포의 가운데에서는 아래 [분포의 가운데](#분포의-가운데-j--0부터-더하는-합) 절의 $j = 0$부터 더하는 합이 먼저예요. 그다음은 $\mu \le 2 \times 10^4$이면 [float64 걷기](#float64-걷기-가장-큰-항에서-양쪽으로)이고, 그것이 받지 못한 곳(더 큰 $\mu$, 프레임이 맞지 않는 곳)과 `sd.stats`의 로그 꼴·역함수가 쓰는 넓은 합은 이 절의 먼 끝 걷기(`mixture_walk`)예요. 세 길 모두 같은 점화식에 기대요.
+
+항마다 불완전 함수를 새로 계산하면 비싸요. 이웃 모양 사이에는 점화식이 있어요(DLMF 8.8.5–8.8.6, 8.17.20 [3]).
+
+$$
+P(s, y) = P(s+1, y) + T(s), \qquad Q(s+1, y) = Q(s, y) + T(s), \qquad T(s) = \frac{y^s e^{-y}}{\Gamma(s+1)}
+$$
+
+$T(s)$는 앞 인자(불완전 함수의 도함수에 해당하는 양)예요. $I_x$도 $I_x(s, b) = I_x(s+1, b) + \tfrac{x^s y^b}{sB(s, b)}$로 같아요. 이 점화식은 **$T$를 더하는 방향으로만 안정해요.** 아래 족($P$, $I$)이면 $s$가 줄어드는 방향, 위 족($Q$, $1 - I$)이면 늘어나는 방향이에요. 반대로 가면 $G(s+1) = G(s) - T(s)$처럼 비슷한 두 수의 차가 되고, $G$가 작아지는 쪽이라 상대오차가 걸음마다 커져요.
+
+그래서 걷기는 이렇게 해요.
+
+1. **$j^*$**: 가장 큰 항 근처. 포아송 무게의 최빈값 $\lfloor\mu - h\rfloor$에서 시작해, 항의 비 $\text{항}_{j+1}/\text{항}_j$가 꼬리 쪽에서 1을 넘나드는 곳이면 그 자리를 이분법으로 찾아요(대부분의 입력은 비를 한 번만 보고 끝나요).
+2. **$J$**: 불안정한 쪽(아래 족이면 위로, 위 족이면 아래로)으로 $j^*$에서 멀어지며, $j^*$부터 $J$까지 항의 비의 **엄밀한 상한**의 곱이 $2^{-56}(1 - r)$ 아래가 되는 곳이에요. 상한은 무게의 비 $\mu/(j+1+h)$와 $G$의 비의 상한(예: $P(s+1)/P(s) \le \min(1, y/(s+1))$, $Q(s-1)/Q(s) \le (s-1)/y$)의 곱이에요. $(1 - r)$로 나누는 것은 $J$ 너머의 꼬리 전체를 기하급수로 묶기 위해서예요.
+3. $J$에서 $w_J$, $G(J)$, $T$를 **한 번만 직접** 계산해요. 그다음 안정한 방향으로 $j^*$를 지나, 항이 합의 $2^{-56}$ 아래로 사라질 때까지 걸어요. 걸음마다 $G$에 $T$를 더하고, $w$와 $T$는 이웃 비율을 곱해 다음 값을 만들어요.
+
+<Fig caption="chndtr(4, 100, 20)(참값 4.53e-9)의 항. 무게는 j = 50에서 가장 크지만 G = P(2 + j, 10)가 j를 따라 빠르게 줄어서 항은 j* = 21에서 가장 커요. 아래 족이라 점화식은 j가 줄어드는 방향으로 안정해요. 그래서 j*의 위쪽에서 항의 상한이 2⁻⁵⁶ 아래로 떨어지는 J = 57에서 출발해 0까지 한 번 걸어요(값은 Arb로 계산했어요. 이 점의 확률 자체는 항이 적어서 아래의 j = 0부터 더하는 합으로 구해요).">
+  <Plot
+    curves={[
+      { points: [[0,-21.71],[2,-18.62],[4,-16.3],[6,-14.38],[8,-12.73],[10,-11.28],[12,-10.01],[14,-8.87],[16,-7.85],[18,-6.94],[20,-6.12],[22,-5.39],[24,-4.73],[26,-4.15],[28,-3.63],[30,-3.17],[32,-2.77],[34,-2.42],[36,-2.12],[38,-1.87],[40,-1.67],[42,-1.51],[44,-1.38],[46,-1.3],[48,-1.26],[50,-1.25],[52,-1.27],[54,-1.33],[56,-1.42],[58,-1.55],[60,-1.7],[62,-1.88],[64,-2.08],[66,-2.32],[68,-2.58],[70,-2.87],[72,-3.18],[74,-3.51],[76,-3.87],[78,-4.25],[80,-4.65]], label: 'log₁₀ 무게 w_j (포아송, 평균 50)', dashed: true },
+      { points: [[0,0],[2,0],[4,-0.03],[6,-0.11],[8,-0.27],[10,-0.52],[12,-0.87],[14,-1.31],[16,-1.85],[18,-2.46],[20,-3.16],[22,-3.92],[24,-4.75],[26,-5.65],[28,-6.6],[30,-7.61],[32,-8.67],[34,-9.78],[36,-10.93],[38,-12.13],[40,-13.38],[42,-14.66],[44,-15.98],[46,-17.34],[48,-18.73],[50,-20.16],[52,-21.62],[54,-23.11],[56,-24.63],[58,-26.19],[60,-27.77],[62,-29.37],[64,-31.01],[66,-32.67],[68,-34.36],[70,-36.07],[72,-37.8],[74,-39.56],[76,-41.34],[78,-43.14],[80,-44.96]], label: 'log₁₀ G_j = P(2 + j, 10)' },
+      { points: [[0,-21.71],[2,-18.62],[4,-16.33],[6,-14.49],[8,-12.99],[10,-11.8],[12,-10.88],[14,-10.18],[16,-9.7],[18,-9.4],[20,-9.28],[22,-9.31],[24,-9.48],[26,-9.79],[28,-10.23],[30,-10.78],[32,-11.44],[34,-12.2],[36,-13.06],[38,-14.01],[40,-15.04],[42,-16.16],[44,-17.36],[46,-18.64],[48,-19.99],[50,-21.41],[52,-22.89],[54,-24.45],[56,-26.06],[58,-27.73],[60,-29.46],[62,-31.25],[64,-33.09],[66,-34.99],[68,-36.93],[70,-38.93],[72,-40.98],[74,-43.07],[76,-45.21],[78,-47.39],[80,-49.62]], label: 'log₁₀ 항 w_j G_j' },
+    ]}
+    domain={[0, 80]}
+    range={[-40, 1]}
+    xTicks={[{ v: 0, label: '0' }, { v: 21, label: 'j* = 21' }, { v: 50, label: '최빈값 50' }, { v: 57, label: 'J = 57' }, { v: 80, label: '80' }]}
+    yTicks={[{ v: 0, label: '1' }, { v: -10, label: '1e-10' }, { v: -20, label: '1e-20' }, { v: -30, label: '1e-30' }, { v: -40, label: '1e-40' }]}
+  />
+</Fig>
+
+직접 계산은 $J$에서 한 번뿐이에요. 정점과 양 끝처럼 여러 곳에서 직접 계산하면 호출마다 불완전 함수가 6–9번 들어가요. 한 번 걷기로는 이 비용이 앞 인자 둘과 불완전 함수 두세 번(아래 모양 보정 포함)으로 줄어요.
+
+### 드리프트 없는 걸음: double + 오차
+
+$w$와 $T$는 $w_{j-1} = w_j \cdot (j + h)/\mu$, $T(s-1) = T(s)\cdot s/y$처럼 비율을 곱해 걸어요. 이 비율을 double로 곱하면 걸음마다 반올림 0.5 ULP가 쌓여서 32걸음이면 수십 ULP가 돼요(걸음은 수백 번일 수 있어요). 8걸음마다 직접 다시 맞추면 정확하지만 그만큼 느려요. 그래서 먼 끝 걷기는 값을 $h + l$($l$은 $h$의 몇 ULP, 정규화하지 않아요)로 들고 걸어요. 곱은 `fma`로 꺼낸 정확한 나머지와 교차항 $h_a l_b + l_a h_b$를 남기고 $l_a l_b$만 버려서, 한 걸음의 상대오차가 $2^{-100}$ 정도예요. 몫은 역수 한 번으로 만든 뒤 그 몫의 나머지를 `fma`로 정확히 꺼내 보정해요. 그래서 몫 자체가 올바르게 반올림되지 않아도 상관없어요.
+
+```cpp
+// csrc/special/ops/noncentral.hpp (lite 이름공간)
+inline Lite mul(Lite a, Lite b) {
+    const double p = a.h * b.h;
+    return {p, std::fma(a.h, b.h, -p) + (a.h * b.l + a.l * b.h)};
+}
+// n / d: the quotient through one reciprocal (so not correctly rounded: no matter, its
+// remainder is taken exactly), then the remainder's share.
+inline Lite quot(Lite n, Lite d) {
+    const double inv = 1.0 / d.h, q = n.h * inv;
+    return {q, ((std::fma(-q, d.h, n.h) + n.l) - q * d.l) * inv};
+}
+```
+
+나눗셈은 걸음마다 많아야 하나($T$의 비)이고, 아래 족의 무게 비는 미리 만든 $1/\mu$의 곱이에요. $J$를 찾는 바깥 길의 상한(무게 비와 $G$ 비 상한의 곱)도 걸음마다 나눗셈 하나에 상대 여유 $2^{-40}$을 둔 곱이에요. $b < 1$인 베타 족의 상한에 들어가는 $e^{(1-b)/(s+b)}$는 $1/(1 - u) \ge e^u$로 바꿔 지수 함수를 부르지 않아요. 역함수의 Newton이 쓰도록 밀도 $\sum_j w_j G'_j$(감마 족은 $T(s - 1)$, 베타 족은 $T(s)\cdot s$)도 걸으면서 같이 모아요.
+
+$G$와 전체 합은 보상 합(`dd::Sum`: 각 덧셈의 반올림 오차를 TwoSum [8]으로 꺼내 따로 모으는 합)이에요. 항이 모두 양수라서 보상 합의 오차는 합의 몇 ULP 안이에요.
+
+### 모양도 double-double
+
+모양 $s = s_0 + j$도 반올림하면 안 돼요. $s_0 = v/2$에 큰 $j$를 더하면 그 합이 반올림되고, $G$는 $s$에 민감하거든요. 꼬리에서 $|\partial\log G/\partial s| \approx |\log(y/s)|$라서 $s = 800$이면 약 250 ULP가 움직여요. 그래서 $s$는 `two_sum`으로 만든 $hi + lo$이고, $G$와 $T$를 $s_{hi}$에서 계산한 뒤 $s_{lo}$만큼 1차 보정해요(`at_shape`). $T$는 로그 도함수(digamma)로, $G$는 $2^{-20}s$ 간격의 전방 차분으로 보정해요. 보정 자체가 $G$의 $\varepsilon$ 정도라서 차분의 오차($2^{-20}$ 정도)는 결과에 남지 않아요. 비중심 t의 $\mu = \delta^2/2$도 같은 이유로 double-double이에요($\delta = 17$에서 반올림하면 89 ULP).
+
+### float64 걷기: 가장 큰 항에서 양쪽으로
+
+먼 끝 걷기는 약 $27\sqrt\mu$걸음을 "double + 오차" 연산으로 걸어요. 흔한 크기의 $\mu$에서는 이것이 시간의 대부분이라, $\mu \le 2 \times 10^4$의 확률은 먼저 같은 합을 순서만 바꿔 float64로 더해요(`plain_walk`). 걸음은 약 $18\sqrt\mu$이고 걸음마다 연산이 몇 개뿐이에요.
+
+- **가장 큰 항에서 출발해요.** $j^*$에서 $w$와 $T$를 직접 구하고, 거기서 양쪽 바깥으로 비율을 곱해요. 비율의 곱은 어느 방향으로도 안정해서, 걸음마다의 반올림은 그 항의 상대 ULP로만 남아요($n$걸음 밖에서 약 $\sqrt n$ ULP인데, 그곳의 항은 이미 작아요). 먼 끝에서 출발하면 큰 항에 닿기 전에 반올림이 수백 걸음 쌓여요.
+- **$G$의 먼 쪽은 부분합으로 더해요.** $G$의 점화식은 $j^*$ 쪽으로만 안정해요. 그래서 $j^*$에서 $J$까지의 먼 쪽은 Abel의 부분합으로 순서를 바꿔 $J$의 $G$ 하나만 쓰게 해요.
+
+  $$
+  \text{아래 족 } (J > j^*):\ \sum_{j=j^*}^{J} w_j G_j = G_J W_J + \sum_{i=j^*}^{J-1} T_i W_i, \qquad W_i = \sum_{j=j^*}^{i} w_j
+  $$
+
+  $$
+  \text{위 족 } (J < j^*):\ \sum_{j=J}^{j^*} w_j G_j = G_J W'_J + \sum_{i=J}^{j^*-1} T_i W'_{i+1}, \qquad W'_i = \sum_{j=i}^{j^*} w_j
+  $$
+
+  모든 항이 양수예요. $J$는 먼 끝 걷기와 같은 엄밀한 상한으로 같은 루프에서 정하고, $G(j^*)$는 $G_J$에 바깥 길의 $T$를 더한 값이에요. 가까운 쪽은 $j^*$에서 $G$ 자신의 안정한 점화식으로 항이 사라질 때까지 걸어요. 직접 계산은 셋($j^*$의 $w$와 $T$, $J$의 $G$)뿐이에요.
+- **비율은 정확한 값에서 한 번만 반올림해요.** 몫은 정확한 나머지로 고치고, $d/y$, $d/\mu$ 같은 곱은 double-double 역수와 `fma` 하나로 만들어요. 모양 $s_0 + j$, $s + b$는 $hi + lo$로 들고 낮은 부분을 1차로 넣어요. 반올림한 비율에 반 ULP 아래의 보정을 따로 더하면 그 보정이 늘 같은 쪽으로 사라져서 걸음마다 쌓여요. 예를 들어 $d\cdot(1/\mu)_{hi} + d\cdot(1/\mu)_{lo}$는 걸음마다 $-0.45$ ULP였고, 같은 이진 구간 안에서 $s_0 + j$의 반올림은 같은 쪽이라 수백 걸음에 100 ULP를 넘었어요.
+- **나눗셈은 사슬 밖에 둬요.** 비율(무게, $T$, 바깥 길의 상한)은 8개씩 미리 계산해요. 각 비율은 걸음 수에서 바로 만들어 서로 독립이라 나눗셈의 지연이 항의 의존 사슬 밖에 있어요. 무게의 비와 $T$의 비는 나눗셈 하나를 나눠 써요. $b < 1$인 베타 족은 바깥 길의 상한이 비율에서 바로 나오지 않아 따로 한 패스예요.
+- **프레임.** $w$는 $2^{k_w}$, $T$는 $2^{k_t}$, $G$는 $2^{k_g}$를 곱해 들고, $j^*$에서 각각 1 근처예요($T$가 $G$보다 훨씬 작은, 1에 가까운 꼬리가 있어요). 먼 쪽에서 $w$가 $2^{600}$을 넘어 오르면(무게의 최빈값이 $j^*$ 너머에 있을 때) $2^{600}$을 $w$에서 $T$로 옮겨요(곱은 그대로). $T$가 $G$의 $2^{-900}$ 아래이면 $G$에 더하지 않아요. 서브노멀 인수가 걸음을 몇 배 느리게 했기 때문이에요. 합은 $m \cdot 2^e$로 내서 아주 작은 확률도 지수를 지켜요.
+- **받지 못하는 곳.** 프레임이 맞지 않거나($T(j^*)$가 $2^{-960}$ 아래, $G$가 $T$의 프레임에서 넘침) 걷기가 끝나지 않거나 $\mu > 2 \times 10^4$이면 먼 끝 걷기로 가요. $\mu$의 경계는 오차가 걷기의 길이와 함께 자라서예요. $j^*$ 근처의 항은 폭 $\sqrt\mu$에 걸친 비율들의 독립된 반올림의 합이라, $\mu \approx 5000$에서 99.9번째 백분위 10–20 ULP, $\mu = 10^9$에서 1000 ULP였어요.
+
+이 걷기는 더 빠른 대신 정확도를 조금 내줘요. 비중심 분포의 참값 파일 최대는 14–26 ULP로, 먼 끝 걷기만 쓸 때보다 커요(아래 [정확도](#정확도)). 계약($10^{-14}$, 45–90 ULP) 안이고, 모든 항이 양수라 꼬리의 상대 정확도는 그대로예요.
+
+### 프레임: 범위 밖의 항도 비트를 지키기
+
+항이 double의 범위를 벗어날 수 있어요. 무게와 $G$가 각각 범위의 끝에 가까우면 곱이 언더플로하고, 결과가 $10^{-300}$이나 서브노멀인 경우도 보장 영역 안에 있어요. 그래서 직접 계산한 $w$, $G$는 가수와 지수를 따로 둔 `Scaled`($m \cdot 2^e$, $\tfrac12 \le |m| < 1$)로 받아요. 걷는 동안은
+
+- $w$를 $[2^{-500}, 2^{500}]$ 안에 두고, 벗어나면 그 2의 거듭제곱을 $G$와 $T$ 쪽으로 옮겨요(곱 $wG$는 바뀌지 않아요).
+- $G$가 $2^{\pm500}$을 넘으면 합과 함께 "프레임"을 옮겨요. 합은 프레임 $2^k$ 안에서 더하고, 마지막에 한 번만 `ldexp`로 돌려놔요.
+- 아주 작은 $G$($< 2^{-1000}$)는 불완전 함수의 반올림된 값 대신 앞 인자 × 급수(또는 연분수)로 직접 만들어 지수를 지켜요(`G0`).
+
+그래서 서브노멀 결과도 절대오차 규칙(최소 서브노멀의 45배 안)을 지켜요. 마지막에 확률은 $[0, 1]$로 잘라요. 무게의 합이 1을 1 ULP 넘을 수 있기 때문이에요.
+
+### 무시할 합과 거대한 인자
+
+측정 범위 밖(자유도·nc $10^5$, $x$가 $10^{\pm300}$)의 입력에서도 끝나야 해요. 두 장치가 있어요.
+
+- **횟수의 상한.** 합 하나는 많아야 $2^{18}$항이고(걷기는 나가는 길 $2^{18}$걸음, 돌아오는 길은 그 두 배), $j^*$를 찾는 것은 52번의 두 배 늘리기와 53번의 이분이에요. 항의 번호는 double이라 $2^{52}$ 아래의 정수여야 해요. 이 안에 끝나지 않는 합은 지금까지 더한 값을 내지 않고 NaN이에요. 보장 영역에서 가장 긴 걷기는 항의 종 모양 위로 폭의 9배를 나갔다가 18배를 돌아오는 것이에요. 참값 점(`tests/special/ref`, `tests/stats/ref`)에서 센 최대는 $G$를 직접 계산하는 급수 2421항, 확률 함수의 걷기가 나가는 길 2300걸음·돌아오는 길 2701걸음, 넓은 합(`sd.stats`의 로그 꼴과 역함수)이 3805걸음·4645걸음이에요. 1에 가까운 쪽의 꼬리는 무게의 종 전체(약 $19\sqrt{\mu}$항)를 더해야 해서 반대쪽보다 먼저 상한에 닿아요. 그래서 카이제곱과 F의 합이 끝나지 않으면(NaN) 반대쪽 꼬리를 더해 보고, 그 값이 $\tfrac12$ 이하이면 1에서 그 값을 뺀 것을 내요(`or_complement`). 반대쪽의 절대오차 $\varepsilon$은 1에 가까운 합에서 상대오차와 같아서 잃는 것이 없어요. 그래도 끝나지 않는 합이 생기기 시작하는 비중심 모수는 카이제곱이 약 $2.33 \times 10^9$, F가 약 $1.47 \times 10^9$, t가 $\lvert\delta\rvert \approx 3.83 \times 10^4$($\delta^2/2 \approx 7.3 \times 10^8$)예요. 그런 점은 아래의 상한으로 0이나 1을 정해 보고, 정하지 못하면 NaN이에요. 카이제곱은 분포의 가운데를 둘러싼 띠만 NaN이고, 띠는 비중심 모수와 함께 넓어져요($\lambda = 4 \times 10^9$이면 $\lambda - 77\sqrt\lambda$부터 $\lambda + 18\sqrt\lambda$ 근처까지). F와 t는 가운데에 더해, 꼬리가 아주 작지만 0은 아닌 double로 남는 곳까지 NaN이에요(`ncfdtr(1, 10, 1.5e9, x)`는 $x \approx 10^7$–$1.6 \times 10^{13}$, `ncfdtrc`는 $1.6 \times 10^8$–$4 \times 10^{74}$, `nctdtr(10, 3.9e4, t)`는 $t \approx 3 \times 10^3$–$3 \times 10^6$, `nctdtrc`는 $1.2 \times 10^4$–$1.7 \times 10^{37}$). 비중심 모수가 $2^{-500}$ 아래라 $\mu = 0$으로 떨어지면 무게가 $j + h = 0$에만 1이므로 걷지 않고 $G(s_0)$ 하나예요.
+- **Chernoff 한계로 거르는 꼬리.** 카이제곱(`chndtr`, `chndtrc`)은 걷기 전에 적률생성함수 $(1 - 2s)^{-\nu/2}e^{\lambda s/(1 - 2s)}$에서 나오는 한계를 봐요. $s = -\tfrac12$, $\tfrac14$로 $P(X \le x) \le e^{x/2}\,2^{-\nu/2}e^{-\lambda/4}$, $P(X \ge x) \le e^{-x/4}\,2^{\nu/2}e^{\lambda/2}$이고, 한계가 $e^{-1000}$ 아래이면 걷지 않고 0과 1을 내요(`ncx2_obvious`). 무게의 최빈값이 $2^{52}$를 넘어 걸을 수 없는 `chndtr(1, 1e16, 1)`도 0이에요. `sd.stats`의 로그 꼴은 꼬리의 값 자체가 필요해서 이 검사를 쓰지 않아요.
+- **끝나지 않은 꼬리의 0과 1.** 합이 걸음 상한에서 멈췄어도(NaN) 꼬리가 확실히 아주 작으면 답은 정해져요. 묻는 꼬리가 $2^{-1075}$(가장 작은 서브노멀의 절반) 아래면 0으로 반올림되고, 반대쪽 꼬리가 $2^{-54}$ 아래면 1로 반올림돼요. 그래서 합이 NaN이면 엄밀한 상한으로 이것을 봐요(`ncx2_bounded`, `nct_bounded`, `ncf_bounded`). 문턱은 로그로 $-746.5$와 $-39$예요. $e^{-746.5} < 2^{-1075} = e^{-745.13}$이고, $e^{-39} < 2^{-54} = e^{-37.43}$은 상한이 두 항의 합일 때를 위한 여유를 둔 값이에요.
+  - **카이제곱.** Chernoff 한계 $-sn + \log M(s)$를 가장 좋은 $s$에서 써요. $u = 1/(1 - 2s) = 2n/(\nu + \sqrt{\nu^2 + 4\lambda n})$로 두면 한계는 $\tfrac{\nu}{2}\log u + \tfrac12(u - 1)(\lambda - n/u)$이고, $u < 1$이면 아래꼬리, $u > 1$이면 위꼬리의 상한이에요(`chi2_log_bound`). 위의 고정된 $s = -\tfrac12$, $\tfrac14$보다 훨씬 날카로워서, $\lambda \ge 9 \times 10^{15}$이라 걸을 수 없는 곳에서도 가운데의 띠 밖은 0이나 1이에요. $u$와 두 곱의 반올림은 그 크기의 $2^{-48}$을 더해 덮어요.
+  - **t.** $T = (Z + \delta)/S$, $S = \sqrt{V/\nu}$에서 $t > 0$, $\delta > 0$이면 어떤 $s_0$에서도 $P(T \le t) \le P(S \ge s_0) + \Phi(ts_0 - \delta)$, $P(T > t) \le P(S < s_0) + \Phi(\delta - ts_0)$예요. $s_0 = (\delta/t)(1 \mp d)$로 두면 정규 항이 $\Phi(-d\delta)$이고, $d\delta$가 40(0을 정할 때, $e^{-800}$ 아래)이나 10(1을 정할 때)이 되게 $d$를 골라요. $S$의 항은 중심 카이제곱의 같은 한계예요(경계 $\nu s_0^2$). $d \ge 2^{-20}$이라 $s_0$의 반올림($2^{-50}$)은 여유에 닿지 않아요. $t < 0$은 $T(\delta) = -T(-\delta)$로 돌리고, $\delta < 0 < t$의 위꼬리는 $\Phi(\delta)$ 아래예요.
+  - **F.** $X \le x$는 $N \le cD$($c = xd_1/d_2$, $N$은 분자의 비중심 카이제곱, $D$는 분모의 카이제곱)이고, 어떤 $n_0$에서도 $P(N \le cD) \le P(N \le n_0) + P(D \ge n_0/c)$예요. 두 항을 각각 카이제곱의 한계로 봐요. $n_0$는 $N$ 자신의 꼬리가 문턱쯤인 점(평균 $\mp 2\sqrt{vk}$)과 평균의 절반·두 배에서 시도하고, 두 항이 각각 문턱의 $e^{-0.7}$배 아래여야 해요.
+  - **정하지 못하는 곳.** 상한은 값이 아니라서, 꼬리가 아주 작지만 0이 아닌 double인 곳은 NaN 그대로예요. 분포의 가운데도 그래요. 역함수와 `sd.stats`의 로그 꼴은 꼬리의 값 자체가 필요해서 이 상한을 쓰지 않아요.
+
+  ```cpp
+  // csrc/special/ops/noncentral.hpp
+  inline double nct_bounded(double df, double nc, double t, bool upper) {
+      if (t < 0.0) return nct_bounded(df, -nc, -t, !upper);  // T(nc) = -T(-nc)
+      if (!(t > 0.0)) return kNaN;
+      if (nc < 0.0) {
+          if (nc <= -39.0) return upper ? 0.0 : 1.0;  // Phi(-39) < e^-760
+          return nc <= -9.0 && !upper ? 1.0 : kNaN;  // Phi(-9) < 2^-62
+      }
+      for (int pass = 0; pass < 2; ++pass) {
+          const double thr = pass == 0 ? kLogZero : kLogOne;
+          const double d = std::max((pass == 0 ? 40.0 : 10.0) / nc, 0x1p-20);
+          if (!(d <= 0.5)) continue;
+          // the lower tail is small (s0 capped: any smaller s0 above 1 bounds it too)
+          const double sl = std::min((nc / t) * (1.0 - d), 0x1p100);
+          if (sl > 1.0 && chi2_log_bound(df, 0.0, df * sl * sl, false) < thr) {
+              if (pass == 0) return upper ? 1.0 : 0.0;
+              if (upper) return 1.0;
+          }
+          // the upper tail is small (s0 raised off the subnormals: any larger s0 below 1 bounds it too)
+          const double su = std::max((nc / t) * (1.0 + d), 0x1p-500);
+          if (su < 1.0 && chi2_log_bound(df, 0.0, df * su * su, true) < thr) {
+              if (pass == 0) return upper ? 0.0 : 1.0;
+              if (!upper) return 1.0;
+          }
+      }
+      return kNaN;
+  }
+  ```
+
+  ```python
+  >>> sd.special.nctdtr(10, 3.9e4, sd.asarray([3e3, 1e5, 1e7]))
+  array([0.0, nan, 1.0], dtype=float64)
+  >>> sd.special.nctdtrc(10, 3.9e4, -1e4)
+  1.0
+  ```
+- **무시할 합.** $j^*$의 무게와 $G$ 상한의 대략적인 로그(`lgamma`로)가 $-2000$ 아래이면 0을 돌려줘요. $e^{-2000}$은 $j^*$의 위치가 조금 틀려도 넘을 수 없는 여유예요. 이것이 없으면 $x \sim 10^{100}$의 꼬리에서 $j^* \sim 2^{52}$에서 $J$까지 걸으며 끝나지 않아요. 이 검사는 $j^*$가 최빈값에서 벗어났거나 인자가 모양에서 $2^{20}$배 넘게 떨어진 때만 해요.
+- **작은 인자의 꼬리.** $t$나 $f$가 거대해서 위꼬리의 작은 인자($\nu/(\nu + t^2)$, $d_2/(d_1 f + d_2)$)가 $2^{-1000}$ 아래이면 $I_y(b, s) \approx y^b\,\Gamma(b+s)/(\Gamma(b+1)\Gamma(s))$로 혼합 합을 로그에서 바로 더해요(`tiny_upper`). $b\log y$는 $-10^3$에 이르므로 double-double이에요. 버린 $O(y)$ 항은 $ys$ 크기라서, $\log y + \log(s_0 + j^* + 64) \ge -42$이면 이 합을 쓰지 않아요. 이 구간은 보장 영역 밖이에요. 반대쪽 꼬리는 이 값을 1에서 빼서 만드는데, 그 보수가 $1/64$ 아래이면 자릿수를 잃은 것이라 NaN이에요. 아주 작은 자유도에서 생겨요(`ncfdtr(1e7, 1e-300, 2, 0.1)`의 참값은 $3.4 \times 10^{-298}$인데, 빼서 만들면 $2.2 \times 10^{-16}$이 돼요).
+- **아주 작은 인자.** 카이제곱의 $x/2$가 서브노멀이면 $j = 0$ 항만 남아요(다음 항은 $x/2$배 작아요). 아래꼬리는 $e^{-\mu}P(a, y)$이고, 위꼬리는 $1 - e^{-\mu}P$로 빼지 않고 $Q(a, y) + P(a, y)(1 - e^{-\mu})$로 두 양수의 합이에요. 자유도 0이면 $P = 1$이라 빼면 모두 사라지는 곳이에요. t의 $t^2/(\nu + t^2)$가 $2^{-1000}$ 아래이면 $T \le t$는 $Z + \delta \le tS$($S = \sqrt{V/\nu}$)이고 $tS$는 $t$와 $10^{-148}$ 안에서 같아서 $\Phi(t - \delta)$예요.
+- **아주 작은 자유도.** 카이제곱에서 $0 < v < 2^{-960}$이고 $x > 0$이면 `ncx2_edge`가 자유도 0의 법칙에서 값을 내요. $a = v/2$가 이렇게 작으면 불완전 감마의 모양으로 다루기 어려워서, 그대로 두면 작은 $x$의 위꼬리가 NaN이 돼요(`chndtrc(1e-307, 1, 1e-300)`). $j \ge 1$ 항의 모양 $a + j$를 $j$로 바꾼 차이는 상대 $a|\log y| < 2^{-950}$이에요. $j = 0$ 항은 자유도 0에서는 0에 몰린 점이지만, 여기서는 위꼬리에 $e^{-\mu}Q(a, y)$를 남겨요. $\Gamma(a) = 1/a$, $\Gamma(a, y) = E_1(y) + O(a)$라서 같은 차수까지 $Q(a, y) = a\,E_1(y)$예요. 위꼬리는 자유도 0의 값에 이 항을 더해요. 보통은 반올림에 묻히지만 비중심 모수도 아주 작아 꼬리 자체가 작으면 눈에 띄는 몫이에요(`chndtrc(2**-1022, 1e-300, 1e-300)`은 5.00007686e-301, 자유도 0이면 5e-301). 이 항의 $a$는 $v$에 $2^{1000}$을 곱한 뒤에 반으로 나눠 만들어요. 먼저 $v/2$를 만들면 끝 비트가 홀수인 서브노멀 $v$에서 반올림되고, 5e-324의 절반은 0이 되기 때문이에요(`chndtrc(5e-324, 5e-324, 1e-300)`의 참값은 $1.71 \times 10^{-321}$이에요). $E_1(y)$와의 곱도 $2^{1000}$배인 채로 해서 서브노멀끼리의 곱이 비트를 잃지 않아요. 아래꼬리는 $j = 0$ 항의 $P(a, y) = 1 - a\,E_1(y)$가 1로 반올림되므로 자유도 0의 값 그대로예요. $x = 0$은 0이에요. 자유도가 0보다 크면 0에 몰린 확률이 없어요.
+
+  ```cpp
+      // csrc/special/ops/noncentral.hpp (ncx2_edge의 한 갈래)
+      } else if (df > 0.0 && df < 0x1p-960) {
+          // ...
+          double o;
+          if (!ncx2_edge(0.0, nc, x, upper, o)) o = nc_detail::ncx2(0.0, nc, x, upper);
+          if (upper) {
+              const double y = 0.5 * x;
+              // ...
+              const double j0 = std::exp(-0.5 * nc) * ((df * 0x1p1000 * 0.5) * expint_detail::en(1.0, y)) * 0x1p-1000;
+              o = o + j0;
+          }
+          out = o;
+  ```
+
+  F에서 $w = d_1 x/d_2$가 $2^{-1000}$ 아래이면 `ncf_s`가 $j = 0$ 항 $e^{-\mu}\,I_w(a, b)$(`fdtr`)만 써요. 이웃한 두 항의 비는 1차까지 $\mu I_w(a + 1, b)/I_w(a, b) = \mu w(a + b)/(a + 1)$이므로, 아래꼬리에 대해서는 이 비를, 위꼬리 $1 - e^{-\mu} \approx \mu$에 대해서는 $\mu$로 나눈 것을 봐서 $\max(1, \mu)\,w(a + b)/(a + 1) \le 2^{-60}$일 때만 이 합을 써요. 분자 자유도가 아주 작아도($d_1 = 2^{-1021}$) 이 조건을 지나서 `ncfdtr(2**-1021, 5, 2, 1)`은 $e^{-1}$에 `fdtr(2**-1021, 5, 1)`을 곱한 0.36788이에요.
+
+  분자 자유도가 가장 작은 double 5e-324이면 $a = d_1/2$가 0으로 반올림돼요. 그러면 $w$가 아주 작지 않은 곳($f \approx 10^{23}$–$10^{173}$)에서 혼합 합의 첫 베타 모양이 0이라 계산할 수 없어요. 그래서 `ncfdtr`, `ncfdtrc`, `ncfdtri`은 이 값을 다음 double 1e-323으로 바꿔 계산해요(`halvable_dfn`). 값은 $j = 0$ 항의 $1 - I_w(a, b) \approx a|\log w|$만큼만 움직이고, 그것은 절대 $2^{-1063}$ 아래예요. 분모 자유도도 아주 작으면($d_2/2 < 2^{-1000}$) 바꾸지 않아요. 그때는 아래의 중심 F 꼴이 $d_1$을 그대로 받아야 $\lambda = 0$의 `fdtr`과 이어지기 때문이에요.
+
+  ```cpp
+  // csrc/special/ops/noncentral.hpp
+  inline double halvable_dfn(double dfn, double dfd) {
+      return dfn == 0x1p-1074 && !(0.5 * dfd < kTinyShape) ? 0x1p-1073 : dfn;
+  }
+  ```
+
+  ```python
+  >>> sd.special.ncfdtr(5e-324, 5, 2, 1e100)
+  0.36787944117144233
+  >>> sd.special.ncfdtr(5e-324, 5, 2, 1e100) == sd.special.ncfdtr(1e-323, 5, 2, 1e100)
+  True
+  ```
+  모양이 아주 작은 곳은 몇 가지를 더 챙겨요. 덩어리 합과 float64 걷기는 베타 모양 $b > 0$만 받아요(`kMinShape`). 5e-324의 절반은 0이라, 그대로 두면 $b = 0$을 감마 족의 표시로 잘못 읽었어요. 그런 점은 먼 끝 걷기로 가요.
+
+  - **분모 자유도가 아주 작은 F**($d_2/2 < 2^{-1000}$): $j \ge 1$ 항은 $I_w(a + j, b) \le b(-\log(1 - w)) \le 2^{-1000}\cdot 2100$이라 버릴 수 있어요. 그래서 아래꼬리는 $e^{-\mu}\,$`fdtr`$(d_1, d_2, x)$이고(절대 $2^{-988}$ 안), 위꼬리는 $e^{-\mu}\,$`fdtrc` $+ (1 - e^{-\mu})$예요. `ncfdtr(5e-324, 5e-324, nc, f)`는 $e^{-\mu}/2$예요.
+  - **분자 자유도가 아주 작은 F**($d_1/2 < 2^{-72}$): $j \ge 1$ 항의 모양 $a + j$를 $j$로 바꿔도 상대 $2100a < 2^{-61}$만 움직여요. 그래서 합은 $j = 0$ 항 $e^{-\mu}\,$`fdtr`(또는 `fdtrc`)과, 모양 1에서 시작하는 혼합 $\sum_{j \ge 1} D(j, \mu)\,I_w(j, b)$예요. 두 쪽을 다 구하고 물은 쪽은 작은 쪽의 보수로 만들어요. `ncfdtrc(1e-300, 100.5, 1e-300, 0.001)`은 $3.494045989713936 \times 10^{-298}$로 Arb 참값과 같아요.
+  - **$w < 2^{-1000}$인 F의 위꼬리**는 $1 - $아래꼬리가 아니라 $e^{-\mu}\,$`fdtrc` $+ (1 - e^{-\mu})$예요. 빼서 만들면 $1/64$ 아래에서 자릿수를 잃어요(`ncfdtrc(1e-10, 1, 1e-300, 1e-300)`의 참값 $3.6 \times 10^{-8}$).
+  - **자유도가 아주 작은 t**($\nu < 2^{-71}$): $T = (Z + \delta)/S$에서 $S = \sqrt{V/\nu}$가 $s$보다 클 확률은 $(\nu/2)\log(2/(\nu s^2))$쯤이라, $t$가 뜻을 갖는 모든 $s$($> 1/1.8 \times 10^{308}$)에서 $1083\nu$ 아래예요. 그래서 $P(T \le t)$는 $t$와 상관없이 $\Phi(-\delta)$에서 $1083\nu$ 안이고, 그것이 작은 쪽 꼬리 $\min(\Phi(\delta), \Phi(-\delta))$의 $2^{-60}$ 아래이면(또는 둘 다 $2^{-1000}$ 아래이면) $\Phi(-\delta)$, 위꼬리 $\Phi(\delta)$를 내요. 역함수는 이 극한에서 $\pm\infty$나 0이에요. 그 밖(예: $\nu = 10^{-200}$, $\delta = 30$, $t = 10$, 참값 $7.2 \times 10^{-198}$인데 $\Phi(-30) = 4.9 \times 10^{-198}$)은 합이에요.
+  - 먼 끝 걷기의 베타 족은 아래로 걸을 때 $s + b$를 $s_0 + b$까지 줄여 가는데, 그 값이 걸음의 1들보다 훨씬 작아질 수 있어서(높은 부분이 0이 돼요) 나누기 전에 정규화해요.
+
+  그래서 자유도 5e-324–$10^{-3}$, nc 5e-324–3000, $x$ $10^{-300}$–$10^{300}$의 격자에서 `cdf + ccdf`는 모두 1에서 $4.5 \times 10^{-16}$ 안이에요. 남은 한계는 t의 자유도 $10^{-200}$–$10^{-10}$, $\delta = \pm30$, $t = \pm 10^{300}$이에요. 작은 쪽은 NaN, 큰 쪽은 0.99999999999999967이에요. 작은 쪽은 $\nu\log$ 크기의 값인데 그것을 내는 길이 없어요.
+- **비중심 모수가 0에 아주 가까울 때.** t 함수는 $|\delta| < 2^{-500}$이면 $\mu = \delta^2/2$가 double 아래라서 중심 t의 값을 그대로 내요. 그 차이는 값의 $10^{-150}$ 정도예요.
+
+### 분포의 가운데: j = 0부터 더하는 합
+
+먼 끝 걷기는 $J$에서 불완전 함수를 직접 한 번 계산하고 앞 인자도 두 번 만들어요. 분포의 가운데처럼 항이 수십 개뿐인 곳에서는 이 고정 비용이 대부분이에요. 그래서 확률 함수(`chndtr`, `ncfdtr`, `nctdtr`과 위꼬리)는 먼저 같은 합을 $j = 0$부터, 불완전 함수 없이 더해 봐요(`ncx2_lite`, `ncf_lite`, `nct_lite`). 쓸 수 없으면 먼 끝 걷기로 가요.
+
+**식.** $t_k = T(s_0 + k)/T(s_0)$, $w_j = D(j + h, \mu)/D(h, \mu)$($t_0 = w_0 = 1$)로 두면, 아래 족은 $G(s) = \sum_{k \ge 0} T(s + k)$이고 위 족은 $G(s + j) = G(s) + \sum_{i < j} T(s + i)$라서 합의 순서를 바꾸면
+
+$$
+\text{아래: } \sum_j D(j + h, \mu)\, G(s_0 + j) = T(s_0)\,D(h, \mu) \sum_k t_k W_k, \qquad W_k = \sum_{j \le k} w_j
+$$
+
+$$
+\text{위: } \sum_j D(j + h, \mu)\, G(s_0 + j) = G(s_0) \sum_j D(j + h, \mu) + T(s_0)\,D(h, \mu) \sum_{j \ge 1} w_j C_j, \qquad C_j = \sum_{i < j} t_i
+$$
+
+예요. 모든 항이 양수라 결과의 크기와 상관없이 상대 정확도를 지켜요. 아래 합에는 불완전 함수가 하나도 없고, 위 합은 $G(s_0)$ 하나(카이제곱은 $Q(a, y)$, F와 t는 중심 분포의 위꼬리 함수)만 필요해요. $t_k$의 비는 감마 가족이 $y/(s_0 + k + 1)$, 베타 가족이 $x(s_0 + k + b)/(s_0 + k + 1)$이고, 무게의 비는 $\mu/(j + 1 + h)$예요.
+
+**쓰는 곳.** $\mu \le 340$, 감마 가족의 $y \le 340$이어서 $t_k$와 $w_j$가 오르는 크기 $e^{y}$, $e^{\mu}$가 double 안에 있고, 대략의 항 수가 400 이하일 때예요. 항 수는 아래 합이 $t_k$의 정점을 지나 반대쪽으로 사라질 때까지($y - s_0 + 9\sqrt y + 12$쯤), 위 합이 무게를 다 지날 때까지($\mu + 9\sqrt\mu + 12$)로 어림해요. 묻는 꼬리는 자기 합으로 구하거나, 더 싸면 다른 쪽 합을 1에서 빼서 만들어요. 아래 합을 빼는 것은 그 값이 1/2 이하일 때만(그러면 그 절대오차가 묻는 꼬리의 상대오차 안이에요), 위 합을 빼는 것은 1/4 이하일 때만이에요(위 합에는 불완전 함수의 오차가 들어 있어서 여유를 더 둬요). 어느 쪽 합을 먼저 해 볼지는 점이 분포의 가운데에서 표준편차 몇 개만큼 떨어졌는지를 정규 근사로 어림해 골라요. 걷기의 비용은 이 합의 항 단위로 고정 비용(감마 족 70, 베타 족 110, t 150) $+ 15\sqrt\mu$로 보고, 그보다 긴 합은 아래·위 모두 시작하지 않아요(`lite_pick`). 참값 점에서 재 보면 감마 족은 $\mu \approx 100$, 베타 족과 t는 $\mu \approx 20$–100부터 걷기가 더 빨랐어요.
+
+**산술: double + 오차.** 점화식을 그냥 double로 곱하면 걸음마다 반올림이 쌓여 30항에서 $10^{-14}$가 틀렸어요. 그래서 값을 $h + l$($l$은 $h$의 몇 ULP, 정규화하지 않아요)로 들고 다녀요. 곱은 `fma`로 꺼낸 정확한 나머지와 교차항 $h_a l_b + l_a h_b$를 남기고 $l_a l_b$만 버려요(상대 $2^{-100}$). 몫은 역수 한 번으로 만든 몫의 나머지를 `fma`로 정확히 꺼내 보정해요. 합도 같은 방식의 보상 합이에요. 그래서 $k$걸음 뒤의 항이 $k \cdot 2^{-100}$ 정도까지 정확하고, 합의 오차는 자르기(남은 꼬리를 기하급수로 묶은 상한이 합의 $2^{-58}$ 아래가 될 때 멈춰요)와 첫 항 두셋의 직접 계산으로 정해져요.
+
+**첫 항.** $T(s_0)e^{-\mu}$는 거듭제곱 `pow`와 `exp`로, 매개변수만의 인수($e^{-\mu}/\Gamma(a+1)$, $e^{-\mu}/(aB(a, b))$)는 따로 만들어요(`first_factor`). 모양이 $2^{-19}$–$2^{12}$이면 불완전 베타의 앞 인자와 같은 나눔 $\Gamma(z) = e^{S}F$([불완전 감마와 베타](/internals/special/incomplete/))를 써요. $z < 13$이면 $S = 0$, $F = \Gamma(z)$이고, 그 위는 Stirling의 $S$(double-double)와 $F = \sqrt{2\pi}\,\Gamma^*(z)$예요. 지수 $S(c) - S(a + 1) - S(b) - \mu$는 double-double이고 $F$들의 몫은 double이에요. 그 밖의 모양은 double-double `loggamma` 셋으로 만든 지수 $l$의 $e^{l}$이에요. 이 인수는 스레드마다 마지막 매개변수에 대해 기억해 둬요. 배열의 매개변수는 대개 한 값이라 원소마다 `loggamma`를 다시 부르지 않아요. 키의 순수 함수라서 기억이 맞든 틀리든 같은 비트가 나와요. 반올림을 세면($2^{-53}$ 단위) 첫 항이 감마 가족 10, 베타 가족 12예요. 거듭제곱이 $[2^{-400}, 2^{400}]$ 밖으로 나가면 먼 끝 걷기와 같은 앞 인자(Temme 꼴)로 가요. 비중심 t의 둘째 가족의 첫 항 $T(1)D(\tfrac12, \mu) = b\,x\,y^b\,|\delta|\sqrt{2/\pi}\,e^{-\mu}$는 닫힌 꼴이에요. 두 가족의 무게 합은 $\sum_j D(j, \mu) = 1$, $\sum_j D(j + \tfrac12, \mu) = \operatorname{erf}(\sqrt\mu)$로 알고 있어서, 위꼬리를 $\tfrac12[(Q_{1/2} + \text{합}) + (y^b \operatorname{erf}(|\delta|/\sqrt2) + \text{합})]$로 만들어요.
+
+### 작은 쪽을 먼저
+
+이 합들이 받지 않은 확률은 걷기로 가요. 그런데 1에 가까운 쪽의 걷기는 무게의 종 전체를 걸어야 해요($G$가 모든 항에서 거의 1이에요). 반대쪽은 제 정점의 항만 걷거나, $e^{-2000}$ 아래라 아예 걷지 않아요. 그래서 점이 가운데에서 표준편차 1.5개 넘게 떨어져 물은 쪽이 큰 쪽이면, 다른 쪽을 먼저 더하고 그것이 $\tfrac14$ 이하이면 $1 - $그것을 내요(`small_side`). 그 절대오차가 물은 쪽의 상대오차와 같은 크기라 잃는 것이 없어요. `nctdtrc(14861, 94.6, 1.74) = 1`이 다른 쪽의 비용으로 끝나요.
+
+같은 규칙으로 짝도 맞춰요. 물은 쪽을 직접 더한 값이 $1 - 2^{-20}$과 1 사이이면 다른 쪽도 더해 $1 - $그것을 내요. 1에 가까운 두 합이 각자 몇 ULP씩 틀리면 `cdf + ccdf`가 1에서 벗어나기 때문이에요(`ncfdtr(1e-100, 1e-100, 3000, 10)`에서 $5.6 \times 10^{-16}$). 경계를 $\tfrac34$로 내리면 참값 혼합에서 두 번째 평가가 눈에 띄게 늘어서 $1 - 2^{-20}$에 뒀어요. 그 사이에서는 두 합이 각자의 오차, 약 $10^{-15}$ 안에서 맞아요.
+
+### 비중심 t의 반대쪽 꼬리: 적분
+
+$t > 0$, $\delta < 0$의 위꼬리 $P(T > t)$에서는 두 급수가 크게 상쇄해요. scipy 1.18.1은 참값 $1.4 \times 10^{-76}$인 곳에 $1.6 \times 10^{-33}$을, 그보다 깊은 곳에 0을 내요. 이 꼬리는 세 길을 차례로 봐요.
+
+1. **다른 쪽이 크면 빼기.** 다른 쪽 꼬리 $P(T \le t)$는 양항 급수라 정확해요. 그것이 $\tfrac78$ 이하이면 $1 - $그것을 내요. 빼기에서 잃는 것은 많아야 7 ULP예요.
+2. **덩어리 합의 두 족의 차.** 그 밖에서는 $c_p = \sum_j D(j, \mu)(1 - I_x(j + \tfrac12, b))$, $c_q = \sum_j D(j + \tfrac12, \mu)(1 - I_x(j + 1, b))$를 $j = 0$부터 더해 $(c_p - c_q)/2$로 만들어요. $c_q \le c_p/4$일 때만 써요. 그러면 차의 상대오차가 두 부분의 $5/3$배를 넘지 않아요.
+3. **적분.** 둘 다 안 되면 아래의 적분이에요.
+
+적분의 간격은 자유도 1 이상에 맞춰져 있어서, 자유도가 작으면 꼬리가 거의 줄지 않아 마디가 모자라요. 첫 길이 그런 점을 받아요.
+
+```python
+>>> sd.special.nctdtr(0.001, 1, -10.0)
+0.1575577889466121
+>>> sd.special.nctdtr(0.001, 1, -10.0) + sd.special.nctdtrc(0.001, 1, -10.0)
+1.0
+```
+
+적분은 급수를 고쳐 쓰는 대신 정의로 돌아가요. $a = -\delta > 0$, $S = \sqrt{V/\nu}$라 하면 $T > t \iff Z > a + tS$이므로
+
+$$
+Q = \int_0^\infty \bar\Phi(a + ts)\, f_S(s)\, ds = \int_{-\infty}^{\infty} \tfrac12 \operatorname{erfcx}\!\big(z/\sqrt2\big)\, e^{E(v)}\, dv, \qquad s = e^v,\ z = a + te^v
+$$
+
+$$
+E(v) = -\frac{z^2}{2} + \tfrac12 \log\frac{\nu}{\pi} - \log\Gamma^*(\tfrac{\nu}{2}) - \frac{\nu}{2}\big(e^{2v} - 1 - 2v\big)
+$$
+
+이에요. $\bar\Phi(z) = \tfrac12\operatorname{erfc}(z/\sqrt2) = \tfrac12\operatorname{erfcx}(z/\sqrt2)\,e^{-z^2/2}$로 지수 부분을 $E$에 모았고, $\Gamma^*$는 Stirling 정규화된 감마예요. 피적분 함수의 모든 인자가 양수라 상쇄가 없어요.
+
+- **정류점에서 나누기.** $E$의 최댓값 $v^* = \log s^*$는 이차방정식 $(t^2 + \nu)s^2 + ats - \nu = 0$의 양근으로 닫힌 꼴이에요. $E^* = E(v^*)$는 크기가 수백일 수 있으므로 double-double로 만들고, 적분은 $E(v) - E^*$(상쇄 없이 `expm1`류로 쓴 나머지)에 대해 해요. 그래서 $e^{E^*}$의 마지막 비트가 그 크기와 상관없이 지켜져요.
+- **사다리꼴 규칙과 sinh 변환.** $v - v^* = c\,A\sinh(u/A)$, $c = \min(\sigma, 0.4)$, $A = 8$로 바꾸고 $u$의 간격 $0.25$로 사다리꼴 규칙을 써요($\sigma = 1/\sqrt{-E''(v^*)}$는 정점의 폭). 정점 근처는 거의 선형이라 간격이 $0.25c$로 촘촘하고, 꼬리로 갈수록 지수적으로 넓어져요. 왼쪽 꼬리가 $e^{\nu(v - v^*)}$로만 줄어서 $\nu$가 작으면 아주 길기 때문이에요.
+- **사다리꼴을 쓰는 이유.** 해석적이고 빨리 줄어드는 함수를 실수 직선 위에서 사다리꼴로 적분하면 오차가 간격 $h$에 대해 $e^{-2\pi d/h}$처럼 지수적으로 줄어요. $d$는 피적분 함수가 해석적인 띠의 반폭이에요 [14]. 여기서 $E$ 안의 $e^{2v}$는 허수부가 $\pi/4$에 이르면 실수부가 0이 되어 감쇠가 멈추므로, $\sigma$와 상관없이 $d \le \pi/4$예요. 그래서 간격을 $\sigma$만으로 정하면 안 되고 $c \le 0.4$로 묶어요. 참값에 대해 $A = 4$이면 $2 \times 10^{-13}$, $A = 8$이면 $10^{-17}$이었어요.
+- **마디의 계산.** 마디는 8개씩 따로 계산해서 서로의 의존 사슬이 겹쳐요. 변환에 드는 $\sinh u$와 $\cosh u$는 지수 하나에서($\lvert u\rvert \le \tfrac12$이면 `expm1`), 피적분 함수의 $e^{d} - 1 - d$와 $e^{2d} - 1 - 2d$($d = v - v^*$)도 지수 하나에서 만들어요.
+- **마디 수의 상한.** 한쪽에 많아야 22688마디예요. 변환 $c\,A\sinh(u/A)$는 $u/A < 709$인 동안 유한하기 때문이에요. 보장 영역에서는 200마디쯤이면 피적분 함수가 사라져요. 마지막 마디에서도 남아 있으면 NaN이고, $|\delta|$나 $t$가 $10^{15}$ 넘게 커서 double로 만든 $s^*$가 정점의 폭보다 더 빗나가면(마디가 정점을 건너뛰어요) 역시 NaN이에요.
+
+```python
+>>> sd.special.nctdtrc(10, -5, 3.0)
+2.4581259660912687e-12
+>>> sd.special.nctdtrc(5, -10, 2.0)
+6.045319167894939e-28
+```
+
+Arb로 포아송 혼합을 높은 정밀도로 직접 더한 참값은 $2.4581259660912683 \times 10^{-12}$, $6.0453191678949397 \times 10^{-28}$이에요. scipy 1.18.1(`scipy.stats.nct.sf`)은 첫째에 $2.45816 \times 10^{-12}$(다섯 자리만 맞음), 둘째에 0을 내요.
+
+### 역함수: 로그 비의 Newton, 그다음 브래킷과 Brent
+
+`chndtrix`, `nctdtrit`, `ncfdtri`은 같은 틀이에요. 비중심 모수가 0이 아니고 $p$가 서브노멀($2^{-1022}$ 아래)이면 NaN이에요. 순방향 함수가 그런 확률을 비트 몇 개로만 내서, 그것으로 찾은 근은 넓은 범위 어디든 될 수 있기 때문이에요(9–16% 틀렸어요). 중심 분포의 역함수는 로그에서 풀므로 $\delta = 0$은 그쪽으로 가요.
+
+아래 1의 함수 $g$와 2의 출발점에서 먼저 Newton을 해요(`newton_root`). 양수 변수는 $\log x$, t는 $\operatorname{asinh} x$ 눈금의 걸음이에요(꼬리가 $\lvert x\rvert$의 거듭제곱으로 떨어지는 작은 자유도의 t는 이 눈금에서 직선에 가까워요). 꼬리와 함께 "꼬리 길이" 꼬리/밀도를 순방향과 같은 순서로 구해요. 밀도는 덩어리 합이 같이 만든 것, 걷기가 걸음마다 모은 $\sum w_j G'_j$, t의 반대쪽 적분의 $\int s\,\varphi(z)\,f_S\,ds$예요. 그래서 근은 순방향 함수 자신의 근이에요. 길이는 $m \cdot 2^e$의 몫이라, 밀도가 꼬리보다 먼저 언더플로하는 무거운 꼬리에서도 쓸 수 있어요.
+
+- 걸음은 눈금에서 2가 상한이고, 같은 쪽으로 계속 잘리면 상한을 두 배로 키워요. 지나온 점으로 브래킷을 좁히고, 브래킷을 벗어나는 걸음은 이분으로 바꿔요. 긴 asinh 걸음은 $\sinh(\operatorname{asinh} x + \Delta u)$이고, 짧은 걸음은 $x\cosh\Delta u + \sqrt{1 + x^2}\sinh\Delta u$예요(긴 걸음을 이 꼴로 하면 상쇄로 $x$가 그대로 남았어요).
+- 끝나는 조건은 두 Newton 걸음에서 잰 이차 상수 $K = d/d_{\text{prev}}^2$로 다음 오차 $K d^2 + 2^{-30}d$가 $\max(\lvert x\rvert, \text{길이})$의 $2^{-53}$ 아래일 때, 또는 걸음 자체가 그 $2^{-50}$ 아래일 때예요. $2^{-30}d$는 밀도 자체의 오차 몫이에요(밀도는 $10^{-8}$쯤만 맞으면 돼요).
+- 평가는 보통 3–4번이에요. 밀도가 없거나(순방향의 가장자리, 아주 작은 인자, 합이 끝나지 않음) 24걸음 안에 끝나지 않으면 아래 3–5의 브래킷과 Brent로 가요(평가 5–12번).
+
+이 근은 순방향 함수의 근이라, 근의 오차는 순방향 함수의 꼬리 오차를 조건수 $\kappa$배 한 것이에요. 순방향의 몇 ULP가 그대로 따라와요.
+
+1. **함수.** $g(x) = \log(F(x)/\text{목표})$(작은 쪽 꼬리 $F$, 목표는 $p$나 $1 - p$)의 근을 찾아요. $\log F - \log \text{목표}$로 쓰지 않는 이유가 있어요. $F \approx 10^{-238}$이면 각 로그가 약 $-548$이라 절대오차가 $546\varepsilon$ 안팎이고, 둘의 차는 $F$의 $10^{-13}$에 해당해서 근이 190 ULP 움직였어요. 비를 먼저 만들면 오차가 $F$의 상대오차 그대로예요. 로그 눈금이라 목표가 $10^{-300}$이어도 0.3과 똑같이 풀려요.
+2. **출발점.** 카이제곱과 F는 Patnaik 근사 [6]의 분위수예요. 비중심 카이제곱$(k, \lambda)$를 $c\cdot$중심 카이제곱$(k')$($c = \tfrac{k + 2\lambda}{k + \lambda}$, $k' = \tfrac{(k+\lambda)^2}{k + 2\lambda}$, 평균과 분산을 맞춘 것)으로 보는 근사예요. t는 정규 근사 $P(T \le t) \approx \Phi\big((t(1 - \tfrac{1}{4\nu}) - \delta)/\sqrt{1 + t^2/(2\nu)}\big)$를 $t$에 대해 푼 값이에요. 다만 자유도 2 이하이고 꼬리가 $10^{-8}$ 아래이며 비중심도가 그 꼬리 쪽이면, 중심 t의 분위수가 더 멀 때 그것을 써요. 꼬리가 $\lvert t\rvert^{-\nu}$로 떨어져서 정규형 출발점이 너무 가깝기 때문이에요($\nu = 0.22$에서 $P(T \le t) = 10^{-34}$인 $t$는 $-6 \times 10^{146}$이에요).
+3. **브래킷.** 출발점에서 부호가 바뀔 때까지 걸음을 두 배씩 키우며 걸어요. 양수 근은 로그 눈금, 실수 근(t)은 asinh 눈금이에요. 최대 double이나 최소 서브노멀을 넘어도 부호가 안 바뀌면 근은 double 범위 밖이라 inf나 0이에요. 서브노멀 간격보다 작은 걸음은 진전이 없으니 걸음을 키워요.
+4. **이분.** 그 눈금에서 폭이 2배(로그 눈금 0.5) 안이 될 때까지 이분해요.
+5. **Brent의 zeroin** [15]. $x$ 자체에서 할선·역 이차 보간과 이분을 섞어 마지막 비트까지 좁혀요. 걸음이 $3 \times 10^{-9}|x|$ 아래로 떨어지면 초선형 수렴 구간이라 마지막 두 점의 할선이 이미 마지막 비트까지 맞아요(오차가 두 걸음 오차의 곱, $10^{-17}$ 아래). 그 할선이 지금의 브래킷 안에 있고 마지막 걸음의 1% 안으로만 고치면 거기서 끝내요. 브래킷을 닫는 평가 둘을 아끼는 거예요. $g$가 근 근처에서 평평하거나 시끄러우면 이 시험을 통과하지 못하고 브래킷을 끝까지 닫아요.
+6. **횟수의 상한.** 브래킷 찾기는 256걸음, zeroin은 200걸음까지예요. 걸음을 두 배씩 키우면 두 눈금 모두 double의 끝에서 끝까지 54걸음 안에 닿고(double 간격보다 작은 걸음이 있으면 64걸음까지 더), zeroin은 앞앞 걸음의 절반도 줄이지 못한 걸음을 이분으로 바꾸므로 보장 영역에서 잰 최대는 16걸음이었어요. 순방향 함수가 합을 끝내지 못해 NaN을 내거나 이 상한에 닿으면 NaN이에요.
+7. **double 밖의 근.** 양수 근(`chndtrix`, `ncfdtri`)은 6에서 NaN이 나와도 두 끝을 한 번 더 봐요. 가장 큰 double에서도 꼬리가 목표에 못 미치면($g < 0$) 근은 그 너머라 inf, 가장 작은 양수에서 이미 넘으면($g > 0$) 0이에요. `ncfdtri(5e-324, 5, 2, 0.5)`가 inf예요. 분자 자유도가 이렇게 작으면 아래꼬리가 가장 큰 double에서도 $e^{-1} \approx 0.368$이에요.
+
+```cpp
+    // csrc/special/ops/noncentral.hpp (invert_positive의 끝)
+    const double r =
+        solve(g, x0, [](double x) { return std::log(x); }, [](double u) { return std::exp(u); }, 0.125, 0.0, kInf);
+    if (r == r) return r;
+    // ...
+    constexpr double kMax = std::numeric_limits<double>::max(), kMin = std::numeric_limits<double>::denorm_min();
+    if (g(kMax) < 0.0) return kInf;
+    if (g(kMin) > 0.0) return 0.0;
+    return r;
+```
+
+### Boost.Math의 비중심 분포와 쓰지 않는 이유
+
+scipy 1.18.1의 `chndtr`, `nctdtr`, `ncfdtr`과 역함수, `scipy.stats`의 `sf`는 Boost.Math의 비중심 분포를 불러요(scipy 문서가 그렇게 적어요). stardust는 이 구간에 Boost를 쓰지 않고 헤더도 옮겨 두지 않았어요. 비교를 위해 boostorg/math의 develop 소스(`distributions/non_central_chi_squared.hpp`, `non_central_beta.hpp`, `non_central_t.hpp`, `non_central_f.hpp`)와 문서 [11]의 내용을 정리해요. scipy 1.18.1이 담은 Boost 판은 이 소스보다 오래되었을 수 있어요.
+
+- **카이제곱의 CDF.** $x > v + \lambda$이면 위꼬리가 작다고 보고 위꼬리 합을 계산해요(Temme의 "CDF ≈ ½ at $v + \lambda$" 근사로 고르기). 아래꼬리를 원하면 그 합을 $-1$에서 시작해 부호를 바꿔요. 그렇지 않으면 $\lambda < 200$은 Ding의 방법(AS 275 [16]: 무게를 $e^{-\lambda/2}$에서 시작해 앞으로 더하는 급수), $\lambda \ge 200$은 Benton–Krishnamoorthy의 방법 [17](포아송 무게의 정점 근처 $k$에서 출발해 앞뒤로 걷는 점화식)이에요. 위꼬리 합도 정점에서 시작해 앞으로(안정한 방향) 걷고 뒤로(불안정한 방향) 걸어요. 시작 항이 언더플로하면 Chernoff형 상한을 보고 0을 돌려주거나 Ding의 방법으로 넘어가요.
+- **베타(F)의 CDF.** 분포의 평균 근처를 교차점으로 삼아 아래나 위 합을 고르고, 시작점을 포아송 무게의 정점 $\lfloor\lambda/2\rfloor$에 둬요(그것이 0이면 1로). 시작 항이 언더플로하면 시작점을 반씩 줄여 다시 시도해요. 거기서 뒤로 "안정한 방향", 앞으로 "불안정한 방향"을 걷고, 앞으로 가는 쪽은 남은 값이 처음의 $4\varepsilon$ 아래로 떨어지면 "쓰레기 비트만 남았다"며 멈춰요.
+- **t의 CDF.** $\delta$와 반대쪽 꼬리는 $\Phi(\delta)$에서 급수를 빼는 꼴이고, 그 결과가 작으면 왼쪽 꼬리 적분이나, 그것도 아니면 A&S의 정규 근사(소스 주석이 "기껏해야 두어 자리"라고 적는 것)로 넘어가요.
+- **역함수.** `generic_quantile`이 $F(x) - p$(또는 $p - (1 - F(x))$)의 근을 `bracket_and_solve_root`(배율 2로 브래킷을 넓히고 TOMS 748 [18]로 좁히기, 허용치 50비트)로 찾고, 브래킷의 가운데를 돌려줘요. 카이제곱은 Pearson 근사, F는 비중심 베타의 평균에서 출발해요.
+
+이 설계의 약점은 두 가지예요. 첫째, **출발점이 무게의 정점**이에요. 꼬리에서 가장 큰 항은 무게의 정점이 아니라 $G$가 줄어드는 만큼 옮겨 간 $j^*$에 있어요(위 그래프에서 50 대 21). 정점에서 시작한 항이 언더플로하면 위의 대비책(Ding의 방법으로 넘어가기, 시작점을 반씩 줄이기)에 기대야 해요. 둘째, **불안정한 방향의 걷기와 빼기**예요. 아래꼬리를 $1 - \text{위꼬리}$로, t의 반대쪽 꼬리를 $\Phi(\delta) - \text{급수}$로 만드는 곳은 앞 절의 소거를 그대로 겪어요. 역함수도 절대 차이 $F - p$로 멈추므로 순방향 함수의 꼬리 오차를 그대로 받아요. scipy 1.18.1로 잰 결과, 중앙값은 1 ULP 남짓으로 정확하지만 깊은 꼬리에서는 0을 내거나 수백–수천 ULP가 틀렸고 최대 $8.8 \times 10^{15}$ ULP였어요. 예를 들면 이래요.
+
+```python
+>>> sd.special.chndtr(40, 400, 1.0)
+2.6048726083612467e-110
+```
+
+참값(Arb로 포아송 혼합을 직접 더한 값)은 $2.6048726083612468 \times 10^{-110}$이고, scipy 1.18.1의 `chndtr(1.0, 40, 400)`은 0이에요. 이 점에서 무게의 정점은 $j = 200$인데 가장 큰 항은 $j \approx 2$에 있어요($G = P(20 + j, 0.5)$가 $j$를 따라 빠르게 줄어요). stardust는 양의 항만 더하고, 먼 끝 걷기에서는 $j^*$를 무게가 아니라 항의 비로 정하며 항을 프레임 안에서 더하므로 이런 0이 생기지 않아요. 이 점은 항이 적어서 $j = 0$부터 더하는 합으로 계산해요. 그 합의 무게 $w_j$는 $e^{200}$ 가까이 오르지만 double 안이에요.
+
+## 성능
+
+비용이 어디서 오는지는 구조로 말할 수 있어요.
+
+- **중심 분포**는 불완전 함수 한 번이 거의 전부예요. 자유도가 작으면(`a ≤ 6`) Boost의 `ibeta`로 가고, 크면 double-double 인자를 받는 BRATIO 핵심과 서브노멀까지 지키는 앞 인자(지수를 double-double로 만들어요)를 거쳐요.
+- **역함수**는 순방향 함수를 여러 번 불러요. `stdtrit`은 자유도가 크면 평가 없이 Cornish–Fisher 전개, 그 밖은 대부분 Hill의 출발점에서 꼬리 평가 한 번이에요. `chdtri`은 Boost의 출발점에서 우리 Halley 한두 번, `fdtri`은 역 불완전 베타의 반복이에요.
+- **비중심 분포**는 분포의 가운데에서는 $j = 0$부터 더하는 합이라 첫 항 두셋과 항마다 "double + 오차" 곱셈 몇 번이에요(아래꼬리 합은 불완전 함수가 없고, 위꼬리 합은 하나). 그 밖의 흔한 크기는 float64 걷기로, 직접 계산 셋과 약 $18\sqrt\mu$걸음의 float64 연산이에요. 먼 끝 걷기에는 구조에서 오는 고정 비용이 있어요. 먼 끝 $J$의 $G$(모양 보정의 차분까지 불완전 함수 두 번), 앞 인자, 약 $27\sqrt\mu$걸음의 "double + 오차" 연산이에요. 비중심 t는 두 가족이라 이 비용이 두 번 들어요. 1에 가까운 쪽은 작은 쪽을 먼저 더해 무게의 종 전체를 걷지 않아요. 역함수는 Newton 서너 번이고, 안 되면 브래킷과 Brent법에서 순방향 함수를 여러 번 불러요.
+- 병렬 기준은 `cost.hpp`의 함수별 비용으로 정해요. 비중심 분포는 모두 가중치 상한 256에 걸려 원소 128개부터 여러 스레드로 나눠요([원소별 엔진과 병렬화](/internals/special/engine/)).
+
+## 정확도
+
+| 함수 | 최대 ULP | 99.9% | scipy 최대 | 함수 | 최대 ULP | 99.9% | scipy 최대 |
+|---|:---:|:---:|:---:|---|:---:|:---:|:---:|
+| `stdtr` | 9 | 7 | 1.6e18 | `pdtr` | 4 | 4 | 3.1e4 |
+| `stdtrit` | 6.87 | 5.00 | 1.7e18 (25) | `pdtrc` | 6 | 6 | 4.9e7 |
+| `chdtr` | 5 | 4 | 8284 | `bdtr` | 6 | 6 | 9.0e4 |
+| `chdtrc` | 10 | 8 | 1.6e6 | `bdtrc` | 5 | 5 | 1.6e5 |
+| `chdtri` | 5.71 | 5.30 | 25.0 | `nbdtr` | 7 | 7 | 1.1e17 (530) |
+| `fdtr` | 8 | 7 | 778 | `nbdtrc` | 9 | 7 | 3.0e16 (530) |
+| `fdtrc` | 11 | 9 | 948 | `ndtri_exp` | 3.00 | 3.00 | 5.3e3 |
+| `fdtri` | 23.1 | 21.3 | 8.4e15 | | | | |
+| `chndtr` | 14 | 11 | 3.4e18 | `nctdtrc` | 10 | 10 | 4.4e18 |
+| `chndtrc` | 16 | 13 | 1.3e18 | `nctdtrit` | 5.08 | 5.06 | 2.0e18 |
+| `chndtrix` | 3.83 | 3.83 | 6.0e8 (3) | `ncfdtr` | 18 | 17 | 8.9e17 |
+| `nctdtr` | 15 | 12 | 4.1e18 (8) | `ncfdtrc` | 26 | 17 | 7050 |
+| | | | | `ncfdtri` | 21.6 | 21.6 | 2.5e15 (34) |
+
+(정확도 측정 도구 `bench/accuracy/`가 지금 빌드에서 잰 값이에요(결과는 `bench/accuracy/results/special.json`). 기준은 Arb 참값(`tools/special_ref.py`가 만든 `tests/special/ref/*.npz`)이고, 보장 영역의 점만 셌어요. 참값은 Arb(python-flint의 구간 산술)로 구해요. 참값을 품은 공의 반지름이 값의 $2^{-110}$ 아래가 될 때까지 정밀도를 올려서 저장한 hi + lo가 참값을 반올림한 값이 되고, 잘라 낸 급수(불완전 감마·베타의 급수, 비중심 분포의 포아송 혼합)는 버린 꼬리의 상한을 반지름에 더해요. 역함수의 참값은 $F(x) - p$의 부호가 $x(1 \mp 2^{-110})$에서 바뀌는 것으로 확인해요. 역함수는 ULP를 $\max(1, \kappa)$로 나눈 값이에요. 비교 대상은 scipy 1.18.1이고, 위꼬리 셋은 `scipy.stats`의 `sf`예요. "scipy 최대"는 참값이 유한한데 scipy가 NaN이나 inf를 낸 점을 빼고 잰 값이고, 괄호 안이 뺀 점의 수예요. $10^{15}$을 넘는 값은 대개 참값이 있는 곳에서 0을 냈거나 부호가 틀린 경우예요. ULP는 그 사이의 double을 모두 세기 때문이에요.)
+
+- **보장 영역**은 잰 범위 전체예요. 자유도 $10^{-2}$–$10^6$(t), $10^{-2}$–$10^5$(카이제곱), $10^{-2}$–$10^4$(F), $k$·$n$은 $10^4$까지, `ndtri_exp`의 $y$는 $-10^{300}$–0, 비중심은 nc $10^{-3}$–$10^4$(카이제곱·F), $|\delta| \le 100$(t), 확률은 $10^{-300}$까지예요. 그 안에서 상대오차 $10^{-14}$(45–90 ULP), 역함수는 $10^{-14}\max(1, \kappa)$, 서브노멀 결과는 절대오차 $45 \cdot 2^{-1074}$를 지켜요. `tests/special/test_reference.py`가 참값 파일의 모든 점에서 이것을 확인하고, 근이 double 범위 밖인 역함수 점(`fdtri` → 0, `stdtrit` → −inf 등)은 순방향 함수로 확인해요(`test_distributions.py`, `test_noncentral.py`).
+- **잰 범위 밖**도 값을 계산하지만 약속하지는 않아요. 값을 믿을 수 없는 곳은 틀린 값 대신 NaN이에요(비중심 F에서 1에서 빼서 만든 쪽이 $1/64$ 아래일 때, 비중심 역함수의 서브노멀 확률, 정해진 횟수 안에 끝나지 않은 합, 자유도 $10^{-200}$–$10^{-10}$인 t의 먼 꼬리).
+- **가장 큰 오차**는 `ncfdtrc` 26 ULP로, $d_1 = 302$, $d_2 = 1420$, nc $= 7092$, $x = 25.8$처럼 비중심 모수가 큰 점이에요(상대 $3.0 \times 10^{-15}$). 비중심 분포는 float64 걷기의 반올림이 걸음 수와 함께 자라서, 비중심 모수가 수천인 점에서 크게 나와요. 그다음은 `fdtri` 23 ULP/κ로, $d_1 = 0.49$, $d_2 = 55.2$, $p = 1.1 \times 10^{-63}$처럼 $a = d_1/2$가 작고 $p$가 먼 꼬리인 점이에요.
+- **scipy와 차이의 원인**은 세 갈래예요. (1) 인자의 반올림: `stdtr`, `fdtr`의 수십–수백 ULP. (2) $1 - F$와 작은 쪽을 고르지 않는 역함수: `stdtrit`, `fdtri`의 NaN·inf와 $10^{16}$–$10^{18}$. (3) 서브노멀·깊은 꼬리의 0: `chdtrc`, `pdtrc`, `stdtr(1, -1e200)`, 비중심 전부. scipy 1.18.1의 `bdtr`은 Cephes, `stdtr`·`fdtr`·비중심 분포는 Boost를 불러요(scipy 문서).
+
+<Callout>
+분포 함수의 특수값(무한 자유도의 극한 분포, $k < 0$, nc = 0이면 중심 함수와 비트까지 같음 등)은 scipy와 다른 곳이 꽤 있어요. 원칙은 "참값이나 극한"이에요. 목록은 각 API 문서([stdtr](/api/special/stdtr/), [chdtr](/api/special/chdtr/), [fdtr](/api/special/fdtr/), [pdtr](/api/special/pdtr/), [bdtr](/api/special/bdtr/), [nbdtr](/api/special/nbdtr/), [chndtr](/api/special/chndtr/), [nctdtr](/api/special/nctdtr/), [ncfdtr](/api/special/ncfdtr/), [ndtr](/api/special/ndtr/))에 있어요.
+</Callout>
+
+## 참고 문헌
+
+1. A. R. DiDonato, A. H. Morris, "Algorithm 708: Significant digit computation of the incomplete beta function ratios", *ACM Transactions on Mathematical Software* 18(3), 360–373, 1992. doi:10.1145/131766.131776 (BRATIO: BPSER, BUP, BGRAT, BFRAC, BASYM)
+2. A. R. DiDonato, A. H. Morris, "Computation of the incomplete gamma function ratios and their inverse", *ACM Transactions on Mathematical Software* 12(4), 377–393, 1986. doi:10.1145/22721.23109 (역 불완전 감마의 초기값, 식 21–36)
+3. NIST Digital Library of Mathematical Functions, https://dlmf.nist.gov/ , 8.4.10(포아송과 $Q$), 8.8.5–8.8.6($P$, $Q$의 점화식), 8.17.4(대칭), 8.17.5(이항 합), 8.17.20(베타의 점화식), 8.17.22(연분수)
+4. G. W. Hill, "Algorithm 396: Student's t-quantiles", *Communications of the ACM* 13(10), 619–620, 1970. doi:10.1145/355598.355600
+5. G. W. Cran, K. J. Martin, G. E. Thomas, "Remark AS R19 and Algorithm AS 109: A remark on algorithms AS 63: The incomplete beta integral and AS 64: Inverse of the incomplete beta function ratio", *Applied Statistics* 26(1), 111, 1977. doi:10.2307/2346887
+6. P. B. Patnaik, "The non-central χ²- and F-distributions and their applications", *Biometrika* 36(1/2), 202–232, 1949. doi:10.1093/biomet/36.1-2.202 (포아송 혼합 표현과 중심 분포로의 근사)
+7. W. H. Press, S. A. Teukolsky, W. T. Vetterling, B. P. Flannery, *Numerical Recipes in C: The Art of Scientific Computing*, 2nd ed., Cambridge University Press, 1992. (5.2절 연분수와 수정 Lentz 방법, 6.4절 불완전 베타와 Student·F 분포)
+8. T. J. Dekker, "A floating-point technique for extending the available precision", *Numerische Mathematik* 18(3), 224–242, 1971. doi:10.1007/BF01397083 (정확한 곱과 합, double-double)
+9. J.-M. Muller, N. Brunie, F. de Dinechin, C.-P. Jeannerod, M. Joldes, V. Lefèvre, G. Melquiond, N. Revol, S. Torres, *Handbook of Floating-Point Arithmetic*, 2nd ed., Birkhäuser, 2018. doi:10.1007/978-3-319-76526-6 (Sterbenz 보조정리, TwoSum, 보상 합)
+10. A. Neumaier, "Rundungsfehleranalyse einiger Verfahren zur Summation endlicher Summen", *ZAMM* 54(1), 39–51, 1974. doi:10.1002/zamm.19740540106
+11. Boost.Math 문서: "Incomplete Beta Functions", "The Incomplete Beta Function Inverses", "Incomplete Gamma Function Inverses", "Noncentral Chi-Squared Distribution"의 Implementation 절. https://www.boost.org/doc/libs/release/libs/math/doc/html/math_toolkit/sf_beta/ibeta_function.html 등
+12. Boost.Math 소스(boostorg/math, Boost Software License 1.0): stardust가 부르는 `include/boost/math/special_functions/beta.hpp`, `detail/ibeta_inverse.hpp`, `detail/igamma_inverse.hpp`, `gamma.hpp`(커밋 4682f44, `third_party/boost_math/`), 비교를 위해 읽은 `include/boost/math/distributions/students_t.hpp`, `non_central_chi_squared.hpp`, `non_central_beta.hpp`, `non_central_t.hpp`, `non_central_f.hpp`, `detail/generic_quantile.hpp`(develop). https://github.com/boostorg/math
+13. N. M. Temme, "Asymptotic inversion of the incomplete beta function", *Journal of Computational and Applied Mathematics* 41(1–2), 145–157, 1992. doi:10.1016/0377-0427(92)90244-R
+14. L. N. Trefethen, J. A. C. Weideman, "The exponentially convergent trapezoidal rule", *SIAM Review* 56(3), 385–458, 2014. doi:10.1137/130932132
+15. R. P. Brent, *Algorithms for Minimization without Derivatives*, Prentice-Hall, 1973. (4장 zeroin) / R. P. Brent, "An algorithm with guaranteed convergence for finding a zero of a function", *The Computer Journal* 14(4), 422–425, 1971. doi:10.1093/comjnl/14.4.422
+16. C. G. Ding, "Algorithm AS 275: Computing the non-central χ² distribution function", *Applied Statistics* 41(2), 478, 1992. doi:10.2307/2347584
+17. D. Benton, K. Krishnamoorthy, "Computing discrete mixtures of continuous distributions: noncentral chisquare, noncentral t and the distribution of the square of the sample multiple correlation coefficient", *Computational Statistics & Data Analysis* 43(2), 249–267, 2003. doi:10.1016/S0167-9473(02)00283-9
+18. G. E. Alefeld, F. A. Potra, Y. Shi, "Algorithm 748: Enclosing zeros of continuous functions", *ACM Transactions on Mathematical Software* 21(3), 327–344, 1995. doi:10.1145/210089.210111
+19. M. J. Wichura, "Algorithm AS 241: The Percentage Points of the Normal Distribution", *Applied Statistics* 37(3), 477–484, 1988. https://doi.org/10.2307/2347330
+20. M. Abramowitz, I. A. Stegun (eds.), *Handbook of Mathematical Functions*, National Bureau of Standards Applied Mathematics Series 55, 1964. (26.7.5, t 분포 분위수의 Cornish–Fisher 전개)

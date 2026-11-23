@@ -1,0 +1,366 @@
+---
+title: F 분포 함수
+names: [fdtr, fdtrc, fdtri]
+group: 분포 함수
+order: 3
+signatures:
+  - "sd.special.fdtr(dfn, dfd, x, /, *, out=None)"
+  - "sd.special.fdtrc(dfn, dfd, x, /, *, out=None)"
+  - "sd.special.fdtri(dfn, dfd, p, /, *, out=None)"
+summary: F 분포의 누적확률 P(F ≤ x), 위꼬리 확률 P(F > x), 그리고 누적확률의 역함수를 계산해요. 분산분석(ANOVA)과 두 분산의 비교, 회귀 모형의 F 검정에 써요.
+params:
+  - name: dfn
+    type: ndarray 또는 Python 숫자
+    kind: positional-only
+    desc: 분자의 자유도. 0보다 큰 실수예요. inf도 받아요.
+  - name: dfd
+    type: ndarray 또는 Python 숫자
+    kind: positional-only
+    desc: 분모의 자유도. 0보다 큰 실수예요. inf도 받아요.
+  - name: x
+    type: ndarray 또는 Python 숫자
+    kind: "positional-only, fdtr·fdtrc에만"
+    desc: 확률을 잴 지점. 0 이상이에요. inf도 받아요.
+  - name: p
+    type: ndarray 또는 Python 숫자
+    kind: "positional-only, fdtri에만"
+    desc: 아래꼬리 확률(누적확률). 0 이상 1 이하예요.
+  - name: out
+    type: ndarray 또는 None
+    kind: keyword-only
+    desc: 결과를 써 넣을 float64 배열. 모양이 인자를 브로드캐스팅한 모양과 같아야 해요.
+returns:
+  type: ndarray 또는 Python float
+  desc: "fdtr은 P(F ≤ x), fdtrc는 P(F > x), fdtri는 fdtr(dfn, dfd, x) = p가 되는 x. 언제나 float64이고, 인자가 모두 Python 숫자면 Python float예요."
+raises:
+  - type: TypeError
+    desc: 인자가 복소수이거나, 리스트·문자열처럼 배열도 숫자도 아닐 때, 인자 개수가 틀렸을 때. 값이 정의역 밖인 것은 에러가 아니라 NaN이에요.
+seeAlso: [betainc, chdtr, stdtr, ncfdtr, basics]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+## 한눈에 보기
+
+**F 분포**는 흩어짐(분산)을 두 가지로 어림한 값의 비율이 따르는 분포예요. 두 어림값이 같은 것을 재고 있다면 비율은 1 근처에 머물고, 한쪽이 유난히 크면 비율이 커져요. 그래서 "이 비율이 우연이라 보기에는 너무 큰가"를 판단할 때 써요. 분자와 분모에 자유도가 하나씩 있어서 자유도가 둘(`dfn`, `dfd`)이에요.
+
+쓰임새는 이래요.
+
+- 분산분석(ANOVA): 세 가지 비료로 키운 작물의 평균 수확량이 같은지처럼, 셋 이상의 집단 평균을 한꺼번에 비교할 때
+- 두 분산 비교: 두 기계 중 한쪽이 제품 무게를 더 들쭉날쭉하게 만드는지 볼 때
+- 회귀분석의 F 검정: 회귀 모형 전체가 쓸모 있는지, 변수 몇 개를 더한 모형이 정말 나은지 볼 때
+
+세 함수가 한 묶음이에요.
+
+- `fdtr(dfn, dfd, x)`: F가 `x` 이하일 확률 P(F ≤ x), 곧 **누적분포함수**(cdf)
+- `fdtrc(dfn, dfd, x)`: F가 `x`보다 클 확률 P(F > x), 곧 **생존함수**(survival function). 끝의 `c`는 보수(complement)라는 뜻이에요.
+- `fdtri(dfn, dfd, p)`: 누적확률이 `p`가 되는 지점 `x`. `fdtr`의 역함수예요.
+
+```python
+>>> import stardust as sd
+>>> sd.special.fdtr(3, 20, 3.10)
+0.9500754669543212
+>>> sd.special.fdtrc(3, 20, 3.10)
+0.049924533045678766
+>>> sd.special.fdtri(3, 20, 0.95)
+3.098391212140779
+```
+
+자유도 (3, 20)인 F 분포에서 3.10 이하일 확률은 약 95%, 위꼬리는 약 5%예요. 마지막 줄은 그 경계(아래에서 95%, 위에서 5%를 자르는 지점)를 정확히 구한 값으로, F 검정의 5% **임계값**이에요.
+
+<Fig caption="F 분포의 밀도(분모 자유도 10). 분자 자유도가 커질수록 봉우리가 1 쪽으로 모여요. 값은 언제나 0 이상이고 오른쪽 꼬리가 길어요.">
+  <Plot
+    curves={[
+      { f: (x) => Math.pow(1 + x / 5, -6), label: 'dfn = 2' },
+      { f: (x) => 4.8 * x * Math.pow(1 + 0.4 * x, -7), label: 'dfn = 4' },
+      { f: (x) => 630 * Math.pow(x, 4) * Math.pow(1 + x, -10), label: 'dfn = 10' },
+    ]}
+    domain={[0, 4]}
+    range={[0, 1]}
+    xTicks={[
+      { v: 0, label: '0' },
+      { v: 1, label: '1' },
+      { v: 2, label: '2' },
+      { v: 3, label: '3' },
+      { v: 4, label: '4' },
+    ]}
+    yTicks={[
+      { v: 0.25, label: '0.25' },
+      { v: 0.5, label: '0.5' },
+      { v: 0.75, label: '0.75' },
+      { v: 1, label: '1' },
+    ]}
+  />
+</Fig>
+
+<Reference />
+
+## F 분포의 정의
+
+$X_1$이 자유도 $d_1$인 [카이제곱 분포](/api/special/chdtr/)를, $X_2$가 자유도 $d_2$인 카이제곱 분포를 따르고 서로 독립이면
+
+$$
+F = \frac{X_1 / d_1}{X_2 / d_2}
+$$
+
+는 자유도 $(d_1, d_2)$인 F 분포를 따라요. 카이제곱 값을 자유도로 나누면 분산의 어림값처럼 평균이 1 근처가 되니, F는 "분산 어림값 둘의 비율"이에요. 순서가 중요해서 `dfn`(numerator, 분자)이 앞, `dfd`(denominator, 분모)가 뒤예요.
+
+누적확률은 [정칙화된 불완전 베타 함수](/api/special/betainc/)로 쓸 수 있어요.
+
+$$
+\mathrm{fdtr}(d_1, d_2, x) = I_{w}\!\left(\tfrac{d_1}{2}, \tfrac{d_2}{2}\right), \qquad w = \frac{d_1 x}{d_1 x + d_2}
+$$
+
+```python
+>>> d1, d2, x = 3.0, 20.0, 3.10
+>>> sd.special.betainc(d1 / 2, d2 / 2, d1 * x / (d1 * x + d2))
+0.9500754669543212
+```
+
+직접 조합해도 되지만, `fdtr`은 위꼬리와 무한대 자유도까지 알아서 정확하게 처리해요.
+
+## 분산분석: 세 집단의 평균이 같을까요
+
+세 가지 교육 방법으로 각각 4명씩 가르친 뒤 시험 점수를 비교해요. "세 방법의 평균 점수가 모두 같다"는 가정이 맞는지 보려고 해요.
+
+분산분석은 흩어짐을 두 가지로 재요. **집단 사이**의 흩어짐(집단 평균이 전체 평균에서 얼마나 떨어졌나)과 **집단 안**의 흩어짐(같은 집단 안에서 점수가 얼마나 퍼졌나)이에요. 평균이 모두 같다면 두 값의 비율 F는 자유도 (집단 수 − 1, 전체 인원 − 집단 수) = (2, 9)인 F 분포를 따라요.
+
+```python
+>>> groups = [sd.asarray([4.0, 5.0, 6.0, 5.0]),
+...           sd.asarray([6.0, 7.0, 8.0, 7.0]),
+...           sd.asarray([7.0, 9.0, 9.0, 7.0])]
+>>> grand = sd.mean(sd.concat(groups))
+>>> between = sum(4 * (sd.mean(g) - grand) ** 2 for g in groups)
+>>> within = sum(sd.sum((g - sd.mean(g)) ** 2) for g in groups)
+>>> F = (between / 2) / (within / 9)
+>>> F
+10.5
+```
+
+집단 사이의 흩어짐이 집단 안의 흩어짐보다 10.5배 커요. 평균이 다를수록 F가 커지니, p값은 위꼬리 확률이에요.
+
+```python
+>>> sd.special.fdtrc(2, 9, F)
+0.004436552715791845
+```
+
+p값이 약 0.4%라 "세 방법의 평균이 같다"는 가정을 버려요. 다만 F 검정은 "적어도 하나가 다르다"까지만 말해 줘요. 어느 집단끼리 다른지는 따로 비교해야 해요.
+
+## 두 분산 비교
+
+두 기계가 만든 부품의 길이 편차를 6개씩 쟀어요. 표본 분산의 비율은 자유도 (5, 5)인 F 분포를 따라요.
+
+```python
+>>> s1 = sd.var(sd.asarray([10.0, 12.0, 9.0, 11.0, 13.0, 8.0]), correction=1)
+>>> s2 = sd.var(sd.asarray([10.0, 10.5, 9.5, 10.0, 10.5, 9.5]), correction=1)
+>>> (s1, s2, s1 / s2)
+(3.5, 0.2, 17.5)
+```
+
+"어느 쪽이든 분산이 다른가"를 묻는 양측 검정이면, 비율이 아주 크거나 아주 작은 경우를 모두 세야 해요. 작은 쪽 꼬리 확률의 두 배를 p값으로 써요.
+
+```python
+>>> 2 * min(sd.special.fdtrc(5, 5, 17.5), sd.special.fdtr(5, 5, 17.5))
+0.006957804108690364
+```
+
+## 누적확률과 위꼬리 확률
+
+`fdtr`과 `fdtrc`은 더하면 1이에요. 그런데 `fdtrc`을 `1 - fdtr`로 계산하면 **꼬리에서 자릿수를 잃어요.** `x`가 크면 `fdtr`이 1에 아주 가까워지는데, float64는 1 근처에서 약 1.1e-16 간격으로만 수를 담을 수 있어요. 그래서 1에서 빼면 그보다 작은 차이가 사라져요.
+
+```python
+>>> sd.special.fdtrc(5, 30, 50.0)
+1.1830748130608517e-13
+>>> 1 - sd.special.fdtr(5, 30, 50.0)
+1.1834977442504169e-13
+```
+
+`fdtrc`이 참값이고, `1 - fdtr`은 앞 세 자리만 맞아요. 더 먼 꼬리에서는 아예 0이 돼요.
+
+```python
+>>> sd.special.fdtrc(5, 30, 500.0)
+6.240854751577198e-28
+>>> 1 - sd.special.fdtr(5, 30, 500.0)
+0.0
+```
+
+`fdtrc`은 1에서 빼지 않고 위꼬리의 넓이를 직접 계산해요. 그래서 이런 값에서도 앞자리 14자리 정도가 맞아요. p값은 언제나 `fdtrc`로 구하세요.
+
+## 임계값: `fdtri`은 누적확률의 역함수
+
+`fdtri(dfn, dfd, p)`는 **누적확률** `fdtr(dfn, dfd, x)`가 `p`가 되는 `x`를 돌려줘요. 유의수준 5%의 임계값은 위에서 5%, 곧 아래에서 95%인 지점이니 `p = 0.95`를 넣어요.
+
+```python
+>>> sd.special.fdtri(2, 9, 0.95)
+4.256494729093747
+```
+
+분산분석 예의 F = 10.5는 이 임계값보다 커서, p값으로 판단한 것과 결론이 같아요.
+
+<Callout type="warn" title="chdtri와 방향이 반대예요">
+  카이제곱의 [`chdtri`](/api/special/chdtr/)는 **위꼬리**의 역함수라 5% 임계값에 `0.05`를 넣지만, `fdtri`은 **누적확률**의 역함수라 `0.95`를 넣어요. `fdtri(2, 9, 0.05)`는 아래 5% 지점(아주 작은 값)이라, 바꿔 넣어도 에러 없이 엉뚱한 임계값이 나와요.
+</Callout>
+
+`fdtri`에 `fdtr`의 결과를 넣으면 원래 값이 돌아와요. 실수 계산이라 마지막 자리는 다를 수 있어요.
+
+```python
+>>> sd.special.fdtri(3, 20, sd.special.fdtr(3, 20, 2.5))
+2.4999999999999996
+```
+
+끝점에서는 `p = 0`이 0, `p = 1`이 inf예요. 확률이 아닌 값은 NaN이에요.
+
+```python
+>>> sd.special.fdtri(3, 20, 0.0)
+0.0
+>>> sd.special.fdtri(3, 20, 1.0)
+inf
+>>> sd.special.fdtri(3, 20, -0.1)
+nan
+```
+
+### 아래쪽 분위수와 자유도 뒤집기
+
+F의 역수 1/F는 자유도를 맞바꾼 F 분포를 따라요. 그래서 F(a, b)의 아래 2.5% 지점은 F(b, a)의 위 2.5% 지점의 역수예요. 양측 검정의 두 임계값을 구할 때 쓸 수 있어요.
+
+```python
+>>> sd.special.fdtri(5, 5, 0.025)
+0.1399309502298614
+>>> 1 / sd.special.fdtri(5, 5, 0.975)
+0.13993095022986143
+```
+
+## t 분포와의 관계
+
+자유도 `df`인 t 통계량을 제곱하면 자유도 (1, df)인 F 분포를 따라요. 그래서 `fdtrc(1, df, t**2)`는 t 검정의 양측 p값과 같아요. 집단이 둘뿐인 분산분석이 t 검정과 같은 결론을 내는 이유예요.
+
+```python
+>>> sd.special.fdtrc(1, 10, 4.0)
+0.07338803477074039
+>>> 2 * sd.special.stdtr(10, -2.0)
+0.07338803477074039
+```
+
+## 자유도가 무한대일 때
+
+분모의 자유도가 무한대이면 분모가 정확히 1이 되어서, `dfn * F`가 자유도 `dfn`인 카이제곱 분포를 따라요. `fdtr`은 이 극한을 그대로 계산해요.
+
+```python
+>>> sd.special.fdtr(3, sd.inf, 2.0)
+0.8883897749052875
+>>> sd.special.chdtr(3, 6.0)
+0.8883897749052875
+>>> sd.special.fdtr(3, 1e6, 2.0)
+0.8883890451233382
+```
+
+자유도가 아주 큰 유한한 값에서도 극한값에 가까워지는 것을 볼 수 있어요. 분자의 자유도가 무한대이면 `dfd / F`가 카이제곱을 따르고, 둘 다 무한대이면 F는 언제나 1이라 누적확률이 `x < 1`에서 0, `x ≥ 1`에서 1이에요.
+
+```python
+>>> sd.special.fdtr(sd.inf, sd.inf, 0.5)
+0.0
+>>> sd.special.fdtr(sd.inf, sd.inf, 1.0)
+1.0
+```
+
+자유도를 배열로 넘기면서 그 안에 무한대를 섞어도 돼요. 분모 자유도가 커질수록 5% 임계값이 줄어서 극한값으로 다가가요.
+
+```python
+>>> sd.special.fdtri(2, sd.asarray([5.0, 10.0, 30.0, sd.inf]), 0.95)
+array([ 5.786135043349965, 4.1028210151304005, 3.3158295010135213,
+         2.99573227355399], dtype=float64)
+```
+
+인자는 서로 [브로드캐스팅](/api/array/broadcasting/)해요. 정수 배열도 float64로 계산하고, 결과는 언제나 float64예요. 결과를 미리 만든 배열에 받으려면 `out=`을 써요([특수함수의 기본](/api/special/basics/)).
+
+## 정확도
+
+- **보장 영역**: 두 자유도 모두 0.01부터 1e4(1만)까지, `x`와 `p`는 모든 값
+- **`fdtr`, `fdtrc`**: 정밀한 참값과의 상대오차가 1e-14 이하예요. 앞자리 14자리 정도가 맞는다는 뜻이고, `6.24e-28` 같은 먼 꼬리에서도 마찬가지예요.
+- **`fdtri`**: 결과 x의 상대오차가 1e-14에 "입력 p가 마지막 자리만큼 흔들릴 때 x가 흔들리는 배율"을 곱한 값 이하예요. p가 실수로 저장되면서 생기는 불확실성이 허용하는 만큼은 정확하다는 뜻이에요. 분자 자유도가 아주 작으면 아래꼬리에서 x가 p의 큰 거듭제곱처럼 변해서 이 배율이 커져요.
+- **NaN이 되는 곳**: 보장 영역 밖에서, `dfn/2`가 약 2.3e6에서 1.2e24 사이이고 `dfd`가 2보다 작으며 `p`가 서브노멀 수(약 2.2e-308 아래)이면 `fdtri`은 근을 구하지 못해 NaN이에요.
+
+잰 최대 오차는 `fdtr` 8, `fdtrc` 11, `fdtri` 23 ULP(위의 배율로 나눈 값)예요. 1e-14가 45 ULP 이상이니 약속 안이에요. ULP는 [특수함수의 기본](/api/special/basics/)에서 풀어 놓았어요. 범위 밖(자유도 1e4 초과)도 값을 계산하지만 정확도를 약속하지는 않아요.
+
+## 특수값
+
+| 입력 | 결과 | 뜻 |
+|---|:---:|---|
+| `fdtr(dfn, dfd, 0)`, `fdtr(dfn, dfd, inf)` | 0, 1 | 분포의 양 끝 (`fdtrc`은 1, 0) |
+| `fdtr(dfn, inf, x)` | `chdtr(dfn, dfn*x)` | 분모가 1로 고정돼요 |
+| `fdtr(inf, dfd, x)` | `chdtrc(dfd, dfd/x)` | 분자가 1로 고정돼요 |
+| `fdtr(inf, inf, x)` | `x < 1`이면 0, `x ≥ 1`이면 1 | 1에 몰린 분포 |
+| `fdtri(dfn, dfd, 0)`, `fdtri(dfn, dfd, 1)` | 0, inf | 분포의 양 끝 |
+| `fdtri`의 무한대 자유도 | 위 극한의 역함수 | `fdtri(inf, inf, p)`는 1 |
+| `fdtri(5e-324, dfd, p)`, `0 < p < 1` | 0 | 분자 자유도가 0에 다가가면 분포가 0에 몰려요 |
+| `fdtri(dfn, 5e-324, p)`, `0 < p < 1` | inf | 분모 자유도가 0에 다가가면 분포가 무한대 쪽으로 밀려나서 근이 float64 범위를 넘어요. `p`가 서브노멀일 만큼 작을 때만 유한한 근이 있어요 |
+| `fdtri(dfn, dfd, p)`, 두 자유도가 모두 2⁻⁶⁹⁹ 아래, `0 < p < 1` | 0 또는 inf | 확률이 0과 inf에 나뉘어 몰려요. `p`가 0에 몰린 몫 `dfd/(dfn + dfd)`보다 작으면 0, 크면 inf |
+| `dfn ≤ 0` 또는 `dfd ≤ 0` | NaN | 자유도는 양수여야 해요 |
+| `x < 0` | NaN | |
+| `p < 0` 또는 `p > 1` | NaN | 확률이 아니에요 |
+| 인자 중 NaN | NaN | |
+
+```python
+>>> sd.special.fdtri(5e-324, 3, 0.5), sd.special.fdtri(2, 5e-324, 0.1)
+(0.0, inf)
+```
+
+## 조심할 점
+
+### 분자와 분모의 순서
+
+`dfn`과 `dfd`를 바꿔 넣으면 다른 분포가 돼요. 분산분석이면 `dfn`은 집단 수 − 1, `dfd`는 전체 인원 − 집단 수예요. 바꿔 넣어도 에러가 나지 않으니 조심하세요.
+
+```python
+>>> sd.special.fdtrc(2, 9, 10.5)
+0.004436552715791845
+>>> sd.special.fdtrc(9, 2, 10.5)
+0.08993957657149113
+```
+
+### 값 때문에는 에러가 나지 않아요
+
+자유도가 0 이하이거나 `x`가 음수여도 에러 대신 NaN이에요. 결과에 NaN이 섞이지 않았는지는 직접 확인해야 해요. F 비율은 음수가 될 수 없으니, 음수 `x`가 들어왔다는 것은 앞의 계산이 잘못됐다는 신호예요.
+
+```python
+>>> sd.special.fdtr(0, 20, 1.0)
+nan
+>>> sd.special.fdtr(3, 20, -1.0)
+nan
+```
+
+### 에러는 타입이 틀렸을 때만
+
+복소수, 리스트, 문자열은 받지 않아요.
+
+```python
+>>> sd.special.fdtr(3, 20, 1j)
+Traceback (most recent call last):
+    ...
+TypeError: fdtr(): not supported for int64, int64 and complex128
+>>> sd.special.fdtrc([2, 3], 9, 4.0)
+Traceback (most recent call last):
+    ...
+TypeError: fdtrc(): 'dfn' must be an sd.ndarray or a bool, int, float or complex, not list
+```
+
+## 비슷한 함수와의 차이
+
+| 하고 싶은 일 | 쓸 것 | 차이 |
+|---|---|---|
+| 베타 분포의 누적확률 | [`betainc`](/api/special/betainc/) | `fdtr`은 `betainc`에 변수를 바꿔 넣은 값이에요. |
+| 분모 자유도가 무한대인 경우 | [`chdtr`](/api/special/chdtr/) | `fdtr(dfn, inf, x)`는 `chdtr(dfn, dfn*x)`예요. |
+| 집단이 둘뿐인 평균 비교 | [`stdtr`](/api/special/stdtr/) | `fdtrc(1, df, t**2)`는 양측 t 검정의 p값과 같아요. |
+| 검정력 계산(평균이 실제로 다를 때의 F 분포) | [`ncfdtr`](/api/special/ncfdtr/) | 비중심 F 분포예요. 비중심 모수가 0이면 `fdtr`과 같아요. |
+| 임계값 | `fdtri(dfn, dfd, 1 - α)` | `chdtri`은 `α`를 넣고, `fdtri`은 `1 - α`를 넣어요. |
+
+`sd.stats`에도 F 분포 객체가 있어요. 밀도, 난수, 평균 같은 것을 한데 묶어 쓰고 싶으면 그쪽을 쓰고, 누적확률이나 임계값 하나만 빠르게 필요하면 이 함수들이 간단해요.
+
+## scipy를 아는 분께
+
+- 이름, 인자 순서, 뜻은 `scipy.special.fdtr`, `fdtrc`, `fdtri`과 같아요. `fdtri`이 누적확률의 역함수인 것도 같아요.
+- 자유도가 무한대인 경우를 극한값으로 계산해요. scipy 1.18.1은 `fdtr(3, inf, 2.0)`, `fdtr(inf, 10, 2.0)`, `fdtr(inf, inf, x)`, `fdtri(3, inf, 0.5)`에서 모두 NaN을 돌려줘요.
+- 분모 자유도가 아주 작아 근이 float64 범위를 넘으면 stardust는 inf예요. scipy 1.18.1은 `fdtri(2, 5e-324, 0.1)`에서 NaN, `fdtri(10, 1e-323, 0.1)`에서 5.4323092249e-313을 내요.
+- 분모 자유도를 거꾸로 구하는 `fdtridfd`는 없어요.
+- 리스트, numpy 배열은 받지 않아요. `sd.ndarray`와 Python 숫자만 받아요. `out`은 keyword-only예요.

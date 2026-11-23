@@ -1,0 +1,367 @@
+---
+kind: function
+title: Hypergeometric
+names: [Hypergeometric]
+group: 이산 분포
+order: 6
+signatures:
+  - "sd.stats.Hypergeometric(*, total, successes, draws)"
+summary: 성공이 successes개 섞인 total개 중에서 draws개를 다시 넣지 않고 꺼낼 때, 꺼낸 것 가운데 성공의 개수가 따르는 초기하 분포예요. 품질 검사의 표본, 복권, 카드 패처럼 유한한 모집단에서 중복 없이 뽑는 상황에 써요.
+params:
+  - name: total
+    type: Python 실수 또는 ndarray
+    kind: keyword-only
+    desc: 전체 개수. 0 이상의 정수예요. 정수가 아니거나 음수이면 그 원소는 NaN이에요.
+  - name: successes
+    type: Python 실수 또는 ndarray
+    kind: keyword-only
+    desc: 전체 가운데 성공의 개수. 0 이상 total 이하의 정수예요.
+  - name: draws
+    type: Python 실수 또는 ndarray
+    kind: keyword-only
+    desc: 다시 넣지 않고 꺼내는 개수. 0 이상 total 이하의 정수예요.
+returns:
+  type: Hypergeometric
+  desc: "분포 객체. pmf, cdf, icdf 같은 메서드와 mean, variance 같은 요약값, sample이 있어요. 매개변수는 읽기 전용 속성(H.total 등)이에요."
+raises:
+  - type: TypeError
+    desc: 매개변수를 위치로 주거나 빠뜨렸을 때, 매개변수가 실수나 sd.ndarray가 아닐 때(문자열, 복소수 등). 정의역 밖의 값은 에러가 아니라 NaN이에요.
+  - type: ValueError
+    desc: 배열 매개변수들의 모양을 서로 브로드캐스트할 수 없을 때.
+seeAlso: [binomial, beta-binomial, discrete-uniform, methods, sample]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+export const hypPmf = [[-0.12, 0], [-0.12, 0.0029249], [-0.12, NaN], [0.88, 0], [0.88, 0.027856], [0.88, NaN], [1.88, 0], [1.88, 0.10826], [1.88, NaN], [2.88, 0], [2.88, 0.22593], [2.88, NaN], [3.88, 0], [3.88, 0.28006], [3.88, NaN], [4.88, 0], [4.88, 0.21509], [4.88, NaN], [5.88, 0], [5.88, 0.10341], [5.88, NaN], [6.88, 0], [6.88, 0.030639], [6.88, NaN], [7.88, 0], [7.88, 0.0053344], [7.88, NaN], [8.88, 0], [8.88, 0.00049052], [8.88, NaN], [9.88, 0], [9.88, 1.7986e-05], [9.88, NaN]];
+export const binPmf = [[0.12, 0], [0.12, 0.0060466], [0.12, NaN], [1.12, 0], [1.12, 0.040311], [1.12, NaN], [2.12, 0], [2.12, 0.12093], [2.12, NaN], [3.12, 0], [3.12, 0.21499], [3.12, NaN], [4.12, 0], [4.12, 0.25082], [4.12, NaN], [5.12, 0], [5.12, 0.20066], [5.12, NaN], [6.12, 0], [6.12, 0.11148], [6.12, NaN], [7.12, 0], [7.12, 0.042467], [7.12, NaN], [8.12, 0], [8.12, 0.010617], [8.12, NaN], [9.12, 0], [9.12, 0.0015729], [9.12, NaN], [10.12, 0], [10.12, 0.00010486], [10.12, NaN]];
+export const hypCdf = [[-1, 0], [0, 0], [0, NaN], [0, 0.0029249], [1, 0.0029249], [1, NaN], [1, 0.030781], [2, 0.030781], [2, NaN], [2, 0.13904], [3, 0.13904], [3, NaN], [3, 0.36497], [4, 0.36497], [4, NaN], [4, 0.64503], [5, 0.64503], [5, NaN], [5, 0.86011], [6, 0.86011], [6, NaN], [6, 0.96352], [7, 0.96352], [7, NaN], [7, 0.99416], [8, 0.99416], [8, NaN], [8, 0.99949], [9, 0.99949], [9, NaN], [9, 0.99998], [10, 0.99998], [10, NaN], [10, 1], [11, 1], [11, NaN]];
+export const binCdf = [[-1, 0], [0, 0], [0, NaN], [0, 0.0060466], [1, 0.0060466], [1, NaN], [1, 0.046357], [2, 0.046357], [2, NaN], [2, 0.16729], [3, 0.16729], [3, NaN], [3, 0.38228], [4, 0.38228], [4, NaN], [4, 0.6331], [5, 0.6331], [5, NaN], [5, 0.83376], [6, 0.83376], [6, NaN], [6, 0.94524], [7, 0.94524], [7, NaN], [7, 0.98771], [8, 0.98771], [8, NaN], [8, 0.99832], [9, 0.99832], [9, NaN], [9, 0.9999], [10, 0.9999], [10, NaN], [10, 1], [11, 1], [11, NaN]];
+
+## 어떤 분포인가요
+
+상자에 공이 `total`개 들어 있고, 그중 `successes`개가 빨간 공이에요. 공을 `draws`개 꺼내되 꺼낸 공은 다시 넣지 않아요. 이때 꺼낸 공 가운데 빨간 공의 개수가 **초기하 분포**(hypergeometric distribution)를 따라요.
+
+다시 넣지 않으니, 빨간 공을 하나 꺼내면 상자에 남은 빨간 공의 비율이 줄어서, 다음에 빨간 공이 나올 확률도 바뀌어요. 그래서 매번 같은 확률로 성공하는 [이항 분포](/api/stats/binomial/)와 달라요. 이런 곳에서 써요.
+
+- 품질 검사: 부품 1000개 묶음에 불량품이 50개 있을 때, 20개를 골라 검사하면 불량품이 몇 개 나올까요?
+- 복권과 카드: 1부터 45까지 중 6개를 맞히는 복권, 52장 카드에서 받은 패에 에이스가 몇 장 들어 있을지
+- 표본 조사: 정해진 인원 안에서 사람을 중복 없이 뽑을 때 특정 집단이 몇 명 뽑힐지
+- 피셔의 정확 검정: 2×2 표의 한 칸이 이 분포를 따른다는 성질로 p값을 구해요.
+
+```python
+>>> import stardust as sd
+>>> lotto = sd.stats.Hypergeometric(total=45, successes=6, draws=6)
+>>> lotto.pmf(6)
+1.2277380399898834e-07
+>>> 1 / lotto.pmf(6)
+8145060.0
+>>> lotto.pmf(sd.arange(0.0, 7.0))
+array([   0.40056463672459136,     0.4241272624142732,
+          0.15147402229081186,    0.02244059589493509,
+        0.0013646308314487555,  2.872907013576327e-05,
+       1.2277380399898834e-07], dtype=float64)
+```
+
+45개 중 당첨 번호 6개를 모두 맞힐 확률은 약 814만분의 1이에요. 하나도 못 맞힐 확률은 약 40%, 하나 맞힐 확률은 약 42%예요.
+
+<Fig caption="Hypergeometric(total=50, successes=20, draws=10)의 확률질량(왼쪽 막대)과 같은 평균의 Binomial(n=10, p=0.4)(오른쪽 막대). 다시 넣지 않으면 가운데로 더 몰려요.">
+  <Plot
+    curves={[
+      { points: hypPmf, label: 'Hypergeometric(50, 20, 10)' },
+      { points: binPmf, label: 'Binomial(10, 0.4)', dashed: true },
+    ]}
+    domain={[-0.5, 10.5]}
+    range={[0, 0.3]}
+    xTicks={[
+      { v: 0, label: '0' },
+      { v: 2, label: '2' },
+      { v: 4, label: '4' },
+      { v: 6, label: '6' },
+      { v: 8, label: '8' },
+      { v: 10, label: '10' },
+    ]}
+    yTicks={[
+      { v: 0.1, label: '0.1' },
+      { v: 0.2, label: '0.2' },
+      { v: 0.3, label: '0.3' },
+    ]}
+  />
+</Fig>
+
+<Reference />
+
+## 만들기와 매개변수
+
+매개변수 셋은 모두 키워드로만 주고, 기본값이 없어요.
+
+| 매개변수 | 뜻 | 정의역 |
+|---|---|---|
+| `total` | 상자 속 전체 개수 $N$ | 0 이상의 정수 |
+| `successes` | 그중 성공(빨간 공)의 개수 $K$ | 0 이상 `total` 이하의 정수 |
+| `draws` | 다시 넣지 않고 꺼내는 개수 $n$ | 0 이상 `total` 이하의 정수 |
+
+이름이 숫자의 역할을 그대로 말해 줘요. 이항 분포의 `n`은 시행 횟수인데, 초기하 분포에서 그에 해당하는 것은 `draws`예요.
+
+```python
+>>> H = sd.stats.Hypergeometric(total=50, successes=20, draws=10)
+>>> H
+Hypergeometric(total=50, successes=20, draws=10)
+>>> H.total, H.successes, H.draws
+(50, 20, 10)
+```
+
+매개변수가 정의역 밖이면 에러 없이 모든 메서드가 NaN이에요. 정수가 아닌 값(`draws=2.5`), `total`보다 큰 `successes`나 `draws`, 음수가 모두 그래요.
+
+```python
+>>> sd.stats.Hypergeometric(total=50, successes=20, draws=2.5).pmf(1)
+nan
+>>> sd.stats.Hypergeometric(total=50, successes=60, draws=10).mean()
+nan
+>>> sd.stats.Hypergeometric(total=0, successes=0, draws=0).pmf(0)
+1.0
+```
+
+마지막 줄처럼 빈 상자에서 0개를 꺼내는 것은 정의역 안이에요. 언제나 0이 나와요.
+
+매개변수에 `sd.ndarray`를 주면 서로 브로드캐스트해서 분포 여러 개를 한 번에 다뤄요. 아래는 상자 크기 셋과 빨간 공 개수 둘의 조합 6개예요.
+
+```python
+>>> X = sd.stats.Hypergeometric(total=sd.asarray([20.0, 50.0, 100.0]),
+...                             successes=sd.asarray([[5.0], [10.0]]), draws=10)
+>>> X.mean()
+array([[2.5, 1.0, 0.5],
+       [5.0, 2.0, 1.0]], dtype=float64)
+>>> X.pmf(2)
+array([[ 0.34829721362229105,  0.20983971757065453,   0.0702188091731538],
+       [0.010960401827274893,    0.336898083144491,  0.20150988480897875]], dtype=float64)
+```
+
+브로드캐스트할 수 없는 모양은 만들 때 `ValueError`이고, 키워드 없이 위치로 주면 `TypeError`예요.
+
+```python
+>>> sd.stats.Hypergeometric(50, 20, 10)
+Traceback (most recent call last):
+  ...
+TypeError: Hypergeometric(): takes 0 positional arguments but 3 were given
+```
+
+## 확률질량과 누적분포
+
+빨간 공을 정확히 $k$개 꺼낼 확률은 "빨간 공 $K$개 중 $k$개를 고르는 방법 수 × 나머지 $N-K$개 중 $n-k$개를 고르는 방법 수"를 "전체 $N$개 중 $n$개를 고르는 방법 수"로 나눈 값이에요.
+
+$$
+P(X = k) = \frac{\binom{K}{k}\binom{N-K}{n-k}}{\binom{N}{n}}
+$$
+
+$k$는 $\max(0,\ n - (N - K))$부터 $\min(n,\ K)$까지예요. 빨간 공이 아닌 공이 $n$개보다 적으면 빨간 공이 적어도 몇 개는 나올 수밖에 없고, 빨간 공보다 많이 꺼낼 수는 없으니까요. `support()`가 이 범위를 돌려줘요.
+
+```python
+>>> small = sd.stats.Hypergeometric(total=10, successes=7, draws=6)
+>>> small.support()
+(3.0, 6.0)
+>>> small.pmf(sd.arange(0.0, 8.0))
+array([                0.0,                 0.0,                 0.0,
+       0.16666666666666666,                 0.5,                 0.3,
+       0.03333333333333333,                 0.0], dtype=float64)
+```
+
+빨간 공이 아닌 공이 3개뿐이라 6개를 꺼내면 빨간 공이 적어도 3개예요.
+
+이산 분포의 메서드는 연속 분포와 이름이 같고, 밀도 `pdf` 대신 확률질량 `pmf`·`logpmf`가 있어요. 정수가 아닌 $k$에서 `pmf`는 0이고, `cdf`·`ccdf`는 그 아래 정수 floor(k)에서의 값이에요. `icdf(p)`는 cdf(k) ≥ p인 가장 작은 정수예요. 자세한 공통 규칙은 [분포의 메서드](/api/stats/methods/)에 있어요.
+
+```python
+>>> H.cdf(4)
+0.6450268898822081
+>>> H.cdf(4.7)
+0.6450268898822081
+>>> H.pmf(4.7)
+0.0
+>>> H.ccdf(4)
+0.3549731101177919
+>>> H.icdf(0.5)
+4.0
+>>> H.iccdf(0.05)
+6.0
+```
+
+`ccdf(4)`는 P(X > 4)예요. `iccdf(0.05)`는 P(X > k) ≤ 0.05인 가장 작은 k라서, "빨간 공이 6개를 넘을 확률은 5% 이하"라는 뜻이에요. 분위수는 언제나 정수 값을 담은 float64예요.
+
+<Fig caption="Hypergeometric(total=50, successes=20, draws=10)과 Binomial(n=10, p=0.4)의 누적분포. 정수마다 한 칸씩 오르는 계단이고, 정수 사이에서는 평평해요.">
+  <Plot
+    curves={[
+      { points: hypCdf, label: 'Hypergeometric(50, 20, 10)' },
+      { points: binCdf, label: 'Binomial(10, 0.4)', dashed: true },
+    ]}
+    domain={[-1, 11]}
+    range={[0, 1]}
+    xTicks={[
+      { v: 0, label: '0' },
+      { v: 2, label: '2' },
+      { v: 4, label: '4' },
+      { v: 6, label: '6' },
+      { v: 8, label: '8' },
+      { v: 10, label: '10' },
+    ]}
+    yTicks={[
+      { v: 0.25, label: '0.25' },
+      { v: 0.5, label: '0.5' },
+      { v: 0.75, label: '0.75' },
+      { v: 1, label: '1' },
+    ]}
+  />
+</Fig>
+
+확률이 아주 작으면 `pmf`가 float64로 나타낼 수 있는 범위 아래로 내려가 0이 되지만, `logpmf`와 `logcdf`는 값이 있어요. 2000개 중 절반이 빨간 공일 때 1000개를 꺼내서 빨간 공이 하나도 없을 확률은 $e^{-1382}$ 정도예요.
+
+```python
+>>> big = sd.stats.Hypergeometric(total=2000, successes=1000, draws=1000)
+>>> big.pmf(0)
+0.0
+>>> big.logpmf(0)
+-1382.2679935374802
+>>> big.logcdf(100)
+-738.4290273129117
+```
+
+## 요약값
+
+$N$, $K$, $n$으로 쓰면 평균과 분산은 이래요.
+
+$$
+\mathrm{E}[X] = n\frac{K}{N}, \qquad
+\mathrm{Var}[X] = n\frac{K}{N}\left(1 - \frac{K}{N}\right)\frac{N - n}{N - 1}
+$$
+
+분산의 마지막 인수 $(N-n)/(N-1)$은 **유한 모집단 보정**이에요. 같은 성공률 $K/N$의 이항 분포보다 분산이 이만큼 작아요. 다시 넣지 않으면 꺼낼수록 상자의 구성이 드러나서 결과가 덜 흩어지기 때문이에요. 다 꺼내면($n = N$) 분산이 0이에요.
+
+```python
+>>> H.mean()
+4.0
+>>> H.variance()
+1.9591836734693877
+>>> sd.stats.Binomial(n=10, p=0.4).variance() * 40 / 49
+1.9591836734693877
+>>> H.standard_deviation()
+1.3997084244475304
+>>> H.skewness()
+0.08930431353897003
+>>> H.kurtosis()
+-0.13162123226950354
+```
+
+`kurtosis()`는 정규분포를 0으로 둔 초과 첨도예요. 왜도는 $N = 2K$이거나 $N = 2n$이면 정확히 0이에요.
+
+중앙값은 `icdf(0.5)`이고, 최빈값은 확률이 가장 큰 $k$예요. 그런 $k$가 둘이면 하나로 정할 수 없어서 NaN이에요.
+
+```python
+>>> H.median(), H.mode()
+(4.0, 4.0)
+>>> tie = sd.stats.Hypergeometric(total=10, successes=5, draws=5)
+>>> tie.pmf(sd.asarray([2.0, 3.0]))
+array([0.3968253968253968, 0.3968253968253968], dtype=float64)
+>>> tie.mode()
+nan
+>>> H.entropy()
+1.7538238792584562
+```
+
+`entropy()`는 $-\sum_k P(X=k)\log P(X=k)$이고 단위는 nat이에요.
+
+## 표본
+
+`sample`은 `rng`를 꼭 받아요. 결과는 정수 값을 담은 float64예요. 표본의 공통 규칙은 [표본 뽑기](/api/stats/sample/)에 있어요.
+
+```python
+>>> rng = sd.random.default_rng(7)
+>>> H.sample((8,), rng=rng)
+array([5.0, 3.0, 1.0, 5.0, 3.0, 3.0, 3.0, 4.0], dtype=float64)
+```
+
+표준편차가 65536을 넘거나 `total`이 $2^{53}$ 이상이면 정해진 시간 안에 뽑을 수 없어서 NaN이에요.
+
+```python
+>>> huge = sd.stats.Hypergeometric(total=1e12, successes=5e11, draws=5e11)
+>>> huge.standard_deviation()
+250000.000000125
+>>> huge.sample((2,), rng=rng)
+array([nan, nan], dtype=float64)
+```
+
+## 다른 분포와의 관계
+
+**성공과 꺼냄은 자리를 바꿔도 같아요.** `successes`와 `draws`를 바꾼 분포는 같은 분포예요. "빨간 공 7개가 있는 상자에서 12개를 꺼냄"과 "꺼낼 12개를 먼저 표시해 두고 빨간 공 7개를 고름"은 같은 일을 다른 쪽에서 본 것이기 때문이에요.
+
+```python
+>>> a = sd.stats.Hypergeometric(total=20, successes=7, draws=12)
+>>> b = sd.stats.Hypergeometric(total=20, successes=12, draws=7)
+>>> a.pmf(sd.arange(0.0, 8.0))
+array([0.00010319917440660474,     0.0043343653250774,
+          0.04767801857585139,    0.19865841073271415,
+          0.35758513931888547,    0.28606811145510835,
+          0.09535603715170278,    0.01021671826625387], dtype=float64)
+>>> b.pmf(sd.arange(0.0, 8.0))
+array([0.00010319917440660474,     0.0043343653250774,
+          0.04767801857585139,    0.19865841073271415,
+          0.35758513931888547,    0.28606811145510835,
+          0.09535603715170278,    0.01021671826625387], dtype=float64)
+```
+
+**상자가 아주 크면 이항 분포에 가까워져요.** 몇 개 꺼내도 상자의 구성이 거의 바뀌지 않아서, 다시 넣는 것과 다를 바 없어지기 때문이에요. 성공률 $p = K/N$인 `Binomial(n=draws, p=K/N)`과 비교해 보면 상자가 클수록 가까워져요.
+
+```python
+>>> sd.stats.Hypergeometric(total=1000, successes=50, draws=20).pmf(0)
+0.3548708554577291
+>>> sd.stats.Hypergeometric(total=100000, successes=5000, draws=20).pmf(0)
+0.35845007082547486
+>>> sd.stats.Binomial(n=20, p=0.05).pmf(0)
+0.3584859224085422
+```
+
+꺼내는 개수가 상자의 몇 퍼센트를 넘으면 이항 분포로 어림하지 않는 것이 좋아요. 위의 그림처럼 50개 중 10개를 꺼내면 분산이 이항 분포의 82% 정도예요.
+
+## 정확도와 범위
+
+`total`이 3000 이하이면 모든 메서드가 참값과 상대 1e-14 안에서 맞아요(`logpmf`는 상대, `entropy`는 $10^{-14}\cdot\max(1, |값|)$ 안). 꼬리 확률도 상대 정확도라서 `ccdf`가 1e-300처럼 작아도 앞자리가 맞아요. 분위수는 목표 확률을 상대 1e-14 안에서 움직였을 때 나올 수 있는 정확한 답 중 하나예요.
+
+그보다 큰 `total`도 값을 계산하지만 그 정확도는 보장하지 않아요. 아주 크면 구할 수 없는 값은 NaN이에요.
+
+- `total`이 $2^{52}$을 넘으면 확률과 분위수가 NaN이에요.
+- `kurtosis()`는 `total`이 $2^{24}$을 넘으면 NaN이에요.
+`total`이 $2^{52}$ 이하이면 표준편차가 수십만인 넓은 분포에서도 `cdf` 계열과 분위수가 값이에요.
+
+```python
+>>> huge.cdf(2.5e11), huge.icdf(0.5)
+(0.5000007978845599, 250000000000.0)
+>>> sd.stats.Hypergeometric(total=2.0**53, successes=10, draws=10).pmf(0)
+nan
+```
+
+구현은 [이산 분포의 수치 기법](/internals/stats/discrete/)에 있어요.
+
+## scipy를 아는 분께
+
+scipy의 `hypergeom(M, n, N)`과 같은 분포이고, 이름만 달라요. 순서도 같아요.
+
+| scipy | stardust | 뜻 |
+|---|---|---|
+| `M` | `total` | 전체 개수 |
+| `n` | `successes` | 성공의 개수 |
+| `N` | `draws` | 꺼내는 개수 |
+
+scipy의 `n`이 시행 횟수가 아니라 성공의 개수라서 헷갈리기 쉬운데, stardust는 이름으로 구별해요.
+
+```python
+>>> import scipy.stats
+>>> float(scipy.stats.hypergeom(20, 7, 12).pmf(4))
+0.3575851393188855
+>>> sd.stats.Hypergeometric(total=20, successes=7, draws=12).pmf(4)
+0.35758513931888547
+```
+
+정확한 값은 231/646이고, stardust의 값은 그 값을 가장 가까운 float64로 반올림한 값이에요. scipy의 값은 마지막 자리가 하나 달라요.
+
+- 매개변수는 키워드로만 받아요. `Hypergeometric(20, 7, 12)`는 `TypeError`예요.
+- `ppf`·`isf`는 `icdf`·`iccdf`, `sf`·`logsf`는 `ccdf`·`logccdf`예요. 분위수의 정의(cdf(k) ≥ p인 가장 작은 k)는 scipy와 같아요.
+- scipy에는 없는 `mode()`가 있어요. 최빈값이 둘이면 NaN이에요.
+- 매개변수가 Python 숫자면 결과도 Python `float`예요(scipy는 `numpy.float64`).

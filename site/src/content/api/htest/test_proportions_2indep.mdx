@@ -1,0 +1,231 @@
+---
+kind: function
+title: test_proportions_2indep
+names: [test_proportions_2indep]
+group: 비율과 이항
+order: 5
+signatures:
+  - "sd.htest.test_proportions_2indep(count1, nobs1, count2, nobs2, /, *, value=None, method=None, compare='diff', alternative='two-sided', correction=True)"
+summary: 서로 독립인 두 집단의 비율을 차(p₁ − p₂), 비(p₁/p₂), 오즈비 중 하나로 견주는 검정이에요. Wald 꼴, 조정한 Wald 꼴, 점수 검정(Miettinen–Nurminen)을 고를 수 있고, 귀무가설의 값을 0이나 1이 아닌 값으로도 둘 수 있어요.
+params:
+  - name: count1
+    type: int, 정수 값의 배열, 시퀀스
+    kind: positional-only
+    desc: 첫째 집단의 성공 횟수. 네 개수는 서로 브로드캐스트해요.
+  - name: nobs1
+    type: int, 정수 값의 배열, 시퀀스
+    kind: positional-only
+    desc: 첫째 집단의 시도 횟수.
+  - name: count2
+    type: int, 정수 값의 배열, 시퀀스
+    kind: positional-only
+    desc: 둘째 집단의 성공 횟수.
+  - name: nobs2
+    type: int, 정수 값의 배열, 시퀀스
+    kind: positional-only
+    desc: 둘째 집단의 시도 횟수.
+  - name: value
+    type: float 또는 None
+    kind: keyword-only
+    desc: 귀무가설의 값. None이면 차는 0, 비와 오즈비는 1이에요. 차는 (−1, 1), 비와 오즈비는 (0, ∞) 안이어야 해요.
+  - name: method
+    type: str 또는 None
+    kind: keyword-only
+    desc: "None이면 compare마다의 기본값이에요(차 'agresti-caffo', 비 'log-adjusted', 오즈비 'logit-adjusted'). 차는 'wald', 'agresti-caffo', 'score', 비는 'log', 'log-adjusted', 'score', 오즈비는 'logit', 'logit-adjusted', 'logit-smoothed', 'score'예요."
+  - name: compare
+    type: str
+    kind: keyword-only
+    desc: "'diff'(기본값, p₁ − p₂), 'ratio'(p₁/p₂), 'odds-ratio' 중 하나예요."
+  - name: alternative
+    type: str
+    kind: keyword-only
+    desc: "'two-sided'(기본값), 'less'(차·비·오즈비가 value보다 작음), 'greater'(큼) 중 하나예요."
+  - name: correction
+    type: bool
+    kind: keyword-only
+    desc: 점수 검정의 분산에 N/(N − 1)을 곱할지(N = nobs1 + nobs2). 기본값 True예요. 점수 검정에만 쓰여요.
+returns:
+  type: TestProportions2indepResult
+  desc: "statistic(z), pvalue, compare, method(실제로 쓴 방법), diff, ratio, odds_ratio(표본의 값), variance(통계량의 분모에 쓴 분산), alternative, value와, method='score'일 때 prop1_null·prop2_null(귀무가설 아래의 두 비율)이 있어요. (statistic, pvalue)로 풀려요."
+raises:
+  - type: TypeError
+    desc: 개수가 배열로 바꿀 수 없을 때, value가 수가 아닐 때, correction이 bool이 아닐 때, 문자열 옵션이 문자열이 아닐 때, 없는 키워드를 줬을 때.
+  - type: ValueError
+    desc: 개수가 음이 아닌 정수 값이 아닐 때, count가 nobs보다 클 때, 브로드캐스트되지 않을 때, compare·method·alternative 이름이 틀렸거나 그 compare에 없는 method일 때, value가 범위 밖일 때.
+seeAlso: [confint_proportions_2indep, proportions_ztest, fisher_exact, odds_ratio, relative_risk, basics, results]
+---
+
+## 무엇을 묻는 검정인가요
+
+신약을 받은 100명 중 45명, 위약을 받은 90명 중 30명이 나았어요. 두 비율 p₁ = 0.45, p₂ = 0.333을 견주는 방법은 셋이에요.
+
+| compare | 크기 | 귀무가설의 기본값 | 읽는 법 |
+|---|---|---|---|
+| `'diff'` | p₁ − p₂ | 0 | 나은 사람의 비율이 몇 %p 다른가 |
+| `'ratio'` | p₁/p₂ (상대위험) | 1 | 나을 확률이 몇 배인가 |
+| `'odds-ratio'` | (p₁/(1 − p₁)) / (p₂/(1 − p₂)) | 1 | 나을 오즈가 몇 배인가 |
+
+귀무가설은 그 크기가 `value`라는 것이에요. `value`를 기본값으로 두면 세 비교 모두 "두 비율이 같다"는 같은 가설이에요. 0.1의 차, 1.5배의 비처럼 다른 값을 두면 "효과가 적어도 이만큼인가"를 물을 수 있어요.
+
+<Reference />
+
+## 기본 사용
+
+```python
+>>> r = sd.htest.test_proportions_2indep(45, 100, 30, 90)
+>>> r
+TestProportions2indepResult(statistic=1.6363, pvalue=0.101777, compare='diff', method='agresti-caffo', diff=0.116667, ratio=1.35, odds_ratio=1.63636, variance=0.00485587, alternative='two-sided', value=0)
+>>> z, p = r
+```
+
+차는 0.117(11.7%p)이고 양쪽 p값은 0.10이에요. 결과에는 비교와 상관없이 표본의 차, 비, 오즈비가 모두 들어 있어요.
+
+```python
+>>> r.diff, r.ratio, r.odds_ratio
+(0.11666666666666667, 1.35, 1.6363636363636365)
+```
+
+`summary()`는 이 값들을 머리에 모아 보여 줘요.
+
+```python
+>>> print(r.summary())
+                     Test of two independent proportions
+==============================================================================
+Statistic:                       1.636  Compare:                          diff
+P-value:                         0.102  Method:                  agresti-caffo
+Diff:                           0.1167  Alternative:                 two-sided
+Ratio:                           1.350  No. Observations:              100, 90
+Odds ratio:                      1.636
+Variance:                     0.004856
+Value:                           0.000
+==============================================================================
+```
+
+## 방법
+
+`method`는 통계량의 분모(분산)를 어떻게 정하는지와, 개수를 조금 고쳐 쓰는지를 정해요.
+
+| compare | method | 통계량 |
+|---|---|---|
+| 차 | `'wald'` | (q₁ − q₂ − v)/√(q₁(1 − q₁)/n₁ + q₂(1 − q₂)/n₂). 표본 비율의 분산을 그대로 써요 |
+| 차 | `'agresti-caffo'`(기본값) | 두 집단에 성공과 실패를 하나씩 더한 비율로 만든 Wald 꼴이에요. 작은 표본에서 Wald보다 나아요 |
+| 차 | `'score'` | Miettinen–Nurminen 점수 검정. 귀무가설(차 = v)을 만족하는 두 비율 가운데 가능도가 가장 큰 것으로 분산을 만들어요 |
+| 비 | `'log'` | log(q₁/q₂) − log v를 델타 방법의 표준오차로 나눠요 |
+| 비 | `'log-adjusted'`(기본값) | 두 집단의 성공 횟수와 시도 횟수에 ½씩 더해 같은 꼴로 계산해요. 0인 개수에서도 값이 나와요 |
+| 비 | `'score'` | 점수 검정(비 = v 아래의 최우추정) |
+| 오즈비 | `'logit'` | log 오즈비를 Woolf의 표준오차로 나눠요 |
+| 오즈비 | `'logit-adjusted'`(기본값) | 네 칸에 ½씩 더한 Woolf 꼴이에요 |
+| 오즈비 | `'logit-smoothed'` | 관측 2개를 두 비율이 같을 때의 칸 확률에 비례하게 네 칸에 나눠 더한 Woolf 꼴이에요 |
+| 오즈비 | `'score'` | 점수 검정(오즈비 = v 아래의 최우추정) |
+
+```python
+>>> for cmp, ms in [('diff', ['wald', 'agresti-caffo', 'score']),
+...                 ('ratio', ['log', 'log-adjusted', 'score']),
+...                 ('odds-ratio', ['logit', 'logit-adjusted', 'logit-smoothed', 'score'])]:
+...     for m in ms:
+...         t = sd.htest.test_proportions_2indep(45, 100, 30, 90, compare=cmp, method=m)
+...         print(f"{cmp:11s}{m:16s}{t.statistic:8.4f}{t.pvalue:8.4f}")
+diff       wald              1.6592  0.0971
+diff       agresti-caffo     1.6363  0.1018
+diff       score             1.6384  0.1013
+ratio      log               1.6170  0.1059
+ratio      log-adjusted      1.6064  0.1082
+ratio      score             1.6384  0.1013
+odds-ratio logit             1.6379  0.1014
+odds-ratio logit-adjusted    1.6271  0.1037
+odds-ratio logit-smoothed    1.6295  0.1032
+odds-ratio score             1.6384  0.1013
+```
+
+방법마다 값이 조금씩 달라요. 귀무가설이 "두 비율이 같다"이면 세 점수 검정은 같은 값이에요(귀무가설 아래의 두 비율이 똑같이 합친 비율이 되기 때문이에요).
+
+어느 것을 고를지 모르겠으면 점수 검정이 좋은 선택이에요. 작은 표본에서도 제1종 오류율이 명목 수준에 가깝고, [confint_proportions_2indep](/api/htest/confint_proportions_2indep/)의 점수 구간과 판정이 맞아요.
+
+## 점수 검정과 귀무가설 아래의 비율
+
+`method='score'`이면 결과에 `prop1_null`, `prop2_null`이 더 있어요. 귀무가설(차·비·오즈비 = v)을 만족하면서 자료의 가능도가 가장 큰 두 비율이에요.
+
+```python
+>>> s = sd.htest.test_proportions_2indep(45, 100, 30, 90, value=0.1, method='score', alternative='less')
+>>> s.prop1_null, s.prop2_null
+(0.4417227002994199, 0.34172270029941987)
+>>> s.statistic, s.pvalue
+(0.23589730140864484, 0.5932438188346156)
+```
+
+두 값의 차가 정확히 v = 0.1이에요. 다른 방법에는 이 필드가 없어서 `hasattr()`로 알 수 있어요.
+
+```python
+>>> hasattr(r, 'prop1_null')
+False
+```
+
+`correction=True`(기본값)는 점수 검정의 분산에 N/(N − 1)을 곱해요(Miettinen–Nurminen의 보정). 보정이 없으면 Farrington–Manning의 검정이에요.
+
+## 0이 아닌 귀무값과 한쪽 검정
+
+"신약의 나을 확률이 위약의 1.2배보다 큰가"는 이렇게 물어요.
+
+```python
+>>> sd.htest.test_proportions_2indep(45, 100, 30, 90, compare='ratio', value=1.2, alternative='greater').pvalue
+0.2695496753174341
+```
+
+비는 1.35이지만 1.2보다 크다고 말하기엔 자료가 부족해요.
+
+## 여러 검정을 한 번에
+
+네 개수는 서로 브로드캐스트하고, 결과의 수 필드는 그 모양이에요.
+
+```python
+>>> rb = sd.htest.test_proportions_2indep([45, 20], [100, 50], [30, 25], [90, 50])
+>>> rb.statistic, rb.diff
+(array([ 1.6362981086150152, -0.9897743952178126], dtype=float64), array([0.11666666666666667,                -0.1], dtype=float64))
+```
+
+## 0인 개수
+
+Wald 꼴의 비와 오즈비는 0인 개수에서 log 0 = −∞가 나와요. 그때 분산은 ∞이고 통계량과 p값은 NaN이에요. 조정한 방법(`'log-adjusted'`, `'logit-adjusted'`)과 점수 검정은 값을 줘요.
+
+```python
+>>> t = sd.htest.test_proportions_2indep(0, 10, 3, 10, compare='ratio', method='log')
+>>> t.ratio, t.variance, t.pvalue
+(0.0, inf, nan)
+>>> sd.htest.test_proportions_2indep(0, 10, 3, 10, compare='ratio').pvalue
+0.17884149663130378
+```
+
+## 입력과 에러
+
+```python
+>>> sd.htest.test_proportions_2indep(45, 100, 30, 90, compare='or')
+Traceback (most recent call last):
+    ...
+ValueError: test_proportions_2indep(): 'compare' must be 'diff', 'ratio' or 'odds-ratio', not 'or'
+>>> sd.htest.test_proportions_2indep(45, 100, 30, 90, compare='ratio', method='wald')
+Traceback (most recent call last):
+    ...
+ValueError: test_proportions_2indep(): 'method' must be 'log', 'log-adjusted' or 'score', not 'wald'
+>>> sd.htest.test_proportions_2indep(45, 100, 30, 90, value=1.0)
+Traceback (most recent call last):
+    ...
+ValueError: test_proportions_2indep(): 'value' must be between -1 and 1 (exclusive) for compare='diff'
+```
+
+## 정확도
+
+통계량, 분산, 표본의 차·비·오즈비, 귀무가설 아래의 비율은 Arb(구간 산술)와 정확한 유리수로 만든 참값과 상대 3.5e-16 안이에요. p값은 상대 1.7e-15 안이에요(계약 대비 0.012). 차의 점수 검정은 귀무가설 아래의 비율을 가능도의 정확한 최댓값으로 찾아요.
+
+## statsmodels를 아는 분께
+
+- `alternative`는 `'greater'`·`'less'`예요(`'larger'`·`'smaller'`가 아니에요). `compare`의 `'or'`은 받지 않고 `'odds-ratio'`만이에요.
+- `return_results`가 없어요. 언제나 결과 객체이고 `(statistic, pvalue)`로 풀려요. 필드 이름은 statsmodels의 것이에요.
+- 기본 방법은 statsmodels 0.15.0의 기본값으로 고정되어 있어요.
+- **차의 점수 검정에서 귀무값이 0이 아니면 statsmodels와 값이 달라요.** statsmodels 0.15.0은 귀무가설 아래의 비율을 구하는 삼차식이 틀려서, 그 비율이 가능도의 최댓값이 아니에요. 여기서는 참 최댓값을 써요.
+
+```python
+>>> from statsmodels.stats.proportion import test_proportions_2indep as sm_test
+>>> m = sm_test(45, 100, 30, 90, value=0.1, method='score')
+>>> round(float(m.statistic), 6), round(sd.htest.test_proportions_2indep(45, 100, 30, 90, value=0.1, method='score').statistic, 6)
+(0.236417, 0.235897)
+```

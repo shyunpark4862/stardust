@@ -1,0 +1,148 @@
+---
+kind: function
+title: boschloo_exact
+names: [boschloo_exact]
+group: 분할표
+order: 4
+signatures:
+  - "sd.htest.boschloo_exact(table, /, *, alternative='two-sided', n=32)"
+summary: 2 × 2 표의 두 열을 두 이항 표본으로 보고 두 성공률이 같은지 보는 Boschloo의 무조건부 정확 검정이에요. Fisher 검정의 p값을 통계량으로 삼아 모르는 공통 성공률에 대해 가장 나쁜 경우를 써요. 한쪽 검정의 p값이 같은 방향의 Fisher p값보다 커지지 않아요.
+params:
+  - name: table
+    type: ndarray, 정수의 중첩 시퀀스, numpy 배열, 또는 frame의 DataFrame
+    kind: positional-only
+    desc: 2 × 2 개수 표. 두 열이 두 표본이고, 첫 행이 성공, 둘째 행이 실패예요. 앞의 축이 있으면 표의 배치예요. 음이 아닌 정수 값이어야 해요.
+  - name: alternative
+    type: str
+    kind: keyword-only
+    desc: "대립가설. 'two-sided'(기본값), 'less'(첫 열의 성공률이 작다), 'greater'(첫 열의 성공률이 크다) 중 하나예요."
+  - name: n
+    type: int
+    kind: keyword-only
+    desc: 가장 나쁜 공통 성공률을 찾을 때 처음 나누는 격자의 크기(1 이상). 결과의 p값은 n과 상관없이 같아요.
+returns:
+  type: BoschlooExactResult
+  desc: "statistic(관측 표의 한쪽 Fisher p값)과 pvalue를 가진 결과 객체. 튜플로 풀리지 않아요. 배치면 배치 모양의 배열이에요."
+raises:
+  - type: TypeError
+    desc: table이 배열·수의 시퀀스·frame이 아닐 때, n이 int가 아닐 때, 없는 인자(pooled 등)를 줬을 때.
+  - type: ValueError
+    desc: "표가 2 × 2가 아닐 때, 음수·정수가 아닌 값·NaN이 있을 때, n이 1보다 작을 때, alternative 이름이 틀렸을 때."
+seeAlso: [barnard_exact, fisher_exact, chi2_contingency, basics, results]
+---
+## 무엇을 묻는 검정인가요
+
+[`barnard_exact`](/api/htest/barnard_exact/)와 같은 질문이에요. 크기를 정해 둔 두 집단에서 성공을 세었을 때, 두 성공률이 같을까요?
+
+- **귀무가설**: 두 열의 성공률이 같아요($\pi_1 = \pi_2$).
+- **대립가설**: 다르다(기본값), 또는 `alternative`로 첫 열이 낮다(`'less'`)나 높다(`'greater'`)예요.
+
+두 무조건부 검정은 "관측과 같거나 더 극단인 표"를 무엇으로 정하는지만 달라요.
+
+- Barnard는 두 비율 차의 Wald 통계량이 큰 표를 극단으로 봐요.
+- **Boschloo**는 [Fisher 정확 검정](/api/htest/fisher_exact/)의 한쪽 p값이 관측 이하인 표를 극단으로 봐요.
+
+그다음은 같아요. 두 열이 같은 성공률 $\pi$의 이항 표본이라고 보고, 극단인 표들의 확률을 더한 값의 가장 큰 값(모든 $\pi$에 대한 최댓값)을 p값으로 써요.
+
+$$
+p = \sup_{0 \le \pi \le 1} \sum_{\text{Fisher p값} \,\le\, \text{관측의 Fisher p값}} \binom{n_1}{x_1}\binom{n_2}{x_2}\,\pi^{x_1+x_2}(1-\pi)^{n_1+n_2-x_1-x_2}
+$$
+
+Fisher의 p값은 열합을 고정해도 유의수준을 지키므로, 어떤 $\pi$에서든 "Fisher p값이 관측 이하"일 확률은 관측의 Fisher p값을 넘지 않아요. 그래서 한쪽 검정에서 Boschloo의 p값은 같은 방향의 Fisher p값보다 커지는 일이 없어요. Fisher 검정을 쓰던 곳에 바꿔 쓰면 유의수준을 지키면서 더 자주 차이를 잡아내요. Barnard와는 표에 따라 어느 쪽이 더 예민한지가 달라요.
+
+<Reference />
+
+## 기본 사용
+
+열이 두 표본이에요.
+
+```python
+>>> import stardust as sd
+>>> table = [[7, 12],
+...          [8, 3]]
+>>> r = sd.htest.boschloo_exact(table)
+>>> r
+BoschlooExactResult(statistic=0.064068, pvalue=0.0682183)
+>>> sd.htest.fisher_exact(table).pvalue
+0.12813593203398302
+```
+
+같은 표의 Fisher p값 0.128보다 훨씬 작은 0.068이에요. 이 표에서는 Barnard와 p값이 같아요.
+
+결과는 튜플로 풀리지 않아요.
+
+```python
+>>> r.statistic, r.pvalue
+(0.06406796601699151, 0.0682183093231946)
+>>> print(r.summary())
+                            Boschloo's exact test
+==============================================================================
+Statistic:                     0.06407  Alternative:                 two-sided
+P-value:                        0.0682
+==============================================================================
+```
+
+## 통계량 읽기
+
+`statistic`은 관측 표의 **한쪽 Fisher p값**이에요. 양쪽 검정이면 두 쪽 가운데 작은 쪽이에요. 이 표에서는 첫 열의 성공률이 낮은 쪽(`'less'`)의 Fisher p값이에요.
+
+```python
+>>> sd.htest.fisher_exact(table, alternative='less').pvalue
+0.06406796601699151
+```
+
+`pvalue`는 이 통계량으로 정한 극단의 무조건부 확률이에요. 한쪽 p값(아래의 0.0341)은 통계량보다 작고, 양쪽 p값은 그 두 배라서 통계량보다 클 수도 있어요. 통계량은 조건부 검정의 p값이니 유의수준에 직접 견주지 않아요.
+
+## `alternative`: 한쪽 검정
+
+```python
+>>> sd.htest.boschloo_exact(table, alternative='less')
+BoschlooExactResult(statistic=0.064068, pvalue=0.0341092)
+>>> sd.htest.boschloo_exact(table, alternative='greater')
+BoschlooExactResult(statistic=0.98953, pvalue=0.977122)
+```
+
+한쪽 검정의 통계량은 그 방향의 Fisher p값이에요. 양쪽 p값은 두 쪽의 무조건부 p값 가운데 작은 쪽의 두 배(1을 넘지 않게)예요.
+
+## `n`과 p값의 정확성
+
+가장 나쁜 $\pi$를 찾는 방법은 [`barnard_exact`](/api/htest/barnard_exact/#n과-p값의-정확성)와 같아요. 구간마다 넘을 수 없는 위 끝을 셈해서 참 최댓값을 상대 $2^{-48}$ 안으로 찾아요. `n`은 처음 격자의 크기일 뿐이에요.
+
+## 배치와 퇴화한 표
+
+앞의 축이 있으면 2 × 2 표의 배치예요.
+
+```python
+>>> B = sd.asarray([[[7, 12], [8, 3]],
+...                 [[2, 9], [8, 1]]])
+>>> sd.htest.boschloo_exact(B).pvalue
+array([   0.0682183093231946, 0.0025768280029296875], dtype=float64)
+```
+
+- 0인 열이 있으면 통계량과 p값이 모두 NaN이에요.
+- 표의 수 $(n_1 + 1)(n_2 + 1)$이 10⁷을 넘으면 p값이 NaN이에요. 통계량은 그대로 내요.
+
+```python
+>>> sd.htest.boschloo_exact([[0, 12], [0, 3]])
+BoschlooExactResult(statistic=nan, pvalue=nan)
+```
+
+에러는 [`barnard_exact`](/api/htest/barnard_exact/#에러)와 같아요. `pooled`는 없어요.
+
+```python
+>>> sd.htest.boschloo_exact([[7, 12, 1], [8, 3, 2]])
+Traceback (most recent call last):
+    ...
+ValueError: boschloo_exact(): 'table' must be a 2 x 2 table, not 2 x 3
+```
+
+## 정확도
+
+표마다의 Fisher p값을 정확한 비로 쌓아 극단인 표를 고르고, 관측과 상대 10⁻¹³ 안인 Fisher p값은 같은 값으로 봐요. 정확한 유리수 계산과 Arb(구간 산술)로 만든 참값에 견주면 11문제(거울 표의 동점, 0인 칸과 열, 꼬리, 한쪽 검정 포함)에서 통계량은 상대오차 8.2e-17 안, p값은 5.8e-16 안이에요.
+
+## scipy를 아는 분께
+
+`scipy.stats.boschloo_exact`와 같은 표의 방향, 같은 통계량, 같은 허용(10⁻¹³)이에요. 다른 점이에요.
+
+- `n`은 처음 격자의 크기일 뿐이에요. scipy의 `n`은 `shgo`의 표본 수라 결과가 `n`에 따라 달라질 수 있고 최댓값을 놓칠 수 있어요. 정확도 측정에서 scipy의 p값은 상대 1.8e-13까지 벗어났어요.
+- 표의 배치가 있어요. 결과는 scipy처럼 튜플로 풀리지 않아요.

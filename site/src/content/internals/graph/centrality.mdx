@@ -1,0 +1,390 @@
+---
+title: PageRank와 매개 중심성
+group: 구조와 중심성
+order: 3
+summary: pagerank가 max_iter 없이 멈추는 증명된 사후 한계와 사전 횟수, 걸음 하나의 반올림 수 K를 세는 법, 스레드 수와 무관한 합의 나무를 설명해요. betweenness_centrality는 최단 경로 정의 위의 DAG, 흡수된 같은 거리의 순서, 경로 수가 double을 넘을 때의 다시 세기, 원점 태스크의 부분합을 정한 순서로 더하는 법을 코드를 따라 봐요.
+seeAlso: [structure, ordering, shortest-paths, accuracy-performance]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+export const prErr = [[1, -0.457], [2, -0.528], [3, -0.786], [4, -1.157], [5, -1.341], [6, -1.412], [7, -1.67], [8, -2.042], [9, -2.226], [10, -2.296], [11, -2.555], [12, -2.926], [13, -3.11], [14, -3.181], [15, -3.439], [16, -3.811], [17, -3.994], [18, -4.065], [19, -4.323], [20, -4.695], [21, -4.879], [22, -4.949], [23, -5.208], [24, -5.579], [25, -5.763], [26, -5.834], [27, -6.092], [28, -6.464], [29, -6.648], [30, -6.718], [31, -6.976], [32, -7.348], [33, -7.532], [34, -7.603], [35, -7.861], [36, -8.232], [37, -8.416], [38, -8.487], [39, -8.745], [40, -9.117], [41, -9.301], [42, -9.371], [43, -9.63], [44, -10.001], [45, -10.185], [46, -10.256], [47, -10.514], [48, -10.886], [49, -11.07], [50, -11.14], [51, -11.398], [52, -11.77], [53, -11.954], [54, -12.024], [55, -12.283], [56, -12.654], [57, -12.838], [58, -12.909], [59, -13.167], [60, -13.537], [61, -13.72], [62, -13.789], [63, -14.05], [64, -14.422], [65, -14.601], [66, -14.686], [67, -14.882], [68, -15.272], [69, -15.591], [70, -15.469], [71, -15.928], [72, -15.928]];
+export const prBound = [[1, 0.558], [2, 0.487], [3, 0.417], [4, 0.045], [5, -0.327], [6, -0.397], [7, -0.468], [8, -0.839], [9, -1.211], [10, -1.282], [11, -1.352], [12, -1.724], [13, -2.095], [14, -2.166], [15, -2.237], [16, -2.608], [17, -2.98], [18, -3.05], [19, -3.121], [20, -3.493], [21, -3.864], [22, -3.935], [23, -4.005], [24, -4.377], [25, -4.748], [26, -4.819], [27, -4.89], [28, -5.261], [29, -5.633], [30, -5.703], [31, -5.774], [32, -6.146], [33, -6.517], [34, -6.588], [35, -6.658], [36, -7.03], [37, -7.402], [38, -7.472], [39, -7.543], [40, -7.914], [41, -8.286], [42, -8.357], [43, -8.427], [44, -8.799], [45, -9.17], [46, -9.241], [47, -9.312], [48, -9.683], [49, -10.055], [50, -10.125], [51, -10.196], [52, -10.568], [53, -10.939], [54, -11.01], [55, -11.08], [56, -11.452], [57, -11.824], [58, -11.894], [59, -11.965], [60, -12.336], [61, -12.707], [62, -12.776], [63, -12.846], [64, -13.218], [65, -13.583], [66, -13.657], [67, -13.721], [68, -14.04], [69, -14.423], [70, -14.573], [71, -14.599], [72, -14.9]];
+
+## 한눈에 보기
+
+두 함수 모두 `csrc/graph/centrality.cpp`에 있고, 파이썬 층(`src/stardust/graph/_centrality.py`)은 무게의 검사(유한, PageRank는 음이 아닌 수, 매개 중심성은 양수)와 분포 인자의 검사만 해요.
+
+| 함수 | 계산 | 결정성의 근거 |
+|---|---|---|
+| [`pagerank`](/api/graph/pagerank/) | $x = \alpha P^{\mathsf T}x + (1 - \alpha)v$의 반복 | 행 하나의 합이 정해진 나무이고, 벡터 합은 같은 나무를 고정된 잎으로 자른 것 |
+| [`betweenness_centrality`](/api/graph/betweenness_centrality/) | 원점마다의 Brandes | 원점 태스크의 크기가 $n$으로만 정해지고, 부분합을 태스크 번호 순서로 더함 |
+
+두 함수 모두 결과가 스레드 수와 무관해요. 같은 입력이면 1스레드와 10스레드가 같은 바이트를 내요.
+
+## PageRank
+
+전이 행렬 $P$는 행마다 나가는 무게로 나눈 것이에요. 나가는 무게가 0인 행(매달린 노드)은 `dangling` 분포 $q$로 바꿔요. 그러면 $P$의 행 합은 모두 1이고, 반복의 사상
+$$
+T(x) = \alpha P^{\mathsf T}x + (1 - \alpha)v
+$$
+는 $\ell_1$에서 비율 $\alpha$의 축소 사상이에요. 두 확률 벡터의 차 $x - y$에 대해 $P^{\mathsf T}$의 열 합이 1이고 원소가 음이 아니라 $\lVert P^{\mathsf T}(x - y) \rVert_1 \le \lVert x - y \rVert_1$이기 때문이에요. 그래서 고정점 $x^*$가 하나 있고, 반복은 거기로 기하급수적으로 다가가요.
+
+### 멈춤: 증명된 사후 한계
+
+계산한 반복을 $\hat x_{k+1} = T(\hat x_k) + e_k$, $\lVert e_k \rVert_1 \le \varepsilon$으로 적어요. 그러면
+$$
+\lVert \hat x_{k+1} - x^* \rVert \le \alpha \lVert \hat x_k - x^* \rVert + \varepsilon \le \alpha\bigl(\lVert \hat x_k - \hat x_{k+1} \rVert + \lVert \hat x_{k+1} - x^* \rVert\bigr) + \varepsilon
+$$
+이고, 정리하면
+$$
+\lVert \hat x_{k+1} - x^* \rVert_1 \le \frac{\alpha \lVert \hat x_{k+1} - \hat x_k \rVert_1 + \varepsilon}{1 - \alpha}
+$$
+예요. 오른쪽은 반복하는 동안 계산할 수 있는 값이에요. 이것이 `tol` 이하가 되면 멈춰요. 연속한 두 반복의 차만 보고 멈추는 흔한 방법과 달리, 멈췄을 때 해까지의 거리가 증명돼요.
+
+```cpp
+            // csrc/graph/centrality.cpp
+            const double delta = tree_sum(n, [&](int64_t i) { return std::fabs(nxt[i] - cur[i]); }, split);
+            const double total = tree_sum(n, [&](int64_t i) { return nxt[i]; }, split);
+            std::swap(cur, nxt);
+            iterations = it;
+            // eps >= gamma_K ||T(x_k)||, ||T(x_k)|| <= total (1 + gamma_hn) / (1 - gamma_K); the exact l1
+            // distance <= delta (1 + gamma_hn) / (1 - u).
+            const double eps = gK * total * (1.0 + gamma(hn)) / (1.0 - gK);
+            const double dist = delta * (1.0 + gamma(hn)) / (1.0 - kU);
+            if ((alpha * dist + eps) * margin <= tol * beta || it >= kmax) break;
+```
+
+- `delta`는 계산한 $\ell_1$ 차이고, 합 자체의 반올림을 덮으려고 $(1 + \gamma_{h_n})/(1 - u)$를 곱해 정확한 차의 위쪽 한계 `dist`로 만들어요. $h_n$은 길이 $n$의 합의 나무 깊이예요.
+- $\varepsilon$은 걸음 하나의 반올림이에요. 아래에서 셀 $K$로 원소마다 상대오차가 $\gamma_K$ 안이니 $\lVert e_k \rVert_1 \le \gamma_K \lVert T(\hat x_k) \rVert_1$이고, $\lVert T(\hat x_k) \rVert_1$은 계산한 합 `total`로 위에서 눌러요.
+- 판정식 자체의 반올림은 `margin`($1 + 2^{-40}$)이 덮어요.
+
+### 사전 횟수, 그리고 max_iter가 없는 까닭
+
+`tol`이 걸음의 반올림보다 작으면 사후 한계가 `tol` 아래로 내려가지 않을 수 있어요. 그래서 반복 횟수의 상한을 미리 정해 둬요.
+
+```cpp
+        // csrc/graph/centrality.cpp
+        // The a priori count: ||x_k - x*|| <= 2 alpha^k + eps / (1 - alpha), so 2 alpha^k <= tol is enough.
+        int64_t kmax = 1;
+        if (alpha > 0.0) {
+            const double k = std::ceil((std::log(tol) - std::log(2.0)) / std::log(alpha)) + 1.0;
+            kmax = k > 1.0 ? (k < 9.0e15 ? static_cast<int64_t>(k) : int64_t{9000000000000000}) : 1;
+        }
+```
+
+처음 값이 $v$이고 $v$와 $x^*$가 모두 확률 벡터라 $\lVert \hat x_0 - x^* \rVert_1 \le 2$예요. 그러면 $\lVert \hat x_k - x^* \rVert_1 \le 2\alpha^k + \varepsilon/(1 - \alpha)$이고, $2\alpha^k \le$ `tol`이 되는 $k = \lceil \log(\mathtt{tol}/2)/\log\alpha \rceil + 1$에서 멈추면 결과가
+$$
+\lVert \hat x - x^* \rVert_1 \le \mathtt{tol} + F, \qquad F = \frac{\gamma_K\,(1 + 10^{-9})}{1 - \alpha}
+$$
+안이에요. $1 + 10^{-9}$는 걸음 결과의 노름이 1과 반올림만큼 다른 것을 덮어요. 기본값 $\alpha = 0.85$, `tol` $= 10^{-12}$에서 사전 횟수는 176이고, 보통은 사후 한계가 그보다 훨씬 먼저 멈춰요. 어느 경우든 멈춘 결과에 대한 약속이 있으니 따로 `max_iter`가 필요 없어요. $\alpha = 0$이면 한 걸음에 $v$예요.
+
+<Fig caption="본문의 노드 네 개 그래프에서 걸음마다 해까지의 실제 ℓ1 오차(실선)와 계산한 사후 한계 α‖x(k) − x(k−1)‖/(1 − α)(점선, 아주 작은 반올림 항은 뺐어요)의 상용로그. 한계는 언제나 실제 오차 위에 있고, tol = 1e-12(가로선) 아래로 내려가는 걸음에서 멈춰요. 사전 횟수 176보다 훨씬 앞이에요.">
+  <Plot
+    curves={[
+      { points: prErr, label: '실제 오차' },
+      { points: prBound, label: '사후 한계', dashed: true },
+      { points: [[0, -12], [72, -12]], label: 'tol' },
+    ]}
+    domain={[0, 72]}
+    range={[-16, 1]}
+    xTicks={[0, 20, 40, 60].map((v) => ({ v, label: String(v) }))}
+    yTicks={[-15, -12, -9, -6, -3, 0].map((v) => ({ v, label: '1e' + v }))}
+  />
+</Fig>
+
+### 걸음 하나의 반올림 수 K
+
+모든 항이 음이 아니라 상쇄가 없어요. 그러면 항마다 거치는 반올림의 수를 세어 가장 큰 값을 $K$로 두면, 결과의 원소마다 상대오차가 $\gamma_K$ 안이에요. 걸음의 원소 $i$는 $\alpha(s_i + D\,d_i) + c_i$이고, 세 종류의 항이 있어요.
+
+| 항 | 거치는 반올림 |
+|---|---|
+| 행의 항 $P_{ji}\,x_j$ | 무게 있음: 나가는 무게의 합(깊이 $h_{\mathrm{out}}$), 나눗셈, $x_j$를 곱함으로 $h_{\mathrm{out}} + 2$. 무게 없음: $x_j/\deg_j$ 하나. 그다음 행의 합 나무(깊이 $h_{\mathrm{in}}$), $+D\,d_i$, $\times\alpha$, $+c_i$로 셋 |
+| 매달린 항 $D\,d_i$ | 매달린 노드에 걸친 합 $D$(깊이 $h_d$), $d_i = q_i/\sum q$의 합(깊이 $h_n$)과 나눗셈, 곱, 그리고 셋 |
+| 순간이동 항 $c_i$ | $v_i = p_i/\sum p$의 합(깊이 $h_n$)과 나눗셈, $\times(1 - \alpha)$, 그리고 덧셈 |
+
+```cpp
+        // csrc/graph/centrality.cpp
+        const int64_t hn = pairwise_depth(n);
+        const int64_t term = weighted ? depth_out + 2 : 1;
+        const int64_t hd = pairwise_depth(static_cast<int64_t>(dangling.size()));
+        const int64_t K = std::max({term + depth_in + 3, hd + hn + 5, hn + 4});
+        const double gK = gamma(K), margin = 1.0 + 0x1p-40;
+```
+
+깊이는 공용 합 나무의 깊이를 그대로 세요.
+
+```cpp
+// csrc/graph/centrality.cpp
+int64_t pairwise_depth(int64_t m) {
+    if (m <= pairwise::kBlock) {
+        if (m < pairwise::kLanes) return std::max<int64_t>(m - 1, 0);
+        return (m / pairwise::kLanes - 1) + 4 + (m % pairwise::kLanes);
+    }
+    const int64_t a = pairwise::split(m);
+    return 1 + std::max(pairwise_depth(a), pairwise_depth(m - a));
+}
+```
+
+항이 16개보다 적은 잎은 0에서 시작하는 한 사슬이라 첫 덧셈이 정확해 $m - 1$번이에요. 더 긴 잎은 16개 사슬과 그 4단 접기와 꼬리이고, 512개를 넘는 합은 두 쪽으로 나눠 하나를 더해요. 기본 설정에서 $F$는 $(2\text{–}4) \times 10^{-14}$쯤이에요.
+
+### 행의 합과 스레드
+
+$P^{\mathsf T}x$는 전치 CSR의 행 모으기예요. 노드 $i$의 행에 들어오는 항들을 공용 pairwise 나무로 더해요.
+
+```cpp
+            // csrc/graph/centrality.cpp
+            auto block = [&](int64_t t) {
+                for (int64_t i = cut[static_cast<size_t>(t)]; i < cut[static_cast<size_t>(t + 1)]; ++i) {
+                    const int64_t b = in_p[i], m = in_p[i + 1] - b;
+                    double s = 0.0;
+                    if (m < pairwise::kLanes) {  // a short row: the leaf's one chain, written out
+                        if (weighted)
+                            for (int64_t k = b; k < b + m; ++k) s += tw[k] * cur[in_j[k]];
+                        else
+                            for (int64_t k = b; k < b + m; ++k) s += z[static_cast<size_t>(in_j[k])];
+                    } else if (weighted) {
+                        s = pairwise::tree(0, m, [&](int64_t bb, int64_t mm) {
+                            return pairwise::leaf(mm, [&](int64_t q) {
+                                const int64_t k = b + bb + q;
+                                return tw[k] * cur[in_j[k]];
+                            });
+                        });
+                    } else {
+                        s = pairwise::tree(0, m, [&](int64_t bb, int64_t mm) {
+                            return pairwise::leaf(mm, [&](int64_t q) {
+                                return z[static_cast<size_t>(in_j[b + bb + q])];
+                            });
+                        });
+                    }
+                    nxt[i] = alpha * (s + D * d[static_cast<size_t>(i)]) + c[static_cast<size_t>(i)];
+                }
+            };
+            if (split && nblocks > 1) parallel::parallel_for(nblocks, block);
+            else
+                for (int64_t t = 0; t < nblocks; ++t) block(t);
+```
+
+- 행 구간은 패턴으로만 정해요(원소와 행을 합쳐 $2^{15}$개쯤마다 자르기). 행 하나는 언제나 한 태스크가 같은 나무로 더하니, 구간을 어떻게 나누든 비트가 같아요.
+- 매달린 질량 $D$, 걸음의 차, 합계는 `tree_sum`이에요. 풀이 있으면 $2^{16}$항의 잎을 태스크로 나눠 계산한 뒤 같은 나무로 합쳐서, 직렬 나무와 같은 비트를 내요.
+- 무게 있는 전이 확률 $w/\mathrm{out}(j)$는 한 번 계산해 전치의 값 자리에 넣어요. 풀이 있으면 희소 영역의 병렬 전치를 만들어 그 값을 확률로 바꾸고, 한 스레드면 확률을 쓰며 세는 계수 정렬 하나예요. 둘 다 표준 꼴의 전치라 행과 항의 순서가 같아요.
+
+```python
+>>> P = sd.asarray([[0, 1.0, 1, 0], [0, 0, 1, 0], [1, 0, 0, 0], [0, 0, 1, 0]])
+>>> x = sd.graph.pagerank(P)
+>>> x
+array([ 0.37252685132844077,     0.19582391181457,   0.3941492368569891,
+       0.037500000000000006], dtype=float64)
+>>> float(x.sum())
+0.9999999999999999
+>>> Pd = sd.asarray([[0, 1.0, 0], [0, 0, 1], [0, 0, 0]])
+>>> sd.graph.pagerank(Pd)
+array([0.18441678192714328, 0.34117104656522357,  0.4744121715076328], dtype=float64)
+>>> sd.graph.pagerank(Pd, dangling=[1, 0, 0])
+array([0.3333333333333333, 0.3333333333333333, 0.3333333333333333], dtype=float64)
+```
+
+첫 그래프의 참값은 정확한 유리수로 풀면 $x^*_0 = 0.3725268513284341\ldots$이고, 결과는 해와 $\ell_1$로 $10^{-14}$ 남짓 떨어져 있어요. `tol` $= 10^{-12}$ 안에서 멈췄으니 약속대로예요. 합이 1과 끝자리에서 다른 것도 같은 까닭이에요. 둘째 그래프에서 노드 2는 나가는 변이 없는 매달린 노드예요. `dangling=[1, 0, 0]`이면 그 질량이 노드 0으로 가서 0 → 1 → 2 → 0의 순환이 되고, 세 노드가 같은 몫을 가져요.
+
+## 매개 중심성
+
+노드 $v$의 매개 중심성은 다른 두 노드 $s$, $t$의 최단 경로 가운데 $v$를 지나는 몫을 모든 쌍에 대해 더한 것이에요. $\sigma_{st}$를 $s$에서 $t$로 가는 최단 경로의 수, $\sigma_{st}(v)$를 그 가운데 $v$를 지나는 수라고 하면 $\sum_{s \ne v \ne t} \sigma_{st}(v)/\sigma_{st}$예요. Brandes의 방법은 원점 $s$마다 최단 경로 DAG를 한 번 만들고 두 번 훑어요.
+
+- 앞으로: 위상 순서로 $\sigma_s(v) = \sum_{u \to v} \sigma_s(u)$.
+- 뒤로: 역순으로 의존 $\delta_s(u) = \sum_{u \to w} \dfrac{\sigma_s(u)}{\sigma_s(w)}\bigl(1 + \delta_s(w)\bigr)$.
+
+그러면 $v$의 몫은 $\sum_s \delta_s(v)$예요. 원점 하나가 $O(E)$(무게 없음)나 $O(E \log V)$(무게 있음)라 전체는 $n$배예요.
+
+### 최단 경로 DAG의 정의
+
+무게가 있으면 거리는 [최단 경로의 정의](/internals/graph/shortest-paths/)와 같아요. 원점에서부터 차례로 더한 $\hat d$이고 Dijkstra로 구해요. DAG의 변은 $\mathrm{fl}(\hat d(u) + w) = \hat d(v)$인 $u \to v$예요. 그런데 반올림이 있으면 $w \gt 0$이어도 $\hat d(u) + w$가 $\hat d(u)$로 흡수될 수 있어요. 같은 거리 사이에 변이 생기고, 그대로 두면 순환이 생기거나 $\sigma = 0$인 노드로 나누게 돼요.
+
+그래서 거리가 같은 노드가 있으면 꼭 맞는 변만 따라가는 너비 우선의 변 수 $h$를 구하고, $(\hat d, h)$가 엄격히 커지는 변만 DAG에 넣어요.
+
+```cpp
+// csrc/graph/centrality.cpp
+inline bool dag_edge(const double* d, const int64_t* h, int64_t u, int64_t v, double wt) {
+    const double du = d[u], dv = d[v];
+    return du + wt == dv && (du < dv || (h && h[u] < h[v]));
+}
+```
+
+$(\hat d, h)$는 변마다 엄격히 커지니 순환이 없고, 모든 도달한 노드는 너비 우선으로 $h$를 얻은 변을 선행 변으로 가져요. 흡수가 없으면 같은 거리의 두 노드 사이에 꼭 맞는 변이 없으니($w \gt 0$) 표준 정의와 같아요.
+
+```cpp
+    // csrc/graph/centrality.cpp
+    bool runs = false;
+    for (int64_t a = 1; a < found && !runs; ++a) runs = d[order[a]] == d[order[a - 1]];
+    if (!runs) return found;
+    // h by a breadth-first search over the tight edges, then each run of equal distances by (h, index).
+    int64_t* h = p.h.data();
+    int64_t* queue = p.work.order.data();
+    for (int64_t a = 0; a < found; ++a) h[order[a]] = -1;
+    h[s] = 0;
+    int64_t qn = 0;
+    queue[qn++] = s;
+    for (int64_t q = 0; q < qn; ++q) {
+        const int64_t u = queue[q];
+        for (int64_t k = g.ip[u], e = g.ip[u + 1]; k < e; ++k) {
+            const int64_t v = g.ix[k];
+            if (h[v] < 0 && d[v] != paths::kInf && d[u] + g.w[k] == d[v]) {
+                h[v] = h[u] + 1;
+                queue[qn++] = v;
+            }
+        }
+    }
+    for (int64_t a = 0; a < found;) {
+        int64_t b = a + 1;
+        while (b < found && d[order[b]] == d[order[a]]) ++b;
+        if (b - a > 1)
+            std::sort(order + a, order + b, [&](int64_t x, int64_t y) {
+                return h[x] < h[y] || (h[x] == h[y] && x < y);
+            });
+        a = b;
+    }
+    p.use_h = true;
+    return found;
+```
+
+거리가 모두 다르면 $h$를 구하지 않아요. 같은 거리가 이어지는 곳이 있을 때만 $h$를 구하고, 그 묶음을 $(h, \text{번호})$로 다시 줄 세워 위상 순서를 만들어요. 무게가 없으면 너비 우선의 층 순서가 곧 위상 순서예요.
+
+```python
+>>> ab = sd.sparse.csr_array((sd.asarray([1e17, 1.0, 1.0]), (sd.asarray([0, 3, 1]), sd.asarray([3, 1, 2]))), shape=(4, 4))
+>>> sd.graph.dijkstra(ab, indices=0)
+array([  0.0, 1e+17, 1e+17, 1e+17], dtype=float64)
+>>> sd.graph.betweenness_centrality(ab, normalized=False)
+array([0.0, 2.0, 0.0, 2.0], dtype=float64)
+```
+
+노드 3, 1, 2의 거리가 모두 $10^{17}$이에요($10^{17} + 1$이 $10^{17}$로 흡수돼요). $h$가 0→3→1→2의 순서를 정해서, 1과 3이 저마다 경로 둘의 가운데에 놓여요.
+
+### 정한 순서의 합
+
+```cpp
+    // csrc/graph/centrality.cpp
+    for (int64_t a = 1; a < found; ++a) {
+        const int64_t v = order[a];
+        S t{};
+        for (int64_t k = in.ip[v], e = in.ip[v + 1]; k < e; ++k) {
+            const int64_t u = in.ix[k];
+            if (dag_edge(d, h, u, v, in.weight(k))) t = add(t, sigma[static_cast<size_t>(u)]);
+        }
+        if constexpr (std::is_same_v<S, double>)
+            if (!(t < kWide)) return false;
+        sigma[static_cast<size_t>(v)] = t;
+    }
+    for (int64_t a = found; a-- > 0;) {
+        const int64_t u = order[a];
+        double t = 0.0;
+        for (int64_t k = out.ip[u], e = out.ip[u + 1]; k < e; ++k) {
+            const int64_t w = out.ix[k];
+            if (d[w] != paths::kInf && dag_edge(d, h, u, w, out.weight(k)))
+                t += ratio(sigma[static_cast<size_t>(u)], sigma[static_cast<size_t>(w)]) * (1.0 + delta[w]);
+        }
+        delta[u] = t;
+    }
+    for (int64_t a = 1; a < found; ++a) {
+        const int64_t w = order[a];
+        acc[w] += endpoints ? delta[w] + 1.0 : delta[w];
+    }
+    if (endpoints) acc[s] += static_cast<double>(found - 1);
+```
+
+$\sigma$는 노드의 들어오는 변(전치 CSR의 행)을 번호 오름차순으로, $\delta$는 나가는 변을 번호 오름차순으로 끌어와 더해요. 덧셈의 순서가 데이터로만 정해지니 원점 하나의 결과가 정해져요.
+
+원점들은 태스크로 나눠요. 태스크 하나는 연속한 원점 $\lceil n/256 \rceil$개(1에서 64 사이)이고 이 크기는 $n$으로만 정해져요. 태스크마다 길이 $n$의 부분합을 두고, 끝나면 부분합을 태스크 번호 순서로 결과에 더해요.
+
+```cpp
+        // csrc/graph/centrality.cpp
+        for (int64_t first = 0; first < ntasks; first += wave) {
+            const int64_t count = std::min(wave, ntasks - first);
+            auto task = [&](int64_t t) {
+                double* acc = partial.data() + t * n;
+                std::fill(acc, acc + n, 0.0);
+                Pass p(n);
+                const int64_t lo = (first + t) * per, hi = std::min(n, lo + per);
+                for (int64_t s = lo; s < hi; ++s) {
+                    const int64_t found = distances(out, s, p);
+                    if (!source(out, in, s, found, endpoints, p, p.sigma, acc)) {
+                        p.wsigma.resize(static_cast<size_t>(n));
+                        source(out, in, s, found, endpoints, p, p.wsigma, acc);
+                    }
+                }
+            };
+            if (split && count > 1) parallel::parallel_for(count, task);
+            else
+                for (int64_t t = 0; t < count; ++t) task(t);
+            for (int64_t t = 0; t < count; ++t) {
+                const double* acc = partial.data() + t * n;
+                for (int64_t v = 0; v < n; ++v) bc[v] += acc[v];
+            }
+        }
+```
+
+한 번에 도는 태스크의 수(`wave`)는 스레드 수의 네 배이고 부분합이 128 MB를 넘지 않게 묶어요. `wave`가 달라도 결과에 더하는 순서는 언제나 태스크 0, 1, 2, …라서 스레드 수가 비트를 바꾸지 않아요. 마지막의 비율(정규화, 무향의 1/2, 끝점)은 networkx와 같은 꼴이에요.
+
+### 경로 수가 double을 넘을 때
+
+$\sigma$는 경로의 수라 그래프가 크지 않아도 아주 커져요. 다이아몬드 $h_i \to a_i, b_i \to h_{i+1}$를 $m$개 이으면 끝에서 끝까지 $2^m$개이고, $m = 1100$이면 double의 범위($2^{1024}$)를 넘어요. 원점 하나에서 어떤 $\sigma$가 $2^{960}$에 닿으면 그 원점을 지수를 따로 쥔 수로 다시 세요.
+
+```cpp
+// csrc/graph/centrality.cpp
+// A path count with an exponent of its own (m in [0.5, 1) or 0, value m 2^e): the sums round like doubles
+// (one rounding each) without overflowing. Doubles hold the counts below kWide; a source whose counts
+// reach it is counted again with these, which give the same bits where both apply.
+struct Wide {
+    double m = 0.0;
+    int64_t e = 0;
+};
+
+constexpr double kWide = 0x1p960;
+
+inline Wide wide(double x) {
+    Wide w;
+    int ex = 0;
+    w.m = std::frexp(x, &ex);
+    w.e = ex;
+    return w;
+}
+
+inline Wide add(const Wide& a, const Wide& b) {
+    if (a.m == 0.0) return b;
+    if (b.m == 0.0) return a;
+    const int64_t e = std::max(a.e, b.e);
+    const int64_t da = a.e - e, db = b.e - e;
+    const double s = std::ldexp(a.m, static_cast<int>(std::max<int64_t>(da, -2000))) +
+                     std::ldexp(b.m, static_cast<int>(std::max<int64_t>(db, -2000)));
+    Wide w = wide(s);
+    w.e += e;
+    return w;
+}
+
+// sigma(u) / sigma(w) as a double (at most 1: u is one of w's predecessors).
+inline double ratio(const Wide& a, const Wide& b) {
+    return std::ldexp(a.m / b.m, static_cast<int>(std::clamp<int64_t>(a.e - b.e, -4000, 4000)));
+}
+inline double ratio(double a, double b) { return a / b; }
+inline double add(double a, double b) { return a + b; }
+```
+
+`Wide`는 $m \cdot 2^e$($m \in [0.5, 1)$)이고 덧셈마다 반올림이 한 번이에요. 두 수를 큰 쪽 지수에 맞춰 double로 더한 뒤 다시 지수를 떼어 내니, double로 셀 수 있는 곳에서는 double과 같은 비트예요. $\delta$에 쓰는 것은 비 $\sigma(u)/\sigma(w) \le 1$이라 double로 충분해요.
+
+```python
+>>> m = 1100
+>>> rows, cols = [], []
+>>> for i in range(m):
+...     for x in (3 * i + 1, 3 * i + 2):
+...         rows += [3 * i, x]
+...         cols += [x, 3 * i + 3]
+>>> n = 3 * m + 1
+>>> D = sd.sparse.csr_array((sd.ones(len(rows)), (sd.asarray(rows), sd.asarray(cols))), shape=(n, n))
+>>> b = sd.graph.betweenness_centrality(D, normalized=False, unweighted=True)
+>>> float(b[1500]), 9 * 500 * (m - 500)
+(2700000.0, 2700000)
+```
+
+허브 $h_i$(노드 $3i$)를 지나는 쌍은 앞의 $3i$개와 뒤의 $3(m - i)$개의 곱이고, 경로가 모두 그 허브를 지나니 몫이 정확히 $9i(m - i)$예요. 경로 수는 $2^{1100}$까지 가지만 결과는 정확한 정수예요.
+
+### 오차
+
+모든 항이 음이 아니라 상쇄가 없어서, 노드마다 상대오차가 $\gamma_K$ 안이에요. $K = L(2A + \Delta_{\mathrm{out}} + 2) + n + 3$이고, $L$은 DAG의 가장 긴 경로의 변 수, $\Delta_{\mathrm{out}}$, $\Delta_{\mathrm{in}}$은 가장 큰 진출·진입 차수, $A$는 모든 $\sigma \lt 2^{53}$이면 0(경로 수가 정확해요), 아니면 $L(\Delta_{\mathrm{in}} - 1)$이에요. 변 하나마다 비, $1 + \delta$, 곱의 반올림과 노드마다 $\Delta_{\mathrm{out}} - 1$번의 덧셈이 $L$단 쌓이고, 원점에 걸친 합이 $n$, 끝점과 비율이 3이에요. 참값이 0이면 결과도 정확히 0이에요. 정수 무게와 2진 유리수 무게, `unweighted=True`에서는 계산한 DAG가 참 DAG라 이 한계가 참 Brandes와의 거리예요.

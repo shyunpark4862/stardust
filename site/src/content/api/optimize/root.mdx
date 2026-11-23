@@ -1,0 +1,368 @@
+---
+kind: function
+title: root
+names: [root]
+group: 방정식계
+order: 1
+signatures:
+  - "sd.optimize.root(fun, x0, /, *, method='hybr', jac=None, tol=None, options=None)"
+summary: 변수 n개에 식 n개인 방정식계 F(x) = 0의 근을 x0에서 시작해 찾아요. 'hybr'는 MINPACK의 Powell 혼성법, 'lm'은 Levenberg–Marquardt예요.
+params:
+  - name: fun
+    type: 호출 가능한 객체
+    kind: positional-only
+    desc: "방정식계 fun(x). x는 새 float64 sd.ndarray (n,)이고, 길이 n의 1차원 값(sd.ndarray, 실수의 시퀀스, numpy 배열)을 돌려줘요. jac=True이면 (F, J) 쌍을 돌려줘요."
+  - name: x0
+    type: ndarray, 실수의 시퀀스, numpy 배열, 또는 frame의 Series
+    kind: positional-only
+    desc: 시작점. 1차원이고 비어 있지 않으며 유한해야 해요. 길이가 변수와 식의 수 n이에요.
+  - name: method
+    type: str
+    kind: keyword-only
+    desc: "'hybr'(기본값, Powell 혼성법) 또는 'lm'(Levenberg–Marquardt)."
+  - name: jac
+    type: 호출 가능한 객체, True, 또는 None
+    kind: keyword-only
+    desc: "야코비안. 호출 가능한 객체면 jac(x)가 (n, n)을 돌려줘요(n = 1이면 (1,)이나 수 하나도). True면 fun이 (F, J)를 함께 돌려줘요. None(기본값)이면 앞쪽 차분이에요."
+  - name: tol
+    type: float 또는 None
+    kind: keyword-only
+    desc: options의 'xtol'과 같아요(0 이상). 둘을 함께 주면 ValueError예요. None(기본값)이면 1.49012e-08이에요.
+  - name: options
+    type: dict 또는 None
+    kind: keyword-only
+    desc: "방법마다의 옵션. 'hybr'는 xtol, max_nfev, band, eps, factor, diag, 'lm'은 xtol, ftol, gtol, max_nfev, eps, factor, diag를 받아요(아래 표)."
+returns:
+  type: OptimizeResult
+  desc: "x(근), fun(x에서의 F), converged, status, message, n_iter, nfev, njev, method."
+raises:
+  - type: TypeError
+    desc: fun이 호출 가능하지 않을 때, jac이 호출 가능한 객체·True·None이 아닐 때, options가 dict가 아닐 때, 옵션의 형이 틀렸을 때, x0이 복소수일 때, jac=True인데 fun이 쌍을 돌려주지 않을 때. fun과 jac 안에서 난 에러도 그대로 나와요.
+  - type: ValueError
+    desc: x0이 비었거나 1차원이 아니거나 유한하지 않을 때, method 이름이 틀렸을 때, options에 그 방법이 모르는 키가 있을 때, tol과 options['xtol']을 함께 줬을 때, jac=False일 때, band나 eps를 jac과 함께 줬을 때, factor나 diag가 양수가 아닐 때, fun이 n개가 아닌 값을 돌려줄 때, jac이 (n, n)이 아닌 모양을 돌려줄 때, fun이 x0에서 유한하지 않을 때, 야코비안이 유한하지 않을 때.
+seeAlso: [least_squares, root_scalar, find_root, results, basics]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+import Callout from '../../../components/Callout.astro';
+
+export const circ = [[2.0,0.0],[1.992,0.174],[1.97,0.347],[1.932,0.518],[1.879,0.684],[1.813,0.845],[1.732,1.0],[1.638,1.147],[1.532,1.286],[1.414,1.414],[1.286,1.532],[1.147,1.638],[1.0,1.732],[0.845,1.813],[0.684,1.879],[0.518,1.932],[0.347,1.97],[0.174,1.992],[0.0,2.0],[-0.174,1.992],[-0.347,1.97],[-0.518,1.932],[-0.684,1.879],[-0.845,1.813],[-1.0,1.732],[-1.147,1.638],[-1.286,1.532],[-1.414,1.414],[-1.532,1.286],[-1.638,1.147],[-1.732,1.0],[-1.813,0.845],[-1.879,0.684],[-1.932,0.518],[-1.97,0.347],[-1.992,0.174],[-2.0,0.0],[-1.992,-0.174],[-1.97,-0.347],[-1.932,-0.518],[-1.879,-0.684],[-1.813,-0.845],[-1.732,-1.0],[-1.638,-1.147],[-1.532,-1.286],[-1.414,-1.414],[-1.286,-1.532],[-1.147,-1.638],[-1.0,-1.732],[-0.845,-1.813],[-0.684,-1.879],[-0.518,-1.932],[-0.347,-1.97],[-0.174,-1.992],[-0.0,-2.0],[0.174,-1.992],[0.347,-1.97],[0.518,-1.932],[0.684,-1.879],[0.845,-1.813],[1.0,-1.732],[1.147,-1.638],[1.286,-1.532],[1.414,-1.414],[1.532,-1.286],[1.638,-1.147],[1.732,-1.0],[1.813,-0.845],[1.879,-0.684],[1.932,-0.518],[1.97,-0.347],[1.992,-0.174],[2.0,-0.0]];
+export const par = [[-1.85,2.423],[-1.8,2.24],[-1.75,2.062],[-1.7,1.89],[-1.65,1.723],[-1.6,1.56],[-1.55,1.403],[-1.5,1.25],[-1.45,1.103],[-1.4,0.96],[-1.35,0.823],[-1.3,0.69],[-1.25,0.562],[-1.2,0.44],[-1.15,0.322],[-1.1,0.21],[-1.05,0.103],[-1.0,0.0],[-0.95,-0.097],[-0.9,-0.19],[-0.85,-0.277],[-0.8,-0.36],[-0.75,-0.438],[-0.7,-0.51],[-0.65,-0.578],[-0.6,-0.64],[-0.55,-0.698],[-0.5,-0.75],[-0.45,-0.798],[-0.4,-0.84],[-0.35,-0.877],[-0.3,-0.91],[-0.25,-0.938],[-0.2,-0.96],[-0.15,-0.978],[-0.1,-0.99],[-0.05,-0.997],[0.0,-1.0],[0.05,-0.997],[0.1,-0.99],[0.15,-0.978],[0.2,-0.96],[0.25,-0.938],[0.3,-0.91],[0.35,-0.877],[0.4,-0.84],[0.45,-0.797],[0.5,-0.75],[0.55,-0.697],[0.6,-0.64],[0.65,-0.578],[0.7,-0.51],[0.75,-0.438],[0.8,-0.36],[0.85,-0.277],[0.9,-0.19],[0.95,-0.097],[1.0,0.0],[1.05,0.103],[1.1,0.21],[1.15,0.322],[1.2,0.44],[1.25,0.562],[1.3,0.69],[1.35,0.823],[1.4,0.96],[1.45,1.103],[1.5,1.25],[1.55,1.403],[1.6,1.56],[1.65,1.722],[1.7,1.89],[1.75,2.062],[1.8,2.24],[1.85,2.423]];
+
+export const hybrRight = [[1.0,1.0],[1.6667,1.3333],[1.4853,1.3054],[1.5162,1.3013],[1.5174,1.3031],[1.5175,1.3028]];
+
+export const hybrLeft = [[-0.5,0.2],[-0.8254,1.5343],[-1.2109,0.9581],[-1.5559,1.2742],[-1.5054,1.3018],[-1.5172,1.3032],[-1.5175,1.3028]];
+
+export const lmTrap = [[0.0,0.0],[0.0,-1.0],[0.0,-1.8944],[0.0,-1.9376],[0.0,-1.9385]];
+
+export const hybrLog = [[0,0.349],[1,-0.148],[2,-0.873],[3,-2.087],[4,-3.123],[5,-4.21],[6,-6.369],[7,-9.337],[8,-12.461]];
+
+export const lmLog = [[0,0.349],[1,-0.148],[2,-1.532],[3,-4.192],[4,-9.499],[5,-15.654]];
+
+export const Plane = ({ label, width = 640, height = 280, domain, range, xTicks, yTicks, lines = [], dots = [], legend = [] }) => {
+  const W = width, H = height, L = 44, R = 16, T = 16, B = 30;
+  const sx = (v) => L + ((v - domain[0]) / (domain[1] - domain[0])) * (W - L - R);
+  const sy = (v) => H - B - ((v - range[0]) / (range[1] - range[0])) * (H - T - B);
+  const tick = { fill: 'var(--fg-subtle)', 'font-family': 'var(--font-mono)', 'font-size': '11px' };
+  const fmt = (t) => String(t).replace('-', '−');
+  return (
+    <div style={{ width: '100%', 'max-width': `${W}px` }}>
+      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={label} style={{ width: '100%', height: 'auto' }}>
+        {xTicks.map((t) => <line x1={sx(t)} x2={sx(t)} y1={T} y2={H - B} style={{ stroke: 'var(--line)' }} />)}
+        {yTicks.map((t) => <line x1={L} x2={W - R} y1={sy(t)} y2={sy(t)} style={{ stroke: 'var(--line)' }} />)}
+        {xTicks.map((t) => <text x={sx(t)} y={H - 10} text-anchor="middle" style={tick}>{fmt(t)}</text>)}
+        {yTicks.map((t) => <text x={L - 8} y={sy(t) + 4} text-anchor="end" style={tick}>{fmt(t)}</text>)}
+        {lines.map((l) => <path d={l.pts.map(([a, b], i) => `${i ? 'L' : 'M'}${sx(a).toFixed(1)} ${sy(b).toFixed(1)}`).join('')} style={{ fill: 'none', stroke: l.color, 'stroke-width': l.width ?? 2, 'stroke-dasharray': l.dashed ? '5 4' : 'none' }} />)}
+        {dots.map((d) => d.pts.map(([a, b]) => <circle cx={sx(a)} cy={sy(b)} r={d.r ?? 3.2} style={{ fill: d.color }} />))}
+      </svg>
+      <ul style={{ display: 'flex', 'flex-wrap': 'wrap', 'justify-content': 'center', gap: 'var(--space-5)', margin: 'var(--space-2) 0 0', padding: 0, 'list-style': 'none', 'font-family': 'var(--font-mono)', 'font-size': 'var(--text-xs)', color: 'var(--fg-muted)' }}>
+        {legend.map((l) => <li style={{ display: 'flex', 'align-items': 'center', gap: 'var(--space-2)', margin: 0 }}><span style={{ width: '14px', height: l.dot ? '8px' : '2px', 'border-radius': l.dot ? '4px' : '0', background: l.color }} />{l.label}</li>)}
+      </ul>
+    </div>
+  );
+};
+
+## 무엇을 하나요
+
+미지수가 여럿인 연립방정식을 풀어요. 원 $a^2 + b^2 = 4$와 포물선 $b = a^2 - 1$이 만나는 점을 찾는 문제라면, 두 식을 0으로 만드는 함수
+
+$$
+F(a, b) = \begin{pmatrix} a^2 + b^2 - 4 \\ b - a^2 + 1 \end{pmatrix}
+$$
+
+의 근 $F(x) = 0$을 찾는 문제예요. 식이 일차가 아니라서 한 번에 풀리지 않아요. `root`는 시작점 `x0`에서 출발해 $F$를 일차식으로 어림하고(뉴턴 방법의 생각), 그 어림의 근 쪽으로 걸음을 옮기는 일을 되풀이해요. 근이 여럿이면 시작점에 따라 다른 근에 닿고, 근 근처가 아니면 근이 아닌 곳에서 멈출 수도 있어요.
+
+<Fig caption="원(회색)과 포물선(점선)의 교점 두 개가 근이에요. 'hybr'는 (1, 1)에서 오른쪽 근으로, (−0.5, 0.2)에서 왼쪽 근으로 가요(파란 선, 해석적 jac으로 받아들인 반복점). 'lm'을 (0, 0)에서 시작하면 두 곡선이 가장 가까운 아래쪽 (0, −1.94)에서 멈춰요. 근이 아니라 ‖F‖가 국소적으로 가장 작은 점이에요.">
+  <Plane
+    label="원과 포물선의 교점과 root의 반복점"
+    width={460}
+    height={463}
+    domain={[-2.4, 2.4]}
+    range={[-2.4, 2.6]}
+    xTicks={[-2, -1, 0, 1, 2]}
+    yTicks={[-2, -1, 0, 1, 2]}
+    lines={[{ pts: circ, color: 'var(--slate-400)', width: 1.5 }, { pts: par, color: 'var(--slate-500)', width: 1.5, dashed: true }, { pts: hybrRight, color: 'var(--blue-600)' }, { pts: hybrLeft, color: 'var(--blue-600)' }, { pts: lmTrap, color: 'var(--slate-700)' }]}
+    dots={[{ pts: hybrRight, color: 'var(--blue-600)', r: 2.8 }, { pts: hybrLeft, color: 'var(--blue-600)', r: 2.8 }, { pts: lmTrap, color: 'var(--slate-700)', r: 2.8 }, { pts: [[1.5175, 1.3028], [-1.5175, 1.3028]], color: 'var(--blue-800)', r: 5 }]}
+    legend={[{ label: "'hybr'", color: 'var(--blue-600)' }, { label: "'lm' (0, 0)에서", color: 'var(--slate-700)' }, { label: '근', color: 'var(--blue-800)', dot: true }]}
+  />
+</Fig>
+
+식과 변수의 수가 같아야 해요(n개와 n개). 식이 더 많거나 모든 식을 정확히 0으로 만들 수 없는 문제는 [least_squares](/api/optimize/least_squares/)로 제곱합을 줄여요. 미지수가 하나뿐이면 [root_scalar](/api/optimize/root_scalar/)가 근을 끼는 구간으로 더 확실하게 풀어요.
+
+<Reference />
+
+## 기본 사용
+
+```python
+>>> def F(x):
+...     a, b = x.tolist()
+...     return [a * a + b * b - 4, b - a * a + 1]
+>>> r = sd.optimize.root(F, [1.0, 1.0])
+>>> r
+OptimizeResult(method='hybr', converged=True, n_iter=8, nfev=11, x=[1.51749, 1.30278])
+>>> r.status, r.message
+(1, 'The solution converged.')
+>>> [f'{v:.1e}' for v in r.fun.tolist()]
+['-2.5e-13', '-2.4e-13']
+```
+
+`x`가 근이고 `fun`이 그 점의 $F$예요. 참 근은 $b = (\sqrt{13} - 1)/2 \approx 1.3028$, $a = \sqrt{b + 1} \approx 1.5175$예요. 다른 근은 대칭인 $(-1.5175, 1.3028)$이고, 시작점을 왼쪽에 두면 그쪽에 닿아요.
+
+```python
+>>> sd.optimize.root(F, [-0.5, 0.2]).x
+array([-1.5174899135519595,  1.3027756377323383], dtype=float64)
+```
+
+`fun`이 받는 x는 float64 `sd.ndarray` (n,)이에요. 부를 때마다 새 배열이에요. 돌려주는 값은 길이 n의 1차원 값(리스트, `sd.ndarray`, numpy 배열)이고, 개수가 n이 아니면 `ValueError`예요.
+
+```python
+>>> sd.optimize.root(lambda x: [x[0] + x[1] - 2, x[0] - x[1], 2 * x[0] + x[1] - 3.3], [0.0, 0.0])
+Traceback (most recent call last):
+    ...
+ValueError: root(): 'fun' must return 2 values (one per variable), not 3
+```
+
+## 방법 고르기: method
+
+두 방법 모두 MINPACK의 루틴이고, 걸음을 신뢰 영역(걸음 길이의 한계) 안에서 골라요.
+
+| | `'hybr'` (기본값) | `'lm'` |
+|---|---|---|
+| 방법 | Powell의 혼성법(MINPACK hybrd·hybrj) | Levenberg–Marquardt(MINPACK lmder) |
+| 걸음 | 뉴턴 걸음과 가장 가파른 내리막 걸음을 섞은 dogleg | $(J^{\mathsf T}J + \lambda D^2)s = -J^{\mathsf T}F$ |
+| 야코비안 | 처음에 하나 구하고 걸음마다 싸게 고쳐 써요(Broyden 갱신) | 반복마다 새로 구해요 |
+| 수렴의 뜻 | 걸음의 한계가 x에 비해 충분히 작아짐(F = 0이면 바로) | 제곱합 ‖F‖²의 판정 |
+
+- **`'hybr'`** 는 야코비안을 자주 다시 구하지 않아요. 걸음 뒤의 $F$ 변화로 야코비안의 근사를 고쳐 쓰고(Broyden의 랭크 1 갱신), 걸음이 잇달아 실패할 때만 새로 구해요. 그래서 차분 야코비안일 때 `fun`을 부르는 수가 적어요. 대부분의 정방 계에 기본으로 써요.
+- **`'lm'`** 은 ‖F‖²를 최소제곱으로 줄여요. 같은 정방 문제를 [least_squares(method='lm')](/api/optimize/least_squares/)으로 푸는 것과 같은 계산이에요. 반복마다 야코비안을 구하므로, 해석적 `jac`이 있으면 반복 수가 적은 장점이 살아요.
+
+```python
+>>> sd.optimize.root(F, [1.0, 1.0], method='lm')
+OptimizeResult(method='lm', converged=True, n_iter=5, nfev=16, x=[1.51749, 1.30278])
+```
+
+`'lm'`은 반복이 5번이지만 차분 야코비안(반복마다 `fun` 2번)까지 `fun`을 16번 불렀어요. `'hybr'`는 반복 8번에 11번이에요.
+
+<Fig caption="(1, 1)에서 해석적 jac으로 풀 때 fun을 부를 때마다의 ‖F‖(log₁₀). 'lm'은 반복마다 새 야코비안으로 2차 수렴에 가깝게 빨리 줄고(야코비안 5개), 'hybr'는 야코비안 하나를 Broyden 갱신으로 고쳐 쓰며 조금 더 걸려요(야코비안 1개).">
+  <Plot
+    curves={[{ points: hybrLog, label: "'hybr'" }, { points: lmLog, label: "'lm'", dashed: true }]}
+    domain={[0, 8]}
+    range={[-16, 1]}
+    xTicks={[{ v: 0, label: '0' }, { v: 2, label: '2' }, { v: 4, label: '4' }, { v: 6, label: '6' }, { v: 8, label: '8' }]}
+    yTicks={[{ v: -15, label: '10⁻¹⁵' }, { v: -10, label: '10⁻¹⁰' }, { v: -5, label: '10⁻⁵' }, { v: 0, label: '1' }]}
+  />
+</Fig>
+
+<Callout type="warn">
+`'lm'`의 수렴은 ‖F‖²가 더 줄지 않는다는 판정이라, 근이 아닌 점에서도 `converged=True`가 될 수 있어요. ‖F‖가 국소적으로 가장 작지만 0이 아닌 점이 그래요. `'lm'`을 쓰면 늘 `fun`을 확인해요.
+</Callout>
+
+```python
+>>> rl = sd.optimize.root(F, [0.0, 0.0], method='lm')
+>>> rl.converged, rl.status, [round(v, 4) for v in rl.x.tolist()]
+(True, 1, [0.0, -1.9385])
+>>> [round(v, 4) for v in rl.fun.tolist()]
+[-0.2421, -0.9385]
+```
+
+(0, 0)에서는 $F$가 a에 $a^2$으로만 의존해서 a 방향의 기울기가 0이에요. 그래서 반복이 a ≈ 0의 직선 위에서 ‖F‖가 가장 작은 곳까지만 가요. 같은 곳에 빠진 `'hybr'`는 진전이 없다고 알려 줘요.
+
+```python
+>>> rh = sd.optimize.root(F, [-1.0, -1.0])
+>>> rh.converged, rh.status
+(False, 5)
+>>> print(rh.message)
+The iteration is not making good progress, as measured by the 
+ improvement from the last ten iterations.
+```
+
+이럴 때는 다른 시작점에서 다시 풀어요.
+
+## 야코비안: jac
+
+`jac`을 주지 않으면 앞쪽 차분 $(F(x + h e_j) - F(x))/h$로 구해요. 간격은 $h = \sqrt{\max(\text{eps}, \varepsilon)}\,\lvert x_j\rvert$(x_j = 0이면 $\sqrt{\max(\text{eps}, \varepsilon)}$)이고, `eps`는 옵션이에요. 기본은 기계 엡실론 $\varepsilon = 2^{-52}$라서 간격이 $2^{-26}\lvert x_j\rvert$예요. 야코비안 하나에 `fun`을 n번 더 불러요.
+
+해석적 야코비안 $\partial F_i / \partial x_j$를 주면 호출이 줄고 정확해져요. 방법은 두 가지예요.
+
+```python
+>>> def J(x):
+...     a, b = x.tolist()
+...     return [[2 * a, 2 * b], [-2 * a, 1]]
+>>> rj = sd.optimize.root(F, [1.0, 1.0], jac=J)
+>>> rj.nfev, rj.njev
+(9, 1)
+>>> rt = sd.optimize.root(lambda x: (F(x), J(x)), [1.0, 1.0], jac=True)
+>>> rt.x.tolist() == rj.x.tolist(), rt.nfev, rt.njev
+(True, 9, 1)
+```
+
+`jac=True`면 `fun`이 $(F, J)$를 함께 돌려줘요. $F$와 $J$가 같은 계산을 나눠 쓸 때 편해요. 마지막으로 부른 점의 $F$와 $J$를 기억해 두고, 다른 점에서만 다시 불러요. `jac=True`인데 $F$만 돌려주면 쌍이 아니라서 `TypeError`예요.
+
+```python
+>>> sd.optimize.root(lambda x: [x[0] - 1, x[1] - 2], [0.0, 0.0], jac=True)
+Traceback (most recent call last):
+    ...
+TypeError: root(): 'fun' must return a pair (F, J) when jac=True, not a list of 2 numbers
+```
+
+## 허용오차와 옵션
+
+`tol`은 `options['xtol']`과 같아요. 나머지는 `options` dict로 줘요. 키와 기본값은 scipy와 같고, 반복 상한만 `max_nfev`라는 이름이에요. 방법이 모르는 키는 `ValueError`예요.
+
+| 옵션 | `'hybr'` | `'lm'` | 뜻 |
+|---|---|---|---|
+| `xtol` | 1.49012e-08 | 1.49012e-08 | 걸음의 한계가 `xtol`·‖Dx‖ 이하이면 멈춰요 |
+| `ftol` | | 1.49012e-08 | 제곱합의 실제·예측 상대 감소가 모두 이하이면 멈춰요 |
+| `gtol` | | 0.0 | F와 야코비안 열 사이의 코사인이 이하이면 멈춰요 |
+| `max_nfev` | None | None | `fun` 호출 수의 상한(차분 포함). None이면 `jac`이 있을 때 100(n + 1), 없을 때 200(n + 1) |
+| `band` | None | | 차분일 때만. 야코비안의 띠 너비 (ml, mu) |
+| `eps` | None | 0.0 | 차분일 때만. 함수값의 상대 오차(간격을 정해요) |
+| `factor` | 100 | 100 | 처음 걸음 한계 = `factor`·‖D x0‖ (양수) |
+| `diag` | None | None | 변수의 척도 D (n개의 양수). None이면 야코비안의 열 노름으로 정해요 |
+
+`xtol`은 "x가 몇 자리 맞는지"에 가까운 판정이에요. 느슨하게 주면 일찍 멈춰요.
+
+```python
+>>> sd.optimize.root(F, [1.0, 1.0], tol=1e-4).x
+array([1.5174898689910765, 1.3027758054254226], dtype=float64)
+```
+
+`max_nfev`에 닿으면 그때의 점과 `status` 2를 돌려줘요. 메시지의 숫자는 그 상한이에요.
+
+```python
+>>> rm = sd.optimize.root(F, [-1.0, -1.0], options={'max_nfev': 20})
+>>> rm.converged, rm.status, rm.message
+(False, 2, 'The number of calls to function has reached maxfev = 20.')
+```
+
+`band`는 식 i가 변수 i 근처(아래로 ml개, 위로 mu개)에만 의존할 때 써요. 서로 겹치지 않는 열들을 한 번의 `fun` 호출로 함께 차분해서, 야코비안 하나에 n번이 아니라 ml + mu + 1번만 불러요. 이웃한 변수끼리만 얽힌 Broyden의 삼중 대각 계에서 보면 이래요.
+
+```python
+>>> def tri(x):
+...     xl = sd.concat([sd.zeros(1), x[:-1]])
+...     xr = sd.concat([x[1:], sd.zeros(1)])
+...     return (3 - 2 * x) * x - xl - 2 * xr + 1
+>>> x0 = -sd.ones(10)
+>>> sd.optimize.root(tri, x0).nfev, sd.optimize.root(tri, x0, options={'band': (1, 1)}).nfev
+(21, 14)
+```
+
+`band`와 `eps`는 차분에만 쓰는 옵션이라 `jac`과 함께 주면 `ValueError`예요. `factor`와 `diag`는 양수여야 해요. 옵션은 모두 `fun`을 부르기 전에 검사해요. 값이 `None`인 옵션은 기본값을 써요.
+
+```python
+>>> sd.optimize.root(F, [1.0, 1.0], jac=J, options={'eps': 1e-10})
+Traceback (most recent call last):
+    ...
+ValueError: root(): 'eps' is only used when 'jac' is None
+>>> sd.optimize.root(F, [1.0, 1.0], options={'maxfev': 100})
+Traceback (most recent call last):
+    ...
+ValueError: root(): method='hybr' has no option 'maxfev' (the cap on function evaluations is 'max_nfev')
+```
+
+## 결과 읽기
+
+| 필드 | 뜻 |
+|---|---|
+| `x` | 찾은 점 (n,) |
+| `fun` | x에서의 F (n,) |
+| `converged` | `'hybr'`는 `status`가 1, `'lm'`은 1–4이고 `fun`이 유한한지 |
+| `status`, `message` | 멈춘 이유(아래 표) |
+| `n_iter` | `'hybr'`는 시험한 걸음 수, `'lm'`은 반복이 계산한 야코비안 수 |
+| `nfev` | `fun`을 부른 수 전부(x0와 차분 포함) |
+| `njev` | 야코비안을 계산한 수(차분 야코비안도 세요) |
+| `method` | `'hybr'` 또는 `'lm'` |
+
+`'hybr'`의 `status`예요.
+
+| `status` | 뜻 | `message` |
+|---:|---|---|
+| 1 | 수렴(걸음 한계 ≤ `xtol`·‖Dx‖, 또는 F = 0) | `The solution converged.` |
+| 2 | `max_nfev`에 닿음 | `The number of calls to function has reached maxfev = N.` |
+| 3 | `xtol`이 너무 작아 더 나아질 수 없음 | `xtol=0.000000 is too small, no further improvement in the approximate` … |
+| 4 | 야코비안을 다섯 번 새로 구하는 동안 진전 없음 | `The iteration is not making good progress, as measured by the` … `last five Jacobian evaluations.` |
+| 5 | 반복 열 번 동안 진전 없음 | 같은 글 … `last ten iterations.` |
+
+`'lm'`의 `status`는 1 `ftol`, 2 `xtol`, 3 둘 다, 4 `gtol`로 수렴했다는 뜻이고, 5는 `max_nfev`, 6–8은 각각 `ftol`·`xtol`·`gtol`이 너무 작아 더 나아질 수 없다는 뜻이에요(수렴 아님). `message`는 scipy의 글 그대로라 줄바꿈과 `%f` 꼴의 숫자가 들어 있어요.
+
+```python
+>>> print(sd.optimize.root(F, [1.0, 1.0], method='lm').message)
+The relative error between two consecutive iterates is at most 0.000000
+```
+
+## 특수한 경우
+
+- `x0`에서 `fun`이 유한하지 않으면 시작할 수 없어서 `ValueError`(`root(): 'fun' is not finite at 'x0'`)예요.
+- 시험점에서 `fun`이 NaN이나 inf를 돌려주면 실패한 걸음으로 보고 걸음 한계를 줄여서 계속 가요. `'hybr'`는 그 값으로 야코비안 근사를 고치지 않아요.
+- 야코비안(사용자 `jac`이나 차분)이 유한하지 않으면 그 점을 적은 `ValueError`예요. 차분에서 한쪽 값이 유한하지 않으면 반대쪽으로 한 번 더 해 봐요.
+- 야코비안이 특이한 점(위의 (0, 0)처럼)에서는 뉴턴 걸음을 정할 수 없어서 진전이 느리거나 멈춰요. `status` 4·5가 그 신호예요.
+
+```python
+>>> sd.optimize.root(lambda x: sd.log(x), [-1.0, 1.0])
+Traceback (most recent call last):
+    ...
+ValueError: root(): 'fun' is not finite at 'x0'
+```
+
+## root와 least_squares
+
+| 상황 | 쓸 함수 |
+|---|---|
+| 식 n개, 변수 n개, 모든 식이 0이 되는 점을 찾음 | `root` |
+| 식이 변수보다 많음, 또는 정확히 0이 될 수 없음(데이터 맞추기) | [least_squares](/api/optimize/least_squares/) |
+| 변수에 경계가 있음 | `least_squares(method='trf')`로 ‖F‖²를 줄이고 `fun`이 0인지 확인 |
+| 변수 하나 | [root_scalar](/api/optimize/root_scalar/), 같은 식을 여러 매개변수로 풀면 [find_root](/api/optimize/find_root/) |
+
+정방 계에서 `root(method='lm')`과 `least_squares(method='lm')`은 같은 커널이에요. 해석적 `jac`을 주고 허용오차를 맞추면 같은 점을 지나 같은 x에 닿아요. `root`의 `gtol` 기본값 0은 기울기 판정을 끈다는 뜻인데, `least_squares`의 `'lm'`은 허용오차가 모두 기계 엡실론 이상이어야 해서 가장 작은 값 $\varepsilon$을 줬어요. 다른 점은 셈과 멈춤 번호의 꼴이에요(`least_squares`는 결과의 `jac`을 위해 x에서 야코비안을 한 번 더 구하고, `status`를 자기 번호로 바꿔요). 차분일 때는 간격의 규칙이 달라서(`root`는 MINPACK의 $\sqrt{\varepsilon}\,\lvert x_j\rvert$, `least_squares`는 $\sqrt{\varepsilon}\max(1, \lvert x_j\rvert)$) 경로가 끝자리에서 갈려요.
+
+```python
+>>> a = sd.optimize.root(F, [1.0, 1.0], method='lm', jac=J)
+>>> b = sd.optimize.least_squares(F, [1.0, 1.0], method='lm', jac=J, ftol=1.49012e-08, xtol=1.49012e-08, gtol=2.220446049250313e-16)
+>>> a.x.tolist() == b.x.tolist(), (a.n_iter, a.njev), (b.n_iter, b.njev)
+(True, (5, 5), (5, 6))
+```
+
+## 스레드와 GIL
+
+`fun`과 `jac`은 Python 함수라 반복이 GIL을 쥔 채 돌아요. 반복 하나의 계산은 n × n 행렬의 QR과 그 갱신이에요. 같은 기계, 같은 스레드 수, 같은 입력이면 실행마다 결과가 비트까지 같아요. 지금은 스레드 수와도 상관없이 같아요(약속은 아니에요).
+
+## scipy를 아는 분께
+
+- 방법은 `'hybr'`와 `'lm'`뿐이에요. `broyden1`, `broyden2`, `anderson`, `linearmixing`, `diagbroyden`, `excitingmixing`, `krylov`, `df-sane`은 없어요. `fsolve`도 없어요(`root`의 `'hybr'`가 같은 루틴이에요). 방법 이름은 소문자만 받아요.
+- `'hybr'`와 `'lm'` 모두 scipy 1.18.1과 같은 MINPACK 알고리즘이에요. 지금은 같은 점에서 `fun`·`jac`을 같은 순서로 불러 `x`, `fun`, `status`, `message`가 비트까지 같아요(사용자 함수가 같은 값을 돌려줄 때; 약속은 아니에요).
+- **`nfev`가 2 적어요.** scipy는 x0에서 `fun`을 두 번 더 부르고(모양 확인과 감싸개) 그것도 세요. 호출 수의 상한 `maxfev`는 `max_nfev`라는 이름이에요(`'lm'`의 scipy 이름 `maxiter`도 실제로는 호출 수의 상한이라 여기서는 `max_nfev`예요).
+- 결과에 `n_iter`가 있고, 차분일 때도 `njev`가 있어요. scipy가 주는 MINPACK의 내부 값(`fjac`, `r`, `qtf`, `'lm'`의 `ipvt`, `cov_x`)은 없어요. `success`는 `converged`예요.
+- 받지 않는 것: `args`, `callback`, `col_deriv`(야코비안은 늘 (n, n), 행이 식이에요). 모르는 옵션 키는 경고가 아니라 `ValueError`이고, `band`·`eps`를 `jac`과 함께 주거나 `factor`·`diag`가 양수가 아니면 `ValueError`예요(scipy는 무시하거나 status 0이에요).
+- 식이 변수보다 많은 문제는 받지 않아요(scipy의 `'lm'`은 `leastsq`라 받아요). [least_squares](/api/optimize/least_squares/)를 써요.
+- 시험점의 NaN·inf에서 `'hybr'`는 야코비안 근사를 고치지 않아요(scipy는 NaN으로 고쳐서 그 뒤가 모두 NaN이 돼요). 야코비안이 유한하지 않으면 `ValueError`예요.
+
+```python
+>>> import numpy as np
+>>> from scipy.optimize import root as scipy_root
+>>> s = scipy_root(F, [1.0, 1.0])
+>>> s.x.tolist() == r.x.tolist(), s.nfev, r.nfev
+(True, 13, 11)
+>>> s = scipy_root(F, [1.0, 1.0], method='lm')
+>>> s.x.tolist() == sd.optimize.root(F, [1.0, 1.0], method='lm').x.tolist(), s.nfev
+(True, 18)
+```

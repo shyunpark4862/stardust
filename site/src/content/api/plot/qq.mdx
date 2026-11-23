@@ -1,0 +1,129 @@
+---
+kind: function
+title: qq
+names: [qq]
+group: 통계 그림
+order: 5
+signatures:
+  - "sd.plot.qq(x, /, *, dist=None, data=None, line=True, color=None, **figure)"
+  - "fig.qq(x, /, *, dist=None, data=None, line=True, color=None)"
+summary: 표본의 분위수를 분포의 이론 분위수에 맞대어 점으로 찍어요. 점이 곧은 선에 놓이면 표본이 그 분포의 꼴을 따른다는 뜻이에요. 이론 분위수는 분포의 icdf 값 그대로예요.
+params:
+  - name: x
+    type: 1차원 수의 배열 또는 열 이름
+    kind: positional-only
+    desc: "표본. sd.ndarray, 수의 시퀀스, numpy 배열, frame의 Series예요. data=를 주면 열 이름이에요. NaN과 무한대는 빼고, 유한한 값이 2개 이상이어야 해요."
+  - name: dist
+    type: sd.stats의 분포 또는 None
+    kind: keyword-only
+    desc: "견줄 분포. icdf 메서드가 있는 단변량 분포예요. None(기본값)이면 표준정규분포 Normal(mu=0, sigma=1)이에요."
+  - name: data
+    type: DataFrame 또는 None
+    kind: keyword-only
+    desc: "주면 x를 이 DataFrame의 열 이름으로 읽어요. 기본값 None."
+  - name: line
+    type: bool
+    kind: keyword-only
+    desc: "True(기본값)면 두 분위수의 첫째와 셋째 사분위를 잇는 기준선을 회색 점선으로 그어요."
+  - name: color
+    type: 색 또는 None
+    kind: keyword-only
+    desc: "점의 색. None이면 팔레트의 다음 색이에요."
+  - name: "**figure"
+    type: 그림 옵션
+    kind: keyword-only
+    desc: "모듈 함수만 받는 width, height, font, theme, palette. 뜻은 기본 개념 페이지에 있어요."
+returns:
+  type: Figure
+  desc: "점 층(과 기준선)을 더한 그림. 축 이름이 비어 있으면 Theoretical quantiles, Sample quantiles를 붙여요. 모듈 함수는 새 그림을, 메서드는 그 그림 자신을 돌려줘요."
+raises:
+  - type: TypeError
+    desc: "data 없이 x에 문자열(열 이름)을 줬을 때, data가 DataFrame이 아닐 때, x가 수가 아닐 때, dist에 icdf가 없을 때, line이 True·False가 아닐 때."
+  - type: ValueError
+    desc: "x가 1차원이 아닐 때, 유한한 값이 2개보다 적을 때."
+seeAlso: [basics, ecdf, histogram, diagnostics, distribution]
+---
+import Callout from '../../../components/Callout.astro';
+import PlotImage from '../../../components/fig/PlotImage.astro';
+
+## 한눈에 보기
+
+표본 80개가 정규분포에서 왔다고 봐도 될지 그림으로 보고 싶어요. 표본을 작은 것부터 늘어놓고, 그 순서에 해당하는 정규분포의 분위수와 짝지어 점을 찍으면 **QQ 그림**(분위수–분위수 그림)이에요.
+
+```python
+>>> import stardust as sd
+>>> rng = sd.random.default_rng(3)
+>>> x = sd.stats.Normal(mu=0.0, sigma=1.0).sample(80, rng=rng)
+>>> fig = sd.plot.qq(x)
+```
+
+<PlotImage name="qq-normal" alt="정규분포에서 뽑은 80개의 QQ 그림. 점들이 회색 점선 기준선을 따라 거의 곧게 놓여요." caption="정규 표본의 QQ 그림. 점이 기준선 가까이에 곧게 늘어서요." />
+
+가로축이 이론 분위수, 세로축이 표본의 값이에요. 표본이 그 분포의 꼴을 따르면 점이 곧은 선 위에 놓여요. 양 끝의 점이 선에서 조금 벗어나는 것은 표본이 작을 때 흔한 일이에요. 극단의 값일수록 흔들림이 커요.
+
+<Reference />
+
+## 점의 자리
+
+표본에서 유한한 값 $n$개를 정렬했을 때, $i$번째 값(1부터 셈)은 확률 $p = (i - 0.5)/n$에 맞대어요. 그 확률의 이론 분위수가 분포의 `icdf(p)`예요. 그림이 다른 식을 쓰지 않으므로, 점의 가로 자리는 이렇게 그대로 구할 수 있어요.
+
+```python
+>>> N = sd.stats.Normal(mu=0.0, sigma=1.0)
+>>> p = (sd.arange(1.0, 81.0) - 0.5) / 80
+>>> q = N.icdf(p)
+>>> [round(v, 3) for v in q[:3].tolist()]
+[-2.498, -2.08, -1.863]
+>>> [round(v, 3) for v in sd.sort(x)[:3].tolist()]
+[-2.369, -2.294, -1.927]
+```
+
+첫 점은 (−2.498, −2.369), 둘째 점은 (−2.08, −2.294)이에요. 분포의 분위수 메서드는 [분포의 공통 메서드](/api/stats/methods/)에 있어요.
+
+**기준선**은 표본의 첫째·셋째 사분위와 분포의 첫째·셋째 사분위, 두 점을 잇는 선이에요. 표본의 사분위는 [`sd.quantile`](/api/array/quantile/)의 기본 방법으로 구해요. 평균과 표준편차가 아니라 사분위로 긋기 때문에 꼬리의 몇몇 값에 끌려가지 않아요. 표본의 위치와 퍼짐이 분포와 달라도 꼴만 같으면 점이 이 선을 따라요.
+
+## 꼴이 다를 때
+
+지수분포에서 뽑은 표본을 정규분포에 맞대면 점이 휘어요. 같은 표본을 지수분포에 맞대면 다시 곧아져요. `dist=`에 견줄 분포를 줘요.
+
+```python
+>>> E = sd.stats.Exponential()
+>>> y = E.sample(80, rng=rng)
+>>> fig = sd.plot.grid([sd.plot.qq(y), sd.plot.qq(y, dist=E)], ncols=2, width=160, labels="A")
+```
+
+<PlotImage name="qq-exponential" alt="지수분포 표본의 QQ 그림 두 개. 왼쪽은 정규분포에 맞대어 점이 아래로 볼록하게 휘고, 오른쪽은 지수분포에 맞대어 점이 곧게 놓여요." caption="A는 지수 표본을 정규분포에, B는 지수분포에 맞댄 그림이에요. A는 왼쪽 꼬리가 짧고 오른쪽 꼬리가 길어서 점이 휘어요." />
+
+휘는 모양으로 어떻게 다른지 읽을 수 있어요.
+
+- 점이 아래로 볼록하게 휘면(A처럼) 오른쪽 꼬리가 분포보다 길어요. 오른쪽으로 치우친 표본이에요.
+- 위로 볼록하면 왼쪽 꼬리가 길어요.
+- 양 끝이 기준선보다 바깥으로 벌어지면(왼쪽 끝은 아래, 오른쪽 끝은 위) 두 꼬리가 모두 두꺼워요.
+- 점이 계단처럼 같은 높이에 여러 개 모이면 값이 반올림되었거나 이산적인 자료예요.
+
+`dist`에는 `icdf` 메서드가 있는 [`sd.stats`](/api/stats/basics/)의 단변량 분포를 줘요. 모수를 정한 분포를 주면 돼요. 위치와 척도는 기준선이 맞춰 주므로, 꼴을 견줄 때는 표준형(위치 0, 척도 1)을 줘도 충분해요.
+
+## 축 이름과 겹치기
+
+축 이름이 비어 있으면 가로축에 "Theoretical quantiles", 세로축에 "Sample quantiles"를 붙여요. 다른 이름을 쓰려면 그림을 만든 뒤에 바꿔요. 먼저 붙인 이름이 있으면 그대로 둬요.
+
+```python
+>>> fig = sd.plot.qq(x, line=False, color="C3").xlabel(r"$\Phi^{-1}(p)$").ylabel(r"$x_{(i)}$")
+```
+
+<PlotImage name="qq-labels" alt="기준선 없이 점만 찍은 QQ 그림, 축 이름은 수식" caption="line=False로 기준선을 빼고 축 이름을 수식으로 바꾼 그림." />
+
+`line=False`면 기준선을 긋지 않아요. 다른 기준선이 필요하면 [`line`](/api/plot/line/)으로 직접 그어요. `fig.qq`로 한 칸에 여러 표본을 겹칠 수도 있어요. 표본마다 팔레트의 다음 색을 받아요.
+
+자료가 `DataFrame`에 있으면 `data=`로 넘기고 열 이름을 줘요. `sd.plot.qq("response", data=df)`처럼요.
+
+## 조심할 점
+
+- QQ 그림은 눈으로 보는 도구예요. "정규분포를 따른다"를 숫자로 따지려면 [`shapiro`](/api/htest/shapiro/) 같은 검정을 함께 봐요.
+- 표본이 작으면(수십 개 이하) 정규 표본도 꽤 휘어 보일 수 있어요.
+- 회귀의 잔차를 볼 때는 [`diagnostics`](/api/plot/diagnostics/)가 잔차의 QQ 그림을 다른 진단 그림과 함께 그려요.
+- `dist`에 이산 분포를 주면 이론 분위수가 계단처럼 같은 값에 몰려요.
+
+## matplotlib을 아는 분께
+
+- matplotlib에는 QQ 그림이 없어서 `scipy.stats.probplot`이나 statsmodels의 `qqplot`을 써요. 여기서는 그림 함수 하나예요.
+- 사분위를 잇는 기준선은 R의 `qqline`과 같아요. 확률의 자리 $(i - 0.5)/n$은 $n$이 10보다 클 때 R의 `qqnorm`과 같아요. `probplot`의 최소제곱 직선과는 달라요.

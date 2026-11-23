@@ -1,0 +1,415 @@
+---
+kind: concept
+title: 수치 미분의 기본
+names: [DifferentiateResult]
+group: 기본 개념
+order: 1
+summary: sd.differentiate를 처음 쓸 때 읽는 페이지예요. 차분으로 도함수를 어림하는 방법과 그것이 어디서 틀어지는지, 사용자 함수의 약속, 원소별 배치, 세 함수가 함께 돌려주는 결과 DifferentiateResult, 멈춤과 status를 설명해요.
+seeAlso: [derivative, jacobian, hessian]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+export const err2 = [[1,-1.375],[2,-1.981],[3,-2.584],[4,-3.186],[5,-3.788],[6,-4.391],[7,-4.993],[8,-5.595],[9,-6.197],[10,-6.799],[11,-7.401],[12,-8.003],[13,-8.605],[14,-9.207],[15,-9.812],[16,-10.407],[17,-11.152],[18,-11.437],[19,-11.437],[20,-10.333]];
+export const err8 = [[1,-11.579],[2,-13.942],[3,-14.31],[4,-14.115],[5,-15.088],[6,-14.185],[7,-13.217],[8,-12.682],[9,-12.784],[10,-12.867],[11,-12.208],[12,-11.798],[13,-12.003],[14,-11.395],[15,-11.124],[16,-11.474],[17,-10.184],[18,-10.345],[19,-9.697],[20,-9.426]];
+export const stop8 = [[1.7,-13.942],[2.3,-13.942],[2,NaN],[2,-14.6],[2,-13.3],[2,NaN]];
+
+## 수치 미분이란
+
+도함수 $f'(x)$는 $x$를 아주 조금 움직였을 때 $f$가 바뀌는 비율이에요. 식으로 미분하기 어렵거나 함수가 프로그램으로만 있을 때는, 실제로 조금 움직여 보고 그 비율을 재서 어림할 수 있어요. 이것을 **차분**이라고 해요. 가장 간단한 중앙 차분은
+
+$$
+f'(x) \approx \frac{f(x + h) - f(x - h)}{2h}
+$$
+
+이에요. 간격 $h$가 작을수록 곡선을 직선으로 본 오차(절단 오차)는 줄지만, $h$가 너무 작으면 $f(x + h)$와 $f(x - h)$가 거의 같아져서 두 값의 반올림 오차를 $2h$로 나눈 것이 결과를 망쳐요(반올림 오차). 두 오차가 맞먹는 간격에서 가장 정확하고, 그 간격은 함수마다 달라요.
+
+`sd.differentiate`는 이 문제를 두 가지로 풀어요.
+
+- **높은 차수의 공식**: 기본은 $x$ 양쪽에 점을 넷씩 놓은 8차 공식이에요. 절단 오차가 $h^8$에 비례해서 꽤 큰 간격에서도 정확하고, 그만큼 반올림에 덜 시달려요.
+- **간격을 줄이며 되풀이하기**: 처음 간격 0.5에서 시작해 간격을 반씩 줄이며 공식을 다시 계산해요. 이웃한 두 추정의 차이가 그 추정의 오차 추정 `error`이고, 그것이 허용오차보다 작아지면 멈춰요. 반올림이 이기기 시작해서 오차 추정이 크게 늘면 거기서도 멈춰요.
+
+<Fig caption="eˣ의 x = 1에서의 도함수를 간격 0.5·2¹⁻ᵏ로 어림한 상대오차(log₁₀), 가로축은 되풀이한 횟수 k예요. 2차 공식(중앙 차분)은 열일곱 번을 줄여야 10⁻¹¹에 닿고 더 줄이면 반올림 때문에 다시 나빠져요. 8차 공식은 두 번째에 10⁻¹⁴ 근처예요. 십자는 기본 설정의 derivative가 멈춘 곳이에요.">
+  <Plot
+    curves={[
+      { points: err2, label: '2차 공식' },
+      { points: err8, label: '8차 공식(기본)' },
+      { points: stop8, label: '기본이 멈춘 곳' },
+    ]}
+    domain={[1, 20]}
+    range={[-16, 0]}
+    xTicks={[
+      { v: 1, label: '1' },
+      { v: 5, label: '5' },
+      { v: 10, label: '10' },
+      { v: 15, label: '15' },
+      { v: 20, label: '20' },
+    ]}
+    yTicks={[
+      { v: -15, label: '10⁻¹⁵' },
+      { v: -12, label: '10⁻¹²' },
+      { v: -9, label: '10⁻⁹' },
+      { v: -6, label: '10⁻⁶' },
+      { v: -3, label: '10⁻³' },
+    ]}
+  />
+</Fig>
+
+```python
+>>> import stardust as sd
+>>> import math
+>>> r = sd.differentiate.derivative(sd.exp, 1.0)
+>>> r
+DifferentiateResult(df=2.71828, error=7.1303e-12, converged=True, n_iter=2, nfev=11)
+>>> r.df, math.e
+(2.718281828459014, 2.718281828459045)
+```
+
+두 번 계산해서(`n_iter=2`) 멈췄고 함수를 11번 불렀어요(`nfev=11`). 처음 계산에 점 8개와 $x$ 자신, 다음 계산에 새 점 2개예요. 다음 계산은 간격이 반이라 앞의 점 가운데 여섯을 다시 써요. 오차 추정 $7.1 \times 10^{-12}$은 실제 오차 $3.1 \times 10^{-14}$보다 커요. 오차 추정은 첫 추정과 둘째 추정의 차이라서 대개 첫 추정의 오차만큼이고, 멈춘 둘째 추정은 그보다 정확해요.
+
+### 어디서 틀어지나요
+
+차분은 몇 개의 점에서 함수를 부를 뿐이라, 그 점들이 함수의 모양을 제대로 보지 못하면 틀린 답을 내요. 자주 만나는 경우는 이래요.
+
+- **간격이 함수의 척도에 맞지 않을 때**: 처음 간격 0.5는 $x$나 함수의 척도를 보지 않는 절대 간격이에요. $\sin(1000x)$처럼 0.5 안에서 여러 번 출렁이는 함수는 처음 추정부터 엉뚱해요. 이럴 때는 `initial_step`을 함수가 변하는 척도에 맞춰 줘요.
+- **정의역의 끝 가까이**: $\log x$를 $x = 10^{-3}$에서 미분하면 $x - 0.5$가 음수라 값이 NaN이에요. 그 원소는 status −3으로 멈춰요. 더 작은 `initial_step`이나 한쪽 차분 `step_direction`을 줘요.
+- **$x$가 아주 클 때**: 간격이 $x$의 끝자리 단위(ulp)보다 작으면 스텐실의 점이 모두 $x$로 반올림돼요. 그러면 함숫값이 모두 같아서 `df`가 0, `error`가 0으로 수렴했다고 나와요. 기본 간격 0.5면 $\lvert x\rvert \gtrsim 2^{53}$에서 그래요. $\lvert x\rvert$에 맞춘 `initial_step`을 줘요.
+- **도함수가 0이거나 함숫값보다 아주 작을 때**: 기본 허용오차는 상대 판정이라 도함수가 0 근처면 맞추기 어려워요. `atol`을 줘요.
+- **매끄럽지 않은 점**: 꺾이거나 끊긴 점에서는 도함수가 없지만 차분은 수를 내요.
+
+```python
+>>> D = sd.differentiate.derivative
+>>> D(lambda x: sd.sin(1000 * x), 0.1)
+DifferentiateResult(df=8.63654, error=13.2152, converged=False, n_iter=3, nfev=13)
+>>> D(lambda x: sd.sin(1000 * x), 0.1, initial_step=1e-3)
+DifferentiateResult(df=862.319, error=5.70803e-07, converged=True, n_iter=2, nfev=11)
+>>> 1000 * math.cos(100)
+862.3188722876839
+```
+
+첫 결과는 `converged=False`라서 믿으면 안 된다는 것을 알 수 있어요. 결과를 쓰기 전에 늘 `converged`를 확인하세요.
+
+큰 $x$에서 점이 반올림으로 사라지는 경우는 `converged`로도 알 수 없어요. $\log x$의 $x = 10^{20}$에서 도함수는 $10^{-20}$인데, 기본 간격으로는 0이 수렴으로 나와요.
+
+```python
+>>> D(sd.log, 1e20)
+DifferentiateResult(df=0, error=0, converged=True, n_iter=2, nfev=11)
+>>> D(sd.log, 1e20, initial_step=1e20 / 4)
+DifferentiateResult(df=1e-20, error=4.41861e-30, converged=True, n_iter=2, nfev=11)
+```
+
+<Callout type="warn" title="꺾인 점에서는 수렴했다고 나올 수 있어요">
+$\lvert x\rvert$는 0에서 미분할 수 없지만, 중앙 차분은 양쪽 값이 같아 정확히 0을 내고 수렴했다고 알려요. 차분은 함수가 매끄럽다고 믿고 계산해요. 꺾이거나 끊긴 점 근처에서는 결과를 그대로 믿지 마세요.
+
+```python
+>>> D(sd.abs, 0.0)
+DifferentiateResult(df=0, error=0, converged=True, n_iter=2, nfev=11)
+```
+</Callout>
+
+## 세 함수와 approx_fprime
+
+| 하고 싶은 것 | 함수 | 사용자 함수 |
+|---|---|---|
+| 실수 하나의 함수 $f(x)$의 도함수를 한 점이나 많은 점에서 | [`derivative`](/api/differentiate/derivative/) | 원소별 함수 |
+| 여러 변수의 함수 $f: \mathbb{R}^m \to \mathbb{R}^k$의 야코비안, 또는 기울기 | [`jacobian`](/api/differentiate/jacobian/) | 열마다 점 하나인 벡터화된 함수 |
+| 스칼라 함수의 헤시안(이계 편도함수의 행렬) | [`hessian`](/api/differentiate/hessian/) | 열마다 점 하나인 벡터화된 함수 |
+| 점 하나를 받는 평범한 함수의 기울기나 야코비안 | [`sd.optimize.approx_fprime`](/api/optimize/approx_fprime/) | 점 하나 $(n,)$을 받는 함수 |
+
+세 함수는 항목마다 오차 추정과 수렴 여부를 함께 돌려줘요. 사용자 함수를 배열로 한 번에 부르므로 많은 점, 많은 항목을 빠르게 계산해요. 대신 사용자 함수가 배열을 받아 원소마다 계산하도록 써야 해요. 점 하나를 받는 함수가 이미 있고 기울기만 필요하면 `approx_fprime`이 편해요. 오차 추정은 없지만 변수마다 간격을 골라 상대 $10^{-11}$ 안팎까지 맞혀요.
+
+```python
+>>> f = lambda x: sd.exp(x[0]) * sd.sin(x[1])
+>>> sd.differentiate.jacobian(f, [1.0, 2.0]).df
+array([  2.471726672004788, -1.1312043837567969], dtype=float64)
+>>> sd.optimize.approx_fprime([1.0, 2.0], lambda x: math.exp(x[0]) * math.sin(x[1]))
+array([ 2.4717266720042517, -1.1312043837571462], dtype=float64)
+```
+
+## 사용자 함수
+
+### derivative: 원소별 함수
+
+`derivative`의 `f`는 **원소별 함수**예요. 배열을 받아 같은 모양의 배열을 돌려주고, 결과의 원소 $i$가 입력의 원소 $i$에만 기대야 해요. `sd.exp`, `sd.sin`, 산술 연산처럼 원소마다 계산하는 연산으로 쓰면 저절로 그래요.
+
+`f`가 받는 배열의 모양은 호출마다 달라요. 첫 호출은 모든 원소의 $x$를 담은 1차원 $(k,)$이에요. 다음부터는 아직 끝나지 않은 원소만 모아, 원소마다 여러 점을 담은 2차원 $(k, p)$예요. 첫 반복은 $p$가 `order`(기본 8), 그다음은 2예요.
+
+```python
+>>> shapes = []
+>>> def g(x):
+...     shapes.append(x.shape)
+...     return sd.exp(x)
+>>> r = D(g, [1.0, 2.0, 3.0])
+>>> shapes
+[(3,), (3, 8), (3, 2)]
+```
+
+- `f`가 받는 `x`는 float64 `sd.ndarray`예요. numpy 함수를 쓰려면 `np.asarray(x)`로 바꿔요. 돌려주는 값은 `sd.ndarray`, numpy 배열, 수의 시퀀스 모두 돼요.
+- 받은 것과 같은 모양을 돌려줘야 해요. 다르면 `ValueError`예요.
+- 정의되지 않는 점에서는 예외 대신 NaN을 돌려줘요. 그 원소만 status −3으로 멈추고 나머지는 계속 계산해요. `sd.log`, `sd.sqrt`는 정의역 밖에서 NaN을 내요. `math.log`처럼 수 하나만 받는 함수는 배열을 받지 못해요.
+- `f`가 낸 에러는 바꾸지 않고 그대로 나와요.
+
+```python
+>>> D(lambda x: 1.0, 1.0)
+Traceback (most recent call last):
+    ...
+ValueError: derivative(): 'f' must return shape (1,) like its argument, not a scalar
+>>> D(lambda x: x[:, :1] if x.ndim == 2 else x, [1.0, 2.0])
+Traceback (most recent call last):
+    ...
+ValueError: derivative(): 'f' must return shape (2, 8) like its argument, not (2, 1)
+>>> D(lambda x: x > 0, 1.0)
+Traceback (most recent call last):
+    ...
+TypeError: derivative(): 'f' must return real values, not a bool array
+>>> D(lambda x: math.log(x), 1.0)
+Traceback (most recent call last):
+    ...
+TypeError: an array cannot be converted to float
+```
+
+<Callout type="warn" title="원소끼리 섞으면 틀린 답이 나와요">
+`sd.sum(x)`처럼 원소를 섞는 연산을 쓰면 에러 없이 틀린 값이 나와요. 원소가 몇 개 남았는지, 한 원소의 점이 몇 개인지가 호출마다 바뀌기 때문이에요. 원소마다 다른 상수가 필요하면 `args`로 넘겨요([원소별 배치](#원소별-배치)).
+</Callout>
+
+### jacobian과 hessian: 벡터화된 함수
+
+`jacobian`과 `hessian`의 `f`는 점 여러 개를 열로 받아요. 변수가 $m$개면 `f`가 받는 `x`는 $(m, N)$이고 열 하나가 점 하나예요. `x[0]`이 모든 점의 첫째 변수 $(N,)$이에요. `f`는 출력이 $k$개면 $(k, N)$을, 스칼라 함수면 $(N,)$을 돌려줘요. `[x[0] * x[1], sd.sin(x[0])]`처럼 행의 리스트를 돌려줘도 돼요.
+
+```python
+>>> shapes = []
+>>> def polar(x):
+...     shapes.append(x.shape)
+...     return [x[0] * sd.cos(x[1]), x[0] * sd.sin(x[1])]
+>>> J = sd.differentiate.jacobian(polar, [2.0, math.pi / 6])
+>>> shapes
+[(2, 2), (2, 16), (2, 4)]
+```
+
+첫 호출은 $(m, m)$, 다음부터는 변수마다 그 변수만 바꾼 점들을 쌓은 $(m, m \cdot p)$예요. `hessian`의 `f`는 스칼라 함수라 늘 $(N,)$을 돌려줘요. 자세한 것은 [`jacobian`](/api/differentiate/jacobian/#벡터화된-f-쓰기)에 있어요.
+
+## 원소별 배치
+
+`derivative`의 `x`에 배열을 주면 원소마다 따로 미분해요. 원소마다 따로 멈추고, 끝난 원소는 다음 호출에서 빠져요. `x`, `initial_step`, `step_direction`, `args`의 값은 서로 브로드캐스트해서 결과의 모양(배치 모양)을 정해요.
+
+```python
+>>> r = D(sd.exp, sd.linspace(0.0, 2.0, 5))
+>>> r
+DifferentiateResult(batch shape (5,), 5 of 5 converged)
+>>> r.df
+array([0.9999999999999913,  1.648721270700114,  2.718281828459014,
+         4.48168907033801,  7.389056098930579], dtype=float64)
+```
+
+`args`는 `f`에 넘길 원소마다의 상수예요. 튜플로 주고, 값마다 `x`와 함께 브로드캐스트해요. `f`는 `f(x, *args)`로 불리고, 첫 호출에서는 $(k,)$, 다음부터는 $(k, 1)$로 줄여 받아서 `x`의 점들과 그대로 계산할 수 있어요.
+
+```python
+>>> p = sd.asarray([1.0, 2.0, 3.0])
+>>> r = D(lambda x, p: x**p, sd.asarray([[1.0], [2.0]]), args=(p,))
+>>> r.df
+array([[ 1.0,  2.0,  3.0],
+       [ 1.0,  4.0, 12.0]], dtype=float64)
+```
+
+$x^p$의 도함수 $p x^{p-1}$을 $x = 1, 2$와 $p = 1, 2, 3$의 여섯 쌍에서 한 번에 구했어요. `jacobian`과 `hessian`에는 `args`가 없어요. 상수는 `lambda`나 클로저로 묶어요.
+
+같은 기계, 같은 스레드 수, 같은 입력이면 실행마다 결과가 비트까지 같아요. 지금은 원소를 배치에 넣어도 혼자 부른 것과 비트까지 같고, 스레드 수와도 상관없어요(약속은 아니에요).
+
+```python
+>>> xs = [0.3, 1.7, 2.9]
+>>> D(sd.exp, xs).df.tolist() == [D(sd.exp, v).df for v in xs]
+True
+```
+
+사용자 함수는 Python이라 GIL(Python 인터프리터의 전역 잠금)을 쥔 채 불러요. 호출 사이에 원소마다 다음 점을 쓰고 추정을 갱신하는 일은, 그 일의 크기(남은 원소 수 × 원소마다의 점 수)가 32,768점 이상이면 여러 스레드에 나누고 그동안 GIL을 놓아요. 보통은 사용자 함수의 계산이 시간의 대부분이에요.
+
+## 결과: DifferentiateResult
+
+세 함수는 모두 `DifferentiateResult`를 돌려줘요. 함수가 계산한 것만 필드로 들어 있어요.
+
+| 필드 | 뜻 | 주는 함수 |
+|---|---|---|
+| `df` | 도함수(`derivative`), 야코비안 $(k, m)$ 또는 기울기 $(m,)$(`jacobian`) | `derivative`, `jacobian` |
+| `ddf` | 헤시안 $(m, m)$ | `hessian` |
+| `error` | 오차 추정. 마지막 두 추정의 차이의 크기 | 모두 |
+| `converged` | `error < atol + rtol·|df|`로 멈췄는지 | 모두 |
+| `status` | 0 수렴, −1 반올림이 이기기 시작해 멈춤, −2 `max_iter`에 닿음, −3 유한하지 않은 값 | 모두 |
+| `n_iter` | 공식을 계산한 횟수 | `derivative`, `jacobian` |
+| `nfev` | 사용자 함수의 값을 계산한 점의 수 | 모두 |
+| `x` | 미분한 점(브로드캐스트한 뒤) | `derivative` |
+
+필드는 원소(항목)마다 값이 있어요. `derivative`는 입력이 모두 수면 필드가 Python 수이고, 배열이면 배치 모양의 `sd.ndarray`예요. `jacobian`과 `hessian`은 항목마다 따로 멈추므로 `status`, `nfev` 등도 `df`·`ddf`와 같은 모양이에요.
+
+```python
+>>> r = D(sd.exp, 1.0)
+>>> r.df, r.error, r.converged, r.status, r.n_iter, r.nfev, r.x
+(2.718281828459014, 7.130296353352605e-12, True, 0, 2, 11, 1.0)
+>>> type(D(sd.exp, [1.0]).df), D(sd.exp, [1.0]).df.shape
+(<class 'stardust._core.ndarray'>, (1,))
+```
+
+### 없는 필드, 읽기 전용
+
+함수가 주지 않는 필드를 읽으면 `AttributeError`예요. 필드는 바꿀 수 없고, 배열 필드도 읽기 전용이에요. 결과는 튜플처럼 풀리지 않고 dict처럼 꺼낼 수도 없어요. 이름으로 읽어요.
+
+```python
+>>> sd.differentiate.hessian(lambda x: x[0]**2 * x[1], [1.0, 2.0]).n_iter
+Traceback (most recent call last):
+    ...
+AttributeError: 'DifferentiateResult' object has no attribute 'n_iter' (the function does not give it)
+>>> rb = D(sd.exp, [1.0, 2.0])
+>>> rb.df[0] = 3.0
+Traceback (most recent call last):
+    ...
+ValueError: assignment destination is read-only
+>>> df, error = r
+Traceback (most recent call last):
+    ...
+TypeError: cannot unpack non-iterable DifferentiateResult object
+```
+
+값을 고쳐 쓰려면 `rb.df.copy()`로 복사해요.
+
+### 출력하기
+
+결과를 그냥 보여 주면 한 줄 요약이에요. 원소 하나면 주요 필드를, 배치면 모양과 수렴한 수를 보여 줘요. `summary()`는 원소(항목)마다 한 줄씩의 표를 그려요.
+
+```python
+>>> r = D(sd.log, [1e-3, 0.1, 1.0, 10.0])
+>>> r
+DifferentiateResult(batch shape (4,), 2 of 4 converged)
+>>> print(r.summary())
+                           Differentiation Results
+=======================================================================================
+Batch shape:                      (4,)  Converged:                      2 of 4
+=======================================================================================
+                    x         df      error  converged     status     n_iter       nfev
+---------------------------------------------------------------------------------------
+[0]            0.0010        nan        nan      False         -3          1          9
+[1]            0.1000        nan        nan      False         -3          1          9
+[2]            1.0000   1.000000   4.42e-10       True          0          3         13
+[3]           10.0000   0.100000    6.8e-16       True          0          2         11
+=======================================================================================
+```
+
+$x = 10^{-3}$과 $0.1$에서는 처음 간격 0.5가 0 아래로 넘어가 $\log$가 NaN이라 status −3이에요. 원소 하나의 `summary()`는 표 대신 머리에 `Converged`, `Status`, `Point`, `Derivative`, `Error estimate`, `No. Iterations`, `Function Evals`를 적어요. `jacobian`과 `hessian`의 표는 항목마다 `[i, j]` 한 줄이에요.
+
+`DifferentiateResult(*, batch=(), **fields)`로 직접 만들 수도 있어요. 예를 들어 다른 계산의 결과를 같은 꼴로 보여 줄 때 써요. 필드는 키워드로만 줘요. 넘긴 리스트나 배열(`sd.ndarray`, numpy 배열)은 결과 자신의 읽기 전용 `sd.ndarray`로 한 번 복사해 두므로, 넘긴 뒤에 원래 것을 고쳐도 결과는 그대로예요. `converged`는 bool, `status`·`n_iter`·`nfev`는 정수(또는 그런 배열), 나머지 필드는 수나 수의 배열이어야 해요.
+
+```python
+>>> R = sd.differentiate.DifferentiateResult
+>>> R(df=1.0, error=0.0)
+DifferentiateResult(df=1, error=0)
+>>> v = [1.0, 2.0]
+>>> rr = R(df=v, batch=(2,))
+>>> v[0] = 9.0
+>>> rr.df
+array([1.0, 2.0], dtype=float64)
+>>> R(1.0)
+Traceback (most recent call last):
+    ...
+TypeError: DifferentiateResult(): takes 0 positional arguments but 1 was given
+>>> R(df=1.0, status='ok')
+Traceback (most recent call last):
+    ...
+TypeError: DifferentiateResult(): 'status' must be an int or an array of ints, not str
+```
+
+## 멈춤과 status
+
+원소(항목)마다 반복할 때마다 이 순서로 판정해요.
+
+1. `error < atol + rtol·|df|`이면 수렴(status 0)이에요. 기본 `atol`은 가장 작은 정규수($2.2 \times 10^{-308}$)라 사실상 상대 판정이고, 기본 `rtol`은 $\sqrt\varepsilon \approx 1.5 \times 10^{-8}$($\varepsilon = 2^{-52}$)이에요.
+2. $x$나 추정이 유한하지 않으면 status −3이고 `df`는 NaN이에요.
+3. 오차 추정이 직전 반복의 10배를 넘으면 status −1이에요. 간격이 작아져 반올림이 이기기 시작했다는 뜻이에요. 그때의 `df`와 `error`를 돌려줘요. 오차 추정은 둘째 반복에 처음 생기므로 −1은 셋째 반복부터 나와요.
+4. `max_iter`(기본 10)번 계산하면 status −2이고 마지막 추정을 돌려줘요.
+
+모든 호출은 `max_iter`번 안에 끝나요. 경고는 내지 않아요. 멈춘 이유는 `converged`와 `status`로 알려요.
+
+```python
+>>> D(sd.exp, 1.0, rtol=0)
+DifferentiateResult(df=2.71828, error=7.77156e-14, converged=False, n_iter=10, nfev=27)
+>>> D(sd.exp, 1.0, order=2)
+DifferentiateResult(df=2.71828, error=1.29618e-06, converged=False, n_iter=10, nfev=21)
+>>> D(sd.exp, 1.0, order=2, max_iter=20)
+DifferentiateResult(df=2.71828, error=2.02526e-08, converged=True, n_iter=13, nfev=27)
+```
+
+`rtol=0`이면 절대 판정만 남는데 `atol`이 너무 작아 반올림 수준에서 끝내 맞추지 못하고 `max_iter`의 10번을 다 써서 −2로 멈췄어요. 그래도 그때의 `df`는 상대 $1.4 \times 10^{-13}$까지 맞아요. 2차 공식은 10번으로 모자라 −2였고, `max_iter`를 늘리면 수렴해요.
+
+### 도함수가 0 근처일 때는 atol
+
+도함수가 0이거나 함숫값에 비해 아주 작으면 `rtol·|df|`가 반올림 오차보다 작아서 상대 판정을 맞출 수 없어요. 이럴 때는 `atol`을 줘요. $\sin x$의 $x = \pi/2$(도함수 0)에서 보면 이래요.
+
+```python
+>>> D(sd.sin, math.pi / 2)
+DifferentiateResult(df=-4.10649e-14, error=4.11708e-14, converged=False, n_iter=6, nfev=19)
+>>> D(sd.sin, math.pi / 2, atol=1e-12)
+DifferentiateResult(df=-2.55332e-15, error=2.34275e-15, converged=True, n_iter=2, nfev=11)
+```
+
+함수가 0을 중심으로 대칭이면 양쪽 값이 정확히 같아서 0이 그대로 나오고 바로 수렴해요($\cos x$의 0, $x^3$의 0). 대칭이 아니어서 반올림이 남는 곳이 문제예요.
+
+### 오차 추정은 상계가 아니에요
+
+`error`는 두 추정의 차이일 뿐, 참 오차를 넘는다고 보장하지 않아요. 대개는 참 오차보다 넉넉히 크지만 가끔 작아요. $\log x$를 $x = 10^4$에서 미분하면 오차 추정은 $5.1 \times 10^{-16}$인데 참 오차는 $3.3 \times 10^{-15}$(상대 $3.3 \times 10^{-11}$)예요.
+
+```python
+>>> r = D(sd.log, 1e4)
+>>> r.error, abs(r.df - 1e-4)
+(5.05021371943748e-16, 3.313389601751482e-15)
+```
+
+Arb(구간 산술)로 만든 참값과 견주면, 수렴한 `derivative`의 결과는 시험한 초등 함수 11개 × 9점과 정의역의 끝 근처나 옵션을 바꾼 17경우 모두에서 `atol + rtol·|df|` 안이었어요(최대 상대오차 $6.2 \times 10^{-11}$). 오차 추정이 참 오차보다 작은 것은 수렴한 111경우 가운데 다섯이었어요.
+
+## 에러
+
+함수와 점은 위치로만, 옵션은 키워드로만 줘요. 틀린 호출과 틀린 옵션은 함수 이름으로 시작하는 에러예요.
+
+```python
+>>> D(sd.exp, x=1.0)
+Traceback (most recent call last):
+    ...
+TypeError: derivative(): got some positional-only arguments passed as keyword arguments: 'x'
+>>> D(sd.exp, 1.0, tolerances={'rtol': 1e-10})
+Traceback (most recent call last):
+    ...
+TypeError: derivative(): unexpected keyword argument 'tolerances'
+>>> D(sd.exp, 1.0, max_iter=0)
+Traceback (most recent call last):
+    ...
+ValueError: derivative(): 'max_iter' must be >= 1
+>>> D(sd.exp, 1.0, order=20)
+Traceback (most recent call last):
+    ...
+ValueError: derivative(): 'order' must be at most 18
+>>> D(sd.exp, 1.0, atol=-1)
+Traceback (most recent call last):
+    ...
+ValueError: derivative(): 'atol' must be a finite number >= 0
+>>> D(sd.exp, 1.0, step_factor=1)
+Traceback (most recent call last):
+    ...
+ValueError: derivative(): 'step_factor' must be a finite number > 0 other than 1
+>>> D(lambda x, a: x * a, [1.0, 2.0], args=([1.0, 2.0, 3.0],))
+Traceback (most recent call last):
+    ...
+ValueError: derivative(): the inputs must broadcast together, not shapes (2,), (), (), (3,)
+```
+
+`order`는 1부터 18까지예요. 차수가 그보다 높으면 첫 반복의 가장 안쪽 점이 $x$에 너무 가까워 반올림에 묻히기 시작하고, 가중치를 정확히 계산하는 데도 오래 걸려요([derivative의 차수](/api/differentiate/derivative/#차수-order)). 브로드캐스트 에러의 모양은 `x`, `initial_step`, `step_direction`, `args`의 값 차례예요. 점이 NaN이거나 `initial_step`이 0 이하인 것은 에러가 아니라 그 원소의 status −3이에요.
+
+## scipy를 아는 분께
+
+함수와 인자의 이름, 계산 방법, 사용자 함수를 부르는 점은 `scipy.differentiate`(scipy 1.18.1)의 것이에요. 다른 것은 이래요.
+
+- **결과의 이름**: `success`는 `converged`, `nit`는 `n_iter`예요. 결과 클래스는 `DifferentiateResult` 하나이고, 주지 않는 필드를 읽으면 `AttributeError`예요. 필드와 배열은 읽기 전용이에요.
+- **허용오차와 상한**: `tolerances` dict 대신 키워드 `atol`·`rtol`이고, `maxiter`는 `max_iter`예요.
+- **없는 것**: `kwargs`, `preserve_shape`, `callback`(그래서 status −4도 없어요)이에요. `args`는 `derivative`만 받아요(scipy와 같아요).
+- **차수의 상한**: `order`는 18까지예요. scipy는 상한이 없어서, 예를 들어 `order=20`이면 $e^x$의 1에서 2.71821을 수렴했다고 내요.
+- **첫 호출**: `derivative`의 첫 호출은 $(k,)$ 1차원이에요. scipy는 입력 모양 그대로예요.
+- **가중치와 합**: 공식의 가중치는 정확한 값을 한 번 반올림한 것이고, 중앙 공식은 양쪽 점의 차를 짝마다 더해요. 그래서 `df`는 scipy와 끝자리가 다를 수 있고(허용오차 안), 판정의 경계에서는 반복 수가 갈릴 수 있어요. 예를 들어 $x^3$의 0은 여기서 둘째 반복에 수렴하고 scipy는 −2예요.
+- **같은 비트**: 지금은 원소의 결과가 배치의 크기, 스레드 수와 상관없이 같아요(약속은 아니에요). scipy는 배치의 크기에 따라 끝자리가 다를 수 있어요.
+- `jacobian`과 `hessian`의 `f`는 $(m, N)$ 2차원 배열을 받고, `x`는 1차원만 받아요.
+- 큰 $x$에서 점이 반올림으로 사라져 0이 수렴으로 나오는 것($\log$의 $10^{20}$)은 scipy도 같아요.

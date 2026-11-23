@@ -1,0 +1,270 @@
+---
+kind: function
+title: ks_1samp
+names: [ks_1samp]
+group: 분포 적합도
+order: 7
+signatures:
+  - "sd.htest.ks_1samp(x, cdf, /, *, axis=None, alternative='two-sided', method='auto', nan_policy='propagate', keepdims=False)"
+summary: 표본이 미리 정한 연속분포에서 왔는지 보는 한 표본 Kolmogorov–Smirnov 검정이에요. 경험 분포 함수와 주어진 누적분포 사이의 가장 큰 세로 거리 D로 재고, p값은 D의 정확한 분포에서 구해요.
+params:
+  - name: x
+    type: ndarray, 실수의 시퀀스, 실수 스칼라, numpy 배열, 또는 frame의 Series·DataFrame
+    kind: positional-only
+    desc: 표본. bool·정수는 float64로 바꿔서 계산해요.
+  - name: cdf
+    type: sd.stats의 분포 객체 또는 호출 가능한 객체
+    kind: positional-only
+    desc: "귀무가설의 누적분포. sd.stats.Normal(mu=0, sigma=1) 같은 분포 객체(그 cdf를 써요)나 cdf(v)를 돌려주는 함수예요. 함수는 정렬한 표본을 배치 모양 (..., n)의 배열로 한 번 받고, 같은 모양의 수 배열을 돌려줘야 해요."
+  - name: axis
+    type: int, int의 tuple·리스트, 또는 None
+    kind: keyword-only
+    desc: 표본을 읽을 축. None(기본값)이면 모든 원소를 표본 하나로 펼쳐요. 축을 주면 그 축을 따라 표본을 읽고, 나머지 축의 칸마다 따로 검정해요.
+  - name: alternative
+    type: str
+    kind: keyword-only
+    desc: "'two-sided'(기본값, 분포가 다름), 'less'(표본의 누적분포가 어딘가에서 cdf보다 작음, 표본이 큰 쪽으로 치우침), 'greater'(어딘가에서 cdf보다 큼, 표본이 작은 쪽으로 치우침) 중 하나예요."
+  - name: method
+    type: str
+    kind: keyword-only
+    desc: "양쪽 검정의 p값을 구하는 분포. 'auto'(기본값, 'exact'를 써요), 'exact'(D의 정확한 분포), 'approx'(한쪽 꼬리의 두 배), 'asymp'(Kolmogorov의 극한 분포) 중 하나예요. 한쪽 검정은 이 값과 상관없이 정확한 분포예요."
+  - name: nan_policy
+    type: str
+    kind: keyword-only
+    desc: "'propagate'(기본값, NaN이 있는 표본의 결과가 NaN), 'omit'(NaN을 빼고 계산), 'raise'(ValueError) 중 하나예요."
+  - name: keepdims
+    type: bool
+    kind: keyword-only
+    desc: True면 결과에 표본 축을 길이 1로 남겨요.
+returns:
+  type: Ks1sampResult
+  desc: "statistic(D), pvalue, statistic_location(D에 닿는 관측값), statistic_sign(D⁺면 +1, D⁻면 -1), method(쓴 분포의 이름)가 든 결과 객체예요. 검정 하나면 Python 수와 str, 배치면 배치 모양의 배열이고 method는 배치 모양의 중첩 리스트예요. (statistic, pvalue) 둘로 풀려요."
+raises:
+  - type: TypeError
+    desc: cdf가 분포 객체나 호출 가능한 객체가 아닐 때(문자열 'norm', 분포 클래스 sd.stats.Normal 등), cdf가 수가 아닌 것을 돌려줄 때, x가 수의 배열·시퀀스·frame이 아니거나 복소수일 때, axis·keepdims의 형이 틀렸을 때, 옵션을 위치로 주거나 없는 키워드(args 등)를 줬을 때.
+  - type: ValueError
+    desc: "cdf가 입력과 다른 모양을 돌려줄 때, alternative·method·nan_policy 이름이 틀렸을 때, axis가 범위 밖이거나 겹칠 때, nan_policy='raise'인데 NaN이 있을 때."
+seeAlso: [cramervonmises, anderson, ks_2samp, shapiro, goodness_of_fit, basics, results]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+export const ecdf = [[-3.0, 0.0], [-2.124, 0.0], [-2.124, 0.02], [-1.96, 0.02], [-1.96, 0.04], [-1.681, 0.04], [-1.681, 0.06], [-1.292, 0.06], [-1.292, 0.08], [-0.987, 0.08], [-0.987, 0.1], [-0.962, 0.1], [-0.962, 0.12], [-0.93, 0.12], [-0.93, 0.14], [-0.916, 0.14], [-0.916, 0.16], [-0.772, 0.16], [-0.772, 0.18], [-0.625, 0.18], [-0.625, 0.2], [-0.604, 0.2], [-0.604, 0.22], [-0.571, 0.22], [-0.571, 0.24], [-0.387, 0.24], [-0.387, 0.26], [-0.371, 0.26], [-0.371, 0.28], [-0.369, 0.28], [-0.369, 0.3], [-0.238, 0.3], [-0.238, 0.32], [-0.205, 0.32], [-0.205, 0.34], [-0.186, 0.34], [-0.186, 0.36], [-0.16, 0.36], [-0.16, 0.38], [-0.119, 0.38], [-0.119, 0.4], [-0.04, 0.4], [-0.04, 0.42], [0.003, 0.42], [0.003, 0.44], [0.012, 0.44], [0.012, 0.46], [0.14, 0.46], [0.14, 0.48], [0.163, 0.48], [0.163, 0.5], [0.188, 0.5], [0.188, 0.52], [0.21, 0.52], [0.21, 0.54], [0.292, 0.54], [0.292, 0.56], [0.546, 0.56], [0.546, 0.58], [0.589, 0.58], [0.589, 0.6], [0.59, 0.6], [0.59, 0.62], [0.626, 0.62], [0.626, 0.64], [0.64, 0.64], [0.64, 0.66], [0.804, 0.66], [0.804, 0.68], [0.861, 0.68], [0.861, 0.7], [1.032, 0.7], [1.032, 0.72], [1.08, 0.72], [1.08, 0.74], [1.124, 0.74], [1.124, 0.76], [1.134, 0.76], [1.134, 0.78], [1.173, 0.78], [1.173, 0.8], [1.19, 0.8], [1.19, 0.82], [1.269, 0.82], [1.269, 0.84], [1.466, 0.84], [1.466, 0.86], [1.681, 0.86], [1.681, 0.88], [1.684, 0.88], [1.684, 0.9], [1.776, 0.9], [1.776, 0.92], [1.93, 0.92], [1.93, 0.94], [1.944, 0.94], [1.944, 0.96], [2.307, 0.96], [2.307, 0.98], [2.384, 0.98], [2.384, 1.0], [3.0, 1.0]];
+export const ncdf = [[-3.0, 0.0013], [-2.9, 0.0019], [-2.8, 0.0026], [-2.7, 0.0035], [-2.6, 0.0047], [-2.5, 0.0062], [-2.4, 0.0082], [-2.3, 0.0107], [-2.2, 0.0139], [-2.1, 0.0179], [-2.0, 0.0228], [-1.9, 0.0287], [-1.8, 0.0359], [-1.7, 0.0446], [-1.6, 0.0548], [-1.5, 0.0668], [-1.4, 0.0808], [-1.3, 0.0968], [-1.2, 0.1151], [-1.1, 0.1357], [-1.0, 0.1587], [-0.9, 0.1841], [-0.8, 0.2119], [-0.7, 0.242], [-0.6, 0.2743], [-0.5, 0.3085], [-0.4, 0.3446], [-0.3, 0.3821], [-0.2, 0.4207], [-0.1, 0.4602], [0.0, 0.5], [0.1, 0.5398], [0.2, 0.5793], [0.3, 0.6179], [0.4, 0.6554], [0.5, 0.6915], [0.6, 0.7257], [0.7, 0.758], [0.8, 0.7881], [0.9, 0.8159], [1.0, 0.8413], [1.1, 0.8643], [1.2, 0.8849], [1.3, 0.9032], [1.4, 0.9192], [1.5, 0.9332], [1.6, 0.9452], [1.7, 0.9554], [1.8, 0.9641], [1.9, 0.9713], [2.0, 0.9772], [2.1, 0.9821], [2.2, 0.9861], [2.3, 0.9893], [2.4, 0.9918], [2.5, 0.9938], [2.6, 0.9953], [2.7, 0.9965], [2.8, 0.9974], [2.9, 0.9981], [3.0, 0.9987]];
+export const gap = [[1.0324, 0.7], [1.0324, 0.849]];
+
+## 한눈에 보기
+
+한 표본 Kolmogorov–Smirnov(KS) 검정은 "이 표본이 내가 정한 이 분포에서 왔다고 봐도 되나요?"를 물어요. 분포는 모수까지 모두 정해져 있어야 해요(예: 평균 0, 표준편차 1인 정규분포).
+
+- **귀무가설**: 표본이 `cdf`의 분포에서 왔어요.
+- **대립가설**: 다른 분포에서 왔어요(`alternative='two-sided'`). 한쪽 방향은 [아래](#alternative-한쪽-검정)예요.
+
+표본 50개가 표준정규분포에서 왔는지 물어요. 실제로는 평균이 0.3인 정규분포에서 뽑았어요.
+
+```python
+>>> import stardust as sd
+>>> x = sd.stats.Normal(mu=0.3, sigma=1.0).sample(50, rng=sd.random.default_rng(4))
+>>> r = sd.htest.ks_1samp(x, sd.stats.Normal())
+>>> r
+Ks1sampResult(statistic=0.149057, pvalue=0.195849, statistic_location=1.0324, statistic_sign=-1, method='exact')
+```
+
+$D = 0.149$, p = 0.20이라 표준정규분포에서 벗어났다는 근거가 모자라요. 평균이 0.3만큼 옮겨진 것은 표본 50개로 잡기에는 작은 차이예요.
+
+<Reference />
+
+## 통계량
+
+표본의 **경험 분포 함수** $F_n(t)$는 $t$ 이하인 관측의 비율이에요. 관측마다 $1/n$씩 오르는 계단이에요. 표본이 $F$에서 왔다면 $F_n$은 $F$를 가까이 따라가요. KS 통계량은 둘 사이의 가장 큰 세로 거리예요.
+
+$$
+D = \sup_t \lvert F_n(t) - F(t) \rvert = \max(D^+, D^-), \qquad D^+ = \sup_t \bigl(F_n(t) - F(t)\bigr), \quad D^- = \sup_t \bigl(F(t) - F_n(t)\bigr)
+$$
+
+<Fig caption="표본 50개의 경험 분포 함수(계단)와 표준정규분포의 누적분포. 가장 큰 거리 D = 0.149는 x = 1.032 바로 앞에서 누적분포가 계단보다 위에 있는 곳(점선)이에요.">
+  <Plot
+    curves={[
+      { points: ecdf, label: '경험 분포 함수' },
+      { points: ncdf, label: '표준정규분포' },
+      { points: gap, label: 'D', dashed: true },
+    ]}
+    domain={[-3, 3]}
+    range={[0, 1]}
+    xTicks={[
+      { v: -2, label: '-2' },
+      { v: 0, label: '0' },
+      { v: 1.032, label: '1.03' },
+      { v: 2, label: '2' },
+    ]}
+    yTicks={[
+      { v: 0.5, label: '0.5' },
+      { v: 1, label: '1' },
+    ]}
+  />
+</Fig>
+
+결과의 `statistic_location`은 $D$에 닿는 관측값이고, `statistic_sign`은 $D$가 $D^+$면 +1, $D^-$면 −1이에요. 여기서는 누적분포가 계단보다 위에 있어서(표본이 큰 쪽으로 옮겨져서) −1이에요.
+
+```python
+>>> r.statistic, r.statistic_location, r.statistic_sign
+(0.14905681767238266, 1.0323965987371242, -1)
+>>> d, p = r
+>>> p
+0.19584887319408734
+```
+
+$D$의 분포는 $F$가 연속이면 $F$가 무엇이든 같아요. 그래서 p값은 $n$과 $D$만으로 정해져요.
+
+## 언제 쓰나요
+
+- 모수가 미리 정해진 연속분포와 견줄 때 써요. 예를 들어 난수 생성기의 출력이 $[0, 1)$의 균등분포인지, 측정값이 사양서의 분포를 따르는지예요.
+- 분포 전체의 모양을 한 번에 보지만, 가운데의 어긋남에 민감하고 꼬리의 어긋남에는 둔해요. 꼬리까지 고르게 보려면 [`cramervonmises`](/api/htest/cramervonmises/)나 [`anderson`](/api/htest/anderson/)이에요.
+- 두 표본이 같은 분포인지는 [`ks_2samp`](/api/htest/ks_2samp/)예요.
+
+<Callout type="warn" title="모수를 데이터에서 맞추면 p값이 틀려요">
+평균과 표준편차를 그 표본에서 구해 `sd.stats.Normal(mu=평균, sigma=표준편차)`를 넘기면, 분포가 데이터에 맞춰져서 $D$가 작아지고 p값이 실제보다 커요. 모수를 모르는 분포족을 물으려면 [`shapiro`](/api/htest/shapiro/)(정규분포), [`anderson`](/api/htest/anderson/), 또는 다시 맞추기를 몬테카를로로 반영하는 [`goodness_of_fit`](/api/htest/goodness_of_fit/)을 써요.
+</Callout>
+
+```python
+>>> m, s = sd.mean(x), sd.std(x, correction=1)
+>>> sd.htest.ks_1samp(x, sd.stats.Normal(mu=m, sigma=s)).pvalue
+0.9868896676390098
+```
+
+맞춘 분포로는 p = 0.99로 아주 잘 맞는 것처럼 보이지만, 이 값은 귀무분포를 따르지 않아요.
+
+## `cdf`: 분포 객체나 함수
+
+`cdf`에는 sd.stats의 분포 객체를 주는 것이 가장 쉬워요. 그 `cdf` 메서드를 써요.
+
+```python
+>>> u = sd.stats.Uniform(a=0.0, b=1.0).sample(20, rng=sd.random.default_rng(9))
+>>> sd.htest.ks_1samp(u, sd.stats.Uniform(a=0.0, b=1.0))
+Ks1sampResult(statistic=0.172832, pvalue=0.532484, statistic_location=0.377168, statistic_sign=1, method='exact')
+```
+
+누적분포를 함수로 줄 수도 있어요. 함수는 정렬한 표본을 배열 하나로 한 번만 받고, 같은 모양의 배열을 돌려줘야 해요. 그래서 원소마다 부르는 Python 함수가 아니라 배열을 받는 함수를 줘요.
+
+```python
+>>> sd.htest.ks_1samp(x, lambda v: sd.stats.Normal().cdf(v)).pvalue == r.pvalue
+True
+>>> sd.htest.ks_1samp(x, lambda v: 0.5)
+Traceback (most recent call last):
+    ...
+ValueError: ks_1samp(): 'cdf' must return an array of the shape of its input (50,), not ()
+>>> sd.htest.ks_1samp(x, 'norm')
+Traceback (most recent call last):
+    ...
+TypeError: ks_1samp(): 'cdf' must be an sd.stats distribution object or a callable cdf(x), not str
+>>> sd.htest.ks_1samp(x, sd.stats.Normal)
+Traceback (most recent call last):
+    ...
+TypeError: ks_1samp(): 'cdf' must be an sd.stats distribution object (sd.stats.Normal(mu=0, sigma=1)) or a callable cdf(x), not the class Normal
+```
+
+분포 이름의 문자열, 분포 클래스, 따로 넘기는 모수(`args=`)는 받지 않아요. 모수는 분포 객체에 넣어요.
+
+## `alternative`: 한쪽 검정
+
+한쪽 검정은 표본이 한 방향으로 옮겨졌는지를 물어요. 방향의 이름은 누적분포를 기준으로 해요.
+
+| `alternative` | 대립가설 | 통계량 | 표본은 |
+|---|---|---|---|
+| `'less'` | 어딘가에서 $F_{\text{표본}}(t) < F(t)$ | $D^-$ | 큰 쪽으로 치우쳐요 |
+| `'greater'` | 어딘가에서 $F_{\text{표본}}(t) > F(t)$ | $D^+$ | 작은 쪽으로 치우쳐요 |
+
+표본의 평균이 0.3만큼 크므로 `'less'`가 맞는 방향이에요.
+
+```python
+>>> sd.htest.ks_1samp(x, sd.stats.Normal(), alternative='less')
+Ks1sampResult(statistic=0.149057, pvalue=0.0980054, statistic_location=1.0324, statistic_sign=-1, method='exact')
+>>> sd.htest.ks_1samp(x, sd.stats.Normal(), alternative='greater').pvalue
+0.9689317938885301
+```
+
+한쪽 검정의 p값은 언제나 Smirnov의 정확한 분포예요. 방향은 데이터를 보기 전에 정해요.
+
+## `method`: 양쪽 검정의 분포
+
+| `method` | p값 | 결과의 `method` |
+|---|---|---|
+| `'auto'`(기본값), `'exact'` | $D$의 정확한 분포 | `'exact'` |
+| `'approx'` | 한쪽 꼬리 확률의 두 배(1에서 잘라요) | `'approx'` |
+| `'asymp'` | $\sqrt{n}D$의 극한(Kolmogorov) 분포 | `'asymp'` |
+
+```python
+>>> for m in ('exact', 'approx', 'asymp'):
+...     print(m, sd.htest.ks_1samp(x, sd.stats.Normal(), method=m).pvalue)
+exact 0.19584887319408734
+approx 0.19601085958505204
+asymp 0.2165526933012572
+```
+
+정확한 분포를 쓰는 것이 기본이고 어떤 크기에서도 계산이 끝나요. `'approx'`는 꼬리에서 정확한 값에 아주 가깝고, `'asymp'`는 표본이 클 때의 근사라 n = 50에서는 0.02쯤 차이가 나요. 한쪽 검정에서는 `method`를 무시하고 결과의 `method`가 `'exact'`예요.
+
+## 결과 읽기
+
+결과는 `statistic`, `pvalue`, `statistic_location`, `statistic_sign`, `method` 다섯 필드이고, 앞의 둘로 풀려요. 필드는 읽기만 해요.
+
+```python
+>>> print(r.summary())
+                      One-sample Kolmogorov-Smirnov test
+==============================================================================
+Statistic:                      0.1491  Alternative:                 two-sided
+P-value:                         0.196  Method:                          exact
+Statistic Location:              1.032  No. Observations:                   50
+Statistic Sign:                     -1
+==============================================================================
+```
+
+결과 객체의 공통 규칙은 [결과 객체 읽기](/api/htest/results/)에 있어요.
+
+## 여러 표본을 한 번에
+
+`axis`를 주면 그 축을 따라 표본을 읽고 나머지 축의 칸마다 따로 검정해요. `cdf`는 정렬한 배치 전체를 (..., n) 모양으로 한 번 받아요. 결과의 `method`는 줄마다의 이름을 배치 모양으로 담은 리스트예요. NaN은 `nan_policy`를 따라요. 공통 규칙은 [가설검정의 기본](/api/htest/basics/)에 있어요.
+
+```python
+>>> b = sd.stats.Normal().sample((3, 30), rng=sd.random.default_rng(10))
+>>> rb = sd.htest.ks_1samp(b, sd.stats.Normal(), axis=1)
+>>> rb.pvalue
+array([0.19473243397080842, 0.19516532960483624,  0.4370143224019028], dtype=float64)
+>>> rb.statistic_sign, rb.method
+(array([-1,  1,  1], dtype=int64), ['exact', 'exact', 'exact'])
+```
+
+## 특수한 경우
+
+- **빈 표본**은 `statistic`, `pvalue`, `statistic_location`이 NaN이고 `statistic_sign`은 0이에요.
+- 값이 하나여도 정확한 분포로 계산해요.
+- 이산분포의 누적분포를 줘도 계산은 하지만, 검정은 연속분포를 가정해요. 이산분포에서는 p값이 실제보다 커요.
+
+```python
+>>> sd.htest.ks_1samp([], sd.stats.Normal())
+Ks1sampResult(statistic=nan, pvalue=nan, statistic_location=nan, statistic_sign=0, method='exact')
+>>> sd.htest.ks_1samp([0.1], sd.stats.Normal()).pvalue
+0.920344325445942
+>>> sd.htest.ks_1samp(x, sd.stats.Normal(), method='asymptotic')
+Traceback (most recent call last):
+    ...
+ValueError: ks_1samp(): 'method' must be 'auto', 'exact', 'approx' or 'asymp', not 'asymptotic'
+```
+
+## 정확도
+
+- $D$는 Arb(구간 산술)로 계산한 참값과 견줘 19문제에서 상대오차가 7.1e-16 안이에요.
+- 정확한 분포의 p값은 상대오차가 2e-13 안이고, p값이 1e-113, 1e-251처럼 깊은 꼬리에서도 0으로 떨어지지 않고 그 자릿수가 맞아요. 한쪽 꼬리는 양수 항의 합으로 계산해서 $n$이 커도 자릿수를 잃지 않아요.
+- 약속이 느슨한 곳이 하나 있어요. 양쪽 검정에서 $n$이 약 1000을 넘고 $nD^2 < 6.5$인 곳은 정확한 분포의 계산량이 커서 Pelz–Good 근사($nD^2 < 3$)나 한쪽 꼬리의 두 배를 써요. n = 3000에서 상대오차가 Pelz–Good은 8e-9–5e-7, 한쪽 꼬리의 두 배는 1.4e-8 아래이고, $n$이 클수록 작아져요.
+- 같은 입력이면 실행마다 같은 비트예요. 지금은 스레드 수와도 상관없이 같아요(약속은 아니에요).
+
+## scipy를 아는 분께
+
+scipy 1.18.1, R 4.6.2 기준이에요.
+
+- `scipy.stats.ks_1samp(x, cdf)`와 같은 통계량, 같은 `alternative`와 `method`의 이름과 뜻이에요. `statistic_location`, `statistic_sign`도 같아요. 기본 `axis`는 None이에요(scipy는 0).
+- `cdf`는 sd.stats의 분포 객체나 배열을 받는 함수예요. scipy의 분포 이름(`'norm'`)과 `args=()`는 받지 않아요. scipy의 `kstest`(한 표본과 두 표본을 고르는 함수)는 없고, 두 표본은 [`ks_2samp`](/api/htest/ks_2samp/)예요.
+- 결과에 실제로 쓴 분포의 이름 `method`가 있어요.
+- 양쪽 정확한 분포가 더 정확해요. scipy는 n > 140에서 Pelz–Good 근사로 넘어가서 p값의 상대오차가 n = 141에서 3.5e-6, n = 400에서 1.7e-7이에요. n ≤ 140에서도 정확한 분포를 1 − cdf로 계산해서 n = 100, $nD^2 = 4$에서 8e-12 틀려요.
+- R의 `ks.test`는 n ≥ 100에서 기본으로 점근 분포를 써서 n = 141, 400에서 p값이 0.04쯤 다르고, 꼬리를 1 − cdf로 계산해서 깊은 꼬리(p = 1e-113 등)에서 0을 내요.
+- 빈 표본은 경고 없이 NaN이에요.

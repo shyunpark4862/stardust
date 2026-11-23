@@ -1,0 +1,357 @@
+---
+title: laplacian
+names: [laplacian]
+group: 순서와 라플라시안
+order: 3
+signatures:
+  - "sd.graph.laplacian(csgraph, /, *, normed=False, return_diag=False, use_out_degree=False, form='array', dtype=None, symmetrized=False)"
+summary: 그래프의 라플라시안 행렬 L = D − A를 만들어요. D는 노드마다 붙은 무게의 합(차수)이에요. 고윳값과 고유벡터가 그래프의 연결 구조를 드러내서 스펙트럼 군집, 그래프 나누기, 그래프 위의 확산과 평활에 써요. 정규화(normed), 방향 있는 그래프의 들어오는·나가는 차수와 대칭화, 행렬 대신 LinearOperator(form='lo')를 골라요.
+params:
+  - name: csgraph
+    type: sd.sparse의 희소 배열 또는 밀집 행렬(ndarray, numpy 배열, 수의 중첩 시퀀스)
+    kind: positional-only
+    desc: "(n, n) 인접 행렬. 원소 (i, j)가 i → j 변의 무게예요. 다른 그래프 함수와 달리 값을 그대로 쓰는 행렬 함수라서, 밀집 행렬의 0은 무게 0이고 NaN·inf는 결과로 퍼져요. 대각은 무시해요. bool, int64, float64를 받아요."
+  - name: normed
+    type: bool
+    kind: keyword-only
+    desc: "True면 정규화 라플라시안 D^(−1/2) L D^(−1/2)를 만들어요. 차수가 0인 노드는 1로 나눠요. 기본값 False."
+  - name: return_diag
+    type: bool
+    kind: keyword-only
+    desc: "True면 라플라시안과 함께 노드마다의 차수(normed면 차수의 제곱근)를 LaplacianResult로 돌려줘요. 기본값 False."
+  - name: use_out_degree
+    type: bool
+    kind: keyword-only
+    desc: "False(기본값)면 차수가 들어오는 무게의 합(열의 합), True면 나가는 무게의 합(행의 합)이에요. 대칭 행렬에서는 같아요."
+  - name: form
+    type: str
+    kind: keyword-only
+    desc: "'array'(기본값)면 행렬(밀집 입력은 ndarray, 희소 입력은 csr_array), 'lo'면 그 행렬을 감싼 sd.sparse.LinearOperator예요."
+  - name: dtype
+    type: None, int64, float64(dtype 객체나 그 이름)
+    kind: keyword-only
+    desc: "결과의 dtype. None(기본값)이면 입력의 dtype(bool은 int64), normed=True면 float64예요. 주면 계산한 뒤에 바꿔요."
+  - name: symmetrized
+    type: bool
+    kind: keyword-only
+    desc: "True면 A 대신 A + A^T로 라플라시안을 만들어요(방향 있는 그래프를 방향 없는 그래프로 바꾸는 한 방법). 기본값 False."
+returns:
+  type: ndarray, csr_array, LinearOperator, 또는 LaplacianResult
+  desc: "라플라시안 (n, n). 밀집 입력이면 sd.ndarray, 희소 입력이면 csr_array(대각 밖 원소와 대각 전부를 저장), form='lo'면 LinearOperator예요. return_diag=True면 LaplacianResult(laplacian, diag)이고 diag는 차수(normed면 그 제곱근, 차수 0은 1)이며, 이때 밀집 행렬과 diag는 쓰기 금지예요."
+raises:
+  - type: TypeError
+    desc: "csgraph가 받는 꼴이 아닐 때(scipy 희소 행렬, DataFrame, 문자열, 복소수), dtype이 None, int64, float64가 아닐 때, form이 문자열이 아닐 때, 켜고 끄는 옵션이 True·False가 아닐 때, 옵션을 자리로 넘기거나 없는 키워드(copy 등)를 줄 때."
+  - type: ValueError
+    desc: "csgraph가 2차원 정방이 아닐 때, form이 'array'나 'lo'가 아닐 때(scipy의 'function'도)."
+seeAlso: [connected_components, structural_rank, reverse_cuthill_mckee, basics, results]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import PlaneFig from '../../../components/fig/PlaneFig.astro';
+
+export const lpEdges = [[0, 0, 0, 1.2], [0, 1.2, 1.5, 0.6], [0, 0, 1.5, 0.6], [2.5, 0.6, 4, 1.2], [4, 1.2, 4, 0], [2.5, 0.6, 4, 0]];
+export const lpPos = [[0, 0], [0, 1.2], [1.5, 0.6]];
+export const lpNeg = [[2.5, 0.6], [4, 1.2], [4, 0]];
+export const lpValues = [
+  { kind: 'text', at: [0, 0], text: '0.4647', dx: 10, dy: 14, tone: 'base' },
+  { kind: 'text', at: [0, 1.2], text: '0.4647', dx: 10, dy: -8, tone: 'base' },
+  { kind: 'text', at: [1.5, 0.6], text: '0.2610', dx: -6, dy: -12, anchor: 'end', tone: 'base' },
+  { kind: 'text', at: [2.5, 0.6], text: '−0.2610', dx: 6, dy: -12, tone: 'base' },
+  { kind: 'text', at: [4, 1.2], text: '−0.4647', dx: -10, dy: -8, anchor: 'end', tone: 'base' },
+  { kind: 'text', at: [4, 0], text: '−0.4647', dx: -10, dy: 14, anchor: 'end', tone: 'base' },
+];
+
+## 한눈에 보기
+
+방향 없는 그래프의 인접 행렬을 $A$, 노드마다 붙은 변의 무게를 더한 **차수**를 대각에 놓은 행렬을 $D$라고 하면, **라플라시안**은
+
+$$
+L = D - A
+$$
+
+예요. 대각은 노드의 차수, 대각 밖의 $(i, j)$는 변 무게에 마이너스를 붙인 값이라 행마다 합이 0이에요.
+
+```python
+>>> import stardust as sd
+>>> W = sd.asarray([[0, 1, 1, 0],
+...                 [1, 0, 1, 0],
+...                 [1, 1, 0, 1],
+...                 [0, 0, 1, 0]])
+>>> L = sd.graph.laplacian(W)
+>>> L
+array([[ 2, -1, -1,  0],
+       [-1,  2, -1,  0],
+       [-1, -1,  3, -1],
+       [ 0,  0, -1,  1]], dtype=int64)
+>>> sd.sum(L, axis=1)
+array([0, 0, 0, 0], dtype=int64)
+```
+
+노드 2는 이웃이 셋이라 대각이 3이고, 노드 3은 이웃이 하나라 1이에요.
+
+라플라시안은 미분의 라플라스 연산자를 그래프로 옮긴 것이에요. 벡터 $x$를 노드마다의 값으로 보면 $(Lx)_i = \sum_j A_{ij}(x_i - x_j)$는 노드 $i$의 값이 이웃의 값과 얼마나 다른지를 무게를 붙여 더한 것이고, 이차 형식
+
+$$
+x^T L x = \sum_{\{i, j\}} A_{ij}\,(x_i - x_j)^2
+$$
+
+은 이웃끼리 값이 다른 정도의 합이에요(변마다 한 번). 무게가 음수가 아니면 이 값이 0 이상이라 $L$의 고윳값은 모두 0 이상이고, 고유벡터가 그래프의 모양을 드러내요. 그래서 스펙트럼 군집과 그래프 나누기, 그래프 위의 확산과 평활의 바탕이 돼요.
+
+<Reference />
+
+## 고윳값으로 그래프 읽기
+
+### 0인 고윳값의 수 = 연결 요소의 수
+
+모든 값이 같은 벡터 $x = (1, \dots, 1)$은 $Lx = 0$이에요. 그래프가 여러 덩어리로 나뉘어 있으면 덩어리마다 "그 덩어리에서만 1"인 벡터가 따로 0 고윳값을 가져요. 그래서 **0인 고윳값의 개수가 연결 요소의 개수**예요.
+
+```python
+>>> def undirected(n, edges):
+...     A = sd.zeros((n, n), dtype=sd.int64)
+...     for i, j in edges:
+...         A[i, j] = A[j, i] = 1
+...     return A
+>>> two = undirected(6, [(0, 1), (1, 2), (0, 2), (3, 4), (4, 5), (3, 5)])
+>>> sd.linalg.eigvalsh(sd.graph.laplacian(two).astype(sd.float64))
+array([-1.1102230246251565e-16, -1.1102230246251565e-16,
+                           3.0,                     3.0,
+                           3.0,                     3.0], dtype=float64)
+>>> sd.graph.connected_components(two, return_labels=False)
+2
+```
+
+삼각형 두 개로 나뉜 그래프라 0 고윳값이 둘이에요(반올림 때문에 아주 작은 값으로 나올 수 있어요).
+
+### 둘째 고유벡터로 나누기
+
+두 덩어리 사이에 변을 하나 더해 이으면 0 고윳값은 하나가 되지만, 둘째로 작은 고윳값이 0에 가깝게 작아요. 이 고윳값의 고유벡터(피들러 벡터)는 덩어리마다 부호가 갈라져서, 부호로 노드를 나누면 그래프를 적은 변만 자르고 둘로 나눌 수 있어요.
+
+```python
+>>> joined = undirected(6, [(0, 1), (1, 2), (0, 2), (3, 4), (4, 5), (3, 5), (2, 3)])
+>>> w, V = sd.linalg.eigh(sd.graph.laplacian(joined).astype(sd.float64))
+>>> w
+array([-9.366079527735677e-16,     0.4384471871911694,
+                          3.0,                    3.0,
+           3.0000000000000004,       4.56155281280883], dtype=float64)
+>>> V[:, 1]
+array([  0.4647051316572963,  0.46470513165729643,  0.26095647380885284,
+       -0.26095647380885184,  -0.4647051316572954,  -0.4647051316572954], dtype=float64)
+>>> V[:, 1] > 0
+array([ True,  True,  True, False, False, False], dtype=bool)
+```
+
+<Fig caption="삼각형 두 개를 변 2–3으로 이은 그래프와 둘째 고유벡터의 값. 값의 부호가 두 삼각형에서 갈라져서, 부호로 나누면 이은 변 하나만 잘라요.">
+  <PlaneFig
+    label="노드 0, 1, 2의 삼각형과 노드 3, 4, 5의 삼각형을 변 2–3으로 이은 그래프, 노드마다 둘째 고유벡터의 값"
+    domain={[-0.5, 4.5]}
+    range={[-0.5, 1.7]}
+    width={440}
+    layers={[
+      { kind: 'segments', segs: lpEdges, tone: 'faint', width: 1.6 },
+      { kind: 'segments', segs: [[1.5, 0.6, 2.5, 0.6]], tone: 'base', dashed: true, width: 1.6 },
+      ...lpValues,
+      { kind: 'points', pts: lpPos, tone: 'soft', size: 5, labels: ['0', '1', '2'] },
+      { kind: 'points', pts: lpNeg, tone: 'main', size: 5, labels: ['3', '4', '5'] },
+    ]}
+    legend={[
+      { label: '값이 양수', tone: 'soft', shape: 'dot' },
+      { label: '값이 음수', tone: 'main', shape: 'dot' },
+      { label: '부호로 나누면 잘리는 변', tone: 'base', shape: 'dash' },
+    ]}
+  />
+</Fig>
+
+큰 그래프에서는 고윳값 몇 개만 필요하므로 희소 입력의 라플라시안을 [`sd.sparse.eigsh`](/api/sparse/eigsh/)에 바로 넘겨요.
+
+## 결과 읽기
+
+### 밀집이면 밀집, 희소면 희소
+
+밀집 행렬을 주면 `sd.ndarray`, 희소 배열을 주면 `csr_array`를 돌려줘요. 희소 결과는 입력의 대각 밖 원소와 대각 전부를 저장해요. 차수가 0인 노드의 대각도 0으로 저장해요.
+
+```python
+>>> S = sd.sparse.csr_array(W)
+>>> LS = sd.graph.laplacian(S)
+>>> LS
+<csr_array of shape (4, 4), int64, 12 stored elements>
+>>> LS.toarray()
+array([[ 2, -1, -1,  0],
+       [-1,  2, -1,  0],
+       [-1, -1,  3, -1],
+       [ 0,  0, -1,  1]], dtype=int64)
+```
+
+### 대각은 무시해요
+
+입력의 대각(자기 고리)은 라플라시안에 들어가지 않아요. 자기 고리는 $x_i - x_i = 0$이라 이차 형식에 아무것도 더하지 않기 때문이에요. 차수도 대각을 뺀 원소만 더해요.
+
+```python
+>>> sd.graph.laplacian(sd.asarray([[7.0, 1.0], [1.0, 9.0]]))
+array([[ 1.0, -1.0],
+       [-1.0,  1.0]], dtype=float64)
+```
+
+### 값 그대로 써요
+
+`laplacian`은 그래프 함수이면서 행렬 함수예요. 다른 그래프 함수는 밀집 행렬의 0, NaN, ±inf를 "변 없음"으로 읽지만, 이 함수는 값을 그대로 계산에 써요. 0은 무게 0이라 결과에 아무것도 더하지 않고, NaN과 inf는 부동소수점 규칙대로 그 노드의 차수와 원소로 퍼져요.
+
+```python
+>>> sd.graph.laplacian(sd.asarray([[0, sd.nan], [1.0, 0]]))
+array([[ 1.0,  nan],
+       [-1.0,  nan]], dtype=float64)
+```
+
+대각 밖의 원소는 $-A_{ij}$라서, float64 결과에서는 입력의 0이 −0.0으로 나와요(아래 정규화의 예). 값으로는 0과 같아요.
+
+## normed: 정규화 라플라시안
+
+차수가 노드마다 크게 다르면 차수가 큰 노드가 라플라시안을 지배해요. `normed=True`는 차수로 나눠 크기를 맞춘 **정규화 라플라시안**을 만들어요.
+
+$$
+L_{\mathrm{sym}} = D^{-1/2} L D^{-1/2}, \qquad (L_{\mathrm{sym}})_{ij} = -\frac{A_{ij}}{\sqrt{d_i}\sqrt{d_j}} \quad (i \ne j)
+$$
+
+대각은 차수가 0이 아니면 1이고, 무게가 음수가 아니면 고윳값은 0과 2 사이에 있어요.
+
+```python
+>>> sd.graph.laplacian(W, normed=True)
+array([[                 1.0, -0.49999999999999994,   -0.408248290463863,
+                        -0.0],
+       [-0.49999999999999994,                  1.0,   -0.408248290463863,
+                        -0.0],
+       [  -0.408248290463863,   -0.408248290463863,                  1.0,
+         -0.5773502691896258],
+       [                -0.0,                 -0.0,  -0.5773502691896258,
+                         1.0]], dtype=float64)
+```
+
+$(0, 1)$ 원소의 참값은 $-1/2$인데 `-0.49999999999999994`로 끝자리가 달라요. $A_{ij}$를 $\sqrt{d_i}$로 나누고 다시 $\sqrt{d_j}$로 나누는 동안 제곱근과 나눗셈의 반올림이 쌓이기 때문이에요.
+
+이웃이 없어 차수가 0인 노드는 0으로 나눌 수 없어서 1로 나눠요. 그 노드의 대각은 0이에요.
+
+```python
+>>> I = sd.asarray([[0, 1.0, 0], [1.0, 0, 0], [0, 0, 0]])
+>>> sd.graph.laplacian(I, normed=True)
+array([[ 1.0, -1.0, -0.0],
+       [-1.0,  1.0, -0.0],
+       [-0.0, -0.0,  0.0]], dtype=float64)
+```
+
+음수 무게가 있어 차수가 음수가 되면 제곱근이 NaN이라 그 노드의 대각 밖 원소가 NaN이에요.
+
+```python
+>>> sd.graph.laplacian(sd.asarray([[0, -1.0], [-1.0, 0]]), normed=True)
+array([[1.0, nan],
+       [nan, 1.0]], dtype=float64)
+```
+
+## return_diag: 차수도 함께
+
+`return_diag=True`면 [`LaplacianResult`](/api/graph/results/#laplacianresult)`(laplacian, diag)`를 돌려줘요. `diag`는 노드마다의 차수이고, `normed=True`면 나눌 때 쓴 차수의 제곱근(차수 0은 1)이에요.
+
+```python
+>>> sd.graph.laplacian(W, return_diag=True)
+LaplacianResult(laplacian=array([[ 2, -1, -1,  0],
+       [-1,  2, -1,  0],
+       [-1, -1,  3, -1],
+       [ 0,  0, -1,  1]], dtype=int64), diag=array([2, 2, 3, 1], dtype=int64))
+>>> Ln, d = sd.graph.laplacian(W, normed=True, return_diag=True)
+>>> d
+array([1.4142135623730951, 1.4142135623730951, 1.7320508075688772,
+                      1.0], dtype=float64)
+```
+
+## 방향 있는 그래프
+
+방향 있는 그래프에서는 노드에 들어오는 무게의 합과 나가는 무게의 합이 달라요. 기본은 **들어오는 무게의 합**(열의 합)을 차수로 써요. `use_out_degree=True`면 **나가는 무게의 합**(행의 합)이에요. 대각 밖은 어느 쪽이든 $-A_{ij}$예요.
+
+```python
+>>> Dg = sd.asarray([[0, 2.0, 0],
+...                  [0, 0, 3.0],
+...                  [1.0, 0, 0]])
+>>> sd.graph.laplacian(Dg, return_diag=True).diag
+array([1.0, 2.0, 3.0], dtype=float64)
+>>> sd.graph.laplacian(Dg, use_out_degree=True, return_diag=True).diag
+array([2.0, 3.0, 1.0], dtype=float64)
+```
+
+노드 0에는 2에서 1이 들어오고 1로 2가 나가요. 그래서 들어오는 차수는 1, 나가는 차수는 2예요.
+
+`symmetrized=True`는 먼저 $A + A^T$로 대칭 행렬을 만든 뒤 라플라시안을 만들어요. 방향 있는 그래프를 두 방향의 무게를 더한 방향 없는 그래프로 보는 것이에요. 결과는 대칭이고 고윳값이 실수예요.
+
+```python
+>>> sd.graph.laplacian(Dg, symmetrized=True)
+array([[ 3.0, -2.0, -1.0],
+       [-2.0,  5.0, -3.0],
+       [-1.0, -3.0,  4.0]], dtype=float64)
+```
+
+희소 입력에서 $A + A^T$의 합이 정확히 0이 되는 자리는 저장하지 않아요. 희소 배열의 덧셈과 같은 규칙이에요.
+
+## form='lo': LinearOperator로
+
+`form='lo'`는 라플라시안 행렬을 [`sd.sparse.LinearOperator`](/api/sparse/linearoperator/)로 감싸 돌려줘요. 곱하기만 쓰는 반복법(`eigsh`, `cg`)에 넘기기 좋은 꼴이에요. 곱의 결과는 행렬과 곱한 것과 비트까지 같아요.
+
+```python
+>>> lo = sd.graph.laplacian(W, form="lo")
+>>> lo
+LinearOperator(shape=(4, 4), dtype=int64)
+>>> x = sd.asarray([1.0, 2.0, 3.0, 4.0])
+>>> lo @ x
+array([-3.0,  0.0,  2.0,  1.0], dtype=float64)
+>>> sd.graph.laplacian(W) @ x
+array([-3.0,  0.0,  2.0,  1.0], dtype=float64)
+```
+
+`form`은 `'array'`와 `'lo'` 둘이에요.
+
+## dtype
+
+`dtype=None`이면 결과는 입력의 dtype이에요. bool 그래프는 int64로 올려요. `normed=True`면 나눗셈이 들어가므로 float64예요. `dtype`에 int64나 float64를 주면 계산을 마친 뒤 그 dtype으로 바꿔요.
+
+```python
+>>> sd.graph.laplacian(W.astype(sd.bool))
+array([[ 2, -1, -1,  0],
+       [-1,  2, -1,  0],
+       [-1, -1,  3, -1],
+       [ 0,  0, -1,  1]], dtype=int64)
+>>> sd.graph.laplacian(W, dtype=sd.float64)
+array([[ 2.0, -1.0, -1.0,  0.0],
+       [-1.0,  2.0, -1.0,  0.0],
+       [-1.0, -1.0,  3.0, -1.0],
+       [ 0.0,  0.0, -1.0,  1.0]], dtype=float64)
+>>> sd.graph.laplacian(W, dtype=sd.bool)
+Traceback (most recent call last):
+    ...
+TypeError: laplacian(): 'dtype' must be None, int64 or float64, not bool
+```
+
+정수 무게의 차수는 정수 덧셈이라 정확해요. 실수 무게의 차수는 대각을 뺀 원소를 번호 차례대로 더한 값이고, 반올림 한계는 [정확도와 성능](/internals/graph/accuracy-performance/)에 있어요.
+
+## 경계의 값
+
+노드가 없으면 빈 행렬이에요. 정방이 아니면 `ValueError`예요.
+
+```python
+>>> sd.graph.laplacian(sd.zeros((0, 0)))
+array([], shape=(0, 0), dtype=float64)
+>>> sd.graph.laplacian(sd.zeros((2, 3)))
+Traceback (most recent call last):
+    ...
+ValueError: laplacian(): 'csgraph' must be a square matrix, not of shape (2, 3)
+```
+
+<Callout type="note" title="입력을 고치지 않아요">
+
+결과는 언제나 새 배열이에요. 입력 행렬을 덮어써 메모리를 아끼는 옵션(scipy의 `copy=False`)은 없어요.
+
+</Callout>
+
+## scipy·networkx를 아는 분께
+
+- 희소 입력의 결과는 `csr_array`예요(scipy는 `coo_array`). 저장하는 자리는 scipy와 같아요(대각 밖 원소와 대각 전부, 입력의 저장된 0은 −0.0).
+- `form='lo'`는 라플라시안 행렬을 만들어 감싸요. 그래서 곱이 `laplacian(G) @ x`와 비트까지 같아요. scipy는 행렬을 만들지 않고 곱해서 끝자리가 다를 수 있어요. `form='function'`과 `copy`는 없어요.
+- 차수는 대각을 뺀 원소의 합이에요. scipy는 대각까지 더한 합에서 대각을 빼서 끝자리가 다를 수 있고, 대각이 inf나 NaN이면 차수가 NaN이 돼요.
+- bool 그래프도 받아요(결과 int64). scipy는 정규화하지 않은 bool 그래프에서 에러를 내요.
+- 옵션은 키워드로만 받아요.
+- networkx의 `laplacian_matrix`와 `normalized_laplacian_matrix`는 방향 없는 그래프에서 같은 행렬을 줘요. 방향 있는 그래프의 차수는 networkx가 나가는 차수, 여기의 기본은 들어오는 차수예요(`use_out_degree=True`로 맞춰요).

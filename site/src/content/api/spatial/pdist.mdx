@@ -1,0 +1,354 @@
+---
+title: pdist
+names: [pdist]
+group: 거리 행렬
+order: 1
+signatures:
+  - "sd.spatial.pdist(X, /, *, metric='euclidean', p=None, w=None, V=None, VI=None)"
+summary: 점 집합 하나 안의 모든 짝 사이의 거리를 구해요. 짝 (i, j), i < j마다 한 칸인 1차원 배열(압축 꼴)로 돌려주고, squareform으로 정사각 거리 행렬로 펼칠 수 있어요. 거리는 열네 가지 가운데 metric으로 골라요.
+params:
+  - name: X
+    type: ndarray, 수의 중첩 시퀀스, numpy 배열, 또는 frame의 DataFrame
+    kind: positional-only
+    desc: 점들. 모양 (m, n)이고 행 하나가 점 하나, 열이 좌표예요. bool·int64는 float64로 바꿔 계산해요(hamming·jaccard는 그대로 비교해요). DataFrame의 결측값은 NaN이에요.
+  - name: metric
+    type: str
+    kind: keyword-only
+    desc: "거리 이름. 'euclidean'(기본값), 'sqeuclidean', 'cityblock', 'chebyshev', 'minkowski', 'seuclidean', 'mahalanobis', 'cosine', 'correlation', 'canberra', 'braycurtis', 'hamming', 'jaccard', 'haversine' 가운데 하나예요."
+  - name: p
+    type: int, float, 또는 None
+    kind: keyword-only
+    desc: metric='minkowski'의 차수. 0보다 큰 실수나 inf이고, None(기본값)이면 2예요. 다른 거리에 주면 TypeError예요.
+  - name: w
+    type: 1차원 배열 또는 None
+    kind: keyword-only
+    desc: 열마다의 가중치. 길이 n, 모두 유한하고 0 이상이어야 해요. seuclidean, mahalanobis, haversine은 받지 않아요.
+  - name: V
+    type: 1차원 배열 또는 None
+    kind: keyword-only
+    desc: metric='seuclidean'에서 열마다 나누는 분산. 길이 n, 모두 유한한 양수예요. None(기본값)이면 X의 열 분산(correction=1)이에요.
+  - name: VI
+    type: 2차원 배열 또는 None
+    kind: keyword-only
+    desc: metric='mahalanobis'의 (n, n) 행렬(공분산의 역행렬). None(기본값)이면 X의 공분산의 역행렬이고, 그러려면 행이 열보다 많아야 해요.
+returns:
+  type: ndarray(float64)
+  desc: 길이 m(m − 1)/2의 압축 꼴. 짝 (0, 1), (0, 2), …, (0, m−1), (1, 2), …의 순서예요. 점이 0개나 1개면 빈 배열이에요. 보통의 새 배열이라 고칠 수 있어요.
+raises:
+  - type: TypeError
+    desc: X가 배열로 바꿀 수 없는 것이거나 복소수일 때, metric이나 그 인자를 자리로 넘겼을 때, metric이 문자열이 아닐 때, 그 거리가 쓰지 않는 인자(p, w, V, VI)를 주었을 때.
+  - type: ValueError
+    desc: X가 2차원이 아닐 때, 모르는 거리 이름, p가 0 이하나 NaN일 때, w·V의 길이가 n이 아니거나 값이 범위 밖일 때, VI가 (n, n)이 아닐 때, haversine인데 열이 2개가 아닐 때, 기본 VI를 만들 행이 모자랄 때, seuclidean의 기본 V에 값이 모두 같은 열(분산 0)이 있을 때.
+  - type: sd.linalg.LinAlgError
+    desc: metric='mahalanobis'의 기본 VI를 만들 공분산이 특이할 때.
+  - type: MemoryError
+    desc: 결과(m(m − 1)/2 × 8바이트)가 이 컴퓨터의 물리 메모리보다 클 때.
+seeAlso: [squareform, cdist, metrics, basics, kneighbors, query_pairs]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+
+## 한눈에 보기
+
+`pdist`는 점 집합 하나를 받아 **모든 짝 사이의 거리**를 구해요. 점이 $m$개면 짝은 $m(m - 1)/2$개예요. 같은 짝을 두 번 세지 않고($i$에서 $j$까지와 $j$에서 $i$까지는 같은 거리), 자기 자신과의 짝(언제나 0)도 빼고, 짝 $(i, j)$, $i \lt j$마다 한 칸씩 1차원 배열에 담아요. 이 배열을 **압축 꼴**이라고 불러요.
+
+```python
+>>> import stardust as sd
+>>> X = sd.asarray([[0.0, 0.0],
+...                 [3.0, 4.0],
+...                 [6.0, 8.0],
+...                 [0.0, 1.0]])
+>>> y = sd.spatial.pdist(X)
+>>> y
+array([              5.0,              10.0,               1.0,
+                     5.0, 4.242640687119285, 9.219544457292887], dtype=float64)
+```
+
+점 네 개라 짝은 여섯이에요. 첫 칸 5는 점 0 (0, 0)과 점 1 (3, 4)의 거리, 둘째 칸 10은 점 0과 점 2 (6, 8)의 거리예요. 행렬로 보고 싶으면 [`squareform`](/api/spatial/squareform/)으로 펼쳐요.
+
+```python
+>>> sd.spatial.squareform(y)
+array([[              0.0,               5.0,              10.0,
+                      1.0],
+       [              5.0,               0.0,               5.0,
+        4.242640687119285],
+       [             10.0,               5.0,               0.0,
+        9.219544457292887],
+       [              1.0, 4.242640687119285, 9.219544457292887,
+                      0.0]], dtype=float64)
+```
+
+<Reference />
+
+## 압축 꼴 읽기
+
+정사각 거리 행렬은 대각선이 모두 0이고 대각선을 사이에 두고 대칭이라, 대각선 위 삼각형만 있으면 나머지를 다 알 수 있어요. 압축 꼴은 그 위 삼각형을 행 순서로 읽어 한 줄로 늘어놓은 것이에요.
+
+<Fig caption="m = 4의 거리 행렬에서 진하게 칠한 위 삼각형 여섯 칸을 행 순서로 읽으면 압축 꼴이 돼요. 옅은 칸은 대칭으로 같은 값이고, 대각선은 0이라 담지 않아요.">
+  <ArrayFig name="squareform(y)" data={[[0, 5, 10, 1], [5, 0, 5, 4.24], [10, 5, 0, 9.22], [1, 4.24, 9.22, 0]]} tones={[['m', 'b', 'b', 'b'], ['g', 'm', 'a', 'a'], ['g', 'g', 'm', 'b'], ['g', 'g', 'g', 'm']]} />
+  <ArrayFig name="y" data={[[5, 10, 1, 5, 4.24, 9.22]]} tones={[['b', 'b', 'b', 'a', 'a', 'b']]} note="(0,1) (0,2) (0,3) (1,2) (1,3) (2,3)" />
+</Fig>
+
+짝의 순서는 $(0, 1), (0, 2), \ldots, (0, m - 1), (1, 2), (1, 3), \ldots, (m - 2, m - 1)$이에요. 짝 $(i, j)$, $i \lt j$가 압축 꼴의 몇째 칸인지는 이 식으로 구해요.
+
+$$
+k = m\,i - \frac{i(i+1)}{2} + (j - i - 1)
+$$
+
+행 0의 짝이 $m - 1$개, 행 1의 짝이 $m - 2$개, … 차례로 쌓이니, 앞선 행들의 짝 수를 더하고 행 안에서 몇째인지를 더한 것이에요.
+
+```python
+>>> m = 4
+>>> def where(i, j):
+...     return m * i - i * (i + 1) // 2 + (j - i - 1)
+>>> where(1, 3), float(y[where(1, 3)])
+(4, 4.242640687119285)
+```
+
+압축 꼴은 메모리를 정사각 행렬의 반보다 조금 덜 써요. 거리 행렬을 받는 다른 계산(계층 군집 같은 것)이 흔히 이 꼴을 입력으로 받아요.
+
+## 거리 고르기: metric
+
+`metric`으로 열네 가지 거리 가운데 하나를 골라요. 거리마다 무엇을 재는지, 어떤 자료에 맞는지는 [거리 함수 한눈에 보기](/api/spatial/metrics/)에 모아 두었어요. 같은 네 점에서 몇 가지를 견주면 이래요.
+
+```python
+>>> sd.spatial.pdist(X, metric="cityblock")
+array([ 7.0, 14.0,  1.0,  7.0,  6.0, 13.0], dtype=float64)
+>>> sd.spatial.pdist(X, metric="chebyshev")
+array([4.0, 8.0, 1.0, 4.0, 3.0, 7.0], dtype=float64)
+>>> sd.spatial.pdist(X, metric="sqeuclidean")
+array([ 25.0, 100.0,   1.0,  25.0,  18.0,  85.0], dtype=float64)
+```
+
+`'cityblock'`은 가로와 세로로만 움직이는 거리($\lvert \Delta x\rvert + \lvert \Delta y\rvert$), `'chebyshev'`는 좌표 차이 가운데 가장 큰 것, `'sqeuclidean'`은 유클리드 거리의 제곱이에요. 각 거리의 이름은 같은 이름의 함수 페이지([`cityblock`](/api/spatial/cityblock/), [`chebyshev`](/api/spatial/chebyshev/), [`sqeuclidean`](/api/spatial/sqeuclidean/) …)로 이어져요.
+
+방향만 보는 `'cosine'`은 원점에 있는 점 (0, 0)과의 거리가 정해지지 않아 NaN이에요. 길이가 0인 벡터에는 방향이 없기 때문이에요.
+
+```python
+>>> sd.spatial.pdist(X, metric="cosine")
+array([                nan,                 nan,                 nan,
+                       0.0, 0.19999999999999998, 0.19999999999999998], dtype=float64)
+```
+
+점 1 (3, 4)와 점 2 (6, 8)는 같은 방향이라 거리 0이에요.
+
+## 거리의 인자: p, w, V, VI
+
+거리 몇 가지는 인자를 더 받아요. 인자는 그 인자를 쓰는 거리에만 줄 수 있고, 다른 거리에 주면 `TypeError`예요.
+
+### p: Minkowski 거리의 차수
+
+`metric='minkowski'`는 $(\sum \lvert x_i - y_i\rvert^p)^{1/p}$이에요. $p = 1$이면 `cityblock`, $p = 2$(기본값)면 `euclidean`, $p = \infty$면 `chebyshev`와 비트까지 같아요.
+
+```python
+>>> sd.spatial.pdist(X, metric="minkowski", p=3)
+array([ 4.497941445275415,   8.99588289055083,                1.0,
+        4.497941445275415, 3.7797631496846193,  8.237661384280926], dtype=float64)
+>>> sd.spatial.pdist(X, metric="minkowski", p=1) == sd.spatial.pdist(X, metric="cityblock")
+array([True, True, True, True, True, True], dtype=bool)
+```
+
+$p$는 0보다 크면 돼요. $p \lt 1$이면 삼각 부등식이 성립하지 않아 수학의 거리는 아니지만 받아요. 0 이하와 NaN은 `ValueError`예요.
+
+### w: 열마다의 가중치
+
+`w`는 열(좌표)마다 얼마나 무겁게 볼지예요. 유클리드 거리라면 $\sqrt{\sum w_i (x_i - y_i)^2}$가 돼요. 0을 주면 그 열을 아예 보지 않아요. 아래는 사람 넷의 키(cm)와 몸무게(kg)에서 몸무게를 빼고 키만 본 거리예요.
+
+```python
+>>> H = sd.asarray([[170.0, 65.0],
+...                 [180.0, 80.0],
+...                 [160.0, 52.0],
+...                 [175.0, 90.0]])
+>>> sd.spatial.pdist(H, w=[1.0, 0.0])
+array([10.0, 10.0,  5.0, 20.0,  5.0, 15.0], dtype=float64)
+```
+
+가중치는 길이가 열 수와 같고 모두 유한하며 0 이상이어야 해요. `seuclidean`, `mahalanobis`, `haversine`은 가중치를 받지 않아요(앞의 둘은 `V`, `VI`가 그 일을 해요).
+
+### V: 표준화 유클리드 거리의 분산
+
+키와 몸무게처럼 열의 단위와 퍼짐이 다르면 유클리드 거리는 퍼짐이 큰 열에 끌려가요. `metric='seuclidean'`은 열마다 그 분산 $V_i$로 나눈 $\sqrt{\sum (x_i - y_i)^2 / V_i}$이라 열들을 같은 눈금으로 봐요. `V`를 주지 않으면 `X`의 열 분산($n - 1$로 나눈 것)을 써요.
+
+```python
+>>> sd.var(H, axis=0, correction=1)
+array([72.91666666666667, 278.9166666666667], dtype=float64)
+>>> sd.spatial.pdist(H, metric="seuclidean")
+array([1.4758459038566707, 1.4061807554053114, 1.6073797967244994,
+        2.880380130560885,  0.837488608726647, 2.8745239386726813], dtype=float64)
+```
+
+기본 `V`는 그 호출의 데이터에서 구하므로, 데이터의 일부만 넘기면 분산이 달라져 거리도 달라져요. 여러 번 나눠 부르면서 같은 눈금을 쓰려면 전체 데이터의 분산을 한 번 구해 `V=`로 넘겨요. 받은 `V`는 길이 n이고 모두 유한한 양수여야 해요. 기본 `V`를 쓸 때 값이 모두 같은 열이 있으면 그 열의 분산이 0이라 `ValueError`예요([seuclidean](/api/spatial/seuclidean/#값이-모두-같은-열이-있으면)).
+
+### VI: Mahalanobis 거리의 행렬
+
+`metric='mahalanobis'`는 $\sqrt{(x - y)^\top VI\, (x - y)}$예요. `VI`를 공분산의 역행렬로 두면 열 사이의 상관까지 고려한 거리가 돼요. 키가 큰 사람은 대개 몸무게도 많이 나가니, 그 흐름을 따라 떨어진 두 사람보다 흐름을 거슬러 떨어진 두 사람을 더 멀다고 봐요. `VI`를 주지 않으면 `X`의 공분산의 역행렬을 써요.
+
+```python
+>>> H5 = sd.asarray([[170.0, 65.0], [180.0, 80.0], [160.0, 52.0],
+...                  [175.0, 90.0], [165.0, 58.0]])
+>>> sd.spatial.pdist(H5, metric="mahalanobis")
+array([1.3139983867188063, 1.4128887718599579,  2.305343085437184,
+       0.6787298117096161, 2.7149192468384644, 2.6492879405153946,
+       1.9906146830764113,  2.473833096081043, 0.7394704046821272,
+        2.341611852424678], dtype=float64)
+```
+
+공분산을 데이터에서 구하려면 점이 열보다 많아야 해요. 점이 모자라면 `ValueError`, 공분산이 특이하면(점들이 한 직선 위에 있을 때 같은 경우) `sd.linalg.LinAlgError`예요. 둘 다 `VI`를 직접 주면 돼요.
+
+```python
+>>> sd.spatial.pdist(sd.asarray([[1.0, 2.0, 3.0], [2.0, 3.0, 5.0], [0.0, 1.0, 1.0]]), metric="mahalanobis")
+Traceback (most recent call last):
+    ...
+ValueError: pdist(): the default 'VI' needs more observations than columns, not 3 observations of 3 columns; give 'VI'
+```
+
+## 도시 사이의 거리
+
+`metric='haversine'`은 지구 같은 구 위의 두 점 사이의 거리예요. 점은 (위도, 경도)의 두 열이고 단위는 라디안이에요. 결과는 반지름 1인 구 위의 중심각(라디안)이라, 지구 위의 거리는 지구 반지름(평균 약 6371 km)을 곱해서 얻어요.
+
+```python
+>>> names = ["서울", "부산", "도쿄", "베이징", "상하이", "오사카"]
+>>> lat = [37.5665, 35.1796, 35.6762, 39.9042, 31.2304, 34.6937]
+>>> lon = [126.9780, 129.0756, 139.6503, 116.4074, 121.4737, 135.5023]
+>>> P = sd.deg2rad(sd.asarray([lat, lon]).T)
+>>> km = sd.spatial.pdist(P, metric="haversine") * 6371.0
+>>> sd.round(km[:5])
+array([ 325.0, 1149.0,  952.0,  866.0,  829.0], dtype=float64)
+```
+
+squareform으로 펼쳐 여섯 도시 사이의 거리(km)를 표로 보면 이래요. 가장 가까운 짝은 서울과 부산(325 km), 가장 먼 짝은 도쿄와 베이징(2,089 km)이에요.
+
+| | 서울 | 부산 | 도쿄 | 베이징 | 상하이 | 오사카 |
+|---|---:|---:|---:|---:|---:|---:|
+| **서울** | · | 325 | 1,149 | 952 | 866 | 829 |
+| **부산** | 325 | · | 959 | 1,233 | 832 | 588 |
+| **도쿄** | 1,149 | 959 | · | 2,089 | 1,754 | 392 |
+| **베이징** | 952 | 1,233 | 2,089 | · | 1,067 | 1,781 |
+| **상하이** | 866 | 832 | 1,754 | 1,067 | · | 1,363 |
+| **오사카** | 829 | 588 | 392 | 1,781 | 1,363 | · |
+
+서울에서 부산까지 약 325 km, 도쿄까지 약 1149 km예요. 지구를 완전한 구로 본 거리라 타원체로 잰 실제 거리와는 0.5% 안팎까지 다를 수 있어요. 위도와 경도를 도 단위 그대로 넣으면 틀린 값이 나오니 꼭 라디안으로 바꿔 넣으세요. 자세한 것은 [`haversine`](/api/spatial/haversine/)에 있어요.
+
+## 가장 가까운 짝 찾기
+
+압축 꼴에서 가장 작은 칸을 찾으면 가장 가까운 두 점이 나와요. 칸 번호 $k$를 짝 $(i, j)$로 되돌리려면 행마다의 짝 수 $m - 1, m - 2, \ldots$를 차례로 빼요.
+
+```python
+>>> k = int(sd.argmin(y))
+>>> i = 0
+>>> while k >= m - 1 - i:
+...     k -= m - 1 - i
+...     i += 1
+>>> i, i + 1 + k
+(0, 3)
+```
+
+점 0 (0, 0)과 점 3 (0, 1)이 거리 1로 가장 가까워요. 점이 수만 개를 넘으면 압축 꼴 자체가 커지니, 점마다 가장 가까운 점은 [`kneighbors(X, X, k=2)`](/api/spatial/kneighbors/)로, 거리가 r 이하인 짝 전부는 [`KDTree.query_pairs`](/api/spatial/query_pairs/)로 찾는 편이 나아요. 둘 다 거리 행렬을 만들지 않아요.
+
+## 같은 짝, 같은 값
+
+짝 하나의 거리는 `pdist`, [`cdist`](/api/spatial/cdist/), 거리 함수가 같은 계산으로 구해서 마지막 비트까지 같아요. 그래서 `pdist(X)`를 펼친 행렬은 `cdist(X, X)`와 정확히 같아요.
+
+```python
+>>> bool(sd.all(sd.spatial.squareform(y) == sd.spatial.cdist(X, X)))
+True
+>>> float(y[where(1, 3)]) == sd.spatial.euclidean(X[1], X[3])
+True
+```
+
+대칭도 비트까지 성립해요. 그래서 위 삼각형만 계산하고 나머지는 옮겨 적어도 손해가 없어요. 이 약속의 범위는 [공간 영역의 기본](/api/spatial/basics/#같은-짝은-어디서-구해도-같은-비트)에 있어요.
+
+## 크기와 메모리
+
+짝의 수는 점 수의 제곱으로 늘어요. 결과의 크기는 $m(m - 1)/2 \times 8$바이트예요.
+
+| 점 수 m | 짝의 수 | 결과의 크기 |
+|---:|---:|---:|
+| 1,000 | 499,500 | 약 4 MB |
+| 10,000 | 49,995,000 | 약 400 MB |
+| 100,000 | 약 50억 | 약 40 GB |
+
+```python
+>>> sd.spatial.pdist(sd.zeros((10_000, 2))).shape
+(49995000,)
+```
+
+결과가 이 컴퓨터의 물리 메모리보다 크면 계산을 시작하기 전에 `MemoryError`를 내요.
+
+```python
+>>> sd.spatial.pdist(sd.zeros((3_000_000, 1)))
+Traceback (most recent call last):
+    ...
+MemoryError: pdist(): cannot allocate 35999988000000 bytes: more than this machine's physical memory
+```
+
+물리 메모리보다 작아도 거의 다 차는 크기면 다른 프로그램이 밀려나 느려질 수 있어요. 거리 전부가 아니라 가까운 짝만 필요하면 이웃 찾기를 쓰세요.
+
+## NaN과 inf
+
+`pdist`는 에러를 내지 않고 NaN과 inf를 결과에 그대로 내보내요. NaN이 있는 점이 낀 짝은 NaN이고, inf와 유한한 좌표의 차는 inf, inf − inf는 NaN이에요.
+
+```python
+>>> sd.spatial.pdist(sd.asarray([[0.0, sd.nan], [1.0, 2.0], [3.0, 3.0]]))
+array([             nan,              nan, 2.23606797749979], dtype=float64)
+```
+
+좌표가 아주 커서 제곱이 float64의 범위(약 $1.8 \times 10^{308}$)를 넘어도 유클리드 거리 자체가 범위 안이면 그 값을 줘요. 제곱합을 그대로 돌려주는 `sqeuclidean`은 참값이 범위를 넘으니 inf예요.
+
+```python
+>>> sd.spatial.pdist(sd.asarray([[1e200, 0.0], [-1e200, 0.0]]))
+array([2e+200], dtype=float64)
+>>> sd.spatial.pdist(sd.asarray([[1e200, 0.0], [-1e200, 0.0]]), metric="sqeuclidean")
+array([inf], dtype=float64)
+```
+
+## 조심할 점
+
+### 거리 이름은 키워드로
+
+```python
+>>> sd.spatial.pdist(X, "cityblock")
+Traceback (most recent call last):
+    ...
+TypeError: pdist(): takes 1 positional argument but 2 were given
+```
+
+`metric="cityblock"`처럼 이름을 붙여 넘겨요.
+
+### 점 하나짜리 1차원 배열은 받지 않아요
+
+`X`는 2차원이어야 해요. 1차원 배열은 "점 하나"인지 "1차원 점 여럿"인지 알 수 없어서 `ValueError`예요. 1차원 점 여럿이면 `X[:, None]`처럼 열 하나짜리 2차원으로 바꿔요.
+
+```python
+>>> sd.spatial.pdist(sd.asarray([1.0, 4.0, 6.0]))
+Traceback (most recent call last):
+    ...
+ValueError: pdist(): 'X' must have 2 dimensions, not 1
+>>> sd.spatial.pdist(sd.asarray([1.0, 4.0, 6.0])[:, None])
+array([3.0, 5.0, 2.0], dtype=float64)
+```
+
+### hamming과 jaccard는 값을 그대로 비교해요
+
+`'hamming'`(다른 자리의 비율)과 `'jaccard'`는 정수를 float64로 바꾸지 않고 비교해요. 그래서 아주 큰 정수에서 결과가 float64로 바꾼 입력과 다를 수 있어요. $2^{60}$과 $2^{60} + 1$은 int64로는 다른 값이지만 float64로는 같은 값이에요.
+
+```python
+>>> B = sd.asarray([[2**60, 1], [2**60 + 1, 1]])
+>>> sd.spatial.pdist(B, metric="hamming")
+array([0.5], dtype=float64)
+>>> sd.spatial.pdist(B.astype(sd.float64), metric="hamming")
+array([0.0], dtype=float64)
+```
+
+## scipy·sklearn을 아는 분께
+
+- `metric`과 그 인자는 키워드로만 받아요. scipy의 `pdist(X, 'cityblock')`은 `TypeError`예요. 거리 이름의 별칭(`'cos'`, `'matching'`)과 대문자, 호출 가능한 `metric`, `out=`은 없어요.
+- 그 거리가 쓰지 않는 인자(`metric='euclidean'`에 `p=3`)는 `TypeError`예요. scipy는 바인딩의 시그니처를 늘어놓은 에러를 내요.
+- `p`가 0 이하이거나 NaN이면 `ValueError`예요. scipy의 `pdist`는 `p=-1`에서 값을, `p=0`에서 inf를 내요.
+- `w`의 NaN·inf는 `ValueError`예요(scipy는 음수만 막아요). `V`의 0·음수도 `ValueError`예요(scipy는 0에서 inf를, 음수에서 뜻 없는 값을 내요).
+- `chebyshev`와 `canberra`는 NaN을 결과로 내보내요. scipy는 `chebyshev`에서 NaN 좌표를 건너뛰어 `[nan, 0]`과 `[1, 5]`의 거리를 5로 내요.
+- `euclidean`과 `minkowski`는 제곱합이 넘쳐도 거리가 범위 안이면 그 값을 줘요. scipy와 R의 `dist`는 좌표 1e200에서 inf예요.
+- `hamming`, `jaccard`는 int64를 그대로 비교해요(scipy는 float64로 바꾼 뒤 비교해요).
+- 복소수 입력은 `TypeError`예요(scipy는 `ValueError`).
+- 결과의 순서, 짝의 수, 빈 결과, 기본 `V`·`VI`는 scipy와 같아요. 반올림 크기의 차이로 끝자리가 scipy와 다를 수 있어요.
+- sklearn의 `pairwise_distances(X)`는 정사각 행렬이에요. 같은 것은 `squareform(pdist(X))`나 `cdist(X, X)`예요.

@@ -1,0 +1,133 @@
+---
+title: find
+names: [find]
+group: 인덱싱과 만들기
+order: 13
+signatures:
+  - "sd.sparse.find(A, /)"
+summary: 희소 행렬에서 0이 아닌 원소의 행 번호, 열 번호, 값을 밀집 배열 셋으로 꺼내요. 행 순서로 정렬돼 있고 저장된 0은 빠져요.
+params:
+  - name: A
+    type: 희소 배열 또는 ndarray
+    kind: positional-only
+    desc: 2차원 행렬. 밀집 배열은 0이 아닌 값만 써요.
+returns:
+  type: tuple (ndarray, ndarray, ndarray)
+  desc: (row, col, data). row와 col은 int64, data는 A의 dtype인 1차원 밀집 배열이에요. 셋 다 A와 메모리를 나누지 않는 쓸 수 있는 배열이에요.
+raises:
+  - type: TypeError
+    desc: A가 희소 배열이나 sd.ndarray가 아닐 때.
+  - type: ValueError
+    desc: A가 2차원이 아닐 때.
+seeAlso: [coo_array, indexing, sparray, tril, basics]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+
+## 한눈에 보기
+
+`find`는 희소 행렬의 0이 아닌 원소를 하나씩, 어디에 무엇이 있는지 적은 목록으로 돌려줘요. 목록은 밀집 배열 셋이에요. 같은 번째 원소끼리 묶으면 "행 `row[i]`, 열 `col[i]`에 값 `data[i]`"예요.
+
+```python
+>>> import stardust as sd
+>>> A = sd.sparse.csr_array(sd.asarray([[0.0, 2.0, 0.0],
+...                                     [3.0, 0.0, 4.0],
+...                                     [0.0, 0.0, 5.0]]))
+>>> row, col, data = sd.sparse.find(A)
+>>> row
+array([0, 1, 1, 2], dtype=int64)
+>>> col
+array([1, 0, 2, 2], dtype=int64)
+>>> data
+array([2.0, 3.0, 4.0, 5.0], dtype=float64)
+```
+
+<Fig caption="find(A)는 0이 아닌 원소를 행 순서(같은 행에서는 열 순서)로 읽어요. (0, 1)의 2, (1, 0)의 3, (1, 2)의 4, (2, 2)의 5예요.">
+  <ArrayFig name="A" data={[[0, 2, 0], [3, 0, 4], [0, 0, 5]]} tones={[['g', 'b', 'g'], ['b', 'g', 'b'], ['g', 'g', 'b']]} />
+</Fig>
+
+<Reference />
+
+## 순서: 행 우선
+
+결과는 언제나 행 번호 순서이고, 같은 행 안에서는 열 번호 순서예요. A의 형식(CSR, CSC, COO, DOK)이나 원소를 저장한 순서와 상관없어요.
+
+```python
+>>> sd.sparse.find(A.tocsc())
+(array([0, 1, 1, 2], dtype=int64), array([1, 0, 2, 2], dtype=int64), array([2.0, 3.0, 4.0, 5.0], dtype=float64))
+```
+
+## 0은 빠져요
+
+`find`는 값이 0인 원소를 돌려주지 않아요. 저장된 0도 빠지고, COO에서 같은 자리에 여러 번 저장된 원소(중복)는 먼저 더한 뒤에 0이면 빠져요. 그래서 `find`가 돌려주는 원소의 수는 `nnz`(저장된 원소의 수)보다 적을 수 있어요.
+
+```python
+>>> C = sd.sparse.coo_array((sd.asarray([1.0, 2.0, -1.0, 0.0]),
+...                          (sd.asarray([1, 0, 1, 2]), sd.asarray([0, 1, 0, 2]))), shape=(3, 3))
+>>> C.nnz
+4
+>>> sd.sparse.find(C)
+(array([0], dtype=int64), array([1], dtype=int64), array([2.0], dtype=float64))
+```
+
+`C`는 (1, 0)에 1과 −1을 따로, (2, 2)에 0을 저장했어요. 더하면 (1, 0)은 0이고 (2, 2)도 0이라서, 남는 것은 (0, 1)의 2 하나예요.
+
+## 다시 희소 행렬로
+
+`find`의 결과는 [`coo_array`](/api/sparse/coo_array/)의 `(data, (row, col))` 꼴에 그대로 넣을 수 있어요. 원소를 걸러 내거나 바꾼 뒤 다시 희소 행렬을 만들 때 써요.
+
+```python
+>>> keep = data > 2.5
+>>> B = sd.sparse.coo_array((data[keep], (row[keep], col[keep])), shape=A.shape)
+>>> B.toarray()
+array([[0.0, 0.0, 0.0],
+       [3.0, 0.0, 4.0],
+       [0.0, 0.0, 5.0]], dtype=float64)
+```
+
+결과는 A와 메모리를 나누지 않는 새 배열이라서 고쳐도 A가 바뀌지 않아요.
+
+```python
+>>> data[0] = 100.0
+>>> A.toarray()[0, 1]
+2.0
+```
+
+## 밀집 행렬도 받아요
+
+밀집 `sd.ndarray`를 주면 0이 아닌 원소를 같은 꼴로 돌려줘요. 행렬은 2차원이어야 해요.
+
+```python
+>>> sd.sparse.find(sd.asarray([[0, 7], [8, 0]]))
+(array([0, 1], dtype=int64), array([1, 0], dtype=int64), array([7, 8], dtype=int64))
+>>> sd.sparse.find(sd.sparse.coo_array(sd.asarray([1.0, 2.0])))
+Traceback (most recent call last):
+    ...
+ValueError: find(): 'A' must have 2 dimensions, got 1
+```
+
+## 비슷한 기능: nonzero 메서드
+
+자리만 필요하면 희소 배열의 `nonzero()` 메서드가 `(row, col)`을 돌려줘요. CSR, CSC, DOK에서는 `find`의 앞 둘과 같고, COO에서는 저장된 순서 그대로(중복도 따로)예요. 자리와 값을 함께, 정해진 순서로 받으려면 `find`를 써요.
+
+```python
+>>> A.nonzero()
+(array([0, 1, 1, 2], dtype=int64), array([1, 0, 2, 2], dtype=int64))
+```
+
+## 밀집 배열의 짝: sd.nonzero와 인덱싱
+
+밀집 배열에서는 [`sd.nonzero`](/api/array/nonzero/)로 자리를 구하고 그 자리로 [인덱싱](/api/array/indexing/)해 값을 꺼내요. 결과는 `find`와 같아요.
+
+```python
+>>> D = A.toarray()
+>>> r, c = sd.nonzero(D)
+>>> r, c, D[r, c]
+(array([0, 1, 1, 2], dtype=int64), array([1, 0, 2, 2], dtype=int64), array([2.0, 3.0, 4.0, 5.0], dtype=float64))
+```
+
+## scipy를 아는 분께
+
+- `scipy.sparse.find`와 같은 순서와 규칙(중복을 더한 뒤 0을 뺌)이에요.
+- 2차원만 받아요. scipy는 1차원 배열에 행 번호 0의 배열을 붙여 돌려줘요.
+- 결과는 `sd.ndarray`예요(numpy 배열이 아니에요).

@@ -1,0 +1,213 @@
+---
+title: Gauss–Legendre 마디
+group: 고정·표본 규칙
+order: 1
+summary: fixed_quad가 쓰는 Gauss–Legendre 마디와 가중치를 모든 n에서 올바로 반올림한 double로 만드는 방법을 설명해요. 100점까지는 Arb로 만든 표, 그 위는 double-double Newton이고, 반올림의 경계에 너무 가까운 값은 정수의 정확한 산술로 정해요.
+seeAlso: [overview, newton-cotes, samples, accuracy-performance]
+---
+
+## 한눈에 보기
+
+[`fixed_quad`](/api/integrate/fixed_quad/)는 n점 Gauss–Legendre 규칙이에요.
+
+$$
+\int_a^b f(x)\,dx \;\approx\; \frac{b - a}{2}\sum_{i=1}^{n} w_i\, f\Bigl(\frac{(b - a)(x_i + 1)}{2} + a\Bigr)
+$$
+
+마디 $x_i$는 르장드르 다항식 $P_n$의 영점이고 가중치는 $w_i = 2/\bigl((1 - x_i^2)\,P_n'(x_i)^2\bigr)$예요. n점으로 차수 $2n - 1$까지의 다항식을 정확히 적분해요. 규칙은 단순하지만, 마디와 가중치를 double로 얼마나 정확히 만드느냐는 따로 풀어야 하는 문제예요. sd는 모든 n에서 **올바로 반올림한** 값, 곧 참값에 가장 가까운 double을 써요.
+
+| n | 방법 | 파일 |
+|---|---|---|
+| 1–100 | Arb로 정한 값을 반올림한 표 | `tools/gen_gauss_legendre.py` → `csrc/integrate/gauss_table.hpp` |
+| 101–10⁴ | double Newton, 이어 double-double Newton, 반올림 | `csrc/integrate/gauss.cpp`, `src/stardust/integrate/_gauss.py` |
+| 위의 값이 반올림 경계에 너무 가까울 때 | 정수의 정확한 산술 | `src/stardust/integrate/_gauss.py` |
+
+어느 길이든 음이 아닌 마디 $\lceil n/2\rceil$개만 계산하고 나머지는 부호를 바꿔 써요(가중치는 같아요). n이 홀수면 가운데 마디는 정확히 0이에요.
+
+```python
+>>> from fractions import Fraction
+>>> w = sd.integrate.fixed_quad(lambda x: sd.eye(5), -1, 1, n=5)
+>>> w.tolist()
+[0.23692688505618908, 0.47862867049936647, 0.5688888888888889, 0.47862867049936647, 0.23692688505618908]
+>>> w[2] == float(Fraction(128, 225))
+True
+```
+
+f가 단위 행렬을 돌려주면 결과의 원소 i가 $\frac{b - a}{2} w_i = w_i$라서 가중치가 그대로 보여요. 5점의 가운데 가중치는 정확히 $128/225$이고 그 올바른 반올림과 같아요.
+
+## 100점까지: Arb로 만든 표
+
+`tools/gen_gauss_legendre.py`는 n = 1, …, 100의 마디와 가중치를 python-flint의 `arb.legendre_p_root`로 계산해요. 값마다 정밀도를 두 배씩 올려 공(구간)의 반지름이 값의 $2^{-110}$ 아래가 될 때까지 가고, 가장 가까운 double을 골라요. 공이 두 double의 가운데(반올림의 경계)를 품으면 반올림이 추측이 되므로 도구가 멈춰요.
+
+```python
+# tools/gen_gauss_legendre.py
+def _nearest(ball):
+    """The double nearest the settled ball's value; ArithmeticError if the ball holds the
+    midpoint between two doubles (its rounding is not determined)."""
+    from flint import arb
+
+    hi, _ = arbref.to_dd(ball)
+    with arbref.precision(2600):
+        for c in (math.nextafter(hi, math.inf), math.nextafter(hi, -math.inf)):
+            mid = (arb(hi) + arb(c)) / 2  # exact at this precision
+            if ball.contains(mid):
+                raise ArithmeticError(f"{ball} holds the rounding boundary {mid}")
+    return hi
+```
+
+2,550개의 마디와 가중치가 C++ 헤더의 16진 리터럴로 들어가요. 테스트는 같은 값을 Arb(256비트)로 다시 계산해 표의 모든 값이 가장 가까운 double인지 봐요.
+
+## 100점 위: double-double Newton
+
+표 밖의 n은 실행 중에 계산해요. 마디마다 따로, 세 단계예요.
+
+1. 점근 근사 $\cos\bigl(\pi(r - \tfrac14)/(n + \tfrac12)\bigr)$에서 시작해 double Newton으로 수렴할 때까지 가요($r$은 큰 쪽부터 센 영점의 번호).
+2. 그 점에서 double-double(double 두 개의 합, 약 106비트) Newton을 두 번 해요. double Newton이 이미 마디를 double의 정확도로 잡았으니, 두 번이면 double-double의 정확도에 닿아요.
+3. 마지막 마디에서 가중치 $2/((1 - x^2)P_n'(x)^2)$를 double-double로 계산해요.
+
+$P_n$과 $P_{n-1}$은 세 항 점화식 $(j + 1)P_{j+1} = (2j + 1)xP_j - jP_{j-1}$로, 도함수는 $P_n' = n(xP_n - P_{n-1})/(x^2 - 1)$로 구해요.
+
+```cpp
+// csrc/integrate/gauss.cpp
+void node_dd(int n, int i, DD& x, DD& w) {
+    const int half = (n + 1) / 2;
+    if (n % 2 == 1 && i == 0) {
+        x = {0., 0.};
+    } else {
+        const int r = half - i;  // the r-th largest zero
+        const double guess = std::cos(std::numbers::pi * (r - 0.25) / (n + 0.5));
+        x = {newton_double(n, guess), 0.};
+        for (int it = 0; it < 2; ++it) {
+            const Pair v = legendre_dd(n, x);
+            x = sub(x, div(v.p, derivative_dd(n, x, v)));
+        }
+    }
+    const Pair v = legendre_dd(n, x);
+    const DD d = derivative_dd(n, x, v);
+    w = div(DD{2., 0.}, mul(sub(DD{1., 0.}, mul(x, x)), mul(d, d)));
+}
+```
+
+double-double의 산술은 오차 없는 변환 두 개가 바탕이에요. `two_sum`은 $a + b$를 반올림한 합 $s$와 그 반올림 오차 $e$($s + e = a + b$ 정확히)로 나누고, `two_prod`는 곱의 반올림 오차를 FMA 한 번($\operatorname{fma}(a, b, -p)$)으로 정확히 구해요. 나눗셈은 몫을 세 조각으로 구해 더해요(나머지를 정확히 빼며). 곱셈·덧셈의 축약은 전역으로 꺼 두고, FMA는 이렇게 필요한 자리에 코드로 적어요.
+
+Arb와 견준 double-double의 실제 오차는 마디가 n = 101에서 $6.1 \times 10^{-17}$ ULP, 1,000에서 $1.5 \times 10^{-16}$ ULP, 3,000에서 $4.7 \times 10^{-16}$ ULP이고, 가중치가 상대 $2^{-98}$, $2^{-90.5}$, $2^{-94}$이에요. 그 hi + lo를 double로 반올림하면 대개 올바른 반올림이에요.
+
+## 반올림이 애매할 때: 정확한 산술
+
+double-double 값이 반올림의 경계(두 double의 가운데)에 너무 가까우면, 그 오차 때문에 참값이 경계의 다른 쪽에 있을 수 있어요. 그래서 오차 한계를 두고, 한계 안에 경계가 들어오면 정확한 산술로 넘겨요.
+
+$$
+\text{마디: } n^2\cdot 2^{-57}\ \text{ULP}, \qquad \text{가중치: } n^2\cdot 2^{-100}\ \text{(상대)}
+$$
+
+이 한계는 n = 101–3,000에서 잰 실제 오차의 $2^{10}$배 이상이에요. 한계 안에 경계가 들어올 확률은 마디 하나에 대략 $n^2 2^{-56}$, 가중치 하나에 $n^2 2^{-48}$이라 거의 일어나지 않지만, 일어나도 답이 맞아요.
+
+```python
+# src/stardust/integrate/_gauss.py
+def _ambiguous(hi, lo, tol):
+    """Whether hi + lo +- tol may round to a double other than hi."""
+    gap = (math.nextafter(hi, math.inf) - hi) if lo >= 0 else (hi - math.nextafter(hi, -math.inf))
+    return abs(lo) + tol >= gap / 2
+```
+
+### 마디: 경계에서 $P_n$의 부호
+
+double $c$의 반올림 구간은 $c$와 양 이웃 double의 가운데 두 점 사이예요. 두 끝은 2진 유리수라 $P_n$을 그 점에서 **정확히** 계산할 수 있어요. 두 끝에서 $P_n$의 부호가 다르면 영점이 그 구간 안에 있으니 $c$가 올바른 반올림이에요. 부호가 같으면 영점 쪽으로 한 ULP 옮겨 다시 봐요.
+
+$x = M/2^E$에서 $p_k = k!\,2^{Ek}P_k(x)$로 두면 세 항 점화식이 정수의 점화식이 돼요.
+
+$$
+p_{k+1} = (2k + 1)\,M\,p_k - k^2\,4^E\,p_{k-1}
+$$
+
+$(k + 1)P_{k+1} = (2k + 1)xP_k - kP_{k-1}$의 양변에 $k!\,2^{E(k+1)}$을 곱하면 나와요. 나눗셈이 없으니 Python의 큰 정수로 정확해요.
+
+```python
+# src/stardust/integrate/_gauss.py
+def _legendre_exact(n, x):
+    """(P_n(x), P_{n-1}(x)) exactly at the dyadic rational x: the recurrence
+    p_{k+1} = (2k + 1) M p_k - k^2 4^E p_{k-1} on p_k = k! 2^(E k) P_k(x), x = M / 2^E."""
+    m, d = x.numerator, x.denominator
+    e = d.bit_length() - 1
+    four = 1 << (2 * e)
+    q, p = 1, m
+    for k in range(1, n):
+        q, p = p, (2 * k + 1) * m * p - k * k * four * q
+    fact = math.factorial(n - 1)
+    return Fraction(p, fact * n << (e * n)), Fraction(q, fact << (e * (n - 1)))
+```
+
+### 가중치: 근을 감싼 구간과 립시츠 한계
+
+가중치는 근 $r$ 자체의 함수라 그 값을 유리수로 정확히 쓸 수 없어요. 대신 근을 감싼 구간 $[a, b]$(양 끝에서 $P_n$의 부호가 달라요)에서 가중치의 범위를 정해요. $g(x) = (1 - x^2)P_n'(x)^2/2$로 두면 $w = 1/g(r)$이고, 르장드르 방정식 $(1 - x^2)P_n'' = 2xP_n' - n(n + 1)P_n$으로
+
+$$
+g'(x) = x\,P_n'^2 - n(n + 1)\,P_n P_n'
+$$
+
+이에요. $[-1, 1]$에서 $\lvert P_n\rvert \le 1$이고, $P_n' = \sum (2k + 1)P_k$($k = n - 1, n - 3, \dots$)라서 $\lvert P_n'\rvert \le \sum(2k + 1) = n(n + 1)/2$예요. 그러니
+
+$$
+\lvert g'\rvert \le \Bigl(\frac{n(n + 1)}{2}\Bigr)^2 + n(n + 1)\cdot\frac{n(n + 1)}{2} = \frac34\bigl(n(n + 1)\bigr)^2 = L
+$$
+
+이고, $g(r)$은 $g(a) \pm L(b - a)$ 안에 있어요. $1/(g(a) + L(b - a))$와 $1/(g(a) - L(b - a))$가 같은 double로 반올림되면 그것이 답이고, 아니면 부호가 바뀌는 쪽을 남기며 구간을 반으로 줄여요.
+
+```python
+# src/stardust/integrate/_gauss.py
+def _weight_exact(n, a, b):
+    """The correctly rounded weight of the node in [a, b] (P_n changes sign on it)."""
+    lip = Fraction(3, 4) * (n * (n + 1)) ** 2
+    sa = _sign(n, a)
+    while True:
+        if a == 0:  # the middle node of an odd n
+            g = Fraction(n * n) * _legendre_exact(n, a)[1] ** 2 / 2
+            return float(1 / g)
+        p, q = _legendre_exact(n, a)
+        g = n * n * (a * p - q) ** 2 / (2 * (1 - a * a))
+        spread = lip * (b - a)
+        if g > spread:
+            lo, hi = float(1 / (g + spread)), float(1 / (g - spread))
+            if lo == hi:
+                return lo
+        mid = (a + b) / 2
+        if _sign(n, mid) == sa:
+            a = mid
+        else:
+            b = mid
+```
+
+Python의 `float(Fraction)`은 올바로 반올림하니 마지막 반올림도 정확해요. 테스트는 오차 한계를 크게 키워 모든 값을 이 길로 보내고, n = 101, 128에서 double-double 길과 같은 비트인지 봐요. n = 101, 128, 150, 200, 256, 500, 1,000의 마디와 가중치는 Arb로 만든 참값 파일과도 비트까지 같아요.
+
+## 마디에서 값으로
+
+```python
+    # src/stardust/integrate/_rules.py
+    x, w = _gauss.legendre(n)
+    y = (b - a) * (x + 1) / 2.0 + a
+    v = _values(func(y), n, name)
+    weights = w if v.ndim == 1 else _sd.broadcast_to(w, tuple(v.shape))
+    s = _k.samples(name, WEIGHTED, v, weights, None, v.ndim - 1, None)
+    return (b - a) / 2.0 * s
+```
+
+점의 식은 scipy의 것 그대로이고, f는 (n,) 배열로 한 번 불려요. f가 (…, n)을 돌려주면 줄마다 따로 더해 (…) 배열이 돼요. 합 $\sum w_i f_i$는 [표본 규칙](/internals/integrate/samples/)과 같은 커널(sd의 pairwise 합, 누산기 16개)이라, 결과는 f가 돌려준 값으로 낸 정확한 합과 $(\lceil\log_2 n\rceil + 4)\,\varepsilon\,\lvert\tfrac{b-a}{2}\rvert\sum\lvert w_i f_i\rvert$ 안이에요.
+
+```python
+>>> pts = []
+>>> _ = sd.integrate.fixed_quad(lambda x: (pts.append(x), x)[1], 0, 1, n=3)
+>>> pts[0].tolist()
+[0.1127016653792583, 0.5, 0.8872983346207417]
+>>> sd.integrate.fixed_quad(lambda x: x**9, 0, 1, n=5), sd.integrate.fixed_quad(lambda x: x**10, 0, 1, n=5)
+(0.09999999999999995, 0.09090765936004025)
+```
+
+5점은 $x^9$을 반올림 수준으로 맞히고 $x^{10}$부터 틀려요($1/11 = 0.0909\ldots$).
+
+## 비용과 기억
+
+표 밖의 처음 계산은 마디마다 길이 n의 점화식을 몇 번 돌리니 $n^2$에 비례해요. 일이 충분히 크면 마디를 스레드에 나눠요(마디마다 따로 계산해서 지금은 결과가 스레드 수와 상관없어요). 그래서 n은 $10^4$까지 받고, 최근 8개의 n을 기억해 두 번째부터는 표를 읽는 것과 같아요. $P_n$을 점근 전개로 마디마다 $O(1)$에 계산하는 알고리즘(Hale–Townsend, Bogaert)도 있지만, double-double 정확도의 전개와 오차 한계를 따로 세워야 해서 쓰지 않아요. 고정 규칙에서 수천 점을 넘는 일은 드물고, 그런 적분에는 [적응 구적](/api/integrate/quad/)이 맞아요.
+
+## scipy와 다른 점
+
+scipy의 `roots_legendre`는 모든 n에서 Golub–Welsch(삼중대각 행렬의 고윳값과 Newton 보정, 가중치의 정규화)예요. 기본 n = 5에서 마디는 같고 가중치 다섯이 최대 17 ULP 달라요. n = 20에서는 마디 넷이 1 ULP, 가중치가 최대 261 ULP, n = 100에서는 마디 38개가 최대 8 ULP, 가중치가 최대 83,682 ULP 달라요. 그래서 n = 20부터는 f를 부르는 점부터 scipy와 끝자리가 달라요.

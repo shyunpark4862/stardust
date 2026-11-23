@@ -1,0 +1,312 @@
+---
+kind: concept
+title: 논리와 비트 연산
+group: 원소별 연산
+order: 3
+summary: bool Series의 행마다 '그리고'(&), '또는'(|), '둘 중 하나만'(^), '아니다'(~)를 계산해요. 결측값은 3값 논리로 다뤄요. int64에는 같은 연산자와 <<, >>가 비트 연산이에요.
+seeAlso: [comparison, arithmetic, mask, na, isna]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import FrameFig from '../../../components/fig/FrameFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+[비교 연산](/api/frame/comparison/)으로 조건 하나를 bool Series로 만들 수 있어요. 조건이 둘 이상이면 논리 연산자로 묶어요. "수학이 60점 이상**이고** 영어도 60점 이상인 학생"처럼요.
+
+| 연산자 | 뜻 | 참이 되는 때 |
+|:---:|---|---|
+| `a & b` | 그리고 (and) | 둘 다 참일 때 |
+| `a \| b` | 또는 (or) | 하나라도 참일 때 |
+| `a ^ b` | 둘 중 하나만 (xor) | 둘이 서로 다를 때 |
+| `~a` | 아니다 (not) | 참과 거짓을 뒤집어요 |
+
+```python
+>>> import stardust as sd
+>>> df = sd.frame.DataFrame({
+...     "name": ["ann", "bob", "cid", "dan"],
+...     "math": [90, 55, 70, 80],
+...     "eng": [65, 80, 50, None],
+... })
+>>> df
+  name  math   eng
+0  ann    90    65
+1  bob    55    80
+2  cid    70    50
+3  dan    80  <NA>
+>>> both = (df["math"] >= 60) & (df["eng"] >= 60)
+>>> both
+0     True
+1    False
+2    False
+3     <NA>
+dtype: bool
+>>> df[both]
+  name  math  eng
+0  ann    90   65
+```
+
+<Fig caption="행마다 두 조건을 &로 묶어요. dan은 영어 점수를 몰라서 '둘 다 참인지'도 몰라요(NA).">
+  <FrameFig name='math >= 60' data={[true, false, true, true]} rowTones={['a', '', '', '']} />
+  <Op>&</Op>
+  <FrameFig name='eng >= 60' data={[true, true, false, null]} rowTones={['a', '', '', '']} />
+  <Op>=</Op>
+  <FrameFig name="both" data={[true, false, false, null]} rowTones={['b', '', '', '']} />
+</Fig>
+
+`dan`의 결과가 `NA`인 이유는 다음 절에서 설명해요. 마스크로 거를 때 `NA`인 행은 버려져요([조건으로 행 거르기](/api/frame/mask/)).
+
+`bool` Series끼리는 이처럼 **논리 연산**이고, int64에서는 같은 연산자가 **비트 연산**이에요. 비트 연산은 [아래](#int64에서는-비트-연산이에요)에 있어요.
+
+## 결측값이 있으면: 3값 논리
+
+`NA`를 "참인지 거짓인지 모르는 값"으로 보고 계산해요. 이것을 Kleene의 3값 논리라고 해요. 모르는 값이 무엇이든 답이 하나로 정해지면 그 답을 내고, 그렇지 않으면 `NA`를 내요.
+
+- `True | NA`는 `True`예요. 한쪽이 이미 참이라서, 모르는 쪽이 무엇이든 "하나라도 참"이에요.
+- `False & NA`는 `False`예요. 한쪽이 이미 거짓이라서 "둘 다 참"일 수 없어요.
+- `True & NA`와 `False | NA`는 `NA`예요. 모르는 쪽에 따라 답이 달라져요.
+- `^`와 `~`는 모르는 쪽에 따라 언제나 답이 달라지므로, `NA`가 들어가면 `NA`예요.
+
+| `a` | `b` | `a & b` | `a \| b` | `a ^ b` |
+|:---:|:---:|:---:|:---:|:---:|
+| True | True | True | True | False |
+| True | False | False | True | True |
+| True | `NA` | `NA` | **True** | `NA` |
+| False | False | False | False | False |
+| False | `NA` | **False** | `NA` | `NA` |
+| `NA` | `NA` | `NA` | `NA` | `NA` |
+
+`~True`는 `False`, `~False`는 `True`, `~NA`는 `NA`예요. 표는 순서를 바꿔도 같아요(`NA & False`도 `False`).
+
+```python
+>>> a = sd.frame.Series([True, True, False, None])
+>>> b = sd.frame.Series([None, False, None, None])
+>>> a | b
+0    True
+1    True
+2    <NA>
+3    <NA>
+dtype: bool
+>>> a & b
+0     <NA>
+1    False
+2    False
+3     <NA>
+dtype: bool
+>>> ~a
+0    False
+1    False
+2     True
+3     <NA>
+dtype: bool
+```
+
+스칼라 `NA`도 같은 규칙이에요.
+
+```python
+>>> True | sd.frame.NA
+True
+>>> False & sd.frame.NA
+False
+>>> True & sd.frame.NA
+<NA>
+```
+
+`NA`의 다른 규칙(산술, 비교, `if`에 쓸 때)은 [NA와 NaN](/api/frame/na/)에 모여 있어요.
+
+마스크에서 `NA`인 행은 버려져요. 위의 `dan`처럼 모르는 행도 남기고 싶다면, 3값 논리를 이용해 조건에 `| s.isna()`를 더해요. `NA | True`는 `True`라서 그 행이 남아요.
+
+```python
+>>> df[(df["eng"] >= 60) | df["eng"].isna()]
+  name  math   eng
+0  ann    90    65
+1  bob    55    80
+3  dan    80  <NA>
+```
+
+## 괄호를 꼭 쓰세요
+
+Python에서 `&`, `|`, `^`는 `>=`, `<` 같은 비교 연산자보다 먼저 계산돼요. 그래서 `df["math"] >= 60 & df["eng"] >= 60`은 `60 & df["eng"]`를 먼저 계산해서 전혀 다른 뜻이 되고, 결국 에러가 나요. 비교는 언제나 괄호로 감싸세요.
+
+```python
+>>> df["math"] >= 60 & df["eng"] >= 60
+Traceback (most recent call last):
+    ...
+TypeError: the truth value of a Series is ambiguous
+```
+
+Python의 `and`, `or`, `not`도 쓸 수 없어요. 이 셋은 양쪽을 하나의 참·거짓으로 바꾸려고 하는데, 행마다 답이 있는 Series는 하나로 바꿀 수 없기 때문이에요.
+
+```python
+>>> (df["math"] >= 60) and (df["eng"] >= 60)
+Traceback (most recent call last):
+    ...
+TypeError: the truth value of a Series is ambiguous
+```
+
+| 쓰고 싶은 것 | 쓸 것 |
+|---|---|
+| `a and b` | `(a) & (b)` |
+| `a or b` | `(a) \| (b)` |
+| `not a` | `~(a)` |
+
+## 라벨로 맞추고, DataFrame도 돼요
+
+Series끼리의 논리 연산도 산술처럼 같은 라벨끼리 계산해요([라벨과 정렬](/api/frame/alignment/)). 한쪽에만 있는 라벨은 그쪽 값을 `NA`로 보고 3값 논리로 계산해요.
+
+```python
+>>> p = sd.frame.Series([True, False], index=["x", "y"])
+>>> q = sd.frame.Series([True], index=["z"])
+>>> p & q
+x     <NA>
+y    False
+z     <NA>
+dtype: bool
+```
+
+`y`는 `False & NA`라서 `False`예요. 결과의 이름은 산술과 같은 규칙(같으면 유지, 다르면 `None`)이에요.
+
+DataFrame에도 쓸 수 있어요. 컬럼마다 같은 규칙이에요.
+
+```python
+>>> passed = df[["math", "eng"]] >= 60
+>>> ~passed
+    math    eng
+0  False  False
+1   True  False
+2  False   True
+3  False   <NA>
+```
+
+## int64에서는 비트 연산이에요
+
+int64에 `&`, `|`, `^`, `~`를 쓰면 정수를 2진수로 적었을 때의 자릿수(비트)끼리 계산해요. 여러 켜짐/꺼짐 표시(플래그)를 정수 하나에 담아 두고 꺼낼 때 써요. 규칙은 배열 영역의 [비트 연산](/api/array/bitwise/)과 같아요.
+
+```python
+>>> flags = sd.frame.Series([12, 10, None])
+>>> flags & 6
+0       4
+1       2
+2    <NA>
+dtype: int64
+>>> flags | 1
+0      13
+1      11
+2    <NA>
+dtype: int64
+>>> flags ^ 6
+0      10
+1      12
+2    <NA>
+dtype: int64
+>>> ~flags
+0     -13
+1     -11
+2    <NA>
+dtype: int64
+```
+
+12는 2진수로 `1100`, 6은 `0110`이라서 `12 & 6`은 둘 다 1인 자리만 남은 `0100`이고, 10진수로 4예요. `~x`는 모든 비트를 뒤집어서 `-x - 1`이 돼요.
+
+int64의 비트 연산에서는 3값 논리를 쓰지 않아요. `NA`가 들어가면 결과는 언제나 `NA`예요. 3값 논리는 참·거짓의 논리에만 뜻이 있기 때문이에요. 예를 들어 `0 & NA`는 int64에서 `NA`예요.
+
+```python
+>>> sd.frame.Series([0, 5]) & sd.frame.NA
+0    <NA>
+1    <NA>
+dtype: int64
+```
+
+bool과 int64가 만나면 bool을 int64(0과 1)로 바꿔서 비트 연산을 해요. 결과는 int64예요. 산술에서 bool이 int64가 되는 것과 같아요.
+
+```python
+>>> sd.frame.Series([3, 2]) & sd.frame.Series([True, False])
+0    1
+1    0
+dtype: int64
+>>> sd.frame.Series([True, False]) & 1
+0    1
+1    0
+dtype: int64
+```
+
+### 시프트: `<<`, `>>`
+
+`x << n`은 비트를 왼쪽으로 `n`칸 밀어요. `x`에 2ⁿ을 곱한 것과 같아요. `x >> n`은 오른쪽으로 밀어서, 2ⁿ으로 나누고 내림한 것과 같아요. 음수는 부호를 지키며 밀어요(산술 시프트).
+
+```python
+>>> sd.frame.Series([1, 3, None]) << 2
+0       4
+1      12
+2    <NA>
+dtype: int64
+>>> sd.frame.Series([-8, 8]) >> 1
+0   -4
+1    4
+dtype: int64
+```
+
+배열의 시프트와 같은 규칙이 몇 가지 있어요.
+
+- 넘치면 반대쪽으로 넘어가요(wrap). `2**62 << 1`은 가장 작은 음수예요.
+- 밀 칸 수가 64 이상이거나 음수이면 모든 비트가 밀려 나가요. `<<`는 `0`, `>>`는 부호에 따라 `0`이나 `-1`이에요.
+- 시프트는 int64끼리만 받아요. bool은 `&`, `|`와 달리 받지 않아요.
+
+```python
+>>> sd.frame.Series([5, -5]) << 64
+0    0
+1    0
+dtype: int64
+>>> sd.frame.Series([5, -5]) >> -1
+0    0
+1   -1
+dtype: int64
+>>> sd.frame.Series([True, False]) << 1
+Traceback (most recent call last):
+    ...
+TypeError: unsupported operand dtypes for <<: bool and int64 (shifts take int64)
+```
+
+## 결과의 dtype과 받지 않는 것
+
+| 왼쪽 \ 오른쪽 | bool | int64 | float64 | string |
+|---|:---:|:---:|:---:|:---:|
+| **bool** | bool (3값 논리) | int64 (비트) | `TypeError` | `TypeError` |
+| **int64** | int64 (비트) | int64 (비트) | `TypeError` | `TypeError` |
+| **float64**, **string** | `TypeError` | `TypeError` | `TypeError` | `TypeError` |
+
+- `~`는 bool이면 bool, int64면 int64예요. float64와 string은 `TypeError`예요.
+- `<<`, `>>`는 int64끼리만 돼요.
+- 스칼라도 같은 규칙이에요. Python `float`는 값이 `1.0`이어도 float64라서 `TypeError`예요.
+
+```python
+>>> sd.frame.Series([1, 2]) & 1.0
+Traceback (most recent call last):
+    ...
+TypeError: unsupported operand dtypes for &: int64 and float64 (bitwise operators take bool and int64)
+>>> ~sd.frame.Series([1.5])
+Traceback (most recent call last):
+    ...
+TypeError: unsupported operand dtype for unary ~: float64
+```
+
+DataFrame은 컬럼 하나라도 받을 수 없으면 전체가 에러예요. 예를 들어 bool 컬럼이 섞인 DataFrame에 `<< 1`을 하면 `TypeError`예요.
+
+## 배열과 다른 점
+
+| | 배열 | 데이터프레임 |
+|---|---|---|
+| 짝짓는 방법 | 위치 (브로드캐스팅) | 라벨 (정렬) |
+| 결측값 | 없어요 | bool끼리는 3값 논리, int64는 `NA`면 `NA` |
+| 함수 이름 | `sd.logical_and`, `sd.bitwise_and` 등이 있어요 | 연산자로만 계산해요 |
+| bool과 int64의 `&`, bool의 시프트, 시프트 칸 수, wrap | 같아요 | 같아요 |
+
+배열 쪽 설명은 [논리 연산](/api/array/logical/)과 [비트 연산](/api/array/bitwise/)에 있어요.
+
+## pandas를 아는 분께
+
+- bool끼리의 `&`, `|`는 pandas의 nullable `boolean` dtype과 같은 3값 논리예요. 결측값이 있어도 dtype은 bool이에요.
+- int64와 bool의 `&`는 int64 비트 연산이에요. pandas는 결과가 bool이에요.
+- `<<`, `>>`를 Series와 DataFrame에 쓸 수 있어요. pandas의 Series에는 시프트 연산자가 없어요.
+- 라벨이 다른 두 Series의 결과 라벨은 왼쪽 라벨이 먼저 오고, 오른쪽에만 있는 라벨이 뒤에 붙어요.
+- DataFrame과 Series의 연산이 없어요.

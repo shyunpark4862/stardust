@@ -1,0 +1,257 @@
+---
+kind: function
+title: kendalltau
+names: [kendalltau]
+group: 상관
+order: 4
+signatures:
+  - "sd.htest.kendalltau(x, y, /, *, axis=None, method='auto', variant='b', alternative='two-sided', nan_policy='propagate', keepdims=False)"
+summary: 켄달의 순위 상관 τ와 "순위 상관이 0이다"라는 귀무가설의 검정이에요. 관측의 쌍마다 두 변수가 같은 방향인지(일치) 반대 방향인지(불일치) 세어서 그 차이로 상관을 재요. 작은 표본은 정확한 분포로, 큰 표본은 정규 근사로 p값을 구해요.
+params:
+  - name: x
+    type: ndarray, 실수의 시퀀스, numpy 배열, 또는 frame의 Series·DataFrame
+    kind: positional-only
+    desc: 첫째 변수(또는 첫째 평가자의 점수). y와 표본 축의 길이가 같아야 해요.
+  - name: y
+    type: ndarray, 실수의 시퀀스, numpy 배열, 또는 frame의 Series·DataFrame
+    kind: positional-only
+    desc: 둘째 변수. i번째 값이 x의 i번째 값과 한 쌍이에요.
+  - name: axis
+    type: int, int의 tuple, 또는 None
+    kind: keyword-only
+    desc: 표본을 읽는 축. None(기본값)이면 x와 y를 각각 펼쳐서 검정 하나를 해요. 축을 주면 나머지 축이 배치예요.
+  - name: method
+    type: str
+    kind: keyword-only
+    desc: "p값을 구하는 방법. 'auto'(기본값, 동점이 없고 n ≤ 33이거나 불일치·일치 쌍이 하나 이하이면 정확, 아니면 정규 근사), 'exact'(정확한 분포), 'asymptotic'(정규 근사) 중 하나예요."
+  - name: variant
+    type: str
+    kind: keyword-only
+    desc: "'b'(기본값, 동점을 보정한 τ-b) 또는 'c'(Stuart의 τ-c, 행과 열의 값 수가 다른 표에 맞춘 꼴)예요."
+  - name: alternative
+    type: str
+    kind: keyword-only
+    desc: "대립가설. 'two-sided'(기본값), 'greater'(양의 상관), 'less'(음의 상관) 중 하나예요."
+  - name: nan_policy
+    type: str
+    kind: keyword-only
+    desc: "'propagate'(기본값), 'omit'(NaN이 든 쌍을 뺌), 'raise'(ValueError) 중 하나예요."
+  - name: keepdims
+    type: bool
+    kind: keyword-only
+    desc: True면 결과에 표본 축이 길이 1로 남아요.
+returns:
+  type: KendalltauResult
+  desc: "statistic(τ), pvalue, method(실제로 쓴 방법 'exact' 또는 'asymptotic')를 가진 결과 객체. (statistic, pvalue) 둘로 풀려요. 배치면 statistic·pvalue는 배열, method는 줄마다의 이름을 배치 모양으로 중첩한 리스트예요."
+raises:
+  - type: TypeError
+    desc: x·y가 배열·수의 시퀀스·frame이 아닐 때, 복소수일 때, 데이터를 키워드로 줬거나 옵션을 위치로 줬을 때, 없는 인자를 줬을 때.
+  - type: ValueError
+    desc: "x와 y의 표본 축 길이가 다를 때, method·variant·alternative·nan_policy 이름이 틀렸을 때, method='exact'인데 동점이 있을 때, method='exact'의 작업량이 상한 10⁹을 넘을 때, nan_policy='raise'인데 NaN이 있을 때."
+seeAlso: [spearmanrho, pearsonr, weightedtau, somersd, basics, results]
+---
+
+## 무엇을 묻는 검정인가요
+
+두 심사위원이 참가자 여덟 명의 순위를 매겼어요. 두 사람의 판단이 얼마나 비슷할까요?
+
+**켄달의 τ**는 참가자 두 명씩 짝지은 모든 쌍을 봐요. 쌍 $(i, j)$에서
+
+- 두 심사위원이 같은 사람을 위에 두면 **일치**하는 쌍,
+- 서로 다른 사람을 위에 두면 **불일치**하는 쌍이에요.
+
+여덟 명이면 쌍이 $8 \cdot 7 / 2 = 28$개예요. 일치하는 쌍의 수를 $C$, 불일치를 $D$라 하면 동점이 없을 때
+
+$$
+\tau = \frac{C - D}{n(n-1)/2}
+$$
+
+이에요. 모든 쌍이 일치하면 1, 모두 불일치하면 −1, 반반이면 0이에요. "무작위로 고른 쌍에서 두 순위가 같은 방향일 확률에서 반대 방향일 확률을 뺀 값"이라고 읽을 수 있어서 해석이 쉬워요.
+
+검정은 이렇게 물어요.
+
+- **귀무가설**: 두 변수가 독립이에요(일치와 불일치가 똑같이 그럴듯해요).
+- **대립가설**: τ ≠ 0(기본값). `alternative`로 한쪽을 고를 수 있어요.
+
+이런 때 써요.
+
+- 자료가 순위나 순서 있는 범주일 때(심사 순위, 등급, 설문 점수).
+- 표본이 작을 때. 동점이 없으면 정확한 p값을 줘요.
+- 이상값이 걱정될 때. 순서만 보므로 값의 크기에 흔들리지 않아요.
+
+같은 질문에 [`spearmanrho`](/api/htest/spearmanrho/)도 쓸 수 있어요. 두 상관은 대개 같은 결론을 내지만 크기의 척도가 달라서 대개 τ가 ρ보다 작게 나와요. 동점이 아주 많은 순서 범주의 표라면 [`somersd`](/api/htest/somersd/)도 봐요. 공통 규칙은 [가설검정 기본](/api/htest/basics/)에 있어요.
+
+<Reference />
+
+## 기본 사용
+
+```python
+>>> import stardust as sd
+>>> judge1 = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]
+>>> judge2 = [2.0, 1.0, 4.0, 3.0, 6.0, 5.0, 8.0, 7.0]
+>>> r = sd.htest.kendalltau(judge1, judge2)
+>>> r
+KendalltauResult(statistic=0.714286, pvalue=0.0141369, method='exact')
+```
+
+이웃한 두 명씩 네 번 뒤바뀌었어요. 불일치 쌍이 4개, 일치 쌍이 24개라 $\tau = (24 - 4)/28 = 0.714$예요. 동점이 없고 n = 8이라 정확한 분포로 p값을 구했어요(`method='exact'`).
+
+## 결과 읽기
+
+필드는 `statistic`(τ), `pvalue`, `method`(실제로 쓴 방법)예요. 풀면 앞의 둘이 나와요.
+
+```python
+>>> tau, p = r
+>>> tau, p, r.method
+(0.7142857142857143, 0.014136904761904762, 'exact')
+>>> print(r.summary())
+                    Kendall rank correlation test (tau-b)
+==============================================================================
+Statistic:                      0.7143  Alternative:                 two-sided
+P-value:                        0.0141  Method:                          exact
+                                        No. Observations:                    8
+==============================================================================
+```
+
+신뢰구간은 없어요.
+
+## `method`: 정확한 분포와 정규 근사
+
+귀무가설 아래에서는 y의 순서가 x에 대해 완전히 무작위라서, $n!$개의 순서가 모두 같은 확률이에요. 불일치 쌍의 수 $D$의 정확한 분포는 "역순 쌍이 $k$개인 순열의 수"(Mahonian 수)로 정해지고, 그 꼬리가 정확한 p값이에요.
+
+표본이 크면 $C - D$가 정규분포에 가까워져요. 정규 근사는 그 평균 0과 분산을 써요(동점이 있으면 동점을 보정한 분산).
+
+| `method` | 하는 일 |
+|---|---|
+| `'auto'`(기본값) | 동점이 없고 n ≤ 33이면 정확, 불일치 쌍이나 일치 쌍이 하나 이하여도 정확, 아니면 정규 근사 |
+| `'exact'` | 언제나 정확한 분포. 동점이 있으면 `ValueError` |
+| `'asymptotic'` | 언제나 정규 근사 |
+
+n = 30이면 `'auto'`가 정확을 고르고, 근사와는 p값이 열 몇 % 달라요.
+
+```python
+>>> rng = sd.random.default_rng(0)
+>>> N = sd.stats.Normal()
+>>> x = N.sample(40, rng=rng)
+>>> y = x + N.sample(40, rng=rng)
+>>> sd.htest.kendalltau(x[:30], y[:30])
+KendalltauResult(statistic=0.383908, pvalue=0.00254346, method='exact')
+>>> sd.htest.kendalltau(x[:30], y[:30], method='asymptotic')
+KendalltauResult(statistic=0.383908, pvalue=0.00288764, method='asymptotic')
+```
+
+n = 40이면 `'auto'`는 근사를 써요. 정확한 분포를 원하면 `'exact'`를 줘요.
+
+```python
+>>> sd.htest.kendalltau(x, y)
+KendalltauResult(statistic=0.297436, pvalue=0.00687085, method='asymptotic')
+>>> sd.htest.kendalltau(x, y, method='exact')
+KendalltauResult(statistic=0.297436, pvalue=0.00655449, method='exact')
+```
+
+정확한 계산의 작업량은 대략 $n \cdot \min(C, D)$예요. 이것이 10⁹을 넘으면 `'exact'`는 다른 길을 알려 주는 `ValueError`이고, `'auto'`는 상한 안에서만 정확을 골라요. τ가 0 근처이면 n ≈ 1500쯤에서 상한에 닿아요. 그래서 어떤 호출도 정해진 시간 안에 끝나요.
+
+```python
+>>> rng = sd.random.default_rng(0)
+>>> xx = N.sample(2000, rng=rng)
+>>> yy = xx + N.sample(2000, rng=rng)
+>>> sd.htest.kendalltau(xx, yy, method='exact')
+Traceback (most recent call last):
+    ...
+ValueError: kendalltau(): method='exact' needs about 1.01e+09 operations for this input, more than its cap of 1e+09; use method='asymptotic'
+>>> sd.htest.kendalltau(xx, yy)
+KendalltauResult(statistic=0.496345, pvalue=1.16938e-242, method='asymptotic')
+```
+
+## 동점과 `variant`
+
+같은 값이 있으면 그 쌍은 일치도 불일치도 아니에요. 그러면 분모 $n(n-1)/2$를 그대로 쓰면 τ가 1에 닿지 못해요. 그래서 두 가지 보정이 있어요.
+
+- **τ-b**(기본값): 분모를 $\sqrt{(n_0 - n_x)(n_0 - n_y)}$로 바꿔요. $n_0 = n(n-1)/2$, $n_x$는 x에서 값이 같은 쌍의 수, $n_y$는 y에서 같은 쌍의 수예요. 정사각형 표(두 변수의 값 수가 같을 때)에서 τ = ±1에 닿을 수 있어요.
+- **τ-c**(Stuart): $\tau_c = \dfrac{2(C - D)}{n^2 (m - 1)/m}$이고 $m$은 두 변수 가운데 서로 다른 값이 더 적은 쪽의 값 수예요. 행과 열의 범주 수가 다른 표에 맞춘 꼴이에요.
+
+```python
+>>> xt = [1.0, 2.0, 2.0, 3.0, 4.0, 5.0]
+>>> yt = [1.0, 3.0, 2.0, 2.0, 5.0, 4.0]
+>>> sd.htest.kendalltau(xt, yt)
+KendalltauResult(statistic=0.642857, pvalue=0.0798387, method='asymptotic')
+>>> sd.htest.kendalltau(xt, yt, variant='c')
+KendalltauResult(statistic=0.625, pvalue=0.0798387, method='asymptotic')
+```
+
+p값은 $C - D$에서 나오므로 두 `variant`가 같아요. 동점이 없으면 두 τ도 같아요.
+
+동점이 있으면 `'auto'`는 정규 근사를 골라요. 동점이 있을 때의 정확한 분포는 x와 y 모두의 동점 구조에 따라 달라서 일반적으로 다루기 어려워요. 그래서 `'exact'`를 주면 에러예요.
+
+```python
+>>> sd.htest.kendalltau(xt, yt, method='exact')
+Traceback (most recent call last):
+    ...
+ValueError: kendalltau(): method='exact' needs samples without ties; use method='asymptotic'
+```
+
+동점이 있는 작은 표본에서 정규 근사가 걱정되면 [`permutation_test`](/api/htest/permutation_test/)로 순열 p값을 구할 수 있어요.
+
+## `alternative`: 한쪽 검정
+
+```python
+>>> sd.htest.kendalltau(judge1, judge2, alternative='greater')
+KendalltauResult(statistic=0.714286, pvalue=0.00706845, method='exact')
+```
+
+정확한 분포는 대칭이라 관측한 방향의 한쪽 p값이 양쪽의 절반이에요.
+
+## 배치와 `axis`
+
+줄마다 따로 검정하고, `method='auto'`는 줄마다 따로 골라요. 결과의 `method`는 줄마다의 이름을 배치 모양으로 담은 리스트예요(배열에 문자열을 담을 수 없어서요).
+
+```python
+>>> X = sd.asarray([[1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+...                 [1.0, 2.0, 2.0, 4.0, 5.0, 6.0]])
+>>> rb = sd.htest.kendalltau(X, [2.0, 1.0, 4.0, 3.0, 6.0, 5.0], axis=1)
+>>> rb.pvalue
+array([ 0.1361111111111111, 0.12597116307723114], dtype=float64)
+>>> rb.method
+['exact', 'asymptotic']
+```
+
+둘째 줄은 x에 동점(2.0이 둘)이 있어서 근사를 썼어요. `method` 리스트는 읽을 때마다 다시 만들어져서 고쳐도 결과에 영향이 없어요.
+
+## NaN과 퇴화한 입력
+
+- `nan_policy='omit'`은 NaN이 든 쌍을 빼요.
+- 한 변수가 상수이면 τ를 정할 수 없어 NaN이에요.
+- 쌍이 2개면 τ = ±1, p값은 1이에요.
+
+```python
+>>> sd.htest.kendalltau([1.0, 2.0, 3.0], [2.0, 2.0, 2.0])
+KendalltauResult(statistic=nan, pvalue=nan, method='asymptotic')
+>>> sd.htest.kendalltau([1.0, 2.0], [2.0, 1.0])
+KendalltauResult(statistic=-1, pvalue=1, method='exact')
+```
+
+이름이 틀리면 받는 값을 알려 줘요.
+
+```python
+>>> sd.htest.kendalltau(judge1, judge2, variant='a')
+Traceback (most recent call last):
+    ...
+ValueError: kendalltau(): 'variant' must be 'b' or 'c', not 'a'
+```
+
+## 정확도
+
+일치·불일치 쌍과 동점의 합은 정확한 정수로 세고, τ는 그 정수의 몫을 한 번 반올림한 값이에요. 정확한 분포의 p값도 정수 개수(n ≤ 33)나 양수만 더하는 계산이라, 1/200!(1.3e-375)처럼 double의 범위 밑으로 내려가는 꼬리도 서브노멀까지 맞아요.
+
+Arb(구간 산술)와 정확한 정수 계산으로 만든 참값에 견주면 18문제(`'auto'`의 문턱 n = 33과 34, 강제 정확 n = 34·200, 불일치 쌍이 0개·1개인 깊은 꼬리, 동점, τ-c, n = 500의 꼬리 포함)에서 τ는 상대오차 7e-17 안, p값은 계약 대비 0.0088 안이에요. 상대오차가 가장 큰 곳은 정규 근사의 깊은 꼬리(2.0e-14)인데, 그곳은 통계량의 작은 변화에도 p값이 크게 움직이는 곳이에요.
+
+## scipy·R을 아는 분께
+
+`scipy.stats.kendalltau`와 통계량, `'auto'`의 문턱, 정확한 분포의 규칙, 근사의 동점 분산이 같아요. 다른 점이에요.
+
+- `axis`의 기본값은 None이고, 데이터는 위치로만 받아요. 별칭 `correlation`이 없어요.
+- 결과에 실제로 쓴 방법 `method`가 있어요. 배치에서는 줄마다 고르고(scipy는 동점 같은 조건을 배치 전체에서 봐요) 줄마다의 이름을 적어요.
+- `'exact'`의 작업량 상한이 있어요.
+- n = 2의 정규 근사도 값을 내요. scipy는 분산의 0/0 항 때문에 NaN이에요.
+- 상수 표본은 경고 없이 NaN이에요.
+- R의 `cor.test(method = 'kendall', exact = TRUE)`는 n ≤ 33에서 맞지만, 그 위에서는 꼬리를 1 − cdf로 구해서 깊은 꼬리가 틀려요(n = 60에서 참 2.4e-82일 때 6.8e-14).

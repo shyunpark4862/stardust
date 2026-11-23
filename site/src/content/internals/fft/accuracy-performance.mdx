@@ -1,0 +1,214 @@
+---
+title: 정확도와 성능
+group: 정확도와 성능
+order: 1
+summary: sd.fft의 정확도를 노름 상대오차의 한계로 약속하는 까닭, 복소·실수·다차원·DCT·DST·FFTLog마다의 계약 꼴과 그 한계를 세는 틀, Arb(구간 산술)로 만드는 참값과 시험 신호, 잰 결과를 모았어요. 성능은 시간이 어디에 드는지를 질적으로 정리했어요.
+seeAlso: [determinism, stockham, bluestein, real-hermitian, dct-dst, fftlog]
+---
+import AccuracySummary from '../../../components/fig/AccuracySummary.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Steps from '../../../components/fig/Steps.astro';
+
+## 한눈에 보기
+
+`sd.fft`의 정확도는 한 줄 전체를 보는 노름 상대오차의 한계로 약속해요. 길이 $n$의 복소 변환이면
+
+$$
+\lVert \hat y - y \rVert \le (\kappa\,L(n) + c_0)\,u\,\lVert y \rVert + \tau
+$$
+
+이에요. $y$는 참 변환, $\hat y$는 돌려준 값, $\lVert\cdot\rVert$는 2-노름, $u = 2^{-53}$은 단위 반올림, $L(n) = \lceil \log_2 n \rceil$이고 $\tau$는 비정상 수의 바닥이에요. 실수·에르미트·다차원·DCT·DST·FFTLog는 같은 꼴을 그 변환에 맞춰 적어요.
+
+- 참값은 Arb(구간 산술)로 구한 참 변환이에요. 구간 산술이라 어떤 알고리즘으로 구했든 참값을 담는 구간이 엄밀해요.
+- 판정은 계약 단위(오차 ÷ 한계)로 해요. 1 이하가 계약 안이에요.
+- 잰 결과는 스윕 여섯, 점 2,981개, (스윕, 영역) 56줄이고 56줄 모두 계약 안이에요. 가장 큰 계약 단위는 바이어스가 있는 `fht`의 0.069예요.
+
+## 원소마다의 상대오차를 약속하지 않는 까닭
+
+출력 한 칸은 $y_k = \sum_j x_j\,\omega^{jk}$, $\omega = e^{-2\pi i/n}$이에요. 크기가 $\lVert x\rVert$쯤인 항들이 서로 지워져 $y_k$가 0에 가까울 수 있어요. 회전 인자 하나를 올바르게 반올림해도(상대 $u$) $y_k$는 $u\sum_j \lvert x_j\rvert$쯤 움직이니, $y_k$가 그보다 작으면 그 칸의 상대오차는 1을 넘어요. 칸마다의 조건수 $\sum_j\lvert x_j\rvert / \lvert y_k\rvert$에 상한이 없기 때문이에요.
+
+길이 4의 입력에 0을 채워 6으로 늘리면 넷째 칸의 참값은 정확히 $-2$예요. 복소 길로 계산하면 허수부에 반올림 크기의 찌꺼기가 남아요. 그 칸의 상대오차는 무한대이지만, 노름으로 보면 $u$ 크기의 오차예요.
+
+```python
+>>> import stardust as sd
+>>> F = sd.fft
+>>> q4 = sd.asarray([1.0, 2.0, 3.0, 4.0])
+>>> F.fft(q4 + 0j, n=6)
+array([                    (10+0j),   (-3.5-4.330127018922193j),
+         (2.5+0.8660254037844386j), (-2+4.440892098500626e-16j),
+         (2.5-0.8660254037844386j),   (-3.5+4.330127018922193j)], dtype=complex128)
+>>> F.fft(q4, n=6)
+array([                                 (10+0j),
+       (-3.4999999999999996-4.330127018922193j),
+        (2.4999999999999996+0.866025403784439j),
+                                        (-2+0j),
+        (2.4999999999999996-0.866025403784439j),
+       (-3.4999999999999996+4.330127018922193j)], dtype=complex128)
+```
+
+실수 dtype으로 주면 실수 길을 타서 그 칸이 우연히 정확해요. 어떤 $O(n\log n)$ 알고리즘도 모든 입력에서 그런 칸을 정확한 0으로 만들 수는 없어요.
+
+FFT가 지키는 것은 노름의 역방향 안정성이에요. 계산한 값이 조금 흔들린 입력의 참 변환이라는 뜻이에요.
+
+$$
+\hat y = F(x + \Delta x), \qquad \lVert \Delta x \rVert \le c\,L(n)\,u\,\lVert x \rVert
+$$
+
+정규화하지 않은 DFT 행렬 $F$는 $\sqrt n$ 곱하기 유니터리라서 $\lVert F v\rVert = \sqrt n\,\lVert v\rVert$예요. 그래서 위 식은 $\lVert \hat y - y\rVert \le c\,L(n)\,u\,\lVert y\rVert$와 같아요. 계약이 노름 상대오차인 까닭이에요. 칸 하나는 $\lvert \hat y_k - y_k\rvert \le \lVert \hat y - y\rVert$라서 노름의 한계를 절대오차의 한계로 가져요.
+
+## 변환마다의 계약
+
+$T$는 정규화 인자 $s$까지 포함한 정확한 선형 변환, $y = Tx$는 참값이에요. 상수는 $\kappa = 8$, $c_0 = 4$, $c_1 = 2$, $c_2 = 8$이에요.
+
+| 변환 | 계약 | 오른쪽의 크기 |
+|---|---|---|
+| 복소 `fft`, `ifft` | $(\kappa L(n) + c_0)\,u\,\lVert y\rVert + \tau$ | $\lVert y\rVert = s\sqrt n\,\lVert x\rVert$ |
+| `rfft`, `ihfft`, 실수 입력 `fft` | $(\kappa L(n) + c_0)\,u\,s\sqrt n\,\lVert x\rVert + \tau$ | 반쪽 스펙트럼의 노름은 전체 스펙트럼 노름의 $1/\sqrt 2$배와 1배 사이 |
+| `irfft`, `hfft` | $(\kappa L(n) + c_0)\,u\,s\sqrt n\,\lVert \tilde X\rVert_H + \tau$ | $\lVert \tilde X\rVert_H$는 정리한 입력의 에르미트 확장의 노름 |
+| 복소 다차원 | $L(n)$ 대신 $\sum_i L(n_i)$, $c_0$ 대신 $c_0 + (d - 1)c_1$ | $\lVert y\rVert = s\sqrt{\textstyle\prod_i n_i}\,\lVert x\rVert$ |
+| 실수 다차원 | 위의 꼴에서 마지막 축의 항이 실수 길의 것 | `irfftn`, `hfftn`은 마지막 축의 칸에 무게 1 또는 $\sqrt 2$를 준 노름 |
+| `dct`, `dst`와 역 | $(\kappa L(M) + c_2)\,u\,\lVert T\rVert\,\lVert x\rVert + \tau$, $M = 2N + 2$ | $\lVert T\rVert$는 형과 `norm`마다 닫힌 꼴 |
+| `fht`, `ifht` | $(2\varepsilon_F + c_h)\,u\,\lVert b_{\mathrm{out}}\rVert_\infty\,M_U\,\lVert B_{\mathrm{in}} a\rVert + \text{바닥}$ | $q = 0$이면 노름 상대오차 |
+
+몇 가지를 덧붙여요.
+
+- **에르미트 노름.** `irfft`의 입력 $\tilde X$는 쓰는 $\lfloor n/2\rfloor + 1$칸에서 DC와 나이퀴스트 칸의 허수부를 버린 것이에요. $\lVert\tilde X\rVert_H^2 = \lvert\tilde X_0\rvert^2 + 2\sum_k \lvert\tilde X_k\rvert^2$(짝수 $n$이면 $+\lvert\tilde X_{n/2}\rvert^2$)이고, 에르미트 확장한 전체 스펙트럼의 노름이에요.
+- **DCT·DST의 $\lVert T\rVert$.** 직교 판(`norm='ortho'`)은 1이에요. `'backward'`의 정변환은 DCT-II와 DST-II가 $2\sqrt N$, DCT-III, DCT-IV, DST-III, DST-IV가 $\sqrt{2N}$, DST-I이 $\sqrt{2(N+1)}$, DCT-I이 $2\sqrt{N-1}$ 이하예요. 모두 대각 배율 곱하기 직교 행렬이라 닫힌 꼴로 나와요. `orthogonalize`의 행렬은 $\sqrt{N'}$ 곱하기 직교라 이 값 아래예요.
+- **FFTLog.** $\varepsilon_F$는 길이 $n$ 실수 변환의 $(\kappa L(n) + c_0)$, $M_U$는 계수 크기의 최댓값(`ifht`는 역수의 최댓값), $B_{\mathrm{in}}$과 $b_{\mathrm{out}}$은 입력과 출력의 바이어스, $c_h = 8$이에요. 바이어스가 없으면 계수의 크기가 1이라(실수부만 쓰는 칸은 1 이하) $M_U \le 1$이고 한계가 입력 노름의 상대오차가 돼요([FFTLog](/internals/fft/fftlog/)).
+- **넓은 기수.** 13에서 31 사이의 소인수가 있는 (안쪽) 길이는 모든 꼴에서 $\kappa$ 대신 $\kappa_w = 17$을 써요. 바닥도 $17\,m\,2^{-1074}$이에요.
+- **Bluestein 길이.** 31보다 큰 소인수가 있는 길이는 $L(n)$ 대신 $2L(m) + 2$를 쓰고 한계와 바닥에 $\rho(n)$을 곱해요. $m$은 $2n - 1$ 이상인 가장 작은 $2^a3^b5^c$, $\rho(n)$은 chirp 핵의 변환에서 나오는 상수로 2 둘레예요([Bluestein](/internals/fft/bluestein/)). 실수·에르미트·DCT·DST는 안쪽 복소 길이로 이 규칙을 적용해요.
+
+### 바닥 $\tau$와 넘침
+
+모든 한계에 $\tau = \kappa\,m\,2^{-1074}$를 더해요. $m$은 변환의 길이(다차원은 원소 수, DCT·DST는 $2N + 2$)예요. 비정상 수끼리의 곱은 부분마다 $2^{-1075}$까지 틀릴 수 있어요. 그래서 단 하나가 노름 $\sqrt 2 \cdot 2^{-1074}\sqrt n$까지의 절대오차를 더하고, 기수 $r_i$의 뒤 단들이 그것을 $\sqrt{\prod r_i}$배 해요. 단마다 더하면 $3.5\sqrt 2\,n\,2^{-1074}$ 아래라 $\kappa\,n\,2^{-1074}$ 안이에요. 결과가 비정상 수일 때의 마지막 반올림도 그 안이에요.
+
+계약은 중간값이 넘치지 않을 때의 약속이에요. 중간값은 모두 입력의 부분합이라 $\lVert x\rVert_1$(실수부와 허수부의 절댓값 합)이 $2^{1020}$ 이하이면 넘치지 않아요. 그 밖에서 inf나 NaN이 나오는 것은 계약 밖이에요.
+
+## 한계를 세는 틀
+
+혼합 기수 FFT는 단을 거듭해요. 단 $j$는 길이 $\ell$의 부분 변환들에 기수 $r_j$의 나비와 회전 인자의 대각을 곱하고, 정확한 단은 $\sqrt{r_j}$ 곱하기 유니터리예요. 계산한 단이 $\hat z = \mathrm{stage}(z) + e$, $\lVert e\rVert \le \eta_j \sqrt{r_j}\,\lVert z\rVert$를 지키면 오차가 단마다 곱해져서
+
+$$
+\lVert \hat y - y\rVert \le \Big(\prod_j (1 + \eta_j) - 1\Big)\,\lVert y\rVert
+$$
+
+예요. $\eta_j \le \kappa\,u\log_2 r_j$이면 어떤 인수분해든 $\sum_j \log_2 r_j = \log_2 n \le L(n)$이라 곱이 $(\kappa L(n) + O(L^2u))\,u$ 아래가 돼요. 그래서 증명할 것은 나비 하나마다의 $\eta_j/\log_2 r_j \le \kappa u$ 하나예요.
+
+### 나비마다의 증명
+
+나비를 C++가 계산하는 연산 그대로 따라가며 모든 중간값 $v$(실수부나 허수부 하나)에 정확한 선형식 $v = L_v\cdot x$와 오차 한계 $E_v$를 붙여요. 1차까지 $\lvert \hat v - v\rvert \le E_v \cdot \lvert x\rvert$라는 뜻이에요.
+
+| 연산 | $E_v$ |
+|---|---|
+| 덧셈 $a + b$ | $E_a + E_b + u\lvert L_v\rvert$ |
+| 반올림한 상수 $\hat c = c + e$와의 곱 | $\lvert c\rvert E_a + \lvert e\rvert\,\lvert L_a\rvert + u\lvert L_v\rvert$ |
+| FMA $c\cdot a + b$ | $\lvert c\rvert E_a + E_b + \lvert e\rvert\,\lvert L_a\rvert + u\lvert L_v\rvert$ |
+
+$-i$ 곱과 부호 바꾸기는 정확해요. 상수의 오차 $e$는 Arb로 구한 정확한 값이에요. 출력의 $E$를 모은 음이 아닌 행렬 $M$에 대해 $\lVert \hat y - y\rVert \le \lVert M\rVert_2\,\lVert x\rVert$이고 정확한 나비는 $\lVert y\rVert = \sqrt r\,\lVert x\rVert$이므로 $\eta_b = \lVert M\rVert_2/\sqrt r$예요. 단은 그 뒤에 회전 인자를 곱해요. FMA로 하는 복소 곱은 $2u$ 안이고(Jeannerod, Kornerup, Louvet, Muller 2017), 회전 인자 자체의 오차를 $\mu = 1.5u$로 두면
+
+$$
+\eta_{\mathrm{stage}} = \eta_b + (2u + \mu)(1 + \eta_b)
+$$
+
+예요. 반올림마다의 $(1 + \delta)$를 곱한 2차 항은 한 경로의 반올림이 30개 아래라 한계를 $10^{-14}$만큼도 바꾸지 않아요. `tests/fft/proof.py`가 이 셈을 하고 `tests/fft/test_proof.py`가 결과를 확인해요.
+
+| 기수 $r$ | $\eta_b$ | $\eta_{\mathrm{stage}}$ | $\eta_{\mathrm{stage}}/\log_2 r$ |
+|---:|---:|---:|---:|
+| 2 | $1.414u$ | $4.914u$ | $4.914u$ |
+| 3 | $5.768u$ | $9.268u$ | $5.847u$ |
+| 4 | $4.000u$ | $7.500u$ | $3.750u$ |
+| 5 | $9.912u$ | $13.412u$ | $5.776u$ |
+| 7 | $13.669u$ | $17.169u$ | $6.116u$ |
+| 11 | $22.875u$ | $26.375u$ | $7.624u$ |
+| 13 | $26.921u$ | $30.421u$ | $8.221u$ |
+| 17 | $37.424u$ | $40.924u$ | $10.012u$ |
+| 19 | $42.930u$ | $46.430u$ | $10.930u$ |
+| 23 | $54.338u$ | $57.838u$ | $12.786u$ |
+| 29 | $72.666u$ | $76.166u$ | $15.679u$ |
+| 31 | $79.861u$ | $83.361u$ | $16.826u$ |
+
+기수 2에서 11까지는 마지막 열이 8 아래라 $\kappa = 8$이에요. 13에서 31은 8을 넘고 17 안이라 그런 기수가 든 길이는 $\kappa_w = 17$로 세요. 4단계 분해는 열 변환의 마지막 단에 없는 회전 인자 곱을 4단계의 회전 인자 곱이 대신해서 단의 셈이 그대로예요([4단계 분해](/internals/fft/four-step/)).
+
+$c_0$는 단 밖의 일을 맡아요. 정규화의 $\mathrm{fl}(1/n)$과 곱셈이 $2u$, `'ortho'`의 $\mathrm{fl}(1/\mathrm{fl}(\sqrt n))$과 곱셈이 $3u$라 $c_0 = 4$ 안이에요. 실수 길의 사후 처리, 에르미트 대칭 채우기도 $c_0$의 몫이에요. 입력을 엮고 결과를 푸는 복사는 정확해요.
+
+### 다른 변환으로 옮기기
+
+다른 변환의 계약은 이 복소 계약에서 출발해 앞뒤 처리가 노름을 얼마나 바꾸는지 보태서 얻어요.
+
+- **실수와 에르미트.** 짝수 $n$의 사후 처리는 $\sqrt 2$ 곱하기 유니터리라서 안쪽 변환의 오차가 그대로 옮겨지고, 사후 처리 자체가 $\kappa u$ 하나 안에 들어요. 홀수 $n$은 복소 변환 뒤의 에르미트 사영이라 오차가 늘지 않아요([실수와 에르미트 변환](/internals/fft/real-hermitian/)).
+- **DCT·DST.** 스펙트럼에서 결과로 가는 사상이 에르미트 스펙트럼 위에서 등거리의 배수이고, 그 배수가 $\lVert T\rVert/(\sqrt n\,\lVert v\rVert)$를 넘지 않아요([DCT와 DST](/internals/fft/dct-dst/)).
+- **FFTLog.** 실수 변환 두 번 사이에 대각 곱이 끼어 있어요. 두 계약을 잇고 대각의 반올림을 $c_h$에 넣어요([FFTLog](/internals/fft/fftlog/)).
+- **다차원.** 한 패스는 다른 축의 위치마다 놓인 줄들을 서로 독립으로 변환하니, 패스 전체가 줄 하나와 같은 노름 상대오차를 지켜요. 그래서 축마다의 단 수가 더해지고, 상수항은 정규화가 마지막 패스에 한 번뿐이라 $c_0$ 하나에 축이 하나 늘 때마다 $c_1 = 2$를 더해요.
+
+증명된 한계는 실제 오차보다 느슨해요. 무작위 입력에서 반올림 오차는 무작위 걸음처럼 $\sqrt{L}$로 자라는데 한계는 $L$로 세기 때문이에요. 그래서 잰 계약 단위가 0.05 둘레에 모여요. 계약만으로는 작은 정확도 회귀를 놓칠 수 있어서, 정확도 체계는 계약 단위의 최대와 제곱평균을 기준선으로 두고 그보다 나빠지면 실패로 알려요.
+
+## 참값
+
+<Fig column caption="시험 신호에서 정확도 표까지의 길.">
+  <Steps
+    steps={[
+      { label: 'tests/fft/signals.py', note: '길이 목록, 값의 종류, 레이아웃. 정한 씨앗의 PCG64에서 나와요', where: 'tests/fft/' },
+      { label: 'tools/fft_ref.py', note: 'Arb의 acb.dft로 참 변환을 구하고 칸마다 double-double로', where: 'tools/' },
+      { label: 'tests/fft/ref/', note: 'c2c, real, hermitian, r2r, nd 다섯 묶음, n은 2의 14제곱까지', where: 'tests/fft/', depth: 1 },
+      { label: 'tests/fft/refdata.py', note: '계약의 판정 bound, 긴 줄과 FFTLog의 참값을 그 자리에서', where: 'tests/fft/' },
+      { label: 'bench/accuracy/fft.py', note: '스윕 여섯, 점마다 계약 단위', where: 'bench/' },
+      { label: 'bench/fft/accuracy.md', note: '기준선에서 만든 표', where: 'bench/', depth: 1 },
+    ]}
+  />
+</Fig>
+
+입력이 double이라 Arb의 `acb.dft`가 참 변환을 담는 구간을 줘요. 구간 산술은 어떤 알고리즘으로 계산하든 결과 구간이 참값을 담으니, 참값을 구하는 데 쓴 FFT 알고리즘이 무엇인지는 상관없어요. 정밀도는 192비트에서 시작해 두 배씩 올리고, 각 칸의 반지름이 출력 2-노름의 $2^{-120}$ 아래가 되면 멈춰요. 저장한 줄은 모두 192비트에서 정해졌어요.
+
+칸마다 double 하나가 아니라 double-double(hi, lo)로 저장해요. 재려는 오차가 노름 상대 $u$ 크기라서, 참값을 double로 반올림해 두면 그 반올림(칸마다 $u\lvert y_k\rvert$ 이하)이 재려는 오차와 같은 크기가 되기 때문이에요. 오차의 노름도 Arb에서 구해요. 돌려준 double과 참값의 차이를 정확히 빼서 제곱합을 내요.
+
+- **묶음.** 파일을 작게 두려고 $n \le 2^{14}$의 줄만 저장해요. `c2c` 313줄(정방향, 역방향은 $n \le 4096$), `real` 282줄, `hermitian` 113줄, `r2r` 140줄(여덟 변환), `nd` 10줄이고 합해 10 MB쯤이에요.
+- **긴 줄.** $2^{16}$, 65537, $3\cdot 10007$, $2^{20}$의 줄은 정확도 체계와 테스트가 그 자리에서 Arb로 구해요. 메모리를 지켜보며 돌려요.
+- **실수·에르미트·DCT·DST.** 확장한 복소 입력(DCT·DST는 짝·홀 확장)의 `acb.dft`에서 구해요. 확장이 정확하니 이것도 엄밀해요. `orthogonalize`와 정규화 인자는 정확한 $\sqrt 2$와 인자로 저장한 참값에서 계산해요.
+- **FFTLog.** 참값 파일이 없어요. 정확한 매개변수에서 `acb.gamma`와 `acb.rgamma`로 계수를 만들고 `acb.dft`로 변환을 그 자리에서 구해요. 계수만 따로 견주는 참값과 `fhtoffset`의 참값도 같은 방법이에요.
+
+참값은 스스로를 검사해요(`tests/fft/test_reference_data.py`). 파스발 항등식, 따로 계산한 정방향과 역방향이 지수를 뒤집은 관계, DC와 나이퀴스트 칸의 정확한 유리수 합, 상수와 임펄스 신호의 정확한 꼴을 봐요. 저장한 참값과 기록이 시험 신호와 맞는지도 입력의 해시로 확인해요.
+
+## 시험 신호
+
+- **길이.** 1부터 128까지의 모든 길이, $2^k$와 $f\cdot 2^k$($f = 3, 5, 15$)의 경계(23, 24, 25, 39, 40, 41, 47, 48, 49, 119, 120, 121, 239, 240, 241, $2^k \pm 1$), 소수(127, 1009, 10007, 65537), 큰 소인수가 있는 합성수($2\cdot 127$, $4\cdot 257$, $2\cdot 1009$, $3\cdot 10007$), $7\cdot 2^k$와 11-매끄러운 수, $2^{20}$까지의 2의 거듭제곱(4단계 문턱 $2^{15}$의 양쪽)이에요.
+- **값.** 균등·정규 난수, 임펄스(한 칸만 1), 상수(결과의 대부분이 참 0), 한 주파수의 사인파(정수 $k$와 $k + 1/2$), 크기가 $10^{-300}$에서 $10^{300}$에 걸친 입력, 넘침 직전($\lVert x\rVert_1 \approx 2^{1020}$), 비정상 수($2^{-1060}$배), 에르미트 대칭 입력과 대칭이 아닌 입력, NaN과 inf의 모든 자리예요. 넓은 크기의 입력은 노름 계약이 작은 칸을 따로 보지 않는다는 것을 보여 줘요.
+- **레이아웃.** 변환 축이 처음·가운데·끝, C와 F 순서, 음수와 띄엄띄엄한 간격, 길이 0인 배치 축이에요.
+
+신호의 이름은 `<영역>/<값>/<길이>`예요. 영역은 `c`(복소), `r`(실수), `h`(길이 $n$의 출력을 낼 반쪽 스펙트럼), `nd`(다차원, `AxBxC`)예요.
+
+## 잰 결과
+
+점 하나는 한 줄이에요. 영역은 길의 꼴이에요.
+
+- 복소: `pow2`($2^k$), `f2k`($f\cdot 2^k$, $f \in \{3, 5, 15\}$, $k \ge 3$), `mixed`(그 밖의 31-매끄러운 길이), `bluestein`(31보다 큰 소인수).
+- 실수와 에르미트: 안쪽 길이로 `pow2`, `even`, `odd`, `bluestein`.
+- 다차원: 모든 축이 31-매끄러우면 `smooth`, 아니면 `bluestein`.
+- DCT·DST: 안쪽 복소 길이로 `even`, `odd`, `bluestein`.
+- FFTLog: 방향과 바이어스의 유무.
+
+<AccuracySummary area="fft" names={['c2c', 'real', 'hermitian', 'nd']} caption="복소, 실수, 에르미트, 다차원 변환. 최대 상대오차는 노름 상대오차이고, 10의 -5제곱 크기의 값은 비정상 수 입력의 짧은 줄에서 나와요(바닥 τ가 정하는 곳이라 계약 단위는 작아요)." />
+
+<AccuracySummary area="fft" names={['r2r']} caption="DCT와 DST의 형 1–4, norm='backward'. 비교 패키지는 scipy뿐이에요." />
+
+<AccuracySummary area="fft" names={['fftlog']} caption="FFTLog. biased는 바이어스가 있는 점, unbiased는 없는 점이에요." />
+
+표를 읽을 때 알아 둘 것들이에요.
+
+- **가장 큰 값.** 계약 단위가 큰 점은 비정상 수 입력, 넘침 직전, 짧은 줄이에요. 바닥 $\tau$와 언더플로가 한계를 정하는 곳이에요. 계약을 넓혀 준 곳은 없어요.
+- **Bluestein 영역.** 계약이 $\rho$로 넓어서 계약 단위가 작게 나와요. 노름 상대오차는 비정상 수 입력의 짧은 줄에서 $10^{-4}$ 크기까지 가요.
+- **`irfftn`의 점.** 에르미트 대칭이 아닌 입력이에요. 참값은 복소 패스 뒤에 DC와 나이퀴스트의 허수부를 버리고 $\lfloor n/2\rfloor + 1$칸만 읽는 순서로 Arb에서 구했어요.
+- **바이어스가 있는 `ifht`.** 최대 상대오차 9.66은 결과가 바이어스의 동적 범위에 비해 아주 작은 점에서 나와요. 조건수가 큰 문제라 scipy도 9.23이에요. 계약은 $\lVert b_{\mathrm{out}}\rVert_\infty M_U \lVert B_{\mathrm{in}}a\rVert$로 재니 그 안이에요.
+- **비교 패키지 열.** numpy, scipy, R의 값은 같은 점에서 같은 척도로 잰 그 라이브러리의 오차예요. 이 영역의 계약은 sd의 약속이지 그 라이브러리들의 약속이 아니에요. R의 `fft`는 Singleton의 혼합 기수라 큰 소인수 $p$의 단을 $O(p^2)$의 직접 합으로 계산해서 `bluestein` 영역에서 2.86이 나와요. scipy의 FFTLog는 계수의 위상을 double의 `loggamma`로 만들어, 위상이 커지는 작은 `dln`이나 큰 $n$에서 이 계약의 수천 배가 나와요(바이어스 없는 `ifht`에서 4,620배).
+
+## 성능
+
+시간이 드는 곳을 질적으로 정리해요. 속도는 따로 재는 체계가 있고 여기서는 수치를 적지 않아요.
+
+- **계획은 한 번.** 길이마다 기수의 순서와 회전 인자 표를 한 번 만들어 캐시에 둬요(계획 32개, 합 256 MB까지). 같은 길이를 다시 부르면 표를 만드는 일이 없어요. 계획을 만드는 동안은 GIL을 놓아요([구조](/internals/fft/overview/)).
+- **재서 고르지 않아요.** 실행 시간을 재서 알고리즘을 고르는 방식은 그때의 기기 부하에 따라 결과가 달라져요. 길은 종류와 길이로만 정하고, 문턱과 묶음 크기는 미리 재서 정한 상수예요.
+- **실수 길은 반 길이.** 짝수 $n$의 실수 변환은 길이 $n/2$의 복소 변환에 $O(n)$의 사후 처리 하나예요. 홀수 $n$은 길이 $n$의 복소 변환을 그대로 쓰니, 이웃한 짝수 길이가 하는 복소 변환의 두 배 길이를 변환해요.
+- **Bluestein 길이.** 31보다 큰 소인수가 있으면 길이 $m \ge 2n - 1$의 변환 둘과 chirp 곱 둘이 들어요. 같은 $n$의 매끄러운 길이보다 점마다 일이 많아요. 0을 채워도 되는 문제라면 [`next_fast_len`](/api/fft/next_fast_len/)으로 매끄러운 길이를 고르는 편이 좋아요.
+- **DCT·DST.** 형 2·3은 길이 $N$의 실수 FFT 하나, 짝수 $N$의 형 4는 길이 $N/2$의 복소 FFT 하나예요. 형 1은 길이 $2(N \mp 1)$의 실수 FFT라 안쪽 길이 $N \mp 1$의 소인수를 따라가요. 예를 들어 DCT-I에서 $N - 1$에 31보다 큰 소인수가 있으면 Bluestein을 타요.
+- **FFTLog.** 계수 하나에 double-double의 $\log\Gamma$ 하나(바이어스가 있으면 둘)가 들어 계획을 만드는 일이 커요. 계수는 색인마다 따로라 풀에서 16개씩 나눠 만들고, 계획을 전용 캐시(16개, 128 MB)에 둬요. 같은 매개변수로 다시 부르면 실수 FFT 두 번과 곱 한 번이에요.
+- **병렬화.** 줄이 여럿이면 줄 덩어리로, $2^{15}$ 이상의 매끄러운 줄 하나는 4단계 분해로 나눠요. 긴 줄의 $O(n)$ 패스(실수 처리, chirp 곱, 정규화, DCT의 앞뒤 처리, FFTLog의 곱)도 $2^{14}$칸씩 나눠요. 어느 쪽이든 나누는 방법이 크기로만 정해져서 결과의 비트는 스레드 수와 무관해요([결정성](/internals/fft/determinism/)).
+- **vDSP.** Accelerate의 DFT는 부르지 않아요. 그 까닭은 [결정성](/internals/fft/determinism/)에 있어요.

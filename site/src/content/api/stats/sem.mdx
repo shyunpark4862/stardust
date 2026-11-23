@@ -1,0 +1,211 @@
+---
+title: sem
+names: [sem]
+group: 기술통계
+order: 6
+signatures:
+  - "sd.stats.sem(x, /, *, axis=None, correction=1, nan_policy='propagate', keepdims=False)"
+summary: 평균의 표준오차(standard error of the mean)를 구해요. 표본 평균이 참 평균에서 보통 얼마나 어긋나는지를 나타내고, 표본 표준편차를 √n으로 나눈 값이에요.
+params:
+  - name: x
+    type: ndarray, 실수의 시퀀스, 실수 스칼라, numpy 배열, 또는 frame의 Series·DataFrame
+    kind: positional-only
+    desc: 데이터(표본). bool·정수는 float64로 바꿔서 계산해요.
+  - name: axis
+    type: int, int의 tuple·리스트, 또는 None
+    kind: keyword-only
+    desc: 줄여서 없앨 축. None(기본값)이면 모든 원소를 한 표본으로 봐요.
+  - name: correction
+    type: int 또는 float(numpy 정수도 돼요)
+    kind: keyword-only
+    desc: 표준편차를 구할 때 나누는 수를 n - correction으로 만들어요. 기본값 1은 표본 표준편차(n - 1로 나눔)예요.
+  - name: nan_policy
+    type: str
+    kind: keyword-only
+    desc: "'propagate'(그 줄의 결과가 NaN), 'omit'(NaN을 빼고 계산, n도 남은 개수), 'raise'(ValueError) 중 하나예요."
+  - name: keepdims
+    type: bool
+    kind: keyword-only
+    desc: True면 줄인 축을 길이 1로 남겨요.
+returns:
+  type: ndarray 또는 Python float
+  desc: 표준오차. 언제나 float64이고, 남는 축이 없으면 Python float예요. n - correction이 0 이하이면(기본값에서 값이 하나뿐이면) NaN이에요.
+raises:
+  - type: TypeError
+    desc: x가 배열, 숫자의 시퀀스, frame의 Series·DataFrame이 아니거나 복소수일 때, 숫자가 아닌 열이 있을 때, axis가 int·tuple·리스트·None이 아닐 때, correction이 int·float가 아닐 때(bool 포함), keepdims가 True·False가 아닐 때, nan_policy에 문자열이 아닌 값을 줬을 때.
+  - type: ValueError
+    desc: nan_policy 이름이 틀렸거나 'raise'인데 NaN이 있을 때, axis가 범위를 벗어나거나 겹칠 때.
+  - type: OverflowError
+    desc: correction이 float로 나타낼 수 없을 만큼 큰 int일 때(10**400 등).
+seeAlso: [describe, zscore, iqr, skew-kurtosis]
+---
+import Callout from '../../../components/Callout.astro';
+
+## 한눈에 보기
+
+과자 여덟 봉지의 무게를 재서 평균 501g이 나왔다고 해 볼게요. 이 501g이 "진짜 평균 무게"와 꼭 같지는 않아요. 다른 여덟 봉지를 재면 평균이 조금 다르게 나올 거예요. **평균의 표준오차**(standard error of the mean, SEM)는 이렇게 표본마다 달라지는 표본 평균이 보통 얼마나 흔들리는지를 어림한 값이에요.
+
+```python
+>>> import stardust as sd
+>>> w = sd.asarray([498.0, 502.0, 505.0, 497.0, 500.0, 503.0, 499.0, 504.0])
+>>> sd.mean(w)
+501.0
+>>> sd.stats.sem(w)
+1.0350983390135313
+```
+
+"평균 501g, 표준오차 약 1g"이라고 읽어요. 진짜 평균이 501g에서 1g 안팎쯤 떨어져 있을 거라는 뜻이에요.
+
+<Reference />
+
+## 어떻게 계산하나요
+
+$n$개의 표본에서 구한 표준편차를 $s$라고 하면
+
+$$
+\text{SEM} = \frac{s}{\sqrt{n}}, \qquad s = \sqrt{\frac{1}{n - c}\sum_i (x_i - \bar x)^2}
+$$
+
+예요. $c$가 `correction`이고 기본값은 1이에요.
+
+```python
+>>> sd.std(w, correction=1) / sd.sqrt(8.0)
+1.0350983390135313
+```
+
+### 표준편차와 표준오차는 달라요
+
+둘은 이름이 비슷하지만 묻는 것이 달라요.
+
+| | 표준편차 $s$ | 표준오차 $s/\sqrt n$ |
+|---|---|---|
+| 무엇이 퍼진 정도 | **값 하나하나**가 평균 주변에 퍼진 정도 | **표본 평균**이 참 평균 주변에 퍼진 정도 |
+| 표본이 커지면 | 거의 그대로(데이터 자체의 성질) | $\sqrt n$에 반비례해 줄어요 |
+
+봉지 하나하나는 평균에서 3g쯤 벗어나지만(표준편차), 여덟 개의 평균은 그보다 훨씬 덜 흔들려요(표준오차).
+
+```python
+>>> sd.std(w, correction=1)
+2.9277002188455996
+```
+
+표본을 네 배로 늘리면 표준오차는 절반이 돼요. 표준정규분포에서 표본 크기를 열 배씩 늘리면 표준오차가 약 $1/\sqrt{10} \approx 0.32$배씩 줄어요.
+
+```python
+>>> X = sd.stats.Normal()
+>>> rng = sd.random.default_rng(5)
+>>> [round(sd.stats.sem(X.sample(n, rng=rng)), 3) for n in (10, 100, 1000, 10000)]
+[0.18, 0.093, 0.032, 0.01]
+```
+
+## 신뢰구간 만들기
+
+표준오차의 가장 흔한 쓰임은 평균의 **신뢰구간**이에요. 데이터가 정규분포에서 왔다고 볼 수 있으면, 95% 신뢰구간은
+
+$$
+\bar x \pm t_{0.975,\, n-1} \times \text{SEM}
+$$
+
+이에요. $t_{0.975,\,n-1}$은 자유도 $n - 1$인 t 분포에서 아래쪽 97.5%를 자르는 지점이고, `sd.stats.StudentT`의 `icdf`로 구해요(t 분포는 [`sd.special.stdtr`](/api/special/stdtr/)에 설명이 있어요).
+
+```python
+>>> n = 8
+>>> t = sd.stats.StudentT(df=n - 1).icdf(0.975)
+>>> t
+2.3646242515927844
+>>> m, e = sd.mean(w), t * sd.stats.sem(w)
+>>> round(m - e, 3), round(m + e, 3)
+(498.552, 503.448)
+```
+
+"진짜 평균 무게는 95% 신뢰로 498.6g과 503.4g 사이"라고 말할 수 있어요.
+
+## `correction`
+
+기본값 `correction=1`은 표본 표준편차($n - 1$로 나눔)를 써요. 데이터가 더 큰 집단에서 뽑은 표본일 때의 표준적인 선택이에요. `correction=0`이면 $n$으로 나눈 표준편차를 써서 값이 조금 작아져요.
+
+```python
+>>> sd.stats.sem(w, correction=0)
+0.9682458365518543
+```
+
+`correction`은 int나 float예요(numpy 정수도 돼요). float로 나타낼 수 없을 만큼 큰 int는 `OverflowError`예요.
+
+```python
+>>> sd.stats.sem(w, correction=10**400)
+Traceback (most recent call last):
+    ...
+OverflowError: sem(): 'correction' is out of range
+```
+
+<Callout type="note" title="sd.std와 기본값이 달라요">
+`sd.std`의 기본값은 `correction=0`이고 `sem`은 `correction=1`이에요. 그래서 `sd.std(w) / sd.sqrt(n)`은 `sem(w)`가 아니라 `sem(w, correction=0)`과 같아요.
+</Callout>
+
+## `axis`, `keepdims`, `nan_policy`
+
+기본값 `axis=None`은 모든 원소를 한 표본으로 봐요(`sd.mean`, `sd.std`와 같아요). 행마다 다른 표본이면 `axis=1`을 줘요. 여러 축을 한 표본으로 묶으려면 tuple이나 리스트로 줘요.
+
+```python
+>>> t2 = sd.asarray([[1.0, 2.0, 3.0, 4.0],
+...                  [2.0, 4.0, 6.0, 8.0]])
+>>> sd.stats.sem(t2, axis=1)
+array([0.6454972243679028, 1.2909944487358056], dtype=float64)
+>>> sd.stats.sem(t2, axis=1, keepdims=True)
+array([[0.6454972243679028],
+       [1.2909944487358056]], dtype=float64)
+```
+
+NaN이 있으면 기본은 NaN이에요. `'omit'`이면 NaN을 빼고, $n$도 NaN을 뺀 개수로 계산해요.
+
+```python
+>>> sd.stats.sem([1.0, sd.nan, 3.0])
+nan
+>>> sd.stats.sem([1.0, sd.nan, 3.0], nan_policy='omit')
+1.0
+```
+
+## 조심할 점
+
+### 값이 하나뿐이면 NaN이에요
+
+값이 하나면 $n - 1 = 0$으로 나눠야 해서 표준편차를 어림할 수 없어요. 그래서 NaN이에요. 빈 데이터도 NaN이에요. 모든 값이 같으면 퍼짐이 없으니 0이에요.
+
+```python
+>>> sd.stats.sem([4.0])
+nan
+>>> sd.stats.sem([])
+nan
+>>> sd.stats.sem([2.0, 2.0, 2.0])
+0.0
+```
+
+### 독립인 표본이라는 가정
+
+$s/\sqrt n$은 값이 서로 독립으로 뽑혔다고 볼 때의 공식이에요. 같은 대상을 시간에 따라 잰 값처럼 서로 이어져 있는 데이터에서는 실제 흔들림보다 작게 나올 수 있어요.
+
+### 평균이 아주 커도 정확해요
+
+모든 값에 1억을 더해도 표준오차는 같아요.
+
+```python
+>>> sd.stats.sem(w + 1e8)
+1.0350983390135313
+```
+
+어떻게 계산하는지는 [기술통계의 구현](/internals/stats/descriptive/)을 보세요.
+
+## 비슷한 함수와의 차이
+
+| 쓸 것 | `sem`과 다른 점 |
+|---|---|
+| [`sd.std`](/api/array/var/) | 값 하나하나의 퍼짐이에요. $\sqrt n$으로 나누지 않고, 기본이 `correction=0`이에요. |
+| [`describe`](/api/stats/describe/) | 분산(`correction=1`)을 줘요. 표준오차는 `sd.sqrt(r.variance / r.nobs)`로 구할 수 있어요. |
+| [`iqr`](/api/stats/iqr/) | 값의 퍼짐을 순서(사분위수)로 재요. 튀는 값에 덜 흔들려요. |
+| 분포 객체의 `X.standard_deviation()` | 데이터가 아니라 분포의 이론값이에요. |
+
+## scipy를 아는 분께
+
+- `axis`의 기본값이 `None`(전체)이에요. scipy는 `axis=0`이에요.
+- `ddof`는 `correction`이고 기본값 1은 scipy와 같아요.
+- 결과는 numpy 스칼라가 아니라 Python `float`예요.

@@ -1,0 +1,277 @@
+---
+kind: function
+title: gmres
+names: [gmres]
+group: 반복법
+order: 4
+signatures:
+  - "sd.sparse.gmres(A, b, /, *, x0=None, rtol=1e-05, atol=0.0, restart=None, max_iter=None, M=None)"
+summary: 아무 정사각 정칙 행렬의 연립방정식 Ax = b를 재시작 GMRES로 풀어요. 크릴로프 공간에서 잔차가 가장 작은 점을 고르므로 대칭이 아닌 행렬에도 안정적이고, restart로 메모리와 반복 수를 맞바꿔요.
+params:
+  - name: A
+    type: 희소 배열, 2차원 ndarray, 또는 LinearOperator
+    kind: positional-only
+    desc: 계수 행렬 (n, n). 대칭이 아니어도 돼요.
+  - name: b
+    type: ndarray
+    kind: positional-only
+    desc: 우변. 모양이 (n,)이나 (n, 1)인 sd.ndarray예요.
+  - name: x0
+    type: ndarray 또는 None
+    kind: keyword-only
+    desc: 시작점 (n,)이나 (n, 1). None(기본값)이면 0 벡터예요.
+  - name: rtol
+    type: float
+    kind: keyword-only
+    desc: 상대 허용오차. 재시작 주기가 끝날 때마다 참 잔차가 ‖b − Ax‖ ≤ max(rtol·‖b‖, atol)이면 멈춰요. 유한한 0 이상의 수이고 기본값은 1e-05예요.
+  - name: atol
+    type: float
+    kind: keyword-only
+    desc: 절대 허용오차(잔차의 바닥). 유한한 0 이상의 수이고 기본값은 0.0이에요.
+  - name: restart
+    type: int 또는 None
+    kind: keyword-only
+    desc: 한 재시작 주기의 안쪽 반복 수(1 이상). 이만큼 기저 벡터를 쌓은 뒤 버리고 처음부터 다시 쌓아요. None(기본값)이면 20이고, n보다 크면 n이에요.
+  - name: max_iter
+    type: int 또는 None
+    kind: keyword-only
+    desc: 재시작 주기 수의 상한(1 이상). 안쪽 반복 수가 아니에요. None(기본값)이면 10n이에요. 닿으면 그때의 x와 status = max_iter, converged=False를 돌려줘요.
+  - name: M
+    type: 희소 배열, 2차원 ndarray, LinearOperator, 또는 None
+    kind: keyword-only
+    desc: 전처리기. A⁻¹을 어림한 (n, n) 정칙 행렬이나 연산자예요(대칭이 아니어도 돼요). 왼쪽에서 곱해 MAx = Mb를 풀어요. None(기본값)이면 전처리하지 않아요.
+returns:
+  type: GmresResult
+  desc: "x(해, (n,)), converged, status(0은 수렴, 상한에 닿으면 max_iter), message, n_iter(재시작 주기 수), n_inner(안쪽 반복의 합), normr(마지막 참 잔차의 크기). (x, status)로 풀려요."
+raises:
+  - type: TypeError
+    desc: A나 M이 희소 배열·sd.ndarray·LinearOperator가 아닐 때, b나 x0이 sd.ndarray가 아닐 때, 허용오차가 수가 아니거나 restart·max_iter가 int가 아닐 때, 옵션을 위치로 주거나 없는 키워드(maxiter, callback, callback_type 등)를 줬을 때, LinearOperator의 함수가 배열로 바꿀 수 없는 것을 돌려줄 때.
+  - type: ValueError
+    desc: A가 2차원이 아니거나 정사각이 아닐 때, M의 모양이 A와 다를 때, b나 x0의 모양이 (n,)·(n, 1)이 아닐 때, A·M·b·x0에 NaN·inf가 있을 때, rtol·atol이 음수이거나 유한하지 않을 때, restart·max_iter가 1보다 작을 때, LinearOperator의 함수가 크기가 다른 결과를 돌려줄 때.
+seeAlso: [iterative, bicgstab, cg, minres, spsolve, splu, linearoperator]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+export const gm5 = [[0,0],[1,-0.02],[2,-0.04],[3,-0.06],[4,-0.07],[5,-0.09],[6,-0.09],[7,-0.11],[8,-0.12],[9,-0.13],[10,-0.14],[11,-0.15],[12,-0.17],[13,-0.18],[14,-0.2],[15,-0.21],[16,-0.22],[17,-0.24],[18,-0.26],[19,-0.27],[20,-0.29],[21,-0.31],[22,-0.33],[23,-0.35],[24,-0.38],[25,-0.4],[26,-0.42],[27,-0.46],[28,-0.5],[29,-0.54],[30,-0.59],[31,-0.64],[32,-0.72],[33,-0.83],[34,-0.98],[35,-1.16],[36,-1.33],[37,-1.49],[38,-1.55],[39,-1.59],[40,-1.62],[41,-1.63],[42,-1.66],[43,-1.69],[44,-1.76],[45,-1.92],[46,-2.06],[47,-2.18],[48,-2.3],[49,-2.38],[50,-2.51],[51,-2.61],[52,-2.65],[53,-2.68],[54,-2.83],[55,-3.04],[56,-3.18],[57,-3.3],[58,-3.59],[59,-3.75],[60,-3.8],[61,-3.83],[62,-3.86],[63,-3.88],[64,-3.97],[65,-4.27],[66,-4.56],[67,-4.7],[68,-4.75],[69,-4.81],[70,-4.9],[71,-4.99],[72,-5.11]];
+export const gm20 = [[0,0],[1,-0.02],[2,-0.04],[3,-0.06],[4,-0.07],[5,-0.09],[6,-0.1],[7,-0.11],[8,-0.12],[9,-0.13],[10,-0.15],[11,-0.16],[12,-0.17],[13,-0.19],[14,-0.2],[15,-0.21],[16,-0.23],[17,-0.24],[18,-0.26],[19,-0.28],[20,-0.3],[21,-0.31],[22,-0.33],[23,-0.35],[24,-0.38],[25,-0.4],[26,-0.43],[27,-0.46],[28,-0.5],[29,-0.54],[30,-0.59],[31,-0.65],[32,-0.73],[33,-0.84],[34,-0.99],[35,-1.17],[36,-1.37],[37,-1.5],[38,-1.57],[39,-1.62],[40,-1.71],[41,-1.77],[42,-1.81],[43,-1.84],[44,-1.87],[45,-1.9],[46,-1.92],[47,-1.94],[48,-1.96],[49,-1.97],[50,-1.99],[51,-2.0],[52,-2.02],[53,-2.03],[54,-2.04],[55,-2.05],[56,-2.11],[57,-2.3],[58,-2.54],[59,-2.66],[60,-2.9],[61,-3.05],[62,-3.11],[63,-3.16],[64,-3.21],[65,-3.24],[66,-3.27],[67,-3.3],[68,-3.32],[69,-3.34],[70,-3.37],[71,-3.39],[72,-3.42],[73,-3.44],[74,-3.48],[75,-3.53],[76,-3.57],[77,-3.61],[78,-3.64],[79,-3.66],[80,-3.68],[81,-3.71],[82,-3.72],[83,-3.73],[84,-3.75],[85,-3.75],[86,-3.76],[87,-3.78],[88,-3.79],[89,-3.8],[90,-3.81],[91,-3.82],[92,-3.84],[93,-3.85],[94,-3.87],[95,-3.9],[96,-3.94],[97,-4.08],[98,-4.37],[99,-4.63],[100,-4.81],[101,-4.92],[102,-5.07]];
+export const gm100 = [[0,0],[1,-0.02],[2,-0.04],[3,-0.06],[4,-0.07],[5,-0.09],[6,-0.1],[7,-0.11],[8,-0.12],[9,-0.13],[10,-0.15],[11,-0.16],[12,-0.17],[13,-0.19],[14,-0.2],[15,-0.21],[16,-0.23],[17,-0.24],[18,-0.26],[19,-0.28],[20,-0.3],[21,-0.31],[22,-0.33],[23,-0.36],[24,-0.38],[25,-0.41],[26,-0.43],[27,-0.47],[28,-0.5],[29,-0.55],[30,-0.6],[31,-0.66],[32,-0.75],[33,-0.86],[34,-1.01],[35,-1.23],[36,-1.49],[37,-1.76],[38,-1.96],[39,-2.1],[40,-2.31],[41,-2.64],[42,-2.96],[43,-3.23],[44,-3.48],[45,-3.7],[46,-3.89],[47,-4.1],[48,-4.32],[49,-4.52],[50,-4.72],[51,-4.88],[52,-5.02]];
+
+## 무엇을 하나요
+
+GMRES(generalized minimal residual)는 행렬에 아무 성질도 바라지 않는 반복법이에요. k번째 반복에서 크릴로프 공간 $\{r_0, Ar_0, \dots, A^{k-1}r_0\}$ 안에서 **잔차 ‖b − Ax‖가 가장 작은 점**을 골라요. 공간이 반복마다 넓어지므로 잔차는 절대 늘지 않아요. 그래서 대칭이 아닌 행렬, 예를 들어 흐름이 있는 확산(대류–확산), 회로, 마르코프 연쇄 같은 문제에 가장 믿을 만한 방법이에요.
+
+대가는 메모리와 일이에요. 그 공간에서 가장 좋은 점을 고르려면 공간의 직교 기저(Arnoldi 기저)를 모두 들고 있어야 하고, 새 벡터를 앞의 모든 벡터와 직교화해야 해요. k번째 반복은 길이 n의 벡터 k개를 쌓고 내적을 k번 해요. 그래서 `restart`번마다 기저를 버리고 그때까지의 x에서 다시 시작해요. 이것이 **재시작 GMRES**, GMRES(restart)예요.
+
+<Reference />
+
+## 기본 사용
+
+가장자리가 0인 30 × 30 판에 오른쪽으로 바람이 불어 열이 실려 가는 문제예요. 라플라시안에 바람 방향의 차분(위쪽 차분)을 더하면 대칭이 아닌 행렬이 돼요.
+
+```python
+>>> n = 30
+>>> T = sd.sparse.diags_array([-1.0, 2.0, -1.0], offsets=[-1, 0, 1], shape=(n, n))
+>>> D1 = sd.sparse.diags_array([-1.0, 1.0], offsets=[-1, 0], shape=(n, n))
+>>> I = sd.sparse.eye_array(n)
+>>> A = sd.sparse.kronsum(T, T) + 1.5 * sd.sparse.kron(I, D1)
+>>> (A - A.T).count_nonzero()
+1740
+>>> b = sd.ones(n * n)
+>>> r = sd.sparse.gmres(A, b)
+>>> r
+GmresResult(converged=True, status=0, n_iter=6, n_inner=102, normr=0.000256024, x=<array of shape (900,)>)
+>>> float(sd.linalg.vector_norm(b - A @ r.x)) <= 1e-5 * 30
+True
+```
+
+`n_iter=6`은 재시작 주기 수, `n_inner=102`는 안쪽(Arnoldi) 반복의 합이에요. 20번씩 다섯 주기를 돌고 여섯째 주기의 둘째 반복에서 판정을 통과했어요. 열이 바람에 실려 가서, 가운데 가로줄의 온도는 바람이 들어오는 벽 옆에서 낮고 바람이 나가는 벽 근처(26번째 칸)에서 가장 높아요.
+
+```python
+>>> grid = sd.reshape(r.x, (n, n))
+>>> round(float(grid[15, 0]), 2), int(sd.argmax(grid[15])), round(float(sd.max(grid[15])), 2)
+(0.67, 26, 17.34)
+```
+
+## restart와 max_iter
+
+두 인자의 단위가 달라요.
+
+- `restart`: 한 주기에 쌓는 기저 벡터 수(안쪽 반복 수). 기본 20이고 n을 넘으면 n이에요.
+- `max_iter`: **주기 수**의 상한. 기본 10n이에요. 안쪽 반복은 최대 `restart × max_iter`번이에요.
+
+결과도 같은 단위예요. `n_iter`가 주기 수(`max_iter`와 비교해요), `n_inner`가 안쪽 반복의 합이에요. 상한에 닿으면 `status`가 `max_iter`예요.
+
+```python
+>>> r = sd.sparse.gmres(A, b, max_iter=3)
+>>> r.converged, r.status, r.n_iter, r.n_inner
+(False, 3, 3, 60)
+>>> r.message
+'the iteration limit was reached'
+```
+
+`restart`를 크게 하면 재시작으로 잃는 것이 줄어 대개 안쪽 반복이 줄지만, 반복마다 직교화할 벡터가 많아 한 반복이 비싸지고 메모리를 `restart`개의 벡터만큼 더 써요. 너무 작으면 재시작마다 쌓은 정보를 버리느라 잔차가 한동안 멈춰 서기도 해요.
+
+```python
+>>> for restart in (5, 10, 20, 50, 100):
+...     r = sd.sparse.gmres(A, b, restart=restart)
+...     print(restart, r.n_iter, r.n_inner)
+5 15 72
+10 7 69
+20 6 102
+50 2 55
+100 1 52
+```
+
+<Fig caption="위 문제에서 GMRES의 잔차 ‖r‖ / ‖b‖ (세로축은 로그 눈금, 가로축은 안쪽 반복). restart = 100은 재시작 없이 52번에 닿아요. restart = 20은 둘째·다섯째 주기에서 잔차가 거의 멈춰 서서 102번이 걸렸고, restart = 5는 오히려 72번에 닿았어요. 재시작의 영향은 문제마다 달라요.">
+  <Plot
+    curves={[
+      { points: gm5, label: 'restart = 5' },
+      { points: gm20, label: 'restart = 20' },
+      { points: gm100, label: 'restart = 100' },
+    ]}
+    domain={[0, 105]}
+    range={[-5.5, 0.3]}
+    xTicks={[
+      { v: 0, label: '0' },
+      { v: 20, label: '20' },
+      { v: 40, label: '40' },
+      { v: 60, label: '60' },
+      { v: 80, label: '80' },
+      { v: 100, label: '100' },
+    ]}
+    yTicks={[
+      { v: 0, label: '1' },
+      { v: -1, label: '10⁻¹' },
+      { v: -2, label: '10⁻²' },
+      { v: -3, label: '10⁻³' },
+      { v: -4, label: '10⁻⁴' },
+      { v: -5, label: '10⁻⁵' },
+    ]}
+  />
+</Fig>
+
+메모리가 넉넉하면 `restart`를 크게(수십–수백) 잡는 편이 안전해요. 메모리가 빠듯하면 벡터를 쌓지 않는 [`bicgstab`](/api/sparse/bicgstab/)을 생각해요.
+
+## 멈춤 판정
+
+안쪽 반복은 잔차의 어림만 보고 나아가요. 주기가 끝날 때마다 x를 갱신하고 **참 잔차** $b - Ax$를 다시 계산해서
+
+$$
+\lVert b - Ax \rVert \le \max(\text{rtol}\cdot\lVert b\rVert,\ \text{atol})
+$$
+
+이면 멈춰요. 결과의 `normr`이 그 참 잔차예요. 그래서 `gmres`가 수렴했다고 하면 돌려준 x의 잔차가 판정을 만족해요. 주기를 마칠 때마다 참 잔차를 위해 곱을 한 번 더 하므로, 곱의 수는 `n_inner + n_iter`쯤이에요.
+
+```python
+>>> count = []
+>>> def matvec(v):
+...     count.append(1)
+...     return A @ v
+>>> op = sd.sparse.LinearOperator(A.shape, matvec, dtype=sd.float64)
+>>> r = sd.sparse.gmres(op, b)
+>>> r.n_inner, r.n_iter, len(count)
+(102, 6, 108)
+```
+
+드물게, 안쪽 반복에서 공간이 닫혀(크릴로프 공간이 답을 품어) 더 나아갈 수 없는데 참 잔차가 판정을 넘는 일이 있어요. 아주 작은 `rtol`에서 반올림 때문에 생겨요. 그때는 `converged=False`, `status`가 `max_iter`이고 `message`가 `'breakdown: the Krylov space holds the solution, but the residual norm is above the tolerance'`예요.
+
+## 전처리기 M
+
+`gmres`는 M을 **왼쪽**에서 곱해 $MAx = Mb$를 풀어요. 안쪽 반복은 전처리한 잔차 $M(b - Ax)$를 줄이고, 주기 끝의 판정은 전처리하지 않은 참 잔차로 해요. M은 대칭일 필요가 없어요.
+
+좋은 전처리기는 "A와 비슷하지만 풀기 쉬운 행렬 P"의 역이에요. 이 문제에서는 각 가로줄 안의 결합(바람 방향의 이웃)만 남기고 줄 사이의 결합을 대각으로 바꾼 P가 그런 행렬이에요. P는 줄마다 따로 노는 삼중대각 블록이라 분해가 거의 공짜예요. [`splu`](/api/sparse/splu/)로 분해해 그 `solve`를 [`LinearOperator`](/api/sparse/linearoperator/)로 감싸 넘겨요.
+
+```python
+>>> P = sd.sparse.kron(I, T + 1.5 * D1) + 2.0 * sd.sparse.eye_array(n * n)
+>>> lu = sd.sparse.splu(P)
+>>> M = sd.sparse.LinearOperator(A.shape, lu.solve, dtype=sd.float64)
+>>> r = sd.sparse.gmres(A, b, M=M)
+>>> r
+GmresResult(converged=True, status=0, n_iter=3, n_inner=40, normr=4.99744e-05, x=<array of shape (900,)>)
+```
+
+안쪽 반복이 102번에서 40번으로 줄었어요. 판정은 전처리한 잔차로 나아가다가 참 잔차로 끝나므로, 멈춘 곳의 참 잔차가 판정보다 더 작을 수 있어요(여기서는 3×10⁻⁴ 대신 5×10⁻⁵).
+
+## 시작점과 작은 공간
+
+`x0`를 주면 처음 잔차 $r_0 = b - Ax_0$에서 공간을 만들어요. b가 A의 고유벡터처럼 공간이 일찍 닫히는 경우에는 안쪽 반복 몇 번에 정확한 답에 닿아요.
+
+```python
+>>> K = sd.asarray([[2.0, 1.0], [0.0, 3.0]])
+>>> sd.sparse.gmres(K, sd.asarray([1.0, 1.0]))
+GmresResult(converged=True, status=0, n_iter=1, n_inner=1, normr=0, x=[0.333333, 0.333333])
+```
+
+A가 특이하면 공간이 닫혀도 잔차가 판정에 닿지 못해 붕괴 메시지로 멈춰요(`converged=False`). 이때의 x는 쓰지 말아요. 아래 행렬의 셋째 식은 0 = 1이라 풀 수 없는데, 결과의 셋째 원소가 아주 커요. 마지막 회전에서 정확히 0이어야 할 값이 반올림 크기(약 10⁻¹⁷)로 남아 그 값으로 나누기 때문이에요.
+
+```python
+>>> r = sd.sparse.gmres(sd.sparse.diags_array(sd.asarray([1.0, 1.0, 0.0])), sd.ones(3))
+>>> r.converged, r.message
+(False, 'breakdown: the Krylov space holds the solution, but the residual norm is above the tolerance')
+>>> r.x
+array([    1.4494897427831768,     1.4494897427831768,
+       2.2063042185692344e+16], dtype=float64)
+```
+
+## 결과 읽기
+
+| 필드 | 뜻 |
+|---|---|
+| `x` | 해 (n,). 쓰기 금지 배열이에요 |
+| `converged` | `status == 0`인지 |
+| `status` | 0은 수렴, 상한에 닿거나 붕괴하면 `max_iter` |
+| `message` | `'the residual norm is within the tolerance'`, `'the iteration limit was reached'`, 위의 붕괴 메시지, `'the right-hand side is zero: x = 0'` |
+| `n_iter` | 재시작 주기 수(`max_iter`의 단위) |
+| `n_inner` | 안쪽 반복의 합 |
+| `normr` | 마지막 주기 끝의 참 잔차 크기 |
+
+```python
+>>> print(sd.sparse.gmres(A, b).summary())
+                                GMRES Results
+==============================================================================
+Converged:                        True  No. Restart Cycles:                  6
+Status:                              0  No. Inner Iterations:              102
+                                        Residual norm:             0.000256024
+Message:                             the residual norm is within the tolerance
+==============================================================================
+                    x
+------------------------------------------------------------------------------
+x[0]           0.4235
+x[1]           0.7604
+x[2]           1.0423
+x[3]           1.2868
+x[4]           1.5048
+...               ...
+x[895]         4.1289
+x[896]         4.1616
+x[897]         4.0998
+x[898]         3.7894
+x[899]         2.8119
+==============================================================================
+```
+
+`(x, status)`로 풀려요.
+
+## 입력과 에러
+
+```python
+>>> sd.sparse.gmres(A, b, restart=0)
+Traceback (most recent call last):
+    ...
+ValueError: gmres(): 'restart' must be >= 1
+>>> sd.sparse.gmres(A, b, callback_type='pr_norm')
+Traceback (most recent call last):
+    ...
+TypeError: gmres(): unexpected keyword argument 'callback_type'
+```
+
+나머지 입력 규칙은 [반복법의 기본](/api/sparse/iterative/#입력)과 같아요.
+
+## scipy를 아는 분께
+
+- `scipy.sparse.linalg.gmres`와 같은 재시작 GMRES예요. 왼쪽 전처리, 주기마다의 참 잔차 판정, 안쪽 판정의 문턱(scipy의 `ptol`)을 그대로 따르고, Givens 회전도 scipy가 부르는 LAPACK `lartg`와 같은 알고리즘이에요. 시험 문제에서 상태가 같고 `n_inner`가 scipy의 `callback_type='pr_norm'` 호출 수와 같아요.
+- `restart`와 `max_iter`의 뜻은 scipy의 `restart`, `maxiter`와 같아요(`max_iter`는 주기 수). `n_iter`가 주기 수, `n_inner`가 안쪽 반복의 합이에요.
+- `callback`, `callback_type`이 없어요. 결과는 `(x, info)`로 풀리는 `GmresResult`예요.
+- `restart=0`과 `max_iter=0`은 `ValueError`예요.
+- 특이 행렬에서는 x가 scipy와 아주 다를 수 있어요. 위의 예에서 마지막 회전의 값이 scipy는 정확히 0이라 그 성분을 풀지 않고 x = [1, 1, 1]을 돌려줘요. 두 쪽 모두 `converged=False`예요.

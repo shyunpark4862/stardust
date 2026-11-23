@@ -1,0 +1,444 @@
+---
+title: vecdot
+names: [vecdot]
+group: 곱과 거듭제곱
+order: 1
+signatures:
+  - "sd.linalg.vecdot(x1, x2, /, *, axis=-1)"
+summary: 두 벡터의 내적(같은 자리끼리 곱해서 모두 더한 수)을 계산해요. 배열에 벡터가 여러 개 들어 있으면 짝마다 한꺼번에 계산하고, 복소수면 첫째 인자의 켤레를 써요.
+params:
+  - name: x1
+    type: ndarray
+    kind: positional-only
+    desc: 첫째 배열. 한 축이 벡터예요. 복소수면 켤레(허수부의 부호를 바꾼 값)로 바꿔서 계산해요.
+  - name: x2
+    type: ndarray
+    kind: positional-only
+    desc: 둘째 배열. 내적할 축의 길이가 x1과 같고, 나머지 축은 x1과 브로드캐스팅으로 맞출 수 있어야 해요.
+  - name: axis
+    type: int
+    kind: keyword-only
+    desc: 내적할 축. 기본값 -1은 마지막 축이에요. 두 배열을 브로드캐스팅한 모양을 기준으로 세요.
+returns:
+  type: ndarray 또는 Python 숫자
+  desc: 내적한 축이 빠진 배열. 남는 축이 없으면 Python 숫자예요. 실수 입력(bool, int64 포함)은 float64, 복소수가 섞이면 complex128이에요.
+raises:
+  - type: TypeError
+    desc: x1이나 x2가 배열이 아닐 때(리스트, Python 숫자 포함), axis가 int가 아닐 때(tuple, None, bool, float 포함), axis를 이름 없이 넘겼을 때.
+  - type: ValueError
+    desc: 내적할 축의 길이가 두 배열에서 다를 때, 나머지 축이 브로드캐스팅되지 않을 때, axis가 차원 범위를 벗어날 때.
+  - type: OverflowError
+    desc: axis가 int64 범위를 벗어난 정수일 때.
+seeAlso: [outer, cross, norms, basics]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+두 벡터의 **내적**(dot product)은 같은 자리의 값끼리 곱해서 모두 더한 수예요. 벡터 두 개가 들어가서 숫자 하나가 나와요.
+
+$$
+x \cdot y = \sum_i x_i\, y_i = x_1 y_1 + x_2 y_2 + \cdots + x_n y_n
+$$
+
+```python
+>>> import stardust as sd
+>>> u = sd.asarray([1.0, 2.0, 3.0])
+>>> v = sd.asarray([4.0, 5.0, 6.0])
+>>> sd.linalg.vecdot(u, v)
+32.0
+```
+
+`1×4 + 2×5 + 3×6 = 32`예요. 1차원 배열끼리면 남는 축이 없어서 결과는 배열이 아니라 Python 숫자예요.
+
+2차원 이상의 배열은 벡터 여러 개를 모아 둔 것으로 봐요. 기본값 `axis=-1`에서는 마지막 축이 벡터라서, 2차원 배열이면 행 하나가 벡터 하나예요. `vecdot`은 같은 자리의 벡터끼리 내적을 한꺼번에 계산해요.
+
+```python
+>>> m = sd.asarray([[3.0, 4.0], [1.0, 0.0], [0.0, 2.0]])
+>>> n = sd.asarray([[1.0, 1.0], [2.0, 5.0], [1.0, 3.0]])
+>>> sd.linalg.vecdot(m, n)
+array([7.0, 2.0, 6.0], dtype=float64)
+```
+
+<Fig caption="axis=-1: 같은 행끼리 짝지어 곱하고 더해요. 첫 행은 3×1 + 4×1 = 7이에요. 행 수만큼 결과가 나와요.">
+  <ArrayFig name="m" data={[[3, 4], [1, 0], [0, 2]]} tones={[['b', 'b'], ['', ''], ['', '']]} note="shape (3, 2)" />
+  <Op note="vecdot">·</Op>
+  <ArrayFig name="n" data={[[1, 1], [2, 5], [1, 3]]} tones={[['b', 'b'], ['', ''], ['', '']]} note="shape (3, 2)" />
+  <Op>=</Op>
+  <ArrayFig data={[7.0, 2.0, 6.0]} tones={['b', '', '']} note="shape (3,)" />
+</Fig>
+
+<Reference />
+
+## 내적이 알려 주는 것: 길이와 방향
+
+내적은 단순한 계산이지만 선형대수에서 가장 자주 쓰는 도구예요. 두 벡터의 길이를 $\|x\|$, $\|y\|$, 둘 사이의 각도를 $\theta$라고 하면 내적은 이렇게도 쓸 수 있어요.
+
+$$
+x \cdot y = \|x\|\,\|y\| \cos\theta
+$$
+
+이 식에서 세 가지를 바로 읽을 수 있어요.
+
+| 알고 싶은 것 | 계산 | 이유 |
+|---|---|---|
+| 벡터의 길이 | `sqrt(vecdot(x, x))` | 자기 자신과는 각도가 0이라서 내적이 길이의 제곱이에요. |
+| 두 벡터가 직각인가 | `vecdot(x, y) == 0` | 직각이면 $\cos\theta = 0$이에요. |
+| 방향이 얼마나 비슷한가 | `vecdot(x, y) / (‖x‖ ‖y‖)` | $\cos\theta$ 자체예요. 1이면 같은 방향, 0이면 직각, -1이면 반대 방향이에요. |
+
+각 행을 점의 좌표로 보면, 원점에서 각 점까지의 거리를 한 번에 구할 수 있어요.
+
+```python
+>>> sd.linalg.vecdot(m, m)
+array([25.0,  1.0,  4.0], dtype=float64)
+>>> sd.sqrt(sd.linalg.vecdot(m, m))
+array([5.0, 1.0, 2.0], dtype=float64)
+```
+
+점 `(3, 4)`까지의 거리는 5예요. 길이만 필요하면 [`vector_norm`](/api/linalg/norms/)이 같은 값을 바로 구해 줘요.
+
+```python
+>>> sd.linalg.vector_norm(m, axis=-1)
+array([5.0, 1.0, 2.0], dtype=float64)
+```
+
+내적이 0이면 두 벡터는 직각이에요. `(1, 1)`과 `(1, -1)`은 직각으로 만나요.
+
+```python
+>>> sd.linalg.vecdot(sd.asarray([1.0, 1.0]), sd.asarray([1.0, -1.0]))
+0.0
+```
+
+내적을 두 길이의 곱으로 나누면 방향이 얼마나 비슷한지(코사인 유사도)가 나와요.
+
+```python
+>>> p = sd.asarray([3.0, 4.0])
+>>> q = sd.asarray([4.0, 3.0])
+>>> sd.linalg.vecdot(p, q) / (sd.linalg.vector_norm(p) * sd.linalg.vector_norm(q))
+0.96
+```
+
+가중합도 내적이에요. 벡터 하나를 가격으로, 다른 하나를 판매 개수로 보면 내적은 매출이에요.
+
+## `axis`: 어느 방향의 벡터끼리
+
+`axis`는 내적해서 없앨 축이에요. 기본값 `-1`은 마지막 축(2차원이면 행마다)이고, `axis=0`이면 열마다 내적해요.
+
+```python
+>>> sd.linalg.vecdot(m, n, axis=0)
+array([ 5.0, 10.0], dtype=float64)
+```
+
+`3×1 + 1×2 + 0×1 = 5`, `4×1 + 0×5 + 2×3 = 10`이에요. 결과의 모양은 원래 모양에서 `axis`번째 숫자를 지운 것이에요.
+
+| 호출 | 입력 모양 | 지우는 자리 | 결과 모양 |
+|---|:---:|:---:|:---:|
+| `vecdot(m, n)` | `(3, 2)` | 마지막 | `(3,)` |
+| `vecdot(m, n, axis=0)` | `(3, 2)` | 첫째 | `(2,)` |
+| `vecdot(u, v)` | `(3,)` | 하나뿐인 축 | Python 숫자 |
+
+`axis`는 정수 하나만, 이름을 붙여서 넘겨요. tuple이나 `None`은 받지 않아요.
+
+```python
+>>> sd.linalg.vecdot(m, n, axis=(0,))
+Traceback (most recent call last):
+    ...
+TypeError: vecdot(): 'axis' must be an int, not tuple
+>>> sd.linalg.vecdot(u, v, axis=1)
+Traceback (most recent call last):
+    ...
+ValueError: vecdot(): axis 1 is out of bounds for an array of dimension 1
+```
+
+## 모양이 다른 두 배열: 벡터 축은 같게, 나머지는 브로드캐스팅
+
+두 배열의 모양이 달라도 돼요. 규칙은 두 가지예요.
+
+- **내적하는 축**은 두 배열에서 길이가 정확히 같아야 해요.
+- **나머지 축**(벡터가 몇 개인지를 나타내는 배치 축)은 [브로드캐스팅](/api/array/broadcasting/)으로 맞춰요.
+
+그래서 벡터 하나를 행렬의 모든 행과 내적할 수 있어요.
+
+```python
+>>> w = sd.asarray([1.0, 1.0])
+>>> sd.linalg.vecdot(m, w)
+array([7.0, 1.0, 2.0], dtype=float64)
+```
+
+`w`가 세 행 모두에 쓰였어요. 모양으로 보면 `(3, 2)`와 `(2,)`에서 벡터 축 `2`는 같고, 배치 축 `(3,)`과 `()`가 `(3,)`으로 맞춰졌어요.
+
+```python
+>>> sd.linalg.vecdot(sd.ones((2, 3)), sd.ones((4, 1, 3))).shape
+(4, 2)
+```
+
+| `x1` | `x2` | 벡터 축 | 배치 축 맞추기 | 결과 |
+|:---:|:---:|:---:|---|:---:|
+| `(3, 2)` | `(2,)` | 2와 2 | `(3,)`과 `()` → `(3,)` | `(3,)` |
+| `(2, 3)` | `(4, 1, 3)` | 3과 3 | `(2,)`와 `(4, 1)` → `(4, 2)` | `(4, 2)` |
+| `(3, 2)` | `(3,)` | 2와 3 | | 에러 |
+| `(2, 3)` | `(5, 3)` | 3과 3 | `(2,)`와 `(5,)` → 안 맞음 | 에러 |
+
+<Callout type="warn" title="내적하는 축은 늘어나지 않아요">
+
+다른 축은 길이 1이면 늘려서 맞추지만, 내적하는 축은 한쪽이 길이 1이어도 늘려 주지 않아요. 길이가 다르면 언제나 `ValueError`예요.
+
+</Callout>
+
+```python
+>>> sd.linalg.vecdot(m, sd.asarray([1.0, 1.0, 1.0]))
+Traceback (most recent call last):
+    ...
+ValueError: vecdot(): 'x1' and 'x2' must have the same size along the axis, got 2 and 3
+>>> sd.linalg.vecdot(sd.ones((2, 3)), sd.ones((2, 1)))
+Traceback (most recent call last):
+    ...
+ValueError: vecdot(): 'x1' and 'x2' must have the same size along the axis, got 3 and 1
+>>> sd.linalg.vecdot(sd.ones((2, 3)), sd.ones((5, 3)))
+Traceback (most recent call last):
+    ...
+ValueError: vecdot(): batch shapes do not broadcast: (2,) (5,)
+```
+
+### `axis`는 맞춘 뒤의 모양에서 세요
+
+차원 수가 다른 두 배열에 `axis=0`처럼 앞에서 세는 축을 주면 헷갈리기 쉬워요. `axis`는 각 배열의 축이 아니라 두 배열을 브로드캐스팅한 모양의 축이에요. 차원이 적은 배열은 앞쪽에 길이 1인 축이 붙어요.
+
+```python
+>>> sd.linalg.vecdot(sd.ones((2, 3)), sd.ones(3), axis=0)
+Traceback (most recent call last):
+    ...
+ValueError: vecdot(): 'x1' and 'x2' must have the same size along the axis, got 2 and 1
+```
+
+`(3,)`은 `(1, 3)`으로 보기 때문에 0번 축의 길이가 2와 1이에요. 차원 수가 다를 때는 뒤에서 세는 음수 축(`axis=-1`)을 쓰면 두 배열에서 같은 자리를 가리켜요.
+
+## 복소수: 첫째 인자의 켤레를 써요
+
+복소수 배열에서는 첫째 인자 `x1`을 켤레 복소수로 바꾼 다음 곱하고 더해요. 켤레 복소수는 허수부의 부호를 바꾼 수예요($1+2i$의 켤레는 $1-2i$).
+
+$$
+\operatorname{vecdot}(x, y) = \sum_i \overline{x_i}\, y_i
+$$
+
+```python
+>>> z = sd.asarray([1 + 2j, 3j])
+>>> sd.linalg.vecdot(z, z)
+(14+0j)
+>>> sd.sum(sd.conj(z) * z)
+(14+0j)
+```
+
+켤레를 쓰는 이유는 길이 때문이에요. 복소수 $a+bi$의 크기의 제곱은 $a^2+b^2$인데, 이 값은 자기 자신이 아니라 켤레와 곱해야 나와요. 그래서 `vecdot(z, z)`는 언제나 0 이상의 실수(허수부 0)이고, 실수 벡터에서처럼 "길이의 제곱"이에요. 위의 `14`는 $|1+2i|^2 + |3i|^2 = 5 + 9$예요.
+
+```python
+>>> sd.linalg.vector_norm(z)
+3.7416573867739413
+>>> sd.sqrt(14.0)
+3.7416573867739413
+```
+
+### 인자 순서가 결과를 바꿔요
+
+켤레는 첫째 인자에만 적용해요. 그래서 복소수에서는 두 인자를 바꾸면 결과가 서로의 켤레가 돼요. 실수 배열에서는 순서가 상관없어요.
+
+```python
+>>> c = sd.asarray([2 + 0j, 1 - 1j])
+>>> sd.linalg.vecdot(z, c)
+(-1-7j)
+>>> sd.linalg.vecdot(c, z)
+(-1+7j)
+```
+
+한쪽만 복소수여도 규칙은 같아요. 실수 배열은 켤레를 취해도 그대로라서, 복소수 배열이 첫째 자리에 있을 때만 부호가 바뀌어요.
+
+```python
+>>> r = sd.asarray([1.0, 1.0])
+>>> sd.linalg.vecdot(r, sd.asarray([1j, 2.0]))
+(2+1j)
+>>> sd.linalg.vecdot(sd.asarray([1j, 2.0]), r)
+(2-1j)
+```
+
+### `@`는 켤레를 취하지 않아요
+
+<Callout type="warn" title="복소수에서 vecdot과 @는 다른 계산이에요">
+
+1차원 배열끼리의 [`@`(`sd.matmul`)](/api/array/matmul/)도 "곱해서 더한 수"를 주지만, 적힌 값 그대로 곱해요. 실수 배열에서는 두 결과의 값이 같고, 복소수 배열에서는 달라요.
+
+</Callout>
+
+```python
+>>> z @ z
+(-12+4j)
+>>> z @ c
+(5+7j)
+```
+
+| 계산 | 뜻 | `z = [1+2j, 3j]`일 때 |
+|---|---|:---:|
+| `sd.linalg.vecdot(z, z)` | `sum(conj(z) * z)` | `(14+0j)` |
+| `z @ z` | `sum(z * z)` | `(-12+4j)` |
+
+## 결과의 dtype: 정수를 넣어도 float64
+
+`sd.linalg`의 함수는 언제나 실수(float64)나 복소수(complex128)로 계산해요. `vecdot`도 그래서, 정수나 bool 배열을 넣어도 결과는 float64예요.
+
+```python
+>>> a = sd.asarray([1, 2, 3])
+>>> b = sd.asarray([4, 5, 6])
+>>> sd.linalg.vecdot(a, b)
+32.0
+>>> sd.linalg.vecdot(sd.asarray([True, False]), sd.asarray([True, True]))
+1.0
+```
+
+배열 영역의 함수는 정수를 정수로 계산해요. 배열 영역의 [`sd.vecdot`](/api/array/vecdot/)을 포함해 같은 내적을 구하는 네 가지 방법을 나란히 놓으면 값은 같고 타입이 달라요.
+
+```python
+>>> sd.vecdot(a, b)
+32
+>>> a @ b
+32
+>>> sd.sum(a * b)
+32
+>>> sd.tensordot(a, b, axes=1)
+32
+```
+
+| 입력 | `sd.linalg.vecdot` | `sd.vecdot`, `@`, `sd.tensordot`, `sd.sum(x1 * x2)` |
+|:---:|:---:|:---:|
+| bool | float64 | int64 |
+| int64 | float64 | int64 |
+| float64 | float64 | float64 |
+| complex128 | complex128 (`x1`의 켤레) | complex128 (켤레는 `sd.vecdot`만) |
+
+dtype은 입력의 dtype만으로 정해져요. 값이 모두 정수여도, 허수부가 모두 0이어도 바뀌지 않아요. 공통 규칙은 [선형대수의 기본](/api/linalg/basics/)에 있어요.
+
+### 아주 큰 정수는 끝자리가 달라질 수 있어요
+
+float64는 약 2⁵³(9 × 10¹⁵)을 넘는 정수를 모두 정확히 담지는 못해요. 그보다 큰 정수의 내적은 끝자리가 달라질 수 있어요.
+
+```python
+>>> big = sd.asarray([2**53 + 1])
+>>> one = sd.asarray([1])
+>>> sd.linalg.vecdot(big, one)
+9007199254740992.0
+>>> big @ one
+9007199254740993
+```
+
+정확한 정수 결과가 필요하면 배열 영역의 `sd.vecdot`이나 `@`를 쓰세요.
+
+## `sd.vecdot`과의 차이
+
+`vecdot`은 배열 영역(`sd`)과 선형대수 영역(`sd.linalg`) 양쪽에 있지만, 둘은 서로 다른 함수예요.
+
+```python
+>>> sd.linalg.vecdot is sd.vecdot
+False
+```
+
+계산하는 식(`x1`의 켤레와 `x2`를 곱해 더하기)과 인자, 브로드캐스팅, 에러는 같아요. 다른 것은 정수와 bool 입력의 dtype뿐이에요. `sd.vecdot`은 배열 영역의 다른 함수처럼 정수를 int64로 계산하고(int64 범위를 넘으면 값이 한 바퀴 돌아요), `sd.linalg.vecdot`은 float64로 계산해요. float64와 complex128 입력에서는 두 함수가 같은 계산이라 결과가 비트까지 같아요.
+
+## 조심할 점
+
+### NaN과 inf는 검사하지 않고 그대로 계산해요
+
+`solve`나 `inv` 같은 함수는 입력에 NaN(숫자가 아님)이나 inf(무한대)가 있으면 에러를 내지만, `vecdot`은 곱하고 더하기만 하는 함수라서 검사 없이 그대로 계산해요. NaN이 하나라도 섞이면 결과는 NaN이에요. inf에 0을 곱해도 NaN이에요.
+
+```python
+>>> sd.linalg.vecdot(sd.asarray([1.0, sd.nan]), sd.asarray([0.0, 0.0]))
+nan
+>>> sd.linalg.vecdot(sd.asarray([sd.inf, 1.0]), sd.asarray([0.0, 1.0]))
+nan
+```
+
+곱이 float64가 담을 수 있는 범위(약 1.8 × 10³⁰⁸)를 넘으면 에러 없이 inf가 돼요.
+
+```python
+>>> sd.linalg.vecdot(sd.asarray([1e200, 1.0]), sd.asarray([1e200, 1.0]))
+inf
+```
+
+어떤 함수가 검사하고 어떤 함수가 그대로 계산하는지는 [실패와 에러](/api/linalg/errors/)에 정리돼 있어요.
+
+### `sd.sum(sd.conj(x1) * x2)`와 끝자리가 다를 수 있어요
+
+`vecdot`은 곱한 배열을 따로 만들지 않고 곱하면서 바로 더해요. 곱을 반올림하는 횟수와 더하는 순서가 `sd.sum`과 달라서, 곱한 배열을 만들어 `sd.sum`으로 더한 값과는 마지막 자리가 다를 수 있어요. 둘 다 반올림 오차 수준에서 정확해요.
+
+```python
+>>> x = sd.sin(sd.arange(1000) * 0.1)
+>>> y = sd.cos(sd.arange(1000) * 0.3)
+>>> sd.linalg.vecdot(x, y)
+0.5977817582610464
+>>> sd.sum(x * y)
+0.5977817582610445
+```
+
+같은 컴퓨터에서 같은 스레드 수로 같은 입력을 계산하면 `vecdot`의 결과는 언제나 같아요. 스레드 수를 바꿔도 지금은 같아요(약속은 아니에요). 벡터가 길면(1024개를 넘으면) 메모리에 놓인 순서대로 더하므로, 같은 값이라도 배열이 메모리에 놓인 모양(C 순서인지 F 순서인지 등)에 따라 마지막 자리가 다를 수 있어요.
+
+### 빈 벡터의 내적은 0
+
+내적할 축의 길이가 0이면 더할 것이 없어서 결과는 `0.0`이에요. 벡터가 0개(배치 축의 길이가 0)면 결과도 빈 배열이에요. 둘 다 에러가 아니에요.
+
+```python
+>>> sd.linalg.vecdot(sd.zeros(0), sd.zeros(0))
+0.0
+>>> sd.linalg.vecdot(sd.zeros((2, 0)), sd.zeros((2, 0)))
+array([0.0, 0.0], dtype=float64)
+>>> sd.linalg.vecdot(sd.zeros((0, 3)), sd.zeros((0, 3)))
+array([], dtype=float64)
+```
+
+### 배열만 받아요
+
+리스트나 Python 숫자는 받지 않아요. 먼저 [`asarray`](/api/array/asarray/)로 배열로 바꾸세요.
+
+```python
+>>> sd.linalg.vecdot(u, [1, 2, 3])
+Traceback (most recent call last):
+    ...
+TypeError: vecdot(): 'x2' must be an sd.ndarray, not list
+>>> sd.linalg.vecdot(u, 2.0)
+Traceback (most recent call last):
+    ...
+TypeError: vecdot(): 'x2' must be an sd.ndarray, not float
+```
+
+### 행렬과 벡터의 곱은 아니에요
+
+`vecdot(m, w)`가 `m @ w`와 같은 값을 주는 것은 `w`가 벡터 하나일 때뿐이에요. `vecdot`은 **같은 자리의 벡터끼리** 짝짓고, `@`는 왼쪽의 **모든 행**과 오른쪽의 **모든 열**을 짝지어요. 2차원 배열 두 개를 넣으면 둘은 전혀 다른 계산이에요.
+
+```python
+>>> s = sd.asarray([[1.0, 2.0], [3.0, 4.0]])
+>>> sd.linalg.vecdot(s, s)
+array([ 5.0, 25.0], dtype=float64)
+>>> s @ s
+array([[ 7.0, 10.0],
+       [15.0, 22.0]], dtype=float64)
+```
+
+## 비슷한 함수와의 차이
+
+| 하고 싶은 일 | 쓸 것 | `vecdot`과 다른 점 |
+|---|---|---|
+| 행렬곱, 행렬과 벡터의 곱 | [`@` (`sd.matmul`)](/api/array/matmul/) | 행과 열을 짝지어요. 켤레를 취하지 않고, 정수는 int64로 계산해요. 벡터 축을 고르는 `axis`가 없어요. |
+| 임의의 축끼리 짝지어 줄이기 | [`sd.tensordot`](/api/array/tensordot/) | 줄이지 않은 축을 **모두 조합**해요(같은 자리끼리 짝짓지 않아요). 브로드캐스팅도 켤레도 없고, 정수는 int64예요. |
+| 같은 자리끼리 곱한 뒤 더하기 | `sd.sum(x1 * x2, axis=...)` | 여러 축을 한꺼번에 줄일 수 있고 정수는 int64로 남아요. 켤레는 직접 `sd.conj`로 해요. |
+| 벡터의 길이 | [`vector_norm`](/api/linalg/norms/) | `sqrt(vecdot(x, x))`를 바로 구해요. 결과는 복소수 입력에서도 float64예요. |
+| 모든 원소 쌍의 곱을 표로 | [`outer`](/api/linalg/outer/) | 더하지 않아요. 벡터 둘에서 행렬 하나가 나와요. |
+| 두 벡터에 모두 직각인 벡터 | [`cross`](/api/linalg/cross/) | 결과가 숫자가 아니라 길이 3인 벡터예요. |
+
+## numpy·scipy를 아는 분께
+
+- `np.vecdot`, `np.linalg.vecdot`처럼 첫째 인자의 켤레를 써요.
+- **`axis`는 두 배열을 브로드캐스팅한 모양에서 세요.** numpy는 각 배열에서 따로 세서, `(3, 4)`와 `(3,)`에 `axis=0`을 주면 numpy에서는 되지만 여기서는 `ValueError`예요.
+- **정수와 bool 입력의 결과가 float64예요.** numpy는 정수를 유지해요. 정수를 유지하는 내적은 배열 영역의 `sd.vecdot`이에요.
+- `axis`는 keyword-only이고 int 하나만 받아요.
+- 1차원끼리의 결과는 numpy 스칼라가 아니라 Python `float`·`complex`예요.
+- 리스트와 numpy 배열은 받지 않아요(`TypeError`). `out=` 인자도 없어요.
+- `np.dot`, `np.inner`, `np.vdot`에 해당하는 함수는 따로 없어요. `@`나 `vecdot`을 쓰세요.

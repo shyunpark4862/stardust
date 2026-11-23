@@ -1,0 +1,223 @@
+---
+kind: function
+title: hfft2·hfftn과 ihfft2·ihfftn
+names: [hfft2, ihfft2, hfftn, ihfftn]
+group: 실수와 에르미트 변환
+order: 5
+signatures:
+  - "sd.fft.hfft2(x, /, *, s=None, axes=(-2, -1), norm='backward')"
+  - "sd.fft.ihfft2(x, /, *, s=None, axes=(-2, -1), norm='backward')"
+  - "sd.fft.hfftn(x, /, *, s=None, axes=None, norm='backward')"
+  - "sd.fft.ihfftn(x, /, *, s=None, axes=None, norm='backward')"
+summary: hfftn은 여러 축에서 켤레 대칭인 배열(에르미트 배열)을 마지막 축의 앞쪽 절반만 받아 실수 스펙트럼을 돌려주고, ihfftn은 실수 배열에서 그런 배열의 절반을 만들어요. hfft2와 ihfft2는 axes의 기본값이 마지막 두 축인 같은 함수예요. hfft·ihfft를 여러 축으로 넓힌 것이에요.
+params:
+  - name: x
+    type: ndarray
+    kind: positional-only
+    desc: 변환할 배열. hfft2·ihfft2는 2차원 이상, hfftn·ihfftn은 1차원 이상이에요. hfft2·hfftn은 에르미트 배열의 절반을 받는데, bool, int64, float64는 허수부가 0인 복소수로 봐요. ihfft2·ihfftn은 bool, int64, float64를 받고 complex128은 받지 않아요.
+  - name: s
+    type: int의 tuple이나 list, int, 또는 None
+    kind: keyword-only
+    desc: 실수 쪽 배열의 축마다의 길이. 원소는 1 이상이거나 -1(그 축의 입력 길이)이에요. axes를 함께 주면 길이가 같아야 하고, hfftn·ihfftn에 axes 없이 주면 마지막 len(s)개 축이에요. None(기본값)이면 hfft2·hfftn은 마지막 축만 2(m - 1)이고 나머지는 입력의 길이(m은 입력의 그 축 길이), ihfft2·ihfftn은 입력의 길이예요.
+  - name: axes
+    type: int, int의 tuple이나 list, 또는 None
+    kind: keyword-only
+    desc: 변환할 축. hfft2·ihfft2의 기본값은 마지막 두 축 (-2, -1), hfftn·ihfftn의 기본값 None은 모든 축(s를 줬으면 마지막 len(s)개 축)이에요. 절반만 저장하는 축은 axes의 마지막 축이에요. 같은 축을 두 번 적을 수 없고, 비어 있을 수 없어요.
+  - name: norm
+    type: "'backward', 'ortho' 또는 'forward'"
+    kind: keyword-only
+    desc: 정규화. N을 실수 쪽 배열의 변환한 축 길이의 곱이라 하면 'backward'(기본값)는 hfft2·hfftn에 1, ihfft2·ihfftn에 1/N을 곱하고, 'ortho'는 양쪽에 1/√N을, 'forward'는 hfft2·hfftn에 1/N, ihfft2·ihfftn에 1을 곱해요.
+returns:
+  type: ndarray
+  desc: hfft2·hfftn은 float64 배열이고 변환한 축의 길이가 s예요. ihfft2·ihfftn은 complex128 배열이고 axes의 마지막 축 길이가 n//2 + 1이에요(n은 그 축의 실수 쪽 길이). 언제나 새 배열이에요.
+raises:
+  - type: TypeError
+    desc: x가 sd.ndarray가 아닐 때, ihfft2·ihfftn에 complex128을 줬을 때, s나 axes의 원소가 int가 아닐 때(bool, None 포함), norm이 문자열이 아닐 때, 옵션을 위치로 줬거나 모르는 키워드를 줬을 때.
+  - type: ValueError
+    desc: hfft2·ihfft2에 1차원 배열을 줬을 때, 변환할 축의 길이가 0일 때, hfft2·hfftn에 s를 주지 않았는데 마지막 축의 길이가 1일 때, s의 원소가 0이거나 -2 이하일 때, s가 비었거나 축 수보다 길거나 axes와 길이가 다를 때, axes가 비었거나 범위 밖이거나 같은 축을 두 번 담았을 때, norm이 세 값이 아닌 문자열일 때.
+  - type: OverflowError
+    desc: s나 axes의 원소가 int64 범위 밖일 때.
+  - type: MemoryError
+    desc: s로 요청한 결과가 기계의 메모리보다 클 때.
+seeAlso: [basics, hfft, rfftn, rfft2, fftn]
+---
+import Callout from '../../../components/Callout.astro';
+
+## 한눈에 보기
+
+모양 $(n_0, n_1)$인 배열 $h$가 $h_{n_0-j_0,\, n_1-j_1} = \overline{h_{j_0 j_1}}$을 지키면 2차원 **에르미트 배열**이에요(색인은 길이로 나눈 나머지로 읽어요). 실수 배열의 스펙트럼이 이런 꼴이고, 거꾸로 에르미트 배열의 스펙트럼은 실수예요. `hfft2`는 에르미트 배열을 마지막 축의 앞쪽 절반만 받아 실수 스펙트럼을 돌려주고, `ihfft2`는 그것을 되돌려요.
+
+```python
+>>> import stardust as sd
+>>> e = sd.asarray([[4.0, 1.0, 0.0, 1.0],
+...                 [2.0, 0.5, 0.0, 0.5],
+...                 [1.0, 0.0, 3.0, 0.0],
+...                 [2.0, 0.5, 0.0, 0.5]])
+>>> sd.fft.hfft2(e[:, :3], s=(4, 4))
+array([[16.0,  6.0,  8.0,  6.0],
+       [ 2.0,  6.0, -2.0,  6.0],
+       [ 4.0, -2.0,  4.0, -2.0],
+       [ 2.0,  6.0, -2.0,  6.0]], dtype=float64)
+>>> sd.real(sd.fft.fft2(e))
+array([[16.0,  6.0,  8.0,  6.0],
+       [ 2.0,  6.0, -2.0,  6.0],
+       [ 4.0, -2.0,  4.0, -2.0],
+       [ 2.0,  6.0, -2.0,  6.0]], dtype=float64)
+>>> sd.fft.ihfft2(sd.fft.hfft2(e[:, :3], s=(4, 4)))
+array([[  (4-0j),   (1-0j),      -0j],
+       [  (2-0j), (0.5-0j),      -0j],
+       [  (1-0j),      -0j,   (3-0j)],
+       [  (2-0j), (0.5-0j),      -0j]], dtype=complex128)
+```
+
+`e`는 실수이면서 두 방향으로 대칭이라서($e_{4-j_0,\,4-j_1} = e_{j_0 j_1}$) 에르미트 배열이에요. 마지막 축의 칸 3은 칸 1에서 정해지므로 앞의 세 열만 넘겼어요. `hfft2`의 결과는 `e` 전체를 [`fft2`](/api/fft/fft2/)한 값과 같고, 처음부터 실수(float64)예요. 1차원의 [`hfft`와 `ihfft`](/api/fft/hfft/)를 먼저 읽으면 이해하기 쉬워요.
+
+<Reference />
+
+## 무엇을 계산하나요
+
+네 함수는 [`irfftn`과 `rfftn`](/api/fft/rfftn/)에 켤레와 정규화의 방향만 바꾼 것이에요.
+
+| 함수 | 계산 | `norm` |
+|---|---|---|
+| `hfftn(x, norm=a)` | `irfftn(conj(x), norm=`방향을 바꾼 `a)` | `'backward'`에서 나누지 않아요 |
+| `ihfftn(x, norm=a)` | `conj(rfftn(x, norm=`방향을 바꾼 `a))` | `'backward'`에서 $N$으로 나눠요 |
+
+방향을 바꾼다는 것은 `'backward'`와 `'forward'`를 맞바꾸는 것이에요(`'ortho'`는 그대로). `hfft2`와 `ihfft2`는 `axes`의 기본값이 `(-2, -1)`인 `hfftn`과 `ihfftn`이에요. 결과는 이 식들과 같은 비트예요.
+
+```python
+>>> x = sd.asarray([[1.0, 2j, 3.0],
+...                 [0.5, 1.0, -1j]])
+>>> sd.fft.hfftn(x, s=(2, 4))
+array([[ 6.5,  2.5,  2.5, -5.5],
+       [ 1.5,  1.5,  5.5, -6.5]], dtype=float64)
+>>> sd.fft.irfftn(sd.conj(x), s=(2, 4), norm='forward')
+array([[ 6.5,  2.5,  2.5, -5.5],
+       [ 1.5,  1.5,  5.5, -6.5]], dtype=float64)
+```
+
+`hfftn`은 마지막 축을 뺀 축들의 변환을 먼저 하고, `axes`의 마지막 축을 따라 실수 결과를 만드는 변환을 마지막에 해요. `ihfftn`은 반대로 `axes`의 마지막 축을 따라 절반을 남기는 변환을 먼저 하고 나머지 축을 뒤에서 앞으로 변환해요.
+
+## 축과 길이
+
+`axes`와 `s`의 규칙은 [`rfftn`](/api/fft/rfftn/)과 같아요.
+
+- 절반만 저장하는 축은 **`axes`의 마지막 축**이에요.
+- `hfft2`·`hfftn`의 `s`는 만들 실수 배열의 크기예요. 마지막 축은 기본으로 $2(m-1)$이라서 홀수 길이는 `s`로 줘야 해요. 입력의 마지막 축에서 `s[-1] // 2 + 1`칸만 쓰고, 앞 축은 `s`의 길이로 자르거나 0을 채워요.
+- `ihfft2`·`ihfftn`의 `s`는 입력을 자르거나 0을 채울 크기이고, 결과의 마지막 축은 `s[-1] // 2 + 1`칸이에요.
+- `s[-1]`의 −1은 그 축의 입력 길이 그대로예요.
+
+```python
+>>> g = sd.random.default_rng(6).random((3, 5))
+>>> G = sd.fft.ihfftn(g)
+>>> G.shape
+(3, 3)
+>>> sd.fft.hfftn(G).shape
+(3, 4)
+>>> sd.fft.hfftn(G, s=(3, 5)).shape
+(3, 5)
+>>> float(sd.max(sd.abs(sd.fft.hfftn(G, s=g.shape) - g))) < 1e-15
+True
+>>> sd.fft.ihfftn(g, axes=(1, 0)).shape
+(2, 5)
+```
+
+`axes` 없이 `s`만 주면 마지막 `len(s)`개 축이에요. 3차원 이상의 배열에서 앞쪽 축은 배치예요.
+
+```python
+>>> b = sd.random.default_rng(7).random((2, 4, 6))
+>>> sd.fft.ihfft2(b).shape
+(2, 4, 4)
+>>> sd.fft.ihfftn(b).shape
+(2, 4, 4)
+>>> bool(sd.all(sd.fft.ihfft2(b)[1] == sd.fft.ihfft2(b[1])))
+True
+```
+
+## 정규화 `norm`
+
+`hfft2`·`hfftn`은 1차원의 [`hfft`](/api/fft/hfft/)처럼 **역방향 쪽으로** 세어져요. $N$은 실수 쪽 배열에서 변환한 축 길이의 곱이에요.
+
+| `norm` | `hfft2`·`hfftn`에 곱하는 수 | `ihfft2`·`ihfftn`에 곱하는 수 |
+|---|:---:|:---:|
+| `'backward'`(기본값) | $1$ | $1/N$ |
+| `'ortho'` | $1/\sqrt{N}$ | $1/\sqrt{N}$ |
+| `'forward'` | $1/N$ | $1$ |
+
+인자는 마지막에 한 번 곱해요. 같은 `norm`으로 짝지으면 원래 값이 돌아와요.
+
+```python
+>>> sd.fft.ihfftn(g, norm='forward')[0, 0], float(sd.sum(g))
+((8.54030714851734-0j), 8.54030714851734)
+```
+
+## 경계의 값
+
+- `hfft2`·`ihfft2`는 1차원 배열을 받지 않아요. 축 −2가 없어서 `ValueError`예요.
+- 변환할 축의 길이가 0이면 `ValueError`이고, 변환하지 않는 축의 길이가 0이면 빈 결과예요.
+- `hfft2`·`hfftn`에 `s` 없이 마지막 축 길이가 1인 입력을 주면 기본 길이가 0이라 `ValueError`예요.
+- `hfft2`·`hfftn`은 마지막 축에서 쓰지 않는 칸과, 앞 축의 변환을 마친 뒤 칸 0과(짝수 길이면) 마지막 칸의 허수부를 읽지 않아요. 그 자리의 NaN은 결과에 들어가지 않아요.
+- `ihfft2`·`ihfftn`의 칸 0의 허수부는 −0이에요. 켤레를 취하면서 +0의 부호가 바뀌어요.
+
+```python
+>>> sd.fft.hfft2(sd.asarray([1.0 + 0j, 2.0]))
+Traceback (most recent call last):
+    ...
+ValueError: hfft2(): axis -2 is out of bounds for an array of dimension 1
+>>> sd.fft.hfftn(sd.asarray([[1 + 0j], [2 + 0j]]))
+Traceback (most recent call last):
+    ...
+ValueError: hfftn(): the default s[-1] = 2 (m - 1) is 0 for an axis of length m = 1; give 's'
+>>> sd.fft.ihfftn(sd.asarray([[1.0, 2.0], [3.0, 4.0]]))
+array([[ (2.5-0j), (-0.5-0j)],
+       [  (-1-0j),       -0j]], dtype=complex128)
+```
+
+## 에러
+
+```python
+>>> sd.fft.ihfftn(x)
+Traceback (most recent call last):
+    ...
+TypeError: ihfftn(): 'x' must be real, not complex128
+>>> sd.fft.hfftn(x, axes=())
+Traceback (most recent call last):
+    ...
+ValueError: hfftn(): 'axes' must not be empty
+>>> sd.fft.hfftn(x, axes=(1, 1))
+Traceback (most recent call last):
+    ...
+ValueError: hfftn(): repeated axis
+>>> sd.fft.hfftn(x, s=(2, 0))
+Traceback (most recent call last):
+    ...
+ValueError: hfftn(): the entries of 's' must be at least 1 (or -1), not 0
+>>> sd.fft.hfft2(x, (2, 4))
+Traceback (most recent call last):
+    ...
+TypeError: hfft2(): takes 1 positional argument but 2 were given
+```
+
+## 정확도와 같은 결과
+
+`hfftn`은 [`irfftn`](/api/fft/rfftn/)의, `ihfftn`은 [`rfftn`](/api/fft/rfftn/)의 계산을 그대로 쓰므로 정확도의 약속도 같아요. 배열 전체의 노름 상대오차로 약속하고, 칸 하나의 상대오차는 약속하지 않아요. 잰 값은 [`rfftn`](/api/fft/rfftn/)에 있어요.
+
+같은 입력이면 스레드 수, 배치, 배열이 메모리에 놓인 모양과 상관없이 같은 비트예요. 위의 표의 두 관계는 반올림까지 정확해요. 축 하나의 `hfftn`·`ihfftn`은 [`hfft`](/api/fft/hfft/)·`ihfft`와 같은 비트예요.
+
+```python
+>>> bool(sd.all(sd.fft.ihfftn(g) == sd.conj(sd.fft.rfftn(g, norm='forward'))))
+True
+>>> bool(sd.all(sd.fft.hfftn(G, s=g.shape) == sd.fft.irfftn(sd.conj(G), s=g.shape, norm='forward')))
+True
+>>> bool(sd.all(sd.fft.ihfftn(g, axes=1) == sd.fft.ihfft(g, axis=1)))
+True
+```
+
+## numpy·scipy를 아는 분께
+
+- `scipy.fft.hfft2`·`ihfft2`·`hfftn`·`ihfftn`과 정의가 같아요. numpy에는 이 네 함수가 없어요. `s`, `axes`, `norm`은 키워드로만 받아요.
+- `ihfft2`·`ihfftn`의 칸 0 허수부는 −0이에요. scipy는 +0이에요. 1차원 `ihfft`의 칸 0 허수부가 −0인 것(numpy와 같아요)과 같은 규칙이에요.
+- 같은 축을 두 번 적으면 `ValueError`예요(scipy와 같아요). 빈 `axes`도 `ValueError`예요.
+- `s`의 `None` 원소는 `TypeError`예요. `s`에 int 하나를 줄 수 있는 것은 scipy와 같아요.
+- 범위 밖의 축은 `ValueError`예요. scipy는 `IndexError`예요.
+- `norm=None`, `workers`, `overwrite_x`, `plan`이 없어요.

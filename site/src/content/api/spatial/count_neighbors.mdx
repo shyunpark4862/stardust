@@ -1,0 +1,227 @@
+---
+title: count_neighbors
+names: [KDTree.count_neighbors]
+group: KD 트리
+order: 6
+signatures:
+  - "tree.count_neighbors(other, r, /, *, p=2.0, weights=None, cumulative=True)"
+summary: 두 트리 사이에서 거리가 r 이하인 점의 짝이 몇 개인지 세요. 짝의 목록을 만들지 않고 세므로 짝이 아주 많아도 메모리를 거의 쓰지 않아요. 반경 여럿을 한 번에 세거나, 반경 구간마다 세거나(cumulative=False), 점마다의 무게를 곱해 더할 수 있어요.
+params:
+  - name: other
+    type: KDTree
+    kind: positional-only
+    desc: "짝의 다른 쪽 점들을 담은 트리. 차원 m이 이 트리와 같아야 해요. 이 트리 자신을 줘도 돼요."
+  - name: r
+    type: float 또는 1차원 float 배열
+    kind: positional-only
+    desc: "반경. 거리가 r 이하인 짝(경계 포함)을 세요. 0 이상의 수나 inf, 또는 그런 수의 1차원 배열이에요. cumulative=False면 배열이 줄지 않아야 해요."
+  - name: p
+    type: float
+    kind: keyword-only
+    desc: "Minkowski 거리의 차수. 1 이상의 실수나 inf예요. 2(기본값)는 유클리드, 1은 맨해튼(cityblock), inf는 체비쇼프 거리예요."
+  - name: weights
+    type: 배열, (배열 또는 None, 배열 또는 None)의 tuple, 또는 None
+    kind: keyword-only
+    desc: "점마다의 무게. 주면 짝의 수 대신 짝마다 두 점 무게의 곱을 더해요. tuple은 (이 트리의 무게, other의 무게)이고 한쪽은 None(모두 1)일 수 있어요. 배열 하나는 other가 이 트리 자신일 때만 받아요. 무게는 1차원, 점마다 하나, 유한해야 해요(음수는 받아요). 기본값 None."
+  - name: cumulative
+    type: bool
+    kind: keyword-only
+    desc: "True(기본값)면 반경마다 d ≤ r[i]인 짝을, False면 반경 구간 r[i−1] < d ≤ r[i]의 짝을 세요(첫 칸은 d ≤ r[0])."
+returns:
+  type: int, float, 또는 배열
+  desc: "r이 수 하나면 Python int(무게가 있으면 float), 배열이면 같은 길이의 int64 배열(무게가 있으면 float64)이에요. 보통의 새 배열이라 고쳐 써도 돼요."
+raises:
+  - type: TypeError
+    desc: "other가 KDTree가 아닐 때, r이 수나 수의 배열이 아닐 때, cumulative가 True·False가 아닐 때, p가 수가 아닐 때, 옵션을 자리로 줄 때, 없는 인자를 줄 때."
+  - type: ValueError
+    desc: "other의 m이 이 트리와 다를 때, r에 음수나 NaN이 있거나 r이 2차원 이상일 때, cumulative=False인데 r이 줄어드는 곳이 있을 때, 무게의 길이가 점의 수와 다르거나 무게에 NaN·inf가 있을 때, 두 트리가 다른데 무게를 배열 하나로 줄 때, 무게 tuple의 길이가 2가 아닐 때, p가 1보다 작거나 NaN일 때."
+seeAlso: [KDTree, query_pairs, query_ball_tree, sparse_distance_matrix, cdist]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+export const pairClustered = [[0.005, 0.00089], [0.01, 0.00325], [0.015, 0.00681], [0.02, 0.01107], [0.025, 0.01602], [0.03, 0.0213], [0.035, 0.02637], [0.04, 0.03148], [0.045, 0.03608], [0.05, 0.04017], [0.055, 0.04365], [0.06, 0.04631], [0.065, 0.04824], [0.07, 0.05006], [0.075, 0.05171], [0.08, 0.05344], [0.085, 0.0553], [0.09, 0.0573], [0.095, 0.0595], [0.1, 0.06177], [0.105, 0.06437], [0.11, 0.06705], [0.115, 0.06978], [0.12, 0.07261], [0.125, 0.07573], [0.13, 0.07907], [0.135, 0.08262], [0.14, 0.08637], [0.145, 0.0903], [0.15, 0.09452]];
+export const pairUniform = [[0.005, 7e-05], [0.01, 0.0003], [0.015, 0.00068], [0.02, 0.00122], [0.025, 0.00189], [0.03, 0.00278], [0.035, 0.00381], [0.04, 0.0049], [0.045, 0.00614], [0.05, 0.00767], [0.055, 0.00912], [0.06, 0.01078], [0.065, 0.01261], [0.07, 0.01469], [0.075, 0.01675], [0.08, 0.0189], [0.085, 0.02127], [0.09, 0.02375], [0.095, 0.02634], [0.1, 0.02907], [0.105, 0.03188], [0.11, 0.03475], [0.115, 0.03787], [0.12, 0.04112], [0.125, 0.0445], [0.13, 0.04786], [0.135, 0.0513], [0.14, 0.0549], [0.145, 0.05875], [0.15, 0.06259]];
+
+## 한눈에 보기
+
+`a.count_neighbors(b, r)`는 트리 `a`의 점 $x_1$과 트리 `b`의 점 $x_2$로 만든 짝 $(x_1, x_2)$ 가운데 거리가 r 이하인 것의 수예요. 짝을 하나하나 모으지 않고 세기만 해서, 짝이 수억 개라도 메모리를 거의 쓰지 않아요.
+
+```python
+>>> import stardust as sd
+>>> a = sd.spatial.KDTree([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]])
+>>> b = sd.spatial.KDTree([[0.0, 0.0], [3.0, 3.0]])
+>>> a.count_neighbors(b, 1.0)
+3
+>>> a.count_neighbors(b, [0.5, 1.0, 5.0])
+array([1, 3, 6], dtype=int64)
+```
+
+반경 1 안의 짝은 `b`의 원점과 `a`의 세 점이 만드는 세 짝이에요(거리 0, 1, 1). 반경을 배열로 주면 반경마다의 수를 한 번에 세요. 반경 5면 짝 $3 \times 2 = 6$개가 모두 들어가요.
+
+<Reference />
+
+## 무엇을 세나요
+
+세는 것은 **순서 있는 짝** $(x_1, x_2)$예요. $x_1$은 언제나 이 트리의 점, $x_2$는 `other`의 점이고, 거리가 r 이하이면 하나로 세요. 두 트리가 다르면 짝은 모두 $n_1 \times n_2$개 가운데서 세요.
+
+`other`에 자기 자신을 주면 같은 집합 안의 짝을 세는데, 이때는 $(i, i)$도 세고 $(i, j)$와 $(j, i)$도 따로 세요. 그래서 수는 점의 수 n에, $i \lt j$인 짝 수의 두 배를 더한 값이에요.
+
+```python
+>>> rng = sd.random.default_rng(4)
+>>> pts = rng.random((200, 2))
+>>> t = sd.spatial.KDTree(pts)
+>>> t.count_neighbors(t, 0.05)
+510
+>>> t.n + 2 * t.query_pairs(0.05).shape[0]
+510
+```
+
+이 수는 [`cdist`](/api/spatial/cdist/)로 구한 거리 행렬의 원소 가운데 r 이하인 것의 수와 정확히 같아요(`p`가 1, 2, inf면 `cityblock`, `euclidean`, `chebyshev`, 그 밖의 p는 `minkowski`).
+
+```python
+>>> int(sd.sum(sd.spatial.cdist(pts, pts) <= 0.05))
+510
+```
+
+`cdist`는 짝 $n_1 \times n_2$개의 거리를 모두 만들지만 `count_neighbors`는 행렬도 목록도 만들지 않아요. 두 트리를 함께 내려가면서, 상자의 짝이 통째로 반경 밖이면 건너뛰고 통째로 반경 안이면 점 수의 곱을 한 번에 더해요. 그래서 반경이 커서 짝이 아주 많을 때도 빨라요.
+
+## 반경 여럿: 거리의 누적 분포
+
+`r`에 배열을 주면 반경마다의 수를 같은 길이의 배열로 돌려줘요. 반경의 순서는 자유이고 같은 값이 여러 번 있어도 돼요. 결과는 준 순서 그대로예요.
+
+```python
+>>> t.count_neighbors(t, [0.1, 0.02, 0.05])
+array([1382,  258,  510], dtype=int64)
+```
+
+반경을 촘촘히 주면 "거리 r 이하인 짝의 수"가 r에 따라 어떻게 느는지 보여요. 공간 통계에서 점들이 고르게 퍼졌는지 뭉쳤는지를 볼 때 쓰는 두 점 상관(two-point correlation)의 바탕이 되는 수예요. 아래는 고르게 뿌린 점 1000개와 25곳에 뭉친 점 1000개의 짝 비율을 견준 거예요.
+
+```python
+>>> n = 1000
+>>> uniform = rng.random((n, 2))
+>>> centers = rng.random((25, 2))
+>>> clustered = centers[rng.integers(25, shape=n)] + 0.06 * (rng.random((n, 2)) - 0.5)
+>>> tu = sd.spatial.KDTree(uniform)
+>>> tc = sd.spatial.KDTree(clustered)
+>>> radii = sd.linspace(0.005, 0.15, 30)
+>>> fu = (tu.count_neighbors(tu, radii) - n) / (n * (n - 1))
+>>> fc = (tc.count_neighbors(tc, radii) - n) / (n * (n - 1))
+```
+
+<Fig caption="반경 r 이하인 짝의 비율. 자기 자신과의 짝 n개를 빼고 서로 다른 점의 순서 있는 짝 n(n − 1)개로 나눴어요. 고른 점은 원의 넓이 πr²(점선)를 거의 따라가고, 뭉친 점은 짧은 거리의 짝이 훨씬 많아요.">
+  <Plot
+    curves={[
+      { points: pairClustered, label: '뭉친 점' },
+      { points: pairUniform, label: '고른 점' },
+      { f: (r) => Math.PI * r * r, label: 'πr²', dashed: true },
+    ]}
+    domain={[0, 0.15]}
+    range={[0, 0.1]}
+    xTicks={[0.05, 0.1, 0.15].map((v) => ({ v, label: String(v) }))}
+    yTicks={[0.02, 0.04, 0.06, 0.08].map((v) => ({ v, label: String(v) }))}
+  />
+</Fig>
+
+고르게 뿌린 점이면 짝의 비율은 반지름 r인 원의 넓이 $\pi r^2$에 가까워요. 큰 반경에서 조금 처지는 것은 정사각형 가장자리 근처의 점이 원의 일부만 정사각형 안에 두기 때문이에요. 뭉친 점은 작은 반경에서 이미 짝이 많아서 곡선이 빨리 올라가요.
+
+## 구간마다 세기: `cumulative=False`
+
+`cumulative=False`면 반경 사이의 구간마다 세요. 결과의 i번째는 $r[i-1] \lt d \le r[i]$인 짝의 수이고, 첫째는 $d \le r[0]$인 짝의 수예요. 짝 거리의 히스토그램이에요. 이때 `r`은 줄지 않는 순서여야 해요.
+
+```python
+>>> edges = [0.0, 0.02, 0.05, 0.1]
+>>> t.count_neighbors(t, edges, cumulative=False)
+array([200,  58, 252, 872], dtype=int64)
+>>> t.count_neighbors(t, edges)
+array([ 200,  258,  510, 1382], dtype=int64)
+```
+
+구간의 수를 앞에서부터 더하면 `cumulative=True`의 결과가 돼요. 첫 칸의 $r[0] = 0$은 거리가 0인 짝, 여기서는 자기 자신과의 짝 200개를 따로 세어 줘요.
+
+```python
+>>> t.count_neighbors(t, [0.05, 0.02], cumulative=False)
+Traceback (most recent call last):
+    ...
+ValueError: count_neighbors(): 'r' must be nondecreasing when cumulative=False
+```
+
+## 무게를 곱해 더하기: `weights`
+
+점마다 무게를 주면 짝의 수 대신 짝마다 두 점 무게의 곱 $w(x_1) \cdot w(x_2)$를 더해요. 점이 마을이고 무게가 인구라면, "거리 r 안에 사는 사람의 짝"의 수가 돼요. 결과는 `float`(배열이면 float64)예요.
+
+```python
+>>> towns = sd.spatial.KDTree([[0.0, 0.0], [1.0, 0.0], [5.0, 5.0]])
+>>> people = [100.0, 20.0, 50.0]
+>>> towns.count_neighbors(towns, 1.0, weights=people)
+16900.0
+```
+
+반경 1 안의 짝은 자기 자신 셋과 $(0, 1)$, $(1, 0)$이라 $100^2 + 20^2 + 50^2 + 2 \times 100 \times 20 = 16900$이에요.
+
+무게를 주는 꼴은 셋이에요.
+
+| `weights` | 뜻 |
+|---|---|
+| `None` (기본값) | 무게 없이 짝의 수를 세요. 결과는 int예요 |
+| 배열 하나 | `other`가 이 트리 자신일 때만. 두 쪽에 같은 무게를 써요 |
+| `(w_self, w_other)` | 이 트리의 무게와 `other`의 무게. 한쪽이 `None`이면 그쪽은 모두 1이에요. `(None, None)`은 무게 없음과 같아요 |
+
+```python
+>>> a.count_neighbors(b, 1.0, weights=(None, [2.0, 7.0]))
+6.0
+>>> a.count_neighbors(b, 1.0, weights=(None, None))
+3
+>>> a.count_neighbors(b, 1.0, weights=[1.0, 2.0, 3.0])
+Traceback (most recent call last):
+    ...
+ValueError: count_neighbors(): one array of 'weights' is for 'other' being this tree; give a tuple (self's, other's) for two trees
+```
+
+무게는 1차원이고 점마다 하나, 모두 유한해야 해요. 음수 무게도 받아요.
+
+```python
+>>> towns.count_neighbors(towns, 1.0, weights=[1.0, float("nan"), 3.0])
+Traceback (most recent call last):
+    ...
+ValueError: count_neighbors(): 'weights' must be finite
+```
+
+## 결과는 언제나 같아요
+
+무게가 없는 셈은 정수라 정확해요. 무게가 있는 셈은 float64의 합이라 더하는 순서가 끝자리를 정하는데, 그 순서는 데이터와 트리로만 정해져요. 그래서 [스레드 수](/api/array/threads/)를 바꿔도 결과가 비트까지 같아요. 짝마다 판정에 쓰는 거리는 `cdist`의 그 원소와 비트까지 같은 값이에요.
+
+## 조심할 점
+
+### 반경은 0 이상이어야 해요
+
+음수나 NaN 반경은 에러예요. 2차원 이상의 배열도 받지 않아요.
+
+```python
+>>> t.count_neighbors(t, -1)
+Traceback (most recent call last):
+    ...
+ValueError: count_neighbors(): 'r' must be a number >= 0 or inf, not -1
+>>> t.count_neighbors(t, [[0.1, 0.2]])
+Traceback (most recent call last):
+    ...
+ValueError: count_neighbors(): 'r' must be a number or a 1-D array, not a 2-D array
+```
+
+### 결과의 꼴은 `r`의 꼴을 따라요
+
+`r`이 수 하나(numpy의 스칼라와 0차원 배열도)면 Python `int`나 `float`, 배열이면 길이가 같은 배열이에요. 길이 1인 리스트 `[0.1]`도 배열이라 결과가 길이 1인 배열이에요.
+
+```python
+>>> t.count_neighbors(t, [0.05])
+array([510], dtype=int64)
+```
+
+## scipy·sklearn을 아는 분께
+
+- 음수 반경과 NaN 반경은 `ValueError`예요. scipy는 $r = \text{NaN}$에서 모든 짝을 세고, 음수 r에서도 짝을 세요.
+- 무게에 NaN이나 inf가 있으면 `ValueError`예요. scipy는 NaN 무게로 NaN을 내요.
+- 무게가 있는 합은 스레드 수와 상관없이 같은 비트예요. 더하는 순서가 데이터와 트리로만 정해져요.
+- 세는 것, `weights`의 꼴, `cumulative`의 뜻, 결과의 타입(수 하나면 int나 float, 배열이면 배열)은 scipy와 같아요.
+- `p`, `weights`, `cumulative`는 이름으로만 받아요.
+- sklearn의 `KDTree(data).two_point_correlation(X, r)`는 `KDTree(X).count_neighbors(KDTree(data), r)`와 같은 수를 세요.

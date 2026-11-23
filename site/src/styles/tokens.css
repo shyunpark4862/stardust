@@ -1,0 +1,258 @@
+/*
+ * Design tokens. Every colour, size and space on the site comes from here;
+ * components never hard-code a value.
+ */
+:root {
+  /* ---- Colour: blue scale ---- */
+  --blue-50: #f3f7ff;
+  --blue-100: #e6eeff;
+  --blue-200: #cbdcff;
+  --blue-300: #9dbcff;
+  --blue-400: #6896ff;
+  --blue-500: #3b72f6;
+  --blue-600: #2558e0;
+  --blue-700: #1c44b8;
+  --blue-800: #17378f;
+  --blue-900: #122868;
+
+  /* ---- Colour: night (dark surfaces) ---- */
+  --night-950: #040816;
+  --night-900: #060b1c;
+  --night-800: #0b1329;
+  --night-700: #121c3a;
+  --night-600: #1c294f;
+
+  /* ---- Colour: slate (text and lines, blue-tinted neutral) ---- */
+  --slate-25: #fbfcfe;
+  --slate-50: #f6f8fc;
+  --slate-100: #eef1f7;
+  --slate-200: #e1e6ef;
+  --slate-300: #cbd3e1;
+  --slate-400: #98a3b8;
+  --slate-500: #5d6981;
+  --slate-600: #4b566c;
+  --slate-700: #343d52;
+  --slate-800: #1e2638;
+  --slate-900: #101727;
+
+  /* ---- Semantic: light surface (default) ---- */
+  --bg: #ffffff;
+  --bg-subtle: var(--slate-50);
+  --bg-muted: var(--slate-100);
+  --fg: var(--slate-900);
+  --fg-muted: var(--slate-600);
+  --fg-subtle: var(--slate-500);
+  --line: var(--slate-200);
+  --line-strong: var(--slate-300);
+  --accent: var(--blue-600);
+  --accent-hover: var(--blue-700);
+  --accent-soft: var(--blue-50);
+  --accent-soft-line: var(--blue-200);
+  --focus: var(--blue-400);
+
+  --ok: #0f7b5f;
+  --ok-soft: #ecf8f3;
+  --ok-line: #b7e2d0;
+  --warn: #9a5b00;
+  --warn-soft: #fff8e6;
+  --warn-line: #f2d590;
+
+  /* ---- Typography ---- */
+  --font-sans: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont,
+    system-ui, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+  --font-mono: 'Cascadia Code Variable', 'Cascadia Code', ui-monospace, SFMono-Regular,
+    Menlo, monospace;
+
+  --text-xs: 0.75rem; /* 12 */
+  --text-sm: 0.8125rem; /* 13 */
+  --text-code: 0.84375rem; /* 13.5, code blocks: a 75-column line still fits the text column */
+  --text-base: 0.9375rem; /* 15 */
+  --text-md: 1rem; /* 16 */
+  --text-lg: 1.125rem; /* 18 */
+  --text-xl: 1.375rem; /* 22 */
+  --text-2xl: 1.75rem; /* 28 */
+  --text-3xl: 2.25rem; /* 36 */
+  --text-4xl: 3rem; /* 48 */
+
+  --leading-tight: 1.2;
+  --leading-snug: 1.4;
+  --leading-body: 1.75;
+
+  --tracking-tight: -0.022em;
+  --tracking-display: -0.035em;
+  --tracking-caps: 0.08em;
+
+  /* ---- Space: 4px grid ---- */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+  --space-20: 5rem;
+  --space-24: 6rem;
+  --space-32: 8rem;
+
+  /* ---- Shape ---- */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-full: 999px;
+
+  --shadow-sm: 0 1px 2px rgb(16 23 39 / 0.05);
+  --shadow-md: 0 1px 2px rgb(16 23 39 / 0.04), 0 8px 24px -8px rgb(16 23 39 / 0.1);
+
+  /* ---- Layout ---- */
+  --header-h: 64px;
+  --container: 1200px;
+  --gutter: clamp(1.25rem, 4vw, 2.5rem);
+  --sidebar-w: 248px;
+  --toc-w: 208px;
+  --prose-w: 736px;
+
+  /* ---- Motion ---- */
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --dur-fast: 140ms;
+  --dur: 240ms;
+}
+
+/* Dark surfaces re-map the semantic tokens; components stay unchanged. */
+[data-surface='dark'] {
+  --bg: var(--night-900);
+  --bg-subtle: rgb(255 255 255 / 0.04);
+  --bg-muted: rgb(255 255 255 / 0.07);
+  --fg: #eef3ff;
+  --fg-muted: #a9b6d3;
+  --fg-subtle: #7f8cab;
+  --line: rgb(190 210 255 / 0.12);
+  --line-strong: rgb(190 210 255 / 0.22);
+  --accent: var(--blue-300);
+  --accent-hover: #ffffff;
+  --accent-soft: rgb(104 150 255 / 0.12);
+  --accent-soft-line: rgb(104 150 255 / 0.28);
+  --focus: var(--blue-300);
+  color: var(--fg);
+}
+
+/* ---- Component tokens that differ by surface ---- */
+:root {
+  --btn-primary-bg: var(--blue-600);
+  --btn-primary-bg-hover: var(--blue-700);
+  --btn-primary-fg: #ffffff;
+  --btn-secondary-bg: #ffffff;
+  --btn-secondary-bg-hover: var(--slate-50);
+}
+
+[data-surface='dark'] {
+  --btn-primary-bg: #ffffff;
+  --btn-primary-bg-hover: var(--blue-100);
+  --btn-primary-fg: var(--night-900);
+  --btn-secondary-bg: rgb(255 255 255 / 0.04);
+  --btn-secondary-bg-hover: rgb(255 255 255 / 0.1);
+}
+
+/* ---- Area colours ----
+ * Each area has one hue for wayfinding: the area name in the sidebar, the
+ * current page, the path above the title, the table of contents and the
+ * cards that lead to it. Text stops are 4.5:1 or better on white. Anything
+ * outside an area (and code) keeps the site blue. */
+:root,
+[data-area] {
+  --area: var(--accent);
+  --area-soft: var(--accent-soft);
+  --area-line: var(--accent-soft-line);
+}
+[data-area='core'] {
+  --area: #4b566c;
+  --area-soft: #f1f3f8;
+  --area-line: #cbd3e1;
+}
+[data-area='array'] {
+  --area: #2558e0;
+  --area-soft: #eef3ff;
+  --area-line: #cbdcff;
+}
+[data-area='linalg'] {
+  --area: #6a3fd1;
+  --area-soft: #f4f0ff;
+  --area-line: #d9ccfb;
+}
+[data-area='sparse'] {
+  --area: #866500;
+  --area-soft: #fbf5e3;
+  --area-line: #ecdba6;
+}
+[data-area='htest'] {
+  --area: #5e6e0e;
+  --area-soft: #f3f6e4;
+  --area-line: #d7e0a8;
+}
+[data-area='frame'] {
+  --area: #0b7a6d;
+  --area-soft: #e8f6f3;
+  --area-line: #b3e0d7;
+}
+[data-area='special'] {
+  --area: #b0500a;
+  --area-soft: #fff3e6;
+  --area-line: #f6d2ad;
+}
+[data-area='stats'] {
+  --area: #23793c;
+  --area-soft: #ebf6ee;
+  --area-line: #bfe2c9;
+}
+[data-area='regression'] {
+  --area: #bf325c;
+  --area-soft: #fdedf2;
+  --area-line: #f5c3d2;
+}
+[data-area='optimize'] {
+  --area: #a1279f;
+  --area-soft: #fbeefb;
+  --area-line: #efc4ee;
+}
+[data-area='integrate'] {
+  --area: #7d4b20;
+  --area-soft: #f8f0e7;
+  --area-line: #e6cfb6;
+}
+[data-area='differentiate'] {
+  --area: #2e5e8a;
+  --area-soft: #ecf2f8;
+  --area-line: #c3d5e8;
+}
+[data-area='random'] {
+  --area: #0c6f8c;
+  --area-soft: #e7f5f9;
+  --area-line: #b2dce8;
+}
+[data-area='spatial'] {
+  --area: #4338ca;
+  --area-soft: #eef0fd;
+  --area-line: #c9cdf6;
+}
+[data-area='fft'] {
+  --area: #5b21b6;
+  --area-soft: #f3eefd;
+  --area-line: #d9c9f7;
+}
+[data-area='interpolate'] {
+  --area: #047857;
+  --area-soft: #e8f7f1;
+  --area-line: #b5e3d2;
+}
+[data-area='graph'] {
+  --area: #9f1239;
+  --area-soft: #fdecf0;
+  --area-line: #f4c0cc;
+}
+[data-area='plot'] {
+  --area: #b42318;
+  --area-soft: #fdeeec;
+  --area-line: #f5c4bd;
+}

@@ -1,0 +1,269 @@
+---
+title: dropna
+names: [Series.dropna, DataFrame.dropna]
+group: 결측값
+order: 3
+signatures:
+  - "Series.dropna(*, ignore_index=False)"
+  - 'DataFrame.dropna(*, how="any", subset=None, ignore_index=False)'
+summary: 결측값 NA가 있는 행을 지운 새 Series나 DataFrame을 돌려줘요. DataFrame은 어느 컬럼을 볼지(subset), 하나라도 비었을 때 지울지 모두 비었을 때 지울지(how)를 정할 수 있어요.
+params:
+  - name: how
+    type: str
+    kind: keyword-only, DataFrame만
+    desc: '"any"(기본값)이면 subset 안의 값이 하나라도 NA인 행을, "all"이면 모두 NA인 행을 지워요.'
+  - name: subset
+    type: str, list, tuple 또는 None
+    kind: keyword-only, DataFrame만
+    desc: NA를 볼 컬럼 이름. 하나면 str로도 줘요. None(기본값)이면 모든 컬럼을 봐요.
+  - name: ignore_index
+    type: bool
+    kind: keyword-only
+    desc: True이면 결과의 행 라벨을 0, 1, 2…(RangeIndex)로 새로 매겨요. False(기본값)이면 남은 행이 원래 라벨을 지켜요.
+returns:
+  type: Series 또는 DataFrame
+  desc: NA가 있는 행을 지운 새 객체. 남은 행의 순서, dtype, 이름, 컬럼은 원래와 같고, 원래 객체는 바뀌지 않아요. NaN은 지우지 않아요.
+raises:
+  - type: TypeError
+    desc: 인자를 위치로 줄 때, how가 문자열이 아닐 때, subset이 str·list·tuple이 아닐 때(set, Series 등), ignore_index가 True나 False가 아닐 때, 없는 인자(axis, thresh 등)를 줄 때.
+  - type: ValueError
+    desc: how가 "any"나 "all"이 아닌 문자열일 때.
+  - type: KeyError
+    desc: subset에 없는 컬럼 이름이 있을 때.
+seeAlso: [isna, fillna, na, mask, head-tail]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import FigRow from '../../../components/fig/FigRow.astro';
+import FrameFig from '../../../components/fig/FrameFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+`dropna()`는 결측값 `NA`가 있는 행을 지워요. 빈칸이 있는 행을 분석에서 빼고 싶을 때 써요. 예를 들어 두 과목 점수의 관계를 보려면, 한 과목이라도 점수가 없는 학생은 빼야 해요.
+
+```python
+>>> import stardust as sd
+>>> df = sd.frame.DataFrame({
+...     "name": ["ann", "bob", "cid", None],
+...     "math": [90, None, None, None],
+...     "eng": [85.0, 70.0, None, None],
+... })
+>>> df
+   name  math   eng
+0   ann    90  85.0
+1   bob  <NA>  70.0
+2   cid  <NA>  <NA>
+3  <NA>  <NA>  <NA>
+>>> df.dropna()
+  name  math   eng
+0  ann    90  85.0
+```
+
+빈칸이 하나도 없는 `ann`의 행만 남았어요. 남은 행은 원래 라벨(`0`)을 지켜요.
+
+Series도 같아요. `NA`인 행을 지워요.
+
+```python
+>>> s = sd.frame.Series([3, None, 5], index=["mon", "tue", "wed"], name="sold")
+>>> s.dropna()
+mon    3
+wed    5
+Name: sold, dtype: int64
+```
+
+`dropna`는 새 객체를 돌려주고, 원래 객체는 바뀌지 않아요.
+
+<Reference />
+
+## `how`: 하나라도 비었을 때, 모두 비었을 때
+
+DataFrame에서 행을 지우는 기준은 두 가지예요.
+
+- `how="any"`(기본값): 값이 하나라도 `NA`이면 지워요. 빈칸 없는 행만 남아요.
+- `how="all"`: 값이 모두 `NA`일 때만 지워요. 완전히 빈 행만 사라져요.
+
+```python
+>>> df.dropna(how="all")
+   name  math   eng
+0   ann    90  85.0
+1   bob  <NA>  70.0
+2   cid  <NA>  <NA>
+```
+
+<Fig column caption="any는 NA가 하나라도 있는 행을, all은 모든 칸이 NA인 행만 지워요. 흐린 행이 지워지는 행이에요.">
+  <FigRow>
+    <FrameFig name='how="any"' columns={['name', 'math', 'eng']} data={[['ann', 90, '85.0'], ['bob', null, '70.0'], ['cid', null, null], [null, null, null]]}
+      rowTones={['a', 'm', 'm', 'm']} />
+    <Op>→</Op>
+    <FrameFig columns={['name', 'math', 'eng']} data={[['ann', 90, '85.0']]} rowTones={['a']} />
+  </FigRow>
+  <FigRow>
+    <FrameFig name='how="all"' columns={['name', 'math', 'eng']} data={[['ann', 90, '85.0'], ['bob', null, '70.0'], ['cid', null, null], [null, null, null]]}
+      rowTones={['a', 'a', 'a', 'm']} />
+    <Op>→</Op>
+    <FrameFig columns={['name', 'math', 'eng']} data={[['ann', 90, '85.0'], ['bob', null, '70.0'], ['cid', null, null]]} index={[0, 1, 2]} rowTones={['a', 'a', 'a']} />
+  </FigRow>
+</Fig>
+
+`how`에는 `"any"`나 `"all"`만 줄 수 있어요. 다른 문자열은 `ValueError`, 문자열이 아니면 `TypeError`예요.
+
+## `subset`: 어느 컬럼을 볼지
+
+기본으로는 모든 컬럼을 봐요. `subset=`에 컬럼 이름을 주면 그 컬럼만 보고 판단해요. 다른 컬럼에 빈칸이 있어도 상관없어요. 컬럼 하나는 문자열로, 여럿은 list나 tuple로 줘요.
+
+```python
+>>> df.dropna(subset="eng")
+  name  math   eng
+0  ann    90  85.0
+1  bob  <NA>  70.0
+>>> df.dropna(subset=["name", "eng"])
+  name  math   eng
+0  ann    90  85.0
+1  bob  <NA>  70.0
+```
+
+`how`와 `subset`을 함께 쓰면 "`subset` 안의 값이 하나라도/모두 `NA`인 행"이에요. 아래는 점수 두 칸이 모두 빈 학생만 지워요. 이름이 없는 마지막 행도 점수가 모두 비어서 지워져요.
+
+```python
+>>> df.dropna(how="all", subset=["math", "eng"])
+  name  math   eng
+0  ann    90  85.0
+1  bob  <NA>  70.0
+```
+
+빈 리스트(`subset=[]`)를 주면 볼 컬럼이 없으므로 아무 행도 지우지 않아요. 없는 컬럼 이름은 `KeyError`예요.
+
+```python
+>>> df.dropna(subset=["score"])
+Traceback (most recent call last):
+    ...
+KeyError: "dropna(): no column 'score'"
+```
+
+## 남은 행의 라벨
+
+남은 행은 원래 라벨을 지켜요. 그래서 지운 뒤에도 원래 표의 어느 행이었는지 알 수 있고, 원래 데이터의 다른 Series와 계산하면 라벨로 맞춰져요([라벨과 정렬](/api/frame/alignment/)).
+
+라벨을 0부터 새로 매기고 싶다면 `ignore_index=True`를 줘요.
+
+```python
+>>> df.dropna(how="all").dropna(subset="eng", ignore_index=True)
+  name  math   eng
+0  ann    90  85.0
+1  bob  <NA>  70.0
+>>> s.dropna(ignore_index=True)
+0    3
+1    5
+Name: sold, dtype: int64
+```
+
+`ignore_index`는 `True`나 `False`만 받아요. `1`이나 `None`은 `TypeError`예요.
+
+## NaN이 있는 행은 지우지 않아요
+
+`dropna`는 `NA`만 결측값으로 봐요. NaN은 실수 값이므로 그 행은 남아요([NA와 NaN](/api/frame/na/)).
+
+```python
+>>> v = sd.frame.Series([1.0, float("nan"), None])
+>>> v.dropna()
+0    1.0
+1    NaN
+dtype: float64
+```
+
+NaN인 행도 지우고 싶다면 [`isnan`](/api/frame/isna/)으로 마스크를 만들어요. `~v.isnan()`은 NaN 행이 `False`, `NA` 행이 `NA`이고, 마스크에서 `NA`는 버려지므로 둘 다 사라져요.
+
+```python
+>>> v[~v.isnan()]
+0    1.0
+dtype: float64
+```
+
+## Series의 `dropna`
+
+Series에는 컬럼이 하나뿐이라서 `how`와 `subset`이 없어요. `ignore_index`만 받아요.
+
+```python
+>>> s.dropna(how="all")
+Traceback (most recent call last):
+    ...
+TypeError: Series.dropna() got an unexpected keyword argument 'how'
+```
+
+## 조심할 점
+
+### 인자는 모두 이름을 붙여서
+
+`dropna`에는 주 인자가 없어서, 모든 인자를 키워드로만 받아요. `df.dropna("all")`처럼 위치로 주면 `TypeError`예요.
+
+```python
+>>> df.dropna("all")
+Traceback (most recent call last):
+    ...
+TypeError: DataFrame.dropna() takes 1 positional argument but 2 were given
+```
+
+### 컬럼 지우기와 `thresh`는 없어요
+
+`dropna`는 행만 지워요. `axis`(컬럼 지우기)와 `thresh`(값이 몇 개 이상인 행만 남기기)는 없어요.
+
+```python
+>>> df.dropna(thresh=2)
+Traceback (most recent call last):
+    ...
+TypeError: DataFrame.dropna() got an unexpected keyword argument 'thresh'
+```
+
+`thresh`가 필요하면 행마다 값이 있는 칸의 수를 직접 세요. bool은 더하면 int64가 되므로, 컬럼마다 `notna()`를 구해 더하면 행마다 채워진 칸의 수가 나와요([산술 연산](/api/frame/arithmetic/)).
+
+```python
+>>> filled = df["name"].notna() + df["math"].notna() + df["eng"].notna()
+>>> filled
+0    3
+1    2
+2    1
+3    0
+dtype: int64
+>>> df[filled >= 2]
+  name  math   eng
+0  ann    90  85.0
+1  bob  <NA>  70.0
+```
+
+빈칸이 있는 컬럼을 빼고 싶다면, 값이 모두 채워진 컬럼의 이름만 모아 대괄호에 넣어요. `s.count()`는 `NA`가 아닌 값의 개수예요. 아래는 앞의 두 행에서 빈칸이 없는 컬럼만 남겨요.
+
+```python
+>>> top = df.head(2)
+>>> top[[c for c in top.columns if top[c].count() == len(top)]]
+  name   eng
+0  ann  85.0
+1  bob  70.0
+```
+
+### 너무 많이 지우지 않았는지 확인하세요
+
+`how="any"`는 컬럼이 많을수록 지우는 행이 빠르게 늘어나요. 컬럼마다 빈칸이 조금씩만 있어도 거의 모든 행이 사라질 수 있어요. 지우기 전에 [`isna`](/api/frame/isna/)로 컬럼마다 빈칸이 몇 개인지 보고, 꼭 필요한 컬럼만 `subset`에 주는 습관이 좋아요.
+
+```python
+>>> len(df), len(df.dropna())
+(4, 1)
+```
+
+## 비슷한 함수와의 차이
+
+| 하고 싶은 것 | 쓸 것 |
+|---|---|
+| `NA`가 있는 행 지우기 | `dropna()` |
+| 특정 컬럼에 `NA`가 있는 행만 지우기 | `dropna(subset=[...])` |
+| 완전히 빈 행만 지우기 | `dropna(how="all")` |
+| `NA`를 값으로 채우기 | [`fillna`](/api/frame/fillna/) |
+| 빈칸이 어디 있는지 보기 | [`isna`](/api/frame/isna/) |
+| 조건에 맞는 행 남기기 | 마스크 `df[조건]` ([조건으로 행 거르기](/api/frame/mask/)) |
+| NaN인 행 지우기 | `s[~s.isnan()]` |
+
+## pandas를 아는 분께
+
+- `axis`, `thresh`, `inplace`가 없어요. 행만 지워요.
+- NaN이 있는 행은 지우지 않아요. pandas는 NaN을 결측으로 보고 지워요.
+- Series의 `dropna`에는 `how`가 없어요. pandas 3의 `Series.dropna`는 `how`를 받아요(효과는 없어요).
+- `subset`은 컬럼 이름 하나(str), list, tuple만 받아요. set 같은 다른 묶음은 `TypeError`예요.

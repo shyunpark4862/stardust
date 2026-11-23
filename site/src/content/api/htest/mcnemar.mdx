@@ -1,0 +1,169 @@
+---
+kind: function
+title: mcnemar
+names: [mcnemar]
+group: 분할표
+order: 5
+signatures:
+  - "sd.htest.mcnemar(table, /, *, exact=True, correction=True)"
+summary: 짝지은 관측(같은 사람의 전과 후, 두 검사법)의 2 × 2 표에서 두 비율이 같은지 보는 McNemar 검정이에요. 결과가 갈린 쌍(대각 밖의 두 칸)만 봐서, 한쪽으로 갈린 쌍이 다른 쪽보다 많은지 따져요. 기본은 이항 분포의 정확한 p값이에요.
+params:
+  - name: table
+    type: ndarray, 정수의 중첩 시퀀스, numpy 배열, 또는 frame의 DataFrame
+    kind: positional-only
+    desc: 짝지은 관측의 2 × 2 개수 표. 행이 첫째 측정의 결과, 열이 둘째 측정의 결과예요. 앞의 축이 있으면 표의 배치예요. 음이 아닌 정수 값이어야 해요.
+  - name: exact
+    type: bool
+    kind: keyword-only
+    desc: True(기본값)면 이항 분포의 정확한 p값, False면 카이제곱 근사예요.
+  - name: correction
+    type: bool
+    kind: keyword-only
+    desc: exact=False일 때 연속성 보정(|b − c|에서 1을 뺌)을 할지예요. 기본값 True. exact=True면 쓰지 않아요.
+returns:
+  type: McnemarResult
+  desc: "statistic과 pvalue를 가진 결과 객체. exact=True면 statistic은 min(b, c), False면 카이제곱 통계량이에요. 튜플로 풀리지 않아요."
+raises:
+  - type: TypeError
+    desc: table이 배열·수의 시퀀스·frame이 아닐 때, exact·correction이 True·False가 아닐 때, 없는 인자를 줬을 때.
+  - type: ValueError
+    desc: "표가 2 × 2가 아닐 때, 음수·정수가 아닌 값·NaN이 있을 때."
+seeAlso: [cochrans_q, fisher_exact, binomtest, chi2_contingency, basics, results]
+---
+## 무엇을 묻는 검정인가요
+
+환자 100명에게 두 진단 검사 A와 B를 모두 했어요.
+
+| | B 양성 | B 음성 |
+|---|---:|---:|
+| A 양성 | 45 | 15 |
+| A 음성 | 5 | 35 |
+
+A의 양성률은 60%, B는 50%예요. 두 검사의 양성률이 정말 다를까요? 같은 사람을 두 번 쟀으므로 두 비율은 독립이 아니에요. 그래서 [`chi2_contingency`](/api/htest/chi2_contingency/)나 [`fisher_exact`](/api/htest/fisher_exact/)(행과 열의 독립을 묻는 검정)는 맞지 않아요.
+
+**McNemar 검정**은 두 검사의 결과가 같은 쌍(45명, 35명)은 비율의 차이에 아무 영향이 없다는 데서 출발해요. 갈린 쌍만 봐요.
+
+- $b$ = A 양성·B 음성 = 15명 (`table[0, 1]`)
+- $c$ = A 음성·B 양성 = 5명 (`table[1, 0]`)
+
+두 양성률의 차이는 $(b - c)/N$이에요. 두 비율이 같다면 갈린 쌍이 어느 쪽으로 갈릴지는 반반이에요.
+
+- **귀무가설**: 두 측정의 비율이 같아요(주변 동질성). 갈린 쌍이 두 방향으로 갈릴 확률이 1/2씩이에요.
+- **대립가설**: 두 비율이 달라요(양쪽만 있어요).
+
+이런 때 써요.
+
+- 같은 사람의 전과 후(교육 전후의 합격 여부, 치료 전후의 증상 유무).
+- 같은 대상을 두 방법으로 잰 결과(두 진단 검사, 두 평가자의 예·아니오).
+- 짝을 맞춘 사례–대조 연구.
+
+처리가 셋 이상이면 [`cochrans_q`](/api/htest/cochrans_q/)예요.
+
+<Reference />
+
+## 기본 사용: 정확한 p값
+
+```python
+>>> import stardust as sd
+>>> table = [[45, 15],
+...          [5, 35]]
+>>> r = sd.htest.mcnemar(table)
+>>> r
+McnemarResult(statistic=5, pvalue=0.0413895)
+```
+
+갈린 쌍 20개 가운데 한쪽이 5개뿐이에요. 반반이라면 이렇게 치우칠 확률이 0.041이라 유의수준 0.05에서 두 검사의 양성률이 같다는 귀무가설을 기각해요.
+
+`exact=True`(기본값)의 통계량은 $\min(b, c)$이고, p값은 이항 분포 $\mathrm{Binomial}(b + c, 1/2)$에서 그 이하일 확률의 두 배(1을 넘지 않게)예요. 그래서 [`binomtest`](/api/htest/binomtest/)와 같은 값이에요.
+
+```python
+>>> sd.htest.binomtest(5, 20).pvalue
+0.04138946533203126
+>>> r.pvalue
+0.04138946533203126
+```
+
+결과는 튜플로 풀리지 않아요. 필드를 이름으로 읽어요.
+
+```python
+>>> print(r.summary())
+                            McNemar's test (exact)
+==============================================================================
+Statistic:                       5.000
+P-value:                        0.0414
+==============================================================================
+```
+
+## `exact=False`: 카이제곱 근사
+
+갈린 쌍이 많으면 카이제곱 근사를 쓸 수 있어요. 통계량은
+
+$$
+\chi^2 = \frac{(|b - c| - 1)^2}{b + c}
+$$
+
+이고 자유도 1인 카이제곱 분포에 견줘요. $-1$은 연속성 보정이고 `correction=False`면 빼요.
+
+```python
+>>> sd.htest.mcnemar(table, exact=False)
+McnemarResult(statistic=4.05, pvalue=0.0441713)
+>>> sd.htest.mcnemar(table, exact=False, correction=False)
+McnemarResult(statistic=5, pvalue=0.0253473)
+```
+
+보정한 근사는 정확한 값(0.041)에 가깝고, 보정하지 않은 근사는 작게 나와요. 정확한 p값은 언제나 계산할 수 있으니 근사가 필요한 일은 드물어요.
+
+보정은 $b = c$여도 1을 빼요. 그러면 통계량이 0이 아니라 $1/(b + c)$예요.
+
+```python
+>>> sd.htest.mcnemar([[10, 4], [4, 10]], exact=False)
+McnemarResult(statistic=0.125, pvalue=0.723674)
+```
+
+## 갈린 쌍이 없을 때
+
+$b + c = 0$이면 두 측정이 모두 일치해서 비율의 차이가 없어요. 정확한 p값은 1이고, 카이제곱 꼴은 분모가 0이라 NaN이에요.
+
+```python
+>>> sd.htest.mcnemar([[10, 0], [0, 10]])
+McnemarResult(statistic=0, pvalue=1)
+>>> sd.htest.mcnemar([[10, 0], [0, 10]], exact=False)
+McnemarResult(statistic=nan, pvalue=nan)
+```
+
+## 배치와 에러
+
+앞의 축이 있으면 2 × 2 표의 배치예요.
+
+```python
+>>> B = sd.asarray([[[45, 15], [5, 35]],
+...                 [[10, 4], [4, 10]]])
+>>> sd.htest.mcnemar(B).pvalue
+array([0.04138946533203126,                 1.0], dtype=float64)
+```
+
+2 × 2 표만 받아요. `exact`·`correction`은 True나 False여야 해요.
+
+```python
+>>> sd.htest.mcnemar([[1, 2, 3], [4, 5, 6]])
+Traceback (most recent call last):
+    ...
+ValueError: mcnemar(): 'table' must be a 2 x 2 table, not 2 x 3
+>>> sd.htest.mcnemar(table, exact=1)
+Traceback (most recent call last):
+    ...
+TypeError: mcnemar(): 'exact' must be True or False, not int
+```
+
+## 정확도
+
+이항 꼬리와 카이제곱 꼬리는 작은 쪽을 직접 구하고, 통계량은 정수의 몫을 한 번 반올림해요. 정확한 유리수 계산과 Arb(구간 산술)로 만든 참값에 견주면 10문제(b = c, b + c = 0, 이항 꼬리 6.3e-11의 큰 b·c 포함)에서 통계량은 상대오차 7.1e-17 안, p값은 1.6e-15 안이에요.
+
+## statsmodels·R을 아는 분께
+
+`statsmodels.stats.contingency_tables.mcnemar`의 이름과 기본값(`exact=True`, `correction=True`)과 식이에요. 다른 점이에요.
+
+- $b + c = 0$의 카이제곱 꼴이 NaN이에요. statsmodels는 통계량 inf와 p = 0을 내요.
+- 2 × 2 표만 받아요. statsmodels는 더 큰 표의 `[0, 1]`·`[1, 0]` 칸만 써요.
+- 표의 배치가 있어요. 결과는 statsmodels의 묶음 객체처럼 풀리지 않아요.
+- R의 `mcnemar.test`는 카이제곱 꼴만 있고, $b = c$일 때는 보정하지 않아요. 그래서 그런 표에서 값이 달라요.

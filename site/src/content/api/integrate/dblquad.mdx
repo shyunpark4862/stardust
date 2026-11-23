@@ -1,0 +1,205 @@
+---
+kind: function
+title: dblquad
+names: [dblquad]
+group: 겹친 적분
+order: 1
+signatures:
+  - "sd.integrate.dblquad(func, a, b, gfun, hfun, /, *, atol=1.49e-08, rtol=1.49e-08)"
+summary: 2차원 적분 ∫ₐᵇ ∫_{g(x)}^{h(x)} f(y, x) dy dx를 quad 두 겹으로 계산해요. 안쪽 끝이 바깥 변수의 함수여도 돼서 원, 삼각형처럼 상자가 아닌 영역을 다뤄요. 결과는 (integral, error)로 풀려요.
+params:
+  - name: func
+    type: 호출 가능한 객체
+    kind: positional-only
+    desc: "피적분 함수 f(y, x). 안쪽 변수 y가 먼저예요. 두 Python float를 받아 실수 하나를 돌려줘요."
+  - name: a, b
+    type: float
+    kind: positional-only
+    desc: "바깥 변수 x의 끝. ±inf를 받고 NaN은 받지 않아요."
+  - name: gfun, hfun
+    type: float 또는 호출 가능한 객체
+    kind: positional-only
+    desc: "안쪽 변수 y의 아래·위 끝. 수이거나 x를 받아 실수를 돌려주는 함수예요(±inf 가능, NaN은 ValueError). 바깥 점마다 gfun, hfun의 차례로 불러요."
+  - name: atol, rtol
+    type: float
+    kind: keyword-only
+    desc: "모든 층의 quad에 쓰는 절대·상대 허용오차(기본 1.49e-8). 규칙은 quad와 같아요."
+returns:
+  type: IntegrateResult
+  desc: "integral, error(모든 quad의 오차 어림 가운데 가장 큰 것), converged, status, message, nfev(f를 부른 수). 구간 정보는 없어요. (integral, error)로 풀려요."
+raises:
+  - type: TypeError
+    desc: func가 호출 가능하지 않을 때, a·b·gfun·hfun(또는 그 함수가 돌려준 값)이 실수가 아닐 때, 허용오차가 수가 아닐 때, 모르는 키워드(limit, args, epsabs 등)를 줬을 때, func가 bool이나 복소수를 돌려줄 때. 사용자 함수 안에서 난 에러도 그대로 나와요.
+  - type: ValueError
+    desc: a·b가 NaN이거나 gfun·hfun이 NaN을 돌려줄 때, 허용오차가 범위 밖일 때, func가 길이 있는 배열을 돌려줄 때.
+seeAlso: [tplquad, nquad, quad, cubature, basics, results]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+export const quarter = [[0, 0], [1, 0], [1, NaN], ...Array.from({ length: 61 }, (_, i) => { const t = (Math.PI / 2) * i / 60; return [Math.cos(t), Math.sin(t)]; }), [0, 1], [0, 0]];
+
+## 무엇을 하나요
+
+`dblquad`는 영역 위의 2차원 적분을 계산해요. 바깥 변수 x는 a에서 b까지, 안쪽 변수 y는 x에 따라 정해지는 $g(x)$에서 $h(x)$까지예요.
+
+$$\int_a^b \left( \int_{g(x)}^{h(x)} f(y, x)\,dy \right) dx$$
+
+계산도 식 그대로예요. 바깥 적분을 [`quad`](/api/integrate/quad/)로 하고, 바깥 `quad`가 x를 정할 때마다 그 x에서 안쪽 적분을 다시 `quad`로 해요. 안쪽 끝이 x의 함수일 수 있어서, 상자가 아닌 영역도 그대로 적분해요.
+
+<Fig caption="사분원 x² + y² ≤ 1, x, y ≥ 0. 바깥 변수 x는 0에서 1까지, 안쪽 변수 y는 0에서 √(1 − x²)까지예요.">
+  <Plot
+    curves={[{ points: quarter, label: '영역의 경계' }]}
+    domain={[-0.1, 1.2]}
+    range={[-0.1, 1.15]}
+    xTicks={[
+      { v: 0, label: '0' },
+      { v: 0.5, label: '0.5' },
+      { v: 1, label: '1' },
+    ]}
+    yTicks={[
+      { v: 0.5, label: '0.5' },
+      { v: 1, label: '1' },
+    ]}
+  />
+</Fig>
+
+<Reference />
+
+## 기본 사용
+
+사분원의 넓이 π/4를 계산해요. 피적분 함수는 1이고, 안쪽 위 끝이 x의 함수예요.
+
+```python
+>>> import math
+>>> import stardust as sd
+>>> r = sd.integrate.dblquad(lambda y, x: 1.0, 0, 1, 0, lambda x: math.sqrt(1 - x * x))
+>>> r
+IntegrateResult(integral=0.785398, error=8.83389e-11, converged=True, nfev=4851)
+>>> r.integral - math.pi / 4
+-2.220446049250313e-16
+```
+
+결과는 `quad`처럼 둘로 풀려요.
+
+```python
+>>> integral, error = sd.integrate.dblquad(lambda y, x: x * y, 0, 1, 0, lambda x: x)
+>>> integral
+0.125
+```
+
+$\int_0^1 \int_0^x xy\,dy\,dx = \int_0^1 x^3/2\,dx = 1/8$이에요. 영역은 $y \le x$인 삼각형이에요.
+
+## 인자
+
+### func: 안쪽 변수가 먼저
+
+`func`는 `func(y, x)`로 불려요. 적분의 기호 $dy\,dx$에서 안쪽(먼저 적분하는) 변수가 먼저예요. 순서를 바꿔 쓰면 다른 적분이 돼요.
+
+```python
+>>> sd.integrate.dblquad(lambda y, x: x * y * y, 0, 2, 0, 1)
+IntegrateResult(integral=0.666667, error=7.40149e-15, converged=True, nfev=441)
+>>> sd.integrate.dblquad(lambda x, y: x * y * y, 0, 2, 0, 1)
+IntegrateResult(integral=1.33333, error=2.21081e-14, converged=True, nfev=441)
+```
+
+x가 [0, 2], y가 [0, 1]이면 $\int\int x y^2 = 2 \cdot 1/3$이에요. 둘째 줄은 이름만 바꿨을 뿐 첫 인자가 여전히 [0, 1]의 안쪽 변수라 $\int_0^2\int_0^1 y x^2\,dy\,dx = 4/3$을 계산했어요.
+
+### gfun, hfun
+
+안쪽 끝은 수이거나 x의 함수예요. 둘 다 수이면 영역이 상자예요. 바깥 점마다 `gfun`을 먼저, `hfun`을 다음에 불러요.
+
+```python
+>>> calls = []
+>>> def lo(x):
+...     calls.append(('g', x))
+...     return 0.0
+>>> def hi(x):
+...     calls.append(('h', x))
+...     return x
+>>> _ = sd.integrate.dblquad(lambda y, x: 1.0, 0, 1, lo, hi)
+>>> calls[:4], len(calls)
+([('g', 0.5), ('h', 0.5), ('g', 0.013046735741414128), ('h', 0.013046735741414128)], 42)
+```
+
+바깥 `quad`는 21점 규칙 한 번에 끝나서 x를 21개만 정했고, 끝 함수를 x마다 두 번씩 42번 불렀어요. 끝 함수가 돌려준 값은 실수여야 하고 NaN이면 에러예요.
+
+```python
+>>> sd.integrate.dblquad(lambda y, x: 1.0, 0, 1, 0, lambda x: math.sqrt(x - 0.5) if x > 0.5 else math.nan)
+Traceback (most recent call last):
+    ...
+ValueError: dblquad(): 'hfun' returned NaN
+```
+
+### 무한 구간
+
+바깥 끝과 안쪽 끝 모두 ±inf를 받아요. 평면 전체의 $e^{-(x^2+y^2)}$은 π예요.
+
+```python
+>>> g = lambda y, x: math.exp(-(x * x + y * y))
+>>> r = sd.integrate.dblquad(g, -math.inf, math.inf, -math.inf, math.inf)
+>>> r, r.integral - math.pi
+(IntegrateResult(integral=3.14159, error=2.51731e-08, converged=True, nfev=40140), -1.5987211554602254e-14)
+```
+
+### atol, rtol
+
+모든 층의 `quad`가 같은 `atol`·`rtol`을 써요. 층마다 다른 허용오차나 `limit`, `points`, 가중 함수가 필요하면 [`nquad`](/api/integrate/nquad/)의 `opts`를 써요. `dblquad`에는 `limit`이 없고 층마다 50이에요.
+
+```python
+>>> sd.integrate.dblquad(lambda y, x: x * y, 0, 1, 0, 1, limit=100)
+Traceback (most recent call last):
+    ...
+TypeError: dblquad(): unexpected keyword argument 'limit'
+```
+
+## 결과 읽기
+
+필드는 `integral`, `error`, `converged`, `status`, `message`, `nfev`예요. 구간 정보는 없어요. 안쪽 `quad`가 바깥 점마다 하나씩 있어서 한 벌의 구간으로 나타낼 수 없기 때문이에요.
+
+- `error`는 모든 층의 모든 `quad`가 낸 오차 어림 가운데 가장 큰 것이에요. 안쪽 적분의 오차가 바깥 적분에 더해지는 것은 셈하지 않으니 엄밀한 상한이 아니에요.
+- `nfev`는 f를 부른 수예요. 끝 함수의 호출은 세지 않아요. 바깥 21점 × 안쪽 21점이면 441이에요.
+- `converged`는 모든 `quad`가 수렴했을 때예요. `status`와 `message`는 끝나는 차례로(안쪽이 먼저) 처음 수렴하지 못한 `quad`의 것이에요. 모든 `quad`가 정상으로 끝났어도 적분값이나 오차가 유한하지 않으면(f가 inf를 돌려준 경우 등) `status` −3, `converged=False`예요.
+
+```python
+>>> calls = []
+>>> def f(y, x):
+...     calls.append((y, x))
+...     return x * y
+>>> r = sd.integrate.dblquad(f, 0, 1, 0, 2)
+>>> calls[:3], r.nfev == len(calls)
+([(1.0, 0.5), (0.026093471482828257, 0.5), (1.9739065285171717, 0.5)], True)
+```
+
+바깥 x = 0.5에서 안쪽 `quad`가 y ∈ [0, 2]의 가운데 1.0부터 불렀어요.
+
+## 언제 쓰나요
+
+- **영역이 상자가 아니면** `dblquad`예요. 원, 삼각형, 곡선으로 둘러싸인 영역의 끝을 바깥 변수의 함수로 적어요.
+- **영역이 상자이고 f를 배열로 계산할 수 있으면** [`cubature`](/api/integrate/cubature/)가 대개 빨라요. `dblquad`는 f를 점 하나씩 Python으로 부르지만(위의 사분원은 4,851번), `cubature`는 점들의 배열로 몇 번만 불러요.
+- **층마다 옵션이 달라야 하면** [`nquad`](/api/integrate/nquad/)예요. 안쪽 적분의 꺾인 곳을 바깥 변수에 따라 `points`로 줄 수 있어요.
+- 3차원은 [`tplquad`](/api/integrate/tplquad/)예요.
+
+## 정확도와 비용
+
+- **정확도**: 층마다 `quad`의 정확도예요. 시험 문제의 겹친 적분을 Arb(구간 산술)로 만든 참값과 견주면 상대오차가 $5 \times 10^{-15}$ 안이고, 참 오차는 오차 어림의 1% 안이에요.
+- **비용**: f를 부르는 수가 층마다의 점 수의 곱이라, 쉬운 함수도 441번이고 안쪽 적분이 어려우면 빠르게 늘어요. 겹침은 모두 C++ 안에서 돌고 f와 끝 함수만 Python으로 불러요.
+- **배열 호출**: [`quad`](/api/integrate/quad/#vectorized)의 `vectorized`는 없고 f는 늘 점 하나씩 불려요. 바깥 x마다 안쪽 `quad`가 따로 돌아서 한 번에 모을 수 있는 것은 안쪽 변수 y의 점뿐이라, `func(y, x)`의 y만 배열이고 x는 수인 꼴이 되기 때문이에요. 영역이 상자이면 점들을 배열로 부르는 `cubature`를 써요.
+- **스레드**: f가 Python이라 GIL을 쥔 채 돌아요. 같은 입력이면 실행마다 같은 비트이고, 지금은 스레드 수와도 상관없이 같아요(약속은 아니에요).
+
+## scipy를 아는 분께
+
+`scipy.integrate.dblquad`와 같은 겹침, 같은 순서예요. 지금은 f와 끝 함수를 부르는 점과 차례, 적분값, 오차, `nfev`가 scipy 1.18.1과 비트까지 같아요(약속은 아니에요).
+
+- `epsabs`·`epsrel`은 `atol`·`rtol`이에요. `args`는 없어요(클로저로 넘겨요).
+- 튜플 `(y, abserr)` 대신 둘로 풀리는 결과 객체예요. scipy가 안쪽 `quad`마다 내는 경고는 `converged`·`status`·`message`로 알려요.
+- `gfun`·`hfun`이 돌려준 NaN은 `ValueError`예요.
+- 적분값이나 오차가 유한하지 않으면 `status` −3이에요. scipy는 같은 경우에 경고 없이 `(inf, inf)` 같은 값을 돌려줘요.
+
+```python
+>>> import scipy.integrate as si
+>>> si.dblquad(lambda y, x: x * y, 0, 1, 0, lambda x: x)
+(0.125, 5.515032205777789e-15)
+>>> tuple(sd.integrate.dblquad(lambda y, x: x * y, 0, 1, 0, lambda x: x))
+(0.125, 5.515032205777789e-15)
+```

@@ -1,0 +1,476 @@
+---
+title: 정확도와 성능
+group: 정확도와 성능
+order: 1
+summary: 회귀 영역의 정확도를 같은 double 입력의 정확한 답에 대고 잰 결과와 속도를 모았어요. 참값은 Arb로 만들고 반복 방법의 해는 증명하는 판정까지 붙이며, 참조 라이브러리보다 느린 곳은 이유도 적었어요.
+seeAlso: [overview, least-squares, inference, glm, penalized, robust, slopes, quantile, nls, tests, diagnostics, selection]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Steps from '../../../components/fig/Steps.astro';
+
+## 한눈에 보기
+
+회귀 영역의 정확도는 "같은 double 입력의 정확한 답"에 대고 재요. 사용자가 실제로 주는 입력(10진 값을 double로 한 번 반올림한 것, 거듭제곱 열도 double로 만든 것)을 정확한 수로 보고, 그 문제의 답을 Arb(구간 산술)로 만들어요. 반복 방법은 해를 증명하는 판정(Krawczyk, KKT, 선형계획의 쌍대 증명서)까지 붙여요.
+
+| 모형 | 참값 | sd의 오차(Arb 참값 대비) | 참조 라이브러리 기본값의 오차 |
+|---|---|---|---|
+| `ols`·`wls` | Arb 정규방정식 | 계수 $\kappa(X) \le 10^{11}$에서 $\le 10^{-14}$(약속), NIST 11개 모두 $9.3 \times 10^{-17}$ 이하(가장 큰 것이 Norris) | NIST에서 statsmodels·numpy `lstsq`가 Filip 1.1, scikit-learn이 Pontius 660 |
+| 추론·진단 | 같은 도구 | 조건이 좋으면 $u$의 몇 배, 나쁘면 $\kappa u$ 꼴 | statsmodels와 $10^{-11}$, R과 $4 \times 10^{-15}$ 안 |
+| `glm` | 점수 방정식의 뉴턴 + Krawczyk | 17개 문제에서 계수 $1.1 \times 10^{-16}$, 표준오차 $4.5 \times 10^{-16}$ | statsmodels 정준 링크 $10^{-11}$, 정준이 아닌 링크 $10^{-6}$ |
+| `ridge`·`lasso`·`elastic_net`·`penalized_glm` | 활성 집합의 정상 조건 + 엄격한 KKT | $6.9 \times 10^{-16}$–$1.5 \times 10^{-15}$ | scikit-learn `tol=1e-4`에서 $3.6 \times 10^{-6}$–$7.8 \times 10^{-5}$ |
+| `rlm` | ψ 조각을 고정한 방정식 + Krawczyk | 계수 $1.1 \times 10^{-16}$ | statsmodels 기본값과 그쪽 수렴 오차($10^{-5}$ 이하)만큼 |
+| `theilslopes`·`siegelslopes` | scipy, 정확한 유리수 기울기 | 정확한 유리수 기울기의 중앙값과 4ulp 안. 잰 자료에서 지금 scipy와 비트까지 같음(0의 부호 빼고) | |
+| `quantreg` | 유리수로 다시 푼 꼭짓점 + 쌍대 증명서 | 계수 $8.6 \times 10^{-17}$, 78개 적합 모두 증명서 성립 | statsmodels $1.2 \times 10^{-7}$–$9.6 \times 10^{-2}$ |
+| `nls` | Arb 320비트 가우스–뉴턴 | `jac` $3.1 \times 10^{-13}$, 차분 $3.0 \times 10^{-10}$(최대) | scipy·R의 계수 LRE 중앙값 5.9–6.8 |
+| 검정·모형 비교·분산분석 | 비교하는 적합들의 제곱합·편차를 정의대로 | 조건이 좋은 8개 문제에서 통계량과 p값이 최대 $1.9 \times 10^{-14}$, $\kappa \approx 10^8$에서 $\kappa u$ 꼴 | statsmodels는 가중치 0인 WLS에서 0.1, 조건이 나쁘면 $4.2 \times 10^{-2}$ |
+| 진단 추가(VIF, DFFITS·DFBETAS, White·GQ·RESET, GLM의 영향력) | 보조 회귀, 행을 하나씩 뺀 적합 n번 | 조건이 좋은 8개 문제에서 최대 $1.2 \times 10^{-13}$, $\kappa \approx 10^8$에서 $\kappa u$ 꼴 | statsmodels의 한쪽 GQ p값 0.21, 감마 log의 DFBETAS $6.2 \times 10^{-2}$ |
+| `stepwise`·`best_subset` | 모든 부분집합의 제곱합·우도와 선택의 시뮬레이션 | 걸음과 부분집합이 모두 같음, AIC·BIC $2.5 \times 10^{-16}$, $C_p$ $8.0 \times 10^{-16}$($n$에 대한 상대) | |
+
+- 선형 모형의 약속은 "쓰인 열의 2-노름 조건수 $\kappa \le 10^{11}$이고 잔차가 $\lVert X\beta\rVert$의 100배까지이면, 계수 벡터의 상대오차 $\le 10^{-14}$"예요. 그 밖은 잰 값으로 알려요.
+- 반복 방법은 반복이 멈춘 허용오차와 상관없이 해에 반올림 수준으로 가까워요. 판정을 통과한 뒤에도 계수가 반올림보다 크게 움직이는 동안 반복을 이어 가기 때문이에요(GLM과 rlm의 연마, 정규화의 KKT 연마, 분위 회귀의 꼭짓점, 비선형의 다듬기).
+- 같은 기계, 같은 스레드 수, 같은 입력이면 실행마다 같은 비트예요. 지금은 스레드 수와도 상관없고(약속은 아니에요), 배치는 하나씩 부른 것과 같아요.
+- 정확도를 위해 더 일하는 곳(비선형의 다듬기, GLM의 연마, 정규화의 KKT 연마)은 scikit-learn이나 scipy보다 일이 많아요([느린 곳과 그 이유](#느린-곳과-그-이유)).
+
+## 정답지: Arb로 만든 참값
+
+<Fig column caption="참값이 만들어지고 쓰이는 길.">
+  <Steps steps={[
+    { label: 'tools/regression_ref.py', note: '문제를 만들고 참값 파일을 써요. 식은 tools/regref.py', where: 'tools/' },
+    { label: 'tools/regref.py', note: '같은 double 입력을 정확한 공(ball)으로 받아 Arb로 계산', where: 'tools/', depth: 1 },
+    { label: 'ols / glm / penalized / rlm / s_estimate / quantreg / nls', note: '모형마다의 참값 함수. 닫힌 꼴은 정밀도 배가, 반복 방법은 증명 판정까지', where: 'regref.py', depth: 1 },
+    { label: 'model_tests_linear / model_tests_glm / selection_linear / selection_glm', note: '검정·진단과 변수 선택의 참값. 비교하는 적합, 보조 회귀, 모든 부분집합을 정의대로', where: 'regref.py', depth: 1 },
+    { label: 'tools/arbref.py', note: 'settled: 공의 반지름이 값의 2⁻¹¹⁰배 밑인가, 128비트에서 8192비트까지', where: 'tools/', depth: 1 },
+    { label: 'tests/regression/ref/*.json', note: 'linear, glm, penalized, robust, model_tests, selection의 참값(double-double). R의 고정 결과는 data/*_r.json', where: 'tests/regression/' },
+    { label: 'bench/accuracy', note: '모형과 필드마다 sd와 statsmodels·R·scikit-learn의 오차(표는 bench/regression/accuracy.md)', depth: 1 },
+  ]} />
+</Fig>
+
+### 닫힌 꼴: 정규방정식을 높은 정밀도로
+
+OLS·WLS(와 백색화한 GLS, ridge)의 참값은 `tools/regref.py`의 `ols`가 정규방정식 $X^{\mathsf T}WXb = X^{\mathsf T}Wy$를 Arb의 행렬(`arb_mat`)로 풀어 만들어요. double 입력은 정확한 공이고, Arb는 모든 반올림을 공의 반지름에 넣어요. double에서는 정규방정식이 조건수를 제곱해 쓸모없지만, 높은 정밀도에서는 $\kappa^2$이 비트를 더 쓸 뿐 답을 틀리게 하지 않아요.
+
+```python
+    # tools/regref.py
+    p = ar.START_PREC
+    while p <= ar.MAX_PREC:
+        with ar.precision(p):
+            try:
+                vals, meta = _fit(y, X, weights, intercept, alpha, t_guess, groups, maxlags)
+            except ar.NotSettled, ValueError:
+                vals = None
+            if vals is not None and _all_settled(vals):
+                conv = {k: ([ar.to_dd(x) for x in v] if isinstance(v, list) else ar.to_dd(v)) for k, v in vals.items()}
+                return conv, meta
+        p *= 2
+    raise ar.NotSettled("ols")
+```
+
+128비트에서 시작해 모든 값(계수, 표준오차, t, p, 구간, 적합값, 잔차, 지렛대, 스튜던트화 잔차, Cook 거리, 제곱합, R², F, 로그우도, HC0–HC3·HAC·군집 표준오차, Durbin–Watson, Jarque–Bera, Breusch–Pagan)의 공이 값의 $2^{-110}$배 밑으로 줄 때까지 정밀도를 두 배씩 올려요(최대 8192비트). 그 공을 double-double로 반올림해 저장해요. 두 정밀도의 답이 같으면 맞다고 보는 규칙과 달리, 공이 참값을 품는다는 것을 Arb가 보장해요.
+
+Wampler4(5차 다항식, $\kappa = 6.4 \times 10^6$)로 보면 이래요. 자료가 정수라 double 입력이 10진 자료와 같고, 정확한 해는 모든 계수가 1이에요.
+
+```python
+>>> import math
+>>> from flint import arb, arb_mat, ctx
+>>> y4 = [75901, -204794, 204863, -204436, 253665, -200894, 214131, -185192, 221249, -138370,
+...       315911, -27644, 455253, 197434, 783995, 608816, 1370781, 1303798, 2205519, 2408860, 3444321]
+>>> def worst_radius_bits(prec):
+...     ctx.prec = prec
+...     A = arb_mat([[arb(x) ** j for j in range(6)] for x in range(21)])
+...     b = arb_mat([[arb(v)] for v in y4])
+...     beta = (A.transpose() * A).solve(A.transpose() * b)
+...     out = max(float(beta[j, 0].rad()) / float(abs(beta[j, 0].mid())) for j in range(6))
+...     ctx.prec = 53
+...     return round(math.log2(out))
+>>> [worst_radius_bits(p) for p in (128, 256)]
+[-69, -197]
+```
+
+128비트에서는 $\kappa(X^{\mathsf T}X) \approx 4 \times 10^{13}$이 약 45비트를 먹어 공이 $2^{-69}$이라 아직 받지 않고, 256비트에서 $2^{-197}$이라 받아요. 같은 입력에서 여러 라이브러리가 낸 계수는 이래요(오차는 $\max_j\lvert\hat\beta_j - 1\rvert$).
+
+```python
+>>> X4 = [[float(x) ** j for j in range(1, 6)] for x in range(21)]
+>>> r4 = sd.regression.ols(y4, X4)
+>>> float(sd.max(sd.abs(r4.params - 1.0)))
+0.0
+>>> import numpy as np
+>>> import statsmodels.api as sm
+>>> from sklearn.linear_model import LinearRegression
+>>> Xn, yn = np.array(X4), np.array(y4, dtype=float)
+>>> f"{np.max(np.abs(sm.OLS(yn, sm.add_constant(Xn)).fit().params - 1)):.1e}"
+'3.9e-09'
+>>> m = LinearRegression().fit(Xn, yn)
+>>> f"{np.max(np.abs(np.r_[m.intercept_, m.coef_] - 1)):.2f}"
+'0.65'
+>>> f"{np.max(np.abs(np.linalg.lstsq(np.c_[np.ones(21), Xn], yn, rcond=None)[0] - 1)):.1e}"
+'3.6e-09'
+```
+
+잔차가 정확히 0인 완전 적합(Wampler1·2의 일부)은 어떤 유한 정밀도로도 0임을 확정할 수 없어요. 그래서 1024비트에서도 잔차 제곱합의 공이 0을 품으면 완전 적합으로 보고, 계수·적합값과 0인 값만 내요(t, p, 구간은 정의되지 않아요).
+
+이 도구 자체는 NIST 11개의 인증값(계수, 표준오차, 잔차 표준편차, R²)과 $10^{-14}$ 안이고, 무작위 문제에서 statsmodels와 $10^{-15}$ 수준으로 맞아요(Cook 거리는 statsmodels 쪽이 $2.4 \times 10^{-14}$ 틀려요). 테스트는 `tests/regression/test_reference_tool.py`예요.
+
+### 반복 방법: 뉴턴과 Krawczyk 판정
+
+GLM의 최대우도, rlm의 M 추정, MM의 S 추정, 정규화 GLM의 정상점은 닫힌 꼴이 없어요. 참값 도구는 두 단계로 해를 증명해요.
+
+1. **뉴턴**: double 해에서 시작해 공의 중심(`mid()`)만으로 뉴턴을 돌려 작업 정밀도의 반올림 근처까지 가요.
+2. **Krawczyk 판정**: 그 점 $y$ 둘레의 상자 $\mathbf X$(반지름은 작업 정밀도의 절반 비트, 가장 큰 계수에 대해)에서 Krawczyk 연산자
+
+$$
+K(\mathbf X) = y - Y F(y) + \bigl(I - Y F'(\mathbf X)\bigr)(\mathbf X - y)
+$$
+
+를 구간 산술로 계산해요. $F$는 점수(기울기), $F'(\mathbf X)$는 상자 전체에서의 헤시안을 담은 구간 행렬, $Y$는 $F'(y)$의 중심의 역행렬이에요. $K(\mathbf X)$가 $\mathbf X$의 안쪽에 들어가면 $\mathbf X$ 안에 $F$의 근이 정확히 하나 있어요(Krawczyk 1969). 그 $K(\mathbf X)$가 참값의 공이에요.
+
+```python
+    # tools/regref.py
+    g, H = grad_hess(beta)
+    Ym = arb_mat([[H[a][b].mid() for b in range(k)] for a in range(k)]).inv()
+    Ym = arb_mat([[Ym[a, b].mid() for b in range(k)] for a in range(k)])
+    # the box: half the working precision around the point, relative to the largest
+    # coefficient (Newton's point is good to about cond(H) 2^-prec in norm)
+    bmax = max((abs(b.mid()) for b in beta), key=lambda x: float(x)) + arb(2) ** -60
+    r = [bmax * arb(2) ** (-(ctx.prec // 2)) for a in range(k)]
+    box = [arb(beta[a].mid(), r[a].upper()) for a in range(k)]
+    _, HX = grad_hess(box)
+    YH = Ym * arb_mat(HX)
+    Yg = Ym * arb_mat([[x] for x in g])
+    K = []
+    for a in range(k):
+        v = beta[a] - Yg[a, 0]
+        for b in range(k):
+            v += ((1 if a == b else 0) - YH[a, b]) * (box[b] - beta[b])
+        if not (abs(v - beta[a]).upper() < r[a].lower()):
+            raise ar.NotSettled("Krawczyk")
+        K.append(v)
+    beta = K
+```
+
+`tools/regref.py`의 `_glm_fit`이에요. 판정이 실패하면 정밀도를 두 배로 해서 다시 해요. 증명된 계수의 공으로 표준오차, 편차, Pearson χ², 척도, 로그우도, 귀무 모형, 강건 표준오차, p값을 $2^{-110}$ 상대까지 좁혀요.
+
+모형마다 증명하는 것이 조금씩 달라요.
+
+| 참값 함수 | 푸는 방정식 | 증명 |
+|---|---|---|
+| `glm` | 점수 방정식 $X^{\mathsf T}W(z - X\beta) = 0$ (관측 헤시안의 뉴턴) | Krawczyk |
+| `penalized`(선형) | sd 해의 활성 집합과 부호로 정한 정상 조건(연립방정식, 정확히) | 부호가 그대로이고 0인 계수마다 엄격한 KKT 부등식 $\lvert x_j^{\mathsf T}Wr\rvert/s_w \lt \alpha\,\rho\,s_j$ |
+| `penalized`(GLM) | 같은 정상 조건(뉴턴) | Krawczyk + 같은 KKT |
+| `rlm` | 해의 ψ 조각과 척도의 행(MAD의 가운데 행, 제안 2의 안·밖)을 고정한 매끄러운 방정식 | 그 조각과 순서가 상자 전체에서 확실함 + Krawczyk |
+| `s_estimate` | MM의 S 추정 $(\beta, s)$의 고정점 | 같은 꼴의 조각 확인 + Krawczyk |
+| `quantreg` | sd가 돌려준 기저 행으로 $X_B\beta = y_B$를 유리수(`fmpq_mat`)로 | 쌍대 변수가 $[q - 1, q]$ 안인 해가 있는가(최적), 열린 상자 안인가(유일) |
+| `nls` | 정확한 야코비안의 가우스–뉴턴, 320비트, 걸음이 $2^{-120}$ 밑일 때까지 | 남은 걸음과 공의 반지름이 double의 반올림보다 훨씬 작음 |
+
+- **lasso의 KKT**: 0 아닌 계수의 집합과 부호가 정해지면 정상 조건이 연립방정식이 되고, 그 해가 같은 부호를 갖고 0인 열마다 기울기가 벌점의 문턱 안이면 그것이 최소점이라는 것이 볼록 최적화의 조건이에요. 부등식을 엄격하게 요구하므로 공으로 판정할 수 있어요.
+- **분위 회귀의 증명서**: 목적함수는 선형계획이라, 꼭짓점이 최적이라는 것은 잔차가 0인 행의 쌍대 변수 $\lambda_i \in [q - 1, q]$와 $X^{\mathsf T}\lambda = 0$을 만족하는 해가 있다는 것과 같아요. 잔차가 0인 행이 기저뿐이면 $\lambda_B$를 바로 풀고, 더 있으면(퇴화) 같은 $x$의 행을 합친 정확한 선형계획으로 $\lambda$와 상자 끝의 거리 $\varepsilon$의 최댓값을 구해요. $\varepsilon \ge 0$이면 최적, $\varepsilon > 0$이면 유일해요(상대 내부와 선형 사상은 순서를 바꿀 수 있어요. $\operatorname{ri}(A\cdot\text{상자}) = A\cdot\operatorname{ri}(\text{상자})$). 모든 계산이 유리수라 반올림이 없어요.
+- **비선형**의 참값은 구간으로 증명한 근이 아니라 320비트의 반복이에요. 인증값에서 시작하고, 마지막 걸음이 $2^{-120}$ 밑이며, 공의 반지름도 double의 반올림보다 훨씬 작아요.
+
+### NIST StRD
+
+NIST의 통계 참조 자료(StRD)는 공인된 참값과 극단적인 조건수를 함께 줘요.
+
+- **선형 11개**(`tests/regression/data/`, 읽기는 `tests/regression/nist.py`): Norris, Pontius, NoInt1–2, Filip, Longley, Wampler1–5. 인증값은 15자리예요.
+- **비선형 27개**(`tests/regression/data/nls/`, 모형과 해석적 야코비안은 `tests/regression/nist_nls.py`): 난이도 lower 8개, average 11개, higher 8개, 시작점 2개, 인증값 11자리예요.
+
+인증값은 10진 자료의 답이에요. 사용자는 double로 반올림한 자료를 주므로, double 자료의 참값과 인증값은 문제에 따라 다를 수 있어요(Wampler2의 표준오차, Lanczos1의 표준오차 $4 \times 10^{-4}$). 그래서 정확도는 Arb 참값으로 재고, 인증값과는 LRE(log relative error, $-\log_{10}$(상대오차), 인증값의 자릿수에서 자름; McCullough 1998)로 비교해요.
+
+## 오차를 재는 단위
+
+- **계수**: 벡터의 상대오차 $\lVert\hat\beta - \beta\rVert_2/\lVert\beta\rVert_2$예요. 비선형 표와 참조 라이브러리의 NIST 표는 성분별 최대 상대오차예요(표마다 적어요).
+- **관측마다의 값**(지렛대, 잔차, Cook 거리, 가중치): $\max_i\lvert\hat v_i - v_i\rvert/\max_i\lvert v_i\rvert$예요. 0에 가까운 성분의 상대오차는 의미가 없기 때문이에요.
+- **스칼라**(표준오차, p값, 척도, 편차, 통계량): 상대오차예요. 표준오차가 여럿이면 최대예요.
+- 조건수 $\kappa$는 쓰인 열(가중·백색화하고 절편 포함)의 2-노름 조건수(`condition_number`)예요. 오차가 $\kappa u$를 따르는 값(표준오차, 지렛대)은 그 크기로 읽어야 해요($u$는 double의 반올림 단위 $2^{-53} \approx 1.1 \times 10^{-16}$).
+
+## 모형별 정확도
+
+### 선형 최소제곱
+
+**NIST 11개**. "QR만"은 반복 개선 없는 QR 해, "sd"는 `ols`가 돌려주는 결과(필요할 때까지 최대 3번 개선)예요. 참조 라이브러리 세 열은 같은 double 입력에서 성분별 최대 상대오차예요(statsmodels 0.15.0, scikit-learn 1.9.1, numpy `lstsq`; sd.linalg `lstsq`도 numpy와 같은 자릿수).
+
+| 문제 | $\kappa(X)$ | QR만 | sd 계수 | sd 표준오차 | statsmodels | scikit-learn | numpy `lstsq` |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Norris | 8.6e2 | 2e-13 | 9e-17 | 4e-16 | 1.1e-12 | 5.6e-14 | 9.1e-13 |
+| Pontius | 1.4e13 | 2e-13 | 4e-17 | 5e-16 | 7.8e-8 | 6.6e2 | 7.8e-8 |
+| NoInt1 | 1 | 1e-17 | 1e-17 | 0 | | | |
+| NoInt2 | 1 | 2e-16 | 3e-17 | 0 | | | |
+| Filip | 1.8e15 | 4e-8 | 1e-17 | 7e-8 | 1.1 | 1.0 | 1.1 |
+| Longley | 4.9e9 | 6e-13 | 2e-17 | 2e-13 | 1.4e-11 | 1.2e-14 | 1.4e-11 |
+| Wampler1 | 6.4e6 | 1e-10 | 0 | 0 (완전 적합) | 2.9e-10 | 0.65 | 2.9e-10 |
+| Wampler2 | 6.4e6 | 9e-15 | 4e-17 | — (아래) | 4.1e-11 | 3.4 | 4.2e-11 |
+| Wampler3 | 6.4e6 | 2e-10 | 0 | 3e-14 | | | |
+| Wampler4 | 6.4e6 | 2e-9 | 0 | 3e-14 | 3.9e-9 | 0.65 | 3.6e-9 |
+| Wampler5 | 6.4e6 | 2e-7 | 0 | 3e-14 | 3.8e-7 | 0.65 | 4.0e-7 |
+
+- Filip은 세 참조 라이브러리 모두 맞는 자릿수가 없어요. scikit-learn은 다항식 문제(Pontius, Wampler)에서 크게 틀려요.
+- 잔차가 큰 문제(Longley, Wampler4·5)는 QR 해에 $\kappa^2 u\,\lVert r\rVert$ 꼴의 항이 남아요. 증강 시스템의 반복 개선이 그 항을 지워요([최소제곱 풀이](/internals/regression/least-squares/)).
+- 표준오차는 개선해도 $R$이 그대로라 상대오차가 대략 $\kappa u$예요(Filip $7 \times 10^{-8}$). Wampler2는 double 입력의 참 제곱합이 아주 작아, $\beta$를 double로 반올림한 것만으로 잔차가 바뀌어 표준오차에 상대 정확도가 없어요. 잔차가 모두 반올림 크기 안이라 sd는 완전 적합으로 판정하고 `bse` 0과 NaN인 t·p·F를 내요([최소제곱 풀이](/internals/regression/least-squares/)).
+
+**조건수를 바꾼 무작위 문제**($X = U\operatorname{diag}(s)V^{\mathsf T}$, $n = 100$, $k = 8$, 잔차는 $X$에 수직이고 $\lVert r\rVert = \rho\lVert X\beta\rVert$, $\rho = 10^{-10}, 1, 100$, $\kappa$마다 9개의 최대).
+
+| $\kappa$ | $10^9$ | $10^{10}$ | $10^{11}$ | $10^{12}$ | $10^{13}$ | $10^{14}$ |
+|---|---:|---:|---:|---:|---:|---:|
+| 계수(sd) | 5.4e-16 | 1.4e-15 | 1.1e-15 | 1.6e-12 | 3.4e-9 | 2.5e-7 |
+
+$10^{11}$까지가 약속이고, 그 위는 잰 값이에요. 개선 한 번에 오차가 대략 $\kappa u$배로 줄어드는데, $\kappa \approx 10^{16}$($\kappa u \approx 1$)이면 개선이 수렴하지 않아요. 그런 $X$는 기본 `rtol`에서 열 하나가 겹친다고 판정돼요.
+
+**극단적인 척도.** 조건수는 열의 척도를 바꿔도 그대로지만, 열이나 $y$의 크기가 $2^{\pm256}$ 밖이면 $(R^{\mathsf T}R)^{-1}$이나 잔차의 제곱이 double을 벗어나요. 그런 열과 $y$는 2의 거듭제곱으로 옮겨 풀고 추론은 적합의 단위에서 만들어서([최소제곱 풀이](/internals/regression/least-squares/)), $x$나 $y$에 $10^{\pm300}$ 범위의 배율을 곱해도 t·p·$R^2$·표준오차의 비가 반올림 몇 번 안에서 같아요.
+
+```python
+>>> rng = sd.random.default_rng(3)
+>>> xs = sd.stats.Normal().sample(20, rng=rng)
+>>> ys = 1.0 + 0.5 * xs + sd.stats.Normal().sample(20, rng=rng)
+>>> [sd.regression.ols(ys * a, xs * b).pvalues[1] for a, b in ((1.0, 1.0), (1.0, 1e160), (1e-165, 1.0), (1e300, 1e290))]
+[0.025005323114196447, 0.025005323114196447, 0.025005323114196426, 0.025005323114196447]
+>>> big = sd.regression.ols(ys * 1e300, xs * 1e-300)
+>>> big.params[1], big.pvalues[1]
+(inf, 0.025005323114196447)
+>>> big.conf_int()[1].tolist()
+[inf, inf]
+```
+
+마지막 적합은 기울기의 참값($6.4\times10^{599}$)이 double 밖이라 그 계수와 표준오차만 inf이고, t와 p는 적합의 단위에서 구해 같은 값이에요. 신뢰구간도 두 끝을 적합의 단위에서 구해 되돌리므로, 기울기의 구간은 두 끝이 제 부호대로 넘친 $[\infty, \infty]$이고 NaN이 아니에요. [`glm`](/internals/regression/glm/#극단적인-척도)(열, 정규·감마의 $y$), [`rlm`](/internals/regression/robust/)·[`quantreg`](/internals/regression/quantile/)($y$), [정규화](/internals/regression/penalized/#극단적인-척도)($y$와 벌점)도 같은 방법으로 옮겨 풀어요.
+
+**R과의 비교**(R 4.6.2 `lm`, sandwich 3.1.3, lmtest 0.9.40; `tests/regression/test_against_r.py`): 조건이 좋은 7개 문제에서 계수·표준오차·R²·F·잔차·`hatvalues`·`rstandard`·`rstudent`·`cooks.distance`·`vcovHC`·`NeweyWest`·`vcovCL`이 $4 \times 10^{-15}$, `coeftest`의 p값 $10^{-13}$, `dwtest` $5 \times 10^{-16}$, `bptest` $8 \times 10^{-15}$ 안이에요. 조건이 나쁘면 R 쪽이 틀려요. $\kappa = 10^8$($n = 100$, 절편 없음)에서 R `lm`의 계수가 $3 \times 10^{-9}$, 강건 표준오차가 0.01–0.18 틀리고(빵과 고기를 $X^{\mathsf T}X$ 꼴로 곱해 $\kappa^2 u$), sd는 계수 0, 표준오차 $7 \times 10^{-10}$ 안이에요.
+
+### 추론과 진단
+
+Arb 참값(`tests/regression/ref/linear.json`)과의 오차예요. 관측별 값은 $\max\lvert\text{차}\rvert/\max\lvert\text{참값}\rvert$이에요.
+
+| 문제 | $\kappa$ | 지렛대 | 외적 스튜던트화 | Cook | DW | JB | BP | HAC bse | 군집 bse | 군집 F·p |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| ols_int | 1.6 | 4e-16 | 2e-16 | 7e-16 | 1e-16 | 7e-16 | 2e-16 | 4e-16 | 5e-16 | 2e-15 |
+| wls_zero (가중치 0 포함) | 1.8 | 3e-16 | 4e-16 | 4e-16 | 3e-17 | 1e-15 | 7e-16 | 2e-16 | 4e-16 | 2e-15 |
+| ols_cond | 1.0e5 | 3e-12 | 6e-14 | 5e-13 | 5e-17 | 1e-15 | 8e-12 | 4e-13 | 2e-13 | 3e-11 |
+| ols_kappa11 | 1.0e11 | 4e-6 | 2e-7 | 1e-6 | 6e-14 | 2e-12 | 6e-7 | 8e-7 | | |
+| Longley | 4.9e9 | 3e-13 | 1e-12 | 3e-12 | 1e-16 | 7e-15 | 1e-12 | 1e-12 | | |
+| Filip | 1.8e15 | 4e-8 | 4e-8 | 4e-8 | 4e-9 | 7e-8 | 2e-8 | 2e-7 | | |
+
+조건이 좋은 문제는 모두 $u$의 몇 배이고, 조건이 나빠지면 오차가 대략 $\kappa u$를 따라요. 지렛대는 $X$의 열공간 자체가 $\kappa u$만큼 움직이기 때문이에요(Pontius처럼 조건수가 열의 척도에서만 오면 그렇지 않아요). 테스트의 기준은 $\max(10^{-13}, 10\kappa u)$예요. 군집의 Wald F는 공분산의 역행렬을 만들지 않고 $Q$ 좌표에서 구해요. $\kappa = 10^5$인 ols_cond에서 공분산 블록을 Cholesky로 풀면 F의 상대오차가 $2.4 \times 10^{-6}$, 이 방법은 $2.7 \times 10^{-11}$이에요([추론과 진단](/internals/regression/inference/)).
+
+statsmodels와는 HAC·군집의 표준오차·p·F, 지렛대, 두 스튜던트화 잔차, Cook 거리, DW, JB, BP 모두 $10^{-11}$ 안에서 같아요(`tests/regression/test_robust_diagnostics.py`).
+
+### 일반화 선형 모형
+
+**Arb 참값의 17개 문제**(`tests/regression/ref/glm.json`, $n = 60$; 분포족·링크 12개, 이항 시행 수, 포아송 노출, 감마 가중치, 절편 없음, `scale='dev'`).
+
+| 문제 | `n_iter` | 계수 | 표준오차 | p값 | 편차·χ²·척도 | llf·llnull | 강건 표준오차 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| binomial_logit | 6 | 7.9e-17 | 7.9e-17 | 1.7e-15 | 1.8e-17 | 2.0e-17 | 5.4e-16 |
+| binomial_log | 14 | 1.1e-16 | 4.5e-16 | 1.4e-14 | 4.7e-17 | 3.0e-17 | 9.5e-16 |
+| poisson_sqrt | 8 | 7.4e-17 | 1.9e-16 | 1.6e-13 | 1.6e-16 | 7.9e-17 | 6.9e-16 |
+| gamma_identity | 17 | 4.3e-17 | 1.4e-16 | 2.8e-15 | 1.5e-16 | 8.5e-17 | 3.1e-16 |
+| 17개의 최대 | | 1.1e-16 | 4.5e-16 | 1.6e-13 | 2.2e-16 | 2.4e-16 | 9.5e-16 |
+
+p값은 $t$의 꼬리 확률이라, $t$의 상대오차가 조건수 $\lvert t\rvert f(t)/P$배로 커져 들어가요($P$가 작을수록 커요).
+
+**조건수**($n = 200$, $k = 6$, 씨앗 3개의 최대, 계수의 상대오차).
+
+| 분포족 | $\kappa = 1$ | $10^6$ | $10^8$ | $10^{10}$ | $10^{12}$ |
+|---|---:|---:|---:|---:|---:|
+| 이항 logit | 7.8e-17 | 2.2e-16 | 2.5e-16 | 1.1e-15 | 4.4e-12 |
+| 포아송 log | 5.8e-17 | 7.6e-17 | 5.8e-17 | 2.8e-16 | 9.0e-12 |
+
+$\kappa(\sqrt W X)$가 $10^3$ 남짓을 넘으면 연마 반복이 QR이라 $\kappa \ge 10^6$의 칸은 실제 계산 경로 그대로예요. $\kappa \le 10^3$에서는 정준 링크의 연마를 정규방정식으로 하고, 그 경로는 같은 꼴의 문제($\kappa = 1$–$10^3$)에서 계수 $1.3 \times 10^{-16}$, 표준오차 $7.8 \times 10^{-15}$ 안이에요. 마지막 풀이를 개선하지 않으면 $\kappa u$ 꼴로 나빠져요($10^8$에서 $3 \times 10^{-9}$).
+
+**정준이 아닌 링크**($n = 200$, 씨앗 2개의 최대). 괄호는 같은 적합의 연마와 마지막 풀이를 Fisher 걸음으로 한 것이에요.
+
+| 링크 | $\kappa = 10^4$ | $10^6$ | $10^8$ | $10^{10}$ |
+|---|---:|---:|---:|---:|
+| 이항 probit | 1.9e-16 (1.9e-15) | 3.8e-16 (6.0e-14) | 3.1e-16 (5.8e-11) | 3.8e-15 (3.6e-9) |
+| 이항 log | 1.2e-15 (4.5e-6) | 9.0e-16 (1.2e-5) | 3.5e-15 (2.1e-5) | 2.1e-14 (2.4e-5) |
+| 포아송 identity | 1.3e-16 (8.3e-9) | 1.5e-16 (8.1e-9) | 4.2e-17 (7.9e-9) | 4.3e-14 (1.5e-8) |
+| 감마 identity | 8.5e-17 (1.0e-8) | 1.1e-16 (1.4e-7) | 4.3e-18 (1.4e-7) | 3.2e-14 (1.1e-7) |
+
+Fisher 득점법은 정준이 아닌 링크에서 선형으로 수렴해, 수렴이 느린 링크는 $\kappa$와 상관없이 편차 판정의 정밀도($10^{-8}$–$10^{-5}$)에 머물러요. 관측 정보의 뉴턴 걸음으로 연마하면 정준 링크와 같은 수준이에요([GLM](/internals/regression/glm/)).
+
+**참조 라이브러리와 비교.**
+
+- statsmodels 0.15.0과는 정준 링크에서 계수 $10^{-11}$, 정준이 아닌 링크에서 $10^{-6}$ 안이에요(`tests/regression/test_glm.py`). 정준이 아닌 링크의 차이는 statsmodels가 편차의 절대 변화로 멈춰 덜 수렴한 것이에요. 표준오차는 공분산을 만드는 가중치가 마지막 걸음만큼 달라 $10^{-10}$–$5 \times 10^{-9}$ 달라요.
+- R 4.6.2 `glm`(21문제, $n = 60$): R의 `glm.fit`을 sd의 해에서 한 번 돌리면(`start = params`, `maxit = 1`) 계수가 그 자리에 머물고($1.2 \times 10^{-15}$), 표준오차·편차·Pearson χ²·척도·적합값 $1.6 \times 10^{-15}$, p값 $1.8 \times 10^{-13}$ 안이에요. R의 기본 판정(epsilon $10^{-8}$)으로 끝까지 적합하면 계수가 정준 링크 $10^{-7}$, 정준이 아닌 링크 $4 \times 10^{-7}$–$2 \times 10^{-4}$ 달라요.
+- Fisher 득점법이 느린 감마 log 문제(평평한 방향의 수렴비 0.8–0.9)에서 statsmodels는 500번에 수렴하지 않고, R 4.6.2는 기본 판정으로 27번에 멈춰 계수가 $10^{-4}$–$2 \times 10^{-3}$ 달라요. sd는 9–15번에 $3.8 \times 10^{-14}$ 안이에요.
+
+### 정규화 회귀
+
+계수 벡터의 상대오차예요. sd 열은 `bench/regression/accuracy.md`의 `penalized/*` 행이에요.
+
+| 문제 | sd | scikit-learn `tol=1e-4` | `tol=1e-12` |
+|---|---:|---:|---:|
+| lasso·엘라스틱 넷($n = 60$; 가중치, 0인 가중치, 표준화, 절편 없음, 상수 열, 8개) | 6.9e-16 – 1.5e-15 | 3.6e-6 – 7.8e-5 | 5.2e-14 – 1.4e-12 |
+| ridge(3개) | 5.1e-16 – 1.2e-15 | 7.1e-16 – 1.2e-15 | 5.1e-16 – 1.3e-15 |
+| 로지스틱·포아송, l1_ratio 1, 0.5, 0(7개) | 9.4e-17 – 2.8e-16 | 5.1e-7 – 1.6e-4 | 3.2e-15 – 1.9e-12 |
+| 조건수 $10^6$: lasso / 엘라스틱 넷 / ridge(alpha 1e-8) | 7.6e-17 / 5.3e-17 / 1.4e-17 | 7.2e-5 / 6.0e-2 / 2.5e-9 | 7.4e-13 / 7.8e-10 / 2.6e-12 |
+
+- scikit-learn의 기본 `tol`은 쌍대 간격만 보므로 계수가 대략 $\sqrt{\text{간격}/\mu}$까지만 맞아요($\mu$는 활성 집합의 이차 항의 가장 작은 고윳값). 조건수를 바꾼 문제($n = 200$, $k = 8$, $\kappa = 10^2$–$10^6$)에서 $1.8 \times 10^{-4}$–0.34이고, sd는 $8.6 \times 10^{-15}$ 안이에요.
+- sd가 반올림 수준인 것은 KKT 연마 때문이에요. 활성 집합과 부호가 자리를 잡으면 정상 조건을 Cholesky로 한 번에 풀고, 조건수 어림이 문턱을 넘으면 double-double 잔차로 개선해요([정규화](/internals/regression/penalized/)).
+- ridge는 최소제곱에 가까운 $\kappa = 10^8$–$10^{10}$, alpha $10^{-12}$–$10^{-18}$에서도 $1.7 \times 10^{-15}$ 안이에요(OLS 수준). 행 수 $n = 1{,}000$, $20{,}000$에서도 $5.6 \times 10^{-16}$ 안이에요.
+- R glmnet 5.2(`thresh = 1e-20`)와는 40개 적합에서 계수가 $4 \times 10^{-11}$ 안(glmnet의 수렴 판정)이고, sd의 목적함수 값이 glmnet 해의 값보다 크지 않아요.
+
+### 강건 회귀
+
+`bench/regression/accuracy.md`의 `robust/*` 행과 `tests/regression/test_robust.py`.
+
+- **Arb**: 19개 문제(ψ 3가지 × 척도 2가지 × 짝·홀 $n$, 절편 없음, $n = 400$, 스택 손실 ψ 3가지, MM 2개)에서 계수 벡터 $1.1 \times 10^{-16}$, 척도 $1.4 \times 10^{-15}$, 표준오차 $1.2 \times 10^{-15}$, 가중치(절대) $1.1 \times 10^{-15}$ 안이에요. 척도의 오차는 가운데 잔차의 상쇄($\lvert r_m\rvert$가 $\lvert y\rvert$보다 작아요)에서 와요. MM의 S는 `s_estimate`로 증명한 고정점과 원소마다 $9.4 \times 10^{-16}$, 척도 $2.2 \times 10^{-16}$ 안이에요.
+- 뉴턴 걸음 없이 IRLS만이면 두 문제가 `max_iter` 50에 닿아 계수 오차가 $6.7 \times 10^{-10}$, $8.7 \times 10^{-11}$이에요. MM의 avar1을 $X^{\mathsf T}\Psi'X$로 직접 만들면 스택 손실의 표준오차가 $8 \times 10^{-14}$(얇은 Q 좌표에서 $6.7 \times 10^{-16}$)예요.
+- **statsmodels**(`tol=1e-15`, `maxiter=1000`): 계수 $2.3 \times 10^{-15}$, 척도 $2.1 \times 10^{-15}$, 표준오차 $1.3 \times 10^{-15}$, 가중치 $4.7 \times 10^{-15}$ 안이에요. 기본값(목적함수의 절대 변화 $10^{-8}$)과는 그쪽의 수렴 오차만큼($10^{-5}$ 이하) 달라요.
+- **R**(4.6.2, MASS 7.3.66, robustbase 0.99.7): `MASS::rlm(scale.est='proposal 2', acc=1e-15)`와 계수 $4.1 \times 10^{-15}$, 척도 $1.7 \times 10^{-14}$, 표준오차 $10^{-14}$ 안이에요(MASS가 var ψ′를 $n - 1$로 나누는 비를 맞춰서). robustbase의 M 단계를 증명한 S 시작에서 `rel.tol` 1e-15로 부르면 계수 $1.1 \times 10^{-15}$, `.vcov.avar1` $7.2 \times 10^{-15}$ 안이고(스택 손실만 $1.5 \times 10^{-13}$: robustbase가 $X^{\mathsf T}\Psi'X$를 직접 역행렬로 풀어서, sd는 Arb와 $6.7 \times 10^{-16}$), `lmrob` 자체(자기 부분표본, S의 `refine.tol` 1e-7)와는 계수 $1.1 \times 10^{-9}$–$1.2 \times 10^{-7}$, 척도 $1.3 \times 10^{-8}$–$1.1 \times 10^{-5}$ 달라요.
+- **Theil–Sen·Siegel**: $n = 2$–$5{,}000$의 무작위·동률·격자·평평한 자료, 두 방법, 여러 `alpha`, 배치에서 지금 scipy와 비트까지 같아요(0의 부호 빼고, 같은 식과 정확한 선택을 써서요). 쌍의 정확한 유리수 기울기의 중앙값과는 4ulp 안이에요([Theil–Sen과 Siegel](/internals/regression/slopes/)).
+
+### 분위 회귀
+
+78개 적합(R 대조 문제, 무작위 설계 $n = 50$–$5{,}000$, 5차 다항식, 더미 설계)에서 모두 증명서가 정확히 성립해요.
+
+| 무엇 | sd | statsmodels `QuantReg` 기본값 | R quantreg 6.1 |
+|---|---:|---:|---:|
+| 계수(정확한 꼭짓점 대비) | $8.6 \times 10^{-17}$ | $1.2 \times 10^{-7}$–$9.6 \times 10^{-2}$ | `br` $1.0 \times 10^{-14}$(R 쪽 오차), `fn` $2 \times 10^{-14}$–$1.8 \times 10^{-8}$ |
+| 목적함수 | $1.9 \times 10^{-16}$ | $2.2 \times 10^{-10}$–$1.0 \times 10^{-4}$ 큼 | `fn`은 sd보다 작지 않음 |
+| 유일하지 않음의 판정 | 정확한 판정과 모두 같음 | | `br`의 경고가 유일한 해에서도 나옴 |
+| 표준오차 'nid' / 'ker' / 'iid' | — | | $7.8 \times 10^{-14}$ / $4.0 \times 10^{-14}$ / $1.3 \times 10^{-14}$ |
+
+statsmodels의 IRLS는 작은 $n$일수록 정확한 꼭짓점에서 멀어요($n = 50$에서 가장 커요). R과의 'iid' 차이는 희소도의 중앙값 회귀가 유일하지 않은 세 경우만 $7.6 \times 10^{-2}$–0.12예요(R의 `br`과 sd가 같은 목적함수의 다른 꼭짓점을 골라요; [분위 회귀](/internals/regression/quantile/)).
+
+### 비선형 최소제곱
+
+NIST 27개 × 시작점 2개에서 같은 double 자료의 Arb 참값과 견준 성분별 상대오차예요. 해석적 `jac`이면 계수가 최대 $3.1 \times 10^{-13}$, 중앙값 $10^{-15}$ 정도이고, 차분이면 최대 $3.0 \times 10^{-10}$, 중앙값 $3$–$6 \times 10^{-13}$이에요. 표준오차의 중앙값은 `jac` $1$–$2 \times 10^{-14}$, 차분 $1$–$2 \times 10^{-12}$예요.
+
+표준오차의 최대는 Lanczos1이에요. 인증 제곱합이 $1.4 \times 10^{-25}$라 잔차가 $f$의 반올림의 수백 배밖에 안 되고, $f$를 double로 계산하는 한 표준오차는 3–4자리예요. Lanczos1을 빼면 표준오차는 `jac` $5.2 \times 10^{-12}$, 차분 $9.1 \times 10^{-10}$ 안이에요. 계수의 최대는 조건이 나쁜 Lanczos1–3과 MGH10($\kappa(J) \sim 10^4$–$10^8$)이에요.
+
+인증값(11자리)과의 LRE는 계수가 차분 9.5, `jac` 10.3 이상이에요. 다듬기를 끄면(반복이 멈춘 점 그대로) LRE 중앙값이 6.4–6.8로 scipy lm(6.4–6.6)과 같고, scipy trf·R nls·nlsLM도 중앙값 5.9–6.8이에요. 그러니 차이는 다듬기가 만들어요. 표준오차의 LRE는 2점 차분의 야코비안을 쓰는 scipy가 5.0–5.3, R이 6.1–6.3이에요. scipy lm은 시작점 1에서 4개가 실패하고 MGH17에서 다른 점에 멈춰요. R nls는 시작점 1에서 11개, 2에서 2개가 실패하고, nlsLM은 시작점 1에서 7개, 2에서 2개가 다른 점(LRE 0–1)이에요. sd의 실패는 시작점 1의 BoxBOD(차분), Bennett5, MGH09(`jac`, 기본 `max_nfev`)예요([비선형 최소제곱](/internals/regression/nls/)).
+
+R(4.6.2, `deriv()`의 해석적 기울기, `nls.control(tol = 1e-10)`)의 `nls`와는 계수 $1.3 \times 10^{-11}$, 표준오차 $1.1 \times 10^{-11}$, σ̂·제곱합 $2 \times 10^{-15}$ 안이에요. scipy와는 경계 문제 셋에서 sd의 제곱합이 scipy 이하이고 계수·표준오차가 $2 \times 10^{-5}$(scipy trf의 멈춤 정밀도) 안이에요.
+
+### 검정과 모형 비교
+
+`bench/regression/accuracy.md`의 `model_tests/*` 행이에요. 참값은 값마다 정의대로 계산해요. `t_test`·`wald_test`는 Arb로 푼 계수와 공분산에서, 비교와 분산분석은 비교하는 적합들의 제곱합·편차(Type I은 항을 하나씩 더한 적합, Type III는 항을 뺀 적합)에서 구해요. 문제는 선형 다섯(OLS, 가중치 0이 있는 WLS, 절편 없음, 세 수준 요인의 항, $\kappa \approx 10^8$)과 GLM 넷(이항 logit·probit, 포아송 log, 감마 log)이고, 스윕 9개에 점이 모두 2,800개예요. 칸은 통계량과 p값을 함께 본 원소별 최대 상대오차예요.
+
+| 문제 | `t_test` | `wald_test` | `compare_*` | Type I | Type III |
+|---|---:|---:|---:|---:|---:|
+| ols | 9.5e-16 | 2.2e-16 | 7.8e-16 | 1.1e-15 | 5.8e-16 |
+| wls_zero (가중치 0 포함) | 1.8e-16 | 1.8e-16 | 1.3e-15 | 9.9e-16 | 6.3e-16 |
+| noint (절편 없음) | 2.1e-15 | 2.1e-15 | 7.6e-16 | 4.3e-15 | 2.3e-15 |
+| factor (세 수준 요인) | 8.5e-16 | 2.5e-15 | 2.0e-15 | 2.8e-15 | 3.4e-15 |
+| cond ($\kappa \approx 10^8$) | 9.0e-10 | 1.8e-9 | 2.9e-15 | 2.7e-9 | 1.4e-10 |
+| glm_logit | 4.3e-16 | 1.4e-15 | 1.5e-15 | 1.5e-15 | 1.3e-16 |
+| glm_probit | 1.6e-15 | 1.4e-15 | 2.4e-17 | 2.6e-15 | 7.8e-16 |
+| glm_poisson | 5.0e-16 | 4.3e-16 | 1.3e-14 | 8.6e-15 | 1.5e-16 |
+| glm_gamma | 6.3e-15 | 1.9e-14 | 6.7e-15 | 1.6e-15 | 8.4e-16 |
+
+- 조건이 좋은 문제의 큰 값은 대개 p값이에요. 통계량 자체는 $u$의 몇 배이고, p값은 꼬리 확률이라 통계량의 상대오차가 커져 들어가요(위의 GLM 절과 같은 이유예요).
+- cond의 t, Wald, Type I·III는 $\kappa u$ 꼴이에요. 계수의 `bse`와 같은 꼴이고, Type I의 제곱합은 적합의 삼각 인자와 계수에서 $R\beta$로 구해요([검정과 모형 비교](/internals/regression/tests/)). 비교 검정은 두 적합의 제곱합을 견주는 것이라 조건수와 상관없이 반올림 수준이에요.
+- statsmodels는 조건이 좋은 문제에서 $2 \times 10^{-11}$ 안이지만, 가중치 0인 행이 있는 WLS에서 t·Wald·비교가 $5 \times 10^{-2}$–0.1 달라요. statsmodels의 WLS는 가중치 0인 행도 `nobs`와 자유도에 세어요. cond에서는 t가 $4.2 \times 10^{-2}$, Wald가 $2.8 \times 10^{-2}$ 틀려요.
+
+### 진단 추가
+
+같은 `model_tests/*` 행이에요. VIF는 보조 회귀, DFFITS·DFBETAS는 행을 하나씩 뺀 적합 n번, White는 보조 회귀, Goldfeld–Quandt는 두 부분의 적합, RESET은 확장 적합으로 참값을 만들어요. GLM의 영향력은 증명한 최대우도 추정과 그 기대 정보에서 구해요.
+
+| 문제 | VIF | DFFITS | DFBETAS | White | Goldfeld–Quandt | RESET |
+|---|---:|---:|---:|---:|---:|---:|
+| ols | 5.7e-16 | 1.2e-15 | 8.9e-14 | 1.3e-15 | 1.6e-16 | 1.2e-15 |
+| wls_zero | 4.2e-16 | 1.7e-15 | 6.4e-15 | 7.9e-16 | 1.1e-16 | 6.6e-16 |
+| noint | 1.7e-16 | 2.6e-15 | 8.4e-15 | 6.1e-16 | 2.3e-16 | 4.7e-15 |
+| factor | 7.3e-16 | 1.4e-14 | 4.5e-14 | 6.2e-16 | 1.2e-16 | 1.1e-15 |
+| cond ($\kappa \approx 10^8$) | 1.4e-10 | 2.6e-9 | 2.3e-8 | | 1.7e-16 | 6.6e-12 |
+
+| 문제 | 지렛대 | Cook 거리 | DFFITS | DFBETAS |
+|---|---:|---:|---:|---:|
+| glm_logit | 1.0e-15 | 8.6e-16 | 4.9e-16 | 5.6e-14 |
+| glm_probit | 9.0e-16 | 1.1e-15 | 4.2e-16 | 1.7e-14 |
+| glm_poisson | 2.1e-15 | 1.2e-13 | 5.8e-14 | 5.8e-14 |
+| glm_gamma | 9.4e-16 | 1.7e-14 | 8.0e-15 | 8.2e-15 |
+
+- 관측마다의 값(DFFITS, DFBETAS, 지렛대, Cook 거리)도 원소마다의 상대오차예요. 큰 값은 참값이 0에 가까운 원소에서 나와요. 벡터 전체의 노름 상대오차로 보면 조건이 좋은 8개 문제 모두 $5 \times 10^{-16}$ 안이에요(cond는 DFBETAS $4.6 \times 10^{-10}$).
+- cond의 VIF·DFFITS·DFBETAS는 $\kappa u$ 꼴이에요. 행을 하나씩 다시 적합하지 않고 적합의 얇은 Q와 $R^{-1}$에서 구하므로([진단 추가](/internals/regression/diagnostics/)), 지렛대와 같은 꼴로 열공간의 반올림이 들어가요.
+- cond의 White는 재지 않아요. 보조 설계(열의 제곱과 곱)의 조건수가 $\kappa^2 \approx 10^{16}$이라 보조 회귀가 열 하나를 겹친 열로 빼고 자유도가 하나 적어서, 정확한 값과 다른 검정이에요.
+- statsmodels와 크게 다른 곳은 정의가 다른 곳이에요. `het_goldfeldquandt`의 한쪽 p값은 F의 두 자유도를 바꿔 써서(factor 0.023, noint 0.21), `GLMInfluence`의 기본은 관측 정보라 정준이 아닌 링크(감마 log)의 DFBETAS가 $6.2 \times 10^{-2}$ 달라요. cond에서는 VIF가 $4.4 \times 10^{-3}$, DFBETAS가 $1.3 \times 10^{-5}$ 틀려요.
+
+### 변수 선택
+
+`bench/regression/accuracy.md`의 `selection/*` 행이에요. 참값은 문제마다 모든 부분집합의 제곱합·우도·AIC·BIC(선형은 겹마다의 학습 제곱합과 시험 오차까지)를 정의대로 계산하고, 그 값으로 `stepwise`(방향 셋 × 기준)와 `best_subset`(기준 다섯)이 고를 걸음과 부분집합을 시뮬레이션한 것이에요. 문제는 선형 넷(공선이 조금 있는 OLS, 가중치 0이 있는 WLS, 절편 없음, $\kappa \approx 2.3 \times 10^5$)과 GLM 셋(이항 logit, 포아송 log, 감마 log)이고, 스윕 7개에 점이 모두 349개예요. 모든 걸음과 부분집합이 참값의 선택과 같고, 걸음마다·크기마다의 기준값의 최대 상대오차는 이래요. $C_p$ 열만은 $n$에 대한 상대오차 $\lvert\Delta\rvert/n$이에요. $C_p$는 크기가 $n$인 항들의 차라서 $C_p$ 자신에 대한 상대오차는 $C_p$가 0에 가까울 때 뜻이 없기 때문이에요.
+
+| 문제 | AIC·BIC | $C_p$ | 수정 결정계수 | 교차검증 오차 |
+|---|---:|---:|---:|---:|
+| ols | 2.5e-16 | 3.1e-16 | 4.2e-16 | 9.9e-17 |
+| wls_zero | 1.3e-16 | 3.1e-16 | 1.7e-16 | 3.2e-16 |
+| noint | 2.0e-16 | 1.5e-16 | 3.0e-16 | 3.1e-16 |
+| cond ($\kappa \approx 2.3 \times 10^5$) | 1.4e-16 | 8.0e-16 | 8.8e-16 | 3.0e-12 |
+| glm_logit | 1.1e-16 | | | |
+| glm_poisson | 6.1e-17 | | | |
+| glm_gamma | 5.5e-17 | | | |
+
+- 선형 후보의 기준값은 적합하지 않고 전체 모형의 잔차를 뺀 삼각 인자 하나에서 구해요. 제곱합의 반올림이 전체 모형보다 늘어난 양에 비례해서, 조건이 나쁜 cond에서도 AIC·BIC가 반올림 수준이에요([변수 선택](/internals/regression/selection/)).
+- 교차검증 오차는 겹의 학습 적합을 반복 개선하지 않는 삼각 풀이로 구해 cond에서 $\kappa u$ 꼴이에요.
+- GLM 후보는 `glm` 자체라 기준값이 그 적합의 `aic`·`bic`와 비트까지 같고, 참값과 0–1ulp예요.
+
+## 속도
+
+기계는 Apple M4 Pro 한 대예요. '배'는 참조 라이브러리의 시간 / sd의 시간이고, 1보다 크면 sd가 빨라요. 두 숫자를 나란히 적은 곳은 sd 1스레드와 10스레드예요. R은 1스레드예요.
+
+### 강건 공분산과 진단
+
+HAC와 군집이 고전형 적합에 더하는 계산은 얇은 Q와 HAC의 필터예요. 진단의 시간은 지렛대를 위한 분해와 얇은 Q 한 번, BP의 보조 회귀(적합 한 번)예요. 키가 크고 조건이 좋은 설계는 적합의 분해가 CholeskyQR2라 얇은 Q가 이미 있어요.
+
+### 일반화 선형 모형
+
+반복은 statsmodels보다 1–2번 많아요(판정 뒤의 연마와 마지막 풀이). 큰 적합의 시간은 대부분 행을 훑는 일이고, 판정 전 반복의 정규방정식, 연마의 걸음 더하기, 조건이 좋을 때 마지막 풀이의 걸음 꼴, 단위 편차의 재사용이 그 패스를 줄여요([GLM](/internals/regression/glm/#속도)).
+
+- scikit-learn은 표준오차를 내지 않고, 기본 `tol`에서 계수가 lbfgs $10^{-4}$–$10^{-2}$, newton-cholesky $10^{-7}$–$2 \times 10^{-6}$ 달라요. sd의 계수는 Arb 참값과 $10^{-15}$ 안이에요.
+- 작은 로지스틱 여러 개는 배치 한 번이면 회귀 하나가 태스크 하나라 스레드에 나뉘어요.
+
+### 정규화 회귀
+
+- ridge는 alpha가 적으면 scikit-learn의 기본과 같은 Cholesky 길이고, alpha가 많으면(경로, GCV) 분해 하나가 모든 alpha를 내요.
+- 0 아닌 계수가 수백 개인 alpha에서는 KKT 연마의 Cholesky($a^3/3$)가 커서, 그런 alpha가 많은 넓은 설계의 경로와 교차검증은 연마가 시간의 큰 몫이에요.
+- 로지스틱의 lbfgs는 기본 `tol`에서 계수가 $3 \times 10^{-5}$–$4 \times 10^{-4}$ 달라요. sd 쪽은 Arb 참값과 $10^{-15}$ 수준이에요.
+
+### 강건 회귀
+
+- M 추정(Huber, bisquare)은 반복마다 `pinv`를 부르는 statsmodels RLM과 달리 정규방정식으로 반복하고 마지막에만 QR을 써요.
+- MM(n > 2000은 robustbase의 큰 n fast-S)은 lmrob과 계수가 $10^{-8}$ 수준으로 달라요. lmrob의 `refine.tol` 1e-7 때문이에요.
+- Theil–Sen은 scipy보다 $n = 10^3$에서 11배, $10^4$에서 36배·138배, Siegel은 2.3–2.7배·16–23배 빨라요. $n = 10^5$에서는 scipy가 $n \times n$ 배열(80 GB)을 만들 수 없고, sd는 Theil–Sen 37 s·4.2 s, Siegel 68 s·7.9 s예요. sd의 Theil–Sen은 쌍 기울기를 저장하지 않고 훑어서 정확한 순위를 골라요.
+
+### 분위 회귀
+
+- `cov_type='iid'`(적합과 작은 중앙값 회귀; 표준오차를 내지 않는 R의 `rq.fit`에 가장 가까워요)로 R `rq.fit(method = "fn")`보다 (10⁵, 10)에서 1.5배·5.8배, (10⁶, 10)에서 1.4배·6.4배 빠르고, (10³, 5)에서는 같아요(0.48 ms와 0.52 ms). `br`보다는 (10⁵, 10)에서 50배·190배 빨라요.
+- 기본 'nid'까지는 R의 `fn` + `summary.rq(se = "nid")`보다 2.4–2.5배·8.2–9.3배, statsmodels보다 (10⁵, 10)에서 2.5배·9.4배 빨라요.
+- 내부점법의 반복 수는 R과 거의 같고(11–12번과 13–16번) 시간의 대부분이에요. 그 뒤의 피벗은 정확한 꼭짓점과 증명서를 위한 것이에요.
+- 분위 9개(0.1–0.9, (10⁵, 10), `cov_type='iid'`)는 528 ms·181 ms로 분위마다 따로 부른 것(610 ms·160 ms)보다 1스레드에서 13% 빠르고 10스레드에서 13% 느리며, R `fn` 9번(1.34 s)보다 2.5배·7.4배 빨라요.
+
+### 비선형 최소제곱
+
+- 차분 야코비안이면 $f$ 호출이 scipy lm의 몇 배예요(간격 고르기 약 $12p$–$16p$, 야코비안마다 $4p$, 가우스–뉴턴 2–4걸음). 차분의 고리는 C++이라 시간은 거의 $f$ 호출 수에 비례해요([비선형 최소제곱의 비용](/internals/regression/nls/#f-호출의-비용)).
+- 해석적 `jac`이면 간격 고르기와 다듬기의 차분이 사라져 호출 수가 scipy에 가까워요.
+
+## 느린 곳과 그 이유
+
+| 어디 | 얼마나 | 이유 |
+|---|---|---|
+| 경로·CV의 넓은 설계 | 연마가 시간의 큰 몫 | 0 아닌 계수가 수백 개인 alpha마다 KKT 연마의 Cholesky($a^3/3$)가 들어요 |
+| `glm`, 정규화 로지스틱 L2 | scikit-learn lbfgs·newton-cholesky보다 일이 많음 | 연마와 마지막 풀이, 표준오차까지 계산해요. scikit-learn의 계수는 기본 `tol`에서 $10^{-7}$–$10^{-2}$ 달라요 |
+| `nls`의 차분 야코비안 | $f$ 호출이 scipy의 몇 배 | 해의 정확한 야코비안과 다듬기 때문이에요. 해석적 `jac`이면 그 비용이 거의 사라져요 |
+| `quantreg` (10³, 5) | R `fn`과 같음 | 작은 문제에서는 고정 비용이 앞서요 |
+
+## 결정성
+
+약속은 같은 기계, 같은 스레드 수, 같은 입력이면 실행마다 같은 비트라는 것이에요. 스레드 수와 상관없는 비트, $X$의 메모리 순서(C·F)와 상관없는 비트는 약속이 아니에요. 지금은 아래처럼 스레드 수와는 상관없이 같은 비트예요.
+
+- 행을 도는 합은 크기로만 정한 덩어리(4,096행 등)를 순서대로 더하고, 스레드풀은 덩어리를 나눌 뿐 더하는 순서를 바꾸지 않아요. 그래서 지금은 같은 입력이면 1스레드와 10스레드가 같은 비트예요.
+- 배치는 회귀 하나를 태스크 하나로 돌고, 회귀 하나의 계산은 배치 안이든 밖이든 같아요. 그래서 배치 결과가 하나씩 부른 것과 비트까지 같아요.
+- 무작위성이 있는 곳(MM의 부분표본, 교차검증의 겹, Theil–Sen 훑기의 표본)은 Philox의 원소 번호나 `rng`에서 정해지므로 계산 순서와 상관없어요.
+- 테스트가 1스레드와 10스레드의 결과, 배치와 반복문의 결과를 비트로 비교해요(`tests/regression/test_linear.py`, `test_kernel_paths.py`, 정규화의 7만 행 lasso 경로, ridge, `lasso_cv`, 로지스틱 등).
+
+<Callout type="note" title="경로가 달라 비트가 다를 수 있는 곳">
+같은 입력이라도 계산 경로가 크기나 조건에 따라 달라지는 곳이 있어요. GLM은 행 수 × 열 수가 512 미만이면 중간 반복도 QR이고, 그 이상이면 정규방정식이며, 조건이 아주 좋으면 마지막 풀이도 정규방정식의 걸음이에요. 선형 모형은 키가 크고 조건이 좋으면 CholeskyQR2, 그 밖은 Householder QR이에요. ridge는 alpha의 수에 따라 Cholesky와 SVD 가운데 하나예요. 정확도는 같고, 결과 비트만 경로에 따라 다를 수 있어요(그래서 겹친 열을 뺀 큰 적합의 표준오차, 아주 긴 ridge 경로의 해는 각각 그 열이 없는 적합, 단독 적합과 끝자리가 다를 수 있어요). 경로는 입력의 크기와 값으로만 정해지므로 스레드 수와는 상관없어요.
+
+GLM의 판정 전 반복과 연마의 걸음, `rlm`의 반복은 $X$를 놓인 그대로 읽는 `dgemv`라, $X$가 C 순서인지 F 순서인지에 따라 끝자리가 다를 수 있어요. 최종 값은 Dot2로 구하는 마지막 풀이가 정하므로 두 순서의 결과는 반올림 수준에서 같아요. `ols`·`wls`·`gls`와 정규화는 꾸린 버퍼로 계산해서 순서와 상관없이 같은 비트예요.
+</Callout>
+
+## 참고 문헌
+
+1. F. Johansson, "Arb: efficient arbitrary-precision midpoint-radius interval arithmetic", *IEEE Transactions on Computers* 66(8), 1281–1292, 2017. doi:10.1109/TC.2017.2690633. 파이썬 바인딩 python-flint. https://flintlib.org/
+2. R. Krawczyk, "Newton-Algorithmen zur Bestimmung von Nullstellen mit Fehlerschranken", *Computing* 4, 187–201, 1969. doi:10.1007/BF02234767
+3. A. Neumaier, *Interval Methods for Systems of Equations*, Cambridge University Press, 1990. (Krawczyk 연산자와 근의 존재·유일성)
+4. NIST Statistical Reference Datasets: Linear Regression https://www.itl.nist.gov/div898/strd/lls/ , Nonlinear Regression https://www.itl.nist.gov/div898/strd/nls/
+5. B. D. McCullough, "Assessing the reliability of statistical software: Part I", *The American Statistician* 52(4), 358–366, 1998. doi:10.1080/00031305.1998.10480597 (LRE)
+6. Å. Björck, "Iterative refinement of linear least squares solutions I", *BIT* 7, 257–278, 1967. doi:10.1007/BF01939321
+7. T. Ogita, S. M. Rump, S. Oishi, "Accurate sum and dot product", *SIAM Journal on Scientific Computing* 26(6), 1955–1988, 2005. doi:10.1137/030601818
+8. N. J. Higham, *Accuracy and Stability of Numerical Algorithms*, 2nd ed., SIAM, 2002. doi:10.1137/1.9780898718027 (최소제곱의 섭동 이론과 $\kappa^2\lVert r\rVert$ 항)

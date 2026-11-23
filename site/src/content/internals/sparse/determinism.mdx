@@ -1,0 +1,126 @@
+---
+title: 결정성과 병렬 분할
+group: 형식과 연산
+order: 6
+summary: 희소 연산의 결과가 실행마다, 그리고 저장 형식과 태스크 분할과 상관없이 같은 비트인 까닭을 정리해요(지금은 sd의 스레드 수와도 상관없어요). 일을 크기로만 나누는 규칙(2¹⁵ 기준, 2¹⁴ 조각, indptr로 정한 줄 구간), GIL을 놓는 기준, 크기와 풀의 상태로 길을 골라도 결과가 같은 이유를 설명해요.
+seeAlso: [products, reductions, conversion, overview]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import Steps from '../../../components/fig/Steps.astro';
+
+## 약속과 지금의 동작
+
+약속은 같은 컴퓨터, 같은 스레드 수, 같은 입력이면 실행마다 같은 비트라는 것이에요. 희소 연산은 그보다 강하게, 결과가 **행렬의 값과 모양으로만** 정해져요. 저장 형식(CSR·CSC·COO·DOK)과 일을 나눈 모양이 비트를 바꾸지 않고, 지금은 sd의 스레드 수도 비트를 바꾸지 않아요(약속은 아니에요). 이것을 세 가지로 지켜요.
+
+1. **합의 순서를 정의로 둬요.** 출력 원소 하나의 합은 그 줄의 색인 오름차순 순차 합이고, L = 4096개를 넘으면 고정 조각과 조각 수로만 정한 트리예요([곱](/internals/sparse/products/)). 전체 합은 논리적 C 순서의 pairwise예요([리덕션](/internals/sparse/reductions/)). 중복은 입력 순서로 더해요([변환](/internals/sparse/conversion/)).
+2. **출력 원소 하나는 태스크 하나가 계산해요.** 태스크끼리 같은 출력에 더하지 않으므로, 어느 스레드가 언제 끝나든 원소마다의 계산은 한 스레드와 같아요. 태스크마다의 결과를 합쳐야 하면(세기, 누적) 태스크 순서로 합쳐요.
+3. **일은 크기로만 나눠요.** 스레드 수로 나누지 않아요. 그래서 태스크의 경계 자체가 스레드 수와 상관없이 같아요.
+
+```python
+>>> import stardust as sd
+>>> rng = sd.random.default_rng(7)
+>>> R = sd.sparse.random_array((3000, 3000), density=0.01, rng=rng, format='csr')
+>>> X = rng.random((3000, 20))
+>>> v = rng.random(3000)
+>>> def run():
+...     return ((R @ X).tolist(), (v @ R).tolist(), R.sum(axis=0).tolist(),
+...             (R @ R.T).data.tolist(), R.tocsc().indices.tolist())
+>>> n0 = sd.get_num_threads()
+>>> sd.set_num_threads(1)
+>>> one = run()
+>>> sd.set_num_threads(10)
+>>> ten = run()
+>>> sd.set_num_threads(n0)
+>>> one == ten
+True
+```
+
+이 예의 곱과 합은 기준 크기를 넘어, 10스레드에서는 모으기가 줄 구간으로, `v @ R`와 열 합은 출력 블록으로 나뉘어 돌고, 1스레드에서는 한 스레드의 길을 타요. 그래도 같은 비트예요.
+
+## 기준 크기와 GIL
+
+나누기 시작하는 크기는 배열 영역과 같은 규칙이에요. 작업량이 float64 2¹⁵개 분량 이상이면 나누고, 그 크기부터는 스레드 수와 상관없이 GIL을 놓아요. 그래서 `set_num_threads(1)`이어도 큰 희소 계산이 도는 동안 다른 Python 스레드가 돌 수 있어요. 그보다 작으면 호출한 스레드가 GIL을 쥔 채 계산해요.
+
+```cpp
+// csrc/sparse/parallel.hpp
+template <class F>
+void for_chunks(std::int64_t n, F&& f, std::int64_t chunk = kChunk, std::int64_t work = -1) {
+    const std::int64_t nt = num_chunks(n, chunk);
+    if (nt == 0) return;
+    if (work < 0) work = n;
+    const parallel::Unlocked unlocked(work >= kParallelThreshold);
+    auto task = [&](std::int64_t t) { f(t, t * chunk, std::min(n, (t + 1) * chunk)); };
+    if (work < kParallelThreshold || nt == 1) {
+        for (std::int64_t t = 0; t < nt; ++t) task(t);
+    } else {
+        parallel::parallel_for(nt, task);
+    }
+}
+```
+
+`for_chunks`는 [0, n)을 `chunk`개(기본 2¹⁴)씩 끊어요. 태스크 수가 n과 조각 크기로만 정해지고, 각 태스크가 `f(t, lo, hi)`로 자기 구간을 알아요. `work`는 나눌지와 GIL을 놓을지를 정하는 양이에요. 줄 수가 아니라 원소 수와 출력 크기처럼 실제 일에 가까운 양을 넘겨요. 태스크 안에서는 Python 객체를 건드리지 않아요. GIL 없이 돌기 때문이에요.
+
+## 줄 구간: indptr로 정하는 경계
+
+압축 배열의 줄은 길이가 제각각이라, 줄 수로 똑같이 나누면 긴 줄이 몰린 태스크가 늦게 끝나요. 그래서 줄을 "원소 수 + 1"의 비용으로 보고, 비용이 약 2¹⁴씩 되는 곳에서 끊어요. 경계는 `indptr`에서 이분 탐색으로 찾으므로 행렬만으로 정해져요.
+
+```cpp
+// csrc/sparse/parallel.hpp
+inline std::vector<std::int64_t> line_bounds(const std::int64_t* ip, std::int64_t n_lines, std::int64_t unit) {
+    std::vector<std::int64_t> b{0};
+    if (n_lines <= 0) {
+        b.push_back(0);
+        return b;
+    }
+    unit = std::max<std::int64_t>(unit, 1);
+    const std::int64_t total = ip[n_lines] - ip[0] + n_lines;
+    for (std::int64_t target = unit; target < total; target += unit) {
+        // the first line r with ip[r] + r >= target (cost of the lines before r)
+        std::int64_t lo = b.back(), hi = n_lines;
+        while (lo < hi) {
+            const std::int64_t mid = lo + (hi - lo) / 2;
+            if (ip[mid] - ip[0] + mid < target) lo = mid + 1;
+            else hi = mid;
+        }
+        if (lo > b.back() && lo < n_lines) b.push_back(lo);
+    }
+    b.push_back(n_lines);
+    return b;
+}
+```
+
+같은 함수를 SpGEMM은 행마다의 일(행이 방문하는 B의 원소 수)의 누적합에 써요. 그러면 일이 많은 행이 몰리지 않아요. SpMM은 단위를 2¹⁴ / k로 줄여 열 수 k까지 셈에 넣어요.
+
+| 커널 | 나누는 것 | 경계를 정하는 것 |
+|---|---|---|
+| SpMV·SpMM 모으기, 행 합 | 출력 줄 | `line_bounds(indptr)` |
+| 흩뿌리기(`x @ A`, CSC `@`, 열 합) | 출력 블록 × 입력 줄 구간 | 블록 크기는 k로, 구간은 `line_bounds` |
+| SpGEMM | 출력 행 | 행마다 일의 누적합에 `line_bounds` |
+| 이항 연산, 원소별 고르기, 인덱싱, 대입 | 출력 줄 | 평균 줄 길이로 정한 줄 수 |
+| 표준 꼴 만들기, 전치 | 입력 조각, 양동이 | nnz와 줄 수 |
+| 입력 검사 | 줄이나 원소 | 2¹⁴ 조각, 틀린 곳은 가장 앞의 것 |
+
+## 길은 달라도 같은 함수
+
+여러 커널이 크기나 풀의 상태로 길을 골라요. 표준 꼴 만들기의 곧은 길·LSD 길·양동이 길, 전치의 계수 정렬·열 블록 길, 흩뿌리기의 한 스레드 길·출력 블록 길, 이항 연산의 한 번 쓰기·두 패스, SpGEMM의 비트 집합·정렬이 그래요. 이 선택은 `parallel::available()`(스레드가 둘 이상이고 다른 Python 스레드가 풀을 쓰고 있지 않음)이나 스레드 수를 볼 때도 있어요. 그래도 비트가 같은 까닭은 길마다 **같은 함수**를 계산하기 때문이에요.
+
+<Fig column caption="흩뿌리기의 두 길이 같은 비트를 내는 까닭">
+  <Steps steps={[
+    { label: 'scatter_serial', note: '줄 0, 1, 2, …를 차례로. 출력 j는 줄 번호 오름차순으로 항을 받아요', where: '한 스레드' },
+    { label: 'scatter_blocks', note: '줄 구간마다 항을 출력 블록별로 안정적으로 나누고, 블록마다 구간 순서로 더해요. 구간 순서가 곧 줄 순서예요', where: '스레드풀' },
+    { label: '같은 항, 같은 순서', note: '출력 j가 받는 항의 목록과 순서가 같고, 4096개마다 끊는 조각도 같은 자리에서 끊겨요', where: '결과' },
+  ]} />
+</Fig>
+
+테스트가 이것을 확인해요. `tests/sparse/test_canonical.py`는 표준 꼴 만들기와 전치의 길들이 같은 바이트를 내는지를 1·2·3·7·10스레드에서 보고, `tests/sparse/test_products.py`는 곱과 연산의 결과가 스레드 수와 상관없이 같은지, 곱과 축 합이 모든 형식에서 "색인 오름차순 순차 합"의 정의와 같은지를 봐요. 골든 기록(`tests/golden/cases_sparse.py`)도 1·3·10스레드에서 같은 결과를 확인해요.
+
+## 결정성이 걸리는 다른 곳
+
+- **에러**: 입력 검사가 병렬로 돌다 틀린 곳을 여럿 만나면 `parallel::FirstRow`가 가장 앞의 자리를 남겨요. 그래서 메시지(`index 5 is out of bounds …`)도 스레드 수와 무관해요.
+- **난수**: `random_array`는 `sd.random`의 생성기에서 자리와 값을 뽑아요. 같은 생성기 상태면 같은 배열이에요([만들기 함수](/internals/sparse/construct/)).
+- **Accelerate의 BLAS**: 반복법과 고유값 풀이의 긴 내적(`ddot`·`zdotc`)과 기저와의 곱(`dgemv`·`zgemv`)은 길이만으로 정한 고정 조각마다 Accelerate를 한 번 불러요([ARPACK](/internals/sparse/arpack/#같은-비트를-내는-벡터-연산)). 조각 안의 합 순서는 Accelerate가 정하지만 같은 크기의 같은 입력에는 같아서, 조각의 결과를 정해진 순서로 합치면 결과가 스레드 수와 무관해요.
+- **Accelerate의 LU**: 직접 풀이는 [Accelerate의 LU/AMD](/internals/sparse/lu/)예요. Accelerate가 안에서 스레드를 정하므로 sd의 스레드 수와는 무관하고, Accelerate의 스레드 모드(`VECLIB_MAXIMUM_THREADS`)가 같으면 같은 비트예요. 같은 모드에서 실행마다 비트가 달라지는 경로(Cholesky, LDLᵀ, Metis 순서)는 쓰지 않아요. sd는 그 모드를 정하지도 바꾸지도 않아요.
+
+## scipy를 아는 분께
+
+scipy.sparse의 커널은 한 스레드라 스레드 수의 문제가 없지만, 같은 행렬의 다른 저장(정렬되지 않은 줄, 중복의 순서)이 끝자리를 바꿀 수 있어요. 이쪽은 표준 꼴과 입력 순서의 중복 합으로 그것도 막아요.

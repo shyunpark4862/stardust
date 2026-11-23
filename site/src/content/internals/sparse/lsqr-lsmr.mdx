@@ -1,0 +1,235 @@
+---
+title: LSQR와 LSMR
+group: 반복법
+order: 5
+summary: 직사각 행렬의 최소제곱을 푸는 lsqr와 lsmr를 설명해요. 둘이 함께 쓰는 Golub–Kahan 이중대각화, 감쇠를 없애는 회전, 안정한 Givens 회전 sym_ortho, 어림한 노름과 조건수로 하는 scipy의 멈춤 판정, lsqr의 var를 코드로 따라가요.
+seeAlso: [krylov, minres, cg-bicgstab, gmres]
+---
+
+## 한눈에 보기
+
+[`lsqr`](/api/sparse/lsqr/)(Paige–Saunders 1982)와 [`lsmr`](/api/sparse/lsmr/)(Fong–Saunders 2011)는 m × n 행렬 A(m과 n은 아무 크기)에 대해
+
+$$
+\min_x \ \lVert Ax - b\rVert_2^2 + \text{damp}^2\,\lVert x\rVert_2^2
+$$
+
+를 풀어요. A와 $A^{\mathsf H}$의 곱만 쓰고 $A^{\mathsf H}A$를 만들지 않아요. 수학적으로 lsqr는 정규방정식 $A^{\mathsf H}Ax = A^{\mathsf H}b$에 CG를 쓴 것과 같고(잔차 $\lVert r\rVert$가 단조로 줄어요), lsmr는 같은 방정식에 MINRES를 쓴 것과 같아요($\lVert A^{\mathsf H}r\rVert$가 단조로 줄어요). 그래서 lsmr는 일찍 멈춰도 $\lVert A^{\mathsf H}r\rVert$가 작아 최소제곱 판정에 먼저 닿는 경우가 많아요.
+
+| | `lsqr` | `lsmr` |
+|---|---|---|
+| 같은 것 | 정규방정식의 CG | 정규방정식의 MINRES |
+| 단조로 줄어드는 것 | $\lVert r\rVert$ | $\lVert A^{\mathsf H}r\rVert$ |
+| 반복 상한 | 2n | min(m, n) |
+| 추가 결과 | `normr_damped`, `var`(언제나) | |
+| 반복 하나의 곱 | A 한 번, $A^{\mathsf H}$ 한 번 | 같음 |
+
+$A^{\mathsf H}$는 행렬이면 $A^{\mathsf T}$의 CSR(복소는 켤레)을 한 번 만들어 쓰고, `LinearOperator`면 `rmatvec`을 불러요([반복법의 바탕](/internals/sparse/krylov/)). 전처리기 인자는 없어요.
+
+## Golub–Kahan 이중대각화
+
+두 방법은 같은 기저를 만들어요. $\beta_1 u_1 = b$, $\alpha_1 v_1 = A^{\mathsf H}u_1$에서 시작해
+
+$$
+\beta_{k+1}u_{k+1} = Av_k - \alpha_k u_k, \qquad \alpha_{k+1}v_{k+1} = A^{\mathsf H}u_{k+1} - \beta_{k+1}v_k
+$$
+
+를 되풀이해요. $\alpha$, $\beta$는 각 벡터를 단위 길이로 만드는 노름이에요. 그러면 $AV_k = U_{k+1}B_k$이고 $B_k$는 $(k+1) \times k$의 아래 이중대각 행렬이라, n차원의 최소제곱이 $\min_y \lVert \beta_1 e_1 - B_k y\rVert$라는 작은 문제가 돼요. 이 과정은 $A^{\mathsf H}A$에 대한 Lanczos 과정과 같지만 $A^{\mathsf H}A$를 만들지 않아 조건수를 제곱하지 않아요.
+
+```cpp
+// csrc/sparse/iterative.cpp
+// y = A x - a y (lsqr: `u = A.matvec(v) - alfa * u`; lsmr: `u *= -alpha; u += A.matvec(v)`)
+template <class T>
+void bidiag_step(const Op<T>& A, const T* x, T* y, double a, T* tmp, int64_t m) {
+    A.apply(x, tmp);
+    if constexpr (kComplex<T>)
+        each(m, [&](int64_t i) { y[i] = add(tmp[i], complex128{y[i].real() * -a, y[i].imag() * -a}); });
+    else each(m, [&](int64_t i) { y[i] = std::fma(-a, y[i], tmp[i]); });
+}
+```
+
+$y \leftarrow Ax - ay$를 원소마다 `fma(-a, y, Ax)`로 해요. scipy의 lsqr(`u = A.matvec(v) - alfa * u`)와 lsmr(`u *= -alpha; u += A.matvec(v)`)는 쓰는 꼴이 다르지만 둘 다 이 한 식이에요. 복소 벡터는 실수 a를 성분별로 곱해요. 시작에서 x0가 있으면 $u = b - Ax_0$에서 같은 과정을 시작하고, x는 x0에서 출발해 고친 값을 더해요.
+
+## 회전: `sym_ortho`
+
+$B_k$를 위 삼각으로 만드는 Givens 회전은 scipy의 `_sym_ortho`(S.-C. Choi의 안정한 판)와 같아요.
+
+```cpp
+// csrc/sparse/iterative.cpp
+inline Sym sym_ortho(double a, double b) {
+    if (b == 0) return {sign(a), 0.0, std::fabs(a)};
+    if (a == 0) return {0.0, sign(b), std::fabs(b)};
+    if (std::fabs(b) > std::fabs(a)) {
+        const double tau = a / b;
+        const double s = sign(b) / std::sqrt(1 + tau * tau);
+        const double c = s * tau;
+        return {c, s, b / s};
+    }
+    const double tau = b / a;
+    const double c = sign(a) / std::sqrt(1 + tau * tau);
+    const double s = c * tau;
+    return {c, s, a / c};
+}
+```
+
+$c = a/r$, $s = b/r$, $r = \sqrt{a^2 + b^2}$를 직접 계산하지 않고, 큰 쪽으로 나눈 비 $\tau$로 $1/\sqrt{1 + \tau^2}$를 계산해 넘침을 피해요. 부호는 `np.sign`과 같게 다뤄요(0이면 0, NaN은 그대로).
+
+## LSQR
+
+```cpp
+    // csrc/sparse/iterative.cpp
+    while (itn < iter_lim) {
+        ++itn;
+        // the next step of the bidiagonalization: beta u = A v - alfa u, alfa v = A^H u - beta v
+        bidiag_step(A, v.data(), u.data(), alfa, tmpm.data(), m);
+        beta = nrm2(u.data(), m);
+        if (beta > 0) {
+            scale_real(u.data(), 1 / beta, m);
+            anorm = std::sqrt(anorm * anorm + alfa * alfa + beta * beta + dampsq);
+            bidiag_step(AH, u.data(), v.data(), beta, tmpn.data(), n);
+            alfa = nrm2(v.data(), n);
+            if (alfa > 0) scale_real(v.data(), 1 / alfa, n);
+        }
+        // a rotation eliminates the damping parameter
+        double rhobar1, psi;
+        if (damp > 0) {
+            rhobar1 = std::sqrt(rhobar * rhobar + dampsq);
+            const double cs1 = rhobar / rhobar1, sn1 = damp / rhobar1;
+            psi = sn1 * phibar;
+            phibar = cs1 * phibar;
+        } else {
+            rhobar1 = rhobar;
+            psi = 0.0;
+        }
+        // a rotation eliminates the subdiagonal element beta
+        const Sym g = sym_ortho(rhobar1, beta);
+        const double cs = g.c, sn = g.s, rho = g.r;
+        const double theta = sn * alfa;
+        rhobar = -cs * alfa;
+        const double phi = cs * phibar;
+        phibar = sn * phibar;
+        const double tau = sn * phi;
+        // update x and w
+        const double t1 = phi / rho, t2 = -theta / rho;
+        const double rr = 1 / rho;
+        each(n, [&](int64_t i) { dk[i] = mul(of<T>(rr), w[i]); });
+        axpy_real(t1, w.data(), x.data(), n);
+        aypx_real(t2, w.data(), v.data(), n);
+        const double dkn = nrm2(dk.data(), n);
+        ddnorm = ddnorm + dkn * dkn;
+        each(n, [&](int64_t i) {
+            const double a = re(dk[i]), c = im(dk[i]);
+            o.var[static_cast<std::size_t>(i)] += kComplex<T> ? a * a + c * c : a * a;
+        });
+        // a rotation on the right eliminates theta; then the estimate of norm(x)
+        const double delta = sn2 * rho, gambar = -cs2 * rho;
+        const double rhs = phi - delta * z;
+        const double zbar = rhs / gambar;
+        xnorm = std::sqrt(xxnorm + zbar * zbar);
+        const double gamma = std::sqrt(gambar * gambar + theta * theta);
+        cs2 = gambar / gamma;
+        sn2 = theta / gamma;
+        z = rhs / gamma;
+        xxnorm = xxnorm + z * z;
+        // the stopping tests
+        acond = anorm * std::sqrt(ddnorm);
+        const double res1 = phibar * phibar;
+        res2 = res2 + psi * psi;
+        rnorm = std::sqrt(res1 + res2);
+        arnorm = alfa * std::fabs(tau);
+        if (damp > 0) {
+            const double r1sq = rnorm * rnorm - dampsq * xxnorm;
+            r1norm = std::sqrt(std::fabs(r1sq));
+            if (r1sq < 0) r1norm = -r1norm;
+        } else {
+            r1norm = rnorm;
+        }
+        r2norm = rnorm;
+        const double test1 = rnorm / bnorm;
+        const double test2 = arnorm / (anorm * rnorm + kEps);
+        const double test3 = 1 / (acond + kEps);
+        const double t1s = test1 / (1 + anorm * xnorm / bnorm);
+        const double rtol = btol + atol * anorm * xnorm / bnorm;
+        if (itn >= iter_lim) istop = 7;
+        if (1 + test3 <= 1) istop = 6;
+        if (1 + test2 <= 1) istop = 5;
+        if (1 + t1s <= 1) istop = 4;
+        if (test3 <= ctol) istop = 3;
+        if (test2 <= atol) istop = 2;
+        if (test1 <= rtol) istop = 1;
+        o.history.push_back(r1norm);
+        if (istop != 0) break;
+    }
+```
+
+- **감쇠.** `damp > 0`이면 먼저 회전 하나로 $\bar\rho$와 damp를 합쳐 $\bar\rho_1 = \sqrt{\bar\rho^2 + \text{damp}^2}$를 만들어요. 감쇠 항은 행렬 아래에 $\text{damp}\cdot I$를 붙인 최소제곱이라, 그 행의 몫을 이 회전이 지워요. 지운 몫 $\psi$가 `res2`에 쌓여 감쇠한 잔차의 노름에 들어가요.
+- **해와 방향.** 회전 $(c, s, \rho)$로 $\phi$, $\bar\phi$, $\theta$를 얻고 $x \mathrel{+}= (\phi/\rho)w$, $w \leftarrow v - (\theta/\rho)w$예요. $d_k = w/\rho$의 제곱을 성분마다 `var`에 더하면 $(A^{\mathsf H}A + \text{damp}^2I)^{-1}$의 대각의 어림이 되고(scipy의 `calc_var=True`), $\lVert d_k\rVert^2$의 합 `ddnorm`이 조건수 어림에 쓰여요. 이 라이브러리는 `var`를 언제나 계산해요. 일이 벡터 갱신 하나만큼 늘 뿐이에요.
+- **노름의 어림.** $\lVert A\rVert_F$의 어림 `anorm`은 $\alpha$, $\beta$, damp의 제곱을 누적한 것이고, 조건수 어림은 $\lVert A\rVert_F\sqrt{\text{ddnorm}}$, $\lVert x\rVert$의 어림은 오른쪽에서 거는 회전 하나로 따라가요. 잔차 $\lVert r\rVert = \sqrt{\bar\phi^2 + \text{res2}}$, $\lVert A^{\mathsf H}r\rVert = \alpha|\tau|$예요. 감쇠가 있으면 `r1norm`은 $\sqrt{\lVert r\rVert^2 - \text{damp}^2\lVert x\rVert^2}$(음수면 부호를 붙여)이고 `r2norm`은 감쇠한 잔차 그대로예요. 결과의 `normr`, `normr_damped`가 이 둘이에요.
+
+## LSMR
+
+LSMR는 같은 이중대각화 위에서 회전을 두 겹으로 해요. 첫 겹($Q$)이 $B_k$를 위 삼각 $R_k$로, 둘째 겹($\bar Q$)이 $R_k^{\mathsf T}$를 다시 위 삼각으로 만들어, 정규방정식의 잔차 $\lVert A^{\mathsf H}r\rVert$가 $|\bar\zeta|$로 바로 나오게 해요. 감쇠는 회전 $\hat Q$ 하나로 먼저 합쳐요. 해의 갱신은 벡터 둘($h$, $\bar h$)로 해요.
+
+```cpp
+        // csrc/sparse/iterative.cpp
+        // update h, h_hat, x
+        aypx_real(-(thetabar * rho / (rhoold * rhobarold)), hbar.data(), h.data(), n);
+        axpy_real(zeta / (rho * rhobar), hbar.data(), x.data(), n);
+        aypx_real(-(thetanew / rho), h.data(), v.data(), n);
+```
+
+$\lVert r\rVert$의 어림은 세 번째 회전 $\tilde Q$를 우변에 걸어 따라가요(`betad`, `taud`, `d`). 조건수 어림은 $\bar\rho$의 최대·최소의 비이고, $\lVert A\rVert$의 어림은 $\alpha$, $\beta$의 제곱 누적이에요. lsqr의 조건수 어림($\lVert A\rVert_F\lVert(\ldots)^{-1}\rVert_F$ 꼴)과 계산이 달라 같은 행렬에서 값이 꽤 달라요. b = 0이면 x = 0(x0를 줬어도)으로 돌려줘요(scipy와 같아요).
+
+## 멈춤 판정
+
+두 방법이 같은 판정을 같은 순서로 해요. 뒤의 판정이 앞의 것을 덮어써요.
+
+$$
+\text{test}_1 = \frac{\lVert r\rVert}{\lVert b\rVert}, \qquad
+\text{test}_2 = \frac{\lVert A^{\mathsf H}r\rVert}{\lVert A\rVert\,\lVert r\rVert}, \qquad
+\text{test}_3 = \frac{1}{\mathrm{cond}(A)}
+$$
+
+| status | 뜻 | 조건 |
+|---:|---|---|
+| 1 | Ax = b가 맞을 만큼 잔차가 작음 | $\text{test}_1 \le \text{btol} + \text{atol}\,\lVert A\rVert\lVert x\rVert/\lVert b\rVert$ |
+| 2 | 최소제곱 해가 충분함 | $\text{test}_2 \le \text{atol}$ |
+| 3 | 조건수 어림이 `conlim`을 넘음 | $\text{test}_3 \le 1/\text{conlim}$ |
+| 4, 5, 6 | 1, 2, 3을 기계 정밀도로 | $1 + \text{test} \le 1$ |
+| 7 | 반복 상한 | |
+| 0 | x = 0(또는 x0)이 정확한 해 | 시작에서 $\alpha\beta = 0$ |
+
+`converged`는 status가 0, 1, 2, 4, 5일 때예요. 3과 6은 문제의 조건수가 판정을 막은 것이라 수렴으로 보지 않아요. 판정 1은 해가 있는 계(잔차를 0으로 할 수 있는 경우)에 맞고, 판정 2는 잔차가 0이 될 수 없는 최소제곱에 맞아요. 아래는 넘치게 정해진 계라 판정 2에서 멈춰요.
+
+```python
+>>> rng = sd.random.default_rng(3)
+>>> A = sd.sparse.random_array((200, 50), density=0.05, rng=rng, format="csr") + sd.sparse.eye_array(200, 50, format="csr")
+>>> b = rng.random(200)
+>>> r = sd.sparse.lsqr(A, b, atol=1e-12, btol=1e-12)
+>>> r
+LsqrResult(converged=True, status=2, n_iter=35, normr=5.4334, x=<array of shape (50,)>)
+>>> m = sd.sparse.lsmr(A, b, atol=1e-12, btol=1e-12)
+>>> m.status, m.n_iter
+(2, 35)
+>>> xd = sd.linalg.lstsq(A.toarray(), b)[0]
+>>> float(sd.max(sd.abs(r.x - xd))), float(sd.max(sd.abs(m.x - xd)))
+(5.773242994777661e-12, 6.919104178493285e-12)
+>>> float(r.conda), float(m.conda)            # 계산이 다른 두 조건수 어림
+(46.3081167842019, 2.3614804250797135)
+>>> x, istop, itn, r1norm, r2norm, anorm, acond, arnorm, xnorm, var = r   # scipy의 열 개
+>>> var.shape
+(50,)
+```
+
+## 정확도와 scipy
+
+정확도 체계는 Arb(구간 산술)로 검증한 최소제곱 해 2점을 atol = btol = 10⁻¹⁰으로 풀고, 판정이 약속하는 앞오차 $\lVert(A^{\mathsf H}A)^{-1}\rVert_\infty\cdot\text{atol}\cdot\lVert A\rVert_F\lVert\hat r\rVert_2$를 계약으로 써요. 둘 다 계약 안이고 가장 큰 것이 0.051(계약 단위)이에요.
+
+scipy 1.18.1과 견주면 상태와 반복 수가 같고, k번째 반복에서 멈춘 scipy의 `r1norm`·`normr`과 단계마다 상대 10⁻⁶ 안이에요. `damp`, `x0`, 넓은 행렬, 랭크 부족, 복소도 같아요. `var`는 scipy의 `calc_var=True`와 상대 10⁻⁶ 안이에요(랭크 부족 행렬은 var 자체가 잘 정해지지 않아 10⁻⁸에서 어긋나요). 반복이 수백 번인 문제(2차원 라플라시안 30 × 30의 lsqr·lsmr)는 scipy 자신이 반올림에 민감해서, b를 조금 바꾼 scipy끼리도 마지막 `normr`이 4%까지 달라요. SuiteSparse의 well1850(1,850 × 712)은 LSQR 323번(scipy 324), LSMR 338번(338)이에요. scipy의 `show`, `calc_var`, `callback`은 없어요.
+
+## 참고 문헌
+
+1. C. C. Paige, M. A. Saunders, LSQR: an algorithm for sparse linear equations and sparse least squares, *ACM Trans. Math. Softw.* 8(1), 1982.
+2. D. C.-L. Fong, M. A. Saunders, LSMR: an iterative algorithm for sparse least-squares problems, *SIAM J. Sci. Comput.* 33(5), 2011.
+3. G. H. Golub, W. Kahan, Calculating the singular values and pseudo-inverse of a matrix, *SIAM J. Numer. Anal.* 2(2), 1965.
+4. S.-C. T. Choi, *Iterative Methods for Singular Linear Equations and Least-Squares Problems*, 박사 논문, Stanford University, 2006(sym_ortho).

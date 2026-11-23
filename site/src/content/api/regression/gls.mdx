@@ -1,0 +1,389 @@
+---
+kind: function
+title: gls
+names: [gls, GLSResult]
+group: 선형 회귀
+order: 3
+signatures:
+  - "sd.regression.gls(y, X, /, *, sigma, intercept=True, cov_type='nonrobust', maxlags=None, groups=None, rtol=None, nan_policy='propagate')"
+summary: 일반화 최소제곱(GLS) 회귀예요. 오차가 서로 상관되어 있고 그 공분산 행렬을 알 때, 상관을 걷어 낸 문제를 풀어 계수와 올바른 표준오차를 구해요. 결과 GLSResult의 필드는 ols의 OLSResult와 같아요.
+params:
+  - name: y
+    type: ndarray, 실수의 시퀀스, frame Series, 또는 열 하나의 DataFrame
+    kind: positional-only
+    desc: "설명하려는 값. 모양은 (n,)이고, 앞에 축이 더 있으면 배치예요. 열이 하나인 DataFrame은 그 열로 읽어요."
+  - name: X
+    type: ndarray, 실수의 시퀀스, frame Series, 또는 DataFrame
+    kind: positional-only
+    desc: "설명변수. (n, k) 또는 (n,)이에요. 절편 열은 넣지 않아요."
+  - name: sigma
+    type: ndarray 또는 실수의 중첩 시퀀스
+    kind: keyword-only
+    desc: "오차의 공분산 행렬 Σ, 모양 (n, n). 꼭 줘야 해요. 양정치여야 하고, 아래 삼각(대각 포함)만 읽어요. 앞에 축이 더 있으면 배치이고 y·X와 브로드캐스트해요."
+  - name: intercept
+    type: bool
+    kind: keyword-only
+    desc: True(기본값)면 절편을 넣어요. params[0]이 절편이에요.
+  - name: cov_type
+    type: str
+    kind: keyword-only
+    desc: "표준오차의 종류. 'nonrobust'(기본값), 'HC0'–'HC3', 'HAC', 'cluster' 중 하나예요. 상관을 걷어 낸 문제에 대해 구해요."
+  - name: maxlags
+    type: int 또는 None
+    kind: keyword-only
+    desc: cov_type='HAC'의 지연 수.
+  - name: groups
+    type: ndarray, 레이블의 시퀀스, 또는 frame Series
+    kind: keyword-only
+    desc: cov_type='cluster'의 군집 레이블.
+  - name: rtol
+    type: float 또는 None
+    kind: keyword-only
+    desc: 겹친 열의 기준. None(기본값)이면 max(nobs, k)·eps예요.
+  - name: nan_policy
+    type: str
+    kind: keyword-only
+    desc: "'propagate'(기본값), 'omit', 'raise' 중 하나예요. 'omit'은 y·X의 i행이나 sigma의 i행·i열에 NaN이 있는 관측 i를 빼요."
+returns:
+  type: GLSResult
+  desc: "적합 결과. 필드는 OLSResult와 같아요. fittedvalues와 resid는 원래 척도(y − Xβ)이고, ssr·TSS·R²·진단은 상관을 걷어 낸(백색화한) 문제의 값이에요."
+raises:
+  - type: TypeError
+    desc: sigma를 주지 않았을 때(None 포함), 입력이 배열·숫자의 시퀀스·frame이 아니거나 복소수일 때, 옵션의 형이 틀렸을 때.
+  - type: ValueError
+    desc: sigma의 모양이 (n, n)이 아닐 때, sigma·y·X에 inf가 있을 때(nan_policy='omit'이어도), X에 열이 없는데 intercept=False일 때, nan_policy='raise'인데 NaN이 있을 때, 배치에서 nan_policy='omit'을 줬을 때, 그 밖에 ols와 같은 경우.
+  - type: LinAlgError
+    desc: sigma가 양정치가 아닐 때(sd.linalg.LinAlgError). 배치면 메시지에 그 배치 위치가 붙어요.
+seeAlso: [ols, wls, covariance, diagnostics, basics, results]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+export const glsResid = [[0, 1.5502], [1, 1.4289], [2, 0.69701], [3, -0.46611], [4, -0.45599], [5, -0.40721], [6, -0.47037], [7, -1.1158], [8, -1.7184], [9, -1.3363], [10, -1.3917], [11, -0.74491], [12, -0.24446], [13, 0.36941], [14, 0.47159], [15, 0.79073], [16, 1.6142], [17, 2.175], [18, 1.5843], [19, 0.6608], [20, -0.69052], [21, -0.24751], [22, -1.3999], [23, -0.64058], [24, -0.66427], [25, 0.3019], [26, 0.37131], [27, -0.41042], [28, 0.17815], [29, 0.21103]];
+
+## 무엇을 하나요
+
+[`ols`](/api/regression/ols/)의 표준오차는 "오차가 서로 독립"이라는 가정 위에 서 있어요. 그런데 시간 순서로 잰 데이터는 오늘의 오차가 어제의 오차를 닮는 일이 흔해요. 기온, 주가, 센서 값처럼요. 이웃한 지역, 같은 가족의 구성원도 그래요.
+
+오차가 서로 닮으면 데이터 30개에 30개만큼의 정보가 담기지 않아요. 보통 최소제곱은 30개가 모두 따로따로라고 보고 표준오차를 구하니, 표준오차가 너무 작게 나오고 p값도 지나치게 작아져요.
+
+아래 그림은 오차가 앞 시점과 0.8만큼 상관된 데이터에 직선을 맞춘 잔차예요. 잔차가 한동안 양수로, 한동안 음수로 길게 이어져요. 독립인 오차라면 위아래로 마구 뒤섞여야 해요.
+
+<Fig caption="오차가 상관된 데이터에 보통 최소제곱을 맞춘 잔차(시간 순서). 같은 부호가 길게 이어지는 것이 상관의 흔적이에요.">
+  <Plot
+    curves={[{ points: glsResid, label: 'ols의 잔차' }]}
+    domain={[-1, 30]}
+    range={[-2.5, 2.5]}
+    xTicks={[
+      { v: 0, label: '0' },
+      { v: 10, label: '10' },
+      { v: 20, label: '20' },
+      { v: 29, label: '29' },
+    ]}
+    yTicks={[
+      { v: -2, label: '-2' },
+      { v: -1, label: '-1' },
+      { v: 1, label: '1' },
+      { v: 2, label: '2' },
+    ]}
+  />
+</Fig>
+
+오차의 공분산 행렬 $\Sigma$(행 $i$, 열 $j$가 $\varepsilon_i$와 $\varepsilon_j$의 공분산)를 안다면, **일반화 최소제곱**은
+
+$$
+(y - X\beta)^\top \Sigma^{-1} (y - X\beta)
+$$
+
+를 가장 작게 하는 $\beta$를 구해요. $\Sigma = LL^\top$로 나누면 $L^{-1}\varepsilon$은 서로 독립이고 분산이 1이에요. 그래서 $L^{-1}y$를 $L^{-1}X$에 보통 최소제곱으로 맞추면 돼요. 이렇게 상관을 걷어 내는 것을 **백색화**라고 해요. $\Sigma$가 대각 행렬이면 가중치 $1/\Sigma_{ii}$의 [`wls`](/api/regression/wls/)이고, 단위행렬이면 `ols`예요.
+
+<Reference />
+
+## 기본 사용
+
+자기상관 0.8인 오차(AR(1))의 공분산은 $\Sigma_{ij} = 0.8^{|i-j|}$예요. 이 $\Sigma$로 상관된 오차를 만들어 데이터를 꾸리고, `ols`와 `gls`를 견줘 볼게요. 참 직선은 $y = 2 + 0.5t$예요.
+
+```python
+>>> import stardust as sd
+>>> n = 30
+>>> t = sd.arange(float(n))
+>>> lag = sd.abs(sd.reshape(t, (n, 1)) - sd.reshape(t, (1, n)))
+>>> S = 0.8 ** lag
+>>> S[:3, :3]
+array([[               1.0,                0.8, 0.6400000000000001],
+       [               0.8,                1.0,                0.8],
+       [0.6400000000000001,                0.8,                1.0]], dtype=float64)
+>>> L = sd.linalg.cholesky(S)
+>>> rng = sd.random.default_rng(0)
+>>> y = 2.0 + 0.5 * t + L @ sd.stats.Normal().sample(n, rng=rng)
+>>> o = sd.regression.ols(y, t)
+>>> g = sd.regression.gls(y, t, sigma=S)
+>>> g
+GLSResult(nobs=30, rank=2, rsquared=0.806533, params=[2.09444, 0.504882])
+>>> o.params, o.bse
+(array([1.5731911067934918, 0.5280449155833218], dtype=float64), array([ 0.36480223458697264, 0.021602703769317427], dtype=float64))
+>>> g.params, g.bse
+(array([ 2.094439045499516, 0.5048821517279789], dtype=float64), array([ 0.8475173848280637, 0.04673075307036507], dtype=float64))
+```
+
+두 방법 모두 기울기를 0.5 근처로 잡지만, 표준오차가 두 배쯤 달라요. `ols`의 기울기 표준오차 0.022는 데이터가 서로 독립이라고 보고 구한 값이라 너무 작아요. `gls`는 상관을 알고 구해서 0.047이에요. 신뢰구간에서는 차이가 더 잘 드러나요.
+
+```python
+>>> o.conf_int()[1], g.conf_int()[1]
+(array([0.4837937829001649, 0.5722960482664786], dtype=float64), array([0.40915854339717306,  0.6006057600587847], dtype=float64))
+```
+
+결과를 읽는 법은 [`ols`](/api/regression/ols/)와 [결과 객체 읽기](/api/regression/results/)에 있어요.
+
+## `sigma`
+
+### 모양과 읽는 칸
+
+`sigma`는 (n, n) 행렬이에요. 공분산 행렬은 대칭이라서 아래 삼각(대각 포함)만 읽어요. 위 삼각에 무엇이 있든 결과는 같아요.
+
+```python
+>>> upper = sd.reshape(t, (n, 1)) < sd.reshape(t, (1, n))
+>>> S_odd = sd.where(upper, 99.0, S)
+>>> sd.regression.gls(y, t, sigma=S_odd).params.tolist() == g.params.tolist()
+True
+```
+
+다만 NaN과 inf는 위 삼각에 있어도 찾아내요. `sigma`는 대칭 행렬이어야 해서, 읽지 않는 칸이라도 NaN이나 inf가 있으면 행렬 전체를 믿을 수 없다고 보기 때문이에요([NaN과 inf](#nan과-inf)).
+
+`sigma`를 주지 않거나 `None`을 주면 `TypeError`예요. 모양이 맞지 않으면 `ValueError`예요. 대각만 있는 분산 벡터(1차원)는 받지 않아요. 그럴 때는 [`wls`](/api/regression/wls/)에 `weights=1/분산`으로 주거나, 대각 행렬을 만들어 주세요.
+
+```python
+>>> sd.regression.gls(y, t, sigma=None)
+Traceback (most recent call last):
+    ...
+TypeError: gls(): 'sigma' must be an sd.ndarray, a sequence of numbers or a frame Series or DataFrame, not NoneType
+>>> sd.regression.gls(y, t, sigma=sd.ones(n))
+Traceback (most recent call last):
+    ...
+ValueError: gls(): 'sigma' must be 30x30 like the rows of 'y', not 1-dimensional
+>>> sd.regression.gls(y, t, sigma=sd.eye(29))
+Traceback (most recent call last):
+    ...
+ValueError: gls(): 'sigma' must be 30x30 like the rows of 'y', not 29x29
+```
+
+### 양정치여야 해요
+
+공분산 행렬은 어떤 일차결합의 분산도 0보다 커야 해서 양정치여야 해요. 그렇지 않으면 `sd.linalg.LinAlgError`예요. 예를 들어 모든 칸이 1이면 오차가 모두 같은 값이라는 뜻이라 양정치가 아니에요.
+
+```python
+>>> sd.regression.gls(y, t, sigma=sd.ones((n, n)))
+Traceback (most recent call last):
+    ...
+stardust.linalg.LinAlgError: gls(): 'sigma' is not positive definite
+```
+
+### 크기는 상대적이에요
+
+`sigma`에 같은 수를 곱해도 계수, 표준오차, R², 로그우도는 그대로예요(반올림 차이만 있어요). `scale`만 바뀌어요. [`wls`](/api/regression/wls/)의 가중치와 같아요.
+
+```python
+>>> g5 = sd.regression.gls(y, t, sigma=5.0 * S)
+>>> g5.bse
+array([ 0.8475173848280622, 0.04673075307036499], dtype=float64)
+>>> g.scale, g5.scale
+(1.0941867247266022, 0.21883734494531965)
+```
+
+### 특별한 경우: 단위행렬과 대각 행렬
+
+```python
+>>> x = sd.arange(10.0)
+>>> yy = sd.asarray([1.2, 2.0, 2.9, 3.1, 3.0, 4.4, 5.2, 5.0, 5.9, 7.1])
+>>> sd.regression.gls(yy, x, sigma=sd.eye(10)).params
+array([ 1.290909090909091, 0.5975757575757575], dtype=float64)
+>>> sd.regression.ols(yy, x).params
+array([ 1.290909090909091, 0.5975757575757575], dtype=float64)
+>>> v = sd.asarray([1.0, 1.0, 2.0, 2.0, 3.0, 3.0, 4.0, 4.0, 5.0, 5.0])
+>>> sd.regression.gls(yy, x, sigma=sd.eye(10) * v).params
+array([1.3203718845692924, 0.5921648968669377], dtype=float64)
+>>> sd.regression.wls(yy, x, weights=1.0 / v).params
+array([1.3203718845692922, 0.5921648968669377], dtype=float64)
+```
+
+단위행렬이면 `ols`, 대각 행렬이면 가중치가 대각의 역수인 `wls`와 반올림 차이 안에서 같아요.
+
+## 결과 필드: 두 가지 척도
+
+`GLSResult`의 필드는 [`OLSResult`](/api/regression/ols/#결과-필드)와 같은데, 어떤 필드는 **원래 척도**, 어떤 필드는 **백색화한 척도**의 값이에요.
+
+| 필드 | 척도 |
+|---|---|
+| `params`, `bse`, `pvalues`, `conf_int()`, `cov_params()` | 계수와 그 추론(척도와 상관없어요) |
+| `fittedvalues`, `resid`, `predict()` | 원래 척도: $X\hat\beta$, $y - X\hat\beta$ |
+| `ssr`, `centered_tss`, `ess`, `rsquared`, `fvalue`, `scale` | 백색화한 척도: $L^{-1}y$를 $L^{-1}X$에 맞춘 문제의 값 |
+| `llf` | 정규 오차의 로그우도에서 $\tfrac12\log\lvert\Sigma\rvert$를 뺀 값 |
+| `condition_number` | 백색화한 열의 조건수 |
+| 진단(`durbin_watson` 등) | 백색화한 잔차 $L^{-1}(y - X\hat\beta)$로 구한 값 |
+
+그래서 `ssr`은 `resid`의 제곱합이 아니에요.
+
+```python
+>>> g.ssr
+30.637228292344858
+>>> float(sd.sum(g.resid * g.resid))
+31.604845834781266
+```
+
+백색화한 잔차는 상관이 걷혔기 때문에 진단으로 확인할 수 있어요. Durbin–Watson 통계량은 오차가 독립이면 2 근처예요. `ols`의 잔차는 0.41로 강한 양의 자기상관을 보이고, `gls`의 백색화한 잔차는 1.59로 2에 훨씬 가까워요.
+
+```python
+>>> o.durbin_watson, g.durbin_watson
+(0.4091232415175824, 1.587016307355627)
+```
+
+진단의 뜻은 [회귀 진단](/api/regression/diagnostics/)에 있어요.
+
+`y`가 모두 같은 값 $y_0$이면, 절편이 있는 모형의 계수는 `sigma`와 상관없이 정확히 $(y_0, 0, \dots, 0)$이에요. 절편의 열이 모형에 있어서 백색화한 문제에서도 $y_0$배의 절편 열이 $L^{-1}y$를 그대로 만들기 때문이에요. 적합값은 모두 $y_0$, 잔차와 백색화한 잔차는 0이라 완전 적합이고, 결과의 값은 [`ols`](/api/regression/ols/#특수한-경우)의 "반응이 모두 같을 때"와 같아요.
+
+```python
+>>> c = sd.regression.gls(sd.full(n, 2.5), t, sigma=S)
+>>> c.params, c.bse, c.tvalues
+(array([2.5, 0.0], dtype=float64), array([0.0, 0.0], dtype=float64), array([nan, nan], dtype=float64))
+>>> c.ssr, float(sd.max(sd.abs(c.resid))), c.rsquared
+(0.0, 0.0, nan)
+```
+
+## NaN과 inf
+
+`nan_policy`는 `y`, `X`뿐 아니라 `sigma`도 봐요.
+
+- `'propagate'`(기본값): `y`, `X`, `sigma` 어디든 NaN이 있으면 그 회귀의 모든 값이 NaN이에요.
+- `'omit'`: `y`, `X`의 i행이나 `sigma`의 i행·i열에 NaN이 있으면 관측 i를 빼고, `sigma`에서도 그 행과 열을 빼고 풀어요.
+- `'raise'`: `ValueError`예요.
+
+```python
+>>> import math
+>>> rows = S.tolist()
+>>> rows[4][2] = math.nan
+>>> Sn = sd.asarray(rows)
+>>> sd.regression.gls(y, t, sigma=Sn).params
+array([nan, nan], dtype=float64)
+>>> a = sd.regression.gls(y, t, sigma=Sn, nan_policy='omit')
+>>> a.nobs, a.resid.shape
+(28.0, (28,))
+>>> idx = sd.asarray([i for i in range(n) if i not in (2, 4)])
+>>> b = sd.regression.gls(y[idx], t[idx], sigma=sd.take(sd.take(S, idx, axis=0), idx, axis=1))
+>>> a.params.tolist() == b.params.tolist()
+True
+>>> sd.regression.gls(y, t, sigma=Sn, nan_policy='raise')
+Traceback (most recent call last):
+    ...
+ValueError: gls(): the input contains NaN (nan_policy='raise')
+```
+
+`Sn`은 (4, 2) 칸이 NaN이라 관측 2와 4가 함께 빠져요. 그 결과는 두 관측을 뺀 데이터와 그에 맞게 줄인 `sigma`로 푼 것과 같아요. NaN이 읽지 않는 위 삼각의 (2, 4) 칸에 있어도 똑같이 관측 2와 4가 빠져요.
+
+```python
+>>> rows = S.tolist()
+>>> rows[2][4] = math.nan
+>>> sd.regression.gls(y, t, sigma=sd.asarray(rows), nan_policy='omit').params.tolist() == a.params.tolist()
+True
+```
+
+`'omit'`으로 모든 관측이 빠지면 에러가 아니라 모든 값이 NaN인 결과예요(`nobs` 0, `df_model`·`df_resid` NaN). [`ols`](/api/regression/ols/#특수한-경우)의 빈 입력과 같아요.
+
+```python
+>>> e = sd.regression.gls(sd.full(n, math.nan), t, sigma=S, nan_policy='omit')
+>>> e.nobs, e.df_resid, e.params
+(0.0, nan, array([nan, nan], dtype=float64))
+```
+
+inf는 `nan_policy`와 상관없이 `ValueError`예요. `sigma`의 위 삼각에 있어도, `'omit'`이 뺄 관측에 있어도 같아요. `y`와 `X`의 inf도 그 인자의 이름으로 알려 줘요.
+
+```python
+>>> rows = S.tolist()
+>>> rows[0][0] = math.inf
+>>> sd.regression.gls(y, t, sigma=sd.asarray(rows))
+Traceback (most recent call last):
+    ...
+ValueError: gls(): 'sigma' contains infinity
+>>> rows = S.tolist()
+>>> rows[0][5] = math.inf
+>>> sd.regression.gls(y, t, sigma=sd.asarray(rows))
+Traceback (most recent call last):
+    ...
+ValueError: gls(): 'sigma' contains infinity
+>>> yi = y.tolist()
+>>> yi[3] = math.inf
+>>> sd.regression.gls(yi, t, sigma=S)
+Traceback (most recent call last):
+    ...
+ValueError: gls(): 'y' contains infinity
+```
+
+## 배치
+
+`sigma`에 앞 축을 더 주면 회귀를 여러 개 한 번에 풀어요. 같은 데이터에 상관의 세기를 바꿔 가며 맞춰 볼 수 있어요(상관 0은 단위행렬, 곧 `ols`예요).
+
+```python
+>>> x = sd.arange(10.0)
+>>> lag10 = sd.abs(sd.reshape(x, (10, 1)) - sd.reshape(x, (1, 10)))
+>>> rhos = sd.asarray([0.0, 0.5, 0.9])
+>>> Sb = sd.reshape(rhos, (3, 1, 1)) ** lag10
+>>> Sb.shape
+(3, 10, 10)
+>>> rb = sd.regression.gls(yy, x, sigma=Sb)
+>>> rb.bse
+array([[0.22910293378735336, 0.04291491143539509],
+       [ 0.4268702358794353, 0.07546070961926245],
+       [ 1.2170720302085598, 0.15079358994918493]], dtype=float64)
+>>> rb.resid.shape
+(3, 10)
+```
+
+배치 가운데 하나가 양정치가 아니면 그 위치를 메시지에 붙여 알려 줘요.
+
+```python
+>>> bad = Sb.tolist()
+>>> bad[2][0][0] = -1.0
+>>> sd.regression.gls(yy, x, sigma=sd.asarray(bad))
+Traceback (most recent call last):
+    ...
+stardust.linalg.LinAlgError: gls(): 'sigma' is not positive definite (at batch index (2,))
+```
+
+`y`, `X`, `sigma`의 배치 모양이 서로 브로드캐스트하지 않으면 `ValueError`예요.
+
+```python
+>>> sd.regression.gls(sd.stack([yy, yy]), x, sigma=Sb)
+Traceback (most recent call last):
+    ...
+ValueError: gls(): the batch shapes of 'y' (2,), 'X' (), 'sigma' (3,) do not broadcast
+```
+
+배치에서는 `nan_policy='omit'`을 쓸 수 없어요. 공통 규칙은 [회귀분석 기본](/api/regression/basics/)에 있어요.
+
+## Σ를 모를 때
+
+`gls`는 $\Sigma$를 알고 있을 때의 방법이에요. 데이터에서 $\Sigma$를 어림해 쓰는 방법(FGLS, AR 오차의 반복 추정)은 들어 있지 않아요. $\Sigma$를 모르면
+
+- 계수는 `ols`로 구하고 표준오차만 상관에 강건한 것으로 바꾸는 방법이 있어요. 시간 순서의 상관이면 `cov_type='HAC'`, 묶음 안의 상관이면 `cov_type='cluster'`예요([표준오차의 종류](/api/regression/covariance/)).
+- 상관의 모양을 이론으로 정할 수 있으면(예: AR(1)의 $\rho$를 따로 어림했다면) 그 $\Sigma$를 만들어 `gls`에 줘요.
+
+```python
+>>> sd.regression.ols(y, t, cov_type='HAC').bse
+array([  0.5627678509659673, 0.026495605565103927], dtype=float64)
+```
+
+이 예에서 HAC의 기울기 표준오차는 0.026으로, $\Sigma$를 알고 구한 `gls`의 0.047보다 여전히 작아요. 관측이 적으면 HAC가 상관을 다 잡아내지 못하기 쉬워요.
+
+## 정확도
+
+백색화한 문제에 대해 [`ols`](/api/regression/ols/#정확도)와 같은 약속이에요. 백색화한 열의 조건수(`condition_number`)가 $10^{11}$ 이하이면 계수 벡터의 상대오차가 1e-14 이하예요. 다만 $\Sigma$를 나누는 계산에서 생기는 반올림이 문제 자체를 조금 바꿔요. $\Sigma$가 예민할수록(조건수가 클수록) 그 몫이 커져요. 같은 기계, 같은 스레드 수에서 같은 입력이면 실행마다 같은 비트예요. 지금은 스레드 수가 달라도 같아요(약속은 아니에요).
+
+## statsmodels를 아는 분께
+
+statsmodels 0.15.0 기준이에요.
+
+- `sm.GLS(y, sm.add_constant(X), sigma=S).fit()`이 `sd.regression.gls(y, X, sigma=S)`예요. 위의 n = 30, $\rho = 0.8$ 예에서 계수, 표준오차, `ssr`, R², `llf`가 반올림 차이 안에서 같아요.
+- 척도도 같아요. statsmodels의 `resid`는 원래 척도, `wresid`가 백색화한 잔차이고, `ssr`과 R²는 백색화한 값이에요. sd의 `wresid`도 같은 백색화한 잔차예요.
+- statsmodels의 `sigma`는 스칼라나 1차원(대각) 배열도 받아요. sd는 (n, n) 행렬만 받아요. 대각이면 [`wls`](/api/regression/wls/)를 쓰세요.
+- statsmodels의 GLS 결과에는 `get_influence()`가 없어요. sd는 `leverage`, Cook 거리 같은 진단을 백색화한 문제로 줘요.
+- 배치가 있어요. statsmodels는 회귀 하나씩 불러야 해요.

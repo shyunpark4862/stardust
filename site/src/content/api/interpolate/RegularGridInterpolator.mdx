@@ -1,0 +1,468 @@
+---
+title: RegularGridInterpolator
+names: [RegularGridInterpolator, RegularGridInterpolator.grid, RegularGridInterpolator.values, RegularGridInterpolator.method, RegularGridInterpolator.bounds_error, RegularGridInterpolator.fill_value]
+group: 격자
+order: 1
+signatures:
+  - "sd.interpolate.RegularGridInterpolator(points, values, /, *, method='linear', bounds_error=True, fill_value=nan)"
+  - "rgi(xi, /, *, method=None, nu=None)"
+summary: 축마다 눈금이 있는 격자 위의 값(위도 × 경도의 표, 시간 × 깊이 × 온도의 표)을 보간해요. 선형, 가장 가까운 점, 3차·5차 스플라인, 모양을 지키는 PCHIP을 고르고, 격자 밖의 점을 에러나 채움 값, 늘인 값으로 정해요.
+params:
+  - name: points
+    type: 1차원 배열의 튜플 또는 리스트
+    kind: positional-only
+    desc: "축마다의 눈금. d개의 1차원 배열이고 각각 유한하며 엄격히 증가하거나 엄격히 감소해야 해요. 한 점짜리 축도 돼요(방법에 따라)."
+  - name: values
+    type: ndarray, 수의 시퀀스, numpy 배열
+    kind: positional-only
+    desc: "격자점마다의 값. 모양이 (n₁, …, n_d, …)이고 앞의 d축이 눈금의 길이와 같아야 해요. 뒤의 축은 함께 다루는 여러 값(배치)이에요. float64나 complex128이에요."
+  - name: method
+    type: str
+    kind: keyword-only
+    desc: "부를 때 쓰는 기본 방법. 'linear', 'nearest', 'slinear', 'cubic', 'quintic', 'pchip' 가운데 하나예요. 기본값 'linear'."
+  - name: bounds_error
+    type: bool
+    kind: keyword-only
+    desc: "True면 격자 밖의 평가점이 ValueError예요. False면 fill_value를 써요. 기본값 True."
+  - name: fill_value
+    type: float, complex 또는 None
+    kind: keyword-only
+    desc: "bounds_error=False일 때 격자 밖의 값. None이면 끝 조각을 늘인 값이에요. values가 실수면 실수여야 해요. 기본값 NaN."
+returns:
+  type: RegularGridInterpolator
+  desc: "격자 보간 객체. 함수처럼 불러 값을 계산하고, 속성 grid, values, method, bounds_error, fill_value를 가져요."
+raises:
+  - type: TypeError
+    desc: "points가 튜플이나 리스트가 아닐 때, values가 수의 배열이 아닐 때, method가 문자열이 아닐 때, bounds_error가 True·False가 아닐 때, fill_value가 수나 None이 아닐 때(bool, 리스트), 옵션을 자리로 주거나 없는 인자(solver)를 줄 때."
+  - type: ValueError
+    desc: "축이 1차원이 아니거나 비었거나 유한하지 않거나 엄격히 단조가 아닐 때, values의 모양이 눈금과 맞지 않을 때, method의 이름이 틀렸을 때, 방법에 비해 축의 점이 모자랄 때, cubic·quintic·pchip인데 값에 NaN이나 inf가 있을 때, pchip인데 값이 복소수일 때, 실수 값에 복소수 fill_value를 줄 때."
+seeAlso: [interpn, make_interp_spline, PchipInterpolator, RBFInterpolator, NearestNDInterpolator, basics]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import PlaneFig from '../../../components/fig/PlaneFig.astro';
+
+export const rg_linear = [[0.0, 10.5], [0.025, 10.56], [0.05, 10.62], [0.075, 10.69], [0.1, 10.75], [0.125, 10.81], [0.15, 10.88], [0.175, 10.94], [0.2, 11.0], [0.225, 11.06], [0.25, 11.12], [0.275, 11.19], [0.3, 11.25], [0.325, 11.31], [0.35, 11.38], [0.375, 11.44], [0.4, 11.5], [0.425, 11.56], [0.45, 11.62], [0.475, 11.69], [0.5, 11.75], [0.525, 11.81], [0.55, 11.88], [0.575, 11.94], [0.6, 12.0], [0.625, 12.06], [0.65, 12.12], [0.675, 12.19], [0.7, 12.25], [0.725, 12.31], [0.75, 12.38], [0.775, 12.44], [0.8, 12.5], [0.825, 12.56], [0.85, 12.62], [0.875, 12.69], [0.9, 12.75], [0.925, 12.81], [0.95, 12.88], [0.975, 12.94], [1.0, 13.0], [1.025, 13.09], [1.05, 13.18], [1.075, 13.26], [1.1, 13.35], [1.125, 13.44], [1.15, 13.53], [1.175, 13.61], [1.2, 13.7], [1.225, 13.79], [1.25, 13.88], [1.275, 13.96], [1.3, 14.05], [1.325, 14.14], [1.35, 14.23], [1.375, 14.31], [1.4, 14.4], [1.425, 14.49], [1.45, 14.58], [1.475, 14.66], [1.5, 14.75], [1.525, 14.84], [1.55, 14.93], [1.575, 15.01], [1.6, 15.1], [1.625, 15.19], [1.65, 15.28], [1.675, 15.36], [1.7, 15.45], [1.725, 15.54], [1.75, 15.62], [1.775, 15.71], [1.8, 15.8], [1.825, 15.89], [1.85, 15.97], [1.875, 16.06], [1.9, 16.15], [1.925, 16.24], [1.95, 16.33], [1.975, 16.41], [2.0, 16.5], [2.025, 16.39], [2.05, 16.27], [2.075, 16.16], [2.1, 16.05], [2.125, 15.94], [2.15, 15.82], [2.175, 15.71], [2.2, 15.6], [2.225, 15.49], [2.25, 15.38], [2.275, 15.26], [2.3, 15.15], [2.325, 15.04], [2.35, 14.93], [2.375, 14.81], [2.4, 14.7], [2.425, 14.59], [2.45, 14.47], [2.475, 14.36], [2.5, 14.25], [2.525, 14.14], [2.55, 14.02], [2.575, 13.91], [2.6, 13.8], [2.625, 13.69], [2.65, 13.57], [2.675, 13.46], [2.7, 13.35], [2.725, 13.24], [2.75, 13.12], [2.775, 13.01], [2.8, 12.9], [2.825, 12.79], [2.85, 12.68], [2.875, 12.56], [2.9, 12.45], [2.925, 12.34], [2.95, 12.22], [2.975, 12.11], [3.0, 12.0]];
+export const rg_nearest = [[0.0, 10.0], [0.025, 10.0], [0.05, 10.0], [0.075, 10.0], [0.1, 10.0], [0.125, 10.0], [0.15, 10.0], [0.175, 10.0], [0.2, 10.0], [0.225, 10.0], [0.25, 10.0], [0.275, 10.0], [0.3, 10.0], [0.325, 10.0], [0.35, 10.0], [0.375, 10.0], [0.4, 10.0], [0.425, 10.0], [0.45, 10.0], [0.475, 10.0], [0.5, 10.0], [0.525, 12.0], [0.55, 12.0], [0.575, 12.0], [0.6, 12.0], [0.625, 12.0], [0.65, 12.0], [0.675, 12.0], [0.7, 12.0], [0.725, 12.0], [0.75, 12.0], [0.775, 12.0], [0.8, 12.0], [0.825, 12.0], [0.85, 12.0], [0.875, 12.0], [0.9, 12.0], [0.925, 12.0], [0.95, 12.0], [0.975, 12.0], [1.0, 12.0], [1.025, 12.0], [1.05, 12.0], [1.075, 12.0], [1.1, 12.0], [1.125, 12.0], [1.15, 12.0], [1.175, 12.0], [1.2, 12.0], [1.225, 12.0], [1.25, 12.0], [1.275, 12.0], [1.3, 12.0], [1.325, 12.0], [1.35, 12.0], [1.375, 12.0], [1.4, 12.0], [1.425, 12.0], [1.45, 12.0], [1.475, 12.0], [1.5, 12.0], [1.525, 15.0], [1.55, 15.0], [1.575, 15.0], [1.6, 15.0], [1.625, 15.0], [1.65, 15.0], [1.675, 15.0], [1.7, 15.0], [1.725, 15.0], [1.75, 15.0], [1.775, 15.0], [1.8, 15.0], [1.825, 15.0], [1.85, 15.0], [1.875, 15.0], [1.9, 15.0], [1.925, 15.0], [1.95, 15.0], [1.975, 15.0], [2.0, 15.0], [2.025, 15.0], [2.05, 15.0], [2.075, 15.0], [2.1, 15.0], [2.125, 15.0], [2.15, 15.0], [2.175, 15.0], [2.2, 15.0], [2.225, 15.0], [2.25, 15.0], [2.275, 15.0], [2.3, 15.0], [2.325, 15.0], [2.35, 15.0], [2.375, 15.0], [2.4, 15.0], [2.425, 15.0], [2.45, 15.0], [2.475, 15.0], [2.5, 15.0], [2.525, 11.0], [2.55, 11.0], [2.575, 11.0], [2.6, 11.0], [2.625, 11.0], [2.65, 11.0], [2.675, 11.0], [2.7, 11.0], [2.725, 11.0], [2.75, 11.0], [2.775, 11.0], [2.8, 11.0], [2.825, 11.0], [2.85, 11.0], [2.875, 11.0], [2.9, 11.0], [2.925, 11.0], [2.95, 11.0], [2.975, 11.0], [3.0, 11.0]];
+export const rg_cubic = [[0.0, 11.13], [0.025, 11.08], [0.05, 11.04], [0.075, 11.01], [0.1, 10.99], [0.125, 10.97], [0.15, 10.96], [0.175, 10.96], [0.2, 10.96], [0.225, 10.97], [0.25, 10.99], [0.275, 11.01], [0.3, 11.03], [0.325, 11.07], [0.35, 11.11], [0.375, 11.15], [0.4, 11.2], [0.425, 11.25], [0.45, 11.31], [0.475, 11.38], [0.5, 11.45], [0.525, 11.52], [0.55, 11.59], [0.575, 11.68], [0.6, 11.76], [0.625, 11.85], [0.65, 11.94], [0.675, 12.04], [0.7, 12.13], [0.725, 12.23], [0.75, 12.34], [0.775, 12.45], [0.8, 12.56], [0.825, 12.67], [0.85, 12.78], [0.875, 12.9], [0.9, 13.01], [0.925, 13.13], [0.95, 13.25], [0.975, 13.38], [1.0, 13.5], [1.025, 13.62], [1.05, 13.75], [1.075, 13.88], [1.1, 14.0], [1.125, 14.13], [1.15, 14.26], [1.175, 14.38], [1.2, 14.51], [1.225, 14.64], [1.25, 14.76], [1.275, 14.89], [1.3, 15.01], [1.325, 15.14], [1.35, 15.26], [1.375, 15.38], [1.4, 15.5], [1.425, 15.62], [1.45, 15.73], [1.475, 15.85], [1.5, 15.96], [1.525, 16.07], [1.55, 16.18], [1.575, 16.28], [1.6, 16.39], [1.625, 16.48], [1.65, 16.58], [1.675, 16.67], [1.7, 16.76], [1.725, 16.85], [1.75, 16.93], [1.775, 17.01], [1.8, 17.08], [1.825, 17.15], [1.85, 17.21], [1.875, 17.27], [1.9, 17.33], [1.925, 17.38], [1.95, 17.43], [1.975, 17.47], [2.0, 17.5], [2.025, 17.53], [2.05, 17.55], [2.075, 17.57], [2.1, 17.58], [2.125, 17.59], [2.15, 17.58], [2.175, 17.58], [2.2, 17.56], [2.225, 17.54], [2.25, 17.51], [2.275, 17.47], [2.3, 17.43], [2.325, 17.38], [2.35, 17.32], [2.375, 17.25], [2.4, 17.18], [2.425, 17.09], [2.45, 17.0], [2.475, 16.9], [2.5, 16.79], [2.525, 16.67], [2.55, 16.54], [2.575, 16.41], [2.6, 16.26], [2.625, 16.1], [2.65, 15.94], [2.675, 15.76], [2.7, 15.58], [2.725, 15.38], [2.75, 15.17], [2.775, 14.96], [2.8, 14.73], [2.825, 14.49], [2.85, 14.24], [2.875, 13.98], [2.9, 13.71], [2.925, 13.42], [2.95, 13.13], [2.975, 12.82], [3.0, 12.5]];
+export const rg_pchip = [[0.0, 10.81], [0.025, 10.86], [0.05, 10.92], [0.075, 10.97], [0.1, 11.03], [0.125, 11.08], [0.15, 11.14], [0.175, 11.19], [0.2, 11.25], [0.225, 11.31], [0.25, 11.37], [0.275, 11.43], [0.3, 11.49], [0.325, 11.55], [0.35, 11.61], [0.375, 11.67], [0.4, 11.74], [0.425, 11.8], [0.45, 11.86], [0.475, 11.93], [0.5, 11.99], [0.525, 12.06], [0.55, 12.13], [0.575, 12.2], [0.6, 12.26], [0.625, 12.33], [0.65, 12.4], [0.675, 12.47], [0.7, 12.54], [0.725, 12.62], [0.75, 12.69], [0.775, 12.76], [0.8, 12.83], [0.825, 12.91], [0.85, 12.98], [0.875, 13.06], [0.9, 13.13], [0.925, 13.21], [0.95, 13.28], [0.975, 13.36], [1.0, 13.44], [1.025, 13.52], [1.05, 13.6], [1.075, 13.7], [1.1, 13.79], [1.125, 13.9], [1.15, 14.0], [1.175, 14.11], [1.2, 14.23], [1.225, 14.34], [1.25, 14.46], [1.275, 14.58], [1.3, 14.7], [1.325, 14.83], [1.35, 14.95], [1.375, 15.08], [1.4, 15.2], [1.425, 15.33], [1.45, 15.46], [1.475, 15.58], [1.5, 15.7], [1.525, 15.82], [1.55, 15.94], [1.575, 16.05], [1.6, 16.17], [1.625, 16.27], [1.65, 16.38], [1.675, 16.48], [1.7, 16.57], [1.725, 16.66], [1.75, 16.75], [1.775, 16.83], [1.8, 16.9], [1.825, 16.96], [1.85, 17.02], [1.875, 17.07], [1.9, 17.11], [1.925, 17.14], [1.95, 17.17], [1.975, 17.18], [2.0, 17.19], [2.025, 17.18], [2.05, 17.17], [2.075, 17.16], [2.1, 17.14], [2.125, 17.11], [2.15, 17.07], [2.175, 17.03], [2.2, 16.98], [2.225, 16.93], [2.25, 16.87], [2.275, 16.8], [2.3, 16.73], [2.325, 16.65], [2.35, 16.57], [2.375, 16.48], [2.4, 16.38], [2.425, 16.28], [2.45, 16.17], [2.475, 16.06], [2.5, 15.94], [2.525, 15.81], [2.55, 15.68], [2.575, 15.55], [2.6, 15.41], [2.625, 15.26], [2.65, 15.11], [2.675, 14.95], [2.7, 14.79], [2.725, 14.62], [2.75, 14.45], [2.775, 14.27], [2.8, 14.08], [2.825, 13.89], [2.85, 13.7], [2.875, 13.5], [2.9, 13.3], [2.925, 13.09], [2.95, 12.88], [2.975, 12.66], [3.0, 12.44]];
+export const rg_nodes = [[0.0, 10.5], [1.0, 13.0], [2.0, 16.5], [3.0, 12.0]];
+
+## 한눈에 보기
+
+위도 세 줄, 경도 네 줄의 격자점에서 기온을 쟀다고 해 볼게요. 값은 표 하나에 들어가요. 행이 위도, 열이 경도예요. `RegularGridInterpolator`는 이런 표에서 격자점 사이의 값을 읽어요.
+
+```python
+>>> import stardust as sd
+>>> lat = sd.asarray([0.0, 1.0, 2.0])
+>>> lon = sd.asarray([0.0, 1.0, 2.0, 3.0])
+>>> T = sd.asarray([[10.0, 12.0, 15.0, 11.0],
+...                 [11.0, 14.0, 18.0, 13.0],
+...                 [ 9.0, 13.0, 16.0, 12.0]])
+>>> g = sd.interpolate.RegularGridInterpolator((lat, lon), T)
+>>> g
+RegularGridInterpolator(grid=3x4, method='linear')
+>>> g([0.5, 1.5])
+array([14.75], dtype=float64)
+>>> g([[0.5, 1.5], [1.0, 2.0], [2.0, 3.0]])
+array([14.75,  18.0,  12.0], dtype=float64)
+```
+
+평가점은 좌표의 묶음이에요. `[0.5, 1.5]`는 위도 0.5, 경도 1.5인 점 하나예요. 기본 방법(`linear`)은 점을 둘러싼 네 격자점의 값을 축마다 곧은 선으로 섞어요. 위의 점은 (0, 1), (0, 2), (1, 1), (1, 2)의 값 12, 15, 14, 18의 가운데라 14.75예요. 격자점에서는 표의 값 그대로예요.
+
+"격자"는 축마다 눈금이 따로 있고 모든 눈금의 조합에 값이 있는 꼴이에요. 눈금 간격은 고르지 않아도 돼요. 점들이 아무 데나 흩어져 있으면 [`RBFInterpolator`](/api/interpolate/RBFInterpolator/)나 [`NearestNDInterpolator`](/api/interpolate/NearestNDInterpolator/)를 써요.
+
+<Fig caption="4 × 4 격자에서 첫 축을 0.5에 두고 둘째 축을 따라 읽은 값. nearest는 가까운 격자점의 값에서 뛰고, linear는 격자점에서 꺾이며, cubic은 매끄럽고, pchip은 이웃한 격자점 값의 범위를 넘지 않아요. 점은 격자점 사이(첫 축 0과 1의 가운데)의 linear 값이에요.">
+  <PlaneFig
+    label="격자의 한 줄을 따라 네 방법으로 읽은 값의 곡선"
+    domain={[0, 3]}
+    range={[9.5, 18]}
+    equal={false}
+    width={560}
+    height={250}
+    xTicks={[0, 1, 2, 3]}
+    yTicks={[10, 12, 14, 16]}
+    layers={[
+      { kind: 'line', pts: rg_nearest, tone: 'faint', dashed: true },
+      { kind: 'line', pts: rg_linear, tone: 'base' },
+      { kind: 'line', pts: rg_pchip, tone: 'soft', width: 2 },
+      { kind: 'line', pts: rg_cubic, tone: 'main', width: 2 },
+      { kind: 'points', pts: rg_nodes, tone: 'ink', size: 3.6 },
+    ]}
+    legend={[
+      { label: 'nearest', tone: 'faint', shape: 'dash' },
+      { label: 'linear', tone: 'base', shape: 'line' },
+      { label: 'pchip', tone: 'soft', shape: 'line' },
+      { label: 'cubic', tone: 'main', shape: 'line' },
+    ]}
+  />
+</Fig>
+
+<Reference />
+
+## 평가점 `xi`를 주는 법
+
+평가점은 세 꼴로 줄 수 있어요.
+
+| 꼴 | 예 | 결과의 모양 |
+|---|---|---|
+| (…, d) 배열. 마지막 축이 좌표 | `[[0.5, 1.5], [1.0, 2.0]]` | (…) |
+| 좌표 d개의 튜플. 스칼라와 배열을 브로드캐스트해요 | `(0.5, 1.5)`, `([0.5, 1.0], [1.5, 2.0])` | 브로드캐스트한 모양 |
+| 길이가 d의 배수인 1차원 배열. d개씩 끊어 점으로 읽어요 | `[0.5, 1.5, 1.0, 2.0]` | (점의 수,) |
+
+```python
+>>> g((0.5, 1.5)), type(g((0.5, 1.5)))
+(14.75, <class 'float'>)
+>>> g(([0.5, 1.0], [1.5, 2.0]))
+array([14.75,  18.0], dtype=float64)
+>>> g([0.5, 1.5, 1.0, 2.0])
+array([14.75,  18.0], dtype=float64)
+>>> g(sd.zeros((2, 3, 2))).shape
+(2, 3)
+```
+
+`[0.5, 1.5]`는 1차원 배열이라 점 하나로 읽어도 결과는 길이 1의 배열이에요. 스칼라만의 튜플 `(0.5, 1.5)`는 한 점이라 결과가 Python `float`이에요.
+
+튜플 꼴은 격자처럼 펼친 평가점을 만들 때 편해요. 위도 두 줄과 경도 세 줄의 모든 조합은 이래요.
+
+```python
+>>> g((sd.asarray([[0.5], [1.5]]), sd.asarray([0.0, 1.0, 2.0])))
+array([[10.5, 13.0, 16.5],
+       [10.0, 13.5, 17.0]], dtype=float64)
+```
+
+좌표의 수가 격자의 차원과 다르면 에러예요.
+
+```python
+>>> g([[0.5, 1.5, 1.0]])
+Traceback (most recent call last):
+    ...
+ValueError: RegularGridInterpolator(): the points in 'xi' have dimension 3, but the grid has dimension 2
+>>> g([0.5, 1.5, 1.0])
+Traceback (most recent call last):
+    ...
+ValueError: RegularGridInterpolator(): 'xi' of 3 coordinates is not a whole number of 2-D points
+>>> g((0.5, 1.5, 2.0))
+Traceback (most recent call last):
+    ...
+ValueError: RegularGridInterpolator(): 'xi' has 3 coordinate arrays, but the grid has dimension 2
+>>> g(0.5)
+Traceback (most recent call last):
+    ...
+ValueError: RegularGridInterpolator(): 'xi' must have at least 1 dimension
+```
+
+## 방법 `method`
+
+| 방법 | 하는 일 | 축마다 필요한 점 | 도함수 `nu` |
+|---|---|---|---|
+| `'linear'`(기본) | 축마다 곧은 선으로 섞어요(다중선형) | 1 | 안 돼요 |
+| `'nearest'` | 가장 가까운 격자점의 값 | 1 | 안 돼요 |
+| `'slinear'` | 1차 스플라인. 값은 `linear`와 같아요 | 2 | 돼요 |
+| `'cubic'` | 축마다 3차 스플라인 | 4 | 돼요 |
+| `'quintic'` | 축마다 5차 스플라인 | 6 | 돼요 |
+| `'pchip'` | 축마다 PCHIP. 이웃한 값의 범위를 넘지 않아요 | 4 | 안 돼요 |
+
+만들 때 고른 방법이 기본이고, 부를 때 `method=`로 그 호출만 바꿀 수 있어요.
+
+```python
+>>> T4 = sd.asarray([[10.0, 12.0, 15.0, 11.0],
+...                  [11.0, 14.0, 18.0, 13.0],
+...                  [ 9.0, 13.0, 16.0, 12.0],
+...                  [ 8.0, 11.0, 15.0, 10.0]])
+>>> g4 = sd.interpolate.RegularGridInterpolator((sd.linspace(0, 3, 4), lon), T4)
+>>> for m in ('linear', 'nearest', 'slinear', 'cubic', 'pchip'):
+...     print(m, g4([0.5, 1.5], method=m))
+linear [14.75]
+nearest [12.0]
+slinear [14.75]
+cubic [15.960937500000004]
+pchip [15.700892857142856]
+```
+
+점이 모자란 축이 있으면 그 방법을 쓸 때 에러예요. 처음의 3 × 4 격자는 첫 축이 3점이라 `cubic`을 쓸 수 없어요.
+
+```python
+>>> g([0.5, 1.5], method='cubic')
+Traceback (most recent call last):
+    ...
+ValueError: RegularGridInterpolator(): method 'cubic' needs at least 4 points per dimension, not 3 in dimension 0
+>>> sd.interpolate.RegularGridInterpolator((lat, lon), T, method='quintic')
+Traceback (most recent call last):
+    ...
+ValueError: RegularGridInterpolator(): method 'quintic' needs at least 6 points per dimension, not 3 in dimension 0
+```
+
+### `linear`와 `slinear`
+
+`linear`는 점을 둘러싼 $2^d$개 꼭짓점의 값을 축마다 차례로 곧은 선으로 섞어요. 격자점에서는 값 그대로이고, 결과는 언제나 꼭짓점 값의 최솟값과 최댓값 사이예요. 새로운 극값을 지어내지 않아 가장 안전한 기본값이에요. 대신 격자선에서 기울기가 꺾여요.
+
+`slinear`는 같은 함수를 1차 B-스플라인의 텐서곱으로 보는 이름이에요. 값은 `linear`와 비트까지 같고, `nu`로 도함수를 받을 수 있다는 점만 달라요.
+
+### `nearest`
+
+축마다 가까운 쪽 눈금을 골라요. 두 눈금의 꼭 가운데에서는 작은 쪽(왼쪽)이에요.
+
+```python
+>>> g([[0.4, 1.5], [0.5, 1.5], [0.6, 1.5]], method='nearest')
+array([12.0, 12.0, 14.0], dtype=float64)
+```
+
+### `cubic`과 `quintic`
+
+축마다 3차(5차) not-a-knot 스플라인을 놓은 텐서곱 스플라인이에요. 값과 기울기, 굽은 정도까지 매끄럽게 이어져요. 자료가 3차(5차) 이하의 다항식이면 그 다항식을 정확히 되살려요.
+
+```python
+>>> xx = sd.linspace(0, 2, 5)
+>>> yy = sd.linspace(0, 1, 4)
+>>> F = sd.reshape(xx, (5, 1)) ** 2 + 3 * sd.reshape(yy, (1, 4))
+>>> gF = sd.interpolate.RegularGridInterpolator((xx, yy), F)
+>>> gF([[0.75, 0.5], [1.9, 0.1]]), gF([[0.75, 0.5], [1.9, 0.1]], method='cubic')
+(array([             2.125, 3.9499999999999993], dtype=float64), array([            2.0625, 3.9099999999999997], dtype=float64))
+>>> 0.75**2 + 1.5, 1.9**2 + 0.3
+(2.0625, 3.9099999999999997)
+```
+
+계수는 만들 때(또는 그 방법을 처음 부를 때) 한 번 구해 두고 다시 써요. 축마다 1차원 스플라인의 연립방정식을 정확히 풀어서 구해요. 1차원 격자에서는 [`make_interp_spline`](/api/interpolate/make_interp_spline/)과 비트까지 같아요.
+
+### `pchip`
+
+축마다 [PCHIP](/api/interpolate/PchipInterpolator/)을 써요. 기울기까지 이어지는 3차 곡선이면서, 자료가 오르는 곳에서만 오르고 이웃한 값의 범위를 넘지 않아요. 농도나 확률처럼 넘치거나 음수가 되면 안 되는 값에 알맞아요. 실수 값만 받아요.
+
+## 도함수 `nu`
+
+`slinear`, `cubic`, `quintic`에서는 부를 때 `nu`로 축마다의 미분 차수를 줘요. `nu=(1, 0)`은 첫 축 방향의 기울기, `(1, 1)`은 혼합 2차 도함수예요.
+
+```python
+>>> g4c = sd.interpolate.RegularGridInterpolator((sd.linspace(0, 3, 4), lon), T4, method='cubic')
+>>> g4c([0.5, 1.5], nu=(1, 0)), g4c([0.5, 1.5], nu=(0, 1)), g4c([0.5, 1.5], nu=(1, 1))
+(array([2.453125], dtype=float64), array([4.442708333333333], dtype=float64), array([0.8923611111111127], dtype=float64))
+>>> g([0.5, 1.5], method='slinear', nu=(0, 1))
+array([3.5], dtype=float64)
+```
+
+`nu`는 차원 수만큼의 0 이상 int 시퀀스예요. 스칼라 하나나 float는 받지 않아요.
+
+```python
+>>> g([0.5, 1.5], nu=(1, 0))
+Traceback (most recent call last):
+    ...
+ValueError: RegularGridInterpolator(): 'nu' is for the methods 'slinear', 'cubic' and 'quintic', not 'linear'
+>>> g([0.5, 1.5], method='slinear', nu=1)
+Traceback (most recent call last):
+    ...
+TypeError: RegularGridInterpolator(): 'nu' must be a sequence of 2 ints, not int
+>>> g([0.5, 1.5], method='slinear', nu=(1,))
+Traceback (most recent call last):
+    ...
+ValueError: RegularGridInterpolator(): 'nu' must have one order per dimension (2), not 1
+>>> g([0.5, 1.5], method='slinear', nu=(1.0, 0))
+Traceback (most recent call last):
+    ...
+TypeError: RegularGridInterpolator(): 'nu' must be an int, not float
+```
+
+## 격자 밖: `bounds_error`와 `fill_value`
+
+기본(`bounds_error=True`)에서는 격자 밖의 점이 에러예요. 메시지는 범위를 벗어난 축을 말해요(여럿이면 가장 앞의 축).
+
+```python
+>>> g([0.5, 3.5])
+Traceback (most recent call last):
+    ...
+ValueError: RegularGridInterpolator(): one of the requested xi is out of bounds in dimension 1
+>>> g([2.5, 1.0])
+Traceback (most recent call last):
+    ...
+ValueError: RegularGridInterpolator(): one of the requested xi is out of bounds in dimension 0
+```
+
+`bounds_error=False`면 격자 밖의 점에 `fill_value`(기본 NaN)를 넣어요. `fill_value=None`이면 끝 조각을 그대로 늘인 값이에요.
+
+```python
+>>> sd.interpolate.RegularGridInterpolator((lat, lon), T, bounds_error=False)([[0.5, 3.5], [0.5, 1.5]])
+array([  nan, 14.75], dtype=float64)
+>>> sd.interpolate.RegularGridInterpolator((lat, lon), T, bounds_error=False, fill_value=-1.0)([[0.5, 3.5]])
+array([-1.0], dtype=float64)
+>>> gx = sd.interpolate.RegularGridInterpolator((lat, lon), T, bounds_error=False, fill_value=None)
+>>> gx([[0.5, 3.5], [-1.0, 0.0]])
+array([9.75,  9.0], dtype=float64)
+```
+
+늘인 값은 격자 밖에서 빠르게 커질 수 있어서, 격자에서 조금 벗어난 점에만 써요. `fill_value=None`에서 좌표가 inf면 끝 조각의 직선을 따라간 값(inf나 −inf)이에요.
+
+```python
+>>> gx([[float('inf'), 1.0]])
+array([-inf], dtype=float64)
+```
+
+## 결측값: NaN 좌표와 NaN 값
+
+좌표에 NaN이 있는 평가점은 `bounds_error`와 `fill_value`에 상관없이 NaN이에요.
+
+```python
+>>> g([[float('nan'), 1.0], [0.5, 1.5]])
+array([  nan, 14.75], dtype=float64)
+```
+
+값(`values`)에 NaN이 있을 때는 방법에 따라 달라요. `linear`, `nearest`, `slinear`는 NaN 격자점이 실제로 쓰이는 점에서만 NaN이에요. 그 격자점의 무게가 0이면(격자선 위에서 다른 쪽에 붙은 점) 영향이 없어요.
+
+```python
+>>> Tn = sd.asarray([[10.0, float('nan'), 15.0, 11.0],
+...                  [11.0, 14.0, 18.0, 13.0],
+...                  [ 9.0, 13.0, 16.0, 12.0]])
+>>> gn = sd.interpolate.RegularGridInterpolator((lat, lon), Tn)
+>>> gn([[0.5, 0.5], [0.0, 1.0], [1.0, 0.5], [1.5, 0.5]])
+array([  nan,   nan,  12.5, 11.75], dtype=float64)
+```
+
+`cubic`, `quintic`, `pchip`은 값이 모두 유한해야 해요. 스플라인 계수를 연립방정식으로 구하거나 이웃의 기울기를 쓰므로 NaN 하나가 멀리 퍼지기 때문이에요.
+
+## 축: `points`
+
+축의 눈금은 유한하고 엄격히 증가하거나 감소해야 해요. 감소하는 축은 객체가 뒤집어 쥐어요. 그래서 속성 `grid`와 `values`는 언제나 오름차순이에요. 보간 결과는 같아요.
+
+```python
+>>> gd = sd.interpolate.RegularGridInterpolator((lat[::-1], lon), T)
+>>> gd.grid[0]
+array([0.0, 1.0, 2.0], dtype=float64)
+>>> gd([0.0, 1.0]), T[2, 1]
+(array([13.0], dtype=float64), 13.0)
+```
+
+```python
+>>> sd.interpolate.RegularGridInterpolator((lat, [0.0, 1.0, 1.0, 3.0]), T)
+Traceback (most recent call last):
+    ...
+ValueError: RegularGridInterpolator(): the points in dimension 1 must be strictly increasing or strictly decreasing
+>>> sd.interpolate.RegularGridInterpolator((lat, [0.0, 1.0, float('inf'), 3.0]), T)
+Traceback (most recent call last):
+    ...
+ValueError: RegularGridInterpolator(): the points in dimension 1 must be finite
+>>> sd.interpolate.RegularGridInterpolator((lat, lon), T.T)
+Traceback (most recent call last):
+    ...
+ValueError: RegularGridInterpolator(): there are 3 points and 4 values in dimension 0
+>>> sd.interpolate.RegularGridInterpolator(lat, T)
+Traceback (most recent call last):
+    ...
+TypeError: RegularGridInterpolator(): 'points' must be a tuple or a list of 1-D arrays, not ndarray
+```
+
+눈금이 하나뿐인 축은 `linear`와 `nearest`에서 그 축을 따라 값이 일정한 것으로 봐요.
+
+```python
+>>> g1 = sd.interpolate.RegularGridInterpolator(([5.0], lon), sd.asarray([[1.0, 4.0, 2.0, 8.0]]))
+>>> g1([5.0, 0.5])
+array([2.5], dtype=float64)
+```
+
+## 여러 값을 한 번에: 배치
+
+`values`가 격자의 차원보다 축이 많으면 뒤의 축은 같은 격자 위의 여러 값이에요(기온과 습도를 함께 담은 표). 결과는 평가점의 모양 뒤에 그 축이 붙어요.
+
+```python
+>>> V = sd.stack([T, 2 * T], axis=2)
+>>> V.shape
+(3, 4, 2)
+>>> gv = sd.interpolate.RegularGridInterpolator((lat, lon), V)
+>>> gv([0.5, 1.5])
+array([[14.75,  29.5]], dtype=float64)
+>>> gv([[0.5, 1.5], [1.0, 2.0]]).shape
+(2, 2)
+```
+
+복소수 값도 받아요(`pchip` 빼고). 이때 `fill_value`도 복소수일 수 있어요.
+
+```python
+>>> sd.interpolate.RegularGridInterpolator((lat, lon), T + 1j * T)([0.5, 1.5])
+array([(14.75+14.75j)], dtype=complex128)
+>>> sd.interpolate.RegularGridInterpolator((lat, lon), T, fill_value=1j)
+Traceback (most recent call last):
+    ...
+ValueError: RegularGridInterpolator(): 'fill_value' must be None or a real number for real values, not complex
+```
+
+## 1차원 격자
+
+축이 하나면 1차원 보간이에요. `linear`는 자료 범위 안에서 [`sd.interp`](/api/array/interp/)와, `cubic`은 `make_interp_spline`과, `pchip`은 `PchipInterpolator`와 비트까지 같아요.
+
+```python
+>>> fp = sd.asarray([1.0, 4.0, 2.0, 8.0])
+>>> xq = sd.asarray([0.3, 1.7, 2.25])
+>>> g1d = sd.interpolate.RegularGridInterpolator((lon,), fp)
+>>> g1d(xq)
+array([1.9, 2.6, 3.5], dtype=float64)
+>>> bool(sd.all(g1d(xq) == sd.interp(xq, lon, fp)))
+True
+```
+
+1차원에서는 1차원 배열을 점 여러 개로 읽어요(좌표가 하나씩이라서요).
+
+## 속성
+
+| 속성 | 뜻 | 타입 |
+|---|---|---|
+| `grid` | 축마다의 눈금(오름차순) | 읽기 전용 1차원 float64 배열의 튜플 |
+| `values` | 격자점의 값(감소하던 축은 뒤집은 것) | 읽기 전용 배열 |
+| `method` | 기본 방법 | `str` |
+| `bounds_error` | 격자 밖이 에러인지 | `bool` |
+| `fill_value` | 격자 밖의 값 | `float`, `complex`, `None` |
+
+```python
+>>> g.grid
+(array([0.0, 1.0, 2.0], dtype=float64), array([0.0, 1.0, 2.0, 3.0], dtype=float64))
+>>> g.method, g.bounds_error, g.fill_value
+('linear', True, nan)
+>>> g.values[0, 0] = 1.0
+Traceback (most recent call last):
+    ...
+ValueError: assignment destination is read-only
+>>> g.method = 'cubic'
+Traceback (most recent call last):
+    ...
+AttributeError: property 'method' of 'RegularGridInterpolator' object has no setter
+```
+
+값은 만들 때 복사해 둬요. 만든 뒤 원래 배열을 고쳐도 결과는 그대로예요. 다른 값이나 다른 기본 방법이 필요하면 새 객체를 만들어요.
+
+## 정확도와 결정성
+
+`linear`는 축마다 같은 꺾은선 계산을 마지막 축부터 차례로 써요. 정확한 유리수 참값과 견준 시험에서 `linear`와 `slinear`의 오차는 보장하는 한계의 0.34배 이하였어요. `cubic`과 `quintic`은 계수를 반복법 없이 정확히 풀어서, 같은 시험에서 끝에서 끝 오차가 한계의 0.012배(`cubic`)와 0.0045배(`quintic`)였어요. `pchip`은 참값에서 최대 87 ULP였어요. 한계와 증명은 [정확도와 성능](/internals/interpolate/accuracy-performance/)에 있어요.
+
+같은 객체, 같은 평가점이면 스레드 수와 상관없이 같은 비트예요. 한 점의 값은 다른 평가점과 상관없이 정해져요.
+
+## 조심할 점
+
+### 옵션은 이름으로 줘요
+
+```python
+>>> sd.interpolate.RegularGridInterpolator((lat, lon), T, 'linear')
+Traceback (most recent call last):
+    ...
+TypeError: RegularGridInterpolator(): takes 2 positional arguments but 3 were given
+>>> sd.interpolate.RegularGridInterpolator((lat, lon), T, method='Linear')
+Traceback (most recent call last):
+    ...
+ValueError: RegularGridInterpolator(): 'method' must be 'linear', 'nearest', 'slinear', 'cubic', 'quintic' or 'pchip', not 'Linear'
+```
+
+### 축의 순서는 values의 축 순서예요
+
+`points`의 첫 배열이 `values`의 0번 축, 둘째 배열이 1번 축이에요. 평가점의 좌표도 같은 순서로 줘요. 표를 (경도, 위도) 순서로 읽으려면 `values`를 전치해 새로 만들어요.
+
+### 고차 방법은 격자 밖에서 조심해요
+
+`fill_value=None`에서 `cubic`과 `quintic`은 끝 조각의 3차·5차 다항식을 늘여요. 격자에서 멀어지면 값이 크게 휘어요.
+
+## scipy·numpy를 아는 분께
+
+- 옵션은 이름으로만 받아요. `method` 이름은 소문자만이고, `slinear_legacy`, `cubic_legacy`, `quintic_legacy`는 없어요. `slinear`, `cubic`, `quintic`이 같은 함수를 반복 풀이의 오차 없이 내요.
+- `cubic`과 `quintic`의 계수는 축마다의 직접 풀이예요. `solver`, `solver_args`가 없어요. scipy는 반복 풀이(기본 `gcrotmk`)라 결과가 그 허용오차만큼 틀릴 수 있어요.
+- `linear`와 `slinear`는 비트까지 같아요. 1차원 격자의 `linear`는 `sd.interp`, `make_interp_spline(k=1)`과 비트까지 같아요. scipy에서는 이 길들의 끝자리가 다를 수 있어요.
+- NaN 좌표의 평가점은 언제나 NaN이에요. scipy는 `bounds_error=True`면 범위 밖으로 쳐서 `ValueError`예요.
+- 축의 눈금은 유한해야 해요. scipy는 무한한 눈금을 받아요.
+- `linear`의 NaN 값은 그 격자점의 무게가 0이 아닌 점에만 퍼져요. scipy의 `linear`는 무게가 0인 NaN도 칸 전체에 퍼뜨리고 `slinear`는 NaN 값에서 에러예요.
+- `bounds_error`는 `True`·`False`만, `fill_value`는 수나 `None`만 받아요(bool과 배열은 `TypeError`). `nu`는 차원 수만큼의 int 시퀀스만 받아요.
+- 스칼라만의 튜플 평가점은 Python 스칼라를 돌려줘요. `fill_value=None`에서 무한한 좌표는 끝 조각의 직선 값이에요. scipy는 NaN이에요.
+- 속성은 읽기만 해요.

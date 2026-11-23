@@ -1,0 +1,383 @@
+---
+kind: concept
+title: 반복법의 기본
+group: 반복법
+order: 1
+summary: 큰 희소 연립방정식 Ax = b를 A와 벡터의 곱만으로 푸는 반복법 여섯 개를 고르는 법과, 모두가 함께 따르는 인자(rtol, atol, max_iter, x0, M), 멈춤 판정, 결과 읽기, 수렴하지 않을 때 할 일을 설명해요.
+seeAlso: [cg, minres, gmres, bicgstab, lsqr, lsmr, spsolve, linearoperator, basics]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+import Tree from '../../../components/fig/Tree.astro';
+
+export const cgPlain = [[0,0.0],[2,0.87],[4,0.95],[6,0.96],[8,1.01],[10,1.04],[12,1.04],[14,1.07],[16,1.1],[18,1.08],[20,1.1],[22,1.14],[24,1.14],[26,1.13],[28,1.09],[30,1.18],[32,1.16],[34,1.18],[36,1.16],[38,1.15],[40,1.14],[42,1.3],[44,1.21],[46,1.2],[48,1.27],[50,1.19],[52,1.19],[54,1.22],[56,1.18],[58,1.29],[60,1.2],[62,1.29],[64,1.29],[66,1.23],[68,1.22],[70,1.28],[72,1.35],[74,1.25],[76,1.3],[78,1.24],[80,1.36],[82,1.29],[84,1.32],[86,1.31],[88,1.29],[90,1.33],[92,1.24],[94,1.34],[96,1.28],[98,1.2],[100,1.38],[102,1.47],[104,1.28],[106,1.32],[108,1.36],[110,1.42],[112,1.53],[114,1.25],[116,1.36],[118,1.32],[120,1.38],[122,1.48],[124,1.22],[126,1.56],[128,1.25],[130,1.35],[132,1.28],[134,1.29],[136,1.28],[138,1.31],[140,1.41],[142,1.45],[144,1.29],[146,1.39],[148,1.4],[150,1.54],[152,1.33],[154,1.43],[156,1.47],[158,1.32],[160,1.51],[162,1.45],[164,1.43],[166,1.45],[168,1.56],[170,1.43],[172,1.45],[174,1.36],[176,1.3],[178,1.47],[180,1.38],[182,1.48],[184,1.35],[186,1.31],[188,1.45],[190,1.4],[192,1.38],[194,1.4],[196,1.32],[198,1.57],[200,1.52],[202,1.55],[204,1.3],[206,1.47],[208,1.31],[210,1.4],[212,1.3],[214,1.26],[216,1.47],[218,1.47],[220,1.5],[222,1.56],[224,1.48],[226,1.46],[228,1.45],[230,1.4],[232,1.38],[234,1.49],[236,1.26],[238,1.33],[240,1.5],[242,1.52],[244,1.48],[246,1.59],[248,1.48],[250,1.53],[252,1.5],[254,1.35],[256,1.52],[258,1.46],[260,1.43],[262,1.45],[264,1.37],[266,1.62],[268,1.5],[270,1.55],[272,1.58],[274,1.54],[276,1.56],[278,1.49],[280,1.34],[282,1.57],[284,1.48],[286,1.63],[288,1.52],[290,1.48],[292,1.43],[294,1.62],[296,1.55],[298,1.49],[300,1.74]];
+export const cgJacobi = [[0,0.0],[1,0.05],[2,0.09],[3,0.13],[4,0.17],[5,0.22],[6,0.26],[7,0.31],[8,0.36],[9,0.41],[10,0.46],[11,0.51],[12,0.56],[13,0.61],[14,0.67],[15,0.72],[16,0.77],[17,0.82],[18,0.87],[19,0.92],[20,0.97],[21,1.02],[22,1.07],[23,1.12],[24,1.16],[25,1.21],[26,1.25],[27,1.3],[28,1.34],[29,1.37],[30,1.41],[31,1.43],[32,1.45],[33,1.47],[34,1.47],[35,1.46],[36,1.43],[37,1.37],[38,1.28],[39,1.15],[40,0.96],[41,0.72],[42,0.5],[43,0.52],[44,0.63],[45,0.62],[46,0.48],[47,0.39],[48,0.33],[49,0.22],[50,0.08],[51,-0.01],[52,-0.15],[53,-0.29],[54,-0.33],[55,-0.4],[56,-0.48],[57,-0.48],[58,-0.55],[59,-0.64],[60,-0.66],[61,-0.89],[62,-0.8],[63,-1.02],[64,-1.11],[65,-1.2],[66,-1.34],[67,-1.42],[68,-1.55],[69,-1.66],[70,-1.76],[71,-1.88],[72,-1.97],[73,-2.18],[74,-2.29],[75,-2.49],[76,-2.59],[77,-2.76],[78,-2.96],[79,-3.11],[80,-3.18],[81,-3.32],[82,-3.58],[83,-3.66],[84,-3.88],[85,-4.02],[86,-4.07],[87,-4.18],[88,-4.35],[89,-4.55],[90,-4.75],[91,-4.84],[92,-4.88],[93,-5.07]];
+
+## 반복법이란
+
+얇은 금속판의 가장자리를 0도로 두고 판 전체를 고르게 데우면, 판 안의 온도가 어떻게 자리 잡을까요? 판을 30 × 30 격자로 나누면 칸마다 "내 온도는 이웃 넷의 평균보다 조금 높다"는 식이 하나씩 생겨요. 미지수 900개, 식 900개의 연립방정식 $Ax = b$예요. 식 하나에는 자기와 이웃 넷, 많아야 다섯 개의 미지수만 나오므로 A는 대부분이 0인 [희소 행렬](/api/sparse/basics/)이에요.
+
+```python
+>>> import stardust as sd
+>>> n = 30
+>>> T = sd.sparse.diags_array([-1.0, 2.0, -1.0], offsets=[-1, 0, 1], shape=(n, n))
+>>> A = sd.sparse.kronsum(T, T)
+>>> A
+<csr_array of shape (900, 900), float64, 4380 stored elements>
+>>> b = sd.ones(n * n)
+```
+
+`T`는 선 위의 이웃 관계(2, −1, −1)이고, `kronsum(T, T)`는 그것을 가로와 세로로 겹쳐 격자의 관계로 만들어요. 81만 자리 가운데 4,380자리만 저장돼 있어요.
+
+이런 계를 푸는 방법은 두 갈래예요.
+
+- **직접 풀이**([`spsolve`](/api/sparse/spsolve/), [`splu`](/api/sparse/splu/))는 A를 삼각 행렬 둘로 분해한 뒤 대입으로 풀어요. 정해진 계산을 한 번 하면 반올림 안에서 정확한 답이 나와요. 그런데 분해하면 0이던 자리가 채워져요. 격자가 커질수록 이 채움이 커져서, 3차원 격자처럼 큰 문제에서는 메모리가 모자라기 쉬워요.
+- **반복법**은 A를 분해하지 않아요. 어림한 답 $x_k$에서 잔차 $r_k = b - Ax_k$를 보고 더 나은 $x_{k+1}$을 만드는 일을 되풀이해요. 한 반복에 드는 것은 A와 벡터의 곱 한두 번과 벡터 몇 개뿐이라, 메모리가 A와 벡터 몇 개로 끝나요. 대신 답은 "잔차가 충분히 작아진 점"이고, 몇 번 반복할지는 문제에 따라 달라요.
+
+```python
+>>> r = sd.sparse.cg(A, b)
+>>> r
+CgResult(converged=True, status=0, n_iter=43, normr=0.000294991, x=<array of shape (900,)>)
+>>> x_direct = sd.sparse.spsolve(A, b)
+>>> float(sd.max(sd.abs(r.x - x_direct))) < 3e-5
+True
+```
+
+[`cg`](/api/sparse/cg/)는 43번 반복해서 잔차의 크기를 ‖b‖의 10⁻⁵배 아래로 줄였어요. 직접 풀이의 답과는 최대 70쯤 되는 값에서 2×10⁻⁵만큼 달라요. 기본 허용오차가 그만큼이기 때문이에요(아래 [멈춤 판정](#멈춤-판정-rtol과-atol)).
+
+반복법이 매 반복 만드는 점은 $b, Ab, A^2b, \dots, A^{k-1}b$가 펼치는 공간(크릴로프 공간)에 들어 있어요. 곱을 한 번 더 할 때마다 공간이 한 차원씩 넓어지고, 방법마다 그 공간에서 "가장 좋은" 점을 다른 기준으로 골라요. 이 페이지의 여섯 함수가 모두 이런 크릴로프 방법이에요.
+
+## 어떤 함수를 고를까요
+
+A의 모양과 성질로 골라요. 대칭(복소수면 에르미트, $A = A^{\mathsf H}$)인지, 양정치인지(모든 고유값이 양수인지)가 가장 큰 갈림길이에요.
+
+<Fig column caption="A의 성질로 반복법을 고르는 길. 진한 칸이 쓸 함수예요.">
+  <Tree root={{
+    label: 'A는 정사각인가요?',
+    children: [
+      { label: '정사각, Ax = b', children: [
+        { label: '에르미트이고 양정치', note: 'cg', tone: 'b' },
+        { label: '에르미트이지만 부정(음의 고유값이 있음), 또는 A − σI', note: 'minres', tone: 'b' },
+        { label: '대칭이 아님', note: 'gmres, 메모리가 빠듯하면 bicgstab', tone: 'b' },
+      ] },
+      { label: '직사각, 또는 최소제곱 min ‖Ax − b‖', note: 'lsqr, lsmr', tone: 'b' },
+    ],
+  }} />
+</Fig>
+
+| 함수 | A | 반복마다 줄이는 것 | 한 반복의 곱 | 더 드는 메모리 |
+|---|---|---|---|---|
+| [`cg`](/api/sparse/cg/) | 에르미트 양정치 | A로 잰 오차 $\lVert x - x_\ast\rVert_A$ | A 한 번 | 벡터 몇 개 |
+| [`minres`](/api/sparse/minres/) | 에르미트(부정도 돼요) | 잔차 ‖r‖ | A 한 번 | 벡터 몇 개 |
+| [`gmres`](/api/sparse/gmres/) | 정사각 | 잔차 ‖r‖(재시작 주기 안에서) | A 한 번 | 벡터 `restart`개 남짓 |
+| [`bicgstab`](/api/sparse/bicgstab/) | 정사각 | 정해진 것 없음(잔차가 오르내려요) | A 두 번 | 벡터 몇 개 |
+| [`lsqr`](/api/sparse/lsqr/) | 아무 m × n | 잔차 ‖r‖ | A, Aᴴ 한 번씩 | 벡터 몇 개 |
+| [`lsmr`](/api/sparse/lsmr/) | 아무 m × n | ‖Aᴴr‖ | A, Aᴴ 한 번씩 | 벡터 몇 개 |
+
+- 행렬의 성질을 알면 그 성질을 쓰는 방법이 빨라요. 에르미트 양정치에는 `cg`가 가장 싸요. 같은 행렬에 `gmres`를 써도 풀리지만, 반복마다 벡터를 하나씩 더 쌓아 메모리와 일이 늘어요.
+- 성질에 맞지 않는 방법은 조용히 틀릴 수 있어요. 대칭이 아닌 행렬에 `cg`나 `minres`를 쓰면 수렴하지 않거나, `minres`는 맞지 않는 답을 수렴했다고 내기도 해요(각 페이지의 예).
+- 크기가 작거나(수만 이하) 같은 A로 우변 여러 개를 풀어야 하면 직접 풀이가 대개 더 간단하고 정확해요. 반복법은 A가 너무 커서 분해할 수 없을 때, A를 행렬로 만들지 않고 곱만 할 수 있을 때([`LinearOperator`](/api/sparse/linearoperator/)), 답이 대충만 필요할 때 빛나요.
+
+## 공통 인자
+
+여섯 함수의 호출 모양은 같아요. 데이터 `A`와 `b`는 위치로, 나머지는 키워드로 줘요.
+
+```text
+cg(A, b, /, *, x0=None, rtol=1e-05, atol=0.0, max_iter=None, M=None)
+minres(A, b, /, *, x0=None, rtol=1e-05, shift=0.0, max_iter=None, M=None)
+gmres(A, b, /, *, x0=None, rtol=1e-05, atol=0.0, restart=None, max_iter=None, M=None)
+bicgstab(A, b, /, *, x0=None, rtol=1e-05, atol=0.0, max_iter=None, M=None)
+lsqr(A, b, /, *, damp=0.0, atol=1e-06, btol=1e-06, conlim=100000000.0, max_iter=None, x0=None)
+lsmr(A, b, /, *, damp=0.0, atol=1e-06, btol=1e-06, conlim=100000000.0, max_iter=None, x0=None)
+```
+
+### 멈춤 판정: rtol과 atol
+
+`cg`, `bicgstab`, `gmres`는 잔차의 크기가
+
+$$
+\lVert b - Ax_k \rVert < \max(\text{rtol}\cdot\lVert b\rVert,\ \text{atol})
+$$
+
+가 되면 멈춰요(`gmres`는 ≤). 기본값은 `rtol=1e-05`, `atol=0.0`이라 "잔차를 ‖b‖의 10만분의 1 아래로"예요. 이 기준은 꽤 느슨해요. 더 정확한 답이 필요하면 `rtol`을 줄여요. 자릿수 하나를 더 얻는 데 드는 반복은 대개 비슷해요(여기서는 네 번 안팎).
+
+```python
+>>> for rtol in (1e-5, 1e-8, 1e-10):
+...     r = sd.sparse.cg(A, b, rtol=rtol)
+...     err = float(sd.max(sd.abs(r.x - x_direct)))
+...     print(f'{rtol:.0e}  {r.n_iter:3d}  {err:.1e}')
+1e-05   43  2.1e-05
+1e-08   55  1.9e-08
+1e-10   62  5.7e-11
+```
+
+잔차가 작다고 오차가 그만큼 작은 것은 아니에요. 오차 $x_k - x_\ast$는 $A^{-1}r_k$라서, $A^{-1}$이 큰(조건수가 큰) 문제에서는 작은 잔차 뒤에 큰 오차가 숨을 수 있어요. 위 문제는 조건수가 400쯤이라 잔차의 비율과 오차의 비율이 비슷해요.
+
+`atol`은 ‖b‖와 상관없는 바닥이에요. b가 0에 가까워 `rtol·‖b‖`가 너무 작아질 때 써요. `rtol=0.0`으로 두면 `atol`만 봐요.
+
+```python
+>>> sd.sparse.cg(A, b, rtol=0.0, atol=1e-3)
+CgResult(converged=True, status=0, n_iter=41, normr=0.000935084, x=<array of shape (900,)>)
+```
+
+[`minres`](/api/sparse/minres/)는 `rtol`만 받고 판정이 달라요(‖b‖ 대신 ‖A‖‖x‖에 견줘요). [`lsqr`](/api/sparse/lsqr/)·[`lsmr`](/api/sparse/lsmr/)는 `atol`, `btol`, `conlim` 셋으로 판정해요. 자세한 것은 각 페이지에 있어요. 모든 허용오차는 유한한 0 이상의 수여야 해요.
+
+### max_iter
+
+반복 수의 상한이에요. None(기본값)이면 함수마다 다음 값이에요(n은 A의 열 수).
+
+| 함수 | 기본 상한 | 단위 |
+|---|---|---|
+| `cg`, `bicgstab` | 10n | 반복 |
+| `gmres` | 10n | 재시작 주기(한 주기에 안쪽 반복 `restart`번) |
+| `minres` | 5n | 반복 |
+| `lsqr` | 2n | 반복 |
+| `lsmr` | min(m, n) | 반복 |
+
+상한에 닿으면 예외 없이 그때의 x를 돌려주고 `converged=False`예요. `max_iter`는 None이거나 1 이상의 int여야 해요.
+
+```python
+>>> r = sd.sparse.cg(A, b, max_iter=10)
+>>> r.converged, r.status, r.message
+(False, 10, 'the iteration limit was reached')
+```
+
+계산은 늘 같은 순서로 하므로, `max_iter=k`로 멈춘 결과는 상한 없이 푼 반복의 k번째 점과 같아요. 상한을 바꿔 가며 부르면 반복이 답에 다가가는 모습을 그대로 볼 수 있어요.
+
+```python
+>>> sd.sparse.cg(A, b, max_iter=43).x.tolist() == sd.sparse.cg(A, b).x.tolist()
+True
+```
+
+### x0
+
+시작점이에요. None(기본값)이면 0 벡터에서 시작해요. 답에 가까운 점을 알면 주는 만큼 반복이 줄어요. 비슷한 문제를 여러 번 풀 때(시간에 따라 조금씩 바뀌는 b 같은 것) 앞의 답을 다음의 `x0`로 주는 것이 흔한 쓰임이에요.
+
+```python
+>>> r1 = sd.sparse.cg(A, b, rtol=1e-8)
+>>> b2 = 1.01 * b
+>>> sd.sparse.cg(A, b2, rtol=1e-8).n_iter, sd.sparse.cg(A, b2, rtol=1e-8, x0=r1.x).n_iter
+(55, 48)
+```
+
+판정의 기준은 여전히 ‖b‖예요. `x0`가 1% 틀린 점이면 남은 잔차를 10⁻⁸배가 아니라 10⁻⁶배쯤만 줄이면 되니 그만큼 덜 반복해요.
+
+### M: 전처리기
+
+반복 수는 A의 고유값이 얼마나 퍼져 있는지(조건수)에 크게 달려 있어요. **전처리기** M은 $A^{-1}$을 값싸게 어림한 것이에요. 반복법은 매 반복 잔차에 M을 곱해 "A⁻¹을 곱했다면 갔을 방향"에 가깝게 고쳐요. 그러면 실제로 푸는 계 MA의 고유값이 1 근처로 모여 반복이 줄어요.
+
+가장 단순한 것은 대각의 역수를 쓰는 **Jacobi 전처리기**예요. 행마다 크기가 크게 다른 행렬에서 효과가 커요. 위 판의 행렬을 칸마다 1부터 10⁴까지 다른 척도로 늘이면 조건수가 400쯤에서 10⁹쯤으로 커져요.
+
+```python
+>>> D = sd.sparse.diags_array(10.0 ** sd.linspace(0, 4, n * n))
+>>> B = D @ A @ D
+>>> sd.sparse.cg(B, b)
+CgResult(converged=False, status=9000, n_iter=9000, normr=1301.97, x=<array of shape (900,)>)
+>>> M = sd.sparse.diags_array(1.0 / B.diagonal())
+>>> sd.sparse.cg(B, b, M=M)
+CgResult(converged=True, status=0, n_iter=93, normr=0.000254256, x=<array of shape (900,)>)
+```
+
+전처리기 없이는 상한 9,000번을 다 돌고도 잔차가 처음보다 커요. Jacobi 전처리기 하나로 93번에 풀려요.
+
+<Fig caption="척도를 늘인 판의 행렬 B에서 cg의 잔차 ‖r_k‖ / ‖b‖ (세로축은 로그 눈금). 전처리기가 없으면 300번이 지나도 줄지 않고, Jacobi 전처리기를 주면 한동안 오르다가 93번째에 10⁻⁵ 아래로 내려가요.">
+  <Plot
+    curves={[
+      { points: cgPlain, label: 'M 없음' },
+      { points: cgJacobi, label: 'Jacobi M' },
+      { f: (x) => -5, label: 'rtol = 10⁻⁵', dashed: true },
+    ]}
+    domain={[0, 300]}
+    range={[-5.5, 2]}
+    xTicks={[
+      { v: 0, label: '0' },
+      { v: 50, label: '50' },
+      { v: 100, label: '100' },
+      { v: 150, label: '150' },
+      { v: 200, label: '200' },
+      { v: 250, label: '250' },
+      { v: 300, label: '300번' },
+    ]}
+    yTicks={[
+      { v: 2, label: '10²' },
+      { v: 0, label: '1' },
+      { v: -2, label: '10⁻²' },
+      { v: -4, label: '10⁻⁴' },
+    ]}
+  />
+</Fig>
+
+M은 A와 같은 모양의 희소 배열, 2차원 `sd.ndarray`, 또는 [`LinearOperator`](/api/sparse/linearoperator/)예요. 행렬로 주면 반복마다 `M @ r`을 하고, `LinearOperator`로 주면 그 `matvec`을 불러요. 그래서 "A와 비슷하지만 풀기 쉬운 행렬 P"의 분해를 전처리기로 쓸 수 있어요. `sd.sparse.LinearOperator(A.shape, sd.sparse.splu(P).solve)`처럼요([`gmres`](/api/sparse/gmres/)에 예가 있어요).
+
+- `cg`와 `minres`의 M은 에르미트 양정치여야 해요. `minres`는 그렇지 않은 M을 알아채면 `LinAlgError`를 내요. `cg`는 검사하지 않아서, 풀리더라도 수렴이 보장되지 않아요.
+- `gmres`와 `bicgstab`의 M은 아무 정칙 행렬이면 돼요.
+- `lsqr`와 `lsmr`에는 M이 없어요. 열마다 척도가 크게 다르면 열을 미리 나눠 두고(`A @ D`를 풀고 x에 D를 곱해) 풀어요.
+
+### callback은 없어요
+
+반복마다 사용자 함수를 부르는 `callback`은 두지 않았어요. 반복 수와 잔차는 결과에 있고, 진행을 보고 싶으면 위처럼 `max_iter`를 바꿔 가며 부르거나 A를 Python 함수로 감싸 곱을 할 때마다 기록할 수 있어요.
+
+```python
+>>> norms = []
+>>> def matvec(v):
+...     norms.append(float(sd.linalg.vector_norm(v)))
+...     return A @ v
+>>> op = sd.sparse.LinearOperator(A.shape, matvec, dtype=sd.float64)
+>>> r = sd.sparse.cg(op, b)
+>>> r.n_iter, len(norms)
+(43, 43)
+>>> r.x.tolist() == sd.sparse.cg(A, b).x.tolist()
+True
+```
+
+`cg`는 반복마다 곱을 한 번 하므로 기록이 43개예요. 감싼 연산자로 풀어도 답은 비트까지 같아요.
+
+## 입력
+
+- **A**(와 M)는 희소 배열(어느 형식이든), 2차원 `sd.ndarray`, 또는 `LinearOperator`예요. 행렬은 그대로 곱하고, `LinearOperator`는 곱마다 그 `matvec`을 불러요(`lsqr`·`lsmr`은 `rmatvec`도). `cg`, `minres`, `gmres`, `bicgstab`의 A는 정사각이어야 해요.
+- **b**와 **x0**은 밀집 `sd.ndarray`이고 모양이 (n,)이나 (n, 1)이에요. 리스트, numpy 배열, 희소 배열은 받지 않아요. 결과의 `x`는 언제나 (n,)이에요.
+- **dtype**: 계산은 float64나 complex128로 해요. A, b, x0, M 가운데 하나라도 복소수면 복소수로 풀고, bool·int64는 float64로 바꿔요. 실수로 선언한 `LinearOperator`가 복소 값을 돌려주면 `TypeError`예요(`cg(): the operator returned complex128 values for a float64 system; give it dtype=complex128`). `LinearOperator`의 함수가 크기가 다른 결과를 돌려주는 것 같은 연산자 자신의 에러도 풀이 함수의 이름으로 나와요(`cg(): the operator's function returned shape (3,), expected (2,)`). 사용자의 함수가 스스로 낸 에러는 그대로예요.
+- **NaN과 inf**: A, M에 저장된 값이나 b, x0에 NaN·inf가 있으면 `ValueError`예요.
+
+```python
+>>> sd.sparse.cg(A, [1.0] * 900)
+Traceback (most recent call last):
+    ...
+TypeError: cg(): 'b' must be an sd.ndarray, not list
+>>> sd.sparse.cg(A, sd.ones(5))
+Traceback (most recent call last):
+    ...
+ValueError: cg(): 'b' must have shape (900,) or (900, 1) for 'A' of shape (900, 900), got (5,)
+>>> sd.sparse.cg(A, sd.ones((900, 1))).x.shape
+(900,)
+>>> sd.sparse.cg(A, b * (1 + 2j)).x.dtype
+complex128
+```
+
+## 결과 읽기
+
+함수마다 결과 객체가 있어요(`CgResult`, `MinresResult`, `GmresResult`, `BicgstabResult`, `LsqrResult`, `LsmrResult`). 모두 같은 필드로 시작해요.
+
+| 필드 | 뜻 |
+|---|---|
+| `x` | 찾은 해 (n,). 쓰기 금지 배열이에요 |
+| `converged` | 멈춤 판정을 통과했는지 |
+| `status` | 멈춘 상태의 번호. 0은 수렴, 상한에 닿으면 `max_iter`(정사각 넷), 최소제곱 둘은 0–7 |
+| `message` | 멈춘 까닭을 적은 글 |
+| `n_iter` | 반복 수(`gmres`는 재시작 주기 수) |
+| `normr` | 방법이 마지막에 쓴 잔차의 크기 |
+
+함수마다 더 있는 필드는 각 페이지에 있어요. `gmres`의 `n_inner`(안쪽 반복의 합), `minres`·`lsqr`·`lsmr`의 `norma`·`conda`·`normar`·`normx`(‖A‖, 조건수, ‖Aᴴr‖, ‖x‖의 어림), `lsqr`의 `normr_damped`와 `var`예요.
+
+`summary()`는 결과를 표로 보여요. 긴 x는 앞뒤 다섯 개만 보여요.
+
+```python
+>>> print(sd.sparse.cg(A, b).summary())
+                          Conjugate Gradient Results
+==============================================================================
+Converged:                        True  No. Iterations:                     43
+Status:                              0  Residual norm:             0.000294991
+Message:                             the residual norm is within the tolerance
+==============================================================================
+                    x
+------------------------------------------------------------------------------
+x[0]           2.0039
+x[1]           3.5078
+x[2]           4.7093
+x[3]           5.7014
+x[4]           6.5347
+...               ...
+x[895]         6.5347
+x[896]         5.7014
+x[897]         4.7093
+x[898]         3.5078
+x[899]         2.0039
+==============================================================================
+```
+
+결과는 튜플처럼 풀 수도 있어요. `cg`, `minres`, `gmres`, `bicgstab`은 `(x, status)` 둘, `lsqr`은 열, `lsmr`은 여덟 값이에요.
+
+```python
+>>> x, status = sd.sparse.cg(A, b)
+>>> status
+0
+>>> r = sd.sparse.cg(A, b)
+>>> len(r), r[1]
+(2, 0)
+```
+
+필드는 읽기만 돼요. `r.x[0] = 1.0`은 `ValueError`, `r.x = ...`는 `AttributeError`예요. 고치려면 `r.x.copy()`로 복사해요.
+
+## 수렴하지 않을 때
+
+반복법은 수렴하지 않아도 예외를 내지 않아요. 결과가 나왔다고 답이 맞은 것은 아니니 **언제나 `converged`를 확인해요.**
+
+```python
+>>> r = sd.sparse.cg(B, b)
+>>> r.converged, r.message
+(False, 'the iteration limit was reached')
+```
+
+`converged=False`일 때 살펴볼 것은 이 순서예요.
+
+1. **방법이 행렬에 맞나요?** `cg`는 에르미트 양정치, `minres`는 에르미트 행렬에만 맞아요. A가 대칭인지는 `(A - A.T).count_nonzero() == 0`(복소수면 `A.conj().T`)으로 볼 수 있어요. 대칭이 아니면 `gmres`나 `bicgstab`을 써요.
+2. **전처리기를 줬나요?** 행의 척도가 크게 다르면 Jacobi 전처리기만으로도 크게 나아져요. 격자가 커질수록 반복 수가 늘어나는 문제(판의 행렬은 격자의 한 변 길이에 비례해요)에는 더 강한 전처리기가 필요해요.
+3. **상한이 모자라나요?** `normr`이 꾸준히 줄고 있었다면 `max_iter`를 늘려요. `gmres`는 `restart`를 늘리는 것도 방법이에요.
+4. **붕괴했나요?** `bicgstab`의 `status`가 −10이나 −11이면 방법 안의 나눗셈이 0으로 나누게 되어 멈춘 것이에요. 다른 `x0`로 다시 시작하거나 `gmres`를 써요.
+5. **작은 문제인가요?** 수만 이하라면 [`spsolve`](/api/sparse/spsolve/)로 바로 푸는 편이 빠르고 확실해요.
+
+<Callout type="warn" title="converged=True도 판정을 통과했다는 뜻일 뿐이에요">
+판정은 잔차에 대한 것이고, 오차는 조건수만큼 더 클 수 있어요. `minres`는 잔차의 어림으로 판정하므로, 조건수가 아주 큰 행렬에서는 어림과 참 잔차가 크게 갈라져요. 답이 중요하면 `b - A @ r.x`를 직접 계산해 확인해요.
+</Callout>
+
+b가 0이면 반복 없이 x = 0을 돌려줘요.
+
+```python
+>>> r = sd.sparse.cg(A, sd.zeros(900))
+>>> r.n_iter, r.message
+(0, 'the right-hand side is zero: x = 0')
+```
+
+## 같은 입력이면 같은 비트
+
+반복법의 계산(곱, 내적, 노름, 갱신)은 모두 정해진 순서로 해요. 그래서 같은 입력이면 A의 형식(CSR, CSC, COO, DOK), 행렬을 바로 주든 `aslinearoperator`나 `A @ v`를 돌려주는 Python 연산자로 감싸 주든 결과가 비트까지 같아요. 지금은 스레드 수와도 상관없어요(약속은 아니에요).
+
+```python
+>>> m = 200
+>>> T2 = sd.sparse.diags_array([-1.0, 2.0, -1.0], offsets=[-1, 0, 1], shape=(m, m))
+>>> A2 = sd.sparse.kronsum(T2, T2)
+>>> b2 = sd.ones(m * m)
+>>> threads = sd.get_num_threads()
+>>> sd.set_num_threads(1)
+>>> x1 = sd.sparse.cg(A2, b2).x
+>>> sd.set_num_threads(threads)
+>>> xs = sd.sparse.cg(A2.tocsc(), b2).x
+>>> xo = sd.sparse.cg(sd.sparse.aslinearoperator(A2), b2).x
+>>> x1.tolist() == xs.tolist() == xo.tolist()
+True
+```
+
+## 정확도 약속
+
+결과는 "멈춤 판정을 만족한 점"이에요.
+
+- `cg`, `bicgstab`, `gmres`가 `converged=True`를 돌려주면, 돌려준 x에서 다시 계산한 참 잔차 ‖b − Ax‖도 판정을 만족해요(시험 행렬에서 판정의 1% 안). `cg`와 `bicgstab`은 반복 안에서 잔차를 점화식으로 갱신하므로 참 잔차와 반올림만큼 다를 수 있지만, 그 차이가 판정을 넘지 않아요. `gmres`는 재시작마다 참 잔차로 판정해요.
+- `minres`는 잔차의 어림으로 판정해요. 조건수 κ가 아주 큰 행렬에서는 어림과 참 잔차의 간격이 ε·κ·‖A‖‖x‖ 크기까지 벌어질 수 있어요(MINRES의 알려진 성질이에요).
+- 앞오차는 잔차가 허락하는 만큼이에요. 정사각 계는 $\lVert x - x_\ast\rVert \le \lVert A^{-1}\rVert\,\lVert b - Ax\rVert$, 최소제곱은 $\lVert (A^{\mathsf H}A)^{-1}\rVert\,\lVert A^{\mathsf H} r\rVert$이에요. Arb(구간 산술)로 만든 참값과 견준 시험에서 여섯 함수 모두 이 경계 안이고, 가장 큰 것이 경계의 0.32배(`bicgstab`)였어요.
+
+## 스레드와 GIL
+
+A와 M이 행렬이면(`aslinearoperator`로 감싼 것도) 반복 전체가 컴파일된 코드에서 돌고, 문제가 크면 GIL을 놓고 곱과 내적을 여러 스레드로 나눠 해요. Python 함수로 된 `LinearOperator`가 있으면 곱마다 Python을 불러야 해서 GIL을 쥔 채 돌아요(그 사이의 벡터 계산은 GIL 없이 해요). 행렬로 줄 수 있으면 행렬로 주는 편이 빨라요.
+
+## scipy를 아는 분께
+
+- 여섯 함수는 scipy 1.18.1의 `scipy.sparse.linalg`와 같은 알고리즘과 멈춤 판정을 계산 순서까지 따라요. 시험 문제에서 상태는 모두 scipy와 같고 반복 수도 대부분 같아요. 내적과 노름의 반올림 순서가 달라서, scipy 자신도 b를 10⁻¹⁶만 바꾸면 반복 수가 달라지는 문제(무작위 비대칭 행렬의 BiCGSTAB 등)에서는 반복 수가 다를 수 있어요.
+- 이름공간이 평평해요. `sd.sparse.cg`이고 `sd.sparse.linalg`는 없어요.
+- 반복 상한은 `max_iter`예요(scipy의 `maxiter`, `lsqr`의 `iter_lim`). 0은 받지 않아요(scipy는 `maxiter=0`에 `info = 0`을 돌려줘요). `gmres`의 `max_iter`와 `restart`의 뜻은 scipy와 같아요.
+- `callback`, `callback_type`, `show`, `check`, `calc_var`은 없어요. 주면 `TypeError`예요. `lsqr`의 `var`는 언제나 계산해요.
+- 결과는 scipy의 튜플로 풀리는 결과 객체예요. `x, info = cg(A, b)`가 그대로 돼요. `info`는 `status`, `itn`은 `n_iter`이고, `lsqr`의 `r1norm`, `r2norm`, `anorm`, `acond`, `arnorm`, `xnorm`은 `normr`, `normr_damped`, `norma`, `conda`, `normar`, `normx`예요.
+- `b`와 `x0`은 `sd.ndarray`만 받아요. `x0='Mb'`는 없어요.
+- 계의 dtype은 A, b, x0, M 가운데 하나라도 복소수면 복소수예요. scipy는 A와 b로만 정해서 복소 `x0`의 허수부를 경고와 함께 버려요.
+- `rtol`, `atol`, `btol`, `damp`는 유한한 0 이상의 수, `shift`는 유한한 수인지 검사해요(scipy는 `atol`만 검사해요).
+- 경고를 내지 않아요. 수렴하지 않으면 `status`와 `converged`로 알려요.

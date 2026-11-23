@@ -1,0 +1,199 @@
+---
+kind: function
+title: brunnermunzel
+names: [brunnermunzel]
+group: 순위 검정
+order: 6
+signatures:
+  - "sd.htest.brunnermunzel(x, y, /, *, axis=None, alternative='two-sided', distribution='t', nan_policy='propagate', keepdims=False)"
+summary: 독립인 두 표본에서 한쪽 값이 다른 쪽보다 클 확률이 1/2인지 묻는 Brunner–Munzel 검정이에요. Mann–Whitney와 달리 두 분포의 퍼짐이나 모양이 달라도 되고, 순위에서 만든 W와 t 분포(Satterthwaite의 자유도)나 정규분포의 p값을 줘요.
+params:
+  - name: x, y
+    type: ndarray, 실수의 시퀀스, frame Series, 또는 DataFrame
+    kind: positional-only
+    desc: 두 표본. 길이는 달라도 되고 각각 2개 이상이어야 값이 나와요. ±inf는 가장 크거나 작은 값으로 순위를 받아요.
+  - name: axis
+    type: int, int의 tuple, 또는 None
+    kind: keyword-only
+    desc: "None(기본값)이면 표본마다 모든 값을 펼쳐 검정 하나를 해요. 정수면 그 축을 따라 표본을 읽고, 나머지 축은 배치예요."
+  - name: alternative
+    type: str
+    kind: keyword-only
+    desc: "'two-sided'(기본값), 'less'(x가 y보다 작은 쪽으로 치우쳤다), 'greater'(x가 y보다 큰 쪽으로 치우쳤다) 중 하나예요."
+  - name: distribution
+    type: str
+    kind: keyword-only
+    desc: "p값을 구하는 분포. 't'(기본값, Satterthwaite의 자유도를 쓴 t 분포)나 'normal'(표준정규분포)이에요."
+  - name: nan_policy
+    type: str
+    kind: keyword-only
+    desc: "'propagate'(기본값), 'omit'(NaN을 빼고 계산), 'raise'(ValueError) 중 하나예요."
+  - name: keepdims
+    type: bool
+    kind: keyword-only
+    desc: True면 결과에 표본 축이 길이 1로 남아요.
+returns:
+  type: BrunnermunzelResult
+  desc: "statistic(W, y가 클수록 양수), pvalue, distribution='t'일 때만 df(Satterthwaite의 자유도)가 있어요. (statistic, pvalue)로 풀려요."
+raises:
+  - type: TypeError
+    desc: "표본이 배열·수의 시퀀스·frame이 아니거나 복소수일 때, keepdims가 True·False가 아닐 때, 문자열 옵션이 문자열이 아닐 때, 옵션을 위치로 주거나 없는 키워드를 줬을 때."
+  - type: ValueError
+    desc: "alternative·distribution·nan_policy의 이름이 틀렸을 때, nan_policy='raise'인데 NaN이 있을 때, axis가 범위 밖이거나 겹칠 때, 표본 축 밖의 모양이 브로드캐스트되지 않을 때."
+seeAlso: [mannwhitneyu, ttest_ind, ranksums, basics, results]
+---
+
+## 무엇을 묻나요
+
+두 치료를 받은 환자의 통증 점수(1–5)예요. 동점이 많고, 둘째 집단은 점수가 더 넓게 퍼졌어요.
+
+```python
+>>> import stardust as sd
+>>> x = [1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 2, 4, 1, 1]
+>>> y = [3, 3, 4, 3, 1, 2, 3, 1, 1, 5, 4]
+>>> sd.htest.brunnermunzel(x, y)
+BrunnermunzelResult(statistic=3.13747, pvalue=0.00578621, df=17.6828)
+```
+
+두 집단에서 값을 하나씩 뽑을 때 y의 값이 더 클 확률(같으면 반으로 세요)을 **상대 효과**라 해요.
+
+$$
+p = P(X < Y) + \tfrac{1}{2} P(X = Y)
+$$
+
+두 집단이 서로 바꿔 놓아도 같다면 $p = 1/2$예요. **Brunner–Munzel 검정**은 이 $p$를 순위에서 어림하고, 어림의 분산도 데이터에서 따로 구해 $p = 1/2$인지 검정해요.
+
+- **귀무가설**: $p = 1/2$(어느 쪽 값이 더 크다고 할 수 없어요).
+- **대립가설**(양쪽): $p \ne 1/2$.
+
+어림한 상대 효과는 [`mannwhitneyu`](/api/htest/mannwhitneyu/)의 U에서도 읽을 수 있어요. x의 U를 $n_x n_y$로 나누면 $P(X > Y) + \frac{1}{2}P(X = Y)$이고, 1에서 빼면 위의 $p$예요.
+
+```python
+>>> u = sd.htest.mannwhitneyu(x, y).statistic
+>>> 1 - u / (len(x) * len(y))
+0.788961038961039
+```
+
+y의 값이 더 클 확률이 0.79쯤이라는 뜻이에요.
+
+### Mann–Whitney와 무엇이 다른가요
+
+Mann–Whitney U 검정의 귀무가설은 "두 분포가 같다"예요. 그래서 위치는 같고 퍼짐만 다른 두 집단에서도 p값이 작게 나올 수 있어요. 퍼짐의 차이를 위치의 차이로 잘못 읽는 셈이에요. Brunner–Munzel은 두 집단의 순위 분산을 따로 어림해서(Welch t 검정이 두 분산을 따로 쓰는 것과 같은 생각) 퍼짐이나 모양이 달라도 "$p = 1/2$인가"만 물어요.
+
+이런 때 써요.
+
+- 두 집단의 퍼짐이나 분포 모양이 다를 수 있을 때. 임상 점수, 등급처럼 동점이 많은 순서 자료에서도 잘 맞아요.
+- "한쪽이 더 크게 나오는 경향이 있는가"를 확률 하나로 말하고 싶을 때.
+
+공통 규칙은 [가설검정의 기본](/api/htest/basics/)에, 결과를 읽는 법은 [결과 객체 읽기](/api/htest/results/)에 있어요.
+
+<Reference />
+
+## 결과 읽기
+
+| 필드 | 뜻 |
+|---|---|
+| `statistic` | W. y가 큰 쪽으로 치우칠수록(상대 효과가 1/2보다 클수록) 양수예요. |
+| `pvalue` | `alternative`와 `distribution`에 맞는 p값 |
+| `df` | `distribution='t'`일 때만 있는 Satterthwaite의 자유도 |
+
+```python
+>>> r = sd.htest.brunnermunzel(x, y)
+>>> stat, p = r
+>>> r.df
+17.682841979481545
+>>> print(r.summary())
+                             Brunner-Munzel test
+==============================================================================
+Statistic:                       3.137  Alternative:                 two-sided
+P-value:                       0.00579  No. Observations:               14, 11
+Df:                              17.68  Distribution:                        t
+==============================================================================
+```
+
+W는 두 집단의 순위 평균의 차를 순위 분산의 어림으로 나눈 값이에요. 집단마다 "그 값보다 작은 값이 다른 집단에 몇 개 있는가"(배치 점수)를 세고, 그 흩어짐으로 분산을 어림해요.
+
+## `alternative`: 한쪽 검정
+
+`'less'`는 x가 y보다 작은 쪽으로 치우쳤다(상대 효과가 1/2보다 크다)는 대립가설이에요. `mannwhitneyu`의 `'less'`와 같은 방향이에요.
+
+```python
+>>> sd.htest.brunnermunzel(x, y, alternative='less')
+BrunnermunzelResult(statistic=3.13747, pvalue=0.0028931, df=17.6828)
+>>> sd.htest.brunnermunzel(x, y, alternative='greater').pvalue
+0.9971068956669242
+```
+
+통계량은 y가 클수록 양수이지만, `alternative`는 다른 검정처럼 x를 기준으로 읽어요.
+
+## `distribution`: t와 정규
+
+p값은 기본으로 자유도 `df`의 t 분포에서 구해요. 표본이 작을 때 정규분포보다 꼬리가 두꺼워서 p값을 지나치게 작게 내지 않아요. `distribution='normal'`이면 표준정규분포를 쓰고 결과에 `df`가 없어요.
+
+```python
+>>> rn = sd.htest.brunnermunzel(x, y, distribution='normal')
+>>> rn
+BrunnermunzelResult(statistic=3.13747, pvalue=0.00170414)
+>>> hasattr(rn, 'df')
+False
+```
+
+표본이 크면 둘이 거의 같아요. 표본이 작으면 기본값 `'t'`를 권해요.
+
+## 퇴화한 입력
+
+두 집단의 순위 분산이 모두 0이면 W의 분모가 0이라 값을 정할 수 없어서 통계량, p값, `df`가 NaN이에요. 두 집단이 완전히 갈렸을 때(x의 모든 값이 y의 모든 값보다 작을 때)와 모든 값이 같을 때가 그래요. 표본 하나가 2개보다 적어도 NaN이에요. 경고는 내지 않아요.
+
+```python
+>>> sd.htest.brunnermunzel([1.0, 2.0, 3.0], [4.0, 5.0, 6.0])
+BrunnermunzelResult(statistic=nan, pvalue=nan, df=nan)
+>>> sd.htest.brunnermunzel([1.0], [2.0, 3.0])
+BrunnermunzelResult(statistic=nan, pvalue=nan, df=nan)
+```
+
+완전히 갈린 작은 표본은 차이가 뚜렷해 보이지만 이 검정의 분산 어림으로는 다룰 수 없어요. 이럴 때는 [`mannwhitneyu`](/api/htest/mannwhitneyu/)의 정확한 분포가 p값을 줘요.
+
+## 여러 검정을 한 번에: `axis`
+
+아래는 두 실험(행)에서 x 20개, y 15개를 견줘요. 위치는 같고, 둘째 실험에서만 y의 퍼짐을 네 배로 키웠어요.
+
+```python
+>>> rng = sd.random.default_rng(8)
+>>> N = sd.stats.Normal()
+>>> X = N.sample((2, 20), rng=rng)
+>>> Y = N.sample((2, 15), rng=rng) * sd.asarray([[1.0], [4.0]])
+>>> rb = sd.htest.brunnermunzel(X, Y, axis=1)
+>>> rb.pvalue
+array([0.13734878755881033,  0.7507644404211766], dtype=float64)
+>>> rb.df
+array([29.294181380001053, 14.836991137896554], dtype=float64)
+```
+
+둘째 실험의 `df`가 작아진 것은 두 집단의 순위 분산이 크게 달라서예요. `nan_policy`, `keepdims`는 다른 검정과 같아요.
+
+## 정확도
+
+배치 점수와 순위는 정확한 정수(의 반)이고, 분산은 정수에서 반올림 없이 모아요. 문제 7개에서 Arb(구간 산술)로 만든 참값에 견주어 통계량은 상대 8.1e-17, p값은 상대 7.6e-16, `df`는 6.2e-17 안이에요.
+
+## scipy를 아는 분께
+
+`scipy.stats.brunnermunzel`과 통계량(부호 포함), 자유도, p값의 정의가 같아요.
+
+```python
+>>> import scipy.stats
+>>> scipy.stats.brunnermunzel(x, y)
+BrunnerMunzelResult(statistic=np.float64(3.1374674823029505), pvalue=np.float64(0.005786208666151469))
+```
+
+다른 점이에요.
+
+- 결과에 `df`가 있어요(`distribution='t'`일 때). 튜플로 풀면 scipy와 같이 둘이에요.
+- 순위 분산이 모두 0이면 sd는 NaN이에요. scipy는 통계량 ±inf와 경고를 내요.
+
+  ```python
+  >>> scipy.stats.brunnermunzel([1.0, 2.0, 3.0], [4.0, 5.0, 6.0]).statistic
+  np.float64(inf)
+  ```
+
+- 결과 클래스의 이름이 `BrunnermunzelResult`예요(scipy는 `BrunnerMunzelResult`). 이름으로 확인하지 말고 필드로 읽어요.
+- `axis`의 기본값이 None이에요(scipy는 0). 옵션은 키워드로만 받아요.

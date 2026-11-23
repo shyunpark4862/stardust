@@ -1,0 +1,357 @@
+---
+title: 실수와 에르미트 변환
+group: 실수와 코사인·사인 변환
+order: 1
+summary: 실수 입력의 푸리에 변환과 그 역(rfft, irfft, hfft, ihfft, 실수 입력의 fft와 ifft)이 복소 커널 위에서 계산되는 길을 따라가요. 짝수 길이는 실수 n개를 복소수 n/2개로 읽어 반 길이의 변환과 회전 인자 한 번의 사후 처리로, 홀수 길이는 길이 n의 복소 변환과 정확한 에르미트 사영으로 계산해요. 오차가 늘지 않는 까닭과 버리는 허수부, 구동기의 바로 읽기도 다뤄요.
+seeAlso: [overview, stockham, bluestein, dct-dst, fftlog, accuracy-performance]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+실수 $n$개 $x_0, \dots, x_{n-1}$의 푸리에 변환 $X_k = \sum_j x_j\,e^{-2\pi i jk/n}$은 에르미트 대칭 $X_{n-k} = \overline{X_k}$를 가져요. 앞쪽 $\lfloor n/2\rfloor + 1$칸이면 나머지가 정해지니 `rfft`는 그 반쪽만 돌려주고, `irfft`는 반쪽 스펙트럼을 받아 실수 $n$개로 되돌려요.
+
+이 영역은 실수 변환을 위한 나비를 따로 두지 않아요. 모든 실수 변환이 복소 커널([Stockham](/internals/fft/stockham/)이나 [Bluestein](/internals/fft/bluestein/)) 위의 앞뒤 처리예요. 길은 $n$의 홀짝으로만 골라요.
+
+| $n$ | 정변환(`rfft`) | 역변환(`irfft`) | 계획 |
+|---|---|---|---|
+| 짝수 | 실수 $n$개를 복소수 $n/2$개로 읽어 길이 $n/2$의 복소 변환, 회전 인자 한 번의 사후 처리 | 같은 단계를 거꾸로 밟는 사전 처리와 길이 $n/2$의 역복소 변환 | 실수 종류 $n$ |
+| 홀수 | 허수부 0으로 펴서 길이 $n$의 복소 변환, 에르미트 부분 | 에르미트 확장을 만들어 길이 $n$의 역복소 변환, 실수부 | 복소 종류 $n$ |
+
+`ihfft`, `hfft`, 실수 입력의 `fft`와 `ifft`는 이 두 방향에 켤레, 거울 채우기, 정규화 인자를 붙인 것이에요. 코드는 `csrc/fft/rfft.hpp`(앞뒤 처리), `csrc/fft/plan.hpp`(실수 종류의 계획), `csrc/fft/driver.cpp`의 `r2c_axis`와 `c2r_axis`(구동기)에 있어요.
+
+## 짝수 길이: 반 길이의 복소 변환
+
+### 실수 $n$개는 그대로 복소수 $n/2$개예요
+
+complex128은 메모리에서 실수부와 허수부가 번갈아 놓인 double 두 개예요. 그래서 연속한 float64 $n$개를 복사 없이 complex128 $h = n/2$개로 읽을 수 있어요. 짝 원소가 실수부, 홀 원소가 허수부가 돼요.
+
+$$
+z_j = x_{2j} + i\,x_{2j+1}, \qquad j = 0, \dots, h - 1
+$$
+
+<Fig caption="float64 여덟 칸을 complex128 네 칸으로 읽은 모습. 바이트는 그대로이고 해석만 달라요. 짝 원소(진한 칸)가 실수부, 홀 원소가 허수부예요.">
+  <ArrayFig name="x (float64)" data={['x0', 'x1', 'x2', 'x3', 'x4', 'x5', 'x6', 'x7']} tones={['b', 'a', 'b', 'a', 'b', 'a', 'b', 'a']} note="n = 8" />
+  <Op>=</Op>
+  <ArrayFig name="z (complex128)" data={['x0+i·x1', 'x2+i·x3', 'x4+i·x5', 'x6+i·x7']} tones={['b', 'b', 'b', 'b']} note="h = 4" />
+</Fig>
+
+길이 $h$의 복소 변환 $Z = \mathrm{DFT}_h(z)$를 한 번 하면, 짝 원소와 홀 원소 각각의 길이 $h$ 변환 $E_k$와 $O_k$를 $Z$에서 꺼낼 수 있어요. 실수열의 변환은 에르미트 대칭이라 $\overline{E_{h-k}} = E_k$, $\overline{O_{h-k}} = O_k$이고, $Z_k = E_k + i\,O_k$이니
+
+$$
+E_k = \frac{Z_k + \overline{Z_{h-k}}}{2}, \qquad O_k = -i\,\frac{Z_k - \overline{Z_{h-k}}}{2}
+$$
+
+예요(지표는 $h$로 나눈 나머지). 길이 $n$의 변환은 짝·홀로 나눈 한 단의 Cooley–Tukey 나비라서, $w_k = e^{-2\pi i k/n}$으로
+
+$$
+X_k = E_k + w_k\,O_k, \qquad X_{k+h} = E_k - w_k\,O_k
+$$
+
+예요. 반쪽 스펙트럼에는 $X_{k+h}$ 대신 $X_{h-k} = \overline{X_{k+h}} = \overline{E_k - w_k O_k}$가 필요해요. 그래서 짝 $(k, h - k)$마다 $Z_k$와 $Z_{h-k}$ 두 칸을 읽어 $X_k$와 $X_{h-k}$ 두 칸을 써요. 짝이 서로 겹치지 않으니 결과를 $Z$의 자리에 바로 덮어써도 돼요.
+
+```python
+>>> import stardust as sd
+>>> import cmath
+>>> F = sd.fft
+>>> x = sd.asarray([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0])
+>>> X = F.rfft(x)
+>>> X
+array([                                (36+0j),
+       (-3.9999999999999996+9.65685424949238j),
+                                       (-4+4j),
+                      (-4+1.6568542494923797j),
+                                       (-4+0j)], dtype=complex128)
+>>> z = x[0::2] + 1j * x[1::2]
+>>> Z = F.fft(z)
+>>> h = 4
+>>> E = [(Z[k] + Z[(h - k) % h].conjugate()) / 2 for k in range(h)]
+>>> O = [-1j * (Z[k] - Z[(h - k) % h].conjugate()) / 2 for k in range(h)]
+>>> w = [cmath.exp(-2j * cmath.pi * k / 8) for k in range(h)]
+>>> mine = [E[k] + w[k] * O[k] for k in range(h)] + [E[0] - O[0]]
+>>> max(abs(a - b) for a, b in zip(mine, X.tolist()))
+4.440892098500626e-16
+```
+
+### DC와 나이퀴스트 칸
+
+$k = 0$에서는 $E_0 = \mathrm{Re}\,Z_0$, $O_0 = \mathrm{Im}\,Z_0$이고 $w_0 = 1$이라 $X_0 = \mathrm{Re}\,Z_0 + \mathrm{Im}\,Z_0$, $X_h = \mathrm{Re}\,Z_0 - \mathrm{Im}\,Z_0$예요. 둘 다 덧셈 하나이고 허수부는 계산하지 않고 정확히 $+0$으로 써요. $h$가 짝수면 $k = h/2$는 제 자신과 짝이라 한 번만 써요.
+
+```python
+>>> X[0] == Z[0].real + Z[0].imag, X[4] == Z[0].real - Z[0].imag
+(True, True)
+>>> sd.signbit(sd.imag(X)).tolist()
+[False, False, False, False, False]
+```
+
+### 사후 처리의 코드
+
+짝 하나는 NEON 레지스터 하나에 복소수 하나($[\mathrm{re}, \mathrm{im}]$)를 담아 계산해요. 켤레는 $[1, -1]$을 곱하는 것이고, $-i$ 곱은 두 레인을 맞바꾸고 부호를 바꾸는 것이라 정확해요. $1/2$ 곱도 정확해요(결과가 비정상 수가 아니면). 반올림이 생기는 곳은 합과 차 두 번, 회전 인자와의 복소 곱(곱 하나와 FMA 하나), 마지막 합과 차예요.
+
+```cpp
+// csrc/fft/rfft.hpp
+// The pairs (k, h - k), k0 <= k < k1, of the forward pass (1 <= k0, 2 (k1 - 1) <= h).
+inline void r2c_post_pairs(double* y, int64_t h, const double* w, int64_t k0, int64_t k1) {
+    const float64x2_t half = vdupq_n_f64(0.5);
+    const float64x2_t conj = {1.0, -1.0};
+    for (int64_t k = k0; k < k1; ++k) {
+        const float64x2_t zk = vld1q_f64(y + 2 * k);
+        const float64x2_t zm = vmulq_f64(vld1q_f64(y + 2 * (h - k)), conj);  // conj Z_(h-k)
+        const float64x2_t e = vmulq_f64(vaddq_f64(zk, zm), half);
+        const float64x2_t d = vmulq_f64(vsubq_f64(zk, zm), half);
+        const float64x2_t o = vmulq_f64(vextq_f64(d, d, 1), conj);  // -i d = (d.im, -d.re)
+        const double wr = w[2 * k], wi = w[2 * k + 1];
+        const float64x2_t wneg = {-wi, wi};
+        // w o = (wr o.re - wi o.im, wr o.im + wi o.re)
+        const float64x2_t p = vfmaq_f64(vmulq_n_f64(o, wr), vextq_f64(o, o, 1), wneg);
+        vst1q_f64(y + 2 * k, vaddq_f64(e, p));
+        if (2 * k != h) vst1q_f64(y + 2 * (h - k), vmulq_f64(vsubq_f64(e, p), conj));
+    }
+}
+
+// The forward pass: y holds Z_0 .. Z_(h-1) (interleaved) and room for h + 1 entries; on return it holds
+// X_0 .. X_h. w: real_twiddles(2h). The pairs are independent (run_chunks: a long line's on the pool).
+inline void r2c_post(double* y, int64_t h, const double* w) {
+    const double z0r = y[0], z0i = y[1];
+    y[0] = z0r + z0i, y[1] = 0.0;
+    y[2 * h] = z0r - z0i, y[2 * h + 1] = 0.0;
+    run_chunks(h / 2, [&](int64_t i0, int64_t i1) { r2c_post_pairs(y, h, w, i0 + 1, i1 + 1); });
+}
+```
+
+회전 인자 표는 $k = 0, \dots, h/2$의 $w_k$ 하나뿐이에요(`real_twiddles`). 각 값은 정확한 분수 $k/n$에서 만든 것으로, 복소 커널의 회전 인자와 같은 함수에서 나와요. 실수 종류의 계획은 이 표와 길이 $h$의 복소 계획을 쥐고, 정변환은 복소 변환 한 번과 `r2c_post` 한 번이에요.
+
+```cpp
+    // csrc/fft/plan.hpp
+    void r2c(const double* x, double* y, double* work) const {
+        half_->execute(x, y, work, false);
+        r2c_post(y, n_ / 2, rtw_.data());
+    }
+```
+
+안쪽 계획 `half_`는 실수 종류가 스스로 만들어 쥐는 길이 $h$의 복소 계획이에요. $h$가 31-매끄러우면 혼합 기수, 아니면 Bluestein이고, $h \ge 2^{15}$이면 4단계 분해예요. 그래서 짝수 $n \ge 2^{16}$의 실수 줄은 안쪽이 4단계로 풀에서 나뉘고, 사후 처리의 짝들도 `run_chunks`가 $2^{14}$칸씩 나눠요. 칸마다 따로 계산하니 나눠도 비트가 같아요.
+
+### 사후 처리는 오차를 늘리지 않아요
+
+$Z \mapsto (X_0, \dots, X_{n-1})$은 $\sqrt 2$ 곱하기 유니터리 사상이에요. 짝마다 $\lvert X_k\rvert^2 + \lvert X_{k+h}\rvert^2 = 2(\lvert E_k\rvert^2 + \lvert O_k\rvert^2)$이고 $\sum_k(\lvert E_k\rvert^2 + \lvert O_k\rvert^2) = \lVert Z\rVert^2$이기 때문이에요. 그래서 안쪽 변환의 오차 $\varepsilon_h\lVert Z\rVert$($\lVert Z\rVert = \sqrt h\,\lVert x\rVert$)는 전체 스펙트럼에서 $\varepsilon_h\sqrt n\,\lVert x\rVert$가 돼요. 혼합 기수 $h$면 $\varepsilon_h = \kappa L(h)\,u = \kappa(L(n) - 1)\,u$라서, 계약의 $\kappa L(n)\,u$에서 $\kappa u$ 하나가 사후 처리의 몫으로 남아요.
+
+사후 처리 자체의 오차는 짝마다 셀 수 있어요. $e$와 $d = (Z_k - \overline{Z_{h-k}})/2$에 대해
+
+$$
+\lvert \hat X_k - X_k\rvert \le 2u\,\lvert e\rvert + 5.5u\,\lvert d\rvert
+$$
+
+예요. 합의 반올림 $u(\lvert e\rvert + \lvert d\rvert)$, $e$의 반올림 $u\lvert e\rvert$, $d$의 반올림 $u\lvert d\rvert$이 곱을 거친 것, FMA 복소 곱의 $2u$, 회전 인자의 오차 $\mu = 1.5u$를 더한 것이에요. 짝들에 대해 $\sum_k(\lvert e_k\rvert^2 + \lvert d_k\rvert^2) = \lVert Z\rVert^2/2$이므로 전체 스펙트럼에 더해지는 오차는
+
+$$
+\sqrt{2\,(2^2 + 5.5^2)}\;u\,\lVert Z\rVert \approx 5.85\,u\sqrt h\,\lVert x\rVert \lt \kappa\,u\sqrt n\,\lVert x\rVert
+$$
+
+이하예요($\kappa = 8$). 남겨 둔 $\kappa u$ 안에 들어요. 반쪽 스펙트럼은 전체 스펙트럼의 일부이니 같은 한계를 지켜요.
+
+안쪽 길이 $h$가 Bluestein이면 Bluestein 증명에 남는 여유에 $\kappa u$ 하나를 더한 것이 사후 처리와 정규화를 덮어요. 그래서 그런 길이의 단 수는 $2L(m) + 2$에 하나를 더해 세요([정확도와 성능](/internals/fft/accuracy-performance/)).
+
+## 짝수 길이의 역변환
+
+`irfft`는 같은 단계를 거꾸로 밟아요. $X_k = E_k + w_k O_k$, $X_{k+h} = \overline{X_{h-k}} = E_k - w_k O_k$에서
+
+$$
+a = X_k + \overline{X_{h-k}} = 2E_k, \qquad b = X_k - \overline{X_{h-k}} = 2w_kO_k, \qquad o' = \overline{w_k}\,b = 2O_k
+$$
+
+이고 $Z'_k = a + i\,o' = 2Z_k$, $Z'_{h-k} = \overline{a - i\,o'}$예요. DC는 $Z'_0 = (X_0 + X_h) + i(X_0 - X_h)$예요. 길이 $h$의 정규화 없는 역복소 변환이 $Z'$에서 $2h\,z = n\,z$를 내는데, 그것이 메모리에서 그대로 실수 $n$개 $n\,x_j$예요. 결과의 줄에 바로 쓰고 정규화 인자 $1/n$은 그 뒤에 곱해요. 정변환과 달리 $1/2$을 곱하지 않아서 짝마다 곱셈이 하나 적어요.
+
+```cpp
+// csrc/fft/rfft.hpp
+// The pairs (k, h - k), k0 <= k < k1, of the inverse pass.
+template <bool Conj>
+inline void c2r_pre_pairs(const double* x, double* z, int64_t h, const double* w, int64_t k0, int64_t k1) {
+    const float64x2_t conj = {1.0, -1.0};
+    const float64x2_t itimes = {-1.0, 1.0};
+    for (int64_t k = k0; k < k1; ++k) {
+        float64x2_t xk = vld1q_f64(x + 2 * k);
+        float64x2_t xm = vld1q_f64(x + 2 * (h - k));
+        if constexpr (Conj) {
+            xk = vmulq_f64(xk, conj);
+        } else {
+            xm = vmulq_f64(xm, conj);  // conj x_(h-k) (with Conj: conj(conj x_(h-k)) = x_(h-k))
+        }
+        const float64x2_t a = vaddq_f64(xk, xm);
+        const float64x2_t b = vsubq_f64(xk, xm);
+        const double wr = w[2 * k], wi = w[2 * k + 1];
+        const float64x2_t wpos = {wi, -wi};
+        // conj(w) b = (wr b.re + wi b.im, wr b.im - wi b.re)
+        const float64x2_t o = vfmaq_f64(vmulq_n_f64(b, wr), vextq_f64(b, b, 1), wpos);
+        const float64x2_t io = vmulq_f64(vextq_f64(o, o, 1), itimes);  // i o' = (-o.im, o.re)
+        vst1q_f64(z + 2 * k, vaddq_f64(a, io));
+        if (2 * k != h) vst1q_f64(z + 2 * (h - k), vmulq_f64(vsubq_f64(a, io), conj));
+    }
+}
+
+// The inverse pass: z (h interleaved complex) = Z' of the half spectrum x (h + 1 interleaved complex; the
+// imaginary parts of x_0 and x_h are not read). Conj: the pass of conj(x) (hfft). x and z do not overlap.
+// w: real_twiddles(2h).
+template <bool Conj>
+inline void c2r_pre(const double* x, double* z, int64_t h, const double* w) {
+    const double x0 = x[0], xh = x[2 * h];
+    z[0] = x0 + xh, z[1] = x0 - xh;
+    run_chunks(h / 2, [&](int64_t i0, int64_t i1) { c2r_pre_pairs<Conj>(x, z, h, w, i0 + 1, i1 + 1); });
+}
+```
+
+`Conj`가 참인 판은 `hfft`의 것이에요. `hfft(x)`는 `irfft(conj(x))`에 반대 방향의 인자를 곱한 것이라, 켤레를 읽으면서 바로 취해요. 켤레는 부호 바꾸기라 정확해서 `hfft(x, norm=a)`는 `irfft(conj(x), norm=a')`와 비트까지 같아요($a'$는 방향을 바꾼 `norm`). 역변환도 정변환과 같은 곱과 합을 거꾸로 하니 같은 오차 셈이 서요. 입력의 노름만 에르미트 확장의 노름 $\lVert\tilde X\rVert_H$로 바뀌어요.
+
+### 버리는 허수부
+
+`c2r_pre`는 `x[1]`과 `x[2 * h + 1]`을 읽지 않아요. 실수열의 변환이라면 $X_0$과 $X_{n/2}$는 실수여야 하고, 에르미트 확장에서 짝이 없는 칸이라 허수부가 들어갈 자리가 없어요. numpy와 scipy도 같은 부분을 버려요. 그래서 그 두 허수부를 무엇으로 바꾸든, NaN이어도 결과가 비트까지 같아요.
+
+```python
+>>> Y = X.copy()
+>>> Y[0] = X[0] + 5j
+>>> Y[4] = complex(X[4].real, float("nan"))
+>>> F.irfft(Y).tolist() == F.irfft(X).tolist()
+True
+>>> F.irfft(X).tolist()
+[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]
+```
+
+같은 입력에 `n=9`(홀수)를 주면 다섯째 칸은 나이퀴스트가 아니라 짝이 있는 칸이에요. 그 허수부가 계산에 들어가 다른 칸으로 NaN이 퍼져요.
+
+```python
+>>> F.irfft(Y, n=9)
+array([0.4444444444444444,                nan,                nan,
+                      nan,                nan,                nan,
+                      nan,                nan,                nan], dtype=float64)
+```
+
+## 홀수 길이: 복소 변환과 에르미트 사영
+
+홀수 $n$은 실수 $n$개를 complex128 $n/2$개로 읽을 수 없어요. 그래서 줄을 허수부 0인 complex128 $n$개로 펴서 캐시의 복소 계획(길이 $n$)으로 변환하고, 결과 $t$의 에르미트 부분을 써요.
+
+$$
+y_0 = \mathrm{Re}\,t_0 + 0i, \qquad y_k = \frac{t_k + \overline{t_{n-k}}}{2}, \quad k = 1, \dots, \lfloor n/2\rfloor
+$$
+
+참 변환이라면 $t_k = \overline{t_{n-k}}$라서 이 식은 아무것도 바꾸지 않아요. 반올림이 섞인 $\hat t$에서는 $\hat t$를 에르미트 부분공간으로 직교 사영하는 일이에요. 사영 $P$는 $\lVert P\rVert = 1$이고 참값에서는 $Py = y$이므로
+
+$$
+\lVert P\hat t - y\rVert = \lVert P(\hat t - y)\rVert \le \lVert \hat t - y\rVert
+$$
+
+예요. 오차가 늘지 않고, 사영의 반올림(칸마다 $u$ 하나)은 $c_0$ 안이에요. 대신 결과가 정확히 에르미트이고 DC의 허수부가 정확히 $+0$이에요.
+
+```cpp
+// csrc/fft/rfft.hpp
+inline void hermitian_part(const double* t, double* y, int64_t n, int64_t count) {
+    y[0] = t[0], y[1] = 0.0;
+    const float64x2_t half = vdupq_n_f64(0.5);
+    const float64x2_t conj = {1.0, -1.0};
+    for (int64_t k = 1; k < count; ++k) {
+        const float64x2_t a = vld1q_f64(t + 2 * k);
+        const float64x2_t b = vmulq_f64(vld1q_f64(t + 2 * (n - k)), conj);
+        vst1q_f64(y + 2 * k, vmulq_f64(vaddq_f64(a, b), half));
+    }
+}
+```
+
+복소 길로 계산한 $t$는 대칭이 반올림 크기로만 맞아요. 사영한 결과는 정확히 맞아요.
+
+```python
+>>> x9 = sd.asarray([3.0, 1.0, 4.0, 1.0, 5.0, 9.0, 2.0, 6.0, 5.0])
+>>> c9 = F.fft(x9 + 0j)
+>>> [c9[k] - c9[9 - k].conjugate() for k in range(1, 5)]
+[0j, (4.440892098500626e-16+2.220446049250313e-16j), 0j, (8.881784197001252e-16+4.440892098500626e-16j)]
+>>> y9 = F.fft(x9)
+>>> all(y9[9 - k] == y9[k].conjugate() for k in range(1, 9))
+True
+```
+
+역변환은 쓰는 $\lfloor n/2\rfloor + 1$칸에서 에르미트 확장(DC의 허수부는 버려요)을 만들어 길이 $n$의 역복소 변환을 하고 실수부를 써요. 홀수 길이에는 나이퀴스트 칸이 없으니 버리는 허수부는 DC 하나예요.
+
+홀수 길이 전용의 실수 나비는 두지 않아요. 홀수 $n$의 실수 변환은 길이 $n$의 복소 변환 하나에 사영 한 번이라, 복소 커널의 혼합 기수와 Bluestein이 그대로 쓰이고 따로 증명할 커널이 늘지 않아요.
+
+## 다른 함수는 켤레와 거울
+
+| 함수 | 계산 |
+|---|---|
+| `rfft(x)` | 반쪽 스펙트럼, 정방향 인자 |
+| `ihfft(x)` | `rfft`와 같은 길에 역방향 인자, 결과의 켤레 |
+| 실수 입력의 `fft(x)` | 반쪽 스펙트럼을 구하고 $y_{n-k} = \overline{y_k}$로 나머지를 채움 |
+| 실수 입력의 `ifft(x)` | 위의 전체 스펙트럼에 역방향 인자, 결과의 켤레 |
+| `irfft(X)` | 역변환, 역방향 인자 |
+| `hfft(X)` | `Conj` 판의 역변환, 정방향 인자 |
+
+실수 입력의 `ifft`가 켤레인 까닭은 실수 $x$에서 $\sum_j x_j e^{+2\pi i jk/n} = \overline{\sum_j x_j e^{-2\pi i jk/n}}$이기 때문이에요. 정규화 인자를 곱한 뒤에 허수부의 부호를 바꾸는데, 부호 바꾸기가 정확해서 순서가 비트를 바꾸지 않아요. 거울 채우기도 복사와 부호 바꾸기뿐이에요.
+
+```cpp
+// csrc/fft/driver.cpp
+void mirror(double* y, int64_t n) {
+    run_chunks((n - 1) / 2, [&](int64_t i0, int64_t i1) {
+        for (int64_t k = i0 + 1; k <= i1; ++k) {
+            y[2 * (n - k)] = y[2 * k];
+            y[2 * (n - k) + 1] = -y[2 * k + 1];
+        }
+    });
+}
+```
+
+그래서 다음이 모두 비트까지 같아요.
+
+```python
+>>> F.rfft(x9).tolist() == F.fft(x9)[:5].tolist()
+True
+>>> F.hfft(X).tolist() == F.irfft(sd.conj(X), norm="forward").tolist()
+True
+>>> F.ihfft(x).tolist() == sd.conj(F.rfft(x, norm="forward")).tolist()
+True
+>>> F.ifft(x).tolist() == sd.conj(F.fft(x, norm="forward")).tolist()
+True
+```
+
+실수 입력의 `fft`가 실수 길을 타는 까닭은 정확한 대칭과 비트 관계 때문이에요. 거울로 채운 칸의 오차는 원래 칸의 오차를 비춘 것이라 전체 스펙트럼의 오차가 그대로이고, `rfft` 줄과 같은 계약을 지켜요. complex128로 바꿔서 주면 복소 길을 타요. 그때는 대칭이 반올림 크기로만 맞아요.
+
+## 구동기
+
+`r2c_axis`와 `c2r_axis`는 복소 변환의 구동기와 같은 규칙으로 줄을 묶고 태스크로 나눠요([구조](/internals/fft/overview/)). 실수 쪽에서 다른 것은 바로 읽는 조건과 줄 하나의 계산이에요.
+
+- **정변환의 바로 읽기.** 짝수 $n$이고, 입력이 float64이고, 변환 축의 간격이 8바이트(연속)이고, 자르기만 있으면(입력 길이 $\ge n$) 실수 계획이 입력의 메모리에서 바로 읽어요. 결과 축의 간격이 16바이트면 결과의 줄에 바로 써요.
+- **모으기.** 그 밖에는 이웃한 줄들을 태스크의 버퍼로 모아요. bool과 int64는 이때 float64로 바뀌고, $n$보다 짧은 줄은 끝에 0을 채워요. 모은 줄을 변환한 뒤 결과의 자리로 흩어요.
+- **역변환의 바로 읽기.** 입력이 complex128, 간격 16바이트, 길이가 $\lfloor n/2\rfloor + 1$ 이상이면 바로 읽어요. 실수 dtype의 입력은 허수부 0인 복소수로 읽어요.
+
+어느 쪽이든 같은 값에 같은 연산이라 한 줄의 비트는 배치, 레이아웃, 스레드 수와 무관해요.
+
+```cpp
+            // csrc/fft/driver.cpp
+            for (int64_t k = 0; k < g; ++k) {
+                const double* src = xdirect ? reinterpret_cast<const double*>(xp[k]) : in.get() + k * ldi;
+                double* y = odirect ? reinterpret_cast<double*>(op[k]) : res.get() + k * ldo;
+                if (even) {
+                    plan->r2c(src, y, work.get());
+                } else {
+                    double* const c = tmp.get();
+                    double* const t = tmp.get() + 2 * n;
+                    run_chunks(n, [&](int64_t i0, int64_t i1) {
+                        for (int64_t i = i0; i < i1; ++i) c[2 * i] = src[i], c[2 * i + 1] = 0.0;
+                    });
+                    plan->execute(c, t, work.get(), false);
+                    hermitian_part(t, y, n, half);
+                }
+                if (full) mirror(y, n);
+                finish_line(y, nout, scale, conj);
+            }
+```
+
+`full`은 실수 입력의 `fft`·`ifft`, `conj`는 `ihfft`와 실수 입력의 `ifft`예요. `finish_line`이 인자 곱과 켤레를 한 번에 해요. 정수와 bool 입력은 모으면서 float64로 바뀌니 같은 값의 float64 입력과 결과가 같아요.
+
+```python
+>>> F.rfft(sd.asarray([1, 0, 1, 1])).tolist() == F.rfft(sd.asarray([1.0, 0.0, 1.0, 1.0])).tolist()
+True
+>>> rng = sd.random.default_rng(7)
+>>> B = rng.random((3, 10, 4))
+>>> F.rfft(B, axis=1)[2, :, 1].tolist() == F.rfft(B[2, :, 1].copy()).tolist()
+True
+```
+
+다차원에서는 `rfftn`의 첫 패스(`axes`의 마지막 축)가 실수 쪽이고 그 뒤가 복소 패스예요. `irfftn`은 복소 패스를 먼저 하고 마지막 패스가 실수 쪽이에요. 그래서 에르미트 대칭이 아닌 입력이면 복소 패스가 끝난 뒤의 DC와 나이퀴스트 허수부를 버려요. numpy, scipy와 같은 순서예요.

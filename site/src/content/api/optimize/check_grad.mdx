@@ -1,0 +1,239 @@
+---
+kind: function
+title: check_grad
+names: [check_grad]
+group: 수치 미분
+order: 2
+signatures:
+  - "sd.optimize.check_grad(func, grad, x0, /, *, epsilon=None, direction='all', rng=None)"
+summary: 직접 쓴 기울기 함수 grad가 맞는지 차분과 견줘 확인해요. grad(x0)와 차분으로 어림한 기울기의 차이를 2-노름으로 돌려주고, 기울기의 크기에 비해 작으면 맞게 쓴 거예요.
+params:
+  - name: func
+    type: 호출 가능한 객체
+    kind: positional-only
+    desc: "확인할 함수 func(x). x는 float64 sd.ndarray (n,)이고 실수 하나를 돌려줘요."
+  - name: grad
+    type: 호출 가능한 객체
+    kind: positional-only
+    desc: "확인할 기울기 grad(x). 값 n개(sd.ndarray, 실수의 시퀀스, numpy 배열)를 돌려줘요. n = 1이면 수 하나도 돼요(minimize의 jac과 같은 규칙). x0에서 한 번만 불러요."
+  - name: x0
+    type: ndarray, 실수의 시퀀스, numpy 배열, 또는 frame의 Series
+    kind: positional-only
+    desc: 확인할 점 (n,). 1차원이고 비어 있지 않고 유한해야 해요.
+  - name: epsilon
+    type: float, 실수의 시퀀스, 또는 None
+    kind: keyword-only
+    desc: "차분의 간격. None(기본값)이면 approx_fprime의 기본인 간격을 고르는 5점 차분, 수를 주면 그 간격의 앞쪽 차분이에요(approx_fprime의 epsilon과 같아요). direction='random'이면 수 하나만 받아요."
+  - name: direction
+    type: str
+    kind: keyword-only
+    desc: "'all'(기본값)이면 모든 변수 방향의 차분으로 기울기 전체를 견줘요. 'random'이면 무작위 방향 v 하나를 따라 방향 도함수 grad(x0)·v를 견줘요."
+  - name: rng
+    type: sd.random.Generator 또는 None
+    kind: keyword-only
+    desc: "direction='random'의 방향을 뽑는 난수 생성기(sd.random.default_rng(seed)). 'random'이면 꼭 줘야 하고, 'all'이면 주지 않아요."
+returns:
+  type: float
+  desc: "direction='all'이면 ‖grad(x0) − approx_fprime(x0, func, epsilon=epsilon)‖₂, 'random'이면 |grad(x0)·v − d/dw func(x0 + w v)|(w = 0)예요. v는 표준정규분포에서 뽑은 n개예요."
+raises:
+  - type: TypeError
+    desc: func나 grad가 호출 가능하지 않을 때, x0가 수의 시퀀스가 아니거나 복소수일 때, direction='random'인데 rng가 sd.random.Generator가 아닐 때(없을 때 포함), epsilon이 수가 아닐 때('random'에서 시퀀스를 줄 때 포함). func 안에서 난 에러도 그대로 나와요.
+  - type: ValueError
+    desc: x0가 1차원이 아니거나 비었거나 유한하지 않을 때, func가 실수 하나가 아닌 값을 돌려줄 때, grad가 n개가 아닌 값을 돌려줄 때, direction이 'all'이나 'random'이 아닐 때, direction='all'에 rng를 줬을 때, epsilon이 양의 유한한 수가 아니거나 개수가 맞지 않을 때, epsilon=None인데 func가 x0에서 유한하지 않을 때.
+seeAlso: [approx_fprime, minimize, basics]
+---
+import Callout from '../../../components/Callout.astro';
+
+## 무엇을 하나요
+
+`minimize`의 BFGS나 Newton-CG 같은 방법은 기울기 함수 `jac`을 받으면 훨씬 적은 계산으로 풀어요. 그런데 기울기를 손으로 미분해 쓰다 보면 실수하기 쉬워요. 틀린 기울기를 주면 방법이 엉뚱한 방향으로 가다가 멈추고, 에러 없이 이상한 결과만 남아요.
+
+`check_grad`는 그 실수를 찾아요. 사용자의 `grad(x0)`와, 같은 점에서 `func`를 차분으로 미분한 기울기를 견주어 차이의 길이(2-노름)를 돌려줘요. 기울기를 맞게 썼다면 차분의 오차만큼만 달라서 아주 작은 수가 나오고, 틀렸다면 기울기의 크기에 견줄 만한 수가 나와요.
+
+## 기본 사용
+
+Rosenbrock 함수 $f(x) = (1 - x_0)^2 + 100(x_1 - x_0^2)^2$의 기울기는
+
+$$
+\nabla f = \bigl(-2(1 - x_0) - 400 x_0 (x_1 - x_0^2),\ \ 200(x_1 - x_0^2)\bigr)
+$$
+
+이에요. 둘째 성분의 200을 100으로 잘못 쓴 `bad`와 함께 확인해 봐요.
+
+```python
+>>> import stardust as sd
+>>> rosen = lambda x: (1 - x[0])**2 + 100 * (x[1] - x[0]**2)**2
+>>> grad = lambda x: [-2 * (1 - x[0]) - 400 * x[0] * (x[1] - x[0]**2), 200 * (x[1] - x[0]**2)]
+>>> bad = lambda x: [-2 * (1 - x[0]) - 400 * x[0] * (x[1] - x[0]**2), 100 * (x[1] - x[0]**2)]
+>>> sd.optimize.check_grad(rosen, grad, [-1.2, 1.0])
+1.7896651901800357e-12
+>>> sd.optimize.check_grad(rosen, bad, [-1.2, 1.0])
+44.000000000000306
+```
+
+맞는 기울기는 $1.8 \times 10^{-12}$, 틀린 기울기는 44예요. 참 기울기는 $(-215.6, -88)$이라 둘째 성분을 반으로 쓴 차이가 정확히 44예요. 틀린 기울기를 `minimize`에 주면 이렇게 돼요.
+
+```python
+>>> r = sd.optimize.minimize(rosen, [-1.2, 1.0], jac=bad)
+>>> r.converged, r.n_iter, r.message
+(False, 3, 'Desired error not necessarily achieved due to precision loss.')
+>>> sd.optimize.minimize(rosen, [-1.2, 1.0], jac=grad).converged
+True
+```
+
+선 탐색이 기울기가 가리키는 내리막을 찾지 못해 세 번 만에 멈췄어요. 메시지만으로는 기울기가 틀렸다는 것을 알기 어려우니, 기울기를 새로 썼으면 `check_grad`로 먼저 확인해 두는 편이 좋아요.
+
+## 결과 읽기
+
+결과는 절대 크기예요. "작다"의 기준은 기울기의 크기와 차분의 정확도로 정해요.
+
+- 기본(`epsilon=None`)은 상대 $10^{-11}$ 안팎까지 맞는 5점 차분이에요([`approx_fprime`](/api/optimize/approx_fprime/)). 그래서 맞는 기울기면 결과가 대개 $\lVert \nabla f \rVert$의 $10^{-10}$배보다 작아요. 다만 `x0`의 성분이 0에 가깝고 그 근처에서 함숫값이 기울기보다 훨씬 크면(0 근처의 $\cos$처럼) 차분의 오차는 함숫값의 반올림에서 오는 절대 크기(함숫값의 $10^{-14}$배쯤)라, 결과를 $\lVert \nabla f \rVert$보다 함숫값의 크기와 견줘요.
+- `epsilon`을 주면 앞쪽 차분이라 맞는 기울기도 $\lVert \nabla f \rVert$의 $10^{-8}$–$10^{-6}$배쯤 나와요.
+
+기울기의 크기로 나눈 상대 값을 보면 판단하기 쉬워요.
+
+```python
+>>> import math
+>>> g0 = grad([-1.2, 1.0])
+>>> norm = math.hypot(*g0)
+>>> norm
+232.86768775422664
+>>> sd.optimize.check_grad(rosen, grad, [-1.2, 1.0]) / norm
+7.685330701908653e-15
+>>> sd.optimize.check_grad(rosen, bad, [-1.2, 1.0]) / norm
+0.18894849871330716
+```
+
+### 여러 점에서 확인해요
+
+틀린 기울기가 어떤 점에서는 우연히 맞을 수 있어요. 위의 `bad`는 $x_1 = x_0^2$인 점에서 틀린 항이 0이 되어 맞는 기울기와 같아져요.
+
+```python
+>>> sd.optimize.check_grad(rosen, bad, [2.0, 4.0])
+0.0
+```
+
+그래서 특별하지 않은 점 몇 개에서 확인해요. 무작위 점을 쓰면 편해요.
+
+```python
+>>> rng = sd.random.default_rng(1)
+>>> for _ in range(3):
+...     x = sd.stats.Normal().sample((2,), rng=rng)
+...     print(f'{sd.optimize.check_grad(rosen, bad, x):.3g}')
+96.8
+45.7
+128
+```
+
+## direction='random': 방향 하나로 빨리 확인하기
+
+`direction='all'`(기본)은 변수 $n$개 방향 모두의 차분이 필요해서, 기본 차분이면 `func`를 변수 하나에 8–20번쯤 불러요. 변수가 많으면 비싸요. `direction='random'`은 표준정규분포에서 뽑은 방향 $v$ 하나만 봐요. 기울기가 맞으면 $v$ 방향의 방향 도함수가
+
+$$
+\frac{d}{dw} f(x_0 + w v)\Big|_{w=0} = \nabla f(x_0) \cdot v
+$$
+
+여야 하니, 왼쪽을 변수 하나짜리 차분으로 어림해 오른쪽과의 차이 $\lvert \nabla f(x_0)\cdot v - \tfrac{d}{dw} f(x_0 + wv)\rvert$를 돌려줘요. 차분이 변수 하나뿐이라 $n$과 상관없이 `func`를 몇 번만 불러요.
+
+방향을 뽑을 난수 생성기 `rng`를 꼭 줘야 해요. 같은 시드면 같은 값이 나와요.
+
+```python
+>>> sd.optimize.check_grad(rosen, grad, [-1.2, 1.0], direction='random', rng=sd.random.default_rng(42))
+1.6285639503621496e-11
+>>> sd.optimize.check_grad(rosen, bad, [-1.2, 1.0], direction='random', rng=sd.random.default_rng(42))
+15.08373626701399
+```
+
+변수 100개의 Rosenbrock 함수에서 `func`를 부른 수를 세어 보면 차이가 커요.
+
+```python
+>>> n = 100
+>>> def rosen_n(x):
+...     return float(sd.sum(100 * (x[1:] - x[:-1]**2)**2 + (1 - x[:-1])**2))
+>>> def grad_n(x):
+...     g = sd.zeros(n)
+...     g[1:-1] = 200 * (x[1:-1] - x[:-2]**2) - 400 * (x[2:] - x[1:-1]**2) * x[1:-1] - 2 * (1 - x[1:-1])
+...     g[0] = -400 * x[0] * (x[1] - x[0]**2) - 2 * (1 - x[0])
+...     g[-1] = 200 * (x[-1] - x[-2]**2)
+...     return g
+>>> calls = []
+>>> def counted(x):
+...     calls.append(1)
+...     return rosen_n(x)
+>>> x0 = sd.asarray([-1.2, 1.0] * 50)
+>>> sd.optimize.check_grad(counted, grad_n, x0), len(calls)
+(4.953007685757822e-09, 1201)
+>>> calls.clear()
+>>> sd.optimize.check_grad(counted, grad_n, x0, direction='random', rng=sd.random.default_rng(0)), len(calls)
+(1.3468479664879851e-09, 13)
+```
+
+방향 하나는 기울기의 오류를 그 방향의 성분으로만 보므로, 오류가 $v$와 거의 수직이면 놓칠 수 있어요. 시드를 바꿔 몇 번 확인하거나, 마지막에 `'all'`로 한 번 확인하세요.
+
+## epsilon: 앞쪽 차분
+
+`epsilon`을 주면 [`approx_fprime`](/api/optimize/approx_fprime/)의 `epsilon`처럼 그 간격의 앞쪽 차분으로 견줘요. 함수를 변수 하나에 한 번만 부르니 싸지만, 맞는 기울기에서도 결과가 커요. `epsilon=2**-26`은 scipy의 `check_grad`와 같은 계산이에요.
+
+```python
+>>> sd.optimize.check_grad(rosen, grad, [-1.2, 1.0], epsilon=2**-26)
+9.737757311449259e-06
+>>> import numpy as np
+>>> import scipy.optimize as so
+>>> float(so.check_grad(rosen, grad, np.array([-1.2, 1.0])))
+9.737757311449259e-06
+```
+
+`direction='random'`에서는 방향을 따라 움직이는 거리 하나라서 수 하나만 받아요.
+
+## 에러
+
+```python
+>>> sd.optimize.check_grad(rosen, grad, [-1.2, 1.0], direction='random')
+Traceback (most recent call last):
+    ...
+TypeError: check_grad(): 'rng' must be an sd.random.Generator (sd.random.default_rng(seed)), not NoneType
+>>> sd.optimize.check_grad(rosen, grad, [-1.2, 1.0], rng=sd.random.default_rng(0))
+Traceback (most recent call last):
+    ...
+ValueError: check_grad(): 'rng' is only used when direction='random'
+>>> sd.optimize.check_grad(rosen, grad, [-1.2, 1.0], direction='rand')
+Traceback (most recent call last):
+    ...
+ValueError: check_grad(): 'direction' must be 'all' or 'random', not 'rand'
+>>> sd.optimize.check_grad(rosen, lambda x: [1.0], [-1.2, 1.0])
+Traceback (most recent call last):
+    ...
+ValueError: check_grad(): 'grad' must return 2 values (one per variable), not shape (1,)
+>>> sd.optimize.check_grad(lambda x: [1.0, 2.0], grad, [-1.2, 1.0])
+Traceback (most recent call last):
+    ...
+ValueError: check_grad(): 'func' must return a real number, not shape (2,)
+>>> sd.optimize.check_grad(rosen, grad, [-1.2, 1.0], direction='random', rng=np.random.default_rng(0))
+Traceback (most recent call last):
+    ...
+TypeError: check_grad(): 'rng' must be an sd.random.Generator (sd.random.default_rng(seed)), not numpy.random.Generator
+```
+
+`check_grad`는 함수(`func`, `grad`)가 먼저, 점 `x0`가 마지막이에요. 점이 먼저인 `approx_fprime`과 순서가 달라요(둘 다 scipy의 순서예요).
+
+## 헤시안 확인하기
+
+`check_grad`는 기울기만 확인해요. `minimize`의 Newton 계열에 줄 헤시안 `hess`를 직접 썼다면 [`sd.differentiate.hessian`](/api/differentiate/hessian/)과 견줘요. `hessian`의 사용자 함수는 열 하나가 점 하나인 $(2, N)$ 배열을 받는데, 위의 `rosen`은 `x[0]`, `x[1]`의 원소별 연산이라 그대로 쓸 수 있어요. 항목마다 수렴했는지도 함께 확인해요.
+
+```python
+>>> hess = lambda x: [[1200 * x[0]**2 - 400 * x[1] + 2, -400 * x[0]], [-400 * x[0], 200.0]]
+>>> h = sd.differentiate.hessian(rosen, [-1.2, 1.0])
+>>> bool(sd.all(h.converged))
+True
+>>> float(sd.linalg.matrix_norm(h.ddf - sd.asarray(hess([-1.2, 1.0]))))
+5.921818498423729e-12
+```
+
+맞게 쓴 헤시안이면 차이가 헤시안의 크기(여기서 1,400쯤)보다 훨씬 작아요. 야코비안을 확인할 때는 [`sd.differentiate.jacobian`](/api/differentiate/jacobian/)이나 `approx_fprime`과 견줘요.
+
+## scipy를 아는 분께
+
+- **기본 차분이 달라요.** scipy는 간격 $\sqrt{\varepsilon} = 2^{-26}$($\varepsilon = 2^{-52}$, 기계 엡실론)의 앞쪽 차분이고, 여기서는 간격을 고르는 5점 차분이에요. 그래서 맞는 기울기에 대한 결과가 scipy보다 훨씬 작아요(위의 예에서 $1.8 \times 10^{-12}$ 대 $9.7 \times 10^{-6}$). `epsilon=2**-26`을 주면 scipy와 같은 계산이고, 지금은 값도 비트까지 같아요(약속은 아니에요).
+- **`rng`**: `direction='random'`에서 scipy는 `rng`(numpy의 `Generator`)를 주지 않으면 새로 만들지만, 여기서는 `sd.random.Generator`를 꼭 줘야 해요. 난수가 달라서 같은 시드라도 scipy와 방향이 다르고 결과도 달라요.
+- **`direction='all'`에 `rng`**: scipy는 무시하지만 여기서는 `ValueError`예요.
+- 사용자 함수의 추가 인자 `*args`는 없어요. `lambda`로 묶어 주세요.

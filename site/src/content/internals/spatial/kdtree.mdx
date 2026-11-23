@@ -1,0 +1,479 @@
+---
+title: KD 트리 만들기와 가지치기
+group: KD 트리
+order: 1
+summary: KDTree가 점을 나누는 방법(가장 넓은 축의 중앙값을 (좌표, 색인)의 전순서로), 상자를 실제 점의 범위로 줄이는 것, n과 leafsize만으로 정해지는 노드 수와 앞순회 번호, 행을 옮겨 만드는 잎 순서의 사본, 큰 트리를 나눠 만들어도 같은 바이트가 되는 까닭, 그리고 가지치기가 이웃과 동점을 하나도 놓치지 않는다는 증명과 그 판정이 돌려주는 거리의 비트와 맞물리는 방법을 설명해요.
+seeAlso: [queries, haversine-tree, parallel, pair-kernel]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import PlaneFig from '../../../components/fig/PlaneFig.astro';
+
+export const unitTicks = [{ v: 0, label: '0' }, { v: 0.25, label: '' }, { v: 0.5, label: '0.5' }, { v: 0.75, label: '' }, { v: 1, label: '1' }];
+export const leafPts = [[0.13192, 0.38074], [0.16465, 0.85068], [0.85758, 0.92509], [0.42137, 0.17081], [0.5366, 0.5697], [0.27529, 0.79765], [0.88217, 0.8598], [0.20235, 0.15011], [0.82277, 0.2882], [0.1002, 0.06482], [0.69181, 0.65145], [0.08035, 0.56022], [0.07444, 0.0097], [0.38536, 0.12719], [0.89677, 0.99744], [0.42177, 0.34397], [0.27295, 0.52067], [0.04614, 0.4588], [0.9354, 0.35543], [0.6268, 0.05581], [0.8079, 0.96279], [0.90921, 0.55256], [0.4631, 0.53131], [0.57855, 0.43], [0.71883, 0.13994], [0.90687, 0.06595], [0.92701, 0.30284], [0.41688, 0.11856], [0.54309, 0.5552], [0.44056, 0.131], [0.18007, 0.3417], [0.87441, 0.00888], [0.65378, 0.63412], [0.96703, 0.8488], [0.63171, 0.97044], [0.14275, 0.17059], [0.91897, 0.5338], [0.83653, 0.48666], [0.84451, 0.16097], [0.86056, 0.06879], [0.77199, 0.23959], [0.97612, 0.79913], [0.47728, 0.56034], [0.06552, 0.08347], [0.68785, 0.08926], [0.01609, 0.11706], [0.7503, 0.66843], [0.74121, 0.35229], [0.53173, 0.57473], [0.87524, 0.15337], [0.00285, 0.70014], [0.33484, 0.85353], [0.90047, 0.00707], [0.2811, 0.8184], [0.65381, 0.87537], [0.74839, 0.53377], [0.36829, 0.80226], [0.56141, 0.08758], [0.92346, 0.61671], [0.50178, 0.06827], [0.13098, 0.46208], [0.9644, 0.66432], [0.90194, 0.84331], [0.32391, 0.70094], [0.79627, 0.35124], [0.32799, 0.39509], [0.86553, 0.51727], [0.9091, 0.27561], [0.89977, 0.35031], [0.70902, 0.58094], [0.79769, 0.93378], [0.79407, 0.26419], [0.72351, 0.42095], [0.54111, 0.27723], [0.94667, 0.21585], [0.30809, 0.62043], [0.13184, 0.17072], [0.78728, 0.62997], [0.53308, 0.18183], [0.97439, 0.1853], [0.88155, 0.21778], [0.37867, 0.93368], [0.40708, 0.89022], [0.74124, 0.92919], [0.49444, 0.82283], [0.40197, 0.87407], [0.32115, 0.64831], [0.26916, 0.87031], [0.66327, 0.21326], [0.98872, 0.62653], [0.06387, 0.48648], [0.22281, 0.01889], [0.92093, 0.65888], [0.07326, 0.01054], [0.93801, 0.83012], [0.2227, 0.21274], [0.12225, 0.41455], [0.57042, 0.74153], [0.38235, 0.89919], [0.49376, 0.00861], [0.76749, 0.85533], [0.27848, 0.05047], [0.41395, 0.86547], [0.85043, 0.52982], [0.02816, 0.99409], [0.59279, 0.17395], [0.7082, 0.42823], [0.27896, 0.53663], [0.01501, 0.54307], [0.46982, 0.10196], [0.5341, 0.33255], [0.59543, 0.39409], [0.71854, 0.33603], [0.674, 0.2706], [0.53396, 0.09127], [0.75643, 0.29815], [0.03997, 0.11273], [0.6083, 0.62331], [0.0291, 0.80527], [0.90132, 0.05998], [0.77663, 0.80813], [0.40213, 0.53149], [0.12562, 0.64002], [0.91482, 0.44012], [0.98562, 0.01691], [0.51375, 0.56066], [0.65086, 0.21235], [0.84454, 0.05405], [0.90762, 0.3196], [0.32828, 0.78182], [0.68448, 0.06036], [0.6849, 0.41412], [0.97663, 0.30249], [0.84684, 0.79459], [0.67887, 0.26776], [0.37846, 0.19096], [0.96638, 0.03361], [0.89261, 0.41863], [0.54717, 0.71545], [0.46097, 0.71227], [0.66791, 0.08818], [0.80472, 0.24114], [0.64046, 0.01367], [0.66536, 0.27842], [0.06187, 0.63556], [0.13707, 0.63795], [0.00446, 0.20184], [0.04773, 0.13625], [0.45279, 0.30312], [0.32088, 0.03296], [0.2987, 0.78013], [0.2068, 0.0292], [0.03108, 0.81228], [0.99881, 0.38706], [0.35003, 0.62343], [0.91672, 0.0453], [0.46066, 0.23185], [0.86131, 0.17171], [0.77606, 0.62669], [0.74978, 0.37851], [0.86857, 0.36648], [0.02727, 0.538], [0.8741, 0.8584], [0.7609, 0.85101], [0.5609, 0.49172], [0.99622, 0.11811], [0.12612, 0.28915], [0.68421, 0.23332], [0.77719, 0.35313], [0.04017, 0.62091], [0.59972, 0.76875], [0.17966, 0.85039], [0.53357, 0.87327], [0.75897, 0.99335], [0.6546, 0.11856], [0.85531, 0.38833], [0.09855, 0.21337], [0.46922, 0.30873], [0.42539, 0.21408], [0.98486, 0.16949], [0.35611, 0.47198], [0.61653, 0.89386], [0.42454, 0.75667], [0.52055, 0.03336], [0.59384, 0.64821], [0.64682, 0.71643], [0.60022, 0.08433], [0.11715, 0.92179], [0.7801, 0.40163], [0.97846, 0.12223], [0.01897, 0.70605], [0.96208, 0.91757], [0.84538, 0.70078], [0.23835, 0.88964], [0.50012, 0.19029], [0.70945, 0.98991], [0.22584, 0.62743], [0.13448, 0.84067], [0.1104, 0.77434], [0.95753, 0.22593], [0.50867, 0.43146], [0.06048, 0.97267], [0.74085, 0.98295], [0.53627, 0.22135], [0.66759, 0.07623], [0.86133, 0.8447], [0.80097, 0.41689], [0.41638, 0.51947], [0.86722, 0.67954], [0.78498, 0.5855], [0.6891, 0.43449], [0.28929, 0.26671], [0.85117, 0.31984], [0.42064, 0.66935], [0.18013, 0.43817], [0.3053, 0.22492], [0.75648, 0.6788], [0.56937, 0.75211], [0.82035, 0.39316], [0.68863, 0.47999], [0.20886, 0.80738], [0.23543, 0.49995], [0.65656, 0.62493], [0.81054, 0.60222], [0.27463, 0.493], [0.51819, 0.84381], [0.34959, 0.85918], [0.24977, 0.04582], [0.47686, 0.77413], [0.86858, 0.15653], [0.82738, 0.66872], [0.06681, 0.54511], [0.32604, 0.87493], [0.00443, 0.85546], [0.3233, 0.90603], [0.58732, 0.89823], [0.60888, 0.77984], [0.11385, 0.90294], [0.99237, 0.75994], [0.24667, 0.378], [0.62425, 0.00486], [0.53101, 0.14746], [0.32402, 0.45613], [0.80299, 0.27964], [0.26755, 0.5263], [0.95865, 0.35897], [0.2277, 0.50318], [0.27501, 0.26344], [0.57615, 0.39525], [0.33598, 0.58363], [0.24641, 0.36885], [0.95427, 0.14359], [0.28797, 0.43104], [0.58867, 0.34972], [0.22792, 0.55317], [0.22573, 0.95672], [0.29401, 0.91972], [0.80898, 0.9809], [0.30108, 0.71493], [0.38904, 0.95978], [0.73535, 0.4847], [0.70397, 0.63209], [0.19103, 0.04054], [0.14137, 0.75575], [0.88911, 0.502], [0.46666, 0.48694], [0.32782, 0.379], [0.00183, 0.76585], [0.97951, 0.31632], [0.7009, 0.63415], [0.87428, 0.35264], [0.1334, 0.82409], [0.7063, 0.85266], [0.68248, 0.03708], [0.50928, 0.18558], [0.14965, 0.07751], [0.79398, 0.29987], [0.5221, 0.47873], [0.47891, 0.37406], [0.3277, 0.75157], [0.00342, 0.91666], [0.99672, 0.16678], [0.79849, 0.51169], [0.96736, 0.59976], [0.7076, 0.27063], [0.13253, 0.78082], [0.42775, 0.18002], [0.16489, 0.8133], [0.67867, 0.42584], [0.39488, 0.47246], [0.8042, 0.94215], [0.78529, 0.93756], [0.20808, 0.99813], [0.70285, 0.89348], [0.12692, 0.35761], [0.41031, 0.25075], [0.24325, 0.30317], [0.65422, 0.81655], [0.28113, 0.06216], [0.38748, 0.78907]];
+export const leafBoxes = [[0.00446, 0.0097, 0.13184, 0.20184], [0.14275, 0.01889, 0.28113, 0.17059], [0.09855, 0.21274, 0.27501, 0.378], [0.04614, 0.38074, 0.27463, 0.52067], [0.3053, 0.03296, 0.44056, 0.22492], [0.46982, 0.00861, 0.53627, 0.22135], [0.28929, 0.23185, 0.54111, 0.37406], [0.28797, 0.379, 0.5221, 0.51947], [0.00183, 0.538, 0.08035, 0.76585], [0.1104, 0.5263, 0.27896, 0.78082], [0.00342, 0.80527, 0.1334, 0.99409], [0.13448, 0.79765, 0.27529, 0.99813], [0.30108, 0.53149, 0.42064, 0.75157], [0.42454, 0.53131, 0.54717, 0.77413], [0.2811, 0.78013, 0.36829, 0.91972], [0.37867, 0.78907, 0.53357, 0.95978], [0.56141, 0.00486, 0.66327, 0.21326], [0.66759, 0.03708, 0.80472, 0.24114], [0.57615, 0.26776, 0.71854, 0.41412], [0.74121, 0.26419, 0.80299, 0.41689], [0.84454, 0.00707, 0.98562, 0.06879], [0.84451, 0.11811, 0.99672, 0.1853], [0.82277, 0.21585, 0.97951, 0.3196], [0.82035, 0.31984, 0.99881, 0.41863], [0.5609, 0.42095, 0.74839, 0.53377], [0.59384, 0.58094, 0.7503, 0.66843], [0.78498, 0.44012, 0.91897, 0.5855], [0.75648, 0.59976, 0.98872, 0.6788], [0.56937, 0.71643, 0.77663, 0.85266], [0.58732, 0.85533, 0.76749, 0.99335], [0.84538, 0.67954, 0.99237, 0.8488], [0.78529, 0.8584, 0.96208, 0.99744]];
+
+## 한눈에 보기
+
+[`KDTree(data)`](/api/spatial/KDTree/)는 점 $n$개를 이진 트리로 정리해 둬요. 노드 하나는 점들의 묶음이고, 점이 `leafsize`보다 많은 노드는 두 자식으로 나뉘어요. 질의는 트리를 내려가면서 "이 노드의 점은 모두 지금 찾는 거리보다 멀다"고 증명되는 노드를 통째로 건너뛰어요. 이 건너뛰기가 가지치기예요.
+
+이 쪽은 트리를 만드는 법과 가지치기의 근거를 다뤄요. 두 가지를 약속으로 세워요.
+
+1. **트리는 데이터와 `leafsize`의 함수예요.** 나누기는 (좌표, 색인)의 전순서로 정해지고, 노드의 자리는 미리 센 번호예요. 그래서 `nth_element`의 구현, 행이 들어온 순서, 스레드 수가 트리를 바꾸지 않아요. 1, 3, 10스레드로 만든 트리의 노드·상자·색인이 바이트까지 같은지를 테스트가 봐요.
+2. **가지치기는 답을 바꾸지 않아요.** 노드를 건너뛰는 것은 그 안의 모든 점의 거리 $\hat d$가 문턱 $T$보다 **엄격히** 크다고 증명될 때뿐이에요. 그래서 질의의 답은 같은 커널로 모든 점의 거리를 구해 (거리, 색인)으로 정렬한 전수의 답과 같아요.
+
+| 파일 | 하는 일 |
+|---|---|
+| `src/stardust/spatial/_kdtree.py` | 인자 검사, `KDTree` 클래스, `data` 속성, 피클, `query`의 길 고르기 |
+| `csrc/spatial/kdtree.hpp` | 트리 구조체, $p$마다의 거리 정책(`KdEuclid`, `KdCity`, `KdCheb`, `KdMink`), 문턱 `KdCut`, 두 상자 사이의 한계 `KdPair`, kNN 찾기 `KdSearch` |
+| `csrc/spatial/kdtree.cpp` | 만들기 `kd_build`, `query`의 바인딩 |
+| `csrc/spatial/query.cpp`, `dual.cpp` | 반경 질의와 이중 트리 순회([질의](/internals/spatial/queries/)) |
+| `csrc/spatial/sphere.cpp` | `haversine` 이웃의 단위 구 트리([단위 구 위의 KD 트리](/internals/spatial/haversine-tree/)) |
+
+## KD 트리의 생각
+
+KD 트리는 Bentley(1975)가 다차원 탐색을 위해 내놓은 이진 탐색 트리예요. 깊이마다 좌표 축 하나를 정해(깊이 0은 첫 축, 깊이 1은 둘째 축 하는 식으로 돌아가며) 그 축의 값으로 왼쪽과 오른쪽을 나눴고, 노드마다 점 하나를 담았어요.
+
+Friedman, Bentley, Finkel(1977)은 가장 가까운 이웃 찾기를 위해 이 트리를 다듬었어요. 점은 잎에만 여러 개씩 담고(바구니), 나눌 축은 깊이로 돌리지 않고 그 노드의 점들이 가장 넓게 퍼진 축으로 고르고, 나누는 값은 그 축의 중앙값으로 했어요. 중앙값으로 나누면 두 자식의 점 수가 반씩이라 트리의 깊이가 $\log_2(n/\text{바구니 크기})$ 둘레로 고르게 맞춰지고, 넓게 퍼진 축을 자르면 노드의 칸이 한쪽으로 길쭉해지지 않아요. 찾기는 질의점이 든 잎부터 보고 거슬러 올라오면서, 지금까지 찾은 $k$번째 거리의 공과 칸이 겹치는 가지만 다시 내려가요. 공과 겹치지 않는 칸에는 더 가까운 점이 있을 수 없기 때문이에요. 차원을 고정하면 질의 하나의 기대 시간이 $\log n$에 비례한다는 것이 그 논문의 결과예요.
+
+sd의 `KDTree`는 이 꼴을 그대로 따라요. 바구니의 크기가 `leafsize`이고, 가장 넓은 축의 중앙값으로 나누고, 공과 칸이 겹치는지를 칸까지의 최소 거리로 판정해요. 다른 점은 셋이에요.
+
+- 칸 대신 노드의 실제 점의 범위(상자)로 판정해요. 칸보다 작거나 같아서 하한이 더 커지고 더 많이 쳐요.
+- 같은 좌표가 아무리 많아도 나누는 점의 **집합**이 하나로 정해지도록 (좌표, 색인)의 전순서를 써요.
+- 하한과 문턱을 반올림까지 넣어 증명한 여유로 견줘요. 그래서 계산한 거리 $\hat d$의 순서가 전수와 같아요.
+
+## 나누기: 가장 넓은 축의 중앙값
+
+점이 $c$개($c \gt \texttt{leafsize}$)인 노드는 이렇게 나눠요.
+
+1. 노드의 상자(축마다 점들의 최솟값과 최댓값)에서 폭 $\mathrm{hi} - \mathrm{lo}$가 가장 큰 축을 골라요. 폭이 같으면 번호가 작은 축이에요.
+2. 그 축의 좌표와 원래 색인으로 키 (좌표, 색인)를 만들어요.
+3. 키의 순서로 작은 쪽 $\lfloor c/2 \rfloor$개가 왼쪽 자식, 나머지 $\lceil c/2 \rceil$개가 오른쪽 자식이에요. `std::nth_element`가 이 경계를 찾아요.
+
+```cpp
+    // csrc/spatial/kdtree.cpp
+    // Splits rows [s, e) at s + (e - s) / 2 on the node's widest axis by (coordinate, index); the node's
+    // entry is set. Returns the middle.
+    int64_t split(int64_t node, int64_t s, int64_t e, bool par) {
+        const double *lo = t.box.data() + 2 * m * node, *hi = lo + m;
+        int64_t dim = 0;
+        double best = -1.0;
+        for (int64_t d = 0; d < m; ++d) {
+            const double w = hi[d] - lo[d];  // inf for a range beyond the doubles: still the widest
+            if (w > best) {
+                best = w;
+                dim = d;
+            }
+        }
+        const int64_t c = e - s, mid = s + c / 2;
+        keys.resize(static_cast<size_t>(c));
+        const int64_t chunks = (c + kBoxChunk - 1) / kBoxChunk;
+        run_tasks(chunks, par, [&](int64_t k) {
+            for (int64_t j = k * kBoxChunk, end = std::min(c, (k + 1) * kBoxChunk); j < end; ++j)
+                keys[static_cast<size_t>(j)] = Key{m ? row(s + j)[dim] : 0.0, s + j};
+        });
+        const int64_t* idx = t.idx.data();
+        auto less = [idx](const Key& a, const Key& b) {
+            return a.key < b.key || (a.key == b.key && idx[a.pos] < idx[b.pos]);
+        };
+        if (!(par && select_on_pool(mid - s, less)))
+            std::nth_element(keys.begin(), keys.begin() + (mid - s), keys.end(), less);
+        move_rows(s, e, par);
+        t.nodes[static_cast<size_t>(node)] = KdNode{s, e, node + 1 + count(mid - s)};
+        return mid;
+    }
+```
+
+`w > best`로 처음 만난 가장 넓은 축을 남기므로 같은 폭에서는 번호가 작은 축이에요. `best`가 $-1$에서 시작하니 폭이 모두 0이어도 축 0을 골라요. 좌표가 $\pm 10^{308}$ 둘레라 폭이 넘치면 `w`가 inf이고 그래도 가장 넓은 축으로 뽑혀요. 데이터는 모두 유한해야 하므로(만들기 전에 검사해요) NaN 폭은 없어요.
+
+### 왜 전순서인가
+
+좌표만으로 견주면 "작은 쪽 $\lfloor c/2 \rfloor$개"가 하나로 정해지지 않아요. 가운데 자리에 같은 좌표가 여럿 있으면 그 가운데 어느 점이 왼쪽에 갈지는 `nth_element`가 배열을 어떻게 섞느냐에 달렸고, 그것은 구현(libc++의 판, 내부 피벗 고르기)과 행이 놓인 순서에 따라 달라요. 원래 색인으로 동점을 깨면 키가 모두 달라 전순서가 되고, $\lfloor c/2 \rfloor$개의 집합이 데이터만으로 정해져요. 비교 함수의 모양은 sklearn의 `IndexComparator`와 같아요.
+
+집합만 정해지면 나머지는 저절로 따라와요. 자식의 상자는 그 점들의 최솟값·최댓값이라 배열 순서와 무관하고, 자식의 다음 나누기도 같은 규칙이고, 잎에서는 점을 원래 색인 순서로 다시 놓으니까요(아래). 그래서 `nth_element`가 두 반쪽 안을 어떻게 섞어 두든 마지막 트리는 같아요.
+
+### 폭이 0이어도 나눠요
+
+점이 `leafsize`보다 많으면 상자의 폭이 모두 0이어도(같은 점만 있어도) 나눠요. 같은 점을 나눠 봐야 가지치기에 득이 없지만, 이렇게 하면 노드의 크기가 $c \mapsto (\lfloor c/2 \rfloor, \lceil c/2 \rceil)$로만 정해지고 노드 수와 번호를 미리 셀 수 있어요. scipy는 폭이 0인 노드를 잎으로 둬서 같은 점 50개의 트리가 노드 하나예요.
+
+```python
+>>> S = sd.spatial
+>>> S.KDTree(sd.ones((50, 3))).size
+15
+>>> rng = sd.random.default_rng(0)
+>>> S.KDTree(rng.random((50, 3))).size
+15
+```
+
+## 노드 수와 앞순회 번호
+
+점 $c$개의 트리의 노드 수 $N(c)$는
+
+$$
+N(c) = \begin{cases} 1 & c \le \texttt{leafsize} \\ 1 + N(\lfloor c/2 \rfloor) + N(\lceil c/2 \rceil) & c > \texttt{leafsize} \end{cases}
+$$
+
+이에요. 데이터의 값이 들어가지 않으니 `size`는 $n$과 `leafsize`만으로 정해져요.
+
+```python
+>>> [S.KDTree(sd.zeros((n, 2))).size for n in (10, 11, 20, 21, 100, 1000)]
+[1, 3, 3, 5, 31, 255]
+```
+
+노드는 앞순회 순서로 한 배열에 놓여요. 노드 $k$의 왼쪽 자식은 $k + 1$이고, 오른쪽 자식은 왼쪽 하위 트리를 다 건너뛴 $k + 1 + N(\lfloor c/2 \rfloor)$이에요. 노드에는 점 구간 $[\mathrm{start}, \mathrm{end})$와 오른쪽 자식의 번호만 적고(잎은 $-1$), 나누는 값은 적지 않아요. 가지치기는 나누는 값이 아니라 상자를 쓰기 때문이에요.
+
+```cpp
+// csrc/spatial/kdtree.hpp
+struct KdNode {
+    int64_t start = 0, end = 0;  // the node's points [start, end) in leaf order
+    int64_t right = -1;          // the right child's index (the left child is the next node); -1: a leaf
+};
+
+struct KdTree {
+    int64_t n = 0, m = 0, leafsize = 10;
+    std::vector<double> data;   // (n, m) in leaf order
+    std::vector<int64_t> idx;   // the original index of each point in leaf order
+    std::vector<KdNode> nodes;  // preorder
+    std::vector<double> box;    // per node: lo[0 .. m), hi[0 .. m)
+
+    const double* lo(int64_t node) const { return box.data() + 2 * m * node; }
+    const double* hi(int64_t node) const { return box.data() + 2 * m * node + m; }
+};
+```
+
+$N(c)$는 같은 $c$가 트리 곳곳에서 되풀이되므로(크기가 반씩 줄어 $c$의 종류가 $2\log_2 n$개 남짓이에요) 한 번 센 값을 기억해 둬요.
+
+```cpp
+    // csrc/spatial/kdtree.cpp
+    int64_t count(int64_t c) {
+        if (c <= leafsize) return 1;
+        const auto it = counts.find(c);
+        if (it != counts.end()) return it->second;
+        const int64_t v = 1 + count(c / 2) + count(c - c / 2);
+        counts.emplace(c, v);
+        return v;
+    }
+```
+
+점 여덟 개, `leafsize` 2의 트리를 펼쳐 보면 이래요. `_state()`는 테스트가 트리의 배열을 읽으려고 둔 내부 메서드예요.
+
+```python
+>>> x = sd.asarray([[0.0, 0.0], [3.0, 1.0], [1.0, 2.0], [4.0, 4.0],
+...                 [2.0, 0.5], [0.5, 3.5], [3.5, 2.5], [1.5, 1.0]])
+>>> t = S.KDTree(x, leafsize=2)
+>>> t.size
+7
+>>> idx, starts, ends, rights, boxes = t._tree._state()
+>>> idx.tolist()
+[0, 7, 2, 5, 1, 4, 3, 6]
+>>> starts.tolist(), ends.tolist(), rights.tolist()
+([0, 0, 0, 2, 4, 4, 6], [8, 4, 2, 4, 8, 6, 8], [4, 3, -1, -1, 6, -1, -1])
+>>> boxes[1].tolist()
+[0.0, 0.0, 1.5, 3.5]
+```
+
+뿌리(노드 0)의 상자는 두 축 모두 폭 4라 축 0($x$)을 골라요. $x$가 작은 네 점 0, 5, 2, 7이 왼쪽이고 오른쪽 자식의 번호는 $0 + 1 + N(4) = 4$예요. 노드 1은 그 넷의 상자 $[0, 1.5] \times [0, 3.5]$라 $y$가 더 넓어 $y$로 나누고, 잎 2에 점 0과 7, 잎 3에 점 2와 5가 가요. 잎 안은 색인 순서라 `idx`의 첫 넷이 0, 7, 2, 5예요.
+
+## 상자는 실제 점의 범위
+
+노드의 상자는 그 노드의 점들의 축마다 최솟값과 최댓값이에요(scipy의 `compact_nodes=True`와 같은 꼴). 나누는 값으로 정해지는 칸은 부모의 칸을 자른 것이라 빈 땅을 포함하지만, 점의 범위로 줄인 상자는 그 빈 땅을 빼요. 상자가 작을수록 질의점에서 상자까지의 거리(하한)가 커지고 더 많은 노드를 쳐요. 나누는 좌표와 같은 값의 점이 양쪽에 있으면 두 자식의 상자가 그 좌표에서 맞닿거나 겹치는데, 상자가 각자 자기 점의 실제 범위라 하한은 그대로 맞아요.
+
+```python
+>>> rng = sd.random.default_rng(5)
+>>> pts = rng.random((300, 2))
+>>> tree = S.KDTree(pts, leafsize=10)
+>>> idx, starts, ends, rights, boxes = tree._tree._state()
+>>> leaves = [boxes[k].tolist() for k in range(tree.size) if rights[k] < 0]
+>>> len(leaves)
+32
+```
+
+<Fig caption="[0, 1)² 균등 점 300개로 만든 트리(leafsize 10)의 잎 상자 32개. 상자가 점의 실제 범위라 이웃한 잎 사이에 빈 틈이 남고, 그 틈만큼 하한이 커져요.">
+  <PlaneFig
+    label="단위 정사각형의 점 300개와 점 열 개 안팎씩을 감싼 잎 상자 32개, 상자 사이의 빈 틈"
+    domain={[0, 1]}
+    range={[0, 1]}
+    xTicks={unitTicks}
+    yTicks={unitTicks}
+    width={440}
+    layers={[
+      { kind: 'rects', rects: leafBoxes, tone: 'main', fill: true, width: 1.2 },
+      { kind: 'points', pts: leafPts, tone: 'ink', size: 1.7 },
+    ]}
+    legend={[
+      { label: '잎 상자', tone: 'main', shape: 'box' },
+      { label: '점', tone: 'ink', shape: 'dot' },
+    ]}
+  />
+</Fig>
+
+점이 없는 트리($n = 0$)는 노드 하나에 상자가 0이에요. 그래서 `mins`·`maxes`가 0이고(scipy와 같아요), 질의는 노드를 보지 않고 채움 값을 돌려줘요.
+
+## 행 옮기기와 잎 순서의 사본
+
+트리는 데이터를 자기 버퍼에 복사해 둬요. 나누기는 키만 정렬하지 않고 **행 자체를 옮겨서**, 노드의 점이 언제나 이 사본의 이어진 행 $[\mathrm{start}, \mathrm{end})$이 되게 해요. 그러면 상자를 훑는 것도, 다음 나누기의 키를 채우는 것도, 질의가 잎의 점과 거리를 재는 것도 메모리를 앞에서 뒤로 이어 읽는 일이 돼요.
+
+- 키는 (좌표, 행 자리)의 16바이트예요. 원래 색인은 `t.idx[pos]`에 따로 있고 좌표가 같을 때만 읽어요.
+- `nth_element`가 키를 정한 뒤 `move_rows`가 행과 색인을 키 순서로 임시 버퍼에 모았다가 $[s, e)$에 되돌려 써요.
+- 잎이 되면 점을 원래 색인 순서로 다시 놓아요. 이미 그 순서면 아무것도 하지 않아요.
+
+```cpp
+    // csrc/spatial/kdtree.cpp
+    void leaf(int64_t node, int64_t s, int64_t e) {
+        t.nodes[static_cast<size_t>(node)] = KdNode{s, e, -1};
+        bool sorted = true;
+        for (int64_t i = s + 1; i < e && sorted; ++i)
+            sorted = t.idx[static_cast<size_t>(i - 1)] < t.idx[static_cast<size_t>(i)];
+        if (sorted) return;
+        keys.resize(static_cast<size_t>(e - s));
+        for (int64_t i = s; i < e; ++i) keys[static_cast<size_t>(i - s)] = Key{0.0, i};
+        const int64_t* idx = t.idx.data();
+        std::sort(keys.begin(), keys.end(), [idx](const Key& a, const Key& b) { return idx[a.pos] < idx[b.pos]; });
+        move_rows(s, e, false);
+    }
+```
+
+만들기가 끝나면 그 버퍼가 곧 잎 순서의 $(n, m)$ 사본이고, 트리는 이것과 원래 색인(int64 $n$개)만 쥐어요. 공개 속성 [`data`](/api/spatial/KDTree/)는 입력 순서의 사본이어야 하므로, 처음 읽을 때 잎 순서의 행 $i$를 `idx[i]` 자리로 흩어 한 번 만들고 그 뒤로는 그 배열을 돌려줘요. 값을 그대로 옮기기만 하니 입력과 비트가 같아요. `data`를 읽지 않으면 사본은 하나예요.
+
+```cpp
+// csrc/spatial/kdtree.cpp
+// The data in input order (n, m), from the leaf-order copy: row idx[i] is row i of the tree's data.
+NDArray tree_data(const KdTree& t) {
+    const int64_t shape[] = {t.n, t.m};
+    NDArray out = new_array(DType::Float64, shape);
+    double* o = reinterpret_cast<double*>(out.data);
+    const parallel::Unlocked unlocked(t.n * std::max<int64_t>(t.m, 1) >= kParallelWork);
+    const int64_t chunks = (t.n + kBoxChunk - 1) / kBoxChunk;
+    run_tasks(chunks, t.n * std::max<int64_t>(t.m, 1) >= kParallelWork, [&](int64_t c) {
+        for (int64_t i = c * kBoxChunk, e = std::min(t.n, (c + 1) * kBoxChunk); i < e; ++i)
+            copy_row(t.data.data() + i * t.m, t.m, o + t.idx[static_cast<size_t>(i)] * t.m);
+    });
+    return out;
+}
+```
+
+```python
+>>> t.data is t.data
+True
+>>> bool(sd.all(t.data == x))
+True
+```
+
+피클과 `copy.copy`·`copy.deepcopy`는 이 `data`의 바이트와 $n$, $m$, `leafsize`만 담고, 풀 때 같은 인자로 트리를 다시 만들어요. 만들기가 데이터와 `leafsize`의 함수이니 다시 만든 트리는 노드·상자·색인이 바이트까지 같아요.
+
+## 큰 트리는 나눠 만들어요
+
+$n \cdot \max(m, 1)$이 $2^{15}$ 이상이면 만들기를 스레드풀에 나눠요. 처음의 복사는 $2^{14}$행 조각으로 나누고, 트리는 위 단계와 아래의 하위 트리로 갈라요.
+
+- 점이 $\mathrm{grain} = \max(2^{12}, n/64)$개 이하인 노드는 하위 트리 하나를 통째로 맡는 태스크가 돼요. 태스크는 자기 노드 번호와 자기 행 구간에만 써요.
+- 그보다 큰 노드는 수준마다 나눠요. 한 수준에 그런 노드가 4개 이상이면 노드마다 한 스레드가 나란히 나누고, 그보다 적으면 노드를 하나씩 나누되 그 안의 상자 훑기·키 채우기·행 옮기기를 $2^{14}$점 조각으로 풀에서 돌려요.
+
+```cpp
+    // csrc/spatial/kdtree.cpp
+    const int64_t grain = std::max(kSubtreeMin, n / kSubtreeShare);
+    std::vector<Builder::Task> tasks, level{{0, 0, n}};
+    while (!level.empty()) {
+        std::vector<Builder::Task> work, next;
+        for (const auto& k : level) (k.e - k.s <= grain || k.e - k.s <= leafsize ? tasks : work).push_back(k);
+        std::vector<int64_t> mids(work.size());
+        const int64_t nw = static_cast<int64_t>(work.size());
+        if (nw >= kLevelNodes) {
+            run_tasks(nw, true, [&](int64_t i) {
+                const auto& k = work[static_cast<size_t>(i)];
+                Builder local{m, leafsize, t, b.counts, {}, {}, {}};
+                local.box_of(k.node, k.s, k.e, false);
+                mids[static_cast<size_t>(i)] = local.split(k.node, k.s, k.e, false);
+            });
+        } else {
+            for (int64_t i = 0; i < nw; ++i) {
+                const auto& k = work[static_cast<size_t>(i)];
+                b.box_of(k.node, k.s, k.e, true);
+                mids[static_cast<size_t>(i)] = b.split(k.node, k.s, k.e, true);
+            }
+        }
+        for (int64_t i = 0; i < nw; ++i) {
+            const auto& k = work[static_cast<size_t>(i)];
+            next.push_back({k.node + 1, k.s, mids[static_cast<size_t>(i)]});
+            next.push_back({t.nodes[static_cast<size_t>(k.node)].right, mids[static_cast<size_t>(i)], k.e});
+        }
+        level = std::move(next);
+    }
+    run_tasks(static_cast<int64_t>(tasks.size()), true, [&](int64_t i) {
+        const auto& k = tasks[static_cast<size_t>(i)];
+        Builder local{m, leafsize, t, b.counts, {}, {}, {}};
+        local.serial(k.node, k.s, k.e);
+    });
+    return t;
+```
+
+뿌리처럼 아주 큰 노드에서는 `nth_element` 한 번이 직렬로 남는 가장 긴 일이라, 점이 65536개 이상이면 가운데 자리를 표본으로 좁혀요. 키를 일정한 간격으로 4096개 뽑아 정렬하고, 원하는 순위 둘레(표본 순위 $\pm 48$)의 두 키 plo, phi로 띠를 잡아요. 조각마다 키가 plo보다 작은지, 띠 안인지, phi보다 큰지를 세고, 그 개수의 누적합으로 세 무리를 제자리에 흩은 다음 띠 안에서만 `nth_element`를 해요. 띠가 원하는 순위를 담지 못했으면(표본이 운 나쁘게 치우친 경우) 아무것도 바꾸지 않고 전체 `nth_element`로 돌아가요.
+
+```cpp
+    // csrc/spatial/kdtree.cpp
+    template <class Less>
+    bool select_on_pool(int64_t want, const Less& less) {
+        const int64_t c = static_cast<int64_t>(keys.size());
+        constexpr int64_t kSample = 1 << 12, kMargin = 48;
+        if (c < 16 * kSample) return false;
+        const int64_t stride = c / kSample;
+        std::vector<Key> sample(static_cast<size_t>(kSample));
+        for (int64_t j = 0; j < kSample; ++j) sample[static_cast<size_t>(j)] = keys[static_cast<size_t>(j * stride)];
+        std::sort(sample.begin(), sample.end(), less);
+        const int64_t at = want / stride;
+        const Key plo = sample[static_cast<size_t>(std::max<int64_t>(0, at - kMargin))];
+        const Key phi = sample[static_cast<size_t>(std::min<int64_t>(kSample - 1, at + kMargin))];
+```
+
+어느 길로 가든 앞쪽 $\lfloor c/2 \rfloor$개의 집합은 전순서가 정한 그 집합이에요. 두 반쪽 안의 배열 순서는 길마다 다를 수 있지만, 앞에서 본 대로 그 순서는 마지막 트리에 남지 않아요. 정리하면 나눠 만든 트리가 직렬로 만든 트리와 바이트까지 같은 까닭은 넷이에요.
+
+1. 노드의 점 집합은 (좌표, 색인)의 전순서로 정해져요.
+2. 노드의 자리(번호와 행 구간)는 $n$과 `leafsize`로 미리 정해져 있고, 태스크는 자기 자리에만 써요.
+3. 상자의 최솟값·최댓값은 반올림이 없는 연산이라 조각으로 나눠 구하고 합쳐도 같아요.
+4. 잎 안의 점은 색인 순서로 다시 놓여요.
+
+grain과 조각 크기는 $n$으로만 정하고 스레드 수로 정하지 않아요. 영역 전체의 나누기 규칙은 [병렬화와 결정성](/internals/spatial/parallel/)에 모았어요.
+
+## 가지치기: 상자까지의 거리는 하한이에요
+
+질의점 $x$와 노드의 상자 $[\mathrm{lo}, \mathrm{hi}]$가 있을 때, 상자 안에서 $x$에 가장 가까운 점 $c$는 축마다 $x$를 상자에 가둔 점이에요.
+
+$$
+c_i = \min(\max(x_i, \mathrm{lo}_i), \mathrm{hi}_i)
+$$
+
+`min`과 `max`는 값 하나를 고를 뿐이라 $c$는 반올림 없이 정확해요. 노드의 한계 $\hat b$는 $x$에서 $c$까지의 거리를 **같은 짝 커널**로 계산한 값이에요. 한계도 점 하나의 거리와 똑같은 계산이라, 아래 증명은 거리의 정확도 계약 하나만 써요.
+
+**상자 보조정리.** 상자 안의 모든 $y$와 모든 축 $i$에서 $\lvert y_i - x_i \rvert \ge \lvert c_i - x_i \rvert$예요. 그래서 $p \ge 1$(과 $p = \infty$)의 Minkowski 거리에서 $D(x, y) \ge D(x, c)$예요.
+
+*증명.* $x_i \lt \mathrm{lo}_i$면 $c_i = \mathrm{lo}_i \le y_i$라 $y_i - x_i \ge c_i - x_i \gt 0$이에요. $x_i \gt \mathrm{hi}_i$면 대칭으로 $x_i - y_i \ge x_i - c_i \gt 0$이에요. 그 밖에는 $c_i = x_i$라 오른쪽이 0이에요. $D_p(z) = (\sum \lvert z_i \rvert^p)^{1/p}$와 $D_\infty(z) = \max \lvert z_i \rvert$는 $\lvert z_i \rvert$ 하나하나에 대해 줄지 않는 함수이니 좌표마다의 부등식이 거리의 부등식이 돼요. ∎
+
+정확한 산술이면 여기서 끝이에요. $b \gt T$면 상자의 모든 점이 $T$보다 멀어요. 그런데 $\hat b$도, 점의 거리 $\hat d(y)$도 반올림한 값이라 $\hat b \gt T$에서 $\hat d(y) \gt T$가 바로 나오지 않아요. $\hat b$는 참값보다 크게, $\hat d(y)$는 참값보다 작게 반올림되었을 수 있으니까요. 그래서 두 오차를 덮는 여유를 둬요.
+
+### 거리 계약과 κ
+
+트리가 쓰는 네 커널($p = 1$ `cityblock`, $p = 2$ `euclidean`, $p = \infty$ `chebyshev`, 그 밖의 $p$ `minkowski`)은 모든 짝에서
+
+$$
+|\hat d - D| \le \kappa D + 2^{-1074}
+$$
+
+을 지켜요. $\kappa$는 거리마다 정해진 상대 한계이고([정확도와 성능](/internals/spatial/accuracy-performance/)의 계약), $2^{-1074}$은 비정상 수 영역의 절대 오차를 덮어요. 합의 깊이 $m' = \min(m, 32) + \lceil m/32 \rceil - 1$은 좌표 수 $m$ 이하라서, $u = 2^{-53}$로 적으면
+
+- `euclidean`: $\kappa = \gamma_{m'+3}/2 + u$,
+- `cityblock`: $\kappa = \gamma_{m'+2}$,
+- `minkowski(p)`: $\kappa = 4u + (\gamma_{m'} + 2\gamma_2)/p + \gamma_2$,
+
+이고 $p \ge 1$에서 모두 $\kappa \le (m + 11)u$예요($\gamma_k = ku/(1 - ku)$). 
+
+### 문턱의 여유
+
+$T$를 "점이 이겨야 하는 거리"라 할 때(kNN에서 힙이 덜 찼으면 `distance_upper_bound`, 찼으면 힙 맨 위의 거리, 반경 질의에서는 $r$) 노드를 치는 문턱은
+
+$$
+T_1 = \mathrm{fl}\bigl(\mathrm{fl}(T \cdot c_m) + \eta\bigr), \qquad c_m = 1 + 4(m + 12)u,\quad \eta = 2^{-1070}
+$$
+
+예요. 1 바로 위의 double 간격이 $2u$라 $c_m$은 정확한 double이에요.
+
+```cpp
+// csrc/spatial/kdtree.hpp
+// The threshold a node's bound must exceed to be cut, for a search radius T (see the top of this file).
+struct KdCut {
+    double c = 1.0;      // 1 + 4 (m + 12) u, exact (spacing 2u above 1)
+    bool exact = false;  // p = inf: the bound is b > T itself
+    KdCut(int64_t m, bool chebyshev) : c(1.0 + static_cast<double>(m + 12) * 0x1p-51), exact(chebyshev) {}
+    double operator()(double T) const { return exact ? T : (T * c) + 0x1p-1070; }  // inf stays inf
+};
+```
+
+**가지치기 정리.** $\hat b \gt T_1$이면 상자 안의 모든 $y$가 $\hat d(x, y) \gt T$예요.
+
+*증명.* 다섯 걸음이에요.
+
+1. 곱 $\mathrm{fl}(T \cdot c_m)$의 반올림은 상대 $u$ 또는 비정상 수 영역의 절대 $2^{-1075}$ 안이고, 두 양수의 합 $\mathrm{fl}(a + \eta)$는 결과가 비정상 수면 정확하고 아니면 상대 $u$ 안이에요. 그래서 $T_1 \ge T \cdot c_m(1 - u)^2 + (\eta - 2^{-1075})(1 - u)$예요.
+2. 거리 계약과 상자 보조정리에서 $\hat d(y) \ge (1 - \kappa)D(x, y) - 2^{-1074} \ge (1 - \kappa)D(x, c) - 2^{-1074}$예요.
+3. 한계도 짝 하나의 거리라 $\hat b \le (1 + \kappa)D(x, c) + 2^{-1074}$, 곧 $D(x, c) \ge (\hat b - 2^{-1074})/(1 + \kappa)$예요.
+4. $\rho = (1 - \kappa)/(1 + \kappa)$로 두고 2, 3과 $\hat b \gt T_1$, 1을 차례로 넣으면
+
+   $$
+   \hat d(y) > \rho\,c_m(1-u)^2\,T + \rho\bigl[(\eta - 2^{-1075})(1-u) - 2^{-1074}\bigr] - 2^{-1074}.
+   $$
+5. $T$의 계수는 $\rho\,c_m(1 - u)^2 \ge (1 - 2\kappa)(1 + 4(m + 12)u)(1 - 2u) \ge 1 + (2m + 24)u - O(m^2u^2)$라 1보다 커요($\kappa \le (m + 11)u$를 넣었어요). 절대 항은 $\eta = 16 \cdot 2^{-1074}$이라 대괄호가 약 $14.5 \cdot 2^{-1074}$이고, $\rho$를 곱하고 $2^{-1074}$을 빼도 양수예요. 그래서 $\hat d(y) \gt T$예요. ∎
+
+부등호가 **엄격**하다는 것이 중요해요. 친 노드의 점은 모두 $T$보다 멀기 때문에, 거리가 $T$와 같고 색인이 작아 답에 들어가야 할 동점도 빠지지 않아요. 여유는 $T$의 상대 $4(m + 12)u$ 남짓이라($m = 3$이면 $60u$, 약 $7 \times 10^{-15}$) 가지치기를 거의 줄이지 않아요.
+
+$p = \infty$는 여유가 필요 없어요. `chebyshev` 커널은 좌표마다 올바르게 반올림한 차이 $\lvert \mathrm{fl}(y_i - x_i) \rvert$의 최댓값이고 최댓값에는 반올림이 없어요. 반올림은 단조라 $\lvert y_i - x_i \rvert \ge \lvert c_i - x_i \rvert$에서 $\lvert \mathrm{fl}(y_i - x_i) \rvert \ge \lvert \mathrm{fl}(c_i - x_i) \rvert$가 바로 나오고, $\hat d(y) \ge \hat b$가 정확히 서요. 그래서 `KdCut`의 `exact`가 켜지면 문턱이 $T$ 그대로예요.
+
+### 한계는 노드마다 따로 구해요
+
+kNN 찾기는 노드마다 $x$를 상자에 가둔 점을 만들고 그 거리의 합을 구해요.
+
+```cpp
+    // csrc/spatial/kdtree.hpp
+    // The kernel's sum from x to the point of the node's box nearest x.
+    double bound(int64_t node) {
+        const double *lo = t_.lo(node), *hi = t_.hi(node);
+        for (int64_t i = 0; i < t_.m; ++i) clamp_[static_cast<size_t>(i)] = std::min(std::max(x_[i], lo[i]), hi[i]);
+        return dist_.raw(x_, clamp_.data());
+    }
+
+    // Whether a node whose bound has the sum r is cut: its distance exceeds cut_(radius) (a plain sum above
+    // the threshold's square says so without the root; otherwise the distance itself is compared).
+    bool cut(double r) {
+        const double T1 = cut_(radius());
+        if (Dist::plain(r)) return r > Dist::above(T1);
+        return dist_.finish(r, x_, clamp_.data()) > T1;
+    }
+```
+
+부모의 한계에서 자식의 한계를 바뀐 축 하나만 고쳐 이어 가는 증분 갱신(scipy의 `cKDTree`가 내려가면서 쓰는 방식)은 하지 않아요. 증분 갱신은 내려가는 길을 따라 반올림이 쌓여서, 그 쌓임의 한계를 따로 증명해야 해요. 노드마다 처음부터 구하면 한계 하나가 그냥 짝 하나의 거리이고 위 증명이 그대로 서요. 비용은 $O(m)$이라 잎의 점 `leafsize`개와 거리를 재는 일보다 작아요.
+
+## 판정은 돌려주는 거리로
+
+넣을지 말지, 순서, 경계를 정하는 모든 판정은 사용자에게 돌려줄 값 $\hat d$ 그 자체로 해요. $\hat d$는 `cdist`의 그 원소와 같은 비트이니, 트리의 답과 `cdist`로 짠 전수의 답이 어긋날 틈이 없어요.
+
+$p = 2$에서는 $\sqrt{\cdot}$를 아끼려고 제곱합 $s$를 먼저 봐요. $s$가 보통 범위 $[2^{-968}, \mathrm{DBL\_MAX}]$에 있으면 신중한 경로(넘침·언더플로를 피하는 비율 맞춤)를 타지 않으므로 $\hat d = \mathrm{RN}(\sqrt{s})$이고, 그때 $s$만 보고 결론을 낼 수 있는 경우가 둘이에요.
+
+```cpp
+// csrc/spatial/kdtree.hpp
+struct KdEuclid {  // p = 2
+    int64_t m;
+    double raw(const double* x, const double* y) const {
+        double s;
+        pair_scalar<SqOp, false>(x, y, nullptr, m, &s);
+        return s;
+    }
+    double finish(double s, const double* x, const double* y) const {
+        return euclid_finish<false>(s, x, y, nullptr, m);
+    }
+    static bool plain(double s) { return s >= kTiny && s <= kHuge; }
+    static double above(double T) { return (T * T) * (1.0 + 0x1p-50); }
+    // A plain sum s <= below(T) has d^ <= T: s <= fl(T T) (1 - 8u) (1 + u) < T^2 when T^2 is normal, so
+    // sqrt(s) < T and RN(sqrt(s)) <= T. Outside the normal range of T^2 no sum passes (-1).
+    static double below(double T) {
+        const double t = T * T;
+        return t >= 0x1p-1022 && t <= kHuge ? t * (1.0 - 0x1p-50) : -1.0;
+    }
+};
+```
+
+- **위로 버리기.** $\mathrm{above}(T) = \mathrm{fl}(\mathrm{fl}(T \cdot T)(1 + 8u))$예요. $T^2$이 보통 수면 $\mathrm{fl}(T \cdot T) \ge T^2(1 - u)$라 $\mathrm{above}(T) \ge T^2(1 + 5u)$이고, $s \gt \mathrm{above}(T)$면 $\sqrt{s}(1 - u) \gt T$예요. 올바른 반올림의 $\sqrt{\cdot}$는 $\mathrm{RN}(\sqrt{s}) \ge \sqrt{s}(1 - u)$이니 $\hat d \gt T$가 엄격히 서요. $T^2$이 보통 범위보다 작으면 $s \ge 2^{-968}$에서 $\sqrt{s} \ge 2^{-484} \gt T$라 그대로 맞고, $T = \infty$면 above도 $\infty$라 아무것도 버리지 않아요.
+- **아래로 넣기.** $\mathrm{below}(T) = \mathrm{fl}(\mathrm{fl}(T \cdot T)(1 - 8u))$예요. $s \le \mathrm{below}(T)$면 $s \le T^2(1 + u)^2(1 - 8u) \lt T^2$이라 $\sqrt{s} \lt T$이고, $T$가 double이니 반올림해도 $\mathrm{RN}(\sqrt{s}) \le T$예요. $T^2$이 보통 범위 밖이면 $-1$을 돌려 아무 합도 통과시키지 않아요. 이것은 개수만 세는 질의가 $\sqrt{\cdot}$ 없이 셀 때 써요([질의](/internals/spatial/queries/)).
+
+둘 다 아니면 $\hat d$를 구해 그대로 견줘요. 두 판정 모두 "제곱합으로 정한 결론이 $\hat d$로 정한 결론과 같다"는 것만 쓰는 지름길이라 결과를 바꾸지 않아요. 다른 $p$는 `raw`가 곧 거리이고 `above`, `below`가 $T$ 그대로예요.
+
+제곱합만으로 판정하면 어긋나는 곳이 생겨요. 반경을 계산한 거리 그 자체로 주었는데, 제곱의 자리에서 $s \le r^2$으로 견주면 그 점이 빠질 수 있어요.
+
+```python
+>>> rng = sd.random.default_rng(3)
+>>> X = rng.random((20, 3))
+>>> d = S.euclidean(X[0], X[17])
+>>> s = S.sqeuclidean(X[0], X[17])
+>>> d, s, d * d
+(0.46194793967143066, 0.21339589896667976, 0.21339589896667974)
+>>> s <= d * d
+False
+>>> S.KDTree(X).query_ball_point(X[0], d).indices.tolist()
+[0, 1, 6, 17]
+```
+
+`sqeuclidean`의 값은 `euclidean`이 $\sqrt{\cdot}$를 씌우기 전의 바로 그 합이에요. $\mathrm{fl}(d \cdot d)$가 $s$보다 1 ULP 작아서 $s \le r^2$의 판정은 17을 빼지만, 트리는 $\hat d \le r$로 판정하므로 돌려줄 거리가 정확히 $r$인 17을 넣어요. 반대로 $\sqrt{\cdot}$의 반올림은 서로 다른 두 합을 같은 $\hat d$로 만들 수도 있어서, 제곱합의 순서로 이웃을 정렬하면 같은 $\hat d$의 두 점이 색인 순서와 다르게 놓일 수 있어요. 순서도 언제나 ($\hat d$, 색인)으로 정하는 까닭이에요.

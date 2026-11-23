@@ -1,0 +1,221 @@
+---
+kind: function
+title: bicgstab
+names: [bicgstab]
+group: 반복법
+order: 5
+signatures:
+  - "sd.sparse.bicgstab(A, b, /, *, x0=None, rtol=1e-05, atol=0.0, max_iter=None, M=None)"
+summary: 아무 정사각 행렬의 연립방정식 Ax = b를 BiCGSTAB으로 풀어요. 반복마다 A와의 곱 두 번과 벡터 몇 개만 쓰므로 메모리가 반복 수와 상관없이 일정해요. 대칭이 아닌 큰 계에서 gmres의 메모리가 부담스러울 때 써요.
+params:
+  - name: A
+    type: 희소 배열, 2차원 ndarray, 또는 LinearOperator
+    kind: positional-only
+    desc: 계수 행렬 (n, n). 대칭이 아니어도 돼요.
+  - name: b
+    type: ndarray
+    kind: positional-only
+    desc: 우변. 모양이 (n,)이나 (n, 1)인 sd.ndarray예요.
+  - name: x0
+    type: ndarray 또는 None
+    kind: keyword-only
+    desc: 시작점 (n,)이나 (n, 1). None(기본값)이면 0 벡터예요. 붕괴했을 때 다른 시작점으로 다시 풀 수 있어요.
+  - name: rtol
+    type: float
+    kind: keyword-only
+    desc: 상대 허용오차. ‖b − Ax‖ < max(rtol·‖b‖, atol)이면 멈춰요(점화식의 잔차). 유한한 0 이상의 수이고 기본값은 1e-05예요.
+  - name: atol
+    type: float
+    kind: keyword-only
+    desc: 절대 허용오차(잔차의 바닥). 유한한 0 이상의 수이고 기본값은 0.0이에요.
+  - name: max_iter
+    type: int 또는 None
+    kind: keyword-only
+    desc: 반복의 상한(1 이상). None(기본값)이면 10n이에요. 닿으면 그때의 x와 status = max_iter, converged=False를 돌려줘요.
+  - name: M
+    type: 희소 배열, 2차원 ndarray, LinearOperator, 또는 None
+    kind: keyword-only
+    desc: 전처리기. A⁻¹을 어림한 (n, n) 정칙 행렬이나 연산자예요(대칭이 아니어도 돼요). None(기본값)이면 전처리하지 않아요.
+returns:
+  type: BicgstabResult
+  desc: "x(해, (n,)), converged, status(0은 수렴, max_iter는 상한, −10·−11은 붕괴), message, n_iter(반복 수), normr(마지막 잔차의 크기). (x, status)로 풀려요."
+raises:
+  - type: TypeError
+    desc: A나 M이 희소 배열·sd.ndarray·LinearOperator가 아닐 때, b나 x0이 sd.ndarray가 아닐 때, 허용오차가 수가 아니거나 max_iter가 int가 아닐 때, 옵션을 위치로 주거나 없는 키워드(maxiter, callback 등)를 줬을 때, LinearOperator의 함수가 배열로 바꿀 수 없는 것을 돌려줄 때.
+  - type: ValueError
+    desc: A가 2차원이 아니거나 정사각이 아닐 때, M의 모양이 A와 다를 때, b나 x0의 모양이 (n,)·(n, 1)이 아닐 때, A·M·b·x0에 NaN·inf가 있을 때, rtol·atol이 음수이거나 유한하지 않을 때, max_iter가 1보다 작을 때, LinearOperator의 함수가 크기가 다른 결과를 돌려줄 때.
+seeAlso: [iterative, gmres, cg, spsolve, linearoperator]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+export const bicg = [[0,0.0],[1,0.23],[2,0.19],[3,0.16],[4,0.13],[5,0.08],[6,0.03],[7,0.06],[8,0.2],[9,0.4],[10,0.6],[11,0.8],[12,0.98],[13,1.15],[14,1.32],[15,1.48],[16,1.55],[17,1.44],[18,1.22],[19,1.21],[20,1.18],[21,0.88],[22,0.87],[23,0.76],[24,0.5],[25,0.09],[26,0.07],[27,0.06],[28,-0.33],[29,-0.6],[30,-0.95],[31,-1.7],[32,-1.81],[33,-1.81],[34,-2.61],[35,-3.22],[36,-4.15],[37,-5.14]];
+
+## 무엇을 하나요
+
+대칭이 아닌 행렬에는 [`gmres`](/api/sparse/gmres/)가 가장 믿을 만하지만, 반복마다 길이 n의 벡터를 하나씩 쌓아야 해요. BiCGSTAB(biconjugate gradient stabilized)은 벡터를 쌓지 않는 대안이에요.
+
+[`cg`](/api/sparse/cg/)의 짧은 점화식은 A가 대칭이어서 가능해요. 대칭이 아니면 A의 크릴로프 공간과 함께 Aᴴ 쪽의 "그림자" 공간을 하나 더 두고, 두 공간을 서로 직교하게 맞추면 다시 짧은 점화식이 나와요(BiCG). BiCGSTAB은 여기에 반복마다 잔차를 한 번 더 줄이는 걸음(안정화)을 더해, BiCG의 들쭉날쭉한 수렴을 고르게 하고 Aᴴ와의 곱을 없앴어요. 한 반복에
+
+1. BiCG의 걸음 하나로 중간 잔차 s를 만들고(곱 한 번),
+2. s 방향으로 잔차를 가장 작게 하는 걸음 ω를 더해요(곱 한 번).
+
+그래서 한 반복에 A와의 곱이 두 번이고, 메모리는 벡터 몇 개로 일정해요. 대신 GMRES와 달리 반복마다 잔차를 가장 작게 한다는 보장이 없어서, 잔차가 크게 오르내리거나 방법 안의 나눗셈이 0으로 나누게 되어(붕괴) 멈출 수 있어요.
+
+<Reference />
+
+## 기본 사용
+
+가장자리가 0인 30 × 30 판에 바람이 부는 대류–확산 문제예요([`gmres`](/api/sparse/gmres/)와 같은 행렬).
+
+```python
+>>> n = 30
+>>> T = sd.sparse.diags_array([-1.0, 2.0, -1.0], offsets=[-1, 0, 1], shape=(n, n))
+>>> D1 = sd.sparse.diags_array([-1.0, 1.0], offsets=[-1, 0], shape=(n, n))
+>>> I = sd.sparse.eye_array(n)
+>>> A = sd.sparse.kronsum(T, T) + 1.5 * sd.sparse.kron(I, D1)
+>>> b = sd.ones(n * n)
+>>> r = sd.sparse.bicgstab(A, b)
+>>> r
+BicgstabResult(converged=True, status=0, n_iter=37, normr=0.000215559, x=<array of shape (900,)>)
+>>> float(sd.linalg.vector_norm(b - A @ r.x)) < 1e-5 * 30
+True
+>>> x_g = sd.sparse.gmres(A, b).x
+>>> float(sd.max(sd.abs(r.x - x_g))) < 1e-3
+True
+```
+
+## 잔차가 오르내려요
+
+BiCGSTAB의 잔차는 단조롭게 줄지 않아요. 같은 문제의 잔차를 반복마다 그려 보면, 처음 몇 번 줄다가 16번째 반복에서 처음의 35배까지 커진 뒤 내려와요. 계산은 늘 같은 순서로 하므로 `max_iter`로 중간에 멈춰 보면 그대로 보여요.
+
+```python
+>>> [round(sd.sparse.bicgstab(A, b, max_iter=k).normr) for k in (5, 10, 15, 20, 25, 30, 35)]
+[36, 121, 905, 455, 37, 3, 0]
+```
+
+<Fig caption="위 문제에서 bicgstab의 잔차 ‖r_k‖ / ‖b‖ (세로축은 로그 눈금). 16번째 반복에서 35배까지 오른 뒤 37번째 반복에서 rtol = 10⁻⁵ 아래로 내려가요.">
+  <Plot
+    curves={[
+      { points: bicg, label: 'bicgstab' },
+      { f: (x) => -5, label: 'rtol = 10⁻⁵', dashed: true },
+    ]}
+    domain={[0, 38]}
+    range={[-5.5, 2]}
+    xTicks={[
+      { v: 0, label: '0' },
+      { v: 10, label: '10' },
+      { v: 20, label: '20' },
+      { v: 30, label: '30번' },
+    ]}
+    yTicks={[
+      { v: 2, label: '10²' },
+      { v: 0, label: '1' },
+      { v: -2, label: '10⁻²' },
+      { v: -4, label: '10⁻⁴' },
+    ]}
+  />
+</Fig>
+
+잔차가 한때 크게 오르는 것 자체는 문제가 아니에요. 다만 중간에 끊으면(작은 `max_iter`) 처음보다 나쁜 x를 받을 수 있어요. 오르내림이 너무 크면 반올림이 쌓여 마지막 정확도도 나빠지니, 그럴 때는 전처리기를 주거나 `gmres`를 써요.
+
+## gmres와 견주기
+
+| | `bicgstab` | `gmres` |
+|---|---|---|
+| 한 반복의 곱 | 두 번 | 한 번(주기마다 참 잔차에 한 번 더) |
+| 메모리 | 벡터 몇 개, 일정 | 벡터 `restart`개 남짓 |
+| 한 반복의 다른 일 | 내적 몇 번, 일정 | 쌓인 벡터 수만큼의 내적과 갱신 |
+| 잔차 | 오르내려요 | 늘지 않아요(주기 안에서) |
+| 멈출 수 있는 까닭 | 판정, 상한, 붕괴 | 판정, 상한 |
+
+곱의 수로 견주면 이 문제에서는 비슷해요. 곱마다 기록하는 연산자로 세어 봐요.
+
+```python
+>>> count = []
+>>> def matvec(v):
+...     count.append(1)
+...     return A @ v
+>>> op = sd.sparse.LinearOperator(A.shape, matvec, dtype=sd.float64)
+>>> r = sd.sparse.bicgstab(op, b)
+>>> r.n_iter, len(count)
+(37, 73)
+>>> count.clear()
+>>> r = sd.sparse.gmres(op, b)
+>>> r.n_inner, len(count)
+(102, 108)
+```
+
+`bicgstab`은 37번째 반복의 첫 걸음(중간 잔차 s)에서 이미 판정을 통과해 둘째 곱을 하지 않았어요. 그래서 곱이 2 × 37 − 1 = 73번이에요. 이렇게 반 걸음에서 멈춘 반복도 `n_iter`에 세요.
+
+어느 쪽이 빠른지는 문제마다 달라요. A와의 곱이 비싸면 곱이 적은 쪽, n이 커서 벡터를 쌓기 부담스러우면 `bicgstab`, 잔차가 꾸준히 줄어야 하면 `gmres`예요.
+
+## 전처리기 M
+
+M은 A⁻¹을 어림한 아무 정칙 행렬이나 연산자예요. [`gmres`](/api/sparse/gmres/#전처리기-m)에서 쓴 줄 단위 전처리기를 그대로 쓸 수 있어요.
+
+```python
+>>> P = sd.sparse.kron(I, T + 1.5 * D1) + 2.0 * sd.sparse.eye_array(n * n)
+>>> M = sd.sparse.LinearOperator(A.shape, sd.sparse.splu(P).solve, dtype=sd.float64)
+>>> sd.sparse.bicgstab(A, b, M=M)
+BicgstabResult(converged=True, status=0, n_iter=20, normr=0.000158316, x=<array of shape (900,)>)
+```
+
+## 붕괴
+
+BiCGSTAB은 반복마다 두 내적으로 나눠요. 그 가운데 하나가 정확히 0이 되면 더 나아갈 수 없어 멈추고 `status`에 음수를 넣어요. `converged=False`이고 x는 그때까지의 점이에요.
+
+| `status` | `message` | 0이 된 것 |
+|---|---|---|
+| −10 | `'breakdown: rho (the inner product of the shadow and the residual) is zero'` | 그림자 벡터와 잔차의 내적 ρ |
+| −11 | `'breakdown: omega or the inner product of the shadow and A p is zero'` | 안정화 걸음 ω, 또는 그림자 벡터와 Ap의 내적 |
+
+작은 행렬로 둘 다 만들 수 있어요. 90° 회전 행렬에서는 첫 걸음부터 그림자와 Ap가 직교해요.
+
+```python
+>>> K = sd.asarray([[0.0, 1.0], [-1.0, 0.0]])
+>>> r = sd.sparse.bicgstab(K, sd.asarray([1.0, 0.0]))
+>>> r.status, r.n_iter, r.converged
+(-11, 0, False)
+>>> sd.sparse.gmres(K, sd.asarray([1.0, 0.0])).x
+array([0.0, 1.0], dtype=float64)
+>>> U = sd.asarray([[1.0, 2.0], [0.0, 1.0]])
+>>> r = sd.sparse.bicgstab(U, sd.asarray([1.0, 1.0]))
+>>> r.status, r.n_iter, r.message
+(-10, 1, 'breakdown: rho (the inner product of the shadow and the residual) is zero')
+>>> sd.sparse.bicgstab(U, sd.asarray([1.0, 1.0]), x0=sd.asarray([0.0, 1.0])).converged
+True
+```
+
+큰 실제 문제에서 정확히 0이 되는 일은 드물지만, 거의 0이 되면 큰 수로 나눈 반올림이 잔차를 키워요. 붕괴하면 다른 `x0`로 다시 풀거나 `gmres`를 써요.
+
+## 결과 읽기
+
+| 필드 | 뜻 |
+|---|---|
+| `x` | 해 (n,). 쓰기 금지 배열이에요 |
+| `converged` | `status == 0`인지 |
+| `status` | 0은 수렴, `max_iter`는 상한, −10·−11은 붕괴 |
+| `message` | 멈춘 까닭(위 표, `'the residual norm is within the tolerance'`, `'the iteration limit was reached'`, `'the right-hand side is zero: x = 0'`) |
+| `n_iter` | 반복 수(반 걸음에서 멈춘 반복도 세요) |
+| `normr` | 마지막 (점화식) 잔차의 크기 |
+
+`(x, status)`로 풀려요. `summary()`는 [반복법의 기본](/api/sparse/iterative/#결과-읽기)과 같은 꼴이에요.
+
+## 입력과 에러
+
+입력 규칙과 에러는 [반복법의 기본](/api/sparse/iterative/#입력)과 같아요.
+
+```python
+>>> sd.sparse.bicgstab(A, b, atol=-1.0)
+Traceback (most recent call last):
+    ...
+ValueError: bicgstab(): 'atol' must be a finite number >= 0
+```
+
+## scipy를 아는 분께
+
+- `scipy.sparse.linalg.bicgstab`과 같은 알고리즘, 멈춤 판정(점화식 잔차 < max(rtol·‖b‖, atol)), 붕괴 상태(−10, −11)예요.
+- 반 걸음에서 멈춘 반복을 `n_iter`에 세요. scipy의 `callback`은 그 반복에서 불리지 않아 하나 적게 세요.
+- BiCGSTAB은 반올림에 민감해요. 무작위 비대칭 행렬처럼 scipy 자신도 b를 10⁻¹⁶만 바꾸면 반복 수가 달라지는 문제에서는 반복 수가 scipy와 다를 수 있어요. 상태는 같아요.
+- `maxiter`는 `max_iter`, `callback`은 없어요. 결과는 `(x, info)`로 풀리는 `BicgstabResult`예요.

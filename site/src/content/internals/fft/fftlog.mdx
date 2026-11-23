@@ -1,0 +1,437 @@
+---
+title: FFTLog
+group: FFTLog
+order: 1
+summary: 로그 간격 표본의 한켈 변환(fht, ifht)이 실수 FFT 두 번과 계수의 곱으로 계산되는 까닭을 Mellin 변환으로 유도하고, 큰 위상 때문에 계수를 double-double의 log Γ로 만드는 방법(반사식, 옮기기, Stirling 급수와 나머지 한계, 로그·지수·사인의 double-double 계산)을 따라가요. 특이한 계수, 바이어스, fhtoffset의 저링잉 조건, 계획 캐시, 줄의 계산과 오차 한계도 다뤄요.
+seeAlso: [real-hermitian, overview, determinism, accuracy-performance]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import Steps from '../../../components/fig/Steps.astro';
+
+## 한눈에 보기
+
+`fht`는 로그 간격으로 표본을 뜬 함수의 한켈 변환
+
+$$
+A(k) = \int_0^\infty a(r)\,J_\mu(kr)\,k\,dr
+$$
+
+을 계산해요. $J_\mu$는 차수 $\mu$의 Bessel 함수예요. 정의는 scipy의 것이고 알고리즘은 Hamilton(2000)의 FFTLog예요. 길이 $n$의 줄 $a_j$, 로그 간격 `dln`, 차수 `mu`, `offset` $= \ln(k_c r_c)$, 바이어스 $q$, 가운데 $j_c = (n-1)/2$에 대해
+
+$$
+v_j = a_j\,e^{-q(j - j_c)\,\mathrm{dln}}, \qquad
+W_m = \frac{U_m\,V_m}{n}\ \ (m = 0, \dots, \lfloor n/2\rfloor), \qquad
+A_j = w_{n-1-j}\,e^{-q((j - j_c)\,\mathrm{dln} + \mathrm{offset})}
+$$
+
+예요. $V$는 $v$의 실수 DFT의 반쪽 스펙트럼, $w$는 에르미트 $W$의 정규화 없는 역실수 DFT예요. 계수는
+
+$$
+U_m = 2^q\,\frac{\Gamma(x_+ + i y_m)}{\Gamma(x_- - i y_m)}\,e^{2 i y_m(\ln 2 - \mathrm{offset})}, \qquad
+x_\pm = \frac{\mu + 1 \pm q}{2}, \qquad y_m = \frac{\pi m}{n\,\mathrm{dln}}
+$$
+
+이에요. `ifht`는 곱 대신 $\overline{U_m}$으로 나누고 바이어스를 역수로 써요.
+
+<Fig column caption="한 줄의 계산. 계수와 바이어스는 계획이 미리 만들어 두고, 줄마다 하는 일은 실수 FFT 두 번과 곱 세 번이에요.">
+  <Steps
+    steps={[
+      { label: 'v = a · b_in', note: '모으면서 입력 바이어스를 곱해요. q = 0이면 없어요', where: 'driver.cpp' },
+      { label: 'V = rfft(v)', note: '짝수 n은 실수 계획, 홀수 n은 복소 계획과 에르미트 부분', where: 'rfft.hpp' },
+      { label: 'W = V · coef', note: 'coef = U/n(ifht는 1/(n conj U)), FMA 복소 곱', where: 'driver.cpp' },
+      { label: 'w = irfft(W)', note: '정규화 없는 역실수 변환', where: 'rfft.hpp' },
+      { label: 'A = reverse(w) · b_out', note: '뒤집으며 출력 바이어스를 곱해 결과에 써요', where: 'driver.cpp' },
+    ]}
+  />
+</Fig>
+
+코드는 `csrc/fft/fftlog.hpp`(double-double 함수와 계획), `csrc/fft/fftlog.cpp`(계획 만들기, 캐시, `fhtoffset`), `csrc/fft/driver.cpp`의 `fht_axis`(줄의 계산), `src/stardust/fft/_fftlog.py`(인자 검사)에 있어요.
+
+## 로그 격자에서 합성곱이 되는 까닭
+
+입력은 $r_j = r_c\,e^{(j - j_c)\mathrm{dln}}$, 출력은 $k_i = k_c\,e^{(i - j_c)\mathrm{dln}}$에 놓여요. 그러면
+
+$$
+\ln(k_i r_j) = \mathrm{offset} + (i + j - 2j_c)\,\mathrm{dln}
+$$
+
+이라 핵 $J_\mu(k_i r_j)$가 $i + j$에만 달려요. $k\,dr = (kr)\,d\ln r$이니 적분은 로그 변수 위에서 핵 $t\,J_\mu(t)$($t = kr$)와의 상관이고, 출력의 순서를 뒤집으면 합성곱이 돼요. $A_j = w_{n-1-j}$의 뒤집기가 그것이에요.
+
+주기적인 합성곱은 DFT가 대각화해요. 곱할 값은 핵의 로그 변수에 대한 푸리에 변환이고, 그것은 Mellin 변환
+
+$$
+\int_0^\infty t^{s-1}\,J_\mu(t)\,dt = 2^{s-1}\,\frac{\Gamma\big(\tfrac{\mu + s}{2}\big)}{\Gamma\big(\tfrac{\mu - s}{2} + 1\big)}
+$$
+
+이에요. 주기 $n\,\mathrm{dln}$의 $m$번째 주파수는 각진동수 $2\pi m/(n\,\mathrm{dln}) = 2y_m$이라 $s = 1 + 2iy_m$에서 읽고, 바이어스는 $s$를 $q$만큼 옮겨요. $s = 1 + q + 2iy_m$을 넣으면 $2^{q}\,\Gamma(x_+ + iy_m)/\Gamma(x_- - iy_m)$에 $2^{2iy_m} = e^{2iy_m\ln 2}$가 붙고, 격자의 가운데를 `offset`만큼 옮긴 것이 $e^{-2iy_m\,\mathrm{offset}}$이에요. 그래서 위의 $U_m$이 나와요. 입력과 출력의 바이어스는 핵에 거듭제곱 $(kr)^{\pm q}$를 나눠 싣는 일이에요.
+
+$q = 0$이면 $x_+ = x_- = x$이고 $\Gamma(\bar w) = \overline{\Gamma(w)}$라 $\lvert U_m\rvert = 1$이에요. 계수가 단위 원 위에 있으니 변환이 노름을 늘리지 않아요. 실수부만 쓰는 칸(아래)의 계수는 크기가 1 이하예요.
+
+$m = 0$과 짝수 $n$의 $m = n/2$은 스펙트럼 칸이 실수라 $U_m$의 실수부만 써요(`ifht`는 $1/\mathrm{Re}\,U_m$). scipy가 같은 값을 강제해요.
+
+## 계수: 왜 double-double인가
+
+$U_m = e^{Z}$로 쓰면
+
+$$
+Z = \log\Gamma(x_+ + iy) - \overline{\log\Gamma(x_- + iy)} + q\ln 2 + 2iy(\ln 2 - \mathrm{offset})
+$$
+
+이에요. 문제는 허수부의 크기예요. $\arg\Gamma(x + iy)$는 $y\ln y$처럼 자라서, $n = 4096$, $\mathrm{dln} = 0.01$의 가장 큰 $y = 157$에서 $\mathrm{Im}\,Z$가 1600쯤이에요. double로 만든 $Z$는 그 크기의 반 ulp만큼 절대오차를 가지는데, 그것이 $e^Z$에서는 수백 $u$의 상대오차가 돼요. 그래서 $Z$를 double-double로 만들고, 그 자리에서 $2\pi i$의 배수를 빼고, 마지막에 지수만 한 번 반올림해요.
+
+```python
+>>> import stardust as sd
+>>> F = sd.fft
+>>> P = sd._core.fft._fht_plan
+>>> q = P(4096, 0.01, 0.0, 0.0, 0.0, False)["coef"]
+>>> float(sd.max(sd.abs(sd.abs(q[:-1]) * 4096 - 1)))
+1.1102230246251565e-16
+```
+
+`_fht_plan`은 계획의 계수와 바이어스를 꺼내 보는 내부 함수예요. 바이어스가 없으면 계수 $U_m/n$의 크기가 수식에서 정확히 $1/n$이고, 부분마다 한 번 반올림한 값이라 그 차이가 $u$ 크기예요. 마지막 칸($m = n/2$)은 실수부만 쓰는 칸이라 견주기에서 뺐어요.
+
+### $\log\Gamma$를 $2\pi i$의 배수까지
+
+$e^Z$만 쓰니 로그의 가지는 아무것이어도 돼요. $\log\Gamma(w)$를 $2\pi i$의 배수를 빼고 구해요. 세 가지 꼴을 써요.
+
+1. **반사식**($\mathrm{Re}\,w \lt 1/2$): $\Gamma(w)\Gamma(1 - w) = \pi/\sin(\pi w)$에서 $\log\Gamma(w) = \log\pi - \log\sin(\pi w) - \log\Gamma(1 - w)$.
+2. **옮기기**($\mathrm{Re}\,w \ge 1/2$, $\lvert w\rvert \lt 16$): $\Gamma(w + N) = w(w+1)\cdots(w+N-1)\,\Gamma(w)$에서 $\log\Gamma(w) = \log\Gamma(w + N) - \log\big(w(w+1)\cdots(w+N-1)\big)$. $N$은 $\mathrm{Re}(w + N) \ge 16$이 되는 가장 작은 정수예요. 곱은 double-double 복소수로 쌓고 로그는 한 번만 구해요.
+3. **Stirling 급수**($\lvert w\rvert \ge 16$):
+
+$$
+\log\Gamma(w) = \Big(w - \tfrac12\Big)\log w - w + \tfrac12\log 2\pi + \sum_{k=1}^{8}\frac{B_{2k}}{2k(2k-1)\,w^{2k-1}} + R_8(w)
+$$
+
+계수 $B_{2k}/(2k(2k-1))$은 $1/12, -1/360, 1/1260, -1/1680, 1/1188, -691/360360, 1/156, -3617/122400$이에요. 나머지는 $\lvert\arg w\rvert \le \theta$에서 처음 뺀 항에 $\sec^{18}(\theta/2)$를 곱한 것 이하라는 알려진 한계가 있어요. 옮긴 뒤의 $w$는 오른쪽 반평면($\theta = \pi/2$)에 있으니 $\sec^{18}(\pi/4) = 2^9$이고
+
+$$
+\lvert R_8(w)\rvert \le \frac{2^9\,\lvert B_{18}\rvert}{18\cdot 17\cdot 16^{17}} \lt 2^{-61}
+$$
+
+이에요. $\lvert B_{18}\rvert = 43867/798$이에요. 큰 항 $(w - \tfrac12)\log w - w + \log\sqrt{2\pi}$는 double-double로, 급수(크기가 $1/192$ 아래)는 double로 더해요. 급수의 double 반올림은 $2^{-53}/192$ 크기라 결과의 $2^{-60}$ 안이에요.
+
+```cpp
+// csrc/fft/fftlog.hpp
+// log Gamma(w) mod 2 pi i for Re w >= 1/2 (about).
+inline DC lngamma_right(DC w) {
+    const double a = w.re.hi, b = w.im.hi;
+    if (a * a + b * b >= kStirlingR * kStirlingR) return stirling(w);
+    const int N = static_cast<int>(std::ceil(kStirlingR - a));
+    DC p = w, v = w;
+    for (int k = 1; k < N; ++k) {
+        v.re = add_d(v.re, 1.0);
+        p = dd::cmul(p, v);
+    }
+    v.re = add_d(v.re, 1.0);  // w + N
+    return dd::csub(stirling(v), clog(p));
+}
+
+// log sin(pi w) mod 2 pi i for w off the poles.
+inline DC lnsinpi(DC w) {
+    const double r2 = 2.0 * std::nearbyint(w.re.hi * 0.5);
+    const DD f = dd::add(dd_of(w.re.hi - r2), dd_of(w.re.lo));  // Re w mod 2, exactly
+    if (std::fabs(w.im.hi) > 20.0) {
+        DD im = dd::sub(kHalfPi, dd::mul(kPi, f));
+        if (w.im.hi < 0) im = dd::neg(im);
+        return {dd::sub(dd::mul(kPi, abs_dd(w.im)), kLn2), im};
+    }
+    DD s, c;
+    sincos_dd(dd::mul(kPi, f), s, c);
+    const DD pb = dd::mul(kPi, w.im);
+    const DD E = exp_dd(pb);
+    const DD Ei = ddiv(dd_of(1.0), E);
+    const DD ch = dd::mul(dd::add(E, Ei), 0.5);
+    DD sh;
+    if (std::fabs(pb.hi) < 1.0) {  // sinh x = x (1 + x^2 / 3! (1 + x^2 / (4 5) (...))), through x^29 / 29!
+        const DD x2 = dd::mul(pb, pb);
+        DD p = dd_of(1.0);
+        for (int k = 14; k >= 1; --k)
+            p = add_d(dd::div(dd::mul(x2, p), static_cast<double>((2 * k) * (2 * k + 1))), 1.0);
+        sh = dd::mul(pb, p);
+    } else {
+        sh = dd::mul(dd::sub(E, Ei), 0.5);
+    }
+    return clog(DC{dd::mul(s, ch), dd::mul(c, sh)});
+}
+
+// log Gamma(w) mod 2 pi i for w off the poles (|w| < 2^36).
+inline DC lngamma(DC w) {
+    if (w.re.hi >= 0.5) return lngamma_right(w);
+    const DC r = lngamma_right(DC{dd::sub(dd_of(1.0), w.re), dd::neg(w.im)});
+    const DC ls = lnsinpi(w);
+    return {dd::sub(dd::sub(kLnPi, ls.re), r.re), dd::sub(dd::neg(ls.im), r.im)};
+}
+```
+
+반사식의 $\log\sin(\pi w)$는 $w = a + ib$에서 $a$를 2로 나눈 나머지 $f$로 줄여 계산해요(정확한 뺄셈이에요). $\lvert b\rvert \gt 20$이면
+
+$$
+\sin(\pi w) = \frac{e^{i\pi w} - e^{-i\pi w}}{2i}
+$$
+
+에서 한 항이 $e^{\pi\lvert b\rvert}$로 다른 항을 압도하니 $\log\sin(\pi w) = \pi\lvert b\rvert - \ln 2 + i\,\mathrm{sgn}(b)(\pi/2 - \pi f)$이고, 버린 항의 상대 크기는 $e^{-2\pi\lvert b\rvert} \lt e^{-40\pi}$, $2^{-180}$ 아래예요. 그 밖에서는 $\sin(\pi f)\cosh(\pi b) + i\cos(\pi f)\sinh(\pi b)$를 만들어 로그를 구해요. $\lvert\pi b\rvert \lt 1$이면 $\sinh$를 $(e^x - e^{-x})/2$로 빼면 자릿수를 잃으니 급수로 계산해요.
+
+### 로그, 지수, 사인과 코사인
+
+double-double의 기본 함수는 libm의 값에서 출발해 한 번 고치는 꼴이에요.
+
+- **로그.** $L_0 = \log\lvert z\rvert$, $t_0 = \arg z$를 libm에서 구하고, $z\,e^{-L_0 - it_0} = 1 + e$를 double-double로 만들어요. $\lvert e\rvert \lt 2^{-45}$이라 $\log(1 + e) = e - e^2/2$에서 버린 $e^3/3$은 $2^{-135}$ 아래예요. 그래서 $\log z = L_0 + it_0 + e - e^2/2$예요.
+- **지수.** $x = (64m + i)\ln 2/64 + r$, $\lvert r\rvert \le \ln 2/128$로 줄이고, 표의 $2^{i/64}$에 $e^r$의 테일러 급수를 곱해요. $r^4$까지는 double-double, 그 뒤 $r^{11}$까지는 double이에요. 상대오차는 $2^{-96}$쯤이에요.
+- **사인과 코사인.** $\theta = j\pi/64 + r$, $\lvert r\rvert \le \pi/128$로 줄이고 $r$의 테일러 급수($r^5$, $r^6$까지 double-double, 그 뒤 $r^{13}$, $r^{14}$까지 double)와 표의 $(\sin, \cos)(j\pi/64)$로 덧셈 공식을 써요. $2^{-100}$쯤 안이에요.
+
+표(64개의 $2^{i/64}$, 128개의 $(\sin, \cos)(j\pi/64)$)는 처음 쓸 때 한 번 만들어요. 표를 만드는 데는 더 긴 급수 꼴을 써요. 지수는 $\ln 2$로 줄인 뒤 $2^{10}$으로 나눠 9차까지의 급수를 더하고 $(1 + s)^2 - 1$을 열 번 거듭하고, 사인과 코사인은 $\pi/2$로 줄인 뒤 8로 나눠 19차까지의 급수를 더하고 배각 공식을 세 번 써요.
+
+```cpp
+// csrc/fft/fftlog.hpp
+// log z for z != 0 (any branch is as good: only e^log z is used), within about 2^-97 absolutely.
+inline DC clog(DC z) {
+    const double L0 = std::log(std::hypot(z.re.hi, z.im.hi));
+    const double t0 = std::atan2(z.im.hi, z.re.hi);
+    const DD E = exp_dd(dd_of(-L0));
+    DD s, c;
+    sincos_dd(dd_of(t0), s, c);
+    const DC q = dd::cmul(z, DC{dd::mul(E, c), dd::neg(dd::mul(E, s))});  // z e^(-L0 - i t0) = 1 + e
+    const DC e = {add_d(q.re, -1.0), q.im};
+    const DC e2 = dd::cmul(e, e);  // log(1 + e) = e - e^2 / 2 + O(e^3), |e| < 2^-45
+    return {
+        dd::add(dd_of(L0), dd::sub(e.re, dd::mul(e2.re, 0.5))), dd::add(dd_of(t0), dd::sub(e.im, dd::mul(e2.im, 0.5)))
+    };
+}
+```
+
+### 계수 하나
+
+계획은 계수를 $m$마다 따로 만들어요. $y_m = m\cdot\pi/(n\,\mathrm{dln})$, $\log\Gamma$ 하나(바이어스가 있으면 둘), 그리고 위상의 마지막 항 $2y_m(\ln 2 - \mathrm{offset}) = 2\pi m\cdot\mathrm{lin}$, $\mathrm{lin} = (\ln 2 - \mathrm{offset})/(n\,\mathrm{dln})$이에요. 마지막 항은 $m$이 크면 아주 커지니 $m\cdot\mathrm{lin}$의 소수 부분을 double-double로 먼저 구하고(짝수 쪽 반올림) $2\pi$를 곱해요. 허수부 전체를 다시 $2\pi$로 줄인 뒤 $e^{\pm\mathrm{Re}\,Z - \ln n}$과 $(\cos, \sin)(\mathrm{Im}\,Z)$의 곱을 부분마다 한 번 반올림해요. $1/n$은 계수에 들어가요.
+
+```cpp
+    // csrc/fft/fftlog.cpp
+    auto coefficient = [&](int64_t m) {
+        double* out = coef_.data() + 2 * m;
+        DD re, im;
+        if (m == 0 && (is_pole(xp) || is_pole(xm))) {
+            if (!(is_pole(xp) && is_pole(xm))) {  // U_0 infinite (fht singular) or 0 (ifht singular): 0 both ways
+                singular_ = true;
+                return;
+            }
+            // Gamma(-j + e) / Gamma(-k + e) -> (-1)^(j + k) k! / j!
+            const double j = -xp.hi, k = -xm.hi;
+            re = dd::sub(
+                lg::lngamma(DC{lg::dd_of(k + 1.0), lg::dd_of(0.0)}).re,
+                lg::lngamma(DC{lg::dd_of(j + 1.0), lg::dd_of(0.0)}).re
+            );  // fmt: skip
+            re = dd::add(re, qln2);
+            im = std::fmod(j + k, 2.0) == 0.0 ? lg::dd_of(0.0) : lg::kPi;
+        } else {
+            const DD y = dd::mul(delta, static_cast<double>(m));
+            const DC zp = lg::lngamma(DC{xp, y});
+            if (q == 0.0) {
+                re = lg::dd_of(0.0);
+                im = dd::mul(zp.im, 2.0);
+            } else {
+                const DC zm = lg::lngamma(DC{xm, y});
+                re = dd::add(dd::sub(zp.re, zm.re), qln2);
+                im = dd::add(zp.im, zm.im);
+            }
+            im = dd::add(im, dd::mul(lg::kTwoPi, lg::frac_even(dd::mul(lin, static_cast<double>(m)))));
+        }
+        const bool real = m == 0 || 2 * m == n;  // the real spectral entries take Re U only (scipy forces it)
+        round_cis(dd::sub(inv ? dd::neg(re) : re, lnn), lg::reduce_2pi(im), real, inv, out);
+    };
+    for_each(h, 16, 2000, coefficient);
+```
+
+$q = 0$이면 $\log\Gamma$ 하나로 $Z = 2i\,\mathrm{Im}\log\Gamma(x + iy)$이고 실수부가 정확히 0이에요. `ifht`의 계수 $1/(n\overline{U_m})$은 $e^{-\mathrm{Re}\,Z - \ln n}$과 같은 위상이라, 실수부의 부호만 바꿔 같은 함수로 만들어요.
+
+### 극점
+
+$m = 0$에서 $y = 0$이라 $x_+$나 $x_-$가 $\Gamma$의 극점($0, -1, -2, \dots$)일 수 있어요. 극점인지는 정확한 $(\mu + 1 \pm q)/2$로 가려요. double 셋의 합을 double-double로 만들면 정수일 때 정확하니까요.
+
+- $x_+$만 극점이면 $U_0$이 무한대라 `fht`가 특이해요. $x_-$만 극점이면 $U_0 = 0$이라 `ifht`가 특이해요. 그 계수를 0으로 두고 경고는 내지 않아요. scipy의 고침과 같은 값이에요.
+- 둘 다 극점이면($x_+ = -j$, $x_- = -k$) 극한 $\Gamma(-j + \epsilon)/\Gamma(-k + \epsilon) \to (-1)^{j+k}\,k!/j!$를 써요. 로그 감마의 차로 만들고 부호는 위상 $\pi$로 넣어요.
+
+```python
+>>> p1 = P(4, 0.5, 1.0, 0.0, -2.0, False)
+>>> p1["coef"].tolist(), p1["singular"]
+([0j, (0.004663310638555562+0.020852645225520456j), (0.0059248111155603385+0j)], True)
+>>> P(4, 0.5, -3.0, 0.0, 2.0, False)["coef"].tolist()
+[(2+0j), (4.27276879760766+2.0416954947242347j), (11.41980345360872+0j)]
+```
+
+첫째는 $\mu = 1$, $q = -2$라 $x_+ = 0$, $x_- = 2$로 `fht`가 특이해요. 둘째는 $\mu = -3$, $q = 2$라 $x_+ = 0$, $x_- = -2$로 둘 다 극점이고, $m = 0$의 계수는 $2^2\cdot 2!/0!/4 = 2$예요.
+
+## 바이어스
+
+$q \ne 0$이면 입력과 출력의 바이어스를 계획에 표로 둬요. $k = j - j_c$(정확한 반정수), $s = \mp q\,\mathrm{dln}$, $c$(offset 항)를 double-double로 정확히 만들고 $e^{sk + c}$를 한 번 반올림해요. 반올림은 Tang의 방법이에요. 지수를 $(64m + i)\ln 2/64 + r$로 줄여 표의 $2^{i/64}$(double-double)와 $\lvert r\rvert \le \ln 2/128$의 6차 다항식을 곱하고, 결과는 $u/2 + 2^{-59}$ 안이에요.
+
+```cpp
+// csrc/fft/fftlog.hpp
+inline double exp_round(DD x) {
+    if (x.hi > 709.8) return INFINITY;
+    if (x.hi < -745.2) return 0.0;
+    const double K = std::nearbyint(x.hi * (64.0 / kLn2.hi));
+    const DD r = dd::sub(x, dd::mul(kLn2Over64, K));  // |r| <= ln 2 / 128 + tiny
+    const double q = r.hi;
+    const double p = q + q * q * (0.5 + q * (1.0 / 6 + q * (1.0 / 24 + q * (1.0 / 120 + q * (1.0 / 720))))) + r.lo;
+    const int64_t Ki = static_cast<int64_t>(K);
+    const int64_t i = ((Ki % 64) + 64) % 64;
+    const int m = static_cast<int>((Ki - i) / 64);
+    const DD& t = tables().exp2[i];
+    const double v = t.hi + std::fma(t.hi, p, t.lo + t.lo * p);
+    return std::ldexp(std::ldexp(v, m / 2), m - m / 2);
+}
+```
+
+```python
+>>> p2 = P(8, 0.5, 0.0, 0.0, 0.5, False)
+>>> p2["bin"]
+array([ 2.398875293967098, 1.8682459574322223, 1.4549914146182013,
+       1.1331484530668263, 0.8824969025845955, 0.6872892787909722,
+       0.5352614285189903, 0.4168620196785084], dtype=float64)
+>>> p2["bout"].tolist() == p2["bin"].tolist()
+True
+>>> P(8, 0.5, 0.0, 0.0, 0.0, False)["bin"] is None
+True
+```
+
+`offset`이 0이면 출력 바이어스의 offset 항이 사라져 두 표가 같아요. 바이어스가 없으면 표를 만들지 않고 줄의 계산도 곱을 건너뛰어요.
+
+## `fhtoffset`과 저링잉 조건
+
+로그 격자의 주기 연장 때문에 변환에는 고리 모양의 떨림(ringing)이 생길 수 있어요. Hamilton은 나이퀴스트 칸의 계수 $U_{n/2}$가 실수가 되도록 `offset`을 고르면 떨림이 줄어든다고 했어요. $y = \pi/(2\,\mathrm{dln})$에서 $U$의 위상을 $\pi$로 나눈 것은
+
+$$
+\mathrm{arg} = \frac{\ln 2 - \mathrm{initial}}{\mathrm{dln}} + \frac{\mathrm{Im}\log\Gamma(x_+ + iy) + \mathrm{Im}\log\Gamma(x_- + iy)}{\pi}
+$$
+
+이고, $\mathrm{offset} = \mathrm{initial} + (\mathrm{arg} - \mathrm{round}(\mathrm{arg}))\,\mathrm{dln}$이면 새 위상이 $\pi$의 정수배 $\mathrm{round}(\mathrm{arg})$가 돼요. `fhtoffset`은 `initial`에 가장 가까운 그런 값이에요. round는 짝수 쪽 반올림이에요(scipy와 같아요).
+
+$\mathrm{arg}$는 double-double로 만들어요. $\log\Gamma$의 가지가 바뀌면 허수부가 $2\pi$의 배수만큼 움직이고 $\mathrm{arg}$는 짝수만큼 움직이는데, 짝수만큼 옮기면 짝수 쪽 반올림의 결과도 같이 옮겨지니 $\mathrm{arg} - \mathrm{round}(\mathrm{arg})$가 정확히 같아요. 결과는 한 번 반올림해요.
+
+```cpp
+// csrc/fft/fftlog.cpp
+double fht_offset(double dln, double mu, double initial, double bias) {
+    const DD xp = half_sum(mu, bias), xm = half_sum(mu, -bias);
+    const DD y = lg::ddiv(lg::kPi, lg::dd_of(2.0 * dln));  // pi / (2 dln)
+    const DC zp = lg::lngamma(DC{xp, y}), zm = lg::lngamma(DC{xm, y});
+    const DD arg = dd::add(
+        lg::ddiv(dd::sub(lg::kLn2, lg::dd_of(initial)), lg::dd_of(dln)), lg::ddiv(dd::add(zp.im, zm.im), lg::kPi)
+    );  // fmt: skip
+    const DD f = lg::frac_even(arg);
+    return dd::add(dd::mul(f, dln), lg::dd_of(initial)).hi;
+}
+```
+
+```python
+>>> F.fhtoffset(0.5, 0.0)
+-0.1578753911668167
+>>> F.fhtoffset(0.5, 0.0, initial=1.0)
+0.8421246088331833
+>>> F.fhtoffset(0.01, 0.5, bias=0.3)
+0.002400038063697383
+```
+
+## 계획과 캐시
+
+계수와 바이어스는 $(n, \mathrm{dln}, \mu, \mathrm{offset}, q, \text{방향})$마다 계획 하나로 묶어요. Hamilton의 FFTLog가 `fhti` 표를 두는 것과 같은 생각이에요. 키의 실수는 비트로 견줘요. 계획은 전용 LRU 캐시에 두고 상한은 16개, 합 128 MB예요. 복소·실수 변환의 계획 캐시와 같은 구조예요. 찾기와 넣기는 뮤텍스 하나로 지키고, 계획을 만드는 동안은 GIL을 놓아요. 두 스레드가 같은 계획을 동시에 만들면 먼저 넣은 것을 써요. 계획은 키로만 정해지니 어느 것이나 같은 비트예요.
+
+계수는 $m$마다 따로 계산하니 풀에서 16개씩 나눠 만들어요. 바이어스는 4096개씩이에요. 어느 스레드가 어느 계수를 만들든 같은 값이라, 계획을 몇 스레드로 만들었는지는 결과를 바꾸지 않아요. 계획 하나의 메모리는 계수 $\lfloor n/2\rfloor + 1$개(16바이트)와 바이어스 두 표(각 $n$개, 8바이트)예요.
+
+```python
+>>> a = sd.asarray([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0])
+>>> F.fht(a, 0.5, 0.0)
+array([ 6.453675822966565,  8.893742114906132,  5.360556826185908,
+       1.3024401063404794, 3.8646087922044168, 2.2804571395397875,
+       3.4152583861006014, 4.4292608117561105], dtype=float64)
+>>> F.ifht(F.fht(a, 0.5, 0.0), 0.5, 0.0)
+array([0.9999999999999993,  2.000000000000001,                3.0,
+        4.000000000000001,  4.999999999999998,  6.000000000000001,
+                      7.0,                8.0], dtype=float64)
+```
+
+## 줄의 계산
+
+`fht_axis`는 다른 변환과 같은 구동기로 마지막 축의 줄들을 묶고 나눠요. 줄 하나는 위 그림의 다섯 단계예요. 바이어스가 없고 $n$이 짝수이고 입력이 연속한 float64면 실수 계획이 입력에서 바로 읽어요. 그 밖에는 모으면서 입력 바이어스를 곱하고(bool과 int64는 이때 float64로) 변환해요. 결과의 줄이 연속이면 뒤집기와 출력 바이어스를 결과의 줄에 바로 써요.
+
+```cpp
+    // csrc/fft/driver.cpp
+    auto line = [&](const double* src, double* y, double* t, double* work) {
+        double* const Y = t;  // the half spectrum, then its products
+        if (even) {
+            plan->r2c(src, Y, work);
+        } else {
+            double* const c = t + 2 * half;
+            double* const f = c + 2 * n;
+            for (int64_t i = 0; i < n; ++i) c[2 * i] = src[i], c[2 * i + 1] = 0.0;
+            plan->execute(c, f, work, false);
+            hermitian_part(f, Y, n, half);
+        }
+        run_chunks(half, [&](int64_t m0, int64_t m1) {
+            for (int64_t m = m0; m < m1; ++m) {  // the FMA product of fft/cfft.hpp
+                const float64x2_t v = vld1q_f64(Y + 2 * m);
+                const double ur = u[2 * m], ui = u[2 * m + 1];
+                const float64x2_t uneg = {-ui, ui};
+                vst1q_f64(Y + 2 * m, vfmaq_f64(vmulq_n_f64(v, ur), vextq_f64(v, v, 1), uneg));
+            }
+        });
+        if (even) {
+            plan->c2r<false>(Y, y, t + 2 * half, work);
+        } else {  // the Hermitian extension (Y_0's imaginary part dropped), one complex inverse
+            double* const e = t + 2 * half;
+            double* const f = e + 2 * n;
+            e[0] = Y[0], e[1] = 0.0;
+            for (int64_t i = 1; i < half; ++i) {
+                const double re = Y[2 * i], im = Y[2 * i + 1];
+                e[2 * i] = re, e[2 * i + 1] = im;
+                e[2 * (n - i)] = re, e[2 * (n - i) + 1] = -im;
+            }
+            plan->execute(e, f, work, true);
+            for (int64_t i = 0; i < n; ++i) y[i] = f[2 * i];
+        }
+    };
+```
+
+실수 변환은 [실수와 에르미트 변환](/internals/fft/real-hermitian/)의 홀짝 길 그대로예요. 한 줄의 비트는 그 줄의 값과 계획으로만 정해지니 배치, 레이아웃, 정수 입력, 스레드 수와 무관해요.
+
+```python
+>>> Ab = F.fht(sd.stack([a, a[::-1]]), 0.5, 0.0)
+>>> Ab[1].tolist() == F.fht(a[::-1], 0.5, 0.0).tolist()
+True
+>>> F.fht(sd.asarray([1, 2, 3, 4, 5, 6, 7, 8]), 0.5, 0.0).tolist() == F.fht(a, 0.5, 0.0).tolist()
+True
+```
+
+해석적으로 아는 변환과 견줘 볼 수 있어요. $\mu = 0$에서 $a(r) = r\,e^{-r^2/2}$의 한켈 변환은 $A(k) = k\,e^{-k^2/2}$예요. 출력 격자는 $k_j = e^{\mathrm{offset}}/r_{n-1-j}$예요.
+
+```python
+>>> r = sd.exp(sd.linspace(-4.0, 4.0, 64))
+>>> dln = 8.0 / 63
+>>> off = F.fhtoffset(dln, 0.0)
+>>> A = F.fht(r * sd.exp(-r * r / 2), dln, 0.0, offset=off)
+>>> k = sd.exp(off) / r[::-1]
+>>> float(sd.max(sd.abs(A - k * sd.exp(-k * k / 2))))
+0.010005591798826916
+```
+
+이 차이는 반올림이 아니라 64점의 이산화와 주기 연장에서 오는 것이에요. 계약이 재는 것은 같은 이산 정의를 정확히 계산한 값과의 거리예요.
+
+## 오차 한계
+
+$v = B_{\mathrm{in}}a$, $X = Fv$(실수 DFT의 반쪽), $y = R(U'X)$($U' = U/n$, $R$은 에르미트 반쪽 스펙트럼의 정규화 없는 역실수 DFT), $A = B_{\mathrm{out}}Py$($P$는 뒤집기)로 써요. $\lVert Fv\rVert_H = \sqrt n\,\lVert v\rVert$이고 $\lVert RW\rVert = \sqrt n\,\lVert W\rVert_H$라서 $\lVert y\rVert \le M_U\lVert v\rVert$예요($M_U = \max_m\lvert U_m\rvert$).
+
+계산의 각 단계가 더하는 오차는 이래요.
+
+1. 입력 바이어스: $\lVert\hat v - v\rVert \le e_1\lVert v\rVert$. $e_1$은 바이어스의 $u/2 + 2^{-59}$와 곱의 $u/2$예요.
+2. 실수 변환: $\lVert\hat X - F\hat v\rVert_H \le \varepsilon_F\sqrt n\,\lVert\hat v\rVert$. $\varepsilon_F$는 길이 $n$ 실수 변환의 계약 $(\kappa L(n) + c_0)u$예요(안쪽이 Bluestein이면 그 꼴).
+3. 계수의 곱: 칸마다 $(1 + d_m)$, $\lvert d_m\rvert \le u/2 + 2u + 2^{-59}$. 계수의 반올림과 FMA 복소 곱이에요.
+4. 역변환: $\lVert\hat y - R\hat W\rVert \le \varepsilon_F\sqrt n\,\lVert\hat W\rVert_H$.
+5. 출력 바이어스: 다시 $e_1$이에요.
+
+더하면
+
+$$
+\lVert\hat A - A\rVert \le \lVert b_{\mathrm{out}}\rVert_\infty\,M_U\,\lVert v\rVert\,\big(2\varepsilon_F + 2e_1 + \max_m\lvert d_m\rvert + O(u^2)\big)
+$$
+
+이고 $2e_1 + \max\lvert d_m\rvert \le 4.5u + 2^{-57}$이 $c_h = 8$ 안이에요. 바닥은 두 변환의 $\tau$($M_U\lVert b_{\mathrm{out}}\rVert_\infty$배와 $\lVert b_{\mathrm{out}}\rVert_\infty$배)와 세 번의 곱에서 생기는 언더플로(칸마다 $2^{-1075}$)를 모은 것이에요. 계수의 double-double 오차(로그와 지수에서 $2^{-96}$, 인자가 $2^{36}$ 아래인 정의역에서 $\lvert w\log w\rvert\cdot 2^{-100} \le 2^{-60}$)는 계수의 $u/2$ 옆에서 보이지 않아요.
+
+바이어스가 없으면 $M_U \le 1$, $B = I$라 한계가 $(2\varepsilon_F + 8)\,u\,\lVert a\rVert$, 입력 노름의 상대오차예요. 계수의 위상을 double로 만들면 3단계의 $d_m$이 수백 $u$가 되어 이 셈이 서지 않아요. 잰 값은 [정확도와 성능](/internals/fft/accuracy-performance/)에 있어요.

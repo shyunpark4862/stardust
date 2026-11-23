@@ -1,0 +1,373 @@
+---
+kind: function
+title: 모형 비교
+names: [CompareFTestResult, CompareLRTestResult]
+group: 검정과 모형 비교
+order: 2
+signatures:
+  - "big.compare_f_test(small, /)"
+  - "big.compare_lr_test(small, /)"
+summary: 같은 자료에 맞춘 두 모형, 곧 열을 모두 쓴 큰 모형과 그 가운데 몇 개만 쓴 작은 모형을 견줘서 "빠진 열들이 정말 필요한가"를 F 검정(compare_f_test)이나 우도비 검정(compare_lr_test)으로 따져요. 큰 모형의 결과에서 부르고 작은 모형을 인자로 줘요.
+params:
+  - name: small
+    type: 같은 종류의 결과 객체
+    kind: positional-only
+    desc: "견줄 작은 모형. 부르는 결과(큰 모형)와 같은 함수로, 같은 y·같은 행·같은 가중치로 적합했고, 열이 모두 큰 모형의 열 공간 안에 있어야 해요. 배치 모양도 같아야 해요."
+returns:
+  type: CompareFTestResult, CompareLRTestResult
+  desc: "compare_f_test()는 fvalue, pvalue, df_num(빠진 계수의 수), df_denom(큰 모형의 df_resid)을 담은 CompareFTestResult예요. compare_lr_test()는 statistic(우도비 통계량), pvalue, df를 담은 CompareLRTestResult예요. 둘 다 statsmodels처럼 앞의 세 값으로 풀리고 summary()가 있어요. 배치면 필드가 배치 모양의 배열이에요."
+raises:
+  - type: TypeError
+    desc: small이 부르는 결과와 다른 종류의 결과일 때(OLSResult에 WLSResult를 줬을 때 등), small을 키워드로 줬을 때.
+  - type: ValueError
+    desc: 두 모형의 배치 모양이 다를 때, 적합한 자료(y, 쓰인 행, 가중치, GLM의 분포족·링크·척도 설정 등)가 다를 때, 작은 모형의 열이 큰 모형의 열 공간 밖에 있을 때(내포가 아닐 때), 어느 한쪽이 강건 공분산(cov_type)으로 적합됐을 때, 척도가 고정인 GLM(이항, 포아송)에 compare_f_test()를 불렀을 때.
+seeAlso: [hypothesis-tests, anova, results, ols, glm]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+## 무엇을 하나요
+
+모형에 열을 더하면 잔차의 제곱합은 줄거나 그대로예요. 쓸모없는 열이라도 우연히 잔차의 일부를 설명하기 때문이에요. 그래서 "큰 모형의 잔차가 더 작다"만으로는 열을 더할 까닭이 되지 않아요. 물어야 할 것은 "줄어든 양이 우연으로 보기에는 너무 큰가"예요.
+
+모형 비교는 이 질문을 두 적합으로 답해요.
+
+1. 열을 모두 쓴 **큰 모형**을 적합해요.
+2. 빼도 되는지 궁금한 열을 뺀 **작은 모형**을 적합해요.
+3. `big.compare_f_test(small)` 또는 `big.compare_lr_test(small)`로 견줘요.
+
+귀무가설은 "작은 모형으로 충분하다", 곧 큰 모형에만 있는 계수가 모두 0이라는 거예요. p값이 작으면 빠진 열들 가운데 적어도 하나는 필요하다는 근거예요.
+
+| 메서드 | 통계량 | 분포 | 쓰는 곳 |
+|---|---|---|---|
+| `compare_f_test` | 잔차 제곱합(GLM은 편차)이 줄어든 양을 척도로 나눈 F | F 분포 | 선형 모형, 척도를 추정하는 GLM |
+| `compare_lr_test` | 두 모형의 로그우도 차이의 −2배 | 카이제곱 분포 | 선형 모형, 모든 GLM |
+
+[`ols`](/api/regression/ols/), [`wls`](/api/regression/wls/), [`gls`](/api/regression/gls/), [`glm`](/api/regression/glm/)의 결과에 있는 메서드예요. 모형 둘 이상을 한 표로 견주려면 [`anova`](/api/regression/anova/)를, 모형을 다시 적합하지 않고 계수로 같은 질문을 하려면 [`wald_test`](/api/regression/hypothesis-tests/#wald_test-여러-줄을-한꺼번에)를 보세요.
+
+<Reference />
+
+## 신문과 SNS 광고를 빼도 될까요
+
+[선형 가설 검정](/api/regression/hypothesis-tests/)과 같은 광고 데이터예요. 30주 동안의 TV, 라디오, 신문, SNS 광고비와 매출이고, 매출은 TV와 라디오에만 기대도록 만들었어요.
+
+```python
+>>> import stardust as sd
+>>> rng = sd.random.default_rng(6)
+>>> n = 30
+>>> U = sd.stats.Uniform(a=0.0, b=10.0)
+>>> tv, radio, paper, sns = (U.sample(n, rng=rng) for _ in range(4))
+>>> sales = 10.0 + 3.0 * tv + 2.0 * radio + sd.stats.Normal(sigma=4.0).sample(n, rng=rng)
+>>> df = sd.frame.DataFrame({'tv': tv, 'radio': radio, 'paper': paper, 'sns': sns, 'sales': sales})
+>>> big = sd.regression.ols(df['sales'], df[['tv', 'radio', 'paper', 'sns']])
+>>> small = sd.regression.ols(df['sales'], df[['tv', 'radio']])
+>>> big.ssr, small.ssr
+(254.72664603696074, 292.2644350367015)
+```
+
+신문과 SNS를 빼면 잔차 제곱합이 254.7에서 292.3으로 늘어요. 이 차이가 우연인지 봐요.
+
+### compare_f_test: F 검정
+
+$$
+F = \frac{(\mathrm{SSR}_s - \mathrm{SSR}_b)/(r_b - r_s)}{\mathrm{SSR}_b/\nu_b} \sim F(r_b - r_s,\ \nu_b)
+$$
+
+$\mathrm{SSR}$은 잔차 제곱합(`ssr`), $r$은 쓰인 계수의 수(`rank`), $\nu_b$는 큰 모형의 `df_resid`예요. 분자는 빠진 계수 하나가 맡던 제곱합의 평균이고, 분모는 큰 모형이 어림한 오차 분산(`scale`)이에요. 빠진 열들이 쓸모없으면 둘이 비슷해서 F가 1 근처예요.
+
+```python
+>>> f = big.compare_f_test(small)
+>>> f
+CompareFTestResult(fvalue=1.84206, pvalue=0.179362, df_num=2, df_denom=25)
+>>> f.df_denom
+25.0
+```
+
+F = 1.84는 F(2, 25) 분포에서 흔히 나오는 값이라 p값이 0.18이에요. 신문과 SNS를 빼도 데이터와 어긋나지 않아요.
+
+<Fig caption="F(2, 25) 분포의 밀도와 관측한 F = 1.84(세로선). p값 0.18은 세로선 오른쪽의 넓이예요.">
+  <Plot
+    curves={[
+      { f: (x) => Math.pow(25 / (25 + 2 * x), 13.5), label: 'F(2, 25)' },
+      { points: [[1.842, 0], [1.842, 0.24]], label: '관측한 F', dashed: true },
+    ]}
+    domain={[0, 6]}
+    range={[0, 1.05]}
+    xTicks={[
+      { v: 1, label: '1' },
+      { v: 2, label: '2' },
+      { v: 3, label: '3' },
+      { v: 4, label: '4' },
+      { v: 5, label: '5' },
+    ]}
+    yTicks={[
+      { v: 0.5, label: '0.5' },
+      { v: 1, label: '1' },
+    ]}
+  />
+</Fig>
+
+이 F는 큰 모형에서 "신문과 SNS의 계수가 모두 0"을 묻는 [`wald_test`](/api/regression/hypothesis-tests/)와 같은 값이에요. 고전형 공분산의 선형 모형에서는 두 길이 같은 검정이에요. 모형을 둘 적합해 두었으면 `compare_f_test`, 큰 모형 하나만 있으면 `wald_test`가 편해요.
+
+```python
+>>> big.wald_test([[0, 0, 0, 1, 0], [0, 0, 0, 0, 1]])
+WaldTestResult(statistic=1.84206, pvalue=0.179362, distribution='F', df_num=2, df_denom=25)
+```
+
+### compare_lr_test: 우도비 검정
+
+$$
+\mathrm{LR} = -2\,(\ell_s - \ell_b) \sim \chi^2(r_b - r_s)
+$$
+
+$\ell$은 로그우도(`llf`)예요. 큰 모형의 우도가 작은 모형보다 얼마나 큰지를 재요. 데이터가 많을 때 카이제곱 분포에 가까워지는 검정이에요.
+
+```python
+>>> lr = big.compare_lr_test(small)
+>>> lr
+CompareLRTestResult(statistic=4.12404, pvalue=0.127197, df=2)
+>>> -2.0 * (small.llf - big.llf)
+4.1240399413813975
+```
+
+선형 모형에서는 두 검정이 같은 정보($\mathrm{SSR}_s / \mathrm{SSR}_b$)를 써요. 오차가 정규분포면 F 검정의 분포는 데이터가 적어도 정확하고, 우도비 검정은 데이터가 많을 때의 근사예요. 그래서 선형 모형에서는 `compare_f_test`를 먼저 써요. 위에서 우도비의 p값(0.13)이 F의 p값(0.18)보다 작아요. 행이 적으면 우도비의 카이제곱 근사가 귀무가설을 실제보다 쉽게 버리는 쪽으로 기울어요.
+
+### 풀어서 받기
+
+두 결과는 statsmodels의 튜플처럼 세 값으로 풀려요. 셋째 값은 빠진 계수의 수예요.
+
+```python
+>>> fvalue, pvalue, df_num = big.compare_f_test(small)
+>>> fvalue, pvalue, df_num
+(1.8420623432880894, 0.17936185532426907, 2.0)
+>>> stat, pv, dof = big.compare_lr_test(small)
+>>> dof
+2.0
+```
+
+## 작은 모형은 큰 모형 안에 있어야 해요
+
+두 검정은 작은 모형이 큰 모형의 특별한 경우일 때, 곧 **내포**일 때만 뜻이 있어요. 작은 모형의 열이 모두 큰 모형의 열이거나, 큰 모형의 열을 더하고 곱해 만들 수 있으면(열 공간 안에 있으면) 내포예요. 열의 이름이 아니라 값으로 확인해요.
+
+TV와 라디오의 효과가 같다면 두 광고비를 더한 `tv + radio` 열 하나로 충분해요. 이 모형은 열 이름이 다르지만 큰 모형의 열 공간 안에 있어서 견줄 수 있어요. 절편 없는 모형도 마찬가지예요.
+
+```python
+>>> total = sd.regression.ols(df['sales'], tv + radio)
+>>> big.compare_f_test(total)
+CompareFTestResult(fvalue=3.32266, pvalue=0.0359243, df_num=3, df_denom=25)
+>>> no_const = sd.regression.ols(df['sales'], df[['tv', 'radio']], intercept=False)
+>>> big.compare_f_test(no_const).df_num
+3.0
+```
+
+`total`과의 비교는 "TV와 라디오의 효과가 같고 신문과 SNS는 0"을 함께 묻는 검정이에요. p값 0.036이라 이 셋을 함께 받아들이기는 어려워요. TV와 라디오의 효과가 다르기 때문이에요([`t_test`의 예](/api/regression/hypothesis-tests/#t_test-줄마다-하나씩)).
+
+두 모형이 서로 다른 열을 쓰면 내포가 아니라서 `ValueError`예요. 큰 모형과 작은 모형을 바꿔 불러도 `ValueError`이고, 메시지가 큰 모형에서 부르라고 알려 줘요.
+
+```python
+>>> a = sd.regression.ols(df['sales'], df[['tv', 'radio', 'paper']])
+>>> a.compare_f_test(sd.regression.ols(df['sales'], df[['tv', 'sns']]))
+Traceback (most recent call last):
+    ...
+ValueError: compare_f_test(): the models are not nested: 'sns' of the smaller model is not in the span of the larger model's columns (call the comparison on the larger model, with the smaller one as its argument)
+>>> small.compare_f_test(big)
+Traceback (most recent call last):
+    ...
+ValueError: compare_f_test(): the models are not nested: 'paper' of the smaller model is not in the span of the larger model's columns (call the comparison on the larger model, with the smaller one as its argument)
+```
+
+## 같은 자료여야 해요
+
+두 모형은 같은 `y`, 같은 행, 같은 가중치로 적합한 것이어야 해요. 행이 다르면 잔차 제곱합을 견주는 것이 뜻이 없기 때문이에요. 적합할 때 복사해 둔 자료를 비트까지 견줘서, 하나라도 다르면 `ValueError`예요.
+
+흔히 걸리는 경우는 `nan_policy='omit'`이에요. 큰 모형의 열에만 NaN이 있으면 큰 모형은 그 행을 빼고 적합하지만, 작은 모형은 그 행을 써요. 두 모형이 다른 행을 쓰게 돼요.
+
+```python
+>>> paper2 = paper.copy()
+>>> paper2[3] = float('nan')
+>>> X4 = sd.stack([tv, radio, paper2, sns], axis=-1)
+>>> big2 = sd.regression.ols(sales, X4, nan_policy='omit')
+>>> small2 = sd.regression.ols(sales, sd.stack([tv, radio], axis=-1))
+>>> big2.nobs, small2.nobs
+(29.0, 30.0)
+>>> big2.compare_f_test(small2)
+Traceback (most recent call last):
+    ...
+ValueError: compare_f_test(): the models must be fitted to the same data (y, the rows used and their weights)
+```
+
+작은 모형도 같은 행으로 적합하면 돼요. 큰 모형에서 빠진 행의 `y`를 NaN으로 바꿔 작은 모형을 `'omit'`으로 적합하면 두 모형이 같은 행을 써요.
+
+```python
+>>> y2 = sd.where(sd.isnan(paper2), float('nan'), sales)
+>>> small3 = sd.regression.ols(y2, sd.stack([tv, radio], axis=-1), nan_policy='omit')
+>>> big2.compare_f_test(small3)
+CompareFTestResult(fvalue=1.78952, pvalue=0.188619, df_num=2, df_denom=24)
+```
+
+다른 종류의 결과끼리(예를 들어 `OLSResult`와 `WLSResult`)는 `TypeError`이고, 배치 모양이 다르면 `ValueError`예요.
+
+```python
+>>> w = sd.regression.wls(df['sales'], df[['tv', 'radio']], weights=sd.ones(n))
+>>> big.compare_f_test(w)
+Traceback (most recent call last):
+    ...
+TypeError: compare_f_test(): the model compared must be the same kind of result as this one (OLSResult), not WLSResult
+```
+
+## GLM의 비교
+
+[`glm`](/api/regression/glm/)에서는 잔차 제곱합 대신 **편차**(`deviance`)를 써요.
+
+- `compare_lr_test`: $-2(\ell_s - \ell_b)$를 카이제곱 분포로 재요. 척도가 고정인 분포족(이항, 포아송)에서는 두 모형의 편차 차이와 같아요.
+- `compare_f_test`: $\dfrac{(D_s - D_b)/(r_b - r_s)}{\hat\phi_b}$를 F 분포로 재요. $D$는 편차, $\hat\phi_b$는 큰 모형의 척도(`scale`)예요. 척도를 추정하는 모형(기본값의 정규·감마, `scale='X2'`·`'dev'`를 준 이항·포아송)에만 써요.
+
+이항 분포의 로지스틱 회귀에서 나이(`age`)가 필요한지 볼게요.
+
+```python
+>>> rng = sd.random.default_rng(3)
+>>> dose = sd.stats.Uniform(a=0.0, b=4.0).sample(100, rng=rng)
+>>> age = sd.stats.Uniform(a=20.0, b=60.0).sample(100, rng=rng)
+>>> p = 1.0 / (1.0 + sd.exp(-(-2.0 + 1.0 * dose)))
+>>> yb = (rng.random(100) < p) * 1.0
+>>> gb = sd.regression.glm(yb, sd.stack([dose, age], axis=-1), family='binomial')
+>>> gs = sd.regression.glm(yb, dose, family='binomial')
+>>> gb.compare_lr_test(gs)
+CompareLRTestResult(statistic=0.0268217, pvalue=0.86991, df=1)
+>>> gs.deviance - gb.deviance
+0.026821736733779744
+```
+
+이항 분포는 척도가 1로 고정이라, 편차의 F 검정은 따로 없고 우도비 검정이 그 자리를 맡아요. `compare_f_test`를 부르면 에러가 그렇게 알려 줘요.
+
+```python
+>>> gb.compare_f_test(gs)
+Traceback (most recent call last):
+    ...
+ValueError: compare_f_test(): the binomial model's scale is fixed, so the F test of the deviance is the likelihood ratio test: use compare_lr_test()
+```
+
+감마 분포처럼 척도를 추정하는 분포족에서는 두 검정을 다 쓸 수 있어요. F는 척도를 어림하는 불확실성까지 반영해서, 데이터가 적을 때 더 믿을 만해요.
+
+```python
+>>> rng = sd.random.default_rng(5)
+>>> x1 = sd.stats.Uniform(a=0.0, b=2.0).sample(60, rng=rng)
+>>> x2 = sd.stats.Uniform(a=0.0, b=2.0).sample(60, rng=rng)
+>>> cost = sd.stats.Gamma(a=4.0).sample(60, rng=rng) * sd.exp(0.5 + 0.8 * x1) / 4.0
+>>> cb = sd.regression.glm(cost, sd.stack([x1, x2], axis=-1), family='gamma', link='log')
+>>> cs = sd.regression.glm(cost, x1, family='gamma', link='log')
+>>> cb.compare_f_test(cs)
+CompareFTestResult(fvalue=0.355194, pvalue=0.553547, df_num=1, df_denom=57)
+>>> cb.compare_lr_test(cs)
+CompareLRTestResult(statistic=0.354705, pvalue=0.551462, df=1)
+```
+
+절편만의 모형과 견준 우도비는 결과의 `llr`, `llr_pvalue`와 같아요.
+
+```python
+>>> g0 = sd.regression.glm(yb, sd.stack([dose, age], axis=-1)[:, :0], family='binomial')
+>>> gb.compare_lr_test(g0)
+CompareLRTestResult(statistic=34.2732, pvalue=3.61131e-08, df=2)
+>>> gb.llr, gb.llr_pvalue
+(34.27321886412231, 3.611312616342092e-08)
+```
+
+## 강건 공분산과는 쓰지 않아요
+
+두 검정은 오차의 분산이 고르다고 보고 잔차 제곱합과 우도를 견줘요. `cov_type='HC3'` 같은 [강건 표준오차](/api/regression/covariance/)는 그 가정을 놓으려고 쓰는 것인데, 두 검정은 그 공분산을 쓰지 않아요. 그래서 어느 한쪽이라도 강건 공분산으로 적합했으면 `ValueError`이고, 메시지가 그 공분산을 쓰는 [`wald_test`](/api/regression/hypothesis-tests/#공분산도-결과의-것)를 가리켜요.
+
+```python
+>>> hb = sd.regression.ols(df['sales'], df[['tv', 'radio', 'paper', 'sns']], cov_type='HC3')
+>>> hb.compare_f_test(small)
+Traceback (most recent call last):
+    ...
+ValueError: compare_f_test(): a model has a robust covariance (cov_type='HC3'), which the F and likelihood ratio comparisons do not use; test the coefficients with wald_test()
+>>> hb.wald_test([[0, 0, 0, 1, 0], [0, 0, 0, 0, 1]]).pvalue
+0.08508927011112655
+```
+
+## 특수한 경우
+
+- **계수 수가 같을 때**(`rank`가 같을 때): 빠진 계수가 없어서 검정할 것이 없어요. `df_num`이 0이고 통계량과 p값이 NaN이에요. 같은 모형끼리 견줘도 그래요.
+- **큰 모형이 완전 적합일 때**: 분모의 잔차 제곱합이 0이라 통계량과 p값이 NaN이에요.
+- **배치**: 회귀마다 견줘서 필드가 배치 모양의 배열이에요. 두 결과의 배치 모양이 같아야 해요.
+
+```python
+>>> big.compare_f_test(big)
+CompareFTestResult(fvalue=nan, pvalue=nan, df_num=0, df_denom=25)
+>>> x = sd.arange(6.0)
+>>> pb = sd.regression.ols(1.0 + 2.0 * x, sd.stack([x, x * x], axis=-1))
+>>> pb.compare_f_test(sd.regression.ols(1.0 + 2.0 * x, x))
+CompareFTestResult(fvalue=nan, pvalue=nan, df_num=1, df_denom=3)
+>>> Y = sd.stack([sales, 0.5 * sales + paper], axis=0)
+>>> bb = sd.regression.ols(Y, sd.stack([tv, radio, paper, sns], axis=-1))
+>>> bs = sd.regression.ols(Y, sd.stack([tv, radio], axis=-1))
+>>> cf = bb.compare_f_test(bs)
+>>> cf
+CompareFTestResult(batch shape (2,))
+>>> cf.pvalue
+array([  0.17936185532426907, 3.049994731658558e-08], dtype=float64)
+```
+
+둘째 회귀는 신문 광고가 반응에 들어간 자료라 p값이 아주 작아요.
+
+## 결과 클래스
+
+`CompareFTestResult`와 `CompareLRTestResult`는 `sd.regression`에 있는 결과 클래스예요. 필드는 읽기 전용이고 앞의 세 필드로 풀려요.
+
+| 클래스 | 필드 | 풀면 |
+|---|---|---|
+| `CompareFTestResult` | `fvalue`, `pvalue`, `df_num`, `df_denom` | `fvalue, pvalue, df_num` |
+| `CompareLRTestResult` | `statistic`, `pvalue`, `df` | `statistic, pvalue, df` |
+
+`repr`는 필드를 유효숫자 여섯 자리로 한 줄에 보여 주고, 배치는 배치 모양만 적어요. `summary()`(인자 없음)는 [회귀 결과](/api/regression/results/)와 같은 꼴의 상자로, 제목이 검정의 이름이고 머리 왼쪽에 통계량, p값, 자유도, 오른쪽에 관측 수가 있어요. 배치면 회귀마다 한 줄인 표예요. 자유도는 모든 회귀가 같으면 머리에 한 번 적고, 회귀마다 다르면 표의 열(`df_num`, `df_denom`)로 적어요. 관측 수도 모든 회귀가 같으면 머리에 적고, 다르면 적지 않아요.
+
+```python
+>>> print(f.summary())
+                           F test of nested models
+==============================================================================
+F-statistic:                     1.842  No. Observations:                   30
+P-value:                         0.179
+Df Num:                              2
+Df Denom:                           25
+==============================================================================
+>>> print(cf.summary())
+                           F test of nested models
+==============================================================================
+Df Num:                              2  Batch shape:                      (2,)
+Df Denom:                           25  No. Observations:                   30
+==============================================================================
+               fvalue     pvalue
+------------------------------------------------------------------------------
+[0]             1.842      0.179
+[1]            37.408      0.000
+==============================================================================
+```
+
+```python
+>>> isinstance(f, sd.regression.CompareFTestResult), isinstance(lr, sd.regression.CompareLRTestResult)
+(True, True)
+>>> f[0], len(f)
+(1.8420623432880894, 3)
+>>> f.fvalue = 0.0
+Traceback (most recent call last):
+    ...
+AttributeError: property 'fvalue' of 'CompareFTestResult' object has no setter
+```
+
+## statsmodels·R을 아는 분께
+
+statsmodels 0.15.0, R 4.6.2와 lmtest 0.9.40 기준이에요.
+
+| sd | statsmodels | R |
+|---|---|---|
+| `big.compare_f_test(small)` | `big.compare_f_test(small)` | `anova(small, big)`, `anova(small, big, test = "F")`(glm) |
+| `big.compare_lr_test(small)` | `big.compare_lr_test(small)` | `lmtest::lrtest(small, big)`, `anova(small, big, test = "Chisq")`(glm) |
+
+- 위 예의 값은 statsmodels와 반올림 차이 안에서 같아요. statsmodels의 `compare_f_test`는 `(f_value, p_value, df_diff)` 튜플이고, sd는 같은 셋으로 풀리는 결과 클래스예요. 자유도의 이름은 `df_num`이고 분모 자유도 `df_denom`도 들어 있어요. `compare_lr_test`의 셋째 필드는 statsmodels의 `df_diff` 대신 `df`예요.
+- statsmodels는 두 모형이 내포인지, 같은 자료인지 확인하지 않아요. R의 `anova`와 `lrtest`는 행 수가 같은지만 보고(다르면 에러) 내포인지는 보지 않아요. 그래서 내포가 아닌 두 모형이나, 행 수는 같지만 `y`가 다른 두 모형도 숫자를 내요. sd는 `ValueError`예요.
+- statsmodels는 강건 공분산의 결과도 경고만 하고 계산해요. sd는 `ValueError`이고 `wald_test`를 가리켜요.
+- statsmodels의 GLM 결과에는 `compare_f_test`, `compare_lr_test`가 없어요. sd는 `glm` 결과에도 있어요.
+- 감마 GLM의 우도비는 R `lmtest::lrtest`와 달라요. sd의 `llf`는 statsmodels처럼 Pearson 척도로 구한 값이고, R의 `logLik`은 편차를 행 수로 나눈 척도로 구해요. 위의 감마 예에서 sd는 LR = 0.355(p = 0.551), R은 0.414(p = 0.520)예요. 편차의 F 검정은 R `anova(cs, cb, test = "F")`와 같아요(F = 0.355, p = 0.554).
+- 모형 셋 이상을 이웃끼리 견주는 표는 [`anova`](/api/regression/anova/)예요.

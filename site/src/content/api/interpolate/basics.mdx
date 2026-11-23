@@ -1,0 +1,466 @@
+---
+kind: concept
+title: 보간의 기본
+group: 기본 개념
+order: 1
+summary: sd.interpolate가 하는 일과 자료에 맞는 보간 방법을 고르는 법을 설명해요. 보간 객체를 만들어 여러 번 부르는 쓰임, 받는 입력과 dtype, 여러 열을 한 번에 다루는 axis, 자료 범위 밖을 정하는 extrapolate, 스레드 수와 상관없이 같은 결과와 서로 같은 비트를 내는 길들, 에러의 꼴처럼 영역의 모든 이름이 함께 따르는 규칙도 여기에 있어요.
+seeAlso: [CubicSpline, PchipInterpolator, Akima1DInterpolator, PPoly, make_interp_spline, BSpline, RegularGridInterpolator, RBFInterpolator, BarycentricInterpolator, AAA]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import PlaneFig from '../../../components/fig/PlaneFig.astro';
+
+export const bPts = [[0, 1], [1, 1.1], [2, 1], [3, 3], [4, 3.1], [5, 3], [6, 1.5]];
+export const bLin = [[0, 1], [1, 1.1], [2, 1], [3, 3], [4, 3.1], [5, 3], [6, 1.5]];
+export const bSpl = [[0, 1], [0.04167, 1.066], [0.08333, 1.124], [0.125, 1.175], [0.1667, 1.219], [0.2083, 1.256], [0.25, 1.287], [0.2917, 1.311], [0.3333, 1.33], [0.375, 1.343], [0.4167, 1.351], [0.4583, 1.354], [0.5, 1.353], [0.5417, 1.347], [0.5833, 1.338], [0.625, 1.325], [0.6667, 1.308], [0.7083, 1.289], [0.75, 1.267], [0.7917, 1.243], [0.8333, 1.217], [0.875, 1.19], [0.9167, 1.161], [0.9583, 1.131], [1, 1.1], [1.042, 1.069], [1.083, 1.038], [1.125, 1.007], [1.167, 0.9771], [1.208, 0.948], [1.25, 0.9201], [1.292, 0.8937], [1.333, 0.8693], [1.375, 0.8471], [1.417, 0.8275], [1.458, 0.8107], [1.5, 0.7971], [1.542, 0.787], [1.583, 0.7808], [1.625, 0.7787], [1.667, 0.7811], [1.708, 0.7883], [1.75, 0.8006], [1.792, 0.8183], [1.833, 0.8419], [1.875, 0.8715], [1.917, 0.9075], [1.958, 0.9502], [2, 1], [2.042, 1.057], [2.083, 1.121], [2.125, 1.191], [2.167, 1.266], [2.208, 1.347], [2.25, 1.431], [2.292, 1.52], [2.333, 1.611], [2.375, 1.705], [2.417, 1.801], [2.458, 1.898], [2.5, 1.996], [2.542, 2.094], [2.583, 2.191], [2.625, 2.288], [2.667, 2.382], [2.708, 2.474], [2.75, 2.563], [2.792, 2.648], [2.833, 2.73], [2.875, 2.806], [2.917, 2.877], [2.958, 2.942], [3, 3], [3.042, 3.051], [3.083, 3.095], [3.125, 3.133], [3.167, 3.165], [3.208, 3.191], [3.25, 3.211], [3.292, 3.227], [3.333, 3.238], [3.375, 3.244], [3.417, 3.247], [3.458, 3.247], [3.5, 3.243], [3.542, 3.237], [3.583, 3.228], [3.625, 3.218], [3.667, 3.206], [3.708, 3.193], [3.75, 3.179], [3.792, 3.164], [3.833, 3.15], [3.875, 3.136], [3.917, 3.123], [3.958, 3.111], [4, 3.1], [4.042, 3.091], [4.083, 3.084], [4.125, 3.079], [4.167, 3.075], [4.208, 3.072], [4.25, 3.07], [4.292, 3.069], [4.333, 3.068], [4.375, 3.068], [4.417, 3.068], [4.458, 3.069], [4.5, 3.069], [4.542, 3.069], [4.583, 3.069], [4.625, 3.067], [4.667, 3.066], [4.708, 3.063], [4.75, 3.059], [4.792, 3.053], [4.833, 3.046], [4.875, 3.038], [4.917, 3.027], [4.958, 3.015], [5, 3], [5.042, 2.983], [5.083, 2.963], [5.125, 2.94], [5.167, 2.915], [5.208, 2.886], [5.25, 2.854], [5.292, 2.818], [5.333, 2.779], [5.375, 2.736], [5.417, 2.688], [5.458, 2.637], [5.5, 2.581], [5.542, 2.521], [5.583, 2.455], [5.625, 2.385], [5.667, 2.31], [5.708, 2.229], [5.75, 2.143], [5.792, 2.051], [5.833, 1.953], [5.875, 1.849], [5.917, 1.739], [5.958, 1.623], [6, 1.5]];
+export const bPch = [[0, 1], [0.04167, 1.008], [0.08333, 1.016], [0.125, 1.023], [0.1667, 1.031], [0.2083, 1.037], [0.25, 1.044], [0.2917, 1.05], [0.3333, 1.056], [0.375, 1.061], [0.4167, 1.066], [0.4583, 1.071], [0.5, 1.075], [0.5417, 1.079], [0.5833, 1.083], [0.625, 1.086], [0.6667, 1.089], [0.7083, 1.091], [0.75, 1.094], [0.7917, 1.096], [0.8333, 1.097], [0.875, 1.098], [0.9167, 1.099], [0.9583, 1.1], [1, 1.1], [1.042, 1.099], [1.083, 1.098], [1.125, 1.096], [1.167, 1.093], [1.208, 1.089], [1.25, 1.084], [1.292, 1.079], [1.333, 1.074], [1.375, 1.068], [1.417, 1.062], [1.458, 1.056], [1.5, 1.05], [1.542, 1.044], [1.583, 1.038], [1.625, 1.032], [1.667, 1.026], [1.708, 1.021], [1.75, 1.016], [1.792, 1.011], [1.833, 1.007], [1.875, 1.004], [1.917, 1.002], [1.958, 1.001], [2, 1], [2.042, 1.01], [2.083, 1.038], [2.125, 1.083], [2.167, 1.144], [2.208, 1.218], [2.25, 1.304], [2.292, 1.4], [2.333, 1.504], [2.375, 1.616], [2.417, 1.733], [2.458, 1.854], [2.5, 1.976], [2.542, 2.099], [2.583, 2.221], [2.625, 2.339], [2.667, 2.453], [2.708, 2.561], [2.75, 2.661], [2.792, 2.751], [2.833, 2.83], [2.875, 2.896], [2.917, 2.947], [2.958, 2.983], [3, 3], [3.042, 3.008], [3.083, 3.015], [3.125, 3.023], [3.167, 3.029], [3.208, 3.036], [3.25, 3.042], [3.292, 3.048], [3.333, 3.054], [3.375, 3.06], [3.417, 3.065], [3.458, 3.069], [3.5, 3.074], [3.542, 3.078], [3.583, 3.082], [3.625, 3.085], [3.667, 3.088], [3.708, 3.091], [3.75, 3.093], [3.792, 3.095], [3.833, 3.097], [3.875, 3.098], [3.917, 3.099], [3.958, 3.1], [4, 3.1], [4.042, 3.1], [4.083, 3.099], [4.125, 3.098], [4.167, 3.097], [4.208, 3.095], [4.25, 3.093], [4.292, 3.091], [4.333, 3.088], [4.375, 3.085], [4.417, 3.081], [4.458, 3.078], [4.5, 3.073], [4.542, 3.069], [4.583, 3.064], [4.625, 3.059], [4.667, 3.054], [4.708, 3.048], [4.75, 3.042], [4.792, 3.036], [4.833, 3.029], [4.875, 3.022], [4.917, 3.015], [4.958, 3.008], [5, 3], [5.042, 2.989], [5.083, 2.971], [5.125, 2.948], [5.167, 2.918], [5.208, 2.883], [5.25, 2.842], [5.292, 2.797], [5.333, 2.746], [5.375, 2.691], [5.417, 2.632], [5.458, 2.569], [5.5, 2.502], [5.542, 2.431], [5.583, 2.357], [5.625, 2.28], [5.667, 2.201], [5.708, 2.119], [5.75, 2.035], [5.792, 1.949], [5.833, 1.861], [5.875, 1.772], [5.917, 1.682], [5.958, 1.591], [6, 1.5]];
+
+## 한눈에 보기
+
+자료는 띄엄띄엄 있어요. 한 시간마다 잰 기온, 몇 군데 깊이에서 잰 수온, 표에 실린 몇 개의 값 같은 것이에요. **보간**은 그 점들을 모두 지나는 함수를 만들어, 재지 않은 자리의 값을 읽게 해 줘요. 점 사이를 무엇으로 잇느냐에 따라 방법이 갈려요. 곧은 선으로 이을 수도 있고, 꺾이는 데 없이 매끄러운 곡선으로 이을 수도 있어요.
+
+`sd.interpolate`의 보간은 대부분 **객체**예요. 자료로 객체를 한 번 만들고, 그 객체를 함수처럼 불러 원하는 자리의 값을 읽어요.
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+>>> y = sd.asarray([1.0, 1.1, 1.0, 3.0, 3.1, 3.0, 1.5])
+>>> spline = sd.interpolate.CubicSpline(x, y)
+>>> spline
+CubicSpline(degree=3, pieces=6, extrapolate=True)
+>>> spline(2.5)
+1.996205357142857
+>>> spline([0.0, 0.5, 1.0])
+array([               1.0, 1.3529017857142858,                1.1], dtype=float64)
+```
+
+[`CubicSpline`](/api/interpolate/CubicSpline/)은 점 사이를 3차 다항식 조각으로 이어 기울기와 굽은 정도까지 매끄럽게 이어지는 곡선을 만들어요. 자료의 자리(0.0, 1.0)를 물으면 자료의 값이 나와요. 보간은 자료를 **정확히 지나요**. 자료에 잡음이 있어 점들을 대강 따라가는 곡선이 필요하다면 그것은 보간이 아니라 맞추기(회귀, 평활)의 일이에요.
+
+같은 자료에 방법을 바꿔 보면 점 사이의 값이 달라져요.
+
+```python
+>>> sd.interp(2.5, x, y)                                  # 곧은 선
+2.0
+>>> sd.interpolate.PchipInterpolator(x, y)(2.5)           # 모양을 지키는 3차 곡선
+1.9761904761904763
+>>> sd.interpolate.Akima1DInterpolator(x, y)(2.5)         # 가까운 점만 보는 3차 곡선
+1.9793478260869566
+```
+
+<Fig caption="같은 일곱 점을 세 방법으로 이은 모습. 꺾은선은 점에서 꺾이고, CubicSpline은 가장 매끄럽지만 값이 갑자기 뛰는 곳 둘레에서 자료에 없는 봉우리와 골을 만들어요. PCHIP은 자료가 오르는 곳에서만 오르고 평평한 곳을 넘지 않아요.">
+  <PlaneFig
+    label="일곱 자료 점과 그 점을 지나는 꺾은선, CubicSpline 곡선, PCHIP 곡선"
+    domain={[0, 6]}
+    range={[0.2, 3.8]}
+    equal={false}
+    width={600}
+    height={320}
+    xTicks={[0, 1, 2, 3, 4, 5, 6]}
+    yTicks={[1, 2, 3]}
+    layers={[
+      { kind: 'line', pts: bLin, tone: 'faint', width: 1.4 },
+      { kind: 'line', pts: bSpl, tone: 'base', dashed: true, width: 1.6 },
+      { kind: 'line', pts: bPch, tone: 'main', width: 1.8 },
+      { kind: 'points', pts: bPts, tone: 'ink', size: 3.6 },
+    ]}
+    legend={[
+      { label: '자료', tone: 'ink', shape: 'dot' },
+      { label: 'sd.interp (꺾은선)', tone: 'faint', shape: 'line' },
+      { label: 'CubicSpline', tone: 'base', shape: 'dash' },
+      { label: 'PchipInterpolator', tone: 'main', shape: 'line' },
+    ]}
+  />
+</Fig>
+
+이 페이지는 방법을 고르는 법과, 영역의 모든 이름이 함께 따르는 약속을 설명해요. 각 페이지는 이 약속을 짧게만 언급해요.
+
+## 무엇이 들어 있나요
+
+자료가 어떻게 놓여 있는지에서 출발해 고르면 돼요.
+
+### 한 변수의 자료: 점 사이를 조각으로 잇기
+
+가로축 값 하나에 세로축 값 하나가 있는 자료예요. 가장 흔한 경우이고, 아래 방법은 모두 이웃한 점 사이마다 낮은 차수의 다항식 조각을 놓아요.
+
+| 방법 | 곡선의 성질 | 이럴 때 써요 |
+|---|---|---|
+| [`sd.interp`](/api/array/interp/) | 꺾은선. 점에서 꺾여요 | 가장 단순하고 자료 밖의 값을 지어내지 않는 답이 필요할 때 |
+| [`CubicSpline`](/api/interpolate/CubicSpline/) | 기울기와 굽은 정도(2차 도함수)까지 이어져요 | 매끄러운 함수에서 얻은 자료. 미분이나 적분도 할 때 |
+| [`PchipInterpolator`](/api/interpolate/PchipInterpolator/) | 기울기까지 이어져요. 자료가 오르는 곳에서만 오르고 자료의 범위를 넘지 않아요 | 누적량, 농도, 확률처럼 넘치거나 음수가 되면 안 되는 자료. 값이 갑자기 뛰는 자료 |
+| [`Akima1DInterpolator`](/api/interpolate/Akima1DInterpolator/) | 기울기까지 이어져요. 점마다 가까운 몇 점만 보고 기울기를 정해요 | 튀는 점 하나가 먼 곳까지 출렁임을 퍼뜨리면 안 될 때 |
+| [`CubicHermiteSpline`](/api/interpolate/CubicHermiteSpline/) | 점마다 값과 기울기를 직접 줘요 | 기울기를 알고 있을 때(미분방정식의 해, 속도를 함께 잰 위치) |
+| [`make_interp_spline`](/api/interpolate/make_interp_spline/) | 차수 $k$를 골라요($k = 0$ 계단, 1 꺾은선, 3이 기본, 5까지 흔히 써요) | 차수를 바꾸거나 [`BSpline`](/api/interpolate/BSpline/) 꼴이 필요할 때 |
+| [`PPoly`](/api/interpolate/PPoly/) | 조각마다의 다항식 계수를 직접 줘요 | 조각 다항식을 이미 가지고 있을 때 |
+
+`CubicSpline`, `PchipInterpolator`, `Akima1DInterpolator`, `CubicHermiteSpline`은 모두 [`PPoly`](/api/interpolate/PPoly/)(조각 다항식)의 한 종류예요. 그래서 넷 다 미분(`derivative`), 적분(`integrate`, `antiderivative`), 근 찾기(`roots`, `solve`)를 같은 방법으로 해요.
+
+### 한 변수의 자료: 식 하나로 잇기
+
+조각으로 나누지 않고 모든 점을 지나는 다항식이나 유리식 하나를 만들어요. 점을 고를 수 있거나(체비쇼프 점) 함수가 아주 매끄러울 때 적은 점으로 높은 정확도를 내요. 고른 간격의 점이 많으면 다항식 하나는 끝에서 크게 출렁이니 조각 방법이나 유리식을 써요.
+
+| 방법 | 무엇인가요 |
+|---|---|
+| [`BarycentricInterpolator`](/api/interpolate/BarycentricInterpolator/) | 모든 점을 지나는 다항식 하나. 안정한 꼴로 계산해요 |
+| [`KroghInterpolator`](/api/interpolate/KroghInterpolator/) | 값과 함께 도함수 자료도 지나는 다항식 |
+| [`FloaterHormannInterpolator`](/api/interpolate/FloaterHormannInterpolator/) | 실수축 위에 극점이 없는 유리식. 고른 간격의 많은 점에서도 출렁이지 않아요 |
+| [`AAA`](/api/interpolate/AAA/) | 표본에서 지지점을 골라 만드는 유리 근사. 극점 가까이의 함수도 잘 따라가요 |
+
+### 여러 변수의 자료
+
+| 자료가 놓인 꼴 | 방법 |
+|---|---|
+| 축마다 눈금이 있는 격자(위도 × 경도 × 높이의 표) | [`RegularGridInterpolator`](/api/interpolate/RegularGridInterpolator/), 한 번만 부를 때는 [`interpn`](/api/interpolate/interpn/) |
+| 아무 데나 흩어진 점 | [`RBFInterpolator`](/api/interpolate/RBFInterpolator/)(매끄러운 곡면), [`NearestNDInterpolator`](/api/interpolate/NearestNDInterpolator/)(가장 가까운 점의 값) |
+
+## 객체를 만들고, 불러요
+
+보간은 두 걸음이에요. **만들기**에서 자료를 검사하고 곡선의 계수를 구해요. **부르기**에서 그 계수로 값을 계산해요. 만들기는 한 번이면 되고, 부르기는 몇 번이든 할 수 있어요.
+
+```python
+>>> p = sd.interpolate.PchipInterpolator(x, y)
+>>> p(0.25), p(3.5)
+(1.04375, 3.073809523809524)
+>>> p(sd.asarray([[0.25, 3.5], [5.5, 6.0]]))
+array([[          1.04375, 3.073809523809524],
+       [        2.5015625,               1.5]], dtype=float64)
+```
+
+평가점이 수 하나면 Python `float`, 배열이면 같은 모양의 배열이 나와요.
+
+객체는 만들 때 자료를 복사해 둬요. 만든 뒤 원래 배열을 고쳐도 객체는 바뀌지 않고, 객체가 쥔 배열은 읽기 전용이에요.
+
+```python
+>>> y2 = y.copy()
+>>> p2 = sd.interpolate.PchipInterpolator(x, y2)
+>>> y2[3] = 100.0
+>>> p2(3.0)
+3.0
+>>> p2.c[0, 0] = 1.0
+Traceback (most recent call last):
+    ...
+ValueError: assignment destination is read-only
+```
+
+한 번만 부를 거라면 함수 꼴도 있어요. 객체를 만들어 한 번 부른 것과 비트까지 같은 결과예요.
+
+| 함수 꼴 | 같은 일 |
+|---|---|
+| [`pchip_interpolate(xi, yi, x)`](/api/interpolate/PchipInterpolator/) | `PchipInterpolator(xi, yi)(x)` |
+| [`barycentric_interpolate(xi, yi, x)`](/api/interpolate/BarycentricInterpolator/) | `BarycentricInterpolator(xi, yi)(x)` |
+| [`krogh_interpolate(xi, yi, x)`](/api/interpolate/KroghInterpolator/) | `KroghInterpolator(xi, yi)(x)` |
+| [`interpn(points, values, xi)`](/api/interpolate/interpn/) | `RegularGridInterpolator(points, values)(xi)` |
+
+```python
+>>> sd.interpolate.pchip_interpolate(x, y, 3.5) == p(3.5)
+True
+```
+
+## 받는 입력
+
+### 받는 타입
+
+생성자, 메서드, 함수 꼴은 모두 `sd.ndarray`, 수의 리스트나 튜플, numpy 배열, `sd.frame`의 `Series`와 `DataFrame`을 받아요.
+
+```python
+>>> s = sd.frame.Series([1.0, 1.1, 1.0, 3.0, 3.1, 3.0, 1.5])
+>>> sd.interpolate.CubicSpline([0, 1, 2, 3, 4, 5, 6], s)(2.5)
+1.996205357142857
+```
+
+`DataFrame`은 열을 나란히 둔 float64 2차원 배열로 읽어요(결측은 NaN). 그래서 여러 차원의 흩어진 점(`RBFInterpolator`와 `NearestNDInterpolator`의 점, 그 평가점)으로 써요. 1차원이어야 하는 인자에 주면 차원의 `ValueError`예요.
+
+```python
+>>> df = sd.frame.DataFrame({"x": [0.0, 1.0, 0.0, 1.0], "y": [0.0, 0.0, 1.0, 1.0]})
+>>> rbf = sd.interpolate.RBFInterpolator(df, [1.0, 2.0, 3.0, 4.0])
+>>> rbf(df)
+array([1.0, 2.0, 3.0, 4.0], dtype=float64)
+>>> sd.interpolate.CubicSpline(df, [1.0, 2.0, 3.0, 4.0])
+Traceback (most recent call last):
+    ...
+ValueError: CubicSpline(): 'x' must be 1-D, not 2-D
+```
+
+[`sd.interp`](/api/array/interp/)만 달라요. 배열 영역의 함수라 `sd.ndarray`와 Python 숫자만 받아요.
+
+### 가로축은 실수, 세로축은 실수나 복소수
+
+- **가로축**(자료의 자리 `x`, 평가점, 격자의 눈금, 매듭)은 float64로 계산해요. 정수와 bool은 float64로 바꿔요. 복소수는 `TypeError`예요. 복소평면 위의 점을 받는 [`AAA`](/api/interpolate/AAA/)와 [`FloaterHormannInterpolator`](/api/interpolate/FloaterHormannInterpolator/)의 평가점만 예외예요.
+- **세로축**(자료의 값 `y`, 계수)은 float64이거나 complex128이에요. 복소수 값은 실수부와 허수부를 같은 계산으로 따로 보간해요. 모양을 지키는 방법(`PchipInterpolator`, `Akima1DInterpolator`, 격자의 `method='pchip'`)은 크기 비교가 있어야 해서 실수만 받아요.
+
+```python
+>>> z = sd.asarray([1 + 0j, 0 + 1j, -1 + 0j, 0 - 1j])
+>>> sd.interpolate.CubicSpline([0, 1, 2, 3], z)(0.5)
+(0.625+0.875j)
+>>> sd.interpolate.CubicSpline([0, 1, 2, 3], [0.0, 1.0, 0.0, 1.0])(0.5 + 1j)
+Traceback (most recent call last):
+    ...
+TypeError: CubicSpline(): 'x' must be real, not complex
+>>> sd.interpolate.PchipInterpolator([0, 1, 2, 3], z)
+Traceback (most recent call last):
+    ...
+ValueError: PchipInterpolator(): 'y' must be real, not complex128
+```
+
+### 가로축은 순서대로
+
+자료의 자리는 1차원이고, 유한하고, **엄격히 증가**해야 해요. 같은 자리가 두 번 있으면 그 자리의 값이 둘이라 함수가 아니에요.
+
+```python
+>>> sd.interpolate.CubicSpline([0, 2, 1, 3], [0.0, 1.0, 2.0, 3.0])
+Traceback (most recent call last):
+    ...
+ValueError: CubicSpline(): 'x' must be strictly increasing
+>>> sd.interpolate.CubicSpline([0, 1, 1, 3], [0.0, 1.0, 2.0, 3.0])
+Traceback (most recent call last):
+    ...
+ValueError: CubicSpline(): 'x' must be strictly increasing
+>>> sd.interpolate.CubicSpline([0, 1, sd.inf], [0.0, 1.0, 2.0])
+Traceback (most recent call last):
+    ...
+ValueError: CubicSpline(): 'x' must be finite
+```
+
+순서가 섞인 자료는 [`argsort`](/api/array/sort/)로 정렬해서 줘요. 몇 가지는 규칙이 달라요. [`PPoly`](/api/interpolate/PPoly/)의 중단점과 [`RegularGridInterpolator`](/api/interpolate/RegularGridInterpolator/)의 눈금은 엄격히 감소해도 되고, [`BarycentricInterpolator`](/api/interpolate/BarycentricInterpolator/)는 서로 다르기만 하면 순서를 가리지 않고, [`KroghInterpolator`](/api/interpolate/KroghInterpolator/)는 같은 자리를 되풀이해 도함수 자료를 줘요.
+
+### 값은 유한해야 하나요
+
+자료 전체를 한꺼번에 풀어 계수를 만드는 방법(`CubicSpline`, `PchipInterpolator`, `Akima1DInterpolator`, `CubicHermiteSpline`, `make_interp_spline`, `RBFInterpolator`)은 값이 모두 유한해야 해요. NaN 하나가 곡선 전체를 NaN으로 만들기 때문에 만들 때 에러로 알려요.
+
+```python
+>>> sd.interpolate.CubicSpline([0, 1, 2, 3], [0.0, sd.nan, 2.0, 3.0])
+Traceback (most recent call last):
+    ...
+ValueError: CubicSpline(): 'y' must be finite
+```
+
+결측값이 있으면 그 점을 빼고 만들어요. 자료 전체를 풀지 않는 계산(`sd.interp`, 계수를 직접 준 `PPoly`와 `BSpline`, `RegularGridInterpolator`의 `linear`, `BarycentricInterpolator`, `KroghInterpolator`)은 NaN과 inf를 받아서 부동소수점의 규칙대로 결과에 퍼뜨려요. 조각으로 잇는 계산은 그 값이 닿는 조각에서만 NaN이나 inf가 되지만, 다항식 하나로 잇는 `BarycentricInterpolator`와 `KroghInterpolator`는 NaN 하나가 거의 모든 자리의 결과를 NaN으로 만들어요.
+
+```python
+>>> sd.interpolate.BarycentricInterpolator([0.0, 1.0, 2.0, 3.0], [0.0, sd.nan, 2.0, 3.0])([0.0, 0.5, 2.0, 2.5])
+array([0.0, nan, 2.0, nan], dtype=float64)
+```
+
+### 평가점의 NaN은 NaN
+
+어느 보간이든 평가점이 NaN이면 그 자리의 결과가 NaN이에요. 바깥을 어떻게 정했든 같아요.
+
+```python
+>>> spline(sd.asarray([1.5, sd.nan, 2.5]))
+array([0.7970982142857144,                nan,  1.996205357142857], dtype=float64)
+```
+
+## `axis`: 여러 열을 한 번에
+
+같은 가로축에 값의 열이 여럿이면 `y`를 여러 차원 배열로 줘요. `axis`(기본 0)가 가로축에 맞는 축이고, 나머지 축은 서로 독립인 자료예요. 열마다 따로 만든 것과 같은 결과예요.
+
+```python
+>>> t = sd.asarray([0.0, 1.0, 2.0, 3.0])
+>>> Y = sd.asarray([[0.0, 10.0], [1.0, 11.0], [4.0, 14.0], [9.0, 19.0]])   # (4, 2): 두 열
+>>> both = sd.interpolate.CubicSpline(t, Y)
+>>> both(1.5)
+array([ 2.25, 12.25], dtype=float64)
+>>> both([0.5, 1.5, 2.5]).shape
+(3, 2)
+```
+
+결과의 모양은 `y`의 모양에서 `axis` 자리를 평가점의 모양으로 바꾼 것이에요. `y`가 (2, 6, 3)이고 `axis=1`, 평가점이 (4, 5)면 결과는 (2, 4, 5, 3)이에요.
+
+```python
+>>> Y3 = sd.zeros((2, 6, 3))
+>>> f3 = sd.interpolate.CubicSpline(sd.arange(6.0), Y3, axis=1)
+>>> f3(sd.zeros((4, 5))).shape
+(2, 4, 5, 3)
+>>> f3(0.5).shape
+(2, 3)
+```
+
+## 옵션은 키워드로만
+
+자료(`x`, `y`, 평가점)는 자리로만, 옵션(`axis`, `bc_type`, `extrapolate`, `k`, `method`, `kernel`, `nu`, `der` 등)은 이름으로만 받아요. 호출을 읽을 때 수가 무슨 뜻인지 바로 보이게 하려는 거예요.
+
+```python
+>>> sd.interpolate.CubicSpline(x, y, 0, "natural")
+Traceback (most recent call last):
+    ...
+TypeError: CubicSpline(): takes 2 positional arguments but 4 were given
+>>> sd.interpolate.CubicSpline(x, y, bc_type="natural")(2.5)
+1.984375
+```
+
+문자열 옵션은 소문자 이름만 받아요. 줄임말이나 대문자 꼴은 `ValueError`예요.
+
+```python
+>>> sd.interpolate.CubicSpline(x, y, bc_type="Natural")
+Traceback (most recent call last):
+    ...
+ValueError: CubicSpline(): 'bc_type' must be 'not-a-knot', 'clamped', 'natural', 'periodic' or (order, value) pairs, not 'Natural'
+```
+
+## `extrapolate`: 자료 범위 밖
+
+자료가 있는 구간 $[x_0, x_{n-1}]$ 밖의 자리를 물으면 어떻게 할지를 `extrapolate`로 정해요. 조각으로 잇는 한 변수 보간(`PPoly`와 그 종류 넷, `BSpline`, `make_interp_spline`의 결과)이 모두 같은 뜻으로 받아요.
+
+| 값 | 뜻 |
+|---|---|
+| `True` | 끝 조각의 다항식을 밖으로 그대로 늘여요 |
+| `False` | 범위 밖은 NaN이에요 |
+| `'periodic'` | 범위의 길이를 주기로 삼아 안으로 감아서 계산해요 |
+| `None` | 만들 때는 그 클래스의 기본값, 부를 때는 객체가 가진 값 |
+
+```python
+>>> out = sd.asarray([-1.0, 0.0, 6.0, 7.0])
+>>> spline(out)                                              # 기본은 True
+array([-3.746428571428571,                1.0,                1.5,
+       -3.896428571428565], dtype=float64)
+>>> spline(out, extrapolate=False)
+array([nan, 1.0, 1.5, nan], dtype=float64)
+>>> sd.interpolate.CubicSpline(x, y, extrapolate=False)(out)
+array([nan, 1.0, 1.5, nan], dtype=float64)
+```
+
+범위의 끝점(0.0과 6.0)은 안이에요. 만들 때 정한 값은 객체의 기본이 되고, 부를 때 `extrapolate=`를 주면 그 호출에서만 바뀌어요.
+
+기본값은 `True`예요. 둘만 달라요. 주기 조건으로 만든 스플라인(`bc_type='periodic'`)은 `'periodic'`이고, [`Akima1DInterpolator`](/api/interpolate/Akima1DInterpolator/)는 `False`예요.
+
+<Callout type="warn" title="늘인 값은 믿을 만한 값이 아니에요">
+
+`extrapolate=True`는 끝 조각의 3차식을 그대로 밖으로 이어요. 범위를 조금만 벗어나도 값이 빠르게 커질 수 있어요. 자료 밖의 값은 자료가 뒷받침하지 않으니, 밖을 물을 일이 없다면 `extrapolate=False`로 두어 NaN으로 드러나게 하는 쪽이 안전해요.
+
+</Callout>
+
+다른 보간은 저마다의 방법이 있어요. [`sd.interp`](/api/array/interp/)는 `left`·`right`·`period`, [`RegularGridInterpolator`](/api/interpolate/RegularGridInterpolator/)는 `bounds_error`·`fill_value`예요. 식 하나로 잇는 방법(`BarycentricInterpolator`, `KroghInterpolator`, `FloaterHormannInterpolator`, `AAA`)과 흩어진 점의 방법(`RBFInterpolator`, `NearestNDInterpolator`)은 범위라는 것이 없어서 어디서나 같은 식을 계산해요.
+
+## 스레드 수와 상관없이 같은 결과
+
+같은 입력이면 [스레드 수](/api/array/threads/)를 몇으로 두든 결과의 비트가 같아요. 평가점마다, 배치의 열마다 계산이 독립이라서 일을 어떻게 나눠도 값이 달라질 까닭이 없어요.
+
+```python
+>>> q = sd.linspace(-1.0, 7.0, 100001)
+>>> n0 = sd.get_num_threads()
+>>> sd.set_num_threads(1)
+>>> a = spline(q)
+>>> sd.set_num_threads(4)
+>>> b = spline(q)
+>>> sd.set_num_threads(n0)
+>>> bool(sd.all(a == b))
+True
+```
+
+안에서 LAPACK을 쓰는 곳([`RBFInterpolator`](/api/interpolate/RBFInterpolator/)의 전체 풀이, [`AAA`](/api/interpolate/AAA/)의 지지점 고르기, `AAA`와 [`FloaterHormannInterpolator`](/api/interpolate/FloaterHormannInterpolator/)의 극점·영점·유수)은 같은 기계에서 같은 스레드 수일 때 실행마다 같은 비트예요.
+
+## 같은 것은 같은 비트
+
+같은 함수를 여러 길로 구할 수 있을 때, 길마다 끝자리가 달라지지 않게 맞춰 두었어요.
+
+**선형 보간은 어느 길이든 같아요.** 자료 범위 안에서 [`sd.interp`](/api/array/interp/), `make_interp_spline(k=1)`, 1차 `BSpline`, 한 축짜리 `RegularGridInterpolator`의 `linear`와 `slinear`, `interpn`이 비트까지 같은 값을 내요.
+
+```python
+>>> q = sd.linspace(0.0, 6.0, 1001)
+>>> v1 = sd.interp(q, x, y)
+>>> v2 = sd.interpolate.make_interp_spline(x, y, k=1)(q)
+>>> v3 = sd.interpolate.RegularGridInterpolator((x,), y, method="slinear")(sd.reshape(q, (-1, 1)))
+>>> bool(sd.all(v1 == v2)), bool(sd.all(v1 == v3))
+(True, True)
+```
+
+**3차 조각은 기울기가 같으면 계수가 같아요.** `CubicSpline`, `PchipInterpolator`, `Akima1DInterpolator`는 점마다의 기울기를 정하는 방법만 다르고, 값과 기울기에서 조각의 계수를 만드는 계산은 `CubicHermiteSpline`과 하나예요. 그래서 어느 객체든 점에서의 기울기를 꺼내 `CubicHermiteSpline`에 주면 같은 계수가 나와요.
+
+```python
+>>> slopes = spline(x, nu=1)
+>>> h = sd.interpolate.CubicHermiteSpline(x, y, slopes)
+>>> bool(sd.all(h.c == spline.c))
+True
+```
+
+점에서의 기울기를 부르기로 다시 읽을 때, 끝 점의 기울기는 끝 조각의 3차식을 계산한 값이라 정한 기울기와 마지막 비트가 다를 수 있어요. 그때는 끝 조각의 계수만 끝자리가 달라지고 나머지 조각은 그대로 같아요.
+
+**자료의 자리에서는 자료 그대로예요.** 선형 보간, 0차와 1차 B-스플라인, `BarycentricInterpolator`, `AAA`의 지지점, 격자의 `linear`와 `nearest`는 자료의 자리를 물으면 자료의 값을 비트까지 그대로 돌려줘요.
+
+노드(지지점)가 하나인 `BarycentricInterpolator`, `KroghInterpolator`, `FloaterHormannInterpolator`, `AAA`는 상수예요. 유한한 모든 점에서 그 값을 비트까지 그대로 돌려줘요.
+
+다른 라이브러리와 비트가 같다는 약속은 없어요. 지금은 `PchipInterpolator`와 `Akima1DInterpolator`의 계수가 scipy와 같은 비트로 나와요(약속은 아니에요).
+
+## 복사와 저장
+
+모든 보간 객체는 `copy.copy`, `copy.deepcopy`, `pickle`이 돼요. 되살린 객체는 계수, 지지점, 한 번 구해 둔 극점까지 같은 배열을 비트까지 그대로 쥐고, 같은 점에서 같은 비트를 내요. 객체를 고치는 메서드(`add_xi`, `set_yi`, `extend`, `clean_up`)를 복사본에 부르면 복사본만 바뀌어요.
+
+```python
+>>> import copy, pickle
+>>> back = pickle.loads(pickle.dumps(spline))
+>>> type(back).__name__, back(2.5) == spline(2.5)
+('CubicSpline', True)
+>>> bp = sd.interpolate.BarycentricInterpolator([0.0, 1.0, 2.0], [1.0, 3.0, 2.0])
+>>> bq = copy.deepcopy(bp)
+>>> bq.set_yi([0.0, 0.0, 0.0])
+>>> bp(0.5), bq(0.5)
+(2.375, 0.0)
+```
+
+## 에러와 경고
+
+에러 메시지는 부른 이름으로 시작해요. 객체를 부를 때의 에러는 그 클래스의 이름으로 시작해요.
+
+```python
+>>> sd.interpolate.CubicSpline([0, 1, 2], [0.0, 1.0])
+Traceback (most recent call last):
+    ...
+ValueError: CubicSpline(): 'y' must have as many points as 'x' (3) along axis 0, not 2
+>>> spline("a")
+Traceback (most recent call last):
+    ...
+TypeError: CubicSpline(): 'x' must be an sd.ndarray, a sequence of numbers, a numpy array or a frame Series or DataFrame, not str
+>>> spline(1.0, nu=-1)
+Traceback (most recent call last):
+    ...
+ValueError: CubicSpline(): 'nu' must be >= 0, not -1
+>>> spline.integrate(0, "a")
+Traceback (most recent call last):
+    ...
+TypeError: integrate(): 'b' must be an int or a float, not str
+```
+
+| 에러 | 언제 |
+|---|---|
+| `TypeError` | 타입이 틀렸을 때(수가 아닌 자료, 복소수 가로축, int여야 하는 옵션에 float), 옵션을 자리로 줬을 때, 없는 키워드를 줬을 때 |
+| `ValueError` | 값이 틀렸을 때(순서가 틀린 가로축, 길이가 안 맞는 자료, 유한하지 않은 자료, 없는 이름의 옵션) |
+| `sd.linalg.LinAlgError` | 계수를 정하는 연립방정식이 풀리지 않을 때(`make_interp_spline`, `RBFInterpolator`) |
+| `MemoryError` | 요청한 결과가 기계의 메모리보다 클 때. 할당하기 전에 알려요 |
+
+**경고는 내지 않아요.** 잘못된 입력은 에러이고, 계산이 덜 끝난 것은 결과의 속성으로 알려요. 이를테면 [`AAA`](/api/interpolate/AAA/)가 정한 걸음 안에 수렴하지 못하면 `converged`가 `False`예요.
+
+얼마나 정확한지는 [정확도와 성능](/internals/interpolate/accuracy-performance/)에 방법마다의 오차 한계와 측정이 있어요.
+
+## scipy·numpy를 아는 분께
+
+이름과 인자 이름은 `scipy.interpolate`와 같아요. 영역 전체에 걸친 차이는 아래와 같고, 이름마다의 차이는 그 페이지의 마지막 절에 있어요.
+
+- 모든 이름이 `sd.interpolate`에 바로 있어요. 하위 모듈(`fitpack`, `interpnd` 등)은 없어요.
+- `numpy.interp`는 배열 영역의 [`sd.interp`](/api/array/interp/)예요.
+- 옵션은 이름으로만 받아요. scipy의 `CubicSpline(x, y, 0, 'natural')`, `make_interp_spline(x, y, 3)`, `PPoly(c, x, True)`는 `TypeError`예요.
+- 문자열 옵션은 소문자 이름만 받아요. scipy의 RBF가 받는 `'Gaussian'`은 `ValueError`예요.
+- 객체가 쥔 계수는 복사본이고 읽기 전용이에요. scipy는 넘긴 배열을 그대로 쥘 수 있어서 그 배열을 고치면 객체가 바뀌어요.
+- `check_finite`가 없어요. 언제나 검사해요. `rng`·`random_state`, `solver`·`solver_args`, `tree_options`도 없어요.
+- 평가점이 복소수면 `TypeError`예요. scipy는 실수부만 쓰고 경고해요.
+- 평가점이 수 하나면 결과는 Python `float`·`complex`예요. scipy는 0차원 numpy 배열이에요.
+- 경고를 내지 않아요. scipy가 경고하는 곳은 에러이거나(`RBFInterpolator`의 낮은 `degree`), 상태 속성이거나(`AAA.converged`), 그냥 계산해요(`KroghInterpolator`의 높은 차수).
+- 선형 보간의 여러 길이 같은 비트예요. scipy에서는 `np.interp`, `make_interp_spline(k=1)`, `RegularGridInterpolator`의 `linear`와 `slinear`가 끝자리에서 서로 달라요.
+
+### scipy에 있고 여기에 없는 것
+
+| scipy | 여기서는 |
+|---|---|
+| `interp1d(x, y)` | [`sd.interp(x_new, x, y)`](/api/array/interp/)(바깥은 끝값) 또는 `make_interp_spline(x, y, k=1)`(바깥은 늘임) |
+| `interp1d(kind='zero' / 'slinear' / 'quadratic' / 'cubic')` | `make_interp_spline(x, y, k=0 / 1 / 2 / 3)` |
+| `interp1d(kind='previous')` | `make_interp_spline(x, y, k=0)` |
+| `interp1d(kind='next' / 'nearest')` | [`sd.searchsorted`](/api/array/searchsorted/)로 고른 색인의 `y` |
+| `InterpolatedUnivariateSpline(x, y, k=3)`, `splrep(x, y, s=0)` | `make_interp_spline(x, y, k=3)` |
+| `splev(x, tck)`, `splint(a, b, tck)`, `sproot(tck)` | `BSpline(*tck)(x)`, `BSpline(*tck).integrate(a, b)`, `PPoly.from_spline(tck).roots()` |
+| `splder(tck, n)`, `splantider(tck, n)`, `insert(x, tck, m)` | `BSpline.derivative(nu=n)`, `BSpline.antiderivative(nu=n)`, `BSpline.insert_knot(x, m=m)` |
+| `interp2d`, `RectBivariateSpline`, `bisplrep` | 격자 자료는 `RegularGridInterpolator((x, y), z, method='cubic')`, 흩어진 자료는 `RBFInterpolator` |
+| `Rbf` | `RBFInterpolator(y, d, kernel=..., epsilon=...)`. 핵의 이름과 `epsilon`의 뜻이 달라요 |
+| `lagrange(x, w)` | `BarycentricInterpolator(x, w)` |
+| `pade` | 유리 근사는 `AAA` |
+| `griddata`, `LinearNDInterpolator`, `CloughTocher2DInterpolator` | 없어요. 가장 가까운 점은 `NearestNDInterpolator`, 매끄러운 곡면은 `RBFInterpolator` |
+| `BPoly`, `NdBSpline`, `NdPPoly`, `PPoly.from_bernstein_basis` | 없어요 |
+| `UnivariateSpline`, `make_lsq_spline`, `make_smoothing_spline`, `make_splrep` 등 | 없어요. 자료를 지나지 않고 따라가는 맞추기와 평활은 보간이 아니에요 |
+| `RegularGridInterpolator`의 `solver`, 옛 방법 `'cubic_legacy'` 등, `interpn(method='splinef2d')` | `method='slinear' / 'cubic' / 'quintic'` |

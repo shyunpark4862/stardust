@@ -1,0 +1,279 @@
+---
+title: Generator
+names: [Generator]
+group: 생성기
+order: 2
+signatures:
+  - "rng.random(shape=None, /)"
+  - "rng.integers(low, high=None, /, *, shape=None, endpoint=False)"
+  - "rng.choice(a, /, *, shape=None, replace=True, p=None)"
+  - "rng.permutation(x, /)"
+  - "rng.spawn(n, /)"
+  - "rng.state"
+summary: 난수 생성기의 타입이에요. 생성기의 메서드와 속성, 만드는 법, 복사와 저장, 여러 스레드에서 함께 쓰는 법을 설명해요.
+raises:
+  - type: TypeError
+    desc: sd.random.Generator(...)를 직접 불러 생성기를 만들려 할 때. 생성기는 default_rng로 만들어요.
+  - type: AttributeError
+    desc: 없는 메서드(shuffle, normal 등)를 부르거나 생성기에 새 속성을 붙이려 할 때.
+seeAlso: [basics, default_rng, spawn-state, random, integers, choice, permutation]
+---
+import Callout from '../../../components/Callout.astro';
+
+## 한눈에 보기
+
+`sd.random`의 난수는 모두 **생성기**에서 나와요. 생성기는 `sd.random.Generator` 타입의 객체이고, 정해진 규칙으로 만든 긴 수열(의사난수)을 앞에서부터 차례로 꺼내 주는 일을 해요. 이 페이지에서는 생성기를 `rng`라는 이름으로 부를게요. 시그니처의 `rng.random(...)`도 "생성기 `rng`의 메서드 `random`"이라는 뜻이에요.
+
+```python
+>>> import stardust as sd
+>>> rng = sd.random.default_rng(42)
+>>> type(rng)
+<class 'stardust.random.Generator'>
+>>> isinstance(rng, sd.random.Generator)
+True
+>>> rng.random(3)
+array([0.4513007976393718, 0.5280337747949365, 0.794826025358168], dtype=float64)
+```
+
+생성기가 기억하는 것은 두 가지예요.
+
+- **어떤 수열인가**: 만들 때 준 시드가 정해요. 같은 시드면 같은 수열이에요.
+- **수열의 어디까지 꺼냈나**: 메서드를 부를 때마다 앞으로 나아가요. 그래서 같은 메서드를 다시 불러도 다음 값이 나와요.
+
+이 두 가지가 같으면 결과도 언제나 같아요. 컴퓨터, 날짜, [스레드 수](/api/array/threads/)와는 상관없어요. 시드와 재현성이 무엇인지는 [난수의 기본](/api/random/basics/)에서 설명해요.
+
+<Reference />
+
+## 만드는 법: `default_rng`로만
+
+생성기는 언제나 [`default_rng`](/api/random/default_rng/)로 만들어요. `sd.random.Generator`는 "이것이 생성기인가"를 `isinstance`로 검사할 때 쓰는 이름이고, 직접 불러서 만들지는 않아요.
+
+```python
+>>> sd.random.Generator(42)
+Traceback (most recent call last):
+    ...
+TypeError: Generator(): make a generator with sd.random.default_rng(seed)
+>>> sd.random.Generator()
+Traceback (most recent call last):
+    ...
+TypeError: Generator(): make a generator with sd.random.default_rng(seed)
+```
+
+생성기를 받는 함수를 만들 때는 `isinstance` 검사 대신 `default_rng`에 인자를 그대로 넘기는 방법이 편해요. 생성기를 주면 그 생성기가, 시드를 주면 새 생성기가 돌아와요. [default_rng](/api/random/default_rng/)에서 자세히 다뤄요.
+
+## 메서드와 속성
+
+생성기의 기능은 아래 표가 전부예요.
+
+| 이름 | 하는 일 | 돌려주는 것 |
+|---|---|---|
+| [`random`](/api/random/random/) | 0 이상 1 미만의 실수를 고르게 뽑아요 | float64 배열 또는 `float` |
+| [`integers`](/api/random/integers/) | 정해진 범위의 정수를 고르게 뽑아요 | int64 배열 또는 `int` |
+| [`choice`](/api/random/choice/) | 배열의 원소 가운데 골라요. 겹치지 않게, 확률을 달리해서도 돼요 | 배열 또는 숫자 하나 |
+| [`permutation`](/api/random/permutation/) | 순서를 무작위로 섞은 새 배열을 만들어요 | 배열 |
+| [`spawn`](/api/random/spawn-state/) | 서로 독립된 새 생성기 여러 개로 나눠요 | Generator의 리스트 |
+| [`state`](/api/random/spawn-state/) | 시드와 지금 위치를 담은 dict예요. 대입하면 그 상태로 돌아가요 | dict |
+
+```python
+>>> rng = sd.random.default_rng(42)
+>>> rng.random(3)
+array([0.4513007976393718, 0.5280337747949365, 0.794826025358168], dtype=float64)
+>>> rng.integers(1, 7, shape=5)
+array([5, 1, 1, 2, 6], dtype=int64)
+>>> rng.choice(sd.asarray([10, 20, 30, 40]), shape=2, replace=False)
+array([10, 30], dtype=int64)
+>>> rng.permutation(5)
+array([1, 4, 3, 0, 2], dtype=int64)
+>>> rng.spawn(2)
+[Generator(Philox4x64-10), Generator(Philox4x64-10)]
+```
+
+결과의 모양을 정하는 `shape`와 결과의 종류(dtype)는 메서드마다 같은 규칙을 따라요. [난수의 기본](/api/random/basics/)에 정리해 두었어요.
+
+### 무엇을 고를 때 무엇을 쓰나요
+
+| 필요한 것 | 쓰는 메서드 | 예 |
+|---|---|---|
+| 0과 1 사이의 실수, 확률 | `random` | `rng.random() < 0.3`이면 30%의 확률로 참 |
+| 범위 안의 정수 | `integers` | 주사위 `rng.integers(1, 7)` |
+| 목록에서 하나 또는 여러 개 | `choice` | `rng.choice(names, shape=3, replace=False)` |
+| 전체의 순서를 섞기 | `permutation` | `x[rng.permutation(len(x))]` 또는 `rng.permutation(x)` |
+| 독립된 생성기 여러 개 | `spawn` | 스레드마다, 실험마다 하나씩 |
+
+### 모든 메서드가 한 수열을 이어서 써요
+
+메서드가 다섯 개여도 수열은 하나예요. 어느 메서드를 부르든 지금 위치부터 필요한 만큼 꺼내고 위치를 옮겨요. 그래서 같은 시드에서 같은 순서로 같은 메서드를 부르면 언제나 같은 결과가 나와요. 부르는 순서가 바뀌면 결과도 바뀌어요.
+
+지금 위치는 `state`의 `'position'`으로 볼 수 있어요. `random(3)`과 `integers(..., shape=5)`를 부르고 나면 수열에서 여덟 개를 꺼낸 상태예요.
+
+```python
+>>> rng = sd.random.default_rng(42)
+>>> rng.state['position']
+0
+>>> x = rng.random(3)
+>>> y = rng.integers(10, shape=5)
+>>> rng.state
+{'bit_generator': 'Philox4x64-10', 'entropy': 42, 'spawn_key': (), 'n_children_spawned': 0, 'position': 8}
+```
+
+`state`를 저장했다가 대입하면 그 위치로 돌아가요. `state`의 각 항목과 `spawn`의 자세한 동작은 [생성기 나누기와 상태](/api/random/spawn-state/)에서 다뤄요.
+
+## 화면에 보이는 모습
+
+생성기를 출력하면 타입 이름과 생성기의 종류가 보여요. 시드나 위치는 보이지 않아요. 시드가 같아도, 위치가 달라도 모두 같은 모습으로 보여요.
+
+```python
+>>> rng
+Generator(Philox4x64-10)
+>>> str(sd.random.default_rng(7))
+'Generator(Philox4x64-10)'
+```
+
+시드와 위치를 확인하려면 `rng.state`를 보세요.
+
+## 복사와 저장(pickle)
+
+생성기는 `copy.copy`, `copy.deepcopy`로 복사할 수 있고, `pickle`로 파일에 저장했다가 되살릴 수 있어요. 어느 쪽이든 원래 생성기와 시드도 위치도 같은 새 생성기가 생겨요. 새 생성기는 원래 생성기와 따로 움직여서, 한쪽에서 난수를 꺼내도 다른 쪽의 위치는 그대로예요.
+
+```python
+>>> import copy, pickle
+>>> rng = sd.random.default_rng(42)
+>>> saved = copy.copy(rng)
+>>> rng.random(2)
+array([0.4513007976393718, 0.5280337747949365], dtype=float64)
+>>> saved.random(2)
+array([0.4513007976393718, 0.5280337747949365], dtype=float64)
+>>> restored = pickle.loads(pickle.dumps(rng))
+>>> restored.random() == rng.random()
+True
+```
+
+복사본 `saved`는 `rng`가 이미 꺼낸 두 값을 똑같이 다시 내요. 지금의 생성기를 저장해 두었다가 같은 난수를 다시 얻는 데는 좋지만, 서로 다른 난수가 필요한 자리에 복사본을 쓰면 같은 값이 두 번 쓰여요. 독립된 생성기가 필요하면 [`spawn`](/api/random/spawn-state/)을 쓰세요.
+
+<Callout type="warn" title="복사본은 독립된 생성기가 아니에요">
+
+`copy.copy(rng)`로 만든 생성기를 다른 작업에 넘기면 두 작업이 같은 난수를 받아요. 에러도 경고도 없어서 결과를 보기 전에는 알아채기 어려워요. 작업마다 다른 난수가 필요하면 `rng.spawn(n)`으로 나눠 주세요.
+
+</Callout>
+
+생성기끼리 `==`로 비교하면 같은 객체인지만 봐요. 상태가 같은 복사본이라도 `False`예요. 상태가 같은지는 `state`를 비교하세요.
+
+```python
+>>> a = sd.random.default_rng(42)
+>>> b = copy.copy(a)
+>>> a == b
+False
+>>> a.state == b.state
+True
+```
+
+## 여러 스레드에서 쓰기
+
+Python의 `threading`으로 만든 여러 스레드가 생성기 하나를 함께 써도 돼요. 동시에 불러도 생성기가 깨지지 않고, 같은 난수를 두 번 내주거나 건너뛰지도 않아요. 메서드 호출 하나는 수열에서 자기 몫의 구간을 통째로 받아요. 다른 스레드가 그사이 `state`에 새 상태를 대입해도, 호출 하나는 대입 전의 상태나 대입 뒤의 상태 가운데 하나에서만 받아요. 둘이 섞인 구간을 받는 일은 없어요.
+
+다만 어느 스레드가 어느 구간을 받는지는 실행 순서에 따라 달라져요. 아래에서 네 스레드는 함께 수열의 처음 4000개를 1000개씩 나눠 받아요. 모아서 정렬하면 언제나 처음 4000개와 같지만, `parts[0]`이 몇째 구간인지는 실행할 때마다 다를 수 있어요.
+
+```python
+>>> import threading
+>>> shared = sd.random.default_rng(42)
+>>> parts = [None] * 4
+>>> def work(i):
+...     parts[i] = shared.random(1000)
+>>> threads = [threading.Thread(target=work, args=(i,)) for i in range(4)]
+>>> for t in threads:
+...     t.start()
+>>> for t in threads:
+...     t.join()
+>>> got = sd.sort(sd.concat(parts))
+>>> expected = sd.sort(sd.random.default_rng(42).random(4000))
+>>> sd.all(got == expected)
+True
+```
+
+스레드마다 받는 값까지 언제나 같아야 한다면, 생성기를 [`spawn`](/api/random/spawn-state/)으로 나눠 스레드마다 자기 생성기를 주세요. 그러면 실행 순서와 상관없이 0번 스레드는 언제나 0번 생성기의 값을 받아요.
+
+```python
+>>> children = sd.random.default_rng(42).spawn(4)
+>>> parts = [None] * 4
+>>> def work(i):
+...     parts[i] = children[i].random(3)
+>>> threads = [threading.Thread(target=work, args=(i,)) for i in range(4)]
+>>> for t in threads:
+...     t.start()
+>>> for t in threads:
+...     t.join()
+>>> parts[0]
+array([0.03705887058601376, 0.17557763006645077, 0.28104617419160915], dtype=float64)
+>>> sd.all(parts[0] == sd.random.default_rng(42).spawn(4)[0].random(3))
+True
+```
+
+| 방법 | 깨지지 않나요 | 같은 값이 두 번 나오나요 | 스레드마다 받는 값이 언제나 같나요 |
+|---|:---:|:---:|:---:|
+| 생성기 하나를 함께 써요 | 예 | 아니요 | **아니요**(실행 순서에 따라요) |
+| 스레드마다 `spawn`한 생성기 | 예 | 아니요 | 예 |
+| 스레드마다 `copy.copy`한 생성기 | 예 | **예**(모두 같은 값) | 예 |
+
+한 스레드 안에서 큰 배열을 만들 때 stardust가 여러 코어로 나눠 계산하는 것은 이와 별개예요. 그 경우는 스레드 수와 상관없이 언제나 같은 값이에요.
+
+## 조심할 점
+
+### 없는 메서드: `shuffle`과 분포 메서드
+
+생성기의 메서드는 위 표에 있는 것뿐이에요.
+
+- 배열을 제자리에서 섞는 `shuffle`은 없어요. stardust에는 인자로 받은 배열을 몰래 바꾸는 함수가 없기 때문이에요. 섞은 새 배열은 `rng.permutation(x)`로 만들고, 원래 배열에 다시 쓰고 싶으면 `x[...] = rng.permutation(x)`처럼 대입해요. [permutation](/api/random/permutation/)에서 자세히 설명해요.
+- `normal`, `uniform`, `exponential` 같은 분포 메서드도 없어요. 정규분포처럼 특정한 분포를 따르는 난수는 `sd.stats`의 분포가 맡아요.
+
+```python
+>>> rng.shuffle
+Traceback (most recent call last):
+    ...
+AttributeError: 'Generator' object has no attribute 'shuffle'
+>>> rng.normal(0.0, 1.0)
+Traceback (most recent call last):
+    ...
+AttributeError: 'Generator' object has no attribute 'normal'
+```
+
+### 호출 모양이 틀린 에러는 Python의 메시지예요
+
+메서드에 없는 이름의 인자를 주거나 인자 개수가 틀리면, 메시지는 Python이 만드는 그대로예요. 값이 틀린 에러(`random(): 'shape' must be …`)와 달리 `Generator.random()`처럼 클래스 이름이 붙고 콜론이 없어요.
+
+```python
+>>> rng.random(foo=1)
+Traceback (most recent call last):
+    ...
+TypeError: Generator.random() got an unexpected keyword argument 'foo'
+```
+
+메서드는 한 번에 아주 짧게 끝나는 일이 많아서, 메시지 모양을 바꾸려고 호출마다 비용을 더하지 않아요. 호출 모양은 코드를 쓸 때 한 번 고치면 되는 실수이기도 해요. [`default_rng`](/api/random/default_rng/)는 다른 모듈 함수처럼 `default_rng(): `로 시작하는 메시지예요.
+
+### 생성기에 속성을 붙일 수 없어요
+
+생성기 객체에 새 속성을 붙일 수 없어요. 생성기와 함께 들고 다닐 값이 있으면 따로 변수나 딕셔너리에 담아요.
+
+```python
+>>> rng.name = "train"
+Traceback (most recent call last):
+    ...
+AttributeError: 'Generator' object has no attribute 'name' and no __dict__ for setting new attributes
+```
+
+## 비슷한 기능과의 차이
+
+| 하고 싶은 일 | 쓰는 것 | 결과 |
+|---|---|---|
+| 생성기를 새로 만들어요 | [`default_rng(시드)`](/api/random/default_rng/) | 시드가 정하는 수열의 처음에 선 생성기 |
+| 함수에 들어온 시드·생성기를 생성기로 맞춰요 | `default_rng(인자)` | 생성기면 그 객체 자신, 시드면 새 생성기 |
+| 독립된 생성기 여러 개 | [`rng.spawn(n)`](/api/random/spawn-state/) | 서로 겹치지 않는 수열의 생성기 `n`개 |
+| 지금 상태를 저장했다가 같은 난수를 다시 | `copy.copy(rng)`, `pickle`, [`rng.state`](/api/random/spawn-state/) | 같은 위치의 같은 수열 |
+
+## numpy를 아는 분께
+
+- numpy에서는 `np.random.Generator(np.random.PCG64(42))`처럼 Generator를 직접 만들 수 있지만, stardust는 `default_rng`로만 만들어요. 생성기 종류를 고르는 방법도 없어요.
+- **생성기의 종류가 numpy와 달라서** 같은 시드라도 값이 달라요.
+- `bit_generator` 속성이 없어요. 상태는 `rng.bit_generator.state` 대신 `rng.state`로 바로 읽고 써요.
+- 메서드는 `random`, `integers`, `choice`, `permutation`, `spawn`뿐이에요. `normal`·`uniform` 같은 분포 메서드, `shuffle`, `permuted`, `bytes`, `standard_normal` 등은 없어요.
+- `size=` 대신 `shape`예요. `random`에서는 자리로만, `integers`·`choice`에서는 이름으로만 넘겨요. `random`의 `dtype=`·`out=` 같은 인자도 없어요.
+- 생성기 하나를 여러 스레드가 함께 써도 같은 값이 두 번 나오지 않아요. 결과가 스레드 수와 상관없다는 점도 numpy가 보장하지 않는 성질이에요.

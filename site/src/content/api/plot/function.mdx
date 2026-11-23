@@ -1,0 +1,338 @@
+---
+kind: function
+title: function
+names: [function, Figure.info]
+group: 함수 그림
+order: 2
+signatures:
+  - "sd.plot.function(f, a, b, /, *, ylim=None, asymptotes=False, samples=None, refine=None, color=None, width=None, style='-', label=None, labels=None, **figure)"
+  - "fig.function(f, a, b, /, *, ylim=None, asymptotes=False, samples=None, refine=None, color=None, width=None, style='-', label=None, labels=None)"
+summary: 함수 y = f(x)의 그래프를 구간 [a, b]에서 그려요. 표본을 스스로 골라 굽은 곳을 촘촘히 따라가고, 극점과 뜀에서 선을 끊고, 극점 근처로 달아나는 값을 뺀 세로 범위를 잡아요. 그림이 한 일은 fig.info에 적혀요.
+params:
+  - name: f
+    type: 호출 가능한 객체 또는 그 시퀀스
+    kind: positional-only
+    desc: "float64 sd.ndarray를 받아 같은 모양의 실수 배열을 돌려주는 함수(sd.sin, sd.special.gamma, lambda 등). 수 하나를 돌려주면 상수 함수예요. 함수의 리스트나 튜플을 주면 한 칸에 겹쳐 그리고 세로 범위를 함께 잡아요."
+  - name: a, b
+    type: float
+    kind: positional-only
+    desc: 그릴 구간. 유한하고 a < b여야 해요. 언제나 줘야 해요.
+  - name: ylim
+    type: (float, float) 또는 None
+    kind: keyword-only
+    desc: "세로 범위 (아래, 위). 주면 자동 범위를 쓰지 않고 이 범위 밖의 곡선을 잘라요. 기본값 None은 자동 범위예요."
+  - name: asymptotes
+    type: bool
+    kind: keyword-only
+    desc: True면 찾은 극점마다 가는 회색 세로 점선을 그려요. 기본값 False.
+  - name: samples
+    type: int 또는 None
+    kind: keyword-only
+    desc: "처음 격자의 점의 수(3 이상 200000 이하). 기본값 None은 257이에요."
+  - name: refine
+    type: int 또는 None
+    kind: keyword-only
+    desc: "처음 격자의 한 구간을 반으로 나누는 횟수의 한계(0 이상 10 이하). 0이면 처음 격자를 그대로 잇고 극점과 뜀도 찾지 않아요. 기본값 None은 10이에요."
+  - name: color
+    type: 색 또는 None
+    kind: keyword-only
+    desc: 선의 색. None이면 팔레트의 다음 색이에요. 함수를 여럿 줄 때는 줄 수 없어요(팔레트의 색을 차례로 받아요).
+  - name: width
+    type: float 또는 None
+    kind: keyword-only
+    desc: 선의 굵기(pt). None이면 테마의 굵기예요.
+  - name: style
+    type: str
+    kind: keyword-only
+    desc: "선의 꼴. '-'(실선, 기본값), '--', ':', '-.'."
+  - name: label
+    type: str 또는 None
+    kind: keyword-only
+    desc: 범례에 적을 이름(LaTeX 원문). 함수가 하나일 때만 받아요.
+  - name: labels
+    type: str의 시퀀스 또는 None
+    kind: keyword-only
+    desc: 함수를 여럿 줄 때 함수마다의 범례 이름. 함수의 수와 길이가 같아야 해요.
+  - name: "**figure"
+    type: 그림 옵션
+    kind: keyword-only
+    desc: "새 그림의 height, font, theme, palette. 모듈 함수만 받아요. 여기서 width는 선의 굵기라서 그림의 너비가 되지 않아요(그림의 너비는 Figure(width=...)에 메서드로 그리거나 fig.size로 정해요). 뜻은 그림의 기본에 있어요."
+returns:
+  type: Figure
+  desc: "모듈 함수는 새 Figure를, 메서드는 곡선을 더한 그 Figure 자신을 돌려줘요. fig.info는 PlotInfo의 튜플이에요."
+raises:
+  - type: TypeError
+    desc: f가 호출 가능하지 않을 때, f가 sd.ndarray나 수가 아닌 것을 돌려줄 때, f가 복소수를 돌려줄 때, ylim이 두 수의 쌍이 아닐 때, asymptotes가 bool이 아닐 때, samples·refine이 정수가 아닐 때.
+  - type: ValueError
+    desc: a < b가 아니거나 a·b가 유한하지 않을 때, f가 받은 것과 다른 모양을 돌려줄 때, ylim의 아래가 위보다 작지 않을 때, samples·refine이 범위 밖일 때, 함수가 여럿인데 label이나 color를 줬을 때, labels의 길이가 함수의 수와 다를 때, label과 labels를 함께 줬을 때.
+seeAlso: [sampling, parametric, polar, contour]
+---
+import PlotImage from '../../../components/fig/PlotImage.astro';
+import Callout from '../../../components/Callout.astro';
+
+## 한눈에 보기
+
+함수와 구간을 주면 그래프 한 장이 나와요. 감마 함수는 0과 음의 정수마다 극점이 있어서 그리기 까다로운 함수예요. 그래도 따로 할 일이 없어요.
+
+```python
+>>> import math
+>>> fig = sd.plot.function(sd.special.gamma, -4, 4)
+>>> fig = fig.xlabel(r"$x$").ylabel(r"$\Gamma(x)$").hline(0, color="gray", width=0.5)
+>>> [round(p, 3) for p in fig.info[0].poles]
+[-3.0, -2.0, -1.0, -0.0]
+```
+
+<PlotImage name="function-gamma" alt="−4에서 4까지의 감마 함수. 0과 음의 정수마다 곡선이 끊기고, 세로축은 대략 −13에서 13이에요" caption="구간 안의 극점 넷(−3, −2, −1, 0)에서 선이 끊기고 극점을 가로지르는 세로선이 없어요. 세로 범위는 극점 근처로 달아나는 값을 빼고 곡선의 본체에 맞춰 잡혀요." />
+
+이 한 줄에서 그림이 스스로 한 일은 이래요.
+
+- 함수를 계산할 점(표본)을 골랐어요. 굽은 곳은 촘촘히, 곧은 곳은 성기게요([함수 그림의 표본](/api/plot/sampling/)).
+- 극점을 찾아 그 자리에서 선을 끊었어요. 구간의 왼쪽 끝 −4도 극점이지만, 구간의 끝은 선이 거기서 끝날 뿐이라 `poles`에 적지 않아요.
+- 세로 범위를 극점 근처의 큰 값이 아니라 곡선의 본체에 맞췄어요.
+- 찾은 것을 `fig.info`에 적었어요.
+
+`xlabel`, `ylabel`, `hline`처럼 그림을 고치거나 더하는 메서드는 `fig` 자신을 돌려주므로 이어서 쓸 수 있어요.
+
+<Reference />
+
+## 극점과 점근선
+
+값이 양쪽으로 한없이 커지는 곳(극점)에서는 선을 끊어요. 끊긴 곳을 표시하고 싶으면 `asymptotes=True`로 세로 점근선을 그려요. 주기 함수라면 `xticks("pi")`로 π 단위의 눈금을 붙일 수 있어요.
+
+```python
+>>> fig = sd.plot.function(sd.tan, -2 * math.pi, 2 * math.pi, asymptotes=True)
+>>> fig = fig.xticks("pi").title(r"$\tan x$")
+>>> info = fig.info[0]
+>>> [round(p / math.pi, 4) for p in info.poles]
+[-1.5, -0.5, 0.5, 1.5]
+>>> info.clipped
+(True, True)
+```
+
+<PlotImage name="function-tan" alt="−2π에서 2π까지의 탄젠트 곡선. 극점 넷에 회색 세로 점선이 있고 가로축 눈금이 π 단위예요" caption="극점 넷(±π/2, ±3π/2)에 세로 점근선을 그렸어요. 극점의 자리는 표본의 가장 좁은 간격까지 맞아요. 세로 범위가 위아래 모두 값을 잘랐으므로 clipped가 (True, True)예요." />
+
+극점의 자리는 표본을 가장 좁게 나눈 간격까지 맞아요. 기본 설정에서는 구간 길이의 약 $4 \times 10^{-6}$배예요. 극점이 아닌데 가파르게 오르는 함수(예를 들어 $\tanh 50x$)는 끊지 않아요. 가장 좁게 나눈 구간에서 선이 이어지면 끊을 까닭이 없으니까요.
+
+```python
+>>> sd.plot.function(lambda x: sd.tanh(50 * x), -1, 1).info[0].jumps
+()
+```
+
+## 뜀
+
+값이 한 점에서 갑자기 바뀌지만 달아나지는 않는 곳(뜀)에서도 선을 끊어요. 계단 함수를 그려도 계단 사이를 잇는 세로선이 생기지 않아요.
+
+```python
+>>> fig = sd.plot.function(sd.floor, -2.5, 2.5)
+>>> [round(j, 4) for j in fig.info[0].jumps]
+[-2.0, -1.0, -0.0, 1.0, 2.0]
+```
+
+극점과 뜀은 가장 좁게 나눈 구간의 양쪽 값으로 가려요. 양쪽이 모두 세로 범위 밖으로 멀리 나가면 극점이고(`poles`), 아니면 뜀이에요(`jumps`).
+
+## 자동 범위와 ylim
+
+`ylim`을 주지 않으면 세로 범위를 처음 격자의 값에서 정해요. 값 대부분이 있는 띠(10%와 90% 분위수 사이)를 보고, 그 띠의 폭보다 몇 배나 멀리 달아난 값이 있는 쪽만 잘라요. 극점 근처의 큰 값이 축을 다 차지하지 않게 하려는 것이에요. 반대로 $e^x$처럼 끝으로 갈수록 크게 자라는 함수는 달아난 것이 아니라 함수의 모양이므로 자르지 않아요.
+
+```python
+>>> sd.plot.function(sd.exp, 0, 10).info[0].clipped
+(False, False)
+>>> sd.plot.function(lambda x: 1 / x**2, -1, 1).info[0].clipped
+(False, True)
+```
+
+$1/x^2$는 극점에서 부호가 바뀌지 않아 선을 끊지는 않지만, 위쪽으로 달아난 값은 잘라요. `info.clipped`는 (아래, 위)에서 잘랐는지예요. 곡선의 값이 범위 밖으로 나갈 때만 `True`이고, 범위의 끝에 닿기만 한 것은 자른 것이 아니에요.
+
+값이 거의 어디서나 같은 함수는 그 띠의 폭이 0이에요. 그때는 멀고 가까움을 잴 잣대가 없으니 자르지 않고 값 전체를 범위로 써요. 구간의 대부분에서 0이고 가운데에서만 솟는 매끈한 봉우리가 그런 함수예요.
+
+```python
+>>> bump = lambda x: sd.where(sd.abs(x) < 1, sd.exp(-1 / (1 - sd.minimum(x * x, 0.999999))), 0.0)
+>>> info = sd.plot.function(bump, -10, 10).info[0]
+>>> info.clipped, round(info.ylim[1], 4)
+((False, False), 0.3678)
+```
+
+처음 격자의 값이 거의 다 같으면, 그 격자 사이를 쪼개 가며 찾은 값까지 범위를 넓혀요. 그래서 처음 격자로는 거의 보이지 않는 아주 좁은 봉우리도 꼭대기까지 보여요. 아래의 봉우리는 너비가 $10^{-4}$쯤이라 처음 격자의 점 가운데 거의 모두가 0이에요.
+
+```python
+>>> spike = lambda x: sd.exp(-(((x - 0.5) / 1e-4) ** 2))
+>>> info = sd.plot.function(spike, 0, 1).info[0]
+>>> info.clipped, round(info.ylim[1], 3)
+((False, False), 0.999)
+```
+
+원하는 범위가 있으면 `ylim=(아래, 위)`로 정해요. 자동 범위를 쓰지 않고, 그 범위 밖의 곡선은 칸의 가장자리에서 잘려요.
+
+```python
+>>> fig = sd.plot.function(sd.tan, -1.5, 1.5, ylim=(-2, 2))
+>>> fig.info[0].ylim
+(-2.0, 2.0)
+```
+
+<Callout type="warn" title="좁은 봉우리도 극점처럼 잘릴 수 있어요">
+자동 범위는 "대부분의 값에서 멀리 떨어진 값"을 달아난 값으로 봐요. 그래서 구간의 대부분에서 낮게 깔린 꼬리가 천천히 줄어들고 좁은 곳에서만 높이 솟는 함수는 봉우리가 잘려요. 위의 두 함수와 달리 꼬리의 값이 서로 달라서 값의 대부분이 있는 띠의 폭이 0이 아니기 때문이에요. 아래의 로렌츠 봉우리는 꼭대기가 1인데 자동 범위는 0.019에서 잘라요. `info.clipped`가 `(False, True)`이면 그런 경우인지 보고, 그렇다면 `ylim`을 주세요.
+
+```python
+>>> peak = lambda x: 1 / (1 + (200 * (x - 0.37)) ** 2)
+>>> info = sd.plot.function(peak, 0, 1).info[0]
+>>> info.clipped, round(info.ylim[1], 3)
+((False, True), 0.019)
+>>> info = sd.plot.function(peak, 0, 1, ylim=(0, 1.05)).info[0]
+>>> round(info.ylim[1], 3)
+1.0
+```
+</Callout>
+
+## 정의역의 끝과 NaN
+
+함수가 NaN을 돌려주는 곳은 비워 둬요. 값이 있는 곳과 없는 곳의 경계는 반씩 나눠 좁혀서, 곡선이 정의역의 끝까지 닿아요. $\sqrt{1 - x^2}$은 −1과 1에서 가로축에 닿는 반원이에요.
+
+```python
+>>> fig = sd.plot.function(lambda x: sd.sqrt(1 - x * x), -1.5, 1.5)
+>>> [(round(u, 4), round(v, 4)) for u, v in fig.info[0].undefined]
+[(-1.5, -1.0), (1.0, 1.5)]
+```
+
+`info.undefined`는 값이 유한하지 않았던 구간들이에요. 정의역이 여러 조각인 함수는 조각마다 선이 따로 그려져요.
+
+정의역의 끝에서 값이 달아나는 함수도 같아요. $\ln x$를 0을 품은 구간에서 그리면 곡선이 0 가까이까지 내려가다 끝나요. 그 끝은 극점이나 뜀으로 적지 않아요.
+
+```python
+>>> info = sd.plot.function(sd.log, -1, 3).info[0]
+>>> info.poles, info.jumps
+((), ())
+>>> [(round(u, 4), round(v, 4)) for u, v in info.undefined]
+[(-1.0, 0.0)]
+```
+
+## 너무 빠른 진동
+
+$\sin(1/x)$는 0에 가까워질수록 한없이 빠르게 오르내려요. 표본을 아무리 촘촘히 해도 그 모양을 선으로 그릴 수는 없고, 선을 겹쳐 그으면 얼룩이 될 뿐이에요. 그런 구간은 선 대신 그 구간에서 함수가 오가는 범위를 칠한 띠로 그려요.
+
+```python
+>>> fig = sd.plot.function(lambda x: sd.sin(1 / x), -0.5, 0.5)
+>>> [(round(u, 4), round(v, 4)) for u, v in fig.info[0].oscillating]
+[(-0.0082, 0.0082)]
+```
+
+`info.oscillating`이 띠로 그린 구간이에요. 띠는 곡선과 같은 색으로 칠해요.
+
+## 여러 함수와 labels
+
+함수의 리스트를 주면 한 칸에 겹쳐 그려요. 색은 팔레트에서 차례로 받고, 세로 범위는 모든 함수를 함께 보고 잡아요. 범례 이름은 `labels`로 함수마다 줘요.
+
+```python
+>>> fig = sd.plot.function(
+...     [sd.special.j0, sd.special.j1, lambda x: sd.special.jv(2, x)],
+...     0, 15,
+...     labels=[r"$J_0$", r"$J_1$", r"$J_2$"],
+... )
+>>> len(fig.info)
+3
+```
+
+<PlotImage name="function-bessel" alt="0에서 15까지의 베셀 함수 J0, J1, J2. 세 곡선이 서로 다른 색이고 오른쪽 위에 범례가 있어요" caption="세 함수가 팔레트의 처음 세 색을 받았어요. 범례는 곡선을 가리지 않는 구석에 자리를 잡아요." />
+
+함수가 여럿일 때는 `label`과 `color`를 줄 수 없어요. 색을 하나하나 정하고 싶으면 함수를 하나씩 메서드로 더해요(아래).
+
+## 겹치기
+
+모듈 함수 `sd.plot.function`은 새 그림을 만들고, 메서드 `fig.function`은 있는 그림의 칸에 곡선을 더해요. 인자는 같고, 메서드는 그림 옵션(`height`, `theme` 같은 `**figure`)만 받지 않아요. `function`의 `width`는 선의 굵기(pt)라서, 그림의 너비를 정하려면 `sd.plot.Figure(width=120).function(...)`처럼 만든 그림에 메서드로 그려요. 자료의 점 위에 모형의 곡선을 얹을 때 자주 써요.
+
+```python
+>>> rng = sd.random.default_rng(7)
+>>> x = sd.linspace(0.5, 9.5, 19)
+>>> y = 2 * sd.exp(-0.3 * x) + 0.2 * (rng.random(19) - 0.5)
+>>> fig = sd.plot.scatter(x, y, label="data")
+>>> fig = fig.function(lambda t: 2 * sd.exp(-0.3 * t), 0, 10, style="--", label="model")
+>>> fig.info[0].kind
+'function'
+```
+
+곡선을 하나씩 더하면 색과 선의 꼴을 곡선마다 정할 수 있어요.
+
+```python
+>>> fig = sd.plot.function(sd.sin, 0, 2 * math.pi, label=r"$\sin x$")
+>>> fig = fig.function(sd.cos, 0, 2 * math.pi, color="C3", style=":", width=1.5, label=r"$\cos x$")
+>>> len(fig.info)
+2
+```
+
+## Figure.info: 그림이 한 일
+
+`fig.info`는 그 그림의 함수 그림(`function`, `parametric`, `polar`)이 곡선마다 남긴 기록의 튜플이에요. 더한 순서대로이고, 칸이 여럿이어도 그림 하나에 하나의 튜플이에요. 기록은 이름 있는 튜플 `PlotInfo`이고 필드는 여덟이에요.
+
+| 필드 | 뜻 |
+|---|---|
+| `kind` | 그림의 종류: `'function'`, `'parametric'`, `'polar'` |
+| `n` | 실제로 계산한 표본의 수 |
+| `poles` | 찾은 극점의 자리(x 값)의 튜플 |
+| `jumps` | 찾은 뜀의 자리의 튜플 |
+| `ylim` | 그림에 보이는 곡선의 값의 범위 (아래, 위). `parametric`과 `polar`는 `None` |
+| `clipped` | 세로 범위가 (아래, 위)에서 값을 잘랐는지 |
+| `undefined` | 값이 유한하지 않았던 구간 (시작, 끝)들 |
+| `oscillating` | 선 대신 띠로 그린 구간 (시작, 끝)들 |
+
+```python
+>>> info = sd.plot.function(sd.special.gamma, -4.2, 4.2).info[0]
+>>> info.kind, info.n
+('function', 538)
+>>> [round(p, 3) for p in info.poles]
+[-4.0, -3.0, -2.0, -1.0, -0.0]
+>>> info.clipped
+(True, True)
+>>> info._fields
+('kind', 'n', 'poles', 'jumps', 'ylim', 'clipped', 'undefined', 'oscillating')
+```
+
+`sd.plot`은 경고를 내지 않아요. 범위를 자르거나 극점을 찾은 것은 그림에서도 보이지만, 프로그램에서 확인하려면 이 기록을 읽어요. `parametric`과 `polar`의 기록에서 `poles`와 `jumps`는 매개변수 t(또는 θ)의 값이에요.
+
+## 에러
+
+범위는 언제나 줘야 하고 `a < b`여야 해요. 함수가 돌려주는 것도 검사해요.
+
+```python
+>>> sd.plot.function(sd.sin, 1, 1)
+Traceback (most recent call last):
+    ...
+ValueError: function(): 'a' must be less than 'b'
+>>> sd.plot.function(sd.sin, 0, math.inf)
+Traceback (most recent call last):
+    ...
+ValueError: function(): 'b' must be finite
+>>> sd.plot.function(lambda x: x + 1j, 0, 1)
+Traceback (most recent call last):
+    ...
+TypeError: function(): 'f' must return real values, not complex128
+>>> sd.plot.function([sd.sin, sd.cos], 0, 1, label="a")
+Traceback (most recent call last):
+    ...
+ValueError: function(): several functions take 'labels', not 'label'
+>>> sd.plot.function([sd.sin, sd.cos], 0, 1, color="red")
+Traceback (most recent call last):
+    ...
+ValueError: function(): 'color' cannot be given for several functions (they take the palette's colours)
+```
+
+함수 안에서 난 에러는 그대로 나와요.
+
+```python
+>>> sd.plot.function(lambda x: 1 / 0, 0, 1)
+Traceback (most recent call last):
+    ...
+ZeroDivisionError: division by zero
+```
+
+## 조심할 점
+
+- **범위 없이는 부를 수 없어요.** 볼 만한 구간을 그림이 짐작하지 않아요.
+- **배열을 받는 함수만 돼요.** `math.sin`처럼 수 하나만 받는 함수는 쓸 수 없어요. 조각마다 식이 다르면 `sd.where`로 써요([함수 그림의 표본](/api/plot/sampling/#함수를-넘기는-법)).
+- **좁은 무늬는 놓칠 수 있어요.** 처음 격자(257점)의 간격보다 좁은 봉우리는 보이지 않을 수 있어요. `samples`를 늘려요.
+- **자동 범위는 달아나는 값을 잘라요.** 극점이 아닌 좁은 봉우리도 잘릴 수 있으니 `info.clipped`를 보고 필요하면 `ylim`을 줘요.
+- **수평·사선 점근선은 찾지 않아요.** `asymptotes`는 세로 점근선(극점)만 그려요. 다른 직선은 [hline](/api/plot/hline-vline/)이나 `fig.function`으로 직접 더해요.
+
+## matplotlib을 아는 분께
+
+- matplotlib에는 함수를 받는 그림이 없어요. `x = np.linspace(a, b, n)`으로 점을 정하고 `plt.plot(x, f(x))`로 이어요. 여기서는 `sd.plot.function(f, a, b)` 하나이고 점은 그림이 골라요. Mathematica의 `Plot`과 같은 생각이에요.
+- `plt.plot`은 극점을 가로지르는 세로선을 그리고, 세로 범위는 가장 큰 값까지 늘어나요. 여기서는 선을 끊고 본체에 맞춘 범위를 잡아요.
+- `plt.ylim(a, b)`에 해당하는 것은 `ylim=(a, b)` 인자나 `fig.ylim(a, b)` 메서드예요.

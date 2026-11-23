@@ -1,0 +1,351 @@
+---
+title: stardust 배열과 주고받기
+names: [Series.to_array, DataFrame.to_array]
+group: 속성과 변환
+order: 5
+signatures:
+  - "Series.to_array(*, dtype=None, copy=None, na_value=<없음>)"
+  - "DataFrame.to_array(*, dtype=None, copy=None, na_value=<없음>)"
+summary: Series나 DataFrame의 값을 stardust 배열(sd.ndarray)로 꺼내요. 배열 함수와 sd.linalg로 계산하고, 결과를 다시 Series나 DataFrame으로 만들 수 있어요.
+params:
+  - name: dtype
+    type: sd.bool, sd.int64, sd.float64, 그 이름, 또는 None
+    kind: keyword-only
+    desc: 배열로 꺼내기 전에 바꿀 종류. 바꾸는 규칙은 astype과 같아요. 배열에는 문자열 종류가 없어서 sd.string은 안 돼요.
+  - name: copy
+    type: True, False 또는 None
+    kind: keyword-only
+    desc: None(기본값)이면 꼭 필요할 때만 복사해요. True면 언제나 고칠 수 있는 복사본, False면 복사하지 않고 복사가 필요하면 에러예요.
+  - name: na_value
+    type: 스칼라
+    kind: keyword-only
+    desc: NA 자리에 넣을 값. NA가 있는 컬럼은 꼭 줘야 해요. 결과 배열의 종류에 들어가는 값이어야 해요.
+returns:
+  type: ndarray
+  desc: Series면 1차원, DataFrame이면 (행, 열) 2차원 sd.ndarray. 복사 없이 꺼낸 배열은 읽기 전용이에요.
+raises:
+  - type: TypeError
+    desc: string 컬럼을 꺼낼 때, dtype에 sd.string이나 다른 값을 줄 때, na_value가 결과 종류에 들어가지 않을 때, copy가 True·False·None이 아닐 때.
+  - type: ValueError
+    desc: NA가 있는데 na_value를 주지 않았을 때, copy=False인데 복사가 필요할 때(NA를 채울 때, dtype을 바꿀 때, DataFrame).
+  - type: OverflowError
+    desc: int64 배열에 int64 범위 밖의 정수를 na_value로 줄 때.
+seeAlso: [to-numpy, astype, na, assign, series, dataframe]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import FrameFig from '../../../components/fig/FrameFig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+stardust에는 표를 다루는 데이터프레임 영역(`sd.frame`) 말고도, 숫자 배열을 계산하는 배열 영역(`sd`)과 행렬 계산을 하는 선형대수 영역(`sd.linalg`)이 있어요. `to_array()`는 표의 값을 **stardust 배열**(`sd.ndarray`)로 꺼내서 이 두 영역의 함수에 넘길 수 있게 해 줘요.
+
+표에서 데이터를 고르고 정리하는 일은 데이터프레임이, 정리된 숫자로 수학 계산을 하는 일은 배열과 선형대수가 잘해요. `to_array`는 그 사이의 다리예요.
+
+```python
+>>> import stardust as sd
+>>> scores = sd.frame.DataFrame({
+...     "name": ["Ann", "Ben", "Cal", "Dan"],
+...     "math": [80, 90, 70, 60],
+...     "eng": [60, 80, 70, 90],
+... })
+>>> m = scores["math"].to_array()
+>>> m
+array([80, 90, 70, 60], dtype=int64)
+>>> sd.sort(m, descending=True)
+array([90, 80, 70, 60], dtype=int64)
+```
+
+DataFrame은 2차원 배열이 돼요. 배열의 한 행이 표의 한 행(학생 한 명), 한 열이 표의 한 컬럼(과목 하나)이에요.
+
+```python
+>>> M = scores[["math", "eng"]].to_array()
+>>> M
+array([[80, 60],
+       [90, 80],
+       [70, 70],
+       [60, 90]], dtype=int64)
+>>> sd.mean(M, axis=0)
+array([75.0, 75.0], dtype=float64)
+```
+
+<Fig caption="컬럼 두 개를 고른 표가 (4, 2) 배열이 돼요. 행 라벨과 컬럼 이름은 따라가지 않아요.">
+  <FrameFig name="scores[['math', 'eng']]" columns={['math', 'eng']} dtypes={['int64', 'int64']}
+    data={[[80, 60], [90, 80], [70, 70], [60, 90]]} />
+  <Op note="to_array()">→</Op>
+  <ArrayFig name="M" data={[[80, 60], [90, 80], [70, 70], [60, 90]]} axes note="int64, (4, 2)" />
+</Fig>
+
+`to_array`는 [`to_numpy`](/api/frame/to-numpy/)와 규칙이 같아요. `NA`는 `na_value`로 채우고, `dtype=`은 [`astype`](/api/frame/astype/)과 같은 변환이고, `copy`의 뜻도 같아요. 다른 점은 결과가 numpy 배열이 아니라 stardust 배열이라는 것과, 문자열 컬럼을 꺼낼 수 없다는 것이에요.
+
+<Reference />
+
+## 배열 함수로 계산하기
+
+꺼낸 배열은 [배열 영역](/api/array/basics/)의 함수에 그대로 넘겨요. 정렬, 누적합, 분위수처럼 데이터프레임에 없는 계산도 배열에서는 할 수 있어요.
+
+데이터프레임의 리덕션과 배열의 리덕션은 같은 규칙으로 계산해요. 그래서 `NA`가 없으면 결과가 같아요. 표준편차의 기본값이 둘 다 `correction=0`(모표준편차)인 것도 같아요([표준편차와 분산](/api/frame/std-var/)).
+
+```python
+>>> scores["math"].mean(), sd.mean(m)
+(75.0, 75.0)
+>>> scores["math"].std(), sd.std(m)
+(11.180339887498949, 11.180339887498949)
+```
+
+행마다 계산한 결과를 다시 표에 붙일 수도 있어요. `axis=1`은 행마다(학생마다) 계산한다는 뜻이에요. 배열을 그대로 새 컬럼에 대입하면 돼요.
+
+```python
+>>> scores["total"] = sd.sum(M, axis=1)
+>>> scores
+  name  math  eng  total
+0  Ann    80   60    140
+1  Ben    90   80    170
+2  Cal    70   70    140
+3  Dan    60   90    150
+```
+
+## `sd.linalg`로 넘기기
+
+DataFrame의 숫자 컬럼을 2차원 배열로 꺼내면 바로 행렬이에요. [선형대수 영역](/api/linalg/basics/)의 함수는 이 행렬을 그대로 받아요.
+
+과일 가게 영수증 네 장이 있어요. 사과와 배를 몇 개씩 사고 얼마를 냈는지 적혀 있는데, 한 개 값은 적혀 있지 않아요. "사과 수 × 사과 값 + 배 수 × 배 값 = 낸 돈"이 영수증마다 성립하므로, 네 식을 가장 잘 맞추는 값을 [`lstsq`](/api/linalg/lstsq/)(최소제곱)로 구해요.
+
+```python
+>>> receipts = sd.frame.DataFrame({
+...     "apple": [2, 1, 3, 0],
+...     "pear": [1, 2, 0, 2],
+...     "total": [3200, 2800, 3600, 1600],
+... })
+>>> X = receipts[["apple", "pear"]].to_array()
+>>> y = receipts["total"].to_array()
+>>> fit = sd.linalg.lstsq(X, y)
+>>> fit.rank
+2
+>>> sd.round(fit.solution)
+array([1200.0,  800.0], dtype=float64)
+```
+
+사과는 1200, 배는 800이에요. `sd.linalg`의 함수는 정수 배열도 받아서 float64로 계산해요. 계산 결과에는 마지막 자리에 아주 작은 반올림 오차가 생길 수 있어서, 여기서는 [`sd.round`](/api/array/rounding/)로 정수에 맞춰 보였어요.
+
+<Callout type="tip" title="행은 관측, 열은 변수">
+
+데이터 분석에서는 보통 표의 한 행이 관측 하나(영수증 한 장, 학생 한 명), 한 컬럼이 변수 하나(사과 수, 수학 점수)예요. `DataFrame.to_array()`는 이 배치 그대로 행렬을 만들어서, 회귀나 공분산처럼 "행 = 관측"을 가정하는 계산에 바로 쓸 수 있어요.
+
+</Callout>
+
+## 통계와 회귀 함수에는 그대로 넘겨요
+
+자료를 처음 받는 함수는 `to_array()` 없이 Series를 그대로 받아요. [기술통계](/api/stats/describe/)(`sd.stats.describe`, `sd.stats.moment` 등), [회귀](/api/regression/basics/) 함수, [최적화](/api/optimize/basics/)의 시작점 `x0`가 그래요. Series 안의 `NA`는 NaN으로 바뀌어 들어가요.
+
+```python
+>>> sd.stats.describe(scores["math"]).mean
+75.0
+>>> fit = sd.regression.ols(scores["eng"], scores["math"])
+>>> fit.param_names, fit.params
+(['const', 'math'], array([105.0,  -0.4], dtype=float64))
+```
+
+[`ols`](/api/regression/ols/)는 반응 `y`를 먼저, 설명변수를 다음에 받아요. Series의 이름은 계수의 이름이 돼요.
+
+원소마다 계산하는 함수(`sd.exp`, `sd.special.erf` 등), 배열 연산, 분포는 `sd.ndarray`만 받아요. 이런 함수에는 `to_array()`로 꺼내서 넘겨요.
+
+```python
+>>> sd.special.erf(scores["math"])
+Traceback (most recent call last):
+    ...
+TypeError: erf(): 'x' must be an sd.ndarray or a bool, int, float or complex, not Series
+```
+
+## 공통 종류로 맞춰요
+
+DataFrame의 `to_array()`는 컬럼의 종류를 `bool < int64 < float64` 순서에서 가장 넓은 쪽으로 맞춰요. 배열 영역의 승격과 같은 규칙이고([dtype](/api/array/dtypes/)), [`DataFrame.to_numpy`](/api/frame/to-numpy/)도 이 규칙을 따라요.
+
+```python
+>>> sd.frame.DataFrame({"fresh": [True, False], "qty": [1, 2]}).to_array()
+array([[1, 1],
+       [0, 2]], dtype=int64)
+>>> scores[["math", "eng"]].to_array(dtype="float64")
+array([[80.0, 60.0],
+       [90.0, 80.0],
+       [70.0, 70.0],
+       [60.0, 90.0]], dtype=float64)
+```
+
+DataFrame의 결과는 언제나 새로 만든 2차원 배열이라서 고칠 수 있고, 표와 메모리를 나누지 않아요. 그래서 `copy=False`는 언제나 `ValueError`예요.
+
+## 문자열 컬럼은 꺼낼 수 없어요
+
+배열 영역에는 문자열 종류가 없어요. 그래서 string 컬럼은 `to_array`로 꺼낼 수 없고, `dtype=sd.string`도 받지 않아요. 문자열이 섞인 표에서는 숫자 컬럼만 골라서 꺼내요.
+
+```python
+>>> scores["name"].to_array()
+Traceback (most recent call last):
+    ...
+TypeError: to_array(): a string column has no array (the array area has no string dtype)
+>>> scores.to_array()
+Traceback (most recent call last):
+    ...
+TypeError: to_array(): columns of dtypes ['int64', 'string'] have no common array dtype; pass dtype=
+>>> scores[["math", "eng", "total"]].to_array().shape
+(4, 3)
+```
+
+문자열 값이 꼭 필요하면 [`to_numpy`](/api/frame/to-numpy/)로 Python `str`을 담은 numpy 배열을 꺼내거나 `tolist()`를 써요.
+
+## `NA`는 채워서 꺼내요
+
+배열에는 `NA`가 없어서, `NA`가 있는 컬럼은 `na_value`로 채울 값을 정해야 해요. 정수 컬럼을 NaN으로 채우려면 `dtype="float64"`도 함께 줘요. `na_value`의 규칙은 [`to_numpy`](/api/frame/to-numpy/)와 같아요.
+
+```python
+>>> qty = sd.frame.Series([3, None, 5])
+>>> qty.to_array()
+Traceback (most recent call last):
+    ...
+ValueError: to_array(): cannot convert an int64 column with NA to an array; pass na_value= to fill the NA rows
+>>> qty.to_array(na_value=0)
+array([3, 0, 5], dtype=int64)
+>>> qty.to_array(dtype="float64", na_value=sd.nan)
+array([3.0, nan, 5.0], dtype=float64)
+```
+
+NaN으로 채운 배열을 배열 함수에 넘기면 평범한 NaN으로 다뤄요. 예를 들어 `sd.mean`은 NaN을 결과로 전파하고, [`sd.nanmean`](/api/array/nan-reductions/)은 NaN을 건너뛰어요. 데이터프레임의 `mean`이 `NA`를 건너뛰는 것과 비슷한 결과를 배열에서 얻는 방법이에요. 두 결측의 차이는 [NA와 NaN](/api/frame/na/)에 있어요.
+
+```python
+>>> sd.nanmean(qty.to_array(dtype="float64", na_value=sd.nan))
+4.0
+>>> qty.mean()
+4.0
+```
+
+## 읽기 전용 뷰와 `copy`
+
+Series에 `NA`가 없고 종류도 바꾸지 않으면, `to_array()`는 값을 복사하지 않고 컬럼의 메모리를 그대로 보여 주는 배열을 돌려줘요. 이런 배열을 [뷰](/api/array/views/)라고 해요. 복사가 없으니 큰 컬럼도 바로 꺼내요.
+
+이 뷰는 **읽기 전용**이에요. 고칠 수 있다면 표의 값이 몰래 바뀌기 때문이에요. 대입이나 `+=` 같은 제자리 연산은 `ValueError`예요.
+
+```python
+>>> v = scores["math"].to_array()
+>>> v[0] = 0
+Traceback (most recent call last):
+    ...
+ValueError: assignment destination is read-only
+```
+
+뷰로 계산하는 것은 문제없어요. `v * 2` 같은 연산은 새 배열을 만들어 돌려줘요.
+
+```python
+>>> v * 2
+array([160, 180, 140, 120], dtype=int64)
+```
+
+반대로 표 쪽에 값을 대입하면, 표가 먼저 자기 값을 복사한 뒤 고쳐요. 그래서 이미 꺼낸 뷰의 값은 바뀌지 않아요. 고친 쪽만 바뀌는 이 방식(Copy-on-Write)은 [대입과 복사](/api/frame/assign/)에 자세히 있어요.
+
+```python
+>>> col = scores["math"]
+>>> view = col.to_array()
+>>> col.iloc[0] = 100
+>>> view
+array([80, 90, 70, 60], dtype=int64)
+```
+
+고칠 배열이 필요하면 `copy=True`를 줘요. 언제나 표와 상관없는, 고칠 수 있는 새 배열이 나와요. 이미 받은 뷰라면 `.copy()`로 복사본을 만들어도 돼요.
+
+```python
+>>> w = scores["math"].to_array(copy=True)
+>>> w[0] = 0
+>>> w
+array([ 0, 90, 70, 60], dtype=int64)
+```
+
+| 언제 | 결과 | 고칠 수 있나요 |
+|---|---|---|
+| Series, `NA` 없음, 종류 그대로, `copy=None` | 컬럼의 뷰 (복사 없음) | 아니요 |
+| `na_value`로 `NA`를 채움 | 새 배열 | 예 |
+| `dtype=`으로 종류를 바꿈 | 새 배열 | 예 |
+| `copy=True` | 새 배열 | 예 |
+| DataFrame | 새 2차원 배열 | 예 |
+
+`copy=False`는 복사가 필요하면 `ValueError`예요. 복사가 필요한 경우는 `NA`를 채울 때, 종류를 바꿀 때, DataFrame일 때예요. 뜻은 배열의 [`asarray(copy=False)`](/api/array/asarray/)와 같아요.
+
+```python
+>>> scores["math"].to_array(dtype="float64", copy=False)
+Traceback (most recent call last):
+    ...
+ValueError: to_array(): copy=False, but a dtype conversion requires a copy
+```
+
+## 배열에서 Series와 DataFrame으로
+
+반대 방향도 있어요. 1차원 배열은 `sd.frame.Series(...)`로, 2차원 배열은 `sd.frame.DataFrame(..., columns=...)`로 표가 돼요. 2차원 배열에는 컬럼 이름이 없으니 `columns=`를 꼭 줘야 해요.
+
+```python
+>>> z = M - sd.mean(M, axis=0)
+>>> sd.frame.DataFrame(z, columns=["math", "eng"], index=["Ann", "Ben", "Cal", "Dan"])
+     math    eng
+Ann   5.0  -15.0
+Ben  15.0    5.0
+Cal  -5.0   -5.0
+Dan -15.0   15.0
+>>> sd.frame.DataFrame(z)
+Traceback (most recent call last):
+    ...
+ValueError: DataFrame(): 'columns' is required to name the columns of row or 2-D array data
+```
+
+배열에서 표를 만들 때는 언제나 복사해요. 배열은 다른 뷰를 통해 언제든 바뀔 수 있어서, 메모리를 함께 쓰면 표가 모르는 사이에 값이 바뀔 수 있기 때문이에요. 그래서 만든 뒤에 배열을 고쳐도 표는 그대로예요.
+
+```python
+>>> arr = sd.asarray([1.0, 2.0, 3.0])
+>>> s = sd.frame.Series(arr, name="x")
+>>> arr[0] = 100.0
+>>> s
+0    1.0
+1    2.0
+2    3.0
+Name: x, dtype: float64
+```
+
+받는 배열은 bool, int64, float64예요. 데이터프레임에는 복소수 종류가 없어서 complex128 배열은 `TypeError`예요. Series는 1차원, DataFrame은 2차원 배열만 받아요.
+
+```python
+>>> sd.frame.Series(sd.asarray([1 + 2j]))
+Traceback (most recent call last):
+    ...
+TypeError: Series(): a column cannot hold complex128 (the frame has no complex dtype)
+>>> sd.frame.Series(M)
+Traceback (most recent call last):
+    ...
+ValueError: Series(): expected a 1-D array, got 2 dimensions
+```
+
+`dtype=`을 주면 만든 뒤 `astype`한 것과 같아요. 만드는 방법의 자세한 내용은 [Series](/api/frame/series/)와 [DataFrame](/api/frame/dataframe/)에 있어요.
+
+## 조심할 점
+
+### 라벨은 따라가지 않아요
+
+배열에는 행 라벨도 컬럼 이름도 없어요. 배열로 계산한 결과를 표로 되돌릴 때는 라벨을 직접 붙여요. 결과의 행 순서는 꺼낼 때의 행 순서와 같아요.
+
+### 배열과 데이터프레임의 정수 연산은 다를 수 있어요
+
+배열로 꺼내 계산하면 배열 영역의 규칙을 따라요. 대부분 같지만, 정수를 0으로 나눈 몫(`// 0`)처럼 데이터프레임에서는 `NA`가 되는 계산이 배열에서는 정해진 정수 값이 돼요. 배열에는 `NA`가 없기 때문이에요. 차이는 [NA와 NaN](/api/frame/na/)과 [산술 연산](/api/frame/arithmetic/)에 있어요.
+
+## 비슷한 기능과의 차이
+
+| | `to_array` | [`to_numpy`](/api/frame/to-numpy/) | `tolist` |
+|---|---|---|---|
+| 결과 | `sd.ndarray` | numpy 배열 | Python list |
+| 어디에 쓰나요 | stardust 배열 함수, `sd.linalg` | numpy와 다른 라이브러리 | Python 코드 |
+| string 컬럼 | `TypeError` | Python `str`을 담은 object 배열 | `str`의 list |
+| `NA` | `na_value`로 채워야 해요 | `na_value`로 채워야 해요 | `NA` 그대로 |
+| 기본값의 결과 | 읽기 전용 뷰 | 읽기 전용 뷰 | 새 list |
+| `dtype=`으로 바꾼 결과 | 고칠 수 있어요 | 고칠 수 있어요 | (인자 없음) |
+
+## pandas를 아는 분께
+
+- pandas에는 `to_array`가 없어요. stardust 배열로 꺼내는 메서드라서 stardust에만 있어요. numpy 배열이 필요하면 [`to_numpy`](/api/frame/to-numpy/)를 써요.
+- 규칙은 stardust의 `to_numpy`와 같아요. 그래서 pandas의 `to_numpy`와 다른 점(`copy=False`가 에러일 수 있는 것, `NA`에 `na_value`가 꼭 필요한 것, DataFrame의 공통 종류)도 같아요.
+- `sd.ndarray`에서 Series를 만들면 언제나 복사해요. pandas도 numpy 배열에서 Series를 만들 때 기본으로 복사해요(Copy-on-Write).

@@ -1,0 +1,528 @@
+---
+kind: concept
+title: 통계의 기본
+group: 기본 개념
+order: 1
+summary: sd.stats에 무엇이 들어 있는지, 분포 객체를 만들고 메서드를 부르는 방식, 그리고 모든 분포와 기술통계가 함께 따르는 약속을 설명해요. 매개변수와 입력의 브로드캐스트, 결과의 종류, 에러 대신 NaN을 내는 규칙, 정확도 약속이 여기에 있어요.
+seeAlso: [methods, sample, normal, uniform, describe]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+**확률분포**는 "어떤 값이 얼마나 자주 나오는가"를 정해 둔 규칙이에요. 성인의 키를 많이 재 보면 170cm 근처가 가장 흔하고, 150cm나 190cm는 드물어요. 이런 모양을 수식 하나로 적어 두면, "키가 180cm 이하일 확률은?", "상위 5%는 몇 cm부터?", "이 분포를 따르는 가짜 데이터 1000개를 만들어 줘" 같은 질문에 바로 답할 수 있어요.
+
+`sd.stats`는 이런 분포와, 데이터를 몇 개의 숫자로 요약하는 **기술통계** 함수를 담고 있어요. 따로 import할 필요 없이 `sd.stats.이름`으로 불러요.
+
+```python
+>>> import stardust as sd
+>>> X = sd.stats.Normal(mu=170.0, sigma=6.0)
+>>> X.cdf(180.0)
+0.9522096477271853
+>>> X.icdf(0.95)
+179.86912176170884
+>>> X.mean(), X.standard_deviation()
+(170.0, 6.0)
+```
+
+첫 줄은 평균이 170이고 표준편차가 6인 [정규분포](/api/stats/normal/)를 만들어요. 이렇게 만든 것을 **분포 객체**라고 불러요. 그다음부터는 객체의 메서드로 질문해요.
+
+- `X.cdf(180.0)`: 180 이하일 확률이에요. 약 95.2%예요.
+- `X.icdf(0.95)`: 아래에서 95%를 자르는 값이에요. 약 179.9cm부터가 상위 5%예요.
+- `X.mean()`, `X.standard_deviation()`: 분포의 평균과 표준편차예요.
+
+분포에서 가짜 데이터(표본)를 뽑고, 그 데이터를 기술통계로 요약할 수도 있어요.
+
+```python
+>>> x = X.sample(100_000, rng=sd.random.default_rng(0))
+>>> x.shape
+(100000,)
+>>> r = sd.stats.describe(x)
+>>> round(r.mean, 1), round(r.variance ** 0.5, 1)
+(170.0, 6.0)
+```
+
+표본 10만 개의 평균과 표준편차가 분포의 값(170, 6)과 거의 같아요. 표본은 무작위라서 정확히 같지는 않아요.
+
+이 페이지는 `sd.stats`의 분포와 함수가 **모두 함께 따르는 약속**을 설명해요. 각 분포의 문서는 이 약속을 짧게만 언급해요.
+
+## 무엇이 들어 있나요
+
+### 분포
+
+분포는 값의 종류에 따라 네 가지로 나뉘어요.
+
+- **단변량 연속 분포**: 값이 실수 하나이고, 구간 안의 어떤 실수든 나올 수 있어요. 키, 기다리는 시간, 측정 오차처럼요. 확률을 **밀도**(`pdf`)로 나타내요.
+- **단변량 이산 분포**: 값이 0, 1, 2, …처럼 띄엄띄엄한 정수예요. 동전 열 번 중 앞면의 수, 한 시간에 걸려 온 전화의 수처럼요. 확률을 **확률질량**(`pmf`)으로 나타내요.
+- **다변량 분포**: 값이 여러 성분의 벡터예요. 키와 몸무게를 함께 재는 것처럼, 성분끼리 서로 관련이 있을 수 있어요.
+- **행렬 분포**: 값이 행렬이에요. 공분산 행렬 자체가 무작위인 경우를 다뤄요.
+
+단변량 분포(연속과 이산)의 메서드는 모두 같아요. 메서드 하나하나의 뜻은 [분포의 메서드](/api/stats/methods/)에, 표본을 뽑는 규칙은 [표본 뽑기](/api/stats/sample/)에 있어요.
+
+**연속 분포**
+
+| 분포 | 만들기 | 이런 값을 나타내요 |
+|---|---|---|
+| [정규](/api/stats/normal/) | `Normal(mu=0, sigma=1)` | 평균 둘레에 대칭으로 모인 값. 측정 오차, 키 |
+| [t](/api/stats/student-t/) | `StudentT(df=...)` | 정규보다 꼬리가 두꺼운 대칭 분포. 표본이 적을 때 표본 평균의 표준화한 값 |
+| [카이제곱](/api/stats/chi-squared/) | `ChiSquared(df=...)` | 표준정규 변수 `df`개의 제곱합 |
+| [F](/api/stats/f/) | `F(dfn=..., dfd=...)` | 두 카이제곱 변수(를 자유도로 나눈 것)의 비. 두 분산의 비 |
+| [감마](/api/stats/gamma/) | `Gamma(a=..., scale=1)` | 양수인 크기나 대기 시간. 사건이 `a`번 일어날 때까지 기다리는 시간 |
+| [베타](/api/stats/beta/) | `Beta(a=..., b=...)` | 0과 1 사이의 비율이나 확률 |
+| [지수](/api/stats/exponential/) | `Exponential(scale=1)` | 다음 사건까지 기다리는 시간 |
+| [로그정규](/api/stats/lognormal/) | `LogNormal(mu=0, sigma=1)` | 로그를 씌우면 정규인 양수. 소득, 입자의 크기 |
+| [균등](/api/stats/uniform/) | `Uniform(a=..., b=...)` | 구간 안의 모든 값이 같은 가능성 |
+| [코시](/api/stats/cauchy/) | `Cauchy(mu=0, sigma=1)` | 꼬리가 아주 두꺼워 평균조차 없는 대칭 분포 |
+| [라플라스](/api/stats/laplace/) | `Laplace(mu=0, sigma=1)` | 가운데가 뾰족하고 양쪽 꼬리가 지수적으로 줄어드는 대칭 분포 |
+| [베이불](/api/stats/weibull/) | `Weibull(c=..., scale=1)` | 부품이 고장 날 때까지의 시간, 수명 |
+
+**극값과 수명 분포**
+
+| 분포 | 만들기 | 이런 값을 나타내요 |
+|---|---|---|
+| [로지스틱](/api/stats/logistic/) | `Logistic(mu=0, sigma=1)` | 누적분포가 로지스틱 함수인 대칭 분포 |
+| [Gumbel](/api/stats/gumbel/) | `Gumbel(mu=0, sigma=1)` | 많은 값 가운데 최댓값. 한 해의 최고 수위 |
+| [일반화 극값](/api/stats/gev/) | `GEV(c=..., mu=0, sigma=1)` | 최댓값 분포의 세 가지 유형을 모양 `c` 하나로 묶은 것 |
+| [파레토](/api/stats/pareto/) | `Pareto(b=..., scale=1)` | 꼬리가 거듭제곱으로 줄어드는 양수. 재산, 도시 인구 |
+| [레일리](/api/stats/rayleigh/) | `Rayleigh(scale=1)` | 두 성분이 독립인 정규 벡터의 길이. 바람의 세기 |
+| [역감마](/api/stats/inverse-gamma/) | `InverseGamma(a=..., scale=1)` | 감마 변수의 역수 |
+
+**비중심 분포**
+
+| 분포 | 만들기 | 이런 값을 나타내요 |
+|---|---|---|
+| [비중심 카이제곱](/api/stats/noncentral-chi-squared/) | `NoncentralChiSquared(df=..., nc=...)` | 평균이 0이 아닌 정규 변수들의 제곱합 |
+| [비중심 t](/api/stats/noncentral-t/) | `NoncentralT(df=..., nc=...)` | 가운데가 0에서 밀려난 정규 변수로 만든 t |
+| [비중심 F](/api/stats/noncentral-f/) | `NoncentralF(dfn=..., dfd=..., nc=...)` | 분자가 비중심 카이제곱인 F |
+
+**이산 분포**
+
+| 분포 | 만들기 | 이런 값을 나타내요 |
+|---|---|---|
+| [이항](/api/stats/binomial/) | `Binomial(n=..., p=...)` | 성공 확률이 `p`인 시행을 `n`번 할 때 성공한 횟수 |
+| [베르누이](/api/stats/bernoulli/) | `Bernoulli(p=...)` | 한 번의 시행에서 성공(1)이냐 실패(0)냐 |
+| [포아송](/api/stats/poisson/) | `Poisson(mu=...)` | 정해진 시간 동안 일어난 사건의 수 |
+| [기하](/api/stats/geometric/) | `Geometric(p=...)` | 첫 성공까지 시행한 횟수(1부터) |
+| [음이항](/api/stats/negative-binomial/) | `NegativeBinomial(n=..., p=...)` | `n`번째 성공 전까지의 실패 횟수 |
+| [초기하](/api/stats/hypergeometric/) | `Hypergeometric(total=..., successes=..., draws=...)` | 되돌려 놓지 않고 뽑을 때 뽑힌 성공의 수 |
+| [이산 균등](/api/stats/discrete-uniform/) | `DiscreteUniform(low=..., high=...)` | `low` 이상 `high` 미만의 정수가 같은 가능성 |
+| [베타이항](/api/stats/beta-binomial/) | `BetaBinomial(n=..., a=..., b=...)` | 성공 확률 자체가 베타 분포로 흔들리는 이항 |
+| [로그 급수](/api/stats/log-series/) | `LogSeries(p=...)` | 확률이 $p^k/k$에 비례하는 양의 정수 |
+| [Zipf](/api/stats/zipf/) | `Zipf(a=...)` | 순위가 k인 것의 빈도가 $k^{-a}$에 비례. 단어의 빈도 |
+
+**다변량 분포와 행렬 분포**
+
+| 분포 | 만들기 | 이런 값을 나타내요 |
+|---|---|---|
+| [다변량 정규](/api/stats/multivariate-normal/) | `MultivariateNormal(mu=..., cov=...)` | 성분끼리 상관이 있는 정규 벡터 |
+| [다변량 t](/api/stats/multivariate-t/) | `MultivariateT(mu=..., shape=..., df=...)` | 꼬리가 두꺼운 다변량 정규 |
+| [다항](/api/stats/multinomial/) | `Multinomial(n=..., p=...)` | `n`번의 시행이 K개 범주에 나뉜 개수 |
+| [디리클레](/api/stats/dirichlet/) | `Dirichlet(alpha=...)` | 합이 1인 K개의 비율 |
+| [Wishart](/api/stats/wishart/) | `Wishart(df=..., scale=...)` | 정규 벡터들로 만든 산포 행렬(공분산 행렬의 `df`배) |
+| [역Wishart](/api/stats/inverse-wishart/) | `InverseWishart(df=..., scale=...)` | Wishart 행렬의 역행렬 |
+| [행렬 정규](/api/stats/matrix-normal/) | `MatrixNormal(mu=..., rowcov=..., colcov=...)` | 행과 열에 각각 공분산이 있는 정규 행렬 |
+
+다변량·행렬 분포는 벡터와 행렬을 다루느라 메서드가 조금 달라요(`cdf`가 일부에만 있고, `covariance`나 원소별 `variance`가 있어요). 자세한 것은 각 분포의 문서에 있어요.
+
+### 기술통계
+
+데이터(표본)를 받아 몇 개의 숫자로 요약하는 함수예요. 분포 객체와 달리 **실제 데이터 배열**을 받아요.
+
+| 하고 싶은 일 | 함수 |
+|---|---|
+| 개수, 최솟값·최댓값, 평균, 분산, 왜도, 첨도를 한 번에 | [`describe`](/api/stats/describe/) |
+| 분포가 한쪽으로 기울었는지, 꼬리가 얼마나 두꺼운지 | [`skew`, `kurtosis`](/api/stats/skew-kurtosis/) |
+| k차 모멘트 | [`moment`](/api/stats/moment/) |
+| 평균 0, 표준편차 1로 표준화 | [`zscore`](/api/stats/zscore/) |
+| 순위 매기기(동점 처리 포함) | [`rankdata`](/api/stats/rankdata/) |
+| 평균의 표준오차 | [`sem`](/api/stats/sem/) |
+| 사분위범위 | [`iqr`](/api/stats/iqr/) |
+| 가장 자주 나온 값 | [`mode`](/api/stats/mode/) |
+| 확률 벡터의 엔트로피, 두 분포의 KL 발산 | [`entropy`](/api/stats/entropy/) |
+| 표본에서 미분 엔트로피 어림 | [`differential_entropy`](/api/stats/differential-entropy/) |
+
+평균, 분산, 분위수, 공분산처럼 통계 말고도 두루 쓰는 계산은 배열 영역에 있어요. [`sd.mean`](/api/array/mean/), [`sd.var`·`sd.std`](/api/array/var/), [`sd.quantile`·`sd.median`](/api/array/quantile/), [`sd.cov`·`sd.corrcoef`](/api/array/cov/), [`sd.histogram`](/api/array/histogram/)을 쓰세요.
+
+<Callout type="note" title="분포의 메서드와 같은 이름의 함수">
+
+`sd.stats.kurtosis(x)`와 `X.kurtosis()`, `sd.stats.mode(x)`와 `X.mode()`처럼 이름이 같은 것이 있어요. 함수는 **데이터**를 요약하고, 메서드는 **분포**의 값을 계산해요. 첨도는 둘 다 기본이 초과 첨도(정규분포에서 0)라서, 정규분포의 큰 표본에 `sd.stats.kurtosis`를 쓰면 `X.kurtosis()`와 같은 0 근처가 나와요.
+
+</Callout>
+
+## 분포 객체 만들기
+
+### 매개변수는 이름을 붙여서 줘요
+
+분포의 모양을 정하는 값(평균, 표준편차, 자유도 등)을 **매개변수**라고 해요. 매개변수는 언제나 `이름=값`으로 줘요. 이름 없이 순서대로 주면 `TypeError`예요.
+
+```python
+>>> sd.stats.Gamma(a=2.0, scale=3.0)
+Gamma(a=2.0, scale=3.0)
+>>> sd.stats.Normal(0.0, 1.0)
+Traceback (most recent call last):
+    ...
+TypeError: Normal(): takes 0 positional arguments but 2 were given
+```
+
+기본값은 **위치는 0, 척도는 1**에만 있어요. `Normal()`은 표준정규분포 `Normal(mu=0, sigma=1)`이고, `Gamma(a=2.0)`의 척도는 1이에요. 분포의 모양을 정하는 매개변수(`df`, `a`, `b`, `p` 등)와 균등분포의 두 끝 `a`, `b`는 기본값이 없어서 꼭 줘야 해요.
+
+```python
+>>> sd.stats.Normal()
+Normal(mu=0.0, sigma=1.0)
+>>> sd.stats.Gamma(a=2.0)
+Gamma(a=2.0, scale=1.0)
+>>> sd.stats.StudentT()
+Traceback (most recent call last):
+    ...
+TypeError: StudentT(): missing 1 required keyword-only argument: 'df'
+```
+
+### 매개변수 이름의 규칙
+
+이름은 분포끼리 일정한 규칙을 따라요.
+
+- **위치와 척도가 있는 분포**는 `mu`, `sigma`예요(정규, 코시, 라플라스, 로지스틱, Gumbel, GEV). 정규분포에서는 평균과 표준편차이지만, 코시와 라플라스의 `sigma`는 표준편차가 아니라 퍼진 정도를 나타내는 척도예요. 로그정규의 `mu`, `sigma`는 로그를 씌운 정규분포의 평균과 표준편차예요.
+- **0 이상의 값만 나오는 분포**는 모양 매개변수와 `scale`이에요(감마, 지수, 베이불, 파레토, 레일리, 역감마). `scale`은 값의 단위를 늘이고 줄이는 배율이에요. "비율(rate) λ인 지수분포"처럼 비율로 아는 분포는 `scale = 1/λ`로 바꿔서 줘요.
+- 모양 매개변수의 이름은 `a`, `b`, `c`, `df`, `dfn`, `dfd`, `nc`처럼 널리 쓰는 기호를 써요.
+
+```python
+>>> sd.stats.Exponential(scale=2.0).mean()
+2.0
+>>> rate = 0.5
+>>> sd.stats.Exponential(scale=1 / rate).mean()
+2.0
+```
+
+### 매개변수는 읽기만 할 수 있어요
+
+준 매개변수는 같은 이름의 속성으로 읽을 수 있어요. 준 값을 그대로 돌려줘요. 바꿀 수는 없으니, 다른 매개변수가 필요하면 객체를 새로 만드세요.
+
+```python
+>>> X = sd.stats.Normal(mu=170.0, sigma=6.0)
+>>> X.mu, X.sigma
+(170.0, 6.0)
+>>> X.sigma = 7.0
+Traceback (most recent call last):
+    ...
+AttributeError: property 'sigma' of 'Normal' object has no setter
+>>> Y = sd.stats.Normal(mu=X.mu, sigma=7.0)
+```
+
+배열로 준 매개변수는 객체를 만들 때 한 번 복사해 두어요. 그래서 만든 뒤에 원래 배열을 고쳐도 분포는 바뀌지 않아요. 속성으로 돌려받는 배열은 그 사본이고 읽기 전용이에요.
+
+```python
+>>> mu = sd.asarray([0.0, 1.0])
+>>> D = sd.stats.Normal(mu=mu)
+>>> mu[0] = 5.0
+>>> D.mu
+array([0.0, 1.0], dtype=float64)
+>>> D.mu[0] = 5.0
+Traceback (most recent call last):
+    ...
+ValueError: assignment destination is read-only
+```
+
+### 매개변수가 정의역 밖이어도 만들어져요
+
+표준편차가 음수인 정규분포처럼 뜻이 없는 매개변수를 줘도 에러가 나지 않아요. 객체는 만들어지고, **모든 메서드가 NaN**을 돌려줘요. 배열 매개변수의 일부 원소만 잘못돼도 나머지 원소는 정상으로 계산되게 하려는 약속이에요(아래 [에러 대신 NaN](#에러-대신-nan)).
+
+```python
+>>> Z = sd.stats.Normal(sigma=-1.0)
+>>> Z.cdf(0.0), Z.mean(), Z.support()
+(nan, nan, (nan, nan))
+```
+
+### 자유도가 inf이면 극한 분포예요
+
+[t 분포](/api/stats/student-t/)는 자유도가 커질수록 표준정규분포에 가까워지고, 자유도가 무한대인 극한은 표준정규분포 그 자체예요. 그래서 자유도에 `sd.inf`를 주면 **그 극한 분포**가 돼요. 모든 메서드(밀도, 누적확률, 역함수, 모멘트, 엔트로피, 지지집합, 표본)가 극한 분포의 값을 내고, 그 값은 극한 분포의 객체(예: `Normal()`)로 계산한 값과 마지막 비트까지 같아요.
+
+```python
+>>> T = sd.stats.StudentT(df=sd.asarray([1.0, 30.0, sd.inf]))
+>>> T.cdf(1.96)
+array([0.8498285541119834, 0.9703288435519748, 0.9750021048517795], dtype=float64)
+>>> sd.stats.Normal().cdf(1.96)
+0.9750021048517795
+```
+
+| 자유도가 inf인 분포 | 같은 분포 |
+|---|---|
+| `StudentT(df=inf)` | `Normal()` |
+| `NoncentralT(df=inf, nc=nc)` | `Normal(mu=nc)` |
+| `F(dfn=n, dfd=inf)` | 카이제곱 χ²(n)을 n으로 나눈 것 |
+| `NoncentralF(dfn=n, dfd=inf, nc=nc)` | 비중심 카이제곱 χ²(n, nc)를 n으로 나눈 것 |
+| `F(dfn=inf, dfd=m)`, `NoncentralF(dfn=inf, dfd=m, nc=nc)` | `InverseGamma(a=m/2, scale=m/2)` |
+
+극한이 확률분포가 아닌 경우는 정의역 밖처럼 NaN이에요. `ChiSquared(df=inf)`와 `NoncentralChiSquared(df=inf)`는 값이 무한대로 달아나고, 두 자유도가 모두 inf인 F와 비중심 F는 1 한 점에 몰려요. 비중심 모수 `nc`가 무한대이면 역시 NaN이에요.
+
+```python
+>>> sd.stats.ChiSquared(df=sd.inf).cdf(1.0), sd.stats.F(dfn=sd.inf, dfd=sd.inf).cdf(1.0)
+(nan, nan)
+```
+
+## 매개변수와 입력은 함께 브로드캐스트해요
+
+### 매개변수가 배열이면 분포 여러 개
+
+매개변수에 배열을 주면, 객체 하나가 **분포 여러 개를 한꺼번에** 나타내요. 아래 `X`는 평균이 0, 1, 2인 정규분포 셋이에요.
+
+```python
+>>> X = sd.stats.Normal(mu=sd.asarray([0.0, 1.0, 2.0]))
+>>> X.mean()
+array([0.0, 1.0, 2.0], dtype=float64)
+>>> X.cdf(1.0)
+array([ 0.8413447460685429,                 0.5, 0.15865525393145707], dtype=float64)
+```
+
+매개변수끼리도 [브로드캐스팅](/api/array/broadcasting/)해요. 평균 둘과 표준편차 둘로 2×2개의 분포를 만들 수 있어요.
+
+```python
+>>> Y = sd.stats.Normal(mu=sd.asarray([0.0, 1.0]), sigma=sd.asarray([[1.0], [2.0]]))
+>>> Y.variance()
+array([[1.0, 1.0],
+       [4.0, 4.0]], dtype=float64)
+```
+
+### 입력도 매개변수와 브로드캐스트해요
+
+`cdf(x)`처럼 입력을 받는 메서드는 **매개변수와 입력을 함께** 브로드캐스팅해요. 분포 셋(모양 `(3,)`)에 입력 둘(모양 `(2, 1)`)을 주면, 모든 짝의 표(모양 `(2, 3)`)가 나와요.
+
+```python
+>>> X.cdf(sd.asarray([[0.0], [1.0]]))
+array([[                 0.5,  0.15865525393145707, 0.022750131948179212],
+       [  0.8413447460685429,                  0.5,  0.15865525393145707]], dtype=float64)
+```
+
+<Fig caption="평균 mu(모양 (3,))와 입력 x(모양 (2, 1))를 브로드캐스트해서, 결과의 (i, j) 자리는 x의 i번째 값에서 잰 j번째 분포의 cdf예요(소수 넷째 자리까지). 점선 칸은 실제로 만들어지지 않는 값이에요.">
+  <ArrayFig name="mu" data={[[0, 1, 2], [0, 1, 2]]} tones={[['a', 'a', 'a'], ['g', 'g', 'g']]} note="shape (3,)" />
+  <Op>,</Op>
+  <ArrayFig name="x" data={[[0, 0, 0], [1, 1, 1]]} tones={[['a', 'g', 'g'], ['a', 'g', 'g']]} note="shape (2, 1)" />
+  <Op note="cdf">=</Op>
+  <ArrayFig data={[['0.5', '0.1587', '0.0228'], ['0.8413', '0.5', '0.1587']]} note="shape (2, 3)" />
+</Fig>
+
+반대로 매개변수만 쓰는 메서드(`mean`, `variance`, `median`, `mode`, `entropy`, `support` 등)는 입력이 없으니 **매개변수의 브로드캐스트 모양**을 돌려줘요. `support()`는 두 끝을 담은 튜플 `(lo, hi)`이고, 각각이 그 모양이에요.
+
+```python
+>>> X.support()
+(array([-inf, -inf, -inf], dtype=float64), array([inf, inf, inf], dtype=float64))
+```
+
+### 모양이 맞지 않으면 `ValueError`
+
+매개변수끼리 모양을 맞출 수 없으면 **객체를 만들 때**, 매개변수와 입력의 모양을 맞출 수 없으면 **메서드를 부를 때** `ValueError`가 나요.
+
+```python
+>>> sd.stats.Normal(mu=sd.asarray([0.0, 1.0]), sigma=sd.asarray([1.0, 2.0, 3.0]))
+Traceback (most recent call last):
+    ...
+ValueError: Normal(): shapes could not be broadcast together: (2,) (3,)
+>>> sd.stats.Normal(mu=sd.asarray([0.0, 1.0])).cdf(sd.asarray([0.0, 1.0, 2.0]))
+Traceback (most recent call last):
+    ...
+ValueError: cdf(): shapes could not be broadcast together: (2,) (3,)
+```
+
+## 받는 값과 결과
+
+### 배열과 실수 하나를 받아요
+
+매개변수와 입력은 `sd.ndarray`나 실수 하나(Python의 `bool`·`int`·`float`, numpy의 실수 스칼라)예요. bool과 정수는 float64로 바꿔서 계산해요. numpy의 실수 스칼라로 준 매개변수는 Python 수로 바꿔 두어요(`Normal(mu=np.int64(1))`은 `Normal(mu=1.0, sigma=1.0)`이에요). 리스트는 받지 않으니 [`sd.asarray`](/api/array/asarray/)로 바꿔서 넘기세요. 복소수는 받지 않아요.
+
+```python
+>>> X = sd.stats.Normal()
+>>> X.cdf(sd.asarray([0, 1, 2]))
+array([               0.5, 0.8413447460685429, 0.9772498680518208], dtype=float64)
+>>> X.cdf([0.0, 1.0])
+Traceback (most recent call last):
+    ...
+TypeError: cdf(): 'x' must be an sd.ndarray or a real number, not list
+>>> X.pdf(sd.asarray([1 + 0j]))
+Traceback (most recent call last):
+    ...
+TypeError: pdf(): 'x' must be real, not a complex128 array
+>>> sd.stats.Normal(mu=[0.0, 1.0])
+Traceback (most recent call last):
+    ...
+TypeError: Normal(): 'mu' must be a real number or an sd.ndarray, not list
+```
+
+### 결과는 float64, 모두 숫자면 Python float
+
+결과는 언제나 float64예요. 이산 분포의 `icdf`나 표본처럼 값이 정수인 결과도 float64로 돌려줘요. 그리고 **매개변수와 입력이 모두 Python 숫자이면** 결과는 배열이 아니라 Python `float`예요. 하나라도 배열이면 배열이에요. 원소가 하나인 배열을 넣어도 배열이 나와요.
+
+```python
+>>> type(X.cdf(1.0))
+<class 'float'>
+>>> X.cdf(sd.asarray([1.0]))
+array([0.8413447460685429], dtype=float64)
+>>> sd.stats.Poisson(mu=3.0).icdf(0.5)
+3.0
+```
+
+### `out`: 결과를 기존 배열에 쓰기
+
+입력을 받는 메서드(`pdf`, `cdf`, `icdf` 등)는 `out=`을 받아요. 새 배열을 만들지 않고 그 배열에 결과를 적은 다음 그 배열을 돌려줘요. 규칙은 [특수함수의 `out`](/api/special/basics/)과 같아요. float64를 담을 수 있는 배열이어야 하고, 모양은 매개변수와 입력을 브로드캐스트한 모양이어야 해요. 매개변수만 쓰는 메서드(`mean` 등)에는 `out=`이 없어요.
+
+```python
+>>> buf = sd.zeros(3)
+>>> X.cdf(sd.asarray([0.0, 1.0, 2.0]), out=buf) is buf
+True
+>>> buf
+array([               0.5, 0.8413447460685429, 0.9772498680518208], dtype=float64)
+>>> X.cdf(sd.asarray([0.0]), out=sd.zeros(1, dtype=sd.int64))
+Traceback (most recent call last):
+    ...
+TypeError: cdf(): cannot implicitly convert float64 to int64 (that would lose information); convert explicitly with astype
+```
+
+### 요약값의 배열은 읽기 전용이에요
+
+입력을 받는 메서드(`pdf`부터 `ilogccdf`까지, 다변량 분포의 `cdf`)는 부를 때마다 새 배열을 만들어 돌려줘요. 마음대로 고쳐 써도 돼요. 매개변수만 쓰는 메서드(`mean`, `variance` 같은 모멘트, `median`, `mode`, `entropy`, `support`, 다변량·행렬 분포의 `mean`·`covariance`·`variance`)가 돌려주는 배열은 읽기 전용이에요. 고쳐 쓰려면 `.copy()`로 사본을 만들어요.
+
+```python
+>>> m = sd.stats.Normal(mu=sd.asarray([0.0, 1.0])).mean()
+>>> m[0] = 2.0
+Traceback (most recent call last):
+    ...
+ValueError: assignment destination is read-only
+>>> m2 = m.copy()
+>>> m2[0] = 2.0
+>>> m2
+array([2.0, 1.0], dtype=float64)
+```
+
+## 에러 대신 NaN
+
+분포의 메서드는 **값 때문에 실패하지 않아요.** 뜻이 없는 매개변수, 확률이 아닌 값, 지지집합 밖의 입력에도 정해진 값을 돌려주고 계산을 이어 가요. 경고도 내지 않아요.
+
+| 경우 | 결과 | 예 |
+|---|---|---|
+| 매개변수가 정의역 밖이거나 NaN | 그 원소의 **모든 메서드**가 `nan` | `Normal(sigma=-1.0).cdf(0.0)` |
+| 입력이 NaN | `nan` | `Normal().cdf(nan)` |
+| 입력이 지지집합(값이 나올 수 있는 범위) 밖 | `pdf`는 0, `cdf`는 0 또는 1 | `Uniform(a=0, b=1).pdf(2.0)` |
+| `icdf`·`iccdf`의 확률이 [0, 1] 밖 | `nan` | `Normal().icdf(1.5)` |
+| 모멘트가 정의되지 않음 | `nan` | `Cauchy().mean()` |
+| 모멘트가 무한대로 발산 | `inf` | `StudentT(df=2.0).variance()` |
+| 보장 영역 밖에서 정해진 시간 안에 믿을 만한 값을 구할 수 없음 | `nan` | `Gamma(a=1e31).cdf(1e31)` |
+
+```python
+>>> X = sd.stats.Normal(sigma=sd.asarray([1.0, -1.0, sd.nan]))
+>>> X.cdf(0.5)
+array([0.6914624612740131,                nan,                nan], dtype=float64)
+>>> sd.stats.Normal().icdf(sd.asarray([0.5, 1.5]))
+array([0.0, nan], dtype=float64)
+>>> sd.stats.Uniform(a=0.0, b=1.0).pdf(2.0)
+0.0
+>>> sd.stats.Cauchy().mean(), sd.stats.StudentT(df=2.0).variance()
+(nan, inf)
+>>> sd.stats.Gamma(a=1e31).cdf(1e31)
+nan
+```
+
+정의역이 무엇인지(예: 정규분포는 `sigma > 0`이고 `mu`와 `sigma`가 유한)는 각 분포의 문서에 있어요. 지지집합 밖의 규칙과 모멘트의 NaN·inf 규칙은 [분포의 메서드](/api/stats/methods/)에서 자세히 설명해요.
+
+<Callout type="warn" title="에러가 없으니 결과를 확인하세요">
+
+매개변수를 잘못 넣어도 프로그램은 멈추지 않고 NaN을 돌려줘요. 그 값이 뒤의 합이나 평균에 섞이면 전체가 NaN이 돼요. 결과를 [`sd.isnan`, `sd.isfinite`](/api/array/isnan/)로 확인하세요.
+
+</Callout>
+
+## 에러는 타입과 모양이 틀렸을 때만 나요
+
+| 에러 | 언제 나나요 |
+|---|---|
+| `TypeError` | 매개변수를 이름 없이 줌, 꼭 줘야 하는 매개변수를 빠뜨림, 리스트·문자열·복소수를 줌, 결과를 담을 수 없는 `out`, `sample`에 `rng`를 주지 않음 |
+| `ValueError` | 매개변수끼리 또는 매개변수와 입력의 모양이 맞지 않음, `out`의 모양이 틀림, 읽기 전용 배열(배열 매개변수의 속성, 요약값)에 값을 넣으려 함 |
+| `OverflowError` | 매개변수로 준 Python 정수가 float64로 나타낼 수 없을 만큼 큼, 메서드의 입력으로 준 Python 정수가 int64 범위(±9.2e18 정도)를 넘음 |
+| `AttributeError` | 매개변수 속성에 값을 넣으려 함 |
+
+메서드에서 나는 에러의 메시지는 `cdf(): `처럼 **부른 메서드의 이름**으로 시작해요. 어떤 인자가 문제인지도 이름으로 알려 줘요(`'x'`, `'p'`, `'logp'`). 다변량·행렬 분포도 같아요. 객체를 만들 때 나는 에러는 `Normal(): `처럼 **분포의 이름**으로 시작하고, 문제인 매개변수의 이름(`'mu'`)을 알려 줘요. 매개변수를 이름 없이 주거나, 빠뜨리거나, 없는 이름을 줬을 때도 같은 꼴이에요(`Normal(): unexpected keyword argument 'mean'`). 메서드에 없는 인자를 주거나 꼭 줘야 하는 인자를 빠뜨리면 Python이 내는 메시지 그대로예요(`cdf() got an unexpected keyword argument 'foo'`, `sample() missing 1 required keyword-only argument: 'rng'`).
+
+```python
+>>> sd.stats.Normal().icdf("0.5")
+Traceback (most recent call last):
+    ...
+TypeError: icdf(): 'p' must be an sd.ndarray or a real number, not str
+>>> M = sd.stats.MultivariateNormal(mu=sd.asarray([0.0, 0.0]), cov=sd.eye(2))
+>>> M.cdf(sd.asarray([0.0, 0.0, 0.0]))
+Traceback (most recent call last):
+    ...
+ValueError: cdf(): 'x' must have 2 components on its last axis, not 3
+>>> sd.stats.Normal(mean=0.0)
+Traceback (most recent call last):
+    ...
+TypeError: Normal(): unexpected keyword argument 'mean'
+>>> sd.stats.Normal(mu=2 ** 2000)
+Traceback (most recent call last):
+    ...
+OverflowError: Normal(): 'mu' is out of range
+>>> sd.stats.Normal().cdf(2 ** 63)
+Traceback (most recent call last):
+    ...
+OverflowError: cdf(): Python int too large to convert to int64
+```
+
+## 정확도 약속
+
+`sd.stats`는 [특수함수](/api/special/basics/)와 같은 정확도 약속을 따라요. 상대오차, ULP, 보장 영역 같은 말의 뜻은 그 페이지에 자세히 있어요. 여기서는 분포에 맞춘 부분만 정리해요.
+
+- **상대오차 1e-14**: 분포마다 정한 **보장 영역** 안에서는, 정밀한 참값과 비교한 상대오차가 1e-14 이하예요. 결과의 앞자리 14자리 정도가 맞는다는 뜻이에요.
+- **꼬리에서도 상대 정확도**: 확률이 1e-300처럼 아주 작아도 앞자리가 맞아요. 위꼬리 확률 `ccdf`는 `1 - cdf`로 만들지 않고 직접 계산해요. 확률이 float64로 나타낼 수 없을 만큼 작으면 `logcdf`, `logccdf`로 그 로그를 구할 수 있어요.
+- **0을 지나는 값**: `logpdf`와 `entropy`는 값이 0을 지나기 때문에, 오차를 $10^{-14} \times \max(1, \lvert\text{값}\rvert)$ 이하로 약속해요. 값이 크면 상대오차, 작으면 절대오차예요.
+- **역함수**: `icdf`처럼 확률에서 값을 구하는 메서드는, 그래프가 가파른 곳에서 입력의 마지막 자리 하나가 결과를 크게 움직여요. 그래서 "입력의 반올림 오차가 허용하는 만큼" 정확하다고 약속해요. 이산 분포의 역함수는 결과가 정수라서, 목표 확률을 상대 1e-14 안에서 움직였을 때의 정확한 답 가운데 하나를 내요. 자세한 것은 [분포의 메서드](/api/stats/methods/#정확도)에 있어요.
+
+보장 영역은 분포마다 달라요. 정규, 지수, 균등처럼 식이 간단한 분포는 **매개변수와 입력의 정의역 전체**가 보장 영역이에요. 감마, 베타, t처럼 특수함수로 계산하는 분포는 매개변수의 범위가 정해져 있어요(예: 감마의 `a ≤ 1e6`). 각 분포의 문서에 보장 영역과 실제로 잰 최대 오차를 적어 두었어요.
+
+보장 영역 밖이라도 정의역 안이면 값을 계산해요. 어떤 입력이든 원소 하나의 계산은 정해진 시간 안에 끝나고, 그 시간 안에 믿을 만한 값을 구할 수 없으면 틀린 값 대신 NaN을 내요. 위의 `Gamma(a=1e31).cdf(1e31)`이 그런 예예요. 어디서 NaN이 나오는지는 각 분포의 문서에 있어요.
+
+다변량 정규·t의 4차원 이상 `cdf`는 예외예요. 정확한 공식이 없어서 수치 적분으로 어림하고, 목표 정확도를 `atol`로 정해요. 자세한 것은 [다변량 정규](/api/stats/multivariate-normal/)에 있어요.
+
+## 같은 입력이면 같은 비트
+
+같은 기계에서 같은 [스레드](/api/array/threads/) 수로 같은 분포에 같은 값을 넣으면 **언제나 마지막 비트까지 같은 결과**가 나와요. 그 값이 배열의 몇째 자리에 있는지, 숫자 하나로 넣었는지 큰 배열의 원소로 넣었는지도 결과에 영향을 주지 않아요. 지금은 스레드 수와도 상관없이 같아요(약속은 아니에요).
+
+```python
+>>> X = sd.stats.Normal()
+>>> x = sd.linspace(-40.0, 40.0, 1_000_001)
+>>> y = X.logcdf(x)
+>>> y[123457] == X.logcdf(float(x[123457]))
+True
+>>> n = sd.get_num_threads()
+>>> sd.set_num_threads(1)
+>>> bool(sd.all(X.logcdf(x) == y))
+True
+>>> sd.set_num_threads(n)
+```
+
+표본은 같은 시드로 만든 생성기에서 같은 순서로 뽑으면 같은 값이 나와요. 생성기의 약속이라 스레드 수와도 상관없어요. 규칙은 [표본 뽑기](/api/stats/sample/)에 있어요.
+
+stardust가 약속하는 것은 이렇게 실행마다 같은 비트를 내는 것과 위의 정확도예요. scipy와 마지막 자리까지 같은 값은 약속하지 않아요. 반올림 크기의 차이는 정확도 약속 안이면 되므로, 같은 점에서 scipy와 마지막 한두 자리가 다를 수 있어요. 지금 비트까지 같은 값이 있어도 약속은 아니에요. 반올림과 상관없는 규칙은 scipy와 같아요. NaN과 ±0을 내는 곳, 지지집합, 매개변수의 기본값이 그래요. 다른 곳은 각 분포의 문서에 이유와 함께 적어 두었어요.
+
+## scipy를 아는 분께
+
+- **신형 API만 있어요.** `scipy.stats.Normal(mu=..., sigma=...)`처럼 분포 객체를 만들고 메서드를 불러요. 고전형 `scipy.stats.norm.cdf(x, loc, scale)`와 그 `loc`·`scale` 규칙은 없어요. scipy 1.18.1의 신형 클래스는 `Normal`, `Uniform`, `Binomial`, `Logistic` 등 몇 개뿐이지만, 여기서는 모든 분포가 클래스예요.
+- **매개변수는 이름으로만** 줘요. 위치·척도가 있는 분포는 `mu`·`sigma`, 0 이상의 분포는 모양 + `scale`이에요. 정규와 균등의 이름(`mu`, `sigma`, `a`, `b`)은 scipy 신형과 같아요.
+- 메서드 이름은 신형과 같아요(`ccdf`, `icdf`, `iccdf`, `ilogcdf`, …). 고전형의 `sf`, `ppf`, `isf`, `logsf`는 없어요.
+- **`kurtosis()`는 초과 첨도**예요(정규분포에서 0). scipy 신형의 기본값은 첨도(정규분포에서 3)라서, scipy의 `kurtosis(convention='excess')`와 같은 값이에요.
+- 결과는 Python `float`이거나 `sd.ndarray`예요. scipy처럼 `numpy.float64`가 아니에요. 리스트와 numpy 배열은 받지 않아요. numpy 배열은 `sd.asarray`로 바꿔서 넘겨요. 에러 메시지에서 numpy의 타입은 `numpy.ndarray`, `numpy.random.Generator`처럼 모듈 이름을 붙여 보여 줘서 `sd.ndarray`, `sd.random.Generator`와 헷갈리지 않아요.
+
+```python
+>>> import numpy as np
+>>> sd.stats.Normal().cdf(np.array([0.0, 1.0]))
+Traceback (most recent call last):
+    ...
+TypeError: cdf(): 'x' must be an sd.ndarray or a real number, not numpy.ndarray
+>>> sd.stats.Normal().cdf(sd.asarray(np.array([0.0, 1.0])))
+array([               0.5, 0.8413447460685429], dtype=float64)
+>>> sd.stats.Normal().sample(rng=np.random.default_rng(0))
+Traceback (most recent call last):
+    ...
+TypeError: sample(): 'rng' must be an sd.random.Generator (sd.random.default_rng(seed)), not numpy.random.Generator
+```
+
+- `sample`의 `rng`는 꼭 줘야 하고, `sd.random.default_rng`로 만든 생성기만 받아요. 같은 시드라도 scipy와 값이 달라요([표본 뽑기](/api/stats/sample/)).
+- 분포끼리의 산술(`2 * X + 1`), 절단, 혼합(`Mixture`), 순서통계량, 분포 맞추기(`fit`)는 없어요.
+- 기술통계 함수의 축 기본값은 `axis=None`(전체)이에요. scipy는 `axis=0`이에요. 자유도 인자는 `ddof`가 아니라 `correction`이에요([`sd.var`](/api/array/var/)와 같아요).

@@ -1,0 +1,317 @@
+---
+title: 공분산과 상관계수
+names: [cov, corrcoef]
+group: 통계
+order: 2
+signatures:
+  - "sd.cov(x, /, *, rowvar=True, correction=0)"
+  - "sd.corrcoef(x, /, *, rowvar=True)"
+summary: 여러 변수가 함께 커지고 작아지는 정도를 행렬로 구해요. cov는 단위가 붙은 공분산을, corrcoef는 -1에서 1 사이로 맞춘 상관계수를 돌려줘요.
+params:
+  - name: x
+    type: ndarray
+    kind: positional-only
+    desc: 1차원 또는 2차원 배열. 기본으로 각 행이 변수 하나, 각 열이 관측 하나예요. 1차원이면 변수 하나예요.
+  - name: rowvar
+    type: bool
+    kind: keyword-only
+    desc: True(기본)면 행이 변수, False면 열이 변수예요.
+  - name: correction
+    type: int 또는 float
+    kind: "keyword-only, cov에만"
+    desc: 분모를 (관측 수 - correction)으로 해요. 기본값 0이에요. 표본 공분산은 1로 써요.
+returns:
+  type: ndarray 또는 Python 숫자
+  desc: (변수 수, 변수 수) 모양의 행렬. 실수·정수·bool 입력은 float64, 복소수 입력은 complex128이에요. 변수가 하나면 Python 숫자예요.
+raises:
+  - type: TypeError
+    desc: x가 배열이 아닐 때, rowvar가 True/False가 아닐 때, correction이 수가 아니거나 bool일 때.
+  - type: ValueError
+    desc: x가 1차원도 2차원도 아닐 때.
+seeAlso: [var, mean, quantile, matmul, threads]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+세 사람의 키(cm)와 몸무게(kg)를 쟀다고 해 볼게요. 첫 행이 키, 둘째 행이 몸무게이고, 같은 열이 같은 사람이에요.
+
+```python
+>>> import stardust as sd
+>>> h = sd.asarray([[160, 170, 180],
+...                 [55, 65, 90]])
+>>> sd.cov(h)
+array([[ 66.66666666666666, 116.66666666666666],
+       [116.66666666666666, 216.66666666666666]], dtype=float64)
+>>> sd.corrcoef(h)
+array([[               1.0, 0.9707253433941511],
+       [0.9707253433941511,                1.0]], dtype=float64)
+```
+
+결과는 변수 수 × 변수 수 행렬이에요. 여기서는 변수가 둘(키, 몸무게)이라 2 × 2예요. `i`행 `j`열의 값은 "`i`번째 변수와 `j`번째 변수가 얼마나 함께 움직이는가"예요.
+
+- `cov`의 `[0, 1]` 칸 `116.67`은 키와 몸무게의 **공분산**이에요. 양수라서 키가 클수록 몸무게도 큰 경향이 있다는 뜻이에요.
+- `corrcoef`의 `[0, 1]` 칸 `0.97`은 **상관계수**예요. 1에 가까우니 둘이 거의 한 직선 위에서 함께 움직인다는 뜻이에요.
+
+<Reference />
+
+## 공분산은 무엇을 재나요
+
+공분산은 두 변수가 평균에서 벗어나는 방향이 얼마나 같은지를 재요. 변수마다 평균을 빼서 "평균보다 얼마나 큰가"(편차)를 구한 다음, 두 변수의 편차를 같은 관측끼리 곱해서 평균을 낸 값이에요.
+
+키의 평균은 170, 몸무게의 평균은 70이에요.
+
+| 사람 | 키 편차 | 몸무게 편차 | 곱 |
+|:---:|:---:|:---:|:---:|
+| 1 | -10 | -15 | 150 |
+| 2 | 0 | -5 | 0 |
+| 3 | 10 | 20 | 200 |
+
+곱의 평균은 `(150 + 0 + 200) / 3 = 116.67`이에요. 두 변수가 같은 쪽으로 벗어나면(둘 다 평균보다 크거나 둘 다 작으면) 곱이 양수, 반대쪽으로 벗어나면 음수가 돼요. 그래서 공분산의 부호가 함께 움직이는 방향을 알려 줘요.
+
+| 공분산 | 뜻 |
+|---|---|
+| 양수 | 한쪽이 크면 다른 쪽도 큰 경향 |
+| 0 근처 | 직선 관계가 거의 없음 |
+| 음수 | 한쪽이 크면 다른 쪽은 작은 경향 |
+
+### 대각선은 분산이에요
+
+자기 자신과의 공분산은 편차를 제곱해서 평균한 값이라 [분산](/api/array/var/)과 같아요. 그래서 결과 행렬의 대각선에는 각 변수의 분산이 놓여요.
+
+```python
+>>> sd.var(h, axis=1)
+array([ 66.66666666666667, 216.66666666666666], dtype=float64)
+```
+
+`var`와는 계산 순서가 달라서 마지막 자리가 다를 수 있어요(위에서 `66.66666666666666`과 `66.66666666666667`). 한편 행렬은 언제나 정확히 대칭이라서 `[0, 1]`과 `[1, 0]`은 마지막 자리까지 같아요.
+
+<Fig caption="공분산 행렬: 대각선(진한 칸)은 각 변수의 분산, 나머지 칸은 두 변수의 공분산이에요. 대각선을 기준으로 대칭이에요.">
+  <ArrayFig name="sd.cov(h)" data={[['var(키)', 'cov(키, 몸무게)'], ['cov(몸무게, 키)', 'var(몸무게)']]} tones={[['b', 'a'], ['a', 'b']]} note="shape (2, 2)" />
+</Fig>
+
+## `rowvar`: 변수가 행인가요, 열인가요
+
+기본값 `rowvar=True`는 각 행이 변수 하나라고 봐요. 그런데 표 데이터는 반대로 한 행이 관측(사람 한 명), 한 열이 변수(키, 몸무게)일 때가 많아요. 그럴 때는 `rowvar=False`를 줘요.
+
+```python
+>>> people = sd.asarray([[160, 55],
+...                      [170, 65],
+...                      [180, 90]])
+>>> sd.cov(people, rowvar=False)
+array([[ 66.66666666666666, 116.66666666666666],
+       [116.66666666666666, 216.66666666666666]], dtype=float64)
+```
+
+<Fig caption="같은 데이터라도 놓인 방향에 따라 rowvar를 골라요. 진한 칸이 변수 하나예요.">
+  <ArrayFig name="h (rowvar=True)" data={[[160, 170, 180], [55, 65, 90]]} tones={[['a', 'a', 'a'], ['', '', '']]} note="행 = 변수" />
+  <ArrayFig name="people (rowvar=False)" data={[[160, 55], [170, 65], [180, 90]]} tones={[['a', ''], ['a', ''], ['a', '']]} note="열 = 변수" />
+</Fig>
+
+<Callout type="warn" title="방향을 잘못 주면 엉뚱한 행렬이 나와요">
+
+  `people`에 `rowvar=False`를 빠뜨리면 에러 없이 3 × 3 행렬이 나와요. 사람 세 명을 변수로, 키와 몸무게를 관측으로 읽은 결과예요. 결과 행렬의 크기가 변수의 수와 같은지 확인하세요.
+
+</Callout>
+
+```python
+>>> sd.cov(people).shape
+(3, 3)
+```
+
+## `correction`: 기본값은 0이에요
+
+공분산의 분모는 `관측 수 - correction`이에요.
+
+- `correction=0`(기본값): 관측 수로 나눠요. 모은 데이터를 집단 전체로 보고 구한 공분산(모공분산)이에요. [`var`](/api/array/var/)의 기본값과 같아요.
+- `correction=1`: 관측 수보다 하나 적은 수로 나눠요. 모은 데이터를 더 큰 집단에서 뽑은 표본으로 보고 그 집단의 공분산을 짐작할 때 써요(표본 공분산).
+
+```python
+>>> sd.cov(h, correction=1)
+array([[100.0, 175.0],
+       [175.0, 325.0]], dtype=float64)
+```
+
+<Callout type="warn" title="다른 도구와 숫자가 다르다면 correction부터 보세요">
+
+  많은 통계 도구와 스프레드시트의 공분산 함수는 기본으로 표본 공분산(`correction=1`과 같음)을 계산해요. stardust의 `cov`는 기본이 `correction=0`이라, 같은 데이터에서 값이 조금 작게 나와요. 표본 공분산이 필요하면 `correction=1`을 적어 주세요.
+
+</Callout>
+
+`correction`은 정수가 아니어도 돼요. 다만 `True`, `False`는 받지 않아요.
+
+```python
+>>> sd.cov(h, correction=0.5)
+array([[ 80.0, 140.0],
+       [140.0, 260.0]], dtype=float64)
+>>> sd.cov(h, correction=True)
+Traceback (most recent call last):
+    ...
+TypeError: cov(): 'correction' must be an int or a float, not bool
+```
+
+관측 수가 `correction`보다 크지 않으면(분모가 0 이하) 모든 칸이 NaN(숫자가 아님)이에요. 관측이 하나뿐인데 `correction=1`을 주는 경우가 그래요.
+
+```python
+>>> sd.cov(sd.asarray([[1.0], [2.0]]), correction=1)
+array([[nan, nan],
+       [nan, nan]], dtype=float64)
+```
+
+## corrcoef: 단위를 없앤 상관계수
+
+공분산은 단위의 영향을 받아요. 키를 cm 대신 mm로 재면 공분산이 10배가 돼요. 그래서 공분산의 크기만 보고 "관계가 강하다, 약하다"를 말하기 어려워요.
+
+**상관계수**는 공분산을 두 변수의 표준편차로 나눠서 단위를 없앤 값이에요. 언제나 -1에서 1 사이예요.
+
+```python
+>>> sd.cov(h)[0, 1] / (sd.std(h[0]) * sd.std(h[1]))
+0.970725343394151
+```
+
+`corrcoef`는 이 계산을 모든 변수 쌍에 한 번에 해 줘요. `correction`은 분자와 분모에서 약분되어 결과를 바꾸지 않아요. 그래서 `corrcoef`에는 `correction` 인자가 없어요.
+
+| 상관계수 | 뜻 |
+|:---:|---|
+| 1 | 완전히 한 직선 위에서 함께 커져요. |
+| 0.7 안팎 | 함께 커지는 경향이 뚜렷해요. |
+| 0 | 직선 관계가 없어요. |
+| -1 | 완전히 한 직선 위에서, 한쪽이 커지면 다른 쪽은 작아져요. |
+
+변수가 셋이면 3 × 3 행렬이 나와요. 아래에서 첫째와 둘째 변수는 정확히 반대로 움직이고, 셋째는 다른 둘과 관계가 약해요.
+
+```python
+>>> t = sd.asarray([[1.0, 2.0, 3.0, 4.0],
+...                 [8.0, 6.0, 4.0, 2.0],
+...                 [3.0, 1.0, 4.0, 1.0]])
+>>> sd.corrcoef(t)
+array([[                1.0,                -1.0, -0.2581988897471611],
+       [               -1.0,                 1.0,  0.2581988897471611],
+       [-0.2581988897471611,  0.2581988897471611,                 1.0]], dtype=float64)
+```
+
+<Callout title="상관계수가 0이라고 관계가 없는 것은 아니에요">
+
+  상관계수는 **직선** 관계만 재요. `y = x²`처럼 대칭으로 휘는 관계는 뚜렷해도 상관계수가 0이 될 수 있어요. 아래 예가 그래요.
+
+</Callout>
+
+```python
+>>> u = sd.asarray([[-2.0, -1.0, 0.0, 1.0, 2.0],
+...                 [4.0, 1.0, 0.0, 1.0, 4.0]])
+>>> sd.corrcoef(u)[0, 1]
+0.0
+```
+
+### 값이 변하지 않는 변수는 NaN
+
+모든 관측이 같은 값인 변수는 표준편차가 0이에요. 0으로 나눌 수 없으니 그 변수가 들어간 칸은 NaN이에요. 대각선도 NaN이 돼요.
+
+```python
+>>> sd.corrcoef(sd.asarray([[1.0, 2.0, 3.0], [5.0, 5.0, 5.0]]))
+array([[1.0, nan],
+       [nan, nan]], dtype=float64)
+```
+
+## 변수가 하나면 Python 숫자
+
+1차원 배열은 변수 하나로 봐요. 결과가 1 × 1 행렬이 되는 대신 Python 숫자 하나가 나와요. `cov`는 그 변수의 분산, `corrcoef`는 `1.0`(값이 변하지 않으면 NaN)이에요.
+
+```python
+>>> w = sd.asarray([1.0, 2.0, 3.0, 4.0])
+>>> sd.cov(w)
+1.25
+>>> sd.var(w)
+1.25
+>>> sd.corrcoef(w)
+1.0
+>>> type(sd.cov(sd.asarray([1, 2, 3])))
+<class 'float'>
+```
+
+행이 하나뿐인 2차원 배열도 변수가 하나라서 숫자가 나와요. 변수가 하나도 없으면(행이 0개) 모양 `(0, 0)`인 빈 행렬이에요.
+
+```python
+>>> sd.cov(sd.asarray([[1.0, 2.0, 3.0]]))
+0.6666666666666666
+>>> sd.cov(sd.zeros((0, 3)))
+array([], shape=(0, 0), dtype=float64)
+```
+
+## 조심할 점
+
+### 1차원이나 2차원만
+
+3차원 이상은 받지 않아요.
+
+```python
+>>> sd.cov(sd.zeros((2, 2, 2)))
+Traceback (most recent call last):
+    ...
+ValueError: cov(): 'x' must be 1-D or 2-D
+```
+
+### NaN이 있으면 그 변수가 들어간 칸이 모두 NaN
+
+NaN을 건너뛰는 판은 없어요. 빠진 값이 있는 관측을 미리 빼고 넘기세요.
+
+```python
+>>> sd.cov(sd.asarray([[1.0, sd.nan, 3.0], [3.0, 2.0, 1.0]]))
+array([[               nan,                nan],
+       [               nan, 0.6666666666666666]], dtype=float64)
+```
+
+### corrcoef의 대각선이 정확히 1이 아닐 수 있어요
+
+실수 계산의 오차 때문에 대각선이 `0.9999999999999999`처럼 나올 때가 있어요. 결과를 `== 1`로 비교하지 마세요.
+
+```python
+>>> sd.corrcoef(sd.asarray([[1.0, 2.0, 3.0, 4.0, 5.0], [1.0, 4.0, 9.0, 16.0, 25.0]]))
+array([[0.9999999999999999, 0.9811049102515927],
+       [0.9811049102515927, 0.9999999999999998]], dtype=float64)
+```
+
+### 입력 종류와 결과
+
+정수와 bool은 실수로 바꿔서 계산해요. 복소수 배열을 넣으면 결과도 복소수이고, 대각선이 실수인 에르미트 행렬(켤레전치가 자기 자신과 같은 행렬)이 돼요.
+
+```python
+>>> sd.cov(sd.asarray([[True, False, True], [False, False, True]]))
+array([[0.22222222222222224, 0.11111111111111112],
+       [0.11111111111111112, 0.22222222222222224]], dtype=float64)
+```
+
+### 스레드 수 설정을 따르지 않아요
+
+`cov`와 `corrcoef`가 쓰는 스레드 수는 [`sd.set_num_threads`](/api/array/threads/)로 바꿀 수 없어요. `sd.set_num_threads(1)`로 두어도 여러 코어를 쓸 수 있고, 스레드 수를 늘린다고 빨라지지도 않아요. 그래서 결과도 이 설정에 따라 달라지지 않아요. 이유는 [스레드 수](/api/array/threads/#행렬곱과-cov는-따로예요) 문서에 있어요.
+
+### 옵션은 이름을 붙여서
+
+`rowvar`와 `correction`은 이름을 붙여서 넘겨야 해요. `rowvar`에는 `True`나 `False`만 쓸 수 있어요.
+
+```python
+>>> sd.cov(h, rowvar=0)
+Traceback (most recent call last):
+    ...
+TypeError: cov(): 'rowvar' must be True or False, not int
+```
+
+## 비슷한 함수와의 차이
+
+| 하고 싶은 일 | 쓸 것 | 다른 점 |
+|---|---|---|
+| 변수 하나의 퍼진 정도 | `var`, `std` | 공분산 행렬의 대각선 하나예요. `axis`를 고를 수 있어요. |
+| 두 변수가 함께 움직이는 정도(단위 있음) | `cov` | 값의 크기가 단위에 따라 달라져요. |
+| 두 변수가 함께 움직이는 정도(단위 없음) | `corrcoef` | 언제나 -1에서 1 사이라 서로 비교하기 쉬워요. |
+| 편차끼리 곱해서 더하기를 직접 | `matmul` | 실수 배열이면 평균을 뺀 행렬을 `d`라 할 때 `(d @ d.mT) / n`이 `cov`와 같은 계산이에요(마지막 자리는 다를 수 있어요). |
+
+## numpy를 아는 분께
+
+- `cov`의 기본값이 달라요. numpy `cov`는 `ddof=1`(표본 공분산)이 기본이지만, stardust는 `correction=0`이 기본이에요. numpy와 같은 값을 원하면 `correction=1`을 주세요. 정수가 아닌 `correction`도 받아요.
+- 변수가 하나면 0차원 배열이 아니라 Python `float`(복소수면 `complex`)를 돌려줘요.
+- 두 번째 배열 `y`, `bias`, `ddof`, `fweights`, `aweights`, `dtype` 인자는 없어요. 두 배열을 함께 보려면 [`concat`](/api/array/concat/)이나 [`stack`](/api/array/concat/)으로 한 배열로 합쳐서 넘기세요.
+- `rowvar`, `correction`은 keyword-only예요.
+- 값은 numpy와 마지막 몇 자리가 다를 수 있어요. 행렬은 언제나 정확히 대칭이에요.

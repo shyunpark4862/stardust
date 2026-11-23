@@ -1,0 +1,223 @@
+---
+title: mode
+names: [mode, ModeResult]
+group: 기술통계
+order: 8
+signatures:
+  - "sd.stats.mode(x, /, *, axis=None, nan_policy='propagate', keepdims=False)"
+summary: 가장 자주 나온 값(최빈값)과 그 횟수를 구해요. 횟수가 같은 값이 여럿이면 가장 작은 값을 골라요. 결과는 (mode, count) 이름 붙은 튜플 ModeResult예요.
+params:
+  - name: x
+    type: ndarray, 실수의 시퀀스, 실수 스칼라, numpy 배열, 또는 frame의 Series·DataFrame
+    kind: positional-only
+    desc: 데이터. bool·정수는 float64로 바꿔서 세요.
+  - name: axis
+    type: int, int의 tuple·리스트, 또는 None
+    kind: keyword-only
+    desc: 줄여서 없앨 축. None(기본값)이면 모든 원소를 한 묶음으로 세요.
+  - name: nan_policy
+    type: str
+    kind: keyword-only
+    desc: "'propagate'(NaN도 하나의 값으로 셈), 'omit'(NaN을 빼고 셈), 'raise'(ValueError) 중 하나예요."
+  - name: keepdims
+    type: bool
+    kind: keyword-only
+    desc: True면 줄인 축을 길이 1로 남겨요.
+returns:
+  type: ModeResult
+  desc: "(mode, count) 두 칸의 이름 붙은 튜플. mode는 float64, count는 정수예요. 남는 축이 없으면 Python float와 int, 있으면 float64 배열과 int64 배열이에요. 빈 줄은 (nan, 0)이에요."
+raises:
+  - type: TypeError
+    desc: x가 배열, 숫자의 시퀀스, frame의 Series·DataFrame이 아니거나 복소수일 때, 숫자가 아닌 열이 있을 때, axis가 int·tuple·리스트·None이 아닐 때, keepdims가 True·False가 아닐 때, nan_policy에 문자열이 아닌 값을 줬을 때.
+  - type: ValueError
+    desc: nan_policy 이름이 틀렸거나 'raise'인데 NaN이 있을 때, axis가 범위를 벗어나거나 겹칠 때.
+seeAlso: [describe, rankdata, entropy, iqr]
+---
+import Callout from '../../../components/Callout.astro';
+
+## 한눈에 보기
+
+**최빈값**(mode)은 데이터에서 가장 자주 나온 값이에요. 신발 가게에서 어떤 크기를 가장 많이 준비할지, 설문에서 가장 많이 고른 보기가 무엇인지처럼, "가장 흔한 것"이 궁금할 때 써요.
+
+```python
+>>> import stardust as sd
+>>> sizes = sd.asarray([250.0, 255.0, 250.0, 260.0, 245.0, 255.0, 250.0])
+>>> sd.stats.mode(sizes)
+ModeResult(mode=250.0, count=3)
+```
+
+250이 세 번 나와서 가장 많아요. 결과에는 값(`mode`)과 횟수(`count`)가 함께 들어 있어요.
+
+<Reference />
+
+## 결과 읽기: `ModeResult`
+
+결과는 이름이 붙은 튜플(namedtuple)이에요. 이름으로 꺼내도 되고, 번호로 꺼내거나 풀어서 받아도 돼요.
+
+```python
+>>> r = sd.stats.mode(sizes)
+>>> r.mode, r.count
+(250.0, 3)
+>>> r[0]
+250.0
+>>> value, count = r
+>>> count
+3
+```
+
+`mode`는 언제나 실수(float64)이고 `count`는 정수예요. 정수 데이터를 넣어도 `mode`는 실수로 나와요.
+
+```python
+>>> sd.stats.mode([3, 1, 1, 3, 2])
+ModeResult(mode=1.0, count=2)
+>>> isinstance(r, sd.stats.ModeResult)
+True
+```
+
+## 횟수가 같으면 가장 작은 값
+
+위의 두 번째 예에서 1과 3이 모두 두 번씩 나왔어요. 이렇게 가장 많은 횟수가 같은 값이 여럿이면 가장 작은 값을 골라요. 최빈값이 여럿인지 알고 싶으면 [`sd.unique_counts`](/api/array/unique/)로 모든 값의 횟수를 보세요.
+
+```python
+>>> sd.unique_counts(sizes)
+UniqueCountsResult(values=array([245.0, 250.0, 255.0, 260.0], dtype=float64), counts=array([1, 3, 2, 1], dtype=int64))
+```
+
+<Callout type="warn" title="연속적인 측정값에는 잘 맞지 않아요">
+키, 무게, 시간처럼 소수점까지 재는 값은 똑같은 값이 거의 나오지 않아요. 그러면 모든 값의 횟수가 1이라서, `mode`는 의미 없이 가장 작은 값을 돌려줘요.
+
+```python
+>>> sd.stats.mode([1.2, 3.4, 0.5])
+ModeResult(mode=0.5, count=1)
+```
+
+`count`가 1이면 최빈값이 사실상 없다는 뜻이에요. 이런 데이터에서 "가장 흔한 구간"이 궁금하면 [`sd.histogram`](/api/array/histogram/)으로 구간을 나눠 세 보세요.
+</Callout>
+
+## NaN은 하나의 값으로 세요
+
+`mode`는 다른 기술통계 함수와 NaN을 다루는 방식이 달라요. 기본값 `'propagate'`에서 결과를 NaN으로 만들어 버리지 않고, NaN끼리 같은 값으로 보고 횟수를 세요.
+
+```python
+>>> sd.stats.mode([1.0, sd.nan, sd.nan, 2.0])
+ModeResult(mode=nan, count=2)
+```
+
+NaN이 두 번으로 가장 많아서 최빈값이 NaN이에요. NaN과 다른 값의 횟수가 같으면 NaN을 가장 큰 값으로 쳐서 숫자 쪽을 골라요.
+
+```python
+>>> sd.stats.mode([1.0, 1.0, sd.nan, sd.nan])
+ModeResult(mode=1.0, count=2)
+```
+
+NaN을 빼고 세려면 `'omit'`, NaN이 있으면 안 되면 `'raise'`를 줘요.
+
+```python
+>>> sd.stats.mode([1.0, sd.nan, sd.nan, 2.0], nan_policy='omit')
+ModeResult(mode=1.0, count=1)
+>>> sd.stats.mode([1.0, sd.nan], nan_policy='raise')
+Traceback (most recent call last):
+    ...
+ValueError: mode(): the input contains NaN (nan_policy='raise')
+```
+
+`'omit'`에서 모두 NaN이면 셀 값이 없으니 빈 데이터처럼 `(nan, 0)`이에요.
+
+```python
+>>> sd.stats.mode([sd.nan, sd.nan], nan_policy='omit')
+ModeResult(mode=nan, count=0)
+```
+
+## `axis`와 `keepdims`
+
+기본값 `axis=None`은 모든 원소를 한 묶음으로 세요(`sd.mean` 등과 같아요). 행마다, 열마다 따로 세려면 `axis`를 줘요. 그러면 `mode`와 `count`가 모두 배열이 돼요. 이 배열은 읽기 전용이라, 고쳐 쓰려면 `.copy()`로 사본을 만들어요. 여러 축을 함께 줄이려면 tuple이나 리스트로 줘요.
+
+```python
+>>> t = sd.asarray([[1, 1, 2],
+...                 [3, 2, 2]])
+>>> sd.stats.mode(t)
+ModeResult(mode=2.0, count=3)
+>>> sd.stats.mode(t, axis=1)
+ModeResult(mode=array([1.0, 2.0], dtype=float64), count=array([2, 2], dtype=int64))
+```
+
+`keepdims=True`면 두 칸 모두 줄인 축을 길이 1로 남겨요.
+
+```python
+>>> sd.stats.mode(t, axis=1, keepdims=True)
+ModeResult(mode=array([[1.0],
+       [2.0]], dtype=float64), count=array([[2],
+       [2]], dtype=int64))
+```
+
+## 조심할 점
+
+### 빈 데이터는 (nan, 0)이에요
+
+에러가 아니라 "값 없음, 0번"이에요.
+
+```python
+>>> sd.stats.mode([])
+ModeResult(mode=nan, count=0)
+```
+
+### 특수한 값
+
+`inf`, `-inf`도 보통 값처럼 세요. `-0.0`과 `0.0`은 같은 값으로 세요. bool은 1.0과 0.0으로 바꿔서 세요.
+
+```python
+>>> sd.stats.mode([-sd.inf, -sd.inf, 1.0])
+ModeResult(mode=-inf, count=2)
+>>> sd.stats.mode([True, True, False])
+ModeResult(mode=1.0, count=2)
+```
+
+## 분포 객체의 `mode()`와 다른 점
+
+`sd.stats.Poisson`, `sd.stats.Normal` 같은 분포 객체에도 `X.mode()` 메서드가 있어요. 이름은 같지만 하는 일이 달라요.
+
+| | `sd.stats.mode(x)` | `X.mode()` |
+|---|---|---|
+| 무엇의 최빈값 | 손에 쥔 **데이터**에서 가장 많이 나온 값 | **분포**에서 확률(밀도)이 가장 큰 점 |
+| 결과 | `ModeResult(mode, count)` | 값 하나 |
+| 최빈값이 여럿이면 | 가장 작은 값 | NaN |
+| 연속 분포 | 거의 쓸모가 없어요(위 주의 참고) | 밀도 곡선의 꼭대기 |
+
+```python
+>>> P = sd.stats.Poisson(mu=2.5)
+>>> P.mode()
+2.0
+>>> k = P.sample(1000, rng=sd.random.default_rng(4))
+>>> sd.stats.mode(k)
+ModeResult(mode=2.0, count=257)
+```
+
+포아송 분포(평균 2.5)에서 확률이 가장 큰 값은 2이고, 1000개를 뽑아 보니 실제로 2가 257번으로 가장 많았어요. 분포에서 확률이 가장 큰 값이 둘이면 `X.mode()`는 하나를 고르지 않고 NaN을 줘요. 평균 3인 포아송 분포는 2와 3의 확률이 같아요.
+
+```python
+>>> sd.stats.Poisson(mu=3.0).mode()
+nan
+```
+
+연속 분포의 `X.mode()`는 밀도가 가장 큰 점이에요. 정규분포라면 평균과 같아요.
+
+```python
+>>> sd.stats.Normal(mu=1.0).mode()
+1.0
+```
+
+## 비슷한 함수와의 차이
+
+| 쓸 것 | `mode`와 다른 점 |
+|---|---|
+| [`sd.unique_counts`](/api/array/unique/) | 모든 서로 다른 값과 그 횟수를 줘요. 최빈값이 여럿인지 볼 수 있어요. |
+| [`sd.bincount`](/api/array/bincount/) | 0 이상의 정수를 셀 때 써요. 값마다의 횟수를 자리 번호로 줘요. |
+| [`sd.histogram`](/api/array/histogram/) | 연속적인 값을 구간으로 나눠 세요. |
+| [`sd.median`](/api/array/quantile/), [`sd.mean`](/api/array/mean/) | 다른 "가운데" 값이에요. 최빈값은 가장 흔한 값, 중앙값은 순서의 가운데, 평균은 무게중심이에요. |
+
+## scipy를 아는 분께
+
+- `axis`의 기본값이 `None`(전체)이에요. scipy는 `axis=0`이에요.
+- NaN을 하나의 값으로 세는 것, 동점에서 가장 작은 값, `ModeResult`의 칸 이름은 scipy와 같아요.
+- 빈 데이터의 `count`는 정수 `0`이에요(scipy는 `0.0`). 칸 값은 numpy 스칼라가 아니라 Python `float`·`int`예요.
+- bool 배열도 받아요(scipy는 `TypeError`예요).

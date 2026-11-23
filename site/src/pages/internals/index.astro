@@ -1,0 +1,56 @@
+---
+import { getCollection } from 'astro:content';
+import Docs from '../../layouts/Docs.astro';
+import LinkCard from '../../components/LinkCard.astro';
+import { internalsAreas, type NavGroup } from '../../data/nav';
+import { internalsAreasWithPages } from '../../data/internals';
+
+const written = await internalsAreasWithPages();
+const pages = await getCollection('internals');
+const count = (key: string) => pages.filter((p) => p.id.startsWith(`${key}/`)).length;
+const groups: NavGroup[] = [
+  { title: '구현', items: [{ label: '전체 영역', href: '/internals/' }] },
+  {
+    title: '영역',
+    items: internalsAreas.filter((a) => written.includes(a.key)).map((a) => ({ label: a.name, href: `/internals/${a.key}/` })),
+  },
+];
+---
+
+<Docs
+  title="구현"
+  description="stardust가 안에서 어떻게 만들어졌는지 풀어 쓴 글이에요. 알고리즘, 자료 구조, 최적화와 그 이유, 성능과 정확도를 다뤄요."
+  section="internals"
+  crumbs={[]}
+  groups={groups}
+>
+  <div class="grid">
+    {
+      internalsAreas.map((a) => (
+        <LinkCard
+          href={written.includes(a.key) ? `/internals/${a.key}/` : undefined}
+          title={a.name}
+          meta={a.ns}
+          area={a.key}
+          badge={written.includes(a.key) ? `글 ${count(a.key)}편` : '준비 중'}
+          badgeTone={written.includes(a.key) ? 'accent' : 'neutral'}
+        >
+          {a.desc || '준비 중이에요.'}
+        </LinkCard>
+      ))
+    }
+  </div>
+</Docs>
+
+<style>
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-4);
+  }
+  @media (max-width: 640px) {
+    .grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+</style>

@@ -1,0 +1,222 @@
+---
+title: NearestNDInterpolator
+names: [NearestNDInterpolator]
+group: 흩어진 점
+order: 2
+signatures:
+  - "sd.interpolate.NearestNDInterpolator(x, y, /, *, rescale=False)"
+  - "nn(xi, /)"
+summary: 평가점마다 가장 가까운 자료점의 값을 돌려줘요. 흩어진 점이든 격자든, 몇 차원이든 써요. 범주처럼 섞을 수 없는 값이나, 자료에 없는 값을 지어내면 안 되는 경우에 알맞아요. 거리가 같으면 번호가 작은 점을 골라요.
+params:
+  - name: x
+    type: ndarray, 수의 시퀀스, numpy 배열, DataFrame
+    kind: positional-only
+    desc: "자료점. (n, m) 배열이고 행 하나가 m차원 점 하나예요. 1차원 자료도 (n, 1)로 줘요. 모든 좌표가 유한해야 하고 점이 1개 이상이어야 해요."
+  - name: y
+    type: ndarray, 수의 시퀀스, numpy 배열
+    kind: positional-only
+    desc: "자료점마다의 값. 첫 축의 길이가 n이고 나머지 축은 함께 다루는 여러 값(배치)이에요. float64나 complex128이에요. NaN이나 inf가 있어도 돼요."
+  - name: rescale
+    type: bool
+    kind: keyword-only
+    desc: "True면 축마다 자료점의 평균을 빼고 범위(최댓값 − 최솟값)로 나눈 좌표에서 가장 가까운 점을 찾아요. 기본값 False."
+returns:
+  type: NearestNDInterpolator
+  desc: "보간 객체. (…, m) 배열이나 좌표 m개의 튜플로 불러 (…) + y의 나머지 모양의 값을 받아요. 공개 속성은 없어요."
+raises:
+  - type: TypeError
+    desc: "x·y가 수의 배열이 아닐 때, x가 복소수일 때, rescale이 True·False가 아닐 때(1 포함), 옵션을 자리로 주거나 없는 인자(tree_options)를 줄 때."
+  - type: ValueError
+    desc: "x가 2차원이 아니거나 점이나 좌표가 없을 때, x에 NaN이나 inf가 있을 때, y의 행 수가 n과 다를 때. 부를 때 평가점의 좌표 수가 m과 다를 때, 평가점이 스칼라일 때."
+seeAlso: [RBFInterpolator, RegularGridInterpolator, basics]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import PlaneFig from '../../../components/fig/PlaneFig.astro';
+
+export const nnPts = [[0.2565, 0.3822], [0.1551, 0.149], [0.04529, 0.1275], [0.2099, 0.9617], [0.9602, 0.7254], [0.876, 0.4806], [0.9323, 0.9283], [0.267, 0.928], [0.3415, 0.4335], [0.3441, 0.4175], [0.09921, 0.8685], [0.8345, 0.4473]];
+export const nnQ = [[0.2, 0.3], [0.5, 0.55], [0.8, 0.2], [0.35, 0.85], [0.9, 0.75]];
+export const nnSegs = [[0.2, 0.3, 0.2565, 0.3822], [0.5, 0.55, 0.3415, 0.4335], [0.8, 0.2, 0.8345, 0.4473], [0.35, 0.85, 0.267, 0.928], [0.9, 0.75, 0.9602, 0.7254]];
+
+## 한눈에 보기
+
+관측소 다섯 곳의 기온이 있고, 어느 자리의 기온을 가장 가까운 관측소의 값으로 대신한다고 해 볼게요. `NearestNDInterpolator`는 그 일을 해요. 섞거나 곡면을 만들지 않고 가장 가까운 자료점의 값을 그대로 돌려줘요.
+
+```python
+>>> import stardust as sd
+>>> st = sd.asarray([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0], [0.5, 0.5]])
+>>> temp = sd.asarray([10.0, 14.0, 12.0, 20.0, 15.0])
+>>> nn = sd.interpolate.NearestNDInterpolator(st, temp)
+>>> nn
+NearestNDInterpolator(points=5, dimensions=2)
+>>> nn([0.1, 0.2])
+10.0
+>>> nn([[0.1, 0.2], [0.9, 0.8], [0.6, 0.4], [5.0, 5.0]])
+array([10.0, 20.0, 15.0, 20.0], dtype=float64)
+```
+
+평면이 자료점마다의 영역(그 점이 가장 가까운 자리들)으로 나뉘고, 영역 안에서는 값이 일정해요. 자료점에서 아무리 멀어도 가장 가까운 점의 값이라, 바깥에서도 자료의 값 가운데 하나가 나와요.
+
+<Fig caption="자료점 열두 개(점)와 평가점 다섯 개(×). 선은 평가점마다 가장 가까운 자료점을 이어요. 평가점의 값은 그 자료점의 값이에요.">
+  <PlaneFig
+    label="흩어진 자료점 열두 개와, 평가점 다섯 개를 가장 가까운 자료점에 이은 선"
+    domain={[0, 1]}
+    range={[0, 1]}
+    xTicks={[0, 0.5, 1]}
+    yTicks={[0, 0.5, 1]}
+    width={380}
+    layers={[
+      { kind: 'segments', segs: nnSegs, tone: 'soft', width: 1.5 },
+      { kind: 'points', pts: nnPts, tone: 'main', size: 3.4 },
+      { kind: 'points', pts: nnQ, tone: 'ink', shape: 'cross', size: 4 },
+    ]}
+    legend={[
+      { label: '자료점', tone: 'main', shape: 'dot' },
+      { label: '평가점', tone: 'ink', shape: 'cross' },
+    ]}
+  />
+</Fig>
+
+<Reference />
+
+## 언제 쓰나요
+
+- 값을 섞을 수 없을 때. 토지 이용 분류, 지역 번호 같은 범주를 수로 적은 자료는 두 값의 평균이 뜻이 없어요.
+- 자료에 없는 값을 지어내면 안 될 때. 결과는 언제나 자료의 값 가운데 하나예요.
+- 빠르게 대략의 값이 필요할 때. 곡면을 만드는 연립방정식이 없어서 자료점이 아주 많아도 만들기가 가벼워요.
+
+매끄러운 곡면이 필요하면 [`RBFInterpolator`](/api/interpolate/RBFInterpolator/)를, 격자 자료면 [`RegularGridInterpolator`](/api/interpolate/RegularGridInterpolator/)의 `method='nearest'`를 써요.
+
+## 자료점 `x`와 값 `y`
+
+`x`는 (n, m) 배열이에요. 1차원 자료도 열 하나짜리 2차원 배열로 줘요. 좌표는 유한해야 해요.
+
+```python
+>>> nn1 = sd.interpolate.NearestNDInterpolator([[0.0], [1.0], [3.0]], [5.0, 6.0, 7.0])
+>>> nn1([[0.4], [0.5], [0.6], [2.0], [10.0]])
+array([5.0, 5.0, 6.0, 6.0, 7.0], dtype=float64)
+>>> sd.interpolate.NearestNDInterpolator([0.0, 1.0], [1.0, 2.0])
+Traceback (most recent call last):
+    ...
+ValueError: NearestNDInterpolator(): 'x' must have 2 dimensions (points, coordinates), not 1
+>>> sd.interpolate.NearestNDInterpolator([[0.0, float('nan')]], [1.0])
+Traceback (most recent call last):
+    ...
+ValueError: NearestNDInterpolator(): 'x' must be finite
+```
+
+`y`는 섞지 않고 고르기만 하므로 NaN이나 inf가 있어도 돼요. 그 점이 가장 가까운 평가점에서만 그 값이 나와요. `y`가 2차원 이상이면 뒤의 축은 같은 자료점의 여러 값이에요. 복소수도 받아요.
+
+```python
+>>> sd.interpolate.NearestNDInterpolator(st, sd.asarray([10.0, float('nan'), 12.0, 20.0, 15.0]))([[0.9, 0.1], [0.1, 0.1]])
+array([ nan, 10.0], dtype=float64)
+>>> sd.interpolate.NearestNDInterpolator(st, sd.stack([temp, -temp], axis=1))([[0.1, 0.2], [0.9, 0.9]])
+array([[ 10.0, -10.0],
+       [ 20.0, -20.0]], dtype=float64)
+>>> sd.interpolate.NearestNDInterpolator(st, temp * 1j)([0.1, 0.2])
+10j
+```
+
+범주가 문자열이면 정수 번호로 바꿔 넣고, 결과의 번호로 다시 찾아요.
+
+```python
+>>> names = ["숲", "논", "밭", "도시", "물"]
+>>> code = sd.interpolate.NearestNDInterpolator(st, sd.arange(5))
+>>> [names[int(i)] for i in code([[0.1, 0.2], [0.9, 0.9]])]
+['숲', '도시']
+```
+
+## 부르기: 평가점 `xi`
+
+평가점은 마지막 축이 좌표인 (…, m) 배열이거나, 좌표 m개의 튜플이에요. 튜플의 좌표는 브로드캐스트해요. 점 하나에 값이 스칼라면 Python `float`이에요.
+
+```python
+>>> nn([0.1, 0.2]), type(nn([0.1, 0.2]))
+(10.0, <class 'float'>)
+>>> nn((0.1, 0.2))
+10.0
+>>> nn(([0.1, 0.9], [0.2, 0.8]))
+array([10.0, 20.0], dtype=float64)
+>>> nn((sd.asarray([[0.1], [0.9]]), sd.asarray([0.2, 0.8, 0.4])))
+array([[10.0, 12.0, 10.0],
+       [14.0, 20.0, 14.0]], dtype=float64)
+>>> nn(sd.zeros((2, 3, 2))).shape
+(2, 3)
+```
+
+좌표의 수가 m과 다르면 에러예요.
+
+```python
+>>> nn([0.1, 0.2, 0.3])
+Traceback (most recent call last):
+    ...
+ValueError: NearestNDInterpolator(): 'xi' must have 2 entries on its last axis (the data points' dimension), not 3
+>>> nn((0.1, 0.2, 0.3))
+Traceback (most recent call last):
+    ...
+ValueError: NearestNDInterpolator(): a tuple 'xi' must have 2 coordinate arrays, not 3
+>>> nn(0.1)
+Traceback (most recent call last):
+    ...
+ValueError: NearestNDInterpolator(): 'xi' must have at least 1 dimension (points of 2 coordinates)
+```
+
+좌표에 NaN이나 inf가 있는 평가점은 가장 가까운 점이 정해지지 않으니 NaN이에요.
+
+```python
+>>> nn([[float('nan'), 0.2], [float('inf'), 0.2], [0.1, 0.2]])
+array([ nan,  nan, 10.0], dtype=float64)
+```
+
+## 거리가 같으면
+
+두 자료점까지의 거리가 같으면 번호(행 순서)가 작은 점을 골라요. 위의 관측소에서 (0.5, 0)은 0번 (0, 0)과 1번 (1, 0)에서 거리가 같고, (0.25, 0.25)는 0번과 4번 (0.5, 0.5)에서 거리가 같아요. 둘 다 0번의 값이에요.
+
+```python
+>>> nn([0.5, 0.0]), nn([0.25, 0.25])
+(10.0, 10.0)
+```
+
+이 규칙 덕분에 결과는 실행마다, 스레드 수와 상관없이 같아요. 거리는 [`sd.spatial`](/api/spatial/basics/)의 유클리드 거리와 같은 값이에요.
+
+## 축의 척도: `rescale`
+
+거리는 모든 좌표를 같은 무게로 더해요. 한 축은 0–1, 다른 축은 0–1000처럼 범위가 크게 다르면 큰 축이 거리를 다 차지해요. `rescale=True`면 축마다 자료점의 평균을 빼고 범위로 나눈 좌표에서 찾아요. 범위가 0인 축은 1로 나눠요.
+
+```python
+>>> pos = sd.asarray([[0.0, 0.0], [1.0, 500.0]])
+>>> v = sd.asarray([1.0, 2.0])
+>>> sd.interpolate.NearestNDInterpolator(pos, v)([0.9, 100.0])
+1.0
+>>> sd.interpolate.NearestNDInterpolator(pos, v, rescale=True)([0.9, 100.0])
+2.0
+```
+
+평가점 (0.9, 100)은 첫째 축으로는 (1, 500)에 가깝고 둘째 축으로는 (0, 0)에 가까워요. 원래 좌표에서는 둘째 축의 차이(100과 400)가 거리를 거의 다 정해서 (0, 0)을 골라요. `rescale=True`면 두 축을 같은 크기로 맞춘 거리라 첫째 축의 차이(0.9와 0.1)도 같은 무게로 들어가서 (1, 500)을 골라요. 단위가 다른 좌표를 섞을 때는 `rescale`을 켜거나, 직접 알맞은 척도로 바꿔 줘요.
+
+## 조심할 점
+
+### 결과는 계단이에요
+
+값이 영역의 경계에서 뛰어요. 기울기나 적분이 필요하면 다른 보간을 써요.
+
+### 옵션은 이름으로 줘요
+
+```python
+>>> sd.interpolate.NearestNDInterpolator(st, temp, True)
+Traceback (most recent call last):
+    ...
+TypeError: NearestNDInterpolator(): takes 2 positional arguments but 3 were given
+>>> sd.interpolate.NearestNDInterpolator(st, temp, rescale=1)
+Traceback (most recent call last):
+    ...
+TypeError: NearestNDInterpolator(): 'rescale' must be True or False, not int
+```
+
+## scipy·numpy를 아는 분께
+
+- 거리가 같으면 언제나 작은 번호예요. scipy의 트리는 동점 가운데 어느 것을 고를지 정해 두지 않아요.
+- 자료점의 좌표가 하나(m = 1)여도 돼요. scipy는 둘 이상이어야 해요.
+- 좌표가 유한하지 않은 평가점은 NaN이에요. scipy는 `ValueError`예요.
+- `tree_options`와 부를 때의 질의 옵션(`distance_upper_bound` 등)은 없어요. 거리에 상한을 두려면 [`KDTree.query`](/api/spatial/query/)로 거리와 번호를 받아 직접 골라요.
+- `rescale`은 이름으로만, `True`·`False`로만 받아요.
+- 공개 속성(`points`, `values`, `tree`)은 없어요.

@@ -1,0 +1,405 @@
+---
+kind: function
+title: LinearOperator
+names: [LinearOperator, aslinearoperator]
+group: 직접 풀이
+order: 6
+signatures:
+  - "sd.sparse.LinearOperator(shape, matvec, /, *, rmatvec=None, matmat=None, rmatmat=None, dtype=None)"
+  - "sd.sparse.aslinearoperator(A, /)"
+summary: 원소를 저장하지 않고 "벡터에 곱하면 무엇이 나오는가"만으로 정한 행렬이에요. 반복법, 고유값, 노름 추정 같은 함수에 행렬 대신 넘길 수 있고, aslinearoperator는 희소·밀집 행렬을 이 꼴로 감싸요.
+params:
+  - name: shape
+    type: (M, N)
+    kind: positional-only
+    desc: 연산자의 모양. 정수 둘의 튜플이에요.
+  - name: matvec
+    type: 호출 가능한 객체
+    kind: positional-only
+    desc: "곱 A @ x를 계산하는 함수. (N,)이나 (N, 1)의 sd.ndarray를 받아 (M,)이나 (M, 1)을 돌려줘요. 결과는 sd.asarray의 규칙으로 바꾸고, 크기가 같으면 그 모양으로 맞춰요."
+  - name: rmatvec
+    type: 호출 가능한 객체 또는 None
+    kind: keyword-only
+    desc: 켤레 전치와의 곱 Aᴴ @ y를 계산하는 함수. (M,)이나 (M, 1)을 받아 (N,)이나 (N, 1)을 돌려줘요. 없으면 .T, .H, rmatvec을 쓸 때 ValueError예요.
+  - name: matmat
+    type: 호출 가능한 객체 또는 None
+    kind: keyword-only
+    desc: 행렬과의 곱 A @ X, X는 (N, k). None이면 열마다 matvec을 불러요.
+  - name: rmatmat
+    type: 호출 가능한 객체 또는 None
+    kind: keyword-only
+    desc: Aᴴ @ Y, Y는 (M, k). None이면 열마다 rmatvec을 불러요.
+  - name: dtype
+    type: dtype 또는 None
+    kind: keyword-only
+    desc: 연산자의 dtype(sd.bool, sd.int64, sd.float64, sd.complex128이나 그 이름). None이면 0 벡터로 matvec을 한 번 불러서 그 결과의 dtype으로 정해요.
+  - name: A
+    type: 희소 배열, ndarray, 또는 LinearOperator
+    kind: positional-only
+    desc: aslinearoperator가 감쌀 2차원 행렬. LinearOperator면 그것을 그대로 돌려줘요.
+returns:
+  type: LinearOperator
+  desc: "shape, dtype, matvec, rmatvec, matmat, rmatmat, @, +, -, 스칼라 *, ** p, .T, .H, adjoint()를 가진 연산자. repr은 LinearOperator(shape=(M, N), dtype=float64)예요."
+raises:
+  - type: TypeError
+    desc: matvec이 호출 가능하지 않을 때(LinearOperator), rmatvec 등을 위치로 넘겼을 때, dtype이 넷 가운데 하나가 아닐 때, matvec 등에 sd.ndarray가 아닌 것을 줬을 때, 연산자에 벡터를 *로 곱했을 때, A가 희소 배열·sd.ndarray·LinearOperator가 아닐 때(aslinearoperator).
+  - type: ValueError
+    desc: shape이 2차원이 아닐 때, matvec 등에 모양이 맞지 않는 벡터·행렬을 줬을 때, 사용자 함수가 크기가 다른 결과를 돌려줬을 때, rmatvec 없이 만든 연산자의 rmatvec·.T·.H를 쓸 때, 모양이 맞지 않는 연산자끼리 더하거나 곱할 때, 정사각이 아닌 연산자의 거듭제곱이나 음수 거듭제곱, A가 2차원이 아닐 때(aslinearoperator).
+seeAlso: [iterative, cg, lsqr, eigsh, svds, onenormest, expm_multiply, factorized, basics]
+---
+import Callout from '../../../components/Callout.astro';
+
+## 한눈에 보기
+
+반복법과 고유값 함수는 행렬의 원소를 하나하나 들여다보지 않아요. 필요한 것은 "벡터 $x$를 주면 $Ax$를 돌려주는" 일뿐이에요. `LinearOperator`는 행렬을 바로 그 일, 곧 곱하는 함수로 정해요.
+
+아래는 1차원 라플라시안 $(Ax)_i = 2x_i - x_{i-1} - x_{i+1}$을 행렬 없이 함수로 쓴 것이에요.
+
+```python
+>>> import stardust as sd
+>>> def lap(x):
+...     y = 2.0 * x
+...     y[1:] -= x[:-1]
+...     y[:-1] -= x[1:]
+...     return y
+>>> L = sd.sparse.LinearOperator((5, 5), lap, rmatvec=lap)
+>>> L
+LinearOperator(shape=(5, 5), dtype=float64)
+>>> L @ sd.asarray([1.0, 2.0, 3.0, 4.0, 5.0])
+array([0.0, 0.0, 0.0, 0.0, 6.0], dtype=float64)
+```
+
+`L`에는 원소가 저장돼 있지 않지만, 반복법에 행렬 대신 넘길 수 있어요.
+
+```python
+>>> r = sd.sparse.cg(L, sd.ones(5))
+>>> r.converged, r.x
+(True, array([2.5, 4.0, 4.5, 4.0, 2.5], dtype=float64))
+```
+
+<Reference />
+
+## 행렬 없이 행렬처럼
+
+연산자로 쓰면 좋은 경우는 이래요.
+
+- **원소가 너무 많거나 꽉 찬 행렬.** $B^\mathsf{H}B$, $A^{-1}B$, "희소 행렬 + 꽉 찬 낮은 랭크 행렬"처럼 만들면 꽉 차지만 곱은 싸게 할 수 있는 행렬이 많아요.
+- **곱하는 규칙만 아는 행렬.** 격자 위의 차분, 합성곱, 다른 프로그램이 계산해 주는 곱처럼 원소를 늘어놓기보다 함수로 쓰는 편이 자연스러운 경우예요.
+- **행렬 몇 개의 조합.** 아래 [연산자끼리의 계산](#연산자끼리의-계산)처럼 더하고 곱한 결과를 만들지 않고 그대로 넘길 수 있어요.
+
+곱으로 만든 행렬의 모습을 보고 싶으면 단위 행렬을 곱해 보면 돼요. 행렬이 작을 때만 하세요.
+
+```python
+>>> L.matmat(sd.eye(5))
+array([[ 2.0, -1.0,  0.0,  0.0,  0.0],
+       [-1.0,  2.0, -1.0,  0.0,  0.0],
+       [ 0.0, -1.0,  2.0, -1.0,  0.0],
+       [ 0.0,  0.0, -1.0,  2.0, -1.0],
+       [ 0.0,  0.0,  0.0, -1.0,  2.0]], dtype=float64)
+```
+
+### 연산자를 받는 함수
+
+`LinearOperator`는 곱만으로 일하는 함수들이 받아요.
+
+| 함수 | 쓰는 곱 |
+|---|---|
+| [cg](/api/sparse/cg/), [gmres](/api/sparse/gmres/), [minres](/api/sparse/minres/), [bicgstab](/api/sparse/bicgstab/) | `A @ x`(전처리기 `M`도 연산자로 받아요) |
+| [lsqr](/api/sparse/lsqr/), [lsmr](/api/sparse/lsmr/) | `A @ x`와 `Aᴴ @ y` |
+| [eigsh](/api/sparse/eigsh/), [eigs](/api/sparse/eigs/) | `A @ x` |
+| [svds](/api/sparse/svds/) | `A @ x`와 `Aᴴ @ y` |
+| [onenormest](/api/sparse/onenormest/), [expm_multiply](/api/sparse/expm_multiply/) | `A @ x`와 `Aᴴ @ y` |
+
+원소가 필요한 함수, 곧 직접 풀이([spsolve](/api/sparse/spsolve/), [splu](/api/sparse/splu/), [inv](/api/sparse/inv/))와 [norm](/api/sparse/norm/), [expm](/api/sparse/expm/)은 연산자를 받지 않아요.
+
+```python
+>>> sd.sparse.spsolve(L, sd.ones(5))
+Traceback (most recent call last):
+    ...
+TypeError: spsolve(): 'A' must be a sparse array, not LinearOperator
+```
+
+위 표의 함수들은 희소 배열과 2차원 밀집 배열도 그대로 받아요. 행렬이 이미 있으면 연산자로 감싸지 말고 행렬을 넘기세요. 행렬은 반복 전체가 라이브러리 안에서 돌지만, 함수로 만든 연산자는 곱할 때마다 Python 함수를 불러요.
+
+## `matvec`이 받고 돌려주는 것
+
+`matvec(x)`는 길이 N의 `sd.ndarray`를 받아요. 모양은 `(N,)`이거나 열 하나인 `(N, 1)`이에요. 돌려주는 값은 `(M,)`이나 `(M, 1)`이어야 하는데, 크기만 맞으면 연산자가 모양을 맞춰 줘요. 리스트처럼 배열이 아닌 것을 돌려주면 [`sd.asarray`](/api/array/asarray/)의 규칙으로 바꿔요.
+
+```python
+>>> L.matvec(sd.ones((5, 1)))
+array([[1.0],
+       [0.0],
+       [0.0],
+       [0.0],
+       [1.0]], dtype=float64)
+>>> twice = sd.sparse.LinearOperator((3, 3), lambda x: [2 * float(v) for v in x])
+>>> twice @ sd.asarray([1.0, 2.0, 3.0])
+array([2.0, 4.0, 6.0], dtype=float64)
+```
+
+크기가 다른 결과는 `ValueError`예요.
+
+```python
+>>> bad = sd.sparse.LinearOperator((3, 3), lambda x: sd.ones(4), dtype=sd.float64)
+>>> bad @ sd.ones(3)
+Traceback (most recent call last):
+    ...
+ValueError: matvec(): the operator's function returned shape (4,), expected (3,)
+```
+
+### `dtype`
+
+`dtype=None`이면 만들 때 0 벡터로 `matvec`을 한 번 불러서, 그 결과의 dtype을 연산자의 dtype으로 삼아요. `matvec`이 비싸거나 부를 때 하는 일이 있으면 `dtype`을 직접 주세요. 그러면 미리 부르지 않아요.
+
+```python
+>>> calls = []
+>>> def counted(x):
+...     calls.append(x.shape)
+...     return lap(x)
+>>> _ = sd.sparse.LinearOperator((5, 5), counted)
+>>> calls
+[(5,)]
+>>> _ = sd.sparse.LinearOperator((5, 5), counted, dtype=sd.float64)
+>>> calls
+[(5,)]
+```
+
+복소 연산자는 `dtype=sd.complex128`로 알려 주세요. 반복법은 연산자와 우변의 dtype을 보고 실수로 풀지 복소로 풀지 정해요.
+
+## `rmatvec`: 켤레 전치와의 곱
+
+$A^\mathsf{H} y$가 필요한 함수(최소제곱의 [lsqr](/api/sparse/lsqr/)·[lsmr](/api/sparse/lsmr/), 특이값의 [svds](/api/sparse/svds/), [onenormest](/api/sparse/onenormest/), [expm_multiply](/api/sparse/expm_multiply/))에 넘기려면 `rmatvec`도 줘야 해요. 실수 연산자면 전치와의 곱이에요.
+
+정사각이 아닌 예로, 이웃한 두 값의 차이를 늘어놓는 차분 연산자 $(Dx)_i = x_{i+1} - x_i$를 만들어 볼게요. 모양은 (4, 5)이고, 전치는 차이를 양쪽 원소로 되돌려 놓는 일이에요.
+
+```python
+>>> def diff(x):
+...     return x[1:] - x[:-1]
+>>> def diff_t(y):
+...     out = sd.zeros(y.shape[0] + 1)
+...     out[1:] += y
+...     out[:-1] -= y
+...     return out
+>>> D = sd.sparse.LinearOperator((4, 5), diff, rmatvec=diff_t)
+>>> D @ sd.asarray([1.0, 4.0, 9.0, 16.0, 25.0])
+array([3.0, 5.0, 7.0, 9.0], dtype=float64)
+>>> D.H @ sd.ones(4)
+array([-1.0,  0.0,  0.0,  0.0,  1.0], dtype=float64)
+```
+
+이 연산자로 "이웃끼리의 차이가 모두 1인 x"를 최소제곱으로 찾아 볼게요. 그런 x는 상수를 더한 만큼 많은데, `lsqr`는 그 가운데 크기가 가장 작은 것을 줘요.
+
+```python
+>>> sd.sparse.lsqr(D, sd.ones(4)).x
+array([-1.9999999999999996, -0.9999999999999997,                 0.0,
+        0.9999999999999997,  1.9999999999999996], dtype=float64)
+```
+
+`rmatvec` 없이 만든 연산자의 `rmatvec`, `.T`, `.H`를 쓰면 `ValueError`예요.
+
+```python
+>>> only = sd.sparse.LinearOperator((5, 5), lap)
+>>> only.H @ sd.ones(5)
+Traceback (most recent call last):
+    ...
+ValueError: rmatvec(): the operator was made without 'rmatvec'
+```
+
+$A^H$의 곱이 필요한 함수([lsqr](/api/sparse/lsqr/), [lsmr](/api/sparse/lsmr/), [svds](/api/sparse/svds/), [onenormest](/api/sparse/onenormest/))에 이런 연산자를 주면 메시지가 그 함수의 이름으로 시작해요. `lsqr`와 `lsmr`는 반복을 시작하기 전에 알려요.
+
+```python
+>>> sd.sparse.lsqr(only, sd.ones(5))
+Traceback (most recent call last):
+    ...
+ValueError: lsqr(): the operator was made without 'rmatvec'
+```
+
+연산자를 받는 함수(반복 풀이, 고유값, [expm_multiply](/api/sparse/expm_multiply/), [onenormest](/api/sparse/onenormest/))가 안에서 곱할 때 사용자의 함수가 크기가 다른 결과나 배열로 바꿀 수 없는 것을 돌려줘도, 메시지는 그 함수의 이름으로 시작해요. 앞의 `bad`를 [cg](/api/sparse/cg/)에 주면 이래요.
+
+```python
+>>> sd.sparse.cg(bad, sd.ones(3))
+Traceback (most recent call last):
+    ...
+ValueError: cg(): the operator's function returned shape (4,), expected (3,)
+>>> none = sd.sparse.LinearOperator((3, 3), lambda x: None, dtype=sd.float64)
+>>> sd.sparse.cg(none, sd.ones(3))
+Traceback (most recent call last):
+    ...
+TypeError: cg(): the operator's function must return an sd.ndarray or a sequence of numbers, not NoneType
+```
+
+사용자의 함수가 스스로 낸 에러(함수 안의 `raise`, 계산 중의 에러)는 바꾸지 않고 그대로 나와요.
+
+## `matmat`과 `rmatmat`
+
+여러 벡터를 한꺼번에 곱하는 `matmat(X)`는 X가 `(N, k)`이고 결과가 `(M, k)`예요. 주지 않으면 열마다 `matvec`을 불러요. 열을 묶어 한 번에 곱하는 빠른 방법이 있을 때만 따로 주면 돼요. `rmatmat`도 같아요.
+
+`@`는 오른쪽의 모양을 보고 고르는데, 1차원이거나 열이 하나면 `matvec`, 그 밖의 2차원이면 `matmat`이에요.
+
+```python
+>>> L @ sd.ones((5, 2))
+array([[1.0, 1.0],
+       [0.0, 0.0],
+       [0.0, 0.0],
+       [0.0, 0.0],
+       [1.0, 1.0]], dtype=float64)
+```
+
+## 연산자끼리의 계산
+
+연산자끼리 더하고 빼고 곱할 수 있고, 스칼라를 곱할 수 있어요. 결과도 연산자이고, 실제 곱은 벡터를 곱할 때 차례로 해요.
+
+| 식 | 뜻 |
+|---|---|
+| `A + B`, `A - B` | 같은 모양의 연산자의 합과 차 |
+| `c * A`, `A * c`, `-A` | 스칼라 곱 |
+| `A @ B` | 연산자의 곱(먼저 B, 다음 A) |
+| `A ** p` | 정사각 연산자를 p번(정수 p ≥ 0) 곱한 것, `A ** 0`은 단위 연산자 |
+| `A.T`, `A.H`, `A.adjoint()` | 전치, 켤레 전치(`rmatvec`이 필요해요) |
+| `x @ A` | 행 벡터와의 곱(`A.T`를 써요) |
+
+```python
+>>> (D.H @ D).matmat(sd.eye(5))
+array([[ 1.0, -1.0,  0.0,  0.0,  0.0],
+       [-1.0,  2.0, -1.0,  0.0,  0.0],
+       [ 0.0, -1.0,  2.0, -1.0,  0.0],
+       [ 0.0,  0.0, -1.0,  2.0, -1.0],
+       [ 0.0,  0.0,  0.0, -1.0,  1.0]], dtype=float64)
+>>> shifted = L + 0.5 * sd.sparse.aslinearoperator(sd.sparse.eye_array(5))
+>>> shifted @ sd.ones(5)
+array([1.5, 0.5, 0.5, 0.5, 1.5], dtype=float64)
+>>> (L ** 2) @ sd.asarray([1.0, 2.0, 3.0, 4.0, 5.0])
+array([ 0.0,  0.0,  0.0, -6.0, 12.0], dtype=float64)
+```
+
+`D.H @ D`는 정규방정식의 $D^\mathsf{T}D$를 만들지 않고 나타낸 것이에요. 큰 문제에서는 이 행렬을 만들면 꽉 차거나 조건수가 나빠지기 쉬워서, 이렇게 두는 편이 좋아요.
+
+`*`는 스칼라와의 곱만이에요. 벡터와의 곱은 `@`로 써요.
+
+```python
+>>> L * sd.ones(5)
+Traceback (most recent call last):
+    ...
+TypeError: unsupported operand type(s) for *: 'LinearOperator' and 'ndarray'
+```
+
+## 하위 클래스로 만들기
+
+연산자에 상태(계수, 미리 계산한 값)를 두고 싶으면 하위 클래스를 만들어요. `_matvec`이나 `_matmat`(그리고 필요하면 `_rmatvec`, `_rmatmat`)을 정의하고, `__init__`에서 `matvec` 자리에 `None`을 주고 `dtype`을 알려 줘요.
+
+```python
+>>> class Diag(sd.sparse.LinearOperator):
+...     def __init__(self, d):
+...         self.d = d
+...         super().__init__((d.shape[0], d.shape[0]), None, dtype=d.dtype)
+...     def _matvec(self, x):
+...         return self.d * x.reshape(-1)
+...     def _rmatvec(self, x):
+...         return self.d * x.reshape(-1)
+>>> W = Diag(sd.asarray([1.0, 2.0, 3.0]))
+>>> W
+Diag(shape=(3, 3), dtype=float64)
+>>> W @ sd.ones(3)
+array([1.0, 2.0, 3.0], dtype=float64)
+```
+
+repr은 하위 클래스의 이름을 써요. `matvec`, `@`, 연산자끼리의 계산은 모두 부모 클래스가 맡아요.
+
+## `aslinearoperator`
+
+`aslinearoperator(A)`는 행렬을 연산자로 감싸요. 희소 배열과 2차원 밀집 배열을 받고, 연산자를 주면 그것을 그대로 돌려줘요. 감싼 연산자의 곱은 `A @ x`와 `Aᴴ @ x` 그 자체라서 마지막 비트까지 같아요.
+
+```python
+>>> T = sd.sparse.diags_array([-1.0, 2.0, -1.0], offsets=[-1, 0, 1], shape=(5, 5))
+>>> AT = sd.sparse.aslinearoperator(T)
+>>> AT
+LinearOperator(shape=(5, 5), dtype=float64)
+>>> x = sd.asarray([1.0, 2.0, 3.0, 4.0, 5.0])
+>>> bool(sd.all(AT @ x == T @ x))
+True
+>>> sd.sparse.aslinearoperator(L) is L
+True
+```
+
+행렬을 반복법에 넘길 때는 감쌀 필요가 없어요. `aslinearoperator`가 필요한 것은 행렬을 다른 연산자와 더하거나 곱하는 식에 넣을 때예요(위의 `shifted`처럼). 행렬을 감싼 연산자를 반복법에 넘기면 행렬을 그대로 넘긴 것과 같은 결과예요.
+
+```python
+>>> bool(sd.all(sd.sparse.cg(AT, sd.ones(5)).x == sd.sparse.cg(T, sd.ones(5)).x))
+True
+```
+
+## 조심할 점
+
+### 만들 때의 인자
+
+`shape`과 `matvec`만 위치로 받고, 나머지는 키워드예요.
+
+```python
+>>> sd.sparse.LinearOperator((5, 5), lap, lap)
+Traceback (most recent call last):
+    ...
+TypeError: LinearOperator(): takes 2 positional arguments but 3 were given
+>>> sd.sparse.LinearOperator((5,), lap)
+Traceback (most recent call last):
+    ...
+ValueError: LinearOperator(): 'shape' must have 2 dimensions, got 1
+>>> sd.sparse.LinearOperator((5, 5), lap, dtype="float32")
+Traceback (most recent call last):
+    ...
+TypeError: LinearOperator(): 'dtype' must be sd.bool, sd.int64, sd.float64 or sd.complex128 (or their names), not 'float32'
+```
+
+### 곱하는 벡터
+
+`matvec`에 주는 것은 `sd.ndarray`이고 모양은 `(N,)`이나 `(N, 1)`이에요.
+
+```python
+>>> L.matvec([1.0, 2.0, 3.0, 4.0, 5.0])
+Traceback (most recent call last):
+    ...
+TypeError: matvec(): 'x' must be an sd.ndarray, not list
+>>> L.matvec(sd.ones(4))
+Traceback (most recent call last):
+    ...
+ValueError: matvec(): 'x' must have shape (5,) or (5, 1), got (4,)
+```
+
+numpy 배열은 곱하는 벡터가 아니에요. `@`의 어느 쪽에 있어도 Python의 `TypeError`예요. 3차원 이상의 배열도 받지 않아요.
+
+```python
+>>> import numpy as np
+>>> L @ np.ones(5)
+Traceback (most recent call last):
+    ...
+TypeError: unsupported operand type(s) for @: 'LinearOperator' and 'numpy.ndarray'
+>>> L @ sd.ones((5, 5, 2))
+Traceback (most recent call last):
+    ...
+ValueError: the operand must have 1 or 2 dimensions, got 3
+```
+
+### 연산자의 dtype과 결과의 dtype
+
+`dtype`을 주어도 `matvec`의 결과를 그 dtype으로 바꾸지는 않아요. `dtype=sd.complex128`인 연산자라면 `matvec`이 복소 배열을 돌려주게 짜야 해요.
+
+### 모양이 맞지 않는 조합
+
+```python
+>>> D + L
+Traceback (most recent call last):
+    ...
+ValueError: cannot add operators of shapes (4, 5) and (5, 5)
+>>> D ** 2
+Traceback (most recent call last):
+    ...
+ValueError: a power needs a square operator, got shape (4, 5)
+```
+
+## scipy를 아는 분께
+
+- `rmatvec`, `matmat`, `rmatmat`, `dtype`은 키워드로만 받아요. scipy는 위치로도 받아요.
+- 벡터와의 곱은 `@`뿐이에요. scipy의 `L * x`, `L.dot(x)`, `L(x)`는 없어요(`*`는 스칼라만). `L * M`(연산자끼리)도 `@`로 써요.
+- `rmatvec` 없이 만든 연산자의 `rmatvec`은 `ValueError`예요. scipy는 `NotImplementedError`예요.
+- 곱하는 벡터는 `sd.ndarray`예요. numpy 배열은 받지 않아요(`np.ones(5) * L`도 `TypeError`예요. scipy는 numpy 배열과의 `*`도 곱으로 계산해요). 사용자 함수가 돌려주는 값은 `sd.asarray`의 규칙으로 바꿔요.
+- `dtype=None`일 때 0 벡터로 `matvec`을 한 번 부르는 것, 하위 클래스가 `_matvec`·`_matmat`을 정의하는 방식, 연산자 조합의 모양과 dtype은 scipy와 같아요.
+- `aslinearoperator`로 감싼 희소·밀집 행렬은 반복법에서 행렬을 그대로 넘긴 것과 같은 결과예요.

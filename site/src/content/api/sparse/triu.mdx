@@ -1,0 +1,138 @@
+---
+title: triu
+names: [triu]
+group: 인덱싱과 만들기
+order: 12
+signatures:
+  - "sd.sparse.triu(A, /, *, k=0, format=None)"
+summary: 희소 행렬에서 대각선과 그 위(위 삼각)의 원소만 남겨요. 나머지 원소는 버려요.
+params:
+  - name: A
+    type: 희소 배열 또는 ndarray
+    kind: positional-only
+    desc: 2차원 행렬. 밀집 배열은 0이 아닌 값만 써요.
+  - name: k
+    type: int
+    kind: keyword-only
+    desc: 경계가 되는 대각선. 열 ≥ 행 + k인 원소를 남겨요. 0은 주대각선, 양수는 위쪽, 음수는 아래쪽이에요.
+  - name: format
+    type: str 또는 None
+    kind: keyword-only
+    desc: 결과의 형식. 'coo', 'csr', 'csc', 'dok' 중 하나이고, None이면 COO예요.
+returns:
+  type: 희소 배열
+  desc: A와 모양이 같고 열 ≥ 행 + k인 저장된 원소만 남긴 희소 배열.
+raises:
+  - type: TypeError
+    desc: A가 희소 배열이나 sd.ndarray가 아닐 때, k가 정수가 아닐 때, k를 위치로 줬을 때.
+  - type: ValueError
+    desc: A가 2차원이 아닐 때, format이 네 형식의 이름이 아닐 때.
+  - type: OverflowError
+    desc: k가 int64 밖일 때.
+seeAlso: [tril, is_sptriangular, spbandwidth, spsolve_triangular, diags_array]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+
+## 한눈에 보기
+
+`triu`는 행렬의 **위 삼각**(upper triangle) 부분만 남겨요. 주대각선과 그 위의 원소는 그대로 두고, 대각선 아래의 원소는 버려요. [`tril`](/api/sparse/tril/)의 반대쪽이에요.
+
+```python
+>>> import stardust as sd
+>>> A = sd.sparse.csr_array(sd.asarray([[1.0, 2.0, 3.0],
+...                                     [4.0, 5.0, 6.0],
+...                                     [7.0, 8.0, 9.0]]))
+>>> U = sd.sparse.triu(A)
+>>> U
+<coo_array of shape (3, 3), float64, 6 stored elements>
+>>> U.toarray()
+array([[1.0, 2.0, 3.0],
+       [0.0, 5.0, 6.0],
+       [0.0, 0.0, 9.0]], dtype=float64)
+```
+
+<Fig caption="triu(A)는 대각선과 그 위(진하게)를 남기고 아래(흐리게)를 버려요.">
+  <ArrayFig name="triu(A)" data={[[1, 2, 3], [4, 5, 6], [7, 8, 9]]} tones={[['b', 'b', 'b'], ['m', 'b', 'b'], ['m', 'm', 'b']]} />
+</Fig>
+
+<Reference />
+
+## 경계 옮기기: k
+
+**열 ≥ 행 + k**인 원소를 남겨요. `k=1`이면 대각선을 빼고 그 위만(엄격한 위 삼각), `k=-1`이면 대각선 바로 아래 한 줄까지 남겨요.
+
+```python
+>>> sd.sparse.triu(A, k=1).toarray()
+array([[0.0, 2.0, 3.0],
+       [0.0, 0.0, 6.0],
+       [0.0, 0.0, 0.0]], dtype=float64)
+>>> sd.sparse.triu(A, k=-1).toarray()
+array([[1.0, 2.0, 3.0],
+       [4.0, 5.0, 6.0],
+       [0.0, 8.0, 9.0]], dtype=float64)
+```
+
+## 어디에 쓰나요
+
+### 대칭 행렬의 절반
+
+대칭 행렬은 위 삼각만 있으면 나머지를 알 수 있어요. 위 삼각만 저장했다가 필요할 때 전치를 더해 되살릴 수 있어요. 대각선이 두 번 더해지지 않게 한쪽은 `k=1`로 대각선을 빼요.
+
+```python
+>>> S = sd.sparse.csr_array(sd.asarray([[4.0, 1.0, 0.0],
+...                                     [1.0, 4.0, 2.0],
+...                                     [0.0, 2.0, 4.0]]))
+>>> half = sd.sparse.triu(S)
+>>> half.nnz
+5
+>>> (half + sd.sparse.triu(S, k=1).T).toarray()
+array([[4.0, 1.0, 0.0],
+       [1.0, 4.0, 2.0],
+       [0.0, 2.0, 4.0]], dtype=float64)
+```
+
+### 위 삼각 행렬로 풀기
+
+위 삼각 행렬의 연립방정식은 뒤에서부터 대입해 풀어요. [`spsolve_triangular`](/api/sparse/spsolve_triangular/)에 `upper=True`로 넘겨요.
+
+```python
+>>> sd.sparse.is_sptriangular(U)
+(False, True)
+```
+
+## 형식과 저장 순서
+
+결과는 기본으로 COO이고, A를 COO로 본 순서 그대로(중복도 그대로) 원소를 남겨요. `format`으로 다른 형식을 고를 수 있어요. 정사각이 아니어도 되고, 밀집 `sd.ndarray`도 받아요(0이 아닌 값만 저장해요).
+
+```python
+>>> sd.sparse.triu(A, format='csc')
+<csc_array of shape (3, 3), float64, 6 stored elements>
+>>> sd.sparse.triu(sd.asarray([[1.0, 2.0, 3.0, 4.0], [5.0, 6.0, 7.0, 8.0]])).toarray()
+array([[1.0, 2.0, 3.0, 4.0],
+       [0.0, 6.0, 7.0, 8.0]], dtype=float64)
+```
+
+행렬은 2차원이어야 해요. `k`는 정수이고 키워드로만 받아요.
+
+```python
+>>> sd.sparse.triu(A, k=0.5)
+Traceback (most recent call last):
+    ...
+TypeError: triu(): 'k' must be an int, not float
+```
+
+## 밀집 배열의 짝: sd.triu
+
+밀집 배열의 위 삼각은 [`sd.triu`](/api/array/tril-triu/)예요. 인자 이름(`k`)이 같고, 같은 행렬이면 `triu(A, k=k).toarray()`와 값이 비트까지 같아요.
+
+```python
+>>> bool(sd.all(sd.sparse.triu(A, k=1).toarray() == sd.triu(A.toarray(), k=1)))
+True
+```
+
+## scipy를 아는 분께
+
+- `scipy.sparse.triu`와 같은 뜻이고, 기본 형식도 COO로 같아요. 원소의 순서와 중복을 그대로 두는 것도 같아요.
+- `k`와 `format`은 키워드로만 받아요.
+- 2차원만 받아요. 리스트와 numpy 배열은 `TypeError`예요.

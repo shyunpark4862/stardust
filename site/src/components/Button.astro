@@ -1,0 +1,68 @@
+---
+interface Props {
+  href: string;
+  variant?: 'primary' | 'secondary';
+  size?: 'md' | 'lg';
+  arrow?: boolean;
+}
+const { href, variant = 'primary', size = 'md', arrow = false } = Astro.props;
+---
+
+<a class:list={['btn', `btn--${variant}`, `btn--${size}`]} href={href}>
+  <slot />
+  {
+    arrow && (
+      <svg class="btn__arrow" width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+        <path d="M2.5 7h9M8 3.5 11.5 7 8 10.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+      </svg>
+    )
+  }
+</a>
+
+<style>
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    height: 40px;
+    padding-inline: var(--space-4);
+    border: 1px solid transparent;
+    border-radius: var(--radius-md);
+    font-size: var(--text-base);
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: -0.01em;
+    white-space: nowrap;
+    transition:
+      background-color var(--dur-fast) var(--ease),
+      border-color var(--dur-fast) var(--ease),
+      color var(--dur-fast) var(--ease);
+  }
+  .btn--lg {
+    height: 48px;
+    padding-inline: var(--space-6);
+    font-size: var(--text-md);
+  }
+  .btn--primary {
+    background: var(--btn-primary-bg);
+    color: var(--btn-primary-fg);
+  }
+  .btn--primary:hover {
+    background: var(--btn-primary-bg-hover);
+  }
+  .btn--secondary {
+    border-color: var(--line-strong);
+    background: var(--btn-secondary-bg);
+    color: var(--fg);
+  }
+  .btn--secondary:hover {
+    background: var(--btn-secondary-bg-hover);
+  }
+  .btn__arrow {
+    transition: transform var(--dur) var(--ease);
+  }
+  .btn:hover .btn__arrow {
+    transform: translateX(3px);
+  }
+</style>

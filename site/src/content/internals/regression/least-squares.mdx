@@ -1,0 +1,1050 @@
+---
+title: 최소제곱 풀이
+group: 선형 모형
+order: 1
+summary: ols·wls·gls가 계수를 구하는 방법을 설명해요. 정규방정식 대신 Householder QR(키가 크고 조건이 좋은 설계는 CholeskyQR2)로 처음 해를 구하고 double-double 잔차로 반복 개선해서, 조건수 10¹¹까지 상대오차 10⁻¹⁴ 안의 참 최소제곱 해를 돌려줘요.
+seeAlso: [overview, inference, glm, accuracy-performance]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Steps from '../../../components/fig/Steps.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+export const refineErr = {
+  s0: [[0, -13.92], [2, -11.91], [4, -7.43], [5, -5.47], [6, -3.83], [7, -1.79], [8, -1.35], [9, 0.5], [10, 0.69], [11, 0.2], [12, 0.85], [13, 0.67], [14, 0.64]],
+  s1: [[0, -16.33], [2, -16.27], [4, -16.19], [5, -16.12], [6, -15.59], [7, -12.28], [8, -9.99], [9, -8.13], [10, -6.59], [11, -5.8], [12, -3.68], [13, -3.08], [14, -2.16]],
+  s3: [[0, -16.33], [2, -16.27], [4, -16.19], [5, -16.12], [6, -16.33], [7, -16.19], [8, -15.96], [9, -15.27], [10, -14.86], [11, -14.95], [12, -11.79], [13, -8.46], [14, -6.61]],
+};
+
+## 한눈에 보기
+
+`ols`, `wls`, `gls`의 계수는 모두 `lsq::fit_one`(`csrc/regression/linear.cpp`) 하나가 구해요. 회귀 하나의 흐름은 이래요.
+
+<Fig column caption="lsq::fit_one의 단계. 굵은 계산은 QR 한 번(geqrf, 키가 큰 설계는 CholeskyQR2)과 double-double 행 합 서너 번이에요. 겹친 열이 없고 조건이 좋으면 개선은 한 번에 끝나요.">
+  <Steps
+    steps={[
+      { label: '검사와 쓰인 행', note: 'y, X, 가중치의 NaN·inf, 음수 가중치. 가중치가 0보다 큰 행의 번호를 idx에, 백색화 인자 s_t = √w_t를 s에. 쓰인 행이 없으면 NaN 결과(nobs 0)로 끝' },
+      { label: '꾸리기', note: '백색화한 설계(절편 열 먼저)를 열 우선으로 꾸려요', where: 'pack' },
+      { label: 'CholeskyQR2', note: '쓰인 행 m ≥ 2k이고 m·k ≥ 16,384이면 먼저 해 봐요. R₁의 조건수 어림이 10⁵ 이하이고 겹칠 기미인 열이 없을 때만 이 분해를 써요. 열의 노름은 R₁의 열에서', where: 'ddot·dsyrk, potrf, dtrsm' },
+      { label: 'geqrf', note: '그 밖은 열마다 dnrm2로 ‖x_j‖를 재고 피벗 없는 Householder QR', where: 'Accelerate LAPACK' },
+      { label: '겹친 열', note: '|R_jj| ≤ rtol·‖x_j‖인 첫 열을 빼고 뒤의 열만 다시 분해. 하나라도 뺐으면 남은 열로 처음부터 한 번 더 geqrf', depth: 1 },
+      { label: '처음 해', note: 'c = Qᵀ(s·y)를 반사를 직접 적용해 구하고, R β₀ = c₁을 trtrs로', where: 'apply_reflectors' },
+      { label: '처음 잔차', note: 'r = y − Xβ₀를 Dot2로 구해 반올림하고, 그 나머지를 f에 둬요. 같은 패스에서 가중 평균의 합', where: 'Dot2' },
+      { label: '반복 개선 (최대 3번)', note: '증강 시스템의 잔차 (f, g)에서 보정 (δr, δβ)를 같은 QR로 풀어요. 다음 보정이 2⁻⁵⁴‖β‖ 아래로 떨어질 것이 보이면 멈춰요', where: 'trcon' },
+      { label: '마지막 패스', note: '모든 행의 적합값과 잔차, SSR·TSS·ESS를 double-double로', where: 'Dot2' },
+      { label: '완전 적합의 판정', note: '쓰인 행의 잔차가 모두 (k + 16)u(|y_t| + Σ_j|x_tj||β_j|) 안이면 SSR을 0으로. 보통 첫 행에서 판정이 끝나요' },
+      { label: '공분산', note: '(RᵀR)⁻¹를 potri로, 강건형이면 샌드위치', where: '추론과 진단' },
+    ]}
+  />
+</Fig>
+
+이 설계의 목표는 하나예요. 입력으로 받은 double 값에 대한 참 최소제곱 해를 조건수 10¹¹까지 상대오차 10⁻¹⁴ 안에서 돌려주는 거예요.
+
+## 최소제곱의 오차는 두 항이에요
+
+### 문제
+
+$n$개의 관측 $y_i$와 설명변수의 행 $x_i$(절편 열 포함, 길이 $k$)가 있을 때, 최소제곱은 잔차 제곱합을 가장 작게 하는 계수 $\beta$예요.
+
+$$
+\hat\beta = \arg\min_\beta \sum_{i=1}^n w_i\,(y_i - x_i\beta)^2 = \arg\min_\beta \lVert W^{1/2}(y - X\beta) \rVert_2^2
+$$
+
+가중치가 없으면 $W = I$예요. 최소점에서 잔차 $r = y - X\hat\beta$는 $X$의 열들과 (가중) 수직이에요. 이것이 정규방정식이에요.
+
+$$
+X^{\mathsf T}W r = 0 \quad\Longleftrightarrow\quad X^{\mathsf T}WX\,\hat\beta = X^{\mathsf T}Wy
+$$
+
+### 섭동에 얼마나 민감한가
+
+double로 계산하면 입력과 중간값이 상대 $u = 2^{-53} \approx 1.1\times10^{-16}$ 정도씩 흔들려요. 역방향 안정(backward stable)한 방법은 "$X$와 $y$를 열마다 상대 $\varepsilon$만큼 바꾼 문제의 정확한 해"를 내요. Householder QR은 $\varepsilon \approx c\,nk\,u$예요. 그 해가 참 해에서 얼마나 떨어지는지는 Wedin의 섭동 정리가 말해요(Higham, *Accuracy and Stability of Numerical Algorithms*, 2판, 정리 20.1).
+
+$$
+\frac{\lVert \hat\beta_{\text{계산}} - \hat\beta \rVert_2}{\lVert \hat\beta \rVert_2}
+\;\le\; \frac{\kappa\,\varepsilon}{1 - \kappa\,\varepsilon}\left(2 + (\kappa + 1)\,\frac{\lVert r \rVert_2}{\lVert X \rVert_2\,\lVert \hat\beta \rVert_2}\right),
+\qquad \kappa = \kappa_2(X) = \frac{\sigma_{\max}(X)}{\sigma_{\min}(X)}
+$$
+
+$\lVert X\rVert\lVert\hat\beta\rVert \ge \lVert X\hat\beta\rVert$이므로, 잔차와 적합값의 크기 비 $\rho = \lVert r \rVert / \lVert X\hat\beta \rVert$로 쓰면 오차는 대략 이 꼴이에요.
+
+$$
+\text{상대오차} \;\approx\; \kappa\,u \;+\; \kappa^2\,u\,\rho
+$$
+
+- 첫 항 $\kappa u$는 연립방정식과 같은 몫이에요. 피할 수 없어요.
+- 둘째 항 $\kappa^2 u \rho$는 최소제곱에만 있는 몫이에요. 잔차가 크면($R^2$가 작으면) 조건수의 제곱이 앞에 나와요. $\kappa = 10^8$, $\rho = 1$이면 $10^{16}\cdot10^{-16} = 1$이라 자릿수가 하나도 남지 않아요.
+
+이 둘째 항은 방법의 결함이 아니라 문제의 성질이에요. 역방향 안정한 어떤 방법도 double 한 벌로는 이 이상을 할 수 없어요. 그래서 sd는 QR의 해에서 멈추지 않고, 잔차를 더 높은 정밀도로 구해 해를 고쳐 가요(반복 개선).
+
+### 정규방정식을 쓰지 않는 이유
+
+정규방정식 $X^{\mathsf T}X\beta = X^{\mathsf T}y$를 Cholesky로 풀면 가장 빨라요. 하지만 $\kappa_2(X^{\mathsf T}X) = \kappa^2$라서 잔차가 0이어도 오차가 $\kappa^2 u$ 꼴이에요. QR의 첫 항($\kappa u$)이 처음부터 제곱이 되는 셈이에요. NIST의 Wampler1은 $y = 1 + x + x^2 + x^3 + x^4 + x^5$($x = 0, 1, \dots, 20$)이라 참 계수가 모두 1이고 잔차가 정확히 0이에요.
+
+```python
+>>> xs = range(21)
+>>> X = sd.asarray([[float(x) ** j for j in range(1, 6)] for x in xs])
+>>> y = sd.asarray([float(sum(x ** j for j in range(6))) for x in xs])
+>>> r = sd.regression.ols(y, X)
+>>> f"{r.condition_number:.2e}"
+'6.40e+06'
+>>> r.params
+array([1.0, 1.0, 1.0, 1.0, 1.0, 1.0], dtype=float64)
+>>> Xc = sd.concat([sd.ones((21, 1)), X], axis=1)
+>>> ne = sd.linalg.solve(Xc.T @ Xc, Xc.T @ y)          # 정규방정식
+>>> f"{float(sd.max(sd.abs(ne - 1.0))):.1e}"
+'1.3e-07'
+>>> ls = sd.linalg.lstsq(Xc, y).solution               # SVD 최소제곱
+>>> f"{float(sd.max(sd.abs(ls - 1.0))):.1e}"
+'2.9e-10'
+>>> b0 = sd._core.regression.fit("ols", y, X, None, None, True, -1.0, 0, 0)[0]   # QR만, 개선 없음
+>>> f"{float(sd.max(sd.abs(b0 - 1.0))):.1e}"
+'1.8e-10'
+```
+
+QR만으로는 $\kappa u \approx 7\times10^{-10}$ 수준, 정규방정식은 그보다 세 자릿수 가까이 더 나빠요. 개선을 한 번 하면 정확히 1이에요. 이 경우 잔차 제곱합이 정확히 0이라 표준오차도 0이고, t와 p는 NaN이에요([겹친 열과 완전 적합](/api/regression/collinearity/)).
+
+## Householder QR
+
+### 반사로 0을 만들기
+
+Householder 반사는 벡터 $v$에 수직인 거울에 비추는 변환이에요.
+
+$$
+H = I - \tau\, v v^{\mathsf T}, \qquad \tau = \frac{2}{v^{\mathsf T}v}
+$$
+
+$H$는 대칭이고 직교예요($H^{\mathsf T}H = I$). 열 $x$에 대해 $v = x - \beta e_1$, $\beta = -\operatorname{sign}(x_1)\lVert x \rVert_2$로 고르면 $Hx = \beta e_1$이 돼요. 첫 성분만 남고 나머지는 모두 0이에요. $\beta$의 부호를 $x_1$과 반대로 고르는 것은 $v_1 = x_1 - \beta$에서 상쇄를 피하려는 거예요(LAPACK `dlarfg`). $k$개 열에 차례로 반사를 적용하면
+
+$$
+H_{k-1}\cdots H_1 H_0\,A = \begin{bmatrix} R \\ 0 \end{bmatrix}, \qquad A = QR,\quad Q = H_0 H_1 \cdots H_{k-1}
+$$
+
+이 돼요. LAPACK `geqrf`는 $R$을 $A$의 위 삼각에, 반사 벡터 $v_j$(첫 성분 1은 저장하지 않음)를 대각 아래에, $\tau_j$를 따로 저장해요. 블록 단위로 반사 여러 개를 $I - VTV^{\mathsf T}$로 묶어 행렬곱으로 적용하는 것이 `geqrf`가 빠른 이유예요. 자세한 것은 linalg의 [QR 분해와 최소제곱](/internals/linalg/qr/)에 있어요.
+
+직교 변환은 벡터의 길이를 바꾸지 않으므로 이미 생긴 반올림 오차를 키우지 않아요. 그래서 Householder QR은 피벗 없이도 열마다 역방향 안정이에요.
+
+$$
+A + \Delta A = Q\hat R, \qquad \lVert \Delta a_j \rVert_2 \le c\,nk\,u\,\lVert a_j \rVert_2
+$$
+
+열마다 성립한다는 점이 겹친 열의 판정(아래)에서 중요해요. 작은 열은 작은 오차만 받아요.
+
+### 처음 해
+
+백색화한 설계 $A = W^{1/2}X$와 응답 $b = W^{1/2}y$에 대해 $Q^{\mathsf T}$를 곱하면 문제가 삼각이 돼요.
+
+$$
+\lVert b - A\beta \rVert_2^2 = \lVert Q^{\mathsf T}b - Q^{\mathsf T}A\beta \rVert_2^2
+= \lVert c_1 - R\beta \rVert_2^2 + \lVert c_2 \rVert_2^2, \qquad Q^{\mathsf T}b = \begin{bmatrix} c_1 \\ c_2 \end{bmatrix}
+$$
+
+둘째 항은 $\beta$와 상관없으므로 $R\beta_0 = c_1$을 풀면(`trtrs`) 최소예요.
+
+```cpp
+    // csrc/regression/linear.cpp
+    // initial solution
+    if (kk > 0) {
+        for (lint t = 0; t < m; ++t) cv[t] = s[t] * rd(d.y + idx[t] * d.ys);
+        qt_apply(cv);
+        std::copy(cv, cv + kk, beta);
+        linalg::lapack::trtrs('U', 'N', 'N', kk, 1, A, m, beta, kk);
+    }
+```
+
+`qt_apply`는 Householder QR이면 반사를 적용하고, CholeskyQR2면 얇은 Q로 곱해요([아래](#키가-큰-설계-choleskyqr2)). Householder의 $Q^{\mathsf T}b$는 LAPACK `dormqr` 대신 `apply_reflectors`로 직접 구해요. 벡터 하나에 Accelerate의 `dormqr`를 부르면 개선을 도는 적합 시간의 대부분을 그 호출이 차지해요. `apply_reflectors`는 반사 $H_j$ 하나에 벡터를 한 번 훑으며, $H_j$를 적용하는 갱신 $c \leftarrow c - \tau_j (v_j^{\mathsf T}c)\,v_j$와 다음 반사의 내적 $v_{j+1}^{\mathsf T}c$를 같은 루프에서 해요. 내적은 행 수 m으로만 정한 4,096행 덩어리로 나눠 덩어리 순서대로 더하고, 남은 행이 2¹⁵개 이상이면 덩어리를 스레드풀에 보내요.
+
+```cpp
+    // csrc/regression/linear.cpp
+    double dot = pass(-1, 0.0, order(0));
+    for (lint q = 0; q < kk; ++q) {
+        const lint j = order(q);
+        dot = pass(j, tau[j] * dot, q + 1 < kk ? order(q + 1) : -1);
+    }
+```
+
+`order`는 $Q^{\mathsf T}$이면 $0, 1, \dots$, $Q$이면 거꾸로예요. 같은 함수가 개선의 $Q[h; d_2]$에도 쓰여요.
+
+## 키가 큰 설계: CholeskyQR2
+
+행이 아주 많고 열이 적은 설계에서는 `geqrf`가 제 속도를 내지 못해요. 반사는 열 하나마다 길이 m의 벡터를 훑어 뒤 열에 적용해야 하는데, 열이 적으면 반사를 블록으로 묶어도 행렬곱이 되지 못하고 행렬-벡터 곱 꼴에 머물러요. 그래서 쓰인 행 $m$이 $m \ge 2k$이고 $m k \ge 16{,}384$이면 CholeskyQR2(Fukaya–Nakatsukasa–Yanagisawa–Yamamoto 2014)를 먼저 해 봐요.
+
+### Cholesky QR과 그 약점
+
+$A = QR$이면 $A^{\mathsf T}A = R^{\mathsf T}Q^{\mathsf T}QR = R^{\mathsf T}R$이에요. 그래서 Gram $A^{\mathsf T}A$를 Cholesky로 분해하면 $R$이 나오고, $Q = AR^{-1}$은 오른쪽 삼각 풀이 하나예요. Gram은 행렬곱 꼴이고 나머지는 $k \times k$ 계산과 `dtrsm`이라 키가 큰 행렬에서 빨라요.
+
+약점은 $Q$의 직교성이에요. Gram의 조건수가 $\kappa(A)^2$이라 이렇게 만든 $Q$는 $\lVert Q^{\mathsf T}Q - I\rVert$가 대략 $\kappa(A)^2u$만큼 어긋나요. $\kappa = 10^4$이면 $10^{-8}$이라, 최소제곱에 그대로 쓰기에는 너무 커요.
+
+### 한 번 더 하면
+
+CholeskyQR2는 같은 일을 한 번 더 해요.
+
+$$
+A^{\mathsf T}A = R_1^{\mathsf T}R_1,\quad Y = AR_1^{-1},\qquad Y^{\mathsf T}Y = R_2^{\mathsf T}R_2,\quad Q = YR_2^{-1},\qquad R = R_2R_1
+$$
+
+첫 단계의 $Y$는 직교에서 $\kappa(A)^2u$만큼만 벗어나므로, $\kappa(A)^2 u \ll 1$이면 $Y$의 조건수는 1에 아주 가까워요. 둘째 단계는 그렇게 조건이 좋은 행렬의 Cholesky QR이라 $Q$가 반올림 수준으로 직교해요. Yamamoto–Nakatsukasa–Yanagisawa–Fukaya(2015, *ETNA* 44)는 $8\kappa(A)\sqrt{mku + k(k+1)u} \le 1$이면
+
+$$
+\lVert Q^{\mathsf T}Q - I\rVert_F \le 6\bigl(mku + k(k+1)u\bigr), \qquad \lVert A - QR\rVert_F \le 5k^2\sqrt k\,u\,\lVert A\rVert_2
+$$
+
+임을 보였어요. $\kappa(A)$가 $u^{-1/2} \approx 7\times10^7$보다 충분히 작으면 Householder QR과 같은 자릿수의 분해라는 뜻이에요.
+
+### 이 분해를 쓰는 조건
+
+조건수는 $R_1$에서 `dtrcon`으로 어림해요(1-노름, 아래 "몇 번 하나"의 어림과 같은 방법). 어림이 $10^5$ 이하일 때만 이 분해를 써요. 경계 $u^{-1/2}$보다 훨씬 안쪽에 둔 것은 어림이 참값의 몇 배 틀릴 수 있고, 1-노름과 2-노름의 조건수도 $k$배 안에서 다르기 때문이에요. 겹친 열의 판정도 $R_1$의 대각으로 미리 봐요. 어느 열이든 $\lvert (R_1)_{jj}\rvert \le 2\cdot\text{rtol}\cdot\lVert a_j\rVert_2$(판정의 2배 여유)이면 포기하고, Householder QR이 겹친 열까지 정해요. 열의 노름은 $A^{\mathsf T}A$의 대각, 곧 $R_1$의 열에서 구해요($\lVert a_j\rVert_2^2 = \sum_i (R_1)_{ij}^2$). Cholesky가 실패해도 Householder QR로 가요. 그래서 겹친 열이 있는 설계와 조건이 나쁜 설계(NIST StRD 같은)는 늘 Householder QR이에요.
+
+```cpp
+        // csrc/regression/linear.cpp (lsq::fit_one)
+        if (!gram_chol(R1)) return false;
+        // the norms from the factor: ||a_j||^2 = sum_i R1_ij^2 (column j of R1)
+        for (lint j = 0; j < k; ++j) {
+            double s2 = 0.0;
+            for (lint i = 0; i <= j; ++i) s2 += R1[j * k + i] * R1[j * k + i];
+            nrm[j] = std::sqrt(s2);
+        }
+        const double rc = linalg::lapack::trcon_1('U', k, R1.data(), k);
+        if (!(rc > 0.0) || 1.0 / rc > kCholQRMaxCond) return false;
+        for (lint j = 0; j < k; ++j)
+            if (!(std::fabs(R1[j * k + j]) > 2.0 * tol * nrm[j])) return false;
+```
+
+Gram은 열이 32개까지면 열 쌍마다 `ddot` 하나로, 그보다 많으면 `dsyrk`로 만들어요. Accelerate의 `dsyrk`는 좁고 긴 행렬에서 열 쌍마다의 `ddot`보다 몇 배 느려서예요. $R = R_2R_1$은 `dtrmm`으로 곱해 $A$의 위 삼각 블록(Householder QR이 $R$을 두는 자리)에 두고, 얇은 $Q$($m \times k$)는 따로 둬요.
+
+### 얇은 Q로 하는 개선
+
+반복 개선은 $Q^{\mathsf T}c$와 $Q[c_1;\,d_2]$를 써요. CholeskyQR2에는 반사가 없고 얇은 $\bar Q$만 있어요. 개선은 $Q^{\mathsf T}c$의 뒤 블록 $d_2 = Q_\perp^{\mathsf T}c$를 고치지 않고 그대로 $Q$에 되돌려 넣으므로, $Q_\perp Q_\perp^{\mathsf T} = I - \bar Q\bar Q^{\mathsf T}$에서
+
+$$
+Q\begin{bmatrix} c_1 \\ Q_\perp^{\mathsf T}c \end{bmatrix} = \bar Q c_1 + (I - \bar Q\bar Q^{\mathsf T})\,c = c + \bar Q\,(c_1 - d_1), \qquad d_1 = \bar Q^{\mathsf T}c
+$$
+
+이에요. 그래서 $c$와 $d_1$을 남겨 두면 `dgemv` 둘로 끝나요.
+
+```cpp
+    // csrc/regression/linear.cpp (lsq::fit_one)
+    auto qt_apply = [&](double* c) {
+        if (!explicit_q) return apply_reflectors(A, m, kk, tau, c, true, refl);
+        std::copy(c, c + m, sbuf);
+        cblas_dgemv(
+            CblasColMajor, CblasTrans, static_cast<int>(m), static_cast<int>(kk), 1.0, Q, static_cast<int>(m), sbuf, 1,
+            0.0, dsave, 1
+        );
+        std::copy(dsave, dsave + kk, c);
+    };
+    auto q_apply = [&](double* c) {
+        if (!explicit_q) return apply_reflectors(A, m, kk, tau, c, false, refl);
+        for (lint jj = 0; jj < kk; ++jj) work2q[jj] = c[jj] - dsave[jj];
+        std::copy(sbuf, sbuf + m, c);
+        cblas_dgemv(
+            CblasColMajor, CblasNoTrans, static_cast<int>(m), static_cast<int>(kk), 1.0, Q, static_cast<int>(m),
+            work2q.data(), 1, 1.0, c, 1
+        );
+    };
+```
+
+지렛대, 강건 공분산, GLM의 얇은 Q도 이 $\bar Q$를 바로 써요(`orgqr`가 필요 없어요).
+
+### 분해에 따른 정확도
+
+계수는 어느 분해든 개선이 정해요. 개선의 잔차는 입력을 그대로 읽으므로 분해는 보정을 푸는 전처리일 뿐이에요. 분해가 영향을 주는 것은 $R$에서 바로 읽는 표준오차와 $\bar Q$에서 읽는 지렛대예요. Arb 참값과 견주면($n = 4000$, $k = 5$, 절편과 평균이 3인 열) 표준오차의 최대 상대오차가 $\kappa = 10^3$에서 $1.8\times10^{-15}$(Householder $5.7\times10^{-15}$), 이 분해를 쓰는 끝인 $\kappa = 3\times10^3$에서 $9.1\times10^{-15}$(Householder $3.2\times10^{-14}$)이고, 지렛대는 $6.6\times10^{-13}$(Householder $8.5\times10^{-11}$)이에요. 계수의 오차는 두 분해 모두 0이에요. $\kappa = 10^4$부터는 어림이 문턱을 넘어 Householder QR이에요. 위의 정확도 약속을 잰 문제(NIST StRD와 무작위 조건수 문제)는 이 분해의 크기 문턱 아래라 Householder QR 그대로예요.
+
+## 겹친 열
+
+### 판정 규칙
+
+설명변수 하나가 다른 열들의 선형 결합이면(예: `x2 = 2 * x1`, 절편과 상수 열) 계수가 유일하지 않아요. sd는 R의 `lm`처럼 그런 열을 빼고 나머지로 풀어요. 뺀 열의 계수와 추론은 NaN이고, 적합값·잔차·예측은 정상이에요.
+
+판정은 피벗 없는 QR의 대각으로 해요. 열 $j$를 분해할 차례에 $\lvert R_{jj} \rvert$는 "열 $x_j$에서 앞 열들이 펼치는 공간의 성분을 뺀 나머지의 길이"예요. 그것이 원래 길이에 비해 아주 작으면 $x_j$는 앞 열들로 거의 다 설명되는 열이에요.
+
+$$
+\lvert R_{jj} \rvert \le \text{rtol}\cdot\lVert x_j \rVert_2 \quad\Rightarrow\quad x_j\text{는 겹친 열}
+$$
+
+$\lVert x_j \rVert_2$는 분해 전 백색화한 열의 길이(열마다 `dnrm2` 한 번, CholeskyQR2를 쓴 분해는 $R_1$의 열에서)예요. `rtol`의 기본은 sd.linalg와 같은 $\max(\text{nobs}, k)\cdot\varepsilon$($\varepsilon = 2^{-52}$)이에요.
+
+이 규칙은 R의 `dqrdc2`(LINPACK `dqrdc`를 R이 고친 것)와 같은 선택이에요. `dqrdc2`는 Householder 단계마다 남은 열의 노름이 원래 노름의 `tol`배 아래로 떨어진 열을 맨 뒤로 보내요. 그래서 **앞 열이 남고 뒤 열이 빠져요.** 열 피벗 QR(`geqp3`)은 노름이 큰 열을 먼저 고르므로, 같은 겹침에서 어느 열이 빠질지가 열의 척도에 달려요. 사용자가 준 열 순서를 존중하는 쪽이 결과를 읽기 쉬워서 이 규칙을 써요.
+
+```python
+>>> rng = sd.random.default_rng(2)
+>>> N = sd.stats.Normal()
+>>> x1, x3 = N.sample(30, rng=rng), N.sample(30, rng=rng)
+>>> y = 1.0 + x1 - x3 + 0.1 * N.sample(30, rng=rng)
+>>> sd.regression.ols(y, sd.stack([x1, 2.0 * x1, x3], axis=1)).params
+array([ 0.9948875828852495,  0.9916963242184601,                 nan,
+       -1.0117873750512045], dtype=float64)
+>>> sd.regression.ols(y, sd.stack([2.0 * x1, x1, x3], axis=1)).params
+array([ 0.9948875828852495, 0.49584816210923005,                 nan,
+       -1.0117873750512045], dtype=float64)
+```
+
+두 번째처럼 순서를 바꾸면 앞의 `2 * x1`이 남고 계수가 절반이에요.
+
+거의 겹친 열은 `rtol`이 갈라요. 기본값은 반올림 수준의 겹침만 빼요. R의 기본(`tol = 1e-7`)과 같게 하려면 `rtol=1e-7`을 주면 돼요.
+
+```python
+>>> x2 = 2.0 * x1 + 1e-9 * N.sample(30, rng=rng)
+>>> X = sd.stack([x1, x2, x3], axis=1)
+>>> a = sd.regression.ols(y, X)
+>>> a.rank, f"{a.condition_number:.1e}"
+(4, '5.2e+09')
+>>> b = sd.regression.ols(y, X, rtol=1e-7)
+>>> b.rank
+3
+>>> c = sd.regression.ols(y, sd.stack([x1, x3], axis=1))
+>>> keep = sd.asarray([0, 1, 3])
+>>> bool(sd.all(b.params[keep] == c.params)), bool(sd.all(b.bse[keep] == c.bse))
+(True, True)
+```
+
+마지막 줄처럼, 열을 뺀 적합은 그 열을 처음부터 주지 않은 적합과 비트까지 같아요. 다만 겹친 열이 있는 설계는 늘 Householder QR이라, 열을 뺀 설계가 CholeskyQR2를 타는 큰 문제에서는 분해가 달라요. 계수는 개선이 같은 double로 데려가지만 표준오차는 끝자리가 다를 수 있어요.
+
+### 빼고 다시 분해하기
+
+```cpp
+        // csrc/regression/linear.cpp
+        lint j = first_aliased(0);
+        // blocked restarts: drop column j, factor the columns after it again
+        while (j >= 0 && restarts < 8) {
+            dropped = true;
+            ++restarts;
+            std::copy(K + j + 1, K + kk, K + j);
+            --kk;
+            if (kk > j) {
+                pack(A + j * m, K + j, kk - j);
+                if (j > 0) linalg::lapack::ormqr('T', m, kk - j, j, A, m, tau, A + j * m, m, sc);
+                if (j < m) linalg::lapack::geqrf(m - j, kk - j, A + j * m + j, m, tau + j, sc);
+            }
+            j = first_aliased(j);
+        }
+```
+
+`geqrf`를 한 번 한 뒤 판정에 걸리는 첫 열 $j$를 찾아요. 그 열을 목록 `K`에서 빼고, 그 뒤 열들만 원래 데이터에서 다시 꾸려요. 앞 $j$개 반사의 $Q^{\mathsf T}$를 `ormqr`로 적용하고, 남은 아래 블록만 `geqrf`해요. 앞 $j$개 열의 분해는 그대로 써요.
+
+겹친 열의 반사를 만든 채로 진행하지 않는 이유가 있어요. 겹친 열의 남은 성분은 반올림 잡음뿐이라, 그 잡음으로 반사를 만들면 뒤 열들이 그 무작위 방향으로 한 번 더 돌아가요. 그러면 뒤 열의 $\lvert R_{jj}\rvert$ 판정이 잡음에 오염돼요. 빼고 다시 하면 뒤 열들은 겹친 열이 아예 없었던 것처럼 분해돼요.
+
+겹친 열이 8개를 넘으면 블록으로 다시 하는 비용이 쌓이므로, 그다음부터는 `dqrdc2`처럼 한 열씩(`larfg`로 반사를 만들고 `larf`로 뒤 열에 적용) 처리해요. 남은 노름이 판정에 걸린 열은 반사를 만들지 않고 빼요. 이러면 겹친 열이 몇 개든 비용이 QR 한 번 꼴이에요. 열이 쓰인 행보다 많으면 앞 nobs개만 남아요.
+
+```cpp
+        // csrc/regression/linear.cpp
+        if (kk > m) {  // m kept columns span every row: the rest are aliased
+            kk = m;
+            dropped = true;
+        }
+        if (dropped && kk > 0) {
+            pack(A, K, kk);
+            linalg::lapack::geqrf(m, kk, A, m, tau, sc);
+        }
+```
+
+마지막으로, 하나라도 뺐으면 남은 열을 처음부터 꾸려 `geqrf`를 한 번 더 해요. 부분 분해를 이어 붙인 $R$은 수학적으로 같아도 비트가 다를 수 있어서, 이렇게 해야 결과가 (같은 Householder 길을 타는) "그 열을 뺀 적합"과 비트까지 같아요. 겹친 열이 없는 보통의 적합은 이 비용을 내지 않아요.
+
+<Callout type="note">
+기본 `rtol`에서 NIST StRD의 11개는 모두 완전 랭크예요. 조건수가 1.8×10¹⁵인 Filip도 11열이 모두 남고, 아래의 반복 개선으로 Arb 참값과 같은 double이 나와요. R의 `lm`(`tol = 1e-7`)은 Filip에서 x¹⁰ 열을 빼요. `rtol=1e-7`을 주면 sd도 같은 열을 빼요.
+</Callout>
+
+## 반복 개선
+
+### 증강 시스템
+
+정규방정식과 잔차의 정의를 한데 묶으면 $r$과 $\beta$를 함께 미지수로 하는 연립방정식이 돼요. 이것이 증강 시스템이에요.
+
+$$
+\begin{bmatrix} I & X \\ X^{\mathsf T}W & 0 \end{bmatrix}
+\begin{bmatrix} r \\ \beta \end{bmatrix}
+=
+\begin{bmatrix} y \\ 0 \end{bmatrix}
+$$
+
+첫 줄은 $r + X\beta = y$(잔차의 정의), 둘째 줄은 $X^{\mathsf T}Wr = 0$(잔차가 열들과 수직)이에요. 근사해 $(r, \beta)$의 잔차는 두 덩어리예요.
+
+$$
+f = y - r - X\beta, \qquad g = -X^{\mathsf T}W r
+$$
+
+Björck(1967, *BIT* 7, "Iterative refinement of linear least squares solutions I")의 방법은 이 $(f, g)$를 높은 정밀도로 구하고, 보정 $(\delta r, \delta\beta)$를 이미 있는 QR로 푸는 것이에요. 백색화한 좌표 $\tilde r = W^{1/2}r$, $A = W^{1/2}X = Q\begin{bmatrix}R\\0\end{bmatrix}$에서 보정의 방정식은
+
+$$
+\delta\tilde r + A\,\delta\beta = W^{1/2}f, \qquad A^{\mathsf T}\delta\tilde r = g
+$$
+
+이고, $Q^{\mathsf T}\delta\tilde r = [a;\, b]$, $Q^{\mathsf T}W^{1/2}f = [d_1;\, d_2]$로 두면 둘째 식은 $R^{\mathsf T}a = g$, 첫 식은 $a + R\,\delta\beta = d_1$, $b = d_2$가 돼요. 그래서 한 번의 보정은 삼각 풀이 둘과 $Q^{\mathsf T}$·$Q$의 적용 둘이에요.
+
+$$
+h = R^{-\mathsf T}g, \qquad d = Q^{\mathsf T}(W^{1/2}f), \qquad \delta\beta = R^{-1}(d_1 - h), \qquad \delta\tilde r = Q\begin{bmatrix} h \\ d_2 \end{bmatrix}
+$$
+
+```cpp
+        // csrc/regression/linear.cpp
+        // correction: h = R^-T g, d = Q^T (s f), dbeta = R^-1 (d_1 - h), dr~ = Q [h; d_2]
+        std::copy(g, g + kk, h);
+        linalg::lapack::trtrs('U', 'T', 'N', kk, 1, A, m, h, kk);
+        for (lint t = 0; t < m; ++t) cv[t] = s[t] * f[t];
+        qt_apply(cv);
+        for (lint jj = 0; jj < kk; ++jj) work[jj] = cv[jj] - h[jj];
+```
+
+(`use_newton` 분기는 GLM의 뉴턴 걸음이 같은 루프를 쓰는 부분이에요. 선형 모형에서는 꺼져 있어요.)
+
+```cpp
+        // csrc/regression/linear.cpp
+        linalg::lapack::trtrs('U', 'N', 'N', kk, 1, A, m, work, kk);
+        double dn = 0.0, bn = 0.0;
+        for (lint jj = 0; jj < kk; ++jj) {
+            beta[jj] += work[jj];
+            dn = std::max(dn, std::fabs(work[jj]));
+            bn = std::max(bn, std::fabs(beta[jj]));
+        }
+        if (!use_newton) std::copy(h, h + kk, cv);
+        q_apply(cv);
+        for (lint t = 0; t < m; ++t) r[t] += cv[t] / s[t];
+```
+
+### β만 고치는 개선의 한계
+
+더 단순한 개선은 잔차 $r = y - X\beta$만 정확히 구하고 $\delta\beta = R^{-1}Q^{\mathsf T}r$로 $\beta$만 고치는 것이에요. 이렇게 하면 "오른쪽이 $r$인 최소제곱"을 다시 푸는 셈인데, 그 문제의 잔차는 원래 문제의 잔차 $r$ 그대로예요. 그래서 그 풀이의 오차에도 $\kappa^2 u\lVert r\rVert$ 항이 그대로 들어가고, 보정이 작아져도 이 항은 줄지 않아요(Golub–Wilkinson 1966이 지적한 한계예요). 잔차가 큰 문제에서 이 차이가 보여요. 아래 표는 같은 double 입력의 Arb 참값과 비교한 계수의 최대 상대오차예요.
+
+| 문제 | κ(X) | `lstsq`(SVD) | QR + β만 고치는 보정 1번 | sd |
+|---|---:|---:|---:|---:|
+| Pontius | 1.4e13 | 7.8e-8 | 3.6e-14 | 0 |
+| Wampler2 | 6.4e6 | 4.2e-11 | 6.9e-16 | 0 |
+| Longley | 4.9e9 | 1.4e-11 | 4.3e-12 | 0 |
+| Wampler4 | 6.4e6 | 3.6e-9 | 3.8e-9 | 0 |
+| Wampler5 | 6.4e6 | 4.0e-7 | 3.8e-7 | 0 |
+
+잔차가 작은 Pontius·Wampler2는 β만 고쳐도 좋아지지만, 잔차가 큰 Longley·Wampler4·5는 `lstsq`와 같은 자릿수에 머물러요. 증강 시스템은 $r$도 미지수라 $g = -X^{\mathsf T}Wr$(잔차의 수직성)까지 고쳐서, 보정 한 번에 오차가 대략 $\kappa u$배로 줄어요. sd 열의 0은 돌려준 계수가 참값을 double로 반올림한 것과 비트까지 같다는 뜻이에요.
+
+### 잔차는 double-double로
+
+개선이 의미가 있으려면 $(f, g)$가 계산하는 해보다 정확해야 해요. $f = y - r - X\beta$는 거의 같은 수의 차라서 double로 구하면 그 자체가 반올림 잡음이에요. 그래서 두 덩어리 모두 Dot2(곱은 `fma`로 정확히, 합은 two-sum)로 더해요([회귀 영역의 구조](/internals/regression/overview/)).
+
+```cpp
+                // csrc/regression/linear.cpp
+                for (lint t = t0; t < t1; ++t) {
+                    double h1, e1, h2, e2;
+                    two_sum(rd(d.y + idx[t] * d.ys), -r[t], h1, e1);
+                    two_sum(h1, -P[t], h2, e2);
+                    f[t] = h2 + ((e1 + e2) - S[t]);
+                }
+                gsum(ch, t0, t1);
+```
+
+`P[t] + S[t]`는 Dot2로 구한 $x_t\beta$(double-double)이고, $y_t - r_t - x_t\beta$를 two-sum 두 번으로 빼요. `gsum`은 $\sum_t w_t r_t x_{tj}$를 열마다 Dot2로 더해요(가중치와 잔차의 곱도 two-prod로 정확히).
+
+여기서 X는 꾸린 버퍼가 아니라 원래 입력을 읽어요. $\sqrt{w}$를 곱한 값의 반올림은 QR(보정을 푸는 전처리)에만 들어가고, 개선이 다가가는 고정점은 "받은 double 값 그대로의 $y$, $X$, $w$에 대한 정확한 해"예요. 처음 잔차도 같은 방식이에요. $r = y - X\beta_0$를 double-double로 구해 반올림한 값을 $r$로, 그 반올림의 나머지를 첫 $f$로 둬요.
+
+```cpp
+            // csrc/regression/linear.cpp
+            two_sum(yv, -P[t], hh, e);
+            const double v = e - S[t];
+            r[t] = hh + v;
+            f[t] = (hh - r[t]) + v;
+```
+
+### 몇 번 하나
+
+한 번의 보정은 오차를 대략 $\kappa u$배로 줄여요(측정에서 그 0.01–1배). 처음 오차가 $\kappa u + \kappa^2 u\rho$ 꼴이므로, $s$번 뒤의 오차는 대략 $(\kappa u)^s(\kappa u + \kappa^2u\rho)$예요. 그래서 조건이 좋은 문제는 한 번이면 충분하고, 조건이 나쁘고 잔차가 클수록 더 필요해요. 개선 횟수를 고정해 잰 값(n = 100, k = 8, 절편 없음, X = U diag(s) Vᵀ에서 s는 1부터 1/κ까지 등비, 잔차는 X에 수직이고 ‖r‖ = ρ‖Xβ‖, ρ ∈ 10⁻¹⁰, 1, 100, 씨앗 3개의 최댓값)이에요.
+
+<Fig caption="계수 벡터의 상대오차(노름, log₁₀)와 조건수(log₁₀ κ). 세 가지 잔차 크기와 씨앗 3개 가운데 최댓값이에요. 개선 한 번은 κ ≤ 10⁶까지, 세 번은 κ ≤ 10¹¹까지 10⁻¹⁴ 아래예요.">
+  <Plot
+    curves={[
+      { points: refineErr.s0, label: 'QR만(개선 없음)' },
+      { points: refineErr.s1, label: '개선 1번' },
+      { points: refineErr.s3, label: '개선 3번' },
+    ]}
+    domain={[0, 14]}
+    range={[-17, 1]}
+    xTicks={[{ v: 0, label: '1' }, { v: 4, label: '10⁴' }, { v: 8, label: '10⁸' }, { v: 11, label: '10¹¹' }, { v: 14, label: '10¹⁴' }]}
+    yTicks={[{ v: -16, label: '1e-16' }, { v: -14, label: '1e-14' }, { v: -8, label: '1e-8' }, { v: 0, label: '1' }]}
+  />
+</Fig>
+
+| κ | 0번 (ρ = 10⁻¹⁰ / 1 / 100) | 1번 | 2번 | 3번 |
+|---:|---|---|---|---|
+| 1e4 | 6e-14 / 3e-10 / 4e-8 | 7e-17 / 5e-17 / 5e-17 | 같음 | 같음 |
+| 1e6 | 4e-12 / 5e-7 / 1e-4 | 4e-17 / 4e-17 / 3e-16 | 4e-17 / 4e-17 / 5e-17 | 같음 |
+| 1e8 | 2e-10 / 1e-2 / 4e-2 | 6e-17 / 2e-12 / 1e-10 | 6e-17 / 5e-17 / 1e-16 | 같음 |
+| 1e9 | 1e-8 / 1e-1 / 3e0 | 6e-15 / 2e-9 / 7e-9 | 5e-17 / 1e-15 / 1e-14 | 5e-17 / 5e-16 / 2e-16 |
+| 1e10 | 4e-8 / 1e0 / 5e0 | 4e-13 / 2e-7 / 3e-7 | 8e-17 / 4e-13 / 6e-13 | 8e-17 / 1e-15 / 5e-16 |
+| 1e11 | 5e-6 / 1e0 / 2e0 | 2e-11 / 2e-6 / 1e-6 | 2e-16 / 5e-11 / 2e-11 | 6e-17 / 8e-16 / 1e-15 |
+| 1e12 | 9e-5 / 7e0 / 1e0 | 8e-9 / 2e-4 / 9e-6 | 3e-14 / 2e-8 / 3e-9 | 6e-17 / 2e-12 / 8e-14 |
+| 1e13 | 1e-2 / 5e0 / 4e0 | 3e-6 / 8e-4 / 5e-4 | 2e-8 / 1e-5 / 2e-6 | 9e-12 / 3e-9 / 5e-10 |
+
+큰 잔차(ρ ≥ 1)에서 10⁻¹⁴가 되는 κ의 한계는 1번 10⁶, 2번 10⁸, 3번 10¹¹이에요. κ ≈ 10¹⁶($\kappa u \approx 1$)이면 개선이 수렴하지 않는데, 그런 X는 기본 `rtol`에서 대개 열 하나가 겹친다고 판정돼요(이 측정의 9개 가운데 8개가 랭크 7/8이고, 하나는 8/8이에요).
+
+그래서 개선은 최대 3번, 그것도 필요할 때까지만 해요. 보정 $d$ 뒤에 남은 오차는 약 $\lVert d\rVert\,\kappa u$이므로, 그것이 $\beta$의 반올림 아래로 떨어질 것이 보이면 다음 보정은 결과를 바꾸지 못해요.
+
+$$
+\lVert d \rVert_\infty \cdot 16\,\hat\kappa\,u \;\le\; 2^{-54}\,\lVert\beta\rVert_\infty \quad\Rightarrow\quad \text{멈춤}
+$$
+
+```cpp
+    // csrc/regression/linear.cpp
+    const double kappa_u =
+        kk > 0 ? kSafety * 0x1p-53 / linalg::lapack::trcon_1('U', kk, A, m) * (use_newton ? kappa_m : 1.0) : 0.0;
+    for (int step = 0; step < pb.steps && kk > 0; ++step) {
+```
+
+```cpp
+        // csrc/regression/linear.cpp
+        const bool converged = !(dn * kappa_u > 0x1p-54 * bn);  // NaN: stop (nothing to refine)
+```
+
+$\hat\kappa$는 LAPACK `dtrcon`이 $R$에서 어림한 1-노름 조건수예요. `dtrcon`은 $\lVert R\rVert_1$을 직접 구하고, $\lVert R^{-1}\rVert_1$은 `dlacn2`(Hager 1984의 방법을 Higham 1988이 고친 것)로 어림해요. `dlacn2`는 $R^{-1}$을 행렬로 만들지 않고, 벡터 몇 개에 $R^{-1}$과 $R^{-\mathsf T}$를 적용하는 삼각 풀이만으로 1-노름의 하한을 찾아요. 비용은 $O(k^2)$이고, 어림은 보통 참값의 몇 배 안이에요. 1-노름과 2-노름의 조건수도 $k$ 배 안에서만 달라요. 앞의 16이 그 여유예요. 판정은 데이터에만 달려 있어서, 스레드 수와 상관없이 횟수가 같아요. 첫 보정은 늘 해요.
+
+커널의 `steps` 인자는 상한이라, 상한을 바꿔 가며 결과를 비교하면 실제로 몇 번에서 멈췄는지 보여요. [0, 1]의 50점에서 11차 다항식(κ ≈ 1.2×10⁸)을 맞추되, 잔차의 크기만 바꿔 봐요.
+
+```python
+>>> fit = sd._core.regression.fit
+>>> t = sd.linspace(0.0, 1.0, 50)
+>>> P = sd.stack([t ** j for j in range(1, 12)], axis=1)
+>>> sign = sd.where(sd.arange(50) % 2 == 0, 1.0, -1.0)
+>>> def steps_used(y):
+...     b = [fit("ols", y, P, None, None, True, -1.0, 0, s)[0] for s in range(4)]
+...     return next(s for s in range(4) if bool(sd.all(b[s] == b[3])))
+>>> f"{sd.regression.ols(1.0 + sd.sum(P, axis=1), P).condition_number:.1e}"
+'1.2e+08'
+>>> steps_used(1.0 + sd.sum(P, axis=1) + sign)
+1
+>>> steps_used(1.0 + sd.sum(P, axis=1) + 100.0 * sign)
+2
+```
+
+잔차가 100배 커지면 처음 오차의 $\kappa^2u\rho$ 항이 커져서 두 번째 보정이 필요해요.
+
+조건이 좋은 문제는 한 번에 멈추므로 보정 한 번 분량의 비용만 들어요.
+
+### 정확도
+
+계수 벡터의 상대오차(노름)를 같은 double 입력의 Arb(구간 산술) 참값과 비교하면 다음과 같아요.
+
+- 위의 무작위 문제에서 κ별 9개, 세 가지 잔차의 최댓값: κ = 10⁹ 5.4×10⁻¹⁶, 10¹⁰ 1.4×10⁻¹⁵, 10¹¹ 1.1×10⁻¹⁵. 그 밖은 10¹² 1.6×10⁻¹², 10¹³ 3.4×10⁻⁹, 10¹⁴ 2.5×10⁻⁷이에요.
+- 그래서 약속은 **κ(X) ≤ 10¹¹이면 계수 벡터의 상대오차 ≤ 10⁻¹⁴**예요. κ는 쓰인 열(가중·백색화, 절편 포함)의 2-노름 조건수 `condition_number`이고, 잔차가 ‖Xβ‖의 100배까지(R² ≥ 10⁻⁴)인 문제에서 잰 값이에요.
+
+## 적합값, 잔차, 제곱합
+
+개선이 끝나면 마지막 $\beta$로 한 번 더 모든 행을 훑어요. 가중치가 0인 행도 적합값과 잔차는 계산해요.
+
+```cpp
+        // csrc/regression/linear.cpp (lsq::fit_one)
+        DD a4[kAccFinal][4] = {};
+        const bool unit = !pb.has_w && !pb.has_u;
+        lint t = t0;
+        if (unit) {
+            // two rows per vector (lanes), two vectors: the same partial sums by rows mod 4
+            ...
+        }
+        for (; t < t1; ++t) {
+            const lint i = idx[t];
+            const double yv = rd(d.y + i * d.ys);
+            double hh, e;
+            two_sum(yv, -P[t], hh, e);
+            const double v = e - S[t];
+            const double rr = hh + v;
+            const DD res = dd_of(rr, (hh - rr) + v);
+            const DD fit = dd_of(P[t], S[t]);
+            o.fitted[i] = fit.hi;
+            o.resid[i] = rr;
+            r[t] = rr;
+            DD* a = &a4[0][t & 3];
+            double yh, yl;
+            two_prod(yv, yv, yh, yl);
+            if (unit) {
+                ...
+                continue;
+            }
+            const double wt = weight(i), ut = uval(i);
+            a[fSsr * 4] = a[fSsr * 4] + (res * res) * wt;
+            const DD yc = DD{yv, 0.0} - ybar * ut;
+            a[fCtss * 4] = a[fCtss * 4] + (yc * yc) * wt;
+            a[fUtss * 4] = a[fUtss * 4] + dd_of(yh, yl) * wt;
+            const DD fc = fit - ybar * ut;
+            a[fEssC * 4] = a[fEssC * 4] + (fc * fc) * wt;
+            a[fEssU * 4] = a[fEssU * 4] + (fit * fit) * wt;
+        }
+        DD a[kAccFinal];
+        for (int q = 0; q < kAccFinal; ++q) a[q] = (a4[q][0] + a4[q][1]) + (a4[q][2] + a4[q][3]);
+```
+적합값 $\hat y_t$와 잔차 $r_t$는 double-double 값을 한 번 반올림한 것이에요. 다섯 가지 합은 모두 double-double로 더해요.
+
+합 하나를 한 사슬로 모든 행에 걸쳐 더하면 행마다 double-double 덧셈의 지연을 기다려야 해서, 열이 적은 적합에서는 이 패스가 시간의 대부분이 돼요. 그래서 행 번호를 4로 나눈 나머지마다 부분합을 따로 두고(`a4[q][t & 3]`), 덩어리 끝에서 $(a_0 + a_1) + (a_2 + a_3)$ 순서로 합쳐요. 네 사슬이 서로 기다리지 않아요. 순서는 행 번호로만 정해지므로 스레드 수와 상관없어요. 가중치가 없으면(`unit`) $w_t = u_t = 1$의 곱을 건너뛰고, 두 행을 NEON 레인 하나에 두고 벡터 둘로 같은 네 부분합을 만들어요(`csrc/regression/dd2.hpp`의 레인마다 double-double). 레인마다의 연산은 스칼라 식과 같아서 값도 같아요. 처음 잔차를 구하는 첫 패스의 가중 평균 합도 같은 네 부분합이에요.
+
+| 이름 | 식 | 필드 |
+|---|---|---|
+| SSR | $\sum w_t r_t^2$ | `ssr` |
+| 중심 TSS | $\sum w_t (y_t - \bar y)^2$ | `centered_tss` |
+| 비중심 TSS | $\sum w_t y_t^2$ | `uncentered_tss` |
+| 중심 ESS | $\sum w_t (\hat y_t - \bar y)^2$ | `ess`(절편이 있을 때) |
+| 비중심 ESS | $\sum w_t \hat y_t^2$ | `ess`(절편이 없을 때) |
+
+$\bar y$는 가중 평균(double-double)이고, GLS에서는 백색화한 1의 열 `ut`가 중심화에 들어가요. `predict`도 같은 Dot2이고 열 순서도 같아서, 적합에 쓴 X로 부르면 `fittedvalues`와 비트까지 같아요.
+
+### R²: 작은 쪽을 직접 더해요
+
+$R^2 = 1 - \text{SSR}/\text{TSS} = \text{ESS}/\text{TSS}$예요. 수학적으로 같은 두 식이 수치적으로는 달라요. $R^2$가 0에 가까우면 SSR ≈ TSS라서 $1 - \text{SSR}/\text{TSS}$가 큰 상쇄를 겪어요. 반대로 $R^2$가 1에 가까우면 ESS ≈ TSS라서 $\text{ESS}/\text{TSS}$를 1에서 빼는 쪽(수정 $R^2$의 $1 - R^2$)이 상쇄를 겪어요. 그래서 두 제곱합 가운데 작은 쪽을 쓰는 식을 골라요.
+
+```python
+    # src/stardust/regression/_linear.py
+    @property
+    def rsquared(self):
+        def make():
+            e, s, t = self._ess_direct(), self._ssr_s(), self._tss()
+            if self._batch:
+                return self._no_tss(_sd.where(e < s, e / t, 1.0 - s / t))
+            return self._no_tss(_div(e, t) if e < s else 1.0 - _div(s, t))
+
+        return self._cached("rsquared", make)
+```
+
+`_ssr_s()`는 커널이 낸, 적합의 단위로 잰 SSR이에요(아래 극단적인 척도 절). $R^2$는 비라서 단위가 약분되므로 데이터의 단위로 옮기지 않고 그대로 써요. ESS < SSR($R^2 < 1/2$)이면 ESS/TSS, 그 밖은 1 − SSR/TSS예요. 어느 쪽도 상쇄가 2배를 넘지 않아요. `ess` 필드와 `rsquared_adj`의 $1 - R^2$도 같은 쪽에서 구해요. 이것이 되려면 ESS를 TSS − SSR로 구하지 않고 직접 더해야 해서, 커널이 ESS를 따로 더해요.
+
+`_no_tss`는 TSS가 정확히 0인 회귀(y가 모두 같은 값)에서 NaN을 내요. 설명할 변동이 없으니 $R^2$는 0/0이에요. `rsquared_adj`, `fvalue`, `f_pvalue`도 같은 규칙으로 NaN이고, `ess`는 0이에요. statsmodels는 이때 `rsquared`로 −inf를 내요.
+
+거의 상관없는 자료에서 차이가 보여요. 정수 자료라 참 $R^2$를 분수로 정확히 구할 수 있어요.
+
+```python
+>>> from fractions import Fraction
+>>> x = list(range(10))
+>>> z = [1, -1, -1, 1, 1, -1, -1, 1, 0, 0]          # 1, x와 수직
+>>> y = [10**6 * zi + xi for xi, zi in zip(x, z)]
+>>> xb, yb = Fraction(sum(x), 10), Fraction(sum(y), 10)
+>>> sxy = sum((a - xb) * (b - yb) for a, b in zip(x, y))
+>>> exact = float(sxy * sxy / (sum((a - xb) ** 2 for a in x) * sum((b - yb) ** 2 for b in y)))
+>>> r = sd.regression.ols(y, x)
+>>> exact, r.rsquared
+(1.0312499999893652e-11, 1.0312499999893652e-11)
+>>> 1.0 - r.ssr / r.centered_tss
+1.0312528608835692e-11
+```
+
+1 − SSR/TSS로 구하면 상대오차가 2.8×10⁻⁶이에요. statsmodels 0.15.0의 `rsquared`도 이 값(1.0312528608835692e-11)이에요.
+
+`ssr`은 double-double 잔차로 더하므로, 잔차가 클 때 $\beta$의 반올림은 SSR에 2차로만 들어가요(최소점에서 SSR의 기울기가 0이라서요). 절편만 있는 모형은 ESS가 정확히 0이에요(직접 더한 값은 `params[0]`의 반올림만큼 0이 아니어서 0으로 둬요).
+
+## 가중치와 GLS
+
+### WLS
+
+가중치는 $\sqrt{w_t}$를 행에 곱하는 백색화로 들어가요. 0인 행은 `idx`에 들어가지 않으므로 QR에도, 개선의 합에도, `nobs`에도 없어요. 그래서 가중치가 모두 1이면 OLS와 비트까지 같고, 0인 행이 있는 WLS는 그 행을 뺀 WLS와 비트까지 같아요.
+
+```python
+>>> rng = sd.random.default_rng(7)
+>>> X = N.sample((30, 3), rng=rng)
+>>> y = X @ sd.asarray([1.0, -2.0, 0.5]) + N.sample(30, rng=rng)
+>>> o = sd.regression.ols(y, X)
+>>> w1 = sd.regression.wls(y, X, weights=sd.ones(30))
+>>> bool(sd.all(w1.params == o.params)), bool(sd.all(w1.bse == o.bse))
+(True, True)
+>>> w = sd.where(sd.arange(30) == 4, 0.0, 1.0)
+>>> wz = sd.regression.wls(y, X, weights=w)
+>>> keep = sd.arange(30) != 4
+>>> wd = sd.regression.wls(y[keep], X[keep], weights=sd.ones(29))
+>>> bool(sd.all(wz.params == wd.params)), wz.nobs
+(True, 29.0)
+```
+
+`llf`에는 쓰인 행의 $\tfrac12\sum\log w$를 더해요(커널의 `kSumLogW`).
+
+### GLS
+
+오차 공분산 $\Sigma$를 아는 GLS는 $\Sigma = LL^{\mathsf T}$(Cholesky)로 문제를 백색화해 OLS로 바꿔요. $L^{-1}y$를 $L^{-1}X$에 회귀하면 오차의 공분산이 $I$가 되기 때문이에요. 이때 절편 열도 $L^{-1}\mathbf 1$이 되므로 그 열을 커널의 `u`로 넘겨 절편 자리와 TSS의 중심화에 써요(`src/stardust/regression/_linear.py`).
+
+```python
+    # src/stardust/regression/_linear.py
+    try:
+        L = _linalg.cholesky(S)
+    except _linalg.LinAlgError as e:
+        msg = str(e)
+        at = msg[msg.find(" (at batch index") :] if " (at batch index" in msg else ""
+        raise _linalg.LinAlgError(f"gls(): 'sigma' is not positive definite{at}") from None
+    yt = _linalg.solve_triangular(L, _sd.expand_dims(y, axis=-1), upper=False)[..., 0]
+    if bad is not None:
+        yt = _sd.where(bad, math.nan, yt)
+    Xt = _linalg.solve_triangular(L, X, upper=False)
+    ones = _linalg.solve_triangular(L, _sd.ones((m, 1)), upper=False)[..., 0]
+    raw, extra, ys, Xs = _fit_kernel(
+        func, yt, Xt, None, ones, intercept, tol, _COV_TYPES.index(cov_type), codes, gtot, lags
+    )
+```
+
+- `sd.linalg.cholesky`는 $\Sigma$의 아래 삼각만 읽어요.
+- y와 X의 inf는 백색화하기 전에 봐요(`gls(): 'y' contains infinity`). $L^{-1}$을 적용하면 inf가 NaN이나 다른 열의 inf로 번져, 어느 인자가 잘못인지 알 수 없게 되기 때문이에요.
+- 백색화한 $L^{-1}y$, $L^{-1}X$가 극단적인 척도이면 OLS와 같은 2의 거듭제곱 척도 조정을 거쳐요(`_fit_kernel`, 아래).
+- 적합값과 잔차는 원래 척도의 $X\beta$, $y - X\beta$를 같은 Dot2(`apply` 커널)로 다시 구해 결과에 넣어요(statsmodels의 GLS `fittedvalues`, `resid`와 같은 뜻).
+- 중심 TSS는 백색화한 $y$에서 백색화한 1의 열 방향 성분을 뺀 나머지의 제곱합이에요.
+- `llf`에서 $\tfrac12\log\lvert\Sigma\rvert = \sum\log L_{ii}$를 빼요.
+- GLS의 정확도 약속은 백색화한 문제에 대한 것이에요. $L^{-1}$을 적용하는 반올림이 문제 자체를 $\kappa(L)\,u$ 정도 바꾸기 때문이에요.
+
+## 공분산과 완전 적합
+
+고전형 공분산은 $\hat\sigma^2(X^{\mathsf T}WX)^{-1} = \hat\sigma^2(R^{\mathsf T}R)^{-1}$이에요. 커널은 $R$에서 LAPACK `potri`로 $(R^{\mathsf T}R)^{-1}$을 바로 만들고($X^{\mathsf T}WX$를 만들지 않아요), Python이 처음 읽을 때 `scale` $= \text{SSR}/\text{df\_resid}$를 곱해요. 반복 개선은 $\beta$를 고치지만 $R$은 그대로이므로, 표준오차의 상대오차는 대략 $\kappa u$예요(κ = 10⁶에서 3×10⁻¹¹, 10⁸에서 10⁻⁹, 10¹⁰에서 3×10⁻⁷, Filip 7×10⁻⁸). 강건 공분산과 진단은 [추론과 진단](/internals/regression/inference/)에 있어요.
+
+### 완전 적합의 판정
+
+$y$가 열들의 공간에 놓이면(완전 적합) 참 잔차는 0이에요. 그런데 계산한 잔차는 정확히 0이 되지 않는 일이 흔해요. $y = 0.1 + 0.3x$처럼 계수가 10진 수이면 $y_t$ 자체가 반올림한 값이라 double 입력은 직선에서 $u\lvert y_t\rvert$만큼 벗어나 있고, 계수를 double로 반올림하는 것만으로도 $x_t^{\mathsf T}\beta$가 그만큼 움직여요. 그 반올림 잔차로 척도를 구하면 SSR이 $10^{-32}$ 같은 양수라, 표준오차와 t가 완전 적합의 극한이 아니라 반올림이 정한 값(t가 $10^{16}$ 같은 가짜 유의성)이 돼요.
+
+그래서 커널은 마지막 패스 뒤에 쓰인 행마다 잔차가 그 행의 반올림 크기 안인지 봐요.
+
+$$
+\lvert r_t\rvert \le (k + 16)\,u\,\Bigl(\lvert y_t\rvert + \sum_j \lvert x_{tj}\rvert\,\lvert\beta_j\rvert\Bigr)
+$$
+
+$\beta_j$를 반올림하면 $x_t^{\mathsf T}\beta$가 대략 $u\sum_j\lvert x_{tj}\beta_j\rvert$만큼 움직이니, 괄호 안은 $y_t - x_t^{\mathsf T}\beta$의 항들의 크기예요. $k$개 곱의 합을 반올림하는 오차의 상한이 $k\,u$ 꼴이라 거기에 여유 16을 더했어요. 항마다 $\lvert x_{tj}\rvert\lvert\beta_j\rvert$를 더하는 것이 중요해요. $\lVert x_t\rVert_1\lVert\beta\rVert_\infty$처럼 열의 크기와 계수의 크기를 따로 재면, 시각이나 금액처럼 값이 큰 열과 그 열을 상쇄하는 큰 절편이 다른 열일 때 두 크기의 곱이 실제 항보다 그 비만큼($10^{12}$배쯤) 커서, 잡음이 있는 자료까지 완전 적합으로 보게 돼요. 비용은 같아요. [강건 회귀](/internals/regression/robust/)와 [분위 회귀](/internals/regression/quantile/)가 0 잔차로 보는 기준과 같은 식이라, 같은 자료가 어느 모형에서나 같은 판정을 받아요. 모든 행이 이 안이면 SSR을 0으로 두고, 강건 공분산의 점수에 쓸 내부 잔차도 0으로 둬요. 결과의 `resid` 필드는 계산한 값 그대로예요.
+
+```cpp
+    // csrc/regression/linear.cpp
+    if (kk > 0 && fin[fSsr].hi > 0.0) {
+        const double c = static_cast<double>(kk + 16) * 0x1p-53;
+        bool perfect = true;
+        for (lint jj = 0; jj < kk; ++jj) perfect = perfect && std::isfinite(beta[jj]);
+        for (lint t = 0; t < m && perfect; ++t) {
+            const lint i = idx[t];
+            double xb = 0.0;
+            for (lint jj = 0; jj < kk; ++jj) {
+                const Col cl = colK(jj);
+                xb += std::fabs(rd(cl.base + i * cl.stride) * beta[jj]);
+            }
+            perfect = std::fabs(r[t]) <= c * (std::fabs(rd(d.y + i * d.ys)) + xb);
+        }
+        if (perfect) {
+            fin[fSsr] = DD{0.0, 0.0};
+            std::fill(r, r + m, 0.0);
+        }
+    }
+```
+
+완전 적합이 아닌 자료는 거의 언제나 첫 행에서 기준을 벗어나므로, 판정의 비용은 보통 행 하나예요. SSR이 0이 되면 IEEE 연산 그대로 `bse`는 0, 구간은 $[\theta, \theta]$, `llf`는 +inf예요. 스튜던트화 잔차, Cook 거리, DW, JB, BP는 백색화 잔차를 0으로 보아 0/0 = NaN이에요.
+
+t만은 IEEE 연산에 맡기지 않아요. 계수는 정확도 약속 안의 값일 뿐이라, 참값이 0인 계수도 반올림 크기의 값으로 남을 수 있어요. 그것을 표준오차 0으로 나누면 ±inf와 p 0, 곧 가짜 유의성이 돼요. 그래서 결과 객체는 `ssr`이 0이고 `df_resid` > 0인 회귀(`_perfect`)의 t를 NaN으로 두고, p는 그 t에서 구하니 함께 NaN이에요(`src/stardust/regression/_linear.py`).
+
+```python
+    # src/stardust/regression/_linear.py
+    def _perfect(self):
+        # ...
+        z = self._ssr_s() == 0.0
+        df = self.df_resid
+        if self._batch:
+            return _sd.logical_and(z, df > 0.0)
+        return bool(z) and df > 0
+```
+
+모형 전체의 F도 같은 표시를 읽어요. 반올림 크기의 ESS를 0인 척도로 나누면 inf와 p 0이 되어 t와 같은 가짜 유의성이라서, `fvalue`는 `_perfect`인 회귀에서 NaN이고 `f_pvalue`도 그 F에서 구하니 NaN이에요. 강건 공분산의 Wald F도 같아요.
+
+```python
+            # src/stardust/regression/_linear.py (fvalue)
+            bad = self._perfect()
+            if isinstance(bad, _sd.ndarray):
+                return _sd.where(bad, math.nan, f)
+            return math.nan if bad else f
+```
+
+`_perfect`는 `glm`(척도를 추정할 때)과 `rlm`(척도가 0일 때)에도 같은 이름의 메서드로 있어서 같은 규칙을 따르고, `tvalues`는 모든 결과가 함께 쓰는 기본 클래스에서 이 표시를 읽어요(아래 [돌려놓기](#돌려놓기)의 코드).
+
+```python
+>>> x8 = sd.arange(1.0, 9.0)
+>>> rp = sd.regression.ols(0.1 + 0.3 * x8, x8)
+>>> rp.resid[:3]
+array([ 8.326672684688674e-17, 2.7755575615628914e-17, -2.7755575615628914e-17], dtype=float64)
+>>> rp.ssr, rp.bse, rp.tvalues
+(0.0, array([0.0, 0.0], dtype=float64), array([nan, nan], dtype=float64))
+>>> rp.fvalue, rp.f_pvalue
+(nan, nan)
+```
+
+Wampler1은 반복 개선이 잔차를 정확히 0까지 줄여 판정 전부터 SSR이 0이고, Wampler2는 잔차가 $2.8\times10^{-15}$ 남지만 이 판정으로 완전 적합이에요. 같은 Wampler1에서 statsmodels 0.15.0은 반올림 수준의 잔차로 표준오차 2×10⁻¹²–4×10⁻⁸, t 2.5×10⁷–5.2×10¹¹을 내고, R(`summary.lm`)은 "essentially perfect fit" 경고와 함께 표준오차 6×10⁻¹⁵–1.4×10⁻¹⁰을 내요.
+
+### 남은 자유도가 없을 때
+
+`df_resid` = 0(쓰인 행 수 = 랭크)이면 적합이 모든 자유도를 써서 잔차가 늘 0이에요. 그때 $\hat\sigma^2 = \text{SSR}/\text{df\_resid}$는 $0/0$이고, 오차의 크기에 대해 자료가 말해 주는 것이 없어요. 그래서 완전 적합의 판정과 상관없이 `scale`, `cov_params()`, `bse`, t, p, 구간이 모두 NaN이에요(`_div0`). 강건 공분산도 점수가 모두 0이라 같은 이유로 NaN으로 둬요. 계수, 적합값, 잔차, SSR은 그대로예요.
+
+```python
+>>> d2 = sd.regression.ols([1.0, 3.0], [0.0, 1.0])
+>>> d2.params, d2.df_resid, d2.bse
+(array([1.0, 2.0], dtype=float64), 0.0, array([nan, nan], dtype=float64))
+```
+
+### 반응이 모두 같을 때
+
+절편이 있고 적합에 쓰인 행(가중치 > 0)의 $y$가 모두 같은 값 $y_0$이면, 설계가 무엇이든 $(y_0, 0, \dots, 0)$이 잔차를 정확히 0으로 만드는 해예요. 그런데 QR과 반복 개선은 이 해에 반올림을 남겨요. QR의 처음 해는 기울기가 $10^{-16}$ 크기이고, 개선 한 번이 그것을 $10^{-32}$ 크기로 줄여요. 그 보정은 가장 큰 계수($y_0$)에 비해 반올림 아래라서 위의 판정대로 개선이 멈추고, 기울기와 잔차에 그 크기가 남아요. 잔차는 완전 적합의 판정 안이라 SSR은 0이 되지만, 기울기 $6\times10^{-32}$를 표준오차 0으로 나누면 t가 ±inf, p가 0이에요. 참 기울기는 정확히 0이고 그 t는 $0/0$이어야 하는데, 반올림이 남긴 크기 하나가 "아주 유의한 기울기"를 만드는 셈이에요.
+
+```python
+>>> fit = sd._core.regression.fit
+>>> x8 = sd.arange(1.0, 9.0)
+>>> y8 = sd.full(8, 3.0)
+>>> fit("ols", y8, x8[:, None], None, None, True, -1.0, 0, 0)[0]     # QR만
+array([    2.9999999999999987, 1.0467283057891835e-16], dtype=float64)
+>>> raw = fit("ols", y8, x8[:, None], None, None, True, -1.0, 0, 3)
+>>> raw[0]
+array([                  3.0, 6.162975822039155e-32], dtype=float64)
+>>> sd.regression.ols(y8, x8).params
+array([3.0, 0.0], dtype=float64)
+```
+
+그래서 Python 층의 `_exact_constant`가 커널의 결과를 받아, 쓰인 행의 $y$가 정확히 한 값이면 정확한 해로 바꿔요. 계수는 $(y_0, 0, \dots, 0)$(겹친 열은 그대로 NaN), SSR·중심 TSS·중심 ESS는 0, 적합값은 모든 행에서 $y_0$, 잔차는 $y - y_0$(쓰인 행에서 0, 가중치 0인 행에서 그 차)이에요. 잔차가 0이면 강건 공분산의 점수 $u_t = \tilde e_t\,q_t$([추론과 진단](/internals/regression/inference/))도 모두 0이라 강건 공분산도 0으로 둬요. 다만 군집 공분산의 군집이 하나뿐이면 0으로 두지 않고 커널의 NaN을 그대로 둬요. 군집 하나의 공분산은 $G/(G - 1)$에서 이미 0/0이라, 잔차가 0이라는 사실이 그것을 정의된 값으로 만들지 않기 때문이에요. 판정은 쓰인 행에서 $y$의 최댓값과 최솟값이 같은지로 하고, NaN인 회귀와 절편 열이 빠진 회귀는 건드리지 않아요. 절편이 없으면 해가 자명하지 않으므로 이 처리를 하지 않아요.
+
+```python
+    # src/stardust/regression/_linear.py
+    if not intercept or y.shape[-1] == 0:
+        return None
+    robust = cov_type != "nonrobust"
+    params, cov, kept, st = raw[0], raw[1], raw[5], raw[6]
+    batch = tuple(params.shape[:-1])
+    if w is None:
+        hi, lo = _sd.max(y, axis=-1), _sd.min(y, axis=-1)
+    else:
+        used = w > 0
+        hi = _sd.max(_sd.where(used, y, -math.inf), axis=-1)
+        lo = _sd.min(_sd.where(used, y, math.inf), axis=-1)
+    # one cluster: no covariance at all (the single-cluster NaN wins over the zero scores)
+    zero_cov = robust and cov_type != "cluster"
+    if not batch:
+        hi, lo = float(hi), float(lo)
+        const = hi == lo and math.isfinite(hi) and float(st[_ISNAN]) == 0 and bool(kept[0])
+        if not const:
+            return None
+        k = params.shape[-1]
+        target = [hi] + [0.0 if bool(kept[j]) else math.nan for j in range(1, k)]
+        raw[0] = _sd.asarray(target)
+        if robust and (zero_cov or float(st[_NGROUPS]) >= 2):
+            both = _sd.logical_and(_sd.expand_dims(kept, axis=-1), _sd.expand_dims(kept, axis=-2))
+            raw[1] = _sd.where(both, 0.0, cov)
+        s = st.tolist()
+        s[_SSR] = s[_CTSS] = s[_ESSC] = 0.0
+        raw[6] = _sd.asarray(s)
+        if original_scale:
+            raw[3] = _sd.full(tuple(raw[3].shape), hi)
+            raw[4] = y - hi
+```
+
+그 뒤는 위의 완전 적합과 같아요. `scale`이 0이라 `bse`는 0, t와 p는 `_perfect`대로 절편까지 NaN이고, `llf`는 +inf예요. TSS가 0이니 $R^2$와 F는 `_no_tss`의 NaN이에요.
+
+GLS에서도 같은 해예요. 백색화한 문제의 절편 열은 $L^{-1}\mathbf 1$이고 반응은 $L^{-1}y = y_0 L^{-1}\mathbf 1$이라, $y_0$배의 절편 열이 반응을 그대로 만들어요. 다만 이 등식은 정확한 산술에서만 성립하고, 반올림한 $L^{-1}y$는 $L^{-1}\mathbf 1$의 정확히 $y_0$배가 아니에요. 그래서 판정은 백색화한 반응이 아니라 원래 $y$로 해요(척도를 바꿔 적합했으면 같은 $f_y$로 나눈 $y$로 해서, 정해 넣는 $y_0$가 커널의 단위와 맞아요). 원래 척도의 적합값과 잔차는 바뀐 계수로 다시 구하므로 정확히 $y_0$와 0이 되고, 백색화한 잔차 $L^{-1}(y - y_0\mathbf 1)$도 0으로 둬요.
+
+```python
+    # src/stardust/regression/_linear.py
+    # the whitened problem's constant: y itself (L^-1 y = y0 L^-1 1 holds exactly only in exact
+    # arithmetic); the original-scale fit below then gives fitted y0, residuals y - y0 exactly
+    yc = y
+    if extra:
+        fy = extra["fy"]
+        yc = y / (_sd.expand_dims(fy, axis=-1) if isinstance(fy, _sd.ndarray) else fy)
+    const = _exact_constant(raw, yc, None, intercept, cov_type, original_scale=False)
+    _unscale(raw, extra)
+    res = GLSResult(
+        raw,
+        param_names=_names(names, X.shape[-1], intercept),
+        intercept=intercept,
+        cov_type=cov_type,
+        batch=_batch_shape(raw),
+        extra=extra,
+        fitargs=(func, ys, Xs, None, ones, tol, codes, gtot),
+        columns=columns,
+    )
+    # fitted values and residuals on the original scale (statsmodels' fittedvalues and resid)
+    fitted, resid = _k.apply(func, X, res._beff(), intercept, y)
+    if raw[3].shape != fitted.shape:  # sigma's batch axes added to y's
+        fitted, resid = _sd.broadcast_to(fitted, raw[3].shape), _sd.broadcast_to(resid, raw[3].shape)
+    raw[3], raw[4] = _ro(fitted), _ro(resid)
+    if const is not None:  # the whitened residuals L^-1 (y - y0 1) are exactly 0 there
+        res._extra["const"] = const
+```
+
+이 표시는 백색화한 잔차를 만드는 `_wresid_raw`가 읽어요. `wresid`와 그것으로 만드는 진단(스튜던트화 잔차, Durbin–Watson, Jarque–Bera 등)이 모두 이 잔차를 쓰므로, 상수 $y$의 GLS에서는 모두 0에서 출발해요.
+
+```python
+            # src/stardust/regression/_linear.py
+            const = self._extra.get("const")
+            if const is not None:
+                if self._batch:
+                    e = _sd.where(_sd.expand_dims(const, axis=-1), 0.0, e)
+                else:
+                    e = _sd.zeros(tuple(e.shape))
+            return e
+```
+
+## 극단적인 척도
+
+### 무엇이 double을 벗어나나
+
+계수와 잔차는 열과 $y$의 척도를 그대로 따라가므로 $x \cdot 10^{160}$이어도 정확해요. 문제는 제곱이 드는 값이에요. $(R^{\mathsf T}R)^{-1}$의 원소는 열 노름의 −2제곱 꼴이고 SSR은 잔차의 제곱합이라, 열이나 $y$의 크기가 $2^{\pm 256}$ 근처를 넘으면 그 값이 double의 범위(약 $10^{\pm 308}$, 비정규수까지 $5\times10^{-324}$)를 벗어나요. 조용히 비정규수가 되어 자릿수를 잃거나, 0이나 inf가 되어 t와 p가 틀려요.
+
+```python
+>>> rng = sd.random.default_rng(3)
+>>> xs = N.sample(20, rng=rng)
+>>> ys = 1.0 + 0.5 * xs + N.sample(20, rng=rng)
+>>> raw = sd._core.regression.fit("ols", ys, (1e160 * xs)[:, None], None, None, True, -1.0, 0, 3)
+>>> raw[1][1, 1], raw[1][1, 1] * (raw[6][2] / 18.0)
+(6.97e-322, 6.9e-322)
+>>> raw[0][1] / (raw[1][1, 1] * (raw[6][2] / 18.0)) ** 0.5
+2.4399039575384465
+```
+
+척도를 바꾸지 않은 커널의 $(R^{\mathsf T}R)^{-1}$에서 기울기의 원소는 유효숫자 세 자리의 비정규수이고, 척도 $\hat\sigma^2 \approx 0.99$를 곱하면 두 자리만 남아요. 그대로 쓰면 t가 2.4399로, 아래의 맞는 값 2.4449와 셋째 자리부터 달라요. 열이 더 크면 그 원소가 0이 되어 표준오차가 0, t가 inf예요.
+
+### 2의 거듭제곱으로 옮겨 풀기
+
+그래서 Python 층의 `_fit_kernel`이 커널에 주기 전에 회귀마다 $y$의 최대 절댓값을, 열마다 X의 최대 절댓값을 보고, $[2^{-256}, 2^{256}]$ 밖인 것만 2의 거듭제곱 $f$로 나눠 최댓값을 $[1/2, 1)$로 옮겨요(`math.frexp`의 지수).
+
+```python
+# src/stardust/regression/_linear.py
+def _pow2(m):
+    """Power-of-two factors for the maxima m (a float or an array): 2^e with m = f 2^e, f in
+    [1/2, 1), where m is finite and outside [2^-256, 2^256]; 1 elsewhere (0, NaN, inf: the
+    kernel's own rules). None when every one is inside."""
+    if isinstance(m, _sd.ndarray):
+        if m.size == 0:
+            return None
+        out = bool(_sd.any(m > _SAFE_HI)) or bool(_sd.any(_sd.logical_and(m > 0.0, m < _SAFE_LO)))
+    else:
+        out = m > _SAFE_HI or 0.0 < m < _SAFE_LO
+    if not out:
+        return None
+
+    def f(v):
+        if isinstance(v, list):
+            return [f(u) for u in v]
+        if math.isfinite(v) and v > 0.0 and (v > _SAFE_HI or v < _SAFE_LO):
+            return math.ldexp(1.0, math.frexp(v)[1])
+        return 1.0
+
+    return _sd.asarray(f(m.tolist())) if isinstance(m, _sd.ndarray) else f(m)
+```
+
+- 2의 거듭제곱으로 나누는 것은 지수만 바꾸는 정확한 연산이에요(값이 비정규수 범위로 들어가지 않는 한). 그래서 옮긴 문제의 정확한 해는 원래 문제의 해를 같은 배율로 옮긴 것이고, 옮긴 문제에서는 제곱과 역행렬이 모두 double 안에 있어요.
+- 범위 안의 자료는 손대지 않아요. 보통의 적합은 비트까지 그대로이고, 최댓값을 보는 비용(행렬을 한 번 훑기)만 들어요.
+- 배치면 회귀마다, 열마다 따로 배율을 정해요. 열 하나만 극단적이어도 그 열만 옮겨요.
+
+### 돌려놓기
+
+커널이 낸 값 가운데 데이터와 같은 단위인 것만 결과를 만들 때 돌려놓아요(`_unscale`). 계수는 $\beta_j = \beta'_j f_y/f_{x_j}$, 적합값과 잔차는 $f_y$배, $R$의 열은 $f_{x_j}$배예요. 제곱이 드는 값(SSR, TSS, ESS, 공분산)은 적합의 단위로 두고, 필드를 읽을 때 마지막에 한 번만 배율을 곱해요.
+
+| 필드 | 적합의 단위에서 | 돌려놓기 |
+|---|---|---|
+| `bse` | $\sqrt{\operatorname{diag}C'}$ | $\times f_y/f_{x_j}$ |
+| `tvalues` | $\beta'_j/\sqrt{C'_{jj}}$ | 단위가 없어요 |
+| `conf_int()` | $\beta'_j \mp q\sqrt{C'_{jj}}$ | 끝마다 $\times f_y/f_{x_j}$ |
+| `scale`, `ssr`, `ess` | $\text{SSR}'/\text{df}$ 등 | $\times f_y^2$ |
+| `cov_params()` | $C'$ | $\times (f_y/f_{x_a})(f_y/f_{x_b})$ |
+| `llf` | $\log\text{SSR}'$ | $+\,2\log f_y$ |
+| $R^2$, F, 진단 | 비 | 단위가 없어요 |
+
+t를 $\beta/\text{bse}$로 구하지 않고 적합의 단위에서 바로 나누는 것은, 데이터 단위의 $\beta$나 `bse`가 따로 double을 벗어날 수 있어도 그 비는 벗어나지 않기 때문이에요. 진단(스튜던트화 잔차, Cook 거리, DW, JB, BP)도 적합의 단위의 잔차(`resid_s`)로 만들어요. 모두 비라서 배율이 약분돼요. 그래서 $10^{\pm 300}$ 범위에서 추론이 척도 등변이에요.
+
+```python
+>>> base = sd.regression.ols(ys, xs)
+>>> base.tvalues
+array([4.3403891381277555,  2.444902493779801], dtype=float64)
+>>> [sd.regression.ols(yy, xx).tvalues[1] for yy, xx in ((ys, 1e160 * xs), (ys, 1e-170 * xs), (1e-165 * ys, xs))]
+[2.444902493779801, 2.444902493779801, 2.4449024937798014]
+>>> sd.regression.ols(1e-165 * ys, xs).ssr
+0.0
+```
+
+마지막 줄처럼, 참값 자체가 double 밖이면(SSR의 참값이 약 $1.8\times10^{-329}$) 그 필드만 0이나 inf예요. 그 값으로 만드는 t, p, $R^2$는 적합의 단위에서 구하므로 맞아요.
+
+계수 자체가 double을 벗어나도 같아요. $y \cdot 10^{300}$을 $x \cdot 10^{-300}$에 회귀하면 기울기의 참값이 $6.4\times10^{599}$라, 데이터 단위의 `params`와 `bse`의 그 원소는 inf예요. 그 둘로 t를 만들면 inf/inf = NaN이 되므로, `tvalues`는 데이터 단위의 값을 거치지 않아요. `_unscale`이 계수를 돌려놓기 전에 적합의 단위의 계수 $\beta'$를 `beff_params_s`로 남겨 두고, t는 그것을 $\sqrt{\operatorname{diag}C'}$로 바로 나눠요. 척도를 바꾸지 않은 적합에는 그 자리가 없어서 `params / bse`예요(배율이 1이라 같은 값이에요). 이 메서드는 모든 회귀 결과가 함께 쓰는 기본 클래스 `_RegressionResult`에 있고, 위의 [완전 적합](#완전-적합의-판정) 표시(`_perfect`)도 여기서 읽어요.
+
+```python
+    # src/stardust/regression/_linear.py
+    @property
+    def tvalues(self):
+        # ...
+        def make():
+            if "beff_params_s" not in self._extra:
+                t = self.params / self.bse
+            else:
+                # the fit's own units, beta' / sqrt(C'): neither can leave the doubles there,
+                # while a parameter or its standard error in the data's units may overflow
+                t = (self._extra["beff_params_s"] + 0.0) / _sd.sqrt(_linalg.diagonal(self._cov_s()))
+            bad = self._perfect()
+            if isinstance(bad, _sd.ndarray):
+                return _sd.where(_expand(bad, 1), math.nan, t)
+            return t * math.nan if bad else t
+
+        return self._cached("tvalues", make)
+```
+
+p는 이 t에서 구하므로 넘친 계수의 p도 맞아요.
+
+```python
+>>> big = sd.regression.ols(1e300 * ys, 1e-300 * xs)
+>>> big.params[1], big.bse[1], big.tvalues[1], big.pvalues[1] == base.pvalues[1]
+(inf, inf, 2.444902493779801, True)
+```
+
+신뢰구간도 같은 이유로 적합의 단위에서 만들어요. 데이터 단위의 $\beta \pm q\cdot\text{bse}$로 구하면 계수와 `bse`가 함께 inf로 넘친 원소에서 $\infty - \infty$ = NaN이 나와요. 그래서 `_RegressionResult.conf_int`는 두 끝을 적합의 단위에서 $\beta'_j \mp q\sqrt{C'_{jj}}$로 구한 뒤 계수처럼 $f_y/f_{x_j}$를 곱해요. 적합의 단위에서는 두 끝이 유한하고, 배율을 곱할 때 끝마다 제 부호를 지킨 채 넘쳐요. 그래서 넘친 끝은 $+\infty$나 $-\infty$이고 아래로 넘친 끝은 0이며, NaN은 나오지 않아요. 넘치지 않은 원소는 데이터 단위로 구한 구간과 반올림 안에서 같아요. 척도를 바꾸지 않은 적합(`beff_params_s`가 없음)은 같은 메서드의 앞 갈래, $\beta \pm q\cdot\text{bse}$ 그대로예요([추론](/internals/regression/inference/)). `ols`·`wls`·`gls`와 강건 공분산, 배치가 모두 이 길을 따르고, `y`나 열의 척도를 옮겨 푸는 `glm`·`rlm`·`quantreg`도 `beff_params_s`와 `fx`를 같은 꼴로 남겨 이 길을 함께 써요.
+
+```python
+    # src/stardust/regression/_linear.py
+    def conf_int(self, *, alpha=0.05):
+        # ...
+        alpha = _check_alpha(alpha, "conf_int")
+        q = self._dist().iccdf(alpha / 2)
+        if "beff_params_s" not in self._extra:
+            half = q * self.bse
+            return _sd.stack([self.params - half, self.params + half], axis=-1)
+        # the ends in the fit's own units, beta' -+ q sqrt(C'), then scaled as the parameter is:
+        # each end keeps its sign and may overflow to +-inf, never inf - inf = NaN
+        b = self._extra["beff_params_s"]
+        half = q * _sd.sqrt(_linalg.diagonal(self._cov_s()))
+        fy = self._fy()
+        fy1 = _expand(fy, 1) if isinstance(fy, _sd.ndarray) else fy
+        fxk = self._xfactor()
+        return _sd.stack([(b - half) * fy1 / fxk, (b + half) * fy1 / fxk], axis=-1)
+```
+
+```python
+>>> base.conf_int().tolist()
+[[0.5008368140012105, 1.4405417126283668], [0.09028202653263795, 1.1931092216754058]]
+>>> big.conf_int().tolist()
+[[5.008368140012105e+299, 1.440541712628367e+300], [inf, inf]]
+>>> sd.regression.ols(-1e300 * ys, 1e-300 * xs).conf_int()[1].tolist()
+[-inf, -inf]
+>>> sd.regression.ols(1e-300 * ys, 1e300 * xs).conf_int()[1].tolist()
+[0.0, 0.0]
+```
+
+절편의 구간은 $10^{300}$배 그대로이고, 기울기는 참값 자체가 double 밖이라 두 끝이 모두 inf(부호를 바꾸면 −inf, 아래로 넘치면 0)예요. 구간이 양수라는 정보는 남아요.
+
+## NIST StRD
+
+NIST의 선형 회귀 인증 자료 11개는 극단적인 조건수와 공인된 참값을 함께 줘요. 아래 표는 사용자가 실제로 주는 입력(10진 자료와 그 거듭제곱 열을 double로 한 번 반올림한 것)에 대한 Arb 참값과 비교한 계수의 최대 상대오차예요. 0번은 개선 없는 QR 해, 1번과 2번은 개선 횟수를 고정한 값이에요.
+
+| 문제 | κ(X) | 0번 | 1번 | 2번 | 표준오차 |
+|---|---:|---:|---:|---:|---:|
+| Norris | 8.6e2 | 2e-13 | 9e-17 | 9e-17 | 4e-16 |
+| Pontius | 1.4e13 | 2e-13 | 4e-17 | 4e-17 | 5e-16 |
+| NoInt1 | 1 | 1e-17 | 1e-17 | 1e-17 | 0 |
+| NoInt2 | 1 | 2e-16 | 3e-17 | 3e-17 | 0 |
+| Filip | 1.8e15 | 4e-8 | 2e-13 | 1e-17 | 7e-8 |
+| Longley | 4.9e9 | 6e-13 | 2e-17 | 2e-17 | 2e-13 |
+| Wampler1 | 6.4e6 | 1e-10 | 0 | 0 | 0 (완전 적합) |
+| Wampler2 | 6.4e6 | 9e-15 | 4e-17 | 4e-17 | — (완전 적합으로 판정, `bse` 0) |
+| Wampler3 | 6.4e6 | 2e-10 | 0 | 0 | 3e-14 |
+| Wampler4 | 6.4e6 | 2e-9 | 0 | 0 | 3e-14 |
+| Wampler5 | 6.4e6 | 2e-7 | 0 | 0 | 3e-14 |
+
+- `ols`는 Filip에서 두 번, 나머지 10개에서 한 번 보정하고 멈춰요. 돌려준 계수는 11개 모두 Arb 참값을 double로 반올림한 것과 비트까지 같아요.
+- Filip의 κ는 1.8×10¹⁵로 $\kappa^2 u > 1$이지만, 잔차가 작아서 개선이 수렴해요.
+- Wampler2는 double 입력에서의 참 잔차가 반올림 수준이라(계수를 double로 반올림한 것만으로 잔차가 바뀌어요), 그 잔차로 구한 표준오차에는 상대 정확도가 없어요. 잔차가 모두 완전 적합의 판정 안이라 SSR이 0이고, 표준오차는 0, t, p, F는 NaN이에요.
+- 인증값은 10진 자료 그대로의 참값이에요. Filip은 자료를 double로 한 번 반올림한 것만으로 참 계수가 2.4×10⁻⁸ 움직여요. 입력의 반올림이 문제 자체를 바꾼 몫이라 어떤 방법으로도 줄일 수 없어요.
+
+같은 입력에서 다른 라이브러리가 낸 계수의 최대 상대오차예요. 견준 것은 statsmodels 0.15.0(`OLS().fit()`, 기본 `pinv`), scikit-learn 1.9.1(`LinearRegression`), numpy 2.5.4의 `lstsq`와 같은 값을 내는 `sd.linalg.lstsq`(SVD)예요.
+
+| 문제 | κ(X) | statsmodels | scikit-learn | `lstsq` | sd |
+|---|---:|---:|---:|---:|---:|
+| Norris | 8.6e2 | 1.1e-12 | 5.6e-14 | 9.1e-13 | 0 |
+| Pontius | 1.4e13 | 7.8e-8 | 6.6e2 | 7.8e-8 | 0 |
+| Filip | 1.8e15 | 1.1 | 1.0 | 1.1 | 0 |
+| Longley | 4.9e9 | 1.4e-11 | 1.2e-14 | 1.4e-11 | 0 |
+| Wampler1 | 6.4e6 | 2.9e-10 | 0.65 | 2.9e-10 | 0 |
+| Wampler2 | 6.4e6 | 4.1e-11 | 3.4 | 4.2e-11 | 0 |
+| Wampler4 | 6.4e6 | 3.9e-9 | 0.65 | 3.6e-9 | 0 |
+| Wampler5 | 6.4e6 | 3.8e-7 | 0.65 | 4.0e-7 | 0 |
+
+Filip은 세 라이브러리 모두 자릿수가 하나도 맞지 않아요(statsmodels는 설계가 랭크 부족이라고 경고하며 `pinv`로 방향 하나를 버려요). scikit-learn은 다항식 문제(Pontius, Wampler)에서 크게 틀려요.
+
+## 속도
+
+적합 한 번의 계산은 분해(Accelerate `geqrf`, 키가 크고 조건이 좋은 설계는 CholeskyQR2) 한 번과 double-double 행 합 세 번(처음 잔차, 개선, 마지막 패스), $Q$의 적용이에요. 분해는 $O(nk^2)$이고 나머지는 $O(nk)$라서, 열이 많을수록 분해가 시간의 대부분을 차지해요. 키가 크고 열이 적은 설계에서는 `geqrf`가 행렬-벡터 꼴에 머무는 것이 걸림돌이라 CholeskyQR2가 행렬곱 꼴로 바꾸고, 그보다 작은 적합에서는 행 합의 지연이 걸림돌이라 네 부분합이 사슬을 나눠요.

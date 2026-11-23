@@ -1,0 +1,296 @@
+---
+kind: concept
+title: 거리 함수 고르기
+group: 거리 함수
+order: 1
+summary: sd.spatial의 열네 가지 거리를 한 표로 견줘요. 거리마다의 정의와 어울리는 자료, 가중치 w를 받는지, 경계의 값, 이웃 찾기에서 쓰는 법을 정리하고, 모든 거리 함수가 함께 따르는 배치 규칙 (…, n)과 거리 이름 문자열(metric='…')과 거리 함수의 관계를 설명해요.
+seeAlso: [euclidean, cityblock, chebyshev, minkowski, seuclidean, mahalanobis, cosine, hamming, haversine, pdist, cdist, kneighbors, KDTree]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import PlaneFig from '../../../components/fig/PlaneFig.astro';
+
+## 한눈에 보기
+
+두 점이 "얼마나 떨어져 있나"는 재는 법에 따라 답이 달라요. 평면의 (0, 0)과 (3, 4)를 세 가지로 재 볼게요.
+
+```python
+>>> import stardust as sd
+>>> u, v = [0.0, 0.0], [3.0, 4.0]
+>>> sd.spatial.euclidean(u, v), sd.spatial.cityblock(u, v), sd.spatial.chebyshev(u, v)
+(5.0, 7.0, 4.0)
+```
+
+직선으로 가면 5, 가로세로로만 꺾어 가면 7, 체스의 킹처럼 대각선 걸음을 쓰면 4예요.
+
+
+<Fig caption="같은 두 점의 세 거리. 가로세로로만 꺾어 가는 파란 계단 길은 어느 것이든 가로 3과 세로 4를 더한 7(cityblock), 곧은 점선은 5(euclidean), 대각선 세 걸음과 세로 한 걸음의 연한 파란 길은 4(chebyshev)예요.">
+  <PlaneFig
+    label="격자 위의 두 점 (0, 0)과 (3, 4)를 잇는 계단 길 둘, 곧은 선분, 대각선으로 가는 길"
+    domain={[-0.5, 3.5]}
+    range={[-0.5, 4.5]}
+    xTicks={[0, 1, 2, 3]}
+    yTicks={[0, 1, 2, 3, 4]}
+    width={340}
+    layers={[
+      { kind: 'line', pts: [[0, 0], [3, 0], [3, 4]], tone: 'main', width: 2 },
+      { kind: 'line', pts: [[0, 0], [1, 0], [1, 2], [2, 2], [2, 3], [3, 3], [3, 4]], tone: 'main', width: 2 },
+      { kind: 'line', pts: [[0, 0], [3, 3], [3, 4]], tone: 'soft', width: 2.4 },
+      { kind: 'line', pts: [[0, 0], [3, 4]], tone: 'base', dashed: true, width: 1.8 },
+      { kind: 'points', pts: [[0, 0], [3, 4]], tone: 'ink', size: 4.5 },
+      { kind: 'text', at: [0, 0], text: '(0, 0)', dx: -8, dy: 18, anchor: 'start' },
+      { kind: 'text', at: [3, 4], text: '(3, 4)', dx: -10, dy: -10, anchor: 'end' },
+    ]}
+    legend={[
+      { label: 'cityblock 7', tone: 'main', shape: 'line' },
+      { label: 'euclidean 5', tone: 'base', shape: 'dash' },
+      { label: 'chebyshev 4', tone: 'soft', shape: 'line' },
+    ]}
+  />
+</Fig>
+
+어느 거리가 "맞는지"는 자료가 정해요. 지도 위의 직선 거리를 묻는다면 5, 바둑판 길을 걷는다면 7, 모든 좌표가 얼마 안에 드는지를 묻는다면 4가 답이에요. `sd.spatial`에는 이런 거리가 열네 가지 있고, 이 페이지는 그 가운데 무엇을 고를지와 모든 거리 함수가 함께 따르는 규칙을 정리해요.
+
+## 열네 거리
+
+$z_i = u_i - v_i$는 좌표마다의 차이예요. 비슷한 것끼리 묶었어요.
+
+| 묶음 | 이름 | 정의 | 어울리는 자료 |
+|---|---|---|---|
+| 좌표의 차이 | [`euclidean`](/api/spatial/euclidean/) | $\sqrt{\sum z_i^2}$ | 위치, 같은 단위의 측정값, 표준화한 특징, 임베딩 |
+| | [`sqeuclidean`](/api/spatial/sqeuclidean/) | $\sum z_i^2$ | 제곱합이 필요한 계산(분산, k-평균), 순서만 필요할 때 |
+| | [`cityblock`](/api/spatial/cityblock/) | $\sum \lvert z_i\rvert$ | 격자 위의 이동, 튀는 값이 섞인 자료, 히스토그램 |
+| | [`chebyshev`](/api/spatial/chebyshev/) | $\max \lvert z_i\rvert$ | 허용 오차 검사, 두 곡선의 최대 차이 |
+| | [`minkowski`](/api/spatial/minkowski/) | $(\sum \lvert z_i\rvert^p)^{1/p}$ | 위의 셋 사이를 p로 고르고 싶을 때 |
+| 퍼짐으로 나누기 | [`seuclidean`](/api/spatial/seuclidean/) | $\sqrt{\sum z_i^2 / V_i}$ | 단위나 퍼진 정도가 다른 좌표 |
+| | [`mahalanobis`](/api/spatial/mahalanobis/) | $\sqrt{z^\top VI\, z}$ | 좌표끼리 상관이 있는 자료, 튀는 점 찾기 |
+| 방향 | [`cosine`](/api/spatial/cosine/) | $1 - \dfrac{u \cdot v}{\lVert u\rVert \lVert v\rVert}$ | 크기보다 방향이 중요한 벡터(문서의 단어 빈도, 임베딩) |
+| | [`correlation`](/api/spatial/correlation/) | 평균을 뺀 뒤의 `cosine` | 수준과 크기를 빼고 모양만 견줄 때(유전자 발현, 시계열의 꼴) |
+| 비율 | [`canberra`](/api/spatial/canberra/) | $\sum \dfrac{\lvert z_i\rvert}{\lvert u_i\rvert + \lvert v_i\rvert}$ | 0 근처의 작은 값의 차이도 중요한 음 아닌 자료 |
+| | [`braycurtis`](/api/spatial/braycurtis/) | $\dfrac{\sum \lvert z_i\rvert}{\sum \lvert u_i + v_i\rvert}$ | 생태학의 종 개수처럼 음 아닌 개수·성분량 |
+| 같고 다름 세기 | [`hamming`](/api/spatial/hamming/) | 다른 자리의 비율 | 범주 값, 같은 길이의 부호열 |
+| | [`jaccard`](/api/spatial/jaccard/) | 한쪽만 0이 아닌 자리 ÷ 어느 쪽이든 0이 아닌 자리 | 있음·없음의 집합(장바구니, 태그) |
+| 구 위 | [`haversine`](/api/spatial/haversine/) | 단위 구의 중심각 | 위도·경도(라디안)로 적은 지구 위의 위치 |
+
+같은 두 점이라도 거리마다 값이 다르고, 값의 눈금도 달라요. `cosine`과 `correlation`은 0에서 2, `hamming`과 `jaccard`는 0에서 1, `braycurtis`는 음 아닌 자료에서 0에서 1 사이예요.
+
+```python
+>>> u, v = [1.0, 0.0, 2.0, 0.0], [0.0, 1.0, 3.0, 2.0]
+>>> for name in ["euclidean", "cityblock", "chebyshev", "cosine", "correlation",
+...              "canberra", "braycurtis", "hamming", "jaccard"]:
+...     print(f"{name:12s}", getattr(sd.spatial, name)(u, v))
+euclidean    2.6457513110645907
+cityblock    5.0
+chebyshev    2.0
+cosine       0.2828628343993638
+correlation  0.5954800825220548
+canberra     3.2
+braycurtis   0.5555555555555556
+hamming      1.0
+jaccard      0.75
+```
+
+### 고르는 법
+
+- 좌표가 같은 단위의 위치나 측정값이면 `euclidean`에서 시작하세요.
+- 단위가 섞였으면 `seuclidean`, 좌표끼리 상관까지 강하면 `mahalanobis`예요. 아니면 자료를 미리 표준화하고 `euclidean`을 써도 돼요.
+- 튀는 값이 걱정되면 `cityblock`, 가장 많이 어긋난 좌표 하나가 중요하면 `chebyshev`예요.
+- 벡터의 길이는 상관없고 가리키는 방향만 중요하면 `cosine`, 평균 수준까지 빼고 오르내림의 모양만 보려면 `correlation`이에요.
+- 음 아닌 개수나 성분량이면 `braycurtis`나 `canberra`예요.
+- 값이 범주거나 있음·없음이면 `hamming`이나 `jaccard`예요. 둘의 차이는 둘 다 0인 자리를 세느냐예요. `jaccard`는 둘 다 없는 자리를 빼고 세요.
+- 지구 위의 두 곳이면 `haversine`에 지구 반지름을 곱해요.
+
+## 옵션과 경계의 값
+
+| 이름 | 거리 함수의 다른 인자 | `w` | 경계의 값 | `KDTree`의 `p` |
+|---|---|:---:|---|:---:|
+| `euclidean` | | 받음 | 좌표가 커도 넘치지 않아요 | 2 |
+| `sqeuclidean` | | 받음 | 참값이 float64를 넘으면 inf | |
+| `cityblock` | | 받음 | | 1 |
+| `chebyshev` | | 받음(0보다 큰 무게의 좌표만 고름) | NaN을 퍼뜨려요. 올바르게 반올림한 값 | inf |
+| `minkowski` | `p`(키워드, 기본 2, 0보다 큼) | 받음 | p가 커도 넘치지 않아요 | $p \ge 1$ |
+| `seuclidean` | `V`(셋째 자리, 꼭 줌) | 안 받음 | | |
+| `mahalanobis` | `VI`(셋째 자리, 꼭 줌) | 안 받음 | 이차식이 음수면 NaN | |
+| `cosine` | | 받음 | 영벡터가 있으면 NaN | |
+| `correlation` | `centered`(키워드, 기본 True) | 받음 | 상수 행이 있으면 NaN | |
+| `canberra` | | 받음 | $0/0$인 항은 0. NaN을 퍼뜨려요 | |
+| `braycurtis` | | 받음 | $0/0$이면 NaN, 분모만 0이면 inf | |
+| `hamming` | | 받음 | NaN끼리는 다른 값. 입력의 dtype 그대로 비교 | |
+| `jaccard` | | 받음 | 분모가 0이면 0. 입력의 dtype 그대로 비교 | |
+| `haversine` | 마지막 축이 (위도, 경도) 2개 | 안 받음 | 대척점과 날짜 변경선에서도 자릿수를 지켜요 | |
+
+[`KDTree`](/api/spatial/KDTree/)는 Minkowski 거리만 받아서, 질의의 `p`로 거리를 정해요($p = 1, 2, \infty$는 `cityblock`, `euclidean`, `chebyshev`와 같은 값). [`kneighbors`](/api/spatial/kneighbors/)와 [`radius_neighbors`](/api/spatial/radius_neighbors/)는 열네 거리를 모두 받아요.
+
+## 거리 함수와 거리 이름
+
+거리마다 두 가지로 써요. 두 점(또는 짝지은 점들)의 거리는 **거리 함수**로, 점 집합의 거리 행렬과 이웃 찾기는 **거리 이름 문자열**로 불러요.
+
+```python
+>>> X = sd.asarray([u, v, [1.0, 1.0, 1.0, 1.0]])
+>>> sd.spatial.braycurtis(u, v)
+0.5555555555555556
+>>> sd.spatial.pdist(X, metric='braycurtis')
+array([ 0.5555555555555556, 0.42857142857142855,                 0.4], dtype=float64)
+```
+
+[`pdist`](/api/spatial/pdist/), [`cdist`](/api/spatial/cdist/), [`kneighbors`](/api/spatial/kneighbors/), [`radius_neighbors`](/api/spatial/radius_neighbors/)의 `metric`이 그 문자열이에요. 같은 짝이면 거리 함수와 비트까지 같은 값이에요.
+
+```python
+>>> sd.spatial.cdist(X, X, metric='canberra')[1, 0] == sd.spatial.canberra(u, v)
+True
+```
+
+### 거리의 인자
+
+거리의 인자는 두 쪽에서 이름이 같고, 받는 자리와 기본값이 조금 달라요.
+
+| 인자 | 거리 함수에서 | `pdist`·`cdist`·`kneighbors`·`radius_neighbors`에서 |
+|---|---|---|
+| `p` | `minkowski(u, v, p=3)`, 키워드, 기본 2 | `metric='minkowski', p=3`, 키워드, 기본 None(= 2) |
+| `w` | 키워드, 기본 None | 키워드, 기본 None |
+| `V` | `seuclidean(u, v, V)`, 셋째 자리, 꼭 줘요 | 키워드, 기본은 자료의 열 분산 |
+| `VI` | `mahalanobis(u, v, VI)`, 셋째 자리, 꼭 줘요 | 키워드, 기본은 자료의 공분산의 역행렬 |
+| `centered` | `correlation(u, v, centered=False)` | 없어요. `centered=False`는 `metric='cosine'`과 같아요 |
+
+거리 함수는 두 점만 받으니 `V`나 `VI`를 구할 자료가 없어서 꼭 줘야 하고, 거리 행렬은 자료가 있으니 기본값을 거기서 구해요. 기본 `V`와 `VI`를 구하는 자료는 `pdist`가 `X`, `cdist`와 이웃 찾기가 `XA`와 `XB`를 세로로 이은 것이에요.
+
+그 거리가 쓰지 않는 인자를 주면 `TypeError`예요. 조용히 무시하지 않아요.
+
+```python
+>>> sd.spatial.pdist(X, metric='euclidean', p=3)
+Traceback (most recent call last):
+    ...
+TypeError: pdist(): 'p' applies only to metric='minkowski'
+>>> sd.spatial.pdist(X, metric='haversine', w=[1.0, 1.0])
+Traceback (most recent call last):
+    ...
+TypeError: pdist(): 'w' does not apply to metric='haversine'
+```
+
+### 거리 이름은 열네 개뿐이에요
+
+`metric`은 위 표의 소문자 이름 열넷 가운데 하나여야 해요. 줄임말이나 다른 이름(`'cos'`, `'manhattan'`, `'l2'`), 대문자는 `ValueError`, 문자열이 아니면 `TypeError`예요. 키워드로만 받아요.
+
+```python
+>>> sd.spatial.pdist(X, metric='cos')
+Traceback (most recent call last):
+    ...
+ValueError: pdist(): 'metric' must be 'euclidean', 'sqeuclidean', 'cityblock', 'chebyshev', 'minkowski', 'seuclidean', 'mahalanobis', 'cosine', 'correlation', 'canberra', 'braycurtis', 'hamming', 'jaccard' or 'haversine', not 'cos'
+>>> sd.spatial.pdist(X, 'cityblock')
+Traceback (most recent call last):
+    ...
+TypeError: pdist(): takes 1 positional argument but 2 were given
+```
+
+함수를 `metric`으로 넘기는 것도 받지 않아요. 열넷에 없는 거리가 필요하면 그 거리를 배열 연산으로 적고, 아래의 배치 규칙으로 모든 짝을 한 번에 계산하세요.
+
+## 배치 규칙 (…, n)
+
+모든 거리 함수는 **마지막 축을 좌표로** 보고, 앞의 축들은 numpy의 브로드캐스팅 규칙으로 짝을 지어요. 결과의 모양은 앞 축을 브로드캐스트한 모양이고, 두 입력이 모두 1차원이면 Python `float` 하나예요.
+
+| `u`의 모양 | `v`의 모양 | 결과 | 뜻 |
+|---|---|---|---|
+| `(n,)` | `(n,)` | `float` | 두 점의 거리 |
+| `(m, n)` | `(n,)` | `(m,)` | 점 m개와 한 점 |
+| `(m, n)` | `(m, n)` | `(m,)` | 행끼리 짝지은 m쌍 |
+| `(a, 1, n)` | `(b, n)` | `(a, b)` | 모든 짝(거리 행렬) |
+
+```python
+>>> sd.spatial.cityblock(X, [1.0, 1.0, 1.0, 1.0])
+array([3.0, 4.0, 0.0], dtype=float64)
+>>> sd.spatial.cityblock(X[:, None, :], X[None, :, :])
+array([[0.0, 5.0, 3.0],
+       [5.0, 0.0, 4.0],
+       [3.0, 4.0, 0.0]], dtype=float64)
+```
+
+마지막 보기는 `cdist(X, X, metric='cityblock')`과 같아요. 다만 `(a, b, n)` 모양의 중간 배열을 만들어서 메모리가 더 들어요. 거리 행렬이 필요하면 `pdist`나 `cdist`를 쓰세요. 마지막 축의 길이가 다르거나 앞 축이 브로드캐스트되지 않으면 `ValueError`예요.
+
+`cosine`과 `correlation`의 정규화(길이로 나누기, 평균 빼기)도 마지막 축을 따라 행마다 해요. `haversine`은 마지막 축의 길이가 2여야 해요.
+
+## 가중치 w
+
+`seuclidean`, `mahalanobis`, `haversine`을 뺀 열한 거리가 좌표마다의 가중치 `w`를 받아요. 규칙은 모두 같아요.
+
+- 1차원이고 길이가 좌표 수 $n$이에요.
+- 모든 원소가 유한하고 0 이상이에요. 음수, NaN, inf는 `ValueError`예요.
+- 키워드로만 받아요.
+
+무게를 어디에 곱하는지는 거리마다 정의를 따라요. 합으로 정의된 거리(`euclidean`, `sqeuclidean`, `cityblock`, `minkowski`, `canberra`)는 항마다 $w_i$를 곱하고, `braycurtis`는 분자와 분모의 합 모두에, `cosine`과 `correlation`은 내적과 노름(`correlation`은 평균까지)에, `hamming`과 `jaccard`는 자리를 셀 때 곱해요. `chebyshev`만 다르게, 무게가 0보다 큰 좌표를 고를 뿐 차이에 곱하지 않아요. 어느 거리든 무게 0인 좌표는 거리에 들어가지 않아요.
+
+```python
+>>> sd.spatial.cosine(u, v, w=[1.0, 1.0, 0.0, 0.0])    # 앞 두 좌표만: (1, 0)과 (0, 1)
+1.0
+>>> sd.spatial.cosine(u, v, w=[1.0, 1.0, 1.0])
+Traceback (most recent call last):
+    ...
+ValueError: cosine(): 'w' must have 4 entries (one per column), not 3
+```
+
+## 입력과 dtype
+
+- `u`, `v`(와 `pdist`·`cdist`의 `X`, `XA`, `XB`)는 수의 리스트, `sd.ndarray`, numpy 배열, frame의 `DataFrame`(결측은 NaN)을 받아요.
+- 계산은 float64예요. 정수와 bool은 float64로 바꿔요.
+- `hamming`과 `jaccard`만 예외로 bool, int64, float64를 **입력의 dtype 그대로** 비교해요. 그래서 int64의 $2^{60}$과 $2^{60} + 1$은 다른 값이에요. float64로 바꾸면 둘이 같은 수가 돼요.
+- 복소수, 문자열은 `TypeError`예요.
+- 결과는 언제나 float64예요.
+
+```python
+>>> sd.spatial.hamming([2**60], [2**60 + 1])
+1.0
+>>> sd.spatial.hamming([float(2**60)], [float(2**60 + 1)])
+0.0
+```
+
+## NaN과 inf
+
+거리 함수와 거리 행렬은 유한하지 않은 값을 IEEE 규칙대로 흘려보내요. NaN이 섞인 짝은 NaN, inf − inf가 생기면 NaN이에요. 한쪽만 무한대인 짝은 차의 합이나 최댓값으로 정의된 거리(`euclidean`, `sqeuclidean`, `cityblock`, `chebyshev`, `minkowski`, `seuclidean`)에서 inf예요. 비율로 정의된 거리(`canberra`, `braycurtis`, `cosine`, `correlation`)에서는 inf/inf가 생겨 NaN이고, `mahalanobis`는 이차식의 $0\cdot\infty$, `haversine`은 $\sin(\infty)$가 생겨 NaN이에요. `chebyshev`와 `canberra`도 NaN을 건너뛰지 않고 퍼뜨려요. `hamming`과 `jaccard`는 NaN과 inf를 값 하나로 보고 세요(`hamming`은 같은지 다른지만, `jaccard`는 0인지만 봐요. NaN끼리도 다른 값, NaN은 0이 아닌 값).
+
+이웃 찾기([`kneighbors`](/api/spatial/kneighbors/), [`radius_neighbors`](/api/spatial/radius_neighbors/), [`KDTree`](/api/spatial/KDTree/))는 데이터와 질의점이 모두 유한해야 해요. NaN이 있으면 "가장 가까운"이 정해지지 않으니 `ValueError`예요. 또 거리가 inf나 NaN인 짝(영벡터의 `cosine` 같은 것)은 `kneighbors`의 이웃으로 나오지 않아요.
+
+## 같은 짝은 어디서나 같은 비트
+
+한 짝의 거리는 거리마다 하나로 정해진 계산이 구해요. 그래서 같은 두 점의 거리는 거리 함수, `pdist`, `cdist`, `kneighbors`, `radius_neighbors`, `KDTree`의 모든 메서드에서 마지막 비트까지 같아요. 이웃 찾기가 돌려준 거리를 거리 행렬과 견줘도, 반경의 경계에 걸린 짝을 다시 재도 어긋나지 않아요.
+
+```python
+>>> sd.spatial.kneighbors(X[:1], X[1:], metric='cosine')
+QueryResult(distances=array([0.2828628343993638], dtype=float64), indices=array([0], dtype=int64))
+>>> sd.spatial.cosine(X[0], X[1])
+0.2828628343993638
+```
+
+$d(u, v)$와 $d(v, u)$도 비트까지 같아요. 같은 기계, 같은 스레드 수, 같은 입력이면 실행마다 같은 비트이고, 이 영역의 결과는 스레드 수와 계산하는 길(전수, 트리)에 따라서도 바뀌지 않아요.
+
+## 정확도
+
+모든 거리는 Arb(구간 산술)로 만든 참값과 견준 오차 한계를 약속해요. 넘침과 언더플로가 걸리는 짝까지 넣은 시험 짝에서 잰 최대 오차는 이래요. ULP는 결과와 참값 사이에 있는 float64의 수이고, 한계 대비는 잰 오차를 약속한 한계로 나눈 값이라 1 이하면 약속 안이에요.
+
+| 거리 | 짝 | 최대 ULP | 한계 대비 |
+|---|---:|---:|---:|
+| `euclidean` | 645 | 2 | 0.46 |
+| `sqeuclidean` | 645 | 3 | 0.68 |
+| `cityblock` | 645 | 3 | 0.36 |
+| `chebyshev` | 645 | 0 | 올바른 반올림 |
+| `minkowski` ($p = 0.5, 1.5, 3, 7.5$) | 645 | 6, 3, 1, 2 | 0.2, 0.17, 0.21, 0.4 |
+| `seuclidean` | 645 | 2 | 0.45 |
+| `mahalanobis` | 492 | 2 | 0.29 |
+| `cosine` | 626 | | 0.41 |
+| `correlation` | 606 | | 0.39 |
+| `canberra` | 645 | 3 | 0.36 |
+| `braycurtis` | 624 | 5 | 0.35 |
+| `hamming` | 80 | 0 | 올바른 반올림 |
+| `jaccard` | 80 | 0 | 올바른 반올림 |
+| `haversine` | 32 | 1 | 0.071 |
+
+`cosine`과 `correlation`은 참값이 0에 아주 가까운 짝(거의 평행한 벡터)이 있어서 ULP로 재면 수가 커요. 그런 짝에서는 아주 작은 절대오차를 약속하고, 그 밖에서는 상대오차를 약속해요. 가중치를 준 경우와 측정 방법은 [정확도와 성능](/internals/spatial/accuracy-performance/)에 있어요.
+
+## scipy·sklearn을 아는 분께
+
+- 이름 공간이 평평해요. `scipy.spatial.distance.cosine`은 `sd.spatial.cosine`이고, `sd.spatial.distance`는 없어요.
+- `metric`과 거리의 인자(`p`, `w`, `V`, `VI`)는 키워드로만 받아요. scipy의 `pdist(X, 'cityblock')`은 `TypeError`예요. 그 거리가 쓰지 않는 인자도 `TypeError`예요.
+- 거리 이름의 별칭(`'cos'`, `'matching'`, `'cb'` 등)과 대문자 이름, 함수를 넘기는 `metric`, `out=`이 없어요.
+- 열네 거리 함수가 모두 `(…, n)` 배치를 받아요. scipy 1.18.1의 거리 함수는 `minkowski`, `euclidean`, `sqeuclidean`만 배치를 받아요. sklearn의 `paired_distances`는 거리 함수의 배치이고, `pairwise_distances(X, Y, metric=…)`는 `cdist`예요.
+- `w`의 NaN·inf, `V`의 0 이하, `p`의 0 이하는 `ValueError`예요.
+- `chebyshev`와 `canberra`는 NaN을 퍼뜨리고, `euclidean`·`minkowski`·`seuclidean`·`mahalanobis`는 좌표가 아주 크거나 작아도 유한한 거리예요.
+- `hamming`과 `jaccard`는 int64를 float64로 바꾸지 않고 그대로 비교해요.
+- `haversine`은 sklearn의 `haversine_distances`와 같은 뜻이에요(scipy에는 없어요).
+- scipy의 불 거리(`dice`, `rogerstanimoto`, `russellrao`, `sokalsneath`, `yule`), `jensenshannon`, `directed_hausdorff`, 검사 함수(`is_valid_dm`, `num_obs_y` 등)는 없어요.

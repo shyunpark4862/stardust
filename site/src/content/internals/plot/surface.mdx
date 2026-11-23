@@ -1,0 +1,493 @@
+---
+title: 곡면의 표본
+group: 3D
+order: 1
+summary: 곡면을 121 × 121 격자로 한 번 잰 뒤, 꺾이는 칸·극점의 옆구리·정의역의 가장자리만 4 × 4로 두 번까지 다시 재는 적응형 표본을 코드를 따라 설명해요. 성긴 칸과 촘촘한 칸 사이의 틈 막기, 가장자리로의 이분, 높이 범위의 자르기, 격자선, 그리고 평면 곡선의 표본기를 화면에 쓰는 공간 곡선까지 다뤄요.
+seeAlso: [zbuffer, camera, sampling, fields]
+---
+import PlotImage from '../../../components/fig/PlotImage.astro';
+
+## 한눈에 보기
+
+`sd.plot.surface(f, x0, x1, y0, y1)`이 하는 일은 `f`를 어디서 몇 번 부를지 정하는 것이 거의 전부예요. 그린 결과는 삼각형 그물과 선이고, 그것을 그림으로 굽는 것은 [깊이 버퍼](/internals/plot/zbuffer/)가, 어느 쪽에서 볼지는 [카메라](/internals/plot/camera/)가 맡아요.
+
+표본은 세 겹이에요.
+
+1. **첫 격자**: 한 방향 120칸, 121 × 121점을 한 번에 재요.
+2. **모자란 칸 다시 재기**: 네 꼭짓점만으로는 곡면을 잘 그릴 수 없는 칸을 골라 칸마다 4 × 4칸으로 다시 재고, 그 작은 칸 가운데 아직 모자란 것을 한 번 더 4 × 4로 재요. 첫 격자의 한 칸이 많게는 16 × 16칸이 돼요.
+3. **다듬기**: 촘촘한 칸이 성긴 칸과 맞닿은 변을 곧게 펴서 틈을 막고, 값이 없는 점은 정의역의 가장자리 위로 옮겨요.
+
+단계마다 더할 점을 모두 모아 `f`를 한 번만 불러요. 반구 $z = \sqrt{1 - x^2 - y^2}$를 정의역보다 넓은 사각형에서 그리면 부른 횟수와 크기가 이렇게 보여요.
+
+```python
+>>> calls = []
+>>> def dome(x, y):
+...     calls.append(x.size)
+...     return sd.sqrt(1.0 - x * x - y * y)
+>>> fig = sd.plot.surface(dome, -1.2, 1.2, -1.2, 1.2)
+>>> len(calls), calls[:3], calls[-2:]
+(22, [14641, 11400, 56300], [48025, 48025])
+```
+
+첫 호출이 121 × 121 = 14,641점의 첫 격자, 둘째가 첫 단계(456칸 × 5 × 5점), 셋째가 둘째 단계(2,252칸 × 5 × 5점)예요. 가운데 17번은 정의역의 가장자리를 찾는 이웃 넷과 이분 12번과 마지막 한 번이고, 끝의 두 번은 격자선이에요. 매끈한 곡면은 한 번으로 끝나요.
+
+```python
+>>> calls = []
+>>> smooth = sd.plot.surface(lambda x, y: (calls.append(x.size), sd.sin(x) * sd.cos(y))[1], -3, 3, -3, 3)
+>>> calls
+[14641]
+```
+
+## 첫 격자
+
+`surface`는 그래프 $z = f(x, y)$를 매개변수 곡면 $(u, v) \mapsto (u, v, f(u, v))$로 다뤄요. 안쪽 함수 `fn`이 세 좌표를 돌려주므로, 그 아래의 표본기는 `parametric_surface`와 같은 코드예요.
+
+```python
+    # src/stardust/plot/_surface.py
+    (nx, ny), levels = _sample.knobs(who, samples, refine, (N + 1, N + 1), 2, pair=True, most=2000)
+    X, Y = sd.meshgrid(sd.linspace(x0, x1, nx), sd.linspace(y0, y1, ny), indexing="xy")
+
+    def fn(U, V):
+        return U, V, _field.call2(f, U, V, who)
+
+    Z = fn(X, Y)[2]
+    fine = _fine(fn, X, Y, (X, Y, Z), zlim, mesh, True, levels)
+    if fine is _adapt.ROUGH:  # rough everywhere: the whole grid finer, once
+        mx, my = (nx - 1) * _adapt.FINER + 1, (ny - 1) * _adapt.FINER + 1
+        X, Y = sd.meshgrid(sd.linspace(x0, x1, mx), sd.linspace(y0, y1, my), indexing="xy")
+        Z, fine = fn(X, Y)[2], None
+    sp = _space(self, who, azimuth, elevation, perspective)
+    sp.surfaces.append((X, Y, Z, spec, mesh, alpha, fine, _contours(who, contours) if graph else 0))
+```
+
+`samples`는 첫 격자의 점 수(한 수, 또는 x와 y 따로 두 수, 3–2,000)이고 기본은 `N + 1` = 121이에요. `refine`은 다시 재는 단계의 수(0–2)이고 기본이 2예요. `refine=0`이면 첫 격자가 곧 곡면이에요. `f`는 2차원 배열 둘을 받아 같은 모양의 배열(또는 수 하나)을 돌려줘야 해요.
+
+결과는 `Space.surfaces`에 튜플 하나로 쌓여요. 첫 격자 `X, Y, Z`, 색, 격자선의 칸 수, 불투명도, 그리고 적응형 표본이 더한 것 `fine`이에요. 아무것도 더하지 않았으면 `fine`은 `None`이에요.
+
+### 값 배열을 주면
+
+`f` 자리에 함수 대신 2차원 배열을 주면 그 배열이 곧 첫 격자의 높이예요. `Z[j, i]`가 $(x_i, y_j)$의 높이이고 첫 행이 `y0`인, [두 변수 함수의 그림](/internals/plot/fields/)과 같은 약속이에요. 꼭짓점의 좌표는 상자를 배열의 모양대로 고르게 나눈 것이에요.
+
+```python
+    # src/stardust/plot/_surface.py
+    if given is not None:  # the heights given on an even grid over the box
+        ny, nx = given.shape
+        X, Y = sd.meshgrid(sd.linspace(x0, x1, nx), sd.linspace(y0, y1, ny), indexing="xy")
+        sp = _space(self, who, azimuth, elevation, perspective)
+        sp.surfaces.append((X, Y, given, spec, mesh, alpha, None, _contours(who, contours)))
+        sp.equal = False
+        if zlim is not None:
+            sp.zlim = zlim
+        return self._touch()
+```
+
+값만으로는 다시 잴 수 없으므로 아래의 적응형 표본은 모두 건너뛰고 `fine` 자리에 `None`을 넣어요. `samples`나 `refine`을 함께 주면 `ValueError`예요. 극점의 자르기와 격자선, 바닥 등고선은 그릴 때의 일이라 함수로 준 곡면과 똑같이 돼요.
+
+```python
+>>> gx, gy = sd.meshgrid(sd.linspace(-2.0, 2.0, 41), sd.linspace(-2.0, 2.0, 31), indexing="xy")
+>>> given = sd.plot.surface(gx * gy, -2, 2, -2, 2)
+>>> s = given._cell.layers[0].surfaces[0]
+>>> tuple(s[2].shape), s[6] is None
+((31, 41), True)
+```
+
+## 모자란 칸 고르기
+
+### 상자의 단위로 재기
+
+"꺾였다"는 화면에서 보이는 모양에 대한 말이라서, 곡면을 그림의 상자에 넣었을 때의 단위로 재야 해요. 그래프의 상자는 반지름이 $1 : 1 : 0.72$인 직육면체라서 x, y, z가 서로 다른 배율로 줄어들고, 매개변수 곡면의 상자는 세 축이 같은 배율이에요. `_fine`이 그 배율 `scale`과 높이의 자를 범위 `zcut`을 정해 넘겨요.
+
+```python
+    # src/stardust/plot/_surface.py
+    zcut = None
+    if graph:
+        r = _sample.robust_range(sd.reshape(P[2], (-1,)))
+        zcut = zlim if zlim is not None else (r[0], r[1]) if (r[2] or r[3]) else None
+        if zcut is not None:
+            lo[2], hi[2] = zcut
+        scale = [2.0 * b / max(hi[k] - lo[k], 1e-300) for k, b in enumerate(BOX_GRAPH)]
+    else:
+        scale = [2.0 / max(max(hi[k] - lo[k] for k in range(3)), 1e-300)] * 3
+    out = _adapt.refine(fn, X, Y, P, scale, zcut, levels)
+    if out is None or out is _adapt.ROUGH:
+        return out
+    keep, parts, asked = out
+    return keep, parts, _adapt.mesh_lines(fn, X, Y, asked, *mesh_steps(*X.shape, mesh)) if mesh else None
+```
+
+`robust_range`는 [곡선의 자동 범위](/internals/plot/sampling/)와 같은 분위수 규칙이에요. 높이의 10%와 90% 분위수의 폭을 $s$라 할 때, 최댓값이 90% 분위수보다 $4s$ 넘게 멀면 위를 $q_{90} + s$에서 자르고, 아래도 같은 식이에요. $1/(x^2 + y^2)$처럼 한 점에서 무한히 솟는 곡면이 상자를 다 차지하지 않게 하는 규칙이에요.
+
+### 꼭짓점의 법선
+
+곡면의 꺾임은 꼭짓점의 법선이 얼마나 다른지로 재요. 법선은 격자의 두 방향 차분의 외적이에요.
+
+```python
+# src/stardust/plot/_adapt.py
+def _d(a, axis):
+    """Differences along one of the last two axes: central, one-sided at the ends and beside a
+    point without a value."""
+    if axis == -1:
+        f = a[..., 1:] - a[..., :-1]
+        fwd, bwd = sd.concat([f, f[..., -1:]], axis=a.ndim - 1), sd.concat([f[..., :1], f], axis=a.ndim - 1)
+    else:
+        f = a[..., 1:, :] - a[..., :-1, :]
+        fwd, bwd = sd.concat([f, f[..., -1:, :]], axis=a.ndim - 2), sd.concat([f[..., :1, :], f], axis=a.ndim - 2)
+    c = 0.5 * (fwd + bwd)
+    return sd.where(sd.isfinite(c), c, sd.where(sd.isfinite(fwd), fwd, bwd))
+
+
+def normals(x, y, z):
+    """Vertex normals (not unit) of grids whose last two axes run along the surface."""
+    du = [_d(c, -1) for c in (x, y, z)]
+    dv = [_d(c, -2) for c in (x, y, z)]
+    return du[1] * dv[2] - du[2] * dv[1], du[2] * dv[0] - du[0] * dv[2], du[0] * dv[1] - du[1] * dv[0]
+```
+
+안쪽 점은 중심 차분 $\tfrac12(P_{i+1} - P_{i-1})$, 끝 점은 한쪽 차분이에요. 이웃에 값이 없으면 중심 차분이 NaN이 되는데, 그때는 값이 있는 쪽의 한쪽 차분을 써요. 정의역의 가장자리에서도 법선이 살아 있어서 음영이 끊기지 않아요. 마지막 두 축만 보므로 `(m, 5, 5)` 꼴로 쌓인 작은 격자 여럿에도 한 번에 쓸 수 있어요.
+
+### 세 가지 모자람
+
+```python
+# src/stardust/plot/_adapt.py
+def asks(P, scale, zcut):
+    """The cells (bool, one per cell of the grids P = (X, Y, Z)) that need more samples. `scale`
+    brings the three coordinates to the box's units; `zcut` is the height range the picture
+    keeps (low, high) or None."""
+    x, y, z = (c * s for c, s in zip(P, scale))
+    fin = sd.isfinite(x) & sd.isfinite(y) & sd.isfinite(z)
+    f = _corners(fin)
+    every, some = f[0] & f[1] & f[2] & f[3], f[0] | f[1] | f[2] | f[3]
+    nx, ny, nz = normals(x, y, z)
+    ln = sd.sqrt(nx * nx + ny * ny + nz * nz)
+    n = [_corners(c / ln) for c in (nx, ny, nz)]
+
+    def dot(i, j):
+        return n[0][i] * n[0][j] + n[1][i] * n[1][j] + n[2][i] * n[2][j]
+
+    # the sign of a normal is the grid's, the same at the four corners: no absolute value
+    bend = (dot(0, 3) < BEND) | (dot(1, 2) < BEND) | (dot(0, 1) < BEND) | (dot(0, 2) < BEND)
+    out = some & ~every | every & bend
+    if zcut is not None:
+        zc = _corners(P[2])
+        low = sd.minimum(sd.minimum(zc[0], zc[1]), sd.minimum(zc[2], zc[3]))
+        high = sd.maximum(sd.maximum(zc[0], zc[1]), sd.maximum(zc[2], zc[3]))
+        cut = (low < zcut[0]) & (high > zcut[0]) | (low < zcut[1]) & (high > zcut[1])
+        out = (out | every & cut) & ~(every & ((low > zcut[1]) | (high < zcut[0])))  # nothing to see outside
+    return out
+```
+
+칸의 네 꼭짓점을 `_corners`가 왼쪽 위(0), 오른쪽 위(1), 왼쪽 아래(2), 오른쪽 아래(3)로 꺼내요. 한 칸을 다시 재는 까닭은 셋이에요.
+
+- **꺾임**: 두 대각선(0–3, 1–2)과 두 변(0–1, 0–2)의 단위 법선의 내적이 $\cos 10°$보다 작으면 꺾인 칸이에요. 네 꼭짓점이 모두 값이 있어야 이 판정을 해요. 법선의 부호는 격자 방향에서 오므로 한 칸 안에서 같아요. 그래서 내적의 절댓값을 쓰지 않고, 곡면이 접혀 법선이 뒤집힌 칸도 꺾임으로 잡혀요.
+- **정의역의 가장자리**: 꼭짓점 가운데 일부만 값이 있는 칸(`some & ~every`)이에요.
+- **극점의 옆구리**: 자를 범위가 있을 때, 네 꼭짓점의 높이가 자르는 높이 하나를 사이에 두는 칸이에요. 잘린 테두리가 첫 격자의 계단 모양이 되지 않게 하는 칸이에요.
+
+거꾸로 네 꼭짓점이 모두 자를 범위의 위(또는 모두 아래)에 있는 칸은 그림에 아무것도 남지 않으므로 꺾여 있어도 다시 재지 않아요. 극점 바로 둘레의 가파른 칸들이 여기에 들어서, 극점이 있는 곡면에서도 다시 재는 칸이 많지 않아요.
+
+## 4 × 4로 다시 재기
+
+```python
+# src/stardust/plot/_adapt.py
+def refine(fn, U, V, P, scale, zcut, levels=2):
+    """Samples again where the first grid asks for it. fn(U, V) -> (X, Y, Z) takes and returns 2-D
+    arrays. Returns None when nothing asks, ROUGH when more than MAX_FIRST of the cells do (the
+    caller samples the whole grid finer instead), else (keep, parts, asked):
+    `keep` the cells of the first grid that stay, `parts` a list of ((X, Y, Z), keep) of grids
+    (m, K + 1, K + 1) with the cells of each that are drawn (None: all), and `asked` the cells
+    of the first grid that were sampled again."""
+    if levels == 0:
+        return None
+    ask = asks(P, scale, zcut)
+    count = int(sd.sum(ask))
+    ny, nx = ask.shape
+    if count == 0:
+        return None
+    if count > MAX_FIRST * ny * nx:
+        return ROUGH
+    i1, j1 = sd.nonzero(ask)
+    U1, V1 = _children(U, V, ask)
+    P1 = _call(fn, U1, V1)
+    pad = _padded(ask)
+    P1 = _straighten(P1, ~pad[i1, j1 + 1], ~pad[i1 + 2, j1 + 1], ~pad[i1 + 1, j1], ~pad[i1 + 1, j1 + 2])
+    bounds = (float(sd.min(U)), float(sd.max(U)), float(sd.min(V)), float(sd.max(V)))
+    ask2 = asks(P1, scale, zcut)
+    count2 = int(sd.sum(ask2))
+    if levels > 1 and 0 < count2 <= MAX_SECOND:
+        p, a, b = sd.nonzero(ask2)
+        U2, V2 = _children(U1, V1, ask2)
+        P2 = _call(fn, U2, V2)
+        for c2, c1 in zip(P2, P1):  # the corners are the parent's (an edge of it may have been moved)
+            c2[:, 0, 0], c2[:, 0, K] = c1[p, a, b], c1[p, a, b + 1]
+            c2[:, K, 0], c2[:, K, K] = c1[p, a + 1, b], c1[p, a + 1, b + 1]
+        fine = sd.full((ny * K, nx * K), False)
+        gi, gj = i1[p] * K + a, j1[p] * K + b
+        fine[gi, gj] = True
+        pad = _padded(fine)
+        P2 = _straighten(P2, ~pad[gi, gj + 1], ~pad[gi + 2, gj + 1], ~pad[gi + 1, gj], ~pad[gi + 1, gj + 2])
+        return ~ask, [(P1, ~ask2), (_shore(fn, U2, V2, P2, bounds), None)], ask
+    return ~ask, [(_shore(fn, U1, V1, P1, bounds), None)], ask
+```
+
+고른 칸마다 `_children`이 매개변수 $(u, v)$의 $5 \times 5$ 격자(4 × 4칸)를 만들고, 그것을 모두 `(m, 5, 5)` 배열 하나에 쌓아요. `_call`은 그 배열을 `(5m, 5)` 꼴의 2차원 배열로 펴서 `fn`을 한 번 불러요. 사용자의 `f`는 언제나 2차원 배열을 받아요.
+
+첫 단계의 작은 칸들에 `asks`를 다시 써서 둘째 단계를 골라요. 둘째 단계의 꼭짓점은 부모의 값을 그대로 물려받아요. 부모의 변이 틈 막기로 옮겨졌을 수 있어서, 자식이 `f`에서 다시 얻은 값을 쓰면 두 단계가 어긋나요. 둘째 단계는 2만 4천 칸까지만 해요.
+
+돌려주는 `parts`는 단계마다 `((X, Y, Z), keep)`이에요. 첫 격자에서는 다시 잰 칸(`~ask`)을 빼고 그리고, 첫 단계에서는 둘째 단계가 대신하는 칸(`~ask2`)을 빼고 그려요. 둘째 단계는 모두 그려요.
+
+```python
+>>> keep, parts, (line, counts) = fig._cell.layers[0].surfaces[0][6]
+>>> int(sd.sum(~keep)), [tuple(P[0].shape) for P, _ in parts]
+(456, [(456, 5, 5), (2252, 5, 5)])
+```
+
+### 어디나 거친 곡면
+
+칸의 40%가 넘게 모자라면 고른 칸만 다시 재는 이득이 없어요. 첫 격자의 14,400칸 가운데 40%를 칸마다 25점으로 재면 14만 4천 점인데, 격자 전체를 3배로 촘촘히 한 361 × 361도 13만 점이에요. 그 위로는 전체를 고르게 재는 쪽이 점도 적고 틈도 없어요. 그때 `refine`은 `ROUGH`를 돌려주고, `surface`는 격자 전체를 3배로 한 번 다시 재요(361 × 361점).
+
+```python
+>>> rough = sd.plot.surface(lambda x, y: sd.sin(30 * x) * sd.sin(30 * y), -1, 1, -1, 1)
+>>> X, *_, fine, _ = rough._cell.layers[0].surfaces[0]
+>>> tuple(X.shape), fine
+((361, 361), None)
+```
+
+## 틈 막기
+
+촘촘한 칸이 성긴 칸 옆에 있으면 둘이 맞닿은 변에서 곡면이 갈라져요. 성긴 칸은 그 변을 두 꼭짓점 사이의 곧은 선분으로 그리는데, 촘촘한 칸은 같은 변 위에 점이 셋 더 있고 그 점들은 $f$의 실제 값이라서 선분 위에 있지 않아요. 적응형 삼각분할에서 흔히 T자 이음(T-junction)이라 부르는 틈이에요. 화면에는 배경이 비치는 가는 금으로 보여요.
+
+막는 길은 둘이에요. 성긴 칸을 촘촘한 쪽에 맞춰 더 쪼개거나, 촘촘한 칸의 변을 성긴 칸의 곧은 변 위로 옮기는 것이에요. sd.plot은 뒤쪽을 써요. 옮기는 점은 변 위의 점뿐이고, 성긴 칸은 그대로 그릴 수 있어요.
+
+```python
+# src/stardust/plot/_adapt.py
+def _straighten(P, up, down, left, right):
+    """Moves the points of the edges named by the bool arrays (one per patch) onto the straight
+    line between the edge's corners: the edge of a coarser neighbour."""
+    t = sd.linspace(0.0, 1.0, K + 1)[None, :]
+    out = []
+    for c in P:
+        c = c.copy()
+        for side, row in ((up, (slice(None), 0, slice(None))), (down, (slice(None), K, slice(None)))):
+            line = c[:, row[1], 0:1] * (1.0 - t) + c[:, row[1], K : K + 1] * t
+            c[row] = sd.where(side[:, None], line, c[row])
+        for side, col in ((left, 0), (right, K)):
+            line = c[:, 0:1, col] * (1.0 - t) + c[:, K : K + 1, col] * t
+            c[:, :, col] = sd.where(side[:, None], line, c[:, :, col])
+        out.append(c)
+    return out
+```
+
+어느 변을 펼지는 이웃 칸이 다시 재였는지로 정해요. `_padded`는 고른 칸의 표에 `True`로 된 테두리를 한 줄 둘러요. 격자 밖에는 성긴 이웃이 없으니 그쪽 변은 옮기지 않아요. `~pad[i1, j1 + 1]`은 "위쪽 이웃을 다시 재지 않았다"는 뜻이고, 그 변이 곧게 펴져요. 둘째 단계도 같은 일을 첫 단계의 해상도(가로세로 4배)의 표로 해요.
+
+아래 그림은 반구를 첫 격자 33 × 33점으로 그렸을 때 다시 잰 칸의 일부예요. 파란 정사각형 하나가 첫 격자의 한 칸이고, 그 안의 4 × 4가 첫 단계, 주황의 더 잔 격자가 둘째 단계예요. 회색 원호가 정의역의 가장자리 $x^2 + y^2 = 1$이에요.
+
+```python
+>>> import math
+>>> fig33 = sd.plot.surface(dome, -1.2, 1.2, -1.2, 1.2, samples=33)
+>>> keep, parts, _ = fig33._cell.layers[0].surfaces[0][6]
+>>> def patches(X, Y):
+...     """The rows and columns of the patches from x, y = 0.525 on, NaN between."""
+...     xs, ys = [], []
+...     for i in range(X.shape[0]):
+...         if min(float(X[i, 0, 0]), float(Y[i, 0, 0])) >= 0.52:
+...             for k in range(5):
+...                 for a, b in ((X[i, k, :], Y[i, k, :]), (X[i, :, k], Y[i, :, k])):
+...                     xs += a.tolist() + [math.nan]
+...                     ys += b.tolist() + [math.nan]
+...     return xs, ys
+>>> g = sd.plot.parametric(sd.cos, sd.sin, 0, math.pi / 2, color="#999999", width=0.6)
+>>> for (P, _), c, name in zip(parts, ("C0", "C1"), ("첫 단계", "둘째 단계")):
+...     g = g.line(*patches(*P[:2]), color=c, width=0.4, label=name)
+>>> g = g.xlim(0.525, 0.85).ylim(0.525, 0.85)
+```
+
+<PlotImage name="in-surface-patches" of="g" alt="반구의 정의역 가장자리인 원호를 따라 파란 4×4 격자 칸들이 계단처럼 늘어서고, 원호에 닿는 칸 안에 주황의 더 잔 격자가 있는 2차원 그림" caption="원호를 지나는 칸과 그 안쪽의 가파른 칸이 다시 재여요. 주황 격자의 바깥 점들이 원호 위로 옮겨져 있어요." />
+
+## 정의역의 가장자리
+
+$\sqrt{1 - x^2 - y^2}$는 원판 밖에서 NaN이에요. 격자의 칸이 원의 경계를 그대로 따라갈 수는 없으므로, 그냥 두면 곡면의 테두리가 칸의 계단 모양으로 들쭉날쭉해요. 마지막 단계의 격자에서 값이 없는 점을 가장자리 위로 옮겨 이 계단을 없애요.
+
+```python
+# src/stardust/plot/_adapt.py
+def _shore(fn, U, V, P, bounds):
+    """Moves the points where the function has no value onto the edge of its domain: each such
+    point with a neighbour (one step along u or v) that has a value goes to the last point with
+    a value on the way from that neighbour, found by SHORE bisections. The neighbours are asked
+    of the function itself, in a fixed order, so two patches that share a point agree on it."""
+    bad = ~_finite(P)
+    n = int(sd.sum(bad))
+    if n == 0:
+        return P
+    u, v = sd.reshape(U[bad], (n, 1)), sd.reshape(V[bad], (n, 1))
+    hu = sd.reshape((U[:, :, 1:2] - U[:, :, 0:1] + 0.0 * U)[bad], (n, 1))
+    hv = sd.reshape((V[:, 1:2, :] - V[:, 0:1, :] + 0.0 * V)[bad], (n, 1))
+    au, av = u.copy(), v.copy()
+    found = sd.full((n, 1), False)
+    for du, dv in ((-1.0, 0.0), (1.0, 0.0), (0.0, -1.0), (0.0, 1.0)):
+        cu = sd.clip(u + du * hu, min=bounds[0], max=bounds[1])
+        cv = sd.clip(v + dv * hv, min=bounds[2], max=bounds[3])
+        take = _finite(fn(cu, cv)) & ~found
+        au, av, found = sd.where(take, cu, au), sd.where(take, cv, av), found | take
+    if not bool(sd.any(found)):
+        return P
+    bu, bv = u, v
+    for _ in range(SHORE):
+        mu, mv = 0.5 * (au + bu), 0.5 * (av + bv)
+        ok = _finite(fn(mu, mv))
+        au, av = sd.where(ok, mu, au), sd.where(ok, mv, av)
+        bu, bv = sd.where(ok, bu, mu), sd.where(ok, bv, mv)
+    Q = fn(au, av)
+    out = []
+    for c, q in zip(P, Q):
+        c = c.copy()
+        c[bad] = sd.reshape(sd.where(found, q, math.nan), (n,))
+        out.append(c)
+    return out
+```
+
+값이 없는 점마다 $u$와 $v$ 방향으로 한 칸 떨어진 이웃 넷을 정해진 차례(왼쪽, 오른쪽, 아래, 위)로 보고, 처음으로 값이 있는 이웃을 찾아요. 그 이웃 $a$(값 있음)와 원래 점 $b$(값 없음) 사이를 이분법으로 12번 좁혀서, 값이 있는 쪽의 끝 $a$로 점을 옮겨요. 이분이 한 번에 구간을 반으로 줄이므로 남는 거리는 한 칸의 $2^{-12}$이에요. 둘째 단계까지 갔다면 한 칸이 첫 격자 간격의 1/16이니, 첫 격자 간격의 $2^{-16}$ 안쪽이에요.
+
+차례를 고정한 까닭은 이웃한 두 작은 격자가 같은 점을 나눠 갖기 때문이에요. 두 격자가 저마다 다른 이웃을 골라 그 점을 다른 곳으로 옮기면 다시 틈이 생겨요. 이웃의 값은 이미 잰 격자에서 읽지 않고 `fn`을 다시 불러서 얻으니, 같은 점은 어느 격자에서나 같은 결과가 나와요. 점 하나하나가 아니라 값이 없는 점 모두를 배열 하나로 모아 부르므로, 가장자리 찾기는 이웃 넷, 이분 12번, 마지막 값 한 번의 17번 호출이에요. 한눈에 보기의 가운데 17번이 이것이에요.
+
+```python
+>>> (X, Y, Z), _ = fig._cell.layers[0].surfaces[0][6][1][-1]
+>>> r = sd.sqrt(X * X + Y * Y)
+>>> ok = sd.isfinite(Z)
+>>> float(sd.max(r[ok]))
+1.0
+```
+
+옮긴 점은 원 위에 있어요. 원래 값이 없던 점에서 이웃 넷이 모두 값이 없으면(원판에서 멀리 떨어진 점) 그대로 NaN으로 남고, 그 점이 든 삼각형은 그리지 않아요. 아래는 같은 반구를 `refine=0`(첫 격자만)과 기본값으로 견준 그림이에요.
+
+```python
+>>> fig = sd.plot.grid([sd.plot.surface(dome, -1.2, 1.2, -1.2, 1.2, refine=0),
+...                     sd.plot.surface(dome, -1.2, 1.2, -1.2, 1.2)], ncols=2, width=130)
+```
+
+<PlotImage name="in-surface-rim" format="png" alt="왼쪽은 아랫단이 톱니처럼 들쭉날쭉한 반구, 오른쪽은 아랫단이 바닥에 매끈하게 닿는 같은 반구" caption="왼쪽은 첫 격자만, 오른쪽은 다시 재고 가장자리로 옮긴 곡면이에요. 오른쪽의 아랫단은 높이 0까지 내려와요." />
+
+## 극점의 자르기
+
+$1/(x^2 + y^2)$는 원점에서 무한히 커요. 높이의 축은 분위수 규칙으로 정한 범위이고, 그 범위를 넘는 곡면은 잘라요.
+
+```python
+>>> pole = sd.plot.surface(lambda x, y: 1.0 / (x * x + y * y), -1, 1, -1, 1)
+>>> lo, hi = pole._cell.layers[0].limits()
+>>> lo[2], round(hi[2], 2)
+(0.5, 14.67)
+```
+
+자르기는 세 군데에서 이뤄져요. 표본에서는 자르는 높이가 지나는 칸을 더 촘촘히 재서 잘린 테두리가 매끄러워요. 그림에서는 [깊이 버퍼](/internals/plot/zbuffer/#높이-범위에서-자르기)가 삼각형을 자르는 높이의 평면에서 잘라요. 위와 아래로 함께 빠져나가는 삼각형은 극점을 가로지르는 삼각형이라 그리지 않아요. 그러지 않으면 극점의 한쪽 $+\infty$에서 다른 쪽 $-\infty$로 가는 벽이 서요. 자르는 범위는 `zlim=(lo, hi)`로 직접 줄 수도 있고, 그때는 분위수 규칙을 쓰지 않아요.
+
+## 그릴 때의 판과 격자선
+
+그리는 때 `Space._buffers`가 단계마다 판 하나씩 삼각형을 만들어요. 판은 첫 격자, 첫 단계, 둘째 단계예요.
+
+```python
+            # src/stardust/plot/_surface.py
+            # the first grid, and the grids of the cells that were sampled again (_adapt)
+            sheets = [((X, Y, Z), None)] if fine is None else [((X, Y, Z), fine[0]), *fine[1]]
+            for (Xs, Ys, Zs), keep in sheets:
+                x, y, z = box(0, Xs), box(1, Ys), box(2, Zs)
+                nrm = _adapt.normals(x, y, z)
+                (r, g, b), a = colours(Zs)
+                cols = [sd.reshape(c, (-1,)) for c in (x, y, z, *nrm, r, g, b, sd.full(tuple(Zs.shape), a))]
+                vert.append(bytes(memoryview(sd.reshape(sd.stack(cols, axis=1), (-1,)))))
+                count = cols[0].shape[0]
+                idx = sd.reshape(sd.arange(0, count), tuple(Zs.shape)) + base
+                p00, p01, p10, p11 = (
+                    sd.reshape(q, (-1,))
+                    for q in (idx[..., :-1, :-1], idx[..., :-1, 1:], idx[..., 1:, :-1], idx[..., 1:, 1:])
+                )
+                cells = sd.stack([p00, p01, p11, p00, p11, p10], axis=1)
+                if keep is not None:
+                    cells = cells[sd.reshape(keep, (-1,))]
+                tri.append(bytes(memoryview(sd.reshape(cells, (-1,)))))
+                base += count
+```
+
+꼭짓점 하나는 위치 셋, 법선 셋, 색 셋, 불투명도 하나의 열 수예요. 위치는 상자의 좌표로 옮긴 값이에요. 칸마다 삼각형 둘을 같은 대각선(왼쪽 위–오른쪽 아래)으로 나눠요. 색은 곡면이 하나면 높이에 따른 색띠 `cool`이고, 여럿이면 저마다 팔레트의 색을 18% 옅게 한 한 색이에요. `cmap`이나 `color`를 주면 그것을 써요.
+
+### 격자선
+
+격자선은 삼각형의 변이 아니라 첫 격자의 줄과 열이에요. 기본 24칸이면 121점 격자의 다섯 줄에 하나씩, 한 방향에 25개예요. 색은 그 자리 곡면의 색을 0.36배로 어둡게 하고, 불투명도는 곡면의 불투명도 $\alpha$에 따라 $0.62\,(0.4 + 0.6\alpha)$예요.
+
+곡면을 다시 잰 곳에서 격자선을 첫 격자의 점만으로 그리면, 선이 그 칸의 삼각형을 가로지르는 현이 되어 곡면 아래로 파고들거나 떠요. 그래서 다시 잰 칸 옆을 지나는 선은 `mesh_lines`가 칸마다 16점으로 `f`를 따로 불러 그려요.
+
+```python
+        # src/stardust/plot/_adapt.py
+        beside = pad[idx] | pad[idx + 1]  # (lines, cells): a cell above or below was sampled again
+        t = sd.linspace(0.0, 1.0, DENSE + 1)[:-1]
+        u0, u1 = Uc[idx][:, :-1], Uc[idx][:, 1:]
+        v0, v1 = Vc[idx][:, :-1], Vc[idx][:, 1:]
+        uu = sd.reshape(u0[:, :, None] * (1.0 - t) + u1[:, :, None] * t, (len(which), n_cells * DENSE))
+        vv = sd.reshape(v0[:, :, None] * (1.0 - t) + v1[:, :, None] * t, (len(which), n_cells * DENSE))
+        uu = sd.concat([uu, Uc[idx][:, -1:]], axis=1)
+        vv = sd.concat([vv, Vc[idx][:, -1:]], axis=1)
+        first = sd.full((DENSE,), False)
+        first[0] = True
+        take = sd.reshape(beside[:, :, None] | first[None, None, :], (len(which), n_cells * DENSE))
+        take = sd.concat([take, sd.full((len(which), 1), True)], axis=1)
+        P = fn(uu, vv)
+        xs.append([c[take] for c in P])
+```
+
+모든 선의 모든 칸에 16점을 깔아 한 번에 부르고, 다시 잰 칸 옆이 아닌 칸은 첫 점만 남겨요. 그 칸에서는 첫 격자의 점과 같은 선이에요. 가로줄 한 번, 세로줄 한 번이라 호출은 두 번이에요.
+
+```python
+>>> len(counts), min(counts), max(counts)
+(50, 121, 421)
+```
+
+선 50개 가운데 다시 잰 칸 옆을 지나지 않는 선은 121점 그대로이고, 그런 칸 옆을 지날 때마다 칸 하나에 15점이 더해져 많게는 421점이에요.
+
+### 바닥 등고선
+
+`contours=True`면 첫 격자의 등고선을 상자의 바닥에 곡면과 같은 색으로 그려요. 수준은 높이 범위에서 눈금 규칙으로 약 14개를 골라요. 등고선 자체는 [두 변수 함수의 marching squares](/internals/plot/fields/)를 쓰고, 할선법 다듬기는 하지 않아요. 바닥의 선도 깊이 검사를 받으므로 곡면에 가린 부분은 보이지 않아요.
+
+## 공간 곡선
+
+`curve3d`는 [평면 곡선의 표본기](/internals/plot/sampling/)를 그대로 써요. 평면 곡선의 표본기는 화면에서 꺾이는 각을 보고 구간을 반으로 나누는데, 공간 곡선에는 화면이 둘째 문제예요. 그래서 곡선을 한 화면에 투영한 2차원 곡선을 표본기에 넘겨요.
+
+```python
+    # src/stardust/plot/_surface.py
+    n, depth = _sample.knobs(who, samples, refine, _sample.N0 + 1, _sample.DEPTH, most=200000)
+    t0 = _sample.first_grid(a, b, n - 1)
+    first = at(t0)
+    rs = [_sample.robust_range(v) for v in first]
+    mid = [0.5 * (r[0] + r[1]) for r in rs]
+    span = [max(r[1] - r[0], 1e-300) for r in rs]
+    if sp.equal:
+        span = [max(span)] * 3
+    right, up, _ = sp.rotation(usual=True)
+
+    def screen(P):
+        q = [(P[k] - mid[k]) / span[k] for k in range(3)]
+        return (
+            right[0] * q[0] + right[1] * q[1] + right[2] * q[2],
+            up[0] * q[0] + up[1] * q[1] + up[2] * q[2],
+        )
+
+    view = (-0.9, 0.9)
+    found = _sample.refine(lambda t: screen(at(t)), t0, *screen(first), view, view, depth)
+    x, y, z = _sample.cut(found, at(found.t))
+    sp.curves.append((x, y, z, c, width, _basic._label(who, label)))
+```
+
+첫 격자 257점(황금비로 흩은 격자)의 값에서 좌표마다 분위수 규칙의 범위를 잡고, 그 범위를 상자처럼 $[-1, 1]$ 부근으로 옮긴 뒤 늘 쓰던 시점(방위각 −60°, 고도 30°)의 화면에 투영해요. 실제 시점은 장면이 다 모인 뒤 [카메라](/internals/plot/camera/)가 고르므로 곡선을 잴 때는 아직 알 수 없어요. 어느 방향에서 보든 3차원에서 꺾이는 곳은 대개 화면에서도 꺾이니, 한 화면이면 충분해요.
+
+튜플의 마지막은 범례에 쓸 이름이에요. `label`을 준 곡선과 점은 `Space.entries`가 선과 점의 견본으로 범례에 내고, 3D 칸의 범례는 상자 오른쪽 밖에 서요([상자와 카메라](/internals/plot/camera/)).
+
+표본기가 찾은 극점과 뜀에서 `cut`이 선을 NaN으로 끊어요. 축의 범위도 분위수 규칙이라 극점 근처의 큰 값은 상자 밖으로 나가고, 그리는 때 `_clip`이 상자를 벗어나는 선분을 상자의 면에서 잘라 그 면 위의 점을 넣어요.
+
+```python
+>>> wild = sd.plot.curve3d(lambda t: t, lambda t: 0.0 * t, sd.tan, -3, 3)
+>>> sp = wild._cell.layers[0]
+>>> x, y, z = sp.curves[0][:3]
+>>> x.shape[0], int(sd.sum(~sd.isfinite(z)))
+(282, 2)
+>>> lo, hi = sp.limits()
+>>> round(lo[2], 2), round(hi[2], 2)
+(-15.26, 14.81)
+```
+
+$\tan t$는 $[-3, 3]$에서 $\pm\pi/2$의 두 극점을 가져요. 선은 두 곳에서 끊기고(NaN 둘), 높이의 축은 극점의 큰 값이 아니라 값의 대부분이 있는 범위예요.

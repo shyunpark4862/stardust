@@ -1,0 +1,198 @@
+---
+kind: function
+title: barnard_exact
+names: [barnard_exact]
+group: 분할표
+order: 3
+signatures:
+  - "sd.htest.barnard_exact(table, /, *, alternative='two-sided', pooled=True, n=32)"
+summary: 2 × 2 표의 두 열을 두 이항 표본으로 보고 두 성공률이 같은지 보는 Barnard의 무조건부 정확 검정이에요. 모르는 공통 성공률에 대해 가장 나쁜 경우의 p값을 써서, 열합을 고정하는 Fisher 검정보다 예민해요. p값은 그 가장 나쁜 경우의 참 상한이에요.
+params:
+  - name: table
+    type: ndarray, 정수의 중첩 시퀀스, numpy 배열, 또는 frame의 DataFrame
+    kind: positional-only
+    desc: 2 × 2 개수 표. 두 열이 두 표본이고, 첫 행이 성공, 둘째 행이 실패예요. 앞의 축이 있으면 표의 배치예요. 음이 아닌 정수 값이어야 해요.
+  - name: alternative
+    type: str
+    kind: keyword-only
+    desc: "대립가설. 'two-sided'(기본값, 두 성공률이 다르다), 'less'(첫 열의 성공률이 작다), 'greater'(첫 열의 성공률이 크다) 중 하나예요."
+  - name: pooled
+    type: bool
+    kind: keyword-only
+    desc: True(기본값)면 통계량의 분산을 두 표본을 합친 성공률로, False면 표본마다의 성공률로 구해요.
+  - name: n
+    type: int
+    kind: keyword-only
+    desc: 가장 나쁜 공통 성공률을 찾을 때 처음 나누는 격자의 크기(1 이상). 결과의 p값은 n과 상관없이 같아요(끝자리 몇 개만 달라질 수 있어요).
+returns:
+  type: BarnardExactResult
+  desc: "statistic(두 비율 차의 Wald 통계량)과 pvalue를 가진 결과 객체. 튜플로 풀리지 않아요. 배치면 배치 모양의 배열이에요."
+raises:
+  - type: TypeError
+    desc: table이 배열·수의 시퀀스·frame이 아닐 때, pooled가 True·False가 아닐 때, n이 int가 아닐 때, 없는 인자를 줬을 때.
+  - type: ValueError
+    desc: "표가 2 × 2가 아닐 때, 음수·정수가 아닌 값·NaN이 있을 때, n이 1보다 작을 때, alternative 이름이 틀렸을 때."
+seeAlso: [boschloo_exact, fisher_exact, chi2_contingency, test_proportions_2indep, basics, results]
+---
+## 무엇을 묻는 검정인가요
+
+약 A를 15명에게, 약 B를 15명에게 주었어요. A에서는 7명, B에서는 12명이 나았어요. 두 약의 치료율이 다를까요?
+
+| | 약 A | 약 B |
+|---|---:|---:|
+| 나음 | 7 | 12 |
+| 낫지 않음 | 8 | 3 |
+
+각 열은 하나의 **이항 표본**이에요. 열의 크기(15명, 15명)는 실험에서 정했지만, 나은 사람의 총수(19명)는 우연히 그렇게 됐어요.
+
+- **귀무가설**: 두 약의 치료율이 같아요($\pi_1 = \pi_2$).
+- **대립가설**: 다르다(기본값), 또는 `alternative`로 A가 낮다(`'less'`)나 높다(`'greater'`)예요.
+
+[`fisher_exact`](/api/htest/fisher_exact/)는 나은 사람의 총수(행합)까지 고정하고 그 안에서 확률을 세요. 행합이 실험에서 정해진 것이 아니면 이 조건이 너무 강해서 p값이 크게 나오는 편이에요(보수적이에요).
+
+**Barnard의 검정**은 행합을 고정하지 않아요. 두 열이 같은 성공률 $\pi$의 이항 표본이라면, 가능한 모든 표 $(x_1, x_2)$의 확률은
+
+$$
+P(x_1, x_2 \mid \pi) = \binom{n_1}{x_1}\binom{n_2}{x_2}\,\pi^{x_1+x_2}(1-\pi)^{n_1+n_2-x_1-x_2}
+$$
+
+예요. 관측과 같거나 더 극단인 표들의 확률을 더하면 $\pi$에 따라 달라지는 값이 나와요. $\pi$를 모르므로 가장 나쁜 경우, 곧 이 확률이 가장 큰 $\pi$의 값을 p값으로 써요.
+
+$$
+p = \sup_{0 \le \pi \le 1} \sum_{\text{극단인 표}} P(x_1, x_2 \mid \pi)
+$$
+
+"극단"은 두 비율의 차를 표준오차로 나눈 **Wald 통계량** $T$로 정해요. 양쪽이면 $|T| \ge |T_{\text{관측}}|$인 표예요.
+
+$$
+T = \frac{\hat p_1 - \hat p_2}{\sqrt{\hat p(1-\hat p)\left(\frac{1}{n_1} + \frac{1}{n_2}\right)}}, \qquad \hat p = \frac{x_1 + x_2}{n_1 + n_2}
+$$
+
+이런 때 써요.
+
+- 두 집단의 크기를 정해 두고 성공 여부를 센 실험(임상 시험, A/B 시험)에서 표본이 작을 때.
+- 근사 없는 p값이 필요하고, Fisher 검정보다 예민한 검정을 원할 때.
+
+표본이 크면 정규 근사의 두 비율 검정([`test_proportions_2indep`](/api/htest/test_proportions_2indep/))이 같은 질문에 답해요. Fisher의 p값을 통계량으로 쓰는 비슷한 무조건부 검정은 [`boschloo_exact`](/api/htest/boschloo_exact/)예요.
+
+<Reference />
+
+## 기본 사용
+
+열이 두 표본이에요. 행이 아니라 **열**이라는 것을 조심해요.
+
+```python
+>>> import stardust as sd
+>>> table = [[7, 12],
+...          [8, 3]]
+>>> r = sd.htest.barnard_exact(table)
+>>> r
+BarnardExactResult(statistic=-1.89434, pvalue=0.0682183)
+>>> sd.htest.fisher_exact(table).pvalue
+0.12813593203398302
+```
+
+p값 0.068로 유의수준 0.05에서는 기각하지 못하지만, 같은 표의 Fisher p값(0.128)보다 훨씬 작아요.
+
+통계량 −1.894는 약 A의 치료율(7/15)이 B(12/15)보다 낮은 방향이라는 뜻이에요. 결과는 튜플로 풀리지 않아요. 필드를 이름으로 읽어요.
+
+```python
+>>> r.statistic, r.pvalue
+(-1.8943380760602062, 0.0682183093231946)
+>>> print(r.summary())
+                        Barnard's exact test (pooled)
+==============================================================================
+Statistic:                      -1.894  Alternative:                 two-sided
+P-value:                        0.0682
+==============================================================================
+```
+
+## `alternative`: 한쪽 검정
+
+`'less'`는 첫 열(약 A)의 성공률이 작다, `'greater'`는 크다는 대립가설이에요. 극단인 표는 $T \le T_{\text{관측}}$나 $T \ge T_{\text{관측}}$이에요.
+
+```python
+>>> sd.htest.barnard_exact(table, alternative='less').pvalue
+0.0341091546615973
+>>> sd.htest.barnard_exact(table, alternative='greater').pvalue
+1.0
+```
+
+## `pooled`: 통계량의 분산
+
+`pooled=True`(기본값)면 분모에 두 표본을 합친 성공률 $\hat p$를 쓰고, `False`면 표본마다의 분산 $\hat p_1(1-\hat p_1)/n_1 + \hat p_2(1-\hat p_2)/n_2$를 써요. 통계량의 값이 달라지고, 극단인 표의 순서가 바뀌면 p값도 달라질 수 있어요. 이 표에서는 극단인 표들이 같아서 p값이 같아요.
+
+```python
+>>> u = sd.htest.barnard_exact(table, pooled=False)
+>>> u.statistic, u.pvalue
+(-2.0189321327181204, 0.0682183093231946)
+```
+
+## `n`과 p값의 정확성
+
+가장 나쁜 $\pi$를 찾는 일은 0과 1 사이의 함수의 최댓값을 찾는 일이에요. 이 함수는 봉우리가 여럿일 수 있어서, 점 몇 개에서 값을 보는 것만으로는 진짜 최댓값을 놓칠 수 있어요. 여기서는 구간을 나눠 가며 구간마다 함수가 넘을 수 없는 위 끝을 셈해서, 어떤 구간도 찾은 값보다 상대 $2^{-48}$ 넘게 클 수 없을 때 멈춰요. 그래서 p값은 참 최댓값이에요.
+
+`n`은 처음에 나누는 구간의 수일 뿐이라 결과를 바꾸지 않아요(끝자리 몇 개만 달라질 수 있어요).
+
+```python
+>>> [sd.htest.barnard_exact(table, n=k).pvalue for k in (1, 4, 32, 300)]
+[0.0682183093231946, 0.0682183093231946, 0.0682183093231946, 0.06821830932319459]
+```
+
+## 배치와 퇴화한 표
+
+앞의 축이 있으면 2 × 2 표의 배치예요.
+
+```python
+>>> B = sd.asarray([[[7, 12], [8, 3]],
+...                 [[2, 9], [8, 1]]])
+>>> sd.htest.barnard_exact(B).pvalue
+array([   0.0682183093231946, 0.0025768280029296875], dtype=float64)
+```
+
+- 0인 열(표본의 크기가 0)이 있으면 통계량이 NaN, p값이 1이에요.
+- 성공이나 실패가 하나도 없으면(0인 행) 모든 표의 통계량이 0이라 p값이 1이에요.
+- 표의 수 $(n_1 + 1)(n_2 + 1)$이 10⁷을 넘으면(두 표본이 3000명쯤씩) p값이 NaN이에요. 통계량은 그대로 내요. 그만큼 크면 정규 근사로 충분해요.
+
+```python
+>>> sd.htest.barnard_exact([[0, 12], [0, 3]])
+BarnardExactResult(statistic=nan, pvalue=1)
+>>> sd.htest.barnard_exact([[0, 0], [7, 3]])
+BarnardExactResult(statistic=0, pvalue=1)
+```
+
+## 에러
+
+```python
+>>> sd.htest.barnard_exact([[7, 12, 1], [8, 3, 2]])
+Traceback (most recent call last):
+    ...
+ValueError: barnard_exact(): 'table' must be a 2 x 2 table, not 2 x 3
+>>> sd.htest.barnard_exact(table, n=0)
+Traceback (most recent call last):
+    ...
+ValueError: barnard_exact(): 'n' must be >= 1
+>>> sd.htest.barnard_exact(table, n=2.5)
+Traceback (most recent call last):
+    ...
+TypeError: barnard_exact(): 'n' must be an int, not float
+```
+
+## 정확도
+
+극단인 표를 고르는 비교는 통계량의 제곱을 정확한 정수로 견줘서 해요. 그래서 $|T|$가 관측과 정확히 같은 거울 표(두 열을 바꾼 표 같은)를 반올림 때문에 빠뜨리지 않아요. 정확한 유리수 계산과 Arb(구간 산술)로 만든 참값에 견주면 13문제(거울 표의 동점, 0인 칸과 0인 열, 1e-10의 꼬리, 같은 크기의 두 표본, 한쪽 검정, n = 4 포함)에서 통계량은 상대오차 1e-16 안, p값은 5e-16 안이에요.
+
+## scipy를 아는 분께
+
+`scipy.stats.barnard_exact`와 같은 표의 방향(두 열이 두 표본), 같은 통계량, 같은 `pooled`예요. 다른 점이에요.
+
+- `n`은 처음 격자의 크기일 뿐이에요. scipy의 `n`은 최댓값을 찾는 `shgo`의 표본 수라 결과가 `n`에 따라 달라지고, 진짜 최댓값을 놓칠 수 있어요(상대 1.2e-7쯤 낮게).
+- 거울 표를 빠뜨리지 않아요. scipy는 반올림한 통계량을 견줘서 $|T| = |T_{\text{관측}}|$인 표를 빠뜨릴 때가 있어요. 이 페이지의 표에서 scipy의 p값은 상대 9.5e-4 낮아요.
+
+  ```python
+  >>> import scipy.stats
+  >>> scipy.stats.barnard_exact(table).pvalue
+  np.float64(0.06815343273153518)
+  ```
+
+- 표의 배치가 있어요. 결과는 scipy처럼 튜플로 풀리지 않아요.

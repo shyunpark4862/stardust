@@ -1,0 +1,201 @@
+---
+kind: function
+title: fixed_quad
+names: [fixed_quad]
+group: 고정 규칙
+order: 1
+signatures:
+  - "sd.integrate.fixed_quad(func, a, b, /, *, n=5)"
+summary: n점 Gauss–Legendre 규칙으로 유한 구간의 적분을 한 번에 계산해요. 함수를 n개의 점에서 한 번만 부르고, 2n − 1차까지의 다항식은 정확해요. 오차 추정은 없어요.
+params:
+  - name: func
+    type: 호출 가능한 객체
+    kind: positional-only
+    desc: "피적분 함수 func(x). x는 n개의 점이 든 float64 sd.ndarray (n,)이고, 같은 모양 (n,)의 실수 값이나 (…, n)의 실수 배열(sd.ndarray, 시퀀스, numpy 배열)을 돌려줘요. 한 번만 불러요."
+  - name: a
+    type: float
+    kind: positional-only
+    desc: "적분의 아래 끝. 유한한 실수예요."
+  - name: b
+    type: float
+    kind: positional-only
+    desc: "적분의 위 끝. 유한한 실수예요. a > b면 부호가 바뀐 값이에요."
+  - name: "n"
+    type: int
+    kind: keyword-only
+    desc: "점의 수. 1 이상 10⁴ 이하예요. 기본값 5."
+returns:
+  type: float 또는 ndarray
+  desc: "적분값. func가 (n,)을 돌려주면 Python float, (…, n)을 돌려주면 (…) 모양의 배열이에요."
+raises:
+  - type: TypeError
+    desc: func가 호출 가능하지 않을 때, a·b가 실수가 아닐 때, n이 int가 아닐 때, func가 배열이 아닌 값(문자열, None, bool)이나 복소수·bool·문자열 배열을 돌려줄 때. func 안에서 난 에러도 그대로 나와요.
+  - type: ValueError
+    desc: a·b가 inf나 NaN일 때, n이 1보다 작거나 10⁴보다 클 때, func가 돌려준 값의 마지막 축이 n이 아닐 때(수 하나 포함).
+seeAlso: [quad, newton_cotes, romb, tanhsinh, basics]
+---
+import Callout from '../../../components/Callout.astro';
+
+## 무엇을 하나요
+
+적분을 몇 개의 점에서 잰 함숫값의 가중합으로 어림하는 규칙을 구적 규칙이라고 해요.
+
+$$
+\int_a^b f(x)\,dx \approx \sum_{i=1}^{n} w_i\, f(x_i)
+$$
+
+같은 간격의 점을 쓰는 사다리꼴이나 Simpson과 달리, Gauss–Legendre 규칙은 점의 위치(마디)까지 골라요. $n$개의 마디와 $n$개의 가중치, 모두 $2n$개를 정할 수 있으니 $1, x, \ldots, x^{2n-1}$의 $2n$개 다항식을 모두 정확히 적분하게 맞출 수 있어요. 그 마디가 Legendre 다항식 $P_n$의 근이에요. 같은 점 수로 낼 수 있는 가장 높은 차수예요.
+
+`fixed_quad`는 이 규칙을 $[a, b]$로 옮겨 한 번 계산해요. 함수를 $n$개의 점에서 **한 번에** 부르고, 구간을 나누거나 점을 늘리지 않아요. 그래서 빠르고 결과가 예측 가능하지만, 얼마나 틀렸는지는 알려 주지 않아요.
+
+## 기본 사용
+
+`func`는 점들이 든 배열을 받아 같은 길이의 값을 돌려주는 함수예요. `sd.exp` 같은 원소별 함수를 그대로 넘기면 돼요.
+
+```python
+>>> import stardust as sd
+>>> import math
+>>> sd.integrate.fixed_quad(sd.exp, 0, 1)
+1.7182818284583914
+>>> math.e - 1
+1.718281828459045
+```
+
+기본 다섯 점으로 오차가 $7 \times 10^{-13}$이에요. 결과는 값 하나(Python float)예요.
+
+`func`가 받는 점을 들여다보면 구간의 가운데로 모이지 않고 양 끝 쪽에 더 촘촘한 것을 볼 수 있어요.
+
+```python
+>>> seen = []
+>>> def f(x):
+...     seen.append(x)
+...     return sd.exp(x)
+>>> sd.integrate.fixed_quad(f, -1, 1, n=5)
+2.3504023864628256
+>>> seen[0]
+array([ -0.906179845938664, -0.5384693101056831,                 0.0,
+         0.538469310105683,  0.9061798459386639], dtype=float64)
+```
+
+$[-1, 1]$의 마디는 대칭이지만, 점을 $[a, b]$로 옮기는 식 $(b - a)(x + 1)/2 + a$의 반올림 때문에 끝자리가 조금 어긋나요.
+
+### 함수는 배열을 받아요
+
+`func`는 점 하나가 아니라 배열 하나로 불려요. `math.exp`처럼 수 하나만 받는 함수는 에러가 나요. 상수 함수도 배열을 돌려줘야 해요.
+
+```python
+>>> sd.integrate.fixed_quad(math.exp, 0, 1)
+Traceback (most recent call last):
+    ...
+TypeError: an array cannot be converted to float
+>>> sd.integrate.fixed_quad(lambda x: 1.0, 0, 3)
+Traceback (most recent call last):
+    ...
+ValueError: fixed_quad(): 'func' must return shape (5,) or (..., 5) for its argument of shape (5,), not a scalar
+>>> sd.integrate.fixed_quad(lambda x: 0 * x + 1, 0, 3)
+3.0
+```
+
+상수 같은 값은 클로저나 `lambda`로 넘겨요(`args` 인자는 없어요).
+
+```python
+>>> k = 2.5
+>>> sd.integrate.fixed_quad(lambda x: sd.exp(-k * x), 0, 1)
+0.367165999437238
+```
+
+## 다항식은 2n − 1차까지 정확해요
+
+다섯 점이면 9차 다항식까지 반올림 오차 말고는 정확하고, 10차부터 틀려요.
+
+```python
+>>> sd.integrate.fixed_quad(lambda x: x**9, 0, 1) - 1 / 10
+-5.551115123125783e-17
+>>> sd.integrate.fixed_quad(lambda x: x**10, 0, 1) - 1 / 11
+-1.4315490506622286e-06
+```
+
+그래서 다항식으로 잘 근사되는 매끄러운 함수라면 점을 조금만 늘려도 오차가 아주 빨리 줄어요.
+
+```python
+>>> for n in (2, 3, 4, 5, 6):
+...     print(n, sd.integrate.fixed_quad(sd.exp, 0, 1, n=n) - (math.e - 1))
+2 -0.0003854504515410362
+3 -8.240865232433947e-07
+4 -9.329674810487631e-10
+5 -6.536993168992922e-13
+6 -4.440892098500626e-16
+```
+
+## 잘 맞지 않는 함수
+
+다항식으로 근사하기 어려운 함수는 점을 늘려도 느리게 줄어요. 끝점에서 도함수가 무한인 $\sqrt{x}$가 그래요.
+
+```python
+>>> for n in (5, 50, 500):
+...     print(n, sd.integrate.fixed_quad(sd.sqrt, 0, 1, n=n) - 2 / 3)
+5 0.0006301230279007752
+50 7.995915248804053e-07
+500 8.211809010560955e-10
+```
+
+좁은 봉우리도 마찬가지예요. $1/(1 + 25x^2)$의 $[-1, 1]$은 마흔 점이 되어서야 $10^{-7}$에 닿아요.
+
+```python
+>>> exact = 2 * math.atan(5) / 5
+>>> for n in (5, 10, 20, 40):
+...     print(n, sd.integrate.fixed_quad(lambda x: 1 / (1 + 25 * x**2), -1, 1, n=n) - exact)
+5 0.15758761361288853
+10 -0.018988421954116763
+20 -0.00036320867305383864
+40 -1.2858571918350492e-07
+```
+
+<Callout type="tip" title="언제 fixed_quad를 쓰나요">
+- 함수가 매끄럽고 구간이 유한하며, 같은 꼴의 적분을 아주 많이 계산해야 할 때(호출 한 번, 점 수가 고정이라 비용이 예측 가능해요).
+- 원하는 정확도에 필요한 점 수를 미리 알 때. 모르면 $n$과 $2n$의 값을 견줘 보는 것이 가장 간단한 오차 어림이에요.
+- 오차 추정이 필요하거나 특이점·봉우리·무한 구간이 있으면 [`quad`](/api/integrate/quad/)를 써요. 끝점 특이점에는 [`tanhsinh`](/api/integrate/tanhsinh/)도 좋아요.
+</Callout>
+
+## 배열 값
+
+`func`가 (…, n) 모양을 돌려주면 마지막 축을 따라 적분해 (…) 모양의 배열을 돌려줘요. 같은 점에서 여러 함수를 한꺼번에 적분할 때 써요.
+
+```python
+>>> sd.integrate.fixed_quad(lambda x: [x, x**2, x**3], 0, 1)
+array([                0.5, 0.33333333333333326, 0.24999999999999994], dtype=float64)
+>>> powers = sd.reshape(sd.arange(4.0), (4, 1))
+>>> sd.integrate.fixed_quad(lambda x: x**powers, 0, 1)
+array([                1.0,                 0.5, 0.33333333333333326,
+       0.24999999999999994], dtype=float64)
+```
+
+두 번째는 (4, 1)과 (5,)의 브로드캐스트로 (4, 5)를 만들어 $\int_0^1 x^k\,dx$를 $k = 0, 1, 2, 3$에 대해 한 번에 구했어요. 마지막 축의 길이가 $n$이 아니면 `ValueError`예요.
+
+## 끝과 점의 수
+
+- `a`, `b`는 유한한 실수여야 해요. Gauss–Legendre 규칙은 유한 구간의 규칙이라 inf는 `ValueError`예요. 무한 구간은 [`quad`](/api/integrate/quad/)나 [`tanhsinh`](/api/integrate/tanhsinh/)로 계산해요. NaN도 `ValueError`예요.
+- $a > b$면 부호가 바뀐 값이고, $a = b$면 0이에요(함수는 그래도 한 번 불러요).
+- `n`은 1 이상 $10^4$ 이하의 int예요. 상한은 호출이 정해진 시간 안에 끝나게 하려는 것이에요.
+
+```python
+>>> sd.integrate.fixed_quad(sd.exp, 0, math.inf)
+Traceback (most recent call last):
+    ...
+ValueError: fixed_quad(): 'b' must be finite (Gaussian quadrature needs a finite interval)
+>>> sd.integrate.fixed_quad(sd.exp, 1, 0)
+-1.7182818284583914
+```
+
+## 마디와 가중치의 정확도
+
+마디와 가중치는 참값을 올바로 반올림한 double이에요. $n \le 100$은 Arb(구간 산술)로 만든 참값의 표이고, 그보다 큰 $n$은 처음 쓸 때 정확한 산술로 계산해 기억해 둬요(최근에 쓴 몇 개의 $n$). 큰 $n$의 첫 호출은 $n^2$에 비례하는 시간이 들고, 같은 $n$의 두 번째 호출부터는 표에서 꺼내 써요.
+
+가중합 $\sum w_i f_i$는 표본 규칙과 같은 pairwise 합이고, 결과는 그 합의 정확한 값과 $(\lceil \log_2 n \rceil + 4)\,\varepsilon\,\bigl|\tfrac{b-a}{2}\bigr| \sum |w_i f_i|$ 안이에요.
+
+## scipy를 아는 분께
+
+- scipy의 `fixed_quad`는 `(val, None)` 튜플을 돌려주지만, 여기서는 값 하나(또는 배열)예요.
+- `args`는 없어요. 클로저나 `lambda`로 넘겨요.
+- 점을 옮기는 식 $(b - a)(x + 1)/2 + a$는 scipy의 것이에요. 기본 $n = 5$의 마디는 scipy의 `roots_legendre`와 같고 가중치는 끝자리가 달라요. $n \ge 20$부터는 마디도 끝자리가 달라서 함수를 부르는 점이 scipy와 달라요. 여기의 마디와 가중치는 올바로 반올림한 값이에요.
+- 끝의 NaN은 `ValueError`예요(scipy는 NaN을 돌려줘요). `n`은 $10^4$ 이하예요(scipy는 상한이 없어요).

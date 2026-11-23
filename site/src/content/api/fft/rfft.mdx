@@ -1,0 +1,341 @@
+---
+kind: function
+title: rfft와 irfft
+names: [rfft, irfft]
+group: 실수와 에르미트 변환
+order: 1
+signatures:
+  - "sd.fft.rfft(x, /, *, n=None, axis=-1, norm='backward')"
+  - "sd.fft.irfft(x, /, *, n=None, axis=-1, norm='backward')"
+summary: rfft는 실수 신호의 푸리에 변환에서 새 정보가 있는 앞쪽 절반(n//2 + 1칸)만 계산하고, irfft는 그 절반에서 실수 신호를 다시 만들어요. 소리, 측정값, 시계열처럼 값이 실수인 자료에는 fft보다 이 짝이 알맞아요.
+params:
+  - name: x
+    type: ndarray
+    kind: positional-only
+    desc: 변환할 배열. 1차원 이상이에요. rfft는 bool, int64, float64를 받고 complex128은 받지 않아요. irfft는 반쪽 스펙트럼을 받는데, bool, int64, float64는 허수부가 0인 복소수로 봐요. 2차원 이상이면 axis를 따라 놓인 줄마다 따로 변환해요.
+  - name: n
+    type: int 또는 None
+    kind: keyword-only
+    desc: 신호의 길이. 1 이상이어야 해요. rfft는 입력을 n개로 자르거나 끝에 0을 채운 뒤 변환해서 n//2 + 1칸을 내요. irfft는 길이 n의 실수 신호를 내고, 입력에서 n//2 + 1칸만 써요(모자라면 0을 채워요). None(기본값)이면 rfft는 입력의 길이, irfft는 2(m - 1)이에요(m은 입력의 그 축 길이).
+  - name: axis
+    type: int
+    kind: keyword-only
+    desc: 변환할 축. 음수는 뒤에서 세요. 기본값은 마지막 축(-1)이에요.
+  - name: norm
+    type: "'backward', 'ortho' 또는 'forward'"
+    kind: keyword-only
+    desc: 정규화. n을 신호의 길이라 하면 'backward'(기본값)는 rfft에 1, irfft에 1/n을 곱하고, 'ortho'는 양쪽에 1/√n을, 'forward'는 rfft에 1/n, irfft에 1을 곱해요.
+returns:
+  type: ndarray
+  desc: rfft는 complex128 배열이고 axis의 길이가 n//2 + 1이에요. irfft는 float64 배열이고 axis의 길이가 n이에요. 다른 축의 모양은 입력과 같아요. 언제나 새 배열이에요.
+raises:
+  - type: TypeError
+    desc: x가 sd.ndarray가 아닐 때, rfft에 complex128을 줬을 때, n이 int나 None이 아닐 때(bool, float 포함), axis가 int가 아닐 때, norm이 문자열이 아닐 때, 옵션을 위치로 줬거나 모르는 키워드를 줬을 때.
+  - type: ValueError
+    desc: 변환할 축의 길이가 0일 때(irfft에 n을 주지 않은 경우), irfft에 n을 주지 않았는데 그 축의 길이가 1일 때, n이 0 이하일 때, axis가 범위 밖일 때, norm이 세 값이 아닌 문자열일 때.
+  - type: OverflowError
+    desc: n이나 axis가 int64 범위 밖일 때.
+  - type: MemoryError
+    desc: n으로 요청한 결과가 기계의 메모리보다 클 때.
+seeAlso: [basics, fft, rfft2, rfftn, hfft, fftfreq, next_fast_len, dct]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import AccuracySummary from '../../../components/fig/AccuracySummary.astro';
+
+export const samples = [[0, 0.0], [1, 1.0], [2, 0.5], [3, -0.5], [4, -1.0], [5, 0.0], [6, 0.3], [7, 0.2]].flatMap(([x, y]) => [[x, y - 0.12], [x, y + 0.12], [x, NaN]]);
+export const fine = [[0.0, 0.0], [0.125, 0.0911], [0.25, 0.2113], [0.375, 0.3529], [0.5, 0.5056], [0.625, 0.6579], [0.75, 0.7979], [0.875, 0.9148], [1.0, 1.0], [1.125, 1.0479], [1.25, 1.0562], [1.375, 1.0261], [1.5, 0.9619], [1.625, 0.8697], [1.75, 0.7571], [1.875, 0.6316], [2.0, 0.5], [2.125, 0.3675], [2.25, 0.2374], [2.375, 0.1109], [2.5, -0.0124], [2.625, -0.1339], [2.75, -0.2551], [2.875, -0.3773], [3.0, -0.5], [3.125, -0.6214], [3.25, -0.7378], [3.375, -0.8437], [3.5, -0.9326], [3.625, -0.9978], [3.75, -1.0333], [3.875, -1.0347], [4.0, -1.0], [4.125, -0.9299], [4.25, -0.8281], [4.375, -0.7012], [4.5, -0.5574], [4.625, -0.4064], [4.75, -0.2577], [4.875, -0.12], [5.0, -0.0], [5.125, 0.0981], [5.25, 0.1729], [5.375, 0.2254], [5.5, 0.2591], [5.625, 0.2786], [5.75, 0.2891], [5.875, 0.2951], [6.0, 0.3], [6.125, 0.3055], [6.25, 0.3113], [6.375, 0.3152], [6.5, 0.3142], [6.625, 0.3046], [6.75, 0.2831], [6.875, 0.2482], [7.0, 0.2], [7.125, 0.1412], [7.25, 0.077], [7.375, 0.0143], [7.5, -0.0385], [7.625, -0.0728], [7.75, -0.081], [7.875, -0.0576], [8.0, 0.0]];
+
+## 한눈에 보기
+
+실수 신호를 [`fft`](/api/fft/fft/)로 변환하면 뒤쪽 절반이 앞쪽 절반의 켤레라서 새 정보가 없어요. `rfft`는 **앞쪽 절반만** 계산해 돌려주고, `irfft`는 그 절반에서 원래의 실수 신호를 다시 만들어요.
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+>>> sd.fft.fft(x)
+array([                 (21+0j),  (-3+5.196152422706631j),
+       (-3+1.7320508075688774j),                  (-3+0j),
+       (-3-1.7320508075688774j),  (-3-5.196152422706631j)], dtype=complex128)
+>>> X = sd.fft.rfft(x)
+>>> X
+array([                 (21+0j),  (-3+5.196152422706631j),
+       (-3+1.7320508075688774j),                  (-3+0j)], dtype=complex128)
+>>> sd.fft.irfft(X)
+array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], dtype=float64)
+```
+
+길이 6의 신호에서 `fft`는 6칸을 내지만 `rfft`는 앞의 4칸만 내요. 나머지 두 칸은 칸 2와 칸 1의 켤레라서 버려도 돼요. `irfft`의 결과는 처음부터 실수(float64)예요.
+
+<Reference />
+
+## 무엇을 계산하나요
+
+길이 $n$인 실수 줄 $x_0, \dots, x_{n-1}$에 대해 `rfft`는 [`fft`](/api/fft/fft/)와 같은 합을 앞쪽 $\lfloor n/2 \rfloor + 1$칸만 계산해요(`norm='backward'`일 때).
+
+$$
+X_k = \sum_{j=0}^{n-1} x_j \, e^{-2\pi i\, jk/n}, \qquad k = 0, 1, \dots, \lfloor n/2 \rfloor
+$$
+
+$x_j$가 실수이면 $X_{n-k} = \overline{X_k}$예요. 지수의 부호만 바뀐 합이라서요. 그래서 칸 $k$를 알면 칸 $n-k$도 알고, 앞쪽 절반이 스펙트럼 전부를 담아요. 입력 $n$개의 실수가 결과 $\lfloor n/2 \rfloor + 1$개의 복소수가 되는데, 칸 0과(짝수 $n$이면) 칸 $n/2$는 허수부가 언제나 0이라서 실수의 개수로 세면 정확히 $n$개예요.
+
+`irfft`는 반대로, 반쪽 스펙트럼 $X_0, \dots, X_{\lfloor n/2 \rfloor}$를 켤레로 펴서 길이 $n$의 전체 스펙트럼을 만든 뒤 역변환한 실수 줄을 내요.
+
+$$
+x_j = \frac{1}{n} \sum_{k=0}^{n-1} X_k \, e^{+2\pi i\, jk/n}, \qquad X_{n-k} = \overline{X_k}
+$$
+
+<Fig caption="길이 6인 실수 신호의 fft와 rfft. fft의 칸 4와 5는 칸 2와 1의 켤레라서 rfft는 앞의 네 칸만 내요. irfft는 이 네 칸을 켤레로 펴서 여섯 칸을 되살려요." column>
+  <ArrayFig name="fft(x)" data={['21', '-3+5.196j', '-3+1.732j', '-3', '-3-1.732j', '-3-5.196j']} tones={['b', 'a', 'a', 'b', 'm', 'm']} note="뒤쪽 두 칸은 앞쪽의 켤레" />
+  <ArrayFig name="rfft(x)" data={['21', '-3+5.196j', '-3+1.732j', '-3']} tones={['b', 'a', 'a', 'b']} note="n // 2 + 1 = 4칸" />
+</Fig>
+
+## 결과 읽기
+
+칸 번호 $k$는 줄 전체에서 $k$번 오르내리는 물결이에요. 칸마다의 주파수는 [`rfftfreq`](/api/fft/fftfreq/)가 알려 줘요. `rfft`에는 음의 주파수 칸이 없어요.
+
+```python
+>>> t = sd.arange(8) / 8
+>>> s = 3 + sd.cos(2 * sd.pi * 2 * t) + 0.5 * sd.sin(2 * sd.pi * 3 * t)
+>>> S = sd.fft.rfft(s)
+>>> sd.round(sd.real(S))
+array([24.0, -0.0,  4.0,  0.0,  0.0], dtype=float64)
+>>> sd.round(sd.imag(S))
+array([ 0.0, -0.0, -0.0, -2.0,  0.0], dtype=float64)
+>>> sd.fft.rfftfreq(8, d=1 / 8)
+array([0.0, 1.0, 2.0, 3.0, 4.0], dtype=float64)
+```
+
+결과의 실수부와 허수부를 `sd.round`로 정수에 맞춰 보여 줬어요. 반올림 크기의 찌꺼기를 지우려는 것이에요. 1초에 8번 잰 신호예요. 평균 3, 2번 오르내리는 크기 1의 코사인, 3번 오르내리는 크기 0.5의 사인을 더했어요. 칸 0은 평균에 $n = 8$을 곱한 24이고, 칸 2와 칸 3은 물결의 크기에 $n/2 = 4$를 곱한 값이에요. 코사인은 실수부에, 사인은 허수부에 음수로 나와요. 크기를 바로 읽으려면 절댓값에 $2/n$을 곱해요(칸 0과 짝수 $n$의 마지막 칸은 $1/n$).
+
+```python
+>>> amp = sd.abs(S) * 2 / 8
+>>> amp[0] = amp[0] / 2
+>>> sd.round(amp * 100) / 100
+array([3.0, 0.0, 1.0, 0.5, 0.0], dtype=float64)
+```
+
+칸 0과(짝수 $n$이면) 마지막 칸 $n/2$의 허수부는 반올림까지 정확히 +0이에요. 두 칸에는 켤레 짝이 없어서 실수여야 하기 때문이에요.
+
+```python
+>>> float(sd.imag(S)[0]), float(sd.imag(S)[4])
+(0.0, 0.0)
+```
+
+## 되돌리기: `irfft`
+
+`irfft`의 결과 길이 `n`은 기본으로 $2(m-1)$이에요($m$은 입력의 길이). 짝수 길이의 신호를 `rfft`한 결과에는 이 기본값이 맞아요. **홀수 길이의 신호는 `n`을 꼭 줘야 해요.** 길이 4와 5의 신호는 `rfft` 결과의 길이가 3으로 같아서, 결과만 보고는 어느 쪽인지 알 수 없기 때문이에요.
+
+```python
+>>> y = sd.asarray([1.0, 2.0, 3.0, 4.0, 5.0])
+>>> Y = sd.fft.rfft(y)
+>>> Y.shape
+(3,)
+>>> sd.fft.irfft(Y)
+array([             1.875, 2.6545225994110333,              4.375,
+        6.095477400588967], dtype=float64)
+>>> sd.fft.irfft(Y, n=5)
+array([1.0, 2.0, 3.0, 4.0, 5.0], dtype=float64)
+```
+
+`n`을 주지 않은 첫 호출은 길이 4의 신호를 만들어서 원래 값과 달라요. 신호의 길이를 따로 기억해 두었다가 `n`으로 넘기는 습관이 안전해요.
+
+`irfft`는 입력에서 $\lfloor n/2 \rfloor + 1$칸만 써요. 칸 0과(짝수 $n$이면) 칸 $n/2$의 허수부는 읽지 않고 버려요. 실수 신호의 스펙트럼이라면 그 자리가 0이어야 하므로, 0이 아닌 값이 있어도 실수 신호에 맞게 고쳐 읽는 셈이에요.
+
+```python
+>>> sd.fft.irfft(sd.asarray([4.0 + 9j, 1.0 + 1j, 2.0 + 9j]))
+array([2.0, 0.0, 1.0, 1.0], dtype=float64)
+>>> sd.fft.irfft(sd.asarray([4.0 + 0j, 1.0 + 1j, 2.0 + 0j]))
+array([2.0, 0.0, 1.0, 1.0], dtype=float64)
+```
+
+### 걸러내기
+
+`rfft`로 바꾸고, 칸을 고치고, `irfft`로 되돌리는 것이 가장 흔한 쓰임이에요. 아래는 느린 물결에 빠른 떨림이 얹힌 신호에서 주파수 4 이상을 지우는 예예요.
+
+```python
+>>> t = sd.arange(16) / 16
+>>> slow = sd.sin(2 * sd.pi * t)
+>>> noisy = slow + 0.3 * sd.cos(2 * sd.pi * 6 * t)
+>>> F = sd.fft.rfft(noisy)
+>>> F[4:] = 0
+>>> clean = sd.fft.irfft(F, n=16)
+>>> float(sd.max(sd.abs(clean - slow))) < 1e-15
+True
+```
+
+결과가 처음부터 실수라서 [`fft`](/api/fft/fft/)와 `ifft`로 할 때처럼 `sd.real`로 허수부를 떼어 낼 필요가 없어요. 실수 신호의 스펙트럼을 고칠 때 켤레 짝을 함께 고치는 것을 잊을 걱정도 없어요.
+
+## 길이 `n`
+
+`rfft`의 `n`은 [`fft`](/api/fft/fft/)와 같아요. 입력을 `n`개로 자르거나 끝에 0을 채운 뒤 변환하고, 결과는 $\lfloor n/2 \rfloor + 1$칸이에요.
+
+```python
+>>> sd.fft.rfft(x, n=4)
+array([(10+0j), (-2+2j), (-2+0j)], dtype=complex128)
+>>> sd.fft.rfft(x, n=9).shape
+(5,)
+```
+
+`irfft`의 `n`은 **만들 신호의 길이**예요. 입력 스펙트럼이 $\lfloor n/2 \rfloor + 1$칸보다 길면 뒤를 버리고, 짧으면 0을 채워요. 스펙트럼 끝에 0을 채워 더 긴 신호를 만들면, 원래 표본 사이를 매끄러운 물결로 메운 신호가 나와요(삼각 보간). 값의 크기를 맞추려면 늘린 비율을 곱해요. 원래 길이가 짝수이면 스펙트럼의 마지막 칸(칸 $n/2$)을 반으로 나눠 줘요. 늘린 신호에서는 그 칸이 가운데 칸이 아니어서 켤레 짝과 함께 두 번 세어지기 때문이에요.
+
+```python
+>>> p = sd.asarray([0.0, 1.0, 0.5, -0.5, -1.0, 0.0, 0.3, 0.2])
+>>> P = sd.fft.rfft(p)
+>>> P[4] = P[4] / 2
+>>> fine = sd.fft.irfft(P, n=64) * (64 / 8)
+>>> fine.shape
+(64,)
+>>> bool(sd.all(sd.abs(fine[::8] - p) < 1e-14))
+True
+```
+
+<Fig caption="8개의 표본(짧은 세로 막대)을 rfft로 바꾸고 마지막 칸을 반으로 나눈 뒤 스펙트럼 끝에 0을 채워 irfft로 64개의 값을 만든 결과(선). 선은 모든 표본을 지나고, 그 사이를 주파수 4 이하의 물결로 메워요. 끝의 값은 처음 값으로 이어져요. 줄을 주기적으로 보기 때문이에요.">
+  <Plot
+    curves={[
+      { points: fine, label: 'irfft(..., n=64)' },
+      { points: samples, label: '표본 p' },
+    ]}
+    domain={[0, 8]}
+    range={[-1.4, 1.4]}
+    xTicks={[0, 2, 4, 6, 8].map((v) => ({ v, label: String(v) }))}
+    yTicks={[-1, 0, 1].map((v) => ({ v, label: String(v) }))}
+  />
+</Fig>
+
+## 축 `axis`
+
+2차원 이상의 배열은 `axis`를 따라 놓인 줄마다 따로 변환해요. 나머지 축은 배치예요. 결과에서 `axis`의 길이만 바뀌어요.
+
+```python
+>>> A = sd.asarray([[1.0, 2.0, 3.0, 4.0],
+...                 [1.0, 0.0, 0.0, 0.0],
+...                 [1.0, 1.0, 1.0, 1.0]])
+>>> sd.fft.rfft(A)
+array([[(10+0j), (-2+2j), (-2+0j)],
+       [ (1+0j),  (1+0j),  (1+0j)],
+       [ (4+0j),      0j,      0j]], dtype=complex128)
+>>> sd.fft.rfft(A, axis=0).shape
+(2, 4)
+>>> bool(sd.all(sd.fft.rfft(A)[0] == sd.fft.rfft(A[0])))
+True
+```
+
+두 축 이상을 함께 변환하려면 [`rfft2`](/api/fft/rfft2/)나 [`rfftn`](/api/fft/rfftn/)을 써요.
+
+## 정규화 `norm`
+
+| `norm` | `rfft`에 곱하는 수 | `irfft`에 곱하는 수 |
+|---|:---:|:---:|
+| `'backward'`(기본값) | $1$ | $1/n$ |
+| `'ortho'` | $1/\sqrt{n}$ | $1/\sqrt{n}$ |
+| `'forward'` | $1/n$ | $1$ |
+
+$n$은 신호 쪽의 길이예요. 결과의 칸 수 $\lfloor n/2 \rfloor + 1$이 아니에요.
+
+```python
+>>> sd.fft.rfft(x, norm='forward')
+array([                   (3.5+0j),  (-0.5+0.8660254037844385j),
+       (-0.5+0.28867513459481287j),                   (-0.5+0j)], dtype=complex128)
+>>> sd.fft.irfft(sd.fft.rfft(x, norm='ortho'), norm='ortho')
+array([              1.0, 2.000000000000001, 3.000000000000001,
+       4.000000000000001, 5.000000000000001,               6.0], dtype=float64)
+```
+
+`'forward'`의 칸 0은 평균(3.5)이에요. 같은 `norm`으로 짝지으면 원래 신호가 돌아와요.
+
+## 경계의 값
+
+| 입력 | 결과 |
+|---|---|
+| `rfft`에 길이 1 | 그 값 하나(허수부 +0) |
+| `irfft`에 길이 1이고 `n` 없음 | `ValueError`(기본 길이 $2(1-1)$이 0이에요). `n`을 주면 돼요 |
+| 변환할 축의 길이가 0 | `ValueError`. `irfft`에 `n`을 주면 0을 채운 스펙트럼으로 봐요 |
+| 다른 축의 길이가 0 | 빈 결과 |
+| 줄에 NaN이나 inf | 그 줄의 결과 칸에 NaN이나 inf가 섞여요. 어느 칸이 NaN이고 어느 칸이 inf인지는 약속하지 않아요 |
+| `irfft`가 버리는 자리(칸 0과 칸 $n/2$의 허수부, 쓰지 않는 뒤쪽 칸)의 NaN | 읽지 않으므로 결과에 들어가지 않아요 |
+
+```python
+>>> sd.fft.rfft(sd.asarray([7.0]))
+array([(7+0j)], dtype=complex128)
+>>> sd.fft.irfft(sd.asarray([7.0 + 0j]))
+Traceback (most recent call last):
+    ...
+ValueError: irfft(): the default 'n' = 2 (m - 1) is 0 for an axis of length m = 1; give 'n'
+>>> sd.fft.irfft(sd.asarray([7.0 + 0j]), n=1)
+array([7.0], dtype=float64)
+>>> sd.fft.irfft(sd.asarray([7.0 + 0j]), n=4)
+array([1.75, 1.75, 1.75, 1.75], dtype=float64)
+>>> sd.fft.irfft(sd.asarray([4.0 + 0j, 1.0 + 1j, complex(2.0, sd.nan), sd.nan]), n=4)
+array([2.0, 0.0, 1.0, 1.0], dtype=float64)
+```
+
+마지막 예에서 NaN은 칸 2의 허수부와 쓰지 않는 칸 3에만 있어서 결과가 깨끗해요.
+
+## 에러
+
+```python
+>>> sd.fft.rfft(sd.asarray([1 + 2j, 3 - 1j]))
+Traceback (most recent call last):
+    ...
+TypeError: rfft(): 'x' must be real, not complex128
+>>> sd.fft.rfft([1.0, 2.0])
+Traceback (most recent call last):
+    ...
+TypeError: rfft(): 'x' must be an sd.ndarray, not list
+>>> sd.fft.rfft(x, 4)
+Traceback (most recent call last):
+    ...
+TypeError: rfft(): takes 1 positional argument but 2 were given
+>>> sd.fft.irfft(X, n=0)
+Traceback (most recent call last):
+    ...
+ValueError: irfft(): 'n' must be at least 1, not 0
+>>> sd.fft.irfft(sd.zeros((0,)))
+Traceback (most recent call last):
+    ...
+ValueError: irfft(): cannot transform an axis of length 0
+>>> sd.fft.rfft(x, axis=1)
+Traceback (most recent call last):
+    ...
+ValueError: rfft(): axis 1 is out of bounds for an array of dimension 1
+```
+
+## 정확도와 같은 결과
+
+정확도는 줄 전체의 노름 상대오차로 약속해요. 길이 $n$의 신호를 `rfft`한 반쪽 스펙트럼 $\hat X$와 참값 $X$에 대해
+
+$$
+\lVert \hat X - X \rVert \le (8 \lceil \log_2 n \rceil + 4)\, u \cdot s \sqrt{n}\, \lVert x \rVert, \qquad u = 2^{-53}
+$$
+
+이에요. $s$는 `norm`의 인자이고, $s\sqrt{n}\lVert x \rVert$는 전체 스펙트럼의 크기예요. 반쪽 스펙트럼의 크기는 그 $1/\sqrt{2}$배와 1배 사이라서, 반쪽에 견준 상대오차로도 거의 같은 한계예요. `irfft`는 같은 꼴에서 $\lVert x \rVert$ 대신 켤레로 편 전체 스펙트럼의 크기를 써요. 길이의 소인수에 13에서 31 사이의 수가 있으면 8 대신 17이고, 31보다 큰 소인수가 있으면 한계가 몇 배 커요. 칸 하나의 상대오차는 약속하지 않아요.
+
+<AccuracySummary area="fft" names={['real', 'hermitian']} caption="실수 변환을 Arb(구간 산술)로 만든 참값과 견준 결과. 점 하나가 줄 하나예요. real의 rfft는 반쪽 스펙트럼, fft는 실수 입력 fft의 전체 스펙트럼이고, hermitian의 irfft는 정규화하지 않은 역변환이에요. 영역은 안쪽 길이의 꼴이에요. pow2는 2의 거듭제곱, even과 odd는 소인수가 31 이하인 짝수와 홀수 길이, bluestein은 안쪽 길이에 31보다 큰 소인수가 있는 길이예요. 계약 대비가 1 이하면 약속 안이에요." />
+
+같은 입력이면 스레드 수, 배치, 배열이 메모리에 놓인 모양과 상관없이 같은 비트예요. 반올림까지 정확히 지키는 관계도 있어요.
+
+- 실수 입력 `fft`의 앞쪽 $\lfloor n/2 \rfloor + 1$칸은 `rfft`와 같은 비트예요.
+- `rfft`의 칸 0과(짝수 $n$이면) 칸 $n/2$의 허수부는 정확히 +0이에요.
+- [`ihfft`](/api/fft/hfft/)는 `rfft`의 켤레에, [`hfft`](/api/fft/hfft/)는 켤레를 취한 입력의 `irfft`에 정규화만 바꾼 것과 같은 비트예요.
+
+```python
+>>> r = sd.random.default_rng(3).random(1000)
+>>> bool(sd.all(sd.fft.fft(r)[:501] == sd.fft.rfft(r)))
+True
+>>> bool(sd.all(sd.fft.ihfft(r, norm='forward') == sd.conj(sd.fft.rfft(r))))
+True
+```
+
+## numpy·scipy를 아는 분께
+
+- `numpy.fft.rfft`·`irfft`, `scipy.fft.rfft`·`irfft`와 정의가 같아요. `n`, `axis`, `norm`은 키워드로만 받아요.
+- 리스트와 numpy 배열은 받지 않아요. complex128을 `rfft`에 주면 `TypeError`인 것은 numpy, scipy와 같아요.
+- `irfft(x, n=0)`은 `ValueError`예요. scipy는 길이 1의 결과를 내요.
+- 기본 `n`이 0이 되는 길이 1의 입력은 `ValueError`이고, 메시지가 `n`을 주라고 알려 줘요.
+- `irfft`가 칸 0과 칸 $n/2$의 허수부를 버리는 것, 그 자리의 NaN이 결과에 들어가지 않는 것은 numpy, scipy와 같아요.
+- 실수 입력 `fft`의 앞쪽이 `rfft`와 같은 비트인 것은 scipy와 같아요. numpy는 길이 6 이상에서 같지 않아요.
+- `norm=None`, `out`, `workers`, `overwrite_x`, `plan`이 없어요. float32 입력이 없어서 결과는 언제나 complex128과 float64예요.
+- 반올림 크기의 끝자리는 numpy, scipy와 다를 수 있어요.

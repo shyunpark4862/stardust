@@ -1,0 +1,352 @@
+---
+title: 매칭과 배정
+group: 트리, 흐름, 매칭
+order: 3
+summary: 가장 큰 이분 매칭의 Hopcroft–Karp(탐욕 시작, 층, 현재 호의 깊이 우선)와, 두 배정 함수가 함께 쓰는 풀이(Jonker–Volgenant의 시작과 쌍대 변수의 최단 증가 경로, Crouse의 갱신)를 코드를 따라 설명해요. 밀집 훑기와 희소 힙이 같은 배정을 내는 까닭, 정수 비용이 정확한 최적인 까닭도 증명해요.
+seeAlso: [flow, ordering, spanning-tree, accuracy-performance]
+---
+
+## 한눈에 보기
+
+행과 열을 두 쪽으로 하는 이분 그래프에서 짝을 고르는 함수가 넷이에요. 풀이는 둘이에요.
+
+| 함수 | 문제 | 풀이 |
+|---|---|---|
+| [`maximum_bipartite_matching`](/api/graph/maximum_bipartite_matching/) | 짝의 수가 가장 많은 매칭 | Hopcroft–Karp |
+| [`structural_rank`](/api/graph/structural_rank/) | 패턴의 가장 큰 매칭의 크기 | 같은 Hopcroft–Karp |
+| [`min_weight_full_bipartite_matching`](/api/graph/min_weight_full_bipartite_matching/) | 작은 쪽을 모두 짝짓는 매칭 가운데 무게 합이 가장 작은 것(저장된 원소만 짝) | 최단 증가 경로 `Solver` |
+| [`linear_sum_assignment`](/api/graph/linear_sum_assignment/) | 같은 문제, 밀집 행렬의 모든 원소가 짝($+\infty$는 고를 수 없는 짝) | 같은 `Solver` |
+
+두 풀이 모두 직렬이고, 행과 이웃을 오름차순으로 보는 고정된 순서로 여러 최적해 가운데 하나를 정해요. 그래서 같은 입력이면 언제나 같은 매칭이에요. 코드는 `csrc/graph/matching.cpp` 하나에 있고, 파이썬 층(`src/stardust/graph/_matching.py`, `_ordering.py`)은 입력을 직사각 CSR이나 밀집 행렬로 바꾸고 결과를 감싸요.
+
+## Hopcroft–Karp
+
+매칭 $M$에 대해 짝이 없는 행에서 시작해 "짝이 아닌 변, 짝인 변"을 번갈아 걸어 짝이 없는 열에서 끝나는 길을 증가 경로라고 해요. 그 길의 변을 짝과 짝 아님으로 뒤집으면 짝이 하나 늘어요. Berge의 정리에 따르면 증가 경로가 없는 매칭이 가장 커요.
+
+Hopcroft와 Karp의 방법은 증가 경로를 하나씩이 아니라, 한 단계에서 가장 짧은 증가 경로들을 노드가 겹치지 않게 최대한 많이 찾아 한꺼번에 뒤집어요. 시작은 탐욕이에요. 행을 오름차순으로 보며 각 행이 아직 비어 있는 가장 작은 열을 가져요. 대부분의 짝이 여기서 정해져서 단계가 몇 번 남지 않아요.
+
+단계의 앞 절반은 짝이 없는 행들에서 출발하는 너비 우선이에요.
+
+```cpp
+        // csrc/graph/matching.cpp
+        int64_t head = 0, tail = 0, limit = kFar;
+        for (int64_t i = 0; i < R; ++i) {
+            if (col_of_row[static_cast<size_t>(i)] < 0) {
+                dist[static_cast<size_t>(i)] = 0;
+                queue[static_cast<size_t>(tail++)] = i;
+            } else {
+                dist[static_cast<size_t>(i)] = kFar;
+            }
+        }
+        while (head < tail) {
+            const int64_t i = queue[static_cast<size_t>(head++)];
+            const int64_t d = dist[static_cast<size_t>(i)];
+            if (d >= limit) break;
+            for (int64_t k = g.ip[i]; k < g.ip[i + 1]; ++k) {
+                const int64_t w = row_of_col[static_cast<size_t>(g.ix[k])];
+                if (w < 0) {
+                    limit = std::min(limit, d + 1);
+                } else if (dist[static_cast<size_t>(w)] == kFar) {
+                    dist[static_cast<size_t>(w)] = d + 1;
+                    queue[static_cast<size_t>(tail++)] = w;
+                }
+            }
+        }
+        if (limit == kFar) return;
+```
+
+`dist`는 행에만 매겨요. 행 $i$에서 열 $j$로 가면, $j$에 짝이 있으면 그 짝 행 $w$로 바로 넘어가 $w$가 다음 층이 돼요. $j$에 짝이 없으면 증가 경로의 끝이니 그 길이를 `limit`에 적고, `limit` 층부터는 더 펼치지 않아요. 이번 단계는 길이가 `limit`인 경로만 다뤄요. 짝 없는 열에 닿지 못했으면(`limit`이 그대로면) 증가 경로가 없으니 끝이에요.
+
+뒤 절반은 짝이 없는 행마다(오름차순) 층을 따라 내려가는 깊이 우선이에요.
+
+```cpp
+        // csrc/graph/matching.cpp
+        for (int64_t root = 0; root < R; ++root) {
+            if (col_of_row[static_cast<size_t>(root)] >= 0 || dist[static_cast<size_t>(root)] != 0) continue;
+            // depth first from root over rows: stack holds the rows of the alternating path
+            stack.clear();
+            stack.push_back(root);
+            int64_t found = -1;  // the free column that ends the path
+            while (!stack.empty() && found < 0) {
+                const int64_t i = stack.back();
+                const int64_t di = dist[static_cast<size_t>(i)];
+                int64_t& k = arc[static_cast<size_t>(i)];
+                bool moved = false;
+                for (; k < g.ip[i + 1]; ++k) {
+                    const int64_t j = g.ix[k];
+                    const int64_t w = row_of_col[static_cast<size_t>(j)];
+                    if (w < 0) {
+                        if (di + 1 == limit) {
+                            found = j;
+                            moved = true;
+                            break;
+                        }
+                    } else if (dist[static_cast<size_t>(w)] == di + 1) {
+                        stack.push_back(w);
+                        moved = true;
+                        break;
+                    }
+                }
+                if (!moved) {  // a dead end
+                    dist[static_cast<size_t>(i)] = kFar;
+                    stack.pop_back();
+                    if (!stack.empty()) ++arc[static_cast<size_t>(stack.back())];
+                }
+            }
+            if (found < 0) continue;
+            // augment: the rows of the stack take the columns their current arcs point at
+            int64_t j = found;
+            for (size_t q = stack.size(); q-- > 0;) {
+                const int64_t i = stack[q];
+                const int64_t prev = col_of_row[static_cast<size_t>(i)];
+                col_of_row[static_cast<size_t>(i)] = j;
+                row_of_col[static_cast<size_t>(j)] = i;
+                dist[static_cast<size_t>(i)] = kFar;  // a row of an augmenting path is used up in this phase
+                j = prev;
+            }
+        }
+```
+
+- 스택에는 지금 길의 행들이 있어요. 재귀가 없어서 경로가 아무리 길어도 호출 스택이 넘치지 않아요.
+- 행마다 현재 호(`arc`)를 쥐고 이웃 열을 오름차순으로 봐요. 막다른 행은 `dist`를 지워(`kFar`) 이번 단계에서 다시 들르지 않게 하고, 부모 행의 현재 호를 하나 넘겨요.
+- 길을 찾으면 스택의 행들이 저마다 현재 호가 가리키는 열을 새 짝으로 가져요. 뒤에서부터 걸으며 각 행이 놓은 열을 앞 행에게 넘기는 꼴이에요. 쓴 행의 `dist`도 지워서, 한 단계에서 찾은 경로들이 노드를 나누지 않아요.
+
+단계의 수는 $O(\sqrt V)$예요. $\sqrt V$ 단계가 지나면 가장 짧은 증가 경로가 $\sqrt V$보다 길어요. 지금의 매칭 $M$과 가장 큰 매칭 $M^*$의 대칭차에는 노드가 겹치지 않는 증가 경로가 $\lvert M^* \rvert - \lvert M \rvert$개 있고, 그 길이가 모두 $\sqrt V$를 넘으니 개수는 $\sqrt V$ 이하예요. 남은 단계마다 짝이 하나 이상 늘어서 단계는 많아야 $\sqrt V$개 더예요. 단계 하나가 $O(E)$라 전체는 $O(E\sqrt V)$예요.
+
+```python
+>>> S = sd.sparse
+>>> B = S.csr_array((sd.ones(5), (sd.asarray([0, 0, 1, 2, 2]), sd.asarray([0, 1, 0, 1, 2]))), shape=(3, 3))
+>>> sd.graph.maximum_bipartite_matching(B, perm_type='column')
+array([1, 0, 2], dtype=int64)
+>>> sd.graph.maximum_bipartite_matching(B)
+array([1, 0, 2], dtype=int64)
+>>> sd.graph.structural_rank(B)
+3
+```
+
+탐욕 시작에서 행 0이 열 0을, 행 2가 열 1을 가지고 행 1은 비어요(열 0이 이미 차 있어요). 다음 단계의 너비 우선이 행 1 → 열 0 → 행 0 → 열 1 → 행 2 → 열 2(빈 열)의 경로를 찾고, 뒤집으면 행 1이 열 0을, 행 0이 열 1을, 행 2가 열 2를 가져요. 어느 최대 매칭에 닿는지는 이 고정된 훑기가 정해요.
+
+## 배정 문제와 쌍대 변수
+
+`min_weight_full_bipartite_matching`과 `linear_sum_assignment`는 같은 문제예요. 행이 $r$개, 열이 $c$개($r \le c$)이고 비용이 $c_{ij}$일 때, 행마다 서로 다른 열 하나를 골라 비용의 합을 가장 작게 해요. $r \gt c$면 전치해서 풀고 행 순서로 돌려줘요.
+
+이 문제의 선형 계획 쌍대는 행마다 $u_i$, 열마다 $v_j$를 두고 $u_i + v_j \le c_{ij}$를 지키며 $\sum u_i + \sum v_j$를 키우는 것이에요. 축소 비용 $\bar c_{ij} = c_{ij} - u_i - v_j$가 모두 0 이상이면 쌍대가 실현 가능하다고 해요. 풀이는 처음부터 끝까지 다음 두 불변식을 지켜요.
+
+1. 모든 짝에서 $\bar c_{ij} \ge 0$.
+2. 고른 짝에서 $\bar c_{ij} = 0$(빡빡함).
+
+모든 행이 짝을 얻었을 때 이 둘이 서 있으면 최적이에요. 정사각이면 어떤 배정 $\sigma$도 모든 열을 쓰니
+$$
+\sum_i c_{i\sigma(i)} \ge \sum_i \bigl(u_i + v_{\sigma(i)}\bigr) = \sum_i u_i + \sum_j v_j = \sum_i c_{i\hat\sigma(i)}
+$$
+이에요. 직사각에서는 쓰지 않는 열이 있어 하나가 더 필요해요. 풀이에서 $v$는 줄기만 하고(0에서 시작해요) 짝이 없는 열의 $v$는 0 그대로라서, 어떤 $\sigma$에 대해서도 $\sum_{j \in \sigma} v_j \ge \sum_j v_j = \sum_{j \in \hat\sigma} v_j$이고 같은 결론이에요.
+
+정수 비용이면 $u$, $v$, 축소 비용이 모두 $2^{53}$ 아래의 정수로 남아 모든 연산이 정확해요. 그래서 돌려준 배정은 정확한 최적이고, 테스트는 위의 부등식을 정수로 확인해 그것을 증명해요. 함수는 $u$, $v$를 돌려주지 않지만 내부 함수는 테스트를 위해 돌려줘요.
+
+```python
+>>> cost = sd.asarray([[4.0, 1, 3], [2, 0, 5], [3, 2, 2]])
+>>> r = sd.graph.linear_sum_assignment(cost)
+>>> r
+AssignmentResult(row_ind=array([0, 1, 2], dtype=int64), col_ind=array([1, 0, 2], dtype=int64))
+>>> float(cost[r.row_ind, r.col_ind].sum())
+5.0
+>>> status, ri, ci, u, v = sd._core.graph._assign_dense(cost, False)
+>>> u, v
+(array([2.0, 1.0, 1.0], dtype=float64), array([ 1.0, -1.0,  1.0], dtype=float64))
+>>> cost - u[:, None] - v[None, :]
+array([[1.0, 0.0, 0.0],
+       [0.0, 0.0, 3.0],
+       [1.0, 2.0, 0.0]], dtype=float64)
+```
+
+축소 비용이 모두 0 이상이고 고른 세 자리 $(0, 1)$, $(1, 0)$, $(2, 2)$가 0이에요. $\sum u + \sum v = 5$가 곧 최적의 증명서예요.
+
+## 최단 증가 경로
+
+짝이 없는 행 `cur`에 짝을 주려면 `cur`에서 시작해 "행에서 열로, 그 열의 짝 행으로"를 되풀이해 짝이 없는 열에 닿는 길을 찾고 뒤집어요. 비용이 가장 적게 늘어나는 길은 축소 비용을 변의 길이로 한 최단 경로이고, 축소 비용이 0 이상이니 Dijkstra로 찾을 수 있어요.
+
+밀집 훑기는 걸음마다 남은 열을 모두 이완하고 가장 앞선 열을 골라요.
+
+```cpp
+    // csrc/graph/matching.cpp
+    bool run_dense(const DenseRows& m) {
+        std::vector<int64_t> todo;
+        if (!reduce_rows(m, todo)) return false;
+        std::vector<int64_t> remaining(static_cast<size_t>(Cn));
+        for (int64_t cur : todo) {
+            std::iota(remaining.begin(), remaining.end(), int64_t{0});
+            int64_t nrem = Cn;
+            std::fill(shortest.begin(), shortest.end(), kInf);
+            sr.clear();
+            sc.clear();
+            int64_t i = cur, sink = -1;
+            double min_val = 0.0;
+            while (sink < 0) {
+                sr.push_back(i);
+                const double* row = m.c + i * m.cols;
+                const double ui = u[static_cast<size_t>(i)];
+                int64_t best = -1, at = -1;
+                for (int64_t q = 0; q < nrem; ++q) {
+                    const int64_t j = remaining[static_cast<size_t>(q)];
+                    const double r = min_val + m.sign * row[j] - ui - v[static_cast<size_t>(j)];
+                    if (r < shortest[static_cast<size_t>(j)]) {
+                        path[static_cast<size_t>(j)] = i;
+                        shortest[static_cast<size_t>(j)] = r;
+                    }
+                    if (best < 0 || before(j, best)) {
+                        best = j;
+                        at = q;
+                    }
+                }
+                if (best < 0 || !(shortest[static_cast<size_t>(best)] < kInf)) return false;
+                min_val = shortest[static_cast<size_t>(best)];
+                sc.push_back(best);
+                remaining[static_cast<size_t>(at)] = remaining[static_cast<size_t>(--nrem)];
+                if (row4col[static_cast<size_t>(best)] < 0) sink = best;
+                else i = row4col[static_cast<size_t>(best)];
+            }
+            finish(cur, sink, min_val);
+        }
+        return true;
+    }
+```
+
+`shortest[j]`는 지금까지 찾은 열 $j$까지의 거리, `min_val`은 마지막으로 고른 열의 거리예요. 고른 열에 짝이 있으면 그 짝 행으로 넘어가 이어서 이완하고, 짝이 없으면 그 열이 길의 끝(`sink`)이에요. 어떤 열에도 닿지 못하면(가장 앞선 열도 $+\infty$) 배정이 없다는 뜻이라 실패를 돌려줘요.
+
+희소 훑기는 같은 일을 행의 저장된 열만 이완하며 해요. 닿은 열은 색인을 가진 이진 힙에 두고, 탐색이 끝나면 건드린 열만 되돌려서(`touched_list`) 행마다 길이 $c$의 배열을 지우지 않아요.
+
+### 길을 찾은 뒤의 갱신
+
+```cpp
+    // csrc/graph/matching.cpp
+    // The dual update and the augmentation once the search from cur reached the free column sink at
+    // distance min_val (Crouse's update).
+    void finish(int64_t cur, int64_t sink, double min_val) {
+        u[static_cast<size_t>(cur)] += min_val;
+        for (int64_t i : sr)
+            if (i != cur)
+                u[static_cast<size_t>(i)] += min_val - shortest[static_cast<size_t>(col4row[static_cast<size_t>(i)])];
+        for (int64_t j : sc) v[static_cast<size_t>(j)] -= min_val - shortest[static_cast<size_t>(j)];
+        int64_t j = sink;
+        for (;;) {
+            const int64_t i = path[static_cast<size_t>(j)];
+            row4col[static_cast<size_t>(j)] = i;
+            std::swap(col4row[static_cast<size_t>(i)], j);
+            if (i == cur) break;
+        }
+    }
+```
+
+`sr`은 탐색이 들른 행, `sc`는 고른 열이에요. Crouse가 정리한 꼴의 갱신으로, 두 불변식을 지키는 까닭은 이래요. 열마다 $\pi_j = \min(\mathtt{shortest}_j, \mathtt{min\_val})$로 두고, `cur`가 아닌 행 $i \in$ `sr`은 자기 짝 열의 $\pi$를 $\pi_{\mathrm{col}(i)}$, `cur`는 $0$으로 두면 갱신은
+$$
+u_i \mathrel{+}= \mathtt{min\_val} - \pi_{\mathrm{col}(i)}, \qquad v_j \mathrel{-}= \mathtt{min\_val} - \pi_j
+$$
+이에요(들르지 않은 행과 고르지 않은 열은 $\pi = \mathtt{min\_val}$이라 변하지 않아요). 그러면 새 축소 비용은
+$$
+\bar c'_{ij} = \bar c_{ij} + \pi_{\mathrm{col}(i)} - \pi_j
+$$
+예요. Dijkstra의 이완에서 열 $j$까지의 거리는 행 $i$를 거쳐 가는 길이 $\pi_{\mathrm{col}(i)} + \bar c_{ij}$ 이하이고, 그 값을 `min_val`로 자른 $\pi_j$도 마찬가지라 $\bar c'_{ij} \ge 0$이에요(불변식 1). 짝 $(i, \mathrm{col}(i))$는 $\bar c = 0$이고 두 $\pi$가 같아 0이 남고, 최단 경로 위의 변은 등호로 이완된 변이라 0이 돼요. 길을 뒤집으면 새 짝이 모두 그 변들이니 불변식 2도 서요. 갱신 뒤 `cur`부터 `sink`까지 `path`를 따라 짝을 뒤집어요.
+
+### 고르는 순서: 거리, 빈 열, 번호
+
+```cpp
+    // csrc/graph/matching.cpp
+    // Whether column a comes before column b in the order of the search: distance, free first, index.
+    bool before(int64_t a, int64_t b) const {
+        const double x = shortest[static_cast<size_t>(a)], y = shortest[static_cast<size_t>(b)];
+        if (x != y) return x < y;
+        const bool fa = row4col[static_cast<size_t>(a)] < 0, fb = row4col[static_cast<size_t>(b)] < 0;
+        if (fa != fb) return fa;
+        return a < b;
+    }
+```
+
+열을 고를 때 거리가 같으면 짝이 없는 열을 먼저, 그다음 번호가 작은 열을 골라요. 이 순서는 전순서라서 가장 앞선 열이 언제나 하나예요. 그래서 밀집 훑기가 남은 열을 어떤 순서로 보든(고른 열을 끝 열과 맞바꿔 지우니 순서가 섞여요), 희소 훑기가 힙에서 꺼내든 같은 열을 골라요. 이완 자체도 `r < shortest[j]`의 엄격한 비교라 열을 보는 순서와 무관해요. 시작 단계도 행을 열의 오름차순으로 훑으니, 같은 짝과 같은 비용을 주면 밀집과 희소가 같은 배정을 내요. 빈 열을 먼저 고르면 같은 거리에서 탐색이 일찍 끝나는 이득도 있어요.
+
+`min_weight_full_bipartite_matching`의 입력이 모든 짝을 저장하고 있으면(저장된 원소가 $r \times c$개) CSR의 값 배열이 곧 행 우선 밀집 행렬이라 밀집 훑기로 풀어요. 위의 성질 때문에 결과는 희소 훑기와 같고, 행마다 색인을 따라가지 않아 더 빨라요.
+
+```python
+>>> sp = S.csr_array(cost)
+>>> sd.graph.min_weight_full_bipartite_matching(sp)
+AssignmentResult(row_ind=array([0, 1, 2], dtype=int64), col_ind=array([1, 0, 2], dtype=int64))
+>>> ties = sd.ones((3, 3))
+>>> sd.graph.linear_sum_assignment(ties)
+AssignmentResult(row_ind=array([0, 1, 2], dtype=int64), col_ind=array([2, 0, 1], dtype=int64))
+```
+
+## Jonker–Volgenant의 시작
+
+빈 행마다 최단 증가 경로를 찾으면 정확하지만, 행이 $r$개면 탐색도 $r$번이에요. Jonker와 Volgenant의 LAPJV는 그 앞에 싼 시작 단계를 두어 대부분의 행에 짝을 주고, 남은 몇 행만 최단 경로로 풀어요. 시작 단계는 두 불변식을 지키며 짝을 늘리기만 하니 결과의 최적성에는 영향이 없어요.
+
+- **열 줄이기**(정사각만). $v_j$를 열 $j$의 가장 작은 비용으로 두면($u = 0$) 모든 축소 비용이 0 이상이에요. 열을 끝에서부터 보며, 그 최솟값을 처음 이루는 행이 아직 비어 있으면 짝지어요.
+- **줄인 값 옮기기**(정사각만). 열 하나만 가져간 행은 그 열의 $v$를 행의 둘째로 작은 축소 비용만큼 낮춰요. 그 열은 행 안에서 여전히 가장 작고 둘째와 같아져서, 다음 단계에서 행을 다른 열로 옮기기 쉬워져요.
+- **증가 행 줄이기**(두 바퀴). 빈 행 $i$가 축소 비용이 가장 작은 열 $j_1$(값 $v_1$)과 둘째 열 $j_2$(값 $v_2$)를 찾아요. $j_1$의 $v$를 $v_2 - v_1$만큼 낮추고 $j_1$을 가져가요. 원래 $j_1$을 가졌던 행은 비게 되는데, $v$가 실제로 낮아졌으면 바로 다시, 아니면 다음 바퀴에 다뤄요. $v_1 = v_2$이고 $j_1$이 차 있으면 $j_2$를 대신 가져가요. 바퀴 하나의 걸음 수는 행마다 정한 상수와 $r$의 곱으로 묶어서, 서로 열을 빼앗는 행들이 끝없이 돌지 않게 해요.
+
+정사각이 아니면 열 줄이기를 건너뛰고 $v = 0$에서 모든 행을 비운 채 시작해요. 이 단계에서도 $v$는 줄기만 하니, 앞 절의 "직사각에서 $v \le 0$, 빈 열은 $v = 0$"이 그대로 서요. 시작 단계가 끝나면 남은 빈 행을 오름차순으로 정렬하고, 행마다 $u_i$를 짝 열의 축소 비용(빈 행은 가장 작은 축소 비용)으로 맞춰 두 불변식이 선 채로 최단 경로 단계로 넘어가요.
+
+## 입력의 검사와 경계
+
+`linear_sum_assignment`는 계산 전에 모든 원소를 한 번 훑어요.
+
+```cpp
+    // csrc/graph/matching.cpp
+    const double sign = maximize ? -1.0 : 1.0;
+    const bool big = r * c >= kParallelWork;
+    bool bad = false;
+    {
+        const parallel::Unlocked unlocked(big);  // no Python object in here
+        for (int64_t k = 0, e = r * c; k < e; ++k) {
+            const double x = sign * A[k];
+            bad |= (x != x) | (x == -kInf);
+        }
+    }
+    if (bad) return failed(2);
+```
+
+`maximize=True`면 부호를 먼저 바꾸고 최소화해요. 바꾼 값이 NaN이거나 $-\infty$이면 상태 2(파이썬 층의 `ValueError`)예요. $+\infty$는 고를 수 없는 짝이라 그대로 두어요. $+\infty$ 원소는 이완에서 `r < shortest[j]`를 넘지 못하니 길에 들지 않고, 어떤 행이나 열이 $+\infty$로만 이뤄져 있으면 탐색이 실패해 `cost matrix is infeasible`이에요. `min_weight_full_bipartite_matching`은 저장된 NaN·$\pm\infty$를 파이썬 층에서 막고, 완전 매칭이 없으면 같은 실패가 `no full matching exists`가 돼요.
+
+```python
+>>> inf = sd.inf
+>>> sd.graph.linear_sum_assignment(sd.asarray([[1.0, inf], [inf, 2.0]]))
+AssignmentResult(row_ind=array([0, 1], dtype=int64), col_ind=array([0, 1], dtype=int64))
+>>> sd.graph.linear_sum_assignment(sd.asarray([[1.0, inf], [2.0, inf]]))
+Traceback (most recent call last):
+  ...
+ValueError: linear_sum_assignment(): cost matrix is infeasible
+```
+
+전치해서 푼 결과는 풀이의 행(원래의 열)마다 짝지은 원래 행을 얻은 꼴이라, 원래 행의 오름차순으로 다시 늘어놓아 돌려줘요.
+
+```cpp
+    // csrc/graph/matching.cpp
+    if (!transposed) {
+        for (int64_t i = 0; i < m; ++i) {
+            RI[i] = i;
+            CI[i] = s.col4row[static_cast<size_t>(i)];
+        }
+    } else {  // the pairs (col4row[j], j) by ascending row
+        std::vector<int64_t> order(static_cast<size_t>(m));
+        std::iota(order.begin(), order.end(), int64_t{0});
+        std::sort(order.begin(), order.end(), [&](int64_t a, int64_t b) {
+            return s.col4row[static_cast<size_t>(a)] < s.col4row[static_cast<size_t>(b)];
+        });
+        for (int64_t q = 0; q < m; ++q) {
+            RI[q] = s.col4row[static_cast<size_t>(order[static_cast<size_t>(q)])];
+            CI[q] = order[static_cast<size_t>(q)];
+        }
+    }
+```
+
+```python
+>>> c2 = sd.asarray([[1, 2, 3, 4], [2, 1, 4, 3]])
+>>> sd.graph.linear_sum_assignment(c2)
+AssignmentResult(row_ind=array([0, 1], dtype=int64), col_ind=array([0, 1], dtype=int64))
+>>> sd.graph.linear_sum_assignment(c2.T)
+AssignmentResult(row_ind=array([0, 1], dtype=int64), col_ind=array([0, 1], dtype=int64))
+```
+
+## 병렬화와 메모리
+
+두 풀이 모두 직렬이에요. Hopcroft–Karp의 단계 안에서 경로들은 노드를 나누지 않지만, 어떤 경로를 찾을지는 앞서 찾은 경로가 지운 노드에 달려 있어 순서가 결과를 정해요. 최단 증가 경로도 한 행의 갱신이 다음 행의 축소 비용을 바꿔요. 작업량이 $2^{15}$ 이상이면 계산하는 동안 GIL을 놓아요.
+
+메모리는 행과 열마다 길이 $r$, $c$의 배열 몇 줄이에요. 밀집 입력은 C 순서 행렬을 그대로 읽고, 전치할 때만 $r \times c$ 사본을 하나 만들어요. 희소 입력도 전치할 때만 계수 정렬로 전치 CSR을 만들어요.

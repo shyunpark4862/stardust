@@ -1,0 +1,228 @@
+---
+kind: function
+title: min_weight_full_bipartite_matching
+names: [min_weight_full_bipartite_matching]
+group: 트리, 흐름, 매칭
+order: 4
+signatures:
+  - "sd.graph.min_weight_full_bipartite_matching(biadjacency, /, *, maximize=False)"
+summary: 두 무리 사이에 짝이 될 수 있는 쌍과 그 무게가 주어졌을 때, 작은 쪽을 모두 짝짓는 방법 가운데 무게의 합이 가장 작은 것을 찾아요. 짝이 될 수 없는 쌍은 행렬에 적지 않아요.
+params:
+  - name: biadjacency
+    type: sd.sparse 배열, ndarray, numpy 배열, 또는 수의 중첩 시퀀스
+    kind: positional-only
+    desc: (행 수, 열 수) 행렬. 정방이 아니어도 돼요. 행 i, 열 j에 원소가 있으면 행 쪽의 i와 열 쪽의 j가 그 무게로 짝이 될 수 있어요. 희소 배열은 저장된 원소가 짝이고(저장된 0도 무게 0의 짝), 밀집 배열은 0도 NaN도 ±inf도 아닌 원소가 짝이에요. 무게는 음수여도 돼요.
+  - name: maximize
+    type: bool
+    kind: keyword-only
+    desc: True면 무게의 합이 가장 큰 짝짓기를 찾아요. 기본값은 False예요.
+returns:
+  type: AssignmentResult
+  desc: "row_ind와 col_ind(둘 다 int64 1차원 배열)를 가진 이름 있는 튜플. k번째 짝이 (row_ind[k], col_ind[k])이고 row_ind는 오름차순이에요. 길이는 min(행 수, 열 수)예요."
+raises:
+  - type: TypeError
+    desc: biadjacency가 sd.sparse 배열이나 밀집 행렬이 아닐 때(scipy의 희소 객체, DataFrame), 복소수일 때, maximize가 True나 False가 아닐 때.
+  - type: ValueError
+    desc: biadjacency가 2차원이 아닐 때, 희소 배열에 저장된 무게에 NaN이나 ±inf가 있을 때, 작은 쪽을 모두 짝짓는 매칭이 없을 때.
+seeAlso: [linear_sum_assignment, maximum_bipartite_matching, results, basics]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import PlaneFig from '../../../components/fig/PlaneFig.astro';
+
+export const mwRows = [[0, 3], [0, 2], [0, 1]];
+export const mwCols = [[3, 3.5], [3, 2.5], [3, 1.5], [3, 0.5]];
+export const mwAll = [[0, 3, 3, 3.5], [0, 3, 3, 2.5], [0, 2, 3, 2.5], [0, 2, 3, 1.5], [0, 1, 3, 1.5], [0, 1, 3, 0.5]];
+export const mwMatch = [[0, 3, 3, 3.5], [0, 2, 3, 2.5], [0, 1, 3, 1.5]];
+
+## 무엇을 계산하나요
+
+택시 셋과 손님 넷이 있어요. 택시마다 갈 수 있는 손님이 몇 명뿐이고, 손님에게 닿는 데 걸리는 시간(분)이 달라요. 택시 셋을 모두 서로 다른 손님에게 보내되 걸리는 시간의 합을 가장 작게 하고 싶어요.
+
+행이 한 무리(택시), 열이 다른 무리(손님)인 행렬에 **짝이 될 수 있는 쌍만** 그 무게(시간)로 적어요. 이 함수는 작은 쪽(여기서는 택시 셋)을 모두 짝짓는 매칭 가운데 무게의 합이 가장 작은 것을 찾아요. 짝이 될 수 있는 쌍이 드물수록 희소 배열로 적는 것이 알맞아요.
+
+```python
+>>> import stardust as sd
+>>> taxi     = [0, 0, 1, 1, 2, 2]
+>>> customer = [0, 1, 1, 2, 2, 3]
+>>> minutes  = [4.0, 2.0, 3.0, 7.0, 5.0, 6.0]
+>>> W = sd.sparse.coo_array((minutes, (taxi, customer)), shape=(3, 4))
+>>> res = sd.graph.min_weight_full_bipartite_matching(W)
+>>> res
+AssignmentResult(row_ind=array([0, 1, 2], dtype=int64), col_ind=array([0, 1, 2], dtype=int64))
+>>> W.toarray()[res.row_ind, res.col_ind].sum()
+12.0
+```
+
+택시 0은 손님 0, 택시 1은 손님 1, 택시 2는 손님 2에게 가고 합은 12분이에요. 택시 0에게 가장 가까운 손님은 손님 1(2분)이지만, 그러면 택시 1이 손님 2(7분)에게 가야 해서 합이 더 커져요.
+
+<Fig caption="왼쪽이 택시(행), 오른쪽이 손님(열)이에요. 선은 갈 수 있는 쌍이고 숫자는 걸리는 시간이에요. 굵은 파란 선이 합이 가장 작은 짝짓기(4 + 3 + 5 = 12)예요. 택시마다 가장 가까운 손님을 고르면 택시 0과 택시 1이 손님 1을 두고 겹쳐요.">
+  <PlaneFig
+    label="택시 셋과 손님 넷의 이분 그래프와 무게 합이 가장 작은 매칭"
+    domain={[-1.1, 4.3]}
+    range={[0, 4]}
+    width={440}
+    layers={[
+      { kind: 'segments', segs: mwAll, tone: 'faint', width: 1.4 },
+      { kind: 'segments', segs: mwMatch, tone: 'main', width: 2.6 },
+      { kind: 'points', pts: mwRows, tone: 'ink', size: 4.5 },
+      { kind: 'points', pts: mwCols, tone: 'ink', shape: 'square', size: 4.2 },
+      { kind: 'text', at: [0, 3], text: '택시 0', dx: -10, dy: 4, anchor: 'end' },
+      { kind: 'text', at: [0, 2], text: '택시 1', dx: -10, dy: 4, anchor: 'end' },
+      { kind: 'text', at: [0, 1], text: '택시 2', dx: -10, dy: 4, anchor: 'end' },
+      { kind: 'text', at: [3, 3.5], text: '손님 0', dx: 10, dy: 4, anchor: 'start' },
+      { kind: 'text', at: [3, 2.5], text: '손님 1', dx: 10, dy: 4, anchor: 'start' },
+      { kind: 'text', at: [3, 1.5], text: '손님 2', dx: 10, dy: 4, anchor: 'start' },
+      { kind: 'text', at: [3, 0.5], text: '손님 3', dx: 10, dy: 4, anchor: 'start' },
+      { kind: 'text', at: [1.5, 3.25], text: '4', dy: -6, anchor: 'middle', tone: 'main' },
+      { kind: 'text', at: [1.0, 2.83], text: '2', dy: 14, anchor: 'middle', tone: 'base' },
+      { kind: 'text', at: [1.5, 2.25], text: '3', dy: -6, anchor: 'middle', tone: 'main' },
+      { kind: 'text', at: [1.0, 1.83], text: '7', dy: 14, anchor: 'middle', tone: 'base' },
+      { kind: 'text', at: [1.5, 1.25], text: '5', dy: -6, anchor: 'middle', tone: 'main' },
+      { kind: 'text', at: [1.0, 0.83], text: '6', dy: 14, anchor: 'middle', tone: 'base' },
+    ]}
+    legend={[
+      { label: '고른 짝', tone: 'main', shape: 'line' },
+      { label: '갈 수 있는 쌍', tone: 'faint', shape: 'line' },
+    ]}
+  />
+</Fig>
+
+<Reference />
+
+## 결과 읽기
+
+결과는 `row_ind`와 `col_ind`를 가진 이름 있는 튜플이에요. 같은 자리끼리 한 짝이고 `row_ind`는 오름차순이에요. 두 배열은 읽기 전용이에요.
+
+```python
+>>> rows, cols = res
+>>> [(int(i), int(j)) for i, j in zip(rows, cols)]
+[(0, 0), (1, 1), (2, 2)]
+```
+
+무게의 합은 위처럼 밀집으로 펼친 행렬을 두 배열로 색인해 더해요. 행렬이 너무 커서 펼치기 어렵다면 짝마다 무게를 찾아 더해요.
+
+```python
+>>> pairs = dict(zip(zip(taxi, customer), minutes))
+>>> sum(pairs[(int(i), int(j))] for i, j in zip(rows, cols))
+12.0
+```
+
+## 모두 짝지을 수 없으면
+
+작은 쪽을 모두 짝지을 방법이 없으면 `ValueError`예요. 아래에서 택시 둘이 모두 손님 0에게만 갈 수 있어요.
+
+```python
+>>> only0 = sd.sparse.coo_array(([3.0, 4.0], ([0, 1], [0, 0])), shape=(2, 3))
+>>> sd.graph.min_weight_full_bipartite_matching(only0)
+Traceback (most recent call last):
+    ...
+ValueError: min_weight_full_bipartite_matching(): no full matching exists
+```
+
+모두 짝지을 수 있는지만 알고 싶다면 [`maximum_bipartite_matching`](/api/graph/maximum_bipartite_matching/)으로 가장 큰 매칭의 크기를 세어 작은 쪽의 크기와 견줘요. 짝지을 수 있는 만큼만 짝짓고 싶다면 그 함수로 먼저 짝을 맺을 수 있는 행과 열을 골라 내요.
+
+```python
+>>> m = sd.graph.maximum_bipartite_matching(only0, perm_type='column')
+>>> int((m >= 0).sum()), min(only0.shape)
+(1, 2)
+```
+
+## 합을 가장 크게: `maximize`
+
+무게가 점수나 이익이면 `maximize=True`로 합이 가장 큰 짝짓기를 찾아요. 이때도 작은 쪽을 모두 짝지어야 해요.
+
+```python
+>>> sd.graph.min_weight_full_bipartite_matching(W, maximize=True)
+AssignmentResult(row_ind=array([0, 1, 2], dtype=int64), col_ind=array([0, 2, 3], dtype=int64))
+```
+
+택시 0이 손님 0(4), 택시 1이 손님 2(7), 택시 2가 손님 3(6)에게 가서 합이 17로 가장 커요.
+
+## 짝을 읽는 법
+
+희소 배열에서는 **저장된 원소가 모두 짝**이에요. 0으로 저장된 원소는 무게 0의 짝이에요.
+
+```python
+>>> Z = sd.sparse.coo_array(([0.0, 2.0, 1.0], ([0, 0, 1], [0, 1, 1])), shape=(2, 2))
+>>> sd.graph.min_weight_full_bipartite_matching(Z)
+AssignmentResult(row_ind=array([0, 1], dtype=int64), col_ind=array([0, 1], dtype=int64))
+```
+
+행 0은 열 0과 무게 0으로 짝지었어요. 저장된 0을 짝으로 읽지 않으면 두 행이 모두 열 1에만 이어져서 모두 짝지을 수 없어요.
+
+밀집 행렬도 받는데, 이때는 0이 아닌 원소만 짝이에요. 0, NaN, ±inf는 "짝이 될 수 없음"으로 읽어요. 모든 원소를 짝으로 읽는 [`linear_sum_assignment`](/api/graph/linear_sum_assignment/)와 다른 점이에요. 같은 밀집 행렬을 두 함수에 주면 답이 달라요.
+
+```python
+>>> D = sd.asarray([[0.0, 5.0],
+...                 [4.0, 0.0]])
+>>> sd.graph.min_weight_full_bipartite_matching(D)
+AssignmentResult(row_ind=array([0, 1], dtype=int64), col_ind=array([1, 0], dtype=int64))
+>>> sd.graph.linear_sum_assignment(D)
+AssignmentResult(row_ind=array([0, 1], dtype=int64), col_ind=array([0, 1], dtype=int64))
+```
+
+이 함수는 대각의 0을 짝이 없는 자리로 읽어 5와 4를 골랐고, `linear_sum_assignment`는 0을 비용 0의 짝으로 읽어 대각을 골랐어요.
+
+같은 짝을 두 함수에 주면, 예를 들어 짝이 될 수 없는 자리를 `inf`로 채운 밀집 행렬을 `linear_sum_assignment`에 주면 답이 같아요. 두 함수는 같은 방법으로 풀고 짝을 읽는 법만 달라요.
+
+```python
+>>> dense_cost = sd.where(W.toarray() == 0, sd.inf, W.toarray())
+>>> sd.graph.linear_sum_assignment(dense_cost)
+AssignmentResult(row_ind=array([0, 1, 2], dtype=int64), col_ind=array([0, 1, 2], dtype=int64))
+```
+
+## 무게가 같은 답이 여럿일 때
+
+합이 같은 최적의 짝짓기가 여럿일 수 있어요. 이 함수는 그 가운데 하나를 정해진 차례로 골라, 같은 입력이면 언제나 같은 답을 돌려줘요. 희소로 주든 밀집으로 주든, 스레드를 몇 개 쓰든 같아요.
+
+```python
+>>> tie = sd.sparse.coo_array(([1.0, 1.0, 1.0, 1.0], ([0, 0, 1, 1], [0, 1, 0, 1])), shape=(2, 2))
+>>> sd.graph.min_weight_full_bipartite_matching(tie)
+AssignmentResult(row_ind=array([0, 1], dtype=int64), col_ind=array([1, 0], dtype=int64))
+```
+
+## 정확도
+
+무게가 정수면 돌려준 짝짓기의 합은 **정확히 가장 작은 합**이에요. 실수 무게에서는 계산 중의 반올림 때문에 합의 차이가 반올림 크기쯤인 다른 짝짓기를 고를 수 있어요. 그 한계는 [`linear_sum_assignment`](/api/graph/linear_sum_assignment/)와 같아요.
+
+## 경계의 값
+
+| 입력 | 결과 |
+|---|---|
+| 행이나 열이 0개 | 빈 `row_ind`, `col_ind` |
+| 직사각 행렬 | 작은 쪽이 모두 짝을 얻어요 |
+| 희소 배열에 저장된 0 | 무게 0의 짝 |
+| 밀집 행렬의 0, NaN, ±inf | 짝이 아니에요 |
+| 희소 배열에 저장된 NaN, ±inf | `ValueError` |
+| 모두 짝지을 수 없음 | `ValueError` |
+
+```python
+>>> sd.graph.min_weight_full_bipartite_matching(sd.zeros((0, 2)))
+AssignmentResult(row_ind=array([], dtype=int64), col_ind=array([], dtype=int64))
+>>> bad = sd.sparse.coo_array(([1.0, sd.nan], ([0, 1], [0, 1])), shape=(2, 2))
+>>> sd.graph.min_weight_full_bipartite_matching(bad)
+Traceback (most recent call last):
+    ...
+ValueError: min_weight_full_bipartite_matching(): stored edge weights must be finite
+>>> sd.graph.min_weight_full_bipartite_matching(sd.zeros((2, 2)))
+Traceback (most recent call last):
+    ...
+ValueError: min_weight_full_bipartite_matching(): no full matching exists
+```
+
+<Callout type="note" title="음수 무게도 받아요">
+
+무게는 음수여도 돼요. 작은 쪽의 짝의 수가 정해져 있어서, 모든 무게에 같은 수를 더해도 답이 바뀌지 않기 때문이에요.
+
+</Callout>
+
+## scipy·networkx를 아는 분께
+
+- `scipy.sparse.csgraph.min_weight_full_bipartite_matching`과 이름, `maximize`, 결과의 `row_ind`·`col_ind`가 같아요. 모두 짝지을 수 없을 때 `ValueError`인 것도 같아요.
+- 희소 배열에 저장된 0은 무게 0의 짝이에요. scipy는 경고를 내고 저장된 0을 짝이 없는 자리로 읽어요.
+- 희소 배열에 저장된 NaN·±inf는 `ValueError`예요.
+- 밀집 행렬도 받아요. scipy는 희소 배열만 받아요.
+- `col_ind`도 int64예요. scipy의 `col_ind`는 int32예요.
+- 합이 같은 최적이 여럿이면 고른 답이 scipy와 다를 수 있어요(합은 같아요).
+- networkx의 `bipartite.minimum_weight_full_matching(G, top_nodes)`는 그래프 객체를 받아 두 방향의 짝을 담은 사전을 돌려줘요.

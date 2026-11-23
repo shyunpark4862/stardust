@@ -1,0 +1,660 @@
+---
+kind: concept
+title: 선형대수의 기본
+group: 기본 개념
+order: 1
+summary: sd.linalg에 무엇이 들어 있는지, 행렬과 배치를 어떻게 읽는지 설명해요. 결과의 종류와 모양, 우변 b의 규칙처럼 선형대수 함수가 모두 함께 따르는 약속도 여기에 있어요.
+seeAlso: [errors, solve, inv, det, lu, norms]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import FigRow from '../../../components/fig/FigRow.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+`sd.linalg`는 행렬을 다루는 계산을 모아 둔 곳이에요. 연립방정식을 풀고, 역행렬과 행렬식을 구하고, 행렬을 다루기 쉬운 조각으로 나누고(분해), 행렬의 크기나 성질을 숫자 하나로 재는 함수가 들어 있어요. 따로 import할 필요 없이 `sd.linalg.함수(...)`로 불러요.
+
+행렬은 2차원 [배열](/api/array/basics/)이에요. 리스트를 [`asarray`](/api/array/asarray/)에 넣어서 만들어요.
+
+```python
+>>> import stardust as sd
+>>> a = sd.asarray([[2.0, 1.0], [1.0, 1.0]])
+>>> b = sd.asarray([3.0, 2.0])
+>>> sd.linalg.solve(a, b)
+array([1.0, 1.0], dtype=float64)
+```
+
+[`solve`](/api/linalg/solve/)는 $a x = b$를 만족하는 $x$를 찾아요. 위의 예는 연립방정식 $2x_1 + x_2 = 3$, $x_1 + x_2 = 2$를 푼 것이고, 답은 $x_1 = 1$, $x_2 = 1$이에요. 행렬에 답을 다시 곱하면 `b`가 나와요.
+
+```python
+>>> a @ sd.linalg.solve(a, b)
+array([3.0, 2.0], dtype=float64)
+>>> sd.linalg.det(a)
+1.0
+>>> sd.linalg.inv(a)
+array([[ 1.0, -1.0],
+       [-1.0,  2.0]], dtype=float64)
+```
+
+행렬끼리의 곱 자체는 배열의 `@` 연산자([matmul](/api/array/matmul/))로 해요. `sd.linalg`에는 그 밖의 선형대수 계산이 들어 있어요.
+
+이 페이지는 `sd.linalg`의 함수가 모두 함께 따르는 약속을 설명해요. 각 함수의 문서는 이 약속을 짧게만 언급해요. 계산이 실패하는 경우는 [실패와 에러](/api/linalg/errors/)에 따로 모았어요.
+
+## 무엇이 들어 있나요
+
+함수는 서른일곱 개이고, 하는 일에 따라 여섯 묶음으로 나뉘어요. 하고 싶은 일에서 출발해 찾아보세요.
+
+| 하고 싶은 일 | 묶음 | 페이지 |
+|---|---|---|
+| 벡터나 행렬을 곱하고 거듭제곱해요 | 곱과 거듭제곱 | [vecdot](/api/linalg/vecdot/), [outer](/api/linalg/outer/), [kron](/api/linalg/kron/), [cross](/api/linalg/cross/), [matrix_power](/api/linalg/matrix_power/) |
+| 행렬의 크기나 성질을 숫자 하나로 재요 | 노름과 지표 | [노름](/api/linalg/norms/), [행렬식](/api/linalg/det/), [cond](/api/linalg/cond/), [matrix_rank](/api/linalg/matrix_rank/), [대각선과 대각합](/api/linalg/trace-diagonal/) |
+| 연립방정식 $a x = b$를 풀어요 | 선형 시스템 | [solve](/api/linalg/solve/), [solve_triangular](/api/linalg/solve_triangular/), [cholesky_solve](/api/linalg/cholesky_solve/), [lu_solve](/api/linalg/lu_solve/), [lstsq](/api/linalg/lstsq/), [역행렬과 유사역행렬](/api/linalg/inv/) |
+| 모양이 특별한 방정식을 풀어요 | 특수 구조 | [띠 행렬 풀기](/api/linalg/banded/), [solve_sylvester](/api/linalg/solve_sylvester/) |
+| 행렬을 다루기 쉬운 행렬의 곱으로 나눠요 | 분해 | [lu](/api/linalg/lu/), [cholesky](/api/linalg/cholesky/), [QR 분해](/api/linalg/qr/), [ldl](/api/linalg/ldl/), [대칭 행렬의 고유값](/api/linalg/eigh/), [일반 행렬의 고유값](/api/linalg/eig/), [Schur와 Hessenberg 분해](/api/linalg/schur/), [특이값 분해](/api/linalg/svd/) |
+| 행렬에 함수를 적용해요 | 행렬 함수 | [expm](/api/linalg/expm/) |
+
+묶음마다 무엇을 얻는지 조금 더 풀어 쓰면 이래요.
+
+| 묶음 | 함수 | 얻는 것 |
+|---|---|---|
+| 곱과 거듭제곱 | `vecdot`, `outer`, `kron`, `cross`, `matrix_power` | 두 벡터의 내적·외적, 두 행렬의 크로네커 곱, 행렬을 여러 번 곱한 것 |
+| 노름과 지표 | `vector_norm`, `matrix_norm`, `det`, `slogdet`, `cond`, `matrix_rank`, `trace`, `diagonal` | 크기(노름), 행렬식, 계산이 얼마나 민감한지(조건수), 독립인 방향의 수(랭크), 대각선과 그 합 |
+| 선형 시스템 | `solve`, `solve_triangular`, `cholesky_solve`, `lu_solve`, `lstsq`, `inv`, `pinv` | 방정식의 해, 딱 맞는 해가 없을 때 가장 가까운 해, 역행렬 |
+| 특수 구조 | `solve_tridiagonal`, `solve_banded`, `solve_sylvester` | 대각선 근처에만 값이 있는 행렬의 해, 행렬 방정식 $a x + x b = c$의 해 |
+| 분해 | `lu`, `cholesky`, `qr`, `qr_pivoted`, `ldl`, `eigh`, `eigvalsh`, `eig`, `eigvals`, `schur`, `hessenberg`, `svd`, `svdvals` | 삼각 행렬·직교 행렬 같은 단순한 행렬의 곱, 고유값과 고유벡터, 특이값 |
+| 행렬 함수 | `expm` | 행렬의 지수 함수 |
+
+여기에 예외 클래스 `sd.linalg.LinAlgError`가 하나 더 있어요. 특이 행렬처럼 값 때문에 계산을 끝낼 수 없을 때 나는 에러예요. [실패와 에러](/api/linalg/errors/)에서 설명해요.
+
+## 행렬은 마지막 두 축이에요
+
+`sd.linalg`의 함수는 배열의 마지막 두 축을 행렬로 읽어요. 뒤에서 둘째 축이 행, 마지막 축이 열이에요. 2차원 배열이면 배열 전체가 행렬 하나예요.
+
+그 앞에 축이 더 있으면 같은 크기의 행렬이 여러 장 쌓인 것으로 읽어요. 이 묶음을 **배치**(batch)라고 하고, 앞쪽 축을 배치 축이라고 해요.
+
+| 배열의 모양 | 읽는 법 |
+|:---:|---|
+| `(2, 2)` | 2×2 행렬 하나 |
+| `(3, 2, 2)` | 2×2 행렬 3장 |
+| `(4, 3, 2, 2)` | 2×2 행렬이 4×3으로 놓인 12장 |
+| `(5, 3, 4)` | 3행 4열 행렬 5장 |
+
+행렬을 받는 함수는 장마다 따로 계산해서 결과를 같은 배치 모양으로 쌓아 돌려줘요. 반복문을 쓰지 않아도 돼요.
+
+```python
+>>> x = sd.asarray([[[2.0, 1.0], [1.0, 1.0]],
+...                 [[1.0, 2.0], [0.0, 1.0]],
+...                 [[2.0, 0.0], [0.0, 4.0]]])
+>>> x.shape
+(3, 2, 2)
+>>> sd.linalg.det(x)
+array([1.0, 1.0, 8.0], dtype=float64)
+```
+
+<Fig column caption="x는 2×2 행렬 세 장이에요. det은 장마다 행렬식을 하나씩 구해서 길이 3인 배열로 돌려줘요.">
+  <FigRow>
+    <ArrayFig name="x[0]" data={[[2, 1], [1, 1]]} />
+    <Op note="det">→</Op>
+    <ArrayFig data={['1.0']} tones={['b']} />
+  </FigRow>
+  <FigRow>
+    <ArrayFig name="x[1]" data={[[1, 2], [0, 1]]} />
+    <Op note="det">→</Op>
+    <ArrayFig data={['1.0']} tones={['b']} />
+  </FigRow>
+  <FigRow>
+    <ArrayFig name="x[2]" data={[[2, 0], [0, 4]]} />
+    <Op note="det">→</Op>
+    <ArrayFig data={['8.0']} tones={['b']} />
+  </FigRow>
+</Fig>
+
+결과가 행렬인 함수도 같아요. `inv`는 세 장의 역행렬을 세 장으로 돌려줘요.
+
+```python
+>>> sd.linalg.inv(x)
+array([[[ 1.0, -1.0],
+        [-1.0,  2.0]],
+
+       [[ 1.0, -2.0],
+        [ 0.0,  1.0]],
+
+       [[ 0.5,  0.0],
+        [ 0.0, 0.25]]], dtype=float64)
+```
+
+결과의 모양은 "배치 모양 + 행렬 하나의 결과 모양"이에요.
+
+| 함수 | 행렬 하나 `(2, 2)`의 결과 | 배치 `(3, 2, 2)`의 결과 |
+|---|:---:|:---:|
+| `det`, `cond`, `matrix_rank`, `trace` | 숫자 | `(3,)` |
+| `eigvalsh`, `svdvals`, `diagonal` | `(2,)` | `(3, 2)` |
+| `inv`, `cholesky`, `expm` | `(2, 2)` | `(3, 2, 2)` |
+
+배치 안의 행렬은 서로 영향을 주지 않아요. 같은 행렬은 배치의 어느 자리에 있든, 따로 떼어 혼자 계산하든 마지막 한 자리까지 같은 결과를 받아요.
+
+```python
+>>> bool(sd.all(sd.linalg.inv(x)[2] == sd.linalg.inv(x[2])))
+True
+```
+
+### 벡터를 받는 함수는 마지막 한 축이에요
+
+행렬이 아니라 벡터를 받는 함수는 마지막 축 하나를 벡터로 읽고, 그 앞의 축을 배치로 읽어요. [`outer`](/api/linalg/outer/)의 두 입력, [`solve_tridiagonal`](/api/linalg/banded/)의 대각선, [`lu_solve`](/api/linalg/lu_solve/)의 `perm`이 그래요. [`vecdot`](/api/linalg/vecdot/), [`cross`](/api/linalg/cross/), [`vector_norm`](/api/linalg/norms/)은 벡터로 읽을 축을 `axis`로 고를 수 있어요.
+
+### 행렬이 아닌 입력은 에러예요
+
+행렬을 받는 자리에 1차원 배열을 넣으면 `ValueError`예요. 정사각 행렬(행과 열의 수가 같은 행렬)이 필요한 함수에 그렇지 않은 행렬을 넣어도 `ValueError`예요.
+
+```python
+>>> sd.linalg.det(sd.asarray([1.0, 2.0]))
+Traceback (most recent call last):
+    ...
+ValueError: det(): 'x' must have at least 2 dimensions, got 1
+>>> sd.linalg.det(sd.ones((2, 3)))
+Traceback (most recent call last):
+    ...
+ValueError: det(): 'x' must be square in its last two dimensions, got 2x3
+```
+
+정사각이 아니어도 되는 함수는 [`lu`](/api/linalg/lu/), [`qr`·`qr_pivoted`](/api/linalg/qr/), [`svd`·`svdvals`](/api/linalg/svd/), [`lstsq`](/api/linalg/lstsq/), [`pinv`](/api/linalg/inv/), [`matrix_rank`](/api/linalg/matrix_rank/), [`matrix_norm`](/api/linalg/norms/), [`trace`·`diagonal`](/api/linalg/trace-diagonal/), [`kron`](/api/linalg/kron/), 그리고 `ord`가 `2`나 `-2`인 [`cond`](/api/linalg/cond/)예요.
+
+## 배치 축은 브로드캐스트해요
+
+배열을 둘 이상 받는 함수는 배치 축끼리 [브로드캐스팅](/api/array/broadcasting/)해요. 행렬 축(마지막 두 축)은 브로드캐스트하지 않고, 그 앞의 축만 맞춰요. 그래서 "행렬 여러 장에 같은 우변 하나", "행렬 하나에 우변 여러 개" 같은 계산을 한 번에 할 수 있어요.
+
+행렬 세 장 `x`와 벡터 하나 `b`를 `solve`에 넣으면, `b`가 세 장 모두에 쓰여요.
+
+```python
+>>> sd.linalg.solve(x, b)
+array([[ 1.0,  1.0],
+       [-1.0,  2.0],
+       [ 1.5,  0.5]], dtype=float64)
+```
+
+<Fig column caption="b는 하나뿐이지만 행렬마다 놓인 것처럼 계산해요. 점선 칸은 실제로 만들어지지 않는 값이에요. 결과의 i번째 행이 x[i]와 b로 푼 해예요.">
+  <FigRow>
+    <ArrayFig name="x[0]" data={[[2, 1], [1, 1]]} />
+    <ArrayFig name="b" data={[3, 2]} tones={['a', 'a']} />
+    <Op note="solve">→</Op>
+    <ArrayFig name="해 [0]" data={['1.0', '1.0']} tones={['b', 'b']} />
+  </FigRow>
+  <FigRow>
+    <ArrayFig name="x[1]" data={[[1, 2], [0, 1]]} />
+    <ArrayFig name="b" data={[3, 2]} tones={['g', 'g']} />
+    <Op note="solve">→</Op>
+    <ArrayFig name="해 [1]" data={['-1.0', '2.0']} tones={['b', 'b']} />
+  </FigRow>
+  <FigRow>
+    <ArrayFig name="x[2]" data={[[2, 0], [0, 4]]} />
+    <ArrayFig name="b" data={[3, 2]} tones={['g', 'g']} />
+    <Op note="solve">→</Op>
+    <ArrayFig name="해 [2]" data={['1.5', '0.5']} tones={['b', 'b']} />
+  </FigRow>
+</Fig>
+
+배치 축을 맞추는 규칙은 배열의 브로드캐스팅과 같아요. 뒤에서부터 견주어서 길이가 같거나 한쪽이 1이면 돼요.
+
+| 호출 | 첫째의 배치 | 둘째의 배치 | 결과의 배치 |
+|---|:---:|:---:|:---:|
+| `solve(a, b)`, `a` `(3, 2, 2)`, `b` `(2,)` | `(3,)` | 없음 | `(3,)` |
+| `solve(a, b)`, `a` `(2, 2)`, `b` `(4, 2, 1)` | 없음 | `(4,)` | `(4,)` |
+| `solve(a, b)`, `a` `(3, 1, 2, 2)`, `b` `(4, 2, 5)` | `(3, 1)` | `(4,)` | `(3, 4)` |
+| `kron(x1, x2)`, `x1` `(3, 2, 2)`, `x2` `(2, 2)` | `(3,)` | 없음 | `(3,)` |
+
+```python
+>>> sd.linalg.solve(sd.reshape(x, (3, 1, 2, 2)), sd.ones((4, 2, 5))).shape
+(3, 4, 2, 5)
+```
+
+배치 축을 맞출 수 없으면 `ValueError`예요.
+
+```python
+>>> sd.linalg.solve(x, sd.ones((2, 2, 1)))
+Traceback (most recent call last):
+    ...
+ValueError: solve(): batch shapes do not broadcast: (3,) (2,)
+```
+
+## 우변 `b`의 모양
+
+방정식을 푸는 함수([`solve`](/api/linalg/solve/), [`solve_triangular`](/api/linalg/solve_triangular/), [`cholesky_solve`](/api/linalg/cholesky_solve/), [`lu_solve`](/api/linalg/lu_solve/), [`lstsq`](/api/linalg/lstsq/), [`solve_tridiagonal`·`solve_banded`](/api/linalg/banded/))는 우변 `b`를 모두 같은 규칙으로 읽어요. 기준은 `b`의 차원 수예요.
+
+| `b`의 차원 수 | 읽는 법 | `b`의 모양 | 결과의 모양 |
+|:---:|---|:---:|:---:|
+| 1 | 벡터 하나 | `(N,)` | `(..., N)` |
+| 2 이상 | 열 하나하나가 우변인 행렬(의 배치) | `(..., N, K)` | `(..., N, K)` |
+
+1차원 `b`는 벡터 하나예요. 결과도 벡터이고, 행렬이 배치이면 위의 그림처럼 모든 행렬에 같은 벡터를 써요.
+
+2차원 이상의 `b`는 열마다 우변이 하나씩 들어 있는 행렬이에요. 같은 행렬로 우변만 바꿔 가며 여러 번 풀어야 할 때, 우변을 열로 나란히 놓으면 한 번에 풀려요. 결과의 열이 각 우변의 해예요.
+
+```python
+>>> rhs = sd.asarray([[3.0, 5.0, 1.0],
+...                   [2.0, 3.0, 0.0]])
+>>> sd.linalg.solve(a, rhs)
+array([[ 1.0,  2.0,  1.0],
+       [ 1.0,  1.0, -1.0]], dtype=float64)
+```
+
+<Fig caption="rhs의 열 세 개가 우변 세 개예요. 결과의 같은 자리 열이 그 우변의 해예요. 첫째 열 [3, 2]의 해가 [1, 1]이에요.">
+  <ArrayFig name="a" data={[[2, 1], [1, 1]]} note="(2, 2)" />
+  <ArrayFig name="rhs" data={[[3, 5, 1], [2, 3, 0]]} tones={[['a', '', ''], ['a', '', '']]} note="(2, 3): 우변 3개" />
+  <Op note="solve">→</Op>
+  <ArrayFig data={[['1.0', '2.0', '1.0'], ['1.0', '1.0', '-1.0']]} tones={[['b', '', ''], ['b', '', '']]} note="(2, 3): 해 3개" />
+</Fig>
+
+우변이 하나여도 열 하나짜리 행렬 `(N, 1)`로 넣으면 결과도 `(N, 1)`이에요. 넣은 모양 그대로 돌아와요.
+
+```python
+>>> sd.linalg.solve(a, sd.asarray([[3.0], [2.0]]))
+array([[1.0],
+       [1.0]], dtype=float64)
+```
+
+<Callout type="warn" title="행렬마다 다른 벡터를 짝지으려면 열 하나짜리 행렬로 넣어요">
+  행렬 두 장 `(2, 2, 2)`에 벡터 두 개를 하나씩 짝지어 풀고 싶을 때, 벡터를 `(2, 2)` 모양으로 쌓아 넣으면 안 돼요. 2차원 `b`는 "벡터 두 개"가 아니라 "열이 두 개인 우변 행렬 하나"로 읽혀요. 크기가 우연히 맞으면 에러 없이 다른 계산이 돼요. 마지막에 길이 1인 축을 붙여 `(2, 2, 1)`로 넣으세요.
+</Callout>
+
+```python
+>>> two = x[:2]
+>>> vecs = sd.asarray([[3.0, 2.0], [5.0, 3.0]])
+>>> sd.linalg.solve(two, vecs).shape
+(2, 2, 2)
+>>> cols = sd.expand_dims(vecs, axis=-1)
+>>> cols.shape
+(2, 2, 1)
+>>> sd.linalg.solve(two, cols)
+array([[[ 1.0],
+        [ 1.0]],
+
+       [[-1.0],
+        [ 3.0]]], dtype=float64)
+```
+
+첫째 호출은 `vecs`를 2×2 우변 행렬로 읽어서 두 행렬마다 열 두 개를 풀었어요. 둘째 호출이 원하던 계산이에요. `two[0]`에는 `[3, 2]`를, `two[1]`에는 `[5, 3]`을 짝지어요. 결과에서 길이 1인 축을 빼려면 [`squeeze`](/api/array/squeeze/)를 써요.
+
+행렬과 `b`의 행 수가 맞지 않으면 `ValueError`예요.
+
+```python
+>>> sd.linalg.solve(a, sd.asarray([1.0, 2.0, 3.0]))
+Traceback (most recent call last):
+    ...
+ValueError: solve(): 'a' is 2x2 but 'b' has 3 rows
+```
+
+[`solve_sylvester`](/api/linalg/solve_sylvester/)의 `c`는 이 규칙을 따르지 않아요. 언제나 행렬이에요.
+
+## 입력은 stardust 배열만 받아요
+
+배열을 받는 자리에는 `sd.ndarray`만 넣을 수 있어요. 리스트, numpy 배열, Python 숫자는 `TypeError`예요. 먼저 [`asarray`](/api/array/asarray/)로 바꿔서 넘기세요.
+
+```python
+>>> sd.linalg.det([[2.0, 1.0], [1.0, 1.0]])
+Traceback (most recent call last):
+    ...
+TypeError: det(): 'x' must be an sd.ndarray, not list
+>>> sd.linalg.det(sd.asarray([[2.0, 1.0], [1.0, 1.0]]))
+1.0
+```
+
+알아서 바꿔 주지 않는 이유는 배열 영역과 같아요. 변환이 일어나는 자리가 코드에 드러나야, 같은 리스트를 넘길 때마다 변환과 복사가 보이지 않게 되풀이되는 일이 없어요.
+
+함수는 입력 배열을 바꾸지 않아요. 계산에 넣은 행렬은 호출 뒤에도 그대로예요.
+
+## 결과의 종류(dtype)
+
+결과의 원소 종류는 입력의 종류만으로 정해져요. 들어 있는 값에 따라 바뀌지 않아요. 규칙은 하나예요.
+
+- 입력 가운데 하나라도 complex128이면 complex128로 계산해요.
+- 그렇지 않으면 float64로 계산해요. bool이나 int64 입력도 먼저 float64로 바꿔요.
+
+```python
+>>> n = sd.asarray([[2, 1], [1, 1]])
+>>> n.dtype
+int64
+>>> sd.linalg.inv(n)
+array([[ 1.0, -1.0],
+       [-1.0,  2.0]], dtype=float64)
+>>> sd.linalg.det(n)
+1.0
+```
+
+역행렬, 방정식의 해, 고유값은 정수 행렬에서 출발해도 대부분 정수로 떨어지지 않아요. 그래서 `sd.linalg`는 "어떤 함수는 정수를 유지하고 어떤 함수는 실수로 바꾼다"로 나누지 않고, 모든 함수가 같은 규칙을 따라요.
+
+<Callout type="warn" title="정수 행렬을 넣어도 결과는 float64예요">
+  곱셈만 하는 `matrix_power`, `outer`, `kron`, `cross`, `vecdot`, `trace`도 정수 입력에 float64를 돌려줘요. 배열 영역의 `@`([matmul](/api/array/matmul/)), [`sum`](/api/array/sum/), [`sd.vecdot`](/api/array/vecdot/)이 int64를 유지하는 것과 달라요. 정수 결과가 필요하면 배열 영역의 함수를 쓰세요. 희소 행렬의 짝(`A.trace()`, [`sd.sparse.kron`](/api/sparse/kron/), [`sd.sparse.kronsum`](/api/sparse/kronsum/))은 배열 영역의 규칙이라 정수 입력에 int64를 돌려줘요.
+</Callout>
+
+```python
+>>> sd.linalg.matrix_power(n, 2)
+array([[5.0, 3.0],
+       [3.0, 2.0]], dtype=float64)
+>>> n @ n
+array([[5, 3],
+       [3, 2]], dtype=int64)
+>>> sd.linalg.trace(n)
+3.0
+>>> sd.sum(sd.linalg.diagonal(n))
+3
+```
+
+실수와 복소수가 섞이면 복소수로 계산해요.
+
+```python
+>>> sd.linalg.solve(a, sd.asarray([3j, 2j]))
+array([1j, 1j], dtype=complex128)
+```
+
+### 규칙에서 벗어나는 결과
+
+몇몇 결과는 값의 뜻 때문에 종류가 따로 정해져요.
+
+| 결과 | 실수 입력 | 복소수 입력 | 이유 |
+|---|:---:|:---:|---|
+| 대부분의 결과(해, 역행렬, 분해의 행렬, `det`, `vecdot`, `trace` 등) | float64 | complex128 | 기본 규칙 |
+| `eig`, `eigvals`의 결과 전부 | complex128 | complex128 | 실수 행렬의 고유값도 복소수일 수 있어요 |
+| `eigh`, `eigvalsh`의 고유값 | float64 | float64 | 대칭·에르미트 행렬의 고유값은 언제나 실수예요 |
+| 특이값(`svd`의 `S`, `svdvals`, `lstsq`의 `singular_values`) | float64 | float64 | 특이값은 0 이상의 실수예요 |
+| `vector_norm`, `matrix_norm`, `cond` | float64 | float64 | 크기는 실수예요 |
+| `slogdet`의 `sign` / `logabsdet` | float64 / float64 | complex128 / float64 | 부호는 복소수일 수 있지만 크기의 로그는 실수예요 |
+| `matrix_rank`, `lstsq`의 `rank` | int64 | int64 | 개수예요 |
+| `perm`(`lu`, `qr_pivoted`, `ldl`) | int64 | int64 | 행이나 열의 번호예요 |
+| `diagonal` | 입력 그대로 | 입력 그대로 | 원소를 꺼내기만 해요. int64는 int64, bool은 bool |
+| `trace(x, dtype=...)` | 지정한 종류 | 지정한 종류 | 직접 골랐어요 |
+
+`eig`와 `eigvals`가 언제나 복소수를 돌려주는 까닭은 결과의 종류가 값에 따라 달라지면 안 되기 때문이에요. 90도 회전 행렬은 원소가 모두 실수지만 고유값은 $\pm i$예요.
+
+```python
+>>> rot = sd.asarray([[0.0, -1.0], [1.0, 0.0]])
+>>> sd.linalg.eigvals(rot)
+array([-1j,  1j], dtype=complex128)
+>>> sd.linalg.eigvals(sd.asarray([[2.0, 0.0], [0.0, 3.0]]))
+array([(2+0j), (3+0j)], dtype=complex128)
+>>> sd.linalg.vector_norm(sd.asarray([3j, 4]))
+5.0
+>>> sd.linalg.diagonal(n)
+array([2, 1], dtype=int64)
+```
+
+## 결과의 형태
+
+### 축이 남지 않으면 Python 숫자예요
+
+stardust에는 [0차원 배열이 없어요](/api/array/basics/). 행렬 하나의 행렬식처럼 결과에 축이 하나도 남지 않으면 평범한 Python 숫자(`float`, `complex`, `int`)를 돌려줘요.
+
+```python
+>>> type(sd.linalg.det(a))
+<class 'float'>
+>>> sd.linalg.matrix_rank(a)
+2
+>>> sd.linalg.det(sd.asarray([[1j, 0], [0, 1j]]))
+(-1+0j)
+>>> sd.linalg.vecdot(sd.asarray([1.0, 2.0]), sd.asarray([3.0, 4.0]))
+11.0
+```
+
+배치가 있으면 배열이에요. 배치가 한 장뿐이어도 배열이에요.
+
+```python
+>>> one = sd.asarray([[[2.0, 1.0], [1.0, 1.0]]])
+>>> one.shape
+(1, 2, 2)
+>>> sd.linalg.det(one)
+array([1.0], dtype=float64)
+```
+
+### 결과가 여럿이면 이름 있는 튜플이에요
+
+분해처럼 결과가 둘 이상인 함수는 **이름 있는 튜플**을 돌려줘요. 평범한 튜플처럼 풀어 받을 수도 있고, 필드 이름으로 하나씩 꺼낼 수도 있어요.
+
+```python
+>>> p = sd.asarray([[0.0, 2.0], [1.0, 3.0]])
+>>> res = sd.linalg.lu(p)
+>>> res.U
+array([[1.0, 3.0],
+       [0.0, 2.0]], dtype=float64)
+>>> res.perm
+array([1, 0], dtype=int64)
+>>> L, U, perm = sd.linalg.lu(p)
+>>> L
+array([[1.0, 0.0],
+       [0.0, 1.0]], dtype=float64)
+```
+
+| 함수 | 결과 | 필드 |
+|---|---|---|
+| [`slogdet`](/api/linalg/det/) | `SlogdetResult` | `sign`, `logabsdet` |
+| [`lstsq`](/api/linalg/lstsq/) | `LstsqResult` | `solution`, `rank`, `singular_values` |
+| [`lu`](/api/linalg/lu/) | `LUResult` | `L`, `U`, `perm` |
+| [`qr`](/api/linalg/qr/) | `QRResult` | `Q`, `R` |
+| [`qr_pivoted`](/api/linalg/qr/) | `QRPivotedResult` | `Q`, `R`, `perm` |
+| [`ldl`](/api/linalg/ldl/) | `LDLResult` | `L`, `D`, `perm` |
+| [`eigh`](/api/linalg/eigh/) | `EighResult` | `eigenvalues`, `eigenvectors` |
+| [`eig`](/api/linalg/eig/) | `EigResult` | `eigenvalues`, `eigenvectors` |
+| [`schur`](/api/linalg/schur/) | `SchurResult` | `T`, `Z` |
+| [`hessenberg`](/api/linalg/schur/) | `HessenbergResult` | `H`, `Q` |
+| [`svd`](/api/linalg/svd/) | `SVDResult` | `U`, `S`, `Vh` |
+
+알아 두면 좋은 점이 몇 가지 있어요.
+
+- 행이나 열을 바꾼 순서는 `perm`으로 돌려줘요. 0과 1로 된 순열 행렬이 아니라 번호가 담긴 int64 벡터이고, 언제나 마지막 필드예요. 위의 `lu`에서 `perm`이 `[1, 0]`이라는 것은 `p`의 1번 행과 0번 행을 이 순서로 놓으면 `L @ U`와 같다는 뜻이에요. 인덱싱에 그대로 쓸 수 있어요.
+- 필드에 든 숫자도 같은 규칙을 따라요. 행렬 하나의 `slogdet`은 Python 숫자 둘을, `lstsq`의 `rank`는 `int`를 담아요. 배치이면 배열이에요.
+- 튜플의 타입(`LUResult` 등)은 `sd.linalg`에서 꺼내 쓰는 이름이 아니에요. 필드 이름이나 위치로 값을 꺼내면 돼요.
+
+```python
+>>> p[perm]
+array([[1.0, 3.0],
+       [0.0, 2.0]], dtype=float64)
+>>> sd.linalg.slogdet(sd.asarray([[1.0, 0.0], [0.0, -1.0]]))
+SlogdetResult(sign=-1.0, logabsdet=0.0)
+```
+
+### 옵션은 결과의 개수를 바꾸지 않아요
+
+어떤 옵션을 주든 함수가 돌려주는 결과의 개수와 형태는 같아요. 결과의 개수가 다른 계산은 함수를 따로 뒀어요. 코드를 읽을 때 함수 이름만 보면 무엇이 돌아오는지 알 수 있어요.
+
+| 전부 구해요 | 값만 구해요 |
+|---|---|
+| [`eigh`](/api/linalg/eigh/): 고유값과 고유벡터 | `eigvalsh`: 고유값만 |
+| [`eig`](/api/linalg/eig/): 고유값과 고유벡터 | `eigvals`: 고유값만 |
+| [`svd`](/api/linalg/svd/): `U`, `S`, `Vh` | `svdvals`: 특이값만 |
+| [`det`](/api/linalg/det/): 행렬식 | `slogdet`: 부호와 크기의 로그 |
+| [`qr`](/api/linalg/qr/): `Q`, `R` | `qr_pivoted`: `Q`, `R`, `perm` (열을 바꿔 가며 분해) |
+
+### 결과는 언제나 새 배열이에요
+
+`sd.linalg`의 함수가 돌려주는 배열은 모두 새로 만든 배열이에요. 입력과 메모리를 함께 쓰는 [뷰](/api/array/views/)가 아니에요. 그래서 결과를 고쳐도 입력은 바뀌지 않아요. 대각선을 꺼내는 [`diagonal`](/api/linalg/trace-diagonal/)도 복사본을 줘요.
+
+```python
+>>> d = sd.linalg.diagonal(a)
+>>> d[0] = 100.0
+>>> a
+array([[2.0, 1.0],
+       [1.0, 1.0]], dtype=float64)
+```
+
+배열 하나를 돌려주는 함수(`inv`, `solve`, `diagonal` 등)의 결과는 위처럼 바로 고칠 수 있어요. 이름 있는 튜플에 담긴 배열은 쓰기 금지예요. 한 계산에서 함께 나온 값들이라, 하나만 고쳐서 서로 맞지 않게 되는 일을 막아요. 그 필드에서 만든 뷰도 쓰기 금지예요. 고쳐 쓰려면 `.copy()`로 복사하세요.
+
+```python
+>>> res.U[0, 0] = 5.0
+Traceback (most recent call last):
+    ...
+ValueError: assignment destination is read-only
+>>> U = res.U.copy()
+>>> U[0, 0] = 5.0
+>>> U
+array([[5.0, 3.0],
+       [0.0, 2.0]], dtype=float64)
+```
+
+## 대칭 행렬은 아래 삼각만 읽어요
+
+대칭 행렬(전치해도 같은 행렬)은 대각선 위쪽과 아래쪽에 같은 값이 두 번 들어 있어요. 대칭 행렬을 받는 함수인 [`cholesky`](/api/linalg/cholesky/), [`eigh`·`eigvalsh`](/api/linalg/eigh/), [`ldl`](/api/linalg/ldl/)은 그 가운데 대각선과 그 아래쪽(아래 삼각)만 읽어요. 위쪽에는 무엇이 들어 있어도 결과가 같아요. 입력이 정말 대칭인지는 검사하지 않아요.
+
+```python
+>>> s = sd.asarray([[4.0, 2.0], [2.0, 5.0]])
+>>> sd.linalg.cholesky(s)
+array([[2.0, 0.0],
+       [1.0, 2.0]], dtype=float64)
+>>> t = sd.asarray([[4.0, -100.0], [2.0, 5.0]])
+>>> sd.linalg.cholesky(t)
+array([[2.0, 0.0],
+       [1.0, 2.0]], dtype=float64)
+```
+
+<Fig caption="t의 위쪽 삼각(흐린 칸)은 읽지 않아요. 아래 삼각이 s와 같으니 결과도 s와 같아요.">
+  <ArrayFig name="t" data={[[4, -100], [2, 5]]} tones={[['a', 'm'], ['a', 'a']]} note="아래 삼각만 읽어요" />
+  <Op note="cholesky">→</Op>
+  <ArrayFig name="L" data={[['2.0', '0.0'], ['1.0', '2.0']]} tones={[['', 'm'], ['', '']]} note="아래 삼각 행렬" />
+</Fig>
+
+<Callout type="warn" title="대칭이 아닌 행렬을 넣어도 에러가 나지 않아요">
+  대칭인지 검사하지 않으므로, 대칭이 아닌 행렬을 넣으면 "아래 삼각을 위로 접어 올린 대칭 행렬"의 결과가 조용히 나와요. 대칭이 아닌 행렬의 고유값은 [`eig`](/api/linalg/eig/)로 구하세요.
+</Callout>
+
+복소수 행렬은 에르미트 행렬(켤레 전치해도 같은 행렬)로 읽어요. 역시 아래 삼각만 읽고, 대각선의 허수부는 읽지 않아요.
+
+삼각 행렬을 받는 함수도 자기가 쓰는 삼각만 읽어요. [`solve_triangular`](/api/linalg/solve_triangular/)와 [`cholesky_solve`](/api/linalg/cholesky_solve/)는 `upper`로 고른 쪽만, [`lu_solve`](/api/linalg/lu_solve/)는 `l`의 대각선 아래와 `u`의 대각선과 그 위만 읽어요. 읽지 않는 칸은 결과에도, [NaN 검사](/api/linalg/errors/)에도 영향이 없어요.
+
+## 행렬의 구조는 함수 이름으로 골라요
+
+행렬이 삼각이거나 대칭이면 일반적인 방법보다 훨씬 빠르고 정확하게 풀 수 있어요. `sd.linalg`에서는 그 구조를 옵션이 아니라 함수 이름으로 골라요.
+
+| 행렬의 구조 | 푸는 함수 |
+|---|---|
+| 아무 정사각 행렬 | [`solve`](/api/linalg/solve/) |
+| 위 삼각 또는 아래 삼각 | [`solve_triangular`](/api/linalg/solve_triangular/) |
+| 대칭이고 양정치(먼저 `cholesky`로 분해) | [`cholesky`](/api/linalg/cholesky/) + [`cholesky_solve`](/api/linalg/cholesky_solve/) |
+| 같은 행렬로 우변만 바꿔 여러 번(먼저 `lu`로 분해) | [`lu`](/api/linalg/lu/) + [`lu_solve`](/api/linalg/lu_solve/) |
+| 대각선 근처에만 값이 있는 띠 행렬 | [`solve_tridiagonal`, `solve_banded`](/api/linalg/banded/) |
+| 정사각이 아니거나, 딱 맞는 해가 없거나 여럿 | [`lstsq`](/api/linalg/lstsq/) |
+
+`solve`는 입력을 살펴서 방법을 바꾸지 않아요. 삼각 행렬을 넣어도, 대칭 행렬을 넣어도 언제나 같은 일반적인 방법으로 풀어요. 이렇게 한 이유는 세 가지예요.
+
+- 같은 코드는 언제나 같은 방법으로 계산해요. 함수가 값을 보고 방법을 고르면, 원소 하나가 반올림으로 0에서 살짝 벗어나는 것만으로 다른 방법이 선택되어 결과의 마지막 자리가 달라질 수 있어요.
+- 구조를 확인하는 데도 시간이 들어요. 이미 구조를 아는 사람은 그 비용을 낼 필요가 없어요.
+- 코드에 가정이 드러나요. `solve_triangular(a, b, upper=False)`를 읽으면 "`a`는 아래 삼각"이라는 가정이 바로 보여요.
+
+구조를 고르는 함수는 그 구조에 해당하는 칸만 읽으므로, 가정이 틀리면 에러 없이 다른 답이 나와요. 아래 삼각 행렬을 위 삼각이라고 하면 대각선 아래의 `1.0`을 읽지 않아요.
+
+```python
+>>> low = sd.asarray([[2.0, 0.0], [1.0, 1.0]])
+>>> sd.linalg.solve(low, b)
+array([1.5, 0.5], dtype=float64)
+>>> sd.linalg.solve_triangular(low, b, upper=False)
+array([1.5, 0.5], dtype=float64)
+>>> sd.linalg.solve_triangular(low, b, upper=True)
+array([1.5, 2.0], dtype=float64)
+```
+
+그래서 `solve_triangular`의 `upper`는 기본값이 없는 필수 옵션이에요. 무엇을 고를지는 [solve](/api/linalg/solve/)에서 더 자세히 비교해요.
+
+## 인자를 넘기는 방법과 옵션 이름
+
+인자를 넘기는 방법은 배열 영역과 같아요.
+
+- 배열과 핵심 인자는 자리로 넘겨요. 시그니처에서 `/` 앞에 있어요. `matrix_power`의 `n`, `eigh`의 둘째 행렬 `b`가 그래요.
+- 옵션은 이름을 붙여서 넘겨요. 시그니처에서 `*` 뒤에 있어요.
+- 참·거짓 옵션에는 `True`나 `False`만 쓸 수 있어요. `1`이나 `None`은 받지 않아요.
+
+```python
+>>> sd.linalg.cholesky(s, True)
+Traceback (most recent call last):
+    ...
+TypeError: cholesky(): incompatible function arguments. ...
+>>> sd.linalg.cholesky(s, upper=1)
+Traceback (most recent call last):
+    ...
+TypeError: cholesky(): 'upper' must be True or False, not int
+>>> sd.linalg.cholesky(s, upper=True)
+array([[2.0, 1.0],
+       [0.0, 2.0]], dtype=float64)
+```
+
+인자의 개수나 이름이 틀린 호출은 위의 첫 예처럼 `incompatible function arguments` 에러예요. 메시지에는 받을 수 있는 시그니처가 인자 이름과 함께 나와요. 이 페이지와 각 함수 문서의 시그니처와 같고, `help()`로도 같은 시그니처를 볼 수 있어요.
+
+```python
+>>> sd.linalg.solve_banded.__doc__.splitlines()[0]
+'solve_banded(ab, b, /, *, lower_bandwidth, upper_bandwidth)'
+```
+
+같은 이름의 옵션은 어느 함수에서나 같은 뜻이에요.
+
+| 옵션 | 뜻 | 받는 값 | 쓰는 함수 |
+|---|---|---|---|
+| `upper` | 삼각 행렬이 위 삼각인가요 | `True`, `False` | `cholesky`, `cholesky_solve`, `solve_triangular`(필수) |
+| `unit_diagonal` | 대각선을 모두 1로 보고 읽지 않아요 | `True`, `False` | `solve_triangular` |
+| `mode` | 분해 결과의 크기. `'reduced'`는 필요한 만큼만, `'complete'`는 정사각으로 가득 채워요 | `'reduced'`(기본값), `'complete'` | `qr`, `qr_pivoted`, `svd` |
+| `rtol` | 가장 큰 특이값의 몇 배 이하인 특이값을 0으로 볼지 정하는 기준 | `None`(기본값) 또는 0 이상의 수 | `matrix_rank`, `pinv`, `lstsq` |
+| `ord` | 노름의 종류 | 함수마다 달라요 | `vector_norm`, `matrix_norm`, `cond` |
+| `k` | 몇째 대각선인가요. 0은 주대각선, 양수는 그 위쪽, 음수는 아래쪽 | `int` | `trace`, `diagonal` |
+| `axis` | 벡터로 읽을 축 | `int` (`vector_norm`은 tuple, list, `None`도) | `vecdot`, `cross`, `vector_norm` |
+| `keepdims` | 줄인 축을 길이 1로 남겨요 | `True`, `False` | `vector_norm`, `matrix_norm` |
+| `dtype` | 합을 구할 원소 종류 | dtype 또는 `None` | `trace` |
+| `lower_bandwidth`, `upper_bandwidth` | 띠의 아래쪽·위쪽 폭 | 0 이상의 `int`(필수) | `solve_banded` |
+
+`rtol=None`이면 기준은 $\max(M, N) \cdot \varepsilon$이에요. $M$과 $N$은 행과 열의 수이고, $\varepsilon$은 float64가 구별할 수 있는 가장 작은 상대 차이(약 $2.2 \times 10^{-16}$)예요. 반올림 오차 정도로 작은 특이값을 0으로 보겠다는 뜻이에요.
+
+기본값이 없어서 꼭 써야 하는 옵션은 `solve_triangular`의 `upper`, `solve_banded`의 `lower_bandwidth`와 `upper_bandwidth` 셋이에요. 잘못 짐작하면 에러 없이 틀린 답이 나오는 옵션이라서 기본값을 두지 않았어요.
+
+결과를 받을 배열을 미리 넘기는 옵션, 입력을 덮어써도 된다는 옵션, NaN 검사를 끄는 옵션, 계산 방법을 고르는 옵션은 없어요.
+
+## 같은 입력이면 같은 결과예요
+
+큰 행렬이나 큰 배치는 여러 [스레드](/api/array/threads/)로 나눠 계산해요. 같은 컴퓨터에서 같은 스레드 수로 같은 입력을 계산하면, 몇 번을 다시 실행해도 결과가 마지막 한 자리까지 같아요. 다음은 결과에 영향을 주지 않아요.
+
+- 같은 행렬이 배치의 몇째 자리에 있는지
+- 배치로 한 번에 계산했는지, 한 장씩 따로 계산했는지
+
+스레드 수를 바꿔도 지금은 결과와 에러 메시지가 마지막 한 자리까지 같아요(약속은 아니에요). 나눠 계산하는 방법을 데이터의 크기만 보고 정하기 때문이에요.
+
+입력이 새로 만든 배열인지, 다른 배열의 뷰인지, 전치한 것인지(메모리에 놓인 순서)도 대부분의 함수에서는 결과에 영향이 없어요. 분해와 `solve`, `inv`, `det`처럼 입력을 계산용 사본으로 옮겨 두고 계산하는 함수는 메모리에 놓인 순서와 상관없이 같은 비트를 내요. 입력을 옮기지 않고 놓인 그대로 읽는 몇몇 함수는 메모리에 놓인 순서에 따라 마지막 자리가 달라질 수 있어요. 값은 반올림 오차 수준에서 같아요.
+
+- 행 우선(C 순서)으로 놓인 삼각 행렬로 푸는 `solve_triangular`, `lu_solve`, `cholesky_solve`
+- `matrix_power`
+- 메모리에 놓인 순서대로 더하는 합: 1024개를 넘는 `vecdot`, 여러 축을 한 덩어리 메모리로 읽는 `vector_norm`의 1-노름과 2-노름(6 × 6처럼 짧은 배열에서도), `matrix_norm`의 `'fro'`, `1`, `-1`, `inf`, `-inf`
+
+`cond`는 입력을 계산용 사본으로 옮긴 뒤 노름을 구하므로 모든 `ord`에서 메모리에 놓인 순서와 상관없이 같은 비트예요.
+
+분해와 행렬곱처럼 운영체제의 행렬 계산 라이브러리(Accelerate)에 맡기는 계산은, 그 라이브러리가 혼자 계산하는지 여러 스레드로 나누는지(환경 변수 `VECLIB_MAXIMUM_THREADS`)가 같을 때 같은 결과예요. 이 설정이 다르면 마지막 자리 몇 개가 다를 수 있어요. stardust는 이 설정을 바꾸지 않아요.
+
+### 약속하는 것과 약속하지 않는 것
+
+stardust가 결과에 대해 약속하는 것은 셋이에요.
+
+- 같은 컴퓨터, 같은 스레드 수, 같은 입력이면 실행마다 같은 비트예요. 같은 행렬은 배치 안의 어느 자리에 있어도 같은 비트를 받아요.
+- 함수 문서에 적은 함수끼리의 관계는 비트까지 지켜요. 예를 들어 `lu`가 돌려준 결과로 `lu_solve`가 푼 답은 `solve`와 같고, `trace(x)`는 `sd.sum(diagonal(x), axis=-1)`과 같아요.
+- 정확도예요. 결과는 반올림 오차 수준에서 참값과 맞아요.
+
+스레드 수가 달라도 같은 비트인 것, 메모리에 놓인 순서가 달라도 같은 비트인 것은 약속이 아니에요. 더 빠른 계산 방법을 쓰려고 마지막 자리가 달라지는 길을 고를 수 있어요.
+
+numpy·scipy와 같은 계산을 쓰는 함수가 많아서, 지금은 결과가 numpy·scipy와 비트까지 같은 경우도 많아요. 이것도 약속하는 것이 아니에요. 더 빠르거나 더 정확한 계산 순서를 쓰면 마지막 자리가 달라질 수 있어요. 함수 문서에서 "지금은 비트까지 같아요(약속은 아니에요)"라고 쓴 것은 이 뜻이에요. 반면 결과의 종류(dtype), 특이 행렬의 판정, NaN과 ±0의 처리, 에러처럼 반올림과 상관없는 동작은 문서에 적은 대로예요.
+
+## 다음에 읽을 것
+
+| 페이지 | 다루는 것 |
+|---|---|
+| [실패와 에러](/api/linalg/errors/) | 에러의 종류, `LinAlgError`, 특이 행렬, NaN과 무한대, 빈 행렬 |
+| [solve](/api/linalg/solve/) | 연립방정식 풀기, 푸는 함수 고르기 |
+| [배열의 기본](/api/array/basics/) | 모양과 축, 0차원 배열이 없다는 약속 |
+| [브로드캐스팅](/api/array/broadcasting/) | 모양이 다른 배열을 맞추는 규칙 |
+| [matmul](/api/array/matmul/) | 행렬곱 `@` |
+
+## numpy·scipy를 아는 분께
+
+- **리스트를 받지 않아요.** `np.linalg.det([[1, 2], [3, 4]])`처럼 쓸 수 없어요. numpy 배열도 `sd.asarray`로 먼저 바꿔요.
+- **결과가 스칼라이면 Python 숫자예요.** numpy 스칼라(`np.float64`)나 0차원 배열이 아니에요.
+- **정수 입력의 결과가 언제나 float64예요.** `np.linalg.matrix_power`, `np.trace`, `np.outer`, `np.kron`, `np.cross`는 정수를 유지하지만 `sd.linalg`의 같은 이름은 float64를 돌려줘요. `diagonal`만 입력의 종류를 유지해요.
+- **`eig`, `eigvals`는 고유값을 (실수부, 허수부) 순서로 정렬해서 돌려줘요.** numpy는 순서를 약속하지 않아요. 실수 입력에서도 결과가 complex128인 것은 numpy와 같아요.
+- **대칭 입력은 아래 삼각만 읽고, 고르는 옵션(`UPLO=`, `lower=`)이 없어요.**
+- **`solve`의 `b`는 차원 수로 읽어요.** 1차원이면 벡터, 2차원 이상이면 행렬의 묶음이에요. numpy 2와 같고, `b.ndim == a.ndim - 1`이면 벡터의 묶음으로 읽던 numpy 1과 달라요.
+- **구조는 함수로 골라요.** `scipy.linalg.solve(assume_a=...)`에 해당하는 옵션이 없고, `solve_triangular(lower=)` 대신 필수 옵션 `upper=`를 써요. `cho_solve`, `lu_solve`는 튜플이 아니라 행렬을 인자로 하나씩 받아요.
+- **`svd`와 `qr`의 옵션은 `mode='reduced'`(기본값) 또는 `'complete'`예요.** `np.linalg.svd`의 기본값 `full_matrices=True`와 달리 줄인 모양이 기본값이에요.
+- **`lu`는 순열 행렬 `P` 대신 번호 벡터 `perm`을 돌려줘요.** `x[perm] == L @ U`예요. `scipy.linalg.lu`의 `P @ L @ U`와 방향이 달라요.
+- **없는 옵션**: `out=`, `overwrite_a=`, `check_finite=`, `driver=`, `hermitian=`. NaN 검사는 끌 수 없어요.
+- **이름 있는 튜플에 담긴 배열은 쓰기 금지예요.** numpy·scipy의 분해 결과는 쓸 수 있는 배열이에요. 고쳐 쓰려면 `.copy()`를 써요.
+- **numpy·scipy와 비트까지 같은 것은 약속하지 않아요.** 지금은 같은 LAPACK 루틴을 같은 방식으로 불러서 비트까지 같은 함수가 많지만, 약속은 같은 컴퓨터·같은 스레드 수·같은 입력에서 같은 비트와 정확도예요. 반올림과 상관없는 동작(dtype, 특이의 판정, NaN 처리)은 문서대로 numpy·scipy와 같아요.
+- 배치는 scipy.linalg에서 온 함수(`ldl`, `schur`, `expm`, `solve_banded`, `solve_sylvester` 등)에서도 모두 돼요. `kron`은 배치 축을 곱하지 않고 브로드캐스트해요.

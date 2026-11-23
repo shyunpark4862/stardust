@@ -1,0 +1,129 @@
+---
+kind: function
+title: romb
+names: [romb]
+group: 고정 규칙
+order: 3
+signatures:
+  - "sd.integrate.romb(y, /, *, dx=1.0, axis=-1)"
+summary: 같은 간격으로 잰 2ᵏ + 1개의 표본을 Romberg 방법으로 적분해요. 간격을 두 배씩 넓힌 사다리꼴 값들을 외삽해 오차를 지워 가므로, 매끄러운 함수의 표본이면 아주 정확해요.
+params:
+  - name: y
+    type: ndarray, 수의 시퀀스, numpy 배열, 또는 frame의 Series
+    kind: positional-only
+    desc: "같은 간격의 표본. axis를 따라 2ᵏ + 1개(k ≥ 0: 2, 3, 5, 9, 17, …)여야 해요. bool·정수는 float64로 바꾸고, 복소수는 complex128로 계산해요."
+  - name: dx
+    type: float 또는 ndarray
+    kind: keyword-only
+    desc: "표본의 간격. 수 하나이거나, y의 모양에서 axis만 1인 배열(줄마다의 간격)이에요. 기본값 1.0."
+  - name: axis
+    type: int
+    kind: keyword-only
+    desc: "적분할 축. 기본값 -1(마지막 축)이에요."
+returns:
+  type: float, complex, 또는 ndarray
+  desc: "axis를 뺀 모양의 적분값. y가 1차원이면 Python 수예요."
+raises:
+  - type: TypeError
+    desc: y가 배열로 바꿀 수 없는 값이거나 문자열 배열일 때, dx가 수나 배열이 아니거나 복소수일 때, axis가 int가 아닐 때.
+  - type: ValueError
+    desc: y가 스칼라일 때, axis를 따라 표본 수가 2ᵏ + 1이 아닐 때, dx 배열의 모양이 틀렸을 때, axis가 범위 밖일 때.
+seeAlso: [trapezoid, simpson, newton_cotes, fixed_quad, basics]
+---
+import Callout from '../../../components/Callout.astro';
+
+## 무엇을 하나요
+
+[`trapezoid`](/api/integrate/trapezoid/)의 오차는 간격 $h$에 대해 $c_1 h^2 + c_2 h^4 + c_3 h^6 + \cdots$처럼 짝수 거듭제곱으로 늘어놓을 수 있어요(Euler–Maclaurin 공식). 그렇다면 간격 $h$와 $2h$의 사다리꼴 값 $T(h)$, $T(2h)$를 섞어 $h^2$ 항을 지울 수 있어요.
+
+$$
+R = T(h) + \frac{T(h) - T(2h)}{4 - 1}
+$$
+
+이것이 Richardson 외삽이고, 이렇게 지운 값은 Simpson 규칙과 같아요. 같은 방법으로 $h^4$ 항, $h^6$ 항을 차례로 지워 가는 것이 Romberg 방법이에요. 표본이 $2^k + 1$개면 간격 $h, 2h, 4h, \ldots, 2^k h$의 사다리꼴 값 $k + 1$개를 같은 표본에서 얻을 수 있으므로, 표를 쌓아
+
+$$
+R_{i,j} = R_{i,j-1} + \frac{R_{i,j-1} - R_{i-1,j-1}}{4^j - 1}
+$$
+
+의 마지막 값 $R_{k,k}$를 돌려줘요. 표본을 더 재지 않고 가진 것만으로 정확도를 올리는 방법이에요.
+
+## 기본 사용
+
+`romb`은 위치 `x`를 받지 않아요. 같은 간격이어야 하므로 간격 `dx`만 줘요.
+
+```python
+>>> import stardust as sd
+>>> import math
+>>> x = sd.linspace(0, 1, 17)
+>>> sd.integrate.romb(sd.exp(x), dx=1 / 16)
+1.7182818284590784
+>>> math.e - 1
+1.718281828459045
+```
+
+17점으로 오차가 $3 \times 10^{-14}$예요. 같은 표본으로 사다리꼴은 $6 \times 10^{-4}$, Simpson은 $1.5 \times 10^{-7}$쯤 틀려요.
+
+### 점을 늘릴 때의 오차
+
+$\int_0^\pi \sin x\,dx = 2$로 세 규칙을 견줘 봐요. 표본은 모두 같아요.
+
+```python
+>>> for k in range(2, 7):
+...     n = 2**k + 1
+...     y = sd.sin(sd.linspace(0, math.pi, n))
+...     h = math.pi / 2**k
+...     print(n, sd.integrate.trapezoid(y, dx=h) - 2, sd.integrate.simpson(y, dx=h) - 2, sd.integrate.romb(y, dx=h) - 2)
+5 -0.10388110206295975 0.004559754984421183 -0.0014292681761638448
+9 -0.025768398054449415 0.00026916994838765973 5.5499796705049675e-06
+17 -0.006429656227660452 1.6591047935499148e-05 -5.4127093918054925e-09
+33 -0.0016066390298554722 1.0333694127062643e-06 1.3216094885137863e-12
+65 -0.0004016113599623061 6.453000178652246e-08 -4.440892098500626e-16
+```
+
+점을 두 배로 늘릴 때 사다리꼴의 오차는 4분의 1, Simpson은 16분의 1로 줄지만, Romberg는 외삽 단계도 하나씩 늘어서 훨씬 빨리 줄어요. 65점에서 반올림 오차만 남았어요.
+
+<Callout type="note" title="Romberg가 잘 맞는 표본">
+외삽은 오차가 $h^2, h^4, \ldots$의 거듭제곱으로 늘어놓아진다는 가정에서 나와요. 이 가정은 함수가 구간 전체에서 충분히 매끄러워야 맞아요. 끝점 특이점($\sqrt{x}$의 0)이나 꺾인 곳이 있으면 외삽이 오히려 도움이 안 될 수 있어요. 그런 표본이면 [`trapezoid`](/api/integrate/trapezoid/)나 [`simpson`](/api/integrate/simpson/)을 쓰고, 함수를 부를 수 있으면 [`quad`](/api/integrate/quad/)나 [`tanhsinh`](/api/integrate/tanhsinh/)을 써요.
+</Callout>
+
+## 표본 수: 2ᵏ + 1
+
+간격을 두 배씩 넓혀 가려면 구간 수가 2의 거듭제곱이어야 해요. 그래서 표본은 2, 3, 5, 9, 17, 33, …개여야 하고, 다른 수는 `ValueError`예요.
+
+```python
+>>> sd.integrate.romb([1.0, 2.0, 3.0, 4.0])
+Traceback (most recent call last):
+    ...
+ValueError: romb(): 'y' must have 2^k + 1 samples along 'axis' (k >= 0), not 4
+```
+
+표본이 둘(k = 0)이면 외삽할 것이 없어 사다리꼴과 같고, 셋(k = 1)이면 Simpson 규칙과 같아요. 가진 표본이 $2^k + 1$개가 아니면 [`simpson`](/api/integrate/simpson/)을 써요. 아무 개수나 받아요.
+
+```python
+>>> sd.integrate.romb([1.0, 3.0])
+2.0
+>>> sd.integrate.romb([1.0, 4.0, 9.0]) == sd.integrate.simpson([1.0, 4.0, 9.0])
+True
+```
+
+## 여러 줄을 한 번에
+
+`axis`와 줄마다의 `dx` 배열(y의 모양에서 `axis`만 1)은 [`trapezoid`](/api/integrate/trapezoid/#여러-줄을-한-번에-axis)와 같아요. 표본 수의 조건은 `axis` 방향의 길이에 걸려요.
+
+```python
+>>> y = sd.asarray([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+>>> sd.integrate.romb(y)
+array([ 4.0, 10.0], dtype=float64)
+>>> sd.integrate.romb(y, dx=[[1.0], [0.5]])
+array([4.0, 5.0], dtype=float64)
+```
+
+받는 데이터(`Series`, 복소수, NaN)는 표본 규칙들과 같아요. 사다리꼴 값의 합은 pairwise 합이고, 지금은 같은 입력이면 축, 메모리 배치, 스레드 수와도 상관없이 같은 비트예요(약속은 아니에요).
+
+## scipy를 아는 분께
+
+- Richardson 표와 식의 순서는 scipy 1.18.1의 `scipy.integrate.romb`과 같아요. 사다리꼴의 합을 더하는 순서가 달라 끝자리가 다를 수 있어요.
+- `dx`는 키워드로만 받고, 줄마다의 배열도 받아요.
+- `show`(표를 화면에 쓰는 인자)는 없어요. 라이브러리는 화면에 쓰지 않아요.
+- 함수를 받아 Romberg로 적분하는 `romberg`는 scipy 1.18.1에도 여기에도 없어요. 함수라면 [`quad`](/api/integrate/quad/)를 써요.

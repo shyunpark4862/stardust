@@ -1,0 +1,218 @@
+---
+title: random_array
+names: [random_array]
+group: 인덱싱과 만들기
+order: 4
+signatures:
+  - "sd.sparse.random_array(shape, /, *, density=0.01, format='coo', dtype=None, rng, data_sampler=None)"
+summary: 자리와 값을 무작위로 고른 희소 배열을 만들어요. 저장할 원소의 비율을 density로 정하고, 난수 생성기 rng를 꼭 받아요.
+params:
+  - name: shape
+    type: int 또는 tuple
+    kind: positional-only
+    desc: 결과의 모양. int 하나면 1차원, (M, N)이면 2차원이에요.
+  - name: density
+    type: float
+    kind: keyword-only
+    desc: 저장할 원소의 비율. 0 이상 1 이하예요. 저장되는 원소는 정확히 round(density × 원소 수)개예요.
+  - name: format
+    type: str
+    kind: keyword-only
+    desc: 결과의 형식. 'coo', 'csr', 'csc', 'dok' 중 하나이고 기본은 'coo'예요.
+  - name: dtype
+    type: dtype 또는 None
+    kind: keyword-only
+    desc: 값의 dtype. None이면 float64(data_sampler가 있으면 그 결과의 dtype)예요.
+  - name: rng
+    type: sd.random.Generator
+    kind: keyword-only
+    desc: 자리와 값을 뽑는 난수 생성기. 기본값이 없어서 꼭 줘야 해요. sd.random.default_rng(seed)로 만들어요.
+  - name: data_sampler
+    type: 함수 또는 None
+    kind: keyword-only
+    desc: 값을 만드는 함수. 개수 n을 위치 인자로 받아 값 n개의 배열을 돌려줘야 해요. None이면 dtype에 따른 균등 난수예요.
+returns:
+  type: 희소 배열
+  desc: 무작위 자리에 원소를 저장한 희소 배열. 기본 형식은 COO예요.
+raises:
+  - type: TypeError
+    desc: rng를 주지 않았을 때, rng가 sd.random.Generator가 아닐 때(None 포함), density가 실수가 아닐 때, data_sampler를 부를 수 없을 때.
+  - type: ValueError
+    desc: density가 [0, 1] 밖일 때, data_sampler가 n개가 아닌 값을 돌려줄 때, format이 네 형식의 이름이 아닐 때.
+  - type: OverflowError
+    desc: shape가 int64 밖일 때.
+seeAlso: [coo_array, basics, eye_array, diags_array]
+---
+import Callout from '../../../components/Callout.astro';
+
+## 한눈에 보기
+
+`random_array`는 무작위 희소 배열을 만들어요. 어느 자리에 원소를 저장할지와 그 값을 모두 난수로 정해요. 희소 행렬을 다루는 코드를 시험하거나, 크기와 밀도를 바꿔 가며 계산이 어떻게 달라지는지 볼 때 써요.
+
+```python
+>>> import stardust as sd
+>>> rng = sd.random.default_rng(0)
+>>> A = sd.sparse.random_array((3, 4), density=0.25, rng=rng)
+>>> A
+<coo_array of shape (3, 4), float64, 3 stored elements>
+>>> A.toarray() != 0
+array([[False, False, False, False],
+       [False, False,  True,  True],
+       [ True, False, False, False]], dtype=bool)
+```
+
+`density=0.25`는 원소 12개 가운데 4분의 1, 곧 3개를 저장하라는 뜻이에요. 저장된 값은 [0, 1)의 균등 난수예요.
+
+```python
+>>> A.data
+array([  0.8367557887106135, 0.014067035665647709,   0.2577672456246177], dtype=float64)
+```
+
+<Reference />
+
+## rng는 꼭 줘요
+
+`rng`에는 `sd.random.default_rng(seed)`로 만든 난수 생성기를 줘요. 기본값이 없어서 빠뜨리면 `TypeError`예요. 무작위 결과를 다시 만들 수 있도록, 어떤 난수를 쓰는지 언제나 코드에 드러나게 하려는 것이에요.
+
+```python
+>>> sd.sparse.random_array((3, 3), density=0.5)
+Traceback (most recent call last):
+    ...
+TypeError: random_array(): missing 1 required keyword-only argument: 'rng'
+>>> sd.sparse.random_array((3, 3), density=0.5, rng=None)
+Traceback (most recent call last):
+    ...
+TypeError: random_array(): 'rng' must be an sd.random.Generator (sd.random.default_rng(seed)), not NoneType
+```
+
+같은 시드로 만든 생성기는 같은 배열을 만들어요. 지금은 컴퓨터의 스레드 수와도 상관없어요(약속은 아니에요).
+
+```python
+>>> B = sd.sparse.random_array((3, 4), density=0.25, rng=sd.random.default_rng(0))
+>>> bool(sd.all(A.toarray() == B.toarray()))
+True
+```
+
+한 생성기로 여러 번 부르면 생성기의 상태가 이어지므로 부를 때마다 다른 배열이 나와요.
+
+## 저장되는 원소의 수: density
+
+저장되는 원소의 수는 정확히 `round(density × 원소 수)`예요. 자리는 겹치지 않게(비복원 추출로) 뽑으므로 언제나 그 수만큼 서로 다른 자리에 저장돼요.
+
+```python
+>>> C = sd.sparse.random_array((1000, 1000), density=0.001, rng=sd.random.default_rng(1))
+>>> C.nnz
+1000
+```
+
+원소가 100만 개이고 0.1%라서 1000개예요. `density`는 0에서 1 사이여야 해요. 기본값 0.01은 작은 배열에서는 0개가 될 수 있어요(3 × 3이면 round(0.09) = 0).
+
+```python
+>>> sd.sparse.random_array((3, 3), rng=sd.random.default_rng(0)).nnz
+0
+>>> sd.sparse.random_array((3, 3), density=1.5, rng=sd.random.default_rng(0))
+Traceback (most recent call last):
+    ...
+ValueError: random_array(): 'density' must be in [0, 1], got 1.5
+```
+
+1차원 배열도 만들 수 있어요.
+
+```python
+>>> sd.sparse.random_array(6, density=0.5, rng=sd.random.default_rng(0))
+<coo_array of shape (6,), float64, 3 stored elements>
+```
+
+## 값 정하기
+
+### dtype
+
+`data_sampler` 없이 `dtype`을 주면 dtype마다 정해진 난수예요.
+
+| dtype | 값 |
+|---|---|
+| float64 (None) | [0, 1)의 균등 난수 |
+| int64 | int64 전체 범위의 정수 |
+| complex128 | 실수부와 허수부가 각각 [0, 1)의 균등 난수 |
+| bool | [0, 1)의 균등 난수가 0이 아닌지(거의 언제나 True) |
+
+int64는 범위 전체에서 뽑아서 아주 큰 수가 나와요. 작은 정수가 필요하면 아래의 `data_sampler`를 써요.
+
+```python
+>>> sd.sparse.random_array((2, 3), density=0.5, dtype=sd.bool, rng=sd.random.default_rng(2)).toarray()
+array([[ True, False, False],
+       [ True,  True, False]], dtype=bool)
+```
+
+### data_sampler: 값을 직접 만들기
+
+`data_sampler`는 개수 `n`을 받아 값 `n`개의 배열을 돌려주는 함수예요. 자리를 뽑은 다음 `data_sampler(n)`을 한 번 불러 그 값을 차례로 놓아요. 1에서 9까지의 정수를 놓으려면 이렇게 써요.
+
+```python
+>>> rng = sd.random.default_rng(3)
+>>> D = sd.sparse.random_array((3, 4), density=0.5, rng=rng,
+...                            data_sampler=lambda n: rng.integers(1, 10, shape=n))
+>>> D.toarray()
+array([[9, 5, 8, 2],
+       [7, 9, 0, 0],
+       [0, 0, 0, 0]], dtype=int64)
+```
+
+정규분포를 따르는 값은 [`sd.stats.Normal`](/api/stats/normal/)의 `sample`로 만들어요.
+
+```python
+>>> rng = sd.random.default_rng(3)
+>>> N = sd.stats.Normal()
+>>> E = sd.sparse.random_array((100, 100), density=0.05, rng=rng,
+...                            data_sampler=lambda n: N.sample(n, rng=rng))
+>>> E.nnz
+500
+```
+
+`data_sampler`의 결과는 배열의 규칙으로 `sd.ndarray`가 되고, `dtype=None`이면 그 dtype을 그대로 써요. 패턴만 필요하면 1로 채워요.
+
+```python
+>>> F = sd.sparse.random_array((3, 4), density=0.5, rng=sd.random.default_rng(4),
+...                            data_sampler=lambda n: sd.ones(n, dtype=sd.int64))
+>>> F.dtype
+int64
+>>> F.toarray()
+array([[0, 0, 0, 0],
+       [1, 1, 1, 1],
+       [0, 0, 1, 1]], dtype=int64)
+```
+
+값의 개수가 `n`이 아니면 `ValueError`예요.
+
+```python
+>>> sd.sparse.random_array((4, 4), density=0.5, rng=sd.random.default_rng(0),
+...                        data_sampler=lambda n: sd.ones(n + 1))
+Traceback (most recent call last):
+    ...
+ValueError: random_array(): data_sampler(8) must give 8 values, got shape (9,)
+```
+
+## 형식과 저장 순서
+
+기본 형식은 COO이고, 원소는 뽑힌 순서대로 저장돼 있어요(행 순서로 정렬돼 있지 않아요). 정렬된 형식이 필요하면 `format='csr'`이나 `'csc'`를 줘요.
+
+```python
+>>> A.has_canonical_format
+False
+>>> sd.sparse.random_array((3, 4), density=0.25, format='csr', rng=sd.random.default_rng(0))
+<csr_array of shape (3, 4), float64, 3 stored elements>
+```
+
+`format='csr'`로 만든 배열과 COO로 만들어 `tocsr()`로 바꾼 배열은 같은 값이에요.
+
+## 밀집 배열에는 짝이 없어요
+
+`random_array`는 희소 배열에만 있어요. 저장할 자리의 비율을 정하는 일은 희소 저장에만 뜻이 있기 때문이에요. 밀집 무작위 배열은 `sd.random`의 생성기(`rng.random(shape)`, `rng.integers(...)`)나 분포의 `sample`로 만들어요.
+
+## scipy를 아는 분께
+
+- `rng`가 꼭 필요해요. scipy는 `rng=None`이면 전역 난수를 쓰고, 옛 인자 `random_state`도 받아요. 여기에는 `random_state`가 없어요.
+- 같은 시드여도 scipy와 같은 배열이 나오지 않아요. 난수 생성기가 달라요.
+- `data_sampler`를 `data_sampler(n)`(위치 인자 하나)으로 불러요. scipy는 `data_sampler(size=n)`으로 불러요. 그래서 `size=`만 받는 함수는 `lambda n: f(size=n)`처럼 감싸야 해요.
+- `dtype=None`이면 `data_sampler` 결과의 dtype을 그대로 둬요. scipy는 float64로 바꿔요.
+- 옛 함수 `scipy.sparse.random`, `rand`는 없어요.

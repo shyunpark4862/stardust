@@ -1,0 +1,202 @@
+---
+title: seuclidean
+names: [seuclidean]
+group: 거리 함수
+order: 7
+signatures:
+  - "sd.spatial.seuclidean(u, v, V, /)"
+summary: 좌표마다 차이의 제곱을 그 좌표의 분산으로 나눠 더한 √Σ(uᵢ − vᵢ)²/Vᵢ를 구해요. 단위와 퍼진 정도가 다른 좌표를 같은 눈금으로 견주는 표준화 유클리드 거리예요.
+params:
+  - name: u
+    type: 수의 배열
+    kind: positional-only
+    desc: 첫째 점. 모양은 (..., n)이고 마지막 축이 좌표예요. 리스트, sd.ndarray, numpy 배열, frame의 DataFrame·Series를 받아요. 정수와 bool은 float64로 바꿔요.
+  - name: v
+    type: 수의 배열
+    kind: positional-only
+    desc: 둘째 점. 마지막 축의 길이가 u와 같아야 하고, 앞 축은 u의 앞 축과 브로드캐스트돼요.
+  - name: V
+    type: 수의 배열
+    kind: positional-only
+    desc: 좌표마다의 분산. 1차원, 길이 n, 모두 유한하고 0보다 커야 해요. 거리 함수에서는 꼭 줘야 해요. pdist·cdist에서는 키워드 V이고, 주지 않으면 자료의 열 분산이에요.
+returns:
+  type: float 또는 ndarray
+  desc: 거리. u와 v가 모두 1차원이면 Python float, 아니면 앞 축을 브로드캐스트한 모양의 float64 배열이에요.
+raises:
+  - type: TypeError
+    desc: V를 주지 않았을 때, V를 키워드로 줬을 때, w를 줬을 때, u·v·V가 수의 배열이 아니거나 복소수일 때.
+  - type: ValueError
+    desc: V가 1차원이 아니거나 길이가 n이 아닐 때, V에 0 이하·NaN·inf가 있을 때, u와 v의 마지막 축 길이가 다르거나 앞 축이 브로드캐스트되지 않을 때.
+  - type: MemoryError
+    desc: 결과 배열이 이 기계의 물리 메모리보다 클 때.
+seeAlso: [metrics, euclidean, mahalanobis, pdist, cdist, kneighbors]
+---
+
+## 한눈에 보기
+
+사람 여섯의 키(cm)와 몸무게(kg)가 있어요. 첫째 사람과 견줘 둘째는 키만 10cm 크고, 셋째는 몸무게만 10kg 더 나가요. [`euclidean`](/api/spatial/euclidean/)은 두 차이를 똑같이 10으로 봐요.
+
+```python
+>>> import stardust as sd
+>>> people = sd.asarray([[170.0, 65.0], [180.0, 65.0], [170.0, 75.0],
+...                      [165.0, 58.0], [175.0, 80.0], [160.0, 52.0]])
+>>> a, b, c = people[0], people[1], people[2]
+>>> sd.spatial.euclidean(a, b), sd.spatial.euclidean(a, c)
+(10.0, 10.0)
+```
+
+그런데 이 여섯 사람 사이에서 키는 표준편차가 7cm쯤이고 몸무게는 10kg쯤이에요. 키 10cm는 표준편차의 1.4배이고 몸무게 10kg은 1배 남짓이니, 키의 차이가 더 드문 차이예요. `seuclidean`은 좌표마다 분산으로 나눠서 이것을 반영해요.
+
+```python
+>>> V = sd.var(people, axis=0, correction=1)
+>>> V
+array([              50.0, 107.76666666666668], dtype=float64)
+>>> sd.spatial.seuclidean(a, b, V), sd.spatial.seuclidean(a, c, V)
+(1.4142135623730951, 0.9632916040881131)
+```
+
+<Reference />
+
+## 무엇을 재나요
+
+$$
+d(u, v) = \sqrt{\sum_{i=1}^{n} \frac{(u_i - v_i)^2}{V_i}}
+$$
+
+표준화 유클리드 거리(standardized Euclidean distance)예요. 좌표마다 차이를 그 좌표의 표준편차 $\sqrt{V_i}$로 재니, 결과는 "표준편차 몇 개만큼 떨어져 있나"를 모든 좌표에 걸쳐 합친 값이에요. 그래서 단위가 사라져요. 키를 mm로 적어도, 몸무게를 파운드로 적어도 분산이 함께 바뀌므로 거리는 그대로예요.
+
+```python
+>>> mm = people * sd.asarray([10.0, 1.0])            # 키를 mm로
+>>> sd.spatial.seuclidean(mm[0], mm[1], sd.var(mm, axis=0, correction=1))
+1.4142135623730951
+```
+
+이런 자료에 잘 맞아요.
+
+- 단위가 다른 측정값을 함께 쓰는 자료(키와 몸무게, 온도와 습도, 가격과 면적).
+- 단위는 같아도 좌표마다 퍼진 정도가 크게 다른 자료.
+
+좌표끼리 상관이 강하면(키가 크면 몸무게도 큰 경향처럼) 좌표마다 따로 나누는 것만으로는 모자라요. 그때는 상관까지 따지는 [`mahalanobis`](/api/spatial/mahalanobis/)를 쓰세요. `seuclidean`은 공분산 행렬의 대각만 쓴 `mahalanobis`와 같아요.
+
+### 다른 거리와의 관계
+
+`seuclidean(u, v, V)`는 각 좌표를 표준편차로 나눈 뒤 잰 `euclidean`과 같은 양이고, 가중치 $w_i = 1/V_i$를 준 `euclidean`과도 같은 양이에요. 앞의 것은 나눗셈에서 반올림이 한 번 더 생겨 끝자리가 조금 다를 수 있어요.
+
+```python
+>>> Z = people / sd.sqrt(V)
+>>> sd.spatial.euclidean(Z[0], Z[1])
+1.4142135623730958
+>>> sd.spatial.euclidean(a, b, w=1.0 / V)
+1.4142135623730951
+```
+
+## 인자 V
+
+거리 함수 `seuclidean`에서는 `V`를 셋째 자리로 꼭 줘야 해요. 1차원이고 길이가 좌표 수 $n$이며, 모든 원소가 유한하고 0보다 커야 해요. 분산 0으로 나눌 수는 없으니 0도 `ValueError`예요.
+
+```python
+>>> sd.spatial.seuclidean(a, b)
+Traceback (most recent call last):
+    ...
+TypeError: seuclidean(): missing 1 required positional argument: 'V'
+>>> sd.spatial.seuclidean(a, b, [100.0, 0.0])
+Traceback (most recent call last):
+    ...
+ValueError: seuclidean(): 'V' must be finite and positive
+```
+
+`V`가 가중치의 역할을 하므로 `w`는 받지 않아요(`TypeError`).
+
+```python
+>>> sd.spatial.seuclidean(a, b, V, w=[1.0, 1.0])
+Traceback (most recent call last):
+    ...
+TypeError: seuclidean(): unexpected keyword argument 'w'
+```
+
+## 거리 행렬과 기본 V
+
+[`pdist`](/api/spatial/pdist/)와 [`cdist`](/api/spatial/cdist/)에서는 `metric='seuclidean'`과 함께 키워드 `V`를 줘요. 주지 않으면 자료에서 구한 열 분산(`correction=1`)을 써요. `pdist`는 `X`의 열 분산이에요.
+
+```python
+>>> sd.spatial.pdist(people, metric='seuclidean')[:2]
+array([1.4142135623730951, 0.9632916040881131], dtype=float64)
+```
+
+`cdist`는 `XA`와 `XB`를 세로로 이은 자료의 열 분산이에요. 그래서 넘기는 행이 바뀌면 기본 `V`도 바뀌고, 같은 두 사람의 거리가 달라져요. 아래는 앞 두 사람과 그다음 두 사람의 거리를, 넷만의 분산으로 잰 것과 여섯 사람의 분산 `V`로 잰 것이에요.
+
+```python
+>>> sd.spatial.cdist(people[:2], people[2:4], metric='seuclidean')
+array([[1.4297877518471747, 1.2779994228798377],
+       [2.1378982213393325,    2.5857134612769]], dtype=float64)
+>>> sd.spatial.cdist(people[:2], people[2:4], metric='seuclidean', V=V)
+array([[0.9632916040881131, 0.9770803703423063],
+       [ 1.711119725357244, 2.2259124084537243]], dtype=float64)
+```
+
+자료 전체를 대표하는 분산이 따로 있다면 `V`로 직접 주는 편이 안전해요.
+
+### 값이 모두 같은 열이 있으면
+
+기본 `V`를 쓸 때 어떤 열의 값이 모두 같으면 그 열의 분산이 0이라 나눌 수 없어요. 그래서 계산을 시작하기 전에 `ValueError`예요. 그런 열은 거리에 아무 정보도 주지 않으니 빼고 재거나, `V`를 직접 줘요.
+
+```python
+>>> X = sd.asarray([[1.0, 0.0], [2.0, 0.0], [4.0, 0.0]])
+>>> sd.spatial.pdist(X, metric='seuclidean')
+Traceback (most recent call last):
+    ...
+ValueError: pdist(): the variance of a column of the data is 0, so the default 'V' is not positive; give 'V'
+>>> sd.spatial.pdist(X[:, :1], metric='seuclidean')
+array([0.6546536707079771, 1.9639610121239313, 1.3093073414159542], dtype=float64)
+```
+
+값이 모두 0.1인 열처럼, 계산한 분산이 평균의 반올림 때문에 0이 아니라 아주 작은 양수($10^{-34}$쯤)로 나오는 열도 있어요. 이런 열도 값이 모두 같은지를 직접 보고 같은 에러로 알려요. 행이 하나뿐인 `pdist`는 짝이 없으니 에러 없이 빈 배열이에요.
+
+```python
+>>> sd.var(sd.asarray([0.1, 0.1, 0.1]), correction=1) > 0
+True
+>>> sd.spatial.cdist([[1.0, 0.1]], [[2.0, 0.1], [4.0, 0.1]], metric='seuclidean')
+Traceback (most recent call last):
+    ...
+ValueError: cdist(): the variance of a column of the data is 0, so the default 'V' is not positive; give 'V'
+```
+
+자료에 NaN이나 inf가 있으면 그 열의 분산이 NaN이라 에러가 아니라 모든 거리가 NaN이에요.
+
+## 이웃 찾기에서
+
+[`kneighbors`](/api/spatial/kneighbors/)와 [`radius_neighbors`](/api/spatial/radius_neighbors/)도 `metric='seuclidean'`을 받고, 기본 `V`는 `cdist`처럼 `XA`와 `XB`를 이은 자료의 열 분산이에요. 첫째 사람과 가장 가까운 두 사람이 `euclidean`과 다르게 나와요.
+
+```python
+>>> sd.spatial.kneighbors(people[:1], people[1:], k=2)
+QueryResult(distances=array([[8.602325267042627,              10.0]], dtype=float64), indices=array([[2, 0]], dtype=int64))
+>>> sd.spatial.kneighbors(people[:1], people[1:], k=2, metric='seuclidean')
+QueryResult(distances=array([[0.9632916040881131, 0.9770803703423063]], dtype=float64), indices=array([[1, 2]], dtype=int64))
+```
+
+`euclidean`으로는 키가 5cm 작고 몸무게가 7kg 가벼운 (165, 58)과 키만 10cm 큰 (180, 65)가 가까웠는데, `seuclidean`으로는 몸무게만 10kg 더 나가는 (170, 75)가 가장 가까워요. 몸무게가 키보다 더 넓게 퍼진 자료이기 때문이에요. [`KDTree`](/api/spatial/KDTree/)는 Minkowski 거리만 받으니, 같은 일을 트리로 하려면 자료를 미리 표준편차로 나눠서 만들어요.
+
+## NaN, inf, 빈 벡터, 배치
+
+다른 거리 함수와 같아요. 마지막 축이 좌표이고 앞 축은 브로드캐스트돼요. NaN은 결과까지 퍼지고, 한쪽만 무한대면 inf이고, 좌표가 0개면 0이에요.
+
+```python
+>>> sd.spatial.seuclidean(people, a, V)
+array([               0.0, 1.4142135623730951, 0.9632916040881131,
+       0.9770803703423063, 1.6086777513349162, 1.8889687418049665], dtype=float64)
+>>> sd.spatial.seuclidean(a, [sd.nan, 0.0], V), sd.spatial.seuclidean([], [], [])
+(nan, 0.0)
+```
+
+## 정확도
+
+상대오차는 좌표 수에 따라 정해지는 작은 한계 안이에요(`1/V`의 반올림까지 넣은 한계예요). 넘침과 언더플로가 걸리는 짝까지 넣은 시험 645짝에서 Arb(구간 산술)로 만든 참값과 견준 최대 오차는 2 ULP(한계의 0.45)였어요. 좌표가 아주 크거나 작아도 `euclidean`처럼 크기를 맞춰 다시 계산하므로 유한한 값이에요.
+
+## scipy·sklearn을 아는 분께
+
+- 뜻과 기본 `V`(pdist는 `X`, cdist는 `XA`와 `XB`를 이은 자료의 열 분산, `ddof=1`)는 scipy와 같아요.
+- 거리 함수에서 `V`가 셋째 자리인 것도 scipy와 같아요. `pdist`·`cdist`에서는 `metric`과 `V` 모두 키워드로만 받아요.
+- 받은 `V`에 0 이하나 NaN·inf가 있으면 `ValueError`예요. scipy는 음수 `V`에서 뜻 없는 값을, 0에서 inf를 내요.
+- 기본 `V`에 값이 모두 같은 열이 있으면 `ValueError`예요. scipy는 $0/0$으로 모든 거리가 NaN이에요.
+- `w`를 주면 `TypeError`예요(scipy도 `seuclidean`에는 `w`가 없어요).
+- 좌표가 $10^{160}$처럼 커도 유한한 거리예요. scipy는 같은 자리에서 inf를 내요.

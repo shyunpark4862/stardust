@@ -1,0 +1,144 @@
+---
+title: structural_rank
+names: [structural_rank]
+group: 순서와 라플라시안
+order: 2
+signatures:
+  - "sd.graph.structural_rank(graph, /)"
+summary: 행렬의 값은 보지 않고 0이 아닌 원소의 자리(패턴)만으로 정해지는 구조적 랭크를 구해요. 같은 행도 같은 열도 겹치지 않게 고를 수 있는 원소의 최대 개수이고, 그 패턴의 어떤 행렬도 랭크가 이보다 클 수 없어요. 희소 행렬이 분해 전에 이미 특이한지 가려낼 때 써요. 직사각 행렬도 받아요.
+params:
+  - name: graph
+    type: sd.sparse의 희소 배열 또는 밀집 행렬(ndarray, numpy 배열, 수의 중첩 시퀀스)
+    kind: positional-only
+    desc: "(m, n) 행렬. 직사각도 받아요. 희소 배열은 저장된 원소가 모두 원소이고(저장된 0도), 밀집 행렬은 0, NaN, ±inf가 아닌 원소가 원소예요. 값은 읽지 않아요."
+returns:
+  type: int
+  desc: "구조적 랭크(Python int). 0 이상 min(m, n) 이하예요."
+raises:
+  - type: TypeError
+    desc: "graph가 받는 꼴이 아닐 때(scipy 희소 행렬, DataFrame, 문자열, 복소수), 인자를 더 주거나 없는 키워드를 줄 때."
+  - type: ValueError
+    desc: "graph가 2차원이 아닐 때."
+seeAlso: [maximum_bipartite_matching, reverse_cuthill_mckee, laplacian, basics]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import PlaneFig from '../../../components/fig/PlaneFig.astro';
+
+export const srEdges = [[0, 2, 2, 2], [0, 2, 2, 0], [0, 1, 2, 0], [0, 0, 2, 0]];
+export const srMatch = [[0, 2, 2, 2], [0, 1, 2, 0]];
+
+## 한눈에 보기
+
+행렬의 **랭크**는 일차독립인 행의 최대 개수예요. 랭크가 행렬의 크기보다 작으면 특이 행렬이라 연립방정식의 해가 하나로 정해지지 않아요. 그런데 희소 행렬에서는 값을 보기도 전에, 0인 자리만 보고도 특이함을 알 수 있는 경우가 있어요. 어떤 열이 통째로 0이면 그 열에 무슨 값을 넣든 그 행렬은 특이해요.
+
+`structural_rank`는 이런 "자리만 보고 알 수 있는 랭크의 상한"을 구해요. **구조적 랭크**는 행렬에서 같은 행도 같은 열도 겹치지 않게 고를 수 있는 0 아닌 원소의 최대 개수예요. 0이 아닌 자리를 그대로 둔 채 값을 어떻게 바꾸어도 랭크는 구조적 랭크를 넘을 수 없고, 값이 "일반적"이면(우연히 맞아떨어지는 관계가 없으면) 랭크가 구조적 랭크와 같아요.
+
+```python
+>>> import stardust as sd
+>>> M = sd.asarray([[1.0, 0.0, 2.0],
+...                 [0.0, 0.0, 3.0],
+...                 [0.0, 0.0, 4.0]])
+>>> sd.graph.structural_rank(M)
+2
+>>> sd.linalg.matrix_rank(M)
+2
+```
+
+열 1이 모두 0이고, 행 1과 행 2는 원소가 열 2에만 있어서 둘 가운데 하나만 고를 수 있어요. 그래서 겹치지 않게 고를 수 있는 원소는 둘이 최대이고, 구조적 랭크는 2예요. 이 자리에 어떤 값을 넣어도 랭크는 2를 넘지 못해요.
+
+<Fig caption="행렬 M을 행(왼쪽)과 열(오른쪽) 사이의 그래프로 그린 것. 0이 아닌 원소 (i, j)가 행 i와 열 j를 잇는 변이에요. 굵은 선이 겹치지 않는 원소 둘의 한 가지 고르기이고, 이보다 많이 고를 수 없어요.">
+  <PlaneFig
+    label="행 노드 셋과 열 노드 셋 사이의 이분 그래프, 0이 아닌 원소 네 개를 변으로, 가장 큰 매칭 두 변을 굵게 표시"
+    domain={[-0.6, 2.6]}
+    range={[-0.4, 2.4]}
+    width={300}
+    layers={[
+      { kind: 'segments', segs: srEdges, tone: 'faint', width: 1.6 },
+      { kind: 'segments', segs: srMatch, tone: 'main', width: 2.6 },
+      { kind: 'text', at: [0, 2.3], text: '행', anchor: 'middle', tone: 'base' },
+      { kind: 'text', at: [2, 2.3], text: '열', anchor: 'middle', tone: 'base' },
+      { kind: 'points', pts: [[0, 2], [0, 1], [0, 0]], tone: 'ink', size: 4.2, labels: ['r0', 'r1', 'r2'] },
+      { kind: 'points', pts: [[2, 2], [2, 1], [2, 0]], tone: 'ink', shape: 'square', size: 4.2, labels: ['c0', 'c1', 'c2'] },
+    ]}
+    legend={[
+      { label: '0이 아닌 원소', tone: 'faint', shape: 'line' },
+      { label: '겹치지 않게 고른 원소', tone: 'main', shape: 'line' },
+    ]}
+  />
+</Fig>
+
+<Reference />
+
+## 무엇을 세나요
+
+행을 한쪽 노드, 열을 다른 쪽 노드로 두고 0이 아닌 원소 $(i, j)$를 행 $i$와 열 $j$를 잇는 변으로 보면, 겹치지 않게 고른 원소는 끝점을 나누지 않는 변의 모임, 곧 **매칭**이에요. 구조적 랭크는 이 이분 그래프의 가장 큰 매칭의 크기예요. 어떤 매칭인지까지 필요하면 [`maximum_bipartite_matching`](/api/graph/maximum_bipartite_matching/)을 써요.
+
+```python
+>>> sd.graph.maximum_bipartite_matching(sd.sparse.csr_array(M), perm_type="column")
+array([ 0,  2, -1], dtype=int64)
+```
+
+`perm_type="column"`의 결과는 행마다 짝지은 열이고, −1인 행은 짝이 없어요.
+
+### 수치 랭크와의 관계
+
+구조적 랭크는 값을 보지 않으므로 수치 랭크의 **상한**이에요. 값 사이에 우연한 관계가 있으면 수치 랭크가 더 작을 수 있어요.
+
+```python
+>>> M2 = sd.asarray([[1.0, 2.0], [2.0, 4.0]])
+>>> sd.graph.structural_rank(M2), sd.linalg.matrix_rank(M2)
+(2, 1)
+```
+
+둘째 행이 첫째 행의 두 배라 랭크는 1이지만, 원소가 모두 0이 아니라서 구조적 랭크는 2예요. 그래서 쓰는 법은 한쪽 방향이에요.
+
+- 구조적 랭크가 $n$보다 작은 $(n, n)$ 행렬은 값과 상관없이 **언제나 특이해요.** 분해를 시작하기 전에 걸러 낼 수 있어요.
+- 구조적 랭크가 $n$이어도 특이할 수 있어요. 값까지 봐야 하면 [`sd.linalg.matrix_rank`](/api/linalg/matrix_rank/)를 써요.
+
+구조적 랭크는 자리만 세는 계산이라 반올림이 끼지 않고 언제나 정확해요. 수치 랭크처럼 작은 특잇값을 0으로 볼지 정하는 문턱도 필요 없어요.
+
+## 자리만 봐요
+
+희소 배열은 **저장된 원소**가 모두 원소예요. 값이 0으로 저장된 자리도 세요. 밀집 행렬은 0, NaN, ±inf가 아닌 자리만 세요.
+
+```python
+>>> Zs = sd.sparse.csr_array((sd.asarray([0.0, 0.0]), (sd.asarray([0, 1]), sd.asarray([0, 1]))), shape=(2, 2))
+>>> sd.graph.structural_rank(Zs)
+2
+>>> sd.graph.structural_rank(Zs.toarray())
+0
+```
+
+대각에 0을 저장한 희소 배열은 구조적 랭크가 2이고, 같은 값을 밀집으로 주면 원소가 없어 0이에요. 희소 행렬에 "나중에 값이 들어올 자리"를 0으로 저장해 두었다면 그 자리도 구조에 들어가요.
+
+## 직사각 행렬
+
+직사각 행렬도 받아요. 결과는 행 수와 열 수 가운데 작은 쪽을 넘지 않아요.
+
+```python
+>>> sd.graph.structural_rank(sd.ones((3, 5)))
+3
+>>> sd.graph.structural_rank(sd.zeros((3, 5)))
+0
+>>> sd.graph.structural_rank(sd.zeros((0, 4)))
+0
+```
+
+## 경계의 값
+
+결과는 Python `int`예요. 2차원이 아니면 `ValueError`예요.
+
+```python
+>>> type(sd.graph.structural_rank(M))
+<class 'int'>
+>>> sd.graph.structural_rank(sd.zeros(3))
+Traceback (most recent call last):
+    ...
+ValueError: structural_rank(): 'graph' must have 2 dimensions, not 1
+```
+
+## scipy·networkx를 아는 분께
+
+- 결과가 Python `int`예요. scipy는 numpy 정수를 줘요.
+- 밀집 행렬도 받아요(scipy는 희소 행렬만). 밀집 행렬은 그래프의 규칙대로 0, NaN, ±inf가 아닌 자리를 원소로 세요.
+- 저장된 0을 원소로 세는 것은 scipy와 같아요.

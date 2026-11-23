@@ -1,0 +1,627 @@
+---
+kind: concept
+title: 회귀분석의 기본
+group: 기본 개념
+order: 1
+summary: sd.regression의 함수를 처음 쓸 때 읽는 페이지예요. 회귀분석이 무엇이고 어떤 문제에 어떤 함수를 쓰는지, 그리고 모든 함수가 함께 따르는 입력과 결과의 약속을 설명해요.
+seeAlso: [results, covariance, collinearity, ols, glm]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+export const studyPts = [[0.94569, 51.0], [1.0543, 51.0], [1.0, NaN], [1.0, 50.346], [1.0, 51.654], [1.0, NaN], [1.9457, 58.0], [2.0543, 58.0], [2.0, NaN], [2.0, 57.346], [2.0, 58.654], [2.0, NaN], [2.9457, 57.0], [3.0543, 57.0], [3.0, NaN], [3.0, 56.346], [3.0, 57.654], [3.0, NaN], [3.9457, 66.0], [4.0543, 66.0], [4.0, NaN], [4.0, 65.346], [4.0, 66.654], [4.0, NaN], [4.9457, 64.0], [5.0543, 64.0], [5.0, NaN], [5.0, 63.346], [5.0, 64.654], [5.0, NaN], [5.9457, 73.0], [6.0543, 73.0], [6.0, NaN], [6.0, 72.346], [6.0, 73.654], [6.0, NaN], [6.9457, 75.0], [7.0543, 75.0], [7.0, NaN], [7.0, 74.346], [7.0, 75.654], [7.0, NaN], [7.9457, 80.0], [8.0543, 80.0], [8.0, NaN], [8.0, 79.346], [8.0, 80.654], [8.0, NaN]];
+export const studyRes = [[1.0, 51.0], [1.0, 51.583], [1.0, NaN], [2.0, 58.0], [2.0, 55.56], [2.0, NaN], [3.0, 57.0], [3.0, 59.536], [3.0, NaN], [4.0, 66.0], [4.0, 63.512], [4.0, NaN], [5.0, 64.0], [5.0, 67.488], [5.0, NaN], [6.0, 73.0], [6.0, 71.464], [6.0, NaN], [7.0, 75.0], [7.0, 75.44], [7.0, NaN], [8.0, 80.0], [8.0, 79.417], [8.0, NaN]];
+
+## 회귀분석이란
+
+학생 여덟 명이 시험 전에 공부한 시간과 받은 점수를 적어 두었다고 해 봐요. 공부를 오래 한 학생일수록 점수가 높은 것 같지만, 딱 맞아떨어지지는 않아요. 4시간 공부한 학생이 5시간 공부한 학생보다 점수가 높기도 해요.
+
+**회귀분석**은 이런 데이터에서 "공부 시간이 한 시간 늘면 점수가 평균적으로 얼마나 오르나?"를 숫자로 답하는 방법이에요. 점들 사이를 가장 잘 지나는 직선을 긋고, 그 직선의 기울기와 높이를 읽어요.
+
+```python
+>>> import stardust as sd
+>>> hours = [1.0, 2, 3, 4, 5, 6, 7, 8]
+>>> score = [51.0, 58, 57, 66, 64, 73, 75, 80]
+>>> r = sd.regression.ols(score, hours)
+>>> r.params
+array([47.607142857142854, 3.9761904761904763], dtype=float64)
+```
+
+[`ols`](/api/regression/ols/)는 가장 기본인 회귀 함수예요. 결과의 `params`가 직선을 정하는 두 수예요.
+
+- `params[0]` ≈ 47.6은 **절편**이에요. 공부를 0시간 했을 때 직선이 지나는 높이예요.
+- `params[1]` ≈ 3.98은 **기울기**예요. 공부 시간이 1시간 늘 때 점수가 평균적으로 약 4점 오른다는 뜻이에요.
+
+이 두 수를 **계수**라고 불러요. 계수를 알면 새 학생의 점수도 어림할 수 있어요. 10시간 공부하면 47.6 + 3.98 × 10 ≈ 87.4점이에요.
+
+```python
+>>> r.predict([10.0])
+array([87.36904761904762], dtype=float64)
+```
+
+<Fig caption="공부 시간(가로)과 점수(세로). 십자는 학생 여덟 명의 데이터, 진한 선은 ols가 그은 직선, 세로 막대는 각 점과 직선 사이의 거리(잔차)예요. ols는 이 막대 길이의 제곱합이 가장 작아지는 직선을 골라요.">
+  <Plot
+    curves={[
+      { f: (x) => 47.607143 + 3.9761905 * x, label: '적합선' },
+      { points: studyPts, label: '데이터' },
+      { points: studyRes, label: '잔차' },
+    ]}
+    domain={[0, 9]}
+    range={[45, 85]}
+    xTicks={[
+      { v: 2, label: '2시간' },
+      { v: 4, label: '4시간' },
+      { v: 6, label: '6시간' },
+      { v: 8, label: '8시간' },
+    ]}
+    yTicks={[
+      { v: 50, label: '50' },
+      { v: 60, label: '60' },
+      { v: 70, label: '70' },
+      { v: 80, label: '80' },
+    ]}
+  />
+</Fig>
+
+### 말 정리
+
+회귀분석 문서에서 계속 쓰는 말이에요.
+
+| 말 | 뜻 | 위 예에서 |
+|---|---|---|
+| 반응 `y` | 설명하고 싶은 값 | 점수 |
+| 설명변수 `X` | 반응을 설명하는 데 쓰는 값. 열 하나가 변수 하나예요 | 공부 시간 |
+| 관측 | 데이터의 한 행. `y`의 원소 하나와 `X`의 행 하나 | 학생 한 명 |
+| 모형 | 반응과 설명변수의 관계를 적은 식 | 점수 = 절편 + 기울기 × 시간 |
+| 계수 `params` | 모형에서 데이터로 정하는 수 | 47.6, 3.98 |
+| 적합값 `fittedvalues` | 계수를 넣은 모형이 각 관측에서 내는 값. 직선 위의 높이예요 | 51.6, 55.6, … |
+| 잔차 `resid` | 실제 값 − 적합값. 모형이 설명하지 못한 나머지예요 | −0.58, 2.44, … |
+
+```python
+>>> r.fittedvalues
+array([ 51.58333333333333,  55.55952380952381, 59.535714285714285,
+        63.51190476190476,  67.48809523809524,  71.46428571428571,
+        75.44047619047619,  79.41666666666666], dtype=float64)
+>>> sd.round(r.resid * 100) / 100
+array([-0.58,  2.44, -2.54,  2.49, -3.49,  1.54, -0.44,  0.58], dtype=float64)
+```
+
+설명변수가 여러 개면 모형은 이렇게 돼요. $\varepsilon_i$는 모형이 담지 못하는 우연한 흔들림(오차)이에요.
+
+$$y_i = \beta_0 + \beta_1 x_{i1} + \beta_2 x_{i2} + \dots + \beta_k x_{ik} + \varepsilon_i$$
+
+`ols`는 잔차의 제곱합 $\sum_i (y_i - \hat y_i)^2$을 가장 작게 하는 계수 $\hat\beta$를 찾아요. 그래서 **최소제곱**(ordinary least squares, OLS)이라고 불러요. 수식과 그림이 같은 이야기예요. 그림의 세로 막대를 제곱해 더한 값이 가장 작은 직선이에요.
+
+### 계수가 얼마나 믿을 만한가
+
+데이터가 여덟 개뿐이니, 학생을 다시 뽑으면 기울기도 조금 달라질 거예요. 결과 객체에는 그 흔들림을 재는 값도 들어 있어요.
+
+```python
+>>> round(r.bse[1], 3)
+0.367
+>>> r.conf_int()[1]
+array([3.077716721731934, 4.874664230649018], dtype=float64)
+```
+
+- `bse`는 **표준오차**예요. 데이터를 새로 모아 다시 맞추면 기울기가 대략 이만큼(±0.37) 흔들린다는 어림이에요.
+- `conf_int()`는 **95% 신뢰구간**이에요. 참 기울기가 3.08과 4.87 사이에 있다고 보는 범위예요.
+
+t값, p값, R² 같은 나머지 필드와 그 뜻은 [결과 객체 읽기](/api/regression/results/)에서 자세히 설명해요.
+
+## 어떤 문제에 어떤 함수
+
+`sd.regression`의 함수는 풀려는 문제에 따라 골라요. 반응이 어떤 값인지, 데이터에 무엇이 섞여 있는지, 계수를 해석하려는지 예측하려는지가 기준이에요.
+
+| 이런 문제라면 | 함수 | 페이지 |
+|---|---|---|
+| 반응이 실수이고, 오차가 관측마다 고르게 흔들린다고 볼 수 있어요 | `ols` | [ols](/api/regression/ols/) |
+| 관측마다 정밀도가 달라서 믿을 만한 관측에 더 무게를 주고 싶어요 | `wls` | [wls](/api/regression/wls/) |
+| 오차끼리 상관이 있고, 그 공분산 행렬을 알아요 | `gls` | [gls](/api/regression/gls/) |
+| 설명변수 하나로 기울기, 절편, 상관계수를 구하고 싶어요 | `ols(y, x)`, [`sd.htest.pearsonr`](/api/htest/pearsonr/) | [ols](/api/regression/ols/#직선-하나-기울기-절편-상관계수) |
+| 잔차가 모형의 가정에 맞는지, 영향이 큰 관측이 있는지 보고 싶어요 | 결과의 진단 필드 | [회귀 진단](/api/regression/diagnostics/) |
+| 분산이 고른지, 빠진 비선형 항이 없는지 검정하고 싶어요 | 결과의 `white_test`, `goldfeld_quandt`, `reset_test` | [모형 꼴의 검정](/api/regression/specification-tests/) |
+| 두 계수가 같은지, 계수 몇 개가 모두 0인지 검정하고 싶어요 | 결과의 `t_test`, `wald_test` | [선형 가설 검정](/api/regression/hypothesis-tests/) |
+| 열 몇 개를 뺀 작은 모형으로 충분한지 보고 싶어요 | 결과의 `compare_f_test`, `compare_lr_test` | [모형 비교](/api/regression/model-comparison/) |
+| 모형 여럿이나 설명변수마다의 몫을 분산분석표로 보고 싶어요 | `anova` | [anova](/api/regression/anova/) |
+| 오차의 분산이 관측마다 다르거나, 시간이나 묶음 안에서 오차가 이어져요 | `ols` 등의 `cov_type` | [표준오차의 종류](/api/regression/covariance/) |
+| 반응이 0 또는 1(합격, 불합격)이에요 | `glm(family='binomial')` | [glm](/api/regression/glm/), [로지스틱 회귀](/api/regression/logistic/) |
+| 반응이 0, 1, 2, …처럼 센 값이거나 양수인 크기예요 | `glm(family='poisson')`, `'gamma'` | [셈 자료와 양수 자료](/api/regression/poisson-gamma/) |
+| 설명변수가 많거나 서로 비슷해서 계수가 불안정하고, 주로 예측이 목적이에요 | `ridge`, `lasso`, `elastic_net` | [ridge](/api/regression/ridge/), [lasso](/api/regression/lasso/), [elastic_net](/api/regression/elastic-net/) |
+| 위의 벌점 세기 `alpha`를 데이터로 고르고 싶어요 | `ridge_cv`, `lasso_cv`, `elastic_net_cv` | [교차검증](/api/regression/cross-validation/) |
+| 0·1이나 센 값의 반응에 벌점을 주고 싶어요 | `penalized_glm` | [penalized_glm](/api/regression/penalized-glm/) |
+| 이상값이 섞여 있어서 몇 개의 큰 잔차에 끌려가지 않는 적합이 필요해요 | `rlm` | [rlm](/api/regression/rlm/) |
+| 설명변수 하나에 이상값이 섞여 있어요 | `theilslopes`, `siegelslopes` | [theilslopes](/api/regression/theilslopes/), [siegelslopes](/api/regression/siegelslopes/) |
+| 평균이 아니라 중앙값이나 상위 10% 같은 분위가 궁금해요 | `quantreg` | [quantreg](/api/regression/quantreg/) |
+| 모형이 계수에 대해 직선이 아니에요(지수적 감소, 포화 곡선 등) | `nls` | [nls](/api/regression/nls/) |
+| 설명변수 후보 가운데 어느 것을 쓸지 AIC나 교차검증으로 고르고 싶어요 | `stepwise`, `best_subset` | [stepwise](/api/regression/stepwise/), [best_subset](/api/regression/best-subset/) |
+
+설명변수를 제곱한 열이나 두 변수를 곱한 열을 넣어도 계수에 대해서는 여전히 직선 모형이에요. 그래서 2차 곡선 맞추기는 거듭제곱 열을 만들어 `ols`에 주면 돼요. `nls`는 $a e^{-bx}$처럼 계수가 식 안쪽에 들어가는 모형에 써요.
+
+## 입력: 위치로 주는 y, X와 키워드로 주는 옵션
+
+### 인자의 순서
+
+데이터는 이름 없이 위치로만 줘요. 반응 `y`가 먼저, 설명변수 `X`가 다음이에요. 옵션은 모두 키워드로만 줘요. 이름이 같은 다른 철자(별칭)는 없어요.
+
+```python
+>>> r = sd.regression.ols(score, hours, intercept=True)
+>>> sd.regression.ols(y=score, X=hours)
+Traceback (most recent call last):
+    ...
+TypeError: ols(): got some positional-only arguments passed as keyword arguments: 'y, X'
+>>> sd.regression.ols(score, hours, True)
+Traceback (most recent call last):
+    ...
+TypeError: ols(): takes 2 positional arguments but 3 were given
+```
+
+`y`, `X`를 차례로 주는 이 꼴은 `ols`, `wls`, `gls`, `glm`, 정규화 함수, `rlm`, `quantreg`에 공통이에요. 데이터 인자의 꼴이 다른 함수가 셋 있는데, 다른 라이브러리에서 널리 쓰는 꼴을 그대로 따랐어요.
+
+| 함수 | 데이터 인자 |
+|---|---|
+| `theilslopes`, `siegelslopes` | `theilslopes(y, x=None)`: y가 먼저, x는 빼도 돼요 |
+| `nls` | `nls(f, x, y, p0=...)`: 모형 함수 f가 먼저 |
+
+### 입력의 꼴
+
+- `y`는 길이 n인 1차원이에요.
+- `X`는 n × k 2차원(열 하나가 설명변수 하나)이거나, 설명변수가 하나면 길이 n인 1차원이어도 돼요.
+- `sd.ndarray`, 실수의 리스트나 튜플(2차원은 리스트의 리스트), numpy 배열, `sd.frame`의 `Series`와 `DataFrame`을 받아요. 열이 하나인 `DataFrame`은 `y`로 줘도 돼요. 그 열을 `y`로 읽어요.
+- 계산은 float64로 해요. bool과 정수는 float64로 바꿔서 써요.
+
+```python
+>>> X = [[1.0, 0], [2, 1], [3, 0], [4, 1]]
+>>> sd.regression.ols([1.0, 2, 4, 3], X).params
+array([ 0.5,  1.0, -1.0], dtype=float64)
+>>> sd.regression.ols([1, 2, 4, 3], [True, False, True, True]).params
+array([               2.0, 0.6666666666666666], dtype=float64)
+```
+
+```python
+>>> df1 = sd.frame.DataFrame({'score': score})
+>>> sd.regression.ols(df1, hours).params
+array([47.607142857142854, 3.9761904761904763], dtype=float64)
+```
+
+꼴이 맞지 않으면 에러예요. 행 수가 다르면 `ValueError`, 복소수와 숫자가 아닌 원소는 `TypeError`, 숫자 하나(0차원)는 `ValueError`예요. 리스트를 받지 못할 때는 어떤 원소가 문제인지 메시지에 나와요(`list of str`는 문자열이 섞인 리스트라는 뜻이에요).
+
+```python
+>>> sd.regression.ols(score, hours[:7])
+Traceback (most recent call last):
+    ...
+ValueError: ols(): 'X' must have 8 rows like 'y', not 7
+>>> sd.regression.ols(score, sd.asarray(hours) + 0j)
+Traceback (most recent call last):
+    ...
+TypeError: ols(): 'X' must be real, not a complex128 array
+>>> sd.regression.ols(3.0, hours)
+Traceback (most recent call last):
+    ...
+ValueError: ols(): 'y' must have at least 1 dimension
+>>> sd.regression.ols(score, ['1', '2', '3', '4', '5', '6', '7', '8'])
+Traceback (most recent call last):
+    ...
+TypeError: ols(): 'X' must be an sd.ndarray, a sequence of numbers or a frame Series or DataFrame, not list of str
+```
+
+`sd.ndarray`의 n × 1 `y`는 열 하나짜리 `DataFrame`과 달라요. 배열의 앞 축은 [배치](#배치-회귀-여러-개를-한-번에) 축이라서, n × 1은 "행이 하나인 회귀 n개"로 읽혀요. 그래서 `X`와 행 수가 맞지 않고, 메시지가 그 까닭과 고치는 법을 알려 줘요. 회귀 하나를 맞추려면 `y`를 1차원으로 주세요.
+
+```python
+>>> sd.regression.ols(sd.asarray(score)[:, None], hours)
+Traceback (most recent call last):
+    ...
+ValueError: ols(): 'X' must have 1 row like 'y', not 8 ('y' of shape (8, 1) is a batch of regressions with 1 row each; give a 1-dimensional 'y' for one regression)
+```
+
+정할 계수가 하나도 없는 모형, 곧 `X`에 열이 없는데 `intercept=False`인 모형은 모든 함수에서 `ValueError`예요.
+
+```python
+>>> sd.regression.ols(score, sd.zeros((8, 0)), intercept=False)
+Traceback (most recent call last):
+    ...
+ValueError: ols(): the model has no parameters (no columns in 'X' and intercept=False)
+```
+
+### frame 입력과 계수 이름
+
+[`DataFrame`](/api/frame/dataframe/)을 주면 컬럼 이름이 그대로 계수 이름 `param_names`가 돼요. 절편의 이름은 `'const'`예요. [`Series`](/api/frame/series/)는 그 이름을 쓰고, 이름이 없는 배열이나 리스트는 `'x1'`, `'x2'`, …예요.
+
+```python
+>>> df = sd.frame.DataFrame({
+...     'hours': [1.0, 2, 3, 4, 5, 6, 7, 8],
+...     'sleep': [7.0, 6, 8, 7, 5, 6, 8, 7],
+...     'score': [51.0, 58, 57, 66, 64, 73, 75, 80],
+... })
+>>> r = sd.regression.ols(df['score'], df[['hours', 'sleep']])
+>>> r.param_names
+['const', 'hours', 'sleep']
+>>> sd.regression.ols(df['score'], df['hours']).param_names
+['const', 'hours']
+>>> sd.regression.ols(score, hours).param_names
+['const', 'x1']
+```
+
+결과 필드는 입력이 frame이어도 `sd.ndarray`예요. 행 인덱스는 결과에 붙지 않아요.
+
+```python
+>>> type(r.params).__name__, type(r.fittedvalues).__name__
+('ndarray', 'ndarray')
+```
+
+frame의 결측값(NA)은 NaN으로 바뀌어서 아래 [NaN 규칙](#nan과-nan_policy)을 따라요.
+
+`DataFrame`의 열은 모두 숫자로 읽을 수 있어야 해요. 숫자로 읽을 수 없는 문자열 열이 있으면 `TypeError`예요. 범주를 나타내는 문자열 열은 0과 1의 열로 바꿔서 주세요.
+
+```python
+>>> bad = sd.frame.DataFrame({'hours': hours, 'cls': ['a', 'b', 'a', 'b', 'a', 'b', 'a', 'b']})
+>>> sd.regression.ols(score, bad)
+Traceback (most recent call last):
+    ...
+TypeError: ols(): 'X' must have numeric columns
+```
+
+## 절편은 기본으로 들어가요
+
+모든 선형 모형 함수는 절편을 기본으로 넣어요. 1로 채운 열을 `X`의 맨 앞에 붙인 것과 같아서, 절편이 `params[0]`이고 `X`의 첫 열의 계수가 `params[1]`이에요. 표준오차나 p값 같은 추론 필드도 같은 자리예요.
+
+절편 없이 원점을 지나는 직선을 맞추려면 `intercept=False`를 줘요.
+
+```python
+>>> r0 = sd.regression.ols(score, hours, intercept=False)
+>>> r0.param_names, r0.params
+(['x1'], array([12.377450980392156], dtype=float64))
+```
+
+<Callout type="warn" title="상수 열은 절편으로 보지 않아요">
+
+절편이 있는지는 `intercept` 옵션 하나만 보고 정해요. `X`에 1로 채운 열을 직접 넣어도 그 열을 절편으로 알아보지 않아요.
+
+- `intercept=True`(기본)인데 상수 열을 넣으면, 그 열은 절편과 겹치는 열이 돼요. 절편이 남고 상수 열의 계수는 NaN이에요([겹친 열](/api/regression/collinearity/)).
+- `intercept=False`로 상수 열을 넣으면 계수는 절편이 있는 적합과 같지만, 모형은 "절편이 없는" 모형으로 다뤄요. 그래서 R²가 평균을 빼지 않은 제곱합(비중심 TSS)으로 계산되어 값이 달라요.
+
+</Callout>
+
+```python
+>>> Xc = [[1.0, h] for h in hours]
+>>> a = sd.regression.ols(score, Xc)
+>>> a.param_names, a.params
+(['const', 'x1', 'x2'], array([47.607142857142854,                nan, 3.9761904761904763], dtype=float64))
+>>> b = sd.regression.ols(score, Xc, intercept=False)
+>>> b.params
+array([47.607142857142854, 3.9761904761904763], dtype=float64)
+>>> a.rsquared, b.rsquared
+(0.951323509346432, 0.9990298060971962)
+```
+
+절편이 있으면 R²는 "평균만으로 어림한 것보다 얼마나 나아졌나"를, 절편이 없으면 "0으로 어림한 것보다 얼마나 나아졌나"를 재요. 둘의 차이는 [결과 객체 읽기](/api/regression/results/#결정계수)에 있어요. 상수 열이 있는 데이터를 받았다면 그 열을 빼고 기본값(`intercept=True`)을 쓰세요.
+
+## NaN과 nan_policy
+
+데이터에 NaN(빠진 값)이 있을 때 어떻게 할지는 `nan_policy`로 정해요. 세 값은 [sd.stats의 기술통계](/api/stats/describe/)와 같아요.
+
+| `nan_policy` | 동작 |
+|---|---|
+| `'propagate'`(기본) | 그 회귀의 모든 값이 NaN이에요. `nobs`, `df_model`, `df_resid`도 NaN이고 `rank`는 0이에요 |
+| `'omit'` | `y`, `X`의 행, 가중치 가운데 NaN이 있는 행을 빼고 맞춰요. 적합값과 잔차도 남은 행만 있어요 |
+| `'raise'` | `ValueError`예요 |
+
+```python
+>>> y = [51.0, 58, sd.nan, 66, 64, 73, 75, 80]
+>>> r = sd.regression.ols(y, hours)
+>>> r.params, r.nobs, r.rank
+(array([nan, nan], dtype=float64), nan, 0)
+>>> r = sd.regression.ols(y, hours, nan_policy='omit')
+>>> r.nobs, r.fittedvalues.shape
+(7.0, (7,))
+>>> sd.regression.ols(y, hours, nan_policy='raise')
+Traceback (most recent call last):
+    ...
+ValueError: ols(): the input contains NaN (nan_policy='raise')
+```
+
+`'omit'`이 빼는 행에는 `wls`의 가중치, `glm`의 오프셋처럼 행마다 주는 다른 인자에 NaN이 있는 행도 들어가요. `cov_type='cluster'`의 군집 레이블이 비어 있는 행도 같아요([표준오차의 종류](/api/regression/covariance/#cluster-묶음-안의-상관)).
+
+```python
+>>> w = [1.0, 1, 1, sd.nan, 1, 1, 1, 1]
+>>> sd.regression.wls(score, hours, weights=w).nobs
+nan
+>>> sd.regression.wls(score, hours, weights=w, nan_policy='omit').nobs
+7.0
+```
+
+### inf는 언제나 에러
+
+무한대(inf)는 `nan_policy`와 상관없이 언제나 `ValueError`예요. 음수 가중치도 마찬가지예요. NaN은 "값이 없다"는 표시로 흔히 쓰이지만, inf는 대개 앞 단계의 계산이 넘친 결과라서 조용히 빼거나 NaN으로 바꾸지 않아요. 어느 인자에 inf가 있는지는 메시지에 나와요. `'omit'`도 행을 빼기 전에 이 둘부터 보므로, NaN이 있어 어차피 빠질 행의 inf나 음수 가중치도 에러예요.
+
+```python
+>>> sd.regression.ols([51.0, 58, sd.inf, 66, 64, 73, 75, 80], hours, nan_policy='omit')
+Traceback (most recent call last):
+    ...
+ValueError: ols(): 'y' contains infinity
+>>> sd.regression.wls(score, hours, weights=[1.0, 1, 1, sd.inf, 1, 1, 1, 1])
+Traceback (most recent call last):
+    ...
+ValueError: wls(): 'weights' contains infinity
+>>> sd.regression.ols([51.0, sd.nan, 57, 66, 64, 73, 75, 80], [1.0, sd.inf, 3, 4, 5, 6, 7, 8], nan_policy='omit')
+Traceback (most recent call last):
+    ...
+ValueError: ols(): 'X' contains infinity
+```
+
+### 쓸 행이 없을 때
+
+적합에 쓸 행이 하나도 없으면 에러 대신 값이 모두 NaN인 결과가 나와요. 행이 처음부터 없을 때(n = 0), `nan_policy='omit'`이 모든 행을 뺐을 때, 가중치가 모두 0일 때가 그래요. `nobs`는 0이고, `df_model`, `df_resid`, 적합값도 NaN이에요. 반복으로 푸는 함수는 `converged`가 False, `n_iter`가 0이에요.
+
+```python
+>>> r = sd.regression.ols([], [])
+>>> r.params, r.nobs, r.df_resid
+(array([nan, nan], dtype=float64), 0.0, nan)
+>>> sd.regression.wls(score, hours, weights=[0.0] * 8).nobs
+0.0
+>>> g = sd.regression.glm([sd.nan] * 8, hours, family='gaussian', nan_policy='omit')
+>>> g.nobs, g.converged, g.n_iter
+(0.0, False, 0)
+```
+
+`nan_policy='propagate'`의 NaN 결과와 달리 `nobs`가 NaN이 아니라 0이라서, "데이터가 없다"와 "데이터에 NaN이 있다"를 구별할 수 있어요.
+
+점 두 개로 직선이 정해지는 `theilslopes`, `siegelslopes`는 점이 2개보다 적을 때도 같은 규칙이에요. 에러 대신 모든 필드가 NaN인 결과가 나와요. `nan_policy='omit'`이 점을 빼서 2개보다 적게 남아도 그래요.
+
+```python
+>>> sd.regression.theilslopes([2.0], [1.0])
+TheilslopesResult(slope=nan, intercept=nan, low_slope=nan, high_slope=nan)
+```
+
+## 배치: 회귀 여러 개를 한 번에
+
+`y`와 `X`의 앞쪽 축은 **배치 축**이에요. 같은 모양의 회귀 여러 개를 한 번에 풀어요. 예를 들어 세 반의 점수를 같은 공부 시간 열로 맞추려면 `y`를 3 × 8로 주면 돼요.
+
+```python
+>>> Y = sd.asarray([
+...     [51.0, 58, 57, 66, 64, 73, 75, 80],
+...     [50.0, 54, 57, 63, 66, 71, 73, 78],
+...     [60.0, 59, 62, 61, 63, 62, 64, 63],
+... ])
+>>> rb = sd.regression.ols(Y, hours)
+>>> rb
+OLSResult(batch shape (3,), 2 parameters)
+>>> rb.params
+array([[47.607142857142854, 3.9761904761904763],
+       [              46.0,                4.0],
+       [ 59.17857142857143, 0.5714285714285714]], dtype=float64)
+```
+
+결과의 모든 필드 앞에 배치 모양이 붙어요. `params`는 (3, 2), `fittedvalues`는 (3, 8), `conf_int()`는 (3, 2, 2)이고, `rsquared` 같은 수 하나짜리 필드는 길이 3의 배열이에요.
+
+```python
+>>> rb.fittedvalues.shape, rb.conf_int().shape
+((3, 8), (3, 2, 2))
+>>> rb.rsquared
+array([ 0.951323509346432, 0.9940828402366864, 0.7032967032967032], dtype=float64)
+```
+
+### 배치 모양의 브로드캐스트
+
+`y`, `X`, 그리고 `wls`의 `weights`, `gls`의 `sigma`처럼 관측마다 주는 인자의 배치 모양은 서로 [브로드캐스트](/api/array/broadcasting/)해요. 각 인자에서 회귀 하나의 몫(`y`는 마지막 축 하나, `X`는 마지막 두 축)을 떼고 남은 앞쪽 모양끼리 맞춰요.
+
+| `y` | `X` | 배치 모양 | 뜻 |
+|---|---|---|---|
+| (8,) | (8, 2) | () | 회귀 하나 |
+| (3, 8) | (8, 2) | (3,) | 같은 `X`에 반응 셋 |
+| (8,) | (4, 8, 2) | (4,) | 같은 반응에 설계 넷 |
+| (3, 1, 8) | (4, 8, 2) | (3, 4) | 반응 셋 × 설계 넷의 모든 짝 |
+
+```python
+>>> Xb = sd.stack([sd.asarray(hours), sd.asarray(hours) ** 2])[:, :, None]
+>>> Xb.shape
+(2, 8, 1)
+>>> sd.regression.ols(Y[:, None, :], Xb).params.shape
+(3, 2, 2)
+>>> sd.regression.ols(Y, Xb)
+Traceback (most recent call last):
+    ...
+ValueError: ols(): the batch shapes of 'y' (3,), 'X' (2,) do not broadcast
+```
+
+메시지에는 배치를 이루는 인자마다 그 이름과 배치 모양이 적혀서, 어느 인자가 맞지 않는지 바로 보여요. `theilslopes`, `siegelslopes`, `glm`(행마다 값이 있는 인자와 `groups`까지), 정규화 함수도 같은 꼴이에요.
+
+```python
+>>> sd.regression.theilslopes([[1.0, 2.0, 4.0]] * 3, [[1.0, 2.0, 3.0]] * 2)
+Traceback (most recent call last):
+    ...
+ValueError: theilslopes(): the batch shapes of 'y' (3,), 'x' (2,) do not broadcast
+```
+
+### 배치의 규칙
+
+- 배치의 결과는 회귀를 하나씩 부른 결과와 비트까지 같아요.
+- NaN은 그 회귀만 NaN으로 만들어요. 다른 회귀는 영향을 받지 않아요. 가중치가 모두 0인 회귀도 그 회귀만 [쓸 행이 없는 결과](#쓸-행이-없을-때)예요.
+- 배치에서 `nan_policy='omit'`은 `ValueError`예요. 회귀마다 남는 행이 달라지면 결과를 한 배열에 담을 수 없어서예요. 필요하면 회귀를 하나씩 부르세요.
+- `summary()`는 회귀마다 한 줄인 표예요([배치 결과의 summary](/api/regression/results/#배치-결과의-summary)). 배치 결과에서 원소 하나를 골라내는 인덱싱은 없어요.
+
+```python
+>>> sd.regression.wls(score, hours, weights=[[1.0] * 8, [0.0] * 8]).nobs
+array([8.0, 0.0], dtype=float64)
+>>> one = sd.regression.ols(Y[2], hours)
+>>> bool(sd.all(rb.params[2] == one.params)), rb.rsquared[2] == one.rsquared
+(True, True)
+>>> Yn = sd.asarray(Y)
+>>> Yn[2, 3] = sd.nan
+>>> sd.regression.ols(Yn, hours).rank
+array([2, 2, 0], dtype=int64)
+>>> sd.regression.ols(Y, hours, nan_policy='omit')
+Traceback (most recent call last):
+    ...
+ValueError: ols(): nan_policy='omit' takes one regression, not a batch (the regressions would keep different rows)
+>>> print(rb.summary().splitlines()[8])
+[0]                 8      0.951    117.263      0.000    -17.136
+```
+
+배치를 받는 함수는 `ols`, `wls`, `gls`, `glm`, 정규화 함수, `rlm`, `quantreg`예요. `theilslopes`, `siegelslopes`는 `y`와 `x`가 (…, n)이면 앞 축마다 한 번씩 계산해요. 이때도 `y`와 `x`의 앞 축은 서로 브로드캐스트해서, `x` 하나를 `y` 여럿에 쓸 수 있어요. `nls`는 회귀 하나만 받아요(모형 함수가 사용자의 Python 함수라서예요). 배치 결과의 검정 메서드(`t_test`, `wald_test`, `compare_f_test`, `compare_lr_test`)는 회귀마다 검정해서 필드가 배치 모양의 배열이에요. 분산분석표 [`anova`](/api/regression/anova/)와 변수 선택(`stepwise`, `best_subset`)은 회귀 하나만 받아요.
+
+## 결과의 형
+
+결과의 배열 필드는 입력이 리스트든 frame이든 언제나 `sd.ndarray`예요. 회귀 하나의 결과에서 수 하나짜리 필드는 Python 수예요. `rank`는 `int`, 나머지는 `float`이에요. 관측 수 `nobs`와 자유도 `df_model`, `df_resid`도 `float`이에요(NaN이 될 수 있어서예요). 배치면 `rank`는 int64 배열, 나머지는 float64 배열이에요.
+
+```python
+>>> r = sd.regression.ols(score, hours)
+>>> type(r.rank).__name__, type(r.nobs).__name__, type(r.rsquared).__name__
+('int', 'float', 'float')
+>>> r.nobs, r.df_model, r.df_resid
+(8.0, 1.0, 6.0)
+>>> rb.rank.dtype, rb.nobs.dtype
+(int64, float64)
+```
+
+결과의 배열 필드(`params`, `bse`, `resid`, `fittedvalues` 등)와 `cov_params()`는 결과가 들고 있는 배열을 복사하지 않고 쓰기 금지로 돌려줘요. 원소에 값을 넣으면 `ValueError`예요. 그래서 돌려받은 배열을 실수로 고쳐도 나중에 읽는 표준오차, 구간, `predict`가 바뀌지 않아요. 고쳐 쓰려면 `.copy()`로 복사본을 만들어요. `conf_int()`, `predict()`처럼 부를 때마다 새로 계산하는 메서드의 결과는 보통 배열이에요.
+
+```python
+>>> r.params[0] = 0.0
+Traceback (most recent call last):
+    ...
+ValueError: assignment destination is read-only
+>>> p = r.params.copy()
+>>> p[0] = 0.0
+>>> p, r.params
+(array([               0.0, 3.9761904761904763], dtype=float64), array([47.607142857142854, 3.9761904761904763], dtype=float64))
+```
+
+## 같은 이름, 다른 뜻
+
+몇몇 이름은 다른 라이브러리에서 쓰는 이름을 그대로 따르느라, 자리에 따라 뜻이 달라요.
+
+| 이름 | 자리 | 뜻 |
+|---|---|---|
+| `alpha` | `conf_int`, `predict_interval`, `summary`, `theilslopes` | 유의수준. 0과 1 사이이고, 구간은 1 − alpha예요 |
+| `alpha` | `ridge`, `lasso`, `elastic_net`, `penalized_glm`의 인자와 결과 필드 | 벌점의 세기. 0 이상이에요 |
+| `rtol` | `ols`, `glm`, `rlm`, `quantreg`, `nls` 등의 인자 | 겹친 열을 가르는 기준. 열마다 그 열의 크기와 견줘요([겹친 열](/api/regression/collinearity/#rtol-겹친다고-보는-기준)). [sd.linalg](/api/linalg/matrix_rank/)의 `rtol`은 가장 큰 특이값과 견주는 랭크 기준이고, [`sd.optimize.root_scalar`](/api/optimize/root_scalar/)의 `rtol`은 근의 상대 허용오차로 이름만 같아요 |
+| `weights` | `wls`, 정규화 함수, `nls`의 인자 | 행의 가중치. 오차의 분산이 1/w인 행이에요 |
+| `weights` | `rlm`의 결과 필드 | 적합이 행마다 준 무게. 이상값일수록 작아요 |
+
+```python
+>>> r = sd.regression.ols(score, hours)
+>>> r.conf_int(alpha=0.1)[1]
+array([3.2626803097300705,  4.689700642650882], dtype=float64)
+>>> sd.regression.ridge(score, hours, alpha=0.1).alpha
+0.1
+```
+
+`glm`의 행 가중치는 뜻이 둘이라 이름을 `var_weights`와 `freq_weights`로 나눴어요([glm](/api/regression/glm/)). 거꾸로 이름이 다른 것도 있어요. 적합도를 재는 pseudo R²는 `quantreg`에서 속성 `prsquared`, `glm`에서 메서드 `pseudo_rsquared()`예요. 둘 다 statsmodels의 이름을 따랐어요.
+
+## 같은 입력이면 같은 비트
+
+같은 기계에서 [스레드](/api/array/threads/) 수와 입력이 같으면 몇 번을 돌려도 마지막 비트까지 같은 결과가 나와요. 이것이 약속이에요. 지금은 스레드 수가 달라도 같은 비트가 나와요(약속은 아니에요). 큰 회귀를 여러 스레드로 나눠 계산해도, 나누는 방법이 데이터의 크기로만 정해지고 부분합을 늘 같은 순서로 더하기 때문이에요.
+
+```python
+>>> rng = sd.random.default_rng(0)
+>>> Xr = sd.stats.Normal().sample((200, 5), rng=rng)
+>>> Yr = sd.stats.Normal().sample((50, 200), rng=rng)
+>>> a = sd.regression.ols(Yr, Xr, cov_type='HC3')
+>>> n = sd.get_num_threads()
+>>> sd.set_num_threads(1)
+>>> b = sd.regression.ols(Yr, Xr, cov_type='HC3')
+>>> sd.set_num_threads(n)
+>>> bool(sd.all(a.params == b.params)), bool(sd.all(a.bse == b.bse))
+(True, True)
+```
+
+난수를 쓰는 함수(`rlm(method='MM')`, 교차검증)도 같은 상태의 생성기를 주면 같은 비트예요.
+
+`X`가 놓인 메모리 순서(C 순서인지 F 순서인지)와 상관없이 같은 비트라는 것도 약속이 아니에요. `ols`·`wls`·`gls`와 정규화 회귀는 지금 순서와 상관없이 같은 비트이지만, `glm`과 `rlm`은 반복 중에 `X`를 놓인 그대로 읽어서 순서에 따라 끝자리가 다를 수 있어요. 값은 반올림 수준에서 같아요.
+
+약속하는 것은 이 두 가지예요. 같은 기계, 같은 스레드 수, 같은 입력이면 실행마다 같은 비트, 그리고 각 페이지의 정확도 절에 적은 정확도예요. statsmodels, scipy, R과는 반올림이 끼지 않는 동작(기본값, NaN과 ±0의 규칙, 상태 필드의 뜻, 멈춤 규칙)을 맞추고, 다르게 정한 곳은 각 페이지에 이유와 함께 적어요. 반올림 크기의 결과는 정확도 약속 안에 있으면 마지막 자리가 그 라이브러리와 다를 수 있어요. 반복으로 푸는 함수는 같은 알고리즘과 멈춤 규칙을 써도 마지막 자리의 차이 때문에 반복 횟수가 조금 달라질 수 있어요. `theilslopes`와 `siegelslopes`처럼 지금은 scipy와 비트까지 같은 함수도 있지만, 그것을 약속하는 것은 아니에요(약속은 실행마다 같은 비트와 정확도예요).
+
+## 에러의 꼴
+
+에러 메시지는 부른 함수의 이름으로 시작하고, 어느 인자가 문제인지 이름으로 알려 줘요. 인자를 틀린 꼴로 준 에러(위치와 키워드를 바꿔 줌, 없는 옵션, 빠뜨린 옵션)도 함수 이름으로 시작하고, 결과의 메서드(`conf_int`, `summary`, `predict` 등)를 틀린 꼴로 불러도 그 메서드의 이름으로 시작해요. 옵션의 메시지는 다른 영역과 같은 꼴이에요.
+
+| 에러 | 언제 나나요 |
+|---|---|
+| `TypeError` | 데이터를 키워드로 줌, 옵션을 위치로 줌, 받지 않는 타입(복소수, 문자열의 리스트 등), 옵션의 타입이 틀림(`intercept=1`, `maxlags=2.0`), 꼭 줘야 하는 키워드를 빠뜨림, 결과의 메서드에 옵션을 위치로 줌(`conf_int(0.1)`) |
+| `ValueError` | 행 수가 다름, 0차원 입력, 계수가 없는 모형, NaN과 `nan_policy='raise'`, inf, 음수 가중치, 옵션의 값이 틀림, 함께 쓸 수 없는 옵션, 배치 모양이 맞지 않음, 배치에서 `'omit'` |
+| `sd.linalg.LinAlgError` | `gls`의 `sigma`가 양정치가 아님. `ValueError`의 하위 클래스예요 |
+
+```python
+>>> sd.regression.ols(score, hours, intercept=1)
+Traceback (most recent call last):
+    ...
+TypeError: ols(): 'intercept' must be True or False, not int
+>>> r.conf_int(0.1)
+Traceback (most recent call last):
+    ...
+TypeError: conf_int(): takes 0 positional arguments but 1 was given
+>>> sd.regression.ols(score, hours, rtol=-1.0)
+Traceback (most recent call last):
+    ...
+ValueError: ols(): 'rtol' must be a finite number >= 0
+>>> sd.regression.ols(score, hours, nan_policy='drop')
+Traceback (most recent call last):
+    ...
+ValueError: ols(): 'nan_policy' must be 'propagate', 'omit' or 'raise', not 'drop'
+>>> sd.regression.ols(score, hours, cov_type='HC4')
+Traceback (most recent call last):
+    ...
+ValueError: ols(): 'cov_type' must be 'nonrobust', 'HC0', 'HC1', 'HC2', 'HC3', 'HAC' or 'cluster', not 'HC4'
+>>> sd.regression.gls([1.0, 2, 4], [1.0, 2, 3], sigma=-sd.eye(3))
+Traceback (most recent call last):
+    ...
+stardust.linalg.LinAlgError: gls(): 'sigma' is not positive definite
+```
+
+데이터의 값 때문에 계산이 막히는 경우(겹친 열, 완전 적합, 로지스틱 회귀의 분리, 반복이 상한에 닿음, 쓸 행이 없음)는 에러가 아니에요. 결과가 나오고, 해당 필드가 NaN이나 상태 표시로 알려 줘요.
+
+경고도 내지 않아요. 반복이 상한에 닿았는지(`converged`), 분리가 일어났는지(`separation`) 같은 상태는 결과의 필드로 알려 줘요. 계산할 수 없는 값은 경고 대신 NaN이나 inf로 나와요([겹친 열과 완전 적합](/api/regression/collinearity/)).
+
+## 정확도 약속
+
+### 선형 모형
+
+`ols`, `wls`, `gls`의 계수는 정확한 최소제곱 해에 아주 가까워요. 기준은 설명변수 행렬의 **조건수**예요. 조건수는 열들이 얼마나 서로 비슷한지(얼마나 한 방향으로 쏠려 있는지)를 재는 수이고, 결과의 `condition_number`로 읽을 수 있어요([겹친 열과 완전 적합](/api/regression/collinearity/#조건수와-정확도)).
+
+- 조건수가 $10^{11}$ 이하이면 계수 벡터의 상대오차가 $10^{-14}$ 이하예요. 앞자리 14자리 정도가 맞는다는 뜻이에요. 잔차가 적합값보다 100배 큰(R²가 아주 작은) 문제까지 잰 값이에요.
+- 그보다 나쁜 조건은 약속하지 않아요. 잰 값은 조건수 $10^{12}$에서 $1.6 \times 10^{-12}$, $10^{13}$에서 $3.4 \times 10^{-9}$, $10^{14}$에서 $2.5 \times 10^{-7}$이에요.
+- 표준오차의 상대오차는 대략 조건수 × $1.1 \times 10^{-16}$이에요. 조건수가 $10^6$이면 열 자리쯤 맞아요.
+- p값과 신뢰구간은 [sd.stats](/api/stats/student-t/)의 분포로 계산해서, 아주 작은 p값도 앞자리가 맞아요.
+
+정밀한 참값은 Arb(구간 산술)로 만들었어요. NIST의 선형 회귀 시험 문제 11개(조건수가 $10^{15}$인 Filip 포함)에서도 계수의 상대오차가 $9.3 \times 10^{-17}$ 아래예요.
+
+### 아주 크거나 작은 값
+
+`ols`, `wls`, `gls`는 열이나 `y`의 크기가 $10^{\pm 300}$ 범위의 어디에 있어도 t값, p값, R²가 같아요. 계수와 표준오차, 신뢰구간은 단위만큼 바뀌고요. 제곱하면 float64를 넘거나 0이 되는 크기($10^{160}$, $10^{-165}$ 같은)의 자료도 단위를 바꿔 줄 필요가 없어요.
+
+다른 함수도 단위를 따라 움직여요. `glm`은 열의 단위와 상관없이(정규·감마 분포족은 `y`의 단위와도), `rlm`과 `quantreg`는 `y`의 단위와 상관없이 같은 t값과 p값을 내요. `y`에 $10^{\pm 200}$ 같은 배수를 곱하면 `ridge`는 같은 `alpha`에서, `lasso`는 `alpha`에도 같은 배수를 곱하면, 계수에 그 배수를 곱한 해를 내요.
+
+```python
+>>> big = sd.regression.ols(score, sd.asarray(hours) * 1e160)
+>>> tiny = sd.regression.ols(sd.asarray(score) * 1e-165, hours)
+>>> [round(float(v), 9) for v in r.tvalues]
+[25.675266309, 10.828794442]
+>>> [round(float(v), 9) for v in big.tvalues], [round(float(v), 9) for v in tiny.tvalues]
+([25.675266309, 10.828794442], [25.675266309, 10.828794442])
+>>> big.bse[1] / r.bse[1]
+9.999999999999997e-161
+```
+
+값 자체가 float64로 나타낼 수 없는 필드만 0이나 inf예요. 위의 `tiny`에서 잔차 제곱합은 참값이 $10^{-330}$쯤이라 `ssr`은 0이지만, t, p, R²는 그대로예요. 계수나 표준오차 자체가 넘치는 크기(`y`에 $10^{300}$, `X`에 $10^{-300}$을 곱하는 식)에서도 그 칸만 inf(아래로 넘치면 0)이고, t값과 p값은 적합 안의 단위에서 계산해서 그대로예요. 신뢰구간의 두 끝도 적합 안의 단위에서 계산한 뒤 옮기므로, 넘치면 끝마다 제 부호의 inf(아래로 넘치면 0)이고 NaN이 되지 않아요([`ols`의 정확도](/api/regression/ols/#정확도)).
+
+```python
+>>> tiny.ssr, round(tiny.rsquared, 12)
+(0.0, 0.951323509346)
+```
+
+### 반복으로 푸는 모형
+
+`glm`, `lasso`, `elastic_net`, `penalized_glm`, `rlm`, `quantreg`, `nls`는 반복해서 해에 다가가요. 반복이 멈추는 허용오차(`tol` 등)는 언제 다음 단계로 넘어갈지만 정해요. 수렴한 뒤 해를 한 번 더 다듬기 때문에, 계수는 허용오차의 정밀도가 아니라 정확한 해에 반올림 수준으로 가까워요. 함수마다 잰 정확도는 각 페이지의 정확도 절에 있어요. 측정 방법과 영역 전체의 표는 [정확도와 성능](/internals/regression/accuracy-performance/)에 있어요.
+
+## statsmodels·scikit-learn을 아는 분께
+
+- 인자 순서는 statsmodels처럼 `y`가 먼저예요(`OLS(endog, exog)`). scikit-learn의 `fit(X, y)`와는 반대예요.
+- 절편이 기본으로 들어가요. statsmodels의 `OLS(y, X)`는 `add_constant`로 직접 열을 붙여야 하고, 붙이지 않으면 절편 없는 모형이에요. scikit-learn의 `fit_intercept=True`와 같은 기본이에요.
+- statsmodels는 `X`의 상수 열을 찾아 절편으로 보지만(`k_constant`), 여기서는 `intercept`만 봐요. 그래서 상수 열을 넣고 `intercept=False`로 맞추면 계수는 같지만 R²가 달라요. 위 예에서 statsmodels의 `OLS(score, add_constant(hours))`는 R² 0.9513이고, `ols(score, Xc, intercept=False)`는 0.9990이에요. statsmodels의 결과와 같게 하려면 상수 열을 빼고 `ols(score, hours)`를 쓰세요.
+- 필드 이름은 statsmodels를 따라요(`params`, `bse`, `tvalues`, `pvalues`, `rsquared`, `fittedvalues`, `resid`, …). `nobs`, `df_model`, `df_resid`가 `float`인 것도 같아요. 결과는 numpy 배열이 아니라 `sd.ndarray`이고, frame 입력이어도 `pandas.Series`처럼 인덱스가 붙은 결과가 아니에요. 계수 이름은 `param_names`로 따로 읽어요.
+- statsmodels의 기본 `missing='none'`에서도 NaN이 있으면 계수가 NaN이 되고, `missing='drop'`은 `nan_policy='omit'`, `missing='raise'`는 `nan_policy='raise'`에 해당해요. statsmodels는 inf를 받아 계수에 inf를 내지만, 여기서는 `ValueError`예요.
+- 행이 없는 입력에서 statsmodels의 `OLS`는 numpy의 `ValueError`(`zero-size array to reduction operation ...`)를 내요. 여기서는 `nobs`가 0인 NaN 결과예요.
+- 아주 크거나 작은 값에서 statsmodels 0.15.0은 위의 `hours * 1e160`에서 절편의 표준오차 0, t inf를, `score * 1e-165`에서 표준오차 0, t inf를 내요. 여기서는 단위와 상관없이 같은 t예요.
+- 배치는 statsmodels와 scikit-learn에 없는 기능이에요. 회귀 여러 개를 맞추려면 그쪽에서는 반복문을 돌려요.
+- 완전 적합이나 겹친 열에서 statsmodels는 경고를 내거나 아주 큰 t값을 내지만, 여기서는 경고 없이 표준오차 0과 NaN인 t값·p값, 겹친 열의 NaN 계수로 알려 줘요([겹친 열과 완전 적합](/api/regression/collinearity/)).

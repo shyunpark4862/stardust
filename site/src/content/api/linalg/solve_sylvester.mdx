@@ -1,0 +1,414 @@
+---
+title: solve_sylvester
+names: [solve_sylvester]
+group: 특수 구조
+order: 2
+signatures:
+  - "sd.linalg.solve_sylvester(a, b, c, /)"
+summary: 모르는 행렬 X가 왼쪽 곱과 오른쪽 곱에 함께 들어 있는 방정식 a @ X + X @ b = c를 풀어요. 실베스터 방정식이라고 불러요.
+params:
+  - name: a
+    type: ndarray
+    kind: positional-only
+    desc: X의 왼쪽에 곱하는 정사각 행렬. 모양은 (..., M, M).
+  - name: b
+    type: ndarray
+    kind: positional-only
+    desc: X의 오른쪽에 곱하는 정사각 행렬. 모양은 (..., N, N). a와 크기가 달라도 돼요.
+  - name: c
+    type: ndarray
+    kind: positional-only
+    desc: 우변 행렬. 모양은 (..., M, N). 언제나 2차원 이상이어야 해요.
+returns:
+  type: ndarray
+  desc: a @ X + X @ b = c를 만족하는 X. 모양은 (..., M, N)이고 float64 또는 complex128이에요.
+raises:
+  - type: TypeError
+    desc: a, b, c 가운데 배열이 아닌 것이 있을 때(리스트 포함).
+  - type: ValueError
+    desc: a나 b가 정사각 행렬이 아닐 때, c가 2차원 미만이거나 모양이 M×N이 아닐 때, 배치 축이 브로드캐스팅되지 않을 때, 입력에 NaN·inf가 있을 때.
+  - type: LinAlgError
+    desc: a의 고유값과 -b의 고유값 가운데 같은(또는 구별할 수 없을 만큼 가까운) 것이 있어서 해가 하나로 정해지지 않을 때. 드물게, 고유값 계산이 수렴하지 않았을 때.
+seeAlso: [solve, kron, eig, schur, expm, basics, errors]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+`solve_sylvester`는 모르는 것이 행렬 `X`인 방정식을 풀어요. 그것도 `X`에 한 번은 왼쪽에서, 한 번은 오른쪽에서 행렬이 곱해지는 꼴이에요.
+
+$$A X + X B = C$$
+
+이 꼴을 **실베스터 방정식**(Sylvester equation)이라고 불러요. `A`, `B`, `C`를 주면 `X`를 돌려줘요.
+
+```python
+>>> import stardust as sd
+>>> a = sd.asarray([[1.0, 2.0],
+...                 [0.0, 3.0]])
+>>> b = sd.asarray([[4.0, 0.0],
+...                 [1.0, 5.0]])
+>>> c = sd.asarray([[13.0, 20.0],
+...                 [25.0, 32.0]])
+>>> x = sd.linalg.solve_sylvester(a, b, c)
+>>> x
+array([[1.0, 2.0],
+       [3.0, 4.0]], dtype=float64)
+```
+
+구한 `X`를 식에 다시 넣으면 `c`가 나와요.
+
+```python
+>>> a @ x + x @ b
+array([[13.0, 20.0],
+       [25.0, 32.0]], dtype=float64)
+```
+
+<Fig caption="X가 a의 오른쪽에 한 번, b의 왼쪽에 한 번 나와요. 그래서 X만 한쪽으로 묶어 낼 수 없어요.">
+  <ArrayFig name="a" data={[[1, 2], [0, 3]]} />
+  <Op>@</Op>
+  <ArrayFig name="X" data={[['?', '?'], ['?', '?']]} tones={[['b', 'b'], ['b', 'b']]} />
+  <Op>+</Op>
+  <ArrayFig name="X" data={[['?', '?'], ['?', '?']]} tones={[['b', 'b'], ['b', 'b']]} />
+  <Op>@</Op>
+  <ArrayFig name="b" data={[[4, 0], [1, 5]]} />
+  <Op>=</Op>
+  <ArrayFig name="c" data={[[13, 20], [25, 32]]} />
+</Fig>
+
+<Reference />
+
+## 왜 `solve`로는 안 되나요
+
+보통의 연립방정식 `A X = C`는 [solve](/api/linalg/solve/)로 풀어요. 양변의 왼쪽에 `A`의 역행렬을 곱하면 `X`만 남기 때문이에요. 하지만 `A X + X B = C`에서는 그렇게 할 수 없어요. 행렬곱은 순서를 바꿀 수 없어서 `A X + X B`를 `(A + B) X`로 묶을 수 없거든요.
+
+그래도 이 방정식은 `X`의 원소에 수를 곱하고 더하기만 하는 식이에요. 풀어 쓰면 `X`의 원소 `M × N`개를 미지수로 하는 연립방정식 `M × N`개가 돼요. 위의 2×2 예에서는 미지수 4개, 방정식 4개예요.
+
+숫자 하나짜리 행렬로 보면 가장 쉬워요. `a`, `b`, `c`가 모두 1×1이면 방정식은 `a x + x b = c`, 곧 `(a + b) x = c`예요.
+
+```python
+>>> sd.linalg.solve_sylvester(sd.asarray([[2.0]]), sd.asarray([[3.0]]), sd.asarray([[10.0]]))
+array([[2.0]], dtype=float64)
+```
+
+`(2 + 3) x = 10`이니 `x = 2`예요. 여기서 `a + b = 0`이면 풀 수 없다는 것도 보여요. 큰 행렬에서는 이 조건이 고유값에 대한 조건으로 바뀌는데, [해가 하나로 정해지지 않을 때](#해가-하나로-정해지지-않을-때)에서 다시 다뤄요.
+
+### 대각 행렬이면 원소마다 나눗셈이에요
+
+`a`와 `b`가 모두 대각 행렬이면 방정식이 원소마다 따로 떨어져요. `a`의 대각 원소를 $a_i$, `b`의 대각 원소를 $b_j$라고 하면 이래요.
+
+$$a_i\, x_{ij} + x_{ij}\, b_j = c_{ij} \quad\Rightarrow\quad x_{ij} = \frac{c_{ij}}{a_i + b_j}$$
+
+```python
+>>> da = sd.asarray([[1.0, 0.0],
+...                  [0.0, 2.0]])
+>>> db = sd.asarray([[3.0, 0.0],
+...                  [0.0, 4.0]])
+>>> dc = sd.asarray([[4.0, 10.0],
+...                  [15.0, 24.0]])
+>>> sd.linalg.solve_sylvester(da, db, dc)
+array([[1.0, 2.0],
+       [3.0, 4.0]], dtype=float64)
+```
+
+| 자리 | $c_{ij}$ | $a_i + b_j$ | $x_{ij}$ |
+|:---:|:---:|:---:|:---:|
+| 0행 0열 | 4 | 1 + 3 = 4 | 1 |
+| 0행 1열 | 10 | 1 + 4 = 5 | 2 |
+| 1행 0열 | 15 | 2 + 3 = 5 | 3 |
+| 1행 1열 | 24 | 2 + 4 = 6 | 4 |
+
+대각 행렬이 아닐 때도 구조는 같아요. 나누는 수 $a_i + b_j$ 자리에 `a`의 고유값과 `b`의 고유값의 합이 들어가요.
+
+## 어디에 쓰나요
+
+### 흔들리는 시스템이 얼마나 퍼지는지: 랴푸노프 방정식
+
+가장 자주 만나는 꼴은 `b`가 `a`의 전치인 경우예요.
+
+$$A P + P A^{\mathsf T} = -Q$$
+
+이것을 **랴푸노프 방정식**(Lyapunov equation)이라고 해요. 시간이 지나면 0으로 가라앉는 시스템 $x'(t) = A\,x(t)$에 잡음이 계속 들어올 때, 상태 `x`가 평균 주위에서 얼마나 퍼져 있는지(공분산 행렬 `P`)가 이 방정식의 해예요. `Q`는 들어오는 잡음의 세기예요. 제어 공학에서 시스템이 안정한지 판정할 때도 같은 방정식을 풀어요.
+
+```python
+>>> A = sd.asarray([[-1.0, 2.0],
+...                 [0.0, -1.0]])
+>>> Q = sd.asarray([[2.0, 0.0],
+...                 [0.0, 2.0]])
+>>> P = sd.linalg.solve_sylvester(A, A.T, -Q)
+>>> P
+array([[3.0, 1.0],
+       [1.0, 1.0]], dtype=float64)
+>>> A @ P + P @ A.T
+array([[-2.0,  0.0],
+       [ 0.0, -2.0]], dtype=float64)
+```
+
+`b` 자리에 `A.T`를, `c` 자리에 `-Q`를 넘겼어요. `Q`가 대칭이면 해 `P`도 대칭이에요. 랴푸노프 방정식 전용 함수는 따로 없고 이렇게 `solve_sylvester`로 풀어요.
+
+### 그 밖의 쓰임
+
+- **블록 행렬을 대각 블록으로 나누기**: 큰 행렬을 서로 영향을 주지 않는 두 부분으로 쪼개는 변환을 구할 때 실베스터 방정식을 풀어요.
+- **가로 방향과 세로 방향에 서로 다른 연산이 걸리는 문제**: 격자 위의 값을 행렬 `X`로 놓으면 세로 방향 연산은 왼쪽 곱, 가로 방향 연산은 오른쪽 곱이 돼요. 영상 복원이나 2차원 격자의 방정식에서 이런 꼴이 나와요.
+
+## 부호가 다른 꼴은 인자를 바꿔서 넘겨요
+
+`solve_sylvester`가 푸는 꼴은 `a @ X + X @ b = c` 하나예요. 다른 꼴은 인자의 부호를 바꾸면 돼요.
+
+| 풀고 싶은 방정식 | 호출 |
+|---|---|
+| $A X + X B = C$ | `solve_sylvester(A, B, C)` |
+| $A X - X B = C$ | `solve_sylvester(A, -B, C)` |
+| $A X + X A^{\mathsf T} = -Q$ | `solve_sylvester(A, A.T, -Q)` |
+| $A X + X B + C = 0$ | `solve_sylvester(A, B, -C)` |
+
+```python
+>>> minus = sd.linalg.solve_sylvester(a, -b, c)
+>>> float(sd.max(sd.abs(a @ minus - minus @ b - c))) < 1e-12
+True
+```
+
+## `a`와 `b`의 크기가 달라도 돼요
+
+`a`가 M×M, `b`가 N×N이면 `X`와 `c`는 M×N이에요. `a @ X`와 `X @ b`가 모두 계산되려면 `X`의 행 수가 `a`의 크기, 열 수가 `b`의 크기여야 하기 때문이에요.
+
+```python
+>>> b3 = sd.asarray([[1.0, 0.0, 0.0],
+...                  [0.0, 2.0, 0.0],
+...                  [1.0, 0.0, 3.0]])
+>>> c23 = sd.asarray([[5.0, 1.0, 11.0],
+...                   [1.0, 5.0, 6.0]])
+>>> a2 = sd.asarray([[2.0, 1.0],
+...                  [0.0, 3.0]])
+>>> sd.linalg.solve_sylvester(a2, b3, c23)
+array([[1.0, 0.0, 2.0],
+       [0.0, 1.0, 1.0]], dtype=float64)
+```
+
+<Fig caption="모양 규칙: a는 (M, M), b는 (N, N), c와 결과 X는 (M, N). 여기서는 M = 2, N = 3이에요.">
+  <ArrayFig name="a.shape" data={[2, 2]} tones={['a', 'a']} />
+  <ArrayFig name="b.shape" data={[3, 3]} tones={['b', 'b']} />
+  <ArrayFig name="c.shape" data={[2, 3]} tones={['a', 'b']} />
+  <Op>→</Op>
+  <ArrayFig name="X.shape" data={[2, 3]} tones={['a', 'b']} />
+</Fig>
+
+## 여러 방정식을 한 번에
+
+세 인자의 앞쪽 축은 배치(여러 행렬의 묶음)로 보고, 배치 축끼리 [브로드캐스팅](/api/array/broadcasting/)으로 맞춰요. `a`만 두 개이고 `b`와 `c`는 하나씩이면 방정식 두 개를 풀어요.
+
+```python
+>>> two_a = sd.stack([a, 2.0 * a])
+>>> two_a.shape
+(2, 2, 2)
+>>> xs = sd.linalg.solve_sylvester(two_a, b, c)
+>>> xs.shape
+(2, 2, 2)
+>>> xs[0]
+array([[1.0, 2.0],
+       [3.0, 4.0]], dtype=float64)
+```
+
+## 해가 하나로 정해지지 않을 때
+
+1×1 예에서 `a + b = 0`이면 풀 수 없었어요. 일반 행렬에서는 이 조건이 고유값에 대한 조건으로 바뀌어요. 고유값은 행렬이 어떤 방향의 벡터를 몇 배로 늘리는지를 나타내는 수예요(자세한 것은 [일반 행렬의 고유값](/api/linalg/eig/)).
+
+> `a`의 고유값 $\lambda$와 `b`의 고유값 $\mu$ 가운데 $\lambda + \mu = 0$인 쌍이 하나라도 있으면, 해가 없거나 끝없이 많아요.
+
+같은 말을 "`a`와 `-b`에 공통 고유값이 있다"라고도 해요. 이때 `solve_sylvester`는 `LinAlgError`를 내요.
+
+```python
+>>> sd.linalg.solve_sylvester(da, -da, dc)
+Traceback (most recent call last):
+    ...
+stardust.linalg.LinAlgError: solve_sylvester(): a and -b have a common or close eigenvalue
+```
+
+`da`의 고유값은 1과 2이고 `-da`의 고유값은 -1과 -2라서, 1 + (-1) = 0인 쌍이 있어요. 대각 행렬의 나눗셈 공식으로 보면 0으로 나누게 되는 자리예요.
+
+처음 예제의 `a`와 `b`는 괜찮았어요. `a`의 고유값은 1과 3, `b`의 고유값은 4와 5여서 어떤 쌍을 더해도 0이 되지 않아요.
+
+```python
+>>> sd.linalg.eigvals(a)
+array([(1+0j), (3+0j)], dtype=complex128)
+>>> sd.linalg.eigvals(b)
+array([(4+0j), (5+0j)], dtype=complex128)
+```
+
+두 행렬의 고유값이 모두 양수이거나 모두 음수이면(복소수 고유값이면 실수부가 그러면) 합이 0이 될 수 없으니 언제나 풀려요. 랴푸노프 방정식에서 `A`의 고유값의 실수부가 모두 음수(안정한 시스템)이면, `A.T`의 고유값도 `A`와 같으니 이 경우에 해당해요.
+
+<Callout type="warn" title="거의 겹치는 고유값은 에러 없이 큰 값을 내요">
+
+에러는 고유값의 합이 0이거나 반올림 오차 수준으로 0에 가까울 때만 나요. 그보다 조금 떨어져 있으면 에러 없이 계산하지만, 0에 가까운 수로 나누는 셈이라 결과가 아주 커지고 부정확해져요. 해의 원소가 입력에 견주어 터무니없이 크다면 이 경우를 의심하세요.
+
+</Callout>
+
+```python
+>>> close = sd.linalg.solve_sylvester(sd.asarray([[1.0]]), sd.asarray([[-1.0 + 1e-10]]), sd.asarray([[1.0]]))
+>>> float(close[0, 0]) > 1e9
+True
+```
+
+`1 + (-1 + 1e-10) = 1e-10`으로 나누어서 해가 약 100억이 됐어요.
+
+## 조심할 점
+
+### `c`는 언제나 행렬이에요
+
+[solve](/api/linalg/solve/)의 우변 `b`는 1차원이면 벡터 하나로 봐 주지만, `solve_sylvester`의 `c`는 그렇지 않아요. 모르는 것 `X`가 행렬이라서 `c`도 반드시 행렬(2차원 이상)이어야 해요. 1차원 `c`는 에러예요.
+
+```python
+>>> sd.linalg.solve_sylvester(a, b, sd.asarray([1.0, 2.0]))
+Traceback (most recent call last):
+    ...
+ValueError: solve_sylvester(): 'c' must have at least 2 dimensions, got 1
+```
+
+`b`가 1×1이어서 `X`가 열 하나짜리여도 `c`는 `(M, 1)` 모양으로 넘겨요.
+
+```python
+>>> sd.linalg.solve_sylvester(a, sd.asarray([[4.0]]), sd.asarray([[9.0], [14.0]]))
+array([[1.0],
+       [2.0]], dtype=float64)
+```
+
+### 모양이 맞지 않을 때
+
+`c`의 모양은 `(a의 크기, b의 크기)`여야 해요. 메시지에 필요한 모양과 받은 모양이 나와요.
+
+```python
+>>> sd.linalg.solve_sylvester(a, b, sd.ones((2, 3)))
+Traceback (most recent call last):
+    ...
+ValueError: solve_sylvester(): 'c' must be 2x2 to match 'a' and 'b', got 2x3
+```
+
+`a`와 `b`는 정사각 행렬이어야 해요.
+
+```python
+>>> sd.linalg.solve_sylvester(sd.ones((2, 3)), b, c)
+Traceback (most recent call last):
+    ...
+ValueError: solve_sylvester(): 'a' must be square in its last two dimensions, got 2x3
+```
+
+### 인자의 순서: 왼쪽에 곱하는 것이 먼저
+
+첫 인자 `a`는 `X`의 **왼쪽**에, 둘째 인자 `b`는 `X`의 **오른쪽**에 곱해져요. 둘을 바꾸면 다른 방정식(`b @ X + X @ a = c`)을 풀어요. 두 행렬의 크기가 같으면 에러 없이 다른 답이 나와요.
+
+```python
+>>> swapped = sd.linalg.solve_sylvester(b, a, c)
+>>> float(sd.max(sd.abs(swapped - x))) > 0.1
+True
+```
+
+### 정수를 넣어도 결과는 실수예요
+
+정수와 bool 배열은 실수로 바꿔서 계산해요. 결과는 float64이고, 세 인자 가운데 하나라도 복소수면 complex128이에요.
+
+```python
+>>> ints = sd.linalg.solve_sylvester(sd.asarray([[1, 0], [0, 2]]), sd.asarray([[3, 0], [0, 4]]), sd.asarray([[4, 10], [15, 24]]))
+>>> ints
+array([[1.0, 2.0],
+       [3.0, 4.0]], dtype=float64)
+>>> sd.linalg.solve_sylvester(da, db, dc * 1j)
+array([[1j, 2j],
+       [3j, 4j]], dtype=complex128)
+```
+
+### 결과의 마지막 자리
+
+대각이나 삼각 행렬이 아닌 일반 행렬에서는 답이 정수여야 할 때도 마지막 자리에 반올림 오차가 붙을 수 있어요. 값을 비교할 때는 `==` 대신 차이가 충분히 작은지를 보세요.
+
+```python
+>>> ga = sd.asarray([[1.0, 2.0], [3.0, 4.0]])
+>>> gb = sd.asarray([[2.0, 1.0], [1.0, 3.0]])
+>>> gc = sd.asarray([[11.0, 17.0], [25.0, 37.0]])
+>>> gx = sd.linalg.solve_sylvester(ga, gb, gc)
+>>> float(sd.max(sd.abs(gx - sd.asarray([[1.0, 2.0], [3.0, 4.0]])))) < 1e-12
+True
+```
+
+### 리스트, NaN, inf
+
+세 인자는 모두 배열이어야 해요. NaN이나 inf가 들어 있으면 계산하지 않고 `ValueError`를 내요.
+
+```python
+>>> sd.linalg.solve_sylvester(a, b, [[13.0, 20.0], [25.0, 32.0]])
+Traceback (most recent call last):
+    ...
+TypeError: solve_sylvester(): 'c' must be an sd.ndarray, not list
+>>> sd.linalg.solve_sylvester(a, b, sd.asarray([[13.0, float("nan")], [25.0, 32.0]]))
+Traceback (most recent call last):
+    ...
+ValueError: solve_sylvester(): 'c' contains NaN or infinity
+```
+
+### 배치 가운데 하나가 실패하면
+
+여러 방정식을 한 번에 풀 때 하나라도 풀 수 없으면 호출 전체가 실패해요. 메시지 끝에 몇 번째 것이 실패했는지 나와요.
+
+```python
+>>> sd.linalg.solve_sylvester(sd.stack([da, -db]), db, dc)
+Traceback (most recent call last):
+    ...
+stardust.linalg.LinAlgError: solve_sylvester(): a and -b have a common or close eigenvalue (at batch index (1,))
+```
+
+에러가 나는 경우 전체는 [실패와 에러](/api/linalg/errors/)에 정리돼 있어요.
+
+### 빈 행렬
+
+크기가 0인 행렬도 받아요. 결과는 그 모양의 빈 배열이에요.
+
+```python
+>>> sd.linalg.solve_sylvester(sd.zeros((0, 0)), b, sd.zeros((0, 2)))
+array([], shape=(0, 2), dtype=float64)
+```
+
+## 비슷한 함수와의 차이
+
+| 방정식 | 쓸 것 | 모르는 것 |
+|---|---|---|
+| $A x = b$ 또는 $A X = C$ | [solve](/api/linalg/solve/) | 벡터 또는 행렬. 왼쪽 곱만 있어요. |
+| $A X + X B = C$ | `solve_sylvester` | 행렬. 왼쪽 곱과 오른쪽 곱이 함께 있어요. |
+| $A X + X A^{\mathsf T} = -Q$ | `solve_sylvester(A, A.T, -Q)` | 행렬. 위의 특별한 경우예요. |
+
+`b`가 0 행렬이면 방정식이 `A X = C`가 되어 `solve`와 같은 답이 나와요. 그런 문제에는 `solve`를 쓰세요. 더 빠르고 간단해요.
+
+```python
+>>> rhs = sd.asarray([[5.0, 4.0], [6.0, 3.0]])
+>>> sd.linalg.solve_sylvester(a, sd.zeros((2, 2)), rhs)
+array([[1.0, 2.0],
+       [2.0, 1.0]], dtype=float64)
+>>> sd.linalg.solve(a, rhs)
+array([[1.0, 2.0],
+       [2.0, 1.0]], dtype=float64)
+```
+
+### `kron`과 `solve`로도 풀 수는 있어요
+
+실베스터 방정식은 `X`의 원소를 한 줄로 편 벡터를 미지수로 하는 보통의 연립방정식으로 바꿔 쓸 수 있어요. 계수 행렬은 [kron](/api/linalg/kron/)으로 만들어요.
+
+```python
+>>> eye = sd.eye(2)
+>>> big = sd.linalg.kron(a, eye) + sd.linalg.kron(eye, b.T)
+>>> big.shape
+(4, 4)
+>>> sd.reshape(sd.linalg.solve(big, sd.reshape(c, (4,))), (2, 2))
+array([[1.0, 2.0],
+       [3.0, 4.0]], dtype=float64)
+```
+
+같은 답이 나오지만 이 방법은 작은 문제에서만 쓸 만해요. `X`가 M×N이면 계수 행렬이 `(M × N) × (M × N)`이 되어서, 100×100 문제만 되어도 1만×1만 행렬(숫자 1억 개)을 풀어야 해요. `solve_sylvester`는 그런 큰 행렬을 만들지 않고 풀어요.
+
+## numpy·scipy를 아는 분께
+
+- `scipy.linalg.solve_sylvester(a, b, q)`와 같은 방정식 `a x + x b = c`를 풀어요. numpy에는 해당하는 함수가 없어요.
+- 세 인자는 positional-only예요. 셋째 인자의 이름은 `q`가 아니라 `c`지만 이름으로 넘길 수 없으니 차이가 드러나지 않아요.
+- `a`와 `-b`의 고유값이 겹치면 `LinAlgError`예요. scipy는 이 경우에도 에러 없이 값을 돌려줄 수 있어요.
+- 앞쪽 축을 배치로 보고 여러 방정식을 한 번에 풀어요.
+- `solve_continuous_lyapunov`, `solve_discrete_lyapunov`에 해당하는 함수는 없어요. `solve_continuous_lyapunov(A, Q)`(`A X + X Aᴴ = Q`)는 `solve_sylvester(A, A.T, Q)`와 같아요. 위 예제의 `= -Q` 꼴이면 `-Q`를 넘겨요. 복소수 행렬이면 `A.T` 대신 켤레 전치를 넘겨요.
+- 리스트와 numpy 배열은 받지 않아요. NaN·inf 검사는 끌 수 없어요.

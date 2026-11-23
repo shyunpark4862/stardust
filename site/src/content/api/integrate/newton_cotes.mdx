@@ -1,0 +1,148 @@
+---
+kind: function
+title: newton_cotes
+names: [newton_cotes]
+group: 고정 규칙
+order: 2
+signatures:
+  - "sd.integrate.newton_cotes(rn, /, *, equal=False)"
+summary: 닫힌 Newton–Cotes 규칙의 가중치와 오차 계수를 돌려줘요. 같은 간격(또는 주어진 위치)의 N + 1점을 지나는 다항식을 적분하는 규칙이고, 사다리꼴·Simpson·Boole 규칙이 그 처음 몇 개예요.
+params:
+  - name: rn
+    type: int 또는 실수의 시퀀스
+    kind: positional-only
+    desc: "int N(1 이상 256 이하)이면 같은 간격의 N + 1점이에요. 시퀀스(sd.ndarray, numpy 배열 포함)면 N + 1개(2 이상 257 이하) 점의 상대 위치이고, 0에서 시작해 N에서 끝나는 서로 다른 유한한 값이어야 해요."
+  - name: equal
+    type: bool
+    kind: keyword-only
+    desc: "True면 rn이 시퀀스여도 위치를 보지 않고 길이만 써서 같은 간격으로 계산해요. 기본값 False. bool만 받아요."
+returns:
+  type: (ndarray, float)
+  desc: "가중치 an(float64, 길이 N + 1)과 오차 계수 B의 튜플. ∫ f = Δx·Σ an[i]·f(x_i) + B·Δx^(p+1)·f⁽ᵖ⁾(ξ)이고 p는 같은 간격의 짝수 N이면 N + 2, 아니면 N + 1이에요."
+raises:
+  - type: TypeError
+    desc: rn이 int도 수의 시퀀스도 아닐 때(float 하나, bool 포함), rn이 복소수일 때, equal이 bool이 아닐 때.
+  - type: ValueError
+    desc: N이 1보다 작거나 256보다 클 때, 시퀀스가 1차원이 아니거나 위치가 둘보다 적을 때, 위치가 유한하지 않을 때, 0에서 시작해 N에서 끝나지 않을 때, 같은 위치가 있을 때.
+seeAlso: [simpson, romb, fixed_quad, trapezoid, basics]
+---
+import Callout from '../../../components/Callout.astro';
+
+## 무엇을 하나요
+
+$N + 1$개의 점 $x_0, \ldots, x_N$에서 잰 값을 지나는 $N$차 다항식은 하나뿐이에요. 그 다항식을 $[x_0, x_N]$에서 적분하면 값들의 가중합이 돼요. 그 가중치가 닫힌 Newton–Cotes 규칙이에요.
+
+$$
+\int_{x_0}^{x_N} f(x)\,dx = \Delta x \sum_{i=0}^{N} a_i\, f(x_i) + B\,\Delta x^{p+1} f^{(p)}(\xi)
+$$
+
+`newton_cotes`는 적분을 하지 않고 이 규칙의 가중치 $a_i$와 오차 계수 $B$를 돌려줘요. 같은 간격이면 $\Delta x$는 점 사이의 간격이에요. 처음 몇 개는 익숙한 규칙이에요.
+
+```python
+>>> import stardust as sd
+>>> sd.integrate.newton_cotes(1)
+(array([0.5, 0.5], dtype=float64), -0.08333333333333333)
+>>> sd.integrate.newton_cotes(2)
+(array([0.3333333333333333, 1.3333333333333333, 0.3333333333333333], dtype=float64), -0.011111111111111112)
+```
+
+$N = 1$은 사다리꼴 규칙($\tfrac12, \tfrac12$, $B = -\tfrac1{12}$), $N = 2$는 Simpson 규칙($\tfrac13, \tfrac43, \tfrac13$, $B = -\tfrac1{90}$)이에요. $N = 3$은 Simpson의 3/8 규칙, $N = 4$는 Boole 규칙이에요.
+
+## 가중치로 적분하기
+
+간격 $\Delta x$로 잰 값에 가중치를 곱해 더하고 $\Delta x$를 곱하면 적분값이에요. $N = 4$로 $\int_0^1 e^x\,dx$를 계산해 봐요.
+
+```python
+>>> import math
+>>> an, B = sd.integrate.newton_cotes(4)
+>>> an
+array([0.3111111111111111, 1.4222222222222223, 0.5333333333333333,
+       1.4222222222222223, 0.3111111111111111], dtype=float64)
+>>> x = sd.linspace(0, 1, 5)
+>>> 0.25 * sd.sum(an * sd.exp(x)) - (math.e - 1)
+8.594657125993166e-07
+```
+
+### 오차 계수 B
+
+오차항 $B\,\Delta x^{p+1} f^{(p)}(\xi)$의 $p$는 같은 간격의 짝수 $N$이면 $N + 2$, 아니면 $N + 1$이에요. 짝수 $N$이 한 차수를 덤으로 얻는 것은 대칭 때문이에요(Simpson이 삼차식까지 정확한 이유). 위의 $N = 4$는 $p = 6$이고 $f^{(6)} = e^x$는 $[0, 1]$에서 1과 $e$ 사이라, 오차항은 이 범위 안에 있어야 해요.
+
+```python
+>>> B
+-0.008465608465608466
+>>> B * 0.25**7 * 1, B * 0.25**7 * math.e
+(-5.166997354497355e-07, -1.404535501642612e-06)
+```
+
+참값에서 규칙의 값을 뺀 값 $-8.6 \times 10^{-7}$이 그 사이에 있어요.
+
+## 위치를 줄 때
+
+`rn`에 시퀀스를 주면 그 상대 위치의 점을 지나는 다항식의 가중치예요. 위치는 0에서 시작해 $N$에서 끝나야 하고(점이 $N + 1$개), 실제 점은 $x_0 + r_i\,\Delta x$예요. 간격이 고르지 않은 점 네 개 $0, 0.5, 2, 3$의 규칙이에요.
+
+```python
+>>> an, B = sd.integrate.newton_cotes([0, 0.5, 2, 3])
+>>> an, B
+(array([0.0, 1.2, 1.5, 0.3], dtype=float64), 0.009375)
+>>> h = 0.1
+>>> x = sd.asarray([0, 0.5, 2, 3]) * h
+>>> h * sd.sum(an * sd.exp(x)), math.exp(0.3) - 1
+(0.3498587095164285, 0.3498588075760032)
+```
+
+첫 점의 가중치가 0이에요. 이 위치에서는 나머지 세 점만으로도 삼차식까지 정확한 규칙이 되기 때문이에요. `equal=True`면 위치를 보지 않고 길이만 써서 같은 간격의 규칙을 돌려줘요. 위치의 검사(0에서 시작, $N$에서 끝남)는 `equal`과 상관없이 해요.
+
+```python
+>>> sd.integrate.newton_cotes([0, 1.5, 3], equal=True)
+(array([0.3333333333333333, 1.3333333333333333, 0.3333333333333333], dtype=float64), -0.011111111111111112)
+>>> sd.integrate.newton_cotes([0, 1, 3])
+Traceback (most recent call last):
+    ...
+ValueError: newton_cotes(): the sample positions must start at 0 and end at N = 2
+```
+
+## N을 키우지 마세요
+
+점을 늘리면 다항식의 차수가 올라가니 더 정확해질 것 같지만, 같은 간격의 점에서는 그렇지 않아요. $N = 8$부터는 음수 가중치가 나오고, $N$이 커질수록 가중치의 크기가 폭발해요.
+
+```python
+>>> for N in (8, 10, 12, 16):
+...     an, _ = sd.integrate.newton_cotes(N)
+...     print(N, float(sd.min(an)), float(sd.sum(sd.abs(an))) / N)
+8 -1.2811287477954145 1.4512169312169312
+10 -4.351551226551226 3.064794773128106
+12 -16.706557442557443 7.531736644308071
+16 -167.61560411466667 58.45738091888324
+```
+
+$\sum |a_i| / N$는 값의 반올림 오차가 몇 배로 불어나는지를 나타내요(좋은 규칙이면 1). 게다가 같은 간격의 고차 보간은 봉우리 함수에서 끝 쪽이 크게 출렁여요(Runge 현상). $1/(1 + 25x^2)$의 $[-1, 1]$이 그 예예요.
+
+```python
+>>> exact = 2 * math.atan(5) / 5
+>>> for N in (2, 4, 8, 16, 32):
+...     an, _ = sd.integrate.newton_cotes(N)
+...     x = sd.linspace(-1, 1, N + 1)
+...     print(N, (2 / N) * float(sd.sum(an / (1 + 25 * x**2))) - exact)
+2 0.8096140521963524
+4 -0.07455924577004885
+8 -0.24926252535242427
+16 -1.7976477697295719
+32 -302.7287489654577
+```
+
+<Callout type="tip" title="정확도를 높이려면">
+$N$을 키우지 말고 낮은 차수의 규칙을 작은 구간에 되풀이해 써요. 그것이 [`trapezoid`](/api/integrate/trapezoid/)와 [`simpson`](/api/integrate/simpson/)이에요. 같은 간격의 표본을 더 정확히 적분하려면 [`romb`](/api/integrate/romb/), 점을 고를 수 있으면 [`fixed_quad`](/api/integrate/fixed_quad/)(Gauss–Legendre는 가중치가 모두 양수예요)를 써요.
+</Callout>
+
+## 정확한 값의 반올림
+
+가중치와 $B$는 정확한 유리수로 계산한 뒤 한 번 반올림한 값이에요. 그래서 큰 $N$이나 위치를 준 경우에도 각 값은 참값에 가장 가까운 double이에요. 같은 입력은 기억해 두므로 같은 `rn`의 두 번째 호출부터는 계산하지 않아요. 돌려주는 `an`은 매번 새 배열이라 고쳐도 다음 호출에 영향이 없어요.
+
+$N$의 상한 256은 정확한 유리수의 비용($N^3$에 비례)이 정해진 시간 안에 끝나게 하려는 것이에요. 실제로 쓸 만한 $N$은 훨씬 작아요.
+
+## scipy를 아는 분께
+
+- 돌려주는 `(an, B)`의 뜻과 $p$의 규칙은 scipy 1.18.1의 `scipy.integrate.newton_cotes`와 같아요.
+- 같은 간격의 $N \le 14$는 지금은 scipy의 표와 비트까지 같아요(약속은 아니에요). 그 밖($N \ge 15$, 위치를 준 경우)은 scipy의 Vandermonde 풀이와 끝자리가 다르고, 여기 값이 정확해요. scipy의 `B`는 $N = 20$에서 9%, $N = 30$에서 $10^6$배 틀려요.
+- `equal`은 bool만 받아요(scipy는 0·1). 위치의 검사는 언제나 해요(scipy는 같은 간격 $N \le 14$면 하지 않아요). 위치에 리스트도 받아요.
+- $N \le 256$이에요(scipy는 상한이 없어요).

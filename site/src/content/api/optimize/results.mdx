@@ -1,0 +1,492 @@
+---
+kind: concept
+title: 결과 객체 읽기
+names: [OptimizeResult]
+group: 기본 개념
+order: 2
+summary: sd.optimize의 모든 함수가 돌려주는 OptimizeResult를 읽는 법을 설명해요. 해와 함숫값, 멈춘 이유(converged, status, message), 셈(n_iter, nfev, njev, nhev), 함수마다 더 있는 필드를 다뤄요.
+seeAlso: [basics, minimize, least_squares, root, root_scalar, find_root]
+---
+import Callout from '../../../components/Callout.astro';
+
+## 한눈에 보기
+
+`sd.optimize`의 함수는 모두 같은 클래스 `OptimizeResult`의 객체를 돌려줘요. 방법이 계산한 것만 필드로 들어 있어서, 함수와 방법에 따라 있는 필드가 달라요. 예로 Rosenbrock 함수를 기울기와 함께 BFGS로 풀어 볼게요.
+
+```python
+>>> import stardust as sd
+>>> rosen = lambda x: (1 - x[0])**2 + 100 * (x[1] - x[0]**2)**2
+>>> grad = lambda x: [-2 * (1 - x[0]) - 400 * x[0] * (x[1] - x[0]**2), 200 * (x[1] - x[0]**2)]
+>>> r = sd.optimize.minimize(rosen, [-1.2, 1.0], jac=grad)
+>>> r
+OptimizeResult(method='bfgs', converged=True, fun=2.5353e-15, n_iter=32, nfev=39, x=[1, 1])
+```
+
+화면에 보이는 한 줄은 요약이라 수를 유효숫자 6자리로 줄여 보여 줘요. `x=[1, 1]`의 끝자리까지의 값은 필드 `r.x`로 읽어요. 이 결과에 든 필드를 모두 보려면 `hasattr`로 골라요. `summary`는 필드가 아니라 결과를 표로 그리는 메서드예요([출력하기](#출력하기)).
+
+```python
+>>> r.x
+array([0.9999999710014291, 0.9999999461191459], dtype=float64)
+>>> [k for k in dir(r) if not k.startswith('_') and hasattr(r, k)]
+['converged', 'fun', 'hess_inv', 'jac', 'message', 'method', 'n_iter', 'nfev', 'njev', 'status', 'summary', 'x']
+>>> r.converged, r.status, r.message
+(True, 0, 'Optimization terminated successfully.')
+>>> r.n_iter, r.nfev, r.njev
+(32, 39, 39)
+```
+
+거의 모든 결과에 있는 필드는 이래요.
+
+| 필드 | 뜻 | 형 |
+|---|---|---|
+| `x` | 찾은 해 | 스칼라 문제는 `float`, 다변수는 `sd.ndarray` $(n,)$ |
+| `fun` | 해에서의 함숫값. 최소제곱과 방정식계는 잔차·함숫값의 벡터 | `float` 또는 `sd.ndarray` |
+| `converged` | 방법의 멈춤 판정을 통과했는지 | `bool` |
+| `status` | 멈춘 이유의 번호. 뜻은 함수와 방법마다 달라요 | `int` |
+| `message` | 멈춘 이유의 글 | `str` |
+| `n_iter` | 반복 수 | `int` |
+| `nfev` | 사용자 함수(`fun`, `f`)를 부른 수 | `int` |
+| `njev` | 기울기나 야코비안을 계산한 수 | `int` |
+| `nhev` | 헤시안(`hess`, `hessp`, 이계도함수)을 계산한 수 | `int` |
+| `method` | 쓴 방법의 이름 | `str` |
+
+배치 함수(`find_root` 등)의 결과는 같은 필드가 원소마다의 배열이에요. [배치의 결과](#배치의-결과)에서 따로 봐요.
+
+## 함수마다 있는 필드
+
+`converged`, `status`, `n_iter`는 모든 결과에 있어요. 나머지는 이 표와 같아요(✓는 있음).
+
+| 함수, 방법 | `x` | `fun` | `jac` | 그 밖의 필드 | `message`, `method` | `nfev` | `njev` | `nhev` |
+|---|:-:|:-:|:-:|---|:-:|:-:|:-:|:-:|
+| `root_scalar` 구간법, secant | ✓ | | | | ✓ | ✓ | | |
+| `root_scalar` newton | ✓ | | | | ✓ | ✓ | ✓ | |
+| `root_scalar` halley | ✓ | | | | ✓ | ✓ | ✓ | ✓ |
+| `minimize_scalar` | ✓ | ✓ | | | ✓ | ✓ | | |
+| `find_root`, `find_minimum` | ✓ | ✓ | | `bracket`, `f_bracket` | | ✓ | | |
+| `bracket_root`, `bracket_minimum` | | | | `bracket`, `f_bracket` | | ✓ | | |
+| `minimize` nelder-mead | ✓ | ✓ | | `final_simplex` | ✓ | ✓ | | |
+| `minimize` bfgs, l-bfgs-b | ✓ | ✓ | ✓ | `hess_inv` | ✓ | ✓ | ✓ | |
+| `minimize` newton-cg | ✓ | ✓ | ✓ | | ✓ | ✓ | ✓ | ✓ |
+| `minimize` trust-ncg, trust-exact | ✓ | ✓ | ✓ | `hess`(`hess`를 줬을 때) | ✓ | ✓ | ✓ | ✓ |
+| `least_squares` | ✓ | ✓ | ✓ | `cost`, `grad`, `optimality`, `active_mask` | ✓ | ✓ | ✓ | |
+| `lsq_linear` | ✓ | ✓ | | `cost`, `optimality`, `active_mask` | ✓ | | | |
+| `nnls` | ✓ | ✓ | | `cost` | ✓ | | | |
+| `root` | ✓ | ✓ | | | ✓ | ✓ | ✓ | |
+
+표에서 헷갈리기 쉬운 곳이 몇 군데 있어요.
+
+- `root_scalar`에는 `fun`이 없어요. 대부분의 방법이 돌려주는 `x`에서 `f`를 다시 계산하지 않기 때문이에요. 필요하면 `f(r.x)`를 직접 계산해요.
+- `lsq_linear`과 `nnls`는 사용자 함수를 부르지 않으니 `nfev`가 없어요.
+- L-BFGS-B에서 `bounds`의 위아래가 같은 변수(고정 변수)가 있고 기울기를 차분으로 구하면 `hess_inv`가 없어요. 고정 변수를 빼고 풀기 때문이에요.
+- 배치 함수에는 `message`와 `method`가 없어요.
+
+## 없는 필드를 읽으면
+
+방법이 주지 않는 필드를 읽으면 `AttributeError`예요. `None`을 돌려주지 않으니, 있는지 모를 때는 `hasattr`로 물어요.
+
+```python
+>>> r.hess
+Traceback (most recent call last):
+    ...
+AttributeError: 'OptimizeResult' object has no attribute 'hess' (its method does not give it)
+>>> hasattr(r, 'hess'), hasattr(r, 'hess_inv')
+(False, True)
+```
+
+## 해: x와 fun
+
+`x`의 형은 문제의 꼴을 따라요. 변수 하나인 `root_scalar`와 `minimize_scalar`는 Python `float`, 다변수 함수는 길이 $n$인 float64 `sd.ndarray`예요.
+
+`fun`은 해에서 계산한 값인데, 무엇의 값인지는 함수마다 달라요.
+
+| 함수 | `fun` |
+|---|---|
+| `minimize_scalar`, `minimize` | 목적함수의 값 하나(`float`) |
+| `least_squares` | 잔차 벡터 $r(x)$, $(m,)$ |
+| `lsq_linear`, `nnls` | 잔차 $Ax - b$, $(m,)$ |
+| `root` | $F(x)$, $(n,)$. 근이면 0에 가까워요 |
+| `find_root`, `find_minimum` | 원소마다의 $f(x)$ |
+
+최소제곱의 `fun`이 벡터라서, 제곱합은 따로 `cost` $= \tfrac12\sum_i r_i^2$로 줘요. 더하는 순서가 다르면 반올림이 달라서, 직접 더한 값과 끝자리가 다를 수 있어요. 아래 예에서는 둘이 같아요.
+
+```python
+>>> t = sd.asarray([0.0, 1, 2, 3, 4, 5, 6, 7])
+>>> y = sd.asarray([5.1, 3.0, 1.9, 1.1, 0.72, 0.38, 0.27, 0.13])
+>>> ls = sd.optimize.least_squares(lambda p: p[0] * sd.exp(-p[1] * t) - y, [1.0, 1.0])
+>>> ls.fun
+array([-0.021678970519108276,   0.06616311731262225,  -0.04872746181442755,
+        0.017752017591247116,  -0.04512931129318887,  0.027470028510527933,
+       -0.023979796555513355,  0.018540840473872444], dtype=float64)
+>>> ls.cost, 0.5 * float(sd.sum(ls.fun**2))
+(0.005623543065608391, 0.005623543065608391)
+```
+
+## 멈춘 이유: converged, status, message
+
+### converged
+
+`converged`는 방법이 정한 멈춤 판정을 통과했는지예요. 최솟값을 찾는 방법이면 기울기나 걸음이 충분히 작아졌다는 뜻, 근을 찾는 방법이면 구간이나 걸음이 충분히 작아졌다는 뜻이에요. 여기에 `minimize`, `least_squares`, `lsq_linear`, `nnls`는 마지막 값(`fun`, `cost`)이 유한하다는 조건을 더해요. L-BFGS-B는 한 걸음도 가지 못한 채 상대 감소의 판정을 통과하면(시험점의 값이 유한하지 않아 선 탐색이 제자리에서 끝났을 때) `status`와 `message`는 수렴의 것이어도 `converged=False`예요.
+
+`converged=True`가 말하지 않는 것도 있어요.
+
+- **가장 작은 값이라는 뜻이 아니에요.** 지역 최솟값에서도 `True`예요([지역 해와 시작점](/api/optimize/basics/#지역-해와-시작점)).
+- **근이라는 뜻이 아닐 수 있어요.** `root(method='lm')`은 제곱합 $\lVert F\rVert^2$을 줄이는 방법이라, 근이 없는 계에서도 제곱합이 더 줄지 않으면 판정을 통과해요. `fun`을 보면 알 수 있어요.
+
+```python
+>>> no_root = lambda v: [v[0]**2 + 1, v[1]]
+>>> r = sd.optimize.root(no_root, [1.0, 1.0], method='lm')
+>>> r.converged, r.status, r.fun
+(True, 1, array([1.0, 0.0], dtype=float64))
+>>> r = sd.optimize.root(no_root, [1.0, 1.0])
+>>> r.converged, r.status
+(False, 5)
+>>> r.message
+'The iteration is not making good progress, as measured by the \n improvement from the last ten iterations.'
+```
+
+반대로 `converged=False`라고 쓸모없는 결과는 아니에요. 반올림 때문에 판정의 문턱까지 못 간 경우에도 `x`는 답 가까이에 있을 수 있어요. `status`와 `message`로 이유를 읽고, `fun`이나 `jac`으로 판단해요.
+
+### status
+
+`status`는 멈춘 이유의 번호예요. 번호는 scipy 1.18.1의 같은 방법이 쓰는 번호이고, 그래서 함수마다 뜻이 달라요. `converged`가 `True`인 번호와 그 밖의 번호는 이래요.
+
+| 함수, 방법 | 수렴 | 그 밖 |
+|---|---|---|
+| `root_scalar` | 0 | −2 `max_iter`에 닿음(newton의 도함수가 0, secant의 두 함숫값이 같을 때도), −3 구간법에서 f가 NaN(toms748은 무한대도) |
+| `minimize_scalar` | 0 | 1 상한, 2 NaN, 3 구간을 찾지 못함, 4 구간 찾기의 상한 |
+| 배치 함수 | 0 | −1 구간이 근이나 최솟값을 끼지 않음(`bracket_*`는 `xmin`·`xmax`에 닿음), −2 `max_iter`, −3 유한하지 않은 값, −5 처음 구간이 맞지 않음 |
+| `minimize` nelder-mead | 0 | 1 `max_nfev`, 2 `max_iter` |
+| `minimize` bfgs | 0 | 1 `max_iter`, 2 선 탐색이 걸음을 못 찾음(정밀도 손실), 3 NaN |
+| `minimize` l-bfgs-b | 0 | 1 `max_iter`나 `max_nfev`, 2 `ABNORMAL`(선 탐색 실패) |
+| `minimize` newton-cg | 0 | 1 `max_iter`, 2 정밀도 손실, 3 CG가 수렴하지 않음(헤시안이 양정치가 아님)이나 NaN |
+| `minimize` trust-ncg, trust-exact | 0 | 1 `max_iter`, 2 모형이 감소를 예측하지 못함, 3 부분문제의 실패(헤시안이 양정치가 아님 등) |
+| `least_squares` | 1 `gtol`, 2 `ftol`, 3 `xtol`, 4 `ftol`과 `xtol` | 0 `max_nfev` |
+| `lsq_linear` | 1 최적성 `< tol`, 2 비용의 상대 변화 `< tol`, 3 경계 없는 해가 답 | 0 `max_iter`, −1 마지막 반복에서 진전 없음 |
+| `nnls` | 1 | 0 `max_iter` |
+| `root` hybr | 1 | 2 `max_nfev`, 3 `xtol`이 너무 작음, 4·5 진전이 없음 |
+| `root` lm | 1–4 | 5 `max_nfev`, 6–8 허용오차가 너무 작음 |
+
+수렴을 뜻하는 번호가 0인 함수도 있고 1 이상인 함수도 있으니, 수렴 여부는 번호보다 `converged`로 보는 편이 안전해요.
+
+### message
+
+`message`는 멈춘 이유를 적은 글이고, scipy가 같은 경우에 쓰는 글을 그대로 써요. 사람이 읽기 위한 것이라 프로그램에서는 `status`나 `converged`로 가르는 편이 좋아요.
+
+```python
+>>> r = sd.optimize.minimize(rosen, [-1.2, 1.0], options={'max_iter': 10})
+>>> r.converged, r.status, r.message
+(False, 1, 'Maximum number of iterations has been exceeded.')
+>>> sd.optimize.least_squares(lambda p: p[0] * sd.exp(-p[1] * t) - y, [1.0, 1.0]).message
+'`ftol` termination condition is satisfied.'
+>>> sd.optimize.minimize(rosen, [-1.2, 1.0], method='l-bfgs-b').message
+'CONVERGENCE: NORM OF PROJECTED GRADIENT <= PGTOL'
+```
+
+## 셈: n_iter, nfev, njev, nhev
+
+### nfev는 사용자 함수를 부른 수 전부
+
+`nfev`는 사용자 함수를 실제로 부른 수예요. 기울기나 야코비안을 차분으로 어림하며 부른 것, 시작점에서 결과의 모양을 알아보려고 부른 것도 모두 세요. 그래서 함수를 부를 때마다 세어 보면 `nfev`와 같아요.
+
+```python
+>>> class Counted:
+...     def __init__(self, f):
+...         self.f, self.calls = f, 0
+...     def __call__(self, x):
+...         self.calls += 1
+...         return self.f(x)
+>>> f = Counted(rosen)
+>>> r = sd.optimize.minimize(f, [-1.2, 1.0])
+>>> f.calls, r.nfev, r.njev, r.n_iter
+(114, 114, 38, 31)
+```
+
+기울기를 주지 않았으니 BFGS는 기울기 38개를 앞쪽 차분으로 구했어요. 차분 하나에 함수를 $n = 2$번 더 불러서 76번, 나머지 38번이 반복이 직접 계산한 함숫값이에요. 사용자 함수가 무거우면 시간은 대부분 `nfev`에 비례하니, 방법이나 옵션을 견줄 때 좋은 잣대예요.
+
+### njev와 nhev
+
+`njev`는 기울기(최소화)나 야코비안(최소제곱, 방정식계)을 계산한 수예요. 사용자의 `jac`을 부른 수이거나, 차분으로 구했으면 차분 기울기의 수예요. `nhev`는 헤시안을 계산한 수예요. `hess`를 부른 수, 또는 `hessp`나 차분 헤시안으로 헤시안과 벡터의 곱을 계산한 수예요.
+
+`root_scalar`에서는 세 셈이 세 함수에 하나씩 붙어요. `nfev`는 `f`, `njev`는 `fprime`(없으면 그 자리의 차분), `nhev`는 `fprime2`를 부른 수예요.
+
+```python
+>>> s = lambda x: x*x - 2
+>>> r = sd.optimize.root_scalar(s, x0=1.0, fprime=lambda x: 2*x, fprime2=lambda x: 2.0)
+>>> r.method, r.nfev, r.njev, r.nhev
+('halley', 4, 4, 4)
+>>> r = sd.optimize.root_scalar(s, x0=1.0)
+>>> r.method, r.nfev, r.njev
+('newton', 10, 5)
+```
+
+두 번째는 `fprime`이 없어서 도함수 5개를 차분 $(f(x + h) - f(x))/h$로 구했어요. 그 $f(x + h)$ 5번도 `nfev` 10에 들어 있어요.
+
+### n_iter
+
+`n_iter`는 반복 수예요. 반복 하나가 무엇인지는 방법의 것이라 함수마다 조금 달라요.
+
+- `least_squares`와 `root(method='lm')`은 반복이 계산한 야코비안의 수예요.
+- `root(method='hybr')`은 시험한 걸음의 수예요.
+- `minimize_scalar(method='bounded')`는 `nfev`와 같아요.
+- `lsq_linear`은 경계 없는 해가 이미 답이면 0이에요.
+
+### 상한과 셈
+
+반복 상한은 `max_iter`, 함수 계산 수의 상한은 `max_nfev`이고, 각각 `n_iter`와 `nfev`에 대한 상한이에요. 셈이 상한을 넘길 때가 있어요. `least_squares`는 마지막 반복점의 야코비안을 상한을 넘겨 계산할 수 있고(차분이면 변수마다 한두 번), L-BFGS-B는 `max_nfev`를 반복이 끝날 때 봐서 반복 하나만큼 넘을 수 있어요. 기울기가 차분이면 선 탐색의 시험점마다 $n + 1$번이라 많이 넘기도 해요.
+
+```python
+>>> r = sd.optimize.least_squares(lambda x: [x[0]**2 - 2], [1.0], max_nfev=3)
+>>> r.status, r.nfev
+(0, 4)
+```
+
+## 도함수의 필드: jac, hess, hess_inv
+
+`jac`은 해 `x`에서의 기울기(`minimize`) 또는 야코비안 $(m, n)$(`least_squares`)이에요. 최솟값에서는 기울기가 0이어야 하니, `jac`의 크기로 해가 얼마나 정확한지 가늠할 수 있어요.
+
+```python
+>>> r = sd.optimize.minimize(rosen, [-1.2, 1.0], jac=grad)
+>>> r.jac
+array([-1.7045117963673361e-06,    8.23257351179052e-07], dtype=float64)
+>>> float(sd.max(sd.abs(r.jac))) <= 1e-5
+True
+```
+
+`hess`는 trust-ncg와 trust-exact가 `hess`를 받았을 때, 해에서의 헤시안 행렬이에요.
+
+`hess_inv`는 BFGS와 L-BFGS-B가 반복하며 만든 **헤시안 역행렬의 근사**예요. 반복의 걸음을 정하려고 지나온 걸음들로 쌓은 것이라, 해에서의 참 헤시안 역행렬과 같다는 보장은 없어요. 모수의 표준오차처럼 정확한 곡률이 필요하면 [`sd.regression.nls`](/api/regression/nls/)를 쓰거나 헤시안을 따로 계산하세요.
+
+```python
+>>> r.hess_inv
+array([[0.5018600892282898,  1.003153259362335],
+       [ 1.003153259362335,  2.010274659708603]], dtype=float64)
+```
+
+Rosenbrock의 $(1, 1)$에서 참 헤시안의 역행렬은 $\begin{pmatrix} 0.5 & 1 \\ 1 & 2.005 \end{pmatrix}$이라 이 예에서는 가까워요. L-BFGS-B의 `hess_inv`는 저장해 둔 걸음의 쌍으로 처음 읽을 때 $(n, n)$ 행렬을 만들어요. $n = 10^4$이면 800 MB라 변수가 아주 많으면 읽지 않는 편이 좋아요.
+
+## 최소제곱의 필드: cost, grad, optimality, active_mask
+
+`least_squares`와 `lsq_linear`에는 최소제곱에서 쓰는 필드가 더 있어요.
+
+| 필드 | 뜻 |
+|---|---|
+| `cost` | $\tfrac12\sum_i r_i^2$. `nnls`에도 있어요 |
+| `grad` | 비용의 기울기 $J^{\mathsf T} r$(`least_squares`만) |
+| `optimality` | 1차 최적성의 척도. 0에 가까울수록 최솟값의 조건에 가까워요. 경계에 걸린 변수는 경계 밖으로 향하는 기울기를 빼고 재요 |
+| `active_mask` | 변수마다 경계에 걸렸는지. −1은 아래 경계, 1은 위 경계, 0은 안쪽(int64 배열) |
+
+감쇠 모형에 $b \ge 0.6$이라는 범위를 주면 $b$가 아래 경계에 걸려요. 그 변수의 `grad`는 0이 아니지만(경계 밖으로 가야 더 줄어요) `optimality`는 0에 가까워요.
+
+```python
+>>> r = sd.optimize.least_squares(lambda p: p[0] * sd.exp(-p[1] * t) - y, [1.0, 1.0],
+...                               bounds=([0.0, 0.6], [10.0, 2.0]))
+>>> r.x
+array([ 5.307157358980645, 0.6000000000000001], dtype=float64)
+>>> r.active_mask
+array([ 0, -1], dtype=int64)
+>>> r.grad
+array([-3.359164879400405e-10,     2.5537812050007385], dtype=float64)
+>>> r.optimality
+1.5764032184264859e-09
+```
+
+## Nelder–Mead의 final_simplex
+
+Nelder–Mead는 $n + 1$개 꼭짓점의 단체(변수가 둘이면 삼각형)를 움직여 최솟값을 찾아요. `final_simplex`는 마지막 단체의 꼭짓점 $(n + 1, n)$과 그 함숫값 $(n + 1,)$의 튜플이고, 값이 작은 순서예요. `x`는 첫 꼭짓점, `fun`은 첫 값이에요.
+
+```python
+>>> r = sd.optimize.minimize(rosen, [-1.2, 1.0], method='nelder-mead')
+>>> vertices, values = r.final_simplex
+>>> vertices.shape
+(3, 2)
+>>> values
+array([ 8.177661197416674e-10, 1.1075489735209213e-09,
+       1.1229296958589735e-09], dtype=float64)
+>>> r.x.tolist() == vertices[0].tolist(), r.fun == values[0]
+(True, True)
+```
+
+## 배치의 결과
+
+`find_root`, `find_minimum`, `bracket_root`, `bracket_minimum`의 결과는 필드마다 배치 모양의 배열이에요. `x`, `fun`은 float64, `converged`는 bool, `status`, `n_iter`, `nfev`는 int64예요. `repr`는 몇 개가 수렴했는지만 보여 주고, 원소마다의 값은 `summary()`의 표로 볼 수 있어요([출력하기](#출력하기)).
+
+```python
+>>> c = sd.asarray([1.0, 2.0, 200.0])
+>>> b = sd.optimize.find_root(lambda x, c: x**2 - c, (0.0, 10.0), args=(c,))
+>>> b
+OptimizeResult(batch shape (3,), 2 of 3 converged)
+>>> b.x
+array([0.9999999999999999,  1.414213562373095,                nan], dtype=float64)
+>>> b.status
+array([ 0,  0, -1], dtype=int64)
+```
+
+$c = 200$인 원소는 $\sqrt{200} \approx 14.1$이 구간 $[0, 10]$ 밖이라 근을 끼지 않아요. 에러 대신 그 원소만 `status=-1`이고 `x`가 NaN이에요. 다른 원소는 그대로 풀려요.
+
+`bracket`과 `f_bracket`은 마지막 구간과 그 끝의 함숫값이에요. `find_root`와 `bracket_root`는 $(x_l, x_r)$, `find_minimum`과 `bracket_minimum`은 $(x_l, x_m, x_r)$의 배열 튜플이에요.
+
+```python
+>>> b.bracket
+(array([0.9999999999999999,  1.414213562373095,                0.0], dtype=float64), array([1.0000000000000002, 1.4142135623730956,               10.0], dtype=float64))
+```
+
+배치의 `nfev`는 **원소마다 계산한 함숫값의 수**예요. 사용자 함수는 남은 원소를 모은 배열로 한 번에 불리니, 호출 수와는 달라요.
+
+```python
+>>> calls = []
+>>> def f(x, c):
+...     calls.append(x.shape[0])
+...     return x**2 - c
+>>> b = sd.optimize.find_root(f, (0.0, 10.0), args=(c,))
+>>> b.nfev, b.n_iter
+(array([12, 12,  2], dtype=int64), array([10, 10,  0], dtype=int64))
+>>> len(calls), calls
+(12, [3, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2])
+```
+
+입력이 모두 배열이 아닌 수이면 필드는 Python 수예요.
+
+```python
+>>> b = sd.optimize.find_root(lambda x: x**2 - 2, (0.0, 10.0))
+>>> b
+OptimizeResult(converged=True, fun=-4.44089e-16, n_iter=10, nfev=12, x=1.41421)
+>>> type(b.x), type(b.status)
+(<class 'float'>, <class 'int'>)
+```
+
+## 읽기 전용이에요
+
+필드는 읽기만 할 수 있어요.
+
+```python
+>>> r.x = [1.0, 1.0]
+Traceback (most recent call last):
+    ...
+AttributeError: property 'x' of 'OptimizeResult' object has no setter
+```
+
+배열 필드도 읽기 전용 배열이에요. 읽을 때마다 복사하지 않고 같은 배열을 돌려줘서, 큰 `hess_inv`나 `jac`을 여러 번 읽어도 비용이 없어요. 값을 고쳐 쓰고 싶으면 `.copy()`로 복사해요.
+
+```python
+>>> x = r.x
+>>> x[0] = 99.0
+Traceback (most recent call last):
+    ...
+ValueError: assignment destination is read-only
+>>> r.x is r.x
+True
+>>> x = r.x.copy()
+>>> x[0] = 99.0
+>>> x
+array([              99.0, 1.0000422197517715], dtype=float64)
+```
+
+## 직접 만들기
+
+`OptimizeResult(**fields)`로 결과를 직접 만들 수도 있어요. 자기가 짠 방법의 결과를 같은 꼴로 보여 주거나 다른 함수에 넘길 때 써요. 필드는 키워드로만 줘요. 넘긴 리스트와 배열(`sd.ndarray`, numpy 배열)은 결과 자신의 읽기 전용 `sd.ndarray`로 한 번 복사해 두고(튜플은 원소마다), 넘긴 뒤에 원래 것을 고쳐도 결과는 그대로예요. 공통 필드는 종류를 검사해요. `message`와 `method`는 문자열, `converged`는 bool이나 bool 배열, `status`, `n_iter`, `nfev`, `njev`, `nhev`는 정수나 정수 배열이어야 해요.
+
+```python
+>>> v = [1.0, 2.0]
+>>> mine = sd.optimize.OptimizeResult(x=v, fun=0.5, converged=True, method='mine')
+>>> v[0] = 9.0
+>>> mine
+OptimizeResult(method='mine', converged=True, fun=0.5, x=[1, 2])
+>>> sd.optimize.OptimizeResult([1.0, 2.0])
+Traceback (most recent call last):
+    ...
+TypeError: OptimizeResult(): takes 0 positional arguments but 1 was given
+>>> sd.optimize.OptimizeResult(method=1)
+Traceback (most recent call last):
+    ...
+TypeError: OptimizeResult(): 'method' must be a str, not int
+```
+
+## 출력하기
+
+`repr`(그리고 `print`)은 한 줄 요약이에요. 방법, `converged`, 함숫값(최소제곱은 `cost`), `n_iter`, `nfev`, `x`를 있는 것만 보여 줘요. `root`처럼 함숫값이 배열이면 함숫값은 빼요. 수는 유효숫자 6자리로 적어서 2.0은 `2`로, 0.9999999710014291은 `1`로 보여요. `x`는 원소가 6개까지면 `[5.07832, 0.504554]`처럼 값을 늘어놓고, 더 길면 `<array of shape (7,)>`처럼 모양만 적어요. 배치는 모양과 수렴한 수만 보여 줘요. 회귀 모형과 검정 결과의 `repr`도 같은 꼴이에요.
+
+```python
+>>> print(sd.optimize.least_squares(lambda p: p[0] * sd.exp(-p[1] * t) - y, [1.0, 1.0]))
+OptimizeResult(method='trf', converged=True, cost=0.00562354, n_iter=7, nfev=21, x=[5.07832, 0.504554])
+>>> sd.optimize.minimize(lambda x: float(sd.sum((x - sd.arange(7.0))**2)), sd.zeros(7))
+OptimizeResult(method='bfgs', converged=True, fun=6.13839e-16, n_iter=5, nfev=56, x=<array of shape (7,)>)
+```
+
+`summary()`는 결과를 상자 모양의 표로 그린 글(`str`)이에요. 회귀 모형의 `summary()`와 같은 꼴이라, 한 번 익히면 어느 결과든 같은 방식으로 읽어요. 인자는 없어요. 맨 위의 BFGS 풀이를 그려 볼게요.
+
+```python
+>>> rb = sd.optimize.minimize(rosen, [-1.2, 1.0], jac=grad)
+>>> print(rb.summary())
+                             Optimization Results
+==============================================================================
+Method:                           bfgs  Function value:            2.53530e-15
+Converged:                        True  No. Iterations:                     32
+Status:                              0  Function Evals:                     39
+                                        Jacobian Evals:                     39
+Message:                                 Optimization terminated successfully.
+==============================================================================
+                    x
+------------------------------------------------------------------------------
+x[0]           1.0000
+x[1]           1.0000
+==============================================================================
+```
+
+- **머리**: 왼쪽 열은 방법(`Method:`), `converged`, `status`예요. 오른쪽 열은 함숫값(`Function value:`, 유효숫자 6자리)과 셈(`No. Iterations:`, `Function Evals:`, `Jacobian Evals:`, `Hessian Evals:`)이고, 결과에 있는 필드만 나와요. 최소제곱(`least_squares`, `lsq_linear`, `nnls`)은 함숫값 대신 `Cost:`이고, `optimality`가 있으면 `Optimality:`가 붙어요. 그 아래 한 줄이 `message`예요.
+- **표**: x의 원소마다 한 줄(`x[0]`, `x[1]`, …)이고, 값은 소수 4자리예요. 절댓값이 $10^4$ 이상이거나 $10^{-4}$보다 작으면 유효숫자 4자리로 적어요(`2.692e-11` 꼴). `root`는 그 점의 $F(x)$ 열 `fun`이 붙어서 근에 얼마나 가까운지 함께 보여요. `root_scalar`처럼 x가 수 하나면 `x` 한 줄이에요.
+- **긴 x**: 원소가 20개를 넘으면 앞의 5줄과 뒤의 5줄만 두고 그 사이에 `...` 줄을 둬요.
+
+표의 수는 읽기 좋게 줄인 값이에요. 위의 `x[0]`은 `1.0000`으로 보이지만 실제로는 `0.9999999710014291`이에요. 끝자리까지의 값은 필드(`rb.x`, `rb.fun`)로 읽어요.
+
+배치 함수의 `summary()`는 원소마다 한 줄인 표예요. 줄 이름은 원소의 첨자(`[0]`, 2차원 배치면 `[1, 2]`)이고, 열은 `x`, `fun`, 구간의 끝(`bracket[0]`, `bracket[1]`, …), `converged`, `status`, `n_iter`, `nfev`예요. 머리에는 배치 모양과 수렴한 원소의 수가 있어요. 원소가 20개를 넘으면 긴 x처럼 앞뒤 5줄만 보여요.
+
+```python
+>>> b = sd.optimize.find_root(lambda x, c: x**2 - c, (0.0, 10.0), args=(c,))
+>>> print(b.summary())
+                             Optimization Results
+==================================================================================================
+Batch shape:                      (3,)  Converged:                      2 of 3
+==================================================================================================
+                    x        fun bracket[0] bracket[1]  converged     status     n_iter       nfev
+--------------------------------------------------------------------------------------------------
+[0]            1.0000  -2.22e-16     1.0000     1.0000       True          0         10         12
+[1]            1.4142  -4.44e-16     1.4142     1.4142       True          0         10         12
+[2]               nan        nan     0.0000    10.0000      False         -1          0          2
+==================================================================================================
+```
+
+표가 78칸보다 넓으면 가로줄만 표의 폭으로 늘어나고 제목과 머리는 78칸 그대로예요.
+
+모든 필드를 값으로 보고 싶으면 dict로 모아요.
+
+```python
+>>> r = sd.optimize.root_scalar(s, bracket=(0.0, 2.0))
+>>> {k: getattr(r, k) for k in dir(r) if not k.startswith('_') and k != 'summary' and hasattr(r, k)}
+{'converged': True, 'message': 'converged', 'method': 'brentq', 'n_iter': 8, 'nfev': 9, 'status': 0, 'x': 1.4142135623731364}
+```
+
+## scipy를 아는 분께
+
+scipy의 `OptimizeResult`와 견주면 이래요.
+
+- **이름**: `success`는 `converged`, `nit`는 `n_iter`예요. Nelder–Mead의 `n_iter`는 한 반복 수라 scipy의 `nit`보다 하나 작아요. 별칭은 없어서 `r.success`는 `AttributeError`예요. `find_root` 등의 `f_x`는 `fun`이에요.
+- **dict가 아니에요**: `r['x']`, `r.keys()`, `r.get(...)`이 없어요. 필드가 있는지는 `hasattr`로 물어요.
+- **출력**: scipy의 결과는 `print`하면 모든 필드를 한 줄에 하나씩 늘어놓고, `summary()`가 없어요. 여기서는 `repr`가 한 줄 요약이고, 표는 `summary()`예요.
+- **`root_scalar`**: scipy는 `RootResults`(`root`, `iterations`, `function_calls`, `converged`, `flag`)를 주지만 여기서는 `OptimizeResult`(`x`, `n_iter`, `nfev`·`njev`·`nhev`, `converged`, `message`)예요. scipy의 `function_calls`는 세 함수의 호출을 합한 수라서, `fprime`을 주면 `nfev + njev + nhev`와 같아요.
+- **`nnls`**: scipy는 `(x, rnorm)` 튜플을 주고, 반복 상한에 닿으면 `RuntimeError`를 내요. 여기서는 `OptimizeResult`이고 상한은 `status=0`, `converged=False`예요. `rnorm` 대신 `cost` $= \tfrac12\lVert Ax - b\rVert^2$을 줘요.
+- **`root`**: MINPACK의 내부 값 `fjac`, `r`, `qtf`는 없고, `n_iter`와 (차분일 때도) `njev`가 있어요. `nfev`는 scipy보다 2 적어요. scipy는 시작점에서 함수를 두 번 더 부르고 그것도 세어요.
+- **`least_squares`의 `nfev`**: 차분 야코비안의 호출도 세요. scipy는 세지 않아서, `'2-point'`이면 scipy의 `nfev`는 이쪽의 `nfev − n·njev`예요. `n_iter`는 scipy의 결과에 없는 필드예요. `minimize`의 `nfev`는 scipy도 차분의 호출을 세므로 같아요.
+- **`lsq_linear`**: `unbounded_sol`이 없고, `active_mask`는 언제나 int64예요.
+- **`minimize`의 작은 차이**: newton-cg의 `jac`은 돌려주는 `x`에서의 기울기예요(scipy는 마지막 반복을 시작한 점의 기울기). L-BFGS-B의 `hess_inv`는 `LbfgsInvHessProduct` 객체가 아니라 그 `todense()`와 같은 행렬이에요. L-BFGS-B가 `ABNORMAL`로 멈추면 `fun`은 돌려주는 `x`에서의 값이에요(scipy는 마지막 시험점의 값).
+
+```python
+>>> import numpy as np
+>>> import scipy.optimize as so
+>>> F = lambda x: [10 * (x[1] - x[0]**2), 1 - x[0]]
+>>> a = so.least_squares(F, np.array([-1.2, 1.0]))
+>>> b = sd.optimize.least_squares(F, [-1.2, 1.0])
+>>> a.nfev, b.nfev, b.nfev - 2 * b.njev
+(25, 61, 25)
+>>> a.x.tolist() == b.x.tolist()
+True
+```

@@ -1,0 +1,198 @@
+---
+kind: function
+title: somersd
+names: [somersd]
+group: 상관
+order: 6
+signatures:
+  - "sd.htest.somersd(x, y=None, /, *, alternative='two-sided')"
+summary: 순서 있는 두 범주 사이의 비대칭 순위 상관인 Somers의 D(Y|X)와 그 검정이에요. "X가 높은 쪽이 Y도 높은가"를 X의 동점은 빼고 재요. 두 순위를 주거나 교차표를 바로 줘요.
+params:
+  - name: x
+    type: ndarray, 실수의 시퀀스, numpy 배열, 또는 frame
+    kind: positional-only
+    desc: 1차원이면 독립 변수 X의 관측(순위나 순서 범주), 2차원이면 교차표 자체(행이 X의 범주, 열이 Y의 범주, 음이 아닌 정수 개수)예요.
+  - name: y
+    type: ndarray, 실수의 시퀀스, numpy 배열, frame, 또는 None
+    kind: positional-only
+    desc: 종속 변수 Y의 관측. x가 1차원이면 꼭 줘야 하고 x와 길이가 같아야 해요. x가 표이면 None이어야 해요.
+  - name: alternative
+    type: str
+    kind: keyword-only
+    desc: "대립가설. 'two-sided'(기본값), 'greater'(양의 연관), 'less'(음의 연관) 중 하나예요."
+returns:
+  type: SomersdResult
+  desc: "statistic(D(Y|X)), pvalue, table(쓴 교차표, int64 배열)을 가진 결과 객체. 튜플로 풀리지 않아요. 필드는 이름으로 읽어요."
+raises:
+  - type: TypeError
+    desc: x·y가 배열·수의 시퀀스·frame이 아닐 때, 데이터를 키워드로 줬거나 옵션을 위치로 줬을 때, axis 같은 없는 인자를 줬을 때.
+  - type: ValueError
+    desc: "x가 표인데 y를 줬을 때, x가 1차원인데 y가 없거나 1차원이 아닐 때, 길이가 다를 때, NaN이 있을 때, 표가 음수·정수가 아닌 값을 가질 때, 표의 0이 아닌 칸이 둘보다 적을 때, 두 표본에서 만든 표가 10⁷칸을 넘을 때, x가 1·2차원이 아닐 때, alternative 이름이 틀렸을 때."
+seeAlso: [kendalltau, chi2_contingency, spearmanrho, basics, results]
+---
+## 무엇을 묻는 검정인가요
+
+학력(낮음·중간·높음)과 직업 만족도(1–4)를 85명에게 물었어요. 학력이 높을수록 만족도도 높을까요? 두 변수 모두 순서는 있지만 범주가 몇 개뿐이라 동점이 아주 많아요.
+
+<strong>Somers의 D(Y|X)</strong>는 켄달의 τ처럼 사람 두 명씩의 쌍을 봐요. 다만 X(설명하는 쪽)가 같은 쌍은 "X가 달라질 때 Y가 어떻게 되나"에 아무것도 말하지 않으므로 빼요.
+
+$$
+D(Y \mid X) = \frac{C - D}{\text{X가 다른 쌍의 수}}
+$$
+
+$C$는 X가 높은 사람이 Y도 높은 쌍, $D$는 X가 높은 사람이 Y는 낮은 쌍의 수예요. Y만 같은 쌍은 분모에 남아요. 그래서 "X가 다른 두 사람을 골랐을 때, X가 높은 쪽이 Y도 높을 확률에서 낮을 확률을 뺀 값"이라고 읽어요.
+
+X와 Y를 바꾸면 값이 달라지는 **비대칭** 상관이에요. X가 원인이나 앞선 변수이고 Y가 결과일 때 맞아요.
+
+- **귀무가설**: X와 Y 사이에 순서의 연관이 없어요(D = 0).
+- **대립가설**: D ≠ 0(기본값). `alternative`로 한쪽을 고를 수 있어요.
+
+<Reference />
+
+## 기본 사용: 교차표
+
+교차표를 `x`에 바로 줘요. 행이 X의 범주(위에서 아래로 낮은 것부터), 열이 Y의 범주(왼쪽에서 오른쪽으로 낮은 것부터)예요.
+
+```python
+>>> import stardust as sd
+>>> table = [[12,  8,  4,  1],    # 학력 낮음
+...          [ 6, 10,  9,  5],    # 중간
+...          [ 2,  5, 10, 13]]    # 높음
+>>> r = sd.htest.somersd(table)
+>>> r
+SomersdResult(statistic=0.475417, pvalue=4.37458e-09, table=<array of shape (3, 4)>)
+```
+
+학력이 다른 두 사람을 고르면, 학력이 높은 쪽의 만족도가 더 높을 확률이 더 낮을 확률보다 0.48만큼 커요. p값이 아주 작아서 연관이 없다는 귀무가설을 기각해요.
+
+결과는 튜플로 풀리지 않아요. 필드를 이름으로 읽어요.
+
+```python
+>>> r.statistic, r.pvalue
+(0.47541666666666665, 4.374578808093054e-09)
+>>> r.table
+array([[12,  8,  4,  1],
+       [ 6, 10,  9,  5],
+       [ 2,  5, 10, 13]], dtype=int64)
+>>> print(r.summary())
+                                  Somers' D
+==============================================================================
+Statistic:                      0.4754  Alternative:                 two-sided
+P-value:                      4.37e-09
+==============================================================================
+table             [0]        [1]        [2]        [3]
+------------------------------------------------------------------------------
+[0]                12          8          4          1
+[1]                 6         10          9          5
+[2]                 2          5         10         13
+==============================================================================
+```
+
+## 두 순위로 주기
+
+관측이 사람마다 한 줄로 있으면 `x`와 `y`에 두 변수를 줘요. 교차표를 만들어 같은 계산을 해요. 행은 x의 서로 다른 값, 열은 y의 서로 다른 값이고 둘 다 작은 값부터예요.
+
+```python
+>>> edu = [1.0] * 25 + [2.0] * 30 + [3.0] * 30
+>>> sat = ([1.0] * 12 + [2.0] * 8 + [3.0] * 4 + [4.0] * 1
+...        + [1.0] * 6 + [2.0] * 10 + [3.0] * 9 + [4.0] * 5
+...        + [1.0] * 2 + [2.0] * 5 + [3.0] * 10 + [4.0] * 13)
+>>> r2 = sd.htest.somersd(edu, sat)
+>>> r2.statistic == r.statistic, r2.table.shape
+(True, (3, 4))
+```
+
+순서를 바꾸면 D(X|Y)예요. 값은 다르지만 p값은 같아요. 검정통계량은 $C - D$와 그 표준오차라 방향과 상관이 없어요.
+
+```python
+>>> rev = sd.htest.somersd(sat, edu)
+>>> rev
+SomersdResult(statistic=0.422124, pvalue=4.37458e-09, table=<array of shape (4, 3)>)
+```
+
+두 방향의 D를 곱해 제곱근을 구하면 켄달의 τ-b예요.
+
+```python
+>>> (r.statistic * rev.statistic) ** 0.5
+0.4479783240994945
+>>> sd.htest.kendalltau(edu, sat).statistic
+0.4479783240994945
+```
+
+## p값
+
+p값은 $Z = (C - D)/\widehat{\mathrm{se}}$를 표준정규분포에 견준 근사예요. 표준오차는 표의 칸마다 그 칸과 일치·불일치하는 칸의 개수에서 어림한 점근 표준오차예요. [`kendalltau`](/api/htest/kendalltau/)의 정규 근사와는 표준오차의 식이 달라서, 같은 자료에서도 p값이 다를 수 있어요.
+
+```python
+>>> sd.htest.kendalltau(edu, sat).pvalue
+1.8919896949145126e-06
+```
+
+두 검정 모두 근사라서 칸의 개수가 작으면 조심해요. 방향이 정해진 질문이면 `alternative='greater'`나 `'less'`를 써요.
+
+```python
+>>> sd.htest.somersd(table, alternative='greater').pvalue
+2.187289404046527e-09
+```
+
+## 퇴화한 표
+
+- 표의 행이나 열이 하나뿐이면 쌍을 견줄 수 없어 통계량과 p값이 NaN이에요.
+- 표준오차가 0이면(예를 들어 대각만 채운 2 × 2 표) 통계량은 정해지지만 p값은 NaN이에요.
+
+```python
+>>> sd.htest.somersd([[3, 4, 5]])
+SomersdResult(statistic=nan, pvalue=nan, table=<array of shape (1, 3)>)
+>>> sd.htest.somersd([[3, 0], [0, 3]])
+SomersdResult(statistic=1, pvalue=nan, table=<array of shape (2, 2)>)
+```
+
+## 에러
+
+표는 음이 아닌 정수 개수여야 하고 0이 아닌 칸이 둘 이상이어야 해요. 두 순위에는 NaN이 없어야 해요(`nan_policy`가 없어요).
+
+```python
+>>> sd.htest.somersd([[3, -1], [0, 3]])
+Traceback (most recent call last):
+    ...
+ValueError: somersd(): 'x' must hold integer counts >= 0
+>>> sd.htest.somersd([[3, 0], [0, 0]])
+Traceback (most recent call last):
+    ...
+ValueError: somersd(): the table must hold at least two nonzero counts
+>>> sd.htest.somersd(table, [1, 2, 3])
+Traceback (most recent call last):
+    ...
+ValueError: somersd(): 'y' must be None when 'x' is a table
+>>> sd.htest.somersd([1.0, 2.0, float('nan')], [1.0, 2.0, 3.0])
+Traceback (most recent call last):
+    ...
+ValueError: somersd(): 'x' and 'y' must not contain NaN
+>>> sd.htest.somersd([1.0, 2.0, 3.0])
+Traceback (most recent call last):
+    ...
+ValueError: somersd(): 'y' is required when 'x' is a 1-D sample (a 2-D 'x' is a table)
+```
+
+두 순위에서 만든 표는 결과의 필드라 메모리에 남아요. 서로 다른 값이 아주 많은 두 연속 변수(예를 들어 5000개씩)는 표가 10⁷칸을 넘어서 `ValueError`예요. 그런 자료에는 [`kendalltau`](/api/htest/kendalltau/)가 맞아요. `axis`와 배치, `nan_policy`는 없어요.
+
+## 정확도
+
+일치·불일치의 가중합과 표준오차의 합은 표의 누적합에서 정확한 정수로 구해요. 칸 수에 비례하는 시간이라 큰 표도 빨라요. 정확한 정수 계산과 Arb(구간 산술)로 만든 참값에 견주면 5문제(한쪽 검정, 연속 표본, 표 둘)에서 D는 상대오차 8.6e-17 안, p값은 1.5e-15 안이에요.
+
+## scipy를 아는 분께
+
+`scipy.stats.somersd`와 같은 통계량, 같은 표의 방향, 같은 p값의 식이에요. 다른 점이에요.
+
+- 표준오차가 0이면 p값이 NaN이에요. scipy는 $Z = \infty$로 보고 p = 0을 내요.
+
+  ```python
+  >>> import scipy.stats
+  >>> scipy.stats.somersd([[3, 0], [0, 3]]).pvalue
+  np.float64(0.0)
+  ```
+
+- 2차원 `x`에 `y`를 주면 `ValueError`예요. scipy는 `y`를 무시해요.
+- NaN이 든 순위는 `ValueError`예요.
+- 두 표본에서 만든 표가 10⁷칸을 넘으면 `ValueError`예요.
+- 데이터는 위치로만, `alternative`는 키워드로만 받아요.

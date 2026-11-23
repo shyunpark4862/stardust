@@ -1,0 +1,186 @@
+---
+kind: function
+title: jaccard
+names: [jaccard]
+group: 거리 함수
+order: 25
+signatures:
+  - "sd.spatial.jaccard(u, v, /, *, w=None)"
+summary: 두 벡터를 0이 아닌 자리의 집합으로 보고, 합집합 가운데 한쪽에만 있는 자리의 비율 1 − |A ∩ B| / |A ∪ B|를 재요. 산 물건, 붙은 태그, 나타난 종처럼 "있음과 없음"의 자료를 견줄 때 써요. 두 쪽 모두 없는 자리는 세지 않아요.
+params:
+  - name: u
+    type: ndarray, 수의 시퀀스, numpy 배열, 또는 frame의 DataFrame
+    kind: positional-only
+    desc: 첫째 벡터. 마지막 축이 자리예요. 0이 아닌 자리가 집합의 원소예요. 2차원 이상이면 앞 축이 벡터 여러 개의 배치예요. bool, int64, float64를 그 dtype 그대로 보고, 복소수는 받지 않아요.
+  - name: v
+    type: ndarray, 수의 시퀀스, numpy 배열, 또는 frame의 DataFrame
+    kind: positional-only
+    desc: 둘째 벡터. 마지막 축의 길이가 u와 같아야 하고, 앞 축은 u와 브로드캐스트돼야 해요.
+  - name: w
+    type: 1차원 배열 또는 None
+    kind: keyword-only
+    desc: 자리마다의 가중치. 길이가 자리 수와 같고 모든 값이 유한하며 0 이상이어야 해요. 개수 대신 가중치의 합으로 세요. None(기본값)이면 모두 1이에요.
+returns:
+  type: float 또는 ndarray
+  desc: 0 이상 1 이하의 거리. 두 입력이 1차원이면 Python float, 아니면 배치 모양의 float64 배열이에요. 두 쪽 모두 0이 아닌 자리가 없으면 0이에요.
+raises:
+  - type: TypeError
+    desc: u·v가 배열·수의 시퀀스·DataFrame이 아닐 때, 복소수일 때, w를 위치로 줬을 때, 없는 키워드를 줬을 때.
+  - type: ValueError
+    desc: 마지막 축의 길이가 다를 때, 앞 축이 브로드캐스트되지 않을 때, w가 1차원이 아니거나 길이가 틀렸거나 음수·NaN·inf를 담았을 때.
+seeAlso: [metrics, hamming, braycurtis, cdist, pdist, kneighbors, basics]
+---
+import Callout from '../../../components/Callout.astro';
+
+## 무엇을 재나요
+
+벡터 `u`에서 0이 아닌 자리를 모은 집합을 A, `v`의 그것을 B라고 하면 자카드 거리는 이래요.
+
+$$
+d(u, v) = 1 - \frac{|A \cap B|}{|A \cup B|} = \frac{|A \cup B| - |A \cap B|}{|A \cup B|}
+$$
+
+$|A \cap B|/|A \cup B|$는 자카드 유사도예요. 둘 중 하나에라도 있는 것 가운데 둘 다에 있는 것의 비율이에요. 거리는 그 나머지, 곧 한쪽에만 있는 것의 비율이에요.
+
+두 손님이 다섯 가지 물건 가운데 산 것을 1로 적었어요.
+
+```python
+>>> import stardust as sd
+>>> alice = [1, 0, 1, 0, 1]      # 빵, 우유, 사과, 커피, 치즈
+>>> bob   = [1, 1, 1, 0, 0]
+>>> sd.spatial.jaccard(alice, bob)
+0.5
+```
+
+둘 중 하나라도 산 물건은 빵, 우유, 사과, 치즈의 넷이고, 둘 다 산 것은 빵과 사과의 둘이라 $1 - 2/4 = 0.5$예요. 둘 다 사지 않은 커피는 세지 않아요.
+
+<Reference />
+
+## 둘 다 없는 자리는 세지 않아요
+
+[`hamming`](/api/spatial/hamming/)은 모든 자리를 견줘서, 두 쪽 모두 0인 자리도 "같음"으로 세요. 자카드 거리는 그 자리를 빼요. 물건이 수천 가지인 가게에서 두 손님 모두 사지 않은 물건은 대부분이라, 그것까지 세면 모든 손님이 서로 비슷해 보여요.
+
+```python
+>>> alice_big = alice + [0] * 995      # 물건 1000가지 가운데 다섯 자리만 쓴 경우
+>>> bob_big = bob + [0] * 995
+>>> sd.spatial.hamming(alice_big, bob_big)
+0.002
+>>> sd.spatial.jaccard(alice_big, bob_big)
+0.5
+```
+
+물건 목록을 늘려도 자카드 거리는 그대로예요. "없음"이 많고 흔한 자료(드문 사건, 큰 어휘의 문서, 종 목록)에 맞는 거리예요.
+
+## 값의 크기는 보지 않아요
+
+0이 아닌지만 봐요. 2와 5는 모두 "있음"이에요. 음수도 0이 아니라 "있음"이에요.
+
+```python
+>>> sd.spatial.jaccard([2, 0, -1], [5, 0, 0])
+0.5
+>>> sd.spatial.jaccard([1.0, 2.0], [1.0, 2.0])
+0.0
+```
+
+첫 예의 A는 0번과 2번 자리, B는 0번 자리라서 $1 - 1/2$이에요. 많이 산 것과 조금 산 것을 구별하려면 개수를 그대로 쓰는 [`braycurtis`](/api/spatial/braycurtis/)가 있어요. 0과 1만 있는 자료에서 브레이–커티스 거리는 $|A \triangle B| / (|A| + |B|)$로, 분자는 같고 분모만 다른 이웃 거리(쇠렌센–다이스 거리)예요.
+
+입력의 dtype은 바꾸지 않고 0인지 봐요. bool, int64, float64 어느 것이든 같은 자리가 0이면 같은 결과예요.
+
+```python
+>>> sd.spatial.jaccard([True, False], [2, 0])
+0.0
+```
+
+## 여러 짝을 한꺼번에
+
+마지막 축이 자리이고 앞 축은 배치예요. 앞 축은 브로드캐스트로 맞춰요. 모든 행의 짝은 [`pdist`](/api/spatial/pdist/)나 [`cdist`](/api/spatial/cdist/)에 `metric="jaccard"`를 줘요.
+
+```python
+>>> baskets = sd.asarray([[True, False, True, False, True],
+...                       [True, True, True, False, False],
+...                       [False, False, False, True, False]])
+>>> sd.spatial.jaccard(baskets, baskets[0])
+array([0.0, 0.5, 1.0], dtype=float64)
+>>> sd.spatial.pdist(baskets, metric="jaccard")
+array([0.5, 1.0, 1.0], dtype=float64)
+```
+
+셋째 손님은 앞의 두 손님과 겹치는 물건이 없어서 거리가 1이에요. bool 행렬은 아주 긴 행도 빠르게 재요. 이웃 찾기([`kneighbors`](/api/spatial/kneighbors/), [`radius_neighbors`](/api/spatial/radius_neighbors/))에도 `metric="jaccard"`를 줄 수 있어요. 같은 두 벡터의 거리는 어디서 재든 비트까지 같아요.
+
+```python
+>>> sd.spatial.kneighbors(baskets[:1], baskets, k=2, metric="jaccard")
+QueryResult(distances=array([[0.0, 0.5]], dtype=float64), indices=array([[0, 1]], dtype=int64))
+```
+
+## 가중치 `w`
+
+`w`를 주면 개수 대신 가중치의 합으로 세요.
+
+$$
+d_w(u, v) = \frac{\sum_i w_i\,[\,(u_i \ne 0) \text{ xor } (v_i \ne 0)\,]}{\sum_i w_i\,[\,(u_i \ne 0) \text{ or } (v_i \ne 0)\,]}
+$$
+
+분자는 한쪽에만 있는 자리, 분모는 어느 한쪽에라도 있는 자리의 가중치 합이에요. 비싼 물건을 함께 산 것에 더 큰 무게를 두는 식으로 써요.
+
+```python
+>>> sd.spatial.jaccard([True, True, False], [True, False, False])
+0.5
+>>> sd.spatial.jaccard([True, True, False], [True, False, False], w=[1.0, 3.0, 1.0])
+0.75
+```
+
+둘째 줄은 한쪽에만 있는 1번 자리의 무게가 3이라 $3/(1 + 3)$이에요.
+
+## 경계의 값
+
+| 입력 | 결과 | 까닭 |
+|---|:---:|---|
+| 두 쪽 모두 0이 아닌 자리가 없음 | 0 | 빈 집합끼리는 같은 집합으로 봐요 |
+| 자리가 없음(길이 0) | 0 | 위와 같아요 |
+| NaN이 있음 | 그 자리는 "있음" | NaN은 0이 아니에요 |
+
+```python
+>>> sd.spatial.jaccard([0, 0], [0, 0])
+0.0
+>>> sd.spatial.jaccard([sd.nan, 0.0], [0.0, 0.0])
+1.0
+```
+
+<Callout type="warn" title="결측값은 있음으로 세져요">
+
+NaN은 0이 아니라서 "있음"으로 세요. 결측을 NaN으로 적은 자료를 그대로 넣으면 결측인 자리가 집합에 들어가요. 결측을 "없음"으로 보려면 미리 0으로 바꿔요.
+
+</Callout>
+
+## 에러
+
+```python
+>>> sd.spatial.jaccard(alice, [1, 0])
+Traceback (most recent call last):
+    ...
+ValueError: jaccard(): 'u' and 'v' must have the same length on their last axis, not 5 and 2
+>>> sd.spatial.jaccard(alice, bob, w=[1.0, 1.0, 1.0])
+Traceback (most recent call last):
+    ...
+ValueError: jaccard(): 'w' must have 5 entries (one per column), not 3
+```
+
+## 정확도
+
+가중치가 없으면 두 개수를 정확히 세고 한 번 나눠요. 그래서 결과는 참값을 올바르게 반올림한 값이에요(0 ULP). 같은 자리가 0이면 bool, int64, float64 어느 dtype으로 넣어도 같은 결과예요.
+
+가중치가 있으면 가중치를 더하는 데 반올림이 들어가서, 약속은 상대오차 $\gamma_{2m+1}$ 이하예요. $\gamma_k = ku/(1 - ku)$, $u = 2^{-53}$이고 m은 덧셈이 거치는 반올림의 수로, 자리 수 n이 32 이하면 $m = n$이에요(n이 크면 $m = 32 + \lceil n/32 \rceil - 1$).
+
+| | 시험한 짝 | 최대 ULP | 최대 상대오차 | 약속 대비 |
+|---|---:|---:|---:|---:|
+| `jaccard` | 80 | 0 | 7.07×10⁻¹⁷ | 0.93 |
+| `jaccard`, 가중치 | 80 | 2 | 2.91×10⁻¹⁶ | 0.12 |
+
+참값은 정확한 유리수로 구했어요.
+
+## scipy·sklearn을 아는 분께
+
+- `scipy.spatial.distance.jaccard`와 이름, 뜻(0이 아닌 자리의 집합, 분모가 0이면 0)이 같아요. `w`는 키워드로만 받아요.
+- int64를 그대로 봐요. 0인지만 보므로 결과는 scipy와 같아요.
+- NaN·inf 가중치는 `ValueError`예요. scipy는 음수만 막아요.
+- 배치를 받아요. scipy 1.18.1의 `jaccard`는 1차원만 받아요.

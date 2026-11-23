@@ -1,0 +1,305 @@
+---
+/**
+ * Points and shapes on a plane, drawn at build time: scatter plots, circles
+ * around a query, links between neighbours, boxes of a tree. Same look as
+ * Plot (grid, mono ticks, blue and slate), for pictures that are not curves
+ * of a function.
+ *
+ *   domain [x0, x1]   range [y0, y1]   xTicks / yTicks  [v] or [{ v, label }]
+ *   equal   one data unit is as long on both axes (default true)
+ *   width   width of the drawing in px (default 480); the height follows
+ *           from equal, or give height
+ *   title   a short heading over the drawing (for two drawings side by side)
+ *   layers  drawn in order, each { kind, tone, ... }:
+ *     { kind: 'points', pts: [[x, y]], shape?: 'dot' | 'square' | 'cross' | 'diamond', size?, labels?: [text] }
+ *     { kind: 'line', pts: [[x, y]], dashed?, closed?, fill?, width? }    NaN breaks the line
+ *     { kind: 'segments', segs: [[x0, y0, x1, y1]], dashed?, width? }
+ *     { kind: 'circle', at: [x, y], r, dashed?, width? }
+ *     { kind: 'rects', rects: [[x0, y0, x1, y1]], fill?, width? }
+ *     { kind: 'vline', x, dashed? }   { kind: 'hline', y, dashed? }
+ *     { kind: 'text', at: [x, y], text, dx?, dy?, anchor? }
+ *   tone   'main' (blue-600), 'soft' (blue-300), 'base' (slate-400),
+ *          'faint' (slate-300), 'ink' (the text colour)
+ *   legend [{ label, tone, shape: 'dot' | 'square' | 'cross' | 'diamond' | 'line' | 'dash' | 'box' }]
+ */
+type Tone = 'main' | 'soft' | 'base' | 'faint' | 'ink';
+type XY = [number, number];
+interface Tick {
+  v: number;
+  label?: string;
+}
+interface Layer {
+  kind: 'points' | 'line' | 'segments' | 'circle' | 'rects' | 'vline' | 'hline' | 'text';
+  tone?: Tone;
+  pts?: XY[];
+  shape?: 'dot' | 'square' | 'cross' | 'diamond';
+  size?: number;
+  labels?: string[];
+  dashed?: boolean;
+  closed?: boolean;
+  fill?: boolean;
+  width?: number;
+  segs?: [number, number, number, number][];
+  at?: XY;
+  r?: number;
+  rects?: [number, number, number, number][];
+  x?: number;
+  y?: number;
+  text?: string;
+  dx?: number;
+  dy?: number;
+  anchor?: 'start' | 'middle' | 'end';
+}
+interface Key {
+  label: string;
+  tone: Tone;
+  shape: 'dot' | 'square' | 'cross' | 'diamond' | 'line' | 'dash' | 'box';
+}
+interface Props {
+  label: string;
+  domain: [number, number];
+  range: [number, number];
+  xTicks?: (number | Tick)[];
+  yTicks?: (number | Tick)[];
+  equal?: boolean;
+  width?: number;
+  height?: number;
+  title?: string;
+  layers: Layer[];
+  legend?: Key[];
+}
+const { label, domain, range, xTicks = [], yTicks = [], equal = true, width = 480, height, title, layers, legend = [] } = Astro.props;
+
+const ticks = (ts: (number | Tick)[]) =>
+  ts.map((t) => (typeof t === 'number' ? { v: t, label: String(t).replace('-', '−') } : { v: t.v, label: t.label ?? String(t.v) }));
+const xt = ticks(xTicks);
+const yt = ticks(yTicks);
+const pad = { l: yt.length ? 44 : 12, r: 12, t: 10, b: xt.length ? 30 : 10 };
+const W = width;
+const spanX = domain[1] - domain[0];
+const spanY = range[1] - range[0];
+const innerW = W - pad.l - pad.r;
+const H = height ?? (equal ? Math.round((innerW * spanY) / spanX) + pad.t + pad.b : Math.round(W * 0.62));
+const innerH = H - pad.t - pad.b;
+const kx = innerW / spanX;
+const ky = innerH / spanY;
+const sx = (x: number) => pad.l + (x - domain[0]) * kx;
+const sy = (y: number) => H - pad.b - (y - range[0]) * ky;
+const f = (v: number) => v.toFixed(1);
+
+const pathOf = (pts: XY[], closed = false) => {
+  let d = '';
+  let pen = false;
+  for (const [x, y] of pts) {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      pen = false;
+      continue;
+    }
+    d += `${pen ? 'L' : 'M'}${f(sx(x))} ${f(sy(y))}`;
+    pen = true;
+  }
+  return closed ? d + 'Z' : d;
+};
+const marker = (shape: string, x: number, y: number, s: number) => {
+  const px = sx(x);
+  const py = sy(y);
+  if (shape === 'square') return { el: 'rect', x: px - s, y: py - s, w: 2 * s, h: 2 * s };
+  if (shape === 'diamond') return { el: 'path', d: `M${f(px)} ${f(py - s * 1.3)}L${f(px + s * 1.3)} ${f(py)}L${f(px)} ${f(py + s * 1.3)}L${f(px - s * 1.3)} ${f(py)}Z` };
+  if (shape === 'cross') {
+    const c = s * 1.25;
+    return { el: 'cross', d: `M${f(px - c)} ${f(py - c)}L${f(px + c)} ${f(py + c)}M${f(px - c)} ${f(py + c)}L${f(px + c)} ${f(py - c)}` };
+  }
+  return { el: 'circle', cx: px, cy: py, r: s };
+};
+// A stable id for the clip path, from what the figure draws.
+let hash = 0;
+for (const ch of label + domain.join() + range.join() + (title ?? '')) hash = (hash * 31 + ch.charCodeAt(0)) | 0;
+const clip = `plane-${(hash >>> 0).toString(36)}`;
+---
+
+<div class="plane" style={{ maxWidth: `${W}px` }}>
+  {title && <div class="plane__title">{title}</div>}
+  <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={label}>
+    <defs>
+      <clipPath id={clip}><rect x={pad.l - 6} y={pad.t - 6} width={innerW + 12} height={innerH + 12} /></clipPath>
+    </defs>
+    {xt.map((t) => <line class="plane__grid" x1={sx(t.v)} x2={sx(t.v)} y1={pad.t} y2={H - pad.b} />)}
+    {yt.map((t) => <line class="plane__grid" x1={pad.l} x2={W - pad.r} y1={sy(t.v)} y2={sy(t.v)} />)}
+    {xt.map((t) => <text class="plane__tick" x={sx(t.v)} y={H - 9} text-anchor="middle">{t.label}</text>)}
+    {yt.map((t) => <text class="plane__tick" x={pad.l - 8} y={sy(t.v) + 4} text-anchor="end">{t.label}</text>)}
+    <g clip-path={`url(#${clip})`}>
+      {
+        layers.map((l) => {
+          const tone = `plane--${l.tone ?? 'base'}`;
+          const sw = l.width ?? 1.4;
+          const dash = l.dashed ? '5 4' : undefined;
+          if (l.kind === 'line')
+            return <path class:list={['plane__stroke', tone, l.fill && 'plane__fill']} d={pathOf(l.pts!, l.closed)} stroke-width={sw} stroke-dasharray={dash} />;
+          if (l.kind === 'segments')
+            return (
+              <path
+                class:list={['plane__stroke', tone]}
+                d={l.segs!.map(([a, b, c, e]) => `M${f(sx(a))} ${f(sy(b))}L${f(sx(c))} ${f(sy(e))}`).join('')}
+                stroke-width={sw}
+                stroke-dasharray={dash}
+              />
+            );
+          if (l.kind === 'circle')
+            return <ellipse class:list={['plane__stroke', tone]} cx={sx(l.at![0])} cy={sy(l.at![1])} rx={l.r! * kx} ry={l.r! * ky} stroke-width={sw} stroke-dasharray={dash} />;
+          if (l.kind === 'rects')
+            return (
+              <path
+                class:list={['plane__stroke', tone, l.fill && 'plane__fill']}
+                d={l.rects!.map(([a, b, c, e]) => `M${f(sx(a))} ${f(sy(b))}H${f(sx(c))}V${f(sy(e))}H${f(sx(a))}Z`).join('')}
+                stroke-width={l.width ?? 1}
+              />
+            );
+          if (l.kind === 'vline') return <line class:list={['plane__stroke', tone]} x1={sx(l.x!)} x2={sx(l.x!)} y1={pad.t} y2={H - pad.b} stroke-width={sw} stroke-dasharray={dash} />;
+          if (l.kind === 'hline') return <line class:list={['plane__stroke', tone]} x1={pad.l} x2={W - pad.r} y1={sy(l.y!)} y2={sy(l.y!)} stroke-width={sw} stroke-dasharray={dash} />;
+          if (l.kind === 'text')
+            return (
+              <text class:list={['plane__label', tone]} x={sx(l.at![0]) + (l.dx ?? 0)} y={sy(l.at![1]) + (l.dy ?? 0)} text-anchor={l.anchor ?? 'start'}>
+                {l.text}
+              </text>
+            );
+          const s = l.size ?? 3.2;
+          const shape = l.shape ?? 'dot';
+          return (
+            <g class:list={['plane__marks', tone, `plane__marks--${shape}`]}>
+              {l.pts!.map(([x, y]) => {
+                const m = marker(shape, x, y, s);
+                if (m.el === 'rect') return <rect x={m.x} y={m.y} width={m.w} height={m.h} />;
+                if (m.el === 'circle') return <circle cx={m.cx} cy={m.cy} r={m.r} />;
+                return <path d={m.d} />;
+              })}
+              {l.labels && l.pts!.map(([x, y], i) => <text class="plane__label" x={sx(x) + s + 4} y={sy(y) - s - 2}>{l.labels![i]}</text>)}
+            </g>
+          );
+        })
+      }
+    </g>
+  </svg>
+  {
+    legend.length > 0 && (
+      <ul class="plane__legend">
+        {legend.map((k) => (
+          <li>
+            <svg class="plane__key" viewBox="0 0 16 12" aria-hidden="true">
+              {k.shape === 'line' && <path class:list={['plane__stroke', `plane--${k.tone}`]} d="M1 6H15" stroke-width="2" />}
+              {k.shape === 'dash' && <path class:list={['plane__stroke', `plane--${k.tone}`]} d="M1 6H15" stroke-width="2" stroke-dasharray="4 3" />}
+              {k.shape === 'box' && <rect class:list={['plane__stroke', 'plane__fill', `plane--${k.tone}`]} x="2" y="2" width="12" height="8" stroke-width="1.2" />}
+              {k.shape === 'dot' && <circle class:list={['plane__marks', `plane--${k.tone}`]} cx="8" cy="6" r="3.4" />}
+              {k.shape === 'square' && <rect class:list={['plane__marks', `plane--${k.tone}`]} x="4.5" y="2.5" width="7" height="7" />}
+              {k.shape === 'diamond' && <path class:list={['plane__marks', `plane--${k.tone}`]} d="M8 1.5L12.5 6L8 10.5L3.5 6Z" />}
+              {k.shape === 'cross' && <path class:list={['plane__marks', 'plane__marks--cross', `plane--${k.tone}`]} d="M4 2L12 10M4 10L12 2" />}
+            </svg>
+            {k.label}
+          </li>
+        ))}
+      </ul>
+    )
+  }
+</div>
+
+<style>
+  .plane {
+    flex: 1 1 280px;
+    width: 100%;
+  }
+  .plane > svg {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+  .plane__title {
+    margin: 0 0 var(--space-2);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    color: var(--fg-muted);
+    text-align: center;
+  }
+  .plane__grid {
+    stroke: var(--line);
+    stroke-width: 1;
+  }
+  .plane__tick {
+    fill: var(--fg-subtle);
+    font-family: var(--font-mono);
+    font-size: 13px;
+  }
+  .plane__label {
+    fill: var(--fg-muted);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    /* A halo in the figure's background keeps labels readable over points and lines. */
+    stroke: var(--bg-subtle);
+    stroke-width: 3px;
+    stroke-linejoin: round;
+    paint-order: stroke;
+  }
+  .plane__stroke {
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .plane__fill {
+    fill-opacity: 0.1;
+  }
+  .plane--main {
+    --tone: var(--blue-600);
+  }
+  .plane--soft {
+    --tone: var(--blue-300);
+  }
+  .plane--base {
+    --tone: var(--slate-400);
+  }
+  .plane--faint {
+    --tone: var(--slate-300);
+  }
+  .plane--ink {
+    --tone: var(--fg);
+  }
+  .plane__stroke {
+    stroke: var(--tone);
+  }
+  .plane__fill {
+    fill: var(--tone);
+  }
+  .plane__marks {
+    fill: var(--tone);
+  }
+  .plane__marks--cross,
+  .plane__marks--cross path {
+    fill: none;
+    stroke: var(--tone);
+    stroke-width: 2.4;
+    stroke-linecap: round;
+  }
+  .plane__legend {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--space-2) var(--space-5);
+    margin: var(--space-2) 0 0;
+    padding: 0;
+    list-style: none;
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--fg-muted);
+  }
+  .plane__legend li {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin: 0;
+  }
+  .plane__key {
+    flex: none;
+    width: 16px;
+    height: 12px;
+    overflow: visible;
+  }
+</style>

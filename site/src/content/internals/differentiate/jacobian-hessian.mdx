@@ -1,0 +1,236 @@
+---
+title: 야코비안과 헤시안
+group: 알고리즘
+order: 2
+summary: jacobian이 변수마다의 스텐실 점을 열로 쌓아 벡터화된 함수를 한 번에 부르고 항목마다 따로 멈추는 고리, 그리고 hessian이 기울기를 계산하는 안쪽 jacobian을 바깥 jacobian의 함수로 삼는 짜임과 그 셈을 코드와 함께 설명해요.
+seeAlso: [overview, derivative, accuracy-performance]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import Steps from '../../../components/fig/Steps.astro';
+
+## 한눈에 보기
+
+`jacobian(f, x)`는 $f: \mathbb{R}^m \to \mathbb{R}^k$의 야코비안 (k, m)의 항목 하나하나를 [derivative의 방법](/internals/differentiate/derivative/)으로 계산해요. 항목 $(i, j)$는 출력 $i$를 변수 $j$만의 함수로 본 도함수이고, 스텐실, 가중치, 짝의 합, 멈춤 판정이 모두 `derivative`와 같은 코드(`points`, `update`)예요. 다른 것은 부르는 꼴이에요. 변수마다의 스텐실 점을 열로 쌓아 벡터화된 f를 반복마다 한 번 불러요.
+
+`hessian(f, x)`는 스칼라 $f$의 헤시안 (m, m)이고, 기울기를 `jacobian`으로 계산하는 함수의 `jacobian`이에요. 둘 다 scipy의 `scipy.differentiate.jacobian`, `hessian`과 같은 점을 같은 순서로 불러요.
+
+## 열을 쌓아 부르기
+
+### 첫 호출과 반복의 열
+
+첫 호출은 열 m개가 모두 x인 (m, m) 배열이에요(scipy의 `eim._initialize`). 열 $j$는 변수 $j$의 항목들이 쓸 $f(x)$예요. 반복마다는 변수마다 그 변수만 스텐실의 점으로 움직이고 다른 변수는 x에 둔 p개의 열을 만들어 이어 붙여요. 열 $j \cdot p + q$가 변수 $j$의 $q$번째 점이고, 배열은 (m, m·p)예요.
+
+```cpp
+    // csrc/differentiate/derivative.cpp
+    while (nit < max_iter && !P.active.empty()) {
+        const bool first = nit == 0;
+        const std::size_t p = S.points(first), N = C * p;
+        pts.resize(N);
+        for (std::size_t col = 0; col < C; ++col)
+            points(S, cols[col].side, cols[col].x, cols[col].h, first, &pts[col * p]);
+        X = ev.start(m, N);
+        for (std::size_t c = 0; c < m; ++c) {
+            double* row = X + c * N;
+            for (std::size_t col = 0; col < C; ++col) {
+                const double base = x0[c * B + col % B];
+                double* dst = row + col * p;
+                if (col / B == c) {
+                    for (std::size_t q = 0; q < p; ++q) dst[q] = pts[col * p + q];
+                } else {
+                    for (std::size_t q = 0; q < p; ++q) dst[q] = base;
+                }
+            }
+        }
+        ev.run();
+```
+
+`C = m·B`는 "열"의 수예요. `jacobian`에서는 기준점이 x 하나라 B = 1이고 C = m이에요. B가 1보다 큰 경우는 `hessian`의 안쪽 `jacobian`이에요(아래). `cols[col]`이 열의 x, 간격, 스텐실의 쪽이고, 그 열의 점은 `derivative`와 같은 `points`가 써요. `step_direction`과 `initial_step`은 변수마다 줄 수 있어서 열마다 다를 수 있어요.
+
+$f(x_0, x_1) = x_0 x_1$의 $(1, 2)$에서 `order=2`로 두 반복을 부르면 이래요. 행이 변수, 열이 점이에요.
+
+```python
+>>> cols = []
+>>> def g(X):
+...     cols.append(X.tolist())
+...     return X[0] * X[1]
+>>> r = sd.differentiate.jacobian(g, [1.0, 2.0], max_iter=2, order=2)
+>>> for c_ in cols:
+...     print(c_)
+[[1.0, 1.0], [2.0, 2.0]]
+[[0.5, 1.5, 1.0, 1.0], [2.0, 2.0, 1.5, 2.5]]
+[[0.75, 1.25, 1.0, 1.0], [2.0, 2.0, 1.75, 2.25]]
+>>> r.df
+array([2.0, 1.0], dtype=float64)
+```
+
+둘째 호출의 앞 두 열은 $x_0 = 1 \mp 0.5$, 뒤 두 열은 $x_1 = 2 \mp 0.5$이고, 셋째 호출은 간격이 0.25예요. f가 스칼라 함수라 첫 호출이 (N,)을 돌려줬고, 그래서 결과가 기울기 (m,)이에요.
+
+### 모든 열을 끝까지
+
+항목 하나가 멈춰도 그 열을 빼고 부르지 않아요. 열 하나가 출력 k개를 함께 내니, 출력 하나가 멈췄다고 그 열을 뺄 수 없어요. 그래서 모든 항목이 멈출 때까지 반복마다 모든 열을 불러요(scipy의 `preserve_shape=True`와 같은 동작이에요). f가 받는 배열이 늘 (m, m·p)라 사용자 함수의 계약도 단순해요.
+
+```python
+>>> shapes = []
+>>> def F(X):
+...     shapes.append(tuple(X.shape))
+...     return sd.stack([sd.exp(X[0]) + X[1], sd.exp(20 * X[1])])
+>>> r = sd.differentiate.jacobian(F, [0.0, 0.0])
+>>> shapes
+[(2, 2), (2, 16), (2, 4), (2, 4), (2, 4), (2, 4)]
+>>> r.n_iter
+array([[2, 2],
+       [2, 5]], dtype=int64)
+>>> r.nfev
+array([[11, 11],
+       [11, 17]], dtype=int64)
+```
+
+세 항목은 둘째 반복에 멈췄지만 $e^{20x_1}$의 $x_1$ 항목은 곡률이 커서 다섯째 반복까지 갔고, 그동안 모든 열을 불렀어요. 항목의 `n_iter`와 `nfev`는 그 항목이 멈출 때까지의 반복 수와, 열 하나 몫의 점 수($1 + 2n + 2(\text{반복} - 1)$)예요. 멈춘 항목의 값은 멈춘 때의 것이에요.
+
+## 항목마다의 판정
+
+항목은 (출력 k, 변수 m, 기준점 B)의 C 순서로 늘어놓고, 항목마다 스텐실의 함숫값 $2n + 1$칸과 추정을 따로 둬요. 같은 열의 항목들은 같은 점을 쓰고 값만 다른 출력의 것이에요.
+
+```cpp
+        // csrc/differentiate/derivative.cpp
+        nit += 1;
+        advance(P, on, [&](std::size_t r) {
+            const auto e = static_cast<std::size_t>(P.active[r]);
+            const std::size_t i = e / C, col = e % C;
+            const Col& cl = cols[col];
+            acc[e] += ev.count(e, p);
+            const int st = update(
+                S, cl.side, cl.x, cl.h, &V[e * w], [&](std::size_t q) { return ev.value(i, col * p + q); }, first,
+                est[e], atol, rtol
+            );
+            if (st == sInProgress) return true;
+            P.status[e] = st;
+            P.stopped(e, nit, acc[e]);
+            return false;
+        });
+        for (Col& cl : cols) cl.h /= S.c;  // scipy divides every entry's step, stopped or not
+    }
+```
+
+갱신과 판정은 원소별 고리의 `advance`로 해서, 남은 항목이 $2^{15}$개 이상이면 그 패스가 스레드에 나뉘어요. 열을 쓰는 패스는 한 스레드예요. 남은 항목의 순서는 압축 뒤에도 그대로라, 지금은 결과가 스레드 수와 상관없이 같아요(약속은 아니에요). `max_iter`에 닿은 항목은 −2예요.
+
+셈은 항목마다 `acc[e]`에 더해요. `jacobian`에서 `ev.count(e, p)`는 그 반복의 점 수 p이고, 첫 호출의 1과 합해 열 하나 몫의 점 수가 돼요. 이 함수를 `hessian`이 바꿔 끼워요.
+
+### 사용자 함수의 꼴을 정하기
+
+사용자 f를 부르는 것은 `Vectorized` 클래스예요. 첫 호출의 값이 (N,)이면 스칼라 함수, (k, N)이면 출력 k개로 정하고, 그 뒤의 호출은 그 꼴만 받아요. 맞는 꼴의 float64 `sd.ndarray`이면 C++가 그대로 읽고, 아니면 Python의 확인 함수가 바꾸거나 에러를 내요.
+
+```cpp
+    // csrc/differentiate/derivative.cpp
+    void run() {
+        nb::object r = f_(arr_);
+        arr_ = nb::object();
+        if (!accepted(r)) r = check_(r, nb::make_tuple(m_, n_), expect_);
+        const NDArray& v = as_ndarray(r);
+        if (expect_ == kEither) expect_ = v.ndim == 1 ? kScalar : v.shape[0];
+        vp_ = v.data;
+        s0_ = v.strides[0];
+        s1_ = v.ndim == 2 ? v.strides[1] : 0;
+        res_ = std::move(r);
+    }
+```
+
+값은 돌려받은 배열의 보폭(stride)으로 바로 읽어요. 사용자 함수가 전치한 배열이나 잘라 낸 배열을 돌려줘도 복사하지 않아요.
+
+## hessian: 기울기의 야코비안
+
+### 짜임
+
+헤시안의 열 $j$는 기울기 $\nabla f$를 변수 $j$로 미분한 것이에요. 그래서 `hessian`은 "점들에서 기울기를 계산하는 함수"를 바깥 `jacobian`에 넘겨요. 그 함수가 C++ 객체 `Gradient`이고, 바깥 호출이 넘긴 열 N개 모두에서의 기울기를 안쪽 `jacobian` 한 번으로 계산해요. 안쪽 `jacobian`은 기준점이 N개(B = N)인 같은 `jacobian_run`이에요.
+
+<Fig column caption="hessian의 두 겹. 사용자 f를 부르는 것은 안쪽 jacobian뿐이에요.">
+  <Steps steps={[
+    { label: 'jacobian_run (바깥)', note: 'x의 변수마다 스텐실 점을 열로 쌓아 (m, N)을 만들고, 그 열들에서의 기울기를 받아 항목 (i, j) = ∂(∂f/∂xᵢ)/∂xⱼ를 판정', where: 'derivative.cpp' },
+    { label: 'Gradient::run', note: '바깥의 열 N개를 기준점으로 안쪽 jacobian을 한 번 돌리고, 셈을 바깥 항목으로 모아요', where: 'derivative.cpp', depth: 1 },
+    { label: 'jacobian_run (안쪽)', note: '기준점 N개 × 변수 m개의 열, 중앙 스텐실, rtol / 100', where: 'derivative.cpp', depth: 2 },
+    { label: 'f(X)', note: '사용자 함수. X는 (m, m·N·p), 값은 (m·N·p,)', where: '사용자', depth: 3 },
+  ]} />
+</Fig>
+
+```cpp
+// csrc/differentiate/derivative.cpp
+nb::object hessian_solve(
+    const std::string& func,
+    nb::callable f,
+    nb::callable check,
+    nb::handle x,
+    nb::handle initial_step,
+    nb::handle wc,
+    nb::handle wr,
+    std::int64_t terms,
+    double factor,
+    double atol,
+    double rtol,
+    std::int64_t max_iter
+) {
+    const char* fn = func.c_str();
+    return call_named(fn, [&]() -> nb::object {
+        const vec x0 = read(x), h0 = read(initial_step), dir(x0.size(), 0.0);
+        const Stencil S(static_cast<std::size_t>(terms), factor, read(wc), read(wr));
+        Vectorized ev(f, check, Vectorized::kScalar);
+        Gradient g(ev, h0, S, atol, rtol / 100, max_iter);
+        return entries_out(jacobian_run(g, x0.size(), 1, x0.data(), h0, dir, S, atol, rtol, max_iter));
+    });
+}
+```
+
+안쪽은 늘 중앙 스텐실이고(`dir`가 0), `atol`, `max_iter`, `order`, `initial_step`, `step_factor`는 바깥과 같아요. `initial_step`의 $j$번째 값은 바깥과 안쪽 모두 변수 $j$의 간격이에요. 안쪽의 `rtol`만 100분의 1이에요. 바깥의 차분은 안쪽 기울기의 값들을 가중치로 섞고 간격으로 나누므로, 기울기에 남은 오차가 바깥 추정에서 커져요. 안쪽을 두 자리 더 정확하게 멈춰 두면 바깥의 이웃한 추정의 차가 안쪽의 흔들림이 아니라 바깥의 절단 오차를 보여요. 그래서 `rtol`은 0이거나 $100\varepsilon$ 이상이어야 해요. 그보다 작으면 안쪽의 `rtol`이 $\varepsilon$ 아래가 되어 뜻이 없으니 `ValueError`예요.
+
+로젠브록 함수의 $(1, 1)$에서 사용자 f가 받는 배열을 보면 두 겹이 보여요.
+
+```python
+>>> shapes = []
+>>> def rosen(X):
+...     shapes.append(tuple(X.shape))
+...     return 100 * (X[1] - X[0] ** 2) ** 2 + (1 - X[0]) ** 2
+>>> r = sd.differentiate.hessian(rosen, [1.0, 1.0])
+>>> shapes
+[(2, 4), (2, 32), (2, 8), (2, 32), (2, 256), (2, 64), (2, 8), (2, 64), (2, 16)]
+>>> r.ddf
+array([[  802.0000000000001, -400.00000000000017],
+       [             -400.0,               200.0]], dtype=float64)
+```
+
+호출은 셋씩 묶여요. 처음 셋은 바깥 첫 호출(x에서의 기울기, 기준점 2개)의 안쪽 `jacobian`이 부른 것이에요. 첫 호출이 기준점 2개 × 변수 2개의 (2, 4)이고, 반복마다 열마다 8점과 2점이라 (2, 32)와 (2, 8)이에요. 다음 셋은 바깥 첫 반복의 열 16개(변수마다 8점)에서의 기울기, 마지막 셋은 바깥 둘째 반복의 열 4개에서의 기울기예요. 안쪽이 모두 둘째 반복에 멈춰서 묶음마다 세 번이에요.
+
+헤시안을 대칭으로 맞추지 않아요. 항목 $(0, 1)$은 $\partial f/\partial x_0$을 $x_1$로, $(1, 0)$은 $\partial f/\partial x_1$을 $x_0$으로 미분한 서로 다른 어림이라 끝자리가 다를 수 있어요(scipy와 같아요).
+
+### 셈
+
+바깥 항목 $(i, j)$의 `nfev`는 scipy의 셈이에요. 바깥 호출마다, 안쪽 항목 $i$(기울기의 성분 $i$)가 바깥의 변수 $j$의 열들(점 p개)에서 계산한 점 수를 더해요. `Gradient`의 `count`가 그 값을 바깥 고리의 `acc[e]`에 넘겨요.
+
+```cpp
+    // csrc/differentiate/derivative.cpp
+    void run() {
+        r_ = jacobian_run(f_, m_, n_, X_.data(), h0_, dir_, S_, atol_, rtol_, max_iter_);
+        const std::size_t p = n_ / m_;
+        counts_.assign(m_ * m_, 0);
+        for (std::size_t i = 0; i < m_; ++i)
+            for (std::size_t j = 0; j < m_; ++j) {
+                std::int64_t s = 0;
+                for (std::size_t q = 0; q < p; ++q) s += r_.nfev[i * n_ + j * p + q];
+                counts_[i * m_ + j] = s;
+            }
+    }
+```
+
+위의 로젠브록에서는 안쪽 항목이 모두 11점(첫 호출 1 + 8 + 2)에 멈췄어요. 바깥 첫 호출은 변수마다 열 하나라 11, 첫 반복은 열 8개라 88, 둘째 반복은 열 2개라 22이고, 바깥 항목이 둘째 반복에 멈췄으니 합이 121이에요.
+
+```python
+>>> r.nfev
+array([[121, 121],
+       [121, 121]], dtype=int64)
+>>> 11 + 8 * 11 + 2 * 11
+121
+```
+
+이 수는 사용자 f의 값을 계산한 점의 총수와 달라요(위에서는 $4 + 32 + 8 + \dots$의 합). 항목마다 그 항목에 기여한 점을 세는 scipy의 정의를 따라요. `hessian`의 결과에 `n_iter`가 없는 것도 scipy와 같아요. 바깥 반복 수만으로는 안쪽의 일을 말하지 못해요.
+
+### 메모리
+
+가장 큰 배열은 바깥 첫 반복의 안쪽 호출이에요. 바깥이 열 $m p$개($p$ = `order`를 짝수로 올린 수)를 넘기면, 안쪽 `jacobian`은 그 기준점마다 변수마다 $p$점을 쌓아 사용자 f를 $(m, (m p)^2)$ 한 번으로 불러요. 위 로젠브록의 `(2, 256)`이 그것이에요. 인자만 $8 m^3 p^2$바이트라, $m = 40$, $p = 8$이면 $(40, 102{,}400)$로 33 MB, $m = 100$이면 512 MB예요. 기준점을 나눠 부르면 메모리는 줄지만 부르는 점과 순서가 scipy와 달라지므로 한 번에 불러요. 변수가 많으면 `order`를 낮추거나, 기울기를 따로 계산하는 함수를 `jacobian`으로 미분하면 돼요.

@@ -1,0 +1,238 @@
+---
+kind: function
+title: correlation
+names: [correlation]
+group: 거리 함수
+order: 21
+signatures:
+  - "sd.spatial.correlation(u, v, /, *, w=None, centered=True)"
+summary: 두 벡터의 피어슨 상관계수 r로 1 − r을 재요. 각 벡터에서 평균을 뺀 뒤의 코사인 거리라서, 한쪽을 평행 이동하거나 양수배해도 거리가 그대로예요. 같은 꼴로 오르내리면 0, 정반대로 움직이면 2예요.
+params:
+  - name: u
+    type: ndarray, 수의 시퀀스, numpy 배열, 또는 frame의 DataFrame
+    kind: positional-only
+    desc: 첫째 벡터. 마지막 축이 좌표(관측)예요. 2차원 이상이면 앞 축이 벡터 여러 개의 배치예요. bool·int64는 float64로 바꿔 계산하고, 복소수는 받지 않아요.
+  - name: v
+    type: ndarray, 수의 시퀀스, numpy 배열, 또는 frame의 DataFrame
+    kind: positional-only
+    desc: 둘째 벡터. 마지막 축의 길이가 u와 같아야 하고, 앞 축은 u와 브로드캐스트돼야 해요.
+  - name: w
+    type: 1차원 배열 또는 None
+    kind: keyword-only
+    desc: 좌표마다의 가중치. 길이가 좌표 수와 같고 모든 값이 유한하며 0 이상이어야 해요. 평균은 가중 평균 Σwᵢuᵢ/Σwᵢ이고, 내적과 길이도 가중이에요. None(기본값)이면 모두 1이에요.
+  - name: centered
+    type: bool
+    kind: keyword-only
+    desc: True(기본값)면 평균을 빼고 재요. False면 빼지 않아서 cosine과 같아요.
+returns:
+  type: float 또는 ndarray
+  desc: 0 이상 2 이하의 거리(1 − r). 두 입력이 1차원이면 Python float, 아니면 배치 모양의 float64 배열이에요. 한쪽이 상수 벡터이거나 NaN·inf가 있으면 NaN이에요.
+raises:
+  - type: TypeError
+    desc: u·v가 배열·수의 시퀀스·DataFrame이 아닐 때, 복소수일 때, centered가 True·False가 아닐 때(1, 0 포함), w·centered를 위치로 줬을 때.
+  - type: ValueError
+    desc: 마지막 축의 길이가 다를 때, 앞 축이 브로드캐스트되지 않을 때, w가 1차원이 아니거나 길이가 틀렸거나 음수·NaN·inf를 담았을 때.
+seeAlso: [metrics, cosine, euclidean, cdist, pdist, kneighbors, basics]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+export const profA = [[1, 2.0], [2, 3.0], [3, 5.0], [4, 4.0], [5, 6.0], [6, 8.0], [7, 7.0], [8, 9.0]];
+export const profB = [[1, 11.0], [2, 11.5], [3, 12.5], [4, 12.0], [5, 13.0], [6, 14.0], [7, 13.5], [8, 14.5]];
+export const profC = [[1, 16.0], [2, 15.0], [3, 13.0], [4, 14.0], [5, 12.0], [6, 10.0], [7, 11.0], [8, 9.0]];
+
+## 무엇을 재나요
+
+두 벡터 `u`, `v`를 같은 관측 시점의 두 측정값 열로 보면, 피어슨 상관계수 r은 둘이 얼마나 같은 꼴로 오르내리는지를 −1에서 1 사이의 수로 나타내요. 상관 거리는 그것을 거리로 바꾼 값이에요.
+
+$$
+d(u, v) = 1 - r = 1 - \frac{(u - \bar u) \cdot (v - \bar v)}{\|u - \bar u\|\,\|v - \bar v\|}
+$$
+
+$\bar u$는 `u`의 평균이에요. 평균을 뺀 두 벡터의 [코사인 거리](/api/spatial/cosine/)와 같아요. 같은 꼴이면 0, 서로 상관이 없으면 1, 정반대로 움직이면 2예요.
+
+```python
+>>> import stardust as sd
+>>> sd.spatial.correlation([1.0, 2.0, 3.0], [2.0, 4.0, 6.0])     # 같은 꼴
+0.0
+>>> sd.spatial.correlation([1.0, 2.0, 3.0], [1.0, 3.0, 2.0])     # r = 0.5
+0.4999999999999999
+>>> sd.spatial.correlation([1.0, 2.0, 3.0], [3.0, 2.0, 1.0])     # 정반대
+1.9999999999999996
+```
+
+<Reference />
+
+## 높이와 폭은 보지 않아요
+
+평균을 빼고 길이로 나누기 때문에, 한 벡터에 상수를 더하거나(높이를 옮기기) 양수를 곱해도(폭을 늘이기) 거리는 그대로예요. 오르내리는 꼴만 남아요. 아래 `b`는 `a`를 절반으로 줄이고 10만큼 올린 것이고, `c`는 `a`를 뒤집은 것이에요.
+
+```python
+>>> t = list(range(1, 9))
+>>> a = sd.asarray([2.0, 3.0, 5.0, 4.0, 6.0, 8.0, 7.0, 9.0])
+>>> b = 0.5 * a + 10.0
+>>> c = 18.0 - a
+>>> sd.spatial.correlation(a, b)
+0.0
+>>> sd.spatial.correlation(a, c)
+1.9999999999999998
+```
+
+<Fig caption="b는 a와 높이와 폭이 다르지만 오르내리는 꼴이 같아서 상관 거리가 0이에요. c는 a가 오를 때 내리고 내릴 때 올라서 거리가 2예요.">
+  <Plot
+    curves={[
+      { points: profA, label: 'a' },
+      { points: profB, label: 'b' },
+      { points: profC, label: 'c' },
+    ]}
+    domain={[1, 8]}
+    range={[0, 18]}
+    xTicks={[2, 4, 6, 8].map((v) => ({ v, label: String(v) }))}
+    yTicks={[5, 10, 15].map((v) => ({ v, label: String(v) }))}
+  />
+</Fig>
+
+유클리드 거리로는 `a`와 `b`가 멀어요. 높이가 10 가까이 다르기 때문이에요. 상관 거리는 꼴만 보므로 같은 패턴을 가진 시계열, 유전자 발현 프로필, 설문 응답처럼 측정 기준이 행마다 다른 자료를 견줄 때 써요.
+
+```python
+>>> sd.spatial.euclidean(a, b)
+20.760539492026695
+```
+
+### 평균을 빼는 것이 무엇을 바꾸나요
+
+평균을 빼지 않으면 [`cosine`](/api/spatial/cosine/)이에요. `cosine`은 원점에서 본 방향을 재서, 두 벡터가 모두 양수이면 꼴이 반대여도 거리가 작게 나와요. 위의 `a`와 `c`가 그래요.
+
+```python
+>>> sd.spatial.cosine(a, c)
+0.16136441696735476
+>>> sd.spatial.correlation(a, c, centered=False)
+0.16136441696735476
+```
+
+`centered=False`는 `cosine`과 같은 값이에요. 언제나 `True`나 `False`로 줘요.
+
+```python
+>>> sd.spatial.correlation(a, c, centered=1)
+Traceback (most recent call last):
+    ...
+TypeError: correlation(): 'centered' must be True or False, not int
+```
+
+### 상관계수와의 관계
+
+거리는 $1 - r$이므로 r은 `1 - d`로 되찾아요. [`pearsonr`](/api/htest/pearsonr/)의 통계량과 견주면 끝자리가 조금 다를 수 있어요. 두 함수는 같은 값을 다른 순서로 계산해요.
+
+```python
+>>> x = sd.asarray([1.0, 4.0, 2.0, 3.0, 7.0, 5.0, 9.0, 6.0])
+>>> sd.spatial.correlation(a, x)
+0.3117527983883146
+>>> 1 - sd.htest.pearsonr(a, x).statistic
+0.3117527983883147
+```
+
+## 여러 짝을 한꺼번에
+
+마지막 축이 관측이고 앞 축은 배치예요. 앞 축은 브로드캐스트로 맞춰요. 모든 행의 짝이 필요하면 [`pdist`](/api/spatial/pdist/)나 [`cdist`](/api/spatial/cdist/)에 `metric="correlation"`을 줘요.
+
+```python
+>>> profiles = sd.asarray([[1.0, 2.0, 3.0, 4.0],
+...                        [10.0, 20.0, 30.0, 40.0],
+...                        [4.0, 3.0, 2.0, 1.0],
+...                        [1.0, 3.0, 2.0, 4.0]])
+>>> sd.spatial.correlation(profiles, profiles[0])
+array([                0.0,                 0.0,                 2.0,
+       0.19999999999999998], dtype=float64)
+>>> sd.spatial.pdist(profiles, metric="correlation")
+array([                0.0,                 2.0, 0.19999999999999998,
+                       2.0, 0.19999999999999998,                 1.8], dtype=float64)
+```
+
+`pdist`와 `cdist`에는 `centered`가 없어요. 평균을 빼지 않은 거리가 필요하면 `metric="cosine"`을 줘요.
+
+```python
+>>> sd.spatial.pdist(profiles, metric="correlation", centered=False)
+Traceback (most recent call last):
+    ...
+TypeError: pdist(): unexpected keyword argument 'centered'
+```
+
+이웃 찾기([`kneighbors`](/api/spatial/kneighbors/), [`radius_neighbors`](/api/spatial/radius_neighbors/))에도 `metric="correlation"`을 줄 수 있어요. [`KDTree`](/api/spatial/KDTree/)는 받지 않아요. 같은 두 벡터의 거리는 이 함수, `pdist`, `cdist`, 이웃 찾기가 모두 비트까지 같은 값을 내요.
+
+## 가중치 `w`
+
+`w`를 주면 평균은 가중 평균 $\bar u_w = \sum w_i u_i / \sum w_i$이고, 평균을 뺀 뒤의 내적과 길이도 가중치를 곱해 재요. 가중 상관계수의 $1 - r$이에요. 가중치 0인 관측은 빠져요.
+
+```python
+>>> sd.spatial.correlation([1.0, 2.0, 3.0, 4.0], [1.0, 2.0, 3.0, 40.0])
+0.1989638047034858
+>>> sd.spatial.correlation([1.0, 2.0, 3.0, 4.0], [1.0, 2.0, 3.0, 40.0], w=[1.0, 1.0, 1.0, 0.0])
+0.0
+```
+
+넷째 관측을 빼면 남은 세 관측이 완전히 같은 꼴이라 0이에요. 정수 가중치는 수학으로는 그 관측을 그만큼 되풀이한 것과 같아요.
+
+## 경계의 값
+
+| 입력 | 결과 | 까닭 |
+|---|:---:|---|
+| 같은 꼴(양수배와 평행 이동) | 0 | |
+| 정반대 꼴 | 2(또는 2보다 조금 작은 값) | |
+| 한쪽이 상수 벡터 | NaN | 평균을 빼면 영벡터라 오르내림이 없어요 |
+| 관측이 하나 | NaN | 상수 벡터와 같아요 |
+| NaN·inf가 있음 | NaN | |
+
+```python
+>>> sd.spatial.correlation([1.0, 2.0, 3.0], [5.0, 5.0, 5.0])
+nan
+>>> sd.spatial.correlation([1.0], [2.0])
+nan
+>>> sd.spatial.correlation([1.0, sd.nan, 3.0], [1.0, 2.0, 3.0])
+nan
+```
+
+상수 벡터는 반올림과 상관없이 언제나 NaN이에요. 0.1처럼 2진수로 딱 떨어지지 않는 값을 늘어놓은 벡터라도 평균을 빼면 정확히 0이 되게 계산해요. 가중치가 있으면 가중치가 0보다 큰 관측이 모두 같을 때 상수로 봐요.
+
+```python
+>>> sd.spatial.correlation([0.1, 0.1, 0.1], [1.0, 2.0, 3.0])
+nan
+```
+
+<Callout type="warn" title="평균이 퍼짐보다 훨씬 큰 행">
+
+`1e15 + [1, 3, 2, 5]`처럼 평균이 값들의 퍼짐보다 훨씬 큰 행은 평균을 빼는 단계에서 자릿수를 잃을 수 있어요. 평균을 반올림한 오차가 남은 작은 차이에 견주어 커지기 때문이에요. 그런 자료는 미리 대략의 평균(예를 들어 첫 값)을 빼고 넣으면 더 정확해져요. 상관 거리는 평행 이동해도 같으니 결과의 뜻은 그대로예요.
+
+</Callout>
+
+## 에러
+
+```python
+>>> sd.spatial.correlation([1.0, 2.0], [1.0, 2.0, 3.0])
+Traceback (most recent call last):
+    ...
+ValueError: correlation(): 'u' and 'v' must have the same length on their last axis, not 2 and 3
+>>> sd.spatial.correlation([1.0, 2.0], [2.0, 1.0], w=[1.0, sd.nan])
+Traceback (most recent call last):
+    ...
+ValueError: correlation(): 'w' must be finite and >= 0
+```
+
+## 정확도
+
+참값은 Arb(구간 산술)로 구한 정확한 상관 거리예요. [`cosine`](/api/spatial/cosine/)처럼 거리가 0에 가까운 짝은 상대오차로 약속할 수 없어서 절대오차와 상대오차를 섞은 한계를 약속하고, 평균을 반올림한 몫이 그 위에 더해져요. 평균을 뺀 행의 길이에 견주어 평균이 클수록 그 몫이 커져요.
+
+| | 시험한 짝 | 약속 대비 최대 오차 |
+|---|---:|---:|
+| `correlation` | 606 | 0.39 |
+| `correlation`, 가중치 | 567 | 0.21 |
+
+약속 대비 1 이하면 약속 안이에요. 시험한 짝에는 평균이 퍼짐보다 훨씬 큰 행과 참값이 0에 가까운 짝이 들어 있어서 가장 큰 상대오차는 1.60×10⁻⁴(가중치 9.52×10⁻³)예요. 그런 짝에서도 약속은 지켜요.
+
+## scipy·sklearn을 아는 분께
+
+- `scipy.spatial.distance.correlation`과 이름, 뜻, `centered`가 같아요. `w`와 `centered`는 키워드로만 받고, `centered`는 `True`·`False`만 받아요.
+- NaN·inf 가중치는 `ValueError`예요. scipy는 음수만 막아요.
+- 배치를 받아요. scipy 1.18.1의 `correlation`은 1차원만 받아요.
+- 상수 벡터는 반올림과 상관없이 NaN이에요.
+- 같은 시험 짝에서 scipy의 `correlation`은 넘침과 언더플로가 있는 짝(좌표 10¹⁶⁰, 10⁻¹⁶⁰, 비정상 수)에서 inf·0·NaN을 내서 약속을 넘었어요. 정상 범위의 짝에서는 약속 안이었어요.

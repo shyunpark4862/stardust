@@ -1,0 +1,391 @@
+---
+title: 비교
+names: [equal, not_equal, less, less_equal, greater, greater_equal]
+group: 비교, 논리, 비트
+order: 1
+signatures:
+  - "sd.equal(x1, x2, /, *, out=None)"
+  - "sd.not_equal(x1, x2, /, *, out=None)"
+  - "sd.less(x1, x2, /, *, out=None)"
+  - "sd.less_equal(x1, x2, /, *, out=None)"
+  - "sd.greater(x1, x2, /, *, out=None)"
+  - "sd.greater_equal(x1, x2, /, *, out=None)"
+summary: 두 배열의 같은 자리 원소끼리 크기를 비교해서, 참·거짓이 담긴 bool 배열을 돌려줘요. 연산자 ==, !=, <, <=, >, >=와 같아요.
+params:
+  - name: x1, x2
+    type: ndarray 또는 Python 숫자
+    kind: positional-only
+    desc: 비교할 두 값. 모양이 다르면 브로드캐스팅 규칙으로 맞춰요.
+  - name: out
+    type: ndarray 또는 None
+    kind: keyword-only
+    desc: 결과를 적어 넣을 배열. None이면 새 bool 배열을 만들어요.
+returns:
+  type: ndarray 또는 Python bool
+  desc: 두 입력을 브로드캐스트한 모양의 bool 배열. 두 입력이 모두 Python 숫자면 Python bool이에요.
+raises:
+  - type: TypeError
+    desc: 리스트·numpy 배열·문자열·None처럼 배열도 숫자도 아닌 것을 넣었을 때(연산자 ==, != 포함), 복소수의 크기를 비교(<, <=, >, >=)하려 할 때, out의 dtype이 결과를 담을 수 없을 때.
+  - type: ValueError
+    desc: 두 입력이나 out의 모양이 서로 맞지 않을 때.
+  - type: OverflowError
+    desc: 정수 배열과 int64 범위를 벗어난 Python 정수를 비교할 때.
+seeAlso: [logical, where, isnan, any-all, count_nonzero, broadcasting]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+비교 함수는 배열의 원소마다 "이 조건이 맞는가"를 물어서, 그 답을 `True`(참)와 `False`(거짓)로 적은 배열을 돌려줘요. 이런 배열을 **bool 배열**이라고 해요.
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([1, 5, 3, 8])
+>>> x > 3
+array([False,  True, False,  True], dtype=bool)
+```
+
+결과는 숫자 하나가 아니라 `x`와 같은 모양의 배열이에요. 원소마다 따로 답했기 때문이에요.
+
+<Fig caption="x > 3은 원소마다 3보다 큰지를 따로 물어요. 답은 같은 자리에 적혀요.">
+  <ArrayFig name="x" data={[1, 5, 3, 8]} tones={['', 'a', '', 'a']} note="shape (4,)" />
+  <Op note="> 3">→</Op>
+  <ArrayFig name="x > 3" data={[false, true, false, true]} tones={['', 'a', '', 'a']} note="dtype bool" />
+</Fig>
+
+비교는 여섯 가지이고, 함수와 연산자 어느 쪽으로 써도 결과가 같아요.
+
+| 함수 | 연산자 | 참이 되는 때 |
+|---|:---:|---|
+| `equal(x1, x2)` | `x1 == x2` | 두 값이 같을 때 |
+| `not_equal(x1, x2)` | `x1 != x2` | 두 값이 다를 때 |
+| `less(x1, x2)` | `x1 < x2` | `x1`이 더 작을 때 |
+| `less_equal(x1, x2)` | `x1 <= x2` | `x1`이 작거나 같을 때 |
+| `greater(x1, x2)` | `x1 > x2` | `x1`이 더 클 때 |
+| `greater_equal(x1, x2)` | `x1 >= x2` | `x1`이 크거나 같을 때 |
+
+```python
+>>> sd.greater(x, 3)
+array([False,  True, False,  True], dtype=bool)
+>>> x == 3
+array([False, False,  True, False], dtype=bool)
+>>> sd.not_equal(x, 3)
+array([ True,  True, False,  True], dtype=bool)
+>>> x <= 3
+array([ True, False,  True, False], dtype=bool)
+```
+
+보통은 읽기 쉬운 연산자를 쓰고, 결과를 `out=`으로 기존 배열에 적고 싶을 때 함수를 써요.
+
+<Reference />
+
+## 숫자와 비교하기, 배열끼리 비교하기
+
+가장 흔한 것은 위처럼 배열을 숫자 하나와 비교하는 경우예요. 숫자는 어느 쪽에 와도 돼요.
+
+```python
+>>> 1 < x
+array([False,  True,  True,  True], dtype=bool)
+>>> sd.greater(5, x)
+array([ True, False,  True, False], dtype=bool)
+```
+
+같은 모양의 두 배열을 비교하면 같은 자리끼리 짝지어 비교해요.
+
+```python
+>>> a = sd.asarray([1, 2, 3])
+>>> b = sd.asarray([1, 2, 4])
+>>> a == b
+array([ True,  True, False], dtype=bool)
+```
+
+두 입력의 모양이 다르면 [브로드캐스팅](/api/array/broadcasting/) 규칙으로 맞춰요. 예를 들어 세로 배열과 가로 배열을 비교하면 모든 짝을 비교한 표가 나와요.
+
+```python
+>>> sd.asarray([1, 2]) == sd.asarray([[1], [2]])
+array([[ True, False],
+       [False,  True]], dtype=bool)
+```
+
+맞출 수 없는 모양이면 `ValueError`예요.
+
+```python
+>>> sd.equal(a, sd.asarray([1, 2]))
+Traceback (most recent call last):
+    ...
+ValueError: equal(): shapes could not be broadcast together: (3,) (2,)
+```
+
+## bool 배열은 이렇게 써요
+
+비교의 결과를 그대로 보는 일은 드물어요. 대개 다음 단계의 재료로 써요.
+
+### 조건에 맞는 원소만 꺼내기
+
+bool 배열로 인덱싱하면 `True`인 자리의 원소만 골라 와요. 이렇게 고르는 데 쓰는 bool 배열을 **마스크**(mask, 가리개)라고 불러요.
+
+```python
+>>> x[x > 3]
+array([5, 8], dtype=int64)
+```
+
+<Fig caption="마스크가 True인 자리의 값만 골라서 새 1차원 배열을 만들어요.">
+  <ArrayFig name="x" data={[1, 5, 3, 8]} tones={['m', 'b', 'm', 'b']} />
+  <Op note="x > 3">→</Op>
+  <ArrayFig name="x[x > 3]" data={[5, 8]} tones={['b', 'b']} />
+</Fig>
+
+자세한 것은 [인덱싱과 대입](/api/array/indexing/)에 있어요.
+
+### 조건에 맞는 원소 세기
+
+bool 배열을 더하면 `True`가 몇 개인지 세는 것과 같아요.
+
+```python
+>>> sd.sum(x > 3)
+2
+>>> sd.count_nonzero(x > 3)
+2
+```
+
+### 하나라도, 또는 모두
+
+"하나라도 3보다 큰가", "모두 0보다 큰가"처럼 답이 하나만 필요하면 [`any`, `all`](/api/array/any-all/)로 줄여요.
+
+```python
+>>> sd.any(x > 7)
+True
+>>> sd.all(x > 0)
+True
+```
+
+### 조건에 따라 값 고르기
+
+조건이 맞는 자리와 맞지 않는 자리에 서로 다른 값을 넣으려면 [`where`](/api/array/where/)를 써요.
+
+```python
+>>> sd.where(x > 3, x, 0)
+array([0, 5, 0, 8], dtype=int64)
+```
+
+## 입력과 결과의 종류
+
+### 결과는 언제나 bool이에요
+
+무엇을 비교하든 결과의 dtype은 bool이에요. 두 입력이 모두 Python 숫자면 결과도 배열이 아니라 Python `bool`이에요.
+
+```python
+>>> sd.equal(3, 3.0)
+True
+>>> type(sd.less(1, 2))
+<class 'bool'>
+```
+
+### 정수와 실수의 비교
+
+정수와 실수를 비교하면 정수를 실수(float64)로 바꿔서 비교해요. 그래서 `2.5` 같은 값과도 그대로 비교할 수 있어요.
+
+```python
+>>> a < 2.5
+array([ True,  True, False], dtype=bool)
+>>> a == sd.asarray([1.0, 2.0, 3.0])
+array([True, True, True], dtype=bool)
+```
+
+다만 아주 큰 정수에서는 이 변환 때문에 뜻밖의 결과가 나와요. float64는 2⁵³(약 9 × 10¹⁵)보다 큰 정수를 모두 정확히 담지 못해서, 서로 다른 정수가 같은 실수로 바뀔 수 있어요.
+
+```python
+>>> big = sd.asarray([2**53 + 1])
+>>> big == 2.0**53
+array([True], dtype=bool)
+>>> big == 2**53
+array([False], dtype=bool)
+```
+
+첫째는 정수와 실수의 비교라서 `2**53 + 1`이 실수로 바뀌는 순간 `2**53`이 되고, 같다고 나와요. 둘째는 정수끼리라서 정확히 비교해요. 큰 정수를 정확히 비교하려면 비교 상대도 정수로 쓰세요.
+
+### bool끼리, bool과 숫자
+
+bool 값도 비교할 수 있어요. 크기를 비교할 때는 `False`를 0, `True`를 1로 봐요.
+
+```python
+>>> flags = sd.asarray([True, False])
+>>> flags == 1
+array([ True, False], dtype=bool)
+>>> flags < 1
+array([False,  True], dtype=bool)
+```
+
+### 복소수는 같은지만 물을 수 있어요
+
+복소수에는 크고 작음이 없어요. `==`과 `!=`는 되지만 `<`, `<=`, `>`, `>=`는 `TypeError`예요.
+
+```python
+>>> z = sd.asarray([1 + 1j, 2j])
+>>> z == 2j
+array([False,  True], dtype=bool)
+>>> z < 1
+Traceback (most recent call last):
+    ...
+TypeError: unsupported operand dtypes for <: complex128 and int64
+>>> sd.less(z, 1)
+Traceback (most recent call last):
+    ...
+TypeError: less(): not supported for complex128 and int64
+```
+
+복소수를 크기(원점에서의 거리)로 비교하고 싶다면 `sd.abs(z)`로 크기를 구한 다음 비교하세요.
+
+```python
+>>> sd.abs(z) < 1.5
+array([ True, False], dtype=bool)
+```
+
+## `out`: 결과를 기존 배열에 쓰기
+
+`out=`에 배열을 주면 새 배열을 만들지 않고 그 배열에 결과를 적은 다음, 그 배열을 돌려줘요. `out`의 dtype은 결과를 손실 없이 담을 수 있어야 해요. bool 결과는 어느 dtype에나 담을 수 있어서, 정수나 실수 배열을 줘도 돼요. 이때 `True`는 `1`, `False`는 `0`이 돼요. 그 밖의 규칙은 [사칙연산의 `out`](/api/array/arithmetic/#out-결과를-기존-배열에-쓰기)과 같아요.
+
+```python
+>>> sd.greater(x, 3, out=sd.zeros(4, dtype=sd.int64))
+array([0, 1, 0, 1], dtype=int64)
+```
+
+## 조심할 점
+
+### NaN은 무엇과도 같지 않아요
+
+NaN(숫자가 아님)은 "알 수 없는 값"이에요. 알 수 없는 값끼리는 같은지 알 수 없으므로, **NaN과의 비교는 `!=`만 참이고 나머지는 모두 거짓**이에요. NaN 자기 자신과 비교해도 그래요.
+
+```python
+>>> v = sd.asarray([1.0, sd.nan])
+>>> v == sd.nan
+array([False, False], dtype=bool)
+>>> v != sd.nan
+array([True, True], dtype=bool)
+>>> sd.asarray([sd.nan]) < sd.inf
+array([False], dtype=bool)
+```
+
+그래서 `v == sd.nan`으로는 NaN을 찾을 수 없어요. NaN을 찾을 때는 [`isnan`](/api/array/isnan/)을 써요.
+
+```python
+>>> sd.isnan(v)
+array([False,  True], dtype=bool)
+```
+
+<Callout type="warn" title="NaN은 어느 조건에도 맞지 않아요">
+
+NaN이 섞여 있으면 `x > 0`과 `x <= 0`이 **둘 다 거짓**인 자리가 생겨요. 조건을 둘로 나눌 때 `x > 0`인 것과 `~(x > 0)`인 것으로 나누면 NaN은 둘째 쪽에 들어가고, `x > 0`과 `x <= 0`으로 나누면 NaN은 어느 쪽에도 들어가지 않아요. NaN이 있을 수 있는 데이터라면 먼저 `sd.isnan`으로 따로 처리하세요.
+
+</Callout>
+
+### 실수는 `==`로 비교하지 마세요
+
+실수 계산에는 아주 작은 오차가 생겨요. 수학적으로 같은 값이 컴퓨터에서는 마지막 자리가 달라서 `==`가 거짓이 될 수 있어요.
+
+```python
+>>> s = sd.asarray([0.1]) + 0.2
+>>> s
+array([0.30000000000000004], dtype=float64)
+>>> s == 0.3
+array([False], dtype=bool)
+```
+
+계산 결과가 어떤 값과 같은지 보려면 "차이가 충분히 작은가"로 비교하세요.
+
+```python
+>>> sd.abs(s - 0.3) < 1e-9
+array([True], dtype=bool)
+```
+
+`0.0`과 `-0.0`은 같다고 나와요. 부호까지 구별해야 하면 `sd.signbit`을 써요.
+
+```python
+>>> sd.asarray([0.0]) == sd.asarray([-0.0])
+array([True], dtype=bool)
+```
+
+### 리스트와는 비교할 수 없어요
+
+리스트나 numpy 배열은 받지 않아요. 함수든 연산자든 `TypeError`예요. 먼저 [`asarray`](/api/array/asarray/)로 배열로 바꾸세요. 이유는 [배열의 기본](/api/array/basics/)에 있어요.
+
+```python
+>>> x == [1, 5, 3, 8]
+Traceback (most recent call last):
+    ...
+TypeError: '==' not supported between instances of 'ndarray' and 'list'
+>>> x == sd.asarray([1, 5, 3, 8])
+array([True, True, True, True], dtype=bool)
+```
+
+`==`가 에러를 내는 것이 낯설 수 있어요. Python에서는 보통 종류가 다른 두 객체를 `==`로 비교하면 조용히 `False`가 나오거든요. stardust가 에러를 내는 것은, 조용히 `False`가 나오면 "값이 다르다"는 뜻인지 "비교 자체가 안 됐다"는 뜻인지 구별할 수 없기 때문이에요. 문자열이나 `None`도 마찬가지예요. 변수가 `None`인지 확인할 때는 `x is None`을 써요.
+
+```python
+>>> x == None
+Traceback (most recent call last):
+    ...
+TypeError: '==' not supported between instances of 'ndarray' and 'NoneType'
+>>> x is None
+False
+```
+
+### `if x == y:`는 쓸 수 없어요
+
+비교의 결과는 bool 하나가 아니라 bool **배열**이에요. 배열을 `if`의 조건에 넣으면, 원소가 몇 개든 `TypeError`예요. "모두 같으면"인지 "하나라도 같으면"인지 stardust가 대신 정할 수 없기 때문이에요.
+
+```python
+>>> if a == b:
+...     print("같아요")
+Traceback (most recent call last):
+    ...
+TypeError: the truth value of an array is ambiguous; use any() or all()
+```
+
+뜻에 맞게 `sd.all`이나 `sd.any`로 줄여서 써요. 두 배열이 통째로 같은지 보려면 모양부터 확인하는 것이 안전해요. 모양이 달라도 브로드캐스팅으로 비교가 될 수 있기 때문이에요.
+
+```python
+>>> sd.all(a == b)
+False
+>>> c = sd.asarray([1, 2, 3])
+>>> a.shape == c.shape and sd.all(a == c)
+True
+```
+
+### `2 < x < 6`처럼 이어 쓸 수 없어요
+
+Python에서는 `2 < n < 6`처럼 비교를 이어 쓸 수 있지만, 배열에서는 안 돼요. Python은 이 식을 `(2 < x) and (x < 6)`으로 바꿔 읽는데, `and`가 배열을 참·거짓 하나로 바꾸려 하기 때문이에요.
+
+```python
+>>> 2 < x < 6
+Traceback (most recent call last):
+    ...
+TypeError: the truth value of an array is ambiguous; use any() or all()
+```
+
+두 조건을 각각 괄호로 감싸고 `&`로 이어요. 괄호가 꼭 필요한 이유는 [논리 연산](/api/array/logical/)에 있어요.
+
+```python
+>>> (2 < x) & (x < 6)
+array([False,  True,  True, False], dtype=bool)
+```
+
+## 비슷한 함수와의 차이
+
+| 하고 싶은 일 | 쓸 것 | 비교 함수와 다른 점 |
+|---|---|---|
+| 두 배열이 통째로 같은지 | `sd.all(a == b)` | 원소별 답을 하나로 줄여요. |
+| NaN인 자리 찾기 | [`isnan`](/api/array/isnan/) | `x == sd.nan`은 언제나 거짓이에요. |
+| 두 값 중 큰 값 고르기 | [`maximum`](/api/array/maximum/) | 참·거짓이 아니라 더 큰 **값**을 돌려줘요. |
+| 조건을 여러 개 묶기 | [`&`, `\|`, `logical_and`](/api/array/logical/) | bool 배열끼리 묶어요. |
+| 같은 객체인지 | `is` | 값이 아니라 객체가 하나인지를 봐요. 배열에서는 `None` 확인에만 써요. |
+
+## numpy를 아는 분께
+
+- `x == [1, 2]`, `x == None`, `x != "a"`, `x == np.array(...)`는 `TypeError`예요. numpy처럼 리스트를 배열로 바꿔 주거나 `False`를 돌려주지 않아요.
+- 복소수의 `<`, `<=`, `>`, `>=`는 `TypeError`예요. numpy처럼 실수부·허수부 순서로 비교하지 않아요.
+- 정수와 실수의 비교는 정수를 float64로 바꿔서 해요. `equal(2**53 + 1, 2.0**53)`은 `True`예요.
+- 두 입력이 모두 Python 숫자면 결과는 `np.bool_`이 아니라 Python `bool`이에요.
+- `out`은 keyword-only이고 `where=` 인자는 없어요. `isclose`, `allclose`, `array_equal`도 없어요.

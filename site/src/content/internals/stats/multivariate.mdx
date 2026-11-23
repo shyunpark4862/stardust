@@ -1,0 +1,515 @@
+---
+title: 다변량 분포의 밀도
+group: 표본과 다변량
+order: 2
+summary: 다변량 정규·t, 다항, 디리클레의 밀도와 엔트로피를 계산하는 방법을 설명해요. 공분산은 double-double로 한 번 촐레스키 분해하고, 점마다 빠른 내적으로 계산하면서 오차 상한을 세어 계약을 지키는지 확인해요.
+seeAlso: [mvcdf, matrix, sampling, accuracy-performance]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Steps from '../../../components/fig/Steps.astro';
+
+## 한눈에 보기
+
+이 글은 네 분포의 밀도(`pdf`, `logpdf`, 다항은 `pmf`, `logpmf`)와 `entropy`를 다뤄요. 누적확률 `cdf`는 [다변량 정규·t의 누적확률](/internals/stats/mvcdf/)에, 표본은 [표본 뽑기](/internals/stats/sampling/)에 있어요.
+
+| 분포 | log 밀도 | 엔트로피 | 커널 |
+|---|---|---|---|
+| [MultivariateNormal](/api/stats/multivariate-normal/) | $-\tfrac12 Q - \tfrac12\log\lvert\Sigma\rvert - d\log\sqrt{2\pi}$ | $\tfrac d2(1 + \log 2\pi) + \tfrac12\log\lvert\Sigma\rvert$ | `mv_logpdf`, `mv_entropy` |
+| [MultivariateT](/api/stats/multivariate-t/) | $c - \tfrac{\nu+d}{2}\,\mathrm{log1p}(Q/\nu)$ | 정규의 값 + $O(d^2/\nu)$의 보정 | 같음 |
+| [Multinomial](/api/stats/multinomial/) | $\log n! - \sum \log x_i! + \sum x_i \log p_i - n\log\sum p_i$ | 최빈값에서 바깥으로 더하는 기댓값 | `multinomial_logpmf`, `multinomial_entropy` |
+| [Dirichlet](/api/stats/dirichlet/) | $\log\Gamma(a_0) - \sum\log\Gamma(a_i) + \sum (a_i - 1)\log x_i$ | $G$, $G_c$로 다시 묶은 꼴 | `dirichlet_logpdf`, `dirichlet_entropy` |
+
+여기서 $Q = (x - \mu)^\top \Sigma^{-1}(x - \mu)$는 이차 형식(마할라노비스 거리의 제곱)이에요. 클래스는 `src/stardust/stats/_multivariate.py`에, 커널은 `csrc/bind/stats_mv.cpp`에, 두 커널과 [행렬 분포](/internals/stats/matrix/)가 함께 쓰는 double-double 선형대수는 `csrc/stats/dd_linalg.hpp`에 있어요.
+
+이 글 전체에 걸친 원칙은 다섯 가지예요.
+
+1. **행렬은 배치마다 한 번만 분해해요.** 분포를 만들 때 공분산을 촐레스키 분해해서 $L$, $\log\lvert\Sigma\rvert$, 피벗의 역수 $1/L_{jj}$를 저장해 둬요. 점마다 하는 일은 삼각 풀이 하나예요.
+2. **분해를 double-double로 해요.** float64로 분해한 $L$은 이미 $\Sigma$가 아니라 $\Sigma + E$의 인수라서, 이차 형식이 $\kappa(\Sigma)\cdot\varepsilon$만큼 움직여요. double-double(약 106비트)로 분해하면 그 오차가 $\kappa \cdot 10^{-32}$이 돼요.
+3. **점마다 빠른 경로를 먼저 시도해요.** $W = L^{-1}$을 미리 구해 두고 $z = W(x - \mu)$를 float64 내적으로 내면서 오차 상한을 점마다 세요. 상한이 $40 \times 2^{-53} \approx 4.4 \times 10^{-15}$ 안이면 그 값을 쓰고, 아니면 그 점만 double-double 전진 대입으로 다시 계산해요.
+4. **크게 상쇄하는 항은 미리 묶어 지워요.** $\log\Gamma(a + h) - \log\Gamma(a)$, t와 디리클레의 엔트로피, 다항 엔트로피는 크기 $a\log a$나 $n\log n$인 항끼리 빼서 작은 값을 남겨요. 그 큰 부분을 식에서 먼저 지우거나 double-double로 더해요.
+5. **넘치는 중간값은 2의 거듭제곱으로 옮겨요.** $\lvert x - \mu\rvert$나 $Q$가 float64를 넘으면 정확한 스케일 $2^{-E}$로 계산하고 로그에서 되돌려요. 그래서 아주 큰 인자에서도 NaN이 아니라 값이나 $-\infty$가 나와요.
+
+<Fig column caption="MultivariateNormal·MultivariateT의 logpdf 한 번. 분해는 생성자에서, 빠른 경로의 W는 첫 호출에서 한 번만 해요.">
+  <Steps
+    steps={[
+      { label: 'MultivariateNormal(mu=, cov=)', note: '매개변수를 배치 (B, …)로 펼치고 mv_chol로 double-double 촐레스키 분해: L의 hi·lo, log det, 1/L_jj, 정의역 표시 ok', where: '_multivariate.py, stats_mv.cpp' },
+      { label: 'logpdf(x) 첫 호출', note: 'mv_fast_prep: W = L⁻¹을 double-double로 구해 float64로 반올림하고, 상한에 쓸 행 노름과 상수를 저장', where: 'dd_linalg.hpp' },
+      { label: '배치 상수 c', note: '정규는 −log det/2 − d log √(2π), t는 log Γ 차까지 double-double로 배치마다 한 번', where: 'mv_logpdf' },
+      { label: '점마다: 지지집합과 NaN', note: 'NaN이 있으면 NaN, inf가 있으면 pdf 0(logpdf −inf)', where: 'mv_logpdf', depth: 1 },
+      { label: '점마다: 빠른 경로', note: 'fast_solve로 z = W r과 성분별 오차 상한, fast_norm2로 Q와 그 상한. 상한이 40단위 안이면 끝', where: 'dd_linalg.hpp', depth: 1 },
+      { label: '점마다: 정밀 경로', note: 'quad_form: Dot2로 하는 double-double 전진 대입. Q가 넘치면 quad_form_scaled', where: 'stats_mv.cpp', depth: 1 },
+    ]}
+  />
+</Fig>
+
+## 배치: 매개변수를 펼치기
+
+### 앞 축은 브로드캐스트, 뒤 축은 벡터와 행렬
+
+매개변수의 마지막 축(벡터)이나 마지막 두 축(행렬) 앞에는 배치 축이 올 수 있어요. `mu`의 모양이 (3, 2)이고 `cov`가 (2, 2)이면 배치 모양은 (3,)이고, 세 분포가 같은 공분산을 함께 써요. Python 쪽 `_rows`가 매개변수를 배치 모양 + 꼬리 모양으로 브로드캐스트하고 (B, …)로 펼쳐요. B는 배치 원소의 수예요.
+
+매개변수는 `_param`이 받아요. 벡터와 행렬 매개변수(`mu`, `cov`, `shape`, `p`, `alpha`)는 `sd.ndarray`여야 하고, 스칼라 매개변수(`df`, `n`)는 실수 하나도 돼요(numpy의 실수 스칼라는 Python float로 받아요). 리스트, 튜플, numpy 배열은 단변량 분포와 같이 `TypeError`예요. 배열 매개변수는 만들 때 한 번 복사해 읽기 전용으로 들어요(`_kept`). 그래서 만든 뒤 준 배열을 고쳐도 분해와 속성이 어긋나지 않아요. 생성자의 에러는 모두 `MultivariateNormal(): …`처럼 클래스 이름으로 시작해요.
+
+```python
+>>> X = sd.stats.MultivariateNormal(mu=sd.asarray([[0.0, 0.0], [1.0, -1.0], [2.0, 0.5]]),
+...                                 cov=sd.asarray([[2.0, 0.3], [0.3, 1.0]]))
+>>> X.logpdf(sd.asarray([0.5, 0.5]))
+array([  -2.31849675026584, -3.5226852319412325, -2.7504339230407093], dtype=float64)
+>>> X.logpdf(sd.zeros((4, 1, 2))).shape
+(4, 3)
+```
+
+입력 `x` (…, d)도 같은 규칙이에요. `_points`는 먼저 `_array`로 `x`가 `sd.ndarray`인지 보고(아니면 `logpdf(): 'x' must be an sd.ndarray, not list`처럼 메서드 이름의 `TypeError`), 그다음 `x`의 앞 축과 배치 모양을 브로드캐스트한 결과 모양을 정하고, 점을 (M, d) 행렬과 점마다의 배치 번호 (M,)로 펼쳐요. 커널은 점 $m$을 계산할 때 배치 번호 $b$로 매개변수의 행을 골라요. 이웃한 점이 같은 배치이면 배치마다의 값(평균, 상수)을 다시 읽지 않아요. 위 예의 (4, 1, 2)는 (4, 1)과 (3,)이 (4, 3)으로 브로드캐스트되어 점 12개가 돼요.
+
+```python
+>>> X.logpdf([0.5, 0.5])
+Traceback (most recent call last):
+    ...
+TypeError: logpdf(): 'x' must be an sd.ndarray, not list
+```
+
+### 정의역 밖은 그 배치 원소만 NaN
+
+분해에 실패한 배치 원소는 `ok = 0`으로 표시돼요. 커널은 점마다 그 표시를 보고 NaN을 내고, `mean()`, `covariance()`, `entropy()`도 그 원소만 NaN이에요. 다른 배치 원소는 영향을 받지 않아요.
+
+```python
+>>> Y = sd.stats.MultivariateNormal(mu=sd.asarray([0.0, 0.0]),
+...     cov=sd.asarray([[[1.0, 0.0], [0.0, 1.0]], [[1.0, 2.0], [2.0, 1.0]]]))
+>>> Y.logpdf(sd.asarray([0.0, 0.0]))
+array([-1.8378770664093456,                 nan], dtype=float64)
+>>> Y.entropy()
+array([2.8378770664093453,                nan], dtype=float64)
+```
+
+둘째 행렬은 고유값이 $3, -1$이라 양정치가 아니에요. 촐레스키 분해의 둘째 피벗이 $1 - 4 = -3$으로 음수가 되는 순간 실패로 판정해요.
+
+분해 말고도 같은 표시를 0으로 만드는 조건이 있어요. `mu`에 NaN이나 inf가 있거나, MultivariateT의 df가 NaN이거나 $2^{-1021}$ 아래일 때예요. df의 경계는 StudentT와 같아요. 그 아래에서는 df의 절반이 double로 정확하지 않아서 StudentT가 NaN이고, 그래서 $d = 1$인 MultivariateT가 StudentT와 같은 곳에서 NaN이에요.
+
+```python
+# src/stardust/stats/_multivariate.py, _Gaussian (발췌)
+_MIN_DF = 2.0**-1021  # StudentT's boundary: below it df / 2 is not exact (docs/api/stats.md §2.2)
+        # ...
+        # df below 2^-1021 is outside the domain too (df / 2 is not exact; StudentT's NaN)
+        good = sd.all(sd.isfinite(self._mu), axis=1) & ~sd.isnan(self._df) & (self._df >= _MIN_DF)
+        self._ok = sd.where(good, ok, 0.0)
+```
+
+```python
+>>> T0 = sd.stats.MultivariateT(mu=sd.asarray([0.0, 0.0]), shape=sd.asarray([[1.0, 0.0], [0.0, 1.0]]),
+...                             df=sd.asarray([2**-1022, 2**-1021]))
+>>> T0.logpdf(sd.asarray([0.5, 0.5]))
+array([               nan, -708.8480012375535], dtype=float64)
+```
+
+### 표본의 배치
+
+`sample(shape)`의 결과는 `shape` + 배치 모양 + (d,)이에요. `shape`의 기본값 `None`은 배치 원소마다 벡터 하나라서 결과가 배치 모양 + (d,)이고, `shape=()`는 0차원 배열이 없어서 `ValueError`예요. 결과가 물리 메모리보다 크면 난수 스트림을 움직이기 전에 `MemoryError`를 내요(`rng._take`가 행 수 × d × 8바이트를 먼저 검사해요). 커널은 결과를 (N, d)의 행으로 보고, 행 $i$의 배치를 $i \bmod B$로 정해요. 행 하나가 난수 스트림의 원소 하나라서 결과는 스레드 수와 무관해요([표본 뽑기](/internals/stats/sampling/)).
+
+## 촐레스키 분해를 double-double로
+
+### 이차 형식과 행렬식은 L 하나로
+
+$\Sigma = LL^\top$($L$은 아래 삼각, 대각이 양수)으로 분해하면 두 양이 바로 나와요.
+
+$$
+\log\lvert\Sigma\rvert = 2\sum_j \log L_{jj}, \qquad
+Q = (x - \mu)^\top \Sigma^{-1} (x - \mu) = \lVert z \rVert^2, \quad Lz = x - \mu
+$$
+
+$z$는 전진 대입(forward substitution) $z_i = \bigl(r_i - \sum_{k<i} L_{ik}z_k\bigr)/L_{ii}$, $r = x - \mu$로 구해요. 분해는 $d^3/6$번의 곱셈이지만 배치마다 한 번이고, 점마다는 $d^2/2$번이에요.
+
+### float64로 분해하면 κ·ε가 틀려요
+
+float64로 촐레스키 분해한 $\hat L$은 원래 행렬의 인수가 아니에요. 계산된 인수는 $\hat L\hat L^\top = \Sigma + E$, $\lvert E\rvert \le \gamma_{d+1}\lvert\hat L\rvert\lvert\hat L^\top\rvert$를 만족하는 이웃 행렬의 정확한 인수예요(Higham의 정리 10.3 [2]). 이차 형식 $Q$는 $\Sigma^{-1}$로 재는 양이라서, $\Sigma$가 상대적으로 $d\varepsilon$ 움직이면 $Q$는 $\kappa(\Sigma)\, d\varepsilon$ 정도까지 움직여요. 조건수 $\kappa = 10^9$이면 float64의 반올림 단위 $1.1 \times 10^{-16}$이 $10^{-7}$ 가까이 불어날 수 있어요.
+
+아래 표는 $d = 5$, 고유값이 1에서 $\kappa$까지 고르게 놓인 공분산, 분포에서 뽑은 점 하나에서 잰 logpdf의 오차예요. 참값은 Arb(구간 산술)로 행렬을 정확한 입력 그대로 LU 분해해 구한 값이에요. "float64 촐레스키"는 `numpy.linalg.cholesky`와 삼각 풀이로 같은 식을 계산한 값이에요.
+
+| $\kappa$ | sd | float64 촐레스키 | scipy 1.18.1 |
+|---:|---:|---:|---:|
+| $10^3$ | 0 | 0 | $1.5 \times 10^{-16}$ |
+| $10^6$ | 0 | $8.1 \times 10^{-14}$ | $5.3 \times 10^{-12}$ |
+| $10^9$ | 0 | $6.6 \times 10^{-10}$ | $1.2 \times 10^{-9}$ |
+
+오차는 $\lvert\text{값} - \text{참값}\rvert / \max(1, \lvert\text{참값}\rvert)$이에요. 오차가 $\kappa$에 비례해 자라요. double-double로 분해하면 $E$가 $2^{-104}$ 단위라서 같은 증폭을 받아도 $\kappa = 10^9$에서 $10^{-23}$ 정도로, 결과의 반올림 아래에 묻혀요.
+
+### 코드
+
+`ddla::cholesky`는 교과서의 열 단위 촐레스키를 double-double 산술(`DD`의 덧셈, 곱셈, 나눗셈)로 옮긴 거예요. 행렬은 아래 삼각만 읽어요(`sd.linalg.cholesky`, LAPACK의 `potrf 'L'`과 같은 규칙). 생성자는 펼친 공분산을 먼저 `_lower_symmetric`으로 아래 삼각을 위로 옮긴 대칭 행렬로 바꿔 저장해서, 밀도와 누적확률이 읽는 행렬과 `covariance()`가 돌려주는 행렬이 같아요. 매개변수 속성 `cov`는 받은 배열 그대로예요.
+
+```python
+>>> A = sd.stats.MultivariateNormal(mu=sd.asarray([0.0, 0.0]), cov=sd.asarray([[2.0, 99.0], [0.3, 1.0]]))
+>>> A.covariance()
+array([[2.0, 0.3],
+       [0.3, 1.0]], dtype=float64)
+>>> A.logpdf(sd.asarray([0.5, 0.5]))
+-2.31849675026584
+```
+
+위 삼각의 99는 읽지 않으니, logpdf는 맨 앞의 예에서 첫 배치 원소(같은 아래 삼각)의 값과 같아요.
+
+```cpp
+    // csrc/stats/dd_linalg.hpp
+    for (std::int64_t j = 0; j < d; ++j) {
+        DD s{a(j, j), 0.0};
+        for (std::int64_t k = 0; k < j; ++k) s = s - L[j * d + k] * L[j * d + k];
+        if (!(s.hi > 0.0) || !std::isfinite(s.hi)) return false;
+        const DD ljj = sqrt(s);
+        L[j * d + j] = ljj;
+        logdet = logdet + dd::log(ljj) * 2.0;
+        for (std::int64_t i = j + 1; i < d; ++i) {
+            DD t{a(i, j), 0.0};
+            for (std::int64_t k = 0; k < j; ++k) t = t - L[i * d + k] * L[j * d + k];
+            if (!std::isfinite(t.hi)) return false;
+            L[i * d + j] = t / ljj;
+        }
+    }
+```
+
+double-double 제곱근 `ddla::sqrt`는 $s = \sqrt{a_{hi}}$를 구한 뒤 Newton 한 걸음 $(a - s^2)/(2s)$로 고쳐요. $s^2$는 `two_prod`로 정확히 구하므로, 고친 값은 약 106비트예요. 피벗이 양수가 아니거나 유한하지 않으면 `false`를 돌려주고, `mv_chol`은 그 배치 원소의 `ok`를 0으로, $L$을 NaN으로 채워요. 성공하면 $L$의 hi와 lo, $\log\lvert\Sigma\rvert$의 hi와 lo, 그리고 피벗의 역수 $1/L_{jj}$(double-double)를 돌려줘요. 전진 대입은 피벗으로 나누지 않고 이 역수를 곱해요.
+
+## 이차 형식: 정밀 경로
+
+### Dot2: 곱의 오차와 합의 오차를 한 double에 모아요
+
+전진 대입의 안쪽 합 $r_i - \sum_k L_{ik}z_k$를 double-double 산술로 그대로 하면 한 항에 덧셈 두 번, 곱셈 한 번이 모두 double-double이에요. 정밀 경로는 그 대신 Ogita, Rump, Oishi의 **Dot2** [1]를 써요. 두 가지 정확한 변환이 바탕이에요.
+
+- **TwoProduct**: $p = \mathrm{fl}(ab)$이면 $e = \mathrm{fma}(a, b, -p)$는 정확히 $ab - p$예요. fma가 곱을 반올림하지 않고 더하기 때문이에요.
+- **TwoSum**: $s = \mathrm{fl}(a + b)$, $b' = s - a$이면 $(a - (s - b')) + (b - b')$는 정확히 $a + b - s$예요(Knuth).
+
+Dot2는 합 $s$를 float64 하나에 쌓고, 곱의 오차 $e$와 덧셈의 오차는 모두 다른 float64 하나 $s_l$에 더해요. 끝에서 $s + s_l$을 한 번 반올림해요. 결과는 내적을 두 배 정밀도로 계산해 반올림한 것과 같은 수준으로, $\lvert\mathrm{res} - x^\top y\rvert \le u\lvert x^\top y\rvert + \gamma_n^2 \lvert x\rvert^\top\lvert y\rvert$를 만족해요[1]. 오차를 모으는 쪽이 float64 하나뿐이라 double-double 산술의 약 1/3 비용이에요.
+
+```cpp
+        // csrc/bind/stats_mv.cpp, quad_form: z_i와 Q = |z|^2를 double-double로
+        const DD r = dd::two_sum(el(x, m, i), -el(mu, b, i));
+        double sh = r.hi, sl = r.lo;
+        const double* rowh = lh + i * d;
+        const double* rowl = ll + i * d;
+        for (std::int64_t k = 0; k < i; ++k) {
+            const double ph = rowh[k] * zh[k];
+            const double pe = std::fma(rowh[k], zh[k], -ph);  // exact: rowh zh = ph + pe
+            const double t = sh - ph, bb = t - sh;
+            sl += ((sh - (t - bb)) + (-ph - bb)) - pe - (rowh[k] * zl[k] + rowl[k] * zh[k]);
+            sh = t;
+        }
+        const DD zi = dd::quick_two_sum(sh, sl) * DD{ih[i], il[i]};
+```
+
+$L$과 $z$가 모두 hi + lo라서 곱 $(L_h + L_l)(z_h + z_l)$에서 $L_h z_h$만 TwoProduct로 정확히 다루고, 교차항 $L_h z_l + L_l z_h$는 그냥 $s_l$에 더해요. 교차항은 주항의 $2^{-53}$배 크기라 그 반올림은 $2^{-106}$ 단위예요. $x - \mu$도 `two_sum`으로 정확히 빼요. 그래서 $x$가 $\mu$ 근처에 있어 뺄셈이 상쇄해도 잃는 자리가 없어요. $Q = \sum z_i^2$도 같은 방식으로 $z_{i,h}^2$을 fma로 정확히 두고 쌓아요.
+
+## 빠른 경로: L⁻¹을 곱하고 오차를 세요
+
+### 전진 대입은 사슬이에요
+
+정밀 경로는 느려요. $z_i$를 구하려면 $z_0, \dots, z_{i-1}$이 모두 끝나 있어야 하고, 한 행 안의 보정 합도 앞 항이 끝나야 다음 항을 더할 수 있는 사슬이라, 프로세서가 여러 연산을 겹쳐 실행하지 못해요.
+
+빠른 경로는 이 사슬을 끊어요. $W = L^{-1}$을 배치마다 한 번 double-double로 구해 float64로 반올림해 두면, $z = Wr$은 서로 독립인 $d$개의 내적이에요. 반올림 오차도 대입을 따라 전파되며 불어나지 않고 $z$에 한 번씩만 들어가요. 남는 것은 각 내적 안의 상쇄인데, 이 상쇄를 점마다 엄밀한 상한으로 눌러요. 상한이 예산 안이면 float64 결과를 쓰고, 아니면 그 점만 정밀 경로로 보내요. 그래서 계약을 지키는 근거는 정밀 경로 자체와 상한 계산의 정확성, 두 가지뿐이에요.
+
+### dot8: 순서가 정해진 여덟 사슬
+
+내적 하나는 fma 사슬 여덟 개로 계산해요. 항 $k$는 사슬 $k \bmod 8$에 들어가고, 여덟 사슬의 합은 정해진 나무 $((s_0 + s_2) + (s_4 + s_6)) + ((s_1 + s_3) + (s_5 + s_7))$로 모아요. Apple M4 Pro(aarch64)에서는 128비트 NEON 레지스터 네 개가 두 사슬씩 맡아요.
+
+```cpp
+    // csrc/stats/dd_linalg.hpp, dot8: 8 * blocks개 항의 내적
+    float64x2_t s0 = vdupq_n_f64(0.0), s1 = s0, s2 = s0, s3 = s0;
+    for (std::int64_t q = 0; q < blocks; ++q, a += 8, b += 8) {
+        s0 = vfmaq_f64(s0, vld1q_f64(a), vld1q_f64(b));
+        s1 = vfmaq_f64(s1, vld1q_f64(a + 2), vld1q_f64(b + 2));
+        s2 = vfmaq_f64(s2, vld1q_f64(a + 4), vld1q_f64(b + 4));
+        s3 = vfmaq_f64(s3, vld1q_f64(a + 6), vld1q_f64(b + 6));
+    }
+    const float64x2_t t = vaddq_f64(vaddq_f64(s0, s1), vaddq_f64(s2, s3));
+    return vgetq_lane_f64(t, 0) + vgetq_lane_f64(t, 1);
+```
+
+다른 프로세서를 위한 스칼라 판은 같은 순서로 더해서 비트가 같아요. $W$의 행과 벡터 $r$, $z$는 0으로 채워 길이를 8의 배수로 맞춰 두어 나머지 처리가 없어요(0인 항은 더해도 반올림이 없어요). `dot8x4`는 네 행을 한 번에 계산해서 $r$의 로드를 네 행이 나눠 써요. 로드 포트가 한계라서 이렇게 하면 빨라져요.
+
+**두 점을 함께.** $d$가 작으면 점 하나의 일은 대부분 고정 비용이에요. 그래서 $d \le 16$(`ddla::kPairMaxDim`)이고 이웃한 두 점이 같은 배치 원소이면, 두 점을 NEON 벡터의 두 lane으로 놓고 빠른 경로를 한 번에 계산해요(`fast_solve_pair`, `fast_norm2_pair`). lane마다 한 점씩의 경로와 같은 연산을 같은 순서로 하고(대각 너머의 0인 항은 $0 \cdot r$이라 값을 바꾸지 않아요), 사슬을 모으는 나무도 `dot8`과 같아서 결과와 오차 상한이 점 하나씩 계산한 것과 비트까지 같아요. 상한을 넘는 점은 똑같이 정밀 경로로 가요.
+
+### 오차 상한
+
+$u = 2^{-53}$이라 하고, 행 $i$가 블록 $b = \lfloor i/8 \rfloor$에 있다고 해요. 그 행의 항은 많아야 $8(b + 1)$개이고, 한 항은 사슬 안에서 fma를 많아야 $b + 1$번, 나무에서 덧셈을 3번 거쳐요. 반올림 $m$번을 거치는 항의 합은 Higham의 고전적인 상한 [2, §3.1]을 따라요.
+
+$$
+\Bigl\lvert \mathrm{fl}\Bigl(\sum_k t_k\Bigr) - \sum_k t_k \Bigr\rvert \le \gamma_m \sum_k \lvert t_k\rvert, \qquad \gamma_m = \frac{mu}{1 - mu}
+$$
+
+코드는 $m = b + 4$를 쓰고($mu$가 $2^{-20}$보다 작으니 $\gamma_m$을 $(m + \tfrac12)u$로 올려 잡아요), 첫 여덟 행은 사슬마다 항이 하나라 $m = 1 + \lceil\log_2(i + 1)\rceil$이에요(`kFirstM`). 여기에 세 가지를 더해요.
+
+$$
+\lvert \hat z_i - z_i\rvert \le \gamma_m v_i + u\,v_i + (\lvert\hat W\rvert e_r)_i + \eta\,(\lvert W\rvert\lvert L\rvert\lvert W\rvert\lvert r\rvert)_i,
+\qquad v_i = \sum_k \lvert\hat W_{ik}\rvert\lvert\hat r_k\rvert
+$$
+
+- 둘째 항은 $W$를 float64로 반올림한 오차예요.
+- 셋째 항은 입력 $\hat r$ 자체의 오차 $e_r$이에요. 다변량 정규에서는 $r_i = x_i - \mu_i$를 한 번 반올림한 것($u\lvert r\rvert$)이고, 행렬 정규의 두 번째 곱에서는 첫 곱의 상한이 들어와요.
+- 넷째 항은 $W$를 만든 double-double 대입의 오차이고, $\eta = d \cdot 2^{-96}$로 여유 있게 잡아요(명목상 $d \cdot 2^{-104}$의 $2^8$배).
+
+$v_i$를 정확히 구하려면 내적을 한 번 더 해야 해서, Cauchy–Schwarz로 바꿔요.
+
+$$
+\sum_{k<i} \lvert\hat W_{ik}\rvert\lvert\hat r_k\rvert \le \lVert \hat W_{i,<i}\rVert_2\, \lVert \hat r_{<i}\rVert_2
+$$
+
+행 노름 $\lVert\hat W_{i,<i}\rVert_2$는 분해할 때 미리 구해 두고, $\lVert\hat r\rVert_2$의 앞부분은 블록마다 제곱근 한 번으로 갱신해요. 대각 항 $\lvert\hat W_{ii}\rvert\lvert\hat r_i\rvert$는 따로 두어서 대각 행렬이면 상한이 정확해요. $(\lvert W\rvert\lvert L\rvert v)_i$는 $\max_k(\lvert W\rvert\lvert L\rvert)_{ik} \cdot \sum_k v_k$로, $\sum_k v_k$는 인수의 상수 $K$와 $\lVert r\rVert_2$의 곱으로 눌러요. 모든 상수는 `fast_prep`이 배치마다 한 번 계산하고, 상수 자체의 반올림은 $1 + 2^{-20}$배(`kBoundSlack`)로 덮어요.
+
+마지막으로 $Q = \lVert\hat z\rVert^2$의 상한은 $\sum_i(2\lvert\hat z_i\rvert + e_i)e_i + \gamma_m Q$예요(`fast_norm2`). 그다음 log 밀도의 식을 float64로 계산하면서 반올림을 몇 번 더 세요. 정규는 $t = Q/2$(상한도 절반), t는 $t = a\,\mathrm{log1p}(Q/\nu)$, $a = (\nu + d)/2$이고 상한은 $a \cdot \mathrm{err}/(\nu + Q - \mathrm{err}) + 4.5u\,t$예요. 배치 상수 $c$(double-double)에서 $t$를 TwoSum으로 빼면 그 오차도 정확히 남아요.
+
+받아들이는 조건은 계약의 단위 그대로예요. logpdf는 $\text{상한} + u(\lvert l\rvert + u\lvert c_{hi}\rvert) \le 40u \cdot \max(1, \lvert l\rvert)$, pdf는 $\text{상한} + u(4 + u\lvert c_{hi}\rvert) \le 40u$이고 $\lvert l\rvert \le 700$이에요. pdf는 $e^{hi}(1 + lo)$로 만들고(libm의 exp를 2단위로 셈), 상대오차가 곧 $l$의 절대오차라서 예산이 절대예요. 무엇이든 유한하지 않으면 상한이 inf나 NaN이 되어 검사에서 떨어져요.
+
+<Callout type="note" title="왜 40단위인가">
+stats의 다른 빠른 경로는 예산이 16단위($1.8 \times 10^{-15}$)예요. 그런데 내적의 최악 상한은 $(m + 2)u\sum\lvert t_k\rvert$ 아래로 내려갈 수 없어요. 분포에서 뽑은 점에서 이것이 이미 14–22단위이고, 행렬 정규처럼 곱을 두 번 거치면 그 두 배예요. 그래서 이 세 밀도(다변량 정규·t, 행렬 정규)만 예산을 40단위($4.4 \times 10^{-15}$)로 둬요. 계약 $10^{-14}$의 절반 아래예요. 상한은 최악의 경우라서 실제 차이는 훨씬 작아요. 정밀 경로와의 차이를 여러 $d$, $\kappa$, 점의 종류(분포에서 뽑은 점, 100σ 밖, 1e-8σ 안, 좌표축 위)에서 재면 $5 \times 10^{-16}$ 아래예요.
+</Callout>
+
+정밀 경로로 가는 점은 대개 셋이에요. 조건이 나쁜 인수($W$의 원소가 커서 상쇄가 큰 경우), 상수 $c$와 $Q/2$가 서로 상쇄해 log 밀도가 0 근처인 점(혼합 단위가 1로 고정되어 예산이 좁아요), 그리고 $d$가 4096을 넘는 경우예요. 빠른 경로의 인수는 분포 하나에 $W$와 상수를 합쳐 $\mathrm{padded}(d)\cdot(d + 3)$개의 double이고, 배치가 아주 커서 이것이 $2^{23}$개(64 MB)를 넘으면 만들지 않고 모든 점을 정밀 경로로 보내요. 인수는 첫 `logpdf`나 `pdf` 호출에서 만들어요.
+
+### BLAS를 쓰지 않는 이유
+
+scipy 1.18.1의 `multivariate_normal.logpdf`는 공분산을 고유분해해 $U = V\Lambda^{-1/2}$를 만들고, 모든 점의 $(x - \mu)U$를 행렬곱 한 번으로 구해요(`np.dot`, BLAS). 점을 모아 큰 행렬곱 하나로 만들면 빠르지만, BLAS의 `dgemm`은 합의 순서를 정해 주지 않아요. 블록 크기, 스레드 분할, 남는 행 처리가 행렬의 크기와 구현에 따라 달라요. 그래서 두 가지를 보장할 수 없어요.
+
+- **점마다의 오차 상한**: 어떤 순서로 몇 번 반올림했는지 모르면 $\gamma_m$의 $m$을 셀 수 없어요. 상한이 없으면 빠른 결과를 받아들일 근거가 없어요.
+- **위치 무관**: 같은 점이 배열의 어디에 있든, 배열이 몇 개든 같은 비트여야 해요(`f(x)[i] == f(x[i])`). 블록 경계에 따라 합의 순서가 바뀌면 이것이 깨져요.
+
+`dot8`은 순서가 고정되어 있어서 두 가지를 모두 지켜요. 값은 같은 점을 혼자 계산하든 $10^5$개 가운데 하나로 계산하든 같고, 지금은 스레드가 몇 개든 같아요. $d = 50$ 같은 큰 차원을 BLAS(`dtrsm`·`dgemm`)로 풀려면 합 순서를 모르는 상한($\gamma_d$)이 필요한데, 그 상한으로는 분포에서 뽑은 점 대부분이 40단위를 넘어 정밀 경로로 가요. 그래서 큰 차원에서도 `dot8`을 써요.
+
+## log 밀도의 조립
+
+### 배치 상수
+
+$Q$를 뺀 나머지는 매개변수만의 함수라서 배치마다 한 번 double-double로 계산해요.
+
+$$
+c_{\text{정규}} = -\tfrac12\log\lvert\Sigma\rvert - d\log\sqrt{2\pi}, \qquad
+c_{t} = \log\Gamma\bigl(\tfrac{\nu + d}{2}\bigr) - \log\Gamma\bigl(\tfrac{\nu}{2}\bigr) - \tfrac d2\log(\nu\pi) - \tfrac12\log\lvert\Sigma\rvert
+$$
+
+t의 상수에서 두 log Γ는 $\nu$가 크면 거의 같은 큰 수예요. $\nu = 10^9$이면 각각 약 $10^{10}$이고 차는 약 20이에요. float64로 따로 계산해 빼면 $10^{10} \times 10^{-16} = 10^{-6}$이 그대로 차의 절대오차가 돼요. 그래서 $a = \nu/2 \ge 12$에서는 Stirling 꼴 $\log\Gamma(z) = (z - \tfrac12)\log z - z + \tfrac12\log 2\pi + S(z)$의 차를 식에서 먼저 정리해요($h = d/2$).
+
+$$
+\log\Gamma(a + h) - \log\Gamma(a) = (a - \tfrac12)\,\mathrm{log1p}(h/a) + h\log(a + h) - h + S(a + h) - S(a)
+$$
+
+크기 $a\log a$인 항이 사라지고 남는 항은 모두 $O(h\log a)$ 이하예요. `lgamma_diff`가 이 식이고 $\mathrm{log1p}$와 $\log$는 double-double이에요. $S(z) = \sum_{k=1}^{8} B_{2k} / (2k(2k-1)z^{2k-1})$는 $z \ge 12$에서 8항까지 써요. $a$가 12보다 작으면 두 log Γ를 double-double로 따로 계산해 빼요(그 크기에서는 상쇄가 작아요).
+
+scipy 1.18.1의 `multivariate_t.logpdf`는 `gammaln((df + d)/2) - gammaln(df/2)`와 `log(1 + maha/df)`를 float64로 계산해서, $\nu = 10^9$에서 logpdf가 $1.7 \times 10^{-9}$–$7.7 \times 10^{-7}$ 틀려요(아래 정확도 표).
+
+### 점마다의 식
+
+정밀 경로에서 log 밀도는 $c - Q/2$(정규)나 $c - \tfrac{\nu + d}{2}\,\mathrm{log1p}(Q/\nu)$(t)를 double-double로 계산해요. double-double `log1p`는 $\lvert u\rvert < 2^{-10}$이면 급수 $\sum(-1)^{k+1}u^k/k$로 계산해요. $1 + u$를 먼저 만들면 $u$의 아래 비트가 반올림으로 사라지기 때문이에요. $\nu$가 큰 t에서 $Q/\nu$가 이 구간에 들어가요.
+
+pdf는 double-double log 밀도에서 지수를 $e^{hi}(1 + lo)$로 한 번만 취해요. 반올림한 log 밀도의 지수를 취하면 log 밀도의 절대오차가 pdf의 상대오차가 돼요. log 밀도가 $-700$이면 그 반올림만으로 $700 \times 2^{-53} \approx 1.5 \times 10^{-13}$이에요.
+
+### 넘치는 인자
+
+$\lvert x - \mu\rvert$나 $1/L_{ii}$가 약 $10^{154}$를 넘으면 $Q$가 float64를 넘어요. 그때는 `quad_form_scaled`가 가장 큰 $\lvert x_i\rvert$, $\lvert\mu_i\rvert$의 지수와 가장 큰 피벗 역수의 지수를 더한 $E$로 잔차를 정확히 $2^{-E}$배 하고, $Q = q \cdot 4^E$의 $q$를 계산해요. 그다음 로그에서 되돌려요.
+
+- 정규: $Q/2$ 자체가 float64를 넘을 때만 $-\infty$예요. 그 아래는 값이 나와요.
+- t: $\mathrm{log1p}(Q/\nu) = \log q + 2E\log 2 - \log\nu + \mathrm{log1p}(\nu/Q)$로 써요. t의 log 밀도는 $\lvert x\rvert^2$이 아니라 $\log\lvert x\rvert$로 줄어서, 유한한 모든 $x$에서 유한해요.
+
+```python
+>>> N = sd.stats.MultivariateNormal(mu=sd.asarray([0.0, 0.0]), cov=sd.asarray([[1.0, 0.0], [0.0, 1.0]]))
+>>> N.logpdf(sd.asarray([1e154, 0.0]))
+-5e+307
+>>> N.logpdf(sd.asarray([1e308, 1e308]))
+-inf
+>>> T = sd.stats.MultivariateT(mu=sd.asarray([0.0, 0.0]), shape=sd.asarray([[1.0, 0.0], [0.0, 1.0]]), df=3.0)
+>>> T.logpdf(sd.asarray([1e308, 1e308]))
+-3546.805257506969
+```
+
+## 엔트로피
+
+### 정규
+
+$$
+H = \tfrac d2(1 + \log 2\pi) + \tfrac12\log\lvert\Sigma\rvert
+$$
+
+$\log\lvert\Sigma\rvert$는 분해에서 나온 double-double 값이라 추가 계산이 없어요.
+
+### t: 정규와의 차만 계산해요
+
+다변량 t의 엔트로피는 $a = \nu/2$, $h = d/2$로
+
+$$
+H = \tfrac12\log\lvert\Sigma\rvert + \log\Gamma(a) - \log\Gamma(a + h) + h\log(2\pi a) + (a + h)\bigl(\psi(a + h) - \psi(a)\bigr)
+$$
+
+예요. $\nu$가 크면 log Γ 둘, $h\log a$, $(a + h)\Delta\psi$가 모두 크고 서로 지워져서 정규의 값에 가까워져요. 위의 log Γ 차를 넣고 정리하면 정규의 값과 작은 괄호로 나뉘어요($a \ge 12$).
+
+$$
+H = H_{\text{정규}} + \Bigl[(a + h)\,\Delta\psi - (a + h - \tfrac12)\,\mathrm{log1p}(h/a) - \bigl(S(a + h) - S(a)\bigr)\Bigr]
+$$
+
+괄호 안은 $O(h^2/a)$예요. $\Delta\psi = \psi(a + h) - \psi(a)$도 따로 계산해 빼면 상쇄하므로 점근 급수에서 차를 바로 써요(`digamma_diff_asym`).
+
+$$
+\psi(z + h) - \psi(z) = \mathrm{log1p}(h/z) - \frac{1}{2(z + h)} + \frac{1}{2z} - \sum_{k=1}^{8}\frac{B_{2k}}{2k}\, z^{-2k}\,\mathrm{expm1}\bigl(-2k\,\mathrm{log1p}(h/z)\bigr)
+$$
+
+$(z + h)^{-2k} - z^{-2k}$은 두 거듭제곱을 따로 계산해 빼지 않고 $z^{-2k}\,\mathrm{expm1}(\cdot)$로 써요.
+
+```python
+>>> sd.stats.MultivariateT(mu=sd.asarray([0.0, 0.0]), shape=sd.asarray([[1.0, 0.0], [0.0, 1.0]]),
+...                        df=sd.asarray([1e12, 5.0])).entropy()
+array([2.8378770664113455, 3.2378770664093453], dtype=float64)
+>>> N.entropy()
+2.8378770664093453
+```
+
+$\nu = 10^{12}$에서 정규와의 차 $2.0 \times 10^{-12}$가 괄호의 값이에요. 원래 식에서는 크기 $10^{13}$ 안팎인 항이 지워져 이 값을 남기므로, 항을 따로 계산해 더했다면 자릿수가 하나도 남지 않아요.
+
+## 다항 분포
+
+### logpmf: p를 나누지 않아요
+
+$$
+\log P(X = x) = \log n! - \sum_i \log x_i! + \sum_i x_i\log p_i - n\log\sum_i p_i
+$$
+
+`p`는 합이 1에서 $\sqrt{\varepsilon}$ 안이면 받아들이고, 정규화된 확률은 $p_i/\sum p$예요. 정규화한 $p_i$의 로그를 쓰면 나눗셈의 반올림이 $\log p_i$마다 1 ULP를 더하고, $x_i$배 되어 전체로 $n\varepsilon$까지 틀려요. 그래서 나누지 않고 마지막 항 $-n\log\sum p$로 같은 일을 해요. $\sum p$는 double-double 합이에요.
+
+- **$\log k!$**: 4096까지는 $\log 1 + \log 2 + \dots$의 double-double 누적합 표(절대 약 $10^{-19}$)에서 찾고, 그 위는 double-double $\log\Gamma(k + 1)$이에요. $k + 1$은 `two_sum`으로 만들어요. $2^{53}$ 위에서는 $k + 1.0$이 반올림되어 $k$가 되기 때문이에요.
+- **지지집합**: 성분이 음이 아닌 정수이고, 합이 정확히 $n$이고(double-double 합으로 검사), $p_i = 0$인 범주에 0보다 큰 개수가 없어야 해요. 아니면 pmf 0이에요.
+- **아주 큰 $n$**: 항마다 크기가 $n\log n$이고, 최빈값 근처에서 $O(K\log n)$으로 상쇄해요. 각 항은 자기 크기의 $2^{-92}$ 정도까지 맞으므로, $2^{-92}\cdot(\text{항 크기의 합})$이 $10^{-13}\max(1, \lvert l\rvert)$를 넘으면 값을 낼 수 없어서 NaN이에요. 항 크기가 $4 \times 10^{14}$ 아래인 배치는 이 검사를 건너뛰어요(검사가 실패할 수 없어요).
+
+```python
+>>> M = sd.stats.Multinomial(n=1e12, p=sd.asarray([0.5, 0.5]))
+>>> M.logpmf(sd.asarray([5e11, 5e11]))
+-14.041301910609254
+>>> sd.stats.Multinomial(n=1e15, p=sd.asarray([0.5, 0.5])).logpmf(sd.asarray([5e14, 5e14]))
+nan
+```
+
+$n = 10^{12}$의 값은 Arb 참값과 $2.5 \times 10^{-16}$ 차이예요. $n = 10^{13}$에서도 값이 나오지만 차이가 $3.7 \times 10^{-15}$로 커지고, $10^{15}$에서는 double-double 합이 값을 담지 못해 NaN이에요.
+
+### 엔트로피: 기댓값을 최빈값에서 바깥으로
+
+$X_i$의 주변 분포는 이항 $\mathrm{Bin}(n, p_i)$이고 $E[X_i] = np_i$라서
+
+$$
+H = -E[\log P(X)] = -\log n! - n\sum_i p_i\log p_i + \sum_i E[\log X_i!]
+$$
+
+예요. $\log n!$과 $\sum E[\log X_i!]$은 둘 다 $n\log n$ 크기이고 차는 $O(K\log n)$이에요. $n = 10^5$, $p = (0.2, 0.3, 0.5)$이면 $\log n! \approx 1.05 \times 10^6$인데 엔트로피는 12.6이에요. 다섯 자리를 상쇄로 잃으므로 기댓값은 double-double로 더해요.
+
+- $E[\log X!] = \sum_k P(X = k)\log k!$을 최빈값 $\lfloor(n + 1)p\rfloor$에서 시작해 양쪽으로 더해요.
+- 각 $P(X = k)$는 double-double log pmf(`log_gamma`로 $\log k!$, $\log(n-k)!$)에서 `exp_full`(약 $10^{-30}$)로 구해요. 이항 분포의 보통 log pmf는 앞 인자의 로그를 double로 반올림하므로 pmf마다 $10^{-16}$이 틀리고, 크기 $n\log n$의 기댓값이 그것을 키워 $n = 10^5$에서 $4 \times 10^{-11}$이 돼요.
+- 멈추는 규칙: 한 항 $t$와 그 앞 항의 비가 $r < 1$이면 나머지 꼬리는 약 $tr/(1 - r)$이에요. 이것이 합의 $2^{-110}$ 아래면 멈춰요.
+- 상한: 일은 범주별 표준편차 $\sqrt{np_i(1-p_i)}$의 합에 비례해요(범주마다 표준편차의 약 25배 항). 그 합이 $2^{17}$(약 $3 \times 10^6$항)을 넘거나 $n > 2^{53}$이면(정수 $n - k$가 정확하지 않아요) NaN이에요. 한쪽 걸음은 $2^{23}$번까지예요. 확률이 1인 범주(점질량)는 엔트로피 0이고 $n$에 상관없이 계산해요. $n = 0$도 모든 개수가 0인 점질량이라 엔트로피가 0이에요.
+
+```python
+>>> sd.stats.Multinomial(n=100000.0, p=sd.asarray([0.2, 0.3, 0.5])).entropy()
+12.597520804848287
+>>> sd.stats.Multinomial(n=1e12, p=sd.asarray([0.5, 0.5])).entropy()
+nan
+>>> sd.stats.Multinomial(n=1e300, p=sd.asarray([1.0, 0.0])).entropy()
+0.0
+>>> sd.stats.Multinomial(n=0, p=sd.asarray([0.2, 0.3, 0.5])).entropy()
+0.0
+```
+
+첫 값은 Arb로 만든 참값과 $10^{-14}$ 안이에요(`tests/stats/test_multivariate.py`). 같은 매개변수에서 scipy 1.18.1은 12.597520883893594로 $6 \times 10^{-9}$이 틀려요.
+
+### 공분산의 대각
+
+다항의 공분산 대각 $np_i(1 - p_i)$를 그대로 계산하면 $p_i$가 1에 가까울 때 $1 - p_i$에서 자리를 잃어요. 그래서 $np_i\sum_{j \ne i}p_j$로 계산해요. 나머지 성분의 합 $\sum_{j \ne i}p_j$는 앞에서 누적한 합과 뒤에서 누적한 합을 더해 뺄셈 없이 만들어요. 디리클레도 같은 꼴로 $m_i\sum_{j \ne i}(a_j/a_0)/(a_0 + 1)$($m = a/a_0$)이에요. 분모를 $a_0^2(a_0 + 1)$로 쓰면 $a_0 \gtrsim 5 \times 10^{102}$에서 넘쳐요. 요약값의 배열은 읽기 전용으로 돌려줘요.
+
+```python
+>>> sd.stats.Multinomial(n=10, p=sd.asarray([1 - 1e-12, 1e-12])).covariance()[0, 0]
+9.999999999989999e-12
+>>> sd.stats.Dirichlet(alpha=sd.asarray([1e8, 1e-8])).covariance()[0, 0]
+9.999999899999997e-25
+```
+
+## 디리클레 분포
+
+### logpdf
+
+$$
+\log f(x) = \log\Gamma(a_0) - \sum_i\log\Gamma(a_i) + \sum_i (a_i - 1)\log x_i, \qquad a_0 = \sum_i a_i
+$$
+
+앞 두 항은 배치 상수로 double-double 한 번이에요. 지지집합은 단체(simplex), 곧 성분이 음이 아니고 유한하며 $\lvert\sum x_i - 1\rvert \le \sqrt{\varepsilon}\,K$인 점이에요. 0인 성분에서는 그 항의 극한을 써요($a_i < 1$이면 $+\infty$, $a_i = 1$이면 항이 없고, $a_i > 1$이면 $-\infty$).
+
+$a_i - 1$은 `two_sum`으로 정확히 둬요. $a_i < 1/2$이면 $a_i - 1$이 반올림되는데, 그 반올림에 $\log x_i$가 곱해져요. $x_i = 10^{-300}$이면 $\log x_i \approx -691$이라 반올림 하나가 $3.8 \times 10^{-14}$의 상대오차가 돼요.
+
+```python
+>>> D = sd.stats.Dirichlet(alpha=sd.asarray([0.3, 0.6]))
+>>> D.logpdf(sd.asarray([1e-300, 1.0]))
+482.115213915597
+>>> D.pdf(sd.asarray([0.0, 1.0]))
+inf
+```
+
+빠른 경로는 libm의 `log`를 써요. 곱 $(a_i - 1)\log x_i$의 오차는 fma로, 합의 오차는 TwoSum으로 정확히 따로 모으므로 남는 것은 log의 오차($2u\lvert t_i\rvert$)와 마지막 반올림뿐이에요. 상한 $u(2\sum\lvert t_i\rvert + \dots)$이 16단위 안이면 그 값을 쓰고, 아니면(항이 서로 상쇄하면) 표 기반 double-double log(`log_dd`)로 다시 더해요.
+
+### 엔트로피: G와 Gc로 다시 묶기
+
+$$
+H = \log B(a) + (a_0 - K)\,\psi(a_0) - \sum_i (a_i - 1)\,\psi(a_i)
+$$
+
+각 항은 $a\log a$ 크기이고 합은 $O(\log a)$예요. 베타 분포의 엔트로피에서 쓰는 두 조각을 $K$개로 넓혀요.
+
+$$
+G(z) = \log\Gamma(z) - (z - 1)\psi(z) + z - \tfrac12\log z - \tfrac12\log 2\pi, \qquad
+G_c(z) = -\log\Gamma(z) + (z - 2)\psi(z) - z + \tfrac32\log z + \tfrac12\log 2\pi
+$$
+
+둘 다 $O(1)$이에요. Stirling 급수 $S$와 $\psi$의 점근 급수 $T(z) = \sum B_{2k}z^{-2k}/(2k)$로 쓰면 $G = \tfrac12 - \tfrac1{2z} + S + (z - 1)T$이고, 큰 항은 식 안에서 이미 지워져 있어요($z \ge 12$; 그 아래는 log Γ와 ψ를 직접 써요). 이 조각들로 엔트로피를 다시 쓰면
+
+$$
+H = \sum_i G(a_i) + G_c(a_0) + \tfrac12\sum_i\log a_i + \tfrac{K-1}{2}\log 2\pi + (2 - K)\,\psi(a_0) - \tfrac32\log a_0
+$$
+
+이고, 원래 식에 있던 $\sum a_i$와 $-a_0$이 정확히 지워져요. 남은 로그 항은 double-double로 더해요.
+
+```python
+>>> sd.stats.Dirichlet(alpha=sd.asarray([1e6, 2e6, 3e6])).entropy()
+-14.561152818900034
+```
+
+Arb로 만든 참값과 $10^{-14}$ 안이에요. scipy 1.18.1은 −14.561152815818787로 $3 \times 10^{-9}$이 틀려요.
+
+## 표본
+
+알고리즘의 바탕(ziggurat, Marsaglia–Tsang 감마, BTRS 이항)은 [표본 뽑기](/internals/stats/sampling/)에 있어요. 다변량에서 더하는 것만 적어요.
+
+- **정규**: $\mu + Lz$, $z$는 ziggurat 정규 $d$개예요. 조각의 $z$를 먼저 모두 뽑고, $Lz$를 4행 × 8성분 타일로 계산해요(`mul_lt`). $L$의 열을 성분의 벡터로 두고, 출력 성분마다 $k$ 순서의 FMA 사슬 하나로 $\sum_k z_k L_{rk}$를 더해요. 네 행이 $L$의 로드를 나눠 써서, 행 하나씩의 내적보다 로드가 훨씬 적어요. 행의 값은 어느 타일에서 계산하든 같은 사슬이라(대각 너머의 항은 $0 \cdot z$), 호출을 어떻게 나누든 스레드가 몇 개든 같아요. BLAS의 `dtrmm`은 행의 값이 조각 크기에 달라져서 쓰지 않아요.
+- **t**: 정규 벡터에 $\sqrt{\nu/V}$, $V = 2G(\nu/2)$를 곱해요. $\nu \ge 2$이면 $\sqrt{(\nu/2)/G}$로 log·exp 없이 계산하고($G$가 언더플로하지 않아요), 그 아래는 로그로 뽑은 감마에서 만들어요. 두 꼴은 같은 단어를 써요.
+- **다항**: 조건부 이항이에요. $X_1 \sim \mathrm{Bin}(n, p_1)$, $X_i \sim \mathrm{Bin}(n - X_1 - \dots, p_i/(p_i + \dots + p_K))$, 마지막은 나머지예요. 분모의 남은 질량은 끝에서부터 더해 상쇄가 없어요.
+- **디리클레**: $G_i \sim \Gamma(a_i)$를 합으로 나눠요. 모양이 1/16보다 작은 성분이 있거나 합이 범위를 벗어나면 로그 감마로 다시 뽑아 가장 큰 값을 빼고 정규화해요(같은 원소의 단어로 다시 뽑으므로 여전히 그 원소만의 함수예요).
+
+## 정확도
+
+참값은 `tools/stats_ref.py`가 `tools/mvref.py`로 만들어 `tests/stats/ref/mv/`에 둬요. Arb(구간 산술)로 행렬을 입력 그대로 LU 분해하고 풀어서, 구간의 반지름이 $2^{-110}\max(1, \lvert\text{값}\rvert)$ 아래가 될 때까지 정밀도를 두 배씩 올려 만들어요. 정규·t는 $d \in \lbrace 1, 2, 5, 20, 100\rbrace$, 공분산의 조건수 $\kappa \in \lbrace 1, 10^3, 10^6, 10^9\rbrace$이고, t는 $\nu \in \lbrace 0.7, 4.5, 30, 10^9\rbrace$예요. 오차는 $\lvert\text{오차}\rvert/\max(1, \lvert\text{값}\rvert)$이고 `pdf`만 상대오차예요(`bench/stats/accuracy_multivariate.md`).
+
+| 분포 | 메서드 | 점 | sd | scipy |
+|---|---|---:|---:|---:|
+| 정규 | logpdf | 150 | $8.1 \times 10^{-16}$ | $1.5 \times 10^{-8}$ |
+| 정규 | pdf | 132 | $2.3 \times 10^{-16}$ | $5.5 \times 10^{-8}$ |
+| 정규 | entropy | 17 | $7.0 \times 10^{-17}$ | $1.2 \times 10^{-10}$ |
+| t | logpdf | 600 | $5.1 \times 10^{-16}$ | $8.8 \times 10^{-7}$ |
+| t | pdf | 564 | $1.7 \times 10^{-14}$ | $1.7 \times 10^{-6}$ |
+| t | entropy | 68 | $3.1 \times 10^{-16}$ | $5.6 \times 10^{-10}$ |
+| 다항 | logpmf | 25 | $9.0 \times 10^{-17}$ | $1.1 \times 10^{-11}$ |
+| 다항 | entropy | 5 | $4.9 \times 10^{-16}$ | $3.8 \times 10^{-10}$ |
+| 디리클레 | logpdf | 20 | $2.0 \times 10^{-16}$ | $8.1 \times 10^{-10}$ |
+| 디리클레 | entropy | 5 | $3.4 \times 10^{-16}$ | $2.1 \times 10^{-10}$ |
+
+scipy의 최대는 정규 logpdf가 $d = 20$, $\kappa = 10^9$인 점, t logpdf가 $d = 2$, $\kappa = 1$, $\nu = 10^9$인 점이에요. 보장 영역은 $\kappa(\Sigma) \le 10^9$, $d \le 100$에서 logpdf·entropy가 $\lvert\text{오차}\rvert \le 10^{-14}\max(1, \lvert\text{값}\rvert)$, pdf가 상대 $10^{-14}\max(1, \lvert\text{logpdf}\rvert)$이에요. t의 pdf는 상대오차가 $1.7 \times 10^{-14}$까지 가지만 이 한계의 0.016배예요. 다른 메서드도 모두 한계의 0.1배 안이에요.
+
+## 속도
+
+`logpdf`에서 scipy 1.18.1은 모든 점을 행렬곱 하나로 계산하고 그 뒤의 일이 거의 없어요. stardust는 순서가 고정된 내적을 쓰고, 점마다 오차 상한을 세는 일을 더 해요. 그 대가로 $\kappa = 10^9$에서도 반올림 수준이고, 값이 점의 위치에 무관해요. 그래서 1스레드에서는 정규·t의 `logpdf`가 scipy보다 느린 경우가 있고($d = 10, 50$), 차원이 클수록 차이가 커요. 점끼리는 독립이라 10스레드에서는 scipy보다 빨라요. 작은 $d$는 두 점을 함께 계산해서 고정 비용을 줄여요.
+
+표본, 다항 `logpmf`($\log k!$ 표 덕분), 디리클레 `logpdf`(빠른 경로의 libm log 덕분)는 1스레드에서도 대개 scipy보다 빨라요.
+
+## 참고 문헌
+
+1. T. Ogita, S. M. Rump, S. Oishi, "Accurate Sum and Dot Product", *SIAM Journal on Scientific Computing* 26(6), 1955–1988, 2005. https://doi.org/10.1137/030601818 (TwoSum, TwoProduct, Dot2)
+2. N. J. Higham, *Accuracy and Stability of Numerical Algorithms*, 2nd ed., SIAM, 2002. (§3.1 합과 내적의 오차 상한 $\gamma_n$, §10.1 촐레스키 분해의 후방 오차) https://doi.org/10.1137/1.9780898718027
+3. T. J. Dekker, "A Floating-Point Technique for Extending the Available Precision", *Numerische Mathematik* 18(3), 224–242, 1971. https://doi.org/10.1007/BF01397083
+4. D. E. Knuth, *The Art of Computer Programming*, Vol. 2, 3rd ed., Addison-Wesley, 1997. (§4.2.2, TwoSum)
+5. NIST Digital Library of Mathematical Functions, 5.11(Stirling 급수와 ψ의 점근전개). https://dlmf.nist.gov/5.11

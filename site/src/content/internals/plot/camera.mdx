@@ -1,0 +1,387 @@
+---
+title: 상자와 카메라
+group: 3D
+order: 3
+summary: 3D 칸이 자료를 상자에 넣고, 방위각과 고도로 돌려 투영하고, 그 투영이 칸의 그림 사각형을 채우도록 배치하는 길을 코드를 따라 설명해요. 시점을 주지 않았을 때 후보 24개를 성긴 깊이 버퍼로 점수 매겨 고르는 방법, 상자의 면·축·눈금을 그림 아래와 위에 벡터로 얹는 차례, 같은 장면의 그림을 한 번만 굽는 것까지 다뤄요.
+seeAlso: [surface, zbuffer, layout, scene-outputs]
+---
+import PlotImage from '../../../components/fig/PlotImage.astro';
+
+## 한눈에 보기
+
+3D 칸은 2D 칸의 축 대신 `Space` 층 하나를 가져요. 그 칸에 더한 곡면, 곡선, 점이 모두 이 층에 쌓이고, 칸을 그리는 때 `Space`가 이 차례로 일해요.
+
+1. **상자**: 자료의 범위를 정하고, 자료를 반지름이 정해진 상자에 넣어요.
+2. **카메라**: 시점(방위각, 고도)을 정해요. 주지 않은 각은 후보 가운데 골라요.
+3. **배치**: 상자의 투영이 칸의 그림 사각형을 꽉 채우게 배율과 자리를 정하고, 눈금과 이름은 2D 칸처럼 그 둘레의 여백에 둬요.
+4. **그리기**: 상자의 뒤쪽 세 면과 그 격자를 벡터로 그리고, 그 위에 [깊이 버퍼](/internals/plot/zbuffer/)가 구운 그림 한 장을 놓고, 다시 그 위에 축과 눈금과 글자를 벡터로 얹어요.
+
+## 상자
+
+자료는 원점을 가운데로 한 상자 $[-B_x, B_x] \times [-B_y, B_y] \times [-B_z, B_z]$에 들어가요. 좌표마다 자료의 범위 $[\text{lo}_k, \text{hi}_k]$를 $[-B_k, B_k]$로 옮기는 일차 변환이에요.
+
+```python
+    # src/stardust/plot/_surface.py
+    def box_of(self, lo, hi):
+        """The box's half sizes."""
+        if self.equal:  # the box has the data's proportions
+            big = max(hi[k] - lo[k] for k in range(3))
+            return tuple(max((hi[k] - lo[k]) / big, 0.05) for k in range(3))
+        return BOX_GRAPH
+```
+
+그래프 $z = f(x, y)$가 하나라도 있으면 상자는 $1 : 1 : 0.72$로 고정이에요. 그래프의 높이는 x, y와 단위가 다른 양이라서, 자료의 비율을 따르면 $\sin x \cos y$를 $[-3, 3]^2$에서 그린 것처럼 납작한 판이나 높은 탑이 되기 쉬워요. 매개변수 곡면, 공간 곡선, 점만 있는 칸은 세 축이 같은 단위라 상자도 자료의 비율이에요. 가장 긴 축이 반지름 1이고, 아주 얇은 축도 0.05 아래로 줄지 않아요.
+
+```python
+>>> import math
+>>> torus = sd.plot.parametric_surface(lambda u, v: (2 + sd.cos(v)) * sd.cos(u),
+...                                    lambda u, v: (2 + sd.cos(v)) * sd.sin(u),
+...                                    lambda u, v: sd.sin(v), 0, 2 * math.pi, 0, 2 * math.pi)
+>>> sp = torus._cell.layers[0]
+>>> [round(b, 3) for b in sp.box_of(*sp.limits())]
+[1.0, 1.0, 0.333]
+```
+
+범위는 `limits`가 정해요. 곡면과 점은 유한한 값의 전체 범위, 공간 곡선은 극점의 큰 값이 축을 차지하지 않도록 분위수 규칙의 범위예요. 높이는 `zlim`을 주면 그것이고, 아니면 모든 곡면의 높이에 분위수 규칙을 써서 극점을 잘라요([곡면의 표본](/internals/plot/surface/#극점의-자르기)). 범위의 폭이 0이면(평평한 평면) 조금 넓혀요. 곡면 없이 점만 있는 칸은 세 축의 범위를 양쪽으로 4%씩 넓혀요. 2D 칸의 여백과 같은 까닭으로, 가장 바깥의 점이 상자의 모서리나 축 선 위에 놓이지 않게 하려는 것이에요.
+
+## 회전과 투영
+
+방위각 $a$는 xy평면에서 x축으로부터 잰 눈의 방향, 고도 $e$는 xy평면에서 위로 잰 각이에요. 장면 좌표를 시점 좌표로 돌리는 행렬의 세 행을 `_rot`가 만들어요.
+
+```python
+# src/stardust/plot/_surface.py
+def _rot(azimuth, elevation):
+    """(right, up, eye): the rows of the rotation from the scene to the view."""
+    a, e = math.radians(azimuth), math.radians(elevation)
+    eye = (math.cos(e) * math.cos(a), math.cos(e) * math.sin(a), math.sin(e))
+    right = (-math.sin(a), math.cos(a), 0.0)
+    up = (
+        eye[1] * right[2] - eye[2] * right[1],
+        eye[2] * right[0] - eye[0] * right[2],
+        eye[0] * right[1] - eye[1] * right[0],
+    )
+    return right, up, eye
+```
+
+- `eye`는 원점에서 눈으로 가는 단위 벡터, 곧 시점 좌표의 $+z$예요. 깊이는 이 방향의 성분이라 클수록 가까워요.
+- `right`는 `eye`를 xy평면에 내린 방향을 90° 돌린 수평 벡터예요. 수평이므로 z축은 언제나 화면에서 곧게 서요.
+- `up`은 `eye × right`예요. `right`, `up`, `eye`가 오른손 좌표계를 이뤄요.
+
+```python
+>>> from stardust.plot import _surface
+>>> [[round(v, 3) for v in row] for row in _surface._rot(-60, 30)]
+[[0.866, 0.5, 0.0], [-0.25, 0.433, 0.866], [0.433, -0.75, 0.5]]
+```
+
+늘 쓰던 방향 $(-60°, 30°)$에서 눈은 x가 크고 y가 작은 쪽, 조금 위에 있어요. 그래서 x축은 화면의 왼쪽 아래에서 오른쪽 위로, y축은 오른쪽 아래에서 위로 비스듬히 달려요.
+
+투영은 [깊이 버퍼](/internals/plot/zbuffer/#투영)와 같은 식이에요. 원근 투영의 눈은 상자 단위로 7만큼 떨어져 있어요. 상자의 대각선 반이 많아야 $\sqrt{3} \approx 1.7$이니, 가장 가까운 모서리와 가장 먼 모서리의 배율은 많아야 $7/(7 - 1.7)$와 $7/(7 + 1.7)$, 1.6배쯤 차이예요. 원근이 보이되 상자가 일그러지지 않는 거리예요. `perspective=False`면 직교 투영이에요.
+
+```python
+    # src/stardust/plot/_surface.py
+    def project(self, p, rot, scale=1.0, cx=0.0, cy=0.0):
+        """The page position of a box point (and its depth)."""
+        right, up, eye = rot
+        x = right[0] * p[0] + right[1] * p[1] + right[2] * p[2]
+        y = up[0] * p[0] + up[1] * p[1] + up[2] * p[2]
+        z = eye[0] * p[0] + eye[1] * p[1] + eye[2] * p[2]
+        f = DISTANCE / (DISTANCE - z) if self.perspective else 1.0
+        return cx + scale * f * x, cy - scale * f * y, z
+```
+
+## 시점 고르기
+
+`azimuth`와 `elevation`을 주지 않으면 `camera`가 후보 가운데서 골라요. 방위각 여덟(±30°, ±60°, ±120°, ±150°)과 고도 셋(30°, 18°, 42°)의 24개예요. 0°, ±90°, 180°는 상자의 축 하나를 정면으로 보는 방향이라 그 축의 눈금이 한 점에 겹치므로 후보에서 빼요. 한 각만 주면 다른 각만 골라요.
+
+```python
+>>> step = sd.plot.surface(lambda x, y: sd.tanh(6 * (x + y)) + 0.2 * sd.sin(4 * x), -1, 1, -1, 1)
+>>> step._cell.layers[0].camera()
+(-120.0, 30.0)
+>>> sd.plot.surface(lambda x, y: sd.sin(x) * sd.cos(y), -3, 3, -3, 3)._cell.layers[0].camera()
+(-60.0, 30.0)
+>>> sd.plot.surface(lambda x, y: sd.tanh(6 * (x + y)), -1, 1, -1, 1, elevation=55)._cell.layers[0].camera()
+(-150.0, 55.0)
+```
+
+계단 $\tanh(6(x + y))$의 가파른 면은 $x + y$가 줄어드는 쪽, 곧 x와 y가 함께 작은 쪽을 향해요. 늘 쓰던 방향은 그 면을 비스듬히 옆에서 봐서 면이 좁게 보이고 높은 쪽 판이 낮은 쪽을 가려요. 고른 방향은 면을 정면으로 봐요.
+
+```python
+>>> fig = sd.plot.grid([sd.plot.surface(lambda x, y: sd.tanh(6 * (x + y)) + 0.2 * sd.sin(4 * x), -1, 1, -1, 1,
+...                                     azimuth=-60, elevation=30), step], ncols=2, width=116)
+```
+
+<PlotImage name="in-camera-step" format="png" alt="같은 계단 모양 곡면을 두 방향에서 본 그림. 왼쪽은 계단의 가파른 면이 옆으로 좁게 보이고, 오른쪽은 가파른 면이 정면으로 넓게 보인다" caption="왼쪽은 늘 쓰던 방향(−60°, 30°), 오른쪽은 고른 방향(−120°, 30°)이에요. 오른쪽에서 가파른 면이 그림의 대부분을 차지해요." />
+
+### 점수
+
+```python
+        # src/stardust/plot/_surface.py
+        vert, tri, loose, base = [], [], [], 0
+        for X, Y, Z, *_ in self.surfaces:
+            sy, sx = (max(1, -(-(n - 1) // VIEW_GRID)) for n in X.shape)
+            cols = [sd.reshape(box(k, c[::sy, ::sx]), (-1,)) for k, c in enumerate((X, Y, Z))]
+            ny, nx = X[::sy, ::sx].shape
+            vert.append(bytes(memoryview(sd.reshape(sd.stack(cols, axis=1), (-1,)))))
+            idx = sd.reshape(sd.arange(0, ny * nx), (ny, nx)) + base
+            p00, p01, p10, p11 = (
+                sd.reshape(q, (-1,)) for q in (idx[:-1, :-1], idx[:-1, 1:], idx[1:, :-1], idx[1:, 1:])
+            )
+            tri.append(bytes(memoryview(sd.reshape(sd.stack([p00, p01, p11, p00, p11, p10], axis=1), (-1,)))))
+            base += ny * nx
+        for group, most in ((self.curves, 300), (self.points, 600)):
+            for x, y, z, *_ in group:
+                step = max(1, -(-x.shape[0] // most))
+                cols = [box(k, c[::step]) for k, c in enumerate((x, y, z))]
+                loose.append(bytes(memoryview(sd.reshape(sd.stack(cols, axis=1), (-1,)))))
+```
+
+점수는 장면의 성긴 사본으로 매겨요. 곡면은 첫 격자를 한 방향 32칸 안쪽이 되도록 건너뛰어 읽고(121점 격자면 네 점에 하나, 31 × 31점), 상자 밖의 높이는 상자의 면으로 눌러요. 곡선은 300점, 점 묶음은 600점까지만 남겨요. 시점마다 두 수를 C++의 `view_scores`가 계산해요. 24개의 시점은 스레드풀에서 나란히 재요.
+
+**곡면의 보이는 몫.** 성긴 사본을 160 × 160 표본의 깊이 버퍼에 그리되, 표본에 색 대신 가장 가까운 삼각형의 번호를 남겨요. 그러면 삼각형마다 몇 표본에서 보이는지(`seen`)가 나와요.
+
+```cpp
+            // csrc/plot/zbuffer.cpp
+            double sum = 0.0;
+            for (std::size_t t = 0; t < nt; ++t) {
+                if (!(flat[t] > 0.0)) continue;
+                const double share = std::min(1.0, seen[t] / std::max(flat[t], 1.0));
+                // the size a triangle facing the eye would have there (nearer ones are drawn larger)
+                const double zc = (pz[tri[3 * t]] + pz[tri[3 * t + 1]] + pz[tri[3 * t + 2]]) / 3.0;
+                const double f = distance > 0.0 ? distance / std::max(distance - zc, 1e-9) : 1.0;
+                const double cosine = std::min(1.0, flat[t] / (area[t] * scale * scale * f * f));
+                sum += area[t] * share * std::sqrt(std::sqrt(cosine));
+            }
+            out[2 * vi] = sum / total;
+```
+
+삼각형 $t$의 장면 넓이를 $S_t$, 화면 넓이를 $F_t$(표본 단위)라 하면,
+
+- **가리지 않은 몫** $\text{share}_t = \min(1, \text{seen}_t / F_t)$. 다른 부분에 가린 삼각형은 화면 넓이만큼 표본을 얻지 못해요.
+- **보이는 각** $\cos\theta_t = F_t / (S_t\,k^2 f^2)$. 평면 도형을 투영하면 넓이가 법선과 시선의 코사인만큼 줄어드는 성질을 거꾸로 써서, 법선을 따로 계산하지 않고 두 넓이의 비로 코사인을 얻어요. $k$는 표본 배율, $f$는 그 깊이의 원근 배율이에요.
+
+점수는 $\sum_t S_t\,\text{share}_t\,(\cos\theta_t)^{1/4} / \sum_t S_t$이고, 곡면의 넓이 가운데 "보이는 몫"이에요. 코사인을 그대로 곱하면 비스듬히 보이는 면이 크게 깎여서 곡면을 위에서 내려다보는 시점만 이기고, 아예 빼면 옆으로 누운 면도 다 세어요. 네제곱근을 쓰면 $\cos\theta = 0.5$(60°)인 면이 0.84만큼 세어지고, 0.01(거의 옆으로 누움)인 면은 0.32만큼만 세어져요.
+
+**곡선과 점의 퍼짐.** 곡선과 점을 화면에 투영한 좌표의 공분산 행렬 $\Sigma$에서 $\sqrt{\det\Sigma}$를 써요. 점구름이 화면에서 차지하는 타원의 넓이에 비례하는 값이라, 평평한 점구름을 옆에서 보아 한 줄로 겹치는 시점은 0에 가까워요.
+
+```python
+>>> pts = sd.plot.scatter3d([math.cos(i) * (1 + i % 7) / 4 for i in range(200)],
+...                         [0.01 * math.sin(3 * i) for i in range(200)],
+...                         [math.sin(i * 1.7) * (1 + i % 5) / 3 for i in range(200)])
+>>> pts._cell.layers[0].camera()
+(-60.0, 18.0)
+```
+
+거의 $y = 0$ 평면에 놓인 점들이에요. 방위각 ±120°와 ±60°는 그 평면을 비스듬히, ±30°와 ±150°는 거의 옆에서 봐요. 퍼짐이 큰 쪽 가운데 늘 쓰던 방위각이 골라졌어요.
+
+### 합치기와 늘 쓰던 방향
+
+```python
+        # src/stardust/plot/_surface.py
+        spread = max(scores[1::2]) or 1.0
+        best, top = views[0], -1.0
+        for i, (a, e) in enumerate(views):
+            total = scores[2 * i] + (0.15 if tri else 1.0) * scores[2 * i + 1] / spread
+            total += VIEW_USUAL[0] * (a == VIEW_AZIMUTHS[0]) + VIEW_USUAL[1] * (e == VIEW_ELEVATIONS[0])
+            if total > top:
+                best, top = (a, e), total
+        self._chosen = (key, best)
+        return best
+```
+
+퍼짐은 가장 큰 값으로 나눠 0–1로 맞추고, 곡면이 있는 칸에서는 0.15배만 더해요. 곡면이 있으면 곡면의 보이는 몫이 주로 정하게 하는 무게예요. 곡면이 없으면 퍼짐이 그대로 점수예요.
+
+늘 쓰던 방향은 방위각 −60°가 0.03, 고도 30°가 0.07만큼 앞서서 출발해요. 점수는 많아야 1이니, 다른 시점이 이 차이보다 더 보여 줄 것이 없으면 늘 쓰던 방향이 남아요. 둘의 차이를 아래 열지도로 볼 수 있어요. 계단 곡면의 성긴 사본을 `camera`와 같은 꼴로 만들어 `view_scores`를 직접 불렀어요.
+
+```python
+>>> from stardust._core import plot as core
+>>> sp = step._cell.layers[0]
+>>> lo, hi = sp.limits()
+>>> B = sp.box_of(lo, hi)
+>>> X, Y, Z = (sd.clip((a[::4, ::4] - lo[k]) * (2 * B[k] / (hi[k] - lo[k])) - B[k], min=-B[k], max=B[k])
+...            for k, a in enumerate(sp.surfaces[0][:3]))
+>>> xyz = bytes(memoryview(sd.reshape(sd.stack([X, Y, Z], axis=2), (-1,))))
+>>> i = sd.reshape(sd.arange(0, 31 * 31), (31, 31))
+>>> q = [sd.reshape(c, (-1,)) for c in (i[:-1, :-1], i[:-1, 1:], i[1:, :-1], i[1:, 1:])]
+>>> tri = bytes(memoryview(sd.reshape(sd.stack([q[0], q[1], q[3], q[0], q[3], q[2]], axis=1), (-1,))))
+>>> views = [(a, e) for a in _surface.VIEW_AZIMUTHS for e in _surface.VIEW_ELEVATIONS]
+>>> rots = [v for a, e in views for row in _surface._rot(a, e) for v in row]
+>>> s = core.view_scores(xyz, tri, b"", rots, _surface.DISTANCE, math.sqrt(sum(b * b for b in B)), 160)
+>>> area = sd.reshape(sd.asarray(s[0::2]), (8, 3)).T
+>>> round(float(area[0, 0]), 3), round(float(area[0, 7]), 3), round(float(area[2, 7]), 3)
+(0.71, 0.817, 0.854)
+>>> g = sd.plot.heatmap(area, xlabels=[f"${a:g}^\\circ$" for a in _surface.VIEW_AZIMUTHS],
+...                     ylabels=[f"${e:g}^\\circ$" for e in _surface.VIEW_ELEVATIONS], annotate=True)
+>>> g = g.xlabel("방위각").ylabel("고도")
+```
+
+<PlotImage name="in-camera-scores" of="g" alt="세 줄 여덟 칸의 열지도. 가로는 방위각 −60°부터 −120°까지, 세로는 고도 30°, 18°, 42°이고, 칸마다 0.29에서 0.85 사이의 점수가 적혀 있다. −150°와 −120° 열이 가장 높다" caption="계단 곡면의 시점별 보이는 몫이에요. 가장 높은 칸은 (−120°, 42°)의 0.854이지만, 고도 30°의 앞섬 0.07을 더한 (−120°, 30°)가 0.887로 골라져요." />
+
+### 다시 고르는 때
+
+고른 시점은 `_chosen`에 장면의 열쇠와 함께 남아요. 열쇠는 곡면, 곡선, 점 묶음의 수와 `zlim`, 상자의 비율 규칙이에요. 칸에 층을 더하면 열쇠가 바뀌어 다음 그리기에서 다시 골라요. 층을 더하지 않는 한 같은 칸을 여러 번 출력해도 한 번만 골라요.
+
+공간 곡선은 시점을 고르기 전에 표본을 정해야 해서, 표본기가 쓰는 화면은 늘 쓰던 방향의 화면이에요([곡면의 표본](/internals/plot/surface/#공간-곡선)).
+
+## 칸에 맞추기
+
+### 그림 사각형의 비율
+
+상자의 꼭짓점 여덟을 배율 1로 투영해 화면의 경계 상자를 얻고, 그 높이 ÷ 너비가 칸의 그림 사각형의 비율이에요.
+
+```python
+    # src/stardust/plot/_surface.py
+    def outline(self, lo, hi):
+        """The box's half sizes and the bounds (x0, x1, y0, y1) of its projection at scale 1
+        (y down, as on the page)."""
+        box = self.box_of(lo, hi)
+        rot = self.rotation()
+        pr = [
+            self.project((sx * box[0], sy * box[1], sz * box[2]), rot)
+            for sx in (-1, 1)
+            for sy in (-1, 1)
+            for sz in (-1, 1)
+        ]
+        return box, (min(p[0] for p in pr), max(p[0] for p in pr), min(p[1] for p in pr), max(p[1] for p in pr))
+
+    def aspect(self):
+        """Height over width of the box's projection: the shape of the cell's plot rectangle."""
+        _, (x0, x1, y0, y1) = self.outline(*self.limits())
+        return (y1 - y0) / (x1 - x0)
+```
+
+[배치](/internals/plot/layout/)는 이 비율을 두 군데에서 써요. 그림의 높이를 주지 않았을 때 줄의 높이를 정하는 `shapes`와, 칸 안에서 그림 사각형을 정하는 `_measure`예요.
+
+```python
+    # src/stardust/plot/_figure.py
+    def shapes(pw):
+        """The plot heights of the rows of a figure without a height: 4:3 where a row holds a 2D
+        plot, else the tallest of its 3D boxes' projections."""
+        out = []
+        for r in range(nr):
+            row = fig._cells[r * nc : (r + 1) * nc]
+            spaces = [c.layers[0] for c in row if not c.frame and c.layers and hasattr(c.layers[0], "aspect")]
+            flat = any(c.frame for c in row) or not spaces
+            out.append(0.75 * pw[0] if flat else pw[0] * min(max(sp.aspect() for sp in spaces), 1.25))
+        return out
+```
+
+3D 칸만 있는 줄은 상자의 투영 비율 가운데 가장 큰 것을 줄의 비율로 써요(1.25까지). 그래서 그림의 높이가 상자의 모양을 따라가요. 2D 칸이 하나라도 있는 줄은 2D의 4 : 3이고, 3D 칸은 그 안에 상자의 비율로 들어가 가운데에 놓여요. 2D 칸 옆의 3D 칸은 줄의 위아래에 맞춰 서요.
+
+```python
+>>> wave = sd.plot.surface(lambda x, y: sd.sin(x) * sd.cos(y), -3, 3, -3, 3)
+>>> round(wave._cell.layers[0].aspect(), 3), wave.width, round(wave.height, 2)
+(0.918, 89.0, 78.04)
+>>> round(torus._cell.layers[0].aspect(), 3), torus.width, round(torus.height, 2)
+(0.708, 89.0, 61.86)
+```
+
+### 여백
+
+3D 칸의 여백은 `margins`가 글자의 실제 크기로 재요. 왼쪽에는 z 눈금의 가장 넓은 숫자와 z축 이름의 너비(z축 이름은 돌려 세우지 않고 가로로 놓아요), 아래에는 눈금 숫자 한 줄과(x나 y의 이름이 있으면) 이름 한 줄, 오른쪽에는 x·y 눈금 숫자 너비의 반이에요. 눈금은 아직 몇 개일지 모르므로 축마다 4개를 가정한 숫자로 재요. 배치가 이 여백을 2D 칸의 여백과 함께 풀어 그림 사각형을 정하므로, 같은 줄과 열의 칸들과 그림 사각형의 가장자리가 맞아요. 이름을 준 곡선이나 점(`curve3d`·`scatter3d`의 `label`, `scatter3d`의 `group`)이 있으면 범례가 상자 오른쪽 밖에 서고, 배치가 그 너비를 오른쪽 여백에 더해요([배치](/internals/plot/layout/)).
+
+### 배율과 자리
+
+```python
+        # src/stardust/plot/_surface.py
+        scale = min(fr.w / (bx1 - bx0), fr.h / (by1 - by0))
+        cx = fr.x + (fr.w - scale * (bx1 - bx0)) / 2 - scale * bx0
+        cy = fr.y + (fr.h - scale * (by1 - by0)) / 2 - scale * by0
+```
+
+상자의 투영이 그림 사각형에 들어가는 가장 큰 배율을 고르고 가운데에 놓아요. 2D 칸의 축이 그림 사각형의 테두리이듯, 3D 칸에서는 상자의 투영이 그 사각형을 채워요.
+
+## 상자 축 그리기
+
+장면에 넣는 차례가 곧 쌓이는 차례예요(뒤에 넣은 것이 위). 3D 칸은 상자의 뒤쪽 면을 먼저, 그림을 다음에, 축을 마지막에 넣어요.
+
+```python
+>>> import itertools
+>>> kinds = [it["type"] for it in wave.scene()["items"]]
+>>> [(k, len(list(run))) for k, run in itertools.groupby(kinds)]
+[('path', 7), ('image', 1), ('path', 1), ('text', 7), ('path', 2), ('text', 3), ('path', 2), ('text', 5), ('path', 1)]
+```
+
+첫 경로는 그림 전체의 흰 바탕이고, 다음 여섯이 뒤쪽 세 면의 격자와 테두리예요. 그 위에 곡면의 그림 한 장, 그 위에 x축(모서리, 눈금 숫자 7, 눈금), y축(숫자 3), z축(숫자 5)이 차례로 얹혀요. 이 시점에서 y축은 눈 쪽으로 누워 화면에서 짧으므로 눈금을 덜 받아요.
+
+### 뒤쪽 세 면
+
+```python
+        # src/stardust/plot/_surface.py
+        # the faces behind the scene: for each axis, the side turned away from the eye
+        back = [-BOX[k] if eye[k] > 0 else BOX[k] for k in range(3)]
+        front = [-b for b in back]
+```
+
+축마다 눈이 있는 쪽의 반대편 면이 뒤쪽 면이에요. 눈의 방향 성분 `eye[k]`가 양수면 눈은 $+k$ 쪽에 있으니 $-B_k$의 면이 뒤예요. 이 세 면은 곡면 뒤에 있으므로 그림보다 먼저 그려도 가려질 것이 가려져요. 면은 채우지 않고 옅은 테두리와 눈금 자리의 격자선만 그려요. 그림의 빈 자리(곡면이 없는 표본)는 투명해서 그 사이로 면의 격자가 보여요.
+
+### 세 축
+
+```python
+        # src/stardust/plot/_surface.py
+        zc = min(
+            ((back[0], front[1]), (front[0], back[1])), key=lambda c: P((c[0], c[1], 0.0))[0]
+        )  # the left of the two
+        axes = [
+            (0, edge(0, (0.0, front[1], -BOX[2])), (0.0, front[1] / BOX[1], -0.35)),
+            (1, edge(1, (front[0], 0.0, -BOX[2])), (front[0] / BOX[0], 0.0, -0.35)),
+            (2, edge(2, (zc[0], zc[1], 0.0)), (zc[0] / BOX[0], zc[1] / BOX[1], 0.0)),
+        ]
+```
+
+x축과 y축은 바닥의 앞쪽 모서리, 눈에 가까운 쪽에 그려요. 곡면 앞에 있으니 가려지지 않아요. z축은 옆의 세로 모서리 둘(뒤–앞, 앞–뒤 모서리) 가운데 화면에서 왼쪽에 있는 것이에요. 세 번째 값 `out`은 눈금이 뻗는 방향이에요. 모서리의 가운데에서 상자 밖으로 조금(바닥 모서리는 조금 아래로) 나간 점을 투영해 화면의 방향을 얻고, 눈금과 숫자를 그 방향으로 놓아요. 숫자의 중심은 눈금 끝에서 숫자 상자의 반 크기를 그 방향으로 잰 만큼 더 나가요. 그래서 숫자가 어느 각도의 모서리에서도 모서리에 닿지 않아요. 축 이름은 가장 먼 숫자 너머에 같은 방향으로 놓여요.
+
+```python
+        # src/stardust/plot/_surface.py
+        # as many ticks as the drawn length of each axis has room for (an axis seen end on is short)
+        drawn = {k_: math.dist(P(a), P(b)) for k_, (a, b), _ in axes}
+        want = [max(2, min(6, round(drawn[k] * 0.8 / (24.0 if k < 2 else 18.0)) + 1)) for k in range(3)]
+```
+
+눈금의 수는 축이 **화면에 그려진 길이**에 맞춰요. 축의 두 끝을 투영한 점 사이의 거리를 재고, x와 y는 24 bp, z는 18 bp에 하나꼴로 2–6개를 원해요. [확장 Wilkinson 눈금](/internals/plot/layout/)이 그 수에 가까운 고운 값을 골라요. 상자의 변이 같아도 눈 쪽으로 누운 축은 화면에서 짧으므로 눈금을 덜 받아요. 거의 정면으로 보이는 축(그려진 길이 14 bp 미만)은 눈금을 그리지 않아요. 눈금이 한 점에 겹쳐 읽을 수 없기 때문이에요.
+
+### 눈금 숫자 솎기
+
+x축과 y축은 바닥의 한 꼭짓점에서 만나요. 두 축의 끝 눈금이 그 꼭짓점 가까이에 있으면 두 숫자가 나란히 붙어 한 수처럼 읽히거나 어느 축의 것인지 알 수 없게 돼요. 그래서 숫자를 놓을 때마다 이미 놓은 숫자들의 상자와 견줘요.
+
+```python
+                # src/stardust/plot/_surface.py
+                rect = (lx - w / 2, ly - (h + d) / 2, lx + w / 2, ly + (h + d) / 2)
+                # A label needs clear room around it: a little from its own axis's labels, and from
+                # another axis's (at a corner where two axes meet) enough that the two numbers are
+                # not read as one or as each other's.
+                if any(
+                    rect[0] - q[2] < gx and q[0] - rect[2] < gx and rect[1] - q[3] < gy and q[1] - rect[3] < gy
+                    for q, (gx, gy) in ((q, (3.0, 2.0) if n == k_ else (ts, 0.6 * ts)) for n, q in placed)
+                ):
+                    continue  # left out
+                placed.append((k_, rect))
+```
+
+두 상자 사이의 틈이 가로와 세로 **모두** 모자라면 그 숫자를 빼요. 필요한 틈은 상대가 누구냐에 따라 달라요. 같은 축의 숫자끼리는 가로 3 bp, 세로 2 bp면 돼요. 다른 축의 숫자와는 가로로 눈금 글자 크기만큼, 세로로 그 0.6배만큼 떨어져야 해요. 축은 x, y, z의 차례로 그리므로 꼭짓점에서 부딪히면 나중 축의 숫자가 빠져요. 눈금 선은 빼지 않아요. 숫자가 빠진 자리에도 눈금은 남아 간격을 읽을 수 있어요.
+
+## 그림 한 장과 한 번만 굽기
+
+곡면의 그림은 칸의 그림 사각형을 출력의 dpi로 잰 크기예요. 장면은 크기를 bp로 갖는 벡터 모델이지만, 3D 칸의 그림만은 한 해상도로 구운 화소예요.
+
+```python
+    # src/stardust/plot/_figure.py
+    def _build(self, who, dpi=300.0):
+        r = self._root
+        # a figure with a 3D cell holds a picture made for one resolution
+        if r._scene is not None and getattr(r, "_scene_dpi", dpi) != dpi and any(not c.frame for c in r._cells):
+            r._scene = None
+```
+
+그림은 한 번 만든 장면을 SVG, PDF, PNG가 함께 쓰는데, 3D 칸이 있으면 장면에 든 그림의 해상도가 다를 수 있어서 dpi가 바뀌면 장면을 다시 만들어요. `to_svg()`와 `to_pdf()`는 300 dpi의 그림을 넣고, `to_png(dpi=...)`와 `save(..., dpi=...)`는 그 dpi예요. SVG와 PDF에서 그림은 보간해서 늘리는 이미지로 들어가요.
+
+`Space`는 마지막에 구운 그림을 크기와 시점과 장면의 열쇠와 함께 남겨 둬요. 장면을 다시 지어도 같은 장면, 같은 크기면 다시 굽지 않아요. 제목이나 축 이름만 고친 뒤의 출력, 같은 dpi로 한 번 더 부른 출력이 그래요. 노트북은 3D 칸이 있는 그림을 200 dpi의 PNG 한 꼴로만 받아요([장면과 세 출력](/internals/plot/scene-outputs/)).
+
+```python
+>>> sp = wave._cell.layers[0]
+>>> picture = sp._picture
+>>> _ = wave.to_svg(), wave.to_pdf()
+>>> sp._picture is picture
+True
+```
+
+`scene()`이 이미 300 dpi로 장면을 만들었으니 SVG와 PDF는 그 장면을 그대로 쓰고, 그림도 그대로예요.

@@ -1,0 +1,219 @@
+---
+kind: function
+title: anderson
+names: [anderson]
+group: 분포 적합도
+order: 6
+signatures:
+  - "sd.htest.anderson(x, /, *, axis=None, dist=None, method='interpolate', nan_policy='propagate', keepdims=False)"
+summary: 표본이 정한 분포족(정규, 지수, 로지스틱, Gumbel, Weibull)에서 왔는지 보는 Anderson–Darling 검정이에요. 모수를 데이터에 맞춘 분포의 누적분포와 경험 분포의 차이를 꼬리에 무게를 두고 재요. p값은 임계값 표의 보간이거나 몬테카를로예요.
+params:
+  - name: x
+    type: ndarray, 실수의 시퀀스, 실수 스칼라, numpy 배열, 또는 frame의 Series·DataFrame
+    kind: positional-only
+    desc: 표본. bool·정수는 float64로 바꿔서 계산해요.
+  - name: axis
+    type: int, int의 tuple·리스트, 또는 None
+    kind: keyword-only
+    desc: 표본을 읽을 축. None(기본값)이면 모든 원소를 표본 하나로 펼쳐요. 축을 주면 그 축을 따라 표본을 읽고, 나머지 축의 칸마다 따로 검정해요.
+  - name: dist
+    type: sd.stats의 분포 클래스 또는 None
+    kind: keyword-only
+    desc: "귀무가설의 분포족. None(기본값)과 sd.stats.Normal은 정규분포, sd.stats.Exponential은 지수분포(위치 0), sd.stats.Logistic은 로지스틱분포, sd.stats.Gumbel은 최댓값의 Gumbel 분포, sd.stats.Weibull은 위치까지 맞추는 세 모수 Weibull 분포예요. 객체(sd.stats.Normal())가 아니라 클래스를 줘요."
+  - name: method
+    type: "'interpolate' 또는 MonteCarloMethod"
+    kind: keyword-only
+    desc: "p값을 구하는 방법. 'interpolate'(기본값)는 임계값 표의 보간이라 표의 수준 범위 안의 값만 나와요. MonteCarloMethod(rng=...)를 주면 맞춘 분포에서 표본을 뽑아 다시 맞추는 몬테카를로 p값이에요. 그 rvs는 None이어야 해요."
+  - name: nan_policy
+    type: str
+    kind: keyword-only
+    desc: "'propagate'(기본값, NaN이 있는 표본의 결과가 NaN), 'omit'(NaN을 빼고 계산), 'raise'(ValueError) 중 하나예요."
+  - name: keepdims
+    type: bool
+    kind: keyword-only
+    desc: True면 결과에 표본 축을 길이 1로 남겨요.
+returns:
+  type: AndersonResult
+  desc: "statistic(A²)과 pvalue가 든 결과 객체예요. 검정 하나면 Python float, 배치면 배치 모양의 배열이에요. (statistic, pvalue) 둘로 풀려요."
+raises:
+  - type: TypeError
+    desc: dist가 분포 클래스가 아닐 때(문자열 'norm', 분포 객체 등), method가 문자열이나 MonteCarloMethod가 아닐 때, x가 수의 배열·시퀀스·frame이 아니거나 복소수일 때, axis·keepdims의 형이 틀렸을 때, 옵션을 위치로 주거나 없는 키워드를 줬을 때.
+  - type: ValueError
+    desc: "dist가 받지 않는 분포 클래스(sd.stats.Gamma 등)일 때, method가 'interpolate'가 아닌 문자열일 때, MonteCarloMethod의 rvs가 None이 아닐 때, axis가 범위 밖이거나 겹칠 때, nan_policy 이름이 틀렸거나 nan_policy='raise'인데 NaN이 있을 때."
+seeAlso: [shapiro, ks_1samp, cramervonmises, goodness_of_fit, anderson_ksamp, methods, basics, results]
+---
+import Callout from '../../../components/Callout.astro';
+
+## 한눈에 보기
+
+Anderson–Darling 검정은 "이 데이터가 어떤 분포족(예: 지수분포)에서 왔다고 봐도 되나요?"를 물어요. 분포족의 모수(지수분포면 평균)는 데이터에서 맞춰요.
+
+- **귀무가설**: 표본이 `dist`의 분포족 가운데 어떤 분포에서 왔어요.
+- **대립가설**: 그 분포족이 아닌 분포에서 왔어요.
+
+부품 마흔 개의 수명(시간)을 쟀어요. 정규분포인지, 지수분포인지 견줘 봐요.
+
+```python
+>>> import stardust as sd
+>>> life = sd.stats.Exponential(scale=10.0).sample(40, rng=sd.random.default_rng(5))
+>>> sd.htest.anderson(life)
+AndersonResult(statistic=1.79135, pvalue=0.01)
+>>> sd.htest.anderson(life, dist=sd.stats.Exponential)
+AndersonResult(statistic=0.384459, pvalue=0.15)
+```
+
+정규분포로는 $A^2 = 1.79$로 p값이 표의 가장 작은 수준인 0.01에 닿고, 지수분포로는 $A^2 = 0.38$로 표의 가장 큰 수준인 0.15에 닿아요. 지수분포로 보는 편이 잘 맞아요. 0.01과 0.15는 "0.01 이하", "0.15 이상"으로 읽어요([아래](#p값-표의-보간)).
+
+<Reference />
+
+## 통계량
+
+정렬한 표본을 $x_{(1)} \le \dots \le x_{(n)}$, 데이터에 맞춘 분포의 누적분포를 $F$라 해요.
+
+$$
+A^2 = -n - \frac{1}{n}\sum_{i=1}^{n} (2i - 1)\left[\log F(x_{(i)}) + \log\bigl(1 - F(x_{(n+1-i)})\bigr)\right]
+$$
+
+$A^2$는 경험 분포 함수 $F_n$과 $F$의 차의 제곱을 $1/(F(1 - F))$의 무게로 모은 값이에요. 무게가 $F$가 0이나 1에 가까운 곳(꼬리)에서 커서, 꼬리의 어긋남을 [`cramervonmises`](/api/htest/cramervonmises/)나 [`ks_1samp`](/api/htest/ks_1samp/)보다 무겁게 봐요. 잘 맞으면 작고 어긋나면 커요.
+
+맞추는 모수는 분포족마다 정해져 있어요.
+
+| `dist` | 분포족 | 데이터에 맞추는 모수 |
+|---|---|---|
+| None, `sd.stats.Normal` | 정규분포 | 평균, 표준편차(n − 1로 나눔) |
+| `sd.stats.Exponential` | 지수분포(위치 0) | 평균(척도) |
+| `sd.stats.Logistic` | 로지스틱분포 | 위치와 척도의 최우추정 |
+| `sd.stats.Gumbel` | 최댓값의 Gumbel 분포 | 위치와 척도의 최우추정 |
+| `sd.stats.Weibull` | 세 모수 Weibull 분포 | 모양, 위치, 척도의 최우추정 |
+
+모수를 데이터에서 맞추면 분포가 데이터에 가까워져서 $A^2$가 작아져요. 그래서 분포족마다 따로 만든 임계값 표를 써요. 모수가 미리 정해진 분포를 물을 때는 [`ks_1samp`](/api/htest/ks_1samp/)나 [`cramervonmises`](/api/htest/cramervonmises/)에 그 분포 객체를 줘요.
+
+## `dist`: 분포족 고르기
+
+Gumbel 분포는 해마다의 최대 강수량처럼 최댓값의 분포에 흔히 써요. 같은 표본을 세 분포족으로 물어요.
+
+```python
+>>> g = sd.stats.Gumbel(mu=20.0, sigma=3.0).sample(50, rng=sd.random.default_rng(6))
+>>> sd.htest.anderson(g, dist=sd.stats.Gumbel)
+AndersonResult(statistic=0.19534, pvalue=0.25)
+>>> sd.htest.anderson(g, dist=sd.stats.Logistic).pvalue, sd.htest.anderson(g).pvalue
+(0.07216434539718246, 0.04405544754141825)
+```
+
+Gumbel로는 p값이 표의 가장 큰 수준인 0.25(그 이상)라 잘 맞아요. 좌우 대칭인 로지스틱분포로는 0.07, 정규분포로는 0.04로 덜 맞아요.
+
+`sd.stats.Weibull`은 모양 $c$, 위치, 척도의 세 모수를 맞춰요. 위치가 가장 작은 값보다 작고 $c \ge 1$인 최우추정이 있을 때만 값이 나오고, 없으면(맞춘 모양이 1보다 작아지거나 위치가 가장 작은 값에 닿으면) 통계량과 p값이 NaN이에요.
+
+```python
+>>> wb = sd.stats.Weibull(c=2.0, scale=5.0).sample(60, rng=sd.random.default_rng(7)) + 3.0
+>>> sd.htest.anderson(wb, dist=sd.stats.Weibull)
+AndersonResult(statistic=0.532722, pvalue=0.147938)
+>>> sd.htest.anderson(life, dist=sd.stats.Weibull)
+AndersonResult(statistic=nan, pvalue=nan)
+```
+
+수명 표본은 지수분포(Weibull의 $c = 1$)에서 뽑아서, 맞춘 모양이 1 아래로 가 NaN이에요.
+
+`dist`는 분포 클래스예요. 문자열이나 분포 객체, 받지 않는 클래스는 에러예요.
+
+```python
+>>> sd.htest.anderson(life, dist='expon')
+Traceback (most recent call last):
+    ...
+TypeError: anderson(): 'dist' must be a distribution class (sd.stats.Normal, sd.stats.Exponential, sd.stats.Logistic, sd.stats.Gumbel or sd.stats.Weibull), not str
+>>> sd.htest.anderson(life, dist=sd.stats.Exponential())
+Traceback (most recent call last):
+    ...
+TypeError: anderson(): 'dist' must be a distribution class (sd.stats.Normal, sd.stats.Exponential, sd.stats.Logistic, sd.stats.Gumbel or sd.stats.Weibull), not an instance of Exponential
+>>> sd.htest.anderson(life, dist=sd.stats.Gamma)
+Traceback (most recent call last):
+    ...
+ValueError: anderson(): 'dist' must be sd.stats.Normal, sd.stats.Exponential, sd.stats.Logistic, sd.stats.Gumbel or sd.stats.Weibull, not sd.stats.Gamma
+```
+
+## p값: 표의 보간
+
+$A^2$의 분포는 분포족과 표본 크기에 따라 다르고 닫힌 꼴이 없어요. `method='interpolate'`(기본값)는 Stephens(Weibull은 Lockhart–Stephens)의 임계값 표를 표본 크기에 맞게 고친 뒤, 몇 개의 유의수준 사이를 선형 보간해요. 그래서 p값은 표의 수준 범위 밖으로 나가지 않아요.
+
+| 분포족 | p값의 범위 |
+|---|---|
+| 정규분포, 지수분포 | 0.01–0.15 |
+| 로지스틱분포 | 0.005–0.25 |
+| Gumbel 분포 | 0.01–0.25 |
+| Weibull 분포 | 0.005–0.5 |
+
+범위의 끝은 "그 이상" 또는 "그 이하"라는 뜻이에요. 위의 Gumbel 표본은 p = 0.25라 0.25 이상이라는 것만 알 수 있어요. 범위 안의 값도 보간이라 대략의 값이에요.
+
+<Callout type="note" title="정확한 p값이 필요하면 몬테카를로">
+표의 끝에 닿거나 보간보다 정밀한 p값이 필요하면 `method=sd.htest.MonteCarloMethod(rng=...)`를 줘요. 맞춘 분포에서 같은 크기의 표본을 여러 번 뽑아 매번 모수를 다시 맞추고 $A^2$를 구해서, 관측한 $A^2$ 이상이 나온 비율을 p값으로 써요.
+</Callout>
+
+```python
+>>> mc = sd.htest.MonteCarloMethod(n_resamples=999, rng=sd.random.default_rng(1))
+>>> sd.htest.anderson(life, dist=sd.stats.Exponential, method=mc)
+AndersonResult(statistic=0.384459, pvalue=0.67)
+```
+
+표로는 "0.15 이상"이었던 p값이 0.67로 나와요. 몬테카를로 p값은 무작위라 같은 `rng` 상태일 때만 같은 값이에요. 뽑는 횟수 `n_resamples`가 클수록 p값의 흔들림이 작아요. 설정 객체는 [재표본 방법](/api/htest/methods/)에, 같은 계산을 다른 통계량과 분포족으로 하는 함수는 [`goodness_of_fit`](/api/htest/goodness_of_fit/)에 있어요.
+
+## 결과 읽기
+
+결과는 `statistic`(A²)과 `pvalue`이고, 둘로 풀 수 있어요. 필드는 읽기만 해요.
+
+```python
+>>> a2, p = sd.htest.anderson(life, dist=sd.stats.Exponential)
+>>> a2
+0.38445858236245556
+>>> print(sd.htest.anderson(g, dist=sd.stats.Gumbel).summary())
+                            Anderson-Darling test
+==============================================================================
+Statistic:                      0.1953  No. Observations:                   50
+P-value:                         0.250  Distribution:                   Gumbel
+==============================================================================
+```
+
+머리 오른쪽에 분포족이 있어요. 몬테카를로 p값이면 그 방법과 뽑은 횟수도 적혀요. 결과 객체의 공통 규칙은 [결과 객체 읽기](/api/htest/results/)에 있어요.
+
+## 여러 표본을 한 번에
+
+`axis`를 주면 그 축을 따라 표본을 읽고 나머지 축의 칸마다 따로 검정해요. 몬테카를로 p값도 줄마다 차례로 뽑아요. NaN은 `nan_policy`를 따라요. 공통 규칙은 [가설검정의 기본](/api/htest/basics/)에 있어요.
+
+```python
+>>> b = sd.stats.Exponential().sample((3, 30), rng=sd.random.default_rng(8))
+>>> sd.htest.anderson(b, axis=1, dist=sd.stats.Exponential).pvalue
+array([0.11545734026462379,                0.15,                0.15], dtype=float64)
+>>> sd.htest.anderson(b, axis=1).pvalue
+array([                0.01,                 0.01, 0.055888468523679305], dtype=float64)
+```
+
+## 특수한 경우
+
+- **값이 2개 미만**이거나 **모든 값이 같으면** NaN이에요.
+- 세 모수 Weibull의 최우추정이 없으면 NaN이에요(위).
+
+```python
+>>> sd.htest.anderson([1.0]), sd.htest.anderson([2.0, 2.0, 2.0])
+(AndersonResult(statistic=nan, pvalue=nan), AndersonResult(statistic=nan, pvalue=nan))
+>>> sd.htest.anderson(life, method='approx')
+Traceback (most recent call last):
+    ...
+ValueError: anderson(): 'method' must be 'interpolate' or a MonteCarloMethod, not 'approx'
+```
+
+## 정확도
+
+- 모수의 최우추정은 끝자리까지 풀어요. 참값은 Arb(구간 산술)의 뉴턴 반복으로 맞춘 모수에서 계산한 $A^2$이고, 11문제에서 상대오차가 4.3e-13 안이에요.
+- $A^2$는 크기 $n$쯤의 항들이 서로 지워져 1쯤의 값이 남는 합이라, 항의 반올림이 남는 값에 비해 커져요(n = 2000에서 그 배율이 1.6e4). 약속은 이 배율을 곱한 상대 1e-14이고, 잰 오차는 그 0.007배예요.
+- p값은 표와 보간식 그대로의 값에 대해 같은 크기예요. 몬테카를로 p값은 무작위라 약속이 없고, 같은 `rng` 상태와 입력이면 같은 비트예요. 지금은 스레드 수와도 상관없이 같아요(약속은 아니에요).
+- 모든 값에 같은 수를 곱해도 통계량은 반올림 차이 안에서 그대로예요. 1e300배나 서브노멀인 1e-310배처럼 제곱하면 float64를 넘거나 0이 되는 크기도 2의 거듭제곱 단위로 옮겨 계산해요.
+
+## scipy를 아는 분께
+
+scipy 1.18.1 기준이에요.
+
+- `scipy.stats.anderson(x, dist='norm', method='interpolate')`의 꼴이에요. `dist`는 문자열이 아니라 sd.stats의 분포 클래스예요(`'norm'` → `sd.stats.Normal`, `'expon'` → `Exponential`, `'logistic'` → `Logistic`, `'gumbel_r'` → `Gumbel`, `'weibull_min'` → `Weibull`).
+- 결과는 언제나 `statistic`, `pvalue`예요. scipy 1.18.1은 `method`를 주지 않으면 경고와 함께 옛 꼴(`critical_values`, `significance_level`, `fit_result`)을 내요. 여기서는 `'interpolate'`가 기본값이고 옛 꼴은 없어요.
+- 표와 보간은 scipy와 같아서 p값의 범위도 같아요. 몬테카를로 p값은 scipy의 `method=MonteCarloMethod(...)`와 같은 계산이에요(`rvs`는 None이어야 해요).
+- 로지스틱분포의 맞추기를 끝자리까지 풀어요. scipy는 허용오차 1e-5로 풀어서 정규분포의 표본 300개에서 $A^2$가 7.8e-9, p값이 3.9e-8 틀려요.
+- 세 모수 Weibull의 최우추정이 없으면 NaN이에요. scipy는 `ValueError`를 내요.
+- `axis`, `nan_policy`, `keepdims`로 배치를 받아요. scipy의 `anderson`에는 없어요.

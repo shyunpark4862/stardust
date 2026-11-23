@@ -1,0 +1,973 @@
+---
+title: read_csv
+group: 입출력
+order: 1
+summary: CSV 파일을 DataFrame으로 읽는 과정을 설명해요. 64바이트 블록을 비트마스크로 바꿔 바이트마다 분기하지 않고 필드를 찾고, 따옴표 개수의 홀짝으로 파일을 나눠 병렬로 읽어도 직렬과 같은 결과를 내요.
+seeAlso: [overview, columns, elementwise, parallel, performance]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import FigRow from '../../../components/fig/FigRow.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import FrameFig from '../../../components/fig/FrameFig.astro';
+import Op from '../../../components/fig/Op.astro';
+import Steps from '../../../components/fig/Steps.astro';
+
+## 한눈에 보기
+
+`sd.frame.read_csv(path)`는 CSV 파일을 읽어 [DataFrame](/api/frame/dataframe/)을 만들어요. 옵션과 결과 규칙은 [API 문서](/api/frame/read_csv/)에 있고, 이 글은 그 안에서 바이트가 어떻게 컬럼이 되는지를 설명해요.
+
+일은 거의 모두 C++ 함수 하나, `sd::frame::read_csv`(`csrc/frame/io/csv.cpp`)가 해요. Python 층(`src/stardust/frame/_io.py`)은 인자를 검사하고, 파일의 바이트를 C++에 건네고, 돌아온 컬럼으로 DataFrame을 조립할 뿐이에요.
+
+<Fig column caption="read_csv 한 번이 지나는 단계. 들여쓴 줄은 청크마다 병렬로 도는 일이에요.">
+  <Steps
+    steps={[
+      { label: 'read_csv(path, ...)', where: '_io.py', note: '인자 검사(sep은 따옴표·줄바꿈이 아닌 ASCII 한 글자, nrows ≥ 0 등). nrows가 없고 정규 파일이면 연 파일의 fd를 C++에 넘겨요. 그 밖에는 Python이 bytes로 읽고, nrows가 있으면 그 레코드가 끝나는 곳까지만 읽어요.' },
+      { label: 'read_fd(fd, size)', where: 'io/csv.cpp', note: '정규 파일: 4MB 조각을 pread로 병렬로 읽어 버퍼 하나를 채워요. GIL을 놓고 돌아요.' },
+      { label: 'Unlocked(size)', where: 'frame/parallel.hpp', note: '입력이 2¹⁷바이트 이상이면 GIL을 놓아요. 이 아래는 Python 객체를 만지지 않아요.' },
+      { label: '헤더 토큰화', where: 'io/csv.cpp', note: '첫 레코드에서 컬럼 이름을 얻고(BOM은 건너뛰어요), usecols를 파일 컬럼 번호로 바꿔요.' },
+      { label: '청크 나누기', note: '본문을 64KB~512KB 청크로 나눠요. 풀을 쓸 수 있으면 본문의 1/32, 아니면 512KB예요.' },
+      { label: 'odd_quotes', depth: 1, note: '청크마다 따옴표 개수의 홀짝. 누적 XOR로 각 청크의 시작이 따옴표 안인지 정확히 알아요.' },
+      { label: 'index_records', depth: 1, note: '청크 안에서 시작하는 레코드의 필드 끝을 structural index로 찾아 색인에 적어요. 따옴표가 있는 청크는 따옴표 규칙을 검사해요.' },
+      { label: 'parse_column', depth: 1, note: '출력 컬럼마다 색인을 따라 그 열의 필드만 읽는 루프 하나로 컬럼 조각(Part)을 만들어요. 타입 추론도 여기서 해요.' },
+      { label: 'parse_int64 / parse_double', depth: 2, where: 'ops/parse.hpp', note: '엄격한 문법 검사와 숫자 변환을 한 패스에. 흔한 십진 꼴은 끝에서 읽는 SWAR 묶음과 Eisel–Lemire로.' },
+      { label: 'ColumnBuilder::build', note: '컬럼마다 차례로. 청크들의 조각을 최종 버퍼로 옮기고 그 조각을 바로 버려요.' },
+      { label: '종류 합치기', depth: 1, note: '조각들의 종류(int, float, bool, text)를 합쳐 int64, float64, bool, string 중 하나로 정해요.' },
+      { label: 'DataFrame._new', where: '_frame.py', note: 'index_col이 있으면 그 컬럼을 Index로 옮겨요.' },
+    ]}
+  />
+</Fig>
+
+설계의 뼈대는 다섯 가지예요.
+
+1. **파일에 적힌 것과 다른 값이 나오지 않아요.** 모호한 것은 추측하지 않아요. `" 1"`은 숫자가 아니라 문자열이고, `true`는 bool이 아니라 문자열이고, `NaN`은 결측이 아니라 float의 NaN 값이에요. 형식이 틀린 파일은 고쳐 읽지 않고 줄 번호와 함께 `ValueError`를 내요. 예외는 숫자의 반올림 하나예요. float 컬럼 안의 큰 정수는 float64로 반올림돼요.
+2. **바이트마다 분기하지 않는 토크나이저.** 64바이트 블록을 "따옴표", "구분 문자", "줄바꿈" 세 개의 64비트 마스크로 바꾸고, 캐리 없는 곱셈 한 번으로 "따옴표 안" 마스크를 만들어요. 필드 경계는 마스크의 켜진 비트를 하나씩 꺼내서 찾아요. simdjson이 JSON에 쓴 structural index 기법이에요[3].
+3. **청크마다 색인하고, 열마다 읽어요.** 청크 하나를 먼저 끝까지 색인(필드마다 끝나는 바이트 하나)한 뒤, 출력 컬럼마다 그 열의 필드를 차례로 읽는 루프 하나로 값을 만들어요. 필드마다 "어느 열인가"를 고르는 분기가 없어요. 타입 추론은 값을 만들면서 해요. int로 읽다가 int가 아닌 숫자를 만나면 그때 float로 바꿔 계속 읽어요. 색인은 청크를 다 읽으면 버리고, 컬럼은 하나씩 만들며 다 옮긴 조각을 바로 버려요.
+4. **숫자 파서를 직접 구현해요.** 십진수 문자열을 가장 가까운 double로 바꾸는 일(올바른 반올림)은 생각보다 어려워요. Eisel–Lemire 알고리즘[1], Clinger의 빠른 길[5], 5의 거듭제곱 표를 `ops/parse.hpp`에 직접 썼고, 드문 경우만 `std::from_chars`로 넘겨요. 결과는 Python `float(text)`와 비트까지 같아요.
+5. **결과가 자르는 방식과 무관해요.** 파일을 바이트 청크로 나눠 병렬로 읽지만, 청크 경계가 따옴표 안인지는 따옴표 개수의 홀짝으로 정확히 알아내요. 추측하고 틀리면 다시 읽는 방식이 아니에요. 값, dtype, 에러 메시지까지 직렬로 읽은 것과 같고, 지금은 스레드 수와도 상관없이 같아요.
+
+## 파일 형식의 규칙
+
+### RFC 4180
+
+CSV에는 국제 표준이 없어요. 가장 널리 인용되는 문서가 2005년의 RFC 4180[6]이에요. 요점은 일곱 가지예요.
+
+1. 레코드 하나가 한 줄이고, 줄 끝은 CRLF(`\r\n`)예요.
+2. 마지막 레코드 뒤의 줄바꿈은 있어도 되고 없어도 돼요.
+3. 첫 줄은 헤더일 수 있어요.
+4. 필드는 쉼표로 나눠요. 모든 줄의 필드 개수가 같아야 해요. 공백도 필드의 일부예요.
+5. 필드를 큰따옴표로 감쌀 수 있어요. 감싸지 않은 필드에는 큰따옴표가 들어갈 수 없어요.
+6. 쉼표, 줄바꿈, 큰따옴표가 들어간 필드는 큰따옴표로 감싸야 해요.
+7. 감싼 필드 안의 큰따옴표는 두 번 써요(`""`).
+
+문법(ABNF)으로 쓰면 이래요.
+
+```text
+file        = [header CRLF] record *(CRLF record) [CRLF]
+record      = field *(COMMA field)
+field       = escaped / non-escaped
+escaped     = DQUOTE *(TEXTDATA / COMMA / CR / LF / 2DQUOTE) DQUOTE
+non-escaped = *TEXTDATA
+```
+
+따옴표로 감싼 필드 안에서는 쉼표와 줄바꿈이 구조가 아니라 **값**이에요. 그래서 "줄바꿈마다 레코드"라고 자를 수 없고, 어떤 바이트가 따옴표 안인지 알아야 레코드와 필드의 경계를 알 수 있어요. 이 사실이 토크나이저(다음 절)와 병렬 읽기(뒤의 청크 절)의 설계를 정해요.
+
+<Fig caption="따옴표가 있는 CSV 한 조각과 그 결과. 둘째 레코드의 b는 쉼표를, 셋째 레코드의 b는 줄바꿈과 큰따옴표를 값에 담고 있어요. 파일은 4줄이지만 레코드는 헤더를 빼고 2개예요.">
+  <ArrayFig name="파일 (줄마다)" data={[['a,b'], ['1,"x,y"'], ['2,"two'], ['lines ""q"""']]} />
+  <Op>→</Op>
+  <FrameFig name="df" columns={['a', 'b']} dtypes={['int64', 'string']} data={[[1, 'x,y'], [2, 'two\\nlines "q"']]} />
+</Fig>
+
+### stardust가 받는 형식
+
+stardust는 RFC 4180의 따옴표 규칙을 그대로 따르고, 줄 끝과 몇 가지 경계에서 규칙을 정해 두었어요. 모두 "파일의 바이트가 어떤 값이 되는지 한 가지로만 정해지게" 하려는 거예요.
+
+- 줄 끝은 `\n`과 `\r\n` 둘뿐이에요. RFC는 CRLF만 말하지만, 유닉스 계열에서 만든 파일은 대부분 `\n`이에요. `\n` 바로 앞이 아닌 `\r`은 값의 바이트예요(`x\r,y`의 첫 필드는 `x\r`). 닫는 따옴표 뒤의 `\r`은(줄 끝의 `\r\n`이 아니면) 에러예요. 옛 맥의 `\r` 줄 끝을 추측해서 받지 않아요.
+- 모든 레코드의 필드 개수가 컬럼 수와 같아야 해요. 모자라거나 남으면 에러예요. pandas는 모자란 칸을 결측으로 채워요.
+- 완전히 빈 줄은 빈 필드 하나짜리 레코드예요. 컬럼이 하나면 NA 행이고, 여럿이면 필드 개수 에러예요. 빈 줄을 건너뛰면 "빈 줄이 데이터인지"를 추측하는 셈이에요.
+- 파일 맨 앞의 UTF-8 BOM(`EF BB BF`)은 건너뛰어요.
+- NA는 따옴표 없는 빈 필드와 `na_values`의 텍스트뿐이에요. 따옴표로 감싼 빈 필드 `""`는 빈 문자열이에요. 그래서 "값이 없음"과 "빈 문자열"을 구분할 수 있어요. 텍스트 `NaN`, `inf`는 float 컬럼에서 NaN 값과 inf 값이에요.
+- 따옴표는 필드의 경계일 뿐이에요. `"12"`는 `12`와 같은 int예요.
+- string 값은 올바른 UTF-8이어야 해요. 아니면 줄 번호와 함께 에러를 내요.
+
+같은 파일을 pandas 3.1.1, Polars 2.1.0으로 읽으면 차이가 이래요.
+
+| 파일 내용 | stardust | pandas 3.1.1 | Polars 2.1.0 |
+|---|---|---|---|
+| `1,""` (따옴표 빈 필드) | 빈 문자열 | NaN | 빈 문자열 |
+| `1.5` / `NaN` / `NA` | string (`NA`는 숫자가 아님) | float64, 둘 다 NaN | string |
+| ` 1` / `2` (앞 공백) | string | int64 | string |
+| `true` / `false` | string | bool | Boolean |
+| 가운데 빈 줄 (2열) | 에러 (`line 3: expected 2 fields, got 1`) | 건너뜀 | null 행 |
+| 필드가 모자란 줄 | 에러 | 결측으로 채움 | null로 채움 |
+| `x"y` (따옴표 없는 필드 안의 따옴표) | 에러 (`a quote inside an unquoted field`) | 값 `x"y` | 에러 |
+| `1.5` / `9007199254740993` | float64, 둘째는 `9007199254740992.0` | 같음 | 같음 |
+| `"12"` / `3` | int64 | int64 | Int64 |
+
+대가는 분명해요. pandas가 너그럽게 읽는 지저분한 파일을 stardust는 에러로 거부해요. 대신 읽힌 파일에서는 값이 바뀌지 않고, 결과가 데이터의 생김새에 기대는 추측에 달려 있지 않아요.
+
+## 토크나이저: structural index
+
+토크나이저는 바이트열을 레코드와 필드로 자르는 단계예요. 결과는 필드마다 "입력의 몇 번째 바이트부터 몇 바이트, 따옴표로 감쌌는가"예요.
+
+### 바이트마다 도는 상태 기계
+
+교과서적인 방법은 바이트를 하나씩 읽으며 상태를 바꾸는 유한 상태 기계예요. 상태는 "필드 시작", "따옴표 없는 필드 안", "따옴표 안", "따옴표 안에서 따옴표를 하나 봄"(다음 바이트가 `"`면 값의 따옴표, 구분 문자면 필드 끝) 정도예요. pandas의 토크나이저(`pandas/_libs/src/parser/tokenizer.cpp`)가 이 구조예요. `START_RECORD`, `IN_QUOTED_FIELD`, `QUOTE_IN_QUOTED_FIELD` 같은 상태로 바이트마다 `switch`를 돌아요[10]. pandas 3.1.1은 여기에 평범한 바이트를 16바이트씩 SIMD로 건너뛰어 복사하는 길(`fast_scan_simd`)을 더해, 긴 필드에서 상태 기계를 덜 돌게 해요.
+
+문제는 분기예요. 바이트마다 "이게 구분 문자인가, 따옴표인가, 줄바꿈인가"를 물어요. CPU는 분기의 방향을 예측하고 미리 실행하다가 틀리면 그동안 한 일을 버리고 파이프라인을 다시 채워요. 파이프라인이 깊은 최신 코어일수록 한 번 틀릴 때 잃는 사이클이 많아요. CSV 필드는 길이가 제각각이라 "다음 바이트가 구분 문자인가"는 예측하기 어려운 분기예요.
+
+### 원래 기법: simdjson의 1단계
+
+Langdale과 Lemire는 JSON 파서 simdjson[3]에서 이 문제를 이렇게 풀었어요. 파싱을 두 단계로 나누고, 1단계에서 구조 문자(JSON의 `{ } [ ] : ,`)의 위치를 모두 찾아 정수 배열(structural index)로 만들어요. 2단계는 이 배열을 따라가며 트리를 만들어요. 1단계는 이래요.
+
+- 입력을 64바이트 블록으로 읽어요. 블록 하나가 64비트 정수 하나에 대응해서, 비트 `i`가 블록의 바이트 `i`를 나타내요.
+- 바이트를 분류해 따옴표, 구조 문자, 공백 마스크를 만들어요. x86의 `vpshufb`로 바이트의 아래 니블과 위 니블을 각각 16칸짜리 표에 찾아보고 AND해서, 분기 없이 분류해요.
+- JSON 문자열 안의 `\"`는 따옴표가 아니에요. 백슬래시가 홀수 개 이어진 뒤의 따옴표를 비트 연산으로 골라 지워요.
+- 남은 따옴표 마스크의 **prefix XOR**을 구하면 "문자열 안" 마스크가 돼요. prefix XOR은 모든 비트가 1인 수와의 **캐리 없는 곱셈**(x86 `pclmulqdq`) 한 번이에요.
+- 블록이 문자열 안에서 끝나면, 그 상태를 다음 블록으로 넘겨요.
+- 구조 문자 마스크에서 문자열 안의 비트를 지우고, 켜진 비트를 `tzcnt`(가장 낮은 켜진 비트의 위치)와 `blsr`(가장 낮은 켜진 비트 지우기)로 하나씩 꺼내 정수 배열에 써요. 한 번에 8개씩 무조건 써 두고 넘친 것은 다음 차례에 덮어써서, 켜진 비트 수에 따른 분기도 줄여요.
+
+이렇게 하면 64바이트마다 정해진 수의 SIMD 명령과 비트 연산만 하고, 바이트마다의 분기가 사라져요. 분기는 "구조 문자 하나마다" 한 번으로 줄어요. Langdale은 같은 아이디어를 CSV에 옮긴 simdcsv[7]도 공개했어요. CSV는 JSON보다 단순해요. 구조 문자가 구분 문자와 줄바꿈 둘뿐이고, 백슬래시 이스케이프가 없어요.
+
+### stardust의 토크나이저
+
+`csv.cpp`가 이 기법을 ARM NEON으로 구현해요. 본문을 읽는 것은 `Reader::index_records`이고, 64바이트 블록 하나를 처리하는 부분은 이래요.
+
+```cpp
+            // csrc/frame/io/csv.cpp
+            uint8x16_t v[4];
+            for (int j = 0; j < 4; ++j) v[j] = vld1q_u8(src + 16 * j);
+            high = vmaxq_u8(high, vmaxq_u8(vmaxq_u8(v[0], v[1]), vmaxq_u8(v[2], v[3])));
+            const std::uint64_t q = mask64(v, '"');
+            std::uint64_t in = 0;
+            if (q | static_cast<std::uint64_t>(inside)) {
+                in = prefix_xor(q) ^ (inside ? ~std::uint64_t{0} : 0);
+                inside = (in >> 63) & 1;
+            }
+            const std::uint64_t lf = mask64(v, '\n') & ~in;
+            std::uint64_t bits = (mask64(v, static_cast<std::uint8_t>(sep_)) & ~in) | lf;
+            // The zero padding of a partial block is not input: sep="\0" would match it.
+            if (partial) bits &= (std::uint64_t{1} << (n_ - base)) - 1;
+```
+
+- `v`는 64바이트를 담은 NEON 레지스터 4개예요.
+- `q`는 따옴표 마스크, `in`은 따옴표 안 마스크예요. 블록에 따옴표가 없고 따옴표 밖에서 시작했으면(`q`도 `inside`도 0) `in`은 0이라 `prefix_xor`를 건너뛰어요. 따옴표가 없는 파일에서는 블록마다 곱셈 하나를 아껴요.
+- `lf`는 따옴표 밖의 줄바꿈, `bits`는 따옴표 밖의 구분 문자와 줄바꿈이에요. 이 둘이 필드 끝이에요.
+- `high`는 블록 바이트의 최댓값을 모아요. 청크에 0x80 이상인 바이트가 하나도 없으면 모든 텍스트가 ASCII라서 올바른 UTF-8이고, 문자열 값마다 하던 UTF-8 검사를 건너뛰어요.
+
+**바이트 비교를 비트마스크로: `mask64`.** NEON에는 x86의 `movemask`(바이트마다 맨 위 비트를 모아 정수 하나로 만드는 명령)가 없어요. 그래서 세 단계를 거쳐요.
+
+1. `vceqq_u8`로 16바이트를 한꺼번에 비교해요. 같은 칸은 `0xFF`, 다른 칸은 `0x00`이 돼요.
+2. 칸마다 자기 비트의 무게(`1, 2, 4, …, 128`을 반복)와 AND해요. 같은 칸에는 그 칸의 무게만 남아요.
+3. 이웃한 바이트끼리 더하는 `vpaddq_u8`(pairwise add)를 세 단계 거쳐요. 8칸이 한 바이트로 모이고, 무게가 서로 다른 비트라서 더하기가 곧 OR예요.
+
+<Fig caption="mask64의 한 바이트가 만들어지는 과정(8칸만 그렸어요). 따옴표와 같은 칸(진한 칸)의 무게만 남고, 그것을 더하면 비트 2와 5가 켜진 바이트 0b00100100 = 36이 돼요.">
+  <ArrayFig name="바이트" data={['1', ',', '"', 'a', ',', '"', ',', '2']} tones={['', '', 'b', '', '', 'b', '', '']} />
+  <Op note="vceqq_u8">→</Op>
+  <ArrayFig name="비교" data={['00', '00', 'FF', '00', '00', 'FF', '00', '00']} tones={['m', 'm', 'b', 'm', 'm', 'b', 'm', 'm']} />
+  <Op note="AND 무게">→</Op>
+  <ArrayFig name="무게만 남김" data={[0, 0, 4, 0, 0, 32, 0, 0]} tones={['m', 'm', 'b', 'm', 'm', 'b', 'm', 'm']} />
+  <Op note="vpaddq_u8 ×3">→</Op>
+  <ArrayFig name="마스크 한 바이트" data={[36]} tones={['b']} />
+</Fig>
+
+64바이트를 이렇게 접으면 `uint64` 하나가 되고, 비트 `i`가 바이트 `i`의 비교 결과예요. 블록마다 `mask64`를 세 번(따옴표, 구분 문자, 줄바꿈) 불러요.
+
+**따옴표 안: `prefix_xor`.** 비트 `i`가 "바이트 0부터 `i`까지의 따옴표 개수가 홀수인가"인 마스크를 원해요. 그게 prefix XOR이에요.
+
+$$
+\text{in}_i = q_0 \oplus q_1 \oplus \cdots \oplus q_i
+$$
+
+이것을 비트마다 반복하지 않고 한 번에 구하는 방법이 캐리 없는 곱셈이에요. 보통 곱셈은 부분곱을 더하면서 자리올림(캐리)이 생기지만, 캐리 없는 곱셈(GF(2) 위의 다항식 곱셈)은 부분곱을 XOR로 합쳐요. $q$에 모든 비트가 1인 수 $1\cdots1$을 곱하면, 결과의 비트 $i$는 $j \le i$인 모든 $q_j$의 XOR이에요. 곱하는 수의 비트 $i-j$가 늘 1이기 때문이에요. 64×64비트 곱의 아래 64비트만 쓰면 돼요. ARM에서는 `vmull_p64`(PMULL 명령) 하나예요.
+
+```cpp
+// csrc/frame/io/csv.cpp
+std::uint64_t prefix_xor(std::uint64_t x) {
+    return vgetq_lane_u64(vreinterpretq_u64_p128(vmull_p64(x, ~std::uint64_t{0})), 0);
+}
+```
+
+여는 따옴표의 비트는 1, 닫는 따옴표의 비트는 0이 돼요. 그래서 `in`은 "여는 따옴표부터 닫는 따옴표 직전까지"예요. 앞 블록이 따옴표 안에서 끝났으면(`inside`) 결과 전체를 뒤집어요. 이 한 비트가 블록 사이를 잇는 유일한 상태예요.
+
+**필드 끝.** 구분 문자와 줄바꿈 마스크를 OR하고 따옴표 안의 비트를 지우면(`& ~in`), 남은 비트가 정확히 필드 끝이에요. 아래는 17바이트짜리 예예요.
+
+<Fig column caption={'1,"a,b"⏎2,"x""y"⏎ 의 마스크. 따옴표 안의 쉼표(바이트 4)는 필드 끝에서 지워져요. 값 안의 큰따옴표 ""(바이트 12, 13)에서는 안쪽 마스크가 잠깐 0이 됐다가 바로 1로 돌아와요. 두 따옴표 사이에 바이트가 없으니 구분 문자가 끼어들 틈이 없어요. 줄 이름: byte는 입력 바이트, q는 따옴표 위치, in = prefix_xor(q)는 따옴표 안, sep|nl은 구분 문자와 줄바꿈, end = (sep | nl) & ~in은 필드 끝(바이트 1, 7, 9, 16)이에요.'}>
+  <ArrayFig data={[['byte', '1', ',', '"', 'a', ',', 'b', '"', '\\n', '2'], ['q', 0, 0, 1, 0, 0, 0, 1, 0, 0], ['in', 0, 0, 1, 1, 1, 1, 0, 0, 0], ['sep|nl', 0, 1, 0, 0, 1, 0, 0, 1, 0], ['end', 0, 1, 0, 0, 0, 0, 0, 1, 0]]} tones={[['m', '', '', '', '', '', '', '', '', ''], ['m', 'm', 'm', 'a', 'm', 'm', 'm', 'a', 'm', 'm'], ['m', 'm', 'm', 'a', 'a', 'a', 'a', 'm', 'm', 'm'], ['m', 'm', 'a', 'm', 'm', 'a', 'm', 'm', 'a', 'm'], ['m', 'm', 'b', 'm', 'm', 'm', 'm', 'm', 'b', 'm']]} note="바이트 0–8" />
+  <ArrayFig data={[['byte', ',', '"', 'x', '"', '"', 'y', '"', '\\n'], ['q', 0, 1, 0, 1, 1, 0, 1, 0], ['in', 0, 1, 1, 0, 1, 1, 0, 0], ['sep|nl', 1, 0, 0, 0, 0, 0, 0, 1], ['end', 1, 0, 0, 0, 0, 0, 0, 1]]} tones={[['m', '', '', '', '', '', '', '', ''], ['m', 'm', 'a', 'm', 'a', 'a', 'm', 'a', 'm'], ['m', 'm', 'a', 'a', 'm', 'a', 'a', 'm', 'm'], ['m', 'a', 'm', 'm', 'm', 'm', 'm', 'm', 'a'], ['m', 'b', 'm', 'm', 'm', 'm', 'm', 'm', 'b']]} note="바이트 9–16" />
+</Fig>
+
+RFC 4180의 `""`는 따옴표가 둘이라 XOR이 상쇄돼요. 그래서 따로 처리하지 않아도 "값 안의 따옴표"가 경계를 흐트러뜨리지 않아요. JSON의 백슬래시 이스케이프를 지우는 단계가 CSV에는 필요 없는 이유예요.
+
+**비트를 하나씩 꺼내 색인에 쓰기.** simdjson처럼 필드 끝의 위치를 정수 배열에 펼쳐 둬요. 그 배열이 청크의 **색인**(`RecordIndex::ends`)이에요.
+
+```cpp
+            // csrc/frame/io/csv.cpp
+            while (bits) {
+                const int b = __builtin_ctzll(bits);
+                bits &= bits - 1;
+                const std::int64_t at = base + b;
+                if (qf) {  // the quotes of this field: those before `at` less those before the field
+                    const std::int64_t here = qbase + __builtin_popcountll(q & ((std::uint64_t{1} << b) - 1));
+                    qf[k] = RecordIndex::flag_of(here - qlast);
+                    qlast = here;
+                }
+                out[k++] = at;
+                if (at - prev > (std::int64_t{1} << 32)) [[unlikely]]
+                    big_field(first, ix, k, rec, prev, at);
+                prev = at;
+                ++count;
+                if ((lf >> b) & 1) {  // a record ends
+                    if (count != W) [[unlikely]] {
+                        finish();
+                        count_error(first, ix, k, rec, count);
+                    }
+                    count = 0;
+                    rec = at + 1;
+                    if (++ix.records == limit || rec >= end) {
+                        finish();
+                        return;
+                    }
+                }
+            }
+            qbase += __builtin_popcountll(q);
+```
+
+`__builtin_ctzll`은 가장 낮은 켜진 비트의 위치, `bits &= bits - 1`은 그 비트를 지우는 연산(x86의 `blsr`과 같아요)이에요. 꺼낸 위치를 색인에 쓰고, 줄바꿈이면 레코드 하나가 끝나요. 분기는 필드 끝마다 한 번(루프의 반복)과 64바이트마다 한 번이에요.
+
+색인은 필드마다 그 필드를 끝내는 바이트(구분 문자, 줄바꿈, 입력의 끝) 하나예요. 필드의 시작은 앞 필드의 끝 다음이니 따로 적지 않아요. 모든 레코드의 필드 수가 같아야 하므로(`W`), 레코드의 필드 수는 줄바꿈에서 바로 검사하고, 필드 (행 r, 열 i)는 언제나 `r × W + i`번째 칸이에요. 이 덕분에 뒤의 열 단위 파싱이 그 열의 필드를 계산 한 번으로 찾아가요.
+
+마지막 블록이 64바이트보다 짧으면 스택의 64바이트 버퍼에 복사하고 나머지를 0으로 채워 읽어요. 입력 버퍼 끝을 넘어 읽지 않기 위해서예요. 채운 0 바이트는 따옴표도 줄바꿈도 아니지만, 구분 문자가 NUL(`sep="\0"`)이면 구분 문자로 잡혀서 입력에 없는 필드 끝이 생겨요. 그래서 마지막 블록에서는 필드 끝 마스크를 입력 길이만큼만 남겨요(앞 발췌의 마지막 줄). `base`는 이 블록의 시작 위치이고, 비트 `n_ - base`부터 위를 지우는 AND 한 번이에요.
+
+구분 문자는 이렇게 한 바이트로 비교해요(`mask64(v, sep_)`). 그래서 `sep`은 ASCII 문자여야 해요. `·`(U+00B7)처럼 UTF-8로 두 바이트 이상인 글자는 바이트 하나와 비교할 수 없어서, Python 층(`_io.py`)이 `sep.isascii()`로 미리 거절해요(`read_csv(): 'sep' must be a single ASCII character, not '·'`).
+
+**따옴표 규칙은 따옴표가 있는 필드만 검사해요.** 마스크만으로는 "따옴표가 필드의 처음과 끝에만 있는가"를 알 수 없어요. `x"y`나 `"ab"c` 같은 틀린 필드도 마스크는 그럴듯하게 만들어지거든요. 그래서 청크에서 처음 따옴표를 보면 그때부터 필드마다 **따옴표 플래그**를 함께 적어요(위 발췌의 `qf`). 블록의 따옴표 비트를 누적해 세어 두고(`qbase`), 필드가 끝날 때 그 자리까지의 개수에서 필드 앞까지의 개수를 빼면(popcount 한 번) 그 필드 안의 따옴표 수예요.
+
+| 따옴표 수 | 플래그 | 뜻 |
+|---|---|---|
+| 0 | `kNoQuote` | 따옴표 없는 필드 |
+| 2 | `kTwoQuotes` | 처음과 끝 바이트가 따옴표인지만 보면 되는 필드 |
+| 4 이상, 홀수 | `kMoreQuotes` | `""`를 확인해야 하는 필드, 아니면 에러 |
+
+색인을 다 만들면 `check_quotes`가 플래그가 0이 아닌 필드만 검사해요. 따옴표가 없는 청크(대부분)는 플래그 배열이 아예 없고 검사도 없어요. 따옴표가 있으면 다음을 차례로 봐요.
+
+- 첫 바이트가 `"`가 아니면 `a quote inside an unquoted field`예요.
+- 마지막 바이트가 `"`가 아니면(닫는 따옴표 뒤에 다른 바이트가 붙었으면) `a closing quote must be followed by the separator or the end of the line`이에요.
+- `kMoreQuotes`인 필드는 안쪽의 따옴표가 반드시 둘씩 붙어 있어야 해요. 값을 만들 때 `""`를 `"`로 바꾸며 복사하는 것도 이 필드뿐이에요.
+
+따옴표 개수가 홀수인 채 입력이 끝나면, 열린 필드가 따옴표로 시작했는지 보고 `a quoted field is never closed`와 `a quote inside an unquoted field` 중 하나를 골라요. `x"y`처럼 따옴표 없는 필드의 따옴표 하나 때문에 파일 끝까지 "따옴표 안"이 되어 버린 경우에도 원인에 맞는 메시지가 나와요. 필드 수 에러나 입력 끝의 열린 따옴표를 만나면, 그 앞의 필드(그 레코드의 필드 포함)의 따옴표 규칙을 먼저 검사해요. 바이트를 하나씩 읽는 토크나이저가 앞에서부터 만나는 에러와 같은 에러가 나오게 하려는 거예요.
+
+**`\r`.** 줄바꿈으로 끝나는 필드는 마지막 바이트가 `\r`이면 그것을 떼어요(`\r\n` 줄 끝). 다른 곳의 `\r`은 값이에요. 따옴표 필드는 `\r`을 뗀 뒤에 "마지막 바이트가 닫는 따옴표인가"를 검사하므로, `"x"\r\n`은 받고 `"x"\r,y`는 에러예요.
+
+**헤더와 BOM.** 헤더 줄은 같은 마스크를 필드마다 꺼내 쓰는 작은 토크나이저(`Tokenizer`)로 읽어요. 파일 맨 앞의 BOM 3바이트는 이 토크나이저가 건너뛰고, 본문은 헤더(헤더가 없으면 BOM) 다음 바이트에서 시작해요. 그래서 본문의 청크는 BOM을 만날 일이 없어요.
+
+## 색인과 열 단위 파싱
+
+### 청크 하나는 세 단계예요
+
+청크 하나는 한 태스크 안에서 끝나요.
+
+1. 레코드를 색인해요(앞 절). 따옴표가 있으면 따옴표 규칙을 검사해요.
+2. 출력 컬럼마다 색인을 따라 그 열의 필드를 차례로 읽는 루프 하나로 컬럼 조각(`Part`)을 만들어요(`parse_column`). 루프 하나가 한 열의 한 종류(int, float, bool, text)만 다루니, 필드마다 "이 필드는 어느 열인가", "그 열은 지금 무엇으로 읽는 중인가"를 고르는 분기가 없어요.
+3. 색인을 버려요.
+
+필드의 텍스트는 색인의 두 칸으로 정해져요(`Reader::field`).
+
+```cpp
+    // csrc/frame/io/csv.cpp
+    FieldText field(std::int64_t first, const RecordIndex& ix, std::int64_t k, bool record_end) const {
+        std::int64_t from = k == 0 ? first : ix[k - 1] + 1;
+        std::int64_t to = ix[k];
+        // A field ending a record at a line feed: a \r just before it is the \r\n line end.
+        if (record_end && to < n_ && to > from && p_[to - 1] == '\r') --to;
+        if (const std::uint8_t qf = ix.quote_flag(k)) {  // checked by check_quotes: "..." (with "" pairs: 2)
+            return {from + 1, to - 1, true, qf == RecordIndex::kMoreQuotes};
+        }
+        return {from, to, false, false};
+    }
+```
+
+- 복사하지 않아요. 값은 입력 버퍼 안에 그대로 있고 `FieldText`는 그곳을 가리켜요. `kMoreQuotes`인 필드만 값을 만들 때 작업 문자열로 복사해요(`""` → `"`).
+- 읽을 컬럼만 다뤄요. 토큰화는 모든 바이트를 지나야 하지만, 파싱은 `usecols`로 고른 열의 필드만 찾아가요.
+
+### 메모리
+
+모든 필드의 위치를 파일 끝까지 모은 뒤 컬럼을 만들면, 숫자 한 자리 같은 짧은 필드에서 필드 위치가 원본보다 몇 배나 커요. 색인은 청크 하나만큼이라(필드마다 8바이트, 청크는 많아야 512KB) 그런 일이 없어요. 파일을 읽는 동안 메모리에 함께 올라가는 것은 이래요.
+
+| 무엇 | 크기 |
+|---|---|
+| 파일 내용 | 파일 크기 (`nrows`가 있으면 그 레코드가 끝나는 곳까지) |
+| 색인 | 지금 도는 청크마다 8바이트 × 필드 (따옴표가 있으면 1바이트 × 필드 더) |
+| 컬럼 조각 (`Part`) | 아직 만들지 않은 컬럼마다 int64·float64는 8바이트 × 행, bool은 1바이트 × 행, string은 값의 바이트 + 끝 위치 8바이트 × 행. NA가 있는 조각만 유효 표시 1바이트 × 행 |
+| 결과 컬럼의 값 | int64·float64는 8바이트 × 행, string은 바이트 + offsets 8바이트 × 행 |
+
+컬럼은 하나씩 만들어요. 한 컬럼의 조각들을 최종 버퍼로 옮기면 그 조각을 바로 버리니, 조각과 결과가 함께 있는 것은 아직 만들지 않은 컬럼뿐이에요.
+
+`nrows`가 없으면 파일 전체를 한 번에 메모리로 읽는 구조라서, 메모리보다 큰 파일은 읽을 수 없어요. 앞에서부터 조금씩 읽어 내보내는 스트리밍 읽기는 없어요. 타입 추론은 열 전체를 본 뒤에야 dtype을 정하고(뒤의 타입 추론 절), 청크 나누기도 파일 전체의 따옴표 홀짝을 써요.
+
+### 줄 번호는 에러가 났을 때만 세요
+
+에러 메시지에는 줄 번호가 들어가요. 그렇다고 레코드마다 줄을 세면 정상 경로에 일이 더해져요. 따옴표 안의 줄바꿈 때문에 "레코드 번호 + 1"이 줄 번호가 아니라서, 세려면 따옴표 안의 줄바꿈까지 세야 해요. 그래서 에러가 났을 때 `line_at`이 바이트 0부터 그 레코드의 시작까지 `\n`을 세요.
+
+```cpp
+// csrc/frame/io/csv.cpp
+std::int64_t line_at(const char* p, std::int64_t offset) {
+    std::int64_t line = 1;
+    for (std::int64_t i = 0; i < offset; ++i) line += p[i] == '\n';
+    return line;
+}
+```
+
+값 에러(지정 dtype으로 읽을 수 없는 값 등)는 색인을 버린 뒤에 알게 되기도 해요. 그때는 그 청크를 그 행까지 다시 색인해 레코드의 시작 바이트를 찾아요(`line_of_row`). 에러는 한 번만 나고 그 뒤로 읽기가 끝나니, 이 비용을 한 번 내는 쪽이 낫다는 판단이에요. 자세한 것은 뒤의 에러 절에 있어요.
+
+## 숫자 파싱
+
+### 왜 어려운가
+
+double은 $m \times 2^e$ 꼴의 수예요($m$은 53비트 정수). 십진수 대부분은 이 꼴로 정확히 쓸 수 없어요. `0.1`의 이진 전개는 $0.0001100110011\ldots_2$로 끝이 없어서, 가장 가까운 double은 정확히 0.1000000000000000055511151231257827021181583404541015625예요. **올바른 반올림**(correct rounding)이란 십진수가 나타내는 정확한 실수에 가장 가까운 double을 고르는 거예요. 정확히 두 double의 한가운데면 가수의 마지막 비트가 0인 쪽(짝수 쪽)을 골라요. IEEE 754의 기본 반올림 규칙이고, Python의 `float(text)`가 이렇게 해요.
+
+쉬운 방법은 틀려요. `"1.380649e-23"`을 정수 가수 $w = 1380649$와 십진 지수 $q = -29$로 읽고 double로 $w \times 10^{q}$를 계산하면 이래요.
+
+```python
+>>> 1380649 * 1e-29
+1.3806489999999998e-23
+>>> float("1.380649e-23")
+1.380649e-23
+```
+
+`1e-29` 자체가 이미 반올림된 값이고, 곱셈이 한 번 더 반올림하니 오차가 두 번 쌓여 마지막 비트가 하나 틀려요. $w < 10^8$, $-40 \le q \le -23$에서 무작위로 고른 수의 약 35%가 이렇게 틀려요.
+
+더 근본적인 어려움은 한가운데에 가까운 수예요. `1e23`의 정확한 값 $10^{23}$은 두 double 99999999999999991611392와 100000000000000008388608의 정확히 한가운데에 있어요($10^{23} = 2^{23} \cdot 5^{23}$이고 $5^{23}$은 54비트라서). 짝수 쪽인 앞의 값이 답이에요. 그런데 `1.0000000000000000000001e23`처럼 소수점 아래 22번째 자리에 1이 하나 붙으면 한가운데를 넘어서 답이 뒤의 값으로 바뀌어요. 원리적으로는 자릿수가 아무리 많아도 마지막 자리까지 봐야 반올림이 정해질 수 있어서, 고정된 정밀도의 연산만으로는 언제나 맞출 수 없어요. Clinger는 1990년 논문[5]에서 대부분은 빠른 연산으로 끝내고 꼭 필요할 때만 임의 정밀도 정수 연산으로 넘어가는 방법을 보였어요. 그 뒤의 빠른 파서는 모두 "빠른 길이 맞는 경우를 넓히고, 실패를 정확히 알아채는" 방향으로 발전했어요.
+
+stardust의 `parse_double`(`ops/parse.hpp`)은 길이 셋이에요.
+
+<Fig column caption="parse_double이 고르는 길. 위에서부터 차례로 시도하고, 앞 길이 결정하지 못한 것만 다음 길로 가요.">
+  <Steps
+    steps={[
+      { label: '1. fast_decimal', note: '지수가 없고 유효숫자가 19자리 이하인 [+-]?자리[.자리] 꼴. 소수부를 8자리 묶음과, 텍스트 끝에서 읽은 마지막 1~7자리 묶음으로 읽고, 언제나 Eisel–Lemire로 바꿔요.' },
+      { label: '2. parse_decimal', note: '그 밖의 십진수(지수, 앞의 0이 많은 수). 문법 검사와 함께 한 패스로 (부호, w, q)를 읽고, Clinger의 빠른 길 → Eisel–Lemire.' },
+      { label: 'Clinger의 빠른 길', depth: 1, note: 'w ≤ 2⁵³이고 |q| ≤ 22이면 w × 10^q (또는 w / 10^−q)를 double 연산 한 번으로. 결과가 곧 올바른 반올림이에요.' },
+      { label: 'Eisel–Lemire', depth: 1, note: 'w와 5^q의 128비트 근사값을 곱해 가수의 위 54비트를 얻고, 2의 지수는 q·log₂10에서. 곱이 반올림을 결정할 수 없으면 "모름".' },
+      { label: '3. std::from_chars', note: 'nan, inf, 유효숫자 20자리 이상, "모름". 범위를 넘으면 strtod로 ±inf, ±0.0.' },
+    ]}
+  />
+</Fig>
+
+### 문자열을 w × 10^q로
+
+`parse_decimal`은 `[+-]? (digits [. digits?] | . digits) ([eE] [+-]? digits)?`의 문법 검사와 값 읽기를 한 패스에 해요. 문법은 [원소별 연산과 리덕션](/internals/frame/elementwise/)의 `astype`과 같은 코드라서, `read_csv(..., dtype="string")` 뒤에 `astype("float64")`를 해도 같은 결과예요.
+
+- 소수점 앞뒤의 숫자를 모두 정수 `w`에 이어 붙이고, 소수점 뒤의 자릿수만큼 `q`를 줄여요. `"123.456e-7"`은 $w = 123456$, $q = -3 - 7 = -10$이에요.
+- 지수는 1,000,000에서 멈춰요. 그보다 큰 지수는 어차피 0이나 inf예요.
+- 유효숫자(앞쪽 0을 뺀 자릿수)가 19를 넘으면 `w`가 64비트를 넘쳤을 수 있으니 마지막 길(`from_chars`)로 보내요. 19자리 정수는 $10^{19} < 2^{64}$라서 언제나 들어가요. double을 다시 읽어 같은 값이 되는 데는 17자리면 충분하니, 컴퓨터가 쓴 숫자는 거의 모두 여기를 통과해요.
+- 문법에 맞지 않으면 `Bad`, nan·inf처럼 숫자로 시작하지 않으면 `Slow`를 돌려줘요. `Slow`는 `float_grammar`로 문법을 다시 확인한 뒤 마지막 길로 가요.
+
+**8자리씩 읽기(SWAR).** 숫자를 한 바이트씩 `w = w * 10 + d`로 읽으면 자릿수만큼 곱셈과 분기가 있어요. `read_digits`는 남은 바이트가 8개 이상이면 8바이트를 `uint64` 하나로 읽어서, 모두 숫자인지 한 번에 확인하고 정수 곱셈 세 번으로 8자리 수를 만들어요. 한 레지스터 안에서 여러 데이터를 다루는 이런 기법을 SWAR(SIMD within a register)라고 해요. fast_float가 쓰는 방법이에요[1].
+
+```cpp
+// csrc/frame/ops/parse.hpp
+inline bool eight_digits(std::uint64_t v) {
+    return !(((v + 0x4646464646464646ULL) | (v - 0x3030303030303030ULL)) & 0x8080808080808080ULL);
+}
+// The last `keep` (0..8) of the 8 bytes of v (a little-endian load), the
+// bytes before them '0'.
+inline std::uint64_t keep_last(std::uint64_t v, std::int64_t keep) {
+    const std::uint64_t low = keep == 0 ? ~std::uint64_t{0} : (std::uint64_t{1} << (8 * (8 - keep))) - 1;
+    return (v & ~low) | (0x3030303030303030ULL & low);
+}
+inline std::uint64_t parse_eight(std::uint64_t v) {
+    v -= 0x3030303030303030ULL;
+    v = (v * 10) + (v >> 8);  // pairs of digits
+    return (
+        (((v & 0x000000FF000000FFULL) * 0x000F424000000064ULL) +
+         (((v >> 16) & 0x000000FF000000FFULL) * 0x0000271000000001ULL)) >>
+        32
+    );
+}
+```
+
+- `eight_digits`: 바이트에 `0x46`을 더하면 `'9'`(0x39)보다 큰 바이트에서 맨 위 비트가 켜지고, `0x30`을 빼면 `'0'`보다 작은 바이트에서 맨 위 비트가 켜져요(빌림). 둘 다 없으면 8바이트 모두 숫자예요.
+- `keep_last`: 8바이트 중 마지막 `keep`개만 남기고 그 앞의 바이트를 `'0'`으로 바꿔요. 아래의 끝에서 읽기가 써요.
+- `parse_eight`: 리틀 엔디언이라 첫 글자가 가장 낮은 바이트예요. `"12345678"`을 따라가면 이래요.
+
+<Fig caption={'parse_eight로 "12345678"을 읽는 과정. 바이트는 낮은 자리(첫 글자)부터 그렸어요. 둘째 단계에서 짝수 바이트(진한 칸)에 두 자리 수 12, 34, 56, 78이 생기고, 홀수 바이트는 쓰지 않아요. 마지막 곱셈 두 번이 12·10⁶ + 34·10⁴ + 56·10² + 78을 비트 32–63에 모아요.'}>
+  <ArrayFig name="'0'을 뺀 바이트" data={[1, 2, 3, 4, 5, 6, 7, 8]} />
+  <Op note="v·10 + (v ≫ 8)">→</Op>
+  <ArrayFig name="두 자리씩" data={[12, 23, 34, 45, 56, 67, 78, 80]} tones={['b', 'm', 'b', 'm', 'b', 'm', 'b', 'm']} />
+  <Op note="곱셈 2번, ≫ 32">→</Op>
+  <ArrayFig name="결과" data={[12345678]} tones={['b']} />
+</Fig>
+
+마지막 단계는 바이트 0과 4(12와 56)를 골라 상수 $100 + 10^6 \cdot 2^{32}$와 곱하고, 바이트 2와 6(34와 78)을 골라 $1 + 10^4 \cdot 2^{32}$와 곱해서 더해요. 곱의 비트 32–63에 $12 \cdot 10^6 + 56 \cdot 10^2$과 $34 \cdot 10^4 + 78$이 놓이고, 둘을 더한 값을 `>> 32`로 꺼내면 12345678이에요.
+
+### 흔한 꼴은 끝에서 읽어요: `fast_decimal`과 `parse_int64`
+
+CSV의 숫자 대부분은 `-0.4321…`이나 `1203`처럼 지수가 없는 꼴이에요. 이런 텍스트는 끝이 어디인지 이미 알아요(색인이 필드의 끝을 알려 줘요). 그러면 자리마다 "아직 숫자인가"를 묻지 않고, 자리 수를 길이에서 바로 얻을 수 있어요.
+
+```cpp
+// csrc/frame/ops/parse.hpp
+inline bool fast_decimal(const char* s, const char* end, double& out, const char* begin) {
+    const char* p = s;
+    const bool negative = *p == '-';
+    p += negative | (*p == '+');
+    const char* const ip = p;
+    std::uint64_t w = 0;
+    while (p < end && is_digit(*p)) w = w * 10 + static_cast<std::uint64_t>(*p++ - '0');
+    std::int64_t ndigits = p - ip, q = 0;
+    if (p < end) {
+        if (*p != '.') return false;
+        const char* const f = ++p;
+        const std::int64_t F = end - f, groups = F >> 3, r = F & 7;
+        for (std::int64_t i = 0; i < groups; ++i) {
+            std::uint64_t v;
+            std::memcpy(&v, f + 8 * i, 8);
+            if (!eight_digits(v)) return false;
+            w = w * 100000000 + parse_eight(v);
+        }
+        if (r) {
+            if (end - 8 < begin) return false;
+            std::uint64_t v;
+            std::memcpy(&v, end - 8, 8);
+            v = keep_last(v, r);
+            if (!eight_digits(v)) return false;
+            w = w * kPow10u[r] + parse_eight(v);
+        }
+        ndigits += F;
+        q = -F;
+    }
+    if (ndigits == 0 || ndigits > 19) return false;  // more digits: leading zeros may not count (parse_decimal)
+    // Eisel-Lemire for every value (it rounds exact cases correctly too): no
+    // branch on whether Clinger's fast path applies, which 16- and
+    // 17-digit floats in one column made unpredictable.
+    double d = 0.0;
+    if (w != 0) {
+        std::uint64_t bits;
+        if (!eisel_lemire(w, q, bits)) return false;
+        std::memcpy(&d, &bits, sizeof d);
+    }
+    out = negative ? -d : d;
+    return true;
+}
+```
+
+- 정수부는 자리마다 읽어요. 표준정규분포 값처럼 정수부가 한두 자리인 수가 대부분이라 길지 않아요.
+- 소수부 `F`자리는 8자리 묶음 `F / 8`개와 나머지 `F mod 8`자리예요. 나머지는 **텍스트 끝에서 8바이트를 읽고** 앞쪽 바이트를 `'0'`으로 바꿔(`keep_last`) 한 묶음으로 읽어요. `"0.1234567890"`의 소수부 10자리는 묶음 `12345678`과, 끝 8바이트 `34567890`에서 마지막 두 바이트만 남긴 `00000090`이에요. 자리 수에 따라 갈라지는 분기와 자리마다의 검사가 없어요.
+- 끝에서 8바이트를 읽으면 텍스트 앞의 바이트까지 읽을 수 있어요. 그래서 읽어도 되는 메모리의 시작(`begin`)을 받아요. CSV는 입력 버퍼 전체를 넘기고, `""`를 바꾼 작업 문자열은 그 문자열 자신의 시작을 넘겨요(앞이 모자라면 이 길을 쓰지 않아요).
+- 이 꼴의 값은 모두 Eisel–Lemire로 바꿔요. Eisel–Lemire는 Clinger의 빠른 길이 맞는 정확한 경우도 올바르게 반올림하므로 결과는 같아요. Clinger의 길을 먼저 묻지 않는 이유는 분기 예측이에요. 한 열에 16자리 float와 17자리 float가 섞여 있으면 "w ≤ 2⁵³인가"가 거의 무작위로 갈라져서 예측이 자주 빗나갔어요.
+- 이 꼴이 아니면(지수, 숫자가 아닌 바이트, 유효숫자 20자리 이상) false를 돌려주고 `parse_decimal`이 처음부터 다시 읽어요.
+
+정수도 같은 생각이에요. `parse_int64`는 부호를 뺀 자리가 16개 이하이면 텍스트 끝의 16바이트를 8바이트 둘로 읽고, 자리 앞의 바이트를 `'0'`으로 바꿔 묶음 두 개로 읽어요. 16자리 이하는 $10^{16} < 2^{63}$이라 넘칠 일이 없으니 범위 검사도 없어요.
+
+```cpp
+    // csrc/frame/ops/parse.hpp
+    const std::int64_t len = end - p;
+    if (len >= 1 && len <= 16 && end - 16 >= (begin ? begin : s.data())) {
+        std::uint64_t lo, hi;
+        std::memcpy(&lo, end - 8, 8);
+        std::memcpy(&hi, end - 16, 8);
+        // Keep the last `len` bytes of hi:lo, the rest '0'.
+        const std::int64_t keep_lo = std::min<std::int64_t>(len, 8), keep_hi = len - keep_lo;
+        lo = detail::keep_last(lo, keep_lo);
+        hi = detail::keep_last(hi, keep_hi);
+        if (!detail::eight_digits(lo) || !detail::eight_digits(hi)) return 0;
+        const std::uint64_t w = detail::parse_eight(hi) * 100000000 + detail::parse_eight(lo);  // < 10^16: in range
+        v = negative ? -static_cast<std::int64_t>(w) : static_cast<std::int64_t>(w);
+        return 1;
+    }
+```
+
+17자리 이상이거나 앞에 읽을 메모리가 모자라면 `read_digits`로 자리를 읽는 일반 길로 가요. `astype`은 텍스트 앞의 읽을 수 있는 메모리를 넘기지 않으므로, 짧은 텍스트는 일반 길로 가요. 어느 길이든 결과는 같아요.
+
+### `parse_decimal`의 첫 길: Clinger의 빠른 길
+
+`fast_decimal`이 받지 않은 십진수(`1e5`, `1.5E-3`처럼 지수가 있는 수 등)는 `parse_decimal`이 읽고, 먼저 Clinger의 빠른 길을 봐요. $w$와 $10^{|q|}$가 둘 다 double로 정확히 표현되면, IEEE 754는 곱셈과 나눗셈 한 번의 결과가 정확한 값을 올바르게 반올림한 것임을 보장해요. 정확한 입력에 반올림이 한 번뿐이니 그게 곧 답이에요[5].
+
+- $w \le 2^{53}$이면 $w$는 double로 정확해요(가수가 53비트).
+- $10^{k} = 2^{k} \cdot 5^{k}$이고 $2^k$는 지수로 흡수되니, $5^k \le 2^{53}$이면 정확해요. $5^{22} \approx 2.4 \times 10^{15} < 2^{53}$이고 $5^{23} \approx 1.2 \times 10^{16} > 2^{53}$이라서 한계가 $|q| \le 22$예요.
+
+```cpp
+    // csrc/frame/ops/parse.hpp
+    } else if (q >= -22 && q <= 22 && w <= (std::uint64_t{1} << 53)) {  // Clinger's fast path
+        d = static_cast<double>(w);
+        d = q < 0 ? d / kExactPow10[-q] : d * kExactPow10[q];
+```
+
+`kExactPow10`은 `1e0`부터 `1e22`까지의 표예요.
+
+`"123.456"`은 $123456 / 1000$ 한 번이고, `"0.1"`은 $1 / 10$ 한 번이에요. 음수 지수에서 곱셈($w \times 10^{-k}$)이 아니라 나눗셈($w / 10^{k}$)을 쓰는 이유가 앞의 `1380649 * 1e-29` 예에 있어요. $10^{-k}$는 double로 정확하지 않거든요.
+
+이 보장은 연산이 double 정밀도로 한 번에 반올림될 때만 성립해요. x87의 80비트 확장 정밀도처럼 중간 결과를 더 넓게 유지하다가 두 번 반올림하는 환경에서는 깨져요. ARM64의 double 연산은 그런 문제가 없고, stardust는 반올림 모드를 바꾸지 않아요.
+
+LLVM libc는 $w \cdot 10^{q-22}$가 아직 $2^{53}$ 아래면 $q$를 22보다 크게 허용하는 확장(Gay의 방법)도 써요. stardust는 이 확장을 쓰지 않고 그런 수를 Eisel–Lemire로 보내요. Eisel–Lemire도 올바르게 반올림하므로 결과는 같아요.
+
+pandas `to_csv`가 쓴 표준정규분포 값처럼 지수가 없는 꼴은 이 길에 오지 않고 `fast_decimal`에서 끝나요. 이 길에 오는 것은 지수가 있는 수 정도예요.
+
+### Eisel–Lemire
+
+Lemire가 M. Eisel의 아이디어에서 출발해 분석하고 fast_float 라이브러리로 구현한 알고리즘이에요[1]. `parse.hpp`의 `eisel_lemire`는 논문을 따라 쓴 구현이고, 분기 조건과 상수는 fast_float와 같아요. 다른 점 하나는 뒤에 나오는 "모름" 검사예요.
+
+**아이디어.** $w \cdot 10^q = w \cdot 5^q \cdot 2^q$예요. $2^q$는 지수에 더하기만 하면 되니, 문제는 $w \cdot 5^q$의 위쪽 54비트(가수 53비트 + 반올림 비트 1개)를 정확히 아는 거예요. $5^q$를 128비트로 정규화한 근사값 $T_q$를 표에 두면, 64비트 $w$와 곱한 192비트 곱의 위쪽이 그 54비트예요. 그런데 192비트 곱을 다 구할 필요는 거의 없어요.
+
+**첫 곱셈.** $w$를 맨 위 비트가 1이 되게 왼쪽으로 민 뒤(`lz = clz(w)`), 표의 위 워드 $T_q^{\text{hi}}$와 64×64→128비트 곱을 해요. 곱의 위 64비트가 `hi`, 아래가 `lo`예요.
+
+이 곱은 $T_q$의 아래 워드(와 표가 잘라 낸 뒷부분)를 빼먹었어요. 빼먹은 부분 $w \cdot T_q^{\text{lo}}$는 $2^{128}$보다 작으니, `hi:lo`로 보면 `lo`에 더해질 값이 $2^{64}$보다 작아요. 즉 참값의 위 워드는 `hi` 아니면 `hi + 1`이에요. 그런데 우리가 쓰는 건 `hi`의 위쪽 54~55비트뿐이고, 아래 9비트는 여유예요. `hi`의 아래 9비트가 모두 1이 아니면 `+1`이 와도 위쪽 비트까지 자리올림이 번지지 않으니, 첫 곱만으로 답이 정해져요. 대부분의 수가 여기서 끝나요.
+
+**둘째 곱셈.** 아래 9비트가 모두 1(`0x1FF`)이면 $w \cdot T_q^{\text{lo}}$의 위 64비트를 `lo`에 더하고, 자리올림을 `hi`에 반영해요. 이제 남은 오차는 표가 128비트에서 잘라 낸 부분뿐이라 `lo`의 한 단위보다 작아요. 그래도 `hi`의 아래 9비트가 모두 1이고 `lo`도 모두 1이면, 그 마지막 한 단위가 위로 번질지 알 수 없어요. 이때만 "모름"이에요.
+
+```cpp
+// csrc/frame/ops/parse.hpp
+const int lz = __builtin_clzll(w);
+w <<= lz;
+const std::size_t index = 2 * static_cast<std::size_t>(q - kSmallestPowerOfFive);
+unsigned __int128 first = static_cast<unsigned __int128>(w) * kPowerOfFive128[index];
+std::uint64_t hi = static_cast<std::uint64_t>(first >> 64), lo = static_cast<std::uint64_t>(first);
+if ((hi & 0x1FF) == 0x1FF) {  // the low bits of the 64-bit truncation are all ones: add the next word
+    const unsigned __int128 second = static_cast<unsigned __int128>(w) * kPowerOfFive128[index + 1];
+    const std::uint64_t carry = static_cast<std::uint64_t>(second >> 64);
+    lo += carry;
+    if (carry > lo) ++hi;
+    if ((hi & 0x1FF) == 0x1FF && lo == ~std::uint64_t{0} && (q < -27 || q > 55)) return false;  // undecided
+}
+```
+
+"모름"의 조건에 `q < -27 || q > 55`가 붙는 이유는 이래요[1].
+
+- $0 \le q \le 55$이면 $5^{55} < 2^{128}$이라서 $T_q$가 $5^q$ 그 자체예요(잘라 낸 것이 없어요). 그러면 둘째 곱 뒤의 `hi:lo`는 정확한 곱이라 불확실성이 없어요.
+- $-27 \le q < 0$이면 $5^{-q} < 2^{64}$예요. 이 범위의 표 값은 $2^b / 5^{-q}$를 올림한 역수라서 근사가 참값보다 작은 일이 없고, 논문은 이 경우에도 반올림이 정해짐을 보였어요.
+
+2023년에는 Mushtak과 Lemire가 유효숫자 19자리 이하의 입력에서 이 "모름"이 실제로는 한 번도 일어나지 않음을 증명했어요[2]. 현재 fast_float 소스에는 이 검사가 없어요. stardust에는 검사가 있지만 이 분기는 타지 않아요. 검사의 비용은 둘째 곱셈을 한 경우에만 드는 비교 몇 번이에요.
+
+**가수와 지수.** 곱의 맨 위 비트(`upper`)가 0인지 1인지에 따라 `hi`를 `upper + 9`비트 오른쪽으로 밀면 54비트 `mantissa`가 나와요. 2의 지수는 $\lfloor q \log_2 10 \rfloor$에 정규화로 민 비트 수와 `upper`를 보정한 값이에요. $\lfloor q \log_2 10 \rfloor$은 부동소수점 없이 고정소수점으로 구해요. $(152170 + 65536)/2^{16} = 3.32193\ldots \approx \log_2 10$이라서, $q$에 곱하고 16비트 오른쪽으로 밀면 돼요.
+
+```cpp
+// csrc/frame/ops/parse.hpp
+// The binary exponent of 10^q plus 63: floor(q * log2(10)) + 63, computed in
+// fixed point (152170 + 65536 = log2(10) * 2^16, rounded).
+inline int power2_of(std::int64_t q) { return static_cast<int>(((152170 + 65536) * q) >> 16) + 63; }
+```
+
+**반올림.** `mantissa`의 맨 아래 비트가 반올림 비트예요. `mantissa += mantissa & 1; mantissa >>= 1;`은 "반올림 비트가 1이면 올림"이에요. 이 규칙은 한가운데에서도 늘 올리므로, 정확히 한가운데인 경우만 따로 짝수 쪽으로 고쳐요.
+
+```cpp
+// csrc/frame/ops/parse.hpp
+// Exactly halfway between two doubles: round half to even, not up.
+if (lo <= 1 && q >= -4 && q <= 23 && (mantissa & 3) == 1 && (mantissa << shift) == hi)
+    mantissa &= ~std::uint64_t{1};
+```
+
+`(mantissa & 3) == 1`은 반올림 비트가 1이고 남길 마지막 비트가 0(이미 짝수)이라는 뜻이고, `(mantissa << shift) == hi`와 `lo <= 1`은 반올림 비트 아래가 모두 0, 곧 정확히 한가운데라는 뜻이에요. 이때 반올림 비트를 지우면 올라가지 않고 짝수 쪽에 남아요. 마지막 비트가 1이면(`& 3 == 3`) 올리는 쪽이 짝수라 고칠 필요가 없어요. 한가운데가 될 수 있는 $q$는 $[-4, 23]$뿐이에요[1]. $q \ge 0$이면 $5^q$가 54비트 안에 들어가야 해서 $q \le 23$이고, $q < 0$이면 $w$가 $5^{-q}$로 나누어떨어지면서 $2^{53} \cdot 5^{-q} < 2^{64}$여야 해서 $q \ge -4$예요.
+
+나머지는 경계 처리예요. 반올림이 자리올림을 만들어 가수가 $2^{53}$이 되면 지수를 하나 올려요. 지수가 0 이하면 비정규수라서 더 밀고 다시 반올림해요(반올림 뒤에 정규수가 될 수도 있어요). 지수가 `0x7FF` 이상이면 inf예요. $q < -342$이면 0이고 $q > 308$이면 inf예요. $w < 2^{64}$이면 $w \times 10^{-343}$이 가장 작은 비정규수 $2^{-1074}$의 절반보다도 작아서 0으로 반올림되기 때문이에요.
+
+### 실제 수 두 개로 따라가기
+
+**`"1.380649e-23"`** (볼츠만 상수). $w = 1380649$, $q = -29$예요. $q < -22$라서 Clinger의 빠른 길은 쓸 수 없어요.
+
+| 단계 | 값 |
+|---|---|
+| `lz = clz(w)` | 43 (`w`는 21비트) |
+| 정규화한 `w` | `0xa889480000000000` |
+| 표 `T[-29]` (위, 아래 워드) | `0xcad2f7f5359a3b3e`, `0x096ee45813a04330` |
+| 첫 곱 `hi`, `lo` | `0x858736aaf323dd7d`, `0xc4d7700000000000` |
+| `hi & 0x1FF` | `0x17d`: 모두 1이 아니므로 **첫 곱으로 끝** |
+| `upper`, `shift` | 1, 10 |
+| `mantissa = hi >> 10` (54비트) | `0x2161cdaabcc8f7`: 반올림 비트 1 |
+| 한가운데 검사 | $q = -29$는 $[-4, 23]$ 밖: 해당 없음 |
+| 올림 뒤 `>> 1`, 숨은 비트 제거 | 가수 `0x0b0e6d55e647c` |
+| 지수 | `power2_of(-29) + upper - lz + 1023` = −34 + 1 − 43 + 1023 = 947 |
+| 결과 | `0x1.0b0e6d55e647cp-76` = `1.380649e-23` |
+
+정확한 값은 이 double보다 0.31 ulp 작아요. 반올림 비트가 1이었으니(아래쪽이 절반 이상) 올리는 것이 맞고, Python `float()`와 비트까지 같아요. 곱셈 한 번, 시프트 몇 번으로 끝났어요.
+
+**`"9007199254740993"`** ($2^{53} + 1$). $w > 2^{53}$이라서 빠른 길을 쓸 수 없어요. $q = 0$이에요.
+
+| 단계 | 값 |
+|---|---|
+| `lz`, 정규화한 `w` | 10, `0x8000000000000400` |
+| 표 `T[0]` | `0x8000000000000000`, `0` ($5^0 = 1$을 $2^{127}$로 정규화, 정확) |
+| 첫 곱 `hi`, `lo` | `0x4000000000000200`, `0` |
+| `upper`, `shift` | 0, 9 |
+| `mantissa` (54비트) | `0x20000000000001`: 반올림 비트 1, 마지막 비트 0 |
+| 한가운데 검사 | `lo = 0`, $q = 0$, `mantissa & 3 == 1`, `mantissa << 9 == hi`: **정확히 한가운데** → 반올림 비트를 지워요 |
+| 결과 | $2^{53}$ = `9007199254740992.0` |
+
+$2^{53} + 1$은 $2^{53}$과 $2^{53} + 2$의 정확히 한가운데이고, 짝수 쪽은 $2^{53}$이에요. 한가운데 검사가 없으면 위로 올려 $2^{53} + 2$가 되어 틀려요.
+
+### 5의 거듭제곱 표: `pow5_table.hpp`
+
+`kPowerOfFive128`은 $q = -342 \ldots 308$의 651개 항목을 위 워드, 아래 워드 순으로 담은 `uint64_t` 1302개(10,416바이트)예요. `tools/gen_pow5_table.py`가 Python의 임의 정밀도 정수로 정확히 계산해서 만들어요. 생성 규칙은 fast_float의 표 생성 스크립트(`script/table_generation.py`)와 같아요[4].
+
+- **$q \ge 0$:** $5^q$를 맨 위 비트가 비트 127이 되도록 2배하거나 반으로 나눠 128비트로 잘라요. $q \le 55$이면 잘리는 비트가 없어 정확해요.
+- **$-27 \le q < 0$:** $z = \lceil \log_2 5^{-q} \rceil$일 때 $\lfloor 2^{z+127} / 5^{-q} \rfloor + 1$, 곧 역수 $1/5^{-q}$를 128비트로 올림한 값이에요.
+- **$q < -27$:** $\lfloor 2^{2z+128} / 5^{-q} \rfloor + 1$을 $2^{128}$ 아래가 될 때까지 반으로 줄여요. 줄이면서 버리는 비트 때문에 결과는 역수를 128비트로 자른 값(참값 이하)이 돼요. $q > 55$와 같은 쪽이에요.
+
+| $q$ | 위 워드 | 아래 워드 | 뜻 |
+|:---:|---|---|---|
+| −342 | `0xeef453d6923bd65a` | `0x113faa2906a13b3f` | 가장 작은 항목 |
+| −1 | `0xcccccccccccccccc` | `0xcccccccccccccccd` | $1/5 = 0.0011\,0011\ldots_2$, 마지막을 올림 |
+| 0 | `0x8000000000000000` | `0x0000000000000000` | $1 = 2^{127}/2^{127}$ |
+| 1 | `0xa000000000000000` | `0x0000000000000000` | $5 = 101_2$ |
+| 23 | `0xa968163f0a57b400` | `0x0000000000000000` | $5^{23}$, 54비트라 위 워드에 다 들어가요 |
+| 55 | `0xd0cf4b50cfe20765` | `0xfff4b4e3f741cf6d` | 정확한 마지막 항목 ($5^{55} < 2^{128}$) |
+| 308 | `0x8e679c2f5e44ff8f` | `0x570f09eaa7ea7648` | 가장 큰 항목 |
+
+그래서 표 값은 두 종류예요. $q < -27$과 $q > 55$에서는 잘라 낸 값이라 참값보다 작거나 같고, 빠진 부분이 더해질 수 있을 뿐이에요. 앞의 "참값의 위 워드는 `hi` 아니면 `hi + 1`"이 이 방향의 오차를 다룬 판정이에요. $-27 \le q < 0$에서는 올림이라 참값보다 조금 커요. 이 범위는 $5^{-q} < 2^{64}$라서 오차가 아주 작고, "모름" 검사에서 빠지는 것도 이 범위예요. 표는 L1 데이터 캐시에 넉넉히 들어가고, 한 숫자에 한두 워드만 읽어요.
+
+### 마지막 길: `std::from_chars`
+
+다음 경우는 `slow_double`이 `std::from_chars`(C++17 `<charconv>`)로 읽어요.
+
+- 유효숫자 20자리 이상(`"0.1000000000000000055511151231257827"` 같은 수)
+- `nan`, `inf`, `infinity`(대소문자 무관, 부호 가능)
+- Eisel–Lemire의 "모름"(앞에서 본 대로 일어나지 않아요)
+
+`from_chars`가 `result_out_of_range`를 돌려주면(`1e400`, `1e-400`처럼 double의 범위를 넘으면) `strtod`로 다시 읽어 ±inf나 ±0.0을 얻어요. 표준은 범위를 넘을 때 `from_chars`가 출력 변수를 건드리지 않는다고 정해 두었으니, 그 값에 기대지 않고 `strtod`의 정해진 결과를 쓰는 거예요. 정수는 `from_chars`를 쓰지 않아요. `parse_int64`가 같은 SWAR 읽기로 직접 읽고, 유효숫자 19자리를 넘거나 int64 범위를 넘으면 "범위 밖"이라고 알려 줘요.
+
+**libc++ 안의 `from_chars`.** stardust는 Apple clang과 macOS SDK의 libc++로 빌드해요. libc++에서 double용 `from_chars`는 헤더에 구현이 없고, 공유 라이브러리가 내보내는 함수 `__from_chars_floating_point`를 불러요(SDK 헤더 `__charconv/from_chars_floating_point.h`). LLVM 저장소의 libc++ 소스(`libcxx/src/include/from_chars_floating_point.h`)에서 이 함수는 LLVM libc의 변환 코드(`shared/str_to_float.h`)를 그대로 가져다 써요[9]. 흐름은 이래요.
+
+1. `inf`, `nan`, 16진수, 10진수로 나눠요.
+2. 10진수는 숫자를 정수 가수에 모으다가 넘치면 뒤 자리를 버리고 `truncated` 표시를 해요. 지수를 합쳐 `decimal_exp_to_float`를 불러요.
+3. `decimal_exp_to_float`는 차례로 시도해요.
+   - **Clinger의 빠른 길**(Gay의 확장 포함). 가수를 잘랐으면 건너뛰어요.
+   - **Eisel–Lemire.** 가수를 잘랐으면 가수와 가수 + 1로 두 번 돌려서, 결과가 같을 때만 받아요. 버린 자리가 아무리 커도 참값은 그 둘 사이에 있으니, 둘이 같은 double로 반올림되면 그게 답이에요.
+   - **simple decimal conversion.** 원래 문자열의 모든 자리를 십진수 숫자 배열(`HighPrecisionDecimal`)에 담고, 2의 거듭제곱만큼 십진수 그대로 곱하고 나누는 시프트를 되풀이해 값을 $[1/2, 1)$로 옮기고, 한 번 더 밀어 $[1, 2)$로 만든 뒤, 52비트를 더 밀어 정수부를 꺼내 반올림해요. Nigel Tao가 정리한 방법이에요. 느리지만 자릿수에 상관없이 정확해요.
+
+그러니 libc++의 `from_chars`도 결국 같은 알고리즘의 조합이에요. stardust의 파서가 더 빠른 이유는 알고리즘이 아니라 경로에 있어요. 문법 검사와 숫자 읽기를 한 패스에 하고, 8자리씩 읽고, 텍스트 끝을 알고 읽고, 라이브러리 함수 호출과 `chars_format` 분기, 범용 경로의 일반성을 거치지 않거든요. float 파일을 읽는 시간의 큰 몫이 숫자 변환이라서, `from_chars`만 쓰면 파일 전체가 눈에 띄게 느려요.
+
+위 설명은 LLVM 저장소의 소스 기준이에요. Apple이 SDK와 함께 배포하는 libc++ 공유 라이브러리는 같은 함수 이름을 내보내지만, 그 빌드의 소스 버전은 공개돼 있지 않아요. macOS 26의 libc++에서 `from_chars`는 비정규수(`1e-320`)를 정상 결과로 읽고, `1e400`과 `2e-324`에는 `result_out_of_range`를 돌려줘요.
+
+pandas 3.1.1도 float를 fast_float로 읽어요(`precise_xstrtod_with_end`가 기본 경로에서 `fast_float_strtod`를 불러요)[10]. 같은 계열의 알고리즘이라 숫자 변환에서는 pandas와 stardust의 차이가 작고, 결과 비트도 같아요.
+
+### 정확도
+
+결과는 언제나 올바르게 반올림돼요. Python `float(text)`가 정답이에요. `tests/frame/test_elementwise.py`의 `test_float_parsing_is_correctly_rounded`는 무작위 64비트 패턴을 double로 본 값의 `repr`, `{m}e{e}` 꼴의 넓은 범위 수, 그리고 고정된 어려운 수(`1e23`, `9007199254740993`, `2.2250738585072011e-308` 같은 정규수·비정규수 경계, `4.9406564584124654e-324`, 가장 작은 비정규수의 절반 `2.4703282292062327e-324`와 그 바로 위 `…328e-324`, 최대값 근처 `1.7976931348623158e308`, 20자리 정수, `1e-400`, `1e400`)를 비트까지 비교해요. 무작위 비트 패턴의 `repr` 약 30만 개와 넓은 범위의 수 2만 개에서도 모두 같아요.
+
+```python
+>>> s = sd.frame.Series(["1.380649e-23", "9007199254740993", "1e23", "1e-400", "-0.0", "nan"])
+>>> s.astype("float64").tolist()
+[1.380649e-23, 9007199254740992.0, 1e+23, 0.0, -0.0, nan]
+```
+
+## 타입 추론
+
+### 규칙
+
+컬럼마다 NA가 아닌 모든 필드를 보고 다음 중 처음으로 맞는 dtype을 골라요.
+
+1. **int64:** 모든 필드가 int 문법(`[+-]?` 뒤에 ASCII 숫자)이고 int64 범위 안이에요.
+2. **float64:** 모든 필드가 float 문법이에요. int 문법도 float 문법이에요.
+3. **bool:** 모든 필드가 정확히 `True` 또는 `False`예요.
+4. **string:** 그 밖이에요.
+
+모든 필드가 NA인 컬럼은 float64예요. list로 Series를 만들 때의 추론과 같은 규칙이에요.
+
+앞의 몇 행만 보고 정하지 않아요. Polars 2.1.0의 `read_csv`는 기본으로 처음 100행(`infer_schema_length=100`)을 보고 dtype을 정해요. 그래서 1이 200행 이어진 뒤에 `1.5`가 나오면 `` could not parse `1.5` as dtype `i64` ``로 에러가 나요. stardust는 같은 파일을 float64로 읽어요. 열 전체를 봐야 결과가 데이터의 순서에 기대지 않아요.
+
+float 컬럼 안의 정수는 float64로 반올림해요. 한 열에 `1.5`와 `9007199254740993`이 있으면 둘째 값은 `9007199254740992.0`이에요. list에서 `Series([1.5, 2**53 + 1])`을 만들 때와 같고, pandas 3.1.1·Polars 2.1.0의 `read_csv`와도 같아요. 조각이 float가 되기 전에 읽은 정수는 `parse_int64`로 읽은 int64를 `double`로 바꿔요(정수 → double 변환은 IEEE의 가장 가까운 값, 짝수 쪽). 조각이 float가 된 뒤의 필드와 범위 밖의 정수(`2**70`)는 `parse_double`이 바로 읽어요. 두 길 모두 올바르게 반올림하므로 Python `float(int(text))`와 비트까지 같아요. 하나 다른 곳은 `-0`이에요. 정수로는 0이라 `+0.0`이어야 하는데 `parse_double`은 `-0.0`을 내므로, 정수 문법인 `-0`은 `+0.0`으로 고쳐 써요. 값을 글자 그대로 지키려면 `dtype="string"`으로 읽으면 돼요.
+
+int64 범위 밖의 정수만 있는 열도 float64예요. list는 이 경우 `OverflowError`를 내지만, CSV의 추론은 에러를 내지 않고 다음 dtype으로 넘어가요.
+
+### 값을 만들면서 추론하기
+
+추론을 따로 한 번 돌고 값을 다시 한 번 읽으면 숫자를 두 번 파싱해요. stardust는 한 번에 해요. `parse_column`이 열의 필드를 차례로 읽으며 그 청크의 컬럼 조각 `Part`에 값으로 쓰고, 조각은 지금까지의 종류 `kind`(`Int`, `Float`, `Bool`, `Text`)를 들고 있어요.
+
+```cpp
+    // csrc/frame/io/csv.cpp
+    struct Part {
+        // Inferred: what the chunk's values are. Bool: every value True or
+        // False (kept as flags, not as text).
+        enum Kind : std::uint8_t { Int, Float, Bool, Text };
+        Kind kind = Int;
+        bool any = false;  // a value that is not NA
+        std::int64_t rows = 0;
+        std::int64_t nna = 0;             // NA rows
+        std::vector<std::uint8_t> valid;  // per row, 1 a value, 0 NA; empty while there is no NA
+        std::vector<std::int64_t> num;    // Int, Float, forced int64 and float64: int64 or double bits per row
+        std::vector<std::uint8_t> flag;   // Bool and forced bool: 0 or 1 per row
+        std::string bytes;                // Text and forced string: the values back to back
+        std::vector<std::int64_t> ends;   // where each row's bytes end in `bytes`
+        std::int64_t bad = -1;  // the first row that cannot be read as the forced dtype, or that is not valid UTF-8
+        std::string bad_text;   // a forced number or bool: that row's text
+```
+
+추론하는 열의 루프는 둘로 나뉘어요. 앞의 루프는 int로 읽다가, int가 아닌 숫자를 처음 만나면 앞의 값들을 double로 바꾸고 뒤의 루프로 넘어가요. 뒤의 루프는 float만 읽어요.
+
+```cpp
+// csrc/frame/io/csv.cpp
+for (; r < R; ++r) {
+    const FieldText f = field(first, ix, r * W + i, last);
+    if (is_na(f, scratch)) {
+        p.set_na(r);
+        num[r] = 0;
+        continue;
+    }
+    const bool first_value = !p.any;
+    p.any = true;
+    const std::string_view s = text(f, scratch);
+    std::int64_t v;
+    if (text::parse_int64(s, v, begin_of(f)) == 1) {
+        num[r] = v;
+        continue;
+    }
+    double d;
+    if (!text::parse_double(s, d, begin_of(f))) {  // no number: bools, or text
+        if (first_value && (s == "True" || s == "False")) return parse_bools(j, first, ix, p, r);
+        return parse_text(j, first, ix, p, false);
+    }
+    // An int beyond int64 is float syntax. The chunk's ints so far
+    // become doubles, rounded as in list inference.
+    for (std::int64_t k = 0; k < r; ++k)
+        if (p.is_valid(k)) num[k] = bits_of(static_cast<double>(num[k]));
+    num[r++] = bits_of(d);
+    p.kind = Part::Float;
+    break;
+}
+for (; r < R; ++r) {
+    const FieldText f = field(first, ix, r * W + i, last);
+    if (is_na(f, scratch)) {
+        p.set_na(r);
+        num[r] = 0;
+        continue;
+    }
+    const std::string_view s = text(f, scratch);
+    double d;
+    // ...
+    if (!text::parse_double(s, d, begin_of(f))) return parse_text(j, first, ix, p, false);
+    if (d == 0.0 && std::signbit(d) && text::int_grammar(s)) d = 0.0;
+    num[r] = bits_of(d);
+}
+```
+
+<Fig caption="한 청크에서 int로 읽다가 float를 만나는 순간. 같은 8바이트 칸에 int64로 쓰던 앞의 값들(1, 2)을 그 자리에서 double로 바꾸고, 셋째 값부터 double로 계속 써요.">
+  <ArrayFig name="필드" data={['1', '2', '0.5', '', '7']} tones={['', '', 'b', 'g', '']} />
+  <Op note="int로 읽는 중">→</Op>
+  <ArrayFig name="num (int64)" data={[1, 2, '?', '', '']} tones={['', '', 'b', 'm', 'm']} />
+  <Op note="0.5에서 Float로">→</Op>
+  <ArrayFig name="num (double의 비트)" data={['1.0', '2.0', '0.5', '0', '7.0']} tones={['a', 'a', 'b', 'g', '']} note="NA 칸(점선)은 0" />
+</Fig>
+
+- int64와 double이 같은 벡터(`num`)를 써요. 둘 다 8바이트라서, int에서 float로 바뀔 때 앞의 값들을 제자리에서 바꿔요. 이 변환은 조각마다 한 번만 일어나요.
+- float가 된 뒤에는 int를 먼저 시도하지 않아요. `parse_double`이 int 텍스트도 올바르게 반올림해 읽으니, 필드마다 파싱이 한 번이에요. 다만 `-0`은 int 0이라서, int 꼴(`text::int_grammar`)이면 `-0.0`을 `+0.0`으로 바꿔요.
+- 첫 값이 `True`나 `False`면 bool 조각으로 읽어요(`parse_bools`, 행마다 flag 1바이트). 숫자도 bool도 아닌 필드를 만나면 그 조각을 색인에서 처음부터 문자열로 다시 읽어요(`parse_text`). 문자열 컬럼은 보통 첫 필드부터 숫자가 아니라서 다시 읽을 행이 없어요.
+- NA 판정이 가장 먼저예요. 따옴표 없는 빈 필드는 길이와 플래그만 보면 돼요. `na_values`가 있으면 그 텍스트들의 길이 집합으로 먼저 걸러서(`NaSet`), 그 길이의 텍스트가 없는 필드는 해시를 계산하지 않아요. 길이가 맞는 필드만 해시 집합에서 `string_view`로 찾아요(새 `std::string`을 만들지 않아요). NA 칸의 값은 0으로 써요. frame의 모든 컬럼에서 NA 자리의 값은 0이에요([컬럼과 메모리](/internals/frame/columns/)).
+- 조각의 크기는 색인으로 레코드 수를 안 뒤에 정확히 잡아요. 자라며 옮기는 일이 없어요. 유효 표시 `valid`는 처음 NA를 만날 때에야 만들어요. NA가 없는 조각은 유효 표시를 들지 않아요.
+
+모든 청크를 읽으면 컬럼을 하나씩 만들어요(`ColumnBuilder::build`). 먼저 값이 있는 조각들의 종류를 합쳐요(NA만 있는 조각은 세지 않아요).
+
+1. NA가 아닌 값이 하나도 없으면 float64 전체 NA 컬럼이에요.
+2. text도 bool도 없으면 숫자예요. float 조각이 하나라도 있으면 float64이고, int로 끝난 조각들의 값을 double로 반올림해 바꿔요(청크마다 병렬). 아니면 int64예요.
+3. text도 숫자도 없으면 bool이에요. 모든 값이 `True`나 `False`예요.
+4. 그 밖은 string이에요. text가 아닌 조각(숫자나 bool만 있던 조각)은 그 청크만 다시 색인해 문자열로 읽어요.
+
+그다음 청크마다 조각을 최종 버퍼로 옮기고(`memcpy`) 그 조각을 바로 버려요.
+
+bool을 숫자 뒤에서 확인하는 것은 규칙의 순서 그대로예요. `True`, `False`는 숫자 문법이 아니니 숫자 길에서 떨어지고, 그때 첫 값이면 bool 조각이 돼요.
+
+### string 컬럼 모으기
+
+string 컬럼은 모든 값의 바이트를 버퍼 하나에 이어 붙이고 행마다 끝 위치(offsets)를 둬요([컬럼과 메모리](/internals/frame/columns/)). 조각마다 값의 바이트(`Part::bytes`)와 끝 위치(`ends`)를 이미 모아 두었으니, 조각의 바이트 수를 청크 순서로 누적하면 각 청크가 최종 버퍼의 어디부터 쓸지 알아요. 버퍼를 한 번에 잡고, 청크마다 병렬로 자기 바이트를 복사하고 offsets를 써요.
+
+조각의 바이트도 한 번에 잡아요. 그 열의 필드 바이트 합이 텍스트 바이트의 상한이에요(따옴표와 `""`는 텍스트를 줄이기만 해요). 16바이트 이하의 필드는 라이브러리 `memcpy`를 부르지 않고 8바이트 읽기와 쓰기 두 번씩으로 옮겨요. 그래서 버퍼 끝에 16바이트 여유를 둬요.
+
+UTF-8 검사(`valid_utf8`)는 바이트마다 길이(1–4)를 판정하고, 이어지는 바이트가 `10xxxxxx`인지, 같은 글자를 더 긴 바이트로 쓴 overlong 형태가 아닌지, 서로게이트(U+D800–U+DFFF)가 아닌지, U+10FFFF를 넘지 않는지 봐요. Python이 `bytes.decode("utf-8")`로 거부하는 것을 똑같이 거부해서, 결과의 모든 string 값을 Python str로 바꿀 수 있게 해요. 청크에 0x80 이상인 바이트가 없으면(토크나이저가 모은 바이트 최댓값) 모든 값이 ASCII라 검사하지 않아요. 검사하면 조각마다 첫 실패 행을 적어 둬요(`Part::bad`). 헤더의 컬럼 이름도 같은 검사를 거쳐요(`column names are not valid UTF-8`).
+
+### `dtype=`으로 고른 컬럼
+
+`dtype=`으로 dtype을 고른 컬럼은 추론하지 않고 그 dtype으로 엄격하게 읽어요(`parse_forced`). 읽을 수 없는 값이 있으면 `column 'v': cannot read 'x' as int64`처럼 컬럼 이름, 값, 줄 번호와 함께 에러예요. 조각마다 첫 실패 행과 그 텍스트를 적어 두고(`Part::bad`, `bad_text`), 실패한 조각은 더 읽지 않아요. 여러 청크를 병렬로 읽어도 가장 앞의 행이 보고돼요(뒤의 에러 절).
+
+유효 표시는 행마다 1바이트 배열 `valid`에 모았다가 컬럼을 만들 때 비트맵으로 접어요. 바이트 8개를 64비트 하나로 읽어 곱셈 한 번으로 비트 8개를 모아요. NA 행의 값 자리는 조각에서 이미 0이라, 결과 컬럼을 다시 훑어 지우는 패스가 없어요. NA가 하나도 없으면 비트맵을 만들지 않아요.
+
+```python
+>>> import os, tempfile
+>>> folder = tempfile.mkdtemp()
+>>> def write(name, text):
+...     path = os.path.join(folder, name)
+...     with open(path, "w", newline="") as f:
+...         f.write(text)
+...     return path
+>>> df = sd.frame.read_csv(write("kinds.csv", 'i,f,b,s\n1,1.5,True,"x,y"\n2,9007199254740993,False,""\n,NaN,,z\n'))
+>>> df.dtypes
+{'i': int64, 'f': float64, 'b': bool, 's': string}
+>>> df["f"].tolist()
+[1.5, 9007199254740992.0, nan]
+>>> df["i"].tolist(), df["b"].tolist(), df["s"].tolist()
+([1, 2, <NA>], [True, False, <NA>], ['x,y', '', 'z'])
+```
+
+## 파일을 청크로 나눠 병렬로 읽기
+
+### 아무 데서나 자를 수 없어요
+
+큰 파일을 여러 스레드로 읽으려면 바이트 범위로 나눠야 해요. 그런데 청크의 시작 바이트가 따옴표 안이면, 그 근처의 줄바꿈은 레코드 경계가 아니에요. 청크의 첫 바이트만 봐서는 따옴표 안인지 알 수 없어요.
+
+<Fig caption="청크 경계(세로선 자리)가 따옴표 필드 안에 떨어진 경우. 청크 1의 첫 줄바꿈(진한 칸)은 따옴표 안이라 레코드 경계가 아니에요. 청크 1이 이것을 모르고 그 다음부터 레코드를 읽으면 엉뚱한 필드가 나와요.">
+  <ArrayFig name="청크 0의 끝" data={['1', ',', '"', 'a', 'b']} tones={['', '', 'a', 'a', 'a']} />
+  <Op>|</Op>
+  <ArrayFig name="청크 1의 시작" data={['c', '\\n', 'd', '"', '\\n', '2', ',', 'x', '\\n']} tones={['a', 'b', 'a', 'a', '', '', '', '', '']} />
+</Fig>
+
+방법은 두 가지가 알려져 있어요.
+
+- **추측하고 확인하기.** Ge 등[8]은 청크의 시작 상태를 추측해 읽고, 문법이 맞지 않으면 틀렸다고 보고 다시 읽는 방법을 분산 시스템(Spark)에서 보였어요. 실제 데이터에서는 추측이 거의 틀리지 않는다고 보고했어요. Polars 2.1.0의 소스에도 줄 하나를 필드로 나눠 보고 필드 개수가 맞는 줄이 세 번 이어지면 레코드 시작으로 받아들이는 함수(`next_line_position`)가 있어요.
+- **정확히 세기.** "바이트가 따옴표 안인가"는 그 앞의 따옴표 개수가 홀수인가와 같아요. 토크나이저의 prefix XOR이 바로 이것이었어요. 청크마다 따옴표 개수의 홀짝만 세면, 앞 청크들의 홀짝을 XOR해서 각 청크의 시작 상태를 정확히 알 수 있어요.
+
+stardust는 정확히 세요. 따옴표 개수 세기는 파일을 한 번 더 읽지만, 청크마다 독립이라 병렬로 돌고, 16바이트씩 NEON으로 비교해 레인마다 XOR하는 단순한 루프라 1스레드에서도 싸요. 추측이 틀릴 가능성이 없으니 "다시 읽기" 경로가 필요 없고, 결과가 데이터에 따라 달라지는 길이 없어요. Polars 2.1.0의 `read_csv`도 정확히 세는 쪽이에요. `read_csv`는 `scan_csv`를 거쳐 스트리밍 엔진의 CSV 소스(`polars-stream`의 `line_batch_source.rs`)로 읽어요. 입력을 블록으로 나눠 블록마다 병렬로 `CountLines::analyze_chunk`를 돌리는데, 시작이 따옴표 밖인 경우와 안인 경우 두 가지를 한꺼번에 계산해요(64바이트 SIMD 비교와 prefix XOR)[11]. 그 뒤 앞에서부터 블록 순서대로 실제 시작 상태에 맞는 결과를 골라, 줄바꿈에서 자른 배치를 파싱에 넘겨요. stardust는 청크를 파일 크기로 정한 크기로 자르고 홀짝만 병렬로 센 뒤, 청크마다 첫 레코드 찾기, 색인, 파싱을 병렬로 해요.
+
+### 세 단계
+
+따옴표의 홀짝은 16바이트씩 비교해 레인마다 XOR로 모아요.
+
+```cpp
+// csrc/frame/io/csv.cpp
+bool odd_quotes(const char* p, std::int64_t from, std::int64_t to) {
+    const auto* s = reinterpret_cast<const std::uint8_t*>(p);
+    const uint8x16_t q = vdupq_n_u8('"');
+    uint8x16_t acc = vdupq_n_u8(0);
+    std::int64_t i = from;
+    for (; i + 16 <= to; i += 16) acc = veorq_u8(acc, vceqq_u8(vld1q_u8(s + i), q));
+    unsigned odd = vaddvq_u8(vandq_u8(acc, vdupq_n_u8(1))) & 1;
+    for (; i < to; ++i) odd ^= s[i] == '"';
+    return odd;
+}
+```
+
+레인 하나는 따옴표를 볼 때마다 `0xFF`와 `0x00` 사이를 오가요. 끝에 레인마다 마지막 비트만 남겨 더하면, 그 합의 홀짝이 전체 따옴표 수의 홀짝이에요. 청크마다 이 값을 병렬로 구한 뒤, 청크를 나누는 코드는 이래요.
+
+```cpp
+    // csrc/frame/io/csv.cpp
+    std::vector<Chunk> chunks(static_cast<std::size_t>(nchunks));
+    {
+        bool inside = false;  // inside quotes where chunk c starts
+        for (std::int64_t c = 0; c < nchunks; ++c) {
+            Chunk& ch = chunks[static_cast<std::size_t>(c)];
+            ch.first = c == 0 ? body : (chunk_begin(c) >= n ? n : first_record(data, n, chunk_begin(c), inside));
+            inside ^= odd[static_cast<std::size_t>(c)];
+        }
+    }
+    // A chunk: index its records, check their quoting, parse every output column.
+    // A task's std::bad_alloc is rethrown as is (a MemoryError), not taken
+    // for an error in the file.
+    auto read_chunk = [&](std::int64_t c, std::int64_t limit) {
+        Chunk& ch = chunks[static_cast<std::size_t>(c)];
+        ch.parts.resize(out_names.size());
+        const std::int64_t end = chunk_end(c);
+        if (ch.first >= end || ch.first >= n) return;
+        try {
+            RecordIndex ix;
+            reader.index_records(ch.first, end, limit, ix);
+            reader.check_quotes(ch.first, ix);
+            ch.rows = ix.records;
+            for (std::size_t j = 0; j < out_names.size(); ++j) reader.parse_column(j, ch.first, ix, ch.parts[j]);
+        } catch (const std::bad_alloc&) { throw; } catch (const std::exception& e) {
+            ch.error = e.what();
+        }
+    };
+```
+
+1. 청크마다 따옴표 개수의 홀짝을 세요(`odd_quotes`, 병렬). 마지막 청크의 홀짝은 쓸 데가 없어서 세지 않아요.
+2. 홀짝을 앞에서부터 XOR하며 각 청크의 시작 상태(`inside`)와 첫 레코드(`first_record`)를 정해요. 추측이 아니라 정확한 값이에요.
+3. 청크마다 색인하고, 따옴표 규칙을 검사하고, 출력 컬럼마다 파싱해요(`read_chunk`, 병렬). 청크의 토큰화 에러는 메시지로 남겨 두고 던지지 않아요.
+4. 컬럼마다 조각들의 종류를 합치고 최종 버퍼로 옮겨요(`ColumnBuilder::build`, 청크마다 병렬).
+
+<Fig column caption="세 청크로 나눈 파일. 각 청크는 '자기 안에서 시작하는 레코드'를 맡아요. 청크 1의 첫 레코드는 따옴표 밖의 첫 줄바꿈 다음이고, 청크 0은 마지막 레코드를 청크 1 안까지 이어 읽어요. 청크 경계 안쪽의 따옴표 상태(inside)는 앞 청크들의 따옴표 홀짝을 XOR한 값이에요.">
+  <FigRow>
+    <ArrayFig name="청크" data={['0', '1', '2']} />
+    <ArrayFig name="따옴표 개수" data={[5, 2, 4]} />
+    <ArrayFig name="홀짝 (odd)" data={[1, 0, 0]} tones={['b', '', '']} />
+    <ArrayFig name="시작이 따옴표 안? (inside)" data={[0, 1, 1]} tones={['', 'b', 'b']} note="inside[c] = inside[c−1] ⊕ odd[c−1]" />
+  </FigRow>
+</Fig>
+
+- **청크의 첫 레코드(`first_record`).** 청크 시작 바로 앞이 따옴표 밖의 줄바꿈이면 청크 시작이 곧 레코드 시작이에요. 아니면 시작 상태에서 출발해 바이트를 하나씩 보며 따옴표를 만날 때마다 상태를 뒤집고, 따옴표 밖의 첫 `\n` 다음을 찾아요. 대개 한 줄 안에서 끝나요.
+- **레코드의 주인.** 청크는 자기 범위 안에서 시작하는 레코드만 맡고, 마지막 레코드는 청크 끝을 넘어서까지 읽어요. 앞 청크의 마지막 레코드가 끝나는 곳과 뒤 청크의 첫 레코드가 시작하는 곳이 같은 "따옴표 밖의 줄바꿈"이에요. 둘 다 같은 정확한 홀짝에서 출발하니 어긋날 수 없어요. 1,500,000바이트짜리 따옴표 필드 하나가 청크 여럿을 덮어도, 그 필드를 담은 레코드는 시작한 청크 하나가 끝까지 읽고, 덮인 청크들은 레코드 시작을 찾지 못해 빈 채로 끝나요(`tests/frame/test_threads.py`의 `test_csv_long_quoted_field_spans_chunks`).
+- **조각을 최종 버퍼로 옮겨요.** 청크마다 레코드 수가 정해지면 누적합(`row0`)으로 각 청크의 첫 행 번호를 알아요. 컬럼을 만들 때 청크 `c`의 조각은 행 `row0[c]`부터 최종 버퍼로 복사되고 바로 버려져요.
+- **종류 합치기.** 청크 A가 모두 int이고 청크 B에 float가 있으면 열은 float이고, A의 int를 double로 반올림해요. 청크 A가 int이고 청크 B가 bool이면 열은 string이고, 두 청크 모두 문자열로 다시 읽어요. 직렬 추론과 같은 규칙을 열 전체에 적용한 결과예요.
+
+```python
+>>> big = write("mixed.csv", "a\n" + "1\n" * 300_000 + "True\n")
+>>> col = sd.frame.read_csv(big)["a"]
+>>> col.dtype, col.tolist()[-2:]
+(string, ['1', 'True'])
+```
+
+### 청크의 크기와 수
+
+풀을 쓸 수 있으면 청크는 본문의 1/32을 64KB~512KB로 자른 크기예요. 풀을 쓸 수 없으면(1스레드, 다른 병렬 태스크 안, 다른 Python 스레드가 풀을 쓰는 중) 512KB예요. 몇 MB짜리 파일도 청크가 32개쯤 되어 10스레드가 저마다 여러 청크를 집어 가고, 레코드 길이가 고르지 않아도 일이 고르게 나뉘어요. 청크를 더 작게 하면 청크마다의 고정 비용(첫 레코드 찾기, 색인 준비, 컬럼마다의 조각)이 늘어서 아래 한계를 64KB로 두었어요. 위 한계 512KB는 색인 하나의 크기를 묶어 둬요.
+
+**경로는 하나예요.** 1스레드도 `nrows`도 같은 청크 경로를 돌아요. 1스레드에서는 태스크를 호출 스레드가 차례로 돌 뿐이고, 홀짝 세기는 NEON이라 1스레드에서도 싸요. `nrows`가 C++에 오면(뒤의 Python 쪽 자르기를 거치지 않은 경우) 청크를 앞에서부터 차례로 읽으며 레코드 수가 찰 때까지만 읽어요.
+
+**`nrows`의 파일 읽기.** `nrows`가 있으면 Python 층(`_io.py`의 `_read_records`)이 파일을 64KB부터 두 배씩 자라는 블록으로 읽고, 블록마다 한 번 따옴표 밖의 줄바꿈을 세요(`csv_scan_records`). 블록 안에서는 토크나이저와 같은 마스크(따옴표, 줄바꿈, prefix XOR)에 popcount를 하고, 따옴표 상태는 블록 사이로 넘겨요. `nrows`개(헤더가 있으면 하나 더)의 레코드가 끝나는 곳에서 자른 바이트만 C++에 넘기므로, C++는 그것을 모두, 병렬로 읽어요. 큰 파일의 앞부분만 보는 호출이 파일 전체를 읽지 않아요.
+
+**파일 읽기.** `nrows`가 없고 정규 파일이면 Python이 연 파일의 fd를 C++에 넘기고, C++가 4MB 조각을 `pread`로 병렬로 읽어요(`read_fd`). Python의 `f.read()`는 파일 전체를 한 스레드로 복사하는 일이라, 여러 스레드로 읽을 때 그 복사가 남은 시간의 큰 몫이었어요. 읽다가 실패하거나 정규 파일이 아니면(파이프 등) Python이 `f.read()`로 읽어요. 그러면 읽기의 `OSError`가 그대로 나와요. 연 뒤에 커진 파일은 끝까지, 줄어든 파일은 줄어든 끝까지 읽어요.
+
+나누는 방식은 결과를 바꾸지 않아요. float 합처럼 나누는 방식이 결과 비트를 바꾸는 연산은 나누는 방식을 데이터 길이로만 정해요([병렬화와 결정성](/internals/frame/parallel/)). CSV 읽기는 따옴표 홀짝이 정확하고 종류를 열 전체의 규칙으로 합치니, 어떻게 나눠도 결과가 같아요. 그래서 청크 크기가 스레드를 따라도 돼요. `tests/frame/test_threads.py`는 수 MB짜리 파일(따옴표 안의 줄바꿈, CRLF, 유니코드, 빈 필드가 청크 경계를 가로지르는)을 1, 3, 기본 스레드 수로 읽어 값과 dtype이 같은지, 직렬 오라클(Python으로 쓴 규칙)과 같은지 비교해요.
+
+### GIL
+
+파싱은 Python 객체를 만지지 않아요. `read_csv`의 C++ 본문은 시작하자마자 `Unlocked(size)`로 입력이 2¹⁷바이트(128KB) 이상이면 GIL을 놓아요. 스레드 수가 1이어도 놓으니, 큰 파일을 읽는 동안 다른 Python 스레드가 돌 수 있어요. 정규 파일을 읽는 `read_fd`도 같은 규칙으로 GIL을 놓아요. 에러 메시지도 C++ 문자열로 만들고, 예외는 GIL을 다시 잡은 뒤 Python 쪽으로 바뀌어요. 작은 파일은 GIL을 쥔 채 읽어서, 놓고 다시 잡는 비용이 작은 호출에 더해지지 않아요([Python 경계](/internals/core/python-boundary/)).
+
+## 에러와 줄 번호
+
+### 메시지
+
+파일 내용 때문에 나는 에러는 모두 `ValueError`이고, 메시지는 `read_csv(): line N: …` 꼴이에요.
+
+| 종류 | 메시지 |
+|---|---|
+| 따옴표 규칙 | `a quote inside an unquoted field`, `a closing quote must be followed by the separator or the end of the line`, `a quoted field is never closed` |
+| 필드 개수 | `expected 2 fields, got 1` |
+| 필드 크기 | `a field of 4 GB or more` |
+| `dtype=`으로 읽을 수 없는 값 | `column 'v': cannot read 'x' as int64` |
+| UTF-8 | `column 's' is not valid UTF-8`, `column names are not valid UTF-8` |
+| 헤더 | `the file is empty but header=True`, `3 names for a header of 2 fields` |
+
+줄 번호는 파일의 물리적인 줄이에요. `line_at`이 바이트 0부터 레코드 시작까지 `\n`을 세니, 따옴표 안의 줄바꿈도 줄로 쳐요. 편집기에서 그 줄 번호로 가면 문제의 레코드가 시작하는 줄이 나와요. 레코드 번호(헤더를 뺀 몇 번째 행)와 다를 수 있어요. 메시지에 필드의 값을 보일 때 올바른 UTF-8이 아닌 바이트는 `'\xff'`처럼 바이트 값으로 적어요(`printable`). 메시지가 Python str이 되어야 하기 때문이에요.
+
+```python
+>>> bad = write("bad.csv", 'a,b\n1,"multi\nline"\n2,3\n4,"q"x\n')
+>>> sd.frame.read_csv(bad)
+Traceback (most recent call last):
+    ...
+ValueError: read_csv(): line 5: a closing quote must be followed by the separator or the end of the line
+>>> sd.frame.read_csv(write("v.csv", "a\n1\n2\nx\n"), dtype="int64")
+Traceback (most recent call last):
+    ...
+ValueError: read_csv(): line 4: column 'a': cannot read 'x' as int64
+```
+
+첫 예에서 문제의 레코드(`4,"q"x`)는 데이터의 셋째 행이지만, 둘째 행의 값에 줄바꿈이 있어서 파일의 5번째 줄이에요.
+
+### 어느 에러가 보고되나
+
+파일에 틀린 곳이 여럿이면 직렬로 읽을 때 처음 만나는 에러가 보고돼요. 병렬로 읽어도 같은 에러가 나오게 순서를 정해 두었어요.
+
+1. 토큰화 에러가 값 에러보다 먼저예요. 값을 읽을 수 없는 행은 조각에 적어 두기만 하고, 모든 레코드를 토큰화한 뒤에 컬럼을 만들며 알려요.
+2. 토큰화 에러는 가장 앞 청크의 것이에요. 청크마다 자기의 첫 에러를 메시지 문자열로 저장해 두고, 모든 청크가 끝난 뒤 청크 순서로 훑어 첫 번째를 던져요. 청크 안에서는 바이트를 하나씩 읽는 토크나이저가 만나는 순서예요. 색인은 필드 수 에러나 입력 끝의 열린 따옴표에서 멈추는데, 멈추기 전에 그 앞 필드들의 따옴표 규칙을 먼저 검사해요. 끝까지 색인했으면 따옴표 규칙을 앞에서부터 검사해요. 그래서 청크의 에러가 곧 그 청크의 가장 앞 에러예요.
+3. 값 에러(지정 dtype으로 읽을 수 없는 값, 올바르지 않은 UTF-8)는 컬럼 순서로, 컬럼 안에서는 가장 앞 청크의 것이에요. 조각마다 첫 실패 행을 적어 두었으니(`Part::bad`) 그 조각의 가장 앞 행이에요. 메시지는 그 행의 텍스트(`bad_text`)와, 그 청크를 그 행까지 다시 색인해 찾은 레코드 시작 바이트로 만들어요.
+4. 태스크에서 메모리가 모자라면(`std::bad_alloc`) 파일의 에러로 바꾸지 않고 그대로 던져요. Python에서는 `MemoryError`예요.
+
+`test_csv_errors_are_the_first_in_file_order`는 20만 행 파일의 15만 번째 줄과 9만 번째 줄에 서로 다른 에러를 넣고, 어느 스레드 수에서든 `line 90001`이 보고되는지 확인해요.
+
+## 성능
+
+### 시간이 어디에 드나
+
+- 1스레드에서 시간의 큰 몫은 float 파싱(자리 읽기와 Eisel–Lemire)이고, 그다음이 색인이에요. 자리 읽기는 이미 8자리 묶음이고, 16자리를 NEON 레지스터 하나로 읽는 파서는 쓰지 않았어요. 얻을 몫이 파일 전체에서 몇 %로 작고 불확실했기 때문이에요.
+- 문자열 열은 첫 필드에서 숫자 추론이 끝나고, 필드 바이트를 조각에 모은 뒤 최종 버퍼로 한 번 더 옮겨요. ASCII 파일에서는 UTF-8 검사가 없어요.
+- 여러 스레드에서는 청크가 넉넉해서 스레드마다 여러 청크를 집어 가요. 파일 바이트를 읽는 것도 병렬(`pread`)이라, 한 스레드로 도는 단계는 헤더 읽기와 청크 첫 레코드 찾기, 컬럼마다의 비트맵 접기 정도예요.
+- 1스레드에서는 비교 대상인 pandas의 pyarrow 엔진이 여러 스레드로 돌아서, 1스레드 stardust가 그보다 느려요. 여러 스레드를 쓰면 stardust가 더 빨라요. 숫자는 벤치마크의 생성 표에 있어요.
+
+pandas 3.1.1도 float를 fast_float로 읽으니, 숫자 변환 자체는 pandas와 비슷한 알고리즘이에요. 차이는 토크나이저(바이트 상태 기계와 structural index), 열 단위 파싱, 병렬 읽기에서 나요.
+
+## 참고 문헌
+
+1. D. Lemire, "Number Parsing at a Gigabyte per Second", *Software: Practice and Experience* 51(8), 1700–1727, 2021. https://doi.org/10.1002/spe.2984 (Eisel–Lemire 알고리즘, 5의 거듭제곱 표, 둘째 곱셈과 실패 조건, 한가운데 판정의 범위 $[-4, 23]$, SWAR 8자리 읽기)
+2. N. Mushtak, D. Lemire, "Fast Number Parsing Without Fallback", *Software: Practice and Experience* 53(7), 1467–1471, 2023. https://doi.org/10.1002/spe.3198 (19자리 이하에서 Eisel–Lemire의 "모름"이 일어나지 않음의 증명)
+3. G. Langdale, D. Lemire, "Parsing Gigabytes of JSON per Second", *The VLDB Journal* 28(6), 941–960, 2019. https://doi.org/10.1007/s00778-019-00578-5 (simdjson의 1단계: 블록 마스크, 캐리 없는 곱셈의 prefix XOR, 비트 꺼내기)
+4. fast_float 소스, `include/fast_float/decimal_to_binary.h`(`compute_product_approximation`, `compute_float`), `script/table_generation.py`. https://github.com/fastfloat/fast_float
+5. W. D. Clinger, "How to Read Floating Point Numbers Accurately", *Proceedings of the ACM SIGPLAN 1990 Conference on Programming Language Design and Implementation (PLDI '90)*, 92–101, 1990. https://doi.org/10.1145/93542.93557
+6. Y. Shafranovich, "Common Format and MIME Type for Comma-Separated Values (CSV) Files", RFC 4180, 2005. https://www.rfc-editor.org/rfc/rfc4180
+7. G. Langdale, simdcsv. https://github.com/geofflangdale/simdcsv
+8. C. Ge, Y. Li, E. Eilebrecht, B. Chandramouli, D. Kossmann, "Speculative Distributed CSV Data Parsing for Big Data Analytics", *Proceedings of the 2019 International Conference on Management of Data (SIGMOD)*, 883–899, 2019. https://doi.org/10.1145/3299869.3319898
+9. LLVM 소스: libc++ `libcxx/src/include/from_chars_floating_point.h`, LLVM libc `libc/src/__support/str_to_float.h`(`decimal_exp_to_float`, `clinger_fast_path`, `eisel_lemire`, `simple_decimal_conversion`). https://github.com/llvm/llvm-project
+10. pandas 3.1.1 소스(태그 `v3.1.1`), `pandas/_libs/src/parser/tokenizer.cpp`(상태 기계 토크나이저, `fast_scan_simd`, `precise_xstrtod_with_end`). https://github.com/pandas-dev/pandas
+11. Polars 2.1.0 소스(태그 `py-2.1.0`): `crates/polars-io/src/csv/read/parser.rs`(`CountLines::analyze_chunk`, `next_line_position`), `crates/polars-stream/src/nodes/io_sources/csv/line_batch_source.rs`, `crates/polars-mem-engine/src/planner/lp.rs`(파일 스캔을 스트리밍 엔진에 맡김), `py-polars/src/polars/io/csv/functions.py`(`read_csv` → `scan_csv`). https://github.com/pola-rs/polars

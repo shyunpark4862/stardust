@@ -1,0 +1,444 @@
+---
+title: RBF와 가장 가까운 점
+group: 여러 변수
+order: 2
+summary: 흩어진 점의 보간인 RBFInterpolator와 NearestNDInterpolator를 코드를 따라 설명해요. 핵과 다항식 꼬리로 이뤄진 안장점 계와 꼬리가 필요한 까닭, cdist와 같은 비트의 거리, 계 채우기, 풀기 전의 두 검사(같은 자료점과 꼬리의 랭크), Bunch–Kaufman 분해와 그 뒤의 대입을 LAPACK dsytrs의 단계 그대로 쓴 것과 그 후방 오차, 평가와 그 오차 한계, 이웃 집합마다 따로 푸는 neighbors=k가 전역 RBF와 같은 비트인 까닭을 다뤄요.
+seeAlso: [grid, overview, accuracy-performance]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import PlaneFig from '../../../components/fig/PlaneFig.astro';
+
+export const rbfPts = [[0.6044, 0.3484], [0.9766, 0.5332], [0.4688, 0.4261], [0.363, 0.2374], [0.1387, 0.512], [0.3028, 0.986], [0.1007, 0.7602], [0.8023, 0.5277], [0.1027, 0.03733], [0.1404, 0.0238], [0.9327, 0.438], [0.6895, 0.557], [0.8412, 0.9717], [0.4206, 0.8157], [0.6074, 0.709], [0.6149, 0.5139], [0.7331, 0.7638], [0.5213, 0.7058], [0.6823, 0.805], [0.18, 0.7242], [0.2096, 0.9354], [0.9149, 0.6699], [0.2579, 0.2017], [0.7307, 0.4491], [0.237, 0.773], [0.542, 0.3638], [0.9145, 0.2095], [0.7208, 0.7498], [0.009911, 0.2972], [0.9259, 0.5748], [0.2872, 0.5995], [0.8908, 0.9483], [0.662, 0.1736], [0.5143, 0.9567], [0.2222, 0.4433], [0.7763, 0.7746], [0.404, 0.4839], [0.7405, 0.8957], [0.4838, 0.4858], [0.1489, 0.5749]];
+export const rbfNear = [[0.4838, 0.4858], [0.4688, 0.4261], [0.404, 0.4839], [0.6149, 0.5139], [0.542, 0.3638], [0.6044, 0.3484], [0.6895, 0.557], [0.5213, 0.7058]];
+export const rbfR = 0.2068;
+
+## 한눈에 보기
+
+[`RBFInterpolator`](/api/interpolate/RBFInterpolator/)는 $m$차원 공간에 흩어진 자료점 $y_1, \ldots, y_n$과 값 $d_i$에서
+
+$$
+s(x) = \sum_{j=1}^n a_j\,\varphi(\varepsilon\lVert x - y_j\rVert) + \sum_{k=1}^q b_k\,\pi_k(x)
+$$
+
+를 만들어요. $\varphi$는 반지름만의 함수(핵)이고 $\pi_k$는 차수 `degree` 이하의 단항식이에요. [`NearestNDInterpolator`](/api/interpolate/NearestNDInterpolator/)는 가장 가까운 자료점의 값을 그대로 돌려줘요.
+
+| 파일 | 하는 일 |
+|---|---|
+| `src/stardust/interpolate/_rbf.py` | 인자 검사, 단항식의 지수, 같은 자료점과 메모리 검사, 이웃 질의(`sd.spatial.KDTree`), `NearestNDInterpolator` |
+| `csrc/interpolate/rbf.cpp` | 핵, 계 채우기, 꼬리의 랭크, 분해와 대입, 평가, 이웃 집합마다의 국소 계 |
+| `csrc/spatial/metric.hpp` | 유클리드 거리의 짝 커널(`cdist`와 같은 코드) |
+| `csrc/linalg/lapack.hpp` | `sytrf`(Bunch–Kaufman), `gesdd`(꼬리의 특이값) |
+
+약속은 셋이에요.
+
+1. **풀리지 않는 계는 값을 내지 않아요.** 같은 자료점, 랭크가 모자란 꼬리, 0 피벗을 풀기 전이나 푸는 중에 찾아 `LinAlgError`로 알려요.
+2. **한 점의 값은 그 점과 계수만의 함수예요.** 평가의 합은 크기로만 정한 순서라, 점을 어떻게 나누든 같은 비트예요.
+3. **`neighbors=k`의 값은 그 이웃 집합으로 만든 전역 RBF와 같은 비트예요.** 다른 평가점, 점의 순서, 스레드 수와 무관해요.
+
+## 안장점 계
+
+보간 조건은 자료점마다 $s(y_i) + \lambda_ia_i = d_i$이고($\lambda_i$는 `smoothing`), 꼬리의 자유도를 정하는 조건 $\sum_j a_j\pi_k(y_j) = 0$이 붙어요. $K_{ij} = \varphi(\varepsilon\lVert y_i - y_j\rVert)$, $P_{ik} = \pi_k(y_i)$로 쓰면
+
+$$
+\begin{pmatrix} K + \mathrm{diag}(\lambda) & P \\ P^{\mathsf T} & 0 \end{pmatrix}\begin{pmatrix} a \\ b \end{pmatrix} = \begin{pmatrix} d \\ 0 \end{pmatrix}
+$$
+
+예요. 크기는 $N = n + q$이고 대칭이지만, 오른쪽 아래가 0이라 양정치가 아니에요.
+
+**꼬리가 필요한 까닭.** `gaussian`, `inverse_multiquadric`, `inverse_quadratic`은 양정치 핵이라 서로 다른 점이면 $K$ 자체가 가역이에요. 나머지 다섯은 조건부 양정치예요. $\sum_ja_j\pi(y_j) = 0$을 모든 낮은 차수 다항식 $\pi$에 대해 만족하는 $a$에서만 $a^{\mathsf T}Ka$의 부호가 정해져요. `linear`와 `multiquadric`은 상수(0차), `thin_plate_spline`과 `cubic`은 1차, `quintic`은 2차까지의 꼬리가 있어야 계가 풀린다고 보장돼요. 그래서 `degree`의 하한이 핵마다 정해져 있고, 그보다 낮으면 `ValueError`예요.
+
+```python
+# src/stardust/interpolate/_rbf.py
+MIN_DEGREE = {"multiquadric": 0, "linear": 0, "thin_plate_spline": 1, "cubic": 1, "quintic": 2}
+```
+
+## 핵과 거리
+
+```cpp
+// csrc/interpolate/rbf.cpp
+template <int K>
+inline double phi(double r) {
+    if constexpr (K == kLinear) return -r;
+    else if constexpr (K == kThinPlate) return r == 0 ? 0.0 : (r * r) * vmath::log1(r);
+    else if constexpr (K == kCubic) return (r * r) * r;
+    else if constexpr (K == kQuintic) {
+        const double r2 = r * r;
+        return -((r2 * r2) * r);
+    } else if constexpr (K == kMultiquadric) return -std::sqrt(r * r + 1.0);
+    else if constexpr (K == kInverseMultiquadric) return 1.0 / std::sqrt(r * r + 1.0);
+    else if constexpr (K == kInverseQuadratic) return 1.0 / (r * r + 1.0);
+    else return vmath::exp1(-(r * r));
+}
+```
+
+핵은 scipy의 여덟 식이에요. 곱의 차례는 $(r\cdot r)\cdot r$, $((r^2\cdot r^2)\cdot r)$로 정해 두었고, $\log$와 $\exp$는 배열 영역의 NEON 수학 커널의 스칼라 짝이라 레인 계산과 같은 비트예요. `thin_plate_spline`은 $r = 0$에서 극한 0이에요.
+
+$r$은 $\varepsilon$과 거리의 곱이고, 거리는 `sd.spatial`의 유클리드 짝 커널이에요.
+
+```cpp
+// csrc/interpolate/rbf.cpp
+// sd.spatial's euclidean distance of two points (the pair kernel cdist uses)
+inline double distance(const double* a, const double* b, std::int64_t m) {
+    double s = 0.0;
+    spatial::pair_scalar<spatial::SqOp, false>(a, b, nullptr, m, &s);
+    return spatial::euclid_finish<false>(s, a, b, nullptr, m);
+}
+```
+
+차의 제곱을 fma로 차례로 더하고 제곱근을 구하되, 합이 아주 작거나 넘치면 2의 거듭제곱으로 늘려 다시 재요([짝 커널](/internals/spatial/pair-kernel/)). 그래서 한 짝의 거리가 `sd.spatial.distance.cdist`와 같은 비트예요. scipy는 $\varepsilon x$와 $\varepsilon y$의 거리를 재니 끝자리가 다를 수 있어요.
+
+## 다항식 꼬리
+
+단항식은 scipy의 차례(`combinations_with_replacement`)로 Python 층이 $(q, m)$ 지수 배열로 만들어 넘겨요. 좌표는 계의 점들이 이루는 상자의 가운데로 옮기고 반폭으로 나눠요.
+
+```cpp
+// csrc/interpolate/rbf.cpp
+        // (hi + lo) / 2 and (hi - lo) / 2 as scipy, without overflow: the halves first (exact but in the subnormals)
+        shift[l] = 0.5 * hi + 0.5 * lo;
+        const double s = 0.5 * hi - 0.5 * lo;
+        scale[l] = s == 0.0 ? 1.0 : s;
+    }
+}
+
+// The monomials of x: out[k] = prod_l xhat_l^powers[k][l], xhat_l = (x_l - shift_l) / scale_l
+inline void monomials(
+    const double* x,
+    std::int64_t m,
+    const std::int64_t* pw,
+    std::int64_t q,
+    const double* shift,
+    const double* scale,
+    double* xhat,
+    double* out
+) {
+    for (std::int64_t l = 0; l < m; ++l) xhat[l] = (x[l] - shift[l]) / scale[l];
+    for (std::int64_t k = 0; k < q; ++k) {
+        double v = 1.0;
+        for (std::int64_t l = 0; l < m; ++l)
+            for (std::int64_t e = 0; e < pw[k * m + l]; ++e) v *= xhat[l];
+        out[k] = v;
+    }
+}
+```
+
+$(\max + \min)/2$를 $0.5\max + 0.5\min$으로 계산해 넘치지 않게 해요. 폭이 0인 축은 척도 1이에요. 단항식은 좌표 차례로 인수를 하나씩 곱해요. 계의 점들에서는 늘린 좌표가 $[-1, 1]$에 있으니 단항식의 크기가 1을 넘지 않아 $P$의 조건이 좋아요.
+
+## 계 채우기
+
+```cpp
+    // csrc/interpolate/rbf.cpp
+    auto column = [&](std::int64_t j, double* xhat, double* mono) {
+        double* col = A + j * N;
+        if (j < n) {
+            const double* yj = row(j);
+            std::int64_t i = j;
+            if (lanes) {
+                for (; i + 2 <= n; i += 2) {
+                    float64x2_t sq = vdupq_n_f64(0.0);
+                    for (std::int64_t l = 0; l < m; ++l) {
+                        const float64x2_t z = vsubq_f64(vld1q_f64(ys.data() + l * n + i), vdupq_n_f64(yj[l]));
+                        sq = vfmaq_f64(sq, z, z);
+                    }
+                    float64x2_t d = vsqrtq_f64(sq);
+                    const uint64x2_t fine = sum_fine(sq, tiny, huge);
+                    if ((vgetq_lane_u64(fine, 0) & vgetq_lane_u64(fine, 1)) == 0) [[unlikely]] {
+                        const double dv[2] = {distance(row(i), yj, m), distance(row(i + 1), yj, m)};
+                        d = vld1q_f64(dv);
+                    }
+                    vst1q_f64(col + i, phi_lanes<K>(vmulq_f64(veps, d)));
+                }
+            }
+            for (; i < n; ++i) col[i] = phi<K>(eps * distance(row(i), yj, m));
+            col[j] = col[j] + smooth[rows ? rows[j] : j];
+            monomials(yj, m, pw, q, shift, scale, xhat, mono);
+            for (std::int64_t k = 0; k < q; ++k) col[n + k] = mono[k];
+        } else {
+            for (std::int64_t i = j; i < N; ++i) col[i] = 0.0;
+        }
+    };
+```
+
+열 우선 배열의 아래 삼각만 채워요. 열 $j \lt n$은 대각부터 $\varphi(\varepsilon d_{ij})$를 채우고 대각에 $\lambda_j$를 더한 뒤, 그 자료점의 단항식을 꼬리 행에 둬요. 꼬리의 열은 0이에요.
+
+차원이 작으면 점을 좌표 우선으로 옮긴 사본에서 한 열의 칸 둘을 NEON 레인으로 나란히 계산해요. 레인마다 스칼라 칸과 같은 연산(차의 fma 사슬, 제곱근, $\varepsilon$ 곱, $\varphi$)이고, 합이 아주 작거나 큰 칸은 그 칸만 스칼라 거리로 다시 재요. 칸마다 자기 커널이라 열을 32개씩 나눠 병렬로 채워도 같은 비트예요.
+
+## 풀기 전의 두 검사
+
+**같은 자료점.** 두 자료점이 같고 둘 다 `smoothing`이 0이면 $K$의 두 행이 같아 계가 특이해요. 만들기 전에 자료점을 사전 순서로 정렬해 같은 점의 묶음을 찾고, 묶음 안에서 `smoothing`이 0인 첫 두 점을 찾아요. 그런 짝이 여럿이면 둘째 점의 번호가 가장 작은 짝을 말하는 `LinAlgError`예요.
+
+**꼬리의 랭크.** 직선 위의 점에 1차 꼬리를 주면 $P$의 열이 선형 종속이라 계가 특이해요.
+
+```cpp
+// csrc/interpolate/rbf.cpp
+// numpy's matrix_rank of P (the system's rows n.. of columns 0..n): singular values by gesdd, tolerance
+// s_max max(n, q) eps
+std::int64_t tail_rank(const double* A, std::int64_t n, std::int64_t q, linalg::Scratch& sc) {
+    if (q == 0) return 0;
+    const std::int64_t N = n + q;
+    std::vector<double> P(static_cast<std::size_t>(n * q)), s(static_cast<std::size_t>(std::min(n, q)));
+    for (std::int64_t k = 0; k < q; ++k)
+        for (std::int64_t i = 0; i < n; ++i) P[i + k * n] = A[(n + k) + i * N];
+    double du = 0.0, dvt = 0.0;
+    if (lapack::gesdd('N', n, q, P.data(), std::max<lint>(1, n), s.data(), &du, 1, &dvt, 1, sc) != 0)
+        return -1;  // no convergence: reported as a rank failure
+    double smax = 0.0;
+    for (const double v : s) smax = std::max(smax, v);
+    const double tol = smax * static_cast<double>(std::max(n, q)) * kEps;
+    std::int64_t rank = 0;
+    for (const double v : s) rank += v > tol ? 1 : 0;
+    return rank;
+}
+```
+
+$P$의 특이값을 `gesdd`(`'N'`, 값만)로 구하고 numpy `matrix_rank`와 같은 허용치 $\sigma_{\max}\max(n, q)\,\varepsilon$로 랭크를 세요. $q$보다 작으면 풀지 않고 그 랭크를 말하는 `LinAlgError`예요. 풀이 뒤에 실패를 알게 되는 것보다 원인을 바로 말할 수 있어요.
+
+## 풀이: Bunch–Kaufman과 대입
+
+계가 대칭이지만 부정이라 Cholesky는 쓸 수 없고, LU는 대칭을 버려 일이 두 배예요. 대칭 부정 행렬의 표준은 Bunch–Kaufman 분해 $PAP^{\mathsf T} = LDL^{\mathsf T}$예요. $L$은 단위 아래 삼각, $D$는 $1 \times 1$과 $2 \times 2$ 블록의 블록 대각이에요.
+
+LAPACK `dsytrf`는 열 $k$에서 $\alpha = (1 + \sqrt{17})/8$로 피벗을 골라요. 대각 $\lvert a_{kk}\rvert$, 그 열의 대각 밖 최대 $\omega_1 = \lvert a_{rk}\rvert$, 열 $r$의 대각 밖 최대 $\omega_r$를 보고, $\lvert a_{kk}\rvert \ge \alpha\omega_1$이면 $a_{kk}$를 $1 \times 1$ 피벗으로, $\lvert a_{kk}\rvert\omega_r \ge \alpha\omega_1^2$이어도 $a_{kk}$를, $\lvert a_{rr}\rvert \ge \alpha\omega_r$이면 $a_{rr}$를 $1 \times 1$ 피벗으로 옮겨 쓰고, 셋 다 아니면 $(k, r)$의 $2 \times 2$ 블록을 피벗으로 해요. 이 $\alpha$는 한 단계의 원소 성장을 가장 작게 맞춘 값이에요. 블록 꼴(`dlasyf`)로 열 묶음마다 갱신을 행렬 곱으로 하는 것까지 [대칭 행렬의 분해](/internals/linalg/symmetric/)에 있어요. 정확한 0 피벗을 만나면 `info > 0`이고 특이하다고 알려요.
+
+분해 뒤의 대입은 LAPACK `dsytrs`의 단계를 그대로 썼어요. 이웃 집합마다 푸는 작은 계에서는 라이브러리 호출의 고정비가 대입 자체보다 커서예요.
+
+```cpp
+// csrc/interpolate/rbf.cpp
+void ldlt_solve(const double* A, std::int64_t N, const lint* ipiv, double* b) {
+    for (std::int64_t k = 0; k < N;) {
+        const double* ak = A + k * N;
+        if (ipiv[k] > 0) {
+            const std::int64_t kp = ipiv[k] - 1;
+            if (kp != k) std::swap(b[k], b[kp]);
+            const double bk = b[k];
+            for (std::int64_t i = k + 1; i < N; ++i) b[i] = b[i] - ak[i] * bk;
+            b[k] = b[k] * (1.0 / ak[k]);
+            k += 1;
+        } else {
+            const std::int64_t kp = -ipiv[k] - 1;
+            if (kp != k + 1) std::swap(b[k + 1], b[kp]);
+            const double* ak1 = ak + N;
+            const double b0 = b[k], b1 = b[k + 1];
+            for (std::int64_t i = k + 2; i < N; ++i) b[i] = b[i] - ak[i] * b0;
+            for (std::int64_t i = k + 2; i < N; ++i) b[i] = b[i] - ak1[i] * b1;
+            const double akm1k = ak[k + 1], akm1 = ak[k] / akm1k, akk = ak1[k + 1] / akm1k;
+            const double denom = akm1 * akk - 1.0;
+            const double bkm1 = b0 / akm1k, bkk = b1 / akm1k;
+            b[k] = (akk * bkm1 - bkk) / denom;
+            b[k + 1] = (akm1 * bkk - bkm1) / denom;
+            k += 2;
+        }
+    }
+    for (std::int64_t k = N - 1; k >= 0;) {
+        if (ipiv[k] > 0) {
+            b[k] = b[k] - dot_tail(A + k * N, b, k + 1, N);
+            const std::int64_t kp = ipiv[k] - 1;
+            if (kp != k) std::swap(b[k], b[kp]);
+            k -= 1;
+        } else {
+            b[k] = b[k] - dot_tail(A + k * N, b, k + 1, N);
+            b[k - 1] = b[k - 1] - dot_tail(A + (k - 1) * N, b, k + 1, N);
+            const std::int64_t kp = -ipiv[k] - 1;
+            if (kp != k) std::swap(b[k], b[kp]);
+            k -= 2;
+        }
+    }
+}
+```
+
+앞 고리는 $LDy = Pb$예요. $1 \times 1$ 피벗이면 행을 바꾸고 아래 성분에서 $L$의 열을 빼고 $d_{kk}$로 나눠요. $2 \times 2$ 피벗이면 두 열을 빼고, 블록 $\begin{pmatrix} a & c \\ c & e \end{pmatrix}$의 풀이를 `dsytrs`와 같이 $c$로 나눈 꼴 $a/c$, $e/c$, $\mathrm{denom} = (a/c)(e/c) - 1$로 해요. 뒤 고리는 $L^{\mathsf T}x = y$를 내적으로 풀고 행 바꾸기를 되돌려요. 내적은 $i \bmod 4$의 부분합 넷을 $(s_0 + s_1) + (s_2 + s_3)$로 모아요. 이 차례는 크기로만 정해져요.
+
+```cpp
+    // csrc/interpolate/rbf.cpp
+    if (lapack::sytrf(N, A, N, ipiv.data(), sc) > 0) return 2;
+    std::vector<double> B(static_cast<std::size_t>(N * D));
+    for (std::int64_t c = 0; c < D; ++c) {
+        for (std::int64_t i = 0; i < n; ++i) B[i + c * N] = vals[(rows ? rows[i] : i) * D + c];
+        for (std::int64_t i = n; i < N; ++i) B[i + c * N] = 0.0;
+    }
+    for (std::int64_t c = 0; c < D; ++c) ldlt_solve(A, N, ipiv.data(), B.data() + c * N);
+    bool finite = true;
+    for (std::int64_t i = 0; i < N; ++i)
+        for (std::int64_t c = 0; c < D; ++c) {
+            const double v = B[i + c * N];
+            finite = finite && std::isfinite(v);
+            coef[i * D + c] = v;
+        }
+    return finite ? 0 : 3;
+```
+
+값의 열마다 따로 풀고, 복소수 값은 실수 열 둘이에요(행렬은 실수). 계수에 유한하지 않은 값이 있으면 특이하다고 알려요.
+
+**후방 오차.** Higham의 정리 11.3에 따르면 Bunch–Kaufman 분해와 그 대입으로 구한 $\hat c$는 $(\hat A + \Delta A)\hat c = d$, $\lvert\Delta A\rvert \le p(N)u\bigl(\lvert\hat A\rvert + \lvert\hat L\rvert\lvert\hat D\rvert\lvert\hat L\rvert^{\mathsf T}\bigr)$를 만족해요(행 바꾸기는 생략해 적었어요). 여기서는 상수를 $\gamma_{4N}$으로 두고 잔차로 적어요.
+
+$$
+\lvert\hat A\hat c - d\rvert \le \gamma_{4N}\bigl(\lvert\hat A\rvert + \lvert\hat L\rvert\lvert\hat D\rvert\lvert\hat L\rvert^{\mathsf T}\bigr)\lvert\hat c\rvert
+$$
+
+$\hat A$는 계산한 계예요. 테스트는 잔차를 오차 없는 곱과 정확한 합으로 구해 이 한계와 견줘요. 이것은 후방 오차의 계약이고, 끝에서 끝의 오차는 계의 조건수가 정해요. `gaussian`처럼 조건이 나쁜 핵은 잔차가 작아도 계수가 크게 틀릴 수 있어요.
+
+## 평가
+
+```cpp
+    // csrc/interpolate/rbf.cpp
+    for (std::int64_t t = t0; t < i1; ++t) {
+        const std::int64_t i = which ? which[t] : t;
+        const double* x = X + i * m;
+        for (std::int64_t c = 0; c < D; ++c) acc[c] = 0.0;
+        for (std::int64_t j = 0; j < n; ++j) {
+            const double f = phi<K>(eps * distance(x, y + (rows ? rows[j] : j) * m, m));
+            const double* cj = coef + j * D;
+            for (std::int64_t c = 0; c < D; ++c) acc[c] = std::fma(f, cj[c], acc[c]);
+        }
+        monomials(x, m, pw, q, shift, scale, xhat, mono);
+        for (std::int64_t k = 0; k < q; ++k) {
+            const double* ck = coef + (n + k) * D;
+            for (std::int64_t c = 0; c < D; ++c) acc[c] = std::fma(mono[k], ck[c], acc[c]);
+        }
+        std::memcpy(out + i * D, acc, static_cast<std::size_t>(D) * sizeof(double));
+    }
+```
+
+점마다 자료점 차례로 $\varphi(r_j)a_j$를 항마다 fma 하나로 더하고, 이어서 단항식 항을 같은 꼴로 더해요. 합의 차례는 자료점과 단항식의 번호로만 정해지니 평가점을 어떻게 나누든 같아요. 값 열이 8개 이하면 점 넷을 NEON 레인 둘에 나란히 놓고 같은 연산을 해요. fma 사슬 넷이 동시에 흐를 뿐 점마다의 연산은 스칼라 고리와 같아요.
+
+평가의 한계는 계산한 계수, shift, scale이 나타내는 정확한 함수와 견줘요. 항 $j$의 핵 값 오차는 거리와 $\varepsilon$ 곱의 상대 오차 $\gamma_{m+5}$가 $\varphi$를 지나며 $\lvert r\varphi'(r)\rvert$배가 되는 몫, 핵 식의 반올림 $\gamma_4\lvert\varphi\rvert$, 비정상 수의 바닥으로 나눠요.
+
+$$
+E_j = 1.01\,\gamma_{m+5}\lvert r_j\varphi'(r_j)\rvert + \gamma_4\lvert\varphi_j\rvert + 8\cdot 2^{-1074}
+$$
+
+여기에 합의 $\gamma_N$과 단항식의 $\gamma_{3g_k}$($g_k$는 단항식의 차수)를 더하면
+
+$$
+\sum_j\lvert\hat a_j\rvert E_j(1 + \gamma_N) + \gamma_N\sum_j\lvert\hat a_j\rvert\lvert\varphi_j\rvert + \sum_k\lvert\hat b_k\rvert\lvert\pi_k\rvert\bigl(\gamma_{3g_k}(1 + \gamma_N) + \gamma_N\bigr)
+$$
+
+예요. $\log$와 $\exp$가 1 ULP 안이라는 가정 위에 서 있고, 배열 영역의 수학 커널이 그 가정을 지켜요.
+
+```python
+>>> I = sd.interpolate
+>>> rng = sd.random.default_rng(7)
+>>> y = rng.random((40, 2))
+>>> d = sd.sin(3 * y[:, 0]) * sd.cos(2 * y[:, 1])
+>>> f = I.RBFInterpolator(y, d)
+>>> f
+RBFInterpolator(points=40, dimensions=2, kernel='thin_plate_spline')
+>>> x = sd.asarray([[0.5, 0.5], [0.2, 0.9]])
+>>> f(x)
+array([ 0.5388320639506575, -0.1251845363763884], dtype=float64)
+>>> sd.sin(3 * x[:, 0]) * sd.cos(2 * x[:, 1])
+array([  0.5389488413540798, -0.12828795270803775], dtype=float64)
+>>> float(sd.max(sd.abs(f(y) - d)))
+2.6922908347160046e-15
+>>> line = sd.stack([sd.linspace(0.0, 1.0, 10), 2 * sd.linspace(0.0, 1.0, 10)], axis=1)
+>>> I.RBFInterpolator(line, sd.arange(10.0))
+Traceback (most recent call last):
+    ...
+stardust.linalg.LinAlgError: RBFInterpolator(): the monomials of degree 1 at the data points do not have full column rank (2/3): the system is singular
+>>> yd = sd.concat([y, y[:1]], axis=0)
+>>> I.RBFInterpolator(yd, sd.concat([d, d[:1]]))
+Traceback (most recent call last):
+    ...
+stardust.linalg.LinAlgError: RBFInterpolator(): data points 0 and 40 are equal and their smoothing is 0: the system is singular
+>>> I.RBFInterpolator(y, d, kernel='cubic', degree=0)
+Traceback (most recent call last):
+    ...
+ValueError: RBFInterpolator(): 'degree' must be at least 1 for kernel 'cubic' (the system may not be solvable below it), not 0
+```
+
+기본 핵 `thin_plate_spline`은 1차 꼬리가 붙어요. 자료점에서의 잔차는 반올림 크기이고, 직선 위의 점, 같은 자료점, 핵의 최소보다 낮은 `degree`는 각각 풀기 전에 원인을 말하는 에러예요.
+
+## neighbors=k: 이웃 집합마다의 계
+
+`neighbors=k`면 평가점마다 가장 가까운 자료점 $k$개로 국소 RBF를 만들어요. 이웃은 Python 층이 `sd.spatial.KDTree.query(k)`로 찾아요. KD 트리의 답은 (거리, 색인)의 전순서라 같은 거리면 작은 색인이 이겨요. 그래서 이웃 집합이 실행과 스레드 수에 따라 흔들리지 않아요.
+
+```cpp
+                // csrc/interpolate/rbf.cpp
+                for (std::int64_t g = gb; g < ge; ++g) {
+                    const std::int64_t* rows = sets.data() + order[starts[g]] * k;
+                    for (std::int64_t i = 0; i < k; ++i)
+                        std::memcpy(ys.data() + i * m, Y.p + rows[i] * m, static_cast<std::size_t>(m) * sizeof(double));
+                    shift_scale(ys.data(), nullptr, k, m, shift.data(), scale.data());
+                    std::vector<double> sl(static_cast<std::size_t>(k));
+                    for (std::int64_t i = 0; i < k; ++i) sl[i] = sm[rows[i]];
+                    fill_system<K>(
+                        ys.data(), nullptr, k, m, sl.data(), eps, Pw.p, q, shift.data(), scale.data(), A.data(), false
+                    );
+                    const std::int64_t r = tail_rank(A.data(), k, q, sc);
+                    int st = r < q ? 1 : solve_system(A.data(), k, q, V.p, rows, D, coef.data(), sc);
+                    if (st != 0) {
+                        gstatus[g] = st;
+                        grank[g] = r;
+                        first.offer(order[starts[g]]);
+                        for (std::int64_t t = starts[g]; t < starts[g + 1]; ++t)
+                            std::fill(o + order[t] * D, o + (order[t] + 1) * D, kNaN);
+                        continue;
+                    }
+                    eval_points<K>(
+                        X.p, starts[g], starts[g + 1], order.data(), m, ys.data(), nullptr, k, coef.data(), D, eps,
+                        Pw.p, q, shift.data(), scale.data(), o, acc.data(), xhat.data(), mono.data()
+                    );
+                }
+```
+
+C++에서는 점마다의 이웃 색인을 정렬해 집합으로 만들고, 평가점을 (집합의 사전 순서, 점 번호)로 정렬해 같은 집합끼리 묶어요. 집합마다 그 자료점의 사본을 정렬한 색인 순서로 모아, 전역 RBF와 같은 함수로 shift·scale, 계 채우기, 랭크 검사, 풀이, 평가를 해요. 그래서 한 점의 값은 `RBFInterpolator(y[집합], d[집합])`과 같은 비트예요. 집합끼리는 병렬이고 태스크마다 LAPACK 작업 공간을 따로 쥐어요.
+
+어떤 집합의 계가 풀리지 않으면 그 집합의 점은 NaN으로 두고 일을 끝까지 해요. 실패한 집합 가운데 점 번호가 가장 작은 점의 것을 상태 코드로 돌려주고, Python 층이 그 점 번호를 말하는 `LinAlgError`를 내요. 어느 태스크가 먼저 실패했는지와 무관하게 같은 점을 말해요. 유한하지 않은 평가점은 이웃이 없으니 NaN이에요. $k \ge n$이면 집합이 언제나 자료점 전체라 만들 때 전역 계를 한 번 풀어요.
+
+```python
+>>> fk = I.RBFInterpolator(y, d, neighbors=8)
+>>> fk(x)
+array([  0.5382904665303524, -0.12665689513622522], dtype=float64)
+>>> idx = sd.spatial.KDTree(y).query(x, k=8)[1]
+>>> idx
+array([[38,  2, 36, 15, 25,  0, 11, 17],
+       [20, 24,  5,  6, 19, 13, 30, 33]], dtype=int64)
+>>> s0 = sd.sort(idx[0])
+>>> loc = I.RBFInterpolator(y[s0], d[s0])
+>>> float(loc(x[:1])[0]) == float(fk(x)[0])
+True
+>>> fk(sd.asarray([[float('nan'), 0.5]]))
+array([nan], dtype=float64)
+>>> nn = I.NearestNDInterpolator(y, d)
+>>> nn(x)
+array([  0.5599856590486575, -0.17382777435840355], dtype=float64)
+>>> d[idx[:, 0]]
+array([  0.5599856590486575, -0.17382777435840355], dtype=float64)
+```
+
+첫 평가점의 이웃 8개를 정렬해 그 자료점만으로 만든 전역 RBF가 `neighbors=8`의 값과 비트까지 같아요. 가장 가까운 점의 값은 KD 트리가 고른 첫 이웃의 값 그대로예요.
+
+<Fig caption="자료점 40개(옅은 점)와 평가점 (0.5, 0.5)(십자). neighbors=8이면 이 점의 값은 가까운 8개(번호는 거리 순서)만으로 만든 RBF의 값이에요. 점선 원은 8번째 이웃까지의 거리예요.">
+  <PlaneFig
+    label="흩어진 자료점과 한 평가점의 가까운 이웃 8개"
+    domain={[0, 1]}
+    range={[0, 1]}
+    width={400}
+    xTicks={[0, 0.5, 1]}
+    yTicks={[0, 0.5, 1]}
+    layers={[
+      { kind: 'points', pts: rbfPts, tone: 'faint', size: 2.8 },
+      { kind: 'circle', at: [0.5, 0.5], r: rbfR, tone: 'base', dashed: true },
+      { kind: 'points', pts: rbfNear, tone: 'main', size: 3.6, labels: ['1', '2', '3', '4', '5', '6', '7', '8'] },
+      { kind: 'points', pts: [[0.5, 0.5]], tone: 'ink', shape: 'cross', size: 5 },
+    ]}
+    legend={[
+      { label: '자료점', tone: 'faint', shape: 'dot' },
+      { label: '이웃 8개', tone: 'main', shape: 'dot' },
+      { label: '평가점', tone: 'ink', shape: 'cross' },
+    ]}
+  />
+</Fig>
+
+## NearestNDInterpolator
+
+만들 때 자료점으로 `KDTree`를 하나 만들고, 부를 때 유한한 평가점의 `query(k=1)` 색인으로 값을 골라요. 동점은 작은 색인이고, 유한하지 않은 평가점은 NaN이에요. `rescale=True`면 축마다 자료점의 평균을 빼고 범위(0이면 1)로 나눈 좌표에서 찾아요. 계산이 거의 모두 트리 질의라 [KD 트리](/internals/spatial/kdtree/)의 성질을 그대로 이어받아요. 고른 자료점의 값을 그대로 돌려주니 오차는 0이에요.
+
+## 병렬화와 메모리
+
+| 일 | 나누는 단위 | 같은 비트인 까닭 |
+|---|---|---|
+| 계 채우기 | 열 32개씩 | 칸마다 자기 커널이에요 |
+| 전역 분해 | Accelerate의 `sytrf` | Accelerate의 스레드 모드가 같으면 같아요 |
+| 평가 | 평가점 조각 | 점마다 합의 차례가 크기로만 정해져요 |
+| 이웃 집합 | 집합 조각 | 집합은 KD 트리의 전순서로 정해지고 집합마다 같은 계와 풀이예요 |
+
+전역 계는 $(n + q)^2 \times 8$바이트를 한 번 잡아요. 그 크기가 기계의 물리 메모리보다 크면 할당 전에 `MemoryError`예요. 자료점이 수만 개면 계가 수 GB이고 분해가 세제곱의 일이라 `neighbors`를 쓰는 편이 맞아요. `neighbors=k`는 태스크마다 $(k + q)^2 \times 8$바이트이고 같은 검사를 해요. 평가의 작업 공간은 조각마다 열 수만큼이에요.

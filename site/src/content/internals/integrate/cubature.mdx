@@ -1,0 +1,317 @@
+---
+title: 다차원 적응 구적
+group: 다차원
+order: 1
+summary: cubature가 상자를 영역으로 나누며 적분하는 방법을 설명해요. 1차원 Gauss–Kronrod 규칙의 곱과 Genz–Malik의 차수 7 규칙, 두 규칙의 차로 만드는 오차 어림, 가장 나쁜 영역을 축마다 반으로 나누는 힙, 무한 축의 치환, 그리고 합의 순서가 값의 배치를 따르는 까닭을 다뤄요.
+seeAlso: [overview, gauss-kronrod, accuracy-performance]
+---
+
+## 한눈에 보기
+
+[`cubature`](/api/integrate/cubature/)는 상자 $[a_1, b_1] \times \dots \times [a_d, b_d]$ 위에서 배열 값 함수를 적분해요. 알고리즘은 scipy 1.18.1의 Python 판 `_cubature.py`와 그 규칙 `_rules`의 것이고, 코드는 `csrc/integrate/adaptive.cpp`의 `cubature_solve`예요. Python 층 `src/stardust/integrate/_cubature.py`는 인자를 검사하고 결과를 만들어요.
+
+- 영역마다 고정 규칙 하나로 값을, 그 규칙과 낮은 규칙의 차로 오차를 어림해요.
+- 오차가 가장 큰 영역을 힙에서 꺼내 축마다 반으로 나눠 $2^d$개로 바꿔요.
+- 모든 값의 오차가 $\text{atol} + \text{rtol}\cdot\lvert\text{값}\rvert$ 안이거나 나누기가 `max_subdivisions`에 닿으면 멈춰요.
+
+힙, 규칙의 합, 영역의 목록은 C++에 있고, 사용자 함수는 영역마다 두 번 GIL을 쥔 채 불러요. 같은 무리의 1차원 판인 `quad_vec`도 같은 파일에 있어요. 영역 전체의 짜임은 [영역의 구조](/internals/integrate/overview/)에 있어요.
+
+## 규칙 셋
+
+모든 규칙은 $[-1, 1]^d$ 위의 마디 $\mathbf{u}_p$와 가중치 $w_p$로 정해져요.
+
+### Gauss–Kronrod의 곱
+
+`'gk21'`과 `'gk15'`는 1차원 [Gauss–Kronrod 규칙](/internals/integrate/gauss-kronrod/)(21점, 15점)을 축마다 곱한 것이에요. 마디는 $21^d$·$15^d$개이고 가중치는 축마다의 가중치의 곱이에요. 1차원 규칙의 상수는 QUADPACK의 10진 리터럴이에요. 오차 어림에 쓰는 낮은 규칙은 Gauss 10점·7점의 곱인데, 그 값은 scipy가 `roots_legendre(10)`·`(7)`로 계산한 double을 그대로 둬요. 수학적으로 Gauss 점은 Kronrod 점의 일부이지만, 이 double은 올바로 반올림한 값과 점이 최대 1 ULP, 가중치가 최대 19 ULP 달라서 Kronrod 리터럴의 그 점과 끝자리가 같지 않을 수 있어요. 사용자 함수를 부르는 점이니 scipy의 값을 따라요.
+
+```cpp
+// csrc/integrate/adaptive.cpp
+// _cartesian_product of d copies of a 1-D rule (the first variable slowest) and the products of
+// the weights (np.prod along the row: in order)
+Fixed product_rule(const double* x, const double* w, std::size_t k, std::size_t d) {
+    Fixed r;
+    r.n = 1;
+    for (std::size_t i = 0; i < d; ++i) {
+        if (r.n > kCubeValuesMax / k / d) throw nb::value_error("the rule needs more than 2**25 values per region");
+        r.n *= k;
+    }
+    r.nodes.resize(r.n * d);
+    r.weights.resize(r.n);
+    std::vector<std::size_t> idx(d, 0);
+    for (std::size_t p = 0; p < r.n; ++p) {
+        double wp = 1.0;
+        for (std::size_t i = 0; i < d; ++i) {
+            r.nodes[p * d + i] = x[idx[i]];
+            wp *= w[idx[i]];
+        }
+        r.weights[p] = wp;
+        for (std::size_t i = d; i-- > 0;) {
+            if (++idx[i] < k) break;
+            idx[i] = 0;
+        }
+    }
+    return r;
+}
+```
+
+곱 규칙은 축마다 차수가 높아 매끄러운 함수에는 아주 정확하지만, 마디 수가 차원에 지수로 늘어요. 3차원 `'gk21'`은 영역 하나에 9,261점이에요. 곱할 때마다 점 수 × d가 $2^{25}$을 넘지 않는지 먼저 봐요. Python 층이 같은 상한을 f를 부르기 전에 검사하므로([크기의 상한](#크기의-상한)) 이 검사에 걸리는 일은 없지만, 15차원부터 `size_t`의 $21^d$가 넘치는 곱을 커널 스스로도 막아 둬요.
+
+### Genz–Malik
+
+`'genz-malik'`은 Genz와 Malik(1980)의 차수 7 규칙과 그 안에 든 차수 5 규칙이에요. 차수 $m$은 전체 차수 $m$ 이하의 모든 다항식을 정확히 적분한다는 뜻이에요. 마디는 대칭인 다섯 무리예요.
+
+| 무리 | 마디 | 개수 | 차수 7의 가중치 | 차수 5의 가중치 |
+|---|---|---|---|---|
+| 1 | $(0, \dots, 0)$ | 1 | $2^d(12824 - 9120d + 400d^2)/19683$ | $2^d(729 - 950d + 50d^2)/729$ |
+| 2 | $(\pm\lambda_2, 0, \dots)$의 순열 | $2d$ | $2^d \cdot 980/6561$ | $2^d \cdot 245/486$ |
+| 3 | $(\pm\lambda_3, 0, \dots)$의 순열 | $2d$ | $2^d(1820 - 400d)/19683$ | $2^d(265 - 100d)/1458$ |
+| 4 | $(\pm\lambda_4, \pm\lambda_4, 0, \dots)$의 순열 | $2d(d - 1)$ | $2^d \cdot 200/19683$ | $2^d \cdot 25/729$ |
+| 5 | $(\pm\lambda_5, \dots, \pm\lambda_5)$ | $2^d$ | $6859/19683$ | 없음 |
+
+$\lambda_2 = \sqrt{9/70}$, $\lambda_3 = \lambda_4 = \sqrt{9/10}$, $\lambda_5 = \sqrt{9/19}$이에요. 마디는 모두 $2^d + 2d^2 + 2d + 1$개이고, 낮은 규칙은 무리 5만 빼고 같은 마디를 써요. 2차원은 17점, 3차원은 33점이라 곱 규칙보다 훨씬 적어요. 그 대신 높은 차수 항이 큰 함수에서는 영역을 더 많이 나눠요. 마디는 scipy의 차례(무리마다 정렬한 순열을 사전 순으로, 무리 5는 `itertools.product`의 차례)이고, 가중치는 scipy처럼 Python의 산술(정수의 몫은 올바로 반올림)로 계산해요.
+
+```cpp
+    // csrc/integrate/adaptive.cpp
+    const double two = std::ldexp(1.0, static_cast<int>(d));  // 2**d
+    const auto nd = static_cast<double>(d);
+    const double w1 = two * (12824.0 - 9120.0 * nd + 400.0 * nd * nd) / 19683.0;  // exact numerators
+    const double w2 = two * 980.0 / 6561.0;
+    const double w3 = two * (1820.0 - 400.0 * nd) / 19683.0;
+    const double w4 = two * (200.0 / 19683.0);
+    const double w5 = 6859.0 / 19683.0;
+```
+
+분자는 작은 정수라 double로 정확하고, 그래서 나눗셈 한 번이 Python 정수의 몫과 같은 반올림이에요. 차수는 영역 하나에서 확인할 수 있어요. `rtol`을 아주 크게 두면 나누지 않고 첫 영역의 값을 돌려줘요.
+
+```python
+>>> def I(c, p):
+...     return ((1 + c)**(p + 1) - (c - 1)**(p + 1)) / (p + 1)
+>>> for p, q in [(7, 0), (4, 3), (8, 0), (4, 4)]:
+...     r = sd.integrate.cubature(lambda x: (x[:, 0] + 0.3)**p * (x[:, 1] - 0.2)**q, [-1, -1], [1, 1],
+...                               rule="genz-malik", rtol=1e10)
+...     print(p + q, f"{abs(r.integral / (I(0.3, p) * I(-0.2, q)) - 1):.1e}")
+7 4.4e-16
+7 0.0e+00
+8 2.0e-03
+8 3.9e-02
+```
+
+차수 7의 다항식은 반올림 수준으로 맞고 차수 8부터 틀려요.
+
+## 영역 하나의 계산
+
+규칙은 $[-1, 1]^d$의 것이라 영역 $[\mathbf{a}, \mathbf{b}]$로 옮겨요. 마디는 축마다 $(u + 1)\cdot(\text{길이}\cdot 0.5) + a$, 가중치는 $w\cdot\prod_i \text{길이}_i / 2^d$예요(곱은 축의 차례대로).
+
+```cpp
+    // csrc/integrate/adaptive.cpp
+    // _apply_fixed_rule of rule r on [a, b]: est (m values); abs_value: the error rule's |sum|
+    void apply(const Fixed& r, const vec& a, const vec& b, vec& est, bool abs_value) {
+        vec half(d);
+        double prod = 1.0;
+        for (std::size_t i = 0; i < d; ++i) {
+            const double len = b[i] - a[i];
+            half[i] = len * 0.5;
+            prod *= len;
+        }
+        const double scale = prod / std::ldexp(1.0, static_cast<int>(d));
+        tmp.resize(r.n * d);
+        for (std::size_t p = 0; p < r.n; ++p)
+            for (std::size_t i = 0; i < d; ++i) tmp[p * d + i] = (r.nodes[p * d + i] + 1) * half[i] + a[i];
+        const bool along = call(tmp.data(), r.n);
+        est.assign(m, 0.0);
+        vec w(r.n);
+        for (std::size_t p = 0; p < r.n; ++p) w[p] = r.weights[p] * scale;
+        if (along) {
+            vec col(r.n);
+            for (std::size_t j = 0; j < m; ++j) {
+                for (std::size_t p = 0; p < r.n; ++p) col[p] = w[p] * fx[p * m + j];
+                est[j] = np_sum(col.data(), r.n);
+            }
+        } else {
+            for (std::size_t p = 0; p < r.n; ++p)
+                for (std::size_t j = 0; j < m; ++j) est[j] += w[p] * fx[p * m + j];
+        }
+        if (abs_value)
+            for (auto& v : est) v = std::abs(v);
+    }
+
+    Region region(vec a, vec b) {
+        Region g{std::move(a), std::move(b), {}, {}, 0.0};
+        apply(hi, g.a, g.b, g.est, false);
+        apply(both, g.a, g.b, g.err, true);
+        g.key = maxabs(g.err.data(), m);
+        return g;
+    }
+```
+
+오차는 "오차 규칙" 하나로 계산해요. 높은 규칙의 마디와 낮은 규칙의 마디를 이어 붙이고 가중치를 $(w, -w_{\text{낮은}})$로 둔 규칙이라, 그 값의 절댓값이 $\lvert Q_{\text{높은}} - Q_{\text{낮은}}\rvert$예요. 그래서 영역마다 사용자 함수를 두 번, 높은 규칙의 점으로 한 번, 두 규칙의 점으로 한 번 불러요. 높은 규칙의 점을 두 번 계산하는 셈이지만 scipy의 호출 그대로예요.
+
+```python
+>>> calls = []
+>>> def f(x):
+...     calls.append(tuple(x.shape))
+...     return sd.exp(-sd.sum(x * x, axis=-1))
+>>> r = sd.integrate.cubature(f, [0, 0], [1, 1])
+>>> calls, r.nfev, r.subdivisions
+([(441, 2), (541, 2)], 982, 0)
+>>> calls.clear()
+>>> r = sd.integrate.cubature(f, [0, 0], [1, 1], rule="genz-malik")
+>>> calls[:2], r.nfev, r.subdivisions
+([(17, 2), (30, 2)], 2491, 13)
+```
+
+`'gk21'`은 첫 영역에서 $\lvert K - G\rvert$가 반올림 수준이라 나누지 않고 끝나요. 오차 규칙의 541점은 21² + 10²이고, Genz–Malik의 30점은 17 + 13이에요. 오차 어림 $\lvert K - G\rvert$에는 반올림의 바닥이 없어서, 끝자리까지 맞은 값에서는 어림이 참 오차보다 작을 수 있어요. 정확도의 계약이 "오차 어림 + $8\varepsilon\lvert I\rvert$"인 까닭이에요([정확도와 성능](/internals/integrate/accuracy-performance/)).
+
+## 나누기
+
+처음 영역들은 힙으로 정리하지 않은 목록이고(scipy가 그대로 꺼내요), 그 뒤로는 Python `heapq`(C 모듈의 `siftdown`·`siftup`)와 같은 동작을 C++로 둬요. 비교는 영역 오차의 최댓값 $\max_j\lvert e_j\rvert$의 `>`라, 같은 값과 NaN에서도 scipy와 같은 차례로 꺼내요.
+
+```cpp
+        // csrc/integrate/adaptive.cpp
+        auto unconverged = [&]() {
+            for (std::size_t j = 0; j < est.size(); ++j)
+                if (err[j] > atol + rtol * std::abs(est[j])) return true;
+            return false;
+        };
+        std::int64_t subdivisions = 0;
+        bool success = true;
+        while (unconverged()) {
+            Region k = heappop(regions, region_lt);
+            for (std::size_t j = 0; j < c.m; ++j) {
+                est[j] -= k.est[j];
+                err[j] -= k.err[j];
+            }
+            vec mid(d);
+            for (std::size_t i = 0; i < d; ++i) mid[i] = (k.a[i] + k.b[i]) / 2;
+            for (auto& [l, r] : split(k.a, k.b, mid)) {
+                Region g = c.region(std::move(l), std::move(r));
+                for (std::size_t j = 0; j < c.m; ++j) {
+                    est[j] += g.est[j];
+                    err[j] += g.err[j];
+                }
+                heappush(regions, std::move(g), region_lt);
+            }
+            if (++subdivisions >= max_subdivisions) {
+                success = false;
+                break;
+            }
+        }
+```
+
+전체 값과 전체 오차는 영역을 꺼낼 때 그 몫을 빼고, 나눈 조각의 몫을 더해 이어 가요. 모든 영역을 다시 더하지 않으니 한 번의 나누기가 $O(2^d)$ 영역의 일이지만, 빼고 더하는 동안 반올림이 쌓여요. 멈춤 판정은 값의 원소마다이고, 하나라도 허용오차 밖이면 계속 나눠요.
+
+꺼낸 영역은 모든 축의 가운데에서 $2^d$개로 나눠요. Genz와 Malik의 원래 알고리즘은 네 번째 차분이 가장 큰 축 하나만 반으로 나눠 영역이 두 개씩 늘어나는데, scipy의 `cubature`는 규칙과 상관없이 모든 축을 나눠요. 차원이 높으면 한 번의 나누기가 비싸요. 4차원 `'genz-malik'`이면 나누기 한 번에 16영역 × (57 + 98)점이에요.
+
+## 크기의 상한
+
+한 영역의 일은 오차 규칙의 점 수에 비례하고, 그 점들의 좌표는 규칙의 표, 두 규칙을 이은 표, 사용자 함수에 넘기는 배열, 사용자 함수 안의 중간 배열로 몇 벌이 함께 있어요. 곱 규칙은 그 수가 차원에 지수로 늘어서, 8차원 `'gk21'`이면 점의 표만 2 TB예요. 그래서 오차 규칙 한 벌의 값(점 수 × d)을 $2^{25}$개로 막아, 배열 하나가 256 MiB를 넘지 않게 해요. 검사는 Python 층이 사용자 함수를 부르기 전에 해요.
+
+```python
+# src/stardust/integrate/_cubature.py
+def _points_per_region(rule, d):
+    """(points of one region, its text): the product rules' k^d + g^d, genz-malik's degree 7 and
+    5 rules 2^d + 4d^2 + 4d + 2 (their nodes are computed apart, as scipy's)."""
+    if rule == "genz-malik":
+        n = 2**d + 4 * d * d + 4 * d + 2
+        return n, str(n)
+    k, g = _PRODUCT[rule]
+    return k**d + g**d, f"{k}**{d} + {g}**{d}"
+```
+
+```python
+    # src/stardust/integrate/_cubature.py
+    n, text = _points_per_region(rule, d)
+    if n * d > _VALUES_MAX:
+        hint = "; use rule='genz-malik'" if rule != "genz-malik" else ""
+        raise ValueError(
+            f"{fn}(): rule={rule!r} in {d} dimensions needs {text} points per region of {d} values each, "
+            f"more than 2**25 values{hint}"
+        )
+```
+
+Genz–Malik의 낮은 규칙은 높은 규칙의 마디 가운데 무리 5를 뺀 것이지만, scipy처럼 마디를 따로 만들어 이으므로 오차 규칙은 $2^d + 4d^2 + 4d + 2$점이에요. 이 상한에서 곱 규칙은 5차원(`'gk21'`이면 $21^5 + 10^5$ = 4,184,101점), `'genz-malik'`은 20차원(1,050,258점)까지예요. 커널은 곱 규칙을 만들 때와 두 규칙을 이을 때 같은 상한을 다시 봐요.
+
+`points`가 만드는 처음 영역도 셀 수 있어야 해요. 점 하나가 그 점을 품은 영역을 $2^d$개까지 나누므로, 점이 여럿이면 처음 영역의 수가 빠르게 늘어요. 나눌 때마다 영역 수 × 오차 규칙의 점 수가 $2^{24}$을 넘는지 봐요.
+
+```cpp
+            // csrc/integrate/adaptive.cpp
+            initial = std::move(next);
+            if (initial.size() > kCubePointsMax / c.both.n) {  // checked as they grow: up to 2^d per point
+                const std::string msg = "'points' split the box into more than " +
+                                        std::to_string(kCubePointsMax / c.both.n) + " regions of " +
+                                        std::to_string(c.both.n) + " points each (more than 2**24 points)";
+                throw nb::value_error(msg.c_str());
+            }
+```
+
+## 무한 축
+
+무한한 축은 scipy의 치환으로 유한한 구간에 옮기고, 값에 야코비안 $1/\prod t_i^2$을 곱해요.
+
+| 축 | $t$의 구간 | 부르는 점 |
+|---|---|---|
+| $(-\infty, \infty)$ | $(-1, 1)$ | $x = (1 - \lvert t\rvert)/t$ |
+| $[a, \infty)$ | $(0, 1)$ | $x = a + (1 - t)/t$ |
+| $(-\infty, b]$ | $(0, 1)$ | $x = b - (1 - t)/t$ |
+
+치환은 $t = 0$에서 $x = \pm\infty$가 되니, 무한 축이 있으면 원점 $t = 0$을 지나게 처음 영역을 나눠요. `points`의 좌표도 같은 치환의 역으로 옮겨요.
+
+```cpp
+                    // csrc/integrate/adaptive.cpp
+                    switch (kind[i]) {
+                        case 1: xi = start[i] + (1 - ti) / ti; break;
+                        case 2: xi = -(start[i] + (1 - ti) / ti); break;  // start = -b
+                        case 3: xi = (1 - std::abs(ti)) / ti; break;
+                        default: continue;
+                    }
+                    prod *= ti * ti;
+```
+
+```python
+>>> import math
+>>> r = sd.integrate.cubature(lambda x: sd.exp(-sd.sum(x * x, axis=-1)), [-math.inf, -math.inf], [math.inf, math.inf])
+>>> r.integral, r.subdivisions, r.n_regions
+(3.141592653589793, 16, 52)
+>>> sd.integrate.cubature(lambda x: sd.exp(x[:, 0]), [-math.inf], [0.0]).integral
+0.9999999999999996
+```
+
+$(-\infty, b]$의 축은 scipy 문서의 치환 $x = b - (1 - t)/t$에서 f를 불러요. scipy 1.18.1의 코드는 $-b + (1 - t)/t$에서 불러 실제로는 $[-b, \infty)$를 적분해서, $\int_{-\infty}^0 e^x\,dx$에 inf를 수렴으로 알려요. 이 축만은 scipy를 따르지 않아요.
+
+## 합의 순서와 배치
+
+`'gk21'`·`'gk15'`는 사용자 함수에 (n, d)를 C 순서로, `'genz-malik'`은 Fortran 순서로 넘겨요. scipy가 Genz–Malik의 마디를 (d, n)으로 만든 뒤 전치하기 때문이에요.
+
+```python
+>>> seen = []
+>>> _ = sd.integrate.cubature(lambda x: (seen.append(x.strides), x[:, 0])[1], [0, 0], [1, 1], rule="genz-malik")
+>>> seen[0]
+(8, 136)
+```
+
+이 배치가 합의 순서를 정해요. scipy의 `sum(w * f, axis=0)`은 numpy가 곱의 배치를 입력에서 고르는데, 점의 축이 메모리에서 가장 안쪽이면(점마다 값 하나, Fortran 순서의 값, 원소별 계산이 그 배치를 물려받은 값) 값마다 pairwise로, 아니면 점의 차례대로 0부터 더해요. 그래서 sd도 사용자 함수가 돌려준 배열의 걸음을 보고 같은 쪽을 골라요.
+
+```cpp
+        // csrc/integrate/adaptive.cpp
+        // the layout numpy's product and sum follow: along memory when the points' axis has the
+        // smallest stride of the axes that are longer than 1 and not broadcast
+        if (m == 1) return true;
+        const std::int64_t s0 = std::abs(rd.strides[0]);
+        bool inner = s0 != 0, other = false;
+        for (std::size_t k = 1; k < rd.shape.size(); ++k) {
+            if (rd.shape[k] <= 1 || rd.strides[k] == 0) continue;
+            other = true;
+            if (std::abs(rd.strides[k]) <= s0) inner = false;
+        }
+        return inner && other;
+```
+
+이 합이 멈춤 판정을 정하니, 합의 순서가 다르면 판정의 경계에서 나누기가 하나 달라지고 그 뒤 호출이 모두 갈라져요. 값의 모양이 C 순서, Fortran 순서, 뒤집은 열, 건너뛴 줄, 브로드캐스트, 3차원인 경우를 모두 scipy와 견줘요.
+
+## 유한하지 않은 값
+
+멈췄을 때 값이나 오차의 어느 원소가 유한하지 않으면 `converged`는 거짓이고 status 3(`Non-finite values encountered.`)이에요. NaN에서는 판정 `err > atol + rtol·|est|`가 거짓이라 고리가 멈추는데, scipy는 그것을 `'converged'`로 알려요. sd는 멈추는 곳은 같게 두고 결과만 다르게 알려요. status와 글은 `quad_vec`의 것과 같은 번호예요(0 수렴, 1 `max_subdivisions`, 3 유한하지 않은 값).
+
+## scipy와 같은 점
+
+규칙의 상수와 마디의 차례, 마디와 가중치의 산술(곱셈·덧셈 축약 없이 Python·numpy의 순서), 합의 배치 규칙, 힙의 비교를 같게 두어서, scipy로 기록한 12개(상자 넷 × 규칙 셋, 호출의 모양까지), 기록 밖의 39경우(1–4차원, 벡터와 3차원 값, 여러 배치, 평면·반평면·반직선·직선, 뒤집은 끝, `points`, `max_subdivisions`, `atol`), 1차원 시험 모음 105개 × 규칙 둘이 부른 점, 값, 오차, `subdivisions`, 영역까지 지금은 비트까지 같아요(약속은 아니에요). 다른 것은 넷이에요. 위의 $(-\infty, b]$ 축, 무한 축과 `points`를 함께 줄 때(scipy는 이중 무한 축이 하나뿐인 경우 말고 에러를 내요. sd는 scipy가 뜻한 대로 좌표를 옮겨요), 유한하지 않은 값의 status 3, 그리고 크기의 상한이에요(scipy는 상한 없이 점의 표를 만들어요).

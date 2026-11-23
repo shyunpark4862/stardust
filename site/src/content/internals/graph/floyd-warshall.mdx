@@ -1,0 +1,304 @@
+---
+title: 블록 Floyd–Warshall
+group: 경로
+order: 2
+summary: method='FW'와 floyd_warshall이 쓰는 64 × 64 블록 Floyd–Warshall의 세 단계, 같은 블록을 읽고 쓰는 단계가 순서에 묶이지 않는 까닭, 레지스터 타일의 min-plus 커널, 블록마다 연속한 작업 사본, 선행 노드를 함께 구해도 거리가 같은 비트인 까닭, 음수 순환을 대각으로 알아채는 방법, 그리고 가운데에서 잇는 합의 오차 한계를 설명해요.
+seeAlso: [shortest-paths, overview, accuracy-performance]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import PlaneFig from '../../../components/fig/PlaneFig.astro';
+
+export const fwDiag = [[1, 2, 2, 3]];
+export const fwCross = [[0, 2, 1, 3], [2, 2, 3, 3], [3, 2, 4, 3], [1, 3, 2, 4], [1, 1, 2, 2], [1, 0, 2, 1]];
+export const fwRest = [[0, 3, 1, 4], [2, 3, 3, 4], [3, 3, 4, 4], [0, 1, 1, 2], [2, 1, 3, 2], [3, 1, 4, 2], [0, 0, 1, 1], [2, 0, 3, 1], [3, 0, 4, 1]];
+
+## 한눈에 보기
+
+[`floyd_warshall`](/api/graph/floyd_warshall/)과 `shortest_path(method='FW')`는 모든 쌍의 거리를 Floyd–Warshall로 구해요. 다른 방법이 모두 같은 정의(원점에서부터의 차례 합)를 계산하는 것과 달리, 이 방법만은 **경로를 가운데에서 잇는 합**이라 끝자리가 다를 수 있어요. 그 대신 안쪽 고리가 더하기와 최솟값뿐인 밀집 행렬 계산이라 레지스터에 쌓아 두고 빠르게 돌릴 수 있어요.
+
+이 쪽은 그 계산을 따라가요.
+
+- 행렬을 $64 \times 64$ 블록으로 나눠 세 단계로 갱신해요. 블록 크기는 고정이에요. 바꾸면 끝자리가 바뀌기 때문이에요.
+- 블록 하나는 태스크 하나가 맡고, 단계 사이에 장벽이 있어요. 블록이 하는 계산이 블록 크기로만 정해지니 스레드 수와 무관하게 같은 비트예요.
+- 거리는 다른 방법과 같은 오차 한계 안이에요.
+
+## 고전 Floyd–Warshall과 그 합
+
+노드를 $0, 1, \ldots, n - 1$의 차례로 하나씩 "거쳐도 되는 노드"에 넣어요. $k$를 넣을 때 모든 쌍 $(i, j)$에서
+
+$$
+d(i, j) \leftarrow \min\bigl(d(i, j),\ d(i, k) + d(k, j)\bigr)
+$$
+
+로 고쳐요. 처음 $d$는 변의 무게(변이 없으면 $\infty$, 대각은 $0$)예요. $k$까지 넣은 뒤의 $d(i, j)$는 거쳐 가는 노드가 모두 $k$ 이하인 경로 가운데 가장 짧은 것의 길이라서, $n$개를 다 넣으면 최단 거리예요.
+
+$d(i, k) + d(k, j)$는 두 경로를 노드 $k$에서 이어 붙인 합이에요. 그래서 경로 $0 \to 2 \to 1 \to 3$의 길이는 거쳐 가는 노드 가운데 번호가 가장 큰 2에서 갈라 $w_{02} + (w_{21} + w_{13})$으로 더해져요. 원점에서부터의 차례 합 $(w_{02} + w_{21}) + w_{13}$과 덧셈 나무가 달라서 끝자리가 다를 수 있어요.
+
+```python
+>>> import stardust as sd
+>>> g = sd.graph
+>>> P = sd.sparse.coo_array(([0.1, 0.2, 0.3], ([0, 2, 1], [2, 1, 3])), shape=(4, 4))
+>>> g.floyd_warshall(P)[0, 3], g.dijkstra(P, indices=0)[3]
+(0.6, 0.6000000000000001)
+```
+
+## 세 단계
+
+블록 Floyd–Warshall은 $k$를 하나씩이 아니라 64개 묶음(블록 $k_b$)으로 넣어요. 블록 $k_b$의 노드들을 넣는 한 걸음은 세 단계예요.
+
+1. **대각 블록** $(k_b, k_b)$: 블록 안의 64개 $k$를 차례로 넣는 작은 고전 Floyd–Warshall이에요.
+2. **행과 열의 블록** $(k_b, m)$과 $(m, k_b)$: 1단계를 마친 대각 블록과 자기 자신으로 갱신해요.
+3. **나머지 블록** $(i, j)$: 2단계를 마친 $(i, k_b)$와 $(k_b, j)$의 min-plus 곱으로 갱신해요.
+
+<Fig caption="블록 4 × 4 행렬에서 k_b = 1의 한 걸음. 숫자는 단계예요. 2단계의 여섯 블록은 서로 독립이고, 3단계의 아홉 블록도 서로 독립이에요.">
+  <PlaneFig
+    label="4 × 4 블록 격자에서 대각 블록, 행과 열 블록, 나머지 블록의 단계"
+    domain={[0, 4]}
+    range={[0, 4]}
+    width={300}
+    layers={[
+      { kind: 'rects', rects: fwRest, tone: 'faint', fill: true, width: 1 },
+      { kind: 'rects', rects: fwCross, tone: 'soft', fill: true, width: 1 },
+      { kind: 'rects', rects: fwDiag, tone: 'main', fill: true, width: 1 },
+      { kind: 'text', at: [1.5, 2.5], text: '1' },
+      { kind: 'text', at: [0.5, 2.5], text: '2' },
+      { kind: 'text', at: [2.5, 2.5], text: '2' },
+      { kind: 'text', at: [3.5, 2.5], text: '2' },
+      { kind: 'text', at: [1.5, 3.5], text: '2' },
+      { kind: 'text', at: [1.5, 1.5], text: '2' },
+      { kind: 'text', at: [1.5, 0.5], text: '2' },
+      { kind: 'text', at: [0.5, 3.5], text: '3' },
+      { kind: 'text', at: [3.5, 0.5], text: '3' },
+    ]}
+  />
+</Fig>
+
+```cpp
+// csrc/graph/paths.cpp
+// D (N x N, N a multiple of B) holds the weights, +inf for no edge and 0 on the diagonal (or a negative
+// self loop's weight); P (or null) the predecessors (i for an edge i -> j, kNoNode elsewhere). Both are
+// stored block by block (block (bi, bj) is B * B contiguous entries at (bi * nb + bj) * B * B, its rows B
+// apart): a block's 64 rows then lie in one 32 KB run instead of 64 rows N apart, which in the row-major
+// matrix fell into a few cache sets (N a multiple of 1024 bytes) and kept missing. The layout changes no
+// operation. Step kb updates the diagonal block, then its row and column (one task per block), then every
+// other block (one task per block): what a block computes depends on the block size alone, not on the
+// thread count.
+void floyd_warshall_blocks(double* D, int64_t* P, int64_t N, bool split) {
+    const int64_t nb = N / B;
+    auto run = [&](int64_t ntasks, const std::function<void(int64_t)>& fn) {
+        if (split && ntasks > 1) parallel::parallel_for(ntasks, fn);
+        else
+            for (int64_t t = 0; t < ntasks; ++t) fn(t);
+    };
+    auto at = [&](int64_t bi, int64_t bj) { return (bi * nb + bj) * B * B; };
+    for (int64_t kb = 0; kb < nb; ++kb) {
+        const int64_t kk = at(kb, kb);
+        if (P) fw_dependent_p(D + kk, D + kk, D + kk, P + kk, P + kk, B);
+        else fw_dependent(D + kk, D + kk, D + kk, B);
+        run(2 * (nb - 1), [&](int64_t x) {
+            int64_t m = x % (nb - 1);
+            m += m >= kb;
+            if (x < nb - 1) {  // the row of block kb: C = D[kb][m], A the diagonal block, B = C
+                const int64_t c = at(kb, m);
+                if (P) fw_dependent_p(D + c, D + kk, D + c, P + c, P + c, B);
+                else fw_dependent(D + c, D + kk, D + c, B);
+            } else {  // the column: C = D[m][kb], A = C, B the diagonal block
+                const int64_t c = at(m, kb);
+                if (P) fw_dependent_p(D + c, D + c, D + kk, P + c, P + kk, B);
+                else fw_dependent(D + c, D + c, D + kk, B);
+            }
+        });
+        run((nb - 1) * (nb - 1), [&](int64_t x) {
+            int64_t i = x / (nb - 1), j = x % (nb - 1);
+            i += i >= kb;
+            j += j >= kb;
+            const int64_t c = at(i, j), a = at(i, kb), b = at(kb, j);
+            if (P) fw_independent_p(D + c, D + a, D + b, P + c, P + b, B);
+            else fw_independent(D + c, D + a, D + b, B);
+        });
+    }
+}
+```
+
+2단계의 행 블록과 열 블록은 서로 쓰는 곳이 겹치지 않고 읽는 대각 블록은 이미 끝났으니 함께 돌 수 있어요. 3단계의 블록 $(i, j)$는 자기만 쓰고 2단계가 끝낸 블록만 읽어요. 그래서 한 단계 안의 블록은 어떤 순서로, 어떤 스레드가 돌아도 같은 값을 내요. `parallel_for`가 끝나는 것이 단계 사이의 장벽이에요.
+
+### 같은 블록을 읽고 쓰는 단계
+
+1단계와 2단계에서는 쓰는 블록 `C`가 읽는 블록 `A`나 `Bm`과 같아요. 대각 블록은 셋이 모두 같고, 행 블록은 `Bm = C`, 열 블록은 `A = C`예요.
+
+```cpp
+// csrc/graph/paths.cpp
+constexpr int64_t B = 64;  // the block: fixed, since another size changes the last bits
+
+// C = min(C, A (x) Bm) where A or Bm may be C (the diagonal block and its row and column): k in order. The
+// row of C a step reads in A is broadcast before the step writes it; the diagonal of the block holding k
+// is 0 (or the cycle is being reported), so the entries a step reads do not change in it.
+void fw_dependent(double* C, const double* A, const double* Bm, int64_t N) {
+    for (int64_t k = 0; k < B; ++k) {
+        const double* b = Bm + k * N;
+        for (int64_t i = 0; i < B; ++i) {
+            const float64x2_t a = vdupq_n_f64(A[i * N + k]);
+            double* c = C + i * N;
+            for (int64_t j = 0; j < B; j += 2)
+                vst1q_f64(c + j, vminq_f64(vld1q_f64(c + j), vaddq_f64(a, vld1q_f64(b + j))));
+        }
+    }
+}
+```
+
+블록 안의 $k$번째 걸음은 `A`의 열 $k$와 `Bm`의 행 $k$를 읽어요. 읽는 원소를 그 걸음이 고치지 않는다는 것이 이 커널이 서는 근거예요. `Bm`의 행 $k$를 고치는 식은 $c(k, j) \leftarrow \min(c(k, j),\ a(k, k) + b(k, j))$인데, $a(k, k)$는 대각 블록의 대각이라 $0$이고 $0 + x = x$라서 값이 그대로예요. `A`의 열 $k$도 $b(k, k) = 0$이라 그대로예요. 그래서 한 걸음 안에서 원소를 어떤 순서로 고쳐도 같고, 열 $k$의 값 `A[i * N + k]`를 걸음 머리에 한 번 읽어 퍼뜨려 두어도 돼요. 대각이 음수면 이 근거가 깨지지만, 그때는 음수 순환을 알릴 것이라 값을 쓰지 않아요.
+
+### 레지스터 타일의 min-plus
+
+3단계는 `C`가 `A`, `Bm`과 다른 블록이라 순서의 제약이 없어요. 원소마다 $k$의 차례만 지키면 되니, `C`의 $4 \times 8$ 조각을 레지스터 16개에 쥐고 $k$ 64개를 다 돌린 뒤에 한 번 써요.
+
+```cpp
+// csrc/graph/paths.cpp
+// C = min(C, A (x) Bm) with C apart from A and Bm: 4 x 8 register tiles, k in order for every entry.
+void fw_independent(double* C, const double* A, const double* Bm, int64_t N) {
+    for (int64_t i = 0; i < B; i += 4) {
+        for (int64_t j = 0; j < B; j += 8) {
+            float64x2_t c[4][4];
+            for (int r = 0; r < 4; ++r)
+                for (int q = 0; q < 4; ++q) c[r][q] = vld1q_f64(C + (i + r) * N + j + 2 * q);
+            for (int64_t k = 0; k < B; ++k) {
+                const double* b = Bm + k * N + j;
+                const float64x2_t b0 = vld1q_f64(b), b1 = vld1q_f64(b + 2), b2 = vld1q_f64(b + 4),
+                                  b3 = vld1q_f64(b + 6);
+                for (int r = 0; r < 4; ++r) {
+                    const float64x2_t a = vdupq_n_f64(A[(i + r) * N + k]);
+                    c[r][0] = vminq_f64(c[r][0], vaddq_f64(a, b0));
+                    c[r][1] = vminq_f64(c[r][1], vaddq_f64(a, b1));
+                    c[r][2] = vminq_f64(c[r][2], vaddq_f64(a, b2));
+                    c[r][3] = vminq_f64(c[r][3], vaddq_f64(a, b3));
+                }
+            }
+            for (int r = 0; r < 4; ++r)
+                for (int q = 0; q < 4; ++q) vst1q_f64(C + (i + r) * N + j + 2 * q, c[r][q]);
+        }
+    }
+}
+```
+
+$k$마다 `Bm`의 행에서 8개를 읽고, `A`에서 4개를 하나씩 퍼뜨려 32개 원소에 더하기와 최솟값을 해요. 원소 하나에 연산 둘이고 메모리는 거의 건드리지 않아요. 행렬 곱의 곱하고 더하기 자리에 더하고 최솟값을 고르기가 들어간 꼴이라 BLAS의 GEMM으로는 할 수 없어서([영역의 구조](/internals/graph/overview/)), NEON 명령으로 직접 짰어요.
+
+3단계는 블록 하나가 $64^3$번의 갱신이고 블록 수의 제곱만큼 있어서 계산의 거의 전부를 차지해요. 1·2단계는 블록 수에 비례할 뿐이에요.
+
+## 블록마다 연속한 작업 사본
+
+행렬은 행 우선이 아니라 **블록 우선**으로 둔 작업 사본에서 돌아요. 블록 $(b_i, b_j)$의 $64 \times 64$ 원소가 32 KB 한 덩어리로 이어져 있고, 블록 안의 행 간격은 64예요.
+
+```cpp
+        // csrc/graph/paths.cpp
+        // the matrices block by block (floyd_warshall_blocks); entry (i, j) at place(i, j)
+        auto place = [&](int64_t i, int64_t j) { return ((i / B) * nblk + j / B) * B * B + (i % B) * B + j % B; };
+        std::vector<double> Dv(static_cast<size_t>(N * N), kInf);
+        std::vector<int64_t> Pv(want_pred ? static_cast<size_t>(N * N) : 0, kNoNode);
+        double* D = Dv.data();
+        int64_t* P = want_pred ? Pv.data() : nullptr;
+        for (int64_t i = 0; i < N; ++i) D[place(i, i)] = 0.0;
+        for (int64_t i = 0; i < n; ++i) {
+            for (int64_t k = g.ip[i]; k < g.ip[i + 1]; ++k) {
+                const int64_t j = g.ix[k];
+                const double w = g.weight(k);
+                if (j == i) {
+                    if (w < 0) D[place(i, i)] = w;  // a negative self loop: a negative cycle
+                    continue;
+                }
+                D[place(i, j)] = w;
+                if (P) P[place(i, j)] = i;
+            }
+        }
+```
+
+행 우선 행렬에서는 블록의 64행이 $N \times 8$바이트씩 떨어져 있어요. $N$이 64의 배수라 이 간격은 1 KB의 배수이고, 1차 캐시의 같은 몇 집합에 계속 몰려 서로를 밀어내요. 블록을 한 덩어리로 모으면 블록 하나가 캐시에 고르게 들어가요. 배치만 바뀌고 연산은 같으니 결과의 비트는 그대로예요.
+
+$n$이 64의 배수가 아니면 $N$까지 늘린 자리를 $+\infty$로 채우고 대각은 $0$으로 둬요. 늘린 노드로 가는 변이 없으니 $d(i, k) + d(k, j)$가 언제나 $\infty$라서 진짜 노드의 값을 바꾸지 않아요. 끝에 앞 $n \times n$만 결과로 옮겨요. 메모리 검사는 결과 $n^2$와 작업 사본 $N^2$을 함께 세요.
+
+## 선행 노드
+
+선행 노드는 Floyd–Warshall의 갱신 규칙으로 정해요. 합이 **더 작을 때만** $\mathrm{pred}(i, j) \leftarrow \mathrm{pred}(k, j)$로 바꾸고, 같으면 그대로 둬요. 처음 값은 변 $i \to j$가 있으면 $i$, 없으면 $-9999$예요.
+
+```cpp
+// csrc/graph/paths.cpp
+void fw_dependent_p(double* C, const double* A, const double* Bm, int64_t* PC, const int64_t* PB, int64_t N) {
+    for (int64_t k = 0; k < B; ++k) {
+        const double* b = Bm + k * N;
+        const int64_t* pb = PB + k * N;
+        for (int64_t i = 0; i < B; ++i) {
+            const float64x2_t a = vdupq_n_f64(A[i * N + k]);
+            double* c = C + i * N;
+            int64_t* p = PC + i * N;
+            for (int64_t j = 0; j < B; j += 2) {
+                const float64x2_t cv = vld1q_f64(c + j), t = vaddq_f64(a, vld1q_f64(b + j));
+                const uint64x2_t lt = vcltq_f64(t, cv);
+                vst1q_f64(c + j, vminq_f64(cv, t));
+                vst1q_s64(p + j, vbslq_s64(lt, vld1q_s64(pb + j), vld1q_s64(p + j)));
+            }
+        }
+    }
+}
+```
+
+거리는 선행 노드가 없는 커널과 같은 `vminq_f64(c, t)`로 정해요. 그래서 선행 노드를 함께 구해도 거리가 비트까지 같아요. 선행 노드를 바꾸는 조건은 `t < c`의 비교 결과로 고르는 `vbslq_s64`예요. $+0$과 $-0$처럼 값이 같으면 최솟값 명령은 $-0$을 고르지만 비교는 거짓이라 선행 노드는 그대로예요. 3단계의 커널도 같은 규칙인데, 선행 노드까지 레지스터에 쥐어야 해서 조각이 $4 \times 4$로 작아요. 원소마다 $k$의 차례는 같으니 거리가 바뀌지 않아요.
+
+이 선행 노드는 [최단 경로의 정의](/internals/graph/shortest-paths/)의 선행 노드 규칙과 달라요. FW의 거리는 원점에서부터의 차례 합이 아니어서, 꼭 맞는 변으로 거리를 다시 짜 맞추면 맞는 변이 없는 노드가 생길 수 있기 때문이에요. 블록의 순서가 고정이라 이 규칙도 결정적이에요. 다만 `construct_dist_matrix`가 `shortest_path`의 거리와 비트까지 같다는 성질은 FW에는 없어요.
+
+## 음수 순환
+
+음수 무게는 그대로 받아요. 음수 자기 고리는 처음부터 대각에 그 무게를 넣어 두고, 계산이 끝난 뒤 대각에 음수가 있으면 음수 순환이 있다는 뜻이에요.
+
+```cpp
+        // csrc/graph/paths.cpp
+        floyd_warshall_blocks(D, P, N, big && parallel::available());
+        int64_t first_negative = -1;
+        for (int64_t i = 0; i < n && first_negative < 0; ++i)
+            if (D[place(i, i)] < 0) first_negative = i;
+        if (first_negative >= 0) {
+            std::vector<uint8_t> all(static_cast<size_t>(n), 1);
+            std::vector<double> h;
+            cycle = paths::negative_cycle(g, all, h);
+            if (cycle < 0) cycle = first_negative;
+```
+
+순환 위의 어느 노드를 알릴지는 다른 방법과 같은 검사([음수 순환](/internals/graph/shortest-paths/#음수-순환))를 모든 노드에서 돌려 정해요. 그래서 메시지가 `bellman_ford`나 `johnson`과 같은 노드를 짚어요. 검사가 순환을 찾지 못하면(정확한 합이 0인데 반올림이 대각을 음수로 만든 경우) 음수 대각의 가장 작은 노드를 알려요.
+
+## 오차의 한계
+
+FW의 거리는 원점에서부터의 차례 합이 아니지만 다른 방법과 같은 한계 안이에요. $p^*$를 참 최단 경로, $\hat p$를 FW가 돌려준 경로(FW의 선행 노드가 그리는 경로), $H$를 둘 가운데 긴 쪽의 변 수, $u = 2^{-53}$, $\gamma_k = ku/(1 - ku)$라 하면
+
+$$
+\lvert \hat d - d^* \rvert \le \gamma_{H-1} \cdot \max\Bigl(\sum_{\hat p} \lvert w \rvert,\ \sum_{p^*} \lvert w \rvert\Bigr)
+$$
+
+예요. 상수는 1이에요.
+
+- **아래쪽.** FW가 쥐는 값은 언제나 어떤 경로의 무게를 어떤 덧셈 나무로 더해 반올림한 값이에요. 처음 값은 변 하나이고, 갱신 $\mathrm{fl}(a + b)$는 $i \to k$의 나무와 $k \to j$의 나무를 이어 더 큰 나무를 만들어요. 항 $H$개의 합은 나무의 꼴과 상관없이 정확한 합에서 $\gamma_{H-1} \sum \lvert w \rvert$ 안이에요(Higham의 합 오차 한계). 그 경로를 $\hat p$로 적으면 $\hat d \ge S(\hat p) - \gamma_{H-1} \sum_{\hat p} \lvert w \rvert \ge d^* - \gamma_{H-1} \sum_{\hat p} \lvert w \rvert$예요. $S$는 정확한 합이고, 마지막 부등식은 $\hat p$도 하나의 경로라 정확한 길이가 $d^*$ 이상이라서 서요.
+- **위쪽.** 고전 Floyd–Warshall의 정당성 증명을 반올림과 함께 따라가요. $p^*$의 부분 경로마다, 거쳐 가는 노드가 모두 $k$ 이하가 된 뒤의 $d$는 그 부분 경로를 "가장 큰 번호의 노드에서 가르는" 나무로 더한 값 이하예요. $\mathrm{fl}(+)$와 $\min$이 모두 단조라서 귀납이 그대로 서요. 블록 꼴에서도 $k$를 넣을 때 읽는 $d(i, k)$와 $d(k, j)$는 고전 꼴의 그 시점 값보다 크지 않으니(같은 블록의 뒤 $k$까지 이미 반영됐을 수 있어요) 단조성으로 같은 부등식이 서요. 그래서 $\hat d \le (p^*$의 나무 합$) \le d^* + \gamma_{H-1} \sum_{p^*} \lvert w \rvert$예요.
+
+블록의 합 깊이를 셀 필요가 없다는 점이 이 증명의 좋은 점이에요. 한계가 나무의 꼴과 무관하기 때문이에요. 블록 꼴은 3단계에서 $d(i, k)$가 같은 블록의 뒤 $k$까지 갱신된 값이라 고전 Floyd–Warshall과도 끝자리가 다를 수 있는데, 그래도 같은 한계 안이에요.
+
+```python
+>>> rng = sd.random.default_rng(7)
+>>> W = rng.random((300, 300)) * (rng.random((300, 300)) < 0.01)
+>>> fw, dj = g.floyd_warshall(W), g.dijkstra(W)
+>>> off = sd.isfinite(dj) & (dj > 0)
+>>> int(sd.sum(fw[off] != dj[off])), int(sd.sum(off))
+(22276, 79554)
+>>> float(sd.max(sd.abs(fw[off] - dj[off]) / dj[off]))
+4.720786209201901e-16
+```
+
+닿는 쌍의 4분의 1쯤에서 두 합의 끝자리가 달라요. 그래도 상대 차이는 $10^{-15}$보다 작아요. 스레드 수는 결과를 바꾸지 않아요.
+
+```python
+>>> n0 = sd.get_num_threads()
+>>> outs = []
+>>> for t in (1, 3, 10):
+...     sd.set_num_threads(t)
+...     r = g.floyd_warshall(W, return_predecessors=True)
+...     outs.append((r.dist_matrix.tolist(), r.predecessors.tolist()))
+>>> sd.set_num_threads(n0)
+>>> outs[0] == outs[1] == outs[2]
+True
+```

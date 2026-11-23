@@ -1,0 +1,449 @@
+---
+title: 통계 그림과 결과의 그림
+group: 통계 그림
+order: 1
+summary: 통계 그림이 수를 계산 영역에 맡기는 방식을 설명해요. sd.histogram·sd.quantile·분포의 icdf·회귀 결과의 predict가 그림의 수가 되는 자리, 무리를 나누고 범주 축에 자리를 주는 규칙, hist2d의 사각 칸과 hexbin의 육각 칸 나누기, 쌓은 막대, strip의 흩음과 고정된 씨, compare가 괄호를 쌓고 축을 늘리는 방법과 p값의 꼴, fit의 띠, diagnostics의 네 칸, pairs의 행렬을 코드를 따라가며 봐요.
+seeAlso: [overview, layout, fields, sampling]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import Steps from '../../../components/fig/Steps.astro';
+import PlotImage from '../../../components/fig/PlotImage.astro';
+
+## 한눈에 보기
+
+통계 그림과 결과 객체의 그림은 모두 `src/stardust/plot/_stat.py`에 있어요. 이 파일은 통계량을 스스로 정의하지 않아요. 그림이 보이는 수는 계산 영역이 낸 수이고, 그림은 그 수를 층으로 옮기기만 해요. 그래서 그림을 보고 읽은 값과 같은 자료로 계산 함수를 부른 값이 언제나 같아요.
+
+| 그림 | 수를 내는 곳 | 그림이 하는 일 |
+|---|---|---|
+| [`histogram`](/api/plot/histogram/) | [`sd.histogram`](/api/array/histogram/)(`bins`, `range`, `density` 그대로) | 막대를 칸 경계에 세우기, 무리가 여럿이면 같은 칸 |
+| [`hist2d`](/api/plot/hist2d/), [`hexbin`](/api/plot/hexbin/) | `sd.bincount` | 짝을 사각 칸이나 육각 칸의 번호로 바꾸기 |
+| [`ecdf`](/api/plot/ecdf/) | `sd.sort`와 비율 $i/n$ | 계단 선 |
+| [`boxplot`](/api/plot/boxplot/) | [`sd.quantile`](/api/array/quantile/)(`'linear'`)의 사분위 | 수염(1.5 IQR 안의 가장 먼 값)과 그 밖의 점 |
+| [`qq`](/api/plot/qq/) | 분포의 `icdf`, `sd.quantile` | 점과 사분위를 지나는 선 |
+| [`distribution`](/api/plot/distribution/) | 분포의 `pdf`·`cdf`·`ccdf`·`pmf`·`icdf`·`support` | 연속은 함수 그림, 이산은 막대나 계단 |
+| [`fit`](/api/plot/fit/) | 회귀 결과의 `predict`, `predict_interval` | 선과 띠, 식 |
+| [`coefficients`](/api/plot/coefficients/) | 회귀 결과의 `params`, 있으면 `conf_int` | 점과 가로 막대 |
+| [`diagnostics`](/api/plot/diagnostics/) | `fittedvalues`, `resid`, `resid_studentized_internal`, `leverage` | 2 × 2 칸 |
+| [`compare`](/api/plot/compare/) | 검정 결과의 `pvalue` | 괄호와 p값 |
+
+받는 결과는 형이 아니라 가진 속성으로 가려요. `compare`는 `pvalue`가 있으면 되고, `fit`은 `params`와 `predict`가 있으면 돼요. `coefficients`는 `params`만 있으면 되고, 구간을 내지 않는 결과(`ridge`처럼 `conf_int`가 없는 것)는 점만 그려요. 그래서 `sd.htest`와 `sd.regression`의 어느 결과든, 같은 속성을 가진 다른 객체든 받아요.
+
+```python
+>>> from stardust.plot import _stat
+>>> rng = sd.random.default_rng(7)
+>>> N = sd.stats.Normal(mu=0.0, sigma=1.0)
+>>> a = 5.0 + N.sample(25, rng=rng)
+>>> b = 6.0 + 1.2 * N.sample(25, rng=rng)
+>>> c = 7.5 + N.sample(25, rng=rng)
+>>> s = _stat.box_stats(a)
+>>> [round(s[k], 4) for k in ("q1", "q2", "q3")]
+[4.0536, 5.0962, 5.7834]
+>>> [round(float(q), 4) for q in sd.quantile(a, sd.asarray([0.25, 0.5, 0.75]))]
+[4.0536, 5.0962, 5.7834]
+```
+
+## 계산 영역에 맡기는 것
+
+### 상자
+
+`box_stats`는 NaN을 뺀 값을 정렬하고 `sd.quantile`로 사분위 $Q_1, Q_2, Q_3$을 구해요. 수염은 $[Q_1 - 1.5\,\mathrm{IQR},\ Q_3 + 1.5\,\mathrm{IQR}]$ 안의 값 가운데 가장 작은 것과 가장 큰 것까지예요(Tukey의 규칙). 울타리 자체가 아니라 그 안의 실제 값에서 멈춰요. 그 밖의 값은 점으로 찍어요. `points=True`면 모든 값을 점으로 찍어요.
+
+### 히스토그램
+
+```python
+    # src/stardust/plot/_stat.py, histogram
+    allx = _nonan(X)
+    if range is None and allx.shape[0]:
+        range = (float(sd.min(allx)), float(sd.max(allx)))  # one set of bins for every group
+```
+
+무리가 여럿이면 모든 무리의 최솟값과 최댓값으로 `range`를 한 번 정해 무리마다 `sd.histogram`에 같이 넘겨요. 무리마다 칸이 다르면 막대를 겹쳐 견줄 수 없기 때문이에요. 막대의 높이와 칸 경계는 `sd.histogram`이 돌려준 `hist`와 `bin_edges` 그대로예요. 막대는 다른 막대 그림과 같은 꼴로, 색을 옅게 한 채움에 그 색의 가는 테두리예요. 무리가 여럿이면 겹친 막대가 비치도록 색의 불투명도가 0.6이에요(하나면 1). `sd.histogram`이 낸 에러는 이름만 `histogram():`으로 바꿔 다시 내요.
+
+### QQ 그림
+
+```python
+    # src/stardust/plot/_stat.py, qq
+    p = (sd.arange(1.0, n + 1.0) - 0.5) / n
+    q = dist.icdf(p)
+```
+
+정렬한 표본 $x_{(i)}$를 이론 분위수 $F^{-1}(p_i)$, $p_i = (i - \tfrac12)/n$에 대고 찍어요. 이 그림 위치(plotting position)는 Hazen의 것으로, i번째 순서 통계량이 차지하는 확률 구간 $[(i-1)/n,\ i/n]$의 가운데예요. 기준선은 R의 `qqline`처럼 표본의 사분위와 분포의 사분위, 두 점 $(F^{-1}(0.25), Q_1)$과 $(F^{-1}(0.75), Q_3)$을 지나요. 최소제곱 직선과 달리 꼬리의 몇 점에 끌리지 않아요. `dist`를 주지 않으면 표준정규 `sd.stats.Normal(mu=0.0, sigma=1.0)`이에요.
+
+### 분포
+
+`distribution`은 받침을 분위수로 잡아요. 기본 범위는 `icdf(0.001)`에서 `icdf(0.999)`까지이고, 받침의 끝이 유한하고 그 분위수에서 분위수 범위 폭의 25% 안에 있으면 받침의 끝을 써요(지수분포의 0처럼). 연속 분포는 그 범위로 [`function`](/api/plot/function/)을 불러 [곡선의 적응 표본](/internals/plot/sampling/)을 그대로 써요. 이산 분포(`pmf`가 있는 것)는 정수마다 막대(`kind='pdf'`)나 계단(`'cdf'`, `'sf'`)이에요. 값이 정수 위에만 있으므로 가로 눈금도 정수에만 둬요. `_integer_ticks`가 1, 2, 5에 10의 거듭제곱을 곱한 간격 가운데 눈금이 여섯 개 이하가 되는 가장 작은 것을 골라요.
+
+밀도 그림의 세로 범위는 따로 정해요. 함수 그림의 분위수 규칙은 좁고 높은 봉우리를 "달아난 몇 점"으로 보고 자를 수 있는데, 밀도에서 볼 것은 바로 그 봉우리예요. 그래서 범위에 2001점을 놓아 밀도를 한 번 재고, 안쪽 점이 모두 유한하고 가장 큰 값이 범위의 끝이 아니라 안쪽(양 끝에서 10점 넘게 떨어진 곳)에 있으며 끝 값이 그 1.05배를 넘지 않으면 `ylim=(0, 1.05 × 봉우리)`를 `function`에 넘겨요. 밀도가 범위의 끝에서 달아나는 분포(모양 모수가 1보다 작은 감마 분포의 0)는 이 조건에 걸리지 않아 분위수 규칙이 잘라요.
+
+```python
+    # src/stardust/plot/_stat.py, distribution
+    held = list(cell.ylim)
+    _function.function(self, f, a, b, ylim=ylim, color=color, label=label)
+    if ylim is not None:
+        # the curve asks for that range; the cell's own stays free, so that a taller layer of the
+        # cell (the histogram under the density, another density) is not cut
+        cell.ylim = held
+        cell.layers[-1].reach = ylim
+    return self
+```
+
+이 범위는 칸의 것이 아니라 곡선 층의 것이에요. `function`이 칸의 `ylim`에 적은 범위를 부르기 전의 값으로 되돌리고, 같은 범위를 곡선 층의 `reach`에 넣어요. 층의 `extent`가 세로 범위로 `reach`를 내므로, 밀도 혼자면 칸의 범위가 봉우리의 1.05배이고, 같은 칸에 더 높은 층(밀도로 그린 히스토그램, 다른 밀도)이 있으면 배치가 층들의 범위를 합칠 때 그 층까지 넓어져요. 밀도 곡선이 밑의 막대를 자르지 않아요.
+
+```python
+>>> _stat._integer_ticks(0.0, 40.0)
+[0.0, 10.0, 20.0, 30.0, 40.0]
+>>> narrow = sd.plot.distribution(sd.stats.Normal(mu=0.0, sigma=0.01), a=-1.0, b=1.0)
+>>> narrow.info[0].clipped, round(narrow.info[0].ylim[1], 1)
+((False, False), 39.9)
+```
+
+표준편차 0.01인 정규분포를 [−1, 1]에서 그리면 값의 대부분이 0이고 가운데에 높이 39.9의 봉우리가 서요. 세로 범위가 그 봉우리까지 닿고 잘린 쪽이 없어요.
+
+## 무리와 범주 축
+
+### 무리 나누기
+
+`group=`이 있는 그림은 `split`으로 행을 무리로 나눠요. 무리의 순서는 값이 처음 나온 순서이고, 라벨이 `None`이거나 NaN인 행은 어느 무리에도 들지 않아요. `_each`가 무리마다 (행 번호, 색, 라벨)을 만들어요. 색은 팔레트에서 차례로 받고 라벨은 무리의 값이에요. 그래서 `group=`과 `color=`, `group=`과 `label=`을 함께 주면 에러예요. 둘이 같은 것을 정하려 하기 때문이에요.
+
+### 범주 축의 자리
+
+범주 축은 칸의 `xcats`(가로)나 `ycats`(세로) 목록이에요. `_categories`는 새 라벨을 목록 끝에 붙이고 라벨의 번호 0, 1, 2, …를 자리로 돌려줘요. 같은 칸에 `boxplot`과 `strip`을 겹치면 두 번째 호출은 이미 있는 라벨의 자리를 그대로 받으므로 상자와 점이 같은 자리에 서요. 축의 눈금은 이 목록이 정해요.
+
+무리가 k개이면 한 범주 안에서 자리를 나눠요(dodge). `boxplot`은 상자의 폭 `width`를 k로 나누고 j번째 무리를 $(j - \tfrac{k-1}{2})\cdot \text{width}/k$만큼 옮겨요. 상자는 그 몫의 90% 폭이라 이웃한 상자 사이에 틈이 남아요. `strip`은 0.8/k씩 나눠요. `bar`는 막대의 폭을 k로 나눈 몫에서 `gap`(기본 0.1)만큼을 뺀 폭으로 그려, 한 범주 안의 막대 사이에 틈을 둬요.
+### 2차원 히스토그램
+
+[`hist2d`](/api/plot/hist2d/)와 [`hexbin`](/api/plot/hexbin/)은 (x, y) 짝을 칸에 세요. 배열 영역에 2차원 히스토그램 함수가 없어서 세는 일을 여기서 하되, 세는 도구는 배열 영역의 `sd.bincount`예요. 유한하지 않은 값이 든 짝은 먼저 빼고, 상자는 `range`가 없으면 남은 값의 최솟값과 최댓값이에요.
+
+```python
+    # src/stardust/plot/_stat.py, hist2d
+    i = sd.clip(sd.floor((X - x0) / (x1 - x0) * nx), min=0.0, max=nx - 1.0).astype(sd.int64)
+    j = sd.clip(sd.floor((Y - y0) / (y1 - y0) * ny), min=0.0, max=ny - 1.0).astype(sd.int64)
+    counts = sd.bincount(j * nx + i, minlength=nx * ny).astype(sd.float64)
+    if density and X.shape[0]:
+        counts = counts / (X.shape[0] * (x1 - x0) / nx * (y1 - y0) / ny)
+    F = sd.reshape(sd.where(counts > 0.0, counts, math.nan), (ny, nx))
+```
+
+`range`를 주면 그 상자 밖의 짝을 빼요. 두 끝이 거꾸로이면(`x0 > x1`) `ValueError`이고, 너비가 0이면(`x0 == x1`) 양쪽으로 5%(0이면 0.5)씩 넓혀요.
+
+짝마다 가로 칸 번호와 세로 칸 번호를 구해 하나의 번호 $j\,n_x + i$로 합치고, `bincount`가 번호마다의 개수를 세요. 상자의 위 끝과 오른쪽 끝에 놓인 값은 `clip`이 마지막 칸으로 넣어요. `sd.histogram`의 마지막 칸이 오른쪽 끝을 품는 것과 같은 약속이에요. `density=True`면 개수를 (전체 짝의 수 × 칸의 넓이)로 나눠 적분이 1인 밀도로 바꿔요. 빈 칸은 NaN으로 바꾸고, 색 입히기가 NaN을 투명으로 두므로 빈 칸은 바탕이 그대로 보여요. 그림은 [밀도 그림](/internals/plot/fields/)의 `Picture`를 이어받은 `Counts` 층이고 화소 하나가 칸 하나예요. 화소 사이를 보간하지 않아 칸이 네모로 보여요. `Counts`는 색을 입힌 화소와 함께 개수 `F`와 가장 큰 개수 `most`를 지녀요. [`facet`](/internals/plot/layout/)의 칸들이 한 색 범위를 쓸 때 다른 칸의 더 큰 개수를 위 끝으로 다시 칠하려는 것이에요(`paint`). 로그 축에서는 `Picture`처럼 화소를 축을 따라 다시 짜서 그려요. 칸은 값을 같은 너비로 나눈 것이라 로그 축에서는 너비가 다르게 보여요.
+
+### 육각 칸 나누기
+
+정육각형은 평면을 빈틈없이 덮는 정다각형 가운데 원에 가장 가까워요. 칸의 가운데에서 가장자리까지의 거리가 방향에 따라 덜 달라서, 정사각형 칸에서 보이는 가로세로 줄무늬가 덜해요. 문제는 점이 어느 육각형에 드는지를 찾는 일이에요. 정사각 격자는 나눗셈과 버림으로 끝나지만 육각 격자는 그렇지 않아요.
+
+```python
+        # src/stardust/plot/_stat.py, Hexes.settle
+        # the lattice in units where a plot of the default shape (4 : 3) shows the hexagons regular
+        W, H = 4.0, 3.0
+        u, v = (U - a0) / (a1 - a0) * W, (V - b0) / (b1 - b0) * H
+        dx = W / n
+        dy = dx * math.sqrt(3.0)
+        ia, ja = sd.round(u / dx), sd.round(v / dy)  # two rectangular lattices; the nearer centre wins
+        ib, jb = sd.floor(u / dx), sd.floor(v / dy)
+        da = (u - ia * dx) ** 2 + (v - ja * dy) ** 2
+        db = (u - (ib + 0.5) * dx) ** 2 + (v - (jb + 0.5) * dy) ** 2
+        first = da <= db
+```
+
+꼭짓점이 위를 향한 정육각형의 가운데들은 **직사각 격자 둘**로 나눠 적을 수 있어요. 가로 간격이 $d_x$이면 줄 사이의 세로 간격은 $\tfrac{\sqrt3}{2}d_x$이고, 한 줄 걸러 반 칸씩 엇갈려요. 짝수 줄만 모으면 간격이 $(d_x,\ \sqrt3\,d_x)$인 직사각 격자이고, 홀수 줄은 그것을 $(\tfrac12 d_x,\ \tfrac{\sqrt3}{2}d_x)$만큼 옮긴 같은 격자예요. 코드의 `dy`가 $\sqrt3\,d_x$예요.
+
+- 첫 격자에서 점에 가장 가까운 가운데는 반올림으로 찾아요(`ia`, `ja`).
+- 둘째 격자는 반 칸 옮겨져 있으므로 버림으로 찾아요(`ib + 0.5`, `jb + 0.5`).
+- 두 후보까지의 거리(제곱)를 견줘 가까운 쪽이 그 점의 칸이에요.
+
+육각 격자에서 정육각형은 가운데들의 보로노이 칸, 곧 "그 가운데가 가장 가까운 점들의 모임"이에요. 점에서 가장 가까운 가운데는 두 직사각 격자의 가장 가까운 가운데 둘 가운데 하나이므로, 이 견줌이 정확히 그 점이 든 육각형을 골라요. 육각형의 변을 따지는 식이 하나도 없고, 모든 점을 배열 연산 몇 번으로 한꺼번에 나눠요.
+
+격자는 자료 좌표가 아니라 4 × 3의 틀에서 잡아요. 상자 $[a_0, a_1] \times [b_0, b_1]$을 가로 4, 세로 3으로 늘여 놓고 그 안에서 정육각형을 깐 뒤, 가운데와 반지름을 자료 좌표로 되돌려요. 선형 축에서 `U`, `V`는 값 그대로이고 상자는 짝의 상자예요. 그림의 높이를 주지 않으면 칸이 4:3이므로 화면에서 육각형이 정육각형으로 보여요. `size`가 가로에 놓이는 육각형의 수라서 $d_x = 4/\text{size}$예요.
+
+칸마다의 개수는 `hist2d`처럼 번호 하나로 합쳐 `bincount`로 세요(둘째 격자의 번호는 첫 격자의 번호 뒤에 이어 붙여요). 점이 든 칸의 가운데와 개수만 남기고, 그릴 때 같은 색의 육각형을 경로 하나에 모아요. 육각형마다 같은 색의 0.25 pt 테두리를 둘러, 이웃한 육각형 사이에 안티에일리어싱이 만드는 실금이 보이지 않게 해요.
+
+```python
+>>> rng2 = sd.random.default_rng(5)
+>>> u = N.sample(4000, rng=rng2)
+>>> w = 0.6 * u + 0.8 * N.sample(4000, rng=rng2)
+>>> h2 = sd.plot.hist2d(u, w, bins=30)
+>>> pic = h2._cells[0].layers[0]
+>>> type(pic).__name__, pic.iw, pic.ih, h2._cells[0].colorbar
+('Counts', 30, 30, ('cool', 0.0, 64.0))
+>>> hx = sd.plot.hexbin(u, w, size=24)
+>>> hexes = hx._cells[0].layers[0]
+>>> len(hexes.cx), hx._cells[0].colorbar
+(236, ('cool', 0.0, 99.0))
+>>> fig = sd.plot.grid([h2, hx], ncols=2, labels="A", width=160)
+```
+
+<PlotImage name="in-stat-bins" alt="두 칸. 왼쪽 A는 오른쪽 위로 기운 점 구름을 정사각형 칸으로 센 그림, 오른쪽 B는 같은 자료를 육각형 칸으로 센 그림이에요. 둘 다 가운데가 빨갛고 가장자리로 갈수록 하늘색이며, 점이 없는 칸은 비어 있고 오른쪽에 색 막대가 있어요." caption="같은 4000개의 짝. A는 30 × 30의 사각 칸, B는 가로 24개의 육각 칸이에요. 빈 칸은 칠하지 않아요." />
+
+### 로그 축의 육각형
+
+값의 상자에 깐 육각형은 로그 축에서 찌그러져 보여요. 그래서 `Hexes` 층은 짝과 상자를 들고 있다가 그릴 축에 맞춰 다시 세요(`settle`). 축의 꼴은 그림을 다 지은 뒤에야 정해지므로(`xscale`을 `hexbin` 뒤에 불러도 돼요) 세는 때는 배치의 맨 앞이에요. 배치는 축의 범위를 재기 전에 그림의 모든 칸(두 번째 y축과 끼운 칸까지)에서 `settle`을 불러요([배치](/internals/plot/layout/)). 같은 축이면 다시 세지 않아요.
+
+```python
+        # src/stardust/plot/_stat.py, Hexes.settle
+        if xlog or ylog:
+            keep = ((X > 0.0) if xlog else sd.isfinite(X)) & ((Y > 0.0) if ylog else sd.isfinite(Y))
+            X, Y = X[keep], Y[keep]
+
+        def axis(V, lo, hi, log):
+            """The values along an axis as the lattice takes them, and their box."""
+            if not log:
+                return V, lo, hi
+            if not hi > 0.0:
+                return V, None, None
+            low = lo if lo > 0.0 else (float(sd.min(V)) if V.shape[0] else hi)
+            a, b = math.log10(low), math.log10(hi)
+            if not a < b:
+                a, b = a - 0.05, b + 0.05
+            return sd.log10(V), a, b
+```
+
+로그 축에서는 0 이하의 값이 든 짝을 세지 않고, 값의 $\log_{10}$으로 위의 격자를 짜요. 상자의 아래 끝이 0 이하이면 가장 작은 양수 값에서 시작해요. 축 좌표에서 정육각형이므로 화면에서도 정육각형이에요. 가운데는 $10^{c}$로 값에 되돌리고, 반지름 $r_x$, $r_y$는 자릿수(10의 거듭제곱 하나가 1)로 남겨요. 그릴 때 꼭짓점은 로그 축에서 가운데에 $10^{r u_k}$를 곱한 자리예요($u_k$는 꼭짓점 k의 방향 성분). 선형 축의 꼭짓점은 가운데에 $r u_k$를 더한 자리예요.
+
+```python
+        # src/stardust/plot/_stat.py, Hexes.draw
+        sx = [10.0 ** (ux * self.rx) for ux, _ in _CORNERS] if xlog else None
+        sy = [10.0 ** (uy * self.ry) for _, uy in _CORNERS] if ylog else None
+        for c, pts in groups.items():
+            ops, xy = [], array("d")
+            for x, y in pts:
+                ops.append("MLLLLLZ")
+                for k, (ux, uy) in enumerate(_CORNERS):
+                    px = x * sx[k] if xlog else x + ux * self.rx
+                    py = y * sy[k] if ylog else y + uy * self.ry
+                    xy.extend((fr.px(px), fr.py(py)))
+```
+
+로그 축의 범위는 가장 낮은 육각형의 아래 꼭짓점에서 시작해요(`extent`). 0 이하는 축에 놓을 수 없기 때문이에요.
+
+```python
+>>> lg = sd.plot.hexbin(10.0 ** u, 10.0 ** w, size=24).xscale("log").yscale("log")
+>>> _ = lg.scene()
+>>> lh = lg._cells[0].layers[0]
+>>> lh.scales, len(lh.cx), lg._cells[0].colorbar
+((True, True), 236, ('cool', 0.0, 99.0))
+```
+
+$10^u$와 $10^w$를 두 로그 축에 그리면 $u$와 $w$를 선형 축에 그린 것과 같은 236개의 육각형에 같은 위 끝 99예요. 로그 축에서는 값의 로그로 센다는 뜻이 이것이에요.
+
+`Counts`와 `Hexes`는 열쇠 `share`와 색 막대 `bar`를 가져요. 열쇠가 같은 층들은 한 색 범위를 쓰고, 배치가 그 층들의 가장 큰 개수를 위 끝으로 모두 다시 칠해요(`paint`). 칸이 그 층의 색 막대를 들고 있으면 막대의 위 끝도 함께 바뀌어요. 이 열쇠를 주는 것은 `facet`이에요([배치](/internals/plot/layout/)).
+
+### 쌓은 막대
+
+[`bar`](/api/plot/bar/)의 `stack=True`는 무리를 나란히 세우지 않고 한 자리에 쌓아요. 쌓을 바닥은 자리마다 두 개를 들고 가요.
+
+```python
+    # src/stardust/plot/_basic.py, bar
+    up, down = {}, {}  # stacked: the running ends above and below zero at each position
+    for j, (idx, col, lab) in enumerate(parts):
+        P, V = _take(pos, idx), _take(H, idx)
+        values = V.tolist()
+        text = [value_text(v, annotate, who) for v in values] if annotate is not False else None
+        if stack:
+            bases = []
+            for p, v in zip(P.tolist(), values):
+                run = up if v >= 0 else down
+                bases.append(run.get(p, 0.0))
+                run[p] = run.get(p, 0.0) + (v if v == v else 0.0)
+            cell.layers.append(
+                _layers.Bars(
+                    P, V, sd.asarray(bases), width, horizontal, _color_of(self, who, col), lab, None, text, True
+                )
+            )
+            continue
+```
+
+양수 막대는 그 자리의 위쪽 끝(`up`)에서, 음수 막대는 아래쪽 끝(`down`)에서 시작해요. 그래서 부호가 섞인 자료에서 양수끼리는 0 위로, 음수끼리는 0 아래로 따로 쌓이고, 양수 막대가 음수 막대를 덮지 않아요. 쌓는 순서는 무리가 처음 나온 순서예요. NaN은 그 자리의 끝을 움직이지 않아요. `Bars` 층은 바닥을 수 하나 대신 배열로 받아 막대마다 `base`에서 `base + value`까지 그리고, 축의 범위에는 쌓인 끝을 알려요.
+
+값을 적는 `annotate`의 글자는 `value_text`가 만들어요. `True`면 유효숫자 세 자리(지수 꼴이 나오면 $\times10^{k}$로)이고, 문자열이면 Python의 서식(`'.1f'`, `'.0%'`, `',.0f'`)을 그대로 써서 `%`와 `,`만 TeX에 맞게 숨겨요. 값마다 따로 만들므로 작은 값 하나가 다른 값의 자릿수를 늘리지 않아요. [`heatmap`](/api/plot/heatmap/)의 `annotate`도 같은 함수예요. `annotate`는 쌓은 막대에서는 조각의 가운데에, 나란한 막대에서는 막대의 끝 바깥(오차 막대가 있으면 그 끝 바깥)에 글자를 놓아요. 끝 바깥에 적을 때는 층이 값 범위의 10%를 축의 범위에 더해 글자의 자리를 만들어요. 오차 막대(`err`)는 쌓은 막대에는 줄 수 없어요. 어느 조각의 오차인지 그림에서 읽을 수 없기 때문이에요.
+
+```python
+>>> q, arm = ["Q1", "Q2", "Q3"] * 2, ["a"] * 3 + ["b"] * 3
+>>> bs = sd.plot.bar(q, [3.0, 5.0, -2.0, 2.0, 1.0, -1.0], group=arm, stack=True, annotate=True)
+>>> [(layer.base.tolist(), layer.value.tolist()) for layer in bs._cells[0].layers]
+[([0.0, 0.0, 0.0], [3.0, 5.0, -2.0]), ([3.0, 5.0, -2.0], [2.0, 1.0, -1.0])]
+```
+
+둘째 무리의 바닥이 첫 무리의 끝이에요. `Q3`에서는 두 값이 모두 음수라 아래로 쌓여요.
+
+
+### `strip`의 흩음과 씨
+
+```python
+    # src/stardust/plot/_stat.py, strip
+    for Y, cats, col, lab, j, k in _by_category(self, who, x, y, data, group, color, None):
+        off = (j - (k - 1) / 2) * (0.8 / k)
+        xs, ys = [], []
+        for p, idx in cats:
+            m = idx.shape[0]
+            xs.append((gen.random(m) - 0.5) * (jitter / k) + (p + off))
+            ys.append(sd.take(Y, idx))
+```
+
+점의 가로 자리는 범주의 자리에 폭 `jitter`/k의 고른 난수를 더한 것이에요. 난수는 `sd.random`의 생성기에서 받아요. `rng=None`이면 호출마다 `default_rng(0)`을 만들므로, 같은 자료로 부른 `strip`은 언제나 같은 그림이에요. 정수를 주면 그 씨의 생성기를 만들고, 생성기를 주면 그것을 그대로 써서 상태가 앞으로 가요.
+
+```python
+>>> vals = sd.concat([a, b, c])
+>>> grp = ["control"] * 25 + ["low"] * 25 + ["high"] * 25
+>>> sd.plot.strip(grp, vals).to_svg() == sd.plot.strip(grp, vals).to_svg()
+True
+```
+
+## `compare`: 괄호 쌓기
+
+`compare`는 그림이 이미 가진 범주 축 위에 괄호를 그려요. 검정을 고르거나 다시 계산하지 않고, 받은 결과의 `pvalue`를 글자로 바꾸기만 해요.
+
+### 어느 쌍을, 어떤 순서로
+
+`pvalue`가 수 하나이면 괄호 하나예요. 범주가 둘이면 그 둘을, 셋 이상이면 `groups=`가 고른 두 라벨을 이어요. `pvalue`가 k × k 행렬(다중 비교, 예를 들어 [`tukey_hsd`](/api/htest/tukey_hsd/))이면 범주가 정확히 k개여야 하고, 모든 쌍의 괄호를 그려요. [`dunnett`](/api/htest/dunnett/)의 결과는 대조군과의 비교 k − 1개를 담은 1차원 `pvalue`예요. 첫 범주를 대조군으로 보고 나머지 범주마다 첫 범주와 잇는 괄호를 그려요. 그 밖의 모양(여러 검정을 한꺼번에 한 배치 결과)은 `ValueError`예요.
+
+```python
+        # src/stardust/plot/_stat.py, compare
+        pv = p.tolist()
+        pairs = sorted((j - i, i, j) for i in range(k) for j in range(i + 1, k))  # near pairs lowest
+        for _, i, j in pairs:
+            cell.layers.append(Bracket(float(i), float(j), level, p_text(float(pv[i][j]), format)))
+            level += 1
+```
+
+쌍은 두 범주의 거리 $j - i$가 작은 것부터 차례로 층 번호 0, 1, 2, …를 받아요. 거리가 같으면 왼쪽 쌍이 먼저예요. 층 0이 자료 바로 위이고 번호가 클수록 위에 서요. 가까운 쌍의 짧은 괄호가 아래에, 먼 쌍의 긴 괄호가 위에 놓이므로 긴 괄호의 다리가 짧은 괄호를 가로지르지 않아요. 층 번호는 칸의 `headroom`에 이어지므로, `compare`를 여러 번 불러도 괄호가 겹치지 않고 다음 층에 서요.
+
+### 축을 늘리기
+
+괄호가 설 자리는 배치가 만들어요. 칸에 `headroom`이 있고 사용자가 위쪽 범위를 정하지 않았으면, 배치는 자료의 y축을 먼저 잡은 뒤 위로 늘려요.
+
+```python
+    # src/stardust/plot/_figure.py
+    if cell.headroom and cell.ylim[1] is None:
+        # room above the data for the brackets: the range grows so that they clear it
+        # (the ticks stay those of the data: none beside the brackets); on a log axis it grows
+        # in the logarithm
+        need = min(0.7, (13.0 * cell.headroom + 12.0) / ph)
+        data = _axis(cell, "y", ph * (1.0 - need), th)
+        m.ya.ticks, m.ya.labels, m.ya.mult, m.ya.minor = data.ticks, data.labels, data.mult, data.minor
+        if m.ya.scale == "log":
+            a, b = math.log10(m.ya.lo), math.log10(m.ya.hi)
+            m.ya.hi = 10.0 ** (a + (b - a) / (1.0 - need))
+        else:
+            m.ya.hi = m.ya.lo + (m.ya.hi - m.ya.lo) / (1.0 - need)
+```
+
+괄호 한 층은 13 bp이고 맨 위에 12 bp의 여백을 더해, 그 높이가 칸 높이 ph에서 차지하는 비율(많아야 70%)만큼 범위의 위쪽을 늘려요. 눈금은 늘리기 전, 자료만의 범위로 줄어든 높이에서 고른 것을 그대로 써요. 그래서 괄호 옆에는 눈금이 없어요. 로그 축에서는 같은 비율을 로그의 공간에서 늘려요. 화면에서 차지하는 높이가 같아야 하기 때문이에요. 괄호는 `Bracket.draw`가 칸의 위 가장자리에서 $9 + 13\,(L - 1 - \ell)$ bp 아래에 그어요. $\ell$은 층 번호, $L$은 칸의 괄호 수예요. 마지막 층이 맨 위에 서고, 층 0이 자료에 가장 가까워요. 양 끝의 짧은 다리는 3 bp 아래로 내려오고, 글자는 괄호의 가운데 2 bp 위에 눈금 글자의 크기로 서요.
+
+### p값의 꼴
+
+```python
+# src/stardust/plot/_stat.py
+def p_text(p, fmt):
+    """A p-value as text: 'p = 0.012' with summary()'s digits, or stars; n/a when the test gave none (NaN)."""
+    if p != p:
+        return "n/a"
+    if fmt == "stars":
+        return "ns" if not p <= 0.05 else "*" * (1 + (p <= 0.01) + (p <= 0.001))
+    if p < 0.001:
+        return r"$p < 0.001$"
+    return f"$p = {p:.3f}$"
+```
+
+`'p'`는 `summary()`와 같은 소수 셋째 자리이고, 0.001보다 작으면 `p < 0.001`이에요. `'stars'`는 0.05, 0.01, 0.001 아래로 내려갈 때마다 별이 하나씩 늘어요. p값이 NaN이면 검정이 값을 내지 못한 것이라(표본이 모자라거나 분산이 0), 어느 꼴에서나 `n/a`로 적어요. 유의하지 않다는 `ns`와는 다른 말이에요.
+
+```python
+>>> _stat.p_text(0.0827, "p"), _stat.p_text(5e-6, "p"), _stat.p_text(0.004, "stars")
+('$p = 0.083$', '$p < 0.001$', '**')
+>>> _stat.p_text(float("nan"), "stars")
+'n/a'
+>>> r = sd.htest.tukey_hsd(a, b, c)
+>>> fig = sd.plot.boxplot(grp, vals).strip(grp, vals, color="gray", alpha=0.6, size=2).compare(r)
+```
+
+<PlotImage name="in-stat-compare" alt="control, low, high 세 범주의 상자 그림에 회색 점이 흩어져 있고, 그 위에 괄호 셋이 층층이 있어요. 자료에 가장 가까운 것이 control–low의 p = 0.083, 그 위가 low–high의 p < 0.001, 맨 위의 긴 괄호가 control–high의 p < 0.001이에요." caption="tukey_hsd의 3 × 3 pvalue가 괄호 셋이 돼요. 이웃한 쌍이 층 0과 1을 받아 아래에 서고, 먼 쌍이 층 2로 맨 위에 서요. 눈금은 자료의 범위에만 있어요." />
+
+## `fit`: 선과 띠
+
+```python
+    # src/stardust/plot/_stat.py, fit
+    xs = sd.linspace(e[0], e[1], 101)
+    X = sd.reshape(xs, (-1, 1))
+    if band and hasattr(result, "predict_interval"):
+        import inspect
+
+        known = inspect.signature(result.predict_interval).parameters
+        kw = {"alpha": alpha}
+        if "kind" in known:
+            kw["kind"] = "mean"  # the band of the mean, not of a new observation
+        elif "which" in known:
+            kw["which"] = "mean"
+        iv = result.predict_interval(X, **kw)
+        cell.layers.append(_layers.Area(xs, iv[:, 0], iv[:, 1], _color.with_alpha(c, 0.2), None))
+    cell.layers.append(_layers.Line(xs, result.predict(X), c, None, "-", None))
+```
+
+x의 범위는 칸에 이미 있는 층들의 x 범위를 합친 것이에요(그래서 산점도를 먼저 그려야 해요). 그 범위에 101점을 놓고 결과의 `predict`로 선을, `predict_interval`로 평균 반응의 신뢰 띠를 구해요. 회귀 모형마다 `predict_interval`의 인자가 달라서 시그니처를 보고 맞춰요. `kind`가 있으면 `kind="mean"`, `which`가 있으면 `which="mean"`을 주고, 둘 다 없으면 `alpha`만 줘요. `predict_interval`이 없는 결과는 선만 그려요. 단순 회귀에서 띠의 반폭은 $t_{1-\alpha/2,\,n-2}\, s\sqrt{1/n + (x - \bar x)^2 / S_{xx}}$이라 $\bar x$에서 가장 좁고 양 끝으로 갈수록 넓어지는 쌍곡선 꼴이에요. 개별 관측의 예측 구간이 아니라 평균의 구간이에요. 선의 색은 주지 않으면 칸의 마지막 층의 색이에요.
+
+설명 변수가 하나인 모형만 받아요. `param_names`가 `['const', 이름]`이면 절편과 기울기, `[이름]` 하나이면 원점을 지나는 기울기예요. 식은 유효숫자 셋으로 `$y = 1.61x + 1.29$`처럼 만들고, 결과에 `rsquared`가 있으면 `$R^2 = 0.858$`을 덧붙여 칸의 `note`에 둬요. 계수가 아주 작거나 커서 `.3g`가 지수 꼴을 내면 `_coef`가 TeX의 꼴로 바꿔요.
+
+```python
+# src/stardust/plot/_stat.py
+def _coef(v):
+    """A coefficient with three significant digits, in TeX: 1.2 x 10^-5 written as such."""
+    s = f"{v:.3g}"
+    if "e" not in s:
+        return s
+    m, e = s.split("e")
+    e = int(e)
+    return rf"10^{{{e}}}" if m == "1" else rf"{m}\times10^{{{e}}}"
+```
+
+일반화 선형 모형은 왼쪽 변이 달라요. 계수는 연결 함수의 척도에서 선형이므로, `family`가 있는 결과는 `link`에 따라 $\log\mu$, $\mathrm{logit}\,\mu$ 같은 꼴을 왼쪽에 적어요(표에 없는 연결 함수는 $g(\mu)$). 그린 선은 `predict`가 준 평균이라 곡선이고, 식은 그 곡선이 어느 척도에서 직선인지를 말해요.
+
+```python
+>>> _stat._coef(1.61), _stat._coef(1.2e-5), _stat._coef(1e6)
+('1.61', '1.2\\times10^{-5}', '10^{6}')
+```
+
+배치가 자료와 범례가 가장 적게 덮은 모서리를 골라 그 글을 놓아요.
+
+```python
+>>> x = sd.linspace(0.0, 10.0, 30)
+>>> y = 1.5 * x + 2.0 + 2.0 * N.sample(30, rng=rng)
+>>> res = sd.regression.ols(y, sd.reshape(x, (-1, 1)))
+>>> res.param_names
+['const', 'x1']
+>>> fig = sd.plot.scatter(x, y).fit(res)
+```
+
+<PlotImage name="in-stat-fit" alt="30개 점의 산점도 위에 회귀 직선과 옅은 신뢰 띠. 띠는 가운데에서 좁고 양 끝에서 넓어요. 왼쪽 위에 식 y = 1.61x + 1.29, R² = 0.858이 있어요." caption="선은 predict, 띠는 predict_interval(kind='mean')의 95% 구간이에요. 식은 자료가 비어 있는 왼쪽 위 모서리에 서요." />
+
+## `diagnostics`와 `pairs`: 여러 칸
+
+두 그림은 칸 하나에 층을 얹는 메서드가 아니라 `Figure`를 만들어 돌려주는 함수예요. 그래서 그림 옵션 `**figure`를 받지 않고, 그 가운데 `width`, `height`, `font`, `theme`, `palette`만 이름으로 받아요. 너비의 기본은 두 단 너비인 183 mm예요.
+
+`diagnostics`는 2 × 2 칸에 회귀 진단 넷을 그려요. 칸마다 공개 메서드를 부르는 것과 같아요.
+
+| 칸 | 그리는 것 |
+|---|---|
+| (0, 0) Residuals vs fitted | `scatter(fittedvalues, resid)`와 0의 점선 |
+| (0, 1) Normal Q–Q | `qq(resid_studentized_internal)` |
+| (1, 0) Scale–location | `scatter(fittedvalues, sqrt(abs(표준화 잔차)))` |
+| (1, 1) Residuals vs leverage | `scatter(leverage, 표준화 잔차)`와 0의 점선 |
+
+`pairs`는 `DataFrame`의 수 열(`float64`, `int64`) k개로 k × k 칸을 만들어요. `group=`이 열 이름이면 그 열은 빼요. 대각선은 그 열의 `histogram`, 나머지 (i, j) 칸은 열 j를 가로, 열 i를 세로로 한 `scatter`(점 크기 2)예요. 축 이름은 맨 아래 행과 맨 왼쪽 열에만 붙이고, 칸마다 범례를 끈 뒤 무리가 있으면 오른쪽 위 칸에만 범례를 두고, 그 자리는 배치가 그 칸의 빈 구석으로 골라요(없으면 칸 밖). 대각선의 히스토그램은 막대를 그 줄의 산점도와 같은 세로 범위에 맞춰요.
+
+```python
+                # src/stardust/plot/_stat.py, pairs
+                r = _layers.finite_range(cols[ci])
+                if r is not None and r[1] > r[0]:
+                    hists = [layer for layer in cell._cell.layers if isinstance(layer, Hist)]
+                    top = max((max(h.heights, default=0.0) for h in hists), default=0.0)
+                    if top > 0.0:
+                        d = (r[1] - r[0]) * _figure.THEMES[theme]["pad"]
+                        for h in hists:
+                            h.heights = [v * (r[1] - r[0] + d) / top for v in h.heights]
+                            h.base, h.ceiling = r[0] - d, r[1] + d
+```
+
+줄의 산점도는 세로 범위가 그 변수의 값 범위 $[a, b]$에 테마의 여백 $d = (b - a)\cdot\text{pad}$를 양쪽으로 더한 $[a - d,\ b + d]$예요. 막대는 그 아래 끝 $a - d$에 서고, 가장 높은 막대가 위 끝 $b + d$에 닿도록 높이를 늘여요. 층의 `ceiling`이 세로 범위의 위 끝을 그 값으로 알리고, 두 끝이 모두 넓히지 않는 값(sticky)이라 대각선 칸의 범위가 옆 칸과 같아요. 범위가 같으니 눈금도 같아서, 대각선 칸의 세로축이 개수가 아니라 같은 줄의 다른 칸과 같은 변수의 눈금으로 읽혀요. 무리의 색은 칸마다 같은 순서로 팔레트에서 받으므로 모든 칸에서 같은 무리가 같은 색이에요.
+
+## 결정성
+
+통계 그림에 들어가는 난수는 `strip`의 흩음 하나이고, 기본이 고정된 씨예요. 나머지는 계산 영역의 결정적인 결과를 옮겨요. 같은 기계, 같은 스레드 수, 같은 입력이면 같은 그림이에요.

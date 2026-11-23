@@ -1,0 +1,349 @@
+---
+title: 그룹 집계
+names: []
+group: groupby
+order: 2
+signatures:
+  - "GroupBy.sum(*, skipna=True)"
+  - "GroupBy.mean(*, skipna=True)"
+  - "GroupBy.min(*, skipna=True)"
+  - "GroupBy.max(*, skipna=True)"
+  - "GroupBy.std(*, skipna=True, correction=0)"
+  - "GroupBy.var(*, skipna=True, correction=0)"
+  - "GroupBy.count()"
+  - "GroupBy.size()"
+  - "GroupBy.first(*, skipna=True)"
+  - "GroupBy.last(*, skipna=True)"
+summary: groupby로 묶은 그룹마다 합, 평균, 개수 같은 요약값을 구하는 메서드예요. 그룹마다 Series의 같은 이름 메서드를 부르므로 인자와 규칙도 그 메서드와 같아요.
+params:
+  - name: skipna
+    type: bool
+    kind: keyword-only
+    desc: True면 NA를 건너뛰고 계산해요. False면 그룹에 NA가 하나라도 있을 때 결과가 NA예요(first, last는 처음·마지막 행의 값 그대로). NaN에는 영향이 없어요.
+  - name: correction
+    type: int 또는 float
+    kind: keyword-only, std·var만
+    desc: 편차 제곱의 합을 (개수 - correction)으로 나눠요. 기본값 0은 모분산, 1은 표본 분산이에요.
+returns:
+  type: DataFrame
+  desc: 키 컬럼이 먼저, 그다음 값 컬럼마다 그룹의 결과가 오는 표. 그룹 하나가 한 행이고 라벨은 RangeIndex예요. size는 값 컬럼 대신 size 컬럼 하나예요.
+raises:
+  - type: TypeError
+    desc: 집계할 수 없는 dtype의 값 컬럼이 있을 때(문자열의 sum·mean·std·var), skipna가 True/False가 아닐 때, correction이 int·float가 아닐 때(bool 포함), 없는 인자를 줬을 때.
+seeAlso: [groupby, agg, sum-mean, min-max, std-var, value_counts, duplicated]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import FrameFig from '../../../components/fig/FrameFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+[`groupby`](/api/frame/groupby/)로 행을 그룹으로 묶은 다음에는 그룹마다 무엇을 구할지 메서드로 골라요. 메서드마다 그룹 하나를 작은 표로 보고, 그 표의 컬럼마다 Series의 같은 이름 메서드를 불러요. `g.sum()`은 그룹마다 `sum()`, `g.mean()`은 그룹마다 `mean()`이에요.
+
+```python
+>>> import stardust as sd
+>>> sales = sd.frame.DataFrame({"fruit": ["apple", "pear", "apple", "kiwi", "pear", "apple"],
+...                             "qty": [3, 1, 5, 2, 4, 2],
+...                             "price": [1.5, 2.0, 1.25, 0.5, 2.25, 1.5]})
+>>> g = sales.groupby("fruit")
+>>> g.sum()
+   fruit  qty  price
+0  apple   10   4.25
+1   kiwi    2   0.50
+2   pear    5   4.25
+>>> g.max()
+   fruit  qty  price
+0  apple    5   1.50
+1   kiwi    2   0.50
+2   pear    4   2.25
+```
+
+<Fig caption="그룹(같은 색)마다 컬럼별로 가장 큰 값을 골라요. qty의 5와 price의 1.50은 apple 그룹의 서로 다른 행에서 왔어요.">
+  <FrameFig name="sales" columns={['fruit', 'qty', 'price']}
+    data={[['apple', 3, 1.5], ['pear', 1, 2.0], ['apple', 5, 1.25], ['kiwi', 2, 0.5], ['pear', 4, 2.25], ['apple', 2, 1.5]]}
+    rowTones={['1', '3', '1', '2', '3', '1']}
+    tones={[['', '', 'b'], [], ['', 'b', ''], ['', 'b', 'b'], ['', 'b', 'b'], []]} />
+  <Op note="g.max()">→</Op>
+  <FrameFig columns={['fruit', 'qty', 'price']}
+    data={[['apple', 5, 1.5], ['kiwi', 2, 0.5], ['pear', 4, 2.25]]}
+    rowTones={['1', '2', '3']} />
+</Fig>
+
+결과는 언제나 DataFrame이고, 키 컬럼이 먼저, 그다음 값 컬럼이 와요. 그룹은 기본적으로 키의 오름차순이에요. 이 모양과 그룹 순서, 값 컬럼을 고르는 방법은 [`groupby`](/api/frame/groupby/)에 있어요.
+
+| 메서드 | 그룹마다 구하는 것 | 결과 dtype |
+|---|---|---|
+| `sum()` | 합 | int64·bool은 int64, float64는 float64 |
+| `mean()` | 평균 | float64 |
+| `min()`, `max()` | 가장 작은 값, 가장 큰 값 | 컬럼 dtype 그대로 |
+| `std()`, `var()` | 표준편차, 분산 | float64 |
+| `count()` | 값 컬럼마다 NA가 아닌 값의 개수 | int64 |
+| `size()` | 그룹의 행 수 (`size` 컬럼 하나) | int64 |
+| `first()`, `last()` | NA가 아닌 처음, 마지막 값 | 컬럼 dtype 그대로 |
+
+<Reference />
+
+## Series의 리덕션과 같은 규칙
+
+그룹 집계의 인자와 결과는 Series·DataFrame의 같은 이름 메서드와 똑같아요([합, 평균, 개수](/api/frame/sum-mean/), [최솟값과 최댓값](/api/frame/min-max/), [표준편차와 분산](/api/frame/std-var/)).
+
+- `sum`, `mean`, `min`, `max`, `first`, `last`는 `skipna`를 받아요. `std`, `var`는 `skipna`와 `correction`을 받아요. `count`와 `size`는 인자가 없어요.
+- dtype별 결과도 같아요. int64의 합은 int64, 평균은 float64예요. bool 컬럼의 합은 `True`의 개수, 평균은 `True`의 비율이에요.
+
+```python
+>>> qc = sd.frame.DataFrame({"fruit": ["apple", "pear", "apple", "pear"],
+...                          "fresh": [True, True, False, True]})
+>>> qc.groupby("fruit").sum()
+   fruit  fresh
+0  apple      1
+1   pear      2
+>>> qc.groupby("fruit").mean()
+   fruit  fresh
+0  apple    0.5
+1   pear    1.0
+```
+
+- 문자열 컬럼은 `min`, `max`, `first`, `last`, `count`만 돼요. 글자의 코드 순서로 크기를 비교해요. `sum`, `mean`, `std`, `var`는 `TypeError`라서, 이럴 때는 숫자 컬럼만 [골라서](/api/frame/groupby/) 집계해요.
+
+### 그룹의 합은 그 행만 골라낸 Series의 합과 같아요
+
+실수의 덧셈은 더하는 순서에 따라 마지막 자리가 달라질 수 있어요. 예를 들어 `0.1 + 0.2 + 0.3`은 정확히 `0.6`이 아니라 `0.6000000000000001`이에요. 그래서 "같은 값의 합"이라도 계산 방법이 다르면 결과가 조금씩 다를 수 있어요.
+
+그룹 합은 이런 차이가 생기지 않게 정해져 있어요. 한 그룹의 합은 그 그룹의 행만 골라 만든 Series의 `sum()`과 마지막 비트까지 같아요. 그룹의 행을 원래 순서대로 Series와 같은 방법으로 더하기 때문이에요.
+
+```python
+>>> x = sd.frame.DataFrame({"k": ["a", "b", "a", "a"], "v": [0.1, 5.0, 0.2, 0.3]})
+>>> x.groupby("k").sum()["v"].tolist()
+[0.6000000000000001, 5.0]
+>>> x[x["k"] == "a"]["v"].sum()
+0.6000000000000001
+```
+
+그래서 "그룹별로 집계한 값"과 "그 그룹만 걸러서 직접 계산한 값"을 비교하는 검산이 언제나 정확히 맞아요. 평균, 표준편차, 분산도 그 행만 골라낸 Series의 `mean()`, `std()`, `var()`와 같은 값이 나와요. int64 컬럼도 그래요. 정수의 평균은 그룹의 값을 정수인 채로 정확히 더한 뒤 한 번만 실수로 바꾸는데, Series의 `mean()`도 똑같이 계산하기 때문에 그룹이 얼마나 크든 같아요. 이 결과는 스레드 수와도 상관없어요.
+
+## NA와 NaN
+
+데이터프레임에서 `NA`는 "값이 없음", NaN은 "실수의 특별한 값"이에요. 집계에서도 둘을 다르게 다뤄요([NA와 NaN](/api/frame/na/)).
+
+NA는 기본값 `skipna=True`면 건너뛰어요. 없는 값을 빼고 남은 값으로 계산해요.
+
+```python
+>>> team = sd.frame.DataFrame({"team": ["red", "blue", "red", "red"],
+...                            "score": [None, 7, 10, 12],
+...                            "note": ["a", None, None, "c"]})
+>>> team.groupby("team")["score"].sum()
+   team  score
+0  blue      7
+1   red     22
+>>> team.groupby("team")["score"].mean()
+   team  score
+0  blue    7.0
+1   red   11.0
+```
+
+`red`의 평균은 NA를 뺀 `10`과 `12`의 평균이에요. `skipna=False`면 그룹에 NA가 하나라도 있을 때 결과가 `NA`예요.
+
+```python
+>>> team.groupby("team")["score"].sum(skipna=False)
+   team  score
+0  blue      7
+1   red   <NA>
+```
+
+그룹의 값이 모두 NA면 `sum`은 `0`, `count`는 `0`이고, 나머지(`mean`, `min`, `max`, `std`, `var`, `first`, `last`)는 `NA`예요. Series의 리덕션과 같아요. "더할 것이 없으면 합은 0"이지만 "값이 없으면 평균도 없다"는 뜻이에요.
+
+```python
+>>> team.groupby("team")["note"].count()
+   team  note
+0  blue     0
+1   red     2
+>>> team.groupby("team")["note"].max()
+   team  note
+0  blue  <NA>
+1   red     c
+```
+
+NaN은 값이라서 `skipna`와 상관없이 결과로 번져요. 그룹에 NaN이 하나라도 있으면 합, 평균, 최댓값이 NaN이에요.
+
+```python
+>>> nn = sd.frame.DataFrame({"k": ["a", "a", "b"], "v": [1.0, sd.nan, 2.0]})
+>>> nn.groupby("k").sum()
+   k    v
+0  a  NaN
+1  b  2.0
+>>> nn.groupby("k").max()
+   k    v
+0  a  NaN
+1  b  2.0
+```
+
+NaN을 빼고 계산하고 싶으면 먼저 `s.isnan()`으로 NaN이 있는 행을 걸러 내요([결측값 찾기](/api/frame/isna/)).
+
+## `size` 대 `count`
+
+둘 다 "개수"지만 세는 것이 달라요.
+
+- `size()`는 그룹의 행 수예요. NA가 있든 없든 행을 모두 세요. 컬럼과 상관없는 값이라 결과에는 키 컬럼과 `size` 컬럼 하나만 있어요.
+- `count()`는 값 컬럼마다 NA가 아닌 값의 개수예요. 그래서 컬럼마다 다를 수 있어요.
+
+```python
+>>> team.groupby("team").size()
+   team  size
+0  blue     1
+1   red     3
+>>> team.groupby("team").count()
+   team  score  note
+0  blue      1     0
+1   red      2     2
+```
+
+`red`는 3행이지만, `score`에는 NA가 하나 있어서 2개, `note`에도 NA가 하나 있어서 2개예요.
+
+<Fig caption="size는 그룹의 행을 세고, count는 컬럼마다 점선 칸(NA)을 빼고 세요.">
+  <FrameFig name="team" columns={['team', 'score', 'note']}
+    data={[['red', null, 'a'], ['blue', 7, null], ['red', 10, null], ['red', 12, 'c']]}
+    rowTones={['1', '2', '1', '1']} />
+  <Op note="size()">→</Op>
+  <FrameFig columns={['team', 'size']} data={[['blue', 1], ['red', 3]]} rowTones={['2', '1']} />
+  <Op note="count()">→</Op>
+  <FrameFig columns={['team', 'score', 'note']} data={[['blue', 1, 0], ['red', 2, 2]]} rowTones={['2', '1']} />
+</Fig>
+
+그림의 두 화살표는 같은 `team`에서 나온 두 결과예요. "몇 번 팔렸나"처럼 행 자체를 세려면 `size`, "점수를 입력한 사람이 몇 명인가"처럼 값이 있는 칸을 세려면 `count`를 써요.
+
+## `first`와 `last`
+
+`first()`는 그룹에서 NA가 아닌 처음 값을, `last()`는 NA가 아닌 마지막 값을 컬럼마다 골라요. 값을 계산하지 않고 고르기만 하므로 컬럼의 dtype이 그대로 남아요.
+
+```python
+>>> team.groupby("team").first()
+   team  score  note
+0  blue      7  <NA>
+1   red     10     a
+>>> team.groupby("team").last()
+   team  score  note
+0  blue      7  <NA>
+1   red     12     c
+```
+
+`red`의 `first`를 보면 `score`는 10(2번 행), `note`는 `a`(0번 행)예요. 컬럼마다 따로 NA를 건너뛰어서, 결과의 한 행이 서로 다른 원래 행에서 올 수 있어요. `blue`의 `note`처럼 값이 모두 NA면 결과도 `NA`예요.
+
+`skipna=False`면 NA를 건너뛰지 않고 그룹의 처음(마지막) 행의 값 그대로예요. 그 값이 NA일 수도 있어요.
+
+```python
+>>> team.groupby("team").first(skipna=False)
+   team  score  note
+0  blue      7  <NA>
+1   red   <NA>     a
+```
+
+<Callout type="tip" title="그룹마다 첫 행을 통째로">
+  `first()`는 컬럼마다 따로 골라요. 그룹마다 처음 나온 행을 모든 컬럼 그대로 원하면 키로 [`drop_duplicates`](/api/frame/duplicated/)를 써요. `team.drop_duplicates("team")`은 `red`의 0번 행과 `blue`의 1번 행을 원래 값 그대로(NA 포함) 남겨요. 어떤 기준으로 "첫 행"을 고르고 싶으면 그 기준으로 먼저 [`sort_values`](/api/frame/sort_values/)를 해요.
+</Callout>
+
+```python
+>>> team.drop_duplicates("team")
+   team  score  note
+0   red   <NA>     a
+1  blue      7  <NA>
+```
+
+## `std`와 `var`: 기본은 `correction=0`
+
+`var()`는 분산(값이 평균에서 얼마나 흩어져 있는지), `std()`는 그 제곱근인 표준편차예요. 편차 제곱의 합을 `개수 - correction`으로 나눠요.
+
+- 기본값 `correction=0`은 **모분산**이에요(개수로 나눔). 배열의 [`sd.var`](/api/array/var/), Series의 `var()`와 같은 기본값이에요.
+- 표본에서 모집단의 분산을 어림하는 **표본 분산**은 `correction=1`이에요(개수 - 1로 나눔).
+
+```python
+>>> g.var()
+   fruit       qty     price
+0  apple  1.555556  0.013889
+1   kiwi  0.000000  0.000000
+2   pear  2.250000  0.015625
+>>> g.var(correction=1)
+   fruit       qty     price
+0  apple  2.333333  0.020833
+1   kiwi      <NA>      <NA>
+2   pear  4.500000  0.031250
+```
+
+`kiwi`는 1행뿐이라 `correction=1`이면 `1 - 1 = 0`으로 나눠야 해요. 이렇게 NA가 아닌 값의 개수가 `correction` 이하면 결과가 `NA`예요. 배열의 `sd.var`는 이럴 때 NaN을 주지만, 데이터프레임에는 "값이 없음"을 나타내는 NA가 있어서 NA로 알려 줘요. 자세한 내용은 [표준편차와 분산](/api/frame/std-var/)에 있어요.
+
+## 조심할 점
+
+### 문자열 컬럼이 섞이면 먼저 고르세요
+
+키가 아닌 컬럼은 모두 집계돼요. 문자열 컬럼이 있으면 `sum`, `mean`, `std`, `var`는 `TypeError`예요.
+
+```python
+>>> team.groupby("team").mean()
+Traceback (most recent call last):
+    ...
+TypeError: mean(): cannot compute mean of a string column
+>>> team.groupby("team")["score"].mean()
+   team  score
+0  blue    7.0
+1   red   11.0
+```
+
+### 옵션의 타입
+
+`skipna`에는 `True`나 `False`만, `correction`에는 int나 float만 써요. `correction=True`는 `TypeError`예요.
+
+```python
+>>> g.sum(skipna=0)
+Traceback (most recent call last):
+    ...
+TypeError: sum(): 'skipna' must be True or False, not int
+>>> g.std(correction=True)
+Traceback (most recent call last):
+    ...
+TypeError: std(): 'correction' must be an int or a float, not bool
+```
+
+### 위 표에 없는 집계는 없어요
+
+`median`, `prod`, `nunique` 같은 메서드는 없어요. GroupBy의 집계는 위 표의 열 가지예요.
+
+```python
+>>> g.median()
+Traceback (most recent call last):
+    ...
+AttributeError: 'GroupBy' object has no attribute 'median'. Did you mean '.mean' instead of '.median'?
+```
+
+Python이 비슷한 이름으로 `mean`을 권하지만, 평균과 중앙값은 다른 값이에요. 중앙값이 필요하면 그룹마다 행을 골라 배열의 [`sd.median`](/api/array/quantile/)으로 구해요.
+
+### int 합은 넘치면 돌아가요
+
+int64 컬럼의 합이 int64 범위를 넘으면 경고 없이 반대쪽 끝으로 돌아가요(wrap). 배열의 정수 덧셈과 같은 규칙이에요. 아주 큰 정수를 더할 때는 먼저 `astype("float64")`로 바꾸세요.
+
+```python
+>>> big = sd.frame.DataFrame({"k": [1, 1], "v": [2**62, 2**62]})
+>>> big.groupby("k").sum()
+   k                    v
+0  1 -9223372036854775808
+```
+
+## 비슷한 함수와의 차이
+
+| 하고 싶은 일 | 쓸 것 | 다른 점 |
+|---|---|---|
+| 그룹마다 집계 하나 | `g.sum()` 등 | 모든 값 컬럼에 같은 집계를 해요. `std(correction=1)`처럼 인자를 줄 수 있어요. |
+| 컬럼마다 다른 집계, 여러 집계를 한 번에 | [`g.agg(...)`](/api/frame/agg/) | 집계를 이름(문자열)으로 골라요. 인자는 언제나 기본값이에요. |
+| 그룹의 행 수 | `g.size()` | NA도 세요. `size` 컬럼 하나예요. |
+| 컬럼마다 값이 있는 칸 수 | `g.count()` | NA를 빼고 세요. |
+| 값마다 개수, 많은 것부터 | [`value_counts`](/api/frame/value_counts/) | 개수의 내림차순이고 컬럼 이름이 `counts`예요. |
+| 그룹마다 첫 행 통째로 | [`drop_duplicates`](/api/frame/duplicated/) | `first()`와 달리 컬럼마다 따로 고르지 않아요. |
+| 표 전체의 합 | [`df.sum()`](/api/frame/sum-mean/) | 그룹 없이 1행으로 요약해요. |
+
+## pandas를 아는 분께
+
+- 결과는 키를 보통 컬럼으로 둔 DataFrame이에요(라벨은 RangeIndex). pandas의 `as_index=False` 모양이에요. `size()`도 Series가 아니라 `size` 컬럼이 있는 DataFrame이에요.
+- 그룹 합은 그 행만 골라낸 Series의 `sum()`과 비트까지 같아요. pandas의 그룹 합은 다른 방법으로 더해서, 위 예제의 `0.1, 0.2, 0.3` 그룹을 `0.6`으로 내고 같은 행의 Series `sum()`은 `0.6000000000000001`을 내요.
+- NaN은 건너뛰지 않아요. pandas는 NaN을 결측으로 보고 건너뛰지만, 여기서는 `skipna`가 NA만 건너뛰고 NaN은 결과로 번져요.
+- `std`, `var`의 기본값이 `correction=0`이에요. pandas는 `ddof=1`이라, 1행짜리 그룹이 pandas에서는 NaN, 여기서는 `0.0`이에요. 표본 분산은 `correction=1`이고, 값이 모자라면 NaN이 아니라 `NA`예요.
+- 문자열 컬럼의 `sum`은 `TypeError`예요. pandas는 문자열을 이어 붙여요.
+- `numeric_only`, `min_count`, `engine`은 없어요. `first`, `last`의 `skipna`는 pandas와 같은 뜻이에요.

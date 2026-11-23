@@ -1,0 +1,424 @@
+---
+title: 리스트와 numpy 배열로
+names: [Series.tolist, Series.to_numpy, DataFrame.to_numpy]
+group: 속성과 변환
+order: 4
+signatures:
+  - "Series.tolist()"
+  - "Series.to_numpy(*, dtype=None, copy=None, na_value=<없음>)"
+  - "DataFrame.to_numpy(*, dtype=None, copy=None, na_value=<없음>)"
+summary: Series의 값을 Python 리스트로, Series나 DataFrame의 값을 numpy 배열로 꺼내요. 다른 라이브러리에 데이터를 넘길 때 써요.
+params:
+  - name: dtype
+    type: dtype, 그 이름, 또는 None
+    kind: keyword-only
+    desc: 배열로 꺼내기 전에 바꿀 종류. 바꾸는 규칙은 astype과 같아요. None이면 컬럼의 종류 그대로(DataFrame은 컬럼들의 공통 종류)예요.
+  - name: copy
+    type: True, False 또는 None
+    kind: keyword-only
+    desc: None(기본값)이면 꼭 필요할 때만 복사해요. True면 언제나 고칠 수 있는 복사본, False면 복사하지 않고 복사가 필요하면 에러예요.
+  - name: na_value
+    type: 스칼라
+    kind: keyword-only
+    desc: NA 자리에 넣을 값. NA가 있는 컬럼은 꼭 줘야 해요. 결과 배열의 종류에 들어가는 값이어야 해요.
+returns:
+  type: list 또는 numpy.ndarray
+  desc: "tolist는 Python 값의 list(NA는 NA). to_numpy는 Series면 1차원, DataFrame이면 (행, 열) 2차원 numpy 배열이에요. string은 str을 담은 object 배열이에요."
+raises:
+  - type: ValueError
+    desc: NA가 있는데 na_value를 주지 않았을 때, copy=False인데 복사가 필요할 때(NA를 채울 때, dtype을 바꿀 때, string 컬럼, DataFrame).
+  - type: TypeError
+    desc: na_value가 결과 종류에 들어가지 않을 때(int64에 nan이나 1.5, bool에 0 등), dtype이 네 가지 dtype이나 그 이름이 아닐 때, copy가 True·False·None이 아닐 때, DataFrame의 컬럼에 string과 다른 종류가 섞였는데 dtype을 주지 않았을 때.
+  - type: OverflowError
+    desc: int64 배열에 int64 범위 밖의 정수를 na_value로 줄 때.
+seeAlso: [to-array, astype, na, assign, attributes]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import FrameFig from '../../../components/fig/FrameFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+데이터프레임에서 정리한 값을 그래프 라이브러리나 머신러닝 라이브러리에 넘기거나, 평범한 Python 코드에서 쓰고 싶을 때가 있어요. 그럴 때 값을 꺼내는 메서드가 둘 있어요.
+
+- `tolist()`: Series의 값을 Python 리스트로 꺼내요.
+- `to_numpy()`: Series나 DataFrame의 값을 numpy 배열로 꺼내요. numpy는 Python에서 가장 널리 쓰이는 배열 라이브러리이고, 많은 라이브러리가 numpy 배열을 받아요.
+
+stardust 배열(`sd.ndarray`)로 꺼내는 [`to_array`](/api/frame/to-array/)도 있어요. 규칙은 `to_numpy`와 같아요.
+
+```python
+>>> import stardust as sd
+>>> import numpy as np
+>>> df = sd.frame.DataFrame({
+...     "fruit": ["apple", "banana", "cherry"],
+...     "price": [1200, 800, 3000],
+...     "qty": [3, None, 5],
+...     "rate": [4.5, sd.nan, 3.0],
+... })
+>>> df
+    fruit  price   qty  rate
+0   apple   1200     3   4.5
+1  banana    800  <NA>   NaN
+2  cherry   3000     5   3.0
+>>> df["price"].tolist()
+[1200, 800, 3000]
+>>> df["price"].to_numpy()
+array([1200,  800, 3000], dtype=int64)
+```
+
+꺼낸 값에는 행 라벨과 컬럼 이름이 따라가지 않아요. 값만 순서대로 담겨요.
+
+<Reference />
+
+## `tolist`: Python 리스트로
+
+`tolist()`는 Series의 값을 하나씩 Python 값으로 바꿔 리스트에 담아요. int64는 `int`, float64는 `float`, bool은 `bool`, string은 `str`이에요.
+
+```python
+>>> df["fruit"].tolist()
+['apple', 'banana', 'cherry']
+>>> type(df["price"].tolist()[0])
+<class 'int'>
+```
+
+결측값은 `NA` 그대로 들어가요. NaN은 결측이 아니라 float의 한 값이라서 `nan`으로 들어가요.
+
+```python
+>>> df["qty"].tolist()
+[3, <NA>, 5]
+>>> df["rate"].tolist()
+[4.5, nan, 3.0]
+```
+
+리스트 안의 `NA`는 `x is sd.frame.NA`로 알아봐요. `NA`와 NaN이 어떻게 다른지는 [NA와 NaN](/api/frame/na/)에 있어요.
+
+DataFrame에는 `tolist`가 없어요. 컬럼마다 `df["c"].tolist()`를 쓰거나, 2차원 numpy 배열로 꺼낸 뒤 numpy의 `tolist()`를 써요. 행 라벨이나 컬럼 이름을 리스트로 얻으려면 `df.index.tolist()`, `df.columns.tolist()`를 써요([Index와 RangeIndex](/api/frame/index/)).
+
+## `to_numpy`: numpy 배열로
+
+`to_numpy()`는 컬럼의 값을 numpy 배열로 돌려줘요. 배열의 종류는 컬럼의 종류를 따라요.
+
+| 컬럼 dtype | numpy 배열의 dtype |
+|---|---|
+| bool | `bool` |
+| int64 | `int64` |
+| float64 | `float64` |
+| string | `object` (Python `str`을 담아요) |
+
+```python
+>>> df["rate"].to_numpy()
+array([4.5, nan, 3. ])
+>>> df["fruit"].to_numpy()
+array(['apple', 'banana', 'cherry'], dtype=object)
+```
+
+NaN은 numpy 배열에서도 NaN이에요.
+
+### `NA`가 있으면 `na_value`로 채워요
+
+numpy 배열에는 "값이 없음"을 나타내는 칸이 없어요. 그래서 `NA`가 있는 컬럼은 그대로 꺼낼 수 없고, `NA` 자리에 넣을 값을 `na_value`로 정해 줘야 해요. 주지 않으면 에러예요.
+
+```python
+>>> df["qty"].to_numpy()
+Traceback (most recent call last):
+    ...
+ValueError: to_numpy(): cannot convert an int64 column with NA to numpy; pass na_value= to fill the NA rows
+>>> df["qty"].to_numpy(na_value=0)
+array([3, 0, 5], dtype=int64)
+```
+
+<Fig caption="NA 자리를 na_value로 채운 배열이 나와요. 배열에는 라벨이 없어요.">
+  <FrameFig name="df['qty']" data={[3, null, 5]} tones={[[''], ['a'], ['']]} note="dtype: int64" />
+  <Op note="to_numpy(na_value=0)">→</Op>
+  <FrameFig data={[3, 0, 5]} index={false} tones={[[''], ['a'], ['']]} note="numpy int64" />
+</Fig>
+
+`NA`를 무엇으로 바꿀지는 데이터의 뜻에 달려 있어요. 판매 수량이라면 0이 맞을 수도 있지만, 기온이라면 0은 틀린 값이에요. `to_numpy`는 채울 값을 짐작하지 않으니 직접 정해 줘요.
+
+`na_value`는 결과 배열의 종류에 들어가는 값이어야 해요. 정수 배열에는 NaN을 넣을 수 없어요. NaN으로 채우고 싶으면 `dtype="float64"`도 함께 줘서 실수 배열로 만들어요.
+
+```python
+>>> df["qty"].to_numpy(na_value=np.nan)
+Traceback (most recent call last):
+    ...
+TypeError: to_numpy(): na_value=nan does not fit an array of dtype int64; pass dtype= as well
+>>> df["qty"].to_numpy(dtype="float64", na_value=np.nan)
+array([ 3., nan,  5.])
+```
+
+어떤 값이 어느 배열에 들어가는지는 다음과 같아요.
+
+| 결과 배열 | 넣을 수 있는 `na_value` | 넣을 수 없는 것 |
+|---|---|---|
+| int64 | 정수 `int` (int64 범위 안) | `1.5`, `2.0`, `nan`, `True`, `None`, 문자열 |
+| float64 | 정수 `int`, 실수 `float` (`nan`, `inf` 포함) | `True`, `None`, 문자열 |
+| bool | `True`, `False` | `0`, `1`, `None` |
+| object (string) | `str`, `None` | 숫자 |
+
+numpy의 스칼라(`np.int64(-1)`, `np.float64(0.5)`, `np.bool_(False)`)는 같은 종류의 Python 값(`int`, `float`, `bool`)으로 보고 같은 표를 따라요. numpy 배열에서 꺼낸 값을 그대로 줘도 돼요.
+
+```python
+>>> df["qty"].to_numpy(na_value=np.int64(-1))
+array([ 3, -1,  5], dtype=int64)
+>>> df["qty"].to_numpy(na_value=np.float64(-1.0))
+Traceback (most recent call last):
+    ...
+TypeError: to_numpy(): na_value=np.float64(-1.0) does not fit an array of dtype int64; pass dtype= as well
+```
+
+bool 값은 정수 배열에도 넣을 수 없어요. string 컬럼은 `None`을 넣을 수 있어서, 결측을 Python의 `None`으로 바꿀 수 있어요.
+
+```python
+>>> sd.frame.Series(["apple", None]).to_numpy(na_value=None)
+array(['apple', None], dtype=object)
+>>> sd.frame.Series(["apple", None]).to_numpy(na_value="")
+array(['apple', ''], dtype=object)
+```
+
+`na_value`가 맞는지는 `NA`가 없어도 검사해요. 그래서 같은 코드가 데이터에 따라 됐다 안 됐다 하지 않아요.
+
+```python
+>>> df["price"].to_numpy(na_value=1.5)
+Traceback (most recent call last):
+    ...
+TypeError: to_numpy(): na_value=1.5 does not fit an array of dtype int64; pass dtype= as well
+```
+
+int64 범위를 넘는 정수는 `OverflowError`예요. `dtype="float64"`와 함께 주면 실수로 바뀌어 들어가요.
+
+```python
+>>> df["qty"].to_numpy(na_value=2**70)
+Traceback (most recent call last):
+    ...
+OverflowError: to_numpy(): 'na_value' is out of range for int64
+```
+
+### `dtype`: 꺼내면서 종류 바꾸기
+
+`dtype=`을 주면 컬럼을 먼저 [`astype`](/api/frame/astype/)으로 바꾼 뒤 꺼내요. 규칙도 `astype`과 같아서, 실수를 정수로 바꾸면 0 쪽으로 자르고 NaN은 0이 돼요.
+
+```python
+>>> df["price"].to_numpy(dtype="float64")
+array([1200.,  800., 3000.])
+>>> df["rate"].to_numpy(dtype="int64")
+array([4, 0, 3], dtype=int64)
+>>> df["price"].to_numpy(dtype="string")
+array(['1200', '800', '3000'], dtype=object)
+```
+
+`dtype`에는 `sd.bool`, `sd.int64`, `sd.float64`, `sd.string`과 그 이름만 써요. numpy의 dtype(`np.float64`)이나 `"float32"`는 `TypeError`예요. float32 같은 다른 종류가 필요하면 꺼낸 numpy 배열에서 바꿔요.
+
+```python
+>>> df["price"].to_numpy(dtype=np.float64)
+Traceback (most recent call last):
+    ...
+TypeError: to_numpy(): 'dtype' must be sd.bool, sd.int64, sd.float64 or sd.string (or their names), not numpy.float64
+```
+
+## `copy`: 복사할까, 빌려 줄까
+
+`copy`는 배열의 [`asarray`](/api/array/asarray/)의 `copy`와 같은 뜻이에요.
+
+| `copy` | 하는 일 |
+|---|---|
+| `None` (기본값) | 꼭 필요할 때만 복사해요. 복사가 필요 없으면 컬럼의 메모리를 그대로 보여 주는 **읽기 전용** 배열이에요. |
+| `True` | 언제나 새로 복사한, 고칠 수 있는 배열이에요. |
+| `False` | 절대 복사하지 않아요. 복사가 필요하면 `ValueError`예요. |
+
+### 기본값은 읽기 전용이에요
+
+`NA`가 없고 종류도 바꾸지 않으면, `to_numpy()`는 값을 복사하지 않고 컬럼의 메모리를 그대로 보여 줘요. 큰 컬럼도 바로 꺼낼 수 있는 이유예요. 대신 이 배열은 읽기 전용이라서 고칠 수 없어요.
+
+```python
+>>> a = df["price"].to_numpy()
+>>> a.flags.writeable
+False
+>>> a[0] = 0
+Traceback (most recent call last):
+    ...
+ValueError: assignment destination is read-only
+```
+
+읽기 전용인 이유는 이 배열이 Series와 메모리를 나눠 쓰기 때문이에요. 배열을 고칠 수 있다면 Series의 값이 몰래 바뀌어요. 반대로 Series 쪽에 값을 대입하면, Series가 먼저 자기 값을 복사한 뒤 고쳐요. 그래서 이미 꺼낸 배열은 바뀌지 않아요. 고친 쪽만 바뀌는 이 방식(Copy-on-Write)은 [대입과 복사](/api/frame/assign/)에 자세히 있어요.
+
+```python
+>>> price = df["price"]
+>>> view = price.to_numpy()
+>>> price.iloc[0] = 1000
+>>> view
+array([1200,  800, 3000], dtype=int64)
+>>> price.tolist()
+[1000, 800, 3000]
+```
+
+배열을 고쳐 쓸 생각이면 `copy=True`를 줘요. 언제나 Series와 상관없는, 고칠 수 있는 배열이 나와요.
+
+```python
+>>> b = df["price"].to_numpy(copy=True)
+>>> b[0] = 0
+>>> b
+array([   0,  800, 3000], dtype=int64)
+>>> df["price"].tolist()
+[1200, 800, 3000]
+```
+
+`NA`를 채우거나 `dtype`을 바꾸면 값을 새로 써야 하므로 언제나 새 배열이 나오고, 이 배열은 고칠 수 있어요. Series와 나눠 쓰는 메모리가 없으니 고쳐도 표는 그대로예요. 다만 컬럼과 같은 종류를 `dtype`으로 주면 바꿀 것이 없어서 기본값처럼 읽기 전용 배열이에요. 고칠 배열이 필요하면 경우를 따지지 말고 `copy=True`를 주는 것이 가장 확실해요.
+
+```python
+>>> df["qty"].to_numpy(na_value=0).flags.writeable
+True
+>>> df["price"].to_numpy(dtype="float64").flags.writeable
+True
+>>> df["price"].to_numpy(dtype="int64").flags.writeable
+False
+>>> df["price"].to_numpy(dtype="int64", copy=True).flags.writeable
+True
+```
+
+### `copy=False`: 복사가 생기면 알려 줘요
+
+`copy=False`는 "복사하지 말라"는 요청이에요. 복사 없이는 꺼낼 수 없으면 조용히 복사하지 않고 `ValueError`를 내요. 큰 데이터에서 의도하지 않은 복사를 잡아내는 데 써요. 복사가 필요한 경우는 넷이에요.
+
+- `NA`를 `na_value`로 채울 때
+- `dtype`을 바꿀 때
+- string 컬럼 (Python `str` 객체를 담은 배열을 새로 만들어요)
+- DataFrame (아래)
+
+```python
+>>> df["price"].to_numpy(copy=False)
+array([1200,  800, 3000], dtype=int64)
+>>> df["qty"].to_numpy(na_value=0, copy=False)
+Traceback (most recent call last):
+    ...
+ValueError: to_numpy(): copy=False, but filling the NA rows requires a copy
+>>> df["fruit"].to_numpy(copy=False)
+Traceback (most recent call last):
+    ...
+ValueError: to_numpy(): copy=False, but a string column can only be converted by copying
+```
+
+`copy`에는 `True`, `False`, `None`만 써요. `copy=1`은 `TypeError`예요.
+
+## `DataFrame.to_numpy`: 2차원 배열로
+
+DataFrame의 `to_numpy()`는 표 전체를 `(행 수, 열 수)` 모양의 2차원 배열로 돌려줘요. 배열의 한 행이 표의 한 행, 한 열이 표의 한 컬럼이에요.
+
+```python
+>>> df[["price", "rate"]].to_numpy()
+array([[1200. ,    4.5],
+       [ 800. ,    nan],
+       [3000. ,    3. ]])
+```
+
+### 공통 종류로 맞춰요
+
+배열은 칸마다 종류가 같아야 해서, 컬럼의 종류를 하나로 맞춰요. 숫자 컬럼은 `bool < int64 < float64` 순서에서 가장 넓은 쪽으로 올려요. 리스트에서 배열을 만들 때와 같은 승격 규칙이에요([dtype](/api/array/dtypes/)). 위에서 int64 `price`와 float64 `rate`가 만나 float64 배열이 된 이유예요.
+
+| 컬럼의 종류 | 배열의 종류 |
+|---|---|
+| 모두 bool | bool |
+| int64, bool | int64 (`True`는 1, `False`는 0) |
+| float64가 하나라도 | float64 |
+| 모두 string | object (`str`) |
+| string과 다른 종류가 섞임 | `TypeError` (`dtype=`을 주면 그 종류로) |
+
+```python
+>>> flags = sd.frame.DataFrame({"qty": [3, 1], "fresh": [True, False]})
+>>> flags.to_numpy()
+array([[3, 1],
+       [1, 0]], dtype=int64)
+```
+
+문자열과 숫자는 공통 종류가 없어서 에러예요. `dtype="string"`을 주면 모든 값을 글자로 바꿔서 꺼내요.
+
+```python
+>>> df[["fruit", "price"]].to_numpy()
+Traceback (most recent call last):
+    ...
+TypeError: to_numpy(): columns of dtypes ['int64', 'string'] have no common numpy dtype; pass dtype=
+>>> df[["fruit", "price"]].to_numpy(dtype="string")
+array([['apple', '1200'],
+       ['banana', '800'],
+       ['cherry', '3000']], dtype=object)
+```
+
+`NA`가 있는 컬럼이 하나라도 있으면 `na_value`가 필요해요. `na_value`는 표 전체의 `NA`에 똑같이 쓰여요.
+
+```python
+>>> df[["price", "qty"]].to_numpy(na_value=0)
+array([[1200,    3],
+       [ 800,    0],
+       [3000,    5]], dtype=int64)
+```
+
+### 언제나 새 배열이에요
+
+컬럼마다 메모리가 따로 있어서, 2차원 배열은 언제나 새로 만들어요. 그래서 DataFrame의 결과는 언제나 고칠 수 있는 배열이고, `copy=False`는 언제나 에러예요.
+
+```python
+>>> m = df[["price", "rate"]].to_numpy()
+>>> m.flags.writeable
+True
+>>> df[["price", "rate"]].to_numpy(copy=False)
+Traceback (most recent call last):
+    ...
+ValueError: to_numpy(): copy=False, but a 2-D array of the columns requires a copy
+```
+
+행이나 컬럼이 없는 DataFrame은 빈 float64 배열이에요.
+
+```python
+>>> sd.frame.DataFrame().to_numpy()
+array([], shape=(0, 0), dtype=float64)
+```
+
+## numpy 함수에 바로 넘기기
+
+numpy의 `np.asarray`에 Series나 DataFrame을 그대로 넘겨도 돼요. 결과는 `to_numpy()`와 같고, `dtype=`과 `copy=`도 같은 규칙이에요. 그래서 `NA`가 있으면 에러예요. `np.array`는 numpy에서 기본으로 복사하는 함수라서 고칠 수 있는 배열이 나와요.
+
+```python
+>>> np.asarray(df["price"])
+array([1200,  800, 3000], dtype=int64)
+>>> np.asarray(df["qty"])
+Traceback (most recent call last):
+    ...
+ValueError: cannot convert an int64 column with NA to numpy; pass na_value= to fill the NA rows
+>>> np.array(df["price"]).flags.writeable
+True
+```
+
+`NA`가 있는 데이터를 넘길 때는 `to_numpy(na_value=...)`로 직접 꺼내서 넘겨요. Index도 `np.asarray(df.index)`로 라벨 배열을 얻을 수 있어요.
+
+## 조심할 점
+
+### 꺼낸 배열은 표의 내용을 따라가지 않아요
+
+`to_numpy()`의 결과는 꺼낸 순간의 값이에요. 나중에 표에 값을 대입해도 배열은 바뀌지 않아요. 바뀐 값이 필요하면 다시 꺼내요.
+
+### string 컬럼은 object 배열이에요
+
+string 컬럼은 numpy의 문자열 배열(`<U5` 같은 종류)이 아니라, Python `str`을 담은 object 배열로 나와요. 문자열 길이에 상관없이 값이 그대로 담겨요.
+
+## 비슷한 기능과의 차이
+
+| 하고 싶은 일 | 쓸 것 | 결과 | `NA` |
+|---|---|---|---|
+| Python 코드에서 값 하나하나 쓰기 | `s.tolist()` | list | `NA` 그대로 |
+| numpy나 다른 라이브러리에 넘기기 | `to_numpy()` | numpy 배열 | `na_value`로 채워야 해요 |
+| stardust의 배열 함수나 `sd.linalg`에 넘기기 | [`to_array()`](/api/frame/to-array/) | `sd.ndarray` | `na_value`로 채워야 해요 |
+| 표 안에서 종류만 바꾸기 | [`astype`](/api/frame/astype/) | Series, DataFrame | `NA` 그대로 |
+| 표 안에서 `NA` 채우기 | [`fillna`](/api/frame/fillna/) | Series, DataFrame | 채워요 |
+| 행 라벨, 컬럼 이름을 리스트로 | `df.index.tolist()`, `df.columns.tolist()` | list | 없음 |
+
+`tolist`는 `NA`를 그대로 둘 수 있지만, 배열은 `NA`를 담을 수 없어서 `to_numpy`와 `to_array`는 채울 값을 요구해요.
+
+## pandas를 아는 분께
+
+- `copy=False`는 "복사하지 말라"는 뜻이에요. 복사가 필요하면 `ValueError`예요. pandas의 기본값 `copy=False`는 "꼭 복사하지 않아도 된다"는 뜻이라 에러를 내지 않아요. pandas의 그 동작은 stardust의 `copy=None`이에요.
+- `NA`가 있으면 `na_value`를 꼭 줘야 해요. pandas의 nullable `Int64`는 `NA`를 NaN으로 바꾼 float64 배열을 돌려줘요.
+- DataFrame의 공통 종류를 승격으로 정해요. bool 컬럼이 숫자 컬럼과 섞이면 pandas는 object 배열이지만, stardust는 숫자 배열이에요(int64와 bool이면 int64). string이 섞이면 pandas는 object 배열이고 stardust는 `TypeError`예요.
+- `na_value`가 결과 종류에 맞지 않으면 `NA`가 없어도 `TypeError`예요. pandas는 `NA`가 없으면 검사하지 않아요.
+- `tolist()`의 결측은 `NA`예요. pandas는 float 컬럼과 str 컬럼의 결측을 `nan`으로 돌려줘요.
+- 기본값의 결과가 읽기 전용이고 `dtype=`으로 바꾼 배열은 고칠 수 있는 점은 pandas 3과 같아요.
+- `to_list`는 없고 `tolist`만 있어요.

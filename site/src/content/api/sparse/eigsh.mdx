@@ -1,0 +1,470 @@
+---
+kind: function
+title: eigsh
+names: [eigsh]
+group: 고유값과 특이값
+order: 1
+signatures:
+  - "sd.sparse.eigsh(A, /, *, k=6, M=None, sigma=None, which='LM', v0=None, ncv=None, max_iter=None, tol=0, return_eigenvectors=True, Minv=None, OPinv=None, mode='normal', rng=None)"
+summary: 큰 대칭(복소수면 에르미트) 행렬의 고유값 가운데 원하는 k개와 그 고유벡터를 구해요. 행렬 전체를 분해하지 않고 행렬과 벡터의 곱을 거듭해서 양 끝이나 지정한 값 근처의 고유값만 찾아요.
+params:
+  - name: A
+    type: 희소 배열, ndarray, 또는 LinearOperator
+    kind: positional-only
+    desc: 대칭(복소수면 에르미트)인 n × n 행렬. 희소 배열은 형식을 가리지 않고, 2차원 밀집 배열과 곱만 아는 LinearOperator도 받아요. 대칭인지는 검사하지 않아요. 저장된 값에 NaN이나 inf가 있으면 안 돼요.
+  - name: k
+    type: int
+    kind: keyword-only
+    desc: 구할 고유값의 수. 1 ≤ k < n이에요. 기본값은 6이에요.
+  - name: M
+    type: 희소 배열, ndarray, LinearOperator, 또는 None
+    kind: keyword-only
+    desc: 주면 일반화 문제 A x = λ M x를 풀어요. 에르미트이고 양정치(sigma와 함께면 양반정치도 돼요)인 n × n 행렬이에요.
+  - name: sigma
+    type: float 또는 None
+    kind: keyword-only
+    desc: 주면 sigma 근처의 고유값을 찾아요(shift-invert). A − sigma·M을 한 번 분해해서 써요. 유한한 실수예요.
+  - name: which
+    type: str
+    kind: keyword-only
+    desc: "어느 쪽 고유값을 구할지. 'LM'(절댓값이 큰 것, 기본값), 'SM'(절댓값이 작은 것), 'LA'(값이 큰 것), 'SA'(값이 작은 것), 'BE'(양 끝에서 반씩). sigma가 있으면 sigma에서 본 크기예요."
+  - name: v0
+    type: ndarray 또는 None
+    kind: keyword-only
+    desc: 시작 벡터. 모양은 (n,)이나 (n, 1)이고 0 벡터가 아니어야 해요. None이면 고정된 난수 벡터라서 같은 호출은 언제나 같은 결과예요.
+  - name: ncv
+    type: int 또는 None
+    kind: keyword-only
+    desc: 안에서 쓰는 부분공간의 크기. k < ncv ≤ n이에요. None이면 min(max(2k + 1, 20), n)이에요. 크면 반복이 줄고 메모리가 늘어요.
+  - name: max_iter
+    type: int 또는 None
+    kind: keyword-only
+    desc: 재시작 수의 상한. None이면 10n이에요.
+  - name: tol
+    type: float
+    kind: keyword-only
+    desc: 고유값의 상대 정확도. 0 이상의 유한한 수이고, 0(기본값)이면 기계 엡실론 2⁻⁵²이에요.
+  - name: return_eigenvectors
+    type: bool
+    kind: keyword-only
+    desc: False이면 고유값만 구하고 결과의 eigenvectors가 None이에요. 기본값은 True예요.
+  - name: Minv
+    type: 희소 배열, ndarray, LinearOperator, 또는 None
+    kind: keyword-only
+    desc: M의 역행렬을 곱하는 연산자를 직접 줘요. M이 있고 sigma가 없을 때만 받아요.
+  - name: OPinv
+    type: 희소 배열, ndarray, LinearOperator, 또는 None
+    kind: keyword-only
+    desc: (A − sigma·M)의 역행렬을 곱하는 연산자를 직접 줘요. sigma가 있을 때만 받아요.
+  - name: mode
+    type: str
+    kind: keyword-only
+    desc: "sigma를 쓰는 방식. 'normal'(기본값), 'buckling', 'cayley'. 'normal'이 아니면 sigma가 꼭 있어야 해요."
+  - name: rng
+    type: sd.random.Generator 또는 None
+    kind: keyword-only
+    desc: v0이 None일 때 시작 벡터를 뽑을 생성기. None이면 sd.random.default_rng(0)이에요.
+returns:
+  type: EigshResult
+  desc: 고유값 eigenvalues(float64, (k,))와 고유벡터 eigenvectors((n, k), 열이 고유벡터; return_eigenvectors=False이면 None), 수렴 여부(converged, status, message), 셈(n_iter, n_converged, n_op)이 든 읽기 전용 결과 객체예요. w, v = eigsh(A)처럼 둘로 풀려요.
+raises:
+  - type: TypeError
+    desc: A나 M, Minv, OPinv가 희소 배열·ndarray·LinearOperator가 아닐 때(리스트 등), which나 mode가 문자열이 아닐 때, k·ncv·max_iter가 int가 아닐 때, sigma가 실수가 아닐 때, return_eigenvectors가 bool이 아닐 때, rng가 Generator가 아닐 때, LinearOperator의 함수가 배열로 바꿀 수 없는 것을 돌려줄 때.
+  - type: ValueError
+    desc: A가 정사각이 아니거나 M 등의 모양이 다를 때, 저장된 값에 NaN이나 inf가 있을 때, k나 ncv가 범위 밖일 때, which나 mode가 받는 값이 아닐 때, v0의 모양이 틀렸거나 0 벡터일 때, sigma 없이 mode를 'normal' 밖으로 줬을 때, Minv·OPinv를 받지 않는 자리에 줬을 때, tol이 음수이거나 유한하지 않을 때, 복소 문제에 'BE'나 'normal' 밖의 mode를 줬을 때, LinearOperator의 함수가 크기가 다른 결과를 돌려줄 때.
+  - type: LinAlgError
+    desc: sigma가 정확히 고유값이라 A − sigma·M이 특이일 때.
+seeAlso: [eigs, svds, linearoperator, splu, expm_multiply, basics]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+## 한눈에 보기
+
+행렬 $A$에 곱해도 방향이 바뀌지 않고 길이만 $\lambda$배가 되는 벡터 $v$가 고유벡터, 그 배율 $\lambda$가 고유값이에요($A v = \lambda v$). 고유값과 고유벡터가 무엇인지는 밀집 행렬의 [eigh](/api/linalg/eigh/) 페이지가 처음부터 설명해요.
+
+`eigsh`는 같은 문제를 **크고 희소한 대칭 행렬**에서 풀어요. 이런 행렬에서는 n개의 고유값이 모두 필요한 일이 드물어요. 가장 작은 몇 개(진동의 낮은 음, 그래프의 덩어리 구조)나 가장 큰 몇 개(분산이 큰 방향)만 있으면 돼요. `eigsh`는 원하는 k개만 구해요.
+
+줄 위에 점 100개가 이어진 그래프의 라플라시안으로 해 봐요. 대각이 2, 바로 옆이 −1인 삼중대각 행렬이에요. 저장된 원소는 298개뿐이에요.
+
+```python
+>>> n = 100
+>>> L = sd.sparse.diags_array([-1.0, 2.0, -1.0], offsets=[-1, 0, 1], shape=(n, n), format='csr')
+>>> L
+<csr_array of shape (100, 100), float64, 298 stored elements>
+>>> w, v = sd.sparse.eigsh(L, k=3, which='SA')
+>>> w
+array([0.0009674354160243016, 0.0038688057328112946,  0.008701304061962801], dtype=float64)
+>>> v.shape
+(100, 3)
+```
+
+`which='SA'`는 값이 가장 작은 쪽이에요. 이 행렬의 고유값은 $\lambda_j = 2 - 2\cos\big(j\pi/(n+1)\big)$로 알려져 있어서 바로 견줄 수 있어요.
+
+```python
+>>> j = sd.arange(1, 4)
+>>> 2 - 2 * sd.cos(j * sd.pi / (n + 1))
+array([ 0.000967435416023843, 0.0038688057328113423,  0.008701304061962789], dtype=float64)
+```
+
+열두 자리 넘게 맞아요. 고유벡터는 줄이 떠는 모양이에요. 가장 작은 고유값의 벡터가 반 파장, 그다음이 한 파장, 그다음이 한 파장 반이에요.
+
+<Fig caption="L의 가장 작은 세 고유값의 고유벡터를 점의 위치(0에서 1)에 따라 그린 것. 사인 곡선 sin(jπx)를 길이 1로 맞춘 것과 같아요. 부호는 정해져 있지 않아서 뒤집혀 나올 수 있어요.">
+  <Plot
+    curves={[
+      { f: (t) => Math.sqrt(2 / 101) * Math.sin(Math.PI * t), label: 'v[:, 0]' },
+      { f: (t) => Math.sqrt(2 / 101) * Math.sin(2 * Math.PI * t), label: 'v[:, 1]' },
+      { f: (t) => Math.sqrt(2 / 101) * Math.sin(3 * Math.PI * t), label: 'v[:, 2]', dashed: true },
+    ]}
+    domain={[0, 1]}
+    range={[-0.16, 0.16]}
+    xTicks={[
+      { v: 0, label: '0' },
+      { v: 0.5, label: '0.5' },
+      { v: 1, label: '1' },
+    ]}
+    yTicks={[
+      { v: -0.14, label: '-0.14' },
+      { v: 0, label: '0' },
+      { v: 0.14, label: '0.14' },
+    ]}
+  />
+</Fig>
+
+<Reference />
+
+## 왜 몇 개만 구하나요
+
+밀집 행렬의 [eigh](/api/linalg/eigh/)는 n × n 배열 전체를 받아 고유값 n개를 모두 구해요. n = 10⁴이면 배열 하나가 800MB이고, n = 10⁶이면 담을 수조차 없어요. 그런데 그런 행렬도 희소하면 저장은 원소 수에 비례하고, 행렬과 벡터의 곱 `A @ x`도 빨라요.
+
+`eigsh`는 이 곱만 써요. 시작 벡터에 A를 거듭 곱해서 얻은 벡터 몇십 개(`ncv`개)가 펼치는 작은 공간을 만들고, 그 안에서 작은 고유값 문제를 풀어요. 양 끝의 고유값은 이런 공간에 빨리 잡혀요. 원하는 k개가 충분히 정확해질 때까지, 덜 쓸모 있는 방향을 버리고 공간을 다시 키우는 일(재시작)을 되풀이해요.
+
+그래서 비용은 대략 "곱의 수 × 곱 하나의 비용"이고, 메모리는 n × `ncv`의 벡터 묶음이에요. n × n은 어디에도 생기지 않아요. 결과의 `n_op`가 곱의 수, `n_iter`가 재시작 수예요.
+
+```python
+>>> r = sd.sparse.eigsh(L, k=3, which='SA')
+>>> r.n_op, r.n_iter
+(626, 37)
+```
+
+밀집 배열을 그대로 줘도 돼요. 행렬이 이미 밀집이고 고유값이 몇 개만 필요할 때 쓸 수 있어요.
+
+## `which`: 어느 쪽 고유값을 구할지
+
+| `which` | 고르는 고유값 |
+|---|---|
+| `'LM'`(기본값) | 절댓값이 가장 큰 k개 |
+| `'SM'` | 절댓값이 가장 작은 k개 |
+| `'LA'` | 값이 가장 큰 k개 |
+| `'SA'` | 값이 가장 작은 k개 |
+| `'BE'` | 양 끝에서 반씩(k가 홀수면 큰 쪽이 하나 더) |
+
+```python
+>>> sd.sparse.eigsh(L, k=3, which='LA').eigenvalues
+array([3.9912986959380303, 3.9961311942671727, 3.9990325645839477], dtype=float64)
+>>> sd.sparse.eigsh(L, k=4, which='BE').eigenvalues
+array([0.0009674354160254087, 0.0038688057328106302,     3.996131194267203,
+          3.9990325645839806], dtype=float64)
+```
+
+이 행렬은 고유값이 모두 양수라 `'LM'`과 `'LA'`, `'SM'`과 `'SA'`가 같은 것을 골라요. 음수 고유값이 있는 행렬에서는 달라요. 가장 음수인 고유값은 `'SA'`로, 0에 가장 가까운 고유값은 `'SM'`으로 구해요.
+
+<Callout type="tip" title="작은 고유값은 sigma로 구하세요">
+  `'SA'`와 `'SM'`도 되지만, 작은 고유값은 대개 서로 가까이 모여 있어서 반복이 많이 들어요. 바로 아래의 `sigma=0`을 쓰면 같은 고유값을 훨씬 적은 반복으로 구해요.
+</Callout>
+
+## `sigma`: 지정한 값 근처의 고유값
+
+`sigma`를 주면 그 값에 가까운 고유값을 찾아요. 안에서는 A 대신 $(A - \sigma I)^{-1}$에 곱해요. 이 행렬의 고유값은 $1/(\lambda - \sigma)$라서, $\sigma$에 가까운 $\lambda$일수록 절댓값이 아주 커져요. 그래서 `which='LM'`(기본값)이 곧 "$\sigma$에 가장 가까운 것"이 되고, 그런 고유값은 금방 잡혀요.
+
+```python
+>>> r = sd.sparse.eigsh(L, k=3, sigma=0)
+>>> r.eigenvalues
+array([0.0009674354160238754, 0.0038688057328113245,  0.008701304061962848], dtype=float64)
+>>> r.n_op, r.n_iter
+(21, 1)
+```
+
+`which='SA'`로 626번 곱하던 것이 21번이 됐어요. 대신 처음에 $A - \sigma I$를 한 번 분해(LU)하고, 곱마다 그 분해로 연립방정식을 풀어요. 분해가 싸게 되는 희소 행렬이면 거의 언제나 이득이에요.
+
+스펙트럼의 안쪽, 예를 들어 1 근처의 고유값도 같은 방법으로 구해요. 양 끝만 잘 잡는 보통의 반복으로는 얻기 어려운 고유값이에요.
+
+```python
+>>> sd.sparse.eigsh(L, k=3, sigma=1.0).eigenvalues
+array([0.9643007502033492, 1.0180118380533556, 1.0726729360293454], dtype=float64)
+```
+
+`sigma`에서 본 크기로 고르므로 `which`도 그 뜻이 바뀌어요. 예를 들어 `which='LA'`는 $1/(\lambda - \sigma)$가 큰 것, 곧 $\sigma$ 바로 위의 고유값이에요.
+
+`sigma`가 정확히 고유값이면 $A - \sigma I$가 특이라서 풀 수 없어요. 그때는 `LinAlgError`예요. 고유값과 조금 다른 값을 주면 돼요.
+
+```python
+>>> import math
+>>> sd.sparse.eigsh(L, k=3, sigma=2 - 2 * math.cos(50 * math.pi / 101))
+Traceback (most recent call last):
+    ...
+stardust.linalg.LinAlgError: eigsh(): singular matrix
+```
+
+다만 너무 가까우면(고유값과의 차이가 $10^{-7}$ 이하) 그 고유값이 아닌, 함께 구한 다른 고유쌍이 덜 정확해질 수 있어요. 그 고유값의 $1/(\lambda - \sigma)$가 아주 커서, 반복이 다른 고유값의 수렴을 그 큰 값에 견줘 재기 때문이에요. 분해의 정확도와는 상관없으니 `sigma`를 조금 떼어 줘요.
+
+분해로 푼 해는 대개 그대로 정확해서 곱마다 풀이 하나로 끝나요. 피벗이 원소를 크게 키우는 행렬처럼 첫 곱의 풀이가 부정확하면, 그 호출의 모든 곱에서 해를 반복 개선으로 다듬어요([직접 풀이](/api/sparse/spsolve/)의 다듬기와 같아요). 곱마다 풀이가 더 들지만, 풀이의 오차가 고유쌍까지 번지지 않아요.
+
+### `mode`: `sigma`를 쓰는 다른 방식
+
+`mode`는 `sigma`가 있을 때만 뜻이 있어요. 기본값 `'normal'`이 위의 방식이에요. `'buckling'`은 구조물의 좌굴 문제처럼 A가 양반정치이고 M은 양정치가 아니어도 되는 일반화 문제에서 $(A - \sigma M)^{-1} A$를 쓰고, `'cayley'`는 $(A - \sigma M)^{-1}(A + \sigma M)$를 써요. 셋 모두 $\sigma$ 근처의 같은 고유값을 돌려주고, 수렴의 빠르기만 문제에 따라 달라요. 고를 이유가 없으면 `'normal'`이에요.
+
+```python
+>>> sd.sparse.eigsh(L, k=3, sigma=1.0, mode='cayley').eigenvalues
+array([0.9643007502033492, 1.0180118380533556, 1.0726729360293452], dtype=float64)
+>>> sd.sparse.eigsh(L, k=3, mode='cayley')
+Traceback (most recent call last):
+    ...
+ValueError: eigsh(): mode='cayley' needs 'sigma'
+```
+
+## `M`: 일반화 고유값 문제
+
+유한요소법의 진동 문제처럼 $A x = \lambda M x$ 꼴의 문제가 있어요. A는 강성, M은 질량 행렬이에요. `M=`으로 M을 주면 이 문제를 풀어요. M은 에르미트이고 양정치여야 해요(검사하지는 않아요).
+
+```python
+>>> M = sd.sparse.diags_array([1 / 6, 4 / 6, 1 / 6], offsets=[-1, 0, 1], shape=(n, n), format='csr')
+>>> w, v = sd.sparse.eigsh(L, k=3, M=M, sigma=0)
+>>> w
+array([0.0009675914297267686, 0.0038713019520088834,  0.008713941170580067], dtype=float64)
+```
+
+이때 고유벡터는 보통의 직교가 아니라 **M에 대해 직교**해요. $V^T M V = I$예요.
+
+```python
+>>> float(sd.max(sd.abs(v.mT @ (M @ v) - sd.eye(3)))) < 1e-14
+True
+>>> float(sd.max(sd.abs(L @ v - (M @ v) * w))) < 1e-14
+True
+```
+
+`sigma` 없이 M만 주면 곱마다 M으로 연립방정식을 풀어요. M의 역을 곱하는 더 싼 방법(예를 들어 대각 M의 나눗셈)을 알면 `Minv=`로 줄 수 있어요. 마찬가지로 `sigma`가 있을 때 $(A - \sigma M)^{-1}$을 곱하는 방법을 직접 주려면 `OPinv=`예요. 둘 다 [LinearOperator](/api/sparse/linearoperator/)나 행렬로 줘요.
+
+## 결과 읽기
+
+결과는 읽기 전용 결과 객체예요. 둘로 풀면 고유값과 고유벡터이고, 필드로 읽으면 수렴의 사정도 함께 볼 수 있어요.
+
+```python
+>>> r = sd.sparse.eigsh(L, k=3, sigma=0)
+>>> r
+EigshResult(converged=True, status=0, n_iter=1, n_converged=3, eigenvalues=[0.000967435, 0.00386881, 0.0087013])
+>>> print(r.summary())
+                          Lanczos Eigenvalue Results
+==============================================================================
+Converged:                        True  No. Restarts:                        1
+Status:                              0  No. OP x:                           21
+                                        No. Converged:                       3
+Message:                                    the 3 wanted eigenvalues converged
+==============================================================================
+                value
+------------------------------------------------------------------------------
+[0]          0.000967
+[1]          0.003869
+[2]          0.008701
+==============================================================================
+```
+
+| 필드 | 뜻 |
+|---|---|
+| `eigenvalues` | 고유값 (k,), float64. 작은 것부터 |
+| `eigenvectors` | 고유벡터 (n, k). `i`번째 열이 `eigenvalues[i]`의 짝 |
+| `converged` | k개가 모두 수렴했는지(`status == 0`) |
+| `status` | 0(모두 수렴), 1(반복 상한), 3(재시작에서 쓸 수 있는 이동이 없었어요, 더 큰 `ncv`가 도울 수 있어요), −9999(부분공간을 더 늘릴 수 없었어요) |
+| `message` | `status`의 글 |
+| `n_iter` | 재시작 수 |
+| `n_converged` | 돌려준 고유값의 수 |
+| `n_op` | 곱(`sigma`가 있으면 풀이)의 수 |
+
+고유벡터의 성질은 정의 그대로 확인해요. `v * w`는 각 열에 그 열의 고유값을 곱해요.
+
+```python
+>>> w, v = r
+>>> float(sd.max(sd.abs(L @ v - v * w))) < 1e-14
+True
+>>> float(sd.max(sd.abs(v.mT @ v - sd.eye(3)))) < 1e-14
+True
+```
+
+고유벡터의 부호(복소수면 위상)는 정해져 있지 않아요. `v`가 고유벡터면 `-v`도 고유벡터예요. 다른 결과와 견줄 때는 위처럼 성질을 보거나 부호를 맞춘 뒤에 견줘요.
+
+### 고유값만 필요하면
+
+`return_eigenvectors=False`이면 고유벡터를 구하지 않아요. 결과의 꼴은 그대로이고 `eigenvectors`만 None이라, 똑같이 둘로 풀려요.
+
+```python
+>>> w, v = sd.sparse.eigsh(L, k=3, which='SA', return_eigenvectors=False)
+>>> v is None
+True
+>>> w
+array([ 0.008701304061962801, 0.0038688057328112946, 0.0009674354160243016], dtype=float64)
+```
+
+이때는 고유값이 계산에서 나온 순서 그대로라 오름차순이 아닐 수 있어요(위에서는 큰 것부터예요). 순서가 필요하면 `sd.sort(w)`로 정렬해요. [복소 에르미트 행렬](#복소-에르미트-행렬)은 이때도 작은 것부터예요.
+
+## 수렴하지 않을 때
+
+반복이 `max_iter`번의 재시작 안에 끝나지 않으면 에러가 아니라 `converged=False`인 결과를 돌려줘요. 그때까지 수렴한 고유값만 결과에 들어요.
+
+```python
+>>> r = sd.sparse.eigsh(L, k=3, which='SA', max_iter=5)
+>>> r
+EigshResult(converged=False, status=1, n_iter=6, n_converged=0, eigenvalues=[])
+>>> r.message
+'the iteration limit was reached: 0 of 3 eigenvalues converged'
+```
+
+상한에 걸리면 `n_iter`가 `max_iter`보다 하나 커요. 상한을 넘은 재시작까지 센 수라서 그래요([eigs](/api/sparse/eigs/)도 같고, [svds](/api/sparse/svds/)는 `max_iter` 그대로예요).
+
+결과를 쓰기 전에 `r.converged`를 확인하세요. 수렴하지 않을 때 해 볼 것은 이래요.
+
+- 작은 고유값이나 안쪽의 고유값이면 `sigma`를 써요. 가장 효과가 커요.
+- `ncv`를 키워요. 부분공간이 넓으면 가까이 모인 고유값을 잘 가려요. `status=3`이면 특히 그래요.
+- `max_iter`를 늘려요.
+- 정확도를 덜 바라도 되면 `tol`을 키워요. 고유값 $\theta$는 그 잔차의 어림이 `tol`·$\max(\varepsilon^{2/3}, |\theta|)$ 이하일 때 수렴한 것으로 봐요($\varepsilon = 2^{-52}$). 0(기본값)이면 `tol`이 $\varepsilon$이에요.
+
+## 시작 벡터와 결정성
+
+반복은 시작 벡터 하나에서 출발해요. `v0=None`(기본값)이면 `sd.random.default_rng(0)`으로 뽑은 고정된 벡터를 써서, **같은 호출은 언제나 같은 비트의 결과**예요. 행렬의 형식(CSR, CSC, COO, DOK, 밀집), 같은 곱을 하는 `LinearOperator`와 상관없이 같고, 지금은 sd의 스레드 수와도 상관없어요(약속은 아니에요).
+
+```python
+>>> a = sd.sparse.eigsh(L, k=3).eigenvalues
+>>> b = sd.sparse.eigsh(L.tocsc(), k=3).eigenvalues
+>>> c = sd.sparse.eigsh(L.toarray(), k=3).eigenvalues
+>>> bool(sd.all(a == b)), bool(sd.all(a == c))
+(True, True)
+```
+
+다른 시작 벡터에서는 반복의 길이와 끝자리가 달라요. 값은 `tol`이 허락하는 만큼 같아요. `rng=`로 생성기를 주거나 `v0=`로 벡터를 직접 줘요.
+
+```python
+>>> d = sd.sparse.eigsh(L, k=3, rng=sd.random.default_rng(5)).eigenvalues
+>>> float(sd.max(sd.abs(a - d))) < 1e-12
+True
+```
+
+`sigma`를 쓸 때의 분해는 이 라이브러리의 희소 LU라서, 그 비트는 분해의 스레드 설정이 같을 때 같아요([직접 풀이](/api/sparse/spsolve/)의 결정성과 같아요).
+
+## 행렬 없이 곱만으로
+
+`eigsh`가 A에게 바라는 것은 `A @ x`뿐이에요. 행렬을 만들기 어렵거나 메모리에 담기 싫으면, 벡터를 받아 곱을 돌려주는 함수를 [LinearOperator](/api/sparse/linearoperator/)로 감싸서 줘요. 위의 라플라시안을 행렬 없이 쓰면 이래요.
+
+```python
+>>> def lap(x):
+...     y = 2 * x
+...     y[1:] = y[1:] - x[:-1]
+...     y[:-1] = y[:-1] - x[1:]
+...     return y
+...
+>>> op = sd.sparse.LinearOperator((n, n), lap)
+>>> sd.sparse.eigsh(op, k=3)
+EigshResult(converged=True, status=0, n_iter=32, n_converged=3, eigenvalues=[3.9913, 3.99613, 3.99903])
+```
+
+`sigma`나 `M`과 함께 쓰면 역을 곱해야 하는데, 함수로 준 연산자는 분해할 수 없어요. 그때는 곱마다 반복법([gmres](/api/sparse/gmres/))으로 연립방정식을 풀어서 느려요. 역을 곱하는 좋은 방법을 알면 `OPinv=`나 `Minv=`로 주세요.
+
+## 복소 에르미트 행렬
+
+A(또는 M, `v0`)가 복소수면 에르미트 문제로 풀어요. 고유값은 여전히 실수(float64)이고 고유벡터는 complex128이에요.
+
+```python
+>>> sh = sd.sparse.diags_array(sd.ones(n - 1), offsets=1, shape=(n, n), format='csr')
+>>> H = (L + 1j * (sh - sh.T) * 0.5).tocsr()
+>>> r = sd.sparse.eigsh(H, k=3, which='LA')
+>>> r.eigenvalues
+array([ 4.22633962381193,  4.23174252119454, 4.234986351822731], dtype=float64)
+>>> r.eigenvectors.dtype
+complex128
+```
+
+고유값은 실수 문제처럼 작은 것부터예요. 고유벡터의 열도 같은 순서로 놓여서 `i`번째 열이 `eigenvalues[i]`의 짝이에요. 복소 문제에서는 `return_eigenvectors=False`여도 작은 것부터예요. 다른 점은 `which='BE'`와 `'normal'` 밖의 `mode`를 쓸 수 없다는 것 하나예요(`ValueError`).
+
+## 입력과 에러
+
+희소 배열의 형식과 dtype, 저장된 0과 NaN, 결정성 같은 공통 규칙은 [기본 개념](/api/sparse/basics/)에 있어요.
+
+- `k`는 n보다 작아야 해요. 고유값이 모두 필요하면 밀집 `eigh`를 쓰라는 메시지예요.
+
+  ```python
+  >>> sd.sparse.eigsh(L, k=100)
+  Traceback (most recent call last):
+      ...
+  ValueError: eigsh(): 'k' must be < n = 100 for 'A' of shape (100, 100); for all eigenvalues use sd.linalg.eigh(A.toarray())
+  ```
+
+- `which`, `mode`는 정해진 문자열만 받아요.
+
+  ```python
+  >>> sd.sparse.eigsh(L, which='LR')
+  Traceback (most recent call last):
+      ...
+  ValueError: eigsh(): 'which' must be 'LM', 'SM', 'LA', 'SA' or 'BE', not 'LR'
+  ```
+
+- 시작 벡터는 0이 아니어야 해요.
+
+  ```python
+  >>> sd.sparse.eigsh(L, v0=sd.zeros(n))
+  Traceback (most recent call last):
+      ...
+  ValueError: eigsh(): 'v0' must not be zero
+  ```
+
+- 리스트는 받지 않아요. 희소 배열, `sd.ndarray`, `LinearOperator`로 줘요.
+
+  ```python
+  >>> sd.sparse.eigsh([[2.0, 1.0], [1.0, 2.0]])
+  Traceback (most recent call last):
+      ...
+  TypeError: eigsh(): 'A' must be a sparse array, an sd.ndarray or a LinearOperator, not list
+  ```
+
+- 저장된 값에 NaN이나 inf가 있으면 `ValueError`예요.
+- `Minv`는 M이 있고 `sigma`가 없을 때만, `OPinv`는 `sigma`가 있을 때만 받아요. 다른 자리면 `ValueError`예요.
+- 대칭인지는 검사하지 않아요. 대칭이 아닌 행렬을 주면 결과에 뜻이 없어요. 대칭이 아니면 [eigs](/api/sparse/eigs/)를 써요.
+
+## `eigh`와 `eigsh`, 언제 무엇을
+
+| 상황 | 쓸 것 |
+|---|---|
+| 고유값이 모두(또는 대부분) 필요해요 | [sd.linalg.eigh](/api/linalg/eigh/)(`A.toarray()`) |
+| n × n 밀집 배열이 메모리에 넉넉히 들어가고, 고유값이 많이 필요해요 | `sd.linalg.eigh` |
+| 크고 희소한 행렬에서 양 끝의 몇 개만 필요해요 | `eigsh` |
+| 안쪽의 특정 값 근처의 몇 개가 필요해요 | `eigsh(sigma=...)` |
+| 행렬은 없고 곱하는 함수만 있어요 | `eigsh(LinearOperator)` |
+| 대칭이 아니에요 | [eigs](/api/sparse/eigs/), 밀집이면 [sd.linalg.eig](/api/linalg/eig/) |
+
+두 함수의 고유값은 반올림 차이 안에서 같아요. `eigh`는 고유값 전체를 정확히 한 번에 구하는 직접 방법이고, `eigsh`는 원하는 것만 `tol`까지 다듬는 반복 방법이에요. `sd.linalg.eigh`에 희소 배열을 주면 `eigsh`를 짚는 `TypeError`예요.
+
+```python
+>>> sd.linalg.eigh(L)
+Traceback (most recent call last):
+    ...
+TypeError: eigh(): 'a' must be an sd.ndarray, not csr_array; for a sparse array use sd.sparse.eigsh
+```
+
+## 정확도
+
+고유값과 잔차를 Arb(구간 산술)로 만든 참값과 견줘요. 약속은 이래요.
+
+- 고유값의 오차 $|\hat\lambda - \lambda| \le 1000\,\varepsilon\,\lVert A\rVert_2$($\varepsilon = 2^{-52}$).
+- 잔차 $\lVert A v - \lambda M v\rVert$도 $1000\,\varepsilon\,\lVert A\rVert_2$ 안, 직교성 $\lVert V^H M V - I\rVert$는 $1000\,k\,\varepsilon$ 안.
+
+시험 문제(대칭 17개의 양 끝과 직사각 셋)에서 잰 가장 큰 고유값 오차는 한계의 0.7배, 약 $700\,\varepsilon\lVert A\rVert_2$예요. 1차원 라플라시안 n = 1000의 `'LA'`로, 재시작을 760번 넘게 하는 동안 반올림이 쌓인 경우예요. 대부분의 문제는 이보다 훨씬 작아요. 재시작이 많을수록 오차가 커지므로, 정확도가 중요하면 `sigma`로 반복을 줄이는 것이 도움이 돼요.
+
+## scipy를 아는 분께
+
+- `scipy.sparse.linalg.eigsh`와 같은 함수예요. `sd.sparse.linalg` 없이 `sd.sparse.eigsh`예요.
+- 계산 방법(ARPACK의 암시적 재시작 Lanczos)을 scipy가 돌리는 순서 그대로 해서, 같은 `v0`이면 상태가 scipy와 같고 곱의 수(`n_op`)도 대개 같아요. 벡터 합의 끝자리가 scipy와 달라서 곱의 수는 scipy 자신이 `v0`의 한 ulp에 따라 흔들리는 폭 안에서 다를 수 있어요. 위의 `L`에서 `k=4, which='LA'`는 여기서 곱 412번이고, scipy는 같은 `v0`에서 426번, `v0`의 원소 하나를 한 ulp 바꾸면 412번이에요.
+- `v0=None`이 고정된 시작 벡터예요. scipy는 시드 없는 난수라 실행마다 결과가 달라요. `rng=`로 생성기를 줄 수 있어요.
+- 인자는 `A`만 위치이고 나머지는 키워드예요. `maxiter`는 `max_iter`예요.
+- 수렴하지 않으면 `ArpackNoConvergence` 예외 대신 `converged=False`인 결과에 수렴한 쌍을 담아요. `ArpackError`, `ArpackNoConvergence`는 없어요. 시작 벡터가 연산자의 영공간에 있으면(scipy의 `ArpackError` −9) `ValueError`예요.
+- `return_eigenvectors=False`여도 결과의 꼴이 같아요. scipy는 배열 하나를 돌려주지만 여기서는 `(w, None)`으로 풀려요.
+- 복소 에르미트 문제의 고유값은 작은 것부터 정렬하고 고유벡터의 열도 같이 옮겨요. scipy는 계산이 남긴 순서 그대로예요(위의 예에서는 큰 것부터).
+- k ≥ n이면 scipy는 경고와 함께 밀집 계산으로 넘어가지만(희소 행렬에는 `TypeError`), 여기서는 `sd.linalg.eigh`를 짚는 `ValueError`예요.
+- `sigma` 없이 `mode`를 주면 scipy는 조용히 무시하지만 여기서는 `ValueError`예요. `sigma`가 고유값이면 scipy는 `RuntimeError`, 여기서는 `LinAlgError`예요.

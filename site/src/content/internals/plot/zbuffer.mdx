@@ -1,0 +1,465 @@
+---
+title: 깊이 버퍼
+group: 3D
+order: 2
+summary: 3D 칸의 곡면, 선, 점을 그림 한 장으로 굽는 C++ 깊이 버퍼를 코드를 따라 설명해요. 높이 범위에서 삼각형 자르기, 화소마다 3 × 3 표본의 래스터화, 법선을 보간하는 음영과 세 빛·광택, 깊이 검사를 받는 격자선과 점, 12겹까지 모으는 반투명, 줄 띠로 나눈 병렬 그리기와 결정성을 다뤄요.
+seeAlso: [surface, camera, raster, scene-outputs]
+---
+import PlotImage from '../../../components/fig/PlotImage.astro';
+
+## 한눈에 보기
+
+3D 칸의 곡면은 벡터 그림이 아니라 그림(래스터) 한 장이에요. 서로 뚫고 지나가는 곡면, 다른 곡면에 가린 격자선, 곡면 뒤에 숨은 점을 옳게 그리려면 화면의 점마다 "가장 가까운 것"을 알아야 하고, 그 일은 깊이 버퍼(z-버퍼)가 가장 곧게 해요. 상자의 면과 축, 눈금, 글자는 그림의 아래와 위에 벡터로 얹어요([카메라](/internals/plot/camera/#상자-축-그리기)).
+
+`csrc/plot/zbuffer.cpp`의 `render3`가 하는 일은 이 차례예요.
+
+1. 삼각형을 높이 범위의 두 평면에서 자르고 화면으로 투영해요.
+2. 화소마다 3 × 3개의 표본을 두고, 삼각형마다 덮는 표본에서 깊이를 견줘 가장 가까운 곡면의 색을 남겨요. 색은 그 표본에서 보간한 법선으로 빛을 계산한 값이에요.
+3. 선과 점을 같은 깊이로 검사해 그 위에 칠하고, 칠한 자리의 깊이를 제 깊이로 올려요. 선과 점끼리도 앞뒤가 가려져요.
+4. 반투명한 곡면이 있으면 표본마다 그 앞의 반투명 조각을 가까운 것부터 12겹까지 모아 얹어요.
+5. 화소의 아홉 표본을 평균해 RGBA 그림으로 돌려줘요.
+
+그림의 행은 고정된 높이의 띠로 나눠 스레드풀이 나란히 그려요.
+
+## 넘기는 자료
+
+Python 쪽(`Space._buffers`)은 장면을 바이트 배열 몇 개로 묶어 넘겨요.
+
+```cpp
+// csrc/plot/zbuffer.hpp
+struct View3 {
+    double rot[9];  // row-major: view = rot * scene
+    double distance;  // of the eye from the origin along view z; 0: orthographic
+    double scale;  // pixels per unit of view x, y (at the origin's depth)
+    double cx, cy;  // the pixel the origin lands on
+    double zlo, zhi;  // samples of surfaces whose scene z is outside are dropped (a cut at the range)
+    double light[3];  // towards the key light, in view space (unit)
+    // The shading: the ambient part; the diffuse strengths of the key light, of the fill light
+    // (from the other side) and of the rim light (from behind, above); how much a face turned
+    // away from the viewer darkens; the broad gloss of the key light (strength, exponent), its
+    // sharp highlight (strength, exponent), and the broad gloss of the fill light.
+    double shade[10] = {0.52, 0.36, 0.20, 0.10, 0.03, 0.18, 5.0, 0.30, 70.0, 0.12};
+};
+```
+
+- **꼭짓점**: 10개의 double. 상자 좌표의 위치 $(x, y, z)$, 법선(단위가 아니어도 돼요), 색 $(r, g, b)$, 불투명도. 색은 sRGB 값 그대로예요.
+- **삼각형**: 꼭짓점 번호 셋.
+- **선**: 점마다 7개(위치 셋, RGBA)의 줄. 줄마다 점의 수와 화소 단위의 너비를 따로 넘겨요. 격자선, 바닥 등고선, 공간 곡선이 여기로 와요.
+- **원판**: 8개(위치 셋, 화소 단위의 반지름, RGBA). `scatter3d`의 점이에요.
+
+`rot`은 장면 좌표를 시점 좌표(x 오른쪽, y 위, z 보는 사람 쪽)로 돌리는 행렬이고, `scale`과 `cx, cy`는 시점 좌표를 화소로 옮겨요. 그림의 크기는 칸의 그림 사각형을 출력의 dpi로 잰 화소 수예요. 기본 300 dpi에서 1 bp가 $300/72 \approx 4.17$화소라서 선의 너비도 bp에 그 배율을 곱해 넘겨요.
+
+## 높이 범위에서 자르기
+
+`zlo, zhi`는 상자의 바닥과 천장이에요. 높이 범위를 벗어나는 곡면(극점 둘레)은 그 평면에서 잘려야 해요.
+
+```cpp
+    // csrc/plot/zbuffer.cpp
+    for (std::size_t t = 0; t < ntri; ++t) {
+        const double* v[3];
+        bool ok = true, out = false, under = false, over = false;
+        for (int k = 0; k < 3; ++k) {
+            const std::int64_t i = triangles[3 * t + k];
+            if (i < 0 || static_cast<std::size_t>(i) >= nvert) {
+                ok = false;
+                break;
+            }
+            v[k] = vertices + 10 * i;
+            for (int c = 0; c < 3; ++c) ok = ok && std::isfinite(v[k][c]);
+            under = under || v[k][2] < view.zlo;
+            over = over || v[k][2] > view.zhi;
+        }
+        // a triangle that leaves through the top and through the bottom spans a pole: no wall is drawn there
+        if (!ok || (under && over)) continue;
+        out = under || over;
+        if (!out) {
+            emit(v[0], v[1], v[2]);
+            continue;
+        }
+        // Sutherland-Hodgman against z >= zlo, then z <= zhi
+        const double* poly[8];
+        int n = 3;
+        for (int k = 0; k < 3; ++k) poly[k] = v[k];
+        for (int side = 0; side < 2 && n >= 3; ++side) {
+            const double bound = side == 0 ? view.zlo : view.zhi;
+            const auto in = [&](const double* q) { return side == 0 ? q[2] >= bound : q[2] <= bound; };
+            const double* next[8];
+            int m = 0;
+            for (int k = 0; k < n; ++k) {
+                const double* a = poly[k];
+                const double* b = poly[(k + 1) % n];
+                const bool ia = in(a), ib = in(b);
+                if (ia) next[m++] = a;
+                if (ia != ib) {
+                    const double w = (bound - a[2]) / (b[2] - a[2]);
+                    std::array<double, 10> q;
+                    for (int c = 0; c < 10; ++c) q[c] = a[c] + w * (b[c] - a[c]);
+                    q[2] = bound;
+                    cut.push_back(q);
+                    next[m++] = cut.back().data();
+                }
+            }
+            n = m;
+            for (int k = 0; k < n; ++k) poly[k] = next[k];
+        }
+        for (int k = 1; k + 1 < n; ++k) emit(poly[0], poly[k], poly[k + 1]);
+    }
+```
+
+꼭짓점에 NaN이 있는 삼각형(정의역 밖)은 버려요. 위와 아래로 함께 빠져나가는 삼각형도 버려요. 그런 삼각형은 극점의 양쪽, 예를 들어 $1/x$의 $-\infty$ 쪽과 $+\infty$ 쪽을 잇고 있어서, 그리면 극점 자리에 세로 벽이 서요.
+
+한쪽으로만 빠져나가는 삼각형은 Sutherland–Hodgman 다각형 자르기로 잘라요(Sutherland와 Hodgman, 1974). 이 방법은 다각형을 반평면 하나씩에 차례로 잘라요. 한 반평면에 대해 다각형의 변 $a \to b$를 차례로 보며,
+
+- $a$가 안쪽이면 $a$를 남기고,
+- $a$와 $b$가 경계의 다른 쪽이면 변과 경계의 교점 $a + w(b - a)$, $w = (\text{bound} - a_z)/(b_z - a_z)$를 남겨요.
+
+볼록한 다각형을 반평면으로 자르면 볼록한 다각형이 남으므로, 삼각형을 두 평면으로 자른 결과는 꼭짓점이 많아야 다섯인 볼록 다각형이고, 첫 꼭짓점에서 부채꼴로 삼각형을 나눠요. 교점의 열 개 값(법선, 색까지)을 모두 같은 비율로 보간하니 잘린 자리의 음영도 이어져요. 교점은 `std::deque`에 두는데, `deque`는 뒤에 더해도 앞 원소의 주소가 바뀌지 않아 `poly`의 포인터가 살아 있어요.
+
+자르기를 투영 **앞**, 장면 좌표에서 하는 데에는 까닭이 있어요. 원근 투영에서 장면의 직선은 화면의 직선이지만, 그 위의 비율은 화면에서 그대로가 아니에요. 길쭉한 삼각형을 화면에서 잘라 내면 자른 선이 실제 평면 $z = \text{zhi}$와 어긋나 범위 밖으로 뾰족한 조각이 빠져나와요. 장면 좌표에서는 평면이 평면이라서 정확해요.
+
+래스터화 중에도 표본마다 장면의 높이를 보간해 범위 밖이면 버려요(아래 `each_tri`의 `sz`). 자른 삼각형의 경계에 걸친 표본이 반올림으로 범위를 아주 조금 넘는 것을 막는 두 번째 거름이에요.
+
+## 투영
+
+```cpp
+// csrc/plot/zbuffer.cpp
+inline P project(const View3& v, const double* s, double k) {
+    const double x = v.rot[0] * s[0] + v.rot[1] * s[1] + v.rot[2] * s[2];
+    const double y = v.rot[3] * s[0] + v.rot[4] * s[1] + v.rot[5] * s[2];
+    const double z = v.rot[6] * s[0] + v.rot[7] * s[1] + v.rot[8] * s[2];
+    double f = 1.0;
+    if (v.distance > 0.0) {
+        const double w = v.distance - z;
+        if (!(w > 1e-9)) return {0.0, 0.0, 0.0, false};  // behind the eye
+        f = v.distance / w;
+    }
+    const double px = (v.cx + v.scale * f * x) * k, py = (v.cy - v.scale * f * y) * k;
+    return {px, py, z, std::isfinite(px) && std::isfinite(py) && std::isfinite(z)};
+}
+```
+
+눈은 시점 z축 위 거리 $D$(`distance`, 상자 단위로 7)에 있어요. 깊이 $z$인 점은 눈에서 $D - z$만큼 떨어져 있으니, 화면의 크기는 $f = D/(D - z)$배가 돼요. 원점의 깊이($z = 0$)에서 $f = 1$이라 `scale`이 "원점 깊이에서의 화소 수"예요. $D = 0$이면 직교 투영이에요. 눈 뒤의 점은 버려요. `k`는 화소 하나의 표본 수(3)라서 이 좌표는 표본 격자의 좌표예요. y는 화면에서 아래로 자라므로 부호를 뒤집어요.
+
+깊이 버퍼에 남기는 값은 시점 좌표의 $z$ 그대로이고, 클수록 가까워요.
+
+## 래스터화
+
+### 표본과 무게중심 좌표
+
+```cpp
+    // csrc/plot/zbuffer.cpp
+    // Walks the samples of a triangle inside the rows [r0, r1): f(at, w0, w1, w2, depth).
+    auto each_tri = [&](const Tri& tr, int r0, int r1, auto&& f) {
+        if (tr.y1 <= r0 || tr.y0 >= r1) return;
+        const P &a = tr.p[0], &b = tr.p[1], &c = tr.p[2];
+        const double area = (b.x - a.x) * (c.y - a.y) - (c.x - a.x) * (b.y - a.y);
+        if (area == 0.0) return;
+        const double inv = 1.0 / area;
+        const int x0 = std::max(0, static_cast<int>(std::floor(std::min({a.x, b.x, c.x}))));
+        const int x1 = std::min(W, static_cast<int>(std::ceil(std::max({a.x, b.x, c.x}))) + 1);
+        const int ya = std::max(tr.y0, r0), yb = std::min(tr.y1, r1);
+        for (int y = ya; y < yb; ++y) {
+            const double py = y + 0.5;
+            for (int x = x0; x < x1; ++x) {
+                const double px = x + 0.5;
+                const double w0 = ((b.x - px) * (c.y - py) - (c.x - px) * (b.y - py)) * inv;
+                const double w1 = ((c.x - px) * (a.y - py) - (a.x - px) * (c.y - py)) * inv;
+                const double w2 = 1.0 - w0 - w1;
+                if (w0 < 0.0 || w1 < 0.0 || w2 < 0.0) continue;
+                const double sz = w0 * tr.v[0][2] + w1 * tr.v[1][2] + w2 * tr.v[2][2];
+                if (sz < view.zlo || sz > view.zhi) continue;
+                f(static_cast<std::size_t>(y) * W + x, w0, w1, w2,
+                  static_cast<float>(w0 * a.depth + w1 * b.depth + w2 * c.depth));
+            }
+        }
+    };
+```
+
+표본 격자는 화소 격자를 가로세로 3배로 나눈 것이에요. 표본은 작은 칸의 가운데($x + 0.5$)에 있으니, 한 화소 안에서는 $1/6, 1/2, 5/6$ 자리의 $3 \times 3$ 고정 무늬예요. 무늬가 고정이라 같은 장면은 언제나 같은 그림이에요.
+
+삼각형 $abc$가 표본 $p$를 덮는지는 무게중심 좌표로 봐요. 변 $bc$의 모서리 함수 $E_{bc}(p) = (b - p) \times (c - p)$(2차원 외적)는 $p$와 변 $bc$가 이루는 삼각형의 넓이의 두 배이고, 전체 넓이의 두 배 `area`로 나누면 $w_0$이에요. $w_0, w_1, w_2$는 합이 1이고, 셋 다 0 이상이면 $p$가 삼각형 안이에요(Pineda, 1988). 삼각형이 어느 방향으로 돌든 나눗셈이 부호를 맞추므로 앞뒤를 가리지 않아요. 두 면을 다 그리는 곡면에 맞는 성질이에요.
+
+경계 위의 표본($w = 0$)은 이웃한 두 삼각형이 모두 덮어요. 깊이를 "더 가까울 때만" 바꾸므로 같은 깊이면 먼저 그린 삼각형이 남고, 결과는 삼각형의 차례로만 정해져요.
+
+```python
+>>> from array import array
+>>> from stardust._core import plot as core
+>>> def square(z, rgb, alpha=1.0, half=0.5):
+...     """A square at height z facing up: 4 vertices of 10 numbers each."""
+...     v = []
+...     for x, y in ((-half, -half), (half, -half), (half, half), (-half, half)):
+...         v += [x, y, z, 0.0, 0.0, 1.0, *rgb, alpha]
+...     return array("d", v).tobytes()
+>>> TOP = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]  # looking down the z axis
+>>> def render(vert, tri, ss=3, cx=10.0):
+...     view = [*TOP, 0.0, 10.0, cx, 10.0, -9.0, 9.0, 0.0, 0.0, 1.0]
+...     return core.render3(20, 20, ss, view, vert, array("q", tri).tobytes(), b"", [], [], b"")
+>>> red = square(0.0, (1.0, 0.0, 0.0))
+>>> for ss in (1, 3):
+...     px = render(red, [0, 1, 2, 0, 2, 3], ss, cx=10.3)
+...     print(ss, [px[4 * (10 * 20 + x) + 3] for x in range(4, 8)])
+1 [0, 255, 255, 255]
+3 [0, 170, 255, 255]
+```
+
+20 × 20화소의 그림에 한 변이 10화소인 정사각형을 그리고 왼쪽 변을 화소 5의 30% 자리(5.3)에 두었어요. 화소에 표본이 하나면 화소 5의 가운데(5.5)가 안이라 완전히 칠해지고, 3 × 3이면 세 열 가운데 두 열이 안이라 불투명도가 $2/3$(170)이에요. 이 차이가 경계의 계단을 부드럽게 해요.
+
+### 화면에서의 보간
+
+깊이, 법선, 색은 모두 같은 $w_0, w_1, w_2$로 보간해요. 이 가중치는 **화면**에서의 무게중심 좌표예요. 원근 투영에서 장면의 삼각형 위를 고르게 움직이면 화면에서는 고르지 않게 움직이므로, 엄밀한 보간은 값마다 $1/(D - z)$로 나눈 것을 화면에서 보간한 뒤 $1/(D - z)$의 보간으로 다시 나눠야 해요(원근 보정 보간). sd.plot은 이것을 하지 않아요. 그물의 삼각형은 상자의 1/60보다 작고, 그 안에서 $D - z$가 변하는 비율은 $D = 7$에서 0.5%쯤이라 그 차이가 표본 간격보다 훨씬 작아요. 높이 범위에서 자르기만은 이 차이가 크게 드러날 수 있는 길쭉한 삼각형을 다루므로, 앞에서처럼 장면 좌표에서 해요.
+
+깊이 버퍼는 `float`(32비트)예요. 상자의 깊이 범위가 2쯤이라 $2^{-23}$의 상대 정밀도로 충분하고, 버퍼 크기가 반이에요.
+
+## 불투명한 곡면
+
+```cpp
+    // csrc/plot/zbuffer.cpp
+    const bool peel = !glass.empty();
+    std::vector<std::int32_t> mark(peel ? 0 : n, -1);  // the strip last painted on a sample
+    auto band = [&](std::int64_t task) {
+        const int r0 = static_cast<int>(task) * kBand, r1 = std::min(H, r0 + kBand);
+        for (const Tri& tr : tris) {
+            each_tri(tr, r0, r1, [&](std::size_t at2, double w0, double w1, double w2, float d) {
+                if (!(d > depth[at2])) return;
+                depth[at2] = d;
+                double c[3];
+                const double al = shade_at(tr, w0, w1, w2, c);
+                float* o = color.data() + 4 * at2;
+                for (int k = 0; k < 3; ++k) o[k] = static_cast<float>(c[k] * al);
+                o[3] = static_cast<float>(al);
+            });
+        }
+```
+
+표본의 깊이가 버퍼의 값보다 가까우면 버퍼를 바꾸고 그 자리에서 색을 계산해요. 가까운 것이 나올 때마다 다시 계산하므로, 한 표본을 여러 겹의 곡면이 뒤에서 앞으로 덮으면 결국 덮일 색도 계산해요.
+
+색은 미리 곱한 꼴(premultiplied, $\alpha c$)로 담아요. 마지막에 아홉 표본을 그냥 더할 수 있는 꼴이에요.
+
+## 음영
+
+```cpp
+    // csrc/plot/zbuffer.cpp
+    // The colour of a surface sample (straight, in o) and its alpha. A translucent sheet seen at a
+    // slant is looked through along a longer way: its alpha grows towards the outline.
+    auto shade_at = [&](const Tri& tr, double w0, double w1, double w2, double* o) -> double {
+        const double nx = w0 * tr.v[0][3] + w1 * tr.v[1][3] + w2 * tr.v[2][3];
+        const double ny = w0 * tr.v[0][4] + w1 * tr.v[1][4] + w2 * tr.v[2][4];
+        const double nz = w0 * tr.v[0][5] + w1 * tr.v[1][5] + w2 * tr.v[2][5];
+        // the normal in view space, turned to face the viewer
+        double vx = view.rot[0] * nx + view.rot[1] * ny + view.rot[2] * nz;
+        double vy = view.rot[3] * nx + view.rot[4] * ny + view.rot[5] * nz;
+        double vz = view.rot[6] * nx + view.rot[7] * ny + view.rot[8] * nz;
+        const double len = std::sqrt(vx * vx + vy * vy + vz * vz);
+        double shade = 1.0, spec = 0.0, facing = 1.0;
+        if (len > 0.0) {
+            const double sgn = vz < 0.0 ? -1.0 / len : 1.0 / len;
+            vx *= sgn;
+            vy *= sgn;
+            vz *= sgn;
+            facing = vz;
+            const double* k = view.shade;
+            const double key = std::max(0.0, vx * lx + vy * ly + vz * lz);
+            const double fill = std::max(0.0, vx * kFill[0] + vy * kFill[1] + vz * kFill[2]);
+            const double rim = std::max(0.0, vx * kRim[0] + vy * kRim[1] + vz * kRim[2]);
+            shade = (k[0] + k[1] * key + k[2] * fill + k[3] * rim) * (1.0 - k[4] + k[4] * vz);
+            const double nh = std::max(0.0, vx * hx + vy * hy + vz * hz);
+            const double nf = std::max(0.0, vx * fx + vy * fy + vz * fz);
+            spec = k[5] * std::pow(nh, k[6]) + k[7] * std::pow(nh, k[8]) + k[9] * std::pow(nf, k[6]);
+        }
+        double al = w0 * tr.v[0][9] + w1 * tr.v[1][9] + w2 * tr.v[2][9];
+        if (tr.glass) al = 1.0 - std::pow(1.0 - std::min(al, 1.0), 1.0 / std::max(facing, 0.3));
+        for (int k = 0; k < 3; ++k) {
+            const double base = w0 * tr.v[0][6 + k] + w1 * tr.v[1][6 + k] + w2 * tr.v[2][6 + k];
+            o[k] = std::clamp(base * shade + spec, 0.0, 1.0);
+        }
+        return al;
+    };
+```
+
+### Phong 음영
+
+다각형 그물에 빛을 입히는 고전적인 길은 셋이에요. 삼각형마다 법선 하나로 한 색을 칠하는 평면 음영, 꼭짓점에서 색을 계산해 그 색을 보간하는 Gouraud 음영(1971), 꼭짓점의 **법선**을 보간해 표본마다 빛을 계산하는 Phong 음영(Bui Tuong Phong, 1975)이에요. Gouraud는 꼭짓점 사이에 놓인 반사광을 놓치거나 삼각형 모양으로 번지게 하고, 평면 음영은 그물의 각이 보여요. sd.plot은 Phong 음영이에요. 꼭짓점의 법선은 [곡면의 표본](/internals/plot/surface/#꼭짓점의-법선)에서 격자의 차분으로 구한 것이고, 표본마다 그것을 보간해 시점 좌표로 돌리고 단위 길이로 맞춰요.
+
+### 두 면
+
+곡면에는 안팎이 없어요. 그래프의 아랫면이 보일 때도, 매개변수 곡면이 접혀 뒷면이 보일 때도 같은 밝기여야 해요. 그래서 보간한 법선의 시점 $z$가 음수면(보는 사람에게서 돌아선 쪽이면) 법선을 뒤집어 언제나 보는 사람 쪽을 향하게 해요. 이 덕에 법선을 구할 때 격자의 방향을 신경 쓰지 않아도 돼요.
+
+### 세 빛과 광택
+
+빛은 시점 좌표에 고정돼 있어요. 시점을 바꾸면 빛도 함께 돌아서, 어느 방향에서 보든 곡면은 같은 쪽에서 비춰져요.
+
+| 빛 | 방향(시점 좌표, 보는 사람 쪽이 +z) | 세기 |
+|---|---|---:|
+| 주변광 | | 0.52 |
+| 주광 | 왼쪽 위 앞, $(-0.35, 0.45, 0.82)$의 단위 벡터 | 0.36 |
+| 보조광 | 오른쪽 조금 아래 앞, $(0.73, -0.24, 0.64)$ | 0.20 |
+| 테두리광 | 뒤쪽 위, $(0, 0.6, -0.8)$ | 0.10 |
+
+밝기 배율은
+
+$$
+s = \bigl(0.52 + 0.36\max(0, n\cdot l_\text{key}) + 0.20\max(0, n\cdot l_\text{fill}) + 0.10\max(0, n\cdot l_\text{rim})\bigr)\bigl(0.97 + 0.03\,n_z\bigr)
+$$
+
+이에요. 각 빛의 항은 Lambert의 확산 반사(빛과 법선의 코사인)예요. 주변광이 반을 넘어서 빛을 등진 면도 어둡게 꺼지지 않아요. 테두리광은 뒤쪽에서 오므로 보는 사람에게 거의 옆으로 선 면, 곧 윤곽 둘레에서만 밝혀요. 마지막 곱은 보는 사람에게서 비스듬히 돌아선 면을 조금(많게는 3%) 어둡게 해요.
+
+광택은 Blinn–Phong 반사예요(Blinn, 1977). Phong의 반사 모형은 빛의 반사 방향 $r$과 시선 $v$의 코사인을 거듭제곱하는데, Blinn은 빛과 시선의 가운데 방향 $h = (l + v)/\lvert l + v\rvert$(반각 벡터)와 법선의 코사인 $n \cdot h$로 바꿨어요. 반사 방향이 시선에 가까울 때 법선은 $h$에 가까우므로 같은 꼴의 하이라이트가 나오고, $h$는 빛과 시선이 정해지면 표본마다 계산할 필요가 없어요. 여기서는 시선을 화면에 수직인 $v = (0, 0, 1)$로 두어 $h$를 그리기 전에 한 번만 구해요(원근 투영에서도 같은 $v$예요).
+
+$$
+\text{spec} = 0.18\,(n\cdot h)^{5} + 0.30\,(n\cdot h)^{70} + 0.12\,(n\cdot h_\text{fill})^{5}
+$$
+
+지수 5의 넓은 광택과 지수 70의 또렷한 반사광이 주광에 겹쳐 있고, 보조광에도 넓은 광택이 있어요. 지수가 클수록 하이라이트가 좁아요. 광택은 흰빛이라 바탕색에 곱하지 않고 더하고, 결과는 $[0, 1]$로 잘라요.
+
+```python
+>>> import math
+>>> fig = sd.plot.parametric_surface(lambda u, v: sd.cos(u) * sd.sin(v), lambda u, v: sd.sin(u) * sd.sin(v),
+...                                  lambda u, v: sd.cos(v), 0, 2 * math.pi, 0, math.pi, color="C0", mesh=False)
+```
+
+<PlotImage name="in-zbuffer-light" format="png" alt="한 색으로 칠한 공. 왼쪽 위에 밝은 하이라이트가 있고 오른쪽 아래로 갈수록 어두워진다" caption="한 색의 공에 세 빛과 광택이 얹힌 모습이에요. 왼쪽 위의 하이라이트는 주광의 두 광택이 겹친 것이에요." />
+
+## 선과 점
+
+격자선, 바닥 등고선, 공간 곡선의 선분은 화면에서 반지름 `hw`(너비의 반)인 캡슐이에요. 표본에서 선분까지의 거리가 `hw` 이하면 덮어요. 끝이 둥글어서 선분이 꺾이는 마디가 이어져 보여요. 점은 길이가 0인 캡슐, 곧 원판이에요. 너비가 표본 하나보다 가늘어지지 않게 반지름을 0.35표본 아래로 내리지 않아요.
+
+```cpp
+        // csrc/plot/zbuffer.cpp
+        if (!peel) {  // nothing translucent but the lines: lines and points test and keep the depth, in their order
+            for (const Quad& q : quads) {
+                each_quad(q, r0, r1, [&](std::size_t at2, float d) {
+                    if (d + bias < depth[at2]) return;
+                    if (!q.disc) {
+                        if (mark[at2] == q.strip) return;
+                        mark[at2] = q.strip;
+                    }
+                    over(at2, q.rgba);
+                    if (d > depth[at2]) depth[at2] = d;  // a line or a point hides what lies behind it
+                });
+            }
+            return;
+        }
+```
+
+선의 표본은 깊이 버퍼와 견줘서 그 자리의 곡면보다 뒤에 있으면 그리지 않아요. 격자선은 곡면 **위**에 놓인 선이라 깊이가 곡면과 거의 같고, 반올림만으로도 앞뒤가 갈려 선이 점선처럼 끊겨요. 그래서 장면의 깊이 폭의 0.4%만큼 여유(`bias`)를 줘요. 이만큼 뒤에 있는 선까지는 보여요.
+
+한 줄의 선분들은 마디에서 캡슐이 겹쳐요. 반투명한 격자선을 그대로 겹쳐 칠하면 마디마다 진한 점이 생기므로, 표본마다 마지막으로 칠한 줄의 번호(`mark`)를 적어 두고 같은 줄은 한 번만 칠해요. 선과 원판은 칠한 자리의 깊이를 제 깊이로 올려요. 그 뒤에 그리는 선이나 점이 그보다 뒤에 있으면 깊이 검사에서 걸러져요. 그래서 곡선끼리, 점끼리, 곡선과 점이 놓인 대로 서로를 가려요. 매듭 곡선의 앞 가닥이 뒤 가닥을 끊고, 앞의 점이 뒤의 점을 덮어요. 선과 점은 준 차례대로 그리므로, 먼저 그린 것이 더 가까우면 나중 것이 걸러지고, 나중 것이 더 가까우면 그 위에 덧칠돼요. 어느 쪽이든 가까운 것이 보여요.
+
+## 반투명
+
+`alpha`가 1보다 작은 곡면이 하나라도 있으면 다른 길로 그려요. 반투명한 것을 겹칠 때는 "뒤의 것 위에 앞의 것"이라는 차례가 결과를 정해요. 삼각형을 깊이 순서로 정렬하는 화가 알고리즘은 서로 뚫고 지나가는 곡면(정렬할 수 있는 차례가 없어요)에서 틀려요. 그래서 표본마다 깊이 순서를 따로 정해요.
+
+```cpp
+        // csrc/plot/zbuffer.cpp
+        for (int layer = 0; layer < kLayers; ++layer) {
+            std::fill(cand.begin(), cand.end(), -inf);
+            for (std::int32_t gi = 0; gi < nglass; ++gi) {
+                each_tri(glass[gi], r0, r1, [&](std::size_t at2, double w0, double w1, double, float d) {
+                    const std::size_t i = at2 - lo;
+                    if (!(d > depth[at2]) || !(d < last[i]) || !(d > cand[i])) return;
+                    cand[i] = d;
+                    who[i] = gi;
+                    bw[2 * i] = static_cast<float>(w0);
+                    bw[2 * i + 1] = static_cast<float>(w1);
+                });
+            }
+```
+
+이것은 깊이 벗기기(depth peeling)예요(Everitt, 2001). 한 겹을 모을 때마다 모든 반투명 조각을 훑어, 표본마다 불투명한 깊이보다 앞이면서(`d > depth`) 지난 겹보다 뒤인(`d < last`) 것 가운데 가장 가까운 것을 골라요. 첫 겹은 가장 가까운 조각, 둘째 겹은 그 바로 뒤의 조각이에요. 반투명한 선(격자선)도 같은 경쟁에 끼어서, 반투명 곡면 사이에 놓인 격자선도 옳은 차례로 비쳐요.
+
+불투명한 점(원판)은 겹을 모으기 전에 깊이를 바꾸며 먼저 그려요. 모은 겹은 앞에서 뒤로 쌓아요. 앞에서 뒤로 쌓을 때는 Porter–Duff의 "under" 연산이에요.
+
+$$
+C \leftarrow C + (1 - A)\,\alpha c, \qquad A \leftarrow A + (1 - A)\,\alpha
+$$
+
+$A$는 지금까지 쌓은 겹이 가린 몫이에요. 뒤로 갈수록 $(1 - A)$만큼만 보이므로, $A$가 0.996을 넘으면 그 표본의 남은 겹은 보이지 않아 건너뛰어요. 어느 표본에서도 고를 조각이 없거나 12겹을 모으면 멈추고, 쌓은 결과를 불투명한 그림 위에 $o \leftarrow C + (1 - A)\,o$로 얹어요. 순서는 표본마다 깊이로만 정해지므로, 곡면을 넘긴 차례를 바꿔도 같은 그림이에요.
+
+```python
+>>> vert = red + square(1.0, (0.0, 1.0, 0.0), 0.5) + square(2.0, (0.0, 0.0, 1.0), 0.5)
+>>> quads = [[k + i for i in (0, 1, 2, 0, 2, 3)] for k in (0, 4, 8)]
+>>> a = render(vert, quads[0] + quads[1] + quads[2])
+>>> b = render(vert, quads[2] + quads[1] + quads[0])
+>>> a == b, tuple(a[4 * (10 * 20 + 10):][:4])
+(True, (170, 170, 198, 255))
+```
+
+불투명한 빨강 위에 반투명한 초록(높이 1)과 파랑(높이 2)을 겹쳤어요. 넘긴 차례를 뒤집어도 바이트가 같아요. 가운데 화소는 파랑이 반, 초록과 빨강이 4분의 1씩이고, 거기에 겹마다 광택이 더해졌어요.
+
+### 비스듬한 면의 불투명도
+
+반투명한 판을 비스듬히 보면 시선이 판을 지나는 길이 길어요. 두께 $t$, 흡수 계수 $\sigma$인 판을 수직으로 지나는 빛은 $e^{-\sigma t}$가 남고(Beer–Lambert 법칙), 법선과 $\theta$의 각으로 지나면 길이가 $t/\cos\theta$라서 $e^{-\sigma t/\cos\theta} = (e^{-\sigma t})^{1/\cos\theta}$가 남아요. 수직일 때의 불투명도가 $\alpha$면 투과율이 $1 - \alpha$이니,
+
+$$
+\alpha_\theta = 1 - (1 - \alpha)^{1/\max(\cos\theta,\ 0.3)}
+$$
+
+이에요. `shade_at`의 `facing`이 보는 사람 쪽으로 뒤집은 법선의 시점 $z$, 곧 $\cos\theta$예요. 윤곽 가까이에서 곡면이 더 짙어져 반투명한 곡면의 모양이 드러나요. 0.3(약 73°)에서 멈춰 윤곽이 완전히 불투명해지지는 않아요.
+
+```python
+>>> saddle = lambda x, y: x * x - y * y
+>>> plane = lambda x, y: 0.3 * x + 0.0 * y
+>>> fig = sd.plot.grid([sd.plot.surface(saddle, -1, 1, -1, 1).surface(plane, -1, 1, -1, 1),
+...                     sd.plot.surface(saddle, -1, 1, -1, 1).surface(plane, -1, 1, -1, 1, alpha=0.45)],
+...                    ncols=2, width=130)
+```
+
+<PlotImage name="in-zbuffer-glass" format="png" alt="말안장 곡면과 기울어진 평면이 서로 뚫고 지나가는 두 그림. 왼쪽은 둘 다 불투명하고, 오른쪽은 평면이 반투명해 그 아래의 말안장이 비쳐 보인다" caption="왼쪽은 불투명한 두 곡면이 깊이 버퍼로 교선에서 나뉘는 모습, 오른쪽은 평면을 반투명하게 했을 때예요. 평면 아래의 말안장과 격자선이 비쳐 보여요." />
+
+## 화소로 모으기
+
+```cpp
+    // csrc/plot/zbuffer.cpp
+    std::vector<std::uint8_t> out(static_cast<std::size_t>(width) * height * 4, 0);
+    const float norm = 1.0f / static_cast<float>(ss * ss);
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            float s[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+            for (int j = 0; j < ss; ++j) {
+                const float* row =
+                    color.data() + 4 * (static_cast<std::size_t>(y * ss + j) * W + static_cast<std::size_t>(x) * ss);
+                for (int i = 0; i < ss; ++i) {
+                    s[0] += row[4 * i];
+                    s[1] += row[4 * i + 1];
+                    s[2] += row[4 * i + 2];
+                    s[3] += row[4 * i + 3];
+                }
+            }
+            if (s[3] <= 0.0f) continue;
+            std::uint8_t* o = out.data() + 4 * (static_cast<std::size_t>(y) * width + x);
+            const float k = 255.0f / s[3];
+            o[0] = static_cast<std::uint8_t>(std::min(255.0f, s[0] * k + 0.5f));
+            o[1] = static_cast<std::uint8_t>(std::min(255.0f, s[1] * k + 0.5f));
+            o[2] = static_cast<std::uint8_t>(std::min(255.0f, s[2] * k + 0.5f));
+            o[3] = static_cast<std::uint8_t>(std::min(255.0f, s[3] * norm * 255.0f + 0.5f));
+        }
+    }
+```
+
+미리 곱한 색은 평균을 그냥 더해서 구할 수 있어요(상자 필터). 아무것도 덮지 않은 표본은 투명한 $(0, 0, 0, 0)$이라 불투명도만 줄이고 색을 검게 하지 않아요. 결과는 미리 곱하지 않은(straight) RGBA로 바꿔 돌려줘요. PNG와 PDF의 그림이 그 꼴이에요. 곡면의 가장자리 화소는 반투명해서, 그림 아래에 벡터로 그린 상자의 면과 격자가 그 사이로 매끄럽게 비쳐요.
+
+## 줄 띠와 결정성
+
+```cpp
+    // csrc/plot/zbuffer.cpp
+    const std::int64_t tasks = (H + kBand - 1) / kBand;
+    if (tasks > 1 && n >= 65536) {
+        sd::parallel::parallel_for(tasks, band);
+    } else {
+        for (std::int64_t t = 0; t < tasks; ++t) band(t);
+    }
+```
+
+표본의 행을 48행씩의 띠로 나누고, 띠 하나가 스레드풀의 일 하나예요. 띠마다 모든 삼각형과 선을 넘긴 차례대로 훑되 그 띠의 행에 걸친 부분만 그려요(`each_tri`의 `r0, r1`). 각 표본의 결과는 그 표본을 덮는 조각들을 넘긴 차례로 처리한 결과일 뿐이라서, 띠를 어떻게 나누든 어느 스레드가 맡든 같아요. 띠마다 쓰는 행이 겹치지 않으니 잠금도 없어요. 반투명의 겹을 모으는 버퍼(`last`, `cand`, `acc` 등)도 띠마다 따로 둬요. 표본이 6만 5천 개보다 적은 작은 그림은 나누지 않아요.
+
+같은 기계, 같은 스레드 수, 같은 입력이면 같은 바이트예요. 지금은 스레드 수와 무관하게도 같은 그림이에요(약속은 아니에요).
+
+```python
+>>> old, outs = sd.get_num_threads(), []
+>>> for n in (1, 4):
+...     sd.set_num_threads(n)
+...     outs.append(sd.plot.surface(saddle, -1, 1, -1, 1).to_png())
+>>> sd.set_num_threads(old)
+>>> outs[0] == outs[1]
+True
+```

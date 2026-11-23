@@ -1,0 +1,266 @@
+---
+kind: function
+title: expm_multiply
+names: [expm_multiply]
+group: 행렬 함수와 노름
+order: 2
+signatures:
+  - "sd.sparse.expm_multiply(A, B, /, *, start=None, stop=None, num=None, endpoint=None, traceA=None)"
+summary: 행렬 지수 e^A를 만들지 않고 e^A B를 바로 계산해요. A와 벡터의 곱만 쓰므로 큰 희소 행렬에서도 메모리가 적게 들고, 여러 시각 t의 e^(tA) B를 한 번에 구할 수도 있어요.
+params:
+  - name: A
+    type: 희소 배열, ndarray, 또는 LinearOperator
+    kind: positional-only
+    desc: n × n 정사각 행렬. 희소 배열은 형식을 가리지 않고, 2차원 밀집 배열과 곱만 아는 LinearOperator도 받아요. 저장된 값에 NaN이나 inf가 있으면 안 돼요.
+  - name: B
+    type: ndarray
+    kind: positional-only
+    desc: 밀집 sd.ndarray. 모양은 (n,)(벡터 하나)이나 (n, k)(열 k개)예요. 유한한 값이어야 해요. 희소 배열은 받지 않아요.
+  - name: start
+    type: float 또는 None
+    kind: keyword-only
+    desc: 시각 구간의 시작. stop과 함께 줘요.
+  - name: stop
+    type: float 또는 None
+    kind: keyword-only
+    desc: 시각 구간의 끝. start와 함께 줘요.
+  - name: num
+    type: int 또는 None
+    kind: keyword-only
+    desc: 구간의 점의 수. 2 이상이에요. None이면 50이에요.
+  - name: endpoint
+    type: bool 또는 None
+    kind: keyword-only
+    desc: 구간에 stop을 넣을지. None이면 True예요.
+  - name: traceA
+    type: 수 또는 None
+    kind: keyword-only
+    desc: A의 대각합. 계산을 안정하게 하려고 A를 옮기는 데만 써요. 어떤 값을 줘도 결과는 e^A B예요. None이면 행렬은 정확한 대각합을, LinearOperator는 고정된 난수로 어림한 값을 써요.
+returns:
+  type: ndarray
+  desc: 시각 인자가 모두 None이면 e^A B(B와 같은 모양). 하나라도 주면 linspace(start, stop, num, endpoint=endpoint)의 점 t마다 e^(tA) B를 쌓은 (num,) + B.shape 배열이에요. A, B, traceA 가운데 복소수가 있으면 complex128, 아니면 float64예요.
+raises:
+  - type: TypeError
+    desc: A가 희소 배열·ndarray·LinearOperator가 아닐 때, B가 sd.ndarray가 아닐 때(희소 배열은 B.toarray()를 짚어요), start·stop이 실수가 아닐 때, num이 int가 아닐 때, endpoint가 bool이 아닐 때, traceA가 수가 아닐 때(bool 포함), LinearOperator의 함수가 배열로 바꿀 수 없는 것을 돌려줄 때.
+  - type: ValueError
+    desc: A가 정사각이 아닐 때, B가 1·2차원이 아니거나 행의 수가 n이 아닐 때, A나 B에 NaN이나 inf가 있을 때, start와 stop 가운데 하나만 줬을 때, start·stop·traceA가 유한하지 않을 때, num이 2보다 작을 때, LinearOperator의 함수가 크기가 다른 결과를 돌려줄 때.
+seeAlso: [expm, onenormest, linearoperator, eigsh, basics]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+export const heat4 = [[0,0.0],[1,0.0],[2,0.0],[3,0.0],[4,0.0],[5,0.0],[6,0.0],[7,0.0],[8,0.0],[9,0.0],[10,0.0],[11,0.0],[12,0.0],[13,0.0],[14,0.0001],[15,0.0004],[16,0.0011],[17,0.0028],[18,0.0067],[19,0.0146],[20,0.0287],[21,0.0505],[22,0.0792],[23,0.1099],[24,0.1341],[25,0.1434],[26,0.1341],[27,0.1099],[28,0.0792],[29,0.0505],[30,0.0287],[31,0.0146],[32,0.0067],[33,0.0028],[34,0.0011],[35,0.0004],[36,0.0001],[37,0.0],[38,0.0],[39,0.0],[40,0.0],[41,0.0],[42,0.0],[43,0.0],[44,0.0],[45,0.0],[46,0.0],[47,0.0],[48,0.0],[49,0.0]];
+
+export const heat8 = [[0,0.0],[1,0.0],[2,0.0],[3,0.0],[4,0.0],[5,0.0],[6,0.0],[7,0.0],[8,0.0],[9,0.0],[10,0.0001],[11,0.0003],[12,0.0006],[13,0.0012],[14,0.0024],[15,0.0044],[16,0.0079],[17,0.0133],[18,0.0212],[19,0.0319],[20,0.0452],[21,0.0602],[22,0.0753],[23,0.0884],[24,0.0973],[25,0.1005],[26,0.0973],[27,0.0884],[28,0.0753],[29,0.0602],[30,0.0452],[31,0.0319],[32,0.0212],[33,0.0133],[34,0.0079],[35,0.0044],[36,0.0024],[37,0.0012],[38,0.0006],[39,0.0003],[40,0.0001],[41,0.0],[42,0.0],[43,0.0],[44,0.0],[45,0.0],[46,0.0],[47,0.0],[48,0.0],[49,0.0]];
+
+export const heat16 = [[0,0.0],[1,0.0],[2,0.0],[3,0.0],[4,0.0001],[5,0.0002],[6,0.0003],[7,0.0005],[8,0.0008],[9,0.0013],[10,0.0021],[11,0.0033],[12,0.005],[13,0.0074],[14,0.0106],[15,0.0147],[16,0.0197],[17,0.0258],[18,0.0326],[19,0.04],[20,0.0476],[21,0.0549],[22,0.0614],[23,0.0664],[24,0.0697],[25,0.0708],[26,0.0697],[27,0.0664],[28,0.0614],[29,0.0549],[30,0.0476],[31,0.04],[32,0.0326],[33,0.0258],[34,0.0197],[35,0.0147],[36,0.0106],[37,0.0074],[38,0.005],[39,0.0033],[40,0.0021],[41,0.0013],[42,0.0008],[43,0.0005],[44,0.0003],[45,0.0002],[46,0.0001],[47,0.0],[48,0.0],[49,0.0]];
+
+## 한눈에 보기
+
+선형 미분방정식 $x'(t) = A\,x(t)$의 해는 $x(t) = e^{tA}x(0)$이에요. 행렬 지수 $e^{tA}$를 [expm](/api/sparse/expm/)으로 만든 뒤 $x(0)$에 곱해도 되지만, A가 크고 희소하면 $e^{tA}$는 거의 밀집이라 n²의 메모리가 들어요. 정작 필요한 것은 벡터 $e^{tA}x(0)$ 하나예요.
+
+`expm_multiply(A, B)`는 $e^A B$를 $e^A$ 없이 계산해요. 지수의 급수 $B + AB + A^2B/2! + \cdots$를 A와 벡터의 곱으로 더해 가는데, 그대로 더하면 $\lVert A\rVert$가 클 때 항이 너무 커지므로 $e^A = (e^{A/s})^s$로 $s$걸음에 나눠서 걸음마다 짧은 급수를 써요. 걸음 수와 급수의 길이는 A의 크기에 맞춰 스스로 골라요. 필요한 메모리는 B의 몇 배뿐이에요.
+
+점 50개가 한 줄로 놓인 막대에서 열이 퍼지는 것을 봐요. 막대의 온도 $u$는 $u' = -L u$를 따라요($L$은 라플라시안). 처음에는 가운데 점(25번)에만 열이 1만큼 있어요.
+
+```python
+>>> n = 50
+>>> L = sd.sparse.diags_array([-1.0, 2.0, -1.0], offsets=[-1, 0, 1], shape=(n, n), format='csr')
+>>> u0 = (sd.arange(n) == 25).astype(sd.float64)
+>>> u = sd.sparse.expm_multiply(-L, u0)
+>>> [round(x, 4) for x in u[22:29].tolist()]
+[0.0288, 0.0932, 0.2153, 0.3085, 0.2153, 0.0932, 0.0288]
+```
+
+시간 1 뒤의 온도예요. 가운데의 열이 양옆으로 퍼졌어요. $e^{-L}$을 만들어 곱한 것과 반올림 차이 안에서 같아요.
+
+```python
+>>> float(sd.max(sd.abs(u - sd.sparse.expm(-L) @ u0))) < 1e-15
+True
+```
+
+<Reference />
+
+## 여러 시각을 한 번에
+
+`start`, `stop`을 주면 `sd.linspace(start, stop, num, endpoint=endpoint)`의 시각 t마다 $e^{tA}B$를 구해서 쌓아요. 결과의 첫 축이 시각이에요. 시각마다 따로 부르는 것보다, 앞 시각의 결과에서 이어 가므로 일이 적어요.
+
+```python
+>>> U = sd.sparse.expm_multiply(-L, u0, start=0, stop=16, num=5)
+>>> U.shape
+(5, 50)
+>>> [round(x, 4) for x in U[:, 25].tolist()]
+[1.0, 0.1434, 0.1005, 0.0819, 0.0708]
+```
+
+시각 0, 4, 8, 12, 16에서 가운데 점의 온도예요. `U[0]`은 `u0` 그대로예요.
+
+<Fig caption="시각 4, 8, 16의 막대 온도 U[1], U[2], U[4]. 가운데에 모였던 열이 시간이 지나며 낮고 넓게 퍼져요.">
+  <Plot
+    curves={[
+      { points: heat4, label: 't = 4' },
+      { points: heat8, label: 't = 8' },
+      { points: heat16, label: 't = 16', dashed: true },
+    ]}
+    domain={[0, 49]}
+    range={[0, 0.16]}
+    xTicks={[
+      { v: 0, label: '0' },
+      { v: 25, label: '25' },
+      { v: 49, label: '49' },
+    ]}
+    yTicks={[
+      { v: 0, label: '0' },
+      { v: 0.05, label: '0.05' },
+      { v: 0.1, label: '0.1' },
+      { v: 0.15, label: '0.15' },
+    ]}
+  />
+</Fig>
+
+- `num`의 기본값은 50, `endpoint`의 기본값은 True예요. `endpoint=False`이면 `stop`은 빠져요.
+- `start`와 `stop`은 둘 다 있어야 해요. 넷 가운데 하나라도 주면 구간 모드예요.
+
+```python
+>>> sd.sparse.expm_multiply(-L, u0, start=0, stop=4, num=4, endpoint=False).shape
+(4, 50)
+>>> sd.sparse.expm_multiply(-L, u0, start=0)
+Traceback (most recent call last):
+    ...
+ValueError: expm_multiply(): a time interval needs both 'start' and 'stop'
+```
+
+## `B`는 벡터 하나나 여러 열
+
+B가 (n,)이면 결과도 (n,), (n, k)이면 결과도 (n, k)예요. 여러 처음 상태를 한 번에 보낼 때 열로 쌓아요. B는 밀집 `sd.ndarray`여야 해요.
+
+```python
+>>> B = sd.stack([u0, sd.ones(n)], axis=1)
+>>> sd.sparse.expm_multiply(-L, B).shape
+(50, 2)
+>>> sd.sparse.expm_multiply(-L, sd.sparse.csr_array(u0))
+Traceback (most recent call last):
+    ...
+TypeError: expm_multiply(): 'B' must be an sd.ndarray, not csr_array; for a sparse B use B.toarray()
+```
+
+결과는 언제나 밀집이에요. $e^A$가 거의 밀집이라 $e^A B$도 대개 밀집이기 때문이에요.
+
+## A로 줄 수 있는 것
+
+A는 희소 배열(형식을 가리지 않아요), 2차원 밀집 배열, [LinearOperator](/api/sparse/linearoperator/)예요. 곱하는 함수만 있는 연산자로도 계산해요.
+
+```python
+>>> op = sd.sparse.aslinearoperator(-L)
+>>> float(sd.max(sd.abs(sd.sparse.expm_multiply(op, u0) - u))) < 1e-15
+True
+```
+
+### `traceA`
+
+계산은 A 대신 $A - \mu I$($\mu = \mathrm{tr}(A)/n$)로 해서 마지막에 $e^{\mu}$를 곱해요. 대각을 고르게 옮기면 노름이 줄어 걸음이 적어지기 때문이에요. `traceA`는 이 $\mu$를 정하는 데만 써요. `-L`의 대각합은 −2 × 50 = −100이라서 그 값을 주면 행렬을 줄 때와 같은 정확도예요.
+
+```python
+>>> v = sd.sparse.expm_multiply(op, u0, traceA=-100.0)
+>>> float(sd.max(sd.abs(v - u))) < 1e-15
+True
+```
+
+정확도의 약속은 정확한 대각합(또는 None)을 줄 때의 것이에요. 참 대각합에서 먼 값을 주면 $A - \mu I$의 노름이 커져서, 급수의 항이 크게 상쇄되며 자릿수를 잃어요. 단위 행렬의 대각합은 2인데 100을 주면 $e = 2.718281828459045$가 여덟 자리쯤만 맞아요.
+
+```python
+>>> sd.sparse.expm_multiply(sd.sparse.eye_array(2), sd.ones(2), traceA=100.0)
+array([2.718281854124665, 2.718281854124665], dtype=float64)
+```
+
+None(기본값)이면 행렬은 정확한 대각합을 써요. 대각을 읽을 수 없는 `LinearOperator`는 곱으로 대각합을 어림하는데, 고정된 난수(`sd.random.default_rng(0)`)를 써서 같은 호출은 같은 결과예요. 대각합을 알면 `traceA=`로 주는 편이 곱을 아껴요.
+
+## dtype과 결정성
+
+- A, B, `traceA` 가운데 복소수가 하나라도 있으면 결과는 complex128, 아니면 float64예요. bool과 int64는 float64로 계산해요.
+- 같은 입력이면 희소 배열의 형식(CSR, CSC, COO, DOK)과 상관없이 같은 비트의 결과예요. 지금은 sd의 스레드 수와도 상관없어요(약속은 아니에요). 같은 행렬을 밀집 배열로 주면 곱의 합 순서가 달라 끝자리가 다를 수 있어요.
+
+## 입력과 에러
+
+희소 배열의 형식과 dtype, 저장된 0과 NaN, 결정성 같은 공통 규칙은 [기본 개념](/api/sparse/basics/)에 있어요.
+
+- B의 행의 수는 A의 크기와 같아야 해요.
+
+  ```python
+  >>> sd.sparse.expm_multiply(-L, sd.ones(3))
+  Traceback (most recent call last):
+      ...
+  ValueError: expm_multiply(): 'A' is 50x50 but 'B' has 3 rows
+  ```
+
+- 리스트는 받지 않아요. `sd.asarray`로 바꿔서 줘요.
+
+  ```python
+  >>> sd.sparse.expm_multiply(-L, [1.0] * 50)
+  Traceback (most recent call last):
+      ...
+  TypeError: expm_multiply(): 'B' must be an sd.ndarray, not list
+  ```
+
+- `num`은 2 이상이에요.
+
+  ```python
+  >>> sd.sparse.expm_multiply(-L, u0, start=0, stop=4, num=1)
+  Traceback (most recent call last):
+      ...
+  ValueError: expm_multiply(): 'num' must be >= 2
+  ```
+
+- A나 B에 NaN·inf가 있거나, `start`·`stop`·`traceA`가 유한하지 않으면 `ValueError`예요. 대각합을 곱으로 어림하는 `LinearOperator`가 NaN·inf를 돌려줘도 `ValueError`예요.
+
+  ```python
+  >>> bad = sd.sparse.LinearOperator((50, 50), lambda x: x * sd.nan, rmatvec=lambda x: x, dtype=sd.float64)
+  >>> sd.sparse.expm_multiply(bad, u0)
+  Traceback (most recent call last):
+      ...
+  ValueError: expm_multiply(): the operator returned NaN or infinity
+  ```
+
+- 열이 0개인 B(모양 (n, 0))는 빈 결과예요. 시각 구간이면 (num, n, 0)이에요.
+
+  ```python
+  >>> sd.sparse.expm_multiply(-L, sd.zeros((50, 0))).shape
+  (50, 0)
+  ```
+
+- 결과가 float64의 범위를 넘으면 경고 없이 inf예요([expm](/api/sparse/expm/)과 같아요).
+
+  ```python
+  >>> sd.sparse.expm_multiply(800.0 * sd.sparse.eye_array(2), sd.ones(2))
+  array([inf, inf], dtype=float64)
+  ```
+
+## `expm`과 `expm_multiply`, 언제 무엇을
+
+| 상황 | 쓸 것 |
+|---|---|
+| $e^A$를 벡터 하나나 몇 개의 열에 곱한 값만 필요해요 | `expm_multiply` |
+| 같은 A로 여러 시각의 상태가 필요해요 | `expm_multiply(start=, stop=, num=)` |
+| 곱할 벡터가 아주 많거나(열이 n에 가까워요) $e^A$ 자체가 필요해요 | [expm](/api/sparse/expm/), 밀집이면 [sd.linalg.expm](/api/linalg/expm/) |
+| 행렬은 없고 곱하는 함수만 있어요 | `expm_multiply(LinearOperator, B)` |
+
+밀집 배열에도 쓸 수 있어요. 밀집 A라도 벡터 하나에 곱할 값만 필요하면 $e^A$를 만들 필요가 없어요.
+
+<Callout type="note" title="시간이 크면 걸음이 많아요">
+  걸음 수는 대략 $\lVert tA\rVert_1$에 비례해요. 아주 긴 시간이나 노름이 큰 A에서는 곱의 수가 그만큼 늘어요. 이때도 메모리는 늘지 않아요.
+</Callout>
+
+## 정확도
+
+Arb(구간 산술)로 만든 참값과 견주어 결과 원소 $i$의 오차가 $10\,\varepsilon\,\max(1, \lVert tA\rVert_1)\,\big(|e^{tA}|\,|B|\big)_i$의 최댓값 안이에요($\varepsilon = 2^{-52}$, $|e^{tA}|$와 $|B|$는 원소마다 절댓값). 시험 문제에서 잰 가장 큰 오차는 이 단위로 시각 하나($t = 1$)가 2.0, 시각 구간이 2.5예요. scipy와 같은 값이에요.
+
+## scipy를 아는 분께
+
+- `scipy.sparse.linalg.expm_multiply`와 같은 함수이고, 걸음의 선택과 멈춤 판정(허용오차 2⁻⁵³), 구간의 계산 경로가 scipy의 것과 같아요.
+- 같은 걸음을 고르면 지금은 scipy와 비트까지 같아요(약속은 아니에요). scipy는 걸음을 고를 때 쓰는 노름을 무작위로 어림해서, 고르는 걸음이 달라지면 끝자리가 달라요.
+- B는 밀집 `sd.ndarray`만 받아요. scipy는 희소 B도 받아요.
+- 대각합을 모르는 연산자에서 scipy는 경고를 내고 실행마다 다른 어림을 쓰지만, 여기서는 경고 없이 고정된 어림이에요.
+- 참 대각합에서 먼 `traceA`가 자릿수를 잃는 것은 scipy도 같아요(위의 `traceA=100.0`도 같은 값이에요).
+- 열이 0개인 B는 빈 결과예요. scipy는 `ZeroDivisionError`예요.
+- `start` 등은 키워드로만 받아요.

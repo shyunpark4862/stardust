@@ -1,0 +1,921 @@
+---
+import Base from './Base.astro';
+import Badge from '../components/Badge.astro';
+import { mathCss, renderTex } from '../lib/mathjax.mjs';
+import '../styles/prose.css';
+import { inlineHtml, plainText } from '../data/inline';
+import { sidebars, topNav, type AreaNav, type Crumb, type NavGroup } from '../data/nav';
+
+interface Heading {
+  depth: number;
+  slug: string;
+  text: string;
+  /** A heading with math, as text and TeX pieces (see rehypeHeadingMath). */
+  parts?: { text?: string; tex?: string }[];
+}
+/** A heading's label in the table of contents, with its formulas drawn. */
+const escapeHtml = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const tocLabel = async (h: Heading) =>
+  (await Promise.all((h.parts ?? []).map((p) => (p.tex === undefined ? escapeHtml(p.text ?? '') : renderTex(p.tex))))).join('');
+interface Props {
+  frontmatter?: { title: string; description?: string; section: string; sample?: boolean };
+  headings?: Heading[];
+  title?: string;
+  description?: string;
+  section?: string;
+  sample?: boolean;
+  /** Replaces the section's default sidebar. */
+  groups?: NavGroup[];
+  /** Path above the title. Defaults to the section name. */
+  crumbs?: Crumb[];
+  /** Reference pages: the area header and collapsible groups. */
+  area?: AreaNav;
+  /** Set the title in the code font (function pages). */
+  monoTitle?: boolean;
+  /** Short facts under the lead (reading time, sections). */
+  meta?: string[];
+}
+const fm = Astro.props.frontmatter ?? (Astro.props as Required<Props>['frontmatter']);
+const { title, description, section, sample = false } = fm;
+const groups = Astro.props.groups ?? sidebars[section] ?? [];
+const { area, monoTitle = false, meta = [] } = Astro.props;
+// Table of contents as a tree: each h2 with the h3s under it.
+const labels = new Map<string, string>();
+for (const h of Astro.props.headings ?? []) if (h.parts) labels.set(h.slug, await tocLabel(h));
+const toc: { h: Heading; sub: Heading[] }[] = [];
+for (const h of Astro.props.headings ?? []) {
+  if (h.depth === 2) toc.push({ h, sub: [] });
+  else if (h.depth === 3 && toc.length > 0) toc[toc.length - 1].sub.push(h);
+}
+const path = Astro.url.pathname;
+const sectionNav = topNav.find((n) => n.href === `/${section}/`);
+const crumbs: Crumb[] = Astro.props.crumbs ?? (sectionNav ? [{ label: sectionNav.label, href: sectionNav.href }] : []);
+const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
+---
+
+<Base title={title} description={description && plainText(description)}>
+  <Fragment set:html={`<style>${mathCss()}</style>`} />
+  <div class:list={['container', 'docs', toc.length === 0 && 'docs--wide']} data-area={area?.current.key}>
+    <aside class="docs__side">
+      <button class="side-toggle" type="button" aria-expanded="false" aria-controls="side-nav">
+        <span>메뉴</span>
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+          <path d="M3.5 5.25 7 8.75l3.5-3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
+        </svg>
+      </button>
+      <div class="side" id="side-nav">
+        {area && (
+          <div class="side__head">
+            <div class="area">
+              <a class="area__home" href={area.current.href} aria-current={path === area.current.href ? 'page' : undefined}>
+                <span class="area__ns">{area.current.ns}</span>
+                <span class="area__name">{area.current.name}</span>
+              </a>
+              <details class="area__switch">
+                <summary class="area__switch-btn" aria-label="다른 영역으로">
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                    <path d="M4 5.5 7 2.5l3 3M4 8.5l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                </summary>
+                <ul class="area__menu">
+                  {area.all.map((a) => (
+                    <li>
+                      {a.href ? (
+                        <a class="area__item" href={a.href} data-area={a.key} aria-current={a.key === area.current.key ? 'true' : undefined}>
+                          <span class="area__dot-name"><i class="area__dot" aria-hidden="true"></i>{a.name}</span>
+                          <code>{a.ns}</code>
+                        </a>
+                      ) : (
+                        <span class="area__item area__item--off">
+                          <span>{a.name}</span>
+                          <Badge>준비 중</Badge>
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            </div>
+          </div>
+        )}
+        <nav aria-label="문서 메뉴">
+          {
+            groups.map((g) =>
+              area ? (
+                <details class="side__group side__group--fold" open={isCurrentGroup(g)} data-current={isCurrentGroup(g) ? '' : undefined}>
+                  <summary class="side__title">
+                    <span>{g.title}</span>
+                    <svg class="side__chev" width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                      <path d="m4.5 3 3 3-3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                  </summary>
+                  <ul class="side__list">
+                    {g.items.map((item) => (
+                      <li>
+                        <a
+                          class="side__link"
+                          href={item.href}
+                          aria-current={path === item.href ? 'page' : undefined}
+                        >
+                          <span class="side__label">
+                            <span class:list={[item.mono && 'side__mono']}>{item.label}</span>
+                            {item.names && <span class="side__names">{item.names.join(' ')}</span>}
+                          </span>
+                          {item.badge && <Badge>{item.badge}</Badge>}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              ) : (
+                <div class="side__group">
+                  <p class="side__title">{g.title}</p>
+                  <ul class="side__list">
+                    {g.items.map((item) => (
+                      <li>
+                        <a class="side__link" href={item.href} aria-current={path === item.href ? 'page' : undefined}>
+                          <span class:list={[item.mono && 'side__mono']}>{item.label}</span>
+                          {item.badge && <Badge>{item.badge}</Badge>}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ),
+            )
+          }
+        </nav>
+      </div>
+    </aside>
+
+    <article class="docs__main">
+      <header class="page-head">
+        {
+          crumbs.length > 0 && (
+            <nav class="crumbs" aria-label="현재 위치">
+              <ol>
+                {crumbs.map((c) => (
+                  <li>{c.href ? <a href={c.href}>{c.label}</a> : <span>{c.label}</span>}</li>
+                ))}
+              </ol>
+            </nav>
+          )
+        }
+        <h1 class:list={['page-head__title', monoTitle && 'page-head__title--mono']}>{title}</h1>
+        {description && <p class="page-head__lead" set:html={inlineHtml(description)} />}
+        {
+          meta.length > 0 && (
+            <ul class="page-head__meta">
+              {area && <li class="page-head__ns">{area.current.ns}</li>}
+              {meta.map((m) => (
+                <li>{m}</li>
+              ))}
+            </ul>
+          )
+        }
+        <slot name="head" />
+        {
+          sample && (
+            <p class="page-head__sample">
+              <Badge tone="warn">샘플</Badge>
+              <span>레이아웃과 컴포넌트를 보여주기 위한 임시 페이지예요. 내용은 나중에 다시 써요.</span>
+            </p>
+          )
+        }
+      </header>
+      <div class="prose"><slot /></div>
+    </article>
+
+    <aside class="docs__toc">
+      {
+        toc.length > 0 && (
+          <nav class="toc" aria-label="이 페이지의 목차">
+            <p class="toc__title">이 페이지</p>
+            <ul class="toc__list">
+              {toc.map(({ h, sub }) => (
+                <li class="toc__item">
+                  {h.parts ? <a class="toc__link" href={`#${h.slug}`} set:html={labels.get(h.slug)} /> : <a class="toc__link" href={`#${h.slug}`}>{h.text}</a>}
+                  {sub.length > 0 && (
+                    <ul class="toc__sub">
+                      {sub.map((c) => (
+                        <li>
+                          {c.parts ? <a class="toc__link toc__link--sub" href={`#${c.slug}`} set:html={labels.get(c.slug)} /> : <a class="toc__link toc__link--sub" href={`#${c.slug}`}>{c.text}</a>}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              ))}
+            </ul>
+            <a class="toc__top" href="#">
+              맨 위로
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                <path d="M6 9.5v-7M3 5l3-3 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+            </a>
+          </nav>
+        )
+      }
+    </aside>
+  </div>
+  <a class="to-top" href="#" aria-label="맨 위로">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M8 13V3M3.5 7.5 8 3l4.5 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+    </svg>
+  </a>
+</Base>
+
+<script>
+  // Copy button on every code block. For an interactive session it copies
+  // only what one types (the lines after >>> and ...), ready to paste into
+  // Python; output and prompts stay behind.
+  document.querySelectorAll<HTMLPreElement>('.prose pre:not(.sig__code)').forEach((pre) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'code-wrap';
+    pre.replaceWith(wrap);
+    wrap.append(pre);
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'code-copy';
+    btn.textContent = '복사';
+    btn.setAttribute('aria-label', '코드 복사');
+    btn.addEventListener('click', async () => {
+      const inputs = pre.querySelectorAll('.repl-in, .repl-more');
+      const text = inputs.length
+        ? [...inputs].map((l) => l.textContent ?? '').join('\n')
+        : (pre.textContent ?? '').replace(/\n$/, '');
+      try {
+        await navigator.clipboard.writeText(text);
+        btn.textContent = '복사됨';
+      } catch {
+        btn.textContent = '복사 실패';
+      }
+      setTimeout(() => (btn.textContent = '복사'), 1600);
+    });
+    wrap.append(btn);
+  });
+</script>
+<script>
+  // Display formulas wider than the text column: scale each one down until
+  // it fits, but never below MIN (smaller than that is hard to read); those
+  // keep MIN and scroll sideways.
+  const MIN = 0.72;
+  const fitMath = () =>
+    document.querySelectorAll<HTMLElement>('.prose .math-display').forEach((box) => {
+      box.style.removeProperty('--math-fit');
+      box.classList.remove('is-scrolling');
+      const room = box.clientWidth;
+      const need = box.scrollWidth;
+      if (need <= room + 1) return;
+      const fit = Math.max(MIN, Math.floor((room / need) * 985) / 1000);
+      box.style.setProperty('--math-fit', String(fit));
+      if (box.scrollWidth > box.clientWidth + 1) box.classList.add('is-scrolling');
+    });
+  fitMath();
+  document.fonts?.ready.then(fitMath);
+  let mathWidth = innerWidth;
+  addEventListener('resize', () => {
+    if (innerWidth === mathWidth) return;
+    mathWidth = innerWidth;
+    fitMath();
+  });
+</script>
+
+<script>
+  // Back to top: the floating button appears once the reader is well into
+  // the page; both it and the table-of-contents link scroll smoothly up.
+  const toTop = document.querySelector<HTMLElement>('.to-top');
+  const showTop = () => toTop?.classList.toggle('is-shown', scrollY > innerHeight * 1.2);
+  showTop();
+  addEventListener('scroll', showTop, { passive: true });
+  document.querySelectorAll<HTMLAnchorElement>('.to-top, .toc__top').forEach((a) =>
+    a.addEventListener('click', (e) => {
+      e.preventDefault();
+      scrollTo({ top: 0 });
+      history.replaceState(null, '', location.pathname);
+    }),
+  );
+</script>
+
+<script>
+  // Reference sidebar: bring the current page into view.
+  const side = document.querySelector<HTMLElement>('.docs__side');
+  const current = side?.querySelector<HTMLElement>('.side__link[aria-current="page"]');
+  if (side && current && side.scrollHeight > side.clientHeight) {
+    side.scrollTop = current.offsetTop - side.clientHeight / 2;
+  }
+</script>
+
+<script>
+  // Small screens: the sidebar folds behind a button.
+  const toggle = document.querySelector<HTMLButtonElement>('.side-toggle');
+  toggle?.addEventListener('click', () => {
+    const open = toggle.getAttribute('aria-expanded') !== 'true';
+    toggle.setAttribute('aria-expanded', String(open));
+  });
+</script>
+
+<script>
+  // Scroll spy: mark the table-of-contents entry of the section being read.
+  // Each entry is paired with its heading, so an entry whose heading is
+  // missing cannot shift the ones after it.
+  const entries = [...document.querySelectorAll<HTMLAnchorElement>('.toc__link')]
+    .map((link) => ({ link, target: document.getElementById(decodeURIComponent(link.hash.slice(1))) }))
+    .filter((e): e is { link: HTMLAnchorElement; target: HTMLElement } => e.target !== null);
+  if (entries.length > 0) {
+    const items = [...document.querySelectorAll<HTMLElement>('.toc__item')];
+    // A heading counts as reached a little below where an anchor jump puts it
+    // (scroll-padding-top), so following a TOC link marks that very entry.
+    const line = parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) + 8 || 96;
+    let shown = -1;
+    let queued = false;
+    const update = () => {
+      queued = false;
+      let current = 0;
+      // Headings are in document order: stop at the first one still below the line.
+      for (let i = 0; i < entries.length; i++) {
+        if (entries[i].target.getBoundingClientRect().top > line) break;
+        current = i;
+      }
+      if (current === shown) return;
+      shown = current;
+      entries.forEach((e, i) => e.link.classList.toggle('is-active', i === current));
+      // Only the section being read shows its sub-headings.
+      const open = entries[current].link.closest('.toc__item');
+      items.forEach((li) => li.classList.toggle('is-open', li === open));
+    };
+    update();
+    addEventListener(
+      'scroll',
+      () => {
+        if (!queued) {
+          queued = true;
+          requestAnimationFrame(update);
+        }
+      },
+      { passive: true },
+    );
+  }
+</script>
+
+<style>
+  .docs {
+    display: grid;
+    grid-template-columns: var(--sidebar-w) minmax(0, 1fr) var(--toc-w);
+    gap: var(--space-12);
+    align-items: start;
+  }
+  .docs__side,
+  .docs__toc {
+    position: sticky;
+    top: var(--header-h);
+    max-height: calc(100vh - var(--header-h));
+    padding-block: var(--space-10);
+    overflow-y: auto;
+  }
+  /* Quiet scrollbars: thin, and visible only while the pointer is over the column. */
+  .docs__side,
+  .docs__toc {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+  .docs__side:hover,
+  .docs__toc:hover {
+    scrollbar-color: var(--slate-300) transparent;
+  }
+  /* Room for the link highlight to extend past the text edge without a
+     horizontal scrollbar. */
+  .docs__side {
+    margin-inline: calc(var(--space-3) * -1);
+    padding-inline: var(--space-3);
+  }
+  .docs__main {
+    min-width: 0;
+    max-width: var(--prose-w);
+    width: 100%;
+    margin-inline: auto;
+    padding-block: var(--space-10) var(--space-24);
+  }
+
+  /* The area header stays put while the list scrolls under it. */
+  .side__head {
+    position: sticky;
+    top: calc(var(--space-10) * -1);
+    z-index: 5;
+    margin-top: calc(var(--space-10) * -1);
+    margin-inline: calc(var(--space-3) * -1);
+    margin-bottom: var(--space-3);
+    padding: var(--space-10) var(--space-3) var(--space-3);
+    background: var(--bg);
+  }
+
+  /* Area header */
+  .area {
+    display: flex;
+    align-items: stretch;
+    gap: var(--space-1);
+    /* Same left and right edges as the link highlights. */
+    margin: 0 calc(var(--space-3) * -1) var(--space-2);
+  }
+  .area__home {
+    flex: 1;
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    min-width: 0;
+    height: 36px;
+    align-items: center;
+    padding-inline: var(--space-3);
+    border-radius: var(--radius-sm);
+    transition: background-color var(--dur-fast) var(--ease);
+  }
+  .area__home:hover {
+    background: var(--bg-subtle);
+  }
+  .area__home[aria-current='page'] {
+    background: var(--area-soft);
+  }
+  .area__ns {
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--area);
+  }
+  .area__name {
+    font-size: var(--text-md);
+    font-weight: 650;
+    letter-spacing: var(--tracking-tight);
+    color: var(--fg);
+  }
+  .area__switch {
+    position: relative;
+  }
+  .area__switch-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-sm);
+    color: var(--fg-subtle);
+    list-style: none;
+    cursor: pointer;
+    transition:
+      background-color var(--dur-fast) var(--ease),
+      color var(--dur-fast) var(--ease);
+  }
+  .area__switch-btn::-webkit-details-marker {
+    display: none;
+  }
+  .area__switch-btn:hover,
+  .area__switch[open] .area__switch-btn {
+    background: var(--bg-subtle);
+    color: var(--fg);
+  }
+  /* The sidebar scrolls and so clips what pokes out of it; while the area
+     menu is open it lets the menu hang below its own end. */
+  .docs__side:has(.area__switch[open]) {
+    overflow: visible;
+  }
+  .area__menu {
+    position: absolute;
+    top: calc(100% + var(--space-1));
+    right: 0;
+    z-index: 10;
+    width: 232px;
+    /* On a short window the menu scrolls on its own. */
+    max-height: calc(100vh - var(--header-h) - 140px);
+    overflow-y: auto;
+    margin: 0;
+    padding: var(--space-1);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    background: var(--bg);
+    box-shadow: var(--shadow-md);
+    list-style: none;
+  }
+  .area__item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    min-height: 36px;
+    padding-inline: var(--space-3);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-base);
+    color: var(--fg-muted);
+  }
+  .area__item code {
+    font-size: var(--text-xs);
+    color: var(--fg-subtle);
+  }
+  a.area__item:hover {
+    background: var(--bg-subtle);
+    color: var(--fg);
+  }
+  .area__item[aria-current='true'] {
+    color: var(--area);
+    font-weight: 600;
+  }
+  .area__dot-name {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .area__dot {
+    width: 8px;
+    height: 8px;
+    border-radius: var(--radius-full);
+    background: var(--area);
+  }
+  .area__item--off {
+    color: var(--fg-subtle);
+  }
+
+
+  /* Pages without a table of contents (section indexes) use that column. */
+  .docs--wide {
+    grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+  }
+  .docs--wide .docs__toc {
+    display: none;
+  }
+  .docs--wide .docs__main {
+    max-width: 920px;
+    margin-inline: 0;
+  }
+
+  /* Sidebar */
+  .side-toggle {
+    display: none;
+  }
+  .side__group.side__group--fold + .side__group--fold {
+    margin-top: 0;
+  }
+  .side__group--fold > .side__title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 34px;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    letter-spacing: 0;
+    color: var(--fg-muted);
+    margin-inline: calc(var(--space-3) * -1);
+    padding-inline: var(--space-3);
+    border-radius: var(--radius-sm);
+    list-style: none;
+    cursor: pointer;
+    user-select: none;
+  }
+  .side__group--fold > .side__title::-webkit-details-marker {
+    display: none;
+  }
+  .side__group--fold > .side__title:hover {
+    color: var(--fg);
+    background: var(--bg-subtle);
+  }
+  .side__chev {
+    color: var(--slate-400);
+    transition: transform var(--dur-fast) var(--ease);
+  }
+  .side__group--fold[open] > .side__title {
+    color: var(--fg);
+  }
+  .side__group--fold[open] .side__chev {
+    transform: rotate(90deg);
+  }
+  /* The open group's pages hang from a hairline, a step in from the title. */
+  .side__group--fold .side__list {
+    margin: var(--space-1) 0 var(--space-3) var(--space-1);
+    padding-left: var(--space-3);
+    border-left: 1px solid var(--line);
+  }
+  .side__group--fold .side__link {
+    min-height: 32px;
+    margin-inline: 0 calc(var(--space-3) * -1);
+    font-size: var(--text-sm);
+  }
+  .side__label {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .side__names {
+    overflow: hidden;
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    font-weight: 400;
+    line-height: 1.4;
+    color: var(--fg-subtle);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .side__link:has(.side__names) {
+    padding-block: var(--space-1);
+  }
+  .side__group + .side__group {
+    margin-top: var(--space-8);
+  }
+  .side__title,
+  .toc__title {
+    font-size: var(--text-xs);
+    font-weight: 650;
+    letter-spacing: 0.02em;
+    color: var(--fg-subtle);
+  }
+  .side__list,
+  .toc__list {
+    margin-top: var(--space-3);
+    padding: 0;
+    list-style: none;
+  }
+  .side__link {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    min-height: 34px;
+    margin-inline: calc(var(--space-3) * -1);
+    padding-inline: var(--space-3);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-base);
+    line-height: var(--leading-snug);
+    color: var(--fg-muted);
+    transition:
+      color var(--dur-fast) var(--ease),
+      background-color var(--dur-fast) var(--ease);
+  }
+  .side__mono {
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+  }
+  .side__link:hover {
+    color: var(--fg);
+    background: var(--bg-subtle);
+  }
+  .side__link[aria-current='page'] {
+    background: var(--area-soft);
+    color: var(--area);
+    font-weight: 600;
+  }
+
+  /* Path above the title */
+  .crumbs ol {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font-size: var(--text-sm);
+    line-height: var(--leading-snug);
+    color: var(--fg-subtle);
+  }
+  .crumbs li {
+    display: flex;
+    align-items: center;
+  }
+  .crumbs li + li::before {
+    content: '';
+    width: 5px;
+    height: 5px;
+    margin-inline: var(--space-2) var(--space-3);
+    border-top: 1.5px solid var(--slate-300);
+    border-right: 1.5px solid var(--slate-300);
+    transform: rotate(45deg);
+  }
+  .crumbs a {
+    color: var(--fg-muted);
+    transition: color var(--dur-fast) var(--ease);
+  }
+  .crumbs a:hover {
+    color: var(--area);
+  }
+  .crumbs li:last-child a {
+    color: var(--area);
+    font-weight: 600;
+  }
+
+  /* Back to top */
+  .toc__top {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    margin-top: var(--space-5);
+    padding-left: var(--space-4);
+    font-size: var(--text-sm);
+    color: var(--fg-subtle);
+    transition: color var(--dur-fast) var(--ease);
+  }
+  .toc__top:hover {
+    color: var(--accent);
+  }
+  .to-top {
+    position: fixed;
+    right: var(--gutter);
+    bottom: var(--space-8);
+    z-index: 40;
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-full);
+    background: rgb(255 255 255 / 0.92);
+    box-shadow: var(--shadow-md);
+    color: var(--fg-muted);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    opacity: 0;
+    transform: translateY(8px);
+    pointer-events: none;
+    transition:
+      opacity var(--dur) var(--ease),
+      transform var(--dur) var(--ease),
+      color var(--dur-fast) var(--ease),
+      border-color var(--dur-fast) var(--ease);
+  }
+  .to-top:global(.is-shown) {
+    opacity: 1;
+    transform: none;
+    pointer-events: auto;
+  }
+  .to-top:hover {
+    border-color: var(--accent-soft-line);
+    color: var(--accent);
+  }
+  /* Wide screens have "맨 위로" under the table of contents; the floating
+     button is for layouts where that column is hidden. */
+  @media (min-width: 1121px) {
+    .to-top {
+      display: none;
+    }
+  }
+
+  /* Page header */
+  .page-head {
+    padding-bottom: var(--space-8);
+    margin-bottom: var(--space-8);
+    border-bottom: 1px solid var(--line);
+  }
+  /* Titles one step under a landing headline: this is a page to read, and
+     the scale (30 / 24 / 19 over a 16px body) keeps headings from breaking
+     the text into blocks. */
+  .page-head__title {
+    margin-top: var(--space-3);
+    font-size: 1.875rem; /* 30 */
+    letter-spacing: var(--tracking-display);
+  }
+  .page-head__title--mono {
+    font-family: var(--font-mono);
+    font-size: 1.5rem; /* 24 */
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+  .page-head__lead {
+    margin-top: var(--space-3);
+    font-size: 1.0625rem; /* 17 */
+    line-height: 1.65;
+    color: var(--fg-muted);
+  }
+
+  .page-head__meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-4);
+    margin: var(--space-5) 0 0;
+    padding: 0;
+    list-style: none;
+    font-size: var(--text-sm);
+    color: var(--fg-subtle);
+  }
+  .page-head__meta li + li::before {
+    content: '·';
+    margin-right: var(--space-4);
+    color: var(--fg-subtle);
+  }
+  .page-head__ns {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    color: var(--area);
+  }
+  .page-head__sample {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-top: var(--space-5);
+    font-size: var(--text-sm);
+    line-height: var(--leading-snug);
+    color: var(--fg-subtle);
+  }
+
+  /* Table of contents */
+  .toc__list {
+    border-left: 1px solid var(--line);
+  }
+  .toc__link {
+    display: block;
+    margin-left: -1px;
+    padding: var(--space-1) 0 var(--space-1) var(--space-4);
+    border-left: 1px solid transparent;
+    font-size: var(--text-sm);
+    line-height: var(--leading-snug);
+    color: var(--fg-subtle);
+    transition:
+      color var(--dur-fast) var(--ease),
+      border-color var(--dur-fast) var(--ease);
+  }
+  .toc__sub {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  :global(.js) .toc__sub {
+    display: none;
+  }
+  :global(.js) .toc__item:global(.is-open) .toc__sub {
+    display: block;
+  }
+  .toc__link--sub {
+    padding-left: var(--space-8);
+  }
+  .toc__link:hover {
+    color: var(--fg);
+  }
+  .toc__link.is-active {
+    border-left-color: var(--area);
+    color: var(--area);
+    font-weight: 600;
+  }
+
+  @media (max-width: 1120px) {
+    .docs {
+      grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+    }
+    .docs__toc {
+      display: none;
+    }
+  }
+  @media (max-width: 800px) {
+    .docs {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 0;
+    }
+    .docs__side {
+      position: static;
+      margin-inline: 0;
+      padding-inline: 0;
+      max-height: none;
+      padding-block: var(--space-6);
+      border-bottom: 1px solid var(--line);
+    }
+    .docs__side {
+      padding-block: var(--space-3);
+    }
+    :global(.js) .side-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      height: 44px;
+      font-size: var(--text-base);
+      font-weight: 600;
+      color: var(--fg);
+    }
+    .side-toggle svg {
+      color: var(--fg-subtle);
+      transition: transform var(--dur) var(--ease);
+    }
+    .side-toggle[aria-expanded='true'] svg {
+      transform: rotate(180deg);
+    }
+    :global(.js) .side-toggle[aria-expanded='false'] + .side {
+      display: none;
+    }
+    .side {
+      padding-block: var(--space-3) var(--space-4);
+    }
+    .side__link {
+      min-height: 44px;
+    }
+    .side__head {
+      position: static;
+      margin: 0 0 var(--space-4);
+      padding: var(--space-2) 0 0;
+      box-shadow: none;
+    }
+    .area {
+      margin-inline: 0;
+    }
+    .side__group--fold > .side__title {
+      min-height: 44px;
+    }
+    .docs__main {
+      padding-top: var(--space-8);
+    }
+    .page-head__title {
+      font-size: 1.625rem; /* 26 */
+    }
+  }
+</style>

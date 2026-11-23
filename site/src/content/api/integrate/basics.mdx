@@ -1,0 +1,496 @@
+---
+kind: concept
+title: 적분의 기본
+group: 기본 개념
+order: 1
+summary: sd.integrate를 처음 쓸 때 읽는 페이지예요. 수치 적분이 무엇을 계산하는지, 어떤 문제에 어떤 함수를 쓰는지, 그리고 모든 함수가 함께 따르는 사용자 함수의 호출 모양, args, 원소별 배치, atol·rtol, 경고 대신 status, 에러, 스레드와 GIL의 약속을 설명해요.
+seeAlso: [results, quad, tanhsinh, quad_vec, cubature, dblquad, nquad, trapezoid, fixed_quad]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+import Tree from '../../../components/fig/Tree.astro';
+
+export const gaussNodes = [[0.04691007703066802, 0], [0.04691007703066802, 0.997802], [0.04691007703066802, NaN], [0.23076534494715845, 0], [0.23076534494715845, 0.94814], [0.23076534494715845, NaN], [0.5, 0], [0.5, 0.778801], [0.5, NaN], [0.7692346550528415, 0], [0.7692346550528415, 0.553374], [0.7692346550528415, NaN], [0.9530899229693319, 0], [0.9530899229693319, 0.403177]];
+
+## 적분이 계산하는 것
+
+$\int_a^b f(x)\,dx$는 곡선 $y = f(x)$와 x축 사이의 넓이예요(x축 아래는 음수로 세요). $e^{-x^2}$처럼 넓이를 식으로 적을 수 없는 함수가 많아서, 함수를 몇 군데에서 계산해 그 값으로 넓이를 어림해요. 이것이 **수치 적분**(구적)이에요.
+
+```python
+>>> import math
+>>> import stardust as sd
+>>> f = lambda x: math.exp(-x * x)
+>>> r = sd.integrate.quad(f, 0, 1)
+>>> r
+IntegrateResult(integral=0.746824, error=8.29141e-15, converged=True, nfev=21)
+>>> math.sqrt(math.pi) / 2 * math.erf(1)
+0.7468241328124269
+```
+
+[`quad`](/api/integrate/quad/)는 f를 21번 불러 적분값 `integral` ≈ 0.746824를 냈어요. 결과에는 값과 함께 오차의 어림 `error`, 멈춤 판정을 통과했는지 `converged`, 함수를 부른 수 `nfev`가 들어 있어요. `quad` 무리의 결과는 scipy의 튜플처럼 둘로 풀려요.
+
+```python
+>>> integral, error = sd.integrate.quad(f, 0, 1)
+>>> integral, error
+(0.7468241328124271, 8.291413475940725e-15)
+```
+
+### 구적 규칙: 값에 가중치를 곱해 더해요
+
+수치 적분의 바탕은 **구적 규칙**이에요. 구간 안의 정해진 점(**마디**) $x_i$에서 f를 계산하고, 정해진 **가중치** $w_i$를 곱해 더해요.
+
+$$\int_a^b f(x)\,dx \approx \sum_{i=1}^{n} w_i\, f(x_i)$$
+
+마디와 가중치를 어떻게 고르느냐가 규칙마다 달라요. 같은 간격의 점에 사다리꼴을 쌓으면 [`trapezoid`](/api/integrate/trapezoid/), 곡선을 포물선 조각으로 보면 [`simpson`](/api/integrate/simpson/)이에요. 마디의 자리까지 골라 다항식을 되도록 높은 차수까지 정확히 적분하게 만든 것이 Gauss–Legendre 규칙이고, [`fixed_quad`](/api/integrate/fixed_quad/)가 그것이에요. 5점만으로 9차 다항식까지 정확해요.
+
+```python
+>>> sd.integrate.fixed_quad(lambda x: sd.exp(-x * x), 0, 1)
+0.7468241267662481
+>>> sd.integrate.fixed_quad(lambda x: sd.exp(-x * x), 0, 1, n=10)
+0.746824132812427
+```
+
+<Fig caption="e^(−x²)의 [0, 1](실선)과 5점 Gauss–Legendre의 마디에서 계산한 값(세로선). 마디는 가운데보다 끝에 더 몰려 있어요. 세로선의 높이에 가중치를 곱해 더한 것이 적분의 어림이에요.">
+  <Plot
+    curves={[
+      { f: (x) => Math.exp(-x * x), label: 'e^(−x²)' },
+      { points: gaussNodes, label: 'f(xᵢ)' },
+    ]}
+    domain={[0, 1]}
+    range={[0, 1.05]}
+    xTicks={[
+      { v: 0, label: '0' },
+      { v: 0.5, label: '0.5' },
+      { v: 1, label: '1' },
+    ]}
+    yTicks={[
+      { v: 0.5, label: '0.5' },
+      { v: 1, label: '1' },
+    ]}
+  />
+</Fig>
+
+5점은 상대 $8 \times 10^{-9}$, 10점은 끝자리까지 맞아요. 그런데 `fixed_quad`는 점 수를 사용자가 정하고, 얼마나 틀렸는지 알려 주지 않아요. 함수가 매끄럽지 않으면 점을 늘려도 잘 맞지 않고요.
+
+### 적응 구적: 어려운 곳만 잘게 나눠요
+
+`quad`는 **적응 구적**이에요. 구간에 규칙 두 개(Gauss 10점과 그 점을 품은 Kronrod 21점)를 함께 써서, 두 값의 차이로 오차를 어림해요. 어림이 허용오차보다 크면 오차가 가장 큰 구간을 반으로 나눠 다시 계산하고, 전체의 어림이 허용오차 안으로 들어오면 멈춰요. 함수가 쉬운 곳에서는 점을 적게, 어려운 곳(특이점, 꺾인 곳, 좁은 봉우리)에서는 많이 써요.
+
+$x^{-1/2}$은 0에서 무한대로 커지지만 넓이는 2로 유한해요. `quad`는 0 쪽만 거듭 나눠요.
+
+```python
+>>> r = sd.integrate.quad(lambda x: 1 / math.sqrt(x), 0, 1)
+>>> r
+IntegrateResult(integral=2, error=3.77476e-15, converged=True, nfev=231)
+>>> r.intervals
+array([[    0.0, 0.03125],
+       [    0.5,     1.0],
+       [   0.25,     0.5],
+       [  0.125,    0.25],
+       [ 0.0625,   0.125],
+       [0.03125,  0.0625]], dtype=float64)
+```
+
+쓴 구간 여섯 개가 오차의 어림이 큰 것부터 있어요. 0에 닿은 구간은 아무리 나눠도 21점이 특이점을 잘 따라가지 못하는데, `quad`는 나눌 때마다 바뀌는 값들의 흐름을 외삽해서 끝의 값을 어림해요. 결과 객체의 필드는 [결과 객체 읽기](/api/integrate/results/)에 모아 두었어요.
+
+## 어떤 문제에 어떤 함수
+
+먼저 피적분 함수를 식으로 가지고 있는지, 표본(측정한 값)만 있는지를 봐요. 함수가 있으면 차원과 값의 꼴, 함께 풀 문제의 수로 골라요.
+
+<Fig column caption="가진 것과 문제의 꼴로 함수를 고르는 길. 진한 칸이 쓸 함수예요.">
+  <Tree root={{
+    label: '무엇을 가지고 있나요?',
+    children: [
+      { label: '표본만 있어요 (측정값, 격자 위의 값)', children: [
+        { label: '적분값 하나', note: 'trapezoid, simpson, 2ᵏ + 1개 같은 간격이면 romb', tone: 'b' },
+        { label: '처음부터 각 점까지의 누적값', note: 'cumulative_trapezoid, cumulative_simpson', tone: 'b' },
+      ] },
+      { label: '함수가 있고 변수가 하나', children: [
+        { label: '적분 하나, 특이점·진동·무한 구간도', note: 'quad', tone: 'b' },
+        { label: '같은 꼴의 적분 여러 개, 끝점 특이점', note: 'tanhsinh', tone: 'b' },
+        { label: '값이 벡터나 배열', note: 'quad_vec', tone: 'b' },
+        { label: '매끄러운 함수, 점 수를 정해 한 번에', note: 'fixed_quad', tone: 'b' },
+        { label: '급수의 합 Σ f(k)', note: 'nsum', tone: 'b' },
+      ] },
+      { label: '함수가 있고 변수가 여럿', children: [
+        { label: '상자 모양의 영역 [a, b]', note: 'cubature', tone: 'b' },
+        { label: '끝이 바깥 변수에 달린 영역', note: '2차원 dblquad, 3차원 tplquad, 그 이상 nquad', tone: 'b' },
+      ] },
+    ],
+  }} />
+</Fig>
+
+| 함수 | 하는 일 | 주는 것 | 돌려주는 것 |
+|---|---|---|---|
+| [`quad`](/api/integrate/quad/) | 변수 하나의 적응 구적(QUADPACK). 무한 구간, 중단점 `points`, 가중 함수 `weight` | `func`, `a`, `b` | `IntegrateResult`(둘로 풀려요) |
+| [`dblquad`](/api/integrate/dblquad/), [`tplquad`](/api/integrate/tplquad/) | 2·3차원의 겹친 적분. 안쪽 끝이 바깥 변수의 함수여도 돼요 | `func`, 바깥 끝, 안쪽 끝(수나 함수) | `IntegrateResult`(둘로 풀려요) |
+| [`nquad`](/api/integrate/nquad/) | 몇 차원이든 겹친 적분. 층마다 `quad`의 옵션 | `func`, `ranges`, `opts` | `IntegrateResult`(둘로 풀려요) |
+| [`quad_vec`](/api/integrate/quad_vec/) | 값이 배열인 함수의 적응 구적 | `f`, `a`, `b` | `IntegrateResult`(둘로 풀려요) |
+| [`cubature`](/api/integrate/cubature/) | 상자 위의 다차원 적응 구적. 점들을 배열로 한 번에 불러요 | `f`, `a`, `b`(길이 ndim) | `IntegrateResult` |
+| [`tanhsinh`](/api/integrate/tanhsinh/) | 원소마다 따로 하는 tanh-sinh 구적. 끝점 특이점에 강해요 | 원소별 `f`, `a`, `b`, `args` | `IntegrateResult`(필드가 배치 모양) |
+| [`nsum`](/api/integrate/nsum/) | 급수의 합. 항이 많으면 나머지를 적분으로 어림해요 | 원소별 `f`, `a`, `b`, `step`, `args` | `IntegrateResult`(`sum`) |
+| [`fixed_quad`](/api/integrate/fixed_quad/) | n점 Gauss–Legendre 한 번 | `func`, `a`, `b`, `n` | 값(수나 배열) |
+| [`newton_cotes`](/api/integrate/newton_cotes/) | 같은 간격(또는 정한 자리) 점의 Newton–Cotes 가중치 | 점 수 또는 자리 | `(가중치, 오차 계수)` |
+| [`trapezoid`](/api/integrate/trapezoid/), [`simpson`](/api/integrate/simpson/), [`romb`](/api/integrate/romb/) | 표본의 적분 | `y`, `x` 또는 `dx`, `axis` | 값(수나 배열) |
+| [`cumulative_trapezoid`](/api/integrate/cumulative_trapezoid/), [`cumulative_simpson`](/api/integrate/cumulative_simpson/) | 표본의 누적 적분 | `y`, `x` 또는 `dx`, `axis`, `initial` | 배열 |
+
+미분방정식(`solve_ivp`, `odeint` 같은 것)은 `sd.integrate`에 없어요. 수치 미분은 [`sd.differentiate`](/api/differentiate/basics/)에 있어요.
+
+### 나머지 함수도 한 줄씩
+
+같은 $e^{-x^2}$의 [0, 1]을 다른 함수로 계산해 봐요. 참값은 0.7468241328124270…이에요.
+
+```python
+>>> t = sd.integrate.tanhsinh(lambda x: sd.exp(-x * x), 0, 1)
+>>> t
+IntegrateResult(integral=0.746824, error=1.39522e-13, converged=True, nfev=67)
+>>> sd.integrate.quad_vec(lambda x: [math.exp(-x * x), math.exp(-2 * x * x)], 0, 1)
+IntegrateResult(integral=[0.746824, 0.598144], error=3.19751e-14, converged=True, nfev=63)
+>>> sd.integrate.nsum(lambda k: 1 / k**2, 1, math.inf)
+IntegrateResult(sum=1.64493, error=7.44876e-09, converged=True, nfev=8561)
+```
+
+`tanhsinh`과 `nsum`의 사용자 함수는 배열을 받아서 `math.exp` 대신 `sd.exp`를 써요. `quad_vec`은 점 하나에 값 둘을 돌려주는 함수를 적분했어요. `nsum`은 $\sum 1/k^2 = \pi^2/6 = 1.6449340668…$을 계산했어요.
+
+2차원은 영역이 상자면 `cubature`, 끝이 바깥 변수에 달리면 `dblquad`예요. $e^{-(x^2+y^2)}$의 단위 정사각형은 $0.746824^2 = 0.557746…$이에요.
+
+```python
+>>> c = sd.integrate.cubature(lambda p: sd.exp(-p[:, 0]**2 - p[:, 1]**2), [0.0, 0.0], [1.0, 1.0])
+>>> c
+IntegrateResult(integral=0.557746, error=5.55112e-17, converged=True, nfev=982)
+>>> sd.integrate.dblquad(lambda y, x: math.exp(-x * x - y * y), 0, 1, 0, 1)
+IntegrateResult(integral=0.557746, error=8.29137e-15, converged=True, nfev=441)
+```
+
+표본만 있을 때는 표본 규칙이에요. 11개의 같은 간격 표본으로 계산하면 사다리꼴은 상대 $8 \times 10^{-4}$, Simpson은 $1 \times 10^{-6}$만큼 틀려요. 표본 규칙은 표본 사이를 정해진 꼴로 메울 뿐이라, 이 차이는 표본을 더 촘촘히 해야 줄어요.
+
+```python
+>>> x = sd.linspace(0.0, 1.0, 11)
+>>> y = sd.exp(-x * x)
+>>> sd.integrate.trapezoid(y, x), sd.integrate.simpson(y, x)
+(0.7462107961317496, 0.7468249482544436)
+```
+
+### 헷갈리기 쉬운 짝
+
+**`quad`와 `tanhsinh`.** 둘 다 변수 하나의 적분이에요. `quad`는 적분 하나를 풀고, 구간 안의 꺾임과 불연속, 진동, 가중 함수를 다루는 방법이 많아서 첫 선택이에요. `tanhsinh`은 같은 꼴의 적분 여러 개(원소마다 다른 끝이나 매개변수)를 한 번에 풀고, 끝점의 특이점에 특히 강해요. 끝점에서 $x^{-1/2}\log(1/x)$처럼 무한대로 가는 함수를 `quad`는 315번, `tanhsinh`은 67번 불러 풀어요.
+
+```python
+>>> sd.integrate.quad(lambda x: x**-0.5 * math.log(1 / x), 0, 1)
+IntegrateResult(integral=4, error=2.6823e-13, converged=True, nfev=315)
+>>> sd.integrate.tanhsinh(lambda x: x**-0.5 * sd.log(1 / x), 0, 1)
+IntegrateResult(integral=4, error=8.88178e-16, converged=True, nfev=67)
+```
+
+반대로 구간 **안**의 꺾인 곳은 `tanhsinh`이 다루지 못해요. $|x - 1/3|$을 `quad`는 189번에 끝자리까지 맞히지만, `tanhsinh`은 수준 상한까지 가서 멈춰요(`status` −2). 그때는 구간을 꺾인 곳에서 나눠 따로 불러요.
+
+```python
+>>> sd.integrate.quad(lambda x: abs(x - 1/3), 0, 1)
+IntegrateResult(integral=0.277778, error=3.08395e-16, converged=True, nfev=189)
+>>> k = sd.integrate.tanhsinh(lambda x: sd.abs(x - 1/3), 0, 1)
+>>> k.converged, k.status
+(False, -2)
+```
+
+**`quad_vec`와 `cubature`.** `quad_vec`은 변수가 하나이고 값이 배열인 함수예요. 원소 모두에 같은 구간 나누기를 써요. `cubature`는 변수가 여럿인 상자 위의 적분이고 값도 배열이어도 돼요. 변수가 하나뿐이면 `quad_vec`이, 둘 이상이면 `cubature`가 맞아요.
+
+**`dblquad`·`nquad`와 `cubature`.** 겹친 적분은 바깥 점마다 안쪽 `quad`를 하므로 영역의 끝이 바깥 변수에 달려도 돼요(원, 삼각형). 대신 f를 점 하나씩 Python으로 불러서, 위의 예처럼 441번 부르는 데 Python 호출의 비용이 그대로 들어요. `cubature`는 상자만 받지만 f를 점들의 배열로 한 번에 부르므로(위의 예는 두 번), f가 배열 연산이면 점이 많아도 빨라요.
+
+**함수 규칙과 표본 규칙.** 함수가 있으면 `quad` 같은 적응 구적이 필요한 곳에서 점을 더 부르고 오차도 어림해 줘요. 표본 규칙은 이미 있는 표본만 쓰고 오차를 알려 주지 않아요. 측정값처럼 함수가 없을 때 써요.
+
+## 사용자 함수
+
+피적분 함수는 Python에서 부를 수 있는 객체면 돼요. 무엇을 넘겨받고 무엇을 돌려줘야 하는지는 함수 무리마다 달라요.
+
+| 함수 | 사용자 함수가 받는 것 | 돌려줘야 하는 것 |
+|---|---|---|
+| `quad`, `dblquad`, `tplquad`, `nquad` | 점 하나의 Python `float`(겹친 적분은 모든 변수, 안쪽부터) | 실수 하나 |
+| `quad(vectorized=True)` | 규칙 하나의 점들의 float64 `sd.ndarray` (n,), n은 15·21·25·30 | 같은 모양의 값 |
+| `quad_vec` | 점 하나의 Python `float` | 실수 하나 또는 늘 같은 모양의 실수 배열 |
+| `cubature` | 점들의 float64 `sd.ndarray` (n, ndim) | (n,) 또는 (n, …) |
+| `fixed_quad` | 마디들의 float64 `sd.ndarray` (n,) | (n,) 또는 (…, n) |
+| `tanhsinh`, `nsum` | 아직 끝나지 않은 원소의 점들. 첫 호출은 (k,), 다음부터 (k, p) | 같은 모양의 값 |
+
+부르는 모양을 기록해 보면 차이가 보여요.
+
+```python
+>>> shapes = []
+>>> def g(x):
+...     shapes.append(x.shape)
+...     return sd.exp(-x * x)
+>>> _ = sd.integrate.fixed_quad(g, 0, 1)
+>>> _ = sd.integrate.tanhsinh(g, 0, sd.asarray([1.0, 2.0, 3.0]))
+>>> shapes
+[(5,), (3,), (3, 66), (2, 64)]
+```
+
+`fixed_quad`는 마디 5개를 한 번에 넘겼어요. `tanhsinh`은 세 적분의 가운데 점 셋을 먼저 부르고, 다음에 원소마다 66점을, 그다음 아직 끝나지 않은 두 원소에 64점씩을 넘겼어요. 첫 원소는 둘째 호출 뒤에 끝났어요.
+
+- 실수 하나는 Python 수, numpy 수, 0차원 numpy 배열로 돌려주면 돼요. 배열은 `sd.ndarray`, 실수의 리스트, numpy 배열이면 돼요.
+- 피적분 함수의 값은 실수예요. 복소수는 `quad(complex_func=True)`만 받아요.
+- 사용자 함수가 낸 에러는 바꾸지 않고 그대로 나와요.
+
+```python
+>>> sd.integrate.quad(lambda x: math.log(x - 0.5), 0, 1)
+Traceback (most recent call last):
+    ...
+ValueError: expected a positive input, got 0.0
+```
+
+`quad`는 x = 0.5에서 함수를 불렀고, `math.log`이 음이 아닌 값 0에서 에러를 냈어요. 값의 꼴이 틀리면 메시지에 받은 모양이나 형이 나와요.
+
+```python
+>>> sd.integrate.quad(lambda x: [x, x], 0, 1)
+Traceback (most recent call last):
+    ...
+ValueError: quad(): 'func' must return a real number, not shape (2,)
+>>> sd.integrate.quad(lambda x: x > 0.5, 0, 1)
+Traceback (most recent call last):
+    ...
+TypeError: quad(): 'func' must return a real number, not bool
+```
+
+### 원소별 함수는 끝점에서도 값을 돌려줘요
+
+`tanhsinh`과 `nsum`의 사용자 함수는 **원소별**이어야 해요. `f(x)[i]`가 `f(x[i])`와 같아야 하고, 점들 사이에 값을 섞으면 안 돼요. 그리고 끝점 바로 옆을 계산하므로, 반올림으로 끝점 자체를 받을 수도 있어요. 그 값은 버리지만 함수가 에러를 내면 계산이 멈추니, 특이점에서는 에러 대신 inf나 NaN을 돌려줘요. `sd`의 원소별 함수는 그렇게 해요(`sd.log(0.0)`은 `-inf`예요). Python의 `math`로 쓰면 0에서 `ZeroDivisionError`가 날 수 있어요.
+
+### 상수는 클로저로 넘겨요
+
+`quad`, `dblquad`, `tplquad`, `nquad`, `quad_vec`, `cubature`, `fixed_quad`에는 `args=` 인자가 없어요. 상수는 `lambda`나 클로저로 묶어 넘겨요.
+
+```python
+>>> sd.integrate.quad(lambda x, c: math.exp(-c * x * x), 0, 1, args=(2.0,))
+Traceback (most recent call last):
+    ...
+TypeError: quad(): unexpected keyword argument 'args'
+>>> sd.integrate.quad(lambda x: math.exp(-2.0 * x * x), 0, 1)
+IntegrateResult(integral=0.598144, error=6.64073e-15, converged=True, nfev=21)
+```
+
+원소별 무리(`tanhsinh`, `nsum`)만 `args`를 받아요. 원소마다 다른 상수를 넘겨야 하기 때문이에요. `args`의 값들은 끝과 함께 배치 모양으로 브로드캐스트되고, 호출마다 아직 끝나지 않은 원소로 줄어 (k, 1)로 넘어와요.
+
+```python
+>>> c = sd.asarray([1.0, 2.0, 3.0])
+>>> r = sd.integrate.tanhsinh(lambda x, c: sd.exp(-c * x * x), 0, 1, args=(c,))
+>>> r
+IntegrateResult(batch shape (3,), 3 of 3 converged)
+>>> r.integral
+array([0.7468241328122198, 0.5981440066613042, 0.5043435602314388], dtype=float64)
+```
+
+## 원소별 배치
+
+`tanhsinh`과 `nsum`은 **배치**를 풀어요. 끝 `a`, `b`(`nsum`은 `step`도)와 `args`를 브로드캐스트한 모양의 원소마다 적분 하나를 따로 계산하고, 결과의 필드도 그 모양의 배열이에요. 원소는 서로 기다리지 않아요. 먼저 끝난 원소는 빠지고 남은 원소만 다음 호출에 들어가요. 그래서 원소마다 `nfev`와 수준이 달라요.
+
+```python
+>>> b = sd.asarray([[1.0, 4.0], [9.0, 16.0]])
+>>> r = sd.integrate.tanhsinh(lambda x: 1 / sd.sqrt(x), 0, b)
+>>> r
+IntegrateResult(batch shape (2, 2), 4 of 4 converged)
+>>> r.integral
+array([[1.9999999999999998, 3.9999999999999996],
+       [               6.0,  7.999999999999999]], dtype=float64)
+```
+
+$\int_0^b x^{-1/2}\,dx = 2\sqrt b$라 2, 4, 6, 8이에요. 입력이 모두 수이면 필드도 Python 수예요(배열이 아니에요). 한 원소가 실패해도 다른 원소의 값은 정상이고, 실패한 원소는 그 `status`로 알려요.
+
+다른 함수(`quad` 등)에는 배치가 없어요. 여러 적분을 풀려면 `quad`를 되풀이해 부르거나, 원소별로 쓸 수 있는 함수면 `tanhsinh`을 써요.
+
+## atol과 rtol
+
+적응 함수는 오차의 어림이 허용오차 안으로 들어오면 멈춰요. 허용오차의 이름은 어디서나 `atol`(절대)과 `rtol`(상대)이지만, 기본값과 판정의 꼴은 함수마다 scipy의 것을 따라요.
+
+| 함수 | 기본 `atol` | 기본 `rtol` | 멈추는 때 |
+|---|---|---|---|
+| `quad`, `dblquad`, `tplquad`, `nquad` | 1.49e-8 | 1.49e-8 | 오차 ≤ max(`atol`, `rtol`·\|적분\|) |
+| `quad_vec` | 1e-200 | 1e-8 | 노름으로 잰 오차 ≤ max(`atol`, `rtol`·‖적분‖)/8 |
+| `cubature` | 0 | 1e-8 | 모든 원소에서 오차 ≤ `atol` + `rtol`·\|적분\| |
+| `tanhsinh` | 0 | ε^0.75 ≈ 1.82e-12 | 오차 < `atol` 또는 오차 < `rtol`·\|적분\| |
+| `nsum` | 0 | √ε ≈ 1.49e-8 | 같아요 |
+
+`fixed_quad`와 표본 규칙은 반복하지 않으므로 허용오차가 없어요. 허용오차는 유한한 0 이상의 수예요. `quad` 무리는 `atol`이 0이면 `rtol`이 50ε(1.11×10⁻¹⁴) 이상이어야 해요. 그보다 작은 상대 오차는 반올림 때문에 이룰 수 없어서예요.
+
+```python
+>>> sd.integrate.quad(lambda x: x, 0, 1, atol=0, rtol=1e-15)
+Traceback (most recent call last):
+    ...
+ValueError: quad(): if 'atol' is 0, 'rtol' must be at least 50 * machine epsilon (1.11e-14)
+```
+
+허용오차를 바꾸면 쓰는 점의 수가 바뀌어요. 0.3에 봉우리가 있는 $1/((x - 0.3)^2 + 10^{-4})$로 보면 이래요.
+
+```python
+>>> peak = lambda x: 1 / ((x - 0.3)**2 + 1e-4)
+>>> sd.integrate.quad(peak, 0, 1, rtol=1e-3)
+IntegrateResult(integral=309.399, error=0.0209352, converged=True, nfev=231)
+>>> sd.integrate.quad(peak, 0, 1)
+IntegrateResult(integral=309.399, error=2.3723e-08, converged=True, nfev=315)
+>>> sd.integrate.quad(peak, 0, 1, atol=0, rtol=1e-12)
+IntegrateResult(integral=309.399, error=2.68682e-11, converged=True, nfev=483)
+```
+
+판정이 max(`atol`, `rtol`·|적분|)라서 둘 가운데 느슨한 쪽이 정해요. 마지막 줄에서 `atol=0`을 함께 준 것은 그래서예요. `rtol`만 줄이면 기본 `atol` 1.49×10⁻⁸이 판정을 정해요.
+
+### 적분이 0에 가까우면 atol이 정해요
+
+$\int_0^{2\pi} \sin x\,dx = 0$처럼 적분값이 0에 가까우면 `rtol`·|적분|도 0에 가까워져 이룰 수 없어요. 그래서 `quad`의 기본 `atol`이 0이 아니에요. `atol=0`으로 상대 오차만 요구하면 반올림의 한계에 닿아 `converged=False`로 멈춰요.
+
+```python
+>>> sd.integrate.quad(math.sin, 0, 2 * math.pi)
+IntegrateResult(integral=2.2215e-16, error=4.39989e-14, converged=True, nfev=21)
+>>> r = sd.integrate.quad(math.sin, 0, 2 * math.pi, atol=0, rtol=1e-10)
+>>> r.converged, r.status
+(False, 2)
+```
+
+### 오차의 어림은 보장이 아니에요
+
+`error`는 참 오차의 어림이지 엄밀한 상한이 아니에요. 대개는 참 오차보다 몇 자리 크지만(위의 봉우리는 `rtol=1e-3`에서 어림 0.02, 참 오차 $4 \times 10^{-9}$), 작을 때도 있어요. 맨 위의 `tanhsinh`은 어림이 $1.4 \times 10^{-13}$인데 참 오차는 $2.1 \times 10^{-13}$이에요(멈춤 판정 $1.82 \times 10^{-12}$보다는 작아요).
+
+```python
+>>> t.integral - math.sqrt(math.pi) / 2 * math.erf(1), t.error
+(-2.070565940925917e-13, 1.3952247513056868e-13)
+```
+
+더 나쁜 경우는 처음 계산한 점들이 함수의 중요한 부분을 모두 놓칠 때예요. 그러면 어림도 작게 나와 틀린 값을 `converged=True`로 알려요. 아주 좁은 봉우리가 그래요. 피하는 법은 [`quad`의 어려운 피적분 함수](/api/integrate/quad/#어려운-피적분-함수)에 있어요.
+
+## 경고 대신 converged, status, message
+
+`sd.integrate`는 경고(`warnings`)를 내지 않고 화면에 아무것도 쓰지 않아요. scipy가 `IntegrationWarning`으로 알리는 것은 결과의 필드로 알려요.
+
+- `converged`: 멈춤 판정을 통과했는지(bool)
+- `status`: 멈춘 이유의 번호(scipy의 번호)
+- `message`: 멈춘 이유의 글(`quad` 무리, `quad_vec`, `cubature`)
+
+모든 호출은 정해진 시간 안에 끝나요. 구간 수나 수준의 상한에 닿으면 예외를 내지 않고 마지막 값을 `converged=False`와 함께 돌려줘요.
+
+```python
+>>> r = sd.integrate.quad(lambda x: math.cos(200 * x) / (1 + x * x), 0, 10)
+>>> r.converged, r.status, r.nfev
+(False, 1, 2079)
+>>> print(r.message)
+The maximum number of subdivisions (50) has been achieved.
+  If increasing the limit yields no improvement it is advised to analyze 
+  the integrand in order to determine the difficulties.  If the position of a 
+  local difficulty can be determined (singularity, discontinuity) one will 
+  probably gain from splitting up the interval and calling the integrator 
+  on the subranges.  Perhaps a special-purpose integrator should be used.
+```
+
+빠르게 진동하는 이 함수는 구간 50개로 모자랐어요. `limit`을 늘리거나 진동을 가중 함수로 떼어 내면 풀려요([`quad`의 진동](/api/integrate/quad/#진동)). 적분값을 쓰기 전에는 언제나 `converged`를 확인하는 습관이 좋아요. 번호의 뜻은 [결과 객체 읽기](/api/integrate/results/#멈춘-이유-converged-status-message)에 있어요.
+
+적분값이나 오차의 어림이 유한하지 않으면(피적분 함수가 inf를 돌려준 경우 등) 어느 함수든 수렴이 아니에요. `status`는 `quad` 무리와 `tanhsinh`·`nsum`이 −3, `quad_vec`·`cubature`가 3이에요.
+
+```python
+>>> r = sd.integrate.quad(lambda x: math.inf, 0, 1)
+>>> r.converged, r.status, r.message
+(False, -3, 'Non-finite values encountered.')
+```
+
+## 에러
+
+에러의 메시지는 `함수 이름(): `으로 시작하고, 어떤 인자가 왜 틀렸는지 적어요. 다른 영역과 같은 규칙이에요.
+
+- `TypeError`: 인자의 종류가 틀렸을 때. 부를 수 없는 `func`, 정수 자리의 float, 실수 자리의 문자열이나 bool, 사용자 함수가 돌려준 bool·복소수, 모르는 키워드와 같은 호출 모양의 잘못
+- `ValueError`: 종류는 맞는데 값이 틀렸을 때. NaN인 끝, 범위 밖의 허용오차나 상한, 모르는 가중 함수의 이름, 함께 쓸 수 없는 옵션, 사용자 함수가 돌려준 틀린 모양
+
+```python
+>>> sd.integrate.quad(1.0, 0, 1)
+Traceback (most recent call last):
+    ...
+TypeError: quad(): 'func' must be callable, not float
+>>> sd.integrate.quad(math.exp, 0, math.nan)
+Traceback (most recent call last):
+    ...
+ValueError: quad(): 'b' must be a number or +-inf, not NaN
+>>> sd.integrate.quad(math.exp, 0, 1, limit=2.0)
+Traceback (most recent call last):
+    ...
+TypeError: quad(): 'limit' must be an int, not float
+```
+
+함수와 적분의 끝, 표본은 위치로만, 옵션은 키워드로만 줘요. scipy의 이름(`epsabs`, `epsrel`, `maxp1`)은 받지 않아요.
+
+```python
+>>> sd.integrate.quad(math.exp, a=0, b=1)
+Traceback (most recent call last):
+    ...
+TypeError: quad(): got some positional-only arguments passed as keyword arguments: 'a, b'
+>>> sd.integrate.quad(math.exp, 0, 1, epsabs=1e-10)
+Traceback (most recent call last):
+    ...
+TypeError: quad(): unexpected keyword argument 'epsabs'
+```
+
+쓰이지 않는 옵션은 무시하지 않고 에러로 알려요. 가중 함수 없이 준 `wvar`, 가중 함수와 함께 준 `points`가 그래요.
+
+```python
+>>> sd.integrate.quad(math.exp, 0, 1, wvar=2.0)
+Traceback (most recent call last):
+    ...
+ValueError: quad(): 'wvar' is only used with 'weight'
+```
+
+적분이 수렴하지 않는 것은 에러가 아니에요. 그것은 결과의 `converged`로 알려요.
+
+## 같은 입력이면 같은 비트
+
+같은 기계, 같은 스레드 수, 같은 입력이면 실행마다 결과가 비트까지 같아요. 사용자 함수가 같은 점에서 같은 값을 돌려주면, 부르는 점의 차례와 값, 오차, `nfev`, `status`가 늘 같아요.
+
+```python
+>>> calls = []
+>>> def rec(x):
+...     calls.append(x)
+...     return math.exp(-x * x)
+>>> _ = sd.integrate.quad(rec, 0, 1)
+>>> calls[:3]
+[0.5, 0.013046735741414128, 0.9869532642585859]
+>>> first = list(calls)
+>>> calls.clear()
+>>> _ = sd.integrate.quad(rec, 0, 1)
+>>> calls == first
+True
+```
+
+`quad`는 21점 규칙의 가운데 0.5를 먼저 부르고, 다음에 Gauss 점의 쌍을 바깥부터, 그 뒤 Kronrod만의 점을 불러요.
+
+## 스레드와 GIL
+
+사용자 함수는 Python이에요. 그래서 사용자 함수를 부르는 동안은 GIL(Python 인터프리터의 전역 잠금)을 쥐고 있어요.
+
+- `quad`, `dblquad`, `tplquad`, `nquad`, `quad_vec`, `cubature`는 사용자 함수를 부르는 사이의 일이 작아서 GIL을 쥔 채 돌아요.
+- `tanhsinh`과 `nsum`은 사용자 함수를 부르는 사이에 원소마다 점을 만들고 합과 판정을 계산해요. 그 일(진행 중인 원소 수 × 원소마다의 점 수)이 2¹⁵점 이상이면 여러 스레드에 나누고 GIL을 놓아요.
+- 표본 규칙은 배열의 리덕션처럼 일이 2¹⁵ 이상이면 줄이나 한 줄의 부분합을 스레드에 나누고 GIL을 놓아요.
+- 사용자 함수 안에서 하는 `sd` 연산(`sd.exp` 등)은 그 연산의 규칙대로 스레드를 써요.
+
+지금은 어느 경우든 결과가 스레드 수와도 상관없이 같은 비트예요(약속은 아니에요).
+
+```python
+>>> c = sd.linspace(1.0, 2.0, 2000)
+>>> n = sd.get_num_threads()
+>>> sd.set_num_threads(1)
+>>> a = sd.integrate.tanhsinh(lambda x, c: sd.exp(-c * x * x), 0, 1, args=(c,))
+>>> sd.set_num_threads(n)
+>>> b = sd.integrate.tanhsinh(lambda x, c: sd.exp(-c * x * x), 0, 1, args=(c,))
+>>> bool(sd.all(a.integral == b.integral)), bool(sd.all(a.nfev == b.nfev))
+(True, True)
+```
+
+## scipy를 아는 분께
+
+함수와 인자의 이름은 `scipy.integrate`의 것이고, 적응 함수는 scipy 1.18.1과 같은 알고리즘, 같은 멈춤 판정이에요. 다른 것은 입력과 결과의 꼴이에요.
+
+- **결과 객체**: `quad` 무리는 튜플 `(y, abserr)` 대신 결과 객체를 돌려주고 그것이 둘로 풀려요. `full_output`이 없고 `infodict`의 값(`neval`, `last`, `alist` 등)은 필드예요. `tanhsinh`·`nsum`의 `success`는 `converged`, `cubature`의 `estimate`는 `integral`이에요.
+- **허용오차의 이름**: `quad` 무리의 `epsabs`·`epsrel`은 `atol`·`rtol`, `nsum`의 `tolerances` dict는 `atol`·`rtol` 키워드예요. 상한은 `max_p1`(`maxp1`), `max_level`·`min_level`(`maxlevel`·`minlevel`), `max_terms`(`maxterms`)예요.
+- **`args`**: 원소별 무리(`tanhsinh`, `nsum`)만 받아요. 다른 함수는 클로저로 넘겨요. `kwargs`, `callback`, `preserve_shape`, `workers`는 없어요.
+- **경고가 없어요**: `IntegrationWarning` 대신 `converged`, `status`, `message`예요. 쓰이지 않는 옵션(가중 함수와 함께 준 `points` 등)은 scipy가 경고하고 무시하지만 여기서는 `ValueError`예요.
+- **같은 걸음**: `quad`, `dblquad`·`tplquad`·`nquad`, `quad_vec`, `cubature`, `tanhsinh`, `nsum`은 지금은 사용자 함수를 부르는 점과 차례, 값, 오차, `nfev`, `status`가 scipy 1.18.1과 비트까지 같아요(약속은 아니에요). `quad`의 `'cos'`·`'sin'` 가중 함수는 오차의 어림에 반올림의 하한이 있어서 어림이 scipy보다 작지 않고, `quad` 무리의 유한하지 않은 결과는 scipy의 `ier` 0 대신 `status` −3이에요. 약속은 같은 기계, 같은 스레드 수에서 실행마다 같은 비트, 그리고 Arb(구간 산술)로 만든 참값과 견준 정확도예요. scipy가 틀린 값을 내는 몇 곳은 일부러 따르지 않아요. 함수마다의 페이지에 있어요.
+- **없는 것**: 미분방정식(`solve_ivp`, `odeint`, `solve_bvp`, `ode`), `qmc_quad`, `lebedev_rule`, 옛 이름(`simps`, `trapz`, `cumtrapz`)
+
+```python
+>>> import scipy.integrate as si
+>>> si.quad(f, 0, 1)
+(0.7468241328124271, 8.291413475940725e-15)
+>>> tuple(sd.integrate.quad(f, 0, 1))
+(0.7468241328124271, 8.291413475940725e-15)
+```

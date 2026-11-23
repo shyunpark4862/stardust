@@ -1,0 +1,147 @@
+---
+kind: function
+title: coefficients
+names: [coefficients]
+group: 결과 객체의 그림
+order: 4
+signatures:
+  - "sd.plot.coefficients(result, /, *, alpha=0.05, intercept=False, color=None, **figure)"
+  - "fig.coefficients(result, /, *, alpha=0.05, intercept=False, color=None)"
+summary: 회귀 결과의 계수와 신뢰구간을 점과 가로 막대로 그려요(계수 그림). 계수마다 한 줄이고 0에 세로 파선이 있어, 어느 계수의 구간이 0을 지나는지 한눈에 보여요. 구간이 없는 결과(ridge 등)는 점만 그려요.
+params:
+  - name: result
+    type: 회귀 결과
+    kind: positional-only
+    desc: "params가 있는 회귀 결과(ols, wls, gls, rlm, quantreg, glm, ridge, lasso 등). 적합 하나여야 해요. conf_int가 있으면 구간의 막대도 그리고, 없으면 점만 그려요. 줄의 이름은 결과의 param_names예요."
+  - name: alpha
+    type: float
+    kind: keyword-only
+    desc: "구간의 유의수준. 0과 1 사이이고 기본값 0.05(95% 구간)예요. result.conf_int(alpha=alpha)를 그대로 그려요. 구간이 없는 결과에서는 쓰이지 않아요."
+  - name: intercept
+    type: bool
+    kind: keyword-only
+    desc: "True면 절편(이름이 'const'인 계수)도 그려요. 기본값 False."
+  - name: color
+    type: 색 또는 None
+    kind: keyword-only
+    desc: "점과 막대의 색. None(기본값)이면 칸의 팔레트에서 다음 색을 받아요."
+  - name: "**figure"
+    type: 그림 옵션
+    kind: keyword-only
+    desc: "모듈 함수만 받아요. width, height, font, theme, palette(그림의 기본)."
+returns:
+  type: Figure
+  desc: "모듈 함수는 새 그림을, 메서드는 층을 더한 그 그림(fig 자신)을 돌려줘요."
+raises:
+  - type: TypeError
+    desc: "result에 params가 없을 때, intercept가 bool이 아닐 때."
+  - type: ValueError
+    desc: "배치 결과(여러 적합)일 때, 절편 말고 그릴 계수가 없을 때(intercept=False인데 계수가 절편뿐), alpha가 (0, 1) 밖일 때, 색을 알 수 없을 때."
+seeAlso: [fit, diagnostics, errorbar, basics, customize]
+---
+import PlotImage from '../../../components/fig/PlotImage.astro';
+
+## 한눈에 보기
+
+시험 점수를 나이, 소득, 키로 설명하는 회귀를 하고 계수를 그려요. 설명 변수는 모두 평균 0, 표준편차 1로 맞춘 값이에요.
+
+```python
+>>> import stardust as sd
+>>> rng = sd.random.default_rng(11)
+>>> N = sd.stats.Normal(mu=0.0, sigma=1.0)
+>>> age, income, height = (N.sample((80,), rng=rng) for _ in range(3))
+>>> score = 1.0 + 0.8 * age - 0.5 * income + 0.05 * height + N.sample((80,), rng=rng)
+>>> df = sd.frame.DataFrame({"age": age, "income": income, "height": height, "score": score})
+>>> r = sd.regression.ols(df["score"], df[["age", "income", "height"]])
+>>> r.param_names
+['const', 'age', 'income', 'height']
+>>> fig = sd.plot.coefficients(r).xlabel("coefficient")
+```
+
+<PlotImage name="coefficients-basic" alt="세로로 age, income, height 세 줄이 있고, 줄마다 계수의 점과 95% 구간의 가로 막대가 있는 그림. age는 0.9 근처로 0의 오른쪽, income은 −0.5 근처로 왼쪽, height는 0 근처라 구간이 0의 세로 파선을 지나요." caption="계수마다 한 줄이에요. 첫 계수가 맨 위에 와요. height의 구간만 0의 파선을 지나므로, 이 자료로는 height의 효과가 0과 다르다고 말하기 어려워요." />
+
+<Reference />
+
+## 무엇을 하나요
+
+`coefficients`는 결과의 `params`(점)와 `conf_int(alpha=alpha)`(가로 막대)를 계수마다 한 줄로 그려요. 세로축은 범주 축이고 범주는 계수의 이름이에요. 0에는 회색 세로 파선이 있어서, 구간이 그 선을 지나는지가 곧 "그 계수가 유의수준 `alpha`에서 0과 다른가"예요.
+
+그림의 수는 결과의 수 그대로예요.
+
+```python
+>>> [round(v, 3) for v in r.params.tolist()]
+[0.929, 0.927, -0.468, -0.044]
+>>> [round(v, 3) for v in r.conf_int()[1].tolist()]
+[0.648, 1.207]
+```
+
+위 그림의 age 줄은 점이 0.927, 막대가 0.648에서 1.207까지예요.
+
+절편은 기본으로 빼요. 절편은 "모든 설명 변수가 0일 때의 반응"이라 다른 계수와 뜻이 다르고, 크기도 달라서 함께 그리면 축이 넓어져 다른 계수가 작아 보이기 때문이에요.
+
+## 구간과 절편: alpha, intercept
+
+`alpha=0.01`이면 99% 구간이라 막대가 길어져요. `intercept=True`면 `const` 줄이 맨 위에 붙어요. `color`로 색을 정해요.
+
+```python
+>>> fig = sd.plot.coefficients(r, intercept=True, alpha=0.01, color="C3")
+```
+
+<PlotImage name="coefficients-intercept" alt="const, age, income, height 네 줄의 계수와 99% 구간이 붉은 점과 막대로 그려진 그림. 막대가 앞 그림보다 길어요." caption="intercept=True와 alpha=0.01이에요. 줄의 차례는 결과의 param_names 차례 그대로이고, 맨 위가 첫 계수예요." />
+
+## 이름과 단위
+
+줄의 이름은 `param_names`를 글자 그대로 적어요. `x_1`처럼 LaTeX 특수 문자가 든 이름도 숨겨서 그대로 보여요. 표가 아니라 배열로 회귀했으면 이름이 `x1`, `x2`, …예요. 이름을 수식으로 보이고 싶으면 [`yticks`](/api/plot/customize/)로 라벨을 바꿔요. 줄의 자리는 맨 아래 줄이 0, 그 위가 1, …이라서, 계수가 `x1`, `x2` 둘이면 `fig.yticks([0.0, 1.0], labels=["$x^2$", "$x$"])`처럼 아래 줄부터 적어요.
+
+계수는 그 변수의 단위에 따라 크기가 정해져요. 나이를 해로 재든 달로 재든 효과는 같은데 계수는 12배 차이가 나요. 단위가 다른 계수를 한 축에 놓고 길이를 견주면 오해하기 쉬워요. 위 예처럼 설명 변수를 표준화(평균을 빼고 표준편차로 나누기)해서 회귀하면 계수끼리 크기를 견줄 수 있어요.
+
+## 받는 결과
+
+`coefficients`는 결과의 형을 보지 않고 `params`가 있는지로 가려요. `conf_int`도 있으면 구간의 막대를 함께 그려요. [`ols`](/api/regression/ols/), [`wls`](/api/regression/wls/), [`gls`](/api/regression/gls/), [`rlm`](/api/regression/rlm/), [`quantreg`](/api/regression/quantreg/), [`glm`](/api/regression/glm/)의 결과가 그래요. 설명 변수의 수에는 제한이 없어요.
+
+[`glm`](/api/regression/glm/)의 계수는 링크 척도의 값이에요. 로지스틱 회귀라면 로그 오즈비, 포아송 회귀라면 로그 비율이에요. 그래서 "효과 없음"은 여기서도 0이에요.
+
+```python
+>>> counts = sd.round(sd.exp(0.3 + 0.4 * age - 0.2 * income))
+>>> g = sd.regression.glm(counts, sd.stack([age, income], axis=1), family="poisson")
+>>> fig = sd.plot.coefficients(g).xlabel("log rate ratio")
+```
+
+[`ridge`](/api/regression/ridge/), [`lasso`](/api/regression/lasso/) 같은 벌점 회귀의 결과는 신뢰구간(`conf_int`)이 없어요. 이런 결과는 계수의 점만 그려요. 메서드로 겹치면 같은 이름의 계수가 같은 줄에 놓이므로, 벌점이 계수를 0 쪽으로 얼마나 당겼는지를 OLS의 구간 위에서 볼 수 있어요.
+
+```python
+>>> rr = sd.regression.ridge(df["score"], df[["age", "income", "height"]], alpha=0.5)
+>>> [round(v, 3) for v in rr.params.tolist()]
+[0.918, 0.566, -0.343, -0.01]
+>>> fig = sd.plot.coefficients(r).coefficients(rr, color="C3").xlabel("coefficient")
+```
+
+<PlotImage name="coefficients-ridge" alt="age, income, height 세 줄에 OLS 계수의 파란 점과 구간 막대가 있고, 같은 줄에 ridge 계수의 붉은 점이 0에 더 가까이 놓인 그림" caption="파랑이 OLS의 계수와 95% 구간, 빨강이 ridge의 계수예요. ridge의 점은 구간 없이 놓이고, 모두 0 쪽으로 당겨져 있어요." />
+
+## 에러
+
+```python
+>>> sd.plot.coefficients(3)
+Traceback (most recent call last):
+    ...
+TypeError: coefficients(): 'result' must be a regression result, not int
+>>> sd.plot.coefficients(r, alpha=0)
+Traceback (most recent call last):
+    ...
+ValueError: coefficients(): 'alpha' must be in (0, 1)
+>>> sd.plot.coefficients(sd.regression.ols(sd.stack([score, score]), age))
+Traceback (most recent call last):
+    ...
+ValueError: coefficients(): a batch of fits cannot be drawn; give one fit
+```
+
+## 조심할 점
+
+- 메서드로 두 모형의 계수를 겹치면, 같은 이름의 계수는 같은 줄에 놓여 점과 막대가 겹쳐요. 구간이 있는 두 모형을 견주려면 [`grid`](/api/plot/figure/)로 그림 둘을 나란히 두는 편이 읽기 쉬워요. 나란히 둔 두 칸의 가로축은 `grid`의 `sharex='all'`로 맞춰요.
+- 구간은 결과의 `conf_int`라서 회귀에서 고른 표준오차(`cov_type`)를 따라요. 이분산에 강한 표준오차로 회귀했으면 막대도 그 구간이에요.
+- 계수가 많으면(수십 개) 세로로 빽빽해져요. 그림의 `height`를 늘려요.
+
+## matplotlib을 아는 분께
+
+- matplotlib에서는 `ax.errorbar(params, range(k), xerr=..., fmt="o")`로 그리고 라벨과 0의 선을 손으로 붙여요. R의 `coefplot`이나 `dotwhisker` 패키지가 그리는 그림과 같은 것이에요.
+- 절편은 기본으로 빠져요(`intercept=True`로 넣어요).

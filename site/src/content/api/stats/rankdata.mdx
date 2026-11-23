@@ -1,0 +1,248 @@
+---
+title: rankdata
+names: [rankdata]
+group: 기술통계
+order: 5
+signatures:
+  - "sd.stats.rankdata(x, /, *, method='average', axis=None, nan_policy='propagate')"
+summary: 값마다 크기 순위(가장 작은 값이 1)를 매겨요. 같은 값(동점)에 순위를 주는 다섯 가지 방법이 있고, 결과는 언제나 float64예요.
+params:
+  - name: x
+    type: ndarray, 실수의 시퀀스, 실수 스칼라, numpy 배열, 또는 frame의 Series·DataFrame
+    kind: positional-only
+    desc: 순위를 매길 데이터. bool·정수는 float64로 바꿔서 비교해요.
+  - name: method
+    type: str
+    kind: keyword-only
+    desc: "동점을 다루는 방법. 'average'(기본값, 순위의 평균), 'min', 'max', 'dense', 'ordinal' 중 하나예요."
+  - name: axis
+    type: int 또는 None
+    kind: keyword-only
+    desc: 순위를 매길 축. None(기본값)이면 배열을 1차원으로 펴서 전체에서 순위를 매겨요. tuple은 받지 않아요.
+  - name: nan_policy
+    type: str
+    kind: keyword-only
+    desc: "'propagate'(NaN이 있는 줄 전체가 NaN), 'omit'(NaN 자리는 NaN, 나머지끼리 순위), 'raise'(ValueError) 중 하나예요."
+returns:
+  type: ndarray 또는 Python float
+  desc: 순위를 담은 float64 배열. axis=None이면 1차원(원소 수만큼), axis를 주면 x와 같은 모양이에요. 숫자 하나를 넣으면 Python float 1.0이에요.
+raises:
+  - type: TypeError
+    desc: x가 배열, 숫자의 시퀀스, frame의 Series·DataFrame이 아니거나 복소수일 때, 숫자가 아닌 열이 있을 때, axis가 int·None이 아닐 때(tuple·리스트 포함), method·nan_policy에 문자열이 아닌 값을 줬을 때.
+  - type: ValueError
+    desc: method나 nan_policy 이름이 틀렸을 때, nan_policy='raise'인데 NaN이 있을 때, axis가 범위를 벗어났을 때.
+seeAlso: [zscore, mode, iqr, describe]
+---
+import Callout from '../../../components/Callout.astro';
+
+## 한눈에 보기
+
+`rankdata`는 값마다 몇 번째로 작은지를 매겨요. 가장 작은 값이 1등, 가장 큰 값이 n등이에요.
+
+```python
+>>> import stardust as sd
+>>> sd.stats.rankdata([30.0, 10.0, 20.0])
+array([3.0, 1.0, 2.0], dtype=float64)
+```
+
+결과는 입력과 같은 자리에 순위를 놓은 배열이에요. 30은 세 값 중 가장 커서 3, 10은 가장 작아서 1이에요.
+
+같은 값이 있으면(동점) 기본으로는 그 값들이 차지할 순위의 평균을 함께 줘요.
+
+```python
+>>> sd.stats.rankdata([10.0, 20.0, 20.0, 30.0])
+array([1.0, 2.5, 2.5, 4.0], dtype=float64)
+```
+
+두 20은 2등과 3등 자리를 나눠 가지므로 둘 다 2.5예요.
+
+<Reference />
+
+## 언제 쓰나요
+
+- 순위 자체가 필요할 때: 성적 등수, 기록 순위.
+- 튀는 값에 흔들리지 않는 비교: 순위는 값이 얼마나 큰지가 아니라 순서만 봐요. 가장 큰 값이 100이든 100만이든 순위는 같아요. 그래서 튀는 값이 있거나 정규분포와 거리가 먼 데이터를 다룰 때 값 대신 순위를 쓰는 방법이 많아요.
+- 백분위 같은 상대 위치: 순위를 개수로 나누면 "아래에서 몇 %쯤인가"를 대략 알 수 있어요.
+
+```python
+>>> big = sd.asarray([1.0, 2.0, 3.0, 1000000.0])
+>>> sd.stats.rankdata(big)
+array([1.0, 2.0, 3.0, 4.0], dtype=float64)
+```
+
+## `method`: 동점에 순위를 주는 다섯 가지 방법
+
+점수 일곱 개에 95점이 셋, 88점이 둘 있어요.
+
+```python
+>>> s = sd.asarray([88.0, 95.0, 70.0, 95.0, 80.0, 88.0, 95.0])
+```
+
+크기순으로 늘어놓으면 70, 80, 88, 88, 95, 95, 95이고, 88점 둘은 3·4등 자리, 95점 셋은 5·6·7등 자리에 걸려 있어요. 이 자리를 어떻게 나눠 줄지가 방법마다 달라요.
+
+```python
+>>> sd.stats.rankdata(s, method='average')
+array([3.5, 6.0, 1.0, 6.0, 2.0, 3.5, 6.0], dtype=float64)
+>>> sd.stats.rankdata(s, method='min')
+array([3.0, 5.0, 1.0, 5.0, 2.0, 3.0, 5.0], dtype=float64)
+>>> sd.stats.rankdata(s, method='max')
+array([4.0, 7.0, 1.0, 7.0, 2.0, 4.0, 7.0], dtype=float64)
+>>> sd.stats.rankdata(s, method='dense')
+array([3.0, 4.0, 1.0, 4.0, 2.0, 3.0, 4.0], dtype=float64)
+>>> sd.stats.rankdata(s, method='ordinal')
+array([3.0, 5.0, 1.0, 6.0, 2.0, 4.0, 7.0], dtype=float64)
+```
+
+| 방법 | 88점 | 95점 | 규칙 | 흔한 예 |
+|---|---|---|---|---|
+| `'average'` | 3.5 | 6 | 걸린 자리의 평균 | 통계 계산(기본값) |
+| `'min'` | 3 | 5 | 걸린 자리 중 가장 앞 | 운동 경기의 "공동 5위" |
+| `'max'` | 4 | 7 | 걸린 자리 중 가장 뒤 | "이 점수 이하가 몇 명인가" |
+| `'dense'` | 3 | 4 | 빈 순위 없이 1, 2, 3, … | 서로 다른 값의 서열 |
+| `'ordinal'` | 3, 4 | 5, 6, 7 | 동점도 나타난 순서대로 다른 순위 | 모든 원소에 겹치지 않는 번호 |
+
+몇 가지 성질을 알아 두면 고르기 쉬워요.
+
+- `'average'`는 순위의 합이 언제나 $1 + 2 + \cdots + n = n(n+1)/2$예요. 그래서 순위를 다시 계산에 쓰는 통계 기법은 대부분 이 방법을 써요.
+- `'min'`과 `'max'`는 동점 다음 순위를 건너뛰어요(위에서 88점 다음은 5등). `'dense'`는 건너뛰지 않아서, 가장 큰 순위가 서로 다른 값의 개수예요.
+- `'ordinal'`은 동점을 원래 배열에 나온 순서대로 나눠요. 앞에 있는 95점(1번 자리)이 5등, 뒤의 것(6번 자리)이 7등이에요.
+
+```python
+>>> sd.stats.rankdata(s, method='dense').max()
+4.0
+>>> len(sd.unique_values(s))
+4
+```
+
+### 큰 값을 1등으로
+
+`rankdata`는 언제나 작은 값이 1이에요. 점수처럼 큰 값이 1등이어야 하면 부호를 바꿔서 넣어요.
+
+```python
+>>> sd.stats.rankdata(-s, method='min')
+array([4.0, 1.0, 7.0, 1.0, 6.0, 4.0, 1.0], dtype=float64)
+```
+
+95점 셋이 공동 1등, 88점 둘이 공동 4등이에요.
+
+### 결과는 언제나 실수예요
+
+`'average'`가 아니면 순위가 모두 정수지만, 결과는 방법과 상관없이 float64예요. 정수 배열이 필요하면 `astype`으로 바꿔요.
+
+```python
+>>> sd.stats.rankdata(s, method='ordinal').astype(sd.int64)
+array([3, 5, 1, 6, 2, 4, 7], dtype=int64)
+```
+
+## `axis`: 어디서 순위를 매길까요
+
+기본값 `axis=None`은 배열을 1차원으로 펴서 전체에서 순위를 매겨요. 그래서 2차원 배열을 넣어도 결과는 1차원이에요.
+
+```python
+>>> t = sd.asarray([[3.0, 1.0, 2.0],
+...                 [1.0, 1.0, 5.0]])
+>>> sd.stats.rankdata(t)
+array([5.0, 2.0, 4.0, 2.0, 2.0, 6.0], dtype=float64)
+```
+
+모양을 유지하면서 행마다, 열마다 따로 순위를 매기려면 `axis`를 줘요. 이때 결과는 `x`와 같은 모양이에요.
+
+```python
+>>> sd.stats.rankdata(t, axis=1)
+array([[3.0, 1.0, 2.0],
+       [1.5, 1.5, 3.0]], dtype=float64)
+>>> sd.stats.rankdata(t, axis=0)
+array([[2.0, 1.5, 1.0],
+       [1.0, 1.5, 2.0]], dtype=float64)
+```
+
+`axis`에는 축 하나만 줄 수 있어요. 다른 기술통계 함수와 달리 tuple이나 리스트는 받지 않아요. 여러 축을 한꺼번에 순위 매기려면 먼저 `sd.reshape`로 합쳐 주세요.
+
+```python
+>>> sd.stats.rankdata(t, axis=(0, 1))
+Traceback (most recent call last):
+    ...
+TypeError: rankdata(): 'axis' must be an int or None, not tuple
+>>> sd.stats.rankdata(t, axis=1.0)
+Traceback (most recent call last):
+    ...
+TypeError: rankdata(): 'axis' must be an int or None, not float
+```
+
+## NaN이 있으면: `nan_policy`
+
+NaN은 크기를 비교할 수 없어서 순위를 정할 수 없어요.
+
+```python
+>>> u = sd.asarray([[3.0, sd.nan, 2.0],
+...                 [1.0,    1.0, 5.0]])
+>>> sd.stats.rankdata(u, axis=1)
+array([[nan, nan, nan],
+       [1.5, 1.5, 3.0]], dtype=float64)
+>>> sd.stats.rankdata(u, axis=1, nan_policy='omit')
+array([[2.0, nan, 1.0],
+       [1.5, 1.5, 3.0]], dtype=float64)
+```
+
+- `'propagate'`(기본값): NaN이 하나라도 있는 줄은 전체가 NaN이에요.
+- `'omit'`: NaN 자리는 NaN으로 두고, 나머지 값끼리 1부터 순위를 매겨요.
+- `'raise'`: NaN이 있으면 `ValueError`예요.
+
+## 조심할 점
+
+### 특수한 값
+
+`inf`와 `-inf`는 보통 값처럼 가장 크고 가장 작은 순위를 받아요. `-0.0`과 `0.0`은 같은 값이라 동점이에요.
+
+```python
+>>> sd.stats.rankdata([3.0, -sd.inf, sd.inf, 0.0, -0.0])
+array([4.0, 1.0, 5.0, 2.5, 2.5], dtype=float64)
+```
+
+빈 배열은 빈 배열을 줘요. 숫자 하나를 넣으면 Python `float` 1.0이에요.
+
+```python
+>>> sd.stats.rankdata([])
+array([], dtype=float64)
+>>> sd.stats.rankdata(5.0)
+1.0
+```
+
+### `method` 이름
+
+다섯 이름 중 하나를 소문자로 정확히 써야 해요.
+
+```python
+>>> sd.stats.rankdata(s, method='first')
+Traceback (most recent call last):
+    ...
+ValueError: rankdata(): 'method' must be 'average', 'min', 'max', 'dense' or 'ordinal', not 'first'
+```
+
+다른 도구에서 `'first'`라고 부르는 방법(동점을 나온 순서대로)은 여기서 `'ordinal'`이에요.
+
+## 비슷한 함수와의 차이
+
+| 쓸 것 | `rankdata`와 다른 점 |
+|---|---|
+| [`sd.argsort`](/api/array/sort/) | 순위가 아니라 "정렬하면 몇 번째 원소가 오는가"(자리 번호)를 0부터 줘요. 두 번 쓰면 `'ordinal'` 순위 − 1이 돼요. |
+| [`sd.sort`](/api/array/sort/) | 값을 크기순으로 늘어놓아요. 원래 자리 정보가 없어요. |
+| [`zscore`](/api/stats/zscore/) | 순서가 아니라 평균에서의 거리(표준편차 단위)를 줘요. 튀는 값에 영향을 받아요. |
+| [`sd.quantile`](/api/array/quantile/) | 반대 방향이에요. 순위(비율)를 주면 그 자리의 값을 줘요. |
+
+`argsort`와의 관계는 이래요.
+
+```python
+>>> sd.argsort(s)
+array([2, 4, 0, 5, 1, 3, 6], dtype=int64)
+>>> sd.argsort(sd.argsort(s)) + 1
+array([3, 5, 1, 6, 2, 4, 7], dtype=int64)
+```
+
+`argsort(s)`의 첫 값 2는 "가장 작은 값은 2번 자리에 있다"는 뜻이고, `rankdata`는 반대로 "0번 자리의 값은 3등"이라고 말해요.
+
+## scipy를 아는 분께
+
+- 다섯 방법의 이름, 결과가 모두 float64인 것, `axis=None`이면 1차원으로 펴는 것, `nan_policy`의 동작은 scipy와 같아요.
+- 숫자 하나를 넣으면 Python `float`예요. scipy는 원소 하나짜리 배열 `array([1.])`을 줘요.
+- `x`는 위치로만, 옵션은 이름으로만 받아요.

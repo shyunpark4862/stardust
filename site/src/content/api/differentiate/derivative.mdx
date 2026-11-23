@@ -1,0 +1,352 @@
+---
+kind: function
+title: derivative
+names: [derivative]
+group: 도함수
+order: 1
+signatures:
+  - "sd.differentiate.derivative(f, x, /, *, args=(), atol=None, rtol=None, max_iter=10, order=8, initial_step=0.5, step_factor=2.0, step_direction=0)"
+summary: 실수 하나의 함수 f의 도함수를 한 점이나 많은 점에서 원소마다 따로 구해요. 높은 차수의 차분 공식을 간격을 줄이며 되풀이하고, 이웃한 두 추정의 차이를 오차 추정으로 함께 돌려줘요.
+params:
+  - name: f
+    type: 호출 가능한 객체
+    kind: positional-only
+    desc: "원소별 함수 f(x, *args). 첫 호출은 모든 원소의 x (k,), 다음부터는 아직 끝나지 않은 원소마다 점 p개를 담은 float64 sd.ndarray (k, p)를 받아요(첫 반복 p = order, 다음부터 2). 같은 모양의 실수(sd.ndarray, numpy 배열, 수의 시퀀스)를 돌려줘요. 정의되지 않는 점에서는 NaN을 돌려줘요."
+  - name: x
+    type: 실수, ndarray, 실수의 시퀀스, 또는 numpy 배열
+    kind: positional-only
+    desc: 미분할 점. 배열이면 원소마다 따로 미분해요. NaN이나 무한대인 원소는 status −3이에요.
+  - name: args
+    type: tuple
+    kind: keyword-only
+    desc: "f에 넘길 원소마다의 상수. 값마다 실수나 배열이고, x·initial_step·step_direction과 함께 브로드캐스트해요. f는 첫 호출에서 (k,), 다음부터 (k, 1)로 줄인 값을 받아요. 기본값 ()."
+  - name: atol, rtol
+    type: float 또는 None
+    kind: keyword-only
+    desc: "error < atol + rtol·|df|이면 그 원소를 멈춰요. None이면 atol은 가장 작은 정규수(2.2e-308), rtol은 √ε(1.5e-8)예요. 유한한 0 이상의 수예요."
+  - name: max_iter
+    type: int
+    kind: keyword-only
+    desc: "공식을 계산하는 횟수의 상한(1 이상). 기본값 10. 닿은 원소는 status −2예요."
+  - name: order
+    type: int
+    kind: keyword-only
+    desc: "차분 공식의 차수(1 이상 18 이하, 홀수는 다음 짝수로 올려요). 기본값 8. 중앙 공식은 x 양쪽에 order/2개씩의 점을 써요."
+  - name: initial_step
+    type: 실수 또는 배열
+    kind: keyword-only
+    desc: "처음의 절대 간격. 기본값 0.5. 원소마다 줄 수 있어요. 0 이하이거나 NaN인 원소는 status −3이에요. x의 끝자리 단위(ulp)보다 작으면 점이 x로 반올림되어 df 0으로 수렴하니, 큰 |x|에는 |x|에 맞춰 줘요."
+  - name: step_factor
+    type: float
+    kind: keyword-only
+    desc: "반복마다 간격을 나누는 수. 기본값 2.0. 유한하고 0보다 크고 1이 아니어야 해요. 1보다 작으면 간격이 커져요."
+  - name: step_direction
+    type: 실수 또는 배열
+    kind: keyword-only
+    desc: "0(기본값)이면 x 양쪽을 쓰는 중앙 공식, 양수면 x 오른쪽만, 음수면 왼쪽만 쓰는 한쪽 공식이에요. 원소마다 줄 수 있어요. NaN인 원소는 status −3이에요."
+returns:
+  type: DifferentiateResult
+  desc: "df, error, converged, status, n_iter, nfev, x가 든 결과 객체예요. 필드는 배치 모양의 sd.ndarray이고, 입력이 모두 수이면 Python 수예요."
+raises:
+  - type: TypeError
+    desc: f가 호출 가능하지 않을 때, x나 다른 입력이 수나 수의 배열이 아닐 때, args가 튜플이 아닐 때, 옵션의 형이 틀릴 때(order·max_iter가 정수가 아닐 때 등), f가 수의 배열이 아닌 것이나 bool·복소수 값을 돌려줄 때, 모르는 키워드를 줬을 때. f 안에서 난 에러도 그대로 나와요.
+  - type: ValueError
+    desc: 입력과 args가 서로 브로드캐스트되지 않을 때, f가 받은 것과 다른 모양(스칼라 포함)을 돌려줄 때, atol·rtol이 음수이거나 유한하지 않을 때, order·max_iter가 1보다 작을 때, order가 18보다 클 때, step_factor가 1이거나 0 이하이거나 유한하지 않을 때.
+seeAlso: [basics, jacobian, hessian]
+---
+import Callout from '../../../components/Callout.astro';
+
+## 무엇을 하나요
+
+`derivative(f, x)`는 $f'(x)$를 어림해요. $x$ 양쪽에 점을 놓은 차분 공식을 계산하고, 간격을 `step_factor`(기본 2)로 나누어 다시 계산하기를 되풀이해요. 이웃한 두 추정의 차이가 그 원소의 오차 추정 `error`이고, `error < atol + rtol·|df|`가 되면 멈춰요.
+
+기본 공식은 8차예요. 간격 $h$에서 $x \pm h$, $x \pm h/2$, $x \pm h/4$, $x \pm h/8$의 여덟 점을 써서 절단 오차가 $h^8$에 비례해요. 그래서 처음 간격 0.5에서도 이미 정확하고, 대개 두세 번 만에 멈춰요. 다음 반복은 간격이 반이라 앞의 점 여섯을 다시 쓰고 새 점 둘($x \pm h/16$)만 더 불러요.
+
+`x`가 배열이면 원소마다 따로 미분해요. 사용자 함수를 남은 원소의 배열로 한 번에 부르므로, 원소마다 따로 부르는 것보다 훨씬 빨라요. 처음이라면 [수치 미분의 기본](/api/differentiate/basics/)을 먼저 읽어 보세요.
+
+## 기본 사용
+
+```python
+>>> import stardust as sd
+>>> import math
+>>> r = sd.differentiate.derivative(sd.exp, 1.0)
+>>> r
+DifferentiateResult(df=2.71828, error=7.1303e-12, converged=True, n_iter=2, nfev=11)
+>>> r.df, abs(r.df - math.e) / math.e
+(2.718281828459014, 1.1435990324493589e-14)
+```
+
+`f`는 배열을 받는 원소별 함수예요. `sd.exp`, `sd.sin` 같은 함수와 산술 연산으로 써요.
+
+```python
+>>> f = lambda x: x**3 * sd.exp(-x)
+>>> r = sd.differentiate.derivative(f, 2.0)
+>>> exact = (3 * 2.0**2 - 2.0**3) * math.exp(-2.0)
+>>> r.df, exact
+(0.5413411329462126, 0.5413411329464508)
+```
+
+## 여러 점을 한 번에
+
+`x`에 배열을 주면 결과의 필드가 모두 같은 모양의 배열이에요. 원소마다 따로 멈추므로 `n_iter`와 `nfev`가 원소마다 달라요.
+
+```python
+>>> x = sd.linspace(-2.0, 2.0, 5)
+>>> r = sd.differentiate.derivative(sd.tanh, x)
+>>> r
+DifferentiateResult(batch shape (5,), 5 of 5 converged)
+>>> r.df
+array([0.07065082485377744,  0.4199743416021876,  0.9999999999996845,
+        0.4199743416021876, 0.07065082485377744], dtype=float64)
+>>> r.n_iter
+array([2, 2, 3, 2, 2], dtype=int64)
+>>> err = r.df - (1 - sd.tanh(x)**2)
+>>> float(sd.max(sd.abs(err)))
+1.183853015618297e-11
+```
+
+가운데 원소만 세 번 계산했어요. 오차는 많아야 $1.2 \times 10^{-11}$로 기본 허용오차(상대 $1.5 \times 10^{-8}$)보다 훨씬 작아요.
+
+`x`는 몇 차원이든 돼요. 결과는 `x`의 모양을 그대로 따라요. 끝난 원소는 다음 호출에서 빠지므로, `f`가 받는 배열의 원소 수는 호출마다 줄어들 수 있어요.
+
+```python
+>>> seen = []
+>>> def g(x):
+...     seen.append(x.shape)
+...     return sd.log(x)
+>>> r = sd.differentiate.derivative(g, [1.0, 10.0])
+>>> seen, r.n_iter.tolist()
+([(2,), (2, 8), (2, 2), (1, 2)], [3, 2])
+```
+
+### args: 원소마다의 상수
+
+`args`의 값은 `x`와 함께 브로드캐스트해요. 식의 모수를 바꿔 가며 도함수를 구할 때 써요. 아래는 정규분포의 누적분포함수 $\Phi((x - \mu)/\sigma)$를 $x = 0$에서 $\sigma$ 셋에 대해 미분한 거예요. 참값은 밀도 $\varphi(\mu/\sigma)/\sigma$예요.
+
+```python
+>>> cdf = lambda x, s: sd.special.ndtr((x - 1.0) / s)
+>>> s = sd.asarray([0.5, 1.0, 2.0])
+>>> r = sd.differentiate.derivative(cdf, 0.0, args=(s,))
+>>> r.df
+array([0.10798193302610247, 0.24197072451946838,  0.1760326633821493], dtype=float64)
+>>> sd.exp(-0.5 * (1.0 / s)**2) / (s * math.sqrt(2 * math.pi))
+array([0.10798193302637613, 0.24197072451914337, 0.17603266338214976], dtype=float64)
+```
+
+`f`는 `f(x, *args)`로 불리고, `args`의 값은 첫 호출에서 $(k,)$, 다음부터 $(k, 1)$로 줄여 받아요. 그래서 `x`의 점들과 그대로 브로드캐스트돼요.
+
+## 간격: initial_step과 step_factor
+
+`initial_step`(기본 0.5)은 처음의 절대 간격이에요. $x$의 크기를 보지 않으므로 함수가 변하는 척도가 0.5와 아주 다르면 맞춰 줘요. $\sin(x/10^6)$처럼 천천히 변하는 함수는 기본값으로도 되지만, 빠르게 출렁이는 함수는 처음 추정부터 엉뚱해요.
+
+```python
+>>> fast = lambda x: sd.sin(1000 * x)
+>>> sd.differentiate.derivative(fast, 0.1)
+DifferentiateResult(df=8.63654, error=13.2152, converged=False, n_iter=3, nfev=13)
+>>> sd.differentiate.derivative(fast, 0.1, initial_step=1e-3)
+DifferentiateResult(df=862.319, error=5.70803e-07, converged=True, n_iter=2, nfev=11)
+>>> 1000 * math.cos(100)
+862.3188722876839
+```
+
+수렴했다고 나와도 틀린 값일 수 있어요. 멈춤 판정은 이웃한 두 추정이 가까운지를 볼 뿐이라, 처음 간격이 함수가 변하는 척도에 맞지 않으면 두 추정이 우연히 같아 틀린 값에서 멈추기도 해요. $\sin(100x)$는 주기가 0.063쯤인데 처음 간격 0.5가 그 여덟 배라, 6차 공식이 둘째 반복에 −0.458로 수렴해요. 참값은 86.23이에요. 간격을 척도에 맞추면 맞는 값이에요.
+
+```python
+>>> wave = lambda x: sd.sin(100 * x)
+>>> sd.differentiate.derivative(wave, 1.0, order=6)
+DifferentiateResult(df=-0.457861, error=4.88578e-10, converged=True, n_iter=2, nfev=9)
+>>> sd.differentiate.derivative(wave, 1.0, order=6, initial_step=0.01)
+DifferentiateResult(df=86.2319, error=6.41548e-08, converged=True, n_iter=4, nfev=13)
+>>> 100 * math.cos(100)
+86.23188722876839
+```
+
+한쪽 공식(아래 `step_direction`)에서 값이 평평해지는 쪽으로 가는 경우도 그래요. $\arctan x$를 $x = 1000$에서 오른쪽으로만 미분하면 `error`가 0인 채 수렴하지만, 참 오차 $2.3 \times 10^{-11}$은 `atol + rtol·|df|`의 1,550배예요. 처음 간격을 $x$의 척도에 맞추면 허용오차 안이에요.
+
+```python
+>>> r = sd.differentiate.derivative(sd.atan, 1000.0, step_direction=1)
+>>> r, abs(r.df - 1 / (1 + 1000.0**2))
+(DifferentiateResult(df=1.00002e-06, error=0, converged=True, n_iter=8, nfev=23), 2.3166407598361707e-11)
+>>> r = sd.differentiate.derivative(sd.atan, 1000.0, step_direction=1, initial_step=100.0)
+>>> r, abs(r.df - 1 / (1 + 1000.0**2))
+(DifferentiateResult(df=9.99999e-07, error=2.27374e-15, converged=True, n_iter=2, nfev=11), 1.5775442306360365e-15)
+```
+
+결과가 중요하면 `initial_step`을 바꿔 한 번 더 구해 견줘 봐요.
+
+정의역의 끝 가까이에서도 간격을 줄여요. $\log x$를 $x = 10^{-3}$에서 미분하면 $x - 0.5$에서 값이 NaN이라 그 원소가 status −3으로 멈춰요.
+
+```python
+>>> sd.differentiate.derivative(sd.log, 1e-3)
+DifferentiateResult(df=nan, error=nan, converged=False, n_iter=1, nfev=9)
+>>> sd.differentiate.derivative(sd.log, 1e-3, initial_step=1e-4)
+DifferentiateResult(df=1000, error=1.70303e-10, converged=True, n_iter=2, nfev=11)
+```
+
+`initial_step`은 원소마다 줄 수 있어요. 점의 크기에 비례하는 간격을 주면 크기가 아주 다른 점들을 한 번에 다룰 수 있어요.
+
+```python
+>>> x = sd.asarray([1e-3, 0.1, 1.0, 10.0])
+>>> r = sd.differentiate.derivative(sd.log, x, initial_step=x / 4)
+>>> r.status, r.df * x
+(array([0, 0, 0, 0], dtype=int64), array([0.9999999999983774, 0.9999999999983636, 0.9999999999983552,
+       0.9999999999983431], dtype=float64))
+```
+
+$x \cdot \tfrac{d}{dx}\log x = 1$이라 네 점 모두 1에 가까워야 해요. 간격이 점에 비례하니 네 점에서 같은 상대 정확도($1.7 \times 10^{-12}$)예요.
+
+$\lvert x\rvert$가 아주 클 때도 간격을 맞춰 줘야 해요. 기본 간격 0.5가 $x$의 끝자리 단위(ulp)보다 작으면 $x \pm 0.5$가 $x$로 반올림돼서, 스텐실의 함숫값이 모두 같아요. 그러면 `df`가 0, `error`가 0이고 `converged=True`예요. 기본 간격이면 $\lvert x\rvert \gtrsim 2^{53}$에서 그래요. 아래에서 $10^{10}$은 간격이 $x$의 척도에 비해 작아 함숫값의 차가 반올림에 묻혀서 수렴하지 못하고, $10^{20}$은 틀린 0이 수렴으로 나와요.
+
+```python
+>>> x = sd.asarray([1e10, 1e20])
+>>> r = sd.differentiate.derivative(sd.log, x)
+>>> r.df, r.converged
+(array([9.990544155234876e-11,                   0.0], dtype=float64), array([False,  True], dtype=bool))
+>>> r = sd.differentiate.derivative(sd.log, x, initial_step=x / 4)
+>>> r.df * x, r.converged
+(array([0.9999999999984518, 0.9999999999982345], dtype=float64), array([True, True], dtype=bool))
+```
+
+`step_factor`는 반복마다 간격을 나누는 수예요. 크면 간격이 빨리 줄어 반올림에 빨리 닿고, 1에 가까우면 천천히 줄어요. 1보다 작으면 간격이 반복마다 커져요. 1, 0 이하, 무한대는 에러예요.
+
+```python
+>>> sd.differentiate.derivative(sd.exp, 1.0, step_factor=4)
+DifferentiateResult(df=2.71828, error=2.35367e-14, converged=True, n_iter=2, nfev=11)
+>>> sd.differentiate.derivative(sd.exp, 1.0, step_factor=1)
+Traceback (most recent call last):
+    ...
+ValueError: derivative(): 'step_factor' must be a finite number > 0 other than 1
+```
+
+## 정의역의 끝: step_direction
+
+함수가 $x$ 한쪽에서만 정의되면 `step_direction`으로 한쪽 공식을 써요. 양수면 $x$ 오른쪽 점만, 음수면 왼쪽 점만 써요. 한쪽 공식은 $x$ 자신과 한쪽 점 `order`개($x + h$, $x + h/\sqrt c$, $x + h/c$, …, $c$는 `step_factor`)를 써요.
+
+```python
+>>> e1 = lambda x: sd.where(x >= 1, sd.exp(x), math.nan)
+>>> sd.differentiate.derivative(e1, 1.0)
+DifferentiateResult(df=nan, error=nan, converged=False, n_iter=1, nfev=9)
+>>> r = sd.differentiate.derivative(e1, 1.0, step_direction=1)
+>>> r
+DifferentiateResult(df=2.71828, error=1.36424e-12, converged=True, n_iter=2, nfev=11)
+>>> abs(r.df - math.e) / math.e
+4.772075391120825e-13
+```
+
+한쪽 공식은 같은 차수의 중앙 공식보다 반올림에 약해서 조금 덜 정확해요. 끝 가까이에서 도함수가 빠르게 변하면 처음 간격도 줄여야 해요. $\log x$의 $x = 10^{-3}$에서 오른쪽으로만 가도 처음 간격 0.5는 $x$보다 500배 커서 맞추지 못해요.
+
+```python
+>>> sd.differentiate.derivative(sd.log, 1e-3, step_direction=1)
+DifferentiateResult(df=999.999, error=0.0298912, converged=False, n_iter=10, nfev=27)
+>>> sd.differentiate.derivative(sd.log, 1e-3, step_direction=1, initial_step=1e-4)
+DifferentiateResult(df=1000, error=2.27374e-09, converged=True, n_iter=2, nfev=11)
+```
+
+`step_direction`도 원소마다 줄 수 있어요. 구간 $[-1, 1]$에서 정의된 $\arcsin x$를 끝 가까운 $\pm 0.9$와 가운데 0에서 미분할 때, 끝 가까운 점은 안쪽으로만 가게 해요. 기본 간격 0.5로 중앙 공식을 쓰면 $0.9 + 0.5$가 정의역 밖이라 −3이에요.
+
+```python
+>>> asin = lambda x: sd.where(abs(x) <= 1, sd.asin(x), math.nan)
+>>> x = sd.asarray([-0.9, 0.0, 0.9])
+>>> sd.differentiate.derivative(asin, x).status
+array([-3,  0, -3], dtype=int64)
+>>> r = sd.differentiate.derivative(asin, x, step_direction=sd.asarray([1.0, 0.0, -1.0]))
+>>> r.status, r.df
+(array([0, 0, 0], dtype=int64), array([ 2.29415733857968, 0.999999999999551,  2.29415733857968], dtype=float64))
+>>> 1 / math.sqrt(1 - 0.81)
+2.294157338705618
+```
+
+## 차수: order
+
+`order`는 공식의 차수예요. 높을수록 한 번의 계산에 점을 많이 쓰고 큰 간격에서도 정확해요. 홀수는 다음 짝수로 올려요. $e^x$의 1에서 기본 설정으로 보면 이래요.
+
+```python
+>>> for o in (2, 4, 6, 8, 12):
+...     r = sd.differentiate.derivative(sd.exp, 1.0, order=o)
+...     print(o, r.status, r.n_iter, r.nfev, f'{abs(r.df - math.e) / math.e:.1e}')
+2 -2 10 21 1.6e-07
+4 0 6 15 1.2e-10
+6 0 3 11 1.2e-11
+8 0 2 11 1.1e-14
+12 0 2 15 7.7e-15
+```
+
+2차 공식은 10번으로 모자라 status −2예요. 매끄러운 함수에서는 기본 8차가 대개 가장 적은 호출로 가장 정확해요. 차수가 높은 공식은 멀리 떨어진 점까지 쓰므로, 함수가 간격 안에서 매끄럽지 않으면 낮은 차수와 작은 간격이 나을 수 있어요.
+
+`order`는 18까지예요. 차수를 올리면 첫 반복의 가장 안쪽 점 $x \pm h/c^{n-1}$($n$ = order/2)이 $x$에 점점 가까워져 함숫값의 차가 반올림에 묻히기 시작하고, 공식의 가중치를 정확히 계산하는 시간도 빠르게 늘어요. Arb(구간 산술)로 만든 참값과 견주면 초등 함수 11개 × 9점에서 18까지의 모든 짝수 차수가 `atol + rtol·|df|` 안이고, 20부터는 넘는 점이 생겨요. 더 올리면 틀린 값을 수렴했다고 내기 시작해요.
+
+```python
+>>> sd.differentiate.derivative(sd.exp, 1.0, order=18)
+DifferentiateResult(df=2.71828, error=1.47438e-13, converged=True, n_iter=2, nfev=21)
+>>> sd.differentiate.derivative(sd.exp, 1.0, order=20)
+Traceback (most recent call last):
+    ...
+ValueError: derivative(): 'order' must be at most 18
+```
+
+## 허용오차와 멈춤
+
+`atol`과 `rtol`은 멈춤 판정이에요. `error < atol + rtol·|df|`이면 멈춰요. 기본은 사실상 상대 $\sqrt\varepsilon \approx 1.5 \times 10^{-8}$이에요($\varepsilon = 2^{-52}$). 판정은 오차 추정에 대한 것이라 실제 결과는 대개 훨씬 정확해요. 위의 $e^x$는 오차 추정 $7 \times 10^{-12}$에서 멈췄고 실제 상대오차는 $10^{-14}$이에요.
+
+`rtol`을 줄이면 더 오래 계산하지만, 반올림보다 정확하게는 갈 수 없어요. 오차 추정이 직전의 10배를 넘게 커지면 반올림이 이기기 시작한 것으로 보고 status −1로 멈춰요.
+
+```python
+>>> sd.differentiate.derivative(sd.exp, 1.0, rtol=1e-15)
+DifferentiateResult(df=2.71828, error=7.77156e-14, converged=False, n_iter=10, nfev=27)
+>>> r = sd.differentiate.derivative(sd.exp, 1.0, rtol=1e-15, max_iter=20)
+>>> r, r.status
+(DifferentiateResult(df=2.71828, error=1.31495e-12, converged=False, n_iter=11, nfev=29), -1)
+```
+
+기본 `max_iter` 10번 안에서는 오차 추정이 반올림 수준에서 오르내리기만 해서 −2예요. 상한을 늘리면 열한째 반복에 오차 추정이 직전의 10배를 넘어 −1로 멈춰요. 그때의 `df`는 상대 $6 \times 10^{-13}$으로, 둘째 반복의 $10^{-14}$보다 덜 정확해요.
+
+도함수가 0 근처면 상대 판정을 맞출 수 없어요. 0 근처의 결과에 의미가 있는 절대 크기를 `atol`로 줘요. 함숫값이 도함수보다 아주 클 때도 그래요. $x^2 + 1$의 $x = 10^{-10}$에서 도함수는 $2 \times 10^{-10}$인데, 함숫값 1의 반올림이 그보다 커서 결과가 상대 $2 \times 10^{-4}$나 틀리고 수렴하지 못해요.
+
+```python
+>>> sd.differentiate.derivative(lambda x: x**2 + 1, 1e-10)
+DifferentiateResult(df=1.99963e-10, error=4.08518e-14, converged=False, n_iter=5, nfev=17)
+>>> sd.differentiate.derivative(sd.sin, math.pi / 2, atol=1e-12)
+DifferentiateResult(df=-2.55332e-15, error=2.34275e-15, converged=True, n_iter=2, nfev=11)
+```
+
+<Callout type="note" title="함수를 부르는 수">
+첫 반복에 `order`개의 점과 $x$ 자신(한쪽 공식은 $x$와 한쪽 점 `order`개)을 부르고, 다음 반복마다 2점이에요. 그래서 `nfev`는 $\text{order} + 1 + 2(\text{n\_iter} - 1)$이에요. 기본이면 두 번 만에 멈출 때 11이에요. `nfev`는 원소마다 센 값이고, 사용자 함수를 부른 횟수는 남은 원소가 있는 반복의 수 + 1이에요.
+</Callout>
+
+## 결과 읽기
+
+| 필드 | 뜻 |
+|---|---|
+| `df` | 도함수의 추정. status −3이면 NaN |
+| `error` | 마지막 두 추정의 차이의 크기 |
+| `converged` | `error < atol + rtol·|df|`로 멈췄는지 |
+| `status` | 0 수렴, −1 반올림이 이기기 시작함, −2 `max_iter`, −3 유한하지 않은 점이나 값 |
+| `n_iter`, `nfev` | 공식을 계산한 횟수, 원소마다 함숫값을 계산한 점의 수 |
+| `x` | 미분한 점. `args` 등과 브로드캐스트한 모양이에요 |
+
+입력이 모두 수면 필드가 Python 수예요. 하나라도 배열이면 모든 필드가 배치 모양의 `sd.ndarray`예요(원소가 하나여도 `(1,)`). 결과의 자세한 규칙과 `summary()`는 [기본 개념의 결과](/api/differentiate/basics/#결과-differentiateresult)에 있어요.
+
+```python
+>>> r = sd.differentiate.derivative(sd.exp, 1.0, args=())
+>>> type(r.df), type(r.status)
+(<class 'float'>, <class 'int'>)
+>>> r = sd.differentiate.derivative(sd.exp, [1.0])
+>>> r.df, r.x
+(array([2.718281828459014], dtype=float64), array([1.0], dtype=float64))
+```
+
+## 정확도
+
+Arb(구간 산술)로 만든 참값과 견주면, 초등 함수 11개($x^2$, $x^3$, $x^7$, $1/x$, $\sqrt x$, $\cos$, $\sin$, $e^x$, $\log$, $\arctan$, $\tanh$)를 0.01–100의 9점에서, 그리고 정의역 끝 가까이나 옵션(`order`, `step_factor`, `rtol`, 한쪽 공식)을 바꾼 17경우에서 미분했을 때 수렴한 111경우가 모두 `atol + rtol·|df|` 안이었고 최대 상대오차는 $6.2 \times 10^{-11}$이었어요. 수렴하지 못한 다섯은 위에서 본 $\log$의 $10^{-3}$(중앙과 오른쪽), $\sqrt x$의 $10^{-6}$, 2차 공식의 $e^x$, 간격이 반복마다 커지는 `step_factor=0.5`의 $e^x$(status −1)예요. 오차 추정이 참 오차보다 작은 것은 다섯 경우였어요. 엄밀한 상계가 필요하면 결과를 그대로 믿지 말고 다른 간격으로 한 번 더 확인해요. 이 약속은 시험한 모음에서 잰 것이고, 처음 간격이 함수의 척도에 맞지 않는 점에서는 위의 [간격](#간격-initial_step과-step_factor)에서 본 것처럼 수렴한 값이 틀릴 수 있어요.
+
+## scipy를 아는 분께
+
+- 이름과 인자는 `scipy.differentiate.derivative`의 것이고, 같은 점을 같은 순서로 불러요. scipy로 기록한 시험 139경우(2차원 배치와 `args`를 준 경우 포함) 가운데 138경우가 부르는 점과 status, 셈까지 같아요.
+- `order`는 18까지예요. scipy는 상한이 없고, `order=20`이면 $e^x$의 1에서 2.71821을 수렴했다고 내요.
+- 큰 $\lvert x\rvert$에서 기본 간격이 반올림으로 사라져 0이 수렴으로 나오는 것은 scipy도 같아요.
+- `tolerances` 대신 `atol`·`rtol`, `maxiter` 대신 `max_iter`예요. 결과는 `success` 대신 `converged`, `nit` 대신 `n_iter`예요.
+- `kwargs`, `preserve_shape`, `callback`이 없어요.
+- 첫 호출의 `x`는 $(k,)$ 1차원이에요. 다음부터는 scipy처럼 $(k, p)$예요.
+- 공식의 가중치는 정확한 값을 한 번 반올림한 것이고(scipy는 선형 방정식을 풀어 8차에서 상대 $2.7 \times 10^{-14}$까지 달라요), 중앙 공식은 양쪽 점의 차를 짝마다 더해요. 그래서 `df`는 끝자리가 다를 수 있고, 판정의 경계에서는 반복 수가 갈릴 수 있어요. $x^3$의 0은 여기서 둘째 반복에 수렴하고(`nfev` 11) scipy는 −2예요(`nfev` 27). 거꾸로 $\sin x$의 $\pi/2$는 여기서 status −1(`n_iter` 6)이고 scipy는 둘째 반복에 수렴해요. 한쪽 공식의 $\arctan$ 1000처럼 여기서 수렴하고 scipy는 −2인 점도 있어요. 도함수가 0인 점에서 기본 `atol`이 절대 판정을 하지 않는 것은 scipy와 같아요.
+- `step_factor`가 1, 0, 무한대이면 `ValueError`예요. scipy는 1과 무한대에 `LinAlgError`, 0에는 모든 원소가 NaN이에요.
+- `step_direction`이 NaN인 원소는 status −3이에요. scipy도 결과는 같지만 다른 점을 불러요.

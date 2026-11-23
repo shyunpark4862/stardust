@@ -1,0 +1,250 @@
+---
+kind: function
+title: bootstrap
+names: [bootstrap]
+group: 재표본
+order: 2
+signatures:
+  - "sd.htest.bootstrap(data, statistic, /, *, n_resamples=9999, batch=None, vectorized=None, paired=False, axis=None, alternative='two-sided', method='BCa', rng)"
+summary: 표본에서 같은 크기로 복원 추출을 되풀이해 통계량의 분포(붓스트랩 분포)를 만들고, 그 분포로 표준오차와 신뢰구간을 구해요. 공식이 없는 통계량(중앙값, 분위수, 비, 직접 만든 지표)의 불확실성을 잴 때 써요. 구간은 percentile, basic, BCa 중에서 골라요.
+params:
+  - name: data
+    type: 표본의 list 또는 tuple
+    kind: positional-only
+    desc: 표본들. 표본 하나면 (x,)처럼 튜플로 줘요. 표본마다 관측이 둘 이상이어야 해요.
+  - name: statistic
+    type: callable
+    kind: positional-only
+    desc: 통계량. 표본 수만큼의 배열을 받아 수를 돌려줘요. axis 인자가 있으면 statistic(*samples, axis=-1)로 여러 재표본을 한 번에 불러요.
+  - name: n_resamples
+    type: int
+    kind: keyword-only
+    desc: 재표본의 수(기본값 9999). 양의 int예요.
+  - name: batch
+    type: int 또는 None
+    kind: keyword-only
+    desc: statistic을 한 번 부를 때 넘기는 재표본의 수. None이면 한 호출의 데이터가 약 4백만(2²²) 개 값 이하가 되게 정해요. 결과의 비트는 batch와 상관없어요.
+  - name: vectorized
+    type: bool 또는 None
+    kind: keyword-only
+    desc: statistic이 axis를 받는지. None(기본값)이면 시그니처로 정해요.
+  - name: paired
+    type: bool
+    kind: keyword-only
+    desc: True면 모든 표본에서 같은 관측 번호를 함께 뽑아요(짝을 유지해요). 표본의 길이가 같아야 해요. 기본값 False예요.
+  - name: axis
+    type: int 또는 None
+    kind: keyword-only
+    desc: None(기본값)이면 표본마다 펼쳐요. 정수면 그 축을 따라 표본을 읽고 나머지 축은 배치예요.
+  - name: alternative
+    type: str
+    kind: keyword-only
+    desc: "'two-sided'(기본값, 양쪽 구간), 'less'(위 끝만: [−∞, 위 끝]), 'greater'(아래 끝만: [아래 끝, ∞]) 중 하나예요."
+  - name: method
+    type: str
+    kind: keyword-only
+    desc: "신뢰구간을 만드는 방법. 'percentile', 'basic', 'BCa'(기본값) 중 하나예요."
+  - name: rng
+    type: sd.random.Generator
+    kind: keyword-only
+    desc: 재표본을 뽑을 생성기. 꼭 줘야 해요.
+returns:
+  type: BootstrapResult
+  desc: "bootstrap_distribution((*배치, n_resamples)), standard_error(붓스트랩 분포의 표준편차, n − 1)와 메서드 conf_int(*, alpha=0.05), summary(*, alpha=0.05)가 있어요. 튜플로 풀리지 않아요."
+raises:
+  - type: TypeError
+    desc: rng가 없거나 sd.random.Generator가 아닐 때, data가 list·tuple이 아니거나 표본이 아닌 수의 시퀀스(표본 하나를 그대로 준 것)일 때, statistic이 호출할 수 없을 때나 수가 아닌 것을 돌려줄 때, 없는 키워드를 줬을 때.
+  - type: ValueError
+    desc: 관측이 둘 미만인 표본이 있을 때, paired인데 표본의 길이가 다를 때, statistic이 맞지 않는 모양을 돌려줄 때, method·alternative 이름이 틀렸을 때, n_resamples·batch가 1보다 작을 때. conf_int()에서 alpha가 (0, 1) 밖일 때.
+seeAlso: [methods, permutation_test, monte_carlo_test, pearsonr, basics, results]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+export const bootHist = [[3.0,0],[3.5,0],[3.5,7],[3.75,7],[3.75,23],[4.0,23],[4.0,54],[4.25,54],[4.25,114],[4.5,114],[4.5,154],[4.75,154],[4.75,172],[5.0,172],[5.0,252],[5.25,252],[5.25,262],[5.5,262],[5.5,250],[5.75,250],[5.75,193],[6.0,193],[6.0,162],[6.25,162],[6.25,127],[6.5,127],[6.5,81],[6.75,81],[6.75,58],[7.0,58],[7.0,40],[7.25,40],[7.25,26],[7.5,26],[7.5,15],[7.75,15],[7.75,5],[8.0,5],[8.0,3],[8.25,3],[8.25,1],[8.75,1],[8.75,0],[9.5,0]];
+export const obsMean = [[5.5167,0],[5.5167,280]];
+export const bcaEnds = [[4.3084,0],[4.3084,280],[4.3084,NaN],[7.6012,0],[7.6012,280]];
+
+## 무엇을 하나요
+
+어느 동네 12가구의 한 달 전기 요금(만 원)이에요. 한 집(12.4)이 유난히 많이 써요.
+
+```python
+>>> x = [3.1, 4.7, 2.2, 8.9, 5.0, 3.8, 12.4, 4.1, 6.3, 2.9, 5.6, 7.2]
+```
+
+평균은 5.52예요. 이 평균이 동네 전체의 평균과 얼마나 다를 수 있을까요? 모집단에서 12가구를 또 뽑을 수는 없지만, **가진 표본을 모집단 대신 쓸 수는 있어요**. 12개에서 복원 추출로 12개를 뽑으면(같은 집이 두 번 뽑히기도 해요) "다시 뽑은 표본" 하나가 돼요. 이것을 수천 번 하고 평균을 계산하면, 평균이 표본마다 얼마나 흔들리는지 보여 주는 **붓스트랩 분포**를 얻어요.
+
+<Fig caption="2000번 복원 추출한 표본 평균의 분포(계단 막대), 관측한 평균 5.52(점선 가운데), BCa 95% 구간의 두 끝 4.31과 7.60(점선 양쪽). 큰 값 하나 때문에 분포가 오른쪽으로 꼬리를 끌어서, 구간도 평균의 오른쪽으로 더 길어요.">
+  <Plot
+    curves={[
+      { points: bootHist, label: '붓스트랩 평균' },
+      { points: obsMean, label: '관측 평균', dashed: true },
+      { points: bcaEnds, label: 'BCa 95% 구간', dashed: true },
+    ]}
+    domain={[3, 9.5]}
+    range={[0, 290]}
+    xTicks={[{ v: 3, label: '3' }, { v: 4, label: '4' }, { v: 5, label: '5' }, { v: 6, label: '6' }, { v: 7, label: '7' }, { v: 8, label: '8' }, { v: 9, label: '9' }]}
+    yTicks={[{ v: 100, label: '100' }, { v: 200, label: '200' }]}
+  />
+</Fig>
+
+이 분포의 표준편차가 평균의 **표준오차**이고, 분포의 가운데 95%쯤이 신뢰구간이에요. 평균에는 t 구간 같은 공식이 있지만, 중앙값이나 절사 평균, 두 분위수의 비처럼 공식이 없는 통계량에도 같은 방법을 쓸 수 있어요.
+
+<Reference />
+
+## 기본 사용
+
+통계량은 표본을 받아 수를 돌려주는 함수예요. `axis`를 받게 만들면 많은 재표본을 한 번에 계산해요. 무작위로 뽑으므로 `rng`가 꼭 필요해요.
+
+```python
+>>> def mean(a, axis):
+...     return sd.mean(a, axis=axis)
+>>> r = sd.htest.bootstrap((x,), mean, n_resamples=2000, rng=sd.random.default_rng(42))
+>>> r
+BootstrapResult(bootstrap_distribution=<array of shape (2000,)>, standard_error=0.799729)
+>>> r.conf_int()
+array([4.3083873453182795,  7.601199040810908], dtype=float64)
+```
+
+평균의 표준오차는 0.80이고, BCa 95% 구간은 [4.31, 7.60]이에요. 구간은 결과가 들고 있는 붓스트랩 분포에서 만들어요. 그래서 다른 수준의 구간은 다시 뽑지 않고 바로 나와요.
+
+```python
+>>> r.conf_int(alpha=0.1)
+array([ 4.456710088214021, 7.2749999999999995], dtype=float64)
+>>> print(r.summary())
+                               Bootstrap (BCa)
+==============================================================================
+Standard error:                 0.7997  Alternative:                 two-sided
+                                        No. Observations:                   12
+                                        Resamples:                        2000
+==============================================================================
+               [0.025     0.975]
+------------------------------------------------------------------------------
+statistic       4.308      7.601
+==============================================================================
+```
+
+표본 하나도 `(x,)`처럼 튜플로 줘요. `data`는 언제나 표본의 묶음이에요.
+
+## 구간을 만드는 방법
+
+| method | 구간 | 성질 |
+|---|---|---|
+| `'percentile'` | 붓스트랩 분포의 alpha/2와 1 − alpha/2 분위수 | 가장 단순해요 |
+| `'basic'` | 관측 θ̂에 대해 percentile 구간을 뒤집은 [2θ̂ − 위, 2θ̂ − 아래] | 붓스트랩 분포의 치우침을 반대로 보정해요 |
+| `'BCa'`(기본값) | 치우침(z₀)과 가속(a)으로 고친 분위수 | 대개 가장 정확해요. 가속을 잭나이프로 구하느라 관측 하나씩을 뺀 n개의 표본에서도 통계량을 계산해요 |
+
+```python
+>>> for m in ['percentile', 'basic', 'BCa']:
+...     rm = sd.htest.bootstrap((x,), mean, n_resamples=2000, method=m, rng=sd.random.default_rng(42))
+...     print(f"{m:10s}", [round(v, 3) for v in rm.conf_int().tolist()])
+percentile [4.1, 7.25]
+basic      [3.783, 6.934]
+BCa        [4.308, 7.601]
+```
+
+같은 시드라서 세 방법이 같은 붓스트랩 분포를 써요. BCa는 두 가지를 고쳐요. 붓스트랩 분포의 가운데가 관측과 어긋난 정도(z₀: 관측보다 작은 재표본의 몫을 정규분포의 분위수로 바꾼 값, 같은 값은 반만 세요)와, 통계량의 표준오차가 참값에 따라 변하는 정도(가속 a: 하나씩 빼고 계산한 잭나이프 값의 치우침)예요. 이 자료처럼 분포가 치우친 경우에 차이가 커요. 분위수는 numpy의 `'linear'` 방법(가까운 두 값 사이의 직선 보간)으로 구해요.
+
+## 한쪽 구간
+
+`alternative='greater'`는 아래 끝만 있는 구간 [아래 끝, ∞]이에요. 그 꼬리에 alpha를 다 둬요.
+
+```python
+>>> sd.htest.bootstrap((x,), mean, n_resamples=2000, alternative='greater', rng=sd.random.default_rng(42)).conf_int()
+array([4.456710088214021,               inf], dtype=float64)
+```
+
+## 여러 표본과 짝
+
+통계량이 표본 여럿을 받으면 표본마다 따로 복원 추출해요. 두 집단의 평균 차의 구간이에요.
+
+```python
+>>> a = [1.2, 2.3, 2.9, 4.1, 5.0, 6.2, 6.8, 8.0]
+>>> b = [2.0, 1.9, 3.5, 3.9, 5.8, 5.5, 7.4, 7.7]
+>>> def mean_diff(p, q, axis):
+...     return sd.mean(p, axis=axis) - sd.mean(q, axis=axis)
+>>> sd.htest.bootstrap((a, b), mean_diff, n_resamples=2000, rng=sd.random.default_rng(1)).conf_int()
+array([           -2.2375, 2.0874999999999995], dtype=float64)
+```
+
+상관계수처럼 두 값이 한 관측의 짝이면 `paired=True`로 관측 번호를 함께 뽑아요. 그래야 짝이 깨지지 않아요.
+
+```python
+>>> def corr(p, q, axis):
+...     return sd.htest.pearsonr(p, q, axis=axis).statistic
+>>> rc = sd.htest.bootstrap((a, b), corr, paired=True, n_resamples=2000, rng=sd.random.default_rng(1))
+>>> rc.conf_int()
+array([0.8849481091023371, 0.9886268470681132], dtype=float64)
+```
+
+[pearsonr](/api/htest/pearsonr/)의 `conf_int(method=BootstrapMethod(...))`가 같은 계산을 해요.
+
+```python
+>>> bm = sd.htest.BootstrapMethod(n_resamples=2000, rng=sd.random.default_rng(1))
+>>> sd.htest.pearsonr(a, b).conf_int(method=bm)
+array([0.8849481091023371, 0.9886268470681132], dtype=float64)
+```
+
+## 통계량 함수와 배치
+
+통계량은 표본마다 배열 하나를 받아요. 벡터화한 함수는 재표본을 (B, n) 배열로 받아 `axis=-1`을 따라 계산하고 (B,)를 돌려줘요. `axis`가 없는 함수는 1차원 표본마다 불러요. BCa는 관측 하나씩을 뺀 n개의 표본에 대해서도 통계량을 불러요.
+
+```python
+>>> def median_1d(a):
+...     return float(sd.median(a))
+>>> sd.htest.bootstrap((x,), median_1d, n_resamples=2000, rng=sd.random.default_rng(42)).conf_int()
+array([3.45, 6.75], dtype=float64)
+```
+
+`axis`를 주면 그 축을 따라 표본을 읽고 나머지 축이 배치예요. `bootstrap_distribution`은 (배치 모양, n_resamples), `conf_int()`는 (배치 모양, 2)예요.
+
+```python
+>>> X = sd.asarray([x, [v * 2 for v in x]])
+>>> rb = sd.htest.bootstrap((X,), mean, axis=1, n_resamples=500, rng=sd.random.default_rng(42))
+>>> rb.bootstrap_distribution.shape, rb.standard_error
+((2, 500), array([0.8040977376047141, 1.6081954752094283], dtype=float64))
+```
+
+같은 `rng` 상태면 `batch`에 상관없이 같은 비트예요. 지금은 스레드 수와도 상관없이 같아요(약속은 아니에요).
+
+## 퇴화한 입력
+
+통계량이 상수이면 BCa의 가속을 정할 수 없어 구간이 NaN이에요. 경고는 없어요.
+
+```python
+>>> rk = sd.htest.bootstrap(([2., 2, 2, 2],), mean, n_resamples=100, rng=sd.random.default_rng(1))
+>>> rk.conf_int(), rk.standard_error
+(array([nan, nan], dtype=float64), 0.0)
+```
+
+```python
+>>> sd.htest.bootstrap((x,), mean, n_resamples=100)
+Traceback (most recent call last):
+    ...
+TypeError: bootstrap(): missing 1 required keyword-only argument: 'rng'
+>>> sd.htest.bootstrap([1., 2, 3, 4], mean, n_resamples=100, rng=sd.random.default_rng(1))
+Traceback (most recent call last):
+    ...
+TypeError: bootstrap(): 'data' must be a sequence of samples (one sample is given as (x,)), not a sequence of numbers
+>>> sd.htest.bootstrap((x,), mean, n_resamples=100, rng=sd.random.default_rng(1), method='bca')
+Traceback (most recent call last):
+    ...
+ValueError: bootstrap(): 'method' must be 'percentile', 'basic' or 'BCa', not 'bca'
+```
+
+## 붓스트랩의 한계
+
+- 표본이 아주 작으면 표본이 모집단을 잘 대신하지 못해 구간이 너무 좁아지기 쉬워요.
+- 최댓값·최솟값처럼 표본의 극단에 기대는 통계량은 붓스트랩이 잘 맞지 않아요.
+- 붓스트랩 구간은 근사예요. 무작위 재표본이라 시드마다 끝이 조금씩 달라요. `n_resamples`를 늘리면 흔들림이 줄어요.
+
+## 정확도
+
+붓스트랩 구간에는 참값이 없어요. 같은 `rng` 상태면 `batch`에 상관없이 비트까지 같고(지금은 스레드 수와도 상관없어요), BCa 90% 구간의 포함률이 이항 한계 안에 드는지를 고정한 시드로 200번 시험해요.
+
+## scipy를 아는 분께
+
+- `rng`가 꼭 필요해요(`random_state`는 없어요). `axis`의 기본값은 None이에요.
+- 구간은 결과의 `confidence_interval` 필드가 아니라 메서드 `conf_int(alpha=0.05)`이고 (…, 2) 배열이에요. `confidence_level` 인자가 없고, 한 번 뽑은 분포에서 수준마다 구간을 만들어요. 그래서 `bootstrap_result`로 이어 뽑는 기능은 없어요.
+- BCa의 식, 분위수의 보간은 scipy의 것과 같아요. 퇴화한 BCa는 경고 대신 NaN이에요.

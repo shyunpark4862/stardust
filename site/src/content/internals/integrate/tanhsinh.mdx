@@ -1,0 +1,357 @@
+---
+title: tanh-sinh 구적
+group: tanh-sinh와 급수
+order: 1
+summary: tanhsinh가 이중 지수 변환으로 끝점 특이점을 견디는 원리, 수준마다 간격을 반으로 줄이는 점의 표, 원소마다 따로 수준을 올리는 배치 고리, 수준 사이의 차로 만드는 오차 어림, 그리고 log로 적분하는 길을 설명해요. 원소 하나만 보면 지금 scipy와 같은 점에서 함수를 불러요.
+seeAlso: [overview, nsum, accuracy-performance]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+import Steps from '../../../components/fig/Steps.astro';
+
+## 한눈에 보기
+
+[`tanhsinh`](/api/integrate/tanhsinh/)은 원소마다 따로 적분하는 배치 구적이에요. `a`, `b`와 `args`를 브로드캐스트한 배치의 원소 하나하나가 자기 적분이고, 반복마다 아직 끝나지 않은 원소의 점을 모두 모아 사용자 함수를 한 번 불러요. 방법은 Takahasi와 Mori(1974)의 tanh-sinh 규칙이고, 걸음은 scipy 1.18.1의 `_tanhsinh.py`(Bailey, Jeyabalan, Li 2005의 알고리즘에 Vanherck, Sorée, Magnus 2020과 van Engelen의 부동소수점 처리를 더한 것)를 원소 하나 안에서 그대로 따라가요.
+
+| 층 | 파일 | 하는 일 |
+|---|---|---|
+| Python | `src/stardust/integrate/_tanhsinh.py` | 인자 검사, 허용오차의 기본값, 결과 만들기 |
+| C++ | `csrc/integrate/tanhsinh.cpp` | 점의 표, 끝의 변환, 합과 오차 어림, `nsum` |
+| C++ | `csrc/integrate/numpy_ops.hpp` | numpy의 pairwise 합(멈춤 판정이 이 합에 달려 있어요) |
+| C++ | `csrc/elementwise/loop.hpp` | 원소별 반복 무리가 함께 쓰는 고리(호출, 진행 중인 원소, 스레드) |
+
+고리의 틀은 `sd.optimize`의 배치 함수와 같은 것이에요([배치 스칼라](/internals/optimize/batched/)). 차이는 원소마다 점이 하나가 아니라 수십에서 수천 개라는 것이에요. 영역 전체의 짜임은 [영역의 구조](/internals/integrate/overview/)에 있어요.
+
+## 이중 지수 변환
+
+구간 [−1, 1]의 적분을 변수 $t$로 바꿔요.
+
+$$
+x = \tanh\!\Bigl(\frac{\pi}{2}\sinh t\Bigr), \qquad
+\frac{dx}{dt} = \frac{\frac{\pi}{2}\cosh t}{\cosh^2\!\bigl(\frac{\pi}{2}\sinh t\bigr)}
+$$
+
+그러면 $\int_{-1}^{1} f(x)\,dx = \int_{-\infty}^{\infty} f(x(t))\,x'(t)\,dt$이고, 이것을 간격 $h$의 사다리꼴로 계산해요.
+
+$$
+\int_{-1}^{1} f(x)\,dx \;\approx\; h \sum_{j=-\infty}^{\infty} w_j\, f(x_j), \qquad x_j = x(jh),\ w_j = x'(jh)
+$$
+
+$t$가 커지면 $x'(t)$는 $\exp(-\tfrac{\pi}{2}e^{|t|})$처럼, 곧 지수의 지수로 줄어요. 그래서 두 가지가 함께 일어나요.
+
+- 무한 구간의 사다리꼴은 피적분 함수가 해석적이고 양 끝에서 충분히 빨리 줄면 $h$가 줄 때 오차가 대략 $\exp(-c/h)$로 줄어요. $h$를 반으로 줄이면 맞는 자릿수가 대략 두 배가 돼요. 아래의 오차 어림이 이 성질을 써요.
+- 끝점에서 $f$가 $(1 - x)^{-\alpha}$($\alpha < 1$)처럼 커져도 가중치가 그보다 훨씬 빨리 작아져서 곱 $w_j f(x_j)$는 여전히 빨리 줄어요. 끝점 특이점이 있어도 같은 속도로 수렴하는 까닭이에요.
+
+<Fig caption="변환 x(t)와 가중치 w(t) = x′(t). t = 3에서 이미 1 − x ≈ 4 × 10⁻¹⁴이고 가중치는 10⁻¹²쯤이에요. 점은 양 끝으로 몰리고 가중치는 지수의 지수로 줄어요.">
+  <Plot
+    curves={[
+      { f: (t) => Math.tanh((Math.PI / 2) * Math.sinh(t)), label: 'x(t)' },
+      { f: (t) => ((Math.PI / 2) * Math.cosh(t)) / Math.cosh((Math.PI / 2) * Math.sinh(t)) ** 2, label: 'w(t)', dashed: true },
+    ]}
+    domain={[-3, 3]}
+    range={[-1.1, 1.7]}
+    xTicks={[{ v: -3, label: '−3' }, { v: -2, label: '−2' }, { v: -1, label: '−1' }, { v: 0, label: '0' }, { v: 1, label: '1' }, { v: 2, label: '2' }, { v: 3, label: '3' }]}
+    yTicks={[{ v: -1, label: '−1' }, { v: 0, label: '0' }, { v: 1, label: '1' }, { v: 1.5708, label: 'π/2' }]}
+  />
+</Fig>
+
+## 점과 가중치의 표
+
+### 기본 간격
+
+합은 무한하지만 double에서는 어디선가 끝나요. 표에는 $x_j$ 대신 끝까지의 거리 $1 - x_j$를 두는데, 합이 끝나는 곳은 이 거리가 정규수의 바닥 아래로 내려가는 곳이에요. 가중치는 그보다 늦게 아래넘침해요.
+
+$$
+1 - x_j = \frac{1}{e^{u_2}\cosh u_2}, \qquad u_1 = \frac{\pi}{2}\cosh(jh),\ u_2 = \frac{\pi}{2}\sinh(jh), \qquad w_j = \frac{u_1}{\cosh^2 u_2}
+$$
+
+$1 - x_j$가 정규수의 바닥(여유를 두어 $4 \times$ tiny)에 닿는 $t_{\max}$는 $1/(e^{u}\cosh u) = 2/(e^{2u} + 1)$에서 풀려요.
+
+$$
+t_{\max} = \operatorname{asinh}\!\Bigl(\frac{\log(2/f_{\min} - 1)}{\pi}\Bigr), \qquad h_0 = \frac{t_{\max}}{8}
+$$
+
+수준 $k$의 간격은 $h_0/2^k$이고 점은 $j = 0, \dots, 8 \cdot 2^k$예요. 수준 0은 $j = 0, \dots, 8$의 아홉 개, 수준 $k \ge 1$은 그 수준에만 있는 홀수 $j$의 $4 \cdot 2^k$개예요. 짝수 $j$는 앞 수준의 점이라 다시 부르지 않아요. 점 하나는 구간의 양쪽에 쓰이니 수준 0은 18점, 수준 $k$는 $8 \cdot 2^k$점이에요. $x = 0$($j = 0$)은 양쪽에서 한 번씩 부르는 대신 가중치를 반으로 둬요.
+
+```python
+>>> import math
+>>> fmin = 4 * 2.2250738585072014e-308
+>>> tmax = math.asinh(math.log(2 / fmin - 1) / math.pi)
+>>> tmax / 8, tmax / 8 / 2**10
+(0.7638058898430271, 0.0007459041892998312)
+```
+
+수준 10의 간격은 $7.5 \times 10^{-4}$예요. 매끄러운 피적분 함수는 이보다 훨씬 앞에서 double의 정확도에 닿아요.
+
+### 계산
+
+표는 처음 쓰는 수준까지 한 번 만들어 두고 다시 만들지 않아요. 여러 스레드가 동시에 부를 수 있으니 수준마다 잠금 안에서 만들고, 다 만든 수준의 번호를 원자 변수에 적어 둬요.
+
+```cpp
+    // csrc/integrate/tanhsinh.cpp
+    void compute(int k) {
+        const double h = h0 / std::ldexp(1.0, k);  // scipy's h0 / 2**k
+        const std::size_t top = std::size_t{8} << k;
+        const double pi_2 = M_PI / 2;
+        vec& X = xjc[static_cast<std::size_t>(k)];
+        vec& W = wj[static_cast<std::size_t>(k)];
+        for (std::size_t j = k == 0 ? 0 : 1; j <= top; j += k == 0 ? 1 : 2) {
+            const double jh = static_cast<double>(j) * h;
+            const double u1 = pi_2 * std::cosh(jh), u2 = pi_2 * std::sinh(jh);
+            const double c = std::cosh(u2);
+            W.push_back(u1 / (c * c));
+            X.push_back(1 / (std::exp(u2) * std::cosh(u2)));
+        }
+        if (k == 0) W[0] = W[0] / 2;  // x = 0 is evaluated twice, each with half its weight
+    }
+```
+
+식은 scipy의 `_compute_pair`이고, 함수는 시스템 libm의 `cosh`·`sinh`·`exp`, 제곱은 곱 `c * c`예요. scipy는 같은 식을 numpy로 계산하는데, numpy의 이 함수들이 이 점들에서 macOS libm과 같은 값을 내고 numpy의 `**2`도 곱이에요. 그래서 수준 0–10의 8,193쌍(16,386값)이 지금은 scipy의 표와 비트까지 같아요(약속은 아니에요). sd 자신의 원소별 `exp`·`cosh`·`sinh`는 구현이 달라 이 점의 약 3분의 1에서 libm과 끝자리가 달라 여기서는 쓰지 않아요.
+
+이 표가 정확한 것은 아니에요. 같은 식을 같은 double $jh$에서 정확히 계산한 값과 견주면 최대 980 ULP, 평균 47 ULP 차이가 나요. $u_2$의 반올림 오차가 $e^{u_2}$를 지나며 $u_2$배로 커지기 때문이고, 가장 큰 차이는 $u_2$가 큰 꼬리의 가중치에 있어요. 꼬리의 가중치는 작아서 적분값에는 거의 영향이 없으므로, 정확한 표 대신 scipy와 같은 표를 써서 호출점을 맞춰요.
+
+## 끝의 변환
+
+표는 [−1, 1]의 것이에요. 원소마다 처음에 끝을 정리해요.
+
+| 끝 | 처리 | 부르는 점 | 곱하는 야코비안 |
+|---|---|---|---|
+| $a = b$ | 0 (첫 호출 뒤에 멈춰요) | | |
+| $b < a$ | 끝을 바꾸고 끝에서 부호를 바꿔요 | | |
+| $(-\infty, \infty)$ | $[-1, 1]$의 $t$ | $x = t/(1 - t^2)$ | $(1 + t^2)/(1 - t^2)^2$ |
+| $[a, \infty)$ | $[0, 1]$의 $t$ | $x = 1/t - 1 + a$ | $t^{-2}$ |
+| $(-\infty, b]$ | $x \to -x$로 $[-b, \infty)$ | $x = -(1/t - 1 - b)$ | $t^{-2}$ |
+
+유한한 구간 [a, b]의 점은 오른쪽 반이 $b - \alpha(1 - x_j)$, 왼쪽 반이 $a + \alpha(1 - x_j)$($\alpha = (b - a)/2$)예요. 끝까지의 거리를 표에 둔 덕분에 끝 바로 옆의 점이 $1 + x_j$를 반올림한 것보다 훨씬 정확해요.
+
+```cpp
+        // csrc/integrate/tanhsinh.cpp
+        auto abscissa = [&](const E& e, std::size_t q) {
+            return q < np ? -e.alpha * X[q] + e.b : e.alpha * X[q - np] + e.a;
+        };
+        ev.start(k, p);
+        for_weighted(k, p, [&](std::size_t r0, std::size_t r1) {
+            for (std::size_t r = r0; r < r1; ++r) {
+                const E& e = el[static_cast<std::size_t>(P.active[r])];
+                for (std::size_t q = 0; q < p; ++q) {
+                    double x = abscissa(e, q);
+                    if (e.kind & kAbInf) x = x / (1 - x * x);
+                    if (e.kind & kBInf) x = 1 / x - 1 + e.a0;
+                    if (e.kind & kAInf) x = x * -1;
+                    ev.put(r, q, x);
+                }
+            }
+        });
+```
+
+$\alpha(1 - x_j)$가 반올림으로 0이 되면 점이 끝 자체에 떨어져요. 그 점은 가중치를 0으로 두고 값은 버려요. 그래도 사용자 함수는 그 점에서 불려요. $[0, \infty)$의 변환에서는 $t = 1$이 $x = 0$이 되어 끝점을 실제로 불러요.
+
+```python
+>>> seen = []
+>>> def f(x):
+...     seen.append(float(sd.min(x)))
+...     return sd.exp(-x)
+>>> sd.integrate.tanhsinh(f, 0.0, math.inf)
+IntegrateResult(integral=1, error=4.61037e-15, converged=True, nfev=259)
+>>> seen
+[1.0, 0.0, 0.0, 0.0]
+```
+
+첫 호출은 $a + 1 = 1$이에요(아래). 그래서 특이점이 있는 피적분 함수는 예외를 내지 말고 inf나 NaN을 돌려줘야 해요. 그 값은 아래의 규칙으로 버려져요.
+
+## 원소마다 수준 올리기
+
+### 호출의 차례
+
+<Fig column caption="tanhsinh의 호출. 첫 두 호출은 모든 원소가 함께이고, 그다음부터 수준마다 아직 끝나지 않은 원소만 불러요.">
+  <Steps steps={[
+    { label: 'f(c) (k,)', note: '원소마다 구간의 가운데 c 하나. 무한한 끝은 b − 1이나 a + 1, 양쪽 무한은 0. 값이 NaN이면 status −3', where: '첫 호출' },
+    { label: 'f(x) (k, 66)', note: '수준 0–2(min_level)의 점을 한 번에. 수준 0과 1의 합도 이 값들로 계산해요', where: '반복 1' },
+    { label: 'f(x) (k′, 64)', note: '수준 3의 홀수 j만. S₃ = S₂/2 + h₃·Σ(새 항)', where: '반복 2' },
+    { label: 'f(x) (k″, 128), …', note: '수준 4, 5, …, max_level(기본 10)', where: '반복 3…' },
+  ]} />
+</Fig>
+
+첫 호출은 scipy 고리의 시작(`eim._initialize`)에 해당해요. 적분에는 쓰지 않지만 값이 NaN인 원소를 일찍 멈추고, 호출 수가 scipy와 같아요. 두 번째 호출에는 수준 0에서 `min_level`(기본 2)까지의 점을 모두 넣어요. 수준을 하나씩 올리며 부르는 대신 처음 몇 수준을 한 번에 불러 Python 호출 수를 줄이는 것이고, 오차 어림에 필요한 앞 두 수준의 합도 이 한 번의 값으로 계산해요. 멈춤 판정은 이 호출이 끝난 뒤에 처음 하므로, 수준 `min_level`보다 일찍 수렴할 함수도 그 수준까지의 점을 모두 계산해요. 그래서 `min_level`을 키우면 호출 수는 줄어도 `nfev`와 결과의 `max_level`은 커질 수 있어요(scipy의 `minlevel`과 같아요).
+
+### 원소마다 다른 수준에서 멈춰요
+
+원소는 각자 오차 어림이 허용오차 아래로 내려가면 멈춰요. 아래는 $\int_0^1 x^p\,dx$를 네 $p$에서 한 번에 계산한 것이에요. 끝점 특이점이 있는 셋($p = 0.5, -0.5, -0.9$)은 수준 2에서 멈추고, 매끄러운 $x^2$은 수준 3까지 가요.
+
+```python
+>>> shapes = []
+>>> def g(x, p):
+...     shapes.append(tuple(x.shape))
+...     return x**p
+>>> r = sd.integrate.tanhsinh(g, 0.0, 1.0, args=(sd.asarray([2.0, 0.5, -0.5, -0.9]),))
+>>> shapes
+[(4,), (4, 66), (1, 64)]
+>>> r.max_level.tolist(), r.nfev.tolist()
+([3, 2, 2, 2], [131, 67, 67, 67])
+>>> r.integral.tolist()
+[0.33333333333333337, 0.6666666666666666, 1.9999999999999998, 10.000000000000004]
+```
+
+$x^{-0.9}$의 적분 10도 67점으로 끝자리 근처까지 맞혀요. 이중 지수 변환이 끝점 특이점을 견디는 모습이에요. `nfev`는 원소마다 멈출 때까지 계산한 점의 수(첫 호출 1 + 66 + 64 + …)예요.
+
+원소의 상태(끝, 변환의 종류, 앞 두 수준의 합, 가장 바깥의 유효한 점)는 구조체 하나에 모아 두고, 수준마다 진행 중인 원소의 목록만 줄여요. 원소를 지나가는 패스(점 쓰기, 갱신과 판정)는 일(진행 중인 원소 수 × 원소마다의 점 수)이 $2^{15}$점 이상이면 $2^{13}$점쯤의 조각으로 나눠 스레드에서 돌리고 GIL을 놓아요(`for_weighted`, `advance_weighted`). 원소마다의 산술은 어느 스레드에서 하든 같고 남은 원소의 차례도 그대로라, 지금은 결과가 스레드 수와 상관없이 비트까지 같아요(약속은 아니에요).
+
+## 합과 유한하지 않은 값
+
+### 가장 바깥의 유효한 점
+
+수준마다 원소의 값을 받으면 먼저 야코비안을 곱하고, 양쪽 반에서 값이 유한하고 가중치가 0이 아닌 점 가운데 가장 바깥의 것을 찾아요. 앞 수준까지의 것보다 더 바깥이면 그 점의 $x$, $f$, $w$를 기억해요. 이 점은 두 곳에 쓰여요.
+
+- 유한하지 않은 값(특이점 바로 옆에서 넘친 값)과 가중치가 0인 점의 값은 같은 쪽의 가장 바깥 유효한 점의 값으로 바꿔요. 0으로 두는 방법도 있지만 van Engelen이 권하는 이쪽을 따라요.
+- 그 두 점의 항 $|f w|$ 가운데 큰 것이 오차 어림의 $d_4$예요. 합을 잘라 버린 꼬리의 크기를 대신해요.
+
+```cpp
+            // csrc/integrate/tanhsinh.cpp
+            // a non-finite value (or a zero weight) takes the nearest finite point's value
+            // ([3] p. 22), then the terms f_j w_j
+            for (std::size_t q = 0; q < p; ++q) {
+                double f = fw[q];
+                if (!(std::isfinite(f) && wv[q] != 0)) f = q < np ? e.fr0 : e.fl0;
+                fw[q] = lg ? f + std::log(wv[q]) : f * wv[q];
+            }
+            // the Euler-Maclaurin sum
+            double Sn;
+            if (lg) {
+                const double lh = std::log(h);
+                for (std::size_t q = 0; q < p; ++q) tmp[q] = fw[q] + lh;
+                Sn = logsumexp(tmp.data(), p, wv.data());
+            } else {
+                Sn = np_sum(fw.data(), p) * h;
+            }
+            if (!first) Sn = lg ? logsumexp2(e.S1 - log2, Sn) : e.S1 / 2 + Sn;
+```
+
+### 수준의 합
+
+수준 $n$의 합 $S_n = h_n \sum_j w_j f_j$는 앞 수준의 합에서 이어져요. 간격이 반이 되면 앞 수준의 모든 점은 그대로이고 가중치에 곱하는 $h$만 반이 되니 $S_n = S_{n-1}/2 + h_n \sum_{\text{새 점}} w_j f_j$예요. 합의 이름(Euler–Maclaurin 합)은 사다리꼴이 Euler–Maclaurin 공식의 첫 항이라는 데서 와요.
+
+한 수준의 항을 더하는 $\Sigma$는 sd의 합(누산기 16개)이 아니라 numpy의 pairwise 합(누산기 8개, 128개 단위, 리덕션의 항등원 0에서 시작)을 그대로 써요. 이 합이 멈춤 판정을 정하므로, 다른 순서로 더하면 판정의 경계에서 수준이 하나 달라지고 그다음 호출이 갈라지기 때문이에요. 줄의 길이는 수준 10에서도 16,384 이하라 비용은 작아요.
+
+```cpp
+// csrc/integrate/numpy_ops.hpp
+// DOUBLE_pairwise_sum over n doubles
+inline double pairwise(const double* a, std::size_t n) {
+    if (n < 8) {
+        double res = 0.;
+        for (std::size_t i = 0; i < n; ++i) res += a[i];
+        return res;
+    }
+    if (n <= 128) {
+        double r[8];
+        for (int j = 0; j < 8; ++j) r[j] = a[j];
+        std::size_t i = 8;
+        for (; i < n - n % 8; i += 8)
+            for (int j = 0; j < 8; ++j) r[j] += a[i + static_cast<std::size_t>(j)];
+        double res = ((r[0] + r[1]) + (r[2] + r[3])) + ((r[4] + r[5]) + (r[6] + r[7]));
+        for (; i < n; ++i) res += a[i];
+        return res;
+    }
+    std::size_t n2 = n / 2;
+    n2 -= n2 % 8;
+    return pairwise(a, n2) + pairwise(a + n2, n - n2);
+}
+```
+
+## 오차 어림
+
+Bailey, Jeyabalan, Li(2005)의 5절을 따라 네 값을 만들어요.
+
+| 항 | 식 | 뜻 |
+|---|---|---|
+| $d_1$ | $\lvert S_n - S_{n-1}\rvert$ | 직전 수준과의 차, 곧 $S_{n-1}$의 오차 |
+| $d_2$ | $\lvert S_n - S_{n-2}\rvert$ | 두 수준 앞과의 차 |
+| $d_3$ | $\varepsilon \cdot \max_j \lvert w_j f_j\rvert$ | 가장 큰 항의 반올림 |
+| $d_4$ | 가장 바깥 유효한 항의 크기 | 잘라 버린 꼬리 |
+
+수준마다 맞는 자릿수가 두 배가 된다면 $\log e_n / \log e_{n-1} \approx \log e_{n-1}/\log e_{n-2}$이고, $\log e_{n-1} \approx \log d_1$, $\log e_{n-2} \approx \log d_2$로 두면 $e_n \approx d_1^{\log d_1/\log d_2}$예요. 오차 어림은
+
+$$
+e = \operatorname{clip}\Bigl(\max\bigl(d_1^{\log d_1/\log d_2},\ d_1^2,\ d_3,\ d_4\bigr),\ \varepsilon\lvert S_n\rvert,\ d_1\Bigr)
+$$
+
+이에요. 아래로는 $S_n$의 반올림보다 작게 말하지 않고, 위로는 직전 수준과의 차보다 크게 말하지 않아요. 멈춤은 $e < \text{atol}$ 또는 $e < \text{rtol}\cdot\lvert S_n\rvert$이고 기본은 atol = 0, rtol = $\varepsilon^{3/4} \approx 1.8 \times 10^{-12}$이에요. 앞 두 수준이 있어야 하므로 수준 2부터 어림이 있고, 그 전에 멈추면 `error`는 NaN이에요. $S_n$이 유한하지 않으면 status −3, `max_level`에 닿으면 −2예요.
+
+```cpp
+                        // csrc/integrate/tanhsinh.cpp
+                        const double d1 = std::abs(Sn - e.S1), d2 = std::abs(Sn - e.S2);
+                        double m = std::abs(fw[0]);
+                        for (std::size_t q = 1; q < p; ++q) m = npmax(m, std::abs(fw[q]));
+                        const double d3 = kEps * m, d5 = kEps * std::abs(Sn);
+                        const double t = d1 > 0 ? std::pow(d1, std::log(d1) / std::log(d2)) : 0.0;
+                        const double ds = npmax(npmax(npmax(t, d1 * d1), d3), e.d4);
+                        aerr = np_clip(ds, d5, d1);
+                        rerr = aerr / std::abs(Sn);
+```
+
+`npmax`와 `np_clip`은 numpy의 `maximum`·`clip`과 같은 NaN 규칙이에요. 수준을 하나씩 막아 두고(`max_level`, 허용오차 0) 오차 어림과 참 오차를 견주면 자릿수가 두 배씩 느는 모습과 어림의 성격이 보여요.
+
+```python
+>>> for k in range(2, 6):
+...     r = sd.integrate.tanhsinh(lambda x: 1 / (1 + x*x), 0.0, 1.0, max_level=k, min_level=0, rtol=0.0)
+...     print(k, f"{r.error:.1e}", f"{abs(r.integral - math.pi/4):.1e}")
+2 2.7e-10 4.8e-12
+3 2.3e-15 1.1e-16
+4 0.0e+00 1.1e-16
+5 0.0e+00 1.1e-16
+>>> for k in range(2, 6):
+...     r = sd.integrate.tanhsinh(lambda x: sd.exp(-x*x), -math.inf, math.inf, max_level=k, min_level=0, rtol=0.0)
+...     print(k, f"{r.error:.1e}", f"{abs(r.integral - math.sqrt(math.pi)):.1e}")
+2 1.6e-02 2.7e-03
+3 7.0e-06 3.1e-06
+4 9.5e-12 6.3e-11
+5 4.0e-16 0.0e+00
+```
+
+$1/(1 + x^2)$에서는 어림이 늘 참 오차보다 커요. 실수 전체의 $e^{-x^2}$에서는 수준 4의 어림 $9.5 \times 10^{-12}$가 참 오차 $6.3 \times 10^{-11}$보다 작아요. 자릿수가 두 배가 된다는 가정이 이 수준에서는 맞지 않은 것이에요. 오차 어림은 경험적이고 엄밀한 상계가 아니에요. 시험 모음에서 수렴한 76개 가운데 여덟이 이렇게 짧았어요([정확도와 성능](/internals/integrate/accuracy-performance/)).
+
+## log로 적분하기
+
+`log=True`면 f가 $\log f$를 돌려주고, 모든 합이 logsumexp가 돼요. 피적분 함수가 double의 범위를 벗어나도 그 log는 범위 안에 있으면 적분할 수 있어요.
+
+```python
+>>> sd.integrate.tanhsinh(lambda x: sd.exp(-1000.0 - x*x/2), -math.inf, math.inf).status
+-2
+>>> r = sd.integrate.tanhsinh(lambda x: -1000.0 - x*x/2, -math.inf, math.inf, log=True)
+>>> r.integral, -1000 + math.log(math.sqrt(2 * math.pi))
+(-999.0810614667953, -999.0810614667953)
+```
+
+$e^{-1000}$은 0으로 아래넘침해서 log 없이는 모든 값이 0이고 수렴하지 못해요.
+
+- 항 $w_j f_j$는 $\log f_j + \log w_j$, $S_n$은 $\operatorname{logsumexp}_j(\log f_j + \log w_j + \log h)$, 앞 수준과의 이음은 $\operatorname{logsumexp}(S_{n-1} - \log 2,\ \cdot)$예요. logsumexp는 scipy의 것을 단계마다 따라가요. 최댓값과 같은 항을 모두 빼고 $\log(1 + \Sigma/m) + \log m + \max$로 계산하고, 그 값이 유한하지 않으면 $\log\sum e^{a_i}$로 돌아가요.
+- $d_1 = \log\lvert S_n - S_{n-1}\rvert$은 log의 차예요. $e^{S_{n-1}}$에 $-1 = e^{i\pi}$를 곱하면 차가 합이 되므로, 허수부 $\pi$를 붙인 두 복소수의 logsumexp를 계산하고 실수부를 써요. 복소 연산은 numpy와 같은 시스템의 `cexp`·`clog`와 numpy의 복소 나눗셈·`log1p`예요.
+- 피적분 함수는 음이 아니어야 하고(값이 실수이니까요) $b < a$인 원소가 있으면 `ValueError`예요. 음의 적분의 log는 복소수라서예요.
+
+## 이 방법이 잘 맞지 않는 곳
+
+구간 안의 특이점과 꺾임은 tanh-sinh가 가정하는 해석성을 깨요. 그 점에서 구간을 나눠 원소 둘로 부르면 돼요. 끝점 특이점이 무한 구간과 함께 있을 때도 조심해야 해요. $[a, \infty)$의 변환 $x = 1/t - 1 + a$는 유한한 끝 $a$를 $t = 1$로 보내는데, double은 1 근처에서 간격이 $2^{-53}$이라 $t$가 1에 가까운 점들이 $x = a$로 뭉개져요.
+
+```python
+>>> bad = []
+>>> def h(x):
+...     v = sd.exp(-x) / sd.sqrt(x)
+...     bad.append(int(sd.sum(~sd.isfinite(v))))
+...     return v
+>>> r = sd.integrate.tanhsinh(h, 0.0, math.inf)
+>>> r.status, bad
+(-2, [0, 16, 15, 31, 62, 123, 246, 492, 985, 1969])
+>>> r = sd.integrate.tanhsinh(lambda x: sd.exp(-x) / sd.sqrt(x), sd.asarray([0.0, 1.0]), sd.asarray([1.0, math.inf]))
+>>> r.status.tolist(), f"{abs(float(sd.sum(r.integral)) - math.sqrt(math.pi)) / math.sqrt(math.pi):.1e}"
+([0, 0], '3.4e-12')
+```
+
+하나로 부르면 수준마다 $x = 0$에 떨어지는 점이 늘고, 수준 10까지 가도 수렴하지 못해요(상대 $1.2 \times 10^{-8}$). [0, 1]과 [1, ∞)로 나누면 특이점이 유한한 구간의 끝에 와서 둘 다 수렴해요.
+
+## scipy와 같은 점
+
+원소 하나의 계산은 scipy의 numpy 연산을 원소 하나에 적용한 것과 같은 순서예요. 표의 libm 함수, numpy의 pairwise 합과 `maximum`·`clip`의 NaN 규칙, logsumexp의 단계, 복소 연산까지 같아요. 그래서 지금은 scipy와 같은 점에서 f를 부르고 결과가 비트까지 같아요(약속은 아니에요).
+
+- scipy로 기록한 시험 모음의 101개 적분과 배치 셋(30·21·11원소, 매개변수는 `args`)에서 부른 점(호출 차례대로의 해시), 점의 수, 호출의 모양, 적분값, 오차 어림, `nfev`, status, `max_level`이 같아요.
+- 기록 밖의 42경우(log 일곱, `min_level`·`max_level`의 여러 값, 거꾸로·같은·NaN 끝과 무한한 끝의 조합, 가운데의 NaN, 모두 inf·NaN·0인 f, 빠른 진동, 2,000원소 배치 등)도 scipy를 그 자리에서 돌려 견주면 같아요.
+
+호출의 모양은 달라요. scipy의 첫 호출은 입력 모양 그대로(실수면 0차원)이고, sd는 늘 1차원 (k,)이에요. 빈 배치는 f를 부르지 않아요.

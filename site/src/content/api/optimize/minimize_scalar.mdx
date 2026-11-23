@@ -1,0 +1,401 @@
+---
+kind: function
+title: minimize_scalar
+names: [minimize_scalar]
+group: 스칼라
+order: 2
+signatures:
+  - "sd.optimize.minimize_scalar(fun, /, *, bracket=None, bounds=None, method=None, tol=None, options=None)"
+summary: 실수 하나의 함수가 가장 작아지는 x를 찾아요. 최솟값을 끼는 세 점을 찾아 좁혀 가는 Brent법이 기본이고, 범위를 주면 그 안에서만 찾아요. 찾는 것은 지역 최솟값이에요.
+params:
+  - name: fun
+    type: 호출 가능한 객체
+    kind: positional-only
+    desc: "최소화할 함수 fun(x). Python float 하나를 받아 실수 하나(Python·numpy의 수, 0차원 numpy 배열)를 돌려줘요."
+  - name: bracket
+    type: (xa, xb), (xa, xb, xc) 또는 None
+    kind: keyword-only
+    desc: "brent·golden이 출발할 점. 두 점이면 거기서 내리막으로 최솟값을 끼는 세 점을 찾고, 세 점이면 xa < xb < xc(또는 거꾸로)이고 fun(xb)가 양 끝보다 작아야 해요. None(기본값)이면 (0, 1)에서 찾기 시작해요. 값은 유한한 실수예요. bounded는 받지 않아요."
+  - name: bounds
+    type: (lower, upper) 또는 None
+    kind: keyword-only
+    desc: "찾을 범위. 유한한 실수 둘이고 lower ≤ upper예요. bounded만 받아요. 주면 method=None이 bounded가 돼요."
+  - name: method
+    type: str 또는 None
+    kind: keyword-only
+    desc: "'brent', 'golden', 'bounded' 가운데 하나. 소문자만 받아요. None(기본값)이면 bounds가 있을 때 'bounded', 없으면 'brent'예요."
+  - name: tol
+    type: float 또는 None
+    kind: keyword-only
+    desc: "멈춤 판정의 허용오차(0 이상). brent·golden의 options['xtol'], bounded의 options['xatol']과 같아요. 둘 다 None이 아닌 값으로 주면 ValueError예요. 옵션의 값이 None이면 기본값이에요."
+  - name: options
+    type: dict 또는 None
+    kind: keyword-only
+    desc: "brent는 'xtol'(기본 1.48e-8)과 'max_iter'(500), golden은 'xtol'(1.49e-8)과 'max_iter'(5000), bounded는 'xatol'(1e-5)과 'max_iter'(500, 함수 계산 수의 상한). 다른 키는 ValueError예요."
+returns:
+  type: OptimizeResult
+  desc: "최소점 x, 그 점의 값 fun, 수렴 정보(converged, status, message, n_iter, nfev, method)가 든 결과 객체예요."
+raises:
+  - type: TypeError
+    desc: fun이 호출 가능하지 않을 때, bracket·bounds가 시퀀스가 아니거나 그 값이 실수가 아닐 때, tol이나 옵션의 값이 수가 아닐 때, max_iter가 정수가 아닐 때, options가 dict가 아닐 때, fun이 실수가 아닌 값(문자열, None, complex, bool)을 돌려줄 때. fun 안에서 난 에러도 그대로 나와요.
+  - type: ValueError
+    desc: method 이름이 틀렸거나 대문자가 섞였을 때, brent·golden에 bounds를 줬거나 bounded에 bracket을 줬을 때, bounded인데 bounds가 없을 때, bracket이 두 점이나 세 점이 아닐 때, bounds가 쌍이 아닐 때, 값이 유한하지 않을 때, lower > upper일 때, 세 점의 bracket이 xa < xb < xc가 아니거나 fun(xb)가 양 끝보다 작지 않을 때, tol과 같은 옵션을 함께 줬을 때, 모르는 옵션이 있을 때, 허용오차가 음수이거나 max_iter가 음수일 때, fun이 실수 하나가 아닌 값(길이 있는 배열)을 돌려줄 때.
+seeAlso: [basics, results, root_scalar, find_minimum, minimize]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+export const quartic = [[-2.3,4.5241],[-2.25,3.1289],[-2.2,1.8656],[-2.15,0.7275],[-2.1,-0.2919],[-2.05,-1.199],[-2.0,-2.0],[-1.95,-2.701],[-1.9,-3.3079],[-1.85,-3.8265],[-1.8,-4.2624],[-1.75,-4.6211],[-1.7,-4.9079],[-1.65,-5.128],[-1.6,-5.2864],[-1.55,-5.388],[-1.5,-5.4375],[-1.45,-5.4395],[-1.4,-5.3984],[-1.35,-5.3185],[-1.3,-5.2039],[-1.25,-5.0586],[-1.2,-4.8864],[-1.15,-4.691],[-1.1,-4.4759],[-1.05,-4.2445],[-1.0,-4.0],[-0.95,-3.7455],[-0.9,-3.4839],[-0.85,-3.218],[-0.8,-2.9504],[-0.75,-2.6836],[-0.7,-2.4199],[-0.65,-2.1615],[-0.6,-1.9104],[-0.55,-1.6685],[-0.5,-1.4375],[-0.45,-1.219],[-0.4,-1.0144],[-0.35,-0.825],[-0.3,-0.6519],[-0.25,-0.4961],[-0.2,-0.3584],[-0.15,-0.2395],[-0.1,-0.1399],[-0.05,-0.06],[0.0,0.0],[0.05,0.04],[0.1,0.0601],[0.15,0.0605],[0.2,0.0416],[0.25,0.0039],[0.3,-0.0519],[0.35,-0.125],[0.4,-0.2144],[0.45,-0.319],[0.5,-0.4375],[0.55,-0.5685],[0.6,-0.7104],[0.65,-0.8615],[0.7,-1.0199],[0.75,-1.1836],[0.8,-1.3504],[0.85,-1.518],[0.9,-1.6839],[0.95,-1.8455],[1.0,-2.0],[1.05,-2.1445],[1.1,-2.2759],[1.15,-2.391],[1.2,-2.4864],[1.25,-2.5586],[1.3,-2.6039],[1.35,-2.6185],[1.4,-2.5984],[1.45,-2.5395],[1.5,-2.4375],[1.55,-2.288],[1.6,-2.0864],[1.65,-1.828],[1.7,-1.5079],[1.75,-1.1211],[1.8,-0.6624],[1.85,-0.1265],[1.9,0.4921],[1.95,1.199],[2.0,2.0],[2.05,2.901],[2.1,3.9081],[2.15,5.0275],[2.2,6.2656]];
+export const quartDots = [{"x":0.0,"y":0.0,"r":3,"color":"var(--blue-600)"},{"x":1.0,"y":-2.0,"r":3,"color":"var(--blue-600)"},{"x":1.618,"y":-2.0,"r":3,"color":"var(--blue-600)"},{"x":2.0,"y":2.0,"r":3,"color":"var(--blue-600)"},{"x":1.309,"y":-2.6089,"r":3,"color":"var(--blue-600)"},{"x":1.3403,"y":-2.6182,"r":3,"color":"var(--blue-600)"},{"x":1.4464,"y":-2.5452,"r":3,"color":"var(--blue-600)"},{"x":1.3478,"y":-2.6186,"r":3,"color":"var(--blue-600)"},{"x":1.3471,"y":-2.6186,"r":3,"color":"var(--blue-600)"},{"x":-1.0,"y":-4.0,"r":3,"color":"var(--slate-500)"},{"x":0.0,"y":0.0,"r":3,"color":"var(--slate-500)"},{"x":-1.618,"y":-5.2361,"r":3,"color":"var(--slate-500)"},{"x":-2.0,"y":-2.0,"r":3,"color":"var(--slate-500)"},{"x":-1.4045,"y":-5.4038,"r":3,"color":"var(--slate-500)"},{"x":-1.4542,"y":-5.4411,"r":3,"color":"var(--slate-500)"},{"x":-1.4694,"y":-5.4441,"r":3,"color":"var(--slate-500)"},{"x":-1.4735,"y":-5.4442,"r":3,"color":"var(--slate-500)"},{"x":-1.473,"y":-5.4442,"r":3,"color":"var(--slate-500)"}];
+export const conv_brent = [[1,0.207],[2,-0.215],[3,0.143],[4,-0.811],[5,-0.203],[6,-1.228],[7,-1.925],[8,-2.768],[9,-3.859],[10,-5.513],[11,-7.397],[12,-10.817],[13,-7.623]];
+export const conv_golden = [[1,0.207],[2,-0.215],[3,0.143],[4,-0.215],[5,-0.811],[6,-0.203],[7,-0.862],[8,-0.498],[9,-1.588],[10,-1.366],[11,-1.165],[12,-3.332],[13,-1.777],[14,-2.018],[15,-2.175],[16,-2.472],[17,-2.547],[18,-3.0],[19,-2.863],[20,-4.024],[21,-3.356],[22,-3.923],[23,-3.644],[24,-4.889],[25,-4.425],[26,-4.355],[27,-5.194],[28,-4.737],[29,-6.01],[30,-5.257],[31,-5.736],[32,-5.566],[33,-7.01],[34,-6.118],[35,-6.505],[36,-6.454],[37,-7.229],[38,-6.807],[39,-9.045],[40,-7.421],[41,-7.658],[42,-7.442],[43,-7.878]];
+export const conv_bounded = [[1,-0.334],[2,-0.611],[3,-0.166],[4,-1.412],[5,-1.745],[6,-2.664],[7,-3.862],[8,-5.219],[9,-7.287],[10,-5.467]];
+
+export const Sketch = ({ curve = [], domain, range, xTicks = [], yTicks = [], segs = [], dots = [], rows = [], guides = [], label, plotH = 200 }) => {
+  const W = 640, L = 48, R = 16, T = 12, rowH = 22;
+  const bottom = T + plotH;
+  const rowTop = bottom + 40;
+  const H = rows.length ? rowTop + rows.length * rowH : bottom + 28;
+  const sx = (v) => L + ((v - domain[0]) / (domain[1] - domain[0])) * (W - L - R);
+  const sy = (v) => bottom - ((v - range[0]) / (range[1] - range[0])) * plotH;
+  const d = (pts) => pts.map(([a, b], i) => `${i ? 'L' : 'M'}${sx(a).toFixed(1)} ${sy(b).toFixed(1)}`).join('');
+  const tick = { fill: 'var(--fg-subtle)', 'font-family': 'var(--font-mono)', 'font-size': '12px' };
+  const note = { fill: 'var(--fg-muted)', 'font-family': 'var(--font-mono)', 'font-size': '12px' };
+  const ry = (i) => rowTop + i * rowH;
+  const mark = (m) => (m.sign > 0 ? 'var(--blue-600)' : m.sign < 0 ? 'var(--slate-400)' : 'var(--fg)');
+  return (
+    <div style={{ width: '100%', 'max-width': '640px' }}>
+      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={label} style={{ width: '100%', height: 'auto' }}>
+        {xTicks.map((t) => <line x1={sx(t.v)} x2={sx(t.v)} y1={T} y2={bottom} style={{ stroke: 'var(--line)' }} />)}
+        {yTicks.map((t) => <line x1={L} x2={W - R} y1={sy(t.v)} y2={sy(t.v)} style={{ stroke: 'var(--line)' }} />)}
+        {range[0] < 0 && range[1] > 0 && <line x1={L} x2={W - R} y1={sy(0)} y2={sy(0)} style={{ stroke: 'var(--slate-400)' }} />}
+        {xTicks.map((t) => <text x={sx(t.v)} y={bottom + 18} text-anchor="middle" style={tick}>{t.label}</text>)}
+        {yTicks.map((t) => <text x={L - 8} y={sy(t.v) + 4} text-anchor="end" style={tick}>{t.label}</text>)}
+        {guides.map((g) => <line x1={sx(g)} x2={sx(g)} y1={T} y2={H - 6} style={{ stroke: 'var(--slate-400)', 'stroke-dasharray': '2 4' }} />)}
+        {segs.map((s) => <path d={d(s.pts)} style={{ fill: 'none', stroke: s.color ?? 'var(--slate-600)', 'stroke-width': 1.5, 'stroke-dasharray': s.dashed ? '4 4' : 'none' }} />)}
+        {curve.length > 0 && <path d={d(curve)} style={{ fill: 'none', stroke: 'var(--blue-600)', 'stroke-width': 2 }} />}
+        {dots.map((p) => <circle cx={sx(p.x)} cy={sy(p.y)} r={p.r ?? 4} style={{ fill: p.hollow ? 'var(--bg)' : (p.color ?? 'var(--blue-600)'), stroke: p.color ?? 'var(--blue-600)', 'stroke-width': 1.5 }} />)}
+        {dots.filter((p) => p.label).map((p) => <text x={sx(p.x) + (p.dx ?? 6)} y={sy(p.y) + (p.dy ?? -8)} text-anchor={p.anchor ?? 'start'} style={note}>{p.label}</text>)}
+        {rows.map((r, i) => <line x1={sx(r.a)} x2={sx(r.b)} y1={ry(i)} y2={ry(i)} style={{ stroke: 'var(--blue-300)', 'stroke-width': 4 }} />)}
+        {rows.map((r, i) => <text x={L - 8} y={ry(i) + 4} text-anchor="end" style={tick}>{r.label}</text>)}
+        {rows.flatMap((r, i) => (r.marks ?? []).map((m) => <circle cx={sx(m.x)} cy={ry(i)} r="4" style={{ fill: mark(m), stroke: 'var(--bg)', 'stroke-width': 1 }} />))}
+        {rows.filter((r) => r.note).map((r) => <text x={sx(r.b) + 10} y={ry(rows.indexOf(r)) + 4} style={note}>{r.note}</text>)}
+      </svg>
+    </div>
+  );
+};
+
+## 무엇을 하나요
+
+변수가 하나인 함수 f가 가장 작아지는 x를 찾아요. 비용을 가장 적게 하는 가격, 오차를 가장 작게 하는 모수 하나처럼, 손잡이 하나를 돌려 가장 좋은 곳을 찾는 문제예요. 최댓값은 −f의 최솟값으로 찾아요.
+
+반복은 **최솟값을 끼는 세 점** $x_a < x_b < x_c$에서 시작해요. 가운데 점의 값이 양 끝보다 작으면($f(x_b) < f(x_a)$, $f(x_b) < f(x_c)$), f가 연속일 때 그 사이에 최솟값이 있어요. 근 찾기의 "부호가 바뀌는 구간"에 해당하는 것이에요. 새 점에서 f를 계산해 세 점을 바꿔 가며 구간을 좁혀요.
+
+`minimize_scalar`가 찾는 것은 **지역 최솟값**이에요. 주위보다 낮은 골짜기의 바닥 하나이고, 함수 전체에서 가장 낮은 곳이라는 보장은 없어요. 아래 그림의 함수에는 골짜기가 둘 있어서, 출발한 곳에 따라 다른 답이 나와요.
+
+<Fig caption="f(x) = x⁴ − 4x² + x. 진한 점은 bracket=(0, 1)에서, 옅은 점은 bracket=(−1, 0)에서 출발한 Brent법이 f를 계산한 점(그림 밖의 점은 빼고)이에요. 앞쪽은 얕은 골짜기(1.347)에, 뒤쪽은 깊은 골짜기(−1.473)에 닿아요.">
+  <Sketch
+    label="x^4 - 4x^2 + x의 두 골짜기와 Brent법이 계산한 점"
+    curve={quartic}
+    domain={[-2.3, 2.3]}
+    range={[-6.5, 6.5]}
+    xTicks={[{ v: -2, label: '-2' }, { v: -1, label: '-1' }, { v: 0, label: '0' }, { v: 1, label: '1' }, { v: 2, label: '2' }]}
+    yTicks={[{ v: -6, label: '-6' }, { v: -4, label: '-4' }, { v: -2, label: '-2' }, { v: 2, label: '2' }, { v: 4, label: '4' }, { v: 6, label: '6' }]}
+    dots={[
+      ...quartDots,
+      { x: 1.346997408420881, y: -2.61856, r: 5, label: '1.347', dy: 22, dx: -14 },
+      { x: -1.4729976042711648, y: -5.44419, r: 5, color: 'var(--slate-500)', label: '-1.473', dy: 18, dx: -18 },
+    ]}
+  />
+</Fig>
+
+<Reference />
+
+## 기본 사용
+
+$f(x) = e^x - 5x$는 $x = \ln 5 \approx 1.6094$에서 가장 작아요.
+
+```python
+>>> import math
+>>> import stardust as sd
+>>> def f(x):
+...     return math.exp(x) - 5*x
+>>> r = sd.optimize.minimize_scalar(f)
+>>> r
+OptimizeResult(method='brent', converged=True, fun=-3.04719, n_iter=9, nfev=12, x=1.60944)
+>>> r.x, r.fun
+(1.6094379057065267, -3.0471895621705025)
+>>> math.log(5)
+1.6094379124341003
+```
+
+아무것도 주지 않으면 0과 1에서 내리막을 따라가며 세 점을 찾고, Brent법으로 좁혀요. f를 12번 불렀어요. `fun`은 x에서의 f 값이에요. 결과의 x는 $\ln 5$와 $7 \times 10^{-9}$ 달라요. 최솟값의 위치는 이 정도까지만 정해져요. 까닭은 아래 [정확도](#정확도의-한계)에 있어요.
+
+f는 Python `float` 하나를 받아 실수 하나를 돌려줘요. 상수는 클로저나 `lambda`로 넘겨요.
+
+## 방법 고르기
+
+| method | 주는 것 | 어떻게 좁히나요 | 언제 쓰나요 |
+|---|---|---|---|
+| `'brent'` | `bracket`(없어도 돼요) | 세 점을 지나는 포물선의 꼭짓점으로 가고, 잘 안 되면 황금분할 | 기본값. 매끈한 함수에서 빨라요. |
+| `'golden'` | `bracket`(없어도 돼요) | 늘 황금분할. f 한 번에 구간이 0.618배가 돼요 | 포물선이 잘 맞지 않는 함수(꺾인 점 등). 느리지만 일정해요. |
+| `'bounded'` | `bounds` | Brent법(fminbound)을 범위 안에서 | x가 범위를 벗어나면 안 될 때. 범위 밖에서는 f를 부르지 않아요. |
+
+**황금분할**은 세 점 사이에 새 점을 넣어 구간을 0.618배($(\sqrt5 - 1)/2$)로 줄이는 방법이에요. 새 점의 위치를 이 비율로 잡으면 남은 세 점의 배치가 처음과 닮은꼴이 되어서, 반복마다 f를 한 번만 불러도 돼요. **포물선 보간**은 세 점을 지나는 포물선의 꼭짓점을 다음 점으로 삼아요. 최솟값 근처의 매끈한 함수는 포물선과 비슷해서, 근 찾기의 할선법처럼 빨리 다가가요. Brent법은 포물선 걸음을 쓰되, 그 걸음이 구간 밖이거나 충분히 줄지 않으면 황금분할로 바꿔요.
+
+<Fig caption="f(x) = eˣ − 5x의 최솟값을 찾을 때, f를 부를 때마다 그 점과 ln 5의 거리(로그 축). brent와 golden은 bracket=(0, 1, 3), bounded는 bounds=(0, 3)이에요. 모두 10⁻⁸ 근처에서 멈춰요.">
+  <Plot
+    curves={[
+      { points: conv_golden, label: 'golden' },
+      { points: conv_brent, label: 'brent' },
+      { points: conv_bounded, label: 'bounded' },
+    ]}
+    domain={[0, 44]}
+    range={[-11.5, 0.5]}
+    xTicks={[{ v: 10, label: '10' }, { v: 20, label: '20' }, { v: 30, label: '30' }, { v: 40, label: '40' }]}
+    yTicks={[{ v: -10, label: '1e-10' }, { v: -8, label: '1e-8' }, { v: -6, label: '1e-6' }, { v: -4, label: '1e-4' }, { v: -2, label: '0.01' }, { v: 0, label: '1' }]}
+  />
+</Fig>
+
+```python
+>>> for m in ['brent', 'golden']:
+...     r = sd.optimize.minimize_scalar(f, bracket=(0, 1, 3), method=m)
+...     print(m, r.x, r.n_iter, r.nfev)
+brent 1.6094379124493254 10 13
+golden 1.609437890452532 38 43
+>>> sd.optimize.minimize_scalar(f, bounds=(0, 3))
+OptimizeResult(method='bounded', converged=True, fun=-3.04719, n_iter=10, nfev=10, x=1.60944)
+```
+
+`method=None`(기본값)이면 `bounds`가 있을 때 `'bounded'`, 없으면 `'brent'`예요. 방법 이름은 소문자만 받아요.
+
+## bracket: 어디서 출발하나요
+
+brent와 golden은 최솟값을 끼는 세 점에서 시작해요. `bracket`은 세 가지로 줄 수 있어요.
+
+- **주지 않으면**: 0과 1에서 출발해 세 점을 찾아요.
+- **두 점 (xa, xb)**: 두 점 가운데 f가 작은 쪽으로(내리막으로) 걸음을 황금비 1.618배씩 늘리며 나아가요. 세 점으로 포물선을 그려 그 꼭짓점으로 크게 건너뛰기도 해요(한 번에 110배까지). f가 다시 올라가는 점을 만나면 세 점이 생겨요. 이 두 점은 찾기를 시작할 곳이지 범위가 아니라서, 답이 그 밖에 있을 수 있어요.
+- **세 점 (xa, xb, xc)**: 찾기를 건너뛰고 바로 좁혀요. xa < xb < xc(또는 거꾸로)이고 f(xb)가 f(xa)와 f(xc)보다 작아야 해요. 세 값을 계산한 뒤 확인하고, 아니면 `ValueError`예요.
+
+```python
+>>> def g(x):
+...     return x**4 - 4*x**2 + x
+>>> sd.optimize.minimize_scalar(g).x
+1.346997408420881
+>>> sd.optimize.minimize_scalar(g, bracket=(-1, 0)).x
+-1.4729976042711648
+>>> sd.optimize.minimize_scalar(g, bracket=(-2, -1.5, -1)).x
+-1.4729976009829049
+>>> sd.optimize.minimize_scalar(g, bracket=(-2, 0, 1))
+Traceback (most recent call last):
+    ...
+ValueError: minimize_scalar(): 'bracket' must have f(xb) < f(xa) and f(xb) < f(xc), not f(xa) = -2.0, f(xb) = 0.0, f(xc) = -2.0
+>>> sd.optimize.minimize_scalar(g, bracket=(0, 3, 2))
+Traceback (most recent call last):
+    ...
+ValueError: minimize_scalar(): 'bracket' must have xa < xb < xc (or xc < xb < xa), not (0.0, 3.0, 2.0)
+```
+
+기본값으로는 0에서 1로 내려가는 쪽(오른쪽)의 얕은 골짜기에 닿았어요. 깊은 골짜기를 원하면 그쪽에서 출발하거나, 여러 곳에서 출발해 `fun`이 가장 작은 것을 골라요.
+
+```python
+>>> best = min((sd.optimize.minimize_scalar(g, bracket=(a, a + 0.5)) for a in [-3.0, -1.0, 1.0, 3.0]), key=lambda r: r.fun)
+>>> best.x, best.fun
+(-1.4729976011642634, -5.444192066610898)
+```
+
+### 세 점을 찾지 못할 때
+
+내리막이 끝나지 않으면 세 점을 찾을 수 없어요. 그때는 예외 없이 `converged=False`와 함께, 찾기가 마지막에 쥔 세 점 가운데 f가 가장 작은 점을 돌려줘요(`n_iter` 0). 찾다가 세 점의 꼴이 맞지 않게 끝나면 `status` 3, 1,000번 넘게 넓혀도 끝나지 않으면 `status` 4예요.
+
+```python
+>>> r = sd.optimize.minimize_scalar(lambda x: x, bracket=(0, 1))
+>>> r.converged, r.status, r.nfev
+(False, 4, 1004)
+>>> r.message
+'No valid bracket was found before the iteration limit was reached. Consider trying different initial points or increasing `maxiter`.'
+>>> r = sd.optimize.minimize_scalar(math.cos, bracket=(1, 1))
+>>> r.converged, r.status, r.x
+(False, 3, 1.0)
+```
+
+<Callout type="warn" title="아래로 끝없이 내려가는 함수">
+f가 아래로 한없이 내려가면 결과가 이상할 수 있어요. −x²은 최솟값이 없는데, 찾기가 멀리 나가 x²이 넘치면(overflow) 두 점의 f가 똑같이 −inf가 되는데, 그러면 가운데 값이 양 끝 이하라는 조건을 통과해서 `converged=True`가 나와요. `fun`이 유한한지, x가 그럴듯한 크기인지 확인해요.
+
+```python
+>>> r = sd.optimize.minimize_scalar(lambda x: -x * x)
+>>> r.converged, r.fun, r.x
+(True, -inf, 2.766103070382784e+154)
+```
+</Callout>
+
+## bounds: 범위 안에서 찾기
+
+`bounds=(lower, upper)`를 주면 `'bounded'`가 그 범위 안에서만 f를 불러요. f가 범위 밖에서 정의되지 않거나(로그, 제곱근) 물리적으로 의미가 없을 때 써요. 범위 안의 지역 최솟값 하나를 찾고, 범위 안에서 f가 내려가기만 하면 경계 가까이에 닿아요.
+
+```python
+>>> sd.optimize.minimize_scalar(g, bounds=(-3, 3)).x
+-1.4729991355363385
+>>> sd.optimize.minimize_scalar(f, bounds=(0, 1)).x
+0.9999940391390134
+```
+
+$e^x - 5x$는 (0, 1)에서 내려가기만 해서 오른쪽 끝 1 가까이에서 멈췄어요. bounded는 경계 자체에서는 f를 부르지 않으므로 답이 경계에서 허용오차(`xatol`)만큼 떨어져 있어요. lower == upper이면 그 점 하나를 계산하고 끝나요.
+
+```python
+>>> sd.optimize.minimize_scalar(math.cos, bounds=(2, 2))
+OptimizeResult(method='bounded', converged=True, fun=-0.416147, n_iter=1, nfev=1, x=2)
+>>> sd.optimize.minimize_scalar(f, bounds=(3, 0))
+Traceback (most recent call last):
+    ...
+ValueError: minimize_scalar(): the lower bound must not be greater than the upper bound
+>>> sd.optimize.minimize_scalar(f, bracket=(0, 1), bounds=(0, 3))
+Traceback (most recent call last):
+    ...
+ValueError: minimize_scalar(): method='bounded' takes no 'bracket' (it searches 'bounds')
+>>> sd.optimize.minimize_scalar(f, bounds=(0, 3), method='brent')
+Traceback (most recent call last):
+    ...
+ValueError: minimize_scalar(): method='brent' takes no 'bounds' (method='bounded' does)
+```
+
+## 허용오차와 반복 상한
+
+`tol`은 멈춤 판정의 크기예요. 방법마다 뜻과 기본값이 달라요.
+
+| method | 옵션 이름 | 기본값 | 멈추는 때 | `max_iter`(기본) |
+|---|---|---|---|---|
+| `'brent'` | `xtol` | 1.48e-8 | 최솟값을 끼는 구간의 양 끝이 x에서 2(xtol·\|x\| + 10⁻¹¹) 안일 때 | 반복 수(500) |
+| `'golden'` | `xtol` | 1.49e-8(√ε) | 구간 폭이 xtol·(\|x₁\| + \|x₂\|) 이하일 때 | 반복 수(5000) |
+| `'bounded'` | `xatol` | 1e-5 | 구간의 양 끝이 x에서 2(√(2.2e-16)·\|x\| + xatol/3) 안일 때 | f 계산 수(500) |
+
+brent와 golden의 `xtol`은 **상대** 크기이고, bounded의 `xatol`은 **절대** 크기예요. 그래서 bounded의 기본값은 꽤 느슨해요. x가 1 근처면 5–6자리쯤에서 멈춰요. 더 정확히 원하면 `tol`을 줄여요.
+
+```python
+>>> sd.optimize.minimize_scalar(math.cos, bounds=(0, 10)).x - math.pi
+5.182908897616301e-07
+>>> sd.optimize.minimize_scalar(math.cos, bounds=(0, 10), tol=1e-10).x - math.pi
+4.2657521959199585e-10
+```
+
+`tol`과 같은 것을 `options`로 주면 둘 중 무엇을 쓸지 모호하니 `ValueError`예요. 옵션 이름은 방법마다 정해져 있고, 모르는 키도 `ValueError`예요. 반복 상한의 이름은 `max_iter`예요.
+
+```python
+>>> sd.optimize.minimize_scalar(f, options={'xtol': 1e-3})
+OptimizeResult(method='brent', converged=True, fun=-3.04719, n_iter=6, nfev=9, x=1.60939)
+>>> sd.optimize.minimize_scalar(f, tol=1e-3, options={'xtol': 1e-4})
+Traceback (most recent call last):
+    ...
+ValueError: minimize_scalar(): give 'tol' or options['xtol'], not both
+>>> sd.optimize.minimize_scalar(f, options={'maxiter': 5})
+Traceback (most recent call last):
+    ...
+ValueError: minimize_scalar(): method='brent' has no option 'maxiter' (the iteration cap is 'max_iter')
+>>> sd.optimize.minimize_scalar(f, options={'xatol': 1e-6})
+Traceback (most recent call last):
+    ...
+ValueError: minimize_scalar(): method='brent' has no option 'xatol'
+```
+
+`max_iter`에 닿으면 마지막 점을 돌려주고 `converged=False`, `status` 1이에요. bounded의 `max_iter`는 반복이 아니라 f를 부른 횟수의 상한이에요.
+
+```python
+>>> r = sd.optimize.minimize_scalar(f, options={'max_iter': 5})
+>>> r.converged, r.status, r.n_iter, r.x
+(False, 1, 5, 1.6093908716934102)
+>>> r = sd.optimize.minimize_scalar(f, bounds=(0, 3), options={'max_iter': 5})
+>>> r.status, r.message, r.nfev
+(1, 'Maximum number of function calls reached.', 5)
+```
+
+## 정확도의 한계
+
+최솟값에서는 f의 기울기가 0이라, 그 근처에서 f가 아주 평평해요. 최소점 $x^*$에서 δ만큼 떨어지면 f는 대략 $\tfrac12 f''(x^*)\,\delta^2$만큼만 커져요. 이 차이가 f를 계산할 때의 반올림(대략 $\tfrac{\varepsilon}{2}\,|f(x^*)|$, $\varepsilon = 2^{-52}$)보다 작으면 두 점의 f를 구별할 수 없어요. 그래서 x는
+
+$$
+|\delta| \approx \sqrt{\frac{\varepsilon\,|f(x^*)|}{f''(x^*)}}
+$$
+
+보다 정확히 정해지지 않아요. 상대 정확도로 대략 $\sqrt{\varepsilon} \approx 1.5 \times 10^{-8}$이에요. 근 찾기는 끝자리까지 갈 수 있지만, 최솟값의 위치는 그 절반쯤의 자리만 믿을 수 있다는 뜻이에요. 기본 허용오차(1.48e-8)가 이 크기인 것도 그래서예요.
+
+```python
+>>> x0 = math.log(5)
+>>> f(x0 + 1e-9) - f(x0), f(x0 + 1e-8) - f(x0)
+(0.0, 1.7763568394002505e-15)
+```
+
+$\ln 5$에서 $10^{-9}$ 떨어진 점의 f는 최솟값과 같은 double이고, $10^{-8}$ 떨어져도 끝자리 몇 개만 달라요. 그러니 `tol`을 아주 작게 줘도 x가 더 정확해지지 않아요. 반면 `fun`은 이 범위 안에서 거의 변하지 않으니 최솟값 자체는 끝자리까지 믿을 수 있어요. x를 더 정확히 알아야 하면, 도함수를 계산할 수 있을 때 $f'(x) = 0$의 근을 [root_scalar](/api/optimize/root_scalar/)로 찾아요. 근은 끝자리 근처까지 정해져요.
+
+```python
+>>> sd.optimize.root_scalar(lambda x: math.exp(x) - 5, bracket=(1, 2), xtol=0).x
+1.6094379124341005
+```
+
+$\ln 5$를 반올림한 double(1.6094379124341003)과 1 ULP 차이예요. f′를 계산하는 반올림만 남았어요.
+
+## 결과 읽기
+
+| 필드 | 뜻 |
+|---|---|
+| `x` | 최소점(Python `float`) |
+| `fun` | x에서의 f 값 |
+| `converged` | 멈춤 판정을 통과했는지(`status == 0`) |
+| `status`, `message` | 멈춘 이유의 번호와 글(아래) |
+| `n_iter` | 반복 수(bounded는 `nfev`와 같아요) |
+| `nfev` | f를 부른 횟수(세 점을 찾는 데 쓴 것 포함) |
+| `method` | 쓴 방법의 이름 |
+
+| status | 방법 | message | 뜻 |
+|---|---|---|---|
+| 0 | brent, golden | `'\nOptimization terminated successfully;\n...'` | 멈춤 판정을 통과했어요 |
+| 0 | bounded | `'Solution found.'` | 멈춤 판정을 통과했어요 |
+| 1 | brent, golden | `'\nMaximum number of iterations exceeded'` | `max_iter`에 닿았어요 |
+| 1 | bounded | `'Maximum number of function calls reached.'` | `max_iter`(f 계산 수)에 닿았어요 |
+| 2 | 모두 | `'NaN result encountered.'` | x나 f가 NaN이에요 |
+| 3 | brent, golden | `'The algorithm terminated without finding a valid bracket. ...'` | 세 점을 찾지 못했어요 |
+| 4 | brent, golden | `'No valid bracket was found before the iteration limit was reached. ...'` | 세 점 찾기가 1,000번 넘게 넓혔어요 |
+
+brent·golden의 성공 글은 줄바꿈이 섞인 여러 줄이에요. 판정에는 글 대신 `converged`나 `status`를 써요.
+
+```python
+>>> print(sd.optimize.minimize_scalar(f).message)
+<BLANKLINE>
+Optimization terminated successfully;
+The returned value satisfies the termination criteria
+(using xtol = 1.48e-08 )
+>>> sd.optimize.minimize_scalar(lambda x: float('nan'), bounds=(0, 3)).status
+2
+```
+
+## 특수한 경우
+
+- **꺾인 점**: |x − 1|처럼 최솟값에서 미분할 수 없으면 포물선이 잘 맞지 않아 brent가 golden만큼 오래 걸리기도 해요. 그래도 둘 다 수렴해요.
+- **NaN**: f가 NaN을 내도 반복은 멈추지 않고 그 값을 비교에 써요. 마지막 x나 f가 NaN이면 `status` 2예요. 세 점의 `bracket`에 NaN이 섞이면 f(xb)가 양 끝보다 작다는 확인을 통과하지 못해 `ValueError`예요.
+- **f가 돌려주는 값**: 실수 하나여야 해요. 길이 있는 배열은 `ValueError`, 수가 아닌 것은 `TypeError`예요.
+
+```python
+>>> sd.optimize.minimize_scalar(lambda x: abs(x - 1.0), bracket=(0, 0.5, 3))
+OptimizeResult(method='brent', converged=True, fun=6.61814e-09, n_iter=23, nfev=26, x=1)
+>>> sd.optimize.minimize_scalar(lambda x: (x, 1.0))
+Traceback (most recent call last):
+    ...
+ValueError: minimize_scalar(): 'fun' must return a real number, not shape (2,)
+```
+
+## 여러 문제를 한꺼번에 풀 때
+
+같은 꼴의 최소화 문제를 원소마다 풀려면 [find_minimum](/api/optimize/find_minimum/)을 써요. `minimize_scalar`는 문제 하나에 Python float를 넘기며 f를 부르고, `find_minimum`은 아직 끝나지 않은 원소를 모은 배열로 f를 한 번에 불러요. 세 점을 찾는 일은 같은 페이지의 `bracket_minimum`이 해요. 변수가 여럿인 함수는 [minimize](/api/optimize/minimize/)예요.
+
+## 사용자 함수와 스레드
+
+반복은 C++에서 돌고 f는 Python으로 불려요. f가 Python이라 반복은 GIL을 쥔 채 돌아요. 방법 자체의 비용은 f 호출 하나에 0.2–0.5 µs쯤이라(Apple M4 Pro), 시간은 대부분 f의 계산이에요. 같은 f면 언제나 같은 점에서 같은 순서로 불러요. 자세한 방법은 [스칼라 최솟값의 구현](/internals/optimize/scalar-minimum/)에 있어요.
+
+## scipy를 아는 분께
+
+- 세 방법 모두 scipy 1.18.1과 같은 알고리즘과 멈춤 판정이고, 지금은 같은 점에서 f를 불러 같은 x, `n_iter`, `nfev`를 내요(같은 f일 때; 비트까지 같지만 약속은 아니에요). `bracket` 찾기(scipy의 `bracket()`)도 같아요.
+- scipy의 `success`는 `converged`, `nit`은 `n_iter`예요. scipy의 brent·golden 결과에는 `status`가 없는데, 여기서는 bounded의 번호(0, 1, 2)에 3(세 점을 못 찾음)과 4(찾기의 상한)를 더해 써요. `message`는 scipy의 글 그대로예요.
+- scipy는 세 점 찾기가 1,000번을 넘으면 `RuntimeError`를 내요. 여기서는 예외 없이 `status` 4의 결과예요. 세 점을 못 찾을 때(scipy의 `BracketError`)는 scipy처럼 가장 낮은 점과 `converged=False`예요.
+- 옵션의 `maxiter`는 `max_iter`예요. scipy의 `disp`는 없어요. 방법이 모르는 옵션은 scipy처럼 경고가 아니라 `ValueError`예요.
+- bounded에서 `tol`은 `xatol`로 쓰여요. scipy는 이때 경고를 내요.
+- 사용자 함수의 `args`는 없어요(클로저로 넘겨요). `fminbound`, `brent`, `golden` 같은 개별 함수도 없어요.

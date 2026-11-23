@@ -1,0 +1,193 @@
+---
+kind: function
+title: anderson_ksamp
+names: [anderson_ksamp]
+group: 두 표본의 분포
+order: 3
+signatures:
+  - "sd.htest.anderson_ksamp(samples, /, *, variant='midrank', method=None)"
+summary: 표본 둘 이상이 모두 같은 분포에서 왔는지 보는 k 표본 Anderson–Darling 검정이에요. 각 표본의 경험 분포 함수가 합친 표본의 것과 얼마나 다른지를 꼬리에 무게를 두고 재요. p값은 Scholz–Stephens 표의 보간이거나 순열이에요.
+params:
+  - name: samples
+    type: 표본의 리스트 또는 튜플
+    kind: positional-only
+    desc: 표본 둘 이상. 각 표본은 수의 배열이나 시퀀스이고 펼쳐서 읽어요. 크기가 서로 달라도 돼요. 2차원 배열 하나는 받지 않아요.
+  - name: variant
+    type: str
+    kind: keyword-only
+    desc: "통계량의 꼴. 'midrank'(기본값, 동점을 중간 순위로 다루는 꼴), 'right'(경험 분포 함수의 오른쪽 연속인 꼴), 'continuous'(동점이 없다고 보는 꼴) 중 하나예요."
+  - name: method
+    type: None 또는 PermutationMethod
+    kind: keyword-only
+    desc: "p값을 구하는 방법. None(기본값)은 표의 보간이라 0.001과 0.25 사이로 잘린 값이에요. PermutationMethod를 주면 합친 표본을 다시 나누는 순열 p값이에요."
+returns:
+  type: AndersonKsampResult
+  desc: "statistic(표준화한 통계량)과 pvalue가 든 결과 객체예요. 둘 다 Python float이고 (statistic, pvalue) 둘로 풀려요."
+raises:
+  - type: TypeError
+    desc: samples가 리스트나 튜플이 아닐 때(배열 하나 등), 표본이 둘보다 적을 때, 표본이 수의 배열·시퀀스가 아닐 때, method가 None이나 PermutationMethod가 아닐 때, 옵션을 위치로 주거나 없는 키워드(axis 등)를 줬을 때.
+  - type: ValueError
+    desc: variant 이름이 틀렸을 때.
+seeAlso: [ks_2samp, cramervonmises_2samp, epps_singleton_2samp, anderson, kruskal, methods, results]
+---
+
+## 한눈에 보기
+
+k 표본 Anderson–Darling 검정은 "이 표본들이 모두 같은 분포에서 왔다고 봐도 되나요?"를 물어요. 표본이 둘이면 [`ks_2samp`](/api/htest/ks_2samp/), [`cramervonmises_2samp`](/api/htest/cramervonmises_2samp/)와 같은 물음이고, 셋 이상도 한 번에 물을 수 있어요.
+
+- **귀무가설**: 모든 표본이 같은 연속분포에서 왔어요.
+- **대립가설**: 적어도 한 표본의 분포가 달라요.
+
+세 공장에서 만든 부품의 지름 편차를 쟀어요.
+
+```python
+>>> import stardust as sd
+>>> rng = sd.random.default_rng(3)
+>>> a = sd.stats.Normal().sample(50, rng=rng)
+>>> b = sd.stats.Normal(sigma=2.0).sample(50, rng=rng)
+>>> c = sd.stats.Normal(mu=0.5).sample(30, rng=rng)
+>>> sd.htest.anderson_ksamp([a, b, c])
+AndersonKsampResult(statistic=3.2673, pvalue=0.0118726)
+```
+
+p = 0.012라 세 공장의 분포가 모두 같다고 보기 어려워요. 어느 공장이 다른지는 이 검정이 알려 주지 않아요. 표본 둘씩 다시 검정하거나 그려 봐요.
+
+<Reference />
+
+## 통계량
+
+표본이 $k$개, 크기가 $n_1, \dots, n_k$, 합친 크기가 $N$이에요. 합친 표본의 경험 분포 함수를 $H_N$, $i$번째 표본의 것을 $F_{i}$라 하면 Scholz와 Stephens(1987)의 통계량은
+
+$$
+A^2_{kN} = \sum_{i=1}^{k} n_i \int \frac{\bigl(F_i(t) - H_N(t)\bigr)^2}{H_N(t)\bigl(1 - H_N(t)\bigr)}\, dH_N(t)
+$$
+
+이에요. 각 표본이 합친 표본에서 얼마나 벗어났는지를 더하는데, $H_N$이 0이나 1에 가까운 곳(꼬리)에 큰 무게를 줘요. 한 표본 [`anderson`](/api/htest/anderson/)의 무게와 같은 생각이에요.
+
+결과의 `statistic`은 귀무가설에서의 평균 $k - 1$을 빼고 표준편차 $\sigma_N$으로 나눈 표준화한 값이에요.
+
+$$
+\text{statistic} = \frac{A^2_{kN} - (k - 1)}{\sigma_N}
+$$
+
+그래서 0 근처면 귀무가설과 잘 맞고, 크면 분포가 달라요. 음수도 나와요. 순위만으로 정해지므로 값을 단조롭게 바꿔도 그대로예요.
+
+## p값: 표의 보간
+
+`method=None`(기본값)이면 Scholz–Stephens의 임계값 표를 보간해요. 표는 0.25, 0.1, 0.05, 0.025, 0.01, 0.005, 0.001의 일곱 수준에서 표본의 수에 맞춘 임계값이에요. 일곱 점에 $\log(\text{수준})$을 임계값의 이차식으로 맞추고, 그 식에 통계량을 넣어 p값을 얻어요. 표의 범위 밖은 끝에서 잘라요.
+
+- 통계량이 가장 작은 임계값보다 작으면 p = 0.25예요("0.25 이상").
+- 가장 큰 임계값보다 크면 p = 0.001이에요("0.001 이하").
+
+```python
+>>> same = [sd.stats.Normal().sample(500, rng=rng), sd.stats.Normal().sample(500, rng=rng)]
+>>> sd.htest.anderson_ksamp(same)
+AndersonKsampResult(statistic=-0.79098, pvalue=0.25)
+>>> far = [sd.stats.Normal().sample(200, rng=rng), sd.stats.Normal(mu=2.0).sample(200, rng=rng)]
+>>> sd.htest.anderson_ksamp(far)
+AndersonKsampResult(statistic=141.309, pvalue=0.001)
+```
+
+## `method`: 순열 p값
+
+표의 끝에 닿거나 보간보다 정밀한 p값이 필요하면 `method=sd.htest.PermutationMethod(...)`를 줘요. 합친 표본을 같은 크기의 표본들로 무작위로 다시 나눠 통계량을 구하고, 관측한 통계량 이상이 나온 비율을 p값으로 써요.
+
+```python
+>>> pm = sd.htest.PermutationMethod(n_resamples=999, rng=sd.random.default_rng(0))
+>>> sd.htest.anderson_ksamp([a, b], method=pm)
+AndersonKsampResult(statistic=2.42286, pvalue=0.029)
+>>> sd.htest.anderson_ksamp([a, b])
+AndersonKsampResult(statistic=2.42286, pvalue=0.032918)
+```
+
+순열 p값은 무작위라 같은 `rng` 상태일 때만 같은 값이에요. 설정 객체는 [재표본 방법](/api/htest/methods/)에 있어요.
+
+## `variant`: 동점을 다루는 꼴
+
+| `variant` | 뜻 |
+|---|---|
+| `'midrank'`(기본값) | 동점의 묶음을 중간 순위로 다뤄요. Scholz–Stephens가 동점이 있는 데이터를 위해 만든 꼴이에요 |
+| `'right'` | 경험 분포 함수를 오른쪽 연속인 계단으로 그대로 써요 |
+| `'continuous'` | 동점이 없다고 보는 원래의 꼴이에요 |
+
+동점이 없으면 `'right'`와 `'continuous'`가 같아요. 동점이 많은 데이터에서는 세 꼴이 달라서, 동점이 있으면 기본값 `'midrank'`를 써요.
+
+```python
+>>> tied = [[1, 2, 2, 3, 3, 3], [2, 3, 4, 4, 5]]
+>>> for v in ('midrank', 'right', 'continuous'):
+...     print(v, sd.htest.anderson_ksamp(tied, variant=v))
+midrank AndersonKsampResult(statistic=2.14202, pvalue=0.0426848)
+right AndersonKsampResult(statistic=2.17943, pvalue=0.0412256)
+continuous AndersonKsampResult(statistic=3.04422, pvalue=0.0187158)
+```
+
+## 언제 쓰나요
+
+- 셋 이상의 표본이 같은 분포인지 한 번에 물을 때 써요. 평균만 물으면 [`f_oneway`](/api/htest/f_oneway/), 위치를 순위로 물으면 [`kruskal`](/api/htest/kruskal/)이에요. 이 검정은 퍼짐과 모양의 차이까지 봐요.
+- 두 표본이면 꼬리의 차이에 무게를 두는 점에서 [`ks_2samp`](/api/htest/ks_2samp/)나 [`cramervonmises_2samp`](/api/htest/cramervonmises_2samp/)보다 흔히 힘이 있어요.
+
+## 결과 읽기
+
+결과는 `statistic`과 `pvalue`이고 둘 다 Python float예요. 둘로 풀 수 있어요. 필드는 읽기만 해요.
+
+```python
+>>> st, p = sd.htest.anderson_ksamp([a, b])
+>>> st
+2.4228620082567556
+>>> print(sd.htest.anderson_ksamp([a, b, c]).summary())
+                        k-sample Anderson-Darling test
+==============================================================================
+Statistic:                       3.267  No. Observations:           50, 50, 30
+P-value:                        0.0119  Variant:                       midrank
+==============================================================================
+```
+
+`No. Observations`는 표본마다의 크기예요. 순열 p값이면 그 방법과 횟수도 적혀요. 결과 객체의 공통 규칙은 [결과 객체 읽기](/api/htest/results/)에 있어요.
+
+## 입력과 특수한 경우
+
+- `samples`는 표본의 리스트나 튜플이에요. 표본이 행인 2차원 배열 하나를 주면 에러예요. 배열 `X`의 행들이라면 `list(X)`로 넘겨요.
+- `axis`, `nan_policy`, 배치는 없어요. NaN이 있으면 결과가 NaN이에요.
+- **빈 표본**, **서로 다른 값이 하나뿐**, **합친 크기가 4 미만**이면 NaN이에요.
+
+```python
+>>> sd.htest.anderson_ksamp(sd.asarray([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]))
+Traceback (most recent call last):
+    ...
+TypeError: anderson_ksamp(): 'samples' must be a list or tuple of samples, not ndarray
+>>> sd.htest.anderson_ksamp(list(sd.asarray([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])))
+AndersonKsampResult(statistic=2.63323, pvalue=0.0271472)
+>>> sd.htest.anderson_ksamp([a])
+Traceback (most recent call last):
+    ...
+TypeError: anderson_ksamp(): at least two samples are required, not 1
+>>> sd.htest.anderson_ksamp([[1.0, float('nan'), 3.0], [2.0, 3.0, 5.0]])
+AndersonKsampResult(statistic=nan, pvalue=nan)
+>>> sd.htest.anderson_ksamp([[], [1.0, 2.0, 3.0, 4.0]]), sd.htest.anderson_ksamp([[1.0, 1.0], [1.0, 1.0]])
+(AndersonKsampResult(statistic=nan, pvalue=nan), AndersonKsampResult(statistic=nan, pvalue=nan))
+>>> sd.htest.anderson_ksamp([a, b], variant='mid')
+Traceback (most recent call last):
+    ...
+ValueError: anderson_ksamp(): 'variant' must be 'midrank', 'right' or 'continuous', not 'mid'
+>>> sd.htest.anderson_ksamp([a, b], axis=0)
+Traceback (most recent call last):
+    ...
+TypeError: anderson_ksamp(): unexpected keyword argument 'axis'
+```
+
+## 정확도
+
+- $A^2_{kN}$은 정수 개수의 몫을 정확하게 더해서, 정확한 유리수로 만든 참값과 견줘 13문제(세 꼴의 동점, 작은 N, 표의 양 끝, 네 표본 5500개, 오프셋, 상수 포함)에서 표준화한 통계량의 상대오차가 6.9e-17 안이에요.
+- p값은 표와 보간식 그대로의 값에 대해 상대 5e-17 안이에요. 보간이 참 귀무분포와 얼마나 맞는지는 약속에 들지 않아요.
+- 순열 p값은 무작위라 약속이 없고, 같은 `rng` 상태와 입력이면 같은 비트예요. 지금은 스레드 수와도 상관없이 같아요(약속은 아니에요).
+
+## scipy를 아는 분께
+
+scipy 1.18.1 기준이에요.
+
+- `scipy.stats.anderson_ksamp(samples, variant='midrank')`와 같은 통계량, 같은 표와 보간이에요. 표 밖에서 자를 때 scipy는 경고를 내고, 여기서는 내지 않아요.
+- `variant`의 기본값이 `'midrank'`예요. scipy 1.18.1은 `variant`를 주지 않으면 경고와 함께 옛 꼴(`critical_values`)을 내요. 옛 인자 `midrank`와 `critical_values`는 없어요.
+- 결과는 둘로 풀려요. scipy 1.18.1도 `variant`를 주면 실제로 둘로 풀려요.
+- `samples`는 리스트나 튜플만 받아요. scipy가 받는 2차원 배열은 받지 않아요.
+- 빈 표본, 서로 다른 값이 하나인 경우는 NaN이에요. scipy는 `ValueError`를 내요. 평균이 아주 큰 데이터에서 scipy는 통계량이 1.3e-14 틀려요.
+- `method`는 scipy처럼 None이나 `PermutationMethod`예요. `PermutationMethod`의 무작위는 `rng`로만 정해요(`random_state`가 없어요).

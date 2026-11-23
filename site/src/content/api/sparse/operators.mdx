@@ -1,0 +1,402 @@
+---
+kind: concept
+title: 연산자
+group: 연산
+order: 1
+summary: 희소 배열에 쓰는 산술 연산자(+, -, *, /, **), 비교 연산자, 행렬곱 @의 규칙이에요. 피연산자가 희소 배열인지, 스칼라인지, 밀집 배열인지에 따라 결과가 희소인지 밀집인지, 어느 형식인지, 연산이 만든 0을 지우는지가 정해져요.
+seeAlso: [elementwise, reductions, basics, sparray, csr_array]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import FigRow from '../../../components/fig/FigRow.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+희소 배열은 밀집 배열처럼 연산자로 계산해요. `*`는 원소별 곱이고, 행렬곱은 `@`예요.
+
+```python
+>>> import stardust as sd
+>>> A = sd.sparse.csr_array(sd.asarray([[1.0, 0.0, 2.0], [0.0, 3.0, 0.0]]))
+>>> B = sd.sparse.csr_array(sd.asarray([[0.0, 4.0, -2.0], [0.0, 1.0, 0.0]]))
+>>> (A + B).toarray()
+array([[1.0, 4.0, 0.0],
+       [0.0, 4.0, 0.0]], dtype=float64)
+>>> (A * B).toarray()
+array([[ 0.0,  0.0, -4.0],
+       [ 0.0,  3.0,  0.0]], dtype=float64)
+>>> A @ sd.asarray([1.0, 1.0, 1.0])
+array([3.0, 3.0], dtype=float64)
+```
+
+값은 밀집 배열로 계산한 것과 같아요. 다른 것은 결과를 무엇으로 돌려주는지예요. 결과가 대부분 0이면 희소 배열, 대부분 0이 아니면 밀집 배열이에요. 연산이 결과를 꽉 찬 행렬로 만들 수밖에 없으면(`A + 1`) 에러예요.
+
+## 결과의 종류
+
+| 연산 | 결과 | 결과에 생긴 정확한 0 |
+|---|---|---|
+| 희소 `+`·`-` 희소, 희소 `*` 희소, 희소 비교 희소 | 희소 (CSR, 왼쪽이 CSC면 CSC) | 지워요 |
+| 희소 `*`·`/` 스칼라, `-A`, `abs(A)`, `A ** p` (p > 0) | 희소, A와 같은 형식과 패턴 | 지우지 않아요 |
+| 희소 `*`·`/` 밀집 | 희소, A의 형식 | 지우지 않아요 |
+| 희소 비교 스칼라 | 희소 (CSR, A가 CSC면 CSC) | 지워요 |
+| 희소 `+`·`-` 밀집, 희소 비교 밀집, 희소 `/` 희소 | 밀집 `sd.ndarray` | |
+| 희소 `@` 밀집, 밀집 `@` 희소 | 밀집 `sd.ndarray` (1차원 @ 1차원은 Python 수) | |
+| 희소 `@` 희소 | 희소 (CSR, 왼쪽이 CSC면 CSC, 1차원 결과는 COO) | 지워요 |
+| `A + c` (c ≠ 0), `A - c`, `c - A`, `A ** 0` | `ValueError` | |
+
+"희소 비교 스칼라"는 [비교](#비교)에서 보듯이 결과가 꽉 찰 수도 있어요. `A.maximum`, `A.minimum`, `A.multiply`는 같은 규칙의 메서드예요([원소별 함수](/api/sparse/elementwise/)).
+
+## 희소끼리
+
+두 희소 배열은 **모양이 같아야** 해요. 희소 배열끼리는 브로드캐스트하지 않아요.
+
+```python
+>>> A + sd.sparse.csr_array((3, 2))
+Traceback (most recent call last):
+    ...
+ValueError: shapes could not be broadcast together: (2, 3) (3, 2)
+```
+
+`+`와 `-`는 두 쪽 중 하나라도 저장한 자리를 계산해요. 한쪽에만 저장된 자리는 다른 쪽을 0으로 놓고 계산해요. `*`는 **두 쪽이 다 저장한** 자리만 곱해요. 어느 한쪽이 0이면 곱은 0이라서 그 밖의 자리는 볼 필요가 없어요.
+
+<Fig caption="+는 두 패턴의 합집합을, *는 교집합을 계산해요. 연산이 만든 0(A + B의 (0, 2))은 결과에 남지 않아요.">
+  <ArrayFig name="A" data={[[1, 0, 2], [0, 3, 0]]} tones={[['a', 'm', 'a'], ['m', 'a', 'm']]} />
+  <ArrayFig name="B" data={[[0, 4, -2], [0, 1, 0]]} tones={[['m', 'a', 'a'], ['m', 'a', 'm']]} />
+  <Op>→</Op>
+  <ArrayFig name="A + B" data={[[1, 4, 0], [0, 4, 0]]} tones={[['b', 'b', 'm'], ['m', 'b', 'm']]} note="nnz 3" />
+  <ArrayFig name="A * B" data={[[0, 0, -4], [0, 3, 0]]} tones={[['m', 'm', 'b'], ['m', 'b', 'm']]} note="nnz 2" />
+</Fig>
+
+결과에 정확한 0이 생기면 지워요. 위에서 (0, 2)는 2 + (−2) = 0이라 `A + B`에 저장되지 않아요. 같은 배열을 빼면 아무것도 저장하지 않아요.
+
+```python
+>>> (A + B).nnz
+3
+>>> (A - A)
+<csr_array of shape (2, 3), float64, 0 stored elements>
+```
+
+결과의 형식은 **왼쪽**이 CSC면 CSC, 아니면 CSR이에요. 오른쪽은 그 형식으로 바꿔서 계산해요. COO나 DOK끼리 더해도 CSR이에요.
+
+```python
+>>> A.tocsc() + B
+<csc_array of shape (2, 3), float64, 3 stored elements>
+>>> A.todok() + B.tocoo()
+<csr_array of shape (2, 3), float64, 3 stored elements>
+```
+
+희소 ÷ 희소(`A / B`)는 밀집 배열이에요. 두 쪽이 다 0인 자리가 0/0 = NaN이 되어 결과가 대부분 0이 아니게 되기 때문이에요.
+
+```python
+>>> A / B
+array([[ inf,  0.0, -1.0],
+       [ nan,  3.0,  nan]], dtype=float64)
+```
+
+### 한쪽의 NaN은 곱에 남지 않아요
+
+`*`가 둘 다 저장한 자리만 곱하므로, 한쪽에만 저장된 NaN이나 무한대는 결과에 퍼지지 않아요. 다른 쪽의 그 자리가 저장되지 않은 0이라서 곱셈에 들지 않기 때문이에요([강한 0](/api/sparse/basics/#암시적-0은-계산에-들지-않아요)).
+
+```python
+>>> N = sd.sparse.csr_array(sd.asarray([[float('nan'), 0.0, 0.0], [0.0, 0.0, 0.0]]))
+>>> (N * B).nnz
+0
+>>> (N.toarray() * B.toarray())[0, 0]
+nan
+```
+
+## 스칼라와
+
+`A * c`, `c * A`, `A / c`는 저장한 값에만 계산하고 패턴과 형식을 그대로 둬요. DOK는 DOK로, COO는 같은 자리의 중복까지 그대로 남아요. 결과가 0이 되어도 지우지 않아요.
+
+```python
+>>> A * 2
+<csr_array of shape (2, 3), float64, 3 stored elements>
+>>> (A * 0).nnz
+3
+>>> (A.todok() * 2).format
+'dok'
+```
+
+`A / 0`은 에러가 아니에요. 저장한 값만 ±inf나 NaN이 되고 저장하지 않은 자리는 0이에요. 밀집 배열의 원소별 나눗셈이 0으로 나눠도 에러가 아닌 것과 같아요.
+
+```python
+>>> (A / 0).toarray()
+array([[inf, 0.0, inf],
+       [0.0, inf, 0.0]], dtype=float64)
+```
+
+`-A`, `abs(A)`, `A ** p`(p > 0)도 패턴을 그대로 둬요. `A ** p`는 `A.power(p)`와 같아요.
+
+```python
+>>> (A ** 2).toarray()
+array([[1.0, 0.0, 4.0],
+       [0.0, 9.0, 0.0]], dtype=float64)
+>>> abs(-A).data
+array([1.0, 2.0, 3.0], dtype=float64)
+```
+
+### 0이 아닌 스칼라를 더할 수 없어요
+
+`A + c`(c ≠ 0)는 저장하지 않은 모든 자리가 c가 되어 결과가 꽉 찬 행렬이에요. 희소 배열로 담을 수 없으므로 `ValueError`예요. `A ** 0`도 0⁰ = 1이라서 같은 까닭으로 에러예요. 정말 필요하면 밀집 배열로 바꿔서 계산해요.
+
+```python
+>>> A + 1
+Traceback (most recent call last):
+    ...
+ValueError: adding a nonzero scalar to a sparse array is not supported; use A.toarray() + c
+>>> 1 - A
+Traceback (most recent call last):
+    ...
+ValueError: subtracting a sparse array from a nonzero scalar is not supported; use c - A.toarray()
+>>> A ** 0
+Traceback (most recent call last):
+    ...
+ValueError: the power 0 is not supported: the result would not be sparse (0 ** 0 is 1); use A.toarray() ** 0
+>>> A.toarray() + 1
+array([[2.0, 1.0, 3.0],
+       [1.0, 4.0, 1.0]], dtype=float64)
+```
+
+`A + 0`, `A - 0`, `0 - A`는 패턴이 같은 새 배열이에요. NaN을 더하는 것(`A + float('nan')`)은 0이 아닌 스칼라라서 `ValueError`예요.
+
+스칼라는 Python의 bool·int·float·complex와 numpy의 스칼라(`np.float64(2.0)` 등)예요.
+
+## 비교
+
+`==`, `!=`, `<`, `<=`, `>`, `>=`의 결과는 True만 저장한 bool 희소 배열이에요. 비교는 IEEE 규칙 그대로라서 NaN과의 비교는 `!=`만 참이에요.
+
+```python
+>>> (A > B).toarray()
+array([[ True, False,  True],
+       [False,  True, False]], dtype=bool)
+>>> (A >= 2).toarray()
+array([[False, False,  True],
+       [False,  True, False]], dtype=bool)
+```
+
+저장하지 않은 자리끼리(0과 0) 비교가 참이면, 그 자리가 모두 True로 결과에 저장돼요. `A == B`, `A <= B`, `A == 0`, `A < 2` 같은 비교가 그래요. 행렬이 크면 결과가 꽉 찬 bool 행렬이 되므로 조심해야 해요.
+
+```python
+>>> A == B
+<csr_array of shape (2, 3), bool, 2 stored elements>
+>>> A < 2
+<csr_array of shape (2, 3), bool, 4 stored elements>
+>>> (A < 2).toarray()
+array([[ True,  True, False],
+       [ True, False,  True]], dtype=bool)
+```
+
+`A == B`는 여기서 2개를 저장했지만, 두 행렬이 n × n이고 0이 아닌 원소가 몇 개뿐이면 거의 n²개를 저장해요.
+
+<Callout type="tip" title="큰 행렬은 거짓이 많은 쪽으로 비교해요">
+
+0과 0의 비교가 거짓인 연산(`!=`, `<` 0 이하의 수, `>` 0 이상의 수)은 저장한 원소 근처만 결과에 담아요. "두 행렬이 같은가"는 `(A != B).nnz == 0`으로, "음수인 원소"는 `A < 0`으로 물으면 결과가 작아요.
+
+</Callout>
+
+```python
+>>> (A != A).nnz == 0
+True
+>>> A < 0
+<csr_array of shape (2, 3), bool, 0 stored elements>
+```
+
+## 밀집 배열과
+
+희소 배열과 `sd.ndarray`를 함께 계산할 수 있어요. 밀집 배열은 A의 모양으로 [브로드캐스트](/api/array/broadcasting/)되어야 해요. 행 하나 `(n,)`이나 `(1, n)`, 열 하나 `(m, 1)`, `(1, 1)`이 되고, 결과가 A보다 커지는 꼴은 `ValueError`예요.
+
+`A * D`, `D * A`, `A / D`는 희소 배열이에요. A가 저장한 자리의 D만 읽어서 계산하고, A의 형식을 지켜요. 저장하지 않은 자리는 D가 NaN이어도 0이에요.
+
+```python
+>>> A * sd.asarray([10.0, 20.0, 30.0])
+<csr_array of shape (2, 3), float64, 3 stored elements>
+>>> (A * sd.asarray([10.0, 20.0, 30.0])).toarray()
+array([[10.0,  0.0, 60.0],
+       [ 0.0, 60.0,  0.0]], dtype=float64)
+>>> (A * sd.asarray([[1.0], [-1.0]])).toarray()
+array([[ 1.0,  0.0,  2.0],
+       [ 0.0, -3.0,  0.0]], dtype=float64)
+>>> A * sd.asarray([[1.0, 2.0, 3.0, 4.0]])
+Traceback (most recent call last):
+    ...
+ValueError: shapes could not be broadcast together: (2, 3) (1, 4)
+```
+
+`A + D`, `A - D`, `D - A`, 비교는 밀집 배열이에요. 저장하지 않은 자리도 D와 계산하므로 대개 모든 칸이 0이 아니기 때문이에요. 값은 `A.toarray()`로 바꿔서 계산한 것과 같아요.
+
+```python
+>>> D = sd.asarray([[10.0, 20.0, 30.0], [40.0, 50.0, 60.0]])
+>>> A + D
+array([[11.0, 20.0, 32.0],
+       [40.0, 53.0, 60.0]], dtype=float64)
+>>> A < D
+array([[True, True, True],
+       [True, True, True]], dtype=bool)
+```
+
+`D / A`와 `c / A`(밀집 배열이나 스칼라를 희소 배열로 나누기)는 받지 않아요. 저장하지 않은 자리가 모두 ÷ 0이 되기 때문이에요. 필요하면 `D / A.toarray()`로 써요.
+
+```python
+>>> D / A
+Traceback (most recent call last):
+    ...
+TypeError: unsupported operand type(s) for /: 'ndarray' and 'csr_array'
+```
+
+### numpy 배열과 리스트는 받지 않아요
+
+연산자의 밀집 피연산자는 `sd.ndarray`만이에요. numpy 배열이나 리스트와 계산하면 `TypeError`예요. `==`와 `!=`도 말없이 False가 되지 않고 `TypeError`예요. [`sd.asarray`](/api/array/asarray/)로 먼저 바꿔요.
+
+```python
+>>> import numpy as np
+>>> A == np.ones((2, 3))
+Traceback (most recent call last):
+    ...
+TypeError: '==' not supported between instances of 'csr_array' and 'numpy.ndarray'
+>>> A * np.ones((2, 3))
+Traceback (most recent call last):
+    ...
+TypeError: unsupported operand type(s) for *: 'csr_array' and 'numpy.ndarray'
+>>> A + [1, 2, 3]
+Traceback (most recent call last):
+    ...
+TypeError: unsupported operand type(s) for +: 'csr_array' and 'list'
+>>> A * sd.asarray(np.ones((2, 3)))
+<csr_array of shape (2, 3), float64, 3 stored elements>
+```
+
+## 행렬곱 @
+
+`@`는 행렬곱이에요. 왼쪽 피연산자의 마지막 축과 오른쪽의 첫 축 길이가 같아야 해요.
+
+| 왼쪽 | 오른쪽 | 결과 |
+|---|---|---|
+| 희소 (m, n) | 밀집 (n,) | 밀집 (m,) |
+| 희소 (m, n) | 밀집 (n, k) | 밀집 (m, k) |
+| 밀집 (m,) 또는 (p, m) | 희소 (m, n) | 밀집 (n,) 또는 (p, n) |
+| 희소 (m, n) | 희소 (n, k) | 희소 (m, k) |
+| 희소 (m, n) | 희소 1차원 (n,) | 희소 COO (m,) |
+| 1차원 (n,) | 1차원 (n,) | Python 수 |
+
+**희소 × 밀집**은 가장 흔한 계산이에요. 행렬 × 벡터(SpMV)는 반복법과 고유값 함수가 쉬지 않고 부르는 곱이에요. 밀집 행렬을 곱하면(SpMM) 결과의 열 j는 `A @ X[:, j]`와 마지막 한 자리까지 같아요.
+
+```python
+>>> A @ sd.asarray([1.0, 2.0, 3.0])
+array([7.0, 6.0], dtype=float64)
+>>> A @ sd.asarray([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]])
+array([[3.0, 2.0],
+       [0.0, 3.0]], dtype=float64)
+>>> sd.asarray([1.0, 2.0]) @ A
+array([1.0, 6.0, 2.0], dtype=float64)
+```
+
+**희소 × 희소**(SpGEMM)의 결과는 희소 배열이에요. 형식은 왼쪽이 CSC면 CSC, 아니면 CSR이고, 결과에 생긴 정확한 0은 지워요. 결과도 [표준 꼴](/api/sparse/basics/#표준-꼴)이에요. 희소 × 희소의 결과는 두 입력보다 훨씬 많이 저장할 수 있어요(n × 1 행렬과 1 × n 행렬의 곱은 n²칸이 모두 찰 수 있어요).
+
+```python
+>>> A @ A.T
+<csr_array of shape (2, 2), float64, 2 stored elements>
+>>> (A @ A.T).toarray()
+array([[5.0, 0.0],
+       [0.0, 9.0]], dtype=float64)
+>>> A.T @ A
+<csc_array of shape (3, 3), float64, 5 stored elements>
+```
+
+`A.T`는 CSC라서 `A.T @ A`의 결과가 CSC예요.
+
+1차원 희소 배열을 곱하면 1차원 결과가 COO 희소 배열이고, 1차원끼리는 내적인 Python 수예요.
+
+```python
+>>> v = sd.sparse.csr_array(sd.asarray([1.0, 0.0, 2.0]))
+>>> A @ v
+<coo_array of shape (2,), float64, 1 stored element>
+>>> v @ v
+5.0
+```
+
+곱의 dtype은 밀집 배열의 행렬곱([matmul](/api/array/matmul/))과 같은 규칙이에요. bool × bool은 int64이고, 실수와 복소수를 곱하면 complex128이에요. 모양이 맞지 않으면 밀집 배열과 같은 메시지의 `ValueError`, 스칼라와의 `@`는 `TypeError`예요.
+
+```python
+>>> A @ sd.ones(2)
+Traceback (most recent call last):
+    ...
+ValueError: the last axis of 'x1' (3) must match the second-to-last axis of 'x2' (2)
+>>> A @ 2
+Traceback (most recent call last):
+    ...
+TypeError: unsupported operand type(s) for @: 'csr_array' and 'int'
+```
+
+희소 행렬은 2차원까지라서 `@`의 밀집 피연산자도 1차원이나 2차원이에요. 행렬 여러 장(3차원 배열)을 한 번에 곱하지 않아요. 3차원 이상은 어느 쪽에 있어도 `ValueError`예요.
+
+```python
+>>> A @ sd.ones((3, 3, 2))
+Traceback (most recent call last):
+    ...
+ValueError: the operand must have 1 or 2 dimensions, got 3
+```
+
+### 저장하지 않은 자리는 곱에 들지 않아요
+
+`A @ x`에서 x의 원소가 NaN이어도, 그 열에 저장한 원소가 없는 행에는 NaN이 퍼지지 않아요. 밀집 배열의 행렬곱은 0 × NaN = NaN을 더하므로 결과가 달라요. 희소 행렬 계산에서 흔히 쓰는 규칙이에요.
+
+```python
+>>> x = sd.asarray([float('nan'), 1.0, 1.0])
+>>> A @ x
+array([nan, 3.0], dtype=float64)
+>>> A.toarray() @ x
+array([nan, nan], dtype=float64)
+```
+
+## 값은 밀집 연산과 같아요
+
+저장한 값마다 밀집 배열의 같은 연산을 하므로, 그 자리의 값은 밀집 배열로 계산한 것과 마지막 한 자리까지 같아요. `A / 3.3`은 저장한 값을 하나씩 3.3으로 나눈 것이지 1/3.3을 곱한 것이 아니에요.
+
+```python
+>>> bool(sd.all((A / 3.3).data == A.data / 3.3))
+True
+```
+
+결과의 dtype도 밀집 배열의 승격 규칙이에요. bool끼리 더하거나 bool을 부호 바꾸면 int64이고, int64의 산술은 넘치면 밀집 배열처럼 돌아 감아요(wrap).
+
+```python
+>>> G = sd.sparse.csr_array(sd.asarray([[True, False]]))
+>>> (G + G).dtype, (-G).dtype
+(int64, int64)
+>>> (sd.sparse.csr_array([[2**62, 0, 3]]) * 4).data
+array([                  0, 12], dtype=int64)
+```
+
+행렬곱과 축 합에서 한 원소에 여러 항을 더하는 순서는 [같은 입력이면 같은 결과](/api/sparse/basics/#같은-입력이면-같은-결과)에 있어요. 어느 형식으로 곱하든 같은 순서이고, 지금은 스레드 수와도 상관없어요(약속은 아니에요).
+
+## 제자리 연산자
+
+`A *= 2`, `A += B` 같은 제자리 연산자는 A를 바꾸지 않아요. Python이 `A = A * 2`로 읽어서 새 배열을 만들고 이름 A에 붙여요. 원래 배열을 가리키던 다른 이름은 옛 값 그대로예요. 값을 제자리에서 바꾸려면 `A.data *= 2`처럼 값 배열을 고쳐요.
+
+```python
+>>> C = A.copy()
+>>> old = C
+>>> C *= 2
+>>> C is old, old.data, C.data
+(False, array([1.0, 2.0, 3.0], dtype=float64), array([2.0, 4.0, 6.0], dtype=float64))
+>>> old.data *= 2
+>>> old.data
+array([2.0, 4.0, 6.0], dtype=float64)
+```
+
+## scipy를 아는 분께
+
+- **`A / 0`이 에러가 아니에요.** scipy는 `ZeroDivisionError`예요. `A / c`도 scipy는 `A * (1/c)`로 계산해서 끝자리가 다를 수 있어요.
+- **`A + c`와 `A ** 0`은 `ValueError`예요.** scipy는 `NotImplementedError`예요.
+- **희소끼리의 `*`는 둘 다 저장한 자리만 곱해요.** scipy는 합집합에서 계산해서 한쪽의 NaN·inf가 NaN으로 저장돼요.
+- **비교는 IEEE대로예요.** scipy의 `<=`·`>=`는 `>`·`<`의 부정이라 NaN과 비교해도 참이 될 수 있어요. 결과가 꽉 차는 비교에 `SparseEfficiencyWarning`도 내지 않아요.
+- **`dok + 희소`는 CSR이에요.** scipy는 DOK예요(`dok - 희소`는 scipy도 CSR이에요).
+- **`A * 밀집`과 `A.multiply(밀집)`은 A의 형식이에요.** scipy는 COO예요.
+- **밀집 피연산자는 `sd.ndarray`만이에요.** numpy 배열과는 연산자가 Python의 `unsupported operand type(s)` 문장인 `TypeError`이고(numpy 배열이 어느 쪽에 있어도요) `==`·`!=`도 `TypeError`예요. 브로드캐스트도 결과가 A의 모양인 꼴만 받아요(scipy의 `multiply`는 더 큰 결과도 받아요).
+- **`A @ 2`는 `TypeError`예요.** scipy는 `ValueError`예요.
+- **제자리 연산자가 값 배열을 바꾸지 않아요.** scipy의 `A *= 2`는 값 배열을 제자리에서 바꿔요.
+- **dtype은 밀집 배열의 규칙이에요.** bool + bool, bool @ bool, `-bool`이 int64예요(scipy는 bool + bool과 bool @ bool이 bool이에요).
+- **희소 × 희소의 결과가 표준 꼴이에요.** scipy의 결과는 행 안이 정렬되어 있지 않아요.
+- 행마다 저장한 원소가 4096개 이하이면 `A @ x`와 희소 × 희소는 지금은 scipy와 비트까지 같아요(약속은 아니에요).

@@ -1,0 +1,342 @@
+---
+title: astype
+names: [astype]
+group: dtype 도구
+order: 1
+signatures:
+  - "sd.astype(x, dtype, /, *, copy=True)"
+  - "x.astype(dtype, /, *, copy=True)"
+summary: 배열의 원소 종류(dtype)를 바꾼 새 배열을 돌려줘요. 실수를 정수로 바꾸는 것처럼 값이 조금 달라지는 변환도 해 줘요.
+params:
+  - name: x
+    type: ndarray
+    kind: positional-only
+    desc: 바꿀 배열.
+  - name: dtype
+    type: dtype 또는 그 이름
+    kind: "positional-only, 필수"
+    desc: 바꿀 원소 종류. sd.bool, sd.int64, sd.float64, sd.complex128이나 그 이름("float64" 등).
+  - name: copy
+    type: True, False 또는 None
+    kind: keyword-only
+    desc: True(기본값)면 언제나 새 배열. False면 절대 복사하지 않고, 복사가 필요하면 에러. None이면 dtype이 같을 때만 x를 그대로 돌려줘요.
+returns:
+  type: ndarray
+  desc: x와 같은 모양에 dtype만 바뀐 배열. copy가 False나 None이고 dtype이 이미 같으면 x 그 자신이에요.
+raises:
+  - type: TypeError
+    desc: x가 배열이 아닐 때, dtype이 네 가지 dtype이나 그 이름이 아닐 때(Python의 float, numpy dtype, "float32", None, sd.string 등), 복소수를 실수나 정수로 바꾸려 할 때, copy가 True·False·None이 아닐 때.
+  - type: ValueError
+    desc: copy=False인데 dtype이 달라서 변환(복사)이 필요할 때.
+seeAlso: [asarray, dtype-tools, rounding, complex, views]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+`astype`은 배열의 원소 종류(dtype)를 바꿔요. 원래 배열은 그대로 두고, 바뀐 종류의 새 배열을 돌려줘요.
+
+```python
+>>> import stardust as sd
+>>> i = sd.asarray([1, 2, 3])
+>>> f = sd.astype(i, sd.float64)
+>>> f
+array([1.0, 2.0, 3.0], dtype=float64)
+>>> i
+array([1, 2, 3], dtype=int64)
+```
+
+같은 일을 하는 메서드도 있어요. `sd.astype(x, ...)`와 `x.astype(...)`는 같아요. dtype은 객체(`sd.float64`)로 써도, 이름(`"float64"`)으로 써도 돼요.
+
+```python
+>>> i.astype("float64")
+array([1.0, 2.0, 3.0], dtype=float64)
+```
+
+`astype`이 가장 흔히 필요한 때는 정수 배열에 실수를 넣고 싶을 때예요. 정수 배열에는 `2.5`를 대입할 수 없지만, 실수 배열로 바꾼 뒤에는 넣을 수 있어요.
+
+```python
+>>> i[0] = 2.5
+Traceback (most recent call last):
+    ...
+TypeError: cannot implicitly convert float64 to int64 (that would lose information); convert explicitly with astype
+>>> f[0] = 2.5
+>>> f
+array([2.5, 2.0, 3.0], dtype=float64)
+```
+
+에러 메시지는 정보를 잃을 수 있는 변환을 저절로 하지 않으니, 원하면 `astype`으로 직접 바꾸라는 뜻이에요.
+
+<Reference />
+
+## 변환 규칙
+
+stardust의 [dtype](/api/array/dtypes/)은 네 가지예요. 어느 것에서 어느 것으로든 바꿀 수 있지만, 복소수를 실수나 정수로 바꾸는 것만은 해 주지 않아요.
+
+| 바꾸기 전 → 후 | 어떻게 바뀌나요 |
+|---|---|
+| bool → int64, float64, complex128 | `True`는 1, `False`는 0 |
+| int64 → float64, complex128 | 같은 값. 단, 2⁵³보다 큰 정수는 가장 가까운 실수로 |
+| float64 → complex128 | 허수부 0인 복소수 |
+| float64 → int64 | 소수점 아래를 버려요(0 쪽으로). NaN은 0, 범위 밖은 int64의 최댓값·최솟값 |
+| 무엇이든 → bool | 0이면 `False`, 0이 아니면 `True`. NaN은 `True` |
+| complex128 → float64, int64 | `TypeError` |
+
+### 넓은 쪽으로: 값이 그대로예요
+
+`bool < int64 < float64 < complex128` 순서에서 오른쪽으로 바꾸는 것은 값을 잃지 않아요.
+
+```python
+>>> sd.astype(sd.asarray([True, False]), sd.int64)
+array([1, 0], dtype=int64)
+>>> sd.astype(i, sd.complex128)
+array([(1+0j), (2+0j), (3+0j)], dtype=complex128)
+```
+
+예외가 하나 있어요. float64는 2⁵³(약 9 × 10¹⁵)보다 큰 정수를 모두 정확히 담지는 못해서, 그런 정수는 가장 가까운 실수로 바뀌어요.
+
+```python
+>>> sd.astype(sd.asarray([2**53 + 1]), sd.float64)
+array([9007199254740992.0], dtype=float64)
+```
+
+`2**53 + 1`이 `2**53`이 됐어요. 보통 쓰는 크기의 정수에서는 생기지 않는 일이에요.
+
+### 실수 → 정수: 버림이에요
+
+실수를 정수로 바꾸면 소수점 아래를 버려요. 0에 가까운 쪽으로 자르기 때문에 양수는 내려가고 음수는 올라가요. 반올림이 아니에요.
+
+```python
+>>> x = sd.asarray([1.7, -1.7, 0.5, -0.5])
+>>> sd.astype(x, sd.int64)
+array([ 1, -1,  0,  0], dtype=int64)
+```
+
+<Fig caption="실수 → 정수는 0 쪽으로 잘라요. 1.7은 1, -1.7은 -1이 돼요.">
+  <ArrayFig name="x" data={['1.7', '-1.7', '0.5', '-0.5']} tones={['a', 'b', '', '']} note="float64" />
+  <Op note="astype(int64)">→</Op>
+  <ArrayFig data={[1, -1, 0, 0]} tones={['a', 'b', '', '']} note="int64" />
+</Fig>
+
+반올림이나 내림을 원하면 [반올림](/api/array/rounding/) 함수로 먼저 정수 값을 만든 뒤 바꾸세요.
+
+```python
+>>> sd.astype(sd.round(x), sd.int64)
+array([ 2, -2,  0,  0], dtype=int64)
+>>> sd.astype(sd.floor(x), sd.int64)
+array([ 1, -2,  0, -1], dtype=int64)
+```
+
+`sd.round`는 딱 절반(`0.5`, `-0.5`)일 때 짝수 쪽으로 반올림해서 `0`이 돼요.
+
+NaN(숫자가 아님)과 무한대는 정수로 나타낼 수 없어요. 이때도 에러를 내지 않아요. NaN은 `0`으로, int64가 담을 수 없을 만큼 크거나 작은 값은 int64의 최댓값이나 최솟값으로 바꿔요.
+
+```python
+>>> sd.astype(sd.asarray([sd.nan, sd.inf, -sd.inf, 1e300]), sd.int64)
+array([                   0,  9223372036854775807, -9223372036854775808,
+        9223372036854775807], dtype=int64)
+```
+
+<Callout type="warn" title="NaN이 조용히 0이 돼요">
+
+NaN이 섞인 실수 배열을 정수로 바꾸면 에러 없이 NaN 자리가 `0`이 돼요. 진짜 0과 구별할 수 없게 되니, 바꾸기 전에 `sd.isnan`으로 NaN이 있는지 확인하세요.
+
+</Callout>
+
+### 무엇이든 → bool: 0인가 아닌가
+
+bool로 바꾸면 0은 `False`, 0이 아닌 값은 `True`가 돼요. 음수도, 아주 작은 수도 0이 아니면 `True`예요. `-0.0`은 0이라서 `False`, NaN은 0이 아니라서 `True`예요.
+
+```python
+>>> sd.astype(sd.asarray([0.0, -0.0, sd.nan, 0.1, -3.0]), sd.bool)
+array([False, False,  True,  True,  True], dtype=bool)
+>>> sd.astype(sd.asarray([1 + 0j, 0j, 2j]), sd.bool)
+array([ True, False,  True], dtype=bool)
+```
+
+복소수도 bool로 바꿀 수 있어요. 실수부와 허수부가 모두 0일 때만 `False`예요.
+
+### 복소수 → 실수·정수: 안 돼요
+
+복소수를 실수나 정수로 바꾸면 허수부가 통째로 사라져요. 그래서 이 변환은 하지 않고 `TypeError`를 내요. 허수부가 모두 0이어도 마찬가지예요.
+
+```python
+>>> z = sd.asarray([1 + 2j, 3 + 0j])
+>>> sd.astype(z, sd.float64)
+Traceback (most recent call last):
+    ...
+TypeError: astype(): cannot convert complex128 to float64: the imaginary part would be lost (take the real part explicitly)
+```
+
+실수부가 필요하면 `sd.real`로, 크기가 필요하면 `sd.abs`로 꺼내세요. 그러면 무엇을 원하는지가 코드에 드러나요. 두 함수는 [복소수의 부분](/api/array/complex/)에 있어요.
+
+```python
+>>> sd.real(z)
+array([1.0, 3.0], dtype=float64)
+>>> sd.abs(z)
+array([2.23606797749979,              3.0], dtype=float64)
+```
+
+## 명시적 변환과 암묵적 변환
+
+stardust에서 dtype이 바뀌는 길은 두 가지이고, `astype`은 그중 명시적 변환이에요.
+
+- **명시적 변환**: 코드에 바꿀 종류를 직접 적은 것이에요. `astype`, `asarray(..., dtype=...)`, `sum(..., dtype=...)` 등이에요. 직접 요청했으므로 값이 달라지는 변환(실수 → 정수 등)도 해 줘요.
+- **암묵적 변환**: 결과를 이미 있는 배열에 써 넣느라 저절로 바뀌는 것이에요. 대입(`x[0] = ...`), 제자리 연산자(`x += ...`), `out=` 등이에요. 이때는 넓은 쪽으로만 바꾸고, 값을 잃을 수 있는 변환은 `TypeError`예요.
+
+```python
+>>> k = sd.asarray([1, 2, 3])
+>>> k += 0.5
+Traceback (most recent call last):
+    ...
+TypeError: cannot implicitly convert float64 to int64 (that would lose information); convert explicitly with astype
+```
+
+암묵적 변환은 실제 값을 보지 않고 dtype만으로 판단해요. 그래서 `k[0] = 2.0`처럼 값이 정수와 같아도 에러예요. 정수 배열에 실수 계산 결과를 담으려면, 계산 결과를 `astype`으로 직접 바꿔서 넣으세요.
+
+```python
+>>> k[...] = sd.astype(k * 1.5, sd.int64)
+>>> k
+array([1, 3, 4], dtype=int64)
+```
+
+두 변환의 규칙은 [원소 종류(dtype)](/api/array/dtypes/)에 자세히 있어요. 암묵적 변환이 되는지 미리 알고 싶으면 [`sd.can_cast`](/api/array/dtype-tools/)를 써요.
+
+## `copy`: 언제나 새 배열일까요
+
+`astype`은 기본값(`copy=True`)에서 언제나 새 배열을 만들어요. dtype이 이미 같아서 바꿀 것이 없어도 그래요.
+
+```python
+>>> g = sd.asarray([1, 2, 3])
+>>> h = g.astype(sd.int64)
+>>> h is g
+False
+>>> h[0] = 100
+>>> g
+array([1, 2, 3], dtype=int64)
+```
+
+그래서 기본값으로 얻은 결과는 원본과 메모리를 함께 쓰지 않아요. 결과를 고쳐도 원본은 바뀌지 않아요. 원본이 [뷰](/api/array/views/)이거나 읽기 전용이어도, 결과는 자기 메모리가 있고 고칠 수 있는 배열이에요.
+
+`copy`는 세 가지 값을 받아요. dtype이 이미 같을 때와 다를 때 하는 일이 값마다 달라요.
+
+| `copy` | dtype이 같을 때 | dtype이 다를 때 |
+|---|---|---|
+| `True` (기본값) | 새 배열 (복사본) | 변환한 새 배열 |
+| `None` | `x` 그 자신 | 변환한 새 배열 |
+| `False` | `x` 그 자신 | `ValueError` |
+
+```python
+>>> g.astype(sd.int64, copy=None) is g
+True
+>>> g.astype(sd.float64, copy=None)
+array([1.0, 2.0, 3.0], dtype=float64)
+>>> g.astype(sd.int64, copy=False) is g
+True
+>>> g.astype(sd.float64, copy=False)
+Traceback (most recent call last):
+    ...
+ValueError: astype(): copy=False, but a dtype conversion requires a copy
+```
+
+- `copy=None`은 필요할 때만 복사해요. 함수가 받은 배열을 float64로 맞추되, 이미 float64면 복사하고 싶지 않을 때 써요.
+- `copy=False`는 절대 복사하지 않아요. dtype을 바꾸려면 새 배열을 만들어야 하므로, dtype이 다르면 에러가 나요. 배열이 이미 그 dtype인지 확인하는 데 써요.
+
+<Callout type="warn" title="copy=None이나 False의 결과는 원본일 수 있어요">
+
+`copy=None`이나 `copy=False`로 받은 결과는 원본 그 자신일 수 있어요. 그 결과를 고치면 원본도 바뀌어요. 고칠 생각이라면 기본값 `copy=True`로 두세요.
+
+</Callout>
+
+## `asarray(x, dtype=...)`와의 차이
+
+[`asarray`](/api/array/asarray/)에 `dtype=`을 줘도 종류를 바꿀 수 있어요. 변환 규칙은 같고, `copy`의 기본값이 달라요.
+
+| | 기본 `copy` | dtype이 이미 같으면 |
+|---|---|---|
+| `sd.astype(x, dt)` | `True` | 언제나 새 배열 |
+| `sd.asarray(x, dtype=dt)` | `None` | `x` 그 자신 |
+
+```python
+>>> sd.asarray(g, dtype=sd.int64) is g
+True
+>>> sd.astype(g, sd.int64) is g
+False
+```
+
+- 새 배열이 꼭 필요할 때(결과를 고칠 것일 때)는 `astype`을 써요.
+- 종류만 맞으면 되고 복사는 아끼고 싶을 때는 `asarray(x, dtype=...)`나 `astype(x, dt, copy=None)`을 써요.
+
+`asarray`는 리스트도 받지만, `astype`은 stardust 배열만 받는다는 점도 달라요.
+
+## 조심할 점
+
+### dtype은 네 가지만
+
+`dtype`에는 `sd.bool`, `sd.int64`, `sd.float64`, `sd.complex128`과 그 이름만 쓸 수 있어요. Python의 `float`, numpy의 dtype, `"float32"` 같은 다른 이름, `None`은 `TypeError`예요.
+
+```python
+>>> sd.astype(g, float)
+Traceback (most recent call last):
+    ...
+TypeError: astype(): 'dtype' must be sd.bool, sd.int64, sd.float64 or sd.complex128 (or their names), not float
+>>> sd.astype(g, "float32")
+Traceback (most recent call last):
+    ...
+TypeError: astype(): 'dtype' must be sd.bool, sd.int64, sd.float64 or sd.complex128 (or their names), not 'float32'
+```
+
+`sd.string`은 데이터프레임에서 쓰는 dtype이라 배열에는 쓸 수 없어요.
+
+### dtype은 자리로, copy는 이름으로
+
+`dtype`은 이름 없이 자리로 넘겨요. `dtype=sd.float64`처럼 이름을 붙이면 에러예요. 반대로 `copy`는 반드시 `copy=`로 써야 해요. `x.astype(sd.float64, False)`는 에러예요.
+
+```python
+>>> g.astype(sd.float64)
+array([1.0, 2.0, 3.0], dtype=float64)
+```
+
+`copy`에는 `True`, `False`, `None`만 쓸 수 있어요.
+
+```python
+>>> g.astype(sd.int64, copy=1)
+Traceback (most recent call last):
+    ...
+TypeError: astype(): 'copy' must be True, False or None, not int
+```
+
+### 배열만 받아요
+
+`sd.astype`은 리스트를 받지 않아요. 리스트를 원하는 종류의 배열로 만들려면 `sd.asarray(리스트, dtype=...)`를 쓰세요.
+
+```python
+>>> sd.astype([1, 2], sd.float64)
+Traceback (most recent call last):
+    ...
+TypeError: astype(): 'x' must be an sd.ndarray, not list
+>>> sd.asarray([1, 2], dtype=sd.float64)
+array([1.0, 2.0], dtype=float64)
+```
+
+## 비슷한 함수와의 차이
+
+| 하고 싶은 일 | 쓸 것 |
+|---|---|
+| 배열의 dtype 바꾸기 (언제나 새 배열) | `astype` |
+| 리스트나 배열을 원하는 dtype의 배열로 (복사는 필요할 때만) | `asarray(x, dtype=...)` |
+| dtype은 그대로 두고 복사본만 | `x.copy()` |
+| 복소수의 실수부·허수부 | `real`, `imag` |
+| 반올림·내림한 뒤 정수로 | `astype(round(x), int64)`, `astype(floor(x), int64)` |
+| 암묵적 변환이 되는지 확인 | `can_cast` |
+
+## numpy를 아는 분께
+
+- `copy=False`의 뜻이 달라요. numpy의 `astype(copy=False)`는 "필요하면 복사"이지만, stardust는 복사가 필요하면 `ValueError`예요. numpy의 그 동작은 `copy=None`이에요.
+- 복소수 → 실수·정수는 `TypeError`예요. numpy는 경고를 내고 허수부를 버려요.
+- 실수 → 정수에서 NaN은 0, 범위 밖은 최댓값·최솟값으로 정해져 있어요. numpy에서는 정해져 있지 않아요.
+- `dtype`은 positional-only, `copy`는 keyword-only예요. `casting=`, `order=`, `subok=` 인자는 없어요.
+- dtype은 네 가지뿐이에요. `"float32"`, `np.float64`, `float`는 받지 않아요.

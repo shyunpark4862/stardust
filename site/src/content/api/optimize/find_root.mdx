@@ -1,0 +1,447 @@
+---
+kind: function
+title: find_root
+names: [find_root, bracket_root]
+group: 스칼라
+order: 3
+signatures:
+  - "sd.optimize.find_root(f, init, /, *, args=(), xatol=None, xrtol=None, fatol=None, frtol=None, max_iter=None)"
+  - "sd.optimize.bracket_root(f, xl0, /, xr0=None, *, xmin=None, xmax=None, factor=None, args=(), max_iter=1000)"
+summary: 같은 꼴의 스칼라 방정식 여럿을 원소마다 따로, 한꺼번에 풀어요. 사용자 함수를 남은 원소의 배열로 한 번씩 불러서 원소마다 root_scalar를 부르는 것보다 훨씬 빨라요. bracket_root는 근을 끼는 구간을 찾아요.
+params:
+  - name: f
+    type: 호출 가능한 객체
+    kind: positional-only
+    desc: "f(x, *args). x는 아직 끝나지 않은 원소만 모은 float64 sd.ndarray (k,)이고, 원소마다의 값 k개((k,)의 sd.ndarray, 실수의 시퀀스, numpy 배열)를 돌려줘요."
+  - name: init
+    type: (xl, xr)
+    kind: positional-only
+    desc: "find_root의 처음 구간. 튜플이나 리스트(또는 첫 축으로 나누는 배열)이고, xl과 xr은 실수나 배열이에요. 원소마다 f(xl)과 f(xr)의 부호가 달라야 해요."
+  - name: xl0, xr0
+    type: 실수 또는 배열
+    kind: positional-only
+    desc: "bracket_root가 넓히기 시작할 구간. xl0는 위치로만, xr0는 위치나 키워드로 줘요. xr0의 기본값은 xl0 + min((xmax − xl0)/8, 1)이에요. xmin ≤ xl0 < xr0 ≤ xmax여야 해요(아니면 그 원소의 status가 −5)."
+  - name: args
+    type: tuple
+    kind: keyword-only
+    desc: "f에 넘길 원소마다의 상수. 값마다 실수나 배열(dtype은 그대로)이고, 다른 입력과 함께 브로드캐스트해서 배치 모양을 정해요. 호출마다 x와 같은 원소만 모은 1차원 배열로 넘겨요. 기본값 ()."
+  - name: xatol, xrtol
+    type: float 또는 None
+    kind: keyword-only
+    desc: "find_root의 구간 폭 판정. |xr − xl| < xatol + |x|·xrtol이면 멈춰요. None이면 xatol = 4·tiny(8.9e-308), xrtol = 4ε(8.9e-16)예요. 0 이상이에요."
+  - name: fatol, frtol
+    type: float 또는 None
+    kind: keyword-only
+    desc: "find_root의 함수값 판정. |f(x)| ≤ fatol + frtol·min(|f(xl)|, |f(xr)|)(처음 구간의 값)이면 멈춰요. None이면 fatol = tiny(2.2e-308), frtol = 0이에요."
+  - name: max_iter
+    type: int 또는 None
+    kind: keyword-only
+    desc: "반복의 상한(0 이상). find_root는 None(기본값)이면 2046(어떤 구간도 가장 작은 정규수까지 반으로 줄일 수 있는 수), bracket_root는 1000이에요. 닿은 원소는 status가 −2예요."
+  - name: xmin, xmax
+    type: 실수, 배열 또는 None
+    kind: keyword-only
+    desc: "bracket_root가 넘지 않을 한계. None(기본값)이면 −inf, inf예요. 한계가 있는 쪽은 한계까지의 거리를 1/factor씩 줄이며 다가가요."
+  - name: factor
+    type: 실수, 배열 또는 None
+    kind: keyword-only
+    desc: "bracket_root의 넓히는 비율(1보다 커야 해요). None(기본값)이면 2예요."
+returns:
+  type: OptimizeResult
+  desc: "find_root는 x, fun, bracket, f_bracket, converged, status, n_iter, nfev, bracket_root는 bracket, f_bracket, converged, status, n_iter, nfev가 든 결과 객체예요. 필드마다 배치 모양의 sd.ndarray이고, 입력이 모두 실수이면 Python 수예요. message와 method는 없어요."
+raises:
+  - type: TypeError
+    desc: f가 호출 가능하지 않을 때, init이 튜플·리스트·배열이 아닐 때, 입력이 실수나 배열이 아닐 때(bool, complex 포함), args가 튜플이 아니거나 그 값이 수나 배열이 아닐 때, 허용오차가 수가 아닐 때, max_iter가 정수가 아닐 때, f가 수의 배열이 아닌 것이나 complex·bool 값을 돌려줄 때. f 안에서 난 에러도 그대로 나와요.
+  - type: ValueError
+    desc: init의 값이 두 개가 아닐 때, 입력과 args가 서로 브로드캐스트되지 않을 때, f가 받은 x와 다른 모양(스칼라 포함)을 돌려줄 때, 허용오차가 음수이거나 유한하지 않을 때, max_iter가 음수일 때, factor가 1 이하일 때.
+seeAlso: [basics, results, root_scalar, find_minimum]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Steps from '../../../components/fig/Steps.astro';
+
+export const famSegs = [{"pts":[[0.0,-1.0],[0.05,-1.0999],[0.1,-1.199],[0.15,-1.2966],[0.2,-1.392],[0.25,-1.4844],[0.3,-1.573],[0.35,-1.6571],[0.4,-1.736],[0.45,-1.8089],[0.5,-1.875],[0.55,-1.9336],[0.6,-1.984],[0.65,-2.0254],[0.7,-2.057],[0.75,-2.0781],[0.8,-2.088],[0.85,-2.0859],[0.9,-2.071],[0.95,-2.0426],[1.0,-2.0],[1.05,-1.9424],[1.1,-1.869],[1.15,-1.7791],[1.2,-1.672],[1.25,-1.5469],[1.3,-1.403],[1.35,-1.2396],[1.4,-1.056],[1.45,-0.8514],[1.5,-0.625],[1.55,-0.3761],[1.6,-0.104],[1.65,0.1921],[1.7,0.513],[1.75,0.8594],[1.8,1.232],[1.85,1.6316],[1.9,2.059],[1.95,2.5149],[2.0,3.0],[2.05,3.5151],[2.1,4.061],[2.15,4.6384],[2.2,5.248],[2.25,5.8906],[2.3,6.567],[2.35,7.2779],[2.4,8.024],[2.45,8.8061],[2.5,9.625]],"color":"var(--blue-300)"},{"pts":[[0.0,-2.0],[0.05,-2.0999],[0.1,-2.199],[0.15,-2.2966],[0.2,-2.392],[0.25,-2.4844],[0.3,-2.573],[0.35,-2.6571],[0.4,-2.736],[0.45,-2.8089],[0.5,-2.875],[0.55,-2.9336],[0.6,-2.984],[0.65,-3.0254],[0.7,-3.057],[0.75,-3.0781],[0.8,-3.088],[0.85,-3.0859],[0.9,-3.071],[0.95,-3.0426],[1.0,-3.0],[1.05,-2.9424],[1.1,-2.869],[1.15,-2.7791],[1.2,-2.672],[1.25,-2.5469],[1.3,-2.403],[1.35,-2.2396],[1.4,-2.056],[1.45,-1.8514],[1.5,-1.625],[1.55,-1.3761],[1.6,-1.104],[1.65,-0.8079],[1.7,-0.487],[1.75,-0.1406],[1.8,0.232],[1.85,0.6316],[1.9,1.059],[1.95,1.5149],[2.0,2.0],[2.05,2.5151],[2.1,3.061],[2.15,3.6384],[2.2,4.248],[2.25,4.8906],[2.3,5.567],[2.35,6.2779],[2.4,7.024],[2.45,7.8061],[2.5,8.625],[2.55,9.4814]],"color":"var(--blue-300)"},{"pts":[[0.0,-3.0],[0.05,-3.0999],[0.1,-3.199],[0.15,-3.2966],[0.2,-3.392],[0.25,-3.4844],[0.3,-3.573],[0.35,-3.6571],[0.4,-3.736],[0.45,-3.8089],[0.5,-3.875],[0.55,-3.9336],[0.6,-3.984],[0.65,-4.0254],[0.7,-4.057],[0.75,-4.0781],[0.8,-4.088],[0.85,-4.0859],[0.9,-4.071],[0.95,-4.0426],[1.0,-4.0],[1.05,-3.9424],[1.1,-3.869],[1.15,-3.7791],[1.2,-3.672],[1.25,-3.5469],[1.3,-3.403],[1.35,-3.2396],[1.4,-3.056],[1.45,-2.8514],[1.5,-2.625],[1.55,-2.3761],[1.6,-2.104],[1.65,-1.8079],[1.7,-1.487],[1.75,-1.1406],[1.8,-0.768],[1.85,-0.3684],[1.9,0.059],[1.95,0.5149],[2.0,1.0],[2.05,1.5151],[2.1,2.061],[2.15,2.6384],[2.2,3.248],[2.25,3.8906],[2.3,4.567],[2.35,5.2779],[2.4,6.024],[2.45,6.8061],[2.5,7.625],[2.55,8.4814],[2.6,9.376]],"color":"var(--blue-300)"},{"pts":[[0.0,-4.0],[0.05,-4.0999],[0.1,-4.199],[0.15,-4.2966],[0.2,-4.392],[0.25,-4.4844],[0.3,-4.573],[0.35,-4.6571],[0.4,-4.736],[0.45,-4.8089],[0.5,-4.875],[0.55,-4.9336],[0.6,-4.984],[0.65,-5.0254],[0.7,-5.057],[0.75,-5.0781],[0.8,-5.088],[0.85,-5.0859],[0.9,-5.071],[0.95,-5.0426],[1.0,-5.0],[1.05,-4.9424],[1.1,-4.869],[1.15,-4.7791],[1.2,-4.672],[1.25,-4.5469],[1.3,-4.403],[1.35,-4.2396],[1.4,-4.056],[1.45,-3.8514],[1.5,-3.625],[1.55,-3.3761],[1.6,-3.104],[1.65,-2.8079],[1.7,-2.487],[1.75,-2.1406],[1.8,-1.768],[1.85,-1.3684],[1.9,-0.941],[1.95,-0.4851],[2.0,0.0],[2.05,0.5151],[2.1,1.061],[2.15,1.6384],[2.2,2.248],[2.25,2.8906],[2.3,3.567],[2.35,4.2779],[2.4,5.024],[2.45,5.8061],[2.5,6.625],[2.55,7.4814],[2.6,8.376]],"color":"var(--blue-300)"}];
+export const famMain = [[0.0,-5.0],[0.05,-5.0999],[0.1,-5.199],[0.15,-5.2966],[0.2,-5.392],[0.25,-5.4844],[0.3,-5.573],[0.35,-5.6571],[0.4,-5.736],[0.45,-5.8089],[0.5,-5.875],[0.55,-5.9336],[0.6,-5.984],[0.65,-6.0254],[0.7,-6.057],[0.75,-6.0781],[0.8,-6.088],[0.85,-6.0859],[0.9,-6.071],[0.95,-6.0426],[1.0,-6.0],[1.05,-5.9424],[1.1,-5.869],[1.15,-5.7791],[1.2,-5.672],[1.25,-5.5469],[1.3,-5.403],[1.35,-5.2396],[1.4,-5.056],[1.45,-4.8514],[1.5,-4.625],[1.55,-4.3761],[1.6,-4.104],[1.65,-3.8079],[1.7,-3.487],[1.75,-3.1406],[1.8,-2.768],[1.85,-2.3684],[1.9,-1.941],[1.95,-1.4851],[2.0,-1.0],[2.05,-0.4849],[2.1,0.061],[2.15,0.6384],[2.2,1.248],[2.25,1.8906],[2.3,2.567],[2.35,3.2779],[2.4,4.024],[2.45,4.8061],[2.5,5.625],[2.55,6.4814],[2.6,7.376]];
+export const famRoots = [{"x":1.61803,"y":0,"r":4},{"x":1.76929,"y":0,"r":4},{"x":1.89329,"y":0,"r":4},{"x":2.0,"y":0,"r":4},{"x":2.09455,"y":0,"r":4}];
+export const brCurve = [[-3.2,-31.368],[-3.1,-28.591],[-3.0,-26.0],[-2.9,-23.589],[-2.8,-21.352],[-2.7,-19.283],[-2.6,-17.376],[-2.5,-15.625],[-2.4,-14.024],[-2.3,-12.567],[-2.2,-11.248],[-2.1,-10.061],[-2.0,-9.0],[-1.9,-8.059],[-1.8,-7.232],[-1.7,-6.513],[-1.6,-5.896],[-1.5,-5.375],[-1.4,-4.944],[-1.3,-4.597],[-1.2,-4.328],[-1.1,-4.131],[-1.0,-4.0],[-0.9,-3.929],[-0.8,-3.912],[-0.7,-3.943],[-0.6,-4.016],[-0.5,-4.125],[-0.4,-4.264],[-0.3,-4.427],[-0.2,-4.608],[-0.1,-4.801],[0.0,-5.0],[0.1,-5.199],[0.2,-5.392],[0.3,-5.573],[0.4,-5.736],[0.5,-5.875],[0.6,-5.984],[0.7,-6.057],[0.8,-6.088],[0.9,-6.071],[1.0,-6.0],[1.1,-5.869],[1.2,-5.672],[1.3,-5.403],[1.4,-5.056],[1.5,-4.625],[1.6,-4.104],[1.7,-3.487],[1.8,-2.768],[1.9,-1.941],[2.0,-1.0],[2.1,0.061],[2.2,1.248],[2.3,2.567],[2.4,4.024],[2.5,5.625],[2.6,7.376],[2.7,9.283],[2.8,11.352],[2.9,13.589],[3.0,16.0],[3.1,18.591],[3.2,21.368],[3.3,24.337],[3.4,27.504],[3.5,30.875],[3.6,34.456],[3.7,38.253],[3.8,42.272],[3.9,46.519],[4.0,51.0],[4.1,55.721]];
+export const brRows = [{"a":0,"b":1,"label":"0","marks":[{"x":0,"sign":-1},{"x":1,"sign":-1}]},{"a":-1,"b":2,"label":"1","marks":[{"x":-1,"sign":-1},{"x":2,"sign":-1}]},{"a":-3,"b":4,"label":"2","marks":[{"x":-3,"sign":-1},{"x":4,"sign":1}]},{"a":2,"b":4,"label":"결과","marks":[{"x":2,"sign":-1},{"x":4,"sign":1}],"note":"(2, 4)"}];
+
+export const Sketch = ({ curve = [], domain, range, xTicks = [], yTicks = [], segs = [], dots = [], rows = [], guides = [], label, plotH = 200 }) => {
+  const W = 640, L = 48, R = 16, T = 12, rowH = 22;
+  const bottom = T + plotH;
+  const rowTop = bottom + 40;
+  const H = rows.length ? rowTop + rows.length * rowH : bottom + 28;
+  const sx = (v) => L + ((v - domain[0]) / (domain[1] - domain[0])) * (W - L - R);
+  const sy = (v) => bottom - ((v - range[0]) / (range[1] - range[0])) * plotH;
+  const d = (pts) => pts.map(([a, b], i) => `${i ? 'L' : 'M'}${sx(a).toFixed(1)} ${sy(b).toFixed(1)}`).join('');
+  const tick = { fill: 'var(--fg-subtle)', 'font-family': 'var(--font-mono)', 'font-size': '12px' };
+  const note = { fill: 'var(--fg-muted)', 'font-family': 'var(--font-mono)', 'font-size': '12px' };
+  const ry = (i) => rowTop + i * rowH;
+  const mark = (m) => (m.sign > 0 ? 'var(--blue-600)' : m.sign < 0 ? 'var(--slate-400)' : 'var(--fg)');
+  return (
+    <div style={{ width: '100%', 'max-width': '640px' }}>
+      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={label} style={{ width: '100%', height: 'auto' }}>
+        {xTicks.map((t) => <line x1={sx(t.v)} x2={sx(t.v)} y1={T} y2={bottom} style={{ stroke: 'var(--line)' }} />)}
+        {yTicks.map((t) => <line x1={L} x2={W - R} y1={sy(t.v)} y2={sy(t.v)} style={{ stroke: 'var(--line)' }} />)}
+        {range[0] < 0 && range[1] > 0 && <line x1={L} x2={W - R} y1={sy(0)} y2={sy(0)} style={{ stroke: 'var(--slate-400)' }} />}
+        {xTicks.map((t) => <text x={sx(t.v)} y={bottom + 18} text-anchor="middle" style={tick}>{t.label}</text>)}
+        {yTicks.map((t) => <text x={L - 8} y={sy(t.v) + 4} text-anchor="end" style={tick}>{t.label}</text>)}
+        {guides.map((g) => <line x1={sx(g)} x2={sx(g)} y1={T} y2={H - 6} style={{ stroke: 'var(--slate-400)', 'stroke-dasharray': '2 4' }} />)}
+        {segs.map((s) => <path d={d(s.pts)} style={{ fill: 'none', stroke: s.color ?? 'var(--slate-600)', 'stroke-width': 1.5, 'stroke-dasharray': s.dashed ? '4 4' : 'none' }} />)}
+        {curve.length > 0 && <path d={d(curve)} style={{ fill: 'none', stroke: 'var(--blue-600)', 'stroke-width': 2 }} />}
+        {dots.map((p) => <circle cx={sx(p.x)} cy={sy(p.y)} r={p.r ?? 4} style={{ fill: p.hollow ? 'var(--bg)' : (p.color ?? 'var(--blue-600)'), stroke: p.color ?? 'var(--blue-600)', 'stroke-width': 1.5 }} />)}
+        {dots.filter((p) => p.label).map((p) => <text x={sx(p.x) + (p.dx ?? 6)} y={sy(p.y) + (p.dy ?? -8)} text-anchor={p.anchor ?? 'start'} style={note}>{p.label}</text>)}
+        {rows.map((r, i) => <line x1={sx(r.a)} x2={sx(r.b)} y1={ry(i)} y2={ry(i)} style={{ stroke: 'var(--blue-300)', 'stroke-width': 4 }} />)}
+        {rows.map((r, i) => <text x={L - 8} y={ry(i) + 4} text-anchor="end" style={tick}>{r.label}</text>)}
+        {rows.flatMap((r, i) => (r.marks ?? []).map((m) => <circle cx={sx(m.x)} cy={ry(i)} r="4" style={{ fill: mark(m), stroke: 'var(--bg)', 'stroke-width': 1 }} />))}
+        {rows.filter((r) => r.note).map((r) => <text x={sx(r.b) + 10} y={ry(rows.indexOf(r)) + 4} style={note}>{r.note}</text>)}
+      </svg>
+    </div>
+  );
+};
+
+## 무엇을 하나요
+
+$x^3 - 2x - c = 0$을 c = 1, 2, …, 1000마다 풀어야 한다고 해 봐요. 문제는 모두 같은 꼴이고 상수만 달라요. [root_scalar](/api/optimize/root_scalar/)는 문제 하나를 풀므로 1,000번 불러야 하고, 그 안에서 f도 Python float 하나로 수천 번 불려요. `find_root`는 이런 문제 묶음(**배치**)을 한 번에 풀어요.
+
+- 원소마다 **따로** 풀어요. 원소 하나의 반복점, 멈춘 이유, 셈은 그 원소 하나만 풀었을 때와 같아요.
+- 사용자 함수는 반복마다 **한 번만** 불러요. 아직 끝나지 않은 원소의 x를 모은 배열을 받아, 원소마다의 값을 한꺼번에 돌려줘요. 그래서 f 안에서 `sd`의 배열 연산을 쓸 수 있어요.
+- 방법은 Chandrupatla(1997)의 구간법이에요. 이분법과 역 2차 보간을 섞은 방법으로, 구간이 늘 근을 끼고 있어서 반드시 수렴해요.
+
+<Fig caption="c = 1, 2, 3, 4(옅은 선), 5(진한 선)일 때의 f(x) = x³ − 2x − c와 그 근. find_root 한 번이 다섯 근을 함께 찾아요. 원소마다 곡선이 다르지만 f는 한 번에 계산해요.">
+  <Sketch
+    label="c마다 다른 x^3 - 2x - c의 곡선과 근"
+    curve={famMain}
+    segs={famSegs}
+    domain={[0, 2.6]}
+    range={[-6.3, 10.3]}
+    xTicks={[{ v: 0.5, label: '0.5' }, { v: 1, label: '1' }, { v: 1.5, label: '1.5' }, { v: 2, label: '2' }, { v: 2.5, label: '2.5' }]}
+    yTicks={[{ v: -5, label: '-5' }, { v: 5, label: '5' }, { v: 10, label: '10' }]}
+    dots={famRoots}
+  />
+</Fig>
+
+<Reference />
+
+## 기본 사용
+
+c를 배열로 만들어 `args`로 넘기고, 처음 구간 (0, 3)은 모든 원소에 같게 줘요.
+
+```python
+>>> import stardust as sd
+>>> c = sd.asarray([1.0, 2.0, 3.0, 4.0, 5.0])
+>>> def f(x, c):
+...     return x**3 - 2*x - c
+>>> r = sd.optimize.find_root(f, (0.0, 3.0), args=(c,))
+>>> r
+OptimizeResult(batch shape (5,), 5 of 5 converged)
+>>> r.x
+array([1.6180339887498947, 1.7692923542386314, 1.8932891963044978,
+                      2.0, 2.0945514815423265], dtype=float64)
+>>> r.converged
+array([True, True, True, True, True], dtype=bool)
+>>> r.nfev
+array([10, 10, 10, 10, 10], dtype=int64)
+```
+
+결과의 필드는 모두 배치 모양 (5,)의 배열이에요. `r.x[i]`가 `c[i]`의 근이에요. f는 `x`와 `c`를 같은 길이의 배열로 받으므로, 식을 원소 하나에 쓰듯 그대로 써요.
+
+입력이 모두 실수이면 문제 하나이고, 필드는 Python 수예요.
+
+```python
+>>> r = sd.optimize.find_root(lambda x: x**3 - 2*x - 5, (2.0, 3.0))
+>>> r
+OptimizeResult(converged=True, fun=-8.88178e-16, n_iter=7, nfev=9, x=2.09455)
+>>> r.x, r.bracket
+(2.0945514815423265, (2.0945514815423265, 2.0945514815423274))
+```
+
+## root_scalar와 무엇이 다른가요
+
+| | `root_scalar` | `find_root` |
+|---|---|---|
+| 푸는 것 | 문제 하나 | 문제 여럿(원소마다 따로). 하나도 돼요. |
+| f가 받는 것 | Python `float` 하나 | 남은 원소의 1차원 `sd.ndarray` (k,) |
+| f가 돌려주는 것 | 실수 하나 | 값 k개 |
+| f를 부르는 횟수 | 반복 수(문제마다) | 반복 수(모든 원소를 합쳐서) |
+| 상수 넘기기 | 클로저 | `args`(원소마다 다른 값) |
+| 방법 | brentq, toms748, bisect, newton, halley, secant | Chandrupatla의 구간법 하나 |
+| 기본 허용오차 | xtol 2e-12, rtol 4ε(구간법) | 끝자리까지(xrtol 4ε, xatol 4·tiny) |
+| 근을 끼지 않는 구간 | `ValueError` | 그 원소만 `status` −1 |
+| 결과 | Python 수, `message`·`method` 있음 | 배치 모양의 배열, `fun`·`bracket` 있음 |
+
+f가 배열을 받아 배열을 돌려주게 쓸 수 있으면, 문제가 여럿일 때는 `find_root`가 나아요. 10⁴개의 문제에서 `find_root` 한 번이 1.19 ms, 원소마다 `root_scalar`(brentq)를 부르는 고리가 61.3 ms였어요(Apple M4 Pro, 위의 $x^3 - 2x - c$). Python 함수를 부르는 비용이 원소 수 × 반복 수에서 반복 수로 줄기 때문이에요. 문제가 하나뿐이거나 f를 배열로 쓸 수 없으면 `root_scalar`를 써요.
+
+## 사용자 함수의 약속
+
+f가 받는 x는 **아직 끝나지 않은 원소만** 모은 새 float64 `sd.ndarray`예요. 원소의 차례는 입력의 차례(배치 모양을 C 순서로 편 것)이고, 끝난 원소는 다음 호출에서 빠져요. 그래서 x의 길이는 호출마다 줄어들 수 있어요. f는 받은 x와 같은 모양 (k,)의 값을 돌려줘야 해요.
+
+```python
+>>> sizes = []
+>>> def g(x, c):
+...     sizes.append(x.shape[0])
+...     return x**3 - 2*x - c
+>>> r = sd.optimize.find_root(g, (0.0, 200.0), args=(sd.asarray([1.0, 10.0, 100.0, 1000.0, 1e6]),))
+>>> sizes
+[5, 5, 5, 5, 5, 5, 5, 5, 5, 4, 4, 4, 4, 4, 3, 2]
+>>> r.n_iter
+array([14, 14, 13, 12,  7], dtype=int64)
+```
+
+처음 두 번은 구간의 두 끝에서 모든 원소를 계산하고, 그 뒤 반복마다 한 번씩 불러요. c = 10⁶인 원소는 7번째 반복에서 끝나 그다음 호출부터 빠졌어요. 처음 구간의 끝에서 부르는 것도 늘 1차원 배열이에요(입력이 실수 하나여도 (1,)).
+
+<Fig column caption="find_root 한 번의 흐름. 사용자 함수는 반복마다 한 번, 남은 원소만으로 불려요.">
+  <Steps steps={[
+    { label: 'f(xl), f(xr)', note: '모든 원소의 처음 구간 끝에서 한 번씩(호출 2번)' },
+    { label: '멈춤 판정', note: '원소마다: 부호가 같으면 status −1, 유한하지 않으면 −3, 구간이 충분히 좁거나 |f|가 충분히 작으면 0' },
+    { label: '다음 점', note: '남은 원소마다 이분점이나 역 2차 보간의 점' },
+    { label: 'f(x[남은 원소])', note: '남은 원소의 점과 args를 모아 한 번 호출', depth: 1 },
+    { label: '구간 갱신', note: '새 점의 부호로 근을 끼는 쪽을 남기고, 다시 멈춤 판정', depth: 1 },
+    { label: '결과', note: '모두 멈추거나 max_iter에 닿으면 원소마다의 x, fun, bracket, status, n_iter, nfev' },
+  ]} />
+</Fig>
+
+f가 다른 모양을 돌려주면 `ValueError`예요. 원소 하나짜리 문제에서도 x는 (1,)이므로, 스칼라를 돌려주면 안 돼요.
+
+```python
+>>> sd.optimize.find_root(lambda x: 1.0, (0.0, 1.0))
+Traceback (most recent call last):
+    ...
+ValueError: find_root(): 'f' must return shape (1,) like its argument, not a scalar
+>>> sd.optimize.find_root(lambda x: x[:1], (sd.asarray([-1.0, -2.0]), 1.0))
+Traceback (most recent call last):
+    ...
+ValueError: find_root(): 'f' must return shape (2,) like its argument, not (1,)
+```
+
+값은 `sd.ndarray`, 실수의 시퀀스, numpy 배열 모두 받아요. f 안에서 x를 고쳐도 반복에는 영향이 없어요(호출마다 새 배열이에요). f는 GIL을 쥔 채 불리고, f 안의 sd 연산은 그 연산의 규칙대로 여러 스레드를 써요.
+
+## 입력의 모양과 args
+
+`init`의 두 값, 그리고 `args`의 값들은 서로 **브로드캐스트**해요. 합쳐진 모양이 결과의 배치 모양이에요. 아래는 a가 (2, 1), b가 (3,)이라 배치 모양이 (2, 3)이에요.
+
+```python
+>>> a = sd.asarray([[1.0], [2.0]])
+>>> b = sd.asarray([1.0, 2.0, 3.0])
+>>> r = sd.optimize.find_root(lambda x, a, b: a*x - b, (-10.0, 10.0), args=(a, b))
+>>> r
+OptimizeResult(batch shape (2, 3), 6 of 6 converged)
+>>> r.x
+array([[               1.0,                2.0, 3.0000000000000004],
+       [               0.5,                1.0,                1.5]], dtype=float64)
+```
+
+f에는 x도 args도 편 1차원 배열로 넘어가요(여기서는 처음에 길이 6). `args`의 값은 자기 dtype을 지켜요. 정수 배열이면 f도 int64 배열을 받아요. 실수 하나인 값은 모든 원소에 같아요. `args`는 튜플이어야 해요.
+
+```python
+>>> sd.optimize.find_root(lambda x, k: x - k, (-10.0, 10.0), args=2.0)
+Traceback (most recent call last):
+    ...
+TypeError: find_root(): 'args' must be a tuple, not float
+>>> sd.optimize.find_root(lambda x: x, (sd.zeros(2), sd.ones(3)))
+Traceback (most recent call last):
+    ...
+ValueError: find_root(): the inputs must broadcast together, not shapes (2,), (3,)
+```
+
+`init`은 튜플이나 리스트 `(xl, xr)`이고, 첫 축의 길이가 2인 배열도 받아요(첫 축으로 나눠요). 구간의 끝은 원소마다 달라도 되고, xl > xr이어도 돼요.
+
+```python
+>>> sd.optimize.find_root(lambda x: sd.sin(x), (sd.asarray([2.0, 5.0, 8.0]), sd.asarray([4.0, 7.0, 10.0]))).x
+array([3.141592653589793, 6.283185307179586,  9.42477796076938], dtype=float64)
+```
+
+## 결과 읽기
+
+| 필드 | 뜻 |
+|---|---|
+| `x` | 근. 마지막 구간의 두 끝 가운데 \|f\|가 작은 쪽이에요. |
+| `fun` | x에서의 f 값 |
+| `bracket` | 마지막 구간 (xl, xr)의 튜플(xl ≤ xr). 근은 이 안에 있어요. |
+| `f_bracket` | 두 끝의 f 값의 튜플 |
+| `converged` | `status == 0`인지(bool 배열) |
+| `status` | 멈춘 이유(아래, int64 배열) |
+| `n_iter` | 그 원소가 멈출 때까지의 반복 수 |
+| `nfev` | 그 원소의 함수값 수(f를 부른 횟수가 아니에요. 처음 두 끝 포함, 보통 n_iter + 2) |
+
+필드는 읽기 전용이고, 배열 필드도 읽기 전용 배열이에요(고치려면 `.copy()`). `message`와 `method`는 없어요. `repr`는 수렴한 원소 수를 보여 주고, `summary()`는 원소마다 한 줄인 표예요([결과 객체 읽기](/api/optimize/results/#출력하기)).
+
+| status | 뜻 | x, fun |
+|---|---|---|
+| 0 | 수렴 | 근 |
+| −1 | 처음 구간의 두 끝에서 f의 부호가 같아요(근을 끼지 않아요) | NaN |
+| −2 | `max_iter`에 닿았어요 | 마지막 구간의 끝 |
+| −3 | 구간의 끝이 유한하지 않거나, 두 끝의 f가 모두 NaN이에요 | NaN |
+
+근을 끼지 않는 원소가 있어도 예외가 아니라 그 원소만 `status` −1이에요. 입력의 NaN과 inf도 에러가 아니라 그 원소만 −3이고, 나머지는 그대로 풀려요.
+
+```python
+>>> nan, inf = float('nan'), float('inf')
+>>> xl = sd.asarray([0.0, 3.0, nan, -inf])
+>>> r = sd.optimize.find_root(lambda x: x**3 - 2*x - 5, (xl, 3.0))
+>>> r
+OptimizeResult(batch shape (4,), 1 of 4 converged)
+>>> r.status
+array([ 0, -1, -3, -3], dtype=int64)
+>>> r.x
+array([2.0945514815423265,                nan,                nan,
+                      nan], dtype=float64)
+```
+
+두 번째 원소의 구간 (3, 3)은 두 끝의 부호가 같아 −1이에요. `max_iter`에 닿으면 −2이고 그때까지의 구간이 남아요.
+
+```python
+>>> r = sd.optimize.find_root(lambda x: x**3 - 2*x - 5, (0.0, 3.0), max_iter=3)
+>>> r.status, r.x, r.bracket
+(-2, 2.058639068811396, (2.058639068811396, 2.25))
+```
+
+## 허용오차
+
+원소마다 둘 가운데 하나를 만족하면 멈춰요.
+
+$$
+|x_r - x_l| < \text{xatol} + |x|\cdot\text{xrtol}
+\qquad\text{또는}\qquad
+|f(x)| \le \text{fatol} + \text{frtol}\cdot\min(|f(x_{l0})|, |f(x_{r0})|)
+$$
+
+x는 구간의 두 끝 가운데 |f|가 작은 쪽, $x_{l0}, x_{r0}$는 처음 구간이에요. 기본값은 xatol = 4·tiny, xrtol = 4ε, fatol = tiny, frtol = 0이에요(tiny ≈ 2.2×10⁻³⁰⁸은 가장 작은 정규수). 그래서 기본으로는 구간이 근을 끼는 이웃한 double 몇 개까지 좁아지고, 근이 0이 아니면 결과는 끝자리 근처까지 맞아요. 위 c = 5의 근 2.0945514815423265는 참 근을 반올림한 double 그대로예요.
+
+느슨하게 해도 돼요. 구간 폭을 `xatol`로, 함수값을 `fatol`로 정하면 f를 덜 불러요.
+
+```python
+>>> f5 = lambda x: x**3 - 2*x - 5
+>>> r = sd.optimize.find_root(f5, (0.0, 3.0), xatol=1e-3)
+>>> r.x, r.bracket, r.nfev
+(2.0945444277229, (2.0945444277229, 2.0950444277229012), 8)
+>>> r = sd.optimize.find_root(f5, (0.0, 3.0), fatol=1e-3)
+>>> r.fun, r.nfev
+(-7.873045360984321e-05, 7)
+```
+
+근이 0이고 f가 그 근처에서 아주 평평하면(예: $x^9$), f가 tiny 아래로 내려가는 점에서 `fatol` 판정으로 멈춰요. 그 점은 근 0이 아니라 $10^{-35}$ 근처예요. 0에 더 가까이 가려면 `fatol=0`을 줘요.
+
+```python
+>>> sd.optimize.find_root(lambda x: x**9, (-1.0, 2.0))
+OptimizeResult(converged=True, fun=-1.39067e-309, n_iter=114, nfev=116, x=-4.81482e-35)
+>>> sd.optimize.find_root(lambda x: x**9, (-1.0, 2.0), fatol=0.0).x
+-7.52316384526264e-37
+```
+
+`max_iter`의 기본값 2046은 어떤 구간이든 이분만으로 가장 작은 정규수까지 줄일 수 있는 수라, 기본값으로 −2가 나는 일은 드물어요.
+
+## bracket_root: 근을 끼는 구간 찾기
+
+`find_root`는 부호가 다른 두 끝이 필요해요. 그런 구간을 모르면 `bracket_root`가 찾아 줘요. 처음 구간 (xl0, xr0)의 두 끝을 바깥으로 넓히다가 부호가 바뀌면 멈춰요.
+
+- 양쪽을 따로 넓혀요. 한계가 없는 쪽은 반대쪽 처음 점에서의 거리를 `factor`(기본 2)배씩 늘려요. 왼쪽 끝은 xr0 − 2(xr0 − xl0), xr0 − 4(xr0 − xl0), …으로 가요.
+- 한계(`xmin`, `xmax`)가 있는 쪽은 한계까지의 거리를 1/factor씩 줄이며 다가가요. 한계를 넘지는 않아요.
+- 한쪽에서 부호가 바뀌면 그 원소는 끝나요. 결과는 그 쪽의 마지막 두 점이에요. 두 쪽이 같은 반복에서 부호 바뀜을 찾으면 좁은 쪽의 구간이고, 너비가 같으면 왼쪽 구간이에요.
+- 결과의 구간은 언제나 xl ≤ xr로 정렬돼 있어요. `status`가 0이면 그 구간이 근을 껴요(f(xl)과 f(xr)의 부호가 다르거나 한쪽이 정확히 0이에요).
+
+<Fig caption="f(x) = x³ − 2x − 5에서 xl0 = 0으로 bracket_root를 부를 때. xr0 = 1에서 시작해 왼쪽은 −1, −3으로, 오른쪽은 2, 4로 넓혀요. 진한 점은 f > 0, 옅은 점은 f < 0이에요. 오른쪽의 2와 4 사이에서 부호가 바뀌어 (2, 4)가 결과예요.">
+  <Sketch
+    label="x^3 - 2x - 5에서 bracket_root가 넓히는 구간"
+    curve={brCurve}
+    domain={[-3.4, 4.4]}
+    range={[-32, 56]}
+    xTicks={[{ v: -3, label: '-3' }, { v: -2, label: '-2' }, { v: -1, label: '-1' }, { v: 0, label: '0' }, { v: 1, label: '1' }, { v: 2, label: '2' }, { v: 3, label: '3' }, { v: 4, label: '4' }]}
+    yTicks={[{ v: -20, label: '-20' }, { v: 20, label: '20' }, { v: 40, label: '40' }]}
+    rows={brRows}
+  />
+</Fig>
+
+```python
+>>> r = sd.optimize.bracket_root(f5, 0.0)
+>>> r
+OptimizeResult(converged=True, n_iter=2, nfev=6)
+>>> r.bracket, r.f_bracket
+((2.0, 4.0), (-1.0, 51.0))
+>>> sd.optimize.find_root(f5, r.bracket).x
+2.0945514815423265
+```
+
+`bracket_root`의 결과는 `bracket`과 `f_bracket`이 있고 `x`와 `fun`은 없어요. 결과의 `bracket`을 그대로 `find_root`의 `init`으로 넘기면 돼요. 배치도 같아요.
+
+```python
+>>> c = sd.asarray([2.0, 10.0, 100.0, 1000.0])
+>>> b = sd.optimize.bracket_root(f, 0.0, args=(c,))
+>>> b.bracket
+(array([1.0, 2.0, 4.0, 8.0], dtype=float64), array([ 2.0,  4.0,  8.0, 16.0], dtype=float64))
+>>> b.n_iter
+array([1, 2, 3, 4], dtype=int64)
+>>> sd.optimize.find_root(f, b.bracket, args=(c,)).x
+array([1.7692923542386314,  2.46204478758741, 4.785173386912247,
+       10.06666568559632], dtype=float64)
+```
+
+한계가 있으면 그쪽은 한계로 다가가기만 해요. $\log x - 1$은 x > 0에서만 정의되므로 `xmin=0`을 주면 왼쪽 끝이 0.25, 0.125, …로 0에 다가가고, 오른쪽에서 부호 바뀜을 찾아요.
+
+```python
+>>> pts = []
+>>> def h(x):
+...     pts.append(x.tolist())
+...     return sd.log(x) - 1.0
+>>> sd.optimize.bracket_root(h, 0.5, xmin=0.0).bracket
+(2.5, 4.5)
+>>> pts
+[[0.5], [1.5], [0.25, 2.5], [0.125, 4.5]]
+```
+
+f는 두 쪽의 점을 한 배열로 받아요(왼쪽 끝들 다음에 오른쪽 끝들). 처음 두 번은 xl0와 xr0에서 불러요.
+
+### bracket_root의 status와 셈
+
+| status | 뜻 |
+|---|---|
+| 0 | 부호가 바뀌는 구간을 찾았어요 |
+| −1 | 한쪽이 한계(`xmin` 또는 `xmax`)에 닿았는데 부호가 바뀌지 않았어요 |
+| −2 | `max_iter`에 닿았어요 |
+| −3 | 끝이나 f 값이 유한하지 않아요(넘침 등) |
+| −5 | 처음 구간이 xmin ≤ xl0 < xr0 ≤ xmax가 아니에요. `bracket`은 처음 두 점을 정렬한 것이에요 |
+
+`n_iter`는 두 쪽 가운데 오래 간 쪽의 반복 수, `nfev`는 두 쪽의 함수값 수를 합한 것이에요. 근이 없으면 끝이 넘칠 때까지(−3) 넓혀요.
+
+```python
+>>> r = sd.optimize.bracket_root(lambda x: x*x + 1, 0.0)
+>>> r.status, r.n_iter
+(-3, 512)
+>>> r = sd.optimize.bracket_root(lambda x: x, 1.0, xr0=0.5)
+>>> r.status, r.bracket
+(-5, (0.5, 1.0))
+>>> sd.optimize.bracket_root(lambda x: x, 0.0, factor=1.0)
+Traceback (most recent call last):
+    ...
+ValueError: bracket_root(): 'factor' must be > 1
+```
+
+두 쪽이 같은 반복에서 같은 너비로 부호 바뀜을 찾으면 왼쪽 구간을 돌려줘요. $x^3 - 2x - 1 = (x + 1)(x^2 - x - 1)$을 0에서 시작하면(xr0 = 1) 첫 반복에 왼쪽 (−1, 0)과 오른쪽 (1, 2)에서 함께 부호 바뀜을 찾아요(−1에서는 f가 정확히 0이에요). 두 구간의 너비가 같으니 왼쪽 구간이에요.
+
+```python
+>>> r = sd.optimize.bracket_root(lambda x: x**3 - 2*x - 1, 0.0)
+>>> r.bracket, r.f_bracket, r.status
+((-1.0, 0.0), (0.0, -1.0), 0)
+```
+
+`factor`를 크게 하면 먼 근을 빨리 끼지만 구간이 넓어져요.
+
+```python
+>>> r = sd.optimize.bracket_root(lambda x: x - 100, 0.0, factor=10.0)
+>>> r.bracket, r.nfev
+((10.0, 100.0), 6)
+```
+
+## 정확도와 비용
+
+- 같은 기계, 같은 스레드 수, 같은 입력이면 실행마다 결과가 비트까지 같아요. 지금은 원소 하나의 계산이 그 원소만 풀 때와 같아서, 배치에 다른 원소가 있어도, 스레드 수가 달라도 같은 비트예요(약속은 아니에요).
+- 기본 허용오차로 시험 문제 204개(Alefeld–Potra–Shi, Chandrupatla 등)의 근을 Arb(구간 산술)로 만든 참값과 견주면, 182개가 4 ULP 안이고 13개는 f가 double로 정확히 0인 점, 9개는 위의 $x^9$처럼 근 0 근처에서 `fatol`로 멈춘 점이에요.
+- 반복 사이의 계산(다음 점, 판정, 남은 원소 모으기)은 함수값 하나에 7 ns 안팎이에요. 10⁶ 원소의 $x^3 - 2x - c$에서 `find_root` 한 번이 1스레드 123 ms, 10스레드 32 ms였어요(Apple M4 Pro). 10스레드에서 빨라지는 것은 f 안의 sd 연산과 원소를 지나가는 패스가 나뉘기 때문이에요. 반복 자체는 f를 한 번씩 차례로 불러요. 자세한 방법은 [배치 스칼라의 구현](/internals/optimize/batched/)에 있어요.
+
+## scipy를 아는 분께
+
+- scipy 1.18.1의 `scipy.optimize.elementwise.find_root`, `bracket_root`와 같은 방법, 같은 걸음이에요. 지금은 원소 하나마다 scipy와 같은 점에서 f를 불러 같은 x, `n_iter`, `nfev`, `status`를 내요(같은 f일 때; 비트까지 같지만 약속은 아니에요). f 안의 수학 함수가 끝자리에서 다르면(예: `sd.exp`와 `np.exp`) 걸음이 갈릴 수 있어요.
+- scipy의 `f_x`는 `fun`, `success`는 `converged`, `nit`은 `n_iter`예요. `bracket`, `f_bracket`은 이름이 같아요.
+- `bracket_root`의 구간은 일부러 scipy와 다르게 정해요. 두 쪽이 같은 너비로 함께 부호 바뀜을 찾으면 scipy는 두 쪽의 끝을 섞어 뒤집힌 구간을 `status` 0으로 돌려줘요. 위의 $x^3 - 2x - 1$에서 scipy는 (1, 0), f (−2, −1)이라 근을 끼지 않아요. 여기서는 왼쪽 구간 (−1, 0)이에요. `status` −5일 때도 scipy는 처음 두 점을 준 순서 그대로 돌려주고, 여기서는 정렬해요. 호출하는 점과 셈은 같아요.
+- 허용오차는 scipy의 `tolerances` dict 대신 키워드 `xatol`, `xrtol`, `fatol`, `frtol`이에요. `maxiter`는 `max_iter`예요. `callback`은 없어서 scipy의 status −4도 없어요.
+- scipy는 처음 구간 끝의 호출에 입력 모양 그대로의 배열을 넘기지만, 여기서는 그 호출도 1차원 배열이에요. f는 늘 (k,)를 받아요.
+- 입력이 모두 실수이면 scipy는 numpy 스칼라(`np.float64`, `np.int32` 등)를, 여기서는 Python 수를 돌려줘요. 배열 필드의 `status`·`n_iter`·`nfev`는 int64예요.

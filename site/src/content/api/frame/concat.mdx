@@ -1,0 +1,317 @@
+---
+title: concat
+names: [concat]
+group: 합치기
+order: 2
+signatures:
+  - 'sd.frame.concat(objs, /, *, join="outer", ignore_index=False)'
+summary: 여러 DataFrame(또는 여러 Series)을 위아래로 이어 붙여 하나로 만들어요. 컬럼은 이름으로 맞추고, dtype이 다르면 넓은 쪽으로 올려요.
+params:
+  - name: objs
+    type: DataFrame 또는 Series의 list·tuple
+    kind: positional-only
+    desc: 이어 붙일 객체. 하나 이상이어야 하고, 모두 DataFrame이거나 모두 Series여야 해요.
+  - name: join
+    type: '"outer" 또는 "inner"'
+    kind: keyword-only
+    desc: outer는 어느 하나에라도 있는 컬럼을 모두, inner는 모두에 있는 컬럼만 남겨요. Series에는 영향이 없어요.
+  - name: ignore_index
+    type: bool
+    kind: keyword-only
+    desc: True면 원래 라벨을 버리고 0, 1, 2, … 라벨을 새로 붙여요.
+returns:
+  type: DataFrame 또는 Series
+  desc: 행을 이어 붙인 새 객체. 행은 objs의 순서대로, 각 객체 안에서는 원래 순서대로예요.
+raises:
+  - type: TypeError
+    desc: objs가 list·tuple이 아닐 때(DataFrame 하나, generator 등), DataFrame과 Series를 섞었을 때, string 컬럼을 다른 dtype과 이으려 할 때, 정수 라벨과 문자열 라벨을 섞었을 때, join이 문자열이 아닐 때, ignore_index가 True/False가 아닐 때, 없는 인자(axis 등)를 줬을 때.
+  - type: ValueError
+    desc: objs가 비었을 때, join이 "outer"·"inner"가 아닐 때.
+seeAlso: [merge, dataframe, series, alignment, index, astype]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import FrameFig from '../../../components/fig/FrameFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+1월 판매 기록과 2월 판매 기록이 따로 있어요. 두 표는 컬럼이 같고, 행(판매 한 건)만 달라요. 하나로 모으려면 2월 표를 1월 표 아래에 이어 붙이면 돼요. 엑셀에서 두 시트의 내용을 복사해 한 시트에 차례로 붙여 넣는 것과 같아요.
+
+`concat`이 이 일을 해요. 여러 DataFrame을 위아래로 이어서 하나로 만들어요. 컬럼은 이름으로 맞춰요.
+
+```python
+>>> import stardust as sd
+>>> jan = sd.frame.DataFrame({"fruit": ["apple", "pear"], "qty": [3, 1]})
+>>> feb = sd.frame.DataFrame({"fruit": ["kiwi", "apple", "pear"], "qty": [2, 4, 6]})
+>>> sd.frame.concat([jan, feb])
+   fruit  qty
+0  apple    3
+1   pear    1
+0   kiwi    2
+1  apple    4
+2   pear    6
+```
+
+<Fig caption="feb의 행이 jan의 행 아래에 차례로 붙어요. 라벨도 원래 것 그대로 이어져서 0, 1이 두 번 나와요.">
+  <FrameFig name="jan" columns={['fruit', 'qty']} data={[['apple', 3], ['pear', 1]]} rowTones={['1', '1']} />
+  <FrameFig name="feb" columns={['fruit', 'qty']} data={[['kiwi', 2], ['apple', 4], ['pear', 6]]} rowTones={['2', '2', '2']} />
+  <Op note="concat([jan, feb])">→</Op>
+  <FrameFig columns={['fruit', 'qty']} index={[0, 1, 0, 1, 2]}
+    data={[['apple', 3], ['pear', 1], ['kiwi', 2], ['apple', 4], ['pear', 6]]}
+    rowTones={['1', '1', '2', '2', '2']} />
+</Fig>
+
+이럴 때 써요.
+
+- 달마다, 지점마다, 파일마다 나뉘어 있는 같은 모양의 기록을 하나로 모을 때
+- 반복문에서 조금씩 만든 표를 마지막에 한꺼번에 이을 때
+
+이을 객체는 list나 tuple 하나로 묶어서 넘겨요. `concat(jan, feb)`이 아니라 `concat([jan, feb])`예요. 배열의 [`sd.concat`](/api/array/concat/)과 같은 모양이에요.
+
+<Reference />
+
+## 라벨: 이어 붙이고, `ignore_index`로 새로 붙여요
+
+결과의 라벨은 각 표의 라벨을 그대로 이어 붙인 것이에요. 위 결과처럼 `0, 1, 0, 1, 2`로 겹칠 수 있고, 겹쳐도 에러가 아니에요.
+
+```python
+>>> sd.frame.concat([jan, feb]).index
+Index([0, 1, 0, 1, 2], dtype=int64)
+```
+
+원래 라벨이 `0, 1, 2, …`처럼 뜻 없는 번호였다면 `ignore_index=True`로 새로 붙여요. 결과의 라벨은 RangeIndex가 돼요. 대개는 이쪽이 편해요.
+
+```python
+>>> both = sd.frame.concat([jan, feb], ignore_index=True)
+>>> both
+   fruit  qty
+0  apple    3
+1   pear    1
+2   kiwi    2
+3  apple    4
+4   pear    6
+>>> both.index
+RangeIndex(start=0, stop=5, step=1)
+```
+
+<Callout type="warn" title="겹친 라벨은 나중에 문제가 돼요">
+  라벨이 겹친 표에서 `.loc[라벨]`로 행 하나를 꺼내려 하면 에러예요. 라벨이 두 행을 가리키기 때문이에요. 또 Series끼리 라벨로 맞춰 계산하는 [정렬(alignment)](/api/frame/alignment/)도 라벨이 고유해야 해요. 라벨에 뜻이 없다면 `ignore_index=True`를 주세요.
+</Callout>
+
+라벨에 뜻이 있다면(도시 이름처럼) 그대로 이어도 좋아요. 다만 정수 라벨과 문자열 라벨은 섞을 수 없어요. 한 Index에는 한 종류의 라벨만 들어가기 때문이에요. RangeIndex는 정수 라벨로 쳐요.
+
+```python
+>>> city = sd.frame.Series([18.5, 25.1], index=["seoul", "busan"])
+>>> more = sd.frame.Series([9.8], index=["daegu"])
+>>> sd.frame.concat([city, more])
+seoul    18.5
+busan    25.1
+daegu     9.8
+dtype: float64
+>>> sd.frame.concat([city, sd.frame.Series([12.0])])
+Traceback (most recent call last):
+    ...
+TypeError: concat(): cannot join int64 labels with string labels
+```
+
+이때도 `ignore_index=True`면 라벨을 버리므로 이을 수 있어요.
+
+## 컬럼이 다를 때: `join`
+
+표마다 컬럼이 조금씩 다를 수 있어요. 예를 들어 3월 표에는 가격(`price`)이 더 있어요.
+
+```python
+>>> mar = sd.frame.DataFrame({"fruit": ["fig"], "price": [2.5], "qty": [1.5]})
+```
+
+기본값 `join="outer"`는 어느 하나에라도 있는 컬럼을 모두 남겨요. 컬럼은 처음 나타난 순서로 놓여요. 어떤 표에 없는 컬럼은 그 표에서 온 행에서 `NA`예요.
+
+```python
+>>> sd.frame.concat([jan, mar])
+   fruit  qty  price
+0  apple  3.0   <NA>
+1   pear  1.0   <NA>
+0    fig  1.5    2.5
+```
+
+`join="inner"`는 모든 표에 있는 컬럼만 남겨요. 컬럼 순서는 첫 표의 순서예요.
+
+```python
+>>> sd.frame.concat([jan, mar], join="inner")
+   fruit  qty
+0  apple  3.0
+1   pear  1.0
+0    fig  1.5
+>>> sd.frame.concat([mar, jan], join="inner")
+   fruit  qty
+0    fig  1.5
+0  apple  3.0
+1   pear  1.0
+```
+
+<Fig caption='join="outer"는 컬럼을 모두 모으고 없는 칸을 NA로, join="inner"는 공통 컬럼만 남겨요.'>
+  <FrameFig name="jan" columns={['fruit', 'qty']} data={[['apple', 3], ['pear', 1]]} rowTones={['1', '1']} />
+  <FrameFig name="mar" columns={['fruit', 'price', 'qty']} data={[['fig', 2.5, 1.5]]} rowTones={['2']} colTones={['', 'a', '']} />
+  <Op note='join="outer"'>→</Op>
+  <FrameFig columns={['fruit', 'qty', 'price']} index={[0, 1, 0]}
+    data={[['apple', 3.0, null], ['pear', 1.0, null], ['fig', 1.5, 2.5]]}
+    rowTones={['1', '1', '2']} colTones={['', '', 'a']} />
+</Fig>
+
+## dtype은 넓은 쪽으로 올려요
+
+같은 이름의 컬럼인데 표마다 dtype이 다르면, 둘을 모두 담을 수 있는 dtype으로 올려서(승격) 이어요. 순서는 `bool < int64 < float64`예요. 배열의 [`sd.concat`](/api/array/concat/)과 같은 규칙이에요([승격](/api/array/numerics/)).
+
+위 예에서 `jan`의 `qty`는 int64, `mar`의 `qty`는 float64(`1.5`)라서 결과의 `qty`는 float64가 됐어요. 정수 `3`은 `3.0`이 돼요.
+
+```python
+>>> sd.frame.concat([jan, mar]).dtypes
+{'fruit': string, 'qty': float64, 'price': float64}
+```
+
+bool과 int64를 이으면 int64예요. `True`는 `1`, `False`는 `0`이 돼요.
+
+```python
+>>> flags = sd.frame.Series([True, False])
+>>> counts = sd.frame.Series([5])
+>>> sd.frame.concat([flags, counts])
+0    1
+1    0
+0    5
+dtype: int64
+```
+
+한쪽에 없는 컬럼 때문에 생긴 `NA`는 dtype을 바꾸지 않아요. 아래에서 `ok`는 bool, `n`은 int64 그대로예요. NA는 어느 dtype에나 들어갈 수 있기 때문이에요([NA와 NaN](/api/frame/na/)).
+
+```python
+>>> a = sd.frame.DataFrame({"ok": [True]})
+>>> b = sd.frame.DataFrame({"n": [2]})
+>>> ab = sd.frame.concat([a, b])
+>>> ab
+     ok     n
+0  True  <NA>
+0  <NA>     2
+>>> ab.dtypes
+{'ok': bool, 'n': int64}
+```
+
+string 컬럼은 string 컬럼끼리만 이을 수 있어요. 문자열과 숫자를 함께 담는 dtype이 없기 때문이에요.
+
+```python
+>>> sd.frame.concat([jan, sd.frame.DataFrame({"qty": ["many"]})])
+Traceback (most recent call last):
+    ...
+TypeError: concat(): column 'qty' of dtypes ['int64', 'string'] cannot be joined; a string column joins only string columns
+```
+
+<Callout type="warn" title="빈 리스트로 만든 컬럼은 float64예요">
+  빈 리스트로 만든 컬럼은 값이 없어 dtype을 정할 수 없으므로 float64가 돼요. 그래서 빈 표를 먼저 만들어 두고 문자열 컬럼이 있는 표를 이어 붙이면 위와 같은 `TypeError`가 나요. 빈 표를 만들 때 `astype`으로 dtype을 정해 두세요.
+</Callout>
+
+```python
+>>> empty = sd.frame.DataFrame({"fruit": [], "qty": []})
+>>> empty.dtypes
+{'fruit': float64, 'qty': float64}
+>>> empty = empty.astype({"fruit": "string", "qty": "int64"})
+>>> sd.frame.concat([empty, jan]).dtypes
+{'fruit': string, 'qty': int64}
+```
+
+## Series 잇기
+
+Series도 같은 방법으로 이어요. 값을 차례로 잇고, 라벨도 이어 붙여요. dtype 승격도 같아요.
+
+```python
+>>> x = sd.frame.Series([1, 2], name="v")
+>>> y = sd.frame.Series([0.5], name="v")
+>>> sd.frame.concat([x, y])
+0    1.0
+1    2.0
+0    0.5
+Name: v, dtype: float64
+```
+
+결과의 이름은 모든 Series의 이름이 같을 때만 남고, 하나라도 다르면 `None`이에요. Index의 이름도 같은 규칙이에요.
+
+```python
+>>> sd.frame.concat([x, sd.frame.Series([7], name="w")])
+0    1
+1    2
+0    7
+dtype: int64
+```
+
+DataFrame과 Series를 섞어서 이을 수는 없어요. Series를 컬럼으로 붙이려면 `df["c"] = s`로 [대입](/api/frame/assign/)하고, 행으로 붙이려면 먼저 1행짜리 DataFrame으로 만들어요.
+
+## 조심할 점
+
+### list나 tuple로 묶어서
+
+`objs`는 list나 tuple이에요. DataFrame 하나, generator는 `TypeError`이고, 빈 리스트는 `ValueError`예요.
+
+```python
+>>> sd.frame.concat(jan)
+Traceback (most recent call last):
+    ...
+TypeError: concat(): 'objs' must be a list or tuple of DataFrames or Series, not DataFrame
+>>> sd.frame.concat(d for d in [jan, feb])
+Traceback (most recent call last):
+    ...
+TypeError: concat(): 'objs' must be a list or tuple of DataFrames or Series, not generator
+>>> sd.frame.concat([])
+Traceback (most recent call last):
+    ...
+ValueError: concat(): 'objs' must hold at least one object
+```
+
+generator가 있으면 `list(...)`로 감싸서 넘기세요.
+
+```python
+>>> sd.frame.concat(list(d for d in [jan, feb]), ignore_index=True).shape
+(5, 2)
+```
+
+### 위아래로만 이어요
+
+`concat`은 행 방향으로만 이어요. `axis`는 없어요. 두 표를 옆으로 붙이는 일은 같은 대상끼리 짝을 맞추는 일이라서 키로 짝짓는 [`merge`](/api/frame/merge/)를 써요. 컬럼 하나를 붙일 때는 `df["c"] = s`로 대입해요.
+
+```python
+>>> sd.frame.concat([jan, feb], axis=1)
+Traceback (most recent call last):
+    ...
+TypeError: concat(): unexpected keyword argument 'axis'
+```
+
+### 옵션의 값
+
+`join`은 `"outer"`나 `"inner"`, `ignore_index`는 `True`나 `False`만 받아요.
+
+```python
+>>> sd.frame.concat([jan, feb], join="left")
+Traceback (most recent call last):
+    ...
+ValueError: concat(): 'join' must be 'outer' or 'inner', not 'left'
+>>> sd.frame.concat([jan, feb], ignore_index=1)
+Traceback (most recent call last):
+    ...
+TypeError: concat(): 'ignore_index' must be True or False, not int
+```
+
+## 비슷한 함수와의 차이
+
+| | `concat` | [`merge`](/api/frame/merge/) | 배열의 [`sd.concat`](/api/array/concat/) |
+|---|---|---|---|
+| 방향 | 아래로(행이 늘어요) | 옆으로(컬럼이 늘어요) | `axis`로 골라요 |
+| 무엇으로 맞추나 | 컬럼 이름 | 키 컬럼의 값 | 위치(모양이 맞아야 해요) |
+| 다른 컬럼·모양 | `join`으로 정해요, 없는 칸은 NA | 짝이 없는 행은 `how`로 정해요 | 에러 |
+| dtype | `bool < int64 < float64`로 승격, string은 string끼리 | 키 dtype은 같아야 해요 | `bool < int64 < float64 < complex128`로 승격 |
+| 개수 | 하나 이상 | 둘 | 하나 이상 |
+
+## pandas를 아는 분께
+
+- dtype 승격이 배열과 같아요. pandas 3.1.1은 bool과 float 컬럼을 이으면(Series끼리는 bool과 int도) `object`, int와 str 컬럼을 이어도 `object`가 되지만, stardust에서는 float64(int64)가 되고 string과 숫자는 `TypeError`예요.
+- 없는 컬럼 때문에 생긴 칸은 `NA`이고 dtype은 그대로예요. pandas는 int 컬럼에 빈칸이 생기면 float64로 바꾸고 NaN을 넣어요.
+- 정수 라벨과 문자열 라벨을 섞을 수 없어요. pandas는 `object` Index를 만들어요.
+- `objs`는 list나 tuple만 받아요. pandas처럼 dict나 generator를 받지 않아요.
+- `axis`, `keys`, `levels`, `names`, `verify_integrity`, `sort`, `copy`는 없어요.

@@ -1,0 +1,342 @@
+---
+kind: function
+title: mannwhitneyu
+names: [mannwhitneyu]
+group: 순위 검정
+order: 1
+signatures:
+  - "sd.htest.mannwhitneyu(x, y, /, *, axis=None, use_continuity=True, alternative='two-sided', method='auto', nan_policy='propagate', keepdims=False)"
+summary: 독립인 두 표본 가운데 한쪽 값이 다른 쪽보다 큰 경향이 있는지 순위만으로 묻는 Mann–Whitney U 검정이에요. 정규분포를 가정하지 않고, 작은 표본에서는 정확한 p값을, 동점이 있으면 그 동점을 그대로 둔 정확한 분포를 써요.
+params:
+  - name: x, y
+    type: ndarray, 실수의 시퀀스, frame Series, 또는 DataFrame
+    kind: positional-only
+    desc: "두 표본. 길이는 달라도 돼요. bool·정수는 float64로 바꿔서 계산하고, ±inf는 가장 크거나 작은 값으로 순위를 받아요."
+  - name: axis
+    type: int, int의 tuple, 또는 None
+    kind: keyword-only
+    desc: "None(기본값)이면 표본마다 모든 값을 펼쳐 검정 하나를 해요. 정수면 그 축을 따라 표본을 읽고, 나머지 축은 서로 독립인 검정의 배치예요."
+  - name: use_continuity
+    type: bool
+    kind: keyword-only
+    desc: "True(기본값)면 정규 근사에 연속성 보정 0.5를 넣어요. 정확한 분포에는 영향이 없어요."
+  - name: alternative
+    type: str
+    kind: keyword-only
+    desc: "'two-sided'(기본값), 'less'(x가 y보다 작은 쪽으로 치우쳤다), 'greater'(x가 y보다 큰 쪽으로 치우쳤다) 중 하나예요."
+  - name: method
+    type: str 또는 PermutationMethod
+    kind: keyword-only
+    desc: "'auto'(기본값), 'exact'(정확한 분포), 'asymptotic'(정규 근사), 또는 PermutationMethod(합친 표본의 순열 분포)예요."
+  - name: nan_policy
+    type: str
+    kind: keyword-only
+    desc: "'propagate'(기본값, NaN이 있는 검정의 결과가 NaN), 'omit'(NaN을 빼고 계산), 'raise'(ValueError) 중 하나예요."
+  - name: keepdims
+    type: bool
+    kind: keyword-only
+    desc: True면 결과에 표본 축이 길이 1로 남아요.
+returns:
+  type: MannwhitneyuResult
+  desc: "statistic(x의 U), pvalue, method(실제로 쓴 방법), 정규 근사를 쓴 때만 zstatistic이 있어요(배치에는 언제나 있고 정확한 분포의 줄은 NaN). (statistic, pvalue)로 풀려요. 검정 하나면 Python 수, 배치면 배치 모양의 배열이에요."
+raises:
+  - type: TypeError
+    desc: "표본이 배열·수의 시퀀스·frame이 아니거나 복소수일 때, use_continuity·keepdims가 True·False가 아닐 때, alternative·method·nan_policy가 문자열이 아닐 때, method에 MonteCarloMethod·BootstrapMethod를 줬을 때, 옵션을 위치로 주거나 없는 키워드를 줬을 때."
+  - type: ValueError
+    desc: "alternative·method·nan_policy의 이름이 틀렸을 때, nan_policy='raise'인데 NaN이 있을 때, axis가 범위 밖이거나 겹칠 때, 표본 축 밖의 모양이 브로드캐스트되지 않을 때, method='exact'의 작업량이 상한(10⁹번)을 넘을 때."
+seeAlso: [ranksums, brunnermunzel, wilcoxon, kruskal, ttest_ind, basics, results]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+export const uDist = [[0, 0], [0, 0.00058], [0, NaN], [1, 0], [1, 0.00058], [1, NaN], [2, 0], [2, 0.00117], [2, NaN], [3, 0], [3, 0.00175], [3, NaN], [4, 0], [4, 0.00291], [4, NaN], [5, 0], [5, 0.00408], [5, NaN], [6, 0], [6, 0.00641], [6, NaN], [7, 0], [7, 0.00816], [7, NaN], [8, 0], [8, 0.01107], [8, NaN], [9, 0], [9, 0.01399], [9, NaN], [10, 0], [10, 0.01807], [10, NaN], [11, 0], [11, 0.02156], [11, NaN], [12, 0], [12, 0.02681], [12, NaN], [13, 0], [13, 0.03030], [13, NaN], [14, 0], [14, 0.03555], [14, NaN], [15, 0], [15, 0.03963], [15, NaN], [16, 0], [16, 0.04429], [16, NaN], [17, 0], [17, 0.04720], [17, NaN], [18, 0], [18, 0.05128], [18, NaN], [19, 0], [19, 0.05245], [19, NaN], [20, 0], [20, 0.05478], [20, NaN], [21, 0], [21, 0.05478], [21, NaN], [22, 0], [22, 0.05478], [22, NaN], [23, 0], [23, 0.05245], [23, NaN], [24, 0], [24, 0.05128], [24, NaN], [25, 0], [25, 0.04720], [25, NaN], [26, 0], [26, 0.04429], [26, NaN], [27, 0], [27, 0.03963], [27, NaN], [28, 0], [28, 0.03555], [28, NaN], [29, 0], [29, 0.03030], [29, NaN], [30, 0], [30, 0.02681], [30, NaN], [31, 0], [31, 0.02156], [31, NaN], [32, 0], [32, 0.01807], [32, NaN], [33, 0], [33, 0.01399], [33, NaN], [34, 0], [34, 0.01107], [34, NaN], [35, 0], [35, 0.00816], [35, NaN], [36, 0], [36, 0.00641], [36, NaN], [37, 0], [37, 0.00408], [37, NaN], [38, 0], [38, 0.00291], [38, NaN], [39, 0], [39, 0.00175], [39, NaN]];
+export const uTail = [[0, 0], [0, 0.00058], [0, NaN], [1, 0], [1, 0.00058], [1, NaN], [2, 0], [2, 0.00117], [2, NaN], [40, 0], [40, 0.00117], [40, NaN], [41, 0], [41, 0.00058], [41, NaN], [42, 0], [42, 0.00058], [42, NaN]];
+
+## 무엇을 묻나요
+
+웹페이지의 두 디자인을 견주려고, 사람들이 페이지를 연 뒤 첫 클릭까지 걸린 시간(초)을 쟀어요. A안은 여섯 명, B안은 일곱 명이에요.
+
+```python
+>>> import stardust as sd
+>>> a = [3.1, 4.5, 2.8, 5.2, 4.0, 3.7]
+>>> b = [5.6, 6.1, 4.9, 7.0, 5.8, 6.4, 5.1]
+>>> sd.htest.mannwhitneyu(a, b)
+MannwhitneyuResult(statistic=2, pvalue=0.004662, method='exact')
+```
+
+A안의 값이 대체로 작아 보여요. 이 차이가 우연으로도 흔히 생기는 정도인지 묻는 것이 이 검정이에요.
+
+**Mann–Whitney U 검정**은 값 자체 대신 크기의 순서만 봐요. A의 값 하나와 B의 값 하나를 짝지으면 6 × 7 = 42쌍이 나와요. 이 가운데 A의 값이 더 큰 쌍의 수가 통계량 $U$예요(같은 값의 쌍은 반으로 세요).
+
+$$
+U = \#\{(i, j) : x_i > y_j\} + \tfrac{1}{2}\,\#\{(i, j) : x_i = y_j\}
+$$
+
+위에서는 A의 5.2가 B의 4.9와 5.1보다 커서 $U = 2$예요. 42쌍 가운데 겨우 2쌍이에요.
+
+- **귀무가설**: 두 표본이 같은 분포에서 나왔어요. 그러면 어느 값이 어느 표본에 속하는지는 우연이라, 13개 값의 모든 나눔(C(13, 6) = 1716가지)이 같은 확률이에요.
+- **대립가설**(양쪽): 한쪽 분포가 다른 쪽보다 큰 쪽으로 치우쳤어요. U가 0이나 42 쪽 끝에 가까울수록 귀무가설과 맞지 않아요.
+
+p값은 귀무가설 아래에서 관측한 U만큼, 또는 그보다 극단적인 U가 나올 확률이에요. 아래 그림이 1716가지 나눔에서 센 U의 분포예요. 색이 다른 막대가 U ≤ 2와 그 거울인 U ≥ 40이고, 그 확률을 더한 0.00466이 양쪽 p값이에요.
+
+<Fig caption="두 표본이 6개와 7개일 때 귀무가설 아래 U의 정확한 분포. 가운데(21)에 몰리고, 양 끝으로 갈수록 드물어요. 색이 다른 막대가 관측한 U = 2만큼 극단적인 값이에요.">
+  <Plot
+    curves={[
+      { points: uDist, label: 'P(U = u)' },
+      { points: uTail, label: 'U ≤ 2, U ≥ 40' },
+    ]}
+    domain={[-1, 43]}
+    range={[0, 0.06]}
+    xTicks={[
+      { v: 0, label: '0' },
+      { v: 10, label: '10' },
+      { v: 21, label: '21' },
+      { v: 30, label: '30' },
+      { v: 42, label: '42' },
+    ]}
+    yTicks={[
+      { v: 0.02, label: '0.02' },
+      { v: 0.04, label: '0.04' },
+    ]}
+  />
+</Fig>
+
+이런 때 써요.
+
+- 독립인 두 집단을 견주는데 값이 정규분포를 따른다고 보기 어려울 때. 오래 걸린 사람 몇이 꼬리를 길게 끄는 시간, 소득, 농도 같은 값이에요.
+- 값이 순서만 의미 있을 때. 만족도 1–5점처럼 간격이 같다고 보기 어려운 점수예요.
+- 이상값이 섞였을 때. 순위만 쓰므로 가장 큰 값이 얼마나 큰지는 영향이 없어요.
+
+이상값에 강한 것을 보려고 B의 7.0을 70.0으로 바꿔 봐요.
+
+```python
+>>> b_typo = [5.6, 6.1, 4.9, 70.0, 5.8, 6.4, 5.1]
+>>> sd.htest.mannwhitneyu(a, b_typo).pvalue
+0.004662004662004662
+>>> sd.htest.ttest_ind(a, b).pvalue, sd.htest.ttest_ind(a, b_typo).pvalue
+(0.0011288939674704043, 0.2965862975790477)
+```
+
+순서가 그대로라 U와 p값도 그대로예요. 평균을 견주는 t 검정은 값 하나 때문에 p값이 0.001에서 0.3으로 뛰었어요.
+
+모든 검정에 같은 공통 규칙(입력의 꼴, `axis`와 배치, `nan_policy`, 에러)은 [가설검정의 기본](/api/htest/basics/)에, 결과 객체를 읽는 법은 [결과 객체 읽기](/api/htest/results/)에 있어요.
+
+<Reference />
+
+## 결과 읽기
+
+결과는 이름으로 읽는 필드를 가진 객체예요. 검정 하나면 필드는 Python 수예요.
+
+```python
+>>> r = sd.htest.mannwhitneyu(a, b)
+>>> r.statistic, r.pvalue, r.method
+(2.0, 0.004662004662004662, 'exact')
+>>> stat, p = r
+```
+
+| 필드 | 뜻 |
+|---|---|
+| `statistic` | x의 $U$. 0부터 $n_x n_y$까지이고 동점이 있으면 반정수일 수 있어요. |
+| `pvalue` | `alternative`에 맞는 p값 |
+| `method` | 실제로 쓴 방법. `'exact'`, `'asymptotic'`, `'permutation'` 가운데 하나예요. |
+| `zstatistic` | 정규 근사를 쓴 때만 있는 표준화한 통계량. 배치에는 언제나 있고 정확한 분포를 쓴 줄은 NaN이에요 |
+
+`(statistic, pvalue)` 둘로 풀려요. `zstatistic`은 정규 근사를 쓰지 않은 결과에는 없어서 읽으면 `AttributeError`예요. 있는지는 `hasattr`로 알아요.
+
+```python
+>>> hasattr(r, 'zstatistic')
+False
+```
+
+y의 U는 따로 없어요. 두 U의 합이 언제나 $n_x n_y$라서 $U_y = n_x n_y - U_x$예요. 표본의 순서를 바꾸면 통계량이 그 값이 되고 양쪽 p값은 같아요.
+
+```python
+>>> sd.htest.mannwhitneyu(b, a)
+MannwhitneyuResult(statistic=40, pvalue=0.004662, method='exact')
+```
+
+`summary()`는 같은 값을 상자로 보여 줘요.
+
+```python
+>>> print(r.summary())
+                             Mann-Whitney U test
+==============================================================================
+Statistic:                       2.000  Alternative:                 two-sided
+P-value:                       0.00466  Method:                          exact
+                                        No. Observations:                 6, 7
+==============================================================================
+```
+
+필드는 읽기만 할 수 있어요. 순위 검정에는 신뢰구간이 없어서 `conf_int()`가 없어요.
+
+## `alternative`: 한쪽 검정
+
+"A안이 더 빠르다"처럼 방향을 미리 정했다면 한쪽 검정을 써요. `'less'`는 x가 y보다 작은 쪽으로, `'greater'`는 큰 쪽으로 치우쳤다는 대립가설이에요.
+
+```python
+>>> sd.htest.mannwhitneyu(a, b, alternative='less')
+MannwhitneyuResult(statistic=2, pvalue=0.002331, method='exact')
+>>> sd.htest.mannwhitneyu(a, b, alternative='greater').pvalue
+0.9988344988344988
+```
+
+`'less'`의 p값은 $P(U \le 2)$, `'greater'`는 $P(U \ge 2)$예요. 방향은 데이터를 보기 전에 정해야 해요. 데이터를 보고 맞는 쪽을 고르면 p값이 실제보다 두 배 작게 나와요.
+
+## `method`: 정확한 분포와 정규 근사
+
+p값을 구하는 길은 셋이에요.
+
+- `'exact'`: 위 그림처럼 귀무가설 아래 U의 분포를 정확히 세서 꼬리의 확률을 더해요. 작은 표본에서 정확하고, 아주 작은 p값도 끝까지 맞아요.
+- `'asymptotic'`: 표본이 크면 U가 정규분포에 가까워요. 평균 $n_x n_y / 2$와 분산(동점 보정이 든 것)으로 표준화한 $z$의 정규 꼬리를 써요. `use_continuity=True`(기본값)면 $|U - n_x n_y/2|$에서 0.5를 빼서 계단 모양의 분포를 매끄러운 곡선에 맞춰요.
+- `'auto'`(기본값): 한 표본이 8개 이하이고 동점이 없으면 `'exact'`, 아니면 `'asymptotic'`이에요. 결과의 `method`가 어느 쪽을 골랐는지 알려 줘요.
+
+```python
+>>> r = sd.htest.mannwhitneyu(a, b, method='asymptotic')
+>>> r
+MannwhitneyuResult(statistic=2, pvalue=0.00822097, zstatistic=-2.64286, method='asymptotic')
+>>> sd.htest.mannwhitneyu(a, b, method='asymptotic', use_continuity=False).pvalue
+0.00664188547642663
+```
+
+6개와 7개에서는 정규 근사(0.0082)가 정확한 값(0.0047)과 꽤 달라요. 작은 표본이면 정확한 분포를 쓰세요.
+
+`'exact'`는 표본이 커져도 쓸 수 있어요. 동점이 없으면 한 표본이 8개일 때 두 표본을 합쳐 약 17만 개까지, 두 표본의 크기가 같으면 합쳐 127개까지 정수로 정확하게 세요. 그 위에서도 작업량이 상한(10⁹번) 안이면 계산하고, 넘으면 다른 길을 알려 주는 `ValueError`예요. 모든 호출이 정해진 시간 안에 끝나도록 둔 상한이에요.
+
+```python
+>>> rng = sd.random.default_rng(0)
+>>> big_x = sd.round(sd.stats.Normal(sigma=3.0).sample(300, rng=rng))
+>>> big_y = sd.round(sd.stats.Normal(sigma=3.0).sample(300, rng=rng))
+>>> sd.htest.mannwhitneyu(big_x, big_y, method='exact')
+Traceback (most recent call last):
+    ...
+ValueError: mannwhitneyu(): method='exact' needs about ... operations for this input, more than its cap of 1e+09; use method='asymptotic'
+```
+
+`'auto'`는 상한 안에서만 정확한 분포를 고르고, 넘으면 정규 근사를 써요.
+
+### 순열로 구하기
+
+`method`에 `sd.htest.PermutationMethod`를 주면 두 표본을 합쳐 무작위로 다시 나누면서 U의 분포를 만들어요. 나눌 수 있는 모든 경우가 `n_resamples`(기본 9999) 안이면 모든 경우를 세므로 무작위가 끼지 않고, 그 값은 `'exact'`와 같아요. 결과의 `method`는 `'permutation'`이에요. 넘겨주는 법은 [재표본 방법 객체](/api/htest/methods/)에 있어요.
+
+```python
+>>> perm = sd.htest.PermutationMethod(rng=sd.random.default_rng(0))
+>>> sd.htest.mannwhitneyu(a, b, method=perm)
+MannwhitneyuResult(statistic=2, pvalue=0.004662, method='permutation')
+```
+
+## 동점이 있을 때
+
+같은 값은 순위를 나눠 가져요(중간 순위). U에서는 같은 값의 쌍을 반으로 세요.
+
+```python
+>>> x = [1, 2, 2, 3, 3, 3, 4]
+>>> y = [3, 4, 4, 5, 5, 6]
+>>> sd.htest.mannwhitneyu(x, y)
+MannwhitneyuResult(statistic=3.5, pvalue=0.0129999, zstatistic=-2.48377, method='asymptotic')
+>>> sd.htest.mannwhitneyu(x, y, method='exact')
+MannwhitneyuResult(statistic=3.5, pvalue=0.0151515, method='exact')
+```
+
+동점이 있으면 `'auto'`는 정규 근사를 골라요. 정규 근사의 분산에는 동점 보정이 들어가요(동점이 있으면 순위가 덜 흩어져서 분산이 작아져요).
+
+`method='exact'`를 주면 **관측한 중간 순위를 그대로 둔 정확한 분포**를 써요. 위의 13개 순위(동점은 중간 순위)를 두 표본에 나누는 모든 경우를 같은 확률로 세는 분포예요. 동점이 있는 데이터의 귀무분포는 바로 이것이에요. 동점이 없는 분포에 반정수 U를 넣는 셈과는 달라요.
+
+동점이 있으면 이 분포가 좌우 대칭이 아닐 수 있어요. 그래서 양쪽 p값은 두 꼬리를 따로 세서 $\min(1,\ 2\min(P(U \le u), P(U \ge u)))$로 구해요. 동점이 없으면 대칭이라 보통의 "작은 꼬리의 두 배"와 같아요.
+
+위의 순열 방법도 같은 분포를 세요. 모든 경우를 셀 수 있으면 두 값이 같아요.
+
+```python
+>>> sd.htest.mannwhitneyu(x, y, method=perm).pvalue
+0.015151515151515152
+```
+
+## 여러 검정을 한 번에: `axis`
+
+`axis`를 주면 그 축을 따라 표본을 읽고 나머지 축의 칸마다 따로 검정해요. 아래는 세 실험(행)에서 각각 x 10개, y 12개를 견줘요. 표본 축의 길이는 x와 y가 달라도 되고, 표본 축 밖의 모양은 서로 브로드캐스트돼요.
+
+```python
+>>> rng = sd.random.default_rng(1)
+>>> X = sd.stats.Normal().sample((3, 10), rng=rng)
+>>> Y = sd.stats.Normal().sample((3, 12), rng=rng) + 0.5
+>>> rb = sd.htest.mannwhitneyu(X, Y, axis=-1)
+>>> rb
+MannwhitneyuResult(batch shape (3,))
+>>> rb.statistic
+array([61.0, 62.0, 22.0], dtype=float64)
+>>> rb.method
+['asymptotic', 'asymptotic', 'asymptotic']
+>>> rb.pvalue
+array([  0.9736992897368464,   0.9212120545847358, 0.013410537144510945], dtype=float64)
+>>> rb.zstatistic
+array([0.03296902366978935, 0.09890707100936805,  -2.472676775234201], dtype=float64)
+```
+
+배치의 `summary()`는 줄마다 한 줄인 표예요([결과 객체 읽기](/api/htest/results/)). 배치에서 필드는 배치 모양의 배열이에요. 방법은 줄마다 그 줄의 크기와 동점을 보고 따로 골라요. 그래서 `method`는 줄마다의 이름을 배치 모양으로 담은 리스트예요. 배치에는 `zstatistic`이 언제나 있고, 정확한 분포를 쓴 줄의 칸은 NaN이에요. 모든 줄이 정확한 분포여도 NaN의 배열이라 데이터에 따라 필드가 없어지지 않아요. 배치의 줄 하나는 혼자 검정했을 때와 같은 비트예요.
+
+## NaN, inf, 퇴화한 입력
+
+```python
+>>> nan = float('nan')
+>>> sd.htest.mannwhitneyu([1.0, 2.0, nan, 4.0], [3.0, 5.0, 6.0])
+MannwhitneyuResult(statistic=nan, pvalue=nan, method='exact')
+>>> sd.htest.mannwhitneyu([1.0, 2.0, nan, 4.0], [3.0, 5.0, 6.0], nan_policy='omit')
+MannwhitneyuResult(statistic=1, pvalue=0.2, method='exact')
+```
+
+- `nan_policy='propagate'`(기본값)면 NaN이 든 검정의 값이 NaN이에요. `'omit'`이면 NaN을 빼고 남은 값으로, `'raise'`면 `ValueError`예요.
+- ±inf는 가장 크거나 작은 값으로 순위를 받아요. 순위만 쓰므로 계산이 그대로 돼요.
+- 표본이 비었으면 NaN이에요. 모든 값이 같으면 U는 $n_x n_y / 2$이지만 순위가 하나도 흩어지지 않아 p값을 정할 수 없어서 NaN이에요. 경고는 내지 않아요.
+
+```python
+>>> sd.htest.mannwhitneyu([float('-inf'), 1.0, 2.0], [3.0, float('inf'), 5.0])
+MannwhitneyuResult(statistic=0, pvalue=0.1, method='exact')
+>>> sd.htest.mannwhitneyu([1.0, 1.0, 1.0], [1.0, 1.0])
+MannwhitneyuResult(statistic=3, pvalue=nan, zstatistic=nan, method='asymptotic')
+```
+
+## 언제 다른 검정을 쓸까요
+
+| 상황 | 검정 |
+|---|---|
+| 두 집단의 값이 정규분포에 가깝고 평균을 견주고 싶어요 | [`ttest_ind`](/api/htest/ttest_ind/) |
+| 두 집단의 퍼짐이 크게 달라요 | [`brunnermunzel`](/api/htest/brunnermunzel/) |
+| 같은 사람을 두 번 쟀어요(짝지은 표본) | [`wilcoxon`](/api/htest/wilcoxon/) |
+| 집단이 셋 이상이에요 | [`kruskal`](/api/htest/kruskal/) |
+| 위치가 아니라 퍼짐(척도)을 견주고 싶어요 | [`ansari`](/api/htest/ansari/), [`mood`](/api/htest/mood/) |
+
+U 검정의 귀무가설은 "두 분포가 같다"예요. 두 집단의 퍼짐이 다르면 중앙값이 같아도 p값이 작게 나올 수 있어요. "한쪽에서 뽑은 값이 다른 쪽보다 클 확률이 1/2인가"만 묻고 싶고 퍼짐이 다를 수 있으면 `brunnermunzel`이 맞아요. [`ranksums`](/api/htest/ranksums/)는 같은 순위 합의 정규 근사를 보정 없이 계산하는 오래된 꼴이에요.
+
+## 정확도
+
+- U는 정확한 값이에요. 순위를 정확한 중간 순위로 매기고 정수(의 반)로 세요.
+- 정확한 분포의 p값은 정수나 double-double로 센 개수의 몫이라 아주 깊은 꼬리(완전히 갈린 30개와 30개의 $2/\binom{60}{30}$ 등)까지 상대 1e-16 안이에요.
+- 정규 근사의 p값은 그 근사식의 값을 상대 1e-14 안에서 줘요. 깊은 꼬리에서는 $z$의 반올림이 p값에서 $z^2$ 배쯤 커지는 몫이 더해져요.
+- 문제 15개에서 Arb(구간 산술)와 정확한 정수 셈으로 만든 참값에 견준 p값의 가장 큰 상대오차는 1.7e-14예요(정규 근사의 깊은 꼬리).
+
+## scipy를 아는 분께
+
+`scipy.stats.mannwhitneyu`와 이름, 인자, 결과의 `statistic`(x의 U)과 `pvalue`, `'auto'`의 기준이 같아요. 동점이 없으면 p값은 반올림 크기 안에서 같아요.
+
+```python
+>>> import scipy.stats
+>>> scipy.stats.mannwhitneyu(a, b)
+MannwhitneyuResult(statistic=np.float64(2.0), pvalue=np.float64(0.004662004662004662))
+```
+
+다른 점이에요.
+
+- 동점이 있을 때 `method='exact'`: sd는 관측한 중간 순위의 조건부 정확 분포예요. scipy는 동점이 없는 분포에 반정수 U를 넣어서 그 데이터의 귀무분포가 아니에요. R의 `wilcox.test(exact = TRUE)`는 sd와 같은 조건부 분포예요.
+
+  ```python
+  >>> scipy.stats.mannwhitneyu(x, y, method='exact').pvalue
+  np.float64(0.013986013986013986)
+  ```
+
+- 결과의 `method`: sd는 `'auto'`가 고른 방법을 언제나 적어요. scipy에는 이 필드가 없어요.
+- `zstatistic`: sd는 정규 근사를 쓸 때마다 둬요. scipy는 `method='asymptotic'`을 직접 준 때만 둬요.
+- `axis`의 기본값이 None이에요. scipy는 0이라 2차원 입력을 열마다 검정해요. scipy처럼 하려면 `axis=0`을 주세요.
+- 배치에서 방법을 줄마다 골라요. scipy는 배치 전체에서 하나를 골라요.
+- 작은 표본의 정확한 꼬리는 정수의 셈이라 깊은 꼬리에서도 상대 정확도를 지켜요.
+- 표본은 위치로만, 옵션은 키워드로만 받아요. `mannwhitneyu(x, y, True)`는 `use_continuity=True`로 써요.
+- `method='exact'`에 작업량 상한이 있어요. scipy는 상한 없이 계산해요.

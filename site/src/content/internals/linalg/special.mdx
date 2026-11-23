@@ -1,0 +1,494 @@
+---
+title: 띠 행렬과 Sylvester 방정식
+group: 특수 구조와 행렬 함수
+order: 1
+summary: 띠 행렬과 Sylvester 방정식을 일반 LU 대신 문제의 구조를 이용해 푸는 방법을 설명해요. 띠 행렬은 띠 안에서만 소거해 시간이 크기에 비례하고, Sylvester 방정식은 두 행렬을 따로 삼각화하는 Bartels–Stewart 방법으로 계산량을 크게 줄여요.
+seeAlso: [lu, eigen, symmetric, batch, packing]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import FigRow from '../../../components/fig/FigRow.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+import Steps from '../../../components/fig/Steps.astro';
+
+## 한눈에 보기
+
+이 글의 세 함수는 행렬 전체를 일반 LU로 풀지 않고, 문제의 구조를 이용해서 계산량을 줄여요.
+
+| 함수 | 푸는 문제 | LAPACK | 비용 |
+|---|---|---|:---:|
+| `solve_tridiagonal(dl, d, du, b)` | 삼중대각 $A x = b$ | `gtsv` | $O(n)$ |
+| `solve_banded(ab, b, *, lower_bandwidth, upper_bandwidth)` | 띠 행렬 $A x = b$ | `gbsv`, 대역폭이 (1, 1)이면 `gtsv`, 행이 8개 이하면 밀집 LU | $O(n\,k_l(k_l + k_u))$ |
+| `solve_sylvester(a, b, c)` | $a x + x b = c$ | `gees` 두 번 + `trsyl3` + `gemm` 네 번 | $O(m^3 + n^3)$ |
+
+뼈대는 이래요.
+
+- 띠 행렬은 띠만 저장하고 띠 안에서만 계산해요. $n \times n$ 행렬을 만들지 않으니 메모리가 $O(n)$이고, 소거도 띠 안에서 끝나서 시간도 $n$에 비례해요. 일반 LU의 $\tfrac23 n^3$과 비교하면 $n = 10^5$에서 차이가 수십억 배예요.
+- 부분 피벗은 띠를 넓혀요. 행을 바꾸면 위쪽 띠가 아래쪽 대역폭만큼 넓어져요. `gbsv`가 입력 배열 위에 $k_l$개의 빈 행을 요구하는 이유예요.
+- 드라이버는 모양으로만 골라요. 대역폭 (1, 1)은 `gtsv`, 행이 8개 이하인 작은 띠는 밀집 행렬의 LU, 그 밖은 `gbsv`예요. 대역폭과 크기는 입력 값이 아니라 모양이에요. 그 결과 `solve_banded(ab, b, 1, 1)`은 `solve_tridiagonal`과 비트까지 같아요(지금은 scipy와도 같아요).
+- Sylvester 방정식은 두 행렬을 각각 삼각화해서 풀어요(Bartels–Stewart). $mn$개의 미지수를 하나의 $mn \times mn$ 시스템으로 풀면 $O(m^3n^3)$이지만, Schur 분해 두 번과 삼각 Sylvester 풀기로 $O(m^3 + n^3)$이 돼요.
+- 해가 하나로 정해지지 않으면 에러예요. `a`와 `-b`에 공통(또는 eps 수준으로 가까운) 고유값이 있으면 LAPACK은 값을 살짝 바꾼 방정식을 풀어 주는데, stardust는 그 해를 돌려주지 않고 `LinAlgError`를 내요.
+
+이 글의 LAPACK 알고리즘 설명은 LAPACK 참조 구현(netlib)의 소스와 루틴 문서[2]를 기준으로 해요. stardust가 실제로 부르는 것은 Apple Accelerate의 LAPACK이고, Accelerate의 내부 구현은 공개돼 있지 않아요. 루틴이 푸는 문제와 결과의 의미는 같지만, 블록 크기나 안쪽 커널은 다를 수 있어요.
+
+## 띠 행렬
+
+### 띠 행렬과 띠 저장 형식
+
+**띠 행렬**(band matrix)은 0이 아닌 원소가 대각 근처에만 있는 행렬이에요. 대각 아래로 $k_l$줄, 위로 $k_u$줄까지만 값이 있으면 아래 대역폭 $k_l$, 위 대역폭 $k_u$라고 해요. 정확히는 $i - j > k_l$이거나 $j - i > k_u$이면 $a_{ij} = 0$이에요. 삼중대각 행렬은 $k_l = k_u = 1$인 띠 행렬이에요.
+
+이런 행렬은 "이웃끼리만 영향을 주는" 문제에서 나와요. 막대의 열 전달을 유한 차분으로 풀면 점 하나의 식에 양옆 점만 들어가서 삼중대각이 되고, 3차 스플라인도 구간마다 이웃 구간하고만 맞물려서 삼중대각이 돼요. 고차 차분이나 고차 스플라인은 대역폭이 2, 3으로 늘어나요. 사용자 쪽 설명과 예제는 [띠 행렬 풀기](/api/linalg/banded/)에 있어요.
+
+**띠 저장 형식**은 대각선 하나를 배열의 행 하나에 담아요. LAPACK과 scipy가 쓰는 형식 그대로예요.
+
+$$
+\texttt{ab}[k_u + i - j,\ j] = a_{ij} \qquad (\max(0, j - k_u) \le i \le \min(n-1, j + k_l))
+$$
+
+열 $j$는 그대로 열 $j$에 두고, 위아래로만 밀어서 대각선들이 가로줄이 되게 하는 거예요. 위 대각선(초대각)이 위쪽 행, 주대각이 $k_u$번 행, 아래 대각선이 아래쪽 행이에요. 배열 모양은 $(k_l + k_u + 1) \times n$이에요.
+
+<Fig caption="6×6 띠 행렬(kl = 2, ku = 1)과 그 띠 저장 형식 ab(4×6). 같은 색은 같은 대각선이에요. ab의 왼쪽 위와 오른쪽 아래 모서리(점선)는 행렬 밖이라 읽지 않아요.">
+  <ArrayFig name="A" data={[['a00', 'a01', 0, 0, 0, 0], ['a10', 'a11', 'a12', 0, 0, 0], ['a20', 'a21', 'a22', 'a23', 0, 0], [0, 'a31', 'a32', 'a33', 'a34', 0], [0, 0, 'a42', 'a43', 'a44', 'a45'], [0, 0, 0, 'a53', 'a54', 'a55']]} tones={[['b', 'a', 'm', 'm', 'm', 'm'], ['', 'b', 'a', 'm', 'm', 'm'], ['', '', 'b', 'a', 'm', 'm'], ['m', '', '', 'b', 'a', 'm'], ['m', 'm', '', '', 'b', 'a'], ['m', 'm', 'm', '', '', 'b']]} note="n = 6" />
+  <Op>→</Op>
+  <ArrayFig name="ab" data={[['*', 'a01', 'a12', 'a23', 'a34', 'a45'], ['a00', 'a11', 'a22', 'a33', 'a44', 'a55'], ['a10', 'a21', 'a32', 'a43', 'a54', '*'], ['a20', 'a31', 'a42', 'a53', '*', '*']]} tones={[['g', 'a', 'a', 'a', 'a', 'a'], ['b', 'b', 'b', 'b', 'b', 'b'], ['', '', '', '', '', 'g'], ['', '', '', '', 'g', 'g']]} note="ab[ku + i − j, j] = a[i, j]" />
+</Fig>
+
+`solve_tridiagonal`은 이 형식 대신 세 대각선을 1차원 배열 세 개 `dl`(아래, 길이 $n-1$), `d`(대각, $n$), `du`(위, $n-1$)로 받아요. `gtsv`가 받는 형식 그대로예요.
+
+**읽는 원소만 검사해요.** `solve_banded`는 `ab`에서 행렬 안에 해당하는 칸(위 그림의 점선 아닌 칸)만 읽고, 그 칸만 NaN·inf를 검사해요. 모서리 칸에는 무엇이 있어도(NaN 포함) 결과에 영향이 없어요. 대역폭이 행렬보다 넓어도 돼요. 남는 칸은 모두 행렬 밖이라 읽지 않아요.
+
+```python
+>>> nan = float("nan")
+>>> ab = sd.asarray([[nan, 7.0, 8.0], [4.0, 5.0, 6.0], [1.0, 2.0, nan]])
+>>> b = sd.asarray([18.0, 35.0, 22.0])
+>>> sd.linalg.solve_banded(ab, b, lower_bandwidth=1, upper_bandwidth=1)
+array([1.0, 2.0, 3.0], dtype=float64)
+>>> sd.linalg.solve_tridiagonal(sd.asarray([1.0, 2.0]), sd.asarray([4.0, 5.0, 6.0]), sd.asarray([7.0, 8.0]), b)
+array([1.0, 2.0, 3.0], dtype=float64)
+```
+
+### gtsv: 삼중대각 소거와 부분 피벗
+
+삼중대각 행렬에 가우스 소거를 하면 단계마다 할 일이 아주 적어요. $i$번째 열에서 대각 아래 0이 아닌 원소는 $a_{i+1,i}$(`dl[i]`) 하나뿐이라, 지울 행이 $i{+}1$번 행 하나예요. 참조 구현 `dgtsv.f`[2]는 이 소거에 부분 피벗을 더해요. 피벗 후보도 $i$번 행과 $i{+}1$번 행 둘뿐이에요.
+
+- **$|d_i| \ge |dl_i|$이면 교환하지 않아요.** 승수 $f = dl_i / d_i$를 구해 $i{+}1$번 행에서 $f \times (i\text{번 행})$을 빼요. 바뀌는 칸은 $d_{i+1} \mathrel{-}= f \cdot du_i$ 하나이고, 우변도 $b_{i+1} \mathrel{-}= f\, b_i$로 함께 갱신해요.
+- **아니면 두 행을 바꿔요.** 승수는 $f = d_i / dl_i$예요. 바꾼 뒤의 $i$번 행은 원래 $i{+}1$번 행 $(dl_i, d_{i+1}, du_{i+1})$이라 **$i{+}2$열에 원소가 하나 생겨요.** 위쪽으로 두 번째 대각선(U의 제2 초대각)이에요. `gtsv`는 이 값을 더 이상 쓸 일이 없는 `dl[i]` 자리에 저장해요.
+
+<Fig caption="gtsv의 한 단계에서 행을 바꾸는 경우(|dᵢ| < |dlᵢ|). 바꾼 뒤 i번 행이 i+2열까지 닿아서 U에 두 번째 초대각(진한 칸)이 생기고, 그 값은 비게 된 dl[i] 자리에 저장돼요. 아래 행의 i열(흐린 칸)은 소거되어 0이 돼요.">
+  <FigRow>
+    <ArrayFig name="i, i+1번 행 (전)" data={[['dᵢ', 'duᵢ', 0], ['dlᵢ', 'dᵢ₊₁', 'duᵢ₊₁']]} tones={[['', '', 'm'], ['a', '', '']]} note="열 i, i+1, i+2" />
+    <Op>→</Op>
+    <ArrayFig name="교환 + 소거 (후)" data={[['dlᵢ', 'dᵢ₊₁', 'duᵢ₊₁'], [0, "d'ᵢ₊₁", "du'ᵢ₊₁"]]} tones={[['a', '', 'b'], ['m', '', '']]} note="U의 행 i가 i+2열까지" />
+  </FigRow>
+</Fig>
+
+소거가 끝나면 $U$는 대각, 제1 초대각, 제2 초대각만 있는 위 삼각이고, 우변은 이미 $L^{-1}b$로 바뀌어 있어요. 뒤로 대입은 아래 행부터 이래요.
+
+$$
+x_{n-1} = \frac{b_{n-1}}{d_{n-1}},\quad
+x_{n-2} = \frac{b_{n-2} - du_{n-2}\,x_{n-1}}{d_{n-2}},\quad
+x_i = \frac{b_i - du_i\,x_{i+1} - dl_i\,x_{i+2}}{d_i}
+$$
+
+여기서 $d$, $du$, $dl$은 소거가 끝난 뒤의 값(U의 세 대각선)이에요.
+
+- **비용**은 행 하나에 나눗셈 한 번과 곱셈·뺄셈 몇 번이에요. 분해와 풀기 모두 $O(n)$이고, 우변이 $k$개면 $O(nk)$예요. 메모리는 입력 세 배열을 덮어쓸 뿐이라 추가가 없어요.
+- **특이 판정.** 교환하지 않는 단계에서 $d_i = 0$이면(그러려면 $dl_i = 0$이기도 해야 해요) `info = i`로 멈춰요. 마지막 $d_{n-1} = 0$도 마찬가지예요. 교환하는 단계는 $|dl_i| > |d_i| \ge 0$이라 피벗이 0일 수 없어요. 문서의 표현대로 "$U(i, i)$가 정확히 0이고 해는 계산되지 않았다"는 뜻이에요.
+- **안정성.** 부분 피벗이라 승수의 크기가 언제나 1 이하예요. 무작위 삼중대각 행렬에서 잰 역오차는 $0.15 \cdot n\varepsilon$ 이하예요.
+
+**`gttrf` + `gttrs`가 아니라 `gtsv`인 이유.** LAPACK에는 분해(`gttrf`)와 풀기(`gttrs`)를 따로 하는 루틴도 있어요. 분해를 저장해 두고 우변을 나중에 여러 번 풀 때 쓰는 짝이에요. `gtsv`는 소거하는 루프 안에서 우변까지 갱신하므로 데이터를 한 번 덜 지나가요. `gtsv`가 1.2–3배 빠르고 결과 비트는 같아요(Apple M4 Pro, float64에서 잰 값). `solve_tridiagonal`은 분해를 돌려주지 않으므로 나눠 부를 이유가 없어요.
+
+### gbsv: 띠 LU와 채움
+
+일반 띠 행렬은 `gbsv`로 풀어요. `gbsv`는 띠 LU 분해 `gbtrf`와 풀기 `gbtrs`를 차례로 부르는 드라이버예요[2]. 문서의 정의에 따르면 $A = LU$이고, $L$은 "치환과 아래 대역폭 $k_l$인 단위 아래 삼각 행렬들의 곱", $U$는 "위 대역폭 $k_l + k_u$인 위 삼각 행렬"이에요.
+
+**$U$의 대역폭이 $k_u$가 아니라 $k_l + k_u$인 이유.** 부분 피벗 때문이에요. $j$번째 열의 피벗 후보는 대각과 그 아래 $k_l$개, 곧 $j \dots j{+}k_l$번 행이에요. $j{+}p$번 행($p \le k_l$)은 원래 $j{+}p{+}k_u$열까지 원소가 있으니, 이 행을 $j$번 자리로 올리면 $U$의 $j$번 행이 $j{+}k_l{+}k_u$열까지 닿아요. 피벗 없이 소거하면 띠가 그대로 유지되지만, 피벗을 하면 위쪽으로 $k_l$줄이 더 필요해요. 이렇게 원래 0이던 자리에 값이 생기는 것을 **채움**(fill-in)이라고 해요.
+
+<Fig caption="kl = 2, ku = 1에서 0열의 피벗이 2번 행일 때. 2번 행은 3열까지 원소가 있어서(진한 칸), 0번 자리로 올라오면 U의 0번 행이 0 + kl + ku = 3열까지 닿아요.">
+  <FigRow>
+    <ArrayFig name="교환 전" data={[['a00', 'a01', 0, 0], ['a10', 'a11', 'a12', 0], ['a20', 'a21', 'a22', 'a23']]} tones={[['', '', 'm', 'm'], ['', '', '', 'm'], ['a', 'a', 'a', 'b']]} note="0–2번 행, 0–3열" />
+    <Op>→</Op>
+    <ArrayFig name="교환 후" data={[['a20', 'a21', 'a22', 'a23'], ['a10', 'a11', 'a12', 0], ['a00', 'a01', 0, 0]]} tones={[['a', 'a', 'a', 'b'], ['', '', '', 'm'], ['', '', 'm', 'm']]} note="U의 0번 행이 3열까지" />
+  </FigRow>
+</Fig>
+
+그래서 `gbtrf`는 띠 저장 배열에 **위쪽으로 $k_l$개의 행을 더** 요구해요. 행 수(leading dimension)가 $2k_l + k_u + 1$ 이상이고, 띠는 $k_l$번 행부터 $2k_l + k_u$번 행까지 두며, 맨 위 $k_l$개 행은 채움이 들어갈 자리예요. 분해가 끝나면 위쪽 $k_l + k_u + 1$개 행에 $U$가, 아래쪽 $k_l$개 행에 $L$의 승수가 들어 있어요. 참조 구현 문서의 그림을 0부터 세는 번호로 옮기면 이래요.
+
+<Fig caption="gbsv에 넘기는 작업 배열(n = 6, kl = 2, ku = 1, 행 수 2kl + ku + 1 = 6). 위 두 행(+)은 채움 자리라 입력에서는 비워 두고(stardust는 0으로 채워요), 그 아래 네 행이 ab 그대로예요. 분해 뒤에는 위 네 행이 U(대역폭 kl + ku = 3), 아래 두 행이 L의 승수 m이에요.">
+  <ArrayFig name="입력" data={[['*', '*', '*', '+', '+', '+'], ['*', '*', '+', '+', '+', '+'], ['*', 'a01', 'a12', 'a23', 'a34', 'a45'], ['a00', 'a11', 'a22', 'a33', 'a44', 'a55'], ['a10', 'a21', 'a32', 'a43', 'a54', '*'], ['a20', 'a31', 'a42', 'a53', '*', '*']]} tones={[['g', 'g', 'g', 'a', 'a', 'a'], ['g', 'g', 'a', 'a', 'a', 'a'], ['g', '', '', '', '', ''], ['b', 'b', 'b', 'b', 'b', 'b'], ['', '', '', '', '', 'g'], ['', '', '', '', 'g', 'g']]} />
+  <Op>→</Op>
+  <ArrayFig name="분해 뒤" data={[['*', '*', '*', 'u03', 'u14', 'u25'], ['*', '*', 'u02', 'u13', 'u24', 'u35'], ['*', 'u01', 'u12', 'u23', 'u34', 'u45'], ['u00', 'u11', 'u22', 'u33', 'u44', 'u55'], ['m10', 'm21', 'm32', 'm43', 'm54', '*'], ['m20', 'm31', 'm42', 'm53', '*', '*']]} tones={[['g', 'g', 'g', 'a', 'a', 'a'], ['g', 'g', 'a', 'a', 'a', 'a'], ['g', '', '', '', '', ''], ['b', 'b', 'b', 'b', 'b', 'b'], ['', '', '', '', '', 'g'], ['', '', '', '', 'g', 'g']]} />
+</Fig>
+
+**`gbtrf`의 알고리즘.** 블록 크기 `nb`(`ilaenv`가 정하고 64로 제한)가 1 이하이거나 $k_l$보다 크면 블록 없는 `gbtf2`를 불러요. $k_l$이 작은 보통의 띠(예: $k_l = 2$)는 이 경로예요. `gbtf2`는 열마다
+
+1. 대각과 그 아래 $k_l$칸 중 절댓값이 가장 큰 칸을 피벗으로 골라(`idamax`) 그 행을 지금 행과 바꿔요. 교환은 지금 열부터 채움이 닿은 열까지만 해요.
+2. 대각 아래 $k_l$칸을 피벗으로 나눠 승수를 만들어요. 참조 구현은 $1/\text{피벗}$을 한 번 구해 곱해요(피벗이 아주 작으면 넘침을 피하려고 하나씩 나눠요).
+3. 오른쪽의 $k_l \times (k_l + k_u)$ 칸 이하를 rank-1 갱신해요(`dger`).
+
+$k_l$이 블록 크기 이상으로 넓으면 블록 경로를 써요. `nb`열을 한꺼번에 분해하고 나머지를 `dtrsm`, `dgemm`으로 갱신하는데, 띠 밖으로 잠시 삐져나오는 부분(띠 위쪽 블록, 교환으로 띠 안에 들어오는 아래쪽 블록)을 작은 작업 배열 두 개에 두었다가 돌려놔요.
+
+**`gbtrs`의 풀기.** $L$ 쪽은 열마다 `ipiv`대로 우변의 행을 바꾸고 승수로 rank-1 갱신(`dger`)을 해요. $U$ 쪽은 우변 하나마다 위 대역폭 $k_l + k_u$인 삼각 띠 풀기(`dtbsv`)예요.
+
+**비용.** 분해는 열마다 승수 $k_l$개와 $k_l \times (k_l + k_u)$ 갱신이라 약 $2n\,k_l(k_l + k_u)$ flop, 풀기는 우변 하나에 약 $2n(2k_l + k_u)$ flop이에요. 메모리는 $(2k_l + k_u + 1) \times n$ 작업 배열과 피벗 $n$개예요. 특이 판정은 `gtsv`와 같아요. 피벗이 정확히 0인 열이 있으면 `info > 0`이고 `gbsv`는 풀기를 하지 않아요.
+
+**`gbtrf` + `gbtrs`가 아니라 `gbsv`인 이유.** 둘의 속도와 결과 비트가 같아요. 호출 하나로 끝나는 쪽이 단순해서 `gbsv`를 써요.
+
+### stardust의 `solve_banded`
+
+<Fig column caption="solve_banded의 배치 원소 하나. 대역폭이 (1, 1)이면 ab의 세 행을 dl, d, du로 읽어 gtsv로 가고, 행이 8개 이하면 밀집 행렬을 만들어 LU로, 아니면 gbsv의 작업 배열을 만들어요.">
+  <Steps
+    steps={[
+      { label: 'solve_banded(ab, b, kl, ku)', where: 'ops/special.cpp', note: 'kl, ku가 0 이상의 int인지, ab의 행 수가 kl + ku + 1인지, b의 행 수가 n인지 봐요.' },
+      { label: 'kl = ku = 1', depth: 1, note: 'du = ab[0, 1:], d = ab[1, :], dl = ab[2, :-1]을 stride로 읽어 tri_body로 가요. 모서리 두 칸은 읽지 않아요.' },
+      { label: 'tri_body → gtsv', depth: 2, where: 'ops/special.cpp', note: 'solve_tridiagonal과 같은 함수예요.' },
+      { label: 'n ≤ 8', depth: 1, note: 'n × n 행렬을 0으로 채우고 띠 안의 칸만 패킹해요. lu_in_place와 getrs로 풀어요.' },
+      { label: '그 밖', depth: 1, note: '(2kl + ku + 1) × n 작업 배열을 0으로 채우고, 열마다 행렬 안의 칸만 kl번 행 아래에 패킹해요.' },
+      { label: 'gbsv', depth: 2, where: 'lapack.hpp', note: 'b는 결과 자리에 패킹해 두고, gbsv가 그 자리를 해로 덮어써요.' },
+    ]}
+  />
+</Fig>
+
+```cpp
+                // csrc/linalg/ops/special.cpp
+                const lint ldab = 2 * kl + ku + 1;
+                T* w = s.get<T>(static_cast<std::size_t>(ldab * n));
+                std::fill(w, w + ldab * n, T(0));
+                for (lint j = 0; j < n; ++j) {
+                    const lint r0 = std::max<lint>(0, ku - j), r1 = std::min<lint>(kl + ku, ku + n - 1 - j);
+                    if (!pack(
+                            a.dtype(), base + r0 * rs + j * cs, r1 - r0 + 1, 1, rs, 0, w + j * ldab + kl + r0, ldab,
+                            true
+                        ))
+                        return kNonFinite;
+                }
+                const bool b_ok = pack(y.dtype(), y.data() + off[1], n, r.k, r.rs, r.cs, x, n, true);
+                if (n > 0) {
+                    lint* ipiv = s.get_ints(static_cast<std::size_t>(n));
+                    if (lapack::gbsv(n, kl, ku, r.k, w, ldab, ipiv, x, n) > 0) return kSingular;
+                }
+                return b_ok ? 0 : kNonFiniteB;
+```
+
+- **작업 배열을 0으로 채워요.** 채움 자리와 모서리를 포함해 전부 0으로 둔 뒤 행렬 안의 칸만 덮어써요. `gbtrf`가 채움 자리를 스스로 0으로 지우긴 하지만, 모서리에 사용자의 NaN이 그대로 들어가지 않도록 처음부터 깨끗한 배열을 넘겨요. 입력 배열 `ab`는 바꾸지 않아요.
+- **어떤 메모리 배치든** 행·열 stride로 읽어 같은 작업 배열을 만들어요. 결과는 `ab`가 C 순서든 F 순서든 비트까지 같아요.
+- **에러 순서.** `ab`의 NaN → 행렬의 특이 → `b`의 NaN이에요. `gbsv`는 분해와 풀기를 한 번에 하지만 피벗 선택은 `b`와 무관해요. 그래서 `b`에 NaN이 있어도 일단 `gbsv`를 불러 특이 여부를 보고, 특이하지 않을 때만 `b`의 NaN을 보고해요. `solve(a, b)`가 `a`의 특이를 `b`의 NaN보다 먼저 알리는 것과 같은 순서예요.
+
+`solve_tridiagonal`도 같은 틀이에요(`tri_body`). `dl`, `d`, `du`를 scratch의 세 하위 배열에 패킹하고 `gtsv`를 불러요. 세 하위 배열은 각각 16바이트 경계에서 시작하게 길이를 짝수로 올려 둬요(`pad2`). Accelerate는 배열이 16바이트 정렬인지에 따라 반올림을 다르게 해서, 이렇게 해야 같은 입력이 배치 안의 어느 위치에 있든 같은 비트를 받아요.
+
+### 대역폭 (1, 1)은 gtsv로
+
+`solve_banded`는 원칙적으로 `gbsv` 하나로 풀어요. 예외는 두 대역폭이 모두 1일 때예요. 이때는 `ab`의 세 행을 세 대각선으로 읽어 `gtsv`로 풀어요.
+
+| | `gtsv` | `gbsv` |
+|---|:---:|:---:|
+| 삼중대각, $n = 1000$ (Apple M4 Pro, float64) | 8µs | 38µs |
+| 결과 | 기준 | 반올림 수준에서 다름 |
+| scipy.linalg.solve_banded((1, 1), …) | 같은 루틴 | 다름 |
+
+- **빨라요.** 같은 삼중대각에서 `gtsv`가 4–5배 빨라요. `gtsv`는 피벗 배열도, 띠 저장의 2차원 인덱싱도, 채움용 빈 행도 없이 세 배열을 한 번 훑어요.
+- **비트가 달라요.** 같은 부분 피벗 소거지만 계산 순서가 달라요. 예를 들어 `gtsv`는 승수를 나눗셈 $dl_i / d_i$로 구하고, `gbtf2`는 $1/\text{피벗}$을 곱해요. 그래서 두 결과는 반올림 수준에서 달라요.
+- **scipy도 그렇게 해요.** scipy 1.18.1의 `solve_banded`는 `(l, u) == (1, 1)`이면 `gtsv`를, 그 밖에는 `gbsv`를 불러요. 같은 경계라서 지금은 `solve_banded`가 행이 8개를 넘는 모든 대역폭에서 scipy와 비트까지 같아요.
+
+그 결과 `solve_banded(ab, b, lower_bandwidth=1, upper_bandwidth=1)`은 같은 행렬의 `solve_tridiagonal`과 비트까지 같아요. "항상 `gbsv`"는 규칙이 더 단순하지만 (1, 1)에서 4–5배 느려서 쓰지 않아요.
+
+"함수마다 드라이버 하나"의 예외인데도 받아들이는 이유는, 갈림길이 **입력 값이 아니라 옵션과 모양**이기 때문이에요. 같은 `(lower_bandwidth, upper_bandwidth)`로 부르면 행렬 값이 무엇이든 언제나 같은 루틴이에요. 사용자가 대역폭 (1, 1)을 적는 것은 "이 행렬은 삼중대각"이라고 함수 이름으로 말하는 것과 같아요.
+
+### 행이 8개 이하면 밀집 LU로
+
+`gbsv`에는 호출마다 약 1µs의 고정비가 있어요. 행이 몇 개뿐인 띠 행렬에서는 이 고정비가 계산보다 커요. 그래서 $n \le 8$(`kBandDenseMax`)이고 대역폭이 (1, 1)이 아니면, 띠 밖을 0으로 채운 $n \times n$ 행렬을 만들어 LU(`lu_in_place`)와 `getrs`로 풀어요.
+
+```cpp
+// csrc/linalg/ops/special.cpp
+if (dense) {
+    // The n x n matrix itself, zero outside the band: a[i, j] = ab[ku + i - j, j]. Only
+    // the band's elements inside the matrix are read and checked, as for gbsv.
+    T* d = s.get<T>(static_cast<std::size_t>(n * n));
+    std::fill(d, d + n * n, T(0));
+    for (lint j = 0; j < n; ++j) {
+        const lint r0 = std::max<lint>(0, ku - j), r1 = std::min<lint>(kl + ku, ku + n - 1 - j);
+        if (!pack(
+                a.dtype(), base + r0 * rs + j * cs, r1 - r0 + 1, 1, rs, 0, d + j * n + (r0 - ku + j), n,
+                true
+            ))
+            return kNonFinite;
+    }
+    const bool b_ok = pack(y.dtype(), y.data() + off[1], n, r.k, r.rs, r.cs, x, n, true);
+    if (n > 0) {
+        lint* ipiv = s.get_ints(static_cast<std::size_t>(n));
+        if (lapack::lu_in_place(n, n, d, n, ipiv) > 0) return kSingular;
+        if (r.k > 0) lapack::getrs('N', n, r.k, d, n, ipiv, x, n);
+    }
+    return b_ok ? 0 : kNonFiniteB;
+}
+```
+
+- **측정** (`gbsv` 대 밀집, 대역폭 (0, 0)–(5, 5), (0, 4)): $n = 8$에서 행렬 하나 2.2–2.5배, 1스레드 배치 3.4–3.6배, $n = 4$에서 2.7–3.2배와 6.2–6.4배 빨라요. $n = 12$는 행렬 하나 1.7–2.1배라 2배를 넘지 않아서 경계를 8로 뒀어요. $n = 24$부터는 `gbsv`가 빨라요.
+- **크기로 경로를 바꾸는 것은 이득이 분명할 때예요.** 경로가 바뀌면 같은 함수의 결과가 크기에 따라 다른 계산에서 나오지만, 크기마다 같은 비트일 필요는 없어요. 고르는 것은 모양(크기, 대역폭)뿐이라, 같은 모양이면 언제나 같은 경로이고 레이아웃·배치 위치와 무관한 비트도 그대로예요.
+- **읽고 검사하는 원소는 `gbsv`와 같아요.** 행렬 안의 띠 원소만 읽으므로 모서리의 NaN은 결과에 영향이 없어요. 특이는 똑같이 정확한 0 피벗이에요. 결과는 `gbsv`(그리고 scipy)와 반올림 수준에서 달라요.
+- 밀집 경로는 `gbsv`의 고정비가 없으므로 비용 모델(`kLU`)대로 나눠요. 10스레드 배치는 $n = 8$에서 21–23배예요.
+
+### 배치 분할: 작은 띠의 gbsv는 나누지 않아요
+
+배치는 비용 모델 `kBanded`(원소 하나 $20 + 3w$ ns, $w = n(k_l + k_u + 1)$)로 어림해서, 배치 전체가 10µs를 넘으면 태스크로 나눠요([배치와 병렬화](/internals/linalg/batch/)). `solve_tridiagonal`은 $w = 3n$이에요.
+
+`gbsv`만 예외가 있어요. `gbsv`에는 호출마다 약 1µs의 고정비가 있고, 이 부분은 스레드를 늘려도 빨라지지 않았어요. 작은 띠의 배치를 나누면 오히려 1.1–2.7배 느려졌고, 나누는 쪽이 이기는 지점은 $k_l = k_u = 2$에서 $n = 64$–96, $k_l = k_u = 5$에서 $n = 32$–48이었어요. 그래서 $n(k_l + k_u + 1) \ge 400$(`kBandSplitMin`)일 때만 나누고, 그 이상에서는 2–4배 빨라져요. 그 아래는 `max_tasks = 1`(나누지 않음)을 넘겨서 차례로 돌아요. 비용은 그대로 넘기므로, 배치 전체의 추정 시간이 기준 이상이면 나누지 않아도 GIL을 놓아요. 대역폭 (1, 1)은 `gtsv`로, 행이 8개 이하면 밀집 LU로 가므로 이 문제가 없어서 언제나 비용 모델대로 해요.
+
+예를 들어 `solve_banded`의 $k_l = k_u = 2$, (100, 5, 32) 배치는 $w$가 160이라 10스레드에서도 나누지 않아요. 행이 3개인 (1000, 5, 3) 배치는 밀집 LU로 가서 비용 모델대로 나눠요.
+
+<Callout type="warn">
+  작은 띠 전용 소거를 직접 짜면 `gbsv`의 고정비를 없앨 수 있지만, LAPACK이 검증해 온 피벗·특이 판정을 직접 다시 보장해야 해요. 그래서 이미 있는 밀집 LU를 써요.
+</Callout>
+
+## Sylvester 방정식
+
+### 무엇을 푸나요
+
+**Sylvester 방정식**은 행렬 $a$($m \times m$), $b$($n \times n$), $c$($m \times n$)가 주어졌을 때
+
+$$
+a x + x b = c
+$$
+
+를 만족하는 $m \times n$ 행렬 $x$를 찾는 문제예요. 미지수가 행렬이고, 왼쪽에서 $a$가, 오른쪽에서 $b$가 곱해져요.
+
+어디서 나오는지 두 가지만 보면 이래요.
+
+- **Lyapunov 방정식.** $b = a^\mathsf{H}$인 경우 $a x + x a^\mathsf{H} = q$는 제어 이론에서 선형 시스템 $\dot{y} = a y$의 안정성과 가제어성 Gramian을 구하는 식이에요. `solve_sylvester(a, sd.conj(a).mT, q)`로 풀 수 있어요.
+- **두 부분을 떼어 내기.** 블록 위 삼각 행렬 $\begin{bmatrix} a & c \\ 0 & -b \end{bmatrix}$을 블록 대각으로 만드는 닮음 변환 $\begin{bmatrix} I & x \\ 0 & I \end{bmatrix}$을 찾는 식이 바로 $ax + xb = -c$예요. 두 블록의 고유값 집합이 서로 겹치지 않으면 결합 항 $c$를 지울 수 있어요. 행렬 함수 계산이나 불변 부분 공간 분리에서 쓰는 방식이에요.
+
+**해가 하나일 조건.** $x$의 열을 쌓은 벡터 $\mathrm{vec}(x)$로 쓰면 Sylvester 방정식은 크기 $mn$인 보통의 연립방정식이에요.
+
+$$
+(I_n \otimes a + b^\mathsf{T} \otimes I_m)\,\mathrm{vec}(x) = \mathrm{vec}(c)
+$$
+
+$\otimes$는 Kronecker 곱이에요. 이 $mn \times mn$ 행렬의 고유값은 $a$의 고유값 $\lambda_i$와 $b$의 고유값 $\mu_j$의 합 $\lambda_i + \mu_j$ 전부예요[3]. 그래서 **어떤 $\lambda_i + \mu_j = 0$, 곧 $a$와 $-b$에 공통 고유값이 있으면** 행렬이 특이하고 해가 없거나 무수히 많아요. 그렇지 않으면 해가 하나예요.
+
+이 형태로 직접 풀면 $mn \times mn$ 행렬의 LU라서 $\tfrac23(mn)^3$ flop이에요. $m = n = 100$이면 미지수가 1만 개, 약 $7 \times 10^{11}$ flop이에요. 구조를 쓰는 방법이 필요해요.
+
+### Bartels–Stewart 방법
+
+Bartels–Stewart 방법은 **$a$와 $b$를 각각 따로 삼각화**해요[5]. 두 행렬의 **Schur 분해**를 구해요.
+
+$$
+a = U R U^\mathsf{H}, \qquad b = W S W^\mathsf{H}
+$$
+
+$U$, $W$는 유니터리(실수면 직교) 행렬이고, $R$, $S$는 위 삼각이에요. Schur 분해는 "적당히 회전한 좌표계에서 보면 행렬이 위 삼각"이라는 분해이고, 대각에 고유값이 놓여요. 계산 방법(Hessenberg 형태로 줄인 뒤 shift를 쓴 QR 반복으로 아래쪽을 0으로 만들기)은 [고유값 분해](/internals/linalg/eigen/)에 있어요. 실수 행렬은 실수 연산만으로 분해하면 켤레 복소 고유값 쌍이 대각의 2×2 블록으로 남는 **준삼각**(quasi-triangular) 형태가 돼요.
+
+방정식의 양쪽에 왼쪽에서 $U^\mathsf{H}$, 오른쪽에서 $W$를 곱하고 $Y = U^\mathsf{H} x W$, $F = U^\mathsf{H} c W$로 두면
+
+$$
+R Y + Y S = F
+$$
+
+가 돼요. 유니터리 변환은 노름을 보존하므로 이 바꿈이 오차를 키우지 않아요. 이제 $R$과 $S$가 삼각이라 $Y$를 원소(또는 블록)마다 차례로 구할 수 있어요. $S$가 위 삼각이면 $Y$의 $\ell$번째 열 $y_\ell$에 대해
+
+$$
+(R + s_{\ell\ell} I)\, y_\ell = f_\ell - \sum_{j < \ell} s_{j\ell}\, y_j
+$$
+
+이고, 왼쪽은 위 삼각 시스템이에요. 열을 왼쪽부터 구하면 오른쪽은 이미 아는 값이에요. 원소 하나로 풀어 쓰면
+
+$$
+y_{k\ell} = \frac{f_{k\ell} - \sum_{i > k} r_{ki}\, y_{i\ell} - \sum_{j < \ell} y_{kj}\, s_{j\ell}}{r_{kk} + s_{\ell\ell}}
+$$
+
+이에요. **분모 $r_{kk} + s_{\ell\ell}$는 $a$의 고유값과 $b$의 고유값의 합**이에요. 앞의 "해가 하나일 조건"이 여기서 그대로 보여요. 합이 0이면 나눌 수 없어요.
+
+<Fig caption="삼각 Sylvester 풀기(trsyl)의 순서(3×3, 실수 1×1 블록만 있을 때). 열은 왼쪽부터, 한 열 안에서는 아래부터 구해요. 각 칸은 R에서 아래쪽(이미 구한 같은 열), S에서 왼쪽(이미 구한 같은 행)의 값만 써요.">
+  <ArrayFig name="Y의 계산 순서" data={[[3, 6, 9], [2, 5, 8], [1, 4, 7]]} tones={[['', '', ''], ['', '', ''], ['b', '', '']]} note="1번 칸: y = f / (r + s)" />
+</Fig>
+
+마지막으로 $x = U Y W^\mathsf{H}$로 되돌려요. 전체는 이래요.
+
+<Fig column caption="solve_sylvester의 배치 원소 하나. 두 Schur 분해는 서로 독립이라 큰 행렬에서는 동시에 돌아요.">
+  <Steps
+    steps={[
+      { label: 'pack(a) → R, pack(b) → S', where: 'pack.hpp', note: 'a, b를 scratch에 열 우선으로 복사하면서 NaN·inf를 찾아요.' },
+      { label: 'gees(a), gees(b)', where: 'lapack.hpp', note: 'a = U R Uᴴ, b = W S Wᴴ. min(m, n) ≥ 8이면 풀의 태스크 두 개로 동시에 돌아요.' },
+      { label: 'pack(c) → x', note: 'c를 결과 자리에 복사해요.' },
+      { label: 'gemm 두 번', depth: 1, note: 'F = Uᴴ c W' },
+      { label: 'trsyl3', depth: 1, note: 'R Y + Y S = scale · F. info = 1이면 공통 고유값이라 LinAlgError예요.' },
+      { label: 'Y / scale', depth: 1, note: 'scale ≠ 1일 때만 나눠요.' },
+      { label: 'gemm 두 번', depth: 1, note: 'x = U Y Wᴴ, 결과 자리에 바로 써요.' },
+    ]}
+  />
+</Fig>
+
+**비용.** 일의 대부분은 Schur 분해예요. Golub–Van Loan은 Schur 벡터까지 구하는 실수 Schur 분해를 약 $25n^3$ flop으로 잡아요[3]. 그래서 두 분해가 약 $25(m^3 + n^3)$, 변환 `gemm` 네 번이 $4mn(m+n)$, 삼각 Sylvester 풀기가 $mn(m+n)$ flop이에요. Kronecker 형태의 $\tfrac23(mn)^3$과 비교하면 $m = n$일 때 $n^6$이 $n^3$이 돼요. 메모리는 $R, S, U, W$와 임시 행렬 하나로 $O(m^2 + n^2 + mn)$예요.
+
+**정확도.** Bartels–Stewart의 잔차 $\lVert ax + xb - c\rVert$는 작지만, Sylvester 방정식에서는 잔차가 작다고 역오차($a$, $b$, $c$를 조금 바꾼 문제의 정확한 해인지)까지 작다는 보장이 없어요. 연립방정식과 달리 섭동이 행렬 구조($a$와 $b$를 따로 바꾸는 것)를 지켜야 하기 때문이에요. 이 차이와 조건수는 Higham의 16장에 자세히 있어요[4]. 해의 정확도는 $\min_{i,j}|\lambda_i + \mu_j|$에 해당하는 양(분리도)이 작을수록 나빠져요.
+
+### trsyl과 trsyl3
+
+삼각 Sylvester 방정식 $R Y + Y S = \text{scale} \cdot F$를 푸는 LAPACK 루틴은 두 개예요.
+
+**`trsyl`** (블록 없음, `dtrsyl.f`[2]): 위의 원소 공식 그대로예요. 열 $\ell = 1, \dots, n$마다 행 $k = m, \dots, 1$ 순서로 돌고, 두 합은 내적(`ddot`)으로 계산해요. 실수 준삼각 형식의 2×2 블록이 걸리면 그 블록을 한 덩어리로 풀어요. 한쪽만 2×2면 2×2 연립방정식(`dlaln2`), 양쪽 다 2×2면 2×2 Sylvester 방정식(`dlasy2`)이에요. 일이 모두 내적과 작은 풀기라서 BLAS-1 수준이고, 행렬이 커지면 캐시를 잘 쓰지 못해요.
+
+**`trsyl3`** (블록, LAPACK 3.11, `dtrsyl3.f`[2][6]): $R$과 $S$를 대각을 따라 블록(크기 `nb` ≥ 8)으로 나누고, 2×2 블록이 경계에 걸리지 않도록 경계를 한 칸씩 옮겨요. 그리고
+
+1. 대각 블록끼리의 작은 Sylvester 방정식을 `trsyl`로 풀어 $Y$의 블록 하나를 구하고,
+2. 아직 풀지 않은 $F$의 블록들에서 그 기여를 행렬곱(`dgemm`)으로 빼요.
+
+원소 공식의 두 합이 블록 단위의 행렬곱이 되어서, 일의 대부분이 BLAS-3에서 일어나요. 한쪽이 블록 하나뿐이거나 작업 배열이 모자라면 문제 전체를 `trsyl` 하나로 풀어요.
+
+| | `trsyl3` | `trsyl` |
+|---|:---:|:---:|
+| $m = n = 300$ (Apple M4 Pro, float64) | 1.5배 빠름 | 기준 |
+| $m = n = 1000$ | 4.8배 빠름 | 기준 |
+| $n \le 32$의 결과 | `trsyl`과 비트까지 같음 | |
+| 잔차 | eps 수준 | eps 수준 |
+
+작은 행렬에서 비트가 같은 것은 참조 구현에서 한쪽이 블록 하나뿐이면 `trsyl`을 그대로 부르는 것과 맞아요(Accelerate의 블록 크기는 공개돼 있지 않아요). 큰 행렬에서는 차이가 커서 `trsyl3`를 써요.
+
+### scale: 넘침을 피하는 배율
+
+`trsyl`과 `trsyl3`는 $RY + YS = F$가 아니라 $RY + YS = \text{scale} \cdot F$를 풀고 $\text{scale} \le 1$을 함께 돌려줘요. 분모 $r_{kk} + s_{\ell\ell}$가 작으면 $Y$의 원소가 double 범위를 넘을 수 있는데, 그 직전에 지금까지의 $Y$와 우변 전체를 줄여서 넘침을 막는 장치예요. `trsyl`은 한 칸을 풀 때 넘칠 것 같으면 $1/|\text{분자}|$ 꼴의 배율로 모든 열을 줄이고 `scale`에 곱해 둬요. `trsyl3`는 블록마다 자기 배율을 따로 두고(작업 배열 `swork`), 행렬곱 갱신 전마다 넘치지 않을 배율을 계산(`dlarmm`)해서 적용한 뒤, 끝에서 가장 작은 배율로 모든 블록을 맞춰요.
+
+요청한 방정식의 해는 $Y / \text{scale}$이에요. stardust는 `scale ≠ 1`일 때 $Y$를 `scale`로 나눠요. 이때 나눈 값이 넘치면 inf가 돼요. 경고는 내지 않아요. scipy 1.18.1의 `solve_sylvester`는 `y = scale*y`로 **곱해요**. `scale < 1`은 넘치기 직전에만 나오므로 보통의 입력에서는 둘이 같지만, 그런 입력에서는 scipy의 결과가 `scale²`배 작아요.
+
+### 공통 고유값은 LinAlgError예요
+
+`trsyl`이 원소 공식의 분모가 너무 작을 때 하는 일은 이래요. 문턱
+
+$$
+s_{\min} = \max\!\left(\varepsilon \max_{ij}|r_{ij}|,\ \varepsilon \max_{ij}|s_{ij}|,\ \frac{\text{smlnum} \cdot mn}{\varepsilon}\right)
+$$
+
+($\text{smlnum}$은 double의 가장 작은 정규 수 근처의 값)보다 $|r_{kk} + s_{\ell\ell}|$가 작거나 같으면, 분모를 $s_{\min}$으로 **바꿔서 계산을 계속하고** `info = 1`을 기록해요. 문서의 설명대로 "공통이거나 아주 가까운 고유값이 있어서, 섭동한 값으로 방정식을 풀었다"는 뜻이에요. `trsyl3`는 대각 블록의 쌍마다 `trsyl`을 부르므로 각 블록의 원소 크기로 같은 판정을 하고, 블록들의 `info` 중 가장 큰 값을 돌려줘요.
+
+stardust는 `info = 1`이면 `LinAlgError("a and -b have a common or close eigenvalue")`를 내요. 이유는 이래요.
+
+- **돌려줄 해가 요청한 방정식의 해가 아니에요.** 분모 하나를 $s_{\min}$으로 바꾼 다른 방정식의 해예요. 그 원소는 대략 $1/s_{\min}$ 크기의 의미 없는 큰 수가 돼요.
+- **stardust는 경고를 쓰지 않아요.** 넘침은 inf, 정의되지 않는 계산은 에러라는 규칙이라서, 알릴 방법이 에러뿐이에요.
+- **정확한 0만 특이로 치는 다른 함수와 다른 점**은 받아들여요. Schur 분해의 반올림 때문에 고유값의 합이 정확히 0인지 구분할 수 없어서, LAPACK의 근접 판정을 그대로 써요. 문턱이 $\varepsilon \max(\lVert R\rVert, \lVert S\rVert)$ 수준이라 사실상 수치적으로 특이한 경우에만 걸려요.
+
+scipy 1.18.1은 `info = 1`을 무시하고 그 해를 돌려줘요. $a = \mathrm{diag}(1, 2)$, $b = \mathrm{diag}(-2, 5)$, $c$가 모두 1이면 $a$의 2와 $-b$의 2가 겹치는데, scipy는 그 칸에 $1/(5\varepsilon) \approx 9.0 \times 10^{14}$을 돌려줘요. 문턱 $s_{\min} = 5\varepsilon$(행렬의 가장 큰 원소 5에 $\varepsilon$을 곱한 값)로 나눈 값이에요.
+
+```python
+>>> a = sd.asarray([[1.0, 0.0], [0.0, 2.0]])
+>>> b = sd.asarray([[-2.0, 0.0], [0.0, 5.0]])
+>>> sd.linalg.solve_sylvester(a, b, sd.ones((2, 2)))
+Traceback (most recent call last):
+    ...
+stardust.linalg.LinAlgError: solve_sylvester(): a and -b have a common or close eigenvalue
+>>> sd.linalg.solve_sylvester(sd.asarray([[2.0]]), sd.asarray([[3.0]]), sd.asarray([[10.0]]))
+array([[2.0]], dtype=float64)
+```
+
+마지막 예는 $1 \times 1$이라 $x = c / (a + b) = 10 / 5$예요.
+
+### 실수와 complex가 섞일 때
+
+결과 dtype은 세 인자로 정해요. 하나라도 complex면 **전부 complex로** 계산해요. 패킹이 실수 `a`를 complex 작업 배열로 바꿔 넣고, `gees`의 complex판(`zgees`)이 진짜 위 삼각인 complex Schur 형식을 만들어요. 세 인자가 모두 실수면 실수 `gees`의 준삼각 형식을 실수 `trsyl3`가 2×2 블록까지 그대로 다뤄요.
+
+<Callout type="warn">
+  scipy 1.18.1은 실수 `a`와 complex `b`이면 `a`를 실수 Schur 형식(2×2 블록이 있는 준삼각)으로 분해한 채 complex `trsyl`에 넘겨요. complex `trsyl`은 위 삼각만 보므로 2×2 블록의 부대각을 무시해요. 그래서 `a`에 켤레 복소 고유값 쌍이 있으면 틀린 답이 나와요. $a = \begin{bmatrix} 0 & -2 & 1 \\ 2 & 0 & 0.5 \\ 0 & 0 & 1 \end{bmatrix}$(고유값 $\pm 2i$, 1), $b = [1 + i]$, $c$가 모두 1이면 scipy의 해는 잔차의 최대 원소가 약 2.24이고, stardust는 $2.3 \times 10^{-16}$이에요. 테스트가 이 경우를 확인해요.
+</Callout>
+
+scipy와는 계산 방식이 하나 더 달라요. scipy는 $b^\mathsf{H}$를 Schur 분해하고 `trsyl(tranb='C')`로 $RY + YS^\mathsf{H} = F$를 풀어요. stardust는 $b$를 바로 분해하고 `trans`를 둘 다 `'N'`으로 불러요. 수학적으로 같은 방정식이에요.
+
+### stardust의 `solve_sylvester`
+
+```cpp
+                // csrc/linalg/ops/special.cpp
+                const std::size_t mm = pad2(m * m), nn = pad2(n * n);  // 16-byte boundaries (aligned16)
+                T* rs_ = s.get<T>(mm + nn, 0);  // R, then S
+                T* uw = s.get<T>(mm + nn, 1);   // U, then W
+                T *R = rs_, *S = rs_ + mm, *U = uw, *W = uw + mm;
+                LapackSlot<T> xs(res + i * m * n, m * n, s, Scratch::kAlign0);
+                T* x = xs.get();
+                if (!pack(a.dtype(), a.data() + off[0], m, m, a.stride(-2), a.stride(-1), R, m, true))
+                    return kNonFinite;
+                const bool b_finite =
+                    pack(bb.dtype(), bb.data() + off[1], n, n, bb.stride(-2), bb.stride(-1), S, n, true);
+                // ...
+                lint info_a = 0, info_b = 0;
+                if (b_finite && m > 0 && n > 0 && std::min(m, n) >= kSchurPairMin && detail::begin_parallel()) {
+                    Scratch s2;
+                    detail::run_tasks(2, [&](std::int64_t t) {
+                        if (t == 0) info_a = lapack::gees(m, R, m, U, m, s);
+                        else info_b = lapack::gees(n, S, n, W, n, s2);
+                    });
+                } else {
+                    if (m > 0) info_a = lapack::gees(m, R, m, U, m, s);
+                    if (info_a == 0 && b_finite && n > 0) info_b = lapack::gees(n, S, n, W, n, s);
+                }
+                // reported in argument order, as before: a, a's Schur, b, b's Schur
+                if (info_a > 0) return kNoConvergenceEig;
+                if (!b_finite) return kNonFiniteB;
+                if (info_b > 0) return kNoConvergenceEig;
+                if (!pack(c.dtype(), c.data() + off[2], m, n, c.stride(-2), c.stride(-1), x, m, true))
+                    return kNonFinite2;
+                if (m == 0 || n == 0) return 0;
+                T* tmp = s.get<T>(static_cast<std::size_t>(m * n), 2);
+                lapack::gemm('C', 'N', m, n, m, U, m, x, m, tmp, m);  // U^H c
+                lapack::gemm('N', 'N', m, n, n, tmp, m, W, n, x, m);  // F = U^H c W
+                double scale = 1.0;
+                if (lapack::trsyl3(m, n, R, m, S, n, x, m, scale, s) == 1) return kCloseEigenvalues;
+                if (scale != 1.0)  // trsyl3 solved R Y + Y S = scale F (scale < 1 avoids overflow)
+                    for (lint k = 0; k < m * n; ++k) x[k] /= scale;
+                lapack::gemm('N', 'N', m, n, m, U, m, x, m, tmp, m);  // U Y
+                lapack::gemm('N', 'C', m, n, n, tmp, m, W, n, x, m);  // x = U Y W^H
+```
+
+- **두 Schur 분해를 동시에 돌려요.** Accelerate의 `gees`는 코어 하나만 쓰고, `a`와 `b`의 분해는 서로 독립이에요. $\min(m, n) \ge 8$(`kSchurPairMin`)이면 풀의 태스크 두 개로 동시에 돌리고, `b`의 분해는 두 번째 scratch를 써요. 두 분해가 받는 배열과 작업 배열 크기가 차례로 돌 때와 같아서 결과 비트도 같아요($m, n = 3$–200, 실수·complex에서 확인하는 테스트가 있어요). 켜고 끈 측정은 $\min(m, n)$이 6 미만에서 0.76–0.96배, 6에서 1.05배, 8–24에서 1.1–1.3배, 32 이상에서 1.4–1.7배였어요. 그래서 문턱이 8이에요. 이 덕분에 300², 1000²는 1.6배, 32²는 1.35배 빨라요.
+- **동시에 돌리지 않는 경우.** `b`에 NaN·inf가 있으면 차례로 돌아서 에러 순서가 그대로예요. 배치를 나눈 태스크 안에서도 풀을 중첩해 쓰지 않으므로 차례로 돌아요.
+- **에러 순서**는 `a`의 NaN → `a`의 Schur 수렴 실패 → `b`의 NaN → `b`의 Schur 수렴 실패 → `c`의 NaN → 공통 고유값이에요. 동시에 돌린 경우에도 보고는 이 순서로 해요.
+- **메모리.** $R, S$와 $U, W$는 scratch 슬롯 두 개에 나눠 두고, 각 하위 배열이 16바이트 경계에서 시작하도록 길이를 짝수로 올려요. `c`는 결과 자리에 바로 패킹하고, 행렬곱은 임시 행렬 하나와 결과 자리를 번갈아 써서 마지막 곱이 결과 자리에 바로 들어가요.
+- **행렬곱은 BLAS `gemm`을 직접 불러요.** 작업 배열이 이미 C++ 안에 열 우선으로 있어서 배열 영역의 `sd.matmul`을 거칠 이유가 없어요. `'C'`는 켤레 전치예요.
+- **배치 분할**은 비용 모델 `kSylvester`(원소 하나 $500 + 370w$ ns, $w = (m^2 + n^2)/2$)로 정해요.
+- `c`는 언제나 행렬 $(\dots, m, n)$이에요. solve류의 "1차원 `b`는 벡터 하나" 규칙은 적용하지 않아요.
+
+## 성능
+
+### 복잡도
+
+| 함수 | 시간 | 추가 메모리 |
+|---|:---:|---|
+| `solve_tridiagonal` | $O(n)$ + 우변 $k$개에 $O(nk)$ | $3n$ (세 대각선의 작업 사본) |
+| `solve_banded` (1, 1) | `solve_tridiagonal`과 같음 | $3n$ |
+| `solve_banded` | 약 $2n\,k_l(k_l + k_u)$ + 우변 하나에 약 $2n(2k_l + k_u)$ flop | $(2k_l + k_u + 1)n$ 작업 배열 + 피벗 $n$개 |
+| `solve_sylvester` | 약 $25(m^3 + n^3) + 5mn(m + n)$ flop | $2(m^2 + n^2) + mn$ + LAPACK 작업 배열 |
+
+### numpy·scipy와 비교
+
+numpy에는 세 함수가 없어서 기준은 scipy 1.18.1이에요. `solve_tridiagonal`은 scipy에 같은 이름의 함수가 없어서 `scipy.linalg.solve_banded((1, 1), …)`과 비교해요(같은 `gtsv`).
+
+차이가 나는 곳은 이래요.
+
+- **띠 행렬.** 같은 `gtsv`/`gbsv`를 부르므로 계산 자체는 같아요. 작은 크기에서는 호출 경로(scipy의 Python 래퍼, 인자 검사, 띠 배열 복사)의 차이가 대부분이에요. 큰 $n$에서는 계산이 $O(n)$이라, 입력을 작업 배열로 옮기는 비용도 계산과 같은 차수로 보여요.
+- **배치.** 띠 함수는 scipy가 배치를 받지 않아요. stardust의 `solve_tridiagonal`과 대역폭 (1, 1)은 비용 모델대로 나누고, 작은 띠의 `gbsv`는 위에서 설명한 대로 나누지 않아요.
+- **Sylvester.** 작은 행렬에서는 호출 경로와 scipy의 Python 단계(`schur` 두 번, `np.dot` 네 번, 각각 Python 호출)가 차이를 만들어요. 큰 행렬에서는 Schur 분해 두 개를 동시에 돌리는 것과, scipy의 `trsyl` 대신 블록 루틴 `trsyl3`를 쓰는 것이 차이를 만들어요. 1스레드에서는 Schur 쌍을 동시에 돌리지 못하므로 `trsyl3` 몫만 남아요.
+
+## 정확도
+
+**띠 행렬.** 잔차를 기준으로 봐요. 테스트는 `‖A x − b‖∞ ≤ 10·n·eps·(‖A‖∞‖x‖∞ + ‖b‖∞)`를 무작위 배치·dtype·메모리 배치에서 확인해요. 무작위 삼중대각에서 잰 역오차는 `gtsv`, `gttrf` + `gttrs` 모두 $0.15 \cdot n\varepsilon$ 이하예요.
+
+**Sylvester.** 테스트는 `‖a x + x b − c‖_F ≤ 100·(m + n)·eps·((‖a‖_F + ‖b‖_F)‖x‖_F + ‖c‖_F)`를 확인하고, 세 인자의 dtype이 같으면 scipy의 해와 상대오차 $10^{-9}$ 안에서 같은지 봐요. 앞에서 말한 대로 잔차가 작아도 역오차가 작다는 보장은 없어요.
+
+**비트 관계.** 테스트가 고정하는 것은 이래요.
+
+| 관계 | 이유 |
+|---|---|
+| `solve_tridiagonal` == scipy 1.18.1 `solve_banded((1, 1), …)` (지금의 사실) | 같은 `gtsv` |
+| `solve_banded` == scipy 1.18.1 `solve_banded` ($n > 8$ 또는 대역폭 (1, 1), 지금의 사실) | 같은 `gbsv`, (1, 1)이면 같은 `gtsv`. $n \le 8$은 밀집 LU라 반올림 수준에서 달라요 |
+| `solve_banded(ab, b, 1, 1)` == `solve_tridiagonal(...)` | 같은 `tri_body` |
+| 모서리 칸에 NaN을 넣어도 결과가 같음 | 행렬 안의 칸만 읽어요 |
+| `solve_sylvester`: Schur 쌍을 동시에 돌려도 차례로 돌려도 같음 | 같은 배열, 같은 작업 배열 크기 |
+| 메모리 배치, 배치 안의 위치와 무관(스레드 수와도 지금은 무관) | 패킹, 16바이트 정렬, 원소마다 같은 계산 |
+
+scipy와의 비트 관계는 약속이 아니라 지금의 사실이에요. 고침이나 최적화로 달라지면 허용오차 비교로 바뀌어요. $n = 1$인 띠 행렬은 scipy가 LAPACK을 부르지 않고 바로 나누므로 비교에서 빼요. `solve_sylvester`는 scipy와 비트까지 같지 않아요. Schur 분해할 행렬($b$ 대 $b^\mathsf{H}$), 삼각 풀기 루틴(`trsyl3` 대 `trsyl`), 행렬곱 순서가 달라요.
+
+## 참고 문헌
+
+1. E. Anderson et al., *LAPACK Users' Guide*, 3rd ed., SIAM, 1999.
+2. LAPACK 참조 구현(netlib) 소스와 루틴 문서: `dgtsv.f`, `dgbsv.f`, `dgbtrf.f`, `dgbtf2.f`, `dgbtrs.f`, `dtrsyl.f`, `dtrsyl3.f`. https://github.com/Reference-LAPACK/lapack
+3. G. H. Golub, C. F. Van Loan, *Matrix Computations*, 4th ed., Johns Hopkins University Press, 2013. (띠 행렬의 가우스 소거와 채움, Kronecker 곱, Sylvester 방정식과 Bartels–Stewart, Schur 분해의 flop 수)
+4. N. J. Higham, *Accuracy and Stability of Numerical Algorithms*, 2nd ed., SIAM, 2002. (16장 Sylvester 방정식: 역오차와 잔차의 차이, 조건수)
+5. R. H. Bartels, G. W. Stewart, "Solution of the Matrix Equation AX + XB = C", *Communications of the ACM* 15(9), 820–826, 1972.
+6. A. Schwarz, C. C. Kjelgaard Mikkelsen, "Robust Task-Parallel Solution of the Triangular Sylvester Equation", *Lecture Notes in Computer Science* 12043, 82–92, Springer, 2020. (`dtrsyl3.f`가 인용하는 블록 알고리즘과 배율 처리)
+7. scipy 1.18.1 소스, `scipy/linalg/_basic.py`(`solve_banded`의 `gtsv`/`gbsv` 선택), `scipy/linalg/_solvers.py`(`solve_sylvester`).

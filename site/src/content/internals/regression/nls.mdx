@@ -1,0 +1,813 @@
+---
+title: 비선형 최소제곱
+group: 비선형
+order: 1
+summary: nls가 비선형 최소제곱을 반복과 다듬기 두 단계로 푸는 방법을 설명해요. scipy와 같은 신뢰 영역 반복이 멈춘 뒤 정확한 야코비안의 가우스–뉴턴 걸음으로 다듬어서, 결과의 정확도가 멈춤 판정과 거의 상관없어요.
+seeAlso: [overview, least-squares, glm, accuracy-performance]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+import Steps from '../../../components/fig/Steps.astro';
+
+export const stepErr = [[-8, -1.867], [-10, -4.22], [-12, -6.625], [-14, -9.033], [-16, -11.437], [-18, -12.518], [-20, -11.858], [-22, -11.381], [-24, -10.602], [-26, -10.066], [-28, -9.259], [-30, -8.953]];
+
+## 한눈에 보기
+
+[`nls`](/api/regression/nls/)는 가중 제곱합
+
+$$
+S(\theta) = \sum_{i} w_i \bigl(y_i - f(x_i, \theta)\bigr)^2 = \lVert r(\theta)\rVert^2, \qquad r(\theta) = \sqrt{w}\,\bigl(f(x, \theta) - y\bigr)
+$$
+
+을 모수 $\theta \in \mathbb{R}^p$에 대해 최소화해요(합과 $r$에는 가중치가 0보다 큰 행만 들어가고, 그 행 수가 $m$이에요). 일은 두 단계로 나뉘어요.
+
+1. **반복**: scipy `curve_fit`과 같은 신뢰 영역 방법이에요. 경계가 없으면 MINPACK `lmder`의 Levenberg–Marquardt(`'lm'`), 경계가 있으면 scipy `least_squares`의 신뢰 영역 반사법(`'trf'`)이고, 야코비안은 사용자의 `jac`이나 전진 차분이에요. 멈춤 판정도 같은 `ftol`·`xtol`·`gtol`이에요.
+2. **다듬기**: 반복이 멈춘 점에서 정확한 야코비안(사용자의 것이나 5점 중앙 차분)의 가우스–뉴턴 걸음을, 계수가 반올림보다 크게 움직이는 동안 이어 가요. 걸음은 선형 모형의 QR 커널(반복 개선 포함)로 풀고, 가우스–뉴턴이 느리게 줄면 잔차의 곡률 항을 넣은 뉴턴 걸음으로 바꿔요.
+
+반복만으로는 계수가 멈춤 판정과 전진 차분의 정확도(대략 $10^{-8}$)까지만 맞아요. 다듬기의 고정점은 정확한 야코비안의 $J^{\mathsf T} r = 0$이라, 그 정확도는 야코비안과 $f$의 반올림만이 정해요. 그래서 `ftol`·`xtol`·`gtol`은 언제 다듬기로 넘어가는지만 정하고, 결과의 정확도와는 거의 상관이 없어요.
+
+<Fig column caption="nls 한 번의 흐름. 반복은 C++ 커널이고, f와 jac은 Python 콜백이에요.">
+  <Steps steps={[
+    { label: 'nls()', note: '입력 검사, NaN 처리, 가중치 0인 행 빼기(남는 행이 없으면 NaN 결과), 방법과 max_nfev·rtol의 기본값', where: '_nls.py' },
+    { label: '_Model', note: '쓰인 행의 잔차 √w(f − y)와 사용자 jac을 돌려주는 콜백, f 호출 수 세기', where: '_nls.py', depth: 1 },
+    { label: 'lsq_solve', note: "sd.optimize의 최소제곱 커널. 'lm'(lmder) 또는 'trf'(trf_bounds). 야코비안마다 Householder QR 한 번, 그 뒤는 p 크기", where: 'csrc/optimize/lsq.cpp' },
+    { label: 'accurate_jac', note: '해의 5점 중앙 차분(Python 입구는 differentiate/_differences.py의 Differences, 고리는 C++ AccurateDiff). 모수마다 간격을 처음 한 번 고르고 그 뒤에도 써요(jac이 있으면 그것)', where: '_nls.py' },
+    { label: '_active', note: "'trf'만: 경계에 걸린 모수를 경계값으로 맞추고 다듬기에서 고정", where: '_nls.py', depth: 1 },
+    { label: '_polish', note: '가우스–뉴턴 걸음(fit 커널), 느리면 S를 넣은 뉴턴 걸음, 최대 10걸음', where: '_nls.py' },
+    { label: 'fit(-r, J)', note: '해의 야코비안으로 공분산 (RᵀR)⁻¹, 쓰인 열(겹친 모수), rank', where: 'csrc/regression/linear.cpp' },
+    { label: 'NLSResult', note: 'params, bse, … 나머지는 처음 읽을 때 계산', where: '_nls.py' },
+  ]} />
+</Fig>
+
+| 무엇 | 어떻게 | 근거 파일 |
+|---|---|---|
+| `'lm'` | MINPACK `lmder`(Moré 1978)를 0부터 세는 C++로 옮긴 것: `qrfac`, `lmpar`, `qrsolv`, factor 100, mode 1 | `csrc/optimize/lsq.cpp` |
+| `'trf'` | scipy 1.18.1 `least_squares`의 `trf_bounds`('exact' 부분문제, `x_scale=1`, 손실 함수 없음)를 같은 순서로 | 같은 파일 |
+| 반복의 야코비안 | 사용자 `jac`, 없으면 MINPACK `fdjac2`의 전진 차분 $h = \sqrt\varepsilon\,\lvert\theta_j\rvert$ | 같은 파일 |
+| 해의 야코비안 | 사용자 `jac`, 없으면 5점 중앙 차분. 간격은 모수마다 2의 거듭제곱에서 고른 것 | `src/stardust/differentiate/_differences.py`, `csrc/differentiate/accurate.hpp` |
+| 다듬기 | 가우스–뉴턴(선형 모형의 `fit` 커널), 느리면 $(J^{\mathsf T}J + S)$의 뉴턴 | `src/stardust/regression/_nls.py` |
+| 공분산 | $\hat\sigma^2 (J^{\mathsf T} W J)^{-1}$, 해의 야코비안 한 번의 QR | 같은 파일 |
+
+반복과 해의 야코비안은 다른 영역과 함께 쓰는 부품이에요. 반복은 [`least_squares`](/api/optimize/least_squares/)와 같은 커널 `lsq_solve`이고, 5점 차분은 [`approx_fprime`](/api/optimize/approx_fprime/)과 같은 `Differences`(`src/stardust/differentiate/_differences.py`)예요. 커널 쪽 이야기는 [최소제곱의 구현](/internals/optimize/least-squares/)에도 있어요.
+
+## 예: 다듬기가 하는 일
+
+NIST StRD의 Misra1a(관측 14개, 모수 2개)를 첫 시작점에서 풀어요. 모형은 $f(x) = b_1(1 - e^{-b_2 x})$예요.
+
+```python
+>>> y = [10.07, 14.73, 17.94, 23.93, 29.61, 35.18, 40.02, 44.82, 50.76, 55.05, 61.01, 66.40, 75.47, 81.78]
+>>> x = [77.6, 114.9, 141.1, 190.8, 239.9, 289.0, 332.8, 378.4, 434.8, 477.3, 536.8, 593.1, 689.1, 760.0]
+>>> def f(x, b1, b2):
+...     return b1 * (1 - sd.exp(-b2 * x))
+>>> r = sd.regression.nls(f, sd.asarray(x), sd.asarray(y), p0=[500, 1e-4])
+>>> r.method, r.converged, r.n_iter, r.nfev
+('lm', True, 16, 95)
+```
+
+참값은 같은 double 자료로 Arb(구간 산술)에서 만들어요. 320비트에서 정확한 야코비안의 가우스–뉴턴을 몇 걸음 하면 걸음이 double의 반올림보다 훨씬 작아져요.
+
+```python
+>>> from flint import arb, arb_mat, ctx
+>>> ctx.prec = 320
+>>> X = [arb(v) for v in x]
+>>> Y = [arb(v) for v in y]
+>>> th = [arb(v) for v in r.params.tolist()]
+>>> for _ in range(6):
+...     e = [(-th[1] * xi).exp() for xi in X]
+...     res = arb_mat([[yi - th[0] * (1 - ei)] for yi, ei in zip(Y, e)])
+...     J = arb_mat([[1 - ei, th[0] * xi * ei] for xi, ei in zip(X, e)])
+...     d = (J.transpose() * J).solve(J.transpose() * res)
+...     th = [arb((th[j] + d[j, 0]).mid()) for j in range(2)]
+>>> ref = [float(t.mid()) for t in th]
+>>> ctx.prec = 53
+>>> def relerr(p):
+...     return f"{max(abs(a - b) / abs(b) for a, b in zip(p, ref)):.1e}"
+>>> relerr(r.params.tolist())
+'3.7e-14'
+```
+
+scipy `curve_fit`은 같은 MINPACK 반복이지만 다듬기가 없어요. 해석적 `jac`을 주면 해의 야코비안에 차분 오차가 없으므로 반올림 수준까지 가요.
+
+```python
+>>> import numpy as np
+>>> from scipy.optimize import curve_fit
+>>> p, _ = curve_fit(lambda x, b1, b2: b1 * (1 - np.exp(-b2 * x)), np.array(x), np.array(y), p0=[500, 1e-4])
+>>> relerr(p.tolist())
+'2.4e-09'
+>>> def jac(x, b1, b2):
+...     e = sd.exp(-b2 * x)
+...     return sd.stack([1 - e, b1 * x * e], axis=1)
+>>> rj = sd.regression.nls(f, sd.asarray(x), sd.asarray(y), p0=[500, 1e-4], jac=jac)
+>>> relerr(rj.params.tolist()), rj.nfev, rj.njev
+('2.0e-15', 23, 19)
+```
+
+이 적합에서 반복(lmder)은 `gtol` 판정으로 멈췄고, 그 점은 참값과 성분별 상대 $10^{-9}$ 남짓 떨어져 있었어요. 다듬기의 가우스–뉴턴 걸음은 성분별 상대 크기로 $1.1 \times 10^{-9}$, $3.0 \times 10^{-12}$, $1.8 \times 10^{-14}$이었고(비 약 0.003–0.006), 세 번째 걸음 뒤 남은 거리의 어림이 $2^{-50}$ 밑이라 멈췄어요. 남은 $3.7 \times 10^{-14}$는 5점 차분 야코비안의 오차예요(이 문제의 열마다 상대 $1.5 \times 10^{-13}$).
+
+## 나눔: C++ 커널과 Python 콜백
+
+`f`와 `jac`은 사용자의 Python 함수라, 반복의 루프는 GIL을 쥔 채 돌아요. 루프 자체는 `sd.optimize`의 최소제곱 커널 `lsq_solve`(`csrc/optimize/lsq.cpp`)이고, 잔차와 야코비안은 `_Model`(`src/stardust/regression/_nls.py`)의 메서드를 콜백으로 불러 받아요. nls는 `sd.optimize`의 `least_squares`와 같은 커널을 써요. 반복의 $p$ 크기 계산(lmpar의 Givens 회전, TRF의 SVD와 걸음 고르기)은 반복마다 여러 번 도는 작은 루프라, Python으로 하면 반복마다 0.1 ms 남짓이 들어 작은 문제에서 scipy의 MINPACK(C 구현)보다 몇 배 느려요. 그래서 그 부분이 C++에 있어요.
+
+다듬기, 정확한 야코비안, 공분산은 Python에서 sd 배열 연산과 선형 모형의 커널 `fit`으로 해요(다듬기는 최대 10걸음).
+
+### 야코비안 하나에 QR 한 번
+
+야코비안 하나에 드는 $m \times p$ 크기의 일은 Householder QR $J = Q_0 R_0$ 한 번(LAPACK `geqrf`, $Q_0^{\mathsf T} r$은 `ormqr`)뿐이에요. 그 뒤는 모두 $p$ 크기예요.
+
+- lmder는 $J$의 열 피벗 QR(`qrfac`)을 써요. $Q_0$는 열의 노름과 내적을 바꾸지 않으므로 $J$의 피벗 QR은 $R_0$의 피벗 QR과 같아요(피벗 순서와 $R$이 같고, $Q$만 $Q_0$를 곱한 것). 그래서 `qrfac`은 $p \times p$ 행렬 $R_0$에서 돌아요.
+- TRF의 부분문제는 $\begin{bmatrix} J D \\ C^{1/2}\end{bmatrix}$의 SVD가 필요해요(아래). $J D = Q_0 (R_0 D)$이므로 이것은 $2p \times p$ 행렬 $\begin{bmatrix} R_0 D \\ C^{1/2}\end{bmatrix}$의 SVD(`gesdd`)와 특이값과 $V$가 같고, $U^{\mathsf T}\begin{bmatrix} r \\ 0 \end{bmatrix}$의 앞 $p$개는 $Q_0^{\mathsf T} r$에서 나와요.
+- 기울기 $J^{\mathsf T} r = R_0^{\mathsf T}(Q_0^{\mathsf T} r)$와 이차 모형의 $\lVert J_h s\rVert = \lVert R_h s\rVert$도 $p$ 크기에서 구해요.
+
+`least_squares(method='lm')`은 같은 lmder 소스를 다른 빌드로 써요. scipy와 같은 점에서 사용자 함수를 부르려고 $m \times p$의 $J$에 `qrfac`을 바로 하고, 곱과 합을 scipy처럼 FMA로 계산해요. nls의 빌드는 위의 LAPACK QR 뒤 $R_0$의 `qrfac`이고 곱과 합을 따로 반올림해요(아래 lmpar 절).
+
+```cpp
+    // csrc/optimize/lsq.cpp
+    void qr_rows(lint rows, double* J, const double* r, double* R0, double* qtf) {
+        vec tau(static_cast<std::size_t>(p)), c(r, r + rows);
+        {
+            // the GIL is let go for a large factorization (linalg's 10 us rule, about 2e5 flops)
+            std::optional<nb::gil_scoped_release> rel;
+            if (2.0 * double(rows) * double(p) * double(p) > 2e5) rel.emplace();
+            lapack::geqrf(rows, p, J, rows, tau.data(), sc);
+            lapack::ormqr('T', rows, 1, p, J, rows, tau.data(), c.data(), rows, sc);
+        }
+        for (lint j = 0; j < p; ++j)
+            for (lint i = 0; i < p; ++i) R0[i + j * p] = i <= j ? J[i + j * rows] : 0.0;
+        for (lint i = 0; i < p; ++i) qtf[i] = c[i];
+    }
+```
+
+`csrc/optimize/lsq.cpp`의 `Model::qr_rows`예요. `Model::qr`가 이것을 `rows` = $m$으로 불러요(관측이 모수보다 적은 `least_squares`의 'trf'는 QR 없이 $J$ 자신으로 일해요. nls는 관측이 모수보다 적으면 `ValueError`예요). QR의 플롭 수 $2mp^2$이 $2 \times 10^5$(sd.linalg의 10 µs 규칙)을 넘으면 GIL을 놓아요. 다른 Python 스레드는 그동안 돌 수 있어요.
+
+## Levenberg–Marquardt: MINPACK lmder
+
+### 신뢰 영역 꼴의 부분문제
+
+가우스–뉴턴은 $r(\theta + s) \approx r + J s$로 선형화해 $\min_s \lVert r + Js\rVert$를 풀어요. 해에서 멀면 이 선형 모형이 맞지 않아 걸음이 지나치게 크거나 엉뚱한 쪽을 향해요. Levenberg(1944)와 Marquardt(1963)는 걸음에 벌점을 줘서 $(J^{\mathsf T}J + \lambda I)s = -J^{\mathsf T}r$을 풀었어요. $\lambda$가 0이면 가우스–뉴턴, 크면 짧은 경사 하강 걸음이에요.
+
+Moré(1978)의 lmder는 같은 걸음을 신뢰 영역의 언어로 다뤄요. 반복마다
+
+$$
+\min_s \tfrac12\lVert r + Js\rVert^2 \quad \text{s.t.} \quad \lVert D s\rVert \le \Delta
+$$
+
+를 풀어요. 해는 가우스–뉴턴 걸음이 영역 안에 있으면 그것이고, 아니면 $\lVert D s(\lambda)\rVert = \Delta$인 $\lambda > 0$의
+
+$$
+s(\lambda) = -(J^{\mathsf T}J + \lambda D^{\mathsf T}D)^{-1} J^{\mathsf T} r
+$$
+
+예요. $\lambda$를 사용자가 고르지 않고 반지름 $\Delta$로부터 정한다는 점이 원래의 LM과 달라요. $\Delta$는 실제 감소와 이차 모형이 예측한 감소의 비로 늘이고 줄여요.
+
+- **열 척도 $D$**(mode 1): 첫 반복에서 $D_j = \lVert J_{:,j}\rVert$(0이면 1)이고, 그 뒤 반복마다 $D_j \leftarrow \max(D_j, \lVert J_{:,j}\rVert)$예요. 모수의 단위를 바꿔도($\theta_j \to c\,\theta_j$) 걸음이 같은 꼴이 되게 하는 척도예요. 열 노름은 `qrfac`이 $R_0$에서 계산한 값(`acnorm`)이에요.
+- **처음 반지름**: $\Delta_0 = 100\,\lVert D\theta_0\rVert$(factor 100; 0이면 100)이고, 첫 걸음의 길이로 한 번 줄여요(`delta = min(delta, pnorm)`).
+
+### LM 매개변수 찾기: lmpar와 qrsolv
+
+`lmpar`는 $\phi(\lambda) = \lVert D s(\lambda)\rVert - \Delta$가 $\lvert\phi\rvert \le 0.1\Delta$가 되는 $\lambda$를 찾아요.
+
+- 가우스–뉴턴 걸음(랭크가 부족하면 0인 피벗 뒤를 버린 걸음)이 $\phi(0) \le 0.1\Delta$이면 $\lambda = 0$이에요.
+- 아니면 괄호 $[\lambda_l, \lambda_u]$를 만들어요. $\lambda_u = \lVert (J D^{-1})^{\mathsf T} r\rVert / \Delta$는 늘 위 경계이고, $J$가 완전 랭크이면 $\lambda_l = -\phi(0)/\phi'(0)$이 아래 경계예요($\phi$가 볼록하고 줄어드므로 접선이 근 앞에서 축을 지나요).
+- 뉴턴 갱신은 $\phi$ 자체가 아니라 $1/\lVert Ds\rVert - 1/\Delta$에 대한 뉴턴이에요(Hebden). $1/\lVert D s(\lambda)\rVert$는 $\lambda$에 대해 거의 일차라서 이쪽이 훨씬 빨리 수렴해요. $q = Ds$, $w = D^{\mathsf T}q/\lVert q\rVert$, $S$가 $\begin{bmatrix} R \\ \sqrt\lambda D\end{bmatrix}$의 삼각 인자이면 $\phi'(\lambda) = -\lVert q\rVert\,\lVert S^{-\mathsf T} w\rVert^2$이고, 갱신은
+
+$$
+\lambda \leftarrow \lambda + \frac{\phi(\lambda)}{\Delta}\,\frac{1}{\lVert S^{-\mathsf T} w\rVert^2}
+$$
+
+  예요. 갱신 뒤 괄호를 좁히고($\phi \gt 0$이면 아래 끝, $\phi \lt 0$이면 위 끝을 지금의 $\lambda$로), 최대 10번이에요.
+
+```cpp
+    // csrc/optimize/lsq.cpp
+    for (;;) {
+        ++iter;
+        if (par == 0) par = std::max(kDwarf, 0.001 * paru);
+        const double sp = std::sqrt(par);
+        for (lint j = 0; j < n; ++j) wa1[j] = sp * diag[j];
+        qrsolv<Fu>(n, r, ipvt, wa1, qtb, x, sdiag, wa2);
+        for (lint j = 0; j < n; ++j) wa2[j] = diag[j] * x[j];
+        dxnorm = norm<Fu>(n, wa2);
+        const double temp = fp;
+        fp = dxnorm - delta;
+        if (std::abs(fp) <= 0.1 * delta || (parl == 0 && fp <= temp && temp < 0) || iter == 10) break;
+        for (lint j = 0; j < n; ++j) {
+            const lint l = ipvt[j];
+            wa1[j] = diag[l] * (wa2[l] / dxnorm);
+        }
+        for (lint j = 0; j < n; ++j) {
+            wa1[j] /= sdiag[j];
+            const double t = wa1[j];
+            for (lint i = j + 1; i < n; ++i) wa1[i] = mad<Fu>(-R(i, j), t, wa1[i]);
+        }
+        const double t = norm<Fu>(n, wa1);
+        const double parc = ((fp / delta) / t) / t;
+        if (fp > 0) parl = std::max(parl, par);
+        if (fp < 0) paru = std::min(paru, par);
+        par = std::max(parl, par + parc);
+    }
+```
+
+`csrc/optimize/lsq.cpp`의 `lmpar` 반복이에요. 템플릿 인자 `Fu`가 lmder의 두 빌드를 골라요. nls는 `Fu = false`라서 `mad<Fu>(a, b, c)`는 `a * b + c`(곱과 합을 따로 반올림)이고 `norm<Fu>`는 이 파일의 `enorm`(제곱합을 그대로 더하고, 그 합이 넘치거나 아래넘칠 때만 최댓값으로 나눠 다시 더해요)이에요. `least_squares('lm')`과 `root('lm')`은 `Fu = true`로 `std::fma`와 MINPACK의 `enorm`(`csrc/optimize/minpack.hpp`)을 써요. `qrsolv`는 $\lambda$마다 $J$를 다시 분해하지 않아요. 이미 있는 피벗 QR의 $R$ 아래에 대각 행렬 $\sqrt\lambda D$의 행을 붙이고, Givens 회전으로 그 행들을 하나씩 지워 $\begin{bmatrix} R \\ \sqrt\lambda D\end{bmatrix} = \tilde Q S$의 $S$를 만들어요. $\lambda$ 하나에 $O(p^2)$ 회전이라 10번을 해도 QR 한 번보다 훨씬 싸요. 회전의 cos·sin은 두 원소 가운데 절댓값이 큰 쪽으로 나눠 구하는 MINPACK의 꼴 그대로라 넘치지 않아요. 대각이 0인 $S$의 열이 있으면 그 뒤 성분을 0으로 두는 것도 같아요(랭크 부족에서 최소제곱 해 하나).
+
+### 걸음을 받고 반지름을 바꾸기
+
+시험점 $\theta + s$에서 잔차 노름 $\lVert f_1\rVert$을 구하고, 실제 감소와 예측 감소를 잔차 노름으로 나눈 꼴로 비교해요.
+
+$$
+\text{actred} = 1 - \left(\frac{\lVert f_1\rVert}{\lVert f\rVert}\right)^2, \qquad
+\text{prered} = \left(\frac{\lVert Js\rVert}{\lVert f\rVert}\right)^2 + 2\lambda\left(\frac{\lVert Ds\rVert}{\lVert f\rVert}\right)^2, \qquad
+\rho = \frac{\text{actred}}{\text{prered}}
+$$
+
+$0.1\lVert f_1\rVert \ge \lVert f\rVert$(잔차가 열 배 넘게 커짐)이면 actred = −1로 둬요.
+
+- $\rho \le 1/4$: 반지름을 $\mu \cdot \min(\Delta, 10\lVert Ds\rVert)$로 줄이고 $\lambda$를 $\mu$로 나눠요. $\mu$는 actred ≥ 0이면 1/2, 아니면 방향 미분으로 만든 이차 보간 $\tfrac12\,\text{dirder}/(\text{dirder} + \tfrac12\text{actred})$이고, 0.1 밑이거나 잔차가 열 배 넘게 커졌으면 0.1이에요.
+- $\rho \ge 3/4$이거나 $\lambda = 0$: $\Delta = 2\lVert Ds\rVert$, $\lambda$는 절반이에요.
+- $\rho \ge 10^{-4}$이면 걸음을 받아요. 받지 않으면 같은 야코비안으로 줄인 $\Delta$에서 다시 풀어요.
+
+시험점에서 $f$가 유한하지 않으면 잔차 노름을 $+\infty$로 둬요. 그러면 위 규칙이 그대로 그 걸음을 거절하고, 반지름을 1/10로, $\lambda$를 10배로 해요. 시작점 `p0`에서 유한하지 않으면 커널이 따로 알려 `ValueError`가 돼요.
+
+### 멈춤 판정 info 1–8
+
+걸음을 하나 시도할 때마다 lmder와 같은 순서로 판정해요(`levenberg_marquardt`, `csrc/optimize/lsq.cpp`).
+
+```cpp
+            // csrc/optimize/lsq.cpp
+            const bool fsmall = std::abs(actred) <= ftol && prered <= ftol && 0.5 * ratio <= 1;
+            if (fsmall) info = 1;
+            if (delta <= xtol * xnorm) info = 2;
+            if (fsmall && info == 2) info = 3;
+            if (info != 0) break;
+            if (M.nfev >= maxfev) info = 5;
+            if (std::abs(actred) <= kEps && prered <= kEps && 0.5 * ratio <= 1) info = 6;
+            if (delta <= kEps * xnorm) info = 7;
+            if (gnorm <= kEps) info = 8;
+            if (info != 0) break;
+```
+
+| info | 조건 | 뜻 | `NLSResult` |
+|---:|---|---|---|
+| 1 | $\lvert\text{actred}\rvert \le$ `ftol`, prered $\le$ `ftol`, $\rho \le 2$ | 제곱합의 상대 감소가 실제로도 예측으로도 작음 | 수렴(ftol) |
+| 2 | $\Delta \le$ `xtol`$\cdot\lVert D\theta\rVert$ | 신뢰 영역이 모수에 비해 작음 | 수렴(xtol) |
+| 3 | 1과 2가 함께 | | 수렴(둘 다) |
+| 4 | $\max_j \lvert J_{:,j}^{\mathsf T} r\rvert / (\lVert J_{:,j}\rVert\,\lVert r\rVert) \le$ `gtol` | 잔차가 야코비안의 모든 열과 거의 수직 | 수렴(gtol) |
+| 5 | `nfev` $\ge$ `max_nfev` | 호출 상한 | `converged=False` |
+| 6–8 | 1, 2, 4를 $\varepsilon = 2^{-52}$로 | 허용오차가 기계 정밀도보다 작아 더 갈 수 없음 | 일어나지 않음(아래) |
+
+판정을 통과했어도 그 점의 `ssr`이 유한하지 않으면 `converged=False`예요. 야코비안의 척도가 극단적이면 판정이 해와 먼 곳에서 통과할 수 있기 때문이에요. $a e^{-kt} + c$(아래 공분산 절의 예)를 $k = -50$에서 시작하면 $f$가 $e^{500}$까지 커지고, xtol 판정이 통과한 점에서 제곱합이 넘쳐요(scipy의 `method='lm'`도 거기서 멈추고 성공으로 알려요). `summary()`의 주석이 "The sum of squares overflows there: not converged."라고 적어요.
+
+4의 코사인은 걸음을 풀기 전에, 피벗 QR의 $R$과 $Q^{\mathsf T}r/\lVert r\rVert$로 계산해요. `max_nfev`의 기본은 `jac`이 있으면 $100p$, 없으면 $100p(p+1)$이고 차분의 호출도 세요(lmdif와 같아요). 6–8은 lmder에서 허용오차가 너무 작아 더 줄일 수 없다는 코드예요. `'lm'`은 세 허용오차가 모두 $\varepsilon$ 이상이어야 해서(scipy `least_squares`의 'lm'과 같은 규칙이고, 작으면 `ValueError`예요), 6–8의 조건이 서면 같은 반복에서 1, 2, 4가 먼저 서요. 그래서 6–8로 멈추는 일은 없어요.
+
+### 반복의 전진 차분
+
+`jac`이 없으면 반복은 MINPACK `fdjac2`(lmdif, `epsfcn` = $\varepsilon$)의 전진 차분이에요(`Model::jacobian`, `csrc/optimize/lsq.cpp`).
+
+```cpp
+        // csrc/optimize/lsq.cpp
+        // MINPACK's fdjac2: h = sqrt(max(epsfcn, eps)) |x_j| (that at 0), the step actually
+        // taken ((x_j + h) - x_j) in the quotient (nls) or h itself (MINPACK; root); within
+        // bounds the step is scipy's adjust_one_sided (backwards when forwards leaves them and
+        // backwards fits, else the distance to the farther bound), and backwards when the
+        // model is not finite forwards.
+        const double eps = std::sqrt(std::max(epsfcn, kEps));
+        for (lint j = 0; j < p; ++j) {
+            const double t = x[j];
+            double h = eps * std::abs(t);
+            if (h == 0) h = eps;
+            if (lb) h = differentiate::adjust_one_sided(t, h, (*lb)[j], (*ub)[j]);
+            bool ok = false;
+            for (int attempt = 0; attempt < 2 && !ok; ++attempt) {
+                if (attempt == 1) {
+                    h = -h;
+                    if (lb && (t + h < (*lb)[j] || t + h > (*ub)[j])) break;
+                }
+                x[j] = t + h;
+                const double hh = minpack_h ? h : x[j] - t;
+                ok = eval(x, wa);
+                x[j] = t;
+                if (ok)
+                    for (lint i = 0; i < m; ++i) J[i + j * m] = (wa[i] - r[i]) / hh;
+            }
+            if (!ok) return false;
+        }
+```
+
+nls는 `epsfcn`을 0으로 두므로 $h = \sqrt\varepsilon\,\lvert\theta_j\rvert$이고, `minpack_h`가 거짓이라 실제로 더해진 간격으로 나눠요(`root('lm')`은 사용자의 `eps`를 `epsfcn`으로 받고 MINPACK처럼 $h$로 나눠요). $h = \sqrt\varepsilon\,\lvert\theta_j\rvert$($\varepsilon = 2^{-52}$, 기계 엡실론)은 절단 오차 $O(h)$와 반올림 오차 $O(\varepsilon/h)$가 비슷해지는 간격이라, 열의 상대 정확도는 대략 $\sqrt\varepsilon \approx 1.5 \times 10^{-8}$이에요. 몫의 분모에는 실제로 더해진 $(\theta_j + h) - \theta_j$를 써서 $\theta_j + h$의 반올림이 몫에 들어가지 않게 해요. 경계가 있으면 간격을 scipy의 `adjust_one_sided`(`csrc/differentiate/steps.hpp`)대로 고쳐요. 앞쪽이 경계를 넘고 뒤쪽 간격이 들어가면 뒤쪽으로 빼고, 어느 쪽에도 그 간격이 들어가지 않으면 더 먼 경계까지의 거리를 간격으로 써요. 앞쪽에서 $f$가 유한하지 않으면 뒤쪽으로 빼요. `'trf'`도 같은 $h$예요. scipy의 TRF는 $h = \sqrt\varepsilon\,\max(1, \lvert\theta_j\rvert)$를 쓰지만, 경계 안에서 두 방법이 같은 규칙을 쓰도록 lmder의 것을 따랐어요.
+
+## 신뢰 영역 반사법: scipy least_squares의 trf
+
+경계 $l \le \theta \le u$가 있으면 Branch–Coleman–Li(1999)의 신뢰 영역 반사법이에요. scipy 1.18.1의 `trf_bounds`를 같은 순서로 옮겼고, 경계가 모두 무한이면 `trf_no_bounds`와 같은 반복이 돼요.
+
+### Coleman–Li 척도
+
+경계가 있는 최소화의 1차 최적 조건은 성분마다 "기울기 $g_j$가 0이거나, 모수가 경계에 있고 기울기가 바깥을 향함"이에요. Coleman–Li(1996)는 이것을 하나의 방정식 $v \odot g = 0$으로 써요. 여기서 $v_j$는 기울기가 향하는 쪽 경계까지의 거리예요(`cl_scaling`, `csrc/optimize/lsq.cpp`).
+
+```cpp
+// csrc/optimize/lsq.cpp
+void cl_scaling(const vec& x, const vec& g, const vec& lb, const vec& ub, vec& v, vec& dv) {
+    for (std::size_t i = 0; i < x.size(); ++i) {
+        v[i] = 1;
+        dv[i] = 0;
+        if (g[i] < 0 && std::isfinite(ub[i])) {
+            v[i] = ub[i] - x[i];
+            dv[i] = -1;
+        }
+        if (g[i] > 0 && std::isfinite(lb[i])) {
+            v[i] = x[i] - lb[i];
+            dv[i] = 1;
+        }
+    }
+}
+```
+
+$D = \operatorname{diag}(v^{1/2})$로 변수를 $\theta = \theta_k + D\hat s$로 바꾸면, $v \odot g = 0$의 뉴턴 걸음은 척도 공간의 이차 모형
+
+$$
+\min_{\hat s}\ \tfrac12\lVert J_h \hat s\rVert^2 + \tfrac12 \hat s^{\mathsf T} C \hat s + g_h^{\mathsf T}\hat s, \qquad J_h = JD,\ g_h = Dg = J_h^{\mathsf T} r,\ C = \operatorname{diag}(g \odot \partial v)
+$$
+
+에서 나와요($\partial v_j = \pm 1$이나 0, 코드의 `dv`; 앞의 두 항과 마지막 항은 상수를 빼면 $\tfrac12\lVert J_h\hat s + r\rVert^2$와 같아요). 코드의 `Quad`가 이 모형의 값을 $R_h = R_0 D$로 계산해요. 경계 가까이에서 $v_j$가 작으면 그 방향의 걸음이 저절로 짧아지고, $C$ 항이 경계로 미는 기울기를 곡률로 바꿔요.
+
+### SVD로 푸는 부분문제
+
+`solve_lsq_trust_region`은 $\lVert\hat s\rVert \le \Delta$인 이 문제를 $\begin{bmatrix} J_h \\ C^{1/2}\end{bmatrix} = U\Sigma V^{\mathsf T}$로 풀어요(위의 $2p \times p$ SVD).
+
+- 완전 랭크이고($\sigma_{\min} > m \varepsilon\,\sigma_{\max}$) 가우스–뉴턴 걸음 $-V\Sigma^{-1}U^{\mathsf T}\begin{bmatrix} r \\ 0\end{bmatrix}$이 영역 안이면 그 걸음을 써요.
+- 아니면 $\hat s(\alpha) = -V \operatorname{diag}\bigl(\sigma_i/(\sigma_i^2 + \alpha)\bigr)U^{\mathsf T}\begin{bmatrix} r\\0\end{bmatrix}$의 $\phi(\alpha) = \lVert\hat s(\alpha)\rVert - \Delta$를 lmpar와 같은 꼴의 뉴턴 $\alpha \leftarrow \alpha - \frac{\phi + \Delta}{\Delta}\frac{\phi}{\phi'}$(Moré–Sorensen)으로 풀고, 괄호 $[\alpha_l, \alpha_u]$를 벗어나면 $\max(10^{-3}\alpha_u, \sqrt{\alpha_l\alpha_u})$로 되돌려요. $\lvert\phi\rvert \lt 0.01\Delta$이거나 10번이면 멈추고, 걸음을 길이 $\Delta$로 맞춰요. SVD가 있으므로 $\alpha$ 하나에 $O(p)$예요.
+
+### 반사 걸음과 엄격히 안쪽인 반복점
+
+`select_step`은 신뢰 영역 걸음이 경계 안이면 그대로 써요. 아니면 다음 세 후보 가운데 이차 모형의 값이 가장 작은 것을 골라요.
+
+1. 처음 닿는 경계까지 줄인 걸음에 $\theta_s = \max(0.995, 1 - \lVert v \odot g\rVert_\infty)$를 곱해 경계 바로 앞에서 멈춘 걸음을 만들어요.
+2. **반사 걸음**: 닿은 경계의 성분 부호를 뒤집은 방향으로, 경계에서 출발해 신뢰 영역이나 다음 경계까지의 구간에서 이차 모형을 1차원으로 최소화해요. 벽에 부딪힌 공이 튕겨 나가는 방향이라, 경계를 따라 미끄러지며 계속 줄일 수 있어요.
+3. **기울기 걸음**: $-g_h$ 방향의 1차원 최소화(신뢰 영역과 경계의 $\theta_s$배 안).
+
+받은 점은 `make_strictly_feasible`(rstep = 0)로 경계에 닿은 성분을 `nextafter`로 한 칸 안쪽에 둬요. 반복점은 늘 경계 안쪽이에요($v_j > 0$이어야 척도가 정의돼요). 시작점도 Python 층이 scipy처럼 경계에서 $10^{-10}\max(1, \lvert\text{경계}\rvert)$만큼 안쪽으로 옮겨요. 처음 반지름은 $\Delta_0 = \lVert\theta_0/\sqrt v\rVert$(0이면 1)이에요.
+
+### 반지름과 멈춤
+
+```cpp
+            // csrc/optimize/lsq.cpp
+            double Delta_new = Delta;
+            if (ratio < 0.25) Delta_new = 0.25 * step_h_norm;
+            else if (ratio > 0.75 && step_h_norm > 0.95 * Delta) Delta_new = 2 * Delta;
+            // check_termination
+            const double step_norm = enorm(step);
+            const bool fsat = actual_reduction < ftol * cost && ratio > 0.25;
+            const bool xsat = step_norm < xtol * (xtol + enorm(x));
+```
+
+`trust_region_reflective`(`csrc/optimize/lsq.cpp`) 안의 scipy `update_tr_radius`와 `check_termination`이에요. 비 $\rho$가 1/4 밑이면 반지름을 걸음의 1/4로, 3/4 위이고 걸음이 영역 끝(0.95Δ 너머)이면 두 배로 해요. 판정은 `ftol`(제곱합의 감소 $\lt$ `ftol`·제곱합이고 $\rho > 1/4$), `xtol`($\lVert\Delta\theta\rVert \lt$ `xtol`(`xtol` + $\lVert\theta\rVert$)), `gtol`(반복 앞에서 $\lVert v \odot g\rVert_\infty \lt$ `gtol`)이에요. 시험점에서 $f$가 유한하지 않으면 scipy처럼 $\Delta$를 걸음의 1/4로 줄이고 같은 야코비안에서 다시 풀어요. $\Delta$가 0이 되면 `xtol`로 멈춰요.
+
+scipy의 TRF는 `nfev`에 차분의 호출을 세지 않지만, 여기서는 `'lm'`과 같이 세요. 그래서 `max_nfev`도 차분 호출까지 포함한 상한이에요.
+
+## 해의 정확한 야코비안: 5점 차분과 간격 고르기
+
+반복이 멈추면 다듬기와 공분산에 쓸 야코비안을 다시 구해요. `jac`이 있으면 그것이고, 없으면 5점 중앙 차분
+
+$$
+\frac{\partial f}{\partial\theta_j} \approx \frac{f(\theta - 2h) - 8f(\theta - h) + 8f(\theta + h) - f(\theta + 2h)}{12h}
+$$
+
+이에요. 절단 오차가 $O(h^4)$이라 $h$를 4배 줄이면 절단 오차가 $4^4 = 256$배 줄고, 반올림 오차($O(\varepsilon/h)$)는 4배 늘어요. $h$는 2의 거듭제곱이라 $\theta_j \pm kh$가 대개 정확하고 몫에 반올림이 덜 들어가요.
+
+### 모수마다 간격을 고르는 이유
+
+간격을 $\lvert\theta_j\rvert$에 비례해 정하면(예: $2^{-10}\lvert\theta_j\rvert$) 모수의 "국소 척도"가 $\lvert\theta_j\rvert$와 다를 때 틀려요. 가우스 봉우리의 중심처럼 위치를 나타내는 모수가 그래요. Eckerle4는 중심 $b_3 \approx 451.5$, 폭 $b_2 \approx 4.1$인 가우스라, $2^{-10}\lvert b_3\rvert \approx 0.5$는 폭에 비해 너무 커요.
+
+```python
+>>> import math
+>>> xe = sd.arange(400.0, 500.1, 2.5)
+>>> b1, b2, b3 = 1.5543827178, 4.0888321754, 451.54121844
+>>> g = lambda t: (b1 / b2) * sd.exp(-0.5 * ((xe - t) / b2) ** 2)
+>>> exact = g(b3) * (xe - b3) / b2 ** 2
+>>> def five(h):
+...     return (g(b3 - 2 * h) - 8 * g(b3 - h) + 8 * g(b3 + h) - g(b3 + 2 * h)) / (12 * h)
+>>> def err(col):
+...     return f"{float(sd.max(sd.abs(col - exact)) / sd.max(sd.abs(exact))):.1e}"
+>>> base = math.frexp(b3)[1]
+>>> [err(five(math.ldexp(1.0, base + e))) for e in (-8, -10, -12, -14, -16, -18, -20)]
+['1.4e-02', '6.0e-05', '2.4e-07', '9.3e-10', '3.7e-12', '3.3e-13', '1.4e-12']
+```
+
+$h = 2^{e}\cdot 2^{\text{base}}$이고 $2^{\text{base}}$는 $\lvert b_3\rvert \lt 2^{\text{base}} \le 2\lvert b_3\rvert$인 2의 거듭제곱(`math.frexp`의 지수)이에요. 그래서 $e = -8$은 $2^{-8}\lvert\theta_j\rvert$에서 $2^{-7}\lvert\theta_j\rvert$ 사이예요. 오차는 $e = -18$($h \approx 0.002$)까지 256배씩 줄다가 그 뒤 반올림 때문에 늘어요.
+
+<Fig caption="Eckerle4의 b₃ 열: 5점 중앙 차분의 상대오차(log₁₀)와 간격의 지수 e. 오른쪽(큰 간격)은 절단 오차가 정해 e가 2 줄 때마다 256배(log₁₀로 2.4) 줄고, 왼쪽(작은 간격)은 반올림 오차가 정해 4배씩 늘어요.">
+  <Plot
+    curves={[{ points: stepErr, label: '5점 차분의 오차 (log₁₀)' }]}
+    domain={[-30, -8]}
+    range={[-13, -1]}
+    xTicks={[{ v: -30, label: '−30' }, { v: -26, label: '−26' }, { v: -22, label: '−22' }, { v: -18, label: '−18' }, { v: -14, label: '−14' }, { v: -10, label: '−10' }]}
+    yTicks={[{ v: -12, label: '10⁻¹²' }, { v: -9, label: '10⁻⁹' }, { v: -6, label: '10⁻⁶' }, { v: -3, label: '10⁻³' }]}
+  />
+</Fig>
+
+고르는 규칙은 "절단 오차가 앞서는 동안 줄인다"예요. $2^{-8}$에서 시작해 지수를 2씩(간격을 4배씩) 줄이며 이웃한 두 추정의 차이 $\delta_k = \max\lvert c_k - c_{k-1}\rvert/\max\lvert c_k\rvert$를 재요. 절단 오차가 앞서면 $\delta$가 256배 가까이 줄어드니, $\delta_k \lt \delta_{k-1}/8$인 동안 이어 가고 마지막 추정을 써요.
+
+```cpp
+    // csrc/differentiate/accurate.hpp (AccurateDiff)
+    bool choose_step(lint j, double* out, double& h) {
+        using namespace accurate_detail;
+        const auto uj = static_cast<std::size_t>(j);
+        const lint m = m_;
+        const int base = frexp_exp(xw_[uj] != 0 ? std::abs(xw_[uj]) : 1.0);
+        const int e0 = base + kFdStart;
+        vec col0(static_cast<std::size_t>(m));
+        const bool ok0 = column(j, std::ldexp(1.0, e0), col0.data());
+        const First start{true, ok0, &col0, fits_};
+        if (!ok0 || e0 >= kCapExp) return descend(j, e0, start, true, out, h);
+        const double r0 = rounding(col0.data(), j);
+        if (r0 <= kGrowTol) {
+            bool ok = descend(j, e0, start, true, out, h);
+            if (ok && !settled_) from_cap(j, out, h);
+            return ok;
+        }
+        const bool fits0 = fits_;
+        int e = 0;
+        if (grow(j, e0, col0.data(), e)) {
+            if (descend(j, e, First{}, true, out, h)) return true;
+        }
+        bool ok;
+        if (r0 <= kRoundingTol) ok = descend(j, e0, First{}, true, out, h);  // the plain search from the start
+        else ok = descend(j, e0, First{}, false, out, h);
+        fits_ = fits_ || fits0;
+        return ok;
+    }
+```
+
+`csrc/differentiate/accurate.hpp`의 `AccurateDiff::choose_step`이에요(`kFdStart, kFdEnd = -8, -30`). 차분의 고리(점 만들기, 5점 합, 반올림 수준, 간격 찾기)는 C++에서 돌고 $f$를 부르는 일만 Python이라, 호출 한 번의 비용이 거의 $f$ 자신의 비용이에요. 파이썬 쪽 입구는 `src/stardust/differentiate/_differences.py`의 `Differences`예요. 보통은 시작 $2^{-8}\lvert\theta_j\rvert$에서 바로 위의 규칙대로 내려가요(`descend`). 세 가지를 더 봐요.
+
+- 시작 간격의 열이 반올림으로 목표 정확도를 잃었으면(반올림 수준이 열의 $2^{-36}$배(`kGrowTol`)를 넘으면) 시작이 그 모수의 척도에 비해 너무 작은 거예요. $\theta_j$가 0 가까이에 있어 $2^{-8}\lvert\theta_j\rvert$가 작을 때 그래요. 그때는 먼저 간격을 키워요(`grow`). 반올림 수준이 열의 $\sqrt\varepsilon = 2^{-26}$배가 되도록 한 번에 옮긴 뒤(많아야 $\theta_j = 0$의 시작까지), 이웃한 두 추정의 차가 둘의 반올림 수준의 합을 넘을 때까지(절단 오차가 보일 때까지) 4배씩 키우고, 거기서부터 내려가요. $\theta_j = 0$의 시작에 닿아도 반올림이 남으면, 열이 잡음이 아닌 한 그 간격에서 내려가요. 더 작은 간격은 반올림이 더 클 뿐이니까요. 어느 간격에서도 열이 0이거나 잡음뿐이면 처음 시작에서 보통대로 내려가요.
+- 시작 간격의 반올림이 문턱 아래여서 바로 내려갔는데 마지막 두 추정이 끝내 맞지 않으면(상대 차이가 $2^{-20}$을 넘으면), 시작 간격에서의 함숫값의 차가 $f$ 자신의 계산 오차보다 작았던 거예요. 그때는($\lvert\theta_j\rvert < 1$에서만) $\theta_j = 0$의 시작에서 한 번 더 찾고, 그 추정들이 맞으면 그것을 써요(`from_cap`).
+- 내려가는 동안 첫 추정이 잡음이 아닌데 둘째 추정이 반올림 잡음(아래 [반올림 잡음뿐인 차분 열](#반올림-잡음뿐인-차분-열)의 16배 기준)이면 둘째를 받지 않고 첫 추정을 써요.
+
+nls의 `_Model`은 쓰인 행의 $f$를 이 클래스에 넘겨 해의 야코비안을 만들어요. 같은 규칙을 위의 열에 적용하면 $e = -18$을 골라요.
+
+```python
+>>> prev, dprev = None, math.inf
+>>> for e in range(-8, -31, -2):
+...     col = five(math.ldexp(1.0, base + e))
+...     if prev is not None:
+...         dd = float(sd.max(sd.abs(col - prev)) / sd.max(sd.abs(col)))
+...         if dd >= dprev / 8:
+...             break
+...         dprev = dd
+...     best, ebest, prev = col, e, col
+>>> ebest, err(best)
+(-18, '3.3e-13')
+```
+
+첫 쌍은 (둘째가 반올림 잡음일 때를 빼고) 늘 받으므로 시작을 $2^{-10}$으로 하면 고른 간격이 한 단계 작아져요. Lanczos3에서 그러면 계수가 $10^{-9}$ 수준으로 나빠져서 시작은 $2^{-8}$이에요. 고른 간격은 그 뒤 다듬기와 해의 야코비안에 그대로 써요(국소 척도는 해 근처에서 바뀌지 않아요). 고르는 데 모수마다 3–5단계, 12–20번의 호출이 들어요(NIST 27문제).
+
+NIST 27개 문제의 인증값에서 해석적 야코비안과 비교하면(열마다 $\max_i\lvert J_\text{차분} - J\rvert/\max_i\lvert J\rvert$), 고정 간격 $2^{-10}$은 최대 $6.9 \times 10^{-5}$, $2^{-14}$는 최대 $1.1 \times 10^{-9}$이고, 고른 간격은 27개 모두에서 $1.4 \times 10^{-11}$ 안이에요. 고른 간격에서 $h$와 $h/2$의 Richardson 보외를 더해도 반올림 오차가 이미 앞서서 이득이 없어요.
+
+경계 때문에 $\theta \pm 2h$를 쓸 수 없거나 한쪽에서 $f$가 유한하지 않으면 한쪽 5점 차분 $(-25f_0 + 48f_1 - 36f_2 + 16f_3 - 3f_4)/(12h)$(또는 그 거울)을 써요. 이것도 $O(h^4)$이에요. 세 꼴 모두 안 되면 `ValueError`예요.
+
+## 다듬기: 가우스–뉴턴과 뉴턴
+
+### 고정점이 정확도를 정해요
+
+다듬기의 걸음은 $d = \arg\min_d\lVert r + Jd\rVert$, 곧 선형 최소제곱 한 번이에요. 이것을 선형 모형의 커널 `fit`(`_gn_step`)으로 풀어요. 그 커널은 Householder QR, 겹친 열의 판정, 증강 시스템의 반복 개선(최대 3번)을 하고([최소제곱 풀이](/internals/regression/least-squares/)), 정규방정식 $J^{\mathsf T}J$를 만들지 않아요.
+
+걸음이 0인 점은 $J^{\mathsf T} r = 0$이에요. $J$에 오차 $\delta J$가 있으면 고정점은 $(J + \delta J)^{\mathsf T} r(\theta) = 0$으로 옮겨 가고, 그 거리는 대략
+
+$$
+\lVert\delta\theta\rVert \approx \lVert (J^{\mathsf T}J)^{-1}\delta J^{\mathsf T} r\rVert \lesssim \frac{\lVert\delta J\rVert}{\lVert J\rVert}\,\kappa(J)^2\,\frac{\lVert r\rVert}{\lVert J\rVert}
+$$
+
+예요. 반복의 전진 차분($\lVert\delta J\rVert/\lVert J\rVert \sim 10^{-8}$)으로는 잔차가 크고 조건이 나쁜 문제에서 몇 자리밖에 안 남아요. 그래서 반복이 수렴한 점에는 $10^{-8}$ 남짓의 판정 정밀도와 이 오차가 함께 남고(scipy와 같은 수준), 다듬기는 $\delta J$를 정확한 야코비안($10^{-11}$ 이하 또는 사용자 `jac`)으로 바꿔 그 항을 줄여요.
+
+### 멈춤 규칙
+
+걸음의 크기는 성분별 상대 크기 $s_k = \max_j\lvert d_j\rvert/\lvert\theta_j\rvert$예요($\theta_j = 0$이면 $\lVert\theta\rVert_\infty$로 나눠요).
+
+```python
+        # src/stardust/regression/_nls.py
+        theta, v, r = tn, vn, rn
+        steps += 1
+        done = size <= _POLISH_TOL
+        q = size / prev if prev is not None else 0.0
+        if prev is not None and not done:
+            # the predicted rest is below 2^-50, or the steps stopped shrinking at rounding level
+            done = (q < 1 and size * q / (1 - q) <= _POLISH_TOL) or (q > 0.5 and size <= _POLISH_FLOOR)
+        if done and size <= 2.0**-45:
+            break
+        J = M.accurate_jac(theta, v)
+        if done:
+            break
+```
+
+`src/stardust/regression/_nls.py`의 `_polish` 한 부분이에요(`_POLISH_TOL` = $2^{-50}$, `_POLISH_FLOOR` = $2^{-40}$).
+
+- $s_k \le 2^{-50}$이면 멈춰요.
+- 비 $q = s_k/s_{k-1}$로 남은 걸음의 합을 등비급수로 내다봐 $s_k q/(1 - q) \le 2^{-50}$이면 멈춰요. 수렴이 빠르면 걸음 하나를 아껴요.
+- $s_k \le 2^{-40}$에서 $q > 1/2$이면 반올림의 바닥에 닿은 것으로 보고 멈춰요. Hahn1은 해석적 `jac`에서도 걸음이 $4 \times 10^{-15}$에서 비 1 근처를 오가요.
+- 걸음이 커지면($q \ge 1$) 그 걸음은 받지 않아요(그 전에 아래의 뉴턴 전환을 먼저 시도해요).
+- 시험점이 유한하지 않거나, 경계 밖이거나, 제곱합이 $1/16$ 넘게 오르면(걸음이 $2^{-30}$ 밑이 아닐 때) 멈춰요.
+- 마지막 걸음이 $2^{-45}$ 넘으면 받은 점에서 야코비안을 다시 구해요. 공분산이 돌려준 $\theta$의 야코비안이 되게 하려는 거예요.
+- 모두 10걸음까지예요.
+- 걸음마다 그 비용이 예산 안인지 먼저 봐요(아래 예산 절).
+
+### max_nfev의 예산
+
+다듬기의 $f$ 호출도 `max_nfev` 안에서 해요. 반복이 쓰고 남은 호출 수가 다듬기의 예산이고, 걸음을 하기 전에 그 걸음의 비용(새 점 1번과 그 점의 정확한 야코비안, 차분이면 $4p$번, `jac`이면 0번)이 남았는지 봐요. 뉴턴으로 바꿀 때는 $S$의 비용 $2p^2$번도 먼저 봐요.
+
+```python
+    # src/stardust/regression/_nls.py
+    def afford(calls):
+        return M.nfev - start + calls <= budget
+
+    for _ in range(_POLISH_STEPS):
+        if not afford(M.step_cost()):
+            return theta, v, r, J, steps, True
+```
+
+걸음이 아직 필요한데 예산이 모자라 멈추면(`True`를 돌려줘요) `converged`는 False예요. 다듬기가 끝나야 결과가 반올림 수준의 해라서, 끝나지 않은 다듬기를 수렴이라고 하지 않아요.
+
+해의 값과 정확한 야코비안(간격 고르기 포함)은 이 예산 밖이에요. 공분산과 겹친 모수의 판정에 늘 필요해서, 상한이 작아도 결과에서 뺄 수 없기 때문이에요. 그래서 `max_nfev`는 해를 찾는 호출(반복과 다듬기)의 상한이고, `nfev`에는 그 위에 공분산용 야코비안의 호출이 더해져요. 그 수는 해의 값 1번과, 차분이면 모수마다 간격을 고르는 호출이에요(위 간격 고르기 절). 후보 간격은 $2^{-8}$에서 $2^{-30}$까지 지수를 2씩 줄인 12개이고, 후보 하나가 중앙 차분의 $f$ 호출 4번($\theta_j \pm h$, $\theta_j \pm 2h$)이라, 중앙 차분만 쓰면 모수마다 많아야 48번이에요. 이것은 중앙 차분만의 상한이고 전체의 상한은 아니에요. 경계에 걸리거나 값이 유한하지 않아 한쪽 5점 차분(가운데 값은 해의 값을 다시 써서 4번)으로 물러서면 앞쪽과 뒤쪽을 차례로 시도하므로, 후보마다 많아야 8번이 더 들어 48번을 넘을 수 있어요.
+
+매끄러운 모형은 절단 오차가 앞서는 동안이 짧아 후보 서너 개에서 멈춰요. 해의 값 호출을 뺀 모수마다의 호출은 지수 감쇠($p = 2$) 14번, 감쇠와 상수($p = 3$) 13.3번, 네 모수 로지스틱 13번, 가우스 봉우리($p = 3$) 16번, Misra1a 12번이고, NIST 27문제에서 12–20번이에요. 보통은 모수마다 12–16번이에요. `jac`이 있으면 값 1번뿐이에요. 아래 Misra1a는 반복이 51번을 쓰고, 해의 야코비안이 25번(값 1번 + 모수마다 12번), 다듬기가 9번짜리 두 걸음과 시험점 1번뿐인 마지막 걸음이에요.
+
+```python
+>>> [(m, fm.converged, fm.nfev) for m, fm in
+...  ((m, sd.regression.nls(f, sd.asarray(x), sd.asarray(y), p0=[500, 1e-4], max_nfev=m)) for m in (55, 70, 78))]
+[(55, False, 76), (70, False, 94), (78, True, 95)]
+```
+
+`max_nfev=55`면 다듬기에 4번이 남아 걸음 하나(9번)도 못 하고, 70이면 두 걸음 뒤 세 번째를 못 해요. 78이면 세 번째 걸음도 할 수 있어서 기본값과 같은 결과예요. 그 걸음은 크기가 $2^{-45}$ 아래라 야코비안을 다시 구하지 않고 시험점 1번으로 끝나요.
+
+### 느린 가우스–뉴턴과 뉴턴 걸음
+
+제곱합의 헤시안은 $J^{\mathsf T}WJ + S$, $S = \sum_i c_i\nabla^2 f_i$($c_i = w_i(f_i - y_i)$)예요. 가우스–뉴턴은 $S$를 버리므로 해 근처에서 비 $\rho\bigl((J^{\mathsf T}J)^{-1}S\bigr)$로 선형 수렴해요. 잔차가 작으면(Misra1a의 0.003) 몇 걸음이면 되지만, ENSO(잔차 표준편차 2.2)와 Thurber는 비가 0.64–0.67이라 반복이 멈춘 $10^{-3}$–$10^{-5}$에서 10걸음 뒤에도 $10^{-6}$에 머물러요. 시작점 1의 ENSO처럼 걸음이 처음부터 커지기도 해요(그 방향으로는 가우스–뉴턴이 국소적으로 발산해요).
+
+그래서 다음 중 하나이면 $S$를 한 번 구해 뉴턴 걸음으로 바꿔요(느려진 Fisher 득점법을 관측 정보의 뉴턴으로 바꾸는 [GLM](/internals/regression/glm/)과 같은 생각이에요).
+
+- (a) 남은 가우스–뉴턴 걸음 수 $\log(\text{나머지}/2^{-50})/\log(1/q)$가 남은 걸음 한도보다 많거나, 그 호출 수가 $S$의 비용과 두 걸음보다 많을 때(`_newton_pays`).
+- (b) 걸음이 줄지 않을 때($2^{-40}$ 위에서).
+
+뉴턴 걸음은 가우스–뉴턴 걸음 $d$에서 만들어요.
+
+$$
+(J^{\mathsf T}J + S)\,d_n = -J^{\mathsf T}r = J^{\mathsf T}J\,d \iff \bigl(I + (J^{\mathsf T}J)^{-1}S\bigr)\,d_n = d
+$$
+
+$(J^{\mathsf T}J)^{-1}$은 같은 `fit` 호출이 공분산으로 돌려주는 $(R^{\mathsf T}R)^{-1}$이에요. 이 꼴에서는 $d_n = 0 \iff d = 0$이라 고정점이 그대로예요. 그래서 $S$의 정확도는 수렴 속도만 바꾸고 답은 바꾸지 않아요. 아래는 `src/stardust/regression/_nls.py`의 `_newton_step`이에요.
+
+```python
+# src/stardust/regression/_nls.py
+def _newton_step(d, cols, C, S):
+    """Newton's step from the Gauss-Newton one: (J^T J + S) dn = J^T J d, that is
+    (I + (J^T J)^-1 S) dn = d on the free columns. None when singular."""
+    q = len(cols)
+    A = [
+        [(1.0 if a == b else 0.0) + sum(C[a][c] * S[cols[c]][cols[b]] for c in range(q)) for b in range(q)]
+        for a in range(q)
+    ]
+    try:
+        z = _linalg.solve(_sd.asarray(A), _sd.asarray([d[j] for j in cols])).tolist()
+    except _linalg.LinAlgError:
+        return None
+    out = list(d)
+    for a, j in enumerate(cols):
+        out[j] = z[a]
+    return out if all(math.isfinite(v) for v in out) else None
+```
+
+$S$는 $\varphi(t) = \sum_i c_i f_i(t)$의 2차 중앙 차분이에요. 대각은 마지막 야코비안이 남긴 $f(\theta \pm h e_j)$를 다시 써서 새 호출이 없고, 비대각은 4점 $(\varphi_{++} - \varphi_{+-} - \varphi_{-+} + \varphi_{--})/(4h_j h_k)$라 $2p(p-1)$번 호출이에요(`jac`이 있으면 대각도 새로 구해 $2p^2$번). 상대 정확도는 $10^{-7}$ 정도예요. 뉴턴 걸음이 실패하면(행렬이 특이, 유한하지 않음, 제곱합 증가) 가우스–뉴턴으로 돌아가요. 경계에 걸린 모수는 $S$에서도 빠져요.
+
+## 경계에 걸린 모수
+
+`'trf'`의 반복점은 늘 경계 안쪽이라, 해가 경계에 있으면 scipy는 경계에서 $10^{-10}\max(1, \lvert b\rvert)$ 안쪽 값(0.5000000000000001 같은)을 내요. 여기서는 반복이 끝난 점에서 경계에 걸린 모수를 찾아 경계값으로 맞춰요(`_nls.py`의 `_active`).
+
+```python
+# src/stardust/regression/_nls.py
+def _active(theta, lb, ub, g, rtol):
+    """Parameters on a bound at the solution: within scipy's find_active_constraints
+    distance (rtol = xtol) and with the gradient of the sum of squares pointing outwards."""
+    out = []
+    for j, (t, a, b) in enumerate(zip(theta, lb, ub)):
+        if math.isfinite(a) and t - a <= min(b - t, rtol * max(1.0, abs(a))) and g[j] > 0:
+            out.append((j, a))
+        elif math.isfinite(b) and b - t <= min(t - a, rtol * max(1.0, abs(b))) and g[j] < 0:
+            out.append((j, b))
+    return out
+```
+
+거리는 scipy `find_active_constraints`의 것(`rtol` = `xtol`)이고, 제곱합의 기울기 $J^{\mathsf T}r$이 바깥을 향해야 해요(안을 향하면 안쪽으로 움직여 더 줄일 수 있으니 걸린 것이 아니에요). 맞춘 점에서 $f$가 유한하고 제곱합이 $1/16$ 넘게 오르지 않으면 그 점을 쓰고, 그 모수는 다듬기에서 고정해요(그 열을 빼고 풀어요). 다른 모수의 걸음이 경계를 넘으면 다듬기가 멈춰요.
+
+```python
+>>> rb = sd.regression.nls(f, sd.asarray(x), sd.asarray(y), p0=[150, 1e-3], bounds=([0, 0], [200, 1]))
+>>> rb.method, rb.params.tolist()[0]
+('trf', 200.0)
+>>> rb.summary().splitlines()[-1]
+'[3] At a bound: b1.'
+>>> pb, _ = curve_fit(lambda x, b1, b2: b1 * (1 - np.exp(-b2 * x)), np.array(x), np.array(y),
+...                   p0=[150, 1e-3], bounds=([0, 0], [200, 1]))
+>>> pb.tolist()[0]
+199.99999999999997
+```
+
+공분산은 경계에 걸린 모수도 포함한 같은 $J$의 전체 공분산이에요(scipy, R `nls(algorithm = "port")`와 같아요). 경계에서는 점근 정규 근사가 맞지 않으므로 그 표준오차는 참고값이에요.
+
+## 공분산과 겹친 모수
+
+해에서 $-r$을 $J$에 회귀하는 `fit` 한 번이 공분산 $(R^{\mathsf T}R)^{-1}$, $R$, 쓰인 열을 줘요. `bse`는 $\hat\sigma^2 (R^{\mathsf T}R)^{-1}$의 대각의 제곱근이고 $\hat\sigma^2 = \text{ssr}/(\text{nobs} - \text{rank})$예요(R `nls`와 같아요). 겹친 열의 판정은 선형 모형과 같은 $\lvert R_{jj}\rvert \le \text{rtol}\cdot\lVert J_{:,j}\rVert$(피벗 없는 QR, 앞 열이 남아요)예요([겹친 열](/internals/regression/least-squares/)).
+
+겹친 모수는 추론(`bse`, t, p, 구간, `cov_params()`의 그 행과 열)만 NaN이에요. `params`는 반복이 닿은 값 그대로예요. 그 값은 유일하지 않지만 $f$에 넣어야 예측이 되니까요.
+
+`rtol`의 기본값은 야코비안의 출처에 따라 달라요.
+
+```python
+# src/stardust/regression/_nls.py
+_FD_RTOL = 2.0**-30
+```
+
+```python
+    # src/stardust/regression/_nls.py
+    rt = _check_rtol(rtol, func)
+    if rt < 0 and jac is None:
+        rt = _FD_RTOL
+```
+
+`src/stardust/regression/_nls.py`의 상수와 `nls()`의 한 부분이에요. `rtol=None`이면 `_check_rtol`이 음수를 돌려주고, 차분 야코비안이면 그 자리를 $2^{-30}$으로 채워요. 사용자 `jac`이면 선형 모형의 커널이 음수를 기본값 $\max(\text{nobs}, p)\,u$로 읽어요.
+
+차분 야코비안의 열은 상대 $10^{-12}$–$10^{-11}$ 정확도라, 정확히 겹친 열도 $\lvert R_{jj}\rvert$가 그 크기로 나와요. 선형 모형의 기본 $\max(n, p)\,\varepsilon$로는 그 열을 겹쳤다고 보지 못하고, 거의 0인 $R_{jj}$로 나눠 엄청난 표준오차가 나와요. $f = abx$($a$와 $b$가 곱으로만 들어가요)로 보면 이래요.
+
+```python
+>>> xa = sd.asarray([1.0, 2, 3, 4, 5, 6, 7, 8])
+>>> ya = sd.asarray([2.1, 3.9, 6.2, 7.8, 10.1, 12.2, 13.8, 16.1])
+>>> ab = lambda x, a, b: a * b * x
+>>> ra = sd.regression.nls(ab, xa, ya, p0=[1.0, 1.0])
+>>> ra.rank, ra.bse.tolist()
+(1, [0.0032331754467694604, nan])
+>>> rc = sd.regression.nls(ab, xa, ya, p0=[1.0, 1.0], rtol=8 * 2.0 ** -52)
+>>> [f"{v:.1e}" for v in rc.bse.tolist()]
+['1.2e+11', '8.0e+11']
+```
+
+기본값 $2^{-30} \approx 9.3 \times 10^{-10}$은 차분의 오차보다 충분히 크고, 실제 문제의 열보다 충분히 작아요. NIST 27개에서 가장 작은 $\lvert R_{jj}\rvert/\lVert J_{:,j}\rVert$는 Bennett5의 $4.9 \times 10^{-5}$예요. R `nls`는 위의 $f = abx$를 QR의 `tol` $10^{-7}$에서 "singular gradient matrix at initial parameter estimates" 에러로 끝내요. 사용자 `jac`이면 열이 정확하므로 선형 모형과 같은 $\max(\text{nobs}, p)\,u$예요.
+
+### 반올림 잡음뿐인 차분 열
+
+`rtol`은 열 사이의 상대 관계만 봐요. 그런데 차분 열 자체가 반올림 잡음뿐인 경우가 있어요. $f$의 값 하나하나에 $u\lvert f_i\rvert$까지의 반올림이 있고, 5점 공식 $\sum_o w_o f(\theta + o h e_j)/(12h)$는 그 반올림을 가중치대로 더하므로, 열의 원소 $i$는
+
+$$
+\frac{\sum_o\lvert w_o\rvert}{12h}\,u\,\max_o\bigl\lvert f_i(\theta + o h e_j)\bigr\rvert
+$$
+
+만큼 불확실해요(중앙 공식은 $\sum_o\lvert w_o\rvert = 18$). 이 값을 행마다 모아(가중치가 있으면 $\sqrt{w_i}$를 곱해서) 2-노름을 낸 것이 그 열의 반올림 수준이에요(`AccurateDiff`의 `column`이 `noise_[j]`에 적어요). 열의 2-노름이 그 16배 이하이면 열을 0으로 두고, 그러면 위의 판정이 그 모수를 겹친 모수로 빼요. 16배는 $f$ 자신의 계산 오차(sd의 vForce 함수는 몇 ulp, 많아야 8ulp)를 덮는 여유예요. 이 규칙은 nls만 켜요(`jacobian`의 `zero_noise=True`). 같은 차분을 쓰는 `approx_fprime`은 열을 그대로 돌려줘요.
+
+```cpp
+        // csrc/differentiate/accurate.hpp (AccurateDiff::jacobian)
+        // the weighted columns; with zero_noise a column within 16 times its rounding level is 0:
+        // kept, a noise column has a direction of its own and can take the place of an identified
+        // parameter's column (a exp(-k t) + c at a large k)
+        vec keep(static_cast<std::size_t>(p_), 1.0);
+        for (lint j = 0; j < p_; ++j) {
+            vec& col = cols[std::size_t(j)];
+            if (has_w_)
+                chunks(m, [&](lint i0, lint i1, lint) {
+                    for (lint i = i0; i < i1; ++i) col[std::size_t(i)] = col[std::size_t(i)] * w_[std::size_t(i)];
+                });
+            if (zero_noise && norm2(col.data(), m) <= kNoiseFactor * noise_[std::size_t(j)]) keep[std::size_t(j)] = 0.0;
+        }
+```
+
+잡음 열을 그대로 두면 잡음도 자기 방향이 있어서, 식별되는 모수의 열 대신 남을 수 있어요. $a e^{-kt} + c$를 $k = 100$에서 시작하면 $t > 0$인 모든 행에서 $e^{-kt}$가 $c$의 ulp보다 작아요. 그래서 $k$의 열은 그 행들에서 거의 일정한 반올림 잡음이고, 그 방향은 $c$의 열(모두 1)과 같아요. 피벗 없는 QR은 앞 열을 남기므로 잡음인 $k$가 남고 $c$가 빠질 수 있어요. 잡음 열을 0으로 두면 빠지는 것은 $k$예요.
+
+```python
+>>> t = sd.linspace(0.0, 10.0, 25)
+>>> rng = sd.random.default_rng(0)
+>>> yt = 2.0 * sd.exp(-0.5 * t) + 0.3 + 0.01 * sd.stats.Normal().sample(25, rng=rng)
+>>> fk = lambda x, a, k, c: a * sd.exp(-k * x) + c
+>>> rk = sd.regression.nls(fk, t, yt, p0=[1.0, 100.0, 0.0])
+>>> rk.rank, rk.bse.tolist()
+(2, [0.45763526267354065, nan, 0.09152705253470494])
+>>> float(rk.params[2] - sd.mean(yt[1:])), float(rk.params[0] + rk.params[2] - yt[0])
+(1.1102230246251565e-16, 0.0)
+>>> sd.regression.nls(fk, t, yt, p0=[1.0, 1.0, 0.0]).rank
+3
+```
+
+$k = 100$에 머문 적합은 $c$가 첫 행을 뺀 나머지의 평균이고 $a + c$가 첫 행이에요. 겹친 모수는 $k$이고, $a$와 $c$의 표준오차는 유한해요. 식별되는 시작점에서는 세 열이 모두 남아요.
+
+## 완전 적합, 자유도, 평균의 구간
+
+### 남은 자유도가 없을 때와 완전 적합
+
+- `df_resid` $= \text{nobs} - \text{rank}$가 0이면 $\hat\sigma^2 = \text{ssr}/0$이 $0/0$이라 `scale`과 추론 전부(`bse`, t, p, 구간, `cov_params()`)가 NaN이에요. 선형 모형과 같은 규칙이에요.
+- `ssr`이 정확히 0이고 `df_resid` > 0이면 `bse`는 0 그대로이고, `tvalues`와 `pvalues`는 NaN이에요. 구간은 `bse`가 0이라 $[\theta, \theta]$예요. 선형 모형과 같은 규칙이에요. 모수는 반올림을 품은 값이라, 참값이 0인 모수도 반올림 크기의 값으로 남을 수 있어요. 비선형 반복이 멈춘 점이라 더 그래요. 모형을 모르므로 상수 $y$의 정확한 해를 정해 넣을 수도 없어서, $a + bx$ 꼴 모형에 상수 $y$를 맞추면 $b$에 반올림 크기의 값이 남아요. 그 값을 0으로 나눈 ±inf는 있지도 않은 유의성을 보여요.
+- 쓰인 행이 없으면(모두 NaN이라 빠졌거나 가중치가 모두 0) $f$를 부르지 않고 NaN 결과에 `nobs` 0이에요.
+
+```python
+>>> xl = sd.arange(1.0, 9.0)
+>>> lin = lambda x, a, b: a + b * x
+>>> pf = sd.regression.nls(lin, xl, 0.5 + 2.0 * xl, p0=[0.0, 1.0])
+>>> pf.ssr, pf.bse, pf.tvalues
+(0.0, array([0.0, 0.0], dtype=float64), array([nan, nan], dtype=float64))
+>>> sd.regression.nls(lin, sd.asarray([0.0, 1.0]), sd.asarray([1.0, 3.0]), p0=[0.0, 1.0]).bse
+array([nan, nan], dtype=float64)
+```
+
+### 평균의 구간: 델타 방법
+
+`predict_interval(x_new)`은 적합값 $f(x_{\text{new}}, \hat\theta)$의 신뢰구간이에요. $f$를 해 둘레에서 일차로 펼치면 $\operatorname{Var} f(x, \hat\theta) \approx J_{\text{new}}\,C\,J_{\text{new}}^{\mathsf T}$이고($C$는 `cov_params()`), 구간은 $f \pm t(\text{df\_resid})\cdot\text{se}$예요.
+
+$J_{\text{new}}$는 $x_{\text{new}}$의 행에서 해의 야코비안이에요. 사용자 `jac`이 있으면 그것이고, 없으면 해에서 고른 간격 그대로의 5점 차분이에요(잡음 열의 규칙도 같아요). 간격은 모수의 국소 척도이지 행의 것이 아니라서 다시 고르지 않아요.
+
+```python
+        # src/stardust/regression/_nls.py
+        # a row with NaN (x_new or its f) has a NaN interval; the Jacobian is formed on the
+        # other rows only (its differences would find the model "not finite" there)
+        ok = _sd.isfinite(mean)
+        if xn.ndim == 2:
+            ok = _sd.logical_and(ok, _sd.all(_sd.isfinite(xn), axis=1))
+        else:
+            ok = _sd.logical_and(ok, _sd.isfinite(xn))
+        var = _sd.full((m,), math.nan)
+        if bool(_sd.any(ok)):
+            all_ok = bool(_sd.all(ok))
+            xs = xn if all_ok else xn[ok]
+            ms = mean if all_ok else mean[ok]
+            fm = self._model
+            M = _Model(func, fm.f, fm.jac, xs, _sd.zeros((xs.shape[0],)), None, None, fm.p, fm.lb, fm.ub)
+            M.diff.steps = list(fm.diff.steps)
+            J = M.accurate_jac(theta, ms)
+            v = _sd.sum(_sd.matmul(J, self.cov_params()) * J, axis=-1)
+            if all_ok:
+                var = v
+            else:  # back to every row, NaN where it was left out
+                out = [math.nan] * m
+                for i, vi in zip(_sd.nonzero(ok)[0].tolist(), v.tolist()):
+                    out[i] = vi
+                var = _sd.asarray(out)
+```
+
+$x_{\text{new}}$에 NaN이 있거나 그 행의 $f$가 NaN인 행은 먼저 골라내요. 5점 차분은 열을 만들 때 쓰인 모든 행의 값이 유한한지 보고, 하나라도 아니면 그 간격을 "모형이 유한하지 않다"고 버려요. 그래서 NaN 행을 그대로 넣으면 다른 행까지 차분을 잃어요. 고른 행만으로 $J_{\text{new}}$를 만들고, 분산을 원래 자리에 되돌려 놓은 뒤 빠진 행은 NaN으로 둬요. 행마다의 분산 $J_i C J_i^{\mathsf T}$는 그 행의 야코비안에만 달려 있으므로, 남은 행의 구간은 NaN 행이 없을 때와 같아요. 사용자 `jac`이 있어도 같은 방식이에요.
+
+새 관측의 예측 구간은 두지 않아요. 델타 방법은 $\hat\theta$의 불확실성만 옮기고, 새 관측의 오차분포에 대해서는 비선형 적합이 아무것도 말하지 않기 때문이에요. `x_new`는 `predict`와 같이 적합의 `x`와 같은 열이어야 하고(둘 다 frame `DataFrame`이면 열 이름과 순서까지), inf는 `ValueError`예요. 위의 완전 적합은 `bse`가 0이라 구간의 폭도 0이에요.
+
+```python
+>>> r.predict_interval(sd.asarray([100.0, 800.0]))
+array([[12.744992638402529,  12.83598826016302],
+       [ 84.89279618295147,  85.25510894276677]], dtype=float64)
+>>> pf.predict_interval(sd.asarray([10.0]))
+array([[20.5, 20.5]], dtype=float64)
+>>> r.predict_interval(sd.asarray([100.0, math.nan, 800.0]))
+array([[12.744992638402529,  12.83598826016302],
+       [               nan,                nan],
+       [ 84.89279618295147,  85.25510894276677]], dtype=float64)
+```
+
+## GIL, 스레드, 결정성
+
+- 반복의 루프는 GIL을 쥐고 돌아요. $f$와 `jac`을 부를 때마다 Python으로 돌아가야 하니까요. GIL을 놓는 곳은 위의 큰 QR($2mp^2 > 2 \times 10^5$)과, $f$ 안의 큰 sd 연산(sd 배열 연산이 스스로 놓아요)이에요.
+- 스레드 수가 바꾸는 것은 $f$ 안의 sd 연산과 QR의 속도예요. 그래서 $n$이 크면 10스레드가 빨라지고, $n$이 작으면 그대로예요.
+- 커널의 노름과 내적(`enorm`, 이차 모형의 값)은 MINPACK과 scipy의 계산을 옮긴 부분이라 한 스레드에서 행 순서로 한 번에 더해요. 스레드 수와 상관없는 순서예요.
+- 회귀 하나만 받아요(배치가 없어요). `y`가 1차원이 아니면 `ValueError`예요.
+
+## f 호출의 비용
+
+차분 야코비안이면 $f$ 호출이 scipy `curve_fit`의 여러 배예요. 위 Misra1a(시작점 1, $p = 2$)의 95번은 이렇게 나뉘어요.
+
+| 부분 | 호출 |
+|---|---:|
+| 반복(lmder, 전진 차분 포함; scipy lm은 49번) | 51 |
+| 해의 값 1번 + 간격 고르기(모수 2개, 5점씩 단계마다) | 25 |
+| 가우스–뉴턴 2걸음 × (시험점 1번 + 야코비안 $4p$ = 8번) + 마지막 걸음의 시험점 1번 | 19 |
+| 합 | 95 |
+
+일반적으로 간격 고르기가 $12p$–$16p$(중앙 차분만이면 상한 $48p$, 한쪽 차분으로 물러서면 그보다 많을 수 있어요), 야코비안마다 $4p$, 가우스–뉴턴 걸음이 보통 2–4번이에요. 이 가운데 반복과 다듬기의 걸음이 `max_nfev`의 상한 안이고, 해의 값과 간격 고르기는 그 위에 더해져요(위 예산 절). 해석적 `jac`을 주면 이 비용이 거의 사라져요(Misra1a 23번).
+
+차분 야코비안을 쓰면 $f$ 호출이 scipy lm의 몇 배예요. 반복 자체는 scipy와 비슷한 수이고, 나머지가 해의 정확한 야코비안의 간격 고르기와 다듬기 걸음마다의 야코비안이에요. 차분의 고리는 C++에서 돌아서 호출 사이의 비용은 작고, 시간은 거의 $f$를 부르는 횟수에 비례해요. sd의 스레드는 모형 안의 sd 연산과 QR에만 들어가요.
+
+- 해석적 `jac`이면 간격 고르기와 다듬기의 차분이 사라져 호출 수가 scipy에 가까워져요.
+- 그 대가로 sd의 계수는 해에 반올림 수준(`jac`)이거나 차분의 정확도 수준($10^{-13}$–$10^{-10}$)이고, scipy와 R은 자기 멈춤 판정의 정밀도에서 멈춰요. 이 비용을 끄는 옵션은 없고, 사용자 `jac`이 그 비용의 대부분을 없애요.
+
+<Callout type="tip" title="빠르게 하려면">
+해석적 `jac`을 주는 것이 가장 효과가 커요. 다듬기와 공분산의 야코비안이 차분 대신 `jac` 한 번이 되고, 반복의 전진 차분도 사라져요. 모형을 sd 배열 연산으로 쓰면 큰 n에서 스레드가 그 연산을 나눠요.
+</Callout>
+
+## 정확도 요약
+
+자세한 표는 [정확도와 성능](/internals/regression/accuracy-performance/)에 있어요. NIST StRD의 비선형 27개 문제를 시작점 2개에서 푼 결과예요.
+
+- 같은 double 자료의 Arb 참값(320비트 가우스–뉴턴)과 계수의 상대오차가 해석적 `jac`이면 최대 $3.1 \times 10^{-13}$(조건이 나쁜 Lanczos1–3, MGH10), 중앙값 $1 \times 10^{-15}$이고, 차분이면 최대 $3.0 \times 10^{-10}$, 중앙값 $3$–$6 \times 10^{-13}$이에요.
+- 10진 자료의 인증값(11자리)과의 LRE는 수렴한 적합 모두 계수 9.5(차분)·10.3(`jac`) 이상이에요. 반복이 멈춘 점 그대로는 중앙값 6.4–6.8로 scipy lm(6.4–6.6)과 같고, ENSO·Thurber·MGH09는 3–5자리예요.
+- 실패는 시작점 1의 BoxBOD(차분: $b_2$가 아주 큰, 야코비안이 특이한 다른 정류점), Bennett5(`max_nfev`), MGH09(`jac`, 기본 `max_nfev` 400)예요.
+- Lanczos1은 인증 제곱합이 $1.4 \times 10^{-25}$라 잔차가 $f$의 반올림보다 수백 배 클 뿐이에요. 그래서 double 자료의 참 표준오차조차 인증값과 $4 \times 10^{-4}$ 다르고, $f$를 double로 계산하는 한 표준오차는 3–4자리예요.
+
+## 참고 문헌
+
+1. K. Levenberg, "A method for the solution of certain non-linear problems in least squares", *Quarterly of Applied Mathematics* 2(2), 164–168, 1944. doi:10.1090/qam/10666
+2. D. W. Marquardt, "An algorithm for least-squares estimation of nonlinear parameters", *Journal of the Society for Industrial and Applied Mathematics* 11(2), 431–441, 1963. doi:10.1137/0111030
+3. J. J. Moré, "The Levenberg–Marquardt algorithm: Implementation and theory", in *Numerical Analysis* (G. A. Watson, ed.), Lecture Notes in Mathematics 630, Springer, 105–116, 1978. doi:10.1007/BFb0067700
+4. J. J. Moré, B. S. Garbow, K. E. Hillstrom, *User Guide for MINPACK-1*, Argonne National Laboratory report ANL-80-74, 1980. (lmder, lmdif, lmpar, qrsolv, qrfac, fdjac2의 원 코드)
+5. M. D. Hebden, "An algorithm for minimization using exact second derivatives", Harwell report TP 515, 1973. (1/‖p(λ)‖에 대한 뉴턴)
+6. J. J. Moré, D. C. Sorensen, "Computing a trust region step", *SIAM Journal on Scientific and Statistical Computing* 4(3), 553–572, 1983. doi:10.1137/0904038
+7. T. F. Coleman, Y. Li, "An interior trust region approach for nonlinear minimization subject to bounds", *SIAM Journal on Optimization* 6(2), 418–445, 1996. doi:10.1137/0806023
+8. M. A. Branch, T. F. Coleman, Y. Li, "A subspace, interior, and conjugate gradient method for large-scale bound-constrained minimization problems", *SIAM Journal on Scientific Computing* 21(1), 1–23, 1999. doi:10.1137/S1064827595289108
+9. scipy 1.18.1, `scipy/optimize/_lsq/trf.py`, `common.py`, `least_squares.py`. (trf_bounds, solve_lsq_trust_region, select_step, update_tr_radius, check_termination, find_active_constraints)
+10. B. Fornberg, "Generation of finite difference formulas on arbitrarily spaced grids", *Mathematics of Computation* 51(184), 699–706, 1988. doi:10.1090/S0025-5718-1988-0935077-0 (5점 중앙·한쪽 차분의 가중치)
+11. NIST Statistical Reference Datasets, Nonlinear Regression. https://www.itl.nist.gov/div898/strd/nls/

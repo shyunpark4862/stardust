@@ -1,0 +1,543 @@
+---
+kind: concept
+title: 가설검정의 기본
+group: 기본 개념
+order: 1
+summary: sd.htest의 검정을 처음 쓸 때 읽는 페이지예요. 가설검정이 무엇을 묻고 p값을 어떻게 읽는지, 어떤 질문에 어떤 검정을 쓰는지, 그리고 모든 검정이 함께 따르는 호출 모양, axis와 배치, NaN과 퇴화한 입력, 옵션, 에러의 약속을 설명해요.
+seeAlso: [results, ttest_ind, ttest_1samp, mannwhitneyu, chi2_contingency, multipletests, methods]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+export const tDensity = [[-5.0, 0.0002], [-4.9, 0.0003], [-4.8, 0.0003], [-4.7, 0.0004], [-4.6, 0.0005], [-4.5, 0.0005], [-4.4, 0.0007], [-4.3, 0.0008], [-4.2, 0.001], [-4.1, 0.0012], [-4.0, 0.0014], [-3.9, 0.0017], [-3.8, 0.0021], [-3.7, 0.0025], [-3.6, 0.0031], [-3.5, 0.0038], [-3.4, 0.0046], [-3.3, 0.0055], [-3.2, 0.0067], [-3.1, 0.0081], [-3.0, 0.0098], [-2.9, 0.0119], [-2.8, 0.0144], [-2.7, 0.0173], [-2.6, 0.0209], [-2.5, 0.0251], [-2.4, 0.03], [-2.3, 0.0359], [-2.2, 0.0427], [-2.1, 0.0506], [-2.0, 0.0598], [-1.9, 0.0704], [-1.8, 0.0824], [-1.7, 0.096], [-1.6, 0.1112], [-1.5, 0.128], [-1.4, 0.1464], [-1.3, 0.1663], [-1.2, 0.1876], [-1.1, 0.2099], [-1.0, 0.233], [-0.9, 0.2563], [-0.8, 0.2796], [-0.7, 0.3021], [-0.6, 0.3232], [-0.5, 0.3425], [-0.4, 0.3592], [-0.3, 0.3729], [-0.2, 0.383], [-0.1, 0.3893], [0.0, 0.3914], [0.1, 0.3893], [0.2, 0.383], [0.3, 0.3729], [0.4, 0.3592], [0.5, 0.3425], [0.6, 0.3232], [0.7, 0.3021], [0.8, 0.2796], [0.9, 0.2563], [1.0, 0.233], [1.1, 0.2099], [1.2, 0.1876], [1.3, 0.1663], [1.4, 0.1464], [1.5, 0.128], [1.6, 0.1112], [1.7, 0.096], [1.8, 0.0824], [1.9, 0.0704], [2.0, 0.0598], [2.1, 0.0506], [2.2, 0.0427], [2.3, 0.0359], [2.4, 0.03], [2.5, 0.0251], [2.6, 0.0209], [2.7, 0.0173], [2.8, 0.0144], [2.9, 0.0119], [3.0, 0.0098], [3.1, 0.0081], [3.2, 0.0067], [3.3, 0.0055], [3.4, 0.0046], [3.5, 0.0038], [3.6, 0.0031], [3.7, 0.0025], [3.8, 0.0021], [3.9, 0.0017], [4.0, 0.0014], [4.1, 0.0012], [4.2, 0.001], [4.3, 0.0008], [4.4, 0.0007], [4.5, 0.0005], [4.6, 0.0005], [4.7, 0.0004], [4.8, 0.0003], [4.9, 0.0003], [5.0, 0.0002]];
+export const tObserved = [[-3.562, 0], [-3.562, 0.4], [-3.562, NaN], [3.562, 0], [3.562, 0.4]];
+export const tCritical = [[-2.16, 0], [-2.16, 0.4], [-2.16, NaN], [2.16, 0], [2.16, 0.4]];
+
+## 가설검정이란
+
+포장 기계 두 대가 커피를 봉지에 담아요. 봉지마다 250g이 들어가야 하는데, 기계 A로 담은 봉지 여덟 개와 기계 B로 담은 봉지 일곱 개의 무게를 재 보니 이랬어요.
+
+```python
+>>> import stardust as sd
+>>> a = [251.2, 249.8, 252.1, 250.6, 251.9, 250.3, 252.4, 251.0]
+>>> b = [249.1, 250.2, 248.7, 249.9, 250.8, 248.9, 249.6]
+>>> sd.mean(sd.asarray(a)), sd.mean(sd.asarray(b))
+(251.16250000000002, 249.6)
+```
+
+A의 평균이 1.6g쯤 커요. 그런데 봉지 무게는 원래 조금씩 흔들리니, 두 기계가 사실 똑같이 담는데 우연히 이만큼 차이가 났을 수도 있어요. **가설검정**은 "이 차이가 우연만으로 설명되나?"를 숫자로 답하는 방법이에요.
+
+```python
+>>> r = sd.htest.ttest_ind(a, b)
+>>> r
+TtestIndResult(statistic=3.56201, pvalue=0.00347552, df=13)
+```
+
+[`ttest_ind`](/api/htest/ttest_ind/)는 두 표본의 평균이 같은지 보는 t 검정이에요. 결과의 `pvalue` ≈ 0.0035가 답이에요. 두 기계가 정말 똑같이 담는다면, 이만큼 이상 차이 나는 표본을 얻을 확률이 0.35%쯤이라는 뜻이에요. 그 정도로 드문 일이 일어났다고 보기보다는 두 기계가 다르게 담는다고 보는 편이 자연스러워요.
+
+### 귀무가설과 대립가설
+
+검정은 언제나 두 가설을 견줘요.
+
+| 말 | 뜻 | 위 예에서 |
+|---|---|---|
+| 귀무가설 $H_0$ | 차이나 효과가 없다는 가설. 검정은 이것이 맞다고 놓고 계산해요 | 두 기계가 담는 무게의 평균이 같아요 |
+| 대립가설 $H_1$ | 귀무가설이 틀렸을 때의 가설 | 두 평균이 달라요 |
+| 검정통계량 `statistic` | 데이터가 귀무가설에서 얼마나 벗어났는지 재는 수 하나 | t = 3.56 |
+| 귀무분포 | 귀무가설이 맞을 때 검정통계량이 따르는 분포 | 자유도 13의 t 분포 |
+| p값 `pvalue` | 귀무가설이 맞을 때, 관측한 것만큼 또는 그보다 더 극단인 통계량이 나올 확률 | 0.0035 |
+| 유의수준 $\alpha$ | p값이 이보다 작으면 귀무가설을 버리기로 미리 정한 기준. 흔히 0.05예요 | 0.05 |
+
+검정통계량은 검정마다 달라요. t 검정은 평균의 차를 그 표준오차로 나눈 t이고, 분산분석은 F, 분할표는 카이제곱 통계량이에요. 어떤 통계량이든 "귀무가설에서 벗어날수록 커진다(또는 작아진다)"는 점은 같아서, 귀무분포에서 관측값이 얼마나 끝자락에 있는지로 p값을 읽어요.
+
+<Fig caption="귀무가설이 맞을 때 t가 따르는 분포(자유도 13의 t 분포)와 관측한 t = ±3.56의 자리(바깥 세로선). 양쪽 p값은 바깥 세로선보다 더 바깥에 있는 넓이예요. 0.0035로 아주 작아서 그림에서는 거의 보이지 않아요. 안쪽 세로선 ±2.16은 넓이가 양쪽 합해 0.05가 되는 자리라서, 관측한 t가 이 밖에 있으면 p < 0.05예요.">
+  <Plot
+    curves={[
+      { points: tDensity, label: 't(13) 밀도' },
+      { points: tObserved, label: '관측한 t' },
+      { points: tCritical, label: '유의수준 0.05의 경계', dashed: true },
+    ]}
+    domain={[-5, 5]}
+    range={[0, 0.42]}
+    xTicks={[
+      { v: -4, label: '-4' },
+      { v: -2, label: '-2' },
+      { v: 0, label: '0' },
+      { v: 2, label: '2' },
+      { v: 4, label: '4' },
+    ]}
+    yTicks={[
+      { v: 0.1, label: '0.1' },
+      { v: 0.2, label: '0.2' },
+      { v: 0.3, label: '0.3' },
+      { v: 0.4, label: '0.4' },
+    ]}
+  />
+</Fig>
+
+### p값을 읽을 때
+
+p값은 쓰기 쉬운 만큼 잘못 읽기도 쉬워요.
+
+- p값은 "귀무가설이 맞을 확률"이 아니에요. 귀무가설이 맞다고 놓았을 때 이런 데이터가 나올 확률이에요. 0.0035는 "두 기계가 같을 확률이 0.35%"라는 뜻이 아니에요.
+- p값이 크다고 귀무가설이 맞다는 뜻도 아니에요. 표본이 작으면 실제 차이가 있어도 p값이 커요. "차이를 보이기에 데이터가 모자라다"로 읽어요.
+- p값은 차이의 크기를 말하지 않아요. 표본이 아주 크면 쓸모없을 만큼 작은 차이에도 p값이 작아요. 차이가 얼마인지는 [신뢰구간](#신뢰구간)이나 효과의 크기로 봐요.
+- 유의수준은 데이터를 보기 전에 정해요. 여러 검정을 한꺼번에 하면 그중 몇은 우연히 작은 p값이 나와서, 보정이 필요해요([`multipletests`](/api/htest/multipletests/)).
+
+### 한쪽 검정
+
+기계 A가 "더 많이" 담는지만 궁금하다면, 대립가설을 한쪽으로 잡아요. `alternative='greater'`는 "첫 표본의 평균이 더 크다", `'less'`는 "더 작다"가 대립가설이에요. 기본값 `'two-sided'`는 "다르다"예요.
+
+```python
+>>> sd.htest.ttest_ind(a, b, alternative='greater').pvalue
+0.0017377623892604454
+>>> sd.htest.ttest_ind(a, b, alternative='less').pvalue
+0.9982622376107395
+```
+
+관측한 차이가 대립가설의 방향이면 한쪽 p값은 양쪽 p값의 반이고, 반대 방향이면 1에 가까워요. 방향은 데이터를 보기 전에 정해요. 데이터를 보고 나서 차이가 난 쪽으로 한쪽 검정을 고르면 p값이 실제보다 반으로 작아져요.
+
+### 신뢰구간
+
+신뢰구간이 있는 검정은 결과에 `conf_int()` 메서드가 있어요. 두 평균의 차가 0.61g과 2.51g 사이에 있다고 보는 95% 구간이에요.
+
+```python
+>>> r.conf_int()
+array([0.6148408018391772,  2.510159198160829], dtype=float64)
+```
+
+구간에 0이 들어 있지 않다는 것과 양쪽 p값이 0.05보다 작다는 것은 같은 이야기예요. 구간은 거기에 차이의 크기까지 알려 줘요. 신뢰구간과 다른 필드의 읽는 법은 [결과 객체 읽기](/api/htest/results/)에 있어요.
+
+## 어떤 질문에 어떤 검정
+
+검정은 묻는 질문과 데이터의 꼴로 골라요. 데이터가 정규분포에 가깝다고 볼 수 있으면 평균과 분산을 직접 쓰는 검정(모수 검정)이 힘이 세고, 그렇게 보기 어렵거나 이상값이 있으면 순위를 쓰는 검정이 안전해요.
+
+| 이런 질문이라면 | 검정 |
+|---|---|
+| 한 표본의 평균이 어떤 값과 같은가 | [`ttest_1samp`](/api/htest/ttest_1samp/) |
+| 같은 대상을 두 번 잰 값(전과 후)의 평균이 같은가 | [`ttest_rel`](/api/htest/ttest_rel/), 순위로는 [`wilcoxon`](/api/htest/wilcoxon/) |
+| 서로 다른 두 집단의 평균이 같은가 | [`ttest_ind`](/api/htest/ttest_ind/), 요약값만 있으면 [`ttest_ind_from_stats`](/api/htest/ttest_ind_from_stats/) |
+| 두 집단의 분포가 같은가(한쪽이 더 큰 값을 내는가) | [`mannwhitneyu`](/api/htest/mannwhitneyu/), [`brunnermunzel`](/api/htest/brunnermunzel/), [`ks_2samp`](/api/htest/ks_2samp/) |
+| 셋 이상인 집단의 평균이 모두 같은가 | [`f_oneway`](/api/htest/f_oneway/), 분산이 다르면 [`alexandergovern`](/api/htest/alexandergovern/), 순위로는 [`kruskal`](/api/htest/kruskal/) |
+| 평균이 다르다면 어느 집단끼리 다른가 | [`tukey_hsd`](/api/htest/tukey_hsd/), 대조군과 견주면 [`dunnett`](/api/htest/dunnett/) |
+| 집단들의 분산(퍼짐)이 같은가 | [`levene`](/api/htest/levene/), [`bartlett`](/api/htest/bartlett/), [`fligner`](/api/htest/fligner/) |
+| 같은 대상을 여러 조건에서 잰 값이 같은가 | [`friedmanchisquare`](/api/htest/friedmanchisquare/) |
+| 데이터가 정규분포를 따르는가 | [`shapiro`](/api/htest/shapiro/), [`normaltest`](/api/htest/normaltest/), [`anderson`](/api/htest/anderson/) |
+| 데이터가 정해 둔 분포를 따르는가 | [`ks_1samp`](/api/htest/ks_1samp/), [`cramervonmises`](/api/htest/cramervonmises/), [`goodness_of_fit`](/api/htest/goodness_of_fit/) |
+| 범주별 개수가 기대한 비율과 맞는가 | [`chisquare`](/api/htest/chisquare/) |
+| 두 변수가 함께 움직이는가 | [`pearsonr`](/api/htest/pearsonr/), 순위로는 [`spearmanr`](/api/htest/spearmanr/), [`kendalltau`](/api/htest/kendalltau/) |
+| 두 범주 변수가 서로 관계가 있는가(분할표) | [`chi2_contingency`](/api/htest/chi2_contingency/), 작은 표는 [`fisher_exact`](/api/htest/fisher_exact/) |
+| 성공 비율이 어떤 값과 같은가 | [`binomtest`](/api/htest/binomtest/), 구간만 필요하면 [`proportion_confint`](/api/htest/proportion_confint/) |
+| 두 집단의 성공 비율이 같은가 | [`test_proportions_2indep`](/api/htest/test_proportions_2indep/), [`proportions_ztest`](/api/htest/proportions_ztest/) |
+| 검정 여러 개의 p값을 함께 보정하고 싶어요 | [`multipletests`](/api/htest/multipletests/), [`false_discovery_control`](/api/htest/false_discovery_control/) |
+| 원하는 통계량으로 분포 가정 없이 검정하고 싶어요 | [`permutation_test`](/api/htest/permutation_test/), [`monte_carlo_test`](/api/htest/monte_carlo_test/) |
+| 통계량의 신뢰구간을 재표본으로 구하고 싶어요 | [`bootstrap`](/api/htest/bootstrap/) |
+
+<Callout type="note" title="검정을 고르는 순서">
+
+검정은 데이터를 모으기 전에 정하는 것이 원칙이에요. 여러 검정을 돌려 보고 p값이 가장 작은 것을 고르면, 앞의 다중 검정과 같은 이유로 p값이 실제보다 작게 보여요. 정규성 검정의 결과를 보고 t 검정과 순위 검정 가운데 하나를 고르는 것도 같은 문제가 있어요. 표본이 작으면 정규성 검정이 벗어남을 잘 잡지 못하고, 크면 t 검정에 해가 없는 작은 벗어남까지 잡아요.
+
+</Callout>
+
+## 호출 모양: 데이터는 위치로, 옵션은 키워드로
+
+모든 검정은 데이터를 이름 없이 위치로 받고, 옵션은 키워드로만 받아요. 인자의 이름과 옵션의 이름은 scipy의 `scipy.stats`와 같아요(scipy에 없는 다중 비교 보정과 비율 검정은 statsmodels의 이름이에요).
+
+```python
+>>> sd.htest.ttest_ind(a, b, equal_var=False, alternative='greater')
+TtestIndResult(statistic=3.61095, pvalue=0.001588, df=12.9697)
+>>> sd.htest.ttest_ind(a=a, b=b)
+Traceback (most recent call last):
+    ...
+TypeError: ttest_ind(): got some positional-only arguments passed as keyword arguments: 'a, b'
+>>> sd.htest.ttest_ind(a, b, False)
+Traceback (most recent call last):
+    ...
+TypeError: ttest_ind(): takes 2 positional arguments but 3 were given
+```
+
+표본을 여럿 받는 검정(`f_oneway`, `kruskal`, `levene` 등)은 표본을 원하는 만큼 위치로 주고, 그 뒤가 모두 키워드예요.
+
+```python
+>>> c = [250.1, 249.5, 250.9, 250.4, 249.8, 250.6]
+>>> sd.htest.f_oneway(a, b, c)
+FOnewayResult(statistic=7.84517, pvalue=0.00354735, df_num=2, df_denom=18)
+```
+
+같은 옵션의 다른 이름(별칭)은 받지 않아요. scipy가 함께 받는 `random_state`와 `seed`도 없고, 무작위를 쓰는 검정은 [`rng`](#무작위-rng) 하나만 받아요. 없는 옵션은 함수 이름으로 시작하는 `TypeError`예요.
+
+```python
+>>> sd.htest.ttest_ind(a, b, equal_variance=True)
+Traceback (most recent call last):
+    ...
+TypeError: ttest_ind(): unexpected keyword argument 'equal_variance'
+```
+
+## 데이터의 꼴
+
+표본, 표, 개수 같은 데이터는 [sd.stats의 기술통계](/api/stats/describe/)와 같은 것을 받아요.
+
+- `sd.ndarray`, 수의 리스트나 튜플(중첩 리스트도), numpy 배열, `sd.frame`의 `Series`와 `DataFrame`이에요.
+- 계산은 float64로 해요. bool과 정수도 float64로 바꿔서 써요.
+- 실수 하나(스칼라)는 원소가 하나인 표본이에요.
+- 복소수와 숫자가 아닌 것은 `TypeError`예요.
+
+```python
+>>> sd.htest.ttest_1samp([1, 2, 3, 5], 0.0)
+Ttest1sampResult(statistic=3.22047, pvalue=0.0485669, df=3)
+>>> sd.htest.ttest_1samp([True, False, True], 0.0).df
+2.0
+>>> sd.htest.ttest_ind(a, {'x': 1.0})
+Traceback (most recent call last):
+    ...
+TypeError: ttest_ind(): 'b' must be an sd.ndarray, a sequence of numbers or a frame Series or DataFrame, not dict
+>>> sd.htest.ttest_ind(a, [1 + 2j, 3.0])
+Traceback (most recent call last):
+    ...
+TypeError: ttest_ind(): 'b' must be real, not a complex128 array
+```
+
+frame의 열을 그대로 줄 수 있어요. 빠진 값(NA)은 NaN으로 읽어서 [`nan_policy`](#nan과-nan_policy)를 따라요.
+
+```python
+>>> df = sd.frame.DataFrame({'before': [72.0, 80, 65, 90, 75, 68], 'after': [70.0, 76, 66, 85, 71, None]})
+>>> sd.htest.ttest_rel(df['before'], df['after'], nan_policy='omit')
+TtestRelResult(statistic=2.62244, pvalue=0.0586491, df=4)
+```
+
+분할표와 개수를 받는 검정은 값이 음이 아닌 정수여야 해요. `12.0`처럼 정수 값인 float는 받아요.
+
+```python
+>>> sd.htest.fisher_exact([[12, 5], [3, 10.0]])
+FisherExactResult(statistic=8, pvalue=0.0253277)
+>>> sd.htest.fisher_exact([[12, 5], [3, 10.5]])
+Traceback (most recent call last):
+    ...
+ValueError: fisher_exact(): 'table' must hold integer counts >= 0
+```
+
+## axis와 배치
+
+### 기본은 전체를 표본 하나로
+
+`axis`의 기본값은 None이에요. 배열이 몇 차원이든 모든 원소를 펼쳐 표본 하나로 보고, 검정 하나를 해요. sd.stats의 기술통계(`sd.stats.describe` 등)와 같은 기본값이에요.
+
+```python
+>>> X = sd.asarray([[5.1, 4.9, 5.6, 5.8],
+...                 [6.0, 5.3, 5.5, 5.7],
+...                 [4.8, 5.0, 4.7, 5.2]])
+>>> sd.htest.ttest_1samp(X, 5.0)
+Ttest1sampResult(statistic=2.47461, pvalue=0.0308676, df=11)
+```
+
+### 배치: 검정 여러 개를 한 번에
+
+`axis`에 축을 주면 그 축을 따라 표본을 읽고, 남은 축마다 따로 검정해요. 위 `X`의 행 셋이 각각 다른 날의 표본이라면 `axis=1`로 하루에 하나씩, 검정 세 개를 한 번에 해요. 이것을 **배치**라고 불러요.
+
+```python
+>>> rb = sd.htest.ttest_1samp(X, 5.0, axis=1)
+>>> rb
+Ttest1sampResult(batch shape (3,))
+>>> rb.statistic
+array([ 1.6654083300081028,   4.186091791394605, -0.6764814252025454], dtype=float64)
+>>> rb.pvalue
+array([ 0.1944209099340627, 0.02484930142645937,  0.5472220316449558], dtype=float64)
+```
+
+결과의 필드는 남은 축의 모양(배치 모양)의 배열이에요. `axis=0`이면 열마다 검정해서 길이 4의 배열이에요. 축을 여럿 주면(`axis=(0, 1)`) 그 축들을 함께 펼쳐 표본 하나로 읽어요.
+
+```python
+>>> sd.htest.ttest_1samp(X, 5.0, axis=0).statistic.shape
+(4,)
+>>> sd.htest.ttest_1samp(X, 5.0, axis=(0, 1)).statistic
+2.4746133718636103
+```
+
+배치의 검정은 서로 독립이에요. 검정 하나를 혼자 부른 결과와 배치 안의 결과는 비트까지 같고, 한 줄의 NaN이나 퇴화가 다른 줄에 번지지 않아요.
+
+```python
+>>> one = sd.htest.ttest_1samp(X[1], 5.0)
+>>> one.statistic == rb.statistic[1], one.pvalue == rb.pvalue[1]
+(True, True)
+```
+
+`keepdims=True`면 표본 축을 길이 1로 남겨서, 결과를 원래 배열과 바로 브로드캐스트할 수 있어요.
+
+```python
+>>> sd.htest.ttest_1samp(X, 5.0, axis=1, keepdims=True).statistic.shape
+(3, 1)
+```
+
+축 번호가 배열의 차원을 넘거나 같은 축을 두 번 쓰면 `ValueError`예요.
+
+```python
+>>> sd.htest.ttest_1samp(X, 5.0, axis=2)
+Traceback (most recent call last):
+    ...
+ValueError: ttest_1samp(): axis 2 is out of bounds for an array of dimension 2
+>>> sd.htest.ttest_1samp(X, 5.0, axis=(1, 1))
+Traceback (most recent call last):
+    ...
+ValueError: ttest_1samp(): repeated axis
+```
+
+### 표본이 여럿일 때의 배치
+
+표본이 둘 이상인 검정은 표본 축 밖의 축끼리 [브로드캐스트](/api/array/broadcasting/)해요. 차원 수가 다르면 앞에 길이 1의 축을 붙여 맞춘 뒤 견줘요. 표본 축의 길이는 표본마다 달라도 돼요.
+
+```python
+>>> A = sd.asarray([[5.1, 4.9, 5.6, 5.8, 6.0], [1.0, 2, 3, 4, 5]])
+>>> B = [4.8, 5.0, 4.7]
+>>> sd.htest.ttest_ind(A, B, axis=1).statistic
+array([ 2.2679073592383494, -1.9400221986840411], dtype=float64)
+>>> sd.htest.ttest_ind(A, [[1.0, 2], [3, 4], [5, 6]], axis=1)
+Traceback (most recent call last):
+    ...
+ValueError: ttest_ind(): shapes could not be broadcast together outside the sample axes: (2, 5), (3, 2)
+```
+
+위의 첫 호출은 `A`의 두 행이 각각 같은 `B`와 견줘진 검정 두 개예요.
+
+### 짝지은 표본
+
+짝지은 두 표본을 받는 검정(`ttest_rel`, 두 표본의 `wilcoxon`, 상관 검정)은 원소가 짝이라서 표본 축의 길이도 같아야 해요.
+
+```python
+>>> sd.htest.ttest_rel(a, b)
+Traceback (most recent call last):
+    ...
+ValueError: ttest_rel(): the paired samples must agree in size, not 8 and 7
+```
+
+### 표를 받는 검정
+
+분할표를 받는 검정(`chi2_contingency`, `fisher_exact`, `mcnemar` 등)과 `page_trend_test`, `cochrans_q`는 `axis`가 없어요. 마지막 두 축이 표 하나이고 그 앞의 축이 배치예요. (2, 2, 2) 배열은 2 × 2 표 두 개의 검정이에요.
+
+```python
+>>> tables = sd.asarray([[[12, 5], [3, 10]],
+...                      [[8, 8], [7, 9]]])
+>>> rt = sd.htest.chi2_contingency(tables)
+>>> rt
+Chi2ContingencyResult(batch shape (2,))
+>>> rt.pvalue
+array([0.027061581911647137,                  1.0], dtype=float64)
+```
+
+## NaN과 nan_policy
+
+데이터에 NaN이 있을 때 어떻게 할지는 `nan_policy`로 정해요. 세 값은 sd.stats의 기술통계, sd.regression과 같아요.
+
+| `nan_policy` | 동작 |
+|---|---|
+| `'propagate'`(기본) | NaN이 있는 검정의 결과가 NaN이에요. 배치면 NaN이 있는 줄만 NaN이에요 |
+| `'omit'` | 줄마다 NaN을 빼고, 남은 크기로 검정해요. 짝지은 표본은 한쪽에 NaN이 있는 짝을 통째로 빼요 |
+| `'raise'` | `ValueError`예요 |
+
+```python
+>>> y = [1.0, sd.nan, 3, 4]
+>>> sd.htest.ttest_1samp(y, 0.0)
+Ttest1sampResult(statistic=nan, pvalue=nan, df=nan)
+>>> sd.htest.ttest_1samp(y, 0.0, nan_policy='omit')
+Ttest1sampResult(statistic=3.02372, pvalue=0.0941784, df=2)
+>>> sd.htest.ttest_1samp(y, 0.0, nan_policy='raise')
+Traceback (most recent call last):
+    ...
+ValueError: ttest_1samp(): the input contains NaN (nan_policy='raise')
+```
+
+`'omit'`은 배치에서도 돼요. 줄마다 남는 크기가 달라도 결과는 같은 배치 모양의 배열이에요.
+
+```python
+>>> Y = sd.asarray([[1.0, 2, 3, 4], [2.0, sd.nan, 5, 6]])
+>>> sd.htest.ttest_1samp(Y, 0.0, axis=1, nan_policy='omit').df
+array([3.0, 2.0], dtype=float64)
+```
+
+## 무한대
+
+±inf는 에러가 아니에요. 순위를 쓰는 검정(`mannwhitneyu`, `wilcoxon`, `kruskal` 등)은 inf를 가장 큰 값, −inf를 가장 작은 값으로 순서대로 다뤄서 정상적인 결과를 내요. 평균과 분산을 쓰는 검정은 sd.stats의 규칙을 따라요. 합이 유한하지 않으면 평균과 분산을 정할 수 없어서 통계량과 p값이 NaN이에요.
+
+```python
+>>> sd.htest.ttest_1samp([1.0, sd.inf, 3, 4], 0.0)
+Ttest1sampResult(statistic=nan, pvalue=nan, df=3)
+>>> sd.htest.mannwhitneyu([1.0, 5, sd.inf], [2.0, 3, 4]).statistic
+6.0
+```
+
+## 퇴화한 입력은 NaN
+
+검정할 수 없는 데이터는 에러도 경고도 없이 NaN을 내요. 배치면 그 줄만 NaN이고 다른 줄은 그대로 계산해요.
+
+- 표본이 비었을 때
+- 관측이 그 검정에 너무 적을 때. 예를 들어 t 검정은 표본마다 둘 이상이 필요하고, `shapiro`는 셋, `kurtosistest`는 다섯, `skewtest`는 여덟 이상이 필요해요. 검정마다의 최소 크기는 그 페이지에 있어요
+- 분산이 0일 때. 모든 값이 같은 표본은 평균의 차를 나눌 표준오차가 0이라 t를 정할 수 없어요. 순위 검정(`mannwhitneyu`, `kruskal`, `ansari`, `ranksums` 등)도 모든 값이 같으면 순위가 모두 같아 견줄 분포가 없어서 p값이 NaN이에요
+- 요약값이 데이터를 나타낼 수 없을 때. `ttest_ind_from_stats`의 음수 표준편차나 유한하지 않은 평균·표준편차가 그래요
+
+```python
+>>> sd.htest.ttest_1samp([1.0, 1, 1], 0.0)
+Ttest1sampResult(statistic=nan, pvalue=nan, df=2)
+>>> sd.htest.ttest_1samp([], 0.0)
+Ttest1sampResult(statistic=nan, pvalue=nan, df=nan)
+>>> sd.htest.ttest_1samp(sd.asarray([[1.0, 2, 4], [3.0, 3, 3]]), 0.0, axis=1).statistic
+array([2.6457513110645907,                nan], dtype=float64)
+```
+
+모든 값이 같은지는 "값이 평균에 비해 반올림 크기만큼도 흩어지지 않았는가"로 판정해요. 편차 제곱의 평균이 $(\varepsilon \cdot \text{평균})^2$ 이하이면($\varepsilon = 2^{-52}$) 상수로 봐요. 그래서 `0.1 + 0.2`와 `0.3`처럼 반올림 때문에 마지막 자리만 다른 값도 상수예요. sd.stats의 왜도, 첨도와 같은 판정이에요.
+
+```python
+>>> sd.htest.ttest_1samp([0.1 + 0.2, 0.3, 0.3], 0.0)
+Ttest1sampResult(statistic=nan, pvalue=nan, df=2)
+```
+
+NaN이 아니라 에러가 나는 것은 데이터의 값이 아니라 호출이 틀린 경우예요. 표본이 둘 이상 필요한 검정에 하나만 주면 `TypeError`예요.
+
+```python
+>>> sd.htest.f_oneway(a)
+Traceback (most recent call last):
+    ...
+TypeError: f_oneway(): at least two samples are required, not 1
+```
+
+## 옵션
+
+### alternative
+
+대립가설의 방향이에요. `'two-sided'`(기본), `'less'`, `'greater'` 셋만 받아요. 방향을 받는 검정은 모두 같은 이름이에요. statsmodels의 `'larger'`, `'smaller'`는 받지 않아요.
+
+```python
+>>> sd.htest.ttest_ind(a, b, alternative='larger')
+Traceback (most recent call last):
+    ...
+ValueError: ttest_ind(): 'alternative' must be 'two-sided', 'less' or 'greater', not 'larger'
+```
+
+`'less'`와 `'greater'`는 첫 표본(또는 통계량)을 기준으로 읽어요. 두 표본 검정의 `'greater'`는 "첫 표본 쪽이 더 크다"가 대립가설이에요. 한쪽 검정의 신뢰구간은 한 끝이 ±inf예요([결과 객체 읽기](/api/htest/results/#신뢰구간-conf_int)).
+
+### method와 'auto'
+
+정확한 귀무분포와 근사를 모두 갖춘 검정(`mannwhitneyu`, `wilcoxon`, `ks_1samp`, `ks_2samp`, `ansari`, `kendalltau`, `cramervonmises_2samp`, `page_trend_test`)은 `method`로 고를 수 있어요. 기본값 `'auto'`는 scipy와 같은 기준으로 골라요. 표본이 작고 동점이 없으면 정확한 분포를, 크면 근사를 써요. 어느 쪽을 썼는지는 결과의 `method` 필드에 적혀요.
+
+```python
+>>> u = sd.htest.mannwhitneyu(a, b)
+>>> u.method, u.pvalue
+('exact', 0.005905205905205905)
+>>> b_tied = [249.1, 250.2, 248.7, 249.9, 250.8, 248.9, 250.3]
+>>> u = sd.htest.mannwhitneyu(a, b_tied)
+>>> u.method, u.pvalue
+('asymptotic', 0.014997038636807344)
+```
+
+둘째 호출은 B의 마지막 봉지를 250.3g으로 바꿔서 A의 봉지 하나와 무게가 같아졌어요. 동점이 생기면 `'auto'`는 정규 근사를 골라요. 배치면 줄마다 따로 골라요. 그래서 `method`가 줄마다의 이름을 배치 모양으로 담은 리스트예요.
+
+```python
+>>> A2 = sd.asarray([[5.1, 4.9, 5.6, 5.8, 6.0], [1.0, 2, 3, 4, 5]])
+>>> B2 = sd.asarray([[4.8, 5.0, 4.7, 5.2], [1.0, 1, 2, 2]])
+>>> sd.htest.mannwhitneyu(A2, B2, axis=1).method
+['exact', 'asymptotic']
+```
+
+### 정확한 방법의 상한
+
+`method='exact'`를 직접 고르면 `'auto'`가 고르지 않는 큰 표본에도 정확한 분포를 써요. 다만 작업량이 검정마다 정해 둔 상한을 넘는 입력은 계산을 시작하기 전에 `ValueError`이고, 메시지가 다른 방법을 알려 줘요. 그래서 어떤 호출도 정해진 시간 안에 끝나요. `'auto'`는 상한 안에서만 정확한 분포를 골라요.
+
+```python
+>>> sd.htest.mannwhitneyu(sd.arange(5000.0), sd.arange(5000.0) + 0.5, method='exact')
+Traceback (most recent call last):
+    ...
+ValueError: mannwhitneyu(): method='exact' needs about 1.87e+15 operations for this input, more than its cap of 1e+09; use method='asymptotic'
+```
+
+### 무작위: rng
+
+무작위를 쓰는 계산(순열 검정, 붓스트랩, 몬테카를로 p값)은 `rng=`에 [`sd.random.default_rng(seed)`](/api/random/default_rng/)로 만든 생성기를 꼭 줘야 해요. 시드 없이 무작위로 도는 기본값은 없어요. 같은 상태의 생성기와 같은 입력이면 같은 비트가 나와서, 결과를 언제든 다시 만들 수 있어요.
+
+```python
+>>> x30, y30 = sd.arange(30.0), sd.arange(30.0) + 0.5
+>>> sd.htest.ttest_ind(x30, y30, method=sd.htest.PermutationMethod())
+Traceback (most recent call last):
+    ...
+TypeError: ttest_ind(): 'rng' must be an sd.random.Generator (sd.random.default_rng(seed)), not NoneType
+>>> sd.htest.MonteCarloMethod(rng=sd.random.default_rng(0))
+MonteCarloMethod(n_resamples=9999, batch=None, rvs=None, rng=Generator(Philox4x64-10))
+```
+
+순열 검정은 표본이 작아서 모든 순열을 다 셀 수 있으면 무작위를 쓰지 않으므로 `rng` 없이도 돼요. numpy의 생성기는 받지 않아요. 재표본으로 p값을 구하는 법과 다른 검정에 `method=`로 넘기는 법은 [재표본 방법](/api/htest/methods/)에 있어요.
+
+### 그 밖의 옵션
+
+- 문자열 옵션은 정확한 이름만 받아요. 대소문자를 바꾸거나 줄인 이름(`'two'`, `'Exact'`)은 `ValueError`예요.
+- 수 옵션은 int와 float(numpy의 수도)를 받아요. bool은 받지 않아요.
+- True·False 옵션(`equal_var`, `keepdims` 등)은 bool만 받아요. `1`, `0`은 `TypeError`예요.
+
+```python
+>>> sd.htest.ttest_ind(a, b, equal_var=1)
+Traceback (most recent call last):
+    ...
+TypeError: ttest_ind(): 'equal_var' must be True or False, not int
+>>> sd.htest.ttest_ind(a, b, nan_policy='skip')
+Traceback (most recent call last):
+    ...
+ValueError: ttest_ind(): 'nan_policy' must be 'propagate', 'omit' or 'raise', not 'skip'
+```
+
+## 에러와 경고
+
+에러 메시지는 부른 함수의 이름으로 시작하고, 문제인 인자를 작은따옴표 안에 이름으로 적어요. 결과의 메서드(`conf_int`, `summary`)를 틀린 꼴로 부르면 그 메서드의 이름으로 시작해요.
+
+| 에러 | 언제 나나요 |
+|---|---|
+| `TypeError` | 데이터를 키워드로 줌, 옵션을 위치로 줌, 없는 옵션, 받지 않는 데이터(복소수, 문자열, dict), 옵션의 타입이 틀림, 표본이 모자람(`f_oneway`에 하나), `rng`가 생성기가 아님 |
+| `ValueError` | 옵션의 이름이 틀림(`alternative='larger'`), 옵션의 범위를 벗어남, 축 번호가 틀림, 배치 모양이 맞지 않음, 짝지은 표본의 길이가 다름, NaN과 `nan_policy='raise'`, 개수가 음수이거나 정수가 아님, `method='exact'`의 작업량이 상한을 넘음 |
+
+데이터의 값 때문에 검정할 수 없는 경우는 [퇴화한 입력](#퇴화한-입력은-nan)처럼 NaN이고, 경고는 내지 않아요. 근사가 언제 정확한지(작은 표본의 정규 근사 같은 것)는 경고 대신 각 검정의 페이지에 적었어요.
+
+## 같은 입력이면 같은 비트
+
+같은 기계에서 같은 [스레드](/api/array/threads/) 수로 같은 입력을 주면 실행할 때마다 마지막 비트까지 같은 결과가 나와요. 긴 표본 하나도 정해진 크기의 덩어리로 나눠 여러 스레드가 계산하고, 덩어리의 결과를 늘 같은 순서로 합쳐요. 덩어리의 크기는 데이터의 크기로만 정해져서, 지금은 스레드 수를 바꿔도 결과가 같아요(약속은 아니에요).
+
+```python
+>>> rng = sd.random.default_rng(0)
+>>> Z = sd.stats.Normal().sample((50, 2000), rng=rng)
+>>> r1 = sd.htest.ttest_1samp(Z, 0.0, axis=1)
+>>> n = sd.get_num_threads()
+>>> sd.set_num_threads(1)
+>>> r2 = sd.htest.ttest_1samp(Z, 0.0, axis=1)
+>>> sd.set_num_threads(n)
+>>> bool(sd.all(r1.statistic == r2.statistic)), bool(sd.all(r1.pvalue == r2.pvalue))
+(True, True)
+```
+
+약속하는 것은 실행마다 같은 비트와 각 검정 페이지의 정확도예요. scipy, statsmodels, R과는 반올림이 끼지 않는 동작(기본값, 방법을 고르는 기준, NaN의 규칙, 양쪽 p값의 정의)을 맞추고, 다르게 정한 곳은 그 페이지에 이유와 함께 적어요. 반올림 크기의 결과는 마지막 자리가 그 라이브러리와 다를 수 있어요.
+
+## 정확도 약속
+
+- **통계량**은 입력의 double을 정확한 값으로 보고 구한 참값과 상대오차 $10^{-14}$ 안이에요. 평균을 반올림 오차가 거의 없게 구하고 편차를 그 평균에서 재서, 평균이 $10^9$처럼 크고 차이가 작은 데이터도 자릿수를 지켜요. 순위나 개수로 정해지는 통계량(순위 합, 분할표의 개수)은 정확한 값이에요. 통계량 자체가 입력에 예민한 몇 검정(D'Agostino의 변환, Anderson–Darling의 합)은 그 예민함(조건수)을 곱한 크기로 약속해요.
+- **p값**은 정확한 통계량에서 구한 참값과 $10^{-14} \cdot \max(1, \kappa_p)$ 안이에요. $\kappa_p$는 통계량이 조금 움직일 때 p값이 몇 배로 움직이는지를 재는 조건수예요. 깊은 꼬리에서는 통계량의 마지막 자리 차이만으로도 p값이 그만큼 움직여서 이 꼴로 약속해요.
+- p값은 1 − cdf로 구하지 않고 작은 쪽 꼬리를 직접 계산해요. 그래서 아주 작은 p값도 앞자리가 맞아요. 가장 작은 정규 double(약 $2.2 \times 10^{-308}$)보다 작아져도 서브노멀까지 0이 아닌 값이 나와요.
+- 정확한 귀무분포(순위 검정, 정확한 분할표 검정)의 p값은 정확한 유리수 참값과 상대오차 $10^{-14}$ 안이에요.
+- 정규 근사, 정규화 변환, 보간 표처럼 정해진 근사식을 쓰는 p값은 "그 근사식의 값"을 이 정확도로 계산한다는 약속이에요. 근사가 참 분포에 얼마나 가까운지는 각 검정의 페이지에 적었어요.
+- 재표본과 몬테카를로의 p값은 무작위라서, 같은 `rng` 상태면 같은 비트라는 것이 약속이에요.
+
+참값은 Arb(구간 산술)와 정확한 유리수 계산으로 만들었어요.
+
+```python
+>>> x = sd.stats.Normal(mu=10.0, sigma=1.0).sample(200, rng=sd.random.default_rng(1))
+>>> sd.htest.ttest_1samp(x, 0.0).pvalue
+7.992311216582687e-204
+```
+
+## scipy를 아는 분께
+
+scipy 1.18.1, statsmodels 0.15.0 기준이에요.
+
+- 함수 이름과 인자 이름은 `scipy.stats`와 같아요. `scipy.stats.ttest_ind`는 `sd.htest.ttest_ind`예요. scipy에 없는 다중 비교 보정, 비율 검정, McNemar, Cochran Q는 statsmodels의 이름이에요.
+- `axis`의 기본값이 None이에요. scipy는 대부분 0이라서, 2차원 배열을 주면 scipy는 열마다 검정하고 여기서는 전체를 표본 하나로 봐요. scipy처럼 하려면 `axis=0`을 줘요.
+- 데이터는 위치로만, 옵션은 키워드로만 받아요. scipy의 `ttest_ind(a, b, 0)`처럼 옵션을 위치로 주는 꼴은 `TypeError`예요.
+- `random_state`, `seed`가 없고 무작위를 쓰는 곳은 `rng`(sd의 생성기)를 꼭 받아요. scipy는 `rng`를 빼면 시드 없이 무작위로 돌아요.
+- 퇴화한 입력은 경고 없이 NaN이에요. scipy는 경고(`SmallSampleWarning` 등)를 내거나 inf를 내기도 해요. 분산이 0인 `ttest_1samp([1, 1, 1], 0)`은 scipy에서 statistic inf, pvalue 0이고 여기서는 NaN이에요. 모든 값이 같은 표본에서 t는 0/0이라 정할 수 없어서예요.
+- 신뢰구간은 sd.regression과 같은 `conf_int(alpha=0.05)`예요. scipy의 `confidence_interval(confidence_level=0.95)`가 아니고, (아래 끝, 위 끝)의 배열을 돌려줘요.
+- 결과는 검정마다 다른 클래스(`TtestIndResult`)이고 자유도의 이름이 정해져 있어요(t와 카이제곱은 `df`, F는 `df_num`·`df_denom`). scipy가 결과에 자유도를 두지 않는 검정(`f_oneway`, `levene`, `bartlett` 등)에도 있어요. 결과의 별칭(`correlation` 등)은 없어요. 자세한 것은 [결과 객체 읽기](/api/htest/results/#scipy를-아는-분께)에 있어요.
+- `method='auto'`를 둔 검정은 모두 실제로 쓴 방법을 결과의 `method`에 적어요. 배치에서는 scipy가 동점 같은 조건을 배치 전체에서 보고 방법 하나를 고르지만, 여기서는 줄마다 골라요.
+- `method='exact'`의 작업량에 상한이 있어서, 넘는 입력은 계산 전에 `ValueError`예요.
+- 값은 반올림 크기에서 다를 수 있어요. 평균이 아주 크고 차이가 작은 데이터, 분산이 거의 같은 집단, 깊은 꼬리처럼 scipy가 자릿수를 잃는 곳에서는 여기 값이 참값에 더 가까워요. 검정마다의 예는 그 페이지에 있어요.

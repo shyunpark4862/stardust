@@ -1,0 +1,179 @@
+---
+kind: function
+title: 진동수 0을 가운데로
+names: [fftshift, ifftshift]
+group: 도우미
+order: 2
+signatures:
+  - "sd.fft.fftshift(x, /, *, axes=None)"
+  - "sd.fft.ifftshift(x, /, *, axes=None)"
+summary: 푸리에 변환의 결과는 진동수 0이 맨 앞에 있고 음의 진동수가 뒤쪽 절반에 있어요. fftshift는 배열의 앞뒤 절반을 맞바꿔서 진동수 0을 가운데에 두고 낮은 진동수부터 차례로 늘어놓아요. ifftshift는 그것을 되돌려요.
+params:
+  - name: x
+    type: ndarray
+    kind: positional-only
+    desc: 옮길 배열. dtype은 무엇이든 되고 그대로 지켜요. 리스트와 numpy 배열은 받지 않아요.
+  - name: axes
+    type: int, int의 tuple·list, 또는 None
+    kind: keyword-only
+    desc: 옮길 축들. None(기본값)이면 모든 축이에요. 같은 축을 두 번 적을 수 없어요. 빈 tuple이면 아무 축도 옮기지 않은 복사본이에요.
+returns:
+  type: ndarray
+  desc: 입력과 모양과 dtype이 같은 새 배열. 값은 자리만 바뀌고 그대로예요.
+raises:
+  - type: TypeError
+    desc: x가 sd.ndarray가 아닐 때, axes의 원소가 int가 아닐 때, axes를 위치로 줬을 때.
+  - type: ValueError
+    desc: axes의 축이 범위 밖일 때, 같은 축을 거듭 적었을 때.
+seeAlso: [fftfreq, fft, fft2, fftn, basics]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+[`fft`](/api/fft/fft/)의 결과는 진동수 0에서 시작해 양의 진동수, 그다음 음의 진동수 순서예요([`fftfreq`](/api/fft/fftfreq/)). 그림을 그리거나 눈으로 읽을 때는 음의 진동수가 왼쪽, 0이 가운데, 양의 진동수가 오른쪽인 순서가 편해요. `fftshift`가 그렇게 바꿔요.
+
+```python
+>>> import stardust as sd
+>>> f = sd.fft.fftfreq(8)
+>>> f
+array([   0.0,  0.125,   0.25,  0.375,   -0.5, -0.375,  -0.25, -0.125], dtype=float64)
+>>> sd.fft.fftshift(f)
+array([  -0.5, -0.375,  -0.25, -0.125,    0.0,  0.125,   0.25,  0.375], dtype=float64)
+```
+
+스펙트럼과 그 진동수 배열에 똑같이 `fftshift`를 하면 둘이 같은 순서로 맞아요.
+
+<Reference />
+
+## 무엇을 옮기나요
+
+`fftshift`는 축을 따라 $n // 2$칸만큼 뒤로 돌려요. 끝을 넘어간 값은 앞으로 돌아와요. 값은 바뀌지 않고 자리만 바뀌어요.
+
+<Fig caption="길이 7의 fftfreq 순서(진동수의 번호로 적었어요)와 fftshift 뒤의 순서예요. 뒤쪽의 음의 진동수 셋(짙은 칸)이 앞으로 와서 0이 가운데에 놓여요.">
+  <ArrayFig name="fft의 순서" data={[0, 1, 2, 3, -3, -2, -1]} tones={['b', '', '', '', 'a', 'a', 'a']} />
+  <Op note="fftshift">→</Op>
+  <ArrayFig name="가운데가 0" data={[-3, -2, -1, 0, 1, 2, 3]} tones={['a', 'a', 'a', 'b', '', '', '']} />
+</Fig>
+
+```python
+>>> k = sd.asarray([0, 1, 2, 3, -3, -2, -1])
+>>> sd.fft.fftshift(k)
+array([-3, -2, -1,  0,  1,  2,  3], dtype=int64)
+>>> sd.fft.ifftshift(sd.fft.fftshift(k))
+array([ 0,  1,  2,  3, -3, -2, -1], dtype=int64)
+```
+
+[`sd.roll`](/api/array/roll/)로 $n // 2$칸 돌린 것과 같은 결과예요.
+
+```python
+>>> bool(sd.all(sd.fft.fftshift(k) == sd.roll(k, 7 // 2)))
+True
+```
+
+## `fftshift`와 `ifftshift`의 차이
+
+`ifftshift`는 반대쪽으로 $n // 2$칸 돌려요. 길이가 짝수면 두 방향이 같은 결과라서 두 함수가 같아요. 길이가 홀수면 한 칸 차이가 나요. 그래서 홀수 길이에서 `fftshift`를 두 번 하면 제자리로 돌아오지 않아요.
+
+```python
+>>> e = sd.asarray([0, 1, 2, -3, -2, -1])
+>>> sd.fft.fftshift(e)
+array([-3, -2, -1,  0,  1,  2], dtype=int64)
+>>> sd.fft.ifftshift(e)
+array([-3, -2, -1,  0,  1,  2], dtype=int64)
+>>> sd.fft.fftshift(sd.fft.fftshift(k))       # 길이 7: 제자리가 아니에요
+array([ 1,  2,  3, -3, -2, -1,  0], dtype=int64)
+```
+
+- `fft`의 결과를 가운데가 0인 순서로 바꿀 때는 `fftshift`를 써요.
+- 가운데가 0인 순서의 배열을 `fft`·`ifft`에 넣을 순서로 되돌릴 때는 `ifftshift`를 써요.
+
+가운데에 원점을 두고 만든 신호(가운데가 봉우리인 종 모양처럼)를 변환할 때도 `ifftshift`로 원점을 맨 앞으로 옮긴 뒤 `fft`를 해요. 원점 둘레로 대칭인 신호는 원점을 맨 앞에 두고 변환하면 결과가 실수예요. 원점이 가운데인 채로 변환하면 칸마다 위상이 돌아서 허수부가 생겨요.
+
+```python
+>>> bell = sd.asarray([1.0, 4.0, 6.0, 4.0, 1.0])            # 가운데(2번 칸)가 원점
+>>> y = sd.fft.fft(sd.fft.ifftshift(bell))
+>>> sd.round(sd.real(y) * 1e6) / 1e6
+array([    16.0, 6.854102, 0.145898, 0.145898, 6.854102], dtype=float64)
+>>> sd.round(sd.imag(y) * 1e6) / 1e6                       # 허수부가 0이에요
+array([ 0.0,  0.0,  0.0, -0.0, -0.0], dtype=float64)
+>>> sd.round(sd.imag(sd.fft.fft(bell)) * 1e6) / 1e6        # 0이 아니에요
+array([      0.0,  -4.02874,  0.138757, -0.138757,   4.02874], dtype=float64)
+```
+
+## 여러 축
+
+`axes`를 주지 않으면 모든 축을 옮겨요. 2차원 변환([`fft2`](/api/fft/fft2/))의 결과는 진동수 0이 왼쪽 위 구석에 있고, `fftshift`가 그것을 한가운데로 옮겨요.
+
+```python
+>>> m = sd.asarray([[0, 1, 2],
+...                 [3, 4, 5],
+...                 [6, 7, 8]])
+>>> sd.fft.fftshift(m)
+array([[8, 6, 7],
+       [2, 0, 1],
+       [5, 3, 4]], dtype=int64)
+```
+
+여러 줄의 스펙트럼을 쌓은 배열처럼 한 축만 진동수인 배열은 그 축만 옮겨요.
+
+```python
+>>> sd.fft.fftshift(m, axes=1)
+array([[2, 0, 1],
+       [5, 3, 4],
+       [8, 6, 7]], dtype=int64)
+>>> sd.fft.fftshift(m, axes=(0,))
+array([[6, 7, 8],
+       [0, 1, 2],
+       [3, 4, 5]], dtype=int64)
+```
+
+## dtype과 경계
+
+값을 옮기기만 하므로 어떤 dtype이든 받고 그대로 돌려줘요. NaN과 inf도 자리만 바뀌어요. 길이 0이나 1인 축은 그대로예요. 결과는 언제나 새 배열이에요.
+
+```python
+>>> sd.fft.fftshift(sd.asarray([True, False, False]))
+array([False,  True, False], dtype=bool)
+>>> sd.fft.fftshift(sd.asarray([1 + 1j, 2, 3]))
+array([(3+0j), (1+1j), (2+0j)], dtype=complex128)
+>>> sd.fft.fftshift(sd.asarray([sd.nan, 1.0, sd.inf, 2.0]))
+array([inf, 2.0, nan, 1.0], dtype=float64)
+>>> sd.fft.fftshift(sd.zeros(0))
+array([], dtype=float64)
+>>> sd.fft.fftshift(m, axes=())
+array([[0, 1, 2],
+       [3, 4, 5],
+       [6, 7, 8]], dtype=int64)
+```
+
+## 에러
+
+```python
+>>> sd.fft.fftshift(m, axes=(0, 0))
+Traceback (most recent call last):
+    ...
+ValueError: fftshift(): repeated axis
+>>> sd.fft.fftshift(m, axes=2)
+Traceback (most recent call last):
+    ...
+ValueError: fftshift(): axis 2 is out of bounds for an array of dimension 2
+>>> sd.fft.fftshift([1, 2, 3])
+Traceback (most recent call last):
+    ...
+TypeError: fftshift(): 'x' must be an sd.ndarray, not list
+>>> sd.fft.fftshift(m, 1)
+Traceback (most recent call last):
+    ...
+TypeError: fftshift(): takes 1 positional argument but 2 were given
+```
+
+## numpy·scipy를 아는 분께
+
+- `numpy.fft.fftshift`·`ifftshift`, `scipy.fft.fftshift`·`ifftshift`와 이름과 뜻이 같아요.
+- `axes`는 키워드로만 받고, 입력은 `sd.ndarray`만 받아요.
+- 같은 축을 두 번 적으면 `ValueError`예요. numpy와 scipy는 그 축을 두 번 돌려요.
+- 범위 밖의 축은 `ValueError`예요.

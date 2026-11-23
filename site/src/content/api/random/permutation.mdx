@@ -1,0 +1,327 @@
+---
+title: permutation
+names: []
+group: 난수 뽑기
+order: 4
+signatures:
+  - "rng.permutation(x, /)"
+summary: 순서를 무작위로 섞어요. 정수 n이면 0부터 n-1까지를 섞은 배열을, 배열이면 첫 축을 따라 섞은 새 배열을 돌려줘요. 원래 배열은 바뀌지 않아요.
+params:
+  - name: x
+    type: int 또는 ndarray
+    kind: positional-only
+    desc: 섞을 것. 0 이상의 정수 n이면 0, 1, …, n-1을, 배열이면 그 배열을 첫 축(2차원이면 행)을 따라 섞어요.
+returns:
+  type: ndarray
+  desc: 섞은 새 배열. x가 정수면 길이 n인 int64 배열, 배열이면 x와 모양·dtype이 같은 배열이에요.
+raises:
+  - type: TypeError
+    desc: x가 정수나 배열이 아닐 때(리스트, float, bool), 인자를 이름 붙여(x=...) 넘겼을 때.
+  - type: ValueError
+    desc: x가 음수일 때.
+  - type: OverflowError
+    desc: x가 int64 범위를 넘는 정수(2**63 이상)일 때.
+  - type: MemoryError
+    desc: 호출이 받을 메모리(섞은 위치와, 배열이면 섞은 복사본)가 이 컴퓨터의 물리 메모리보다 클 때(예 permutation(2**40)).
+seeAlso: [choice, integers, generator, basics]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import FigRow from '../../../components/fig/FigRow.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+`permutation`은 카드를 섞듯 순서를 무작위로 바꿔요. 모든 원소가 정확히 한 번씩, 다른 순서로 나와요. 이렇게 순서만 바꿔 늘어놓은 것을 **순열**(permutation)이라고 해요.
+
+`rng`는 [default_rng](/api/random/default_rng/)로 만든 [Generator](/api/random/generator/)예요. 예제는 언제나 같은 결과가 나오도록 시드 `42`로 만들었어요. 시드와 재현성은 [난수의 기본](/api/random/basics/)에 있어요.
+
+정수 `n`을 주면 `0, 1, …, n-1`을 섞은 배열을 돌려줘요.
+
+```python
+>>> import stardust as sd
+>>> rng = sd.random.default_rng(42)
+>>> rng.permutation(5)
+array([2, 3, 4, 0, 1], dtype=int64)
+```
+
+배열을 주면 그 배열의 원소를 섞은 새 배열을 돌려줘요. 원래 배열은 그대로예요.
+
+```python
+>>> x = sd.asarray([10, 20, 30, 40, 50])
+>>> rng.permutation(x)
+array([10, 30, 50, 40, 20], dtype=int64)
+>>> x
+array([10, 20, 30, 40, 50], dtype=int64)
+```
+
+<Fig caption="permutation은 원소를 하나도 빼거나 더하지 않고 순서만 바꾼 새 배열을 만들어요. 원래 x는 그대로예요.">
+  <ArrayFig name="x" data={[10, 20, 30, 40, 50]} />
+  <Op note="permutation">→</Op>
+  <ArrayFig name="결과 (새 배열)" data={[10, 30, 50, 40, 20]} tones={['a', 'a', 'a', 'a', 'a']} note="같은 원소, 다른 순서" />
+</Fig>
+
+어느 순서든 나올 확률이 똑같아요. 원소가 `n`개면 가능한 순서가 `n!`(`n × (n-1) × … × 1`)가지인데, 그 가운데 하나를 치우침 없이 골라요.
+
+<Reference />
+
+## 정수를 주면: 섞인 위치
+
+`rng.permutation(n)`의 결과는 `0`부터 `n-1`까지의 정수를 한 번씩 담고 있어요. 그래서 배열의 위치로 쓰기 좋아요. 이 위치로 인덱싱하면 배열이 그 순서로 섞여요.
+
+```python
+>>> rng = sd.random.default_rng(42)
+>>> order = rng.permutation(5)
+>>> order
+array([2, 3, 4, 0, 1], dtype=int64)
+>>> x[order]
+array([30, 40, 50, 10, 20], dtype=int64)
+```
+
+### 여러 배열을 같은 순서로 섞기
+
+이 방법은 짝이 맞는 배열 여러 개를 함께 섞을 때 꼭 필요해요. 학생의 키와 몸무게가 서로 다른 배열에 들어 있다면, 둘을 따로 섞으면 누구의 키와 누구의 몸무게인지 짝이 흩어져요. 섞인 위치를 한 번 만들어 두고 두 배열에 똑같이 쓰면 짝이 유지돼요.
+
+```python
+>>> rng = sd.random.default_rng(2)
+>>> height = sd.asarray([150, 160, 170, 180])
+>>> weight = sd.asarray([45, 55, 65, 75])
+>>> idx = rng.permutation(4)
+>>> height[idx], weight[idx]
+(array([180, 170, 150, 160], dtype=int64), array([75, 65, 45, 55], dtype=int64))
+```
+
+160cm인 학생은 섞인 뒤에도 55kg과 같은 자리에 있어요. 데이터를 훈련 데이터와 검증 데이터로 나누기 전에 섞을 때도 이렇게 해요. 섞인 위치를 앞뒤로 잘라서 쓰면 돼요.
+
+```python
+>>> idx[:3], idx[3:]
+(array([3, 2, 0], dtype=int64), array([1], dtype=int64))
+```
+
+## 배열을 주면: 첫 축을 따라 섞어요
+
+2차원 배열을 주면 행의 순서를 섞어요. 각 행은 통째로 옮겨질 뿐, 행 안의 값은 섞이지 않아요. 표의 한 행이 한 사람의 기록이라면, 기록은 그대로 두고 사람의 순서만 바꾸는 셈이에요.
+
+```python
+>>> rng = sd.random.default_rng(42)
+>>> m = sd.asarray([[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]])
+>>> rng.permutation(m)
+array([[ 4,  5,  6],
+       [ 7,  8,  9],
+       [10, 11, 12],
+       [ 1,  2,  3]], dtype=int64)
+```
+
+<Fig caption="2차원 배열은 행 단위로 섞여요. 행 안의 값(1, 2, 3 등)은 함께 움직여요.">
+  <ArrayFig name="m" data={[[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]]} tones={[['a', 'a', 'a'], ['', '', ''], ['', '', ''], ['', '', '']]} axes />
+  <Op note="permutation">→</Op>
+  <ArrayFig name="결과" data={[[4, 5, 6], [7, 8, 9], [10, 11, 12], [1, 2, 3]]} tones={[['', '', ''], ['', '', ''], ['', '', ''], ['a', 'a', 'a']]} />
+</Fig>
+
+`permutation(행의 수)`로 위치를 섞은 다음 그 위치로 인덱싱하는 것과 같아요.
+
+3차원 이상의 배열도 마찬가지로 첫 축만 섞어요. 나머지 축은 덩어리째 따라 움직여요.
+
+### 열을 섞거나 다른 축을 섞으려면
+
+축을 고르는 인자는 없어요. 다른 축을 섞고 싶으면 그 축의 길이로 위치를 섞은 다음, 그 축 자리에 넣어 인덱싱해요. 열을 섞는다면 이렇게 해요.
+
+```python
+>>> rng = sd.random.default_rng(0)
+>>> m[:, rng.permutation(3)]
+array([[ 3,  1,  2],
+       [ 6,  4,  5],
+       [ 9,  7,  8],
+       [12, 10, 11]], dtype=int64)
+```
+
+모든 행에서 열이 같은 순서로 바뀌었어요. 열 하나가 한 가지 항목(예: 국어·영어·수학 점수)이라면, 항목의 순서만 바뀌고 각 행의 값은 제 항목을 따라가요.
+
+### 모든 원소를 뒤섞으려면
+
+행의 경계를 무시하고 원소 전체를 섞고 싶으면 [ravel](/api/array/reshape/)로 한 줄로 편 뒤 섞고, [reshape](/api/array/reshape/)로 모양을 되돌려요.
+
+```python
+>>> sd.reshape(rng.permutation(sd.ravel(m)), m.shape)
+array([[11,  2,  5],
+       [ 8,  3, 12],
+       [ 4,  6,  9],
+       [10,  1,  7]], dtype=int64)
+```
+
+## 언제나 새 배열이에요
+
+`permutation`은 입력을 바꾸지 않고 섞은 복사본을 만들어요. 입력이 다른 배열의 [뷰](/api/array/views/)여도 그 원래 배열은 건드리지 않아요.
+
+```python
+>>> rng = sd.random.default_rng(42)
+>>> base = sd.asarray([1, 2, 3, 4, 5, 6])
+>>> rng.permutation(base[::2])
+array([3, 5, 1], dtype=int64)
+>>> base
+array([1, 2, 3, 4, 5, 6], dtype=int64)
+```
+
+그래서 결과를 계속 쓰려면 변수에 받아야 해요. `rng.permutation(x)`만 쓰고 결과를 버리면 `x`는 섞이지 않아요.
+
+## 제자리에서 섞고 싶을 때: `x[...] = rng.permutation(x)`
+
+stardust에는 `shuffle`처럼 넘겨받은 배열을 그 자리에서 바꾸는 메서드가 없어요. stardust의 함수는 하나같이 인자를 건드리지 않고 결과를 새로 돌려줘요. 그래서 함수를 부른 뒤에 내 배열이 바뀌었을까 걱정할 필요가 없어요.
+
+대부분은 결과를 같은 이름에 다시 받으면 충분해요.
+
+```python
+>>> x = sd.asarray([10, 20, 30, 40, 50])
+>>> x = rng.permutation(x)
+>>> x
+array([40, 20, 30, 10, 50], dtype=int64)
+```
+
+하지만 이렇게 하면 `x`라는 이름이 새 배열을 가리키게 될 뿐, 원래 배열은 그대로 남아 있어요. 같은 배열을 다른 이름이나 뷰로도 보고 있었다면, 그쪽은 섞이지 않은 채예요.
+
+```python
+>>> data = sd.asarray([1, 2, 3, 4, 5])
+>>> alias = data
+>>> head = data[:2]
+>>> data = rng.permutation(data)
+>>> data, alias, head
+(array([1, 4, 3, 5, 2], dtype=int64), array([1, 2, 3, 4, 5], dtype=int64), array([1, 2], dtype=int64))
+```
+
+원래 배열 자체의 내용을 바꾸고 싶다면, 섞은 결과를 원래 배열에 써 넣어요. `x[...]`는 "x의 모든 원소"라는 뜻이라서, `x[...] = 값`은 x가 가리키는 배열의 내용을 통째로 바꿔요. 그러면 그 배열을 보던 다른 이름과 뷰도 바뀐 내용을 봐요.
+
+```python
+>>> data = sd.asarray([1, 2, 3, 4, 5])
+>>> alias = data
+>>> head = data[:2]
+>>> data[...] = rng.permutation(data)
+>>> data, alias, head
+(array([4, 2, 1, 5, 3], dtype=int64), array([4, 2, 1, 5, 3], dtype=int64), array([4, 2], dtype=int64))
+```
+
+<Fig column caption="x = permutation(x)는 이름만 새 배열로 옮겨요(위). x[...] = permutation(x)는 원래 배열의 내용을 바꿔서, 같은 배열을 보던 alias와 head도 바뀌어요(아래).">
+  <FigRow>
+    <ArrayFig name="data (새 배열)" data={[1, 4, 3, 5, 2]} tones={['a', 'a', 'a', 'a', 'a']} />
+    <ArrayFig name="alias" data={[1, 2, 3, 4, 5]} tones={['m', 'm', 'm', 'm', 'm']} note="원래 배열 그대로" />
+    <ArrayFig name="head" data={[1, 2]} tones={['m', 'm']} />
+  </FigRow>
+  <FigRow>
+    <ArrayFig name="data" data={[4, 2, 1, 5, 3]} tones={['a', 'a', 'a', 'a', 'a']} />
+    <ArrayFig name="alias" data={[4, 2, 1, 5, 3]} tones={['a', 'a', 'a', 'a', 'a']} note="같은 배열" />
+    <ArrayFig name="head" data={[4, 2]} tones={['a', 'a']} note="뷰도 바뀜" />
+  </FigRow>
+</Fig>
+
+2차원 배열에서도 똑같이 써요. 행을 섞은 결과가 원래 배열에 들어가요.
+
+```python
+>>> t = sd.asarray([[1, 2], [3, 4], [5, 6]])
+>>> t[...] = rng.permutation(t)
+>>> t
+array([[5, 6],
+       [1, 2],
+       [3, 4]], dtype=int64)
+```
+
+<Callout type="tip" title="어느 쪽을 쓸까">
+  다른 곳에서 같은 배열을 보고 있지 않다면 `x = rng.permutation(x)`로 충분하고 더 읽기 쉬워요. 함수에 받은 배열을 호출한 쪽에서도 섞인 채로 보게 하고 싶을 때처럼 그 배열 자체를 바꿔야 할 때만 `x[...] = rng.permutation(x)`를 쓰세요.
+</Callout>
+
+## 같은 시드면 같은 순서
+
+시드가 같고 부르는 순서가 같으면 섞인 결과도 언제나 같아요. 컴퓨터나 스레드 수가 달라도 같아요. 그래서 "데이터를 섞어서 나눴다"는 실험도 시드만 적어 두면 누구든 똑같이 다시 할 수 있어요.
+
+```python
+>>> sd.random.default_rng(3).permutation(10)
+array([2, 4, 3, 1, 0, 5, 6, 9, 7, 8], dtype=int64)
+>>> sd.random.default_rng(3).permutation(10)
+array([2, 4, 3, 1, 0, 5, 6, 9, 7, 8], dtype=int64)
+```
+
+같은 생성기로 다시 부르면 다른 순서가 나와요. 생성기가 수열의 다음 자리로 넘어갔기 때문이에요.
+
+```python
+>>> r = sd.random.default_rng(3)
+>>> r.permutation(5), r.permutation(5)
+(array([1, 2, 0, 3, 4], dtype=int64), array([0, 1, 4, 2, 3], dtype=int64))
+```
+
+## 조심할 점
+
+### 리스트는 받지 않아요
+
+`x`는 정수이거나 `sd.ndarray`여야 해요. Python 리스트를 넘기면 `TypeError`예요. `sd.asarray`로 바꾸거나, 리스트를 섞고 싶다면 위치를 섞어서 꺼내세요.
+
+```python
+>>> rng.permutation([1, 2, 3])
+Traceback (most recent call last):
+    ...
+TypeError: permutation(): 'x' must be an int or an array, not list
+>>> words = ["가", "나", "다"]
+>>> [words[i] for i in rng.permutation(len(words))]
+['가', '다', '나']
+```
+
+### 정수는 0 이상이어야 해요
+
+음수는 `ValueError`, 실수나 bool은 `TypeError`예요. `0`이면 빈 배열이 나와요.
+
+```python
+>>> rng.permutation(-1)
+Traceback (most recent call last):
+    ...
+ValueError: permutation(): 'x' must be >= 0
+>>> rng.permutation(3.0)
+Traceback (most recent call last):
+    ...
+TypeError: permutation(): 'x' must be an int or an array, not float
+>>> rng.permutation(0)
+array([], dtype=int64)
+```
+
+### 정수와 길이가 같은 배열은 결과가 달라요
+
+`rng.permutation(5)`는 **위치**를 섞은 것이고, `rng.permutation(x)`는 **값**을 섞은 것이에요. `x`가 `[0, 1, 2, 3, 4]`라면 같은 결과지만, 그 밖의 배열에서는 결과의 뜻이 달라요. 위치가 필요하면(여러 배열을 같은 순서로 섞기 등) 정수를, 섞인 값 자체가 필요하면 배열을 넘기세요.
+
+### 큰 배열은 그만큼 메모리를 더 써요
+
+결과가 언제나 새 배열이라서, 큰 배열을 섞으면 같은 크기의 배열이 하나 더 생겨요. 정수 `n`을 넘기면 길이 `n`인 int64 배열(원소당 8바이트)을 만들고, 그 배열 안에서 바로 섞어서 메모리를 더 쓰지 않아요. 배열을 넘기면 섞은 위치(행당 8바이트)와 섞은 복사본을 함께 받아요. 이 합이 이 컴퓨터의 물리 메모리보다 크면(`rng.permutation(2**40)`은 8TB예요) 아무것도 만들기 전에 `MemoryError`예요. 이때 생성기는 수열에서 아무것도 꺼내지 않아서, 위치가 그대로예요.
+
+```python
+>>> big = sd.random.default_rng(0)
+>>> big.permutation(2**40)
+Traceback (most recent call last):
+    ...
+MemoryError: permutation(): cannot allocate 8796093022208 bytes: more than this machine's physical memory
+>>> big.state['position']
+0
+```
+
+`x[...] = rng.permutation(x)`로 써 넣을 때도 잠깐은 두 배열이 함께 메모리에 있어요. 행이 아주 많은 표라면 섞인 위치(`rng.permutation(len(x))`)만 만들어 두고 필요한 부분만 인덱싱하는 방법도 있어요.
+
+### Python의 `random.shuffle`과 섞어 쓰지 마세요
+
+Python 표준 라이브러리의 `random.shuffle`도 stardust 배열을 제자리에서 섞을 수는 있어요. 하지만 이 함수는 stardust 생성기가 아니라 Python 자체의 난수를 써서, `default_rng`에 준 시드로는 결과를 재현할 수 없어요. 프로그램의 모든 난수를 시드 하나로 다시 만들려면 stardust의 생성기만 쓰세요.
+
+## 비슷한 함수와의 차이
+
+| 하고 싶은 일 | 쓸 것 | 다른 점 |
+|---|---|---|
+| 전부를 무작위 순서로 | `rng.permutation(x)` | 배열을 받으면 첫 축(행)을 따라 섞어요. |
+| 일부만, 겹치지 않게 | [`rng.choice(x, shape=k, replace=False)`](/api/random/choice/) | 1차원 배열이나 정수에서 `k`개만 골라요. 큰 대상에서 몇 개만 고를 때 빨라요. |
+| 겹쳐도 되게 여러 번 | [`rng.choice(x, shape=k)`](/api/random/choice/) | 같은 원소가 여러 번 나올 수 있어요. |
+| 크기순으로 늘어놓기 | [`sd.sort`](/api/array/sort/) | 무작위가 아니라 값의 크기로 순서를 정해요. |
+| 순서를 정해진 규칙으로 바꾸기 | [`sd.flip`](/api/array/flip/), [`sd.roll`](/api/array/roll/) | 뒤집기, 밀기처럼 언제나 같은 결과예요. |
+
+- **`permutation(n)` 대 `choice(n, shape=n, replace=False)`**: 둘 다 모든 후보를 한 번씩 섞어서 내요. 전부를 섞을 때는 뜻이 분명한 `permutation`을 쓰세요. `choice`는 1차원만 받으므로 표의 행을 섞을 수는 없어요.
+
+- **`x = rng.permutation(x)` 대 `x[...] = rng.permutation(x)`**: 앞의 것은 이름만 새 배열로 옮기고, 뒤의 것은 원래 배열의 내용을 바꿔요. 다른 이름이나 뷰가 같은 배열을 보고 있을 때만 차이가 나요.
+
+## numpy를 아는 분께
+
+- numpy의 `Generator.permutation`에 해당해요. **값은 numpy와 달라요.** 생성기 종류가 달라서, 같은 시드를 줘도 다른 순서가 나와요.
+- `shuffle`(제자리 섞기)과 `permuted`(축마다 따로 섞기)는 없어요. 제자리가 필요하면 `x[...] = rng.permutation(x)`를 쓰세요.
+- `axis=` 인자가 없어요. 언제나 첫 축을 섞어요. 다른 축은 `m[:, rng.permutation(m.shape[1])]`처럼 위치를 섞어 인덱싱하세요.
+- 리스트는 받지 않아요. 정수이거나 `sd.ndarray`여야 해요.
+- numpy처럼 배열을 받으면 복사본을 섞어서 돌려주고, 입력은 바꾸지 않아요.

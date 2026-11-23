@@ -1,0 +1,198 @@
+---
+kind: function
+title: implicit
+names: [implicit]
+group: 함수 그림
+order: 5
+signatures:
+  - "sd.plot.implicit(f, x0, x1, y0, y1, /, *, level=0.0, samples=None, refine=None, color=None, width=None, style='-', label=None, **figure)"
+  - "fig.implicit(f, x0, x1, y0, y1, /, *, level=0.0, samples=None, refine=None, color=None, width=None, style='-', label=None)"
+summary: 식 f(x, y) = level을 만족하는 점들의 곡선(음함수 곡선)을 사각형 [x0, x1] × [y0, y1] 안에서 그려요. 격자에서 부호가 바뀌는 칸을 이어 곡선을 얻고, 곡선 가까이는 더 촘촘히 다시 재서 뾰족한 곳과 교차점을 살려요.
+params:
+  - name: f
+    type: 호출 가능한 객체 또는 2차원 배열
+    kind: positional-only
+    desc: "f(x, y). 같은 모양의 float64 sd.ndarray 둘을 받아 같은 모양의 실수 배열(또는 수 하나)을 돌려줘요. 2차원 격자와 (n, 1) 열 모양으로 불려요. 함수 대신 이미 계산한 값의 2차원 배열(2 × 2 이상)을 줘도 돼요. Z[j, i]가 사각형을 고르게 나눈 격자의 점 (x_i, y_j)의 값이에요."
+  - name: x0, x1
+    type: float
+    kind: positional-only
+    desc: 가로 범위. 유한하고 x0 < x1이어야 해요. 칸의 가로 범위가 정확히 이 값이에요.
+  - name: y0, y1
+    type: float
+    kind: positional-only
+    desc: 세로 범위. 유한하고 y0 < y1이어야 해요.
+  - name: level
+    type: float
+    kind: keyword-only
+    desc: 그릴 값. f(x, y) = level인 곡선을 그려요. 기본값 0.0.
+  - name: samples
+    type: int, (int, int) 또는 None
+    kind: keyword-only
+    desc: "격자의 점의 수. 정수 하나면 가로세로가 같고, 쌍이면 (가로, 세로)예요. 한 방향 3 이상 4000 이하. 기본값 None은 (321, 241)이에요. 값의 배열에는 줄 수 없어요."
+  - name: refine
+    type: int 또는 None
+    kind: keyword-only
+    desc: "1이면 곡선이 지나는 칸과 그 둘레를 가로세로 4배로 다시 재요. 0이면 격자를 그대로 써요. 기본값 None은 1이에요. 값의 배열에는 줄 수 없어요."
+  - name: color
+    type: 색 또는 None
+    kind: keyword-only
+    desc: 선의 색. None이면 팔레트의 다음 색이에요.
+  - name: width
+    type: float 또는 None
+    kind: keyword-only
+    desc: 선의 굵기(pt). None이면 테마의 굵기예요.
+  - name: style
+    type: str
+    kind: keyword-only
+    desc: "선의 꼴. '-'(기본값), '--', ':', '-.'."
+  - name: label
+    type: str 또는 None
+    kind: keyword-only
+    desc: 범례에 적을 이름(LaTeX 원문).
+  - name: "**figure"
+    type: 그림 옵션
+    kind: keyword-only
+    desc: "새 그림의 height, font, theme, palette. 모듈 함수만 받아요. 여기서 width는 선의 굵기라서 그림의 너비가 되지 않아요(그림의 너비는 Figure(width=...)에 메서드로 그리거나 fig.size로 정해요). 뜻은 그림의 기본에 있어요."
+returns:
+  type: Figure
+  desc: 모듈 함수는 새 Figure를, 메서드는 곡선을 더한 그 Figure 자신을 돌려줘요.
+raises:
+  - type: TypeError
+    desc: f가 함수도 2차원 값 배열도 아닐 때, f가 sd.ndarray나 수가 아닌 것이나 복소수를 돌려줄 때, level이 수가 아닐 때, samples·refine이 정수가 아닐 때.
+  - type: ValueError
+    desc: x0 < x1이나 y0 < y1이 아니거나 범위가 유한하지 않을 때, level이 유한하지 않을 때, f가 받은 것과 다른 모양을 돌려줄 때, samples·refine이 범위 밖일 때, 값의 배열이 2차원이 아니거나 2 × 2보다 작을 때, 값의 배열과 함께 samples나 refine을 줬을 때.
+seeAlso: [region, contour, parametric, sampling, streamlines]
+---
+import PlotImage from '../../../components/fig/PlotImage.astro';
+
+## 한눈에 보기
+
+$y$를 $x$의 식으로 풀 수 없는 곡선도 식 $F(x, y) = 0$ 하나로 그릴 수 있어요. 하트 곡선 $(x^2 + y^2 - 1)^3 - x^2 y^3 = 0$을 그려 볼게요.
+
+```python
+>>> heart = lambda x, y: (x * x + y * y - 1) ** 3 - x * x * y**3
+>>> fig = sd.plot.implicit(heart, -1.5, 1.5, -1.3, 1.5)
+```
+
+<PlotImage name="implicit-heart" alt="하트 모양의 닫힌 곡선. 위쪽 가운데와 아래쪽 끝이 뾰족해요" caption="(x² + y² − 1)³ − x²y³ = 0의 곡선이에요. 위의 오목한 곳과 아래 끝은 뾰족점인데, 곡선 가까이를 촘촘히 다시 재서 둥글게 뭉개지지 않아요." />
+
+사각형 $[-1.5, 1.5] \times [-1.3, 1.5]$ 안에서 식이 0인 점들을 찾아 이어요. 칸은 가로와 세로의 한 단위가 같은 길이예요.
+
+<Reference />
+
+## 무엇을 그리나요
+
+`implicit(f, x0, x1, y0, y1)`은 $f(x, y) = $ `level`인 점들의 곡선이에요. 함수는 사각형 위의 격자에서 계산하고, 이웃한 격자점 사이에서 $f - \text{level}$의 부호가 바뀌는 칸을 찾아 곡선 조각을 이어요. 곡선이 사각형의 변에서 끝나면 거기서 끊기고, 닫힌 곡선은 닫힌 채로 그려져요.
+
+`f`는 같은 모양의 배열 둘 `x`, `y`를 받는 원소별 함수예요. 첫 호출에서는 격자 전체를 2차원 배열로 한 번 받고, 그 뒤에는 다시 잴 점들을 열 모양 `(n, 1)` 배열로 받아요.
+
+```python
+>>> shapes = []
+>>> def circle(x, y):
+...     shapes.append(tuple(x.shape))
+...     return x * x + y * y - 1
+>>> fig = sd.plot.implicit(circle, -2, 2, -2, 2)
+>>> shapes
+[(241, 321), (47296, 1), (2244, 1)]
+```
+
+첫 호출이 $321 \times 241$점의 격자(행이 $y$, 열이 $x$)이고, 둘째가 곡선 가까이를 다시 잰 점들, 셋째가 곡선 위의 점을 다듬는 계산이에요. 모양에 기대지 않고 원소마다 계산하면 어떤 모양이든 맞아요.
+
+### 곡선 위의 점을 다듬기
+
+격자의 칸 하나에서 곡선이 변을 지나는 자리는 먼저 양 끝 값의 직선 보간으로 어림하고, 그 자리에서 함수를 한 번 더 계산해 할선법 한 걸음으로 다듬어요. 그래서 곡선의 점은 격자 간격보다 훨씬 정확히 곡선 위에 놓여요.
+
+## level: 다른 값의 곡선
+
+`level`을 주면 $f(x, y) = $ `level`인 곡선이에요. 같은 식의 여러 값을 겹치면 등고선과 비슷해지는데, 곡선마다 색과 범례를 따로 정할 수 있어요. 값이 많으면 [contour](/api/plot/contour/)가 수준을 고르고 숫자를 붙여 줘요.
+
+```python
+>>> q = lambda x, y: x * x - x * y + y * y
+>>> fig = sd.plot.implicit(q, -2, 2, -2, 2, level=1, label="$1$")
+>>> fig = fig.implicit(q, -2, 2, -2, 2, level=2, label="$2$")
+>>> fig = fig.implicit(q, -2, 2, -2, 2, level=3, label="$3$")
+```
+
+<PlotImage name="implicit-levels" alt="원점을 중심으로 비스듬히 누운 타원 셋. 바깥 타원은 사각형의 모서리에서 잘려요. 왼쪽 위의 빈 구석에 범례가 있어요" caption="x² − xy + y² = 1, 2, 3의 세 타원이에요. 가장 바깥 타원은 사각형 밖으로 나가는 부분이 잘려요. 범례는 곡선이 지나지 않는 구석에 서요." />
+
+## 교차점과 뾰족점: refine
+
+격자가 성기면 곡선의 두 가지가 한 칸에서 만나는 교차점이나, 곡선이 급히 꺾이는 곳이 뭉개져요. 그래서 기본값(`refine=1`)은 곡선이 지나거나 가까이 지나는 칸과 그 둘레만 가로세로 4배로 다시 재요. 곡선에서 먼 칸은 다시 재지 않으니 계산은 곡선 둘레의 띠만큼만 늘어요. 데카르트의 엽선 $x^3 + y^3 = 3xy$를 거친 격자(`samples=41`)로 그려서 견줘 볼게요.
+
+```python
+>>> folium = lambda x, y: x**3 + y**3 - 3 * x * y
+>>> a = sd.plot.implicit(folium, -3, 3, -3, 3, samples=41, refine=0)
+>>> b = sd.plot.implicit(folium, -3, 3, -3, 3, samples=41)
+>>> fig = sd.plot.grid([a, b], ncols=2, labels="A", width=183)
+```
+
+<PlotImage name="implicit-folium" alt="두 개의 데카르트 엽선. 왼쪽은 고리 끝이 각진 꺾인 선이고, 오른쪽은 매끈해요" caption="같은 41 × 41 격자예요. A(refine=0)는 고리의 끝이 각지게 꺾여요. B(기본)는 곡선 둘레만 4배로 다시 재서 고리의 끝이 매끈해요." scale={1} />
+
+다시 잴 띠가 격자의 35%를 넘으면(어디서나 곡선이 지나는 함수) 다시 재지 않고 격자를 그대로 써요. 그때는 `samples`로 격자 자체를 촘촘히 해요.
+
+## 정의되지 않는 곳
+
+함수가 NaN을 돌려주는 점이 꼭짓점인 칸에서는 곡선을 잇지 않아요. 값이 있는 곳의 곡선만 그려져요.
+
+```python
+>>> fig = sd.plot.implicit(lambda x, y: y * y - sd.log(x), -1, 3, -2, 2)
+```
+
+$\log x$는 $x \le 0$에서 정의되지 않으니, 곡선 $y^2 = \log x$는 $x \ge 1$ 쪽에만 그려져요.
+
+곡선이 사각형 안에 없으면 빈 칸이 돼요. 에러가 아니에요.
+
+```python
+>>> fig = sd.plot.implicit(lambda x, y: x * x + y * y + 1, -1, 1, -1, 1)
+```
+
+## 값의 배열로 그리기
+
+함수 자리에 이미 계산한 값의 2차원 배열을 줄 수 있어요. `Z[j, i]`는 사각형을 고르게 나눈 격자의 점 $(x_i, y_j)$의 값이고, 첫 줄이 `y0`이에요. `sd.meshgrid(x, y, indexing="xy")`의 격자에서 계산한 값이 그대로 맞아요. 배열의 열의 수와 줄의 수가 격자의 가로와 세로 점의 수가 돼요.
+
+```python
+>>> x = sd.linspace(-1.5, 1.5, 31)
+>>> y = sd.linspace(-1.3, 1.5, 29)
+>>> X, Y = sd.meshgrid(x, y, indexing="xy")
+>>> Z = heart(X, Y)
+>>> Z.shape
+(29, 31)
+>>> fig = sd.plot.implicit(Z, -1.5, 1.5, -1.3, 1.5)
+>>> fig = fig.implicit(heart, -1.5, 1.5, -1.3, 1.5, style=":", color="gray")
+```
+
+<PlotImage name="implicit-values" alt="하트 곡선 둘이 겹쳐 있어요. 실선은 성긴 격자의 값으로 그려 위의 오목한 곳과 아래 끝이 뭉툭하고, 회색 점선은 함수로 그려 뾰족해요" caption="실선은 31 × 29점의 값 배열로, 회색 점선은 같은 식을 함수로 넘겨 그렸어요. 값만 있으면 칸 안을 직선으로 이어 어림하므로 뾰족한 곳이 격자 간격만큼 뭉툭해져요." />
+
+값만 있으면 다시 잴 수 없어요. 곡선이 칸의 변을 지나는 자리는 양 끝 값의 직선 보간이고, 다듬는 걸음도 곡선 둘레를 다시 재는 일도 없어요. 그래서 `samples`와 `refine`을 함께 주면 에러예요. 곡선의 정확도는 준 격자가 정해요. NaN인 값이 꼭짓점인 칸은 함수일 때처럼 비워 둬요.
+
+## 에러
+
+```python
+>>> sd.plot.implicit(Z, -1.5, 1.5, -1.3, 1.5, refine=0)
+Traceback (most recent call last):
+    ...
+ValueError: implicit(): 'samples' and 'refine' are for a function; the values given are the grid
+>>> sd.plot.implicit(Z[0], -1.5, 1.5, -1.3, 1.5)
+Traceback (most recent call last):
+    ...
+ValueError: implicit(): 'f' as values must be a 2-D array of at least 2 x 2, not of shape (31,)
+>>> sd.plot.implicit(lambda x, y: x - y, 2, 1, 0, 1)
+Traceback (most recent call last):
+    ...
+ValueError: implicit(): 'x0' must be less than 'x1'
+>>> sd.plot.implicit(lambda x, y: [0.0], 0, 1, 0, 1)
+Traceback (most recent call last):
+    ...
+TypeError: implicit(): 'f' must return an sd.ndarray (it is called with two), not list
+>>> sd.plot.implicit(lambda x, y: x - y, 0, 1, 0, 1, refine=2)
+Traceback (most recent call last):
+    ...
+ValueError: implicit(): 'refine' must be between 0 and 1
+```
+
+## 조심할 점
+
+- **부호가 바뀌어야 찾아요.** 곡선은 $f - \text{level}$의 부호가 바뀌는 곳에서 찾아요. $(x^2 + y^2 - 1)^2 = 0$처럼 0에 닿기만 하고 부호가 바뀌지 않는 식은 곡선을 거의 그리지 못해요. 식을 $x^2 + y^2 - 1 = 0$처럼 부호가 바뀌는 꼴로 써요.
+- **격자보다 작은 고리는 놓칠 수 있어요.** 격자 칸보다 작은 닫힌 곡선은 네 꼭짓점의 부호가 같아 보이지 않을 수 있어요. `samples`를 늘려요.
+- **범위는 그대로예요.** 칸의 범위는 준 사각형이고, 곡선이 없는 곳도 줄이지 않아요.
+- 부등식 $f(x, y) > 0$의 영역을 칠하려면 [region](/api/plot/region/)이에요. 곡선을 매개변수로 쓸 수 있으면 [parametric](/api/plot/parametric/)이 더 정확해요. 미분방정식 $y' = g(x, y)$의 풀이 곡선들은 식을 풀지 않고 [streamlines](/api/plot/streamlines/)로 볼 수 있어요.

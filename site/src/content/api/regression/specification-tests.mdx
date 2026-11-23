@@ -1,0 +1,527 @@
+---
+kind: function
+title: 분산과 모형 형태 검정
+names: [WhiteTestResult, GoldfeldQuandtResult, ResetTestResult]
+group: 검정과 모형 비교
+order: 4
+signatures:
+  - "r.white_test(*, cross_terms=True)"
+  - "r.goldfeld_quandt(*, split=0.5, drop=0, order_by=None, alternative='greater')"
+  - "r.reset_test(*, power=(2, 3), kind='fitted')"
+summary: ols·wls·gls 결과(r)의 잔차로 모형의 가정을 검정해요. 분산이 어떤 모양으로든 고르지 않은지(White), 정렬한 행의 앞과 뒤에서 분산이 다른지(Goldfeld–Quandt), 평균의 형태가 일차식으로 모자란지(RESET)를 봐요.
+params:
+  - name: cross_terms
+    type: bool
+    kind: keyword-only
+    desc: white_test()에서 True(기본값)면 보조 회귀에 열의 제곱과 서로의 곱을 모두 넣고, False면 곱을 빼고 열과 제곱만 넣어요.
+  - name: split
+    type: int 또는 float
+    kind: keyword-only
+    desc: goldfeld_quandt()에서 앞부분의 크기. 정수(1 이상)면 행 수, (0, 1)의 수면 쓰인 행 수에 곱해 내린 값이에요. 기본값 0.5는 앞 절반이에요.
+  - name: drop
+    type: int 또는 float
+    kind: keyword-only
+    desc: goldfeld_quandt()에서 앞부분 바로 뒤에 건너뛸 행 수. 정수(0 이상)면 행 수, [0, 1)의 수면 쓰인 행 수에 곱해 내린 값이에요. 나머지 행이 뒷부분이에요.
+  - name: order_by
+    type: None, int, str, 또는 행마다의 값
+    kind: keyword-only
+    desc: "goldfeld_quandt()에서 행을 정렬할 기준. None(기본값)이면 주어진 행의 순서, 정수나 이름이면 X의 그 열, 배열이면 그 값(적합에 준 행 수만큼, 유한한 값)으로 안정 정렬해요."
+  - name: alternative
+    type: str
+    kind: keyword-only
+    desc: "goldfeld_quandt()의 대립가설. 'greater'(기본값, 뒷부분의 분산이 큼), 'less'(뒷부분이 작음), 'two-sided'(어느 쪽이든 다름) 중 하나예요."
+  - name: power
+    type: 정수의 시퀀스
+    kind: keyword-only
+    desc: reset_test()에서 더할 거듭제곱. 2 이상 64 이하의 서로 다른 정수예요. 기본값 (2, 3)은 제곱과 세제곱이에요.
+  - name: kind
+    type: str
+    kind: keyword-only
+    desc: "reset_test()에서 거듭제곱할 것. 'fitted'(기본값)면 적합값, 'regressor'면 절편이 아닌 각 열이에요."
+returns:
+  type: WhiteTestResult, GoldfeldQuandtResult, ResetTestResult
+  desc: "white_test()는 lm, lm_pvalue, fvalue, f_pvalue, df, df_num, df_denom을, goldfeld_quandt()는 fvalue, pvalue, alternative, df_num, df_denom을, reset_test()는 fvalue, pvalue, df_num, df_denom을 담은 읽기 전용 결과예요. summary()도 있어요. 배치면 필드가 배치 모양의 배열이에요."
+raises:
+  - type: TypeError
+    desc: 옵션을 위치로 줬을 때, cross_terms가 True·False가 아닐 때, split·drop이 수가 아닐 때, power가 정수 하나이거나 정수가 아닌 값을 담았을 때.
+  - type: ValueError
+    desc: "split·drop이 범위 밖일 때, alternative·kind의 이름이 틀렸을 때, order_by가 없는 열을 가리키거나 값의 수가 행 수와 다르거나 유한하지 않을 때, power가 비었거나 2보다 작거나 64보다 크거나 겹칠 때, gls 결과에 goldfeld_quandt()를 불렀을 때."
+seeAlso: [diagnostics, covariance, wls, ols, gls, model-comparison, hypothesis-tests]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+export const whiteResid = [[1.0817, -2.1771], [1.1167, -1.8771], [1.1517, -2.1771], [1.1167, -2.4771], [1.0817, -2.1771], [1.1167, NaN], [0.34055, -0.64485], [0.37555, -0.34485], [0.41055, -0.64485], [0.37555, -0.94485], [0.34055, -0.64485], [0.37555, NaN], [-0.44063, 0.35774], [-0.40563, 0.65774], [-0.37063, 0.35774], [-0.40563, 0.057742], [-0.44063, 0.35774], [-0.40563, NaN], [1.9855, -0.99495], [2.0205, -0.69495], [2.0555, -0.99495], [2.0205, -1.2949], [1.9855, -0.99495], [2.0205, NaN], [-2.9506, 4.2639], [-2.9156, 4.5639], [-2.8806, 4.2639], [-2.9156, 3.9639], [-2.9506, 4.2639], [-2.9156, NaN], [-1.4884, -1.7099], [-1.4534, -1.4099], [-1.4184, -1.7099], [-1.4534, -2.0099], [-1.4884, -1.7099], [-1.4534, NaN], [-0.20561, 0.75506], [-0.17061, 1.0551], [-0.13561, 0.75506], [-0.17061, 0.45506], [-0.20561, 0.75506], [-0.17061, NaN], [-2.4865, -2.4358], [-2.4515, -2.1358], [-2.4165, -2.4358], [-2.4515, -2.7358], [-2.4865, -2.4358], [-2.4515, NaN], [2.8398, -4.5729], [2.8748, -4.2729], [2.9098, -4.5729], [2.8748, -4.8729], [2.8398, -4.5729], [2.8748, NaN], [-1.4985, 2.9509], [-1.4635, 3.2509], [-1.4285, 2.9509], [-1.4635, 2.6509], [-1.4985, 2.9509], [-1.4635, NaN], [2.5786, -3.7593], [2.6136, -3.4593], [2.6486, -3.7593], [2.6136, -4.0593], [2.5786, -3.7593], [2.6136, NaN], [-1.8947, 2.4718], [-1.8597, 2.7718], [-1.8247, 2.4718], [-1.8597, 2.1718], [-1.8947, 2.4718], [-1.8597, NaN], [-2.8185, -1.0968], [-2.7835, -0.79682], [-2.7485, -1.0968], [-2.7835, -1.3968], [-2.8185, -1.0968], [-2.7835, NaN], [-2.7, -0.57643], [-2.665, -0.27643], [-2.63, -0.57643], [-2.665, -0.87643], [-2.7, -0.57643], [-2.665, NaN], [1.6563, 2.3315], [1.6913, 2.6315], [1.7263, 2.3315], [1.6913, 2.0315], [1.6563, 2.3315], [1.6913, NaN], [-0.31732, -0.31042], [-0.28232, -0.010424], [-0.24732, -0.31042], [-0.28232, -0.61042], [-0.31732, -0.31042], [-0.28232, NaN], [2.8027, 0.69424], [2.8377, 0.99424], [2.8727, 0.69424], [2.8377, 0.39424], [2.8027, 0.69424], [2.8377, NaN], [2.7105, 3.0087], [2.7455, 3.3087], [2.7805, 3.0087], [2.7455, 2.7087], [2.7105, 3.0087], [2.7455, NaN], [-2.2213, -1.3892], [-2.1863, -1.0892], [-2.1513, -1.3892], [-2.1863, -1.6892], [-2.2213, -1.3892], [-2.1863, NaN], [-1.8838, 0.24226], [-1.8488, 0.54226], [-1.8138, 0.24226], [-1.8488, -0.05774], [-1.8838, 0.24226], [-1.8488, NaN], [1.3015, -0.64398], [1.3365, -0.34398], [1.3715, -0.64398], [1.3365, -0.94398], [1.3015, -0.64398], [1.3365, NaN], [-1.2753, -0.36203], [-1.2403, -0.062034], [-1.2053, -0.36203], [-1.2403, -0.66203], [-1.2753, -0.36203], [-1.2403, NaN], [-2.3567, 2.5304], [-2.3217, 2.8304], [-2.2867, 2.5304], [-2.3217, 2.2304], [-2.3567, 2.5304], [-2.3217, NaN], [-2.7907, -2.6427], [-2.7557, -2.3427], [-2.7207, -2.6427], [-2.7557, -2.9427], [-2.7907, -2.6427], [-2.7557, NaN], [-1.4483, 1.7692], [-1.4133, 2.0692], [-1.3783, 1.7692], [-1.4133, 1.4692], [-1.4483, 1.7692], [-1.4133, NaN], [-2.3253, 0.81685], [-2.2903, 1.1169], [-2.2553, 0.81685], [-2.2903, 0.51685], [-2.3253, 0.81685], [-2.2903, NaN], [-0.61778, -0.25566], [-0.58278, 0.044341], [-0.54778, -0.25566], [-0.58278, -0.55566], [-0.61778, -0.25566], [-0.58278, NaN], [2.5555, 2.6729], [2.5905, 2.9729], [2.6255, 2.6729], [2.5905, 2.3729], [2.5555, 2.6729], [2.5905, NaN], [1.2806, 0.0066363], [1.3156, 0.30664], [1.3506, 0.0066363], [1.3156, -0.29336], [1.2806, 0.0066363], [1.3156, NaN], [0.85137, -1.2458], [0.88637, -0.94581], [0.92137, -1.2458], [0.88637, -1.5458], [0.85137, -1.2458], [0.88637, NaN], [-2.7009, -5.8963], [-2.6659, -5.5963], [-2.6309, -5.8963], [-2.6659, -6.1963], [-2.7009, -5.8963], [-2.6659, NaN], [-1.9696, -1.4916], [-1.9346, -1.1916], [-1.8996, -1.4916], [-1.9346, -1.7916], [-1.9696, -1.4916], [-1.9346, NaN], [-0.77178, -2.0594], [-0.73678, -1.7594], [-0.70178, -2.0594], [-0.73678, -2.3594], [-0.77178, -2.0594], [-0.73678, NaN], [1.5399, 2.0906], [1.5749, 2.3906], [1.6099, 2.0906], [1.5749, 1.7906], [1.5399, 2.0906], [1.5749, NaN], [1.2232, 3.0606], [1.2582, 3.3606], [1.2932, 3.0606], [1.2582, 2.7606], [1.2232, 3.0606], [1.2582, NaN], [-2.8603, 4.3396], [-2.8253, 4.6396], [-2.7903, 4.3396], [-2.8253, 4.0396], [-2.8603, 4.3396], [-2.8253, NaN], [0.76199, 0.39679], [0.79699, 0.69679], [0.83199, 0.39679], [0.79699, 0.096791], [0.76199, 0.39679], [0.79699, NaN], [-0.32338, 0.82956], [-0.28838, 1.1296], [-0.25338, 0.82956], [-0.28838, 0.52956], [-0.32338, 0.82956], [-0.28838, NaN], [-0.032531, 0.16376], [0.0024687, 0.46376], [0.037469, 0.16376], [0.0024687, -0.13624], [-0.032531, 0.16376], [0.0024687, NaN], [1.0532, 1.2844], [1.0882, 1.5844], [1.1232, 1.2844], [1.0882, 0.98438], [1.0532, 1.2844], [1.0882, NaN], [1.8821, -3.2671], [1.9171, -2.9671], [1.9521, -3.2671], [1.9171, -3.5671], [1.8821, -3.2671], [1.9171, NaN], [-2.3334, 2.2114], [-2.2984, 2.5114], [-2.2634, 2.2114], [-2.2984, 1.9114], [-2.3334, 2.2114], [-2.2984, NaN], [-0.60309, 0.24397], [-0.56809, 0.54397], [-0.53309, 0.24397], [-0.56809, -0.056034], [-0.60309, 0.24397], [-0.56809, NaN], [2.6239, 1.0916], [2.6589, 1.3916], [2.6939, 1.0916], [2.6589, 0.79159], [2.6239, 1.0916], [2.6589, NaN], [1.2422, 1.1124], [1.2772, 1.4124], [1.3122, 1.1124], [1.2772, 0.81236], [1.2422, 1.1124], [1.2772, NaN], [-1.0584, 2.1711], [-1.0234, 2.4711], [-0.98836, 2.1711], [-1.0234, 1.8711], [-1.0584, 2.1711], [-1.0234, NaN], [-1.4346, 0.40543], [-1.3996, 0.70543], [-1.3646, 0.40543], [-1.3996, 0.10543], [-1.4346, 0.40543], [-1.3996, NaN], [0.90264, 1.3833], [0.93764, 1.6833], [0.97264, 1.3833], [0.93764, 1.0833], [0.90264, 1.3833], [0.93764, NaN], [-0.91963, -0.29194], [-0.88463, 0.0080562], [-0.84963, -0.29194], [-0.88463, -0.59194], [-0.91963, -0.29194], [-0.88463, NaN], [-2.4623, -2.1192], [-2.4273, -1.8192], [-2.3923, -2.1192], [-2.4273, -2.4192], [-2.4623, -2.1192], [-2.4273, NaN], [-0.33439, -0.26465], [-0.29939, 0.035353], [-0.26439, -0.26465], [-0.29939, -0.56465], [-0.33439, -0.26465], [-0.29939, NaN], [2.8813, -2.1307], [2.9163, -1.8307], [2.9513, -2.1307], [2.9163, -2.4307], [2.8813, -2.1307], [2.9163, NaN], [2.5241, 1.1452], [2.5591, 1.4452], [2.5941, 1.1452], [2.5591, 0.84519], [2.5241, 1.1452], [2.5591, NaN], [-1.147, 0.20408], [-1.112, 0.50408], [-1.077, 0.20408], [-1.112, -0.095921], [-1.147, 0.20408], [-1.112, NaN], [0.24466, -1.0936], [0.27966, -0.79356], [0.31466, -1.0936], [0.27966, -1.3936], [0.24466, -1.0936], [0.27966, NaN], [-2.8117, -2.8396], [-2.7767, -2.5396], [-2.7417, -2.8396], [-2.7767, -3.1396], [-2.8117, -2.8396], [-2.7767, NaN], [0.4285, 0.54368], [0.4635, 0.84368], [0.4985, 0.54368], [0.4635, 0.24368], [0.4285, 0.54368], [0.4635, NaN], [1.2176, -0.12966], [1.2526, 0.17034], [1.2876, -0.12966], [1.2526, -0.42966], [1.2176, -0.12966], [1.2526, NaN], [0.10007, -0.081123], [0.13507, 0.21888], [0.17007, -0.081123], [0.13507, -0.38112], [0.10007, -0.081123], [0.13507, NaN], [0.60033, -1.0671], [0.63533, -0.76715], [0.67033, -1.0671], [0.63533, -1.3671], [0.60033, -1.0671], [0.63533, NaN]];
+export const resetData = [[0.50268, 1.0855], [0.52768, 1.2355], [0.55268, 1.0855], [0.52768, 0.93546], [0.50268, 1.0855], [0.52768, NaN], [1.498, 2.1752], [1.523, 2.3252], [1.548, 2.1752], [1.523, 2.0252], [1.498, 2.1752], [1.523, NaN], [0.63359, 1.2815], [0.65859, 1.4315], [0.68359, 1.2815], [0.65859, 1.1315], [0.63359, 1.2815], [0.65859, NaN], [3.3777, 7.473], [3.4027, 7.623], [3.4277, 7.473], [3.4027, 7.323], [3.3777, 7.473], [3.4027, NaN], [3.4053, 7.2368], [3.4303, 7.3868], [3.4553, 7.2368], [3.4303, 7.0868], [3.4053, 7.2368], [3.4303, NaN], [3.6754, 7.7318], [3.7004, 7.8818], [3.7254, 7.7318], [3.7004, 7.5818], [3.6754, 7.7318], [3.7004, NaN], [1.6605, 3.5221], [1.6855, 3.6721], [1.7105, 3.5221], [1.6855, 3.3721], [1.6605, 3.5221], [1.6855, NaN], [0.65826, 2.4761], [0.68326, 2.6261], [0.70826, 2.4761], [0.68326, 2.3261], [0.65826, 2.4761], [0.68326, NaN], [2.1214, 3.8985], [2.1464, 4.0485], [2.1714, 3.8985], [2.1464, 3.7485], [2.1214, 3.8985], [2.1464, NaN], [2.2538, 3.9735], [2.2788, 4.1235], [2.3038, 3.9735], [2.2788, 3.8235], [2.2538, 3.9735], [2.2788, NaN], [1.0762, 2.357], [1.1012, 2.507], [1.1262, 2.357], [1.1012, 2.207], [1.0762, 2.357], [1.1012, NaN], [3.1656, 7.3355], [3.1906, 7.4855], [3.2156, 7.3355], [3.1906, 7.1855], [3.1656, 7.3355], [3.1906, NaN], [3.5037, 7.5349], [3.5287, 7.6849], [3.5537, 7.5349], [3.5287, 7.3849], [3.5037, 7.5349], [3.5287, NaN], [3.4142, 7.7128], [3.4392, 7.8628], [3.4642, 7.7128], [3.4392, 7.5628], [3.4142, 7.7128], [3.4392, NaN], [0.7844, 1.4028], [0.8094, 1.5528], [0.8344, 1.4028], [0.8094, 1.2528], [0.7844, 1.4028], [0.8094, NaN], [0.57543, 1.3617], [0.60043, 1.5117], [0.62543, 1.3617], [0.60043, 1.2117], [0.57543, 1.3617], [0.60043, NaN], [3.2661, 7.3887], [3.2911, 7.5387], [3.3161, 7.3887], [3.2911, 7.2387], [3.2661, 7.3887], [3.2911, NaN], [1.1278, 2.481], [1.1528, 2.631], [1.1778, 2.481], [1.1528, 2.331], [1.1278, 2.481], [1.1528, NaN], [0.37579, 0.35977], [0.40079, 0.50977], [0.42579, 0.35977], [0.40079, 0.20977], [0.37579, 0.35977], [0.40079, NaN], [0.2343, 1.288], [0.2593, 1.438], [0.2843, 1.288], [0.2593, 1.138], [0.2343, 1.288], [0.2593, NaN], [2.7423, 5.2655], [2.7673, 5.4155], [2.7923, 5.2655], [2.7673, 5.1155], [2.7423, 5.2655], [2.7673, NaN], [2.5808, 5.7022], [2.6058, 5.8522], [2.6308, 5.7022], [2.6058, 5.5522], [2.5808, 5.7022], [2.6058, NaN], [0.29641, 0.76654], [0.32141, 0.91654], [0.34641, 0.76654], [0.32141, 0.61654], [0.29641, 0.76654], [0.32141, NaN], [2.2159, 3.8017], [2.2409, 3.9517], [2.2659, 3.8017], [2.2409, 3.6517], [2.2159, 3.8017], [2.2409, NaN], [0.27274, 1.2576], [0.29774, 1.4076], [0.32274, 1.2576], [0.29774, 1.1076], [0.27274, 1.2576], [0.29774, NaN], [0.013795, 1.8241], [0.038795, 1.9741], [0.063795, 1.8241], [0.038795, 1.6741], [0.013795, 1.8241], [0.038795, NaN], [1.5164, 2.3873], [1.5414, 2.5373], [1.5664, 2.3873], [1.5414, 2.2373], [1.5164, 2.3873], [1.5414, NaN], [0.48375, 1.5181], [0.50875, 1.6681], [0.53375, 1.5181], [0.50875, 1.3681], [0.48375, 1.5181], [0.50875, NaN], [3.5621, 8.1669], [3.5871, 8.3169], [3.6121, 8.1669], [3.5871, 8.0169], [3.5621, 8.1669], [3.5871, NaN], [3.9648, 9.346], [3.9898, 9.496], [4.0148, 9.346], [3.9898, 9.196], [3.9648, 9.346], [3.9898, NaN]];
+export const resetLin = [[0, 0.13255], [4, 8.4713]];
+export const resetQuad = [[0.0, 1.0113], [0.1, 1.0668], [0.2, 1.1303], [0.3, 1.2017], [0.4, 1.2811], [0.5, 1.3684], [0.6, 1.4638], [0.7, 1.5671], [0.8, 1.6783], [0.9, 1.7975], [1.0, 1.9247], [1.1, 2.0599], [1.2, 2.203], [1.3, 2.3541], [1.4, 2.5132], [1.5, 2.6802], [1.6, 2.8552], [1.7, 3.0381], [1.8, 3.2291], [1.9, 3.4279], [2.0, 3.6348], [2.1, 3.8496], [2.2, 4.0724], [2.3, 4.3032], [2.4, 4.5419], [2.5, 4.7886], [2.6, 5.0432], [2.7, 5.3058], [2.8, 5.5764], [2.9, 5.855], [3.0, 6.1415], [3.1, 6.436], [3.2, 6.7384], [3.3, 7.0488], [3.4, 7.3672], [3.5, 7.6936], [3.6, 8.0279], [3.7, 8.3702], [3.8, 8.7204], [3.9, 9.0786], [4.0, 9.4448]];
+
+## 무엇을 하나요
+
+회귀의 표준오차와 p값은 오차의 분산이 고르고, 평균이 모형의 꼴(설명변수의 일차식)을 따른다고 보고 계산해요. 이 페이지의 세 검정은 적합한 뒤에 이 두 가정을 확인해요. 모두 귀무가설이 "가정이 맞다"라서, p값이 작으면 가정이 틀렸다는 근거예요.
+
+| 메서드 | 묻는 것 | 필요한 것 |
+|---|---|---|
+| [`breusch_pagan()`](/api/regression/diagnostics/#breusch_pagan-분산이-고른지) | 분산이 설명변수의 일차식을 따라 변하나요 | 없음 |
+| `white_test()` | 분산이 설명변수에 따라 어떤 모양으로든 변하나요 | 행이 넉넉해야 해요 |
+| `goldfeld_quandt()` | 행을 한 기준으로 정렬하면 뒤쪽의 분산이 앞쪽과 다른가요 | 정렬할 기준 |
+| `reset_test()` | 평균이 일차식으로 모자라 곡선이나 상호작용이 빠졌나요 | 없음 |
+
+앞의 셋은 분산(**이분산**)을, `reset_test()`는 평균의 형태(**모형 설정**)를 봐요. Breusch–Pagan은 [회귀 진단](/api/regression/diagnostics/)에 있고, 여기서는 견주기 위해 함께 써요.
+
+모두 [`ols`](/api/regression/ols/), [`wls`](/api/regression/wls/), [`gls`](/api/regression/gls/)의 결과에 있는 메서드예요(`goldfeld_quandt()`는 `ols`와 `wls`만). [`glm`](/api/regression/glm/)에는 없어요.
+
+<Reference />
+
+## 언제 무엇을 쓰나요
+
+- 분산이 어떤 설명변수를 따라 한 방향으로 커지거나 작아질 것 같으면 `breusch_pagan()`이 가장 단순하고 힘이 있어요.
+- 분산이 가운데에서 작고 양 끝에서 크거나, 두 변수가 함께 클 때만 커지는 것처럼 모양을 모르면 `white_test()`예요. 제곱과 곱까지 보니 더 많은 모양을 잡지만, 그만큼 열이 늘어서 행이 적으면 힘이 약해요.
+- 분산이 시간이나 어떤 변수의 크기 순서를 따라 변한다고 의심되면 `goldfeld_quandt()`예요. 그 순서로 행을 줄 세워 앞과 뒤를 견줘요. 분산이 순서를 따라 단조롭게 변할 때 가장 잘 잡아요.
+- 잔차가 적합값에 따라 휘는 무늬를 그리면 `reset_test()`예요. 분산이 아니라 평균의 꼴이 틀렸는지 봐요.
+
+검정에서 이분산이 나오면 계수는 그대로 쓰고 `cov_type='HC3'` 같은 강건 표준오차([표준오차의 종류](/api/regression/covariance/))를 쓰거나, 분산의 모양을 알면 [`wls`](/api/regression/wls/)로 가중치를 줘요. RESET이 모형의 꼴이 모자라다고 하면 변수의 제곱, 로그, 상호작용 같은 항을 더해 봐요.
+
+<Callout type="note" title="검정은 가정을 증명하지 않아요">
+p값이 크다는 것은 그 검정이 벗어남을 찾지 못했다는 뜻이지, 가정이 맞다는 증거는 아니에요. 행이 적으면 큰 벗어남도 놓치고, 행이 아주 많으면 쓸모에는 상관없는 작은 벗어남에도 p값이 작아져요. 잔차를 그려 보는 일과 함께 써요.
+</Callout>
+
+## `white_test()`: 분산의 모양을 가리지 않는 검정
+
+White 검정은 Breusch–Pagan처럼 잔차의 제곱 $e_t^2$을 다시 회귀(**보조 회귀**)해서, 설명변수가 $e_t^2$을 얼마나 설명하는지 봐요. 다른 점은 보조 회귀의 열이에요. 상수와 설명변수에 더해 **설명변수의 제곱과 서로의 곱**을 넣어요. 그래서 분산이 설명변수의 이차식으로 그릴 수 있는 모양이면 무엇이든 잡아요.
+
+$$
+e_t^2 \;\text{을}\; 1,\; x_{t1}, \dots, x_{tp},\; x_{t1}^2,\; x_{t1}x_{t2}, \dots, x_{tp}^2 \;\text{에 회귀}, \qquad \mathrm{lm} = n R^2_{\text{보조}}
+$$
+
+- `lm`은 분산이 고르면 대략 자유도 `df`(보조 회귀의 `df_model`, 상수를 뺀 열 수)의 카이제곱 분포를 따르고, `lm_pvalue`가 그 위 꼬리예요.
+- `fvalue`, `f_pvalue`는 같은 보조 회귀의 F 검정이에요. 자유도는 `df_num`, `df_denom`이에요.
+- 오차가 정규분포라고 가정하지 않아요(Breusch–Pagan의 기본 `studentize=True`와 같은 꼴이에요).
+
+$x$가 0에서 멀수록 오차가 커지는 데이터예요. 분산이 가운데에서 작고 양쪽으로 커져서 $x$의 일차식으로는 나타나지 않아요.
+
+```python
+>>> import stardust as sd
+>>> N = sd.stats.Normal()
+>>> rng = sd.random.default_rng(0)
+>>> x = sd.stats.Uniform(a=-3.0, b=3.0).sample(60, rng=rng)
+>>> y = 2.0 + 1.0 * x + (0.3 + sd.abs(x)) * N.sample(60, rng=rng)
+>>> u = sd.regression.ols(y, x)
+>>> u.breusch_pagan().lm_pvalue
+0.3614851273111793
+>>> u.white_test()
+WhiteTestResult(lm=18.2712, lm_pvalue=0.000107762, fvalue=12.4789, f_pvalue=3.19977e-05, df=2, df_num=2, df_denom=57)
+```
+
+Breusch–Pagan은 p = 0.36으로 아무것도 찾지 못해요. 잔차의 폭이 왼쪽과 오른쪽에서 똑같이 커지니 일차식의 기울기로는 0에 가깝기 때문이에요. White 검정은 $x^2$ 열이 그 모양을 잡아서 p = 0.0001이에요.
+
+<Fig caption="x가 0에서 멀수록 넓게 퍼지는 잔차. 분산이 x의 일차식이 아니라 V자 모양이라 breusch_pagan()은 p = 0.36, x²까지 보는 white_test()는 p = 0.0001이에요.">
+  <Plot
+    curves={[{ points: whiteResid, label: '잔차' }]}
+    domain={[-3.2, 3.2]}
+    range={[-7, 6]}
+    xTicks={[
+      { v: -2, label: '-2' },
+      { v: 0, label: '0' },
+      { v: 2, label: '2' },
+    ]}
+    yTicks={[
+      { v: -6, label: '-6' },
+      { v: -3, label: '-3' },
+      { v: 0, label: '0' },
+      { v: 3, label: '3' },
+    ]}
+  />
+</Fig>
+
+결과는 필드로 꺼내도 되고, `het_white`의 순서인 (lm, lm_pvalue, fvalue, f_pvalue) 넷으로 풀어서 받아도 돼요.
+
+```python
+>>> w = u.white_test()
+>>> w.lm, w.df
+(18.271179455860715, 2.0)
+>>> lm, lm_p, f, f_p = w
+>>> lm_p
+0.00010776154075614645
+```
+
+### `cross_terms`: 곱을 넣을지
+
+설명변수가 $p$개면 보조 회귀에 들어가는 열은 수준 $p$개, 제곱 $p$개, 서로의 곱 $p(p-1)/2$개예요. `cross_terms=False`는 곱을 빼고 수준과 제곱만 남겨요. 곱의 무늬(두 변수가 함께 클 때 분산이 큼)는 놓치지만, 열이 적어서 행이 적을 때 힘이 덜 빠져요.
+
+```python
+>>> x2 = sd.stats.Uniform(a=0.0, b=1.0).sample(60, rng=rng)
+>>> y2 = 2.0 + x + x2 + (0.3 + sd.abs(x)) * N.sample(60, rng=rng)
+>>> u2 = sd.regression.ols(y2, sd.stack([x, x2], axis=1))
+>>> u2.white_test().df, u2.white_test(cross_terms=False).df
+(5.0, 4.0)
+>>> u2.white_test(cross_terms=False).lm_pvalue
+0.0015717439710773737
+```
+
+열 수가 빠르게 늘어나는 것을 조심해요. 설명변수가 10개면 곱까지 넣은 보조 회귀의 열은 65개예요. 행이 그보다 적으면 보조 회귀가 자료를 정확히 지나가서 검정이 뜻이 없어요. 보조 회귀에 남는 자유도가 없으면(`df_denom`이 0) $R^2 = 1$이 아무것도 말하지 않으니 `lm`, `lm_pvalue`, `fvalue`, `f_pvalue`가 모두 NaN이에요. 아래는 행 15개에 설명변수 5개라 보조 열이 20개예요.
+
+```python
+>>> rm = sd.random.default_rng(3)
+>>> Xm = sd.stats.Normal().sample((15, 5), rng=rm)
+>>> ym = sd.stats.Normal().sample(15, rng=rm)
+>>> sd.regression.ols(ym, Xm).white_test()
+WhiteTestResult(lm=nan, lm_pvalue=nan, fvalue=nan, f_pvalue=nan, df=14, df_num=14, df_denom=0)
+```
+
+- 겹치는 보조 열은 빠지고 그만큼 `df`도 줄어요. 0/1 더미의 제곱은 그 더미와 같아서 빠지는 대표적인 예예요.
+- 두 설명변수가 거의 같으면(차이가 값의 1e-7 정도) 그 제곱과 곱도 float64에서 거의 겹쳐서 보조 회귀가 열 하나를 빼고, `df`가 정확한 값보다 하나 적어요.
+
+```python
+>>> dm = sd.asarray([float(i % 2) for i in range(60)])
+>>> ud = sd.regression.ols(y, sd.stack([x, dm], axis=1))
+>>> ud.white_test().df, ud.white_test(cross_terms=False).df
+(4.0, 3.0)
+```
+
+더미가 있는 모형에서 보조 열은 $x$, $d$, $x^2$, $xd$, $d^2$의 다섯 개지만 $d^2 = d$라 `df`는 4예요.
+
+## `goldfeld_quandt()`: 앞과 뒤의 분산 견주기
+
+Goldfeld–Quandt 검정은 행을 한 기준으로 줄 세운 뒤, 앞부분과 뒷부분을 따로 맞춰 두 잔차 분산을 견줘요.
+
+1. 적합에 쓰인 행을 `order_by`로 정렬해요(같은 값은 원래 순서대로).
+2. 앞 `split`행이 앞부분이에요. 그 뒤 `drop`행은 건너뛰고, 나머지가 뒷부분이에요.
+3. 두 부분을 같은 열로 따로 맞춰 잔차 분산 $s_1^2 = \mathrm{SSR}_1/\nu_1$, $s_2^2 = \mathrm{SSR}_2/\nu_2$를 구해요($\nu$는 그 부분의 `df_resid`).
+4. $F = s_2^2 / s_1^2$이에요. 분산이 고르면 자유도 $(\nu_2, \nu_1)$의 F 분포를 따라요. `df_num`이 $\nu_2$, `df_denom`이 $\nu_1$이에요.
+
+$F$가 1보다 훨씬 크면 뒷부분의 분산이 크다는 뜻이에요. 정렬의 기준이 이 검정의 전부예요. 기준이 분산과 상관없는 순서면 두 부분의 분산은 비슷하게 나와요.
+
+[회귀 진단](/api/regression/diagnostics/#breusch_pagan-분산이-고른지)의 예와 같은 데이터, 곧 $x$가 클수록 오차가 커지는 데이터예요. 행은 $x$의 순서가 아니라 무작위로 놓여 있어요.
+
+```python
+>>> rng = sd.random.default_rng(0)
+>>> xh = 1.0 + 9.0 * rng.random(40)
+>>> yh = 1.0 + 2.0 * xh + 0.5 * xh * N.sample(40, rng=rng)
+>>> h = sd.regression.ols(yh, xh)
+>>> h.goldfeld_quandt()
+GoldfeldQuandtResult(fvalue=0.857802, pvalue=0.625793, alternative='greater', df_num=18, df_denom=18)
+>>> h.goldfeld_quandt(order_by=0)
+GoldfeldQuandtResult(fvalue=8.28255, pvalue=2.10819e-05, alternative='greater', df_num=18, df_denom=18)
+```
+
+`order_by` 없이 행의 순서대로 나누면 두 부분이 모두 작은 $x$와 큰 $x$가 섞여서 F가 0.86이에요. $x$로 줄 세우면(`order_by=0`, `X`의 첫 열) 뒷부분의 분산이 8.3배라 p = 2e-5예요.
+
+결과는 필드로 꺼내도 되고, (fvalue, pvalue, alternative) 셋으로 풀어서 받아도 돼요.
+
+```python
+>>> g = h.goldfeld_quandt(order_by=0)
+>>> g.fvalue, g.df_num, g.df_denom
+(8.282552660044862, 18.0, 18.0)
+>>> f, p, alt = g
+>>> alt
+'greater'
+```
+
+### `order_by`: 무엇으로 줄 세우나요
+
+- `None`(기본값): 주어진 행의 순서 그대로예요. 행이 이미 시간 순서이거나, 의심하는 변수로 정렬해 둔 데이터에 써요.
+- 정수: `X`의 그 열(0부터, 절편은 세지 않아요). 음수는 뒤에서부터예요.
+- 문자열: `X`의 열 이름. frame `DataFrame`의 컬럼 이름이나, 배열이면 `'x1'`, `'x2'`처럼 계수 이름에서 절편을 뺀 것이에요.
+- 행마다의 값: 적합에 준 행 수만큼의 유한한 값이에요. 모형에 없는 변수(시간, 지역의 인구)나 적합값 `r.fittedvalues`로 줄 세울 때 써요. `nan_policy='omit'`으로 뺀 행은 이 값에서도 맞춰 빼요.
+
+```python
+>>> h.goldfeld_quandt(order_by='x1').fvalue == g.fvalue
+True
+>>> h.goldfeld_quandt(order_by=h.fittedvalues).fvalue == g.fvalue
+True
+>>> h.goldfeld_quandt(order_by='age')
+Traceback (most recent call last):
+    ...
+ValueError: goldfeld_quandt(): 'order_by' names a column 'age' that 'X' does not have
+>>> h.goldfeld_quandt(order_by=xh[:10])
+Traceback (most recent call last):
+    ...
+ValueError: goldfeld_quandt(): 'order_by' must have 40 values like the rows of the fit, not 10
+```
+
+여기서는 기울기가 양수라 적합값의 순서가 $x$의 순서와 같아서 같은 결과예요.
+
+### `split`과 `drop`: 어디서 나누나요
+
+`split`은 앞부분의 크기, `drop`은 그 뒤에 건너뛸 행 수예요. 둘 다 정수면 행 수, 1보다 작은 수면 쓰인 행 수에 곱해 내린 값이에요. 기본값 `split=0.5`, `drop=0`은 행을 반으로 나눠요.
+
+가운데 행을 건너뛰면 두 부분의 분산 차이가 또렷해져서 검정의 힘이 커질 수 있어요. 다만 `drop`은 앞부분 **뒤**에서 건너뛰므로, `split`을 그대로 두면 뒷부분만 작아져요. 두 부분을 같은 크기로 하려면 `split`도 줄여요.
+
+```python
+>>> h.goldfeld_quandt(order_by=0, drop=0.2)
+GoldfeldQuandtResult(fvalue=9.82789, pvalue=2.00593e-05, alternative='greater', df_num=10, df_denom=18)
+>>> h.goldfeld_quandt(order_by=0, split=16, drop=8)
+GoldfeldQuandtResult(fvalue=12.8032, pvalue=1.21477e-05, alternative='greater', df_num=14, df_denom=14)
+```
+
+첫 줄은 앞 20행, 8행(40 × 0.2)을 건너뛴 뒤의 12행이라 자유도가 (10, 18)이에요. 둘째 줄은 앞 16행과 뒤 16행이에요.
+
+```python
+>>> h.goldfeld_quandt(split=0)
+Traceback (most recent call last):
+    ...
+ValueError: goldfeld_quandt(): 'split' must be >= 1 rows or a fraction in (0, 1), not 0
+>>> h.goldfeld_quandt(split=1.5)
+Traceback (most recent call last):
+    ...
+ValueError: goldfeld_quandt(): 'split' as a fraction must be in (0, 1), not 1.5
+```
+
+### `alternative`: 어느 쪽을 의심하나요
+
+- `'greater'`(기본값): 뒷부분의 분산이 크다. p는 $P(F \ge f)$예요.
+- `'less'`: 뒷부분의 분산이 작다. p는 $P(F \le f)$예요.
+- `'two-sided'`: 어느 쪽이든 다르다. 두 꼬리 가운데 작은 쪽의 두 배예요.
+
+정렬의 방향을 뒤집으면 `'greater'`와 `'less'`가 자리를 바꿔요.
+
+```python
+>>> h.goldfeld_quandt(order_by=0, alternative='two-sided').pvalue
+4.216382188720519e-05
+>>> h.goldfeld_quandt(order_by=-xh, alternative='less')
+GoldfeldQuandtResult(fvalue=0.120736, pvalue=2.10819e-05, alternative='less', df_num=18, df_denom=18)
+```
+
+[`gls`](/api/regression/gls/) 결과는 받지 않아요. GLS는 행 사이의 상관을 걷어 내면서 행을 섞으므로, 행을 앞과 뒤로 나누는 이 검정과 맞지 않아요.
+
+```python
+>>> sd.regression.gls(yh, xh, sigma=sd.eye(40)).goldfeld_quandt()
+Traceback (most recent call last):
+    ...
+ValueError: goldfeld_quandt(): takes an ols or wls result; the GLS whitening mixes the rows that the test splits
+```
+
+## `reset_test()`: 모형의 꼴이 모자란지
+
+Ramsey의 **RESET**(regression specification error test)은 평균이 정말 설명변수의 일차식인지 봐요. 생각은 간단해요. 모형이 맞다면 적합값 $\hat y$의 제곱이나 세제곱을 설명변수로 더해도 더 설명할 것이 없어야 해요. 그런데 곡선이나 상호작용이 빠졌다면, $\hat y^2$, $\hat y^3$이 그 빠진 부분을 일부 대신 맞춰요.
+
+$$
+y = X\beta + \gamma_2 \hat y^2 + \gamma_3 \hat y^3 + \varepsilon, \qquad H_0: \gamma_2 = \gamma_3 = 0
+$$
+
+이 **확장 모형**을 같은 설정(가중치, `cov_type`)으로 맞추고, 더한 계수가 모두 0인지 F 검정해요. `df_num`은 더한 열의 수, `df_denom`은 확장 모형의 잔차 자유도예요.
+
+참 평균이 이차식인 데이터에 직선을 맞추면 RESET이 그것을 잡아요. 이차항을 넣은 모형에서는 더 찾을 것이 없어요.
+
+```python
+>>> rng = sd.random.default_rng(5)
+>>> xr = sd.stats.Uniform(a=0.0, b=4.0).sample(30, rng=rng)
+>>> yr = 1.0 + 0.5 * xr + 0.4 * xr * xr + 0.5 * N.sample(30, rng=rng)
+>>> lin = sd.regression.ols(yr, xr)
+>>> quad = sd.regression.ols(yr, sd.stack([xr, xr * xr], axis=1))
+>>> lin.reset_test()
+ResetTestResult(fvalue=15.6021, pvalue=3.53261e-05, df_num=2, df_denom=26)
+>>> quad.reset_test()
+ResetTestResult(fvalue=0.630906, pvalue=0.54037, df_num=2, df_denom=25)
+>>> round(lin.rsquared, 3)
+0.949
+```
+
+직선의 결정계수가 0.95로 높아도 RESET은 꼴이 모자라다고 알려요. 그림에서 직선(실선)은 양 끝에서 점보다 아래, 가운데에서 위에 있어요.
+
+<Fig caption="이차식을 따르는 점에 맞춘 직선(실선)과 이차식(점선). 직선의 잔차는 양 끝에서 양수, 가운데에서 음수로 휘어요. 직선 모형의 reset_test()는 p = 3.5e-5, 이차식 모형은 p = 0.54예요.">
+  <Plot
+    curves={[
+      { points: resetLin, label: '직선' },
+      { points: resetData, label: '데이터' },
+      { points: resetQuad, label: '이차식', dashed: true },
+    ]}
+    domain={[0, 4]}
+    range={[0, 10]}
+    xTicks={[
+      { v: 1, label: '1' },
+      { v: 2, label: '2' },
+      { v: 3, label: '3' },
+      { v: 4, label: '4' },
+    ]}
+    yTicks={[
+      { v: 2, label: '2' },
+      { v: 4, label: '4' },
+      { v: 6, label: '6' },
+      { v: 8, label: '8' },
+    ]}
+  />
+</Fig>
+
+확장 모형을 직접 맞춰 [`compare_f_test`](/api/regression/model-comparison/)로 견주면 같은 값이에요.
+
+```python
+>>> fv = lin.fittedvalues
+>>> ext = sd.regression.ols(yr, sd.stack([xr, fv * fv, fv * fv * fv], axis=1))
+>>> ext.compare_f_test(lin)
+CompareFTestResult(fvalue=15.6021, pvalue=3.53261e-05, df_num=2, df_denom=26)
+```
+
+RESET은 무엇이 빠졌는지는 말해 주지 않아요. 곡선, 빠진 상호작용, 로그로 바꿔야 할 변수 가운데 무엇이든 될 수 있어요. 결과의 필드는 `fvalue`, `pvalue`, `df_num`, `df_denom`이고, 풀어서 받지는 않아요.
+
+```python
+>>> rt = lin.reset_test()
+>>> rt.fvalue, rt.df_num, rt.df_denom
+(15.60207338769598, 2.0, 26.0)
+>>> stat, pval = rt
+Traceback (most recent call last):
+    ...
+TypeError: cannot unpack non-iterable ResetTestResult object
+```
+
+### `power`: 어떤 거듭제곱을 더하나요
+
+`power`는 더할 거듭제곱의 목록이에요. 기본값 `(2, 3)`은 $\hat y^2$과 $\hat y^3$이에요. 2 이상 64 이하의 서로 다른 정수를 시퀀스로 줘요. 정수 하나는 받지 않아요. 제곱 하나만 더하려면 `(2,)`예요.
+
+```python
+>>> lin.reset_test(power=(2,))
+ResetTestResult(fvalue=29.4576, pvalue=9.67884e-06, df_num=1, df_denom=27)
+>>> lin.reset_test(power=[2, 3, 4]).df_num
+3.0
+>>> lin.reset_test(power=2)
+Traceback (most recent call last):
+    ...
+TypeError: reset_test(): 'power' must be a sequence of integers >= 2 like (2, 3), not int
+>>> lin.reset_test(power=(1, 2))
+Traceback (most recent call last):
+    ...
+ValueError: reset_test(): each power must be an integer >= 2, not 1
+```
+
+거듭제곱은 큰 값에서 금방 커지지만, 더하기 전에 크기를 1 근처로 맞춰 두므로 `y`의 단위가 크거나 작아도 검정 값은 같아요.
+
+### `kind`: 무엇을 거듭제곱하나요
+
+- `'fitted'`(기본값): 적합값 $\hat y$의 거듭제곱이에요. 더하는 열이 `power`의 개수만큼이라 설명변수가 많아도 자유도가 적게 들어요.
+- `'regressor'`: 절편이 아닌 각 열의 거듭제곱이에요. 열마다 `power`의 개수만큼 더해서, 어느 변수가 휘는지까지 보고 싶을 때 써요. 0/1 더미의 거듭제곱은 더미 자신과 같아서 빠지고 `df_num`에 들지 않아요.
+
+```python
+>>> x3 = N.sample(30, rng=rng)
+>>> y3 = 1.0 + 0.5 * xr + 0.4 * xr * xr + x3 + 0.5 * N.sample(30, rng=rng)
+>>> m = sd.regression.ols(y3, sd.stack([xr, x3], axis=1))
+>>> m.reset_test()
+ResetTestResult(fvalue=8.16318, pvalue=0.00186815, df_num=2, df_denom=25)
+>>> m.reset_test(kind='regressor')
+ResetTestResult(fvalue=7.37869, pvalue=0.000561779, df_num=4, df_denom=23)
+>>> lin.reset_test(kind='princomp')
+Traceback (most recent call last):
+    ...
+ValueError: reset_test(): 'kind' must be 'fitted' or 'regressor', not 'princomp'
+```
+
+### 강건 표준오차와 함께
+
+모형을 `cov_type='HC3'` 같은 강건 표준오차로 맞췄다면, 확장 모형도 같은 `cov_type`으로 맞추고 더한 계수의 Wald F를 그 공분산으로 구해요. 분산이 고르지 않은 데이터에서도 크기가 맞는 검정이에요.
+
+```python
+>>> sd.regression.ols(yr, xr, cov_type='HC3').reset_test()
+ResetTestResult(fvalue=10.6215, pvalue=0.000424874, df_num=2, df_denom=26)
+```
+
+`white_test()`와 `goldfeld_quandt()`는 표준오차를 쓰지 않으니 `cov_type`과 상관없이 같은 값이에요.
+
+## 결과 클래스
+
+| 클래스 | 필드 | 풀기 |
+|---|---|---|
+| `WhiteTestResult` | `lm`, `lm_pvalue`, `fvalue`, `f_pvalue`, `df`(카이제곱의 자유도), `df_num`, `df_denom`(F의 자유도) | `lm, lm_pvalue, fvalue, f_pvalue` |
+| `GoldfeldQuandtResult` | `fvalue`, `pvalue`, `alternative`, `df_num`, `df_denom` | `fvalue, pvalue, alternative` |
+| `ResetTestResult` | `fvalue`, `pvalue`, `df_num`, `df_denom` | 풀리지 않아요 |
+
+- 필드는 읽기만 해요. 배치면 필드가 배치 모양의 읽기 전용 배열이에요.
+- 자유도의 이름은 F 분포면 `df_num`·`df_denom`, 카이제곱이면 `df`예요. 회귀 하나에서도 float이에요.
+- 튜플이 아니라서 `==`는 같은 객체인지만 봐요. 값으로 견주려면 필드를 꺼내요.
+- `repr`은 수를 유효숫자 여섯 자리로 보여 줘요. 배치는 모양만 보여 줘요.
+- `summary()`(인자 없음)는 [회귀 결과](/api/regression/results/)와 같은 꼴의 상자를 글로 돌려줘요. 제목이 검정의 이름이고, 머리 왼쪽에 통계량, p값, 자유도, 오른쪽에 관측 수와 옵션(Goldfeld–Quandt는 대립가설도)이 있어요. 배치면 회귀마다 한 줄인 표예요. 자유도는 모든 회귀가 같으면 머리에 한 번 적고, 회귀마다 다르면 표의 열로 적어요. 관측 수도 모든 회귀가 같으면 머리에 적고, 다르면 적지 않아요.
+
+```python
+>>> print(w.summary())
+                      White test for heteroscedasticity
+==============================================================================
+LM statistic:                    18.27  No. Observations:                   60
+LM p-value:                   0.000108  Cross Terms:                      True
+F-statistic:                     12.48
+F p-value:                    3.20e-05
+Df:                                  2
+Df Num:                              2
+Df Denom:                           57
+==============================================================================
+>>> isinstance(w, sd.regression.WhiteTestResult), isinstance(g, sd.regression.GoldfeldQuandtResult)
+(True, True)
+>>> w.lm = 0.0
+Traceback (most recent call last):
+    ...
+AttributeError: property 'lm' of 'WhiteTestResult' object has no setter
+>>> u.white_test(True)
+Traceback (most recent call last):
+    ...
+TypeError: white_test(): takes 0 positional arguments but 1 was given
+```
+
+## 가중 적합과 GLS
+
+세 검정 모두 모형이 실제로 푸는 문제에서 구해요. [회귀 진단](/api/regression/diagnostics/#wresid-진단이-쓰는-잔차)과 같은 규칙이에요.
+
+- [`wls`](/api/regression/wls/): 잔차는 $\sqrt{w_i}\,e_i$(`wresid`)이고, White의 보조 회귀에는 상수와 함께 $\sqrt{w_i}$ 열과 $\sqrt{w_i}$를 곱한 설명변수, 그 제곱과 곱을 넣어요. Goldfeld–Quandt의 두 부분과 RESET의 확장 모형도 같은 가중치로 맞춰요. 가중치가 분산의 차이를 잘 걷어 냈다면 검정이 이분산을 찾지 못해요.
+- [`gls`](/api/regression/gls/): `white_test()`와 `reset_test()`는 상관을 걷어 낸(백색화한) 잔차와 열로 구해요. `goldfeld_quandt()`는 받지 않아요(위).
+- 가중치가 0인 행은 적합에서 빠지니 모든 합에서도 빠져요. 그 행을 뺀 `ols`와 같은 값이에요.
+
+```python
+>>> xw = sd.asarray([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0])
+>>> yw = sd.asarray([2.3, 3.8, 6.4, 7.5, 11.2, 11.1, 15.9, 14.6])
+>>> w0 = sd.asarray([1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0])
+>>> z = sd.regression.wls(yw, xw, weights=w0)
+>>> d = sd.regression.ols(yw[w0 > 0], xw[w0 > 0])
+>>> tuple(z.white_test()) == tuple(d.white_test())
+True
+>>> z.reset_test().fvalue == d.reset_test().fvalue, z.goldfeld_quandt(split=3).fvalue == d.goldfeld_quandt(split=3).fvalue
+(True, True)
+```
+
+Goldfeld–Quandt의 `split`과 `drop`은 적합에 쓰인 행(가중치가 0보다 큰 행)을 세요.
+
+## 특수한 경우
+
+- **완전 적합**(점이 모형 위에 놓일 때): 잔차가 0이라 White의 보조 회귀와 RESET의 F가 0 ÷ 0이 되어 NaN이에요. Goldfeld–Quandt도 한 부분이라도 완전 적합이면 NaN이에요. 자유도 필드는 그대로 나와요.
+- **자유도가 없을 때**: Goldfeld–Quandt의 한 부분에 남는 자유도가 없으면(행 수가 열 수 이하) NaN이에요. White의 보조 회귀에 남는 자유도가 없을 때(`df_denom`이 0)도 `lm`과 F가 모두 NaN이에요.
+- **NaN**(`nan_policy='propagate'`): NaN이 있는 회귀의 모든 값이 NaN이에요. `'omit'`이면 남은 행에 대해 구해요.
+- **배치**: 회귀마다 따로 검정하고 필드가 배치 모양의 배열이에요.
+
+```python
+>>> xp = sd.arange(8.0)
+>>> pf = sd.regression.ols(1.0 + 2.0 * xp, xp)
+>>> pf.white_test().lm, pf.reset_test().fvalue, pf.goldfeld_quandt().fvalue
+(nan, nan, nan)
+>>> b = sd.regression.ols(sd.stack([yw, yw * yw], axis=0), xw)
+>>> b.white_test()
+WhiteTestResult(batch shape (2,))
+>>> b.white_test().lm_pvalue
+array([ 0.0770540089195435, 0.49104327287528626], dtype=float64)
+>>> b.reset_test().fvalue
+array([0.5087182746157166, 0.8323298852645116], dtype=float64)
+```
+
+## 정확도
+
+- Arb(구간 산술)로 정의대로(White는 보조 회귀, Goldfeld–Quandt는 두 부분의 적합, RESET은 확장 적합으로) 만든 참값과 견줘, 조건이 좋은 문제(OLS, 가중치가 0인 행이 있는 WLS, 절편 없음, 세 수준 요인의 더미)에서 모든 값의 상대오차가 5e-15 안이에요. p값은 그 자신에 대한 상대오차예요.
+- 설계의 조건수가 1e8쯤인 문제에서 Goldfeld–Quandt는 3e-16, RESET은 6.6e-12 안이에요. White는 보조 회귀의 열이 원래 열의 제곱이라 조건수도 제곱(1e16쯤)이 되어, 보조 회귀가 열 하나를 빼고 `df`가 하나 줄어요.
+- 같은 기계, 같은 스레드 수에서 같은 입력이면 실행마다 같은 비트예요. 지금은 스레드 수가 달라도 같아요(약속은 아니에요). 배치 결과는 하나씩 부른 결과와 같은 비트예요.
+
+계산 방법은 [진단의 계산](/internals/regression/diagnostics/)에 있어요.
+
+## statsmodels·R을 아는 분께
+
+statsmodels 0.15.0과 R 4.6의 lmtest 0.9.40 기준이에요.
+
+| sd | statsmodels | R |
+|---|---|---|
+| `r.white_test()` | `het_white(r.wresid, 상수 열과 r.model.wexog)` | `lmtest::bptest(m, ~ x1 * x2 + I(x1^2) + I(x2^2))` |
+| `r.goldfeld_quandt(order_by=j, alternative='greater')` | `het_goldfeldquandt(y, r.model.exog, idx=j + 1, alternative='increasing')` | `lmtest::gqtest(m, order.by = ~ x1)` |
+| `r.reset_test()` | `linear_reset(r, power=3, use_f=True)` | `lmtest::resettest(m)` |
+| `r.reset_test(kind='regressor')` | `linear_reset(r, power=3, test_type='exog', use_f=True)` | `lmtest::resettest(m, type = "regressor")` |
+
+- 세 검정 모두 위의 짝과 OLS에서 반올림 차이 안에서 같아요. `het_white`의 네 값과 `het_goldfeldquandt`의 앞 두 값은 풀었을 때의 순서도 같아요. `het_goldfeldquandt`의 셋째 값(정렬의 이름) 자리에는 `alternative`가 와요.
+- `white_test(cross_terms=False)`는 수준과 제곱을 남겨요. statsmodels의 `interaction_terms=False`는 제곱만 남겨서 값이 달라요.
+- `het_white`는 상수 열이 든 `exog`만 받아요. 절편이 없는 모형이나 WLS의 `wexog`(상수 대신 $\sqrt{w_i}$ 열)에는 상수 열을 붙여서 넘기면 여기와 같은 값이에요. 여기서는 보조 회귀에 늘 상수를 넣어요.
+- Goldfeld–Quandt의 한쪽 p값: statsmodels는 두 부분의 크기가 다르면 F 분포의 자유도를 뒤바꿔 써서 틀린 p값을 내요(행 61개, `split=10`이면 F(47, 6)의 p를 F(6, 47)로 구해요). R `gqtest`와 여기는 $(\nu_2, \nu_1)$이에요.
+- R `gqtest`의 자유도는 열 수로 세고, 여기는 각 부분의 `df_resid`로 세요. 겹친 열이 있을 때만 달라요. R의 `point = 0.5, fraction = f`는 `split = floor((0.5 − f/2)·n)`, `drop = ceiling((0.5 + f/2)·n + 0.01) − 1 − split`이에요. statsmodels의 `split`, `drop`은 여기와 같은 뜻이에요.
+- RESET: statsmodels `linear_reset`의 기본은 카이제곱 검정(`use_f=False`)이고 `power=3`은 2제곱부터 3제곱까지예요. R `resettest`와 `use_f=True`의 statsmodels는 여기와 같은 F예요. 강건 공분산은 R의 `resettest(vcov = )`, statsmodels의 `cov_type=`와 같아요. `'princomp'`(첫 주성분의 거듭제곱)는 없어요.
+- `df_num`: R은 더한 열의 수를 그대로 세요. 여기는 확장 모형에서 겹쳐 빠진 열을 빼고 세요(0/1 더미를 `kind='regressor'`로 거듭제곱할 때 달라요).
+- 가중 모형: R `resettest`와 statsmodels `linear_reset`은 모형의 가중치를 버리고 가중치 없는 최소제곱으로 확장 모형을 맞춰요. 여기서는 같은 가중치로 맞춰서 WLS의 값이 달라요.

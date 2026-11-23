@@ -1,0 +1,135 @@
+---
+import { subject } from '../../../data/inline';
+import Docs from '../../../layouts/Docs.astro';
+import { inlineHtml } from '../../../data/inline';
+import { groupId } from '../../../data/sections';
+import {
+  internalsAreaNav,
+  internalsAreaOf,
+  internalsAreasWithPages,
+  internalsCrumbs,
+  internalsGroups,
+  internalsHref,
+  internalsSidebar,
+} from '../../../data/internals';
+
+export async function getStaticPaths() {
+  return (await internalsAreasWithPages()).map((area) => ({ params: { area } }));
+}
+
+const { area } = Astro.params;
+const info = internalsAreaOf(area);
+const groups = await internalsGroups(area);
+const headings = groups.map((g) => ({ depth: 2, slug: groupId(g.title), text: g.title }));
+---
+
+<Docs
+  title={info.name}
+  description={`${subject(info.name)} 안에서 어떻게 만들어졌는지 주제별로 풀어 쓴 글이에요.`}
+  section="internals"
+  crumbs={internalsCrumbs(area).slice(0, 1)}
+  groups={await internalsSidebar(area)}
+  area={await internalsAreaNav(area)}
+  headings={headings}
+>
+  {
+    groups.map((g) => (
+      <>
+        <h2 class="group-head" id={groupId(g.title)}>
+          {g.title}
+          <span class="group-head__count">{g.entries.length}</span>
+        </h2>
+        <ul class="cards">
+          {g.entries.map((e) => (
+            <li>
+              <a class="card" href={internalsHref(e)}>
+                <span class="card__title">{e.data.title}</span>
+                <span class="card__summary" set:html={inlineHtml(e.data.summary)} />
+              </a>
+            </li>
+          ))}
+        </ul>
+      </>
+    ))
+  }
+</Docs>
+
+<style>
+  .group-head {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-3);
+  }
+  .group-head__count {
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    font-weight: 400;
+    letter-spacing: 0;
+    color: var(--fg-subtle);
+  }
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-3);
+    padding: 0;
+    list-style: none;
+  }
+  .cards li {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    margin: 0;
+  }
+  .card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    padding: var(--space-4) var(--space-5);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    background: var(--bg);
+    transition:
+      border-color var(--dur-fast) var(--ease),
+      background-color var(--dur-fast) var(--ease);
+  }
+  .card:hover {
+    border-color: var(--area-line);
+    background: var(--area-soft);
+  }
+  .card__title {
+    font-size: var(--text-md);
+    font-weight: 650;
+    line-height: var(--leading-snug);
+    color: var(--fg);
+  }
+  .card__title--mono {
+    font-family: var(--font-mono);
+    font-size: var(--text-base);
+    font-weight: 600;
+    color: var(--area);
+  }
+  /* A list card shows the start of the summary, three lines at most; the
+     whole summary heads the page itself. */
+  .card__summary {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    font-size: var(--text-sm);
+    line-height: 1.65;
+    color: var(--fg-muted);
+  }
+  .card__names {
+    margin-top: auto;
+    padding-top: var(--space-2);
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    line-height: 1.6;
+    color: var(--fg-subtle);
+  }
+  @media (max-width: 640px) {
+    .cards {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+</style>

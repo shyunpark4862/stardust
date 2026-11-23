@@ -1,0 +1,285 @@
+---
+title: 영역의 구조
+group: 구조
+order: 1
+summary: sd.htest가 Python의 입력 정리와 결과 객체, C++의 줄 단위 커널로 나뉜 모습을 따라가요. 표본을 줄 행렬로 꾸리는 Samples, 검정마다 필드만 적는 결과 클래스와 summary의 상자, 그리고 sd.regression과 함께 쓰는 Jarque–Bera 커널과 결과 바탕을 설명해요.
+seeAlso: [lanes, ttest, anova, chisquare, normality, shapiro, edf, ks-1samp]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Layers from '../../../components/fig/Layers.astro';
+import Steps from '../../../components/fig/Steps.astro';
+
+## 한눈에 보기
+
+`sd.htest`에는 공개 함수 68개와 설정 객체 셋(`PermutationMethod`, `MonteCarloMethod`, `BootstrapMethod`)이 있어요. 검정 하나의 길은 언제나 같아요. Python이 인자를 검사하고 표본을 2차원 float64 배열(한 줄이 검정 하나)로 꾸려 C++ 커널을 한 번 부르고, 커널이 줄마다의 통계량과 p값을 1차원 배열로 돌려주면 Python이 결과 객체로 싸요. 배치든 표본 하나든 커널 호출은 한 번이에요.
+
+<Fig column caption="sd.htest의 층. 위가 사용자가 부르는 것, 아래가 그 밑바탕이에요.">
+  <Layers layers={[
+    { title: '공개 함수 (Python)', note: 'src/stardust/htest/', items: [
+      { name: '_parametric.py', note: 't 검정, 분산분석, 등분산 검정' },
+      { name: '_gof.py', note: '적합도: 한 표본과 표본끼리' },
+      { name: '_rank.py', note: '순위 검정' },
+      { name: '_correlation.py', note: '상관' },
+      { name: '_contingency.py', note: '분할표' },
+      { name: '_proportion.py', note: '비율과 이항' },
+      { name: '_multicomp.py', note: '다중 비교와 보정' },
+      { name: '_resampling.py', note: '순열, 부트스트랩, 몬테카를로' },
+    ] },
+    { title: '공통 (Python)', items: [
+      { name: '_common.py', note: '표본·표의 꾸리기, 옵션 검사와 메시지' },
+      { name: '_result.py', note: '결과의 바탕 _TestResult' },
+    ] },
+    { title: '커널 (C++)', note: 'csrc/htest/, stardust._core.htest', items: [
+      { name: 'parametric.cpp', note: 't, 분산분석, 등분산', uses: 'moments.hpp' },
+      { name: 'gof.cpp', note: '적합도 1', uses: 'normality.hpp, ks.hpp, cvm.hpp, divergence.hpp, mle.hpp' },
+      { name: 'gof2.cpp, rank.cpp', note: '표본끼리, 순위', uses: 'ks2.hpp, cvm2.hpp, rank_exact.hpp' },
+      { name: 'correlation.cpp, contingency.cpp', note: '상관, 분할표', uses: 'kendall.hpp, fexact.hpp, nuisance.hpp, nchg.hpp' },
+      { name: 'proportion.cpp, multicomp.cpp', note: '비율, 다중 비교', uses: 'multitest.hpp, studentized_range.hpp, dunnett.hpp' },
+      { name: 'resampling.cpp', note: '재표본', uses: 'mgc.hpp, mle.hpp' },
+      { name: 'lanes.hpp, moments.hpp', note: '줄의 인자와 결과, 줄의 적률, 병렬' },
+      { name: 'vdd.hpp, dist_array.hpp', note: 'NEON double-double, 분포의 배열 호출' },
+    ] },
+    { title: '바닥', tone: 'dark', items: [
+      { name: 'stats', note: '분포의 cdf·ccdf·icdf (csrc/stats/)' },
+      { name: 'special', note: 'double-double, ndtri, Bessel' },
+      { name: 'array, parallel', note: '정렬, 조각 나누기, 스레드풀' },
+    ] },
+  ]} />
+</Fig>
+
+바인딩은 `csrc/bind/htest_bind.cpp` 하나예요. 하위 모듈 `stardust._core.htest`를 만들고 C++ 파일마다 하나씩인 `bind_*` 함수를 불러 등록해요.
+
+| Python | 공개 함수 | 커널 함수 | C++ 파일 |
+|---|---|---|---|
+| `_parametric.py` | `ttest_1samp`, `ttest_rel`, `ttest_ind`, `ttest_ind_from_stats`, `f_oneway`, `alexandergovern`, `bartlett`, `levene`, `fligner` | `ttest`, `ttest_stats`, `kgroups` | `parametric.cpp` |
+| `_gof.py` (한 표본) | `chisquare`, `power_divergence`, `skewtest`, `kurtosistest`, `normaltest`, `jarque_bera`, `shapiro`, `anderson`, `ks_1samp`, `cramervonmises` | `power_divergence`, `dagostino`, `jarque_bera`, `jb_of_sums`, `shapiro`, `anderson`, `ks`, `cvm` | `gof.cpp` |
+| `_gof.py` (표본끼리) | `ks_2samp`, `cramervonmises_2samp`, `anderson_ksamp`, `epps_singleton_2samp` | | `gof2.cpp` |
+| `_rank.py` | `mannwhitneyu`, `wilcoxon`, `kruskal` 등 열 | `mwu`, `wilcoxon`, `kruskal` 등 | `rank.cpp` |
+
+나머지 묶음도 같은 꼴이에요. 이 글은 모든 검정이 함께 쓰는 부분(입력, 결과, 다른 영역과의 경계)을 다루고, 커널이 줄을 나눠 돌리는 법은 [줄과 병렬](/internals/htest/lanes/)에 있어요. 묶음마다의 계산은 [t 검정](/internals/htest/ttest/), [분산분석](/internals/htest/anova/), [카이제곱](/internals/htest/chisquare/), [순위 검정](/internals/htest/rank-tests/), [두 표본의 분포](/internals/htest/two-sample-distributions/), [상관](/internals/htest/correlation/), [분할표](/internals/htest/contingency/), [비율](/internals/htest/proportion/), [사후 비교](/internals/htest/post-hoc/), [p값 보정](/internals/htest/p-adjust/), [재표본](/internals/htest/resampling/) 글에 있고, 정확도는 [정확도와 성능](/internals/htest/accuracy-performance/)에 모았어요.
+
+## 한 번의 호출이 지나는 길
+
+`ttest_ind(a, b)`를 따라가 볼게요.
+
+<Fig column caption="ttest_ind 한 번의 흐름. 커널 호출은 한 번이고, 결과 객체와 신뢰구간은 Python에서 만들어요.">
+  <Steps steps={[
+    { label: 'ttest_ind()', note: '옵션 검사(equal_var, alternative, trim, method)', where: '_parametric.py' },
+    { label: 'Samples(...)', note: '두 표본을 float64로 바꾸고, 표본 축을 뒤로 보내고, 배치 축끼리 브로드캐스트해 (lanes, n) 행렬 두 개로', where: '_common.py', depth: 1 },
+    { label: '_k.ttest(2, ...)', note: '모든 줄의 적률과 t, p, df, 추정값, 표준오차', where: 'parametric.cpp' },
+    { label: 'lane_moments', note: '줄마다 개수와 double-double 평균, double 나무의 편차 제곱합. (줄, 덩어리) 단위로 스레드풀에서', where: 'moments.hpp', depth: 1 },
+    { label: 'StudentT의 ccdf', note: 'sd.stats 분포의 메서드를 C++에서 그대로', where: 'stats/dist/t_f.hpp', depth: 1 },
+    { label: 'TtestIndResult._make(...)', note: '줄마다의 배열을 배치 모양으로, 하나면 Python float로. conf_int는 추정값과 표준오차를 쥔 함수', where: '_result.py' },
+  ]} />
+</Fig>
+
+Python 층은 커널 호출 전과 후만 맡아요. 줄마다의 고리는 Python에 없어요. 배치 10⁴줄도 커널 호출 한 번이고, 줄을 나눠 계산하는 것은 C++이에요.
+
+## 입력 정리: `_common.py`
+
+### 표본을 줄 행렬로
+
+모든 검정은 표본을 `Samples` 하나로 받아요. 하는 일은 넷이에요.
+
+1. 데이터를 sd.stats 기술통계의 변환 함수 `_as_array`로 float64 배열로 바꿔요. 같은 함수라 받는 형과 에러 메시지가 sd.stats와 같아요.
+2. 차원 수가 다른 표본은 앞에 길이 1의 축을 붙여 맞춰요(numpy와 scipy의 브로드캐스트 규칙).
+3. `axis`가 고른 축을 뒤로 보내고, 나머지 축(배치)끼리 브로드캐스트해요. 표본 축의 길이는 달라도 돼요.
+4. 표본마다 (줄 수, 표본 크기)의 2차원 배열로 바꿔요. 이것이 커널이 받는 줄 행렬이에요.
+
+```python
+        # src/stardust/htest/_common.py
+        perm = kept + red
+        rows = []
+        for a, n in zip(arrays, self.n):
+            t = _sd.permute_dims(a, perm) if perm != tuple(range(nd)) else a
+            full = self.batch + tuple(a.shape[d] for d in red)
+            if tuple(t.shape) != full:
+                t = _sd.broadcast_to(t, full)
+            rows.append(_sd.reshape(t, (self.lanes, n)))
+        self.rows = rows
+```
+
+`kept`는 배치 축, `red`는 표본 축이에요. `axis=None`이면 모든 축이 표본 축이라 줄이 하나예요. 짝지은 표본(`ttest_rel`, 기대 빈도가 있는 `chisquare`)은 `paired=True`로 표본 축의 길이까지 같아야 해요.
+
+### NaN은 커널이 봐요
+
+`Samples`는 NaN을 찾아 줄마다의 표시(`nan`)를 만들 수 있지만, 이 글이 다루는 검정은 모두 `scan=False`로 그 일을 커널에 맡겨요. 커널이 어차피 원소를 한 번 읽으니, Python에서 `isnan`으로 한 번 더 훑지 않아요. 그래서 Python이 보는 것은 `nan_policy='raise'`일 때뿐이에요.
+
+```python
+        # src/stardust/htest/_common.py
+        self.scanned = scan or policy == "raise"
+        if not scan and policy != "raise":
+            return
+        has = None
+        for r in rows:
+            if r.size:
+                m = _sd.any(_sd.isnan(r), axis=1)
+                has = m if has is None else (has | m)
+        if has is not None and bool(_sd.any(has)):
+            if policy == "raise":
+                raise ValueError(f"{name}(): the input contains NaN (nan_policy='raise')")
+            self.nan = has
+```
+
+커널은 `omit` 하나만 받아요. `'omit'`이면 줄마다 NaN을 빼고 남은 개수로 계산하고, `'propagate'`면 NaN을 만난 줄의 모든 결과가 NaN이에요. 줄마다 남은 크기가 달라도 한 번의 호출로 끝나요.
+
+```python
+>>> import stardust as sd
+>>> nan = float('nan')
+>>> x = sd.asarray([[1.2, 0.4, nan, 2.2, 1.9], [0.3, 1.1, 0.8, 2.6, 1.4]])
+>>> r = sd.htest.ttest_1samp(x, 1.0, axis=-1, nan_policy='omit')
+>>> r.statistic.tolist() == [sd.htest.ttest_1samp([1.2, 0.4, 2.2, 1.9], 1.0).statistic,
+...                          sd.htest.ttest_1samp(x[1], 1.0).statistic]
+True
+>>> sd.htest.ttest_1samp(x, 1.0, axis=-1).statistic
+array([               nan, 0.6225895644919425], dtype=float64)
+```
+
+### 표와 옵션
+
+표를 받는 검정(분할표, `page_trend_test`, `cochrans_q`)은 `Tables`가 마지막 축들을 표로, 앞의 축을 배치로 읽고 개수가 음이 아닌 정수인지 봐요. 옵션 검사(`alternative`, `nan_policy`, `method`, `rng`, `alpha`, int·실수 인자)도 모두 이 파일에 있어요. 메시지의 꼴(`함수(): 'arg' must be ...`)이 다른 영역과 같고, 모든 검정이 같은 함수를 써서 같은 실수에는 같은 메시지가 나와요. 인자를 잘못 넘긴 호출의 `TypeError`는 공개 함수마다 씌운 얇은 감싸개(`src/stardust/_calls.py`)가 `ttest_ind(): unexpected keyword argument 'equal_variance'`처럼 바꿔요.
+
+정확한 방법의 작업량 상한도 한 함수(`check_exact_work`)예요. 검정이 그 호출의 작업량(연산 수나 메모리)을 세어 넘기면, 상한을 넘을 때 `ks_2samp(): method='exact' needs about 4.1e+12 operations for this input, more than its cap of 1e+09; use method='asymp'`처럼 다른 길을 알려 주는 `ValueError`를 내요. 작업량이 double을 넘쳐 inf로 세어진 호출은 얼마인지 말할 수 없으므로 상한을 넘는다는 것만 적어요(`page_trend_test(): method='exact' needs more than 1e+09 operations for this input; use method='asymptotic'`). `'auto'`는 상한 안에서만 정확한 방법을 골라서, 어느 호출이든 정해진 시간 안에 끝나요.
+
+## 결과 클래스
+
+### 필드 목록만 적는 하위 클래스
+
+검정마다 결과 클래스가 하나이고, 모두 `_TestResult` 위에 있어요. 하위 클래스는 필드의 목록(`_FIELDS`), 튜플로 풀리는 필드(`_UNPACK`), 신뢰구간이 있는지(`_CI`), summary의 제목(`_TITLE`)만 적어요.
+
+```python
+# src/stardust/htest/_parametric.py
+class _TtestBase(_TestResult):
+    __slots__ = ()
+    _FIELDS = ("statistic", "pvalue", "df")
+    _UNPACK = ("statistic", "pvalue")
+    _CI = True
+
+
+class Ttest1sampResult(_TtestBase):
+    __slots__ = ()
+    _TITLE = "One-sample t-test"
+    _CI_LABEL = "mean"
+```
+
+속성, 풀기, `conf_int`, `summary`는 바탕이 클래스를 만들 때 붙여요. 필드마다 읽기 전용 프로퍼티를 만들고, `_UNPACK`이 있는 클래스에만 `__iter__`·`__len__`·`__getitem__`을 달아요. scipy의 결과가 풀리는 검정만 풀리는 이유가 여기 있어요.
+
+```python
+    # src/stardust/htest/_result.py
+    def __init_subclass__(cls, **kw):
+        super().__init_subclass__(**kw)
+        for f in cls._FIELDS:
+            if not isinstance(cls.__dict__.get(f), property):
+                setattr(cls, f, _field(f))
+        unknown = set(cls._UNPACK) - set(cls._FIELDS)
+        if unknown:
+            raise TypeError(f"{cls.__name__}: _UNPACK names fields it does not have: {sorted(unknown)}")
+        if cls._UNPACK:
+            cls.__iter__, cls.__len__, cls.__getitem__ = _iter, _len, _getitem
+        if cls._CI and "conf_int" not in cls.__dict__:  # (odds_ratio's takes the alternative too)
+            cls.conf_int = conf_int
+        if "summary" not in cls.__dict__:
+            cls.summary = summary_ci if cls._CI else summary_plain
+```
+
+`summary`도 두 꼴 가운데 하나를 골라 붙여요. 구간이 있는 결과는 `summary(*, alpha=0.05)`, 없는 결과는 `summary()`예요. 그래서 구간이 없는 결과에 `alpha`를 주면 `summary(): unexpected keyword argument 'alpha'`가 나와요.
+
+### 값은 dict 하나, 배열은 쓰기 금지
+
+필드의 값은 슬롯 `_values`의 dict 하나에 있어요. 그 호출에서 주지 않은 필드는 dict에 없어서 읽으면 `AttributeError`이고, `hasattr`가 "이 호출이 이 필드를 주는가"를 정확히 답해요(`None`을 넣어 두지 않아요).
+
+검정이 쓰는 생성자 `_make`는 커널이 막 만든 배열을 복사 없이 받고 그 자리에서 쓰기를 막아요. 다른 누구도 그 배열을 쥐고 있지 않으니까요. 사용자가 생성자를 직접 부르면 받은 배열을 한 번 복사해요(`_own(v, copy=True)`). 읽을 때는 복사하지 않고 같은 배열을 돌려줘요. 배치의 `method`처럼 리스트인 필드만 읽을 때마다 새 리스트예요.
+
+```python
+# src/stardust/htest/_result.py
+def _own(v, copy=False):
+    """A field as the result keeps and gives it: an sd array made read-only in place (first
+    copied when copy: an array the caller may still hold); a tuple's arrays too."""
+    if type(v) in _PLAIN:  # (the usual scalar field: nothing to do)
+        return v
+    if isinstance(v, _sd.ndarray):
+        if copy:
+            v = v.copy()
+        v._set_readonly()
+```
+
+```python
+>>> rng = sd.random.default_rng(5)
+>>> x = sd.stats.Normal().sample((4, 30), rng=rng)
+>>> y = sd.stats.Normal(mu=0.3).sample((4, 35), rng=rng)
+>>> r = sd.htest.ttest_ind(x, y, axis=-1)
+>>> r
+TtestIndResult(batch shape (4,))
+>>> r.statistic[0] = 1.0
+Traceback (most recent call last):
+    ...
+ValueError: assignment destination is read-only
+>>> r.statistic is r.statistic
+True
+>>> hasattr(r, 'zstatistic')
+False
+```
+
+신뢰구간은 필드가 아니라 함수예요. 커널이 돌려준 추정값(double-double의 두 부분)과 표준오차, 자유도를 쥔 닫힘(`ci`)을 결과가 들고 있다가, `conf_int(alpha=)`를 부를 때마다 분위수를 계산해 새 배열을 만들어요. 그래서 `alpha`를 바꿔 여러 번 불러도 커널을 다시 부르지 않아요.
+
+### repr와 summary
+
+`repr`는 한 줄이에요. 배치면 모양만, 하나면 필드를 차례로 6자리까지 보여 줘요. `summary()`는 회귀와 최적화의 결과가 함께 쓰는 상자([summary의 상자](/internals/regression/overview/#summary의-상자))의 `test_box`로 그려요. 수인 필드는 머리의 왼쪽에, 문자열 필드와 호출의 설명은 오른쪽에 가요. 대립가설, 표본 크기, 옵션처럼 필드가 아닌 것은 검정이 `_make(info=...)`로 넘겨요. `Samples.info()`가 그 dict를 만드는데, `nan_policy='omit'`로 NaN을 뺀 줄이 있으면 표본 크기를 따로 세지 않아서 적지 않아요.
+
+```python
+>>> print(sd.htest.ttest_ind([1., 2, 3, 4], [2., 3, 4, 5, 7]).summary())
+                         Two-sample t-test (Student)
+==============================================================================
+Statistic:                      -1.507  Alternative:                 two-sided
+P-value:                         0.176  No. Observations:                 4, 5
+Df:                                  7
+==============================================================================
+                     [0.025     0.975]
+------------------------------------------------------------------------------
+mean difference      -4.368      0.968
+==============================================================================
+```
+
+표인 배열 필드(`chi2_contingency`의 `expected_freq`, `median_test`·`somersd`의 `table`, `proportions_chisquare`의 `table`과 `expected_freq`)는 결과 클래스가 `_TABLES`에 이름을 적어 알려 줘요. `summary()`는 검정 하나의 표를 머리 아래 칸에 그리고, 배치의 표는 그리지 않아요. 원소 수로 짐작하지 않으므로 1 × 1 표도 1 × 3 표와 같은 꼴로 그려지고, 1 × 1 표 3개의 배치에서도 표를 줄마다의 값으로 읽지 않아요. 줄이 0개인 배치는 머리와 빈 표로 그려요.
+
+## sd.regression과 함께 쓰는 것
+
+표본을 받는 검정은 htest, 적합한 모형을 받는 검정은 regression의 것이에요. 두 영역이 같은 값을 계산하는 곳은 커널이 htest에 있고 regression이 그것을 불러요.
+
+### Jarque–Bera의 한 커널
+
+OLS 결과의 `r.jarque_bera()`와 `sd.htest.jarque_bera(r.resid)`는 같은 커널을 지나요. 중심 적률의 합을 만드는 `central_sums`와 통계량과 p값을 내는 `jarque_bera_of`가 `csrc/htest/normality.hpp`에 있고, regression의 `resid_stats`(`csrc/regression/linear.cpp`)가 잔차에서 같은 `central_sums`를 부른 뒤 Python의 `_jb_of_sums`로 `jarque_bera_of`에 넘겨요.
+
+```cpp
+            // csrc/regression/linear.cpp
+            const htest::CentralSums cs = htest::central_sums(x, m, part);
+            out[1] = cs.s2.hi;
+            out[2] = cs.s3.hi;
+            out[3] = cs.s4.hi;
+            out[4] = cs.mean.hi;
+```
+
+htest의 `jarque_bera`도 같은 네 값(`cs.s2.hi`, `cs.s3.hi`, `cs.s4.hi`, `cs.mean.hi`)을 `jarque_bera_of`에 넘겨요. 합을 만드는 덩어리가 표본 크기로만 정해지니 두 길은 같은 비트예요. 결과 클래스도 하나예요. `sd.regression.JarqueBeraResult`는 htest의 그 클래스를 가리켜요.
+
+```python
+>>> rng = sd.random.default_rng(11)
+>>> u = sd.stats.Uniform(a=0, b=10).sample(50, rng=rng)
+>>> v = 2.0 + 0.5 * u + sd.stats.Logistic().sample(50, rng=rng)
+>>> fit = sd.regression.ols(v, u)
+>>> a, b = fit.jarque_bera(), sd.htest.jarque_bera(fit.resid)
+>>> a
+JarqueBeraResult(statistic=7.43169, pvalue=0.0243348)
+>>> a.statistic == b.statistic, a.pvalue == b.pvalue
+(True, True)
+>>> type(a) is type(b) is sd.regression.JarqueBeraResult
+True
+```
+
+예외는 두 곳이에요. 완전 적합에서 regression은 잔차를 정확히 0으로 보아 NaN을 내고, htest는 반올림 크기의 잔차로 값을 내요. WLS·GLS의 `r.jarque_bera()`는 백색화한 잔차의 값이라 원래 척도의 `resid`를 htest에 넘긴 것과 달라요.
+
+### 결과 바탕과 p값의 꼬리
+
+regression의 검정 결과(`t_test`, `wald_test`, `compare_f_test`, `white_test` 등의 결과 클래스)도 `_TestResult` 위에 있어요. 그래서 필드의 읽기 전용 규칙, 풀기, `conf_int(*, alpha=0.05)`의 검사와 메시지, summary의 꼴이 두 영역에서 같아요. 이 바탕 클래스의 생성자와 `_FIELDS`·`_UNPACK`·`_CI`·`_make`는 두 영역이 함께 기대는 약속이에요.
+
+p값은 두 영역 모두 sd.stats 분포의 `ccdf`·`cdf`를 같은 인자로 불러요(htest는 C++에서, [줄과 병렬](/internals/htest/lanes/#분포를-c에서-부르기)). 그래서 `f_oneway`의 p값과 집단 더미 OLS의 `f_pvalue`는 같은 F에서 같은 비트예요. 다만 F 자체는 다르게 계산해요. `f_oneway`는 집단의 제곱합에서, OLS는 QR 적합에서 만들어서 두 통계량은 각자의 정확도 계약 안에서 같고 끝자리는 다를 수 있어요.

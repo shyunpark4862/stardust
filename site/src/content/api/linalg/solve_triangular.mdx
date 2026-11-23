@@ -1,0 +1,437 @@
+---
+title: solve_triangular
+names: [solve_triangular]
+group: 선형 시스템
+order: 2
+signatures:
+  - "sd.linalg.solve_triangular(a, b, /, *, upper, unit_diagonal=False)"
+summary: 계수 행렬이 삼각 행렬인 연립일차방정식 a @ x = b를 풀어요. 한 줄씩 차례로 대입만 하면 되기 때문에 일반 풀이보다 훨씬 빨라요.
+params:
+  - name: a
+    type: ndarray
+    kind: positional-only
+    desc: 삼각 행렬. 정사각이어야 해요. 모양은 (..., N, N)이고, upper가 고른 쪽 삼각만 읽어요.
+  - name: b
+    type: ndarray
+    kind: positional-only
+    desc: 우변. 1차원이면 길이 N인 벡터 하나, 2차원 이상이면 (..., N, K)로 우변 K개를 열로 나란히 놓은 것이에요.
+  - name: upper
+    type: bool
+    kind: keyword-only, 필수
+    desc: True면 a를 위 삼각 행렬로, False면 아래 삼각 행렬로 읽어요. 기본값이 없어서 꼭 써야 해요.
+  - name: unit_diagonal
+    type: bool
+    kind: keyword-only
+    desc: True면 a의 대각선을 읽지 않고 모두 1로 봐요.
+returns:
+  type: ndarray
+  desc: 해 x. b가 1차원이면 (..., N), 2차원 이상이면 (..., N, K). 정수 입력이어도 float64이고, 복소수가 섞이면 complex128이에요.
+raises:
+  - type: TypeError
+    desc: a나 b가 배열이 아닐 때, upper를 빠뜨렸을 때, upper나 unit_diagonal이 True·False가 아닐 때, 옵션을 이름 없이 넘겼을 때.
+  - type: ValueError
+    desc: a가 2차원 미만이거나 정사각이 아닐 때, a의 크기와 b의 행 수가 다를 때, 배치 축끼리 브로드캐스팅이 안 될 때, 읽는 쪽 삼각이나 b에 NaN·inf가 있을 때.
+  - type: LinAlgError
+    desc: a의 대각선에 정확한 0이 있을 때(unit_diagonal=True면 대각선을 읽지 않으므로 나지 않아요).
+seeAlso: [solve, cholesky_solve, lu_solve, cholesky, lu, qr, basics, errors]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import FigRow from '../../../components/fig/FigRow.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+`solve_triangular`는 계수 행렬이 **삼각 행렬**인 연립일차방정식 $Ax = b$를 풀어요.
+
+삼각 행렬은 대각선의 한쪽이 모두 0인 정사각 행렬이에요. 대각선 위쪽이 모두 0이면 **아래 삼각**(lower triangular), 아래쪽이 모두 0이면 **위 삼각**(upper triangular) 행렬이라고 불러요. 값이 남아 있는 쪽의 이름을 붙인 거예요.
+
+<Fig caption="아래 삼각 행렬은 대각선과 그 아래에만, 위 삼각 행렬은 대각선과 그 위에만 값이 있어요. 흐린 칸은 0이에요.">
+  <ArrayFig name="아래 삼각" data={[[2, 0, 0], [1, 3, 0], [4, -1, 5]]} tones={[['a', 'm', 'm'], ['a', 'a', 'm'], ['a', 'a', 'a']]} note="upper=False" />
+  <ArrayFig name="위 삼각" data={[[2, 1, 4], [0, 3, -1], [0, 0, 5]]} tones={[['a', 'a', 'a'], ['m', 'a', 'a'], ['m', 'm', 'a']]} note="upper=True" />
+</Fig>
+
+`a`가 둘 중 어느 쪽인지는 `upper`로 알려 줘요. 아래 삼각이면 `upper=False`, 위 삼각이면 `upper=True`예요. `upper`에는 기본값이 없어서 언제나 써야 해요.
+
+```python
+>>> import stardust as sd
+>>> lo = sd.asarray([[2.0, 0.0, 0.0],
+...                  [1.0, 3.0, 0.0],
+...                  [4.0, -1.0, 5.0]])
+>>> b = sd.asarray([4.0, 11.0, 10.0])
+>>> x = sd.linalg.solve_triangular(lo, b, upper=False)
+>>> x
+array([2.0, 3.0, 1.0], dtype=float64)
+>>> lo @ x
+array([ 4.0, 11.0, 10.0], dtype=float64)
+```
+
+<Reference />
+
+## 삼각 행렬은 왜 쉽게 풀리나요
+
+위의 아래 삼각 시스템을 식으로 풀어 쓰면 이래요.
+
+$$
+\begin{aligned}
+2x_0 &= 4 \\
+1x_0 + 3x_1 &= 11 \\
+4x_0 - 1x_1 + 5x_2 &= 10
+\end{aligned}
+$$
+
+첫 식에는 미지수가 $x_0$ 하나뿐이라서 바로 풀려요. 그 값을 둘째 식에 넣으면 둘째 식에도 모르는 것이 $x_1$ 하나만 남아요. 이렇게 위에서부터 한 줄씩, 앞에서 구한 값을 넣어 가며 풀면 끝이에요.
+
+| 식 | 이미 아는 값을 넣으면 | 구한 값 |
+|:---:|---|:---:|
+| 첫째 | $2x_0 = 4$ | $x_0 = 2$ |
+| 둘째 | $2 + 3x_1 = 11$ | $x_1 = 3$ |
+| 셋째 | $8 - 3 + 5x_2 = 10$ | $x_2 = 1$ |
+
+위 삼각 행렬은 반대예요. 마지막 식에 미지수가 하나뿐이라서 아래에서부터 위로 올라가며 풀어요.
+
+```python
+>>> up = sd.asarray([[2.0, 1.0, 4.0],
+...                  [0.0, 3.0, -1.0],
+...                  [0.0, 0.0, 5.0]])
+>>> sd.linalg.solve_triangular(up, sd.asarray([8.0, 5.0, 5.0]), upper=True)
+array([1.0, 2.0, 1.0], dtype=float64)
+```
+
+마지막 식 $5x_2 = 5$에서 $x_2 = 1$, 그 위의 식 $3x_1 - 1 = 5$에서 $x_1 = 2$, 맨 위의 식 $2x_0 + 2 + 4 = 8$에서 $x_0 = 1$이에요.
+
+일반 행렬을 푸는 [solve](/api/linalg/solve/)는 먼저 행렬을 삼각 행렬의 곱으로 바꾸는 큰 준비 작업을 하는데, 전체 시간의 대부분이 여기에 들어가요. 처음부터 삼각 행렬이면 이 준비가 필요 없으니, `solve_triangular`는 대입만 하고 끝나요. 행렬이 클수록 차이가 커져요.
+
+### 어디에서 삼각 행렬이 나오나요
+
+삼각 행렬을 직접 만들 일은 많지 않아요. 대개 행렬 분해의 결과로 나와요. 분해는 풀기 어려운 행렬을 풀기 쉬운 행렬(삼각 행렬 등)의 곱으로 바꾸는 일이고, 그 결과를 써서 실제로 푸는 도구가 `solve_triangular`예요.
+
+| 분해 | 삼각 행렬 | 이어서 푸는 방법 |
+|---|---|---|
+| [cholesky](/api/linalg/cholesky/) | 아래 삼각 `L` (또는 위 삼각 `U`) | `solve_triangular` 두 번. 한 번에 해 주는 [cholesky_solve](/api/linalg/cholesky_solve/)가 있어요. |
+| [lu](/api/linalg/lu/) | 대각선이 1인 아래 삼각 `L`, 위 삼각 `U` | `solve_triangular` 두 번. 한 번에 해 주는 [lu_solve](/api/linalg/lu_solve/)가 있어요. |
+| [qr](/api/linalg/qr/) | 위 삼각 `R` | `Q`의 전치를 `b`에 곱한 뒤 `solve_triangular(R, ..., upper=True)` |
+
+## `upper`: 어느 쪽 삼각을 읽을까요
+
+`solve_triangular`는 `upper`가 고른 쪽 삼각만 읽고, 반대쪽은 0이라고 보고 아예 들여다보지 않아요. 그래서 반대쪽에 다른 값이 들어 있어도 결과는 같아요.
+
+```python
+>>> full = sd.asarray([[2.0, 7.0, 7.0],
+...                    [1.0, 3.0, 7.0],
+...                    [4.0, -1.0, 5.0]])
+>>> sd.linalg.solve_triangular(full, b, upper=False)
+array([2.0, 3.0, 1.0], dtype=float64)
+```
+
+대각선 위의 `7`은 무시됐고, `lo`로 푼 것과 같은 답이 나왔어요.
+
+<Fig column caption="같은 배열이라도 upper에 따라 읽는 칸이 달라요. 색칠한 칸만 계산에 들어가고, 흐린 칸은 무엇이 들어 있든 0으로 쳐요.">
+  <FigRow>
+    <ArrayFig name="full" data={[[2, 7, 7], [1, 3, 7], [4, -1, 5]]} />
+    <Op note="upper=False">→</Op>
+    <ArrayFig name="읽는 부분" data={[[2, 7, 7], [1, 3, 7], [4, -1, 5]]} tones={[['a', 'm', 'm'], ['a', 'a', 'm'], ['a', 'a', 'a']]} />
+  </FigRow>
+  <FigRow>
+    <ArrayFig name="full" data={[[2, 7, 7], [1, 3, 7], [4, -1, 5]]} />
+    <Op note="upper=True">→</Op>
+    <ArrayFig name="읽는 부분" data={[[2, 7, 7], [1, 3, 7], [4, -1, 5]]} tones={[['a', 'a', 'a'], ['m', 'a', 'a'], ['m', 'm', 'a']]} />
+  </FigRow>
+</Fig>
+
+같은 배열에 `upper=True`를 주면 이번에는 위쪽 삼각을 읽어서 전혀 다른 문제를 풀어요.
+
+```python
+>>> sd.linalg.solve_triangular(full, b, upper=True)
+array([-1.5, -1.0,  2.0], dtype=float64)
+```
+
+### `upper`에 기본값이 없는 이유
+
+<Callout type="warn" title="위·아래를 잘못 고르면 에러 없이 틀린 답이 나와요">
+
+`solve_triangular`는 `a`가 정말 삼각 행렬인지, 고른 방향이 맞는지 검사하지 않아요. 아래 삼각 행렬에 `upper=True`를 주면 대각선만 있는 행렬로 읽어서 그럴듯해 보이는 틀린 답을 돌려줘요.
+
+</Callout>
+
+```python
+>>> sd.linalg.solve_triangular(lo, b, upper=True)
+array([               2.0, 3.6666666666666665,                2.0], dtype=float64)
+```
+
+`lo`의 위쪽 삼각은 대각선 `[2, 3, 5]`뿐이라서 `b`를 그 값들로 나눈 `[4/2, 11/3, 10/5]`가 나왔어요. 에러도 경고도 없어요.
+
+기본값이 있으면 이런 실수가 눈에 띄지 않게 숨어요. 그래서 `upper`는 부를 때마다 직접 쓰게 되어 있어요. 빠뜨리면 `TypeError`예요.
+
+```python
+>>> sd.linalg.solve_triangular(lo, b)
+Traceback (most recent call last):
+    ...
+TypeError: solve_triangular(): incompatible function arguments. ...
+```
+
+메시지의 나머지 부분에는 함수가 받는 인자 목록이 나와요. `upper`는 이름을 붙여서만 줄 수 있어요. `solve_triangular(lo, b, False)`처럼 자리로 넘겨도 같은 `TypeError`예요.
+
+`upper`와 `unit_diagonal`은 `True`와 `False`만 받아요. `0`, `1`, `None`은 받지 않아요.
+
+```python
+>>> sd.linalg.solve_triangular(lo, b, upper=0)
+Traceback (most recent call last):
+    ...
+TypeError: solve_triangular(): 'upper' must be True or False, not int
+```
+
+## `unit_diagonal`: 대각선을 1로 보기
+
+`unit_diagonal=True`를 주면 `a`의 대각선을 읽지 않고 모두 1이라고 봐요. 대각선이 모두 1인 삼각 행렬을 **단위 삼각 행렬**이라고 하는데, 이런 행렬은 대입할 때 나눗셈이 필요 없어요.
+
+```python
+>>> unit = sd.asarray([[1.0, 0.0, 0.0],
+...                    [2.0, 1.0, 0.0],
+...                    [3.0, 4.0, 1.0]])
+>>> sd.linalg.solve_triangular(unit, sd.asarray([1.0, 4.0, 14.0]), upper=False, unit_diagonal=True)
+array([1.0, 2.0, 3.0], dtype=float64)
+```
+
+대각선이 정말 1이면 이 옵션을 켜든 끄든 답은 같아요. 이 옵션이 쓸모 있는 것은 대각선 자리에 다른 값이 들어 있지만 1로 치고 싶을 때예요. 대각선에 1이 아닌 값이 있는 `lo`로 해 보면 차이가 보여요.
+
+```python
+>>> sd.linalg.solve_triangular(lo, b, upper=False)
+array([2.0, 3.0, 1.0], dtype=float64)
+>>> sd.linalg.solve_triangular(lo, b, upper=False, unit_diagonal=True)
+array([4.0, 7.0, 1.0], dtype=float64)
+```
+
+둘째 호출은 `lo`의 대각선 `[2, 3, 5]`를 `[1, 1, 1]`로 바꾼 행렬을 푼 거예요.
+
+### 두 삼각 행렬을 배열 하나에 담았을 때
+
+이 옵션의 대표적인 쓰임은 LU 분해 결과를 배열 하나에 겹쳐 담은 경우예요. LU 분해는 행렬을 "대각선이 1인 아래 삼각 `L`"과 "위 삼각 `U`"의 곱으로 나눠요. `L`의 대각선은 언제나 1이라 굳이 적어 둘 필요가 없으니, `L`의 대각선 아래 부분과 `U`를 배열 하나의 아래쪽과 위쪽에 나눠 담을 수 있어요.
+
+<Fig caption="L의 대각선 아래 부분(0.5)과 U(4, 3, -0.5)를 한 배열에 담았어요. L의 대각선 1은 적지 않아도 unit_diagonal=True가 대신해요.">
+  <ArrayFig name="L" data={[[1, 0], [0.5, 1]]} tones={[['g', 'm'], ['a', 'g']]} note="대각선은 언제나 1" />
+  <ArrayFig name="U" data={[[4, 3], [0, -0.5]]} tones={[['b', 'b'], ['m', 'b']]} />
+  <Op>→</Op>
+  <ArrayFig name="packed" data={[[4, 3], [0.5, -0.5]]} tones={[['b', 'b'], ['a', 'b']]} note="한 배열에 겹쳐 담기" />
+</Fig>
+
+이 배열 하나로 두 단계를 모두 풀 수 있어요. 아래쪽은 `upper=False, unit_diagonal=True`로, 위쪽은 `upper=True`로 읽으면 돼요.
+
+```python
+>>> packed = sd.asarray([[4.0, 3.0],
+...                      [0.5, -0.5]])
+>>> y = sd.linalg.solve_triangular(packed, sd.asarray([10.0, 4.0]), upper=False, unit_diagonal=True)
+>>> y
+array([10.0, -1.0], dtype=float64)
+>>> sd.linalg.solve_triangular(packed, y, upper=True)
+array([1.0, 2.0], dtype=float64)
+```
+
+첫 호출은 대각선 자리의 `4`와 `-0.5`를 읽지 않고 1로 봤고, 둘째 호출은 대각선을 포함한 위쪽을 읽었어요.
+
+`unit_diagonal=True`에서는 대각선을 읽지 않으므로, 대각선에 0이나 NaN이 있어도 상관없어요.
+
+```python
+>>> odd = sd.asarray([[sd.nan, 0.0],
+...                   [2.0, 0.0]])
+>>> sd.linalg.solve_triangular(odd, sd.asarray([1.0, 5.0]), upper=False, unit_diagonal=True)
+array([1.0, 3.0], dtype=float64)
+```
+
+## `b`의 모양과 배치
+
+`b`를 읽는 방법은 [solve](/api/linalg/solve/)와 똑같아요. 1차원이면 벡터 하나, 2차원 이상이면 우변 여러 개를 열로 나란히 놓은 행렬이에요.
+
+```python
+>>> bs = sd.asarray([[4.0, 2.0],
+...                  [11.0, 1.0],
+...                  [10.0, 4.0]])
+>>> sd.linalg.solve_triangular(lo, bs, upper=False)
+array([[2.0, 1.0],
+       [3.0, 0.0],
+       [1.0, 0.0]], dtype=float64)
+```
+
+첫 열 `[4, 11, 10]`의 해가 결과의 첫 열 `[2, 3, 1]`, 둘째 열 `[2, 1, 4]`의 해가 `[1, 0, 0]`이에요.
+
+`a`가 3차원 이상이면 삼각 행렬을 여러 장 쌓은 것으로 보고 한 장씩 풀어요. 앞쪽 배치 축은 `b`의 배치 축과 [브로드캐스팅](/api/array/broadcasting/)돼요. 1차원 `b`는 모든 행렬에 똑같이 써요.
+
+```python
+>>> stack = sd.asarray([[[1.0, 0.0], [2.0, 1.0]],
+...                     [[2.0, 0.0], [2.0, 1.0]]])
+>>> sd.linalg.solve_triangular(stack, sd.asarray([2.0, 5.0]), upper=False)
+array([[2.0, 1.0],
+       [1.0, 3.0]], dtype=float64)
+```
+
+`upper`와 `unit_diagonal`은 배치 전체에 하나예요. 행렬마다 방향을 다르게 줄 수는 없어요.
+
+행렬마다 다른 우변 벡터를 짝지으려면 `b[..., None]`으로 끝에 길이 1인 축을 붙여 넘겨요. 이유와 예제는 [solve](/api/linalg/solve/) 문서에 있어요.
+
+## 전치된 시스템 풀기
+
+$A^{\mathsf T}x = b$처럼 전치한 삼각 행렬로 풀어야 할 때가 있어요. 이럴 때를 위한 옵션은 따로 없고, 전치한 배열을 넘기면서 `upper`를 뒤집으면 돼요. 아래 삼각 행렬을 전치하면 위 삼각 행렬이 되기 때문이에요.
+
+```python
+>>> lo.T
+array([[ 2.0,  1.0,  4.0],
+       [ 0.0,  3.0, -1.0],
+       [ 0.0,  0.0,  5.0]], dtype=float64)
+>>> sd.linalg.solve_triangular(lo.T, sd.asarray([7.0, 2.0, 5.0]), upper=True)
+array([1.0, 1.0, 1.0], dtype=float64)
+```
+
+전치는 데이터를 복사하지 않는 [뷰](/api/array/views/)라서 비용이 들지 않아요. 3차원 이상의 배치에서는 `.T` 대신 마지막 두 축만 바꾸는 `.mT`를 쓰고, 복소수 행렬의 켤레 전치는 `sd.conj(a).mT`예요.
+
+이 방법으로 Cholesky 분해로 푸는 과정을 직접 따라갈 수 있어요. $A = LL^{\mathsf T}$이면 $Ax = b$는 $Ly = b$를 풀고 이어서 $L^{\mathsf T}x = y$를 푸는 것과 같아요.
+
+```python
+>>> A = sd.asarray([[4.0, 2.0], [2.0, 5.0]])
+>>> L = sd.linalg.cholesky(A)
+>>> L
+array([[2.0, 0.0],
+       [1.0, 2.0]], dtype=float64)
+>>> y = sd.linalg.solve_triangular(L, sd.asarray([8.0, 12.0]), upper=False)
+>>> sd.linalg.solve_triangular(L.T, y, upper=True)
+array([1.0, 2.0], dtype=float64)
+>>> sd.linalg.cholesky_solve(L, sd.asarray([8.0, 12.0]))
+array([1.0, 2.0], dtype=float64)
+```
+
+마지막 줄의 [cholesky_solve](/api/linalg/cholesky_solve/)가 이 두 단계를 한 번에 해 줘요.
+
+## 조심할 점
+
+### 대각선에 0이 있으면 `LinAlgError`
+
+대입할 때 대각선의 값으로 나누기 때문에, 대각선에 정확한 0이 있으면 풀 수 없어요. 이런 삼각 행렬은 특이 행렬이에요.
+
+```python
+>>> z = sd.asarray([[1.0, 0.0],
+...                 [2.0, 0.0]])
+>>> sd.linalg.solve_triangular(z, sd.asarray([1.0, 5.0]), upper=False)
+Traceback (most recent call last):
+    ...
+stardust.linalg.LinAlgError: solve_triangular(): singular matrix
+```
+
+특이하다고 판정하는 것은 정확히 0일 때뿐이에요. 0은 아니지만 아주 작은 값이면 에러 없이 아주 큰 결과가 나와요.
+
+```python
+>>> tiny = sd.asarray([[1.0, 0.0],
+...                    [2.0, 1e-300]])
+>>> sd.linalg.solve_triangular(tiny, sd.asarray([1.0, 5.0]), upper=False)
+array([   1.0, 3e+300], dtype=float64)
+```
+
+`LinAlgError`는 `ValueError`의 한 종류예요. 잡는 방법과 특이 판정의 자세한 규칙은 [실패와 에러](/api/linalg/errors/)에 있어요.
+
+배치 가운데 한 장이라도 실패하면 호출 전체가 실패하고, 메시지 끝에 몇 번째 행렬인지 붙어요.
+
+```python
+>>> two = sd.asarray([[[1.0, 0.0], [2.0, 1.0]],
+...                   [[1.0, 0.0], [2.0, 0.0]]])
+>>> sd.linalg.solve_triangular(two, sd.asarray([1.0, 5.0]), upper=False)
+Traceback (most recent call last):
+    ...
+stardust.linalg.LinAlgError: solve_triangular(): singular matrix (at batch index (1,))
+```
+
+### 삼각 행렬이 아닌 행렬을 넣어도 에러가 나지 않아요
+
+위에서 본 대로, 반대쪽 삼각에 값이 있어도 그냥 무시해요. 삼각 행렬이 아닌 일반 행렬을 실수로 넣으면 그 행렬의 한쪽 삼각만 떼어 낸 다른 문제의 답이 조용히 나와요. 일반 행렬은 [solve](/api/linalg/solve/)로 푸세요.
+
+반대로, 이 성질 덕분에 반대쪽에 무엇이 들어 있든 신경 쓰지 않아도 돼요. 읽지 않는 쪽에는 NaN이 있어도 괜찮아요.
+
+```python
+>>> dirty = sd.asarray([[2.0, sd.nan, sd.nan],
+...                     [1.0, 3.0, sd.nan],
+...                     [4.0, -1.0, 5.0]])
+>>> sd.linalg.solve_triangular(dirty, b, upper=False)
+array([2.0, 3.0, 1.0], dtype=float64)
+```
+
+### 읽는 쪽에 NaN·inf가 있으면 에러
+
+읽는 쪽 삼각이나 `b`에 NaN이나 무한대가 있으면 계산하지 않고 `ValueError`를 내요.
+
+```python
+>>> sd.linalg.solve_triangular(dirty, b, upper=True)
+Traceback (most recent call last):
+    ...
+ValueError: solve_triangular(): 'a' contains NaN or infinity
+>>> sd.linalg.solve_triangular(lo, sd.asarray([4.0, 11.0, sd.nan]), upper=False)
+Traceback (most recent call last):
+    ...
+ValueError: solve_triangular(): 'b' contains NaN or infinity
+```
+
+### 모양과 타입
+
+`a`는 정사각이어야 하고 `b`의 행 수가 `a`의 크기와 같아야 해요. 리스트는 받지 않아요.
+
+```python
+>>> sd.linalg.solve_triangular(sd.ones((2, 3)), sd.asarray([4.0, 11.0]), upper=False)
+Traceback (most recent call last):
+    ...
+ValueError: solve_triangular(): 'a' must be square in its last two dimensions, got 2x3
+>>> sd.linalg.solve_triangular(lo, sd.asarray([4.0, 11.0]), upper=False)
+Traceback (most recent call last):
+    ...
+ValueError: solve_triangular(): 'a' is 3x3 but 'b' has 2 rows
+>>> sd.linalg.solve_triangular([[1.0]], sd.asarray([4.0]), upper=False)
+Traceback (most recent call last):
+    ...
+TypeError: solve_triangular(): 'a' must be an sd.ndarray, not list
+```
+
+### 정수 입력도 결과는 float64
+
+대입 과정에 나눗셈이 있어서, 정수 행렬을 넣어도 결과는 float64예요.
+
+```python
+>>> sd.linalg.solve_triangular(sd.asarray([[2, 0], [1, 3]]), sd.asarray([4, 11]), upper=False)
+array([2.0, 3.0], dtype=float64)
+```
+
+### 빈 행렬
+
+크기가 0인 시스템은 에러 없이 빈 배열을 돌려줘요.
+
+```python
+>>> sd.linalg.solve_triangular(sd.zeros((0, 0)), sd.zeros((0,)), upper=False)
+array([], dtype=float64)
+```
+
+## 비슷한 함수와의 차이
+
+| 함수 | 받는 것 | `solve_triangular`와 다른 점 |
+|---|---|---|
+| [`solve(a, b)`](/api/linalg/solve/) | 정사각 행렬 아무것이나 | 삼각 행렬도 풀 수 있지만 삼각이라는 점을 이용하지 않아서 느려요. 행렬 전체를 읽어요. |
+| [`cholesky_solve(l, b)`](/api/linalg/cholesky_solve/) | `cholesky`의 결과 `L` | `L`로 한 번, 그 켤레 전치로 한 번, 두 번의 삼각 풀이를 한꺼번에 해요. 푸는 문제는 $Lx = b$가 아니라 $LL^{\mathsf H}x = b$예요. |
+| [`lu_solve(l, u, perm, b)`](/api/linalg/lu_solve/) | `lu`의 결과 셋 | 행 순서 바꾸기, `L` 풀이, `U` 풀이를 한꺼번에 해요. |
+| [`sd.tril`, `sd.triu`](/api/array/tril-triu/) | 아무 행렬 | 풀지 않아요. 행렬의 한쪽 삼각만 남기고 나머지를 0으로 만든 배열을 돌려줘요. |
+
+같은 삼각 행렬을 `solve`로 풀어도 답은 같아요. 다만 `solve`는 삼각이라는 것을 모르고 일반적인 방법으로 풀어서, 계산 순서가 달라 마지막 자리가 조금 어긋날 수 있어요.
+
+```python
+>>> sd.linalg.solve(lo, b)
+array([1.9999999999999998,                3.0, 1.0000000000000002], dtype=float64)
+```
+
+`cholesky_solve`에 넘기는 `L`과 `solve_triangular`에 넘기는 `L`은 같은 배열이지만 푸는 문제가 달라요. `solve_triangular(L, b, upper=False)`는 삼각 행렬 `L` 자체가 계수인 문제를, `cholesky_solve(L, b)`는 `L`로 분해되기 전의 원래 행렬이 계수인 문제를 풀어요.
+
+## 희소 행렬에서는
+
+희소 삼각 행렬의 풀이는 [`sd.sparse.spsolve_triangular`](/api/sparse/spsolve_triangular/)예요. `upper`, `unit_diagonal`의 뜻과 반대쪽을 읽지 않는 규칙이 같아요. 더하는 순서가 달라서 마지막 자리는 다를 수 있어요. 희소 배열을 `solve_triangular`에 넣으면 그 함수를 알려 주는 `TypeError`예요.
+
+## numpy·scipy를 아는 분께
+
+- `scipy.linalg.solve_triangular`에 해당해요. numpy에는 이 함수가 없어요.
+- **`upper`가 필수예요.** scipy의 `lower=False`(기본은 위 삼각)와 이름도 방향도 달라요. `lower=True`는 `upper=False`로 쓰세요.
+- **`trans=` 옵션이 없어요.** 전치·켤레 전치 시스템은 `a.mT`나 `sd.conj(a).mT`를 넘기고 `upper`를 뒤집으세요.
+- `unit_diagonal=`은 scipy와 이름과 뜻이 같아요.
+- `b`의 규칙은 `sd.linalg.solve`와 같아요(1차원일 때만 벡터). 배치도 받아요.
+- `check_finite=`, `overwrite_b=`가 없어요. 읽는 쪽 삼각과 `b`를 언제나 검사하고, NaN·inf가 있으면 `ValueError`예요.
+- 대각선의 0은 `sd.linalg.LinAlgError`(`ValueError`의 하위 클래스)예요.

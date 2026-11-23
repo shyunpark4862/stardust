@@ -1,0 +1,240 @@
+---
+title: diags_array
+names: [diags_array]
+group: 인덱싱과 만들기
+order: 3
+signatures:
+  - "sd.sparse.diags_array(diagonals, /, *, offsets=0, shape=None, format=None, dtype=None)"
+summary: 대각선 몇 줄에 값을 놓은 희소 행렬을 만들어요. 삼중대각 행렬처럼 띠 모양의 행렬을 만들 때 가장 손쉬운 방법이에요.
+params:
+  - name: diagonals
+    type: ndarray, 수, 또는 그 리스트
+    kind: positional-only
+    desc: 대각선에 놓을 값. offsets가 int면 대각선 하나(1차원 배열이나 수), offsets가 리스트면 같은 길이의 리스트예요. 수나 길이 1인 배열은 그 대각선 전체를 채워요.
+  - name: offsets
+    type: int 또는 int의 리스트
+    kind: keyword-only
+    desc: 대각선의 위치. 0은 주대각선, 양수는 위쪽, 음수는 아래쪽이에요. 같은 값이 두 번 나오면 안 돼요.
+  - name: shape
+    type: tuple 또는 None
+    kind: keyword-only
+    desc: 결과의 모양 (M, N). None이면 첫째 대각선의 길이에 |offsets[0]|을 더한 크기의 정사각형이에요.
+  - name: format
+    type: str 또는 None
+    kind: keyword-only
+    desc: 결과의 형식. 'coo', 'csr', 'csc', 'dok' 중 하나이고, None이면 CSR이에요.
+  - name: dtype
+    type: dtype 또는 None
+    kind: keyword-only
+    desc: 값의 dtype. None이면 대각선들의 dtype을 승격한 것이에요(정수 대각선이면 int64).
+returns:
+  type: 희소 배열
+  desc: 주어진 대각선에 값을 놓은 희소 배열. 0인 값은 저장하지 않아요.
+raises:
+  - type: TypeError
+    desc: 대각선이 배열이나 수가 아닐 때, offsets가 int 하나인데 diagonals가 리스트일 때, offsets가 int나 리스트가 아닐 때.
+  - type: ValueError
+    desc: 대각선이 2차원 이상일 때, 대각선과 offsets의 수가 다를 때, offsets가 겹칠 때, 대각선이 행렬 밖일 때, 대각선의 값이 모자랄 때.
+  - type: OverflowError
+    desc: offsets가 int64 밖일 때.
+seeAlso: [eye_array, kronsum, spbandwidth, tril, basics]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+
+## 한눈에 보기
+
+`diags_array`는 대각선 몇 줄에만 값이 있는 행렬을 만들어요. 어느 대각선에(`offsets`) 무엇을(`diagonals`) 놓을지 알려 주면, 그 값만 저장한 희소 행렬이 나와요.
+
+```python
+>>> import stardust as sd
+>>> d = sd.asarray([1.0, 2.0, 3.0])
+>>> sd.sparse.diags_array(d).toarray()
+array([[1.0, 0.0, 0.0],
+       [0.0, 2.0, 0.0],
+       [0.0, 0.0, 3.0]], dtype=float64)
+```
+
+대각선을 옮기려면 `offsets`를 줘요. 양수는 주대각선보다 위, 음수는 아래예요. 대각선 위의 원소 `[i, i + k]`에 값이 차례로 놓여요.
+
+```python
+>>> sd.sparse.diags_array(d, offsets=1).toarray()
+array([[0.0, 1.0, 0.0, 0.0],
+       [0.0, 0.0, 2.0, 0.0],
+       [0.0, 0.0, 0.0, 3.0],
+       [0.0, 0.0, 0.0, 0.0]], dtype=float64)
+```
+
+모양을 주지 않으면 대각선이 꼭 맞는 정사각형이에요. 길이 3인 대각선을 한 칸 위에 놓으려면 4 × 4가 필요해요.
+
+<Fig caption="offsets는 대각선의 번호예요. 0이 주대각선이고, 위로 갈수록 1, 2, 아래로 갈수록 -1, -2예요.">
+  <ArrayFig name="offsets" data={[[0, 1, 2, 3], [-1, 0, 1, 2], [-2, -1, 0, 1], [-3, -2, -1, 0]]} tones={[['b', 'a', '', ''], ['m', 'b', 'a', ''], ['', 'm', 'b', 'a'], ['', '', 'm', 'b']]} note="각 칸의 대각선 번호 (열 − 행)" />
+</Fig>
+
+<Reference />
+
+## 대각선 여러 줄
+
+`offsets`에 리스트를 주면 대각선 여러 줄을 한 번에 놓아요. 이때 `diagonals`도 같은 길이의 리스트예요. j번째 대각선이 j번째 offset에 놓여요.
+
+```python
+>>> lower = sd.asarray([-1.0, -1.0])
+>>> main = sd.asarray([2.0, 2.0, 2.0])
+>>> upper = sd.asarray([-1.0, -1.0])
+>>> sd.sparse.diags_array([lower, main, upper], offsets=[-1, 0, 1]).toarray()
+array([[ 2.0, -1.0,  0.0],
+       [-1.0,  2.0, -1.0],
+       [ 0.0, -1.0,  2.0]], dtype=float64)
+```
+
+이런 행렬을 **삼중대각 행렬**이라고 해요. 위의 2, −1, −1 꼴은 1차원 격자에서 이웃한 점의 차이를 두 번 잰 것(이계 차분)이라서, 미분방정식을 수치로 풀 때 아주 자주 나와요.
+
+### 수 하나로 대각선 전체를 채우기
+
+대각선 자리에 배열 대신 수 하나(또는 길이 1인 배열)를 주면 그 대각선 전체가 그 값이에요. 이때는 행렬의 크기를 정할 길이가 없으므로 `shape`를 꼭 줘요.
+
+```python
+>>> T = sd.sparse.diags_array([-1.0, 2.0, -1.0], offsets=[-1, 0, 1], shape=(5, 5))
+>>> T.toarray()
+array([[ 2.0, -1.0,  0.0,  0.0,  0.0],
+       [-1.0,  2.0, -1.0,  0.0,  0.0],
+       [ 0.0, -1.0,  2.0, -1.0,  0.0],
+       [ 0.0,  0.0, -1.0,  2.0, -1.0],
+       [ 0.0,  0.0,  0.0, -1.0,  2.0]], dtype=float64)
+>>> T.nnz
+13
+```
+
+<Callout type="warn" title="수만 주고 shape를 빠뜨리면 작은 행렬이 나와요">
+
+`shape`가 없으면 크기는 **첫째** 대각선의 길이 + |첫째 offset|이에요. 첫째 대각선이 수 하나(길이 1)이고 offset이 −1이면 2 × 2예요. 에러가 나지 않으니 모양을 확인하세요.
+
+</Callout>
+
+```python
+>>> sd.sparse.diags_array([-1.0, 2.0, -1.0], offsets=[-1, 0, 1])
+<csr_array of shape (2, 2), float64, 4 stored elements>
+```
+
+### 대각선의 길이
+
+대각선의 길이는 행렬의 모양과 offset이 정해요. 주는 값이 그보다 길면 앞에서부터 필요한 만큼만 쓰고 나머지는 버려요. 모자라면 `ValueError`예요.
+
+```python
+>>> sd.sparse.diags_array(sd.asarray([1.0, 2.0, 3.0]), offsets=1, shape=(3, 3)).toarray()
+array([[0.0, 1.0, 0.0],
+       [0.0, 0.0, 2.0],
+       [0.0, 0.0, 0.0]], dtype=float64)
+>>> sd.sparse.diags_array([sd.asarray([1.0, 2.0])], offsets=[0], shape=(3, 3))
+Traceback (most recent call last):
+    ...
+ValueError: diags_array(): diagonal 0 has 2 values, the diagonal at offset 0 of an array of shape (3, 3) has 3
+```
+
+직사각형도 돼요. 대각선은 언제나 왼쪽 위에서 출발해요(offset이 음수면 행 `-k`, 양수면 열 `k`에서).
+
+```python
+>>> sd.sparse.diags_array(sd.asarray([1.0, 2.0, 3.0]), offsets=-1, shape=(3, 4)).toarray()
+array([[0.0, 0.0, 0.0, 0.0],
+       [1.0, 0.0, 0.0, 0.0],
+       [0.0, 2.0, 0.0, 0.0]], dtype=float64)
+```
+
+## 0은 저장하지 않아요
+
+대각선의 값 가운데 0은 저장하지 않아요. 저장된 원소의 수 `nnz`는 0이 아닌 값의 수예요.
+
+```python
+>>> D = sd.sparse.diags_array(sd.asarray([1.0, 0.0, 3.0]))
+>>> D.nnz
+2
+```
+
+## 값의 dtype
+
+`dtype=None`이면 대각선들의 dtype을 배열의 규칙으로 승격해요. 정수 대각선만 있으면 int64, 실수가 섞이면 float64예요. `dtype`을 주면 그 dtype으로 바꿔요.
+
+```python
+>>> sd.sparse.diags_array(sd.asarray([1, 2, 3])).dtype
+int64
+>>> sd.sparse.diags_array([sd.asarray([1, 2]), sd.asarray([0.5, 0.5, 0.5])], offsets=[1, 0]).toarray()
+array([[0.5, 1.0, 0.0],
+       [0.0, 0.5, 2.0],
+       [0.0, 0.0, 0.5]], dtype=float64)
+>>> sd.sparse.diags_array(sd.asarray([1.0, 2.0]), dtype=sd.complex128).dtype
+complex128
+```
+
+## 형식
+
+기본은 CSR이고, `format`으로 `'coo'`, `'csc'`, `'dok'`를 고를 수 있어요. 값은 형식과 상관없이 같아요.
+
+```python
+>>> sd.sparse.diags_array(d, format='csc')
+<csc_array of shape (3, 3), float64, 3 stored elements>
+```
+
+## 에러
+
+### 대각선 하나와 offset 리스트를 섞으면
+
+`offsets`가 int 하나면 `diagonals`는 대각선 하나예요. 대각선 여러 줄의 리스트를 주면 `TypeError`이고, 메시지가 offset도 리스트로 주라고 알려 줘요.
+
+```python
+>>> sd.sparse.diags_array([lower, main], offsets=0)
+Traceback (most recent call last):
+    ...
+TypeError: diags_array(): with one offset, 'diagonals' must be one diagonal (an sd.ndarray or a number), not list; for several give a list of offsets
+```
+
+### 수가 맞지 않거나 겹치거나 밖이면
+
+```python
+>>> sd.sparse.diags_array([lower, main], offsets=[-1, 0, 1])
+Traceback (most recent call last):
+    ...
+ValueError: diags_array(): 2 diagonals but 3 offsets
+>>> sd.sparse.diags_array([1.0, 2.0], offsets=[0, 0], shape=(3, 3))
+Traceback (most recent call last):
+    ...
+ValueError: diags_array(): the offsets repeat a value
+>>> sd.sparse.diags_array(1.0, offsets=5, shape=(3, 3))
+Traceback (most recent call last):
+    ...
+ValueError: diags_array(): offset 5 (diagonal 0) is outside an array of shape (3, 3)
+```
+
+대각선은 1차원이어야 해요. 2차원 배열을 주면 `ValueError`예요.
+
+```python
+>>> sd.sparse.diags_array(sd.asarray([[1.0, 2.0]]))
+Traceback (most recent call last):
+    ...
+ValueError: diags_array(): diagonal 0 must have 1 dimension, got 2
+```
+
+## 밀집 배열의 짝: sd.diag
+
+밀집 배열에서 대각선 하나로 행렬을 만드는 함수는 [`sd.diag(x, k=)`](/api/array/diag/)예요. `diags_array(x, offsets=k)`와 값이 비트까지 같아요. 대각선이 여러 줄이면 `sd.diag`의 합이에요.
+
+```python
+>>> sd.diag(d, k=1)
+array([[0.0, 1.0, 0.0, 0.0],
+       [0.0, 0.0, 2.0, 0.0],
+       [0.0, 0.0, 0.0, 3.0],
+       [0.0, 0.0, 0.0, 0.0]], dtype=float64)
+>>> dense = sd.diag(lower, k=-1) + sd.diag(main) + sd.diag(upper, k=1)
+>>> S = sd.sparse.diags_array([lower, main, upper], offsets=[-1, 0, 1])
+>>> bool(sd.all(S.toarray() == dense))
+True
+```
+
+`sd.diag`는 만들기만 하고 행렬의 대각선을 읽지 않아요. 행렬의 대각선을 꺼내는 일은 [`sd.linalg.diagonal`](/api/linalg/trace-diagonal/)이 하고, 희소 행렬에서는 `A.diagonal(k=)` 메서드예요([인덱싱과 대입](/api/sparse/indexing/)).
+
+## scipy를 아는 분께
+
+- 기본 형식이 CSR이에요. `scipy.sparse.diags_array`는 DIA를 돌려주는데, 여기에는 DIA 형식이 없어요.
+- 정수 대각선의 dtype은 int64예요. scipy 1.18.1은 float64로 만들고 `FutureWarning`을 내요.
+- 대각선은 `sd.ndarray`나 수예요. 리스트는 대각선 여러 줄의 묶음으로만 받아요(`[1, 2, 3]`을 대각선 하나로 쓰려면 `sd.asarray([1, 2, 3])`).
+- 옛 함수 `scipy.sparse.diags`, `spdiags`는 없어요.

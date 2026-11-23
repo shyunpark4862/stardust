@@ -1,0 +1,127 @@
+---
+/**
+ * "함께 보기" at the end of a reference page or an article: related pages as
+ * cards, two to a row. Each card names the page's group, then the page, then
+ * the start of its summary (two lines); the whole card is the link.
+ */
+import { inlineHtml } from '../../data/inline';
+
+interface Item {
+  href: string;
+  title: string;
+  summary: string;
+  /** Show the title in the code font (a single function's page). */
+  mono?: boolean;
+  /** The group the page sits in on its area page ("정규화 회귀"). */
+  tag?: string;
+}
+interface Props {
+  items: Item[];
+}
+const { items } = Astro.props;
+---
+
+{
+  items.length > 0 && (
+    <>
+      <h2 id="함께-보기">함께 보기</h2>
+      <ul class="related">
+        {items.map((item) => (
+          <li>
+            <a class="related__card" href={item.href}>
+              {item.tag && <span class="related__tag">{item.tag}</span>}
+              <span class:list={['related__name', item.mono && 'related__name--mono']}>
+                {item.title}
+                <svg class="related__arrow" width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                  <path d="M2.5 6h7M6.5 3l3 3-3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </span>
+              <span class="related__summary" set:html={inlineHtml(item.summary)} />
+            </a>
+          </li>
+        ))}
+      </ul>
+    </>
+  )
+}
+
+<style>
+  .related {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-3);
+    padding: 0;
+    list-style: none;
+  }
+  .related li {
+    display: grid;
+    margin: 0;
+  }
+  .related__card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    padding: var(--space-4) var(--space-5);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    background: var(--bg);
+    text-decoration: none;
+    transition:
+      border-color var(--dur-fast) var(--ease),
+      background-color var(--dur-fast) var(--ease);
+  }
+  .related__card:hover {
+    border-color: var(--area-line);
+    background: var(--area-soft);
+  }
+  .related__tag {
+    font-size: var(--text-xs);
+    font-weight: 600;
+    line-height: var(--leading-snug);
+    color: var(--fg-subtle);
+  }
+  .related__name {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-md);
+    font-weight: 650;
+    line-height: var(--leading-snug);
+    color: var(--fg);
+  }
+  .related__name--mono {
+    font-family: var(--font-mono);
+    font-size: var(--text-base);
+    font-weight: 600;
+    color: var(--area);
+  }
+  .related__arrow {
+    flex: none;
+    color: var(--fg-subtle);
+    opacity: 0;
+    transform: translateX(-3px);
+    transition:
+      opacity var(--dur-fast) var(--ease),
+      transform var(--dur-fast) var(--ease);
+  }
+  .related__card:hover .related__arrow {
+    opacity: 1;
+    transform: none;
+    color: var(--area);
+  }
+  .related__summary {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    font-size: var(--text-sm);
+    line-height: 1.6;
+    color: var(--fg-muted);
+  }
+  @media (max-width: 640px) {
+    .related {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+</style>

@@ -1,0 +1,248 @@
+---
+kind: function
+title: median_test
+names: [median_test]
+group: 순위 검정
+order: 9
+signatures:
+  - "sd.htest.median_test(*samples, axis=None, ties='below', correction=True, lambda_=1, nan_policy='propagate', keepdims=False)"
+summary: 독립인 표본 여럿이 같은 중앙값을 가지는지 묻는 Mood의 중앙값 검정이에요. 모든 값을 합친 중앙값의 위와 아래에 표본마다 몇 개가 있는지 2 × k 표로 세고, 그 표의 카이제곱 검정을 해요.
+params:
+  - name: "*samples"
+    type: ndarray, 실수의 시퀀스, frame Series, 또는 DataFrame
+    kind: positional
+    desc: 표본 둘 이상. 길이는 달라도 돼요.
+  - name: axis
+    type: int, int의 tuple, 또는 None
+    kind: keyword-only
+    desc: "None(기본값)이면 표본마다 모든 값을 펼쳐 검정 하나를 해요. 정수면 그 축을 따라 표본을 읽고, 나머지 축은 배치예요."
+  - name: ties
+    type: str
+    kind: keyword-only
+    desc: "합친 중앙값과 같은 값을 둘 곳. 'below'(기본값, 아래 줄), 'above'(위 줄), 'ignore'(세지 않아요) 중 하나예요."
+  - name: correction
+    type: bool
+    kind: keyword-only
+    desc: "True(기본값)면 표본이 둘일 때(2 × 2 표) Yates의 연속성 보정을 넣어요. 표본이 셋 이상이면 영향이 없어요."
+  - name: lambda_
+    type: str, int, 또는 float
+    kind: keyword-only
+    desc: "표의 통계량. 1(기본값, Pearson의 카이제곱)이나 power_divergence의 이름('log-likelihood' 등) 또는 Cressie–Read의 λ 값이에요."
+  - name: nan_policy
+    type: str
+    kind: keyword-only
+    desc: "'propagate'(기본값), 'omit'(NaN을 빼고 계산), 'raise'(ValueError) 중 하나예요."
+  - name: keepdims
+    type: bool
+    kind: keyword-only
+    desc: True면 결과의 필드에 표본 축이 길이 1로 남아요.
+returns:
+  type: MedianTestResult
+  desc: "statistic, pvalue, median(합친 중앙값), table(2 × k의 int64 표: 첫 줄이 중앙값 위, 둘째 줄이 아래), df(k − 1)예요. (statistic, pvalue, median, table) 넷으로 풀려요."
+raises:
+  - type: TypeError
+    desc: "표본이 하나뿐일 때(median_test(): at least two samples are required, not 1), 표본이 배열·수의 시퀀스·frame이 아니거나 복소수일 때, correction·keepdims가 True·False가 아닐 때, lambda_가 문자열·수가 아닐 때, 없는 키워드를 줬을 때."
+  - type: ValueError
+    desc: "ties·lambda_·nan_policy의 이름이 틀렸을 때, nan_policy='raise'인데 NaN이 있을 때, axis가 범위 밖이거나 겹칠 때, 표본 축 밖의 모양이 브로드캐스트되지 않을 때."
+seeAlso: [kruskal, mannwhitneyu, chi2_contingency, power_divergence, quantile_test, basics, results]
+---
+
+## 무엇을 묻나요
+
+세 지역 가구의 한 달 외식비(만 원)를 조사했어요. 몇몇 가구가 아주 많이 써서 값이 오른쪽으로 길게 퍼졌어요.
+
+```python
+>>> import stardust as sd
+>>> g1 = [10, 14, 14, 18, 20, 22, 24, 25, 31, 31, 32, 39, 43, 43, 48, 49]
+>>> g2 = [28, 30, 31, 33, 34, 35, 36, 40, 44, 55, 57, 61, 91, 92, 99]
+>>> g3 = [0, 3, 9, 22, 23, 25, 25, 33, 34, 34, 40, 45, 46, 48, 62, 67, 84]
+>>> r = sd.htest.median_test(g1, g2, g3)
+>>> r
+MedianTestResult(statistic=4.14151, pvalue=0.126091, median=34, table=<array of shape (2, 3)>, df=2)
+```
+
+**중앙값 검정**은 이렇게 해요.
+
+1. 세 표본을 모두 합쳐 중앙값 $M$을 구해요. 여기서는 34예요.
+2. 표본마다 $M$보다 큰 값과 그렇지 않은 값의 개수를 세서 2 × k 표를 만들어요.
+3. 모든 표본의 중앙값이 같다면 어느 표본이든 위와 아래가 반반쯤이에요. 표의 카이제곱 검정으로 이것을 봐요.
+
+```python
+>>> r.table
+array([[ 5, 10,  7],
+       [11,  5, 10]], dtype=int64)
+```
+
+첫 줄이 $M$보다 큰 값의 수, 둘째 줄이 $M$ 이하(같은 값 포함)의 수예요. 둘째 지역이 위쪽이 많지만, p값 0.13은 차이가 우연으로도 흔히 생길 만한 정도라는 뜻이에요.
+
+- **귀무가설**: 모든 표본의 중앙값이 같아요.
+- **대립가설**: 적어도 한 표본의 중앙값이 달라요.
+
+값이 중앙값보다 큰지 작은지만 보므로 이상값에 아주 강해요. 대신 그만큼 정보를 버려서 [`kruskal`](/api/htest/kruskal/)보다 예민하지 않아요. 같은 자료에서 Kruskal–Wallis는 차이를 더 잘 잡아요.
+
+```python
+>>> sd.htest.kruskal(g1, g2, g3).pvalue
+0.02184018883348748
+```
+
+이런 때 써요.
+
+- 중앙값 자체가 관심일 때, 또는 분포 모양이 집단마다 달라서 순위 검정의 전제가 의심스러울 때.
+- 값이 일정한 범위로만 기록된 자료(예: "100 이상")처럼 중앙값 위·아래만 확실할 때.
+
+한 표본의 중앙값(일반적으로 분위수)이 어떤 값인지 묻는 검정은 [`quantile_test`](/api/htest/quantile_test/)예요.
+
+공통 규칙은 [가설검정의 기본](/api/htest/basics/)에, 결과를 읽는 법은 [결과 객체 읽기](/api/htest/results/)에 있어요.
+
+<Reference />
+
+## 결과 읽기
+
+| 필드 | 뜻 |
+|---|---|
+| `statistic` | 2 × k 표의 카이제곱 통계량(`lambda_`가 정해요) |
+| `pvalue` | 자유도 `df`의 카이제곱 분포의 위꼬리 |
+| `median` | 합친 표본의 중앙값(float) |
+| `table` | 2 × k의 int64 표. 첫 줄이 중앙값 위, 둘째 줄이 아래(`ties`에 따라 같은 값 포함) |
+| `df` | 자유도 $k - 1$ |
+
+넷(`statistic`, `pvalue`, `median`, `table`)으로 풀리고, `df`는 이름으로 읽어요.
+
+```python
+>>> stat, p, med, table = r
+>>> med, r.df
+(34.0, 2.0)
+>>> print(r.summary())
+                              Mood's median test
+==============================================================================
+Statistic:                       4.142  No. Observations:           16, 15, 17
+P-value:                         0.126  Ties:                            below
+Median:                          34.00
+Df:                                  2
+==============================================================================
+table             [0]        [1]        [2]
+------------------------------------------------------------------------------
+[0]                 5         10          7
+[1]                11          5         10
+==============================================================================
+```
+
+`table`은 읽기 전용 배열이에요. 고치려면 `.copy()`를 써요.
+
+## `ties`: 중앙값과 같은 값
+
+중앙값과 정확히 같은 값을 어느 줄에 둘지 정해요. 위의 자료에는 34가 셋(둘째 지역에 하나, 셋째 지역에 둘) 있어요.
+
+```python
+>>> sd.htest.median_test(g1, g2, g3, ties='above').table
+array([[ 5, 11,  9],
+       [11,  4,  8]], dtype=int64)
+>>> sd.htest.median_test(g1, g2, g3, ties='ignore').table
+array([[ 5, 10,  7],
+       [11,  4,  8]], dtype=int64)
+```
+
+`'below'`(기본값)는 같은 값을 아래 줄에, `'above'`는 위 줄에 두고, `'ignore'`는 세지 않아요. 값이 정수처럼 동점이 많으면 선택에 따라 p값이 꽤 달라질 수 있어요. 위에서 `'above'`의 p값은 0.064예요.
+
+```python
+>>> sd.htest.median_test(g1, g2, g3, ties='above').pvalue
+0.06387327606955326
+```
+
+어느 쪽을 쓸지는 데이터를 보기 전에 정해 두세요.
+
+## `correction`과 `lambda_`
+
+표본이 둘이면 2 × 2 표라서, `correction=True`(기본값)면 Yates의 연속성 보정이 들어가요. 보정은 p값을 조금 크게(보수적으로) 만들어요.
+
+```python
+>>> sd.htest.median_test(g1, g2)
+MedianTestResult(statistic=2.59961, pvalue=0.10689, median=34, table=<array of shape (2, 2)>, df=1)
+>>> sd.htest.median_test(g1, g2, correction=False).pvalue
+0.04861913422927626
+```
+
+`lambda_`는 표의 통계량을 고르는 [`power_divergence`](/api/htest/power_divergence/)의 인자예요. 기본값 1은 Pearson의 카이제곱이고, `'log-likelihood'`(또는 0)는 G 검정이에요.
+
+```python
+>>> sd.htest.median_test(g1, g2, g3, lambda_='log-likelihood')
+MedianTestResult(statistic=4.20341, pvalue=0.122248, median=34, table=<array of shape (2, 3)>, df=2)
+```
+
+## 중앙값은 정확하게 구해요
+
+값이 짝수 개면 중앙값은 가운데 두 값의 평균이에요. 이 평균을 반올림하지 않은 정확한 값과 견줘 위·아래를 갈라요. 그래서 반올림한 중앙값과 우연히 같아진 값을 "같다"로 세는 일이 없어요.
+
+```python
+>>> x1 = [1.0, 0.5, 0.2]
+>>> x2 = [1.0000000000000002, 2.0, 3.0]
+>>> r1 = sd.htest.median_test(x1, x2, ties='above')
+>>> r1.median
+1.0
+>>> r1.table
+array([[0, 3],
+       [3, 0]], dtype=int64)
+```
+
+가운데 두 값 1.0과 1.0000000000000002의 참 평균은 그 사이에 있어서 1.0은 중앙값보다 작아요. `median` 필드는 그 평균을 double로 반올림한 값이라 1.0으로 보여요.
+
+## 퇴화한 입력
+
+모든 값이 중앙값 아래(또는 위)에 있어 표의 한 줄이 비면 카이제곱 통계량을 정할 수 없어서 NaN이에요. `ties='ignore'`에서 한 표본이 모두 빠져 열이 비어도 NaN이에요. 경고는 내지 않아요.
+
+```python
+>>> sd.htest.median_test([1.0, 1.0, 1.0], [1.0, 1.0])
+MedianTestResult(statistic=nan, pvalue=nan, median=1, table=<array of shape (2, 2)>, df=1)
+```
+
+`nan_policy='propagate'`로 NaN이 된 검정의 `table`은 0으로 채워요.
+
+## 여러 검정을 한 번에: `axis`
+
+`axis`를 주면 그 축을 따라 표본을 읽고 나머지 축의 칸마다 따로 검정해요. `table`의 모양은 (배치 모양, 2, k)예요.
+
+```python
+>>> rng = sd.random.default_rng(11)
+>>> N = sd.stats.Normal()
+>>> A = N.sample((3, 20), rng=rng)
+>>> B = N.sample((3, 20), rng=rng) + sd.asarray([[0.0], [0.5], [1.0]])
+>>> rb = sd.htest.median_test(A, B, axis=1)
+>>> rb.table.shape
+(3, 2, 2)
+>>> rb.pvalue
+array([                 1.0,  0.34278171114791145, 0.004426525857919831], dtype=float64)
+>>> rb.table[2]
+array([[ 5, 15],
+       [15,  5]], dtype=int64)
+```
+
+배치의 `summary()`는 줄마다 통계량, p값, 중앙값을 한 줄씩 보여 주고, 줄마다의 표는 보이지 않아요. 표는 `rb.table[i]`로 꺼내 보세요.
+
+## 정확도
+
+표의 개수는 정확하고, 기대 빈도와 통계량은 개수에서 반올림을 줄여 계산해요. 문제 8개에서 Arb(구간 산술)와 정확한 유리수 셈으로 만든 참값에 견주어 통계량은 상대 1.1e-16, p값은 상대 7.6e-16 안이고, `median`은 참값을 올바르게 반올림한 값이에요.
+
+## scipy를 아는 분께
+
+`scipy.stats.median_test`와 표, 통계량, p값의 정의가 같고 넷으로 풀리는 것도 같아요.
+
+```python
+>>> import scipy.stats
+>>> scipy.stats.median_test(g1, g2, g3).pvalue
+np.float64(0.12609082774093242)
+```
+
+다른 점이에요.
+
+- `axis`, `keepdims`, 배치가 있어요. scipy의 `median_test`는 1차원 표본만 받아요.
+- 결과에 `df`가 있어요.
+- 중앙값: scipy는 가운데 두 값의 평균을 double로 반올림한 뒤 그 값과 견줘요. 위의 `x1`, `x2`에서 scipy는 1.0을 "같다"로 세어 `ties='above'`의 표가 달라요.
+
+  ```python
+  >>> scipy.stats.median_test(x1, x2, ties='above').table
+  array([[1, 3],
+         [2, 0]])
+  ```
+
+- 표의 줄이나 열이 비면 sd는 NaN이에요. scipy는 `ValueError`예요.
+- 표본 뒤의 옵션은 키워드로만 받아요.

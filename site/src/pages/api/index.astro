@@ -1,0 +1,63 @@
+---
+import { getCollection } from 'astro:content';
+import Docs from '../../layouts/Docs.astro';
+import LinkCard from '../../components/LinkCard.astro';
+import { areas, type NavGroup } from '../../data/nav';
+import { documentedAreas } from '../../data/api';
+
+const documented = await documentedAreas();
+const pages = await getCollection('api');
+const count = (key: string) => pages.filter((p) => p.id.startsWith(`${key}/`)).length;
+const sample = (key: string) => pages.filter((p) => p.id.startsWith(`${key}/`)).every((p) => p.data.sample);
+
+const groups: NavGroup[] = [
+  { title: 'API', items: [{ label: '전체 영역', href: '/api/' }] },
+  {
+    title: '영역',
+    items: areas
+      .filter((a) => documented.includes(a.key))
+      .map((a) => ({ label: a.name, href: `/api/${a.key}/`, badge: sample(a.key) ? '샘플' : undefined })),
+  },
+];
+---
+
+<Docs
+  title="API"
+  description="영역별 API 문서예요. 영역을 고르면 그 영역의 기본 개념과 함수 목록으로 가요."
+  section="api"
+  crumbs={[]}
+  groups={groups}
+>
+  <div class="grid">
+    {
+      areas.map((a) => {
+        const has = documented.includes(a.key);
+        return (
+          <LinkCard
+            href={has ? `/api/${a.key}/` : undefined}
+            title={a.name}
+            meta={a.ns}
+            area={a.key}
+            badge={!has ? '준비 중' : sample(a.key) ? '샘플' : `문서 ${count(a.key)}개`}
+            badgeTone={has && !sample(a.key) ? 'accent' : 'neutral'}
+          >
+            {a.desc}
+          </LinkCard>
+        );
+      })
+    }
+  </div>
+</Docs>
+
+<style>
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-4);
+  }
+  @media (max-width: 640px) {
+    .grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+</style>

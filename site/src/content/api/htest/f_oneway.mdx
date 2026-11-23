@@ -1,0 +1,246 @@
+---
+kind: function
+title: f_oneway
+names: [f_oneway]
+group: 평균과 분산
+order: 5
+signatures:
+  - "sd.htest.f_oneway(*samples, axis=None, equal_var=True, nan_policy='propagate', keepdims=False)"
+summary: 일원 분산분석(one-way ANOVA)이에요. 둘 이상인 집단의 평균이 모두 같은지 F 검정으로 한 번에 검정해요. equal_var=False면 집단마다 분산이 달라도 되는 Welch의 분산분석이에요.
+params:
+  - name: samples
+    type: ndarray, 실수의 시퀀스, 실수 스칼라, numpy 배열, 또는 frame의 Series·DataFrame
+    kind: positional-only
+    desc: 집단마다의 표본 두 개 이상. 크기는 서로 달라도 돼요. bool·정수는 float64로 바꿔서 계산해요. 축을 주면 표본 축 밖의 축끼리 브로드캐스트해야 해요.
+  - name: axis
+    type: int, int의 tuple·리스트, 또는 None
+    kind: keyword-only
+    desc: 표본을 읽을 축. None(기본값)이면 표본마다 모든 원소를 펼쳐요.
+  - name: equal_var
+    type: bool
+    kind: keyword-only
+    desc: True(기본값)면 모든 집단의 분산이 같다고 보는 보통의 분산분석, False면 Welch의 분산분석이에요.
+  - name: nan_policy
+    type: str
+    kind: keyword-only
+    desc: "NaN을 다루는 방법. 'propagate'(기본값, 그 검정의 결과가 NaN), 'omit'(표본마다 NaN을 빼고 검정), 'raise'(ValueError) 중 하나예요."
+  - name: keepdims
+    type: bool
+    kind: keyword-only
+    desc: True면 결과의 필드에 표본 축을 길이 1로 남겨요.
+returns:
+  type: FOnewayResult
+  desc: "필드 statistic(F), pvalue, df_num(k − 1), df_denom(N − k, Welch는 정수가 아닐 수 있어요)과 summary()가 있어요. 자유도는 float이에요. (statistic, pvalue)로 풀려요."
+raises:
+  - type: TypeError
+    desc: 표본이 둘보다 적을 때, 옵션을 위치로 줬을 때, 없는 옵션을 줬을 때, 표본이 배열·수의 시퀀스·frame이 아닐 때, 복소수일 때, equal_var·keepdims가 True·False가 아닐 때.
+  - type: ValueError
+    desc: nan_policy의 이름이 틀렸을 때, nan_policy='raise'인데 NaN이 있을 때, axis가 범위를 벗어나거나 같은 축을 두 번 썼을 때, 표본 축 밖의 모양이 브로드캐스트되지 않을 때.
+seeAlso: [basics, results, alexandergovern, ttest_ind, kruskal, tukey_hsd, levene]
+---
+import Callout from '../../../components/Callout.astro';
+
+## 무엇을 하나요
+
+비료 세 가지로 토마토를 여섯 그루씩 키워 그루마다 수확량(kg)을 쟀어요. 비료마다 평균이 20.8, 22.9, 19.9kg이에요. 이 차이가 비료 때문일까요, 그루마다의 우연한 흔들림일까요?
+
+두 집단이면 [`ttest_ind`](/api/htest/ttest_ind/)로 견주면 되지만, 셋을 짝마다 t 검정하면 검정을 세 번 하는 셈이라 우연히 작은 p값이 나올 기회가 늘어나요. **일원 분산분석**은 "모든 집단의 평균이 같은가"를 검정 하나로 물어요.
+
+- 귀무가설: k개 집단의 모집단 평균이 모두 같아요(μ₁ = μ₂ = … = μₖ).
+- 대립가설: 적어도 한 집단의 평균이 달라요.
+
+이름은 분산분석이지만 묻는 것은 평균이에요. 전체의 흩어짐을 **집단 사이**의 흩어짐(집단 평균이 전체 평균에서 떨어진 정도)과 **집단 안**의 흩어짐(값이 제 집단 평균에서 떨어진 정도)으로 나눠 견줘요. $n_i$, $\bar x_i$는 집단 i의 크기와 평균, $\bar x$는 전체 평균, N은 전체 크기예요.
+
+$$
+F = \frac{\text{SSB} / (k - 1)}{\text{SSW} / (N - k)}, \qquad
+\text{SSB} = \sum_i n_i (\bar x_i - \bar x)^2, \quad
+\text{SSW} = \sum_i \sum_j (x_{ij} - \bar x_i)^2
+$$
+
+평균이 모두 같으면 분자와 분모가 같은 분산을 어림하니 F가 1 근처이고, 평균이 다르면 분자가 커져요. 귀무가설이 맞고 집단마다 정규분포이며 분산이 같으면 F는 자유도 (k − 1, N − k)의 [F 분포](/api/stats/f/)를 따라요.
+
+이런 때 써요.
+
+- 셋 이상인 처리, 집단, 조건의 평균을 견줄 때
+- 집단마다 분산이 다를 수 있으면 `equal_var=False`(Welch)나 [`alexandergovern`](/api/htest/alexandergovern/)을 써요
+- 분포가 정규분포에서 크게 벗어나면 순위를 쓰는 [`kruskal`](/api/htest/kruskal/)을 써요
+- 같은 대상을 여러 조건에서 잰 값이면 [`friedmanchisquare`](/api/htest/friedmanchisquare/)를 써요
+
+<Reference />
+
+## 기본 사용
+
+```python
+>>> import stardust as sd
+>>> g1 = [20.1, 21.4, 19.8, 22.0, 20.7, 21.1]
+>>> g2 = [22.3, 23.1, 21.9, 24.0, 22.8, 23.4]
+>>> g3 = [19.5, 20.2, 18.9, 20.8, 19.7, 20.4]
+>>> r = sd.htest.f_oneway(g1, g2, g3)
+>>> r
+FOnewayResult(statistic=24.6906, pvalue=1.79884e-05, df_num=2, df_denom=15)
+```
+
+F ≈ 24.7은 집단 사이의 흩어짐이 집단 안의 흩어짐보다 25배쯤 크다는 뜻이에요. p값이 0.00002라 세 비료의 평균이 모두 같다는 귀무가설을 버려요.
+
+표본은 원하는 만큼 위치로 줘요. 집단을 리스트로 모아 두었다면 `*`로 풀어서 줘요. 행마다 한 집단인 2차원 배열도 같아요.
+
+```python
+>>> groups = [g1, g2, g3]
+>>> sd.htest.f_oneway(*groups).statistic
+24.690591658583905
+>>> sd.htest.f_oneway(*sd.asarray(groups)).statistic
+24.690591658583905
+```
+
+## 결과 읽기
+
+| 필드·메서드 | 뜻 |
+|---|---|
+| `statistic` | F 통계량 |
+| `pvalue` | F 분포의 위쪽 꼬리 넓이 |
+| `df_num` | 분자 자유도 k − 1(`float`) |
+| `df_denom` | 분모 자유도 N − k(`float`). Welch는 정수가 아닐 수 있어요 |
+| `summary()` | 검정을 표로 적은 글 |
+
+```python
+>>> print(r.summary())
+                                One-way ANOVA
+==============================================================================
+Statistic:                       24.69  No. Observations:              6, 6, 6
+P-value:                      1.80e-05
+Df Num:                              2
+Df Denom:                           15
+==============================================================================
+>>> f, p = r
+>>> r.df_num, r.df_denom
+(2.0, 15.0)
+```
+
+F 검정은 언제나 위쪽 꼬리 하나로 재서 `alternative`가 없어요. 신뢰구간도 없어요(`conf_int`가 없어요).
+
+<Callout type="note" title="어느 집단이 다른가">
+
+F 검정은 "모두 같다"를 버릴지만 알려 줘요. 어느 집단끼리 다른지는 사후 비교로 봐요. 모든 짝을 견주려면 [`tukey_hsd`](/api/htest/tukey_hsd/), 대조군 하나와 견주려면 [`dunnett`](/api/htest/dunnett/)이에요. 짝마다 t 검정을 하고 p값을 [`multipletests`](/api/htest/multipletests/)로 보정할 수도 있어요.
+
+```python
+>>> sd.htest.tukey_hsd(g1, g2, g3).pvalue
+array([[                  1.0,  0.000738843180584123,   0.11595059789540448],
+       [ 0.000738843180584123,                   1.0, 1.516124553012458e-05],
+       [  0.11595059789540448, 1.516124553012458e-05,                   1.0]], dtype=float64)
+```
+
+둘째 비료가 나머지 둘과 다르고, 첫째와 셋째의 차이는 뚜렷하지 않아요.
+
+</Callout>
+
+## Welch의 분산분석: equal_var=False
+
+보통의 분산분석은 집단 안의 분산이 모든 집단에서 같다고 봐요. 한 집단의 흩어짐이 유난히 크면 그 가정이 깨져요. 셋째 비료를 흩어짐이 큰 다른 품종에 썼다고 해 봐요.
+
+```python
+>>> h3 = [19.5, 23.2, 16.9, 22.8, 17.7, 21.4, 18.0, 24.1]
+>>> sd.htest.f_oneway(g1, g2, h3)
+FOnewayResult(statistic=3.17922, pvalue=0.0671498, df_num=2, df_denom=17)
+>>> sd.htest.f_oneway(g1, g2, h3, equal_var=False)
+FOnewayResult(statistic=10.7431, pvalue=0.00252413, df_num=2, df_denom=11.1232)
+```
+
+보통의 분산분석은 h3의 큰 흩어짐을 모든 집단의 흩어짐으로 섞어 써서, g1과 g2의 뚜렷한 차이를 놓쳤어요. **Welch의 분산분석**은 집단마다 분산을 따로 어림하고 집단 평균에 $w_i = n_i / s_i^2$의 무게를 줘요. 정확한 집단(분산이 작은 집단)의 평균을 더 믿는 거예요.
+
+$$
+F_W = \frac{\sum_i w_i (\bar x_i - \bar x_w)^2 / (k - 1)}{1 + \dfrac{2(k - 2)}{k^2 - 1} T}, \qquad
+\bar x_w = \frac{\sum_i w_i \bar x_i}{\sum_i w_i}, \quad
+T = \sum_i \frac{(1 - w_i / W)^2}{n_i - 1}
+$$
+
+$W = \sum_i w_i$이고, 분모 자유도는 $(k^2 - 1) / (3T)$로 정수가 아니에요. R의 `oneway.test(var.equal = FALSE)`와 같은 검정이에요. 집단의 분산이 같은지 확신이 없으면 Welch를 쓰는 편이 안전해요. 같은 질문을 다른 근사로 푸는 [`alexandergovern`](/api/htest/alexandergovern/)도 있어요.
+
+```python
+>>> print(sd.htest.f_oneway(g1, g2, h3, equal_var=False).summary())
+                            One-way ANOVA (Welch)
+==============================================================================
+Statistic:                       10.74  No. Observations:              6, 6, 8
+P-value:                       0.00252
+Df Num:                              2
+Df Denom:                        11.12
+==============================================================================
+```
+
+## 두 집단이면 t 검정과 같아요
+
+집단이 둘이면 F는 [`ttest_ind`](/api/htest/ttest_ind/)의 t의 제곱이고 p값은 양쪽 t 검정의 p값과 같아요. F 분포와 t 분포의 꼬리를 따로 계산하니 끝자리 몇 개는 다를 수 있어요. `equal_var=True`는 Student의 t 검정, `False`는 Welch의 t 검정에 맞아요.
+
+```python
+>>> f2, t2 = sd.htest.f_oneway(g1, g2), sd.htest.ttest_ind(g1, g2)
+>>> round(f2.statistic, 10), round(t2.statistic ** 2, 10)
+(20.5232247731, 20.5232247731)
+>>> f2.pvalue, t2.pvalue
+(0.0010909577311245251, 0.0010909577311245234)
+```
+
+집단을 0·1 열로 나타낸 회귀의 F 검정과도 같은 검정이에요. [`sd.regression.ols`](/api/regression/ols/)에 집단마다의 더미 열을 주면 `fvalue`, `f_pvalue`가 이 F와 p값이에요(반올림 차이 안에서 같아요).
+
+```python
+>>> X = [[0.0, 0.0]] * 6 + [[1.0, 0.0]] * 6 + [[0.0, 1.0]] * 6
+>>> fit = sd.regression.ols(g1 + g2 + g3, X)
+>>> round(fit.fvalue, 10), round(r.statistic, 10)
+(24.6905916586, 24.6905916586)
+```
+
+## axis와 배치
+
+축을 주면 그 축을 따라 표본을 읽고 남은 축마다 검정해요. 표본 축 밖의 축끼리는 브로드캐스트하고, 표본 축의 길이는 집단마다 달라도 돼요. 아래는 두 해의 기록을 한 번에 검정한 예예요(행이 해).
+
+```python
+>>> S1 = sd.asarray([g1, [20.5, 20.9, 21.2, 20.0, 21.8, 20.6]])
+>>> S2 = sd.asarray([g2, [21.0, 20.4, 21.5, 20.8, 21.1, 20.2]])
+>>> S3 = sd.asarray([g3, [20.7, 21.3, 20.1, 20.9, 21.6, 20.3]])
+>>> rb = sd.htest.f_oneway(S1, S2, S3, axis=1)
+>>> rb.pvalue
+array([1.798838949967389e-05,    0.9982343598176637], dtype=float64)
+```
+
+둘째 해에는 비료마다의 차이가 보이지 않아요. 배치의 규칙은 [가설검정의 기본](/api/htest/basics/#표본이-여럿일-때의-배치)에 있어요.
+
+## 특수한 경우
+
+| 입력 | 결과 |
+|---|---|
+| 표본을 하나만 줌 | `TypeError` |
+| 한 집단이 비었음 | F, p값이 NaN(자유도는 k − 1, N − k) |
+| N ≤ k(집단 안의 흩어짐을 어림할 관측이 없음) | F, p값이 NaN |
+| 모든 집단이 상수(SSW = 0) | F, p값이 NaN |
+| Welch에서 한 집단의 크기가 2보다 작거나 상수 | F, p값, `df_denom`이 NaN |
+| `'propagate'`에서 NaN이 있음 | 모든 필드가 NaN |
+| ±inf가 있음 | F, p값이 NaN |
+
+```python
+>>> sd.htest.f_oneway(g1)
+Traceback (most recent call last):
+    ...
+TypeError: f_oneway(): at least two samples are required, not 1
+>>> sd.htest.f_oneway([2.0, 2, 2], [3.0, 3], [5.0, 5, 5, 5])
+FOnewayResult(statistic=nan, pvalue=nan, df_num=2, df_denom=6)
+>>> sd.htest.f_oneway([2.0, 3], [3.0], [5.0, 6], equal_var=False)
+FOnewayResult(statistic=nan, pvalue=nan, df_num=2, df_denom=nan)
+```
+
+모든 집단이 상수이면 집단 안의 흩어짐이 0이라 F가 (무엇)/0이에요. 평균이 달라도 "흩어짐에 비해 얼마나 다른가"를 잴 수 없어서 NaN으로 둬요. 분산이 0인 t 검정이 NaN인 것과 같은 규칙이에요(두 집단의 F는 t²예요).
+
+## 정확도
+
+- F의 상대오차는 $10^{-14}$ 안이에요(Welch 포함 잰 최대 $1.9 \times 10^{-16}$). 집단 평균과 전체 평균의 차를 반올림 오차가 거의 없게 구해서, 평균이 $10^8$인데 집단 차이가 0.3 수준인 데이터도 자릿수를 지켜요.
+- p값은 F 분포의 위쪽 꼬리를 직접 계산해서 $10^{-14} \cdot \max(1, \kappa_p)$ 안이에요(잰 최대 상대오차 $2.3 \times 10^{-14}$).
+- Welch의 `df_denom`은 상대 $2.1 \times 10^{-16}$ 안이에요. 한 집단의 무게가 나머지를 압도해도 $1 - w_i / W$를 다른 무게의 합으로 구해서 상쇄가 없어요.
+- 데이터를 어떤 수로 곱해도 F와 p값은 반올림 차이 안에서 같아요.
+
+참값은 Arb(구간 산술)로 만들었어요. 잰 문제는 작은 집단, 집단마다 700–900개의 큰 집단, 깊은 꼬리, 오프셋 $10^8$, 두 집단, 상수 집단, 배치와 각각의 Welch 판이에요.
+
+## scipy를 아는 분께
+
+scipy 1.18.1의 `scipy.stats.f_oneway`와 같은 검정이에요. `equal_var=False`는 scipy와 R `oneway.test(var.equal = FALSE)`의 Welch 분산분석이에요.
+
+- 결과에 `df_num`, `df_denom`이 있어요. scipy의 결과는 `statistic`, `pvalue`뿐이에요. `(statistic, pvalue)`로 푸는 것은 같아요.
+- `axis`의 기본값이 None이에요(scipy는 0). 2차원 배열을 집단 하나로 주면 scipy는 열마다 검정하고 여기서는 모든 원소가 한 집단이에요.
+- 모든 집단이 상수면 NaN이에요. scipy는 집단 평균이 다르면 F = inf, p = 0을, 같으면 NaN을 내요.
+- 표본이 하나면 scipy처럼 `TypeError`예요.

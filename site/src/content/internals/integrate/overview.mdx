@@ -1,0 +1,412 @@
+---
+title: 영역의 구조
+group: 구조
+order: 1
+summary: sd.integrate가 Python 층과 C++ 커널로 나뉜 모습, 함수마다 사용자 함수를 부르는 세 가지 꼴, 결과 클래스 IntegrateResult의 짜임, 원소별 반복 고리와의 관계, 그리고 scipy와 같은 걸음을 맞추는 방법을 설명해요.
+seeAlso: [gauss-kronrod, adaptive-extrapolation, weight-routines, nested, quad-vec, tanhsinh, accuracy-performance]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Layers from '../../../components/fig/Layers.astro';
+import Steps from '../../../components/fig/Steps.astro';
+
+## 한눈에 보기
+
+`sd.integrate`의 공개 함수 열다섯은 모두 Python 함수예요. Python 층은 인자를 확인하고 결과 객체를 만들고, 적분 자체는 C++ 커널(`stardust._core.integrate`)이 해요. 피적분 함수는 사용자의 Python 함수라서, 커널은 계산 중에 Python으로 되돌아와 그 함수를 불러요. 표본 규칙(`trapezoid` 등)만 사용자 함수 없이 배열을 받아 끝까지 C++에서 계산해요.
+
+<Fig column caption="sd.integrate의 층. 위가 사용자가 부르는 것, 아래가 그 밑바탕이에요.">
+  <Layers layers={[
+    { title: '공개 함수 (Python)', note: 'src/stardust/integrate/', items: [
+      { name: '_quadpack.py', note: 'quad, dblquad, tplquad, nquad' },
+      { name: '_quad_vec.py', note: 'quad_vec' },
+      { name: '_cubature.py', note: 'cubature' },
+      { name: '_tanhsinh.py', note: 'tanhsinh, nsum' },
+      { name: '_rules.py', note: 'fixed_quad, newton_cotes' },
+      { name: '_samples.py', note: 'trapezoid, simpson, romb, cumulative_trapezoid, cumulative_simpson' },
+    ] },
+    { title: '공통 (Python)', items: [
+      { name: '_result.py', note: 'IntegrateResult와 summary()' },
+      { name: '_gauss.py', note: 'Gauss–Legendre 마디와 가중치의 반올림' },
+      { name: '../_results.py', note: '결과의 바탕 _FieldResult' },
+      { name: '../optimize/_common.py', note: '옵션과 함숫값의 검사' },
+      { name: '../optimize/_elementwise.py', note: '배치의 브로드캐스트와 args' },
+    ] },
+    { title: '커널 (C++)', note: 'csrc/integrate/', items: [
+      { name: 'quadpack.hpp', note: 'QUADPACK 루틴(템플릿)' },
+      { name: 'quadpack.cpp', note: 'quad_solve, nquad_solve', uses: 'quadpack.hpp' },
+      { name: 'adaptive.cpp', note: 'quad_vec_solve, cubature_solve', uses: 'numpy_ops.hpp' },
+      { name: 'tanhsinh.cpp', note: 'tanhsinh_solve, nsum_solve', uses: 'elementwise/loop.hpp, numpy_ops.hpp' },
+      { name: 'gauss.cpp', note: 'Gauss–Legendre 표와 double-double Newton', uses: 'gauss_table.hpp' },
+      { name: 'samples.cpp', note: '표본 규칙과 fixed_quad의 가중 합', uses: 'array/kernels/reduce.hpp, base/pairwise.hpp' },
+    ] },
+    { title: '바닥', tone: 'dark', items: [
+      { name: 'elementwise', note: '원소별 반복 고리 loop.hpp' },
+      { name: 'array', note: 'pairwise 합과 스캔' },
+      { name: 'linalg', note: 'cblas_ddot (Accelerate)' },
+      { name: 'parallel', note: '스레드풀, GIL 놓기' },
+    ] },
+  ]} />
+</Fig>
+
+| 공개 함수 | Python | 커널 함수 | 같은 걸음을 가는 scipy 1.18.1의 코드 |
+|---|---|---|---|
+| `quad` | `_quadpack.py` | `quad_solve` | `_quadpack_py.py`의 `_quad`·`_quad_weight`와 QUADPACK의 C 판 |
+| `dblquad`, `tplquad`, `nquad` | `_quadpack.py` | `nquad_solve` | `_quadpack_py.py`의 `_NQuad` |
+| `quad_vec` | `_quad_vec.py` | `quad_vec_solve` | `_quad_vec.py` |
+| `cubature` | `_cubature.py` | `cubature_solve` | `_cubature.py`와 `_rules` |
+| `tanhsinh`, `nsum` | `_tanhsinh.py` | `tanhsinh_solve`, `nsum_solve` | `_tanhsinh.py` |
+| `fixed_quad` | `_rules.py`, `_gauss.py` | `legendre_table`, `legendre_dd`, `samples` | `_quadrature.py`의 `fixed_quad`(마디는 다르게 만들어요) |
+| `newton_cotes` | `_rules.py` | (Python의 정확한 유리수) | `_quadrature.py`의 `newton_cotes` |
+| 표본 규칙 다섯 | `_samples.py` | `samples` | `_quadrature.py` |
+
+`quadpack.hpp`는 QUADPACK(Piessens, de Doncker-Kapenga, Überhuber, Kahaner 1983)의 Fortran 원본을 문장마다 그대로 따른 템플릿 헤더예요. 가중치 없는 `quad`가 쓰는 `dqagse`·`dqagie`·`dqagpe`와 그 부품 `dqk21`·`dqk15i`·`dqpsrt`·`dqelg`, 가중 함수 루틴 `dqawoe`·`dqawfe`·`dqawse`·`dqawce`와 그 부품 `dqk15w`·`dqc25f`·`dqc25s`·`dqc25c`·`dqcheb`·`dqmomo`, LINPACK의 `dgtsl`이 들어 있어요. 피적분 함수가 템플릿 인자라서 Python 콜백이든 다른 `quad`를 부르는 람다든 같은 코드가 돌아요. 이 덕분에 겹친 적분의 안쪽 적분도 같은 커널이에요([겹친 적분](/internals/integrate/nested/)).
+
+## 한 번의 호출이 지나는 길
+
+`quad(f, 0, 1)` 한 번이 지나는 길을 따라가 볼게요.
+
+<Fig column caption="quad 한 번의 흐름. 사용자 함수는 커널 안에서 불리고, 결과 객체는 Python에서 만들어요.">
+  <Steps steps={[
+    { label: 'quad()', note: '끝 a, b가 NaN 아닌 float인지, 옵션이 모두 기본값인지(형을 먼저, 그다음 값) 먼저 봐요. 그렇다면 검사를 건너뛰는 빠른 길로 미리 만든 옵션 튜플을 써요', where: '_quadpack.py' },
+    { label: 'quad_solve', note: 'a == b면 f를 부르지 않고 0. a > b면 끝을 바꾸고 부호를 기억해요. 그다음 scipy의 갈래대로 루틴을 골라요', where: 'quadpack.cpp' },
+    { label: 'qagse', note: 'QAGS. 유한 구간의 적응 분할과 ε-알고리즘', where: 'quadpack.hpp', depth: 1 },
+    { label: 'qk21', note: '21점 Gauss–Kronrod 규칙. 가운데, Gauss 점의 쌍, Kronrod 점의 쌍 순서로 f를 불러요', where: 'quadpack.hpp', depth: 2 },
+    { label: 'Fn', note: 'f(x)를 Python float로 불러요. 돌려받은 값이 float가 아니면 check가 바꾸거나 에러를 내요. vectorized=True면 VecFn이 규칙의 점들을 배열로 한 번에 불러요', where: 'quadpack.cpp', depth: 3 },
+    { label: 'interval_arrays', note: '구간의 끝·값·오차를 오차 추정이 큰 차례로 읽기 전용 배열 셋에 담아요', where: 'quadpack.cpp' },
+    { label: '_quad_result', note: 'ier를 status로(정상 끝인데 값이나 오차가 유한하지 않으면 −3), scipy의 글을 message로 붙여 IntegrateResult._quad로 결과를 만들어요', where: '_quadpack.py, _result.py' },
+  ]} />
+</Fig>
+
+루틴을 고르는 갈래는 scipy의 `quad`와 같아요. `weight`가 있으면 가중 함수 루틴(QAWO, QAWF, QAWS, QAWC), `points`가 있으면 QAGP, 끝이 무한하면 QAGI, 나머지는 QAGS예요. 무한 구간은 세 갈래로 나뉘어요.
+
+```cpp
+    // csrc/integrate/quadpack.cpp
+    } else if (b == kInf && a != -kInf) {
+        qp::qagie(f, a, 1, o.atol, o.rtol, o.limit, w);
+    } else if (b == kInf) {
+        qp::qagie(f, 0.0, 2, o.atol, o.rtol, o.limit, w);
+    } else if (a == -kInf) {
+        qp::qagie(f, b, -1, o.atol, o.rtol, o.limit, w);
+    } else {
+        qp::qagse(f, a, b, o.atol, o.rtol, o.limit, w);
+    }
+```
+
+`qagie`의 둘째 인자 `inf`가 1이면 [a, ∞), −1이면 (−∞, b], 2면 실수 전체예요. 끝을 바꾼 뒤라 a < b가 늘 맞으므로 (∞, ·) 같은 경우는 이 갈래에 오지 않아요.
+
+Python 층은 반복의 앞과 뒤만 맡아요. 인자 검사 가운데 범위에 달린 것(무한 구간과 `points`, 무한 구간의 `'alg'` 가중치, `'cauchy'`의 c가 끝과 같은 경우, QAWF의 허용오차)은 C++가 a == b의 지름길 다음에 해요. 그래서 a == b면 그런 옵션이 틀려도 0이 나오고, 겹친 적분에서 층마다 범위 함수가 돌려준 범위에 대해서도 같은 규칙으로 검사해요.
+
+## 사용자 함수를 부르는 세 가지 꼴
+
+함수마다 사용자 함수를 부르는 꼴이 달라요. scipy에 없는 `quad(vectorized=True)` 말고는 모두 scipy와 같은 꼴이고, 부르는 점의 순서와 값, 호출 수도 지금은 scipy와 비트까지 같아요(약속은 아니에요).
+
+| 꼴 | 함수 | 넘기는 것 | 돌려받는 것 |
+|---|---|---|---|
+| 점 하나씩 | `quad`, `dblquad`, `tplquad`, `nquad`, `quad_vec` | Python `float` 하나(겹친 적분은 변수마다 하나) | 수 하나(`quad_vec`은 같은 모양의 배열도) |
+| 점을 한 번에 | `cubature`, `fixed_quad`, `quad(vectorized=True)` | (n, ndim) 또는 (n,) float64 `sd.ndarray` | (n, …) 또는 (…, n), `quad`는 (n,) |
+| 원소별 배치 | `tanhsinh`, `nsum` | 처음에 (k,), 다음부터 (k, p) float64 `sd.ndarray`, `args`는 (k, 1) | 같은 모양 |
+
+### 점 하나씩
+
+QUADPACK의 규칙은 점 하나의 함숫값을 받아 곧장 누적에 더해요. 그래서 점마다 Python을 한 번씩 불러요. 부르는 비용이 대부분이므로, 돌려받은 값이 정확히 Python `float`일 때는 형 검사 하나로 끝내요.
+
+```cpp
+// csrc/integrate/quadpack.cpp
+struct Fn {
+    nb::handle f, check;
+    int part = 0;
+
+    double value(nb::handle r) const {
+        PyObject* o = r.ptr();
+        if (part == 0) {
+            if (PyFloat_CheckExact(o)) return PyFloat_AS_DOUBLE(o);
+            nb::object c = check(r, "func");
+            return PyFloat_AsDouble(c.ptr());
+        }
+        if (PyComplex_CheckExact(o)) return part == 1 ? PyComplex_RealAsDouble(o) : PyComplex_ImagAsDouble(o);
+        if (PyFloat_CheckExact(o)) return part == 1 ? PyFloat_AS_DOUBLE(o) : 0.0;
+        nb::object c = check(r, "func");
+        return part == 1 ? PyComplex_RealAsDouble(c.ptr()) : PyComplex_ImagAsDouble(c.ptr());
+    }
+    double operator()(double x) const { return value(f(x)); }
+};
+```
+
+`part`는 `complex_func=True`의 두 번의 `quad`예요. 0이면 실수 값, 1이면 실수부, 2면 허수부를 읽어요. scipy처럼 실수부의 `quad`를 끝까지 한 뒤 허수부의 `quad`를 하므로, 같은 점들을 두 번 불러요. `check`는 optimize와 함께 쓰는 Python 함수(`_scalar_check`)라서 numpy의 수와 0차원 배열을 받고, 모양이 있는 값에는 optimize와 같은 글의 에러를 내요.
+
+```python
+>>> import math
+>>> sd.integrate.quad(lambda x: [x, x], 0, 1)
+Traceback (most recent call last):
+    ...
+ValueError: quad(): 'func' must return a real number, not shape (2,)
+```
+
+사용자 함수가 낸 에러는 그대로 나가요. 21점 규칙은 구간의 가운데를 가장 먼저 부르므로, [−1, 1]의 1/x는 첫 호출에서 0으로 나눠요.
+
+```python
+>>> sd.integrate.quad(lambda x: 1 / x, -1, 1)
+Traceback (most recent call last):
+    ...
+ZeroDivisionError: division by zero
+```
+
+`quad_vec`도 점 하나씩이지만 값이 배열일 수 있어요. 첫 값이 모양을 정하고, 커널(`adaptive.cpp`의 `VecFn`, 아래 `quadpack.cpp`의 같은 이름과는 다른 구조체)은 그 모양을 기억해 다음 값마다 견줘요.
+
+### 점을 한 번에
+
+`cubature`는 영역 하나의 규칙 점을 모두 한 배열로 넘기고, `fixed_quad`는 n개 마디를 한 번에 넘겨요. 사용자 함수가 numpy나 sd의 원소별 연산이면 Python을 오가는 비용이 점 하나가 아니라 배열 하나의 몫이 돼요. 대신 사용자 함수는 배열을 받아야 해요([다차원 적응 구적](/internals/integrate/cubature/), [Gauss–Legendre 마디](/internals/integrate/gauss-legendre/)).
+
+### 규칙 하나를 한 번에
+
+`quad(vectorized=True)`는 QUADPACK의 규칙을 한 번 쓸 때마다 사용자 함수를 한 번 불러요. 넘기는 것은 그 규칙의 점들을 담은 (n,) float64 `sd.ndarray`이고, n은 21(`qk21`), 15(반무한 구간의 `qk15i`, 가중 함수의 `qk15w`), 30(실수 전체의 `qk15i`, 점마다 x와 −x), 25(가중 함수의 Clenshaw–Curtis 규칙 `qc25f`·`qc25s`·`qc25c`)예요. QUADPACK의 루틴은 점 하나의 값을 받아 곧장 누적에 더하는 꼴 그대로이고, 규칙마다 그 앞에 점을 미리 늘어놓는 단계가 하나 있어요.
+
+규칙마다 부를 점을 부르는 순서대로, 부를 때와 같은 식으로 먼저 늘어놓아 `prefetch`에 넘겨요([21점 규칙 한 번](/internals/integrate/gauss-kronrod/#21점-규칙-한-번)). `prefetch`는 피적분 함수에 같은 이름의 멤버가 있을 때만 그것을 불러요. 점 하나씩 부르는 `Fn`과 겹친 적분의 안쪽 적분에는 그 멤버가 없어서, 그때 `prefetch`는 아무 일도 하지 않아요.
+
+```cpp
+// csrc/integrate/quadpack.hpp
+// The points of one rule application, for an integrand that evaluates them together (see the top).
+template <class F>
+inline void prefetch(F& f, const double* xs, int n) {
+    if constexpr (requires { f.prefetch(xs, n); }) f.prefetch(xs, n);
+}
+```
+
+배열로 부르는 피적분 함수가 `VecFn`이에요. `prefetch`에서 점들을 새 배열에 담아 사용자 함수를 한 번 부르고 값을 `vals`에 받아 둬요. 규칙이 뒤이어 `f(x)`를 부르면 늘어놓은 다음 점과 비트까지 같은지 보고 받아 둔 값을 차례로 내줘요. 같지 않은 점은 길이 1의 배열로 따로 부르지만, QUADPACK의 규칙에는 그런 점이 없어요.
+
+```cpp
+// csrc/integrate/quadpack.cpp
+struct VecFn {
+    nb::handle f, check;
+    int part = 0;
+    std::vector<double> xs, vals;
+    std::size_t pos = 0;
+
+    void prefetch(const double* x, int n) {
+        xs.assign(x, x + n);
+        vals.resize(static_cast<std::size_t>(n));
+        pos = 0;
+        eval(x, n, vals.data());
+    }
+
+    void eval(const double* x, int n, double* out) const {
+        const std::int64_t shape[1] = {n};
+        NDArray a = new_array(DType::Float64, shape);
+        if (n) std::memcpy(a.data, x, static_cast<std::size_t>(n) * sizeof(double));
+        nb::object r = f(wrap(std::move(a)));
+        const DType want = part == 0 ? DType::Float64 : DType::Complex128;
+        auto fits = [&](nb::handle h) {
+            if (!is_ndarray(h)) return false;
+            const NDArray& v = as_ndarray(h);
+            return v.ndim == 1 && v.shape[0] == n && (v.dtype == want || (part != 0 && v.dtype == DType::Float64));
+        };
+        if (!fits(r)) r = check(r, n);
+        const NDArray& v = as_ndarray(r);
+        const std::int64_t s = v.strides[0];
+        if (v.dtype == DType::Float64) {
+            for (int i = 0; i < n; ++i) {
+                double t;
+                std::memcpy(&t, v.data + i * s, sizeof t);
+                out[i] = part == 2 ? 0.0 : t;
+            }
+            return;
+        }
+        for (int i = 0; i < n; ++i) {
+            double t[2];
+            std::memcpy(t, v.data + i * s, sizeof t);
+            out[i] = part == 1 ? t[0] : t[1];
+        }
+    }
+
+    double operator()(double x) {
+        if (pos < xs.size() && std::memcmp(&xs[pos], &x, sizeof x) == 0) return vals[pos++];
+        double v;
+        eval(&x, 1, &v);
+        return v;
+    }
+};
+```
+
+돌려받은 값이 그 길이의 float64 `sd.ndarray`이면(`complex_func=True`의 두 번은 complex128도) 그대로 읽어요. 아니면 Python의 확인 함수 `check(value, n)`을 불러요. 실수 값의 확인 함수는 `tanhsinh`·`nsum`·`derivative`와 같은 `_values`라서([미분 영역의 구조](/internals/differentiate/overview/)) 시퀀스와 numpy 배열을 받고, 정수 배열은 float64로 바꾸고, 같은 글의 에러를 내요. `complex_func=True`의 확인 함수는 같은 꼴에 복소수 배열을 더 받아요. 점은 커널의 `xs`에 따로 두므로, 사용자 함수가 받은 배열을 고쳐도 반복에는 닿지 않아요.
+
+(−∞, b]의 `'cos'`·`'sin'`(QAWF)은 x → −x로 [−b, ∞)의 적분을 해요. 그때 피적분 함수를 감싸는 `Reflected`도 `prefetch`를 받아, 점의 부호를 바꿔 안쪽 함수에 넘겨요.
+
+```cpp
+// csrc/integrate/quadpack.cpp
+// QAWF on (-inf, b] by x -> -x: sign f(-x), its points handed on negated.
+template <class F>
+struct Reflected {
+    F& f;
+    double sign;
+    double operator()(double x) { return sign * f(-x); }
+    void prefetch(const double* x, int n) {
+        std::vector<double> neg(x, x + n);
+        for (double& t : neg) t = -t;
+        qp::prefetch(f, neg.data(), n);
+    }
+};
+```
+
+`quad_solve`는 `vectorized`에 따라 피적분 함수의 형만 바꿔 같은 템플릿을 불러요.
+
+```cpp
+        // csrc/integrate/quadpack.cpp
+        double r;
+        if (vectorized) {
+            VecFn F{f, check, part, {}, {}, 0};
+            r = quad(F, a, b, o, w, limit, c, qawf);
+        } else {
+            Fn F{f, check, part};
+            r = quad(F, a, b, o, w, limit, c, qawf);
+        }
+```
+
+미리 늘어놓는 일은 점을 계산할 뿐 누적에 손대지 않아요. 그래서 부르는 점, 그 차례, 더하는 차례가 점 하나씩 부를 때와 같고, 사용자 함수가 점마다 같은 값을 돌려주면 결과의 모든 필드(값, 오차, `nfev`, status, 구간이나 주기, `complex_func`의 두 결과)가 비트까지 같아요. `nfev`는 그대로 점의 수예요.
+
+```python
+>>> sizes = []
+>>> def g(x):
+...     sizes.append(x.shape[0])
+...     return 1 / ((x - 0.3)**2 + 1e-4)
+>>> r = sd.integrate.quad(g, 0, 1, vectorized=True)
+>>> s = sd.integrate.quad(lambda x: 1 / ((x - 0.3)**2 + 1e-4), 0, 1)
+>>> len(sizes), set(sizes), r.nfev
+(15, {21}, 315)
+>>> tuple(r) == tuple(s), bool(sd.all(r.intervals == s.intervals))
+(True, True)
+```
+
+구간 8개를 만든 이 적분은 21점 규칙을 15번 썼고, 사용자 함수도 15번 불렸어요. 겹친 적분(`dblquad`, `tplquad`, `nquad`)은 이 길을 쓰지 않아요.
+
+### 원소별 배치
+
+`tanhsinh`과 `nsum`은 optimize의 `find_root` 같은 배치 함수와 같은 무리예요. 배치의 원소마다 따로 적분하고, 반복마다 아직 끝나지 않은 원소의 점을 모아 사용자 함수를 한 번 불러요. 이 고리는 optimize·integrate·differentiate가 함께 쓰는 `csrc/elementwise/loop.hpp`예요. 다음 절에서 그 관계를 봐요.
+
+## 원소별 반복 고리와의 관계
+
+`loop.hpp`는 scipy의 `_lib/_elementwise_iterative_method.py`에 해당하는 바닥 헤더예요. 부품은 다섯이에요.
+
+- `Call`(`CallT`): 남은 원소의 점을 새 float64 `sd.ndarray`에 써서 사용자 함수를 한 번 부르고 값을 읽어요. 원소마다 점 하나((k,), optimize)와 p개((k, p) C 순서, `args`는 (k, 1))를 둘 다 받아요.
+- `gather`: 사용자의 `args`를 남은 원소의 것만 모아요.
+- `Progress`: 진행 중인 원소의 목록과 멈춘 원소의 status·반복 수·호출 수예요.
+- `advance`: 원소마다 갱신하고 판정한 뒤 남은 원소를 순서대로 줄여요.
+- `for_elements`·`for_weighted`: 원소를 지나가는 패스를 스레드에 나눠요.
+
+integrate에서 이 고리를 쓰는 것은 `tanhsinh.cpp`뿐이에요([tanh-sinh 구적](/internals/integrate/tanhsinh/), [급수의 합](/internals/integrate/nsum/)). `tanhsinh`은 원소마다 처음에 66점, 다음 수준부터 64·128·… 점을 부르므로, 점을 다시 읽지 않는 `CallPoints`(`CallT<false>`)와 점의 수로 일을 재는 `for_weighted`·`advance_weighted`를 써요. 일(진행 중인 원소 수 × 원소마다의 점 수)이 2¹⁵점 이상이면 패스를 스레드에 나누고 GIL을 놓아요.
+
+```cpp
+// csrc/elementwise/loop.hpp
+constexpr std::int64_t kPointNs = 2;  // a point's work in these passes (writing it, updating, summing)
+
+template <class Fn>
+void for_weighted(std::size_t k, std::size_t w, Fn&& fn) {
+    const std::size_t work = k * std::max<std::size_t>(w, 1);
+    if (work >= kParallel && k > 1 && parallel::available()) {
+        const std::size_t per = std::max<std::size_t>(kTask / std::max<std::size_t>(w, 1), 1);  // elements a piece
+        const auto tasks = static_cast<std::int64_t>((k + per - 1) / per);
+        const auto task_ns = static_cast<std::int64_t>(per * std::max<std::size_t>(w, 1)) * kPointNs;
+        parallel::parallel_for(
+            tasks,
+            [&](std::int64_t t) {
+                const std::size_t r0 = static_cast<std::size_t>(t) * per;
+                fn(r0, std::min(k, r0 + per));
+            },
+            task_ns
+        );
+    } else {
+        parallel::Unlocked u(work >= kParallel);
+        fn(std::size_t{0}, k);
+    }
+}
+```
+
+어느 스레드가 어느 조각을 맡든 원소의 산술은 같고, 남은 원소는 순서를 지키며 줄어요. 그래서 지금은 결과의 비트가 스레드 수와 상관없어요(약속은 아니에요).
+
+QUADPACK 계열과 `quad_vec`·`cubature`는 이 고리를 쓰지 않아요. 적분 하나를 처음부터 끝까지 한 줄로 계산하는 알고리즘이라 배치가 없고, 다음에 나눌 구간이 앞 구간의 결과에 달려 있어서 스레드에 나눠 맡길 일이 없기 때문이에요. 이 함수들은 사용자 함수를 부르는 동안 GIL을 쥔 채 돌고, 호출 사이의 일이 짧아서 GIL을 놓았다 다시 잡는 쪽이 더 비싸요.
+
+Python 층에서도 같은 무리의 도구를 함께 써요. `tanhsinh`·`nsum`의 끝과 `args`의 브로드캐스트는 optimize의 `_elementwise.py`(`_inputs`, `_args`)이고, 돌려받은 배열의 검사와 글은 differentiate의 `derivative`와 같은 함수(`_values`)예요. 그래서 세 영역의 배치 함수가 같은 실수에 같은 글을 내요.
+
+## 결과 클래스
+
+모든 적분 함수가 `IntegrateResult`를 돌려줘요(표본 규칙, `fixed_quad`, `newton_cotes`는 값이나 배열이에요). 바탕은 `src/stardust/_results.py`의 `_FieldResult`이고, optimize의 `OptimizeResult`, differentiate의 `DifferentiateResult`도 같은 바탕이에요.
+
+- 필드는 클래스의 `_FIELDS`에 적힌 이름마다 읽기 전용 속성이에요. 함수가 주지 않은 필드를 읽으면 `AttributeError`예요.
+- 배열 필드는 읽기 전용이고 읽을 때 복사하지 않아요. 커널이 만든 배열을 그대로 쥐어요.
+- 공개 생성자 `IntegrateResult(**fields)`는 키워드만 받고, 넘긴 `sd.ndarray`·numpy 배열·수의 리스트를 결과 자신의 읽기 전용 `sd.ndarray`로 한 번 복사하며 공통 필드의 종류(`message`는 str, `converged`는 bool, 개수와 번호는 int)를 검사해요. 함수가 결과를 만들 때 쓰는 `_make`와 `_quad`는 복사도 검사도 하지 않아요. 값이 모두 커널이 방금 만든 것이기 때문이에요.
+- `repr`는 한 줄이고 `summary()`는 상자 꼴의 표예요.
+
+```python
+>>> r = sd.integrate.quad(math.exp, 0, 1)
+>>> r
+IntegrateResult(integral=1.71828, error=1.90768e-14, converged=True, nfev=21)
+>>> r.cycle_integrals
+Traceback (most recent call last):
+    ...
+AttributeError: 'IntegrateResult' object has no attribute 'cycle_integrals' (the function does not give it)
+>>> r.intervals[0, 0] = 1.0
+Traceback (most recent call last):
+    ...
+ValueError: assignment destination is read-only
+```
+
+`quad` 계열(`quad dblquad tplquad nquad quad_vec`)의 결과는 scipy의 `(y, abserr)` 튜플처럼 둘로 풀려요. 이것은 클래스가 아니라 결과를 만든 함수가 정해요. `quad` 계열은 빠른 생성자 `IntegrateResult._quad`로 만들고, 그 결과에만 `_unpack`이 참이에요.
+
+```python
+    # src/stardust/integrate/_result.py
+    @classmethod
+    def _quad(cls, fields):
+        """The quad family's fast constructor: fields a dict of the function's own values in the
+        order of FIELDS (Python numbers, strings, results and _Lazy arrays), a result that unpacks."""
+        r = cls.__new__(cls)
+        r._fields = fields
+        r._batch = ()
+        r._unpack = True
+        return r
+```
+
+이 생성자는 필드 이름과 배열의 검사를 건너뛰어요. 값은 모두 커널이 방금 만든 것이고 이름은 코드에 적힌 것뿐이라 검사할 것이 없어요. 함숫값 21개로 끝나는 `quad`에서는 결과를 만드는 일이 호출 전체에서 작지 않은 몫이라 이렇게 해요. 다른 함수의 결과는 이름으로 읽어요.
+
+```python
+>>> value, error = r
+>>> value
+1.7182818284590453
+>>> t = sd.integrate.tanhsinh(sd.exp, 0, 1)
+>>> a, b = t
+Traceback (most recent call last):
+    ...
+TypeError: this IntegrateResult does not unpack (only the quad family's results do): read its fields by name
+```
+
+`quad`의 구간 정보(`intervals`, `interval_integrals`, `interval_errors`, `n_intervals`)는 scipy가 `full_output=True`일 때 `infodict`로 주는 `alist blist rlist elist last`예요. 늘 필드로 두고, 순서는 QUADPACK이 구간에 매긴 순위(`iord`)를 따라 오차 추정이 큰 것부터예요. 순위가 매겨지지 않은 나머지(`limit`의 반을 넘게 나눈 뒤 다시 나누지 않을 작은 구간들)는 그 뒤에 오차 추정의 내림차순으로 와요.
+
+```cpp
+        // csrc/integrate/quadpack.cpp
+        const int kmax = last <= limit / 2 + 2 ? last : (limit - last) + 1;  // QUADPACK's kmax
+        std::vector<char> ranked(static_cast<std::size_t>(last) + 1, 0);
+        for (int k = 1; k <= kmax && k <= last; ++k) {
+            const int i = w.iord[k];
+            if (i < 1 || i > last || ranked[i]) continue;
+            ranked[i] = 1;
+            order.push_back(i);
+        }
+        const auto n_ranked = static_cast<std::ptrdiff_t>(order.size());
+        for (int i = 1; i <= last; ++i)
+            if (!ranked[i]) order.push_back(i);
+        std::stable_sort(order.begin() + n_ranked, order.end(), [&](int x, int y) { return w.elist[x] > w.elist[y]; });
+```
+
+복소수 결과(`complex_func=True`)는 두 실수 `quad`의 결과를 필드 `real`·`imag`로 쥐고, 맨 위의 `integral`·`error`는 복소수예요.
+
+## 에러의 이름
+
+공개 함수의 에러는 `quad(): …`처럼 함수 이름으로 시작해요. 커널은 여러 함수가 함께 쓰므로 글에 이름을 적지 않고, 바인딩이 Python에서 받은 이름으로 감싸요(`call_named`). `quad_solve`가 그 이름을 인자 `fn`으로 받는 까닭이에요. `dblquad`와 `nquad`가 같은 `nquad_solve`를 불러도 글은 저마다의 이름으로 나가요.
+
+## scipy와 같은 걸음
+
+영역의 함수들은 scipy 1.18.1의 계산을 같은 차례로 따라가요. 멈춤 판정, status의 뜻, 기본값, 구간을 나누는 순서가 scipy와 같고, 사용자 함수를 부르는 점의 순서와 비트, 호출 수, 값, 오차 추정도 지금은 비트까지 같아요(약속은 아니에요). 다른 것은 아래 상자의 몇 곳과, QAWO·QAWF 오차 추정의 반올림 바닥, `quad` 무리의 유한하지 않은 결과(scipy의 `ier` 0 대신 status −3)예요. 지키는 약속은 다른 영역과 같아요. 같은 기계, 같은 스레드 수, 같은 입력이면 실행마다 같은 비트이고(지금은 스레드 수와도 상관없어요), 시험 모음의 Arb(구간 산술)로 만든 참값에 대한 계약을 지켜요([정확도와 성능](/internals/integrate/accuracy-performance/)).
+
+비트까지 맞추는 데 가장 품이 드는 곳은 부동소수점의 축약이에요. scipy의 QUADPACK은 Fortran 원본의 C 판이고 clang의 기본값(`-ffp-contract=on`)으로 빌드되어, 한 식 안의 곱과 합을 FMA 하나로 합쳐요. stardust는 축약을 끄고 빌드하므로, 그 자리마다 `std::fma`를 적어요. 어디가 그 자리인지는 [Gauss–Kronrod 규칙과 오차 어림](/internals/integrate/gauss-kronrod/)과 [가중 함수 루틴](/internals/integrate/weight-routines/)에 있어요. 반대로 `quad_vec`과 `cubature`는 scipy의 Python 코드라 산술이 numpy와 Python의 것이에요. 그래서 FMA를 한 곳도 쓰지 않고, 합의 순서와 노름도 numpy의 것을 따라요([quad_vec의 적응 구적](/internals/integrate/quad-vec/)).
+
+<Callout title="scipy가 틀린 값을 내는 곳">
+같은 걸음을 따르지 않는 곳이 몇 군데 있어요. scipy의 C 판이 원본의 뜻과 달라 틀린 값을 수렴으로 알리는 곳(QAWO의 모멘트 행, QAWF의 ω = 0, 아주 큰 ω)에서는 QUADPACK 원본의 뜻대로 계산해요. 자세한 것은 [가중 함수 루틴](/internals/integrate/weight-routines/)에 있어요.
+</Callout>

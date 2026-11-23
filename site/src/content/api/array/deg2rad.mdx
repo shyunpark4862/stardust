@@ -1,0 +1,147 @@
+---
+title: 각도 단위 바꾸기
+names: [deg2rad, rad2deg]
+group: 삼각함수와 쌍곡선함수
+order: 3
+signatures:
+  - "sd.deg2rad(x, /, *, out=None)"
+  - "sd.rad2deg(x, /, *, out=None)"
+summary: 도(°)로 잰 각도를 라디안으로(deg2rad), 라디안을 도로(rad2deg) 바꿔요. 배열의 원소마다 따로 계산해요.
+params:
+  - name: x
+    type: ndarray 또는 Python 숫자
+    kind: positional-only
+    desc: 바꿀 각도. deg2rad에서는 도, rad2deg에서는 라디안이에요. 정수와 bool도 받아요. 복소수는 받지 않아요.
+  - name: out
+    type: ndarray 또는 None
+    kind: keyword-only
+    desc: 결과를 적어 넣을 배열. None이면 새 배열을 만들어요.
+returns:
+  type: ndarray 또는 Python 숫자
+  desc: 입력과 같은 모양의 float64 결과. 입력이 Python 숫자면 결과도 Python float예요.
+raises:
+  - type: TypeError
+    desc: 복소수를 넣었을 때, 리스트처럼 배열도 숫자도 아닌 것을 넣었을 때(희소 배열 포함), out의 dtype이 float64를 담을 수 없을 때.
+  - type: ValueError
+    desc: out의 모양이 결과와 맞지 않을 때.
+seeAlso: [trig, constants]
+---
+import Callout from '../../../components/Callout.astro';
+
+## 한눈에 보기
+
+stardust의 [삼각함수](/api/array/trig/)는 각도를 **라디안**으로 받고 돌려줘요. 라디안은 한 바퀴를 360이 아니라 2π로 재는 단위예요. 각도를 도로 가지고 있다면 `deg2rad`로 라디안으로 바꿔서 넣고, 결과로 나온 라디안을 도로 보고 싶으면 `rad2deg`를 써요.
+
+```python
+>>> import stardust as sd
+>>> deg = sd.asarray([0.0, 30.0, 90.0, 180.0])
+>>> rad = sd.deg2rad(deg)
+>>> rad
+array([               0.0, 0.5235987755982988, 1.5707963267948966,
+        3.141592653589793], dtype=float64)
+>>> sd.sin(rad)
+array([                0.0,  0.4999999999999999,                 1.0,
+       1.2246467991473532e-16], dtype=float64)
+```
+
+반대 방향은 `rad2deg`예요. 역삼각함수가 돌려주는 각도를 도로 읽을 때 써요.
+
+```python
+>>> sd.rad2deg(sd.atan2(sd.asarray([1.0, 1.0, -1.0]), sd.asarray([1.0, 0.0, -1.0])))
+array([  45.0,   90.0, -135.0], dtype=float64)
+```
+
+<Reference />
+
+## 무엇을 곱하나요
+
+두 함수는 곱하기 한 번이에요. `deg2rad(x)`는 x × (π/180), `rad2deg(x)`는 x × (180/π)예요. π/180과 180/π를 먼저 float64 하나로 만들어 두고 원소마다 그 수를 한 번 곱해요. 그래서 `x * (sd.pi / 180)`과 값이 비트까지 같아요.
+
+```python
+>>> x = sd.asarray([12.5, 270.0])
+>>> bool(sd.all(sd.deg2rad(x) == x * (sd.pi / 180)))
+True
+```
+
+괄호를 빼고 `x * sd.pi / 180`으로 쓰면 왼쪽부터 계산해서 x × π를 반올림한 다음 180으로 나눠요. 계산 순서가 달라서 마지막 자리가 다를 때가 있어요.
+
+```python
+>>> a = sd.asarray([3.0])
+>>> sd.deg2rad(a)
+array([0.05235987755982989], dtype=float64)
+>>> a * sd.pi / 180
+array([0.05235987755982988], dtype=float64)
+```
+
+`deg2rad`를 쓰면 이런 순서를 생각하지 않아도 돼요.
+
+곱셈이라서 두 함수를 차례로 쓰면 원래 값으로 돌아오지만, 반올림 때문에 마지막 자리가 어긋날 수 있어요.
+
+```python
+>>> sd.rad2deg(sd.deg2rad(sd.asarray([30.0, 45.0, 90.0])))
+array([29.999999999999996,               45.0,               90.0], dtype=float64)
+```
+
+## 입력과 결과의 종류
+
+정수와 bool은 float64로 바꿔서 계산해요. 결과는 언제나 float64예요. Python 숫자를 넣으면 Python `float`가 나와요.
+
+```python
+>>> sd.deg2rad(sd.asarray([1, 2]))
+array([0.017453292519943295,  0.03490658503988659], dtype=float64)
+>>> sd.deg2rad(180)
+3.141592653589793
+>>> sd.rad2deg(sd.pi)
+180.0
+```
+
+복소수는 받지 않아요. 각도의 단위를 바꾸는 일은 실수에만 뜻이 있기 때문이에요.
+
+```python
+>>> sd.deg2rad(sd.asarray([1j]))
+Traceback (most recent call last):
+    ...
+TypeError: deg2rad(): not supported for complex128
+```
+
+특수값은 곱셈의 규칙 그대로예요. −0.0은 −0.0, 무한대는 같은 부호의 무한대, NaN은 NaN이에요.
+
+```python
+>>> sd.deg2rad(sd.asarray([-0.0, sd.inf, sd.nan]))
+array([-0.0,  inf,  nan], dtype=float64)
+```
+
+`out=`으로 결과를 이미 있는 float64 배열에 적어 넣을 수 있어요. 규칙은 다른 원소별 함수와 같아요([삼각함수](/api/array/trig/#out-결과를-기존-배열에-쓰기)).
+
+```python
+>>> o = sd.empty(2)
+>>> r = sd.deg2rad(sd.asarray([90.0, 45.0]), out=o)
+>>> o
+array([1.5707963267948966, 0.7853981633974483], dtype=float64)
+```
+
+## 얼마나 정확한가요
+
+결과는 x × π/180(또는 x × 180/π)의 정확한 값을 float64로 반올림한 값에서 3칸 안에 있어요. 한 칸은 이웃한 두 float64 사이의 간격(ULP)이에요([`nextafter`](/api/array/nextafter/)). π/180을 float64로 반올림할 때 한 번, 곱할 때 한 번 반올림하므로 오차는 이 두 번의 반올림에서만 나와요. 같은 입력이면 배열 안의 위치와 상관없이 같은 값이에요. 지금은 스레드 수와도 상관없어요(약속은 아니에요).
+
+## 희소 행렬에서는
+
+희소 행렬(0이 아닌 원소만 저장한 행렬)의 각도 단위는 메서드 `A.deg2rad()`, `A.rad2deg()`로 바꿔요([희소 배열의 원소별 함수](/api/sparse/elementwise/)). 0은 바꿔도 0이라 저장한 값에만 계산하면 되기 때문이에요. 결과는 저장한 값에 `sd.deg2rad`, `sd.rad2deg`를 쓴 것과 비트까지 같아요. 희소 배열을 `sd.deg2rad`에 넣으면 메서드를 알려 주는 `TypeError`예요.
+
+```python
+>>> S = sd.sparse.csr_array(sd.asarray([[0.0, 180.0], [90.0, 0.0]]))
+>>> S.deg2rad().toarray()
+array([[               0.0,  3.141592653589793],
+       [1.5707963267948966,                0.0]], dtype=float64)
+>>> sd.deg2rad(S)
+Traceback (most recent call last):
+    ...
+TypeError: deg2rad(): 'x' must be an sd.ndarray or a bool, int, float or complex, not csr_array; for a sparse array use A.deg2rad()
+```
+
+## numpy를 아는 분께
+
+- `np.deg2rad`, `np.rad2deg`와 같은 식이에요(상수를 먼저 반올림하고 한 번 곱하기). 지금은 numpy와 비트까지 같아요(약속은 아니에요).
+- 별칭 `np.radians`, `np.degrees`는 없어요. `deg2rad`, `rad2deg`를 써요.
+- `out`은 keyword-only이고 `where=`는 없어요.
+- Python 숫자를 넣으면 numpy 스칼라가 아니라 Python `float`가 나와요.

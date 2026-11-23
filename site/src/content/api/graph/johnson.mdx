@@ -1,0 +1,167 @@
+---
+kind: function
+title: johnson
+names: [johnson]
+group: 최단 경로
+order: 4
+signatures:
+  - "sd.graph.johnson(csgraph, /, *, directed=True, indices=None, return_predecessors=False, unweighted=False)"
+summary: 음수 무게가 있는 그래프에서 여러 원점이나 모든 쌍의 최단 거리를 구하는 Johnson 알고리즘이에요. 결과는 bellman_ford와 비트까지 같고, 원점이 많을 때 알맞아요.
+params:
+  - name: csgraph
+    type: sd.sparse의 희소 배열 또는 밀집 행렬(ndarray, numpy 배열, 수의 중첩 시퀀스)
+    kind: positional-only
+    desc: "(n, n) 인접 행렬. 행 i, 열 j의 원소가 i에서 j로 가는 변의 무게예요. 음수 무게도 받아요. 희소 배열은 저장된 원소가 모두 변이고, 밀집 행렬은 0, NaN, 무한대가 아닌 원소가 변이에요."
+  - name: directed
+    type: bool
+    kind: keyword-only
+    desc: "True(기본값)면 (i, j) 원소를 i에서 j로만 가는 변으로 읽어요. False면 양쪽으로 다닐 수 있는 변으로 읽어요. 이때 음수 무게의 변은 그 자체로 음수 순환이에요."
+  - name: indices
+    type: None, int, 또는 int의 1차원 배열
+    kind: keyword-only
+    desc: "원점. None(기본값)이면 모든 노드가 원점이에요. 노드 번호는 0 이상 n 미만의 int예요."
+  - name: return_predecessors
+    type: bool
+    kind: keyword-only
+    desc: "True면 거리와 함께 선행 노드 배열을 돌려줘요."
+  - name: unweighted
+    type: bool
+    kind: keyword-only
+    desc: "True면 모든 변의 무게를 1로 봐요. 값을 읽지 않아요."
+returns:
+  type: ndarray(float64) 또는 ShortestPathResult
+  desc: "거리 배열. indices가 None이면 (n, n), int 하나면 (n,), 1차원 배열이면 (원점 수, n)이에요. 닿지 못한 노드는 inf예요. return_predecessors=True면 ShortestPathResult(dist_matrix, predecessors)예요."
+raises:
+  - type: NegativeCycleError
+    desc: "원점에서 닿을 수 있는 음수 순환이 있을 때. ValueError의 하위 클래스예요."
+  - type: TypeError
+    desc: "csgraph가 받는 꼴이 아닐 때, directed 등이 bool이 아닐 때, 노드 번호가 int가 아닐 때, 옵션을 자리로 줄 때, 없는 키워드를 줄 때."
+  - type: ValueError
+    desc: "행렬이 2차원 정방이 아닐 때, 노드 번호가 범위 밖일 때, indices가 2차원 이상일 때, 희소 입력에 저장된 무게가 NaN이나 무한대일 때."
+  - type: MemoryError
+    desc: "요청한 결과(모든 쌍이면 n × n)가 이 컴퓨터의 물리 메모리보다 클 때. 할당하기 전에 알려 줘요."
+seeAlso: [shortest_path, bellman_ford, dijkstra, floyd_warshall, basics]
+---
+
+## 한눈에 보기
+
+음수 무게가 있는 그래프에서 모든 쌍의 최단 거리가 필요하다고 해 볼게요. 원점마다 [`bellman_ford`](/api/graph/bellman_ford/)를 돌리면 되지만, Bellman–Ford는 변을 여러 번 훑어야 해서 원점이 많으면 오래 걸려요. Johnson 알고리즘은 Bellman–Ford를 **한 번만** 돌려 무게를 고친 다음, 원점마다 빠른 Dijkstra를 돌려요.
+
+```python
+>>> import stardust as sd
+>>> N = [[0, 4,  0, 0],
+...      [0, 0, -2, 0],
+...      [0, 0,  0, 3],
+...      [0, 0,  0, 0]]
+>>> sd.graph.johnson(N)
+array([[ 0.0,  4.0,  2.0,  5.0],
+       [ inf,  0.0, -2.0,  1.0],
+       [ inf,  inf,  0.0,  3.0],
+       [ inf,  inf,  inf,  0.0]], dtype=float64)
+```
+
+행 $i$가 노드 $i$에서 출발한 거리예요. 결과는 `bellman_ford`와 비트까지 같아요.
+
+```python
+>>> bool((sd.graph.bellman_ford(N) == sd.graph.johnson(N)).all())
+True
+```
+
+<Reference />
+
+## 무게를 고쳐 Dijkstra를 쓰는 법
+
+Dijkstra는 무게가 0 이상이어야 해요. Johnson은 노드마다 수 $h(v)$를 하나씩 정하고 무게를
+
+$$
+w'(u, v) = w(u, v) + h(u) - h(v)
+$$
+
+로 바꿔요. 어떤 경로 $s = v_0, v_1, \dots, v_k = t$의 새 무게를 더하면 가운데 항이 모두 지워지고
+
+$$
+\sum_{i=1}^{k} w'(v_{i-1}, v_i) = \sum_{i=1}^{k} w(v_{i-1}, v_i) + h(s) - h(t)
+$$
+
+가 남아요. $s$와 $t$가 같은 모든 경로에 같은 수 $h(s) - h(t)$가 더해지니, 새 무게에서 가장 짧은 경로가 원래 무게에서도 가장 짧아요.
+
+$h$는 모든 노드에 무게 0의 변으로 이어진 가상의 노드를 하나 두고, 거기서 Bellman–Ford로 구한 거리예요. 최단 거리는 $h(v) \le h(u) + w(u, v)$를 만족하므로 $w'(u, v) \ge 0$이에요. 이제 원점마다 Dijkstra를 돌릴 수 있어요. 가상의 노드에서 Bellman–Ford를 돌리는 단계가 음수 순환도 찾아 줘요.
+
+이 함수는 새 무게를 Dijkstra가 노드를 꺼내는 차례를 정하는 데만 쓰고, 돌려주는 거리는 원래 무게를 원점에서부터 차례로 더한 값으로 쥐고 있어요. 그래서 $h(s) - h(t)$를 다시 빼면서 생기는 반올림이 없고, 결과가 `bellman_ford`나 `dijkstra`와 비트까지 같아요.
+
+## 원점과 음수 순환
+
+`indices`로 원점을 고르면 그 행만 구해요. 음수 순환은 [`bellman_ford`](/api/graph/bellman_ford/)와 같은 규칙이에요. **요청한 원점에서 닿을 수 있는** 음수 순환이 있을 때만 `NegativeCycleError`예요.
+
+```python
+>>> C2 = [[0, 1, 0,  0],
+...       [0, 0, 0,  0],
+...       [0, 0, 0, -4],
+...       [0, 0, 1,  0]]
+>>> sd.graph.johnson(C2, indices=[0, 1])
+array([[0.0, 1.0, inf, inf],
+       [inf, 0.0, inf, inf]], dtype=float64)
+>>> sd.graph.johnson(C2)
+Traceback (most recent call last):
+    ...
+stardust.graph.NegativeCycleError: johnson(): negative cycle through node 2
+```
+
+노드 2와 3을 도는 순환의 합이 $-3$이지만 노드 0과 1에서는 거기에 닿지 못해요. `indices`가 None이면 모든 노드가 원점이라 에러예요. `directed=False`에서는 음수 무게의 변이 그 자체로 음수 순환이에요.
+
+## 선행 노드
+
+`return_predecessors=True`면 선행 노드를 함께 받아요. 선행 노드도 거리에서 정해지므로 `bellman_ford`, `dijkstra`와 같아요.
+
+```python
+>>> r = sd.graph.johnson(N, return_predecessors=True)
+>>> r.predecessors
+array([[-9999,     0,     1,     2],
+       [-9999, -9999,     1,     2],
+       [-9999, -9999, -9999,     2],
+       [-9999, -9999, -9999, -9999]], dtype=int64)
+```
+
+행 $i$를 따라가면 노드 $i$에서 출발한 최단 경로가 나와요. 0에서 3으로는 3의 앞이 2, 2의 앞이 1, 1의 앞이 0이라 0, 1, 2, 3의 차례예요.
+
+## 어느 함수를 쓸까요
+
+| 상황 | 알맞은 함수 |
+|---|---|
+| 무게가 모두 0 이상 | [`dijkstra`](/api/graph/dijkstra/) |
+| 음수 무게, 원점 몇 개 | [`bellman_ford`](/api/graph/bellman_ford/) |
+| 음수 무게, 원점이 많거나 모든 쌍 | `johnson` |
+| 모르겠음 | [`shortest_path`](/api/graph/shortest_path/)의 `method='auto'` |
+
+넷 모두 같은 그래프에서 같은 거리와 같은 선행 노드를 내요. 무게가 0 이상이면 `johnson`은 무게를 고칠 필요가 없어 원점마다 Dijkstra를 돌리는 것과 같아요.
+
+## 경계의 값과 정확도
+
+닿지 못한 노드, 자기 고리, 무게 0의 변, 저장된 NaN과 무한대, 빈 그래프는 [`bellman_ford`](/api/graph/bellman_ford/)와 같아요. 같은 입력이면 스레드 수와 상관없이 같은 비트예요.
+
+무게가 정수이고 경로의 합이 $2^{53}$을 넘지 않거나 `unweighted=True`면 거리는 정확해요. 일반 실수 무게의 오차 한계와 측정값은 [`shortest_path`](/api/graph/shortest_path/)의 "결정성과 정확도"에 있어요.
+
+## 에러
+
+```python
+>>> sd.graph.johnson(N, indices=[[0, 1]])
+Traceback (most recent call last):
+    ...
+ValueError: johnson(): 'indices' must be an int or a 1-D array of ints, not a 2-D array
+>>> sd.graph.johnson(N, indices=True)
+Traceback (most recent call last):
+    ...
+TypeError: johnson(): 'indices' must be an int, not bool
+```
+
+## scipy·networkx를 아는 분께
+
+`scipy.sparse.csgraph.johnson`과 이름, 인자 이름, 결과의 모양이 같아요. 다른 점은 이래요.
+
+- **거리가 `bellman_ford`, `dijkstra`와 비트까지 같고, 선행 노드의 동점 규칙도 같아요.** scipy는 길이가 같은 길이 있을 때 방법마다 다른 선행 노드를 낼 수 있어요.
+- **음수 순환은 요청한 원점에서 닿을 때만 에러예요.** scipy의 `johnson(indices=0)`은 0에서 닿지 않는 음수 순환에서도 에러를 내요.
+- **`NegativeCycleError`는 `ValueError`의 하위 클래스**예요.
+- **옵션은 키워드로만**, **노드 번호는 0 이상 $n$ 미만의 int만** 받아요. `overwrite`는 없어요. 선행 노드는 int64예요.
+- **밀집 입력의 아주 작은 무게도 변이에요.** scipy는 밀집 행렬에서 절댓값이 $10^{-8}$ 이하인 원소를 버려요.
+
+networkx의 `johnson`은 모든 쌍의 경로를 사전으로 돌려줘요. 여기서는 거리 배열과 선행 노드를 받고, 경로는 선행 노드를 따라가서 얻어요.

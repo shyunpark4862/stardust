@@ -1,0 +1,204 @@
+---
+kind: function
+title: streamlines
+names: [streamlines]
+group: 함수 그림
+order: 11
+signatures:
+  - "sd.plot.streamlines(fu, fv, x0, x1, y0, y1, /, *, cells=25, samples=None, color=None, cmap=None, width=None, arrows=True, colorbar=True, label=None, **figure)"
+  - "fig.streamlines(fu, fv, x0, x1, y0, y1, /, *, cells=25, samples=None, color=None, cmap=None, width=None, arrows=True, colorbar=True, label=None)"
+summary: 벡터장 (fu(x, y), fv(x, y))의 흐름선을 사각형 [x0, x1] × [y0, y1]에 고르게 퍼뜨려 그려요. 선은 어디서나 벡터의 방향을 따라가고, 색이 벡터의 크기, 선 가운데의 화살촉이 흐르는 방향이에요.
+params:
+  - name: fu, fv
+    type: 호출 가능한 객체 둘, 또는 2차원 값 배열 둘
+    kind: positional-only
+    desc: "벡터의 가로 성분과 세로 성분. 함수면 같은 모양의 float64 sd.ndarray 둘 (x, y)를 받아 같은 모양의 실수 배열(또는 수 하나)을 돌려줘요. samples의 격자 전체로 한 번씩 불려요. 함수 대신 모양이 같은 2차원 배열 둘(sd.ndarray, 수의 중첩 시퀀스, numpy 배열)을 주면 그 값을 격자의 값으로 써요. 둘 다 함수이거나 둘 다 배열이어야 해요."
+  - name: x0, x1
+    type: float
+    kind: positional-only
+    desc: 가로 범위. 유한하고 x0 < x1이어야 해요.
+  - name: y0, y1
+    type: float
+    kind: positional-only
+    desc: 세로 범위. 유한하고 y0 < y1이어야 해요.
+  - name: cells
+    type: int
+    kind: keyword-only
+    desc: "선의 촘촘함. 사각형을 가로 cells칸의 정사각형으로 나누고, 한 칸에 선 하나까지만 지나게 해요. 2 이상 400 이하. 기본값 25."
+  - name: samples
+    type: int, (int, int) 또는 None
+    kind: keyword-only
+    desc: "벡터장을 재는 격자의 점 수. 정수 하나면 가로세로가 같고, 쌍이면 (가로, 세로)예요. 한 방향 3 이상 4000 이하. 기본값 None은 가로 6 × cells + 1개에, 세로는 간격이 가로와 같아지는 수예요."
+  - name: color
+    type: 색 또는 None
+    kind: keyword-only
+    desc: "주면 모든 선이 이 한 색이고 색 막대가 없어요. cmap과 함께 줄 수 없어요. 기본값 None이면 크기에 따라 cmap의 색을 입혀요."
+  - name: cmap
+    type: str 또는 None
+    kind: keyword-only
+    desc: "벡터의 크기를 나타낼 연속 색띠의 이름. 'cool'(기본값), 'viridis', 'magma', 'cividis', 'rdbu', 'spectral', 'coolwarm', 'sunrise', 'lagoon'."
+  - name: width
+    type: float 또는 None
+    kind: keyword-only
+    desc: "선의 굵기(pt). 0보다 커야 해요. 기본값 None이면 테마의 선 굵기의 0.7배예요."
+  - name: arrows
+    type: bool
+    kind: keyword-only
+    desc: "True(기본값)면 선마다 그 가운데에 흐르는 방향의 화살촉을 하나 달아요."
+  - name: colorbar
+    type: bool
+    kind: keyword-only
+    desc: "True(기본값)면 칸 오른쪽에 벡터의 크기를 읽는 색 막대를 붙여요. color를 준 그림과, 이미 색 막대가 있는 칸에 얹은 흐름선에는 붙이지 않아요."
+  - name: label
+    type: str 또는 None
+    kind: keyword-only
+    desc: "범례에 쓸 이름(LaTeX 원문). 범례의 견본은 color를 줬으면 그 색, 아니면 색띠의 가운데 색의 선이에요. 기본값 None이면 범례에 넣지 않아요."
+  - name: "**figure"
+    type: 그림 옵션
+    kind: keyword-only
+    desc: "새 그림의 height, font, theme, palette. 모듈 함수만 받아요. width는 선의 굵기라서, 그림의 너비는 빈 Figure(width=...)의 메서드로 그리거나 fig.size로 정해요."
+returns:
+  type: Figure
+  desc: 모듈 함수는 새 Figure를, 메서드는 흐름선을 더한 그 Figure 자신을 돌려줘요.
+raises:
+  - type: TypeError
+    desc: fu·fv가 함수도 2차원 값 배열도 아닐 때, 하나는 함수이고 하나는 배열일 때, 함수가 sd.ndarray나 수가 아닌 것을 돌려줄 때, cells가 정수가 아닐 때, samples가 정수나 정수 쌍이 아닐 때, arrows·colorbar가 bool이 아닐 때, 모르는 키워드(refine 등)를 줬을 때.
+  - type: ValueError
+    desc: x0 < x1이나 y0 < y1이 아니거나 범위가 유한하지 않을 때, 값 배열 둘의 모양이 다르거나 2 × 2보다 작을 때, 값 배열에 samples를 줬을 때, 함수가 받은 것과 다른 모양을 돌려줄 때, cells나 samples가 범위 밖일 때, width가 0 이하일 때, color와 cmap을 함께 줬을 때, cmap이 모르는 이름일 때, 색을 알 수 없을 때, 3D 그림이 든 칸에 그릴 때.
+seeAlso: [vectorfield, contour, parametric, sampling]
+---
+import PlotImage from '../../../components/fig/PlotImage.astro';
+
+## 한눈에 보기
+
+흐름선은 어디서나 벡터장의 방향을 따라가는 곡선이에요. 물에 띄운 가루가 흘러가는 길, 미분방정식 $x' = u(x, y),\ y' = v(x, y)$의 풀이가 평면에 그리는 자취가 흐름선이에요. `streamlines`는 그런 선들을 사각형 전체에 고르게 퍼뜨려 그려요. 흔들이의 방정식 $\theta'' = -\sin\theta$를 각 $\theta$와 각속도 $\omega$의 평면에 놓으면 장 $(\omega,\ -\sin\theta)$가 돼요.
+
+```python
+>>> import math
+>>> import stardust as sd
+>>> u = lambda th, om: om
+>>> v = lambda th, om: -sd.sin(th)
+>>> fig = sd.plot.streamlines(u, v, -2 * math.pi, 2 * math.pi, -3, 3, height=54)
+>>> fig = fig.xlabel(r"$\theta$").ylabel(r"$\omega$")
+```
+
+<PlotImage name="streamlines-pendulum" alt="흔들이의 위상 평면. 원점과 좌우 끝 둘레에는 닫힌 고리 꼴의 하늘색·보라색 선이 돌고, 위아래에는 물결 꼴의 빨간 선이 가로질러요. 선마다 가운데에 화살촉이 있고 오른쪽에 0에서 3쯤까지의 색 막대가 있어요" caption="원점 둘레의 고리는 좌우로 흔들리는 운동, 위아래의 물결 꼴 선은 한 방향으로 계속 도는 운동이에요. 색은 장의 크기라서, 멈춰 서는 평형점(원점과 θ = ±π) 가까이가 하늘색이에요." />
+
+<Reference />
+
+## 무엇을 그리나요
+
+`vectorfield`가 자리마다의 벡터를 따로따로 보여 준다면, `streamlines`는 그 벡터들을 이어 붙인 길을 보여 줘요. 한 점에서 출발해 벡터의 방향으로 조금 가고, 간 자리의 벡터의 방향으로 또 조금 가기를 되풀이하면 흐름선 하나가 돼요.
+
+어디서 출발하느냐가 그림을 정해요. 출발점을 고르게 놓아도 흐름이 모이는 곳에서는 선이 뭉치고 퍼지는 곳에서는 비어요. 그래서 `streamlines`는 출발점이 아니라 **선 사이의 간격**을 고르게 해요.
+
+1. 사각형을 가로 `cells`칸의 정사각형 칸들로 나눠요.
+2. 가장자리의 칸에서 시작해 안쪽으로 한 겹씩 들어가며, 아직 선이 지나지 않은 칸의 가운데에서 선을 하나 출발시켜요.
+3. 선은 출발점에서 흐름을 따라 앞으로, 흐름을 거슬러 뒤로 자라요. 지나간 칸마다 차지했다고 적어 둬요.
+4. 선은 사각형을 벗어나거나, 다른 선이 차지한 칸에 닿거나, 벡터가 0이거나 값이 없는 곳에 이르거나, 자기가 지나온 칸으로 돌아오면 거기서 멈춰요.
+5. 칸 둘의 길이도 못 간 선은 버려요.
+
+한 칸에 선이 하나까지만 지나니 선들이 서로 한 칸쯤 떨어져요. 닫힌 궤도는 한 바퀴를 돌아 제 꼬리에 닿기 직전에 멈춰서, 위 그림의 고리들처럼 조금 열린 채로 보여요.
+
+- **방향**: 선마다 가운데(길이의 절반 자리)에 화살촉이 하나 있어요. 선은 흐름의 방향으로 이어져요.
+- **색**: 선 위의 점마다 그 자리의 벡터의 크기 $\sqrt{u^2 + v^2}$를 색띠의 색으로 나타내요. 선 하나의 색이 가는 길에 따라 바뀌어요.
+- **칸**: 가로와 세로의 한 단위가 같은 길이예요. 축의 범위는 준 사각형 그대로예요. 납작한 사각형은 위처럼 `height`를 줄여 빈 곳을 없애요.
+
+선의 속도는 그림에 없어요. 선은 벡터의 방향만 따라가고, 크기는 색으로만 읽어요.
+
+## 촘촘함: cells
+
+`cells`는 가로로 놓는 칸의 수예요. 크게 주면 선이 촘촘해지고, 작게 주면 성겨져요. 세로의 칸 수는 칸이 정사각형이 되게 사각형의 비로 정해요.
+
+```python
+>>> box = (-2 * math.pi, 2 * math.pi, -3, 3)
+>>> a = sd.plot.streamlines(u, v, *box, cells=12, colorbar=False)
+>>> b = sd.plot.streamlines(u, v, *box, cells=45, colorbar=False)
+>>> fig = sd.plot.grid([a, b], labels="a", width=183, height=52)
+```
+
+<PlotImage name="streamlines-cells" alt="같은 흔들이 장의 흐름선 두 그림. a는 선이 열 개 남짓인 성긴 그림, b는 고리와 물결이 빽빽한 촘촘한 그림이에요" caption="cells=12(a)와 cells=45(b)예요. 칸이 작아지면 선 사이가 좁아지고 선의 수가 늘어요." />
+
+성긴 그림에서는 선이 다른 선의 칸에 닿아 일찍 멈추는 일이 눈에 띄어요. 칸이 크면 "닿았다"는 판정도 그만큼 거칠기 때문이에요.
+
+## 장을 재는 격자: samples
+
+`fu`, `fv`는 선을 따라가는 동안 걸음마다 불리지 않아요. 먼저 사각형을 덮는 격자에서 한 번씩 계산하고, 선을 따라갈 때는 그 격자의 값을 이웃한 네 점 사이에서 겹선형으로 보간해 읽어요. `samples`가 그 격자의 점 수예요. 기본은 가로 $6 \times \texttt{cells} + 1$개(기본 `cells`에서 151개)로, 선이 지나는 칸 하나에 격자의 칸 여섯이 들어가요.
+
+장이 그보다 잘게 변하면(좁은 띠 안에서 방향이 뒤집히는 장, 빨리 진동하는 장) `samples`를 늘려요. 반대로 한 번의 계산이 비싼 함수는 `samples`를 줄여요.
+
+```python
+>>> fig = sd.plot.streamlines(u, v, *box, samples=(401, 201), height=54)
+```
+
+적응형으로 더 쪼개지 않으므로 `refine`은 받지 않아요.
+
+## 색, 굵기, 화살촉
+
+`cmap`, `color`, `colorbar`, `label`은 [`vectorfield`](/api/plot/vectorfield/#색-cmap-color-colorbar)와 같아요. 기본은 크기에 따른 연속 색과 색 막대이고, `color`를 주면 한 색의 선이 되어 색 막대가 없어요. 이미 색 막대가 있는 칸([`density`](/api/plot/density/), 채운 [`contour`](/api/plot/contour/))에 얹으면 그 막대를 남기고, 흐름선의 색을 읽는 막대는 붙이지 않아요. 색의 기준도 같아요. 몇 개의 값만 나머지보다 훨씬 크면(극점 둘레) 색 막대의 위 끝을 값의 대부분이 있는 범위에서 잡고, 그보다 큰 곳은 끝 색으로 칠해요.
+
+`width`는 선의 굵기(pt)이고 `arrows=False`는 화살촉을 빼요. 다른 그림 위에 얹을 때는 한 색으로 그리면 바탕과 섞이지 않아요. 함수 $h(x, y) = \sin x \cos y$의 등고선 위에 기울기 $\nabla h$의 흐름선을 얹어 볼게요.
+
+```python
+>>> h = lambda x, y: sd.sin(x) * sd.cos(y)
+>>> hx = lambda x, y: sd.cos(x) * sd.cos(y)
+>>> hy = lambda x, y: -sd.sin(x) * sd.sin(y)
+>>> fig = sd.plot.contour(h, -3, 3, -3, 3, color="gray", labels=False)
+>>> fig = fig.streamlines(hx, hy, -3, 3, -3, 3, cells=18)
+```
+
+<PlotImage name="streamlines-gradient" alt="회색 등고선 위에 색이 있는 흐름선을 얹은 그림. 흐름선이 등고선을 수직으로 가로지르며 왼쪽 가운데의 골짜기에서 나와 오른쪽 가운데의 봉우리로 모여요" caption="기울기의 흐름선은 가장 가파르게 오르는 길이에요. 회색 등고선과 어디서나 수직으로 만나요. 봉우리와 골짜기, 안장점에서는 기울기가 0이라 선이 하늘색으로 옅어지며 멈춰요." />
+
+## 이미 계산한 값
+
+`fu`, `fv`에 함수 대신 모양이 같은 2차원 배열 둘을 주면 그 값이 곧 장을 재는 격자예요. `U[j, i]`는 사각형을 끝에서 끝까지 고르게 나눈 격자의 점 $(x_i, y_j)$의 값이고, 첫 줄이 `y0`예요. `sd.meshgrid(x, y, indexing="xy")`로 만든 격자의 값이 그대로 맞아요. 격자 사이는 겹선형으로 보간하므로, 성긴 측정값으로도 매끄러운 선이 나와요.
+
+```python
+>>> x = sd.linspace(-2, 2, 21)
+>>> y = sd.linspace(-2, 2, 21)
+>>> X, Y = sd.meshgrid(x, y, indexing="xy")
+>>> fig = sd.plot.streamlines(-Y - 0.3 * X, X - 0.3 * Y, -2, 2, -2, 2)
+```
+
+값에 NaN이 든 곳은 장이 없는 곳이에요. 선이 그 둘레에서 멈춰요. 값의 격자가 곧 장을 재는 격자이므로 `samples`를 주면 `ValueError`예요.
+
+## 에러
+
+```python
+>>> sd.plot.streamlines(u, v, *box, cells=1)
+Traceback (most recent call last):
+    ...
+ValueError: streamlines(): 'cells' must be at least 2
+>>> sd.plot.streamlines(u, v, *box, cells=1000)
+Traceback (most recent call last):
+    ...
+ValueError: streamlines(): 'cells' must be between 2 and 400
+>>> sd.plot.streamlines(u, v, *box, arrows=0)
+Traceback (most recent call last):
+    ...
+TypeError: streamlines(): 'arrows' must be True or False, not int
+>>> sd.plot.streamlines(u, X, *box)
+Traceback (most recent call last):
+    ...
+TypeError: streamlines(): 'fu' and 'fv' must both be functions or both be 2-D arrays of values
+>>> sd.plot.streamlines(-Y, X, -2, 2, -2, 2, samples=101)
+Traceback (most recent call last):
+    ...
+ValueError: streamlines(): 'samples' and 'refine' are for a function; the values given are the grid
+```
+
+## 조심할 점
+
+- **선은 풀이 곡선의 일부예요.** 선은 다른 선의 칸에 닿으면 멈추므로, 한 궤도가 여러 토막으로 나뉘어 그려지거나 중간에 끊겨 보일 수 있어요. 특정한 초기값의 궤도 하나를 끝까지 따라가는 그림이 아니에요.
+- **닫힌 궤도는 조금 열려 있어요.** 한 바퀴를 돌아 제 칸에 닿기 전에 멈춰요.
+- **모이는 점에서는 선이 짧아져요.** 흐름이 한 점으로 빨려 드는 곳(가라앉는 점, 나선의 중심)에는 칸마다 선 하나라는 규칙 때문에 몇 개의 선만 끝까지 들어가요.
+- **선의 정확도는 `samples`의 격자가 정해요.** 격자 사이를 겹선형으로 읽으므로, 격자보다 잘게 변하는 장은 뭉개져요.
+- **`width`는 선 굵기예요.** 그림의 너비는 `sd.plot.Figure(width=120).streamlines(...)`처럼 정해요.
+- 같은 입력이면 같은 선이 나와요. 출발 칸의 차례가 정해져 있고 난수를 쓰지 않아요.
+
+## matplotlib을 아는 분께
+
+- `plt.streamplot(X, Y, U, V)`는 격자와 값의 배열을 받아요. 여기서는 함수 둘과 사각형을 주면 격자를 알아서 놓고, 값의 배열 둘도 받아요.
+- `streamplot`의 `density`가 여기의 `cells`예요. `density=1`이 가로세로 30칸이고, 여기는 가로의 칸 수를 바로 줘요.
+- 크기에 따른 색은 `color=speed`처럼 배열을 따로 넘기지 않아도 기본이에요. `linewidth`를 배열로 줘서 굵기를 바꾸는 기능은 없어요.
+- 화살촉은 선마다 가운데에 하나예요. `arrowsize`, `arrowstyle`에 해당하는 옵션은 없어요.

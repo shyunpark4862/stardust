@@ -1,0 +1,203 @@
+---
+kind: function
+title: spearmanr
+names: [spearmanr]
+group: 상관
+order: 2
+signatures:
+  - "sd.htest.spearmanr(a, b=None, /, *, axis=None, alternative='two-sided', nan_policy='propagate')"
+summary: 여러 변수의 스피어만 순위 상관을 한 번에 구해요. 변수가 둘이면 ρ와 p값 하나를, 셋 이상이면 모든 쌍의 ρ와 p값을 담은 (k, k) 행렬을 돌려줘요. 행렬의 칸마다 spearmanrho와 같은 값이에요.
+params:
+  - name: a
+    type: ndarray, 실수의 시퀀스, numpy 배열, 또는 frame의 Series·DataFrame
+    kind: positional-only
+    desc: 변수들. 1차원이면 변수 하나, 2차원이면 axis가 정하는 대로 열(axis=0)이나 행(axis=1)마다 변수 하나예요. 2차원보다 크면 ValueError예요.
+  - name: b
+    type: ndarray, 실수의 시퀀스, numpy 배열, frame, 또는 None
+    kind: positional-only
+    desc: 더할 변수들(같은 규칙). None(기본값)이면 a의 변수끼리만 견줘요.
+  - name: axis
+    type: None, 0, 또는 1
+    kind: keyword-only
+    desc: 변수가 놓인 방향. None(기본값)이면 a(와 b)를 각각 펼친 하나가 변수예요. 0이면 열마다, 1이면 행마다 변수예요.
+  - name: alternative
+    type: str
+    kind: keyword-only
+    desc: "대립가설. 'two-sided'(기본값), 'greater', 'less' 중 하나예요. 모든 쌍에 같이 써요."
+  - name: nan_policy
+    type: str
+    kind: keyword-only
+    desc: "'propagate'(기본값, NaN이 든 변수의 행과 열이 NaN), 'omit'(쌍마다 그 두 변수 가운데 하나라도 NaN인 관측을 뺌), 'raise'(ValueError) 중 하나예요."
+returns:
+  type: SpearmanrResult
+  desc: "statistic과 pvalue. 변수가 둘이면 Python float, 셋 이상이면 (k, k) 배열(대각은 1과 0)이에요. (statistic, pvalue) 둘로 풀려요."
+raises:
+  - type: TypeError
+    desc: a·b가 배열·수의 시퀀스·frame이 아닐 때, axis가 None·int가 아닐 때, 데이터를 키워드로 줬거나 옵션을 위치로 줬을 때, 없는 인자(keepdims 등)를 줬을 때.
+  - type: ValueError
+    desc: "변수가 하나뿐일 때, 변수들의 관측 수가 다를 때, a나 b가 2차원보다 클 때, axis가 None·0·1이 아닐 때, alternative·nan_policy 이름이 틀렸을 때, nan_policy='raise'인데 NaN이 있을 때."
+seeAlso: [spearmanrho, pearsonr, kendalltau, basics, results]
+---
+## 무엇을 하나요
+
+스피어만의 순위 상관(값을 순위로 바꾼 뒤의 피어슨 상관)은 [`spearmanrho`](/api/htest/spearmanrho/)에 설명이 있어요. `spearmanr`는 같은 상관을 **여러 변수의 모든 쌍**에 대해 한 번에 구해요. 설문 문항 다섯 개의 응답이 열 다섯 개로 있으면, 문항끼리의 순위 상관 표 하나를 얻어요.
+
+- 변수가 둘이면 `spearmanrho(x, y)`와 같은 값의 수 두 개(statistic, pvalue)예요.
+- 변수가 셋 이상이면 (k, k) 행렬이에요. (i, j) 칸이 변수 i와 j의 $\rho$와 p값이에요.
+
+각 칸의 귀무가설은 "그 두 변수의 순위 상관이 0이다"예요. 칸마다 따로 한 검정이라, 여러 칸을 함께 보고 판단하려면 [다중 비교 보정](/api/htest/multipletests/)을 생각해요.
+
+변수 두 개의 배치(줄마다 따로 검정)가 필요하면 `spearmanrho`가 맞아요. `spearmanr`의 `axis`는 배치의 축이 아니라 **변수가 놓인 방향**이에요.
+
+<Reference />
+
+## 상관 행렬
+
+학생 다섯 명의 세 과목 점수가 열마다 있어요. `axis=0`이면 열 하나가 변수예요.
+
+```python
+>>> import stardust as sd
+>>> A = sd.asarray([[1.0, 2.0, 3.0],
+...                 [2.0, 1.0, 4.0],
+...                 [3.0, 5.0, 2.0],
+...                 [4.0, 3.0, 6.0],
+...                 [5.0, 6.0, 5.0]])
+>>> r = sd.htest.spearmanr(A, axis=0)
+>>> r
+SpearmanrResult(batch shape (3, 3))
+>>> r.statistic
+array([[1.0, 0.8, 0.6],
+       [0.8, 1.0, 0.1],
+       [0.6, 0.1, 1.0]], dtype=float64)
+>>> r.pvalue
+array([[                0.0, 0.10408803866182786, 0.28475697986529425],
+       [0.10408803866182786,                 0.0,  0.8728885715695381],
+       [0.28475697986529425,  0.8728885715695381,                 0.0]], dtype=float64)
+```
+
+행렬은 대칭이고 대각은 $\rho = 1$, p값 0이에요. 칸 (0, 2)는 첫째와 셋째 열의 `spearmanrho`와 비트까지 같아요.
+
+```python
+>>> sd.htest.spearmanrho(A[:, 0], A[:, 2])
+SpearmanrhoResult(statistic=0.6, pvalue=0.284757)
+>>> r.statistic[0, 2]
+0.6
+```
+
+`summary()`는 칸마다 한 줄인 표예요.
+
+```python
+>>> print(r.summary())
+                        Spearman rank correlation test
+==============================================================================
+Batch shape:                    (3, 3)  No. Observations:                    5
+Alternative:                 two-sided
+==============================================================================
+            statistic     pvalue
+------------------------------------------------------------------------------
+[0, 0]          1.000      0.000
+[0, 1]          0.800      0.104
+[0, 2]          0.600      0.285
+[1, 0]          0.800      0.104
+[1, 1]          1.000      0.000
+[1, 2]          0.100      0.873
+[2, 0]          0.600      0.285
+[2, 1]          0.100      0.873
+[2, 2]          1.000      0.000
+==============================================================================
+```
+
+결과는 `(statistic, pvalue)`로 풀려요. 행렬일 때는 두 배열로 풀려요.
+
+```python
+>>> rho, p = r
+>>> rho.shape
+(3, 3)
+```
+
+## `axis`: 변수가 놓인 방향
+
+| `axis` | 변수 |
+|---|---|
+| None(기본값) | `a`를 펼친 전체가 변수 하나. `b`도 펼친 전체가 변수 하나 |
+| 0 | `a`의 열 하나가 변수 하나(행이 관측) |
+| 1 | `a`의 행 하나가 변수 하나(열이 관측) |
+
+자료를 행마다 변수로 두었으면 `axis=1`을 써요. 같은 행렬이 나와요.
+
+```python
+>>> sd.htest.spearmanr(A.T, axis=1).statistic
+array([[1.0, 0.8, 0.6],
+       [0.8, 1.0, 0.1],
+       [0.6, 0.1, 1.0]], dtype=float64)
+```
+
+기본값 None은 `a`를 통째로 변수 하나로 보아요. 2차원 표 하나만 주면 변수가 하나라서 에러예요. 열마다 견주려면 `axis=0`을 줘요.
+
+```python
+>>> sd.htest.spearmanr(A)
+Traceback (most recent call last):
+    ...
+ValueError: spearmanr(): needs at least 2 variables to compare, not 1
+```
+
+`b`를 주면 그 변수들을 뒤에 더해요. 1차원 두 개를 주면 변수 둘이라 수 두 개가 나와요.
+
+```python
+>>> sd.htest.spearmanr([1.0, 2.0, 3.0, 4.0], [1.0, 3.0, 2.0, 4.0])
+SpearmanrResult(statistic=0.8, pvalue=0.2)
+>>> sd.htest.spearmanr(A[:, 0], A[:, 1])
+SpearmanrResult(statistic=0.8, pvalue=0.104088)
+```
+
+## NaN
+
+- `'propagate'`(기본값): NaN이 하나라도 든 변수는 그 행과 열이 모두 NaN이에요.
+- `'omit'`: 쌍마다 그 두 변수 가운데 하나라도 NaN인 관측만 빼요. 그래서 칸마다 쓰는 관측 수가 다를 수 있어요(scipy의 `nan_policy='omit'`과 같은 쌍별 삭제예요).
+- `'raise'`: `ValueError`예요.
+
+```python
+>>> B = sd.asarray([[1.0, 2.0],
+...                 [2.0, float('nan')],
+...                 [3.0, 1.0],
+...                 [4.0, 4.0],
+...                 [5.0, 3.0]])
+>>> sd.htest.spearmanr(B, axis=0)
+SpearmanrResult(statistic=nan, pvalue=nan)
+>>> sd.htest.spearmanr(B, axis=0, nan_policy='omit')
+SpearmanrResult(statistic=0.6, pvalue=0.4)
+```
+
+관측이 2개인 쌍은 $\rho = \pm 1$, p값 1이에요(`spearmanrho`와 같아요). 상수인 변수의 칸은 NaN이에요.
+
+## 에러
+
+```python
+>>> sd.htest.spearmanr(A, axis=2)
+Traceback (most recent call last):
+    ...
+ValueError: spearmanr(): 'axis' must be None, 0 or 1, not 2
+>>> sd.htest.spearmanr(sd.zeros((2, 2, 2)))
+Traceback (most recent call last):
+    ...
+ValueError: spearmanr(): 'a' must have at most 2 dimensions, not 3
+>>> sd.htest.spearmanr([1.0, 2.0, 3.0], [1.0, 2.0])
+Traceback (most recent call last):
+    ...
+ValueError: spearmanr(): the variables must have the same number of observations, not 2 and 3
+```
+
+배치가 없으므로 `keepdims`도 없어요.
+
+## 정확도
+
+칸마다 [`spearmanrho`](/api/htest/spearmanrho/#정확도)와 같은 계산이라 정확도도 같아요. 변수마다 순위를 한 번만 매기고 모든 쌍에 다시 써요.
+
+## scipy를 아는 분께
+
+`scipy.stats.spearmanr`의 꼴(변수의 축, 행렬 결과)이에요. 다른 점이에요.
+
+- `axis`의 기본값이 None(펼친 하나가 변수)이에요. scipy는 0(열마다)이에요. scipy처럼 열마다 견주려면 `axis=0`을 꼭 줘요.
+- 결과의 별칭 `correlation`이 없어요.
+- 관측이 2개면 p값이 1이에요(scipy의 옛 꼴은 NaN). `spearmanrho`와 같아요.
+- 상수인 변수는 경고 없이 NaN이에요.

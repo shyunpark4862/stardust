@@ -1,0 +1,334 @@
+---
+title: 분할표의 검정
+group: 분할표와 비율
+order: 1
+summary: chi2_contingency가 기댓값을 정확한 주변합에서 만드는 법, 2 × 2 Fisher 검정의 양쪽 규칙을 확률의 정확한 비로 판정하는 법, r × c Fisher 검정을 Mehta–Patel의 망 알고리즘과 가운데에서 만나기로 정확히 더하는 법, 조건부 오즈비를 비중심 초기하 분포에서 푸는 법을 따라가요.
+seeAlso: [barnard-boschloo, proportion, chisquare, overview, accuracy-performance]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import Steps from '../../../components/fig/Steps.astro';
+
+## 한눈에 보기
+
+분할표 검정은 모두 개수의 표 하나를 받아요. 표는 입력의 마지막 두 축이고 앞의 축은 배치예요. Python 쪽(`_contingency.py`)은 개수가 음이 아닌 정수인지 보고 표를 `(표의 수, r, c)` 꼴로 꾸린 뒤, 검정마다 C++ 함수 하나(`csrc/htest/contingency.cpp`)를 불러요. 표마다 독립이라 스레드풀이 표를 나눠 맡고, 표 하나의 결과는 혼자 계산하든 배치 안에서 계산하든 같은 비트예요.
+
+| 검정 | 계산하는 것 | 정확하게 다루는 부분 |
+|---|---|---|
+| [`chi2_contingency`](/api/htest/chi2_contingency/) | 기댓값 $E_{ij} = R_iC_j/N$과 Cressie–Read 통계량 | 주변합과 $R_iC_j$를 double-double로 만들고 한 번 나눠요 |
+| [`fisher_exact`](/api/htest/fisher_exact/) 2 × 2 | 표본 오즈비와 초기하 분포의 꼬리 | 양쪽 규칙을 이웃한 확률의 정확한 비로, 최빈값에서 먼 표는 double-double log 확률의 이분 탐색으로 판정해요 |
+| `fisher_exact` r × c | 관측 표의 확률과 그보다 확률이 작은 모든 표의 합 | 망 알고리즘으로 모든 표를 빠짐없이 세요 |
+| [`barnard_exact`](/api/htest/barnard_exact/), [`boschloo_exact`](/api/htest/boschloo_exact/) | 장애 모수에 대한 최댓값 | [장애 모수의 최댓값](/internals/htest/barnard-boschloo/)에서 따로 다뤄요 |
+| [`odds_ratio`](/api/htest/odds_ratio/) | 조건부 최우추정과 정확 구간 | 비중심 초기하 분포의 가중치를 정확한 비의 log로 쌓아요 |
+| [`relative_risk`](/api/htest/relative_risk/) | 위험비와 Katz 구간 | 정확한 유리수를 한 번 반올림해요 |
+| [`mcnemar`](/api/htest/mcnemar/), [`cochrans_q`](/api/htest/cochrans_q/) | statsmodels의 통계량 | 128비트 정수의 몫이에요 |
+
+모든 검정에 공통인 원칙은 하나예요. 개수에서 나오는 양(주변합, 곱, 개수의 유리 함수인 통계량)은 128비트 정수나 double-double로 정확하게 만들고, 끝에 한 번만 반올림해요. 그래서 통계량은 정확한 유리수(나 그 제곱근)를 한 번 반올림한 값이에요.
+
+## 독립성의 카이제곱 검정
+
+`chi2_contingency`는 행합 $R_i$, 열합 $C_j$, 총합 $N$을 보상 합(double-double)으로 더해요. 개수가 정수일 필요는 없어요. 가중치를 곱한 표처럼 소수인 개수도 받고, 그때도 합은 정확해요. 기댓값은 double-double 곱 $R_iC_j$를 $N$으로 한 번 나눈 값이고, 결과의 `expected_freq`는 그것을 double로 반올림한 값이에요. 그래서 `expected_freq`의 모든 칸은 정확한 유리수 $R_iC_j/N$에 가장 가까운 double이에요.
+
+통계량은 [`power_divergence`](/api/htest/power_divergence/)와 같은 Cressie–Read 커널(`divergence.hpp`, [카이제곱과 Cressie–Read](/internals/htest/chisquare/))이 칸마다 $(O_{ij}, E_{ij})$에서 계산해요. 커널은 $O - E$를 double-double로 받아서, $O$와 $E$가 거의 같은 칸에서도 차가 자릿수를 잃지 않아요. 자유도는 $(r - 1)(c - 1)$이고 float로 돌려줘요.
+
+- **Yates의 보정**: 자유도가 1이고 `correction=True`이면 칸마다 $O$를 $E$ 쪽으로 $\min(1/2, |O - E|)$만큼 옮겨요. $|O - E|$를 double-double로 비교하므로 차가 정확히 1/2인 칸도 반올림에 흔들리지 않아요.
+- **0인 칸**: Cressie–Read 항 $O\big((O/E)^\lambda - 1\big)$은 $O = 0$에서 $\lambda > -1$이면 0, $\lambda \le -1$이면 $+\infty$로 가요. 커널은 이 극한을 그대로 써요. 그래서 0인 칸이 있는 표의 Freeman–Tukey($\lambda = -1/2$)는 유한한 값이고 Neyman($\lambda = -2$)은 $+\infty$, p값 0이에요.
+- **0인 행이나 열**: 기댓값이 0인 칸이 생겨 통계량을 정할 수 없어요. 통계량과 p값은 NaN이에요.
+- **행이나 열이 하나**: 자유도가 0이에요. 통계량 0, p값 1이에요.
+
+```python
+>>> r = sd.htest.chi2_contingency([[0, 5, 4], [6, 3, 2]], lambda_='freeman-tukey')
+>>> r.statistic, r.pvalue
+(14.552623479538436, 0.0006917321527537431)
+>>> sd.htest.chi2_contingency([[0, 5, 4], [6, 3, 2]], lambda_='neyman').statistic
+inf
+>>> sd.htest.chi2_contingency([[0, 0, 4], [0, 3, 2]])
+Chi2ContingencyResult(statistic=nan, pvalue=nan, df=2, expected_freq=<array of shape (2, 3)>)
+```
+
+## 2 × 2 Fisher 검정
+
+### 한쪽 p값
+
+주변합을 고정하면 왼쪽 위 칸 $X$는 초기하 분포를 따라요. 총 $N$개에서 첫 행의 합 $r_0$개가 "성공"이고, 첫 열의 합 $c_0$개를 뽑았을 때 성공의 수예요. `'less'`는 $P(X \le a)$, `'greater'`는 $P(X \ge a)$이고, 둘 다 sd.stats `Hypergeometric`의 `cdf`·`ccdf`를 C++에서 바로 불러요. 꼬리를 1에서 빼지 않고 직접 계산하므로 깊은 꼬리도 상대 정확도를 지켜요. 통계량은 표본 오즈비 $ad/bc$이고, 128비트 정수 곱 $ad$와 $bc$를 double-double로 옮겨 한 번 나눈 값이에요($bc = 0$이면 inf).
+
+### 양쪽 규칙과 확률의 비
+
+양쪽 p값은 "관측 표보다 확률이 크지 않은 표"의 확률을 모두 더한 값이에요. scipy의 규칙을 그대로 따라요. 관측 표의 확률이 최빈값의 확률과 상대 $10^{-14}$ 안이면 p값은 1이에요. 아니면 관측 쪽의 꼬리에, 반대편에서 확률이 관측의 $(1 + 10^{-14})$배보다 작은 표들의 꼬리를 더해요.
+
+어려운 곳은 "확률이 관측과 같은 표"를 판정하는 부분이에요. 거울처럼 대칭인 표는 확률이 수학적으로 같은데, 두 확률을 따로 계산해 반올림하면 한쪽이 몇 ULP 크거나 작게 나와 그 표를 넣거나 빼게 돼요. 그래서 확률의 값을 견주지 않고 **확률의 비**를 정확하게 만들어 견줘요. 초기하 확률의 이웃한 비는 정수의 몫이에요.
+
+$$
+\frac{P(X = x + 1)}{P(X = x)} = \frac{(r_0 - x)(c_0 - x)}{(x + 1)(N - r_0 - c_0 + x + 1)}
+$$
+
+```cpp
+    // csrc/htest/contingency.cpp
+    // pmf(x + 1) / pmf(x) = (r0 - x)(c0 - x) / ((x + 1)(N - r0 - c0 + x + 1)), and its inverse
+    auto up = [&](std::int64_t x) {
+        return dd::two_prod(static_cast<double>(r0 - x), static_cast<double>(c0 - x)) /
+               dd::two_prod(static_cast<double>(x + 1), static_cast<double>(N - r0 - c0 + x + 1));
+    };
+```
+
+곱은 `two_prod`로 정확하고, double-double 나눗셈은 상대 $u^2$쯤의 오차만 남겨요. 관측 칸 $a$에서 최빈값까지 이 비를 곱해 $\rho = P(\text{최빈값})/P(a)$를 만들고, 최빈값에서 반대편으로 비를 계속 곱하며 $(1 + 10^{-14})$와 견줘 반대편의 경계를 찾아요. 곱이 길어지면 지수가 넘칠 수 있어서, 값을 $m \cdot 2^e$로 들고 다니며 $m$이 $2^{\pm 600}$을 벗어날 때마다 2의 거듭제곱을 $e$로 옮겨요. 견줄 때도 $m \cdot 2^e$를 double로 되돌리지 않아요. 값이 4 이상이거나 1/2 아래이면 지수만 보고 크다·작다를 정하고, 그 사이에서만 double-double로 빼 봐요. 강하게 유의한 표에서는 $\rho$가 $2^{1024}$를 넘어 double로 나타낼 수 없기 때문이에요. 경계를 찾은 뒤의 p값은 관측 쪽 꼬리와 반대편 꼬리, 곧 `Hypergeometric`의 두 꼬리의 합이에요.
+
+최빈값 $\lfloor (c_0 + 1)(r_0 + 1)/(N + 2) \rfloor$의 곱은 128비트 정수로 해요. 행합과 열합이 $3 \times 10^9$쯤이면 64비트 곱이 넘쳐요.
+
+0인 행이나 열이 있는 표는 오즈비가 NaN이고 p값이 1이에요(표가 하나뿐이에요).
+
+### 큰 표
+
+비를 한 걸음씩 곱하는 일은 $|a - \text{최빈값}|$에 비례해요. 그래서 관측 칸이 최빈값에서 $2^{16}$ 안일 때만 걸어가고, 더 멀면 반대편의 경계를 sd.stats `Hypergeometric`의 double-double log 확률로 이분 탐색해요. log 확률은 최빈값에서 멀어질수록 줄어들므로 경계는 하나예요. 그 오차는 $10^{-30}$쯤이라 규칙의 $10^{-14}$보다 훨씬 작아서, 가까운 표에서 걸어서 찾은 경계와 같은 표를 골라요. 걸어가던 반대편이 $2^{18}$걸음을 넘을 때도 남은 부분을 이분 탐색에 넘겨요.
+
+```cpp
+    // csrc/htest/contingency.cpp
+    auto search = [&](std::int64_t from) {
+        const DD thr = lpmf(a) + dd::log(g);
+        if (a < mode) {
+            std::int64_t L = from, R = hi + 1;  // L: not below (from is not), R: below
+            while (R - L > 1) {
+                const std::int64_t mid = L + (R - L) / 2;
+                if (dd_cmp(lpmf(mid), thr) < 0) R = mid;
+                else L = mid;
+            }
+            return R;
+        }
+```
+
+p값은 `Hypergeometric`의 두 꼬리 `cdf`·`ccdf`의 합이에요. 고른 큰 표(총합이 약 $5 \times 10^7$ 넘는 표)는 무시할 수 없는 항이 $2^{14}$개를 넘어서, 꼬리를 항마다 더하지 않고 적분과 Euler–Maclaurin 보정으로 내요([이산 분포](/internals/stats/discrete/)). 그래서 총합이 $10^{12}$이어도 한쪽·양쪽 p값이 모두 값이에요. 꼬리가 NaN인데 pmf는 값인 경우(매끄럽지 않은 긴 꼬리)를 위한 뒷길도 있어요. 두 경계 사이에 있는 표들(최빈값을 포함해요)의 확률을 최빈값에서 이웃한 비를 곱해 가며 더하고 1에서 빼요. 사이의 표가 $2^{21}$개 이하이고 그 확률이 1/2 이하일 때만이라, 뺄셈에서 자릿수를 거의 잃지 않아요. 총합이 $2^{52}$를 넘으면 `Hypergeometric`에 pmf가 없어 p값이 NaN이에요. 통계량은 값이에요.
+
+```python
+>>> sd.htest.fisher_exact([[10**12, 10**12 + 10**5], [10**12 + 10**5, 10**12]]).pvalue
+0.9203451213358222
+>>> sd.htest.fisher_exact([[10**12, 10**12 + 10**6], [10**12 + 10**6, 10**12]]).pvalue
+0.31731111278993734
+>>> sd.htest.fisher_exact([[2**52, 1], [1, 1]]).pvalue
+nan
+```
+
+표의 총합은 $2^{53}$ 아래여야 해요. 그 위의 개수는 double로 정확한 정수가 아니라서 Python 쪽이 `ValueError`를 내요. 그 안에서는 어떤 크기의 표든 일이 정해진 한도 안에서 끝나요.
+
+```python
+>>> sd.htest.fisher_exact([[10**8, 10**8 + 30000], [10**8 + 30000, 10**8]])
+FisherExactResult(statistic=0.9994, pvalue=0.00270268)
+>>> sd.htest.fisher_exact([[2**52, 2**52], [1, 1]])
+Traceback (most recent call last):
+    ...
+ValueError: fisher_exact(): the table's counts must be below 2**53
+```
+
+표 하나의 일은 $|a - \text{최빈값}|$(걷는 부분, $2^{16}$까지)과 초기하 분포의 표준편차(꼬리의 합이 훑는 폭)로 어림해요. 이 어림이 스레드풀과 GIL을 정해서, 큰 표 하나를 계산하는 동안에도 다른 Python 스레드가 멈추지 않아요([배치와 줄](/internals/htest/lanes/#gil)).
+
+## r × c Fisher 검정: 망 알고리즘
+
+### 무엇을 더하나
+
+r × c 표의 확률은 주변합을 고정하면 다변량 초기하 분포예요.
+
+$$
+P(T) = K\prod_{i,j}\frac{1}{x_{ij}!},\qquad K = \frac{\prod_i R_i!\,\prod_j C_j!}{N!}
+$$
+
+p값은 R `fisher.test`의 규칙대로, 관측 표의 확률의 $(1 + 10^{-7})$배 이하인 모든 표의 확률 합이에요. 결과의 `statistic`은 scipy처럼 관측 표의 확률이에요.
+
+```python
+>>> t = [[3, 1, 0, 2], [1, 4, 2, 0], [0, 2, 5, 1]]
+>>> r = sd.htest.fisher_exact(t)
+>>> r
+FisherExactResult(statistic=7.57756e-05, pvalue=0.03854)
+>>> from math import factorial, prod
+>>> R, C = [6, 7, 8], [4, 7, 7, 3]
+>>> K = prod(map(factorial, R)) * prod(map(factorial, C)) / factorial(21)
+>>> K / prod(factorial(v) for row in t for v in row)
+7.57756175712832e-05
+```
+
+표의 수는 크기와 함께 빠르게 늘어요. 모든 표를 나열하면 작은 표에서도 수백만 개가 되므로, Mehta와 Patel(1983)의 망 알고리즘으로 표를 묶어서 세요.
+
+### 망
+
+표를 열 하나씩 채운다고 생각해요. 첫 $k$열을 채운 뒤 남은 일은 "남은 행합이 무엇인가"로만 정해져요. 남은 열합은 정해져 있고, 행끼리는 바꿔도 남은 표의 집합이 같으므로 남은 행합을 정렬한 다중집합이 상태 하나예요. 이것을 **노드**라 불러요. 뿌리는 $(R_1, \dots, R_r)$이고, 마지막 열을 채우면 모든 행합이 0인 끝 노드에 닿아요. 뿌리에서 끝까지 가는 경로 하나가 표 하나예요.
+
+경로에서 채운 칸들의 $\sum -\log x_{ij}!$를 그 경로의 **과거 값**이라 해요. 표의 log 확률은 $\log K + (\text{과거 값}) + (\text{나머지 칸의 } \sum -\log x!)$로 쪼개져요. 노드마다 다음 세 양을 알면, 그 노드에 닿은 과거 값 하나를 "나머지를 어떻게 채우든" 한 번에 판정할 수 있어요.
+
+- **가장 긴 완성**: 나머지 칸을 채우는 모든 방법 가운데 $\sum -\log x!$의 최댓값(가장 확률이 큰 완성)
+- **가장 짧은 완성**: 그 최솟값(가장 확률이 작은 완성)
+- **모든 완성의 합**: $\sum \prod 1/x!$. 이것은 닫힌 꼴이에요. 다변량 초기하 확률의 합이 1이라는 사실에서, 남은 행합 $r'$과 남은 열합 $C_k, \dots, C_c$(합 $n'$)의 모든 표에 대해 $\sum \prod 1/x! = n'!/(\prod r'_i!\,\prod_{j \ge k} C_j!)$예요.
+
+가장 긴 완성을 더해도 규칙의 문턱 아래라면 그 노드 아래의 모든 표가 세어지므로, 과거 값 × 닫힌 합을 한 번에 더해요. 가장 짧은 완성도 문턱을 넘으면 아무 표도 세어지지 않으므로 그 과거 값을 버려요. 나머지만 다음 열로 나르죠.
+
+```cpp
+                // csrc/htest/fexact.hpp
+                std::vector<Past> keep;
+                for (const Past& q : pasts) {
+                    const DD base = logK_ + q.lp;
+                    const double hi = to_double(base) + b.longest, lo = to_double(base) + b.shortest;
+                    if (hi <= thr_) p.add(stats::num::exp_dd(base + fs) * q.m);
+                    else if (!(lo > thr_)) keep.push_back(q);
+                }
+```
+
+가장 긴·짧은 완성은 노드 그래프 위의 동적 계획으로 정확히 구해요(`bounds`). 노드 $(k, \text{행합})$에서 열 $k$의 가능한 모든 채움(행합과 열합을 넘지 않는 합성)을 나열하고, 자식 노드의 값에 그 열의 $\sum -\log x!$를 더한 것의 최대·최소를 메모해요. 마지막 열은 남은 행합이 그대로 칸이 되므로 완성이 하나뿐이에요.
+
+같은 노드에 같은 과거 값으로 닿는 경로들은 하나로 합치고 그 수(중복도)를 더해요. 과거 값은 $\log$ 계승의 합이므로 같은 유리수가 여러 경로에서 나와요. 두 double-double log의 차가 $10^{-24}$(상대) 안이면 같은 값으로 봐요. 계승의 log는 special의 double-double `loggamma`(절대 약 $10^{-19}$)에서 오므로, 표 하나의 log 확률은 약 $10^{-18}$까지 맞고 규칙의 $10^{-7}$이 관측 표와 확률이 같은 모든 표를 확실히 세요.
+
+### 가운데에서 만나기
+
+과거 값을 끝까지 나르면 목록이 경로 수만큼 커질 수 있어요. 그래서 과거 값은 가운데 열 $k_m = \lfloor c/2 \rfloor$까지만 앞으로 나르고, 가운데 노드의 **미래 값**(남은 칸의 $\sum -\log x!$)은 뒤에서 오는 동적 계획으로 만들어 둘을 가운데 노드에서 맞춰요.
+
+<Fig column caption="r × c Fisher 검정 한 번의 흐름. 앞으로 가는 단계와 뒤로 오는 단계가 가운데 열의 노드에서 만나요.">
+  <Steps
+    steps={[
+      { label: 'test', note: '0인 행·열을 빼고, 작은 차원을 행으로, 행과 열을 내림차순으로', where: 'fexact.hpp' },
+      { label: 'main_pass: 앞으로', note: '열 0..k_m: 노드마다 과거 값을 합치고 가장 긴·짧은 완성으로 판정', where: 'fexact.hpp' },
+      { label: 'bounds', note: '노드의 가장 긴·짧은 완성(메모 동적 계획)', depth: 1 },
+      { label: 'closed_sum', note: '모든 완성의 합 n′!/(Π r′! Π C_j!)', depth: 1 },
+      { label: '범위 나르기', note: '가운데 뒤의 노드마다 닿을 수 있는 과거 값의 [최소, 최대]', where: 'fexact.hpp' },
+      { label: '뒤로', note: '끝에서 가운데까지 미래 값의 목록: 언제나 세는 것은 합 하나로, 결코 세지 않는 것은 버려요', where: 'fexact.hpp' },
+      { label: '만나기', note: '가운데 노드마다 과거 값(내림차순)과 미래 값(오름차순)을 포인터 하나로', where: 'fexact.hpp' },
+    ]}
+  />
+</Fig>
+
+뒤로 오는 단계에서도 버리기와 묶기가 일어나요. 앞으로 가는 단계가 끝나면 가운데 뒤의 각 노드에 닿을 수 있는 과거 값의 범위 $[a_{\min}, a_{\max}]$를 알아요. 미래 값 $f$가 $a_{\min} + f$에서도 문턱을 넘으면 그 노드에 닿는 어떤 과거와 짝지어도 세어지지 않으므로 버리고, $a_{\max} + f$에서도 문턱 아래면 언제나 세어지므로 목록에 두지 않고 log 합 하나(`always`)에 더해요. 그래서 목록에는 "과거에 따라 달라지는" 미래만 남아요.
+
+가운데 노드에서는 과거 값을 큰 것부터, 미래 값을 작은 것부터 훑어요. 과거 값 $a$가 작아질수록 $a + f \le$ 문턱을 만족하는 미래 값이 늘어나므로, 미래 목록의 앞부분 $[0, j)$를 가리키는 포인터 $j$는 앞으로만 움직여요. 앞부분의 합은 누적합 $Q_j = \sum_{i \le j} m_i e^{f_i - f_j}$로 미리 만들어 두고(지수가 넘치지 않게 마지막 항에 대한 비로 들고 있어요), 과거 값 하나마다 상수 시간에 더해요.
+
+```cpp
+            // csrc/htest/fexact.hpp
+            std::size_t j = 0;  // the futures with f + a <= thrp: [0, j)
+            for (auto it = pasts.rbegin(); it != pasts.rend(); ++it) {
+                const double av = to_double(it->lp);
+                while (j < nf && to_double(F.list[j].lp) + av <= thrp) ++j;
+                const DD base = logK_ + it->lp;
+                double tot = 0.0;
+                if (F.always.hi != -kInf) tot += stats::num::exp_dd(base + F.always);
+                if (j > 0) tot += stats::num::exp_dd(base + F.list[j - 1].lp + dd::log(Q[j - 1]));
+                p.add(dd::two_prod(tot, it->m));
+            }
+```
+
+경로 하나는 가운데에서 과거 절반과 미래 절반으로 나뉘므로, 각 목록의 길이는 경로 수의 제곱근쯤이에요. 합은 모두 양수의 보상 합이라 뺄셈에서 오는 상쇄가 없어요.
+
+### 일의 상한
+
+일의 양(나열한 합성의 수와 나른 값의 수)이 $2 \times 10^8$을 넘거나, 한 번에 들고 있는 값이 $5 \times 10^6$을 넘으면 계산을 멈추고 `ValueError`를 내요. 메시지는 `chi2_contingency`를 쓰라고 알려 줘요. 상한에 닿기까지 몇 초가 걸려요. 0인 행·열을 뺀 뒤 행이나 열이 하나만 남은 표는 그 주변합을 가진 유일한 표이므로 통계량과 p값이 1이에요. 2 × 2가 아닌 표의 `alternative`는 `'two-sided'`만 받아요.
+
+## 오즈비: Fisher의 비중심 초기하 분포
+
+### 조건부 최우추정
+
+`odds_ratio(kind='conditional')`은 2 × 2 표의 주변합을 고정했을 때 왼쪽 위 칸 $X$의 분포가 오즈비 $\omega$에 따라 어떻게 바뀌는지에서 출발해요. 이것이 Fisher의 비중심 초기하 분포예요.
+
+$$
+P(X = k) \propto \binom{n}{k}\binom{M - n}{N - k}\,\omega^k,\qquad \max(0, n + N - M) \le k \le \min(n, N)
+$$
+
+($M$은 총합, $n$은 첫 행의 합, $N$은 첫 열의 합). $t = \log\omega$로 쓰면 이 분포는 $t$를 자연 모수로 하는 지수족이에요. 그래서 로그우도의 도함수는 $x - E_t X$이고, 조건부 최우추정은 $E_t X = x$의 근이에요. 그 도함수 $\tfrac{d}{dt}E_tX$는 분산 $\operatorname{Var}_t X$라서 뉴턴 걸음에 쓰기 좋아요.
+
+가중치 $L_k = \log\big[\binom{n}{k}\binom{M-n}{N-k}\big]$는 최빈값에 대한 상대값으로, 이웃한 비의 log를 double-double로 쌓아 만들어요. $t$에서의 항은 $\exp(L_k + (k - \text{mode})\,t - \max)$이고, 평균과 꼬리는 모두 양수의 합이에요. 근 찾기는 괄호를 지키는 뉴턴법이에요. 괄호를 두 배씩 넓혀 부호가 바뀌는 구간을 잡은 뒤, 뉴턴 걸음이 괄호를 벗어나면 이분으로 바꾸고, $|\Delta t|$가 4 ULP 아래가 되면 멈춰요.
+
+```cpp
+    // csrc/htest/nchg.hpp
+    // the conditional maximum likelihood odds ratio: E X = x (0 at lo, inf at hi)
+    double mle(std::int64_t x) {
+        if (x <= lo) return 0.0;
+        if (x >= hi) return kInf;
+        const double t = solve(
+            [&](double tt, double& val, double& slope) {
+                const At a = at(tt);
+                val = a.mean - static_cast<double>(x), slope = a.var;
+            },
+            0.0
+        );
+        too_big_ = too_big_ || cut_short_;
+        return std::exp(t);
+    }
+```
+
+$x$가 받침의 끝이면 근이 없어요. 아래 끝이면 0, 위 끝이면 inf예요.
+
+### 큰 받침: 최빈값 둘레의 창
+
+받침 $[\max(0, n + N - M), \min(n, N)]$이 $2^{16}$점 이하면 모든 점의 가중치를 한 번 쌓아 두고 $t$마다 다시 써요. 그보다 크면 받침 전체를 들고 있지 않아요. 개수가 $10^7$이면 받침 전체의 가중치만 수백 MB가 되기 때문이에요. 대신 $t$마다 그 $t$에서의 최빈값을 찾고(이웃의 비 $w(k)e^t/w(k - 1)$이 1을 지나는 $k$, 그 비가 $k$에 대해 줄어들므로 이분 탐색), 거기서 양쪽으로 이웃의 비를 double-double로 곱해 가며 항을 만들어요. 항이 최빈값의 항의 $2^{-110}$ 아래로 떨어지면 그쪽을 멈춰요. 구간을 풀 때는 꼬리 $\alpha$가 작으면 $\alpha \cdot 2^{-60}$까지 내려가요. 이 창의 폭은 분포의 표준편차에 비례하는 $O(\sqrt{N})$점이에요.
+
+창이 근에서 $2^{22}$점을 넘으면 그 근은 창이 잘린 합이라 믿을 수 없어요. 그때는 `kind='sample'`을 쓰라고 알려 주는 `ValueError`예요. 받침 크기와 창의 크기로 표 하나의 일을 어림해서, 긴 계산은 GIL을 놓고 해요.
+
+```python
+>>> sd.htest.odds_ratio([[10**7, 10**7 + 5000], [10**7, 10**7]]).statistic
+0.9995002498875519
+>>> sd.htest.odds_ratio([[10**14, 10**14], [10**14, 10**14 + 1]])
+Traceback (most recent call last):
+    ...
+ValueError: odds_ratio(): the conditional odds ratio needs more than 4.19e+06 terms of its sums for this table; use kind='sample'
+```
+
+### 정확 구간
+
+정확 구간의 아래 끝은 $P_\omega(X \ge x) = \alpha/2$, 위 끝은 $P_\omega(X \le x) = \alpha/2$인 $\omega$예요(한쪽 구간은 $\alpha$). 같은 풀이기가 $\log P$를 $t$에 대해 풀어요. 도함수도 닫힌 꼴이에요. $\tfrac{d}{dt}\log P_t(X \ge x) = E_t[X \mid X \ge x] - E_tX$예요. 꼬리의 log를 풀기 때문에 $\alpha$가 아주 작아도 뉴턴 걸음이 잘 맞아요.
+
+```python
+>>> o = sd.htest.odds_ratio([[12, 5], [3, 10]])
+>>> o.statistic, (12 * 10) / (5 * 3)
+(7.375269132334276, 8.0)
+>>> from math import comb
+>>> ks = range(2, 16)
+>>> w = [comb(17, k) * comb(13, 15 - k) * o.statistic**k for k in ks]
+>>> sum(k * v for k, v in zip(ks, w)) / sum(w)
+12.000000000000002
+>>> lo, hi = o.conf_int()
+>>> lo, hi
+(1.2196296274076255, 60.951754176049306)
+>>> w = [comb(17, k) * comb(13, 15 - k) * lo**k for k in ks]
+>>> sum(v for k, v in zip(ks, w) if k >= 12) / sum(w)
+0.02500000000000001
+```
+
+조건부 추정 7.375는 표본 오즈비 8과 달라요. 마지막 두 줄은 아래 끝에서 $P(X \ge 12) = 0.025$인지 Python으로 다시 계산한 거예요.
+
+### 표본 오즈비와 위험비
+
+`kind='sample'`은 $ad/bc$와 Woolf 구간 $\text{OR}\cdot\exp(\mp z\,\text{se})$, $\text{se}^2 = 1/a + 1/b + 1/c + 1/d$예요. 모든 칸이 $2^{31}$ 아래이면 $\text{se}^2$는 128비트 정수로 분자 $bcd + acd + abd + abc$와 분모 $abcd$를 만들어 double-double로 한 번 나눠요. 그보다 큰 칸이 있으면 $abcd$가 128비트를 넘으므로 네 몫 $1/a$, $1/b$, $1/c$, $1/d$를 double-double로 따로 만들어 더해요(`woolf_variance`). 몫마다 $2^{-104}$ 안이고 항이 모두 양수라 합도 그만큼 정확해요. 그다음 제곱근을 구해요. 0인 칸이 있으면 se는 inf이고 구간의 끝은 IEEE 산술 그대로(0과 NaN, NaN과 inf) 나와요.
+
+```cpp
+// csrc/htest/contingency.cpp
+DD woolf_variance(std::int64_t a, std::int64_t b, std::int64_t c, std::int64_t d) {
+    if (std::max({a, b, c, d}) < (std::int64_t{1} << 31)) {
+        const i128 A = a, B = b, Cc = c, Dd = d;
+        return dd_of(B * Cc * Dd + A * Cc * Dd + A * B * Dd + A * B * Cc) / dd_of(A * B * Cc * Dd);
+    }
+    const DD one{1.0, 0.0};
+    auto inv = [&](std::int64_t v) { return one / DD{static_cast<double>(v), 0.0}; };
+    return (inv(a) + inv(d)) + (inv(b) + inv(c));
+}
+```
+
+```python
+>>> r = sd.htest.odds_ratio([[10**13, 10**13 + 10**6], [10**13 + 10**6, 10**13]], kind='sample')
+>>> r.statistic
+0.99999980000003
+>>> r.conf_int()
+array([0.9999985604110125,  1.000001039590584], dtype=float64)
+```
+
+`relative_risk`의 위험비 $(a/n_1)/(c/n_2) = a n_2/(c n_1)$도 정수의 몫을 한 번 반올림해요. Katz 구간의 $\text{se}^2 = 1/a - 1/n_1 + 1/c - 1/n_2$도 정확한 유리수예요.
+
+## McNemar와 Cochran의 Q
+
+- **`mcnemar`**: 짝지은 2 × 2 표의 어긋난 칸 $b = t_{01}$, $c = t_{10}$만 봐요. `exact=True`(기본)이면 통계량은 $\min(b, c)$이고 p값은 $B \sim \text{Binomial}(b + c, 1/2)$의 $\min(1, 2P(B \le \min(b, c)))$예요. `exact=False`면 $(|b - c| - \text{correction})^2/(b + c)$를 정수의 몫으로 만들고 카이제곱(1)의 위 꼬리를 써요. statsmodels처럼 $b = c$일 때도 1을 빼요. $b + c = 0$이면 통계량을 정할 수 없어 NaN이에요.
+- **`cochrans_q`**: $(N, k)$의 0·1 자료에서 $Q = (k - 1)(k\sum C_j^2 - T^2)/(kT - \sum R_i^2)$를 128비트 정수로 만들고 한 번 나눠요. p값은 카이제곱($k - 1$)이에요. 분모가 0(모든 블록이 모두 0이거나 모두 1)이면 NaN이에요. 0과 1이 아닌 값(2, 0.5, −1)은 개수의 검사보다 먼저 보고 모두 `'x' must hold 0 and 1 values` 메시지 하나로 거절해요. NaN만 개수의 메시지예요.
+
+```python
+>>> sd.htest.mcnemar([[10, 5], [5, 10]], exact=False)
+McnemarResult(statistic=0.1, pvalue=0.75183)
+>>> sd.htest.mcnemar([[10, 0], [0, 10]], exact=False)
+McnemarResult(statistic=nan, pvalue=nan)
+```
+
+## 비교 대상과 다른 곳
+
+- scipy의 `chi2_contingency`는 0인 칸이 있으면 $\lambda < 0$인 Cressie–Read 통계량(Freeman–Tukey, Neyman 등)이 NaN이에요(`0 * inf`). 여기서는 0인 칸의 극한을 써요. 0인 행이나 열은 scipy가 `ValueError`, 여기서는 NaN이에요. R `chisq.test`는 행이 하나인 표를 적합도 검정으로 읽어요.
+- scipy의 r × c `fisher_exact`는 시드 없는 몬테카를로이고, 여기서는 망 알고리즘으로 정확한 값을 내요. 몬테카를로 p값이 필요하면 `method=MonteCarloMethod(...)`를 넘겨요([재표본](/internals/htest/resampling/)).
+- R의 FEXACT는 과거 값의 수를 줄이려고 log가 가까운(약 $3.45 \times 10^{-7}$ 안의) 과거 값들을 하나로 합쳐요. 그만큼 합에 상대오차가 들 수 있어요. 4 × 5 표(N = 100)에서 R(`workspace = 2e8`)과 이 라이브러리의 p값은 $1.7 \times 10^{-10}$ 달라요. 여기서는 같은 유리수만 합치는 대신 가운데에서 만나 목록을 줄여요. R의 기본 workspace(200000)가 거부하는 이 표와 2 × 10 표(N = 150)도 상한 안이에요.
+- R `mcnemar.test`는 $b = c$일 때 연속성 보정을 하지 않아요(통계량 0, p값 1). statsmodels는 $b + c = 0$의 카이제곱 꼴에서 inf와 0을 내요.
+- 조건부 오즈비는 scipy가 `brentq`(xtol $10^{-13}$)로 풀어 최우추정이 $1.8 \times 10^{-13}$, 구간이 $8 \times 10^{-12}$ 안에서 같아요. R `fisher.test`의 추정과 구간은 `uniroot`의 기본 허용오차 때문에 $6 \times 10^{-4}$까지 달라요.

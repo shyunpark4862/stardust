@@ -1,0 +1,255 @@
+---
+title: 여러 표본의 순위 검정
+group: 순위와 표본 비교
+order: 2
+summary: Kruskal–Wallis·Friedman의 통계량을 정수인 순위 합의 편차에서 만들어 상쇄를 없애는 방법, Page 검정의 정확한 분포를 행마다 부분집합 동적 계획으로 세어 합성곱하는 방법, Brunner–Munzel·Mood·중앙값 검정이 순위와 개수를 정수로 다루는 방법을 설명해요.
+seeAlso: [rank-tests, two-sample-distributions, correlation]
+---
+import AccuracySummary from '../../../components/fig/AccuracySummary.astro';
+
+## 한눈에 보기
+
+이 글의 검정들은 [순위와 정확한 분포](/internals/htest/rank-tests/)의 순위 매기기(꼬리표를 단 정렬, 두 배 중간 순위 $2b + t + 1$)를 그대로 써요. 정확한 분포가 있는 것은 Page 검정뿐이고, 나머지는 카이제곱·t·정규 근사예요. 그래서 이 글의 관심은 통계량을 어떻게 정확하게 만드는가예요. 평균을 빼는 통계량은 double로 계산하면 큰 두 수의 차가 되어 자릿수를 잃는데, 순위 합이 정수라는 점을 쓰면 그 차를 정수로 먼저 만들 수 있어요.
+
+| 함수 | 통계량 | 정수로 만드는 것 | p값 |
+|---|---|---|---|
+| [`kruskal`](/api/htest/kruskal/) | H | $D_i = 2R_i - n_i(N + 1)$, $N^3 - N - \sum(t^3 - t)$ | 카이제곱(k − 1) |
+| [`friedmanchisquare`](/api/htest/friedmanchisquare/) | Friedman의 카이제곱 | $D_j = 2R_j - n(k + 1)$, $k(k^2 - 1)n - \sum t(t^2 - 1)$ | 카이제곱(k − 1) |
+| [`page_trend_test`](/api/htest/page_trend_test/) | L | 두 배 열 합과 예측 순위의 곱 | 정확(행 분포의 합성곱) 또는 정규 |
+| [`brunnermunzel`](/api/htest/brunnermunzel/) | W | 위치의 두 배 $2P$, $n_x \cdot 2P - 2U_1$ | t(Satterthwaite) 또는 정규 |
+| [`mood`](/api/htest/mood/) | z | $S = \sum (2I - N - 1)^2$ | 정규 |
+| [`median_test`](/api/htest/median_test/) | 2 × k 표의 Cressie–Read | 표의 개수 | 카이제곱(k − 1) |
+| [`ranksums`](/api/htest/ranksums/) | z | 두 배 순위 합의 편차 | 정규 |
+
+p값은 모두 sd.stats의 분포(`ChiSquared`, `StudentT`, `Normal`)의 `ccdf`·`cdf`를 C++에서 바로 불러 작은 쪽 꼬리를 직접 계산한 값이에요.
+
+## Kruskal–Wallis
+
+scipy의 정의는 $H = \frac{12}{N(N+1)}\sum_i R_i^2/n_i - 3(N + 1)$을 동점 보정 $1 - \sum(t^3 - t)/(N^3 - N)$으로 나눈 값이에요. 앞의 꼴은 비슷한 크기의 두 수를 빼므로, H가 작고 N이 크면 상대오차가 커져요. 같은 식을 순위 평균의 편차로 쓰면
+
+$$
+\sum_i n_i\Bigl(\bar R_i - \tfrac{N + 1}{2}\Bigr)^2 = \sum_i \frac{D_i^2}{4 n_i},\qquad D_i = 2R_i - n_i(N + 1)
+$$
+
+이고, 정리하면
+
+$$
+H = \frac{3(N - 1)\sum_i D_i^2/n_i}{N^3 - N - \sum (t^3 - t)}
+$$
+
+이에요. $D_i$는 두 배 순위 합에서 바로 나오는 정수라 정확해요. $D_i^2$은 `two_prod`로 정확한 double-double이고, $n_i$로 나눈 몫들을 double-double로 더해요. 분모는 128비트 정수예요. 끝에 몫 하나를 한 번 반올림해요.
+
+```cpp
+            // csrc/htest/rank.cpp
+            const auto N = static_cast<std::int64_t>(keys.size());
+            Acc sum;
+            for (std::int64_t i = 0; i < k; ++i) {
+                const double D =
+                    static_cast<double>(twoR[static_cast<std::size_t>(i)] - n[static_cast<std::size_t>(i)] * (N + 1));
+                sum.add(dd::two_prod(D, D) / static_cast<double>(n[static_cast<std::size_t>(i)]));
+            }
+            const i128 Nn = N, den = Nn * Nn * Nn - Nn - T3;
+            if (den > 0) {
+                h = ratio(sum.value() * (3.0 * static_cast<double>(N - 1)), dd_of(den));
+                p = chi2_sf(h, static_cast<double>(k - 1));
+            }
+```
+
+모든 값이 같으면 분모가 0이라 H와 p값이 NaN이에요. 빈 표본이 있어도 NaN이에요.
+
+## Friedman
+
+Friedman 검정은 k개의 짝지은 표본을 받아 관측 j마다(블록마다) k개의 값을 그 안에서 순위 매겨요. 블록이 작아서(k개) 꼬리표 정렬 대신 (값, 표본 번호)의 쌍을 `std::sort`로 정렬하고 같은 값의 묶음에 두 배 중간 순위 $i + e + 1$(묶음이 위치 i부터 e − 1까지)을 줘요.
+
+```cpp
+            // csrc/htest/rank.cpp
+            std::sort(row.begin(), row.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+            for (std::int64_t i = 0; i < k;) {
+                std::int64_t e = i + 1;
+                while (e < k && row[static_cast<std::size_t>(e)].first == row[static_cast<std::size_t>(i)].first) ++e;
+                const std::int64_t t = e - i;
+                for (std::int64_t q = i; q < e; ++q)
+                    twoR[static_cast<std::size_t>(row[static_cast<std::size_t>(q)].second)] += i + e + 1;
+                T += static_cast<i128>(t) * (t * t - 1);
+                i = e;
+            }
+```
+
+통계량은 Kruskal–Wallis와 같은 방법으로 정리한 꼴이에요.
+
+$$
+\chi^2_F = \frac{3(k - 1)\sum_j D_j^2}{k(k^2 - 1)n - \sum t(t^2 - 1)},\qquad D_j = 2R_j - n(k + 1)
+$$
+
+`nan_policy='omit'`이면 NaN이 든 블록을 통째로 빼요. 블록 하나가 정렬 하나라서 긴 표본에서도 한 번의 큰 정렬이 없어요.
+
+정확한 분포는 scipy·R에도 없어서 여기도 카이제곱 근사예요. 근사의 품질은 계약이 아니고, 작은 문제에서 잰 값은 k = 3, n = 10에서 정확한 순열 p값 0.04556 대 카이제곱 0.04505, k = 4, n = 5에서 0.6522 대 0.5641이에요.
+
+## Page의 추세 검정
+
+### 통계량
+
+Page 검정은 m개 블록(행) × n개 처리(열)의 표에서, 처리의 효과가 예측한 순서($p_1, \dots, p_n$, 기본 1..n)대로 커지는지 봐요. 행마다 순위를 매기고 열 합 $C_j$를 모아 $L = \sum_j p_j C_j$를 써요. 커널은 두 배 순위로 열 합을 모으므로 2L이 예측 순위(정수)와 정수 열 합의 곱의 합이고, `two_prod`와 double-double 합으로 정확해요. `ranked=True`면 주어진 값을 순위로 보고 두 배만 해요.
+
+### 정확한 분포: 행마다의 순열
+
+귀무가설 아래에서 각 행의 값은 열에 고르게 섞이고 행끼리는 독립이에요. 그래서 L의 분포는 행 하나의 분포를 행 수만큼 합성곱한 것이에요. 행 하나의 분포는 그 행의 (두 배) 순위 $r_1, \dots, r_n$을 열에 놓는 n!가지 순열에 대한 $\sum_j j\,r_{\pi(j)}$의 분포예요. 예측 순위가 1..n의 순열이므로 열의 이름을 바꿔도 같은 분포라, 무게를 1..n으로 두고 세도 돼요.
+
+이 분포는 부분집합 위의 동적 계획으로 세요. 열 1부터 차례로 값을 하나씩 놓는다고 보면, 열 ℓ까지 채운 상태는 "어느 값들을 썼는가"(크기 ℓ의 부분집합, 비트 마스크)와 지금까지의 합이에요. 다음 열 ℓ + 1에 아직 쓰지 않은 값 $r_i$를 놓으면 합에 $(\ell + 1)r_i$가 더해져요.
+
+```cpp
+        // csrc/htest/rank_exact.hpp
+        for (std::uint32_t mask = 0; mask <= full; ++mask) {
+            if (std::popcount(mask) != layer || cur[mask].empty()) continue;
+            const std::vector<std::uint64_t>& src = cur[mask];
+            for (std::int64_t i = 0; i < n; ++i) {
+                if (mask & (1u << i)) continue;
+                const std::uint32_t nm = mask | (1u << i);
+                std::vector<std::uint64_t>& dst = cur[nm];
+                if (dst.empty()) dst.assign(static_cast<std::size_t>(hi + 1), 0);
+                const std::int64_t add = w * r[static_cast<std::size_t>(i)];
+                for (std::int64_t s = 0; s + add <= hi; ++s)
+                    if (src[static_cast<std::size_t>(s)])
+                        dst[static_cast<std::size_t>(s + add)] += src[static_cast<std::size_t>(s)];
+            }
+```
+
+층을 다 쓰면 그 층의 표를 비워 메모리가 두 층 몫만 들어요. 개수는 n! 이하라 n ≤ 20이면 64비트 정수에 들어요. 일은 $2^n \cdot n \cdot (\text{합의 범위} + 1)$이에요. 같은 값은 위치가 달라도 따로 세므로, 동점이 있는 행은 그 행의 중간 순위에 조건부인 분포가 돼요. 행의 순위를 정렬한 것이 같으면 분포도 같으므로 행 분포는 그 정렬한 순위를 키로 기억해 둬요.
+
+행들의 합성곱은 double-double이에요. 행의 개수(정수)를 지금까지의 분포(double-double)에 곱해 더하므로 모두 양수의 덧셈이에요. 끝에 위 꼬리의 누적합 `up[s]`를 만들어 두고, p값은 $\#\{L' \ge L\}$를 전체 $(n!)^m$으로 나눈 몫이에요.
+
+```cpp
+        // csrc/htest/rank.cpp
+        const std::vector<std::uint64_t>& c = it->second.first;
+        pt.base += it->second.second;
+        std::vector<DD> nd(dist.size() + c.size() - 1, DD{0.0, 0.0});
+        for (std::size_t u = 0; u < dist.size(); ++u) {
+            if (dist[u].hi == 0.0) continue;
+            for (std::size_t t = 0; t < c.size(); ++t)
+                if (c[t]) nd[u + t] = nd[u + t] + dist[u] * static_cast<double>(c[t]);
+        }
+        dist.swap(nd);
+```
+
+동점이 없으면 모든 행이 2, 4, …, 2n이라 분포가 (m, n)에만 기대요. 이 경우는 (m, n)마다 한 번 만든 꼬리를 프로세스 안에 둬요(scipy도 호출 사이에 표를 둬요).
+
+```python
+>>> data = [[1.0, 2.0, 3.0], [1.0, 3.0, 2.0], [2.0, 1.0, 3.0], [1.0, 2.0, 3.0]]
+>>> sd.htest.page_trend_test(data)
+PageTrendTestResult(statistic=54, pvalue=0.025463, method='exact')
+>>> sd.htest.page_trend_test(data, method='asymptotic')
+PageTrendTestResult(statistic=54, pvalue=0.0169474, method='asymptotic')
+>>> sd.htest.page_trend_test([[1.0, 2.0, 2.0], [1.0, 3.0, 2.0], [2.0, 1.0, 3.0], [1.0, 2.0, 3.0]])
+PageTrendTestResult(statistic=53.5, pvalue=0.0308642, method='exact')
+```
+
+넷째 줄은 첫 행에 동점이 있어서, 그 행은 순위 (1, 2.5, 2.5)의 순열 6가지에 대한 분포를 써요.
+
+'auto'는 scipy의 문턱(n ≤ 8이고, m ≤ 12이거나 n = 3이고 m ≤ 20)에서 정확을 골라요. 모양만 보고 동점과 상관없어요. 정확 계산의 일은 서로 다른 행 분포마다의 부분집합 셈과 합성곱을 미리 더해 상한 10⁹와 견주고, n > 20이거나 $(n!)^m > 2^{1000}$이면 무한으로 봐요. 정규 근사는 scipy의 $E_0 = mn(n + 1)^2/4$, $V_0 = mn^2(n + 1)(n^2 - 1)/144$(동점 보정 없음)이고, 분자 $4(L - E_0) = 2\cdot 2L - mn(n + 1)^2$을 double-double로 만들어요.
+
+## Brunner–Munzel
+
+Brunner–Munzel 검정은 $P(X < Y) + \tfrac12 P(X = Y) = \tfrac12$를 분산이 같다는 가정 없이 검정해요. 관측 하나의 위치(placement) P는 다른 표본에서 그 값보다 작은 값의 수(같으면 반)예요. 2P는 정수이고, 같은 값의 묶음 안에서는 모두 같아요. 그래서 묶음마다 x와 y의 개수 $c_x, c_y$와, 그 묶음 앞까지의 x·y 개수 $p_x, p_y$만 있으면 돼요. x의 위치의 두 배는 $2p_y + c_y$이고 그 합이 $2U_1$이에요.
+
+x의 위치 분산은 $S_x = \sum (P - U_1/n_x)^2/(n_x - 1)$이에요. 이 편차를 $2n_x$배 하면 정수 $n_x\cdot 2P - 2U_1$이라, 제곱을 `two_prod`로 정확히 만들고 개수를 곱해 더해요.
+
+```cpp
+                // csrc/htest/rank.cpp
+                for (const Run& u : runs) {
+                    if (u.cx) {
+                        const double a = static_cast<double>(nx * (2 * u.py + u.cy) - twoU1);
+                        sx.add(dd::two_prod(a, a) * static_cast<double>(u.cx));
+                    }
+                    if (u.cy) {
+                        const double a = static_cast<double>(ny * (2 * u.px + u.cx) - twoU2);
+                        sy.add(dd::two_prod(a, a) * static_cast<double>(u.cy));
+                    }
+                }
+                const DD vx = sx.value() / (4.0 * static_cast<double>(nx) * static_cast<double>(nx - 1));  // nx Sx
+                const DD vy = sy.value() / (4.0 * static_cast<double>(ny) * static_cast<double>(ny - 1));  // ny Sy
+                const DD V = vx + vy;
+```
+
+통계량은 $W = (n_x n_y/2 - U_1)/\sqrt{n_x S_x + n_y S_y}$예요. scipy가 순위 평균의 차로 쓰는 식과 같은 값이고, 분자는 정수의 반이에요. 자유도는 Satterthwaite의 $V^2/\bigl(v_x^2/(n_x - 1) + v_y^2/(n_y - 1)\bigr)$이고, p값은 −W에서 t 분포(`distribution='t'`) 또는 정규분포예요. 두 위치 분산이 모두 0이면(완전히 갈렸거나 모든 값이 같으면) W와 p값이 NaN이에요.
+
+## Mood의 척도 검정
+
+Mood 검정은 x의 순위가 가운데에서 얼마나 먼지 $T = \sum (r_i - (N + 1)/2)^2$로 재요. 동점이 있으면 scipy는 Mielke의 꼴을 써요. 같은 값의 묶음(순위 b + 1..b + t)마다 $(I - (N + 1)/2)^2$의 평균을 x의 개수 $c_x$만큼 더해요. 이것을 네 배 하면
+
+$$
+4T = \sum_{\text{묶음}} \frac{c_x S}{t},\qquad S = \sum_{I = b+1}^{b+t} (2I - N - 1)^2
+$$
+
+이고 S는 정수의 닫힌 꼴 $t u_0^2 + 2u_0 t(t - 1) + \tfrac{4}{6}(t - 1)t(2t - 1)$($u_0 = 2b + 1 - N$)이에요.
+
+```cpp
+                // csrc/htest/rank.cpp
+                tie_runs(k, [&](std::int64_t b, std::int64_t t, std::int64_t first) {
+                    const i128 tt = t, u0 = 2 * static_cast<i128>(b) + 1 - Nn;
+                    const i128 S = tt * u0 * u0 + 2 * u0 * tt * (tt - 1) + 4 * ((tt - 1) * tt * (2 * tt - 1) / 6);
+                    const std::int64_t cx = tag_count(k, first, t, 0);
+                    if (cx) T4.add((dd_of(S) * static_cast<double>(cx)) / static_cast<double>(t));
+                    const i128 q = Nn - 2 * static_cast<i128>(b) - tt;
+                    ties += tt * (tt * tt - 1) * (tt * tt - 4 + 15 * q * q);
+                });
+```
+
+평균은 $4\,\mathbb E T = m(N^2 - 1)/3$, 분산은 Mielke의 동점 항을 뺀 $\frac{mn}{180}\bigl((N + 1)(N^2 - 4) - \frac{\sum t(t^2 - 1)(t^2 - 4 + 15q^2)}{N(N - 1)}\bigr)$이에요($q = N - 2b - t$). z는 $(4T - 4\,\mathbb E T)/4$를 분산의 제곱근으로 나눈 값이에요. N < 3이면 NaN이에요.
+
+## 중앙값 검정
+
+[`median_test`](/api/htest/median_test/)는 모든 표본을 합친 중앙값 M을 구하고, 표본마다 M보다 큰 값과 작은 값의 개수로 2 × k 표를 만들어 카이제곱 검정을 해요.
+
+짝수 개면 M은 가운데 두 값의 평균인데, 이 평균은 double로 나타낼 수 없을 수 있어요. 커널은 두 가운데 값을 기수 선택으로 찾고(`select_middle`, [분산분석과 등분산 검정](/internals/htest/anova/)의 중앙값과 같은 함수예요), 두 값의 TwoSum을 반으로 나눠 M을 double-double로 들어요(반으로 나누기는 정확해요). 선택은 값을 고치지 않아서 모은 값을 그대로 읽어요. 그다음 $x > M$을 정확히 견줘요. $x$가 M의 높은 부분과 같은 double이면 M의 낮은 부분의 부호가 판정을 정해요.
+
+```cpp
+            // csrc/htest/rank.cpp
+            double lo, hi;
+            select_middle(v.data(), N, lo, hi);  // (radix selection, htest/moments.hpp)
+            DD M{hi, 0.0};
+            if (N % 2 == 0) {
+                const DD s2 = dd::two_sum(lo, hi);
+                M = DD{0.5 * s2.hi, 0.5 * s2.lo};
+            }
+            med = M.hi;
+            // x > M exactly: x > M.hi, or x = M.hi above a negative low part (and below likewise)
+            const bool eq_up = M.lo < 0.0, eq_dn = M.lo > 0.0;
+```
+
+`ties`(M과 같은 값을 어디에 넣을지)는 정말로 M과 같은 값에만 적용돼요.
+
+```python
+>>> r = sd.htest.median_test([0.0, 1.0], [1.0000000000000002, 3.0], ties='above')
+>>> r.median
+1.0
+>>> r.table
+array([[0, 2],
+       [2, 0]], dtype=int64)
+```
+
+가운데 두 값 1과 $1 + 2^{-52}$의 평균 $1 + 2^{-53}$은 double로 반올림하면 1이에요. 결과의 `median`은 그 반올림한 값이지만, 비교는 정확한 M으로 해서 1.0은 M보다 작은 쪽(아래 줄)에 들어가요.
+
+표의 검정은 scipy `chi2_contingency`의 정의 그대로예요. 기대 빈도 $R_iC_j/N$은 정수 곱을 double-double로 나눈 값이고, k = 2이고 `correction=True`면 Yates의 보정 $|O - E| - \min(1/2, |O - E|)$을 해요. 통계량은 `lambda_`의 Cressie–Read 발산이고, 그 항은 [`power_divergence`](/api/htest/power_divergence/)와 같은 커널(`csrc/htest/divergence.hpp`)이에요. 이 표 계산은 분할표의 `chi2_contingency`도 이어 써요.
+
+## 순위 합 검정
+
+[`ranksums`](/api/htest/ranksums/)는 동점·연속성 보정이 없는 z $= (R_1 - n_1(N + 1)/2)/\sqrt{n_1 n_2 (N + 1)/12}$예요(scipy의 정의). 분자는 두 배 순위 합에서 나온 정수의 반이고, 분산은 128비트 정수를 12로 나눈 double-double이에요. 동점 보정과 정확 분포가 필요하면 Mann–Whitney가 같은 순위 합으로 그 둘을 가져요. 모든 값이 같은 줄(묶음이 하나)은 통계량과 p값 모두 NaN이에요. 식대로 계산하면 z = 0이지만 순위가 모두 같아 견줄 것이 없는 자리라, 다른 순위 검정의 분산 0 규칙과 같이 NaN으로 둬요.
+
+```python
+>>> sd.htest.ranksums([2.0] * 5, [2.0] * 6)
+RanksumsResult(statistic=nan, pvalue=nan)
+```
+
+## 정확도
+
+순위에서 나오는 통계량(L, 중앙값 검정의 표)은 정확하고, 평균을 빼는 통계량도 정수 편차에서 한 번 반올림해 상대 10⁻¹⁶ 안이에요. 참값은 정확한 유리수의 통계량(H, Friedman, Brunner–Munzel의 W²와 자유도, Mood의 Mielke T와 분산, 중앙값 검정의 표·기대 빈도)과, 행 순열을 정수로 센 Page의 정확 분포, 그리고 Arb(구간 산술)로 만든 카이제곱·t·정규 꼬리예요. 계약 대비가 가장 큰 곳은 Kruskal–Wallis의 p값(N = 1100)이에요.
+
+<AccuracySummary area="htest" names={['kruskal', 'friedmanchisquare', 'page_trend_test', 'brunnermunzel', 'mood', 'median_test']} caption="여러 표본의 순위 검정과 척도·중앙값 검정의 정확도." />
+
+## scipy·R과 다른 곳
+
+- scipy와 R `kruskal.test`는 $\frac{12}{N(N+1)}\sum R_i^2/n_i - 3(N + 1)$의 상쇄로 N = 1100에서 H가 상대 3.2e-13 틀려요. Friedman의 통계량은 scipy가 상대 1.1e-13 틀리고, R `friedman.test`는 맞아요.
+- scipy `median_test`는 중앙값을 double로 반올림한 뒤 그 반올림한 값과 같은 값을 "같다"로 세요. 그래서 `ties='above'`면 위 예에서 표가 [[1, 2], [1, 0]]이에요.
+- scipy `page_trend_test`의 정확 분포는 동점을 보정하지 않아, 동점이 있는 'auto'에서 p값이 그 데이터의 귀무분포가 아니에요. 여기서는 행마다의 조건부 분포예요.
+- scipy `brunnermunzel`은 두 위치 분산이 0이면 ±inf와 경고를 내요. 여기서는 NaN이에요.
+- 모든 값이 같은 표본에서 scipy `ranksums`는 통계량 0, p값 1이에요. 여기서는 둘 다 NaN이에요.

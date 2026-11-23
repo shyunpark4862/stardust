@@ -1,0 +1,244 @@
+---
+kind: function
+title: 제목, 축, 범례
+names: [Figure.title, Figure.xlabel, Figure.ylabel, Figure.zlabel, Figure.xlim, Figure.ylim, Figure.xscale, Figure.yscale, Figure.xticks, Figure.yticks, Figure.legend]
+group: 기본 개념
+order: 3
+signatures:
+  - "fig.title(text, /)"
+  - "fig.xlabel(text, /)"
+  - "fig.ylabel(text, /)"
+  - "fig.zlabel(text, /)"
+  - "fig.xlim(low, high, /)"
+  - "fig.ylim(low, high, /)"
+  - "fig.xscale(kind, /)"
+  - "fig.yscale(kind, /)"
+  - "fig.xticks(values, /, *, labels=None)"
+  - "fig.yticks(values, /, *, labels=None)"
+  - "fig.legend(*, loc='best', title=None, ncols=1)"
+summary: 그린 그림을 고치는 메서드예요. 칸의 제목과 축 이름을 붙이고, 축의 범위와 척도(선형, 로그)를 정하고, 눈금을 직접 고르거나 π 단위로 바꾸고, 범례의 자리와 제목과 열 수를 정해요. 모두 fig 자신을 돌려줘서 한 줄로 이어 쓸 수 있어요.
+params:
+  - name: text
+    type: str
+    kind: positional-only
+    desc: "제목이나 축 이름. LaTeX 원문이에요. 수식은 $...$ 안에 쓰고, %, _, & 같은 특수 문자는 \\로 숨겨요. 한글을 그대로 써요."
+  - name: low, high
+    type: float 또는 None
+    kind: positional-only
+    desc: "축 범위의 아래 끝과 위 끝. 둘 다 유한한 수면 low < high여야 해요. None인 끝은 자료에 맞춰 알아서 정해요."
+  - name: kind
+    type: str
+    kind: positional-only
+    desc: "축의 척도. 'linear'(처음 값)나 'log'."
+  - name: values
+    type: "수의 시퀀스 또는 'pi'"
+    kind: positional-only
+    desc: "눈금을 둘 값들. 범위 밖의 값은 빼요. 'pi'면 범위에 맞춰 π의 배수(π/4, π/2, π, 2π …)를 골라 π로 적어요."
+  - name: labels
+    type: str의 시퀀스 또는 None
+    kind: keyword-only
+    desc: "눈금마다의 글자(LaTeX 원문). values와 길이가 같아야 해요. None(기본값)이면 값을 숫자로 적어요. values='pi'와 함께 줄 수 없어요."
+  - name: loc
+    type: str 또는 None
+    kind: keyword-only
+    desc: "범례의 자리. 'best'(기본값), 칸 밖의 'top', 'right', 'bottom', 칸 안의 'upper right', 'upper left', 'lower left', 'lower right'. None이면 범례를 그리지 않아요."
+  - name: title
+    type: str 또는 None
+    kind: keyword-only
+    desc: "범례 위의 제목(LaTeX 원문). None(기본값)이면 없어요."
+  - name: ncols
+    type: int
+    kind: keyword-only
+    desc: "범례의 열 수(1 이상). 기본값 1. 칸 위와 아래의 범례는 이 값과 상관없이 칸의 너비에 들어가는 만큼 한 줄에 늘어놓아요."
+returns:
+  type: Figure
+  desc: "메서드를 부른 fig 자신(칸을 고른 보기면 그 보기)이에요."
+raises:
+  - type: TypeError
+    desc: text가 str가 아닐 때, low·high가 수도 None도 아닐 때, values가 수의 시퀀스도 'pi'도 아닐 때, labels의 원소가 str가 아닐 때, ncols가 정수가 아닐 때.
+  - type: ValueError
+    desc: low ≥ high이거나 끝이 유한하지 않을 때, kind나 loc의 이름이 틀렸을 때, values가 'pi'가 아닌 문자열일 때, values와 labels의 길이가 다를 때, values='pi'에 labels를 줬을 때, ncols가 1보다 작을 때, 3D 칸에 xlim·ylim·xscale·yscale·xticks·yticks를 불렀을 때. 로그 축에 0 이하의 범위를 주면 그릴 때 ValueError예요.
+seeAlso: [basics, figure, twin-inset, export, style, line, function]
+---
+import Callout from '../../../components/Callout.astro';
+import PlotImage from '../../../components/fig/PlotImage.astro';
+
+## 한눈에 보기
+
+그림 함수가 돌려준 그림에 제목, 축 이름, 범위, 눈금, 범례를 더해요. 메서드는 모두 `fig` 자신을 돌려주므로 한 줄로 이어 써요.
+
+```python
+>>> import math
+>>> import stardust as sd
+>>> x = sd.linspace(-math.pi, math.pi, 300)
+>>> fig = sd.plot.line(x, sd.sin(x), label=r"$\sin x$")
+>>> fig = fig.line(x, sd.sin(x) - sd.sin(3 * x) / 3, style="--", label=r"$\sin x - \frac{1}{3}\sin 3x$")
+>>> fig = (fig.title("사인 급수")
+...           .xlabel(r"$x$").ylabel(r"$f(x)$")
+...           .xticks("pi").ylim(-1.5, 1.5))
+```
+
+<PlotImage name="customize-hero" alt="-π에서 π까지 sin x(파란 실선)와 sin x - sin 3x / 3(노란 파선). 가로 눈금은 -π, -π/2, 0, π/2, π이고 세로 범위는 -1.5에서 1.5, 왼쪽 위에 범례, 위에 '사인 급수' 제목" caption="title, xlabel, ylabel, xticks('pi'), ylim을 이어 불렀어요. 가로 눈금이 π 단위로 적히고, 범례는 곡선이 지나지 않는 왼쪽 위 구석에 섰어요." />
+
+고치는 메서드는 그 칸의 설정만 바꿔요. 여러 칸의 그림에서는 `fig[0, 1].xlabel(...)`처럼 칸을 골라 고쳐요([Figure와 칸](/api/plot/figure/)). 같은 메서드를 다시 부르면 앞의 값을 덮어써요.
+
+<Reference />
+
+## 제목과 축 이름
+
+`title`, `xlabel`, `ylabel`은 칸의 위, 아래, 왼쪽에 글자를 붙여요. 세로축 이름은 90° 돌려 세워요. 글자는 LaTeX 원문이라 수식과 한글을 섞어 써요([글자는 LaTeX 원문이에요](/api/plot/basics/#글자는-latex-원문이에요)).
+
+```python
+>>> fig = sd.plot.scatter([1, 2, 3], [2.0, 3.5, 3.9]).xlabel(r"시간 $t$ (s)").ylabel(r"$\|v\|$ (m/s)")
+>>> fig.xlabel(3)
+Traceback (most recent call last):
+    ...
+TypeError: xlabel(): 'text' must be a str, not int
+```
+
+여백은 붙인 글자의 실제 크기를 재서 정해요. 그림의 바깥 크기는 그대로이고 축이 둘러싼 그림 영역이 그만큼 줄어요. 글자가 그림 밖으로 잘리지 않아요.
+
+`zlabel`은 3D 칸의 세로축(z) 이름이에요. 3D 칸은 `title`, `xlabel`, `ylabel`, `zlabel`, `legend`만 받아요. 상자의 범위는 자료가 정하므로 범위, 척도, 눈금을 고치는 메서드는 `ValueError`예요([3D 칸](/api/plot/view3d/)).
+
+```python
+>>> sd.plot.surface(lambda x, y: x * y, -1, 1, -1, 1).xlim(0, 1)
+Traceback (most recent call last):
+    ...
+ValueError: xlim(): a 3D cell has no such axis setting; its ranges are those of the data
+```
+
+## 범위: xlim, ylim
+
+범위를 주지 않으면 칸에 그린 모든 층의 자료를 덮고 양쪽으로 범위의 4%씩 넓혀요. 막대와 히스토그램의 바닥(0)처럼 자료가 딱 붙어야 하는 쪽은 넓히지 않아요.
+
+`xlim(low, high)`는 가로 범위를 정해요. 한쪽 끝만 정하려면 다른 쪽에 `None`을 줘요. `None`인 끝은 자료에 맞춰 정해져요.
+
+```python
+>>> fig = sd.plot.line([0, 1, 2, 3], [0, 1, 4, 9]).ylim(0, None)
+>>> fig = fig.xlim(2, 1)
+Traceback (most recent call last):
+    ...
+ValueError: xlim(): 'low' must be less than 'high'
+```
+
+범위 밖의 선과 채움은 칸의 테두리에서 잘려요. 점은 자르지 않아요. 범위 안의 점은 테두리에 걸려도 기호가 온전히 보이고, 범위 밖의 점은 그리지 않아요.
+
+```python
+>>> fig = sd.plot.scatter([1.85, 3, 4, 5.1], [3, 1.9, 4, 3]).line([1, 6], [1, 6]).xlim(2, 5).ylim(2, 5)
+```
+
+점 넷 가운데 범위 안의 $(4, 4)$ 하나만 찍히고, 선은 칸의 테두리에서 잘려요.
+
+한 칸에 세로축을 둘 두는 `fig.twin()`의 보기에서는 `ylabel`, `ylim`, `yscale`, `yticks`가 오른쪽 축을 고치고, 제목과 x축, 범례는 그 보기에서 불러도 칸의 것을 고쳐요([두 y축과 작은 그림](/api/plot/twin-inset/)). 여러 칸의 범위를 서로 맞추는 일은 [`grid`](/api/plot/figure/)의 `sharex`, `sharey`가 해요.
+
+## 척도: xscale, yscale
+
+`'log'`는 로그 척도예요. 값이 10배 늘 때마다 같은 길이만큼 가요. 눈금은 10의 거듭제곱($10^{-3}$, $10^{0}$, $10^{3}$)이에요. 거듭제곱이 많으면 몇 개씩 건너뛰어 적고, 하나도 건너뛰지 않을 때는 그 사이에 2, 3, …, 9배 자리의 짧은 보조 눈금이 서요. 범위 안에 10의 거듭제곱이 둘도 들지 않으면 보통의 숫자 눈금을 써요.
+
+로그 축에서 0 이하의 값은 그리지 않아요(선은 그 자리에서 끊겨요). 로그 축에 `xlim`을 주려면 두 끝이 양수여야 해요.
+
+로그 축의 눈금을 `xticks`로 직접 줄 때, 값이 모두 10의 거듭제곱이면 $10^k$ 꼴로 적고, 아닌 값이 하나라도 있으면(1, 2, 4, 8처럼) 모두 보통의 숫자로 적어요. 한 축에 두 꼴이 섞이지 않아요.
+
+## 눈금: xticks, yticks
+
+눈금은 축의 길이에 맞춰 알아서 골라요. 1, 5, 2, 2.5 같은 읽기 쉬운 간격 가운데, 되도록 0을 지나고 범위를 잘 덮고 너무 빽빽하지도 성기지도 않은 것을 골라요. 눈금은 범위 안에만 서요. 한 축의 눈금 숫자는 소수점 아래 자릿수가 모두 같아요. 가로축의 이웃한 숫자가 서로 닿으면 눈금 수를 줄여요.
+
+값이 아주 크거나 작으면(눈금의 가장 큰 값이 $10^5$ 이상이거나 $10^{-3}$보다 작으면) 축 끝에 공통 10의 거듭제곱을 한 번 적고 눈금에는 앞자리만 적어요.
+
+직접 고를 때는 `xticks(values)`예요. `labels=`를 주면 값 대신 그 글자를 적어요. 범위 밖의 값은 빠져요. `xticks("pi")`는 범위에 맞춰 π의 배수를 골라 $\frac{\pi}{2}$, $\pi$, $2\pi$처럼 적어요.
+
+```python
+>>> n = sd.asarray([10.0, 30, 100, 300, 1000, 3000, 10000])
+>>> t = 2e-6 * n * sd.log(n)
+>>> a = sd.plot.line(n, t, label=r"$n \log n$").scatter(n, t, color="C0")
+>>> a = a.line(n, 3e-8 * n * n, style="--", label=r"$n^2$")
+>>> a = a.xscale("log").yscale("log").xlabel(r"$n$").ylabel("시간 (s)")
+>>> b = sd.plot.scatter([1, 2, 3, 4, 5], [2.1e5, 3.9e5, 6.2e5, 7.8e5, 1.01e6]).xlabel("dose (mg)")
+>>> c = sd.plot.bar(["A", "B", "C"], [3, 1, 2]).yticks([0, 1, 2, 3], labels=["none", "low", "mid", "high"])
+>>> fig = sd.plot.grid([a, b, c], ncols=3, width=183)
+```
+
+<PlotImage name="customize-axes" alt="세 칸. 왼쪽은 두 축이 로그인 그림에서 n log n의 직선과 점, n^2의 파선, 눈금은 10의 거듭제곱. 가운데는 세로축 끝에 ×10^6이 적힌 산점도. 오른쪽은 세로 눈금에 none, low, mid, high가 적힌 막대 그림" caption="왼쪽은 xscale('log')와 yscale('log'), 가운데는 큰 값의 축에 붙은 공통 10의 거듭제곱, 오른쪽은 yticks(values, labels=)로 적은 글자 눈금이에요." />
+
+눈금 글자를 직접 줬는데 가로 글자들이 서로 닿으면, 눈금을 줄이는 대신 글자를 40° 기울여 세워요. 범주 축의 긴 범주 이름도 그래요.
+
+```python
+>>> fig.xticks("tau")
+Traceback (most recent call last):
+    ...
+ValueError: xticks(): 'values' must be numbers or 'pi', not 'tau'
+>>> fig.xticks([1, 2, 3], labels=["one", "two"])
+Traceback (most recent call last):
+    ...
+ValueError: xticks(): 'values' and 'labels' must have the same length: 3 and 2
+```
+
+## 범례: legend
+
+층에 `label=`로 이름을 주거나 `group=`으로 무리를 나누면 범례가 저절로 생겨요. 이름이 같은 층은 범례에 한 번만 나와요. `legend`는 그 범례의 자리, 제목, 열 수를 정해요.
+
+| `loc` | 자리 |
+|---|---|
+| `'best'`(기본값) | 그려진 것을 가리지 않는 칸 안의 구석. 그런 구석이 없으면 칸 밖(한 줄에 들어가면 위, 아니면 오른쪽) |
+| `'upper right'`, `'upper left'`, `'lower left'`, `'lower right'` | 칸 안의 그 구석 |
+| `'top'`, `'bottom'` | 칸 위나 아래. 칸의 너비에 들어가는 만큼 한 줄에 늘어놓고 넘치면 줄을 바꿔요 |
+| `'right'` | 칸 오른쪽. 그만큼 그림 영역이 좁아져요 |
+| `None` | 범례를 그리지 않아요 |
+
+`'best'`는 칸에 그려진 선, 점, 채움을 실제로 칠해 보고 범례 상자가 아무것도 덮지 않는 구석을 골라요. 구석에 둘 수 없을 때 칸 밖으로 나가는 것도 배치가 알아서 해요. 이 페이지 맨 위의 그림과 바로 위 그림의 왼쪽 칸은 `legend`를 부르지 않았고, 범례가 곡선이 지나지 않는 구석에 섰어요. 자리를 고정하고 싶으면 이름을 줘요.
+
+```python
+>>> xs = sd.linspace(0, 1, 50)
+>>> def powers(**kw):
+...     f = sd.plot.Figure(width=60)
+...     for k in range(1, 5):
+...         f = f.line(xs, xs ** k, label=f"$x^{k}$")
+...     return f.legend(**kw).title(kw["loc"])
+>>> fig = sd.plot.grid([powers(loc="top"), powers(loc="right"),
+...                     powers(loc="upper left", title="power", ncols=2)], ncols=3, width=183)
+```
+
+<PlotImage name="customize-legends" alt="같은 곡선 넷(x, x^2, x^3, x^4)을 그린 칸 셋. 왼쪽은 범례가 칸 위에 한 줄로, 가운데는 칸 오른쪽에 세로로, 오른쪽은 칸 안 왼쪽 위에 'power' 제목과 두 열로 놓임" caption="왼쪽부터 loc='top', loc='right', loc='upper left'에 title='power'와 ncols=2를 준 범례예요." />
+
+```python
+>>> fig.legend(loc="center")
+Traceback (most recent call last):
+    ...
+ValueError: legend(): 'loc' must be 'best', 'top', 'right', 'bottom', 'upper right', 'upper left', 'lower left' or 'lower right', not 'center'
+```
+
+범례의 이름과 제목도 LaTeX 원문이에요. `group=`의 무리 값처럼 자료에서 온 이름은 특수 문자를 알아서 숨겨요.
+
+범례의 바탕은 흰색이에요. 흰색이나 아주 옅은 색의 선은 흰 바탕에서 보이지 않으므로, 선 견본의 색이 흰 바탕과 거의 같으면(흰색과의 명암비 1.25 미만) 견본 둘레에 가는 회색 테두리를 둘러요. 색 자체는 바꾸지 않아요. 팔레트의 색은 모두 그보다 진해서 테두리가 붙지 않아요. 짙은 그림 위에 흰 선을 그을 때 그 이름이 범례에서 보여요.
+
+```python
+>>> rng = sd.random.default_rng(3)
+>>> N = sd.stats.Normal(mu=0.0, sigma=1.0)
+>>> u = N.sample(5000, rng=rng)
+>>> w = 0.6 * u + 0.8 * N.sample(5000, rng=rng)
+>>> fig = sd.plot.hist2d(u, w, bins=30, cmap="viridis")
+>>> fig = fig.line([-3, 3], [-1.8, 1.8], color="white", label="$y = 0.6x$").legend(loc="top")
+```
+
+<PlotImage name="customize-faint-swatch" alt="viridis 색의 2차원 히스토그램 위를 흰 직선이 비스듬히 지나요. 칸 위의 범례에는 회색 테두리를 두른 흰 선 견본과 y = 0.6x라는 이름이 있어요" caption="흰 선의 견본은 흰 바탕의 범례에서 회색 테두리를 둘러 보여요. 선의 색은 흰색 그대로예요." />
+
+3D 칸의 범례는 언제나 상자의 오른쪽 밖에 서요. `loc=None`으로 없앨 수 있어요.
+
+## 조심할 점
+
+- **고치는 메서드는 그 칸만 고쳐요.** 칸이 여럿인 그림에서 `fig.xlabel(...)`은 첫 칸에 붙어요. 모든 칸에 붙이려면 `for cell in fig.axes:`로 돌아요.
+- **범위를 주면 자동 범위를 쓰지 않아요.** 함수 그림의 극점 둘레를 잘라 주는 자동 범위도 `ylim`을 주면 꺼져요([function](/api/plot/function/)).
+- **눈금 값을 줘도 범위는 그대로예요.** 범위 밖의 눈금은 빠질 뿐 범위를 늘리지 않아요. 눈금을 모두 보이려면 `xlim`도 함께 줘요.
+- **로그 축과 음수.** 0 이하의 값이 든 자료를 로그 축으로 그리면 그 점들이 말없이 빠져요. 자료가 양수인지 먼저 봐요.
+
+## matplotlib을 아는 분께
+
+| matplotlib | sd.plot |
+|---|---|
+| `ax.set_title`, `ax.set_xlabel`, `ax.set_ylabel` | `fig.title`, `fig.xlabel`, `fig.ylabel` |
+| `ax.set_xlim(left=2)` | `fig.xlim(2, None)` |
+| `ax.set_xscale('symlog')` | 없어요. `'linear'`와 `'log'`만 |
+| `ax.set_xticks(v, labels=s)` | `fig.xticks(v, labels=s)` |
+| π 눈금은 `FuncFormatter`로 직접 | `fig.xticks("pi")` |
+| `ax.legend(loc='best', frameon=...)` | `fig.legend(loc='best')`. 범례에 테두리가 없어요 |
+| `bbox_to_anchor`로 칸 밖에 | `loc='top'`, `'right'`, `'bottom'` |

@@ -1,0 +1,292 @@
+---
+title: PchipInterpolator
+names: [PchipInterpolator, pchip_interpolate]
+group: 조각 다항식
+order: 4
+signatures:
+  - "sd.interpolate.PchipInterpolator(x, y, /, *, axis=0, extrapolate=None)"
+  - "sd.interpolate.pchip_interpolate(xi, yi, x, /, *, der=0, axis=0)"
+summary: 자료의 모양을 지키는 3차 조각 곡선(PCHIP)을 만들어요. 자료가 오르는 곳에서는 오르기만 하고, 두 점 사이에서 두 값의 범위를 넘지 않아요. 누적량, 농도, 확률처럼 넘치거나 거꾸로 가면 안 되는 자료와 값이 갑자기 뛰는 자료에 써요. pchip_interpolate는 한 번만 부를 때의 함수 꼴이에요.
+params:
+  - name: x
+    type: ndarray, 수의 시퀀스, numpy 배열, Series
+    kind: positional-only
+    desc: "(PchipInterpolator) 자료의 자리를 담은 (n,) 배열. 1차원이고, 유한하고, 엄격히 증가해야 해요. 점이 둘 이상이어야 해요. pchip_interpolate에서는 값을 읽을 자리예요."
+  - name: y
+    type: ndarray, 수의 시퀀스, numpy 배열, Series
+    kind: positional-only
+    desc: "(PchipInterpolator) 자리마다의 값. axis 축의 길이가 n이고 나머지 축은 함께 다루는 여러 열이에요. 실수(float64)이고 유한해야 해요."
+  - name: xi, yi
+    type: ndarray, 수의 시퀀스, numpy 배열, Series
+    kind: positional-only
+    desc: "(pchip_interpolate) 자료의 자리와 값. PchipInterpolator의 x, y와 같아요."
+  - name: axis
+    type: int
+    kind: keyword-only
+    desc: "y(yi)에서 자리에 맞는 축. 음수도 받아요. 기본값 0."
+  - name: extrapolate
+    type: bool, 'periodic' 또는 None
+    kind: keyword-only
+    desc: "(PchipInterpolator) 자료 범위 밖을 어떻게 할지. True면 끝 조각을 늘이고, False면 NaN, 'periodic'이면 범위의 길이로 감아요. 기본값 None은 True예요."
+  - name: der
+    type: int 또는 int의 리스트
+    kind: keyword-only
+    desc: "(pchip_interpolate) 계산할 도함수의 차수. 0이면 값이에요. 리스트를 주면 차수마다의 결과를 리스트로 돌려줘요. 기본값 0."
+returns:
+  type: PchipInterpolator, 또는 ndarray·float·리스트
+  desc: "PchipInterpolator는 3차 조각 다항식 객체예요. PPoly의 한 종류라서 부르기, derivative, antiderivative, integrate, roots, solve, extend와 속성 c, x, extrapolate, axis가 PPoly와 같아요. pchip_interpolate는 PchipInterpolator(xi, yi, axis=axis)(x, nu=der)와 같은 값이고, der가 리스트면 그 값들의 리스트예요."
+raises:
+  - type: TypeError
+    desc: "자료가 수의 배열이 아닐 때, 자리가 복소수일 때, axis나 der가 int가 아닐 때, extrapolate가 받는 타입이 아닐 때, 옵션을 자리로 줄 때."
+  - type: ValueError
+    desc: "x가 1차원이 아니거나 점이 둘보다 적을 때, x가 유한하지 않거나 엄격히 증가하지 않을 때, y의 axis 축 길이가 x와 다를 때, y가 복소수이거나 NaN·inf를 가질 때, der가 음수일 때, 계수가 float64를 넘칠 때."
+seeAlso: [basics, PPoly, CubicHermiteSpline, CubicSpline, Akima1DInterpolator]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import PlaneFig from '../../../components/fig/PlaneFig.astro';
+
+export const pcPts = [[0, 0], [1, 0], [2, 1], [3, 9], [4, 10], [5, 10], [6, 10]];
+export const pcPch = [[0, 0], [0.04167, 0], [0.08333, 0], [0.125, 0], [0.1667, 0], [0.2083, 0], [0.25, 0], [0.2917, 0], [0.3333, 0], [0.375, 0], [0.4167, 0], [0.4583, 0], [0.5, 0], [0.5417, 0], [0.5833, 0], [0.625, 0], [0.6667, 0], [0.7083, 0], [0.75, 0], [0.7917, 0], [0.8333, 0], [0.875, 0], [0.9167, 0], [0.9583, 0], [1, 0], [1.042, 0.002106], [1.083, 0.008359], [1.125, 0.01866], [1.167, 0.03292], [1.208, 0.05104], [1.25, 0.07292], [1.292, 0.09846], [1.333, 0.1276], [1.375, 0.1602], [1.417, 0.1961], [1.458, 0.2354], [1.5, 0.2778], [1.542, 0.3233], [1.583, 0.3718], [1.625, 0.4232], [1.667, 0.4774], [1.708, 0.5343], [1.75, 0.5938], [1.792, 0.6558], [1.833, 0.7202], [1.875, 0.7869], [1.917, 0.8558], [1.958, 0.9269], [2, 1], [2.042, 1.106], [2.083, 1.271], [2.125, 1.49], [2.167, 1.757], [2.208, 2.068], [2.25, 2.417], [2.292, 2.798], [2.333, 3.206], [2.375, 3.635], [2.417, 4.081], [2.458, 4.538], [2.5, 5], [2.542, 5.462], [2.583, 5.919], [2.625, 6.365], [2.667, 6.794], [2.708, 7.202], [2.75, 7.583], [2.792, 7.932], [2.833, 8.243], [2.875, 8.51], [2.917, 8.729], [2.958, 8.894], [3, 9], [3.042, 9.073], [3.083, 9.144], [3.125, 9.213], [3.167, 9.28], [3.208, 9.344], [3.25, 9.406], [3.292, 9.466], [3.333, 9.523], [3.375, 9.577], [3.417, 9.628], [3.458, 9.677], [3.5, 9.722], [3.542, 9.765], [3.583, 9.804], [3.625, 9.84], [3.667, 9.872], [3.708, 9.902], [3.75, 9.927], [3.792, 9.949], [3.833, 9.967], [3.875, 9.981], [3.917, 9.992], [3.958, 9.998], [4, 10], [4.042, 10], [4.083, 10], [4.125, 10], [4.167, 10], [4.208, 10], [4.25, 10], [4.292, 10], [4.333, 10], [4.375, 10], [4.417, 10], [4.458, 10], [4.5, 10], [4.542, 10], [4.583, 10], [4.625, 10], [4.667, 10], [4.708, 10], [4.75, 10], [4.792, 10], [4.833, 10], [4.875, 10], [4.917, 10], [4.958, 10], [5, 10], [5.042, 10], [5.083, 10], [5.125, 10], [5.167, 10], [5.208, 10], [5.25, 10], [5.292, 10], [5.333, 10], [5.375, 10], [5.417, 10], [5.458, 10], [5.5, 10], [5.542, 10], [5.583, 10], [5.625, 10], [5.667, 10], [5.708, 10], [5.75, 10], [5.792, 10], [5.833, 10], [5.875, 10], [5.917, 10], [5.958, 10], [6, 10]];
+export const pcSpl = [[0, 0], [0.04167, 0.1478], [0.08333, 0.276], [0.125, 0.3854], [0.1667, 0.4769], [0.2083, 0.5516], [0.25, 0.6104], [0.2917, 0.654], [0.3333, 0.6836], [0.375, 0.7001], [0.4167, 0.7043], [0.4583, 0.6972], [0.5, 0.6797], [0.5417, 0.6528], [0.5833, 0.6173], [0.625, 0.5743], [0.6667, 0.5247], [0.7083, 0.4693], [0.75, 0.4092], [0.7917, 0.3452], [0.8333, 0.2783], [0.875, 0.2094], [0.9167, 0.1394], [0.9583, 0.06929], [1, 0], [1.042, -0.06755], [1.083, -0.1324], [1.125, -0.1937], [1.167, -0.2505], [1.208, -0.3018], [1.25, -0.3467], [1.292, -0.3843], [1.333, -0.4136], [1.375, -0.4337], [1.417, -0.4437], [1.458, -0.4427], [1.5, -0.4297], [1.542, -0.4038], [1.583, -0.364], [1.625, -0.3094], [1.667, -0.2392], [1.708, -0.1523], [1.75, -0.04785], [1.792, 0.07511], [1.833, 0.2175], [1.875, 0.3802], [1.917, 0.5643], [1.958, 0.7706], [2, 1], [2.042, 1.253], [2.083, 1.528], [2.125, 1.823], [2.167, 2.136], [2.208, 2.465], [2.25, 2.808], [2.292, 3.162], [2.333, 3.526], [2.375, 3.898], [2.417, 4.276], [2.458, 4.657], [2.5, 5.039], [2.542, 5.421], [2.583, 5.8], [2.625, 6.175], [2.667, 6.543], [2.708, 6.902], [2.75, 7.251], [2.792, 7.587], [2.833, 7.907], [2.875, 8.211], [2.917, 8.496], [2.958, 8.759], [3, 9], [3.042, 9.216], [3.083, 9.408], [3.125, 9.577], [3.167, 9.725], [3.208, 9.852], [3.25, 9.96], [3.292, 10.05], [3.333, 10.12], [3.375, 10.18], [3.417, 10.22], [3.458, 10.26], [3.5, 10.27], [3.542, 10.28], [3.583, 10.28], [3.625, 10.27], [3.667, 10.25], [3.708, 10.23], [3.75, 10.2], [3.792, 10.17], [3.833, 10.13], [3.875, 10.1], [3.917, 10.06], [3.958, 10.03], [4, 10], [4.042, 9.972], [4.083, 9.948], [4.125, 9.927], [4.167, 9.91], [4.208, 9.895], [4.25, 9.884], [4.292, 9.875], [4.333, 9.869], [4.375, 9.865], [4.417, 9.864], [4.458, 9.864], [4.5, 9.867], [4.542, 9.872], [4.583, 9.878], [4.625, 9.886], [4.667, 9.895], [4.708, 9.905], [4.75, 9.917], [4.792, 9.929], [4.833, 9.943], [4.875, 9.956], [4.917, 9.971], [4.958, 9.985], [5, 10], [5.042, 10.01], [5.083, 10.03], [5.125, 10.04], [5.167, 10.06], [5.208, 10.07], [5.25, 10.08], [5.292, 10.09], [5.333, 10.1], [5.375, 10.11], [5.417, 10.12], [5.458, 10.13], [5.5, 10.13], [5.542, 10.14], [5.583, 10.14], [5.625, 10.13], [5.667, 10.13], [5.708, 10.12], [5.75, 10.12], [5.792, 10.1], [5.833, 10.09], [5.875, 10.07], [5.917, 10.05], [5.958, 10.03], [6, 10]];
+
+## 한눈에 보기
+
+비가 내리는 동안 한 시간마다 누적 강수량을 적었다고 해 볼게요. 누적량은 줄 수 없고, 마지막 값보다 커질 수도 없어요. 그런데 [`CubicSpline`](/api/interpolate/CubicSpline/)으로 이으면 비가 갑자기 쏟아진 둘레에서 곡선이 출렁여서, 누적량이 줄어드는 구간과 마지막 값을 넘는 구간이 생겨요.
+
+`PchipInterpolator`는 이런 일을 막는 3차 곡선이에요. PCHIP은 piecewise cubic Hermite interpolating polynomial(조각마다의 3차 에르미트 보간 다항식)의 줄임말이에요.
+
+```python
+>>> import stardust as sd
+>>> hour = sd.asarray([0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+>>> rain = sd.asarray([0.0, 0.0, 1.0, 9.0, 10.0, 10.0, 10.0])      # 누적 mm
+>>> p = sd.interpolate.PchipInterpolator(hour, rain)
+>>> p
+PchipInterpolator(degree=3, pieces=6, extrapolate=True)
+>>> p([0.5, 2.5, 4.5])
+array([ 0.0,  5.0, 10.0], dtype=float64)
+>>> s = sd.interpolate.CubicSpline(hour, rain)
+>>> s([0.5, 2.5, 4.5])
+array([0.6796875000000002,          5.0390625,          9.8671875], dtype=float64)
+```
+
+0시와 1시 사이에 비가 오지 않았으니 PCHIP은 그 구간에서 0이에요. 스플라인은 그 구간에서 음수로 내려가고, 4시와 5시 사이에서는 10을 넘어요.
+
+<Fig caption="누적 강수량 일곱 점을 두 방법으로 이은 모습. CubicSpline(점선)은 1시 앞에서 0 아래로, 4시 뒤에서 10 위로 나가요. PCHIP은 자료가 평평한 곳에서 평평하고 오르는 곳에서만 올라요.">
+  <PlaneFig
+    label="누적 강수량 일곱 점과 그 점을 지나는 PCHIP 곡선과 CubicSpline 곡선"
+    domain={[0, 6]}
+    range={[-1.5, 11.5]}
+    equal={false}
+    width={600}
+    height={320}
+    xTicks={[0, 1, 2, 3, 4, 5, 6]}
+    yTicks={[0, 5, 10]}
+    layers={[
+      { kind: 'hline', y: 0, tone: 'faint' },
+      { kind: 'hline', y: 10, tone: 'faint' },
+      { kind: 'line', pts: pcSpl, tone: 'base', dashed: true, width: 1.6 },
+      { kind: 'line', pts: pcPch, tone: 'main', width: 1.8 },
+      { kind: 'points', pts: pcPts, tone: 'ink', size: 3.6 },
+    ]}
+    legend={[
+      { label: '자료', tone: 'ink', shape: 'dot' },
+      { label: 'PchipInterpolator', tone: 'main', shape: 'line' },
+      { label: 'CubicSpline', tone: 'base', shape: 'dash' },
+    ]}
+  />
+</Fig>
+
+<Reference />
+
+## 무엇을 지키나요
+
+PCHIP은 세 가지를 지켜요.
+
+- **자료가 오르는 구간에서는 곡선도 오르기만 해요.** 내리는 구간에서는 내리기만 해요. 그래서 자료가 단조이면 곡선 전체가 단조예요.
+- **두 점 사이에서 곡선은 그 두 값 사이에 있어요.** 자료에 없는 봉우리나 골을 만들지 않아요.
+- **자료가 평평한 구간에서는 곡선도 평평해요.**
+
+```python
+>>> q = sd.linspace(0.0, 6.0, 6001)
+>>> v = p(q)
+>>> bool(sd.all(v[1:] >= v[:-1]))              # 줄지 않아요
+True
+>>> float(sd.min(v)), float(sd.max(v))
+(0.0, 10.0)
+>>> w = s(q)
+>>> bool(sd.all(w[1:] >= w[:-1])), float(sd.min(w)), float(sd.max(w))
+(False, -0.44469929350000015, 10.2814461815)
+```
+
+자료가 방향을 바꾸는 점(봉우리, 골)에서는 기울기가 0이라 곡선도 거기서 방향을 바꿔요.
+
+```python
+>>> hill = sd.interpolate.PchipInterpolator([0.0, 1.0, 2.0, 3.0], [0.0, 2.0, 1.0, 1.5])
+>>> hill([1.0, 2.0], nu=1)
+array([0.0, 0.0], dtype=float64)
+>>> float(sd.max(hill(sd.linspace(0.0, 3.0, 3001))))
+2.0
+```
+
+그 대신 매끄러움은 [`CubicSpline`](/api/interpolate/CubicSpline/)보다 한 단계 낮아요. 기울기까지는 이어지지만 2차 도함수는 점에서 뛸 수 있어요.
+
+```python
+>>> p(3.0 - 1e-9, nu=1), p(3.0, nu=1)
+(1.777777815111114, 1.7777777777777777)
+>>> p(3.0 - 1e-9, nu=2), p(3.0, nu=2)
+(-37.33333325866666, -1.1111111111111107)
+```
+
+## 어떻게 계산하나요
+
+PCHIP도 점마다 기울기 $s_i$를 정한 뒤 [`CubicHermiteSpline`](/api/interpolate/CubicHermiteSpline/)과 같은 계산으로 조각의 계수를 만들어요. 다른 것은 기울기를 정하는 법이에요.
+
+구간의 폭을 $h_i = x_{i+1} - x_i$, 구간의 평균 기울기를 $\Delta_i = (y_{i+1} - y_i)/h_i$라 할게요. 안쪽 점 $i$의 기울기는 양옆 두 구간의 평균 기울기 $\Delta_{i-1}$, $\Delta_i$로 정해요(Fritsch–Butland 방법).
+
+- 두 기울기의 부호가 다르거나 하나가 0이면 $s_i = 0$이에요. 자료가 거기서 방향을 바꾸거나 평평해지기 때문이에요.
+- 부호가 같으면 두 기울기의 **가중 조화 평균**이에요.
+
+$$
+\frac{w_1 + w_2}{s_i} = \frac{w_1}{\Delta_{i-1}} + \frac{w_2}{\Delta_i}, \qquad w_1 = 2h_i + h_{i-1},\quad w_2 = h_i + 2h_{i-1}
+$$
+
+조화 평균은 작은 쪽에 끌려가서, 한쪽 구간이 거의 평평하면 기울기도 거의 0이 돼요. 그리고 $s_i$는 두 평균 기울기 가운데 작은 것의 세 배를 넘지 않아요. 3차 에르미트 조각은 양 끝 기울기가 구간 평균 기울기와 부호가 같고 그 세 배를 넘지 않으면 단조라서, 위의 성질이 나와요.
+
+양 끝 점은 이웃 구간이 하나뿐이라 처음 두 구간으로 만든 한쪽 식을 써요.
+
+$$
+s_0 = \frac{(2h_0 + h_1)\,\Delta_0 - h_0\,\Delta_1}{h_0 + h_1}
+$$
+
+이 값의 부호가 $\Delta_0$와 다르면 0으로 바꾸고, $\Delta_0$와 $\Delta_1$의 부호가 다른데 $\lvert s_0 \rvert \gt 3\lvert \Delta_0 \rvert$이면 $3\Delta_0$로 줄여요. 오른쪽 끝도 거울처럼 같아요.
+
+```python
+>>> sl = p(hour, nu=1)
+>>> sl
+array([               0.0,                0.0, 1.7777777777777777,
+       1.7777777777777777,                0.0,                0.0,
+                      0.0], dtype=float64)
+>>> h = sd.interpolate.CubicHermiteSpline(hour, rain, sl)
+>>> bool(sd.all(h.c == p.c))
+True
+```
+
+기울기 하나는 이웃한 두 구간만 보고 정해요. 그래서 점 하나의 값을 바꾸면 그 둘레의 몇 조각만 바뀌고 먼 곳은 그대로예요.
+
+```python
+>>> rain2 = sd.asarray([0.0, 0.0, 1.0, 9.0, 10.0, 10.0, 12.0])
+>>> p2 = sd.interpolate.PchipInterpolator(hour, rain2)
+>>> p2(0.5) == p(0.5), p2(2.5) == p(2.5), p2(5.5) == p(5.5)
+(True, True, False)
+```
+
+점이 둘이면 두 점을 잇는 직선이에요.
+
+```python
+>>> sd.interpolate.PchipInterpolator([0.0, 2.0], [1.0, 5.0])([0.5, 1.0])
+array([2.0, 3.0], dtype=float64)
+```
+
+## 결과는 PPoly예요
+
+`PchipInterpolator`는 [`PPoly`](/api/interpolate/PPoly/)(조각 다항식)의 한 종류예요. 값과 도함수, 미분, 적분, 근 찾기를 모두 `PPoly`의 메서드로 해요.
+
+```python
+>>> p.solve(5.0)                       # 누적 5 mm가 된 때
+array([2.5], dtype=float64)
+>>> p.integrate(0.0, 6.0)
+35.0
+>>> p.derivative()(2.5)                # 2.5시의 시간당 강수량
+11.11111111111111
+```
+
+곡선이 단조라서 `solve(y)`의 답이 하나예요. 위에서 누적 5 mm가 된 때를 하나로 읽은 것도 그래서예요.
+
+## 여러 열과 바깥
+
+`y`가 여러 차원이면 `axis` 축이 `x`에 맞는 축이고 나머지 축은 서로 독립인 열이에요. 기울기는 열마다 따로 정해요.
+
+```python
+>>> two = sd.stack([rain, 2 * rain], axis=1)              # (7, 2)
+>>> pp2 = sd.interpolate.PchipInterpolator(hour, two)
+>>> pp2(2.5)
+array([ 5.0, 10.0], dtype=float64)
+>>> sd.interpolate.PchipInterpolator(hour, rain, extrapolate=False)([-1.0, 7.0])
+array([nan, nan], dtype=float64)
+>>> p([-1.0, 7.0])
+array([ 0.0, 10.0], dtype=float64)
+```
+
+범위 밖은 기본으로 끝 조각을 늘여요. 위의 자료는 끝 조각이 평평해서 늘여도 0과 10이지만, 늘인 부분은 모양을 지킨다는 약속 밖이에요. 앞의 `hill`은 자료가 0과 2 사이인데 늘인 부분에서 그 범위를 벗어나요.
+
+```python
+>>> hill([-1.0, 4.0])
+array([-4.0,  4.0], dtype=float64)
+```
+
+ 범위 밖을 물을 일이 없다면 `extrapolate=False`로 두어 NaN으로 드러나게 하는 쪽이 안전해요.
+
+## `pchip_interpolate`: 한 번만 부를 때
+
+`pchip_interpolate(xi, yi, x)`는 `PchipInterpolator(xi, yi)(x)`와 같은 값이에요. 비트까지 같아요. `der`로 도함수를 고르고, 리스트를 주면 차수마다의 결과를 리스트로 돌려줘요.
+
+```python
+>>> sd.interpolate.pchip_interpolate(hour, rain, 2.5)
+5.0
+>>> sd.interpolate.pchip_interpolate(hour, rain, 2.5) == p(2.5)
+True
+>>> sd.interpolate.pchip_interpolate(hour, rain, [2.5, 3.5], der=1)
+array([ 11.11111111111111, 1.0555555555555556], dtype=float64)
+>>> sd.interpolate.pchip_interpolate(hour, rain, 2.5, der=[0, 1, 2])
+[5.0, 11.11111111111111, 0.0]
+```
+
+같은 자료에서 여러 번 읽을 거라면 객체를 한 번 만들어 두는 쪽이 좋아요. 함수 꼴은 부를 때마다 기울기를 다시 구해요. 범위 밖은 언제나 끝 조각을 늘여요.
+
+## 조심할 점
+
+### 실수만 받아요
+
+크기를 비교해 기울기를 정하므로 `y`는 실수여야 해요. 복소수 자료는 실수부와 허수부를 따로 보간하거나 [`CubicSpline`](/api/interpolate/CubicSpline/)을 써요.
+
+```python
+>>> sd.interpolate.PchipInterpolator([0.0, 1.0, 2.0], [0.0, 1j, 2.0])
+Traceback (most recent call last):
+    ...
+ValueError: PchipInterpolator(): 'y' must be real, not complex128
+```
+
+### 매끄러운 자료에는 덜 정확해요
+
+모양을 지키려고 기울기를 줄이기 때문에, 매끄러운 함수에서 얻은 자료라면 [`CubicSpline`](/api/interpolate/CubicSpline/)이 더 정확해요. 아래는 $\sin$의 표본에서 두 방법의 최대 오차예요.
+
+```python
+>>> xs = sd.linspace(0.0, 3.0, 11)
+>>> q = sd.linspace(0.0, 3.0, 3001)
+>>> float(sd.max(sd.abs(sd.interpolate.PchipInterpolator(xs, sd.sin(xs))(q) - sd.sin(q))))
+0.006361558238842102
+>>> float(sd.max(sd.abs(sd.interpolate.CubicSpline(xs, sd.sin(xs))(q) - sd.sin(q))))
+9.96055872863888e-05
+```
+
+### 값은 유한해야 해요
+
+```python
+>>> sd.interpolate.PchipInterpolator([0.0, 1.0, 2.0], [0.0, sd.nan, 2.0])
+Traceback (most recent call last):
+    ...
+ValueError: PchipInterpolator(): 'y' must be finite
+>>> sd.interpolate.pchip_interpolate([0.0, 1.0, 2.0], [0.0, 1.0, 2.0], 0.5, der=-1)
+Traceback (most recent call last):
+    ...
+ValueError: pchip_interpolate(): 'der' must be >= 0, not -1
+```
+
+## scipy·numpy를 아는 분께
+
+- `scipy.interpolate.PchipInterpolator`, `pchip_interpolate`와 같은 이름, 같은 인자, 같은 기울기 식(Fritsch–Butland의 가중 조화 평균과 같은 끝 식)이에요. 지금은 계수가 scipy와 같은 비트로 나와요(약속은 아니에요).
+- `axis`, `extrapolate`, `der`는 이름으로만 받아요. scipy의 `pchip_interpolate(xi, yi, x, 1)`은 `TypeError`예요.
+- 계수가 float64를 넘치면 만들 때 `ValueError`예요. scipy는 계수에 inf나 NaN이 든 객체를 만들어요.
+- 계수와 중단점은 복사한 읽기 전용 배열이에요. 평가점이 수 하나면 결과는 Python `float`예요.
+- `PPoly`에서 물려받은 메서드의 차이는 [`PPoly`](/api/interpolate/PPoly/) 페이지의 마지막 절에 있어요.

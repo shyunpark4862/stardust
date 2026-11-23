@@ -1,0 +1,839 @@
+---
+title: 수치 미분
+group: 구조
+order: 2
+summary: 기울기와 야코비안을 차분으로 구하는 방법들을 설명해요. scipy의 2점·3점 차분과 경계에서의 조정, 헤시안 곱의 차분, MINPACK의 fdjac1·fdjac2, approx_fprime의 간격을 고르는 5점 차분을 다뤄요.
+seeAlso: [overview, quasi-newton, newton-trust, least-squares, root, accuracy-performance]
+---
+import AccuracySummary from '../../../components/fig/AccuracySummary.astro';
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+export const errFwd = [[-2,-0.866],[-3,-1.186],[-4,-1.496],[-5,-1.802],[-6,-2.105],[-7,-2.407],[-8,-2.709],[-9,-3.01],[-10,-3.311],[-11,-3.612],[-12,-3.913],[-13,-4.214],[-14,-4.515],[-15,-4.816],[-16,-5.118],[-17,-5.419],[-18,-5.72],[-19,-6.021],[-20,-6.322],[-21,-6.622],[-22,-6.922],[-23,-7.221],[-24,-7.524],[-25,-7.722],[-26,-7.87],[-27,-7.87],[-28,-7.87],[-29,-7.242],[-30,-6.838],[-31,-7.518],[-32,-6.494],[-33,-5.99],[-34,-5.99],[-35,-5.417],[-36,-5.417],[-37,-4.822],[-38,-5.131],[-39,-5.131],[-40,-5.131],[-41,-3.764],[-42,-3.764],[-43,-3.764],[-44,-3.764],[-45,-3.764],[-46,-3.764],[-47,-1.933],[-48,-1.933],[-49,-1.933],[-50,-0.984],[-51,-0.984],[-52,-0.327]];
+export const errCtr = [[-2,-1.981],[-3,-2.584],[-4,-3.186],[-5,-3.788],[-6,-4.391],[-7,-4.993],[-8,-5.595],[-9,-6.197],[-10,-6.799],[-11,-7.401],[-12,-8.003],[-13,-8.605],[-14,-9.207],[-15,-9.812],[-16,-10.407],[-17,-11.152],[-18,-11.437],[-19,-11.437],[-20,-10.333],[-21,-10.333],[-22,-9.904],[-23,-9.662],[-24,-9.662],[-25,-9.662],[-26,-8.598],[-27,-8.598],[-28,-8.074],[-29,-7.87],[-30,-7.242],[-31,-7.518],[-32,-7.518],[-33,-6.494],[-34,-6.419],[-35,-5.99],[-36,-5.748],[-37,-5.417],[-38,-5.131],[-39,-5.131],[-40,-5.131],[-41,-5.131],[-42,-3.728],[-43,-3.764],[-44,-3.764],[-45,-3.764],[-46,-3.764],[-47,-3.764],[-48,-1.946],[-49,-1.933],[-50,-1.933],[-51,-1.095],[-52,-0.984]];
+export const errFive = [[-2,-3.882],[-3,-5.089],[-4,-6.293],[-5,-7.498],[-6,-8.702],[-7,-9.906],[-8,-11.109],[-9,-12.285],[-10,-12.89],[-11,-12.703],[-12,-12.866],[-13,-12.327],[-14,-12.235],[-15,-12.445],[-16,-13.061],[-17,-11.728],[-18,-11.141],[-19,-10.751],[-20,-10.746],[-21,-10.333],[-22,-9.904],[-23,-9.171],[-24,-10.974],[-25,-9.171],[-26,-8.361],[-27,-8.361],[-28,-7.917],[-29,-7.87],[-30,-6.936],[-31,-7.518],[-32,-6.691],[-33,-6.256],[-34,-6.494],[-35,-5.708],[-36,-5.565],[-37,-5.417],[-38,-4.827],[-39,-4.822],[-40,-4.281],[-41,-4.172],[-42,-3.436],[-43,-4.28],[-44,-4.172],[-45,-2.793],[-46,-2.568],[-47,-2.437],[-48,-2.125],[-49,-1.946],[-50,-1.373],[-51,-1.933],[-52,-0.645]];
+
+## 한눈에 보기
+
+사용자가 기울기나 야코비안을 주지 않으면 이 영역의 함수들은 차분으로 어림해요. 차분은 한 가지가 아니에요. 반복 안에서 쓰는 차분은 scipy의 것과 같은 간격, 같은 계산이라 지금은 scipy와 같은 점에서 함수를 부르고, `approx_fprime`의 기본은 한 번의 정확한 결과를 위해 따로 만든 5점 차분이에요.
+
+| 어디서 | 차분 | 간격 | 코드 |
+|---|---|---|---|
+| `approx_fprime`, `check_grad`의 기본 | 5점 중앙(못 쓰면 한쪽 5점) | 변수마다 $2^{-8}\lvert x_j\rvert$부터 4배씩 줄이며 골라요 | `differentiate/accurate.hpp`의 `AccurateDiff` |
+| `approx_fprime`, `check_grad`의 `epsilon` | 앞쪽 | `epsilon` | `differentiate/accurate.hpp`의 `forward` |
+| `minimize`의 `jac=None` | 앞쪽 | 절대 간격 `eps`(BFGS $\sqrt\varepsilon$, L-BFGS-B $10^{-8}$) | `objective.hpp` |
+| `minimize`, `least_squares`의 `'2-point'` | 앞쪽 | $\sqrt\varepsilon\,\max(1, \lvert x_j\rvert)$ 또는 상대 간격 | `differentiate/steps.hpp`, `objective.hpp`, `lsq.cpp` |
+| `minimize`, `least_squares`의 `'3-point'` | 중앙(경계에서는 한쪽 3점) | $\varepsilon^{1/3}\max(1, \lvert x_j\rvert)$ 또는 상대 간격 | 같은 파일 |
+| `minimize`의 `hess='2-point'`·`'3-point'` | 기울기의 방향 차분 | 방향 $p$를 따라 거리 $\sqrt\varepsilon$, $\varepsilon^{1/3}$ | `hessian.hpp` |
+| `newton-cg`의 `hess`·`hessp` 없음 | 기울기의 방향 차분 | `eps`$\cdot p$ | `newton_cg.cpp` |
+| `root('hybr')`의 `jac=None` | MINPACK `fdjac1`(앞쪽, 띠 묶음) | $\sqrt{\max(\text{eps}, \varepsilon)}\,\lvert x_j\rvert$ | `hybrd.cpp` |
+| `root('lm')`의 `jac=None`, nls의 반복 | MINPACK `fdjac2`(앞쪽) | 같은 꼴 | `lsq.cpp` |
+| `root_scalar` newton의 `fprime=None` | 앞쪽 | $\sqrt\varepsilon\,\max(1, \lvert x\rvert)$ | `scalar.cpp` |
+
+이 글에서 $\varepsilon = 2^{-52}$은 기계 엡실론, $u = 2^{-53}$은 단위 반올림이에요. scipy의 기본 간격 $\sqrt\varepsilon = 2^{-26} \approx 1.49 \times 10^{-8}$과 $\varepsilon^{1/3} \approx 6.06 \times 10^{-6}$이 여기저기 나와요.
+
+## 차분의 오차: 절단과 반올림
+
+$f$를 $x$ 둘레에서 Taylor 전개하면 세 차분의 오차가 나와요.
+
+$$
+\frac{f(x + h) - f(x)}{h} = f'(x) + \frac{h}{2} f''(x) + O(h^2)
+$$
+
+$$
+\frac{f(x + h) - f(x - h)}{2h} = f'(x) + \frac{h^2}{6} f'''(x) + O(h^4)
+$$
+
+$$
+\frac{f(x - 2h) - 8f(x - h) + 8f(x + h) - f(x + 2h)}{12h} = f'(x) - \frac{h^4}{30} f^{(5)}(x) + O(h^6)
+$$
+
+마지막 식은 $f(x \pm h)$, $f(x \pm 2h)$의 전개를 $8[f(x + h) - f(x - h)] - [f(x + 2h) - f(x - 2h)]$로 합치면 $h^3$ 항이 $\tfrac{8}{3} - \tfrac{8}{3} = 0$으로 지워지고 $h^5$ 항이 $\tfrac{8}{60} - \tfrac{32}{60} = -\tfrac{2}{5}$로 남아서 나와요. 이것이 **절단 오차**예요.
+
+반대쪽에는 **반올림 오차**가 있어요. 계산한 함숫값이 상대 $\delta$(적어도 $u$, 함수가 복잡하면 그 몇 배)만큼 틀리면, 차분의 분자에 그 오차가 가중치를 곱해 더해지고 $h$로 나뉘어요. 가중치의 절댓값 합은 앞쪽 차분이 2, 중앙 차분이 1(분모의 2를 넣어), 5점 차분이 $18/12 = 1.5$예요.
+
+$$
+E_{\text{앞}}(h) \approx \frac{h}{2}\lvert f''\rvert + \frac{2\delta\lvert f\rvert}{h},\quad
+E_{\text{중앙}}(h) \approx \frac{h^2}{6}\lvert f'''\rvert + \frac{\delta\lvert f\rvert}{h},\quad
+E_{5}(h) \approx \frac{h^4}{30}\lvert f^{(5)}\rvert + \frac{1.5\,\delta\lvert f\rvert}{h}
+$$
+
+$f$와 그 도함수가 1 근처의 크기라고 보면, 두 항이 맞먹는 간격과 그때의 오차는 앞쪽 차분이 $h \sim \delta^{1/2}$에서 $\delta^{1/2} \approx 10^{-8}$, 중앙 차분이 $h \sim \delta^{1/3}$에서 $\delta^{2/3} \approx 10^{-11}$, 5점 차분이 $h \sim \delta^{1/5} \approx 10^{-3}$에서 $\delta^{4/5} \approx 10^{-13}$이에요. scipy의 `'2-point'`와 `'3-point'`가 $\sqrt\varepsilon$과 $\varepsilon^{1/3}$을 쓰는 것이 이 계산에서 나와요.
+
+<Fig caption="eˣ의 x = 1에서의 도함수를 간격 h = 2^k로 어림한 상대오차(log₁₀). 오른쪽은 절단 오차가 정해 간격이 반이 될 때 오차가 1/2, 1/4, 1/16이 되는 직선이고, 왼쪽은 반올림 오차가 정해 간격이 반이 될 때마다 대략 두 배가 되며 들쭉날쭉해요. 세 차분의 가장 좋은 점이 10⁻⁸, 4×10⁻¹², 10⁻¹³ 근처예요.">
+  <Plot
+    curves={[
+      { points: errFwd, label: '앞쪽 차분' },
+      { points: errCtr, label: '중앙 차분' },
+      { points: errFive, label: '5점 중앙 차분' },
+    ]}
+    domain={[-52, -2]}
+    range={[-14, 0]}
+    xTicks={[
+      { v: -50, label: '2⁻⁵⁰' },
+      { v: -40, label: '2⁻⁴⁰' },
+      { v: -30, label: '2⁻³⁰' },
+      { v: -20, label: '2⁻²⁰' },
+      { v: -10, label: '2⁻¹⁰' },
+    ]}
+    yTicks={[
+      { v: -12, label: '10⁻¹²' },
+      { v: -9, label: '10⁻⁹' },
+      { v: -6, label: '10⁻⁶' },
+      { v: -3, label: '10⁻³' },
+    ]}
+  />
+</Fig>
+
+두 가지가 모든 차분에 공통이에요.
+
+- **간격의 척도.** $x$가 크면 같은 $h$라도 $x + h$의 반올림이 커져요. 그래서 간격을 $\lvert x\rvert$에 비례하게 잡아요. scipy는 $\max(1, \lvert x\rvert)$에 비례하게 잡아 $x$가 0 근처일 때 간격이 0으로 줄지 않게 하고, MINPACK은 $\lvert x\rvert$에 비례하게 잡되 $x = 0$이면 상수를 써요.
+- **실제로 움직인 거리.** $x + h$는 반올림되므로 실제로 움직인 거리는 $h$가 아니라 $(x + h) - x$예요. $\lvert h\rvert \le \lvert x\rvert/2$이면(또는 $x = 0$이면) 이 뺄셈은 Sterbenz 보조정리로 정확해요. scipy의 차분은 분모에 이 값을 써서 $x + h$의 반올림이 몫에 들어가지 않게 해요. MINPACK은 $h$로 나눠요. 이 영역은 각각을 따르는 방법에 맞춰 그대로 써요.
+
+## scipy approx_derivative의 2점과 3점
+
+반복 안의 차분(`minimize`의 `jac`, `least_squares`의 `jac`)은 scipy 1.18.1 `approx_derivative`의 계산을 C++로 같은 순서로 적은 것이에요. 간격은 `_compute_absolute_step`, 경계 조정은 `_adjust_scheme_to_bounds`와 같아요.
+
+```cpp
+// csrc/differentiate/steps.hpp
+// sqrt(eps) = 2^-26: the relative step of fdjac2 (epsfcn = eps) and of scipy's '2-point'.
+inline double rel_step_2point() { return std::sqrt(std::numeric_limits<double>::epsilon()); }
+// eps^(1/3): scipy's '3-point'.
+inline double rel_step_3point() { return std::pow(std::numeric_limits<double>::epsilon(), 1.0 / 3.0); }
+
+// scipy's _compute_absolute_step for one variable: rstep sign(x) max(1, |x|) by default
+// (sign(0) = 1); with a relative step r, r sign(x) |x|, unless that step vanishes in x + h.
+inline double absolute_step(double x, double rstep, bool has_rel, double rel) {
+    const double sign = x >= 0 ? 1.0 : -1.0;
+    const double dflt = rstep * sign * std::max(1.0, std::abs(x));
+    if (!has_rel) return dflt;
+    const double h = rel * sign * std::abs(x);
+    return (x + h) - x == 0 ? dflt : h;
+}
+```
+
+`'2-point'`의 상대 간격은 $\sqrt\varepsilon$, `'3-point'`는 $\varepsilon^{1/3}$이에요. 사용자가 상대 간격 $r$(`least_squares`의 `diff_step`, `minimize`의 `finite_diff_rel_step`)을 주면 $h = r\,\mathrm{sign}(x)\lvert x\rvert$이고, 그것이 $x + h$에서 사라지면($x = 0$일 때 등) 기본 간격으로 돌아가요.
+
+### 경계에서의 조정
+
+`l-bfgs-b`와 경계 있는 `least_squares`에서는 차분의 점이 경계 밖으로 나가면 안 돼요. 함수가 경계 밖에서 정의되지 않을 수도 있어서예요. 앞쪽 차분은 경계를 넘는 걸음을 반대로 돌리고, 반대쪽도 맞지 않으면 먼 쪽 경계까지의 거리를 써요.
+
+```cpp
+// csrc/differentiate/steps.hpp
+// scipy's _adjust_scheme_to_bounds, '1-sided' with one step: the step turned back when
+// it leaves [lb, ub] and fits on the other side, else the distance to the farther bound.
+inline double adjust_one_sided(double x, double h, double lb, double ub) {
+    const double lower = x - lb, upper = ub - x;
+    const double xh = x + h;
+    const bool violated = xh < lb || xh > ub;
+    const bool fitting = std::abs(h) <= std::max(lower, upper);
+    if (violated && fitting) return -h;
+    if (!fitting) return upper >= lower ? upper : -lower;
+    return h;
+}
+```
+
+중앙 차분은 $x \pm h$가 모두 안쪽이면 그대로 쓰고, 아니면 먼 쪽으로 가는 한쪽 3점 차분
+
+$$
+f'(x) \approx \frac{-3f(x) + 4f(x + h) - f(x + 2h)}{2h} = f'(x) - \frac{h^2}{3} f'''(x) + O(h^3)
+$$
+
+로 바꿔요. $h$는 그쪽 거리의 절반을 넘지 않게 줄이고, 그렇게 줄인 간격이 가까운 쪽 거리보다 짧으면 차라리 가까운 쪽 거리로 중앙 차분을 해요.
+
+```cpp
+// csrc/differentiate/steps.hpp
+inline double adjust_two_sided(double x, double h, double lb, double ub, bool& one_sided) {
+    h = std::abs(h);
+    one_sided = false;
+    const double lower = x - lb, upper = ub - x;
+    if (lower >= h && upper >= h) return h;
+    double ha;
+    if (upper >= lower) ha = std::min(h, 0.5 * upper);
+    else ha = -std::min(h, 0.5 * lower);
+    one_sided = true;
+    const double min_dist = std::min(upper, lower);
+    if (std::abs(ha) <= min_dist) {
+        ha = min_dist;
+        one_sided = false;
+    }
+    return ha;
+}
+```
+
+`l-bfgs-b`의 시작점이 위 경계에 있으면 그 변수의 차분이 아래로 가는 것을 볼 수 있어요.
+
+```python
+>>> import stardust as sd
+>>> pts = []
+>>> def f(x):
+...     pts.append(x.tolist())
+...     return (x[0] - 2)**2 + (x[1] - 0.3)**2
+>>> r = sd.optimize.minimize(f, [1.0, 0.5], method='l-bfgs-b', bounds=([0.0, 0.0], [1.0, 1.0]))
+>>> [(p[0] - 1.0, p[1] - 0.5) for p in pts[1:3]]
+[(-1.0000000050247593e-08, 0.0), (0.0, 1.0000000050247593e-08)]
+>>> pts.clear()
+>>> r = sd.optimize.minimize(f, [1.0, 0.5], method='l-bfgs-b', bounds=([0.0, 0.0], [1.0, 1.0]), jac='3-point')
+>>> [(p[0] - 1.0, p[1] - 0.5) for p in pts[1:5]]
+[(-6.0554544524249465e-06, 0.0), (-1.211090890473887e-05, 0.0), (0.0, -6.055454452369435e-06), (0.0, 6.0554544524249465e-06)]
+```
+
+`jac=None`인 L-BFGS-B는 절대 간격 `eps=1e-8`의 앞쪽 차분이에요. 첫 변수는 위 경계 1.0에 있어서 $-10^{-8}$로 돌렸고(실제로 움직인 거리는 반올림으로 $-1.0000000050 \times 10^{-8}$), 둘째 변수는 안쪽이라 $+10^{-8}$이에요. `'3-point'`에서는 첫 변수가 $(x - h, x - 2h)$의 한쪽 3점, 둘째 변수가 $x \pm h$의 중앙 차분이에요.
+
+### 유한하지 않은 한쪽
+
+`least_squares`의 `'2-point'`는 한쪽의 잔차가 유한하지 않으면 경계 안에서 반대쪽으로 한 번 더 해 봐요. scipy는 NaN으로 계속 가지만, 이 영역의 최소제곱은 nls의 규칙을 따라요.
+
+```cpp
+    // csrc/optimize/lsq.cpp
+    bool two_point(vec& x, const double* r, double* J, double* wa) {
+        const double rstep = differentiate::rel_step_2point();
+        for (lint j = 0; j < p; ++j) {
+            const auto uj = static_cast<std::size_t>(j);
+            const double t = x[uj];
+            double h = differentiate::adjust_one_sided(t, step(j, t, rstep), (*lb)[uj], (*ub)[uj]);
+            bool ok = false;
+            for (int attempt = 0; attempt < 2 && !ok; ++attempt) {
+                if (attempt == 1) {
+                    h = -h;
+                    if (t + h < (*lb)[uj] || t + h > (*ub)[uj]) break;
+                }
+                x[uj] = t + h;
+                ok = eval(x, wa);
+                x[uj] = t;
+                const double dx = (t + h) - t;
+                if (ok)
+                    for (lint i = 0; i < m; ++i) J[i + j * m] = (wa[i] - r[i]) / dx;
+            }
+            if (!ok) return false;
+        }
+        return true;
+    }
+```
+
+`'3-point'`는 다시 해 보지 않고 바로 실패를 알려요(`least_squares(): the differences of 'fun' are not finite at x = [...]`). `minimize`의 차분은 scipy처럼 유한하지 않은 값을 따로 다루지 않고 그대로 기울기에 넣어요. 그다음은 방법의 처리를 따르고(선 탐색이 걸음을 줄이는 등), 시작점의 차분이 유한하지 않으면 `ValueError`예요.
+
+### minimize의 jac=None
+
+`jac=None`은 scipy의 `minimize`처럼 **절대** 간격 `eps`의 앞쪽 차분이에요(`'2-point'`가 상대 간격인 것과 달라요). BFGS의 기본은 $\sqrt\varepsilon$, L-BFGS-B는 $10^{-8}$이에요. $x_j$가 커서 $x_j + \text{eps}$가 $x_j$로 반올림되면 그 변수만 기본 상대 간격으로 바꿔요.
+
+```cpp
+        // csrc/optimize/objective.hpp
+        const double rstep = differentiate::rel_step_2point();
+        for (std::size_t j = 0; j < n; ++j) {
+            const double t = x[j];
+            double h;
+            if (mode == kGradAbsolute) {
+                // approx_derivative's abs_step: eps, unless it vanishes in x + h
+                h = steps[j];
+                if ((t + h) - t == 0) h = rstep * (t >= 0 ? 1.0 : -1.0) * std::max(1.0, std::abs(t));
+            } else {
+                h = differentiate::absolute_step(t, rstep, !steps.empty(), steps.empty() ? 0.0 : steps[j]);
+            }
+            h = differentiate::adjust_one_sided(t, h, lb[j], ub[j]);
+            xt[j] = t + h;
+            const double f1 = call_f(xt.data());
+            xt[j] = t;
+            g[j] = (f1 - f0) / ((t + h) - t);
+        }
+        nfev += static_cast<std::int64_t>(n);
+```
+
+셈은 차분 하나에 $n$(3점은 $2n$)을 `nfev`에 더하고, 차분 기울기 하나를 `njev`에 하나 세요. scipy의 `ScalarFunction`도 같은 셈이에요.
+
+## 헤시안의 차분
+
+`hess='2-point'`나 `'3-point'`는 헤시안 행렬을 만들지 않고 **헤시안과 벡터의 곱**만 기울기의 차분으로 계산해요. 기울기 $g$의 방향 $p$로의 방향 도함수가 $Hp$예요.
+
+$$
+Hp \approx \frac{g(x + dx\,p) - g(x)}{dx},\quad dx = \frac{\sqrt\varepsilon}{\lVert p\rVert}
+\qquad\text{또는}\qquad
+Hp \approx \frac{g(x + \tfrac{dx}{2}p) - g(x - \tfrac{dx}{2}p)}{dx},\quad dx = \frac{2\varepsilon^{1/3}}{\lVert p\rVert}
+$$
+
+$dx$를 $\lVert p\rVert$로 나누므로 $x$가 실제로 움직이는 거리는 $p$의 크기와 상관없이 $\sqrt\varepsilon$(또는 양쪽으로 $\varepsilon^{1/3}$)이에요. scipy `approx_derivative`가 선형 연산자를 만들 때의 간격과 같아요.
+
+```cpp
+    // csrc/optimize/hessian.hpp
+    void difference_product(const double* p, double* out) {
+        bool zero = true;
+        for (std::size_t i = 0; i < n && zero; ++i) zero = p[i] == 0;
+        if (zero) {
+            for (std::size_t i = 0; i < n; ++i) out[i] = 0.0;
+            return;
+        }
+        const double norm = std::sqrt(np_dot(p, p, n));  // numpy's norm: sqrt(p . p)
+        if (mode == kHessTwoPoint) {
+            const double dx = differentiate::rel_step_2point() / norm;
+            for (std::size_t i = 0; i < n; ++i) xt[i] = hx[i] + dx * p[i];
+            obj.raw_gradient(xt.data(), g1.data());
+            for (std::size_t i = 0; i < n; ++i) out[i] = (g1[i] - hg[i]) / dx;
+            return;
+        }
+        const double dx = 2 * differentiate::rel_step_3point() / norm;
+        for (std::size_t i = 0; i < n; ++i) xt[i] = hx[i] - (dx / 2) * p[i];
+        obj.raw_gradient(xt.data(), g1.data());
+        for (std::size_t i = 0; i < n; ++i) xt[i] = hx[i] + (dx / 2) * p[i];
+        obj.raw_gradient(xt.data(), g2.data());
+        for (std::size_t i = 0; i < n; ++i) out[i] = (g2[i] - g1[i]) / dx;
+    }
+```
+
+Newton-CG의 첫 곱을 보면 움직인 거리가 정확히 그 값이에요.
+
+```python
+>>> import math
+>>> rosen = lambda x: (1 - x[0])**2 + 100 * (x[1] - x[0]**2)**2
+>>> gpts = []
+>>> def grad(x):
+...     gpts.append(x.tolist())
+...     return [-2 * (1 - x[0]) - 400 * x[0] * (x[1] - x[0]**2), 200 * (x[1] - x[0]**2)]
+>>> r = sd.optimize.minimize(rosen, [-1.2, 1.0], method='newton-cg', jac=grad, hess='2-point', options={'max_iter': 1})
+>>> math.dist(gpts[1], gpts[0]), 2**-26
+(1.4901161257645126e-08, 1.4901161193847656e-08)
+>>> gpts.clear()
+>>> r = sd.optimize.minimize(rosen, [-1.2, 1.0], method='newton-cg', jac=grad, hess='3-point', options={'max_iter': 1})
+>>> math.dist(gpts[1], gpts[0]), math.dist(gpts[2], gpts[0]), (2**-52)**(1 / 3)
+(6.055454452457699e-06, 6.055454452499654e-06, 6.055454452393343e-06)
+```
+
+이 기울기는 scipy의 차분 연산자처럼 `Objective`의 기억을 거치지 않고 사용자의 `jac`을 바로 불러요. 그 호출은 `njev`에 세고, 곱 하나를 `nhev`에 하나 세요. $p = 0$이면 부르지 않고 0이에요.
+
+`hess`도 `hessp`도 없는 Newton-CG는 scipy의 `approx_fhess_p`예요. 간격이 옵션 `eps`(기본 $\sqrt\varepsilon$)이고 $p$로 나누지 않아요. $g(x)$로는 그 반복의 기울기(CG의 우변 $b = -g$)를 그대로 써요. scipy는 `ScalarFunction`의 기억을 거쳐 $g(x)$를 구하는데, 직전의 곱이 $x + \text{eps}\,p$에서 기울기를 계산해 기억이 그 점의 것이 되었으므로 두 번째 곱부터 곱마다 $g(x)$를 다시 불러요. 여기서는 그 호출이 없어서 기울기 호출이 scipy의 절반쯤이고, 그만큼 부르는 점이 scipy와 달라요. 값은 같은 $g(x)$라 곱은 같아요.
+
+```cpp
+                    // csrc/optimize/newton_cg.cpp
+                    // approx_fhess_p(xk, p, fprime, epsilon) with fprime(xk) the iteration's -b
+                    vanished = true;
+                    for (std::size_t j = 0; j < n; ++j) {
+                        xe[j] = xk[j] + eps[j] * psupi[j];
+                        vanished = vanished && xe[j] == xk[j];
+                    }
+                    const vec& f2 = obj.gradient(xe.data());
+                    for (std::size_t j = 0; j < n; ++j) Ap[j] = (f2[j] - (-b[j])) / eps[j];
+```
+
+`vanished`는 시험점 $x + \text{eps}\,p$가 반올림으로 $x$와 같아진 경우예요. 그때 곱은 0이라 곡률에 대해 아무것도 말하지 않으므로, 첫 CG 걸음의 곡률이 0일 때 가장 가파른 내리막 −g로 바꾸는 판정([뉴턴 방법](/internals/optimize/newton-trust/))에서 빼요.
+
+## MINPACK의 fdjac1과 fdjac2
+
+`root`의 두 방법은 MINPACK의 차분이에요. `'hybr'`은 `hybrd`의 `fdjac1`, `'lm'`은 `lmdif`의 `fdjac2`이고, nls의 반복도 `fdjac2`예요. 간격은
+
+$$
+h_j = \sqrt{\max(\text{epsfcn}, \varepsilon)}\;\lvert x_j\rvert \quad(x_j = 0\text{이면 } \sqrt{\max(\text{epsfcn}, \varepsilon)})
+$$
+
+이고, `epsfcn`(`root`의 옵션 `eps`)은 "함숫값의 상대 오차"예요. 함수에 반올림보다 큰 오차가 있으면 그 크기를 알려 간격을 키우라는 뜻이에요. 앞의 오차 분석에서 $\delta$를 `epsfcn`으로 둔 것과 같아요. MINPACK은 $h$로 나누고(`root`가 scipy처럼 그렇게 해요), nls는 실제로 움직인 거리 $(x_j + h) - x_j$로 나눠요. 경계가 있는 nls의 'trf'에서는 그 간격에 scipy의 `adjust_one_sided`를 써요. 앞으로 가면 경계를 넘고 뒤로는 들어가면 뒤로 가고, 둘 다 넘으면 먼 경계까지의 거리로 줄여요.
+
+```cpp
+        // csrc/optimize/lsq.cpp
+        // MINPACK's fdjac2: h = sqrt(max(epsfcn, eps)) |x_j| (that at 0), the step actually
+        // taken ((x_j + h) - x_j) in the quotient (nls) or h itself (MINPACK; root); within
+        // bounds the step is scipy's adjust_one_sided (backwards when forwards leaves them and
+        // backwards fits, else the distance to the farther bound), and backwards when the
+        // model is not finite forwards.
+        const double eps = std::sqrt(std::max(epsfcn, kEps));
+        for (lint j = 0; j < p; ++j) {
+            const double t = x[j];
+            double h = eps * std::abs(t);
+            if (h == 0) h = eps;
+            if (lb) h = differentiate::adjust_one_sided(t, h, (*lb)[j], (*ub)[j]);
+            bool ok = false;
+            for (int attempt = 0; attempt < 2 && !ok; ++attempt) {
+                if (attempt == 1) {
+                    h = -h;
+                    if (lb && (t + h < (*lb)[j] || t + h > (*ub)[j])) break;
+                }
+                x[j] = t + h;
+                const double hh = minpack_h ? h : x[j] - t;
+                ok = eval(x, wa);
+                x[j] = t;
+                if (ok)
+                    for (lint i = 0; i < m; ++i) J[i + j * m] = (wa[i] - r[i]) / hh;
+            }
+            if (!ok) return false;
+        }
+        return true;
+```
+
+### 띠 야코비안의 묶음
+
+`fdjac1`에는 띠 구조를 쓰는 길이 있어요. 식 $i$가 변수 $i - m_l, \dots, i + m_u$에만 기대면 야코비안은 아래 띠 너비 $m_l$, 위 띠 너비 $m_u$의 띠 행렬이에요. 그러면 변수 $j$와 $j + (m_l + m_u + 1)$은 같은 식에 함께 나타나지 않으니, 둘을 동시에 움직여도 각 식의 변화가 어느 변수 때문인지 가를 수 있어요. 그래서 $j, j + s, j + 2s, \dots$($s = m_l + m_u + 1$)를 한 번에 움직이고 함수를 한 번만 불러요. 야코비안 하나에 $n$번 대신 $s$번이에요(Curtis, Powell, Reid의 열 묶음과 같은 생각이에요).
+
+```cpp
+        // csrc/optimize/hybrd.cpp
+        for (lint k = 0; k < msum; ++k) {
+            double sign = 1;
+            bool ok = false;
+            for (int side = 0; side < 2 && !ok; ++side) {
+                if (side == 1) sign = -1;
+                for (lint j = k; j < n; j += msum) {
+                    wa2[j] = x[j];
+                    double h = eps * std::abs(wa2[j]);
+                    if (h == 0) h = eps;
+                    x[j] = wa2[j] + sign * h;
+                }
+                ok = eval(x, wa1);
+                for (lint j = k; j < n; j += msum) x[j] = wa2[j];
+            }
+            if (!ok) return false;
+            for (lint j = k; j < n; j += msum) {
+                double h = eps * std::abs(wa2[j]);
+                if (h == 0) h = eps;
+                h = sign * h;
+                for (lint i = 0; i < n; ++i) {
+                    fjac[i + j * n] = 0;
+                    if (i >= j - mu && i <= j + ml) fjac[i + j * n] = (wa1[i] - fvec[i]) / h;
+                }
+            }
+        }
+        return true;
+```
+
+변수 20개의 삼중 대각 계(Broyden tridiagonal)에서 `band=(1, 1)`을 주면 야코비안 하나에 함수를 3번만 불러요. 결과는 같아요.
+
+```python
+>>> n = 20
+>>> def F(x):
+...     v = x.tolist()
+...     out = []
+...     for i in range(n):
+...         left = v[i - 1] if i > 0 else 0.0
+...         right = v[i + 1] if i < n - 1 else 0.0
+...         out.append((3 - 2 * v[i]) * v[i] - left - 2 * right + 1)
+...     return out
+>>> a = sd.optimize.root(F, [-1.0] * n)
+>>> b = sd.optimize.root(F, [-1.0] * n, options={'band': (1, 1)})
+>>> (a.nfev, a.njev), (b.nfev, b.njev)
+((31, 1), (14, 1))
+>>> a.x.tolist() == b.x.tolist()
+True
+```
+
+두 경우 모두 야코비안을 한 번 계산하고(그 뒤는 Broyden 갱신이에요), 그 비용이 20번과 3번이에요. 나머지 11번은 시작점과 시험점 10개예요.
+
+## approx_fprime의 기본: 간격을 고르는 5점 차분
+
+`approx_fprime`과 `check_grad`의 기본은 반복 안에서 쓰는 것이 아니라 한 번의 정확한 결과를 위한 차분이에요. 그래서 scipy의 차분을 따르지 않고, 함수를 더 불러서라도 오차를 줄여요. `sd.regression.nls`가 해에서의 야코비안을 구할 때도 같은 코드를 써요. 고리는 C++의 `AccurateDiff`(`csrc/differentiate/accurate.hpp`)이고, `src/stardust/differentiate/_differences.py`의 `Differences`는 그것을 만드는 함수예요. 이 코드는 수치 미분 영역의 내부에 있고([differentiate의 구조](/internals/differentiate/overview/)), 공개 함수는 `sd.optimize`의 `approx_fprime`과 `check_grad`예요. 같은 영역의 공개 함수 [`sd.differentiate.derivative`](/api/differentiate/derivative/)·[`jacobian`](/api/differentiate/jacobian/)은 방법이 달라요. 점의 크기를 보지 않는 절대 간격에서 8차 공식을 간격을 줄이며 되풀이하고, 항목마다 오차 추정을 돌려줘요. 여기의 차분은 변수마다 간격을 한 번 고르고 오차 추정은 내지 않아요. 세 가지로 이뤄져요.
+
+**5점 스텐실.** 중앙 5점 차분은 절단 오차가 $h^4$이에요. 경계(nls)나 한쪽에서 함수가 유한하지 않을 때는 한쪽 5점 차분
+
+$$
+f'(x) \approx \frac{-25f(x) + 48f(x + h) - 36f(x + 2h) + 16f(x + 3h) - 3f(x + 4h)}{12h}
+$$
+
+(또는 그 거울)을 써요. 이것도 절단 오차가 $h^4$이지만 계수가 $\tfrac15$로 중앙의 $\tfrac{1}{30}$보다 크고, 가중치의 절댓값 합 $128/12$도 중앙의 $18/12$보다 7배쯤 커서 반올림에 그만큼 약해요.
+
+```cpp
+// csrc/differentiate/accurate.hpp
+// The stencils: central, and one-sided at a bound or where g is not finite on one side
+// (offsets in steps h, weights; the denominator is 12 h).
+struct Stencil {
+    int count;
+    int offs[5];
+    double wts[5];
+    int lo, hi;
+    double wsum;
+};
+inline constexpr Stencil kStencils[3] = {
+    {4, {-2, -1, 1, 2, 0}, {1.0, -8.0, 8.0, -1.0, 0.0}, -2, 2, 18.0},
+    {5, {0, 1, 2, 3, 4}, {-25.0, 48.0, -36.0, 16.0, -3.0}, 0, 4, 128.0},
+    {5, {0, -1, -2, -3, -4}, {25.0, -48.0, 36.0, -16.0, 3.0}, -4, 0, 128.0},
+};
+```
+
+`lo`와 `hi`는 스텐실이 닿는 가장 먼 점(간격 단위)이라 경계 안인지를 그것으로 보고, `wsum`은 가중치의 절댓값 합이라 [반올림 수준](#반올림-수준의-열)에 써요.
+
+**2의 거듭제곱 간격.** $h = 2^{b + e}$이고 $2^b$는 $\lvert x_j\rvert < 2^b \le 2\lvert x_j\rvert$인 2의 거듭제곱(`frexp`의 지수)이에요. $e \le -8$이라 $kh$($k \le 4$)가 $\lvert x_j\rvert$보다 훨씬 작고, $e \ge -30$이라 $h$가 $x_j$의 끝자리 단위의 배수예요. 그래서 $x_j \pm kh$가 반올림 없이 정확하고 분모 $12h$도 정확해요. 몫에 들어가는 반올림은 함숫값의 것뿐이에요.
+
+**변수마다 간격 고르기.** $2^{-8}$에서 시작해 지수를 2씩(간격을 4배씩) 줄이며 추정 $c_k$를 거듭해요. 절단 오차가 앞서면 간격이 1/4이 될 때 오차가 $4^4 = 256$배 줄어서, 이웃한 두 추정의 차이 $d_k = \max\lvert c_k - c_{k-1}\rvert / \max\lvert c_k\rvert$도 256배 가까이 줄어요. 반올림 오차가 앞서기 시작하면 $d_k$가 더 줄지 않거나 커져요. 그래서 $d_k < d_{k-1}/8$인 동안 이어 가고, 그렇지 않으면 멈추고 마지막으로 받아들인 추정을 써요.
+
+```cpp
+    // csrc/differentiate/accurate.hpp
+    // The search from 2^e0 down by factors of 4 (12 steps): the estimate where consecutive ones
+    // stop getting closer by more than 8 times (_descend). first: the column at 2^e0 when just
+    // computed (use; ok: a stencil gave one; its fits). strict: the second estimate is not taken
+    // over the first when it is rounding noise and the first is not. Sets settled_.
+    bool descend(lint j, int e0, const First& first, bool strict, double* out, double& hbest) {
+        using namespace accurate_detail;
+        const lint m = m_;
+        bool have_best = false, have_prev = false, prev_ok = false, fits = false;
+        double dprev = kInf;
+        vec col(static_cast<std::size_t>(m)), prev(static_cast<std::size_t>(m));
+        hbest = kNaN;
+        for (int e = e0; e > e0 + kFdEnd - kFdStart - 1; e -= 2) {
+            const double h = std::ldexp(1.0, e);
+            bool ok;
+            if (e == e0 && first.use) {  // the start's column, computed by the caller
+                ok = first.ok;
+                if (ok) std::copy(first.col->begin(), first.col->end(), col.begin());
+                fits_ = first.fits;
+            } else {
+                ok = column(j, h, col.data());
+            }
+            fits = fits || fits_;
+            if (!ok) {
+                if (have_best) break;
+                continue;
+            }
+            if (!have_prev) {
+                std::copy(col.begin(), col.end(), out);
+                hbest = h;
+                have_best = true;
+                prev_ok = strict && rounding(col.data(), j) * kNoiseFactor < 1;
+            } else {
+                if (prev_ok && dprev == kInf && rounding(col.data(), j) * kNoiseFactor >= 1) break;
+                double sc, md;
+                max_abs2(col.data(), prev.data(), m, sc, md);
+                const double dd = sc > 0 ? md / sc : 0.0;
+                if (dd >= dprev / 8) break;
+                std::copy(col.begin(), col.end(), out);
+                hbest = h;
+                dprev = dd;
+                if (dd == 0) break;
+            }
+            std::swap(prev, col);
+            have_prev = true;
+        }
+        fits_ = fits;
+        settled_ = dprev <= kSettled;
+        return have_best;
+    }
+```
+
+이웃한 두 추정의 차이는 `max_abs2`가 열의 가장 큰 크기와 차이의 가장 큰 크기를 한 패스로 구해 그 몫으로 재요. 가장 큰 값은 더하는 순서와 상관없이 정확해요.
+
+$e^x$의 $x = 1$에서 같은 규칙을 따라가 보면 $e = -12$($h = 2^{-11}$)를 골라요.
+
+```python
+>>> x = 1.0
+>>> def five(h):
+...     return (math.exp(x - 2 * h) - 8 * math.exp(x - h) + 8 * math.exp(x + h) - math.exp(x + 2 * h)) / (12 * h)
+>>> base = math.frexp(x)[1]
+>>> prev, dprev = None, math.inf
+>>> for e in range(-8, -31, -2):
+...     h = math.ldexp(1.0, base + e)
+...     c = five(h)
+...     line = f'e={e}  h=2^{base + e}  err={abs(c - math.e) / math.e:.1e}'
+...     if prev is not None:
+...         dd = abs(c - prev) / abs(c)
+...         line += f'  d={dd:.1e}'
+...         if dd >= dprev / 8:
+...             print(line + '  stop')
+...             break
+...         dprev = dd
+...     print(line)
+...     best, prev = c, c
+e=-8  h=2^-7  err=1.2e-10
+e=-10  h=2^-9  err=5.2e-13  d=1.2e-10
+e=-12  h=2^-11  err=2.0e-13  d=3.2e-13
+e=-14  h=2^-13  err=4.7e-13  d=6.7e-13  stop
+>>> best == sd.optimize.approx_fprime([x], lambda t: math.exp(t[0]))[0]
+True
+```
+
+$e = -10$에서 $-12$로 갈 때 $d$가 $1.2 \times 10^{-10}$에서 $3.2 \times 10^{-13}$으로 줄었으니(8배보다 훨씬 많이) 받아들이고, $-14$에서는 $d$가 오히려 커져서 멈춰요. 오차 곡선의 바닥($10^{-13}$ 근처)을 실제 오차를 모른 채 찾아낸 셈이에요. 둘째 추정은 견줄 앞의 차이가 없어 대개 받아들이므로, 출발점을 작게 잡으면 고른 간격도 한 단계 작아져요. 그래서 출발점은 넉넉하게 큰 $2^{-8}$이에요. 다만 둘째 추정이 반올림 잡음(열의 노름이 [반올림 수준](#반올림-수준의-열)의 16배 이하)이고 첫째가 아니면, 둘째를 받지 않고 첫째를 써요.
+
+**0에 아주 가까운 $x_j$.** 처음 간격은 $\lvert x_j\rvert$에 비례하므로, $x_j$가 함수가 변하는 척도보다 훨씬 작으면(예: $x_j = 10^{-12}$인데 함수는 1 크기에서 변할 때) 처음 간격 $2^{-8}\lvert x_j\rvert$부터 함숫값의 차이가 반올림에 묻혀요. 그대로 내려가면 반올림만 남은 추정을 고르게 돼요. 반올림에 다 묻히지 않았더라도, 처음 추정이 이미 반올림으로 목표 정확도만큼 잃었다면 아래로만 찾아서는 더 나아지지 않아요. 내려갈수록 반올림은 커지기만 하니까요. 그래서 처음 열의 반올림 한계(`noise`)가 열 크기의 $2^{-36}$(`kGrowTol`, $1.5 \times 10^{-11}$)을 넘으면 먼저 간격을 키워요. 이 차분이 노리는 정확도가 상대 $10^{-11}$–$10^{-13}$이라서 그 언저리의 문턱이에요.
+
+```cpp
+    // csrc/differentiate/accurate.hpp
+    // The step of variable j (_differences.py's choose_step): the column into out and its
+    // step h; false when no stencil gives one.
+    bool choose_step(lint j, double* out, double& h) {
+        using namespace accurate_detail;
+        const auto uj = static_cast<std::size_t>(j);
+        const lint m = m_;
+        const int base = frexp_exp(xw_[uj] != 0 ? std::abs(xw_[uj]) : 1.0);
+        const int e0 = base + kFdStart;
+        vec col0(static_cast<std::size_t>(m));
+        const bool ok0 = column(j, std::ldexp(1.0, e0), col0.data());
+        const First start{true, ok0, &col0, fits_};
+        if (!ok0 || e0 >= kCapExp) return descend(j, e0, start, true, out, h);
+        const double r0 = rounding(col0.data(), j);
+        if (r0 <= kGrowTol) {
+            bool ok = descend(j, e0, start, true, out, h);
+            if (ok && !settled_) from_cap(j, out, h);
+            return ok;
+        }
+        const bool fits0 = fits_;
+        int e = 0;
+        if (grow(j, e0, col0.data(), e)) {
+            if (descend(j, e, First{}, true, out, h)) return true;
+        }
+        bool ok;
+        if (r0 <= kRoundingTol) ok = descend(j, e0, First{}, true, out, h);  // the plain search from the start
+        else ok = descend(j, e0, First{}, false, out, h);
+        fits_ = fits_ || fits0;
+        return ok;
+    }
+```
+
+키운 간격에서 찾기가 실패하면 처음 간격으로 돌아가요. 처음 열의 반올림 한계가 $2^{-26}$(`kRoundingTol`, $\sqrt\varepsilon$)보다 작았으면, 즉 반올림에 묻히지는 않았으면 보통의 찾기를 하고, 반올림 수준이었으면 둘째 추정을 잡음이라는 이유로 버리지 않는 찾기(`strict`가 false)를 해요. $\sqrt\varepsilon$은 자릿수의 반을 반올림에 잃은 수준이에요.
+
+`grow`는 반올림 한계를 열 크기의 $\sqrt\varepsilon$배로 낮추는 만큼 간격을 한 번에 키우고(적어도 4배), 그 뒤 4배씩 더 키우며 이웃한 두 추정의 차이가 두 반올림 한계의 합을 넘을 때(절단 오차가 보이기 시작할 때)나 $x_j = 0$일 때의 처음 간격 $2^{-7}$에 닿을 때 멈춰요. 멈춘 간격의 열이 잡음이 아니면(노름이 반올림 한계의 16배보다 크면) 거기서 보통의 찾기를 해요. $2^{-7}$에 닿아도 반올림 한계가 열의 $\sqrt\varepsilon$배를 넘을 수 있어요. $\cos$의 $x = 3.41 \times 10^{-8}$처럼 도함수가 함숫값의 $3.4 \times 10^{-8}$배뿐인 점이에요. 그래도 더 작은 간격은 반올림이 더 클 뿐이니 그 간격에서 찾아요. 처음 간격 $2^{-32}$부터 아래로만 찾으면 $-4.8 \times 10^{-7}$이 나와 부호까지 틀려요. 어느 간격에서도 열이 잡음이면(참값이 0인 열) false를 돌려주고, 위의 처음 간격으로 돌아가는 길을 가요.
+
+```cpp
+    // csrc/differentiate/accurate.hpp
+    // The exponent e of the step to start from when the start 2^e0 is at rounding level
+    // (_grow); false when no step leaves rounding level.
+    bool grow(lint j, int e0, const double* col0, int& eout) {
+        using namespace accurate_detail;
+        const lint m = m_;
+        const double r = rounding(col0, j);
+        long jump;
+        if (std::isinf(r)) jump = kCapExp - e0;
+        else jump = static_cast<long>(std::ceil(std::log2(r / kRoundingTol)));
+        int e = static_cast<int>(std::min<long>(kCapExp, e0 + std::max<long>(jump, 2)));
+        vec col(static_cast<std::size_t>(m)), nxt(static_cast<std::size_t>(m)), diff(static_cast<std::size_t>(m));
+        if (!column(j, std::ldexp(1.0, e), col.data())) return false;
+        double lvl = noise_[std::size_t(j)];
+        while (e + 2 <= kCapExp) {
+            if (!column(j, std::ldexp(1.0, e + 2), nxt.data())) break;
+            const double nlvl = noise_[std::size_t(j)];
+            e += 2;
+            for (lint i = 0; i < m; ++i) diff[std::size_t(i)] = nxt[std::size_t(i)] - col[std::size_t(i)];
+            const bool shows = wnorm(diff.data()) > lvl + nlvl;
+            std::swap(col, nxt);
+            lvl = nlvl;
+            if (shows) break;
+        }
+        const double size = wnorm(col.data());
+        if (!(size > 0 && lvl / size * kNoiseFactor < 1)) return false;
+        eout = e;
+        return true;
+    }
+```
+
+**끝내 맞지 않는 추정.** 처음 간격의 반올림 한계가 문턱 아래라 아래로만 찾았는데 마지막 두 추정의 상대 차이가 $2^{-20}$(`kSettled`)을 넘으면, 여섯 자리쯤도 맞지 않은 채 끝난 거예요. 절단 오차가 줄어드는 것을 한 번도 보지 못했다는 뜻이고, 처음 간격에서의 함숫값의 차가, 반올림 한계 $u\lvert f\rvert$가 보지 못하는 $f$ 자신의 계산 오차보다 작았던 경우예요. `math.log(1 + x)`의 $x = 10^{-14}$에서는 $1 + x$가 $2^{-52}$의 배수로 반올림되므로, 처음 간격 $2^{-54}$의 추정은 $-1/3$이고 다음은 0이에요. 그럴 때는($\lvert x_j\rvert < 1$에서만) $x_j = 0$일 때의 처음 간격 $2^{-7}$에서 다시 찾고, 그 추정들이 맞으면 그것을 써요. `descend`가 끝에 적어 두는 `settled_`가 이 판정이에요.
+
+```cpp
+    // csrc/differentiate/accurate.hpp
+    // The search from 2^kCapExp in place of (out, h) when its estimates agree (_from_cap).
+    void from_cap(lint j, double* out, double& h) {
+        const bool fits = fits_;
+        vec alt(static_cast<std::size_t>(m_));
+        double halt = accurate_detail::kNaN;
+        const bool ok = descend(j, accurate_detail::kCapExp, First{}, true, alt.data(), halt);
+        if (ok && settled_) {
+            fits_ = fits_ || fits;
+            std::copy(alt.begin(), alt.end(), out);
+            h = halt;
+            return;
+        }
+        fits_ = fits;
+    }
+```
+
+그래서 $x_j = 10^{-12}$나 $10^{-300}$에서도, 그 사이의 $10^{-6}$–$10^{-4}$에서도 $x_j = 0$일 때와 같은 크기의 절대오차가 나와요.
+
+```python
+>>> for t in (0.0, 1e-300, 1e-12, 3e-6, 1e-5, 1e-4):
+...     d = sd.optimize.approx_fprime([t], lambda v: math.exp(v[0]))[0]
+...     print(t, f'{abs(d - math.exp(t)):.1e}')
+0.0 3.8e-14
+1e-300 3.8e-14
+1e-12 6.1e-14
+3e-06 7.4e-14
+1e-05 4.6e-13
+0.0001 9.3e-14
+```
+
+오차는 함숫값의 반올림을 간격으로 나눈 크기라서, 0 근처에서 함숫값이 도함수보다 훨씬 큰 함수는 절대오차는 같아도 상대오차가 커요. 아래의 $\cos$는 세 점 모두 절대오차가 $10^{-14}$ 근처이고, $10^{-14}$에서는 도함수 자체가 그만큼이라 결과가 0이에요. `math.log(1 + x)`는 다시 찾는 길을 지나 $10^{-14}$에서도 맞아요.
+
+```python
+>>> for t in (3.41e-8, 1e-9, 1e-14):
+...     d = sd.optimize.approx_fprime([t], lambda v: math.cos(v[0]))[0]
+...     print(t, f'{abs(d + math.sin(t)):.1e}')
+3.41e-08 1.2e-14
+1e-09 1.3e-14
+1e-14 1.0e-14
+>>> d = sd.optimize.approx_fprime([1e-14], lambda v: math.log(1 + v[0]))[0]
+>>> f'{abs(d - 1 / (1 + 1e-14)):.1e}'
+'1.1e-16'
+```
+
+스텐실의 점이 경계 밖이거나 값이 유한하지 않으면 그 간격에서는 다음 스텐실(앞쪽, 뒤쪽 한쪽 5점)을 써 보고, 어느 것도 안 되면 다음 간격으로 넘어가요. 어느 간격에서도 추정이 하나도 없으면 `approx_fprime`이 `ValueError`(`'f' is not finite near the point (the differences of variable 0)`)를 내요.
+
+### 사용자 함수 밖의 일
+
+간격 찾기, 스텐실의 합, 반올림 수준, 이계 차분(nls의 `second`)은 모두 C++에서 하고, Python은 사용자 함수뿐이에요. 사용자 함수가 돌려준 값이 길이 m의 float64 `sd.ndarray`(m = 1이면 Python `float`도)이면 그대로 읽고, 그 밖의 값만 부르는 쪽의 Python 검사 함수(`approx_fprime`이면 `_f_values`)를 거쳐요. 돌려받은 배열은 부른 바로 뒤에 한 번 읽어서, 스텐실의 합, 값의 가장 큰 크기, 유한한지를 한 패스에 구해요.
+
+```cpp
+    // csrc/differentiate/accurate.hpp
+    // dg/dx_j (unweighted) into out by the first feasible 5-point stencil with step h; false
+    // when none gives one. Keeps the central stencil's values for second() and sets noise_[j],
+    // the weighted 2-norm of the column's rounding level ((sum |w_o|) / (12 h) u
+    // max_o |g_i(x + o h e_j)|), and fits_ (some stencil fitted within the bounds).
+    bool column(lint j, double h, double* out) {
+        using namespace accurate_detail;
+        constexpr std::uint64_t kExp = 0x7ff0000000000000ull;
+        const auto uj = static_cast<std::size_t>(j);
+        const double t = xw_[uj];
+        const lint m = m_;
+        const lint nt = nchunks(m);
+        std::vector<std::uint8_t> bad(static_cast<std::size_t>(nt), 0);
+        double* acc = acc_.data();
+        double* big = big_.data();
+        fits_ = false;
+        for (int kind = 0; kind < 3; ++kind) {
+            const Stencil& st = kStencils[kind];
+            if (!(lb_[uj] <= t + st.lo * h && t + st.hi * h <= ub_[uj])) continue;
+            fits_ = true;
+            bool ok = true;
+            // each value is added into the sum (in the order of the offsets) and the largest
+            // magnitudes as it comes, with its finiteness test; a value that is not finite
+            // ends the stencil (its later points are not evaluated)
+            for (int q = 0; q < st.count && ok; ++q) {
+                const int o = st.offs[q];
+                const double w = st.wts[q];
+                const std::byte* d;
+                std::int64_t s;
+                if (o == 0) {
+                    d = reinterpret_cast<const std::byte*>(g0_.data());
+                    s = sizeof(double);
+                } else {
+                    xw_[uj] = t + o * h;
+                    call(vals_[q]);
+                    xw_[uj] = t;
+                    d = vals_[q].data;
+                    s = vals_[q].stride;
+                }
+                const bool first = q == 0;
+                chunks(m, [&](lint i0, lint i1, lint c) {
+                    std::uint64_t b = 0;
+                    if (s == static_cast<std::int64_t>(sizeof(double))) {
+                        const double* v = reinterpret_cast<const double*>(d);
+                        for (lint i = i0; i < i1; ++i) {
+                            const double vi = v[i];
+                            std::uint64_t u;
+                            std::memcpy(&u, &vi, sizeof u);
+                            b |= static_cast<std::uint64_t>((u & kExp) == kExp);
+                            if (first) {
+                                acc[i] = w * vi;
+                                big[i] = std::abs(vi);
+                            } else {
+                                acc[i] = acc[i] + w * vi;
+                                big[i] = std::max(big[i], std::abs(vi));
+                            }
+                        }
+                    } else {
+                        // ...
+                    }
+                    bad[std::size_t(c)] = b != 0;
+                });
+                for (std::uint8_t b : bad) ok = ok && !b;
+            }
+            if (!ok) continue;
+            const double den = 12.0 * h;
+            const double* wr = has_w_ ? w_.data() : nullptr;
+            chunks(m, [&](lint i0, lint i1, lint) {
+                for (lint i = i0; i < i1; ++i) {
+                    if (wr) big[i] = big[i] * wr[i];
+                    out[i] = acc[i] / den;
+                }
+            });
+            noise_[uj] = m ? st.wsum / (12.0 * h) * kU * norm2(big, m) : 0.0;
+            if (kind == 0) {  // the values at -h and +h, kept for second()
+                Central& c = central_[uj];
+                c.set = true;
+                c.h = h;
+                std::swap(c.fm, vals_[1]);
+                std::swap(c.fp, vals_[2]);
+            }
+            return true;
+        }
+        return false;
+    }
+```
+
+그래서 버퍼 하나를 고쳐 쓰며 돌려주는 함수도 같은 야코비안을 얻어요. 가운데 스텐실의 $x \pm h$ 값만은 nls의 이계 차분에 다시 쓰려고 쥐고 있어요(`central_`). 유한하지 않은 값이 나오면 그 스텐실은 거기서 끝나고, 남은 점은 부르지 않아요.
+
+값이 $2^{16}$개 이상이면 m개를 지나가는 패스(`chunks`)를 $2^{15}$개씩의 덩어리로 나눠 풀에서 돌려요. 덩어리는 m으로만 정해지고, 패스는 원소별이거나 정확한 줄이기(가장 큰 값, 유한하지 않다는 깃발)예요. 노름은 linalg의 빠른 제곱합이고, 그 합도 길이로만 나눠요. 간격을 고르는 비교가 이 노름과 가장 큰 값으로만 이뤄지므로, 지금은 고른 간격과 야코비안이 스레드 수와 상관없이 같은 비트예요(약속은 아니에요).
+
+### 셈과 비용
+
+간격 하나에 함수를 4번 불러요(중앙 스텐실은 $x$를 쓰지 않고, 한쪽 스텐실의 $f(x)$는 이미 있어요). 처음 두 간격에 8번이고 간격을 하나 더 볼 때마다 4번이라, 변수 하나에 8번 이상이에요. MGH 47경우에서는 변수마다 평균 8–24번, 초등 함수 11개($x^2$, $x^3$, $x^7$, $1/x$, $\sqrt x$, $\cos$, $\sin$, $\exp$, $\log$, $\arctan$, $\tanh$)를 0.01–100의 9점에서 재면 8–28번(대부분 8–20번)이에요. $\cos$, $\sin$, $\exp$는 $\lvert x\rvert$가 클수록 많아 $x = 100$에서 28번이에요. 0에 가깝지만 0은 아닌 $x$에서 함숫값이 기울기보다 훨씬 크면 `_grow`가 간격을 4배씩 키우는 만큼 더 불러서, $\exp$를 $x = 10^{-12}$·$10^{-8}$에서 61번, $3 \times 10^{-6}$에서 57번, $10^{-5}$에서 53번, $10^{-4}$에서 49번 불러요($x = 0$은 17번, $10^{-300}$·$10^{-30}$은 25번, $10^{-2}$는 13번; 점 $x$의 한 번 포함). 처음 간격의 반올림이 문턱 $2^{-36}$ 바로 위인 $10^{-5}$ 근처에서도 간격을 키우므로, 정확도를 지키는 대신 호출이 네 배쯤 늘어요. $\cos$는 $x = 3.41 \times 10^{-8}$에서 21번($10^{-9}$, $10^{-14}$에서 17번), `math.log(1 + x)`는 다시 찾는 $\pm 10^{-14}$에서 29–33번이에요. $\sin$, $\arctan$, $\tanh$, `math.log1p`처럼 0 근처에서 값이 작은 함수는 9–25번이에요. Rosenbrock은 변수마다 10–12번, $e^{x_0}\sin x_1$은 18번이에요.
+
+`epsilon=2**-26`의 앞쪽 차분은 변수 하나에 한 번 부르니, 기본은 그보다 호출이 8배 이상 많아요. 사용자 함수 밖의 일은 위의 C++ 고리라서, 시간은 대부분 사용자 함수에 들어요. `check_grad`의 기본도 같은 차분이라 같은 비용이 들어요.
+
+### 정확도
+
+Moré–Garbow–Hillstrom 문제의 47경우에서 해석적 도함수와 견준 상대 차이는 야코비안이 최대 $1.2 \times 10^{-11}$, 기울기가 최대 $6.4 \times 10^{-11}$이에요. 앞쪽 차분은 $10^{-8}$ 근처예요.
+
+0 근처의 간격 규칙은 따로 재요. 0 근처에서 함숫값이 도함수보다 큰 초등 함수 10개($e^x$, $\cos$, $\sin$, $\arctan$, $\sqrt{1 + x}$, $\log(1 + x)$, $1/(1 + x)$, $e^{-x^2}$, $x e^x$, $\cos x + x$; $\log(1 + x)$는 `math.log(1 + x)`로 계산)를 $\pm 10^{-14}$–$1$의 16점씩, 정의역 안의 317점에서 Arb(구간 산술)로 만든 닫힌 꼴의 도함수와 견줘요. 절대오차는 최대 $5.3 \times 10^{-12}$이고, 상대오차가 큰 것은 도함수가 함숫값보다 훨씬 작은 점뿐이에요($\cos$의 $10^{-14}$에서 절대 $10^{-14}$, 상대 1). scipy의 기본(간격 $2^{-26}$의 앞쪽 차분)은 같은 점에서 절대오차가 최대 $7.3 \times 10^{-8}$이에요.
+
+<AccuracySummary area="optimize" names={['approx_fprime']} caption="approx_fprime의 정확도. gradient·jacobian은 MGH 47경우의 노름 상대오차(∞), small |x|는 0 근처 317점의 상대오차와 절대오차예요. 계약이 없는 기록이에요." /> nls의 NIST 27문제에서 고정 간격과 고른 간격을 견준 표는 [nls의 구현](/internals/regression/nls/#해의-정확한-야코비안-5점-차분과-간격-고르기)에 있어요.
+
+### 반올림 수준의 열
+
+`column`은 열마다 반올림 수준도 재요. 스텐실의 값 $f_i(x + oh)$마다 최대 $u\lvert f_i\rvert$의 반올림이 있으니, 원소 $i$의 불확실성은 $\tfrac{\sum_o \lvert w_o\rvert}{12h}\,u\max_o\lvert f_i(x + oh)\rvert$이고 그 2-노름이 `noise`예요. nls는 열의 노름이 `noise`의 16배 이하이면 그 열을 0으로 둬요(`zero_noise`). `approx_fprime`은 이것을 하지 않고 계산한 값을 그대로 돌려줘요. 그래서 참값이 0인 열에도 $10^{-14}$쯤의 수가 남아요.
+
+```python
+>>> from stardust.differentiate._differences import Differences
+>>> g = lambda th: sd.asarray([math.sin(th[1]), math.cos(th[1])])
+>>> D = Differences(g, 2, [-math.inf] * 2, [math.inf] * 2)
+>>> J, _ = D.jacobian([1.0, 2.0], g([1.0, 2.0]))
+>>> J
+array([[ 9.473903143468002e-15,    -0.4161468365471516],
+       [-7.105427357601002e-15,    -0.9092974268257498]], dtype=float64)
+>>> D.noise[0]
+3.410605131648481e-13
+>>> J, _ = D.jacobian([1.0, 2.0], g([1.0, 2.0]), zero_noise=True)
+>>> J[:, 0]
+array([ 0.0, -0.0], dtype=float64)
+```
+
+$x_0$이 함수에 나오지 않으니 첫 열은 참값이 0이에요. 그런데도 $9.5 \times 10^{-15}$가 나오는 것은 $f - 8f + 8f - f$에서 $7f$가 반올림되기 때문이에요. 열의 노름 $1.2 \times 10^{-14}$가 반올림 수준 $3.4 \times 10^{-13}$보다 작으니 nls라면 0으로 둬요. nls가 이렇게 하는 이유는 반올림 잡음뿐인 열이 제 방향을 가져서 다른 모수의 열 자리를 차지할 수 있어서예요. `approx_fprime`은 값을 바꾸지 않아요.
+
+## approx_fprime의 epsilon
+
+`epsilon`을 주면 scipy `approx_fprime`과 같은 앞쪽 차분이에요. scipy가 `approx_derivative(method='2-point', abs_step=epsilon)`로 하는 계산을 그대로 적었어요.
+
+```cpp
+    // csrc/differentiate/accurate.hpp
+    // scipy's approx_fprime with steps eps (one per variable): (g(x + h_j e_j) - g0) /
+    // ((x_j + h_j) - x_j), h_j = sqrt(eps) sign(x_j) max(1, |x_j|) where x_j + eps_j rounds to
+    // x_j. Returns (m, p).
+    nanobind::object forward(const vec& x, nanobind::handle g0o, const vec& eps) {
+        namespace nb = nanobind;
+        check_x(x);
+        load_g0(g0o);
+        if (static_cast<lint>(eps.size()) != p_) throw nb::value_error("Differences: eps must have p values");
+        const lint m = m_;
+        const std::int64_t shape[2] = {m, p_};
+        NDArray out = new_array(DType::Float64, shape);
+        double* o = reinterpret_cast<double*>(out.data);
+        Values v;
+        xw_ = x;
+        for (lint j = 0; j < p_; ++j) {
+            const auto uj = static_cast<std::size_t>(j);
+            const double t = x[uj];
+            double h = eps[uj];
+            if ((t + h) - t == 0) h = 0x1p-26 * (t >= 0 ? 1.0 : -1.0) * std::max(1.0, std::abs(t));
+            xw_[uj] = t + h;
+            const double dx = (t + h) - t;
+            call(v);
+            xw_[uj] = t;
+            for (lint i = 0; i < m; ++i) o[i * p_ + j] = (v.at(i) - g0_[std::size_t(i)]) / dx;
+        }
+        return wrap(std::move(out));
+    }
+```
+
+같은 함수라면 지금은 scipy와 부르는 점이 같고 결과도 비트까지 같아요. MGH 47경우의 기울기와 야코비안에서 `epsilon=2**-26`(scipy의 기본)의 결과가 scipy와 모두 같아요. 기본과 달리 `xk`에서 함수가 유한하지 않아도 계산해요.
+
+## check_grad
+
+`direction='all'`은 `grad(x0)`와 `approx_fprime(x0, func, epsilon=epsilon)`의 차이의 2-노름이에요. `direction='random'`은 표준정규분포에서 뽑은 방향 $v$ 하나로 변수 하나짜리 함수 $w \mapsto f(x_0 + wv)$를 만들어, 그 $w = 0$에서의 도함수를 같은 차분으로 구하고 $\nabla f(x_0)\cdot v$와 견줘요.
+
+```python
+    # src/stardust/optimize/_diff.py
+    v = Normal().sample((n,), rng=rng)
+    analytic = float(_linalg.vecdot(g0, v))
+    J, _ = _derivative(fn, "func", lambda w: value(x + float(w[0]) * v), _sd.asarray([0.0]), epsilon)
+    return abs(analytic - float(J[0][0]))
+```
+
+변수가 하나뿐인 차분이라 $n$과 상관없이 함수를 8–20번쯤 불러요. 방향은 `sd.stats.Normal().sample`로 뽑으므로 같은 시드면 같은 방향이에요. scipy는 numpy의 난수로 뽑아서 방향이 달라요. `epsilon`은 이 한 변수 함수의 간격이라 수 하나만 받아요.

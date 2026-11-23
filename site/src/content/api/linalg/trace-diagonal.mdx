@@ -1,0 +1,472 @@
+---
+title: 대각선과 대각합
+names: [diagonal, trace]
+group: 노름과 지표
+order: 5
+signatures:
+  - "sd.linalg.diagonal(x, /, *, k=0)"
+  - "sd.linalg.trace(x, /, *, k=0, dtype=None)"
+summary: diagonal은 행렬의 대각선 원소를 꺼내고, trace는 그 원소를 더한 대각합을 구해요. k로 주대각선 위아래의 다른 대각선도 고를 수 있어요.
+params:
+  - name: x
+    type: ndarray
+    kind: positional-only
+    desc: 행렬. 모양은 (..., M, N). 정사각이 아니어도 돼요. 3차원 이상이면 행렬 여러 개를 쌓은 것으로 봐요.
+  - name: k
+    type: int
+    kind: keyword-only
+    desc: 대각선의 위치. 0은 주대각선, 양수는 그 위쪽, 음수는 아래쪽이에요.
+  - name: dtype
+    type: dtype 또는 None
+    kind: keyword-only
+    desc: trace에만 있어요. 합을 계산할 원소 종류. None이면 float64(복소수 입력은 complex128)예요.
+returns:
+  type: "diagonal: ndarray / trace: ndarray 또는 Python 숫자"
+  desc: diagonal은 대각선 원소를 담은 모양 (..., L)의 새 배열로, 입력의 dtype을 유지해요. trace는 그 합으로, 행렬 하나면 Python 숫자이고 여러 개면 모양이 (...)인 배열이에요.
+raises:
+  - type: TypeError
+    desc: x가 배열이 아닐 때(리스트, 희소 배열 포함), k가 int가 아닐 때(bool, float 포함), k나 dtype을 이름 없이 자리로 넘겼을 때, trace의 dtype이 sd.bool이거나 복소수 입력에 실수 dtype을 줬을 때.
+  - type: ValueError
+    desc: x가 2차원 미만일 때.
+  - type: OverflowError
+    desc: k가 int64 범위를 벗어날 때.
+seeAlso: [det, norms, eigh, eig, matrix_rank, bandwidth, basics]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import FigRow from '../../../components/fig/FigRow.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+행렬의 왼쪽 위에서 오른쪽 아래로 내려가는 줄을 **대각선**(주대각선)이라고 해요. 행 번호와 열 번호가 같은 원소가 놓인 줄이에요. `diagonal`은 이 원소를 꺼내고, `trace`는 모두 더해요. 이 합을 **대각합**(trace)이라고 해요.
+
+```python
+>>> import stardust as sd
+>>> y = sd.asarray([[1.0, 2.0, 3.0],
+...                 [4.0, 5.0, 6.0],
+...                 [7.0, 8.0, 9.0]])
+>>> sd.linalg.diagonal(y)
+array([1.0, 5.0, 9.0], dtype=float64)
+>>> sd.linalg.trace(y)
+15.0
+```
+
+<Fig caption="diagonal은 대각선의 원소를 1차원 배열로 꺼내고, trace는 그것을 더한 숫자 하나를 돌려줘요.">
+  <ArrayFig name="y" data={[[1, 2, 3], [4, 5, 6], [7, 8, 9]]} tones={[['b', '', ''], ['', 'b', ''], ['', '', 'b']]} />
+  <Op note="diagonal">→</Op>
+  <ArrayFig name="diagonal(y)" data={[1, 5, 9]} tones={['b', 'b', 'b']} />
+  <Op note="합">→</Op>
+  <ArrayFig name="trace(y)" data={[15]} tones={['a']} />
+</Fig>
+
+<Reference />
+
+## `k`: 어느 대각선인가요
+
+`k`를 주면 주대각선과 나란한 다른 대각선을 골라요. 양수는 위쪽(오른쪽)으로, 음수는 아래쪽(왼쪽)으로 그만큼 옮긴 줄이에요. 3행 4열 행렬로 볼게요.
+
+```python
+>>> x = sd.reshape(sd.arange(12), (3, 4))
+>>> x
+array([[ 0,  1,  2,  3],
+       [ 4,  5,  6,  7],
+       [ 8,  9, 10, 11]], dtype=int64)
+>>> sd.linalg.diagonal(x)
+array([ 0,  5, 10], dtype=int64)
+>>> sd.linalg.diagonal(x, k=1)
+array([ 1,  6, 11], dtype=int64)
+>>> sd.linalg.diagonal(x, k=-1)
+array([4, 9], dtype=int64)
+```
+
+<Fig column caption="k=0은 주대각선, k=1은 한 칸 위쪽, k=-1은 한 칸 아래쪽 대각선이에요. 대각선의 길이는 행렬 안에 들어오는 칸 수만큼이에요.">
+  <FigRow>
+    <ArrayFig name="x" data={[[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11]]} tones={[['b', '', '', ''], ['', 'b', '', ''], ['', '', 'b', '']]} />
+    <Op note="k=0">→</Op>
+    <ArrayFig data={[0, 5, 10]} tones={['b', 'b', 'b']} note="길이 3" />
+  </FigRow>
+  <FigRow>
+    <ArrayFig name="x" data={[[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11]]} tones={[['', 'a', '', ''], ['', '', 'a', ''], ['', '', '', 'a']]} />
+    <Op note="k=1">→</Op>
+    <ArrayFig data={[1, 6, 11]} tones={['a', 'a', 'a']} note="길이 3" />
+  </FigRow>
+  <FigRow>
+    <ArrayFig name="x" data={[[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11]]} tones={[['', '', '', ''], ['a', '', '', ''], ['', 'a', '', '']]} />
+    <Op note="k=-1">→</Op>
+    <ArrayFig data={[4, 9]} tones={['a', 'a']} note="길이 2" />
+  </FigRow>
+</Fig>
+
+`k`번째 대각선은 열 번호에서 행 번호를 뺀 값이 `k`인 원소로 이루어져요. 위 행렬의 모든 대각선을 적으면 이래요.
+
+| `k` | `diagonal(x, k=…)` | `trace(x, k=…)` |
+|:---:|:---:|:---:|
+| `3` | `[3]` | 3.0 |
+| `2` | `[2, 7]` | 9.0 |
+| `1` | `[1, 6, 11]` | 18.0 |
+| `0` | `[0, 5, 10]` | 15.0 |
+| `-1` | `[4, 9]` | 13.0 |
+| `-2` | `[8]` | 8.0 |
+| `4` 이상, `-3` 이하 | `[]` (길이 0) | 0.0 |
+
+`k`가 행렬 밖으로 나가도 에러가 아니에요. `diagonal`은 길이 0인 배열을, `trace`는 `0`을 돌려줘요.
+
+```python
+>>> sd.linalg.diagonal(x, k=4)
+array([], dtype=int64)
+>>> sd.linalg.trace(x, k=4)
+0.0
+```
+
+위에서 본 것처럼 정사각 행렬이 아니어도 돼요. 주대각선의 길이는 행 수와 열 수 중 작은 쪽이에요.
+
+## `diagonal`: 대각선 꺼내기
+
+`diagonal`은 원소를 꺼내기만 해요. 계산을 하지 않으니 입력의 dtype이 그대로 유지돼요. 정수 행렬에서는 정수 배열, bool 행렬에서는 bool 배열이 나와요.
+
+```python
+>>> sd.linalg.diagonal(sd.asarray([[1, 2], [3, 4]]))
+array([1, 4], dtype=int64)
+>>> sd.linalg.diagonal(sd.asarray([[True, False], [False, True]]))
+array([True, True], dtype=bool)
+```
+
+결과는 언제나 **복사본**이에요. 원래 행렬과 메모리를 나눠 쓰는 [뷰](/api/array/views/)가 아니에요. 그래서 결과를 고쳐도 원래 행렬은 그대로예요.
+
+```python
+>>> d = sd.linalg.diagonal(y)
+>>> d[0] = 100.0
+>>> d
+array([100.0,   5.0,   9.0], dtype=float64)
+>>> y[0, 0]
+1.0
+```
+
+<Callout type="warn" title="diagonal로는 대각선을 고칠 수 없어요">
+  행렬의 대각선 원소를 바꾸고 싶으면 `diagonal`의 결과에 쓰지 말고, 행렬에 직접 인덱스로 대입하세요. 방법은 아래 [대각선을 고치려면](#대각선을-고치려면)에 있어요.
+</Callout>
+
+## `trace`: 대각선의 합
+
+`trace`는 대각선 원소를 모두 더해요. 정사각 행렬 $A$가 N×N이면
+
+$$\operatorname{tr}(A) = \sum_{i=1}^{N} a_{ii} = a_{11} + a_{22} + \cdots + a_{NN}$$
+
+이에요. `k`를 주면 그 대각선의 합이에요.
+
+```python
+>>> sd.linalg.trace(x)
+15.0
+>>> sd.linalg.trace(x, k=1)
+18.0
+```
+
+### 대각합은 어디에 쓰나요
+
+단순한 합이지만 선형대수에서 자주 나와요. 행렬의 여러 성질이 이 수 하나에 담기기 때문이에요.
+
+| 성질 | 식 |
+|---|:---:|
+| 고유값을 모두 더한 값과 같아요 | $\operatorname{tr}(A) = \sum_i \lambda_i$ |
+| 더하기와 상수배를 그대로 따라요 | $\operatorname{tr}(A + B) = \operatorname{tr}(A) + \operatorname{tr}(B)$ |
+| 곱의 순서를 바꿔도 같아요 | $\operatorname{tr}(AB) = \operatorname{tr}(BA)$ |
+| 전치해도 같아요 | $\operatorname{tr}(A^{\mathsf T}) = \operatorname{tr}(A)$ |
+| 프로베니우스 노름의 제곱 | $\operatorname{tr}(A^{\mathsf T} A) = \|A\|_F^2$ |
+
+행렬곱은 순서를 바꾸면 결과가 달라지지만 대각합은 같아요.
+
+```python
+>>> a = sd.asarray([[1.0, 2.0], [3.0, 4.0]])
+>>> b = sd.asarray([[0.0, 1.0], [5.0, 2.0]])
+>>> a @ b
+array([[10.0,  5.0],
+       [20.0, 11.0]], dtype=float64)
+>>> b @ a
+array([[ 3.0,  4.0],
+       [11.0, 18.0]], dtype=float64)
+>>> sd.linalg.trace(a @ b)
+21.0
+>>> sd.linalg.trace(b @ a)
+21.0
+```
+
+고유값과의 관계도 확인해 볼게요. 고유값의 합은 대각합, 고유값의 곱은 [행렬식](/api/linalg/det/)이에요.
+
+```python
+>>> c = sd.asarray([[2.0, 1.0], [1.0, 2.0]])
+>>> sd.linalg.eigvalsh(c)
+array([1.0, 3.0], dtype=float64)
+>>> sd.linalg.trace(c)
+4.0
+>>> sd.linalg.det(c)
+3.0
+```
+
+고유값 `1`과 `3`을 더하면 4, 곱하면 3이에요. 고유값을 구하는 것은 무거운 계산이지만 대각합은 덧셈 몇 번이면 돼요. 그래서 "고유값의 합"이 필요한 식에서는 `trace`를 써요. 통계에서 공분산 행렬의 대각합은 모든 변수의 분산을 더한 전체 분산이에요.
+
+### 결과는 실수예요
+
+`trace`는 정수 행렬을 넣어도 실수를 돌려줘요. `sd.linalg`의 다른 함수와 같은 규칙이에요.
+
+```python
+>>> n = sd.asarray([[1, 2], [3, 4]])
+>>> sd.linalg.trace(n)
+5.0
+>>> sd.linalg.trace(sd.asarray([[True, False], [False, True]]))
+2.0
+```
+
+복소수 행렬이면 결과도 복소수예요.
+
+```python
+>>> z = sd.asarray([[1+2j, 3], [4, 5-1j]])
+>>> sd.linalg.trace(z)
+(6+1j)
+```
+
+### `dtype`: 정수로 더하기
+
+정수 합이 필요하면 `dtype=sd.int64`를 주세요. 원소를 그 종류로 바꾼 다음 더해요.
+
+```python
+>>> sd.linalg.trace(n, dtype=sd.int64)
+5
+```
+
+정수가 아주 크면 어느 쪽으로 더하느냐에 따라 결과가 달라져요. float64는 $2^{53}$(약 $9 \times 10^{15}$)보다 큰 정수를 하나하나 구별하지 못해요.
+
+```python
+>>> big = sd.asarray([[2**53, 0], [0, 1]])
+>>> sd.linalg.trace(big)
+9007199254740992.0
+>>> sd.linalg.trace(big, dtype=sd.int64)
+9007199254740993
+```
+
+기본값으로 구한 합은 마지막 `1`을 잃었어요. `dtype=sd.int64`는 정확해요.
+
+`dtype`의 뜻은 [`sd.sum`](/api/array/sum/)의 `dtype`과 같아서, 원소를 먼저 그 종류로 바꾸고 나중에 더해요. 실수 행렬에 `dtype=sd.int64`를 주면 원소마다 소수점 아래를 버린 다음 더해요.
+
+```python
+>>> f = sd.asarray([[1.9, 0.0], [0.0, 1.9]])
+>>> sd.linalg.trace(f)
+3.8
+>>> sd.linalg.trace(f, dtype=sd.int64)
+2
+```
+
+합 `3.8`을 정수로 바꾼 `3`이 아니라, `1.9`를 각각 `1`로 바꿔서 더한 `2`예요.
+
+쓸 수 없는 조합이 둘 있어요. 복소수 행렬에 실수 dtype을 주면 허수부를 잃게 되므로 `TypeError`예요. 실수부만 더하고 싶으면 [`sd.real`](/api/array/complex/)로 먼저 꺼내세요.
+
+```python
+>>> sd.linalg.trace(z, dtype=sd.float64)
+Traceback (most recent call last):
+    ...
+TypeError: trace(): cannot convert complex128 to float64: the imaginary part would be lost (take the real part explicitly)
+>>> sd.linalg.trace(sd.real(z), dtype=sd.float64)
+6.0
+```
+
+`dtype=sd.bool`도 `TypeError`예요. bool로는 합을 담을 수 없기 때문이에요.
+
+```python
+>>> sd.linalg.trace(n, dtype=sd.bool)
+Traceback (most recent call last):
+    ...
+TypeError: trace(): cannot accumulate in bool; use any() or all()
+```
+
+## 여러 행렬을 한 번에
+
+두 함수 모두 마지막 두 축을 행렬로 봐요. 3차원 이상의 배열은 행렬 여러 개를 쌓은 것으로 보고, 행렬마다 대각선을 하나씩 다뤄요.
+
+```python
+>>> stack = sd.reshape(sd.arange(18), (2, 3, 3))
+>>> stack
+array([[[ 0,  1,  2],
+        [ 3,  4,  5],
+        [ 6,  7,  8]],
+
+       [[ 9, 10, 11],
+        [12, 13, 14],
+        [15, 16, 17]]], dtype=int64)
+>>> sd.linalg.diagonal(stack)
+array([[ 0,  4,  8],
+       [ 9, 13, 17]], dtype=int64)
+>>> sd.linalg.trace(stack)
+array([12.0, 39.0], dtype=float64)
+```
+
+| 함수 | 입력 모양 | 결과 모양 |
+|---|:---:|:---:|
+| `diagonal` | `(..., M, N)` | `(..., L)` (L은 대각선의 길이) |
+| `trace` | `(..., M, N)` | `(...)` |
+
+행렬로 볼 두 축을 고르는 옵션은 없어요. 다른 축을 행렬로 보고 싶으면 [`sd.permute_dims`](/api/array/permute_dims/)로 그 두 축을 맨 뒤로 옮긴 다음 부르세요.
+
+## 조심할 점
+
+### `trace`와 `sd.sum(diagonal(x))`는 dtype이 달라요
+
+두 식은 같은 원소를 더하지만, 정수 행렬에서 결과의 종류가 달라요. `trace`는 실수로, `sd.sum`은 정수로 더해요.
+
+```python
+>>> sd.linalg.trace(n)
+5.0
+>>> sd.sum(sd.linalg.diagonal(n))
+5
+>>> sd.linalg.trace(n, dtype=sd.int64)
+5
+```
+
+| 식 | int64 행렬 | bool 행렬 | float64 행렬 |
+|---|:---:|:---:|:---:|
+| `trace(x)` | float | float | float |
+| `trace(x, dtype=sd.int64)` | int | int | int (소수점 아래를 버림) |
+| `sd.sum(diagonal(x))` | int | int | float |
+
+실수 행렬에서는 `trace(x)`와 `sd.sum(diagonal(x))`의 결과가 마지막 자리까지 같아요. 행렬 여러 개를 쌓은 배열에서는 `sd.sum(diagonal(x), axis=-1)`처럼 마지막 축을 따라 더해야 `trace`와 같은 모양이 돼요.
+
+```python
+>>> sd.sum(sd.linalg.diagonal(stack), axis=-1)
+array([12, 39], dtype=int64)
+```
+
+### NaN과 inf를 검사하지 않아요
+
+두 함수는 꺼내고 더하기만 하니 NaN과 inf를 그대로 흘려보내요. `sd.linalg`의 분해·풀이 함수가 NaN에서 에러를 내는 것과 달라요.
+
+```python
+>>> sd.linalg.trace(sd.asarray([[sd.nan, 1.0], [1.0, 2.0]]))
+nan
+```
+
+### 1차원 배열은 받지 않아요
+
+행렬이 아니면 대각선이 없어요.
+
+```python
+>>> sd.linalg.diagonal(sd.asarray([1.0, 2.0, 3.0]))
+Traceback (most recent call last):
+    ...
+ValueError: diagonal(): 'x' must have at least 2 dimensions, got 1
+```
+
+### `k`는 이름을 붙여서, 정수로
+
+`k`와 `dtype`은 반드시 이름과 함께 써야 해요. `diagonal(x, 1)`처럼 자리로 넘기면 `TypeError`예요. `k`에는 정수만 쓸 수 있어요. `1.0`이나 `True`는 받지 않아요.
+
+```python
+>>> sd.linalg.diagonal(x, k=1.0)
+Traceback (most recent call last):
+    ...
+TypeError: diagonal(): 'k' must be an int, not float
+```
+
+### 배열의 메서드가 아니에요
+
+두 함수는 `sd.linalg` 안에만 있어요. `sd.diagonal`, `sd.trace`나 `x.diagonal()`, `x.trace()`는 없어요. 희소 행렬에는 같은 일을 하는 메서드 `A.diagonal(k=)`, `A.trace(k=)`가 있어요([아래](#희소-행렬에서는)).
+
+```python
+>>> hasattr(sd, "trace"), hasattr(x, "diagonal")
+(False, False)
+```
+
+## 인덱싱과의 차이, 대각선을 다루는 다른 방법
+
+대각선 원소 **하나**는 [인덱싱](/api/array/indexing/)으로 꺼내요.
+
+```python
+>>> y[1, 1]
+5.0
+```
+
+대각선 **전체**도 정수 배열 둘로 인덱싱하면 꺼낼 수 있어요. 행 번호와 열 번호를 똑같이 `0, 1, 2`로 주는 것이에요.
+
+```python
+>>> i = sd.arange(3)
+>>> y[i, i]
+array([1.0, 5.0, 9.0], dtype=float64)
+```
+
+결과는 `diagonal(y)`와 같아요. 그래도 `diagonal`이 더 간단하고, 정사각이 아닌 행렬의 길이 계산, `k`로 옮긴 대각선, 여러 행렬을 쌓은 배열을 알아서 처리해 줘요. 읽을 때는 `diagonal`을 쓰세요.
+
+### 대각선을 고치려면
+
+`diagonal`의 결과는 복사본이라서, 고치는 일에는 인덱싱이 필요해요. 같은 정수 배열 인덱스에 대입하면 돼요.
+
+```python
+>>> w = sd.asarray([[1.0, 2.0, 3.0],
+...                 [4.0, 5.0, 6.0],
+...                 [7.0, 8.0, 9.0]])
+>>> w[i, i] = 0.0
+>>> w
+array([[0.0, 2.0, 3.0],
+       [4.0, 0.0, 6.0],
+       [7.0, 8.0, 0.0]], dtype=float64)
+```
+
+### 대각선으로 행렬을 만들려면
+
+거꾸로, 벡터를 대각선에 놓은 행렬은 [`sd.diag`](/api/array/diag/)가 만들어요. `diag`는 `diagonal`의 반대 방향이라서, `diagonal(sd.diag(v, k=k), k=k)`는 `v`예요.
+
+```python
+>>> sd.diag(sd.asarray([1.0, 2.0, 3.0]))
+array([[1.0, 0.0, 0.0],
+       [0.0, 2.0, 0.0],
+       [0.0, 0.0, 3.0]], dtype=float64)
+```
+
+대각선과 그 위쪽이나 아래쪽 삼각형을 행렬 모양 그대로 남기고 싶으면 [`sd.tril`과 `sd.triu`](/api/array/tril-triu/)를 써요.
+
+### 정리
+
+| 하고 싶은 일 | 쓸 것 | 결과 |
+|---|---|---|
+| 대각선 원소를 배열로 꺼내기 | `diagonal(x)` | 1차원 배열(복사본), 입력의 dtype |
+| 대각선 원소의 합 | `trace(x)` | 숫자 하나, 정수 입력에서도 실수 |
+| 대각선 원소의 합을 정수로 | `trace(x, dtype=sd.int64)` 또는 `sd.sum(diagonal(x))` | 정수 |
+| 대각선 원소 하나 | `x[i, i]` | 숫자 하나 |
+| 대각선 원소 바꾸기 | `x[idx, idx] = 값` (`idx = sd.arange(n)`) | `x`가 제자리에서 바뀜 |
+| 벡터를 대각선에 놓은 행렬 | [`sd.diag(v)`](/api/array/diag/) | N×N 행렬 |
+| 대각선 아래쪽·위쪽 삼각형만 남기기 | `sd.tril(x)`, `sd.triu(x)` | 같은 모양의 행렬 |
+| 모든 원소의 합 | [`sd.sum(x)`](/api/array/sum/) | 대각선이 아니라 전체를 더해요 |
+
+## 희소 행렬에서는
+
+희소 행렬(0이 아닌 원소만 저장한 행렬)의 대각선은 메서드로 다뤄요. `A.diagonal(k=)`는 `k`번째 대각선을 밀집 1차원 배열로, `A.trace(k=)`는 그 합을 돌려주고, `A.setdiag(values, k=)`는 대각선을 그 자리에서 바꿔요([희소 배열의 대각](/api/sparse/sparray/#대각)). `k`의 뜻은 여기와 같아요.
+
+```python
+>>> S = sd.sparse.csr_array(sd.asarray([[1.0, 2.0], [3.0, 4.0]]))
+>>> S.diagonal(), S.trace()
+(array([1.0, 4.0], dtype=float64), 5.0)
+```
+
+희소 배열을 `sd.linalg.trace`나 `sd.linalg.diagonal`에 넣으면 그 메서드를 알려 주는 `TypeError`예요.
+
+```python
+>>> sd.linalg.trace(S)
+Traceback (most recent call last):
+    ...
+TypeError: trace(): 'x' must be an sd.ndarray, not csr_array; for a sparse array use A.trace()
+```
+
+실수와 복소수 행렬이면 `S.trace()`는 `sd.linalg.trace(S.toarray())`와 비트까지 같아요. 정수와 bool 행렬에서는 결과의 종류가 달라요. 희소 쪽의 `trace()`는 [`sd.sum`](/api/array/sum/)처럼 정수를 유지하고, `sd.linalg.trace`는 float64로 더해요.
+
+```python
+>>> N = sd.sparse.csr_array(sd.asarray([[1, 2], [3, 4]]))
+>>> N.trace(), sd.linalg.trace(N.toarray())
+(5, 5.0)
+```
+
+## numpy·scipy를 아는 분께
+
+- 대각선 위치를 고르는 인자의 이름이 `offset`이 아니라 `k`이고 keyword-only예요.
+- `diagonal`은 복사본을 돌려줘요. numpy는 원래 배열을 가리키는 읽기 전용 뷰를 돌려줘요.
+- **정수·bool 행렬의 `trace`는 float64예요.** numpy는 정수를 유지해요. 정수 합이 필요하면 `dtype=sd.int64`를 주세요.
+- `axis1`, `axis2`는 없어요. 언제나 마지막 두 축이 행렬이에요(`np.linalg.diagonal`, `np.linalg.trace`와 같아요).
+- `sd.diagonal`, `sd.trace`와 배열 메서드 `x.diagonal()`, `x.trace()`는 없어요. [`sd.diag`](/api/array/diag/)는 벡터로 행렬을 만들기만 하고, 행렬을 넣으면 대각선을 읽지 않고 `ValueError`예요.
+- 행렬 하나의 `trace`는 numpy 스칼라가 아니라 Python `float`·`int`·`complex`예요.

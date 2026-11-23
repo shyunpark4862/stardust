@@ -1,0 +1,337 @@
+---
+title: 표본의 규칙
+group: 고정·표본 규칙
+order: 3
+summary: 이미 있는 표본으로 적분하는 다섯 규칙의 식을 설명해요. 사다리꼴, 점의 수가 짝수일 때 마지막 구간을 보정하는 Simpson, Richardson 외삽의 표로 차수를 올리는 Romberg, 구간마다 이차식을 적분해 이어 더하는 누적 Simpson을 다루고, 줄을 읽는 세 가지 길과 줄마다의 합이 지금 축과 스레드에 상관없이 같은 까닭도 설명해요.
+seeAlso: [overview, newton-cotes, gauss-legendre, accuracy-performance]
+---
+
+## 한눈에 보기
+
+[`trapezoid`](/api/integrate/trapezoid/), [`simpson`](/api/integrate/simpson/), [`romb`](/api/integrate/romb/), [`cumulative_trapezoid`](/api/integrate/cumulative_trapezoid/), [`cumulative_simpson`](/api/integrate/cumulative_simpson/)은 함수를 부르지 않고 이미 있는 값 $y_i$(점 $x_i$나 간격 dx)로 적분해요. 다섯 규칙과 `fixed_quad`의 가중 합이 `csrc/integrate/samples.cpp`의 커널 하나를 함께 써요. Python 층 `src/stardust/integrate/_samples.py`는 입력을 바꾸고(`sd.ndarray`, 수의 시퀀스, numpy 배열, frame의 `Series`) `x`·`dx`·`axis`·`initial`의 모양을 검사해요.
+
+커널은 줄(lane) 단위로 일해요. 줄은 `axis`를 따라간 y 한 줄과, 그 줄의 x, 간격 dx, 처음 값이에요. 줄마다 항을 scipy 1.18.1의 식과 연산 순서로 만들고, 항의 합만 sd의 합으로 더해요.
+
+## 사다리꼴
+
+$$
+\int y\,dx \;\approx\; \sum_{i} d_i\,\frac{y_{i+1} + y_i}{2}, \qquad d_i = x_{i+1} - x_i \ \text{또는 dx}
+$$
+
+항은 scipy와 같이 `d * (y[i + 1] + y[i]) / 2.0`의 순서예요. 점이 하나 이하이면 빈 합 0이에요. 간격 $h$의 사다리꼴은 오차가 $h^2$의 거듭제곱 급수(Euler–Maclaurin)라서, 아래의 Romberg가 그 성질로 차수를 올려요.
+
+## Simpson
+
+### 점이 홀수 개일 때
+
+두 구간씩 묶어 세 점을 지나는 이차식을 적분해요. 같은 간격 $h$면 $\tfrac{h}{3}(y_0 + 4y_1 + y_2)$이고, 간격이 $h_0, h_1$로 다르면
+
+$$
+\int_{x_0}^{x_2} \approx \frac{h_0 + h_1}{6}\Bigl[\Bigl(2 - \frac{h_1}{h_0}\Bigr)y_0 + \frac{(h_0 + h_1)^2}{h_0 h_1}\,y_1 + \Bigl(2 - \frac{h_0}{h_1}\Bigr)y_2\Bigr]
+$$
+
+예요. 간격이 0인 구간이 있으면 그 몫을 0으로 둬요(scipy의 `apply_where`와 같아요).
+
+### 점이 짝수 개일 때
+
+짝수 개의 점은 구간이 홀수 개라 두 개씩 묶이지 않아요. 앞의 구간들은 Simpson으로 묶고, 남는 마지막 구간 $[x_{n-2}, x_{n-1}]$은 마지막 세 점을 지나는 이차식을 그 구간에서만 적분해 더해요(Cartwright 2017의 식).
+
+$$
+\int_{x_{n-2}}^{x_{n-1}} \approx \alpha\,y_{n-1} + \beta\,y_{n-2} - \eta\,y_{n-3}, \quad
+\alpha = \frac{2h_1^2 + 3h_0h_1}{6(h_0 + h_1)},\ \beta = \frac{h_1^2 + 3h_0h_1}{6h_0},\ \eta = \frac{h_1^3}{6h_0(h_0 + h_1)}
+$$
+
+$h_0, h_1$은 마지막 두 간격이에요. 같은 간격이면 $\tfrac{h}{12}(5y_{n-1} + 8y_{n-2} - y_{n-3})$이에요. 점이 둘뿐이면 사다리꼴이에요.
+
+```cpp
+    // csrc/integrate/samples.cpp
+    T simpson(const Lane& p, bool mt) const {
+        const std::int64_t n = L.n;
+        const double d = dx(p);
+        if (n <= 1) return T(0);
+        if (n % 2 == 1) return simpson_basic(p, n - 2, d, mt);
+        if (n == 2) {
+            const T val = 0.5 * h(p, 0, d) * (y(p, 1) + y(p, 0));
+            return T(0) + val;
+        }
+        T result = simpson_basic(p, n - 3, d, mt);
+        // the last interval by Cartwright's correction (scipy 1.11's form)
+        const double h0 = h(p, n - 3, d), h1 = h(p, n - 2, d);
+        double num = 2 * (h1 * h1) + 3 * h0 * h1, den = 6 * (h1 + h0);
+        const double alpha = den != 0 ? num / den : 0.;
+        num = h1 * h1 + 3.0 * h0 * h1;
+        den = 6 * h0;
+        const double beta = den != 0 ? num / den : 0.;
+        num = 1 * std::pow(h1, 3.0);
+        den = 6 * h0 * (h0 + h1);
+        const double eta = den != 0 ? num / den : 0.;
+        result = result + (alpha * y(p, n - 1) + beta * y(p, n - 2) - eta * y(p, n - 3));
+        return result + T(0);
+    }
+```
+
+Simpson은 대칭 덕분에 삼차식까지 정확하지만, 마지막 구간의 보정은 이차식이라 점이 짝수 개면 삼차식에서 틀려요.
+
+```python
+>>> x = sd.linspace(0, 1, 5)
+>>> sd.integrate.simpson(x**3, x), sd.integrate.simpson(x**2, x)
+(0.25, 0.3333333333333333)
+>>> x = sd.linspace(0, 1, 6)
+>>> sd.integrate.simpson(x**3, x), sd.integrate.simpson(x**2, x)
+(0.2504, 0.3333333333333333)
+>>> x = sd.asarray([0.0, 0.1, 0.5, 0.6, 1.0])
+>>> sd.integrate.simpson(x**2, x)
+0.3333333333333333
+```
+
+## Romberg
+
+`romb`은 $2^k + 1$개의 같은 간격 점에서 Romberg 적분을 해요. 사다리꼴의 오차는 $T(h) = I + c_1h^2 + c_2h^4 + \cdots$ 꼴이라, 간격을 반으로 줄인 두 값을 섞으면 $h^2$ 항이 지워져요(Richardson 외삽). 이것을 되풀이해요.
+
+$$
+R_{i,0} = \tfrac12\Bigl(R_{i-1,0} + h_i\sum_{\text{새 점}} y\Bigr), \qquad
+R_{i,j} = R_{i,j-1} + \frac{R_{i,j-1} - R_{i-1,j-1}}{4^j - 1}
+$$
+
+$R_{i,0}$은 구간 $2^i$개의 사다리꼴이고 앞 줄의 값에 이번에 더해지는 점(홀수 번째)만 더해요. $R_{i,1}$은 Simpson, $R_{i,2}$는 Boole 규칙과 같아요. 결과는 표의 마지막 $R_{k,k}$이고, 차수 $2k + 1$까지의 다항식을 정확히 적분해요.
+
+```cpp
+    // csrc/integrate/samples.cpp
+    T romb(const Lane& p, bool mt) const {
+        const std::int64_t intervals = L.n - 1;  // a power of 2 (checked by the caller)
+        int k = 0;
+        while ((std::int64_t{1} << k) < intervals) ++k;
+        double hh = static_cast<double>(intervals) * dx(p);
+        std::vector<T> prev(static_cast<std::size_t>(k) + 1), cur(prev.size());
+        prev[0] = (y(p, 0) + y(p, intervals)) / 2.0 * hh;
+        std::int64_t start = intervals, step = intervals;
+        for (int i = 1; i <= k; ++i) {
+            start >>= 1;
+            const std::int64_t terms = (intervals - start + step - 1) / step;
+            const std::int64_t s0 = start, st = step;
+            const T s = lane_sum<T>(terms, [&](std::int64_t j) { return y(p, s0 + j * st); }, mt);
+            step >>= 1;
+            cur[0] = 0.5 * (prev[0] + hh * s);
+            for (int j = 1; j <= i; ++j) {
+                const T pr = cur[static_cast<std::size_t>(j) - 1];
+                cur[static_cast<std::size_t>(j)] =
+                    pr + (pr - prev[static_cast<std::size_t>(j) - 1]) / (std::ldexp(1.0, 2 * j) - 1.0);
+            }
+            hh /= 2.0;
+            std::swap(prev, cur);
+        }
+        return prev[static_cast<std::size_t>(k)];
+    }
+```
+
+표는 두 줄만 들고 다녀요. 같은 17점에서 세 규칙을 견주면 차수의 차이가 보여요.
+
+```python
+>>> import math
+>>> x = sd.linspace(0, 1, 17)
+>>> for rule in (sd.integrate.trapezoid, sd.integrate.simpson, sd.integrate.romb):
+...     print(rule.__name__, f"{abs(rule(sd.exp(x), dx=1/16) - (math.e - 1)):.1e}")
+trapezoid 5.6e-04
+simpson 1.5e-07
+romb 3.3e-14
+>>> sd.integrate.romb(x**9, dx=1/16)
+0.1
+```
+
+## 누적 규칙
+
+### cumulative_trapezoid
+
+구간마다 사다리꼴 항을 만들고 이어 더해요. 결과의 k번째는 $\int_{x_0}^{x_{k+1}}$이에요. `initial`은 None이거나 0이고, 0이면 맨 앞에 넣기만 해요.
+
+### cumulative_simpson
+
+누적 Simpson은 "앞에서부터 Simpson으로 더한 값"을 점마다 내야 하는데, 두 구간씩 묶으면 홀수 번째 점에서 값이 없어요. 그래서 구간 하나하나에 이차식의 적분을 줘요. 구간 $[x_k, x_{k+1}]$의 몫은 세 점을 지나는 이차식을 그 구간에서만 적분한 것이고, 세 점은 짝수 번째 구간이면 $x_k, x_{k+1}, x_{k+2}$(왼쪽 식), 홀수 번째와 마지막 구간이면 $x_{k-1}, x_k, x_{k+1}$(오른쪽 식)이에요. 같은 간격이면 두 식 모두 $\tfrac{h}{12}(5f_1 + 8f_2 - f_3)$이에요. $f_1, f_2$는 그 구간의 두 끝(왼쪽 식은 $y_k, y_{k+1}$, 오른쪽 식은 $y_{k+1}, y_k$)이고 $f_3$은 구간 밖의 셋째 점이에요. 간격이 다르면 Cartwright의 식이에요.
+
+```cpp
+    // csrc/integrate/samples.cpp
+    T simpson_piece(const Lane& p, std::int64_t k, bool left, double d) const {
+        T f1, f2, f3;
+        double x21, x32;
+        if (left) {
+            f1 = y(p, k), f2 = y(p, k + 1), f3 = y(p, k + 2);
+            x21 = h(p, k, d), x32 = h(p, k + 1, d);
+        } else {
+            f1 = y(p, k + 1), f2 = y(p, k), f3 = y(p, k - 1);
+            x21 = h(p, k, d), x32 = h(p, k - 1, d);
+        }
+        if (!p.x) return x21 / 3 * (5.0 * f1 / 4.0 + 2.0 * f2 - f3 / 4.0);
+        const double x31 = x21 + x32;
+        const double x21_x31 = x21 / x31, x21_x32 = x21 / x32;
+        const double x21x21_x31x32 = x21_x31 * x21_x32;
+        const double c1 = 3 - x21_x31, c2 = 3 + x21x21_x31x32 + x21_x31, c3 = -x21x21_x31x32;
+        return x21 / 6 * (c1 * f1 + c2 * f2 + c3 * f3);
+    }
+
+    // the cumulative rules' term k (the integral over interval k, before the running sum)
+    T piece(const Lane& p, std::int64_t k, double d) const {
+        const std::int64_t n = L.n;
+        if (rule == kCumulativeTrapezoid || n < 3) return trapezoid_term(p, k, d);
+        const bool left = k % 2 == 0 && k != n - 2;  // the last interval only has a right formula
+        return simpson_piece(p, k, left, d);
+    }
+```
+
+scipy는 왼쪽 식을 모든 구간에, 오른쪽 식을 뒤집은 배열에 계산한 뒤 번갈아 고르는데, sd는 구간마다 필요한 식 하나만 계산해요. 고르는 결과와 식의 산술은 같아요. 이차식까지는 모든 점에서 정확해요.
+
+```python
+>>> sd.integrate.cumulative_simpson(sd.asarray([0.0, 1, 4, 9, 16]), initial=0).tolist()
+[0.0, 0.3333333333333333, 2.6666666666666665, 9.0, 21.333333333333332]
+```
+
+$y = x^2$($x = 0, \dots, 4$)의 누적은 $x^3/3$이에요. `cumulative_simpson`의 `initial`은 scipy처럼 모든 누적값에 더한 뒤 맨 앞에도 넣어요.
+
+## 합과 스레드
+
+줄마다 항은 sd의 pairwise 합(`csrc/base/pairwise.hpp`: 누산기 16개, 512개 단위의 잎, `sd.sum`이 연속 축에서 하는 나무)으로 첨자 차례대로 더하고, 누적은 `cumulative_sum`의 스캔으로 이어 더해요([리덕션](/internals/array/reductions/)). 항을 만드는 일은 줄의 주소와 걸음으로 직접 읽어서, 축을 옮기거나 배열을 복사하지 않아요.
+
+### 줄을 읽는 길
+
+읽는 길은 셋이에요. 어느 길이든 같은 항을 같은 나무로 더하므로 줄의 값은 같은 비트예요.
+
+- **바이트 걸음.** 일반적인 길이에요. 원소마다 줄의 주소에 걸음을 곱해 더한 자리에서 값을 꺼내요.
+- **형이 있는 포인터.** float64 줄이 연속이면(`trapezoid`의 x 없음·연속인 x, 홀수 점의 `simpson`, `fixed_quad`의 가중 합) `double*`로 읽어요. 그러면 pairwise 잎의 사슬 16개가 벡터로 읽혀요.
+
+```cpp
+                    // csrc/integrate/samples.cpp
+                    // contiguous float64: typed loads, so the pairwise leaf's chains load vectors
+                    // (the same terms in the same tree: the same bits)
+                    if (L.ys == static_cast<std::int64_t>(sizeof(double))) {
+                        const double* yp = reinterpret_cast<const double*>(p.y);
+                        if (!p.x)
+                            return lane_sum<T>(
+                                m, [yp, d](std::int64_t i) { return d * (yp[i + 1] + yp[i]) / 2.0; }, mt
+                            );
+                        if (L.xs == static_cast<std::int64_t>(sizeof(double))) {
+                            const double* xp = reinterpret_cast<const double*>(p.x);
+                            return lane_sum<T>(
+                                m, [yp, xp](std::int64_t i) { return (xp[i + 1] - xp[i]) * (yp[i + 1] + yp[i]) / 2.0; },
+                                mt
+                            );
+                        }
+```
+
+- **나란한 줄.** C 순서 행렬의 `axis=0`처럼 줄 여러 개가 메모리에서 나란하면(`trapezoid`, x 없음, `dx`가 수), 줄마다 걸음 하나씩 띄어 읽는 대신 이웃한 줄 64개를 한 덩어리로 묶어 행마다 연속으로 읽어요. 덩어리의 줄마다 `pairwise_sum`과 같은 잎(사슬 16개, 접기, 꼬리)과 같은 나눔으로 더해요.
+
+```cpp
+// csrc/integrate/samples.cpp
+// trapezoid on lanes that lie side by side in memory (the reduced axis outer, as axis=0 of a
+// C-ordered matrix): a block of `w` adjacent lanes is summed row by row, each lane through the
+// very same pairwise tree and leaf as pairwise_sum (base/pairwise.hpp: the 16 chains, their fold,
+// the tail, the splits), so every lane has the bits of the lane-at-a-time sum; the rows are read
+// contiguously across the block instead of one strided element per lane.
+struct SideBySide {
+    const std::byte* y;  // lane 0's first element
+    std::int64_t ys;     // bytes between rows (the reduced axis)
+    std::int64_t w;      // lanes in the block (adjacent doubles)
+    double d;
+
+    double term(std::int64_t i, std::int64_t l) const {
+        const double* r0 = reinterpret_cast<const double*>(y + i * ys);
+        const double* r1 = reinterpret_cast<const double*>(y + (i + 1) * ys);
+        return d * (r1[l] + r0[l]) / 2.0;
+    }
+    // out[l] = the pairwise leaf of terms [b, b + m), m <= kBlock
+    void leaf(std::int64_t b, std::int64_t m, double* out, double* r) const {
+        constexpr int K = pairwise::kLanes;
+        if (m < K) {
+            for (std::int64_t l = 0; l < w; ++l) out[l] = 0.;
+            for (std::int64_t i = 0; i < m; ++i) {
+                const double* r0 = reinterpret_cast<const double*>(y + (b + i) * ys);
+                const double* r1 = reinterpret_cast<const double*>(y + (b + i + 1) * ys);
+                for (std::int64_t l = 0; l < w; ++l) out[l] += d * (r1[l] + r0[l]) / 2.0;
+            }
+            return;
+        }
+        // r[j * w + l]: chain j of lane l
+        for (int j = 0; j < K; ++j) {
+            const double* r0 = reinterpret_cast<const double*>(y + (b + j) * ys);
+            const double* r1 = reinterpret_cast<const double*>(y + (b + j + 1) * ys);
+            double* rj = r + j * w;
+            for (std::int64_t l = 0; l < w; ++l) rj[l] = d * (r1[l] + r0[l]) / 2.0;
+        }
+        std::int64_t i = K;
+        for (; i + K <= m; i += K)
+            for (int j = 0; j < K; ++j) {
+                const double* r0 = reinterpret_cast<const double*>(y + (b + i + j) * ys);
+                const double* r1 = reinterpret_cast<const double*>(y + (b + i + j + 1) * ys);
+                double* rj = r + j * w;
+                for (std::int64_t l = 0; l < w; ++l) rj[l] += d * (r1[l] + r0[l]) / 2.0;
+            }
+        for (int st = 1; st < K; st *= 2)  // fold_lanes, lane by lane
+            for (int j = 0; j < K; j += 2 * st) {
+                double* a = r + j * w;
+                const double* c = r + (j + st) * w;
+                for (std::int64_t l = 0; l < w; ++l) a[l] += c[l];
+            }
+        for (std::int64_t l = 0; l < w; ++l) out[l] = r[l];
+        for (; i < m; ++i) {
+            const double* r0 = reinterpret_cast<const double*>(y + (b + i) * ys);
+            const double* r1 = reinterpret_cast<const double*>(y + (b + i + 1) * ys);
+            for (std::int64_t l = 0; l < w; ++l) out[l] += d * (r1[l] + r0[l]) / 2.0;
+        }
+    }
+    // pairwise::tree over terms [b, b + m), lane by lane; scratch: w * (16 + 2 * depth) doubles
+    void tree(std::int64_t b, std::int64_t m, double* out, double* scratch) const {
+        if (m <= pairwise::kBlock) {
+            leaf(b, m, out, scratch);
+            return;
+        }
+        const std::int64_t m2 = pairwise::split(m);
+        double* left = scratch;
+        double* right = scratch + w;
+        tree(b, m2, left, scratch + 2 * w);
+        tree(b + m2, m - m2, right, scratch + 2 * w);
+        for (std::int64_t l = 0; l < w; ++l) out[l] = left[l] + right[l];
+    }
+};
+```
+
+`leaf`의 `r[j * w + l]`이 줄 l의 사슬 j예요. 한 줄씩 더하는 `pairwise_sum`과 사슬, 접는 차례, 꼬리, 나무의 나눔이 모두 같아서, 덩어리로 읽어도 줄의 값은 한 줄씩 더한 것과 같은 비트예요.
+
+그래서 지금은 줄의 값이 그 줄의 수에만 달려 있어요. 축이 어디에 있든, 배열이 C 순서이든 전치이든 띄엄띄엄한 뷰이든, 스레드가 몇 개이든 같은 비트예요(약속은 아니에요. 약속은 같은 기계, 같은 스레드 수에서 실행마다 같은 비트예요).
+
+```python
+>>> y = sd.asarray([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+>>> sd.integrate.trapezoid(y, axis=0).tolist(), sd.integrate.trapezoid(y.T, axis=1).tolist()
+([2.5, 3.5, 4.5], [2.5, 3.5, 4.5])
+```
+
+### 스레드
+
+일(줄 수 × 줄의 길이)이 $2^{15}$ 이상이면 GIL을 놓아요. 줄이 둘 이상이면 줄을 스레드에 나누고(나란한 줄은 64줄 덩어리를), 줄이 하나이고 길면 같은 나무의 부분합을 스레드에 나눠요. 나무의 모양이 같으니 결과도 같아요. 풀에 나눌 때는 작업 하나의 대략 시간을 함께 넘겨서 긴 작업 몇 개가 처음부터 모든 일꾼을 깨우게 해요. GIL을 놓은 동안에는 Python 객체를 만들지 않아요. 나란한 줄의 덩어리 합은 GIL을 놓는 범위(`Unlocked`) 안에서 돌고, 결과 배열을 Python 객체로 감싸는 `wrap`은 그 범위가 닫혀 GIL을 다시 쥔 뒤에 불러요.
+
+```cpp
+            // csrc/integrate/samples.cpp
+            {
+                // the GIL comes back at the end of this scope: wrap() below makes a Python object
+                parallel::Unlocked unlocked(work >= kParallelThreshold);
+                if (blocks >= 2 && work >= kParallelThreshold && parallel::available()) {
+                    parallel::parallel_for(
+                        blocks,
+                        [&](std::int64_t bi) {
+                            std::vector<double> buf(scratch);
+                            block(bi, buf);
+                        },
+                        kSideLanes * (n - 1) / 4  // about 0.25 ns per term
+                    );
+                } else {
+                    std::vector<double> buf(scratch);
+                    for (std::int64_t bi = 0; bi < blocks; ++bi) block(bi, buf);
+                }
+            }
+            return wrap(std::move(out));
+```
+
+복소수 y는 실수 계수를 실수부와 허수부에 따로 곱해요. numpy는 계수를 복소수로 올려 곱해서, 한쪽 부분이 inf나 NaN일 때만 결과가 달라요.
+
+## scipy와 같은 점, 다른 점
+
+항의 식과 연산 순서는 scipy와 같고, 합의 순서만 달라요. numpy의 합은 누산기 8개이고 sd는 16개예요. 그래서 scipy로 기록한 값 65개 가운데 59개가 비트까지 같고, 나머지 여섯(긴 줄의 `trapezoid`·`simpson`·`romb`와 2차원 `trapezoid`)은 끝자리가 상대 $2.6 \times 10^{-16}$ 안에서 달라요. 누적은 둘 다 차례대로 더해 모두 같아요.
+
+정확도의 계약은 이산화 오차가 아니라 "그 규칙의 식을 같은 double에서 정확히 계산한 값"과의 거리예요. 식이 유리 연산뿐이라 참값은 `fractions.Fraction`으로 정확히 만들고, 오차가 $c\,\varepsilon\,S$ 안이어야 해요. $S = \sum\lvert d_i\rvert(\lvert y_i\rvert + \lvert y_{i+1}\rvert)$는 항의 크기이고, $c$는 합이면 $\lceil\log_2 n\rceil + 10$(pairwise 나무의 깊이), 누적의 k번째 값이면 $k + 10$(스캔)이에요. 시험 모음 12벌에서 가장 큰 것이 한계의 0.05예요([정확도와 성능](/internals/integrate/accuracy-performance/)).

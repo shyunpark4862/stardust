@@ -1,0 +1,243 @@
+---
+kind: function
+title: Multinomial
+names: [Multinomial]
+group: 다변량 분포
+order: 3
+signatures:
+  - "sd.stats.Multinomial(*, n, p)"
+summary: n번 시행해서 각 결과가 몇 번씩 나오는지 세는 분포예요. 이항 분포를 결과가 셋 이상인 경우로 넓힌 것이에요.
+params:
+  - name: n
+    type: ndarray (...) 또는 Python 수
+    kind: keyword-only
+    desc: 시행 횟수. 0 이상의 정수여야 하고(float로 줘도 돼요), 정수가 아니거나 음수·inf·NaN이면 그 분포의 모든 메서드가 NaN이에요.
+  - name: p
+    type: ndarray (..., K)
+    kind: keyword-only
+    desc: K개 범주의 확률. 음수가 없고 합이 1에서 약 1.5e-8(√eps) 안이어야 해요. 그 안이면 합으로 나눠 써요. 그 밖이면 그 분포의 모든 메서드가 NaN이에요.
+returns:
+  type: Multinomial
+  desc: 분포 객체. 매개변수는 같은 이름의 읽기 전용 속성(n, p)으로, 준 값 그대로 남아 있어요.
+raises:
+  - type: TypeError
+    desc: 매개변수를 위치로 넘기거나 빠뜨렸을 때, p가 sd.ndarray가 아닐 때(리스트, tuple, numpy 배열도 TypeError예요), n이 실수도 sd.ndarray도 아닐 때(문자열, None 등), 복소수일 때.
+  - type: ValueError
+    desc: p가 0차원일 때, n과 p의 배치 축이 서로 브로드캐스트되지 않을 때.
+seeAlso: [binomial, dirichlet, sample]
+---
+import Callout from '../../../components/Callout.astro';
+
+## 어떤 분포인가요
+
+주사위를 12번 던져서 1부터 6까지 각 눈이 몇 번 나왔는지 센다고 해 볼게요. 결과는 (2, 1, 3, 2, 0, 4)처럼 합이 12인 개수 6개예요. 이런 "n번 해서 K가지 결과가 각각 몇 번 나왔나"의 분포가 **다항분포**(multinomial distribution)예요.
+
+- 설문에서 응답자 n명이 K개 보기 중 하나씩 고를 때, 보기별 응답 수
+- 문서의 단어 n개가 K개 범주 중 어디에 속하는지 셀 때, 범주별 개수
+- 유전자형 세 가지의 표본 내 개수
+
+K = 2이면 "성공 몇 번, 실패 몇 번"이라 [이항 분포](/api/stats/binomial/)와 같아요.
+
+분포는 시행 횟수 `n`과 범주별 확률 `p`로 정해요. 주사위라면 `n = 12`, `p = (1/6, …, 1/6)`이에요.
+
+```python
+>>> import stardust as sd
+>>> die = sd.stats.Multinomial(n=12, p=sd.full(6, 1 / 6))
+>>> die.pmf(sd.full(6, 2.0))
+0.00343828589391861
+>>> die.pmf(sd.asarray([12.0, 0.0, 0.0, 0.0, 0.0, 0.0]))
+4.5939365799778345e-10
+```
+
+모든 눈이 정확히 두 번씩 나올 확률은 0.34%예요. 가장 고르게 나오는 경우인데도 꽤 작아요. 12번 모두 1이 나올 확률은 $(1/6)^{12}$ ≈ 4.6e-10이에요.
+
+<Reference />
+
+## 만들기와 매개변수
+
+두 매개변수 모두 키워드로 꼭 줘야 해요. `p`는 `sd.ndarray`이고(리스트는 `TypeError`예요) 마지막 축 길이 K가 범주의 수예요. `n`은 Python 수나 배열이에요.
+
+```python
+>>> M = sd.stats.Multinomial(n=10, p=sd.asarray([0.2, 0.3, 0.5]))
+>>> M
+Multinomial(n=10, p=array([0.2, 0.3, 0.5], dtype=float64))
+```
+
+### p는 합으로 나눠 써요
+
+`p`의 합은 1이어야 하지만, 소수를 적다 보면 0.1 + 0.2 + 0.7처럼 합이 1에서 반올림만큼 벗어나기 쉬워요. 그래서 합이 1에서 √eps ≈ 1.5e-8 안이면 받아서 합으로 나눠 써요([`choice`](/api/random/choice/)의 `p`와 같은 규칙이에요). 그보다 많이 벗어나면 오타일 가능성이 커서 NaN이에요. 비율(2 : 3 : 5)을 그대로 넣어도 NaN이니, 확률로 바꿔서 주세요.
+
+```python
+>>> sd.stats.Multinomial(n=10, p=sd.asarray([0.2, 0.3, 0.5 + 1e-9])).pmf(sd.asarray([2.0, 3.0, 5.0]))
+0.08505
+>>> sd.stats.Multinomial(n=10, p=sd.asarray([0.2, 0.3, 0.6])).pmf(sd.asarray([2.0, 3.0, 5.0]))
+nan
+>>> sd.stats.Multinomial(n=10, p=sd.asarray([2.0, 3.0, 5.0])).pmf(sd.asarray([2.0, 3.0, 5.0]))
+nan
+```
+
+첫 줄은 합으로 나눈 `p`로 계산해서 정확한 `p`일 때와 같은 0.08505예요. 음수가 있는 `p`도 NaN이에요. 0인 확률은 괜찮아요. 그 범주는 언제나 0번 나와요.
+
+### n은 0 이상의 정수
+
+`n`은 float로 줘도 되지만 값은 정수여야 해요. 정수가 아니거나 음수, inf, NaN이면 그 분포의 모든 메서드가 NaN이에요. `n = 0`은 "한 번도 하지 않았다"는 뜻이라 모든 개수가 0인 점의 확률이 1이에요. 값이 하나뿐이라 엔트로피는 0이에요.
+
+```python
+>>> sd.stats.Multinomial(n=10.5, p=sd.asarray([0.5, 0.5])).mean()
+array([nan, nan], dtype=float64)
+>>> sd.stats.Multinomial(n=0, p=sd.asarray([0.5, 0.5])).pmf(sd.asarray([0.0, 0.0]))
+1.0
+>>> sd.stats.Multinomial(n=0, p=sd.asarray([0.5, 0.5])).entropy()
+0.0
+```
+
+### 배치
+
+`n`의 모양 (...)과 `p`의 앞 축 (...)이 서로 브로드캐스트해서 분포 여러 개를 만들어요. 규칙은 [`MultivariateNormal`의 배치](/api/stats/multivariate-normal/#여러-분포를-한-번에-배치)와 같아요.
+
+```python
+>>> Mb = sd.stats.Multinomial(n=sd.asarray([10.0, 20.0]), p=sd.asarray([0.2, 0.3, 0.5]))
+>>> Mb.pmf(sd.asarray([2.0, 3.0, 5.0]))
+array([0.08505,     0.0], dtype=float64)
+>>> Mb.mean()
+array([[ 2.0,  3.0,  5.0],
+       [ 4.0,  6.0, 10.0]], dtype=float64)
+```
+
+(2, 3, 5)는 합이 10이라 `n = 20`인 분포에서는 확률이 0이에요.
+
+## 확률질량함수
+
+개수 $x = (x_1, \dots, x_K)$가 나올 확률은 이래요.
+
+$$
+P(X = x) = \frac{n!}{x_1!\,x_2!\cdots x_K!}\; p_1^{x_1} p_2^{x_2} \cdots p_K^{x_K},
+\qquad x_i \ge 0 \text{ 정수},\ \sum_i x_i = n
+$$
+
+앞의 분수는 n번의 시행 중 어느 시행이 어느 범주가 될지 고르는 방법의 수이고, 뒤의 곱은 그 한 가지 순서가 나올 확률이에요. 이산 분포라 메서드 이름이 `pdf`가 아니라 `pmf`, `logpmf`예요.
+
+```python
+>>> M.pmf(sd.asarray([2.0, 3.0, 5.0]))
+0.08505
+>>> M.logpmf(sd.asarray([2.0, 3.0, 5.0]))
+-2.4645159601402664
+```
+
+입력 `x`는 마지막 축이 K인 `sd.ndarray`이고(리스트는 `TypeError`예요), 앞 축은 배치와 브로드캐스트해요. 0 이상의 정수가 아니거나 합이 n이 아닌 `x`에서는 확률이 0(`logpmf`는 −inf)이에요. 에러가 아니에요.
+
+```python
+>>> M.pmf(sd.asarray([[2.0, 3.0, 5.0], [0.0, 0.0, 10.0]]))
+array([     0.08505, 0.0009765625], dtype=float64)
+>>> M.pmf(sd.asarray([2.0, 3.0, 4.0]))
+0.0
+>>> M.pmf(sd.asarray([2.5, 2.5, 5.0]))
+0.0
+>>> M.logpmf(sd.asarray([-1.0, 6.0, 5.0]))
+-inf
+>>> M.pmf(sd.asarray([2.0, 3.0]))
+Traceback (most recent call last):
+    ...
+ValueError: pmf(): 'x' must have 3 components on its last axis, not 2
+```
+
+n이 크면 개별 확률이 아주 작아져서 `logpmf`가 필요해요.
+
+```python
+>>> big = sd.stats.Multinomial(n=1000, p=sd.asarray([0.2, 0.3, 0.5]))
+>>> big.pmf(sd.asarray([200.0, 300.0, 500.0]))
+0.0009181670850568455
+>>> big.logpmf(sd.asarray([600.0, 300.0, 100.0]))
+-504.9616892060803
+```
+
+다항분포에는 `cdf`가 없어요.
+
+## 요약값
+
+| 메서드 | 값 | 모양 |
+|---|---|---|
+| `mean()` | $n p_i$ | 배치 + (K,) |
+| `covariance()` | 대각 $n p_i (1 - p_i)$, 그 밖 $-n p_i p_j$ | 배치 + (K, K) |
+| `entropy()` | $-\sum_x P(x) \log P(x)$ | 배치 |
+
+```python
+>>> M.mean()
+array([2.0, 3.0, 5.0], dtype=float64)
+>>> M.covariance()
+array([[1.6000000000000003,               -0.6,               -1.0],
+       [              -0.6,                2.1,               -1.5],
+       [              -1.0,               -1.5,                2.5]], dtype=float64)
+>>> M.entropy()
+3.341218516394509
+```
+
+공분산의 대각 밖이 모두 음수예요. 개수의 합이 n으로 정해져 있어서, 한 범주가 많이 나오면 다른 범주는 적게 나올 수밖에 없기 때문이에요. 대각은 $1 - p_i$ 대신 나머지 확률의 합 $\sum_{j \ne i} p_j$로 계산해요. 그래서 위의 첫 대각처럼 마지막 자리가 식과 다르게 보일 수 있지만, 한 범주의 확률이 1에 아주 가까워도 $1 - p_i$를 빼면서 자리를 잃지 않아요. 엔트로피는 이산 분포의 섀넌 엔트로피이고 단위는 nat이에요. `p`는 합으로 나눈 값으로 계산해요.
+
+## 표본
+
+`sample(shape, rng=...)`은 `shape` + 배치 + (K,) 모양의 개수 벡터를 돌려줘요. `shape`를 빼면 분포마다 하나(배치 + (K,))예요. 값은 정수인 float64이고, 각 벡터의 합은 언제나 n이에요. 공통 규칙은 [표본 뽑기](/api/stats/sample/)에 있어요.
+
+```python
+>>> M.sample(rng=sd.random.default_rng(5))
+array([1.0, 2.0, 7.0], dtype=float64)
+>>> s = M.sample(5, rng=sd.random.default_rng(5))
+>>> s
+array([[1.0, 2.0, 7.0],
+       [2.0, 5.0, 3.0],
+       [1.0, 4.0, 5.0],
+       [3.0, 4.0, 3.0],
+       [3.0, 3.0, 4.0]], dtype=float64)
+>>> sd.sum(s, axis=1)
+array([10.0, 10.0, 10.0, 10.0, 10.0], dtype=float64)
+>>> Mb.sample(2, rng=sd.random.default_rng(0)).shape
+(2, 2, 3)
+```
+
+## 다른 분포와의 관계
+
+K = 2이면 이항 분포예요. 첫 범주의 개수 k가 [`Binomial`](/api/stats/binomial/)(n, p₁)을 따라요.
+
+```python
+>>> sd.stats.Multinomial(n=10, p=sd.asarray([0.3, 0.7])).pmf(sd.asarray([4.0, 6.0]))
+0.200120949
+>>> sd.stats.Binomial(n=10, p=0.3).pmf(4.0)
+0.20012094899999996
+```
+
+마지막 자리가 다른 것은 반올림 때문이에요(참값은 0.200120949예요).
+
+- 주변분포: 한 범주의 개수 $X_i$만 보면 $\mathrm{Binomial}(n, p_i)$예요. 공분산의 대각 $n p_i (1 - p_i)$가 그 분산이에요.
+- 디리클레 분포: [`Dirichlet`](/api/stats/dirichlet/)은 확률 벡터 `p` 자체의 분포예요. `p`를 모를 때 디리클레 분포로 사전분포를 두고, 다항분포로 센 개수를 더하면 사후분포도 디리클레 분포예요. 예는 디리클레 페이지에 있어요.
+
+## 정확도와 범위
+
+- `pmf`, `logpmf`, `entropy`는 정해진 범위에서 앞자리 14자리 정도가 맞아요(`logpmf`와 `entropy`는 |오차| ≤ 1e-14 · max(1, |값|)). n이 큰 엔트로피처럼 큰 항끼리 거의 지워지는 계산도 정확해요.
+
+```python
+>>> sd.stats.Multinomial(n=100000, p=sd.asarray([0.2, 0.3, 0.5])).entropy()
+12.597520804848287
+```
+
+- `covariance()`의 대각은 한 범주가 거의 전부여도 상대 정확도를 지켜요. 아래에서 참값은 $10 \cdot 10^{-12}(1 - 10^{-12})$이고, $10\,p_0(1 - p_0)$을 double로 계산하면 $9.99978 \times 10^{-12}$로 다섯째 자리부터 틀려요.
+
+```python
+>>> sd.stats.Multinomial(n=10, p=sd.asarray([1 - 1e-12, 1e-12])).covariance()[0, 0]
+9.999999999989999e-12
+```
+
+- 범위 밖: n이 약 1e13을 넘으면 `logpmf`가 최빈값 근처에서 NaN일 수 있어요. `entropy`는 범주별 표준편차 $\sqrt{n p_i (1 - p_i)}$의 합이 2¹⁷ = 131072를 넘거나 n > 2⁵³이면 NaN이에요.
+
+```python
+>>> sd.stats.Multinomial(n=1e12, p=sd.asarray([0.5, 0.5])).entropy()
+nan
+```
+
+계산 방법은 [다변량 분포의 밀도](/internals/stats/multivariate/)에 있어요.
+
+## scipy를 아는 분께
+
+- `scipy.stats.multinomial(n, p)`와 이름이 같아요. 키워드로만 받아요. scipy는 `p`와 `x`에 리스트도 받지만, sd는 `sd.ndarray`만 받아요.
+- `p`의 합이 1에서 조금(√eps 안) 벗어나면 합으로 나눠 써요. scipy 1.18.1은 `p = (0.2, 0.3, 0.5 + 1e-9)`에서 `pmf`와 `mean`이 NaN이에요.
+- 공분산은 `cov()`가 아니라 `covariance()`예요.
+- n이 큰 엔트로피가 달라요. 위의 n = 100000 예를 scipy 1.18.1은 12.597520883893594로 계산해서 소수 여덟째 자리부터 달라요.

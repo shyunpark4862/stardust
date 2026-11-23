@@ -1,0 +1,365 @@
+---
+title: 모양, 이름, dtype
+names: [Series.dtype, Series.index, Series.name, Series.shape, DataFrame.columns, DataFrame.dtypes, DataFrame.index, DataFrame.shape]
+group: 속성과 변환
+order: 1
+signatures:
+  - "Series.shape"
+  - "Series.dtype"
+  - "Series.index"
+  - "Series.name"
+  - "DataFrame.shape"
+  - "DataFrame.dtypes"
+  - "DataFrame.index"
+  - "DataFrame.columns"
+summary: 표가 몇 행 몇 열인지, 컬럼마다 어떤 종류의 값이 들었는지, 행과 열에 어떤 이름이 붙었는지 알려 주는 속성이에요. 처음 받은 데이터를 살펴볼 때 가장 먼저 봐요.
+returns:
+  type: tuple, dtype 객체, dict, Index 또는 RangeIndex, str 또는 None
+  desc: "shape는 tuple, dtype은 dtype 객체, dtypes는 {컬럼 이름: dtype 객체} dict, index는 Index나 RangeIndex, columns는 string Index, name은 str이나 None이에요."
+raises:
+  - type: AttributeError
+    desc: name이 아닌 속성(shape, dtype, dtypes, index, columns)에 대입할 때.
+  - type: TypeError
+    desc: Series.name에 str도 None도 아닌 값(숫자, tuple 등)을 대입할 때.
+seeAlso: [basics, series, dataframe, index, astype, head-tail]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import FrameFig from '../../../components/fig/FrameFig.astro';
+
+## 한눈에 보기
+
+데이터프레임(DataFrame)은 엑셀 시트처럼 행과 열로 된 표예요. 열 하나하나를 **컬럼**이라고 하고, 컬럼마다 이름이 있어요. 행에는 왼쪽에 **라벨**이 붙어요. 컬럼 하나만 떼어 낸 것은 **Series**예요. 자세한 관계는 [데이터프레임의 기본](/api/frame/basics/)에 있어요.
+
+표를 처음 받으면 먼저 "얼마나 큰지, 무엇이 들었는지"부터 확인하게 되는데, 이 페이지의 속성이 그 답을 줘요.
+
+```python
+>>> import stardust as sd
+>>> df = sd.frame.DataFrame({
+...     "fruit": ["apple", "banana", "cherry"],
+...     "price": [1200, 800, 3000],
+...     "qty": [3, None, 5],
+...     "fresh": [True, False, True],
+... })
+>>> df
+    fruit  price   qty  fresh
+0   apple   1200     3   True
+1  banana    800  <NA>  False
+2  cherry   3000     5   True
+>>> df.shape
+(3, 4)
+>>> df.columns
+Index(['fruit', 'price', 'qty', 'fresh'], dtype=string)
+>>> df.dtypes
+{'fruit': string, 'price': int64, 'qty': int64, 'fresh': bool}
+>>> df.index
+RangeIndex(start=0, stop=3, step=1)
+```
+
+<Fig caption="shape는 (행 수, 열 수), columns는 위쪽의 컬럼 이름, dtypes는 이름 아래의 값 종류, index는 왼쪽의 행 라벨이에요.">
+  <FrameFig name="df" columns={['fruit', 'price', 'qty', 'fresh']} dtypes={['string', 'int64', 'int64', 'bool']}
+    data={[['apple', 1200, 3, true], ['banana', 800, null, false], ['cherry', 3000, 5, true]]}
+    note="shape: (3, 4)" />
+</Fig>
+
+| 속성 | 무엇을 알려 주나요 | 돌려주는 것 |
+|---|---|---|
+| `shape` | 크기 | Series는 `(행,)`, DataFrame은 `(행, 열)` tuple |
+| `dtype` (Series) | 값의 종류 | dtype 객체 하나 (`sd.int64` 등) |
+| `dtypes` (DataFrame) | 컬럼마다 값의 종류 | `{컬럼 이름: dtype 객체}` dict |
+| `columns` (DataFrame) | 컬럼 이름 | string Index |
+| `index` | 행 라벨 | Index 또는 RangeIndex |
+| `name` (Series) | Series의 이름 | str 또는 `None` |
+
+Series에서도 같은 속성을 볼 수 있어요. DataFrame에서 컬럼 하나를 꺼내면, 그 컬럼의 이름이 Series의 `name`이 돼요.
+
+```python
+>>> s = df["price"]
+>>> s.shape
+(3,)
+>>> s.dtype
+int64
+>>> s.name
+'price'
+>>> s.index
+RangeIndex(start=0, stop=3, step=1)
+```
+
+<Reference />
+
+## `shape`: 몇 행, 몇 열
+
+`shape`는 크기를 tuple로 알려 줘요. DataFrame은 `(행 수, 열 수)`, Series는 행 수 하나만 든 `(행 수,)`예요. 배열의 [`shape`](/api/array/ndarray/)와 같은 규칙이라서, Series는 1차원 배열, DataFrame은 2차원 배열과 `shape`의 꼴이 같아요.
+
+```python
+>>> rows, cols = df.shape
+>>> rows
+3
+>>> cols
+4
+>>> len(df)
+3
+>>> len(df.columns)
+4
+```
+
+행 수만 필요하면 `len(df)`가 짧아요. `len`은 언제나 행 수예요.
+
+`shape`는 결측값(`NA`)이 있어도 행을 그대로 세요. `qty` 컬럼에는 `NA`가 하나 있지만 `shape`는 3이에요. 값이 있는 칸만 세고 싶으면 [`count`](/api/frame/sum-mean/)를 써요.
+
+```python
+>>> df["qty"].shape
+(3,)
+>>> df["qty"].count()
+2
+```
+
+빈 DataFrame은 `(0, 0)`이에요. 아무것도 넣지 않고 만든 Series는 행이 0개예요.
+
+```python
+>>> sd.frame.DataFrame().shape
+(0, 0)
+>>> sd.frame.Series().shape
+(0,)
+```
+
+비었는지 확인할 때는 `len(df) == 0`을 써요. `if df:`처럼 표를 참·거짓으로 쓰는 것은 에러예요. 이유는 [데이터프레임의 기본](/api/frame/basics/)에 있어요.
+
+## `dtype`과 `dtypes`: 값의 종류
+
+컬럼 하나에는 한 종류의 값만 들어가요. 그 종류가 dtype이에요. 데이터프레임의 dtype은 넷이에요.
+
+| dtype | 담는 값 | 예 |
+|---|---|---|
+| `sd.bool` | 참·거짓 | `True`, `False` |
+| `sd.int64` | 정수 | `1200`, `-3` |
+| `sd.float64` | 실수 | `1.5`, `NaN` |
+| `sd.string` | 문자열 | `"apple"` |
+
+앞의 셋은 배열 영역의 [dtype](/api/array/dtypes/)과 같은 객체예요. `sd.string`은 데이터프레임에만 있어요.
+
+Series의 `dtype`은 dtype 객체 하나, DataFrame의 `dtypes`는 컬럼 이름에서 dtype 객체로 가는 dict예요. dict의 순서는 컬럼 순서예요.
+
+```python
+>>> df["fruit"].dtype
+string
+>>> for name, dt in df.dtypes.items():
+...     print(name, dt)
+fruit string
+price int64
+qty int64
+fresh bool
+```
+
+dict라서 Python의 dict 기능을 그대로 써요. 예를 들어 정수 컬럼만 골라낼 수 있어요.
+
+```python
+>>> [name for name, dt in df.dtypes.items() if dt == sd.int64]
+['price', 'qty']
+```
+
+### dtype은 객체와 비교해요
+
+dtype을 확인할 때는 `sd.int64` 같은 객체와 비교해요. 문자열 `"int64"`와는 같지 않아요. 배열의 dtype과 같은 규칙이에요.
+
+```python
+>>> s.dtype == sd.int64
+True
+>>> s.dtype is sd.int64
+True
+>>> s.dtype == "int64"
+False
+>>> str(s.dtype) == "int64"
+True
+```
+
+화면에는 `int64`처럼 이름만 보이지만, `s.dtype`은 문자열이 아니라 dtype 객체예요. dtype 객체는 하나씩만 있어서 `is`로 비교해도 돼요.
+
+### `NA`가 있어도 dtype은 그대로예요
+
+`qty` 컬럼은 값 하나가 비어 있는데도 `int64`예요. 데이터프레임은 결측값을 모든 dtype에서 같은 `NA` 하나로 나타내서, 빈칸이 생겨도 컬럼의 종류가 바뀌지 않아요.
+
+```python
+>>> df["qty"].dtype
+int64
+>>> sd.frame.Series([None, None]).dtype
+float64
+```
+
+값이 하나도 없으면 종류를 알 수 없어서 `float64`로 정해요. 자세한 내용은 [NA와 NaN](/api/frame/na/)에 있어요.
+
+### dtype을 바꾸려면 `astype`
+
+`dtype`과 `dtypes`는 읽기만 해요. `df.dtypes`가 돌려주는 dict는 그때그때 새로 만든 것이라, 그 dict를 고쳐도 표는 바뀌지 않아요.
+
+```python
+>>> d = df.dtypes
+>>> d["price"] = sd.float64
+>>> df.dtypes["price"]
+int64
+```
+
+종류를 바꾸려면 [`astype`](/api/frame/astype/)으로 새 표를 만들어요.
+
+```python
+>>> df.astype({"price": "float64"}).dtypes
+{'fruit': string, 'price': float64, 'qty': int64, 'fresh': bool}
+```
+
+## `columns`: 컬럼 이름
+
+`columns`는 컬럼 이름을 왼쪽부터 순서대로 담은 string [Index](/api/frame/index/)예요. 컬럼 이름은 언제나 서로 다른 문자열이에요.
+
+```python
+>>> df.columns
+Index(['fruit', 'price', 'qty', 'fresh'], dtype=string)
+>>> "price" in df.columns
+True
+>>> "weight" in df.columns
+False
+>>> df.columns.tolist()
+['fruit', 'price', 'qty', 'fresh']
+```
+
+`for`로 돌면 이름이 하나씩 나와요. 컬럼마다 같은 일을 할 때 써요.
+
+```python
+>>> for col in df.columns:
+...     print(col, df[col].count())
+fruit 3
+price 3
+qty 2
+fresh 3
+```
+
+Index는 `[0]`처럼 위치로 꺼낼 수 없어요. 몇 번째 이름이 필요하면 `tolist()`로 리스트를 만든 뒤 꺼내요.
+
+```python
+>>> df.columns[0]
+Traceback (most recent call last):
+    ...
+TypeError: 'Index' object is not subscriptable
+>>> df.columns.tolist()[0]
+'fruit'
+```
+
+## `index`: 행 라벨
+
+`index`는 왼쪽에 붙은 행 라벨이에요. 라벨을 따로 주지 않으면 0부터 1씩 커지는 `RangeIndex`가 붙어요. `RangeIndex(start=0, stop=3, step=1)`은 0, 1, 2라는 뜻이에요.
+
+라벨은 문자열로 붙일 수도 있어요. Series와 DataFrame을 만들 때 `index=`로 줘요.
+
+```python
+>>> temp = sd.frame.Series([12.5, 15.0, 18.5], index=["Seoul", "Busan", "Jeju"], name="temp")
+>>> temp
+Seoul    12.5
+Busan    15.0
+Jeju     18.5
+Name: temp, dtype: float64
+>>> temp.index
+Index(['Seoul', 'Busan', 'Jeju'], dtype=string)
+```
+
+라벨은 행을 이름으로 찾을 때(`temp.loc["Busan"]`)와, 두 Series를 계산할 때 같은 라벨끼리 짝지을 때 쓰여요. 라벨이 무엇이고 왜 있는지는 [라벨과 정렬](/api/frame/alignment/)에, Index 객체가 할 수 있는 일은 [Index와 RangeIndex](/api/frame/index/)에 있어요.
+
+## `name`: Series의 이름
+
+Series에는 이름을 하나 붙일 수 있어요. 출력의 마지막 줄 `Name: temp`가 그 이름이에요. DataFrame에서 꺼낸 컬럼은 컬럼 이름을 `name`으로 가져요.
+
+`name`은 이 페이지의 속성 가운데 유일하게 대입할 수 있는 속성이에요. 이름은 `str`이거나 `None`(이름 없음)이에요.
+
+```python
+>>> temp.name = "celsius"
+>>> temp
+Seoul    12.5
+Busan    15.0
+Jeju     18.5
+Name: celsius, dtype: float64
+>>> temp.name = None
+>>> temp
+Seoul    12.5
+Busan    15.0
+Jeju     18.5
+dtype: float64
+```
+
+이름이 없으면 `Name:` 부분이 빠져요. 숫자나 tuple은 이름으로 쓸 수 없어요.
+
+```python
+>>> temp.name = 2026
+Traceback (most recent call last):
+    ...
+TypeError: the name of a Series must be a str or None, not int
+```
+
+이름은 컬럼 이름이 되는 자리에서 쓰여요. 예를 들어 [`value_counts`](/api/frame/value_counts/)는 결과 표의 컬럼 이름으로 Series의 이름을 써요. 두 Series를 계산하면 이름이 같을 때만 결과에 이름이 남아요([산술 연산](/api/frame/arithmetic/)).
+
+DataFrame에서 꺼낸 Series의 이름을 바꿔도 DataFrame의 컬럼 이름은 바뀌지 않아요. 꺼낸 Series는 DataFrame과 따로 움직여요. 자세한 내용은 [대입과 복사](/api/frame/assign/)에 있어요.
+
+```python
+>>> p = df["price"]
+>>> p.name = "won"
+>>> df.columns.tolist()
+['fruit', 'price', 'qty', 'fresh']
+```
+
+## 조심할 점
+
+### `name` 말고는 대입할 수 없어요
+
+`shape`, `dtype`, `dtypes`, `index`, `columns`는 읽기 전용이에요. 대입하면 `AttributeError`예요.
+
+```python
+>>> df.columns = ["f", "p", "q", "r"]
+Traceback (most recent call last):
+    ...
+AttributeError: property 'columns' of 'DataFrame' object has no setter
+>>> s.index = [10, 11, 12]
+Traceback (most recent call last):
+    ...
+AttributeError: property 'index' of 'Series' object has no setter
+```
+
+컬럼 이름을 바꾼 표가 필요하면, 새 이름을 키로 한 dict로 새 DataFrame을 만들어요.
+
+```python
+>>> sd.frame.DataFrame({"name": df["fruit"], "won": df["price"]})
+     name   won
+0   apple  1200
+1  banana   800
+2  cherry  3000
+```
+
+dtype은 [`astype`](/api/frame/astype/)으로 바꿔요. 행 라벨은 표를 만들 때 `index=`로 정해요([Series](/api/frame/series/), [DataFrame](/api/frame/dataframe/)).
+
+### `dtypes`는 Series가 아니라 dict예요
+
+`df.dtypes`는 Python dict예요. 값이 dtype 객체인데, 데이터프레임에는 Python 객체를 담는 컬럼 종류가 없어서 Series로 만들 수 없기 때문이에요. 그래서 `df.dtypes["price"]`처럼 키로 꺼내고, `.items()`로 돌아요.
+
+### `shape`와 `count`는 다른 것을 세요
+
+`shape`와 `len`은 `NA`든 아니든 행을 모두 세요. 결측값을 뺀 개수는 `count()`예요.
+
+## 비슷한 기능과의 차이
+
+| 알고 싶은 것 | 쓸 것 | 결과 |
+|---|---|---|
+| 행 수 | `len(df)`, `df.shape[0]` | int |
+| 행 수와 열 수 | `df.shape` | `(행, 열)` |
+| `NA`가 아닌 값의 개수 | [`count()`](/api/frame/sum-mean/) | int (DataFrame은 컬럼마다) |
+| 컬럼 이름 | `df.columns` | string Index |
+| 컬럼 이름을 리스트로 | `df.columns.tolist()` | list of str |
+| 컬럼 하나의 종류 | `df["c"].dtype` | dtype 객체 |
+| 모든 컬럼의 종류 | `df.dtypes` | dict |
+| 행 라벨 | `df.index`, `s.index` | Index 또는 RangeIndex |
+| 앞의 몇 행 | [`head`](/api/frame/head-tail/) | 같은 종류의 표 |
+
+## pandas를 아는 분께
+
+- `df.dtypes`는 dict예요. pandas는 object dtype의 Series를 돌려줘요.
+- `name`은 `str`이나 `None`만 돼요. pandas는 숫자나 tuple도 이름으로 받아요.
+- `columns`와 `index`에 대입할 수 없어요. pandas처럼 `df.columns = [...]`, `df.index = [...]`로 대입하면 여기서는 `AttributeError`예요. `rename`, `set_index`, `reset_index`도 없어요.
+- `df.columns`의 repr은 `dtype=string`이에요. pandas 3은 `dtype='str'`이에요.
+- `s.dtype`은 stardust의 dtype 객체라서 `s.dtype == "int64"`가 `False`예요. pandas는 `True`예요.
+- Index는 `df.columns[0]`처럼 위치로 꺼낼 수 없어요.
+- `shape`의 모양은 pandas와 같아요.

@@ -1,0 +1,314 @@
+---
+title: 중복 찾기와 지우기
+names: [Series.duplicated, Series.drop_duplicates, DataFrame.duplicated, DataFrame.drop_duplicates]
+group: 중복과 고유값
+order: 2
+signatures:
+  - 'Series.duplicated(*, keep="first")'
+  - 'Series.drop_duplicates(*, keep="first", ignore_index=False)'
+  - 'DataFrame.duplicated(subset=None, /, *, keep="first")'
+  - 'DataFrame.drop_duplicates(subset=None, /, *, keep="first", ignore_index=False)'
+summary: 앞에 나온 행과 값이 같은 행을 찾아 표시하거나(duplicated) 지워요(drop_duplicates). 어느 쪽을 남길지는 keep으로, 어떤 컬럼을 비교할지는 subset으로 정해요.
+params:
+  - name: subset
+    type: str, str의 list·tuple, 또는 None
+    kind: positional-only (DataFrame만)
+    desc: 비교할 컬럼 이름. None이면 모든 컬럼을 비교해요.
+  - name: keep
+    type: str
+    kind: keyword-only
+    desc: '"first"(기본값)는 처음 나온 행을, "last"는 마지막 행을 원본으로 남겨요. "none"은 겹치는 행을 모두 중복으로 봐요.'
+  - name: ignore_index
+    type: bool
+    kind: keyword-only
+    desc: drop_duplicates 전용. True면 남은 행에 0부터 새 라벨을 붙여요. False(기본값)면 원래 라벨을 지켜요.
+returns:
+  type: bool Series, 또는 원본과 같은 종류(Series·DataFrame)
+  desc: duplicated는 행마다 중복이면 True인 bool Series(라벨은 원본과 같음), drop_duplicates는 중복 행을 뺀 Series나 DataFrame이에요. 남은 행은 원래 순서를 지켜요.
+raises:
+  - type: TypeError
+    desc: keep이 문자열이 아닐 때(False 포함), ignore_index가 True·False가 아닐 때, subset이 str·list·tuple이 아닐 때, subset이나 옵션을 키워드·자리를 틀리게 넘겼을 때.
+  - type: ValueError
+    desc: keep이 "first"·"last"·"none"이 아닌 문자열일 때, subset이 빈 list일 때.
+  - type: KeyError
+    desc: subset에 없는 컬럼 이름이 있을 때.
+seeAlso: [unique_values, value_counts, mask, sort_values, groupby]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import FrameFig from '../../../components/fig/FrameFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+데이터를 모으다 보면 같은 기록이 두 번 들어가는 일이 흔해요. 주문 시스템이 같은 주문을 두 번 보냈거나, 파일 두 개를 합치면서 겹친 행이 생긴 경우예요. `duplicated()`는 앞에 이미 나온 값과 같은 행을 `True`로 표시하고, `drop_duplicates()`는 그런 행을 지워요.
+
+```python
+>>> import stardust as sd
+>>> ids = sd.frame.Series([101, 102, 101, 103, 102, 101], name="order")
+>>> ids.duplicated()
+0    False
+1    False
+2     True
+3    False
+4     True
+5     True
+Name: order, dtype: bool
+>>> ids.drop_duplicates()
+0    101
+1    102
+3    103
+Name: order, dtype: int64
+```
+
+2번 행의 `101`은 0번 행에 이미 나왔으니 중복이에요. 처음 나온 행은 원본으로 남고, 그 뒤에 다시 나온 행이 중복으로 표시돼요. `drop_duplicates()`는 표시된 행을 뺀 나머지를 원래 순서와 원래 라벨 그대로 돌려줘요.
+
+<Reference />
+
+## `keep`: 어느 행을 남길까요
+
+같은 값이 여러 번 나오면 그 가운데 무엇을 원본으로 볼지 `keep`으로 정해요.
+
+| `keep` | 원본으로 남기는 행 | 중복으로 표시하는 행 |
+|:---:|---|---|
+| `"first"` (기본값) | 처음 나온 행 | 나머지 |
+| `"last"` | 마지막에 나온 행 | 나머지 |
+| `"none"` | 없음 | 두 번 이상 나온 값의 행 모두 |
+
+<Fig caption="같은 값(같은 색)이 여러 번 나올 때, keep에 따라 중복으로 표시되는(True) 행이 달라요. 흐린 칸이 drop_duplicates에서 지워지는 행이에요.">
+  <FrameFig name="ids" data={[101, 102, 101, 103, 102, 101]} rowTones={['1', '2', '1', '3', '2', '1']} />
+  <FrameFig name='keep="first"' data={[false, false, true, false, true, true]} rowTones={['', '', 'm', '', 'm', 'm']} />
+  <FrameFig name='keep="last"' data={[true, true, true, false, false, false]} rowTones={['m', 'm', 'm', '', '', '']} />
+  <FrameFig name='keep="none"' data={[true, true, true, false, true, true]} rowTones={['m', 'm', 'm', '', 'm', 'm']} />
+</Fig>
+
+```python
+>>> ids.drop_duplicates(keep="last")
+3    103
+4    102
+5    101
+Name: order, dtype: int64
+>>> ids.drop_duplicates(keep="none")
+3    103
+Name: order, dtype: int64
+```
+
+`"last"`는 나중 기록이 더 정확할 때 써요. 같은 주문의 상태가 여러 번 기록됐다면 마지막 기록이 최신이에요. `"none"`은 한 번만 나온 값만 남기거나, 반대로 겹친 기록을 모두 찾아서 살펴볼 때 써요.
+
+남은 행은 `keep`과 상관없이 원래 데이터의 순서를 지켜요. `"last"`로 남긴 `101`이 맨 뒤에 있는 이유예요.
+
+## DataFrame: 어떤 컬럼을 비교할까요
+
+DataFrame에서는 기본으로 모든 컬럼의 값이 같은 행을 중복으로 봐요.
+
+```python
+>>> orders = sd.frame.DataFrame({
+...     "order": [101, 102, 101, 103, 102],
+...     "item": ["apple", "pear", "apple", "kiwi", "plum"],
+...     "qty": [2, 1, 2, 5, 1],
+... })
+>>> orders.duplicated()
+0    False
+1    False
+2     True
+3    False
+4    False
+dtype: bool
+```
+
+4번 행은 주문 번호가 1번 행과 같지만 `item`이 달라서 중복이 아니에요. 몇몇 컬럼만 비교하고 싶다면 첫 인자 `subset`에 컬럼 이름 하나나 리스트를 줘요. "주문 번호가 같으면 같은 주문"이라고 보는 거예요.
+
+```python
+>>> orders.duplicated("order")
+0    False
+1    False
+2     True
+3    False
+4     True
+dtype: bool
+>>> orders.drop_duplicates("order")
+   order   item  qty
+0    101  apple    2
+1    102   pear    1
+3    103   kiwi    5
+```
+
+<Fig caption="subset='order'로 비교하면 order 값이 같은 행(같은 색)끼리 묶이고, 처음 나온 행만 남아요. 다른 컬럼은 비교하지 않고 남은 행의 값을 그대로 가져와요.">
+  <FrameFig name="orders" columns={['order', 'item', 'qty']} dtypes={['int64', 'string', 'int64']}
+    data={[[101, 'apple', 2], [102, 'pear', 1], [101, 'apple', 2], [103, 'kiwi', 5], [102, 'plum', 1]]}
+    tones={[['1', '', ''], ['2', '', ''], ['1', 'm', 'm'], ['3', '', ''], ['2', 'm', 'm']]} />
+  <Op note='drop_duplicates("order")'>→</Op>
+  <FrameFig columns={['order', 'item', 'qty']} dtypes={['int64', 'string', 'int64']}
+    data={[[101, 'apple', 2], [102, 'pear', 1], [103, 'kiwi', 5]]} index={[0, 1, 3]}
+    tones={[['1', '', ''], ['2', '', ''], ['3', '', '']]} />
+</Fig>
+
+`subset`은 여러 컬럼도 받아요. 그 컬럼의 값이 모두 같아야 중복이에요. 리스트 대신 tuple을 줘도 돼요.
+
+```python
+>>> orders.drop_duplicates(["order", "qty"])
+   order   item  qty
+0    101  apple    2
+1    102   pear    1
+3    103   kiwi    5
+```
+
+`keep`은 DataFrame에서도 같아요.
+
+```python
+>>> orders.drop_duplicates("order", keep="last")
+   order   item  qty
+2    101  apple    2
+3    103   kiwi    5
+4    102   plum    1
+```
+
+## 중복 행을 들여다보기
+
+`duplicated()`의 결과는 원본과 라벨이 같은 bool Series라서, 그대로 [마스크](/api/frame/mask/)로 쓸 수 있어요. 지우기 전에 어떤 행이 겹쳤는지 확인할 때 좋아요. `keep="none"`이면 겹친 행을 원본까지 모두 볼 수 있어요.
+
+```python
+>>> orders[orders.duplicated("order", keep="none")]
+   order   item  qty
+0    101  apple    2
+1    102   pear    1
+2    101  apple    2
+4    102   plum    1
+```
+
+102번 주문은 두 행의 `item`이 달라요. 단순히 두 번 보낸 기록이 아니라 무언가 다른 일이 있었을 수 있으니, 지우기 전에 살펴볼 만해요.
+
+`~`(부정)를 붙이면 중복이 아닌 행만 남아서 `drop_duplicates()`와 같은 결과가 돼요.
+
+```python
+>>> orders[~orders.duplicated()]
+   order   item  qty
+0    101  apple    2
+1    102   pear    1
+3    103   kiwi    5
+4    102   plum    1
+```
+
+## 남은 행의 라벨: `ignore_index`
+
+`drop_duplicates()`는 남은 행의 원래 라벨을 지켜요. 그래서 라벨에 빈 번호가 생겨요. `ignore_index=True`를 주면 0부터 새 라벨을 붙여요.
+
+```python
+>>> orders.drop_duplicates("order").index
+Index([0, 1, 3], dtype=int64)
+>>> orders.drop_duplicates("order", ignore_index=True)
+   order   item  qty
+0    101  apple    2
+1    102   pear    1
+2    103   kiwi    5
+```
+
+원래 라벨이 다른 데이터와 맞춰 볼 [라벨](/api/frame/alignment/)이라면 지키고, 단순한 행 번호였다면 `ignore_index=True`로 새로 매기는 편이 다루기 쉬워요.
+
+## 같은 값으로 치는 규칙
+
+"같은 값인가"는 `==`가 아니라 값을 묶는 규칙으로 정해요. [`unique_values`](/api/frame/unique_values/), [`value_counts`](/api/frame/value_counts/), [`groupby`](/api/frame/groupby/)와 같은 규칙이에요.
+
+- NaN끼리는 같은 값이에요. `==`로는 NaN이 자기 자신과도 같지 않지만, 중복을 찾을 때는 같은 값이에요.
+- `-0.0`과 `0.0`은 같은 값이에요.
+- `NA`끼리도 같은 값이에요. 둘 다 "모르는 값"이지만, 같은 칸이 비어 있는 두 기록은 겹친 기록으로 봐요.
+- NaN과 `NA`는 서로 다른 값이에요([NA와 NaN](/api/frame/na/)).
+
+```python
+>>> v = sd.frame.Series([float("nan"), 1.0, float("nan"), -0.0, 0.0, None, None])
+>>> v.duplicated()
+0    False
+1    False
+2     True
+3    False
+4     True
+5    False
+6     True
+dtype: bool
+>>> v.drop_duplicates()
+0    NaN
+1    1.0
+3   -0.0
+5   <NA>
+dtype: float64
+```
+
+`==`로 비교하면 결과가 달라요. NaN 행은 `False`, `NA` 행은 `NA`예요.
+
+```python
+>>> v == v
+0    False
+1     True
+2    False
+3     True
+4     True
+5     <NA>
+6     <NA>
+dtype: bool
+```
+
+## 조심할 점
+
+### `keep`에는 문자열만
+
+"모두 중복으로 보기"는 `keep="none"`이에요. `keep=False`는 `TypeError`예요. `keep`은 문자열 옵션이라 `True`/`False`를 받지 않고, 받지 않는 문자열은 `ValueError`예요.
+
+```python
+>>> ids.duplicated(keep=False)
+Traceback (most recent call last):
+    ...
+TypeError: duplicated(): 'keep' must be 'first', 'last' or 'none', not bool
+>>> ids.drop_duplicates(keep="x")
+Traceback (most recent call last):
+    ...
+ValueError: drop_duplicates(): 'keep' must be 'first', 'last' or 'none', not 'x'
+```
+
+### `subset`은 자리로, 나머지는 이름으로
+
+DataFrame의 `subset`은 첫 인자로, 이름 없이 줘요. `subset=`이라고 쓰면 `TypeError`예요. 반대로 `keep`과 `ignore_index`는 꼭 이름을 붙여야 해요.
+
+```python
+>>> orders.duplicated(subset=["order"])
+Traceback (most recent call last):
+    ...
+TypeError: DataFrame.duplicated() got some positional-only arguments passed as keyword arguments: 'subset'
+```
+
+`subset`에 없는 컬럼은 `KeyError`, 빈 리스트는 `ValueError`, set처럼 list·tuple이 아닌 묶음은 `TypeError`예요.
+
+```python
+>>> orders.duplicated("price")
+Traceback (most recent call last):
+    ...
+KeyError: "duplicated(): no column 'price'"
+>>> orders.duplicated([])
+Traceback (most recent call last):
+    ...
+ValueError: duplicated(): 'subset' must name at least one column
+>>> orders.duplicated({"order"})
+Traceback (most recent call last):
+    ...
+TypeError: duplicated(): 'subset' must be a column name or a list of them, not set
+```
+
+### 원본은 바뀌지 않아요
+
+`drop_duplicates()`는 새 Series나 DataFrame을 돌려주고 원본은 그대로예요. 결과를 쓰려면 `orders = orders.drop_duplicates()`처럼 변수에 다시 담아요.
+
+## 비슷한 함수와의 차이
+
+| 하고 싶은 일 | 쓸 것 | 다른 점 |
+|---|---|---|
+| 중복인지 행마다 표시 | `duplicated()` | 원본과 길이가 같은 bool Series예요. |
+| 중복 행 지우기 | `drop_duplicates()` | 처음 나온 순서, 원래 라벨을 지켜요. |
+| 서로 다른 값을 크기순으로 | [`unique_values()`](/api/frame/unique_values/) | 값을 정렬하고 새 라벨을 붙여요. Series에만 있어요. |
+| 값(조합)마다 몇 번 나왔는지 | [`value_counts()`](/api/frame/value_counts/) | 겹친 횟수를 세어 표로 줘요. |
+| 같은 키끼리 묶어서 계산 | [`groupby`](/api/frame/groupby/) | 지우는 대신 묶인 행으로 합·평균 등을 구해요. |
+
+## pandas를 아는 분께
+
+- `keep=False` 대신 `keep="none"`이에요. `keep`은 언제나 문자열이에요. pandas에 `"none"`을 주면 `ValueError`예요.
+- DataFrame의 `subset`은 positional-only예요. `subset=["a"]`처럼 키워드로 줄 수 없어요.
+- NaN과 `NA`를 다른 값으로 봐요. pandas는 float 컬럼의 `None`을 NaN으로 읽어요. 그래서 위 `v`의 NaN과 `None`을 모두 같은 값으로 보고, `drop_duplicates()`가 세 행만 남겨요.
+- `inplace` 인자는 없어요. 언제나 새 객체를 돌려줘요.
+- `keep`의 뜻, 남은 행의 순서와 라벨, `ignore_index`는 pandas와 같아요.

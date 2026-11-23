@@ -1,0 +1,188 @@
+---
+kind: function
+title: multiscale_graphcorr
+names: [multiscale_graphcorr]
+group: 재표본
+order: 7
+signatures:
+  - "sd.htest.multiscale_graphcorr(x, y, /, *, compute_distance='euclidean', reps=1000, is_twosamp=False, rng)"
+summary: 두 변수(여러 차원이어도 돼요)가 독립인지를 다중 척도 그래프 상관(MGC)으로 검정해요. 거리 행렬의 가까운 이웃끼리의 상관을 여러 척도에서 보고 가장 뚜렷한 척도를 골라서, 직선이 아닌 관계(이차, 원, 계단)도 잡아요. p값은 순열로 구하고, 두 표본 검정으로도 쓸 수 있어요.
+params:
+  - name: x
+    type: 배열 (n,) 또는 (n, p)
+    kind: positional-only
+    desc: 첫째 변수. 1차원이면 열 하나로 봐요. 유한해야 해요. compute_distance=None이면 (n, n) 거리 행렬이에요.
+  - name: y
+    type: 배열 (n,) 또는 (n, q)
+    kind: positional-only
+    desc: 둘째 변수. 행의 수가 x와 같아야 해요(두 표본 검정이면 열의 수가 같아요).
+  - name: compute_distance
+    type: "'euclidean', callable 또는 None"
+    kind: keyword-only
+    desc: "'euclidean'(기본값)은 행 사이의 유클리드 거리, callable은 배열을 받아 (n, n) 거리 행렬을 돌려주는 함수, None은 x와 y가 이미 거리 행렬이라는 뜻이에요."
+  - name: reps
+    type: int
+    kind: keyword-only
+    desc: 순열의 수(기본값 1000). 0이면 p값을 계산하지 않고 1이에요.
+  - name: is_twosamp
+    type: bool
+    kind: keyword-only
+    desc: True면 x와 y를 같은 공간의 두 표본으로 보고 두 분포가 같은지를 검정해요. 행의 수가 다르고 열의 수가 같으면 저절로 두 표본 검정이에요.
+  - name: rng
+    type: sd.random.Generator
+    kind: keyword-only
+    desc: 순열을 뽑을 생성기. reps=0이어도 꼭 줘야 해요.
+returns:
+  type: MultiscaleGraphcorrResult
+  desc: "statistic(MGC 통계량), pvalue, mgc_dict(dict: 'mgc_map' (n, n) 척도마다의 국소 상관, 'opt_scale' [k, l] 고른 척도, 'null_dist' (reps,) 순열의 통계량)와 summary()가 있어요. (statistic, pvalue, mgc_dict)로 풀려요."
+raises:
+  - type: TypeError
+    desc: rng가 없거나 sd.random.Generator가 아닐 때, compute_distance가 받는 것이 아닐 때, reps가 int가 아닐 때, is_twosamp가 bool이 아닐 때, 없는 키워드를 줬을 때.
+  - type: ValueError
+    desc: x·y가 1·2차원이 아닐 때, NaN·inf가 있을 때, 모양이 맞지 않을 때, 표본이 5개보다 적을 때, 거리 행렬이 정사각형이 아닐 때, compute_distance가 맞지 않는 모양을 돌려줄 때, 두 표본 검정에 compute_distance=None을 줬을 때, reps가 음수일 때.
+seeAlso: [pearsonr, spearmanr, chatterjeexi, permutation_test, basics, results]
+---
+
+## 무엇을 묻는 검정인가요
+
+20개의 점이 y ≈ x²의 포물선을 이루고 있어요.
+
+```python
+>>> rng = sd.random.default_rng(11)
+>>> x = sd.linspace(-1, 1, 20)
+>>> y = x * x + 0.05 * sd.stats.Normal().sample(20, rng=rng)
+```
+
+y는 x로 거의 정해지지만, 왼쪽 절반은 내려가고 오른쪽 절반은 올라가서 선형 상관은 0에 가까워요.
+
+```python
+>>> sd.htest.pearsonr(x, y).pvalue
+0.9464468586504335
+```
+
+**MGC**는 "y가 x에 따라 정해지는가"를 직선에 얽매이지 않고 물어요. x의 거리 행렬과 y의 거리 행렬을 만들고, 두 거리가 함께 가는지(가까운 x끼리는 y도 가까운지)를 봐요. 다만 모든 쌍이 아니라 서로 k번째 이웃 안, l번째 이웃 안에 드는 쌍만으로 상관을 구하고, 그 척도 (k, l)을 바꿔 가며 가장 뚜렷한 곳을 골라요. 포물선에서 x가 가까운 점끼리는 y도 가깝지만 멀리 떨어진 점(양 끝)끼리는 y가 같아요. 그래서 작은 척도에서 상관이 뚜렷해요.
+
+- **귀무가설**: x와 y가 독립이에요.
+- **대립가설**: 독립이 아니에요(어떤 꼴이든 관계가 있어요).
+
+<Reference />
+
+## 기본 사용
+
+순열 p값을 위해 `rng`가 꼭 필요해요.
+
+```python
+>>> r = sd.htest.multiscale_graphcorr(x, y, reps=500, rng=sd.random.default_rng(1))
+>>> r
+MultiscaleGraphcorrResult(statistic=0.422881, pvalue=0.00598802)
+>>> stat, p, info = r
+>>> info['opt_scale']
+[2, 7]
+```
+
+p = 0.006이라 독립이 아니라고 봐요. 고른 척도 [2, 7]은 x의 2번째 이웃, y의 7번째 이웃까지의 국소 상관이 가장 뚜렷했다는 뜻이에요. 척도가 작을수록 관계가 국소적(비선형)이에요. 선형 관계는 대개 가장 큰 척도가 골라져요.
+
+`mgc_dict`의 `'mgc_map'`은 모든 척도의 국소 상관 (n, n)이고 `'null_dist'`는 순열마다의 통계량이에요. 읽을 때마다 새 dict이고 배열은 읽기 전용이에요.
+
+```python
+>>> info['mgc_map'].shape, info['null_dist'].shape
+((20, 20), (500,))
+>>> print(r.summary())
+                         Multiscale graph correlation
+==============================================================================
+Statistic:                      0.4229  No. Observations:                   20
+P-value:                       0.00599  Permutations:                      500
+==============================================================================
+```
+
+p값은 (1 + 관측 이상인 순열의 수)/(1 + reps)예요. 순열은 y의 행(과 거리 행렬의 행·열)을 함께 섞어요.
+
+## 여러 관계
+
+독립인 자료와 선형인 자료도 봐요.
+
+```python
+>>> z = sd.stats.Normal().sample(20, rng=rng)
+>>> sd.htest.multiscale_graphcorr(x, z, reps=500, rng=sd.random.default_rng(1)).pvalue
+0.590818363273453
+>>> w = 2 * x + 0.3 * sd.stats.Normal().sample(20, rng=rng)
+>>> sd.htest.multiscale_graphcorr(x, w, reps=500, rng=sd.random.default_rng(1)).pvalue
+0.001996007984031936
+>>> sd.htest.multiscale_graphcorr(x, w, reps=0, rng=sd.random.default_rng(1)).mgc_dict['opt_scale']
+[20, 20]
+```
+
+독립인 z는 p = 0.59, 선형인 w는 p = 0.002예요. 선형 관계에서는 모든 쌍을 쓰는 가장 큰 척도 [20, 20]이 골라져요.
+
+선형 관계에서는 [pearsonr](/api/htest/pearsonr/)이 검정력이 더 커요. MGC는 관계의 꼴을 모를 때, 또는 x나 y가 여러 차원일 때 써요.
+
+## 여러 차원과 거리
+
+x와 y는 (n, p), (n, q)의 다차원 배열이어도 돼요. 행 하나가 관측 하나예요. 거리는 기본이 유클리드이고, 다른 거리는 함수로 줘요. 함수는 (n, p) 배열을 받아 (n, n) 거리 행렬을 돌려줘요.
+
+```python
+>>> def manhattan(v):
+...     return sd.sum(sd.abs(v[:, None, :] - v[None, :, :]), axis=-1)
+>>> sd.htest.multiscale_graphcorr(x, y, compute_distance=manhattan, reps=200, rng=sd.random.default_rng(1)).statistic
+0.42288073386059655
+```
+
+1차원에서는 맨해튼 거리가 유클리드 거리와 같아서 통계량도 같아요. 거리 행렬을 이미 가지고 있으면 `compute_distance=None`과 함께 x, y에 (n, n) 행렬을 줘요.
+
+## 두 표본 검정
+
+같은 공간의 두 표본(행의 수는 달라도 되고 열의 수는 같아요)의 분포가 같은지도 볼 수 있어요. 두 표본을 합치고 "어느 표본인지"를 y로 둔 독립성 검정이에요.
+
+```python
+>>> a = sd.stats.Normal().sample((15, 2), rng=rng)
+>>> b = sd.stats.Normal(mu=1.0).sample((12, 2), rng=rng)
+>>> r2 = sd.htest.multiscale_graphcorr(a, b, reps=200, rng=sd.random.default_rng(2))
+>>> r2.pvalue
+0.004975124378109453
+>>> print(r2.summary())
+                         Multiscale graph correlation
+==============================================================================
+Statistic:                      0.3309  No. Observations:                   27
+P-value:                       0.00498  Permutations:                      200
+                                        Two Samples:                       yes
+==============================================================================
+```
+
+행의 수가 같은 두 표본은 `is_twosamp=True`로 알려 줘요(그러지 않으면 독립성 검정으로 읽어요).
+
+## 입력과 에러
+
+```python
+>>> sd.htest.multiscale_graphcorr(x, y)
+Traceback (most recent call last):
+    ...
+TypeError: multiscale_graphcorr(): missing 1 required keyword-only argument: 'rng'
+>>> sd.htest.multiscale_graphcorr(x[:4], y[:4], rng=sd.random.default_rng(1))
+Traceback (most recent call last):
+    ...
+ValueError: multiscale_graphcorr(): at least 5 samples are required, not 4
+>>> sd.htest.multiscale_graphcorr(sd.asarray([1., sd.nan, 2, 3, 4, 5]), y[:6], rng=sd.random.default_rng(1))
+Traceback (most recent call last):
+    ...
+ValueError: multiscale_graphcorr(): 'x' must hold finite values (no NaN or inf)
+```
+
+`reps=0`이면 통계량만 계산하고 p값은 1이에요.
+
+```python
+>>> sd.htest.multiscale_graphcorr(x, y, reps=0, rng=sd.random.default_rng(1))
+MultiscaleGraphcorrResult(statistic=0.422881, pvalue=1)
+```
+
+메모리는 n에 대해 제곱으로 늘어요. 거리 행렬과 그 순위 등이 약 24n² 바이트, 스레드마다 약 20n² 바이트를 더 써요. n = 2000이면 10스레드에서 약 0.9 GB예요.
+
+## 정확도
+
+1차원 자료(n = 8, 15, 25; 이차, 독립, 선형, 동점)의 국소 공분산을 정확한 유리수로 계산한 참값과 견주면, 통계량은 상대 7.5e-15 안이고 고른 척도도 같아요. 순열 p값은 무작위라 참값이 없고, 같은 `rng` 상태면 비트까지 같아요. 지금은 스레드 수와도 상관없이 같아요(약속은 아니에요).
+
+## scipy를 아는 분께
+
+- 통계량(척도마다의 국소 상관, 문턱, 가장 큰 연결 영역에서 고르기)은 scipy의 MGC를 그대로 따라서 지도와 고른 척도가 같아요.
+- `rng`가 꼭 필요해요(`random_state`는 없어요). `workers`도 없어요. 순열은 라이브러리의 스레드에서 나눠 돌아요.
+- 결과에 별칭 `stat`이 없어요. `statistic`만 있어요.
+- `compute_distance`의 기본값은 `'euclidean'`이라는 이름이에요(scipy의 기본은 비공개 함수예요). None의 뜻은 scipy와 같아요.

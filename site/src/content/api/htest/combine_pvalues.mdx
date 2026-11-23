@@ -1,0 +1,186 @@
+---
+kind: function
+title: combine_pvalues
+names: [combine_pvalues]
+group: 다중 비교와 보정
+order: 5
+signatures:
+  - "sd.htest.combine_pvalues(pvalues, /, *, axis=None, method='fisher', weights=None, nan_policy='propagate', keepdims=False)"
+summary: 같은 귀무가설을 따로 검정한 독립 연구 여럿의 p값을 하나로 합쳐요. Fisher, Pearson, Tippett, Stouffer(가중 가능), Mudholkar–George의 다섯 방법으로 합친 통계량과 p값을 줘요.
+params:
+  - name: pvalues
+    type: ndarray, 실수의 시퀀스, frame Series, 또는 DataFrame
+    kind: positional-only
+    desc: "합칠 p값들. [0, 1] 안이어야 하고, NaN은 nan_policy를 따라요. 서로 독립인 검정의 p값이어야 해요."
+  - name: axis
+    type: int, int의 tuple, 또는 None
+    kind: keyword-only
+    desc: "None(기본값)이면 모든 p값을 하나로 합쳐요. 정수면 그 축을 따라 합치고, 나머지 축은 배치예요."
+  - name: method
+    type: str
+    kind: keyword-only
+    desc: "'fisher'(기본값), 'pearson', 'tippett', 'stouffer', 'mudholkar_george' 중 하나예요."
+  - name: weights
+    type: ndarray, 실수의 시퀀스, 또는 None
+    kind: keyword-only
+    desc: "p값과 짝지은 무게(기본값 None). 'stouffer'만 쓰고 다른 방법은 무시해요. 모양이 pvalues와 같아야 해요."
+  - name: nan_policy
+    type: str
+    kind: keyword-only
+    desc: "'propagate'(기본값), 'omit'(NaN인 p값을, 무게가 있으면 그 쌍을 빼고 계산), 'raise'(ValueError) 중 하나예요."
+  - name: keepdims
+    type: bool
+    kind: keyword-only
+    desc: True면 결과에 합친 축이 길이 1로 남아요.
+returns:
+  type: CombinePvaluesResult
+  desc: "statistic(방법마다의 통계량)과 pvalue(합친 p값)예요. (statistic, pvalue)로 풀려요."
+raises:
+  - type: TypeError
+    desc: "pvalues·weights가 배열·수의 시퀀스·frame이 아니거나 복소수일 때, method·nan_policy가 문자열이 아닐 때, keepdims가 True·False가 아닐 때, 옵션을 위치로 주거나 없는 키워드를 줬을 때."
+  - type: ValueError
+    desc: "p값이 [0, 1] 밖일 때(NaN 말고), weights의 길이가 pvalues와 다를 때, method·nan_policy의 이름이 틀렸을 때, nan_policy='raise'인데 NaN이 있을 때, axis가 범위 밖이거나 겹칠 때."
+seeAlso: [multipletests, false_discovery_control, basics, results]
+---
+
+## 무엇을 하나요
+
+같은 약의 효과를 다섯 병원이 따로 시험했어요. 병원마다 환자가 적어서 어느 곳도 p < 0.05를 확실히 보이지 못했지만, 모두 같은 쪽을 가리켜요.
+
+```python
+>>> import stardust as sd
+>>> p = [0.11, 0.07, 0.24, 0.04, 0.09]
+>>> r = sd.htest.combine_pvalues(p)
+>>> r
+CombinePvaluesResult(statistic=23.8409, pvalue=0.00803395)
+```
+
+**p값 합치기**는 "모든 연구에서 귀무가설이 참이다"를 하나의 검정으로 물어요. 귀무가설이 참이면 독립인 p값 각각은 0과 1 사이에 고르게 흩어져요. 작은 p값이 귀무가설 아래에서 나오기 어려운 만큼 몰려 있으면 합친 p값이 작아요. 위의 p값 0.008은 적어도 한 곳에는 효과가 있다는 근거예요.
+
+- **귀무가설**: 모든 연구에서 귀무가설이 참이에요.
+- **대립가설**: 적어도 한 연구에서 귀무가설이 거짓이에요.
+
+이런 때 써요.
+
+- 같은 질문을 다룬 독립 연구들의 결과를 모을 때(메타분석의 단순한 꼴).
+- 독립인 여러 부분(염색체, 지역, 기간)에서 한 검정을 해서 전체로 말하고 싶을 때.
+
+p값은 서로 **독립**이어야 하고, 한쪽 검정이라면 모두 **같은 방향**의 p값이어야 해요. 양쪽 p값을 합치면 방향이 반대인 효과끼리도 서로를 북돋워요.
+
+결과의 공통 규칙은 [결과 객체 읽기](/api/htest/results/)에 있어요.
+
+<Reference />
+
+## 결과 읽기
+
+| 필드 | 뜻 |
+|---|---|
+| `statistic` | 방법마다의 통계량(아래 표) |
+| `pvalue` | 합친 p값 |
+
+```python
+>>> stat, pv = r
+>>> print(r.summary())
+                          Combined p-values (Fisher)
+==============================================================================
+Statistic:                       23.84  No. P-values:                        5
+P-value:                       0.00803
+==============================================================================
+```
+
+## `method`: 다섯 방법
+
+$n$개의 p값 $p_1, \dots, p_n$을 합쳐요.
+
+| `method` | 통계량 | 귀무가설 아래의 분포 |
+|---|---|---|
+| `'fisher'`(기본값) | $-2\sum \log p_i$ | 자유도 $2n$의 카이제곱(위꼬리) |
+| `'pearson'` | $2\sum \log(1 - p_i)$ | 그 음수가 자유도 $2n$의 카이제곱(아래꼬리) |
+| `'tippett'` | $\min p_i$ | $1 - (1 - \min p_i)^n$ |
+| `'stouffer'` | $\sum w_i Z_i / \sqrt{\sum w_i^2}$, $Z_i$는 $p_i$의 정규 위꼬리 분위수 | 표준정규(위꼬리) |
+| `'mudholkar_george'` | $-\sum \log\bigl(p_i / (1 - p_i)\bigr)$ | 배율을 곱한 t 분포 근사(자유도 $5n + 4$) |
+
+방법마다 어떤 증거에 예민한지가 달라요. 아주 작은 p값 하나와 나머지가 큰 경우, 모두 고만고만하게 작은 경우를 견줘 봐요.
+
+```python
+>>> one = [1e-6, 0.5, 0.6, 0.7, 0.8]
+>>> many = [0.04, 0.06, 0.05, 0.07, 0.04]
+>>> for m in ['fisher', 'pearson', 'tippett', 'stouffer', 'mudholkar_george']:
+...     print(f"{m:17s} {sd.htest.combine_pvalues(one, method=m).pvalue:.3g}  {sd.htest.combine_pvalues(many, method=m).pvalue:.3g}")
+fisher            0.000544  0.000919
+pearson           0.453  9.12e-06
+tippett           5e-06  0.185
+stouffer          0.0805  0.000128
+mudholkar_george  0.00393  0.000403
+```
+
+- **Tippett**는 가장 작은 p값만 봐요. 한 연구의 강한 효과에 가장 예민하고, 고르게 작은 증거는 놓쳐요.
+- **Fisher**는 $\log p$가 아주 작은 p값에서 크게 커져서 작은 p값 하나에 예민해요. 두 경우 모두 작은 p값을 줘서 무난한 기본값이에요.
+- **Pearson**은 $\log(1 - p)$라 큰 p값이 없을 때(모두 고르게 작을 때)에 예민해요. 큰 p값이 하나라도 있으면 둔해져요.
+- **Stouffer**는 p값을 정규분포의 $Z$로 바꿔 평균 내듯 더해요. 고르게 작은 증거에 예민하고, 연구마다 무게를 줄 수 있어요.
+- **Mudholkar–George**는 Fisher와 Pearson의 가운데예요.
+
+방법은 데이터를 보기 전에 정해요. 결과를 보고 가장 작은 p값을 주는 방법을 고르면 합친 p값이 의미를 잃어요.
+
+## `weights`: Stouffer의 무게
+
+연구마다 크기가 다르면 큰 연구에 무게를 더 주는 것이 자연스러워요. 흔히 표본 크기의 제곱근이나 표본 크기를 무게로 써요. `weights`는 `'stouffer'`만 쓰고, 다른 방법에서는 무시해요.
+
+```python
+>>> w = [50, 20, 35, 120, 80]
+>>> sd.htest.combine_pvalues(p, method='stouffer', weights=w)
+CombinePvaluesResult(statistic=2.74205, pvalue=0.00305284)
+>>> sd.htest.combine_pvalues(p, method='stouffer')
+CombinePvaluesResult(statistic=2.90692, pvalue=0.00182505)
+```
+
+무게는 p값과 짝지은 값이라, `nan_policy='omit'`은 NaN인 p값과 그 무게를 함께 빼요.
+
+```python
+>>> nan = float('nan')
+>>> sd.htest.combine_pvalues([0.1, nan, 0.2], method='stouffer', weights=[1.0, 2.0, 3.0], nan_policy='omit')
+CombinePvaluesResult(statistic=1.20369, pvalue=0.114354)
+>>> sd.htest.combine_pvalues([0.1, 0.2], method='stouffer', weights=[1.0, 3.0])
+CombinePvaluesResult(statistic=1.20369, pvalue=0.114354)
+```
+
+## 여러 묶음을 한 번에: `axis`
+
+`axis`를 주면 그 축을 따라 p값을 합치고 나머지 축의 칸마다 따로 계산해요.
+
+```python
+>>> P = sd.asarray([[0.1, 0.2, 0.3], [0.01, 0.02, 0.5]])
+>>> sd.htest.combine_pvalues(P, axis=1).pvalue
+array([ 0.11521621423478848, 0.005262552525580336], dtype=float64)
+```
+
+## 특수한 경우
+
+- p값에 0이 있으면 Fisher의 통계량은 inf, 합친 p값은 0이에요. p값이 정말 0인 검정은 드물어서, 0은 대개 앞 단계에서 너무 작은 값이 0으로 사라진 것이에요.
+
+  ```python
+  >>> sd.htest.combine_pvalues([0.0, 0.5])
+  CombinePvaluesResult(statistic=inf, pvalue=0)
+  ```
+
+- p값이 [0, 1] 밖이면 `ValueError`예요. NaN은 `nan_policy`를 따라요.
+- 빈 입력은 NaN이에요.
+
+## 정확도
+
+로그의 합을 반올림을 줄여 모으고, 꼬리를 계산할 때 그 합의 남은 자릿수까지 반영해요. 그래서 통계량이 큰(p값이 아주 작은) 경우도 합의 반올림으로 자릿수를 잃지 않아요. 문제 17개에서 Arb(구간 산술)로 만든 참값에 견주어 통계량은 상대 1.7e-16, p값은 상대 9.3e-15 안이에요(꼬리에서 통계량의 반올림이 커지는 몫).
+
+## scipy를 아는 분께
+
+`scipy.stats.combine_pvalues`와 다섯 방법의 통계량과 p값, `weights`의 쓰임이 같아요. Mudholkar–George의 통계량도 scipy처럼 배율을 곱하기 전의 합이에요.
+
+```python
+>>> import scipy.stats
+>>> scipy.stats.combine_pvalues(p)
+SignificanceResult(statistic=np.float64(23.840945478565434), pvalue=np.float64(0.008033948147377087))
+```
+
+- 결과 클래스가 `CombinePvaluesResult`예요(scipy는 `SignificanceResult`). 필드는 같아요.
+- p값이 [0, 1] 밖이면 `ValueError`예요. scipy는 검사하지 않아요.
+- 깊은 꼬리: scipy는 통계량을 double로 더해서 p값이 아주 작을 때 상대 1e-14쯤 틀릴 수 있어요(Stouffer의 p = 1.2e-106에서 5.3e-14).
+- `axis`의 기본값이 None이에요(scipy는 0). 옵션은 키워드로만 받아요.

@@ -1,0 +1,138 @@
+---
+kind: function
+title: cochrans_q
+names: [cochrans_q]
+group: 분할표
+order: 6
+signatures:
+  - "sd.htest.cochrans_q(x, /)"
+summary: 같은 대상에게 k가지 처리를 모두 해서 성공(1)과 실패(0)를 적었을 때, 처리마다 성공률이 같은지 보는 Cochran의 Q 검정이에요. McNemar 검정을 처리 셋 이상으로 넓힌 것이에요.
+params:
+  - name: x
+    type: ndarray, 0·1의 중첩 시퀀스, numpy 배열, 또는 frame의 DataFrame
+    kind: positional-only
+    desc: "(N, k) 배열. 행이 대상(블록), 열이 처리이고 값은 0(실패)과 1(성공)이에요. 앞의 축이 있으면 배치예요."
+returns:
+  type: CochransQResult
+  desc: "statistic(Q), pvalue, df(k − 1, float)를 가진 결과 객체. 튜플로 풀리지 않아요. 배치면 배치 모양의 배열이에요."
+raises:
+  - type: TypeError
+    desc: x가 배열·수의 시퀀스·frame이 아닐 때, 옵션을 줬을 때(옵션이 없어요).
+  - type: ValueError
+    desc: "x가 2차원보다 작을 때, 행이나 열이 없을 때, 0과 1이 아닌 값이 있을 때(음수, 1보다 큰 값, 정수가 아닌 값, inf, NaN)."
+seeAlso: [mcnemar, friedmanchisquare, chi2_contingency, basics, results]
+---
+## 무엇을 묻는 검정인가요
+
+학생 열 명이 세 가지 문제 유형(A, B, C)을 모두 풀었고, 맞히면 1, 틀리면 0으로 적었어요. 유형마다 정답률이 같을까요?
+
+같은 학생이 세 유형을 모두 풀었으므로 열끼리 독립이 아니에요. 잘하는 학생은 셋 다 맞히기 쉬워요. **Cochran의 Q 검정**은 학생(블록)마다의 실력 차이를 빼고 처리(열) 사이의 차이만 봐요.
+
+- **귀무가설**: 모든 처리의 성공률이 같아요.
+- **대립가설**: 적어도 한 처리의 성공률이 달라요.
+
+$C_j$를 열 $j$의 성공 수, $R_i$를 행 $i$의 성공 수, $T$를 전체 성공 수라 하면
+
+$$
+Q = (k - 1)\,\frac{k\sum_j C_j^2 - T^2}{kT - \sum_i R_i^2}
+$$
+
+이고, 귀무가설 아래에서 대략 자유도 $k - 1$인 카이제곱 분포를 따라요. 모두 성공했거나 모두 실패한 행은 $Q$에 아무 영향이 없어요(처리 사이의 차이에 대해 말하는 것이 없으니까요).
+
+이런 때 써요.
+
+- 같은 대상에게 여러 처리·조건·평가자를 적용하고 결과가 예·아니오일 때.
+- k = 2면 [`mcnemar`](/api/htest/mcnemar/)의 보정 없는 카이제곱 꼴과 같아요.
+
+결과가 0·1이 아니라 연속값이나 순위면 [`friedmanchisquare`](/api/htest/friedmanchisquare/)예요.
+
+<Reference />
+
+## 기본 사용
+
+```python
+>>> import stardust as sd
+>>> x = [[1, 1, 0],
+...      [1, 0, 0],
+...      [1, 1, 1],
+...      [0, 0, 0],
+...      [1, 1, 0],
+...      [1, 0, 0],
+...      [1, 1, 0],
+...      [1, 1, 1],
+...      [0, 1, 0],
+...      [1, 0, 0]]
+>>> r = sd.htest.cochrans_q(x)
+>>> r
+CochransQResult(statistic=8, pvalue=0.0183156, df=2)
+```
+
+정답 수는 A가 8, B가 6, C가 2예요. p값 0.018이 0.05보다 작아서 세 유형의 정답률이 같다는 귀무가설을 기각해요. 어느 유형끼리 다른지는 두 열씩 [`mcnemar`](/api/htest/mcnemar/)로 견주고, 여러 비교의 p값은 [`multipletests`](/api/htest/multipletests/)로 보정해요.
+
+결과는 튜플로 풀리지 않아요.
+
+```python
+>>> r.statistic, r.pvalue, r.df
+(8.0, 0.01831563888873418, 2.0)
+>>> print(r.summary())
+                               Cochran's Q test
+==============================================================================
+Statistic:                       8.000  No. Observations:                   10
+P-value:                        0.0183  No. Treatments:                      3
+Df:                                  2
+==============================================================================
+```
+
+`df`는 언제나 float예요.
+
+## k = 2: McNemar와 같아요
+
+처리가 둘이면 Q는 McNemar의 보정 없는 카이제곱 통계량과 같아요. 두 열의 결과가 갈린 행의 수가 2 × 2 표의 대각 밖 두 칸이에요.
+
+```python
+>>> x2 = [[1, 0], [1, 0], [1, 1], [0, 1], [1, 0], [1, 0], [0, 0], [1, 1]]
+>>> sd.htest.cochrans_q(x2)
+CochransQResult(statistic=1.8, pvalue=0.179712, df=1)
+>>> sd.htest.mcnemar([[2, 4], [1, 1]], exact=False, correction=False)
+McnemarResult(statistic=1.8, pvalue=0.179712)
+```
+
+k = 2이고 표본이 작으면 정확한 p값을 주는 `mcnemar`(기본 `exact=True`)가 나아요.
+
+## 퇴화한 입력과 배치
+
+모든 행이 모두 0이거나 모두 1이면 분모가 0이라 Q를 정할 수 없어 NaN이에요. 앞의 축이 있으면 배치예요.
+
+```python
+>>> B = sd.asarray([[[1, 0, 1], [0, 1, 1], [1, 1, 1], [0, 0, 1]],
+...                 [[1, 1, 1], [0, 0, 0], [1, 1, 1], [0, 0, 0]]])
+>>> rb = sd.htest.cochrans_q(B)
+>>> rb.statistic
+array([2.6666666666666665,                nan], dtype=float64)
+```
+
+값은 0과 1만이에요. 음수, 정수가 아닌 값, 1보다 큰 값, inf는 모두 아래의 첫 메시지이고, NaN은 `'x' must hold integer counts >= 0`예요. 둘 다 `ValueError`예요.
+
+```python
+>>> sd.htest.cochrans_q([[1, 2], [0, 1]])
+Traceback (most recent call last):
+    ...
+ValueError: cochrans_q(): 'x' must hold 0 and 1 values (the successes)
+>>> sd.htest.cochrans_q([1, 0, 1])
+Traceback (most recent call last):
+    ...
+ValueError: cochrans_q(): 'x' must have at least 2 dimensions (the table's), not 1
+```
+
+## 정확도
+
+Q는 정수의 몫을 한 번 반올림한 값이고 p값은 카이제곱 분포의 위쪽 꼬리를 직접 구해요. 정확한 유리수 계산과 Arb(구간 산술)로 만든 참값에 견주면 4문제(k = 4, 퇴화, N = 400의 꼬리 포함)에서 Q는 상대오차 6e-17 안, p값은 1e-14 안(계약 대비 0.0077)이에요.
+
+## statsmodels를 아는 분께
+
+`statsmodels.stats.contingency_tables.cochrans_q`와 같은 통계량과 p값이에요. 다른 점이에요.
+
+- 값은 0과 1만 받아요. statsmodels는 가장 큰 값을 성공으로 봐요.
+- `return_object`가 없어요. 언제나 결과 객체이고 필드 `statistic pvalue df`가 있어요.
+- 모든 행이 모두 0이나 모두 1인 표는 NaN이에요.
+- 앞 축의 배치가 있어요.
