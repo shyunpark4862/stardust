@@ -1257,3 +1257,26 @@
 - docs/api/smooth.md의 확정과 설계 문서를 구현대로 고치기. 새 결정은 없다.
 - 결과: docs/api/smooth.md 확정(상태, 절 제목의 마일스톤 이름 뺌, `DataFrame`을 받는 함수, `'omit'`의 무게 NaN, `MemoryError`의 자리, `make_lsq_spline`·`make_smoothing_spline`·FITPACK 계열의 입력 규칙(SM59, SM65, SM66, SM68), 배치 결과의 꼴(SM69), `bw_dpill`의 에러, 여러 변수 KDE의 트리 문턱(SM140), 근거 없는 비교 수치를 시험 자료의 기록으로 바꿈), docs/design/smooth.md 확정(상태; §1.4와 §6의 층(optimize·regression·`banded.hpp`·`driver.hpp`를 부르지 않는다), §2를 구현의 꼴로, §3.3을 SM50·SM51·SM53·SM54·SM56·SM58로, §3.4·§3.5·§3.6을 SM86·SM117–SM133·SM136–SM139로, §4에 상수와 구현의 잰 값, §5를 SM7 마일스톤의 속도 표 하나로, §7의 테스트·스윕을 실제 파일로), tests/smooth/test_api_surface.py(계획 이름 목록을 빼고 결과 메서드의 시그니처도 문서와 견준다), 등록 문서(API.md, README.md, ARCHITECTURE.md, bench/README.md, 이 문서).
 - 찾은 것: 정확도 스윕을 6b7c367에서 다시 재도 기준선(bench/smooth/accuracy.md)과 같았다. 초안의 탐침 수치 몇 개가 시험 자료의 기록과 달라 기록의 값으로 바꿨다(statsmodels `lowess`의 단위 의존 0.76 → 0.34, R `loess` 어림과 직접 계산의 차 0.096 → 0.12, `splrep`과 `make_splrep`의 매듭 149·116개 → s = 12에서 89·73개, 대역폭 규칙의 값, `bw_sj`의 R과의 차 1% → 0.3%). R `bw.ucv`는 국소 최소에서 멈춰 weighted/40에서 sd와 36% 다르다(sd의 기준 값이 더 작다). 평활 스플라인의 `LinAlgError` 메시지가 λ 찾기와 `df`의 문턱을 "2^21.5"의 조건수로 적지만 코드의 판정은 지렛대 합의 결함(SM58)이다(고치지 않음, 메시지만의 차이).
+
+# 군집 영역 (sd.cluster)
+
+> 상태: **설계 확정, 구현 시작 전** (2026-11-24). 설계는 [docs/design/cluster.md](docs/design/cluster.md)(확정), API는 [docs/api/cluster.md](docs/api/cluster.md)(확정)다. 결정은 CL1–CL40이다. CL0 마일스톤은 시작 전이다.
+
+## 진행 원칙
+- 다른 영역과 같다: 마일스톤마다 시작 전에 물을 것을 정하고, 구현하고, 정확도·속도를 재고, 커밋하고, 결과를 전달한다. 해설과 안내서는 쓰지 않는다. 결정 번호와 마일스톤 이름이 같은 머리글자라서 마일스톤은 "CL1 마일스톤"처럼 적는다. 마일스톤 에이전트는 한 번에 하나다.
+- 큰 결정(사용자, 2026-11-24): 함수가 결과 객체를 돌려준다(`kmeans(X, k)` → `KMeansResult`; 추정기 클래스가 아니다); 군집은 `sd.cluster`, 차원 축소·임베딩은 나중의 `sd.embed`, 분류기와 그 회귀판은 나중의 `sd.classify`, 순서는 cluster → embed → classify; 비교 대상은 scikit-learn 1.9.1, scipy 1.18.1, R 4.6.2의 `stats`·`cluster`(설치되지 않은 R 꾸러미는 설치하지 않는다) (docs/design/cluster.md §1.1 CL1–CL3). §9의 범위(Mean Shift, mclust의 14 공분산 꼴, 베이즈 혼합, Birch, 연결 제약은 나중; 스펙트럼 군집은 `sd.embed` 뒤), 결정성(자체 NEON 커널로 1·3·10스레드 같은 바이트; 시제품에서 Accelerate보다 1.5배 넘게 느린 경로만 다시 묻는다), 라벨 번호(입력 순서로 처음 나오는 차례), 지표의 자리(`sd.cluster`)도 사용자가 정했다(2026-11-24). 연결법의 기본값은 scipy의 `'single'`(메인 결정, 사용자 위임 2026-11-24; CL16), 나머지 질문은 추천안이다(사용자 위임 2026-11-24).
+- 참값은 정확한 유리수와 Arb다. 결과는 스레드 수와 무관하고(CL9), 결정적인 방법의 분할은 입력 순서와 무관하다(CL7). 임시로 둔 값(퍼지 c-평균의 `tol`, PAM의 `max_iter`, `affinity_propagation`의 `precomputed`의 이름, `gap_statistic`의 `select` 이름)은 해당 마일스톤에서 정한다.
+- 기존 영역의 결과는 비트까지 같아야 한다(이 영역은 spatial·graph의 커널을 부르기만 한다).
+
+## 진행 상태
+| 마일스톤 | 상태 |
+|---|---|
+| CL0 준비: API 문서의 손질, 영역 등록, 시험 자료, 참값, sklearn·scipy·R 기록, 시제품의 측정, 결과의 공통 기반, 속도 사례와 골든의 틀 | 시작 전 |
+| CL1 계층: `linkage`, `agglomerative`, `divisive`, `HierarchyResult`, scipy의 계층 도구, `dendrogram`의 자료, 행렬 없는 길 | 시작 전 |
+| CL2 분할: `kmeans`, `minibatch_kmeans`, `bisecting_kmeans`, `kmedoids`(PAM·CLARA), `fuzzy_cmeans` | 시작 전 |
+| CL3 밀도: `dbscan`, `hdbscan`, `optics` | 시작 전 |
+| CL4 혼합: `gaussian_mixture`(네 공분산 꼴) | 시작 전 |
+| CL5 지표와 k 고르기: 내부·외부 지표, `gap_statistic`, `gower_distance` | 시작 전 |
+| CL6 그 밖: `affinity_propagation` | 시작 전 |
+| CL7 성능과 일관성 점검 | 시작 전 |
+| CL8 문서 | 시작 전 |
