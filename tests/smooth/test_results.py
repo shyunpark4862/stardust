@@ -9,10 +9,10 @@ from stardust.smooth._results import SmootherResult
 
 
 class _Fit(SmootherResult):
-    TITLE = "Lowess Results"
-    METHOD = "LOWESS"
-    TUNING = (("Frac:", "frac"), ("Robust iterations:", "it"), ("Delta:", "delta"))
-    REPR = ("nobs", "df", "frac", "it")
+    _TITLE = "Lowess Results"
+    _METHOD = "LOWESS"
+    _TUNING = (("Frac:", "frac"), ("Robust iterations:", "it"), ("Delta:", "delta"))
+    _REPR = ("nobs", "df", "frac", "it")
 
 
 def _fit(**extra):

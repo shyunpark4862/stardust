@@ -193,6 +193,14 @@ array([[3, 0, 1]], dtype=int64)
 array([[0, 2, 1]], dtype=int64)
 ```
 
+한 축의 폭이 가장 작은 비정상 수 $2^{-1074}$(`5e-324`)여도 같아요. 그 삼각분할에서 위치를 찾는 `find_simplex`와 그 위의 보간도 그대로 돼요.
+
+```python
+>>> thin = sd.spatial.Delaunay([[0.0, 0.0], [5e-324, 1.0], [0.0, 2.0]])
+>>> thin.simplices, thin.find_simplex([[0.0, 1.0], [1e-323, 1.0]])
+(array([[0, 1, 2]], dtype=int64), array([ 0, -1], dtype=int64))
+```
+
 ## 결과의 꼴
 
 ### 색인과 없음

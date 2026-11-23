@@ -11,8 +11,8 @@
 //               weight's product, then one fma per term. A zero weight is skipped: at a data point the weight is
 //               D / D = 1 (D_k is the same call as D) and the value comes out to the bit, and a value that is NaN or
 //               inf off the point's face does not reach it. When D leaves [2^-900, 2^900] (points of subnormal size,
-//               or near the largest doubles) the determinants are those of the points scaled by one power of two
-//               (scaled_copies), whose ratios are the same
+//               near the largest doubles, or extents that differ by such a factor) the determinants are those of the
+//               points with each axis scaled by a power of two (scaled_copies), whose ratios are the same
 //   clough-     scipy's piecewise cubic (its _clough_tocher_2d_single): the triangle split at its centroid, the
 //   tocher      Bezier coefficients from the vertex values and gradients, the inner ones from the C1 condition across
 //               each edge in the direction of the neighbour's centroid, g_k = (c_(k+2) - c_k) / (3 c_k - 1) with c the
@@ -57,6 +57,7 @@
 #include "spatial/triangulation.hpp"
 
 #include <algorithm>
+#include <climits>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -153,19 +154,21 @@ inline bool in_range(double v) {
     return a >= 0x1p-900 && a <= 0x1p900;
 }
 
-// Copies of m points scaled by one power of two s1 s2 = 2^-e (two factors: 2^-e may not be a double) that brings
-// the largest coordinate near 1: for a computation whose determinants leave the normal range (points of
-// subnormal size, or near the largest doubles). The scaling is exact unless a coordinate falls below the normal
-// range, and a ratio of two determinants of the copies is the ratio of the originals'.
+// Copies of m points with each axis j scaled by its own power of two s1 s2 = 2^-e_j (two factors: 2^-e_j may not
+// be a double) that brings the axis's largest coordinate near 1: for a computation whose determinants leave the
+// normal range (points of subnormal size, near the largest doubles, or a simplex whose extents differ by such a
+// factor, as (0, 0), (2^-1074, 1), (0, 2)). Every determinant is multiplied by the product of the axes' factors, so
+// a ratio of two determinants of the copies is the ratio of the originals'; the scaling is exact unless a
+// coordinate falls below the normal range.
 template <int D>
 inline void scaled_copies(const double* const* p, int m, double (*out)[D]) {
-    double big = 0.0;
-    for (int i = 0; i < m; ++i)
-        for (int j = 0; j < D; ++j) big = std::max(big, std::fabs(p[i][j]));
-    const int e = big > 0.0 ? std::ilogb(big) + 1 : 0;
-    const double s1 = std::ldexp(1.0, -e / 2), s2 = std::ldexp(1.0, -e - (-e / 2));
-    for (int i = 0; i < m; ++i)
-        for (int j = 0; j < D; ++j) out[i][j] = p[i][j] * s1 * s2;
+    for (int j = 0; j < D; ++j) {
+        double big = 0.0;
+        for (int i = 0; i < m; ++i) big = std::max(big, std::fabs(p[i][j]));
+        const int e = big > 0.0 ? std::ilogb(big) + 1 : 0;
+        const double s1 = std::ldexp(1.0, -e / 2), s2 = std::ldexp(1.0, -e - (-e / 2));
+        for (int i = 0; i < m; ++i) out[i][j] = p[i][j] * s1 * s2;
+    }
 }
 
 // lambda[k] = D_k / D for the point p in simplex t.
@@ -448,9 +451,15 @@ void edge_scale(const Triangulation& T, EdgeData& E, bool split) {
         e = (std::ilogb(a) + std::ilogb(b)) / 4;  // the squares' exponents: twice the lengths'
     } else {
         const spatial::tri::Locator<2>& L = T.loc2;
-        double span = 0.0;
-        for (int k = 0; k < 2; ++k) span = std::max(span, 0.5 * L.hi[k] - 0.5 * L.lo[k]);
-        e = std::ilogb(span) + 1;
+        // floor(log2) of the largest extent, plus one: the half extent's when it is not zero, the extent's (exact,
+        // below the normal range) when it halves to zero. A triangulation has an axis of positive extent.
+        e = INT_MIN;
+        for (int k = 0; k < 2; ++k) {
+            const double half = 0.5 * L.hi[k] - 0.5 * L.lo[k], full = L.hi[k] - L.lo[k];
+            if (half > 0.0) e = std::max(e, std::ilogb(half) + 1);
+            else if (full > 0.0) e = std::max(e, std::ilogb(full));
+        }
+        if (e == INT_MIN) e = 0;
     }
     E.s1 = std::ldexp(1.0, -e / 2);
     E.s2 = std::ldexp(1.0, -e - (-e / 2));

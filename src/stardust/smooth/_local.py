@@ -10,6 +10,7 @@ and not of their order, and computes every point with the same kernel whatever t
 
 import math
 
+from .. import _calls
 from .. import _core as _sd
 from .._calls import function
 from ._common import alpha as _alpha
@@ -31,10 +32,10 @@ class LowessResult(SmootherResult):
     predict(x_new) and predict_interval(x_new, alpha=0.05) evaluate the same local line at new points with the
     last robust weights. Not a public constructor (docs/api/smooth.md §7)."""
 
-    TITLE = "Lowess Results"
-    METHOD = "LOWESS"
-    TUNING = (("Frac:", "frac"), ("Window points:", "k"), ("Robust iterations:", "it"), ("Delta:", "delta"))
-    REPR = ("nobs", "df", "frac", "it")
+    _TITLE = "Lowess Results"
+    _METHOD = "LOWESS"
+    _TUNING = (("Frac:", "frac"), ("Window points:", "k"), ("Robust iterations:", "it"), ("Delta:", "delta"))
+    _REPR = ("nobs", "df", "frac", "it")
 
     def __init__(self, data, **fields):
         super().__init__(**fields)
@@ -140,3 +141,6 @@ def lowess(x, y, /, *, frac=2 / 3, it=3, delta=0.0, weights=None, nan_policy="pr
         delta=delta,
         robust_weights=scatter_back(rho, keep, n_in),
     )
+
+
+_calls.methods(LowessResult)

@@ -12,6 +12,7 @@ import collections
 import math
 import numbers
 
+from .. import _calls
 from .. import _core as _sd
 from .._calls import function
 from ._bandwidth import _factor, _moments, _nrd, _nrd0
@@ -43,6 +44,13 @@ _TAU = 8.3
 DensityResult = collections.namedtuple("DensityResult", ["x", "density"])
 DensityResult.__doc__ = """The density on a grid: x (1-D: the grid; n-D: the tuple of the axes' grids) and density
 (the values; n-D: (n_1, ..., n_p), density[i, j] at (x[0][i], x[1][j]))."""
+
+
+def _density_result(x, density):
+    """DensityResult(x, density) with its arrays read-only, as every result's arrays (API.md §2.2)."""
+    for a in (x if isinstance(x, tuple) else (x,)) + (density,):
+        a._set_readonly()
+    return DensityResult(x, density)
 
 
 def _data(func, data, weights, nan_policy):
@@ -304,16 +312,16 @@ class KDEResult:
             axes.append(_sd.arange(n, dtype=_sd.float64) * delta + los[l])
         if s is None:
             dens = _sd.full((n,) * p, math.nan)
-            return DensityResult(axes[0] if p == 1 else tuple(axes), dens)
+            return _density_result(axes[0] if p == 1 else tuple(axes), dens)
         nbytes = 8 * n**p
         if nbytes > _sd._physical_memory():
             raise MemoryError(f"density(): cannot allocate {nbytes} bytes: more than this machine's physical memory")
         if not binned:
             if p == 1:
-                return DensityResult(axes[0], self.pdf(axes[0]))
+                return _density_result(axes[0], self.pdf(axes[0]))
             mesh = _sd.meshgrid(*axes, indexing="ij")
             pts = contiguous(_sd.stack([_sd.reshape(g, (n**p,)) for g in mesh], axis=1))
-            return DensityResult(tuple(axes), _sd.reshape(self.pdf(pts), (n,) * p))
+            return _density_result(tuple(axes), _sd.reshape(self.pdf(pts), (n,) * p))
         calc = max(n, 512) if p == 1 else n
         if calc != n:
             delta = (his[0] - los[0]) / (calc - 1)
@@ -330,8 +338,8 @@ class KDEResult:
         if p == 1:
             if calc != n:
                 out = _sd.interp(axes[0], grid_c, out)
-            return DensityResult(axes[0], out)
-        return DensityResult(tuple(axes), _sd.reshape(out, (n,) * p))
+            return _density_result(axes[0], out)
+        return _density_result(tuple(axes), _sd.reshape(out, (n,) * p))
 
     # ---- margins
 
@@ -594,3 +602,6 @@ def kde(data, /, *, bw="scott", adjust=1.0, kernel="gaussian", weights=None, bou
         bounds=None if bounds is None else (lo_b, hi_b),
         weights=wfield,
     )
+
+
+_calls.methods(KDEResult)

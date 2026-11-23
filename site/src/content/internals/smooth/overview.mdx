@@ -66,7 +66,7 @@ Python 층은 `sd.interpolate`, `sd.stats`(구간의 $t$·정규 분위수, `sam
 | 파일 | 줄 수 | 맡은 일 |
 |---|---:|---|
 | `kreg.cpp` | 1,357 | 핵 회귀의 국소 적합, 한 점 뺀 적합, CV·AICc, 대역폭 찾기, dpill |
-| `loess.cpp` | 1,346 | loess의 창, 모멘트 Cholesky와 QR, 강건 무게, 통계량, $\delta_2$ |
+| `loess.cpp` | 1,387 | loess의 창, 모멘트 Cholesky와 QR, 강건 무게, 통계량, $\delta_2$ |
 | `kde.cpp` | 1,216 | 기수 정렬, 직접 합, `cdf`, 반사, 구간화 FFT |
 | `spline.cpp` | 1,147 | 평활·P·최소제곱 스플라인, $\lambda$ 찾기, 지렛대, Schoenberg–Whitney |
 | `fitpack.cpp` | 716 | 매듭 놓기, 뜀 행렬, p의 근, 주기, 현의 길이 |
@@ -80,7 +80,7 @@ Python 층은 `sd.interpolate`, `sd.stats`(구간의 $t$·정규 분위수, `sam
 | `gauss_tree.hpp` | 143 | 트리 후보 |
 | `smooth.hpp` | 17 | 파일마다의 `bind_*` |
 
-C++은 열다섯 파일 8,936줄, Python은 열한 파일 2,926줄이에요. 바인딩 `bind/smooth_bind.cpp`(22줄)가 `bind_*` 여덟을 차례로 불러 하위 모듈 `stardust._core.smooth`를 만들어요. 네이티브 이름은 공개 API가 아니에요.
+C++은 열다섯 파일 8,977줄, Python은 열한 파일 2,962줄이에요. 바인딩 `bind/smooth_bind.cpp`(22줄)가 `bind_*` 여덟을 차례로 불러 하위 모듈 `stardust._core.smooth`를 만들어요. 네이티브 이름은 공개 API가 아니에요.
 
 ```python
 >>> sorted(n for n in dir(sd._core.smooth) if not n.startswith("__"))
@@ -163,7 +163,9 @@ C++은 열다섯 파일 8,936줄, Python은 열한 파일 2,926줄이에요. 바
 
 맞추는 함수가 준 필드를 사전에 쥐고, 배열은 만들 때 쓰기 금지로 바꿔요. 호출할 수 있는 값으로 준 필드는 처음 읽을 때 한 번 계산해 그 값으로 바꿔 두는 게으른 필드예요. `loess`의 `two_delta`가 그래요. 밀집 $I - L$이 필요한 비싼 양이라 읽기 전에는 계산하지 않아요. 필드를 쓰거나 지우면 `AttributeError`예요.
 
-`summary()`는 회귀 영역의 상자 렌더러로 머리만 있는 상자를 그려요. 왼쪽은 방법, `nobs`, 유효 자유도, `scale`이고 오른쪽은 하위 클래스가 `TUNING`에 적은 조절 모수와 기준이에요. 스플라인의 `spline` 필드는 `BSpline`이 호출할 수 있는 객체라 게으른 필드로 오해받지 않게 클래스의 속성으로 따로 둬요. `KDEResult`는 이 기반이 아니에요. 분포 객체의 메서드 이름(`pdf`, `logpdf`, `cdf`, `sample`)을 쓰고 `summary()`가 없어요.
+`summary()`는 회귀 영역의 상자 렌더러로 머리만 있는 상자를 그려요. 왼쪽은 방법, `nobs`, 유효 자유도, `scale`이고 오른쪽은 하위 클래스가 `_TUNING`에 적은 조절 모수와 기준이에요. 상자의 제목(`_TITLE`), 방법 이름(`_METHOD`), 한 줄 repr의 필드(`_REPR`)도 하위 클래스의 밑줄 붙은 클래스 상수라 `dir()`에는 필드와 메서드만 보여요. 스플라인의 `spline` 필드는 `BSpline`이 호출할 수 있는 객체라 게으른 필드로 오해받지 않게 클래스의 속성으로 따로 둬요. `KDEResult`는 이 기반이 아니에요. 분포 객체의 메서드 이름(`pdf`, `logpdf`, `cdf`, `sample`)을 쓰고 `summary()`가 없어요.
+
+각 모듈의 끝에서 `_calls.methods`가 결과 클래스의 공개 메서드(`summary`, `predict`, `predict_interval`, `gradient`, `KDEResult`의 `pdf`부터 `marginal`까지)를 감싸요. 틀린 호출 모양의 에러가 회귀의 결과처럼 메서드 이름으로 시작하고, 평활 스플라인과 P-스플라인이 함께 쓰는 바탕 클래스 `_PenalizedResult`의 이름이 나오지 않아요. 메서드 한 번이 창을 훑거나 합을 구하는 일이라 감싸는 비용은 그 안에 묻혀요.
 
 ```python
 >>> rng = sd.random.default_rng(7)
@@ -176,6 +178,13 @@ LowessResult(nobs=200, df=3.48265, frac=0.666667, it=3)
 Traceback (most recent call last):
     ...
 ValueError: assignment destination is read-only
+```
+
+```python
+>>> sd.smooth.smoothing_spline(x, y).predict(foo=1)
+Traceback (most recent call last):
+    ...
+TypeError: predict(): unexpected keyword argument 'foo'
 ```
 
 결과는 `predict`를 위해 자료의 정렬된 사본을 쥐어요. lowess는 $(x, y, \text{무게}, \text{강건 무게})$, loess는 거기에 열의 눈금, 스플라인은 `BSpline`과 구간을 위한 삼각형의 상태, 핵 회귀는 정렬한 자료와 대역폭이에요.

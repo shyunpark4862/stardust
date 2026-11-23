@@ -103,7 +103,9 @@ struct Fit {
     bool deficient = false;
     bool none = false;  // no point of positive weight: a data point keeps its y
     bool nan = false;  // a NaN point, or a distance overflowed
-    // with the hat row asked for: l at the data point fitted, sum l_j^2 and sum l_j^2 / w_j (w: the user's weights)
+    // with the hat row asked for, at a data point (self >= 0): l there and sum l_j^2 over the other points j (no
+    // cancellation: delta1's row is (1 - lself)^2 + ss, SM103, SM143); at a new point (self < 0): sum l_j^2 and
+    // sum l_j^2 / w_j (w: the user's weights; unweighted, the same sum) over all
     double lself = 0, ss = 0, ssw = 0;
     bool stats = false;  // the statistics are set (no row kept)
 };
@@ -123,6 +125,26 @@ inline double dot(const double* a, const double* b, std::int64_t m) {
     double s = vgetq_lane_f64(tot, 0) + vgetq_lane_f64(tot, 1);
     if (k < m) s = std::fma(a[k], b[k], s);
     return s;
+}
+
+// sum_k l[k]^2 in two lanes over pairs (a function of m alone).
+inline double sumsq(const double* l, std::int64_t m) {
+    float64x2_t a = vdupq_n_f64(0.0);
+    std::int64_t k = 0;
+    for (; k + 2 <= m; k += 2) {
+        const float64x2_t lk = vld1q_f64(l + k);
+        a = vfmaq_f64(a, lk, lk);
+    }
+    double s = vgetq_lane_f64(a, 0) + vgetq_lane_f64(a, 1);
+    if (k < m) s = std::fma(l[k], l[k], s);
+    return s;
+}
+
+// sum_k l[k]^2 over k != skip (skip < 0: every k): the parts before and after skip, then their sum (a function of m
+// and skip alone; no subtraction, so a row whose l[skip] is near 1 keeps the others' sum to its rounding).
+inline double sumsq_except(const double* l, std::int64_t m, std::int64_t skip) {
+    if (skip < 0 || skip >= m) return sumsq(l, m);
+    return sumsq(l, skip) + sumsq(l + skip + 1, m - skip - 1);
 }
 
 // The moment matrix M (t x t, both triangles) and b = sum v phi y of the window: cols holds the t basis columns
@@ -641,59 +663,61 @@ enum Want { kValue = 0, kStats = 1, kRows = 2 };  // the value; its hat row's st
 double window_mean(const Problem& P, Scratch& S, int want, std::int64_t self, Fit& F) {
     const std::int64_t m = static_cast<std::int64_t>(S.idx.size());
     const double *v = S.v.data(), *yv = S.yv.data();
+    std::int64_t at = -1;  // the data point's place in the window (kStats), whose v leaves sum v^2
+    if (want == kStats && self >= 0) {
+        const auto it = std::lower_bound(S.idx.begin(), S.idx.end(), self);
+        if (it != S.idx.end() && *it == self) at = it - S.idx.begin();
+    }
     float64x2_t va = vdupq_n_f64(0.0), vs = va, vq = va;
     std::int64_t k = 0;
-    for (; k + 2 <= m; k += 2) {
-        const float64x2_t vk = vld1q_f64(v + k);
-        va = vaddq_f64(va, vk), vs = vfmaq_f64(vs, vk, vld1q_f64(yv + k)), vq = vfmaq_f64(vq, vk, vk);
+    if (at < 0) {
+        for (; k + 2 <= m; k += 2) {
+            const float64x2_t vk = vld1q_f64(v + k);
+            va = vaddq_f64(va, vk), vs = vfmaq_f64(vs, vk, vld1q_f64(yv + k)), vq = vfmaq_f64(vq, vk, vk);
+        }
+    } else {
+        const int64x2_t vat = vdupq_n_s64(at), lanes = {0, 1};
+        const float64x2_t zero = vdupq_n_f64(0.0);
+        for (; k + 2 <= m; k += 2) {
+            const float64x2_t vk = vld1q_f64(v + k);
+            const float64x2_t vo = vbslq_f64(vceqq_s64(vaddq_s64(vdupq_n_s64(k), lanes), vat), zero, vk);
+            va = vaddq_f64(va, vk), vs = vfmaq_f64(vs, vk, vld1q_f64(yv + k)), vq = vfmaq_f64(vq, vo, vo);
+        }
     }
     double a = vgetq_lane_f64(va, 0) + vgetq_lane_f64(va, 1), s0 = vgetq_lane_f64(vs, 0) + vgetq_lane_f64(vs, 1);
     double q2 = vgetq_lane_f64(vq, 0) + vgetq_lane_f64(vq, 1);
-    if (k < m) a += v[k], s0 = std::fma(v[k], yv[k], s0), q2 = std::fma(v[k], v[k], q2);
+    if (k < m) a += v[k], s0 = std::fma(v[k], yv[k], s0), q2 = k == at ? q2 : std::fma(v[k], v[k], q2);
     if (want == kRows) {
         S.lrow.resize(static_cast<std::size_t>(m));
         for (std::int64_t j = 0; j < m; ++j) S.lrow[j] = v[j] / a;
     } else if (want == kStats) {
         F.ss = q2 / (a * a);
-        if (P.w) {
+        F.lself = at < 0 ? 0.0 : v[at] / a;
+        if (self < 0 && P.w) {
             double sw = 0;
             for (std::int64_t j = 0; j < m; ++j) sw += (v[j] / a) * (v[j] / a) / P.w[S.idx[j]];
             F.ssw = sw;
         } else {
             F.ssw = F.ss;
         }
-        F.lself = 0;
-        if (self >= 0) {
-            const auto it = std::lower_bound(S.idx.begin(), S.idx.end(), self);
-            if (it != S.idx.end() && *it == self) F.lself = v[it - S.idx.begin()] / a;
-        }
         F.stats = true;
     }
     return s0 / a;
 }
 
-// F.lself, F.ss, F.ss_w of the hat row S.idx / S.lrow (idx ascending): two lanes, a function of the row alone.
+// F.lself and F.ss (the other points) at a data point, F.ss and F.ssw (all) at a new point, of the hat row S.idx /
+// S.lrow (idx ascending): two lanes, a function of the row alone.
 void row_stats(const Problem& P, const Scratch& S, std::int64_t self, Fit& F) {
     const std::int64_t m = static_cast<std::int64_t>(S.idx.size());
     const double* l = S.lrow.data();
-    F.lself = 0;
+    std::int64_t at = -1;
     if (self >= 0) {
         const auto it = std::lower_bound(S.idx.begin(), S.idx.end(), self);
-        if (it != S.idx.end() && *it == self) F.lself = l[it - S.idx.begin()];
+        if (it != S.idx.end() && *it == self) at = it - S.idx.begin();
     }
-    float64x2_t a = vdupq_n_f64(0.0);
-    std::int64_t k = 0;
-    for (; k + 2 <= m; k += 2) {
-        const float64x2_t lk = vld1q_f64(l + k);
-        a = vfmaq_f64(a, lk, lk);
-    }
-    double ss = vgetq_lane_f64(a, 0) + vgetq_lane_f64(a, 1);
-    if (k < m) ss = std::fma(l[k], l[k], ss);
-    F.ss = ss;
-    if (!P.w) {
-        F.ssw = ss;
-        return;
-    }
+    F.lself = at < 0 ? 0.0 : l[at];
+    F.ss = F.ssw = sumsq_except(l, m, at);
+    if (self >= 0 || !P.w) return;
     double sw = 0;
     for (std::int64_t j = 0; j < m; ++j) sw += l[j] * l[j] / P.w[S.idx[j]];
     F.ssw = sw;
@@ -719,17 +743,18 @@ void line_row(const Problem& P, const LineFit& L, Scratch& S) {
     }
 }
 
-// sum l_j^2 (and sum l_j^2 / w_j) of lowess's line L over [L.lo, L.hi), two lanes (the weights of window_weights_1d).
+// sum l_j^2 and, Weighted, sum l_j^2 / w_j of lowess's line L over [from, to) into s1, s2: two lanes (the weights of
+// window_weights_1d), then the odd point.
 template <bool Weighted>
-void line_sums(const Problem& P, const LineFit& L, Fit& F) {
+void line_range(const Problem& P, const LineFit& L, std::int64_t from, std::int64_t to, double& s1, double& s2) {
     const double* x = P.X;
     const float64x2_t vx0 = vdupq_n_f64(L.x0), vh = vdupq_n_f64(L.h), vsc = vdupq_n_f64(L.sc);
     const float64x2_t vinv = vdupq_n_f64(L.inv), vxl = vdupq_n_f64(L.edge.xl), vxr = vdupq_n_f64(L.edge.xr);
     const float64x2_t vgl = vdupq_n_f64(L.edge.gl), vgr = vdupq_n_f64(L.edge.gr), one = vdupq_n_f64(1.0);
     const float64x2_t zero = vdupq_n_f64(0.0), vP = vdupq_n_f64(L.P), vQ = vdupq_n_f64(L.Q);
     float64x2_t ss = zero, sw = zero;
-    std::int64_t j = L.lo;
-    for (; j + 2 <= L.hi; j += 2) {
+    std::int64_t j = from;
+    for (; j + 2 <= to; j += 2) {
         const float64x2_t xx = vld1q_f64(x + j);
         const float64x2_t diff = vsubq_f64(xx, vx0);
         const float64x2_t ad = vmulq_f64(vabsq_f64(vmulq_f64(diff, vsc)), vinv);
@@ -748,15 +773,31 @@ void line_sums(const Problem& P, const LineFit& L, Fit& F) {
             sw = vaddq_f64(sw, vbslq_f64(vcgtq_f64(v, zero), q, zero));
         }
     }
-    double s1 = vgetq_lane_f64(ss, 0) + vgetq_lane_f64(ss, 1), s2 = vgetq_lane_f64(sw, 0) + vgetq_lane_f64(sw, 1);
-    for (; j < L.hi; ++j) {
+    s1 = vgetq_lane_f64(ss, 0) + vgetq_lane_f64(ss, 1), s2 = vgetq_lane_f64(sw, 0) + vgetq_lane_f64(sw, 1);
+    for (; j < to; ++j) {
         const bool in = std::fabs(x[j] - L.x0) < L.h;
         const double v = in ? tricube_of(x[j], L.x0, L.sc, L.inv, L.edge) * P.pw[j] : 0.0;
         const double l = v * (L.P + L.Q * (((x[j] - L.x0) * L.sc) * L.inv));
         s1 = std::fma(l, l, s1);
         if (Weighted && v > 0) s2 += l * l / P.w[j];
     }
-    F.ss = s1, F.ssw = Weighted ? s2 : s1;
+}
+
+// The hat row's sums of lowess's line L (Fit's ss, ssw): at a data point (self >= 0) sum l_j^2 over the window's
+// points before self and after it, added (no subtraction); at a new point sum l_j^2 and sum l_j^2 / w_j over all.
+template <bool Weighted>
+void line_sums(const Problem& P, const LineFit& L, std::int64_t self, Fit& F) {
+    if (self < 0) {
+        double s1, s2;
+        line_range<Weighted>(P, L, L.lo, L.hi, s1, s2);
+        F.ss = s1, F.ssw = Weighted ? s2 : s1;
+        return;
+    }
+    const std::int64_t a = std::clamp(self, L.lo, L.hi), b = std::clamp(self + 1, L.lo, L.hi);
+    double s1, s2, t1, t2;
+    line_range<false>(P, L, L.lo, a, s1, s2);
+    line_range<false>(P, L, b, L.hi, t1, t2);
+    F.ss = F.ssw = s1 + t1;
 }
 
 // The local fit at x0 (p values), self the sorted index of the data point fitted or -1. want: kValue, kStats (the
@@ -790,8 +831,8 @@ Fit fit_point_row(
             if (L.h == 0) {
                 line_row(P, L, S);
             } else {
-                if (P.w) line_sums<true>(P, L, F);
-                else line_sums<false>(P, L, F);
+                if (P.w) line_sums<true>(P, L, self, F);
+                else line_sums<false>(P, L, self, F);
                 F.stats = true;
             }
         }
@@ -1117,7 +1158,7 @@ nb::object loess_fit(
                             continue;
                         }
                         const double li = F.lself;
-                        lev[i] = li, row1[i] = (1.0 - li) * (1.0 - li) + (F.ss - li * li);
+                        lev[i] = li, row1[i] = (1.0 - li) * (1.0 - li) + F.ss;
                     }
                 });
                 if (last) break;

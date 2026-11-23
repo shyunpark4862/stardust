@@ -331,6 +331,22 @@ def test_find_simplex_wide_range():
     X.check_find_simplex(x, _np(D.simplices), q, _np(D.find_simplex(q)))
 
 
+@pytest.mark.parametrize("w", [2.0**-1074, 2.0**-1073])
+@pytest.mark.parametrize("axis", [0, 1, 2, None])
+def test_tiny_extent_axis(w, axis):
+    """An axis whose extent is the smallest subnormal (half of it rounds to 0; axis None: all three) is
+    triangulated like any other, and find_simplex locates on it (no limit on the coordinates' size)."""
+    if axis is None:
+        x = np.array([[0.0, 0.0, 0.0], [w, 0.0, 0.0], [0.0, w, 0.0], [0.0, 0.0, w]])
+    else:
+        rest = [[0.0, 0.0], [1.0, 0.0], [2.0, 0.0], [1.0, 1.0]] + [[float(i % 5), float(i // 5)] for i in range(20)]
+        x = np.array([np.insert(r, axis, w * (i % 2 == 1)) for i, r in enumerate(rest)])
+    D = Delaunay(x)
+    X.check_delaunay(x, _np(D.simplices), _np(D.neighbors))
+    q = np.concatenate([x, x[:1] * 0.5 + x[-1:] * 0.5, [[w, w, w], [-w, 0.0, 0.0], [0.0, 0.0, -w]]])
+    X.check_find_simplex(x, _np(D.simplices), q, _np(D.find_simplex(q)))
+
+
 # ---------------------------------------------------------------- memory, errors, pickle, repr
 
 

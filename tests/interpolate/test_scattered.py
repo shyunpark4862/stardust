@@ -129,6 +129,39 @@ def test_affine_data(d):
         assert np.max(np.abs(np.asarray(tight(x))[ok] - want[ok])) < 1e-13
 
 
+def _with_axis(rows, axis, w):
+    """Rows of d - 1 coordinates with the column w * (row's flag) inserted at `axis`: that axis's extent is w."""
+    return np.array([np.insert(np.array(r[1:], dtype=float), axis, w * r[0]) for r in rows])
+
+
+@pytest.mark.parametrize("w", [2.0**-1074, 2.0**-1073, 2.0**-1030])
+def test_tiny_extent_axis(w):
+    """An axis whose extent is subnormal (2^-1074: half of it rounds to 0) on the sets of every axis, d = 2 and 3:
+    the data points to the bit, and points of exact barycentric coordinates (the simplex's extents differ by
+    2^1000 and more, so the determinants are those of copies scaled axis by axis)."""
+    for axis in (0, 1):
+        p = _with_axis([[0, 0.0], [1, 1.0], [0, 2.0]], axis, w)
+        f = np.array([1.0, 2.0, 3.0])
+        x = np.concatenate([p, _with_axis([[0, 1.0], [0, 0.5], [0, 1.5]], axis, w)])
+        want = np.concatenate([f, [2.0, 1.5, 2.5]])
+        assert _bits(IP.LinearNDInterpolator(p, f)(x)) == _bits(want)
+        assert _bits(IP.griddata(p, f, x)) == _bits(want)
+        assert _bits(IP.CloughTocher2DInterpolator(p, f)(p)) == _bits(f)
+    small = np.array([[w, 0.0], [0.0, w], [0.0, 0.0]])
+    f = np.array([1.0, 2.0, 3.0])
+    for cls in (IP.LinearNDInterpolator, IP.CloughTocher2DInterpolator):
+        assert _bits(cls(small, f)(small)) == _bits(f)
+    for axis in (0, 1, 2):
+        p = _with_axis([[0, 0.0, 0.0], [1, 1.0, 0.0], [0, 2.0, 0.0], [0, 1.0, 1.0]], axis, w)
+        f = np.array([1.0, 2.0, 3.0, 4.0])
+        x = np.concatenate([p, _with_axis([[0, 1.0, 0.5], [0, 1.0, 0.0]], axis, w)])
+        want = np.concatenate([f, [3.0, 2.0]])  # (0, 1, 0.5) = (v0 + v2) / 4 + v3 / 2
+        assert _bits(IP.LinearNDInterpolator(p, f)(x)) == _bits(want)
+    small = np.array([[0.0, 0.0, 0.0], [w, 0.0, 0.0], [0.0, w, 0.0], [0.0, 0.0, w]])
+    f = np.array([1.0, 2.0, 3.0, 4.0])
+    assert _bits(IP.LinearNDInterpolator(small, f)(small)) == _bits(f)
+
+
 def test_outside_and_nan_points():
     p = np.array([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]])
     f = np.array([1.0, 2.0, 3.0, 4.0])

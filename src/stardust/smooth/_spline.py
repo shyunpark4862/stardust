@@ -11,6 +11,7 @@ is sd.interpolate.make_interp_spline(bc_type='natural') itself, so the two give 
 
 import math
 
+from .. import _calls
 from .. import _core as _sd
 from .._calls import function
 from ..interpolate import BSpline, make_interp_spline
@@ -232,13 +233,13 @@ class _PenalizedResult(SmootherResult):
             from .. import _summary
 
             left = [
-                ("Method:", self.METHOD),
+                ("Method:", self._METHOD),
                 ("No. Observations:", _summary.count(self.nobs)),
                 ("Df (effective):", _summary.df(self.df)),
                 ("Scale:", _summary.compact(self.scale)),
             ]
-            right = [(label, self._cell(field)) for label, field in self.TUNING]
-            return _summary.render(self.TITLE, header=(left, right))
+            right = [(label, self._cell(field)) for label, field in self._TUNING]
+            return _summary.render(self._TITLE, header=(left, right))
         return super().summary()
 
 
@@ -247,22 +248,22 @@ class SmoothingSplineResult(_PenalizedResult):
     criterion, status, converged; predict(x_new) is spline(x_new). Not a public constructor
     (docs/api/smooth.md §7)."""
 
-    TITLE = "Smoothing Spline Results"
-    METHOD = "Smoothing spline"
-    TUNING = (("Lambda:", "lam"), ("Criterion:", "criterion"), ("GCV:", "gcv"), ("CV:", "cv"),
+    _TITLE = "Smoothing Spline Results"
+    _METHOD = "Smoothing spline"
+    _TUNING = (("Lambda:", "lam"), ("Criterion:", "criterion"), ("GCV:", "gcv"), ("CV:", "cv"),
               ("Converged:", "converged"))  # fmt: skip
-    REPR = ("nobs", "df", "lam")
+    _REPR = ("nobs", "df", "lam")
 
 
 class PSplineResult(_PenalizedResult):
     """The result of pspline(): the fields of SmoothingSplineResult and n_segments, k, diff_order. Not a public
     constructor (docs/api/smooth.md §7)."""
 
-    TITLE = "P-Spline Results"
-    METHOD = "P-spline"
-    TUNING = (("Lambda:", "lam"), ("Segments:", "n_segments"), ("Degree:", "k"), ("Penalty order:", "diff_order"),
+    _TITLE = "P-Spline Results"
+    _METHOD = "P-spline"
+    _TUNING = (("Lambda:", "lam"), ("Segments:", "n_segments"), ("Degree:", "k"), ("Penalty order:", "diff_order"),
               ("Criterion:", "criterion"), ("GCV:", "gcv"), ("CV:", "cv"), ("Converged:", "converged"))  # fmt: skip
-    REPR = ("nobs", "df", "lam", "n_segments")
+    _REPR = ("nobs", "df", "lam", "n_segments")
 
 
 # ---------------------------------------------------------------- the fits
@@ -570,3 +571,6 @@ def make_lsq_spline(x, y, t, /, *, k=3, w=None, axis=0):
 
 __all__ = ["make_lsq_spline", "make_smoothing_spline", "smoothing_spline", "SmoothingSplineResult", "pspline",
            "PSplineResult"]  # fmt: skip
+
+
+_calls.methods(_PenalizedResult)

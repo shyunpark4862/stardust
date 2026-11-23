@@ -275,7 +275,7 @@ array([-3.0800395286260382, -1.6580945350013832, -1.5403015393361663,
 >>> k.sample(5)
 Traceback (most recent call last):
     ...
-TypeError: KDEResult.sample() missing 1 required keyword-only argument: 'rng'
+TypeError: sample(): missing 1 required keyword-only argument: 'rng'
 ```
 
 `bounds`가 있으면 구간 밖으로 나간 표본을 접어 안으로 돌려요.
@@ -290,7 +290,7 @@ TypeError: KDEResult.sample() missing 1 required keyword-only argument: 'rng'
 | `neff`, `nobs`, `ndim` | 유효 표본 수 $(\sum w)^2/\sum w^2$, 점의 수, 차원 |
 | `kernel`, `bounds`, `weights` | 받은 값(무게는 합이 1로 맞춘 것) |
 
-`KDEResult`는 분포 객체처럼 `pdf`, `logpdf`, `cdf`, `sample`을 쓰고 `summary()`는 없어요. `DensityResult`는 이름 붙은 튜플 `(x, density)`라 위처럼 풀어 쓸 수 있어요.
+`KDEResult`는 분포 객체처럼 `pdf`, `logpdf`, `cdf`, `sample`을 쓰고 `summary()`는 없어요. `DensityResult`는 이름 붙은 튜플 `(x, density)`라 위처럼 풀어 쓸 수 있어요. 그 배열도 다른 결과의 배열처럼 쓰기 금지라, 고치려면 사본을 만들어요.
 
 ```python
 >>> k.factor, k.neff, k.nobs, k.ndim

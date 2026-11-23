@@ -11,6 +11,7 @@ import math
 import numbers
 
 from .. import _core as _sd
+from .._calls import function
 from ._common import _TAKES, contiguous, integer, real, type_name
 
 _core = _sd.smooth
@@ -54,6 +55,7 @@ def _check_work(N, d, nu, func):
         raise MemoryError(f"{func}(): cannot allocate {nbytes} bytes: more than this machine's physical memory")
 
 
+@function
 def savgol_coeffs(window_length, polyorder, /, *, deriv=0, delta=1.0, pos=None, use="conv"):
     """The coefficients of a Savitzky-Golay filter: (window_length,) float64.
 
@@ -111,6 +113,7 @@ def _signal(x, func):
     return contiguous(a)
 
 
+@function
 def savgol_filter(x, window_length, polyorder, /, *, deriv=0, delta=1.0, axis=-1, mode="interp", cval=0.0):
     """Applies a Savitzky-Golay filter along one axis of x: an array of x's shape, float64 (complex128 for complex
     x: the real and the imaginary parts filtered alike).

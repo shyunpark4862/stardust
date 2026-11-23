@@ -478,17 +478,28 @@ inline void build_locator(Triangulation& T, bool split) {
             L.hi[k] = std::max(L.hi[k], T.pts[i * D + k]);
         }
     }
-    // Cells per axis: the extents' ratios in log2 (finite for any finite box).
+    // Cells per axis: the extents' ratios in log2 over the axes of positive half extent. An axis whose half
+    // extent is zero (an extent of 2^-1074 halves to 0) has one cell, as cell_on puts every point of it in
+    // cell 0; the cells go to the other axes. The logs are then finite and nothing NaN reaches the casts.
     const double cells = std::max(1.0, static_cast<double>(T.m) / static_cast<double>(kPointsPerCell));
     double logw[D], mean = 0.0;
+    bool open[D];
+    int wide = 0;
     for (int k = 0; k < D; ++k) {
-        logw[k] = std::log2(0.5 * L.hi[k] - 0.5 * L.lo[k]);
-        mean += logw[k] / D;
+        const double width = 0.5 * L.hi[k] - 0.5 * L.lo[k];
+        open[k] = width > 0.0;
+        logw[k] = open[k] ? std::log2(width) : 0.0;
+        wide += open[k];
     }
+    for (int k = 0; k < D; ++k)
+        if (open[k]) mean += logw[k] / wide;
     std::int64_t total = 1;
     for (int k = 0; k < D; ++k) {
-        const double g = std::exp2(std::log2(cells) / D + std::clamp(logw[k] - mean, -40.0, 40.0));
-        L.g[k] = static_cast<std::int64_t>(std::clamp(std::round(g), 1.0, 1e6));
+        L.g[k] = 1;
+        if (open[k]) {
+            const double g = std::exp2(std::log2(cells) / wide + std::clamp(logw[k] - mean, -40.0, 40.0));
+            L.g[k] = static_cast<std::int64_t>(std::clamp(std::round(g), 1.0, 1e6));
+        }
         total *= L.g[k];
     }
     while (total > 4 * static_cast<std::int64_t>(cells) + 16) {  // a very flat box: cut the longest axis

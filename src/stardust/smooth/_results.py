@@ -7,15 +7,18 @@ summary() is the regression box of stardust._summary with a header only (API.md 
 effective degrees of freedom, the scale and the subclass's tuning and criterion rows; repr is one line of
 the subclass's main fields.
 
-A subclass sets
-    TITLE     the box's title ("Lowess Results")
-    METHOD    the header's method name ("LOWESS")
-    TUNING    (label, field) rows of the header's right column: the tuning parameters and the criterion
-    REPR      the fields of the one-line repr
+A subclass sets (private class constants, like regression's _I_NOBS)
+    _TITLE    the box's title ("Lowess Results")
+    _METHOD   the header's method name ("LOWESS")
+    _TUNING   (label, field) rows of the header's right column: the tuning parameters and the criterion
+    _REPR     the fields of the one-line repr
+
+Every public method of a result (summary, predict, ...) reports a wrong call shape under its own name, as the
+other areas' results do (API.md §2.1): "predict(): missing 1 required positional argument: 'x_new'".
 """
 
+from .. import _calls, _summary
 from .. import _core as _sd
-from .. import _summary
 
 _MISSING = object()
 
@@ -23,10 +26,10 @@ _MISSING = object()
 class SmootherResult:
     """Base class: SmootherResult(**fields). Not a public constructor (docs/api/smooth.md §7)."""
 
-    TITLE = "Smoother Results"
-    METHOD = ""
-    TUNING = ()
-    REPR = ("nobs", "df")
+    _TITLE = "Smoother Results"
+    _METHOD = ""
+    _TUNING = ()
+    _REPR = ("nobs", "df")
 
     def __init__(self, **fields):
         values = {}
@@ -73,13 +76,16 @@ class SmootherResult:
         """The regression box with a header only: the method, the sample, the fit's size and scale on the left,
         the tuning and criterion on the right."""
         left = [
-            ("Method:", self.METHOD),
+            ("Method:", self._METHOD),
             ("No. Observations:", _summary.count(self.nobs)),
             ("Df (effective):", _summary.df(self.df)),
             ("Scale:", _summary.stat(self.scale)),
         ]
-        right = [(label, self._cell(field)) for label, field in self.TUNING]
-        return _summary.render(self.TITLE, header=(left, right))
+        right = [(label, self._cell(field)) for label, field in self._TUNING]
+        return _summary.render(self._TITLE, header=(left, right))
 
     def __repr__(self):
-        return _summary.one_line(type(self).__name__, [(k, getattr(self, k)) for k in self.REPR])
+        return _summary.one_line(type(self).__name__, [(k, getattr(self, k)) for k in self._REPR])
+
+
+_calls.methods(SmootherResult)

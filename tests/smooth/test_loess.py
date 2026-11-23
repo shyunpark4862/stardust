@@ -594,3 +594,31 @@ def test_two_delta_beyond_4096_points_is_not_computed():
 def _stored(r):
     Xs, ys, ws, rho, divisor, widen = object.__getattribute__(r, "_data")
     return Xs, ys, ws, rho, r.degree, r.q, widen, divisor
+
+
+@pytest.mark.parametrize(
+    "x, kw, rtol",
+    [
+        ([0.0, 1.0], {"degree": 0}, 1e-14),
+        ([0.0, 1.0], {"degree": 0, "weights": [1.0, 2.0]}, 1e-14),
+        ([0.0, 1.0, 2.0], {"degree": 1}, 1e-4),
+        ([0.0, 1.0, 2.0, 3.0], {"degree": 2}, 1e-4),
+    ],
+)
+def test_one_delta_rows_keep_the_small_entries(x, kw, rtol):
+    """span just above 1 gives the far points weights near 2.7e-11: every hat row is e_i plus entries far below
+    ulp(1), and one_delta (about 1e-20) is their squares. Each row's sum over j != i is added on its own (decision
+    SM143); taken as sum l_j^2 - l_ii^2 it would vanish below ulp(l_ii^2) and one_delta would lose half or more."""
+    from fractions import Fraction
+
+    kw = dict(kw, span=1 + 2e-4)
+    if "weights" in kw:
+        kw["weights"] = A(kw["weights"])
+    n = len(x)
+    r = sd.smooth.loess(A(x), A([float(i % 2) for i in range(n)]), **kw)
+    L = smoother_matrix(x, n, **kw)
+    exact = sum(
+        (1 - Fraction(L[i, i])) ** 2 + sum(Fraction(L[i, j]) ** 2 for j in range(n) if j != i) for i in range(n)
+    )
+    assert 0 < float(exact) < 1e-18
+    assert math.isclose(r.one_delta, float(exact), rel_tol=rtol)

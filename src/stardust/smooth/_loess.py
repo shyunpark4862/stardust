@@ -12,6 +12,7 @@ and computes every point with the same kernel whatever the thread count.
 import math
 import numbers
 
+from .. import _calls
 from .. import _core as _sd
 from .._calls import function
 from ._common import alpha as _alpha
@@ -40,9 +41,9 @@ class LoessResult(SmootherResult):
     evaluate the same local polynomial at new points with the last robust weights. Not a public constructor
     (docs/api/smooth.md §7)."""
 
-    TITLE = "Loess Results"
-    METHOD = "LOESS"
-    TUNING = (
+    _TITLE = "Loess Results"
+    _METHOD = "LOESS"
+    _TUNING = (
         ("Span:", "span"),
         ("Window points:", "q"),
         ("Degree:", "degree"),
@@ -50,7 +51,7 @@ class LoessResult(SmootherResult):
         ("Equivalent parameters:", "enp"),
         ("Rank-deficient fits:", "n_rank_deficient"),
     )
-    REPR = ("nobs", "df", "span", "degree")
+    _REPR = ("nobs", "df", "span", "degree")
 
     def __init__(self, data, p, one_d, **fields):
         super().__init__(**fields)
@@ -230,3 +231,6 @@ def loess(
         robust_weights=_back(rho, keep, n_in),
         n_rank_deficient=int(deficient),
     )
+
+
+_calls.methods(LoessResult)

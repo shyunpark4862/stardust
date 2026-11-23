@@ -24,7 +24,7 @@ export const lwRowEdge = [[0.238, 0.3424], [0.373, 0.3141], [1.007, 0.1779], [1.
 |---|---:|---|
 | `csrc/smooth/local.hpp` | 300 | 창의 왼쪽 끝, 창 끝의 간격, tricube 모멘트의 NEON 훑기, 국소 직선의 닫힌 꼴과 다시 훑기, 모자 행의 원소 |
 | `csrc/smooth/local.cpp` | 292 | 정렬, 강건 반복, `delta`의 계획과 보간, 지렛대, `predict` |
-| `src/stardust/smooth/_local.py` | 142 | 인자 검사, `nan_policy`, `LowessResult`, 구간의 $t$ 분위수 |
+| `src/stardust/smooth/_local.py` | 146 | 인자 검사, `nan_policy`, `LowessResult`, 구간의 $t$ 분위수 |
 
 `local.hpp`는 [loess](/internals/smooth/loess/)도 써요. 설명변수 하나, 차수 1의 `loess`가 이 커널을 그대로 불러 `lowess(it=0)`과 같은 비트를 내요.
 

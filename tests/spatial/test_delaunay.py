@@ -302,6 +302,26 @@ def test_find_simplex_wide_range():
     X.check_find_simplex(x, _np(D.simplices), q, _np(D.find_simplex(q)))
 
 
+def _tiny_extent_sets2(w):
+    """Sets whose extent on one axis (or both) is w: the location grid's axis whose half extent is 0 for w = 2^-1074."""
+    base = [[0.0, 0.0], [w, 1.0], [0.0, 2.0]]
+    column = [[w * (i % 2), float(i)] for i in range(40)]  # two columns w apart: a grid of many cells
+    sets = [base, column, [[w, 0.0], [0.0, w], [0.0, 0.0]]]
+    return sets + [[p[::-1] for p in s] for s in sets[:2]]
+
+
+@pytest.mark.parametrize("w", [2.0**-1074, 2.0**-1073])
+def test_tiny_extent_axis(w):
+    """An axis whose extent is the smallest subnormal (half of it rounds to 0) is triangulated like any other, and
+    find_simplex locates on it (§6.2 of the API: no limit on the coordinates' size, subnormals included)."""
+    for x in _tiny_extent_sets2(w):
+        x = np.array(x)
+        D = Delaunay(x)
+        X.check_delaunay(x, _np(D.simplices), _np(D.neighbors))
+        q = np.concatenate([x, x[:1] * 0.5 + x[-1:] * 0.5, [[w, w], [-w, 0.0], [0.0, -w], [2 * w, 0.5]]])
+        X.check_find_simplex(x, _np(D.simplices), q, _np(D.find_simplex(q)))
+
+
 # ---------------------------------------------------------------- errors, pickle, repr
 
 

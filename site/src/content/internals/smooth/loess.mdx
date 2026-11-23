@@ -18,9 +18,9 @@ export const lo2 = [[0.0, 0.2266], [0.2, 0.3719], [0.4, 0.5001], [0.6, 0.6105], 
 
 | 파일 | 줄 수 | 맡은 일 |
 |---|---:|---|
-| `csrc/smooth/loess.cpp` | 1,346 | 정규화와 정렬, 창(1변수는 `local.hpp`, 여러 변수는 spatial의 거리 커널과 KD 트리), 모멘트와 고친 Cholesky, Householder QR, R의 강건 무게, tr L과 $\delta_1$의 모으기, `predict`, $\delta_2$의 블록 Gram |
+| `csrc/smooth/loess.cpp` | 1,387 | 정규화와 정렬, 창(1변수는 `local.hpp`, 여러 변수는 spatial의 거리 커널과 KD 트리), 모멘트와 고친 Cholesky, Householder QR, R의 강건 무게, tr L과 $\delta_1$의 모으기, `predict`, $\delta_2$의 블록 Gram |
 | `csrc/smooth/local.hpp` | 300 | 1변수의 창과 차수 1의 닫힌 꼴(lowess와 같은 커널) |
-| `src/stardust/smooth/_loess.py` | 232 | 인자 검사, $q$와 항 수의 검사, `LoessResult`, 구간의 분위수 |
+| `src/stardust/smooth/_loess.py` | 236 | 인자 검사, $q$와 항 수의 검사, `LoessResult`, 구간의 분위수 |
 
 평가점 하나의 계산은 `fit_point` 하나예요. 창을 모으고(`gather_1d`나 `gather_nd`), 국소 다항식을 풀고(`solve_window`), 청하면 모자 행의 통계를 모아요. 아래 절이 이 순서예요.
 
@@ -237,7 +237,7 @@ $$
 \delta_2 = \mathrm{tr}\Bigl(\bigl((I - L)^{\mathsf T}(I - L)\bigr)^2\Bigr).
 $$
 
-$\delta_1$은 행마다 $(1 - l_{ii})^2 + (\sum_j l_{ij}^2 - l_{ii}^2)$로 적합할 때 함께 나와요. 행을 저장하지 않으니 $O(n\cdot q)$이고 메모리는 창 하나 분량이에요. 1변수 1차는 lowess의 무게 계산을 그대로 두 레인으로 돌려 $\sum l^2$를 모으고(지렛대는 lowess의 `hat_at` 그대로), 차수 0은 평균을 훑으며 $\sum v^2/a^2$를 함께 구해요.
+$\delta_1$은 행마다 $(1 - l_{ii})^2 + \sum_{j \ne i}l_{ij}^2$로 적합할 때 함께 나와요. 행을 저장하지 않으니 $O(n\cdot q)$이고 메모리는 창 하나 분량이에요. 둘째 항은 행 전체의 제곱합에서 $l_{ii}^2$를 빼서 얻지 않고, 창에서 자기 점의 앞과 뒤를 따로 더해 합쳐요. 창의 양수 무게 점이 국소 다항식의 항 수만큼이면 적합이 보간에 가까워져 $l_{ii}$가 1에 아주 가깝고 나머지 $l_{ij}^2$는 $\mathrm{ulp}(1)$보다 작아요. 빼는 식으로는 그 합이 반올림에 묻혀 사라지지만, 따로 더하면 상대 정확도가 남아요. 1변수 1차는 lowess의 무게 계산을 그대로 두 레인으로 돌려 $\sum l^2$를 모으고(지렛대는 lowess의 `hat_at` 그대로), 차수 0은 평균을 훑으며 $\sum v^2/a^2$를 함께 구하는데 자기 점의 레인은 0으로 가려요. 새 점의 `predict_interval`이 쓰는 $\sum_j l_j^2/w_j$는 데이터 점의 행에서는 필요 없어서 그때는 구하지 않아요.
 
 `scale` = $\sqrt{\sum w_ir_i^2/\delta_1}$이고 `enp` = $\delta_1 + 2\,\mathrm{tr}L - \mathit{nobs} = \mathrm{tr}(L^{\mathsf T}L)$이에요. 둘 다 R의 식이고 `enp`는 `df`와 달라요.
 

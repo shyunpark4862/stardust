@@ -578,3 +578,15 @@ def test_errors():
         KDE(x, 0.5)
     with pytest.raises(ValueError, match="at most 3"):
         KDE(A(np.random.default_rng(0).standard_normal((10, 4)))).density()
+
+
+@pytest.mark.parametrize("binned", [True, False])
+@pytest.mark.parametrize("p", [1, 2])
+def test_density_arrays_are_read_only(binned, p):
+    """DensityResult's arrays are read-only like every result's (API.md §2.2; decision SM145), NaN data too."""
+    data = A(np.linspace(0, 1, 30)) if p == 1 else A(np.random.default_rng(4).random((30, 2)))
+    for k in (KDE(data), KDE(A([math.nan, 1.0, 2.0]))) if p == 1 else (KDE(data),):
+        d = k.density(binned=binned, n=16)
+        for a in (d.x if p > 1 else (d.x,)) + (d.density,):
+            with pytest.raises(ValueError, match="read-only"):
+                a[(0,) * a.ndim] = 1.0

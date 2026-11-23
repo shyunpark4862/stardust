@@ -12,6 +12,7 @@ every point with the same kernel whatever the thread count.
 import math
 import numbers
 
+from .. import _calls
 from .. import _core as _sd
 from .._calls import function
 from ._common import alpha as _alpha
@@ -34,9 +35,9 @@ class KernelRegressionResult(SmootherResult):
     criterion, criterion_value, status, converged; predict(X_new), predict_interval(X_new, alpha=0.05) and
     gradient(X_new) evaluate the same estimator at new points. Not a public constructor (docs/api/smooth.md §7)."""
 
-    TITLE = "Kernel Regression Results"
-    METHOD = "Kernel regression"
-    TUNING = (
+    _TITLE = "Kernel Regression Results"
+    _METHOD = "Kernel regression"
+    _TUNING = (
         ("Degree:", "degree"),
         ("Kernel:", "kernel"),
         ("Bandwidth:", "bw"),
@@ -44,7 +45,7 @@ class KernelRegressionResult(SmootherResult):
         ("Criterion value:", "criterion_value"),
         ("Converged:", "converged"),
     )
-    REPR = ("nobs", "df", "bw", "degree")
+    _REPR = ("nobs", "df", "bw", "degree")
 
     def __init__(self, data, p, one_d, **fields):
         super().__init__(**fields)
@@ -341,3 +342,6 @@ def bw_dpill(x, y, /):
         if not bool(_sd.all(_sd.isfinite(a))):
             raise ValueError(f"bw_dpill(): '{arg}' must be finite (NaN or infinity found)")
     return float(_dpill(xv, yv, "bw_dpill"))
+
+
+_calls.methods(KernelRegressionResult)

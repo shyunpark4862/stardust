@@ -20,7 +20,7 @@ stardust가 맞게 계산하는지는 네 가지 장치로 따져요. 장치마�
 | 커버리지 | 어떤 테스트도 지나가지 않는 코드와 분기가 어디인가요? | `tools/coverage.py` |
 | 정확도 측정 | 함수마다 오차가 얼마이고, 기준선보다 나빠진 것이 있나요? | `bench/accuracy/` ([정확도 측정](/internals/core/accuracy/)) |
 
-열여덟 영역과 공통 폴더의 단위 테스트는 292개 파일에 23,295개예요. 평소에 돌리는 `quick` 등급이 그중 22,518개를 고르고, 나머지 737개는 시간이 오래 걸리거나 TeX Live 같은 바깥 프로그램을 불러서 `deep` 등급에서만 돌아요. 저장소 밖에서 받은 파일(희소 행렬, QUADPACK의 Fortran 원본)을 쓰는 테스트 40개는 `all` 등급에서만 돌아요. 골든 테스트는 열여덟 영역에 케이스 41,843개를 기록해 두었어요. 테스트를 여러 프로세스로 나눠 돌리는 `tools/test.py`가 있고, 기계를 혼자 써야 하는 테스트는 따로 모아 마지막에 혼자 돌려요.
+열여덟 영역과 공통 폴더의 단위 테스트는 292개 파일에 23,318개예요. 평소에 돌리는 `quick` 등급이 그중 22,541개를 고르고, 나머지 737개는 시간이 오래 걸리거나 TeX Live 같은 바깥 프로그램을 불러서 `deep` 등급에서만 돌아요. 저장소 밖에서 받은 파일(희소 행렬, QUADPACK의 Fortran 원본)을 쓰는 테스트 40개는 `all` 등급에서만 돌아요. 골든 테스트는 열여덟 영역에 케이스 41,843개를 기록해 두었어요. 테스트를 여러 프로세스로 나눠 돌리는 `tools/test.py`가 있고, 기계를 혼자 써야 하는 테스트는 따로 모아 마지막에 혼자 돌려요.
 
 모든 명령은 라이브러리 저장소 맨 위에서 `.venv`의 Python으로 돌려요. 명령과 옵션의 전체 목록은 라이브러리 저장소의 `tests/README.md`(테스트, 골든, 커버리지)와 `bench/README.md`(속도, 정확도)에 있어요.
 
@@ -60,16 +60,16 @@ stardust가 맞게 계산하는지는 네 가지 장치로 따져요. 장치마�
 | `tests/sparse/` | 20 | 4,028 |
 | `tests/integrate/` | 12 | 1,441 |
 | `tests/differentiate/` | 8 | 86 |
-| `tests/spatial/` | 29 | 1,688 |
+| `tests/spatial/` | 29 | 1,698 |
 | `tests/graph/` | 20 | 1,182 |
-| `tests/interpolate/` | 20 | 483 |
+| `tests/interpolate/` | 20 | 486 |
 | `tests/fft/` | 14 | 1,201 |
-| `tests/smooth/` | 14 | 471 |
+| `tests/smooth/` | 14 | 481 |
 | `tests/plot/` | 11 | 266 |
 | `tests/interop/` | 1 | 39 |
 | `tests/bench/` (측정 도구 자체) | 3 | 72 |
 | `tests/golden/` | 1 | 61 |
-| 합계 | 292 | 23,295 |
+| 합계 | 292 | 23,318 |
 
 ### 무엇에 대 보나요
 
@@ -340,9 +340,9 @@ C++ 분기는 소스 위치마다 한 번 세요. 템플릿은 dtype마다 인�
 
 | 등급 | 고르는 테스트 | hypothesis | `examples(n)` | 테스트 수 |
 |---|---|---|---|---:|
-| `quick` (기본) | `deep`·`external` 마커가 없는 것 | 매번 같은 예제(`derandomize=True`), 기본 100개 | n | 22,518 |
-| `deep` | `quick`과 `deep` 마커 | 무작위, 기본 1000개 | 10n | 23,255 |
-| `all` | `deep`과 `external` 마커 | 무작위, 기본 1000개 | 10n | 23,295 |
+| `quick` (기본) | `deep`·`external` 마커가 없는 것 | 매번 같은 예제(`derandomize=True`), 기본 100개 | n | 22,541 |
+| `deep` | `quick`과 `deep` 마커 | 무작위, 기본 1000개 | 10n | 23,278 |
+| `all` | `deep`과 `external` 마커 | 무작위, 기본 1000개 | 10n | 23,318 |
 
 - `deep` 마커는 넓은 격자를 쓰거나 비싼 참값을 그 자리에서 계산하는 테스트, 바깥 프로그램을 실제로 부르는 그림 테스트에 달아요. 지금 737개예요. 대부분은 최적화의 문제 모음을 모두 도는 테스트(589개: Newton 계열이 scipy와 같은 점에서 함수를 부르는지 보는 460개와 `minimize`의 129개)예요. quick에서는 문제 목록의 여덟 개에 하나와 MGH 모음 밖의 문제만, scipy와 단계를 견주는 스윕은 첫 문제만 돌아요. 나머지는 통계 분포의 넓은 검사(81개: 분포 31개마다 잘못된 매개변수로 모든 메서드를 불러 끝나는지 보는 하위 프로세스, 비중심 F 분포가 `nc=0`에서 F 분포와 같은지 보는 격자 48개, 극단 매개변수 2개), 회귀의 Arb 참값 대조(GLM 44개)와 Theil-Sen 기울기의 큰 문제용 알고리즘을 작은 문제에 강제로 돌리는 테스트(5개), 그림이 바깥 프로그램을 부르는 테스트(14개: TeX Live로 글자 엔진과 기록을 대조하는 `tests/plot/test_text_tex.py`의 10개와, 같은 장면의 SVG·PDF를 `rsvg-convert`와 Ghostscript로 칠해 PNG와 겹쳐 보는 `tests/plot/test_outputs.py`의 4개), 희소 행렬과 적분의 참값 도구가 점 몇 개를 다시 만들어 파일과 같은지 보는 테스트 하나씩, 그리고 골든 비교(`tests/golden/test_golden.py`)와 정확도 비교(`tests/bench/test_accuracy_baseline.py`) 하나씩이에요. `rsvg-convert`나 Ghostscript가 없으면 겹쳐 보기는 건너뛰지만, TeX Live를 부르는 테스트는 건너뛰지 않아요.
 - `external`은 R이나 Fortran 컴파일러를 실제로 부르거나 저장소 밖에서 받은 파일을 읽는 테스트의 마커예요. 지금은 SuiteSparse 모음의 실제 행렬 여덟을 읽는 `tests/sparse/test_suitesparse.py`의 39개와, QUADPACK의 Fortran 원본을 gfortran으로 빌드해 기록의 문제 12개를 다시 돌리고 고정 기록과 같은지 보는 `tests/integrate/test_reference_data.py`의 하나, 모두 40개가 달려 있어요. 행렬은 `tools/sparse_suitesparse.py`가 `build/sparse/suitesparse/`에, Fortran 원본은 `build/comparators/quadpack/`에 받아 두고(저장소에 넣지 않아요), 파일이나 컴파일러가 없으면 건너뛰어요. 행렬이 없을 때는 받는 명령도 알려 줘요.

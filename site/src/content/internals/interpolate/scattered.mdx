@@ -214,23 +214,23 @@ $$
 
 ### 크기 옮기기
 
-값 커널의 절대 항 $2^{-1075}$ 때문에, $D$가 비정상 수 크기면 상대 정확도가 무너지고 $D$가 넘치면 비가 NaN이에요. 그래서 $D$가 $[2^{-900}, 2^{900}]$ 밖이면 단체의 꼭짓점과 평가점을 2의 거듭제곱 하나로 늘이거나 줄인 사본으로 행렬식을 다시 구해요. 단체 안에서는 $\lvert D_k\rvert \le \lvert D\rvert$라 $D$ 하나로 판단하면 돼요.
+값 커널의 절대 항 $2^{-1075}$ 때문에, $D$가 비정상 수 크기면 상대 정확도가 무너지고 $D$가 넘치면 비가 NaN이에요. 그래서 $D$가 $[2^{-900}, 2^{900}]$ 밖이면 단체의 꼭짓점과 평가점을 축마다 2의 거듭제곱으로 늘이거나 줄인 사본으로 행렬식을 다시 구해요. 단체 안에서는 $\lvert D_k\rvert \le \lvert D\rvert$라 $D$ 하나로 판단하면 돼요.
 
 ```cpp
 // csrc/interpolate/scattered.cpp
 template <int D>
 inline void scaled_copies(const double* const* p, int m, double (*out)[D]) {
-    double big = 0.0;
-    for (int i = 0; i < m; ++i)
-        for (int j = 0; j < D; ++j) big = std::max(big, std::fabs(p[i][j]));
-    const int e = big > 0.0 ? std::ilogb(big) + 1 : 0;
-    const double s1 = std::ldexp(1.0, -e / 2), s2 = std::ldexp(1.0, -e - (-e / 2));
-    for (int i = 0; i < m; ++i)
-        for (int j = 0; j < D; ++j) out[i][j] = p[i][j] * s1 * s2;
+    for (int j = 0; j < D; ++j) {
+        double big = 0.0;
+        for (int i = 0; i < m; ++i) big = std::max(big, std::fabs(p[i][j]));
+        const int e = big > 0.0 ? std::ilogb(big) + 1 : 0;
+        const double s1 = std::ldexp(1.0, -e / 2), s2 = std::ldexp(1.0, -e - (-e / 2));
+        for (int i = 0; i < m; ++i) out[i][j] = p[i][j] * s1 * s2;
+    }
 }
 ```
 
-가장 큰 좌표를 $[1/2, 1)$로 옮기는 배율 $2^{-e}$이에요. $2^{-e}$ 자체가 double이 아닐 수 있어서(예를 들어 $e = -1074$) 두 인자 $s_1 s_2$로 나눠 곱해요. 2의 거듭제곱을 곱하는 것은 결과가 정상 범위에 있는 한 정확하고, 모든 행렬식이 같은 배율 $2^{-de}$를 받으니 비 $D_k/D$는 원래의 것과 같아요. 사본의 좌표 범위가 점 집합의 범위와 다르니 술어의 길은 그 점들의 범위로 다시 골라요(`any`).
+축 $j$마다 그 축의 가장 큰 좌표를 $[1/2, 1)$로 옮기는 배율 $2^{-e_j}$예요. $2^{-e_j}$ 자체가 double이 아닐 수 있어서(예를 들어 $e_j = -1074$) 두 인자 $s_1 s_2$로 나눠 곱해요. 2의 거듭제곱을 곱하는 것은 결과가 정상 범위에 있는 한 정확하고, 한 축을 $c$배 하면 모든 행렬식이 $c$배가 되니 축 배율의 곱 $2^{-(e_1 + \cdots + e_d)}$가 $D$와 모든 $D_k$에 똑같이 곱해져요. 그래서 비 $D_k/D$는 원래의 것과 같아요. 축마다 따로 옮기므로 좌표가 모두 작은 자료뿐 아니라 한 축의 폭만 비정상 수인 가는 단체도 풀려요. 사본의 좌표 범위가 점 집합의 범위와 다르니 술어의 길은 그 점들의 범위로 다시 골라요(`any`).
 
 ```python
 >>> T = sd.asarray([[0.0, 0.0], [3.0, 0.0], [0.0, 2.0], [3.0, 2.0], [1.0, 1.0]])
@@ -246,6 +246,14 @@ inline void scaled_copies(const double* const* p, int m, double (*out)[D]) {
 ```
 
 좌표가 모두 비정상 수인 자료에서도 같은 비트의 값이 나와요. 같은 점 집합의 `transform`은 $D$가 아래넘쳐 inf예요.
+
+한 축의 폭만 아주 작은 단체도 같아요. 아래 삼각형은 $x$축의 폭이 가장 작은 비정상 수 $2^{-1074}$라 $D = 2^{-1073}$이에요. 사본에서 $x$축은 $2^{1073}$배, $y$축은 $2^{-2}$배가 되어 무게가 정확해요.
+
+```python
+>>> thin = sd.asarray([[0.0, 0.0], [5e-324, 1.0], [0.0, 2.0]])
+>>> sd.interpolate.LinearNDInterpolator(thin, sd.asarray([1.0, 2.0, 3.0]))([[0.0, 0.5], [0.0, 1.5]]).tolist()
+[1.5, 2.5]
+```
 
 ## Clough–Tocher: 이어 붙인 3차식
 

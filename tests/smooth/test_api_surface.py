@@ -9,6 +9,8 @@ import inspect
 import pathlib
 import re
 
+import pytest
+
 import stardust as sd
 
 from .._api_doc import signature_blocks
@@ -244,3 +246,38 @@ def test_scipy_names_left_out_have_their_replacements():
 def test_module_is_wired():
     assert isinstance(sd.smooth.__all__, list) and len(set(sd.smooth.__all__)) == len(sd.smooth.__all__)
     assert "smooth" in dir(sd)
+
+
+def _results():
+    x, y = [0.0, 1, 2, 3, 4, 5, 6, 7], [1.0, 2, 1, 3, 2, 4, 3, 5]
+    return [
+        sd.smooth.lowess(x, y),
+        sd.smooth.loess(x, y),
+        sd.smooth.smoothing_spline(x, y),
+        sd.smooth.pspline(x, y),
+        sd.smooth.kernel_regression(x, y, bw=1.0),
+        sd.smooth.kde([0.0, 1.0, 3.0]),
+    ]
+
+
+def test_wrong_call_shapes_start_with_the_name_called():
+    """API.md §2.1 for every public method of the results and every function (decision SM145): the method's own
+    name, never a hidden base class's ("_PenalizedResult.predict() ...")."""
+    for r in _results():
+        for name in [m for m in dir(type(r)) if not m.startswith("_") and callable(getattr(type(r), m))]:
+            method = getattr(r, name)
+            for args, kwargs in (((), {"foo": 1}), ((1.0, 2.0, 3.0), {})):
+                with pytest.raises(TypeError) as e:
+                    method(*args, **kwargs)
+                assert str(e.value).startswith(f"{name}(): "), (type(r).__name__, str(e.value))
+    for name in sd.smooth.__all__:
+        f = getattr(sd.smooth, name)
+        if inspect.isfunction(f):
+            with pytest.raises(TypeError, match=rf"^{name}\(\): unexpected keyword argument 'foo'$"):
+                f(foo=1)
+
+
+def test_results_show_no_constants():
+    """The summary's and repr's constants are private (_TITLE, ...): dir() shows the fields and methods only."""
+    for r in _results():
+        assert not [m for m in dir(r) if m.isupper() and not m.startswith("_")], type(r).__name__
