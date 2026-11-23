@@ -13,3 +13,7 @@ __pycache__/
 
 # macOS
 .DS_Store
+
+# Site working notes (kept here, not committed)
+/site/notes/
+/.claude/

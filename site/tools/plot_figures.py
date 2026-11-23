@@ -1,7 +1,7 @@
 """Draw the figures of the pages from the pages' own examples.
 
-    ../stardust/.venv/bin/python tools/plot_figures.py [page ...]
-    ../stardust/.venv/bin/python tools/plot_figures.py --check
+    ../.venv/bin/python tools/plot_figures.py [page ...]
+    ../.venv/bin/python tools/plot_figures.py --check
 
 A page shows a figure with `<PlotImage name="..." alt="..." />` placed after
 the ```python block that builds it. The example blocks of a page run in
@@ -115,7 +115,12 @@ def main(argv: list[str]) -> int:
         for name, fmt, data, width, height in figs:
             if name in manifest or f"{name}.svg" in files or f"{name}.png" in files:
                 raise SystemExit(f"{page_id(path)}: figure name {name!r} is used twice")
-            manifest[name] = {"page": page_id(path), "format": fmt, "width": round(width, 4), "height": round(height, 4)}
+            manifest[name] = {
+                "page": page_id(path),
+                "format": fmt,
+                "width": round(width, 4),
+                "height": round(height, 4),
+            }
             files[f"{name}.{fmt}"] = data
     used = {f"{n}.{e['format']}" for n, e in manifest.items()}
     for fname, data in sorted(files.items()):

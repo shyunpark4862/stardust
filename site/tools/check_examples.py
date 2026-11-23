@@ -1,7 +1,7 @@
 """Run every interactive example in the API pages and compare the output.
 
-    ../stardust/.venv/bin/python tools/check_examples.py [area[/slug] ...]
-    ../stardust/.venv/bin/python tools/check_examples.py --coverage array
+    ../.venv/bin/python tools/check_examples.py [area[/slug] ...]
+    ../.venv/bin/python tools/check_examples.py --coverage array
 
 Examples are the ```python blocks that contain `>>> ` prompts. The blocks of
 one page run in order in one namespace, so a later block can use names an
@@ -116,7 +116,9 @@ def coverage(area: str) -> int:
     for cls in classes:
         # A member inherited from another public class is documented on that class's page.
         bases = [b for b in cls.__mro__[1:] if b in classes]
-        public |= {f"{cls.__name__}.{m}" for m in dir(cls) if not m.startswith("_") and not any(hasattr(b, m) for b in bases)}
+        public |= {
+            f"{cls.__name__}.{m}" for m in dir(cls) if not m.startswith("_") and not any(hasattr(b, m) for b in bases)
+        }
     seen: dict[str, str] = {}
     twice = []
     for path in sorted((ROOT / area).glob("*.mdx")):

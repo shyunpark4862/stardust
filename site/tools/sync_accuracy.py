@@ -1,9 +1,9 @@
 """Copy a compact summary of the library's accuracy baselines into the site.
 
-    ../stardust/.venv/bin/python tools/sync_accuracy.py [--lib PATH]
+    ../.venv/bin/python tools/sync_accuracy.py [--lib PATH]
 
-reads PATH/bench/accuracy/results/<area>.json (PATH defaults to ../stardust next to this
-repository) for the areas that exist and writes src/data/accuracy.json, which
+reads PATH/bench/accuracy/results/<area>.json (PATH defaults to the library
+repository that holds site/) for the areas that exist and writes src/data/accuracy.json, which
 src/components/fig/AccuracySummary.astro renders. Only the measures are kept: the run
 records (commit, date, machine), the comparator libraries and the worst inputs are dropped.
 Numbers are rounded to three significant digits; the within-contract counts and the worst
@@ -22,7 +22,22 @@ import pathlib
 SITE = pathlib.Path(__file__).resolve().parents[1]
 OUT = SITE / "src" / "data" / "accuracy.json"
 # The areas the library measures, in its order (bench/areas.py without frame and random).
-AREAS = ("array", "linalg", "special", "stats", "regression", "optimize", "htest", "sparse", "integrate", "differentiate", "spatial", "fft", "interpolate", "graph")
+AREAS = (
+    "array",
+    "linalg",
+    "special",
+    "stats",
+    "regression",
+    "optimize",
+    "htest",
+    "sparse",
+    "integrate",
+    "differentiate",
+    "spatial",
+    "fft",
+    "interpolate",
+    "graph",
+)
 GROUPS = {"stats": {"mv": "mv/"}}  # area -> {group: sweep name prefix}
 
 # The output: {"fields": FIELDS, "areas": {area: {"summary": {...}, "groups": {group: summary},
@@ -141,7 +156,7 @@ def counts(sweeps):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--lib", default=str(SITE.parent / "stardust"), help="the library repository")
+    ap.add_argument("--lib", default=str(SITE.parent), help="the library repository")
     a = ap.parse_args(argv)
     results = pathlib.Path(a.lib) / "bench" / "accuracy" / "results"
     areas = {}
