@@ -13,6 +13,7 @@
  *   scale    display size relative to the figure's real size (default 1.5)
  */
 import plots from '../../data/plots.json';
+import { url } from '../../lib/url';
 
 interface Props {
   name: string;
@@ -34,7 +35,7 @@ const height = px(entry.height);
 <figure class="plot">
   <div class="plot__stage">
     <img
-      src={`/plot/${name}.${entry.format}`}
+      src={url(`/plot/${name}.${entry.format}`)}
       alt={alt}
       width={width}
       height={height}

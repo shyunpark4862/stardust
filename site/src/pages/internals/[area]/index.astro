@@ -2,6 +2,7 @@
 import { subject } from '../../../data/inline';
 import Docs from '../../../layouts/Docs.astro';
 import { inlineHtml } from '../../../data/inline';
+import { url } from '../../../lib/url';
 import { groupId } from '../../../data/sections';
 import {
   internalsAreaNav,
@@ -42,7 +43,7 @@ const headings = groups.map((g) => ({ depth: 2, slug: groupId(g.title), text: g.
         <ul class="cards">
           {g.entries.map((e) => (
             <li>
-              <a class="card" href={internalsHref(e)}>
+              <a class="card" href={url(internalsHref(e))}>
                 <span class="card__title">{e.data.title}</span>
                 <span class="card__summary" set:html={inlineHtml(e.data.summary)} />
               </a>

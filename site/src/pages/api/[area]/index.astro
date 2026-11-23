@@ -1,6 +1,7 @@
 ---
 import Docs from '../../../layouts/Docs.astro';
 import { inlineHtml } from '../../../data/inline';
+import { url } from '../../../lib/url';
 import { areaCrumbs, areaNav, areaOf, areaSidebar, documentedAreas, groupId, groupsOf, hrefOf, isSingle } from '../../../data/api';
 
 export async function getStaticPaths() {
@@ -32,7 +33,7 @@ const headings = groups.map((g) => ({ depth: 2, slug: groupId(g.title), text: g.
         <ul class="cards">
           {g.entries.map((e) => (
             <li>
-              <a class="card" href={hrefOf(e)}>
+              <a class="card" href={url(hrefOf(e))}>
                 <span class:list={['card__title', isSingle(e) && 'card__title--mono']}>{e.data.title}</span>
                 <span class="card__summary" set:html={inlineHtml(e.data.summary)} />
                 {!isSingle(e) && e.data.names.length > 0 && <span class="card__names">{e.data.names.join('  ')}</span>}

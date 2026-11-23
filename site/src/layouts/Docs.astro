@@ -4,6 +4,7 @@ import Badge from '../components/Badge.astro';
 import { mathCss, renderTex } from '../lib/mathjax.mjs';
 import '../styles/prose.css';
 import { inlineHtml, plainText } from '../data/inline';
+import { unbase, url } from '../lib/url';
 import { sidebars, topNav, type AreaNav, type Crumb, type NavGroup } from '../data/nav';
 
 interface Heading {
@@ -47,7 +48,7 @@ for (const h of Astro.props.headings ?? []) {
   if (h.depth === 2) toc.push({ h, sub: [] });
   else if (h.depth === 3 && toc.length > 0) toc[toc.length - 1].sub.push(h);
 }
-const path = Astro.url.pathname;
+const path = unbase(Astro.url.pathname);
 const sectionNav = topNav.find((n) => n.href === `/${section}/`);
 const crumbs: Crumb[] = Astro.props.crumbs ?? (sectionNav ? [{ label: sectionNav.label, href: sectionNav.href }] : []);
 const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
@@ -67,7 +68,7 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
         {area && (
           <div class="side__head">
             <div class="area">
-              <a class="area__home" href={area.current.href} aria-current={path === area.current.href ? 'page' : undefined}>
+              <a class="area__home" href={url(area.current.href)} aria-current={path === area.current.href ? 'page' : undefined}>
                 <span class="area__ns">{area.current.ns}</span>
                 <span class="area__name">{area.current.name}</span>
               </a>
@@ -81,7 +82,7 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
                   {area.all.map((a) => (
                     <li>
                       {a.href ? (
-                        <a class="area__item" href={a.href} data-area={a.key} aria-current={a.key === area.current.key ? 'true' : undefined}>
+                        <a class="area__item" href={url(a.href)} data-area={a.key} aria-current={a.key === area.current.key ? 'true' : undefined}>
                           <span class="area__dot-name"><i class="area__dot" aria-hidden="true"></i>{a.name}</span>
                           <code>{a.ns}</code>
                         </a>
@@ -114,7 +115,7 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
                       <li>
                         <a
                           class="side__link"
-                          href={item.href}
+                          href={url(item.href)}
                           aria-current={path === item.href ? 'page' : undefined}
                         >
                           <span class="side__label">
@@ -133,7 +134,7 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
                   <ul class="side__list">
                     {g.items.map((item) => (
                       <li>
-                        <a class="side__link" href={item.href} aria-current={path === item.href ? 'page' : undefined}>
+                        <a class="side__link" href={url(item.href)} aria-current={path === item.href ? 'page' : undefined}>
                           <span class:list={[item.mono && 'side__mono']}>{item.label}</span>
                           {item.badge && <Badge>{item.badge}</Badge>}
                         </a>
@@ -155,7 +156,7 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
             <nav class="crumbs" aria-label="현재 위치">
               <ol>
                 {crumbs.map((c) => (
-                  <li>{c.href ? <a href={c.href}>{c.label}</a> : <span>{c.label}</span>}</li>
+                  <li>{c.href ? <a href={url(c.href)}>{c.label}</a> : <span>{c.label}</span>}</li>
                 ))}
               </ol>
             </nav>

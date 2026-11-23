@@ -39,11 +39,13 @@
 </dialog>
 
 <script>
+  import { url } from '../lib/url';
+
   interface Item {
     t: string; // title
     n: string[]; // public names
     s: string; // summary
-    h: string; // href
+    h: string; // href from the site root
     a: string; // area key
     p: string; // place: "API · 통계 · 연속 분포"
     m: number; // 1: title in the code font
@@ -61,7 +63,7 @@
   const load = async () => {
     if (items) return;
     try {
-      items = await (await fetch('/search.json')).json();
+      items = await (await fetch(url('/search.json'))).json();
     } catch {
       items = [];
     }
@@ -110,7 +112,7 @@
       ? shown
           .map(
             (it, i) => `<li role="option" id="search-opt-${i}" aria-selected="${i === 0}" data-area="${it.a}">
-              <a class="search__item" href="${it.h}" tabindex="-1">
+              <a class="search__item" href="${url(it.h)}" tabindex="-1">
                 <span class="search__top"><i class="search__dot" aria-hidden="true"></i><span class="search__title${it.m ? ' search__title--mono' : ''}">${escape(it.t)}</span><span class="search__place">${escape(it.p)}</span></span>
                 <span class="search__sum">${escape(it.s)}</span>
               </a></li>`,
@@ -159,7 +161,7 @@
       sync();
     } else if (e.key === 'Enter' && shown[active]) {
       e.preventDefault();
-      location.href = shown[active].h;
+      location.href = url(shown[active].h);
     }
   });
   list.addEventListener('mousemove', (e) => {

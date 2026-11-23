@@ -7,6 +7,8 @@ name = "stardust"
 version = "0.0.1"
 description = "A numerical library in C++ with a Python API: arrays, linear algebra, dataframes, special functions, statistics, regression and optimization"
 requires-python = ">=3.15"
+license = "BSD-3-Clause"
+license-files = ["LICENSE", "third_party/boost_math/LICENSE"]
 
 [project.optional-dependencies]
 test = ["pytest", "pytest-cov", "pytest-xdist", "hypothesis", "numpy", "scipy", "pandas", "polars", "python-flint", "statsmodels", "scikit-learn"]

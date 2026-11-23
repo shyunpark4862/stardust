@@ -94,3 +94,7 @@ python3.15 -m venv .venv && .venv/bin/pip install nanobind scikit-build-core
 문서와 통합의 검사:
 - `.venv/bin/python tools/check_refs.py`: 코드, 테스트, 문서의 `docs/design/array.md §6.2` 같은 참조가 모두 있는 절을 가리키는지 본다.
 - `.venv/bin/python tools/golden.py check` (영역 이름을 주면 그 영역만): 공개 API의 결과를 저장한 골든 출력과 스레드 수 1, 3, 10에서 비트까지 비교한다. 케이스 수는 `tools/golden.py list`가 센다(2026-11-20: 8영역 24,422개; tests/README.md §2).
+
+## 라이선스
+
+BSD 3-Clause(LICENSE). `third_party/boost_math`는 Boost Software License 1.0이다(third_party/boost_math/LICENSE).

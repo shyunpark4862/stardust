@@ -1,5 +1,6 @@
 ---
 import Badge from './Badge.astro';
+import { url } from '../lib/url';
 
 interface Props {
   href?: string;
@@ -14,7 +15,7 @@ const { href, title, meta, badge, badgeTone = 'neutral', area } = Astro.props;
 const Tag = href ? 'a' : 'div';
 ---
 
-<Tag class:list={['card', href && 'card--link', area && 'card--area']} href={href} data-area={area}>
+<Tag class:list={['card', href && 'card--link', area && 'card--area']} href={url(href)} data-area={area}>
   <slot name="art" />
   <div class="card__top">
     {meta && <span class="card__meta">{area && <i class="card__dot" aria-hidden="true" />}{meta}</span>}

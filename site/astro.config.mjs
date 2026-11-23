@@ -3,6 +3,7 @@ import mdx from '@astrojs/mdx';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import { rehypeMathjax } from './src/lib/mathjax.mjs';
+import { rehypeBase } from './src/lib/rehype-base.mjs';
 import { rehypeHeadingIds } from '@astrojs/markdown-remark';
 
 /** Removes the first `count` characters of a highlighted line. */
@@ -106,7 +107,18 @@ function rehypeHeadingMath() {
   };
 }
 
+/**
+ * Where the site is served. Locally and by default at the root; the GitHub
+ * Pages workflow builds with SITE_BASE=/stardust for
+ * https://shyunpark4862.github.io/stardust/. Links are written from the root
+ * ("/api/") everywhere; components add the base through src/lib/url.ts and
+ * Markdown links get it from rehypeBase.
+ */
+const base = process.env.SITE_BASE || '/';
+
 export default defineConfig({
+  site: 'https://shyunpark4862.github.io',
+  base,
   integrations: [mdx()],
   // MathJax loads font ranges on demand with dynamic import(); Node loads
   // these packages directly instead of through Vite's module runner.
@@ -120,8 +132,8 @@ export default defineConfig({
     // time) in Markdown and MDX.
     remarkPlugins: [[remarkGfm, { singleTilde: false }], remarkMath],
     // Ids first, so a heading's id and text come from its TeX source, not
-    // from the rendered SVG.
-    rehypePlugins: [rehypeHeadingIds, rehypeHeadingMath, rehypeMathjax],
+    // from the rendered SVG. The base last, on the finished links.
+    rehypePlugins: [rehypeHeadingIds, rehypeHeadingMath, rehypeMathjax, [rehypeBase, { base }]],
     shikiConfig: { theme: 'github-light', wrap: false, transformers: [dedentTransformer, replTransformer] },
   },
 });

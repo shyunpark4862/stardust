@@ -2,13 +2,14 @@
 import Logo from './Logo.astro';
 import Search from './Search.astro';
 import { topNav } from '../data/nav';
+import { unbase, url } from '../lib/url';
 
 interface Props {
   /** The page opens on a dark hero: start transparent with light text. */
   overDark?: boolean;
 }
 const { overDark = false } = Astro.props;
-const path = Astro.url.pathname;
+const path = unbase(Astro.url.pathname);
 ---
 
 <header class="header" data-surface={overDark ? 'dark' : undefined} data-over-dark={overDark ? '' : undefined}>
@@ -18,7 +19,7 @@ const path = Astro.url.pathname;
       <Search />
       {
         topNav.map((item) => (
-          <a class="header__link" href={item.href} aria-current={path.startsWith(item.href) ? 'page' : undefined}>
+          <a class="header__link" href={url(item.href)} aria-current={path.startsWith(item.href) ? 'page' : undefined}>
             {item.label}
           </a>
         ))

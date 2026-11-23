@@ -5,6 +5,7 @@
  * the start of its summary (two lines); the whole card is the link.
  */
 import { inlineHtml } from '../../data/inline';
+import { url } from '../../lib/url';
 
 interface Item {
   href: string;
@@ -28,7 +29,7 @@ const { items } = Astro.props;
       <ul class="related">
         {items.map((item) => (
           <li>
-            <a class="related__card" href={item.href}>
+            <a class="related__card" href={url(item.href)}>
               {item.tag && <span class="related__tag">{item.tag}</span>}
               <span class:list={['related__name', item.mono && 'related__name--mono']}>
                 {item.title}

@@ -14,7 +14,10 @@ classes in MEMBERS, every public member counts as a name too (`Series.head`).
 `--links` checks that every `/api/<area>/<slug>/` and `/internals/...` link and
 every `seeAlso:` slug points at an existing page. If the site has been built
 (`pnpm build`), it also checks every in-site link of the built pages, `#anchor`
-included, against the ids those pages really have.
+included, against the ids those pages really have, every in-site `src` and file
+link against the files in dist/, and the search index's links. A site built
+under a sub-path is checked with the same setting it was built with
+(`SITE_BASE=/stardust`): every in-site URL must then start with the base.
 
 With no arguments every API area and every internals area is checked. A
 target that names no page is an error.
@@ -24,6 +27,8 @@ from __future__ import annotations
 
 import doctest
 import html
+import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -162,14 +167,18 @@ def links() -> int:
     return 1 if bad else 0
 
 
-HREF = re.compile(r'href="(/[^"]*)"')
+URL = re.compile(r'\b(?:href|src)="(/[^"]*)"')
 ID = re.compile(r'\bid="([^"]+)"')
+# The sub-path the site is built under (astro.config.mjs reads the same
+# variable): "" at the root, "/stardust" under GitHub Pages.
+BASE = os.environ.get("SITE_BASE", "/").rstrip("/")
 
 
 def anchors() -> int:
     """Checks the built pages: every in-site link must reach a page, and its
     #anchor an id on that page. Headings get their ids at build time, so this
-    is the only place a renamed heading shows up as a broken link."""
+    is the only place a renamed heading shows up as a broken link. Links to
+    files (figures, the favicon, scripts and styles) must reach a file."""
     index = DIST / "index.html"
     if not index.exists():
         print("  (anchors not checked: run `pnpm build` first)")
@@ -183,19 +192,37 @@ def anchors() -> int:
         rel = f.parent.relative_to(DIST).as_posix()
         text = f.read_text(encoding="utf-8")
         pages["/" if rel == "." else f"/{rel}/"] = ({html.unescape(i) for i in ID.findall(text)}, text)
-    bad = 0
+    bad = checked = 0
     for page, (_, text) in sorted(pages.items()):
-        for href in sorted(set(HREF.findall(text))):
-            path, _, frag = html.unescape(href).partition("#")
-            if path.startswith("//") or "." in path.rsplit("/", 1)[-1]:
-                continue  # another host, or a file such as /favicon.svg
-            target = unquote(path or page)
-            if target not in pages:
-                print(f"  {page}: no page {target}")
+        for href in sorted(set(URL.findall(text))):
+            if href.startswith("//"):
+                continue  # another host
+            checked += 1
+            href = html.unescape(href)
+            if BASE and not (href == BASE or href.startswith(f"{BASE}/")):
+                print(f"  {page}: {href} is outside the base {BASE}/")
                 bad += 1
-            elif frag and unquote(frag) not in pages[target][0]:
-                print(f"  {page}: no #{unquote(frag)} on {target}")
+                continue
+            path, _, frag = href[len(BASE) :].partition("#")
+            path = unquote(path.partition("?")[0]) or "/"
+            if "." in path.rsplit("/", 1)[-1]:
+                if not (DIST / path.lstrip("/")).is_file():
+                    print(f"  {page}: no file {path}")
+                    bad += 1
+            elif path not in pages:
+                print(f"  {page}: no page {path}")
                 bad += 1
+            elif frag and unquote(frag) not in pages[path][0]:
+                print(f"  {page}: no #{unquote(frag)} on {path}")
+                bad += 1
+    # The search index holds paths from the site root; the browser adds the base.
+    search = DIST / "search.json"
+    for item in json.loads(search.read_text(encoding="utf-8")) if search.exists() else []:
+        checked += 1
+        if item["h"] not in pages:
+            print(f"  search.json: no page {item['h']}")
+            bad += 1
+    print(f"  {len(pages)} pages, {checked} in-site URLs checked (base {BASE or '/'})")
     return bad
 
 
