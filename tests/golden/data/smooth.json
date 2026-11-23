@@ -268458,13 +268458,13 @@ true,
 "smoothing_spline clustered40 lam=0.001": {
 "r": {
 "error": "stardust.linalg.LinAlgError",
-"msg": "smoothing_spline(): the system is singular to working precision (estimated condition number 4.27e+13; a fit takes up to 2^43, a lam search or df up to 2^21.5): some values of 'x' are far closer together than the others (merge them)"
+"msg": "smoothing_spline(): the system is singular to working precision (estimated condition number 4.27e+13; a fit takes up to 2^43, and a lam search or df also needs the leverages to keep 10 bits): some values of 'x' are far closer together than the others (merge them)"
 }
 },
 "smoothing_spline clustered40 lam=1.0": {
 "r": {
 "error": "stardust.linalg.LinAlgError",
-"msg": "smoothing_spline(): the system is singular to working precision (estimated condition number 1.3e+15; a fit takes up to 2^43, a lam search or df up to 2^21.5): some values of 'x' are far closer together than the others (merge them)"
+"msg": "smoothing_spline(): the system is singular to working precision (estimated condition number 1.3e+15; a fit takes up to 2^43, and a lam search or df also needs the leverages to keep 10 bits): some values of 'x' are far closer together than the others (merge them)"
 }
 },
 "smoothing_spline clustered40 lam=None": {
@@ -275687,13 +275687,13 @@ true,
 "smoothing_spline narrow30 lam=0.001": {
 "r": {
 "error": "stardust.linalg.LinAlgError",
-"msg": "smoothing_spline(): the system is singular to working precision (estimated condition number 1.21e+13; a fit takes up to 2^43, a lam search or df up to 2^21.5): some values of 'x' are far closer together than the others (merge them)"
+"msg": "smoothing_spline(): the system is singular to working precision (estimated condition number 1.21e+13; a fit takes up to 2^43, and a lam search or df also needs the leverages to keep 10 bits): some values of 'x' are far closer together than the others (merge them)"
 }
 },
 "smoothing_spline narrow30 lam=1.0": {
 "r": {
 "error": "stardust.linalg.LinAlgError",
-"msg": "smoothing_spline(): the system is singular to working precision (estimated condition number 3.83e+14; a fit takes up to 2^43, a lam search or df up to 2^21.5): some values of 'x' are far closer together than the others (merge them)"
+"msg": "smoothing_spline(): the system is singular to working precision (estimated condition number 3.83e+14; a fit takes up to 2^43, and a lam search or df also needs the leverages to keep 10 bits): some values of 'x' are far closer together than the others (merge them)"
 }
 },
 "smoothing_spline narrow30 lam=None": {

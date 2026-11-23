@@ -5,14 +5,7 @@ Usage: ``import stardust as sd`` then ``sd.smooth.lowess(x, y).fittedvalues``,
 ``sd.smooth.savgol_filter(x, 11, 3)``. Scatterplot smoothing (lowess, loess), smoothing and penalized splines,
 kernel regression, kernel density estimation and Savitzky-Golay filters in one flat namespace (no submodules);
 the fitting functions return <Name>Result objects, the scipy-named spline makers return sd.interpolate.BSpline
-(decisions SM1-SM26 in docs/design/smooth.md §1.1).
-
-The public names come milestone by milestone (docs/design/smooth.md §8): lowess (SM1 milestone), savgol_coeffs
-and savgol_filter (SM6 milestone),
-the splines (SM3 milestone),
-kernel_regression, KernelRegressionResult and bw_dpill (SM4 milestone),
-loess and LoessResult (SM2 milestone),
-kde, KDEResult, DensityResult and the bw_* rules (SM5 milestone).
+(decisions SM1-SM142 in docs/design/smooth.md §1.1).
 """
 
 from ._bandwidth import bw_cv_ls, bw_cv_ml, bw_isj, bw_nrd, bw_nrd0, bw_scott, bw_silverman, bw_sj

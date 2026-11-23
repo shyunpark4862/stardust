@@ -1,5 +1,5 @@
 """The common base of sd.smooth's regression-like results (docs/api/smooth.md §1.3, docs/design/smooth.md §2.1,
-§2.7; decision SM32): LowessResult, LoessResult, SmoothingSplineResult, PSplineResult and KernelRegressionResult.
+§2.7; decision SM33): LowessResult, LoessResult, SmoothingSplineResult, PSplineResult and KernelRegressionResult.
 
 A result holds its fields as given by the fitting function: arrays become read-only (API.md §2.2), a field
 given as a callable is computed when first read and kept (a lazy field), and no field can be set afterwards.

@@ -1,6 +1,6 @@
-"""docs/api/smooth.md and the module agree: every module-level name its signature blocks define is planned or
-exported, nothing else is exported, an exported name's signature is the documented one, and the documented
-signatures follow the area's rules (decisions SM1-SM33 in docs/design/smooth.md §1.1).
+"""docs/api/smooth.md and the module agree: the module-level names its signature blocks define are exactly
+sd.smooth.__all__, every signature is the documented one, and the documented signatures follow the area's rules
+(decisions SM1-SM35 and SM141 in docs/design/smooth.md §1.1).
 
 A block line is a module function (`name(...)`), a result class (`Name`) or a result's method
 (`Name.method(...)`)."""
@@ -15,9 +15,6 @@ from .._api_doc import signature_blocks
 
 API = pathlib.Path(__file__).parents[2] / "docs" / "api" / "smooth.md"
 
-# Documented, not implemented yet (docs/design/smooth.md §8). A milestone moves its names from here to
-# sd.smooth.__all__.
-PLANNED: set[str] = set()
 RESULTS = {
     "LowessResult",
     "LoessResult",
@@ -104,8 +101,7 @@ def params(sig):
 def test_exports_match_api_md():
     doc = set(module_names())
     exported = set(sd.smooth.__all__)
-    assert exported.isdisjoint(PLANNED)
-    assert exported | PLANNED == doc
+    assert exported == doc
     for name in exported:
         assert hasattr(sd.smooth, name)
 
@@ -115,6 +111,14 @@ def test_exported_signatures_match_api_md():
     for name in sd.smooth.__all__:
         if doc[name] is not None:
             assert str(inspect.signature(getattr(sd.smooth, name)))[1:-1] == doc[name], name
+
+
+def test_documented_methods_match_the_results():
+    for cls, name, sig in entries():
+        if cls is None:
+            continue
+        method = getattr(getattr(sd.smooth, cls), name)
+        assert str(inspect.signature(method)).removeprefix("(self, ").removeprefix("(self")[:-1] == sig, (cls, name)
 
 
 def test_lines_are_unique_and_methods_belong_to_documented_results():
@@ -239,5 +243,4 @@ def test_scipy_names_left_out_have_their_replacements():
 
 def test_module_is_wired():
     assert isinstance(sd.smooth.__all__, list) and len(set(sd.smooth.__all__)) == len(sd.smooth.__all__)
-    assert {"lowess", "LowessResult"} <= set(sd.smooth.__all__)  # SM1
     assert "smooth" in dir(sd)

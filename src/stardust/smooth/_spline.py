@@ -271,8 +271,9 @@ class PSplineResult(_PenalizedResult):
 def _code_error(func, code, kappa=None):
     if code == 5:
         return _linalg_error(f"{func}(): the system is singular to working precision (estimated condition number "
-                             f"{kappa:.3g}; a fit takes up to 2^43, a lam search or df up to 2^21.5): some values of "
-                             "'x' are far closer together than the others (merge them)")  # fmt: skip
+                             f"{kappa:.3g}; a fit takes up to 2^43, and a lam search or df also needs the "
+                             "leverages to keep 10 bits): some values of 'x' are far closer together than the "
+                             "others (merge them)")  # fmt: skip
     if code == 1:
         return ValueError(f"{func}(): 'x' must have at least 5 distinct values")
     if code == 2:

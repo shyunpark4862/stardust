@@ -187,7 +187,7 @@ Case(area="stats", group="continuous", name="Normal.cdf", size="10^5", n=100_000
 .venv/bin/python -m bench.accuracy table                             # 기준선에서 표만 다시
 ```
 
-- 영역은 참값이 있는 열다섯이다: array, linalg, special, stats(다변량·행렬 분포는 그 안의 묶음, 스윕 id `stats/mv/…`), regression, optimize, htest, sparse, integrate, differentiate, spatial(스윕은 SPT1부터), graph(스윕은 GR2 마일스톤부터), interpolate(스윕은 IP1 마일스톤부터), fft(스윕은 FT1 마일스톤부터), smooth(스윕은 SM1 마일스톤부터). 기준선 파일은 스윕이 있는 영역마다 하나씩 열 개다(`bench/accuracy/results/<영역>.json`, §2.3). 스윕 id는 `영역/이름`이고 `--match`는 그 id에 맞춘다.
+- 영역은 참값이 있는 열다섯이다: array, linalg, special, stats(다변량·행렬 분포는 그 안의 묶음, 스윕 id `stats/mv/…`), regression, optimize, htest, sparse, integrate, differentiate, spatial(스윕은 SPT1부터), graph(스윕은 GR2 마일스톤부터), interpolate(스윕은 IP1 마일스톤부터), fft(스윕은 FT1 마일스톤부터), smooth(스윕은 SM1 마일스톤부터). 기준선 파일은 스윕이 있는 영역마다 하나씩 열다섯 개다(`bench/accuracy/results/<영역>.json`, §2.3). 스윕 id는 `영역/이름`이고 `--match`는 그 id에 맞춘다.
 - `--jobs`개(기본 8, 최대 10) 작업 프로세스가 스윕을 나눠 잰다. 워커는 sd 1스레드이고 몇 스윕마다 새로 띄운다. 결과는 프로세스 수와 무관하다.
 - `run --promote`는 재고 바로 기준선에 넣는다. `-q`는 터미널에 아무것도 쓰지 않는다(로그만).
 - 콘솔은 머리 블록, 스윕마다 sd와 비교 대상의 값을 말로 적은 몇 줄(터미널에서는 그 아래 진행 막대), 끝에 요약 블록·영역별 표·번호 붙은 Notes다. 같은 줄이 시각과 함께 `build/logs/accuracy/<시각>.log`에 남는다.

@@ -1,10 +1,9 @@
 # sd.smooth API
 
-> 상태: **초안** (SM0 마일스톤, 2026-11-23). `sd.smooth`에 공개된 이름은 `lowess`·`LowessResult`(SM1 마일스톤), `savgol_coeffs`·`savgol_filter`(SM6 마일스톤), `make_lsq_spline`·`make_smoothing_spline`·`make_splrep`·`make_splprep`·`generate_knots`·`smoothing_spline`·`SmoothingSplineResult`·`pspline`·`PSplineResult`(SM3 마일스톤), `kernel_regression`·`KernelRegressionResult`·`bw_dpill`(SM4 마일스톤), `loess`·`LoessResult`(SM2 마일스톤), `kde`·`KDEResult`·`DensityResult`·`bw_scott`·`bw_silverman`·`bw_nrd0`·`bw_nrd`·`bw_sj`·`bw_isj`·`bw_cv_ls`·`bw_cv_ml`(SM5 마일스톤)다. 아래 시그니처는 scipy 1.18.1(`scipy.interpolate`의 평활 스플라인, `scipy.stats.gaussian_kde`, `scipy.signal`의 Savitzky–Golay), statsmodels 0.15.0(`nonparametric`), scikit-learn 1.9.1(`KernelDensity`), R 4.6.2(`stats`, `KernSmooth`)의 이름과 뜻에 stardust의 규칙과 SM1–SM33의 결정을 입힌 안이고, 마일스톤 SM1–SM6에서 하나씩 공개된다(docs/design/smooth.md §8: `lowess`는 SM1 마일스톤, `loess`는 SM2 마일스톤, 스플라인은 SM3 마일스톤, 핵 회귀는 SM4 마일스톤, 핵밀도추정과 대역폭은 SM5 마일스톤, Savitzky–Golay는 SM6 마일스톤).
+> 상태: **확정** (2026-11-23; 승인(위임)). §2–§6의 공개 이름 스물아홉이 모두 구현되어 있다: 산점도 평활(§2: `lowess LowessResult loess LoessResult`), 스플라인(§3: `make_lsq_spline make_smoothing_spline make_splrep make_splprep generate_knots smoothing_spline SmoothingSplineResult pspline PSplineResult`), 핵 회귀(§4: `kernel_regression KernelRegressionResult bw_dpill`), 핵밀도추정(§5: `kde KDEResult DensityResult bw_scott bw_silverman bw_nrd0 bw_nrd bw_sj bw_isj bw_cv_ls bw_cv_ml`), Savitzky–Golay(§6: `savgol_coeffs savgol_filter`). 시그니처는 scipy 1.18.1(`scipy.interpolate`의 평활 스플라인, `scipy.stats.gaussian_kde`, `scipy.signal`의 Savitzky–Golay), statsmodels 0.15.0(`nonparametric`), scikit-learn 1.9.1(`KernelDensity`), R 4.6.2(`stats`, `KernSmooth`)의 이름과 뜻에 stardust의 규칙과 SM1–SM142의 결정을 입힌 것이다.
 
-- 설계와 결정의 근거는 [docs/design/smooth.md](../design/smooth.md)(§1.1 SM1–SM33), 공통 규칙은 [API.md](../../API.md)다.
-- 언어 표시가 없는 코드 블록은 `tests/smooth/test_api_surface.py`가 읽는다. 블록의 줄은 모듈의 함수(`name(...)`), 결과 클래스(`Name`), 결과의 메서드(`Name.method(...)`)다. 모듈 수준의 이름이 계획한 공개 이름 전부이고, 공개된 것은 시그니처가 블록과 같아야 한다. 결과의 필드는 절마다의 표에 있다.
-- 마일스톤 이름은 결정 번호와 섞이지 않도록 언제나 "SMn 마일스톤"으로 적는다.
+- 설계와 결정의 근거는 [docs/design/smooth.md](../design/smooth.md)(§1.1 SM1–SM142), 공통 규칙은 [API.md](../../API.md)다.
+- 언어 표시가 없는 코드 블록은 `tests/smooth/test_api_surface.py`가 읽는다. 블록의 줄은 모듈의 함수(`name(...)`), 결과 클래스(`Name`), 결과의 메서드(`Name.method(...)`)다. 블록의 모듈 수준 이름이 `sd.smooth.__all__` 전부이고, 시그니처가 블록과 같아야 한다. 결과의 필드는 절마다의 표에 있다.
 
 ## §1. 공통 규칙
 
@@ -17,9 +16,9 @@
 - **데이터는 위치로만, 옵션은 키워드로만** 받는다. 별칭이 없다: `kernel`, `criterion`, `family`, `mode`, `method`의 문자열은 소문자 정식 이름만 받는다. 틀린 호출 모양은 부른 이름으로 시작한다(API.md §2.1): `lowess(): ...`, 결과의 메서드는 `predict(): ...`.
 
 ### §1.2 입력 (SM6, SM9)
-- **받는 것**: API.md §5의 상위 함수 입력(`sd.ndarray`, 수의 시퀀스, numpy 배열, `sd.frame`의 `Series`; `loess`·`kernel_regression`·`kde`의 여러 열은 `DataFrame`도). 계산은 float64다. bool·정수는 float64로 바꾼다. 복소수는 Savitzky–Golay만 받는다(§6). 다른 함수의 복소수는 `TypeError`다.
+- **받는 것**: API.md §5의 상위 함수 입력(`sd.ndarray`, 수의 시퀀스, numpy 배열, `sd.frame`의 `Series`; 여러 변수를 받는 `loess`·`kernel_regression`·`kde`·`bw_scott`·`bw_silverman`·`bw_cv_ls`·`bw_cv_ml`은 `DataFrame`도, 열이 변수다). 계산은 float64다. bool·정수는 float64로 바꾼다. 복소수는 Savitzky–Golay만 받는다(§6). 다른 함수의 복소수는 `TypeError`다.
 - **정렬과 같은 x**: 정렬되지 않은 x와 같은 x의 반복을 받는다. 결과의 배열(`fittedvalues`, `resid`, `leverage`)은 입력의 순서다. 결과는 입력의 순서와 무관하다(같은 자료를 다른 순서로 주면 같은 값이 그 순서로 나온다).
-- **`nan_policy`** (SM9): 회귀·통계와 같은 세 값이다. `'propagate'`(기본): x나 y에 NaN이 있으면 결과의 모든 값이 NaN이다. `'omit'`: x나 y가 NaN인 점을 빼고 맞춘다. `fittedvalues`, `resid`, `leverage`의 그 자리는 NaN이고 `nobs`는 뺀 뒤의 수다. `'raise'`: `ValueError`. ±inf는 언제나 `ValueError`다. 평가점(`predict`, `pdf`)의 NaN은 그 자리의 결과가 NaN이다. Savitzky–Golay는 `nan_policy`가 없다: 배열의 원소별 필터라 NaN이 그 점이 든 창의 출력으로 번진다(§6).
+- **`nan_policy`** (SM9): 회귀·통계와 같은 세 값이다. `'propagate'`(기본): x나 y에 NaN이 있으면 결과의 모든 값이 NaN이다. `'omit'`: x, y, 무게 가운데 NaN이 있는 점을 빼고 맞춘다. `fittedvalues`, `resid`, `leverage`의 그 자리는 NaN이고 `nobs`는 뺀 뒤의 수다. `'raise'`: `ValueError`. ±inf는 언제나 `ValueError`다. 평가점(`predict`, `pdf`)의 NaN은 그 자리의 결과가 NaN이다. Savitzky–Golay는 `nan_policy`가 없다: 배열의 원소별 필터라 NaN이 그 점이 든 창의 출력으로 번진다(§6).
 - **무게** (SM6): 새 함수(`lowess`, `loess`, `smoothing_spline`, `pspline`, `kernel_regression`, `kde`)는 `weights=`이고 뜻은 Σwᵢrᵢ²(회귀의 `wls`와 같다; `kde`는 점의 확률 무게)다. scipy 이름의 스플라인 함수는 scipy의 이름 `w=`와 scipy의 뜻이다: `make_smoothing_spline`은 Σwᵢrᵢ², `make_lsq_spline`·`make_splrep`·`make_splprep`·`generate_knots`는 Σ(wᵢrᵢ)²(FITPACK의 `w`는 1/σ다). 무게는 유한한 0 이상의 수이고 양수가 하나 이상이어야 한다(`ValueError`). 무게가 0인 점은 맞춤에 들지 않지만 그 점의 `fittedvalues`는 계산한다.
 
 ### §1.3 회귀형 결과의 공통 필드 (SM4, SM7)
@@ -32,10 +31,10 @@
 | `nobs` | 맞춤에 든 점의 수(`'omit'`이 뺀 점은 세지 않는다) |
 | `df` | 유효 자유도: 모자 행렬 L의 대각합. 강건 적합은 마지막 반복의 무게로 정한 선형 평활기의 대각합이다 |
 | `leverage` | L의 대각 (n,) |
-| `scale` | 잔차 척도 σ̂: `loess`는 √(RSS/δ₁)(R과 같다), 그 밖은 √(RSS/(n − df)) |
+| `scale` | 잔차 척도 σ̂: `loess`는 √(RSS/δ₁)(R과 같다), 그 밖은 √(RSS/(nobs − df))(0 이하의 분모는 NaN; 스플라인의 배치는 열마다) |
 | 조절 모수 | `frac`·`span`·`lam`·`bw` 등 고른 값(절마다) |
 | `predict(x_new, /)` | 새 점의 값(같은 정의의 평가) |
-| `predict_interval(x_new, /, *, alpha=0.05)` | 평균의 점별 구간 (m, 2): ŷ(x₀) ± t·σ̂‖l(x₀)‖₂(무게가 있으면 √(Σlⱼ²/wⱼ)). 편향은 넣지 않는다. 분위수의 자유도는 `loess`에서 δ₁²/δ₂(R과 같다), 그 밖은 n − df. 강건 적합은 마지막 반복의 무게를 고정한 어림이다(R과 같다) |
+| `predict_interval(x_new, /, *, alpha=0.05)` | 평균의 점별 구간 (m, 2): ŷ(x₀) ± t·σ̂‖l(x₀)‖₂(무게가 있으면 √(Σlⱼ²/wⱼ)). 편향은 넣지 않는다. 분위수의 자유도는 `loess`에서 δ₁²/δ₂(R과 같다; δ₂가 없는 nobs > 4096은 정규 분위수), 그 밖은 nobs − df. 강건 적합은 마지막 반복의 무게를 고정한 어림이다(R과 같다) |
 | `summary()` | API.md §2.3의 상자: 머리에 방법, `nobs`, `df`, 조절 모수, 기준 값, `scale`. 표는 없다 |
 
 - 배열 필드는 쓰기 금지이고 처음 읽을 때 계산하는 필드도 있다(API.md §2.2). 결과는 `predict`를 위해 자료의 사본을 쥔다(회귀의 규칙과 같다).
@@ -61,7 +60,7 @@
   | statsmodels의 0 나누기(`RuntimeWarning`) | 정의된 값(§2) 또는 NaN |
   | R `loess`의 랭크 부족(경고와 유사역행렬) | 낮은 차수의 적합과 `n_rank_deficient` |
 
-- 요청한 출력이나 작업 공간(구간화 격자, `loess`의 δ₂)이 물리 메모리보다 크면 할당 전에 `MemoryError`다(API.md §2).
+- 할당 전에 `MemoryError`인 곳(API.md §2): `density`의 출력이 물리 메모리보다 클 때, 구간화 길의 격자와 FFT 배열이 물리 메모리의 1/4보다 클 때, Savitzky–Golay 계수의 작업 공간이 물리 메모리보다 클 때다. `loess`의 δ₂는 양수 무게의 점이 4096개 이하일 때만 계산하므로(134 MB 이하) 이 검사가 없다.
 
 ### §1.6 다른 라이브러리와 다른 점 (모음)
 - 공통: (x, y) 순서, 결과 객체, 입력 순서의 결과, `nan_policy`, 경고 없음, 스레드와 무관한 비트.
@@ -71,7 +70,7 @@
 - 핵밀도추정: 자료의 꼴 (n, p)(scipy는 (p, n)), 수로 준 `bw`는 대역폭 자체(scipy는 표본 표준편차에 곱하는 인수), 가우스가 아닌 핵의 `bw`는 핵의 표준편차(R과 같다; sklearn·statsmodels는 지지집합의 반폭).
 - Savitzky–Golay: 정확한 계수, 복소수, NaN의 번짐.
 
-## §2. 산점도 평활 (SM1, SM2 마일스톤)
+## §2. 산점도 평활
 ```
 lowess(x, y, /, *, frac=0.6666666666666666, it=3, delta=0.0, weights=None, nan_policy='propagate')
 LowessResult
@@ -86,7 +85,7 @@ LoessResult.summary()
 ```
 - **`lowess`** (기준은 statsmodels): 평가점 x₀의 창은 가장 가까운 k = min(n, max(2, int(frac·n + 10⁻¹⁰)))개의 점이고 반경 h는 k번째로 가까운 거리다. 무게는 tricube (1 − (|xⱼ − x₀|/h)³)³(거리가 h 이상이면 0)에 강건 무게와 `weights`를 곱한 것이고, 적합은 무게 붙은 국소 직선이다. `frac`은 [0, 1]의 수, `it`은 0 이상의 int, `delta`는 0 이상의 유한한 수다.
   - **결과는 자료의 함수다**: 거리가 h인 점의 무게가 0이라 같은 거리의 점 가운데 어느 것이 창에 드는지가 값을 바꾸지 않는다. 같은 x가 여러 번 나와도, 입력의 순서가 달라도 같은 값이다.
-  - **퇴화**: 양수 무게의 점이 모두 같은 x이면 그 점들의 무게 평균이고, 그 밖에는 언제나 직선이다. h = 0(창의 점이 모두 x₀와 같다)이면 x₀와 같은 점들의 무게 평균이다(R과 같다). `[statsmodels와 다름]` `[R과 다름]`: statsmodels는 무게 붙은 제곱합을 절댓값 10⁻¹²로 막아 같은 자료의 x에 10⁻⁸을 곱하면 `frac=0.1`의 적합이 0.76만큼 달라진다. R은 √(제곱합)이 범위의 0.001배 이하이면 국소 평균으로 바꾼다.
+  - **퇴화**: 양수 무게의 점이 모두 같은 x이면 그 점들의 무게 평균이고, 그 밖에는 언제나 직선이다. h = 0(창의 점이 모두 x₀와 같다)이면 x₀와 같은 점들의 무게 평균이다(R과 같다). `[statsmodels와 다름]` `[R과 다름]`: statsmodels는 무게 붙은 제곱합을 절댓값 10⁻¹²로 막아 x의 단위가 값을 바꾼다: 시험 자료 random/200의 x에 10⁻⁸을 곱하면 `frac=0.1, it=0`의 적합이 0.34만큼 달라진다. R은 √(제곱합)이 범위의 0.001배 이하이면 국소 평균으로 바꾼다.
   - **강건 반복**: 잔차의 중앙 절댓값 m = median|rᵢ|에서 bisquare 무게 (1 − (r/6m)²)²(|r| ≥ 6m은 0)다. m = 0이면 잔차가 0인 점의 무게가 1이고 그 밖은 0이다(statsmodels와 같다). 양수 무게의 점이 둘보다 적은 창에서는 그 평가점의 값이 y 그대로다(statsmodels와 같다; `predict`에서는 NaN). 반복은 언제나 `it`번이다(`[R과 다름]`: R은 m이 평균 잔차의 10⁻⁷배보다 작으면 멈춘다).
   - **`delta`**: 마지막으로 적합한 점에서 x가 `delta` 안인 점은 건너뛰고(그 안의 가장 먼 점에서 다시 적합한다) 건너뛴 점은 두 적합 사이의 선형 보간이다(statsmodels·R과 같은 규칙). 기본 0은 모든 점에서 적합한다(SM8; `[R과 다름]`: R의 기본은 범위의 0.01배다). 큰 n에서 빠른 길이 필요하면 `delta`를 준다.
   - `[R과 다름]`: R은 거리가 0.001h 이하인 점의 무게를 1로, 0.999h 이상을 0으로 자른다. sd와 statsmodels는 자르지 않는다. 그래서 R과는 적합값의 크기에 비해 10⁻⁹ 크기로 다르다(시험 자료에서 가장 큰 차가 10⁻⁷ 아래다).
@@ -95,7 +94,7 @@ LoessResult.summary()
   - **결정성**: 자료를 (x, y, 무게, 색인)으로 정렬해 계산하므로 같은 점들을 다른 순서로 주면 같은 비트가 그 순서로 나온다. x에 2의 거듭제곱을 곱해도(`delta`도 함께) 같은 비트다. x의 범위가 double을 넘치면 `ValueError`다.
 - **`loess`** (기준은 R): `X`는 (n,) 또는 (n, p), `degree`는 0, 1, 2, `family`는 `'gaussian'`(최소제곱) 또는 `'symmetric'`(bisquare 강건 반복; 적합이 `iterations`번). 창의 점 수는 q = floor(n·span + 10⁻⁵)이고 반경은 q번째로 가까운 거리, span > 1이면 가장 먼 거리의 √span배다(R의 계산과 같다; R의 문서는 span^(1/p)라고 적지만 R은 제곱 거리에 span을 곱한다, SM29). `normalize=True`는 p > 1일 때 변수마다 10% 절사 표준편차로 나눈다(R과 같다).
   - 거리는 유클리드 거리이고 이웃은 (거리, 색인) 순서로 정해진다. p = 1의 `loess(degree=1, span=f, family='gaussian')`와 `lowess(frac=f, it=0)`는 창의 점 수가 같으면 같은 비트다.
-  - `[R과 다름]` 언제나 평가점마다 국소 적합을 직접 한다(R의 `loess.control(surface='direct', statistics='exact')`와 같은 값). R의 기본 `surface='interpolate'`는 KD 트리의 꼭짓점에서만 적합하고 그 사이를 3차 혼합으로 채우는 어림이라, 시험 자료(n = 200, 잡음의 표준편차 0.3)에서 0.096(1변수), 0.15(2변수)만큼 다르고 자료 범위 밖에서 `NA`다. `surface`, `cell`, `statistics`는 없다.
+  - `[R과 다름]` 언제나 평가점마다 국소 적합을 직접 한다(R의 `loess.control(surface='direct', statistics='exact')`와 같은 값). R의 기본 `surface='interpolate'`는 KD 트리의 꼭짓점에서만 적합하고 그 사이를 3차 혼합으로 채우는 어림이라, 시험 자료 random/200(잡음의 표준편차 0.3)의 기본 적합(2차, span 0.75)이 0.12만큼 다르고 자료 범위 밖에서 `NA`다. `surface`, `cell`, `statistics`는 없다.
   - `[R과 다름]` 설명변수의 수에 상한이 없다(R은 넷). 국소 다항식의 항 수(2차 (p + 1)(p + 2)/2, 1차 p + 1, 0차 1)보다 q가 작으면 `ValueError`다(R도 에러다). 창의 점이 낮은 차원에 놓여 국소 계의 랭크가 모자라면 1변수는 창의 서로 다른 x가 받치는 차수로 낮추고, 여러 변수는 QR에서 앞 열들에 기대는 열(남은 노름이 max(m, t)·eps·‖열‖ 이하)을 빼고 맞춘다. 그런 평가점은 `n_rank_deficient`에 센다(R은 경고와 유사역행렬). 양수 무게의 점이 하나뿐인 창은 그 점의 y, 하나도 없으면 자료점은 자기 y, 새 점은 NaN이다.
   - `family='symmetric'`의 강건 무게는 R의 것이다: cmad = 6·median|rᵢ|(양수 무게의 점)에서 |r| ≤ 0.001·cmad이면 1, |r| > 0.999·cmad이면 0, 그 사이는 (1 − (r/cmad)²)²이고 cmad가 0에 가까우면(가장 작은 정규 수 아래) 모두 1이다. `lowess`의 무게(statsmodels: 자르지 않는다)와 다르다.
   - 통계량: `df`(tr L, R의 `trace.hat`), `one_delta`(δ₁ = tr((I − L)ᵀ(I − L))), `two_delta`(δ₂ = tr(((I − L)ᵀ(I − L))²); 처음 읽을 때 계산하고, 양수 무게의 점이 4096개를 넘으면 NaN이며 `predict_interval`의 분위수가 정규 분포다), `enp`(R의 식 δ₁ + 2·df − nobs = tr(LᵀL); `df`와 다르다), `scale` = √(Σwᵢrᵢ²/δ₁). 합은 양수 무게의 점에 대한 것이다.
@@ -114,7 +113,7 @@ LoessResult.summary()
 | `enp`, `one_delta`, `two_delta` | R의 이름의 통계량(`enp`는 δ₁ + 2·df − nobs) |
 | `robust_weights`, `n_rank_deficient` | 마지막 강건 무게, 랭크가 모자란 평가점의 수 |
 
-## §3. 스플라인 (SM3 마일스톤)
+## §3. 스플라인
 ```
 make_lsq_spline(x, y, t, /, *, k=3, w=None, axis=0)
 make_smoothing_spline(x, y, /, *, w=None, lam=None, axis=0)
@@ -134,15 +133,16 @@ PSplineResult.summary()
 ```
 - **평활 스플라인** (`make_smoothing_spline`, `smoothing_spline`): Σᵢ wᵢ(yᵢ − f(xᵢ))² + λ∫f″(x)² dx를 가장 작게 하는 자연 3차 스플라인이다. 매듭은 scipy와 같다(서로 다른 x 전부, 양 끝이 4겹; 계수 n + 2개). **λ의 단위는 scipy의 것이다**(x의 단위의 세제곱에 비례한다). λ = 0은 자연 경계의 보간 스플라인, λ = inf는 무게 붙은 최소제곱 직선이다(`[scipy와 다름]`: scipy는 inf를 받지 않는다). `lam=None`이면 `criterion`으로 고른다.
   - **R과의 환산**: R `smooth.spline`의 `lambda`는 x를 [0, 1]로 옮기고 무게를 평균 1로 맞춘 문제의 것이라 λ_sd = λ_R·(xₙ − x₁)³·(Σw/n)다. `smooth.spline(all.knots=TRUE, lambda=λ_R)`와 같은 곡선이다. R의 `spar`는 없다(자료에 달린 다른 눈금이다; `[R과 다름]`).
-  - **`df=`**: tr L(λ) = df가 되는 λ를 찾는다(2 < df ≤ 서로 다른 x의 수). `lam`과 함께 주면 `ValueError`다.
+  - **`df=`**: tr L(λ) = df가 되는 λ를 찾는다(2 < df ≤ 무게가 양수인 서로 다른 x의 수). `lam`과 함께 주면 `ValueError`다.
   - **`criterion`**: `'gcv'`(n·RSS_w/(n − tr L)²)와 `'cv'`(Σwᵢ((yᵢ − f̂ᵢ)/(1 − Lᵢᵢ))²/n). λ는 척도와 무관한 고정 구간에서 고른 격자 53점 뒤 Brent로 찾고, 극소가 구간의 끝이면 그 끝이 답이며 `converged=False`다(docs/design/smooth.md §3.3). `[scipy와 다름]`: scipy는 λ를 (0, n)에서 찾아서 x의 단위가 바뀌면 다른 곡선을 고르고(n = 200의 시험 자료에서 x에 0.01, 10, 100, 1000을 곱하면 적합이 1.20, 0.038, 0.39, 0.71만큼 달라진다), n = 10⁴의 고르지 않은 x에서 `ValueError`다.
   - `[scipy와 다름]` 같은 x가 여러 번 나와도 되고 정렬되어 있지 않아도 된다: 같은 x의 점들을 무게 합과 무게 평균의 한 점으로 묶는다(벌점 문제가 정확히 같다; 허용오차로 묶지 않는다). 서로 다른 x가 다섯보다 적으면 `ValueError`다.
-- **`make_lsq_spline(x, y, t)`**: 주어진 매듭 `t`의 무게 붙은 최소제곱 스플라인(Σ(wᵢrᵢ)²)이다. Schoenberg–Whitney 조건이 깨지면 `LinAlgError`다(scipy와 같은 판정). `method`와 `check_finite`는 없다.
-- **`make_splrep`·`make_splprep`·`generate_knots`** (SM12): FITPACK의 뜻이다: Σ(wᵢ(yᵢ − g(xᵢ)))² ≤ s인 가장 매끄러운(k차 도함수의 뜀의 제곱합이 가장 작은) k차 스플라인. `s = 0`은 보간이고 `make_interp_spline(x, y, k=k)`와 같은 비트다. 매듭 `t`를 주면 그 매듭의 벌점 적합이다. `bc_type`은 `None`과 `'periodic'`이다. `make_splprep`은 곡선(첫 축이 좌표인 (d, m) 자료)이고 `u`가 없으면 현의 길이로 매개변수를 만들며 `(BSpline, u)`를 돌려준다. `generate_knots`는 매듭을 늘려 가는 과정의 매듭 배열을 차례로 담은 리스트다. 매듭을 놓는 규칙과 멈춤 규칙(|Σ(w r)² − s| ≤ 0.001·s)은 scipy 1.18.1의 것이다.
+  - `make_smoothing_spline`은 `nan_policy`가 없어 NaN과 ±inf가 `ValueError`이고, 무게는 0 이상이면 된다(`[scipy와 다름]`: scipy는 양수만 받는다).
+- **`make_lsq_spline(x, y, t)`**: 주어진 매듭 `t`의 무게 붙은 최소제곱 스플라인(Σ(wᵢrᵢ)²)이다. x는 t[k] ≤ x ≤ t[−k] 안이어야 한다(scipy와 같다). `[scipy와 다름]`: 정렬되지 않은 x와 같은 x를 받는다(scipy는 줄지 않는 x만). Schoenberg–Whitney 조건은 양수 무게의 점으로 정확히 판정해 깨지면 `LinAlgError`다(scipy의 QR 길은 같은 입력에서 경고 없이 NaN 계수를 낸다). `method`와 `check_finite`는 없다.
+- **`make_splrep`·`make_splprep`·`generate_knots`** (SM12): FITPACK의 뜻이다: Σ(wᵢ(yᵢ − g(xᵢ)))² ≤ s인 가장 매끄러운(k차 도함수의 뜀의 제곱합이 가장 작은) k차 스플라인. `s = 0`은 보간이고 `make_interp_spline(x, y, k=k)`와 같은 비트다(그때 `t`, `w`, `nest`를 주면 `ValueError`; scipy와 같다). 매듭 `t`를 주면 그 매듭의 벌점 적합이다. x(`make_splprep`은 `u`)는 줄지 않아야 하고(정렬하지 않는다: 매듭을 놓는 규칙이 순서에 기댄다; scipy와 같다) `k`는 1–5(FITPACK의 차수)다. `bc_type`은 `None`, `'not-a-knot'`(`None`과 같다), `'periodic'`이다. `make_splprep`은 곡선(첫 축이 좌표인 (d, m) 자료)이고 `u`가 없으면 현의 길이로 매개변수를 만들며 `(BSpline, u)`를 돌려준다. `generate_knots`는 매듭을 늘려 가는 과정의 매듭 배열을 차례로 담은 리스트다. 매듭을 놓는 규칙과 멈춤 규칙(|Σ(w r)² − s| ≤ 0.001·s)은 scipy 1.18.1의 것이다.
   - `s`가 닿지 않으면(매듭 수가 `nest`에 닿았다) `ValueError`다(`[scipy와 다름]`: scipy는 경고와 함께 그때의 스플라인을 준다).
-  - 옛 계열(`splrep`, `splprep`, `UnivariateSpline`)은 없다. 두 계열은 같은 `s`에서 다른 매듭과 다른 스플라인을 낸다(n = 200, s = 30에서 매듭 149개와 116개, 두 곡선의 차 0.61). 대응표는 §8이다.
+  - 옛 계열(`splrep`, `splprep`, `UnivariateSpline`)은 없다. 두 계열은 같은 `s`에서 다른 매듭과 다른 스플라인을 낸다(시험 자료 random/200의 s = 12에서 매듭 89개와 73개, 두 곡선의 차 0.35). 대응표는 §8이다.
 - **`pspline`** (SM13): 고른 간격의 매듭(`[xb, xe]`를 `n_segments`개 구간으로 나눈다; 기본 `xb`, `xe`는 x의 최솟값과 최댓값, 기본 `n_segments`는 min(n/4, 40)을 올림한 값) 위의 k차 B-스플라인에 계수의 `diff_order`차 차분 벌점 λ‖D c‖²를 준 것이다(Eilers–Marx). 매듭 수가 n과 무관해 큰 n에서 빠르다. `lam`, `df`, `criterion`은 평활 스플라인과 같다. λ = inf는 `diff_order − 1`차 다항식의 최소제곱이다.
-- **배치**: `y`의 `axis` 축이 x에 맞는 축이고 나머지 축의 열마다 같은 분해로 푼다(결과의 `BSpline`이 같은 배치를 가진다). `smoothing_spline`과 `pspline`의 λ 찾기는 배치 전체의 기준 합이다(열마다 따로 고르려면 열마다 부른다).
+- **배치**: `y`의 `axis` 축이 x에 맞는 축이고 나머지 축의 열마다 같은 분해로 푼다(결과의 `BSpline`이 같은 배치를 가진다). `smoothing_spline`과 `pspline`의 λ 찾기는 배치 전체의 기준 합이다(열마다 따로 고르려면 열마다 부른다). 그 결과의 `scale`은 열마다(배치 모양의 배열), `gcv`·`cv`는 열의 합, `leverage`와 `df`는 열에 공통이고, `fittedvalues`·`resid`는 `y`의 모양이다.
 - 결과 `SmoothingSplineResult`·`PSplineResult`의 `predict(x_new)`는 `spline(x_new)`와 같은 비트다.
 - **작업 정밀도에서 특이한 계**: 다른 점들보다 훨씬 가까이 모인 x(간격의 비가 10⁸쯤인 덩어리)에서 큰 λ의 계는 자릿수가 남지 않는다. 쌓은 행렬의 열을 맞춘 조건수 추정이 2⁴³을 넘으면 `LinAlgError`이고(`make_lsq_spline`, `pspline`도 같다), λ 찾기와 `df=`는 지렛대를 믿을 수 있는 λ만 후보로 둔다(docs/design/smooth.md §1.1의 SM58). 같은 x로 묶으면 피한다.
 
@@ -155,7 +155,7 @@ PSplineResult.summary()
 
 `PSplineResult`는 위와 같고 `n_segments`, `k`, `diff_order`가 더 있다.
 
-## §4. 핵 회귀 (SM4 마일스톤)
+## §4. 핵 회귀
 ```
 kernel_regression(X, y, /, *, degree=1, bw='cv_ls', kernel='gaussian', weights=None, nan_policy='propagate')
 KernelRegressionResult
@@ -171,7 +171,7 @@ bw_dpill(x, y, /)
 - `[R과 다름]`: `ksmooth`의 `bandwidth`는 핵의 사분위수가 ±0.25·bandwidth인 눈금이고(가우스 핵의 표준편차는 0.3706506·bandwidth) 핵을 4 표준편차에서 자른다. sd의 `bw`는 표준편차이고 자르지 않는다(정확도에 닿지 않는 증명된 자르기만 한다).
 - **모양** (SM91): `X`가 1차원이면 `bw`는 float이고 `predict`·`gradient`는 어떤 모양의 x_new든 받아 같은 모양을 돌려준다(수 하나는 float). `X`가 (n, p)이면 `bw`는 (p,) 배열이고(p = 1이면 float) `X_new`는 (m, p) 또는 점 하나 (p,)다. `DataFrame`은 열이 변수다.
 - **`gradient(X_new)`**: `degree=1`의 국소 기울기 β_l/h_l, (m, p)다(statsmodels `fit`의 둘째 반환값). `degree=0`이면 `ValueError`다.
-- **`bw_dpill(x, y)`**: Ruppert–Sheather–Wand의 국소 선형 대역폭(1변수)이다. `KernSmooth::dpill`은 격자 401점의 구간화로 어림하므로 같은 값이 아니다.
+- **`bw_dpill(x, y)`**: Ruppert–Sheather–Wand의 국소 선형 대역폭(1변수)이다. `KernSmooth::dpill`은 격자 401점의 구간화로 어림하므로 같은 값이 아니다(시험 자료 넷에서 0.31% 안). x와 y는 유한해야 하고(NaN도 `ValueError`; `nan_policy`가 없다), 자료점이 여섯보다 적거나, 퍼짐이 0이거나, 블록의 4차 적합이 랭크를 잃거나, 추정이 0이거나 유한하지 않으면 `ValueError`다(`[R과 다름]`: R은 `NA`와 경고).
 
 | `KernelRegressionResult`만의 필드 | 뜻 |
 |---|---|
@@ -182,7 +182,7 @@ bw_dpill(x, y, /)
 
 - 결과의 `fittedvalues`와 `leverage`는 하나씩 뺀 적합에서 자기 항을 되돌려 넣어 구한다: Lᵢᵢ = wᵢh′/(E + wᵢh′), ŷᵢ = (1 − Lᵢᵢ)ŷ₋ᵢ + Lᵢᵢyᵢ. `predict`를 자료점에서 부른 값과 끝자리가 다를 수 있다(둘 다 계약 안이다). 국소 선형의 국소 설계가 랭크가 모자라면(모든 무게가 한 x에 있거나 여러 변수가 한 직선 위에 있을 때) 빠진 방향의 기울기는 0이다(국소 평균). 무게가 0인 점은 맞춤에 들지 않고 `leverage`가 0이다.
 
-## §5. 핵밀도추정 (SM5 마일스톤)
+## §5. 핵밀도추정
 ```
 kde(data, /, *, bw='scott', adjust=1.0, kernel='gaussian', weights=None, bounds=None, nan_policy='propagate')
 KDEResult
@@ -207,7 +207,7 @@ bw_cv_ml(data, /)
 - **`bw`** (SM18–SM20):
   - 규칙의 이름: `'scott'`(기본)과 `'silverman'`은 scipy의 뜻이다: H = f²·Σ̂(Σ̂는 무게 붙은 표본 공분산, 자유도 보정 있음), f = n_eff^(−1/(p + 4)) 또는 (n_eff(p + 2)/4)^(−1/(p + 4)), n_eff = (Σw)²/Σw². `'nrd0'`, `'nrd'`, `'sj'`, `'isj'`는 1차원의 규칙이다(아래의 `bw_*`). `'cv_ls'`, `'cv_ml'`은 변수마다의 대역폭(대각 H)을 교차검증으로 고른다.
   - 수: 양수 하나는 핵의 표준편차다(여러 차원이면 모든 변수에 같은 값). (p,) 배열은 변수마다의 표준편차(대각 H), (p, p) 배열은 H(대칭 양정치)다. `[scipy와 다름]`: scipy의 수는 표본 표준편차에 곱하는 인수다. R, statsmodels, sklearn처럼 수는 대역폭 그 자체이고, `adjust`가 고른 대역폭에 곱하는 인수다(R·statsmodels와 같은 이름).
-  - 같은 이름의 규칙이 라이브러리마다 다른 수다(n = 200, 표준편차 1.237인 표본의 `'scott'`: scipy 0.4288, sklearn 0.3466, statsmodels 0.3596, R `bw.nrd` 0.3623). sd의 이름마다 식이 하나다(아래).
+  - 같은 이름의 규칙이 라이브러리마다 다른 수다(시험 자료 normal/200(표본 표준편차 1.226)의 `'scott'`: scipy 0.4249, sklearn 0.3466, statsmodels 0.3865, R `bw.nrd` 0.3895). sd의 이름마다 식이 하나다(아래).
 - **`kernel`** (SM18): `'gaussian'`(모든 차원)과 1차원의 `'epanechnikov'`, `'rectangular'`, `'triangular'`, `'biweight'`, `'cosine'`이다. **`bw`는 언제나 핵의 표준편차다**(R과 같다). `[sklearn·statsmodels와 다름]`: 두 라이브러리는 가우스가 아닌 핵의 대역폭이 지지집합의 반폭이다(대역폭 1의 Epanechnikov 핵이 가운데에서 3/4다; R과 sd는 3/(4√5)). 그 대역폭 b는 sd의 `bw` = b/√5(Epanechnikov), b/√3(rectangular, sklearn `'tophat'`), b/√6(triangular, sklearn `'linear'`), b/√7(biweight)다. sklearn의 `'cosine'`은 cos(πz/2)·π/4 꼴의 다른 핵이고 sd의 `'cosine'`은 R의 (1 + cos(πz/a))/(2a)다.
 - **`pdf`·`logpdf`**: 정의 그대로의 합이다(계약 안의 증명된 자르기만 한다). `pdf`의 상대 오차는 (8 + 2p + log₂n + D₀)u 이하이고(D₀는 가장 가까운 자료점까지의 대역폭 단위 제곱 거리), `logpdf`의 절대 오차는 (8 + 2p + log₂n)u·max(1, |logpdf|) 이하다. 전체 공분산 H는 백색화의 반올림이 κ_A = √cond₂(H)배로 커지므로 두 한계에 κ_A를 곱한다(scipy도 같다). `logpdf`는 밀도가 언더플로하는 꼬리에서도 상대 정확도를 갖는다(가장 큰 항을 지수 밖으로 뺀다). 대역폭이 double의 끝(2⁻¹⁰⁶⁰ 같은)이어도 정규화가 넘치지 않는다. 결과는 평가점마다 하나다(1차원은 어떤 모양이든, 여러 차원은 (m, p) 또는 점 하나 (p,)).
 - **`cdf`**: 1차원의 Σwⱼ Φ((x − xⱼ)/h)다(가우스 핵; 다른 핵은 그 핵의 누적분포; `bounds`가 있으면 반사한 추정량의 누적분포). 절대 오차는 (8 + log₂n)u 이하다. 여러 차원은 `ValueError`다.
@@ -216,7 +216,7 @@ bw_cv_ml(data, /)
 - **`marginal(dims)`**: 고른 차원(int 또는 int의 시퀀스)의 주변 밀도의 `KDEResult`다(가우스 핵에서 H의 부분 행렬).
 - **`bounds`** (SM21): 1차원에서 `(lo, hi)`(한쪽은 ±inf)를 주면 경계 반사다: f̂(x) + f̂(2·lo − x) + f̂(2·hi − x)이고 구간 밖은 0이다. 자료가 구간 밖에 있으면 `ValueError`다. 설치된 비교 대상에는 없다(statsmodels의 `clip`은 자료를 버리는 다른 뜻이다).
 - 퇴화한 자료(표본 공분산이 양정치가 아니다: 점이 낮은 차원에 놓이거나 모두 같다)에서 규칙이 대역폭 0을 내면 `LinAlgError`다(scipy와 같다). (p, p)의 `bw`는 정확히 대칭이어야 하고(`ValueError`) 양정치가 아니면 `LinAlgError`다. `'scott'`·`'silverman'` 밖의 규칙은 무게를 받지 않는다(`ValueError`; `[R과 다름]`: R `density`는 무게를 버린 대역폭을 경고와 함께 쓴다). 1차원 규칙이나 가우스가 아닌 핵을 여러 차원에 주면 `ValueError`다.
-- 같은 자료를 다른 순서로 주면 같은 비트다. 여러 변수의 합은 점이 많으면(n ≥ 2¹⁷) spatial의 KD 트리가 고른 후보에서, 아니면 모든 점에서 구하고 두 길은 같은 비트다.
+- 같은 자료를 다른 순서로 주면 같은 비트다. 여러 변수의 가우스 합은 점이 4096개 이상이고 평가점이 16개 이상이며 자르기 반경이 백색화한 자료의 축마다 범위의 1/16 이하이면 spatial의 KD 트리가 고른 후보에서, 아니면 모든 점에서 구하고 두 길은 같은 비트다(길은 모양으로만 정하고 속도만 바뀐다).
 - **대역폭 함수** (SM19; 모두 자료만 받고 핵의 표준편차를 돌려준다. 여러 차원을 받는 것은 (p,)):
 
   | 함수 | 식 | 출처 |
@@ -232,9 +232,9 @@ bw_cv_ml(data, /)
 
   - 사분위수는 배열의 `quantile`(선형 보간, R의 type 7)이다. `[statsmodels와 다름]`: statsmodels의 `bw_scott`·`bw_silverman`은 1.349로 나누는 다른 식이다(§8).
   - 최소화와 근 찾기는 `bw_nrd`의 값의 [1/64, 64]배 구간(`bw_sj`는 R의 hmax = 1.144·scale·n^(−1/5) 둘레)에서 고른 격자 33점과 Brent다. 근과 최소점은 같은 방정식·기준의 Arb 값과 상대 10⁻⁸ 안이고(잰 값 1.3×10⁻¹³) 닫힌 꼴은 상대 8u 안이다.
-  - `bw_sj`: R `bw.SJ`의 구간 개수(n > nb/2이면 구간화한 표)와 식이다. `'ste'`는 격자의 첫 부호 바뀜을 10⁻¹³까지 푼다. `[R과 다름]`: R의 `uniroot`는 0.1·lower의 허용오차에서 멈춰 1%쯤 다를 수 있다. R의 구간 (int)(x/d)는 0에서 세므로 자료를 옮기면 값이 조금 바뀐다(R과 같다).
+  - `bw_sj`: R `bw.SJ`의 구간 개수(n > nb/2이면 구간화한 표)와 식이다. `'ste'`는 격자의 첫 부호 바뀜을 10⁻¹³까지 푼다. `[R과 다름]`: R의 `uniroot`는 0.1·lower의 허용오차에서 멈춰 값이 조금 다르다(시험 자료에서 0.3% 안). R의 구간 (int)(x/d)는 0에서 세므로 자료를 옮기면 값이 조금 바뀐다(R과 같다).
   - `bw_isj`: Botev의 `kde.m`처럼 [min − 범위/2, max + 범위/2]의 격자, N은 서로 다른 값의 수, t ∈ (0, 0.1]의 가장 작은 근이다(구간화는 선형). 근이 없으면 `ValueError`이고 메시지가 `bw_sj`·`bw_nrd0`을 짚는다.
-  - `bw_cv_ls(nb=None)`은 statsmodels `cv_ls`의 기준을 정확한 쌍 합으로, `nb`를 주면 R `bw.ucv`의 구간 개수와 식(교차항을 n²으로 나눈다)으로 계산한다. `[statsmodels와 다름]`: 고른 h는 격자의 가장 작은 기준이라 statsmodels의 `fmin`이 멈춘 국소 최소와 다를 수 있다(sd의 기준 값이 더 작다). 기준이 구간의 끝에서 가장 작으면 그 끝(h_ref/64 또는 64·h_ref)을 돌려준다: 같은 값이 많은 이산적인 자료의 `cv_ls`는 h → 0으로 가서 아래 끝이 나온다.
+  - `bw_cv_ls(nb=None)`은 statsmodels `cv_ls`의 기준을 정확한 쌍 합으로, `nb`를 주면 R `bw.ucv`의 구간 개수와 식(교차항을 n²으로 나눈다)으로 계산한다. `[statsmodels와 다름]` `[R과 다름]`: 고른 h는 격자의 가장 작은 기준이라 statsmodels의 `fmin`이나 R `bw.ucv`의 `optimize`([0.1·hmax, hmax], 허용오차 0.1·lower)가 멈춘 국소 최소와 다를 수 있다(시험 자료 weighted/40의 `nb=1000`에서 R 0.585, sd 0.796이고 sd의 기준 값이 더 작다). 기준이 구간의 끝에서 가장 작으면 그 끝(h_ref/64 또는 64·h_ref)을 돌려준다: 같은 값이 많은 이산적인 자료의 `cv_ls`는 h → 0으로 가서 아래 끝이 나온다.
 
 | `KDEResult`의 필드 | 뜻 |
 |---|---|
@@ -246,7 +246,7 @@ bw_cv_ml(data, /)
 
 `DensityResult`는 namedtuple `(x, density)`다.
 
-## §6. Savitzky–Golay (SM6 마일스톤)
+## §6. Savitzky–Golay
 ```
 savgol_coeffs(window_length, polyorder, /, *, deriv=0, delta=1.0, pos=None, use='conv')
 savgol_filter(x, window_length, polyorder, /, *, deriv=0, delta=1.0, axis=-1, mode='interp', cval=0.0)
