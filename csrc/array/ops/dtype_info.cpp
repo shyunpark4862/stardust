@@ -166,7 +166,7 @@ nb::object tensordot(nb::handle x1, nb::handle x2, nb::handle axes_obj) {
     std::vector<int> ca, cb;  // contracted axes of x1 and x2, paired in order
     std::int64_t n = 0;
     if (index_value(axes_obj, n) == IndexResult::Ok) {
-        if (n < 0) throw nb::value_error("'axes' must be non-negative");
+        if (n < 0) throw nb::value_error("'axes' must be >= 0");
         if (n > a.ndim || n > b.ndim) throw nb::value_error("'axes' is larger than an array's number of dimensions");
         for (int i = 0; i < n; ++i) {
             ca.push_back(a.ndim - static_cast<int>(n) + i);

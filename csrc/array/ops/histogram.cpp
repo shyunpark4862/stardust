@@ -90,7 +90,7 @@ nb::object bincount(nb::handle x_obj, nb::handle weights_obj, nb::handle minleng
         throw nb::type_error((std::string("'x' must be a bool or int64 array, not ") + dtype_name(x.dtype)).c_str());
     if (x.ndim != 1) throw nb::value_error("'x' must be 1-D");
     const std::int64_t minlength = parse_int(minlength_obj, "minlength");
-    if (minlength < 0) throw nb::value_error("'minlength' must be non-negative");
+    if (minlength < 0) throw nb::value_error("'minlength' must be >= 0");
     const NDArray xi = c_order(x, DType::Int64);
     const std::int64_t* v = reinterpret_cast<const std::int64_t*>(xi.data);
     const std::int64_t n = xi.size();
@@ -110,7 +110,7 @@ nb::object bincount(nb::handle x_obj, nb::handle weights_obj, nb::handle minleng
         lo = *std::min_element(mins.begin(), mins.end());
         top = *std::max_element(maxs.begin(), maxs.end());
     }
-    if (lo < 0) throw nb::value_error("'x' must be non-negative");
+    if (lo < 0) throw nb::value_error("'x' must be >= 0");
     if (top == std::numeric_limits<std::int64_t>::max()) throw nb::value_error("array is too big");
     const std::int64_t shape[] = {std::max(top + 1, minlength)};
     if (weights_obj.is_none()) {

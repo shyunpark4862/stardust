@@ -196,7 +196,7 @@ def count(v, name, arg):
     except TypeError:
         raise TypeError(f"{name}(): '{arg}' must be an int, not {type_name(v)}") from None
     if k < 0:
-        raise ValueError(f"{name}(): '{arg}' must be 0 or more, not {k}")
+        raise ValueError(f"{name}(): '{arg}' must be >= 0, not {k}")
     return k
 
 

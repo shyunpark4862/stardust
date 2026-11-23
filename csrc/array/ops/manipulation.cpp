@@ -169,7 +169,7 @@ nb::object repeat(nb::handle x, nb::handle repeats_obj, nb::handle axis_obj) {
     if (one_kind == IndexResult::Ok) {
         // One count for all: no per-element counts (two arrays of n written
         // and read serially -- most of repeat(x, 2)'s time before).
-        if (one < 0) throw nb::value_error("'repeats' must be non-negative");
+        if (one < 0) throw nb::value_error("'repeats' must be >= 0");
     } else if (is_ndarray(repeats_obj)) {
         const NDArray& r = as_ndarray(repeats_obj);
         if (r.dtype != DType::Int64)
@@ -193,7 +193,7 @@ nb::object repeat(nb::handle x, nb::handle repeats_obj, nb::handle axis_obj) {
     if (one_kind == IndexResult::Ok && __builtin_mul_overflow(n, one, &total))
         throw nb::value_error("array is too big");
     for (std::int64_t c : counts) {
-        if (c < 0) throw nb::value_error("'repeats' must be non-negative");
+        if (c < 0) throw nb::value_error("'repeats' must be >= 0");
         if (__builtin_add_overflow(total, c, &total)) throw nb::value_error("array is too big");  // (as new_array says)
     }
     // Direct block copies from a C-ordered source: for each position before
@@ -296,7 +296,7 @@ std::vector<std::int64_t> parse_reps(nb::handle o) {
         }
     }
     for (std::int64_t r : reps)
-        if (r < 0) throw nb::value_error("'repetitions' must be non-negative");
+        if (r < 0) throw nb::value_error("'repetitions' must be >= 0");
     return reps;
 }
 
@@ -553,7 +553,7 @@ nb::object diff(nb::handle x, nb::handle axis_obj, nb::handle n_obj, nb::handle 
     const NDArray& a = require_ndarray(x);
     const int axis = normalize_axis(parse_int(axis_obj, "axis"), a.ndim);
     const std::int64_t n = parse_int(n_obj, "n");
-    if (n < 0) throw nb::value_error("'n' must be non-negative");
+    if (n < 0) throw nb::value_error("'n' must be >= 0");
     nb::object cur = nb::borrow(x);
     if (n == 0) return cur;  // x itself, before prepend and append are joined (numpy too)
     if (!prepend.is_none() || !append.is_none()) {

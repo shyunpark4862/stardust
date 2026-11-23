@@ -67,7 +67,7 @@ def _knots(t, name, k):
 def _degree(k, name):
     kk = C.integer(k, name, "k")
     if kk < 0:
-        raise ValueError(f"{name}(): 'k' must be 0 or more, not {kk}")
+        raise ValueError(f"{name}(): 'k' must be >= 0, not {kk}")
     return kk
 
 

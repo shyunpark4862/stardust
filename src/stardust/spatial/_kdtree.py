@@ -262,7 +262,7 @@ def _radii(r, name):
         raise ValueError(f"{name}(): 'r' must be a number or a 1-D array, not a {a.ndim}-D array")
     vals = a.tolist()
     if not all(v >= 0.0 for v in vals):  # NaN too
-        raise ValueError(f"{name}(): every entry of 'r' must be a nonnegative number or inf")
+        raise ValueError(f"{name}(): every entry of 'r' must be a number >= 0 or inf")
     return False, vals
 
 

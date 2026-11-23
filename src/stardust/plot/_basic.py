@@ -286,7 +286,7 @@ def bar(
         same_length(who, height=H, err=below)
         same_length(who, height=H, err=above)
         if bool(sd.any(below < 0.0)) or bool(sd.any(above < 0.0)):
-            raise ValueError(f"{who}(): 'err' must not be negative")
+            raise ValueError(f"{who}(): 'err' must be >= 0")
     cell = self._cell
     parts = _each(self, who, n, group, data, color, label)
     if kind == "cat":
@@ -400,7 +400,7 @@ def errorbar(self, x, y, /, *, yerr=None, xerr=None, data=None, group=None, colo
     n = same_length(who, x=X, y=Y)
     cap = real(cap, who, "cap")
     if cap < 0.0:
-        raise ValueError(f"{who}(): 'cap' must not be negative")
+        raise ValueError(f"{who}(): 'cap' must be >= 0")
     ylo, yhi = _errors(who, "yerr", yerr, Y, data)
     xlo, xhi = _errors(who, "xerr", xerr, X, data)
     label = _label(who, label)

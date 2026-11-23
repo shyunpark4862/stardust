@@ -184,7 +184,7 @@ nb::object linspace(
     const DType ks = require_scalar(start, "start");
     const DType ke = require_scalar(stop, "stop");
     const std::int64_t num = parse_int(num_obj, "num");
-    if (num < 0) throw nb::value_error("'num' must be non-negative");
+    if (num < 0) throw nb::value_error("'num' must be >= 0");
     const bool endpoint = parse_bool(endpoint_obj, "endpoint");
 
     const DType inferred = promote(ks, ke) == DType::Complex128 ? DType::Complex128 : DType::Float64;

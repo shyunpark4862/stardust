@@ -41218,7 +41218,7 @@ true,
 "error aaa rtol": {
 "r": {
 "error": "builtins.ValueError",
-"msg": "AAA(): 'rtol' must be finite and 0 or more, not -1.0"
+"msg": "AAA(): 'rtol' must be finite and >= 0, not -1.0"
 }
 },
 "error barycentric repeated": {
@@ -41398,7 +41398,7 @@ true,
 "error nu": {
 "r": {
 "error": "builtins.ValueError",
-"msg": "PPoly(): 'nu' must be 0 or more, not -1"
+"msg": "PPoly(): 'nu' must be >= 0, not -1"
 }
 },
 "error periodic": {
@@ -41452,7 +41452,7 @@ true,
 "error rbf smoothing": {
 "r": {
 "error": "builtins.ValueError",
-"msg": "RBFInterpolator(): 'smoothing' must be finite and 0 or more, not -1.0"
+"msg": "RBFInterpolator(): 'smoothing' must be finite and >= 0, not -1.0"
 }
 },
 "error roots complex": {

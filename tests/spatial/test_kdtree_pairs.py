@@ -346,9 +346,9 @@ def test_errors():
         t.query_pairs(1.0, output_type="ndarray")
     with raises(TypeError, "query_pairs(): unexpected keyword argument 'eps'"):
         t.query_pairs(1.0, eps=0.1)
-    with raises(ValueError, "query_pairs(): 'r' must be a nonnegative number or inf, not -1"):
+    with raises(ValueError, "query_pairs(): 'r' must be a number >= 0 or inf, not -1"):
         t.query_pairs(-1)
-    with raises(ValueError, "query_pairs(): 'r' must be a nonnegative number or inf, not nan"):
+    with raises(ValueError, "query_pairs(): 'r' must be a number >= 0 or inf, not nan"):
         t.query_pairs(math.nan)
     with raises(TypeError, "query_pairs(): 'r' must be an int or a float, not list"):
         t.query_pairs([1.0])
@@ -363,13 +363,13 @@ def test_errors():
         t.count_neighbors(u, 1.0, 2.0)
     with raises(TypeError, f"{name}(): unexpected keyword argument 'workers'"):
         t.count_neighbors(u, 1.0, workers=2)
-    with raises(ValueError, f"{name}(): 'r' must be a nonnegative number or inf, not -1.0"):
+    with raises(ValueError, f"{name}(): 'r' must be a number >= 0 or inf, not -1.0"):
         t.count_neighbors(u, -1.0)
-    with raises(ValueError, f"{name}(): 'r' must be a nonnegative number or inf, not nan"):
+    with raises(ValueError, f"{name}(): 'r' must be a number >= 0 or inf, not nan"):
         t.count_neighbors(u, math.nan)  # scipy: every pair
-    with raises(ValueError, f"{name}(): every entry of 'r' must be a nonnegative number or inf"):
+    with raises(ValueError, f"{name}(): every entry of 'r' must be a number >= 0 or inf"):
         t.count_neighbors(u, [0.1, -0.1])
-    with raises(ValueError, f"{name}(): every entry of 'r' must be a nonnegative number or inf"):
+    with raises(ValueError, f"{name}(): every entry of 'r' must be a number >= 0 or inf"):
         t.count_neighbors(u, [0.1, math.nan])
     with raises(ValueError, f"{name}(): 'r' must be a number or a 1-D array, not a 2-D array"):
         t.count_neighbors(u, [[0.1, 0.2]])

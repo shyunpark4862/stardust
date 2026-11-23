@@ -60,7 +60,7 @@ def _distribution(x, n, name, arg):
         if not bool(_sd.all(_sd.isfinite(a))):
             raise ValueError(f"{name}(): '{arg}' must be finite")
         if bool(_sd.any(a < 0.0)):
-            raise ValueError(f"{name}(): '{arg}' must be 0 or more")
+            raise ValueError(f"{name}(): '{arg}' must be >= 0")
         if not bool(_sd.any(a > 0.0)):
             raise ValueError(f"{name}(): '{arg}' must have a positive sum")
     return a
@@ -80,7 +80,7 @@ def pagerank(
     unweighted = C.flag(unweighted, name, "unweighted")
     a = C.real(alpha, name, "alpha")
     if not 0.0 <= a < 1.0:
-        raise ValueError(f"{name}(): 'alpha' must be 0 or more and less than 1, not {alpha!r}")
+        raise ValueError(f"{name}(): 'alpha' must be >= 0 and < 1, not {alpha!r}")
     t = C.real(tol, name, "tol")
     if not (t > 0.0 and math.isfinite(t)):
         raise ValueError(f"{name}(): 'tol' must be positive and finite, not {tol!r}")

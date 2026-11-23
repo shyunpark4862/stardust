@@ -462,7 +462,7 @@ def test_nu():
             RGI((gx, gx), q, method=meth)([[1.5, 2.5]], nu=(1, 0))
     with pytest.raises(ValueError, match="one order per dimension"):
         r([[1.5, 2.5]], nu=(1,))
-    with pytest.raises(ValueError, match="0 or more"):
+    with pytest.raises(ValueError, match=">= 0"):
         r([[1.5, 2.5]], nu=(-1, 0))
     with pytest.raises(TypeError, match="must be an int"):
         r([[1.5, 2.5]], nu=(1.0, 0))

@@ -139,7 +139,7 @@ def _seed_entropy(seed, name, arg="seed", allow_none=True):
         v = None
     if v is not None:
         if v < 0:
-            raise ValueError(f"{name}(): '{arg}' must be non-negative")
+            raise ValueError(f"{name}(): '{arg}' must be >= 0")
         return v
     if isinstance(seed, (str, bytes)) or not hasattr(seed, "__len__"):
         raise TypeError(f"{name}(): '{arg}' must be {kinds}, not {_type_name(seed)}")
@@ -152,7 +152,7 @@ def _seed_entropy(seed, name, arg="seed", allow_none=True):
         except TypeError:
             raise TypeError(f"{name}(): '{arg}' must be {kinds}, not a sequence of {_type_name(item)}") from None
         if iv < 0:
-            raise ValueError(f"{name}(): '{arg}' must be non-negative")
+            raise ValueError(f"{name}(): '{arg}' must be >= 0")
         out.append(iv)
     return tuple(out)
 
@@ -217,7 +217,7 @@ def _count(v, name, arg):
     except TypeError:
         raise TypeError(f"{name}(): '{arg}' must be an int, not {_type_name(v)}") from None
     if n < 0:
-        raise ValueError(f"{name}(): '{arg}' must be non-negative")
+        raise ValueError(f"{name}(): '{arg}' must be >= 0")
     if n >= 2**63:
         raise OverflowError(f"{name}(): '{arg}' is out of range")
     return n
@@ -443,7 +443,7 @@ class Generator:
                 bad = lo > hi if endpoint else lo >= hi
             if bad:
                 if one_bound:  # integers(high): the caller gave no 'low'
-                    raise ValueError(f"integers(): 'high' must be {'non-negative' if endpoint else 'positive'}")
+                    raise ValueError(f"integers(): 'high' must be {'>= 0' if endpoint else 'positive'}")
                 rel = "less than or equal to" if endpoint else "less than"
                 raise ValueError(f"integers(): 'low' must be {rel} 'high'")
         key, pos = self._take(_size(shp), "integers")
@@ -469,7 +469,7 @@ class Generator:
             except TypeError:
                 raise TypeError(f"choice(): 'a' must be an int or a 1-dimensional array, not {_type_name(a)}") from None
             if n < 0:
-                raise ValueError("choice(): 'a' must be non-negative")
+                raise ValueError("choice(): 'a' must be >= 0")
             if n >= 2**63:
                 raise OverflowError("choice(): 'a' is out of range")
             pool = None
@@ -487,7 +487,7 @@ class Generator:
                 raise TypeError("choice(): 'p' must be a real array, not complex128")
             p = sd.astype(p, sd.float64)
             if bool(sd.any(sd.isnan(p))) or bool(sd.any(p < 0)):
-                raise ValueError("choice(): 'p' must be non-negative")
+                raise ValueError("choice(): 'p' must be >= 0")
             total = float(sd.sum(p))
             if abs(total - 1.0) > 1.4901161193847656e-08:  # sqrt(eps), numpy's tolerance
                 raise ValueError("choice(): the probabilities 'p' must sum to 1")
@@ -534,7 +534,7 @@ class Generator:
             except TypeError:
                 raise TypeError(f"permutation(): 'x' must be an int or an array, not {_type_name(x)}") from None
             if n < 0:
-                raise ValueError("permutation(): 'x' must be non-negative")
+                raise ValueError("permutation(): 'x' must be >= 0")
             if n >= 2**63:
                 raise OverflowError("permutation(): 'x' is out of range")
             row = 0

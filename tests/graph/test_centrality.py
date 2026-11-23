@@ -202,7 +202,7 @@ def test_pagerank_rules():
 def test_pagerank_errors():
     A = csr(G.get("er/float100"))
     for alpha in (1, 1.0, -0.1, math.nan, math.inf):
-        with pytest.raises(ValueError, match=r"^pagerank\(\): 'alpha' must be 0 or more and less than 1"):
+        with pytest.raises(ValueError, match=r"^pagerank\(\): 'alpha' must be >= 0 and < 1"):
             GR.pagerank(A, alpha=alpha)
     for tol in (0, -1e-3, math.inf, math.nan):
         with pytest.raises(ValueError, match=r"^pagerank\(\): 'tol' must be positive and finite"):
@@ -213,7 +213,7 @@ def test_pagerank_errors():
     p = np.ones(100)
     with pytest.raises(ValueError, match=r"one entry per node \(100\), not 99"):
         GR.pagerank(A, personalization=p[:99])
-    with pytest.raises(ValueError, match=r"'dangling' must be 0 or more"):
+    with pytest.raises(ValueError, match=r"'dangling' must be >= 0"):
         GR.pagerank(A, dangling=-p)
     with pytest.raises(ValueError, match=r"'personalization' must be finite"):
         GR.pagerank(A, personalization=np.where(np.arange(100) == 3, np.nan, 1.0))

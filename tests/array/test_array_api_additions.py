@@ -181,7 +181,7 @@ def test_repeat():
     assert_same(sd.repeat(sd.asarray(X3), 3, axis=1), np.repeat(X3, 3, axis=1))
     assert_same(sd.repeat(sd.asarray(X3), sd.asarray([2, 0, 1, 3]), axis=1), np.repeat(X3, [2, 0, 1, 3], axis=1))
     assert_same(sd.repeat(sd.asarray(X3), sd.asarray([2]), axis=2), np.repeat(X3, [2], axis=2))
-    with pytest.raises(ValueError, match="non-negative"):
+    with pytest.raises(ValueError, match=">= 0"):
         sd.repeat(sd.asarray([1, 2]), -1)
     with pytest.raises(ValueError, match="'repeats' has length 3 but the axis has length 2"):
         sd.repeat(sd.asarray([1, 2]), sd.asarray([1, 2, 3]))
@@ -206,7 +206,7 @@ def test_tile_repetitions_are_like_shape():
         TypeError, match=r"^tile\(\): 'repetitions' must be an int or a tuple of ints, not a tuple holding float$"
     ):
         sd.tile(sd.asarray(X3), (2, 1.0))
-    with pytest.raises(ValueError, match=r"^tile\(\): 'repetitions' must be non-negative$"):
+    with pytest.raises(ValueError, match=r"^tile\(\): 'repetitions' must be >= 0$"):
         sd.tile(sd.asarray(X3), (2, -1))
     assert_same(sd.tile(sd.asarray(X3), (np.int64(2),)), np.tile(X3, 2))
 
@@ -244,7 +244,7 @@ def test_diff():
     assert_same(sd.diff(sd.asarray([True, False, False, True])), np.array([-1, 0, 1]))  # subtract rule: int64
     x = sd.asarray([1.0, 2.0])
     assert sd.diff(x, n=0) is x
-    with pytest.raises(ValueError, match="'n' must be non-negative"):
+    with pytest.raises(ValueError, match="'n' must be >= 0"):
         sd.diff(x, n=-1)
 
 
@@ -640,7 +640,7 @@ def test_bincount():
     )
     assert_same(sd.bincount(sd.zeros((0,), dtype=sd.int64), minlength=3), np.bincount(np.zeros(0, int), minlength=3))
     assert_same(sd.bincount(sd.asarray([True, False, True])), np.array([1, 2]))
-    with pytest.raises(ValueError, match="non-negative"):
+    with pytest.raises(ValueError, match=">= 0"):
         sd.bincount(sd.asarray([1, -1]))
     with pytest.raises(TypeError, match="bool or int64"):
         sd.bincount(sd.asarray([1.0]))

@@ -166,7 +166,7 @@ def test_errors():
         GR.maximum_flow(M.astype(np.float64), 0, 1)
     with pytest.raises(TypeError, match="bool or int64, not float64"):
         GR.maximum_flow(sd.sparse.csr_array(M.astype(np.float64)), 0, 1)
-    with pytest.raises(ValueError, match=r"maximum_flow\(\): the capacities must be nonnegative"):
+    with pytest.raises(ValueError, match=r"maximum_flow\(\): the capacities must be >= 0"):
         GR.maximum_flow(np.array([[0, -3], [0, 0]]), 0, 1)
     with pytest.raises(ValueError, match="'source' and 'sink' must be different nodes, not both 1"):
         GR.maximum_flow(M, 1, 1)

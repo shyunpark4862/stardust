@@ -132,7 +132,7 @@ def vector(v, name, arg, n, *, positive=False):
         else:
             ok = bool(sd.all(sd.isfinite(a) & (a >= 0.0)))
         if not ok:
-            raise ValueError(f"{name}(): '{arg}' must be finite and {'positive' if positive else 'nonnegative'}")
+            raise ValueError(f"{name}(): '{arg}' must be finite and {'positive' if positive else '>= 0'}")
     return a
 
 
@@ -199,7 +199,7 @@ def upper_bound(v, name):
     """distance_upper_bound: nonnegative or inf (SPT19; scipy squares it, so -1 acts as 1 there)."""
     r = real(v, name, "distance_upper_bound")
     if not r >= 0.0:
-        raise ValueError(f"{name}(): 'distance_upper_bound' must be a nonnegative number or inf, not {v!r}")
+        raise ValueError(f"{name}(): 'distance_upper_bound' must be a number >= 0 or inf, not {v!r}")
     return r
 
 
@@ -260,14 +260,14 @@ def finite(a, name, arg):
 
 
 def radius(r, name, rows):
-    """The radius of radius_neighbors (query_ball_point's rule): a nonnegative number or inf, or an array
+    """The radius of radius_neighbors (query_ball_point's rule): a number >= 0 or inf, or an array
     of them that broadcasts to (rows,); NaN and negatives are ValueErrors (scipy compares r squared, so -1
     acts as 1 there). As a float64 (rows,) array."""
     sd = _sd
     if isinstance(r, (int, float)) or type(r).__module__ == "numpy" and getattr(r, "ndim", 1) == 0:
         v = real(r, name, "r")
         if not v >= 0.0:
-            raise ValueError(f"{name}(): 'r' must be a nonnegative number or inf, not {r!r}")
+            raise ValueError(f"{name}(): 'r' must be a number >= 0 or inf, not {r!r}")
         return sd.full((rows,), v)
     try:
         a = data(r, name, "r")
@@ -276,7 +276,7 @@ def radius(r, name, rows):
     if a.ndim > 1 or a.ndim == 1 and a.shape[0] not in (1, rows):
         raise ValueError(f"{name}(): 'r' of shape {tuple(a.shape)} does not broadcast to the {rows} rows of 'XA'")
     if a.size and not bool(sd.all(a >= 0.0)):  # NaN too
-        raise ValueError(f"{name}(): every entry of 'r' must be a nonnegative number or inf")
+        raise ValueError(f"{name}(): every entry of 'r' must be a number >= 0 or inf")
     return sd.broadcast_to(a, (rows,)).copy()  # contiguous, the caller's array untouched
 
 
@@ -290,12 +290,12 @@ def scalar_radius(r, name, arg="r"):
         r = r[()]  # numpy's 0-d array: its scalar
     v = real(r, name, arg)
     if not v >= 0.0:
-        raise ValueError(f"{name}(): '{arg}' must be a nonnegative number or inf, not {r!r}")
+        raise ValueError(f"{name}(): '{arg}' must be a number >= 0 or inf, not {r!r}")
     return v
 
 
 def ball_radius(r, name, batch):
-    """query_ball_point's r: a nonnegative number or inf, or an array of them that broadcasts to the batch
+    """query_ball_point's r: a number >= 0 or inf, or an array of them that broadcasts to the batch
     shape of x (numpy's rule, the batch shape unchanged); as a float64 array of prod(batch) entries in C
     order."""
     sd = _sd
@@ -311,7 +311,7 @@ def ball_radius(r, name, batch):
     if not ok:
         raise ValueError(f"{name}(): 'r' of shape {shape} does not broadcast to the batch shape {tuple(batch)} of 'x'")
     if a.size and not bool(sd.all(a >= 0.0)):  # NaN too
-        raise ValueError(f"{name}(): every entry of 'r' must be a nonnegative number or inf")
+        raise ValueError(f"{name}(): every entry of 'r' must be a number >= 0 or inf")
     return sd.reshape(sd.broadcast_to(a, tuple(batch)).copy(), (rows,))
 
 

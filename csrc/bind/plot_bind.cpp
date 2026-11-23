@@ -284,7 +284,7 @@ void bind_plot(nb::module_& core) {
     );
     m.def("simplify", [](nb::bytes xy, double tol) {
         if (xy.size() % (2 * sizeof(double)) != 0 || !(tol >= 0.0)) {
-            throw std::invalid_argument("xy must be packed pairs, tol not negative");
+            throw std::invalid_argument("xy must be packed pairs, tol >= 0");
         }
         const std::vector<double> v = doubles(xy);
         const std::vector<double> out = plot::simplify(v.data(), v.size() / 2, tol);

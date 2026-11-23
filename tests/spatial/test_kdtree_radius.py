@@ -385,11 +385,11 @@ def test_errors():
         t.query_ball_point(x, 1.0, return_sorted=True)
     with raises(TypeError, "query_ball_point(): unexpected keyword argument 'eps'"):
         t.query_ball_point(x, 1.0, eps=0.1)
-    with raises(ValueError, "query_ball_point(): 'r' must be a nonnegative number or inf, not -1.0"):
+    with raises(ValueError, "query_ball_point(): 'r' must be a number >= 0 or inf, not -1.0"):
         t.query_ball_point(x, -1.0)  # scipy: as r = 1
-    with raises(ValueError, "query_ball_point(): 'r' must be a nonnegative number or inf, not nan"):
+    with raises(ValueError, "query_ball_point(): 'r' must be a number >= 0 or inf, not nan"):
         t.query_ball_point(x, math.nan)  # scipy: an empty list
-    with raises(ValueError, "query_ball_point(): every entry of 'r' must be a nonnegative number or inf"):
+    with raises(ValueError, "query_ball_point(): every entry of 'r' must be a number >= 0 or inf"):
         t.query_ball_point(np.zeros((2, 3)), [0.5, -0.5])
     with raises(ValueError, "query_ball_point(): 'r' of shape (2,) does not broadcast to the batch shape (3,) of 'x'"):
         t.query_ball_point(np.zeros((3, 3)), [0.5, 0.5])
@@ -420,9 +420,9 @@ def test_errors():
             call(np.zeros((2, 3)), 1.0)
         with raises(ValueError, f"{name}(): 'other' must have the same m as this tree (3), not 2"):
             call(u, 1.0)  # scipy: "Trees passed to query_ball_tree have different dimensionality"
-        with raises(ValueError, f"{name}(): '{arg}' must be a nonnegative number or inf, not -0.5"):
+        with raises(ValueError, f"{name}(): '{arg}' must be a number >= 0 or inf, not -0.5"):
             call(t, -0.5)
-        with raises(ValueError, f"{name}(): '{arg}' must be a nonnegative number or inf, not nan"):
+        with raises(ValueError, f"{name}(): '{arg}' must be a number >= 0 or inf, not nan"):
             call(t, math.nan)
         with raises(TypeError, f"{name}(): '{arg}' must be an int or a float, not list"):
             call(t, [1.0])

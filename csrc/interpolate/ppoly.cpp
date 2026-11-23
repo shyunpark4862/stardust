@@ -250,7 +250,7 @@ nb::object ppoly_eval(nb::handle co, nb::handle xo, nb::handle qo, std::int64_t 
     const NDArray& q = require_ndarray(qo, "xq");
     if (q.ndim != 1 || !q.c_contiguous || q.dtype != DType::Float64)
         throw nb::value_error("'xq' must be a C-contiguous 1-D float64 array");
-    if (nu < 0) throw nb::value_error("'nu' must be nonnegative");
+    if (nu < 0) throw nb::value_error("'nu' must be >= 0");
     if (rule < 0 || rule > 2) throw nb::value_error("'rule' must be 0, 1 or 2");
     const std::int64_t nq = q.shape[0];
     const std::int64_t shape[2] = {nq, C.ncol};

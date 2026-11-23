@@ -181,7 +181,7 @@ def _counts(v, name, arg):
     if a.size:
         ok = _sd.isfinite(a) & (a >= 0.0) & (_sd.floor(a) == a)
         if not bool(_sd.all(ok)):
-            raise ValueError(f"{name}(): '{arg}' must hold non-negative integer counts")
+            raise ValueError(f"{name}(): '{arg}' must hold integer counts >= 0")
     return a
 
 
@@ -340,7 +340,7 @@ def poisson_means_test(k1, n1, k2, n2, /, *, diff=0, alternative="two-sided"):
     m2 = _positive(n2, name, "n2")
     d = C.real(diff, name, "diff")
     if not (d >= 0.0 and math.isfinite(d)):
-        raise ValueError(f"{name}(): 'diff' must be non-negative and finite")
+        raise ValueError(f"{name}(): 'diff' must be a finite number >= 0")
     alt = C.alternative(alternative, name)
     stat, pv, capped = _k.poisson_means(float(a1), m1, float(a2), m2, d, _ALT[alt])
     if capped:

@@ -374,7 +374,7 @@ def somersd(x, y=None, /, *, alternative="two-sided"):
         if tab.size:
             ok = _sd.isfinite(tab) & (tab >= 0.0) & (_sd.floor(tab) == tab)
             if not bool(_sd.all(ok)):
-                raise ValueError(f"{name}(): 'x' must hold non-negative integer counts")
+                raise ValueError(f"{name}(): 'x' must hold integer counts >= 0")
         if float(_sd.sum(_sd.where(tab != 0.0, 1.0, 0.0))) < 2.0:
             raise ValueError(f"{name}(): the table must hold at least two nonzero counts")
     elif xa.ndim == 1:

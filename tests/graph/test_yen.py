@@ -145,7 +145,7 @@ def test_errors():
         GR.yen(A, 0, 3, 2.0)
     with pytest.raises(TypeError, match=r"^yen\(\): 'K' must be an int, not bool$"):
         GR.yen(A, 0, 3, True)
-    with pytest.raises(ValueError, match=r"^yen\(\): 'K' must be 0 or more, not -1$"):
+    with pytest.raises(ValueError, match=r"^yen\(\): 'K' must be >= 0, not -1$"):
         GR.yen(A, 0, 3, -1)
     with pytest.raises(ValueError, match=r"^yen\(\): 'sink' must be a node of the graph \(0 \.\. 3\), not 4$"):
         GR.yen(A, 0, 4, 1)

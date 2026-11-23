@@ -210,7 +210,7 @@ def order(v, name, arg="nu"):
     """A derivative order: an int, 0 or more."""
     k = integer(v, name, arg)
     if k < 0:
-        raise ValueError(f"{name}(): '{arg}' must be 0 or more, not {k}")
+        raise ValueError(f"{name}(): '{arg}' must be >= 0, not {k}")
     return k
 
 

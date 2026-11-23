@@ -152,7 +152,7 @@ def dijkstra(
     directed, preds, unweighted = _flags(name, directed, return_predecessors, unweighted)
     limit = C.real(limit, name, "limit")
     if math.isnan(limit) or limit < 0:
-        raise ValueError(f"{name}(): 'limit' must be a nonnegative number or inf, not {limit!r}")
+        raise ValueError(f"{name}(): 'limit' must be a number >= 0 or inf, not {limit!r}")
     min_only = C.flag(min_only, name, "min_only")
     n, indptr, ix, data, negative = _weights(name, csgraph, unweighted)
     _no_negative(name, negative, "use bellman_ford or johnson")

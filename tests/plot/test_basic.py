@@ -241,7 +241,7 @@ def test_argument_errors():
             ValueError,
             "errorbar(): 'yerr' must be a number, 2 numbers or shape (2, 2), not shape (2, 1)",
         ),
-        (lambda: P.errorbar([1.0], [1.0], cap=-1), ValueError, "errorbar(): 'cap' must not be negative"),
+        (lambda: P.errorbar([1.0], [1.0], cap=-1), ValueError, "errorbar(): 'cap' must be >= 0"),
         (lambda: P.hline("a"), TypeError, "hline(): 'y' must be an int or a float, not str"),
         (lambda: P.text(1, 2, 3), TypeError, "text(): 's' must be a str, not int"),
         (
@@ -337,7 +337,7 @@ def test_bar_gaps_stacks_errors_and_values():
     for kw, kind, text in (
         (dict(gap=1.0), ValueError, "'gap' must be in [0, 1)"),
         (dict(stack=True, err=[1.0, 1.0]), ValueError, "'err' cannot be given for stacked bars"),
-        (dict(err=[-1.0, 1.0]), ValueError, "'err' must not be negative"),
+        (dict(err=[-1.0, 1.0]), ValueError, "'err' must be >= 0"),
         (dict(annotate=3), TypeError, "'annotate' must be a bool or a format spec string, not int"),
         (dict(annotate="q"), ValueError, "'annotate' is not a format spec for numbers: 'q'"),
     ):

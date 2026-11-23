@@ -363,9 +363,9 @@ def test_weighted_tables():
     a, b = h.chi2_contingency(w), st.chi2_contingency(w)
     assert _close([a.statistic, a.pvalue], [b.statistic, b.pvalue], 1e-13)
     for f in (h.fisher_exact, h.barnard_exact, h.boschloo_exact, h.mcnemar, h.odds_ratio):
-        with pytest.raises(ValueError, match=r"'table' must hold non-negative integer counts"):
+        with pytest.raises(ValueError, match=r"'table' must hold integer counts >= 0"):
             f(w[:, :2])
-    with pytest.raises(ValueError, match=r"chi2_contingency\(\): 'observed' must hold non-negative finite counts"):
+    with pytest.raises(ValueError, match=r"chi2_contingency\(\): 'observed' must hold finite counts >= 0"):
         h.chi2_contingency([[1.0, -1.0], [2.0, 3.0]])
 
 
@@ -545,5 +545,5 @@ def test_cochrans_q_value_message():
     for x in ([[1, 2], [0, 1]], [[1, 0.5], [0, 1]], [[1, -1], [0, 1]], [[1, math.inf], [0, 1]]):
         with pytest.raises(ValueError, match=msg):
             h.cochrans_q(x)
-    with pytest.raises(ValueError, match=r"cochrans_q\(\): 'x' must hold non-negative integer counts"):
+    with pytest.raises(ValueError, match=r"cochrans_q\(\): 'x' must hold integer counts >= 0"):
         h.cochrans_q([[1, math.nan], [0, 1]])

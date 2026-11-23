@@ -127,14 +127,14 @@ def test_tables_batch_in_front():
     assert t.out(list(range(6))).shape == (2, 3)
     one = C.Tables([[3, 7], [9, 2]], "fisher_exact", "table")
     assert one.batch == () and one.out([0.5]) == 0.5
-    with pytest.raises(ValueError, match="fisher_exact\\(\\): 'table' must hold non-negative integer counts"):
+    with pytest.raises(ValueError, match="fisher_exact\\(\\): 'table' must hold integer counts >= 0"):
         C.Tables([[3, -1], [9, 2]], "fisher_exact", "table")
-    with pytest.raises(ValueError, match="must hold non-negative integer counts"):
+    with pytest.raises(ValueError, match="must hold integer counts >= 0"):
         C.Tables([[3, 1.5], [9, 2]], "fisher_exact", "table")
-    with pytest.raises(ValueError, match="must hold non-negative integer counts"):
+    with pytest.raises(ValueError, match="must hold integer counts >= 0"):
         C.Tables([[3, NAN], [9, 2]], "fisher_exact", "table")
     C.Tables([[3, 1.5], [9, 2]], "chi2_contingency", "observed", integer=False)
-    with pytest.raises(ValueError, match="'observed' must hold non-negative finite counts"):
+    with pytest.raises(ValueError, match="'observed' must hold finite counts >= 0"):
         C.Tables([[3, math.inf], [9, 2]], "chi2_contingency", "observed", integer=False)
     with pytest.raises(ValueError, match="'table' must have at least 2 dimensions \\(the table's\\), not 1"):
         C.Tables([3, 7], "fisher_exact", "table")

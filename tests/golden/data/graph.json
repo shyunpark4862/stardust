@@ -47028,7 +47028,7 @@
 "error flow negative": {
 "r": {
 "error": "builtins.ValueError",
-"msg": "maximum_flow(): the capacities must be nonnegative"
+"msg": "maximum_flow(): the capacities must be >= 0"
 }
 },
 "error flow overflow": {
@@ -47118,13 +47118,13 @@
 "error limit nan": {
 "r": {
 "error": "builtins.ValueError",
-"msg": "dijkstra(): 'limit' must be a nonnegative number or inf, not nan"
+"msg": "dijkstra(): 'limit' must be a number >= 0 or inf, not nan"
 }
 },
 "error limit negative": {
 "r": {
 "error": "builtins.ValueError",
-"msg": "dijkstra(): 'limit' must be a nonnegative number or inf, not -1.0"
+"msg": "dijkstra(): 'limit' must be a number >= 0 or inf, not -1.0"
 }
 },
 "error lsa inf maximize": {
@@ -47196,7 +47196,7 @@
 "error pagerank alpha": {
 "r": {
 "error": "builtins.ValueError",
-"msg": "pagerank(): 'alpha' must be 0 or more and less than 1, not 1.0"
+"msg": "pagerank(): 'alpha' must be >= 0 and < 1, not 1.0"
 }
 },
 "error pagerank max_iter": {
@@ -47286,7 +47286,7 @@
 "error yen K": {
 "r": {
 "error": "builtins.ValueError",
-"msg": "yen(): 'K' must be 0 or more, not -2"
+"msg": "yen(): 'K' must be >= 0, not -2"
 }
 },
 "error yen sink": {

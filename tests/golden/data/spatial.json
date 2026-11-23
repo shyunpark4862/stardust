@@ -22143,7 +22143,7 @@
 "error count_neighbors r": {
 "r": {
 "error": "builtins.ValueError",
-"msg": "count_neighbors(): every entry of 'r' must be a nonnegative number or inf"
+"msg": "count_neighbors(): every entry of 'r' must be a number >= 0 or inf"
 }
 },
 "error count_neighbors r 2-D": {
@@ -22209,7 +22209,7 @@
 "error kneighbors upper bound": {
 "r": {
 "error": "builtins.ValueError",
-"msg": "kneighbors(): 'distance_upper_bound' must be a nonnegative number or inf, not -1.0"
+"msg": "kneighbors(): 'distance_upper_bound' must be a number >= 0 or inf, not -1.0"
 }
 },
 "error last axis": {
@@ -22251,7 +22251,7 @@
 "error query bound": {
 "r": {
 "error": "builtins.ValueError",
-"msg": "query(): 'distance_upper_bound' must be a nonnegative number or inf, not -1.0"
+"msg": "query(): 'distance_upper_bound' must be a number >= 0 or inf, not -1.0"
 }
 },
 "error query columns": {
@@ -22305,13 +22305,13 @@
 "error query_ball_point r nan": {
 "r": {
 "error": "builtins.ValueError",
-"msg": "query_ball_point(): 'r' must be a nonnegative number or inf, not nan"
+"msg": "query_ball_point(): 'r' must be a number >= 0 or inf, not nan"
 }
 },
 "error query_ball_point r negative": {
 "r": {
 "error": "builtins.ValueError",
-"msg": "query_ball_point(): 'r' must be a nonnegative number or inf, not -1.0"
+"msg": "query_ball_point(): 'r' must be a number >= 0 or inf, not -1.0"
 }
 },
 "error query_ball_point r shape": {
@@ -22353,13 +22353,13 @@
 "error query_pairs r": {
 "r": {
 "error": "builtins.ValueError",
-"msg": "query_pairs(): 'r' must be a nonnegative number or inf, not -1.0"
+"msg": "query_pairs(): 'r' must be a number >= 0 or inf, not -1.0"
 }
 },
 "error radius_neighbors r": {
 "r": {
 "error": "builtins.ValueError",
-"msg": "radius_neighbors(): 'r' must be a nonnegative number or inf, not -1.0"
+"msg": "radius_neighbors(): 'r' must be a number >= 0 or inf, not -1.0"
 }
 },
 "error radius_neighbors r shape": {
@@ -22371,7 +22371,7 @@
 "error sparse_distance_matrix max_distance": {
 "r": {
 "error": "builtins.ValueError",
-"msg": "sparse_distance_matrix(): 'max_distance' must be a nonnegative number or inf, not nan"
+"msg": "sparse_distance_matrix(): 'max_distance' must be a number >= 0 or inf, not nan"
 }
 },
 "error squareform asym": {
@@ -22401,7 +22401,7 @@
 "error w nan": {
 "r": {
 "error": "builtins.ValueError",
-"msg": "pdist(): 'w' must be finite and nonnegative"
+"msg": "pdist(): 'w' must be finite and >= 0"
 }
 },
 "error w seuclidean": {

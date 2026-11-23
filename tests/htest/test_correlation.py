@@ -475,7 +475,7 @@ def test_messages():
         h.weightedtau(x, y, weigher=1.0)
     with pytest.raises(ValueError, match=r"weightedtau\(\): 'rank' must hold finite numbers"):
         h.weightedtau(x, y, rank=[1.0, np.nan, 2.0, 3.0, 4.0])
-    with pytest.raises(ValueError, match=r"somersd\(\): 'x' must hold non-negative integer counts"):
+    with pytest.raises(ValueError, match=r"somersd\(\): 'x' must hold integer counts >= 0"):
         h.somersd([[1.0, 2.5], [3.0, 1.0]])
     with pytest.raises(ValueError, match=r"somersd\(\): the table must hold at least two nonzero counts"):
         h.somersd([[0.0, 0.0], [3.0, 0.0]])

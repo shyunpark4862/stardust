@@ -263,7 +263,7 @@ class Tables:
             if integer:
                 ok = ok & (_sd.floor(a) == a)
             if not bool(_sd.all(ok)):
-                kind = "non-negative integer counts" if integer else "non-negative finite counts"
+                kind = "integer counts >= 0" if integer else "finite counts >= 0"
                 raise ValueError(f"{name}(): '{arg}' must hold {kind}")
         self.batch = tuple(a.shape[: a.ndim - ndim])
         self.table = table

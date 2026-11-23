@@ -47,20 +47,20 @@ def test_k():
 
 
 def test_upper_bound():
-    with raises(ValueError, "kneighbors(): 'distance_upper_bound' must be a nonnegative number or inf, not -1"):
+    with raises(ValueError, "kneighbors(): 'distance_upper_bound' must be a number >= 0 or inf, not -1"):
         S.kneighbors(X, X, distance_upper_bound=-1)  # scipy squares it: -1 acts as 1
-    with raises(ValueError, "kneighbors(): 'distance_upper_bound' must be a nonnegative number or inf, not nan"):
+    with raises(ValueError, "kneighbors(): 'distance_upper_bound' must be a number >= 0 or inf, not nan"):
         S.kneighbors(X, X, distance_upper_bound=math.nan)
     with raises(TypeError, "kneighbors(): 'distance_upper_bound' must be an int or a float, not str"):
         S.kneighbors(X, X, distance_upper_bound="1")
 
 
 def test_radius():
-    with raises(ValueError, "radius_neighbors(): 'r' must be a nonnegative number or inf, not -1"):
+    with raises(ValueError, "radius_neighbors(): 'r' must be a number >= 0 or inf, not -1"):
         S.radius_neighbors(X, X, -1)
-    with raises(ValueError, "radius_neighbors(): 'r' must be a nonnegative number or inf, not nan"):
+    with raises(ValueError, "radius_neighbors(): 'r' must be a number >= 0 or inf, not nan"):
         S.radius_neighbors(X, X, math.nan)
-    with raises(ValueError, "radius_neighbors(): every entry of 'r' must be a nonnegative number or inf"):
+    with raises(ValueError, "radius_neighbors(): every entry of 'r' must be a number >= 0 or inf"):
         S.radius_neighbors(X, X, [1.0, -1.0, 1.0, 1.0])
     with raises(ValueError, "radius_neighbors(): 'r' of shape (2,) does not broadcast to the 4 rows of 'XA'"):
         S.radius_neighbors(X, X, [1.0, 2.0])
@@ -92,7 +92,7 @@ def test_metric_options():
         S.radius_neighbors(X, X, 1.0, p=3)
     with raises(TypeError, "kneighbors(): 'w' does not apply to metric='haversine'"):
         S.kneighbors(X[:, :2], X[:, :2], metric="haversine", w=[1.0, 1.0])
-    with raises(ValueError, "kneighbors(): 'w' must be finite and nonnegative"):
+    with raises(ValueError, "kneighbors(): 'w' must be finite and >= 0"):
         S.kneighbors(X, X, w=[1.0, math.nan, 1.0])
     with raises(ValueError, "kneighbors(): metric='haversine' needs 2 columns (latitude and longitude in radians), "
                             "not 3"):  # fmt: skip

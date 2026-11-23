@@ -29544,7 +29544,7 @@ true
 "bincount minlength negative err": {
 "r": {
 "error": "builtins.ValueError",
-"msg": "bincount(): 'minlength' must be non-negative"
+"msg": "bincount(): 'minlength' must be >= 0"
 }
 },
 "bincount minlength small": {
@@ -29577,7 +29577,7 @@ true
 "bincount negative err": {
 "r": {
 "error": "builtins.ValueError",
-"msg": "bincount(): 'x' must be non-negative"
+"msg": "bincount(): 'x' must be >= 0"
 }
 },
 "bincount plain": {
@@ -86534,7 +86534,7 @@ true
 "diff negative n err": {
 "r": {
 "error": "builtins.ValueError",
-"msg": "diff(): 'n' must be non-negative"
+"msg": "diff(): 'n' must be >= 0"
 }
 },
 "diff prepend and append": {
@@ -139696,7 +139696,7 @@ true
 "linspace negative num err": {
 "r": {
 "error": "builtins.ValueError",
-"msg": "linspace(): 'num' must be non-negative"
+"msg": "linspace(): 'num' must be >= 0"
 }
 },
 "mT 1d err": {
@@ -504992,13 +504992,13 @@ true
 "repeat negative array err": {
 "r": {
 "error": "builtins.ValueError",
-"msg": "repeat(): 'repeats' must be non-negative"
+"msg": "repeat(): 'repeats' must be >= 0"
 }
 },
 "repeat negative err": {
 "r": {
 "error": "builtins.ValueError",
-"msg": "repeat(): 'repeats' must be non-negative"
+"msg": "repeat(): 'repeats' must be >= 0"
 }
 },
 "repr 1001": {
@@ -549244,7 +549244,7 @@ false
 "tensordot negative axes err": {
 "r": {
 "error": "builtins.ValueError",
-"msg": "tensordot(): 'axes' must be non-negative"
+"msg": "tensordot(): 'axes' must be >= 0"
 }
 },
 "tensordot pyscalar err": {
@@ -555745,7 +555745,7 @@ true
 "tile negative err": {
 "r": {
 "error": "builtins.ValueError",
-"msg": "tile(): 'repetitions' must be non-negative"
+"msg": "tile(): 'repetitions' must be >= 0"
 }
 },
 "tolist 1elem": {

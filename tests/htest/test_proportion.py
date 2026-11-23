@@ -660,7 +660,7 @@ def test_messages():
         h.quantile_test([1.0, 2.0], p=1.0)
     with pytest.raises(ValueError, match=r"poisson_means_test\(\): 'n1' must be positive and finite"):
         h.poisson_means_test(3, 0.0, 2, 1.0)
-    with pytest.raises(ValueError, match=r"poisson_means_test\(\): 'diff' must be non-negative and finite"):
+    with pytest.raises(ValueError, match=r"poisson_means_test\(\): 'diff' must be a finite number >= 0"):
         h.poisson_means_test(3, 1.0, 2, 1.0, diff=-1.0)
     with pytest.raises(ValueError, match=r"proportions_ztest\(\): 'value' must be given for a one-sample test"):
         h.proportions_ztest(15, 40)
@@ -669,7 +669,7 @@ def test_messages():
         h.proportions_ztest([1, 2, 3], [5, 5, 5])
     with pytest.raises(ValueError, match=r"proportions_ztest\(\): 'count' must not exceed 'nobs'"):
         h.proportions_ztest(41, 40, value=0.5)
-    with pytest.raises(ValueError, match=r"proportions_chisquare\(\): 'count' must hold non-negative integer counts"):
+    with pytest.raises(ValueError, match=r"proportions_chisquare\(\): 'count' must hold integer counts >= 0"):
         h.proportions_chisquare([1.5, 2], [4, 4])
     with pytest.raises(ValueError, match=r"proportion_confint\(\): 'alpha' must be between 0 and 1 \(exclusive\)"):
         h.proportion_confint(7, 30, alpha=0.0)

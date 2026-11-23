@@ -50,7 +50,7 @@ def _cpoints(z, name, arg="z"):
 def _nonneg(v, name, arg):
     t = C.real(v, name, arg)
     if not (math.isfinite(t) and t >= 0):
-        raise ValueError(f"{name}(): '{arg}' must be finite and 0 or more, not {t!r}")
+        raise ValueError(f"{name}(): '{arg}' must be finite and >= 0, not {t!r}")
     return t
 
 

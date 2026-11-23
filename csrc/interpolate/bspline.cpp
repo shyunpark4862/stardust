@@ -216,7 +216,7 @@ nb::object bspline_eval(nb::handle to, nb::handle co, std::int64_t k, nb::handle
     const Knots T = knots_arg(to, k);
     const Coefs C = coefs_arg(co, T.n);
     const NDArray& q = vector_arg(qo, "x");
-    if (nu < 0) throw nb::value_error("'nu' must be nonnegative");
+    if (nu < 0) throw nb::value_error("'nu' must be >= 0");
     if (rule < 0 || rule > 2) throw nb::value_error("'rule' must be 0, 1 or 2");
     const std::int64_t nq = q.shape[0];
     NDArray out = new_values(C.dtype, nq, C.ncol);
@@ -279,7 +279,7 @@ nb::object bspline_knots(nb::handle xo, std::int64_t k, int kind) {
     const NDArray& xa = vector_arg(xo, "x");
     const auto* x = reinterpret_cast<const double*>(xa.data);
     const std::int64_t n = xa.shape[0];
-    if (n < 2 || k < 0) throw nb::value_error("'x' must have 2 points or more, 'k' must be nonnegative");
+    if (n < 2 || k < 0) throw nb::value_error("'x' must have 2 points or more, 'k' must be >= 0");
     std::vector<double> t;
     if (kind == 0) {  // scipy's _not_a_knot: odd k the nodes, even k the midpoints in doubles; k2 dropped per end
         std::vector<double> mid;
@@ -588,7 +588,7 @@ nb::object bspline_derivative(nb::handle to, nb::handle co, std::int64_t k, std:
 nb::object bspline_antiderivative(nb::handle to, nb::handle co, std::int64_t k, std::int64_t nu) {
     const Knots T0 = knots_arg(to, k);
     const Coefs C = coefs_arg(co, T0.n);
-    if (nu < 0) throw nb::value_error("'nu' must be nonnegative");
+    if (nu < 0) throw nb::value_error("'nu' must be >= 0");
     const std::int64_t D = C.D;
     std::vector<double> t(T0.t, T0.t + T0.N);
     std::vector<double> c(T0.N * D, 0.0);

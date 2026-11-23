@@ -1421,7 +1421,7 @@ false
 "choice err a negative": {
 "r": {
 "error": "builtins.ValueError",
-"msg": "choice(): 'a' must be non-negative"
+"msg": "choice(): 'a' must be >= 0"
 }
 },
 "choice err no replace nonzero p": {
@@ -1451,13 +1451,13 @@ false
 "choice err p nan": {
 "r": {
 "error": "builtins.ValueError",
-"msg": "choice(): 'p' must be non-negative"
+"msg": "choice(): 'p' must be >= 0"
 }
 },
 "choice err p negative": {
 "r": {
 "error": "builtins.ValueError",
-"msg": "choice(): 'p' must be non-negative"
+"msg": "choice(): 'p' must be >= 0"
 }
 },
 "choice err p sum": {
@@ -2352,7 +2352,7 @@ false
 "default_rng -1": {
 "r": {
 "error": "builtins.ValueError",
-"msg": "default_rng(): 'seed' must be non-negative"
+"msg": "default_rng(): 'seed' must be >= 0"
 }
 },
 "default_rng 0": {
@@ -2802,7 +2802,7 @@ false
 "default_rng [1, -2]": {
 "r": {
 "error": "builtins.ValueError",
-"msg": "default_rng(): 'seed' must be non-negative"
+"msg": "default_rng(): 'seed' must be >= 0"
 }
 },
 "default_rng [1, 2, 3]": {
@@ -3147,7 +3147,7 @@ false
 "err spawn negative": {
 "r": {
 "error": "builtins.ValueError",
-"msg": "spawn(): 'n' must be non-negative"
+"msg": "spawn(): 'n' must be >= 0"
 }
 },
 "err state bad generator": {
@@ -6453,7 +6453,7 @@ false
 "permutation err negative": {
 "r": {
 "error": "builtins.ValueError",
-"msg": "permutation(): 'x' must be non-negative"
+"msg": "permutation(): 'x' must be >= 0"
 }
 },
 "permutation int": {

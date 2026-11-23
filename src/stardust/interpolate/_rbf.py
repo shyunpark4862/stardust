@@ -239,14 +239,14 @@ def _smoothing(v, n, name):
     if isinstance(v, (int, float)) or C._is_numpy_scalar(v):
         s = C.real(v, name, "smoothing")
         if not (math.isfinite(s) and s >= 0):
-            raise ValueError(f"{name}(): 'smoothing' must be finite and 0 or more, not {s!r}")
+            raise ValueError(f"{name}(): 'smoothing' must be finite and >= 0, not {s!r}")
         return _readonly(sd.full((n,), s))
     a = C.array(v, name, "smoothing")
     if tuple(a.shape) != (n,):
         raise ValueError(f"{name}(): 'smoothing' must be a number or an array of shape ({n},), not {tuple(a.shape)}")
     a = C.contiguous(a.copy())
     if not (_core.all_finite(a) and bool(sd.all(a >= 0))):
-        raise ValueError(f"{name}(): 'smoothing' must be finite and 0 or more")
+        raise ValueError(f"{name}(): 'smoothing' must be finite and >= 0")
     return _readonly(a)
 
 

@@ -135,7 +135,7 @@ def test_limit():
     r = GR.dijkstra(unit, indices=0, limit=1.0, return_predecessors=True)
     assert np.asarray(r.predecessors).tolist() == [NONE, 0, NONE, NONE, NONE]
     for bad in (np.nan, -1, -1e-300):
-        with pytest.raises(ValueError, match=r"^dijkstra\(\): 'limit' must be a nonnegative number or inf, not"):
+        with pytest.raises(ValueError, match=r"^dijkstra\(\): 'limit' must be a number >= 0 or inf, not"):
             GR.dijkstra(unit, limit=bad)
     assert rec["nan"]["value"]["array"][1] == "inf"  # scipy: every node unreachable under a NaN limit
     with pytest.raises(TypeError, match=r"^dijkstra\(\): 'limit' must be an int or a float, not str$"):

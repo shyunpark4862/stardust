@@ -56,7 +56,7 @@ def maximum_flow(csgraph, source, sink, /, *, method="dinic"):
     if s == t:
         raise ValueError(f"{name}(): 'source' and 'sink' must be different nodes, not both {s}")
     if caps.size and bool(_sd.any(caps < 0)):
-        raise ValueError(f"{name}(): the capacities must be nonnegative")
+        raise ValueError(f"{name}(): the capacities must be >= 0")
     out = _core._max_flow(indptr, indices, caps, n, s, t, method == "dinic")
     if out is None:
         raise OverflowError(f"{name}(): the capacities out of the source sum past the int64 range")

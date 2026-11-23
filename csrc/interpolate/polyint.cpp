@@ -374,7 +374,7 @@ nb::object krogh_eval(nb::handle xo, nb::handle co, nb::handle qo, std::int64_t 
     const Vec X = vec_arg(xo, "x");
     const Cols C = cols_arg(co, "c", X.n);
     const Vec Q = vec_arg(qo, "xq");
-    if (first < 0 || count < 0) throw nb::value_error("'first' and 'count' must be nonnegative");
+    if (first < 0 || count < 0) throw nb::value_error("'first' and 'count' must be >= 0");
     const std::int64_t n = X.n, nq = Q.n, D = C.D;
     const std::int64_t shape[3] = {count, nq, C.ncol};
     NDArray out = new_array(C.dtype, shape, true);

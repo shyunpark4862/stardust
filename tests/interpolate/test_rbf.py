@@ -305,7 +305,7 @@ def test_scipy_differences():
     from stardust.linalg import LinAlgError
 
     sc = S.scatter("scatter/uniform2d")
-    with pytest.raises(ValueError, match="'smoothing' must be finite and 0 or more"):
+    with pytest.raises(ValueError, match="'smoothing' must be finite and >= 0"):
         IP.RBFInterpolator(sc.y, sc.d, smoothing=-1.0)
     assert np.isfinite(si.RBFInterpolator(sc.y, sc.d, smoothing=-1.0)(sc.xi[:2])).all()  # scipy takes it
     dup = S.scatter("scatter/duplicate2d")

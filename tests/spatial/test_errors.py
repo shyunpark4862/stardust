@@ -99,7 +99,7 @@ def test_weights():
     with raises(ValueError, "pdist(): 'w' must have 1 dimension, not 2"):
         S.pdist(X, w=np.ones((1, 3)))
     for bad in (math.nan, math.inf, -1.0):
-        with raises(ValueError, "euclidean(): 'w' must be finite and nonnegative"):
+        with raises(ValueError, "euclidean(): 'w' must be finite and >= 0"):
             S.euclidean([0.0, 1.0], [1.0, 1.0], w=[bad, 1.0])
     with raises(TypeError, "cityblock(): 'w' must be real, not a complex128 array"):
         S.cityblock([0.0], [1.0], w=[1j])

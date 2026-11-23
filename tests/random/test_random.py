@@ -188,7 +188,7 @@ def test_threads_share_a_generator_without_reusing_numbers():
 @pytest.mark.parametrize(
     "call,exc,msg",
     [
-        (lambda r: sd.random.default_rng(-1), ValueError, "default_rng(): 'seed' must be non-negative"),
+        (lambda r: sd.random.default_rng(-1), ValueError, "default_rng(): 'seed' must be >= 0"),
         (
             lambda r: sd.random.default_rng(1.5),
             TypeError,
@@ -208,7 +208,7 @@ def test_threads_share_a_generator_without_reusing_numbers():
         (lambda r: r.integers(0, sd.asarray([1.0])), TypeError, "'high' must be an int or an int64 array, not float64"),
         (lambda r: r.integers(0, 3, endpoint=1), TypeError, "integers(): 'endpoint' must be True or False, not int"),
         (lambda r: r.choice(3, shape=4, replace=False), ValueError, "choice(): cannot take a larger sample"),
-        (lambda r: r.choice(3, p=sd.asarray([0.5, 0.6, -0.1])), ValueError, "choice(): 'p' must be non-negative"),
+        (lambda r: r.choice(3, p=sd.asarray([0.5, 0.6, -0.1])), ValueError, "choice(): 'p' must be >= 0"),
         (
             lambda r: r.choice(3, p=sd.asarray([0.5, 0.6, 0.1])),
             ValueError,
@@ -216,7 +216,7 @@ def test_threads_share_a_generator_without_reusing_numbers():
         ),
         (lambda r: r.choice(sd.asarray(np.zeros((2, 2)))), ValueError, "choice(): 'a' must be 1-dimensional"),
         (lambda r: r.choice(0), ValueError, "choice(): cannot choose from an empty population"),
-        (lambda r: r.permutation(-2), ValueError, "permutation(): 'x' must be non-negative"),
+        (lambda r: r.permutation(-2), ValueError, "permutation(): 'x' must be >= 0"),
         (lambda r: r.permutation("a"), TypeError, "permutation(): 'x' must be an int or an array, not str"),
     ],
 )
@@ -269,7 +269,7 @@ def test_messages_name_the_method_and_the_argument():
             call()
     with pytest.raises(ValueError, match=r"^integers\(\): 'high' must be positive"):
         r.integers(0)
-    with pytest.raises(ValueError, match=r"^integers\(\): 'high' must be non-negative"):
+    with pytest.raises(ValueError, match=r"^integers\(\): 'high' must be >= 0"):
         r.integers(-1, endpoint=True)
     with pytest.raises(ValueError, match=r"^integers\(\): 'low' must be less than 'high'"):
         r.integers(3, 3)
@@ -343,7 +343,7 @@ def test_state_spawn_key_messages_agree():
     with pytest.raises(TypeError, match=r"^\.state: 'spawn_key' must be a sequence of ints, not a sequence of float$"):
         g.state = st
     st["spawn_key"] = [-1]
-    with pytest.raises(ValueError, match=r"^\.state: 'spawn_key' must be non-negative$"):
+    with pytest.raises(ValueError, match=r"^\.state: 'spawn_key' must be >= 0$"):
         g.state = st
 
 

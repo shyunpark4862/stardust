@@ -596,7 +596,7 @@ nb::object grid_spline_eval(
     const auto* nup = reinterpret_cast<const std::int64_t*>(nua.data);
     const std::vector<std::int64_t> nu(nup, nup + d);
     for (std::int64_t v : nu)
-        if (v < 0) throw nb::value_error("'nu' must be nonnegative");
+        if (v < 0) throw nb::value_error("'nu' must be >= 0");
     if (rule < 0 || rule > 2) throw nb::value_error("'rule' must be 0, 1 or 2");
     std::vector<double> dom_x(2 * d);
     std::vector<Axis> dom(d);

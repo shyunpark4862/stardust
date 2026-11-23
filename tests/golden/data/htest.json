@@ -8742,7 +8742,7 @@
 "chi2_contingency negative": {
 "r": {
 "error": "builtins.ValueError",
-"msg": "chi2_contingency(): 'observed' must hold non-negative finite counts"
+"msg": "chi2_contingency(): 'observed' must hold finite counts >= 0"
 }
 },
 "chi2_contingency one row": {
@@ -12019,7 +12019,7 @@
 "fisher_exact counts": {
 "r": {
 "error": "builtins.ValueError",
-"msg": "fisher_exact(): 'table' must hold non-negative integer counts"
+"msg": "fisher_exact(): 'table' must hold integer counts >= 0"
 }
 },
 "fisher_exact deep tail": {
@@ -31416,7 +31416,7 @@ true
 "poisson_means_test diff negative": {
 "r": {
 "error": "builtins.ValueError",
-"msg": "poisson_means_test(): 'diff' must be non-negative and finite"
+"msg": "poisson_means_test(): 'diff' must be a finite number >= 0"
 }
 },
 "poisson_means_test n zero": {
@@ -32618,7 +32618,7 @@ true
 "proportions_chisquare non-integer": {
 "r": {
 "error": "builtins.ValueError",
-"msg": "proportions_chisquare(): 'count' must hold non-negative integer counts"
+"msg": "proportions_chisquare(): 'count' must hold integer counts >= 0"
 }
 },
 "proportions_chisquare one": {
@@ -34530,7 +34530,7 @@ true
 "somersd counts": {
 "r": {
 "error": "builtins.ValueError",
-"msg": "somersd(): 'x' must hold non-negative integer counts"
+"msg": "somersd(): 'x' must hold integer counts >= 0"
 }
 },
 "somersd greater": {

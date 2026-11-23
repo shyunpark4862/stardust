@@ -386,9 +386,9 @@ def test_query_errors():
         t.query(x, p=0.5)
     with raises(ValueError, "query(): 'p' must be a number of at least 1 or inf, not nan"):
         t.query(x, p=math.nan)
-    with raises(ValueError, "query(): 'distance_upper_bound' must be a nonnegative number or inf, not -1.0"):
+    with raises(ValueError, "query(): 'distance_upper_bound' must be a number >= 0 or inf, not -1.0"):
         t.query(x, distance_upper_bound=-1.0)
-    with raises(ValueError, "query(): 'distance_upper_bound' must be a nonnegative number or inf, not nan"):
+    with raises(ValueError, "query(): 'distance_upper_bound' must be a number >= 0 or inf, not nan"):
         t.query(x, distance_upper_bound=math.nan)
     with raises(TypeError, "query(): 'distance_upper_bound' must be an int or a float, not NoneType"):
         t.query(x, distance_upper_bound=None)
