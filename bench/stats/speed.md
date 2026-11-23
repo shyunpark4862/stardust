@@ -12,7 +12,7 @@
 
 | 실행 | 커밋 | 기계 | 사례 수 |
 |---|---|---|---:|
-| 20261122-193244-ed179c3 | ed179c3 | Apple M4 Pro, 14코어, macOS 26.6.2 | 577 |
+| 20261122-193244-4e686e6 | 4e686e6 | Apple M4 Pro, 14코어, macOS 26.6.2 | 577 |
 
 라이브러리: stardust 0.0.1, numpy 2.5.4, scipy 1.18.1, pandas 3.1.1, pyarrow 26.0.1, statsmodels 0.15.0, sklearn 1.9.1, threadpoolctl 3.8.0, Boost.Math boostorg/math 75cb4c4 2026-11-18, R 4.6.2, R mvtnorm 1.4.2.
 

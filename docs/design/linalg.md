@@ -887,7 +887,7 @@ LAPACK에 없으므로 직접 구현한다. 알고리즘은 Al-Mohy & Higham 200
   - 작은 행렬은 10스레드와 같다(2.79). 원래 스레드를 쓰지 않던 곳이다.
   - 배치는 1.45배다. numpy와 같은 LAPACK을 부르면서 호출 비용만큼 빠르다.
   - 긴 합과 노름은 Accelerate의 `ddot`/`dasum`과 NEON 최댓값을 쓴다(§8.2). 길이 10⁶의 `vecdot(v, v)`만 numpy(전체를 `ddot` 한 번)의 약 0.9배이고, 노름은 numpy보다 빠르다.
-- **위의 줄 수는 커밋 4151d2a 기준선의 것이다.** 그때 느리던 줄(C-order `solve_triangular`, `lu_solve`, `matrix_power`, 짧은 `vecdot`, `diagonal`, 짧은 fro 노름, 1스레드의 긴 합)은 LA1–LA10으로 바뀌었다. 지금의 줄별 값은 `bench/linalg/speed.md`다. 남은 차이는 §12.6이다.
+- **위의 줄 수는 커밋 9b2e53d 기준선의 것이다.** 그때 느리던 줄(C-order `solve_triangular`, `lu_solve`, `matrix_power`, 짧은 `vecdot`, `diagonal`, 짧은 fro 노름, 1스레드의 긴 합)은 LA1–LA10으로 바뀌었다. 지금의 줄별 값은 `bench/linalg/speed.md`다. 남은 차이는 §12.6이다.
 
 ### 12.5 하지 않은 최적화
 - **결과 비트를 바꾸지만 하지 않은 것**. numpy·scipy와의 비트, 크기에 따른 경로, 레이아웃 불변성은 이제 이유가 되지 않는다(§1.3, §5.7, §12.2). 남은 이유는 규칙의 복잡도와 원칙(§1.2)이다.

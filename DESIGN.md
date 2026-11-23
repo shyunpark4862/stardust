@@ -295,7 +295,7 @@ R1이 추천안대로 정해지면, 아래 후보를 함수 하나하나 확정�
     - ~~**에러 메시지 안의 문서 번호**: frame의 에러 메시지 19곳이 옛 pandas `API.md`의 절 번호(6, 12, 14, 15, 18, 19절)를 적는다. 통합판에서 `API.md`는 루트 문서라서 잘못된 곳을 가리킨다. M5는 결과를 바꾸지 않으므로 두었다. 위의 "메시지에 문서 절 번호를 넣지 않는다"를 따라 M6에서 지운다 (`grep -rn 'API.md §' csrc/frame src/stardust/frame`).~~ M6에서 지웠다.
   - 배열 ↔ frame (M6에서 문서를 고치다 찾음, 코드에 남은 차이). 고치면 결과가 바뀌므로 M6에서는 문서에만 적었다.
     - ~~**bool과 int의 비교**: 배열은 bool을 int64로 올려 비교한다(`sd.asarray([True]) == 1`). frame은 bool끼리만 비교하고 bool과 int는 `TypeError`다 (docs/api/frame.md §3.3). §9.1 2번은 산술만 맞췄다.~~ M8에서 해결: frame도 bool을 int64로 올려 비교한다 (§10.1 2번).
-    - ~~**bool의 단항 `+`**: frame의 `+s`는 bool이면 `TypeError`였다.~~ M6 마지막 커밋(900cac8)에서 해결: `-s`, `abs(s)`처럼 int64다 (docs/api/frame.md §3.2).
+    - ~~**bool의 단항 `+`**: frame의 `+s`는 bool이면 `TypeError`였다.~~ M6 마지막 커밋(bd8c6c9)에서 해결: `-s`, `abs(s)`처럼 int64다 (docs/api/frame.md §3.2).
     - ~~**CSV 추론의 정확성 규칙**: list에서 만들 때는 int64 범위 밖이거나 2⁵³을 넘는 int가 float와 섞이면 float64로 반올림한다(§9.1 5번, 12번). `read_csv`의 추론은 그런 값이 있으면 컬럼을 string으로 남긴다 (docs/api/frame.md §10.4).~~ M8에서 해결: `read_csv`도 list 추론처럼 float64로 반올림한다 (§10.1 3번).
   - 배열 ↔ linalg ↔ frame (M8에서 메시지를 고치다 찾음)
     - 호출 모양이 틀린 경우(없는 키워드 이름, 인자 개수)는 배열과 linalg에서 nanobind의 `incompatible function arguments` 덤프가 그대로 나온다. 그대로: 인자의 값이 틀린 것이 아니라 호출이 틀린 것이고, Python의 `got an unexpected keyword argument`에 해당한다. 고치려면 바인딩마다 `*args, **kwargs`로 받아 직접 풀어야 한다. Python으로 쓴 무거운 입구(모듈 수준 함수, 생성자)는 호출 모양의 에러도 `f(): ` 꼴이고, 작은 메서드는 Python의 기본 꼴이다 (API.md §2.1).
@@ -309,7 +309,7 @@ R1이 추천안대로 정해지면, 아래 후보를 함수 하나하나 확정�
 
 ## 9. M6 변경 목록 (확정, 2026-11-12)
 
-> **M6에서 구현했다** (2026-11-12, 커밋 7c8a128, b3116e4, 031dc61, cf1d6f1, 139146a, a6476c6). 아래 목록과 다르게 구현한 곳: (a) 배열의 int 인자(`shape`, `axis`, `k`, `num`)도 linalg처럼 int64 범위 밖이면 OverflowError다 (§9.6은 linalg만 적었다, API.md §2). (b) `mean(int64)`은 배열, Series, 그룹별 모두 같은 정확한 정수 합(상위·하위 32비트를 int64로 따로 더하고 조각은 int128로 합친다, `csrc/base/`의 함수 하나)을 한 번 반올림해 나눈다. 그래서 그룹 크기와 상관없이 그룹별 평균이 그 그룹의 Series `mean`과 비트가 같다 (docs/design/array.md, docs/api/frame.md §7.5). (c) `to_numpy(dtype=)`, `to_array(dtype=)`도 생성자의 `dtype=`처럼 명시적 변환이다 (§9.1 5번). (d) list에서 int와 float가 섞이면 int를 float64로 반올림한다. 2⁵³을 넘어도 에러가 아니다 (§9.1 5번, 배열의 `asarray`와 같다). 그 밖에 조회 `x in s`는 손실 없는 변환을 남겼다 (docs/api/frame.md §5.8). 구현하며 찾은, 코드에 남은 차이는 §8.4 끝에 있다. `axis` 리스트는 사용자 결정으로 두 영역 모두 받는다 (§7).
+> **M6에서 구현했다** (2026-11-12, 커밋 5260e69, 7a10faa, cfece41, 602c86e, 7aea0d8, 74f2753). 아래 목록과 다르게 구현한 곳: (a) 배열의 int 인자(`shape`, `axis`, `k`, `num`)도 linalg처럼 int64 범위 밖이면 OverflowError다 (§9.6은 linalg만 적었다, API.md §2). (b) `mean(int64)`은 배열, Series, 그룹별 모두 같은 정확한 정수 합(상위·하위 32비트를 int64로 따로 더하고 조각은 int128로 합친다, `csrc/base/`의 함수 하나)을 한 번 반올림해 나눈다. 그래서 그룹 크기와 상관없이 그룹별 평균이 그 그룹의 Series `mean`과 비트가 같다 (docs/design/array.md, docs/api/frame.md §7.5). (c) `to_numpy(dtype=)`, `to_array(dtype=)`도 생성자의 `dtype=`처럼 명시적 변환이다 (§9.1 5번). (d) list에서 int와 float가 섞이면 int를 float64로 반올림한다. 2⁵³을 넘어도 에러가 아니다 (§9.1 5번, 배열의 `asarray`와 같다). 그 밖에 조회 `x in s`는 손실 없는 변환을 남겼다 (docs/api/frame.md §5.8). 구현하며 찾은, 코드에 남은 차이는 §8.4 끝에 있다. `axis` 리스트는 사용자 결정으로 두 영역 모두 받는다 (§7).
 
 > §4.4, §8의 결정을 함수 하나하나로 풀어 쓴 목록이고, 골든 비교의 "예상된 차이"다(§8.5). 모든 항목이 확정이다.
 > 골든 분류: 값(결과가 바뀜), 메시지(에러 메시지만), 종류(예외 종류), 시그니처(인자 이름·위치), 새것(없던 기능).

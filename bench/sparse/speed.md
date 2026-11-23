@@ -12,7 +12,7 @@
 
 | 실행 | 커밋 | 기계 | 사례 수 |
 |---|---|---|---:|
-| 20261122-024025-cda05f3+ | cda05f3 + 작업 중 변경 | Apple M4 Pro, 14코어, macOS 26.6.2 | 238 |
+| 20261122-024025-698b44e+ | 698b44e + 작업 중 변경 | Apple M4 Pro, 14코어, macOS 26.6.2 | 238 |
 
 라이브러리: stardust 0.0.1, numpy 2.5.4, scipy 1.18.1, pandas 3.1.1, pyarrow 26.0.1, statsmodels 0.15.0, sklearn 1.9.1, threadpoolctl 3.8.0, Boost.Math boostorg/math 75cb4c4 2026-11-18, R 4.6.2, R Matrix 1.7.6.
 
