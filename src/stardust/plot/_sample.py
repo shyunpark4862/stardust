@@ -14,6 +14,8 @@ Screen means a reference plot of W0 x H0 units (4:3); a unit is about a third of
 """
 
 import math
+import numbers
+import operator
 
 from .. import _core as sd
 from .._core import _type_name
@@ -58,6 +60,16 @@ def robust_range(v):
     return (q10 - spread if clip_lo else lo), (q90 + spread if clip_hi else hi), clip_lo, clip_hi
 
 
+def level(v):
+    """Whether the finite values are nearly all alike (no spread between their 10% and 90%
+    quantiles): robust_range then has no bulk to judge a far value by and gives the full range."""
+    w = v[sd.isfinite(v)]
+    if w.shape[0] < 8:
+        return False
+    q10, q90 = (float(q) for q in sd.quantile(w, sd.asarray([0.1, 0.9])))
+    return not q90 - q10 > 0.0
+
+
 class Curve:
     """A sampled curve: t, x, y (sd arrays, t increasing), the indices i of the intervals
     [t[i], t[i+1]] that are breaks, and what was found."""
@@ -86,10 +98,11 @@ def knobs(who, samples, refine, default, deepest, pair=False, most=4000):
     `deepest`; 0 turns the adaptive sampling off; None: `deepest`)."""
 
     def count(v, arg):
-        if isinstance(v, bool) or not isinstance(v, int):
+        if isinstance(v, bool) or not isinstance(v, numbers.Integral):  # (numpy's integers too)
             raise TypeError(
                 f"{who}(): '{arg}' must be an int{' or a pair of ints' if pair else ''}, not {_type_name(v)}"
             )
+        v = operator.index(v)
         if not 3 <= v <= most:
             raise ValueError(f"{who}(): '{arg}' must be between 3 and {most}")
         return v
@@ -105,8 +118,9 @@ def knobs(who, samples, refine, default, deepest, pair=False, most=4000):
         n = (n, n) if pair else n
     if refine is None:
         return n, deepest
-    if isinstance(refine, bool) or not isinstance(refine, int):
+    if isinstance(refine, bool) or not isinstance(refine, numbers.Integral):
         raise TypeError(f"{who}(): 'refine' must be an int, not {_type_name(refine)}")
+    refine = operator.index(refine)
     if not 0 <= refine <= deepest:
         raise ValueError(f"{who}(): 'refine' must be between 0 and {deepest}")
     return n, refine

@@ -9,12 +9,14 @@ tile the region exactly. Densities and phase portraits are pictures of the grid'
 """
 
 import math
+import numbers
 from array import array
 
 from .. import _core as sd
 from .._core import _type_name
 from .._core import plot as _core_plot
 from ..optimize._common import _check_bool, _check_choice
+from ..stats._distribution import _real_option
 from . import _color, _layers, _sample, _scene, _ticks
 from ._basic import _alpha, _label, _opt_real, _style
 from ._figure import integer, real
@@ -38,28 +40,30 @@ def call2(f, X, Y, who, arg="f"):
         if out.dtype == sd.complex128:
             raise TypeError(f"{who}(): '{arg}' must return real values, not complex128")
         return out if out.dtype == sd.float64 else out.astype(sd.float64)
-    if isinstance(out, (int, float)) and not isinstance(out, bool):
-        return sd.full(tuple(X.shape), float(out))
+    const = _real_option(out, who, arg)  # a number, numpy's scalars among them: a constant function
+    if const is not None:
+        return sd.full(tuple(X.shape), const)
     raise TypeError(f"{who}(): '{arg}' must return an sd.ndarray (it is called with two), not {_type_name(out)}")
 
 
-def given(f, who, samples=None, refine=None):
+def given(f, who, samples=None, refine=None, arg="f"):
     """A function, or the values of a grid given as a 2-D array (Z[j, i] at x_i, y_j; the first
-    row at y0): None for the first, the float64 array for the second."""
+    row at y0; an sd.ndarray, nested sequences or a numpy array, as the data of the other plots):
+    None for the first, the float64 array for the second."""
     if callable(f):
         return None
     from ..optimize._common import _as_array
 
-    if isinstance(f, (list, tuple)) or isinstance(f, sd.ndarray):
-        Z = _as_array(f, who, "f")
+    if isinstance(f, (list, tuple, sd.ndarray)) or (type(f).__module__ == "numpy" and getattr(f, "ndim", 0) > 0):
+        Z = _as_array(f, who, arg)
         if Z.ndim != 2 or Z.shape[0] < 2 or Z.shape[1] < 2:
             raise ValueError(
-                f"{who}(): 'f' as values must be a 2-D array of at least 2 x 2, not of shape {tuple(Z.shape)}"
+                f"{who}(): '{arg}' as values must be a 2-D array of at least 2 x 2, not of shape {tuple(Z.shape)}"
             )
         if samples is not None or refine is not None:
             raise ValueError(f"{who}(): 'samples' and 'refine' are for a function; the values given are the grid")
         return Z if Z.dtype == sd.float64 else Z.astype(sd.float64)
-    raise TypeError(f"{who}(): 'f' must be callable or a 2-D array of values, not {_type_name(f)}")
+    raise TypeError(f"{who}(): '{arg}' must be callable or a 2-D array of values, not {_type_name(f)}")
 
 
 def values_grid(Z, x0, x1, y0, y1):
@@ -346,13 +350,58 @@ class Picture(_layers.Layer):
 
     def extent(self, axis, positive):
         lo, hi = (self.box[0], self.box[1]) if axis == "x" else (self.box[2], self.box[3])
+        if positive and not lo > 0.0:  # a log axis: from the first edge between pixels above zero
+            if not hi > 0.0:
+                return None
+            step = (hi - lo) / (self.iw if axis == "x" else self.ih)
+            lo += (math.floor(-lo / step) + 1) * step
+            return (lo, hi, (lo, hi)) if 0.0 < lo < hi else None
         return (lo, hi, (lo, hi))
 
     def draw(self, fr):
         x0, x1, y0, y1 = self.box
+        if fr.xa.scale == "log" or fr.ya.scale == "log":
+            return self._draw_log(fr)
         px0, px1, py0, py1 = fr.px(x0), fr.px(x1), fr.py(y1), fr.py(y0)
         fr.scene.add(
             _scene.Image(px0, py0, px1 - px0, py1 - py0, self.iw, self.ih, self.rgba, smooth=self.smooth, clip=fr.clip)
+        )
+
+    def _draw_log(self, fr):
+        """On a log axis the pixels, even in the data, are not even on the page: the picture is
+        made again with its columns (rows) even along the axis, each taking the pixel of the value
+        at its centre, over the part of the box the axis shows."""
+
+        def along(a, lo, hi, n, most=1024):
+            """(the low and high values shown, the pixel of every new column from the low end)."""
+            if a.scale != "log":
+                return lo, hi, list(range(n))
+            v0, v1 = max(lo, a.lo), min(hi, a.hi)
+            if not 0.0 < v0 < v1:
+                return None
+            m = min(most, max(4 * n, 256))
+            l0, l1 = math.log10(v0), math.log10(v1)
+            at = (10.0 ** (l0 + (k + 0.5) / m * (l1 - l0)) for k in range(m))
+            return v0, v1, [min(n - 1, max(0, int((v - lo) / (hi - lo) * n))) for v in at]
+
+        x0, x1, y0, y1 = self.box
+        xs, ys = along(fr.xa, x0, x1, self.iw), along(fr.ya, y0, y1, self.ih)
+        if xs is None or ys is None:
+            return
+        (vx0, vx1, cols), (vy0, vy1, rows) = xs, ys
+        pixels = memoryview(self.rgba).cast("I")
+        made, out = {}, bytearray()
+        for j in reversed(rows):  # row 0 of the picture is the top
+            r = self.ih - 1 - j
+            if r not in made:
+                row = pixels[r * self.iw : (r + 1) * self.iw]
+                made[r] = array("I", [row[c] for c in cols]).tobytes()
+            out += made[r]
+        px0, px1, py0, py1 = fr.px(vx0), fr.px(vx1), fr.py(vy1), fr.py(vy0)
+        fr.scene.add(
+            _scene.Image(
+                px0, py0, px1 - px0, py1 - py0, len(cols), len(rows), bytes(out), smooth=self.smooth, clip=fr.clip
+            )
         )
 
 
@@ -444,9 +493,9 @@ def region(self, f, x0, x1, y0, y1, /, *, samples=None, refine=None, color=None,
 
 
 def _levels(who, levels, lo, hi):
-    if isinstance(levels, bool) or not isinstance(levels, (int, list, tuple)):
+    if isinstance(levels, bool) or not isinstance(levels, (numbers.Integral, list, tuple)):
         raise TypeError(f"{who}(): 'levels' must be an int or a sequence of numbers, not {_type_name(levels)}")
-    if isinstance(levels, int):
+    if isinstance(levels, numbers.Integral):  # (numpy's integers too)
         n = integer(levels, who, "levels", 1)
         if not lo < hi:
             return [lo]
@@ -616,10 +665,10 @@ def phase(self, f, re0, re1, im0, im1, /, *, samples=None, contours=True):
 # ---- vector fields
 
 
-def _field_values(who, fu, fv, x0, x1, y0, y1, nx, ny, centred):
+def _field_values(who, fu, fv, x0, x1, y0, y1, nx, ny, centred, samples):
     """(xs, ys, U, V) of a vector field: two functions sampled on an nx x ny grid over the box
-    (at the cells' centres when `centred`), or two grids of values given."""
-    U, V = given(fu, who), given(fv, who)
+    (at the cells' centres when `centred`), or two grids of values given (which take no `samples`)."""
+    U, V = given(fu, who, samples, None, "fu"), given(fv, who, samples, None, "fv")
     if (U is None) != (V is None):
         raise TypeError(f"{who}(): 'fu' and 'fv' must both be functions or both be 2-D arrays of values")
     if U is not None:
@@ -656,15 +705,23 @@ def _top(M):
 
 
 class Arrows(_layers.Layer):
-    """Arrows from points (x, y) by vectors (u, v) in data units; a colour each (a few distinct)."""
+    """Arrows from points (x, y) by vectors (u, v) in data units; a colour each (a few distinct).
+    `key`: the colour of the legend's line."""
 
-    def __init__(self, x, y, u, v, colors, width, box, label):
+    def __init__(self, x, y, u, v, colors, width, box, label, key):
         self.x, self.y, self.u, self.v, self.colors, self.width = x, y, u, v, colors, width
-        self.box, self.label = box, label
+        self.box, self.label, self.key = box, label, key
 
     def extent(self, axis, positive):
+        """The box; wider where the arrows reach past it (those of values given on the box's
+        edge are centred on it), so that none is cut."""
         lo, hi = (self.box[0], self.box[1]) if axis == "x" else (self.box[2], self.box[3])
-        return (lo, hi, (lo, hi))
+        at, by = (self.x, self.u) if axis == "x" else (self.y, self.v)
+        a = min((p - abs(d) / 2 for p, d in zip(at, by)), default=lo)
+        b = max((p + abs(d) / 2 for p, d in zip(at, by)), default=hi)
+        slack = 1e-9 * (hi - lo)
+        a, b = (a if a < lo - slack else lo), (b if b > hi + slack else hi)
+        return (a, b, tuple(v for v, edge in ((a, lo), (b, hi)) if v == edge))
 
     def draw(self, fr):
         w = fr.theme["line_width"] * 0.6 if self.width is None else self.width
@@ -690,8 +747,7 @@ class Arrows(_layers.Layer):
             fr.scene.add(_scene.Path("MLLZ" * (len(xy) // 6), xy, fill=c, clip=fr.clip))
 
     def entries(self):
-        c = self.colors[0] if self.colors else _scene.INK
-        return [(self.label, _layers._line_handle(c, 0.8, ()))]
+        return [(self.label, _layers._line_handle(self.key, 0.8, ()))]
 
 
 def vectorfield(
@@ -712,7 +768,8 @@ def vectorfield(
     colorbar=True,
     label=None,
 ):
-    """Arrows of the vector field (fu(x, y), fv(x, y)) at the centres of a grid of cells."""
+    """Arrows of the vector field (fu(x, y), fv(x, y)) at the centres of a grid of cells: `samples`
+    of them across (down as many as keep the box's proportions), or (across, down)."""
     who = "vectorfield"
     for g, name in ((fu, "fu"), (fv, "fv")):
         if callable(g):
@@ -721,10 +778,17 @@ def vectorfield(
     scale = real(scale, who, "scale", positive=True)
     width, label = _opt_real(who, "width", width), _label(who, label)
     _check_bool(colorbar, who, "colorbar")
-    across = 21
-    down = max(3, round(across * (y1 - y0) / (x1 - x0)))
-    (nx, ny), _ = _sample.knobs(who, samples, None, (across, down), 0, pair=True, most=400)
-    xs, ys, U, V = _field_values(who, fu, fv, x0, x1, y0, y1, nx, ny, True)
+    # the arrows across (one number: down as many as keep the box's proportions), or both
+    across = (
+        21
+        if samples is None or isinstance(samples, (tuple, list))
+        else _sample.knobs(who, samples, None, 21, 0, most=400)[0]
+    )
+    down = min(400, max(3, round(across * (y1 - y0) / (x1 - x0))))
+    (nx, ny), _ = _sample.knobs(
+        who, samples if isinstance(samples, (tuple, list)) else None, None, (across, down), 0, pair=True, most=400
+    )
+    xs, ys, U, V = _field_values(who, fu, fv, x0, x1, y0, y1, nx, ny, True, samples)
     ny, nx = U.shape
     one, name = _shades(who, color, cmap, self._root._palette, self)
     M = sd.sqrt(U * U + V * V)
@@ -740,11 +804,18 @@ def vectorfield(
         cols = [one] * len(xv)
     else:
         cols = [_color.cmap(name, round(m / top * (SHADES - 1)) / (SHADES - 1)) for m in mv]
-    self._cell.layers.append(Arrows(xv, yv, uv, vv, cols, width, (x0, x1, y0, y1), label))
+    key = one if one is not None else _color.cmap(name, 0.5)  # of a colour map, its middle (as streamlines)
+    self._cell.layers.append(Arrows(xv, yv, uv, vv, cols, width, (x0, x1, y0, y1), label, key))
     self._cell.aspect = 1.0
-    if one is None and colorbar:
-        self._cell.colorbar = (name, 0.0, top)
+    _field_bar(self._cell, one, name, top, colorbar)
     return self._touch()
+
+
+def _field_bar(cell, one, name, top, colorbar):
+    """The colour bar of a vector field coloured by magnitude. A cell has one bar: a field drawn
+    over a picture that has its own (a density, filled contours) leaves that one standing."""
+    if one is None and colorbar and cell.colorbar is None:
+        cell.colorbar = (name, 0.0, top)
 
 
 class Streams(_layers.Layer):
@@ -866,7 +937,7 @@ def streamlines(
     across = 6 * mx + 1
     down = max(3, round(across * (y1 - y0) / (x1 - x0)))
     (nx, ny), _ = _sample.knobs(who, samples, None, (across, down), 0, pair=True)
-    xs, ys, U, V = _field_values(who, fu, fv, x0, x1, y0, y1, nx, ny, False)
+    xs, ys, U, V = _field_values(who, fu, fv, x0, x1, y0, y1, nx, ny, False, samples)
     ny, nx = U.shape
     one, name = _shades(who, color, cmap, self._root._palette, self)
     raw = _core_plot.streamlines(
@@ -887,8 +958,7 @@ def streamlines(
     top = _top(M)
     self._cell.layers.append(Streams(xyz, one, name, top, width, arrows, (x0, x1, y0, y1), label))
     self._cell.aspect = 1.0
-    if one is None and colorbar:
-        self._cell.colorbar = (name, 0.0, top)
+    _field_bar(self._cell, one, name, top, colorbar)
     return self._touch()
 
 

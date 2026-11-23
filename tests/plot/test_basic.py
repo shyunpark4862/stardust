@@ -343,3 +343,18 @@ def test_bar_gaps_stacks_errors_and_values():
     ):
         with pytest.raises(kind, match=text.replace("(", r"\(").replace(")", r"\)").replace("[", r"\[")):
             P.bar(["Q1", "Q2"], [2.0, 3.0], **kw)
+
+
+def test_numbers_may_be_numpy_scalars():
+    import numpy as np
+
+    e = P.errorbar([1.0, 2.0], [1.0, 2.0], yerr=np.float32(0.5), xerr=np.int64(1))._cell.layers[0]
+    plain = P.errorbar([1.0, 2.0], [1.0, 2.0], yerr=0.5, xerr=1)._cell.layers[0]
+    assert vars(e).keys() == vars(plain).keys()
+    assert all(
+        (a.tolist() if hasattr(a, "tolist") else a) == (b.tolist() if hasattr(b, "tolist") else b)
+        for a, b in zip(vars(e).values(), vars(plain).values())
+    )
+    a = P.area([0.0, 1.0], [1.0, 2.0], np.float32(0.5))._cell.layers[0]
+    assert a.y2.tolist() == [0.5, 0.5]
+    assert P.strip(["a", "b"], [1.0, 2.0], rng=np.int64(3)) is not None

@@ -14,6 +14,7 @@ from .. import _calls
 from .. import _core as sd
 from .._core import _type_name
 from ..optimize._common import _as_array, _check_bool, _check_choice
+from ..stats._distribution import _real_option
 from . import _color, _layers, _scene
 from ._figure import DASHES, Cell, Figure, integer, real, string
 
@@ -330,8 +331,9 @@ def area(self, x, y1, y2=0.0, /, *, data=None, color=None, alpha=0.3, label=None
     _check_data(who, data)
     X, A = numbers_(who, "x", x, data), numbers_(who, "y1", y1, data)
     n = same_length(who, x=X, y1=A)
-    if isinstance(y2, (int, float)) and not isinstance(y2, bool):
-        B = sd.full((n,), real(y2, who, "y2"))
+    b = _real_option(y2, who, "y2")  # a number, numpy's scalars among them
+    if b is not None:
+        B = sd.full((n,), real(b, who, "y2"))
     else:
         B = numbers_(who, "y2", y2, data)
         same_length(who, x=X, y2=B)
@@ -370,8 +372,9 @@ def _errors(who, arg, v, centre, data):
     if v is None:
         return None, None
     n = centre.shape[0]
-    if isinstance(v, (int, float)) and not isinstance(v, bool):
-        e = real(v, who, arg)
+    e = _real_option(v, who, arg)  # a number, numpy's scalars among them
+    if e is not None:
+        e = real(e, who, arg)
         return centre - e, centre + e
     if not isinstance(v, str):
         try:
@@ -529,7 +532,8 @@ def grid(figures, /, *, nrows=None, ncols=None, labels=None, sharex=False, share
     cells = []
     for f in figures:
         # copies: the figures given stay as they were, and changing the grid leaves them alone
-        cells += [c.copy() for c in ([f._cell] if f._root is not f else f._root._cells)]
+        # (a view gives its cell, whole: of a twin() view too, both y axes)
+        cells += [c.copy() for c in ([f._base] if f._root is not f else f._root._cells)]
     n = len(cells)
     if nrows is None and ncols is None:
         nc = min(n, 2) if n <= 4 else 3

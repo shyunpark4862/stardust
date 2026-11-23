@@ -448,3 +448,90 @@ def test_shared_axes_facets_twins_and_insets():
     assert len(host._cell.insets) == 1 and scene_of(host) is not None
     with pytest.raises(ValueError, match=r"inset\(\): 'rect' must lie in the plot"):
         P.line(x, x).inset(P.line(x, x), (0.8, 0.8, 0.5, 0.5))
+
+
+def _facet_frame():
+    n = 40
+    return sd.frame.DataFrame(
+        {
+            "site": ["u"] * 10 + ["v"] * 10 + ["w"] * 10 + ["x"] * 10,
+            "sex": ["Group A", "Residuals"] * (n // 2),
+            "length": [20.0 + (7 * i) % 23 for i in range(n)],
+            "weight": [40.0 + (11 * i) % 31 for i in range(n)],
+        }
+    )
+
+
+def test_facet_methods_without_data_draw_in_every_cell():
+    g = P.facet(_facet_frame(), "site").scatter("length", "weight").hline(50.0).function(lambda t: 2 * t, 20, 40)
+    assert len(g.axes) == 4  # the cells of the values; the grid's two empty places are not among them
+    assert all(len(cell._cell.layers) == 3 for cell in g.axes)
+    assert repr(g) == "Facets('site': 4 cells, 12 layers; 183 x auto mm)"
+    with pytest.raises(AttributeError, match="Facets has no method 'twin'"):
+        g.twin()
+    with pytest.raises(AttributeError, match="Facets has no method 'inset'"):
+        g.inset(P.line([0.0, 1.0], [0.0, 1.0]), (0.1, 0.1, 0.3, 0.3))
+
+
+def _tick_labels(scene, y):
+    """The strings of the texts at height y of a scene, left to right."""
+    items = [i for i in scene.items if isinstance(i, _scene.Text) and abs(i.y - y) < 1e-6]
+    return [i.s for i in sorted(items, key=lambda i: i.x)]
+
+
+def test_shared_axes_choose_their_ticks_once_and_keep_the_numbers_they_do_not_share():
+    for width in (None, 120.0):
+        g = P.facet(_facet_frame(), "site", ncols=2, width=width).scatter("length", "weight", group="sex")
+        sc = scene_of(g.figure)
+        bottom = max(i.y for i in sc.items if isinstance(i, _scene.Text) and i.s.startswith("$"))  # the x numbers
+        labels = _tick_labels(sc, bottom)
+        assert len(labels) % 2 == 0 and labels[: len(labels) // 2] == labels[len(labels) // 2 :]  # one choice
+    # no empty texts for the numbers left to the outer cells
+    t = sd.linspace(0.0, 10.0, 60)
+    shared = P.grid([P.line(t, sd.sin(t)), P.line(t + 5.0, sd.cos(t))], ncols=1, sharex=True)
+    assert all(i.s for i in scene_of(shared).items if isinstance(i, _scene.Text))
+    # a cell above another of other categories, or of a range of its own, keeps its numbers
+    up = P.line([0.0, 10.0], [0.0, 1.0])
+    cats = P.grid([P.bar(["a", "b"], [1.0, 2.0]), up], ncols=1, sharex=True)
+    scene_of(cats)
+    assert cats._root._cells[0].inner == [False, False]
+    ranges = P.grid([up, P.line([0.0, 10.0], [0.0, 1.0]).xlim(0.0, 1.0)], ncols=1, sharex=True)
+    scene_of(ranges)
+    assert ranges._root._cells[0].inner == [False, False]
+    same = P.grid([up, P.line([2.0, 12.0], [1.0, 0.0])], ncols=1, sharex=True)
+    scene_of(same)
+    assert same._root._cells[0].inner == [True, False]
+
+
+def test_a_twin_view_sets_the_cell_and_gives_it_whole():
+    f = P.line([0.0, 1.0], [0.0, 1.0])
+    t = f.twin().line([0.0, 1.0], [3.0, 5.0]).title("A").xlabel("x").xlim(0.0, 5.0).legend(loc="top")
+    t.ylabel("y").inset(P.line([0.0, 1.0], [1.0, 0.0]), (0.1, 0.1, 0.4, 0.4))
+    cell = f._cell
+    assert (cell.title, cell.xlabel, cell.xlim, cell.legend["loc"]) == ("A", "x", [0.0, 5.0], "top")
+    assert cell.twin.ylabel == "y" and cell.ylabel is None
+    assert len(cell.insets) == 1 and not cell.twin.insets
+    texts = [i.s for i in scene_of(f).items if isinstance(i, _scene.Text)]
+    assert "A" in texts and "x" in texts
+    g = P.grid([t])
+    (copy,) = g._root._cells
+    assert len(copy.layers) == 1 and copy.twin is not None and len(copy.twin.layers) == 1
+    with pytest.raises(ValueError, match=r"inset\(\): 'rect' must hold 4 numbers \(x, y, w, h\), not 3"):
+        f.inset(P.line([0.0, 1.0], [0.0, 1.0]), (0.5, 0.5, 0.4))
+
+
+def test_the_titles_of_a_row_stand_on_one_baseline():
+    fig = P.Figure(width=150, height=45, ncols=3)
+    for i, w in enumerate(["y", "a", "mid"]):  # with a descender and without
+        fig[i].line([0.0, 1.0], [0.0, 1.0]).title(w)
+    items = [i for i in scene_of(fig).items if isinstance(i, _scene.Text) and i.s in ("y", "a", "mid")]
+    assert len(items) == 3 and {i.va for i in items} == {"baseline"} and len({i.y for i in items}) == 1
+    # the title clears the plot by its depth: a descender does not touch the frame
+    engine = _text.engine("serif")
+    (p,) = [i for i in items if i.s == "y"]
+    depth = engine.layout(["y"])[0].box(p.size)[2]
+    assert depth > 0.0
+    one = scene_of(P.line([0.0, 1.0], [0.0, 1.0]).title("y"))
+    _, top, _, _ = axis_lines(one)
+    (q,) = [i for i in one.items if isinstance(i, _scene.Text) and i.s == "y"]
+    assert q.y + depth < top

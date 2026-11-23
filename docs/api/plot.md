@@ -13,7 +13,7 @@
 - **자료와 주 인자는 위치로만, 옵션은 키워드로만** 받는다(API.md, DESIGN §8.1).
 - **틀린 호출 모양**은 함수 이름으로 시작한다(API.md §2.1): `line(): unexpected keyword argument 'foo'`, `Figure(): takes 0 positional arguments but 2 were given`, `grid(): missing 1 required positional argument: 'figures'`. 모듈 함수와 `Figure(...)`가 그렇고, `Figure`의 메서드는 Python의 꼴 그대로다(`Figure.xlabel() missing ...`).
 - **모듈 함수와 같은 이름의 `Figure` 메서드가 있다.** `fig.line(x, y)`는 `sd.plot.line(x, y)`와 같은 인자를 받고, 새 그림을 만드는 대신 `fig`의 칸에 층을 더한 뒤 `fig`를 돌려준다. 모듈 함수 `f(...)`는 `Figure(그림 옵션).f(...)`와 같다. 예외는 여러 칸을 스스로 만드는 함수(`grid`, `diagnostics`, `pairs`, `facet`)다. 이것들은 모듈 함수만 있다.
-- **그림 옵션**: 새 그림을 만드는 모든 모듈 함수가 `width=`, `height=`, `font=`, `theme=`, `palette=`를 받는다(§2.1의 `Figure`와 같은 뜻과 기본값). 아래 시그니처에는 `**figure`로 줄여 적는다. 메서드는 받지 않는다. 자기 인자로 `width`를 가진 함수(선 굵기: `line step hline vline function parametric polar implicit ecdf curve3d`, 막대·상자 너비: `bar boxplot`)에서는 `width=`가 그 인자다. 이 함수들의 그림 너비는 `Figure(width=...)`로 시작하거나 `size()`로 정한다.
+- **그림 옵션**: 새 그림을 만드는 모든 모듈 함수가 `width=`, `height=`, `font=`, `theme=`, `palette=`를 받는다(§2.1의 `Figure`와 같은 뜻과 기본값). 아래 시그니처에는 `**figure`로 줄여 적는다. 메서드는 받지 않는다. 자기 인자로 `width`를 가진 함수(선 굵기: `line step hline vline function parametric polar implicit ecdf curve3d vectorfield streamlines`, 막대·상자 너비: `bar boxplot`)에서는 `width=`가 그 인자다. 이 함수들의 그림 너비는 `Figure(width=...)`로 시작하거나 `size()`로 정한다.
 - **별칭이 없다.** matplotlib의 `plot`, `hist`, `imshow`, 짧은 색 이름 `'r'`, `lw=`·`ls=`·`c=` 같은 줄임 인자는 없다.
 
 ### §1.2 받는 자료
@@ -68,9 +68,9 @@ Figure.inset(figure, rect, /)
 - `palette`: 범주 색의 이름이다. 기본 `'jco'`는 파랑, 노랑, 회색, 벽돌색으로 시작하는 학술지 꼴의 팔레트다(사용자 결정 2026-11-22). 선과 점은 그 색 그대로, 채운 도형(막대, 상자)은 그 색을 옅게 한 채움에 그 색의 가는 테두리다. `'tableau'`, `'deep'`, `'bright'`(색각 이상에 안전), `'okabe-ito'`(색각 이상에 안전), 학술지 꼴의 `'npg'`, `'aaas'`, `'lancet'`, `'nejm'`가 있다. 연속 색은 층의 `cmap=`이 정한다(§4.4).
 - `fig[i, j]`(여러 칸)와 `fig[i]`(한 줄이나 한 열)는 그 칸만 가리키는 `Figure`의 보기다. 그 보기의 메서드는 그 칸에 그린다. 칸을 고르지 않은 메서드는 첫 칸에 그린다(칸이 하나면 그 칸이다).
 - `grid`는 이미 지은 그림들을 칸으로 모아 새 `Figure`를 만든다. 칸은 복사해 넣으므로, 모은 뒤에 원래 그림이나 모은 그림을 고쳐도 다른 쪽은 그대로다. `labels='A'`는 칸마다 A, B, C…를, `'a'`는 a, b, c…를 왼쪽 위에 굵게 붙인다. 같은 열의 칸은 축의 왼쪽 끝이 한 줄에 선다.
-- `grid`의 `sharex`, `sharey`는 칸들의 축 범위를 맞춘다: `True`면 같은 열(x)·같은 줄(y)끼리, `'all'`이면 모든 칸이 한 범위다(범위를 준 칸과 범주 축은 빼고). 맞춘 축의 눈금 숫자는 바깥 칸(열의 맨 아래, 줄의 맨 왼쪽)에만 적는다.
-- `facet`은 DataFrame의 열 `by`의 값마다 칸 하나를 만든 `Facets`를 돌려준다(수면 정렬, 아니면 처음 나온 순서; 칸의 제목이 그 값). `Facets`의 그림 메서드(`scatter`, `line`, `histogram` 등)는 모든 칸에 그리고, 칸마다 그 값의 행을 `data`로 준다: 인자는 열 이름이다(`data`는 주지 않는다). 축은 기본으로 모든 칸이 맞추고, `group=`의 무리는 칸마다 같은 색이며 범례는 마지막 칸에만 선다. `xlabel`은 맨 아래 칸들에, `ylabel`은 맨 왼쪽 칸들에, `xlim ylim xscale yscale xticks yticks legend`는 모든 칸에 준다. `save`, `to_svg` 등과 노트북 표시는 그 그림의 것이고, `Facets.figure`가 그 `Figure`다.
-- `twin()`은 그 칸의 오른쪽에 두 번째 y축을 두고 그 축을 가리키는 보기를 돌려준다. 보기의 그림 메서드와 `ylabel ylim yscale yticks`는 두 번째 축의 것이고 x축은 함께 쓴다. 색은 첫 축의 층들 다음 색부터 이어지고, 범례는 두 축의 이름을 한데 모은다.
+- `grid`의 `sharex`, `sharey`는 칸들의 축 범위를 맞춘다: `True`면 같은 열(x)·같은 줄(y)끼리, `'all'`이면 모든 칸이 한 범위다(범위를 준 칸과 범주 축은 빼고). 한 범위를 함께 쓰는 칸들은 눈금도 한 번 골라 같이 쓰고, 그 눈금 숫자는 바깥 칸(열의 맨 아래, 줄의 맨 왼쪽)에만 적는다. 아래(x)나 왼쪽(y)의 칸이 다른 축(범위를 따로 준 칸, 다른 범주)이면 숫자를 지우지 않는다.
+- `facet`은 DataFrame의 열 `by`의 값마다 칸 하나를 만든 `Facets`를 돌려준다(수면 정렬, 아니면 처음 나온 순서; 칸의 제목이 그 값). `Facets`의 그림 메서드(`scatter`, `line`, `histogram` 등)는 모든 칸에 그리고, 칸마다 그 값의 행을 `data`로 준다: 인자는 열 이름이다(`data`는 주지 않는다). `data`를 받지 않는 메서드(`hline`, `vline`, `text`, `function` 등)는 모든 칸에 같은 것을 그린다. 칸 하나나 그림 전체의 것인 `title zlabel compare fit twin inset`은 없다(칸마다 `Facets.axes[i]`로 부른다). 축은 기본으로 모든 칸이 맞추고, `group=`의 무리는 칸마다 같은 색이며 범례는 마지막 칸에만 선다. `xlabel`은 맨 아래 칸들에, `ylabel`은 맨 왼쪽 칸들에, `xlim ylim xscale yscale xticks yticks legend`는 모든 칸에 준다. `save`, `to_svg` 등과 노트북 표시는 그 그림의 것이고, `Facets.figure`가 그 `Figure`다. `Facets.axes`는 값의 칸들(그 순서대로의 보기)이고, 격자의 남는 빈자리는 들지 않는다.
+- `twin()`은 그 칸의 오른쪽에 두 번째 y축을 두고 그 축을 가리키는 보기를 돌려준다. 보기의 그림 메서드와 `ylabel ylim yscale yticks`는 두 번째 축의 것이고 x축은 함께 쓴다. 보기에 부른 `title xlabel xlim xscale xticks legend inset`은 그 칸의 것이다(첫 보기에 부른 것과 같다). `grid`에 보기를 주면 두 축을 다 가진 칸이 들어간다. 색은 첫 축의 층들 다음 색부터 이어지고, 범례는 두 축의 이름을 한데 모은다.
 - `inset(figure, rect)`는 칸 하나짜리 그림 `figure`를 이 칸의 그림 위에 얹는다. `rect = (x, y, w, h)`는 그림 사각형에 대한 몫(왼쪽 아래 기준)이고, 작은 그림의 눈금과 글자도 그 안에 든다(흰 바탕). `figure`는 복사해 넣는다.
 - 모든 그림의 기본값을 한 번에 바꾸는 전역 설정은 없다. 그림 옵션은 그림마다 준다(전역 상태를 두지 않는다, PL6).
 
@@ -108,7 +108,7 @@ Figure.scene()
 - `scene()`은 그리기 전의 장면(pt 좌표의 도형 목록)을 dict로 준다. 테스트와 디버깅에 쓴다.
 
 ### §2.4 노트북
-- `Figure`는 `_repr_mimebundle_`를 가진다. 3D 칸이 있거나 그림으로 들어가는 층(`density`, `phase`)이 있으면 PNG(200 dpi)를, 아니면 SVG를 한 꼴만 만들어 보인다.
+- `Figure`는 `_repr_mimebundle_`를 가진다. 3D 칸이 있거나 그림으로 들어가는 층(`density`, `phase`, `heatmap`, `hist2d`)이 있으면 PNG(200 dpi)를, 아니면 SVG를 한 꼴만 만들어 보인다.
 - `repr(fig)`는 한 줄이다: `Figure(89 x auto mm, 1 axes, 2 layers)`. 높이를 주지 않은 그림은 `auto`다(높이는 배치가 정하고, `repr`은 그림을 짓지 않는다). 배치가 정한 높이는 `fig.height`다.
 
 ## §3. 기본 그림
@@ -151,7 +151,7 @@ implicit(f, x0, x1, y0, y1, /, *, level=0.0, samples=None, refine=None, color=No
 region(f, x0, x1, y0, y1, /, *, samples=None, refine=None, color=None, alpha=0.3, label=None, **figure)
 ```
 - `f`는 같은 모양의 배열 둘(x, y)을 받아 배열을 돌려준다. `implicit`는 f(x, y) = level인 곡선, `region`은 f(x, y) > 0인 곳을 칠한다.
-- **이미 계산한 값**: `implicit`, `region`, `contour`, `density`, `surface`의 `f` 자리에 함수 대신 2차원 배열 `Z`를 줄 수 있다. `Z[j, i]`는 상자를 고르게 나눈 격자의 (x_i, y_j)의 값이고 첫 줄이 `y0`다(`sd.meshgrid(x, y, indexing='xy')`로 만든 격자의 값이 그대로 맞는다). `density`는 값 하나를 화소 하나의 가운데 값으로 본다. 값에는 적응형 표본이 없으므로 `samples`와 `refine`을 주면 `ValueError`다.
+- **이미 계산한 값**: `implicit`, `region`, `contour`, `density`, `surface`의 `f` 자리에 함수 대신 2차원 배열 `Z`(`sd.ndarray`, 수의 중첩 시퀀스, numpy 배열)를 줄 수 있다. `Z[j, i]`는 상자를 고르게 나눈 격자의 (x_i, y_j)의 값이고 첫 줄이 `y0`다(`sd.meshgrid(x, y, indexing='xy')`로 만든 격자의 값이 그대로 맞는다). `density`는 값 하나를 화소 하나의 가운데 값으로 본다. 값에는 적응형 표본이 없으므로 `samples`와 `refine`을 주면 `ValueError`다.
 
 ### §4.4 두 변수의 함수
 ```
@@ -167,8 +167,8 @@ streamlines(fu, fv, x0, x1, y0, y1, /, *, cells=25, samples=None, color=None, cm
 - `implicit`와 `region`은 곡선이 지나는 곳 가까이만 가로세로 4배로 다시 잰다: 스치는 곡선, 뾰족점, 두 가지가 만나는 점이 또렷하다.
 - `cmap`은 연속 색의 이름이다. 기본은 어디서나 `'cool'`이다(아래 하늘색, 가운데 보라, 위 빨강; 양 끝이 어둡지 않다). 그 밖에 밝은 `'spectral'`, `'coolwarm'`, `'sunrise'`, `'lagoon'`, 지각적으로 고른 `'viridis'`, `'magma'`, `'cividis'`, 발산형 `'rdbu'`가 있다.
 - `phase`는 복소 함수의 위상 그림이다. `f`는 complex128 배열을 받아 complex128 배열을 돌려준다. 위상이 색상, 크기가 밝기의 띠다.
-- `vectorfield`는 벡터장 (fu(x, y), fv(x, y))를 칸의 가운데마다 화살표로 그린다. `samples`는 화살표의 수(가로, 또는 `(가로, 세로)`; 기본은 가로 21개에 상자 비율대로)다. 가장 긴 화살표가 칸의 90%이고 `scale`을 곱한다. `streamlines`는 같은 벡터장의 흐름선을 상자에 고르게 퍼뜨려 그린다: 상자를 가로 `cells`칸의 정사각형으로 나눠 한 칸에 선 하나까지 지나게 하고, 선마다 가운데에 흐름 방향의 화살촉을 단다(`arrows=False`로 뺀다). 장은 `samples`의 격자(기본 가로 `6 × cells + 1`)에서 잰 값을 겹선형으로 읽는다. 둘 다 색은 크기에 따른 연속 색(기본)이거나 `color` 한 색이고, 크기의 색 범위는 값의 대부분이 있는 범위다(극점 둘레의 큰 값은 끝 색). `fu`, `fv`에 2차원 값 배열 둘을 줄 수도 있다. 칸은 같은 비율이다.
-- 격자 자료(이미 계산한 값의 배열)의 열지도는 §5의 `heatmap`이다. 격자 자료의 등고선은 아직 없다(함수를 받는 `contour`만 있다).
+- `vectorfield`는 벡터장 (fu(x, y), fv(x, y))를 칸의 가운데마다 화살표로 그린다. `samples`는 화살표의 수(정수 하나면 가로이고 세로는 상자 비율대로, 또는 `(가로, 세로)`; 기본은 가로 21개)다. 가장 긴 화살표가 칸의 90%이고 `scale`을 곱한다. `streamlines`는 같은 벡터장의 흐름선을 상자에 고르게 퍼뜨려 그린다: 상자를 가로 `cells`칸의 정사각형으로 나눠 한 칸에 선 하나까지 지나게 하고, 선마다 가운데에 흐름 방향의 화살촉을 단다(`arrows=False`로 뺀다). 장은 `samples`의 격자(기본 가로 `6 × cells + 1`)에서 잰 값을 겹선형으로 읽는다. 둘 다 색은 크기에 따른 연속 색(기본)이거나 `color` 한 색이고, 크기의 색 범위는 값의 대부분이 있는 범위다(극점 둘레의 큰 값은 끝 색). `fu`, `fv`에 2차원 값 배열 둘을 줄 수도 있다(`samples`를 주면 `ValueError`). 값 배열의 화살표는 격자 점에 가운데를 맞추므로 상자 가장자리의 화살표가 상자 밖으로 나가고, 축의 범위가 그만큼 넓어진다. 칸은 같은 비율이다. 칸의 색 막대는 하나다: 이미 색 막대가 있는 칸(`density`, 채운 `contour` 위)에 얹으면 그 막대를 그대로 두고, 화살표와 흐름선의 크기 색은 막대 없이 그린다. `label`의 범례 견본은 한 색이면 그 색, 연속 색이면 색띠의 가운데 색이다.
+- 격자 자료(이미 계산한 값의 배열)의 열지도는 §5의 `heatmap`이다. 격자 자료의 등고선은 `contour`에 값 배열을 준다(위의 이미 계산한 값).
 
 ### §4.5 3D
 ```
@@ -205,7 +205,7 @@ pairs(data, /, *, columns=None, group=None, width=None, height=None, font='serif
 - `boxplot`과 `strip`의 `x`는 범주, `y`는 값이다. `x`를 `None`으로 주면 상자 하나다.
 - `strip`의 흩음은 `rng`(`sd.random`의 생성기나 씨)로 정해진다. `rng=None`은 고정된 씨다. 같은 호출은 같은 그림이다.
 - `sd.plot.histogram`은 그림을, `sd.histogram`은 값을 돌려준다(API.md §6에 적는다; §10의 4).
-- `hist2d`는 (x, y) 짝을 격자의 칸에 세어 그림으로 그린다. `bins`는 수 하나(두 방향 같게)이거나 `(가로, 세로)`, `range`는 `((x0, x1), (y0, y1))`이다(밖의 짝은 세지 않는다). `density=True`면 넓이로 나눈 밀도다. `hexbin`은 같은 일을 육각형 칸으로 하고, `size`는 가로로 놓이는 육각형의 수다(4 : 3 칸에서 정육각형으로 보인다). 둘 다 빈 칸은 비워 두고 색 막대를 붙인다. 점이 수만 개 넘어 산점도가 뭉칠 때 쓴다.
+- `hist2d`는 (x, y) 짝을 격자의 칸에 세어 그림으로 그린다. `bins`는 수 하나(두 방향 같게)이거나 `(가로, 세로)`, `range`는 `((x0, x1), (y0, y1))`이다(밖의 짝은 세지 않는다; `x0 > x1`이나 `y0 > y1`이면 `ValueError`). `density=True`면 넓이로 나눈 밀도다. `hexbin`은 같은 일을 육각형 칸으로 하고, `size`는 가로로 놓이는 육각형의 수다(4 : 3 칸에서 정육각형으로 보인다). 둘 다 빈 칸은 비워 두고 색 막대를 붙인다. 칸은 값을 같은 너비로 나눈 것이라 로그 축에서는 칸이 그 값의 자리에 그대로 서서 너비가 다르게 보인다(0 이하의 부분은 그리지 않는다). 점이 수만 개 넘어 산점도가 뭉칠 때 쓴다.
 - `heatmap`의 `annotate`는 칸마다 값을 적는다: `True`면 값마다 유효숫자 세 자리, 문자열이면 `bar`와 같은 서식(`'.2f'` 등)이다. 글자는 칸의 밝기에 따라 검정이나 흰색이다.
 - **아직 없는 것**: 밀도 곡선과 바이올린은 `sd.stats`에 핵밀도추정이 생기면 넣는다(PL15). 평균과 오차 막대는 `sd.stats`의 값으로 `errorbar`를 부른다.
 
@@ -221,7 +221,7 @@ distribution(dist, /, *, kind='pdf', a=None, b=None, color=None, label=None, **f
 - `fit`은 `sd.regression`의 결과를 받아 산점도 위에 회귀선과 신뢰 띠(평균의 구간, `conf_int`와 같은 `alpha`; 결과에 `predict_interval`이 있을 때), 식과 R²를 그린다. 설명 변수가 하나인 모형만 받는다. 계수는 유효숫자 세 자리이고 아주 작거나 크면 `1.2\times10^{-5}`로 적는다. GLM은 연결 함수의 척도로 적는다(`log μ = 0.2x − 0.02`).
 - `diagnostics`는 회귀 결과의 진단 넷(잔차–적합값, QQ, 척도–위치, 잔차–지렛값)을 2 × 2 칸으로 그린다.
 - `coefficients`는 계수와 그 구간을 점과 가로 막대로 그린다. 구간이 없는 결과(`conf_int`가 없는 `ridge` 등)는 점만 그린다.
-- `distribution`은 `sd.stats`의 분포를 그린다. `kind`는 `'pdf'`(이산 분포는 pmf의 막대), `'cdf'`, `'sf'`다. `a`, `b`가 `None`이면 분포의 분위수로 범위를 잡는다. 밀도의 세로 범위는 봉우리까지 닿는다(밀도가 범위의 끝에서 달아나면 함수 그림의 규칙으로 자른다). 이산 분포의 가로 눈금은 정수다.
+- `distribution`은 `sd.stats`의 분포를 그린다. `kind`는 `'pdf'`(이산 분포는 pmf의 막대), `'cdf'`, `'sf'`다. `a`, `b`가 `None`이면 분포의 분위수로 범위를 잡는다. 밀도의 세로 범위는 봉우리까지 닿는다(밀도가 범위의 끝에서 달아나면 함수 그림의 규칙으로 자른다). 이 범위는 칸에 못 박지 않고 층이 요구하는 것이라, 같은 칸에 더 높은 층(밀도 히스토그램의 막대, 다른 밀도)이 있으면 그 층까지 넓어진다. 이산 분포의 가로 눈금은 정수다.
 - 받는 것은 형이 아니라 가진 것으로 가린다: `compare`는 `pvalue`가 있는 결과(값 하나이거나 k × k 행렬), `fit`은 `params`와 `predict`가 있는 회귀 결과, `coefficients`는 `params`가 있는 회귀 결과(`conf_int`가 있으면 구간도), `diagnostics`는 `fittedvalues`·`resid`·`resid_studentized_internal`·`leverage`가 있는 선형 회귀 결과, `distribution`은 `cdf`와 `icdf`가 있는 분포다. 배치 결과(여러 적합)는 `ValueError`다.
 
 ## §7. matplotlib과 다른 곳 (모음)

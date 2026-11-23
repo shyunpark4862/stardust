@@ -520,7 +520,9 @@ def test_function_ranges_settle_on_the_curve():
     assert P.function(spike, 0, 1, samples=20001, ylim=(0, 1.05)).info[0].clipped == (False, False)
     folium = P.parametric(lambda t: 3 * t / (1 + t**3), lambda t: 3 * t * t / (1 + t**3), -20, 20)
     lo, hi, _ = folium._cell.layers[0].extent("x", False)
-    assert -1 < lo and hi < 2  # the loop, not the arms running off to a pole
+    assert -1 < lo and 1.55 < hi < 2  # the whole loop (x up to 1.587), not the arms running off to a pole
+    lo, hi, _ = folium._cell.layers[0].extent("y", False)
+    assert -2.5 < lo and 1.55 < hi < 2.5
     assert P.phase(lambda z: 2.0, -1, 1, -1, 1)._cell.layers[0].iw == _field.DX0  # a constant, as elsewhere
 
 
@@ -580,3 +582,74 @@ def _split_nan(xyz):
     if cur:
         out.append(cur)
     return out
+
+
+def test_vector_fields_of_values_name_their_arguments_and_keep_the_arrows_whole():
+    x, y = sd.linspace(-2.0, 2.0, 15), sd.linspace(-1.0, 1.0, 8)
+    X, Y = sd.meshgrid(x, y, indexing="xy")
+    for plot in (P.vectorfield, P.streamlines):
+        name = plot.__name__
+        with pytest.raises(ValueError, match=rf"{name}\(\): 'samples' and 'refine' are for a function"):
+            plot(-Y, X, -2, 2, -1, 1, samples=5)
+        with pytest.raises(TypeError, match=rf"{name}\(\): 'fv' must be callable or a 2-D array of values, not int"):
+            plot(lambda a, b: b, 3, -2, 2, -1, 1)
+        with pytest.raises(ValueError, match=rf"{name}\(\): 'fu' as values must be a 2-D array of at least 2 x 2"):
+            plot([[1.0, 2.0]], [[1.0, 2.0]], -2, 2, -1, 1)
+    arrows = P.vectorfield(-Y, X, -2, 2, -1, 1)._cell.layers[0]
+    lo, hi, sticky = arrows.extent("y", False)
+    assert lo < -1.0 and hi > 1.0 and sticky == ()  # the arrows on the box's edge are not cut
+    lo, hi, sticky = arrows.extent("x", False)
+    assert lo < -2.0 and hi > 2.0 and sticky == ()
+    inner = P.vectorfield(lambda a, b: -b, lambda a, b: a, -2, 2, -1, 1)._cell.layers[0]
+    assert inner.extent("x", False) == (-2.0, 2.0, (-2.0, 2.0))  # at the cells' centres: within the box
+
+
+def test_vector_field_samples_colour_key_and_colour_bar():
+    def counts(**kw):
+        layer = P.vectorfield(lambda a, b: b, lambda a, b: -sd.sin(a), -6.3, 6.3, -3, 3, **kw)._cell.layers[0]
+        return len(set(layer.x)), len(set(layer.y))
+
+    assert counts() == (21, 10) and counts(samples=12) == (12, 6) and counts(samples=(12, 5)) == (12, 5)
+    u, v = (lambda a, b: -b), (lambda a, b: a)
+    fig = P.vectorfield(u, v, -2, 2, -2, 2, label="arrows").streamlines(u, v, -2, 2, -2, 2, label="lines")
+    assert fig._cell.layers[0].key == _color.cmap("cool", 0.5)  # the middle of the colour map, as streamlines
+    h = lambda a, b: sd.sin(a) * sd.cos(b)  # noqa: E731
+    bar = P.density(h, -3, 3, -3, 3)._cell.colorbar
+    over = P.density(h, -3, 3, -3, 3).vectorfield(lambda a, b: 3 * a, lambda a, b: 3 * b, -3, 3, -3, 3)
+    assert over._cell.colorbar == bar  # a cell has one bar: the density's stays
+    alone = P.vectorfield(lambda a, b: 3 * a, lambda a, b: 3 * b, -3, 3, -3, 3)
+    assert alone._cell.colorbar[2] > 1.0
+
+
+def test_a_narrow_peak_found_between_the_first_samples_sets_the_range():
+    spike = lambda x: sd.exp(-(((x - 0.5) / 1e-4) ** 2))  # noqa: E731
+    info = P.function(spike, 0, 1).info[0]
+    assert info.clipped == (False, False) and info.ylim[1] == pytest.approx(1.0, abs=0.05)
+    flat = P.function(lambda x: 0.0 * x + 2.0, 0, 1).info[0]  # a level line keeps its range
+    assert flat.clipped == (False, False) and flat.ylim == (2.0, 2.0)
+
+
+def test_values_and_constant_returns_may_be_numpy():
+    import numpy as np
+
+    Z = np.ones((3, 3)) * np.arange(3)
+    fig = P.contour(Z, 0, 1, 0, 1)
+    assert any(isinstance(layer, _layers.Line) for layer in fig._cell.layers)
+    assert P.density(np.asarray([[0.0, 1.0], [2.0, 3.0]]), 0, 1, 0, 1)._cell.layers[0].iw == 2
+    const = P.function(lambda t: np.float32(2.0), 0, 1)._cell.layers[0]
+    assert set(finite_y for _, finite_y in finite(const)) == {2.0}
+    assert P.density(lambda a, b: np.int64(1), 0, 1, 0, 1)._cell.colorbar is not None
+    assert P.function(sd.sin, 0, 1, samples=np.int64(11), refine=np.int32(0)).info[0].n == 11
+    assert P.contour(lambda a, b: a * b, 0, 1, 0, 1, levels=np.int64(3))._cell.layers
+    with pytest.raises(TypeError, match=r"function\(\): 'samples' must be an int, not numpy.bool"):
+        P.function(sd.sin, 0, 1, samples=np.True_)
+
+
+def test_a_saddle_cell_joins_its_inside_corners_as_the_curves_do():
+    def inside(bl, br, tr, tl):
+        F = sd.asarray([[bl, br], [tl, tr]])
+        return _field.Cells(None, [0.0, 1.0], [0.0, 1.0], F, 0.0, "t", polish=False).inside()[0]
+
+    # the mean of the corners on the inside corners' side: one hexagon; on the other side: two triangles
+    assert inside(3.0, -1.0, 3.0, -1.0) == "MLLLLLZ" and inside(-1.0, 3.0, -1.0, 3.0) == "MLLLLLZ"
+    assert inside(1.0, -3.0, 1.0, -3.0) == "MLLZMLLZ" and inside(-3.0, 1.0, -3.0, 1.0) == "MLLZMLLZ"

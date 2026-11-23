@@ -202,10 +202,10 @@ void Levels::inside(double level, const std::vector<double>& points, std::string
                 ++count;
             }
         }
-        // A saddle whose corners' mean is on the other side of its inside corners: as the curves
-        // do (curves), the two inside corners are cut off apart, each with its two crossings.
-        const bool apart =
-            count == 6 && (at(j, i) + at(j, i + 1) + at(j + 1, i + 1) + at(j + 1, i)) / 4.0 > 0.0 != (at(j, i) > 0.0);
+        // A saddle whose corners' mean is on the other side of its inside corners (not above zero,
+        // as they are): as the curves do (curves), the two inside corners are cut off apart, each
+        // with its two crossings.
+        const bool apart = count == 6 && !((at(j, i) + at(j, i + 1) + at(j + 1, i + 1) + at(j + 1, i)) / 4.0 > 0.0);
         if (apart) {
             // a triangle for each inside corner k: the crossing of the side before it, the corner,
             // the crossing of its own side (side k runs from corner k to corner k + 1)

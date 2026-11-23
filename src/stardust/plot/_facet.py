@@ -5,10 +5,13 @@
 A Facets object stands for a grid of cells, one per value of the column `by` (sorted when they
 are numbers, else in order of first appearance), each titled with its value. A plotting method
 called on it draws in every cell with that cell's rows of the DataFrame as `data`; the arguments
-name columns. The cells share their axes (sharex, sharey as grid takes them), a group keeps one
+name columns. A method that takes no data (hline, vline, text, function, ...) draws the same in
+every cell. The cells share their axes (sharex, sharey as grid takes them), a group keeps one
 colour in all the cells, and the legend stands in the last cell only. xlabel goes to the bottom
 cells, ylabel to the left ones; the other settings to all. The outputs are the figure's.
 """
+
+import inspect
 
 from .. import _core as sd
 from .._core import _type_name
@@ -18,6 +21,8 @@ from ._figure import Figure, integer
 
 _SETTINGS = ("xlim", "ylim", "xscale", "yscale", "xticks", "yticks")
 _OUTPUTS = ("save", "to_svg", "to_png", "to_pdf", "scene", "size", "_repr_mimebundle_")
+# what is one cell's own or a whole figure's, not every cell's
+_NOT_FACETED = ("title", "zlabel", "compare", "fit", "twin", "inset")
 
 
 class Facets:
@@ -25,7 +30,15 @@ class Facets:
         self.figure, self._frames, self._keys, self._by = fig, frames, keys, by
 
     def __repr__(self):
-        return f"Facets({self._by!r}: {len(self._keys)} cells; {self.figure!r})"
+        r = self.figure
+        n = sum(len(c._cell.layers) for c in self._cells())
+        h = f"{r._h:g}" if r._h is not None else "auto"
+        return f"Facets({self._by!r}: {len(self._keys)} cells, {n} layer{'s' if n != 1 else ''}; {r._w:g} x {h} mm)"
+
+    @property
+    def axes(self):
+        """The cells of the values, in their order (the grid's empty places are not among them)."""
+        return tuple(self._cells())
 
     def _cells(self):
         return [self.figure.axes[i] for i in range(len(self._keys))]
@@ -34,7 +47,7 @@ class Facets:
         fig = self.__dict__.get("figure")
         if fig is None:
             raise AttributeError(name)
-        if name in _OUTPUTS or name in ("info", "width", "height", "shape", "axes"):
+        if name in _OUTPUTS or name in ("info", "width", "height", "shape"):
             return getattr(fig, name)
         if name in _SETTINGS or name == "legend":
 
@@ -45,8 +58,9 @@ class Facets:
 
             return setting
         method = getattr(Figure, name, None)
-        if method is None or name.startswith("_") or name in ("title", "zlabel", "compare", "fit"):
+        if method is None or name.startswith("_") or name in _NOT_FACETED or not callable(method):
             raise AttributeError(f"Facets has no method {name!r}")
+        rowwise = "data" in inspect.signature(method).parameters
 
         def draw(*args, **kw):
             if "data" in kw:
@@ -56,7 +70,10 @@ class Facets:
             for cell, rows in zip(self._cells(), self._frames):
                 cell._cell.order = order  # the colours of the groups, the same in every cell
                 try:
-                    getattr(cell, name)(*args, data=rows, **kw)
+                    if rowwise:
+                        getattr(cell, name)(*args, data=rows, **kw)
+                    else:  # no data to split (a reference line, a function): the same in every cell
+                        getattr(cell, name)(*args, **kw)
                 finally:
                     cell._cell.order = None
             self._legend_once()

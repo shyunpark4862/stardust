@@ -394,3 +394,49 @@ def test_hist2d_and_hexbin_count_the_pairs():
         P.hist2d(x, y, bins=(2, 3, 4))
     with pytest.raises(TypeError, match=r"hexbin\(\): 'range' must be \(\(x0, x1\), \(y0, y1\)\)"):
         P.hexbin(x, y, range=(0, 1))
+
+
+def test_hist2d_and_hexbin_take_a_range_in_order_and_stand_on_a_log_axis():
+    x, y = [0.1, 0.2, 0.9], [0.1, 0.2, 0.9]
+    for plot in (P.hist2d, P.hexbin):
+        with pytest.raises(ValueError, match=rf"{plot.__name__}\(\): 'range' must have x0 at most x1, not 1 and 0"):
+            plot(x, y, range=((1.0, 0.0), (0.0, 1.0)))
+        with pytest.raises(ValueError, match=rf"{plot.__name__}\(\): 'range' must have y0 at most y1"):
+            plot(x, y, range=((0.0, 1.0), (1.0, 0.5)))
+    # two bins of values, 1..50.5 and 50.5..100: on a log axis the edge between them stands at 50.5
+    h = P.hist2d([1.0, 2.0, 3.0, 100.0], [0.0, 0.0, 0.0, 0.0], bins=(2, 1)).xscale("log")
+    sc = h._root._build("test")
+    img = max((i for i in sc.items if isinstance(i, _scene.Image)), key=lambda i: i.w)  # (not the colour bar's)
+    row = [img.rgba[4 * k : 4 * k + 4] for k in range(img.iw)]
+    edge = next(k for k in range(img.iw) if row[k] != row[0])
+    lo, hi = h._cell.layers[0].extent("x", True)[:2]
+    assert lo == 1.0 and hi == 100.0
+    assert edge / img.iw == pytest.approx(math.log10(50.5) / 2.0, abs=2.0 / img.iw)
+    hx = P.hexbin([0.0, 1.0, 10.0, 100.0], [1.0, 2.0, 3.0, 4.0], size=4).xscale("log")
+    paths = [i for i in hx._root._build("test").items if isinstance(i, _scene.Path) and i.fill is not None]
+    assert paths and all(math.isfinite(v) for p in paths for v in p.xy)
+
+
+def test_a_density_over_a_taller_layer_leaves_the_range_to_it():
+    xs = sd.stats.Normal(mu=170.0, sigma=8.0).sample(200, rng=sd.random.default_rng(1))
+    tallest = float(sd.max(sd.histogram(xs, bins=15, density=True).hist))
+    fig = P.histogram(xs, bins=15, density=True).distribution(sd.stats.Normal(mu=170.0, sigma=8.0))
+    th = _figure.THEMES["paper"]
+    assert fig._cell.ylim == [None, None] and _figure._range(fig._cell, "y", th)[1] >= tallest
+    two = P.distribution(sd.stats.StudentT(df=1.0), a=-5, b=5).distribution(
+        sd.stats.Normal(mu=0.0, sigma=1.0), a=-5, b=5
+    )
+    assert _figure._range(two._cell, "y", th)[1] >= 1.0 / math.sqrt(2.0 * math.pi)
+    alone = P.distribution(sd.stats.Normal(mu=0.0, sigma=1.0))
+    assert _figure._range(alone._cell, "y", th)[1] == pytest.approx(1.05 / math.sqrt(2.0 * math.pi), rel=1e-2)
+
+
+def test_the_diagonal_of_pairs_reads_on_its_rows_axis():
+    rng = sd.random.default_rng(11)
+    N = sd.stats.Normal(mu=0.0, sigma=1.0)
+    z1, z2 = N.sample(60, rng=rng), N.sample(60, rng=rng)
+    df = sd.frame.DataFrame({"height": 163 + 6 * z1, "weight": 56 + 3.6 * z1 + 5 * z2})
+    fig = P.pairs(df)
+    th = _figure.THEMES["paper"]
+    diag, beside = fig._root._cells[0], fig._root._cells[1]
+    assert _figure._range(diag, "y", th) == pytest.approx(_figure._range(beside, "y", th), rel=1e-12)

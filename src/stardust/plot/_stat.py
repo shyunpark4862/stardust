@@ -7,12 +7,14 @@ choose or run a test.
 """
 
 import math
+import numbers
+import operator
 from array import array
 
 from .. import _core as sd
 from .._core import _type_name
 from ..optimize._common import _check_bool, _check_choice
-from . import _basic, _color, _field, _function, _layers, _scene
+from . import _basic, _color, _field, _figure, _function, _layers, _scene
 from ._basic import _alpha, _each, _label, _opt_real, _take, escape, numbers_, same_length, split
 from ._figure import Cell, Figure, integer, real
 
@@ -32,10 +34,13 @@ class Hist(_layers.Layer):
 
     def __init__(self, edges, heights, color, label, base=0.0):
         self.edges, self.heights, self.color, self.label, self.base = edges, heights, color, label, base
+        self.ceiling = None  # the top of the y range, when it is given with the base (a pairs plot's row)
 
     def extent(self, axis, positive):
         if axis == "x":
             return (self.edges[0], self.edges[-1], ())
+        if self.ceiling is not None and not positive:
+            return (self.base, self.ceiling, (self.base, self.ceiling))
         top = max(self.heights, default=0.0) + self.base
         return (self.base, top, (self.base,)) if not positive or self.base > 0.0 else None
 
@@ -239,8 +244,8 @@ def strip(self, x, y, /, *, data=None, group=None, jitter=0.2, rng=None, color=N
         gen = _random.default_rng(0)  # a fixed seed: the same call is the same figure
     elif isinstance(rng, _random.Generator):
         gen = rng
-    elif isinstance(rng, int) and not isinstance(rng, bool):
-        gen = _random.default_rng(rng)
+    elif isinstance(rng, numbers.Integral) and not isinstance(rng, bool):  # (numpy's integers too)
+        gen = _random.default_rng(operator.index(rng))
     else:
         raise TypeError(f"{who}(): 'rng' must be an sd.random Generator, an int seed or None, not {_type_name(rng)}")
     for Y, cats, col, lab, j, k in _by_category(self, who, x, y, data, group, color, None):
@@ -670,7 +675,14 @@ def distribution(self, dist, /, *, kind="pdf", a=None, b=None, color=None, label
             k = int(sd.argmax(inner))
             if top > 0.0 and ends <= 1.05 * top and 10 < k < inner.shape[0] - 10:
                 ylim = (0.0, 1.05 * top)
-    return _function.function(self, f, a, b, ylim=ylim, color=color, label=label)
+    held = list(cell.ylim)
+    _function.function(self, f, a, b, ylim=ylim, color=color, label=label)
+    if ylim is not None:
+        # the curve asks for that range; the cell's own stays free, so that a taller layer of the
+        # cell (the histogram under the density, another density) is not cut
+        cell.ylim = held
+        cell.layers[-1].reach = ylim
+    return self
 
 
 def _integer_ticks(lo, hi):
@@ -713,15 +725,18 @@ def pairs(data, /, *, columns=None, group=None, width=None, height=None, font="s
                 cell.histogram(
                     cols[ci], group=None if parts is None else group, data=data if isinstance(group, str) else None
                 )
-                # the bars span the row's range, so that the row's y ticks read as its variable throughout
+                # The bars span the row's range, so that the row's y ticks read as its variable
+                # throughout: they stand on the low end of the range the row's scatter plots take
+                # (the values with the theme's margin), the tallest reaches the largest value.
                 r = _layers.finite_range(cols[ci])
                 if r is not None and r[1] > r[0]:
                     hists = [layer for layer in cell._cell.layers if isinstance(layer, Hist)]
                     top = max((max(h.heights, default=0.0) for h in hists), default=0.0)
                     if top > 0.0:
+                        d = (r[1] - r[0]) * _figure.THEMES[theme]["pad"]
                         for h in hists:
-                            h.heights = [v * (r[1] - r[0]) / top for v in h.heights]
-                            h.base = r[0]
+                            h.heights = [v * (r[1] - r[0] + d) / top for v in h.heights]
+                            h.base, h.ceiling = r[0] - d, r[1] + d
             else:
                 cell.scatter(
                     cols[cj],
@@ -758,6 +773,11 @@ def _pairs_xy(who, x, y, data, range_):
         ):
             raise TypeError(f"{who}(): 'range' must be ((x0, x1), (y0, y1)), not {_type_name(range_)}")
         box = [real(v, who, "range") for r in range_ for v in r]
+        for k, name in ((0, "x"), (2, "y")):
+            if box[k] > box[k + 1]:
+                raise ValueError(
+                    f"{who}(): 'range' must have {name}0 at most {name}1, not {box[k]:g} and {box[k + 1]:g}"
+                )
         keep = (X >= box[0]) & (X <= box[1]) & (Y >= box[2]) & (Y <= box[3])
         X, Y = X[keep], Y[keep]
     for k in (0, 2):
@@ -806,6 +826,11 @@ class Hexes(_layers.Layer):
 
     def extent(self, axis, positive):
         lo, hi = (self.box[0], self.box[1]) if axis == "x" else (self.box[2], self.box[3])
+        if positive and not lo > 0.0:  # a log axis: from the lowest centre of a hexagon on it
+            low = [v for v in (self.cx if axis == "x" else self.cy) if v > 0.0]
+            if not low or not hi > 0.0:
+                return None
+            lo = min(low)
         return (lo, hi, ())
 
     def draw(self, fr):
@@ -814,12 +839,15 @@ class Hexes(_layers.Layer):
         groups = {}
         for x, y, c in zip(self.cx, self.cy, self.colors):
             groups.setdefault(c, []).append((x, y))
+        # on a log axis a corner at zero or below is drawn off the low end of the axis
+        fx = fr.xa.lo / 10.0 if fr.xa.scale == "log" else -math.inf
+        fy = fr.ya.lo / 10.0 if fr.ya.scale == "log" else -math.inf
         for c, pts in groups.items():
             ops, xy = [], array("d")
             for x, y in pts:
                 ops.append("MLLLLLZ")
                 for ux, uy in corners:
-                    xy.extend((fr.px(x + ux * self.rx), fr.py(y + uy * self.ry)))
+                    xy.extend((fr.px(max(x + ux * self.rx, fx)), fr.py(max(y + uy * self.ry, fy))))
             # a hairline of the same colour closes the seams between neighbours
             fr.scene.add(_scene.Path("".join(ops), xy, fill=c, stroke=c, width=0.25, clip=fr.clip))
 

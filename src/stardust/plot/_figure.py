@@ -204,8 +204,15 @@ class Figure:
         return v
 
     @property
+    def _base(self):
+        """The cell itself: what the title, the x axis, the legend and the insets belong to."""
+        return self._root._cells[self._index]
+
+    @property
     def _cell(self):
-        c = self._root._cells[self._index]
+        """The cell the plotting methods and the y settings act on: of a twin() view, the cell of
+        the second y axis."""
+        c = self._base
         return c.twin if self.__dict__.get("_twinned") else c
 
     def inset(self, figure, rect, /):
@@ -213,12 +220,14 @@ class Figure:
         of the plot rectangle from its lower left corner (its ticks and labels inside the rect)."""
         if not isinstance(figure, Figure) or len(figure._root._cells) != 1:
             raise TypeError(f"inset(): 'figure' must be a Figure of one cell, not {_type_name(figure)}")
-        if not isinstance(rect, (tuple, list)) or len(rect) != 4:
+        if not isinstance(rect, (tuple, list)):
             raise TypeError(f"inset(): 'rect' must be (x, y, w, h), not {_type_name(rect)}")
+        if len(rect) != 4:
+            raise ValueError(f"inset(): 'rect' must hold 4 numbers (x, y, w, h), not {len(rect)}")
         x, y, w, h = (real(v, "inset", "rect") for v in rect)
         if not (0.0 <= x and 0.0 <= y and 0.0 < w and 0.0 < h and x + w <= 1.0 + 1e-9 and y + h <= 1.0 + 1e-9):
             raise ValueError("inset(): 'rect' must lie in the plot: shares in [0, 1] with x + w and y + h at most 1")
-        cell = self._cell
+        cell = self._base  # (of a twin() view too: the insets are the cell's)
         if not cell.frame:
             raise ValueError("inset(): an inset goes over a 2D plot's cell")
         cell.insets.append((figure._root._cells[0].copy(), (x, y, w, h)))
@@ -226,7 +235,8 @@ class Figure:
 
     def twin(self):
         """A view of the cell that draws against a second y axis at the right: its plotting
-        methods and ylabel, ylim, yscale, yticks set that axis; the x axis is shared."""
+        methods and ylabel, ylim, yscale, yticks set that axis; the x axis is shared, so title,
+        xlabel, xlim, xscale, xticks, legend and inset of the view are the cell's own."""
         if self.__dict__.get("_twinned"):
             raise ValueError("twin(): this is already the second y axis")
         cell = self._cell
@@ -299,11 +309,11 @@ class Figure:
     # ---- settings; each returns the figure (docs/api/plot.md §2.2)
 
     def title(self, text, /):
-        self._cell.title = string(text, "title", "text")
+        self._base.title = string(text, "title", "text")
         return self._touch()
 
     def xlabel(self, text, /):
-        self._cell.xlabel = string(text, "xlabel", "text")
+        self._base.xlabel = string(text, "xlabel", "text")
         return self._touch()
 
     def ylabel(self, text, /):
@@ -328,7 +338,7 @@ class Figure:
 
     def xlim(self, low, high, /):
         self._flat("xlim")
-        self._cell.xlim = self._lim("xlim", low, high)
+        self._base.xlim = self._lim("xlim", low, high)
         return self._touch()
 
     def ylim(self, low, high, /):
@@ -338,7 +348,7 @@ class Figure:
 
     def xscale(self, kind, /):
         self._flat("xscale")
-        self._cell.xscale = _check_choice(kind, "xscale", "kind", SCALES)
+        self._base.xscale = _check_choice(kind, "xscale", "kind", SCALES)
         return self._touch()
 
     def yscale(self, kind, /):
@@ -369,7 +379,7 @@ class Figure:
 
     def xticks(self, values, /, *, labels=None):
         self._flat("xticks")
-        self._cell.xticks = self._ticks("xticks", values, labels)
+        self._base.xticks = self._ticks("xticks", values, labels)
         return self._touch()
 
     def yticks(self, values, /, *, labels=None):
@@ -382,7 +392,7 @@ class Figure:
             _check_choice(loc, "legend", "loc", LEGEND_LOCS)
         if title is not None:
             string(title, "legend", "title")
-        self._cell.legend = {"loc": loc, "title": title, "ncols": integer(ncols, "legend", "ncols", 1)}
+        self._base.legend = {"loc": loc, "title": title, "ncols": integer(ncols, "legend", "ncols", 1)}
         return self._touch()
 
     def size(self, width, height=None, /):
@@ -448,7 +458,7 @@ class Figure:
 
     def _pictured(self):
         """Whether the figure holds a 3D cell or a layer drawn as a picture (a density, a phase
-        portrait): a notebook shows it as PNG, the rest as SVG."""
+        portrait, a heatmap, a hist2d): a notebook shows it as PNG, the rest as SVG."""
         for cell in self._root._cells:
             for layer in cell.layers:
                 if type(layer).__name__ in ("Space", "Picture"):
@@ -632,14 +642,18 @@ def _static_strings(fig):
     return list(dict.fromkeys(out))
 
 
-def _measure(fig, cell, pw, ph, th, engine):
-    """Axes and margins of a cell whose plot rectangle is pw x ph."""
+def _measure(fig, cell, pw, ph, th, engine, want=(None, None)):
+    """Axes and margins of a cell whose plot rectangle is pw x ph. `want`: the numbers of ticks
+    asked of the x and y axes (None: what the side's length asks for), which the cells of a
+    shared axis take from one another so that they choose the same ticks."""
 
     def box(s, size):
         return engine.layout([s])[0].box(size)
 
     m = _Measured()
     m.legend = m.bar = m.fit = None
+    m.want = [None, None]  # the numbers of ticks the automatic axes ended up asking for
+    m.title = None  # (height, depth) of the title
     if not cell.frame:
         m.xa = m.ya = None
         m.left = m.right = m.top = m.bottom = 0.0
@@ -657,12 +671,17 @@ def _measure(fig, cell, pw, ph, th, engine):
             m.fit = (fw, fw * a)
         if cell.title:
             _, h, d = box(cell.title, th["title_size"])
+            m.title = (h, d)
             m.top += h + d + th["title_pad"]
         return m
-    m.xa, m.ya = _axis(cell, "x", pw, th), _axis(cell, "y", ph, th)
-    for k, a in enumerate((m.xa, m.ya)):
-        if cell.inner[k]:  # a shared axis: the outer cell carries the numbers
-            a.labels, a.mult = [""] * len(a.labels), None
+    m.xa, m.ya = _axis(cell, "x", pw, th, want[0]), _axis(cell, "y", ph, th, want[1])
+
+    def blank():
+        for k, a in enumerate((m.xa, m.ya)):
+            if cell.inner[k]:  # a shared axis: the outer cell carries the numbers
+                a.labels, a.mult = [""] * len(a.labels), None
+
+    blank()
     if cell.headroom and cell.ylim[1] is None:
         # room above the data for the brackets: the range grows so that they clear it
         # (the ticks stay those of the data: none beside the brackets); on a log axis it grows
@@ -682,9 +701,14 @@ def _measure(fig, cell, pw, ph, th, engine):
         fw, fh = (m.xa.hi - m.xa.lo) * k, (m.ya.hi - m.ya.lo) * k
         m.fit = (fw, fh)
         if fw < pw - 1e-9 or fh < ph - 1e-9:  # the ticks for the sides as they are drawn
-            cx, cy = _axis(cell, "x", fw, th), _axis(cell, "y", fh, th)
+            cx, cy = _axis(cell, "x", fw, th, want[0]), _axis(cell, "y", fh, th, want[1])
             m.xa, m.ya = cx, cy
+            blank()
         pw, ph = fw, fh
+    for k, (name, a, side) in enumerate((("x", m.xa, pw), ("y", m.ya, ph))):
+        fixed = cell.xticks if k == 0 else cell.yticks
+        if fixed is None and a.cats is None and not (k == 1 and cell.headroom):
+            m.want[k] = _wanted(name, side) if want[k] is None else want[k]
     ts, tl, tp = th["tick_size"], th["tick_len"], th["tick_pad"]
     # the labels the layout made (pi ticks, a common power of ten) are typeset in one batch
     engine.layout([s for s in (*m.xa.labels, *m.ya.labels, m.xa.mult, m.ya.mult) if s])
@@ -698,10 +722,9 @@ def _measure(fig, cell, pw, ph, th, engine):
 
     m.xrot = 0.0
     if cell.xticks is None and m.xa.cats is None:
-        want = _wanted("x", pw)
-        while crowded() and want > 2:  # fewer ticks rather than labels that touch
-            want -= 1
-            m.xa = _axis(cell, "x", pw, th, want)
+        while crowded() and m.want[0] > 2:  # fewer ticks rather than labels that touch
+            m.want[0] -= 1
+            m.xa = _axis(cell, "x", pw, th, m.want[0])
             xb = [box(s, ts) for s in m.xa.labels]
     elif crowded():  # labels the user or the data gave: they are turned
         m.xrot = 40.0
@@ -752,6 +775,7 @@ def _measure(fig, cell, pw, ph, th, engine):
         m.right = max(m.right, w + 2.0)
     if cell.title:
         _, h, d = box(cell.title, th["title_size"])
+        m.title = (h, d)
         m.top += h + d + th["title_pad"]
     m.bar = None
     if cell.colorbar is not None:
@@ -829,9 +853,13 @@ def _legend_box(cell, entries, th, engine, room, loc):
 def _share(fig, th):
     """The ranges shared by the cells of a grid made with sharex or sharey: True shares along
     the columns (x) or the rows (y), 'all' among all the cells. A shared axis shows its numbers
-    on the outer cells only (the bottom of a column, the left of a row)."""
+    on the outer cells only (the bottom of a column, the left of a row): a cell leaves its
+    numbers out when a cell below it (x) or left of it (y) shows the same axis, which is one of
+    the same shared range or of the same categories. Returns the groups [(0 for x or 1 for y,
+    the indices of the cells of one shared range)], whose ticks the layout chooses once."""
     nr, nc = fig._nrows, fig._ncols
     cells = fig._cells
+    shared = []
     for c in cells:
         c.span, c.inner = [None, None], [False, False]
     for k, how in enumerate(fig._share):
@@ -854,19 +882,27 @@ def _share(fig, th):
                 continue
             ranges = [_range(cells[i], axis, th) for i in members]
             span = (min(r[0] for r in ranges), max(r[1] for r in ranges))
-            for i in members:
-                if (cells[i].xlim if k == 0 else cells[i].ylim) == [None, None]:
-                    cells[i].span[k] = span
-        # the numbers stay on the outer side: none on a cell with a drawn cell below it (x) or left of it (y)
+            free = [i for i in members if (cells[i].xlim if k == 0 else cells[i].ylim) == [None, None]]
+            for i in free:
+                cells[i].span[k] = span
+            if len(free) > 1:
+                shared.append((k, free))
+
+        def same(a, b):
+            """Whether two cells show one axis: the same shared range, or the same categories."""
+            ca, cb = (a.xcats, b.xcats) if k == 0 else (a.ycats, b.ycats)
+            if ca is not None or cb is not None:
+                return ca == cb and (a.xlim if k == 0 else a.ylim) == (b.xlim if k == 0 else b.ylim)
+            return a.span[k] is not None and a.span[k] == b.span[k]
+
         drawn = [c.frame and bool(c.layers) for c in cells]
         for i, c in enumerate(cells):
             r, col = divmod(i, nc)
             if not drawn[i]:
                 continue
-            if k == 0:
-                c.inner[0] = any(drawn[rr * nc + col] for rr in range(r + 1, nr))
-            else:
-                c.inner[1] = any(drawn[r * nc + cc] for cc in range(col))
+            outer = range((r + 1) * nc + col, nr * nc, nc) if k == 0 else range(r * nc, i)
+            c.inner[k] = any(drawn[j] and same(c, cells[j]) for j in outer)
+    return shared
 
 
 def _layout(fig, dpi=300.0):
@@ -876,7 +912,7 @@ def _layout(fig, dpi=300.0):
     engine.layout(_static_strings(fig))  # one TeX run for all that is new
     for cell in fig._cells:
         cell.placed = None
-    _share(fig, THEMES[fig._theme])
+    shared = _share(fig, THEMES[fig._theme])
     nr, nc = fig._nrows, fig._ncols
     W = fig._w * MM
     margin, gap = th["margin"], th["gap"]
@@ -889,6 +925,31 @@ def _layout(fig, dpi=300.0):
     def solve(pw, ph):
         """Margins of every column and row for plot sizes pw[c], ph[r]."""
         ms = [_measure(fig, fig._cells[r * nc + c], pw[c], ph[r], th, engine) for r in range(nr) for c in range(nc)]
+        # The cells of a shared axis choose their ticks once: all take the fewest any of them asks
+        # for (the narrowest plot's, or the one whose labels would touch).
+        asked = {}
+        for _ in range(3):
+            again = set()
+            for k, members in shared:
+                counts = [ms[i].want[k] for i in members if ms[i].want[k] is not None]
+                if not counts:
+                    continue
+                for i in members:
+                    if ms[i].want[k] is not None and ms[i].want[k] != min(counts):
+                        asked.setdefault(i, [None, None])[k] = min(counts)
+                        again.add(i)
+            if not again:
+                break
+            for i in again:
+                ms[i] = _measure(fig, fig._cells[i], pw[i % nc], ph[i // nc], th, engine, asked[i])
+        # The titles of a row stand on one baseline: each takes the row's tallest and deepest.
+        for r in range(nr):
+            row = [m for m in ms[r * nc : (r + 1) * nc] if m.title is not None]
+            if row:
+                h, d = max(m.title[0] for m in row), max(m.title[1] for m in row)
+                for m in row:
+                    m.top += h + d - sum(m.title)
+                    m.title = (h, d)
         left = [max(ms[r * nc + c].left for r in range(nr)) for c in range(nc)]
         right = [max(ms[r * nc + c].right for r in range(nr)) for c in range(nc)]
         top = [max(ms[r * nc + c].top for c in range(nc)) + panel_h for r in range(nr)]
@@ -1061,8 +1122,8 @@ def _draw_cell(scene, cell, m, x, y, w, h, th, palette, engine, dpi=300.0, band=
         if getattr(m, "legend", None):
             _draw_legend(scene, cell, m, fr, th, engine)
         if cell.title:
-            ty = (y if band is None else min(y, band)) - th["title_pad"]
-            scene.add(_scene.Text(cell.title, x + w / 2, ty, size=th["title_size"], ha="center", va="bottom"))
+            ty = (y if band is None else min(y, band)) - th["title_pad"] - m.title[1]
+            scene.add(_scene.Text(cell.title, x + w / 2, ty, size=th["title_size"], ha="center", va="baseline"))
         return
     xa, ya = m.xa, m.ya
     fr = Frame(scene, x, y, w, h, xa, ya, th, palette, engine)
@@ -1102,6 +1163,8 @@ def _draw_cell(scene, cell, m, x, y, w, h, th, palette, engine, dpi=300.0, band=
     for v, s in zip(xa.ticks, xa.labels):
         px = fr.px(v)
         _line(scene, [(px, y + h), (px, y + h + tl)], th)
+        if not s:  # the numbers of a shared axis stand on another cell
+            continue
         if m.xrot:
             scene.add(_scene.Text(s, px + 1.5, y + h + tl + tp, size=ts, ha="right", va="top", rotation=m.xrot))
         else:
@@ -1112,7 +1175,8 @@ def _draw_cell(scene, cell, m, x, y, w, h, th, palette, engine, dpi=300.0, band=
     for v, s in zip(ya.ticks, ya.labels):
         py = fr.py(v)
         _line(scene, [(x, py), (x - tl, py)], th)
-        scene.add(_scene.Text(s, x - tl - tp, py, size=ts, ha="right", va="center"))
+        if s:
+            scene.add(_scene.Text(s, x - tl - tp, py, size=ts, ha="right", va="center"))
     for v in ya.minor:
         py = fr.py(v)
         _line(scene, [(x, py), (x - 0.6 * tl, py)], th, width=0.7 * aw)
@@ -1147,10 +1211,9 @@ def _draw_cell(scene, cell, m, x, y, w, h, th, palette, engine, dpi=300.0, band=
         top -= m.legend["h"] + th["gap"] / 2
     if ya.mult:
         top -= engine.layout([ya.mult])[0].box(ts)[1] + 2.0 if not cell.title else 0.0
-    if cell.title:
-        scene.add(
-            _scene.Text(cell.title, x + w / 2, top - th["title_pad"], size=th["title_size"], ha="center", va="bottom")
-        )
+    if cell.title:  # on the baseline the row's titles share (the layout's m.title)
+        ty = top - th["title_pad"] - m.title[1]
+        scene.add(_scene.Text(cell.title, x + w / 2, ty, size=th["title_size"], ha="center", va="baseline"))
     if cell.note:
         # in the corner the data and the legend leave emptiest
         nw, nh_, nd = engine.layout([cell.note])[0].box(ts)

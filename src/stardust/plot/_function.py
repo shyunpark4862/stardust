@@ -10,6 +10,7 @@ import math
 from .. import _core as sd
 from .._core import _type_name
 from ..optimize._common import _check_bool
+from ..stats._distribution import _real_option
 from . import _color, _layers, _sample
 from ._basic import _label, _opt_real, _style
 from ._figure import real, string
@@ -33,8 +34,9 @@ def call(f, t, who, arg):
         if out.dtype == sd.complex128:
             raise TypeError(f"{who}(): '{arg}' must return real values, not complex128")
         return out if out.dtype == sd.float64 else out.astype(sd.float64)
-    if isinstance(out, (int, float)) and not isinstance(out, bool):
-        return sd.full(tuple(t.shape), float(out))
+    const = _real_option(out, who, arg)  # a number, numpy's scalars among them: a constant function
+    if const is not None:
+        return sd.full(tuple(t.shape), const)
     raise TypeError(f"{who}(): '{arg}' must return an sd.ndarray (it is called with one), not {_type_name(out)}")
 
 
@@ -54,13 +56,17 @@ def _interval(who, a, b, na="a", nb="b"):
 class CurveLine(_layers.Line):
     """A sampled curve: a line whose y extent is held to the range the sampler chose. `held`:
     the axes ("x", "y") whose extent is the clip range itself, wider than the values (a plane
-    curve that is a straight line along the other axis)."""
+    curve that is a straight line along the other axis). `reach`: a y range the curve asks of
+    its axis as it is, without a margin (a density's, up to just above its peak); other layers
+    of the cell may widen it."""
 
     def __init__(self, x, y, color, width, style, label, yclip=None, xclip=None, held=()):
         super().__init__(x, y, color, width, style, label)
-        self.yclip, self.xclip, self.held = yclip, xclip, held
+        self.yclip, self.xclip, self.held, self.reach = yclip, xclip, held, None
 
     def extent(self, axis, positive):
+        if axis == "y" and self.reach is not None and not positive:
+            return (self.reach[0], self.reach[1], tuple(self.reach))
         e = super().extent(axis, positive)
         clip = self.xclip if axis == "x" else self.yclip
         if e is None or clip is None:
@@ -143,6 +149,7 @@ def function(
         yr, clipped, yclip = ylim, (False, False), ylim
     else:
         rs = [_sample.robust_range(v) for v in firsts]
+        level = all(_sample.level(v) for v in firsts)
         lo, hi = min(r[0] for r in rs), max(r[1] for r in rs)
         clipped = (any(r[2] for r in rs), any(r[3] for r in rs))
         if not lo < hi:
@@ -156,7 +163,25 @@ def function(
         yclip = (lo if clipped[0] else lo - grow, hi if clipped[1] else hi + grow)
     poles_all = []
     for k, (g, y0) in enumerate(zip(fs, firsts)):
-        c = _sample.refine(lambda t, g=g: (t, call(g, t, who, "f")), t0, t0, y0, xr, yr, depth)
+        gt = lambda t, g=g: (t, call(g, t, who, "f"))
+        c = _sample.refine(gt, t0, t0, y0, xr, yr, depth)
+        if ylim is None and level and depth:
+            # The first grid saw a level line, so its range says nothing of the function's size.
+            # What the finer samples found between its points (a narrow peak) is the curve: the
+            # range takes it in, and the curve is sampled on for the range it is drawn in. A peak
+            # has a top, which the samples settle on, and no break; where the values go on growing
+            # or the curve breaks (a pole) the range stays the first grid's.
+            c1, yr1, yclip1 = c, yr, yclip
+            for _ in range(6):
+                r = _layers.finite_range(c1.y)
+                if r is None or not (r[0] < yclip1[0] or r[1] > yclip1[1]):
+                    if c1 is c or not c1.breaks:
+                        c, yr, yclip = c1, yr1, yclip1
+                    break
+                yr1 = (min(yr1[0], r[0]), max(yr1[1], r[1]))
+                grow = 0.5 * (yr1[1] - yr1[0])
+                yclip1 = (yr1[0] - grow, yr1[1] + grow)
+                c1 = _sample.refine(gt, c1.t, c1.x, c1.y, xr, yr1, depth)
         osc = _add_curve(self, c, xr, yr, yclip, colors[k], width, style, labels[k] if labels else None, who)
         poles_all += c.poles
         e = self._cell.layers[-1].extent("y", False)
@@ -197,8 +222,33 @@ def _plane(self, who, g, a, b, samples, refine, color, width, style, label):
 
     def bulk(v):
         """The range of the first samples, without values that run far away (a pole), as
-        function plots take it."""
+        function plots take it; and with every excursion past it that comes back (a loop of the
+        curve beyond the bulk of its samples, which crowd where the curve moves slowly): a run
+        of samples on one side of the range, between two samples in it, none far away."""
         lo, hi, cut_lo, cut_hi = _sample.robust_range(v)
+        if cut_lo or cut_hi:
+            w = v[sd.isfinite(v)]
+            q10, q90 = (float(q) for q in sd.quantile(w, sd.asarray([0.1, 0.9])))
+            far_lo, far_hi = q10 - 4.0 * (q90 - q10), q90 + 4.0 * (q90 - q10)  # robust_range's far values
+            vals = v.tolist()
+            within = [lo <= a <= hi for a in vals]  # (False for NaN)
+            new_lo, new_hi = lo, hi
+            i, n = 0, len(vals)
+            while i < n:
+                if within[i] or not math.isfinite(vals[i]):
+                    i += 1
+                    continue
+                j = i
+                while j < n and not within[j] and math.isfinite(vals[j]):
+                    j += 1
+                run = vals[i:j]
+                if 0 < i and j < n and within[i - 1] and within[j]:
+                    if cut_hi and min(run) > hi and max(run) <= far_hi:
+                        new_hi = max(new_hi, max(run))
+                    elif cut_lo and max(run) < lo and min(run) >= far_lo:
+                        new_lo = min(new_lo, min(run))
+                i = j
+            lo, hi = new_lo, new_hi
         return (lo, hi), cut_lo or cut_hi
 
     (xr, xcut), (yr, ycut) = bulk(x0), bulk(y0)

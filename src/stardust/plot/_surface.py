@@ -9,6 +9,8 @@ below the picture, the three axis edges with ticks and labels above it.
 """
 
 import math
+import numbers
+import operator
 from array import array
 
 from .. import _core as sd
@@ -559,8 +561,9 @@ def _mesh(who, mesh):
     """The cells of the mesh a side: True the default, False (0) none, or an int."""
     if isinstance(mesh, bool):
         return MESH if mesh else 0
-    if not isinstance(mesh, int):
+    if not isinstance(mesh, numbers.Integral):  # (numpy's integers too; numpy's bool is neither)
         raise TypeError(f"{who}(): 'mesh' must be a bool or an int, not {_type_name(mesh)}")
+    mesh = operator.index(mesh)
     if not 1 <= mesh <= 400:
         raise ValueError(f"{who}(): 'mesh' must be between 1 and 400")
     return mesh
@@ -570,8 +573,9 @@ def _contours(who, contours):
     """The levels of the floor contours aimed at: True the default, False (0) none, or an int."""
     if isinstance(contours, bool):
         return CONTOURS if contours else 0
-    if not isinstance(contours, int):
+    if not isinstance(contours, numbers.Integral):
         raise TypeError(f"{who}(): 'contours' must be a bool or an int, not {_type_name(contours)}")
+    contours = operator.index(contours)
     if not 1 <= contours <= 100:
         raise ValueError(f"{who}(): 'contours' must be between 1 and 100")
     return contours
