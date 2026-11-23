@@ -43,6 +43,7 @@
 #include "array/ndarray.hpp"
 #include "bind/pyutil.hpp"
 #include "parallel/pool.hpp"
+#include "spatial/delaunay2.hpp"
 #include "spatial/delaunay3.hpp"
 #include "spatial/predicates.hpp"
 #include "spatial/sfc.hpp"
@@ -293,12 +294,8 @@ struct Node {
     Hull hull;
 };
 
-enum class Status { Ok, TooFew, Collinear, TooMany };
-
-struct Internal {
-    std::int64_t m = 0, t = 0;
-    std::vector<std::int32_t> s, nb;  // (t, 3) triangles of input indices, counterclockwise; neighbours
-};
+using Status = tri::Build2;
+using Internal = tri::Internal2;  // (t, 3) triangles of input indices, counterclockwise; neighbours
 
 // Triangulates the representatives; fills T.rep, T.range, T.pred, T.m and the internal triangles.
 Status build_internal(Triangulation& T, Internal& out, bool split) {
@@ -594,6 +591,8 @@ nb::object int64_rows(const std::vector<std::int64_t>& v, std::int64_t cols) {
 }
 
 }  // namespace
+
+tri::Build2 tri::build_delaunay2(Triangulation& T, Internal2& out, bool split) { return build_internal(T, out, split); }
 
 void bind_delaunay(nb::module_& m) {
     nb::class_<DelaunayObj>(m, "_Delaunay")

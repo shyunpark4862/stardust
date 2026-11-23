@@ -18,6 +18,7 @@ void bind_spatial(nb::module_& core) {
     spatial::bind_predicates(m);
     spatial::bind_hull(m);
     spatial::bind_delaunay(m);
+    spatial::bind_voronoi(m);
 }
 
 }  // namespace sd

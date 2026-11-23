@@ -112,6 +112,7 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/spatial/hull.cpp
   csrc/spatial/delaunay2.cpp
   csrc/spatial/delaunay3.cpp
+  csrc/spatial/voronoi.cpp
   csrc/graph/input.cpp
   csrc/graph/traversal.cpp
   csrc/graph/paths.cpp

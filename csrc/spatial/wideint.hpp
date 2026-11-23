@@ -145,6 +145,9 @@ public:
 
     int words() const { return n_; }
 
+    // floor(log2 |value|) + 1, 0 for zero (the circumcentre's scaled quotient, voronoi.cpp).
+    std::int64_t bits() const { return n_ == 0 ? 0 : bit_length(); }
+
 private:
     void trim() {
         while (n_ > 0 && w_[n_ - 1] == 0) --n_;

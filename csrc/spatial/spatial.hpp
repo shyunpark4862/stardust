@@ -14,5 +14,6 @@ void bind_sphere(nanobind::module_& m);
 void bind_predicates(nanobind::module_& m);
 void bind_hull(nanobind::module_& m);
 void bind_delaunay(nanobind::module_& m);
+void bind_voronoi(nanobind::module_& m);
 
 }  // namespace sd::spatial

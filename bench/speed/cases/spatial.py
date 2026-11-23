@@ -630,7 +630,44 @@ def _delaunay3_specs():
     return out
 
 
-SPECS = _distance_specs() + _neighbor_specs() + _tree_specs() + _geometry_specs() + _hull_specs() + _delaunay3_specs()
+# ---- Voronoi (SPT12; docs/design/spatial_geometry.md §5) ----
+
+
+def _voronoi_vertices(v):
+    """A diagram as what the smoke check compares: its vertices in lexicographic order (scipy's numbering is
+    Qhull's; the 3-D ridges differ by the unbounded ones scipy leaves out)."""
+    a = np.asarray(v.vertices, dtype=np.float64)
+    return a[np.lexsort(a.T[::-1])].ravel()
+
+
+VORONOI_CHECK = Check(sd=_voronoi_vertices, ref=lambda label, v: _voronoi_vertices(v), rtol=1e-9, atol=1e-9)
+
+
+def _voronoi_specs():
+    out = []
+    voronoi = Ref("scipy", lambda d: (lambda S: lambda: S.Voronoi(d["x"]))(_scipy_s()))
+    for npts in (10**3, 10**4, 10**5):
+        exp = int(round(np.log10(npts)))
+        out.append(Spec("SPT12", "voronoi", "Voronoi 2-D uniform", ("Voronoi",), f"10^{exp} points",
+                        _plane("uniform", npts), lambda d: lambda: _sp().Voronoi(d["sx"]), (voronoi,),
+                        quick=npts == 10**5, check=VORONOI_CHECK))  # fmt: skip
+    out.append(Spec("SPT12", "voronoi", "Voronoi 2-D grid", ("Voronoi",), "99856 points", _plane("grid", 316),
+                    lambda d: lambda: _sp().Voronoi(d["sx"]), (voronoi,),
+                    note="every cell cocircular: one vertex per cell", check=VORONOI_CHECK))  # fmt: skip
+    for npts in (10**3, 10**4, 10**5):
+        exp = int(round(np.log10(npts)))
+        out.append(Spec("SPT12", "voronoi", "Voronoi 3-D uniform", ("Voronoi",), f"10^{exp} points",
+                        _space("uniform", npts), lambda d: lambda: _sp().Voronoi(d["sx"]), (voronoi,),
+                        quick=npts == 10**4, note="sd inserts on one thread (SPT107)" if npts == 10**5 else "",
+                        check=VORONOI_CHECK))  # fmt: skip
+    out.append(Spec("SPT12", "voronoi", "Voronoi 3-D grid", ("Voronoi",), "32768 points", _space("grid", 32),
+                    lambda d: lambda: _sp().Voronoi(d["sx"]), (voronoi,),
+                    note="every cell cospherical: one vertex per cell", check=VORONOI_CHECK))  # fmt: skip
+    return out
+
+
+SPECS = (_distance_specs() + _neighbor_specs() + _tree_specs() + _geometry_specs() + _hull_specs()
+         + _delaunay3_specs() + _voronoi_specs())  # fmt: skip
 
 
 def _public(names) -> bool:
@@ -658,4 +695,5 @@ TITLES = {
     "tree": "KD 트리",
     "delaunay": "삼각분할 (`Delaunay`)",
     "hull": "볼록 껍질 (`ConvexHull`)",
+    "voronoi": "보로노이 (`Voronoi`)",
 }

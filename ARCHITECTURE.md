@@ -118,7 +118,8 @@ stardust/
                   predicates(정확한 술어와 값 커널; §3.1, §3.2; .cpp는 테스트용 비공개 바인딩), sfc(사전 순서, 힐베르트, BRIO),
                   hull(볼록 껍질: 정적 필터의 미리 거르기, 단조 사슬, 퀵헐, 평평한 면 합치기; §3.6),
                   triangulation(삼각분할의 공용: 병렬 사전 순서 정렬, 표준 꼴, 위치 격자와 걷기, 지연 속성; §3.5),
-                  delaunay2(2차원 분할 정복과 `_Delaunay`; §3.3), delaunay3(3차원 BRIO 순서의 하나씩 넣기; §3.4)
+                  delaunay2(2차원 분할 정복과 `_Delaunay`; §3.3), delaunay3(3차원 BRIO 순서의 하나씩 넣기; §3.4),
+                  voronoi(쌍대: 외심이 같은 단체의 묶음, 꼭짓점의 분자 커널, 능선과 영역; §3.7)
     graph/        input(밀집 → CSR, 전치, 대칭 확인), traversal(순회, 연결 요소, 위상 정렬),
                   paths(최단 경로의 정의와 블록 FW; docs/design/graph.md §3.2), yen, tree(최소 신장 트리), flow,
                   matching(Hopcroft–Karp와 배정의 LAPJV), ordering(역 Cuthill–McKee, 라플라시안), structure,

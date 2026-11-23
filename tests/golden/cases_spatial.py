@@ -201,6 +201,7 @@ def cases(L):
     yield from _delaunay_cases(L)
     yield from _hull_cases(L)
     yield from _delaunay3_cases(L)
+    yield from _voronoi_cases(L)
 
 
 def _neighbor_cases(L):
@@ -533,3 +534,45 @@ def _hull_cases(L):
     yield "error ConvexHull nan", lambda: S.ConvexHull(a(np.array([[0.0, 0.0], [1.0, NAN], [0.0, 1.0]])))
     yield "error ConvexHull columns", lambda: S.ConvexHull(a(np.zeros((5, 4))))
     yield "error ConvexHull qhull_options", lambda: S.ConvexHull(a(square), qhull_options="Qt")
+
+
+def _voronoi_cases(L):
+    """Voronoi (milestone SPT12, docs/design/spatial_geometry.md §2.5): every attribute on small degenerate sets
+    (2-D: an integer grid, integer points on one circle, equal points with -0.0, a line with one point off it,
+    huge and tiny coordinates; 3-D: a 3^3 grid, integer points on one sphere, equal points, a plane with points
+    off it, huge and tiny coordinates), 3 * 10^4 (2-D) and 2 * 10^4 (3-D) uniform points (the parallel cluster
+    tests, centres, regions and ridges at 3 and 10 threads), the wrong calls."""
+    S = L.sd.spatial
+    a = L.arr
+    r = L.rng(723)
+    grid = np.array([[i, j] for i in range(6) for j in range(6)], dtype=float)[r.permutation(36)]
+    circle = np.array([[5.0, 0.0], [4.0, 3.0], [3.0, 4.0], [0.0, 5.0], [-3.0, 4.0], [-4.0, 3.0], [-5.0, 0.0],
+                       [-4.0, -3.0], [-3.0, -4.0], [0.0, -5.0], [3.0, -4.0], [4.0, -3.0], [0.0, 0.0]])  # fmt: skip
+    dup = np.array([[0.0, 0.0], [1.0, 0.0], [-0.0, 0.0], [0.0, 1.0], [1.0, 0.0], [1.0, 1.0], [0.0, -0.0]])
+    line = np.array([[float(i), 0.0] for i in range(8)] + [[3.5, 2.0]])
+    wide = np.array([[1e200, 0.0], [-1e200, 3e-300], [0.0, 1e200], [5e-324, -1e-310], [2e-300, 7e199]])
+    grid3 = np.array([[i, j, k] for i in range(3) for j in range(3) for k in range(3)], dtype=float)[r.permutation(27)]
+    sphere = np.array([[x, y, z] for x in range(-3, 4) for y in range(-3, 4) for z in range(-3, 4)
+                       if x * x + y * y + z * z == 9], dtype=float)  # fmt: skip
+    dup3 = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [-0.0, 0.0, -0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0],
+                     [1.0, 0.0, 0.0], [1.0, 1.0, 1.0], [0.0, -0.0, 0.0]])  # fmt: skip
+    plane = np.array([[float(i % 4), float(i // 4), 0.0] for i in range(16)] + [[1.5, 1.5, 2.0], [0.5, 2.5, -1.0]])
+    wide3 = np.array([[1e200, 0.0, 0.0], [-1e200, 3e-300, 0.0], [0.0, 1e200, 1e-300], [5e-324, -1e-310, 1e200],
+                      [2e-300, 7e199, -1e200], [0.0, 0.0, 0.0], [1e-300, 1e-300, 1e-300]])  # fmt: skip
+
+    def attrs(v):
+        return (v.npoints, v.ndim, v.points, v.vertices, v.ridge_points, *v.ridge_vertices, *v.regions,
+                v.point_region, v.min_bound, v.max_bound, repr(v))  # fmt: skip
+
+    for name, x in (("grid", grid), ("circle", circle), ("dup", dup), ("line", line), ("wide", wide),
+                    ("grid 3-D", grid3), ("sphere", sphere), ("dup 3-D", dup3), ("plane", plane),
+                    ("wide 3-D", wide3)):  # fmt: skip
+        yield f"Voronoi attributes {name}", lambda x=x: attrs(S.Voronoi(a(x)))
+    yield "Voronoi attributes big 2-D", lambda: attrs(S.Voronoi(a(r.random((30_000, 2)))))
+    yield "Voronoi attributes big 3-D", lambda: attrs(S.Voronoi(a(r.random((20_000, 3)))))
+    yield "error Voronoi collinear", lambda: S.Voronoi(a(line[:8]))
+    yield "error Voronoi coplanar", lambda: S.Voronoi(a(plane[:16]))
+    yield "error Voronoi too few", lambda: S.Voronoi(a(dup[:3]))
+    yield "error Voronoi nan", lambda: S.Voronoi(a(np.array([[0.0, 0.0], [1.0, NAN], [0.0, 1.0]])))
+    yield "error Voronoi columns", lambda: S.Voronoi(a(np.zeros((5, 4))))
+    yield "error Voronoi qhull_options", lambda: S.Voronoi(a(grid), qhull_options="Qbb")
