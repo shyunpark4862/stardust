@@ -191,6 +191,27 @@ def test_parametric_and_polar_keep_the_plane_square():
     assert rose.info[0].kind == "polar" and rose.info[0].ylim is None
 
 
+def test_a_plane_curve_that_is_a_straight_line_keeps_a_wide_cell():
+    """polar(1 / cos t) is the line x = 1: its x values differ by rounding only, and with equal
+    units the cell would have no width. The flat direction takes the other's span around the
+    line, and a curve that is one point takes a unit both ways."""
+    th = _figure.THEMES["paper"]
+    fig = P.polar(lambda t: 1 / sd.cos(t), 0, 2 * math.pi)
+    (x0, x1), (y0, y1) = (_figure._range(fig._cell, axis, th) for axis in "xy")
+    assert x1 - x0 == pytest.approx(y1 - y0, rel=1e-9) and y1 - y0 > 10.0
+    assert 0.5 * (x0 + x1) == pytest.approx(1.0, abs=1e-9)
+    ticks = _figure._axis(fig._cell, "x", 150.0, th).ticks
+    assert len(ticks) >= 3 and len(set(ticks)) == len(ticks)
+    flat = P.parametric(lambda t: t, lambda t: 2 + 0 * t, 0, 4)  # the line y = 2
+    (x0, x1), (y0, y1) = (_figure._range(flat._cell, axis, th) for axis in "xy")
+    assert x1 - x0 == pytest.approx(y1 - y0, rel=1e-9) and 0.5 * (y0 + y1) == pytest.approx(2.0)
+    dot = P.parametric(lambda t: 1 + 0 * t, lambda t: 2 + 0 * t, 0, 1)
+    (x0, x1), (y0, y1) = (_figure._range(dot._cell, axis, th) for axis in "xy")
+    assert x1 - x0 == pytest.approx(y1 - y0) and x0 < 1.0 < x1 and y0 < 2.0 < y1
+    circle = P.parametric(sd.cos, sd.sin, 0, 2 * math.pi)  # nothing flat: the values' own range
+    assert circle._cell.layers[0].held == ()
+
+
 def test_level_curves_lie_on_their_level_and_close():
     fig = P.implicit(lambda x, y: x * x + y * y, -2, 2, -2, 2, level=1.0)
     layer = fig._cell.layers[0]

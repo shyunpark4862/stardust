@@ -10,6 +10,8 @@ import inspect
 import pathlib
 import re
 
+import pytest
+
 import stardust as sd
 
 from .._api_doc import signature_blocks
@@ -105,3 +107,31 @@ def test_documented_signatures_follow_the_rules():
         if "**figure" in parts:
             assert parts[-1] == "**figure" and cls is None, name
         assert len(positional) == len(set(positional))
+
+
+def test_call_shape_errors_read_as_the_other_areas_do():
+    """A wrong call shape of a module function or of Figure(...) is "name(): ..." without Python's
+    "got an", as in every area; a Figure method, a small method, keeps Python's form."""
+    P = sd.plot
+    cases = [
+        (lambda: P.line([1.0], [2.0], foo=1), "line(): unexpected keyword argument 'foo'"),
+        (lambda: P.surface(foo=1), "surface(): unexpected keyword argument 'foo'"),
+        (lambda: P.scatter([1.0]), "scatter(): missing 1 required positional argument: 'y'"),
+        (lambda: P.hline(1.0, 2.0), "hline(): takes 1 positional argument but 2 were given"),
+        (lambda: P.Figure(foo=1), "Figure(): unexpected keyword argument 'foo'"),
+        (lambda: P.Figure(89.0, 60.0), "Figure(): takes 0 positional arguments but 2 were given"),
+        (lambda: P.grid(), "grid(): missing 1 required positional argument: 'figures'"),
+        (lambda: P.grid([P.Figure()], 2), "grid(): takes 1 positional argument but 2 were given"),
+        (lambda: P.facet(None, "a", foo=1), "facet(): unexpected keyword argument 'foo'"),
+        (lambda: P.pairs(), "pairs(): missing 1 required positional argument: 'data'"),
+        (lambda: P.diagnostics(None, foo=1), "diagnostics(): unexpected keyword argument 'foo'"),
+        (lambda: P.Figure().xlabel(), "Figure.xlabel() missing 1 required positional argument: 'text'"),
+        (lambda: P.Figure().line([1.0], [2.0], foo=1), "Figure.line() got an unexpected keyword argument 'foo'"),
+    ]
+    for call, message in cases:
+        with pytest.raises(TypeError) as e:
+            call()
+        assert str(e.value) == message
+    # a TypeError raised inside the function is not a call-shape error and passes as it is
+    with pytest.raises(TypeError, match=r"^line\(\): 'width' must be an int or a float, not str$"):
+        P.line([1.0], [2.0], width="a")

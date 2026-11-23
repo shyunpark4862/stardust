@@ -3,6 +3,7 @@ surface, lines and points are tested against it, the box's axes are vector shape
 picture, and the picture is the same at any thread count."""
 
 import math
+import re
 import struct
 from array import array
 
@@ -10,7 +11,7 @@ import pytest
 
 import stardust as sd
 from stardust._core import plot as core
-from stardust.plot import _scene, _surface
+from stardust.plot import _scene, _surface, _text
 
 from . import figures
 
@@ -275,6 +276,32 @@ def test_3d_errors():
             call()
         assert str(e.value) == message, message
     assert math.isfinite(_surface.DISTANCE)
+
+
+def test_tick_labels_of_two_axes_keep_apart_at_a_corner():
+    """Where two axes of the box meet, the end tick labels of both would stand side by side or
+    one under the other and read as one number: the later axis's is left out, so labels of
+    different axes are a tick size apart sideways or 0.6 of it up and down."""
+    for make in (figures.hill, figures.crossing, figures.solids):
+        sc = make("serif")._root._build("t")
+        engine = _text.engine("serif")
+        groups, at = [], None
+        for item in sc.items:  # an axis is its line, its tick labels, then its tick marks
+            if isinstance(item, _scene.Text) and re.fullmatch(r"\$-?[0-9.]+\$", item.s):
+                if at is None:
+                    groups.append([])
+                    at = groups[-1]
+                w, h, d = engine.layout([item.s])[0].box(item.size)
+                at.append((item.x - w / 2, item.y - (h + d) / 2, item.x + w / 2, item.y + (h + d) / 2, item.size))
+            else:
+                at = None
+        assert len(groups) >= 3 and all(len(g) >= 2 for g in groups)
+        for i, g in enumerate(groups):
+            for other in groups[i + 1 :]:
+                for p in g:
+                    for q in other:
+                        gx, gy = max(p[0] - q[2], q[0] - p[2]), max(p[1] - q[3], q[1] - p[3])
+                        assert gx >= p[4] - 1e-9 or gy >= 0.6 * p[4] - 1e-9, (make.__name__, p, q)
 
 
 def test_a_3d_cell_is_laid_out_as_a_2d_cell():

@@ -74,6 +74,15 @@ for _name, _method in _stat.FIGURE_ONLY.items():  # they draw over an existing f
     setattr(Figure, _name, _basic.flat_only(_name, _method))
 del _name, _method
 
+from .. import _calls  # noqa: E402
+
+_calls.keyword_init(Figure)  # "Figure(): unexpected keyword argument 'foo'"
+grid = _calls.function(grid)
+facet = _calls.function(facet)
+pairs = _calls.function(pairs)
+diagnostics = _calls.function(diagnostics)
+del _calls
+
 __all__ = [
     "Figure",
     "annotate",

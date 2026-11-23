@@ -10,6 +10,7 @@ import functools
 import inspect
 import math
 
+from .. import _calls
 from .. import _core as sd
 from .._core import _type_name
 from ..optimize._common import _as_array, _check_bool, _check_choice
@@ -496,20 +497,17 @@ def new_figure(who, options):
 
 
 def module_function(name, method):
-    """The module function of a Figure method: a new figure, then the method."""
+    """The module function of a Figure method: a new figure, then the method. A wrong call shape
+    is reported as the other areas report it ("line(): unexpected keyword argument 'foo'")."""
     sig = inspect.signature(method)
     params = list(sig.parameters.values())[1:]
-    own = inspect.Signature(params)
     public = inspect.Signature(params + [inspect.Parameter("figure", inspect.Parameter.VAR_KEYWORD)])
     names = {p.name for p in params if p.kind is inspect.Parameter.KEYWORD_ONLY}
+    bound = _calls.method(name)(method)
 
     def f(*args, **kw):
         options = {k: kw.pop(k) for k in list(kw) if k in FIGURE_OPTIONS and k not in names}
-        try:
-            own.bind(*args, **kw)
-        except TypeError as e:
-            raise TypeError(f"{name}(): {e}") from None
-        return method(new_figure(name, options), *args, **kw)
+        return bound(new_figure(name, options), *args, **kw)
 
     f.__name__ = f.__qualname__ = name
     f.__signature__ = public
@@ -604,8 +602,6 @@ def install(methods=None, flat=True):
     for name, method in (METHODS if methods is None else methods).items():
         method.__name__ = name
         method.__qualname__ = f"Figure.{name}"
-        if flat:
-            method = flat_only(name, method)
-        setattr(Figure, name, method)
-        out[name] = module_function(name, method)
+        setattr(Figure, name, flat_only(name, method) if flat else method)
+        out[name] = module_function(name, method)  # (a new figure holds no 3D plot to refuse)
     return out

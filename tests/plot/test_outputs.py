@@ -2,6 +2,7 @@
 the SVG: the same scene is the same bytes, the files are well formed, and (deep tier, with
 Ghostscript and rsvg-convert) the three outputs are the same picture."""
 
+import math
 import re
 import shutil
 import struct
@@ -73,6 +74,27 @@ def test_png_of_the_curve_looks_like_a_figure():
     assert px[:4] == b"\xff\xff\xff\xff"  # the white background
     colours = {px[i : i + 3] for i in range(0, len(px), 4)}
     assert bytes([0, 114, 178]) in colours and bytes([213, 94, 0]) in colours and b"\x00\x00\x00" in colours
+
+
+def test_png_draws_each_line_join_as_its_own():
+    """A right angle stroked with each join: the PNG's corner holds the miter's square, the round
+    join's quarter disc and the bevel's triangle (areas 1, pi/4 and 1/2 of the corner square)."""
+    from stardust.plot import _scene
+
+    def corner(join):
+        sc = _scene.Scene(20.0, 20.0)
+        sc.add(
+            _scene.Path(
+                *_scene.polyline([(4.0, 10.0), (10.0, 10.0), (10.0, 16.0)]), stroke=scenes.BLACK, width=4.0, join=join
+            )
+        )
+        w, h, px = _png.pixels(sc, 72)
+        assert (w, h) == (20, 20)
+        return sum(px[4 * (y * w + x) + 3] for y in (8, 9) for x in (10, 11)) / (4 * 255)
+
+    assert corner("miter") == pytest.approx(1.0, abs=0.01)
+    assert corner("round") == pytest.approx(math.pi / 4, abs=0.03)
+    assert corner("bevel") == pytest.approx(0.5, abs=0.01)
 
 
 def test_png_too_large():

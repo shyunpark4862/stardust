@@ -52,17 +52,21 @@ def _interval(who, a, b, na="a", nb="b"):
 
 
 class CurveLine(_layers.Line):
-    """A sampled curve: a line whose y extent is held to the range the sampler chose."""
+    """A sampled curve: a line whose y extent is held to the range the sampler chose. `held`:
+    the axes ("x", "y") whose extent is the clip range itself, wider than the values (a plane
+    curve that is a straight line along the other axis)."""
 
-    def __init__(self, x, y, color, width, style, label, yclip=None, xclip=None):
+    def __init__(self, x, y, color, width, style, label, yclip=None, xclip=None, held=()):
         super().__init__(x, y, color, width, style, label)
-        self.yclip, self.xclip = yclip, xclip
+        self.yclip, self.xclip, self.held = yclip, xclip, held
 
     def extent(self, axis, positive):
         e = super().extent(axis, positive)
         clip = self.xclip if axis == "x" else self.yclip
         if e is None or clip is None:
             return e
+        if axis in self.held:
+            return (clip[0], clip[1], ())
         lo, hi = max(e[0], clip[0]), min(e[1], clip[1])
         return (lo, hi, ()) if lo <= hi else (clip[0], clip[1], ())
 
@@ -195,11 +199,22 @@ def _plane(self, who, g, a, b, samples, refine, color, width, style, label):
         """The range of the first samples, without values that run far away (a pole), as
         function plots take it."""
         lo, hi, cut_lo, cut_hi = _sample.robust_range(v)
-        if not lo < hi:
-            lo, hi = lo - 0.5, hi + 0.5
         return (lo, hi), cut_lo or cut_hi
 
     (xr, xcut), (yr, ycut) = bulk(x0), bulk(y0)
+    # A curve that is a straight line along one axis (x = 1: its x values differ by rounding at
+    # most) has no width the other way; with equal units the cell would collapse. That axis takes
+    # the other's span around the line, or one unit when the curve is a single point.
+    size = max(xr[1] - xr[0], yr[1] - yr[0])
+    flat = [r[1] - r[0] <= 1e-9 * max(size, abs(r[0]), abs(r[1])) for r in (xr, yr)]
+    half = 0.5 * size if not all(flat) else 0.5
+    held = tuple(name for name, f in zip("xy", flat) if f)
+    if flat[0]:
+        mid = 0.5 * (xr[0] + xr[1])
+        xr, xcut = (mid - half, mid + half), True
+    if flat[1]:
+        mid = 0.5 * (yr[0] + yr[1])
+        yr, ycut = (mid - half, mid + half), True
     clip = (xr if xcut else None, yr if ycut else None)
     # one scale for both: the screen is the larger of the two extents, as the equal axes will be
     span = max(xr[1] - xr[0], (yr[1] - yr[0]) * _sample.W0 / _sample.H0)
@@ -207,7 +222,7 @@ def _plane(self, who, g, a, b, samples, refine, color, width, style, label):
     yr = (yr[0], yr[0] + span * _sample.H0 / _sample.W0)
     c = _sample.refine(g, t0, x0, y0, xr, yr, depth)
     x, y = _sample.with_breaks(c)
-    self._cell.layers.append(CurveLine(x, y, c0, width, style, label, clip[1], clip[0]))
+    self._cell.layers.append(CurveLine(x, y, c0, width, style, label, clip[1], clip[0], held))
     self._cell.aspect = 1.0
     self._root._infos.append(
         PlotInfo(who, int(c.t.shape[0]), tuple(c.poles), tuple(c.jumps), None, (False, False), tuple(c.undefined), ())

@@ -254,10 +254,14 @@ def test_argument_errors():
             TypeError,
             "annotate(): 'xy' must be a pair of numbers (x, y), not tuple",
         ),
-        (lambda: P.line([1.0], [1.0], fontsize=3), TypeError, "line(): got an unexpected keyword argument 'fontsize'"),
-        (lambda: P.line([1.0]), TypeError, "line(): missing a required argument: 'y'"),
-        (lambda: P.line([1.0], [1.0], [2.0]), TypeError, "line(): too many positional arguments"),
-        (lambda: P.line(x=[1.0], y=[1.0]), TypeError, "line(): missing a required positional-only argument: 'x'"),
+        (lambda: P.line([1.0], [1.0], fontsize=3), TypeError, "line(): unexpected keyword argument 'fontsize'"),
+        (lambda: P.line([1.0]), TypeError, "line(): missing 1 required positional argument: 'y'"),
+        (lambda: P.line([1.0], [1.0], [2.0]), TypeError, "line(): takes 2 positional arguments but 3 were given"),
+        (
+            lambda: P.line(x=[1.0], y=[1.0]),
+            TypeError,
+            "line(): got some positional-only arguments passed as keyword arguments: 'x, y'",
+        ),
         (lambda: P.line([1.0], [1.0], font="mono"), ValueError, "line(): 'font' must be 'serif' or 'sans', not 'mono'"),
     ]
     for call, kind, message in cases:

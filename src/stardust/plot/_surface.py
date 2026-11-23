@@ -336,7 +336,7 @@ class Space(_layers.Layer):
 
         ts, tl = th["tick_size"], th["tick_len"]
         labels = self.labels()
-        placed = []  # the boxes of the tick labels set so far
+        placed = []  # (axis, box) of the tick labels set so far
         for k_, (a, b), out in axes:
             pa, pb = P(a), P(b)
             scene.add(_scene.Path(*_scene.polyline([pa, pb]), stroke=INK, width=th["axis_width"], cap="round"))
@@ -361,10 +361,16 @@ class Space(_layers.Layer):
                 r = abs(ux) * w / 2 + abs(uy) * (h + d) / 2
                 far = max(far, tl + 2.0 + 2 * r)
                 lx, ly = px + ux * (tl + 2.0 + r), py + uy * (tl + 2.0 + r)
-                rect = (lx - w / 2 - 1.5, ly - (h + d) / 2 - 1.0, lx + w / 2 + 1.5, ly + (h + d) / 2 + 1.0)
-                if any(rect[0] < q[2] and q[0] < rect[2] and rect[1] < q[3] and q[1] < rect[3] for q in placed):
-                    continue  # it would touch a label already set (where two axes meet): left out
-                placed.append(rect)
+                rect = (lx - w / 2, ly - (h + d) / 2, lx + w / 2, ly + (h + d) / 2)
+                # A label needs clear room around it: a little from its own axis's labels, and from
+                # another axis's (at a corner where two axes meet) enough that the two numbers are
+                # not read as one or as each other's.
+                if any(
+                    rect[0] - q[2] < gx and q[0] - rect[2] < gx and rect[1] - q[3] < gy and q[1] - rect[3] < gy
+                    for q, (gx, gy) in ((q, (3.0, 2.0) if n == k_ else (ts, 0.6 * ts)) for n, q in placed)
+                ):
+                    continue  # left out
+                placed.append((k_, rect))
                 scene.add(_scene.Text(s, lx, ly, size=ts, ha="center", va="center"))
             if ops:
                 scene.add(_scene.Path("".join(ops), xy, stroke=INK, width=th["axis_width"]))

@@ -11,6 +11,7 @@
 ### §1.1 호출 모양
 - **모든 그림 함수는 `Figure`를 돌려준다**(PL6). 전역 상태(지금 그림)가 없다. 화면에 띄우는 `show()`가 없다. 노트북은 셀의 마지막 값인 `Figure`를 그려 보인다(§2.4).
 - **자료와 주 인자는 위치로만, 옵션은 키워드로만** 받는다(API.md, DESIGN §8.1).
+- **틀린 호출 모양**은 함수 이름으로 시작한다(API.md §2.1): `line(): unexpected keyword argument 'foo'`, `Figure(): takes 0 positional arguments but 2 were given`, `grid(): missing 1 required positional argument: 'figures'`. 모듈 함수와 `Figure(...)`가 그렇고, `Figure`의 메서드는 Python의 꼴 그대로다(`Figure.xlabel() missing ...`).
 - **모듈 함수와 같은 이름의 `Figure` 메서드가 있다.** `fig.line(x, y)`는 `sd.plot.line(x, y)`와 같은 인자를 받고, 새 그림을 만드는 대신 `fig`의 칸에 층을 더한 뒤 `fig`를 돌려준다. 모듈 함수 `f(...)`는 `Figure(그림 옵션).f(...)`와 같다. 예외는 여러 칸을 스스로 만드는 함수(`grid`, `diagnostics`, `pairs`, `facet`)다. 이것들은 모듈 함수만 있다.
 - **그림 옵션**: 새 그림을 만드는 모든 모듈 함수가 `width=`, `height=`, `font=`, `theme=`, `palette=`를 받는다(§2.1의 `Figure`와 같은 뜻과 기본값). 아래 시그니처에는 `**figure`로 줄여 적는다. 메서드는 받지 않는다. 자기 인자로 `width`를 가진 함수(선 굵기: `line step hline vline function parametric polar implicit ecdf curve3d`, 막대·상자 너비: `bar boxplot`)에서는 `width=`가 그 인자다. 이 함수들의 그림 너비는 `Figure(width=...)`로 시작하거나 `size()`로 정한다.
 - **별칭이 없다.** matplotlib의 `plot`, `hist`, `imshow`, 짧은 색 이름 `'r'`, `lw=`·`ls=`·`c=` 같은 줄임 인자는 없다.
@@ -142,7 +143,7 @@ polar(r, a, b, /, *, samples=None, refine=None, color=None, width=None, style='-
 ```
 - `function`은 y = f(x)를 [a, b]에서 그린다. 표본은 굽은 곳에서 알아서 촘촘해지고, 극점과 뜀에서 선이 끊기며, y의 범위는 본체에 맞춰 잡힌다(설계 §4). `ylim=(low, high)`를 주면 자동 범위를 쓰지 않는다.
 - `asymptotes=True`는 찾은 극점마다 가는 세로 점선을 그린다(§10의 15).
-- `parametric`은 (fx(t), fy(t)), `polar`는 반지름 r(θ)의 곡선이다(θ는 라디안). 가로세로 비는 1:1로 둔다.
+- `parametric`은 (fx(t), fy(t)), `polar`는 반지름 r(θ)의 곡선이다(θ는 라디안). 가로세로 비는 1:1로 둔다. 곡선이 한 축에 나란한 직선이면(`polar(1/cos θ)`는 직선 x = 1) 폭이 없는 쪽의 축은 직선을 가운데 두고 다른 축과 같은 길이로 잡는다. 점 하나뿐이면 두 축 모두 길이 1이다.
 
 ### §4.3 음함수와 영역
 ```
@@ -176,7 +177,7 @@ parametric_surface(fx, fy, fz, u0, u1, v0, v1, /, *, mesh=True, color=None, cmap
 curve3d(fx, fy, fz, a, b, /, *, samples=None, refine=None, color=None, width=None, label=None, azimuth=None, elevation=None, perspective=True, **figure)
 scatter3d(x, y, z, /, *, data=None, group=None, color=None, size=None, label=None, azimuth=None, elevation=None, perspective=True, **figure)
 ```
-- 곡면은 음영과 격자선(`mesh`)이 있는 그림으로 굽고, 상자 축과 눈금과 글자는 벡터로 얹는다(PL9). `cmap`을 주면 높이로 색을 정하고, `color`를 주면 한 색에 음영만 준다. 둘 다 주지 않으면 칸에 곡면이 하나일 때는 `cmap='cool'`(아래 하늘색, 가운데 보라, 위 빨강)이고, 여럿일 때는 곡면마다 팔레트의 색을 차례로 받는다. 빛은 고정이다: 왼쪽 위 앞의 주광, 반대쪽의 보조광, 뒤쪽의 테두리광 셋이고, 넓은 광택과 또렷한 반사광이 얹힌다. 곡면의 두 면을 똑같이 밝힌다.
+- 곡면은 음영과 격자선(`mesh`)이 있는 그림으로 굽고, 상자 축과 눈금과 글자는 벡터로 얹는다(PL9). `cmap`을 주면 높이로 색을 정하고, `color`를 주면 한 색에 음영만 준다. 둘 다 주지 않으면 칸에 곡면이 하나일 때는 `cmap='cool'`(아래 하늘색, 가운데 보라, 위 빨강)이고, 여럿일 때는 곡면마다 팔레트의 색을 차례로 받는다. 빛은 고정이다: 왼쪽 위 앞의 주광, 반대쪽의 보조광, 뒤쪽의 테두리광 셋이고, 넓은 광택과 또렷한 반사광이 얹힌다. 곡면의 두 면을 똑같이 밝힌다. 상자의 꼭짓점에서 두 축의 끝 눈금 숫자가 가까이 서면(가로로 눈금 글자 크기, 세로로 그 0.6배 안) 뒤에 그리는 축의 숫자를 뺀다. 눈금 선은 남는다.
 - `mesh`는 격자선이다: `True`(한 방향 24칸), `False`, 또는 칸의 수. `contours`는 상자의 바닥에 그리는 등고선이다: `True`(수준 약 14개), `False`, 또는 수준의 수(눈금 규칙으로 고른다). 등고선은 곡면과 같은 색을 받는다.
 - `alpha`는 곡면의 불투명도다(0보다 크고 1 이하). 반투명한 곡면은 뒤의 것이 비치고, 여러 장이 겹치거나 서로 뚫고 지나가도 깊이 순서대로 비친다(12겹까지).
 - 꺾이는 곳, 극점의 옆구리, 정의역의 가장자리는 알아서 더 촘촘히 잰다(첫 격자의 16배까지). `f`는 그때마다 배열 하나로 불린다.

@@ -11,7 +11,7 @@ from stardust._core import plot as core
 ID = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
 RED = (1.0, 0.0, 0.0, 1.0)
 BUTT, ROUND, SQUARE = 0, 1, 2
-MITER, RJOIN = 0, 1
+MITER, RJOIN, BEVEL = 0, 1, 2
 
 
 def pack(*xy):
@@ -136,6 +136,24 @@ def test_miter_join_fills_the_corner_and_nothing_beyond():
     line(c, [4, 10, 10, 10, 10, 16], 4.0, join=RJOIN)
     a = alpha(c)
     assert 0 < a[8][11] < 255  # rounded
+
+
+def test_bevel_join_cuts_the_corner_straight():
+    """The outer corner square [10, 12] x [8, 10] of a right angle: a bevel fills the half on the
+    stroke's side of the diagonal, less than the round join and the miter."""
+    shots = {}
+    for join in (MITER, RJOIN, BEVEL):
+        c = core.Canvas(20, 20)
+        line(c, [4, 10, 10, 10, 10, 16], 4.0, join=join)
+        shots[join] = alpha(c)
+    a = shots[BEVEL]
+    assert a[9][10] == 255 and a[8][11] == 0  # inside the cut, and the corner's tip beyond it
+    assert a[8][10] == pytest.approx(128, abs=1) and a[9][11] == pytest.approx(128, abs=1)  # halved by the diagonal
+    corner = lambda a: sum(a[y][x] for y in (8, 9) for x in (10, 11))  # noqa: E731
+    assert corner(shots[BEVEL]) < corner(shots[RJOIN]) < corner(shots[MITER])
+    assert all(
+        shots[BEVEL][y][x] == shots[MITER][y][x] for y in range(20) for x in range(20) if not (x >= 10 and y < 10)
+    )
 
 
 def test_closed_path_joins_at_its_start():
