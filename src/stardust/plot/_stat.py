@@ -842,6 +842,7 @@ class Counts(_field.Picture):
 
 
 _CORNERS = [(math.cos(math.radians(90 + 60 * k)), math.sin(math.radians(90 + 60 * k))) for k in range(6)]
+_REACH = (max(abs(u) for u, _ in _CORNERS), max(abs(v) for _, v in _CORNERS))  # sqrt(3)/2, 1
 
 
 class Hexes(_layers.Layer):
@@ -928,13 +929,25 @@ class Hexes(_layers.Layer):
             cell.colorbar = self.bar = (self.name, 0.0, top)
 
     def extent(self, axis, positive):
-        lo, hi = (self.box[0], self.box[1]) if axis == "x" else (self.box[2], self.box[3])
-        if positive and not lo > 0.0:  # a log axis: from the lowest hexagon on it
-            low = [v for v in (self.cx if axis == "x" else self.cy) if v > 0.0]
-            if not low or not hi > 0.0:
+        """The box, wider where the hexagons reach past it (those centred on its edge, or past it,
+        stand half outside), so that none is cut; on a log axis in the logarithms the hexagons
+        are counted in, and from the lowest hexagon when the box does not start above zero."""
+        along = axis == "x"
+        lo, hi = (self.box[0], self.box[1]) if along else (self.box[2], self.box[3])
+        centres = self.cx if along else self.cy
+        reach = self.rx * _REACH[0] if along else self.ry * _REACH[1]  # a corner's farthest from the centre
+        if self.scales[0 if along else 1]:
+            ends = [(c * 10.0**-reach, c * 10.0**reach) for c in centres]
+        else:
+            ends = [(c - reach, c + reach) for c in centres]
+        if positive:
+            ends = [(a, b) for a, b in ends if a > 0.0]
+            if not hi > 0.0 or not (lo > 0.0 or ends):
                 return None
-            log = self.scales[0 if axis == "x" else 1]
-            lo = min(low) * 10.0 ** -(self.rx if axis == "x" else self.ry) if log else min(low)
+            if not lo > 0.0:
+                lo = min(a for a, _ in ends)
+        if ends:
+            lo, hi = min(lo, min(a for a, _ in ends)), max(hi, max(b for _, b in ends))
         return (lo, hi, ())
 
     def draw(self, fr):

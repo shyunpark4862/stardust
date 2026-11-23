@@ -874,7 +874,7 @@
 
 # 그림 영역 (sd.plot)
 
-> 상태: **완료** (PL0–PL9, 2026-11-23; 사용자 승인). 기본 그림, 함수 그림, 통계 그림, 3D에 더해 디자인 손질(기본 색 jco·cool, 범례 자리, 2D와 3D의 배치, MuPAD 꼴의 조명), 반투명 곡면, 적응형 표본과 그 조절 인자, 카메라의 자동 선택까지 들어갔다(docs/design/plot.md PL38, PL41–PL47). 설계는 [docs/design/plot.md](docs/design/plot.md), API는 [docs/api/plot.md](docs/api/plot.md)다. 커밋은 c6eb9ab, 74d6118, d408a9b, f80ddd4다.
+> 상태: **완료** (PL0–PL9, 2026-11-23; 사용자 승인). 기본 그림, 함수 그림, 통계 그림, 3D에 더해 디자인 손질(기본 색 jco·cool, 범례 자리, 2D와 3D의 배치, MuPAD 꼴의 조명), 반투명 곡면, 적응형 표본과 그 조절 인자, 카메라의 자동 선택까지 들어갔다(docs/design/plot.md PL38, PL41–PL47). 그 뒤 사이트가 찾은 이상과 리뷰를 고치고 벡터장, 2차원 히스토그램, 값 배열, 막대 옵션, 칸 맞추기·facet·쌍둥이 축·작은 그림을 더했다(PL48–PL52). 설계는 [docs/design/plot.md](docs/design/plot.md), API는 [docs/api/plot.md](docs/api/plot.md)다. 커밋은 c6eb9ab, 74d6118, d408a9b, f80ddd4, 8832c53, a741a97, dc3a4e2, 317848c, b3d435a다.
 
 ## 진행 원칙
 - 큰 결정(사용자, 2026-11-22): 수학 함수의 그림과 논문 그림의 두 갈래를 한 바닥 위에; 자체 렌더러; 함수가 `Figure`를 돌려주는 꼴; 모든 글자는 LaTeX; 글꼴 두 벌; 3D는 깊이 버퍼의 그림에 벡터 축; 출력 PDF·SVG·PNG; 상호작용 없음; 성능은 노트북에서 그림 한 장의 반응 시간으로 잰다 (docs/design/plot.md §1.1 PL1–PL17).
@@ -894,6 +894,85 @@
 | PL7 3D: `surface parametric_surface curve3d scatter3d` | 완료 |
 | PL8 성능과 일관성 점검: 큰 자료, 병렬 점 찍기, 속도 사례 | 완료·승인 |
 | PL9 문서: API 문서의 확정 | 완료 (2026-11-23) |
+| 디자인 손질: 두 변수 함수의 적응형 표본, 반투명 곡면, 저수준으로 옮김, 3D 삼각형 자르기, 표본의 조절 인자, MuPAD 꼴의 곡면, 카메라의 자동 선택, 3D 출력의 속도(PL38, PL41–PL47) | 완료·승인(2026-11-23) |
+| 사이트가 찾은 이상 R302–R351과 고도화: 막대 옵션, 값 배열, `hist2d hexbin`, `vectorfield streamlines`, `grid`의 축 맞추기, `facet twin inset`(PL48–PL52) | 완료(2026-11-23) |
+| 리뷰 수정 R322·R360 | 완료(2026-11-23) |
+| 리뷰 수정 R363–R391(R364·R367·R368·R370 뺌) | 완료(2026-11-23) |
+| R364·R367·R368·R370의 결정 | 완료(사용자 결정 2026-11-23) |
+| `hexbin` 가장자리의 육각형이 틀에 잘리지 않게 | 완료(2026-11-23) |
+
+## 마일스톤
+
+### PL0. 준비 — 완료(2026-11-22)
+- 결정(추천안, 사용자 승인 2026-11-22): docs/design/plot.md §1.1 PL18–PL22(크기는 mm, 글자와 선은 pt; 기본 글꼴은 세리프; `sd.plot.histogram` 그대로, API.md §6에 적음; 고치는 메서드는 `fig`를 돌려줌; 글자 캐시는 `~/Library/Caches/stardust/plot/`에 TeX의 판과 머리말을 키로). 큰 결정 PL1–PL17(두 갈래, 자체 렌더러, `Figure`를 돌려주는 꼴, 모든 글자는 LaTeX, 글꼴 두 벌, 글자의 두 길 등)은 사용자가 정했다.
+- 결과: docs/api/plot.md 초안(모든 공개 이름의 시그니처), 탐침 tools/plot_probe.py(머리말 두 벌, 미리 구운 포맷, 숫자 늘어놓기, 두 길의 상자 크기). 영역 등록(`bench/areas.py`, ARCHITECTURE, API.md의 색인)은 PL1로 미뤘다: 목록에 이름이 들어가면 골든·속도·테스트 도구가 이 영역의 파일을 찾는데 PL0에는 코드가 없고, 같은 체크아웃에서 spatial의 등록과 겹친다(docs/design/plot.md §7).
+- 찾은 것(docs/design/plot.md §3.2; 문자열 14개): pdfLaTeX는 포맷 없이 123–153 ms, 미리 구운 포맷으로 92 ms(문자열 1개도 같다: 프로세스를 띄우는 값), XeLaTeX(한글 길, 문자열 18개)는 290–334 ms다. `dvisvgm`은 쪽 수와 거의 무관하게 부를 때마다 약 0.29초가 들어(DVI 1쪽 290 ms, 14쪽 310–340 ms; XDV는 455–720 ms) 그림 하나의 새 문자열을 한 번에 넘기게 했다. 두 길에서 같은 영문 문자열의 너비는 같고, 높이와 깊이는 세리프 0.07 pt, 산세리프 0.15 pt까지 다르다(산세리프의 `$\sin x$`는 0.43 pt). newtxsf는 XeLaTeX에서 돌고, 시스템 글꼴은 이름이 아니라 파일 경로로 줘야 newtx와 함께 찾는다.
+
+### PL1. 장면과 글자 — 완료(2026-11-22)
+- 결정(위임 2026-11-22): docs/design/plot.md §1.1 PL23(성능이 먼저: 글리프 단위 캐시, 두 길과 윤곽선 받기를 함께 돌림), PL24(모든 문자열을 10pt로 한 번 조판하고 비례로 늘임), PL25(장면의 단위는 bp, 원점은 왼쪽 위), PL31(자료에서 온 문자열만 LaTeX 특수 문자를 숨김), §10의 9(눈금 숫자는 수식 꼴)·10(TeX가 없거나 조판이 실패하면 에러).
+- 결과: src/stardust/plot/(_scene.py: 장면과 JSON, _svg.py, _text.py: 두 길·디스크 캐시·숫자 늘어놓기, _dvi.py: DVI·XDV·TFM 읽기, _svgpath.py), 영역 등록(`bench/areas.py`의 `plot`, `bench/accuracy/sources.py`에서 뺌, ARCHITECTURE, API.md의 색인), 고정한 글자 기록 tests/plot/data/text(tools/plot_text.py가 만든다; 테스트는 TeX 없이 읽는다), 손으로 지은 장면 tests/plot/scenes.py, 실제 TeX를 부르는 tests/plot/test_text_tex.py(deep 등급).
+- 찾은 것(docs/design/plot.md §3.2; 문자열 15개, 한글 라벨 하나, 수식 둘인 표본 그림): `dvisvgm`의 0.29초를 없애려고 배치는 DVI에서 직접 읽고 윤곽선은 처음 보는 (글꼴, 코드)만 받게 바꿨다. 캐시가 빈 첫 그림 0.95–1.2초, 같은 그림 다시 1 ms, 새 프로세스에서 캐시가 있으면 2 ms, 아는 글리프의 새 영문·수식 라벨 약 0.1초(탐침의 0.4초에서), 새 한글 라벨 0.31–0.39초, 새 숫자 200개 0.6–0.8 ms다. 직접 늘어놓은 숫자는 TeX의 배치와 글리프 자리까지 sp 단위로 같다. `dvisvgm`이 같은 글리프에 적는 `<use>` 별칭을 따라가지 않으면 빼기표와 근호가 빈다.
+
+### PL2. 래스터와 PDF — 완료(2026-11-22)
+- 결정(위임 2026-11-22): docs/design/plot.md §1.1 PL26(획은 자신의 윤곽 다각형으로 바꿔 채움과 같은 정확한 면적 계산으로 그린다), PL27(sRGB 값 그대로 섞는다).
+- 결과: C++ csrc/plot/raster.cpp·raster.hpp(면적 덮임을 정확히 쌓는 주사선, 획의 윤곽, 점 찍기, 그림 붙이기, 줄 묶음의 스레드풀), csrc/bind/plot_bind.cpp, src/stardust/plot/(_png.py, _pdf.py: 경로·채움·획·자르기·투명도·그림만 쓰는 자체 PDF), 노트북 표시, 테스트 tests/plot/test_raster.py·test_outputs.py. 골든은 PNG 파일이 아니라 픽셀 버퍼의 해시를 본다(zlib의 판과 무관).
+- 찾은 것: 조각마다 덮임을 어림해 가장 큰 값을 고르는 첫 획 그리기는 픽셀보다 짧은 선분이 많으면 흐려져 버렸다(PL26). 자체 PNG는 Cairo(rsvg)가 구운 SVG와 평균 0.45단계(255 중)만 다르다(PL27, §8).
+
+### PL3. 축과 배치 — 완료(2026-11-22)
+- 결정(위임 2026-11-22): docs/design/plot.md §1.1 PL28(확장 Wilkinson 눈금, 가로 36 bp·세로 30 bp마다 하나쯤, 범위는 자료에서 4% 넓히되 막대의 바닥은 넓히지 않음), PL29(테마 `paper boxed grid`, 기본 범주 색 `'jco'`는 후보 여덟을 그려 보이고 사용자가 골랐다, 채운 도형은 42% 옅게, 부드러운 검정 0.13), PL30(범례 `'best'`는 칸에 그려진 것을 성긴 격자에 칠해 보고 가리지 않는 구석을 고르고, 없으면 칸 밖; 닿는 x 눈금 글자는 줄이거나 40° 기울임).
+- 결과: src/stardust/plot/(_ticks.py, _figure.py: `Figure`·칸·척도·배치·범례·내보내기, _color.py: 팔레트와 연속 색, _layers.py), 테스트 tests/plot/test_figure.py(요청한 크기, 눈금의 성질).
+- 찾은 것: 기본 테마의 세부(§10의 12)와 글자 크기는 갤러리를 보고 사용자가 지금 값으로 승인했다(2026-11-23).
+
+### PL4. 기본 그림 — 완료(2026-11-22)
+- 결정: docs/design/plot.md §1.1 PL21(고치는 메서드는 `fig`를 돌려줌), PL31.
+- 결과: 공개 이름 `Figure line scatter bar area step errorbar hline vline text annotate grid`, src/stardust/plot/_basic.py(그림 함수, 자료 인자 읽기, `grid`, 모듈 함수 만들기)와 _layers.py(층과 점 기호), 테스트 tests/plot/test_basic.py, 본보기 그림 tests/plot/figures.py, 골든 사례 tests/golden/cases_plot.py.
+
+### PL5. 함수 그림 — 완료(2026-11-22)
+- 결정(위임 2026-11-22): docs/design/plot.md §1.1 PL32(첫 격자 257점, 화면에서 4°보다 꺾이면 반으로 10번까지·4만 점까지, 정의역 끝은 이분, 극점과 뜀을 가려 끊음), PL33(범위는 10–90% 분위수 폭의 4배보다 달아난 쪽만 자름), PL34(`f`는 배열을 받는 함수만, x의 범위는 언제나 줌, `asymptotes=True`, `xticks('pi')`), PL35(320 × 240 격자의 marching squares와 할선법 한 걸음, 밀도와 위상 그림은 480 × 360), PL36(평면 곡선·음함수·영역·위상 그림의 칸은 같은 비율).
+- 결과: 공개 이름 `function parametric polar implicit region contour density phase`, src/stardust/plot/(_sample.py: 곡선의 적응 표본, _function.py: `PlotInfo`, _field.py), 테스트 tests/plot/test_function.py(tan, 1/x, Γ, sin(1/x)의 극점과 불연속).
+
+### PL6. 통계 그림과 결과 객체 — 완료(2026-11-22)
+- 결정: docs/design/plot.md §1.1 PL20, PL37(`compare`는 주어진 결과의 p값만 그리고 괄호는 자료 위에 쌓음, 다중 비교는 가까운 짝이 아래), PL15(없는 계산: 밀도 곡선과 바이올린은 `sd.stats`에 핵밀도추정이 생기면 넣는다).
+- 결과: 공개 이름 `histogram ecdf boxplot strip qq heatmap pairs coefficients diagnostics distribution`과 메서드 `compare fit`, src/stardust/plot/_stat.py, 테스트 tests/plot/test_stat.py(그림의 수가 `sd.histogram`·`sd.quantile`·분포의 `icdf`가 주는 수와 같은지).
+
+### PL7. 3D — 완료(2026-11-22)
+- 결정(위임 2026-11-22): docs/design/plot.md §1.1 PL38(그물 120 × 120칸, 화소마다 3 × 3 표본의 깊이 버퍼, 두 면이 같은 밝기, 깊이 검사를 받는 격자선, 상자의 투영이 칸을 채우는 배치, z = f(x, y)의 상자 1 : 1 : 0.72, `zlabel`). 칸에 곡면이 하나일 때의 기본 색은 이때 viridis였고 PL45에서 `cool`이 됐다.
+- 결과: 공개 이름 `surface parametric_surface curve3d scatter3d`, C++ csrc/plot/zbuffer.cpp·zbuffer.hpp(삼각형, 깊이 검사를 받는 선과 원판, 음영, 초과 표본), src/stardust/plot/_surface.py(카메라, 상자 축), 테스트 tests/plot/test_surface.py.
+
+### PL8. 성능과 일관성 점검 — 완료·승인(2026-11-22)
+- 결정(위임 2026-11-22): docs/design/plot.md §1.1 PL39(8천 점이 넘는 선은 0.05 bp 열마다 처음·최소·최대·마지막만, 2만 개가 넘는 점 묶음은 SVG·PDF 안에서 그림 한 장, 점 찍기·그림 붙이기·3D는 고정 크기의 줄 띠로 스레드풀), PL40(골든은 요약과 장면·SVG·PDF·픽셀의 해시, 손으로 지은 장면 둘만 전체).
+- 결과: 속도 사례 bench/speed/cases/plot.py(선·점·곡면·밀도 7크기 × 배치·PNG 300 dpi·SVG·PDF의 28개와 함수 그림의 표본 5개), 골든 사례 173개, 메시지·시그니처의 영역 간 일관성.
+- 찾은 것(docs/design/plot.md §9.1; 글자가 캐시에 있는 그림, 10스레드): 선 1천 점은 배치 0.3 ms, PNG 16 ms, SVG 1.4 ms, PDF 2.1 ms; 점 100만 개는 PNG 60 ms(1스레드 284 ms); 곡면 3D는 PNG 36 ms. PL8 전에는 점 100만 개의 PNG가 500 ms, 선 100만 점이 484 ms였다(PL39가 줄였다; 지금 26 ms). PNG 시간의 절반 넘게가 zlib의 압축이다(선 1천 점: 굽기 3 ms, 압축 9 ms). 함수 그림의 표본은 sin 0.04 ms, tan 0.2 ms, sin(1/x) 2.2 ms, 음함수(하트) 2.5 ms, 등고선 8수준 11 ms다. 새 캐시의 첫 그림은 약 1.4초, 새 라벨이 든 그림은 약 0.1초, 캐시에 있는 그림은 5–10 ms다.
+
+### PL9. 문서 — 완료(2026-11-23)
+- 결과: docs/api/plot.md 확정, docs/design/plot.md를 구현대로 고침, `tests/plot/test_api_surface.py`가 시그니처 블록을 읽는다. 커밋 c6eb9ab(PL0–PL8과 PL41–PL43, 파일 78개), 8832c53(두 문서와 API.md의 색인, 이 절을 완료·승인으로).
+- 찾은 것: 위임 뒤 사용자의 눈으로 정하기로 남긴 셋이 정해졌다: 기본 테마의 세부와 글자 크기는 지금 값으로 승인, 3D의 기본 색과 빛은 MuPAD 본보기에 맞춘 뒤 `cool`(PL45). docs/design/plot.md §10에 남은 질문이 없다.
+
+### 디자인 손질 (PL38, PL41–PL47) — 완료·승인(2026-11-23)
+- 결정(사용자 요구와 위임 2026-11-22·23): docs/design/plot.md §1.1 PL41(곡면은 모자란 칸만 4 × 4로 두 번까지, 음함수·영역은 수준 둘레만 4배, 등고선 수준은 값의 대부분이 있는 범위, 공간 곡선은 카메라 화면에서 표본), PL42(반투명 곡면: 표본마다 앞의 반투명 조각을 12겹까지 깊이 순서로), PL43(marching squares와 SVG·PDF의 경로 문자열 `path_text`를 C++로), PL44(함수를 받는 모든 그림의 `samples`·`refine`), PL45(빛 셋과 광택 두 겹, 바닥 등고선 `contours=`, `mesh=`의 칸 수, 밝은 색띠 다섯과 어디서나 기본 `cool`, 극점을 가로지르는 삼각형은 그리지 않음), PL46(카메라를 주지 않으면 방위각 여덟 × 고도 셋에서 곡면의 보이는 넓이로 고름), PL47(PNG 압축을 256 KB 조각으로 나란히, 노트북의 3D 그림은 한 번만 굽기), PL38의 갱신(기본 색 `cool`, 반투명 격자선의 알파).
+- 결과: C++ csrc/plot/levels.cpp(marching squares), zbuffer.cpp(높이 범위의 두 평면에서 삼각형을 자르고 투영, 빛과 광택, 시점 점수 `view_scores`), src/stardust/plot/(_adapt.py, _surface.py의 `SHADE`, _color.py의 `CMAP`, _png.py). 커밋 c6eb9ab(PL41–PL43), 74d6118(삼각형 자르기), d408a9b(PL44, PL45), f80ddd4(PL46, PL47).
+- 찾은 것: 원근에서 긴 삼각형을 화면의 높이 보간으로 자르면 극점 옆에서 상자 위로 가시가 섰다(`kv`, `beta`; 74d6118). 등고선 한 장이 24 → 4 ms, 빽빽한 음함수 곡선이 17 → 2 ms, 빨리 변하는 함수의 채운 등고선이 670 → 52 ms다(SVG까지, PL43). 시점 후보는 C++에서 나란히 한 번에 약 1 ms다(PL46). 곡면 한 장의 PNG(200 dpi)가 30 → 20 ms, 노트북 표시가 45 → 24 ms다(PL47). PNG 조각은 크기로만 나누므로 스레드 수와 무관하게 같은 파일이다.
+
+### 사이트가 찾은 이상 R302–R351과 고도화 (PL48–PL52) — 완료(2026-11-23)
+- 결정(위임; 사용자의 고도화 요구 2026-11-23): docs/design/plot.md §1.1 PL48(R302–R351 50건의 정리), PL49(`vectorfield`와 `streamlines`, 흐름선은 C++의 2차 Runge–Kutta와 거친 칸 격자), PL50(`bar`의 `gap stack err annotate`, `heatmap`의 `annotate` 서식), PL51(`implicit region contour density surface`가 2차원 값 배열을 받음, `hist2d`, `hexbin`; 흩어진 점의 곡면은 하지 않음), PL52(`grid(sharex=, sharey=)`, `facet`, `Figure.twin()`, `Figure.inset()`).
+- 결과: 공개 이름 다섯(`facet hexbin hist2d streamlines vectorfield`)을 더해 39개, C++ csrc/plot/streams.cpp·streams.hpp, raster.cpp의 짝홀 채우기와 `simplify`(Ramer–Douglas–Peucker), src/stardust/plot/_facet.py, 테스트 함수 135 → 151, 골든 사례 173 → 181, 고정한 글자 기록의 갱신. 커밋 a741a97.
+- 찾은 것: 범례 `'best'`가 고른 구석이 그리기에 쓰이지 않았고, `grid`가 칸을 복사하지 않았고, 노트북이 두 꼴을 다 만들었다. 영역과 채운 등고선을 격자 바깥을 한 겹 감싼 닫힌 고리의 짝홀 규칙으로 칠하고 수준선을 같은 고리에서 상자 가장자리를 뺀 것으로 그려 칠과 선이 맞는다. 선과 윤곽에서 0.02 bp 안의 점을 솎아 원판 영역의 SVG가 227 → 12 KB다. 그 밖에 함수 그림의 범위(값이 거의 다 같은 함수, 정의역의 끝, 평면 곡선), 분포 그림(봉우리, 정수 눈금), `fit`(지수 표기, GLM의 연결 척도), `compare`(Dunnett, NaN, 로그 축), 한글과 라틴 글자 사이의 글루를 고쳤다.
+
+### 리뷰 수정 R322·R360 — 완료(2026-11-23)
+- 결과: 틀린 호출 모양의 에러가 공용 `_calls`의 꼴을 지난다(`line(): unexpected keyword argument 'foo'`), 3D 상자 모서리에서 부딪히는 눈금 숫자를 뺀다, `polar(1/cos t)`의 가로 범위가 너비 0이 되지 않는다, 빗각 이음(bevel)의 테스트. 골든 다섯(3D 그림 둘의 두 글꼴, 키워드 에러)을 다시 기록했다. 커밋 dc3a4e2.
+
+### 리뷰 수정 R363–R391 — 완료(2026-11-23)
+- 결과: 29건 가운데 25건을 고쳤다: 등고선 수준의 안장 칸(R389), `diagnostics`와 `facet`의 제목 기준선(R382), `facet`과 `boxplot`의 빈 눈금 글자(R390), 벡터장 화살표의 격자(R373), `pairs`의 배치(R388), 이미 색 막대가 있는 칸에 얹은 벡터장은 막대를 더하지 않음(R381), 값 배열의 화살표는 격자 점에 가운데를 맞추므로 상자 가장자리의 화살표가 나가는 만큼 축의 범위를 넓힘(R374), numpy 스칼라 인자. 문서: `grid`의 축 맞추기가 눈금을 한 번 고름, `facet`에서 `data`를 받지 않는 메서드, `twin()` 보기의 칸 설정, 노트북 PNG의 층(`heatmap`, `hist2d`), 분포 그림의 범위가 층의 요구. 골든 11개가 뜻한 대로 바뀌었다. 테스트 함수 156 → 169. 커밋 317848c.
+- 찾은 것: R364·R367·R368·R370은 결정이 필요해 그대로 두었다(다음 절).
+
+### R364·R367·R368·R370의 결정 — 완료(사용자 결정 2026-11-23)
+- 결정: docs/design/plot.md §1.1 PL51·PL52에 더함. 로그 축의 `hexbin`은 그릴 때 log10 좌표에서 다시 세어 육각형이 정육각형으로 보이고 0 이하의 값은 세지 않는다(R364). `range`가 없는 facet의 `hist2d`·`hexbin`은 모든 행의 상자 하나와 모든 칸의 가장 큰 개수 하나를 쓰고 색 막대는 마지막 칸에 하나다(R367). `facet`은 칸 64개를 넘으면 `ValueError`다(R368). 흰 바탕과의 대비가 1.25 미만인 선 범례 견본에 가는 회색 테두리를 두른다(R370).
+- 결과: src/stardust/plot/(_stat.py의 `Hexes.settle`, _facet.py, _figure.py, _layers.py, _color.py), 테스트 tests/plot/test_stat.py·test_figure.py. 커밋 b3d435a.
+
+### `hexbin` 가장자리의 육각형 — 완료(2026-11-23)
+- 결정: docs/design/plot.md §1.1 PL51·PL52에 더함. `Hexes.extent`가 상자와 육각형들의 꼭짓점을 합친 범위를 돌려준다(가로는 외접 반지름의 √3/2, 세로는 외접 반지름; 로그 축이면 육각형을 센 log10 좌표에서). facet의 칸들은 그 범위를 합치므로 어느 칸의 육각형도 틀에 잘리지 않는다.
+- 결과: src/stardust/plot/_stat.py(`Hexes.extent`), docs/api/plot.md §5, 테스트 tests/plot/test_stat.py의 `test_hexagons_on_the_edge_of_the_box_are_not_cut`(선형 축, 로그 축, facet에서 모든 꼭짓점이 그림 사각형 안; 범위가 상자와 꼭짓점의 합인지).
+- 찾은 것: 상자의 가장자리 값이 든 육각형의 가운데는 상자 위나 그 바로 밖(가로 반 칸, 세로 외접 반지름까지)에 서므로 상자를 반지름만큼만 넓혀서는 모자라고, 4%의 여백으로도 덮지 못했다(시험 자료에서 바꾸기 전 꼭짓점 23–24개가 틀 밖). 골든은 `figure/counted`의 두 글꼴만 바뀌었다(181개 가운데 2개, 1·3·10스레드 같음). 고정한 글자 기록에 새 문자열은 필요 없다.
 
 
 # 그래프 영역 (sd.graph)

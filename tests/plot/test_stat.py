@@ -453,6 +453,44 @@ def test_a_facet_counts_on_one_grid_with_one_colour_range():
     assert all(cell._cell.layers[0].box == (0.0, 4.0, 0.0, 6.0) for cell in own.axes)
 
 
+def _hexagon_corners(fig):
+    """Every hexagon's corners on the page, with the plotting area each is clipped to."""
+    out = []
+    for item in fig._root._build("test").items:
+        if isinstance(item, _scene.Path) and item.fill is not None and item.ops.startswith("MLLLLLZ"):
+            out.extend((item.xy[k], item.xy[k + 1], item.clip) for k in range(0, len(item.xy), 2))
+    return out
+
+
+def test_hexagons_on_the_edge_of_the_box_are_not_cut():
+    # points on the box's corners and edges: hexagons centred on the edge (or just past it)
+    xs = [0.0, 1.0, 0.0, 1.0, 0.5, 0.5, 0.0, 1.0, 0.25, 0.75, 0.37, 0.61]
+    ys = [0.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.5, 0.5, 1.0, 1.0, 0.43, 0.88]
+    lin = P.hexbin(xs, ys, size=6)
+    logs = P.hexbin([10.0**v for v in xs], [10.0 ** (2 * v) for v in ys], size=6).xscale("log").yscale("log")
+    df = sd.frame.DataFrame({"s": ["u"] * 6 + ["v"] * 6, "x": xs, "y": ys})
+    facet = P.facet(df, "s").hexbin("x", "y", size=6).figure
+    for fig in (lin, logs, facet):
+        corners = _hexagon_corners(fig)
+        assert len(corners) >= 6 * 10
+        for px, py, (x, y, w, h) in corners:
+            assert x - 1e-9 <= px <= x + w + 1e-9 and y - 1e-9 <= py <= y + h + 1e-9
+    # the range takes the box and the hexagons' corners (in decades on a log axis), nothing more
+    for fig, log in ((lin, False), (logs, True)):
+        hexes = fig._cell.layers[0]
+        for axis, centres, reach, k in (
+            ("x", hexes.cx, hexes.rx * math.sqrt(3.0) / 2.0, 0),
+            ("y", hexes.cy, hexes.ry, 2),
+        ):
+            lo, hi, sticky = hexes.extent(axis, log)
+            ends = [math.log10(c) if log else c for c in centres]
+            box = [math.log10(v) if log else v for v in hexes.box[k : k + 2]]
+            want = (min(box[0], min(ends) - reach), max(box[1], max(ends) + reach))
+            got = (math.log10(lo), math.log10(hi)) if log else (lo, hi)
+            assert got == pytest.approx(want, abs=1e-12) and sticky == ()
+            assert got[0] < box[0] and got[1] > box[1]  # hexagons centred on the box's edges reach past it
+
+
 def test_a_density_over_a_taller_layer_leaves_the_range_to_it():
     xs = sd.stats.Normal(mu=170.0, sigma=8.0).sample(200, rng=sd.random.default_rng(1))
     tallest = float(sd.max(sd.histogram(xs, bins=15, density=True).hist))
