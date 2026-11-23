@@ -2,8 +2,8 @@
  "schema": 1,
  "area": "special",
  "runs": {
-  "20261122-185357-1483fa0+": {
-   "commit": "1483fa0",
+  "20261122-185357-cab7091+": {
+   "commit": "cab7091",
    "dirty": true,
    "changed": [
     "API.md",
@@ -289,8 +289,8 @@
    },
    "comparators": {},
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/airy_ai",
@@ -347,8 +347,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/airy_aip",
@@ -405,8 +405,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/airy_bi",
@@ -463,8 +463,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/airy_bip",
@@ -521,8 +521,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/bdtr",
@@ -595,8 +595,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/bdtrc",
@@ -669,8 +669,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/beta",
@@ -776,8 +776,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/betainc",
@@ -850,8 +850,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/betaincc",
@@ -924,8 +924,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/betainccinv",
@@ -1006,8 +1006,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/betaincinv",
@@ -1088,8 +1088,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/betaln",
@@ -1149,8 +1149,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/binom",
@@ -1248,8 +1248,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/chdtr",
@@ -1318,8 +1318,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/chdtrc",
@@ -1388,8 +1388,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/chdtri",
@@ -1466,8 +1466,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/chndtr",
@@ -1540,8 +1540,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/chndtrc",
@@ -1614,8 +1614,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/chndtrix",
@@ -1696,8 +1696,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/digamma",
@@ -1817,8 +1817,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/ellipe",
@@ -1855,8 +1855,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/ellipk",
@@ -1893,8 +1893,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/entr",
@@ -1931,8 +1931,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/erf",
@@ -1983,8 +1983,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/erf_complex",
@@ -2025,8 +2025,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/erfc",
@@ -2077,8 +2077,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/erfc_complex",
@@ -2119,8 +2119,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/erfcinv",
@@ -2171,8 +2171,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/erfcx",
@@ -2209,8 +2209,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/erfcx_complex",
@@ -2251,8 +2251,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/erfinv",
@@ -2303,8 +2303,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/expi",
@@ -2355,8 +2355,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/expit",
@@ -2421,8 +2421,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/expn",
@@ -2476,8 +2476,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/fdtr",
@@ -2550,8 +2550,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/fdtrc",
@@ -2624,8 +2624,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/fdtri",
@@ -2706,8 +2706,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/gamma",
@@ -2772,8 +2772,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/gammainc",
@@ -2842,8 +2842,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/gammaincc",
@@ -2912,8 +2912,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/gammainccinv",
@@ -2990,8 +2990,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/gammaincinv",
@@ -3068,8 +3068,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/gammaln",
@@ -3189,8 +3189,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/hyp1f1",
@@ -3288,8 +3288,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/hyp2f1",
@@ -3361,8 +3361,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/i0",
@@ -3427,8 +3427,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/i0e",
@@ -3479,8 +3479,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/i1",
@@ -3545,8 +3545,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/i1e",
@@ -3597,8 +3597,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/iv",
@@ -3675,8 +3675,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/ive",
@@ -3730,8 +3730,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/j0",
@@ -3804,8 +3804,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/j1",
@@ -3878,8 +3878,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/jv",
@@ -3956,8 +3956,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/k0",
@@ -4022,8 +4022,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/k0e",
@@ -4074,8 +4074,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/k1",
@@ -4140,8 +4140,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/k1e",
@@ -4192,8 +4192,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/kv",
@@ -4262,8 +4262,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/kve",
@@ -4317,8 +4317,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/lambertw",
@@ -4355,8 +4355,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/lambertw_c0",
@@ -4393,8 +4393,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/lambertw_c1",
@@ -4431,8 +4431,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/lambertw_c4",
@@ -4469,8 +4469,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/lambertw_cm1",
@@ -4507,8 +4507,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/lambertw_m1",
@@ -4559,8 +4559,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/log_expit",
@@ -4625,8 +4625,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/log_ndtr",
@@ -4691,8 +4691,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/loggamma_complex",
@@ -4729,8 +4729,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/logit",
@@ -4795,8 +4795,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/nbdtr",
@@ -4869,8 +4869,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/nbdtrc",
@@ -4943,8 +4943,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/ncfdtr",
@@ -5021,8 +5021,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/ncfdtrc",
@@ -5099,8 +5099,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/ncfdtri",
@@ -5185,8 +5185,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/nctdtr",
@@ -5259,8 +5259,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/nctdtrc",
@@ -5333,8 +5333,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/nctdtrit",
@@ -5415,8 +5415,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/ndtr",
@@ -5481,8 +5481,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/ndtri",
@@ -5547,8 +5547,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/ndtri_exp",
@@ -5605,8 +5605,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/pdtr",
@@ -5675,8 +5675,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/pdtrc",
@@ -5745,8 +5745,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/polygamma",
@@ -5874,8 +5874,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/rel_entr",
@@ -5914,8 +5914,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/rgamma",
@@ -5952,8 +5952,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/stdtr",
@@ -6022,8 +6022,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/stdtrit",
@@ -6100,8 +6100,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/wofz",
@@ -6142,8 +6142,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/xlog1py",
@@ -6182,8 +6182,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/xlogy",
@@ -6222,8 +6222,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/y0",
@@ -6296,8 +6296,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/y1",
@@ -6370,8 +6370,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/yv",
@@ -6448,8 +6448,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/zeta",
@@ -6500,8 +6500,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "special/zeta_hurwitz",
@@ -6569,8 +6569,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   }
  ]
 }

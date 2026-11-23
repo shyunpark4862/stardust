@@ -2,8 +2,8 @@
  "schema": 1,
  "area": "array",
  "runs": {
-  "20261122-185357-1483fa0+": {
-   "commit": "1483fa0",
+  "20261122-185357-cab7091+": {
+   "commit": "cab7091",
    "dirty": true,
    "changed": [
     "API.md",
@@ -344,8 +344,8 @@
     }
    },
    "comparator_seconds": 60.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "array/acosh",
@@ -397,8 +397,8 @@
     }
    },
    "comparator_seconds": 60.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "array/asin",
@@ -450,8 +450,8 @@
     }
    },
    "comparator_seconds": 60.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "array/asinh",
@@ -503,8 +503,8 @@
     }
    },
    "comparator_seconds": 60.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "array/atan",
@@ -556,8 +556,8 @@
     }
    },
    "comparator_seconds": 60.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "array/atan2",
@@ -645,8 +645,8 @@
     }
    },
    "comparator_seconds": 60.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "array/atanh",
@@ -698,8 +698,8 @@
     }
    },
    "comparator_seconds": 60.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "array/cabs",
@@ -751,8 +751,8 @@
     }
    },
    "comparator_seconds": 60.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "array/cosh",
@@ -804,8 +804,8 @@
     }
    },
    "comparator_seconds": 60.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "array/exp",
@@ -893,8 +893,8 @@
     }
    },
    "comparator_seconds": 60.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "array/log",
@@ -946,8 +946,8 @@
     }
    },
    "comparator_seconds": 60.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "array/log10",
@@ -999,8 +999,8 @@
     }
    },
    "comparator_seconds": 60.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "array/log2",
@@ -1052,8 +1052,8 @@
     }
    },
    "comparator_seconds": 60.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "array/matmul",
@@ -1159,8 +1159,8 @@
     }
    },
    "comparator_seconds": 120,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "array/mean",
@@ -1266,8 +1266,8 @@
     }
    },
    "comparator_seconds": 120,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "array/pow",
@@ -1355,8 +1355,8 @@
     }
    },
    "comparator_seconds": 60.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "array/prod",
@@ -1432,8 +1432,8 @@
     }
    },
    "comparator_seconds": 120,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "array/sin",
@@ -1485,8 +1485,8 @@
     }
    },
    "comparator_seconds": 60.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "array/sinh",
@@ -1538,8 +1538,8 @@
     }
    },
    "comparator_seconds": 60.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "array/std",
@@ -1755,8 +1755,8 @@
     }
    },
    "comparator_seconds": 120,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "array/sum",
@@ -1952,8 +1952,8 @@
     }
    },
    "comparator_seconds": 120,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "array/tanh",
@@ -2005,8 +2005,8 @@
     }
    },
    "comparator_seconds": 60.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "array/var",
@@ -2222,8 +2222,8 @@
     }
    },
    "comparator_seconds": 120,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "array/vecdot",
@@ -2329,8 +2329,8 @@
     }
    },
    "comparator_seconds": 120,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   }
  ]
 }

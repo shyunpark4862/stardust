@@ -2,8 +2,8 @@
  "schema": 1,
  "area": "optimize",
  "runs": {
-  "20261122-185357-1483fa0+": {
-   "commit": "1483fa0",
+  "20261122-185357-cab7091+": {
+   "commit": "cab7091",
    "dirty": true,
    "changed": [
     "API.md",
@@ -326,8 +326,8 @@
     }
    },
    "comparator_seconds": 600,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "optimize/find_minimum",
@@ -365,8 +365,8 @@
     }
    },
    "comparator_seconds": 600,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "optimize/find_root",
@@ -420,8 +420,8 @@
     }
    },
    "comparator_seconds": 600,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "optimize/least_squares.lm",
@@ -497,8 +497,8 @@
     }
    },
    "comparator_seconds": 600,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "optimize/least_squares.trf",
@@ -552,8 +552,8 @@
     }
    },
    "comparator_seconds": 600,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "optimize/lsq_linear",
@@ -585,8 +585,8 @@
     }
    },
    "comparator_seconds": 600,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "optimize/minimize.bfgs",
@@ -653,8 +653,8 @@
     }
    },
    "comparator_seconds": 600,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "optimize/minimize.l-bfgs-b",
@@ -723,8 +723,8 @@
     }
    },
    "comparator_seconds": 600,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "optimize/minimize.nelder-mead",
@@ -773,8 +773,8 @@
     }
    },
    "comparator_seconds": 600,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "optimize/minimize.newton-cg",
@@ -810,8 +810,8 @@
     }
    },
    "comparator_seconds": 600,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "optimize/minimize.trust-exact",
@@ -865,8 +865,8 @@
     }
    },
    "comparator_seconds": 600,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "optimize/minimize.trust-ncg",
@@ -920,8 +920,8 @@
     }
    },
    "comparator_seconds": 600,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "optimize/minimize_scalar.bounded",
@@ -973,8 +973,8 @@
     }
    },
    "comparator_seconds": 600,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "optimize/minimize_scalar.brent",
@@ -1012,8 +1012,8 @@
     }
    },
    "comparator_seconds": 600,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "optimize/minimize_scalar.golden",
@@ -1051,8 +1051,8 @@
     }
    },
    "comparator_seconds": 600,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "optimize/nnls",
@@ -1084,8 +1084,8 @@
     }
    },
    "comparator_seconds": 600,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "optimize/root.hybr",
@@ -1119,8 +1119,8 @@
     }
    },
    "comparator_seconds": 600,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "optimize/root.lm",
@@ -1154,8 +1154,8 @@
     }
    },
    "comparator_seconds": 600,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "optimize/root_scalar.bisect",
@@ -1207,8 +1207,8 @@
     }
    },
    "comparator_seconds": 600,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "optimize/root_scalar.brentq",
@@ -1291,8 +1291,8 @@
     }
    },
    "comparator_seconds": 600,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "optimize/root_scalar.toms748",
@@ -1344,8 +1344,8 @@
     }
    },
    "comparator_seconds": 600,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   }
  ]
 }

@@ -2,8 +2,8 @@
  "schema": 1,
  "area": "spatial",
  "runs": {
-  "20261122-225345-3e3a1b4+": {
-   "commit": "3e3a1b4",
+  "20261122-225345-e13bcf5+": {
+   "commit": "e13bcf5",
    "dirty": true,
    "changed": [
     "API.md",
@@ -54,8 +54,8 @@
     "Boost in sd.special": "4682f44"
    }
   },
-  "20261123-013752-8832c53+": {
-   "commit": "8832c53",
+  "20261123-013752-2d72038+": {
+   "commit": "2d72038",
    "dirty": true,
    "changed": [
     "CMakeLists.txt",
@@ -120,8 +120,8 @@
     "optimize": "28d5e52d860b54463697743fb86962197c0c4b7e5a4b9a670ca0518d9d3588e8"
    }
   },
-  "20261123-214327-eed868f+": {
-   "commit": "eed868f",
+  "20261123-214327-4d483ad+": {
+   "commit": "4d483ad",
    "dirty": true,
    "changed": [
     "ROADMAP.md",
@@ -541,7 +541,7 @@
      ]
     }
    },
-   "run": "20261123-013752-8832c53+"
+   "run": "20261123-013752-2d72038+"
   },
   {
    "id": "spatial/barycentric",
@@ -1351,8 +1351,8 @@
     }
    },
    "comparator_seconds": 600.0,
-   "run": "20261123-214327-eed868f+",
-   "comparators_run": "20261123-214327-eed868f+"
+   "run": "20261123-214327-4d483ad+",
+   "comparators_run": "20261123-214327-4d483ad+"
   },
   {
    "id": "spatial/counting",
@@ -1405,7 +1405,7 @@
      ]
     }
    },
-   "run": "20261123-013752-8832c53+",
+   "run": "20261123-013752-2d72038+",
    "comparators": {
     "scipy": {
      "hamming": {
@@ -1471,7 +1471,7 @@
      }
     }
    },
-   "comparators_run": "20261122-225345-3e3a1b4+",
+   "comparators_run": "20261122-225345-e13bcf5+",
    "comparator_seconds": 120.0
   },
   {
@@ -1518,8 +1518,8 @@
     }
    },
    "comparator_seconds": 600.0,
-   "run": "20261123-214327-eed868f+",
-   "comparators_run": "20261123-214327-eed868f+"
+   "run": "20261123-214327-4d483ad+",
+   "comparators_run": "20261123-214327-4d483ad+"
   },
   {
    "id": "spatial/distances",
@@ -1781,7 +1781,7 @@
      ]
     }
    },
-   "run": "20261123-013752-8832c53+",
+   "run": "20261123-013752-2d72038+",
    "comparators": {
     "scipy": {
      "braycurtis": {
@@ -2202,7 +2202,7 @@
      }
     }
    },
-   "comparators_run": "20261122-225345-3e3a1b4+",
+   "comparators_run": "20261122-225345-e13bcf5+",
    "comparator_seconds": 120.0
   },
   {
@@ -2309,8 +2309,8 @@
     }
    },
    "comparator_seconds": 600.0,
-   "run": "20261123-214327-eed868f+",
-   "comparators_run": "20261123-214327-eed868f+"
+   "run": "20261123-214327-4d483ad+",
+   "comparators_run": "20261123-214327-4d483ad+"
   },
   {
    "id": "spatial/haversine",
@@ -2330,7 +2330,7 @@
      ]
     }
    },
-   "run": "20261123-013752-8832c53+",
+   "run": "20261123-013752-2d72038+",
    "comparators": {
     "sklearn": {
      "haversine": {
@@ -2347,7 +2347,7 @@
      }
     }
    },
-   "comparators_run": "20261122-225345-3e3a1b4+",
+   "comparators_run": "20261122-225345-e13bcf5+",
    "comparator_seconds": 120.0
   },
   {
@@ -2717,7 +2717,7 @@
      ]
     }
    },
-   "run": "20261123-013752-8832c53+"
+   "run": "20261123-013752-2d72038+"
   },
   {
    "id": "spatial/neighbors",
@@ -3086,7 +3086,7 @@
      ]
     }
    },
-   "run": "20261123-013752-8832c53+"
+   "run": "20261123-013752-2d72038+"
   },
   {
    "id": "spatial/sphere",
@@ -3155,7 +3155,7 @@
      ]
     }
    },
-   "run": "20261123-013752-8832c53+"
+   "run": "20261123-013752-2d72038+"
   },
   {
    "id": "spatial/voronoi_vertices",
@@ -4089,8 +4089,8 @@
     }
    },
    "comparator_seconds": 600.0,
-   "run": "20261123-214327-eed868f+",
-   "comparators_run": "20261123-214327-eed868f+"
+   "run": "20261123-214327-4d483ad+",
+   "comparators_run": "20261123-214327-4d483ad+"
   }
  ]
 }

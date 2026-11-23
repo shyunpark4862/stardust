@@ -2,8 +2,8 @@
  "schema": 1,
  "area": "linalg",
  "runs": {
-  "20261122-185357-1483fa0+": {
-   "commit": "1483fa0",
+  "20261122-185357-cab7091+": {
+   "commit": "cab7091",
    "dirty": true,
    "changed": [
     "API.md",
@@ -380,8 +380,8 @@
     }
    },
    "comparator_seconds": 120,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "linalg/det",
@@ -517,8 +517,8 @@
     }
    },
    "comparator_seconds": 120,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "linalg/eig",
@@ -642,8 +642,8 @@
     }
    },
    "comparator_seconds": 120,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "linalg/eigh",
@@ -779,8 +779,8 @@
     }
    },
    "comparator_seconds": 120,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "linalg/eigvals",
@@ -916,8 +916,8 @@
     }
    },
    "comparator_seconds": 120,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "linalg/eigvalsh",
@@ -1053,8 +1053,8 @@
     }
    },
    "comparator_seconds": 120,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "linalg/expm",
@@ -1100,8 +1100,8 @@
     }
    },
    "comparator_seconds": 120,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "linalg/inv",
@@ -1225,8 +1225,8 @@
     }
    },
    "comparator_seconds": 120,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "linalg/lstsq",
@@ -1323,8 +1323,8 @@
     }
    },
    "comparator_seconds": 120,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "linalg/lstsq_x",
@@ -1430,8 +1430,8 @@
     }
    },
    "comparator_seconds": 120,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "linalg/lu",
@@ -1517,8 +1517,8 @@
     }
    },
    "comparator_seconds": 120,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "linalg/lu_solve",
@@ -1604,8 +1604,8 @@
     }
    },
    "comparator_seconds": 120,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "linalg/qr",
@@ -1699,8 +1699,8 @@
     }
    },
    "comparator_seconds": 120,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "linalg/qr_pivoted",
@@ -1836,8 +1836,8 @@
     }
    },
    "comparator_seconds": 120,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "linalg/solve",
@@ -1961,8 +1961,8 @@
     }
    },
    "comparator_seconds": 120,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "linalg/solve_x",
@@ -2098,8 +2098,8 @@
     }
    },
    "comparator_seconds": 120,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "linalg/svd",
@@ -2235,8 +2235,8 @@
     }
    },
    "comparator_seconds": 120,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "linalg/svdvals",
@@ -2342,8 +2342,8 @@
     }
    },
    "comparator_seconds": 120,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   }
  ]
 }

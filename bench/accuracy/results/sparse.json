@@ -2,8 +2,8 @@
  "schema": 1,
  "area": "sparse",
  "runs": {
-  "20261122-185357-1483fa0+": {
-   "commit": "1483fa0",
+  "20261122-185357-cab7091+": {
+   "commit": "cab7091",
    "dirty": true,
    "changed": [
     "API.md",
@@ -256,8 +256,8 @@
     "Boost in sd.special": "4682f44"
    }
   },
-  "20261123-125304-317848c+": {
-   "commit": "317848c",
+  "20261123-125304-a7355c2+": {
+   "commit": "a7355c2",
    "dirty": true,
    "changed": [
     "API.md",
@@ -387,7 +387,7 @@
      ]
     }
    },
-   "run": "20261123-125304-317848c+",
+   "run": "20261123-125304-a7355c2+",
    "comparators": {
     "scipy": {
      "eigsh": {
@@ -480,7 +480,7 @@
      }
     }
    },
-   "comparators_run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-cab7091+",
    "comparator_seconds": 300.0
   },
   {
@@ -562,7 +562,7 @@
      ]
     }
    },
-   "run": "20261123-125304-317848c+",
+   "run": "20261123-125304-a7355c2+",
    "comparators": {
     "scipy": {
      "minres": {
@@ -639,7 +639,7 @@
      }
     }
    },
-   "comparators_run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-cab7091+",
    "comparator_seconds": 300.0
   },
   {
@@ -682,7 +682,7 @@
      ]
     }
    },
-   "run": "20261123-125304-317848c+",
+   "run": "20261123-125304-a7355c2+",
    "comparators": {
     "scipy": {
      "expm": {
@@ -733,7 +733,7 @@
      }
     }
    },
-   "comparators_run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-cab7091+",
    "comparator_seconds": 60.0
   },
   {
@@ -809,7 +809,7 @@
      ]
     }
    },
-   "run": "20261123-125304-317848c+",
+   "run": "20261123-125304-a7355c2+",
    "comparators": {
     "scipy": {
      "1": {
@@ -926,7 +926,7 @@
      }
     }
    },
-   "comparators_run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-cab7091+",
    "comparator_seconds": 60.0
   },
   {
@@ -969,7 +969,7 @@
      ]
     }
    },
-   "run": "20261123-125304-317848c+",
+   "run": "20261123-125304-a7355c2+",
    "comparators": {
     "scipy": {
      "solve": {
@@ -1020,7 +1020,7 @@
      }
     }
    },
-   "comparators_run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-cab7091+",
    "comparator_seconds": 60.0
   },
   {
@@ -1052,7 +1052,7 @@
      ]
     }
    },
-   "run": "20261123-125304-317848c+",
+   "run": "20261123-125304-a7355c2+",
    "comparators": {
     "scipy": {
      "matvec": {
@@ -1103,7 +1103,7 @@
      }
     }
    },
-   "comparators_run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-cab7091+",
    "comparator_seconds": 60.0
   },
   {
@@ -1146,7 +1146,7 @@
      ]
     }
    },
-   "run": "20261123-125304-317848c+",
+   "run": "20261123-125304-a7355c2+",
    "comparators": {
     "scipy": {
      "row_sums": {
@@ -1219,7 +1219,7 @@
      }
     }
    },
-   "comparators_run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-cab7091+",
    "comparator_seconds": 60.0
   }
  ]

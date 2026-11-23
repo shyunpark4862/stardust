@@ -2,8 +2,8 @@
  "schema": 1,
  "area": "integrate",
  "runs": {
-  "20261122-185357-1483fa0+": {
-   "commit": "1483fa0",
+  "20261122-185357-cab7091+": {
+   "commit": "cab7091",
    "dirty": true,
    "changed": [
     "API.md",
@@ -490,8 +490,8 @@
     }
    },
    "comparator_seconds": 120,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "integrate/fixed_quad",
@@ -559,8 +559,8 @@
     }
    },
    "comparator_seconds": 120,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "integrate/multiple",
@@ -610,8 +610,8 @@
     }
    },
    "comparator_seconds": 120,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "integrate/newton_cotes",
@@ -669,8 +669,8 @@
     }
    },
    "comparator_seconds": 120,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "integrate/nsum",
@@ -726,8 +726,8 @@
     }
    },
    "comparator_seconds": 120,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "integrate/quad",
@@ -896,8 +896,8 @@
     }
    },
    "comparator_seconds": 120,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "integrate/quad_vec",
@@ -1039,8 +1039,8 @@
     }
    },
    "comparator_seconds": 120,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "integrate/quad_weights",
@@ -1142,8 +1142,8 @@
     }
    },
    "comparator_seconds": 120,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "integrate/samples",
@@ -1265,8 +1265,8 @@
     }
    },
    "comparator_seconds": 120,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "integrate/tanhsinh",
@@ -1388,8 +1388,8 @@
     }
    },
    "comparator_seconds": 120,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   }
  ]
 }

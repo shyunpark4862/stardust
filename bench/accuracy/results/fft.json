@@ -2,8 +2,8 @@
  "schema": 1,
  "area": "fft",
  "runs": {
-  "20261123-035501-a741a97+": {
-   "commit": "a741a97",
+  "20261123-035501-be9cd4c+": {
+   "commit": "be9cd4c",
    "dirty": true,
    "changed": [
     "API.md",
@@ -52,8 +52,8 @@
     "Boost in sd.special": "4682f44"
    }
   },
-  "20261123-042232-5d6bfc9+": {
-   "commit": "5d6bfc9",
+  "20261123-042232-a5b4155+": {
+   "commit": "a5b4155",
    "dirty": true,
    "changed": [
     "bench/accuracy/fft.py",
@@ -104,8 +104,8 @@
     "Boost in sd.special": "4682f44"
    }
   },
-  "20261123-052808-b48c753+": {
-   "commit": "b48c753",
+  "20261123-052808-cd02960+": {
+   "commit": "cd02960",
    "dirty": true,
    "changed": [
     "CMakeLists.txt",
@@ -165,8 +165,8 @@
     "Boost in sd.special": "4682f44"
    }
   },
-  "20261123-061921-adbb372+": {
-   "commit": "adbb372",
+  "20261123-061921-3e69193+": {
+   "commit": "3e69193",
    "dirty": true,
    "changed": [
     "CMakeLists.txt",
@@ -229,8 +229,8 @@
     "Boost in sd.special": "4682f44"
    }
   },
-  "20261123-065830-adbb372+": {
-   "commit": "adbb372",
+  "20261123-065830-3e69193+": {
+   "commit": "3e69193",
    "dirty": true,
    "changed": [
     "API.md",
@@ -320,8 +320,8 @@
     "Boost in sd.special": "4682f44"
    }
   },
-  "20261123-083633-129299a+": {
-   "commit": "129299a",
+  "20261123-083633-25ffa4d+": {
+   "commit": "25ffa4d",
    "dirty": true,
    "changed": [
     "API.md",
@@ -435,7 +435,7 @@
      ]
     }
    },
-   "run": "20261123-083633-129299a+",
+   "run": "20261123-083633-25ffa4d+",
    "comparators": {
     "numpy": {
      "forward/pow2": {
@@ -624,7 +624,7 @@
      }
     }
    },
-   "comparators_run": "20261123-035501-a741a97+",
+   "comparators_run": "20261123-035501-be9cd4c+",
    "comparator_seconds": 600.0
   },
   {
@@ -670,7 +670,7 @@
      ]
     }
    },
-   "run": "20261123-083633-129299a+",
+   "run": "20261123-083633-25ffa4d+",
    "comparators": {
     "scipy": {
      "fht/biased": {
@@ -711,7 +711,7 @@
      }
     }
    },
-   "comparators_run": "20261123-065830-adbb372+",
+   "comparators_run": "20261123-065830-3e69193+",
    "comparator_seconds": 600.0
   },
   {
@@ -757,7 +757,7 @@
      ]
     }
    },
-   "run": "20261123-083633-129299a+",
+   "run": "20261123-083633-25ffa4d+",
    "comparators": {
     "numpy": {
      "irfft/pow2": {
@@ -836,7 +836,7 @@
      }
     }
    },
-   "comparators_run": "20261123-042232-5d6bfc9+",
+   "comparators_run": "20261123-042232-a5b4155+",
    "comparator_seconds": 600.0
   },
   {
@@ -918,7 +918,7 @@
      ]
     }
    },
-   "run": "20261123-083633-129299a+",
+   "run": "20261123-083633-25ffa4d+",
    "comparators": {
     "numpy": {
      "fftn/smooth": {
@@ -1069,7 +1069,7 @@
      }
     }
    },
-   "comparators_run": "20261123-052808-b48c753+",
+   "comparators_run": "20261123-052808-cd02960+",
    "comparator_seconds": 600.0
   },
   {
@@ -1295,7 +1295,7 @@
      ]
     }
    },
-   "run": "20261123-083633-129299a+",
+   "run": "20261123-083633-25ffa4d+",
    "comparators": {
     "scipy": {
      "dct1/even": {
@@ -1516,7 +1516,7 @@
      }
     }
    },
-   "comparators_run": "20261123-061921-adbb372+",
+   "comparators_run": "20261123-061921-3e69193+",
    "comparator_seconds": 600.0
   },
   {
@@ -1598,7 +1598,7 @@
      ]
     }
    },
-   "run": "20261123-083633-129299a+",
+   "run": "20261123-083633-25ffa4d+",
    "comparators": {
     "numpy": {
      "rfft/pow2": {
@@ -1749,7 +1749,7 @@
      }
     }
    },
-   "comparators_run": "20261123-042232-5d6bfc9+",
+   "comparators_run": "20261123-042232-a5b4155+",
    "comparator_seconds": 600.0
   }
  ]

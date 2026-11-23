@@ -2,8 +2,8 @@
  "schema": 1,
  "area": "stats",
  "runs": {
-  "20261122-185357-1483fa0+": {
-   "commit": "1483fa0",
+  "20261122-185357-cab7091+": {
+   "commit": "cab7091",
    "dirty": true,
    "changed": [
     "API.md",
@@ -325,8 +325,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/bernoulli_cdf",
@@ -395,8 +395,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/bernoulli_entropy",
@@ -437,8 +437,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/bernoulli_iccdf",
@@ -492,8 +492,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/bernoulli_icdf",
@@ -547,8 +547,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/bernoulli_ilogccdf",
@@ -602,8 +602,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/bernoulli_ilogcdf",
@@ -657,8 +657,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/bernoulli_kurtosis",
@@ -709,8 +709,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/bernoulli_logccdf",
@@ -779,8 +779,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/bernoulli_logcdf",
@@ -849,8 +849,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/bernoulli_logpmf",
@@ -919,8 +919,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/bernoulli_mean",
@@ -971,8 +971,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/bernoulli_median",
@@ -1023,8 +1023,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/bernoulli_mode",
@@ -1075,8 +1075,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/bernoulli_pmf",
@@ -1145,8 +1145,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/bernoulli_skewness",
@@ -1197,8 +1197,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/bernoulli_standard_deviation",
@@ -1249,8 +1249,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/bernoulli_variance",
@@ -1301,8 +1301,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/beta_ccdf",
@@ -1375,8 +1375,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/beta_cdf",
@@ -1449,8 +1449,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/beta_entropy",
@@ -1493,8 +1493,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/beta_iccdf",
@@ -1575,8 +1575,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/beta_icdf",
@@ -1657,8 +1657,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/beta_ilogccdf",
@@ -1721,8 +1721,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/beta_ilogcdf",
@@ -1785,8 +1785,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/beta_kurtosis",
@@ -1840,8 +1840,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/beta_logccdf",
@@ -1914,8 +1914,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/beta_logcdf",
@@ -1988,8 +1988,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/beta_logpdf",
@@ -2070,8 +2070,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/beta_mean",
@@ -2125,8 +2125,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/beta_median",
@@ -2186,8 +2186,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/beta_mode",
@@ -2241,8 +2241,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/beta_pdf",
@@ -2315,8 +2315,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/beta_skewness",
@@ -2370,8 +2370,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/beta_standard_deviation",
@@ -2425,8 +2425,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/beta_variance",
@@ -2480,8 +2480,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/betabinomial_ccdf",
@@ -2524,8 +2524,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/betabinomial_cdf",
@@ -2568,8 +2568,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/betabinomial_entropy",
@@ -2614,8 +2614,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/betabinomial_iccdf",
@@ -2658,8 +2658,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/betabinomial_icdf",
@@ -2702,8 +2702,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/betabinomial_ilogccdf",
@@ -2746,8 +2746,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/betabinomial_ilogcdf",
@@ -2790,8 +2790,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/betabinomial_kurtosis",
@@ -2832,8 +2832,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/betabinomial_logccdf",
@@ -2876,8 +2876,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/betabinomial_logcdf",
@@ -2920,8 +2920,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/betabinomial_logpmf",
@@ -2964,8 +2964,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/betabinomial_mean",
@@ -3006,8 +3006,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/betabinomial_median",
@@ -3048,8 +3048,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/betabinomial_mode",
@@ -3090,8 +3090,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/betabinomial_pmf",
@@ -3134,8 +3134,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/betabinomial_skewness",
@@ -3176,8 +3176,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/betabinomial_standard_deviation",
@@ -3218,8 +3218,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/betabinomial_variance",
@@ -3260,8 +3260,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/binomial_ccdf",
@@ -3334,8 +3334,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/binomial_cdf",
@@ -3408,8 +3408,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/binomial_entropy",
@@ -3452,8 +3452,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/binomial_iccdf",
@@ -3510,8 +3510,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/binomial_icdf",
@@ -3568,8 +3568,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/binomial_ilogccdf",
@@ -3613,8 +3613,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/binomial_ilogcdf",
@@ -3658,8 +3658,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/binomial_kurtosis",
@@ -3713,8 +3713,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/binomial_logccdf",
@@ -3787,8 +3787,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/binomial_logcdf",
@@ -3861,8 +3861,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/binomial_logpmf",
@@ -3935,8 +3935,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/binomial_mean",
@@ -3990,8 +3990,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/binomial_median",
@@ -4045,8 +4045,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/binomial_mode",
@@ -4100,8 +4100,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/binomial_pmf",
@@ -4174,8 +4174,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/binomial_skewness",
@@ -4229,8 +4229,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/binomial_standard_deviation",
@@ -4284,8 +4284,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/binomial_variance",
@@ -4339,8 +4339,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/cauchy_ccdf",
@@ -4413,8 +4413,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/cauchy_cdf",
@@ -4487,8 +4487,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/cauchy_entropy",
@@ -4531,8 +4531,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/cauchy_iccdf",
@@ -4613,8 +4613,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/cauchy_icdf",
@@ -4695,8 +4695,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/cauchy_ilogccdf",
@@ -4759,8 +4759,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/cauchy_ilogcdf",
@@ -4823,8 +4823,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/cauchy_kurtosis",
@@ -4878,8 +4878,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/cauchy_logccdf",
@@ -4952,8 +4952,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/cauchy_logcdf",
@@ -5026,8 +5026,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/cauchy_logpdf",
@@ -5108,8 +5108,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/cauchy_mean",
@@ -5163,8 +5163,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/cauchy_median",
@@ -5218,8 +5218,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/cauchy_mode",
@@ -5273,8 +5273,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/cauchy_pdf",
@@ -5347,8 +5347,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/cauchy_skewness",
@@ -5402,8 +5402,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/cauchy_standard_deviation",
@@ -5457,8 +5457,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/cauchy_variance",
@@ -5512,8 +5512,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/chisquared_ccdf",
@@ -5582,8 +5582,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/chisquared_cdf",
@@ -5652,8 +5652,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/chisquared_entropy",
@@ -5694,8 +5694,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/chisquared_iccdf",
@@ -5772,8 +5772,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/chisquared_icdf",
@@ -5850,8 +5850,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/chisquared_ilogccdf",
@@ -5911,8 +5911,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/chisquared_ilogcdf",
@@ -5972,8 +5972,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/chisquared_kurtosis",
@@ -6024,8 +6024,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/chisquared_logccdf",
@@ -6094,8 +6094,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/chisquared_logcdf",
@@ -6164,8 +6164,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/chisquared_logpdf",
@@ -6242,8 +6242,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/chisquared_mean",
@@ -6294,8 +6294,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/chisquared_median",
@@ -6352,8 +6352,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/chisquared_mode",
@@ -6404,8 +6404,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/chisquared_pdf",
@@ -6474,8 +6474,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/chisquared_skewness",
@@ -6526,8 +6526,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/chisquared_standard_deviation",
@@ -6578,8 +6578,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/chisquared_variance",
@@ -6630,8 +6630,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/discreteuniform_ccdf",
@@ -6672,8 +6672,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/discreteuniform_cdf",
@@ -6714,8 +6714,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/discreteuniform_entropy",
@@ -6758,8 +6758,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/discreteuniform_iccdf",
@@ -6800,8 +6800,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/discreteuniform_icdf",
@@ -6842,8 +6842,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/discreteuniform_ilogccdf",
@@ -6871,8 +6871,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/discreteuniform_ilogcdf",
@@ -6913,8 +6913,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/discreteuniform_kurtosis",
@@ -6953,8 +6953,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/discreteuniform_logccdf",
@@ -6995,8 +6995,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/discreteuniform_logcdf",
@@ -7037,8 +7037,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/discreteuniform_logpmf",
@@ -7079,8 +7079,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/discreteuniform_mean",
@@ -7119,8 +7119,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/discreteuniform_median",
@@ -7159,8 +7159,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/discreteuniform_mode",
@@ -7199,8 +7199,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/discreteuniform_pmf",
@@ -7241,8 +7241,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/discreteuniform_skewness",
@@ -7281,8 +7281,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/discreteuniform_standard_deviation",
@@ -7321,8 +7321,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/discreteuniform_variance",
@@ -7361,8 +7361,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/exponential_ccdf",
@@ -7431,8 +7431,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/exponential_cdf",
@@ -7501,8 +7501,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/exponential_entropy",
@@ -7543,8 +7543,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/exponential_iccdf",
@@ -7621,8 +7621,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/exponential_icdf",
@@ -7699,8 +7699,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/exponential_ilogccdf",
@@ -7754,8 +7754,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/exponential_ilogcdf",
@@ -7815,8 +7815,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/exponential_kurtosis",
@@ -7867,8 +7867,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/exponential_logccdf",
@@ -7937,8 +7937,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/exponential_logcdf",
@@ -8007,8 +8007,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/exponential_logpdf",
@@ -8085,8 +8085,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/exponential_mean",
@@ -8137,8 +8137,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/exponential_median",
@@ -8189,8 +8189,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/exponential_mode",
@@ -8241,8 +8241,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/exponential_pdf",
@@ -8311,8 +8311,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/exponential_skewness",
@@ -8363,8 +8363,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/exponential_standard_deviation",
@@ -8415,8 +8415,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/exponential_variance",
@@ -8467,8 +8467,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/f_ccdf",
@@ -8541,8 +8541,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/f_cdf",
@@ -8615,8 +8615,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/f_entropy",
@@ -8688,8 +8688,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/f_iccdf",
@@ -8770,8 +8770,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/f_icdf",
@@ -8852,8 +8852,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/f_ilogccdf",
@@ -8901,8 +8901,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/f_ilogcdf",
@@ -8965,8 +8965,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/f_kurtosis",
@@ -9058,8 +9058,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/f_logccdf",
@@ -9132,8 +9132,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/f_logcdf",
@@ -9206,8 +9206,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/f_logpdf",
@@ -9288,8 +9288,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/f_mean",
@@ -9381,8 +9381,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/f_median",
@@ -9486,8 +9486,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/f_mode",
@@ -9579,8 +9579,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/f_pdf",
@@ -9653,8 +9653,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/f_skewness",
@@ -9746,8 +9746,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/f_standard_deviation",
@@ -9839,8 +9839,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/f_variance",
@@ -9932,8 +9932,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/gamma_ccdf",
@@ -10061,8 +10061,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/gamma_cdf",
@@ -10190,8 +10190,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/gamma_entropy",
@@ -10263,8 +10263,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/gamma_iccdf",
@@ -10408,8 +10408,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/gamma_icdf",
@@ -10553,8 +10553,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/gamma_ilogccdf",
@@ -10658,8 +10658,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/gamma_ilogcdf",
@@ -10769,8 +10769,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/gamma_kurtosis",
@@ -10862,8 +10862,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/gamma_logccdf",
@@ -10991,8 +10991,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/gamma_logcdf",
@@ -11120,8 +11120,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/gamma_logpdf",
@@ -11265,8 +11265,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/gamma_mean",
@@ -11358,8 +11358,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/gamma_median",
@@ -11457,8 +11457,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/gamma_mode",
@@ -11550,8 +11550,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/gamma_pdf",
@@ -11679,8 +11679,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/gamma_skewness",
@@ -11772,8 +11772,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/gamma_standard_deviation",
@@ -11865,8 +11865,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/gamma_variance",
@@ -11958,8 +11958,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/geometric_ccdf",
@@ -12028,8 +12028,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/geometric_cdf",
@@ -12098,8 +12098,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/geometric_entropy",
@@ -12140,8 +12140,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/geometric_iccdf",
@@ -12195,8 +12195,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/geometric_icdf",
@@ -12250,8 +12250,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/geometric_ilogccdf",
@@ -12305,8 +12305,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/geometric_ilogcdf",
@@ -12360,8 +12360,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/geometric_kurtosis",
@@ -12412,8 +12412,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/geometric_logccdf",
@@ -12482,8 +12482,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/geometric_logcdf",
@@ -12552,8 +12552,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/geometric_logpmf",
@@ -12622,8 +12622,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/geometric_mean",
@@ -12674,8 +12674,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/geometric_median",
@@ -12726,8 +12726,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/geometric_mode",
@@ -12778,8 +12778,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/geometric_pmf",
@@ -12848,8 +12848,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/geometric_skewness",
@@ -12900,8 +12900,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/geometric_standard_deviation",
@@ -12952,8 +12952,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/geometric_variance",
@@ -13004,8 +13004,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/gev_ccdf",
@@ -13077,8 +13077,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/gev_cdf",
@@ -13150,8 +13150,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/gev_entropy",
@@ -13196,8 +13196,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/gev_iccdf",
@@ -13244,8 +13244,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/gev_icdf",
@@ -13292,8 +13292,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/gev_ilogccdf",
@@ -13340,8 +13340,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/gev_ilogcdf",
@@ -13388,8 +13388,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/gev_kurtosis",
@@ -13434,8 +13434,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/gev_logccdf",
@@ -13507,8 +13507,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/gev_logcdf",
@@ -13580,8 +13580,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/gev_logpdf",
@@ -13661,8 +13661,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/gev_mean",
@@ -13703,8 +13703,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/gev_median",
@@ -13745,8 +13745,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/gev_mode",
@@ -13787,8 +13787,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/gev_pdf",
@@ -13860,8 +13860,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/gev_skewness",
@@ -13906,8 +13906,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/gev_standard_deviation",
@@ -13948,8 +13948,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/gev_variance",
@@ -13990,8 +13990,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/gumbel_ccdf",
@@ -14048,8 +14048,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/gumbel_cdf",
@@ -14106,8 +14106,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/gumbel_entropy",
@@ -14150,8 +14150,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/gumbel_iccdf",
@@ -14214,8 +14214,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/gumbel_icdf",
@@ -14278,8 +14278,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/gumbel_ilogccdf",
@@ -14324,8 +14324,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/gumbel_ilogcdf",
@@ -14370,8 +14370,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/gumbel_kurtosis",
@@ -14425,8 +14425,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/gumbel_logccdf",
@@ -14483,8 +14483,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/gumbel_logcdf",
@@ -14541,8 +14541,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/gumbel_logpdf",
@@ -14605,8 +14605,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/gumbel_mean",
@@ -14660,8 +14660,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/gumbel_median",
@@ -14715,8 +14715,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/gumbel_mode",
@@ -14770,8 +14770,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/gumbel_pdf",
@@ -14828,8 +14828,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/gumbel_skewness",
@@ -14883,8 +14883,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/gumbel_standard_deviation",
@@ -14938,8 +14938,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/gumbel_variance",
@@ -14993,8 +14993,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/hypergeometric_ccdf",
@@ -15054,8 +15054,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/hypergeometric_cdf",
@@ -15115,8 +15115,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/hypergeometric_entropy",
@@ -15161,8 +15161,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/hypergeometric_iccdf",
@@ -15222,8 +15222,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/hypergeometric_icdf",
@@ -15283,8 +15283,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/hypergeometric_ilogccdf",
@@ -15344,8 +15344,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/hypergeometric_ilogcdf",
@@ -15405,8 +15405,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/hypergeometric_kurtosis",
@@ -15447,8 +15447,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/hypergeometric_logccdf",
@@ -15508,8 +15508,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/hypergeometric_logcdf",
@@ -15569,8 +15569,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/hypergeometric_logpmf",
@@ -15630,8 +15630,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/hypergeometric_mean",
@@ -15672,8 +15672,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/hypergeometric_median",
@@ -15714,8 +15714,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/hypergeometric_mode",
@@ -15756,8 +15756,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/hypergeometric_pmf",
@@ -15817,8 +15817,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/hypergeometric_skewness",
@@ -15859,8 +15859,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/hypergeometric_standard_deviation",
@@ -15901,8 +15901,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/hypergeometric_variance",
@@ -15943,8 +15943,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/inversegamma_ccdf",
@@ -16042,8 +16042,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/inversegamma_cdf",
@@ -16141,8 +16141,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/inversegamma_entropy",
@@ -16214,8 +16214,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/inversegamma_iccdf",
@@ -16325,8 +16325,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/inversegamma_icdf",
@@ -16436,8 +16436,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/inversegamma_ilogccdf",
@@ -16482,8 +16482,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/inversegamma_ilogcdf",
@@ -16526,8 +16526,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/inversegamma_kurtosis",
@@ -16619,8 +16619,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/inversegamma_logccdf",
@@ -16718,8 +16718,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/inversegamma_logcdf",
@@ -16817,8 +16817,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/inversegamma_logpdf",
@@ -16928,8 +16928,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/inversegamma_mean",
@@ -17021,8 +17021,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/inversegamma_median",
@@ -17120,8 +17120,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/inversegamma_mode",
@@ -17213,8 +17213,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/inversegamma_pdf",
@@ -17312,8 +17312,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/inversegamma_skewness",
@@ -17405,8 +17405,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/inversegamma_standard_deviation",
@@ -17498,8 +17498,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/inversegamma_variance",
@@ -17591,8 +17591,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/laplace_ccdf",
@@ -17649,8 +17649,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/laplace_cdf",
@@ -17707,8 +17707,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/laplace_entropy",
@@ -17751,8 +17751,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/laplace_iccdf",
@@ -17815,8 +17815,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/laplace_icdf",
@@ -17879,8 +17879,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/laplace_ilogccdf",
@@ -17925,8 +17925,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/laplace_ilogcdf",
@@ -17971,8 +17971,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/laplace_kurtosis",
@@ -18026,8 +18026,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/laplace_logccdf",
@@ -18084,8 +18084,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/laplace_logcdf",
@@ -18142,8 +18142,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/laplace_logpdf",
@@ -18206,8 +18206,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/laplace_mean",
@@ -18261,8 +18261,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/laplace_median",
@@ -18316,8 +18316,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/laplace_mode",
@@ -18371,8 +18371,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/laplace_pdf",
@@ -18429,8 +18429,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/laplace_skewness",
@@ -18484,8 +18484,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/laplace_standard_deviation",
@@ -18539,8 +18539,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/laplace_variance",
@@ -18594,8 +18594,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/logistic_ccdf",
@@ -18668,8 +18668,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/logistic_cdf",
@@ -18742,8 +18742,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/logistic_entropy",
@@ -18786,8 +18786,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/logistic_iccdf",
@@ -18868,8 +18868,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/logistic_icdf",
@@ -18950,8 +18950,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/logistic_ilogccdf",
@@ -19014,8 +19014,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/logistic_ilogcdf",
@@ -19078,8 +19078,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/logistic_kurtosis",
@@ -19133,8 +19133,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/logistic_logccdf",
@@ -19207,8 +19207,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/logistic_logcdf",
@@ -19281,8 +19281,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/logistic_logpdf",
@@ -19363,8 +19363,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/logistic_mean",
@@ -19418,8 +19418,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/logistic_median",
@@ -19473,8 +19473,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/logistic_mode",
@@ -19528,8 +19528,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/logistic_pdf",
@@ -19602,8 +19602,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/logistic_skewness",
@@ -19657,8 +19657,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/logistic_standard_deviation",
@@ -19712,8 +19712,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/logistic_variance",
@@ -19767,8 +19767,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/lognormal_ccdf",
@@ -19841,8 +19841,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/lognormal_cdf",
@@ -19915,8 +19915,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/lognormal_entropy",
@@ -19959,8 +19959,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/lognormal_iccdf",
@@ -20041,8 +20041,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/lognormal_icdf",
@@ -20123,8 +20123,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/lognormal_ilogccdf",
@@ -20187,8 +20187,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/lognormal_ilogcdf",
@@ -20251,8 +20251,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/lognormal_kurtosis",
@@ -20306,8 +20306,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/lognormal_logccdf",
@@ -20380,8 +20380,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/lognormal_logcdf",
@@ -20454,8 +20454,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/lognormal_logpdf",
@@ -20536,8 +20536,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/lognormal_mean",
@@ -20591,8 +20591,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/lognormal_median",
@@ -20646,8 +20646,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/lognormal_mode",
@@ -20701,8 +20701,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/lognormal_pdf",
@@ -20775,8 +20775,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/lognormal_skewness",
@@ -20830,8 +20830,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/lognormal_standard_deviation",
@@ -20885,8 +20885,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/lognormal_variance",
@@ -20940,8 +20940,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/logseries_ccdf",
@@ -20980,8 +20980,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/logseries_cdf",
@@ -21020,8 +21020,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/logseries_entropy",
@@ -21062,8 +21062,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/logseries_iccdf",
@@ -21090,8 +21090,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/logseries_icdf",
@@ -21130,8 +21130,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/logseries_ilogccdf",
@@ -21158,8 +21158,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/logseries_ilogcdf",
@@ -21186,8 +21186,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/logseries_kurtosis",
@@ -21224,8 +21224,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/logseries_logccdf",
@@ -21264,8 +21264,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/logseries_logcdf",
@@ -21304,8 +21304,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/logseries_logpmf",
@@ -21344,8 +21344,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/logseries_mean",
@@ -21382,8 +21382,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/logseries_median",
@@ -21420,8 +21420,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/logseries_mode",
@@ -21458,8 +21458,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/logseries_pmf",
@@ -21498,8 +21498,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/logseries_skewness",
@@ -21536,8 +21536,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/logseries_standard_deviation",
@@ -21574,8 +21574,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/logseries_variance",
@@ -21612,8 +21612,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/mv/Dirichlet.entropy",
@@ -21654,8 +21654,8 @@
     }
    },
    "comparator_seconds": 60.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/mv/Dirichlet.logpdf",
@@ -21696,8 +21696,8 @@
     }
    },
    "comparator_seconds": 60.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/mv/InverseWishart.entropy",
@@ -21738,8 +21738,8 @@
     }
    },
    "comparator_seconds": 60.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/mv/InverseWishart.logpdf",
@@ -21780,8 +21780,8 @@
     }
    },
    "comparator_seconds": 60.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/mv/MatrixNormal.entropy",
@@ -21822,8 +21822,8 @@
     }
    },
    "comparator_seconds": 60.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/mv/MatrixNormal.logpdf",
@@ -21864,8 +21864,8 @@
     }
    },
    "comparator_seconds": 60.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/mv/Multinomial.entropy",
@@ -21906,8 +21906,8 @@
     }
    },
    "comparator_seconds": 60.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/mv/Multinomial.logpmf",
@@ -21964,8 +21964,8 @@
     }
    },
    "comparator_seconds": 60.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/mv/MultivariateNormal.entropy",
@@ -22006,8 +22006,8 @@
     }
    },
    "comparator_seconds": 60.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/mv/MultivariateNormal.logpdf",
@@ -22064,8 +22064,8 @@
     }
    },
    "comparator_seconds": 60.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/mv/MultivariateNormal.pdf",
@@ -22116,8 +22116,8 @@
     }
    },
    "comparator_seconds": 60.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/mv/MultivariateT.entropy",
@@ -22158,8 +22158,8 @@
     }
    },
    "comparator_seconds": 60.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/mv/MultivariateT.logpdf",
@@ -22216,8 +22216,8 @@
     }
    },
    "comparator_seconds": 60.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/mv/MultivariateT.pdf",
@@ -22268,8 +22268,8 @@
     }
    },
    "comparator_seconds": 60.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/mv/Wishart.entropy",
@@ -22310,8 +22310,8 @@
     }
    },
    "comparator_seconds": 60.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/mv/Wishart.logpdf",
@@ -22352,8 +22352,8 @@
     }
    },
    "comparator_seconds": 60.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/mv/cdf.bvn",
@@ -22468,8 +22468,8 @@
     }
    },
    "comparator_seconds": 300,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/mv/cdf.bvt",
@@ -22520,8 +22520,8 @@
     }
    },
    "comparator_seconds": 300,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/mv/cdf.factor_normal",
@@ -22597,8 +22597,8 @@
     }
    },
    "comparator_seconds": 300,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/mv/cdf.factor_t",
@@ -22679,8 +22679,8 @@
     }
    },
    "comparator_seconds": 300,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/mv/cdf.tvn",
@@ -22798,8 +22798,8 @@
     }
    },
    "comparator_seconds": 300,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/mv/cdf.tvt",
@@ -22850,8 +22850,8 @@
     }
    },
    "comparator_seconds": 300,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/negativebinomial_ccdf",
@@ -22924,8 +22924,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/negativebinomial_cdf",
@@ -22998,8 +22998,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/negativebinomial_entropy",
@@ -23042,8 +23042,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/negativebinomial_iccdf",
@@ -23100,8 +23100,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/negativebinomial_icdf",
@@ -23158,8 +23158,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/negativebinomial_ilogccdf",
@@ -23216,8 +23216,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/negativebinomial_ilogcdf",
@@ -23274,8 +23274,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/negativebinomial_kurtosis",
@@ -23329,8 +23329,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/negativebinomial_logccdf",
@@ -23403,8 +23403,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/negativebinomial_logcdf",
@@ -23477,8 +23477,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/negativebinomial_logpmf",
@@ -23551,8 +23551,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/negativebinomial_mean",
@@ -23606,8 +23606,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/negativebinomial_median",
@@ -23661,8 +23661,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/negativebinomial_mode",
@@ -23716,8 +23716,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/negativebinomial_pmf",
@@ -23790,8 +23790,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/negativebinomial_skewness",
@@ -23845,8 +23845,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/negativebinomial_standard_deviation",
@@ -23900,8 +23900,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/negativebinomial_variance",
@@ -23955,8 +23955,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/noncentralchisquared_ccdf",
@@ -24084,8 +24084,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/noncentralchisquared_cdf",
@@ -24213,8 +24213,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/noncentralchisquared_iccdf",
@@ -24350,8 +24350,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/noncentralchisquared_icdf",
@@ -24495,8 +24495,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/noncentralchisquared_ilogccdf",
@@ -24575,8 +24575,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/noncentralchisquared_ilogcdf",
@@ -24624,8 +24624,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/noncentralchisquared_kurtosis",
@@ -24679,8 +24679,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/noncentralchisquared_logccdf",
@@ -24808,8 +24808,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/noncentralchisquared_logcdf",
@@ -24937,8 +24937,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/noncentralchisquared_logpdf",
@@ -25082,8 +25082,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/noncentralchisquared_mean",
@@ -25137,8 +25137,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/noncentralchisquared_median",
@@ -25198,8 +25198,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/noncentralchisquared_mode",
@@ -25253,8 +25253,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/noncentralchisquared_pdf",
@@ -25382,8 +25382,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/noncentralchisquared_skewness",
@@ -25437,8 +25437,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/noncentralchisquared_standard_deviation",
@@ -25492,8 +25492,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/noncentralchisquared_variance",
@@ -25547,8 +25547,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/noncentralf_ccdf",
@@ -25684,8 +25684,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/noncentralf_cdf",
@@ -25821,8 +25821,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/noncentralf_iccdf",
@@ -25955,8 +25955,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/noncentralf_icdf",
@@ -26108,8 +26108,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/noncentralf_ilogccdf",
@@ -26223,8 +26223,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/noncentralf_ilogcdf",
@@ -26307,8 +26307,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/noncentralf_kurtosis",
@@ -26365,8 +26365,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/noncentralf_logccdf",
@@ -26502,8 +26502,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/noncentralf_logcdf",
@@ -26639,8 +26639,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/noncentralf_logpdf",
@@ -26792,8 +26792,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/noncentralf_mean",
@@ -26850,8 +26850,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/noncentralf_median",
@@ -26914,8 +26914,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/noncentralf_mode",
@@ -26972,8 +26972,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/noncentralf_pdf",
@@ -27109,8 +27109,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/noncentralf_skewness",
@@ -27167,8 +27167,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/noncentralf_standard_deviation",
@@ -27225,8 +27225,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/noncentralf_variance",
@@ -27283,8 +27283,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/noncentralt_ccdf",
@@ -27402,8 +27402,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/noncentralt_cdf",
@@ -27521,8 +27521,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/noncentralt_iccdf",
@@ -27629,8 +27629,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/noncentralt_icdf",
@@ -27708,8 +27708,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/noncentralt_ilogccdf",
@@ -27757,8 +27757,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/noncentralt_ilogcdf",
@@ -27806,8 +27806,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/noncentralt_kurtosis",
@@ -27861,8 +27861,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/noncentralt_logccdf",
@@ -27980,8 +27980,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/noncentralt_logcdf",
@@ -28109,8 +28109,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/noncentralt_logpdf",
@@ -28254,8 +28254,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/noncentralt_mean",
@@ -28309,8 +28309,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/noncentralt_median",
@@ -28370,8 +28370,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/noncentralt_mode",
@@ -28425,8 +28425,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/noncentralt_pdf",
@@ -28534,8 +28534,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/noncentralt_skewness",
@@ -28589,8 +28589,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/noncentralt_standard_deviation",
@@ -28644,8 +28644,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/noncentralt_variance",
@@ -28699,8 +28699,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/normal_ccdf",
@@ -28773,8 +28773,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/normal_cdf",
@@ -28847,8 +28847,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/normal_entropy",
@@ -28891,8 +28891,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/normal_iccdf",
@@ -28973,8 +28973,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/normal_icdf",
@@ -29055,8 +29055,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/normal_ilogccdf",
@@ -29119,8 +29119,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/normal_ilogcdf",
@@ -29183,8 +29183,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/normal_kurtosis",
@@ -29238,8 +29238,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/normal_logccdf",
@@ -29312,8 +29312,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/normal_logcdf",
@@ -29386,8 +29386,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/normal_logpdf",
@@ -29468,8 +29468,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/normal_mean",
@@ -29523,8 +29523,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/normal_median",
@@ -29578,8 +29578,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/normal_mode",
@@ -29633,8 +29633,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/normal_pdf",
@@ -29707,8 +29707,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/normal_skewness",
@@ -29762,8 +29762,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/normal_standard_deviation",
@@ -29817,8 +29817,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/normal_variance",
@@ -29872,8 +29872,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/pareto_ccdf",
@@ -29930,8 +29930,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/pareto_cdf",
@@ -29988,8 +29988,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/pareto_entropy",
@@ -30032,8 +30032,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/pareto_iccdf",
@@ -30096,8 +30096,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/pareto_icdf",
@@ -30160,8 +30160,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/pareto_ilogccdf",
@@ -30206,8 +30206,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/pareto_ilogcdf",
@@ -30252,8 +30252,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/pareto_kurtosis",
@@ -30307,8 +30307,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/pareto_logccdf",
@@ -30365,8 +30365,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/pareto_logcdf",
@@ -30423,8 +30423,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/pareto_logpdf",
@@ -30487,8 +30487,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/pareto_mean",
@@ -30542,8 +30542,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/pareto_median",
@@ -30597,8 +30597,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/pareto_mode",
@@ -30652,8 +30652,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/pareto_pdf",
@@ -30710,8 +30710,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/pareto_skewness",
@@ -30765,8 +30765,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/pareto_standard_deviation",
@@ -30820,8 +30820,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/pareto_variance",
@@ -30875,8 +30875,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/poisson_ccdf",
@@ -30945,8 +30945,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/poisson_cdf",
@@ -31015,8 +31015,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/poisson_entropy",
@@ -31057,8 +31057,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/poisson_iccdf",
@@ -31112,8 +31112,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/poisson_icdf",
@@ -31167,8 +31167,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/poisson_ilogccdf",
@@ -31222,8 +31222,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/poisson_ilogcdf",
@@ -31265,8 +31265,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/poisson_kurtosis",
@@ -31317,8 +31317,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/poisson_logccdf",
@@ -31387,8 +31387,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/poisson_logcdf",
@@ -31457,8 +31457,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/poisson_logpmf",
@@ -31527,8 +31527,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/poisson_mean",
@@ -31579,8 +31579,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/poisson_median",
@@ -31631,8 +31631,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/poisson_mode",
@@ -31683,8 +31683,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/poisson_pmf",
@@ -31753,8 +31753,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/poisson_skewness",
@@ -31805,8 +31805,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/poisson_standard_deviation",
@@ -31857,8 +31857,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/poisson_variance",
@@ -31909,8 +31909,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/rayleigh_ccdf",
@@ -31964,8 +31964,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/rayleigh_cdf",
@@ -32019,8 +32019,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/rayleigh_entropy",
@@ -32061,8 +32061,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/rayleigh_iccdf",
@@ -32122,8 +32122,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/rayleigh_icdf",
@@ -32183,8 +32183,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/rayleigh_ilogccdf",
@@ -32223,8 +32223,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/rayleigh_ilogcdf",
@@ -32267,8 +32267,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/rayleigh_kurtosis",
@@ -32319,8 +32319,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/rayleigh_logccdf",
@@ -32374,8 +32374,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/rayleigh_logcdf",
@@ -32429,8 +32429,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/rayleigh_logpdf",
@@ -32490,8 +32490,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/rayleigh_mean",
@@ -32542,8 +32542,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/rayleigh_median",
@@ -32594,8 +32594,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/rayleigh_mode",
@@ -32646,8 +32646,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/rayleigh_pdf",
@@ -32701,8 +32701,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/rayleigh_skewness",
@@ -32753,8 +32753,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/rayleigh_standard_deviation",
@@ -32805,8 +32805,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/rayleigh_variance",
@@ -32857,8 +32857,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/studentt_ccdf",
@@ -32927,8 +32927,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/studentt_cdf",
@@ -32997,8 +32997,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/studentt_entropy",
@@ -33066,8 +33066,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/studentt_iccdf",
@@ -33195,8 +33195,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/studentt_icdf",
@@ -33324,8 +33324,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/studentt_ilogccdf",
@@ -33400,8 +33400,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/studentt_ilogcdf",
@@ -33476,8 +33476,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/studentt_kurtosis",
@@ -33563,8 +33563,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/studentt_logccdf",
@@ -33633,8 +33633,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/studentt_logcdf",
@@ -33703,8 +33703,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/studentt_logpdf",
@@ -33781,8 +33781,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/studentt_mean",
@@ -33868,8 +33868,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/studentt_median",
@@ -33955,8 +33955,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/studentt_mode",
@@ -34042,8 +34042,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/studentt_pdf",
@@ -34112,8 +34112,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/studentt_skewness",
@@ -34199,8 +34199,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/studentt_standard_deviation",
@@ -34286,8 +34286,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/studentt_variance",
@@ -34373,8 +34373,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/uniform_ccdf",
@@ -34447,8 +34447,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/uniform_cdf",
@@ -34521,8 +34521,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/uniform_entropy",
@@ -34565,8 +34565,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/uniform_iccdf",
@@ -34647,8 +34647,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/uniform_icdf",
@@ -34729,8 +34729,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/uniform_ilogccdf",
@@ -34778,8 +34778,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/uniform_ilogcdf",
@@ -34842,8 +34842,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/uniform_kurtosis",
@@ -34897,8 +34897,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/uniform_logccdf",
@@ -34971,8 +34971,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/uniform_logcdf",
@@ -35045,8 +35045,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/uniform_logpdf",
@@ -35127,8 +35127,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/uniform_mean",
@@ -35182,8 +35182,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/uniform_median",
@@ -35237,8 +35237,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/uniform_mode",
@@ -35292,8 +35292,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/uniform_pdf",
@@ -35366,8 +35366,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/uniform_skewness",
@@ -35421,8 +35421,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/uniform_standard_deviation",
@@ -35476,8 +35476,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/uniform_variance",
@@ -35531,8 +35531,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/weibull_ccdf",
@@ -35605,8 +35605,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/weibull_cdf",
@@ -35679,8 +35679,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/weibull_entropy",
@@ -35723,8 +35723,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/weibull_iccdf",
@@ -35805,8 +35805,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/weibull_icdf",
@@ -35887,8 +35887,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/weibull_ilogccdf",
@@ -35951,8 +35951,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/weibull_ilogcdf",
@@ -36015,8 +36015,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/weibull_kurtosis",
@@ -36076,8 +36076,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/weibull_logccdf",
@@ -36150,8 +36150,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/weibull_logcdf",
@@ -36224,8 +36224,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/weibull_logpdf",
@@ -36306,8 +36306,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/weibull_mean",
@@ -36361,8 +36361,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/weibull_median",
@@ -36416,8 +36416,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/weibull_mode",
@@ -36471,8 +36471,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/weibull_pdf",
@@ -36545,8 +36545,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/weibull_skewness",
@@ -36606,8 +36606,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/weibull_standard_deviation",
@@ -36661,8 +36661,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/weibull_variance",
@@ -36716,8 +36716,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/zipf_ccdf",
@@ -36744,8 +36744,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/zipf_cdf",
@@ -36772,8 +36772,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/zipf_entropy",
@@ -36801,8 +36801,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/zipf_iccdf",
@@ -36829,8 +36829,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/zipf_icdf",
@@ -36857,8 +36857,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/zipf_ilogccdf",
@@ -36885,8 +36885,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/zipf_ilogcdf",
@@ -36913,8 +36913,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/zipf_kurtosis",
@@ -36951,8 +36951,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/zipf_logccdf",
@@ -36979,8 +36979,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/zipf_logcdf",
@@ -37007,8 +37007,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/zipf_logpmf",
@@ -37047,8 +37047,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/zipf_mean",
@@ -37085,8 +37085,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/zipf_median",
@@ -37112,8 +37112,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/zipf_mode",
@@ -37139,8 +37139,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/zipf_pmf",
@@ -37179,8 +37179,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/zipf_skewness",
@@ -37217,8 +37217,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/zipf_standard_deviation",
@@ -37255,8 +37255,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "stats/zipf_variance",
@@ -37293,8 +37293,8 @@
     }
    },
    "comparator_seconds": 30.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   }
  ]
 }

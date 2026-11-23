@@ -2,8 +2,8 @@
  "schema": 1,
  "area": "regression",
  "runs": {
-  "20261122-185357-1483fa0+": {
-   "commit": "1483fa0",
+  "20261122-185357-cab7091+": {
+   "commit": "cab7091",
    "dirty": true,
    "changed": [
     "API.md",
@@ -895,8 +895,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/glm/binomial_log",
@@ -1187,8 +1187,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/glm/binomial_logit",
@@ -1827,8 +1827,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/glm/binomial_probit",
@@ -2467,8 +2467,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/glm/binomial_trials",
@@ -3107,8 +3107,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/glm/gamma_dev",
@@ -3747,8 +3747,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/glm/gamma_identity",
@@ -4332,8 +4332,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/glm/gamma_inverse",
@@ -4972,8 +4972,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/glm/gamma_log",
@@ -5612,8 +5612,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/glm/gamma_weights",
@@ -6084,8 +6084,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/glm/gaussian_identity",
@@ -6724,8 +6724,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/glm/gaussian_log",
@@ -7309,8 +7309,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/glm/logit_noint",
@@ -7949,8 +7949,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/glm/poisson_exposure",
@@ -8531,8 +8531,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/glm/poisson_identity",
@@ -9171,8 +9171,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/glm/poisson_log",
@@ -9811,8 +9811,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/glm/poisson_sqrt",
@@ -10451,8 +10451,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/linear/nist_Filip",
@@ -11607,8 +11607,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/linear/nist_Longley",
@@ -12763,8 +12763,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/linear/nist_NoInt1",
@@ -13835,8 +13835,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/linear/nist_NoInt2",
@@ -14907,8 +14907,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/linear/nist_Norris",
@@ -16063,8 +16063,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/linear/nist_Pontius",
@@ -17219,8 +17219,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/linear/nist_Wampler1",
@@ -17509,8 +17509,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/linear/nist_Wampler2",
@@ -18665,8 +18665,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/linear/nist_Wampler3",
@@ -19821,8 +19821,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/linear/nist_Wampler4",
@@ -20977,8 +20977,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/linear/nist_Wampler5",
@@ -22133,8 +22133,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/linear/ols_cond",
@@ -23313,8 +23313,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/linear/ols_int",
@@ -24577,8 +24577,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/linear/ols_kappa11",
@@ -25649,8 +25649,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/linear/ols_noint",
@@ -26829,8 +26829,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/linear/wls_noint",
@@ -27925,8 +27925,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/linear/wls_zero",
@@ -29075,8 +29075,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/model_tests/cond",
@@ -29721,8 +29721,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/model_tests/factor",
@@ -30813,8 +30813,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/model_tests/glm_gamma",
@@ -31305,8 +31305,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/model_tests/glm_logit",
@@ -31771,8 +31771,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/model_tests/glm_poisson",
@@ -32237,8 +32237,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/model_tests/glm_probit",
@@ -32703,8 +32703,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/model_tests/noint",
@@ -33725,8 +33725,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/model_tests/ols",
@@ -34817,8 +34817,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/model_tests/wls_zero",
@@ -35623,8 +35623,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/penalized/binomial_0",
@@ -35678,8 +35678,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/penalized/binomial_0.5",
@@ -35733,8 +35733,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/penalized/binomial_1",
@@ -35788,8 +35788,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/penalized/binomial_weights_std",
@@ -35843,8 +35843,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/penalized/enet",
@@ -35928,8 +35928,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/penalized/enet_kappa1e6_refined",
@@ -36013,8 +36013,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/penalized/enet_noint",
@@ -36098,8 +36098,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/penalized/enet_std",
@@ -36153,8 +36153,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/penalized/enet_weights",
@@ -36238,8 +36238,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/penalized/lasso",
@@ -36323,8 +36323,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/penalized/lasso_constant_column",
@@ -36408,8 +36408,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/penalized/lasso_kappa1e6",
@@ -36493,8 +36493,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/penalized/lasso_small_alpha",
@@ -36578,8 +36578,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/penalized/lasso_weights_std",
@@ -36633,8 +36633,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/penalized/poisson_0",
@@ -36688,8 +36688,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/penalized/poisson_0.5",
@@ -36743,8 +36743,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/penalized/poisson_1",
@@ -36798,8 +36798,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/penalized/ridge",
@@ -36883,8 +36883,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/penalized/ridge_kappa1e6",
@@ -36968,8 +36968,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/penalized/ridge_noint",
@@ -37053,8 +37053,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/penalized/ridge_weights_std",
@@ -37108,8 +37108,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/robust/bisquare_huber_even",
@@ -37231,8 +37231,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/robust/bisquare_huber_odd",
@@ -37354,8 +37354,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/robust/bisquare_mad_400",
@@ -37477,8 +37477,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/robust/bisquare_mad_even",
@@ -37600,8 +37600,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/robust/bisquare_mad_odd",
@@ -37723,8 +37723,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/robust/hampel_huber_even",
@@ -37846,8 +37846,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/robust/hampel_huber_odd",
@@ -37969,8 +37969,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/robust/hampel_mad_even",
@@ -38092,8 +38092,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/robust/hampel_mad_odd",
@@ -38215,8 +38215,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/robust/huber_huber_even",
@@ -38338,8 +38338,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/robust/huber_huber_odd",
@@ -38461,8 +38461,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/robust/huber_mad_even",
@@ -38628,8 +38628,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/robust/huber_mad_noint",
@@ -38795,8 +38795,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/robust/huber_mad_odd",
@@ -38962,8 +38962,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/robust/mm_leverage",
@@ -39057,8 +39057,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/robust/mm_stackloss",
@@ -39152,8 +39152,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/robust/stackloss_bisquare",
@@ -39275,8 +39275,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/robust/stackloss_hampel",
@@ -39398,8 +39398,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/robust/stackloss_huber",
@@ -39565,8 +39565,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/selection/cond",
@@ -39904,8 +39904,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/selection/glm_gamma",
@@ -40135,8 +40135,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/selection/glm_logit",
@@ -40366,8 +40366,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/selection/glm_poisson",
@@ -40597,8 +40597,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/selection/noint",
@@ -40936,8 +40936,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/selection/ols",
@@ -41275,8 +41275,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   },
   {
    "id": "regression/selection/wls_zero",
@@ -41614,8 +41614,8 @@
     }
    },
    "comparator_seconds": 120.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "run": "20261122-185357-cab7091+",
+   "comparators_run": "20261122-185357-cab7091+"
   }
  ]
 }
