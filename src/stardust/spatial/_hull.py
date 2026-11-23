@@ -1,4 +1,4 @@
-"""ConvexHull of sd.spatial (docs/api/spatial_geometry.md §4, docs/design/spatial_geometry.md §2.4, §3.6;
+"""ConvexHull of sd.spatial (docs/api/spatial.md §6, §8; docs/design/spatial_geometry.md §2.4, §3.6;
 milestone SPT11, decisions SPT108, SPT109, SPT140-SPT153).
 
 A Python class holding the arrays of the native hull (stardust._core.spatial._convex_hull,

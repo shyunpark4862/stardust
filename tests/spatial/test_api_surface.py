@@ -1,7 +1,8 @@
 """docs/api/spatial.md and the module agree: every module-level name its signature blocks define is
 planned or exported, nothing else is exported, an exported name's signature is the documented one,
 and the documented signatures follow the area's rules (decisions SPT1-SPT28 in
-docs/design/spatial.md §1.1).
+docs/design/spatial.md §1.1; the computational geometry's classes: SPT90-SPT195 in
+docs/design/spatial_geometry.md §1.1, SPT193).
 
 A block line is a module name (`name(...)`), a method (`Class.method(...)`) or an attribute
 (`Class.attr`)."""
@@ -19,11 +20,8 @@ API = pathlib.Path(__file__).parents[2] / "docs" / "api" / "spatial.md"
 # Documented, not implemented yet (docs/design/spatial.md §8): SPT1 made the distances public. A
 # milestone moves its names from here to sd.spatial.__all__.
 PLANNED: set[str] = set()  # SPT1-SPT3 made every module-level name public
-# The computational geometry's classes are drafted in docs/api/spatial_geometry.md until milestone SPT14 merges
-# that draft into spatial.md (decision SPT118); their signatures are checked against the draft.
-DRAFT = API.parent / "spatial_geometry.md"
-DRAFTED = {"Delaunay", "ConvexHull", "Voronoi"}
-CLASSES = {"KDTree", "QueryResult", "RadiusResult"}
+GEOMETRY = ("Delaunay", "ConvexHull", "Voronoi")  # SPT9-SPT12; documented in spatial.md §6-§9 (SPT192)
+CLASSES = {"KDTree", "QueryResult", "RadiusResult", *GEOMETRY}
 METRICS = ("euclidean", "sqeuclidean", "cityblock", "chebyshev", "minkowski", "seuclidean", "mahalanobis", "cosine",
            "correlation", "canberra", "braycurtis", "hamming", "jaccard", "haversine")  # fmt: skip
 LINE = re.compile(r"^(?:(?P<cls>[A-Za-z_]\w*)\.)?(?P<name>[A-Za-z_]\w*)(?:\((?P<sig>.*)\))?$")
@@ -61,7 +59,7 @@ def params(sig):
 
 def test_exports_match_api_md():
     doc = set(module_names())
-    exported = set(sd.spatial.__all__) - DRAFTED
+    exported = set(sd.spatial.__all__)
     assert exported.isdisjoint(PLANNED)
     assert exported | PLANNED == doc
     for name in exported:
@@ -71,19 +69,7 @@ def test_exports_match_api_md():
 def test_exported_signatures_match_api_md():
     doc = module_names()
     for name in sd.spatial.__all__:
-        if name not in DRAFTED:
-            assert str(inspect.signature(getattr(sd.spatial, name)))[1:-1] == doc[name], name
-
-
-def test_drafted_signatures_match_the_draft():
-    draft = {}
-    for block in signature_blocks(DRAFT.read_text()):
-        for line in block:
-            m = LINE.match(line.split("#")[0].strip())
-            if m and m.group("cls") is None:
-                draft[m.group("name")] = m.group("sig")
-    for name in DRAFTED & set(sd.spatial.__all__):
-        assert str(inspect.signature(getattr(sd.spatial, name)))[1:-1] == draft[name], name
+        assert str(inspect.signature(getattr(sd.spatial, name)))[1:-1] == doc[name], name
 
 
 def test_lines_are_unique_and_methods_belong_to_documented_classes():
@@ -149,7 +135,7 @@ def test_shared_options_have_one_spelling():
 def test_module_is_wired():
     # SPT1: pdist, cdist, squareform and the fourteen distance functions; SPT3: KDTree
     assert {"pdist", "cdist", "squareform", "KDTree"} <= set(sd.spatial.__all__)
-    assert len([n for n in sd.spatial.__all__ if n not in ("kneighbors", "radius_neighbors") + tuple(DRAFTED)]) == 18
+    assert len([n for n in sd.spatial.__all__ if n not in ("kneighbors", "radius_neighbors", *GEOMETRY)]) == 18
     assert not hasattr(sd.spatial, "distance")
     assert {"kneighbors", "radius_neighbors"} <= set(sd.spatial.__all__)  # SPT2
 
@@ -176,3 +162,22 @@ def test_kdtree_members_match_api_md():
             assert isinstance(member, property), name
         else:
             assert str(inspect.signature(member))[1:-1] == "self, " + sig, name
+
+
+def test_geometry_members_match_api_md():
+    # SPT9-SPT12, SPT193: the constructor, find_simplex and the attributes of Delaunay, ConvexHull and Voronoi are
+    # public with the documented signatures, every documented attribute is a property, and the classes keep no
+    # undocumented public member
+    documented = {}
+    for c, name, sig in entries():
+        if c in GEOMETRY:
+            documented.setdefault(c, set()).add(name)
+            member = getattr(getattr(sd.spatial, c), name)
+            if sig is None:
+                assert isinstance(member, property), (c, name)
+            else:
+                assert str(inspect.signature(member))[1:-1] == "self, " + sig, (c, name)
+    for c in GEOMETRY:
+        public = {n for n in vars(getattr(sd.spatial, c)) if not n.startswith("_")}
+        assert public == documented[c], c
+    assert set(GEOMETRY) <= set(sd.spatial.__all__)

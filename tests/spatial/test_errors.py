@@ -140,6 +140,13 @@ def test_data():
     with raises(TypeError, "euclidean(): 'u' must be an sd.ndarray, a sequence of numbers, a numpy array or a "
                            "frame DataFrame, not float"):  # fmt: skip
         S.euclidean(1.0, 2.0)
+    # a 0-d numpy array is an array, but stardust has no 0-d arrays
+    with raises(ValueError, "euclidean(): 'u' must have at least 1 dimension"):
+        S.euclidean(np.array(1.0), [2.0])
+    with raises(ValueError, "KDTree(): 'data' must have at least 1 dimension"):
+        S.KDTree(np.array(0.5))
+    with raises(ValueError, "find_simplex(): 'xi' must have at least 1 dimension"):
+        S.Delaunay([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]]).find_simplex(np.array(0.5))
     with raises(TypeError, "pdist(): 'X' must be an sd.ndarray, a sequence of numbers, a numpy array or a frame "
                            "DataFrame, not list"):  # fmt: skip
         S.pdist([["a", "b"]])

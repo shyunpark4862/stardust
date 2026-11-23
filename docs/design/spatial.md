@@ -2,7 +2,7 @@
 
 > 상태: **확정** (2026-11-23). 큰 결정(§1.1 SPT1–SPT5)과 `haversine` 이웃의 트리 길(SPT83)은 사용자가 정했고, 나머지 결정(SPT6–SPT82, SPT84–SPT89)은 추천안이다(사용자 위임). SPT0–SPT4, SPT6, SPT7은 완료·승인(위임)이고 SPT5(BallTree)는 건너뛰었다(SPT8, SPT83). 모든 공개 이름(`docs/api/spatial.md`)이 구현되어 있고 이 문서는 구현과 맞다.
 
-`sd.spatial`(점 사이의 거리와 가장 가까운 이웃 찾기)의 확정 사항과 내부 구조를 적는다.
+`sd.spatial`(점 사이의 거리와 가장 가까운 이웃 찾기)의 확정 사항과 내부 구조를 적는다. 같은 영역의 계산 기하(`Delaunay`, `ConvexHull`, `Voronoi`)는 [spatial_geometry.md](spatial_geometry.md)에 있다: 이 문서의 결정 번호(SPT1–SPT89)와 마일스톤 번호(SPT0–SPT7)를 이어 결정 SPT90–SPT195, 마일스톤 SPT8–SPT14를 쓴다.
 
 - 공통 규칙은 [DESIGN.md](../../DESIGN.md), 층 구조는 [ARCHITECTURE.md](../../ARCHITECTURE.md), 모든 영역의 API 규칙은 [API.md](../../API.md)에 있다. 공개 함수와 시그니처는 [docs/api/spatial.md](../api/spatial.md)에 있다.
 - 비교 대상은 scipy 1.18.1의 `scipy.spatial`(`distance`, `KDTree`)과 scikit-learn 1.9.1의 `sklearn.neighbors`(`KDTree`, `BallTree`, `NearestNeighbors`)·`sklearn.metrics.pairwise`(`pairwise_distances_argmin_min`, `euclidean_distances`, `haversine_distances`), R 4.6.2의 `stats::dist`다. R에는 이웃 찾기 패키지(`RANN`, `FNN`, `dbscan`, `nabor`)가 설치되어 있지 않다. 설치하지 않는다(거리 함수만 R과 견준다).
@@ -131,7 +131,8 @@
 | `cKDTree` | 없음: `KDTree`와 같은 것이라 별칭이 된다 | — |
 | `KDTree.tree`(노드 객체), `Rectangle`, `minkowski_distance`, `minkowski_distance_p` | 없음: 트리의 속은 공개하지 않는다. 앞의 둘은 `minkowski`와 그 p제곱이다 | — |
 | `distance_matrix` | 없음: scipy 1.18.0에서 폐기 예고되었고 `cdist`와 같다 | — |
-| `ConvexHull`, `Delaunay`, `Voronoi`, `SphericalVoronoi`, `HalfspaceIntersection`, `tsearch`, `procrustes`, `geometric_slerp`, `transform` | 없음, 나중 (SPT1) | 나중 |
+| `Delaunay`, `ConvexHull`, `Voronoi`(d = 2, 3), `tsearch` | 같은 이름(`tsearch`는 `Delaunay.find_simplex`): 계산 기하는 [spatial_geometry.md](spatial_geometry.md) | SPT9–SPT12 |
+| `SphericalVoronoi`, `HalfspaceIntersection`, `procrustes`, `geometric_slerp`, `transform` | 없음, 나중 (SPT1) | 나중 |
 
 **sklearn → sd.spatial**
 | sklearn | sd.spatial | 마일스톤 |
@@ -673,7 +674,9 @@ SPT0에서 다시 잰 scipy 1.18.1과 sklearn 1.9.1의 시간이다(`tools/spati
 
 진행 원칙은 다른 영역과 같았다: 마일스톤마다 시작 전에 §9의 질문을 묻고, 구현하고, 정확도·속도를 재고, 커밋하고, 결과를 전달하고, 승인받으면 다음으로 간다. SPT1이 짝 커널을 만들므로 맨 앞이다. SPT2와 SPT3은 SPT1에만 기대어 순서를 바꿀 수 있다. SPT4는 SPT3 뒤다. 기존 영역의 결과는 비트까지 같아야 한다(이 영역은 다른 영역을 고치지 않는다; linalg의 잎을 쓰기만 한다).
 
-**나중 후보** (첫 판 밖): `BallTree`(§9의 3번), 주기 경계 `boxsize`(§9의 15번), 근사 질의 `eps`(§9의 6번), 불 거리 다섯과 `jensenshannon`·`directed_hausdorff`, 호출 가능한 `metric`, GEMM 고르기를 다른 거리로 넓히기(§3.2), `kneighbors_graph`, Qhull 기하, 회전과 변환, 근사 이웃, 그래프 도우미(`sd.graph`).
+그 뒤의 계산 기하(마일스톤 SPT8–SPT14, 모두 완료·승인(위임))는 [spatial_geometry.md](spatial_geometry.md) §8에 있다.
+
+**나중 후보** (첫 판 밖): `BallTree`(§9의 3번), 주기 경계 `boxsize`(§9의 15번), 근사 질의 `eps`(§9의 6번), 불 거리 다섯과 `jensenshannon`·`directed_hausdorff`, 호출 가능한 `metric`, GEMM 고르기를 다른 거리로 넓히기(§3.2), `kneighbors_graph`, 회전과 변환, 근사 이웃, 그래프 도우미(`sd.graph`).
 
 ---
 

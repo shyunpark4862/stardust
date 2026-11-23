@@ -35,7 +35,7 @@
   - `linalg/`는 `array/`의 `NDArray`를 직접 받는다. buffer protocol을 거치지 않는다 (DESIGN §3.1). LAPACK 래퍼(`linalg/lapack.hpp`, `linalg/ops/common.hpp`)는 regression과 optimize도 쓴다.
   - `frame/`은 `array/`를 모른다. 둘을 잇는 코드는 `frame/interop.{hpp,cpp}` 한 곳에만 둔다 (DESIGN §4.3). `array/` 헤더를 include하는 frame 파일은 `interop.cpp` 하나다. 다른 frame 파일은 `interop.hpp`(Column과 nanobind만 쓰는 선언)를 통해 부른다 (docs/design/frame.md §5.4).
   - `stats/`는 special의 커널(불완전 감마·베타, 오차함수 등)과 random의 생성기를 쓴다. `regression/`은 linalg의 LAPACK 래퍼, special의 double-double·오차함수·감마·로지스틱 함수, random의 생성기, htest의 중심 합 커널(`htest/normality.hpp`: `jarque_bera()`), parallel의 스레드풀(`parallel/pool.hpp`)을 쓴다. Python 쪽에서 `regression.nls`는 optimize의 최소제곱(`csrc/optimize/lsq.cpp`)을 쓴다.
-  - `spatial/`은 짝 거리의 합을 자기 순서(타일 순서)로 하므로 linalg의 합에 기대지 않는다(docs/design/spatial.md §3.1). Python 층의 `stardust.spatial`은 `stardust.sparse`(반경 결과의 `tocsr()`)와 `stardust.linalg`(`mahalanobis`의 기본 `VI`)를 쓴다.
+  - `spatial/`은 짝 거리의 합을 자기 순서(타일 순서)로 하므로 linalg의 합에 기대지 않는다(docs/design/spatial.md §3.1). Python 층의 `stardust.spatial`은 `stardust.sparse`(반경 결과의 `tocsr()`)와 `stardust.linalg`(`mahalanobis`의 기본 `VI`)를 쓴다. 계산 기하(`Delaunay`, `ConvexHull`, `Voronoi`)는 직접 쓴 정확한 술어와 `array/`·`parallel/`만 쓰고 BLAS·LAPACK과 밖의 기하 라이브러리를 부르지 않는다(docs/design/spatial_geometry.md §6).
   - `graph/`는 sparse의 표준 꼴 CSR(`sparse/format.hpp`)을 읽기만 하고 sparse는 graph를 모른다(docs/design/graph.md §1.4, §6). Python 층의 `stardust.graph`는 `stardust.sparse`(입력, `csr_array` 결과, `LinearOperator`)를 쓴다.
   - `interpolate/`의 선형 커널(`base/lerp.hpp`)과 구간 찾기(`base/interval.hpp`)는 바닥 층에 두고 배열의 `sd.interp`(`array/ops/interp.cpp`)와 함께 쓴다(`base/sincos.hpp`와 같은 자리; docs/design/interpolate.md §1.4, §3.2). 배열은 interpolate를 모른다. Python 층의 `stardust.interpolate`는 `stardust.spatial`(`KDTree`)과 `stardust.sparse`(`design_matrix`)를 쓴다.
   - `fft/`는 다른 영역을 쓰지 않는다. 모든 길이를 자체 C++로 계산하고 Accelerate의 vDSP를 부르지 않는다(docs/design/fft.md FT30, FT66; vDSP의 래퍼 `fft/vdsp.hpp`는 라이브러리에 빌드되지 않고 탐침 `tools/fft_probe_kernels.cpp`만 쓴다). Python 층의 `stardust.fft`도 다른 영역을 쓰지 않는다(FFTLog의 계수도 `fft/fftlog.hpp`의 double-double log Γ로 만든다: docs/design/fft.md FT58).
@@ -69,7 +69,7 @@ stardust/
     integrate/                  _quadpack, _quad_vec, _cubature, _tanhsinh, _samples, _rules, _gauss, _result
     differentiate/              _derivative, _weights, _differences, _result
     spatial/                    _common, _distance, _neighbors, _radius(RadiusResult), _kdtree (docs/design/spatial.md §6),
-                                _hull, _delaunay (docs/design/spatial_geometry.md §6)
+                                _delaunay, _hull, _voronoi (계산 기하; docs/design/spatial_geometry.md §6)
     graph/                      _common, _traversal, _convert, _paths, _tree, _flow(MaximumFlowResult), _matching,
                                 _ordering, _structure, _centrality (docs/design/graph.md §6)
     interpolate/                __init__.py, _common, _ppoly (IP2 마일스톤), _bspline (IP3 마일스톤), _polyint _aaa (IP4 마일스톤), _grid (IP5 마일스톤), _rbf (IP6 마일스톤; docs/design/interpolate.md §6)
@@ -118,7 +118,7 @@ stardust/
                   predicates(정확한 술어와 값 커널; §3.1, §3.2; .cpp는 테스트용 비공개 바인딩), sfc(사전 순서, 힐베르트, BRIO),
                   hull(볼록 껍질: 정적 필터의 미리 거르기, 단조 사슬, 퀵헐, 평평한 면 합치기; §3.6),
                   triangulation(삼각분할의 공용: 병렬 사전 순서 정렬, 표준 꼴, 위치 격자와 걷기, 지연 속성; §3.5),
-                  delaunay2(2차원 분할 정복과 `_Delaunay`; §3.3), delaunay3(3차원 BRIO 순서의 하나씩 넣기; §3.4),
+                  delaunay2(2차원 분할 정복과 `_Delaunay`; §3.3), delaunay3(3차원 BRIO 순서의 하나씩 넣기와 잠금 낱말의 줄 넣기; §3.4),
                   voronoi(쌍대: 외심이 같은 단체의 묶음, 꼭짓점의 분자 커널, 능선과 영역; §3.7)
     graph/        input(밀집 → CSR, 전치, 대칭 확인), traversal(순회, 연결 요소, 위상 정렬),
                   paths(최단 경로의 정의와 블록 FW; docs/design/graph.md §3.2), yen, tree(최소 신장 트리), flow,

@@ -1,4 +1,4 @@
-"""Delaunay of sd.spatial (docs/api/spatial_geometry.md §3, docs/design/spatial_geometry.md §2.3, §3.3-§3.5;
+"""Delaunay of sd.spatial (docs/api/spatial.md §6, §7; docs/design/spatial_geometry.md §2.3, §3.3-§3.5;
 milestones SPT9 (d = 2) and SPT10 (d = 3)).
 
 A Python class holding the native triangulation (stardust._core.spatial._Delaunay, csrc/spatial/delaunay2.cpp;
@@ -148,9 +148,8 @@ class Delaunay:
         sd = _sd
         X = C.data(xi, name, "xi")
         d = self.ndim
-        if X.ndim == 0 or X.shape[-1] != d:
-            got = X.shape[-1] if X.ndim else "no axis"
-            raise ValueError(f"{name}(): 'xi' must have {d} entries on its last axis, not {got}")
+        if X.shape[-1] != d:  # data() gives at least one dimension
+            raise ValueError(f"{name}(): 'xi' must have {d} entries on its last axis, not {X.shape[-1]}")
         batch = tuple(X.shape[:-1])
         X2 = sd.reshape(X, (math.prod(batch), d))
         if not X2._flags()["c_contiguous"]:  # copy() keeps an F-ordered array F-ordered

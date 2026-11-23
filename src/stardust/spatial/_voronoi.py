@@ -1,5 +1,5 @@
-"""Voronoi of sd.spatial (docs/api/spatial_geometry.md §5, docs/design/spatial_geometry.md §2.5, §3.7; milestone
-SPT12, decisions SPT110, SPT111, SPT172-SPT183).
+"""Voronoi of sd.spatial (docs/api/spatial.md §6, §9; docs/design/spatial_geometry.md §2.5, §3.7; milestone SPT12,
+decisions SPT110, SPT111, SPT172-SPT183).
 
 A Python class holding the arrays of the native diagram (stardust._core.spatial._voronoi,
 csrc/spatial/voronoi.cpp), computed in the constructor from the exact Delaunay triangulation, which is not kept
@@ -50,6 +50,12 @@ class Voronoi:
         self._point_region = _readonly(pr)
         self._lazy = {}
 
+    def _made(self, key, make):  # an attribute made on first use and kept (like Delaunay's; SPT195)
+        v = self._lazy.get(key)
+        if v is None:
+            v = self._lazy[key] = make()
+        return v
+
     @property
     def points(self):
         """The points (n, d) float64, read-only (a copy of the input)."""
@@ -95,18 +101,12 @@ class Voronoi:
     @property
     def min_bound(self):
         """The smallest coordinate on each axis (d,), read-only."""
-        v = self._lazy.get("min_bound")
-        if v is None:
-            v = self._lazy["min_bound"] = _readonly(_sd.min(self._points, axis=0))
-        return v
+        return self._made("min_bound", lambda: _readonly(_sd.min(self._points, axis=0)))
 
     @property
     def max_bound(self):
         """The largest coordinate on each axis (d,), read-only."""
-        v = self._lazy.get("max_bound")
-        if v is None:
-            v = self._lazy["max_bound"] = _readonly(_sd.max(self._points, axis=0))
-        return v
+        return self._made("max_bound", lambda: _readonly(_sd.max(self._points, axis=0)))
 
     def __repr__(self):
         return f"Voronoi(n={self.npoints}, d={self.ndim}, nvertices={self._vertices.shape[0]})"

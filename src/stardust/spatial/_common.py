@@ -62,6 +62,8 @@ def data(x, name, arg, *, keep=False):
             msg = str(e)
             if isinstance(e, ValueError) and "0-dimensional" not in msg:  # a ragged sequence, ...
                 raise ValueError(f"{name}(): {msg.partition('(): ')[2] or msg}") from None
+            if getattr(x, "ndim", None) == 0:  # a 0-d numpy array: an array, but stardust has no 0-d arrays
+                raise ValueError(f"{name}(): '{arg}' must have at least 1 dimension") from None
             raise TypeError(f"{name}(): '{arg}' must be {_TAKES}, not {type_name(x)}") from None
     if a.dtype == sd.complex128:
         raise TypeError(f"{name}(): '{arg}' must be real, not a complex128 array")

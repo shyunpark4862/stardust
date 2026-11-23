@@ -1,5 +1,5 @@
-"""stardust.spatial: distances between points and exact nearest-neighbour search
-(docs/api/spatial.md, docs/design/spatial.md).
+"""stardust.spatial: distances between points, exact nearest-neighbour search and computational geometry
+(docs/api/spatial.md, docs/design/spatial.md, docs/design/spatial_geometry.md).
 
 Usage: ``import stardust as sd`` then ``sd.spatial.cdist(XA, XB)``, ``sd.spatial.kneighbors(XA, XB, k=5)``
 and ``sd.spatial.KDTree(data).query(x, k=3)``. The names are scipy.spatial's (and
@@ -10,8 +10,8 @@ docs/design/spatial.md §1.1).
 The public names come milestone by milestone (docs/design/spatial.md §8): SPT1 the distances (pdist,
 cdist, squareform and the fourteen distance functions), SPT2 kneighbors and radius_neighbors, SPT3 KDTree
 with its query, SPT4 KDTree's radius, pair and count queries. The computational geometry
-(docs/design/spatial_geometry.md §8, drafted in docs/api/spatial_geometry.md): SPT9 and SPT10 Delaunay,
-SPT11 ConvexHull, SPT12 Voronoi.
+(docs/design/spatial_geometry.md §8; docs/api/spatial.md §6-§9): SPT9 and SPT10 Delaunay, SPT11 ConvexHull,
+SPT12 Voronoi.
 """
 
 from ._delaunay import Delaunay
