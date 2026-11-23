@@ -142,19 +142,19 @@ def _bandwidth(bw, p):
         return choice(bw, "kernel_regression", "bw", _RULES), None
     if isinstance(bw, bool) or bw is None:
         raise TypeError(
-            f"kernel_regression(): 'bw' must be a positive number, {p} positive numbers, 'cv_ls', 'aicc' or 'dpill', "
+            f"kernel_regression(): 'bw' must be a number > 0, {p} numbers > 0, 'cv_ls', 'aicc' or 'dpill', "
             f"not {type_name(bw)}"
         )
     if isinstance(bw, numbers.Real) or (type(bw).__module__ == "numpy" and getattr(bw, "ndim", None) == 0):
         h = real(bw, "kernel_regression", "bw")
         if not (h > 0 and math.isfinite(h)):
-            raise ValueError("kernel_regression(): 'bw' must be positive and finite")
+            raise ValueError("kernel_regression(): 'bw' must be a finite number > 0")
         return None, _sd.full((p,), h)
     a = array(bw, "kernel_regression", "bw")
     if a.ndim != 1 or a.shape[0] != p:
         raise ValueError(f"kernel_regression(): 'bw' must be a number or have {p} values, not shape {tuple(a.shape)}")
     if not bool(_sd.all(_sd.logical_and(a > 0, _sd.isfinite(a)))):
-        raise ValueError("kernel_regression(): 'bw' must be positive and finite")
+        raise ValueError("kernel_regression(): 'bw' must be finite numbers > 0")
     return None, contiguous(a.copy())
 
 

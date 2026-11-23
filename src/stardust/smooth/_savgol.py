@@ -33,13 +33,13 @@ def _filter_args(window_length, polyorder, deriv, delta, func):
     nu = integer(deriv, func, "deriv")
     dl = real(delta, func, "delta")
     if N < 1:
-        raise ValueError(f"{func}(): 'window_length' must be positive, not {N}")
+        raise ValueError(f"{func}(): 'window_length' must be >= 1, not {N}")
     if d < 0:
-        raise ValueError(f"{func}(): 'polyorder' must be nonnegative, not {d}")
+        raise ValueError(f"{func}(): 'polyorder' must be >= 0, not {d}")
     if d >= N:
         raise ValueError(f"{func}(): 'polyorder' must be less than 'window_length' ({d} >= {N})")
     if nu < 0:
-        raise ValueError(f"{func}(): 'deriv' must be nonnegative, not {nu}")
+        raise ValueError(f"{func}(): 'deriv' must be >= 0, not {nu}")
     if dl == 0 or not math.isfinite(dl):
         raise ValueError(f"{func}(): 'delta' must be finite and nonzero, not {dl!r}")
     return N, d, nu, dl
@@ -70,7 +70,7 @@ def savgol_coeffs(window_length, polyorder, /, *, deriv=0, delta=1.0, pos=None, 
     else:
         p = integer(pos, func, "pos")
         if not 0 <= p < N:
-            raise ValueError(f"{func}(): 'pos' must be nonnegative and less than 'window_length', not {p}")
+            raise ValueError(f"{func}(): 'pos' must be >= 0 and < 'window_length', not {p}")
     _choice(use, ("conv", "dot"), func, "use")
     _check_work(N, d, nu, func)
     h = _core.savgol_coeffs(N, d, nu, dl, p)

@@ -402,6 +402,27 @@ def test_thread_counts():
             assert bits_equal(a, b), (t, k)
 
 
+def test_parallel_sort_of_many_points():
+    """From 2^16 points the radix sort runs its passes on chunks in parallel (decision SM139): the order is the
+    stable one of (coordinates, weight, index) whatever the thread count, with -0 equal to +0."""
+    g = np.random.default_rng(11)
+    n = 1 << 17
+    X = np.round(g.standard_normal((n, 2)), 2)  # many equal keys
+    X[:50, 0] = -0.0
+    X[50:100, 0] = 0.0
+    w = np.round(g.random(n), 1)
+    order = np.lexsort((np.arange(n), w, X[:, 1], X[:, 0] + 0.0))
+    order = order[w[order] > 0]
+    outs = []
+    for t in (1, 3, 10):
+        sd.set_num_threads(t)
+        outs.append(sd._core.smooth.kde_prepare(A(X), A(w)))
+    sd.set_num_threads(10)
+    for o in outs[1:]:
+        assert bits_equal(o[0], outs[0][0]) and bits_equal(o[1], outs[0][1]) and o[2] == outs[0][2]
+    assert bits_equal(outs[0][0], A(X[order])) and bits_equal(outs[0][1], A(w[order]))
+
+
 def test_input_order():
     s = S.density("weighted/40")
     perm = np.random.default_rng(1).permutation(s.n)

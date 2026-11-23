@@ -22,6 +22,8 @@
 // One rounding per operation: the build compiles with -ffp-contract=off (CMakeLists.txt).
 #pragma once
 
+#include "interpolate/deboor.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -29,17 +31,29 @@
 
 namespace sd::smooth {
 
+// interpolate::basis_values at nu = 0 with the degree's unrolled twin basis_fixed for k <= 5 (the same operations,
+// so the same bits): the data rows and the residuals of the splines evaluate it at every point.
+inline void basis_at(const double* t, std::int64_t k, std::int64_t l, double x, double* h, double* hh) {
+    switch (k) {
+        case 1: return interpolate::basis_fixed<1>(t, l, x, h);
+        case 2: return interpolate::basis_fixed<2>(t, l, x, h);
+        case 3: return interpolate::basis_fixed<3>(t, l, x, h);
+        case 4: return interpolate::basis_fixed<4>(t, l, x, h);
+        case 5: return interpolate::basis_fixed<5>(t, l, x, h);
+        default: return interpolate::basis_values(t, k, l, x, 0, h, hh);
+    }
+}
+
 // FITPACK's fpgivs: the rotation taking (piv, ww) to (0, dd), ww >= 0 the current diagonal; ww becomes dd.
+// FITPACK's two branches (r = ww / piv when |piv| >= ww, else piv / ww) as one: r^2 is the same for r = small / big
+// (a rounded quotient's magnitude does not depend on the signs), so dd has FITPACK's bits, and the selects leave no
+// branch to mispredict between the rows that the band QR pipelines.
 inline void givens(double piv, double& ww, double& c, double& s) {
     const double store = std::abs(piv);
-    double dd;
-    if (store >= ww) {
-        const double r = ww / piv;
-        dd = store * std::sqrt(1.0 + r * r);
-    } else {
-        const double r = piv / ww;
-        dd = ww * std::sqrt(1.0 + r * r);
-    }
+    const bool first = store >= ww;
+    const double big = first ? store : ww, small = first ? ww : store;
+    const double r = small / big;
+    const double dd = big * std::sqrt(1.0 + r * r);
     c = ww / dd;
     s = piv / dd;
     ww = dd;
@@ -75,6 +89,16 @@ public:
     // row's width; columns >= nb must be zero), hb: kb doubles (the border), y: ncol doubles. All three are used
     // as workspace.
     void add(std::int64_t o, double* h, double* hb, double* y) {
+        if (kb == 0) {  // the same operations with the width known to the compiler
+            switch (bw) {
+                case 2: return add_band<2>(o, h, y);
+                case 3: return add_band<3>(o, h, y);
+                case 4: return add_band<4>(o, h, y);
+                case 5: return add_band<5>(o, h, y);
+                case 6: return add_band<6>(o, h, y);
+                default: break;
+            }
+        }
         const std::int64_t last = std::min(nb, o + bw);  // the row's entries end before column o + bw
         for (std::int64_t j = o; j < last; ++j) {
             const std::int64_t w = o + bw - j;  // the window's entries that can be nonzero: columns j .. o + bw - 1
@@ -105,6 +129,67 @@ public:
         for (std::int64_t q = 0; q < ncol; ++q) rest[q] += y[q] * y[q];
     }
 
+    // add() without a border for bw = BW <= 6: the row in registers (every index known to the compiler; a row kept
+    // in memory and shifted there cost a store-to-load stall per step), the same operations in the same order.
+    // One step at column j: the pivot v[0] against R's row j, the rest of the window v[1 .. W).
+    template <int W>
+    [[gnu::always_inline]] inline void band_step(std::int64_t j, double* v, double* y, std::int64_t bwr) {
+        const double piv = v[0];
+        if (piv != 0.0) {
+            double* r = R.data() + j * bwr;
+            double c, s;
+            givens(piv, r[0], c, s);
+            double* z = Z.data() + j * ncol;
+            if (ncol == 1) {
+                rotate(c, s, y[0], z[0]);
+            } else {
+                for (std::int64_t q = 0; q < ncol; ++q) rotate(c, s, y[q], z[q]);
+            }
+            if constexpr (W > 1) rotate(c, s, v[1], r[1]);
+            if constexpr (W > 2) rotate(c, s, v[2], r[2]);
+            if constexpr (W > 3) rotate(c, s, v[3], r[3]);
+            if constexpr (W > 4) rotate(c, s, v[4], r[4]);
+            if constexpr (W > 5) rotate(c, s, v[5], r[5]);
+        }
+        if constexpr (W > 1) v[0] = v[1];
+        if constexpr (W > 2) v[1] = v[2];
+        if constexpr (W > 3) v[2] = v[3];
+        if constexpr (W > 4) v[3] = v[4];
+        if constexpr (W > 5) v[4] = v[5];
+    }
+
+    template <int BW>
+    void add_band(std::int64_t o, double* h, double* y) {
+        double v[6] = {0, 0, 0, 0, 0, 0};
+        for (int i = 0; i < BW; ++i) v[i] = h[i];
+        const std::int64_t steps = std::min<std::int64_t>(BW, nb - o);
+        if (steps >= BW) {
+            band_step<BW>(o, v, y, BW);
+            if constexpr (BW > 1) band_step<BW - 1>(o + 1, v, y, BW);
+            if constexpr (BW > 2) band_step<BW - 2>(o + 2, v, y, BW);
+            if constexpr (BW > 3) band_step<BW - 3>(o + 3, v, y, BW);
+            if constexpr (BW > 4) band_step<BW - 4>(o + 4, v, y, BW);
+            if constexpr (BW > 5) band_step<BW - 5>(o + 5, v, y, BW);
+        } else {
+            // the last rows of R: the loop of add()
+            for (std::int64_t st = 0; st < steps; ++st) {
+                const std::int64_t j = o + st, w = BW - st;
+                const double piv = v[0];
+                if (piv != 0.0) {
+                    double* r = R.data() + j * BW;
+                    double c, s;
+                    givens(piv, r[0], c, s);
+                    double* z = Z.data() + j * ncol;
+                    for (std::int64_t q = 0; q < ncol; ++q) rotate(c, s, y[q], z[q]);
+                    for (std::int64_t i = 1; i < w; ++i) rotate(c, s, v[i], r[i]);
+                }
+                for (std::int64_t i = 1; i < w; ++i) v[i - 1] = v[i];
+                v[w - 1] = 0.0;
+            }
+        }
+        for (std::int64_t q = 0; q < ncol; ++q) rest[q] += y[q] * y[q];
+    }
+
     // The diagonal entry of row j.
     double diag(std::int64_t j) const { return j < nb ? R[j * bw] : B[j * kb + (j - nb)]; }
 
@@ -130,6 +215,14 @@ public:
 
     // c ((nb + kb) x ncol) from R c = Z.
     void solve(double* c) const {
+        if (kb == 0 && ncol == 1 && bw >= 2 && bw <= 5) {  // the same operations with the width a constant
+            switch (bw) {
+                case 2: return solve_band<2>(c);
+                case 3: return solve_band<3>(c);
+                case 4: return solve_band<4>(c);
+                default: return solve_band<5>(c);
+            }
+        }
         for (std::int64_t i = kb - 1; i >= 0; --i) {
             const double* t = B.data() + (nb + i) * kb;
             for (std::int64_t q = 0; q < ncol; ++q) {
@@ -150,11 +243,55 @@ public:
             }
         }
     }
+
+    // solve() without a border, one column, the width BW a constant.
+    template <int BW>
+    void solve_band(double* c) const {
+        for (std::int64_t j = nb - 1; j >= 0; --j) {
+            const double* r = R.data() + j * BW;
+            double v = Z[j];
+            if (j + BW <= nb) {
+                for (int i = 1; i < BW; ++i) v -= r[i] * c[j + i];
+            } else {
+                for (std::int64_t i = 1; i < nb - j; ++i) v -= r[i] * c[j + i];
+            }
+            c[j] = v / r[0];
+        }
+    }
 };
+
+namespace detail {
+// selected_inverse's row i with the full width BW known to the compiler (the same operations in the same order).
+template <int BW>
+inline void selected_row(const double* R, std::int64_t i, double* S) {
+    const double* r = R + i * BW;
+    const double inv = 1.0 / r[0];
+    double* s = S + i * BW;
+    for (int d = BW - 1; d >= 1; --d) {
+        const std::int64_t j = i + d;
+        double acc = 0.0;
+        for (int e = 1; e < BW; ++e) {
+            const std::int64_t l = i + e;
+            const double sl = e <= d ? S[l * BW + (d - e)] : S[j * BW + (e - d)];
+            acc += r[e] * sl;
+        }
+        s[d] = -acc * inv;
+    }
+    double acc = 0.0;
+    for (int e = 1; e < BW; ++e) acc += r[e] * s[e];
+    s[0] = (inv - acc) * inv;
+}
+}  // namespace detail
 
 // The band of Sigma = (R'R)^-1 of a band triangle R (nb x bw, no border): S[i][d] = Sigma_{i, i + d}, d < bw.
 inline void selected_inverse(const double* R, std::int64_t nb, std::int64_t bw, double* S) {
     for (std::int64_t i = nb - 1; i >= 0; --i) {
+        if (i + bw <= nb && (bw == 3 || bw == 4 || bw == 5)) {  // a row of full width
+            if (bw == 3) detail::selected_row<3>(R, i, S);
+            else if (bw == 4) detail::selected_row<4>(R, i, S);
+            else detail::selected_row<5>(R, i, S);
+            continue;
+        }
         const double* r = R + i * bw;
         const double inv = 1.0 / r[0];
         const std::int64_t w = std::min(bw, nb - i);

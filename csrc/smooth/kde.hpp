@@ -127,8 +127,9 @@ inline std::int64_t good_length(std::int64_t m, bool even) {
 // Linear binning of sorted points x (weights w, null: 1) onto G grid points g_k = lo + (k - E) delta (decision
 // SM120): a point at pos = (x - lo) / delta + E in [0, G - 1] gives w (1 - f) to floor(pos) and w f to the next
 // one (f = pos - floor(pos)); points outside are left out. A grid point's sum adds its contributions in the order
-// of the points, so the tasks (ranges of grid points, cut by size alone) give the bits of one pass. c: G doubles,
-// overwritten.
+// of the points, so tasks over ranges of grid points give the bits of one pass whatever the ranges: the ranges
+// split the sorted points into equal runs (the grid has fewer points than one task's worth), and the positions
+// of the points are computed in chunks. c: G doubles, overwritten.
 inline constexpr std::int64_t kBelow = std::numeric_limits<std::int64_t>::min();
 inline constexpr std::int64_t kAbove = std::numeric_limits<std::int64_t>::max();
 
@@ -138,21 +139,23 @@ inline void linbin(
     std::vector<std::int64_t> bin(n);
     std::vector<double> a(n), b(n);
     const double top = static_cast<double>(G - 1);
-    for (std::int64_t j = 0; j < n; ++j) {
-        const double pos = (x[j] - lo) / delta + static_cast<double>(E);
-        const double wj = w ? w[j] : 1.0;
-        if (!(pos >= 0.0 && pos <= top)) {  // left out: below the grid first, above it last (x is sorted)
-            bin[j] = pos < 0.0 ? kBelow : kAbove;
-            a[j] = b[j] = 0.0;
-            continue;
+    const auto place = [&](std::int64_t j0, std::int64_t j1) {
+        for (std::int64_t j = j0; j < j1; ++j) {
+            const double pos = (x[j] - lo) / delta + static_cast<double>(E);
+            const double wj = w ? w[j] : 1.0;
+            if (!(pos >= 0.0 && pos <= top)) {  // left out: below the grid first, above it last (x is sorted)
+                bin[j] = pos < 0.0 ? kBelow : kAbove;
+                a[j] = b[j] = 0.0;
+                continue;
+            }
+            double fl = std::floor(pos);
+            if (fl >= top) fl = top - 1.0;
+            const double f = pos - fl;
+            bin[j] = static_cast<std::int64_t>(fl);
+            a[j] = wj * (1.0 - f);
+            b[j] = wj * f;
         }
-        double fl = std::floor(pos);
-        if (fl >= top) fl = top - 1.0;
-        const double f = pos - fl;
-        bin[j] = static_cast<std::int64_t>(fl);
-        a[j] = wj * (1.0 - f);
-        b[j] = wj * f;
-    }
+    };
     // bin is nondecreasing (pos is monotone in x; the points left out sit at either end)
     const auto range_task = [&](std::int64_t g0, std::int64_t g1) {
         for (std::int64_t g = g0; g < g1; ++g) c[g] = 0.0;
@@ -164,12 +167,19 @@ inline void linbin(
             if (i + 1 >= g0 && i + 1 < g1) c[i + 1] += b[j];
         }
     };
-    const std::int64_t work = n + G;
-    if (work >= kParallelThreshold && parallel::available()) {
-        const std::int64_t per = std::max<std::int64_t>(4096, G / 64);
-        const std::int64_t tasks = (G + per - 1) / per;
-        parallel::parallel_for(tasks, [&](std::int64_t t) { range_task(t * per, std::min(G, (t + 1) * per)); });
+    const std::int64_t work = 8 * n + G;
+    if (work >= kParallelThreshold && n >= 4096 && parallel::available()) {
+        const std::int64_t T = std::min<std::int64_t>(64, 2 * std::max(1, parallel::num_threads()));
+        parallel::parallel_for(T, [&](std::int64_t t) { place(t * n / T, (t + 1) * n / T); }, work_ns(8 * n / T));
+        std::vector<std::int64_t> cut(T + 1);
+        cut[0] = 0, cut[T] = G;
+        for (std::int64_t t = 1; t < T; ++t)
+            cut[t] = std::max(cut[t - 1], std::clamp<std::int64_t>(bin[t * n / T], 0, G));
+        parallel::parallel_for(
+            T, [&](std::int64_t t) { range_task(cut[t], std::max(cut[t], cut[t + 1])); }, work_ns(n / T + G / T)
+        );
     } else {
+        place(0, n);
         range_task(0, G);
     }
 }

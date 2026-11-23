@@ -519,6 +519,48 @@ void all_distances(
     for (; j < n; ++j) dist[j] = spatial::kd_distance(eu, x0, X + j * p);
 }
 
+// The q-th smallest of dist[0, n) (1 <= q <= n, no NaN): an order statistic is one value, so any exact selection
+// gives the same bits. Above kSelectDirect points a sorted sample of kSample distances brackets the rank q (about
+// three standard deviations of the sample quantile's rank on either side), one branch-free pass counts the points
+// below the bracket and gathers those inside it, and nth_element runs on the bracket alone (a few percent of the
+// points); when the bracket misses the rank, nth_element on every distance.
+constexpr std::int64_t kSelectDirect = 2048;
+constexpr std::int64_t kSample = 512;
+
+double select_kth(const double* dist, std::int64_t n, std::int64_t q, std::vector<double>& sel) {
+    if (n <= kSelectDirect) {
+        sel.assign(dist, dist + n);
+        std::nth_element(sel.begin(), sel.begin() + (q - 1), sel.end());
+        return sel[static_cast<std::size_t>(q - 1)];
+    }
+    double sample[kSample];
+    for (std::int64_t i = 0; i < kSample; ++i) sample[i] = dist[(i * n) / kSample + (n / kSample) / 2];
+    std::sort(sample, sample + kSample);
+    const double frac = static_cast<double>(q) / static_cast<double>(n);
+    const double sd = std::sqrt(frac * (1.0 - frac) * static_cast<double>(kSample)) + 1.0;
+    const double at = frac * static_cast<double>(kSample);
+    const std::int64_t ilo = static_cast<std::int64_t>(std::floor(at - 3.0 * sd - 1.0));
+    const std::int64_t ihi = static_cast<std::int64_t>(std::ceil(at + 3.0 * sd));
+    const double lo = ilo < 0 ? -kInf : sample[ilo], hi = ihi >= kSample ? kInf : sample[ihi];
+    sel.resize(static_cast<std::size_t>(n));
+    double* out = sel.data();
+    std::int64_t below = 0, inside = 0;
+    for (std::int64_t j = 0; j < n; ++j) {
+        const double d = dist[j];
+        out[inside] = d;
+        inside += (d >= lo) & (d <= hi);
+        below += d < lo;
+    }
+    if (below < q && q <= below + inside) {
+        const std::int64_t r = q - below - 1;
+        std::nth_element(out, out + r, out + inside);
+        return out[r];
+    }
+    sel.assign(dist, dist + n);
+    std::nth_element(sel.begin(), sel.begin() + (q - 1), sel.end());
+    return sel[static_cast<std::size_t>(q - 1)];
+}
+
 // p >= 2: the q nearest by the spatial area's Euclidean kernel (scanned, or the KD tree's k nearest: the same radius
 // and the same set), the points of positive weight with distance < h into S.idx (ascending) and S.v.
 Window gather_nd(const Problem& P, const spatial::KdEuclid& eu, const double* x0, Scratch& S) {
@@ -552,13 +594,15 @@ Window gather_nd(const Problem& P, const spatial::KdEuclid& eu, const double* x0
             hfar = *std::max_element(S.dist.begin(), S.dist.end());
             h = hfar * P.widen;
         } else {
-            S.sel.assign(S.dist.begin(), S.dist.end());
-            std::nth_element(S.sel.begin(), S.sel.begin() + (q - 1), S.sel.end());
-            h = S.sel[static_cast<std::size_t>(q - 1)];
+            h = select_kth(S.dist.data(), n, q, S.sel);
         }
-        S.idx.clear();
-        for (std::int64_t j = 0; j < n; ++j)
-            if (S.dist[j] < h) S.idx.push_back(j);
+        S.idx.resize(static_cast<std::size_t>(n));
+        std::int64_t cnt = 0;
+        for (std::int64_t j = 0; j < n; ++j) {
+            S.idx[cnt] = j;
+            cnt += S.dist[j] < h;
+        }
+        S.idx.resize(static_cast<std::size_t>(cnt));
     }
     W.h = h;
     if (!(h < kInf)) {
@@ -875,10 +919,10 @@ struct Spatial {
     explicit Spatial(std::int64_t p) : eu{p}, cut(p, false) {}
 };
 
-// path: -1 by shape (the tree when 16 q <= n), 0 scan, 1 tree.
+// path: -1 by shape (the tree when 32 q <= n; decision SM140), 0 scan, 1 tree.
 void setup_spatial(Problem& P, Spatial& sp, int path) {
     if (P.p < 2 || P.widen != 1.0) return;
-    sp.use_tree = path == 1 || (path < 0 && 16 * P.q <= P.n);
+    sp.use_tree = path == 1 || (path < 0 && 32 * P.q <= P.n);
     if (!sp.use_tree) return;
     sp.tree = spatial::kd_build(P.X, P.n, P.p, P.p, 10);
     P.tree = &sp.tree;

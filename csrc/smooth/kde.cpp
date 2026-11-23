@@ -62,9 +62,13 @@ using gauss::Axis;
 using kde::kInf;
 using kde::kNaN;
 
-// The tree path of the direct sum: several variables, the Gaussian kernel, at least this many points (decision
-// SM116; the shape alone decides).
-constexpr std::int64_t kTreeMinPoints = std::int64_t{1} << 17;
+// The tree path of the direct sum (decision SM140; the rule decides the speed only, both paths have the same bits):
+// several variables, the Gaussian kernel, at least kTreeMinPoints points and kTreeMinQueries queries, and a cut
+// radius sqrt(T) at most 1/16 of the whitened data's extent on every axis (the kept points are then a small part of
+// the data; at Scott's bandwidth they are most of it and the tree was 1.7-4 times slower than the scan).
+constexpr std::int64_t kTreeMinPoints = 4096;
+constexpr std::int64_t kTreeMinQueries = 16;
+constexpr double kTreeExtent = 16.0;
 
 // ---- argument helpers ------------------------------------------------------------------------------------------
 
@@ -232,8 +236,51 @@ inline double sqdist(const Model& M, std::int64_t j, const double* x0) {
 
 // sqdist of every point (the same operations in the same order for each point, so the same bits as sqdist; the
 // loops over the points vectorize): the columns of Xt (p x n).
+// p = 2, 3 in registers, two points at a time: the operations of sqdist (a sum that starts at 0 adds its first
+// term exactly, and a square is +0 whatever the sign of a zero, so z_0 = L_00 d_0 and D = z_0^2 + z_1^2 + ... give
+// the same bits).
+template <int P>
+void sqdist_small(const Model& M, const double* x0, double* D) {
+    const std::int64_t n = M.n;
+    const double* Xt = M.Xt.data();
+    float64x2_t t[P], a[P], b[P], L[P][P];
+    for (int l = 0; l < P; ++l) {
+        t[l] = vdupq_n_f64(x0[l]);
+        a[l] = vdupq_n_f64(M.full ? M.s : M.ax[l].sc);
+        b[l] = vdupq_n_f64(M.full ? 1.0 : M.ax[l].inv);
+        for (int q = 0; q < P; ++q) L[l][q] = vdupq_n_f64(M.full && q <= l ? M.L[l * P + q] : 0.0);
+    }
+    std::int64_t k = 0;
+    const bool full = M.full;
+    for (; k + 2 <= n; k += 2) {
+        float64x2_t d[P];
+        for (int l = 0; l < P; ++l) d[l] = vmulq_f64(vsubq_f64(vld1q_f64(Xt + l * n + k), t[l]), a[l]);
+        float64x2_t acc;
+        if (!full) {
+            float64x2_t z = vmulq_f64(d[0], b[0]);
+            acc = vmulq_f64(z, z);
+            for (int l = 1; l < P; ++l) {
+                z = vmulq_f64(d[l], b[l]);
+                acc = vaddq_f64(acc, vmulq_f64(z, z));
+            }
+        } else {
+            float64x2_t z = vmulq_f64(L[0][0], d[0]);
+            acc = vmulq_f64(z, z);
+            for (int i = 1; i < P; ++i) {
+                z = vmulq_f64(L[i][0], d[0]);
+                for (int q = 1; q <= i; ++q) z = vaddq_f64(z, vmulq_f64(L[i][q], d[q]));
+                acc = vaddq_f64(acc, vmulq_f64(z, z));
+            }
+        }
+        vst1q_f64(D + k, acc);
+    }
+    for (; k < n; ++k) D[k] = sqdist(M, k, x0);
+}
+
 void sqdist_all(const Model& M, const double* x0, double* D) {
     const std::int64_t n = M.n, p = M.p;
+    if (p == 2) return sqdist_small<2>(M, x0, D);
+    if (p == 3) return sqdist_small<3>(M, x0, D);
     const double* Xt = M.Xt.data();
     constexpr std::int64_t B = 256;
     std::vector<double> dbuf(M.full ? p * B : 0);
@@ -302,21 +349,28 @@ inline double tree_eps(const Model& M, const double* x0, const double* W0) {
 }
 
 // Builds the tree when the shape asks for it (decision SM116) or the tests force it.
-void attach_tree(Model& M) {
+void attach_tree(Model& M, std::int64_t queries) {
     const int mode = gauss::g_tree_mode.load();
     M.use_tree = false;
     if (M.p < 2 || M.kernel != kde::kGauss || M.p > 16 || mode == 1) return;
-    if (mode != 2 && M.n < kTreeMinPoints) return;
+    if (mode != 2 && (M.n < kTreeMinPoints || queries < kTreeMinQueries)) return;
     const std::int64_t n = M.n, p = M.p;
     M.mu.assign(p, 0.0);
     for (std::int64_t l = 0; l < p; ++l)
         M.mu[l] = gauss::sum_of(n, [&](std::int64_t j) { return M.X[j * p + l]; }) / static_cast<double>(n);
-    std::vector<double> W(n * p);
+    std::vector<double> W(n * p), lo(p, kInf), hi(p, -kInf);
     M.xmax = 0;
     for (std::int64_t j = 0; j < n; ++j) {
-        whiten(M, M.X + j * p, W.data() + j * p);
+        double* w = W.data() + j * p;
+        whiten(M, M.X + j * p, w);
+        for (std::int64_t l = 0; l < p; ++l) lo[l] = std::min(lo[l], w[l]), hi[l] = std::max(hi[l], w[l]);
         if (M.full)
             for (std::int64_t l = 0; l < p; ++l) M.xmax = std::max(M.xmax, std::fabs((M.X[j * p + l] - M.mu[l]) * M.s));
+    }
+    if (mode != 2) {
+        const double r = std::sqrt(M.T);
+        for (std::int64_t l = 0; l < p; ++l)
+            if (!(kTreeExtent * r <= hi[l] - lo[l])) return;
     }
     M.use_tree = M.tree.build(W.data(), n, p);
 }
@@ -406,8 +460,13 @@ Part part_1d(const Model& M, double t, Scratch& S) {
 
 // The smallest of D[0, n) (no NaN).
 double min_of(const double* D, std::int64_t n) {
-    float64x2_t m = vdupq_n_f64(kInf);
+    float64x2_t m = vdupq_n_f64(kInf), m1 = m, m2 = m, m3 = m;
     std::int64_t k = 0;
+    for (; k + 8 <= n; k += 8) {
+        m = vminq_f64(m, vld1q_f64(D + k)), m1 = vminq_f64(m1, vld1q_f64(D + k + 2));
+        m2 = vminq_f64(m2, vld1q_f64(D + k + 4)), m3 = vminq_f64(m3, vld1q_f64(D + k + 6));
+    }
+    m = vminq_f64(vminq_f64(m, m1), vminq_f64(m2, m3));
     for (; k + 2 <= n; k += 2) m = vminq_f64(m, vld1q_f64(D + k));
     double r = std::min(vgetq_lane_f64(m, 0), vgetq_lane_f64(m, 1));
     for (; k < n; ++k) r = D[k] < r ? D[k] : r;
@@ -484,10 +543,24 @@ Part part_nd(const Model& M, const double* x0, Scratch& S) {
     // The sum by the points' indices in the order of smooth/gauss_sum.hpp with the cut terms +0 (decision SM118):
     // adding +0 changes no bit, so the dense sum of every term and the sparse sum of the kept ones have the same
     // bits, and the tree's candidates give the scan's sum. Which of the two runs (a choice of speed only) depends on
-    // how many terms are kept.
+    // how many terms are kept: the scan takes the dense sum from 1/16 of them on (decision SM139; the sparse sum's
+    // gathering cost more than the exp it saves up to there).
     std::int64_t kept = 0;
-    for (std::int64_t k = 0; k < cnt; ++k) kept += S.D[k] - d0 <= M.T ? 1 : 0;
-    if (!tree && 2 * kept >= cnt) {
+    {
+        const double T = M.T;
+        const double* D = S.D.data();
+        const float64x2_t vd0 = vdupq_n_f64(d0), vT = vdupq_n_f64(T);
+        uint64x2_t c0 = vdupq_n_u64(0), c1 = c0;
+        std::int64_t k = 0;
+        for (; k + 4 <= cnt; k += 4) {  // a true lane is all ones: subtracting it counts one
+            c0 = vsubq_u64(c0, vcleq_f64(vsubq_f64(vld1q_f64(D + k), vd0), vT));
+            c1 = vsubq_u64(c1, vcleq_f64(vsubq_f64(vld1q_f64(D + k + 2), vd0), vT));
+        }
+        const uint64x2_t c = vaddq_u64(c0, c1);
+        kept = static_cast<std::int64_t>(vgetq_lane_u64(c, 0) + vgetq_lane_u64(c, 1));
+        for (; k < cnt; ++k) kept += D[k] - d0 <= T ? 1 : 0;
+    }
+    if (!tree && 16 * kept >= cnt) {
         S.e.resize(cnt);
         masked_terms(S.D.data(), M.w, d0, M.T, cnt, S.e.data());
         return {-0.5 * d0, gauss::sum(S.e.data(), n)};
@@ -902,22 +975,60 @@ void radix_order(const double* X, const double* w, std::int64_t p, std::vector<s
         std::memcpy(&b, &v, 8);
         return (b >> 63) ? ~b : (b | (std::uint64_t{1} << 63));
     };
+    // From kRadixParallel points on, every step runs on contiguous chunks of the points in parallel: a pass counts
+    // the digits of each chunk, gives chunk c of digit d the places after those of digit d in chunks before it, and
+    // scatters every chunk in order, so the result is the serial pass's (the stable order is unique), and only the
+    // speed depends on the number of chunks.
+    constexpr std::int64_t kRadixParallel = std::int64_t{1} << 16;
+    constexpr std::uint64_t mask = (std::uint64_t{1} << 11) - 1;
+    const bool par = m >= kRadixParallel && parallel::available();
+    const std::int64_t C = par ? std::min<std::int64_t>(64, std::max(1, parallel::num_threads())) : 1;
+    const auto chunk_lo = [&](std::int64_t c) { return c * m / C; };
+    const auto chunks = [&](const auto& fn) {
+        if (C == 1) {
+            fn(0, m, 0);
+            return;
+        }
+        parallel::parallel_for(C, [&](std::int64_t c) { fn(chunk_lo(c), chunk_lo(c + 1), c); }, work_ns(4 * m / C));
+    };
+    std::vector<std::int64_t> cnt(static_cast<std::size_t>(C * 2049));
+    std::vector<std::uint64_t> ors(C), ands(C);
     const auto pass_key = [&](auto value) {
-        for (std::int64_t k = 0; k < m; ++k) key[k] = key_of(value(ord[k]));
+        chunks([&](std::int64_t lo, std::int64_t hi, std::int64_t c) {
+            std::uint64_t o = 0, a = ~std::uint64_t{0};
+            for (std::int64_t k = lo; k < hi; ++k) {
+                key[k] = key_of(value(ord[k]));
+                o |= key[k], a &= key[k];
+            }
+            ors[c] = o, ands[c] = a;
+        });
         std::uint64_t all_or = 0, all_and = ~std::uint64_t{0};
-        for (std::int64_t k = 0; k < m; ++k) all_or |= key[k], all_and &= key[k];
+        for (std::int64_t c = 0; c < C; ++c) all_or |= ors[c], all_and &= ands[c];
         const std::uint64_t varying = all_or ^ all_and;  // digits where every key agrees need no pass
         for (int shift = 0; shift < 64; shift += 11) {
-            const std::uint64_t mask = (std::uint64_t{1} << 11) - 1;
             if (((varying >> shift) & mask) == 0) continue;
-            std::int64_t cnt[2049] = {};
-            for (std::int64_t k = 0; k < m; ++k) ++cnt[((key[k] >> shift) & mask) + 1];
-            for (int d = 0; d < 2048; ++d) cnt[d + 1] += cnt[d];
-            for (std::int64_t k = 0; k < m; ++k) {
-                const std::int64_t at = cnt[(key[k] >> shift) & mask]++;
-                tmp[at] = ord[k];
-                ktmp[at] = key[k];
+            std::fill(cnt.begin(), cnt.end(), 0);
+            chunks([&](std::int64_t lo, std::int64_t hi, std::int64_t c) {
+                std::int64_t* cc = cnt.data() + c * 2049;
+                for (std::int64_t k = lo; k < hi; ++k) ++cc[((key[k] >> shift) & mask) + 1];
+            });
+            // the start of digit d in chunk c: the counts of the smaller digits, then those of d in earlier chunks
+            std::int64_t run = 0;
+            for (std::int64_t d = 0; d < 2048; ++d) {
+                for (std::int64_t c = 0; c < C; ++c) {
+                    const std::int64_t v = cnt[c * 2049 + d + 1];
+                    cnt[c * 2049 + d] = run;
+                    run += v;
+                }
             }
+            chunks([&](std::int64_t lo, std::int64_t hi, std::int64_t c) {
+                std::int64_t* cc = cnt.data() + c * 2049;
+                for (std::int64_t k = lo; k < hi; ++k) {
+                    const std::int64_t at = cc[(key[k] >> shift) & mask]++;
+                    tmp[at] = ord[k];
+                    ktmp[at] = key[k];
+                }
+            });
             ord.swap(tmp);
             key.swap(ktmp);
         }
@@ -944,12 +1055,24 @@ nb::object kde_prepare(nb::handle X_obj, nb::handle w_obj) {
     NDArray xs = out2(m, p);
     NDArray ws = w ? out1(m) : NDArray{};
     double* xo = dout(xs);
-    for (std::int64_t k = 0; k < m; ++k)
-        for (std::int64_t l = 0; l < p; ++l) xo[k * p + l] = X[ord[k] * p + l];
+    double* wo = w ? dout(ws) : nullptr;
+    {
+        const parallel::Unlocked unlocked(m * p >= kParallelThreshold);
+        const auto gather = [&](std::int64_t k0, std::int64_t k1) {
+            for (std::int64_t k = k0; k < k1; ++k) {
+                for (std::int64_t l = 0; l < p; ++l) xo[k * p + l] = X[ord[k] * p + l];
+                if (wo) wo[k] = w[ord[k]];
+            }
+        };
+        if (m * (p + 1) >= 4 * kParallelThreshold && parallel::available()) {
+            const std::int64_t T = std::min<std::int64_t>(64, std::max(1, parallel::num_threads()));
+            parallel::parallel_for(T, [&](std::int64_t t) { gather(t * m / T, (t + 1) * m / T); }, work_ns(4 * m / T));
+        } else {
+            gather(0, m);
+        }
+    }
     double sw = static_cast<double>(m), wratio = 1.0;
     if (w) {
-        double* wo = dout(ws);
-        for (std::int64_t k = 0; k < m; ++k) wo[k] = w[ord[k]];
         sw = gauss::sum(wo, m);
         const auto [mn, mx] = std::minmax_element(wo, wo + m);
         wratio = *mx / *mn;
@@ -1032,7 +1155,7 @@ nb::object kde_eval(
         throw nb::value_error("'H' must be symmetric positive definite");
     {
         const parallel::Unlocked unlocked(m * n >= kParallelThreshold);
-        attach_tree(M);
+        attach_tree(M, m);
         Prefix P;
         if (what == 2) P.build(M.w, n);
         Query q;
@@ -1042,7 +1165,11 @@ nb::object kde_eval(
         const std::int64_t cost = std::max<std::int64_t>(1, n * p);  // the scan's work per query (the shape alone)
         const std::int64_t work = m * cost;
         if (work >= kParallelThreshold && m > 1 && parallel::available()) {
-            const std::int64_t per = std::max<std::int64_t>(1, (std::int64_t{1} << 17) / cost);
+            // about 2^17 of work per task, but at most 8 tasks per thread: a task sets up its own scratch
+            const std::int64_t threads = std::max(1, parallel::num_threads());
+            const std::int64_t per = std::max<std::int64_t>(
+                std::max<std::int64_t>(1, (std::int64_t{1} << 17) / cost), (m + 8 * threads - 1) / (8 * threads)
+            );
             const std::int64_t tasks = (m + per - 1) / per;
             parallel::parallel_for(
                 tasks,

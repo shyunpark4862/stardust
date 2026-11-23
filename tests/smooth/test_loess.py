@@ -406,6 +406,22 @@ def test_tree_and_scan_find_the_same_window():
     assert bits_equal(outs[0][0], outs[1][0])
 
 
+def test_scan_radius_beyond_the_direct_selection():
+    """Above 2048 points the scan takes the q-th distance from a sampled bracket (decision SM138): the same radius
+    and window as the KD tree's k nearest, so the same bits, also with many equal distances."""
+    X, y, w = big(5000, 2, seed=9)
+    Xa = A(X)
+    for span in (0.003, 0.05, 0.5, 1.0):
+        q = math.floor(len(y) * span + 1e-5)
+        outs = [_core.loess_fit(Xa, A(y), A(w), 1, q, 1.0, 1, False, path) for path in (0, 1)]
+        assert bits_equal(outs[0][0], outs[1][0]) and bits_equal(outs[0][1], outs[1][1]), span
+    g = np.random.default_rng(3)
+    L = A(np.round(g.random((4000, 2)) * 20.0))  # a lattice: ties at the radius
+    yl = A(g.standard_normal(4000))
+    outs = [_core.loess_fit(L, yl, None, 1, 37, 1.0, 1, False, path) for path in (0, 1)]
+    assert bits_equal(outs[0][0], outs[1][0])
+
+
 def test_result_is_a_function_of_the_data():
     g = np.random.default_rng(4)
     for X, y, _ in (big(300, 1), big(300, 2), big(200, 3)):

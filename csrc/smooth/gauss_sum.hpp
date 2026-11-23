@@ -132,6 +132,56 @@ inline void sums_of(std::int64_t n, const F& term, double* out) {
     detail::tree_sums<K>(0, n, term, out);
 }
 
+namespace detail {
+template <int K, class F4, class F1>
+inline void vblock_sums(std::int64_t lo, std::int64_t hi, const F4& f4, const F1& f1, double* out) {
+    float64x2_t A[K], B[K], a[K], b[K];
+    for (int k = 0; k < K; ++k) A[k] = B[k] = vdupq_n_f64(0.0);
+    std::int64_t j = lo;
+    for (; j + 4 <= hi; j += 4) {
+        f4(j, a, b);
+        for (int k = 0; k < K; ++k) A[k] = vaddq_f64(A[k], a[k]), B[k] = vaddq_f64(B[k], b[k]);
+    }
+    double s0[K], s1[K], s2[K], s3[K];
+    for (int k = 0; k < K; ++k) {
+        s0[k] = vgetq_lane_f64(A[k], 0), s1[k] = vgetq_lane_f64(A[k], 1);
+        s2[k] = vgetq_lane_f64(B[k], 0), s3[k] = vgetq_lane_f64(B[k], 1);
+    }
+    for (; j < hi; ++j) {
+        double v[K];
+        f1(j, v);
+        for (int k = 0; k < K; ++k) s0[k] += v[k];
+    }
+    for (int k = 0; k < K; ++k) out[k] = (s0[k] + s1[k]) + (s2[k] + s3[k]);
+}
+
+template <int K, class F4, class F1>
+inline void vtree_sums(std::int64_t lo, std::int64_t hi, const F4& f4, const F1& f1, double* out) {
+    if (hi - lo <= kBlock) {
+        vblock_sums<K>(lo, hi, f4, f1, out);
+        return;
+    }
+    const std::int64_t nb = (hi - lo + kBlock - 1) / kBlock;
+    const std::int64_t mid = lo + (nb / 2) * kBlock;
+    double a[K], b[K];
+    vtree_sums<K>(lo, mid, f4, f1, a);
+    vtree_sums<K>(mid, hi, f4, f1, b);
+    for (int k = 0; k < K; ++k) out[k] = a[k] + b[k];
+}
+}  // namespace detail
+
+// sums_of with the terms of four points at a time in NEON lanes: f4(j, a, b) sets a[k] to the k-th terms of j and
+// j + 1 and b[k] to those of j + 2 and j + 3, f1(j, v) the terms of one point (the tail of a block). The four
+// accumulators of a block are the lanes of a and b, so with the same terms the sums have sums_of's bits.
+template <int K, class F4, class F1>
+inline void vsums_of(std::int64_t n, const F4& f4, const F1& f1, double* out) {
+    if (n <= 0) {
+        for (int k = 0; k < K; ++k) out[k] = 0.0;
+        return;
+    }
+    detail::vtree_sums<K>(0, n, f4, f1, out);
+}
+
 // sum of term(j) over [0, n), in the order set by n alone.
 template <class F>
 inline double sum_of(std::int64_t n, const F& term) {
@@ -152,6 +202,26 @@ inline double dot(const double* a, const double* b, std::int64_t n) {
 inline void terms(const double* D, const double* w, double d0, std::int64_t n, double* out) {
     const float64x2_t vd0 = vdupq_n_f64(d0), half = vdupq_n_f64(-0.5);
     std::int64_t j = 0;
+    {  // every exponent within exp_lanes' range (the largest D's is, and NaN fails the test): no test per pair
+        const float64x2_t lo = vdupq_n_f64(-std::numeric_limits<double>::infinity());
+        float64x2_t m0 = lo, m1 = lo, m2 = lo, m3 = lo;
+        std::int64_t k = 0;
+        for (; k + 8 <= n; k += 8) {
+            m0 = vmaxq_f64(m0, vld1q_f64(D + k)), m1 = vmaxq_f64(m1, vld1q_f64(D + k + 2));
+            m2 = vmaxq_f64(m2, vld1q_f64(D + k + 4)), m3 = vmaxq_f64(m3, vld1q_f64(D + k + 6));
+        }
+        double top = vmaxvq_f64(vmaxq_f64(vmaxq_f64(m0, m1), vmaxq_f64(m2, m3)));
+        for (; k < n; ++k) top = D[k] > top || D[k] != D[k] ? D[k] : top;
+        if ((top - d0) * -0.5 >= -vmath::kExpMax) {
+            for (; j + 4 <= n; j += 4) {
+                float64x2_t e0 = vmath::exp_lanes(vmulq_f64(vsubq_f64(vld1q_f64(D + j), vd0), half));
+                float64x2_t e1 = vmath::exp_lanes(vmulq_f64(vsubq_f64(vld1q_f64(D + j + 2), vd0), half));
+                if (w) e0 = vmulq_f64(e0, vld1q_f64(w + j)), e1 = vmulq_f64(e1, vld1q_f64(w + j + 2));
+                vst1q_f64(out + j, e0);
+                vst1q_f64(out + j + 2, e1);
+            }
+        }
+    }
     for (; j + 2 <= n; j += 2) {
         const float64x2_t x = vmulq_f64(vsubq_f64(vld1q_f64(D + j), vd0), half);
         float64x2_t e = vdupq_n_f64(0.0);

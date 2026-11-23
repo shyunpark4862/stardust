@@ -330,10 +330,10 @@ def test_errors_and_messages():
     f, c = sd.smooth.savgol_filter, sd.smooth.savgol_coeffs
     for call, exc, msg in [
         (lambda: c(5, 5), ValueError, r"savgol_coeffs\(\): 'polyorder' must be less than 'window_length' \(5 >= 5\)"),
-        (lambda: c(0, 0), ValueError, "'window_length' must be positive"),
-        (lambda: c(5, -1), ValueError, "'polyorder' must be nonnegative"),
-        (lambda: c(5, 2, deriv=-1), ValueError, "'deriv' must be nonnegative"),
-        (lambda: c(5, 2, pos=5), ValueError, "'pos' must be nonnegative and less than 'window_length'"),
+        (lambda: c(0, 0), ValueError, "'window_length' must be >= 1"),
+        (lambda: c(5, -1), ValueError, "'polyorder' must be >= 0"),
+        (lambda: c(5, 2, deriv=-1), ValueError, "'deriv' must be >= 0"),
+        (lambda: c(5, 2, pos=5), ValueError, "'pos' must be >= 0 and < 'window_length'"),
         (lambda: c(5, 2, pos=1.5), TypeError, "'pos' must be an int, not float"),
         (lambda: c(5.0, 2), TypeError, "'window_length' must be an int, not float"),
         (lambda: c(True, 0), TypeError, "'window_length' must be an int, not bool"),

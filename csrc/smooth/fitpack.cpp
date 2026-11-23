@@ -175,7 +175,7 @@ double residuals(
     const std::vector<std::int64_t> ls = intervals(D.x, D.m, t, L);
     double fp = 0.0;
     for (std::int64_t i = 0; i < D.m; ++i) {
-        interpolate::basis_values(t.data(), L.k, ls[i], D.x[i], 0, b.data(), hh.data());
+        basis_at(t.data(), L.k, ls[i], D.x[i], b.data(), hh.data());
         const std::int64_t o = ls[i] - L.k;
         double r2 = 0.0;
         for (std::int64_t q = 0; q < D.ncol; ++q) {
@@ -200,7 +200,7 @@ void data_triangle(const Data& D, const std::vector<double>& t, const Layout& L,
     for (std::int64_t i = 0; i < used; ++i) {
         const double wi = D.w[i];
         if (wi == 0.0) continue;
-        interpolate::basis_values(t.data(), L.k, ls[i], D.x[i], 0, b.data(), hh.data());
+        basis_at(t.data(), L.k, ls[i], D.x[i], b.data(), hh.data());
         for (double& v : b) v *= wi;
         const std::int64_t ob = place_row(L, ls[i] - L.k, b.data(), L.k + 1, bw, h.data(), hb.data());
         for (std::int64_t q = 0; q < D.ncol; ++q) y[q] = wi * D.y[i * D.ncol + q];

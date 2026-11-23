@@ -37,7 +37,7 @@ def _linalg_error(msg):
 def _axis(axis, ndim, func):
     ax = integer(axis, func, "axis")
     if not -ndim <= ax < ndim:
-        raise ValueError(f"{func}(): 'axis' {ax} is out of range for 'y' with {ndim} dimension{'s' * (ndim != 1)}")
+        raise ValueError(f"{func}(): axis {ax} is out of bounds for an array of dimension {ndim}")
     return ax % ndim
 
 

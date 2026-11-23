@@ -50,6 +50,7 @@
 
 #include "array/ndarray.hpp"
 #include "array/parallel_limits.hpp"
+#include "base/buffer.hpp"
 #include "base/interval.hpp"
 #include "bind/errors.hpp"
 #include "bind/pyutil.hpp"
@@ -156,6 +157,9 @@ struct Problem {
     // the merged points of positive weight and their spacings (Reinsch's form)
     std::vector<std::int64_t> pos;
     std::vector<double> hpos;
+    // Reinsch's form without lam (reinsch_parts): A = RA + lam QQ by band entry (mc x 3), and the products
+    // q(r, c1) q(r, c2) of each row r of Q over its columns (m x 3 x 3)
+    std::vector<double> RA, QQ, QP;
     // the data rows' triangle
     BandQR data;
 };
@@ -225,7 +229,7 @@ void basis(Problem& P) {
         const double xv = P.xg[g];
         while (l < P.nc - 1 && P.t[l + 1] <= xv) ++l;
         P.off[g] = l - k;
-        interpolate::basis_values(P.t.data(), k, l, xv, 0, P.bas.data() + g * P.kd, hh.data());
+        basis_at(P.t.data(), k, l, xv, P.bas.data() + g * P.kd, hh.data());
     }
 }
 
@@ -354,12 +358,13 @@ struct Fit {
     double kappa = kNaN;  // the estimated condition number of the stacked matrix (columns scaled)
     double defect = kNaN;  // |tr(Sigma M'M) - n_c| as computed
     bool singular = false, illcond = false, trusted = true;  // trusted: the leverage keeps 10 bits
+    std::vector<double> C, U, SU;  // scratch of Reinsch's form (a Fit is reused across the fits of a search)
 };
 
 
 // sum_j b_j x[off + j] over the columns: the fitted values of the merged points.
 void fitted(const Problem& P, Fit& F) {
-    F.f.assign(static_cast<std::size_t>(P.ng * P.ncol), 0.0);
+    F.f.resize(static_cast<std::size_t>(P.ng * P.ncol));  // every entry is written
     for (std::int64_t g = 0; g < P.ng; ++g) {
         const double* b = P.bas.data() + g * P.kd;
         const double* c = F.c.data() + P.off[g] * P.ncol;
@@ -380,20 +385,42 @@ void fitted(const Problem& P, Fit& F) {
     }
 }
 
+// b' Sigma b over the K columns o .. o + K - 1 from the band of Sigma (S, width bw): sum_a b_a (S_aa b_a +
+// sum_{e > a} 2 S_ae b_e), in that order.
+template <int K>
+inline double quad_band(const double* S, std::int64_t bw, std::int64_t o, const double* b) {
+    double v = 0.0;
+    for (int a = 0; a < K; ++a) {
+        double row = S[(o + a) * bw] * b[a];
+        for (int e = a + 1; e < K; ++e) row += 2.0 * S[(o + a) * bw + (e - a)] * b[e];
+        v += b[a] * row;
+    }
+    return v;
+}
+
+inline double quad_band(const double* S, std::int64_t bw, std::int64_t o, const double* b, std::int64_t K) {
+    switch (K) {
+        case 3: return quad_band<3>(S, bw, o, b);
+        case 4: return quad_band<4>(S, bw, o, b);
+        case 5: return quad_band<5>(S, bw, o, b);
+        default: break;
+    }
+    double v = 0.0;
+    for (std::int64_t a = 0; a < K; ++a) {
+        double row = S[(o + a) * bw] * b[a];
+        for (std::int64_t e = a + 1; e < K; ++e) row += 2.0 * S[(o + a) * bw + (e - a)] * b[e];
+        v += b[a] * row;
+    }
+    return v;
+}
+
 // q_g = b_g' Sigma b_g from the band of Sigma, and L_g = W_g q_g.
 void leverage_band(const Problem& P, Fit& F, std::int64_t bw) {
-    F.q.assign(static_cast<std::size_t>(P.ng), 0.0);
-    F.Lg.assign(static_cast<std::size_t>(P.ng), 0.0);
-    F.Cg.assign(static_cast<std::size_t>(P.ng), 1.0);
+    F.q.resize(static_cast<std::size_t>(P.ng));  // every entry is written
+    F.Lg.resize(static_cast<std::size_t>(P.ng));
+    F.Cg.resize(static_cast<std::size_t>(P.ng));
     for (std::int64_t g = 0; g < P.ng; ++g) {
-        const double* b = P.bas.data() + g * P.kd;
-        const std::int64_t o = P.off[g];
-        double v = 0.0;
-        for (std::int64_t a = 0; a < P.kd; ++a) {
-            double row = F.S[(o + a) * bw] * b[a];
-            for (std::int64_t e = a + 1; e < P.kd; ++e) row += 2.0 * F.S[(o + a) * bw + (e - a)] * b[e];
-            v += b[a] * row;
-        }
+        const double v = quad_band(F.S.data(), bw, P.off[g], P.bas.data() + g * P.kd, P.kd);
         F.q[g] = v;
         F.Lg[g] = P.wg[g] * v;
         F.Cg[g] = 1.0 - F.Lg[g];
@@ -405,29 +432,48 @@ void leverage_band(const Problem& P, Fit& F, std::int64_t bw) {
 // differences and R the Gram matrix of the hat functions (tridiagonal). No cancellation where L_g is near 1
 // (small lam), where the stacked QR's L_g loses its digits. A is pentadiagonal: its band Cholesky and the
 // band of A^-1 (smooth/bandqr.hpp's selected inverse). False when the Cholesky fails.
-bool reinsch_complement(const Problem& P, double lam, std::vector<double>& C) {
+// The parts of Reinsch's form that do not depend on lam (the same operations as computed inside each fit).
+void reinsch_parts(Problem& P) {
     const std::int64_t m = static_cast<std::int64_t>(P.pos.size());
-    C.assign(static_cast<std::size_t>(P.ng), kNaN);
-    if (m <= 2) {
-        for (std::int64_t g : P.pos) C[g] = 0.0;
-        return true;
-    }
+    if (m <= 2) return;
     const std::int64_t mc = m - 2;
-    std::vector<double> U(static_cast<std::size_t>(mc * 3), 0.0);
     // Q's entries by row: q(r, r) = 1 / h_r, q(r, r - 1) = -(1 / h_{r-1} + 1 / h_r), q(r, r - 2) = 1 / h_{r-1}
     const auto qv = [&](std::int64_t r, std::int64_t c) {
         if (c == r) return 1.0 / P.hpos[r];
         if (c == r - 1) return -(1.0 / P.hpos[r - 1] + 1.0 / P.hpos[r]);
         return 1.0 / P.hpos[r - 1];
     };
+    P.RA.assign(static_cast<std::size_t>(mc * 3), 0.0);
+    P.QQ.assign(static_cast<std::size_t>(mc * 3), 0.0);
     for (std::int64_t c = 0; c < mc; ++c) {
         for (std::int64_t d = 0; d < 3 && c + d < mc; ++d) {
-            double a = d == 0 ? (P.hpos[c] + P.hpos[c + 1]) / 3.0 : (d == 1 ? P.hpos[c + 1] / 6.0 : 0.0);
+            P.RA[c * 3 + d] = d == 0 ? (P.hpos[c] + P.hpos[c + 1]) / 3.0 : (d == 1 ? P.hpos[c + 1] / 6.0 : 0.0);
             double qq = 0.0;  // sum_r Q_rc Q_r,c+d / W_r over the rows r in [c + d, c + 2]
             for (std::int64_t r = c + d; r <= c + 2; ++r) qq += qv(r, c) * qv(r, c + d) / P.wg[P.pos[r]];
-            U[c * 3 + d] = a + lam * qq;
+            P.QQ[c * 3 + d] = qq;
         }
     }
+    P.QP.assign(static_cast<std::size_t>(m * 9), 0.0);
+    for (std::int64_t r = 0; r < m; ++r) {
+        const std::int64_t c0 = std::max<std::int64_t>(0, r - 2), c1 = std::min(r, mc - 1);
+        for (std::int64_t a = c0; a <= c1; ++a)
+            for (std::int64_t b = c0; b <= c1; ++b) P.QP[r * 9 + (a - c0) * 3 + (b - c0)] = qv(r, a) * qv(r, b);
+    }
+}
+
+bool reinsch_complement(
+    const Problem& P, double lam, std::vector<double>& C, std::vector<double>& U, std::vector<double>& S
+) {
+    const std::int64_t m = static_cast<std::int64_t>(P.pos.size());
+    C.resize(static_cast<std::size_t>(P.ng));  // the caller reads the entries of P.pos only
+    if (m <= 2) {
+        for (std::int64_t g : P.pos) C[g] = 0.0;
+        return true;
+    }
+    const std::int64_t mc = m - 2;
+    U.resize(static_cast<std::size_t>(mc * 3));
+    for (std::int64_t c = 0; c < mc; ++c)
+        for (std::int64_t d = 0; d < 3; ++d) U[c * 3 + d] = c + d < mc ? P.RA[c * 3 + d] + lam * P.QQ[c * 3 + d] : 0.0;
     for (std::int64_t c = 0; c < mc; ++c) {  // U'U = A in place, U upper with bandwidth 3
         for (std::int64_t d = 0; d < 3 && c + d < mc; ++d) {
             double v = U[c * 3 + d];
@@ -441,14 +487,15 @@ bool reinsch_complement(const Problem& P, double lam, std::vector<double>& C) {
             }
         }
     }
-    std::vector<double> S(static_cast<std::size_t>(mc * 3));
+    S.resize(static_cast<std::size_t>(mc * 3));
     selected_inverse(U.data(), mc, 3, S.data());
     const auto sig = [&](std::int64_t a, std::int64_t b) { return a <= b ? S[a * 3 + (b - a)] : S[b * 3 + (a - b)]; };
     for (std::int64_t r = 0; r < m; ++r) {
         double v = 0.0;
-        for (std::int64_t c1 = std::max<std::int64_t>(0, r - 2); c1 <= std::min(r, mc - 1); ++c1)
-            for (std::int64_t c2 = std::max<std::int64_t>(0, r - 2); c2 <= std::min(r, mc - 1); ++c2)
-                v += qv(r, c1) * qv(r, c2) * sig(c1, c2);
+        const std::int64_t c0 = std::max<std::int64_t>(0, r - 2), ce = std::min(r, mc - 1);
+        const double* qp = P.QP.data() + r * 9;
+        for (std::int64_t c1 = c0; c1 <= ce; ++c1)
+            for (std::int64_t c2 = c0; c2 <= ce; ++c2) v += qp[(c1 - c0) * 3 + (c2 - c0)] * sig(c1, c2);
         const std::int64_t g = P.pos[r];
         C[g] = lam / P.wg[g] * v;
         if (!std::isfinite(C[g])) return false;
@@ -498,12 +545,18 @@ void fit_lambda(const Problem& P, double lam, Fit& F, bool stats, bool want_cv, 
     std::vector<double> h(static_cast<std::size_t>(bw)), y(static_cast<std::size_t>(ncol));
     double* hb = nullptr;
     const double sl = std::sqrt(lam);
+    const bool pw4 = P.pw == 4 && bw == 4;  // the smoothing spline's rows fill h
     std::int64_t p = 0;
     const auto penalty_rows = [&](std::int64_t upto) {  // the penalty rows starting at columns <= upto
         if (!(lam > 0)) return;
         for (; p < P.np && P.poff[p] <= upto; ++p) {
-            std::fill(h.begin(), h.end(), 0.0);
-            for (std::int64_t a = 0; a < P.pw; ++a) h[a] = sl * P.prow[p * P.pw + a];
+            if (pw4) {
+                const double* g = P.prow.data() + p * 4;
+                h[0] = sl * g[0], h[1] = sl * g[1], h[2] = sl * g[2], h[3] = sl * g[3];
+            } else {
+                std::fill(h.begin(), h.end(), 0.0);
+                for (std::int64_t a = 0; a < P.pw; ++a) h[a] = sl * P.prow[p * P.pw + a];
+            }
             std::fill(y.begin(), y.end(), 0.0);
             F.qr.add(P.poff[p], h.data(), hb, y.data());
         }
@@ -521,8 +574,11 @@ void fit_lambda(const Problem& P, double lam, Fit& F, bool stats, bool want_cv, 
         penalty_rows(j);
     }
     F.singular = F.qr.first_bad_diagonal() >= 0;
-    F.c.assign(static_cast<std::size_t>(nc * ncol), kNaN);
-    if (F.singular) return;
+    if (F.singular) {
+        F.c.assign(static_cast<std::size_t>(nc * ncol), kNaN);
+        return;
+    }
+    F.c.resize(static_cast<std::size_t>(nc * ncol));  // the back substitution writes every entry
     if (kappa) {
         F.kappa = scaled_condition(F.qr.R, nc, bw);
         F.illcond = !(F.kappa <= kMaxKappa);
@@ -530,7 +586,7 @@ void fit_lambda(const Problem& P, double lam, Fit& F, bool stats, bool want_cv, 
     F.qr.solve(F.c.data());
     fitted(P, F);
     if (!stats) return;
-    F.S.assign(static_cast<std::size_t>(nc * bw), 0.0);
+    F.S.resize(static_cast<std::size_t>(nc * bw));  // selected_inverse writes every entry
     selected_inverse(F.qr.R.data(), nc, bw, F.S.data());
     leverage_band(P, F, bw);
     {  // tr(Sigma M'M) = n_c: the defect of the computed band of Sigma decides whether the leverage is trusted (SM58)
@@ -538,17 +594,8 @@ void fit_lambda(const Problem& P, double lam, Fit& F, bool stats, bool want_cv, 
         for (std::int64_t g : P.pos) tr += F.Lg[g];
         if (lam > 0) {
             double tp = 0.0;
-            for (std::int64_t p = 0; p < P.np; ++p) {
-                const double* gr = P.prow.data() + p * P.pw;
-                const std::int64_t o = P.poff[p];
-                double v = 0.0;
-                for (std::int64_t a = 0; a < P.pw; ++a) {
-                    double row = F.S[(o + a) * bw] * gr[a];
-                    for (std::int64_t e = a + 1; e < P.pw; ++e) row += 2.0 * F.S[(o + a) * bw + (e - a)] * gr[e];
-                    v += gr[a] * row;
-                }
-                tp += v;
-            }
+            for (std::int64_t p = 0; p < P.np; ++p)
+                tp += quad_band(F.S.data(), bw, P.poff[p], P.prow.data() + p * P.pw, P.pw);
             tr += lam * tp;
         }
         F.defect = std::abs(tr - static_cast<double>(nc));
@@ -556,8 +603,8 @@ void fit_lambda(const Problem& P, double lam, Fit& F, bool stats, bool want_cv, 
     // below lam_0 the smoothing spline's L_g near 1 come from Reinsch's form: each merged point takes the smaller
     // of L_g (the QR's) and 1 - L_g (Reinsch's) as the one computed directly (SM53)
     if (P.kind == kSmoothing && lam > 0 && lam < P.lam0) {
-        std::vector<double> C;
-        if (reinsch_complement(P, lam, C)) {
+        std::vector<double>& C = F.C;
+        if (reinsch_complement(P, lam, C, F.U, F.SU)) {
             for (std::int64_t g : P.pos) {
                 if (C[g] < F.Lg[g]) {
                     F.Cg[g] = C[g];
@@ -686,17 +733,31 @@ double criterion_of(const Fit& F, int crit) {
 
 Choice choose(const Problem& P, int crit) {
     std::vector<double> vals(static_cast<std::size_t>(kGrid), kInf);
-    const auto task = [&](std::int64_t j) {
+    // A task fits a run of grid points in one Fit (its arrays reused: fresh ones cost a page fault per page); every
+    // point is the same computation whichever task has it.
+    const auto run = [&](std::int64_t j0, std::int64_t j1) {
         Fit F;
-        fit_lambda(P, P.lam0 * std::exp(kRhoLo + static_cast<double>(j)), F, true, crit == 1, false);
-        if (!F.singular && F.trusted) vals[j] = criterion_of(F, crit);
+        for (std::int64_t j = j0; j < j1; ++j) {
+            fit_lambda(P, P.lam0 * std::exp(kRhoLo + static_cast<double>(j)), F, true, crit == 1, false);
+            if (!F.singular && F.trusted) vals[j] = criterion_of(F, crit);
+        }
     };
     const std::int64_t per = (P.ng + P.nc) * P.bw * P.bw * (2 + P.ncol);
     if (per * kGrid >= kParallelThreshold && parallel::available()) {
-        parallel::parallel_for(kGrid, task, work_ns(per));
+        // at most a quarter of the physical memory in the tasks' Fits at once (docs/design/smooth.md §3.9): fewer
+        // tasks run fewer at a time, and the values do not depend on the split
+        const double fit_bytes =
+            8.0 * static_cast<double>(2 * P.nc * P.bw + 2 * P.nc * P.ncol + P.ng * (P.ncol + 5) + 6 * P.ng);
+        const double budget = static_cast<double>(physical_memory()) / 4.0;
+        const std::int64_t fit_cap = std::max<std::int64_t>(1, static_cast<std::int64_t>(budget / fit_bytes));
+        const std::int64_t tasks = std::min({kGrid, 2 * std::int64_t{parallel::num_threads()}, fit_cap});
+        parallel::parallel_for(
+            tasks, [&](std::int64_t t) { run(t * kGrid / tasks, (t + 1) * kGrid / tasks); },
+            work_ns(per * kGrid / tasks)
+        );
     } else {
         const parallel::Unlocked unlocked(per * kGrid >= kParallelThreshold);
-        for (std::int64_t j = 0; j < kGrid; ++j) task(j);
+        run(0, kGrid);
     }
     std::int64_t best = 0;
     for (std::int64_t j = 1; j < kGrid; ++j)
@@ -708,8 +769,8 @@ Choice choose(const Problem& P, int crit) {
         out.converged = false;
     } else {
         const parallel::Unlocked unlocked(per >= kParallelThreshold);
+        Fit F;
         const auto f = [&](double rho) {
-            Fit F;
             fit_lambda(P, P.lam0 * std::exp(rho), F, true, crit == 1, false);
             return F.singular || !F.trusted ? kInf : criterion_of(F, crit);
         };
@@ -726,8 +787,8 @@ Choice choose(const Problem& P, int crit) {
 Choice choose_df(const Problem& P, double df) {
     const std::int64_t per = (P.ng + P.nc) * P.bw * P.bw * (2 + P.ncol);
     const parallel::Unlocked unlocked(per >= kParallelThreshold);
+    Fit F;
     const auto f = [&](double rho) {
-        Fit F;
         fit_lambda(P, P.lam0 * std::exp(rho), F, true, false, false);
         return F.singular ? kNaN : F.trl - df;
     };
@@ -814,6 +875,7 @@ nb::dict spline_fit(
         }
         if (code == kOk) {
             factor_data(P);
+            if (kind == kSmoothing) reinsch_parts(P);
             if ((mode == kChoose || mode == kDf) && !(P.lam0 > 0 && std::isfinite(P.lam0))) code = kOverflow;
         }
         if (code == kOk) {
@@ -897,7 +959,7 @@ nb::tuple natural_hat(nb::handle to, nb::handle xo, nb::handle wo) {
     for (std::int64_t g = 0; g < ng; ++g) {
         const double xv = data_of(xa)[g];
         while (l < nc - 1 && t[l + 1] <= xv) ++l;
-        interpolate::basis_values(t, 3, l, xv, 0, h, hh);
+        basis_at(t, 3, l, xv, h, hh);
         Q.add(l - 3, h, nullptr, y);
     }
     interpolate::basis_values(t, 3, nc - 1, t[nc], 2, h, hh);
@@ -934,7 +996,7 @@ nb::object spline_hat(nb::handle to, std::int64_t k, nb::handle hat, nb::handle 
                 continue;
             }
             const std::int64_t l = interval_of(t, N, k, nc, xs[i]);
-            interpolate::basis_values(t, k, l, xs[i], 0, b.data(), hh.data());
+            basis_at(t, k, l, xs[i], b.data(), hh.data());
             double nrm = 0.0;
             for (std::int64_t j = 0; j < dn; ++j) {
                 double s = 0.0;
@@ -961,7 +1023,7 @@ nb::object spline_hat(nb::handle to, std::int64_t k, nb::handle hat, nb::handle 
         for (std::int64_t g = 0; g < ng; ++g) {
             const std::int64_t l = interval_of(t, N, k, nc, xgp[g]);
             goff[g] = l - k;
-            interpolate::basis_values(t, k, l, xgp[g], 0, gb.data() + g * (k + 1), hh.data());
+            basis_at(t, k, l, xgp[g], gb.data() + g * (k + 1), hh.data());
         }
     }
     const auto point = [&](std::int64_t i, std::vector<double>& v, std::vector<double>& b, std::vector<double>& hh) {
@@ -970,7 +1032,7 @@ nb::object spline_hat(nb::handle to, std::int64_t k, nb::handle hat, nb::handle 
             return;
         }
         const std::int64_t l = interval_of(t, N, k, nc, xs[i]);
-        interpolate::basis_values(t, k, l, xs[i], 0, b.data(), hh.data());
+        basis_at(t, k, l, xs[i], b.data(), hh.data());
         std::fill(v.begin(), v.end(), 0.0);
         for (std::int64_t e = 0; e <= k; ++e) v[l - k + e] = b[e];
         normal_solve(R, nc, bw, l - k, v.data());

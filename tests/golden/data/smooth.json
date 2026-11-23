@@ -144,17 +144,17 @@
 },
 "bw_dpill halfzero21": {
 "r": {
-"f": "0x1.502594fd836bbp-2"
+"f": "0x1.502594fd836bap-2"
 }
 },
 "bw_dpill large": {
 "r": {
-"f": "0x1.6a3b24a1efb39p-3"
+"f": "0x1.6a3b24a1efb3bp-3"
 }
 },
 "bw_dpill line20": {
 "r": {
-"f": "0x1.9c90b28869adbp-3"
+"f": "0x1.38b9d9374e642p-2"
 }
 },
 "bw_dpill narrow30": {
@@ -164,17 +164,17 @@
 },
 "bw_dpill outliers40": {
 "r": {
-"f": "0x1.8907650cb6a98p-1"
+"f": "0x1.8907650cb6a99p-1"
 }
 },
 "bw_dpill random200": {
 "r": {
-"f": "0x1.391b1c4cbfd5fp-2"
+"f": "0x1.391b1c4cbfd60p-2"
 }
 },
 "bw_dpill shifted30": {
 "r": {
-"f": "0x1.ea59875a940a4p-2"
+"f": "0x1.ea59875a940a3p-2"
 }
 },
 "bw_dpill subnormal12": {
@@ -214,17 +214,17 @@
 },
 "bw_dpill uniform40": {
 "r": {
-"f": "0x1.e73fcdef261ebp-2"
+"f": "0x1.e73fcdef261eap-2"
 }
 },
 "bw_dpill unsorted200": {
 "r": {
-"f": "0x1.391b1c4cbfd5fp-2"
+"f": "0x1.391b1c4cbfd60p-2"
 }
 },
 "bw_dpill weights30": {
 "r": {
-"f": "0x1.ea59876bb370dp-2"
+"f": "0x1.ea59876bb370ep-2"
 }
 },
 "bw_dpill wide30": {
@@ -14574,7 +14574,7 @@ null,
 "kde error bw='normal_reference'": {
 "r": {
 "error": "builtins.ValueError",
-"msg": "kde(): 'bw' must be a positive number, 'scott', 'silverman', 'nrd0', 'nrd', 'sj', 'isj', 'cv_ls' or 'cv_ml', not 'normal_reference'"
+"msg": "kde(): 'bw' must be a number > 0, 'scott', 'silverman', 'nrd0', 'nrd', 'sj', 'isj', 'cv_ls' or 'cv_ml', not 'normal_reference'"
 }
 },
 "kde error bw='sj'": {
@@ -59043,7 +59043,7 @@ true,
 "kernel_regression error bw=-1.0": {
 "r": {
 "error": "builtins.ValueError",
-"msg": "kernel_regression(): 'bw' must be positive and finite"
+"msg": "kernel_regression(): 'bw' must be a finite number > 0"
 }
 },
 "kernel_regression error bw=array([1.0, 2.0], dtype=float64)": {
@@ -59055,7 +59055,7 @@ true,
 "kernel_regression error bw=inf": {
 "r": {
 "error": "builtins.ValueError",
-"msg": "kernel_regression(): 'bw' must be positive and finite"
+"msg": "kernel_regression(): 'bw' must be a finite number > 0"
 }
 },
 "kernel_regression error degree=1.0": {
@@ -243786,7 +243786,7 @@ true,
 "savgol error deriv": {
 "r": {
 "error": "builtins.ValueError",
-"msg": "savgol_coeffs(): 'deriv' must be nonnegative, not -1"
+"msg": "savgol_coeffs(): 'deriv' must be >= 0, not -1"
 }
 },
 "savgol error interp long": {
@@ -243810,7 +243810,7 @@ true,
 "savgol error pos": {
 "r": {
 "error": "builtins.ValueError",
-"msg": "savgol_coeffs(): 'pos' must be nonnegative and less than 'window_length', not 5"
+"msg": "savgol_coeffs(): 'pos' must be >= 0 and < 'window_length', not 5"
 }
 },
 "savgol error pos float": {
@@ -243840,7 +243840,7 @@ true,
 "savgol error window": {
 "r": {
 "error": "builtins.ValueError",
-"msg": "savgol_coeffs(): 'window_length' must be positive, not 0"
+"msg": "savgol_coeffs(): 'window_length' must be >= 1, not 0"
 }
 },
 "savgol_coeffs 1,0 deriv=0 pos=None use=conv": {

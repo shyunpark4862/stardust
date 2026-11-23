@@ -365,7 +365,7 @@ def test_inputs_and_errors():
     for kw, err, msg in (
         ({"degree": 2}, ValueError, "'degree' must be 0 or 1"),
         ({"degree": 1.0}, TypeError, "'degree' must be an int"),
-        ({"bw": -1.0}, ValueError, "positive and finite"),
+        ({"bw": -1.0}, ValueError, "must be a finite number > 0"),
         ({"bw": "scott"}, ValueError, "'bw' must be"),
         ({"bw": A([0.5, 0.5])}, ValueError, "have 1 values"),
         ({"kernel": "epanechnikov"}, ValueError, "'kernel' must be 'gaussian'"),

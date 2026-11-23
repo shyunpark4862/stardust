@@ -183,6 +183,8 @@ struct Local {
     bool ok = false;
     bool tier = false;  // p = 1: the slope comes from the second tier (every other x's weight underflows)
     std::int64_t m = 0, m2 = 0, rank = 0;
+    std::int64_t lo = -1;  // p = 1: the kept points are [lo, lo + m) of the sorted data (-1: S.idx, S.wk hold them)
+    const double* w1 = nullptr;  // p = 1: their weights (null: 1)
     double d0 = 0, a = 0, ybar = kNaN, value = kNaN, et2 = 0;  // et2: sum e2 t2 of the second tier
     std::vector<double> xc, tbar, beta, t0;  // the centre (a nearest point), mean of t, slope in t units, t of x0
     QR qr;                                   // p >= 2; p = 1 keeps sqrt(c') in qr.R[0]
@@ -193,9 +195,172 @@ inline void t_of(const double* x, const Local& L, const Axis* ax, std::int64_t p
     for (std::int64_t l = 0; l < p; ++l) t[l] = gauss::z_of(x[l], L.xc[l], ax[l]);
 }
 
+// p = 1: t_j = ((x_j - x_c) sc) inv and e_j = w_j exp(-t_j (2 z_c + t_j) / 2) of the points x[0, m) relative to the
+// nearest point x_c (gauss::excess_1d's and gauss::terms' operations; D scratch); the point `skip` (an index relative
+// to x, maybe outside [0, m)) gets e = +0, the value of its D = inf.
+void one_d_terms(
+    const double* x,
+    const double* w,
+    std::int64_t m,
+    double xc,
+    double zc,
+    Axis a,
+    std::int64_t skip,
+    double T,
+    double* t,
+    double* D,
+    double* e
+) {
+    const float64x2_t vxc = vdupq_n_f64(xc), vsc = vdupq_n_f64(a.sc), vinv = vdupq_n_f64(a.inv);
+    const float64x2_t v2z = vdupq_n_f64(zc + zc);
+    std::int64_t j = 0;
+    if (0.5 * T < vmath::kExpMax - 1.0) {
+        // every kept D is at most T (range_1d's test is this excess), so every exponent is in exp_lanes' range:
+        // the terms in the same pass, gauss::terms' operations
+        const float64x2_t zero = vdupq_n_f64(0.0), half = vdupq_n_f64(-0.5);
+        for (; j + 2 <= m; j += 2) {
+            const float64x2_t d = vmulq_f64(vmulq_f64(vsubq_f64(vld1q_f64(x + j), vxc), vsc), vinv);
+            vst1q_f64(t + j, d);
+            const float64x2_t xx = vmulq_f64(vsubq_f64(vmulq_f64(d, vaddq_f64(v2z, d)), zero), half);
+            float64x2_t ev = vmath::exp_lanes(xx);
+            if (w) ev = vmulq_f64(ev, vld1q_f64(w + j));
+            vst1q_f64(e + j, ev);
+        }
+        for (; j < m; ++j) {
+            const double d = ((x[j] - xc) * a.sc) * a.inv;
+            t[j] = d;
+            const double v = vmath::exp1((d * ((zc + zc) + d) - 0.0) * -0.5);
+            e[j] = w ? v * w[j] : v;
+        }
+        if (skip >= 0 && skip < m) e[skip] = 0.0;
+        return;
+    }
+    for (; j + 2 <= m; j += 2) {
+        const float64x2_t d = vmulq_f64(vmulq_f64(vsubq_f64(vld1q_f64(x + j), vxc), vsc), vinv);
+        vst1q_f64(t + j, d);
+        vst1q_f64(D + j, vmulq_f64(d, vaddq_f64(v2z, d)));
+    }
+    for (; j < m; ++j) {
+        const double d = ((x[j] - xc) * a.sc) * a.inv;
+        t[j] = d;
+        D[j] = d * ((zc + zc) + d);
+    }
+    gauss::terms(D, w, 0.0, m, e);
+    if (skip >= 0 && skip < m) e[skip] = 0.0;
+}
+
+// p = 1 after one_d_terms: the local mean (degree 0), or the local line's closed form (decision SM86), with the
+// sums of gauss::sums_of taken four points at a time.
+void one_d_fit(const KData& K, const Axis* ax, int degree, const double* x0, std::int64_t skip, Scratch& S, Local& L) {
+    const std::int64_t m = L.m, n = K.n;
+    const double* e = S.e.data();
+    const double* yk = K.y + L.lo;
+    const double* t = S.t.data();
+    if (degree == 0) {
+        double s2[2];
+        gauss::vsums_of<2>(
+            m,
+            [&](std::int64_t j, float64x2_t* a, float64x2_t* b) {
+                const float64x2_t e0 = vld1q_f64(e + j), e1 = vld1q_f64(e + j + 2);
+                a[0] = e0, b[0] = e1;
+                a[1] = vmulq_f64(e0, vld1q_f64(yk + j)), b[1] = vmulq_f64(e1, vld1q_f64(yk + j + 2));
+            },
+            [&](std::int64_t j, double* v) { v[0] = e[j], v[1] = e[j] * yk[j]; }, s2
+        );
+        L.a = s2[0];
+        L.ybar = s2[1] / L.a;
+        L.value = L.ybar;
+        return;
+    }
+    t_of(x0, L, ax, 1, L.t0.data());
+    double s3[3];
+    gauss::vsums_of<3>(
+        m,
+        [&](std::int64_t j, float64x2_t* a, float64x2_t* b) {
+            const float64x2_t e0 = vld1q_f64(e + j), e1 = vld1q_f64(e + j + 2);
+            a[0] = e0, b[0] = e1;
+            a[1] = vmulq_f64(e0, vld1q_f64(t + j)), b[1] = vmulq_f64(e1, vld1q_f64(t + j + 2));
+            a[2] = vmulq_f64(e0, vld1q_f64(yk + j)), b[2] = vmulq_f64(e1, vld1q_f64(yk + j + 2));
+        },
+        [&](std::int64_t j, double* v) { v[0] = e[j], v[1] = e[j] * t[j], v[2] = e[j] * yk[j]; }, s3
+    );
+    L.a = s3[0];
+    const double tb = s3[1] / L.a, yb = s3[2] / L.a;
+    L.tbar[0] = tb, L.ybar = yb, L.value = yb;
+    double s2[2];
+    const float64x2_t vtb = vdupq_n_f64(tb), vyb = vdupq_n_f64(yb);
+    gauss::vsums_of<2>(
+        m,
+        [&](std::int64_t j, float64x2_t* a, float64x2_t* b) {
+            const float64x2_t d0 = vsubq_f64(vld1q_f64(t + j), vtb), d1 = vsubq_f64(vld1q_f64(t + j + 2), vtb);
+            const float64x2_t ed0 = vmulq_f64(vld1q_f64(e + j), d0), ed1 = vmulq_f64(vld1q_f64(e + j + 2), d1);
+            a[0] = vmulq_f64(ed0, d0), b[0] = vmulq_f64(ed1, d1);
+            a[1] = vmulq_f64(ed0, vsubq_f64(vld1q_f64(yk + j), vyb));
+            b[1] = vmulq_f64(ed1, vsubq_f64(vld1q_f64(yk + j + 2), vyb));
+        },
+        [&](std::int64_t j, double* v) {
+            const double d = t[j] - tb, ed = e[j] * d;
+            v[0] = ed * d, v[1] = ed * (yk[j] - yb);
+        },
+        s2
+    );
+    double cc = s2[0], s1 = s2[1];
+    if (!(cc > 0)) {
+        // Every positive weight at one x, xg: the limit of the local line when the other x's weights underflow
+        // is the line through the weighted mean there with the slope of the next tier, weighted relative to the
+        // nearest point c2 of another x (decision SM86). Without another x: the local mean.
+        const double xg = L.xc[0];
+        const std::int64_t g0 = std::lower_bound(K.X, K.X + n, xg) - K.X;
+        const std::int64_t g1 = std::upper_bound(K.X, K.X + n, xg) - K.X;
+        std::int64_t lft = g0 - 1, rgt = g1;
+        if (lft == skip) --lft;
+        if (rgt == skip) ++rgt;
+        const double x00 = x0[0];
+        std::int64_t c2 = -1;
+        if (lft >= 0 && rgt < n) c2 = (x00 - K.X[lft] <= K.X[rgt] - x00) ? lft : rgt;
+        else if (lft >= 0) c2 = lft;
+        else if (rgt < n) c2 = rgt;
+        if (c2 < 0) return;
+        std::int64_t lo2, hi2;
+        gauss::range_1d(K.X, n, x00, ax[0], gauss::kUnderflow, c2, lo2, hi2);
+        const double z2 = gauss::z_of(K.X[c2], x00, ax[0]);
+        S.D.clear(), S.t2.clear(), S.w2.clear(), S.idx2.clear(), S.tmp.clear();
+        for (std::int64_t j = lo2; j < hi2; ++j) {
+            if (j == skip || (j >= g0 && j < g1)) continue;
+            S.D.push_back(gauss::excess_1d(K.X[j], K.X[c2], z2, ax[0]));
+            S.t2.push_back(gauss::z_of(K.X[j], xg, ax[0]));
+            S.w2.push_back(K.w ? K.w[j] : 1.0);
+            S.tmp.push_back(K.y[j]);
+            S.idx2.push_back(j);
+        }
+        const std::int64_t m2 = static_cast<std::int64_t>(S.idx2.size());
+        S.e2.resize(m2);
+        gauss::terms(S.D.data(), K.w ? S.w2.data() : nullptr, 0.0, m2, S.e2.data());
+        const double *e2 = S.e2.data(), *t2 = S.t2.data(), *y2 = S.tmp.data();
+        double q2[3];
+        gauss::sums_of<3>(
+            m2,
+            [&](std::int64_t j, double* v) {
+                const double et = e2[j] * t2[j];
+                v[0] = et * t2[j], v[1] = et * (y2[j] - yb), v[2] = et;
+            },
+            q2
+        );
+        if (!(q2[0] > 0)) return;
+        L.tier = true, L.m2 = m2, L.et2 = q2[2];
+        cc = q2[0], s1 = q2[1];
+    }
+    L.rank = 1;
+    L.qr.k = 1, L.qr.rank = 1;
+    L.qr.R.assign(1, std::sqrt(cc));
+    L.beta[0] = s1 / cc;
+    L.value = yb + (L.t0[0] - tb) * L.beta[0];
+    return;
+}
+
 void local_fit(const KData& K, const Axis* ax, int degree, const double* x0, std::int64_t skip, Scratch& S, Local& L) {
     const std::int64_t n = K.n, p = K.p;
-    L.ok = false, L.tier = false, L.rank = 0, L.m = 0, L.m2 = 0, L.value = kNaN, L.ybar = kNaN;
+    L.ok = false, L.tier = false, L.rank = 0, L.m = 0, L.m2 = 0, L.value = kNaN, L.ybar = kNaN, L.lo = -1;
     L.qr.rank = 0;
     for (std::int64_t l = 0; l < p; ++l)
         if (!(x0[l] == x0[l])) return;
@@ -212,14 +377,17 @@ void local_fit(const KData& K, const Axis* ax, int degree, const double* x0, std
         gauss::range_1d(K.X, n, x0[0], ax[0], T, c, lo, hi);
         const std::int64_t m = hi - lo;
         const double zc = gauss::z_of(K.X[c], x0[0], ax[0]);
-        S.D.resize(m), S.e.resize(m), S.yk.resize(m), S.wk.resize(m), S.idx.resize(m);
-        for (std::int64_t j = 0; j < m; ++j) {
-            S.D[j] = j + lo == skip ? kInf : gauss::excess_1d(K.X[j + lo], K.X[c], zc, ax[0]);
-            S.yk[j] = K.y[j + lo];
-            S.wk[j] = K.w ? K.w[j + lo] : 1.0;
-            S.idx[j] = j + lo;
-        }
-        L.m = m;
+        // the kept points are [lo, hi) of the sorted data: t_j = ((x_j - x_c) sc) inv is excess_1d's d, so one
+        // pass makes t and the exponent d (2 z_c + d), then the terms
+        S.t.resize(m), S.e.resize(m), S.D.resize(m);
+        one_d_terms(
+            K.X + lo, K.w ? K.w + lo : nullptr, m, K.X[c], zc, ax[0], skip - lo, T, S.t.data(), S.D.data(), S.e.data()
+        );
+        L.m = m, L.lo = lo, L.w1 = K.w ? K.w + lo : nullptr;
+        for (std::int64_t l = 0; l < p; ++l) L.xc[l] = K.X[c * p + l];
+        L.ok = true, L.d0 = d0;
+        one_d_fit(K, ax, degree, x0, skip, S, L);
+        return;
     } else {
         // the tree's candidates (ascending) or every point: the same kept set in the same order
         const bool tree = tree_candidates(K, ax, x0, T, skip, S);
@@ -266,7 +434,7 @@ void local_fit(const KData& K, const Axis* ax, int degree, const double* x0, std
     L.ok = true, L.d0 = d0;
     const double* e = S.e.data();
     const double* yk = S.yk.data();
-    if (degree == 0 || p > 1) {
+    {  // p >= 2 (p = 1 returned from one_d_fit)
         double s2[2];
         gauss::sums_of<2>(m, [&](std::int64_t j, double* v) { v[0] = e[j], v[1] = e[j] * yk[j]; }, s2);
         L.a = s2[0];
@@ -279,77 +447,6 @@ void local_fit(const KData& K, const Axis* ax, int degree, const double* x0, std
     for (std::int64_t j = 0; j < m; ++j) {
         const double* row = K.X + S.idx[j] * p;
         for (std::int64_t l = 0; l < p; ++l) S.t[l * m + j] = gauss::z_of(row[l], L.xc[l], ax[l]);
-    }
-    if (p == 1) {
-        const double* t = S.t.data();
-        double s3[3];
-        gauss::sums_of<3>(
-            m, [&](std::int64_t j, double* v) { v[0] = e[j], v[1] = e[j] * t[j], v[2] = e[j] * yk[j]; }, s3
-        );
-        L.a = s3[0];
-        const double tb = s3[1] / L.a, yb = s3[2] / L.a;
-        L.tbar[0] = tb, L.ybar = yb, L.value = yb;
-        double s2[2];
-        gauss::sums_of<2>(
-            m,
-            [&](std::int64_t j, double* v) {
-                const double d = t[j] - tb, ed = e[j] * d;
-                v[0] = ed * d, v[1] = ed * (yk[j] - yb);
-            },
-            s2
-        );
-        double cc = s2[0], s1 = s2[1];
-        if (!(cc > 0)) {
-            // Every positive weight at one x, xg: the limit of the local line when the other x's weights underflow
-            // is the line through the weighted mean there with the slope of the next tier, weighted relative to the
-            // nearest point c2 of another x (decision SM86). Without another x: the local mean.
-            const double xg = K.X[c];
-            const std::int64_t g0 = std::lower_bound(K.X, K.X + n, xg) - K.X;
-            const std::int64_t g1 = std::upper_bound(K.X, K.X + n, xg) - K.X;
-            std::int64_t lft = g0 - 1, rgt = g1;
-            if (lft == skip) --lft;
-            if (rgt == skip) ++rgt;
-            const double x00 = x0[0];
-            std::int64_t c2 = -1;
-            if (lft >= 0 && rgt < n) c2 = (x00 - K.X[lft] <= K.X[rgt] - x00) ? lft : rgt;
-            else if (lft >= 0) c2 = lft;
-            else if (rgt < n) c2 = rgt;
-            if (c2 < 0) return;
-            std::int64_t lo2, hi2;
-            gauss::range_1d(K.X, n, x00, ax[0], gauss::kUnderflow, c2, lo2, hi2);
-            const double z2 = gauss::z_of(K.X[c2], x00, ax[0]);
-            S.D.clear(), S.t2.clear(), S.w2.clear(), S.idx2.clear(), S.tmp.clear();
-            for (std::int64_t j = lo2; j < hi2; ++j) {
-                if (j == skip || (j >= g0 && j < g1)) continue;
-                S.D.push_back(gauss::excess_1d(K.X[j], K.X[c2], z2, ax[0]));
-                S.t2.push_back(gauss::z_of(K.X[j], xg, ax[0]));
-                S.w2.push_back(K.w ? K.w[j] : 1.0);
-                S.tmp.push_back(K.y[j]);
-                S.idx2.push_back(j);
-            }
-            const std::int64_t m2 = static_cast<std::int64_t>(S.idx2.size());
-            S.e2.resize(m2);
-            gauss::terms(S.D.data(), K.w ? S.w2.data() : nullptr, 0.0, m2, S.e2.data());
-            const double *e2 = S.e2.data(), *t2 = S.t2.data(), *y2 = S.tmp.data();
-            double q2[3];
-            gauss::sums_of<3>(
-                m2,
-                [&](std::int64_t j, double* v) {
-                    const double et = e2[j] * t2[j];
-                    v[0] = et * t2[j], v[1] = et * (y2[j] - yb), v[2] = et;
-                },
-                q2
-            );
-            if (!(q2[0] > 0)) return;
-            L.tier = true, L.m2 = m2, L.et2 = q2[2];
-            cc = q2[0], s1 = q2[1];
-        }
-        L.rank = 1;
-        L.qr.k = 1, L.qr.rank = 1;
-        L.qr.R.assign(1, std::sqrt(cc));
-        L.beta[0] = s1 / cc;
-        L.value = yb + (L.t0[0] - tb) * L.beta[0];
-        return;
     }
     // p >= 2: the weighted design [1, t] (t from the centre, not from the mean: subtracting a rounded mean would
     // bury the directions that only light rows carry) by Householder QR with column pivoting, the rows by decreasing
@@ -438,16 +535,19 @@ double hat_norm2(const Local& L, std::int64_t p, Scratch& S, std::int64_t self =
         if (p == 1 && L.rank > 0) s += (S.t[j] - L.tbar[0]) * q[0];
         return S.e[j] * s;
     };
+    // p = 1 keeps [L.lo, L.lo + m) of the sorted points (their weights: L.w1)
+    const auto index = [&](std::int64_t j) { return L.lo >= 0 ? L.lo + j : S.idx[j]; };
+    const auto weight = [&](std::int64_t j) { return L.lo >= 0 ? (L.w1 ? L.w1[j] : 1.0) : S.wk[j]; };
     if (lself) {
         *lself = 0;
         for (std::int64_t j = 0; j < m; ++j)
-            if (S.idx[j] == self) *lself = row(j);
+            if (index(j) == self) *lself = row(j);
         for (std::int64_t j = 0; j < L.m2; ++j)
             if (S.idx2[j] == self) *lself = S.e2[j] * S.t2[j] * q[0];
     }
     double s = gauss::sum_of(m, [&](std::int64_t j) {
         const double l = row(j);
-        return l * l / S.wk[j];
+        return l * l / weight(j);
     });
     if (L.tier)  // the second tier's rows l_j = e2_j t_j q (their t - tbar is t: tbar = 0 at the first tier's x)
         s += gauss::sum_of(L.m2, [&](std::int64_t j) {
@@ -520,7 +620,11 @@ void for_points(std::int64_t count, std::int64_t per_point, const F& fn) {
     const std::int64_t cost = std::max<std::int64_t>(1, per_point);
     const std::int64_t work = count * cost;
     if (work >= kParallelThreshold && count > 1 && parallel::available()) {
-        const std::int64_t per = std::max<std::int64_t>(1, (std::int64_t{1} << 17) / cost);
+        // about 2^17 of work per task, but at most 8 tasks per thread: a task sets up its own scratch
+        const std::int64_t threads = std::max(1, parallel::num_threads());
+        const std::int64_t per = std::max<std::int64_t>(
+            std::max<std::int64_t>(1, (std::int64_t{1} << 17) / cost), (count + 8 * threads - 1) / (8 * threads)
+        );
         const std::int64_t tasks = (count + per - 1) / per;
         parallel::parallel_for(
             tasks,
@@ -548,7 +652,7 @@ struct Fit {
 
 // The tree path (decision SM116): the local constant of several variables from kTreeMinPoints points on (the shape
 // alone decides; the local line's sums keep every point that does not underflow, so the tree would cut little).
-constexpr std::int64_t kTreeMinPoints = 4096;
+constexpr std::int64_t kTreeMinPoints = 2048;
 
 struct TreeHold {
     gauss::TreePath tree;
@@ -766,8 +870,93 @@ std::vector<double> reference_bandwidth(const KData& K) {
 
 // ---- dpill (decision SM90) ---------------------------------------------------------------------------------------
 
+// The local cubic's coefficient of t^2 from the moments (decision SM136): M = sum e phi phi^T and b = sum e phi y
+// (phi = (1, t, t^2, t^3)) in gauss::sums_of's order, Cholesky of M, then one correction from the residuals
+// r = y - phi^T beta (the corrected semi-normal equations: M delta = sum e phi r). False when the Cholesky meets a
+// pivot that is not positive or a diagonal ratio above 2^16 (the caller takes the QR).
+bool cubic_by_moments(const double* t, const double* e, const double* y, std::int64_t m, double& c2) {
+    double mo[11];  // S_0 .. S_6, then b_0 .. b_3
+    const auto pows = [&](std::int64_t j, float64x2_t* v) {
+        const float64x2_t tj = vld1q_f64(t + j), ej = vld1q_f64(e + j);
+        float64x2_t p = ej;
+        v[0] = p;
+        for (int k = 1; k <= 6; ++k) p = vmulq_f64(p, tj), v[k] = p;
+        float64x2_t q = vmulq_f64(ej, vld1q_f64(y + j));
+        v[7] = q;
+        for (int k = 1; k <= 3; ++k) q = vmulq_f64(q, tj), v[7 + k] = q;
+    };
+    gauss::vsums_of<11>(
+        m, [&](std::int64_t j, float64x2_t* a, float64x2_t* b) { pows(j, a), pows(j + 2, b); },
+        [&](std::int64_t j, double* v) {
+            const double tj = t[j], ej = e[j];
+            double p = ej;
+            v[0] = p;
+            for (int k = 1; k <= 6; ++k) p *= tj, v[k] = p;
+            const double ey = ej * y[j];
+            double q = ey;
+            v[7] = q;
+            for (int k = 1; k <= 3; ++k) q *= tj, v[7 + k] = q;
+        },
+        mo
+    );
+    double L[4][4] = {}, beta[4];
+    for (int i = 0; i < 4; ++i) {
+        for (int j = 0; j <= i; ++j) {
+            double v = mo[i + j];
+            for (int k = 0; k < j; ++k) v -= L[i][k] * L[j][k];
+            if (i == j) {
+                if (!(v > 0) || !std::isfinite(v)) return false;
+                L[i][i] = std::sqrt(v);
+            } else {
+                L[i][j] = v / L[j][j];
+            }
+        }
+    }
+    double dmin = L[0][0], dmax = L[0][0];
+    for (int i = 1; i < 4; ++i) dmin = std::min(dmin, L[i][i]), dmax = std::max(dmax, L[i][i]);
+    if (!(dmax <= 0x1p16 * dmin)) return false;
+    const auto solve = [&](double* v) {
+        for (int i = 0; i < 4; ++i) {
+            for (int k = 0; k < i; ++k) v[i] -= L[i][k] * v[k];
+            v[i] /= L[i][i];
+        }
+        for (int i = 3; i >= 0; --i) {
+            for (int k = i + 1; k < 4; ++k) v[i] -= L[k][i] * v[k];
+            v[i] /= L[i][i];
+        }
+    };
+    for (int i = 0; i < 4; ++i) beta[i] = mo[7 + i];
+    solve(beta);
+    double corr[4];
+    const float64x2_t b0 = vdupq_n_f64(beta[0]), b1 = vdupq_n_f64(beta[1]), b2 = vdupq_n_f64(beta[2]),
+                      b3 = vdupq_n_f64(beta[3]);
+    const auto resid = [&](std::int64_t j, float64x2_t* v) {
+        const float64x2_t tj = vld1q_f64(t + j);
+        const float64x2_t fit =
+            vaddq_f64(b0, vmulq_f64(tj, vaddq_f64(b1, vmulq_f64(tj, vaddq_f64(b2, vmulq_f64(tj, b3))))));
+        float64x2_t p = vmulq_f64(vld1q_f64(e + j), vsubq_f64(vld1q_f64(y + j), fit));
+        v[0] = p;
+        for (int k = 1; k < 4; ++k) p = vmulq_f64(p, tj), v[k] = p;
+    };
+    gauss::vsums_of<4>(
+        m, [&](std::int64_t j, float64x2_t* a, float64x2_t* b) { resid(j, a), resid(j + 2, b); },
+        [&](std::int64_t j, double* v) {
+            const double tj = t[j];
+            const double r = y[j] - (beta[0] + tj * (beta[1] + tj * (beta[2] + tj * beta[3])));
+            double p = e[j] * r;
+            v[0] = p;
+            for (int k = 1; k < 4; ++k) p *= tj, v[k] = p;
+        },
+        corr
+    );
+    solve(corr);
+    c2 = beta[2] + corr[2];
+    return std::isfinite(c2);
+}
+
 // A local polynomial of degree `deg` at x0 with the Gaussian kernel of standard deviation g on sorted x (unit
-// weights): the coefficient of t^r, t = (x - x0) / g (NaN without full rank).
+// weights): the coefficient of t^r, t = (x - x0) / g (NaN without full rank). The cubic's t^2 (dpill) comes from
+// the moments when their Cholesky is well conditioned, else (and for other degrees) from Householder QR.
 double local_poly_coef(
     const double* x, const double* y, std::int64_t n, double x0, double g, int deg, int r, Scratch& S, QR& q
 ) {
@@ -780,6 +969,12 @@ double local_poly_coef(
     S.D.resize(m), S.e.resize(m);
     for (std::int64_t j = 0; j < m; ++j) S.D[j] = gauss::excess_1d(x[j + lo], x[c], zc, a);
     gauss::terms(S.D.data(), nullptr, 0.0, m, S.e.data());
+    if (deg == 3 && r == 2) {
+        S.t.resize(m);
+        for (std::int64_t j = 0; j < m; ++j) S.t[j] = gauss::z_of(x[j + lo], x0, a);
+        double c2;
+        if (cubic_by_moments(S.t.data(), S.e.data(), y + lo, m, c2)) return c2;
+    }
     S.A.resize(m * k), S.b.resize(m);
     for (std::int64_t j = 0; j < m; ++j) {
         const double sq = std::sqrt(S.e[j]), t = gauss::z_of(x[j + lo], x0, a);

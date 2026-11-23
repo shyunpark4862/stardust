@@ -429,10 +429,10 @@ def _bandwidth(func, bw, X, w, p, one_d):
     if isinstance(bw, str):
         if bw not in _RULES:
             listed = ", ".join(f"'{r}'" for r in _RULES[:-1]) + f" or '{_RULES[-1]}'"
-            raise ValueError(f"{func}(): 'bw' must be a positive number, {listed}, not {bw!r}")
+            raise ValueError(f"{func}(): 'bw' must be a number > 0, {listed}, not {bw!r}")
         return bw, None, None, math.nan
     if isinstance(bw, bool) or bw is None:
-        raise TypeError(f"{func}(): 'bw' must be a positive number, an array or a rule name, not {type_name(bw)}")
+        raise TypeError(f"{func}(): 'bw' must be a number > 0, an array or a rule name, not {type_name(bw)}")
     if isinstance(bw, numbers.Real) or (type(bw).__module__ == "numpy" and getattr(bw, "ndim", None) == 0):
         h = real(bw, func, "bw")
         if not (h > 0 and math.isfinite(h)):
