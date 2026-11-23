@@ -136,6 +136,14 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/fft/helper.cpp
   csrc/fft/r2r.cpp
   csrc/fft/fftlog.cpp
+  csrc/smooth/local.cpp
+  csrc/smooth/loess.cpp
+  csrc/smooth/savgol.cpp
+  csrc/smooth/spline.cpp
+  csrc/smooth/fitpack.cpp
+  csrc/smooth/kreg.cpp
+  csrc/smooth/kde.cpp
+  csrc/smooth/bandwidth.cpp
   csrc/special/reduce.cpp
   csrc/frame/column.cpp
   csrc/frame/convert.cpp
@@ -171,6 +179,7 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/bind/graph_bind.cpp
   csrc/bind/interpolate_bind.cpp
   csrc/bind/fft_bind.cpp
+  csrc/bind/smooth_bind.cpp
   csrc/bind/plot_bind.cpp
   csrc/plot/levels.cpp
   csrc/plot/raster.cpp

@@ -4,11 +4,11 @@
 
 ## 1. 층 구조
 
-영역은 열일곱이다: array, linalg, frame, special, stats, regression, random, optimize, htest, sparse, integrate, differentiate, spatial, graph, interpolate, fft, plot(`bench/areas.py`의 순서). Python 하위 모듈 하나와 `csrc/`의 디렉터리 하나가 영역 하나다. plot(그림)은 맨 위 층이다: 모든 영역의 결과를 받고 어느 영역도 plot을 모른다(docs/design/plot.md §1.4).
+영역은 열여덟이다: array, linalg, frame, special, stats, regression, random, optimize, htest, sparse, integrate, differentiate, spatial, graph, interpolate, fft, smooth, plot(`bench/areas.py`의 순서). Python 하위 모듈 하나와 `csrc/`의 디렉터리 하나가 영역 하나다. plot(그림)은 맨 위 층이다: 모든 영역의 결과를 받고 어느 영역도 plot을 모른다(docs/design/plot.md §1.4).
 
 ```
  Python:  sd   sd.linalg   sd.frame   sd.special   sd.stats   sd.regression   sd.random   sd.optimize
-          sd.htest   sd.sparse   sd.integrate   sd.differentiate   sd.spatial   sd.graph   sd.interpolate   sd.fft   sd.plot
+          sd.htest   sd.sparse   sd.integrate   sd.differentiate   sd.spatial   sd.graph   sd.interpolate   sd.fft   sd.smooth   sd.plot
             │       │          │           │            │            │               │            │
  bind/ ─────┴───────┴──────────┴───────────┴────────────┴────────────┴───────────────┴────────────┴──  _core 확장 모듈 하나
                                                         │
@@ -16,6 +16,7 @@
                      spatial/    ──▶ array/, base/, parallel/, accelerate/(이웃 찾기의 GEMM 고르기)
                      graph/      ──▶ sparse/(표준 꼴 CSR 읽기와 전치), array/, base/, parallel/
                      interpolate/ ──▶ array/, base/(lerp·interval: 배열의 interp와 함께 쓰는 선형 커널과 구간 찾기), parallel/, linalg/(LAPACK 래퍼: RBF의 분해와 랭크 검사, AAA의 SVD와 일반화 고유값), spatial/(KD 트리와 거리 커널: RBF의 이웃과 거리)
+                     smooth/     ──▶ array/, base/, parallel/, interpolate/(de Boor 평가와 띠 LU), spatial/(KD 트리), fft/(계획과 축 구동기, DCT), optimize/(스칼라 최소화와 Nelder–Mead), regression/(강건 무게)
                      fft/        ──▶ array/, base/(sincos: 회전 인자), parallel/
                      sparse/     ──▶ linalg/, array/, base/, parallel/, accelerate/(Accelerate의 희소 LU와 BLAS)
                      regression/ ──▶ linalg/, special/, random/, htest/(Jarque–Bera의 중심 합), parallel/
@@ -38,6 +39,7 @@
   - `graph/`는 sparse의 표준 꼴 CSR(`sparse/format.hpp`)을 읽기만 하고 sparse는 graph를 모른다(docs/design/graph.md §1.4, §6). Python 층의 `stardust.graph`는 `stardust.sparse`(입력, `csr_array` 결과, `LinearOperator`)를 쓴다.
   - `interpolate/`의 선형 커널(`base/lerp.hpp`)과 구간 찾기(`base/interval.hpp`)는 바닥 층에 두고 배열의 `sd.interp`(`array/ops/interp.cpp`)와 함께 쓴다(`base/sincos.hpp`와 같은 자리; docs/design/interpolate.md §1.4, §3.2). 배열은 interpolate를 모른다. Python 층의 `stardust.interpolate`는 `stardust.spatial`(`KDTree`)과 `stardust.sparse`(`design_matrix`)를 쓴다.
   - `fft/`는 다른 영역을 쓰지 않는다. 모든 길이를 자체 C++로 계산하고 Accelerate의 vDSP를 부르지 않는다(docs/design/fft.md FT30, FT66; vDSP의 래퍼 `fft/vdsp.hpp`는 라이브러리에 빌드되지 않고 탐침 `tools/fft_probe_kernels.cpp`만 쓴다). Python 층의 `stardust.fft`도 다른 영역을 쓰지 않는다(FFTLog의 계수도 `fft/fftlog.hpp`의 double-double log Γ로 만든다: docs/design/fft.md FT58).
+  - `smooth/`는 보간의 B-스플라인 평가(`interpolate/deboor.hpp`)와 띠 풀이, spatial의 KD 트리, fft의 계획과 축 구동기, optimize의 스칼라 최소화·Nelder–Mead 커널, 회귀의 bisquare 무게를 부르기만 하고 그 영역들은 smooth를 모른다(docs/design/smooth.md §1.4, §6). Python 층의 `stardust.smooth`는 `stardust.interpolate`(결과의 `BSpline`)와 `stardust._summary`를 쓴다.
   - Python 층에서 `stardust.integrate`와 `stardust.differentiate`는 인자 검사 도우미(`_callable`, `_check_int`, `_real` 등)를 `stardust.optimize._common`에서, 원소별 무리의 입력(`_inputs`, `_args`, `_shaped`)을 `stardust.optimize._elementwise`에서 가져온다. C++의 반복 고리는 바닥 폴더 `csrc/elementwise/`에 있어 optimize를 거치지 않는다(docs/design/integrate.md C16, §6.3).
   - Python 경계의 공용 도우미 `bind/pyutil.hpp`(배열 받기와 만들기)와 `bind/errors.hpp`(에러 메시지에 공개 함수 이름 붙이기)는 모든 영역의 `ops/`가 쓴다. 영역마다의 바인딩 파일(`bind/<영역>_bind.cpp`)은 맨 위 층이다.
 - **새 영역은 디렉터리 하나와 Python 하위 모듈 하나로 붙는다.** 아래 층만 쓰고, 기존 영역을 고치지 않는다.
@@ -72,6 +74,7 @@ stardust/
                                 _ordering, _structure, _centrality (docs/design/graph.md §6)
     interpolate/                __init__.py, _common, _ppoly (IP2 마일스톤), _bspline (IP3 마일스톤), _polyint _aaa (IP4 마일스톤), _grid (IP5 마일스톤), _rbf (IP6 마일스톤; docs/design/interpolate.md §6)
     fft/                        _common, _basic, _realtransforms, _helper, _fftlog (docs/design/fft.md §6)
+    smooth/                     __init__.py, _results(회귀형 결과의 공통 기반; SM0 마일스톤), _common, _local (SM1·SM2 마일스톤), _spline (SM3 마일스톤), _kreg (SM4 마일스톤), _kde _bandwidth (SM5 마일스톤), _savgol (SM6 마일스톤; docs/design/smooth.md §6)
     plot/                       _figure(칸·배치·내보내기), _layers, _basic, _sample·_function(함수 그림), _field(두 변수), _stat, _surface(3D), _adapt(곡면의 적응형 표본),
                                 _scene(도형 목록), _text(LaTeX 조판과 글리프 윤곽선의 캐시), _dvi, _ticks, _color, _svg·_pdf·_png
                                 (docs/design/plot.md §7)
@@ -123,6 +126,7 @@ stardust/
     interpolate/  search linear (IP1 마일스톤), banded cubic ppoly (IP2 마일스톤), bspline (IP3 마일스톤), polyint aaa (IP4 마일스톤), grid deboor pchip (IP5 마일스톤), rbf (IP6 마일스톤; docs/design/interpolate.md §6)
     fft/          twiddle(회전 인자), cfft(혼합 기수 Stockham 복소 FFT, 4단계, 두 줄 커널), bluestein·ddmath, rfft(실수 FFT), plan(계획과 캐시), driver(축 구동기),
                   basic·helper·args(변환과 도우미), r2r(DCT·DST), fftlog(FFTLog), vdsp(vDSP DFT의 래퍼, 탐침만; docs/design/fft.md §6)
+    smooth/       local (SM1·SM2 마일스톤), bandqr spline fitpack (SM3 마일스톤), gauss_sum kreg (SM4 마일스톤), kde bandwidth (SM5 마일스톤), savgol (SM6 마일스톤; docs/design/smooth.md §6)
     plot/         raster(2D 래스터라이저: 면적 누적, 획의 윤곽, 점 찍기, 그림 붙이기), zbuffer(3D 깊이 버퍼), levels(marching squares; docs/design/plot.md §3.5, §5, §6)
     elementwise/  loop(원소별 반복 고리: optimize의 배치 넷, 미분·적분의 원소별 무리; docs/design/integrate.md §6.2)
     bind/         module.cpp(_core와 하위 모듈), <영역>_bind.cpp, stats_{desc,matrix,mv,mvcdf,sample}.cpp,
@@ -150,7 +154,7 @@ stardust/
 
   tools/
     test.py  golden.py  coverage.py    테스트, 골든, 커버리지 (tests/README.md)
-    <영역>_ref.py                      Arb 참값 생성기 (special, stats, array, linalg, regression, optimize, htest, sparse, integrate, differentiate, spatial, graph, interpolate, fft)
+    <영역>_ref.py                      Arb 참값 생성기 (special, stats, array, linalg, regression, optimize, htest, sparse, integrate, differentiate, spatial, graph, interpolate, fft, smooth)
     arbref.py  regref.py  mvref.py  mvcdfref.py   생성기가 함께 쓰는 Arb 도우미와 식
     gen_*.py                           C++ 계수 표(csrc/*/coeffs, frame의 pow5_table)와 다른 라이브러리의 기록(R, scipy, Fortran)
     check.py  format.py  check_refs.py  procrun.py  vendor_boost_math.py
@@ -165,7 +169,7 @@ stardust/
 - **"얇은 Python, 두꺼운 C++"**: 계산은 C++에 있고, Python은 인자 정리, 결과 객체, 메시지를 맡는다.
   - 예외: `Series`, `DataFrame`, 분포 객체(`sd.stats`), 회귀·최적화의 결과 객체는 Python 클래스다.
 - **확장 모듈은 `_core` 하나다** (DESIGN §3.2).
-  - `nb::module_::def_submodule`로 영역마다 `_core.linalg`, `_core.frame`, `_core.special`, `_core.stats`, `_core.regression`, `_core.random`, `_core.optimize`, `_core.differentiate`, `_core.integrate`, `_core.htest`, `_core.sparse`를 만든다(`bind/module.cpp`가 차례로 부른다). spatial의 `_core.spatial`은 공개 함수가 생기는 SPT1부터다. graph의 `_core.graph`는 GR1 마일스톤부터, interpolate의 `_core.interpolate`는 IP1 마일스톤부터, fft의 `_core.fft`는 FT1 마일스톤부터다.
+  - `nb::module_::def_submodule`로 영역마다 `_core.linalg`, `_core.frame`, `_core.special`, `_core.stats`, `_core.regression`, `_core.random`, `_core.optimize`, `_core.differentiate`, `_core.integrate`, `_core.htest`, `_core.sparse`를 만든다(`bind/module.cpp`가 차례로 부른다). spatial의 `_core.spatial`은 공개 함수가 생기는 SPT1부터다. graph의 `_core.graph`는 GR1 마일스톤부터, interpolate의 `_core.interpolate`는 IP1 마일스톤부터, fft의 `_core.fft`는 FT1 마일스톤부터, smooth의 `_core.smooth`는 SM1 마일스톤부터다.
   - nanobind 타입 테이블이 하나라서, C++ 어디서든 `is_ndarray`/`as_ndarray`(`bind/pyutil.hpp`)로 배열을 직접 받는다.
 - **linalg는 배열을 C++에서 직접 주고받는다.**
   - 입력은 `const NDArray&`이고, 결과는 linalg가 정한 strides로 `new_array_strided(dtype, shape, strides, nbytes)`가 `NDArray`를 직접 만든다. 레이아웃(행렬마다 열 우선, 배치 축은 바깥에 C-order, 길이 0인 축도 그대로 곱함)은 linalg의 정책이라 linalg에 두고, 메모리와 플래그만 배열이 맡는다.

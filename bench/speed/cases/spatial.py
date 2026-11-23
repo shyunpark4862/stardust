@@ -491,7 +491,7 @@ def _geometry_specs():
                         check=SIMPLICES_CHECK))  # fmt: skip
     for kind, npts, size, note, check in (
         ("normal", 10**5, "10^5 points", "", SIMPLICES_CHECK),
-        ("grid", 316, "316^2 points", "every cell cocircular: the tie rule decides", NSIMPLEX_CHECK),
+        ("grid", 316, "99856 points", "every cell cocircular: the tie rule decides", NSIMPLEX_CHECK),
         ("circle", 10**4, "10^4 points", "points of the unit circle", NSIMPLEX_CHECK),
     ):
         out.append(Spec("SPT9", "delaunay", f"Delaunay 2-D {kind}", ("Delaunay",), size, _plane(kind, npts),
@@ -609,7 +609,7 @@ def _delaunay3_specs():
                         _space("uniform", npts), lambda d: lambda: _sp().Delaunay(d["sx"]), (delaunay,),
                         quick=npts == 10**4, note="sd inserts on one thread (SPT107)" if npts == 10**5 else "",
                         check=SIMPLICES_CHECK))  # fmt: skip
-    out.append(Spec("SPT10", "delaunay", "Delaunay 3-D grid", ("Delaunay",), "32^3 points", _space("grid", 32),
+    out.append(Spec("SPT10", "delaunay", "Delaunay 3-D grid", ("Delaunay",), "32768 points", _space("grid", 32),
                     lambda d: lambda: _sp().Delaunay(d["sx"]), (delaunay,),
                     note="every cell cospherical: the tie rule decides",
                     check=Check(skip="the number of tetrahedra of cospherical points is not fixed (a cube: 5 or 6)")))  # fmt: skip

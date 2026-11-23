@@ -10,7 +10,7 @@
 
 | 관례 | 뜻 |
 |---|---|
-| `AREA …` | 위치 인자. 영역 이름 `array linalg frame special stats regression random optimize htest sparse integrate differentiate spatial graph interpolate fft plot`(`bench/areas.py`, README.md의 표 순서) 가운데 그 도구가 다루는 것. 주지 않으면 모두다. 정확도는 참값이 있는 열넷(array, linalg, special, stats, regression, optimize, htest, sparse, integrate, differentiate, spatial, graph, interpolate, fft)을 다룬다(spatial은 공개 함수가 생기는 SPT1부터 스윕이 있다; graph는 GR2 마일스톤부터; interpolate는 IP1 마일스톤부터; fft는 FT1 마일스톤부터; sparse의 스윕은 `spmv`, `sums`, `solve`, `iterative`, `eig`, `norms`, `matfuncs`의 일곱, integrate는 `samples`, `fixed_quad`, `quad`, `multiple`, `quad_weights`, `tanhsinh`, `nsum`, `quad_vec`, `cubature`, `newton_cotes`의 열, differentiate는 `derivative`, `jacobian`, `hessian`, `gradient`의 넷이다; 나머지는 `list`로 본다). |
+| `AREA …` | 위치 인자. 영역 이름 `array linalg frame special stats regression random optimize htest sparse integrate differentiate spatial graph interpolate fft smooth plot`(`bench/areas.py`, README.md의 표 순서) 가운데 그 도구가 다루는 것. 주지 않으면 모두다. 정확도는 참값이 있는 열다섯(array, linalg, special, stats, regression, optimize, htest, sparse, integrate, differentiate, spatial, graph, interpolate, fft, smooth)을 다룬다(spatial은 공개 함수가 생기는 SPT1부터 스윕이 있다; graph는 GR2 마일스톤부터; interpolate는 IP1 마일스톤부터; fft는 FT1 마일스톤부터; smooth는 SM1 마일스톤부터; sparse의 스윕은 `spmv`, `sums`, `solve`, `iterative`, `eig`, `norms`, `matfuncs`의 일곱, integrate는 `samples`, `fixed_quad`, `quad`, `multiple`, `quad_weights`, `tanhsinh`, `nsum`, `quad_vec`, `cubature`, `newton_cotes`의 열, differentiate는 `derivative`, `jacobian`, `hessian`, `gradient`의 넷이다; 나머지는 `list`로 본다). |
 | `--match PATTERN` | id가 맞는 것만 남긴다. `*`, `?`가 있으면 id 전체와 맞춰 보는 glob이고, 없으면 부분 문자열이다. `[`, `]`는 보통 글자라 표에서 복사한 id(`erf(x) [10^6]`)가 그대로 맞는다. 여러 번 주면 하나만 맞아도 된다. |
 | `--jobs N` | 작업 프로세스 수. 기본 8, 최대 10. |
 | `--out FILE` | 결과를 쓸 파일(폴더가 아니다). |
@@ -21,7 +21,7 @@
 
 ## 1. 속도 (`bench/speed`)
 
-속도의 기준선(`bench/speed/results/<영역>.json`)은 htest와 sparse에만 있고, 표(`bench/<영역>/speed.md`)는 htest, sparse, integrate, differentiate에만 있다(표의 머리가 만든 실행 파일을 적는다). 나머지 영역은 전체 측정을 한 번 하면 생긴다(§1.9). 그 전까지 C++ 비용표는 §1.6의 값을 둔다.
+속도의 기준선(`bench/speed/results/<영역>.json`)은 htest, sparse, special, stats에만 있고, 표(`bench/<영역>/speed.md`)는 htest, sparse, special, stats, integrate, differentiate에만 있다(표의 머리가 만든 실행 파일을 적는다). 나머지 영역은 전체 측정을 한 번 하면 생긴다(§1.9). 그 전까지 C++ 비용표는 §1.6의 값을 둔다.
 
 ### 1.1 명령
 
@@ -125,7 +125,7 @@ Case(area="stats", group="continuous", name="Normal.cdf", size="10^5", n=100_000
 - `csrc/stats/cost_table.hpp`: 키 `분포.메서드`(예: `normal.cdf`). stats의 연속·이산·극값 분포 사례가 채운다. 같은 키의 사례가 여럿이면(매개변수 묶음이 여럿) 기하평균이다. 이산 분포의 좁은 지지 사례는 키 `분포.메서드@memo`로 따로 잰다. 스칼라 매개변수에서 정수점 기억 표가 답하는 호출(원소당 1–2 ns)의 비용이고, 표에서 `memo = true`인 줄이 된다. 넓은 지지의 계산(수백 ns–수십 µs)과 섞으면 좁은 지지 호출이 무거운 가중치를 받아 10스레드가 1스레드보다 느려진다. 아직 잰 적 없는 `@memo` 키의 줄은 `bench/speed/cost.py`의 값으로 채워, 첫 측정 전에도 좁은 지지 가중치가 켜진다: 역함수(icdf, iccdf, ilogcdf, ilogccdf)의 24줄은 점검 실행에서 잰 1스레드 시간(`MEMO_PRESET_NS`, 원소당 9–1080 ns), 나머지는 `MEMO_DEFAULT_NS`(1.5 ns)다. 측정하면 잰 값으로 바뀐다.
 - `csrc/special/cost_table.hpp`: 키는 함수 이름(예: `erf`, `erf_complex`, `_add`). special의 10⁶ 원소 사례가 채운다. `csrc/special/cost.hpp`는 연산마다 이 표의 어느 이름을 쓰는지만 적는다. 표에 없는 이름은 컴파일되지 않는다.
 
-지금의 `csrc/stats/cost_table.hpp`는 기준선이 아니라 2026-11-22에 분포 사례를 한 번 잰 실행에서 `cost`의 코드로 만든 것이다(docs/design/stats.md T63). 전체 측정 뒤 `cost`로 다시 만든다.
+지금의 두 표는 기준선에서 만든 것이다: `csrc/special/cost_table.hpp`는 98줄 모두, `csrc/stats/cost_table.hpp`는 340줄 가운데 332줄이 기준선(`bench/speed/results/special.json`, `stats.json`)의 값이고 나머지 8줄은 앞 파일의 값이다(헤더의 머리 주석이 적는다). 전체 측정 뒤 `cost`로 다시 만든다.
 
 `cost`는 기준선에 있는 키만 바꾸고 나머지 줄은 지금 파일의 값을 둔다. `cost --check`는 쓰지 않고 바뀔지만 알린다(바뀌면 종료 코드 1). 아직 기준선이 없는 영역, 먹이는 사례가 없어 영영 바뀌지 않는 줄(Bernoulli의 넓은 지지 줄 등), 줄이 없는 사례 키도 함께 알린다. 헤더가 바뀌면 다음 `import stardust`에서 C++가 다시 빌드된다.
 
@@ -187,7 +187,7 @@ Case(area="stats", group="continuous", name="Normal.cdf", size="10^5", n=100_000
 .venv/bin/python -m bench.accuracy table                             # 기준선에서 표만 다시
 ```
 
-- 영역은 참값이 있는 열넷이다: array, linalg, special, stats(다변량·행렬 분포는 그 안의 묶음, 스윕 id `stats/mv/…`), regression, optimize, htest, sparse, integrate, differentiate, spatial(스윕은 SPT1부터), graph(스윕은 GR2 마일스톤부터), interpolate(스윕은 IP1 마일스톤부터), fft(스윕은 FT1 마일스톤부터). 기준선 파일은 스윕이 있는 영역마다 하나씩 열 개다(`bench/accuracy/results/<영역>.json`, §2.3). 스윕 id는 `영역/이름`이고 `--match`는 그 id에 맞춘다.
+- 영역은 참값이 있는 열다섯이다: array, linalg, special, stats(다변량·행렬 분포는 그 안의 묶음, 스윕 id `stats/mv/…`), regression, optimize, htest, sparse, integrate, differentiate, spatial(스윕은 SPT1부터), graph(스윕은 GR2 마일스톤부터), interpolate(스윕은 IP1 마일스톤부터), fft(스윕은 FT1 마일스톤부터), smooth(스윕은 SM1 마일스톤부터). 기준선 파일은 스윕이 있는 영역마다 하나씩 열 개다(`bench/accuracy/results/<영역>.json`, §2.3). 스윕 id는 `영역/이름`이고 `--match`는 그 id에 맞춘다.
 - `--jobs`개(기본 8, 최대 10) 작업 프로세스가 스윕을 나눠 잰다. 워커는 sd 1스레드이고 몇 스윕마다 새로 띄운다. 결과는 프로세스 수와 무관하다.
 - `run --promote`는 재고 바로 기준선에 넣는다. `-q`는 터미널에 아무것도 쓰지 않는다(로그만).
 - 콘솔은 머리 블록, 스윕마다 sd와 비교 대상의 값을 말로 적은 몇 줄(터미널에서는 그 아래 진행 막대), 끝에 요약 블록·영역별 표·번호 붙은 Notes다. 같은 줄이 시각과 함께 `build/logs/accuracy/<시각>.log`에 남는다.
@@ -210,6 +210,7 @@ Case(area="stats", group="continuous", name="Normal.cdf", size="10^5", n=100_000
 | interpolate | `tests/interpolate/ref/<묶음>.npz`(`linear`, `slopes`, `bspline`, `curves`, `polynomial`, `grid`, `rbf`, `roots`; 다른 라이브러리의 기록은 `tests/interpolate/data`: scipy, numpy, R; 스윕은 IP1 마일스톤부터) | `tools/interpolate_ref.py` (기록은 `tools/interpolate_probe.py`) |
 | graph | `tests/graph/ref/<묶음>.npz`(`paths`, `yen`, `assignment`, `pagerank`, `betweenness`, `laplacian`; 다른 라이브러리의 기록은 `tests/graph/data/scipy.json`; 스윕 `paths`는 GR2 마일스톤부터) | `tools/graph_ref.py` (기록은 `tools/graph_probe.py`) |
 | fft | `tests/fft/ref/<묶음>.npz`(`c2c`, `real`, `hermitian`, `r2r`, `nd`; 길이 2¹⁴까지, 그보다 긴 줄은 정확도 체계가 그 자리에서 Arb로 잰다; 다른 라이브러리의 기록은 `tests/fft/data`: numpy, scipy, R, vDSP, 자체 길의 시제품; 스윕은 FT1 마일스톤부터) | `tools/fft_ref.py` (기록은 `tools/fft_probe.py`) |
+| smooth | `tests/smooth/ref/<묶음>.npz`(`local`, `local_nd`, `spline`, `spline_fit`, `kreg`, `kde`, `bandwidth`, `savgol`, `savgol_filter`; 다른 라이브러리의 기록과 SM0 마일스톤의 시제품 측정은 `tests/smooth/data`: scipy, statsmodels, scikit-learn, R, `prototype.json`; 스윕은 SM1 마일스톤부터) | `tools/smooth_ref.py` (기록은 `tools/smooth_probe.py`) |
 | array(vForce 15개·pow·복소 abs, 리덕션) | `tests/array/ref` | `tools/array_ref.py` |
 | linalg | `tests/linalg/ref`(행렬, 참값, 조건수) | `tools/linalg_ref.py` |
 | optimize | `tests/optimize/ref`(`scalar_roots.json`, `scalar_minima.json`, `derivatives.npz`), NIST StRD 인증값 | `tools/optimize_ref.py` |

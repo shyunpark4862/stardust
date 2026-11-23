@@ -22,6 +22,7 @@ AREAS = (
     "graph",
     "interpolate",
     "fft",
+    "smooth",
     "plot",
 )
 
