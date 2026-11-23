@@ -306,12 +306,13 @@ def kron(A, B, /, *, format=None):
     B = _sparse_arg(B, func, "B")
     format = _format_arg(format, func)
     loop = C.renamed(func, _sd.multiply, _sd.zeros(1, dtype=A.dtype), _sd.zeros(1, dtype=B.dtype)).dtype
-    a, b = _as_2d_csr(A), _as_2d_csr(B)
     if A.ndim == 1 and B.ndim == 1:
         shape = (A.shape[0] * B.shape[0],)
     else:
-        shape = (a.shape[0] * b.shape[0], a.shape[1] * b.shape[1])
-    C.check_shape_range(shape, func)
+        (ma, na), (mb, nb) = ((1, X.shape[0]) if X.ndim == 1 else X.shape for X in (A, B))
+        shape = (ma * mb, na * nb)
+    C.check_shape_range(shape, func)  # before the inputs' conversion: the result's range is the error
+    a, b = _as_2d_csr(A), _as_2d_csr(B)
     ip, ix, dv = C.sized(
         func,
         _core._kron,

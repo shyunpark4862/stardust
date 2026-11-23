@@ -684,6 +684,22 @@ def test_operator_errors_name_the_solver():
         with pytest.raises(ValueError, match=rf"^{f.__name__}\(\): the operator was made without 'rmatvec'$"):
             f(L + L, b)
         calls.clear()
+    # a result that is not an array, or of another size: the conversion's error names the solver
+    none = S.LinearOperator((2, 2), lambda v: None, dtype=sd.float64)
+    long = S.LinearOperator((2, 2), lambda v: sd.ones(3), dtype=sd.float64)
+    for f in (S.cg, S.gmres, S.bicgstab, S.minres):
+        with pytest.raises(TypeError, match=rf"^{f.__name__}\(\): the operator's function must return an sd.ndarray "
+                                            r"or a sequence of numbers, not NoneType$"):  # fmt: skip
+            f(none, sd.ones(2))
+        with pytest.raises(ValueError, match=rf"^{f.__name__}\(\): the operator's function returned shape \(3,\), "
+                                             r"expected \(2,\)$"):  # fmt: skip
+            f(long, sd.ones(2))
+
+    def own(v):
+        raise ValueError("the user's own")
+
+    with pytest.raises(ValueError, match="^the user's own$"):  # the function's own error is not renamed
+        S.cg(S.LinearOperator((2, 2), own, dtype=sd.float64), sd.ones(2))
 
 
 def test_minres_names_the_preconditioner():

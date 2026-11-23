@@ -335,6 +335,10 @@ def test_result_shapes_past_int64_are_an_overflow_error():
     v = S.coo_array((sd.asarray([1.0]), (sd.asarray([2**32 - 1]),)), shape=(2**32,))
     with pytest.raises(OverflowError, match=r"^kron\(\): the result's shape is out of range$"):
         S.kron(v, v)
+    # rows as well as columns, and before the inputs' own conversion (a COO of 2**62 rows has no CSR)
+    for shape_a, shape_b in (((2**62, 1), (4, 1)), ((1, 2**62), (1, 4))):
+        with pytest.raises(OverflowError, match=r"^kron\(\): the result's shape is out of range$"):
+            S.kron(S.coo_array(shape_a), S.coo_array(shape_b))
     H = _one((1, 2**62 + 1), (0, 2**62))
     V = _one((2**62 + 1, 1), (2**62, 0))
     for f, arg in ((S.hstack, [H, H]), (S.vstack, [V, V]), (S.block_diag, [V, V]), (S.block_array, [[H, H]])):

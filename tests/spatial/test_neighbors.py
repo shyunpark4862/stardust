@@ -294,6 +294,23 @@ def test_hypothesis_gemm_path_is_the_definition(case, metric):
         check_radius(A, B, D[:, min(k, D.shape[1]) - 1].copy(), metric, paths=(2,))
 
 
+def test_radius_stops_past_the_pair_budget():
+    """Every path counts the pairs it finds and stops with the same MemoryError once they pass what
+    physical memory holds (here a lowered number); the counts alone gather nothing and never stop."""
+    g = np.random.default_rng(5)
+    A, B = g.random((300, 3)), g.random((400, 3))
+    msg = r"^radius_neighbors\(\): the result is larger than this machine's physical memory$"
+    for path in (1, 2, 3):
+        with pytest.raises(MemoryError, match=msg):
+            N._radius("radius_neighbors", A, B, math.inf, "euclidean", None, None, None, None, False, path, 1000)
+        full = N._radius("radius_neighbors", A, B, math.inf, "euclidean", None, None, None, None, False, path, 120000)
+        assert full.indices.shape == (120000,)
+        cnt = N._radius("radius_neighbors", A, B, math.inf, "euclidean", None, None, None, None, True, path, 1000)
+        assert np.asarray(cnt).tolist() == [400] * 300
+    with pytest.raises(MemoryError, match=msg):  # a metric without a tree or a GEMM path
+        N._radius("radius_neighbors", A, B, math.inf, "cosine", None, None, None, None, False, 0, 1000)
+
+
 # ---- RadiusResult ---------------------------------------------------------------------------------
 
 
@@ -313,6 +330,11 @@ def test_radius_result():
     assert m.nnz == 10 and m.count_nonzero() == 4  # the zero distances are stored zeros (SPT3)
     assert m.eliminate_zeros() is None and m.nnz == 4
     assert r.tocsr().nnz == 10  # a new array every call
+    c = r.tocsr()
+    c.data *= 2  # its data is a writable copy: the result's distances stay as they were
+    assert c.data is not r.distances and np.asarray(c.data).tolist() == [2 * d for d in np.asarray(r.distances)]
+    assert np.asarray(r.distances).tolist() == [0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0]
+    assert np.asarray(r.tocsr().data).tolist() == np.asarray(r.distances).tolist()
     assert np.array_equal(np.asarray(r.tocsr().toarray()), np.where(np.asarray(S.cdist(X, X)) <= 1.0,
                                                                      np.asarray(S.cdist(X, X)), 0.0))  # fmt: skip
     n = S.radius_neighbors(X, X, [1.0, 0.0, 0.5, 10.0], return_length=True)

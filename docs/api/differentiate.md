@@ -46,7 +46,7 @@ DifferentiateResult
 - 모든 호출은 `max_iter`번 안에 끝난다. 상한에 닿은 원소는 마지막 추정과 status −2다.
 - 원소마다의 판정은 scipy의 순서다: error < atol + rtol·|df|이면 0, 아니고 x나 df가 유한하지 않으면 −3(df는 NaN), 아니고 오차 추정이 직전 반복의 10배를 넘으면 −1(반올림이 이기기 시작했다; 그때의 df와 error를 돌려준다). −1은 셋째 반복부터다(오차 추정은 둘째 반복에 처음 생기고, 비교할 직전 오차는 셋째에 생긴다).
 - 경고를 내지 않는다. 같은 기계, 같은 스레드 수에서는 실행마다 같은 비트다(API.md §3). 그 위에서 지금은 스레드 수·배치의 크기와 상관없이 원소마다 같은 비트다(원소를 배치에 넣어도 혼자 부른 것과 같다; scipy는 BLAS의 합 때문에 끝자리가 다르다). 원소를 지나가는 패스의 일(진행 중인 원소 수 × 원소마다의 점 수: 첫 반복 `order`점, 다음부터 2점)이 2¹⁵점 이상이면 그 패스를 스레드에 나누고 GIL을 놓는다(docs/design/integrate.md C111; optimize의 배치는 원소마다 점 하나라 같은 기준이다).
-- 도함수가 0인 점에서는 기본 `atol`(가장 작은 정규수)이 사실상 절대 판정을 하지 않으므로 오차가 반올림 수준이어도 status −1이나 −2가 될 수 있다(scipy와 같다: 대칭이 아닌 0 도함수, `derivative(sd.sin, π/2)`는 status −1, `n_iter` 6). 그런 점에는 `atol`을 준다. 함수가 그 변수에 기대지 않는 항목(sin(x₀)의 x₁에 대한 편미분)은 차분이 정확히 0이라 둘째 반복에 수렴한다.
+- 도함수가 0인 점에서는 기본 `atol`(가장 작은 정규수)이 사실상 절대 판정을 하지 않으므로 오차가 반올림 수준이어도 status −1이나 −2가 될 수 있다(기본 `atol`이 절대 판정을 하지 않는 것은 scipy와 같다. 대칭이 아닌 0 도함수, `derivative(sd.sin, π/2)`는 df −4.1×10⁻¹⁴에서 status −1, `n_iter` 6이다. 판정의 경계라 가중치와 합의 끝자리에 따라 갈리고, 같은 점에서 scipy는 둘째 반복에 수렴한다). 그런 점에는 `atol`을 준다. 함수가 그 변수에 기대지 않는 항목(sin(x₀)의 x₁에 대한 편미분)은 차분이 정확히 0이라 둘째 반복에 수렴한다.
 - 간격이 x의 ulp보다 작으면 스텐실의 점이 x로 반올림되어 함숫값이 모두 같아지고, df 0·error 0으로 수렴할 수 있다(scipy와 같다: `derivative(sd.sin, [1e300, 1e17, 1e16])`은 df [0, 0, 0], converged [True, True, True]; 참값 cos x는 0이 아니다). 기본 `initial_step` 0.5는 절대 간격이라 |x| ≳ 2⁵³에서 그렇다. 큰 |x|에는 |x|에 맞춘 `initial_step`을 준다(C120). `jacobian`·`hessian`도 같다. x³의 0은 sd에서 둘째 반복에 수렴한다(정확한 가중치와 짝의 합이라 추정이 매번 같다; scipy는 −2: `[scipy와 다름]`, docs/design/integrate.md §3.8).
 
 ## §2. 도함수 `derivative` (C2)
@@ -82,4 +82,7 @@ hessian(f, x, /, *, atol=None, rtol=None, max_iter=10, order=8, initial_step=0.5
 | `scipy.optimize.approx_fprime`, `check_grad` | `sd.optimize.approx_fprime`, `check_grad` | 그대로 `sd.optimize`에 있다(docs/api/optimize.md §2) |
 
 ## §5. 정확도
-- 수렴한 `derivative`의 결과는 시험 모음(초등 함수 11개 × 9점과 끝 근처 14경우) 모두에서 참값(Arb)과 atol + rtol·|df| 안이다(최대 상대오차 6.2×10⁻¹¹). `jacobian`·`hessian`(MGH 47·42경우)은 수렴한 항목의 오차가 rtol·max|참 행렬|의 0.004배·0.11배 이하다. 오차 추정은 엄밀한 상계가 아니다: 모음에서 참 오차보다 작은 것이 `derivative` 109개 가운데 다섯이다(docs/design/integrate.md §7.8).
+- 수렴한 `derivative`의 결과는 시험 모음(초등 함수 11개 × 9점과 끝 근처 17경우) 모두에서 참값(Arb)과 atol + rtol·|df| 안이다(최대 상대오차 6.2×10⁻¹¹). `jacobian`·`hessian`(MGH 47·42경우)은 수렴한 항목의 오차가 rtol·max|참 행렬|의 0.004배·0.11배 이하다. 오차 추정은 엄밀한 상계가 아니다: 모음에서 참 오차보다 작은 것이 수렴한 `derivative` 111개 가운데 다섯이다(docs/design/integrate.md §7.8).
+- **모음 밖의 한계**: "수렴이면 참 오차가 atol + rtol·|df| 안"은 판정의 뜻이지 증명된 상계가 아니고, 처음 간격이 함수가 변하는 척도에 맞지 않으면 모음 밖에서 깨진다. 이웃한 두 추정이 우연히 같아 수렴으로 멈춘 값이 틀릴 수 있다. 그런 점에는 `initial_step`을 척도에 맞춘다.
+  - 한쪽 스텐실(`step_direction` ±1)에서 값이 평평한 쪽으로 가는 경우: `derivative(sd.atan, 1000.0, step_direction=1)`(기본 `order` 8)은 status 0, `n_iter` 8, df 1.0000221664×10⁻⁶, error 0인데 참값은 9.99999×10⁻⁷이라 오차 2.3×10⁻¹¹이 atol + rtol·|df|의 1.55×10³배다(x = −1000의 `step_direction=-1`도 같다). `initial_step=100.0`이면 0.11배 안이다. 같은 점에서 scipy는 status −2다(가중치와 합의 끝자리에 따라 갈린다).
+  - 처음 간격보다 빨리 진동하는 함수: `derivative(lambda x: sd.sin(100 * x), 1.0, order=6)`은 처음 간격 0.5가 주기(0.063)의 여덟 배라 status 0, `n_iter` 2에서 −0.458을 낸다(참값 86.23; scipy도 같은 값이다). `order` 2·4·8은 같은 점에서 status −1이고, `initial_step=0.01`이면 `order` 6도 86.2318872277(상대오차 1.2×10⁻¹¹)이다.

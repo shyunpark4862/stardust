@@ -127,11 +127,17 @@ def _native(op, dtype, adjoint=False):
 
 class _Inverse:
     """x -> M^-1 x for a matrix by the sparse LU, for another operator by gmres (scipy's IterInv
-    and IterOpInv: rtol max(tol, 1000 sqrt(n) eps), tol = 2 eps when 0)."""
+    and IterOpInv: rtol max(tol, 1000 sqrt(n) eps), tol = 2 eps when 0).
+
+    The LU solve is one solve a product when it is accurate, and refined when it is not: the first
+    product measures the normwise backward error of its solve (one product with the matrix), and
+    above 768 eps every product of this operator is refined as the direct solves are (pivot growth
+    would otherwise reach the eigenpairs past their contract)."""
 
     def __init__(self, func, matrix=None, op=None, tol=0.0, part=None):
         self.func, self.factor, self.op, self.part = func, None, op, part
         self.rtol = None
+        self.refine = None  # decided by the first product
         if matrix is not None:
             from ._direct import _Factor
 
@@ -147,7 +153,10 @@ class _Inverse:
 
     def __call__(self, x):
         if self.factor is not None:
-            y = self.factor.solve(x, "N", self.func, refine=False)
+            if self.refine is None:
+                y, self.refine = self.factor.solve_measured(x, self.func)
+            else:
+                y = self.factor.solve(x, "N", self.func, refine=self.refine)
         else:
             from ._iterative import gmres
 

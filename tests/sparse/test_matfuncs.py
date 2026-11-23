@@ -692,6 +692,10 @@ def test_expm_multiply_operator_errors_name_it():
     nov = S.LinearOperator((n, n), lambda v: v, dtype=sd.float64)
     with pytest.raises(ValueError, match=r"^onenormest\(\): the operator was made without 'rmatvec'$"):
         S.onenormest(nov)
+    none = S.LinearOperator((n, n), lambda v: None, rmatvec=lambda v: v, dtype=sd.float64)
+    for f, args in ((S.expm_multiply, (none, sd.ones(n))), (S.onenormest, (none,))):
+        with pytest.raises(TypeError, match=rf"^{f.__name__}\(\): the operator's function must return an sd.ndarray"):
+            f(*args)
 
 
 @pytest.mark.usefixtures("restore_threads")

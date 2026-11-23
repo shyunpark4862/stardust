@@ -35,6 +35,36 @@ def test_metric():
         S.cdist(X, X, out=None)
 
 
+def test_default_V_with_a_zero_variance():
+    """A constant column makes the default V zero there: refused as a given V with a zero is, not NaN distances."""
+    const = np.array([[1.0, 0.0], [2.0, 0.0], [4.0, 0.0]])
+    with raises(ValueError, "pdist(): 'V' must be finite and positive"):
+        S.pdist(const, metric="seuclidean", V=[1.0, 0.0])
+    with raises(ValueError, "pdist(): the variance of a column of the data is 0, so the default 'V' is not positive; "
+                            "give 'V'"):  # fmt: skip
+        S.pdist(const, metric="seuclidean")
+    for f, name in ((S.cdist, "cdist"), (S.kneighbors, "kneighbors"), (S.radius_neighbors, "radius_neighbors")):
+        args = (const, const, 1.0) if f is S.radius_neighbors else (const, const)
+        with raises(ValueError, f"{name}(): the variance of a column of the data is 0, so the default 'V' is not "
+                                "positive; give 'V'"):  # fmt: skip
+            f(*args, metric="seuclidean")
+    assert np.all(np.isfinite(np.asarray(S.pdist(const, metric="seuclidean", V=[1.0, 1.0]))))
+    # 0.1 repeated: the computed variance is a rounding residue (2.9e-34), not 0; the column is still constant
+    tenth = np.array([[1.0, 0.1], [2.0, 0.1], [4.0, 0.1]])
+    assert float(sd.var(sd.asarray(tenth), axis=0, correction=1)[1]) > 0.0
+    for X in (tenth, np.full((7, 2), 0.1), np.column_stack([np.arange(1000.0), np.full(1000, 0.3)])):
+        with raises(ValueError, "pdist(): the variance of a column of the data is 0, so the default 'V' is not "
+                                "positive; give 'V'"):  # fmt: skip
+            S.pdist(X, metric="seuclidean")
+    with raises(ValueError, "cdist(): the variance of a column of the data is 0, so the default 'V' is not "
+                            "positive; give 'V'"):  # fmt: skip
+        S.cdist(tenth[:2], tenth[2:], metric="seuclidean")
+    # one row has no pairs, and a NaN column is not constant: no error
+    assert S.pdist(tenth[:1], metric="seuclidean").shape == (0,)
+    nan = np.array([[1.0, math.nan], [2.0, math.nan], [4.0, math.nan]])
+    assert np.all(np.isnan(np.asarray(S.pdist(nan, metric="seuclidean"))))
+
+
 def test_options_of_another_metric():
     with raises(TypeError, "pdist(): 'p' applies only to metric='minkowski'"):
         S.pdist(X, p=3)

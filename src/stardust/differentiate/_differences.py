@@ -31,7 +31,7 @@ _U = 2.0**-53  # the unit roundoff: rounding a value moves it by at most u |f|
 _ROUNDING_TOL = 2.0**-26
 # a start whose rounding level is above 2^-36 of its column grows first (C112)
 _GROW_TOL = 2.0**-36
-# the largest start of a search: x_j = 0's (2^-8 of a variable of size 1)
+# the largest start of a search: x_j = 0's, 2^-7 (frexp(1) = 0.5 * 2^1, so 2^(1 - 8))
 _FD_CAP = math.ldexp(1.0, math.frexp(1.0)[1] + _FD_START)
 # a search whose last two estimates differ by more than this (relative) never settled
 _SETTLED = 2.0**-20

@@ -85,11 +85,7 @@ def test_scalar_terms(fit):
     def call(t):
         return R.anova(r, terms=t) if fit == "anova" else R.stepwise(y, X, terms=t)
 
-    msg = (
-        r"anova\(\): a term's columns must be positions \(int\) or names \(str\), not "
-        if fit == "anova"
-        else r"stepwise\(\): 'terms' must give columns as positions \(int\) or names \(str\), not "
-    )
+    msg = rf"{fit}\(\): 'terms' must give columns as positions \(int\) or names \(str\), not "  # one shape
     for t, name in (([1.5, 0], "float"), ([True, 1], "bool"), ([b"x1", 0], "bytes"), ([[1.5], 0], "float")):
         with pytest.raises(TypeError, match=msg + name + "$"):
             call(t)

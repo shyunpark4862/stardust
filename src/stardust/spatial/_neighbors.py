@@ -134,18 +134,20 @@ def _knn(name, XA, XB, k, metric, p, w, V, VI, distance_upper_bound, path=0):
     return QueryResult(d, i)
 
 
-def _radius(name, XA, XB, r, metric, p, w, V, VI, return_length, path=0):
+def _radius(name, XA, XB, r, metric, p, w, V, VI, return_length, path=0, max_pairs=-1):
+    """radius_neighbors. path forces a path and max_pairs lowers the number of found pairs the search
+    stops at (the pairs physical memory holds; MemoryError past it), both for tests."""
     C.flag(return_length, name, "return_length")
     A, B, km, pv, wv, aux = _sides(name, XA, XB, metric, p, w, V, VI)
     rr = C.radius(r, name, A.shape[0])
     tp = _tree_p(km, pv, wv)
     out = None
     if _use_tree(path, tp, A.shape[0], B.shape[0], A.shape[1]):
-        out = _core._ball_point(_core._KDTree(B, 10), _rows(A), rr, tp, return_length)
+        out = _core._ball_point(_core._KDTree(B, 10), _rows(A), rr, tp, return_length, name, max_pairs)
     elif _use_sphere(path, km, A.shape[0], B.shape[0]):
         out = _core._sphere_radius(_rows(A), _rows(B), rr, return_length)
     if out is None:
-        out = _core._radius_neighbors(A, B, km, pv, wv, aux, rr, return_length, 0 if path == 3 else path)
+        out = _core._radius_neighbors(A, B, km, pv, wv, aux, rr, return_length, 0 if path == 3 else path, max_pairs)
     if return_length:
         return out
     indptr, indices, distances = out

@@ -94,7 +94,7 @@ def test_scipy_points_counts_and_statuses():
         assert np.all(np.abs(got - ref)[ok] <= tol[ok]), key
         assert np.array_equal(np.isnan(got), np.isnan(ref)), key
         same_df += np.array_equal(got, ref, equal_nan=True)
-    assert same_df == 5  # of 124 records: the weights and the sum differ (docs/design/integrate.md §7.8)
+    assert same_df == 5  # of 139 records: the weights and the sum differ (docs/design/integrate.md §7.8)
 
 
 def test_arb_contract():

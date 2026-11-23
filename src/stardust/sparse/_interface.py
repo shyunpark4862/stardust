@@ -15,6 +15,7 @@ is the product). aslinearoperator(A) takes a sparse array, a 2-D sd.ndarray or a
 """
 
 import numbers
+import re
 
 from .. import _calls
 from .. import _core as _sd
@@ -52,6 +53,17 @@ def _as_result(y, func, shape):
             raise ValueError(f"{func}(): the operator's function returned shape {tuple(y.shape)}, expected {shape}")
         y = y.reshape(shape)
     return y
+
+
+_OWN_ERROR = re.compile(r"^r?mat(?:vec|mat)\(\): (?=the operator\b)")
+
+
+def in_solver(e, func):
+    """An operator's own error (its message starts with the method called and 'the operator') as
+    the same error named after the solver `func` the operator is called in; None for any other
+    error (the user's function's own)."""
+    text, n = _OWN_ERROR.subn(f"{func}(): ", str(e))
+    return type(e)(text) if n and type(e) in (TypeError, ValueError) else None
 
 
 def _check_vector(x, n, func):

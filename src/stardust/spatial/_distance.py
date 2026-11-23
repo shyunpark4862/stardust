@@ -34,7 +34,16 @@ def _plan(name, metric, p, w, V, VI, n, stack):
         if V is not None:
             aux = C.vector(V, name, "V", n, positive=True)
         else:
-            aux = sd.var(stack(), axis=0, correction=1)
+            rows = stack()
+            aux = sd.var(rows, axis=0, correction=1)
+            # A constant column has no variance: refused as a given V with a zero is. Its computed variance
+            # may be a rounding residue of the mean instead of 0 (0.1 three times: 2.9e-34), so the column
+            # itself is looked at (one pass; NaN is not equal to itself, so it still propagates).
+            constant = rows.shape[0] >= 2 and bool(sd.any(sd.all(rows == rows[:1], axis=0)))
+            if constant or bool(sd.any(aux == 0)):
+                raise ValueError(
+                    f"{name}(): the variance of a column of the data is 0, so the default 'V' is not positive; give 'V'"
+                )
     elif metric == "mahalanobis":
         if VI is not None:
             aux = C.matrix_vi(VI, name, n)

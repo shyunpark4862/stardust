@@ -21,7 +21,8 @@
 //   (H) the haversine kernel: |d^ - d| <= 2^-46 (1 + d) on the domain |phi| <= fl(pi/2), |lam| <= 8 (the
 //       proof is in docs/design/spatial.md §3.4: 16u d + 2^-99 on the near branch, 43u on the far one,
 //       with libm's sin, cos and asin within 1 ULP);
-//   (P) the conversion: |P^ - P| <= 7.5u (each component one or two libm values and one product);
+//   (P) the conversion: |P^ - P| <= 5.1u (each component one or two libm values and one product, so its
+//       relative error is at most (1 + 2u)^2 (1 + u) - 1 <= 5.1u, and |P| = 1);
 //   (E) the euclidean kernel over the 3 coordinates: |b^ - D| <= kappa D + 2^-1074, kappa = gamma_6 / 2 + u.
 // The cut is computed with every constant at least 4 times the bound it covers (2^-44 for H, 2^-48 for P),
 // so it also holds for libm errors up to 4 ULP:

@@ -29,6 +29,7 @@ import operator
 from .. import _core as _sd
 from . import _common as C
 from ._base import sparray
+from ._interface import in_solver
 from ._iterative import _Operand
 from ._result import OnenormestResult
 
@@ -83,6 +84,18 @@ def _cast(y, dtype, func):
     return y
 
 
+def _product(op, X, func):
+    """op @ X for a LinearOperator, the operator's own errors named after the function `func` it is
+    called in (as in the iterative solvers)."""
+    try:
+        return op @ X
+    except (TypeError, ValueError) as e:
+        named = in_solver(e, func)
+        if named is None:
+            raise
+        raise named from None
+
+
 def _compressed(A):
     """A sparse matrix for repeated products: CSR, or a CSC as it is on one thread. Every format's
     product has the same bits (docs/design/sparse.md §2.6); a CSC's is a scatter on one thread,
@@ -104,7 +117,7 @@ class _Map:
         A, self._op, self._AH, self._dtype, self._func = operand.matrix, operand.op, None, dtype, operand.func
         if A is None:
             op, func = self._op, operand.func
-            self.fwd = lambda X: _cast(op @ X, dtype, func)
+            self.fwd = lambda X: _cast(_product(op, X, func), dtype, func)
         else:
             if isinstance(A, sparray):
                 A = _compressed(A)
@@ -119,7 +132,7 @@ class _Map:
                 if not self._op._has_adjoint():
                     raise ValueError(f"{self._func}(): the operator was made without 'rmatvec'")
                 self._AH = self._op.H
-            return _cast(self._AH @ X, self._dtype, self._func)
+            return _cast(_product(self._AH, X, self._func), self._dtype, self._func)
         if self._AH is None:
             A, cplx = self._A, self._dtype == _sd.complex128
             if isinstance(A, sparray):

@@ -60,7 +60,7 @@ using std::int64_t;
 inline constexpr int64_t kBlock = 32;  // the tile order's block of terms (SPT26)
 inline constexpr int kPanel = 8;       // y rows of a packed panel
 // The careful paths start below this sum (2^-968): above it the squares (or powers) that underflowed
-// add at most n 2^-1075, relatively below 2^-107 for n < 2^40.
+// add at most n 2^-1075, relatively at most n 2^-107 (below 2^-67 for n < 2^40).
 inline constexpr double kTiny = 0x1p-968;
 inline constexpr double kHuge = std::numeric_limits<double>::max();
 

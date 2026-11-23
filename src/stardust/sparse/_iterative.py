@@ -23,7 +23,7 @@ from .. import _core as _sd
 from . import _common as C
 from ._base import sparray
 from ._common import _core
-from ._interface import LinearOperator
+from ._interface import LinearOperator, in_solver
 from ._result import BicgstabResult, CgResult, GmresResult, LsmrResult, LsqrResult, MinresResult
 
 # ---------------------------------------------------------------- arguments
@@ -144,9 +144,6 @@ class _Operand:
         return (indptr, indices, data)
 
 
-_NO_RMATVEC = "rmatvec(): the operator was made without 'rmatvec'"
-
-
 def _python(f, dtype, func):
     """A LinearOperator's product for the kernel: a new C-contiguous vector of the system's dtype
     (a real result widens to complex; a complex one in a real system is a TypeError). Its errors
@@ -155,10 +152,11 @@ def _python(f, dtype, func):
     def call(x):
         try:
             y = f(x)
-        except ValueError as e:  # an operator made from one without rmatvec (A.H, a sum ...)
-            if str(e) != _NO_RMATVEC:
+        except (TypeError, ValueError) as e:  # the operator's own: a result not an array, no rmatvec ...
+            named = in_solver(e, func)
+            if named is None:
                 raise
-            raise ValueError(f"{func}(): the operator was made without 'rmatvec'") from None
+            raise named from None
         if y.ndim != 1:
             y = _sd.reshape(y, (y.size,))
         if y.dtype != dtype:

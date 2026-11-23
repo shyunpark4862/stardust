@@ -653,6 +653,78 @@ def test_errors():
         S.eigsh(_sd(sp.diags_array(np.r_[0.0, np.arange(1.0, 10.0)]).tocsr()), k=2, sigma=0.0)
 
 
+def _ring(m, diagonal=0.1, cycle=0.9):
+    """diagonal on the diagonal and cycle around the cycle: partial pivoting grows the entries."""
+    shift = S.diags_array([sd.ones(m - 1), sd.ones(1)], offsets=[-1, m - 1], format="csr")
+    return diagonal * S.eye_array(m, format="csr") + cycle * shift
+
+
+def _shift_invert(A, **kw):
+    """(result, whether the shift-invert operator of the call refined its solves)."""
+    from stardust.sparse import _eigen
+
+    made = []
+    init = _eigen._Inverse.__init__
+
+    def spy(self, *a, **k):
+        init(self, *a, **k)
+        made.append(self)
+
+    _eigen._Inverse.__init__ = spy
+    try:
+        r = S.eigs(A, **kw) if kw.pop("general", False) else S.eigsh(A, **kw)
+    finally:
+        _eigen._Inverse.__init__ = init
+    (op,) = made
+    return r, op.refine
+
+
+# (m, diagonal, cycle): the rings whose eigenpairs miss the contract when the LU solve is not refined
+# (residuals 3.7e3 - 7.1e4 eps ||A||_2; the first solve's normwise backward error 1.5e3 - 4.2e4 eps)
+RINGS_OVER = [(10, 0.1, 0.9), (40, 0.1, 0.9), (60, 0.1, 0.9), (10, 0.02, 0.98), (20, 0.02, 0.98), (40, 0.02, 0.98)]
+
+
+@pytest.mark.parametrize("m, diagonal, cycle", RINGS_OVER)
+def test_shift_invert_refines_an_inaccurate_solve(m, diagonal, cycle):
+    """The operator's first product measures the normwise backward error of its solve and refines
+    from then on when it is past the eigenpairs' contract: the residuals are then inside it."""
+    A = _ring(m, diagonal, cycle)
+    r, refined = _shift_invert(A, k=3, sigma=0, ncv=min(30, m - 1), general=True)
+    assert refined is True and r.converged
+    w, v = npy(r.eigenvalues), npy(r.eigenvectors)
+    C = npy(A.toarray())
+    bound = R.C_EIG * EPS * np.linalg.norm(C, 2)
+    assert max(np.linalg.norm(C @ v[:, j] - w[j] * v[:, j]) for j in range(3)) <= bound
+    exact = diagonal + cycle * np.exp(2j * np.pi * np.arange(m) / m)  # the circulant's eigenvalues
+    assert max(np.abs(exact - z).min() for z in w) <= bound
+
+
+def test_shift_invert_ring_values():
+    """The reported ring (n = 40, 0.1 and 0.9): eigenvalues and residuals to 100 eps (1e-11 unrefined)."""
+    A = _ring(40)
+    r, _ = _shift_invert(A, k=3, sigma=0, ncv=30, general=True)
+    w, v = npy(r.eigenvalues), npy(r.eigenvectors)
+    C = npy(A.toarray())
+    exact = 0.1 + 0.9 * np.exp(2j * np.pi * np.arange(40) / 40)
+    exact = exact[np.argsort(np.abs(exact))[:3]]
+    assert np.max(np.abs(np.sort_complex(w) - np.sort_complex(exact))) <= 100 * EPS
+    assert max(np.linalg.norm(C @ v[:, j] - w[j] * v[:, j]) for j in range(3)) <= 100 * EPS
+
+
+@pytest.mark.parametrize("id_, sigma", [("lap2d/30", 0.0), ("lap2d/30", 0.5), ("lap2d/100", 0.5), ("lap2d/100", 2.7),
+                                        ("lap3d/10", 1.3), ("saddle/600x150", 0.5)])  # fmt: skip
+def test_shift_invert_keeps_one_solve_inside_the_contract(id_, sigma):
+    """A shift inside the spectrum (and the saddle's pivoting) leaves a large componentwise error but
+    eigenpairs well inside the contract: the fast path, one solve a product."""
+    A = sparse(M.get(id_))
+    r, refined = _shift_invert(A, k=4, sigma=sigma)
+    assert refined is False and r.converged
+    w, V = npy(r.eigenvalues), npy(r.eigenvectors)
+    As = sp.csr_array(npy(A.toarray()))
+    norm = spla.norm(As, 1)  # >= ||A||_2 for a symmetric matrix
+    assert np.abs(As @ V - V * w).max() <= R.C_EIG * EPS * norm
+
+
 def test_start_vector_in_the_null_space():
     """OP v0 = 0: ARPACK's 'starting vector is zero' (scipy's ArpackError) is a ValueError."""
     D = _sd(sp.diags_array(np.r_[np.zeros(5), np.ones(5)]).tocsr())

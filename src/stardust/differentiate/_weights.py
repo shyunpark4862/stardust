@@ -133,7 +133,7 @@ def central_weights(n, c):
 def one_sided_weights(n, c):
     """The 2n + 1 one-sided weights (doubles) for n terms and the step factor c, in the order of
     scipy's stencil (above). Computed only when an element takes a side: in Q(sqrt(c)) they cost
-    about 6 times the central ones (n = 50, c = 2: 165 ms of 188 ms)."""
+    about 5 times the central ones (the largest n = 9, c = 2: 2.0 ms of 2.4 ms)."""
     cf = Fraction(c)
     root = _rational_sqrt(cf)
     if root is not None:

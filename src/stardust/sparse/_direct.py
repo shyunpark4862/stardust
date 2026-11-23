@@ -15,6 +15,8 @@ sd.ndarray of shape (n,) or (n, k), or for spsolve also a sparse array (the solu
 sparse, its exact zeros dropped).
 """
 
+import math
+
 from .. import _core as _sd
 from . import _common as C
 from ._base import sparray
@@ -22,6 +24,11 @@ from ._common import _core
 
 # The componentwise backward error at or below which a solve is not refined (SP63).
 _REFINE_BERR = 8 * 2.0**-52
+# The normwise backward error ||b - S x|| / (||S|| ||x||) of a shift-invert operator's first solve above
+# which every solve of that operator is refined (decision SP139). An eigenpair's residual is about that
+# error times ||A||, and the eigenpairs' contract is 1000 eps ||A||: measured, the operators whose
+# unrefined eigenpairs pass the contract are at most 498 eps here, those that do not at least 1530 eps.
+_OPERATOR_ERR = 768 * 2.0**-52
 
 _DENSE = {
     "spsolve": "sd.linalg.solve",
@@ -116,7 +123,7 @@ class _Factor:
         brings under 1 eps; the Laplacians solve to 2-8 eps componentwise at once, and skip the
         second solve (half the time). refine=False: the LU solve alone (the eigensolvers'
         shift-invert operator, applied once a Lanczos or Arnoldi step as scipy's and RSpectra's
-        are)."""
+        are, when its first solve was accurate: solve_measured)."""
         if self.dtype == _sd.complex128 and b.dtype != _sd.complex128:
             b = b.astype(_sd.complex128)
         if self.core is None:
@@ -124,12 +131,35 @@ class _Factor:
         x = self.core.solve(b, trans=trans, func=func)
         if not refine:
             return x
-        r, berr = _core._residual(
-            self.A.indptr, self.A.indices, self._data_as(x.dtype), x, b if C.contiguous(b) else b.copy(), trans=trans
-        )
+        r, berr = self._residual(x, b, trans)
         if berr <= _REFINE_BERR:
             return x
         return x + self.core.solve(r, trans=trans, func=func)
+
+    def solve_measured(self, b, func):
+        """(x, needs): A x = b by the LU solve, and whether this factor's solves need refinement:
+        the normwise backward error ||b - A x||_2 / (sqrt(||A||_1 ||A||_inf) ||x||_2) of this one
+        is above _OPERATOR_ERR (or NaN). Then x is the refined solution. One product with A and
+        two passes over its values more than the solve alone."""
+        from ..linalg import vector_norm
+        from ._matfuncs import norm
+
+        if self.dtype == _sd.complex128 and b.dtype != _sd.complex128:
+            b = b.astype(_sd.complex128)
+        if self.core is None:
+            return b.copy(), False
+        x = self.core.solve(b, trans="N", func=func)
+        r, _ = self._residual(x, b, "N")
+        size = math.sqrt(float(norm(self.A, ord=1)) * float(norm(self.A, ord=math.inf))) * float(vector_norm(x))
+        if float(vector_norm(r)) <= _OPERATOR_ERR * size:  # (x = 0 with r = 0: nothing to refine)
+            return x, False
+        return x + self.core.solve(r, trans="N", func=func), True
+
+    def _residual(self, x, b, trans):
+        """(b - op(A) x, its componentwise backward error) in the order of csrc/sparse/direct.cpp."""
+        return _core._residual(
+            self.A.indptr, self.A.indices, self._data_as(x.dtype), x, b if C.contiguous(b) else b.copy(), trans=trans
+        )
 
     def _data_as(self, dtype):
         """A's values in dtype (a complex right-hand side of a real factor: complex values, kept)."""

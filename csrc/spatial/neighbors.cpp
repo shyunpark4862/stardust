@@ -4,9 +4,10 @@
 //   _kneighbors(XA, XB, metric, p, w, aux, k, upper, path)
 //       -> (distances (mA, k) float64, indices (mA, k) int64): row i holds the k smallest (d, j) of the
 //          pairs (XA[i], XB[j]) with d < upper, in (d, j) order; missing slots are (inf, mB).
-//   _radius_neighbors(XA, XB, metric, p, w, aux, r, count_only, path)
+//   _radius_neighbors(XA, XB, metric, p, w, aux, r, count_only, path, max_pairs=-1)
 //       -> (indptr (mA + 1), indices, distances): row i holds every j with d <= r[i], in j order;
-//          count_only: the counts (mA,) int64. r: (mA,) float64.
+//          count_only: the counts (mA,) int64. r: (mA,) float64. More found pairs than physical memory
+//          holds (or than max_pairs, for tests) stop the search: MemoryError, as the tree's lists (§3.6).
 //       metric, p, w, aux: as _cdist's (csrc/spatial/distance.cpp). path: 0 chooses by the metric and
 //       the shapes, 1 forces the direct path, 2 the GEMM pre-selection when the metric allows it (tests).
 //
@@ -30,6 +31,7 @@
 // per XB row (the moved row's squared norm and R).
 #include "accelerate/blas.hpp"
 #include "array/ndarray.hpp"
+#include "base/buffer.hpp"
 #include "bind/pyutil.hpp"
 #include "parallel/pool.hpp"
 #include "spatial/metric.hpp"
@@ -40,6 +42,7 @@
 #include <nanobind/stl/tuple.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -58,6 +61,7 @@ constexpr double kInf = std::numeric_limits<double>::infinity();
 // The array area's rule (docs/design/array.md §10.4): from 2^15 units of work a call splits and runs
 // without the GIL, whatever the thread count.
 constexpr int64_t kParallelWork = 1 << 15;
+constexpr int64_t kEntryBytes = 40;  // a found pair of a radius search while gathering and in the result, rounded up
 constexpr int64_t kMinTasks = 32;           // tasks wanted (XA chunks, then XB segments)
 constexpr int64_t kSegmentMin = 4096;       // fewest XB rows of a segment
 constexpr int64_t kHeapEntries = 1 << 16;   // (row, rank) slots of a task's heaps
@@ -668,7 +672,8 @@ nb::object radius_py(
     nb::handle aux,
     nb::handle r_arr,
     bool count_only,
-    int path
+    int path,
+    int64_t max_pairs
 ) {
     const char* f = "_radius_neighbors";
     const CdistBlocks cb(xa, xb, metric, p, w, aux, f);
@@ -684,6 +689,11 @@ nb::object radius_py(
     const Layout L = layout(ma, mb, gemm ? hy.qa : direct_rows(ma), 0);
     std::vector<Found> found(static_cast<size_t>(L.nA * L.S));
     const int64_t work = work_of(ma, mb, gemm ? std::max<int64_t>(n, 1) : cb.pair_cost());
+    // The found pairs are counted block by block; past the budget every task stops gathering.
+    const int64_t fits = static_cast<int64_t>(physical_memory() / kEntryBytes);
+    const int64_t budget = max_pairs < 0 ? fits : std::min(max_pairs, fits);
+    std::atomic<int64_t> gathered{0};
+    std::atomic<bool> over{false};
     for_tasks(L.nA * L.S, work, [&](int64_t t) {
         const int64_t a = t / L.S, s = t % L.S;
         const int64_t i0 = a * L.qa, i1 = std::min(ma, i0 + L.qa), s0 = std::min(mb, s * L.seg),
@@ -691,9 +701,19 @@ nb::object radius_py(
         Found& fo = found[static_cast<size_t>(t)];
         fo.cnt.assign(static_cast<size_t>(rows), 0);
         std::vector<std::vector<Nb>> lists(count_only ? 0 : static_cast<size_t>(rows));
+        int64_t fresh = 0;  // gathered since the last count
         auto hit = [&](int64_t r, int64_t j, double d) {
             ++fo.cnt[static_cast<size_t>(r)];
-            if (!count_only) lists[static_cast<size_t>(r)].push_back({d, j});
+            if (!count_only) {
+                lists[static_cast<size_t>(r)].push_back({d, j});
+                ++fresh;
+            }
+        };
+        // true when the search is over the budget (this task's fresh pairs counted first)
+        auto full = [&] {
+            if (fresh && gathered.fetch_add(fresh, std::memory_order_relaxed) + fresh > budget) over.store(true);
+            fresh = 0;
+            return over.load(std::memory_order_relaxed);
         };
         if (gemm) {
             const double* B = cb.b_f64();
@@ -702,6 +722,7 @@ nb::object radius_py(
                 cb, hy, i0, i1, s0, s1,
                 [&](int64_t r, int64_t j0, int64_t wd, const double* g, double nx, double rx, const Fast& fast,
                     const double* x) {
+                    if (full()) return;
                     const double rr = R[i0 + r];
                     auto test = [&](int64_t q) {
                         const double d = pair_d(x, B + (j0 + q) * n, n, hy.sq);
@@ -724,6 +745,7 @@ nb::object radius_py(
             const int64_t bb = direct_block(rows, n);
             std::vector<double> buf(static_cast<size_t>(rows * std::min(bb, std::max<int64_t>(s1 - s0, 1))));
             for (int64_t j0 = s0; j0 < s1; j0 += bb) {
+                if (full()) return;
                 const int64_t j1 = std::min(s1, j0 + bb), wd = j1 - j0;
                 cb.block(i0, i1, j0, j1, buf.data());
                 for (int64_t r = 0; r < rows; ++r) {
@@ -734,6 +756,7 @@ nb::object radius_py(
                 }
             }
         }
+        if (full()) return;
         if (!count_only) {
             int64_t total = 0;
             for (int64_t c : fo.cnt) total += c;
@@ -746,6 +769,12 @@ nb::object radius_py(
                 }
         }
     });
+    if (over.load()) {
+        PyErr_SetString(
+            PyExc_MemoryError, "radius_neighbors(): the result is larger than this machine's physical memory"
+        );
+        throw nb::python_error();
+    }
     // row counts: the segments of a chunk in order
     std::vector<int64_t> indptr(static_cast<size_t>(ma + 1), 0);
     for (int64_t a = 0; a < L.nA; ++a)
@@ -791,7 +820,8 @@ void bind_neighbors(nb::module_& m) {
     );
     m.def(
         "_radius_neighbors", &radius_py, nb::arg("XA"), nb::arg("XB"), nb::arg("metric"), nb::arg("p"),
-        nb::arg("w").none(), nb::arg("aux").none(), nb::arg("r"), nb::arg("count_only"), nb::arg("path")
+        nb::arg("w").none(), nb::arg("aux").none(), nb::arg("r"), nb::arg("count_only"), nb::arg("path"),
+        nb::arg("max_pairs") = -1
     );
 }
 

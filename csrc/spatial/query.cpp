@@ -1,7 +1,7 @@
 // KDTree.query_ball_point of sd.spatial (docs/design/spatial.md §3.4, §3.5, §3.6; milestone SPT4). The Python
 // layer (src/stardust/spatial/_kdtree.py) checks every argument.
 //
-//   _ball_point(tree, x, r, p, count_only)
+//   _ball_point(tree, x, r, p, count_only, func="query_ball_point", max_pairs=-1)
 //       x (Q, m) float64 C-contiguous and finite, r (Q,) float64 >= 0 or inf, p >= 1 or inf
 //       -> (indptr (Q + 1), indices, distances): row q holds every data point j with d(x_q, j) <= r_q, in
 //          index order; count_only: the counts (Q,) int64.
@@ -19,12 +19,15 @@
 #include "spatial/kdtree.hpp"
 #include "spatial/spatial.hpp"
 
+#include <nanobind/stl/string.h>
+
 #include <algorithm>
 #include <atomic>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <limits>
+#include <string>
 #include <vector>
 
 namespace nb = nanobind;
@@ -131,9 +134,23 @@ nb::object new_array_of(DType t, std::initializer_list<int64_t> shape) {
     return wrap(new_array(t, s));
 }
 
+// What ball_with needs besides the search: the public function's name for the MemoryError and the
+// number of found pairs it stops at (the pairs physical memory holds, or the caller's smaller number).
+struct Limit {
+    const char* func;
+    int64_t pairs;
+};
+
 template <class Dist>
 nb::object ball_with(
-    const KdTree& t, const Dist& dist, const KdCut& cut, const double* X, int64_t q, const double* R, bool count_only
+    const KdTree& t,
+    const Dist& dist,
+    const KdCut& cut,
+    const double* X,
+    int64_t q,
+    const double* R,
+    bool count_only,
+    const Limit& limit
 ) {
     const int64_t ntasks = (q + kQueryBlock - 1) / kQueryBlock;
     const bool split = q * std::max<int64_t>(t.m, 1) * kQueryWorkPerPoint >= kParallelWork;
@@ -154,7 +171,7 @@ nb::object ball_with(
     // Per task the hits of its rows one after another (each row in index order) and the rows' counts.
     std::vector<std::vector<Hit>> hits(static_cast<size_t>(ntasks));
     std::vector<int64_t> counts(static_cast<size_t>(q), 0);
-    const int64_t budget = static_cast<int64_t>(physical_memory() / kEntryBytes);
+    const int64_t budget = limit.pairs;
     std::atomic<int64_t> total{0};
     std::atomic<bool> over{false};
     {
@@ -175,7 +192,7 @@ nb::object ball_with(
             }
         });
     }
-    if (over.load()) too_large("query_ball_point");
+    if (over.load()) too_large(limit.func);
     int64_t nnz = 0;
     for (int64_t c : counts) nnz += c;
     nb::object op = new_array_of(DType::Int64, {q + 1}), oi = new_array_of(DType::Int64, {nnz}),
@@ -199,7 +216,9 @@ nb::object ball_with(
     return nb::make_tuple(op, oi, od);
 }
 
-nb::object ball_point(const KdTree& t, nb::handle xh, nb::handle rh, double p, bool count_only) {
+nb::object ball_point(
+    const KdTree& t, nb::handle xh, nb::handle rh, double p, bool count_only, const std::string& func, int64_t max_pairs
+) {
     if (!is_ndarray(xh) || !is_ndarray(rh)) throw nb::type_error("_ball_point(): expected sd.ndarrays");
     const NDArray& x = as_ndarray(xh);
     const NDArray& r = as_ndarray(rh);
@@ -214,16 +233,21 @@ nb::object ball_point(const KdTree& t, nb::handle xh, nb::handle rh, double p, b
     for (int64_t i = 0; i < q; ++i)
         if (!(R[i] >= 0.0)) throw nb::value_error("_ball_point(): wrong r");
     const int64_t m = t.m;
-    if (p == 2.0) return ball_with(t, KdEuclid{m}, KdCut(m, false), X, q, R, count_only);
-    if (p == 1.0) return ball_with(t, KdCity{m}, KdCut(m, false), X, q, R, count_only);
-    if (std::isinf(p)) return ball_with(t, KdCheb{m}, KdCut(m, true), X, q, R, count_only);
-    return ball_with(t, KdMink{m, Root(p)}, KdCut(m, false), X, q, R, count_only);
+    const int64_t fits = static_cast<int64_t>(physical_memory() / kEntryBytes);
+    const Limit limit{func.c_str(), max_pairs < 0 ? fits : std::min(max_pairs, fits)};
+    if (p == 2.0) return ball_with(t, KdEuclid{m}, KdCut(m, false), X, q, R, count_only, limit);
+    if (p == 1.0) return ball_with(t, KdCity{m}, KdCut(m, false), X, q, R, count_only, limit);
+    if (std::isinf(p)) return ball_with(t, KdCheb{m}, KdCut(m, true), X, q, R, count_only, limit);
+    return ball_with(t, KdMink{m, Root(p)}, KdCut(m, false), X, q, R, count_only, limit);
 }
 
 }  // namespace
 
 void bind_query(nb::module_& m) {
-    m.def("_ball_point", &ball_point, nb::arg("tree"), nb::arg("x"), nb::arg("r"), nb::arg("p"), nb::arg("count_only"));
+    m.def(
+        "_ball_point", &ball_point, nb::arg("tree"), nb::arg("x"), nb::arg("r"), nb::arg("p"), nb::arg("count_only"),
+        nb::arg("func") = "query_ball_point", nb::arg("max_pairs") = -1
+    );
 }
 
 }  // namespace sd::spatial

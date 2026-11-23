@@ -954,7 +954,9 @@ def _parse_terms(func, r, terms):
                 raise ValueError(f"{func}(): 'terms' names a column {c!r} that 'X' does not have")
             return names.index(c)
         if not _is_position(c):
-            raise TypeError(f"{func}(): a term's columns must be positions (int) or names (str), not {_type_name(c)}")
+            raise TypeError(
+                f"{func}(): 'terms' must give columns as positions (int) or names (str), not {_type_name(c)}"
+            )
         j = operator.index(c)
         if not -p <= j < p:
             raise ValueError(f"{func}(): 'terms' has the column {j}, out of range for {p} columns")

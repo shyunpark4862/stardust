@@ -22,6 +22,7 @@ HEAD = {
     "graph": "sd.graph",
     "interpolate": "sd.interpolate",
     "fft": "sd.fft",
+    "smooth": "sd.smooth",
 }
 MV = "mv/"  # the stats area's multivariate group: its sweeps' name prefix
 MV_HEAD = "sd.stats 다변량·행렬 분포"
@@ -78,7 +79,9 @@ INTRO = {
         "car(linearHypothesis·Anova·vif)·lmtest(lrtest·gqtest·resettest, White 식의 bptest), anova·drop1, "
         "영향 측도(hatvalues·cooks.distance·dffits·dfbetas)이고, 변수 선택(selection)은 참값의 stepwise 경로와 크기별 "
         "부분집합을 statsmodels로 다시 적합한 AIC·BIC와 leaps의 regsubsets가 낸 Cp·수정 R²다(R step의 AIC는 상수가 "
-        "달라 넣지 않는다). 가중치가 0인 관측은 선택 비교에서 뺀다."
+        "달라 넣지 않는다). 가중치가 0인 관측은 선택 비교에서 뺀다. 변수 선택의 best_cp 줄에서 sd의 최대 상대오차와 "
+        "계약 대비는 참값이 아니라 n에 대한 상대오차(|sd − 참값|/n, 한계 1e-13)다: Cp는 크기가 n인 항들의 차라 0 근처를 "
+        "지난다(docs/api/regression.md §9.3). 그 줄의 비교 패키지 열은 참값에 대한 상대오차 그대로다."
     ),
     "optimize": (
         "반복 방법의 결과는 멈춤 판정을 만족한 점이라, 계약은 결과만으로 확인되는 판정이다(docs/design/optimize.md §4). "

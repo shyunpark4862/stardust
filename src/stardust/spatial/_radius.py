@@ -50,10 +50,11 @@ class RadiusResult:
 
     def tocsr(self):
         """The sd.sparse.csr_array (rows, data points) of the distances: a new array on every call (its data
-        is writable); a zero distance is a stored zero (nnz counts it, count_nonzero() does not)."""
+        is a writable copy of the distances); a zero distance is a stored zero (nnz counts it, count_nonzero()
+        does not)."""
         from .. import sparse
 
-        return sparse.csr_array((self._distances, self._indices, self._indptr), shape=self._shape)
+        return sparse.csr_array((self._distances.copy(), self._indices, self._indptr), shape=self._shape)
 
     def __repr__(self):
         return f"RadiusResult(shape={self._shape}, nnz={int(self._indices.shape[0])})"
