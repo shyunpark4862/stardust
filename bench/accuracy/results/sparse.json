@@ -255,6 +255,92 @@
     "Boost": "boostorg/math 75cb4c4 2026-11-18",
     "Boost in sd.special": "4682f44"
    }
+  },
+  "20261123-125304-317848c+": {
+   "commit": "317848c",
+   "dirty": true,
+   "changed": [
+    "API.md",
+    "ARCHITECTURE.md",
+    "CMakeLists.txt",
+    "README.md",
+    "ROADMAP.md",
+    "bench/README.md",
+    "bench/accuracy/__init__.py",
+    "bench/accuracy/sources.py",
+    "bench/areas.py",
+    "bench/speed/cases/spatial.py",
+    "csrc/array/kernels/reduce.hpp",
+    "csrc/array/kernels/vmath.hpp",
+    "csrc/array/parallel_limits.hpp",
+    "csrc/bind/module.cpp",
+    "csrc/bind/nary_bind.hpp",
+    "csrc/bind/spatial_bind.cpp",
+    "csrc/bind/stats_bind.cpp",
+    "csrc/bind/stats_desc.cpp",
+    "csrc/frame/ops/radix.hpp",
+    "csrc/htest/contingency.cpp",
+    "csrc/htest/parametric.cpp",
+    "csrc/htest/studentized_range.hpp",
+    "csrc/linalg/ops/qr.cpp",
+    "csrc/linalg/ops/svals.hpp",
+    "csrc/parallel/pool.cpp",
+    "csrc/parallel/pool.hpp",
+    "csrc/random/random.cpp",
+    "csrc/regression/linear.cpp",
+    "csrc/spatial/spatial.hpp",
+    "csrc/special/ops/ellip.hpp",
+    "csrc/special/ops/hyper.hpp",
+    "csrc/special/ops/noncentral.hpp",
+    "csrc/stats/discrete.hpp",
+    "csrc/stats/dist/discrete_more.hpp",
+    "csrc/stats/dist/normal.hpp",
+    "docs/api/htest.md",
+    "docs/api/linalg.md",
+    "docs/api/random.md",
+    "docs/api/special.md",
+    "docs/api/stats.md",
+    "docs/design/frame.md",
+    "docs/design/htest.md",
+    "docs/design/linalg.md",
+    "docs/design/random.md",
+    "docs/design/special.md",
+    "docs/design/stats.md",
+    "src/stardust/__init__.py",
+    "src/stardust/frame/_errors.py",
+    "src/stardust/htest/_contingency.py",
+    "src/stardust/random/__init__.py",
+    "src/stardust/regression/_linear.py",
+    "src/stardust/spatial/__init__.py",
+    "src/stardust/stats/_distribution.py",
+    "tests/README.md",
+    "tests/frame/test_options.py",
+    "tests/golden/cases_spatial.py",
+    "tests/htest/test_common.py",
+    "tests/htest/test_large_counts.py",
+    "tests/random/test_alloc_errors.py",
+    "tests/spatial/test_api_surface.py",
+    "tests/special/test_engine.py",
+    "tests/special/test_hyper_lambertw.py",
+    "tests/special/test_logistic.py",
+    "tests/special/test_noncentral.py",
+    "tests/stats/refdata.py",
+    "tests/stats/test_descriptive.py",
+    "tests/stats/test_discrete.py",
+    "tests/stats/test_distributions.py",
+    "tools/stats_ref.py"
+   ],
+   "date": "2026-11-23T12:53:04",
+   "machine": "arm64",
+   "python": "3.15.0",
+   "references": {
+    "array": "aef7e7bf22a5feb65a19c421f4d1b04d578dca8fd4e3122d503043afbc1c9638",
+    "linalg": "ba8d2d9b5e6767d51c11ec21fe26040320b31de4c06ccfe0562a6b1033ff2950",
+    "special": "241d3855ece237ebf086080118d4295238b54dc9b7b60a2822cef413e170064f",
+    "stats": "6f88d53afd2668510257ee4cc6e6ee9df3d20ef72ebfde263aacaefd1855586f",
+    "regression": "d18611e3becf4d1273fb0aff2671ad314fe6bd66c918a6db28ce54d01acb18b0",
+    "optimize": "28d5e52d860b54463697743fb86962197c0c4b7e5a4b9a670ca0518d9d3588e8"
+   }
   }
  },
  "sweeps": [
@@ -301,6 +387,7 @@
      ]
     }
    },
+   "run": "20261123-125304-317848c+",
    "comparators": {
     "scipy": {
      "eigsh": {
@@ -393,9 +480,8 @@
      }
     }
    },
-   "comparator_seconds": 300.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "comparators_run": "20261122-185357-1483fa0+",
+   "comparator_seconds": 300.0
   },
   {
    "id": "sparse/iterative",
@@ -476,6 +562,7 @@
      ]
     }
    },
+   "run": "20261123-125304-317848c+",
    "comparators": {
     "scipy": {
      "minres": {
@@ -552,9 +639,8 @@
      }
     }
    },
-   "comparator_seconds": 300.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "comparators_run": "20261122-185357-1483fa0+",
+   "comparator_seconds": 300.0
   },
   {
    "id": "sparse/matfuncs",
@@ -596,6 +682,7 @@
      ]
     }
    },
+   "run": "20261123-125304-317848c+",
    "comparators": {
     "scipy": {
      "expm": {
@@ -646,9 +733,8 @@
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "comparators_run": "20261122-185357-1483fa0+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "sparse/norms",
@@ -723,6 +809,7 @@
      ]
     }
    },
+   "run": "20261123-125304-317848c+",
    "comparators": {
     "scipy": {
      "1": {
@@ -839,9 +926,8 @@
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "comparators_run": "20261122-185357-1483fa0+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "sparse/solve",
@@ -883,6 +969,7 @@
      ]
     }
    },
+   "run": "20261123-125304-317848c+",
    "comparators": {
     "scipy": {
      "solve": {
@@ -933,9 +1020,8 @@
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "comparators_run": "20261122-185357-1483fa0+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "sparse/spmv",
@@ -966,6 +1052,7 @@
      ]
     }
    },
+   "run": "20261123-125304-317848c+",
    "comparators": {
     "scipy": {
      "matvec": {
@@ -1016,9 +1103,8 @@
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "comparators_run": "20261122-185357-1483fa0+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "sparse/sums",
@@ -1060,6 +1146,7 @@
      ]
     }
    },
+   "run": "20261123-125304-317848c+",
    "comparators": {
     "scipy": {
      "row_sums": {
@@ -1132,9 +1219,8 @@
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-185357-1483fa0+",
-   "comparators_run": "20261122-185357-1483fa0+"
+   "comparators_run": "20261122-185357-1483fa0+",
+   "comparator_seconds": 60.0
   }
  ]
 }
