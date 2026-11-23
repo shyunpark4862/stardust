@@ -1,0 +1,261 @@
+---
+title: 핵밀도추정
+group: 핵 방법
+order: 2
+summary: "kde가 밀도를 계산하는 방법을 설명해요. 먼 꼬리와 극단적인 대역폭에서도 상대 정확도를 지키도록 합을 증명된 자리에서 자르고 지수를 정확한 차로 구하며, density의 구간화와 FFT에는 오차 한계를 증명해 붙였어요."
+seeAlso: [kernel-regression, bandwidth, overview, determinism, accuracy-performance]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+export const binErr = [[-3.693, -7.095], [-3.571, -6.738], [-3.448, -6.428], [-3.326, -6.165], [-3.203, -5.947], [-3.081, -5.775], [-2.958, -5.646], [-2.836, -5.562], [-2.714, -5.521], [-2.591, -5.523], [-2.469, -5.559], [-2.346, -5.611], [-2.224, -5.648], [-2.101, -5.65], [-1.979, -5.65], [-1.856, -5.717], [-1.734, -5.983], [-1.611, -6.529], [-1.489, -5.775], [-1.367, -5.572], [-1.244, -5.507], [-1.122, -5.511], [-0.999, -5.559], [-0.877, -5.652], [-0.754, -5.815], [-0.632, -6.077], [-0.509, -6.301], [-0.387, -6.123], [-0.264, -5.821], [-0.142, -5.623], [-0.02, -5.541], [0.103, -5.547], [0.225, -5.599], [0.348, -5.59], [0.47, -5.437], [0.593, -5.227], [0.715, -5.062], [0.838, -4.983], [0.96, -5.015], [1.083, -5.216], [1.205, -6.143], [1.327, -5.356], [1.45, -5.122], [1.572, -5.087], [1.695, -5.15], [1.817, -5.26], [1.94, -5.366], [2.062, -5.446], [2.185, -5.542], [2.307, -5.742], [2.429, -6.335], [2.552, -6.143], [2.674, -5.9], [2.797, -5.991], [2.919, -6.631], [3.042, -6.193], [3.164, -5.907], [3.287, -5.851], [3.409, -5.903], [3.532, -6.032], [3.654, -6.226], [3.776, -6.475], [3.899, -6.775], [4.021, -7.12]];
+export const binBound = [[-3.7, -3.664], [4.05, -3.664]];
+
+## 한눈에 보기
+
+[`kde`](/api/smooth/kde/)는 자료 $x_j$(무게 $w_j$, $\sum w = 1$로 맞춤)와 대역폭 행렬 $H$로 밀도
+
+$$
+\hat f(x) = \sum_j w_j K_H(x - x_j),\qquad K_H(z) = (2\pi)^{-p/2}\lvert H\rvert^{-1/2}\exp\Bigl(-\tfrac12 z^{\mathsf T}H^{-1}z\Bigr)
+$$
+
+를 만들어요. $H = AA^{\mathsf T}$(Cholesky)로 자료와 평가점을 $A^{-1}$로 옮기면(백색화) 제곱 거리의 가우스 합이에요. 1차원에서는 가우스 말고도 지지집합이 유한한 핵 다섯을 받아요.
+
+길은 둘이고 사용자가 이름으로 골라요. `pdf`·`logpdf`·`cdf`와 `density(binned=False)`는 정의 그대로의 직접 합이고, `density(binned=True)`(기본)는 선형 구간화와 FFT의 어림이에요. 자료의 크기에 따라 조용히 어림으로 바뀌는 곳은 없어요.
+
+| 파일 | 줄 수 | 맡은 일 |
+|---|---:|---|
+| `csrc/smooth/kde.cpp` | 1,216 | 기수 정렬과 모멘트, 모형(대각과 전체 $H$), 직접 합(1차원, 여러 차원, 트리), `cdf`, 반사, 구간화 FFT |
+| `csrc/smooth/kde.hpp` | 187 | 유한한 핵과 그 누적분포, 2의 지수로 쥔 정규화와 값, 선형 구간화, FFT 길이 |
+| `csrc/smooth/gauss_sum.hpp`, `gauss_tree.hpp` | 313, 143 | 가우스 합의 자르기와 순서, 트리 후보([핵 회귀](/internals/smooth/kernel-regression/)와 같이 써요) |
+| `src/stardust/smooth/_kde.py` | 596 | 인자와 대역폭 규칙, `KDEResult`, `density`의 격자, `sample`, `marginal` |
+
+## 자료의 준비
+
+무게가 양수인 점을 $(\text{좌표}\ldots, \text{무게}, \text{색인})$의 사전순으로 정렬해 쥐어요. 비교 정렬 대신 기수 정렬이에요. double을 순서를 지키는 64비트 열쇠로 바꾸면 정수 비교가 실수 비교와 같아져요.
+
+```cpp
+    // csrc/smooth/kde.cpp
+    const auto key_of = [](double v) {
+        if (v == 0.0) v = 0.0;  // -0 as +0
+        std::uint64_t b;
+        std::memcpy(&b, &v, 8);
+        return (b >> 63) ? ~b : (b | (std::uint64_t{1} << 63));
+    };
+```
+
+양수는 부호 비트를 켜 음수보다 위로 올리고, 음수는 모든 비트를 뒤집어 크기 순서를 거꾸로 해요. $-0$은 $+0$과 같은 열쇠예요(비교 정렬이 보는 것과 같아요). 열쇠를 11비트씩 아래 자리부터 안정 정렬(LSD)하고, 키의 차례는 무게, 마지막 좌표, …, 첫 좌표예요. 마지막에 정렬한 첫 좌표가 가장 높은 우선순위가 되고, 안정 정렬이라 모든 열쇠가 같은 점은 원래 색인 순서로 남아요. 모든 열쇠가 같은 값인 11비트 자리는 건너뛰어요.
+
+$2^{16}$점부터는 각 단계(열쇠, 세기, 흩기)를 점의 조각마다 나란히 돌려요. 조각 $c$에서 숫자 $d$의 자리는 "더 작은 숫자들 전체 뒤, 앞 조각들의 $d$ 뒤"예요. 안정 정렬의 결과는 하나뿐이라 조각 수와 상관없이 같은 순서가 나와요.
+
+`scott`·`silverman`의 공분산은 정렬한 자료에서 짝 합으로 numpy `cov(aweights)`의 식을 계산해요. $\tilde w = w/\sum w$에서 평균 $\sum\tilde w x$, 공분산 $\sum\tilde w(x - m)(x - m)^{\mathsf T}/(1 - \sum\tilde w^2)$(무게가 없으면 $n - 1$로 나눠요), $n_{\mathrm{eff}} = 1/\sum\tilde w^2$이에요. 정렬한 뒤 더하니 입력 순서와 무관한 값이에요.
+
+```python
+>>> rng = sd.random.default_rng(7)
+>>> x = sd.stats.Normal().sample(200, rng=rng)
+>>> k = sd.smooth.kde(x)
+>>> k.bw, k.factor, k.neff
+(0.37772358248615456, 0.3465724215775732, 200.0)
+>>> p = rng.permutation(200)
+>>> sd.smooth.kde(x[p]).pdf([0.3, 1.7]).tolist() == k.pdf([0.3, 1.7]).tolist()
+True
+```
+
+## 직접 합
+
+평가점 $x$마다 가장 가까운 자료점의 백색화한 제곱 거리 $D_0$을 찾고, $D_j \le D_0 + T$인 점만 $e_j = w_j\exp(-\tfrac12(D_j - D_0))$로 더해요. 자르기 문턱 $T = 2(\ln(n/u) + \ln(w_{\max}/w_{\min}))$과 그 증명(뺀 항의 합이 $u\cdot$남긴 합 아래)은 [핵 회귀](/internals/smooth/kernel-regression/)와 같고, 합의 순서도 같은 `gauss_sum`의 묶음 순서예요.
+
+$$
+\hat f(x) = \frac{e^{-D_0/2}\sum e_j}{\sum w\cdot(2\pi)^{p/2}\det A},\qquad
+\log\hat f(x) = -\tfrac12D_0 + \log\sum e_j - \log\bigl(\textstyle\sum w(2\pi)^{p/2}\det A\bigr).
+$$
+
+`logpdf`는 공통 인수를 로그로 더하니 밀도가 double의 범위 밖으로 작아지는 먼 꼬리에서도 상대 정확도를 가져요. `pdf`가 0으로 언더플로하는 자리에서 `logpdf`는 유한한 값이에요.
+
+```python
+>>> k.pdf([0.0, 40.0, 100.0])
+array([0.3258452858117757, 0.0, 0.0], dtype=float64)
+>>> k.logpdf([0.0, 40.0, 100.0])
+array([-1.1213325936652343, -4804.06776218986, -32981.93448498503], dtype=float64)
+```
+
+### 1차원 지수는 정확한 차에서
+
+1차원 가우스에서는 지수의 인자를 한층 더 조심해서 구해요. [핵 회귀](/internals/smooth/kernel-regression/)의 꼴 $d(2z_c + d)$는 평가점 건너편(거울 자리)의 점에서 $u\cdot D_0$만큼 틀려, 무게 붙은 시험 자료에서 `pdf`가 계약의 1.41배예요. 여기서는 $x_j - t$를 Knuth의 두 합으로 정확히 $s + e$로 나누고, 가장 가까운 점의 $z_c$와 $D_0 = z_c^2$을 두 배 정밀도의 짝으로 쥔 뒤, 항마다
+
+$$
+D_j - D_0 = \frac{(x_j - x_c)\,(x_j + x_c - 2t)}{h^2}
+$$
+
+를 정확한 차와 합에서 구해요.
+
+```cpp
+    // csrc/smooth/kde.cpp
+    for (std::int64_t k = 0; k < m; ++k) {
+        const double s0 = x[k] - t;
+        const double bb = s0 - x[k];
+        const double e0 = ((x[k] - (s0 - bb)) - (t + bb)) * sc;
+        const double s1 = s0 * sc;
+        const double d = ((s1 - ch) + (e0 - cl)) * inv;
+        const double e = ((s1 + ch) + (e0 + cl)) * inv;
+        S.D[k] = d * e;
+    }
+```
+
+$(s_1 + e_0) = (x_j - t)\cdot sc$와 $(c_h + c_l) = (x_c - t)\cdot sc$가 모두 정확한 짝이니, $d$는 $(x_j - x_c)/h$를, $e$는 $(x_j + x_c - 2t)/h$를 반올림 몇 번으로 구해요. 항의 지수가 $D_0$가 아니라 $D_j - D_0$ 자신의 몇 $u$ 안에서 틀려서, 같은 자료의 계약 대비가 0.31배예요. $D_0$의 아래 부분(`alo`)도 쥐고 있다가 마지막에 곱해요.
+
+### 여러 차원의 합
+
+여러 차원에서는 모든 점의 $D_j$를 열 배치($p \times n$)로 재요. 2·3차원은 레지스터에서 두 점씩 같은 연산이에요. 대각 $H$는 축마다의 눈금, 전체 $H$는 $L = \mathrm{chol}(s^2H)^{-1}$로 옮겨요($s$는 대각을 1 둘레로 모으는 2의 거듭제곱). 합은 모든 점의 항을 색인 순서로 놓되 잘린 항은 $+0$으로 둬요. $+0$을 더해도 비트가 바뀌지 않으니, 모든 항을 더하는 조밀한 합과 남긴 항만 방문하는 성긴 합(같은 묶음 구조에서 항이 있는 묶음만)이 같은 비트예요. 남는 항이 $1/16$ 이상이면 조밀한 합, 아니면 성긴 합을 돌려요. 고르는 것은 속도뿐이에요.
+
+$n \ge 4096$, 평가점 16개 이상이고 자르기 반경 $\sqrt T$가 백색화한 자료의 축마다 범위의 $1/16$ 이하면 KD 트리가 후보를 내요([핵 회귀](/internals/smooth/kernel-regression/)의 트리 후보와 같은 코드). Scott 대역폭처럼 남는 점이 자료 대부분이면 트리가 오히려 느려서 그 조건을 둬요. 두 길은 같은 집합, 같은 순서, 같은 비트예요.
+
+```python
+>>> X = sd.stats.Normal().sample((6000, 2), rng=rng)
+>>> q = sd.stats.Normal().sample((40, 2), rng=rng)
+>>> C = sd._core.smooth
+>>> vals = []
+>>> for mode in (1, 2):
+...     _ = C.kde_tree_mode(mode)
+...     vals.append(sd.smooth.kde(X, bw=[0.02, 0.02]).logpdf(q).tolist())
+>>> _ = C.kde_tree_mode(0)
+>>> vals[0] == vals[1]
+True
+```
+
+## 정규화와 값의 범위
+
+정규화 상수 $\sum w\cdot(2\pi)^{p/2}\det A$는 가수와 2의 지수의 짝($m\cdot 2^e$, $m \in [1/2, 1)$)으로 곱해 쥐어요. 대역폭이 double의 끝 가까이에 있으면 $\det A$나 그 곱이 넘치거나 언더플로하기 때문이에요. 값은 지수 $a = -\tfrac12D_0$을 Cody–Waite로 $a = k\ln 2 + r$로 나눠 계산해요.
+
+```cpp
+// csrc/smooth/kde.hpp
+inline double exp_scaled(double a, double q, int E) {
+    if (a != a || q != q) return kNaN;
+    if (!(q > 0)) return 0.0;
+    const double kd = std::nearbyint(a * kLog2e);
+    if (kd - E < -1200.0) return 0.0;
+    if (kd - E > 1200.0) return kInf;
+    const double r = (a - kd * kLn2Hi) - kd * kLn2Lo;
+    return std::scalbn(vmath::exp1(r) * q, static_cast<int>(kd) - E);
+}
+```
+
+$\ln 2$를 앞 부분(`kLn2Hi`, 끝 21비트가 0)과 나머지(`kLn2Lo`)로 나눠 두면 $k\cdot\ln 2_{\mathrm{hi}}$가 $\lvert k\rvert \lt 2^{21}$에서 정확해서 $r$이 상쇄 없이 나와요. $\exp(r)\cdot(S/m)$을 한 번 반올림하고 `scalbn`으로 $2^{k-E}$를 곱하면 결과가 비정상 수여도 반올림이 한 번이에요. `logpdf`는 정수 부분 $-E\ln 2$를 같은 두 조각으로 정확히 더해요. 그래서 대역폭 $2^{-1060}$에서도 `logpdf`가 맞고 `pdf`는 inf예요.
+
+```python
+>>> t = sd.smooth.kde(x, bw=2.0**-1060)
+>>> t.pdf(float(x[0])), t.logpdf(float(x[0]))
+(inf, 728.5187554937893)
+```
+
+## 유한한 핵
+
+1차원의 `epanechnikov`, `rectangular`, `triangular`, `biweight`, `cosine`은 R `density`의 식과 눈금이에요. `bw`는 언제나 핵의 표준편차이고, 표준편차 1인 핵의 반폭은 $a = \sqrt5, \sqrt3, \sqrt6, \sqrt7, 1/\sqrt{1/3 - 2/\pi^2}$예요. sklearn과 statsmodels의 대역폭은 반폭이라 같은 수가 다른 핵이에요.
+
+$r = \lvert z\rvert/a$에서 $1 - r^2$은 $(1 - r)(1 + r)$로, 코사인 핵 $(1 + \cos\pi r)/(2a)$는 $\cos^2(\pi r/2)/a$로 계산해 지지집합의 끝에서 상쇄가 없어요. 더하는 점은 정렬된 자료에서 $\lvert z\rvert \lt a$인 이어진 구간(양쪽 이분 탐색)이에요. 계약은 $(8 + \log_2n)u\lvert\hat f\rvert + 4u\sum w_j\lvert z_jK'(z_j)\rvert/h$이고, 둘째 항은 $z$의 반올림이 핵의 값을 움직이는 몫이에요.
+
+## cdf
+
+1차원의 $\hat F(t) = \sum w_jG((t - x_j)/h)/\sum w$이고 $G$는 핵의 누적분포예요(가우스는 $\tfrac12\mathrm{erfc}(-z/\sqrt2)$, 유한한 핵은 끝에서 상쇄가 없는 인수 꼴의 닫힌 식). 정렬된 자료에서 $u_j = (t - x_j)/h$는 $j$에 대해 감소하니 세 구간으로 나뉘어요.
+
+| 구간 | 처리 |
+|---|---|
+| $G$가 1로 반올림되는 앞쪽(가우스 $u \ge 8.5$, 유한한 핵 $u \ge a$) | 무게의 짝 합 나무로 앞쪽 무게의 합 |
+| $G$가 0인 뒤쪽($u \le -38.5$, $u \le -a$) | 빼요 |
+| 가운데 | $G$를 계산해 묶음 순서로 더해요 |
+
+짝 합 나무는 무게를 두 개씩, 그 합을 다시 두 개씩 묶은 층들이고, 앞 $k$개의 합은 $k$의 이진 분해에 해당하는 블록들을 왼쪽부터 더해요. 부분합의 오차가 $O(\log n)u$예요. 계약은 절대 $(8 + \log_2n)u$예요. 가우스의 뒤쪽을 $-8.5$에서 자르면 더 빠르지만 먼 왼쪽 꼬리의 작은 값(아래의 $9 \times 10^{-68}$ 같은)이 0이 돼서 자르지 않아요.
+
+```python
+>>> k.cdf([-40.0, -9.0, 0.0, 9.0]).tolist()
+[0.0, 8.974650067605227e-68, 0.5246524613378402, 1.0]
+```
+
+## 경계 반사
+
+`bounds=(lo, hi)`이면 $\hat f(x) + \hat f(2\,lo - x) + \hat f(2\,hi - x)$이고 구간 밖은 0이에요. 반사한 자료를 만들지 않고 평가점을 세 번 평가해요. 세 조각의 로그는 가장 큰 것을 빼고 $\log 1p$로 합쳐 `logpdf`의 상대 정확도를 지켜요. `cdf`는 $F(t) - F(2\,lo - t) + F(2\,hi - lo) - F(2\,hi - t)$예요.
+
+```python
+>>> kb = sd.smooth.kde(sd.abs(x), bounds=(0.0, sd.inf))
+>>> kb.pdf([-0.1, 0.0, 0.5]).tolist()
+[0.0, 0.664318185738636, 0.6365152187536929]
+```
+
+## 구간화 FFT
+
+`density(binned=True)`는 고른 격자(간격 $\delta$) 위의 값을 R의 `density`와 같은 방식으로 어림해요.
+
+1. **선형 구간화.** 점 $x$가 격자점 $g_i \le x \lt g_{i+1}$ 사이의 비율 $f$ 자리에 있으면 무게 $w(1 - f)$를 $g_i$에, $wf$를 $g_{i+1}$에 줘요(R의 `BinDist`, statsmodels의 `linbin`과 같은 식).
+2. **핵의 표본.** $K_h(l\delta)$를 $l = -L, \ldots, L$에서 뽑고, $L = \lfloor\tau\sigma/\delta\rfloor$($\tau = 8.3$, 유한한 핵은 반폭) 밖은 0이에요.
+3. **합성곱.** 격자 무게와 핵의 표본을 실수 FFT로 곱해 역변환하고 $1/(\prod N\cdot\sum w)$를 곱해요. 반올림으로 음수가 된 값은 0으로 올려요(R과 같아요).
+
+격자는 양쪽으로 $E = L + 1$칸 넓혀요. 넓힌 격자 밖의 점은 모든 출력에서 자르기 거리 밖이라 빼도 자르기의 한계 안이에요. FFT 길이 $N$은 넓힌 길이 $G$ 이상의 2·3·5·7-매끄러운 수(마지막 축은 짝수)이고 핵의 폭 $2L + 1 \le G$라서 원형 합성곱의 감김이 출력에 닿지 않아요. FFT는 fft 영역의 계획(`get_plan`의 실수·복소수)을 C++에서 바로 불러요([Stockham 혼합 기수](/internals/fft/stockham/)). 여러 차원($p \le 3$)은 축마다의 다중선형 구간화($2^p$개 꼭짓점)와, 마지막 축은 실수·나머지 축은 복소수 FFT예요.
+
+구간화는 점마다 두 격자점에 더하는 흩뿌리기라, 그대로 나란히 하면 같은 격자점에 여러 스레드가 다른 순서로 더해요. 자료가 정렬되어 있으니 격자점마다 기여하는 점들이 이어진 구간이라, 격자를 구간으로 나눠 격자점마다의 합을 정렬 순서로 더해요(`linbin`). 구간의 경계는 점 수가 고르게 나뉘도록 정하지만, 어느 격자점의 합도 정렬 순서 그대로라 경계와 상관없이 같은 비트예요.
+
+1차원에서 청한 점 수가 512보다 작으면 512점에서 계산해 선형 보간해요(R과 같아요). 기본 점 수는 1차원 512, 2차원 128, 3차원 64(축마다)예요. 3차원 $512^3$은 작업 배열이 4GB를 넘어요. 작업 배열이 물리 메모리의 1/4을 넘으면 할당 전에 `MemoryError`예요.
+
+### 오차 한계
+
+격자점 $g$에서 가우스 핵의 구간화 값과 정확한 합의 차는
+
+$$
+\lvert\hat f_{\mathrm{bin}}(g) - \hat f(g)\rvert \le \frac{\delta^2}{8\sqrt{2\pi}\,h^3} + \frac{\varphi(\tau)}{h} + (\text{fft의 항})
+$$
+
+이에요.
+
+**증명.** 격자점 $g$의 값은 $\sum_j w_j[(1 - f_j)K_h(g - g_{i_j}) + f_jK_h(g - g_{i_j+1})]$이에요. 이것은 자료 쪽 변수의 함수 $\xi \mapsto K_h(g - \xi)$를 두 격자점 사이에서 선형 보간해 $x_j$에서 잰 것과 같아요. 선형 보간의 오차는 점마다 $\tfrac{\delta^2}{8}\max\lvert K_h''\rvert$ 이하이고, $K_h''(z) = \varphi''(z/h)/h^3$, $\varphi''(t) = (t^2 - 1)\varphi(t)$예요. $\lvert\varphi''\rvert$의 최댓값은 $t = 0$의 $\varphi(0) = 1/\sqrt{2\pi}$예요($t = \sqrt3$의 극값 $2\varphi(\sqrt3)$은 그보다 작아요). 무게의 합이 1이라 첫 항이 나와요. 자르기는 격자 무게 $c_l$(합 1)마다 $\lvert z\rvert \gt \tau$인 핵 값 하나를 버리고 그 값이 $\varphi(\tau)/h$ 이하라 둘째 항이에요. $\tau = 8.3$에서 $\varphi(\tau) \approx 4.4 \times 10^{-16}$이에요. 여러 차원은 축마다 같은 셈으로 $\sum_l\delta_l^2(H^{-1})_{ll}K(0)/8 + K(0)\exp(-\tau^2/2)$예요.
+
+이 한계는 반올림이 아니라 방법의 오차라 절대 오차예요. 꼬리의 상대 오차는 커요. 그래서 `pdf`는 이 길을 쓰지 않아요.
+
+```python
+>>> d1, d0 = k.density(), k.density(binned=False)
+>>> delta = float(d1.x[1] - d1.x[0])
+>>> bound = delta**2 / (8 * (2 * sd.pi) ** 0.5 * k.bw**3) + sd.exp(-8.3**2 / 2) / (2 * sd.pi) ** 0.5 / k.bw
+>>> float(sd.max(sd.abs(d1.density - d0.density))) / float(bound)
+0.04835578475155549
+```
+
+<Fig caption="200점 정규 표본의 512점 격자에서 구간화 값과 정확한 합의 차(log₁₀, 8점마다)와 오차 한계(가로선). 차는 한계의 5% 아래이고, 밀도의 곡률이 큰 곳에서 커요.">
+  <Plot
+    curves={[
+      { points: binErr, label: 'log₁₀ 차' },
+      { points: binBound, label: '한계', dashed: true },
+    ]}
+    domain={[-3.7, 4.05]}
+    range={[-7.5, -3.3]}
+    xTicks={[{ v: -3, label: '−3' }, { v: -2, label: '−2' }, { v: -1, label: '−1' }, { v: 0, label: '0' }, { v: 1, label: '1' }, { v: 2, label: '2' }, { v: 3, label: '3' }, { v: 4, label: '4' }]}
+    yTicks={[{ v: -7, label: '−7' }, { v: -6, label: '−6' }, { v: -5, label: '−5' }, { v: -4, label: '−4' }]}
+  />
+</Fig>
+
+같은 한계로 견주면 R `density`의 오차는 0.87배, statsmodels `KDEUnivariate(fft=True)`는 7.2배였어요.
+
+## sample
+
+무게대로 `rng.choice`로 점을 뽑고 핵의 잡음을 더해요. 가우스 잡음은 `sd.stats.Normal().sample`에 $\mathrm{chol}(H)^{\mathsf T}$를 곱한 것이에요. 유한한 핵은 반폭 1의 표본에 $a\cdot h$를 곱해요.
+
+| 핵 | 반폭 1의 표본 |
+|---|---|
+| rectangular | $2U - 1$ |
+| triangular | $U_1 + U_2 - 1$ |
+| epanechnikov | Devroye의 방법. $(-1, 1)$의 균등 난수 셋 가운데 셋째가 절댓값이 가장 크면 둘째, 아니면 셋째 |
+| biweight | $2\,\mathrm{Beta}(3, 3) - 1$ |
+| cosine | 누적분포 $(1 + r + \sin(\pi r)/\pi)/2$의 이분 60번 |
+
+`bounds`가 있으면 뽑은 값을 여러 번 반사로 접어 구간 안으로 돌려줘요. 밀도는 경계마다 한 번 반사이니 두 배 넘게 나간 질량만큼 둘이 달라요.
+
+## 계약
+
+| 양 | 한계 |
+|---|---|
+| `pdf` | 상대 $(8 + 2p + \log_2n + D_0)u$ |
+| `logpdf` | 절대 $(8 + 2p + \log_2n)u\cdot\max(1, \lvert\log\hat f\rvert)$ |
+| 전체 $H$ | 위 둘에 $\kappa_A = \sqrt{\mathrm{cond}_2(H)}$를 곱해요 |
+| `cdf` | 절대 $(8 + \log_2n)u$ |
+| `density(binned=True)` | 위의 방법 한계 |
+
+$8 + 2p + \log_2n$은 백색화, 제곱 거리, exp, 짝 합의 몫이고, $D_0$은 지수의 인자 $D$를 반올림한 상대 오차 약 $1.5u$가 $\exp(-D/2)$에서 $D_0/2$배로 커지는 몫이에요. 가장 가까운 점이 먼 꼬리의 평가점에서 이 항이 커요. 전체 $H$의 백색화는 반올림이 $\kappa_A$배로 커지고(scipy의 `gaussian_kde`도 같은 크기로 틀려요), 대각 $H$는 $\kappa_A = 1$이에요. 잰 값은 [정확도와 성능](/internals/smooth/accuracy-performance/)에 있어요.
+
+평가점을 크기로만 정한 태스크로 나눠요(점 하나의 일은 $n\cdot p$, 태스크 하나 약 $2^{17}$, 스레드마다 8개까지). 평가점 하나는 언제나 같은 함수 한 번이라 어느 태스크에서 계산하든 같은 비트예요.

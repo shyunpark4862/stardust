@@ -1,0 +1,423 @@
+---
+title: 정확한 기하 술어
+group: 계산 기하
+order: 1
+summary: "삼각분할, 볼록 껍질, 보로노이 그림의 판정이 모두 기대는 기하 술어를 설명해요. 입력 float64 그대로의 정확한 부호를 대개 부동소수점 거르기 한 번으로 얻고, 한 원 위의 점 같은 동점은 기호 섭동으로 언제나 같은 쪽으로 갈라요."
+seeAlso: [delaunay, hull-voronoi, accuracy-performance, overview]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import Steps from '../../../components/fig/Steps.astro';
+
+## 한눈에 보기
+
+계산 기하의 알고리즘은 결국 몇 가지 질문을 되풀이해요. "점 $c$는 $a$에서 $b$로 가는 직선의 왼쪽인가?", "점 $d$는 $a$, $b$, $c$를 지나는 원 안인가?" 같은 질문이에요. 답은 좌표로 만든 작은 행렬식의 부호예요. 이 부호를 부동소수점으로 계산하면 반올림 때문에 0 근처에서 틀리고, 한 번 틀린 답은 다른 답과 어긋나서 알고리즘을 망가뜨려요. 삼각형이 뒤집히거나 겹치고, 걷기가 끝나지 않고, 같은 입력에서 판정이 갈려요.
+
+`sd.spatial`의 계산 기하는 이 질문들을 언제나 **정확히** 답해요. 좌표의 float64 값을 그대로 유리수로 읽었을 때의 행렬식의 부호예요. 그러면서도 보통의 입력에서는 부동소수점 몇 번의 값으로 끝나요. 술어는 넷이에요(`csrc/spatial/predicates.hpp`).
+
+| 술어 | 값 | 양수의 뜻 | 차수 |
+|---|---|---|---:|
+| `orient2d(a, b, c)` | $\det\begin{bmatrix} a - c \\ b - c \end{bmatrix}$ | $a, b, c$가 반시계로 돌아요 | 2 |
+| `orient3d(a, b, c, d)` | $\det[\,b - a,\ c - a,\ d - a\,]$ | 사면체 $abcd$가 양의 방향이에요 | 3 |
+| `incircle(a, b, c, d)` | 아래의 올림 행렬식 | 반시계인 $a, b, c$를 지나는 원의 안쪽에 $d$가 있어요 | 4 |
+| `insphere(a, b, c, d, e)` | 아래의 올림 행렬식 | 양의 방향인 $a, b, c, d$를 지나는 구의 안쪽에 $e$가 있어요 | 5 |
+
+차수는 행렬식이 좌표의 몇 차 다항식인지예요. 차수가 높을수록 항이 크고 많아서 반올림에 약해요.
+
+부호를 구하는 길은 셋이고, 앞의 것이 정하지 못할 때만 다음으로 가요.
+
+<Fig column caption="술어 하나의 길. 대부분의 호출은 첫 단계에서 끝나고, 정수 격자 같은 입력은 둘째 단계, 그 밖의 어려운 입력만 셋째 단계로 가요.">
+  <Steps steps={[
+    { label: 'A. 거르기 (*_filter)', note: '차이를 뺀 행렬식을 float64로 계산하고, 같은 식의 절댓값 합(퍼머넌트)에 상수를 곱한 한계보다 크면 그 부호가 답', where: 'predicates.hpp' },
+    { label: 'B. 전개식 (*_expansion)', note: '모든 차이 a − c가 정확할 때(two_diff의 꼬리가 0)만: 그 double들의 행렬식을 오차 없는 합과 곱의 전개식으로 정확히', where: 'expansion.hpp' },
+    { label: 'W. 넓은 정수 (*_wide)', note: '좌표를 가장 낮은 비트로 나눠 정수로 읽고, 행렬식을 여러 낱말 정수로 정확히. 어느 유한한 입력에서나', where: 'wideint.hpp' },
+  ]} />
+</Fig>
+
+A와 B는 좌표의 크기가 한 범위 안일 때만 쓸 수 있어요(넘침과 아래넘침이 없어야 증명이 서요). 점 집합의 범위로 한 번 고르고, 범위 밖이면 W만 써요. 이 쪽은 네 술어와 세 단계, 행렬식의 값을 주는 값 커널, 그리고 한 원 위의 점처럼 답이 0인 경우를 가르는 동점 규칙을 차례로 다뤄요.
+
+## 네 술어
+
+`orient2d`와 `orient3d`는 방향이에요. 세 점이 한 직선 위면 0이고, 반시계면 양수예요. 3차원도 네 점이 한 평면 위면 0이에요.
+
+`incircle`은 **올림**으로 이해하면 쉬워요. 평면의 점 $p$를 포물면 위의 점 $(p_x, p_y, p_x^2 + p_y^2)$로 올리면, 평면의 원은 포물면과 어떤 평면이 만나는 곡선이 돼요. 그래서 "$d$가 원 안인가"는 "올린 $d$가 올린 $a, b, c$를 지나는 평면의 아래인가"와 같고, 그것은 3차원의 방향 판정이에요.
+
+$$
+\mathrm{incircle}(a, b, c, d) = \operatorname{sign}\det\begin{bmatrix}
+a_x & a_y & a_x^2 + a_y^2 & 1 \\
+b_x & b_y & b_x^2 + b_y^2 & 1 \\
+c_x & c_y & c_x^2 + c_y^2 & 1 \\
+d_x & d_y & d_x^2 + d_y^2 & 1
+\end{bmatrix}
+$$
+
+계산할 때는 모든 점에서 $d$를 빼서 $3 \times 3$으로 줄여요. 행 $i$는 $(p_{ix} - d_x,\ p_{iy} - d_y,\ \lvert p_i - d \rvert^2)$예요. 차이를 먼저 빼면 원점에서 먼 작은 군집에서도 큰 수끼리 지워지는 일이 행렬식의 바깥에서 한 번으로 끝나요. `insphere`는 같은 일을 3차원에서 해요. 점을 $(p, \lvert p \rvert^2)$으로 올리고 $5 \times 5$ 올림 행렬식의 부호를 보는데, 이 영역의 방향 관례($\det[b - a, c - a, d - a]$)에 맞춰 부호를 하나 뒤집어 두었어요.
+
+이 다항식을 계산하는 식은 B와 W가 함께 쓰도록 한 번만 적었어요. 형 `T`가 `double`이면 곱이 전개식이 되고(B), `WideInt`면 정수가 돼요(W).
+
+```cpp
+// csrc/spatial/predicates.hpp
+template <class T>
+inline auto incircle_det(const T& ax, const T& ay, const T& bx, const T& by, const T& cx, const T& cy) {
+    const auto al = add(mul(ax, ax), mul(ay, ay));
+    const auto bl = add(mul(bx, bx), mul(by, by));
+    const auto cl = add(mul(cx, cx), mul(cy, cy));
+    return add(
+        add(mul(sub(mul(bx, cy), mul(cx, by)), al), mul(sub(mul(cx, ay), mul(ax, cy)), bl)),
+        mul(sub(mul(ax, by), mul(bx, ay)), cl)
+    );
+}
+```
+
+## A. 거르기
+
+대부분의 호출은 부호가 분명해요. 행렬식의 값이 반올림 오차보다 훨씬 크면 float64로 계산한 값의 부호가 곧 답이에요. 거르기는 이 "훨씬 크다"를 증명된 한계로 판정해요.
+
+```cpp
+// csrc/spatial/predicates.hpp
+// Stage A: 1 or -1, or 2 when the filter does not decide.
+inline int orient2d_filter(const double* a, const double* b, const double* c) {
+    const double acx = a[0] - c[0], bcx = b[0] - c[0];
+    const double acy = a[1] - c[1], bcy = b[1] - c[1];
+    const double l = acx * bcy, r = acy * bcx;
+    const double det = l - r;
+    const double bound = kOrient2dFilter * (std::fabs(l) + std::fabs(r));
+    if (det > bound) return 1;
+    if (-det > bound) return -1;
+    return 2;
+}
+```
+
+`bound`는 상수 $K$에 **퍼머넌트** $\hat P$를 곱한 것이에요. 퍼머넌트는 행렬식과 같은 식을 모든 뺄셈을 덧셈으로, 곱의 잎을 절댓값으로 바꿔 계산한 값이에요(`orient2d`에서는 $\lvert l \rvert + \lvert r \rvert$). 상수가 왜 충분한지를 보여요.
+
+### 보조정리와 상수
+
+$u = 2^{-53}$이라 하고, 넘침도 아래넘침도 없어서 모든 연산이
+
+$$
+\mathrm{fl}(x \circ y) = (x \circ y)(1 + \delta),\qquad \lvert\delta\rvert \le u \tag{M}
+$$
+
+를 만족한다고 해요(이 조건은 아래 범위 조건이 보장해요). 행렬식을 float64 연산의 나무로 계산할 때 마디마다 셈 $c$를 매겨요. 차이 $\mathrm{fl}(a - b)$는 $c = 1$, 두 마디의 합·차는 $\max(c_l, c_r) + 1$, 곱은 $c_l + c_r + 1$이에요. 마디의 정확한 퍼머넌트 $S$는 차이에서 $\lvert a - b\rvert$, 합·차에서 $S_l + S_r$, 곱에서 $S_l S_r$예요.
+
+**보조정리.** 계산값 $\hat x$와 참값 $x$는 $\lvert \hat x - x \rvert \le \theta_c S$를 만족해요. 여기서 $\theta_k = (1 + u)^k - 1$이에요.
+
+*증명.* (M)으로 펴면 $\hat x$는 차이들의 곱인 단항식 $m_j$마다 $(1 + \delta)$ 인자를 많아야 $c$개 붙인 합 $\hat x = \sum_j m_j \prod_{i \le c}(1 + \delta_{ji})$예요. 귀납으로 보여요. 차이는 인자 하나예요. 반올림한 합은 양쪽의 모든 단항식에 인자를 하나 더 붙이니 $\max(c_l, c_r) + 1$개이고, 반올림한 곱은 한쪽의 단항식마다 다른 쪽의 단항식을 짝지어 인자 $c_l + c_r$개에 하나를 더 붙여요. 그러면 $\lvert \hat x - x \rvert \le \sum_j \lvert m_j \rvert\,((1 + u)^c - 1) = \theta_c S$예요. ∎
+
+퍼머넌트의 나무는 모든 값이 음이 아니어서 지워지는 자리가 없으므로, 셈이 $c_P$인 퍼머넌트의 계산값은 $\hat P \ge (1 - u)^{c_P} S$예요. 마지막 연산이 합·차이면 그 반올림 하나를 떼어 $\lvert \hat x - x \rvert \le u\lvert\hat x\rvert + \theta_{c-1} S$로 쓸 수 있고, 그러면
+
+$$
+(1 - u)\lvert\hat x\rvert \gt \theta_{c-1} S \ \Longrightarrow\ \operatorname{sign}\hat x = \operatorname{sign} x
+$$
+
+예요. 판정 $\lvert\hat x\rvert \gt \mathrm{fl}(K\hat P) \ge K\hat P(1 - u)$가 이 조건을 주려면
+
+$$
+K \ge \frac{\theta_{c-1}}{(1 - u)^{c_P + 2}}
+$$
+
+이면 돼요. $\mathrm{fl}(K\hat P)$가 $2^{-1022}$ 아래(비정상 수)라 상대 한계가 서지 않을 때도 결론은 같아요. $\hat x$와 $\mathrm{fl}(K\hat P)$가 모두 $2^{-1074}$의 배수라서 $\lvert\hat x\rvert \gt \mathrm{fl}(K\hat P)$는 $\lvert\hat x\rvert \ge \mathrm{fl}(K\hat P) + 2^{-1074} \gt K\hat P$를 뜻하기 때문이에요.
+
+코드의 계산 순서는 모든 연산을 적어 두었고(컴파일러의 곱셈-덧셈 합치기는 꺼 두어요), 그 셈은 이래요.
+
+| 술어 | 계산 순서의 셈 | $c$ | $c_P$ | 필요한 $K$ (둘째 차수까지) | 쓰는 $K$ |
+|---|---|---:|---:|---|---|
+| `orient2d` | 차이 1, 곱 3, 차 4 | 4 | 4 | $3u + 21.0u^2$ | $(3 + 32u)u$ |
+| `orient3d` | 2 × 2 소행렬식 4, $z$와의 곱 6, 두 합 7, 8 | 8 | 8 | $7u + 91.0u^2$ | $(7 + 96u)u$ |
+| `incircle` | 올림 4, 소행렬식 4, 곱 9, 두 합 10, 11 | 11 | 11 | $10u + 175.0u^2$ | $(10 + 176u)u$ |
+| `insphere` | 올림 5, 2 × 2 소행렬식 4, 3 × 3 소행렬식 8, 곱 14, 두 짝의 차 15, 합 16 | 16 | 17 | $15u + 390.1u^2$ | $(15 + 400u)u$ |
+
+쓰는 상수는 부등식을 지키는 가장 작은 $(k + 16j\,u)u$꼴이고, 각각 float64로 정확해요. 테스트가 컴파일된 상수로 이 부등식을 유리수로 확인해요(그리고 $16u$만큼 작은 값은 지키지 못함도). `insphere`는 행렬식을 $(c_l \cdot dab - d_l \cdot abc) + (a_l \cdot bcd - b_l \cdot cda)$의 두 짝으로 묶어 계산 나무의 깊이가 16이라 첫째 차수가 15예요.
+
+```python
+>>> import stardust as sd
+>>> C = sd._core.spatial
+>>> k = C._predicate_constants()
+>>> k["orient2d"] == (3 + 32 * 2**-53) * 2**-53, k["insphere"] == (15 + 400 * 2**-53) * 2**-53
+(True, True)
+```
+
+무작위 입력에서는 거르기가 모든 호출을 정해요. 아래는 $[0, 1)$의 무작위 행 $10^5$개의 `orient2d`를 어느 단계가 정했는지 센 것이에요(거르기, 전개식, 넓은 정수, 범위 밖의 차례예요).
+
+```python
+>>> rng = sd.random.default_rng(0)
+>>> C._predicate_stages("orient2d", rng.random((100000, 3, 2)))
+(100000, 0, 0, 0)
+```
+
+## 범위 조건
+
+보조정리는 (M)이 서야 해요. 넘침이 있으면 상대오차가 무너지고, 아래넘침이 있으면 `two_prod`의 오차항이 표현되지 않아 전개식이 정확하지 않아요. 그래서 A와 B는 좌표가 한 범위 안일 때만 써요.
+
+$\mathrm{hi}$를 0이 아닌 좌표의 가장 큰 $\lfloor \log_2\lvert x\rvert \rfloor$, $\mathrm{lo}$를 0이 아닌 좌표의 가장 낮은 켜진 비트의 지수라 하고, 술어의 차수를 $q$라 하면 조건은
+
+$$
+q(\mathrm{hi} + 2) + 8 \le 1023 \quad\text{이고}\quad (\mathrm{lo} \ge 0 \ \text{또는}\ q\cdot\mathrm{lo} \ge -1074)
+$$
+
+이에요.
+
+```cpp
+// csrc/spatial/predicates.hpp
+struct Range {
+    int hi = INT_MIN;  // the largest floor(log2 |x|) of the non-zero coordinates
+    int lo = INT_MAX;  // the smallest exponent of a lowest set bit
+
+    void add(double x) {
+        if (x == 0.0) return;
+        const FloatParts p = float_parts(x);
+        const int h = p.e + 63 - std::countl_zero(p.m), l = p.e + std::countr_zero(p.m);
+        if (h > hi) hi = h;
+        if (l < lo) lo = l;
+    }
+    void add(const double* x, std::int64_t n) {
+        for (std::int64_t i = 0; i < n; ++i) add(x[i]);
+    }
+    // True when stages A and B are exact for a predicate of degree q on coordinates in this range.
+    bool safe(int q) const {
+        if (hi == INT_MIN) return true;
+        return q * (hi + 2) + 8 <= 1023 && (lo >= 0 || q * lo >= -1074);
+    }
+};
+```
+
+이 조건에서 (M)이 서는 까닭은 둘이에요.
+
+- **넘침이 없어요.** 차이는 $2^{\mathrm{hi}+2}$ 아래, 차이 $q$개의 곱은 $2^{q(\mathrm{hi}+2)}$ 아래예요. 가장 항이 많은 `insphere`도 그런 곱 72개(세 제곱의 올림 넷 × 곱 여섯)의 합이라 $2^{q(\mathrm{hi}+2)+7}$ 아래이고, 모든 부분합, 퍼머넌트, 전개식의 항은 그 크기 합에 묶여요. 반올림으로 한 비트가 더 올라갈 자리를 두면 $q(\mathrm{hi} + 2) + 8 \le 1023$이면 충분해요.
+- **아래넘침이 없어요.** 모든 정확한 중간값은 어떤 $k \le q$에 대해 $2^{k\cdot\mathrm{lo}}$의 배수이고, 조건에서 $2^{-1074}$의 배수예요. 그 반올림도 그래요(그 크기의 float 격자는 더 굵은 2의 거듭제곱이거나 값이 그대로 표현돼요). $2^{-1074}$의 배수로서 $2^{-1022}$ 아래인 값은 정확히 표현되므로, 작은 값에서도 반올림이 없어요.
+
+예를 들어 `insphere`($q = 5$)는 좌표의 크기가 $2^{202}$ 아래이고 가장 낮은 비트가 $2^{-214}$ 이상이면 되고, `orient2d`는 $2^{506}$ 아래와 $2^{-537}$ 이상이에요. 보통의 자료는 넉넉히 들어요.
+
+점 집합의 범위로 차수마다 한 번 골라 두는 것이 `Predicates` 객체예요. 삼각분할은 이 객체의 술어를 불러요. 조건 밖의 차수는 W만 쓰는 `*_any`로 가요.
+
+```cpp
+// csrc/spatial/predicates.hpp
+class Predicates {
+public:
+    Predicates() = default;
+    explicit Predicates(const Range& r) : s2_(r.safe(2)), s3_(r.safe(3)), s4_(r.safe(4)), s5_(r.safe(5)) {}
+
+    int orient2d(const double* a, const double* b, const double* c) const {
+        return s2_ ? spatial::orient2d(a, b, c) : orient2d_any(a, b, c);
+    }
+```
+
+범위를 미리 알 수 없는 호출도 있어요. `find_simplex`의 평가점은 점 집합 밖의 값이에요. 이런 호출은 점 집합의 범위에 그 평가점을 더해 다시 고르거나, 호출마다 그 점들의 범위를 보는 `*_any`를 불러요.
+
+## B. 전개식
+
+정수 좌표, 격자, 서로 가까운 점의 군집처럼 거르기가 정하지 못하는 입력에는 공통점이 있어요. 행렬식이 정확히 0이거나 아주 작은데, 좌표의 차이는 정확하다는 것이에요. 두 float64의 차이가 정확한지는 `two_diff`로 알 수 있어요.
+
+**오차 없는 변환**은 두 double의 연산 결과를 반올림한 값과 그 오차의 짝으로, 정확히 나눠 주는 연산이에요.
+
+```cpp
+// csrc/spatial/expansion.hpp
+inline void two_sum(double a, double b, double& s, double& e) {
+    s = a + b;
+    const double bv = s - a;
+    const double av = s - bv;
+    e = (a - av) + (b - bv);
+}
+
+// a - b = d + e exactly.
+inline void two_diff(double a, double b, double& d, double& e) {
+    d = a - b;
+    const double bv = a - d;
+    const double av = d + bv;
+    e = (a - av) + (bv - b);
+}
+
+inline void two_prod(double a, double b, double& p, double& e) {
+    p = a * b;
+    e = std::fma(a, b, -p);
+}
+```
+
+`two_sum`은 Knuth의 알고리즘이에요. 넘치지 않는 한 어떤 두 double이든 $a + b = s + e$가 정확히 서고, 크기의 순서를 묻지 않아요. `two_prod`는 곱셈-덧셈 합치기(`fma`)가 $ab - p$를 반올림 한 번에 계산하므로, 그 차이가 표현될 수 있으면(범위 조건이 보장해요) $ab = p + e$가 정확해요.
+
+차이가 모두 정확하면(모든 `two_diff`의 꼬리 $e$가 0) 행렬식은 그 double들의 다항식이에요. 그 값을 **전개식**으로 정확히 구해요. 전개식은 합이 값과 정확히 같은 double들의 목록이에요. 곱은 `two_prod`로 두 항이 되고, 합은 두 목록을 크기 순서로 합치며 `two_sum`으로 모아요. 어느 단계도 값을 잃지 않으니 목록의 정확한 합이 행렬식이에요.
+
+남은 일은 목록의 합의 **부호**예요. 목록을 한 줄로 더하면 다시 반올림이 들어오니, 맨 위 항이 나머지를 이기는지로 판정해요.
+
+```cpp
+// csrc/spatial/expansion.hpp
+// The sign of the sum of h[0..n): -1, 0, 1, or 2 when kPasses distillations did not certify it (E2).
+// Rewrites h. n <= 2^20.
+inline int sign(double* h, int n) {
+    for (int pass = 0;; ++pass) {
+        if (n == 0) return 0;
+        const double top = h[n - 1];
+        double r = 0.0;
+        for (int i = 0; i + 1 < n; ++i) r += std::fabs(h[i]);
+        if (std::fabs(top) > r * (1.0 + 0x1p-20)) return top > 0.0 ? 1 : -1;
+        if (pass == kPasses) return 2;
+        double s = h[0];
+        int k = 0;
+        for (int i = 1; i < n; ++i) {
+            double s2, t;
+            two_sum(s, h[i], s2, t);
+            if (t != 0.0) h[k++] = t;
+            s = s2;
+        }
+        if (s != 0.0) h[k++] = s;
+        n = k;
+    }
+}
+```
+
+나머지 항의 크기 합을 float로 더한 $\hat r$은 참 합 $r$보다 $(1 - u)^{n-2}$배 이상이라, $n \le 2^{20}$에서 $r \le \hat r/(1 - u)^{n-2} \lt \hat r(1 + 2^{-21})$이에요. 판정 $\lvert\text{top}\rvert \gt \mathrm{fl}(\hat r(1 + 2^{-20})) \ge \hat r(1 + 2^{-21})$이 서면 $\lvert\text{top}\rvert \gt r \ge \lvert\text{나머지의 합}\rvert$이니, 전체의 부호는 맨 위 항의 부호예요. 판정이 서지 않으면 `two_sum` 한 훑기로 목록을 다시 모아(합은 그대로) 또 봐요. 이 판정은 목록이 크기순이거나 겹치지 않는다는 성질에 기대지 않아요. 그래서 틀린 부호를 낼 수 없고, 정하지 못하는 것은 시간만 잃어요. 여섯 번 다시 모아도 정하지 못하면(시험에서는 나오지 않았어요) W로 넘겨요.
+
+정수 격자의 `incircle`은 정확히 0인 행(한 원 위의 네 점)이 많아서, 일부가 이 단계로 와요.
+
+```python
+>>> G = sd.floor(rng.random((100000, 4, 2)) * 7) - 3
+>>> C._predicate_stages("incircle", G)
+(85499, 14501, 0, 0)
+```
+
+차이에 꼬리가 있으면, 곧 거르기가 정하지 못했는데 차이도 정확하지 않으면 B를 건너뛰고 W로 가요. 꼬리까지 전개식으로 다루는 적응 단계(Shewchuk의 방식)를 두지 않은 까닭은, 그런 입력이 거의 퇴화한 드문 경우뿐이고 그 경우에도 W가 짧은 정수 몇 낱말로 끝나서, 훨씬 큰 적응 단계의 코드가 얻을 것이 적기 때문이에요.
+
+## W. 넓은 정수
+
+마지막 길은 어떤 유한한 입력에서도 정확해요. 모든 유한한 float64는 $m \cdot 2^e$($m \lt 2^{53}$인 정수, $e \ge -1074$)예요. 한 호출의 점들의 좌표를 그 가운데 가장 낮은 켜진 비트 $2^{\mathrm{lo}}$로 나누면 모두 정수가 되고, 크기는 $2^{1024}/2^{-1074} = 2^{2098}$ 아래예요. 그 정수들의 차이와 행렬식을 여러 낱말(64비트) 정수로 계산하면 반올림이 하나도 없어요.
+
+```cpp
+// csrc/spatial/predicates.hpp
+template <int NP, int D>
+inline bool wide_differences(const double* const* p, WideInt* out, int* e_out = nullptr) {
+    Range r;
+    for (int i = 0; i < NP; ++i) r.add(p[i], D);
+    if (r.hi == INT_MIN) return false;
+    WideInt last[D];
+    for (int k = 0; k < D; ++k) last[k] = WideInt::scaled(p[NP - 1][k], r.lo);
+    for (int i = 0; i + 1 < NP; ++i)
+        for (int k = 0; k < D; ++k) out[i * D + k] = sub(WideInt::scaled(p[i][k], r.lo), last[k]);
+    if (e_out) *e_out = r.lo;
+    return true;
+}
+```
+
+정수형 `WideInt`(`wideint.hpp`)는 덧셈, 뺄셈, 학교식 곱셈, 부호, 그리고 올바르게 반올림하는 float64 변환만 가져요. 가장 큰 값은 `insphere`의 행렬식으로, 올림(제곱 셋, $2^{4200}$ 아래)과 $3 \times 3$ 소행렬식(셋의 곱 여섯, $2^{6300}$ 아래)의 곱 넷의 합이라 $2^{10502}$ 아래, 165낱말이에요. 용량은 곱의 다듬지 않은 맨 위 낱말까지 168낱말이에요. 낱말 수는 실제 값의 크기를 따라서, $[0, 1)$의 53비트 좌표는 한 낱말로 계산해요. 그래서 거의 퇴화한 보통 크기의 입력에서도 W는 가벼워요.
+
+```python
+>>> P = sd.asarray([[[0.5, 0.5000000000000001], [12.0, 12.0], [24.0, 24.0]]])
+>>> [int(C._predicate("orient2d", P, mode)[0]) for mode in ("filter", "expansion", "wide", "auto")]
+[2, 2, 1, 1]
+```
+
+첫 점이 직선 $y = x$보다 float64 한 칸 위예요. 거르기는 정하지 못하고(2), 차이 $0.5000000000000001 - 24$가 정확하지 않아 전개식도 건너뛰고(2), 넓은 정수가 반시계(1)로 정해요.
+
+## 값 커널: `det2`, `det3`
+
+부호가 아니라 행렬식의 **값**이 필요한 곳도 있어요. 볼록 껍질의 넓이와 부피, 면의 법선, 보로노이 꼭짓점, 무게중심 좌표, 보간의 무게예요. `det2(a, b, c)` $= \det[a - c;\ b - c]$와 `det3(a, b, c, d)` $= \det[b - a,\ c - a,\ d - a]$는
+
+$$
+\lvert r - x \rvert \le 1.002\,u\lvert x\rvert + 2^{-1075}
+$$
+
+을 지켜요($x = 0$이면 정확히 0, $x$가 넘치면 ±inf). 상대오차가 행렬식 자신에 대한 것이라, 항이 크게 지워져 값이 작은 행렬식(가늘거나 납작한 단체)에서도 무너지지 않아요.
+
+```cpp
+// csrc/spatial/predicates.hpp
+// The fast path (points safe for q = 2): the value, or NaN when it is not certified.
+inline double det2_fast(const double* a, const double* b, const double* c) {
+    double h1, h2, h3, h4, t1, t2, t3, t4;
+    two_diff(a[0], c[0], h1, t1);
+    two_diff(b[1], c[1], h2, t2);
+    two_diff(a[1], c[1], h3, t3);
+    two_diff(b[0], c[0], h4, t4);
+    double p, e, q, f, s, g;
+    two_prod(h1, h2, p, e);
+    two_prod(h3, h4, q, f);
+    two_diff(p, q, s, g);
+    const double low = ((e - f) + g) + ((h1 * t2 + t1 * h2) - (h3 * t4 + t3 * h4));
+    const double r = s + low;
+    const double perm = std::fabs(p) + std::fabs(q);
+    if (perm == 0.0) return 0.0;
+    if (std::fabs(r) >= kValueAccept * perm) return r;
+    return std::numeric_limits<double>::quiet_NaN();
+}
+```
+
+차이를 정확한 짝 $h + t$로 두면 참값은 $x = (h_1 + t_1)(h_2 + t_2) - (h_3 + t_3)(h_4 + t_4)$이에요. 머리끼리의 곱은 `two_prod`, 그 차는 `two_diff`로 오차 없이 $s + (e - f + g)$가 되고, 남는 것은 꼬리가 하나인 첫째 차수의 항 $C_1 = h_1t_2 + t_1h_2 - h_3t_4 - t_3h_4$와 꼬리 둘의 항 $N = t_1t_2 - t_3t_4$예요. $\lvert t \rvert \le u\lvert h\rvert$이고 $P_m = \lvert h_1h_2\rvert + \lvert h_3h_4\rvert$라 하면
+
+- $C = (e - f + g) + C_1$의 항은 크기 합이 $(4u + u^2)P_m$ 이하이고 반올림을 많아야 네 번 거쳐서, 계산값과 $17u^2P_m$ 안이에요.
+- 버린 $N$은 $u^2P_m$ 이하예요.
+- $r = \mathrm{fl}(s + \hat C)$는 $\lvert r - x\rvert \le u\lvert r\rvert + 18u^2P_m$이에요.
+
+둘째 항이 문제예요. 그래서 $\lvert r\rvert \ge 2^{-36}\hat P$일 때만 받아요($\hat P$는 float로 구한 퍼머넌트로 참 퍼머넌트의 $(1 - u)^5$배 이상). 그러면 $18u^2P_m \le 18 \cdot 2^{36}u^2\lvert r\rvert(1 + O(u)) \lt 0.0002\,u\lvert r\rvert$이라 $\lvert r - x\rvert \le 1.0002\,u\lvert r\rvert$이고, $\lvert r \rvert$를 $\lvert x \rvert$로 바꿔 $1.002\,u\lvert x\rvert$가 넉넉히 서요. 받지 못하면(행렬식이 항보다 $2^{36}$배 넘게 작거나 범위 밖이면) W로 행렬식을 정확히 구하고 올바르게 반올림해요. `det3`도 같은 방법이고, 세 $2 \times 2$ 소행렬식과 첫째 차수의 꼬리 항 아홉, 낮은 항 열일곱을 세면 $\lvert r - x\rvert \le u\lvert r\rvert + 160u^2\Pi$라 같은 판정으로 $1.002u$가 서요.
+
+## 동점 규칙: 올림 높이의 기호 섭동
+
+`incircle`이 0이면 네 점이 한 원 위예요. 정사각형의 네 꼭짓점이 그래요. 그러면 두 대각선 모두 Delaunay 조건을 지켜서 삼각분할이 하나로 정해지지 않아요. 알고리즘이 그때그때 아무 쪽이나 고르면 결과가 넣는 순서나 스레드 수에 따라 달라지고, 한 판정과 다른 판정이 어긋나 구조가 깨질 수도 있어요. 그래서 0을 결코 돌려주지 않는 판정 `incircle_sos`, `insphere_sos`를 두고, 그 판정이 **어떤 하나의 점 집합에 대한 일관된 답**이 되게 해요.
+
+### 규칙
+
+서로 다른 점을 좌표의 사전 순서($x$, 그다음 $y$, $z$)로 줄 세우고, $k$번째로 큰 점의 올림 높이에 $\varepsilon^k$를 더해요. $\varepsilon$은 어떤 양수보다도 작은 양수로 생각해요. 큰 점일수록 섭동이 커요. 점의 **자리**는 그대로이고 높이만 움직이므로 `orient`의 답은 바뀌지 않고, 평평한 단체도 생기지 않아요. 올린 점들은 포물면 위의 엄격한 볼록 위치에 있어서, 높이를 아주 조금 움직여도 모든 점이 아래 껍질의 꼭짓점으로 남아요.
+
+결과는 섭동한 높이의 아래 볼록 껍질을 내려놓은 삼각분할이에요. 섭동한 점들에서는 어떤 $d + 2$개의 점도 한 원 위에 있지 않으니(아래 증명대로 판정이 0이 아니에요) 그 삼각분할은 하나뿐이고, $\varepsilon \to 0$으로 보내면 각 단체의 섭동한 빈 원이 원래 점들의 닫힌 빈 원이 되므로 원래 점 집합의 Delaunay 삼각분할 가운데 하나예요. 그것이 `Delaunay`가 내는 삼각분할이에요. 규칙이 좌표의 순서로만 정해지니 삼각분할은 점 집합의 함수이고, 입력의 차례·알고리즘·스레드 수가 바꿀 수 없어요.
+
+### 닫힌 꼴
+
+$\varepsilon$의 다항식을 실제로 계산하지 않아도 돼요. 2차원을 보면, `incircle`은 행이 $(p_x, p_y, h_p, 1)$인 $4 \times 4$ 행렬식 $D$의 부호예요($h_p$는 올림 높이). 행렬식은 한 열에 대해 선형이므로 높이 열을 섭동하면
+
+$$
+D(\varepsilon) = D(0) + \sum_{p} \varepsilon^{k(p)}\, C_p
+$$
+
+이고 $C_p$는 점 $p$의 높이 칸의 여인수예요. $D(0) = 0$이면 부호는 $C_p \ne 0$인 첫 항, 곧 $k(p)$가 가장 작은(사전 순서로 가장 큰) 점의 $C_p$의 부호예요. 인자 자리 $i$(0부터)의 행에서 높이 열(셋째 열)의 여인수는 $(-1)^{i+2}$에 나머지 세 행의 $(x, y, 1)$ 행렬식을 곱한 것이고, 그 행렬식이 나머지 세 점(인자 순서)의 `orient2d`예요. 그래서
+
+$$
+\mathrm{incircle\_sos}(a, b, c, d) = (-1)^i \cdot \mathrm{orient2d}(\text{나머지 셋})
+$$
+
+이에요(사전 순서로 큰 점부터 보며 그 `orient2d`가 0이 아닌 첫 점 $i$에서). 3차원은 행이 $(p_x, p_y, p_z, h_p, 1)$인 $5 \times 5$이고 높이 열이 넷째라 여인수의 부호가 $(-1)^{i+3}$이에요. 이 영역의 `insphere`는 그 행렬식의 부호를 뒤집은 것이고, `orient3d`($\det[b - a, c - a, d - a]$)도 $(x, y, z, 1)$ 행렬식의 부호를 뒤집은 것이라 두 뒤집기가 남아
+
+$$
+\mathrm{insphere\_sos}(a, b, c, d, e) = (-1)^{i+1} \cdot \mathrm{orient3d}(\text{나머지 넷})
+$$
+
+이에요.
+
+```cpp
+// csrc/spatial/predicates.hpp
+template <class In, class Orient>
+inline int incircle_tie(const double* a, const double* b, const double* c, const double* d, In in, Orient orient) {
+    const int s = in(a, b, c, d);
+    if (s != 0) return s;
+    const double* p[4] = {a, b, c, d};
+    int idx[4];
+    descending<4, 2>(p, idx);
+    for (int k = 0; k < 4; ++k) {
+        const int i = idx[k];
+        const double* q[3];
+        for (int j = 0, m = 0; j < 4; ++j)
+            if (j != i) q[m++] = p[j];
+        const int o = orient(q[0], q[1], q[2]);
+        if (o != 0) return (i & 1) ? -o : o;
+    }
+    return 0;
+}
+```
+
+이 꼴은 관련된 $d + 2$개 점 사이의 순서만 써요. 전역 순위가 필요 없어서 술어 하나로 끝나요.
+
+**0이 아닌 까닭.** 점이 서로 다르고 앞의 $d + 1$개가 퇴화하지 않았으면(삼각분할이 부르는 경우가 언제나 그래요) 마지막 점의 여인수가 바로 그 $d + 1$개의 방향이라 0이 아니에요. 고리는 모든 점을 보므로 반드시 0이 아닌 항을 만나요.
+
+정사각형에서 확인해 볼게요. 네 점은 한 원 위라 섭동 없는 판정은 0이고, 섭동한 판정은 $(0, 0), (1, 0), (1, 1)$의 원 안에 $(0, 1)$이 있다고 답해요. 그래서 대각선 $(0, 0)$–$(1, 1)$은 버려지고 $(1, 0)$–$(0, 1)$이 남아요. 점의 차례를 돌려서 물어도 일관된 답이에요.
+
+```python
+>>> S = sd.asarray([[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]])
+>>> int(C._predicate("incircle", S)[0]), int(C._predicate("incircle_sos", S)[0])
+(0, 1)
+>>> sd.spatial.Delaunay([[0, 0], [1, 0], [1, 1], [0, 1]]).simplices
+array([[0, 1, 3],
+       [1, 2, 3]], dtype=int64)
+```
+
+**확인.** 테스트는 올림 높이에 $\varepsilon^k$를 더한 행렬식을 $\varepsilon$의 유리 다항식으로 정확히 계산하고, 닫힌 꼴과 C++의 `*_sos`가 정확히 퇴화한 행, 정수 격자, 거의 퇴화한 행, 극단 범위의 행에서 모든 인자 순서로 같은지 봐요. 또 그 규칙으로 만든 전수 참조(모든 $(d + 1)$-부분집합에서 섭동한 빈 원을 보는 것)가 작은 점 집합마다 삼각분할이고, 행을 섞어도 같은 삼각분할인지 봐요. 이런 꼴의 섭동은 Devillers와 Teillaud의 방법으로 알려져 있어요. 여기서 쓰는 규칙은 위의 계산으로 서요.
+
+## 다른 곳에서
+
+- 술어를 고르는 범위는 점 집합마다 한 번(`Predicates`), 평가점처럼 범위 밖의 값이 섞이면 호출마다(`*_any`)예요.
+- 삼각분할의 만들기는 `orient`와 섭동한 원·구 판정만 써요([삼각분할 만들기](/internals/spatial/delaunay/)). 보로노이 그림의 묶음과 껍질의 평평한 면은 섭동 없는 판정을 써요([볼록 껍질과 보로노이](/internals/spatial/hull-voronoi/)).
+- 값 커널은 껍질의 넓이·부피·법선, 보로노이 꼭짓점, `transform`, 흩어진 점 보간의 무게에 들어가고, 그 결과의 오차 계약이 이 $1.002u$에서 나와요([정확도와 성능](/internals/spatial/accuracy-performance/)).

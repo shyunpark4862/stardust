@@ -1,0 +1,196 @@
+---
+title: 대역폭 선택자
+names: [bw_scott, bw_silverman, bw_nrd0, bw_nrd, bw_sj, bw_isj, bw_cv_ls, bw_cv_ml]
+group: 핵밀도추정
+order: 2
+signatures:
+  - "sd.smooth.bw_scott(data, /, *, weights=None)"
+  - "sd.smooth.bw_silverman(data, /, *, weights=None)"
+  - "sd.smooth.bw_nrd0(x, /)"
+  - "sd.smooth.bw_nrd(x, /)"
+  - "sd.smooth.bw_sj(x, /, *, method='ste', nb=1000)"
+  - "sd.smooth.bw_isj(x, /, *, n_grid=16384)"
+  - "sd.smooth.bw_cv_ls(data, /, *, nb=None)"
+  - "sd.smooth.bw_cv_ml(data, /)"
+summary: 핵밀도추정의 대역폭을 자료에서 고르는 규칙 여덟 가지예요. 정규분포를 가정한 닫힌 꼴(Scott, Silverman, R의 nrd0·nrd), 방정식을 푸는 대입 규칙(Sheather–Jones, ISJ), 교차검증(최소제곱, 최대우도)이 있어요. 모두 가우스 핵의 표준편차를 돌려줘요.
+params:
+  - name: data
+    type: ndarray, 수의 시퀀스, numpy 배열, Series, DataFrame
+    kind: positional-only
+    desc: "bw_scott, bw_silverman, bw_cv_ls, bw_cv_ml의 표본. (n,) 또는 (n, p)이고, 여러 변수면 변수마다의 대역폭 (p,)을 돌려줘요."
+  - name: x
+    type: ndarray, 수의 시퀀스, numpy 배열, Series
+    kind: positional-only
+    desc: "한 변수만 받는 규칙(bw_nrd0, bw_nrd, bw_sj, bw_isj)의 표본 (n,)."
+  - name: weights
+    type: ndarray, 수의 시퀀스 또는 None
+    kind: keyword-only
+    desc: "bw_scott, bw_silverman의 점마다 확률 무게 (n,). 유효 표본 수와 무게 붙은 표준편차를 써요."
+  - name: method
+    type: str
+    kind: keyword-only
+    desc: "bw_sj: 'ste'(기본값, 방정식 풀기) 또는 'dpi'(직접 대입)."
+  - name: nb
+    type: int 또는 None
+    kind: keyword-only
+    desc: "bw_sj: 쌍 합을 어림하는 구간 수(기본 1000). bw_cv_ls: None(기본값)이면 정확한 쌍 합, 수를 주면 R처럼 그 수의 구간으로 어림해요."
+  - name: n_grid
+    type: int
+    kind: keyword-only
+    desc: "bw_isj의 격자 점 수. 기본값 16384."
+returns:
+  type: float 또는 ndarray
+  desc: "가우스 핵의 표준편차. 여러 변수를 받는 규칙에 (n, p)를 주면 (p,) 배열."
+raises:
+  - type: TypeError
+    desc: "옵션을 자리로 줄 때, 없는 인자를 줄 때."
+  - type: ValueError
+    desc: "NaN이나 ±inf가 있을 때, 점이 너무 적을 때, 퍼짐이 0일 때(bw_sj, bw_isj, bw_cv_ls, bw_cv_ml; 닫힌 꼴 규칙은 0을 돌려줘요), method의 이름이 틀렸을 때, bw_isj의 방정식에 근이 없을 때(메시지가 다른 규칙을 알려 줘요)."
+seeAlso: [kde, kernel_regression]
+---
+
+## 한눈에 보기
+
+[`kde`](/api/smooth/kde/)의 결과는 대역폭에 크게 달려 있어요. 좁으면 점마다 뾰족한 봉우리가 서고, 넓으면 진짜 봉우리까지 뭉개져요. 이 쪽의 함수들은 자료만 보고 대역폭을 골라 가우스 핵의 표준편차로 돌려줘요. `kde(data, bw='silverman')`처럼 이름으로 주면 `kde`가 같은 함수를 불러요.
+
+```python
+>>> import stardust as sd
+>>> rng = sd.random.default_rng(3)
+>>> a = sd.stats.Normal(mu=-2.0, sigma=0.6).sample(120, rng=rng)
+>>> b = sd.stats.Normal(mu=1.5, sigma=1.0).sample(180, rng=rng)
+>>> data = sd.concat([a, b])
+>>> for f in (sd.smooth.bw_scott, sd.smooth.bw_silverman, sd.smooth.bw_nrd0, sd.smooth.bw_nrd,
+...           sd.smooth.bw_sj, sd.smooth.bw_isj, sd.smooth.bw_cv_ls, sd.smooth.bw_cv_ml):
+...     print(f.__name__, round(f(data), 4))
+bw_scott 0.6067
+bw_silverman 0.6426
+bw_nrd0 0.546
+bw_nrd 0.6431
+bw_sj 0.3066
+bw_isj 0.3235
+bw_cv_ls 0.3109
+bw_cv_ml 0.3348
+>>> sd.smooth.bw_silverman(data) == sd.smooth.kde(data, bw='silverman').bw
+True
+```
+
+정규분포를 가정한 앞의 넷은 이 두 봉우리 자료에서 0.55–0.64를, 자료의 모양을 보는 뒤의 넷은 0.31–0.33을 골랐어요. 봉우리가 여럿이거나 꼬리가 긴 자료에서는 뒤의 규칙이 대개 나아요.
+
+<Reference />
+
+## 정규 기준 규칙
+
+자료가 정규분포라면 평균 적분 제곱 오차를 가장 작게 하는 대역폭은 $h \approx 1.06\,\sigma\, n^{-1/5}$예요. 이 식을 바탕으로 한 닫힌 꼴이에요. 계산이 빠르고 언제나 답이 나오지만, 정규분포와 멀수록 넓게 잡아요.
+
+| 함수 | 식 | 같은 것 |
+|---|---|---|
+| `bw_scott` | $n_{\mathrm{eff}}^{-1/(p+4)}\,\hat\sigma$ | scipy `gaussian_kde`의 `'scott'` |
+| `bw_silverman` | $\bigl(n_{\mathrm{eff}}(p+2)/4\bigr)^{-1/(p+4)}\,\hat\sigma$ | scipy의 `'silverman'` |
+| `bw_nrd0` | $0.9\,\min(\hat\sigma, \mathrm{IQR}/1.34)\,n^{-1/5}$ | R `bw.nrd0`(R `density`의 기본) |
+| `bw_nrd` | $1.06\,\min(\hat\sigma, \mathrm{IQR}/1.34)\,n^{-1/5}$ | R `bw.nrd` |
+
+$\hat\sigma$는 표본 표준편차($n - 1$로 나눠요), IQR은 사분위범위(선형 보간의 사분위수), $p$는 변수의 수, $n_{\mathrm{eff}} = (\sum w)^2 / \sum w^2$는 유효 표본 수예요(무게가 없으면 $n$). `bw_nrd0`과 `bw_nrd`는 IQR을 함께 봐서, 이상점 몇 개가 $\hat\sigma$를 키워도 덜 넓어져요. `bw_nrd0`은 $\hat\sigma$와 IQR이 둘 다 0이면 R처럼 $\hat\sigma$, $\lvert x_1\rvert$, 1의 차례로 대신 써요.
+
+```python
+>>> X = sd.stack([data, 0.5 * data + sd.stats.Normal().sample(300, rng=rng)], axis=1)
+>>> sd.smooth.bw_scott(X)
+array([0.7337420443031086, 0.4987504968153321], dtype=float64)
+>>> sd.smooth.bw_scott(data, weights=sd.linspace(1, 2, 300))
+0.5920199979777808
+>>> sd.smooth.bw_nrd0([5.0, 5.0, 5.0, 5.0])
+3.4103622746483957
+>>> sd.smooth.bw_nrd([5.0, 5.0, 5.0, 5.0])
+0.0
+```
+
+`bw_nrd`에는 이 물러서기가 없어서(R과 같아요) 퍼짐이 없는 자료에서 0이에요. `kde`가 이 0을 받으면 대역폭이 양수가 아니라는 `LinAlgError`예요.
+
+## 대입 규칙
+
+### Sheather–Jones: `bw_sj`
+
+최적 대역폭의 식에는 모르는 밀도의 곡률 $\int f''^2$이 들어 있어요. Sheather–Jones는 그 곡률을 다른(파일럿) 대역폭의 핵 추정으로 재서 식에 넣어요. `method='ste'`(solve-the-equation)는 파일럿 대역폭을 $h$에 묶은 방정식을 $h$에 대해 풀고, `'dpi'`(direct plug-in)는 한 번 대입해요. 자료의 쌍 합은 점이 `nb`/2보다 많으면 `nb`개 구간으로 어림해요(R과 같은 식).
+
+```python
+>>> sd.smooth.bw_sj(data), sd.smooth.bw_sj(data, method='dpi')
+(0.30660592176429113, 0.3395115868433503)
+>>> sd.smooth.bw_sj(data, nb=4000)
+0.3067177926252581
+>>> sd.smooth.bw_sj(data, method='solve')
+Traceback (most recent call last):
+    ...
+ValueError: bw_sj(): 'method' must be 'ste' or 'dpi', not 'solve'
+```
+
+### ISJ: `bw_isj`
+
+Botev–Grotowski–Kroese(2010)의 improved Sheather–Jones예요. 파일럿 대역폭을 정규 가정 없이 고정점 방정식으로 정해서, 봉우리가 여럿인 자료에도 잘 맞아요. 자료를 격자 `n_grid`점에 구간화하고 코사인 변환으로 계산해요. 자료가 아주 적거나 같은 값이 많으면 방정식에 근이 없을 수 있고, 그때는 에러가 다른 규칙을 알려 줘요.
+
+```python
+>>> sd.smooth.bw_isj(data)
+0.32346717358277133
+>>> sd.smooth.bw_isj(data, n_grid=1024)
+0.3232242898997273
+>>> sd.smooth.bw_isj([0.0, 1.0, 2.0, 3.0])
+Traceback (most recent call last):
+    ...
+ValueError: bw_isj(): the fixed-point equation has no root in (0, 0.1] (too few or too discrete data); use bw_sj or bw_nrd0
+```
+
+## 교차검증
+
+### 최소제곱: `bw_cv_ls`
+
+밀도 추정과 참 밀도의 적분 제곱 오차에서 $h$에 기대는 부분을 표본으로 어림한 값을 가장 작게 하는 $h$예요.
+
+$$
+\mathrm{CV}_{\mathrm{LS}}(h) = \int \hat f_h^2 - \frac{2}{n}\sum_i \hat f_{h,-i}(x_i)
+$$
+
+$\hat f_{h,-i}$는 점 $i$를 빼고 만든 추정이에요. 기본은 정확한 쌍 합이고, `nb`를 주면 R의 `bw.ucv`처럼 그 수의 구간으로 어림해요. 같은 값이 많은 이산적인 자료에서는 기준이 $h \to 0$으로 계속 줄어서 찾는 구간의 아래 끝이 나와요.
+
+### 최대우도: `bw_cv_ml`
+
+하나씩 뺀 로그 우도 $\sum_i \log \hat f_{h,-i}(x_i)$를 가장 크게 하는 $h$예요. 꼬리가 긴 자료에서 대역폭을 크게 잡는 경향이 있어요.
+
+여러 변수를 주면 두 함수 모두 변수마다의 대역폭(대각 $H$)을 함께 골라요.
+
+```python
+>>> sd.smooth.bw_cv_ls(data), sd.smooth.bw_cv_ls(data, nb=1000)
+(0.310866807574771, 0.3114296610237349)
+>>> sd.smooth.bw_cv_ml(X)
+array([0.39094935206635517, 0.42088033738278813], dtype=float64)
+>>> sd.smooth.bw_cv_ls([1.0, 1.0, 2.0, 2.0, 2.0, 3.0, 3.0])
+0.00837532145760856
+```
+
+찾기는 자료의 `bw_nrd` 값의 $1/64$배부터 64배까지에서 해요. 격자 33점을 재고 가장 작은 점 둘레를 Brent 방법으로 다듬어요(여러 변수는 Nelder–Mead). 그래서 기준에 국소 최소가 여럿이어도 격자에서 가장 낮은 곳을 찾아요. 기준이 가장 작은 곳이 구간의 끝이면 그 끝을 돌려줘요.
+
+## 받는 입력
+
+NaN과 ±inf는 에러예요(`nan_policy`가 없어요). 먼저 빼고 불러요. 한 변수 규칙에 여러 변수를 주면 에러예요.
+
+```python
+>>> sd.smooth.bw_scott([1.0, float('nan'), 2.0])
+Traceback (most recent call last):
+    ...
+ValueError: bw_scott(): 'data' must be finite (NaN or infinity found)
+>>> sd.smooth.bw_sj(X)
+Traceback (most recent call last):
+    ...
+ValueError: bw_sj(): 'x' must be 1-D, not 2-D
+>>> sd.smooth.bw_scott(data, None)
+Traceback (most recent call last):
+    ...
+TypeError: bw_scott(): takes 1 positional argument but 2 were given
+```
+
+같은 자료를 다른 순서로 주면 같은 비트예요. 스레드 수와도 무관해요. 반복이 있는 규칙도 반복 수의 상한이 있어 언제나 끝나요.
+
+## scipy·statsmodels·R을 아는 분께
+
+- 대역폭은 모두 핵의 표준편차예요. scipy의 `gaussian_kde.factor`처럼 표준편차에 곱하는 인수가 아니에요. 한 변수의 `bw_scott(x)`는 `gaussian_kde(x).factor * x.std(ddof=1)`과 같은 양이에요.
+- statsmodels의 `bw_scott`, `bw_silverman`, `bw_normal_reference`는 $1.059\min(\hat\sigma, \mathrm{IQR}/1.349)n^{-1/5}$ 같은 다른 식이라 이름이 같아도 값이 달라요. 그 값이 필요하면 직접 계산해 `kde(bw=…)`에 수로 줘요.
+- `bw_sj`는 R `bw.SJ`의 구간 개수와 식을 따라요. R의 `uniroot`가 거친 허용오차에서 멈춰서 R과 조금 달라요(시험 자료에서 0.3% 안). R의 구간화는 0에서 세는 자리라서 자료를 평행 이동하면 값이 조금 바뀌는데, 그것도 R과 같아요.
+- `bw_cv_ls(nb=…)`는 R `bw.ucv`의 식이에요. R은 좁은 구간에서 찾다가 국소 최소나 끝에서 멈출 수 있어서 값이 다를 수 있어요(시험 자료에서 R 0.585, sd 0.796이었고 sd의 기준 값이 더 작았어요). `nb=None`의 정확한 쌍 합은 statsmodels `KDEMultivariate`의 `cv_ls`와 같은 기준이에요. statsmodels도 찾기가 국소 최소에서 멈출 수 있어요.
+- `bw.bcv`와 `KernSmooth::dpik`는 없어요. 비교할 ISJ의 다른 구현은 설치된 것이 없어서, `bw_isj`는 같은 방정식을 구간 산술(Arb)로 푼 참값과 견줘요.

@@ -1,0 +1,273 @@
+---
+title: 핵 회귀
+group: 핵 방법
+order: 1
+summary: "kernel_regression이 국소 평균과 국소 직선을 계산하는 방법을 설명해요. 무게를 가장 가까운 점에서 잰 지수로 옮겨 먼 평가점에서도 0/0이 나지 않게 하고, 한 점을 뺀 적합은 다시 풀지 않고 자기 항만 되돌려 대역폭을 빠르게 골라요."
+seeAlso: [kde, bandwidth, overview, determinism, accuracy-performance]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+export const cv0 = [[-4.159, -2.016], [-3.899, -2.053], [-3.639, -2.104], [-3.379, -2.155], [-3.119, -2.207], [-2.859, -2.264], [-2.599, -2.32], [-2.339, -2.363], [-2.079, -2.39], [-1.82, -2.406], [-1.56, -2.416], [-1.3, -2.419], [-1.04, -2.409], [-0.78, -2.373], [-0.52, -2.285], [-0.26, -2.093], [0.0, -1.774], [0.26, -1.398], [0.52, -1.061], [0.78, -0.8162], [1.04, -0.668], [1.3, -0.5951], [1.56, -0.5661], [1.82, -0.5561], [2.079, -0.553], [2.339, -0.5521], [2.599, -0.5519], [2.859, -0.5518], [3.119, -0.5518], [3.379, -0.5519], [3.639, -0.5519], [3.899, -0.5519], [4.159, -0.5519]];
+export const cv1 = [[-4.159, -0.6612], [-3.899, -0.9254], [-3.639, -1.316], [-3.379, -1.877], [-3.119, -2.069], [-2.859, -2.165], [-2.599, -2.258], [-2.339, -2.351], [-2.079, -2.397], [-1.82, -2.423], [-1.56, -2.436], [-1.3, -2.44], [-1.04, -2.434], [-0.78, -2.407], [-0.52, -2.334], [-0.26, -2.175], [0.0, -1.907], [0.26, -1.575], [0.52, -1.247], [0.78, -0.9768], [1.04, -0.8052], [1.3, -0.71], [1.56, -0.6501], [1.82, -0.6103], [2.079, -0.585], [2.339, -0.5695], [2.599, -0.5601], [2.859, -0.5545], [3.119, -0.5512], [3.379, -0.5492], [3.639, -0.5481], [3.899, -0.5474], [4.159, -0.547]];
+export const pick1 = [[-1.304, -2.6], [-1.304, -0.4]];
+
+## 한눈에 보기
+
+[`kernel_regression`](/api/smooth/kernel_regression/)은 평가점 $x_0$마다 가우스 무게로 국소 상수(`degree=0`, Nadaraya–Watson)나 국소 직선(`degree=1`)을 맞춰요. 핵은 변수마다의 가우스 핵의 곱이고 `bw`는 변수마다의 표준편차예요. 반올림이 아닌 동작은 statsmodels 0.15.0의 `KernelReg`를 따라요.
+
+$$
+v_j = w_j\exp\Bigl(-\tfrac12 D_j\Bigr),\qquad D_j = \sum_l z_{jl}^2,\quad z_{jl} = \frac{x_{jl} - x_{0l}}{h_l}.
+$$
+
+| 파일 | 줄 수 | 맡은 일 |
+|---|---:|---|
+| `csrc/smooth/gauss_sum.hpp` | 313 | 대역폭 단위의 좌표, 지수 옮기기, 자르기 문턱, 정해진 순서의 합, NEON exp로 항 만들기, 1차원의 이어진 구간 |
+| `csrc/smooth/gauss_tree.hpp` | 143 | 여러 변수의 KD 트리 후보 |
+| `csrc/smooth/kreg.cpp` | 1,357 | 국소 적합(1변수 닫힌 꼴, 여러 변수 피벗 QR), 한 점 뺀 적합과 갱신, CV·AICc, 대역폭 찾기, dpill |
+| `src/stardust/smooth/_kreg.py` | 343 | 인자 검사, 결과 객체, `predict`·`gradient`·`predict_interval` |
+
+`gauss_sum.hpp`와 `gauss_tree.hpp`는 [핵밀도추정](/internals/smooth/kde/)도 같이 써요.
+
+## 준비
+
+무게가 양수인 점만 정렬해 쥐어요. 1변수는 $(x, y, \text{무게}, \text{색인})$, 여러 변수는 $(\text{좌표}\ldots, y, \text{무게}, \text{색인})$의 사전순이에요. 그 뒤의 모든 합이 이 순서라 결과는 입력 순서와 무관해요. 무게가 0인 점은 합에 들지 않고, 그 점의 `fittedvalues`는 그 $x$에서의 평가, `leverage`는 0이에요(회귀의 `wls`와 같은 규칙).
+
+좌표는 $z = ((x - x_0)\cdot sc)\cdot\mathit{inv}$, $\mathit{inv} = 1/(h\cdot sc)$로 구해요. $h \lt 2^{-900}$이면 $sc = 2^{1000}$이고 그 밖에는 1이에요. [lowess](/internals/smooth/lowess/)의 창 반경과 같은 처리라서, $1/h$가 넘치지 않고 2의 거듭제곱의 척도에 같은 비트가 나와요.
+
+## 지수 옮기기
+
+모든 무게에서 공통 인수 $\exp(-\tfrac12 D_0)$를 빼요. $D_0$은 가장 가까운 자료점 $c$의 $D$예요.
+
+$$
+\hat y(x_0) = \frac{\sum_j w_je^{-D_j/2}y_j}{\sum_j w_je^{-D_j/2}} = \frac{\sum_j e_jy_j}{\sum_j e_j},\qquad e_j = w_j\exp\Bigl(-\tfrac12(D_j - D_0)\Bigr).
+$$
+
+평가점이 모든 자료점에서 멀면 $e^{-D_j/2}$가 모두 0으로 언더플로해 0/0이 되는데, 옮긴 꼴에서는 가장 큰 항이 $w_c$라 비가 살아 있어요. 그 극한은 가장 가까운 점의 값이에요.
+
+```python
+>>> rng = sd.random.default_rng(7)
+>>> x = 10 * rng.random(200)
+>>> y = sd.sin(x) + 0.3 * sd.stats.Normal().sample(200, rng=rng)
+>>> r0 = sd.smooth.kernel_regression(x, y, degree=0, bw=0.05)
+>>> i = int(sd.argmax(x))
+>>> r0.predict([float(x[i]) + 50.0, 1e6]), float(y[i])
+(array([-0.8272163399849857, -0.8272163399849857], dtype=float64), -0.8272163399849857)
+```
+
+지수의 인자 $D_j - D_0$은 두 $D$를 빼서 구하지 않아요. 둘 다 반올림된 큰 수라서 뺄셈이 절대 $u\cdot D_0$을 잃고, 먼 평가점($D_0 \approx 10^6$)에서는 그만큼이 무게를 $10^{-10}$배씩 움직여요. 대신 가장 가까운 점 $c$에서 잰 차 $d = z_j - z_c$를 자료의 좌표 차로 직접 구하면 $D_j - D_0 = (z_c + d)^2 - z_c^2 = d\,(2z_c + d)$예요.
+
+```cpp
+// csrc/smooth/gauss_sum.hpp
+inline double excess_1d(double x, double xc, double zc, Axis a) {
+    const double d = ((x - xc) * a.sc) * a.inv;
+    return d * ((zc + zc) + d);
+}
+```
+
+$x_j - x_c$는 가까운 자료끼리의 차라 정확하거나 오차가 작고, 곱의 상대 오차는 몇 $u$예요. 뺄셈의 꼴로는 먼 평가점의 국소 상수가 계약의 7000배 틀리는 자료에서 이 꼴은 0.051배예요. 여러 변수도 축마다 같은 식을 더해요(`excess_nd`).
+
+## 자르기
+
+국소 상수에서는 $D_j - D_0 \gt T$인 점을 합에서 빼요.
+
+$$
+T = 2\Bigl(\ln\frac{n}{u} + \ln\frac{w_{\max}}{w_{\min}}\Bigr).
+$$
+
+**증명.** 남긴 합에는 가장 큰 항 $e_c = w_c \ge w_{\min}$이 있어요. 뺀 항 하나는 $e_j = w_j\exp(-\tfrac12(D_j - D_0)) \lt w_{\max}\cdot\frac{u}{n}\cdot\frac{w_{\min}}{w_{\max}} = \frac{u}{n}w_{\min}$이고, 뺀 항은 $n$개보다 적어요. 그래서 뺀 항의 합이 $u\cdot w_{\min} \le u\cdot(\text{남긴 합})$보다 작아요. 분자 $\sum e_jy_j$도 같은 방식으로 $u\sum e_j\lvert y_j\rvert$ 아래라 상대 오차에 $u$ 하나를 더할 뿐이에요.
+
+국소 직선에는 이 증명이 서지 않아요. 기울기의 합 $\sum v(t - \bar t)^2$에서 가장 큰 무게의 점은 $t - \bar t \approx 0$을 곱하므로, 무게가 $u/n$배인 먼 점이 기울기의 전부일 수 있어요. 그래서 국소 직선은 $\exp$가 정확히 0이 되는 $D_j - D_0 \gt 1492$($e^{-746}$은 0으로 반올림)만 빼요. 그 점의 항은 어차피 0이라 어떤 비트도 바뀌지 않아요.
+
+1변수에서는 남길 점이 정렬된 자료의 이어진 구간이에요. $D_j - D_0$이 $x_0$의 양쪽에서 $\lvert x_j - x_0\rvert$와 함께 자라니까요. 가장 가까운 점을 이분 탐색으로 찾고(동점이면 왼쪽), 양쪽 끝을 다시 이분 탐색으로 찾아요(`range_1d`). 여러 변수는 모든 점의 $D$를 재고 걸러요(또는 아래의 트리 후보).
+
+## 합의 순서
+
+```cpp
+// csrc/smooth/gauss_sum.hpp
+template <class F>
+inline double block_sum(std::int64_t lo, std::int64_t hi, const F& term) {
+    double s0 = 0, s1 = 0, s2 = 0, s3 = 0;
+    std::int64_t j = lo;
+    for (; j + 4 <= hi; j += 4) { s0 += term(j), s1 += term(j + 1), s2 += term(j + 2), s3 += term(j + 3); }
+    for (; j < hi; ++j) s0 += term(j);
+    return (s0 + s1) + (s2 + s3);
+}
+
+template <class F>
+inline double tree_sum(std::int64_t lo, std::int64_t hi, const F& term) {
+    if (hi - lo <= kBlock) return block_sum(lo, hi, term);
+    const std::int64_t nb = (hi - lo + kBlock - 1) / kBlock;
+    const std::int64_t mid = lo + (nb / 2) * kBlock;
+    return tree_sum(lo, mid, term) + tree_sum(mid, hi, term);
+}
+```
+
+64개 묶음 안은 누산기 넷($j \bmod 4$), 묶음끼리는 짝으로 더해요. 순서는 길이로만 정해지고, 오차는 묶음 안의 16단계와 $\log_2(n/64)$단계의 짝 합이라 $n$이 커져도 천천히 자라요. 여러 합을 한 번에 훑는 `sums_of<K>`는 각 합이 따로 훑은 것과 같은 비트이고, NEON 판 `vsums_of`는 누산기 넷을 레인 둘씩의 두 레지스터로 둬 같은 순서·같은 비트예요.
+
+항의 $\exp$는 배열 영역의 NEON 커널(`exp_lanes`)이에요. 두 레인 판과 스칼라 판(`exp1`)이 같은 비트라서 항의 값이 그 점이 레인의 어느 자리에 놓였는지와 상관없어요. 가장 큰 지수가 범위 안이면(넷씩 최댓값을 먼저 확인) 쌍마다의 범위 검사를 건너뛰어요.
+
+## 국소 직선
+
+### 한 변수
+
+가장 가까운 점 $c$에서 잰 $t_j = z(x_j - x_c)$로 두 번 훑어요. 처음에 $a = \sum e$, $\bar t = \sum et/a$, $\bar y = \sum ey/a$를, 다음에 $c' = \sum e(t - \bar t)^2$와 $s = \sum e(t - \bar t)(y - \bar y)$를 구하면
+
+$$
+\beta = s/c',\qquad \hat y(x_0) = \bar y + (t_0 - \bar t)\,\beta
+$$
+
+예요. 평균을 뺀 뒤에 곱하니 [lowess](/internals/smooth/lowess/)의 닫힌 꼴이 걱정하던 $ac - b^2$의 상쇄가 없어요.
+
+$c' = 0$이면 양수 무게가 모두 한 $x$에 있다는 뜻이에요. 다른 $x$의 무게가 모두 언더플로한 먼 평가점에서 생겨요. 그때의 정확한 극한은 그 $x$의 무게 평균을 지나고, 다음 층(가장 가까운 다른 $x$에서 잰 무게)의 기울기를 쓰는 직선이에요. 코드는 그 층의 항을 따로 만들어 기울기를 구해요. 다른 $x$가 아예 없으면 국소 평균이에요.
+
+### 여러 변수
+
+설계 $[1, t]$에 $\sqrt{e_j}$를 곱한 행을 **무게가 큰 행부터** 놓고 열 피벗 Householder QR로 풀어요. 남은 열 노름이 정확히 0일 때만 열을 빼고, 빠진 방향의 기울기는 0이에요. 두 가지를 조심해요.
+
+- **평균을 빼지 않아요.** $t$를 무게 평균에서 재면 반올림한 평균이 가벼운 행만 가진 방향을 덮어요. 먼 평가점의 무게는 $10^{-100}$배씩 갈리는데, 시험 자료 `scales2/50`에서 그렇게 풀면 값이 50배 틀렸어요(numpy의 `lstsq`도 그랬어요). 가장 가까운 점에서 재면 가장 무거운 행이 0 둘레라 덮일 것이 없어요.
+- **무게 순서의 행.** Householder QR은 행의 크기가 크게 다를 때 무거운 행이 위에 있어야 가벼운 행의 정보가 첫 반사에서 지워지지 않아요(행 크기 차가 큰 문제에 대한 Powell–Reid의 관찰).
+
+모멘트 행렬의 Cholesky(loess가 쓰는 풀이)는 쓰지 않아요. 행 무게가 $10^{-100}$배씩 갈리는 행렬에서는 정규방정식이 그 정보를 담지 못해요. `gradient`는 $\beta_l/h_l$이에요.
+
+## 자료점의 적합과 한 점 뺀 적합
+
+CV에는 점 $i$를 뺀 적합 $\hat y_{-i}$가 필요하고, 결과에는 온전한 적합 $\hat y_i$와 지렛대 $L_{ii}$가 필요해요. 여기서는 뺀 적합을 먼저 구하고 자기 항을 계수 하나로 되돌려요.
+
+```cpp
+    // csrc/smooth/kreg.cpp
+    const double E = vmath::exp1(-0.5 * Lx.d0);
+    const double wh = wi * hp, den = E + wh;
+    const double lev = wh / den, om = E / den;
+    const double d = yi - loo;
+    out.fitted = om * loo + lev * yi;
+    out.leverage = lev;
+    out.cv = wi * d * d;
+    const double r = om * d;
+    out.rss = wi * r * r;
+```
+
+뺀 적합의 합들은 그 적합의 가장 가까운 점에서 잰 $D_0'$로 옮겨져 있으니, 자기 항(점 $i$는 $D = 0$이라 원래 무게 $w_i$)을 그 눈금으로 옮기면 $w_i/E$, $E = \exp(-\tfrac12D_0')$예요. 한 항을 더하는 계수 하나의 갱신(Sherman–Morrison)으로 정리하면, $h' = \varphi_i^{\mathsf T}M_{-i}^{-1}\varphi_i$($\varphi = [1, t]$, 국소 상수는 $1/a$)에서
+
+$$
+L_{ii} = \frac{w_ih'}{E + w_ih'},\quad 1 - L_{ii} = \frac{E}{E + w_ih'},\quad
+\hat y_i = (1 - L_{ii})\,\hat y_{-i} + L_{ii}\,y_i,\quad y_i - \hat y_i = (1 - L_{ii})(y_i - \hat y_{-i})
+$$
+
+예요. 어느 식에도 상쇄가 없어요. 흔한 꼴 $(y_i - \hat y_i)/(1 - L_{ii})$는 대역폭이 작아 $L_{ii}$가 1에 가까우면 분모가 자릿수를 잃지만, 여기서는 CV의 항 $(y_i - \hat y_{-i})^2$을 바로 구해 정확해요. 뺀 적합의 랭크가 모자라면(그 점이 랭크를 더하는 경우) 온전한 적합을 따로 구해요.
+
+```python
+>>> xs, ys = x[:40], y[:40]
+>>> cv = sd.smooth._kreg._criterion(xs, ys, 0.5, degree=1)
+>>> loo = 0.0
+>>> for j in range(40):
+...     keep = sd.asarray([k for k in range(40) if k != j])
+...     rj = sd.smooth.kernel_regression(xs[keep], ys[keep], degree=1, bw=0.5)
+...     loo += (float(ys[j]) - float(rj.predict(float(xs[j])))) ** 2
+>>> cv, loo / 40
+(0.1184901335008575, 0.11849013350085749)
+```
+
+40번 다시 맞춘 값과 끝자리 하나 안에서 같아요. 기준 한 번의 계산은 $O(n^2p)$이고 $n \times n$ 행렬은 만들지 않아요(statsmodels는 만들어요). 점마다의 항은 정렬 순서로 짝지어 더해요.
+
+## 대역폭 고르기
+
+기준은 둘이에요.
+
+$$
+\mathrm{CV}(h) = \frac{1}{\mathit{nobs}}\sum_i w_i(y_i - \hat y_{-i})^2,\qquad
+\mathrm{AICc}(h) = \log\frac{\mathrm{RSS}}{\mathit{nobs}} + \frac{1 + \mathrm{tr}L/\mathit{nobs}}{1 - (\mathrm{tr}L + 2)/\mathit{nobs}}
+$$
+
+AICc의 분모가 0 이하이면 $+\infty$예요. 무게가 1이면 statsmodels의 `cv_loo`, 국소 상수의 `aic_hurvich`와 같은 값이에요. statsmodels는 국소 선형에서도 Nadaraya–Watson의 대각합을 쓰는데(RSS는 국소 선형의 것), 여기서는 Hurvich–Simonoff–Tsai의 정의대로 맞춘 평활기의 tr L을 써요.
+
+찾는 변수는 $s = \log(h/h_{\mathrm{ref}})$, $h_{\mathrm{ref}} = 1.06\,\hat\sigma\,\mathit{nobs}^{-1/(4+p)}$(무게 합으로 나눈 무게 붙은 표준편차; statsmodels의 시작점)이고 $\lvert s\rvert \le \log 64$예요. 목적 함수는 $\log\mathrm{CV}$나 AICc라 척도와 무관하고 멈춤 규칙에 단위가 없어요. $x$에 2의 거듭제곱을 곱하면 $h_{\mathrm{ref}}$도 같이 곱해져 고른 $h$와 모든 값이 같은 비트로 옮겨 가요.
+
+- **한 변수.** 격자 33점(동점이면 큰 $h$)에서 가장 작은 점의 양옆을 괄호로 Brent의 fminbound($\lvert\Delta s\rvert \le 10^{-6}$, 60번)를 돌려 격자 값보다 작으면 써요. 알고리즘은 [벌점 스플라인](/internals/smooth/penalized-spline/)의 $\lambda$ 찾기와 같아요. 끝 점이면 `status` $-1$·$1$이에요.
+- **여러 변수.** Nelder–Mead예요(아래).
+
+<Fig caption="200점의 log CV를 격자 33점(s = log(h/h_ref))에서 잰 것. 국소 직선(차수 1)은 아주 작은 대역폭에서 기울기가 불안정해 CV가 다시 커지고, 국소 상수(차수 0)는 큰 대역폭에서 평균으로 평평해져요. 점선이 차수 1에서 고른 s = −1.304예요.">
+  <Plot
+    curves={[
+      { points: cv0, label: '차수 0', dashed: true },
+      { points: cv1, label: '차수 1' },
+      { points: pick1, label: '고른 s', dashed: true },
+    ]}
+    domain={[-4.2, 4.2]}
+    range={[-2.6, -0.4]}
+    xTicks={[{ v: -4, label: '−4' }, { v: -2, label: '−2' }, { v: 0, label: '0' }, { v: 2, label: '2' }, { v: 4, label: '4' }]}
+    yTicks={[{ v: -2.5, label: '−2.5' }, { v: -1.5, label: '−1.5' }, { v: -0.5, label: '−0.5' }]}
+  />
+</Fig>
+
+```python
+>>> r = sd.smooth.kernel_regression(x, y)
+>>> r.bw, r.criterion, r.status, r.converged
+(0.27549082851813356, 'cv_ls', 0, True)
+```
+
+### Nelder–Mead
+
+$p$차원의 단체(꼭짓점 $p + 1$개)를 굴려 가며 가장 나쁜 꼭짓점을 바꿔요. 계수는 scipy의 것(반사 1, 확장 2, 수축 ½, 줄이기 ½)이에요. 한 걸음은 이래요.
+
+1. 꼭짓점을 값의 순서로 놓고, 가장 나쁜 것을 뺀 무게중심 $\bar x$에 대해 가장 나쁜 꼭짓점을 반사한 $x_r = 2\bar x - x_{\mathrm{worst}}$를 재요.
+2. $x_r$이 가장 좋은 값보다 좋으면 두 배 더 간 $3\bar x - 2x_{\mathrm{worst}}$를 재 나은 쪽을 받아요(확장).
+3. 두 번째로 나쁜 값보다만 좋으면 $x_r$을 받아요.
+4. 그렇지 않으면 바깥이나 안쪽으로 반만 간 점을 재고(수축), 그것도 나쁘면 모든 꼭짓점을 가장 좋은 점 쪽으로 반씩 당겨요(줄이기).
+
+점은 언제나 상자 $\lvert s\rvert \le \log 64$ 안으로 잘라요. 처음 단체는 $s = 0$과 $0.5e_k$이고, 모든 꼭짓점이 가장 좋은 점과 좌표마다 $10^{-5}$, 값이 $10^{-9}$ 안이면 멈춰요. 값의 수는 $200p$까지이고 넘으면 `status` 2, 끝난 점이 상자의 벽이면 $-1$·$1$이에요. 기울기가 필요 없고 목적 함수가 매끄럽지 않아도 돼서 CV 같은 기준에 맞아요. optimize 영역의 Nelder–Mead는 Python 콜백을 받는 꼴이라 같은 알고리즘을 C++ 함수 인자로 다시 뒀어요.
+
+statsmodels는 $h$에서 `fmin`을 돌리고 국소 최소에서 멈출 수 있어요. 기준이 같아도 찾는 절차가 달라 고른 대역폭이 유효숫자 몇 자리에서 다를 수 있고, 테스트는 sd가 고른 점의 기준 값이 statsmodels가 고른 점보다 크지 않은지를 봐요.
+
+## KD 트리의 후보
+
+여러 변수의 국소 상수는 $n \ge 2048$이면 spatial의 KD 트리로 자르기 반경 안의 후보만 모아요. 트리는 대역폭 단위로 옮긴 중심화 좌표 $W_j = z(x_j - \mu)$ 위에 지어요. 평가점마다 이래요.
+
+1. 노드마다 가까운 자식을 따라 잎까지 내려가 그 잎의 점들로 가장 가까운 $D$의 위 한계 $D_{\mathrm{ub}}$를 얻어요.
+2. 반경 $r = (\sqrt{D_{\mathrm{ub}} + T} + \sqrt p\,\varepsilon)(1 + 2^{-30})$ 안의 점을 모아요. $\varepsilon = 2^{-44}(\max\lvert W\rvert + \lvert W_0\rvert)$는 트리 좌표의 차와 정확한 $z$가 좌표마다 어긋날 수 있는 크기의 위 한계로, 반올림 몇 번보다 $10^4$배 넓어요.
+3. 색인의 오름차순으로 놓아요(적으면 정렬, 많으면 $n$바이트 표).
+
+후보는 훑기가 남길 점을 모두 담고 가장 가까운 점도 담아요. 그래서 후보에서 $D$를 다시 재 같은 규칙으로 거르면 훑기와 같은 집합·같은 순서·같은 비트예요. 국소 직선은 1492까지 남겨 트리가 거의 자르지 않아 쓰지 않아요.
+
+```python
+>>> X = rng.random((3000, 2))
+>>> yy = sd.sin(4 * X[:, 0]) + X[:, 1]
+>>> C = sd._core.smooth
+>>> fits = []
+>>> for mode in (1, 2):
+...     _ = C.kde_tree_mode(mode)
+...     fits.append(sd.smooth.kernel_regression(X, yy, degree=0, bw=[0.05, 0.05]).fittedvalues.tolist())
+>>> _ = C.kde_tree_mode(0)
+>>> fits[0] == fits[1]
+True
+```
+
+`kde_tree_mode`는 테스트용 스위치예요(1은 언제나 훑기, 2는 되는 한 트리, 0은 모양의 규칙). 두 길의 비트가 같으니 문턱은 속도만 바꿔요.
+
+## dpill
+
+`bw='dpill'`과 `bw_dpill`은 Ruppert–Sheather–Wand의 직접 대입 대역폭(R `KernSmooth::dpill`)이에요. 국소 직선의 점근 최적 대역폭
+
+$$
+h = \left(\frac{\hat\sigma^2\,(b - a)}{2\sqrt\pi\,\hat\theta_{22}\,n}\right)^{1/5}
+$$
+
+의 두 미지수, 잡음의 분산 $\sigma^2$와 곡률의 크기 $\theta_{22} = \tfrac1n\sum m''(x_i)^2$을 차례로 추정해요. KernSmooth는 401점 격자에 구간화해 어림하는데, 여기서는 같은 단계와 상수를 구간화 없이 정의 그대로 계산해요.
+
+1. $(x, y)$로 정렬하고 양 끝에서 $\lfloor 0.01n\rfloor$개씩 버려요.
+2. 자료를 $N$개 블록으로 나눠 블록마다 4차 다항식을 맞춰요. $N \le \max(\min(\lfloor n/20\rfloor, 5), 1)$을 Mallows의 $C_p$로 고르고, 고른 블록의 RSS로 $\hat\sigma^2$를, 4차식의 2차·4차 도함수로 $\theta_{24}$를 구해요. 4차식은 블록의 가운데와 반폭으로 옮긴 변수로 맞춰요. 같은 적합이지만 $x$의 거듭제곱이 만드는 조건수를 피해요.
+3. 그 값들로 정한 파일럿 대역폭 $\gamma$의 국소 3차식으로, 범위의 가운데 90% 안의 점마다 $m''$을 구해 $\theta_{22}$를 얻어요. 국소 3차식은 모멘트 행렬의 Cholesky에 잔차로 한 번 고친 풀이이고, Cholesky가 실패하거나 대각 비가 $2^{16}$을 넘으면 열 피벗 QR이에요.
+4. 다른 파일럿 대역폭 $\lambda$의 국소 직선으로 $\hat\sigma^2 = \mathrm{RSS}/(n - 2\,\mathrm{tr}S + \mathrm{tr}S^{\mathsf T}S)$를 정확한 대각합으로 다시 구해요.
+
+$\gamma$와 $\lambda$의 식은 R 그대로예요. 국소 3차식과 국소 직선이 각각 $O(n^2)$이라 KernSmooth의 어림보다 느리지만, 어림의 오차가 없어요(시험 자료 넷에서 R과 0.31% 안). 자료점이 여섯보다 적거나, 퍼짐이 0이거나, 블록이 랭크를 잃거나, 추정이 0이거나 유한하지 않으면 `ValueError`예요(R은 NA와 경고).
+
+```python
+>>> sd.smooth.bw_dpill(x, y)
+0.3097446332659641
+```
+
+## 계약과 나눔
+
+대역폭이 주어지면 $\lvert\hat y - \hat y^*\rvert \le 16\kappa u\sum\lvert l_j\rvert\lvert y_j\rvert + u\sum\lvert l_j\rvert\lvert y_j\rvert$예요. 둘째 항이 자르기의 몫이고, $\kappa$는 국소 상수에서 1, 국소 직선에서 평가점에서 잰 절편의 분산 팽창 $a\,[M^{-1}]_{00} = 1 + a\,\bar z^{\mathsf T}C^{-1}\bar z$예요(1변수는 lowess의 $\kappa_1$). 잰 값은 [정확도와 성능](/internals/smooth/accuracy-performance/)에 있어요.
+
+평가점(자료점)을 크기로만 나눈 태스크로 나눠요. 점 하나의 일은 $n(8 + 4p(\mathit{degree} + 1))$이고, 태스크 하나는 약 $2^{17}$이되 스레드마다 8개까지예요. 점 하나가 $2^{17}$을 넘는 크기에서 점마다 태스크와 작업 공간을 만들면 오히려 느려서예요. 점 하나는 언제나 `local_fit` 한두 번이고 기준은 점마다의 항을 정렬 순서로 짝지어 더해요. 찾기의 격자와 Brent·Nelder–Mead는 차례이고 그 안의 기준 계산이 나란해요.

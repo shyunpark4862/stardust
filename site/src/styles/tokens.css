@@ -246,6 +246,11 @@
   --area-soft: #e8f7f1;
   --area-line: #b5e3d2;
 }
+[data-area='smooth'] {
+  --area: #0b5cad;
+  --area-soft: #eaf3fc;
+  --area-line: #bcd7f2;
+}
 [data-area='graph'] {
   --area: #9f1239;
   --area-soft: #fdecf0;

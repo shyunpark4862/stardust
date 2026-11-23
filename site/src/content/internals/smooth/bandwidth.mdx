@@ -1,0 +1,190 @@
+---
+title: 대역폭 선택자
+group: 핵 방법
+order: 3
+summary: "핵밀도추정의 대역폭 규칙 여덟을 계산하는 방법을 설명해요. 닫힌 꼴의 규칙은 입력 순서와 무관하게 더하고, Sheather–Jones는 R과 같은 식을 끝까지 풀며, 교차 검증은 모든 쌍의 합을 정확하게 모아 척도와 무관하게 찾아요."
+seeAlso: [kde, kernel-regression, accuracy-performance]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+export const cvls = [[-4.159, -0.03023], [-3.899, -0.07737], [-3.639, -0.1155], [-3.379, -0.1472], [-3.119, -0.1709], [-2.859, -0.1866], [-2.599, -0.1973], [-2.339, -0.2058], [-2.079, -0.2146], [-1.82, -0.224], [-1.56, -0.2328], [-1.3, -0.2401], [-1.04, -0.2458], [-0.78, -0.2493], [-0.52, -0.251], [-0.26, -0.2519], [0.0, -0.2525], [0.26, -0.2523], [0.52, -0.2504], [0.78, -0.2456], [1.04, -0.2358], [1.3, -0.2195], [1.56, -0.1966], [1.82, -0.1693], [2.079, -0.141], [2.339, -0.1144], [2.599, -0.09106], [2.859, -0.07163], [3.119, -0.05591], [3.379, -0.04343], [3.639, -0.03363], [3.899, -0.026], [4.159, -0.02008]];
+export const cvPick = [[0.1064, -0.27], [0.1064, 0]];
+
+## 한눈에 보기
+
+`bw_*` 여덟 함수는 자료만 받아 핵의 표준편차(1차원은 float, 여러 변수는 $(p,)$)를 돌려줘요. [`kde`](/api/smooth/kde/)의 `bw=` 규칙 이름이 같은 함수를 불러요. 자세한 뜻과 쓰임은 [대역폭 규칙](/api/smooth/bandwidth/)에 있고, 여기서는 계산을 따라가요.
+
+| 이름 | 무엇 | 기준 라이브러리 |
+|---|---|---|
+| `bw_scott`, `bw_silverman` | $f\cdot$(무게 붙은 표본 표준편차), $f = n_{\mathrm{eff}}^{-1/(p+4)}$ 또는 $(n_{\mathrm{eff}}(p + 2)/4)^{-1/(p+4)}$ | scipy |
+| `bw_nrd0` | $0.9\min(\hat\sigma, \mathrm{IQR}/1.34)\,n^{-1/5}$ | R |
+| `bw_nrd` | $1.06\min(\hat\sigma, \mathrm{IQR}/1.34)\,n^{-1/5}$ | R |
+| `bw_sj` | Sheather–Jones(`'ste'`는 방정식 풀기, `'dpi'`는 직접 대입) | R `bw.SJ` |
+| `bw_isj` | Botev–Grotowski–Kroese의 고정점(ISJ) | Botev의 `kde.m` |
+| `bw_cv_ls` | $\int\hat f^2 - \tfrac2n\sum\hat f_{-i}(x_i)$를 가장 작게 | statsmodels(`nb`를 주면 R `bw.ucv`) |
+| `bw_cv_ml` | $\sum\log\hat f_{-i}(x_i)$를 가장 크게 | statsmodels |
+
+| 파일 | 줄 수 | 맡은 일 |
+|---|---:|---|
+| `src/stardust/smooth/_bandwidth.py` | 248 | 닫힌 꼴의 규칙, 인자 검사, 찾기의 중심 |
+| `csrc/smooth/bandwidth.cpp` | 701 | SJ의 쌍 개수와 방정식, ISJ, 교차 검증 기준과 찾기 |
+| `csrc/smooth/kde.cpp` | 1,216 | `scott`·`silverman`이 쓰는 정렬과 모멘트 |
+
+같은 자료에서 여덟 규칙의 값이에요.
+
+```python
+>>> rng = sd.random.default_rng(7)
+>>> x = sd.stats.Normal().sample(200, rng=rng)
+>>> B = sd.smooth
+>>> B.bw_scott(x), B.bw_silverman(x), B.bw_nrd0(x), B.bw_nrd(x)
+(0.37772358248615456, 0.4000938238957025, 0.3399512242375392, 0.40038699743532397)
+>>> B.bw_sj(x), B.bw_sj(x, method="dpi"), B.bw_isj(x)
+(0.3916035323891628, 0.39397259141708163, 0.46238912508747204)
+>>> B.bw_cv_ls(x), B.bw_cv_ml(x)
+(0.4453336356044529, 0.30484203563587936)
+```
+
+## 닫힌 꼴
+
+`bw_scott`·`bw_silverman`은 [핵밀도추정](/internals/smooth/kde/)의 자료 준비를 그대로 써요. 기수 정렬로 정렬한 자료에서 짝 합으로 numpy `cov(aweights)`의 식(무게가 있으면 $1 - \sum\tilde w^2$으로, 없으면 $n - 1$로 나눠요)과 $n_{\mathrm{eff}} = 1/\sum\tilde w^2$을 구해요. 정렬한 뒤 더하니 입력 순서와 무관하고, scipy와는 끝자리가 다를 수 있어요.
+
+`bw_nrd0`·`bw_nrd`는 배열의 `quantile`(선형 보간, R의 type 7)과 `std(correction=1)`이에요. 사분위범위를 1.34로 나누는 것이 R의 상수이고 statsmodels는 1.349예요. `bw_nrd0`은 $\min(\hat\sigma, \mathrm{IQR}/1.34)$이 0이면 $\hat\sigma$, $\lvert x_1\rvert$, 1의 차례로 대신 쓰는 R의 물러서기도 그대로예요. 계약은 상대 $8u$이고 잰 최대가 그 0.25배예요.
+
+## Sheather–Jones
+
+밀도 $f$의 적분 제곱 오차를 가장 작게 하는 대역폭은 점근적으로 $h = \bigl(R(K)/(n\,\mu_2(K)^2\,\psi_4)\bigr)^{1/5}$이고 $\psi_4 = \int(f'')^2$이에요. 가우스 핵에서는 $h = (c_1/\psi_4)^{1/5}$, $c_1 = 1/(2\sqrt\pi\,n)$이에요. Sheather–Jones는 $\psi_4$를 다른 파일럿 대역폭의 핵 추정 $\hat\psi_4(g) = \frac{1}{n(n - 1)}\sum_{i \ne j}\varphi_g^{(4)}(x_i - x_j)$로 바꿔요. `'ste'`(solve-the-equation)는 파일럿을 $h$에 묶어 $g = \alpha_2h^{5/7}$로 두고 방정식
+
+$$
+h = \bigl(c_1/\hat\psi_4(\alpha_2h^{5/7})\bigr)^{1/5}
+$$
+
+을 풀고, `'dpi'`(direct plug-in)는 파일럿을 정해 둔 식으로 한 번 대입해요. $\alpha_2$도 정규 기준의 $\hat\psi_4$, $\hat\psi_6$으로 정해요.
+
+R의 `bw.SJ`는 $\hat\psi$의 쌍 합을 정확히 하지 않고 거리의 쌍 개수로 어림해요. 범위를 $\mathit{nb} = 1000$칸으로 나눈 간격 $d$에서 쌍 $(i, j)$의 거리를 칸 수 $\lvert b_i - b_j\rvert$로 세고, 칸 수 $k$마다 $\varphi^{(4)}(kd/h)$에 개수를 곱해 더해요. 이 영역은 그 정의를 R의 차례 그대로 옮겨요.
+
+```cpp
+// csrc/smooth/bandwidth.cpp
+double phi4(const Counts& c, std::int64_t n, double h) {
+    double sum = 0;
+    for (std::size_t i = 0; i < c.cnt.size(); ++i) {
+        double delta = static_cast<double>(i) * c.d / h;
+        delta *= delta;
+        if (delta >= kDelMax) break;
+        sum += std::exp(-delta / 2) * (delta * delta - 6 * delta + 3) * c.cnt[i];
+    }
+    sum = 2 * sum + static_cast<double>(n) * 3;
+    const double nn = static_cast<double>(n);
+    return sum / (nn * (nn - 1) * std::pow(h, 5.0) * std::sqrt(2 * M_PI));
+}
+```
+
+$(\delta^2 - 6\delta + 3)e^{-\delta/2}$($\delta = (kd/h)^2$)가 $\varphi^{(4)}$의 꼴이고, 마지막의 $3n$은 $i = j$의 몫이에요. 쌍 개수는 $n \gt \mathit{nb}/2$이면 칸에 먼저 모은 표에서, 아니면 점들의 칸 번호 $\lfloor x/d\rfloor$(0에서 세는 정수 나눗셈)에서 세요. 칸이 0에서 세어지니 자료를 평행 이동하면 칸이 달라져 값이 조금 바뀌어요. R도 그래요.
+
+```python
+>>> B.bw_sj(x + 10.0) / B.bw_sj(x)
+0.9974561947454681
+```
+
+방정식의 근은 R보다 끝까지 풀어요. R의 `uniroot`는 허용오차 $0.1\cdot$(아래 끝)에서 멈춰 시험 자료 `normal/200`의 `'ste'`가 R 0.3758, sd 0.3762였어요(0.3% 안). 여기서는 $h_{\max} = 1.144\cdot\mathit{scale}\cdot n^{-1/5}$에서 잰 $s = \log(h/h_{\max}) \in [-\log 64, \log 64]$의 33점에서 $g(s) = (c_1/\hat\psi_4)^{1/5}/h - 1$의 첫 부호 바뀜을 찾아 brentq($\lvert\Delta s\rvert \le 10^{-13}$)로 풀어요. $g$를 $h$로 나눈 꼴로 두면 부호는 같고 척도가 없어요. Arb로 푼 같은 방정식과 $4.4 \times 10^{-15}$ 안이에요.
+
+## ISJ
+
+Botev–Grotowski–Kroese의 방법은 정규 기준 없이 고정점으로 대역폭을 정해요. 자료를 $[\min - \text{범위}/2, \max + \text{범위}/2]$에 `n_grid` $= 2^{14}$점으로 선형 구간화하고(Botev의 `kde.m`은 히스토그램이에요) DCT-II로 바꿔 계수 $a_k$를 얻어요. 구간 $[0, 1]$에서의 열 방정식의 해가 가우스 핵 밀도이고, 시간 $t$에서 $s$차 도함수의 제곱 노름은 계수로 닫혀요.
+
+$$
+\lVert f_t^{(s)}\rVert^2 \approx 2\pi^{2s}\sum_{k \ge 1}k^{2s}\Bigl(\frac{a_k}{2}\Bigr)^2e^{-k^2\pi^2t}.
+$$
+
+일곱 단계의 고정점은 $s = 7$의 노름에서 시작해 $s = 6, 5, \ldots, 2$로 내려가며, 단계마다 그 차수의 최적 시간 $t_s = \bigl(2c_sK_s/(N\lVert f^{(s+1)}\rVert^2)\bigr)^{2/(3+2s)}$로 다음 노름을 재고, 마지막에
+
+$$
+\xi(t) = t - \bigl(2N\sqrt\pi\,\lVert f^{(2)}\rVert^2\bigr)^{-2/5}
+$$
+
+의 근 $t^*$를 찾아요. $N$은 서로 다른 값의 수, 대역폭은 $\sqrt{t^*}\cdot$(격자 폭)이에요.
+
+```cpp
+    // csrc/smooth/bandwidth.cpp
+    const auto fixed = [&](double t) {
+        double f = fsum(7, t);
+        for (int s = 6; s >= 2; --s) {
+            double K0 = 1;
+            for (int j = 1; j <= 2 * s - 1; j += 2) K0 *= j;
+            K0 /= std::sqrt(2 * M_PI);
+            const double cst = (1 + std::pow(0.5, s + 0.5)) / 3;
+            const double time = std::pow(2 * cst * K0 / distinct / f, 2.0 / (3.0 + 2.0 * s));
+            f = fsum(s, time);
+        }
+        return t - std::pow(2 * distinct * std::sqrt(M_PI) * f, -2.0 / 5.0);
+    };
+```
+
+근은 $(0, 0.1]$에서 가장 작은 것이에요. $t_k = 0.1\cdot 2^{-k}$($k = 50, \ldots, 0$)의 첫 부호 바뀜을 찾아 $\log t$에서 brentq로 풀어요. 근이 없으면(자료가 아주 적거나 이산적일 때) `ValueError`이고 메시지가 다른 규칙을 짚어요. DCT-II는 fft 영역의 r2r 커널을 C++에서 바로 불러요([DCT와 DST](/internals/fft/dct-dst/)). 비교할 라이브러리가 설치되어 있지 않아 같은 방정식을 Arb로 푼 근(`n_grid` = 256)과 견주고 $1.7 \times 10^{-15}$ 안이에요.
+
+## 교차 검증
+
+### 기준
+
+가우스 곱 핵에서 두 기준은 모든 쌍의 거리 $D_{ij} = \sum_l((x_{il} - x_{jl})/h_l)^2$의 합으로 닫혀요.
+
+$$
+\mathrm{CV}_{\mathrm{ls}}(h) = \frac{\sum_{i,j}e^{-D_{ij}/4}}{n^2(2\sqrt\pi)^p\prod h_l} - \frac{2\sum_{i \ne j}e^{-D_{ij}/2}}{n(n - 1)(\sqrt{2\pi})^p\prod h_l},
+\qquad
+\mathrm{CV}_{\mathrm{ml}}(h) = \sum_i\log\hat f_{-i}(x_i).
+$$
+
+첫 항이 $\int\hat f^2$이에요. 두 가우스의 합성곱이 표준편차 $\sqrt2h$의 가우스라서 $e^{-D/4}$가 나와요. 행 $i$마다 $A_i = \sum_je^{-D_{ij}/4}$와 $B_i = \sum_{j \ne i}e^{-D_{ij}/2}$를 [핵밀도추정](/internals/smooth/kde/)의 합으로 구해요. $B_i$는 $i$를 뺀 가장 가까운 점의 $D_0$로 옮겨 지수를 빼고, 증명된 자르기만 해요. 그래서 기준 값이 정확한 쌍 합과 몇 $u$ 안이에요(Arb 참값과 $5.2u$ 안). 행마다 태스크로 나누고 행의 항은 점의 순서로 짝지어 더해요.
+
+`nb`를 주면 R `bw.ucv`의 정의예요. SJ와 같은 쌍 개수에서 $\sum_k(e^{-\delta/4} - \sqrt8e^{-\delta/2})c_k$로 어림하고, 교차항을 $n^2$으로 나눠요(정확한 기준과 $n/(n - 1)$배 달라요).
+
+### 찾기
+
+찾는 변수는 $s = \log(h/h_{\mathrm{ref}})$, $h_{\mathrm{ref}}$는 변수마다 `bw_nrd`(사분위가 같으면 $1.06\,\hat\sigma\,n^{-1/5}$), 구간은 $\lvert s\rvert \le \log 64$예요. 목적 함수는 척도와 무관한 꼴이에요.
+
+- `cv_ls`: $\mathrm{CV}_{\mathrm{ls}}\cdot\prod h_{\mathrm{ref}}$(기준이 길이의 역수 단위라 $h_{\mathrm{ref}}$를 곱하면 단위가 없어요)
+- `cv_ml`: $-\tfrac1n\sum\log\hat f_{-i} + \sum\log h_{\mathrm{ref}}$
+
+그래서 $x$에 2의 거듭제곱을 곱하면 고른 대역폭이 같은 비트로 옮겨 가요.
+
+```python
+>>> B.bw_cv_ls(x * 1024.0) == 1024.0 * B.bw_cv_ls(x)
+True
+```
+
+1차원은 격자 33점(동점이면 큰 $h$)에서 가장 작은 점을 찾고, 그 양옆에서 목적 함수의 $s$에 대한 도함수가 음에서 양으로 바뀌면 도함수의 brentq($\lvert\Delta s\rvert \le 10^{-12}$), 아니면 fminbound로 다듬어요. 도함수도 같은 행 합으로 닫혀요. $D \propto h^{-2}$이니 $\frac{d}{ds}\bigl(e^{-D/4}/h\bigr) = \frac{e^{-D/4}}{h}\bigl(\tfrac D2 - 1\bigr)$이고, 행마다 이 무게의 합을 같이 모아 둬요. 극소에서 기준이 평평해 값으로는 $\sqrt u$만큼밖에 위치를 정할 수 없는데, 도함수의 근은 거의 $u$까지 정해져요. Arb의 최소점과 $1.25 \times 10^{-13}$ 안이에요.
+
+<Fig caption="200점의 정규 표본에서 cv_ls의 척도 없는 목적 함수(cv·h_ref)를 격자 33점에서 잰 것. 극소 둘레가 넓게 평평해서 도함수의 근으로 위치를 다듬어요. 점선이 고른 s = 0.106이에요.">
+  <Plot
+    curves={[
+      { points: cvls, label: 'cv·h_ref' },
+      { points: cvPick, label: '고른 s', dashed: true },
+    ]}
+    domain={[-4.2, 4.2]}
+    range={[-0.27, 0]}
+    xTicks={[{ v: -4, label: '−4' }, { v: -2, label: '−2' }, { v: 0, label: '0' }, { v: 2, label: '2' }, { v: 4, label: '4' }]}
+    yTicks={[{ v: -0.25, label: '−0.25' }, { v: -0.15, label: '−0.15' }, { v: -0.05, label: '−0.05' }]}
+  />
+</Fig>
+
+여러 변수는 [핵 회귀](/internals/smooth/kernel-regression/)와 같은 Nelder–Mead(scipy의 계수, 상자 $\lvert s\rvert \le \log 64$, $200p$번)예요.
+
+```python
+>>> X2 = sd.stats.Normal().sample((300, 2), rng=rng)
+>>> B.bw_cv_ls(X2).tolist(), B.bw_cv_ml(X2).tolist()
+([0.4392788518912261, 0.43891119281397406], [0.438269781444839, 0.5368009600649319])
+```
+
+구간의 끝에서 끝나면 그 끝을 돌려줘요. 같은 값이 많은 이산적인 자료에서는 `cv_ls`가 $h \to 0$으로 줄어들어 아래 끝에서 끝나요.
+
+```python
+>>> xd = sd.asarray([float(int(3 * v)) for v in x.tolist()])
+>>> B.bw_cv_ls(xd)
+0.016475369255759476
+```
+
+statsmodels의 `KDEMultivariate`는 정규 기준점에서 `fmin`이 국소 최소에서 멈출 수 있고, R의 `bw.ucv`는 $[0.1h_{\max}, h_{\max}]$를 허용오차 $0.1\cdot$(아래 끝)으로 찾아요. 격자를 먼저 도는 것은 기준에 극소가 여럿일 때 "어느 극소인가"를 정의로 정하려는 것이에요. 기준이 같으니 sd가 고른 점의 기준 값이 더 작으면 sd 쪽이 더 나은 최소점이에요(무게 붙은 시험 자료에서 R 0.585, sd 0.796이고 sd의 기준 값이 더 작았어요).
+
+## 계약
+
+닫힌 꼴은 상대 $8u$, `bw_sj`·`bw_isj`·`bw_cv_*`는 Arb로 푼 같은 방정식·기준의 근·최소점과 상대 $10^{-8}$이에요. 이 한계는 찾기의 멈춤 규칙이 정해요. 구간화가 정의에 든 것(`bw_sj`의 쌍 개수, `bw_isj`의 격자, `nb`의 `cv_ls`)은 같은 구간화의 참값과 견줘요. 잰 값은 [정확도와 성능](/internals/smooth/accuracy-performance/)에 있어요.

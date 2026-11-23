@@ -1,0 +1,356 @@
+---
+title: 삼각분할 만들기
+group: 계산 기하
+order: 2
+summary: "Delaunay가 점 집합을 삼각분할하는 방법을 설명해요. 2차원은 나눠서 합치고 3차원은 점을 하나씩 넣으며 둘 다 여러 스레드로 나누는데, 어떤 길로 만들어도 같은 배열이 나오도록 결과를 표준 꼴로 맞춰요."
+seeAlso: [predicates, hull-voronoi, parallel, overview, accuracy-performance]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import PlaneFig from '../../../components/fig/PlaneFig.astro';
+import Steps from '../../../components/fig/Steps.astro';
+
+export const mLeft = [[0.243, 0.629], [0.618, 0.828], [0.642, 0.401], [0.25, 0.937], [0.734, 0.001], [0.231, 0.159], [0.232, 0.016], [0.713, 0.966]];
+export const mRight = [[0.895, 0.409], [0.734, 0.954], [0.919, 0.773], [0.932, 0.442], [0.764, 0.57], [0.965, 0.675], [0.953, 0.099], [0.787, 0.829]];
+export const mKept = [[0.895, 0.409, 0.932, 0.442], [0.895, 0.409, 0.764, 0.57], [0.895, 0.409, 0.953, 0.099], [0.243, 0.629, 0.618, 0.828], [0.243, 0.629, 0.642, 0.401], [0.243, 0.629, 0.25, 0.937], [0.243, 0.629, 0.231, 0.159], [0.618, 0.828, 0.642, 0.401], [0.618, 0.828, 0.25, 0.937], [0.618, 0.828, 0.713, 0.966], [0.734, 0.954, 0.919, 0.773], [0.734, 0.954, 0.787, 0.829], [0.919, 0.773, 0.764, 0.57], [0.919, 0.773, 0.965, 0.675], [0.919, 0.773, 0.787, 0.829], [0.932, 0.442, 0.764, 0.57], [0.932, 0.442, 0.965, 0.675], [0.932, 0.442, 0.953, 0.099], [0.642, 0.401, 0.734, 0.001], [0.642, 0.401, 0.231, 0.159], [0.25, 0.937, 0.231, 0.159], [0.25, 0.937, 0.713, 0.966], [0.764, 0.57, 0.965, 0.675], [0.764, 0.57, 0.787, 0.829], [0.734, 0.001, 0.231, 0.159], [0.734, 0.001, 0.232, 0.016], [0.965, 0.675, 0.953, 0.099], [0.231, 0.159, 0.232, 0.016]];
+export const mGone = [[0.734, 0.954, 0.764, 0.57], [0.642, 0.401, 0.713, 0.966], [0.764, 0.57, 0.953, 0.099], [0.734, 0.001, 0.713, 0.966]];
+export const mCross = [[0.895, 0.409, 0.642, 0.401], [0.618, 0.828, 0.734, 0.954], [0.618, 0.828, 0.764, 0.57], [0.618, 0.828, 0.787, 0.829], [0.734, 0.954, 0.713, 0.966], [0.642, 0.401, 0.764, 0.57], [0.642, 0.401, 0.953, 0.099], [0.734, 0.001, 0.953, 0.099]];
+
+## 한눈에 보기
+
+[`Delaunay(points)`](/api/spatial/Delaunay/)는 이 일을 해요.
+
+<Fig column caption="Delaunay 하나를 만드는 길. 2차원과 3차원은 가운데의 만들기만 다르고, 앞의 정렬과 뒤의 표준 꼴·위치 격자를 함께 써요.">
+  <Steps steps={[
+    { label: 'geometry_points, check_alloc', note: '2차원 배열, 열 2·3개, 유한성. 어림한 작업 메모리를 물리 메모리와 견줘요', where: '_common.py' },
+    { label: '_Delaunay(points)', note: '점의 C 순서 사본을 만들어 points 속성으로 쥐어요', where: 'delaunay2.cpp' },
+    { label: 'lex_order_parallel, representatives', note: '(좌표, 색인)의 사전 순서로 정렬하고 같은 점을 대표(가장 작은 색인)로 합쳐요', where: 'triangulation.hpp, sfc.hpp', depth: 1 },
+    { label: 'range_of → Predicates', note: '좌표의 범위로 술어의 길을 차수마다 한 번 골라요', where: 'triangulation.hpp', depth: 1 },
+    { label: 'build_internal (d = 2)', note: '나눠서 합치기. 한 직선 위의 점이면 ValueError', where: 'delaunay2.cpp', depth: 1 },
+    { label: 'build_delaunay3 (d = 3)', note: '처음 사면체, BRIO 순서로 하나씩 넣기, 유한 사면체 뽑기. 한 평면 위면 ValueError', where: 'delaunay3.cpp', depth: 1 },
+    { label: 'canonical_form<D>', note: '단체를 표준 꼴(방향, 차례)로 두고 이웃 번호를 옮겨요', where: 'triangulation.hpp', depth: 1 },
+    { label: 'vertex_to_simplex, build_locator<D>', note: '점마다 가장 작은 단체, find_simplex가 걸음을 시작할 위치 격자', where: 'triangulation.hpp', depth: 1 },
+  ]} />
+</Fig>
+
+`simplices`, `neighbors`, `vertex_to_simplex`는 여기서 만들고, `convex_hull`, `vertex_neighbor_vertices`, `coplanar`, `transform`은 처음 읽을 때 이 배열에서 만들어요. 전체를 묶는 원칙은 하나예요. **결과는 정의로 정해져요.** 삼각분할은 섭동한 점 집합의 Delaunay 삼각분할 하나이고([동점 규칙](/internals/spatial/predicates/#동점-규칙-올림-높이의-기호-섭동)), 배열은 표준 꼴 하나예요. 그래서 2차원과 3차원의 알고리즘, 넣는 순서, 스레드 수가 결과의 바이트를 바꾸지 못해요.
+
+## 사전 순서와 같은 점
+
+먼저 점의 색인을 (좌표, 색인)의 사전 순서로 정렬해요. 좌표가 같으면(−0.0과 0.0도 같아요) 이웃한 자리에 모이고, 그 묶음의 첫 점, 곧 가장 작은 색인이 **대표**예요. 대표들이 서로 다른 점이고, 만들기는 대표만 써요.
+
+```python
+>>> import stardust as sd
+>>> C = sd._core.spatial
+>>> P = sd.asarray([[1.0, 2.0], [0.0, 5.0], [1.0, 2.0], [-0.0, 1.0], [0.0, 1.0]])
+>>> order, rep = C._lex_order(P)
+>>> order, rep
+(array([3, 4, 1, 0, 2], dtype=int64), array([0, 1, 0, 3, 3], dtype=int64))
+```
+
+점 2는 점 0과, 점 4는 점 3과 같아서 `rep`가 대표를 가리켜요. 정렬은 병렬 병합 정렬이에요. $2^{14}$점의 조각을 태스크마다 정렬하고, 짝지은 조각을 차례로 합쳐요. 조각과 합치기의 단계가 $n$만으로 정해지고 순서가 전순서라 결과는 한 스레드의 `std::sort`와 같아요.
+
+서로 다른 점이 $d + 1$개보다 적으면 `needs at least … distinct points`의 `ValueError`예요. 2차원은 사전 순서의 첫 점과 끝 점을 잇는 직선 위에 모든 점이 있으면(정확한 `orient2d`가 모두 0) `'points' are collinear`예요. 3차원은 처음 사면체를 찾을 때 판정해요(아래).
+
+## 2차원: 나눠서 합치기
+
+2차원은 Guibas와 Stolfi의 분할 정복이에요. 점을 반으로 나눠 각각 삼각분할하고, 두 삼각분할을 이어 붙이며 Delaunay가 아닌 변을 지워요. 한 원 위의 점처럼 하나씩 넣는 방식이 나빠지는 입력이 없어서 최악에도 $O(n \log n)$이고, 하위 문제가 독립이라 그대로 병렬이 돼요.
+
+### 쌍대 없는 quad-edge
+
+만드는 동안의 구조는 변의 고리예요. 반변 `e`와 그 짝 `e ^ 1`이 변 하나이고, 반변마다 시작점 `org`, 시작점을 반시계로 돌 때 다음 반변 `onext`, 앞 반변 `oprev`를 int32로 둬요. Guibas–Stolfi의 quad-edge에서 쌍대(면 쪽 고리)를 뺀 꼴이에요. 면은 `lnext(e) = oprev[e ^ 1]`로 걸어서 알아요. 연산은 셋이에요. `splice`는 두 시작점 고리를 잇거나 끊고, `connect(a, b)`는 `a`의 끝점에서 `b`의 시작점으로 새 변을 놓고, `kill`은 변을 지워요. 변 칸은 점 하나에 3칸(반변 6개)이에요. 평면 그래프는 꼭짓점 $V$개에 변이 $3V - 6$개 이하이기 때문이에요.
+
+### 자르는 축을 번갈아
+
+나누기는 Dwyer의 방식처럼 깊이마다 축을 번갈아요. 뿌리(깊이 0)는 이미 사전 순서라 가운데 자리에서 나누기만 하고, 깊이가 홀수인 노드는 축 1의 순서 $(y, -x)$에서 가운데 자리로 나눠요(`std::nth_element`).
+
+```cpp
+// csrc/spatial/delaunay2.cpp
+// Axis 0: (x, y); axis 1: (y, -x), the lexicographic order of the points turned a quarter clockwise.
+inline bool less_on(const Pt<2>& a, const Pt<2>& b, int axis) {
+    if (axis == 0) return a.c[0] < b.c[0] || (a.c[0] == b.c[0] && a.c[1] < b.c[1]);
+    return a.c[1] < b.c[1] || (a.c[1] == b.c[1] && a.c[0] > b.c[0]);
+}
+```
+
+$(y, -x)$는 점을 시계 방향으로 4분의 1 돌린 것의 사전 순서예요. 돌리기는 방향과 원 판정을 바꾸지 않으므로, 축 1의 합치기는 돌린 점들의 축 0 합치기 그대로예요. Guibas–Stolfi의 합치기가 요구하는 조건(두 반이 사전 순서로 나뉘어 있을 것, 한 직선 위의 점이 있어도)이 돌린 좌표에서 그대로 서요. 세로로만 자르면 아래위로 긴 띠들을 합치느라 긴 변을 많이 만들었다 지우는데, 번갈아 자르면 하위 문제가 정사각형에 가까워 그런 변이 적어요.
+
+### 합치기
+
+<Fig caption="뿌리의 합치기. 사전 순서로 나뉜 왼쪽 반(파랑)과 오른쪽 반(검정)이 각자 Delaunay 삼각분할이에요. 합치기가 두 반을 잇는 변(파란 선)을 아래에서 위로 놓으며, 새 삼각형의 원 판정을 어기는 반쪽의 변(점선) 넷을 지워요.">
+  <PlaneFig
+    label="왼쪽 반과 오른쪽 반의 삼각분할, 합치기가 놓은 가로지르는 변과 지운 변"
+    domain={[0.2, 1]}
+    range={[0, 1]}
+    xTicks={[0.2, 0.6, 1]}
+    yTicks={[0, 0.5, 1]}
+    width={360}
+    layers={[
+      { kind: 'segments', segs: mKept, tone: 'faint', width: 1.2 },
+      { kind: 'segments', segs: mGone, tone: 'base', dashed: true, width: 1.2 },
+      { kind: 'segments', segs: mCross, tone: 'main', width: 1.8 },
+      { kind: 'points', pts: mLeft, tone: 'main', size: 3.2 },
+      { kind: 'points', pts: mRight, tone: 'ink', size: 3.2 },
+    ]}
+    legend={[
+      { label: '왼쪽 반', tone: 'main', shape: 'dot' },
+      { label: '오른쪽 반', tone: 'ink', shape: 'dot' },
+      { label: '합치며 놓은 변', tone: 'main', shape: 'line' },
+      { label: '합치며 지운 변', tone: 'base', shape: 'dash' },
+    ]}
+  />
+</Fig>
+
+합치기는 두 반의 아래 공통 접선에서 시작해요. 그 변이 기준선 `basel`이에요. 기준선 위로 왼쪽과 오른쪽에서 후보 끝점을 하나씩 찾는데, 후보 변이 다음 후보와 기준선의 끝점으로 만든 원 안에 다음 후보를 품으면 그 후보 변은 Delaunay가 아니니 지우고 다음 후보로 넘어가요. 남은 두 후보 가운데 원 판정이 고른 쪽과 기준선을 잇는 변이 새 기준선이고, 어느 쪽 후보도 기준선 위에 없으면 위쪽 공통 접선에 닿은 것이라 끝나요.
+
+```cpp
+    // csrc/spatial/delaunay2.cpp
+    // Merges the triangulations of the left (smaller in `axis` order) and right halves.
+    Hull merge(const Hull& L, const Hull& R, int axis) {
+        FreeList fl = join(L.free, R.free, onext);
+        std::int32_t ldo = lowest(L.le, axis), ldi = highest(L.re, axis);
+        std::int32_t rdi = lowest(R.le, axis), rdo = highest(R.re, axis);
+        for (;;) {  // the lower common tangent
+            if (leftof(org[rdi], ldi)) ldi = lnext(ldi);
+            else if (rightof(org[ldi], rdi)) rdi = rprev(rdi);
+            else break;
+        }
+        std::int32_t basel = connect(fl, rdi ^ 1, ldi);
+        if (org[ldi] == org[ldo]) ldo = basel ^ 1;
+        if (org[rdi] == org[rdo]) rdo = basel;
+        auto valid = [&](std::int32_t e) { return ccw(dest(e), dest(basel), org[basel]); };
+        for (;;) {
+            std::int32_t lcand = onext[basel ^ 1];
+            if (valid(lcand)) {
+                for (;;) {
+                    const std::int32_t nx = onext[lcand];
+                    if (!valid(nx) || !incircle(dest(basel), org[basel], dest(lcand), dest(nx))) break;
+                    kill(fl, lcand);
+                    lcand = nx;
+                }
+            }
+            std::int32_t rcand = oprev[basel];
+            if (valid(rcand)) {
+                for (;;) {
+                    const std::int32_t nx = oprev[rcand];
+                    if (!valid(nx) || !incircle(dest(basel), org[basel], dest(rcand), dest(nx))) break;
+                    kill(fl, rcand);
+                    rcand = nx;
+                }
+            }
+            const bool lv = valid(lcand), rv = valid(rcand);
+            if (!lv && !rv) break;
+            if (!lv || (rv && incircle(dest(lcand), org[lcand], org[rcand], dest(rcand))))
+                basel = connect(fl, rcand, basel ^ 1);
+            else basel = connect(fl, basel ^ 1, lcand ^ 1);
+        }
+        Hull h;
+        h.le = ldo;
+        h.re = rdo;
+        h.free = fl;
+        return h;
+    }
+```
+
+`valid(e)`는 후보의 끝점이 기준선의 오른쪽(위쪽)에 엄격히 있는지예요(정확한 `orient2d` > 0). `incircle`은 섭동한 판정 `incircle_sos`라 0을 내지 않아요. 앞의 세 점이 언제나 반시계이기 때문이에요. 그래서 한 원 위의 점에서도 합치기는 섭동한 점 집합의 삼각분할을 만들고, 어느 차례로 합치든 같은 삼각분할에 닿아요.
+
+원 논문의 합치기와 다른 곳이 하나 있어요. 원 논문은 후보를 지울지 볼 때 다음 후보 `nx`의 끝점으로 바로 원 판정을 불러요. 그런데 다음 후보가 기준선의 짝이면 그 끝점이 기준선의 시작점과 같은 점이라, 원 판정의 네 점 가운데 둘이 같아져요. 섭동 규칙은 같은 점이 둘인 행에 "안"을 답할 수 있어서 지우면 안 될 변을 지워요. 여기서는 다음 후보도 `valid`일 때만 원 판정을 불러요. `valid`가 아닌 끝점은 기준선 아래라서(기준선 아래는 이미 섭동한 Delaunay예요) 섭동한 원의 밖이므로, 판정을 건너뛰어도 결과가 같아요.
+
+한 직선 위의 점들은 삼각형 없는 사슬로 다뤄요. 점 셋의 바닥 경우에서 셋이 한 직선 위면 두 변만 놓고(`base`), 합치기가 그 사슬을 다른 반과 이어요. 하위 문제 전체가 한 직선이어도 두 반이 사전 순서로 나뉘어 있으니 합치기의 논증이 그대로 서요. 자식은 자기 축 순서의 가장 작은 점과 가장 큰 점에서 껍질 변을 돌려주고, 부모는 자식의 껍질을 따라 자기 축의 끝점까지 걸어가요(`lowest`, `highest`). 볼록한 경계를 따라가면 어느 축 순서든 한 번 오르고 한 번 내리기 때문에 이 걸음은 끝나요.
+
+### 병렬과 변 칸
+
+분할 나무는 크기로만 정해요. 노드 $[lo, hi)$는 언제나 가운데 자리 $lo + \lfloor (hi - lo)/2 \rfloor$에서 나뉘어요. $2^{10}$점보다 큰 노드가 나무의 위쪽이에요. 위쪽의 나누기는 층마다(한 층의 노드는 나란히) 위에서 아래로, $2^{10}$점 이하의 부분 나무는 태스크 하나로, 위쪽의 합치기는 층마다 아래에서 위로 해요. 노드는 자기 점 자리 $lo..hi$의 변 칸 $3lo..3hi$를 가져요. 평면 그래프의 변 수 한계 덕분에 합치기가 쓰는 칸이 그 범위를 넘지 않고, 빈 칸 목록을 자식에서 이어받으니 태스크들이 같은 메모리를 건드리지 않아요. 그래서 변의 번호까지 스레드 수와 무관해요.
+
+맨 위의 합치기 몇 번은 한 스레드예요. 뿌리의 합치기는 하나뿐이라 나눌 수 없기 때문이에요.
+
+### 삼각형 뽑기
+
+다 만든 뒤 바깥 면을 표시해요(뿌리의 껍질 변의 짝에서 `lnext`로 돌아요). 남은 면은 모두 삼각형이고, 세 반변 가운데 번호가 가장 작은 반변이 그 삼각형의 이름이에요. 반변을 조각으로 나눠 조각마다 이름 지을 삼각형을 세고, 조각 차례로 번호를 매겨요. 이웃은 반변의 짝이 속한 삼각형이에요. 이렇게 나온 삼각형은 반시계 방향이지만 차례는 아직 표준 꼴이 아니에요. 표준 꼴은 아래에서 2·3차원이 함께 만들어요.
+
+## 3차원: 하나씩 넣기
+
+3차원에는 2차원 합치기에 맞먹는 간단한 방법이 없어서, 점을 하나씩 넣는 Bowyer–Watson을 써요.
+
+### 처음 사면체
+
+사전 순서의 첫 두 점, 그 뒤로 둘의 직선 위에 있지 않은 첫 점(세 좌표면에 사영한 정확한 `orient2d` 가운데 0이 아닌 것이 있는 점), 그 뒤로 셋의 평면 위에 있지 않은 첫 점(정확한 `orient3d` ≠ 0)이 처음 사면체예요. 방향이 음이면 뒤의 둘을 바꿔요. 넷째 점이 없으면 모든 점이 한 평면 위라 `'points' are coplanar`예요(한 직선 위의 3차원 점도 이 말이에요).
+
+### 넣는 순서: BRIO
+
+나머지 점은 BRIO(biased randomized insertion order) 순서로 넣어요. 점들을 크기가 두 배씩 커지는 묶음으로 나누고, 묶음 안은 힐베르트 곡선의 차례로 넣어요. 무작위성은 난수 상태가 아니라 점의 사전 순위를 고정된 해시(splitmix64)에 넣은 값의 끝 0비트 수에서 와요. 그래서 마지막 묶음에 점의 절반쯤, 그 앞에 4분의 1쯤이 들어가요. 힐베르트 키는 경계 상자를 축마다 $2^{21}$칸으로 나눈 격자 좌표로 만들어요.
+
+```python
+>>> rng = sd.random.default_rng(3)
+>>> C._brio_order(rng.random((10, 3)))
+array([1, 0, 6, 8, 2, 4, 3, 7, 9, 5], dtype=int64)
+```
+
+무작위 순서가 최악의 경우를 막고, 묶음 안의 곡선 차례가 앞에 넣은 점을 가깝게 해서 새 점을 찾는 걸음이 짧아요. 키의 반올림은 넣는 순서만 바꾸고 결과를 바꾸지 않아요.
+
+### 자료구조와 유령
+
+사면체마다 꼭짓점 넷과 이웃 넷(int32)을 둬요. 이웃은 `4 × (건너편 사면체) + (그쪽에서 이 면의 자리)`로 적어서, 면을 건널 때 건너편의 자리를 찾지 않아요. 껍질 밖은 **유령** 사면체로 닫아요. 유령은 무한점(−1)을 꼭짓점 하나로 갖고 나머지 셋이 껍질 면이에요. 그러면 껍질 밖에 넣는 점도 안의 점과 같은 코드를 타요. 사면체가 $2^{29}$개를 넘으면 이 적기가 int32를 넘으므로 `MemoryError`예요.
+
+### 넣기
+
+새 점 $x$를 넣는 일은 넷이에요.
+
+1. **찾기.** 앞 점을 넣으며 만든 유한 사면체에서 $x$ 쪽으로 걸어가요. 면 너머에 $x$가 엄격히 있으면(`orient3d` < 0) 그 면을 건너요. 닫힌 사면체에 닿거나, $x$가 엄격히 너머인 껍질 면의 유령으로 건너가면 멈춰요. 멈춘 사면체는 언제나 $x$와 충돌해요.
+2. **충돌 영역.** 섭동한 외접구가 $x$를 품는 사면체들을 너비 우선으로 모아요. 이 영역은 $x$에서 보아 별 모양이에요.
+3. **다시 채우기.** 영역의 경계 면마다, 그 면과 $x$로 새 사면체를 만들어요. 지운 사면체의 칸을 먼저 다시 써요.
+4. **잇기.** 새 사면체끼리는 경계의 변(경계 면 둘에만 들어요)을 열쇠로 한 작은 해시표로 이어요.
+
+충돌의 판정은 이래요.
+
+```cpp
+    // csrc/spatial/delaunay3.cpp
+    bool conflict(std::int32_t s, const double* x) const {
+        const Tet& t = tets_[static_cast<std::size_t>(s)];
+        const int k = inf_pos(t);
+        if (k < 0) return pred_.insphere_sos(pt(t.v[0]), pt(t.v[1]), pt(t.v[2]), pt(t.v[3]), x) > 0;
+        const int o = orient_at(t, k, x);
+        if (o != 0) return o > 0;
+        const Tet& f = tets_[static_cast<std::size_t>(t.n[k] >> 2)];  // the finite tetrahedron across the hull facet
+        return pred_.insphere_sos(pt(f.v[0]), pt(f.v[1]), pt(f.v[2]), pt(f.v[3]), x) > 0;
+    }
+```
+
+유한 사면체는 섭동한 `insphere`가 양이면 충돌이에요. 유령은 $x$가 그 껍질 면의 바깥(`orient3d` > 0)이면 충돌이고, 면의 평면 **위**(`orient3d` = 0)면 그 면 건너편의 유한 사면체가 $x$와 충돌할 때 충돌이에요. 둘째 규칙은 껍질 위의 동점 규칙이에요. $x$가 껍질 면 $abc$의 평면 위면, 사면체 $abcd$와 $x$의 올림 행렬식에서 $d$의 섭동 계수(여인수 `orient3d(a, b, c, x)`)가 0이라, 그 판정은 그 평면 안의 2차원 동점 규칙과 같아요. 그래서 껍질 위의 점도 섭동한 삼각분할의 자리에 들어가요.
+
+같은 점은 만들기 전에 합쳤고 $x$는 새 점이니, `insphere_sos`는 언제나 서로 다른 다섯 점으로 불려요. 2차원 합치기에서 다룬 "같은 점이 둘인 원 판정"이 3차원에는 생기지 않아요. 처음 사면체가 퇴화하지 않았고 모든 사면체가 양이라 섭동한 판정은 0을 내지 않아요.
+
+### 여러 줄에 넣기
+
+처음 $2^{10}$점은 한 스레드로 넣어요. 그 뒤로는 이미 든 점만큼의 묶음을 여러 **줄**에 함께 넣어요. 묶음을 스레드마다 여덟 조각(힐베르트 곡선의 구간)으로 나눠 풀의 스레드가 비는 대로 가져가요. 함께 도는 조각이 곡선에서 멀도록 차례를 섞어요.
+
+넣기 하나는 읽거나 바꾸는 사면체를 칸마다의 잠금 낱말로 잡아요(비교-교환). 걷기는 지금 사면체를 쥔 채 다음 사면체를 잡고 앞의 것을 놓으며 나아가고, 충돌 영역과 그 경계 너머의 사면체, 유령의 유한 이웃도 잡아요. 다른 줄이 쥔 사면체를 만나면 **아무것도 바꾸기 전에** 잡은 것을 다 놓고, 그 점을 묶음이 끝난 뒤 한 스레드로 넣는 목록에 미뤄요. 새 칸은 줄마다 256칸 묶음으로 받아 캐시 줄을 나누지 않게 하고, 점마다 7칸의 자리를 미리 정확히 잡아 둬요(고르게 흩어진 점은 점마다 사면체 약 6.7개예요).
+
+이 방식이 결과를 바꾸지 않는 까닭은 간단해요. 넣기 하나하나는 그때까지 든 점들의 삼각분할에 대한 Bowyer–Watson이고, 끝은 언제나 섭동한 점 집합의 삼각분할 하나예요. 줄이 어떻게 엇갈렸는지는 칸 번호에만 남고, 칸 번호는 다음의 표준 꼴이 보지 않아요.
+
+### 메모리 한도
+
+3차원 사면체의 수는 고른 점에서 점마다 약 6.7개이지만, 모멘트 곡선 $(t, t^2, t^3)$ 위의 점처럼 $n^2$에 비례할 수도 있어서 미리 알 수 없어요. 그래서 만드는 동안 사면체(유령 포함)를 세어, (물리 메모리 − $200n$)/128개를 넘으면 모두 놓고 `MemoryError`를 내요. 128바이트는 사면체 하나가 표준 꼴을 만드는 정점에서 차지하는 메모리이고, $200n$은 점의 사본, 정렬 차례, 대표, 넣는 차례, `vertex_to_simplex`예요.
+
+## 표준 꼴
+
+만들기에서 나온 단체는 양의 방향이지만 행 안의 차례와 행의 차례는 알고리즘이 남긴 대로예요. 이것을 [표준 꼴](/api/spatial/geometry/#표준-꼴)로 바꿔요(`canonical_form<D>`, 2·3차원 공용).
+
+1. **행 돌리기.** 단체마다 방향을 지키는 짝순열로 돌려 가장 작은 색인을 앞에 둬요. 3차원은 둘째 자리도 남은 셋 가운데 가장 작게 해요.
+2. **셈 정렬.** 첫 꼭짓점으로 묶음을 나눠요(원자적 셈과 자리).
+3. **묶음 안 정렬.** 묶음마다 나머지 꼭짓점으로 정렬해요. 행이 모두 달라서 이 정렬은 전순서예요.
+4. **이웃 옮기기.** 단체마다 새 번호를 적고, 이웃을 새 번호와 새 차례로 옮겨요.
+
+```cpp
+// csrc/spatial/triangulation.hpp
+// The even permutations of 4 positions with each first position: then the other three are rotated.
+inline constexpr int kEven4[4][4] = {{0, 1, 2, 3}, {1, 0, 3, 2}, {2, 3, 0, 1}, {3, 2, 1, 0}};
+
+// p[j]: the position in the simplex s of the canonical row's j-th vertex. The permutation is even
+// (orientation kept): the smallest vertex first, and for d = 3 the smallest of the other three second.
+template <int D>
+inline void canonical_perm(const std::int32_t* s, int* p) {
+    int m = 0;
+    for (int k = 1; k <= D; ++k)
+        if (s[k] < s[m]) m = k;
+    if constexpr (D == 2) {
+        p[0] = m;
+        p[1] = (m + 1) % 3;
+        p[2] = (m + 2) % 3;
+    } else {
+        const int* b = kEven4[m];
+        int r = 1;
+        if (s[b[2]] < s[b[r]]) r = 2;
+        if (s[b[3]] < s[b[r]]) r = 3;
+        p[0] = b[0];
+        p[1] = b[r];
+        p[2] = b[r == 3 ? 1 : r + 1];
+        p[3] = b[r == 1 ? 3 : r - 1];
+    }
+}
+```
+
+3차원에서 첫 자리를 정하는 짝순열은 넷(`kEven4`의 행)이고, 첫 자리를 둔 채 나머지 셋을 돌리는 것도 짝순열이라 방향이 지켜져요. 원자적 셈이 묶음 안에 넣는 차례는 스레드에 따라 다르지만, 3단계에서 묶음을 다 정렬하므로 결과에 남지 않아요. 그래서 2차원 합치기의 변 번호든 3차원의 칸 번호든, 같은 단체 집합이면 같은 배열이 나와요. 모든 단계가 $O(t)$이고 병렬이에요.
+
+`vertex_to_simplex`는 단체마다 꼭짓점의 칸에 원자적 최솟값을 써서 구해요. 최솟값은 차례와 무관해요. 대표가 아닌 같은 점은 대표의 값을 받아요.
+
+## 위치 찾기: `find_simplex`
+
+### 위치 격자
+
+평가점마다 어디서 걸음을 시작할지가 빠르기를 정해요. 만들 때 경계 상자를 칸 약 $m/4$개로 나눈 격자를 둬요($m$은 서로 다른 점의 수). 축마다 칸 수는 폭의 비율로 정하고, 아주 납작한 상자는 긴 축을 반씩 줄여 칸이 $4(m/4) + 16$개를 넘지 않게 해요. 칸마다 시작 단체는 그 칸의 가장 작은 대표 점의 `vertex_to_simplex`(빈 칸은 같은 행의 앞 칸의 것)에서 칸 중심까지 걸어 닿은 단체예요.
+
+```python
+>>> t2 = sd.spatial.Delaunay(rng.random((1000, 2)))
+>>> t2._tri._grid(), t2.nsimplex
+((16, 16), 1973)
+```
+
+점 1,000개에 칸 256개예요. 시작 단체는 빠르기만 정하고 답은 정하지 않아요.
+
+### 걷기
+
+시작 단체에서 평가점 $x$ 쪽으로, $x$가 **엄격히** 너머에 있는 면을 건너 걸어요(그 면의 꼭짓점을 $x$로 바꾼 `orient`가 음).
+
+```cpp
+// csrc/spatial/triangulation.hpp
+template <int D, bool Safe>
+inline std::int64_t walk(const Triangulation& T, std::int64_t t, const double* x, std::int64_t* last) {
+    constexpr int K = D + 1;
+    std::int64_t prev = -1;
+    int turn = 0;
+    for (;;) {
+        const std::int64_t* s = T.simplices + t * K;
+        const std::int64_t* nb = T.neighbors + t * K;
+        std::int64_t next = -2;
+        for (int j = 0; j < K; ++j) {
+            const int k = (j + turn) % K;
+            if (prev >= 0 && nb[k] == prev) continue;
+            if (orient_with<D, Safe>(T, s, k, x) < 0) {
+                next = nb[k];
+                break;
+            }
+        }
+        if (last) *last = t;
+        if (next == -2) return t;
+        if (next < 0) return -1;
+        prev = t;
+        t = next;
+        turn = turn + 1 == K ? 0 : turn + 1;
+    }
+}
+```
+
+건널 면이 없으면 그 단체가 $x$를 닫힌 뜻으로 품어요. 건널 면 너머에 이웃이 없으면 $x$는 껍질 밖이라 −1이에요. 이런 "보이는 면 걷기"는 일반 삼각분할에서는 맴돌 수 있지만, Delaunay 삼각분할에서는 맴도는 길이 없다는 것이 알려져 있어요(Edelsbrunner). 올림 좌표에서 걸음마다 어떤 양이 줄어들기 때문이에요. 그래서 어느 면을 먼저 보든 끝나요. 보는 면의 첫 자리는 걸음마다 돌려서(`turn`) 난수 없이 한쪽으로 치우치지 않게 해요.
+
+### 가장 작은 번호
+
+$x$가 변이나 꼭짓점 위면 여러 단체가 품어요. 걸음이 닿은 단체에서 값이 0인 면을 세어요.
+
+- 0개면 그 단체 하나뿐이에요.
+- $d$개면 $x$는 그 단체의 꼭짓점이라, 그 점의 별 전체가 품고 그 가운데 가장 작은 번호가 `vertex_to_simplex`예요.
+- 그 밖이면 값이 0인 면 너머로 너비 우선으로 품는 단체를 모아 가장 작은 번호를 골라요.
+
+그래서 답은 시작점, 걷는 길, 평가점의 차례, 스레드 수와 무관하게 정의 그대로예요. 판정은 정확한 `orient`이고, 평가점마다 점 집합의 범위에 그 평가점을 더해 빠른 길을 쓸 수 있는지 다시 봐요. NaN·inf 좌표의 점은 걷지 않고 −1이에요.
+
+### 덩이와 차례
+
+평가점 256개가 태스크 하나예요. 한 스레드에서 평가점이 $2^{12}$개 이상이면 위치 격자의 칸 차례로 걸어요(셈 정렬). 한 칸의 평가점들이 캐시에 있는 같은 단체들을 걸어서 빨라져요. 여러 스레드에서는 셈의 원자적 연산이 그 이득보다 비싸서 입력 차례 그대로예요. 어느 쪽이든 답은 같아요.
+
+이 걷기는 흩어진 점 보간도 함께 써요. `locate_each`가 평가점마다 찾은 단체를 넘겨 주면 보간이 그 자리에서 바로 값을 계산해요([흩어진 점의 보간](/internals/interpolate/scattered/)).
+
+## 처음 읽을 때 만드는 속성
+
+| 속성 | 만드는 법 |
+|---|---|
+| `convex_hull` | 이웃이 −1인 면을 모아요. 양의 단체에서 꼭짓점 $k$의 맞은편 면을 자리 순서로 적으면 $k$가 짝수일 때 바깥을, 홀수일 때 안을 향하니 홀수면 둘을 바꿔요. 3차원은 가장 작은 색인을 앞으로 돌리고, 행을 사전 순서로 정렬해요 |
+| `vertex_neighbor_vertices` | 2차원은 반시계 삼각형의 방향 변 $(a, b)$마다 $a$의 행에 $b$를, 껍질 변은 반대 방향도 넣고 행마다 정렬해요. 3차원은 꼭짓점마다 그 점의 사면체(별)를 셈 정렬로 모아, 별의 다른 꼭짓점을 작은 열린 주소 집합으로 한 번씩만 모아 정렬해요 |
+| `coplanar` | 대표가 아닌 점마다 (점, 대표의 `vertex_to_simplex`, 대표) |
+| `transform` | $T^{-1} = \operatorname{adj}(T)/D$. 2차원은 수반 행렬의 원소가 차이 하나씩이고, 3차원은 행 $i$가 $(e_{i+1} \times e_{i+2})/D$로 교차곱의 성분이 `det2`예요. $D$는 값 커널 |
+
+`transform`의 원소마다 상대오차는 수반 행렬의 원소(차이는 $u$, `det2`는 $1.002u$), $D$의 $1.002u$, 나눗셈 한 번을 더해 $3.01u$ 이하이고, 계약은 $4u$예요. 역행렬을 소거로 구하지 않고 수반 행렬을 값 커널로 구하기 때문에, 가늘거나 납작한 단체에서도 조건수에 기대지 않아요.
+
+## 메모리
+
+`Delaunay`가 쥐는 배열은 2차원(삼각형 약 $2n$개)에서 점의 사본 $16n$, `simplices`와 `neighbors` 각 $48n$, `vertex_to_simplex` $8n$, 위치 격자 약 $2n$으로 약 $122n$바이트예요. 처음 읽는 `transform`은 $96n$, `vertex_neighbor_vertices`는 약 $56n$을 더해요. 3차원(고른 점, 사면체 약 $6.7n$개)은 `simplices`와 `neighbors`가 각 약 $214n$이라 약 $464n$이에요.
+
+만드는 동안에는 작업 구조(2차원은 반변의 $72n$, 3차원은 사면체마다 32바이트와 칸의 자리·잠금 낱말), 정렬 키, 표준 꼴의 행·차례·자리가 결과와 함께 있을 때가 정점이에요. 만들기 전의 Python 검사(`check_alloc`)는 2차원에서 $360n$, 3차원에서 $328n$바이트를 물리 메모리와 견줘요. 3차원은 그 뒤에도 사면체를 세어 위의 한도를 지켜요.

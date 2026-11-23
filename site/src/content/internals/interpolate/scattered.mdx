@@ -1,0 +1,573 @@
+---
+title: 삼각분할 위의 보간
+group: 여러 변수
+order: 3
+summary: "흩어진 점의 보간 셋이 Delaunay 삼각분할 위에서 값을 내는 방법을 설명해요. 무게를 행렬식의 비로 구해 자료점에서는 자료 그대로를 내고, Clough–Tocher 조각 3차식의 기울기는 좌표의 단위와 무관하게 멈추는 반복으로 구해요."
+seeAlso: [rbf, grid, overview, accuracy-performance]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import PlaneFig from '../../../components/fig/PlaneFig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+import Steps from '../../../components/fig/Steps.astro';
+
+export const ctPts = [[0.05, 0.1], [0.55, 0.05], [0.95, 0.2], [0.3, 0.45], [0.7, 0.5], [0.1, 0.85], [0.5, 0.9], [0.92, 0.8]];
+export const ctEdges = [[0.05, 0.1, 0.55, 0.05], [0.05, 0.1, 0.3, 0.45], [0.05, 0.1, 0.1, 0.85], [0.55, 0.05, 0.95, 0.2], [0.55, 0.05, 0.3, 0.45], [0.55, 0.05, 0.7, 0.5], [0.95, 0.2, 0.7, 0.5], [0.95, 0.2, 0.92, 0.8], [0.3, 0.45, 0.7, 0.5], [0.3, 0.45, 0.1, 0.85], [0.3, 0.45, 0.5, 0.9], [0.7, 0.5, 0.5, 0.9], [0.7, 0.5, 0.92, 0.8], [0.1, 0.85, 0.5, 0.9], [0.5, 0.9, 0.92, 0.8]];
+export const ctSplit = [[0.05, 0.1, 0.3, 0.2], [0.55, 0.05, 0.3, 0.2], [0.3, 0.45, 0.3, 0.2]];
+export const ctCentroid = [[0.3, 0.2]];
+export const ctNeighbour = [[0.5167, 0.3333], [0.15, 0.4667]];
+export const ctDirs = [[0.3, 0.2, 0.5167, 0.3333], [0.3, 0.2, 0.15, 0.4667], [0.3, 0.075, 0.3, 0.2]];
+export const ctErr = [[1, -0.012], [2, -0.622], [3, -1.189], [4, -1.804], [5, -2.462], [6, -3.143], [7, -3.832], [8, -4.519], [9, -5.195], [10, -5.82], [11, -6.44], [12, -7.056], [13, -7.674], [14, -8.294], [15, -8.917], [16, -9.541], [17, -10.157], [18, -10.771], [19, -11.386], [20, -12.002], [21, -12.619], [22, -13.237], [23, -13.858], [24, -14.488], [25, -14.841], [26, -14.955], [27, -15.051], [28, -15.353], [29, -15.051], [30, -15.051]];
+export const ctChange = [[2, -0.323], [3, -1.011], [4, -1.595], [5, -2.196], [6, -2.848], [7, -3.527], [8, -4.216], [9, -4.904], [10, -5.588], [11, -6.222], [12, -6.845], [13, -7.46], [14, -8.077], [15, -8.697], [16, -9.318], [17, -9.942], [18, -10.563], [19, -11.176], [20, -11.791], [21, -12.407], [22, -13.023], [23, -13.64], [24, -14.258], [25, -14.901], [26, -15.16], [27, -15.239], [28, -15.336], [29, -15.336], [30, -15.762]];
+
+## 한눈에 보기
+
+[`LinearNDInterpolator`](/api/interpolate/LinearNDInterpolator/)와 [`CloughTocher2DInterpolator`](/api/interpolate/CloughTocher2DInterpolator/)는 흩어진 자료점을 [`sd.spatial.Delaunay`](/api/spatial/Delaunay/)로 삼각분할하고, 평가점이 든 단체(2차원은 삼각형, 3차원은 사면체) 위의 다항식으로 값을 내요. 선형은 꼭짓점 값의 가중 평균인 조각 1차식이고, Clough–Tocher는 삼각형마다 3차식 셋을 이어 붙여 이웃 삼각형과 기울기까지 이어지게(C¹) 만든 조각 3차식이에요. [`griddata`](/api/interpolate/griddata/)는 `method`에 따라 이 둘이나 [`NearestNDInterpolator`](/api/interpolate/NearestNDInterpolator/)를 만들어 한 번 부르는 함수라, 객체를 만들어 부른 것과 같은 비트예요.
+
+| 파일 | 하는 일 |
+|---|---|
+| `src/stardust/interpolate/_scattered.py` | 인자 검사, 삼각분할 만들기(받은 `Delaunay`면 그대로 쓰기), `rescale`, 같은 점의 값 검사, `griddata`의 갈래 |
+| `csrc/interpolate/scattered.cpp` | 같은 점의 값 비교, 무게중심 좌표와 선형 값, Clough–Tocher의 계수와 평가, 기울기 추정 |
+| `csrc/spatial/triangulation.hpp` | 평가점마다 단체를 찾는 `locate_each`(`find_simplex`와 같은 걷기) |
+| `csrc/spatial/predicates.hpp` | 행렬식의 값 커널 `det2`, `det3` |
+| `csrc/spatial/delaunay2.hpp` | 삼각분할의 네이티브 객체 `DelaunayObj` |
+
+약속은 셋이에요.
+
+1. **평가점이 든 단체는 `find_simplex`의 답이에요.** 닫힌 단체 가운데 번호가 가장 작은 것이고, 볼록 껍질 밖이면 없어요. 판정은 정확한 술어라 허용오차가 없어요.
+2. **자료점에서는 자료 그대로예요.** −0.0까지 비트가 같아요.
+3. **점 하나의 값은 그 점과 객체만의 함수예요.** 다른 평가점, 점의 순서, 스레드 수가 값을 바꾸지 못하고, 만들 때 구한 기울기도 스레드 수와 무관해요.
+
+<Fig column caption="객체를 만들고 부르는 흐름. 검사와 모양 맞추기는 Python, 같은 점의 비교와 기울기와 평가는 C++ 커널이 해요.">
+  <Steps steps={[
+    { label: '_triangulate', note: 'points를 (n, d) 배열, d개 좌표 배열의 튜플, Delaunay 가운데 하나로 읽어요. 유한성을 보고, rescale이면 옮긴 좌표로 Delaunay를 만들어요', where: '_scattered.py' },
+    { label: '_values, scattered_duplicate', note: '값을 (n, K)의 연속 배열로 펴고, 대표가 아닌 같은 점의 값 행을 대표의 행과 바이트로 견줘요', where: '_scattered.py, scattered.cpp' },
+    { label: 'ct_gradients (Clough–Tocher만)', note: 'vertex_neighbor_vertices의 이웃으로 꼭짓점의 기울기 (n, K, 2)를 추정하고 훑기 수와 수렴 여부를 돌려줘요', where: 'scattered.cpp', depth: 1 },
+    { label: '__call__ → xi_points', note: '(…, d) 배열이나 튜플을 (q, d)로 펴고, rescale이면 같은 평균과 범위로 옮겨요', where: '_scattered.py' },
+    { label: 'linear_nd / ct_eval', note: 'locate_each가 점마다 단체를 찾고, 찾은 태스크에서 바로 값을 계산해요', where: 'scattered.cpp, triangulation.hpp' },
+    { label: '_finish', note: '(q, K)를 평가점의 모양 + 값의 나머지 모양으로 되돌려요. 한 점에 스칼라 값이면 Python 스칼라예요', where: '_rbf.py' },
+  ]} />
+</Fig>
+
+네이티브 함수는 넷이에요.
+
+```python
+>>> import math
+>>> import stardust as sd
+>>> core = sd._core.interpolate
+>>> [n for n in sorted(dir(core)) if n in ("scattered_duplicate", "linear_nd", "ct_gradients", "ct_eval")]
+['ct_eval', 'ct_gradients', 'linear_nd', 'scattered_duplicate']
+```
+
+C++는 `sd.spatial`의 삼각분할 객체를 `nb::cast`로 직접 읽어요. 단체와 이웃, 위치 격자, 점 집합의 범위로 고른 술어가 그 안에 있어서, 보간이 삼각분할을 다시 만들거나 배열을 옮겨 담지 않아요.
+
+## 만들기: 삼각분할과 같은 점
+
+`points`가 배열이나 튜플이면 Python이 모양(2차원 배열, 선형은 열 2·3개, Clough–Tocher는 2개)과 유한성을 보고 `sd.spatial.Delaunay`를 만들어요. 그 생성자가 내는 퇴화의 에러(한 직선이나 한 평면 위의 점, 서로 다른 점이 모자람)는 부른 이름으로 말머리만 바꿔 다시 던져요. `points`가 `Delaunay`면 그 삼각분할을 그대로 써요. `rescale=True`면 축마다 평균을 빼고 범위(0이면 1)로 나눈 좌표로 삼각분할하고, 부를 때 평가점도 같은 값으로 옮겨요. `points` 속성은 옮기기 전의 좌표 그대로예요.
+
+삼각분할은 같은 좌표의 점을 하나로 합치고 가장 작은 색인을 대표로 삼아요([삼각분할 만들기](/internals/spatial/delaunay/#사전-순서와-같은-점)). 단체의 꼭짓점은 대표뿐이라 보간은 대표의 값만 읽어요. 그래서 같은 점의 값이 서로 다르면 어느 값을 쓸지가 대표의 색인으로 정해져 버려요. 이것을 조용히 넘기지 않으려고, 만들 때 대표가 아닌 점마다 그 값 행을 대표의 행과 견줘요.
+
+```cpp
+// csrc/interpolate/scattered.cpp
+nb::tuple scattered_duplicate(nb::handle tri_h, nb::handle values_h) {
+    const Triangulation& T = triangulation_of(tri_h);
+    const NDArray& a = require_ndarray(values_h, "values");
+    if (a.ndim != 2 || !a.c_contiguous || a.shape[0] != T.n)
+        throw nb::type_error("'values' must be (n, k) C-contiguous");
+    const std::size_t row = static_cast<std::size_t>(a.shape[1]) * static_cast<std::size_t>(a.itemsize());
+    for (std::int64_t j = 0; j < T.n; ++j) {
+        const std::int64_t r = T.rep[static_cast<std::size_t>(j)];
+        if (r != j && row && std::memcmp(a.data + r * row, a.data + j * row, row) != 0) return nb::make_tuple(r, j);
+    }
+    return nb::make_tuple(-1, -1);
+}
+```
+
+견주기는 바이트로 해요. 같은 NaN은 받아들이고, 0.0과 −0.0은 다른 값으로 봐요. 행이 다르면 대표와, 값이 다른 같은 점 가운데 가장 작은 색인을 말하는 `ValueError`예요.
+
+```python
+>>> pts = [[0, 0], [1, 0], [0, 1], [1, 0]]
+>>> sd.interpolate.LinearNDInterpolator(pts, [1.0, 2.0, 3.0, 2.0])([[1.0, 0.0], [0.5, 0.5]]).tolist()
+[2.0, 2.5]
+>>> sd.interpolate.LinearNDInterpolator(pts, [1.0, 2.0, 3.0, 2.5])
+Traceback (most recent call last):
+...
+ValueError: LinearNDInterpolator(): data points 1 and 3 are equal and their values differ
+```
+
+값은 자료점의 축을 앞에 둔 $(n, K)$ 배열로 펴서 넘겨요. 뒤의 축이 여럿이면 곱해서 열 $K$개가 돼요. complex128은 실수부와 허수부를 나란한 double 열 둘로 읽어요. 선형의 무게와 Clough–Tocher의 계수가 모두 실수이고 값에 대해 선형이라, 복소수 열 하나는 실수 열 둘과 같은 계산이기 때문이에요.
+
+## 찾고 바로 평가하기
+
+부를 때는 평가점마다 단체를 찾고 값을 계산해요. 찾기는 [`find_simplex`의 걷기](/internals/spatial/delaunay/#위치-찾기-find_simplex) 그대로예요. 위치 격자의 칸에서 시작해 평가점이 엄격히 너머에 있는 면을 건너 걷고, 닿은 단체에서 값이 0인 면을 보아 품는 단체 가운데 가장 작은 번호를 골라요. 걷기를 점마다 부르는 함수 `locate_each`가 찾은 단체를 콜백 `done(i, t)`로 넘겨 주고, 보간은 그 콜백 안에서 값을 계산해요. 단체의 꼭짓점과 이웃이 방금 읽혀 캐시에 있을 때 계산하려는 것이에요.
+
+```cpp
+    // csrc/interpolate/scattered.cpp
+    tri::locate_each<D>(T, x, q, split, [&](std::int64_t i, std::int64_t t) {
+        const double* p = x + i * D;
+        double* row = out + i * k2;
+        if (t < 0) {
+            outside<D>(p, fill, row, k2);
+            return;
+        }
+        double lambda[D + 1];
+        barycentric<D>(T, t, p, tri::detail::safe_with<D>(T, p), lambda);
+        const std::int64_t* s = T.simplices + t * (D + 1);
+        bool first = true;
+        for (int k = 0; k <= D; ++k) {
+            const double w = lambda[k];
+            if (w == 0.0) continue;
+            const double* f = v.f + s[k] * k2;
+            if (first) {
+                for (std::int64_t c = 0; c < k2; ++c) row[c] = w * f[c];
+                first = false;
+            } else {
+                for (std::int64_t c = 0; c < k2; ++c) row[c] = std::fma(w, f[c], row[c]);
+            }
+        }
+    });
+```
+
+단체가 없으면(`t < 0`) 좌표에 NaN이 있는 점은 모든 열이 NaN이고, 그 밖은 `fill_value`의 행이에요. 무한한 좌표의 점은 걷지 않고 −1을 받으니 바깥이에요. complex 값이면 채움 행은 열마다 `fill_value`의 실수부와 허수부를 번갈아 둔 것이에요(실수 `fill_value`면 허수부가 0이에요).
+
+평가점 256개가 태스크 하나이고, 한 스레드에서 점이 $2^{12}$개 이상이면 위치 격자의 칸 차례로 걸어요. 어느 차례든 점마다의 단체는 정의로 정해지고 값은 그 단체와 점만의 계산이라 결과가 같아요. 나눌지는 일의 어림으로 정해요. 선형은 점마다 $128 + 16(d + 2) + 2K$, Clough–Tocher는 $128 + 160 + 40K$ 단위로 세어($K$는 double 열의 수) 합이 $2^{15}$ 이상이면 나누고 GIL을 놓아요.
+
+## 선형: 행렬식의 비로 구한 무게
+
+평가점 $x$가 꼭짓점 $v_0, \ldots, v_d$의 단체 안에 있으면 선형 보간의 값은 $\sum_k \lambda_k f_k$이고, $\lambda_k$는 $x$의 무게중심 좌표예요. 단체의 행렬식을 $D$, 꼭짓점 $k$를 $x$로 바꾼 같은 행렬식을 $D_k$라 하면 Cramer의 규칙으로
+
+$$
+\lambda_k = \frac{D_k}{D},\qquad \sum_k \lambda_k = 1
+$$
+
+이에요. $D_k$는 $x$와 나머지 꼭짓점이 만드는 작은 단체의 부호 있는 부피(의 $d!$배)라서, $x$가 단체 안이면 모든 $D_k$가 $D$와 같은 부호예요. 코드는 이 정의를 그대로 따라요.
+
+```cpp
+// csrc/interpolate/scattered.cpp
+// lambda[k] = D_k / D for the point p in simplex t.
+template <int D>
+inline void barycentric(const Triangulation& T, std::int64_t t, const double* p, bool safe, double* lambda) {
+    const std::int64_t* s = T.simplices + t * (D + 1);
+    const double* q[D + 2];
+    for (int j = 0; j <= D; ++j) q[j] = T.pts + s[j] * D;
+    double det = det_of<D>(q, safe);
+    bool any = false;
+    double copies[D + 2][D];
+    if (!in_range(det)) {  // inside the simplex |D_k| <= |D|: D alone decides
+        q[D + 1] = p;
+        scaled_copies<D>(q, D + 2, copies);
+        for (int j = 0; j <= D; ++j) q[j] = copies[j];
+        p = copies[D + 1];
+        any = true;
+        det = det_of<D>(q, safe, any);
+    }
+    for (int k = 0; k <= D; ++k) {
+        const double* keep = q[k];
+        q[k] = p;
+        lambda[k] = det_of<D>(q, safe, any) / det;
+        q[k] = keep;
+    }
+}
+```
+
+행렬식은 모두 `sd.spatial`의 [값 커널](/internals/spatial/predicates/#값-커널-det2-det3)이에요. `det2`, `det3`은 참값 $x$에 대해 $\lvert r - x\rvert \le 1.002u\lvert x\rvert + 2^{-1075}$를 지키고, 행렬식이 정확히 0이면 정확히 0을 내요. 이 두 성질에서 세 가지가 나와요.
+
+- **자료점에서 자료 그대로.** 평가점이 꼭짓점 $v_k$와 같으면 $D_k$를 구하는 호출은 $D$를 구하는 호출과 인자의 값이 똑같아요. 같은 함수에 같은 값이니 같은 비트이고 $\lambda_k = D/D = 1$이 정확해요. 다른 $D_j$는 같은 점이 두 번 든 행렬식이라 정확히 0이에요. 그래서 합은 $1 \cdot f_k = f_k$ 하나이고, −0.0도 그대로 나와요.
+- **무게의 부호가 정확해요.** 오차가 값 자신보다 훨씬 작으니 $\hat D_k$의 부호는 $D_k$와 같거나 0이고, 단체 안의 점에서 $\hat\lambda_k \ge 0$이에요.
+- **면 위의 점은 맞은편 꼭짓점을 읽지 않아요.** $x$가 꼭짓점 $k$의 맞은편 면 위면 $D_k$가 정확히 0이라 $\lambda_k = 0$이고, 무게가 0인 항은 건너뛰어요. 그 꼭짓점의 값이 NaN이나 inf여도 결과에 들지 않아요.
+
+```python
+>>> rng = sd.random.default_rng(5)
+>>> P = rng.random((2000, 2))
+>>> f = sd.sin(3 * P[:, 0]) * sd.cos(2 * P[:, 1])
+>>> lin = sd.interpolate.LinearNDInterpolator(P, f)
+>>> ct = sd.interpolate.CloughTocher2DInterpolator(P, f)
+>>> lin(P).tolist() == f.tolist(), ct(P).tolist() == f.tolist()
+(True, True)
+>>> sq = sd.asarray([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]])
+>>> L = sd.interpolate.LinearNDInterpolator(sq, sd.asarray([1.0, math.nan, 3.0, 4.0]))
+>>> L.tri.simplices.tolist()
+[[0, 1, 2], [1, 3, 2]]
+>>> L([[0.0, 0.5], [0.25, 0.25], [0.5, 0.0]]).tolist()
+[2.0, nan, nan]
+```
+
+점 $(0, 0.5)$는 삼각형 $[0, 1, 2]$에서 점 1의 맞은편 변 위라 점 1의 NaN을 읽지 않아요. 안쪽 점과 점 1이 끝인 변 위의 점은 NaN이에요. 건너뛰기는 −0.0을 지키는 데에도 필요해요. 무게 0의 항을 더하면 $0 \cdot f_j + (-0.0)$이 $+0.0$이 되기 때문이에요.
+
+### 오차 한계
+
+평가점을 품은 단체에서
+
+$$
+\lvert \hat y - y\rvert \le \gamma_{d+5} \sum_k \lambda_k \lvert f_k\rvert + (d + 2)\,2^{-1074}
+$$
+
+이에요. $y$는 정확한 $\lambda_k$의 정확한 합이에요. 유도는 두 걸음이에요.
+
+1. **무게.** $\hat\lambda_k = \mathrm{fl}(\hat D_k/\hat D)$이고 $\hat D_k = D_k(1 + \epsilon_1)$, $\hat D = D(1 + \epsilon_2)$, $\lvert\epsilon_i\rvert \le 1.002u$라서 $\hat\lambda_k = \lambda_k(1 + \epsilon_1)(1 + \delta)/(1 + \epsilon_2)$, 상대오차가 $3.01u$ 안이에요. 비정상 수 둘레에서는 커널의 절대 항이 더해져요.
+2. **합.** 첫 항은 곱 하나, 그 뒤는 fma 하나씩이라 각 항은 반올림을 많아야 $d + 1$번 거쳐요. 그래서 $\lvert \hat y - \sum_k \hat\lambda_k f_k\rvert \le \gamma_{d+1}\sum_k \lvert\hat\lambda_k f_k\rvert$이에요.
+
+둘을 합치면 각 항의 몫이 $(1 + 3.01u)(1 + u)^{d+1} - 1 \le (1 + u)^{d+5} - 1 \le \gamma_{d+5}$ 안이에요. 무게가 모두 0 이상이라 오른쪽이 $\sum\lambda_k\lvert f_k\rvert$, 곧 값 크기의 가중 평균이에요. 단체가 아무리 가늘거나 납작해도 이 한계에 조건수가 들지 않아요. 무게가 행렬식의 비이고, 그 행렬식을 값 커널이 상대 정확도로 주기 때문이에요.
+
+### `transform`을 쓰지 않는 까닭
+
+`Delaunay.transform`의 $T^{-1}$로도 무게를 구할 수 있어요. $\lambda = T^{-1}(x - r)$이에요. 하지만 이 곱은 성분마다 합이라 지워지는 자리가 있고, 오차가 $\lambda$가 아니라 $\lvert T^{-1}\rvert\lvert x - r\rvert$에 비례해요. 납작한 단체에서는 $T^{-1}$의 원소가 커서 이 값이 $\lambda$보다 훨씬 커요. 또 $D$가 아래넘치는 좌표에서는 $T^{-1}$이 넘쳐 inf가 돼요. 행렬식의 비는 두 문제가 없어요.
+
+### 크기 옮기기
+
+값 커널의 절대 항 $2^{-1075}$ 때문에, $D$가 비정상 수 크기면 상대 정확도가 무너지고 $D$가 넘치면 비가 NaN이에요. 그래서 $D$가 $[2^{-900}, 2^{900}]$ 밖이면 단체의 꼭짓점과 평가점을 2의 거듭제곱 하나로 늘이거나 줄인 사본으로 행렬식을 다시 구해요. 단체 안에서는 $\lvert D_k\rvert \le \lvert D\rvert$라 $D$ 하나로 판단하면 돼요.
+
+```cpp
+// csrc/interpolate/scattered.cpp
+template <int D>
+inline void scaled_copies(const double* const* p, int m, double (*out)[D]) {
+    double big = 0.0;
+    for (int i = 0; i < m; ++i)
+        for (int j = 0; j < D; ++j) big = std::max(big, std::fabs(p[i][j]));
+    const int e = big > 0.0 ? std::ilogb(big) + 1 : 0;
+    const double s1 = std::ldexp(1.0, -e / 2), s2 = std::ldexp(1.0, -e - (-e / 2));
+    for (int i = 0; i < m; ++i)
+        for (int j = 0; j < D; ++j) out[i][j] = p[i][j] * s1 * s2;
+}
+```
+
+가장 큰 좌표를 $[1/2, 1)$로 옮기는 배율 $2^{-e}$이에요. $2^{-e}$ 자체가 double이 아닐 수 있어서(예를 들어 $e = -1074$) 두 인자 $s_1 s_2$로 나눠 곱해요. 2의 거듭제곱을 곱하는 것은 결과가 정상 범위에 있는 한 정확하고, 모든 행렬식이 같은 배율 $2^{-de}$를 받으니 비 $D_k/D$는 원래의 것과 같아요. 사본의 좌표 범위가 점 집합의 범위와 다르니 술어의 길은 그 점들의 범위로 다시 골라요(`any`).
+
+```python
+>>> T = sd.asarray([[0.0, 0.0], [3.0, 0.0], [0.0, 2.0], [3.0, 2.0], [1.0, 1.0]])
+>>> v = sd.asarray([1.0, 2.0, 3.0, 4.0, 5.0])
+>>> x = sd.asarray([[0.75, 0.5], [2.25, 1.5]])
+>>> s = 2.0 ** -1040
+>>> sd.interpolate.LinearNDInterpolator(T, v)(x).tolist()
+[3.0833333333333335, 4.25]
+>>> sd.interpolate.LinearNDInterpolator(T * s, v)(x * s).tolist()
+[3.0833333333333335, 4.25]
+>>> sd.spatial.Delaunay(T * s).transform[0, 0].tolist()
+[-inf, -inf]
+```
+
+좌표가 모두 비정상 수인 자료에서도 같은 비트의 값이 나와요. 같은 점 집합의 `transform`은 $D$가 아래넘쳐 inf예요.
+
+## Clough–Tocher: 이어 붙인 3차식
+
+선형 보간은 삼각형의 변에서 꺾여요. Clough–Tocher는 꼭짓점의 값 $f_i$와 기울기 $\nabla f_i$를 받아, 이웃 삼각형과 값과 기울기가 모두 이어지는 조각 3차식을 만들어요. 한 삼각형 위의 3차식 하나로는 이 조건을 다 맞출 수 없어서, 삼각형을 무게중심에서 셋으로 나누고 작은 삼각형마다 3차식을 둬요. 계수와 평가의 식은 scipy와 같고, 차이는 변을 건너는 방향의 계수를 구하는 산술과 계산의 차례예요.
+
+<Fig caption="삼각형 [0, 1, 3](굵은 꼭짓점)을 무게중심(네모)에서 셋으로 나눈 모습. 변을 건너는 도함수의 방향은 이웃 삼각형의 무게중심(마름모)을 향하고(점선), 이웃이 없는 아래 변은 변의 가운데에서 무게중심으로 가는 방향이에요.">
+  <PlaneFig
+    label="작은 삼각분할에서 한 삼각형의 세 조각과 변을 건너는 방향"
+    domain={[0, 1]}
+    range={[0, 1]}
+    xTicks={[0, 0.5, 1]}
+    yTicks={[0, 0.5, 1]}
+    width={340}
+    layers={[
+      { kind: 'segments', segs: ctEdges, tone: 'faint', width: 1.2 },
+      { kind: 'segments', segs: ctSplit, tone: 'soft', width: 1.4 },
+      { kind: 'segments', segs: ctDirs, tone: 'main', dashed: true, width: 1.6 },
+      { kind: 'points', pts: ctPts, tone: 'ink', size: 3.2 },
+      { kind: 'points', pts: ctCentroid, tone: 'main', shape: 'square', size: 3.4 },
+      { kind: 'points', pts: ctNeighbour, tone: 'main', shape: 'diamond', size: 3.4 },
+    ]}
+    legend={[
+      { label: '무게중심', tone: 'main', shape: 'square' },
+      { label: '이웃의 무게중심', tone: 'main', shape: 'diamond' },
+      { label: '변을 건너는 방향', tone: 'main', shape: 'dash' },
+    ]}
+  />
+</Fig>
+
+### 계수
+
+작은 삼각형마다의 3차식을 Bézier 꼴로 적어요. 꼭짓점 $v_1, v_2, v_3$과 무게중심 $v_4$의 무게중심 좌표 $b_1, \ldots, b_4$로 계수 $c_{ijkl}$은 $b_1^i b_2^j b_3^k b_4^l$의 계수이고($i + j + k + l = 3$, 작은 삼각형에 없는 꼭짓점의 지수는 0), 이름은 scipy의 것이에요. 계수는 바깥에서 안으로 정해져요.
+
+```cpp
+    // csrc/interpolate/scattered.cpp
+    const double c3000 = f[0], c0300 = f[1], c0030 = f[2];
+    const double c2100 = (df12 + 3 * c3000) / 3, c2010 = (df13 + 3 * c3000) / 3;
+    const double c1200 = (df21 + 3 * c0300) / 3, c0210 = (df23 + 3 * c0300) / 3;
+    const double c1020 = (df31 + 3 * c0030) / 3, c0120 = (df32 + 3 * c0030) / 3;
+    const double c2001 = (c2100 + c2010 + c3000) / 3;
+    const double c0201 = (c1200 + c0300 + c0210) / 3;
+    const double c0021 = (c1020 + c0120 + c0030) / 3;
+    const double c0111 =
+        (G.g[0] * (-c0300 + 3 * c0210 - 3 * c0120 + c0030) + (-c0300 + 2 * c0210 - c0120 + c0021 + c0201)) / 2;
+    const double c1011 =
+        (G.g[1] * (-c0030 + 3 * c1020 - 3 * c2010 + c3000) + (-c0030 + 2 * c1020 - c2010 + c2001 + c0021)) / 2;
+    const double c1101 =
+        (G.g[2] * (-c3000 + 3 * c2100 - 3 * c1200 + c0300) + (-c3000 + 2 * c2100 - c1200 + c2001 + c0201)) / 2;
+    const double c1002 = (c1101 + c1011 + c2001) / 3;
+    const double c0102 = (c1101 + c0111 + c0201) / 3;
+    const double c0012 = (c1011 + c0111 + c0021) / 3;
+    const double c0003 = (c1002 + c0102 + c0012) / 3;
+```
+
+1. **꼭짓점.** $c_{3000} = f_1$처럼 꼭짓점의 계수는 값 그대로예요. 자료점에서 값이 자료와 같은 것이 여기서 나와요.
+2. **변을 따라.** Bézier 곡선의 끝 도함수는 끝 계수 차의 세 배라서, $v_1$에서 $v_2$ 쪽 방향 도함수 $\nabla f_1 \cdot (v_2 - v_1)$(코드의 `df12`)을 맞추려면 $c_{2100} = f_1 + \tfrac13\,\nabla f_1\cdot(v_2 - v_1)$이에요. 변 위의 계수 넷은 변의 두 끝 자료만 쓰니, 이웃 삼각형과 변 위의 3차 곡선이 같아요(값이 이어져요).
+3. **꼭짓점에서 무게중심 쪽.** $c_{2001}$은 꼭짓점 둘레 세 계수의 평균이에요. $v_4 - v_1 = \tfrac13\big((v_2 - v_1) + (v_3 - v_1)\big)$이라 이 값이 기울기 $\nabla f_1$이 예측하는 그대로이고, 꼭짓점 둘레의 계수가 모두 그 접평면 위에 놓여요.
+4. **변을 건너는 조건.** 바깥 변 옆의 안쪽 계수 셋($c_{0111}$, $c_{1011}$, $c_{1101}$)은 아래의 C¹ 조건으로 정해요.
+5. **무게중심 둘레.** 나머지는 평균이에요. 무게중심의 무게중심 좌표가 $(1/3, 1/3, 1/3)$이라, 세 작은 삼각형이 안쪽 변을 건너 C¹로 이어지는 조건이 이 평균 꼴이 돼요.
+
+### 변을 건너는 방향
+
+두 삼각형이 변에서 기울기까지 이어지려면, 변을 건너는 어떤 방향 $w$의 도함수가 두 쪽에서 같아야 해요. 변 위에서 그 도함수는 2차식인데, 변의 양 끝에서는 꼭짓점의 기울기로 정해져 있어요. 그 2차식이 1차식이 되게(2차 항이 0이게) 하면 두 끝 값만으로 정해지니 두 쪽이 같아져요. 두 삼각형이 같은 $w$를 고르기만 하면 돼요. 바깥 변 옆의 안쪽 계수 $c_{0111}$이 그 조건을 맞추는 하나뿐인 자유도이고, 위의 식이 그 조건을 푼 것이에요. `-c0300 + 3 * c0210 - 3 * c0120 + c0030`은 변 위 계수의 셋째 차분(변을 따라 가는 3차 성분)이고, 거기에 곱하는 $g_0$가 $w$의 변을 따라 가는 성분이에요.
+
+방향은 이 삼각형의 무게중심에서 이웃 삼각형의 무게중심으로 가는 쪽이에요. 이웃도 같은 변에 대해 자기 무게중심에서 이 삼각형의 무게중심으로 가는 쪽을 고르니 두 쪽의 방향이 한 직선 위이고, 무게중심과 무게중심 좌표는 아핀 변환에 따라 함께 움직이니 보간도 좌표의 아핀 변환과 어긋나지 않아요.
+
+꼭짓점 $k$의 맞은편 변을 보며 지수를 0부터 세어요. $w$를 "꼭짓점 $k + 1$에서 무게중심으로 가는 벡터 + $g_k$ × 변 $v_{k+1}v_{k+2}$"로 적고, 이웃 무게중심의 이 삼각형에서의 무게중심 좌표를 $c$라 하면, $w$가 무게중심에서 이웃 무게중심으로 가는 벡터와 평행할 조건은
+
+$$
+g_k = \frac{c_{k+2} - c_k}{3c_k - 1}
+$$
+
+이에요. 이웃이 없는 껍질 변은 $g_k = -1/2$이고, 그러면 $w$는 변의 가운데에서 무게중심으로 가요.
+
+scipy는 이웃 무게중심의 좌표를 반올림해 구한 뒤 그 점의 무게중심 좌표 $c$를 구해요. 여기서는 $c$를 행렬식으로 바로 적어요. 이웃의 남은 꼭짓점을 $w'$, 꼭짓점 $j$를 $w'$로 바꾼 행렬식을 $D_j(w')$라 하면, 이웃 무게중심은 $(v_{k+1} + v_{k+2} + w')/3$이고 행렬식은 바꾼 점에 대해 아핀이므로
+
+$$
+c_k = \frac{D_k(w')}{3D},\qquad c_{k+2} = \frac{D + D_{k+2}(w')}{3D}
+$$
+
+예요($D_k(v_{k+1}) = D_k(v_{k+2}) = 0$, $D_{k+2}(v_{k+2}) = D$, $D_{k+2}(v_{k+1}) = 0$). 넣고 정리하면
+
+$$
+g_k = \frac{D + D_{k+2}(w') - D_k(w')}{3\,\big(D_k(w') - D\big)}
+$$
+
+이고, 값 커널 셋으로 끝나요.
+
+```cpp
+        // csrc/interpolate/scattered.cpp
+        int j = 0;
+        while (T.neighbors[u * 3 + j] != t) ++j;
+        const double* w = T.pts + T.simplices[u * 3 + j] * 2;
+        const int k2 = (k + 2) % 3;
+        const double* q[4] = {v[0], v[1], v[2], w};
+        double det = det0, copies[4][2];
+        bool any = false;
+        auto dets = [&](double& dk, double& dk2) {
+            const double* a = q[k];
+            q[k] = q[3];
+            dk = det_of<2>(q, safe_data, any);
+            q[k] = a;
+            const double* b = q[k2];
+            q[k2] = q[3];
+            dk2 = det_of<2>(q, safe_data, any);
+            q[k2] = b;
+        };
+        double dk, dk2;
+        dets(dk, dk2);
+        if (!in_range(det) || !(std::fabs(dk) <= 0x1p900) || !(std::fabs(dk2) <= 0x1p900)) {
+            scaled_copies<2>(q, 4, copies);
+            for (int i = 0; i < 4; ++i) q[i] = copies[i];
+            any = true;
+            det = det_of<2>(q, safe_data, any);
+            dets(dk, dk2);
+        }
+        G.g[k] = ((det + dk2) - dk) / (3.0 * (dk - det));
+```
+
+$w'$는 꼭짓점 $k$의 맞은편 변 너머에 있으니 $D_k(w') \lt 0 \lt D$예요. 그래서 분모 $D_k(w') - D$는 같은 부호인 두 수의 합이라 상대적으로 정확해요. 분자는 값 커널 셋과 덧셈 둘이라 오차가 $u(D + \lvert D_k(w')\rvert + \lvert D_{k+2}(w')\rvert)$의 몇 배 안이고, $D_0(w') + D_1(w') + D_2(w') = D$에서 $\lvert D_{k+2}(w')\rvert$는 분자의 크기와 분모로 막혀요. 정리하면 $g_k$의 오차는 $10u(1 + \lvert g_k\rvert)$ 안이에요. 행렬식이 범위 밖이면 선형과 같은 사본으로 구해요. 이 계산은 자료점만 쓰니 술어의 길은 점 집합의 범위로 정해요(`safe_data`).
+
+### 평가
+
+평가점의 무게중심 좌표는 선형과 같은 $\lambda$예요. 점은 가장 작은 $\lambda_m$의 맞은편 작은 삼각형 $(v_{m+1}, v_{m+2}, v_4)$에 있어요(같으면 앞의 것, scipy의 첫 최솟값과 같아요). 그 작은 삼각형에서의 좌표는 $(\lambda_{m+1} - \lambda_m,\ \lambda_{m+2} - \lambda_m,\ 3\lambda_m)$이에요. $x = \sum\lambda_j v_j$에서 $v_4 = (v_1 + v_2 + v_3)/3$으로 $v_m$을 없애면 나오는 식이에요.
+
+값은 de Casteljau 알고리즘으로 구해요. 계수 열 개에서 세 무게로 볼록 결합을 세 번 되풀이해 차수를 하나씩 낮추고, 결합마다 곱 하나와 fma 둘을 정한 차례로 써요.
+
+```cpp
+    // csrc/interpolate/scattered.cpp
+    const double a = G.b[0], b = G.b[1], z = G.b[2];
+    if (z == 0.0 && (a == 0.0 || b == 0.0)) return a == 0.0 ? c[3] : c[0];  // a data point: its value, -0.0 too
+    auto step = [&](double p, double qv, double r) { return std::fma(z, r, std::fma(b, qv, a * p)); };
+    // level 1 (degree 2): AA, AB, BB, AC, BC, CC
+    const double d0 = step(c[0], c[1], c[4]), d1 = step(c[1], c[2], c[5]), d2 = step(c[2], c[3], c[6]);
+    const double d3 = step(c[4], c[5], c[7]), d4 = step(c[5], c[6], c[8]), d5 = step(c[7], c[8], c[9]);
+    // level 2 (degree 1): A, B, C
+    const double e0 = step(d0, d1, d3), e1 = step(d1, d2, d4), e2 = step(d3, d4, d5);
+    return step(e0, e1, e2);
+```
+
+자료점에서는 무게가 $(1, 0, 0)$이라 결합 없이 꼭짓점의 계수, 곧 자료를 돌려줘요. 결합을 거치면 $-0.0 + 0 \cdot c$가 $+0.0$이 되어 부호를 잃을 수 있어서예요.
+
+좌표가 $2^{1000}$을 넘는 삼각형은 변을 그대로 빼면 넘칠 수 있어요. 그때는 점마다 $2^{-e}$를 곱한 뒤 빼서 변을 구하고, 기울기에 $2^{e}$를 곱해 써요. 계수가 쓰는 것은 방향 도함수 $\nabla f\cdot(v_j - v_i)$뿐이고, 두 배율이 정확히 상쇄되니 같은 값이에요.
+
+### 오차 한계
+
+주어진 기울기의 조각 3차식(정확한 $g_k$와 계수)에 대해
+
+$$
+\lvert \hat y - y\rvert \le 256u\cdot K + 32\cdot 2^{-1074},\qquad K = (1 + \max_k\lvert g_k\rvert)\Big(\max\lvert f\rvert + \max\big(\lvert\partial_x f_i\rvert\lvert e_x\rvert + \lvert\partial_y f_i\rvert\lvert e_y\rvert\big)\Big)
+$$
+
+예요. 마지막 최대는 삼각형의 여섯 방향 도함수(꼭짓점마다 두 변)를 두고 잡아요. 연산의 차례대로 일차 항을 세면 계수의 오차가 $63u\cdot K$, de Casteljau의 반올림이 $36u\cdot K$, 무게중심 좌표의 오차(합 $8.7u$ 이하)가 계수에 곱해져 옮기는 몫이 $104u\cdot K$로 합이 약 $200u\cdot K$이고, 계약은 그것을 올린 $256u\cdot K$예요. 자료점에서는 오차가 0이에요. 기울기 자체는 아래 반복의 허용오차만큼만 정해지니 이 계약 밖이에요. 그래도 같은 입력에서는 언제나 같은 비트예요.
+
+## 기울기 추정
+
+Clough–Tocher는 꼭짓점의 기울기가 있어야 하는데, 흩어진 자료에는 값만 있어요. 기울기는 만들 때 한 번, scipy와 같은 전역 방법(Nielson, Renka–Cline)으로 추정해요. Delaunay 변마다 그 변을 따라 가는 곡선이 되도록 덜 휘게 하는 기울기를 고르는 방법이에요.
+
+### 줄일 양
+
+변 $(i, j)$에서 $e = p_j - p_i$, $L = \lvert e\rvert$, $\Delta = f_j - f_i$라 하고 꼭짓점의 기울기를 $y_i$, $y_j$라 해요. 변을 따라 $[0, L]$ 위에서 값 $f_i$, $f_j$와 끝 기울기 $a = e\cdot y_i/L$, $b = e\cdot y_j/L$을 맞추는 3차 Hermite 곡선 $h$의 곡률 제곱 적분은
+
+$$
+\int_0^L h''(s)^2\,ds = \frac{4}{L}\big(a^2 + ab + b^2\big) - \frac{12\Delta}{L^2}(a + b) + \frac{12\Delta^2}{L^3}
+$$
+
+이에요. 모든 변에서 이 값을 더한 것이 줄일 양이에요. $y_i$로 미분하면 변 하나의 몫이 $\frac{e}{L^3}\,(8\,e\cdot y_i + 4\,e\cdot y_j - 12\Delta)$이고, 꼭짓점 $i$의 변을 모두 더해 0으로 두고 2로 나누면 $w = e/L^3$로
+
+$$
+\Big(\sum_j 4\,w\,e^{\mathsf T}\Big)\,y_i = -\Big(\sum_j 2\,(e\cdot y_j)\,w + \sum_j 6\,(f_i - f_j)\,w\Big)
+$$
+
+예요. 왼쪽의 $Q_i = \sum_j 4we^{\mathsf T}$는 $2 \times 2$ 대칭 행렬이에요($w$가 $e$와 평행해서요). 꼭짓점 하나씩 이 계를 풀어 $y_i = -Q_i^{-1}s_i$로 바꾸는 것이 Gauss–Seidel 훑기예요. 줄일 양은 $y$의 이차식이고, 2차 부분 $\frac4L(a^2 + ab + b^2)$이 $(a, b)$의 양정치 꼴이라 모든 변에서 $a = b = 0$일 때만 0이에요. 꼭짓점마다 평행하지 않은 변이 둘 이상이니 그때 $y = 0$이고, 그래서 양정치예요. 양정치 이차식의 Gauss–Seidel은 걸음마다 그 꼭짓점에 대해 정확히 줄이는 것이라 하나뿐인 최솟값으로 수렴해요.
+
+### 미리 구해 두는 것
+
+훑기마다 바뀌는 것은 $y_j$뿐이에요. 방향 있는 변마다 $e$와 $w$, 꼭짓점마다 $Q_i^{-1}$, 열마다 자료 항 $\sum 6(f_i - f_j)w$를 한 번만 구해요.
+
+```cpp
+            // csrc/interpolate/scattered.cpp
+            const double* pi = T.pts + i * 2;
+            double q0 = 0, q1 = 0, q3 = 0;
+            for (std::int64_t a = E.indptr[i]; a < E.indptr[i + 1]; ++a) {
+                const double* pj = T.pts + E.idx[a] * 2;
+                const double ex = pj[0] * s1 * s2 - pi[0] * s1 * s2, ey = pj[1] * s1 * s2 - pi[1] * s1 * s2;
+                const double r = 1.0 / std::sqrt(ex * ex + ey * ey);  // |e| in [2^-500, 2^500] here
+                const double wx = ex * r * r * r, wy = ey * r * r * r;  // (e / |e|) / |e|^2: not |e|^3, out of range
+                double* o = E.ew.data() + 4 * a;
+                o[0] = ex, o[1] = ey, o[2] = wx, o[3] = wy;
+                q0 += 4 * ex * wx;
+                q1 += 4 * ex * wy;
+                q3 += 4 * ey * wy;
+            }
+            const double det = q0 * q3 - q1 * q1;
+            double* o = E.iq.data() + 3 * i;
+            o[0] = q3 / det, o[1] = -q1 / det, o[2] = q0 / det;
+```
+
+이웃은 `Delaunay.vertex_neighbor_vertices`의 CSR이고, 행마다 이웃이 오름차순이라 합의 차례가 정해져 있어요. 이 배열은 `Delaunay`가 처음 만들 때 쥐어 두니 같은 삼각분할로 객체를 여럿 만들어도 한 번이에요. $w$를 $e/\lvert e\rvert^3$으로 바로 구하지 않고 $1/\lvert e\rvert$를 세 번 곱하는 것은 $\lvert e\rvert^3$이 $\lvert e\rvert$보다 훨씬 먼저 넘치거나 아래넘치기 때문이에요.
+
+### 훑기와 멈춤
+
+```cpp
+    // csrc/interpolate/scattered.cpp
+    for (std::int64_t it = 0; it < maxiter; ++it) {
+        double change = 0.0, size = 0.0;  // the sweep's largest |y_new - y_old| and largest |y_new|
+        for (std::int64_t i = 0; i < n; ++i) {
+            if (T.rep[static_cast<std::size_t>(i)] != i) continue;
+            double s0 = cdata[static_cast<std::size_t>(2 * i)], s1 = cdata[static_cast<std::size_t>(2 * i + 1)];
+            for (std::int64_t a = E.indptr[i]; a < E.indptr[i + 1]; ++a) {
+                const double* o = E.ew.data() + 4 * a;
+                const double* yj = Y + 2 * E.idx[a];
+                const double t = 2 * std::fma(o[1], yj[1], o[0] * yj[0]);
+                s0 = std::fma(t, o[2], s0);
+                s1 = std::fma(t, o[3], s1);
+            }
+            const double* iq = E.iq.data() + 3 * i;
+            const double r0 = std::fma(iq[1], s1, iq[0] * s0), r1 = std::fma(iq[2], s1, iq[1] * s0);
+            const double c = std::max(std::fabs(Y[2 * i] + r0), std::fabs(Y[2 * i + 1] + r1));
+            const double z = std::max(std::fabs(r0), std::fabs(r1));
+            Y[2 * i] = -r0;
+            Y[2 * i + 1] = -r1;
+            if (c > change || c != c) change = c;
+            if (z > size || z != z) size = z;
+        }
+        if (change < tol * size) return {it + 1, true};
+    }
+    return {maxiter, false};
+```
+
+훑기는 색인 차례 하나예요. Gauss–Seidel은 앞에서 바꾼 $y_j$를 바로 읽으니 차례가 값에 들어가요. 그래서 한 열의 훑기는 나누지 않고 한 스레드가 처음부터 끝까지 해요. 대표가 아닌 같은 점은 삼각분할에 없으니 건너뛰고, 끝난 뒤 대표의 기울기를 받아요.
+
+멈춤은 훑기 하나에서 가장 크게 바뀐 성분 $\max\lvert y_{\text{new}} - y_{\text{old}}\rvert$가 `tol` × (그 훑기 뒤 기울기 성분의 가장 큰 크기)보다 작을 때예요. 비교하는 두 양이 같은 단위라, 좌표를 $c$배 하면(기울기는 $1/c$배) 둘이 같이 움직여 훑기 수가 그대로예요. 값을 몇 배 해도 마찬가지예요. scipy는 점마다 $\max(1, \lvert y\rvert)$로 나눈 변화를 보는데, 기울기가 1보다 작은 자료에서는 절대 변화를 보는 셈이라 좌표의 단위에 따라 일찍 멈추거나 늦게 멈춰요.
+
+```python
+>>> rng = sd.random.default_rng(11)
+>>> P = rng.random((500, 2))
+>>> f = sd.exp(-5 * ((P[:, 0] - 0.4) ** 2 + (P[:, 1] - 0.6) ** 2))
+>>> [sd.interpolate.CloughTocher2DInterpolator(P * c, f, tol=1e-10).niter for c in (1e-6, 1.0, 1e6)]
+[18, 18, 18]
+>>> ct = sd.interpolate.CloughTocher2DInterpolator(P, f)
+>>> ct.niter, ct.converged
+(11, True)
+>>> sd.interpolate.CloughTocher2DInterpolator(P, f, maxiter=5).converged
+False
+```
+
+수렴하지 못해도 에러가 아니에요. `maxiter`번에서 멈춘 기울기로 객체를 만들고 `converged`가 False예요.
+
+<Fig caption="고른 점 500개에 매끄러운 값을 준 자료에서 훑기마다의 두 양(log10). 실선은 오래 훑어 얻은 극한과의 차, 점선은 멈춤 판정이 보는 상대 변화예요. 기본 tol = 1e-6(가는 선)을 처음 밑도는 11번째 훑기에서 멈추고, 그때 극한과의 차는 3.6e-7이에요.">
+  <Plot
+    curves={[
+      { points: ctErr, label: '극한과의 차' },
+      { points: ctChange, label: '상대 변화', dashed: true },
+      { f: () => -6, label: 'tol' },
+    ]}
+    domain={[1, 30]}
+    range={[-16, 0]}
+    xTicks={[{ v: 1, label: '1' }, { v: 11, label: '11' }, { v: 20, label: '20' }, { v: 30, label: '30' }]}
+    yTicks={[{ v: -15, label: '1e-15' }, { v: -10, label: '1e-10' }, { v: -6, label: '1e-6' }, { v: 0, label: '1' }]}
+  />
+</Fig>
+
+수렴은 기하급수적이라 훑기마다 오차가 고르게 줄어요. 멈춘 기울기는 극한(정확한 최솟값)과 `tol` 크기만큼 다르고, 그만큼은 보간 값에도 남아요. 1차식 자료 $2x + 3y + 1$의 기울기는 참값 $(2, 3)$이 최솟값인데도(모든 변의 곡선이 직선이라 곡률이 0이에요) 기본 `tol`에서는 $10^{-6}$ 가까이 달라요.
+
+```python
+>>> g = 2 * P[:, 0] + 3 * P[:, 1] + 1
+>>> cg = sd.interpolate.CloughTocher2DInterpolator(P, g)
+>>> cg.niter, float(sd.max(sd.abs(cg.grad[:, 0] - 2))), float(sd.max(sd.abs(cg.grad[:, 1] - 3)))
+(11, 8.068042589570723e-07, 8.23808914862667e-07)
+```
+
+### 크기 옮기기
+
+변의 길이가 $2^{\pm 500}$ 밖이면 $\lvert e\rvert^2$이나 $w$가 double을 벗어나요. 준비 단계에서 모든 변의 $\lvert e\rvert^2$ 가운데 가장 작은 값 $a$와 가장 큰 값 $b$를 보고, $a \lt 2^{-1000}$이거나 $b \gt 2^{1000}$이면(차이가 넘쳐 inf나 NaN이어도) 점에 2의 거듭제곱 $2^{-e}$를 곱한 좌표로 추정해요. $e$는 길이의 로그 가운데, 곧 $(\lfloor\log_2 a\rfloor + \lfloor\log_2 b\rfloor)/4$예요(제곱의 지수는 길이의 두 배라서 4로 나눠요). 차이가 넘치면 점 집합의 폭으로 정해요. 정상 범위 안의 2의 거듭제곱 배율은 정확하니 옮긴 점의 같은 추정이고, 끝난 뒤 기울기에 같은 배율을 곱해 되돌려요. 보통의 자료는 옮기지 않아요.
+
+그래도 맞출 수 없는 자료는 있어요. 점 사이가 비정상 수 크기면 기울기 자체가 double을 넘어 `grad`가 ±inf이고, 자료점이 아닌 점의 값은 NaN이에요. 가장 짧은 변과 가장 긴 변의 비가 $2^{1000}$에 가까우면 어느 배율로도 둘을 함께 담을 수 없어 추정이 NaN이에요.
+
+## 병렬화와 결정성
+
+| 일 | 나누는 단위 | 같은 비트인 까닭 |
+|---|---|---|
+| 찾기와 평가 | 평가점 256개(한 스레드에서 $2^{12}$개 이상이면 칸 차례) | 단체는 정의로 정해지고, 점의 값은 그 단체와 점만의 계산이에요 |
+| 기울기의 준비(변의 $e$·$w$, $Q^{-1}$, 길이의 최솟값과 최댓값) | 점 $2^{13}$개 조각 | 점마다 자기 행만 쓰고, 최솟값과 최댓값은 차례와 무관해요 |
+| 기울기의 훑기 | 값의 열(complex는 실수부와 허수부가 따로) | 열 안은 한 스레드이고 훑기의 차례가 색인 순서 하나예요 |
+
+기울기는 작업량이 $n \cdot 64 \cdot \max(1, K)$로 $2^{15}$ 이상이면 GIL을 놓고 열을 태스크로 나눠요. 점이 $2^{13}$개를 넘으면 준비도 조각으로 나눠요. 열마다 따로 추정하니 `niter`는 열 가운데 가장 많이 훑은 횟수, `converged`는 모든 열이 `tol`로 멈췄는지예요. complex 값의 기울기는 실수부와 허수부를 따로 추정한 것과 비트까지 같아요.
+
+```python
+>>> z = f + 1j * (f * f)
+>>> cz = sd.interpolate.CloughTocher2DInterpolator(P, z)
+>>> sd.real(cz.grad).tolist() == ct.grad.tolist()
+True
+>>> sd.imag(cz.grad).tolist() == sd.interpolate.CloughTocher2DInterpolator(P, f * f).grad.tolist()
+True
+```
+
+스레드 수를 바꿔도 기울기와 두 보간의 값이 바이트까지 같아요.
+
+```python
+>>> Q = rng.random((20000, 2))
+>>> F2 = sd.stack([f, f * f], axis=1)
+>>> lin2 = sd.interpolate.LinearNDInterpolator(P, F2, fill_value=0.0)
+>>> n0 = sd.get_num_threads()
+>>> outs = []
+>>> for t in (1, 3, 10):
+...     sd.set_num_threads(t)
+...     c = sd.interpolate.CloughTocher2DInterpolator(P, F2, fill_value=0.0)
+...     outs.append((c.grad.tolist(), c(Q).tolist(), lin2(Q).tolist()))
+>>> sd.set_num_threads(n0)
+>>> [o == outs[0] for o in outs]
+[True, True, True]
+```
+
+## 메모리
+
+- **선형**은 삼각분할(`Delaunay`가 쥐는 배열, [삼각분할 만들기](/internals/spatial/delaunay/#메모리))과 값 말고 쥐는 것이 없어요. 평가의 작업 공간은 점마다의 무게 $d + 1$개예요.
+- **Clough–Tocher**는 기울기 $(n, K, 2)$를 더 쥐어요. float64 값이면 $16nK$바이트예요. 만드는 동안에는 `vertex_neighbor_vertices`(약 $56n$바이트, `Delaunay`가 쥐어요), 방향 있는 변마다 32바이트(2차원 삼각분할에는 약 $6n$개라 약 $192n$), 꼭짓점마다 $Q^{-1}$의 24바이트, 열을 맡은 태스크마다 자료 항과 기울기의 $32n$바이트를 써요.
+- **결과**는 평가점의 모양 × 값의 나머지 모양이에요.
+
+## 다른 영역과 만나는 자리
+
+- **spatial.** 삼각분할, 위치 찾기, 값 커널이 모두 `sd.spatial`의 것이에요([정확한 기하 술어](/internals/spatial/predicates/), [삼각분할 만들기](/internals/spatial/delaunay/)). 보간이 `find_simplex`와 같은 답을 쓰니, `tri.find_simplex(xi)`로 어느 단체의 값인지 바로 확인할 수 있어요.
+- **같은 영역의 다른 보간.** `NearestNDInterpolator`는 KD 트리 위에 있고([RBF와 가장 가까운 점](/internals/interpolate/rbf/)), `griddata(method='nearest')`가 그것을 써요. 1차원 자료의 `'linear'`와 `'cubic'`은 이 길이 아니라 `sd.interp`와 `CubicSpline`의 몫이에요.
+- **피클.** 객체의 슬롯을 그대로 내보내요. `tri`는 점의 바이트로 다시 만들어지는 같은 `Delaunay`이고, 기울기는 다시 추정하지 않고 그대로 되돌려요.

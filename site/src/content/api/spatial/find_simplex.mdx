@@ -1,0 +1,193 @@
+---
+title: find_simplex
+names: [Delaunay.find_simplex]
+group: 계산 기하
+order: 3
+signatures:
+  - "tri.find_simplex(xi, /)"
+summary: 평가점마다 그 점을 품은 Delaunay 단체(삼각형, 사면체)의 번호를 찾아요. 변이나 꼭짓점 위의 점처럼 여러 단체가 품으면 가장 작은 번호이고, 볼록 껍질 밖과 NaN·inf 좌표의 점은 −1이에요. 판정이 정확해서 허용오차가 없고, 답은 평가점의 차례나 스레드 수와 상관없이 정해져요.
+params:
+  - name: xi
+    type: ndarray, 수의 시퀀스, numpy 배열, DataFrame
+    kind: positional-only
+    desc: "평가점. 마지막 축이 좌표인 (…, d) 배열이고 d는 삼각분할의 차원이에요. 점 하나는 (d,)로 줘요. float64로 계산하고 NaN·inf도 받아요."
+returns:
+  type: int64 배열 또는 int
+  desc: "xi의 앞 모양을 가진 새 int64 배열. 칸마다 그 점을 품은 단체의 번호(simplices의 행), 없으면 −1이에요. xi가 점 하나 (d,)이면 Python int예요."
+raises:
+  - type: TypeError
+    desc: "xi가 수의 배열이 아니거나 복소수일 때, 수 하나만 줄 때, 없는 인자(tol, bruteforce)를 줄 때."
+  - type: ValueError
+    desc: "xi의 마지막 축의 길이가 삼각분할의 차원 d와 다를 때."
+seeAlso: [Delaunay, geometry, ConvexHull]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import PlaneFig from '../../../components/fig/PlaneFig.astro';
+
+export const gPts = [[0.1, 0.2], [0.5, 0.1], [0.9, 0.3], [0.3, 0.5], [0.7, 0.55], [0.15, 0.85], [0.55, 0.9], [0.9, 0.8], [0.45, 0.35]];
+export const dSegs = [[0.1, 0.2, 0.5, 0.1], [0.1, 0.2, 0.3, 0.5], [0.1, 0.2, 0.15, 0.85], [0.1, 0.2, 0.45, 0.35], [0.5, 0.1, 0.9, 0.3], [0.5, 0.1, 0.45, 0.35], [0.9, 0.3, 0.7, 0.55], [0.9, 0.3, 0.9, 0.8], [0.9, 0.3, 0.45, 0.35], [0.3, 0.5, 0.7, 0.55], [0.3, 0.5, 0.15, 0.85], [0.3, 0.5, 0.55, 0.9], [0.3, 0.5, 0.45, 0.35], [0.7, 0.55, 0.55, 0.9], [0.7, 0.55, 0.9, 0.8], [0.7, 0.55, 0.45, 0.35], [0.15, 0.85, 0.55, 0.9], [0.55, 0.9, 0.9, 0.8]];
+export const qPts = [[0.5, 0.45], [0.2, 0.6], [0.8, 0.7], [0.6, 0.2], [0.7, 0.55], [0.95, 0.1], [0.05, 0.6], [0.4, 0.8], [0.85, 0.45]];
+
+## 한눈에 보기
+
+삼각분할을 만들어 두면 "이 점은 어느 삼각형 안에 있나요?"에 답할 수 있어요. 지도를 삼각형 그물로 나눠 두고 클릭한 자리가 어느 조각인지 찾거나, 흩어진 점의 값을 섞기 전에 섞을 세 점을 고를 때 이 질문을 해요.
+
+```python
+>>> import stardust as sd
+>>> P = sd.asarray([[0.1, 0.2], [0.5, 0.1], [0.9, 0.3], [0.3, 0.5], [0.7, 0.55],
+...                 [0.15, 0.85], [0.55, 0.9], [0.9, 0.8], [0.45, 0.35]])
+>>> tri = sd.spatial.Delaunay(P)
+>>> tri.find_simplex([0.5, 0.45])
+8
+>>> Q = [[0.5, 0.45], [0.2, 0.6], [0.8, 0.7], [0.6, 0.2], [0.7, 0.55],
+...      [0.95, 0.1], [0.05, 0.6], [0.4, 0.8], [0.85, 0.45]]
+>>> tri.find_simplex(Q)
+array([ 8,  1,  9,  3,  4, -1, -1,  7,  5], dtype=int64)
+```
+
+답은 `tri.simplices`의 행 번호예요. 점 (0.5, 0.45)는 삼각형 8 안이고, 꼭짓점은 `tri.simplices[8]`의 점 3, 8, 4예요. 볼록 껍질 밖의 두 점은 −1이에요.
+
+<Fig caption="평가점 아홉 개(×)와 찾은 삼각형의 번호. 다섯째 평가점 (0.7, 0.55)는 자료점 4와 같은 자리라, 그 점을 가진 삼각형 가운데 가장 작은 번호 4예요. 껍질 밖의 두 점은 −1이에요.">
+  <PlaneFig
+    label="삼각분할 위의 평가점 아홉 개와 각 평가점에 찾은 삼각형 번호"
+    domain={[0, 1]}
+    range={[0, 1]}
+    xTicks={[0, 0.5, 1]}
+    yTicks={[0, 0.5, 1]}
+    width={400}
+    layers={[
+      { kind: 'segments', segs: dSegs, tone: 'faint', width: 1.2 },
+      { kind: 'points', pts: gPts, tone: 'base', size: 2.8 },
+      { kind: 'points', pts: qPts, tone: 'main', shape: 'cross', size: 4, labels: ['8', '1', '9', '3', '4', '−1', '−1', '7', '5'] },
+    ]}
+    legend={[
+      { label: '자료점', tone: 'base', shape: 'dot' },
+      { label: '평가점(번호는 찾은 삼각형)', tone: 'main', shape: 'cross' },
+    ]}
+  />
+</Fig>
+
+<Reference />
+
+## 무엇을 돌려주나요
+
+평가점 $x$마다 $x$를 품은 **닫힌** 단체(경계까지 포함한 삼각형, 사면체)의 번호예요.
+
+- 단체의 안쪽에 있으면 그 단체 하나뿐이라 답이 하나예요.
+- 두 단체가 함께 가진 변(3차원은 면이나 모서리) 위에 있거나 꼭짓점 위에 있으면 여러 단체가 품어요. 그때는 **가장 작은 번호**예요.
+- 볼록 껍질의 경계 위는 안이에요. 껍질 밖은 −1이에요.
+- 좌표에 NaN이나 inf가 있는 점은 어디에도 들지 않으니 −1이에요.
+
+이 정의로 답이 하나로 정해지므로, 평가점의 차례나 개수, 스레드 수를 바꿔도 같은 점에는 같은 번호가 나와요.
+
+정사각형을 둘로 나눈 삼각분할에서 대각선 위의 점은 두 삼각형이 품어서 작은 번호 0이에요.
+
+```python
+>>> sq = sd.spatial.Delaunay([[0, 0], [1, 0], [1, 1], [0, 1]])
+>>> sq.simplices
+array([[0, 1, 3],
+       [1, 2, 3]], dtype=int64)
+>>> sq.find_simplex([[0.5, 0.5], [1.0, 1.0], [1.0, 0.5], [0.0, 0.0]])
+array([0, 1, 1, 0], dtype=int64)
+```
+
+꼭짓점 (1, 1)은 삼각형 1에만 들고, 껍질의 변 위의 점 (1, 0.5)도 삼각형 1 안으로 쳐요.
+
+## 판정은 정확해요
+
+안인지 밖인지, 어느 변 위인지는 좌표의 float64 값 그대로의 정확한 판정이에요. 그래서 허용오차가 없고, float64 한 칸만 옮겨도 판정이 그만큼 정확히 바뀌어요.
+
+```python
+>>> sq.find_simplex([[0.5, 0.5000000000000001], [0.5, 0.49999999999999994]])
+array([1, 0], dtype=int64)
+>>> sq.find_simplex([[1.0000000000000002, 0.5], [1.0, 0.5]])
+array([-1,  1], dtype=int64)
+```
+
+대각선보다 한 칸 위의 점은 삼각형 1, 한 칸 아래의 점은 삼각형 0이고, 껍질의 변보다 한 칸 밖은 −1이에요. 반올림 때문에 경계 근처의 점이 엉뚱한 삼각형으로 가거나, 두 삼각형 어느 쪽에도 들지 않는 틈이 생기지 않아요.
+
+## 평가점 `xi`
+
+마지막 축이 좌표인 (…, d) 배열이에요. 앞의 축은 몇 개든 되고, 결과는 그 앞 모양의 int64 배열이에요. 점 하나를 (d,)로 주면 결과는 Python `int`예요.
+
+```python
+>>> type(tri.find_simplex([0.5, 0.45]))
+<class 'int'>
+>>> tri.find_simplex(sd.full((2, 3, 2), 0.5))
+array([[8, 8, 8],
+       [8, 8, 8]], dtype=int64)
+>>> tri.find_simplex(sd.zeros((0, 2)))
+array([], dtype=int64)
+```
+
+좌표에 NaN이나 inf가 있어도 에러가 아니라 −1이에요.
+
+```python
+>>> tri.find_simplex([[sd.nan, 0.5], [sd.inf, 0.5], [0.5, 0.45]])
+array([-1, -1,  8], dtype=int64)
+```
+
+좌표의 수가 삼각분할의 차원과 다르면 에러예요. 복소수도 받지 않아요.
+
+```python
+>>> tri.find_simplex([0.5, 0.45, 0.0])
+Traceback (most recent call last):
+    ...
+ValueError: find_simplex(): 'xi' must have 2 entries on its last axis, not 3
+>>> tri.find_simplex([[0.5j, 0.45]])
+Traceback (most recent call last):
+    ...
+TypeError: find_simplex(): 'xi' must be real, not a complex128 array
+```
+
+결과는 쓸 수 있는 새 배열이에요. 속성이 아니라 호출의 결과이니 고쳐도 삼각분할에는 영향이 없어요.
+
+## 찾은 단체로 하는 일
+
+번호로 `simplices`의 행을 고르면 그 점을 둘러싼 꼭짓점이 나와요. 껍질 밖(−1)의 점은 먼저 걸러 내요. −1로 색인하면 마지막 행이 골라지니 조심해요.
+
+```python
+>>> i = tri.find_simplex(Q)
+>>> inside = i >= 0
+>>> tri.simplices[i[inside]][:3]
+array([[3, 8, 4],
+       [0, 3, 5],
+       [4, 7, 6]], dtype=int64)
+```
+
+꼭짓점의 값을 무게중심 좌표로 섞으면 선형 보간이에요. 무게는 [`transform`](/api/spatial/Delaunay/#transform)으로 구할 수 있지만, 그 일은 [`LinearNDInterpolator`](/api/interpolate/LinearNDInterpolator/)가 위치 찾기와 함께 한 번에, 더 정확하게 해 줘요.
+
+## 3차원
+
+3차원 삼각분할에서는 (…, 3)의 평가점마다 그 점을 품은 사면체를 찾아요. 정육면체를 여섯 사면체로 나눈 삼각분할에서 중심 (0.5, 0.5, 0.5)는 여러 사면체가 함께 가진 모서리 위라, 그 가운데 가장 작은 번호예요.
+
+```python
+>>> cube = sd.spatial.Delaunay([[i, j, k] for i in (0, 1) for j in (0, 1) for k in (0, 1)])
+>>> cube.find_simplex([[0.5, 0.5, 0.5], [0.1, 0.2, 0.3], [2.0, 0.0, 0.0]])
+array([ 1,  0, -1], dtype=int64)
+```
+
+## 조심할 점
+
+### −1로 색인하지 않아요
+
+−1은 "없음"이에요. `tri.simplices[-1]`은 마지막 단체라서, 걸러 내지 않고 색인하면 껍질 밖의 점이 마지막 단체의 점으로 계산돼요.
+
+### 옵션이 없어요
+
+허용오차 `tol`이나 전수 탐색 `bruteforce`는 없어요. 판정이 정확해서 필요가 없고, 찾는 방법은 답을 바꾸지 않아요.
+
+```python
+>>> tri.find_simplex([0.5, 0.45], tol=1e-9)
+Traceback (most recent call last):
+    ...
+TypeError: find_simplex(): unexpected keyword argument 'tol'
+```
+
+## scipy를 아는 분께
+
+- `tol`과 `bruteforce`가 없어요. scipy는 무게중심 좌표에 허용오차를 둬서 단위 정사각형의 변에서 $10^{-15}$ 밖의 점을 안으로 쳐요($10^{-14}$ 밖은 −1).
+- 여러 단체가 품는 점은 언제나 가장 작은 번호예요. scipy는 두 단체가 함께 가진 변 위의 점에서 어느 단체를 돌려줄지 정해 두지 않아요.
+- 점 하나는 Python `int`예요(scipy는 0차원 int32 배열). 배열의 결과는 int64예요.
+- NaN·inf 좌표의 점이 −1인 것은 scipy와 같아요.
+- `scipy.spatial.tsearch(tri, xi)`는 `tri.find_simplex(xi)`예요.

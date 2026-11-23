@@ -2,8 +2,8 @@
 title: 영역의 구조
 group: 구조
 order: 1
-summary: sd.interpolate가 Python 검사 층과 C++ 커널로 나뉜 모습, 보간 객체를 만들고 부르는 호출 하나가 C++까지 내려가는 길, 평가점이 든 구간을 찾는 두 가지 탐색이 언제나 같은 구간을 내는 까닭, 정의역 바깥의 세 규칙, 일을 크기로만 나눠 스레드 수와 무관하게 같은 비트를 내는 방법, 그리고 객체와 작업 메모리의 크기를 설명해요.
-seeAlso: [linear, cubic, banded, bspline, barycentric, grid, rbf, accuracy-performance]
+summary: sd.interpolate가 Python 검사 층과 C++ 커널로 나뉜 모습, 보간 객체를 만들고 부르는 호출 하나가 C++까지 내려가는 길, 평가점이 든 구간을 찾는 두 가지 탐색이 언제나 같은 구간을 내는 까닭, 정의역 바깥의 세 규칙, 일을 크기로만 나눠 스레드 수와 무관하게 같은 비트를 내는 방법, 객체와 작업 메모리의 크기, 그리고 흩어진 점의 보간이 spatial의 KD 트리와 삼각분할에 기대는 자리를 설명해요.
+seeAlso: [linear, cubic, banded, bspline, barycentric, grid, rbf, scattered, accuracy-performance]
 ---
 import Fig from '../../../components/fig/Fig.astro';
 import Layers from '../../../components/fig/Layers.astro';
@@ -11,7 +11,7 @@ import Steps from '../../../components/fig/Steps.astro';
 
 ## 한눈에 보기
 
-`sd.interpolate`는 점에서 주어진 값을 지나는 함수를 만들고, 그 함수를 다른 점에서 계산해요. 한 변수의 보간(꺾은선, 3차 계열의 조각 다항식, B-스플라인), 점 전체를 지나는 다항식과 유리식(무게중심 꼴, Krogh, Floater–Hormann, AAA), 격자 위의 여러 변수 보간, 흩어진 점의 보간(RBF, 가장 가까운 점)이 여기 있어요. 꺾은선을 계산하는 최상위 함수 `sd.interp`는 배열 영역의 함수이지만 이 영역과 커널을 함께 써요.
+`sd.interpolate`는 점에서 주어진 값을 지나는 함수를 만들고, 그 함수를 다른 점에서 계산해요. 한 변수의 보간(꺾은선, 3차 계열의 조각 다항식, B-스플라인), 점 전체를 지나는 다항식과 유리식(무게중심 꼴, Krogh, Floater–Hormann, AAA), 격자 위의 여러 변수 보간, 흩어진 점의 보간(RBF, 가장 가까운 점, Delaunay 삼각분할 위의 선형과 Clough–Tocher)이 여기 있어요. 꺾은선을 계산하는 최상위 함수 `sd.interp`는 배열 영역의 함수이지만 이 영역과 커널을 함께 써요.
 
 모든 보간은 두 단계로 나뉘어요. **만들기**는 자료에서 계수(기울기, 조각 다항식의 계수, B-스플라인의 계수, 무게)를 구해 객체에 담고, **평가**는 그 계수가 나타내는 함수를 평가점에서 계산해요. 정확도의 약속도 이 두 겹으로 적혀 있어요. 만들기는 "같은 자료의 정확한 계수"와, 평가는 "계산한 계수가 나타내는 함수의 정확한 값"과 견줘요.
 
@@ -28,6 +28,7 @@ import Steps from '../../../components/fig/Steps.astro';
       { name: '_aaa.py', note: 'AAA, FloaterHormannInterpolator' },
       { name: '_grid.py', note: 'RegularGridInterpolator, interpn' },
       { name: '_rbf.py', note: 'RBFInterpolator, NearestNDInterpolator' },
+      { name: '_scattered.py', note: 'LinearNDInterpolator, CloughTocher2DInterpolator, griddata' },
       { name: '_common.py', note: '입력 정리, 가로축 검사, extrapolate와 axis의 검사, 메시지, 피클과 복사' },
     ] },
     { title: '커널 (C++)', note: 'csrc/interpolate/', items: [
@@ -39,28 +40,29 @@ import Steps from '../../../components/fig/Steps.astro';
       { name: 'bspline.cpp, deboor.hpp', note: 'de Boor 평가, 매듭 규칙, 배치 행렬, 미분과 역미분, 매듭 넣기' },
       { name: 'polyint.cpp, aaa.cpp', note: '무게중심 꼴, Krogh, Floater–Hormann, AAA' },
       { name: 'grid.cpp, rbf.cpp', note: '격자, RBF와 가장 가까운 점' },
+      { name: 'scattered.cpp', note: '삼각분할 위의 무게, Clough–Tocher의 계수와 기울기' },
     ] },
     { title: '바닥', tone: 'dark', items: [
       { name: 'base', note: 'lerp.hpp(선형 커널), interval.hpp(구간 찾기), pairwise.hpp(합)' },
       { name: 'array', note: 'sd.ndarray와 결과 배열, NEON 수학 커널' },
       { name: 'parallel', note: '스레드풀, GIL 놓기' },
       { name: 'linalg/lapack.hpp', note: 'sytrf, gesdd, ggev (RBF와 AAA)' },
-      { name: 'spatial', note: 'KD 트리와 거리 커널 (RBF의 이웃, 가장 가까운 점)' },
+      { name: 'spatial', note: 'KD 트리와 거리 커널 (RBF의 이웃, 가장 가까운 점), 삼각분할·위치 찾기·값 커널 (흩어진 점)' },
     ] },
   ]} />
 </Fig>
 
-층은 아래로만 기대요. `csrc/interpolate/`는 배열, 스레드풀, `base/`의 공용 커널, linalg의 LAPACK 래퍼, spatial의 KD 트리 위에 서고, 다른 영역의 C++ 코드는 `interpolate/`를 몰라요. 한 변수의 보간(이 글과 [선형 커널](/internals/interpolate/linear/), [3차 계열](/internals/interpolate/cubic/), [띠 풀이](/internals/interpolate/banded/), [B-스플라인](/internals/interpolate/bspline/))은 LAPACK을 부르지 않아요. 스플라인의 연립방정식은 이 영역의 띠 풀이가 풀고, LAPACK은 RBF의 전역 풀이와 AAA에만 쓰여요.
+층은 아래로만 기대요. `csrc/interpolate/`는 배열, 스레드풀, `base/`의 공용 커널, linalg의 LAPACK 래퍼, spatial의 거리 커널과 삼각분할 위에 서고, 다른 영역의 C++ 코드는 `interpolate/`를 몰라요. 한 변수의 보간(이 글과 [선형 커널](/internals/interpolate/linear/), [3차 계열](/internals/interpolate/cubic/), [띠 풀이](/internals/interpolate/banded/), [B-스플라인](/internals/interpolate/bspline/))은 LAPACK을 부르지 않아요. 스플라인의 연립방정식은 이 영역의 띠 풀이가 풀고, LAPACK은 RBF의 전역 풀이와 AAA에만 쓰여요.
 
 `sd.interp`는 배열 영역의 `csrc/array/ops/interp.cpp`에 있어요. 배열 영역은 다른 영역을 include하지 않으니, 둘이 함께 쓰는 선형 커널과 구간 찾기는 `interpolate/`가 아니라 바닥 층 `base/`에 있어요.
 
-C++ 하위 모듈 `stardust._core.interpolate`는 소스 파일마다 하나씩 있는 `bind_*`(`bind_linear`, `bind_cubic`, `bind_ppoly`, `bind_bspline`, `bind_polyint`, `bind_aaa`, `bind_grid`, `bind_rbf`)를 차례로 불러 만들어요. 네이티브 이름은 모두 내부 이름이고 사용자는 Python 클래스와 함수만 봐요. 이 글들이 다루는 한 변수 쪽의 네이티브 함수는 이래요.
+C++ 하위 모듈 `stardust._core.interpolate`는 소스 파일마다 하나씩 있는 `bind_*`(`bind_linear`, `bind_cubic`, `bind_ppoly`, `bind_bspline`, `bind_polyint`, `bind_aaa`, `bind_grid`, `bind_rbf`, `bind_scattered`)를 차례로 불러 만들어요. 네이티브 이름은 모두 내부 이름이고 사용자는 Python 클래스와 함수만 봐요. 이 글들이 다루는 한 변수 쪽의 네이티브 함수는 이래요.
 
 ```python
 >>> import math
 >>> import stardust as sd
 >>> core = sd._core.interpolate
->>> [n for n in sorted(dir(core)) if n.startswith(("linear", "spline", "pchip", "akima", "hermite", "ppoly", "check", "all_"))]
+>>> [n for n in sorted(dir(core)) if n.startswith(("linear", "spline", "pchip", "akima", "hermite", "ppoly", "check", "all_")) and n != "linear_nd"]
 ['akima_slopes', 'all_finite', 'check_knots', 'check_x', 'hermite', 'linear', 'pchip_slopes', 'ppoly_antiderivative', 'ppoly_eval', 'ppoly_integrate', 'ppoly_roots', 'spline_slopes']
 >>> [n for n in sorted(dir(core)) if n.startswith("bspline")]
 ['bspline_antiderivative', 'bspline_basis', 'bspline_derivative', 'bspline_eval', 'bspline_from_power', 'bspline_insert', 'bspline_interp', 'bspline_knots', 'bspline_periodic', 'bspline_to_ppoly']
@@ -80,6 +82,7 @@ Python 층은 인자를 모두 검사하고(종류, 모양, 유한성, 가로축
 | `bspline.cpp`, `deboor.hpp` | 837, 86 | `bspline_eval`과 기저, 매듭, 배치 행렬의 풀이, 미분·역미분, 매듭 넣기, 조각 다항식과의 변환 |
 | `polyint.cpp`, `aaa.cpp` | 574, 561 | 다항식과 유리식([무게중심 꼴](/internals/interpolate/barycentric/), [AAA](/internals/interpolate/aaa/)) |
 | `grid.cpp`, `rbf.cpp` | 766, 822 | [격자](/internals/interpolate/grid/), [RBF](/internals/interpolate/rbf/) |
+| `scattered.cpp` | 661 | [삼각분할 위의 보간](/internals/interpolate/scattered/): 같은 점의 값 비교, 무게중심 좌표와 선형 값, Clough–Tocher의 계수와 평가, 기울기 추정 |
 
 ## 한 번의 호출이 지나는 길
 
@@ -287,6 +290,8 @@ inline double wrap_periodic(double v, double x0, double x1) { return x0 + ops::R
 | `roots` | 조각 묶음 | 조각마다 독립이고 조각 순서로 모아요 |
 | B-스플라인 배치 행렬의 채우기, `from_spline` | 행 조각, 조각 묶음 | 행과 조각마다 독립이에요 |
 | 다항식·유리식의 평가와 무게 | 평가점 조각, 노드 조각 | 점과 노드 하나는 한 커널이에요 |
+| 삼각분할 위의 평가(선형, Clough–Tocher) | 평가점 256개 | 단체는 `find_simplex`의 정의로 정해지고, 점의 값은 그 단체와 점만의 계산이에요 |
+| Clough–Tocher의 기울기 | 값의 열 | 열 안의 Gauss–Seidel 훑기는 한 스레드이고 차례가 색인 순서 하나예요 |
 | RBF의 전역 풀이, AAA의 SVD, AAA와 Floater–Hormann의 극점·영점·유수 | Accelerate | Accelerate의 스레드 모드가 같으면 같아요 |
 
 마지막 줄만 조건이 붙어요. LAPACK을 부르는 곳은 Accelerate 안에서 일이 나뉘니 이 영역이 순서를 정할 수 없어요. 스플라인과 다항식 쪽에는 그런 곳이 없어요.
@@ -299,6 +304,9 @@ inline double wrap_periodic(double v, double x0, double x1) { return x0 + ops::R
 | 선형 길 | 점마다 $2\lfloor\log_2(n+1)\rfloor + 8K$ | $1024 / K$점 |
 | `PPoly`의 평가 | 점마다 $2\lfloor\log_2(n+1)\rfloor + 2(k+1)K$ | $4096 / ((k+1)K)$과 256 가운데 큰 쪽 |
 | `BSpline`의 평가 | 점마다 $\lfloor\log_2(N+1)\rfloor + 3(k+1)^2 + 2(k+1)K$ | 256점 이상 |
+| `LinearNDInterpolator`의 평가 | 점마다 $128 + 16(d + 2) + 2K$ | 256점 |
+| `CloughTocher2DInterpolator`의 평가 | 점마다 $128 + 160 + 40K$ | 256점 |
+| Clough–Tocher의 기울기 | $64n\max(1, K)$ | 열 하나 |
 
 태스크의 경계는 점의 수와 작업량으로만 정해지고, 태스크 안의 256점 블록도 태스크의 첫 점부터 끊으니 블록의 경계도 스레드 수와 무관해요. 블록이 어느 탐색을 타든 구간은 같다는 것까지 더하면, 스레드 수를 바꿔 가며 같은 호출을 해도 바이트까지 같아요.
 
@@ -320,12 +328,13 @@ inline double wrap_periodic(double v, double x0, double x1) { return x0 + ops::R
 - **객체**는 계수 배열 하나와 중단점(또는 매듭)을 쥐어요. `CubicSpline`은 $(4, n - 1, K)$의 계수와 $n$개의 중단점, `BSpline`은 매듭과 계수예요. 생성자는 받은 배열을 복사해서 쥐니 원래 배열을 고쳐도 객체는 그대로예요.
 - **만들기의 작업 메모리**는 자료의 크기에 비례해요. `CubicSpline`은 열이 8개 이하면 삼중대각 행렬을 저장하지 않고 피벗의 역수 $n$개만 둬요. 띠 행렬은 (행 수) × (띠의 너비)예요.
 - **평가의 작업 메모리**는 태스크마다 블록 하나(256점의 값과 노드 수)라 평가점의 수와 무관해요. 감소하는 중단점만 부호를 뒤집은 사본 $n$개를 더 써요.
+- **흩어진 점.** `LinearNDInterpolator`는 `Delaunay`와 값만 쥐어요. `CloughTocher2DInterpolator`는 기울기 $(n, K, 2)$를 더 쥐고, 만드는 동안 방향 있는 변마다 32바이트와 꼭짓점마다 24바이트를 써요([삼각분할 위의 보간](/internals/interpolate/scattered/#메모리)).
 - **결과**는 평가점의 모양 × 배치 모양이에요. 사용자가 모양으로 요청한 출력은 할당 전에 물리 메모리와 견주고, 넘으면 `MemoryError`예요.
 
 ## 다른 영역과 만나는 자리
 
 - **배열.** `sd.interp`와 이 영역의 선형 길이 `base/lerp.hpp`의 커널과 `base/interval.hpp`의 탐색을 함께 써요. 구간 찾기의 순서 규칙은 `searchsorted`와 같고, `integrate`의 합은 배열의 pairwise 합과 같은 트리(`base/pairwise.hpp`)예요.
 - **linalg.** 스플라인의 띠 연립방정식은 이 영역의 풀이라서 `sd.linalg.solve_banded`와 끝자리가 다를 수 있어요. 둘 다 틀린 것이 아니고 소거의 순서가 달라요. RBF, AAA, Floater–Hormann의 극점·영점·유수만 `linalg/lapack.hpp`의 래퍼로 LAPACK을 불러요.
-- **spatial.** `RBFInterpolator(neighbors=k)`와 `NearestNDInterpolator`가 `KDTree`의 이웃 찾기를 써요. 이웃의 동점이 (거리, 색인) 순서로 정해져 있어서 이웃 집합이 실행과 스레드 수와 무관해요.
+- **spatial.** `RBFInterpolator(neighbors=k)`와 `NearestNDInterpolator`가 `KDTree`의 이웃 찾기를 써요. 이웃의 동점이 (거리, 색인) 순서로 정해져 있어서 이웃 집합이 실행과 스레드 수와 무관해요. `LinearNDInterpolator`와 `CloughTocher2DInterpolator`는 `sd.spatial.Delaunay`의 네이티브 객체를 C++에서 직접 읽어, 그 위치 찾기(`locate_each`)와 행렬식의 값 커널로 값을 내요. 삼각분할이 정확하고 동점 규칙이 정해져 있어서, 평가점이 든 단체와 무게가 실행과 스레드 수와 무관해요([삼각분할 위의 보간](/internals/interpolate/scattered/)).
 - **sparse.** `BSpline.design_matrix`가 `sd.sparse.csr_array`를 돌려줘요. 이 의존은 Python 층에만 있어요. C++는 CSR의 세 배열을 채우고 Python이 그것을 희소 배열로 감싸요.
 - **integrate.** `PPoly.integrate`는 조각 다항식의 정확한 역미분으로 계산하고 `sd.integrate.quad`를 부르지 않아요.

@@ -43,7 +43,7 @@ import Tree from '../../../components/fig/Tree.astro';
   ]} />
 </Fig>
 
-열일곱 영역에 등록된 사례는 3,295개예요. 영역별로는 이래요(`python -m bench.speed list`로 센 값이에요).
+열여덟 영역에 등록된 사례는 3,365개예요. 영역별로는 이래요(`python -m bench.speed list`로 센 값이에요).
 
 | 영역 | 사례 | 묶음 | 빠른 묶음 | 비용표 사례 | 비교 대상 |
 |---|---:|---:|---:|---:|---|
@@ -59,16 +59,17 @@ import Tree from '../../../components/fig/Tree.astro';
 | sparse | 453 | 13 | 7 | 0 | scipy, R |
 | integrate | 91 | 4 | 3 | 0 | scipy, R |
 | differentiate | 22 | 2 | 1 | 0 | scipy, R |
-| spatial | 76 | 5 | 9 | 0 | scipy, scikit-learn, R |
+| spatial | 87 | 6 | 11 | 0 | scipy, scikit-learn, R |
 | graph | 57 | 6 | 8 | 0 | scipy, networkx |
-| interpolate | 48 | 7 | 8 | 0 | numpy, scipy, R |
+| interpolate | 58 | 7 | 10 | 0 | numpy, scipy, R |
 | fft | 66 | 7 | 9 | 0 | numpy, scipy, R |
+| smooth | 49 | 6 | 10 | 0 | scipy, statsmodels, scikit-learn, R |
 | plot | 33 | 5 | 3 | 0 | 없음 |
-| 합계 | 3,295 | 168 | 246 | 460 | |
+| 합계 | 3,365 | 175 | 260 | 460 | |
 
 sparse의 453개 가운데 22개는 SuiteSparse 모음의 실제 행렬 일곱을 쓰는 사례(묶음 `real`)예요. 행렬은 저장소에 넣지 않으므로, 행렬을 받아 둔 기계(`build/sparse/suitesparse/`)에서만 등록돼요.
 
-spatial의 KD 트리 질의는 scipy를 한 스레드(`workers=1`)와 모든 코어(`workers=-1`)로 두 번 견줘요. sd는 기본으로 풀의 10스레드를 쓰기 때문이에요. fft도 같은 까닭으로 scipy를 기본(`workers=1`)과 `workers=10`으로 두 번 견주고, numpy의 변환은 언제나 한 스레드로 돌아요. graph의 비교 대상은 scipy의 `csgraph`와, scipy에 없는 알고리즘(PageRank, 매개 중심성, 코어 수 등)의 networkx예요. plot의 사례에는 비교 대상이 없어요. 같은 그림을 그리는 다른 라이브러리를 견주지 않고, 이 영역이 약속하는 것은 수가 아니라 그림이에요. 사례는 그림 하나가 지나는 단계(장면으로 배치하기, 그리고 PNG·SVG·PDF 출력마다)를 작은 그림과 큰 자료에서 재고, 함수 그림의 적응 표본도 재요. 글자는 캐시에서 오고 `setup`이 그림을 한 번 그려 두므로, TeX를 부르는 시간은 재지 않아요.
+spatial의 KD 트리 질의는 scipy를 한 스레드(`workers=1`)와 모든 코어(`workers=-1`)로 두 번 견줘요. sd는 기본으로 풀의 10스레드를 쓰기 때문이에요. fft도 같은 까닭으로 scipy를 기본(`workers=1`)과 `workers=10`으로 두 번 견주고, numpy의 변환은 언제나 한 스레드로 돌아요. graph의 비교 대상은 scipy의 `csgraph`와, scipy에 없는 알고리즘(PageRank, 매개 중심성, 코어 수 등)의 networkx예요. smooth의 비교 대상은 함수마다 달라요. `lowess`와 핵 회귀는 statsmodels와 R, `loess`는 R의 두 곡면(직접 계산과 보간), 스플라인은 scipy와 R의 `smooth.spline`·`mgcv`, KDE는 scipy·scikit-learn·statsmodels·R의 `density`, 대역폭은 R과 statsmodels, Savitzky–Golay는 scipy예요. plot의 사례에는 비교 대상이 없어요. 같은 그림을 그리는 다른 라이브러리를 견주지 않고, 이 영역이 약속하는 것은 수가 아니라 그림이에요. 사례는 그림 하나가 지나는 단계(장면으로 배치하기, 그리고 PNG·SVG·PDF 출력마다)를 작은 그림과 큰 자료에서 재고, 함수 그림의 적응 표본도 재요. 글자는 캐시에서 오고 `setup`이 그림을 한 번 그려 두므로, TeX를 부르는 시간은 재지 않아요.
 
 비교 대상은 [정확도 측정](/internals/core/accuracy/)이 쓰는 것과 같아요. 영역마다 같은 일을 하는 비교 대상이 정확도 측정에 있으면 속도 사례에도 둬요. special과 stats의 R 식과 Boost 함수 이름은 정확도 측정의 표(`bench/accuracy/compare.py`)를 그대로 가져다 써서, 한쪽에 함수를 더하면 다른 쪽에도 따라와요. 한 번에 스칼라 하나를 넣는 사례에는 R과 Boost를 두지 않아요. 그 비용은 배열 사례에서 봐요.
 
@@ -327,7 +328,7 @@ sd의 1스레드 줄은 `VECLIB_MAXIMUM_THREADS=1`인 프로세스에서 재요.
 .venv/bin/python -m bench.speed list stats --quick
 ```
 
-**빠른 묶음**(`quick=True`)은 영역마다 대표 사례를 골라 둔 것이에요. 합쳐서 217개이고, 영역마다 1–3분 안에 돌아요. 짧은 시간에 여러 영역을 훑어볼 때 써요. **비용표 사례**(`cost`가 있는 사례)는 460개로, special 98개와 stats 362개예요([비용표](#비용표)).
+**빠른 묶음**(`quick=True`)은 영역마다 대표 사례를 골라 둔 것이에요. 합쳐서 260개이고, 영역마다 1–3분 안에 돌아요. 짧은 시간에 여러 영역을 훑어볼 때 써요. **비용표 사례**(`cost`가 있는 사례)는 460개로, special 98개와 stats 362개예요([비용표](#비용표)).
 
 ### 공정하게 맞추기
 
@@ -356,7 +357,7 @@ sd의 1스레드 줄은 `VECLIB_MAXIMUM_THREADS=1`인 프로세스에서 재요.
 
 ## R과 비교하기
 
-R 비교 대상은 array 46개, linalg 60개, special 85개, stats 290개, regression 138개, optimize 29개, htest 149개, sparse 142개, integrate 8개, differentiate 6개, spatial 2개, interpolate 2개, fft 5개예요. base R 함수가 대부분이고, 다변량 정규·t 누적분포의 `mvtnorm`, 분위 회귀의 `quantreg`, 강건 회귀의 `robustbase`, 모형 검정의 `lmtest`, `car`, `sandwich`, 변수 선택의 `MASS`와 `leaps`, 띠 행렬과 희소 행렬의 `Matrix`, 비선형 최소제곱의 `minpack.lm` 꾸러미를 써요. htest의 R은 base `stats`의 검정과 `car`의 `leveneTest`, `nortest`의 `ad.test`, `goftest`의 `cvm.test`, `multcomp`의 다중 비교예요. sparse의 R은 `Matrix`와 고유값·특이값의 `RSpectra`, `irlba`예요. integrate의 R은 base의 `integrate`(QUADPACK의 QAGS·QAGI), differentiate의 R은 `numDeriv`의 `grad`, `jacobian`, `hessian`, spatial의 R은 base의 `dist`, interpolate의 R은 base의 `approx`와 `splinefun`, fft의 R은 base의 `fft`예요. optimize의 R은 목적 함수, 잔차, 기울기를 R로 다시 써서 불러요. R의 반복 상한과 허용오차는 sd·scipy 호출과 같은 멈춤 일이 되도록 Python 쪽 값에 맞추고, R의 알고리즘이 다른 곳은 사례의 비고에 적어요.
+R 비교 대상은 array 46개, linalg 60개, special 85개, stats 290개, regression 138개, optimize 29개, htest 149개, sparse 142개, integrate 8개, differentiate 6개, spatial 2개, interpolate 2개, fft 5개, smooth 20개예요. base R 함수가 대부분이고, 다변량 정규·t 누적분포의 `mvtnorm`, 분위 회귀의 `quantreg`, 강건 회귀의 `robustbase`, 모형 검정의 `lmtest`, `car`, `sandwich`, 변수 선택의 `MASS`와 `leaps`, 띠 행렬과 희소 행렬의 `Matrix`, 비선형 최소제곱의 `minpack.lm`, 핵 평활의 `KernSmooth`, P-스플라인의 `mgcv` 꾸러미를 써요. htest의 R은 base `stats`의 검정과 `car`의 `leveneTest`, `nortest`의 `ad.test`, `goftest`의 `cvm.test`, `multcomp`의 다중 비교예요. sparse의 R은 `Matrix`와 고유값·특이값의 `RSpectra`, `irlba`예요. integrate의 R은 base의 `integrate`(QUADPACK의 QAGS·QAGI), differentiate의 R은 `numDeriv`의 `grad`, `jacobian`, `hessian`, spatial의 R은 base의 `dist`, interpolate의 R은 base의 `approx`와 `splinefun`, fft의 R은 base의 `fft`예요. smooth의 R은 base의 `lowess`, `loess`, `smooth.spline`, `ksmooth`, `density`, `bw.SJ`와 `KernSmooth`의 `dpill`·`locpoly`, `mgcv`의 `gam`이에요. optimize의 R은 목적 함수, 잔차, 기울기를 R로 다시 써서 불러요. R의 반복 상한과 허용오차는 sd·scipy 호출과 같은 멈춤 일이 되도록 Python 쪽 값에 맞추고, R의 알고리즘이 다른 곳은 사례의 비고에 적어요.
 
 R을 사례마다 따로 띄우면 시작 비용과 꾸러미 불러오기가 매번 들어요. 그래서 실행 하나가 R 프로세스(`R --vanilla`) 하나를 띄워 끝까지 써요(`rsession.py`). R 프로세스는 표준 입력으로 요청을 받아요.
 
@@ -642,7 +643,7 @@ constexpr double find(std::string_view dist, std::string_view method, bool memo 
 - **1스레드 줄은 BLAS도 1스레드예요.** BLAS를 부르는 사례에서 sd의 1스레드 줄은 Accelerate까지 1스레드로 묶은 시간이에요.
 - **†와 \*를 놓치지 않아요.** †는 기계가 바쁠 때 잰 줄이고, \*는 입력의 일부로 재서 늘린 값이에요.
 
-재서 나온 시간은 영역마다 `bench/<영역>/speed.md` 표에 모여요. 영역마다 어디서 왜 빠르거나 느린지, 무엇과 견주는지는 [배열 성능](/internals/array/performance/), [데이터프레임 성능](/internals/frame/performance/), [난수 성능과 검증](/internals/random/performance/), [특수함수 정확도와 성능](/internals/special/accuracy-performance/), [통계 정확도와 성능](/internals/stats/accuracy-performance/), [회귀 정확도와 성능](/internals/regression/accuracy-performance/), [최적화 정확도와 성능](/internals/optimize/accuracy-performance/), [가설검정 정확도와 성능](/internals/htest/accuracy-performance/), [적분 정확도와 성능](/internals/integrate/accuracy-performance/), [미분 정확도와 성능](/internals/differentiate/accuracy-performance/), [희소 행렬 정확도와 성능](/internals/sparse/accuracy-performance/), [공간 정확도와 성능](/internals/spatial/accuracy-performance/), [그래프 정확도와 성능](/internals/graph/accuracy-performance/), [보간 정확도와 성능](/internals/interpolate/accuracy-performance/), [푸리에 변환 정확도와 성능](/internals/fft/accuracy-performance/)에서 다뤄요.
+재서 나온 시간은 영역마다 `bench/<영역>/speed.md` 표에 모여요. 영역마다 어디서 왜 빠르거나 느린지, 무엇과 견주는지는 [배열 성능](/internals/array/performance/), [데이터프레임 성능](/internals/frame/performance/), [난수 성능과 검증](/internals/random/performance/), [특수함수 정확도와 성능](/internals/special/accuracy-performance/), [통계 정확도와 성능](/internals/stats/accuracy-performance/), [회귀 정확도와 성능](/internals/regression/accuracy-performance/), [최적화 정확도와 성능](/internals/optimize/accuracy-performance/), [가설검정 정확도와 성능](/internals/htest/accuracy-performance/), [적분 정확도와 성능](/internals/integrate/accuracy-performance/), [미분 정확도와 성능](/internals/differentiate/accuracy-performance/), [희소 행렬 정확도와 성능](/internals/sparse/accuracy-performance/), [공간 정확도와 성능](/internals/spatial/accuracy-performance/), [그래프 정확도와 성능](/internals/graph/accuracy-performance/), [보간 정확도와 성능](/internals/interpolate/accuracy-performance/), [푸리에 변환 정확도와 성능](/internals/fft/accuracy-performance/), [평활 정확도와 성능](/internals/smooth/accuracy-performance/)에서 다뤄요.
 
 ## 명령 모음
 

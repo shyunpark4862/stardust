@@ -1,0 +1,239 @@
+---
+title: ConvexHull
+names: [ConvexHull, ConvexHull.points, ConvexHull.vertices, ConvexHull.simplices, ConvexHull.neighbors, ConvexHull.equations, ConvexHull.area, ConvexHull.volume, ConvexHull.ndim, ConvexHull.npoints, ConvexHull.nsimplex, ConvexHull.min_bound, ConvexHull.max_bound]
+group: 계산 기하
+order: 4
+signatures:
+  - "sd.spatial.ConvexHull(points, /)"
+summary: 2차원이나 3차원 점 집합의 볼록 껍질을 구해요. 껍질의 꼭짓점(극점), 경계 면과 이웃, 면마다 바깥을 향하는 평면의 식, 둘레와 넓이(3차원은 겉넓이와 부피)를 속성으로 줘요. 어느 점이 꼭짓점인지는 정확한 판정이고, 삼각분할을 거치지 않아 Delaunay보다 훨씬 가벼워요.
+params:
+  - name: points
+    type: ndarray, 수의 시퀀스, numpy 배열, DataFrame
+    kind: positional-only
+    desc: "점 n개를 행으로 담은 (n, d) 배열, d = 2 또는 3. float64로 바꿔 복사해 둬요. 모든 좌표가 유한해야 하고, 서로 다른 점이 d + 1개 이상이며 모두 한 직선(3차원은 한 평면) 위가 아니어야 해요."
+returns:
+  type: ConvexHull
+  desc: "껍질 객체. 속성 points, vertices, simplices, neighbors, equations, area, volume, ndim, npoints, nsimplex, min_bound, max_bound를 가져요. 모두 만들 때 구하고, 배열은 읽기 전용이에요."
+raises:
+  - type: TypeError
+    desc: "points가 수의 배열이 아니거나 복소수일 때, points를 키워드로 주거나 없는 인자(qhull_options, incremental)를 줄 때."
+  - type: ValueError
+    desc: "points가 2차원 배열이 아니거나 열이 2·3개가 아닐 때, NaN·inf가 있을 때, 서로 다른 점이 d + 1개보다 적을 때, 모든 점이 한 직선(d = 3은 한 평면) 위일 때."
+seeAlso: [geometry, Delaunay, Voronoi]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import PlaneFig from '../../../components/fig/PlaneFig.astro';
+
+export const hPts = [[0.1, 0.2], [0.5, 0.1], [0.9, 0.3], [0.3, 0.5], [0.7, 0.55], [0.15, 0.85], [0.55, 0.9], [0.9, 0.8], [0.45, 0.35], [0.9, 0.55]];
+export const hullLine = [[0.1, 0.2], [0.5, 0.1], [0.9, 0.3], [0.9, 0.8], [0.55, 0.9], [0.15, 0.85]];
+export const inner = [[0.3, 0.5], [0.7, 0.55], [0.45, 0.35], [0.9, 0.55]];
+
+## 한눈에 보기
+
+볼록 껍질은 점들을 모두 감싸는 가장 작은 볼록한 울타리예요. 점마다 못을 박고 고무줄을 걸었다가 놓으면 바깥 못에 걸려 생기는 다각형이에요. 3차원에서는 점들을 감싸는 볼록 다면체예요.
+
+```python
+>>> import stardust as sd
+>>> P = sd.asarray([[0.1, 0.2], [0.5, 0.1], [0.9, 0.3], [0.3, 0.5], [0.7, 0.55],
+...                 [0.15, 0.85], [0.55, 0.9], [0.9, 0.8], [0.45, 0.35], [0.9, 0.55]])
+>>> hull = sd.spatial.ConvexHull(P)
+>>> hull
+ConvexHull(n=10, d=2, nvertices=6)
+>>> hull.vertices
+array([0, 1, 2, 7, 6, 5], dtype=int64)
+>>> hull.area, hull.volume
+(2.778562780460942, 0.5337500000000001)
+```
+
+`vertices`는 껍질의 꼭짓점이 `P`의 몇째 행인지를 반시계 차례로 적어요. 2차원에서 `area`는 **둘레**, `volume`은 **넓이**예요(이 이름은 3차원의 겉넓이와 부피를 2차원에 그대로 옮긴 것이에요).
+
+<Fig caption="점 열 개의 볼록 껍질. 번호는 vertices의 차례(0부터)이고 반시계로 돌아요. 점 9 (0.9, 0.55)는 껍질의 변 위에 있지만 모서리가 아니라서 꼭짓점이 아니에요.">
+  <PlaneFig
+    label="점 열 개와 그 볼록 껍질, 껍질 꼭짓점의 차례 번호"
+    domain={[0, 1]}
+    range={[0, 1]}
+    xTicks={[0, 0.5, 1]}
+    yTicks={[0, 0.5, 1]}
+    width={380}
+    layers={[
+      { kind: 'line', pts: hullLine, closed: true, fill: true, tone: 'soft', width: 1.6 },
+      { kind: 'points', pts: inner, tone: 'base', size: 3 },
+      { kind: 'points', pts: hullLine, tone: 'main', size: 3.8, labels: ['0', '1', '2', '3', '4', '5'] },
+    ]}
+    legend={[
+      { label: '꼭짓점(번호는 차례)', tone: 'main', shape: 'dot' },
+      { label: '꼭짓점이 아닌 점', tone: 'base', shape: 'dot' },
+    ]}
+  />
+</Fig>
+
+<Reference />
+
+## 무엇을 구하나요
+
+껍질의 꼭짓점은 **극점**뿐이에요. 극점은 다른 점들을 섞어서(볼록 결합으로) 만들 수 없는 점, 곧 튀어나온 모서리의 점이에요.
+
+- 껍질 안쪽의 점은 꼭짓점이 아니에요.
+- 변(3차원은 면) 위에 놓였지만 모서리가 아닌 점도 꼭짓점이 아니에요. 위 그림의 점 9가 그래요.
+- 같은 점은 색인이 가장 작은 하나만 꼭짓점이 될 수 있어요.
+
+어느 점이 극점인지는 좌표를 float64 값 그대로 읽은 정확한 판정이에요. 거의 한 직선에 놓인 세 점의 가운데 점도, 참으로 한 직선 위가 아니면 꼭짓점이에요.
+
+```python
+>>> sd.spatial.ConvexHull([[0, 0], [2, 0], [2, 2], [0, 2], [1, 0], [1, 1]]).vertices
+array([0, 1, 2, 3], dtype=int64)
+>>> sd.spatial.ConvexHull([[0.0, 0.0], [1.0, 1.0], [0.0, 1.0], [0.5, 0.49999999999999994]]).vertices
+array([0, 3, 1, 2], dtype=int64)
+```
+
+첫 예에서 (1, 0)은 변 위, (1, 1)은 안쪽이라 빠져요. 둘째 예에서 (0.5, 0.49999999999999994)는 대각선 $y = x$보다 float64 한 칸 아래라서, 아주 조금 튀어나온 꼭짓점이에요.
+
+껍질은 삼각분할을 거치지 않고 바로 구해요. 그래서 같은 점 집합의 [`Delaunay`](/api/spatial/Delaunay/)보다 훨씬 가볍고, 경계만 필요하면 `ConvexHull`을 써요.
+
+## 만들기: `points`
+
+점은 (n, d) 배열이고 d는 2나 3이에요. 받는 타입, NaN·inf, 퇴화한 점 집합, 같은 점의 규칙은 [계산 기하의 기본](/api/spatial/geometry/#받는-입력)과 같아요.
+
+```python
+>>> sd.spatial.ConvexHull([[0, 0], [1, 1], [2, 2]])
+Traceback (most recent call last):
+    ...
+ValueError: ConvexHull(): 'points' are collinear
+>>> sd.spatial.ConvexHull([[0.0, 0.0], [1.0, sd.inf], [0.0, 1.0]])
+Traceback (most recent call last):
+    ...
+ValueError: ConvexHull(): 'points' must be finite
+```
+
+## 속성
+
+| 속성 | 뜻 | 꼴 |
+|---|---|---|
+| `points` | 입력 점의 사본 | (n, d) float64 |
+| `vertices` | 극점의 색인. 2차원은 반시계(가장 작은 색인에서 시작), 3차원은 오름차순 | (h,) int64 |
+| `simplices` | 경계 면. 2차원은 변, 3차원은 삼각형. 바깥을 향하고 표준 꼴 | (면 수, d) int64 |
+| `neighbors` | `neighbors[i, k]`: 면 i에서 꼭짓점 k의 맞은편 이웃 면 | (면 수, d) int64 |
+| `equations` | 면마다 (바깥 단위 법선, 절편) | (면 수, d + 1) float64 |
+| `area` | 2차원은 둘레, 3차원은 겉넓이 | `float` |
+| `volume` | 2차원은 넓이, 3차원은 부피 | `float` |
+| `ndim`, `npoints`, `nsimplex` | d, n, 면의 수 | `int` |
+| `min_bound`, `max_bound` | 축마다 가장 작은·큰 좌표 | (d,) float64 |
+
+### `simplices`와 `neighbors`
+
+2차원의 면은 이웃한 두 극점을 잇는 변 (i, j)이에요. 껍질의 안쪽이 왼쪽에 오는 방향이고, 행은 첫 점의 오름차순이에요. `neighbors[i, k]`는 면 i에서 꼭짓점 `simplices[i, k]`의 맞은편 이웃 면, 곧 2차원에서는 그 꼭짓점이 아닌 쪽 끝에서 이어지는 변이에요. 껍질은 닫힌 곡선(곡면)이라 −1이 없어요.
+
+```python
+>>> hull.simplices
+array([[0, 1],
+       [1, 2],
+       [2, 7],
+       [5, 0],
+       [6, 5],
+       [7, 6]], dtype=int64)
+>>> hull.neighbors[0]
+array([1, 3], dtype=int64)
+```
+
+면 0은 변 (0, 1)이에요. 점 0의 맞은편 이웃은 점 1에서 나가는 면 1, 점 1의 맞은편 이웃은 점 0으로 들어오는 면 3이에요.
+
+3차원의 면은 밖에서 볼 때 반시계인 삼각형이에요. 정육면체의 면처럼 네 개 이상의 꼭짓점이 한 평면 위에 있는 평평한 면은, 그 면의 가장 작은 색인에서 부채꼴로 삼각형을 나눠요. 그래서 정육면체는 삼각형 12개예요.
+
+```python
+>>> cube = [[i, j, k] for i in (0, 2) for j in (0, 2) for k in (0, 2)]
+>>> h3 = sd.spatial.ConvexHull(cube + [[1, 1, 1], [1, 1, 0], [1, 0, 0]])
+>>> h3
+ConvexHull(n=11, d=3, nvertices=8)
+>>> h3.simplices[:4]
+array([[0, 1, 3],
+       [0, 2, 6],
+       [0, 3, 2],
+       [0, 4, 5]], dtype=int64)
+>>> h3.area, h3.volume
+(24.0, 8.0)
+```
+
+가운데의 점 (1, 1, 1), 바닥 면 위의 점 (1, 1, 0), 모서리 위의 점 (1, 0, 0)은 꼭짓점이 아니에요. 3차원의 `vertices`는 오름차순이에요.
+
+### `equations`
+
+면마다 그 면을 품은 평면의 식이에요. 행은 (법선, 절편) $= (c_1, \ldots, c_d, b)$이고, 법선 $c$는 바깥을 향하는 단위 벡터예요. 껍질 안의 점 $x$에서 $c \cdot x + b \lt 0$, 면 위에서 0, 밖에서 양수예요. 한 평평한 면에서 나온 삼각형들은 같은 행이에요.
+
+```python
+>>> hull.equations[2]
+array([ 1.0, -0.0, -0.9], dtype=float64)
+```
+
+면 2는 직선 $x = 0.9$ 위의 변 (2, 7)이에요. 법선 (1, 0)은 오른쪽(바깥)을 향하고 절편 −0.9라서 $x - 0.9 \le 0$이 안쪽이에요.
+
+이 식으로 여러 점이 껍질 안인지 한꺼번에 볼 수 있어요. 점마다 모든 면의 값을 구해 가장 큰 값이 0 이하이면 안이에요.
+
+```python
+>>> X = sd.asarray([[0.5, 0.5], [0.95, 0.5], [0.2, 0.15]])
+>>> E = hull.equations
+>>> sd.max(X @ E[:, :2].T + E[:, 2], axis=1)
+array([ -0.3577708763999664,  0.04999999999999993, 0.024253562503633308], dtype=float64)
+```
+
+첫 점만 안이에요. 다만 이 계산은 부동소수점이라 경계에 아주 가까운 점(반올림 크기만큼 떨어진 점)은 판정이 틀릴 수 있어요. 경계 근처까지 정확한 안팎이 필요하면 [`Delaunay(points).find_simplex(X) >= 0`](/api/spatial/find_simplex/)을 써요.
+
+법선의 성분마다 상대오차는 단위 반올림의 8배 이하예요. 좌표가 아주 크거나 작아도 법선은 단위 벡터로 나와요.
+
+### `area`와 `volume`
+
+scipy와 같은 뜻이에요. 3차원에서 `area`는 겉넓이, `volume`은 부피이고, 2차원에서 `area`는 둘레, `volume`은 넓이예요. 이름이 헷갈리기 쉬우니 2차원에서는 특히 조심해요.
+
+```python
+>>> tri = sd.spatial.ConvexHull([[0, 0], [3, 0], [0, 4]])
+>>> tri.area, tri.volume
+(12.0, 6.0)
+```
+
+변이 3, 4, 5인 직각삼각형이라 둘레 12, 넓이 6이에요. 넓이와 부피는 껍질의 한 꼭짓점에서 면마다 선 삼각형(사면체)의 넓이를 더해 구해요. 기준점이 껍질 위라 모든 항의 부호가 같아서 지워지는 자릿수가 없고, 상대오차가 면의 수에 따라 천천히 자라는 작은 한계 안이에요. 결과가 float64를 넘을 때만 inf예요.
+
+### `min_bound`, `max_bound`와 크기
+
+```python
+>>> hull.min_bound, hull.max_bound
+(array([0.1, 0.1], dtype=float64), array([0.9, 0.9], dtype=float64))
+>>> hull.ndim, hull.npoints, hull.nsimplex
+(2, 10, 6)
+```
+
+## Delaunay의 경계와 다른 점
+
+[`Delaunay.convex_hull`](/api/spatial/Delaunay/#convex_hull)도 경계 면을 주지만, 그것은 삼각분할의 경계라서 변 위의 점에서 나뉘어요. `ConvexHull`의 면은 극점만 이어요. 위 예의 점 9가 그 차이예요.
+
+```python
+>>> sd.spatial.Delaunay(P).convex_hull.shape, hull.simplices.shape
+((7, 2), (6, 2))
+```
+
+## 화면, 복사와 저장
+
+출력하면 점의 수, 차원, 꼭짓점의 수가 한 줄로 보여요. `copy.copy`, `copy.deepcopy`, `pickle`은 점으로 껍질을 다시 만들고, 껍질이 점 집합만으로 정해지므로 모든 속성이 같아요.
+
+```python
+>>> import pickle
+>>> pickle.loads(pickle.dumps(hull)).vertices
+array([0, 1, 2, 7, 6, 5], dtype=int64)
+```
+
+## 조심할 점
+
+### 2차원의 `area`는 둘레예요
+
+넓이가 필요하면 `volume`을 읽어요.
+
+### `vertices`의 차례는 차원마다 달라요
+
+2차원은 다각형을 도는 반시계 차례라서 그대로 이어 그리면 다각형이 돼요. 3차원은 오름차순이라 면의 모양은 `simplices`로 봐요.
+
+## scipy를 아는 분께
+
+- 생성자는 점만 받아요. `incremental`, `qhull_options`와 메서드 `add_points`, `close`는 없어요. `coplanar`, `good` 속성도 없어요(scipy의 기본 옵션에서 비어 있거나 None인 속성이에요).
+- 색인은 int64예요. `vertices`의 2차원 차례가 가장 작은 색인에서 시작해요(scipy는 반시계이지만 시작점을 정해 두지 않아요).
+- 면의 방향이 모두 바깥이에요. scipy는 면의 방향이 섞여 있어요(무작위 1,000점에서 2차원 변 16개 중 7개, 3차원 삼각형 142개 중 71개만 바깥을 향해요).
+- 3차원의 평평한 면은 가장 작은 색인에서 부채꼴로 나눠요. scipy는 Qhull이 나누는 대로예요.
+- `vertices`에 극점만 드는 것, `area`와 `volume`의 뜻, `equations`의 꼴은 scipy와 같아요.
+- 퇴화한 입력과 inf는 `ValueError`예요(scipy는 `QhullError`).

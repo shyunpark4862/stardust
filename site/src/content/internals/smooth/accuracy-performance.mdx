@@ -1,0 +1,160 @@
+---
+title: 정확도와 성능
+group: 정확도와 성능
+order: 1
+summary: "평활 영역이 맞게 계산하는지 확인하는 방법과 그 결과를 모았어요. 조절 모수를 주어진 것으로 두고 정확한 유리수와 Arb로 만든 참값에 대어 재며, 계약으로 묶기 어려운 것은 성질로 시험하고, 빠르고 느린 곳의 이유도 적었어요."
+seeAlso: [overview, determinism, lowess, loess, penalized-spline, fitpack, kernel-regression, kde, bandwidth, savgol]
+---
+import AccuracySummary from '../../../components/fig/AccuracySummary.astro';
+
+## 한눈에 보기
+
+평활 영역의 결과는 네 가지로 확인해요.
+
+1. **계약 안.** 조절 모수(창의 점 수, 대역폭, $\lambda$, 매듭)를 주어진 것으로 두고, 같은 자료의 정확한 추정량과 견줘요. 정확한 추정량은 정확한 유리수 산술이나 Arb(구간 산술)로 계산한 것이에요.
+2. **찾기의 계약.** $\lambda$와 대역폭을 고르는 찾기는 참 최소점까지의 거리가 아니라 "고른 점의 기준 값이 격자의 어느 값보다 크지 않고 둘레에 더 작은 값이 없다", 근은 "Arb로 푼 같은 방정식의 근과 상대 $10^{-8}$"로 약속해요.
+3. **정확한 성질은 정확히.** 다항식의 재현, 보간 극한의 같은 비트, 입력 순서와 척도의 불변, 두 길의 같은 비트, 스레드 수와 무관한 비트는 한계가 아니라 등호로 시험해요.
+4. **반올림이 아닌 동작은 기준 라이브러리와 같게.** 창의 올림, 기본값, 멈춤 규칙, 결과의 모양은 함수마다 하나의 기준 라이브러리(스플라인·KDE·Savitzky–Golay는 scipy 1.18.1, `lowess`와 핵 회귀는 statsmodels 0.15.0, `loess`와 R에만 있는 대역폭 규칙은 R 4.6.2)와 같아요. 다르게 정한 곳은 함수 페이지의 끝 절에 모여 있어요.
+
+오차는 모두 계약 단위(오차를 한계로 나눈 값)로 적어요. 1 이하면 계약 안이에요. 정확도 기준선은 스윕 8개, (스윕, 영역) 73줄, 점 33,988개이고, 수로 된 계약이 있는 72줄이 모두 계약 안이에요. 가장 큰 값은 FITPACK의 조건 0.82예요.
+
+## 시험 자료
+
+모든 테스트, 참값 도구, 비교 대상의 기록, 정확도 스윕이 같은 자료 목록(`tests/smooth/samples.py`)에서 아이디로 자료를 가져와요. 식과 고정한 씨앗으로 만들고 내려받는 것이 없어요.
+
+| 묶음 | 자료 | 무엇을 보려고 |
+|---|---|---|
+| 산점도 25개 | 고른 격자, 고른 난수, 덩어리(간격의 비 $10^8$), 같은 $x$, 모두 같은 $x$, 정렬되지 않은 것, 좁은 범위($x\cdot10^{-8}$)와 넓은 범위($x\cdot10^8$), 큰 평행 이동($x + 10^8$), 비정상 수 간격, $n = 1, 2, 3, 5$, 정확한 직선·2차식, 상수, 이상점, 계단, 잔차의 절반 넘게 0, $10^{300}$ 둘레와 아주 작은 척도, 무게 | 국소 적합의 조건수, 퇴화한 창, 강건 반복의 $m = 0$, 넘침과 언더플로 |
+| 여러 변수 6벌 | $p = 2, 3, 5$의 고른 난수, 척도가 크게 다른 변수, 직선 위의 점(랭크 부족), 격자 위의 점(같은 거리의 이웃) | loess와 핵 회귀의 랭크, 이웃의 동점 |
+| 밀도 11벌 | 정규, 두 봉우리, 긴 꼬리, 지수분포(경계), 같은 값이 많은 이산 자료, 무게, 모두 같은 값, 2·3차원 정규, 직선 위의 2차원 점 | 꼬리의 상대 정확도, 퇴화한 대역폭, 경계 반사 |
+| 신호 6벌 | 다항식(그대로 돌아와야 해요), 큰 상쇄가 있는 신호, 잡음, 배치, 복소수, 창보다 짧은 축 | Savitzky–Golay의 모든 `mode`와 짝수 창 |
+
+평가점은 자료 범위 안의 난수, 자료점 셋, 양 끝 밖의 점이에요. 핵 회귀와 KDE에는 모든 double 무게가 언더플로하는 먼 평가점과 먼 꼬리도 있어요.
+
+## 참값
+
+참값은 python-flint의 정확한 유리수(`fmpq`, `fmpq_mat`)와 Arb로 만들어요(`tools/smooth_ref.py` → `tests/smooth/ref/`). mpmath는 쓰지 않아요.
+
+| 파일 | 내용 |
+|---|---|
+| `local.npz`, `local_nd.npz` | 주어진 창과 무게의 국소 무게 붙은 최소제곱을 정확한 유리수로 푼 모자 행의 행, 적합값, 조건수 $\kappa$. 강건 반복은 sd가 낸 강건 무게를 입력으로 받아요 |
+| `spline.npz`, `spline_fit.npz` | 주어진 매듭과 $\lambda$에서 `fmpq_mat`의 정규방정식 해(B-스플라인 값은 유리수 de Boor), 대각 $L_{ii}$, tr L, GCV·CV, 조건수(Arb) |
+| `kreg.npz`, `kde.npz` | Arb의 exp로 모든 점을 더한 값(구간 폭이 계약의 1/1000 아래가 될 때까지 정밀도를 올려요), `cdf`는 Arb의 erf, 구간화 길은 같은 정의 합 |
+| `bandwidth.npz` | 닫힌 꼴은 Arb, `sj`·`isj`·`cv`는 같은 방정식·기준을 Arb로 계산해 구간 이분으로 좁힌 근과 최소점 |
+| `savgol.npz`, `savgol_filter.npz` | `fmpq_mat`의 정확한 계수(모든 `deriv`, `pos`, 짝수 창)와 그 계수의 정확한 거르기 |
+
+자료가 double이라 모든 입력은 분모가 2의 거듭제곱인 유리수예요. 그래서 국소 최소제곱과 스플라인의 "정확한 해"가 유리수 산술로 실제로 구해져요. 지수가 드는 곳(핵 회귀, KDE, 대역폭)만 Arb예요.
+
+## 계약
+
+계약은 테스트와 정확도 스윕이 함께 쓰는 한 곳(`tests/smooth/refdata.py`)에 있어요. 상수는 float64 시제품으로 잰 값에 여유를 두어 정하고 구현으로 다시 재서 확정한 것이에요. 증명과 조건수의 뜻은 방법마다의 글에 있어요.
+
+### 산점도 평활
+
+| 대상 | 계약 | 잰 최대 |
+|---|---|---|
+| `lowess`·`loess`의 적합값과 `predict` | $\lvert\hat y - \sum_jl_jy_j\rvert \le 16\kappa u\sum_j\lvert l_j\rvert\lvert y_j\rvert$ | `lowess` 0.75, `loess` 적합값 0.40·`predict` 0.29 |
+| 지렛대 | 같은 꼴, $\kappa$ 하나 | `lowess` 0.15, `loess` 0.11 |
+| `loess`, $\kappa \gt 2^{36}$ | $\kappa^2u\sum\lvert l_j\rvert\lvert y_j\rvert$ | $4 \times 10^{-11}$ |
+
+$l$은 정확한 모자 행, $\kappa$는 국소 계의 조건수예요. lowess는 [lowess](/internals/smooth/lowess/)의 $\kappa_1 = ac/(ac - b^2)$, loess는 옮긴 좌표의 무게 붙은 설계 행렬의 2-노름 조건수 $\sqrt{\mathrm{cond}(M)}$이에요. 창의 선택(이웃과 반경)은 double의 거리 비교가 정하는 집합이라 참값 도구가 같은 비교로 같은 집합을 써요. 강건 반복은 "sd의 강건 무게를 받은 정확한 적합"과 견줘요. 반복을 거친 전체 오차는 중앙값 근처의 잔차가 반올림으로 순서를 바꾸면 무게가 조금 달라질 수 있어 한계를 두지 않아요.
+
+`loess`에서 $\kappa \gt 2^{36}$인 창(덩어리 밖으로 외삽한 2차)은 좌표 $x - x_0$을 한 번 반올림한 것이 $\kappa^2$배로 커져, 정확한 적합과 0.8–6.3 계약 단위 달라요. R의 직접 계산도 같은 자리에서 0.5–3.9 단위 달라요. 그 영역은 $\kappa^2$의 꼴로만 잡아요.
+
+### 스플라인
+
+| 대상 | 계약 | 잰 최대 |
+|---|---|---|
+| 계수(평활·P·최소제곱) | $\lvert\hat c - c\rvert \le 8u\,\kappa(M)\max\lvert c\rvert$ | 최소제곱 0.27, P 0.14, 평활 0.22 |
+| 지렛대 | $\lvert\hat L_{ii} - L_{ii}\rvert \le u\,\kappa(M)\max(8, \kappa(M))$ | 평활 0.28, P 0.067 |
+| tr L | 지렛대 한계의 $n$배 | 평활 0.044, P 0.015 |
+| FITPACK | 돌려준 $p$의 벌점 해이고 $\lvert\sum(wr)^2 - s\rvert \le 0.001s$ | 0.82 |
+
+$M$은 쌓은 행렬 $[W^{1/2}B;\ \sqrt\lambda G]$, $\kappa$는 그 2-노름 조건수예요. 열을 맞춘 조건수 추정이 $2^{43}$을 넘으면($u\kappa \gt 2^{-10}$) 계약이 비므로 맞춤을 거절해요([벌점 스플라인](/internals/smooth/penalized-spline/)). 정확도 표의 `refused/ss` 줄이 거절한 자료예요(수로 된 계약이 없는 한 줄). $\lambda = 0$과 $s = 0$은 보간의 계약이에요. FITPACK의 매듭이 scipy와 같은 것은 계약이 아니라 측정이에요.
+
+### 핵 회귀
+
+$\lvert\hat y - \hat y^*\rvert \le 16\kappa u\sum\lvert l_j\rvert\lvert y_j\rvert + u\sum\lvert l_j\rvert\lvert y_j\rvert$예요. 둘째 항이 자르기의 몫이고 $\kappa$는 국소 상수에서 1, 국소 직선에서 절편의 분산 팽창 $1 + a\,\bar z^{\mathsf T}C^{-1}\bar z$예요. 잰 최대는 국소 상수 0.33, 국소 직선 0.52이고, 모든 double 무게가 언더플로하는 먼 평가점은 국소 상수 0.11, 국소 직선은 $\kappa$가 $10^{100}$을 넘어 계약 단위로는 $10^{-15}$ 크기예요($\sum\lvert l_j\rvert\lvert y_j\rvert$의 $4.3 \times 10^{-16}$ 안).
+
+### 핵밀도추정과 대역폭
+
+| 대상 | 계약 | 잰 최대 |
+|---|---|---|
+| `pdf` | 상대 $(8 + 2p + \log_2n + D_0)u$, 전체 $H$는 $\kappa_A$를 곱해요 | 1차원 0.31, 여러 차원 0.34 |
+| `logpdf` | 절대 $(8 + 2p + \log_2n)u\max(1, \lvert\log\hat f\rvert)$ | 0.31, 여러 차원 꼬리 0.75 |
+| 유한한 핵 | $(8 + \log_2n)u\lvert\hat f\rvert + 4u\sum w_j\lvert z_jK'(z_j)\rvert/h$ | 0.22 |
+| 경계 반사 | 세 부분의 한계의 합 | 0.20 |
+| `cdf` | 절대 $(8 + \log_2n)u$ | 0.15 |
+| `density(binned=True)` | 방법 한계 $\delta^2/(8\sqrt{2\pi}h^3) + \varphi(8.3)/h$(여러 차원은 축마다의 합) | 1차원 0.21, 3차원 0.064 |
+| 닫힌 꼴의 대역폭 | 상대 $8u$ | 0.25 |
+| `bw_sj`·`bw_isj`·`bw_cv_*` | Arb의 근·최소점과 상대 $10^{-8}$ | $1.2 \times 10^{-5}$ 이하 |
+
+구간화 길의 한계는 반올림이 아니라 방법의 오차라서, 그 줄의 최대 상대오차(3차원에서 11.5)는 꼬리의 작은 값에서 나온 것이고 판정은 절대 한계로 해요.
+
+### Savitzky–Golay
+
+| 대상 | 계약 | 잰 최대 |
+|---|---|---|
+| `savgol_coeffs` | $\lvert\hat h_i - h_i^*\rvert \le 8u\lVert h^*\rVert_\infty$(창 1001까지의 모든 차수) | 0.11, 창까지의 높은 차수 $1.3 \times 10^{-16}$ |
+| `savgol_filter` | $\lvert\hat y_i - \sum h_j^*x_{i+j}\rvert \le \gamma_{N+8}\sum\lvert h_j^*\rvert\lvert x_{i+j}\rvert$ | 다섯 `mode` 0.12–0.17 |
+
+높은 차수 줄의 $1.3 \times 10^{-16}$은 계수가 double-double 합을 한 번 반올림한 값 그대로라는 뜻이에요([Savitzky–Golay](/internals/smooth/savgol/)).
+
+## 잰 결과
+
+아래 표들은 정확도 결과 파일에서 그대로 만든 것이에요. 영역 이름은 스윕 안의 자료 묶음이나 양이에요.
+
+<AccuracySummary area="smooth" names={['local', 'loess']} caption="산점도 평활. local은 lowess(it = 0)의 적합값·predict·지렛대, loess는 1변수(local)와 여러 변수(local_nd)의 차수 0·1·2이고, beyond는 κ > 2³⁶인 창이에요. plain·spread·ties·weights는 단위 척도, 덩어리·좁은 범위·비정상 수·큰 값, 같은 x, 무게의 자료 묶음이에요. spread의 최대 상대오차가 큰 것은 조건이 나쁜 창이고, 판정은 κ를 담은 계약으로 해요." />
+
+<AccuracySummary area="smooth" names={['spline', 'fitpack']} caption="스플라인. coef는 계수(lsq: make_lsq_spline, ps: P-스플라인, ss: 평활 스플라인), leverage와 trace는 지렛대와 tr L, refused/ss는 맞춤을 거절한 자료예요. fitpack의 condition은 돌려준 스플라인이 그 p의 벌점 해인지를 재요." />
+
+<AccuracySummary area="smooth" names={['kreg']} caption="핵 회귀. nw는 국소 상수, ll은 국소 직선이고 far는 모든 double 무게가 언더플로하는 먼 평가점이에요." />
+
+<AccuracySummary area="smooth" names={['kde', 'bandwidth']} caption="핵밀도추정과 대역폭. tail은 먼 꼬리의 평가점, kernels는 유한한 핵, reflect는 경계 반사, binned는 구간화 FFT(방법 한계 대비)예요. bandwidth의 closed는 닫힌 꼴, sj·isj·cv는 Arb로 푼 근과 최소점 대비예요." />
+
+<AccuracySummary area="smooth" names={['savgol']} caption="Savitzky–Golay. coeffs는 26가지 (창, 차수, 도함수, 자리)의 계수, coeffs_high는 창까지의 높은 차수, filter_*는 mode마다의 거르기예요. 거르기는 참값이 0에 가까운 점이 있어 상대오차 대신 계약 대비만 적어요." />
+
+## 비교 대상에서 찾은 것
+
+같은 자료, 같은 한계로 비교 대상을 재면 이래요.
+
+- **lowess.** statsmodels는 단위 척도 자료에서 sd 한계의 8.2배(상대 $1.5 \times 10^{-14}$)이고, 덩어리·좁은 범위·비정상 수 간격에서는 절댓값 $10^{-12}$의 막기에 걸려 국소 평균으로 바뀌어 10.6배예요. R은 무게를 $0.001h$, $0.999h$에서 자르는 만큼(상대 $4.2 \times 10^{-9}$) 달라요.
+- **loess.** R의 직접 계산(`surface='direct', statistics='exact'`)은 단위 척도 자료에서 상대 $6.6 \times 10^{-15}$이고, 비정상 수 간격에서 값이 틀리고(상대 1) 모든 $x$가 같은 자료에서 0.44 달라요.
+- **스플라인.** scipy의 `make_smoothing_spline`은 단위 척도 자료에서 $u\kappa\max\lvert c\rvert$의 $10^6$배 안이고, $x + 10^8$ 같은 자료에서는 그보다 커요.
+- **핵 회귀.** statsmodels `KernelReg`의 국소 선형(원래 좌표의 모멘트 행렬과 `pinv`)은 덩어리 자료에서 $\sum\lvert l_j\rvert\lvert y_j\rvert$의 0.19배, 여러 변수에서 sd 한계의 $1.8 \times 10^6$배 틀리고, 먼 평가점에서 국소 상수는 NaN(0/0)이에요.
+- **KDE.** 같은 단위로 scipy `gaussian_kde`는 `pdf` 2.47·`logpdf` 1.54(전체 $H$의 꼬리), sklearn `KernelDensity`는 `pdf` 3.83이에요. 구간화는 방법 한계 대비 R `density` 0.87, statsmodels 7.2예요.
+- **Savitzky–Golay.** scipy는 계수 26가지에서 sd 한계의 $1.2 \times 10^{15}$배(상대 1.1)이고, 높은 차수는 틀린 계수이거나 Vandermonde의 넘침으로 `ValueError`예요. 거르기는 낮은 차수에서도 10.4배(`'wrap'` 26.3배)예요.
+
+반올림 크기의 결과는 서로 끝자리가 다를 수 있고, 계약 안이라면 어느 쪽이 틀린 것이 아니에요. 위의 차이는 계약을 크게 넘는 것들이에요.
+
+## 테스트
+
+`tests/smooth/`의 테스트는 주제마다 한 파일이고 모두 471개예요.
+
+| 파일 | 보는 것 |
+|---|---|
+| `test_api_surface.py` | 공개 이름, 시그니처, 결과의 메서드, 영역의 규칙 |
+| `test_reference_data.py` | 참값 파일이 시험 자료에 속하고 스스로 맞는지, 비교 대상의 기록이 참값과 맞는지, 시제품의 측정이 계약 상수 안인지 |
+| `test_results.py` | 결과의 공통 기반(쓰기 금지, 게으른 필드, `summary`) |
+| `test_lowess.py`, `test_loess.py` | 계약, 퇴화한 창, 강건 무게, `delta`, 두 길의 같은 비트, R·statsmodels와의 비교 |
+| `test_lsq_spline.py`, `test_smoothing_spline.py`, `test_pspline.py`, `test_fitpack.py` | 계수와 지렛대의 계약, $\lambda$ 찾기, 거절, 극한, scipy와 같은 매듭 |
+| `test_kernel_regression.py` | 계약, 한 점 뺀 적합, 대역폭 찾기, dpill, 트리 길 |
+| `test_kde.py`, `test_bandwidth.py` | 직접 합·꼬리·반사·`cdf`의 계약, 구간화의 방법 한계, 트리 길, 규칙과 근 |
+| `test_savgol.py` | 정확한 계수, 다섯 `mode`, 복소수와 NaN, 작업 공간 |
+| `test_spline_threads.py` | $\lambda$ 격자와 구간 노름의 스레드 무관 |
+
+파일마다 참값 전부의 계약 단위, 입력의 변환과 `nan_policy`와 무게, 에러와 메시지, 결과의 꼴, 여러 스레드 수의 같은 바이트를 봐요. 성질은 고정 자료로 등호로 봐요. 입력 순서와 무관한 같은 비트, 2의 거듭제곱 척도의 같은 비트, 다항식 재현(국소 다항식과 Savitzky–Golay), 극한($\lambda = 0$과 $s = 0$의 보간, $\lambda = \infty$), 트리와 훑기의 같은 비트예요.
+
+골든 출력(`tests/golden/cases_smooth.py`)은 1,866개예요. 모든 공개 함수에 시험 자료의 대표, 옵션의 값마다, 틀린 호출, 병렬 길에 드는 큰 사례를 담고, 1·3·10스레드의 결과가 모두 같아야 해요.
+
+## 성능
+
+속도는 통합 측정 체계의 사례(`bench/speed/cases/smooth.py`)로 1·10스레드에서 재고, 사례마다 결과 값도 비교 대상과 견줘요. 질적으로 보면 이래요.
+
+- **국소 적합은 평가점마다 독립이에요.** lowess·loess·핵 회귀는 평가점을 크기로만 정한 조각으로 나눠 스레드에 줘요. lowess의 창은 정렬된 자료의 이어진 구간이라 트리가 필요 없고, 모멘트 다섯을 NEON 두 레인으로 한 번 훑는 닫힌 꼴이 시간의 대부분이에요.
+- **loess의 풀이.** 조건이 좋은 창은 모멘트의 Cholesky(창의 점마다 몇 ns)이고, 조건이 나쁜 창만 Householder QR(그 몇 배)이에요. 여러 변수의 이웃은 창이 작으면($32q \le n$) KD 트리, 크면 모든 거리를 재고 표본으로 괄호를 잡은 순서통계량이에요.
+- **스플라인.** 긴 열 하나의 띠 QR은 차례 계산이라 1스레드 시간이에요. $\lambda$ 찾기는 자료를 한 번 삼각화한 뒤 격자 53점을 나란히 계산하니 스레드가 도와요. P-스플라인은 계수의 수가 자료와 무관해 큰 $n$에서 가벼워요. 평활 스플라인의 GCV는 1스레드에서 R `smooth.spline(all.knots=TRUE)`보다 느려요. 시간의 대부분이 격자 53점인데, 격자를 줄이면 $\lambda$ 찾기의 계약이 바뀌어 그대로 둬요.
+- **핵 회귀의 대역폭 찾기.** 기준 한 번이 $O(n^2p)$라 큰 자료에서 무거워요. $n \times n$ 행렬을 만들지 않으니 메모리는 가벼워요. 국소 상수의 여러 변수는 KD 트리가 대역폭이 작을 때 크게 줄여요. `bw_dpill`은 구간화 어림이 없어 KernSmooth보다 느려요.
+- **KDE.** 1차원 `pdf`는 평가점마다의 이분 탐색과 자르기 구간의 합이라 자료가 커도 남긴 점만 더해요. 여러 차원은 남긴 항의 exp가 시간의 대부분이고, 대역폭이 작으면 트리가 후보를 줄여요. `density`는 구간화와 FFT라 자료 크기에 거의 선형이에요. 준비(기수 정렬)도 나란해요.
+- **대역폭 규칙.** `scott`·`silverman`은 입력 순서와 무관하게 하려고 정렬해서, 정렬하지 않는 scipy보다 느려요. 교차 검증은 쌍의 합이라 $O(n^2)$이에요.
+- **Savitzky–Golay.** 거르기는 창 길이 $N$의 fma 사슬을 출력 16개씩 NEON으로 돌려 FFT 합성곱 없이도 빨라요. 계수는 $O(Nd)$의 double-double이라 창이 아주 길고 차수가 높을 때만 눈에 띄어요.

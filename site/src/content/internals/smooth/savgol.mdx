@@ -1,0 +1,239 @@
+---
+title: Savitzky–Golay
+group: Savitzky–Golay
+order: 1
+summary: "Savitzky–Golay 필터의 계수를 만들고 거르는 방법을 설명해요. 계수를 Vandermonde 행렬 없이 직교 다항식의 점화식과 double-double 산술로 만들어, 높은 차수에서도 계수마다 반올림이 한 번뿐이에요."
+seeAlso: [overview, determinism, accuracy-performance]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+export const sg2 = [[-10, -0.0559], [-9, -0.02484], [-8, 0.002942], [-7, 0.02746], [-6, 0.04871], [-5, 0.06669], [-4, 0.0814], [-3, 0.09284], [-2, 0.101], [-1, 0.1059], [0, 0.1076], [1, 0.1059], [2, 0.101], [3, 0.09284], [4, 0.0814], [5, 0.06669], [6, 0.04871], [7, 0.02746], [8, 0.002942], [9, -0.02484], [10, -0.0559]];
+export const sg4 = [[-10, 0.04472], [-9, -0.02484], [-8, -0.05002], [-7, -0.04315], [-6, -0.01515], [-5, 0.02453], [-4, 0.0679], [-3, 0.1084], [-2, 0.141], [-1, 0.162], [0, 0.1692], [1, 0.162], [2, 0.141], [3, 0.1084], [4, 0.0679], [5, 0.02453], [6, -0.01515], [7, -0.04315], [8, -0.05002], [9, -0.02484], [10, 0.04472]];
+export const sg6 = [[-10, -0.02705], [-9, 0.05411], [-8, 0.021], [-7, -0.03295], [-6, -0.05955], [-5, -0.04297], [-4, 0.01137], [-3, 0.08618], [-2, 0.1601], [-1, 0.2134], [0, 0.2328], [1, 0.2134], [2, 0.1601], [3, 0.08618], [4, 0.01137], [5, -0.04297], [6, -0.05955], [7, -0.03295], [8, 0.021], [9, 0.05411], [10, -0.02705]];
+
+## 한눈에 보기
+
+[`savgol_filter`](/api/smooth/savgol_filter/)는 길이 $N$의 창마다 $d$차 다항식을 최소제곱으로 맞추고 그 다항식의 자리 $p$에서의 $\nu$차 도함수를 내요. 최소제곱 다항식은 창의 값에 대해 선형이라, 이 일은 계수 $h$와의 내적 $y = \sum_ih_ix_i$ 하나예요. 뜻은 scipy 1.18.1과 같지만 계수를 구하는 방법이 달라요.
+
+scipy는 Vandermonde 행렬 $[s_i^k]$의 `lstsq`로 계수를 구해요. 창이 길고 차수가 높으면 그 행렬의 조건수가 double의 정밀도를 넘어 계수 전체가 틀리는데, 에러도 경고도 없어요. 여기서는 계수를 정확한 유리수 계수의 $8u\lVert h^*\rVert_\infty$ 안으로 만들어요. 창 1001의 모든 차수까지예요.
+
+```python
+>>> import numpy as np, scipy.signal as ss
+>>> S = sd.smooth
+>>> for N, d in ((101, 8), (101, 10), (51, 45)):
+...     print(N, d, float(sd.sum(S.savgol_coeffs(N, d))), float(np.sum(ss.savgol_coeffs(N, d))))
+101 8 1.0 1.0008945896239907
+101 10 0.9999999999999999 0.00010812963260949535
+51 45 1.0 -1.1233514690977457e-95
+```
+
+차수가 $d \ge 0$이면 상수를 그대로 되돌려야 하니 계수의 합은 정확히 1이에요. scipy의 $(101, 10)$은 합이 $10^{-4}$, $(51, 45)$는 0이에요.
+
+| 파일 | 줄 수 | 맡은 일 |
+|---|---:|---|
+| `csrc/smooth/savgol.cpp` | 651 | double-double 산술, Gram 다항식의 마디 값과 도함수, 계수, 가운데의 fma 내적, `mode`의 색인 접기, `'interp'`의 끝 맞춤 |
+| `src/stardust/smooth/_savgol.py` | 139 | 인자 검사, 작업 공간의 크기, 복소수와 정수 입력 |
+
+## 계수의 식
+
+창의 점 $i = 0, \ldots, N - 1$을 가운데로 옮긴 좌표 $s_i = i - (N - 1)/2$에서, 그 점들 위에서 정규직교인 다항식 $q_0, \ldots, q_d$($\sum_iq_j(s_i)q_k(s_i) = \delta_{jk}$, $q_j$는 $j$차)를 이산 Chebyshev 또는 Gram 다항식이라고 해요. 최소제곱 다항식은 이 기저로의 정사영이라
+
+$$
+P(s) = \sum_{j=0}^dq_j(s)\,a_j,\qquad a_j = \sum_iq_j(s_i)\,x_i
+$$
+
+이고, 그 $\nu$차 도함수를 자리 $s_p$에서 재면
+
+$$
+y = \Delta^{-\nu}\sum_{j=\nu}^dq_j^{(\nu)}(s_p)\sum_iq_j(s_i)x_i
+\quad\Rightarrow\quad
+h_i = \Delta^{-\nu}\sum_{j=\nu}^dq_j(s_i)\,q_j^{(\nu)}(s_p)
+$$
+
+예요($\Delta$는 `delta`, 표본의 간격). 정규직교 기저라 정규방정식을 풀 필요가 없고 Vandermonde 행렬도 없어요. 남은 일은 두 가지 값을 정확히 구하는 것이에요. 창의 모든 점에서의 마디 값 $q_j(s_i)$와 자리 하나에서의 도함수 값 $q_j^{(\nu)}(s_p)$예요.
+
+<Fig caption="창 21의 가운데 계수(ν = 0). 차수가 높을수록 가운데가 뾰족하고 양쪽에 음수 꼬리가 생겨요. 차수 2와 3, 4와 5는 같은 계수예요(가운데 자리에서 홀수 차 항의 값이 0이라서).">
+  <Plot
+    curves={[
+      { points: sg2, label: '차수 2' },
+      { points: sg4, label: '차수 4' },
+      { points: sg6, label: '차수 6', dashed: true },
+    ]}
+    domain={[-10, 10]}
+    range={[-0.08, 0.25]}
+    xTicks={[{ v: -10, label: '−10' }, { v: -5, label: '−5' }, { v: 0, label: '0' }, { v: 5, label: '5' }, { v: 10, label: '10' }]}
+    yTicks={[{ v: 0, label: '0' }, { v: 0.1, label: '0.1' }, { v: 0.2, label: '0.2' }]}
+  />
+</Fig>
+
+## 마디 값: 창을 따라 가는 점화식
+
+Gram 다항식에는 차수 방향의 삼항 점화식이 있어요.
+
+$$
+\sqrt{\beta_{k+1}}\,q_{k+1}(s) = s\,q_k(s) - \sqrt{\beta_k}\,q_{k-1}(s),\qquad \beta_k = \frac{k^2(N^2 - k^2)}{4(4k^2 - 1)}.
+$$
+
+이것을 창의 점마다 돌리면 간단하지만 높은 차수에서 실패해요. 높은 차수의 Gram 다항식은 창의 끝 근처에서 값이 지수적으로 작고 가운데에서 커서, 끝 점에서의 점화식은 큰 항들이 서로 지워져 작은 값이 남는 꼴이에요. 106비트로 돌려도 $d$가 $N/4$쯤을 넘으면 창의 끝에서 자릿수를 모두 잃었어요($N = 201$은 $d \approx 120$, $N = 1001$은 $d \approx 280$부터 $u$를 넘고, $d = N - 1$에서는 $10^{42}$–$10^{282}u$).
+
+그래서 마디 값은 **점의 방향**으로 구해요(Mukundan 2004). 차수 $j$를 고정하면 $t(x) = q_j(s_x)$가 $x$에 대한 삼항 점화식을 만족해요.
+
+$$
+t(x) = g_1\,t(x - 1) + g_2\,t(x - 2),\quad
+g_1 = \frac{(2x - 1)(N + 1 - x) - x - j(j + 1)}{x(N - x)},\quad
+g_2 = -\frac{(x - 1)(N + 1 - x)}{x(N - x)}.
+$$
+
+시작값은 창의 첫 점의 닫힌 꼴 $t(0) = (-1)^j\sqrt{\tfrac{2j + 1}{N}\prod_{k \le j}\tfrac{N - k}{N + k}}$와 그 이웃 $t(1) = t(0)\cdot\tfrac{N - 1 - j(j + 1)}{N - 1}$이에요. 이 점화식은 끝의 작은 값에서 가운데의 큰 값으로 **자라는** 해를 계산하니 상쇄가 커지지 않아요. 가운데까지 가고 나머지는 대칭 $q_j(s_{N-1-i}) = (-1)^jq_j(s_i)$으로 채워요. $N \le 1001$의 모든 $(j, i)$에서 $6 \times 10^{-14}u$ 안이었어요.
+
+```cpp
+        // csrc/smooth/savgol.cpp
+        for (std::int64_t x = 2; x < half; ++x) {
+            const DD g1 = mul(sub(anum[static_cast<size_t>(x)], exact(jj)), inv[static_cast<size_t>(x)]);
+            DD u2 = add(mul(g1, u1), mul(g2[static_cast<size_t>(x)], u0));
+            if (std::fabs(u2.hi) > 0x1p600) {  // the mantissa grows by up to 2^-e: keep it in range
+                u2 = ldexp_dd(u2, -600);
+                u1 = ldexp_dd(u1, -600);
+                E += 600;
+            }
+            G.T[static_cast<size_t>(x * D1 + j)] = ldexp_dd(u2, E);
+            u0 = u1;
+            u1 = u2;
+        }
+```
+
+시작값 $t(0)$은 $2^{-1000}$보다도 작아질 수 있어요($N = 1001$의 높은 차수). 그래서 시작값을 가수와 2의 지수로 나눠 쥐고 점화식은 가수로 돌리다가, 가수가 $2^{600}$을 넘으면 지수로 옮겨요. 홀수 차수의 가운데 값(홀수 창)은 대칭으로 정확히 0이라 0으로 둬요.
+
+## 자리의 도함수: 한 점에서의 차수 점화식
+
+$q_j^{(\nu)}(s_p)$는 자리 하나의 값이라 차수 방향 점화식을 그 점에서 미분해 돌려요.
+
+$$
+\sqrt{\beta_{k+1}}\,q_{k+1}^{(\nu)} = s\,q_k^{(\nu)} + \nu\,q_k^{(\nu-1)} - \sqrt{\beta_k}\,q_{k-1}^{(\nu)}.
+$$
+
+```cpp
+// csrc/smooth/savgol.cpp
+std::vector<DD> derivatives_at(const Gram& G, double s, std::int64_t nu) {
+    const std::int64_t d = G.d, V = nu + 1;
+    std::vector<DD> out(static_cast<size_t>(d + 1));
+    std::vector<DD> prev(static_cast<size_t>(V)), cur(static_cast<size_t>(V)), next(static_cast<size_t>(V));
+    cur[0] = div(exact(1.0), sqrt_dd(exact(static_cast<double>(G.N))));
+    out[0] = cur[static_cast<size_t>(nu)];
+    for (std::int64_t k = 0; k < d; ++k) {
+        for (std::int64_t v = 0; v < V; ++v) {
+            DD t = mul(cur[static_cast<size_t>(v)], s);
+            if (v > 0) t = add(t, mul(cur[static_cast<size_t>(v - 1)], static_cast<double>(v)));
+            if (k > 0) t = sub(t, mul(G.sb[static_cast<size_t>(k)], prev[static_cast<size_t>(v)]));
+            next[static_cast<size_t>(v)] = mul(t, G.isb[static_cast<size_t>(k + 1)]);
+        }
+        std::swap(prev, cur);
+        std::swap(cur, next);
+        out[static_cast<size_t>(k + 1)] = cur[static_cast<size_t>(nu)];
+    }
+    return out;
+}
+```
+
+이 값은 그 차수까지의 최대 절댓값의 $10^{-13}u$ 안이었어요. 끝 점에서처럼 자릿수를 다 잃지 않는 까닭은, 계수의 오차가 이 값의 상대 오차가 아니라 "차수까지의 가장 큰 값에 견준 오차"로 정해지기 때문이에요. $\lVert h\rVert_2 = \lVert c\rVert_2$($c_j = q_j^{(\nu)}(s_p)$, 마디 값이 정규직교라서)이니 계수의 오차는 그만큼에 $\sqrt N(d + 1)$을 곱한 것보다 작아요. $\nu = 0$이고 $p$가 정수 자리이면 이 점화식 대신 마디 값을 그대로 써요. $\nu = 0$의 끝 자리에서는 차수 방향이 역시 자릿수를 잃기 때문이에요($N = 401$의 $p = 0$에서 $d \approx 170$부터).
+
+## double-double
+
+모든 계산은 double 둘의 합 $a_{\mathrm{hi}} + a_{\mathrm{lo}}$로 약 106비트를 나타내는 double-double 산술이에요. 바탕은 두 가지 오차 없는 변환이에요.
+
+- **two-sum.** $s = a + b$, $b' = s - a$, $e = (a - (s - b')) + (b - b')$이면 $a + b = s + e$가 정확해요(Knuth).
+- **two-prod.** $p = ab$, $e = \mathrm{fma}(a, b, -p)$이면 $ab = p + e$가 정확해요. fma가 곱을 반올림하지 않고 더하니까요.
+
+더하기는 두 쌍의 상위·하위를 따로 two-sum으로 더해 정규화하고, 곱하기는 상위끼리의 two-prod에 교차항을 더해요. 나누기와 제곱근은 double로 어림한 뒤 나머지로 한 번 고쳐요. 정수의 곱(점화식의 $(2x - 1)(N + 1 - x)$ 같은 것)은 two-prod로 정확해요. 계수 $h_i$는 double-double의 합을 **한 번** 반올림한 값이에요. 그래서 측정에서 계수 1371개가 한 번의 반올림 그대로였어요(계약 단위 $1.3 \times 10^{-16}$).
+
+반올림 잡음은 0으로 자르지 않아요. `polyorder = window_length − 1`의 정수 자리처럼 정확히 0이어야 하는 계수도 $2^{-100}\lVert h^*\rVert_\infty$ 크기의 잡음이 될 수 있어요. 자르는 문턱을 정하면 그 문턱 근처의 진짜 작은 계수가 사라지기 때문이에요. 가운데 계수의 대칭 0(홀수 창의 홀수 도함수)은 정확히 0이에요.
+
+마디 값의 표는 $16N(d + 1)$바이트이고 물리 메모리를 넘으면 만들기 전에 `MemoryError`예요.
+
+## 거르기
+
+창이 축 안에 있는 출력은 가운데 계수를 float64로 반올림한 $h$와의 fma 차례 합이에요.
+
+$$
+\mathit{acc} = 0;\quad \mathit{acc} \leftarrow \mathrm{fma}(h_j, x_{i - \mathit{first} + j}, \mathit{acc}),\ j = 0, \ldots, N - 1
+$$
+
+$\mathit{first}$는 $N/2$(짝수 창은 $N/2 - 1$)이에요. 축이 마지막이면 NEON이 이웃한 출력 16개를, 아니면 이웃한 열 16개를 한꺼번에 같은 차례로 계산해요. 레인마다 연산이 같으니 출력 하나는 그 창과 계수만의 함수예요. 그래서 배치, 묶음, 스레드 수와 무관하게 같은 비트이고, 2차원 배열을 축 0으로 거른 결과의 한 열은 그 열만 거른 것과 같은 비트예요.
+
+```python
+>>> rng = sd.random.default_rng(7)
+>>> X = rng.random((300, 7))
+>>> F = S.savgol_filter(X, 11, 3, axis=0)
+>>> all(F[:, j].tolist() == S.savgol_filter(X[:, j].copy(), 11, 3).tolist() for j in range(7))
+True
+```
+
+FFT 합성곱은 쓰지 않아요. 계수가 창 길이만큼이라 직접 내적이 충분히 빠르고, FFT 합성곱은 결과가 다른 출력들의 값에 기대게 돼요.
+
+복소수 입력은 실수부와 허수부를 두 레인으로 보고 같은 실수 계수로 걸러요. scipy는 경고와 함께 허수부를 버려요.
+
+```python
+>>> z = X[:, 0] + 1j * X[:, 1]
+>>> sd.real(S.savgol_filter(z, 11, 3)).tolist() == S.savgol_filter(X[:, 0].copy(), 11, 3).tolist()
+True
+```
+
+### 창이 축을 벗어날 때
+
+`'mirror'`, `'nearest'`, `'constant'`, `'wrap'`은 `scipy.ndimage`의 규칙으로 축 밖의 값을 읽어요. 덧댄 사본을 만들지 않고, 창이 걸치는 출력만 색인을 접어 같은 fma 차례 합으로 계산해요.
+
+```cpp
+// csrc/smooth/savgol.cpp
+inline std::int64_t fold(std::int64_t k, std::int64_t n, int mode) {
+    switch (mode) {
+        case kNearest: return k < 0 ? 0 : n - 1;
+        case kWrap: {
+            const std::int64_t r = k % n;
+            return r < 0 ? r + n : r;
+        }
+        case kMirror: {
+            if (n == 1) return 0;
+            const std::int64_t period = 2 * n - 2;
+            std::int64_t r = k % period;
+            if (r < 0) r += period;
+            return r < n ? r : period - r;
+        }
+        default: return -1;
+    }
+}
+```
+
+`'mirror'`는 끝점을 되풀이하지 않는 반사라 주기가 $2n - 2$예요. `-1`은 `'constant'`의 `cval`(복소수면 허수부 0)을 읽으라는 표시예요. 접는 규칙이 주기적이라 창이 축보다 길어도 돼요.
+
+### interp의 끝
+
+`'interp'`(기본)는 처음과 마지막 $N/2$개 출력을 끝 창 $N$점에 맞춘 다항식의 값(도함수)으로 바꿔요. 끝 출력마다 다른 자리 $p$의 계수 $N$개를 만들면 표가 $N^2/2$개(창 $10^4$에서 400MB)이고 만드는 데 $O(N^2d)$예요. 대신 줄마다 끝 창의 투영 $a_j = \sum_iq_j(s_i)x_i$를 double-double로 한 번 구하고, 끝 출력마다 $\Delta^{-\nu}\sum_jq_j^{(\nu)}(s_p)a_j$를 한 번 반올림해요. 줄마다 $O(Nd)$의 double-double 연산이에요. 오른쪽 끝의 자리 $N - 1 - q$는 대칭으로 $q$의 인수에 $(-1)^{j+\nu}$를 곱한 것이라 따로 구하지 않아요. scipy는 줄마다 `polyfit`을 불러요.
+
+끝 창에 inf가 있으면 그 끝 출력은 NaN이에요. 다른 `mode`에서도 NaN은 그 점이 든 창의 출력으로 번져요(scipy의 `'interp'`는 끝 창의 NaN에서 에러예요).
+
+### deriv가 polyorder보다 클 때
+
+계수는 모두 0이에요(scipy와 같아요). 거른 값은 $0\cdot x$의 차례 합이라 창에 NaN이나 inf가 없으면 0, 있으면 NaN이에요. NaN이 창으로 번진다는 규칙을 여기서도 지키려는 것이에요.
+
+## 나눔과 계약
+
+일은 모양으로만 나눠요. 단위는 출력 행의 묶음(축이 마지막이 아니면 512열의 묶음과 곱한 것)이고, 태스크 하나가 fma 약 $2^{17}$개 분량의 단위를 차례로 맡아요. 전체가 $2^{18}$개보다 작으면 나누지 않아요. 끝 맞춤은 줄 묶음 단위예요. 출력 하나가 그 창과 계수만의 함수라 어떻게 나눠도 같은 비트예요.
+
+| 양 | 한계 |
+|---|---|
+| `savgol_coeffs` | $\lvert\hat h_i - h_i^*\rvert \le 8u\lVert h^*\rVert_\infty$(모든 $N \le 1001$, $d \lt N$) |
+| `savgol_filter` | $\lvert\hat y_i - \sum_jh_j^*x_{i+j}\rvert \le \gamma_{N+8}\sum_j\lvert h_j^*\rvert\lvert x_{i+j}\rvert$ |
+
+$h^*$는 `fmpq_mat`의 정규방정식으로 푼 정확한 유리수 계수예요. 거르기의 한계는 반올림한 계수의 오차($u\lvert h^*\rvert$)와 fma 사슬의 반올림 $N$번을 더한 꼴이에요. 앞에서 말한 정확한 0 계수의 잡음 때문에, 창 안의 값이 $2^{47}$배 넘게 다르고 큰 값이 정확한 0의 계수에 걸리는 자료에서는 그 항 $2^{-100}\lVert h^*\rVert_\infty\sum\lvert x\rvert$만큼 느슨해요. 잰 값은 [정확도와 성능](/internals/smooth/accuracy-performance/)에 있어요.
+
+다항식(차수가 `polyorder` 이하)은 그대로 돌아와야 해요.
+
+```python
+>>> t = sd.arange(50, dtype=sd.float64)
+>>> y = 2 - 0.5 * t + 0.01 * t**3
+>>> float(sd.max(sd.abs(S.savgol_filter(y, 9, 3) - y)))
+2.2737367544323206e-13
+```
+
+값의 크기가 1150쯤인 자료라 $2.3 \times 10^{-13}$은 상대 $2 \times 10^{-16}$이에요.

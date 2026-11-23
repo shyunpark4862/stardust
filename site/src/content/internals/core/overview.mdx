@@ -2,7 +2,7 @@
 title: 전체 구조
 group: 전체 구조
 order: 1
-summary: stardust의 열일곱 영역이 어떤 층으로 쌓이고 서로 어떻게 기대는지 보여 줘요. 모든 영역을 확장 모듈 하나에 넣어 스레드풀과 배열 타입을 함께 쓰고, Apple M4 Pro 한 대만 겨냥해 빌드해요.
+summary: stardust의 열여덟 영역이 어떤 층으로 쌓이고 서로 어떻게 기대는지 보여 줘요. 모든 영역을 확장 모듈 하나에 넣어 스레드풀과 배열 타입을 함께 쓰고, Apple M4 Pro 한 대만 겨냥해 빌드해요.
 seeAlso: [python-boundary, threads]
 ---
 import Steps from '../../../components/fig/Steps.astro';
@@ -14,7 +14,7 @@ import Bench from '../../../components/fig/Bench.astro';
 
 ## 한눈에 보기
 
-stardust는 numpy, 선형대수(scipy.linalg 계열), 데이터프레임(pandas 계열), 특수함수(scipy.special), 확률분포와 기술통계(scipy.stats 계열), 난수(numpy.random 계열), 회귀분석(statsmodels 계열), 최적화(scipy.optimize 계열), 가설검정(scipy.stats의 검정과 statsmodels의 비율·다중 비교), 희소 행렬(scipy.sparse 계열), 수치 적분(scipy.integrate 계열), 수치 미분(scipy.differentiate 계열), 거리와 이웃 찾기(scipy.spatial 계열), 그래프 알고리즘(scipy.sparse.csgraph 계열), 보간(scipy.interpolate 계열), 푸리에 변환(scipy.fft 계열)을 C++20으로 다시 만들고, 그 위에 자체 렌더러로 그리는 그림 영역을 얹은 Python 라이브러리예요. 사용자는 `import stardust as sd` 하나로 열일곱 영역을 써요.
+stardust는 numpy, 선형대수(scipy.linalg 계열), 데이터프레임(pandas 계열), 특수함수(scipy.special), 확률분포와 기술통계(scipy.stats 계열), 난수(numpy.random 계열), 회귀분석(statsmodels 계열), 최적화(scipy.optimize 계열), 가설검정(scipy.stats의 검정과 statsmodels의 비율·다중 비교), 희소 행렬(scipy.sparse 계열), 수치 적분(scipy.integrate 계열), 수치 미분(scipy.differentiate 계열), 거리, 이웃 찾기와 계산 기하(scipy.spatial 계열), 그래프 알고리즘(scipy.sparse.csgraph 계열), 보간(scipy.interpolate 계열), 푸리에 변환(scipy.fft 계열), 평활과 밀도 추정(statsmodels의 lowess와 핵 회귀, R의 loess, scipy의 평활 스플라인·`gaussian_kde`·Savitzky–Golay 계열)을 C++20으로 다시 만들고, 그 위에 자체 렌더러로 그리는 그림 영역을 얹은 Python 라이브러리예요. 사용자는 `import stardust as sd` 하나로 열여덟 영역을 써요.
 
 | 영역 | Python 이름공간 | C++ 디렉터리 | 하는 일 |
 |:---:|:---:|:---:|---|
@@ -30,16 +30,17 @@ stardust는 numpy, 선형대수(scipy.linalg 계열), 데이터프레임(pandas 
 | 희소 행렬 | `sd.sparse` | `csrc/sparse/` | COO·CSR·CSC·DOK 희소 배열과 그 연산, 직접 풀이(Accelerate의 희소 LU), 반복법 여섯, 고유값과 특이값(ARPACK), 행렬 지수 함수와 노름 |
 | 적분 | `sd.integrate` | `csrc/integrate/` | QUADPACK의 적응 구적(`quad`와 가중 함수, 무한 구간, 겹친 적분), 벡터 값의 `quad_vec`, 다차원 `cubature`, tanh-sinh와 급수의 합(`tanhsinh`, `nsum`), Gauss–Legendre와 Newton–Cotes의 고정 규칙, 표본의 규칙(사다리꼴, Simpson, Romberg와 그 누적) |
 | 미분 | `sd.differentiate` | `csrc/differentiate/` | 원소마다 푸는 도함수(`derivative`: 차분 규칙과 Richardson 외삽), 야코비안과 헤시안, 최적화와 회귀가 함께 쓰는 차분 간격 |
-| 공간 | `sd.spatial` | `csrc/spatial/` | 거리 열넷과 거리 행렬(`pdist`, `cdist`, `squareform`), 한 번에 끝나는 이웃 찾기(`kneighbors`, `radius_neighbors`), KD 트리와 그 질의(가장 가까운 이웃, 반경, 짝, 개수, 희소 거리 행렬) |
+| 공간 | `sd.spatial` | `csrc/spatial/` | 거리 열넷과 거리 행렬(`pdist`, `cdist`, `squareform`), 한 번에 끝나는 이웃 찾기(`kneighbors`, `radius_neighbors`), KD 트리와 그 질의(가장 가까운 이웃, 반경, 짝, 개수, 희소 거리 행렬), 정확한 술어 위의 계산 기하(`Delaunay`, `ConvexHull`, `Voronoi`) |
 | 그래프 | `sd.graph` | `csrc/graph/` | 인접 행렬(밀집과 희소)로 받은 그래프의 순회와 연결 요소, 최단 경로(Dijkstra, Bellman–Ford, Johnson, Floyd–Warshall, Yen의 K개 경로), 최소 신장 트리, 최대 흐름, 이분 매칭과 배정, 역 Cuthill–McKee와 라플라시안, 단절점·다리·코어 수, PageRank와 매개 중심성 |
-| 보간 | `sd.interpolate` | `csrc/interpolate/` | 조각 다항식(`PPoly`, 3차 스플라인, PCHIP, Akima)과 B-스플라인, 무게중심 꼴의 다항식과 유리식(Krogh, Floater–Hormann, AAA), 격자 위의 보간(`RegularGridInterpolator`), 흩어진 점의 RBF와 가장 가까운 점 보간. 한 변수 선형 보간 `sd.interp`는 배열 영역에 있어요 |
+| 보간 | `sd.interpolate` | `csrc/interpolate/` | 조각 다항식(`PPoly`, 3차 스플라인, PCHIP, Akima)과 B-스플라인, 무게중심 꼴의 다항식과 유리식(Krogh, Floater–Hormann, AAA), 격자 위의 보간(`RegularGridInterpolator`), 흩어진 점의 RBF, 가장 가까운 점, 삼각분할 위의 선형과 Clough–Tocher 보간. 한 변수 선형 보간 `sd.interp`는 배열 영역에 있어요 |
 | 푸리에 변환 | `sd.fft` | `csrc/fft/` | 복소·실수·에르미트 FFT와 그 다차원 판, DCT와 DST 네 형, 주파수 도우미(`fftfreq`, `fftshift`, `next_fast_len`), 로그 간격 표본의 한켈 변환(FFTLog) |
+| 평활 | `sd.smooth` | `csrc/smooth/` | 산점도 평활(`lowess`, 여러 변수의 `loess`), 평활 스플라인·P-스플라인·최소제곱 스플라인과 FITPACK식 매듭 고르기, 핵 회귀, 핵밀도추정과 대역폭 규칙, Savitzky–Golay 거르기 |
 | 그림 | `sd.plot` | `csrc/plot/` | 자체 렌더러로 그리는 2D·3D 그림(함수, 자료, 통계, 곡면), LaTeX로 조판한 글자, SVG·PDF·PNG 출력 |
 
-열일곱 영역이 엮이는 방식은 네 가지로 요약돼요.
+열여덟 영역이 엮이는 방식은 네 가지로 요약돼요.
 
-1. **확장 모듈은 `stardust._core` 하나예요.** 영역은 그 안의 하위 모듈(`_core.linalg`, `_core.frame`, `_core.special`, `_core.stats`, `_core.random`, `_core.regression`, `_core.optimize`, `_core.htest`, `_core.sparse`, `_core.integrate`, `_core.differentiate`, `_core.spatial`, `_core.graph`, `_core.interpolate`, `_core.fft`, `_core.plot`)이에요. 그래서 스레드풀, dtype 객체, 배열 타입이 프로세스 안에 하나씩만 있고, 어느 영역의 C++ 코드든 배열을 C++ 객체 그대로 주고받아요.
-2. **Python은 얇고 C++은 두꺼워요.** 배열 타입 자체, 연산자, 인자 해석, 브로드캐스팅, dtype 결정까지 C++이 해요. Python에는 재노출, 출력 형식(`repr`), 결과 namedtuple처럼 자주 불리지 않는 부분만 남아요. 예외는 객체가 상태를 지녀야 하는 곳이에요. 데이터프레임의 `Series`와 `DataFrame`, 통계의 분포 클래스, 난수의 `Generator`, 회귀의 결과 객체(`OLSResult` …), 최적화의 결과 객체(`OptimizeResult`), 가설검정의 결과 객체(`PearsonrResult` …), 희소 배열(`csr_array` …)과 `LinearOperator`, 적분과 미분의 결과 객체(`IntegrateResult`, `DifferentiateResult`), 공간의 `KDTree`와 반경 결과(`RadiusResult`), 그래프의 흐름 결과(`MaximumFlowResult`), 보간 객체(`PPoly`, `BSpline`, `RBFInterpolator` …), 그림의 `Figure`는 Python 클래스예요. `sd.plot`은 거꾸로 Python이 두꺼운 영역이에요. 배치, 눈금, 범례, 장면 짓기는 Python이 하고, 화소나 격자의 칸만큼 도는 반복(래스터라이저, 깊이 버퍼, marching squares)만 C++이 맡아요.
+1. **확장 모듈은 `stardust._core` 하나예요.** 영역은 그 안의 하위 모듈(`_core.linalg`, `_core.frame`, `_core.special`, `_core.stats`, `_core.random`, `_core.regression`, `_core.optimize`, `_core.htest`, `_core.sparse`, `_core.integrate`, `_core.differentiate`, `_core.spatial`, `_core.graph`, `_core.interpolate`, `_core.fft`, `_core.smooth`, `_core.plot`)이에요. 그래서 스레드풀, dtype 객체, 배열 타입이 프로세스 안에 하나씩만 있고, 어느 영역의 C++ 코드든 배열을 C++ 객체 그대로 주고받아요.
+2. **Python은 얇고 C++은 두꺼워요.** 배열 타입 자체, 연산자, 인자 해석, 브로드캐스팅, dtype 결정까지 C++이 해요. Python에는 재노출, 출력 형식(`repr`), 결과 namedtuple처럼 자주 불리지 않는 부분만 남아요. 예외는 객체가 상태를 지녀야 하는 곳이에요. 데이터프레임의 `Series`와 `DataFrame`, 통계의 분포 클래스, 난수의 `Generator`, 회귀의 결과 객체(`OLSResult` …), 최적화의 결과 객체(`OptimizeResult`), 가설검정의 결과 객체(`PearsonrResult` …), 희소 배열(`csr_array` …)과 `LinearOperator`, 적분과 미분의 결과 객체(`IntegrateResult`, `DifferentiateResult`), 공간의 `KDTree`와 반경 결과(`RadiusResult`), 그래프의 흐름 결과(`MaximumFlowResult`), 보간 객체(`PPoly`, `BSpline`, `RBFInterpolator` …), 평활의 결과 객체(`LowessResult`, `KDEResult` …), 그림의 `Figure`는 Python 클래스예요. `sd.plot`은 거꾸로 Python이 두꺼운 영역이에요. 배치, 눈금, 범례, 장면 짓기는 Python이 하고, 화소나 격자의 칸만큼 도는 반복(래스터라이저, 깊이 버퍼, marching squares)만 C++이 맡아요.
 3. **의존은 아래로만 흘러요.** 위 층은 아래 층을 쓰고, 아래 층은 위 층을 몰라요. 새 영역은 디렉터리 하나와 Python 하위 모듈 하나로 붙고, 기존 영역을 고치지 않아요.
 4. **대상 기계는 Apple M4 Pro 한 대예요.** `-mcpu=native`로 빌드하고, 런타임 CPU 디스패치가 없고, 병렬화 기준값과 버퍼 크기 같은 상수는 모두 이 기계에서 잰 값이에요.
 
@@ -71,10 +72,11 @@ stardust는 numpy, 선형대수(scipy.linalg 계열), 데이터프레임(pandas 
           { name: 'sd.sparse', note: '희소 행렬' },
           { name: 'sd.integrate', note: '적분' },
           { name: 'sd.differentiate', note: '미분' },
-          { name: 'sd.spatial', note: '거리와 이웃' },
+          { name: 'sd.spatial', note: '거리, 이웃, 계산 기하' },
           { name: 'sd.graph', note: '그래프' },
           { name: 'sd.interpolate', note: '보간' },
           { name: 'sd.fft', note: '푸리에 변환' },
+          { name: 'sd.smooth', note: '평활, 핵밀도추정' },
         ],
       },
       {
@@ -102,10 +104,11 @@ stardust는 numpy, 선형대수(scipy.linalg 계열), 데이터프레임(pandas 
           { name: 'sparse/', uses: 'linalg, array' },
           { name: 'integrate/', uses: 'array, elementwise, linalg (CBLAS 선언)' },
           { name: 'differentiate/', uses: 'array, elementwise, linalg (accurate의 fastsum 합)' },
-          { name: 'spatial/', uses: 'array, accelerate (gemm)', note: '거리 커널, KD 트리' },
+          { name: 'spatial/', uses: 'array, accelerate (gemm)', note: '거리 커널, KD 트리, 정확한 술어와 삼각분할' },
           { name: 'graph/', uses: 'sparse (CSR 읽기와 전치), array', note: '정의로 정한 결과' },
-          { name: 'interpolate/', uses: 'array, linalg (LAPACK 래퍼), spatial (거리 커널)', note: '띠 풀이, de Boor' },
+          { name: 'interpolate/', uses: 'array, linalg (LAPACK 래퍼), spatial (거리 커널, 삼각분할)', note: '띠 풀이, de Boor' },
           { name: 'fft/', uses: 'array', note: '계획과 축 구동기' },
+          { name: 'smooth/', uses: 'array, interpolate (de Boor), spatial (KD 트리), fft (계획, DCT)', note: '국소 적합, 띠 QR, 가우스 합' },
           { name: 'plot/', note: '래스터라이저, 깊이 버퍼, marching squares' },
           { name: 'elementwise/', uses: 'array', note: '원소별 반복의 공용 고리' },
         ],
@@ -146,14 +149,14 @@ Python에서 `sd.add(x, y)`를 부르면 이런 길을 지나요.
 
 ### Python 패키지 (`src/stardust/`)
 
-열일곱 영역의 Python 코드는 합쳐 약 46,800줄이에요. 그중 회귀가 약 8,800줄, 그림이 약 8,500줄, 희소 행렬이 약 6,400줄, 가설검정이 약 5,000줄, 데이터프레임이 약 3,300줄, 보간이 약 2,500줄, 통계가 약 2,500줄, 최적화가 약 2,400줄, 적분이 약 1,800줄, 공간이 약 1,200줄, 그래프가 약 1,100줄, 미분이 약 570줄, 난수가 약 560줄, 푸리에 변환이 약 550줄이에요. 배열·선형대수·특수함수 쪽 Python은 거의 재노출뿐이에요.
+열여덟 영역의 Python 코드는 합쳐 약 50,900줄이에요. 그중 회귀가 약 8,800줄, 그림이 약 8,700줄, 희소 행렬이 약 6,400줄, 가설검정이 약 5,000줄, 데이터프레임이 약 3,300줄, 평활이 약 2,900줄, 보간이 약 2,900줄, 통계가 약 2,500줄, 최적화가 약 2,400줄, 적분이 약 1,800줄, 공간이 약 1,700줄, 그래프가 약 1,100줄, 미분이 약 570줄, 난수가 약 560줄, 푸리에 변환이 약 550줄이에요. 배열·선형대수·특수함수 쪽 Python은 거의 재노출뿐이에요.
 
 | 파일 | 하는 일 |
 |---|---|
-| `__init__.py` | `_core`의 배열 함수와 dtype 객체 약 170개를 재노출하고, 상수 `e`, `pi`, `inf`, `nan`, `newaxis`를 정의해요. 끝에서 `linalg`, `frame`, `special`, `random`, `stats`, `regression`, `optimize`, `htest`, `sparse`, `integrate`, `differentiate`, `spatial`, `graph`, `interpolate`, `fft`, `plot` 하위 패키지를 import해요. `plot`을 읽을 때 TeX는 찾지 않아요 |
+| `__init__.py` | `_core`의 배열 함수와 dtype 객체 약 170개를 재노출하고, 상수 `e`, `pi`, `inf`, `nan`, `newaxis`를 정의해요. 끝에서 `linalg`, `frame`, `special`, `random`, `stats`, `regression`, `optimize`, `htest`, `sparse`, `integrate`, `differentiate`, `spatial`, `graph`, `interpolate`, `fft`, `smooth`, `plot` 하위 패키지를 import해요. `plot`을 읽을 때 TeX는 찾지 않아요 |
 | `_format.py` | 배열의 `repr`/`str` (75줄). C++이 넘긴 요약 값을 문자열로 배치해요 |
 | `_results.py` | 결과 namedtuple 전부 (`UniqueAllResult`, `SVDResult`, `AiryResult`, `TheilslopesResult`, `DescribeResult`, `CdfResult`, 공간의 `QueryResult`, 그래프의 `ConnectedComponentsResult`와 `YenResult` …)와, 필드를 가진 결과 객체의 바탕 클래스 `_FieldResult`(최적화의 `OptimizeResult`, 희소 반복법의 `CgResult`, 적분의 `IntegrateResult`, 미분의 `DifferentiateResult` 등) |
-| `_summary.py` | 회귀·최적화·가설검정·희소 반복법·적분·미분 결과의 `summary()`가 함께 쓰는 상자 그리기. 머리, 표, 수의 형식, 배치의 표([summary의 상자](/internals/regression/overview/#summary의-상자)) |
+| `_summary.py` | 회귀·최적화·가설검정·희소 반복법·적분·미분·평활 결과의 `summary()`가 함께 쓰는 상자 그리기. 머리, 표, 수의 형식, 배치의 표([summary의 상자](/internals/regression/overview/#summary의-상자)) |
 | `linalg/__init__.py` | `_core.linalg`의 함수를 `globals().update(...)`로 옮겨 오고, `LinAlgError`와 결과 namedtuple을 C++에 한 번 넘겨요(`_core._setup`) |
 | `linalg/_errors.py` | `class LinAlgError(ValueError)` 정의. `__module__`을 `"stardust.linalg"`로 바꿔 traceback에 공개 경로가 보이게 해요 |
 | `special/__init__.py` | `_core.special`의 함수를 재노출만 해요 |
@@ -166,10 +169,11 @@ Python에서 `sd.add(x, y)`를 부르면 이런 길을 지나요.
 | `sparse/*.py` | 희소 배열 클래스(`sparray`와 `coo_array`, `csr_array`, `csc_array`, `dok_array`), 연산자와 리덕션의 입구, 만들기 함수, `LinearOperator`, 풀이와 고유값 함수의 인자 검사, 결과 클래스. 배열은 `data`, `indices`, `indptr`(COO는 `coords`)을 `sd.ndarray`로 들고, 계산은 커널(`_core.sparse`)에 넘겨요 |
 | `integrate/*.py` | 공개 함수와 결과 클래스 `IntegrateResult`. 인자 검사, 사용자 함수가 돌려준 값의 모양과 형 확인, 커널(`_core.integrate`) 호출, 결과 객체 만들기. `fixed_quad`의 Gauss–Legendre 마디(n > 100)를 double-double 값에서 올바르게 반올림하는 마무리(`_gauss.py`)도 여기 있어요. 인자 검사 도구와 원소별 입력의 브로드캐스트는 최적화의 것(`optimize/_common.py`, `optimize/_elementwise.py`)을 그대로 써서 메시지가 같아요 |
 | `differentiate/*.py` | `derivative`, `jacobian`, `hessian`의 입력 검사와 결과 클래스 `DifferentiateResult`, 차분 규칙의 가중치를 정확히 계산해 한 번 반올림하는 `_weights.py`, 최적화의 `approx_fprime`·`check_grad`와 회귀의 `nls`가 함께 쓰는 정확한 5점 차분 `_differences.py` |
-| `spatial/*.py` | 거리 함수와 `pdist`·`cdist`·`squareform`(`_distance.py`), `kneighbors`·`radius_neighbors`와 계산 길 고르기(`_neighbors.py`), `KDTree`(`_kdtree.py`), 반경 결과 `RadiusResult`(`_radius.py`). 입력 정리와 거리 이름·인자의 검사(`_common.py`)를 모두가 함께 써요. 계산은 커널(`_core.spatial`) 한 번 호출이고, `mahalanobis`의 기본 `VI`는 `sd.linalg.inv`, `seuclidean`의 기본 `V`는 `sd.var`, `tocsr()`와 `sparse_distance_matrix`의 결과는 `sd.sparse.csr_array`예요 |
+| `spatial/*.py` | 거리 함수와 `pdist`·`cdist`·`squareform`(`_distance.py`), `kneighbors`·`radius_neighbors`와 계산 길 고르기(`_neighbors.py`), `KDTree`(`_kdtree.py`), 반경 결과 `RadiusResult`(`_radius.py`), 계산 기하의 `Delaunay`(`_delaunay.py`), `ConvexHull`(`_hull.py`), `Voronoi`(`_voronoi.py`). 입력 정리와 거리 이름·인자의 검사, 기하의 점 검사와 메모리 어림(`_common.py`)을 모두가 함께 써요. 계산은 커널(`_core.spatial`) 한 번 호출이고, `mahalanobis`의 기본 `VI`는 `sd.linalg.inv`, `seuclidean`의 기본 `V`는 `sd.var`, `tocsr()`와 `sparse_distance_matrix`의 결과는 `sd.sparse.csr_array`예요 |
 | `graph/*.py` | 공개 함수와 흐름 결과 `MaximumFlowResult`, `NegativeCycleError`. 입력 정리(`_common.py`)가 밀집 행렬과 희소 배열을 표준 꼴의 CSR 하나로 바꾸고 dtype·모양·무게·노드 인자를 검사해요. 계산은 커널(`_core.graph`) 한 번 호출이고, 행렬로 돌려주는 결과와 `laplacian(form='lo')`의 연산자는 `sd.sparse`의 `csr_array`와 `LinearOperator`예요 |
-| `interpolate/*.py` | 보간 객체의 클래스(`PPoly`와 3차 계열, `BSpline`, `BarycentricInterpolator`, `KroghInterpolator`, `AAA`, `FloaterHormannInterpolator`, `RegularGridInterpolator`, `RBFInterpolator`, `NearestNDInterpolator`)와 함수 꼴(`make_interp_spline`, `interpn` …). 입력 정리와 가로축·`extrapolate`·`axis`의 검사(`_common.py`)를 모두가 함께 써요. 객체는 계수 배열과 중단점(또는 매듭)을 들고, 만들기와 평가는 커널(`_core.interpolate`)에 넘겨요. `RBFInterpolator(neighbors=k)`와 `NearestNDInterpolator`의 이웃은 `sd.spatial.KDTree`, `BSpline.design_matrix`의 결과는 `sd.sparse.csr_array`예요 |
+| `interpolate/*.py` | 보간 객체의 클래스(`PPoly`와 3차 계열, `BSpline`, `BarycentricInterpolator`, `KroghInterpolator`, `AAA`, `FloaterHormannInterpolator`, `RegularGridInterpolator`, `RBFInterpolator`, `NearestNDInterpolator`, `LinearNDInterpolator`, `CloughTocher2DInterpolator`)와 함수 꼴(`make_interp_spline`, `interpn`, `griddata` …). 입력 정리와 가로축·`extrapolate`·`axis`의 검사(`_common.py`)를 모두가 함께 써요. 객체는 계수 배열과 중단점(또는 매듭)을 들고, 만들기와 평가는 커널(`_core.interpolate`)에 넘겨요. `RBFInterpolator(neighbors=k)`와 `NearestNDInterpolator`의 이웃은 `sd.spatial.KDTree`, 삼각분할 위의 보간은 `sd.spatial.Delaunay`, `BSpline.design_matrix`의 결과는 `sd.sparse.csr_array`예요 |
 | `fft/*.py` | 변환마다 한 줄짜리 입구(`_basic.py`, `_realtransforms.py`)와 도우미(`_helper.py`), FFTLog(`_fftlog.py`). 변환의 인자 검사는 커널(`_core.fft`)이 하고, Python에는 도우미와 FFTLog의 입력 검사(`_common.py`)만 있어요. 다른 영역을 쓰지 않아요 |
+| `smooth/*.py` | 공개 함수와 결과 클래스. 입력 정리와 `nan_policy`, 무게의 검사(`_common.py`)와 회귀형 결과의 바탕 클래스 `SmootherResult`(`_results.py`)를 모두가 함께 쓰고, `lowess`(`_local.py`), `loess`(`_loess.py`), 평활·P·최소제곱 스플라인(`_spline.py`), FITPACK 계열(`_fitpack.py`), 핵 회귀(`_kreg.py`), 핵밀도추정과 `KDEResult`(`_kde.py`), 대역폭 규칙(`_bandwidth.py`), Savitzky–Golay(`_savgol.py`)가 모듈마다 하나예요. 계산은 커널(`_core.smooth`)에 넘기고, 스플라인 결과는 `sd.interpolate.BSpline`, 보간 극한은 `make_interp_spline`, 구간의 분위수와 `sample`의 잡음은 `sd.stats`의 분포예요 |
 | `plot/*.py` | `Figure`와 칸, 그림 함수(기본·함수·두 변수 함수·통계·3D), 눈금과 색, 장면, SVG·PDF·PNG 쓰기, LaTeX 조판(`_text.py`가 `latex`, `xelatex`, `dvisvgm`, `kpsewhich`를 하위 프로세스로 부르고 배치와 윤곽선을 디스크에 캐시해요)과 DVI·TFM 읽기. 화소를 칠하는 일과 격자의 수준선은 커널(`_core.plot`)에 넘겨요([그림의 구조](/internals/plot/overview/)) |
 
 `vecdot`은 Array API 표준이 최상위와 `linalg` 양쪽에 두라고 정한 함수예요. 둘은 다른 함수예요. 최상위 `sd.vecdot`은 배열의 함수라서 `matmul`처럼 bool과 int64를 int64로 두고 `sum(conj(x1) * x2)`를 계산해요. `sd.linalg.vecdot`은 선형대수의 규칙대로 int 입력도 float64로 계산해요. float64와 complex128 입력에서는 같은 계산이고 결과의 비트도 같아요.
@@ -184,7 +188,7 @@ Python에서 `sd.add(x, y)`를 부르면 이런 길을 지나요.
 | `array_bind.cpp` | `ndarray` 타입: 속성, 연산자, 버퍼 프로토콜 내보내기, 스칼라 변환 금지 |
 | `pyutil.{hpp,cpp}` | dtype 객체 다섯, 인자 해석(`parse_int`, `parse_axes`, `parse_bool` …), `is_ndarray`/`as_ndarray`, `view_of` |
 | `errors.{hpp,cpp}` | 공개 함수 이름을 에러 메시지 앞에 붙이는 `named`, `call_named`, 메시지에 넣을 타입 이름 `py_type_name`(짧은 이름, numpy의 타입은 `numpy.bool`처럼 공개 모듈을 붙여요) |
-| `linalg_bind.cpp`, `frame_bind.cpp`, `special_bind.cpp`, `stats_bind.cpp`, `regression_bind.cpp`, `optimize_bind.cpp`, `htest_bind.cpp`, `sparse_bind.cpp`, `integrate_bind.cpp`, `differentiate_bind.cpp`, `spatial_bind.cpp`, `graph_bind.cpp`, `interpolate_bind.cpp`, `fft_bind.cpp`, `plot_bind.cpp` | 하위 모듈 `_core.linalg`, `_core.frame`, `_core.special`, `_core.stats`, `_core.regression`, `_core.optimize`, `_core.htest`, `_core.sparse`, `_core.integrate`, `_core.differentiate`, `_core.spatial`, `_core.graph`, `_core.interpolate`, `_core.fft`, `_core.plot` |
+| `linalg_bind.cpp`, `frame_bind.cpp`, `special_bind.cpp`, `stats_bind.cpp`, `regression_bind.cpp`, `optimize_bind.cpp`, `htest_bind.cpp`, `sparse_bind.cpp`, `integrate_bind.cpp`, `differentiate_bind.cpp`, `spatial_bind.cpp`, `graph_bind.cpp`, `interpolate_bind.cpp`, `fft_bind.cpp`, `smooth_bind.cpp`, `plot_bind.cpp` | 하위 모듈 `_core.linalg`, `_core.frame`, `_core.special`, `_core.stats`, `_core.regression`, `_core.optimize`, `_core.htest`, `_core.sparse`, `_core.integrate`, `_core.differentiate`, `_core.spatial`, `_core.graph`, `_core.interpolate`, `_core.fft`, `_core.smooth`, `_core.plot` |
 | `stats_sample.cpp`, `stats_desc.cpp`, `stats_mv.cpp`, `stats_mvcdf.cpp`, `stats_matrix.cpp` | `_core.stats`의 나머지 커널: 분포의 표본, 기술통계, 다변량 분포와 그 누적분포, 행렬 분포 |
 | `nary_bind.hpp` | 원소별 연산 정의 하나를 배열의 n항 디스패처에 얹어 Python 함수로 등록해요. special과 stats가 함께 써요 |
 
@@ -216,19 +220,20 @@ NB_MODULE(_core, m) {
     sd::bind_graph(m);  // after the array (it returns ndarrays)
     sd::bind_interpolate(m);  // after the array (it returns ndarrays)
     sd::bind_fft(m);  // after the array (it returns ndarrays)
+    sd::bind_smooth(m);  // after the array (it returns ndarrays)
     sd::bind_plot(m);  // on its own: the rasterizer takes plain numbers and bytes
 }
 ```
 
 - dtype 객체(`sd.float64` 등)가 먼저 있어야 `ndarray.dtype` 같은 속성이 그 객체를 돌려줄 수 있어요.
-- linalg, special, stats, random, optimize, differentiate, integrate, spatial, graph, interpolate, fft는 배열 타입이 nanobind에 등록된 뒤에야 `NDArray`를 인자로 받고 돌려줄 수 있어요. optimize, differentiate, integrate는 사용자 함수에 넘기는 점도 `sd.ndarray`로 만들어요.
+- linalg, special, stats, random, optimize, differentiate, integrate, spatial, graph, interpolate, fft, smooth는 배열 타입이 nanobind에 등록된 뒤에야 `NDArray`를 인자로 받고 돌려줄 수 있어요. optimize, differentiate, integrate는 사용자 함수에 넘기는 점도 `sd.ndarray`로 만들어요.
 - regression(`sd::bind_regression`)은 linalg 다음이에요. linalg의 배치 드라이버(`run_batch`)와 결과 블록(`outblock`)을 그대로 쓰기 때문이에요. optimize(`sd::bind_optimize`)는 그 뒤예요.
 - htest(`sd::bind_htest`)는 stats 다음이에요. p값을 stats의 분포로 계산해요. sparse(`sd::bind_sparse`)는 linalg 다음이어야 해요. 특이 행렬을 linalg의 `LinAlgError`로 알리기 때문이에요.
 - plot(`sd::bind_plot`)은 맨 끝인데, 순서에 기대지 않아요. 래스터라이저와 수준선 커널은 `NDArray`가 아니라 수와 바이트열(경로의 연산 글자, float64를 이어 붙인 좌표)만 주고받아요.
 
-배열의 공개 함수 대부분은 `bind/`가 아니라 `array/ops/*.cpp` 안의 `bind_xxx(m)` 함수가 등록해요. 예를 들어 `asarray`, `zeros`는 `array/ops/creation.cpp`의 `bind_creation`이, 원소별 함수는 `array/ops/ufunc.cpp`의 `bind_ufuncs`가 등록해요. 그래서 `array/ops/`는 "C++ 연산"과 "그 연산의 Python 입구"를 함께 담은 층이에요. 반면 `array/kernels/`, `array/iter.*`, `array/ndarray.*`, `array/convert.*`는 `bind/`를 include하지 않아요. 계산 코드는 Python을 모르고, Python 객체를 다루는 곳은 연산의 입구로 한정돼요. 난수도 같은 방식이라, 하위 모듈 `_core.random`은 `random/random.cpp`의 `bind_random`이 등록해요. 회귀는 `bind/regression_bind.cpp`가 하위 모듈을 만들고, 커널은 `regression/*.cpp`마다 있는 `bind_*` 함수가 그 안에 등록해요. 최적화, 가설검정, 희소 행렬, 적분, 미분, 공간, 그래프, 보간, 푸리에 변환도 같은 방식이에요(`bind/optimize_bind.cpp`와 `optimize/*.cpp`의 `bind_*`, `bind/htest_bind.cpp`와 `htest/*.cpp`, `bind/sparse_bind.cpp`와 `sparse/*.cpp`, `bind/integrate_bind.cpp`와 `integrate/*.cpp`, `bind/differentiate_bind.cpp`와 `differentiate/derivative.cpp`, `bind/spatial_bind.cpp`와 `spatial/*.cpp`, `bind/graph_bind.cpp`와 `graph/*.cpp`, `bind/interpolate_bind.cpp`와 `interpolate/*.cpp`, `bind/fft_bind.cpp`와 `fft/*.cpp`). 한 변수 선형 보간 `sd.interp`는 배열의 함수라서 `array/ops/interp.cpp`의 `bind_interp`가 등록해요. 그림은 반대로 `bind/plot_bind.cpp`가 `Canvas`, `Levels` 같은 클래스와 함수를 직접 등록하고, `plot/*.cpp`는 nanobind를 모르는 순수 C++이에요.
+배열의 공개 함수 대부분은 `bind/`가 아니라 `array/ops/*.cpp` 안의 `bind_xxx(m)` 함수가 등록해요. 예를 들어 `asarray`, `zeros`는 `array/ops/creation.cpp`의 `bind_creation`이, 원소별 함수는 `array/ops/ufunc.cpp`의 `bind_ufuncs`가 등록해요. 그래서 `array/ops/`는 "C++ 연산"과 "그 연산의 Python 입구"를 함께 담은 층이에요. 반면 `array/kernels/`, `array/iter.*`, `array/ndarray.*`, `array/convert.*`는 `bind/`를 include하지 않아요. 계산 코드는 Python을 모르고, Python 객체를 다루는 곳은 연산의 입구로 한정돼요. 난수도 같은 방식이라, 하위 모듈 `_core.random`은 `random/random.cpp`의 `bind_random`이 등록해요. 회귀는 `bind/regression_bind.cpp`가 하위 모듈을 만들고, 커널은 `regression/*.cpp`마다 있는 `bind_*` 함수가 그 안에 등록해요. 최적화, 가설검정, 희소 행렬, 적분, 미분, 공간, 그래프, 보간, 푸리에 변환, 평활도 같은 방식이에요(`bind/optimize_bind.cpp`와 `optimize/*.cpp`의 `bind_*`, `bind/htest_bind.cpp`와 `htest/*.cpp`, `bind/sparse_bind.cpp`와 `sparse/*.cpp`, `bind/integrate_bind.cpp`와 `integrate/*.cpp`, `bind/differentiate_bind.cpp`와 `differentiate/derivative.cpp`, `bind/spatial_bind.cpp`와 `spatial/*.cpp`, `bind/graph_bind.cpp`와 `graph/*.cpp`, `bind/interpolate_bind.cpp`와 `interpolate/*.cpp`, `bind/fft_bind.cpp`와 `fft/*.cpp`, `bind/smooth_bind.cpp`와 `smooth/*.cpp`). 한 변수 선형 보간 `sd.interp`는 배열의 함수라서 `array/ops/interp.cpp`의 `bind_interp`가 등록해요. 그림은 반대로 `bind/plot_bind.cpp`가 `Canvas`, `Levels` 같은 클래스와 함수를 직접 등록하고, `plot/*.cpp`는 nanobind를 모르는 순수 C++이에요.
 
-### 영역 (`csrc/array/`, `csrc/linalg/`, `csrc/frame/`, `csrc/special/`, `csrc/stats/`, `csrc/random/`, `csrc/regression/`, `csrc/optimize/`, `csrc/htest/`, `csrc/sparse/`, `csrc/integrate/`, `csrc/differentiate/`, `csrc/spatial/`, `csrc/graph/`, `csrc/interpolate/`, `csrc/fft/`, `csrc/plot/`)
+### 영역 (`csrc/array/`, `csrc/linalg/`, `csrc/frame/`, `csrc/special/`, `csrc/stats/`, `csrc/random/`, `csrc/regression/`, `csrc/optimize/`, `csrc/htest/`, `csrc/sparse/`, `csrc/integrate/`, `csrc/differentiate/`, `csrc/spatial/`, `csrc/graph/`, `csrc/interpolate/`, `csrc/fft/`, `csrc/smooth/`, `csrc/plot/`)
 
 | 영역 | C++ 줄 수 | 번역 단위(.cpp) | 구성 |
 |:---:|---:|:---:|---|
@@ -244,18 +249,19 @@ NB_MODULE(_core, m) {
 | sparse | 약 10,000 | 14 | 표현(`format.hpp`), 표준 꼴(`canonical`), 변환(`convert`), DOK의 해시 맵(`dok`), 곱(`spmv`, `spgemm`), 이항 연산(`binop`), 리덕션(`reduce`), 인덱싱(`index`), 만들기(`construct`), 삼각 풀이(`triangular`), 직접 풀이(`direct`), 반복법(`iterative`, `krylov.hpp`), 고유값과 특이값(`arpack`, `svds`), 크기로만 정하는 분할(`parallel.hpp`) |
 | integrate | 약 5,800 (+ Gauss–Legendre 표 약 1,700) | 5 | QUADPACK 루틴의 템플릿 `quadpack.hpp`(Gauss–Kronrod 규칙, 구간 나누기, ε-알고리즘, 가중 함수 루틴, `vectorized=True`에서 규칙 하나의 점을 사용자 함수에 한 번에 넘기는 `prefetch`)와 scipy의 갈래·`nquad`의 겹침을 맡은 `quadpack`, `quad_vec`과 `cubature`의 `adaptive`, `tanhsinh`과 `nsum`의 `tanhsinh`, 표본 규칙과 `fixed_quad`의 합 `samples`, Gauss–Legendre 마디의 `gauss`(n ≤ 100은 표 `gauss_table.hpp`), numpy와 같은 순서의 합과 노름 `numpy_ops.hpp` |
 | differentiate | 약 1,400 | 1 | `derivative`(차분 스텐실의 점과 갱신, `jacobian`·`hessian`의 열 호출), 최적화가 쓰는 scipy의 차분 간격 헤더 `steps.hpp`, 정확한 차분의 C++ 고리 `accurate.hpp`(optimize의 `approx_fprime`·`check_grad`와 regression의 `nls`가 써요) |
-| spatial | 약 4,700 | 6 | 거리마다의 연산과 짝 커널, 데이터마다의 준비(`metric.hpp`), `pdist`·`cdist`·`squareform`과 배치 거리 함수의 구동기(`distance`), 한 번에 끝나는 이웃 찾기와 GEMM으로 후보를 고르는 길(`neighbors`), KD 트리의 꼴·가지치기·kNN 찾기(`kdtree.hpp`)와 만들기(`kdtree`), 반경 질의(`query`), 이중 트리 순회의 짝·셈·희소 거리 행렬(`dual`), 단위 구 위의 트리로 찾는 `haversine` 이웃(`sphere`) |
+| spatial | 약 10,800 | 11 | 거리마다의 연산과 짝 커널, 데이터마다의 준비(`metric.hpp`), `pdist`·`cdist`·`squareform`과 배치 거리 함수의 구동기(`distance`), 한 번에 끝나는 이웃 찾기와 GEMM으로 후보를 고르는 길(`neighbors`), KD 트리의 꼴·가지치기·kNN 찾기(`kdtree.hpp`)와 만들기(`kdtree`), 반경 질의(`query`), 이중 트리 순회의 짝·셈·희소 거리 행렬(`dual`), 단위 구 위의 트리로 찾는 `haversine` 이웃(`sphere`), 정확한 술어와 값 커널(`predicates.hpp`, `expansion.hpp`, `wideint.hpp`, 테스트용 바인딩 `predicates`), 사전 순서와 BRIO(`sfc.hpp`), 표준 꼴과 위치 찾기(`triangulation.hpp`), 2차원 나눠서 합치기(`delaunay2`)와 3차원 하나씩 넣기(`delaunay3`), 볼록 껍질(`hull`), 보로노이(`voronoi`) |
 | graph | 약 4,800 | 10 | CSR 보기와 대칭 확인·전치(`graph.hpp`, `input`), 순회·연결 요소·위상 정렬(`traversal`), 최단 경로의 탐색과 선행 노드 규칙, 블록 Floyd–Warshall(`paths`), K개 경로(`yen`), 최소 신장 트리(`tree`), 최대 흐름(`flow`), 이분 매칭과 배정(`matching`), 역 Cuthill–McKee와 라플라시안(`ordering`), 단절점·다리·이중 연결 요소·코어 수(`structure`), PageRank와 매개 중심성(`centrality`) |
-| interpolate | 약 5,400 | 8 | 구간 번호와 바깥의 규칙(`search.hpp`), 선형 길(`linear`), 피벗 없는 삼중대각·띠 풀이(`banded.hpp`), 3차 계열의 기울기와 Hermite 계수(`cubic`, `pchip.hpp`), 조각 다항식의 평가·역미분·적분·근(`ppoly`), B-스플라인의 de Boor 평가와 배치 행렬(`bspline`, `deboor.hpp`), 무게중심 꼴과 Krogh·Floater–Hormann(`polyint`), AAA(`aaa`), 격자 보간(`grid`), RBF(`rbf`) |
+| interpolate | 약 6,100 | 9 | 구간 번호와 바깥의 규칙(`search.hpp`), 선형 길(`linear`), 피벗 없는 삼중대각·띠 풀이(`banded.hpp`), 3차 계열의 기울기와 Hermite 계수(`cubic`, `pchip.hpp`), 조각 다항식의 평가·역미분·적분·근(`ppoly`), B-스플라인의 de Boor 평가와 배치 행렬(`bspline`, `deboor.hpp`), 무게중심 꼴과 Krogh·Floater–Hormann(`polyint`), AAA(`aaa`), 격자 보간(`grid`), RBF(`rbf`), 삼각분할 위의 선형과 Clough–Tocher(`scattered`) |
 | fft | 약 4,900 | 6 | 혼합 기수 나비와 Stockham 구동, 4단계 분해(`cfft.hpp`), 회전 인자(`twiddle.hpp`), double-double 산술(`ddmath.hpp`), Bluestein(`bluestein.hpp`), 계획과 캐시(`plan`), 축 구동기(`driver`), 인자 검사(`args.hpp`)와 변환의 입구(`basic`, `r2r`, `helper`), 실수 길(`rfft.hpp`), DCT·DST의 줄 커널(`r2r.hpp`), FFTLog와 double-double $\log\Gamma$(`fftlog`). vDSP가 받는 길이를 적어 둔 `vdsp.hpp`는 어느 파일도 include하지 않아요 |
+| smooth | 약 8,900 | 8 | 정렬된 창의 국소 직선(`local.hpp`)과 lowess의 강건 반복·`delta`·지렛대(`local`), loess의 창·국소 다항식·통계량(`loess`), 띠 Givens QR과 선택 역행렬(`bandqr.hpp`), 평활·P·최소제곱 스플라인과 $\lambda$ 찾기(`spline`), FITPACK식 매듭과 $p$의 근(`fitpack`), C++ 함수를 받는 fminbound와 brentq(`search.hpp`), 가우스 합의 커널과 트리 후보(`gauss_sum.hpp`, `gauss_tree.hpp`), 핵 회귀와 대역폭 찾기(`kreg`), 핵·구간화(`kde.hpp`)와 핵밀도추정(`kde`), 대역폭 규칙(`bandwidth`), Savitzky–Golay(`savgol`). 파일마다의 `bind_*`는 `smooth.hpp`에 모여 있어요 |
 | plot | 약 2,200 | 4 | 2D 래스터라이저와 경로 글자·선 줄이기·색 입히기(`raster`), 3D 깊이 버퍼와 시점 점수(`zbuffer`), marching squares의 수준선(`levels`), 벡터장의 흐름선(`streams`). 모두 nanobind를 모르고, 바인딩은 `bind/plot_bind.cpp`에 있어요 |
 
 ### 바닥 (`csrc/base/`, `csrc/parallel/`, `csrc/accelerate/`)
 
 | 디렉터리 | 줄 수 | 내용 | 쓰는 영역 |
 |:---:|---:|---|:---:|
-| `base/` | 약 810 | `dtype.hpp`(DType enum), `buffer.{hpp,cpp}`(참조 카운트 메모리 블록), `pairwise.hpp`(pairwise 합의 정의), `int_sum.hpp`(int64의 정확한 합), `saturate.hpp`(float64 → int64 포화 변환), `sincos.hpp`(같은 x의 sin과 cos를 한 번에), `lerp.hpp`(끝에서 정확한 선형 보간 커널), `interval.hpp`(정렬된 노드에서 점이 든 구간 찾기) | array, linalg, frame, special, sparse, spatial, graph, interpolate, fft가 직접, 나머지는 배열을 거쳐 |
-| `parallel/` | 약 520 | `pool.{hpp,cpp}`: 스레드풀 하나, `GilRelease`, `FirstRow` | array, linalg, frame, stats, regression, optimize, htest, sparse, integrate, differentiate, spatial, graph, interpolate, fft, plot과 공용 고리 `elementwise/`가 직접, 나머지는 배열을 거쳐 |
+| `base/` | 약 810 | `dtype.hpp`(DType enum), `buffer.{hpp,cpp}`(참조 카운트 메모리 블록), `pairwise.hpp`(pairwise 합의 정의), `int_sum.hpp`(int64의 정확한 합), `saturate.hpp`(float64 → int64 포화 변환), `sincos.hpp`(같은 x의 sin과 cos를 한 번에), `lerp.hpp`(끝에서 정확한 선형 보간 커널), `interval.hpp`(정렬된 노드에서 점이 든 구간 찾기) | array, linalg, frame, special, sparse, spatial, graph, interpolate, fft, smooth가 직접, 나머지는 배열을 거쳐 |
+| `parallel/` | 약 520 | `pool.{hpp,cpp}`: 스레드풀 하나, `GilRelease`, `FirstRow` | array, linalg, frame, stats, regression, optimize, htest, sparse, integrate, differentiate, spatial, graph, interpolate, fft, smooth, plot과 공용 고리 `elementwise/`가 직접, 나머지는 배열을 거쳐 |
 | `accelerate/` | 약 430 | `blas.hpp`(dot, gemv, gemm, syrk), `vforce.hpp`(vForce 래퍼), `sparse.hpp`(Accelerate Sparse Solvers의 LU 래퍼) | array, special, stats, sparse, spatial |
 
 바닥 셋 말고 영역들이 함께 쓰는 헤더가 하나 더 있어요. `csrc/elementwise/loop.hpp`(약 370줄)는 배치의 원소마다 따로 푸는 반복의 고리(아직 끝나지 않은 원소를 모아 사용자 함수를 한 번 부르고, 원소마다 갱신하고, 끝난 원소를 빼는 일)예요. 최적화의 배치 스칼라(`find_root`, `find_minimum`, `bracket_root`, `bracket_minimum`), 미분의 `derivative`, `jacobian`, `hessian`, 적분의 `tanhsinh`과 `nsum`이 함께 써요. 원소 하나가 점 하나인 최적화는 남은 원소 수로, 원소마다 점이 여럿인 `derivative`, `tanhsinh`, `nsum`은 원소 수에 점 수를 곱한 일로 나눌지를 정해요(`for_elements`, `for_weighted`). 배열 타입과 풀 위에 있으므로 바닥이 아니라 영역과 같은 높이예요. 고리의 짜임은 [배치 스칼라의 고리](/internals/optimize/batched/#고리-남은-원소만-모아-한-번-부르기)에 있어요.
@@ -270,7 +276,7 @@ NB_MODULE(_core, m) {
       { name: 'src/stardust/', note: 'Python 패키지(위 표)' },
       { name: 'csrc/', note: 'C++ 코어(아래)' },
       { name: 'third_party/boost_math/', note: 'sd.special이 쓰는 Boost.Math 헤더 124개(고치지 않아요)' },
-      { name: 'tests/', note: '영역별 폴더(array/ … fft/, plot/, interop/)와 영역을 가로지르는 test_*.py' },
+      { name: 'tests/', note: '영역별 폴더(array/ … smooth/, plot/, interop/)와 영역을 가로지르는 test_*.py' },
       { name: 'bench/', note: '영역별 측정과, merge/의 골든 출력' },
       { name: 'docs/', note: 'design/과 api/: 영역별 설계 문서와 API 문서' },
     ]}
@@ -288,10 +294,11 @@ NB_MODULE(_core, m) {
           { name: 'random/', area: 'random', files: ['philox.hpp', 'random.*'] },
           { name: 'integrate/', area: 'integrate', files: ['quadpack', 'adaptive', 'tanhsinh', 'samples', 'gauss', 'gauss_table.hpp', 'numpy_ops.hpp', 'integrate.hpp'] },
           { name: 'differentiate/', area: 'differentiate', files: ['derivative', 'steps.hpp', 'accurate.hpp'] },
-          { name: 'spatial/', area: 'spatial', files: ['metric.hpp', 'distance', 'neighbors', 'kdtree', 'query', 'dual', 'sphere', 'spatial.hpp'] },
+          { name: 'spatial/', area: 'spatial', files: ['metric.hpp', 'distance', 'neighbors', 'kdtree', 'query', 'dual', 'sphere', 'predicates', 'expansion.hpp', 'wideint.hpp', 'sfc.hpp', 'triangulation.hpp', 'delaunay2', 'delaunay3', 'hull', 'voronoi', 'spatial.hpp'] },
           { name: 'graph/', area: 'graph', files: ['graph.hpp', 'input', 'traversal', 'paths', 'yen', 'tree', 'flow', 'matching', 'ordering', 'structure', 'centrality', 'graph_mod.hpp'] },
-          { name: 'interpolate/', area: 'interpolate', files: ['search.hpp', 'linear', 'banded.hpp', 'cubic', 'pchip.hpp', 'ppoly', 'bspline', 'deboor.hpp', 'polyint', 'aaa', 'grid', 'rbf', 'interpolate.hpp'] },
+          { name: 'interpolate/', area: 'interpolate', files: ['search.hpp', 'linear', 'banded.hpp', 'cubic', 'pchip.hpp', 'ppoly', 'bspline', 'deboor.hpp', 'polyint', 'aaa', 'grid', 'rbf', 'scattered', 'interpolate.hpp'] },
           { name: 'fft/', area: 'fft', files: ['cfft.hpp', 'twiddle.hpp', 'ddmath.hpp', 'bluestein.hpp', 'plan', 'driver', 'args.hpp', 'basic', 'helper', 'rfft.hpp', 'r2r', 'fftlog', 'fft.hpp'] },
+          { name: 'smooth/', area: 'smooth', files: ['local', 'loess', 'bandqr.hpp', 'spline', 'fitpack', 'search.hpp', 'gauss_sum.hpp', 'gauss_tree.hpp', 'kreg', 'kde', 'bandwidth', 'savgol', 'smooth.hpp'] },
           { name: 'plot/', area: 'plot', files: ['raster', 'zbuffer', 'levels', 'streams'] },
       ] },
       { title: '바닥과 바인딩', note: 'csrc/', cards: [
@@ -299,13 +306,13 @@ NB_MODULE(_core, m) {
           { name: 'parallel/', files: ['pool.*'] },
           { name: 'accelerate/', files: ['blas.hpp', 'vforce.hpp', 'sparse.hpp'] },
           { name: 'elementwise/', files: ['loop.hpp'] },
-          { name: 'bind/', files: ['module', 'array_bind', 'pyutil', 'errors', 'nary_bind', 'linalg_bind', 'frame_bind', 'special_bind', 'regression_bind', 'optimize_bind', 'htest_bind', 'sparse_bind', 'integrate_bind', 'differentiate_bind', 'spatial_bind', 'graph_bind', 'interpolate_bind', 'fft_bind', 'plot_bind', 'stats_bind', 'stats_sample', 'stats_desc', 'stats_mv', 'stats_mvcdf', 'stats_matrix'] },
+          { name: 'bind/', files: ['module', 'array_bind', 'pyutil', 'errors', 'nary_bind', 'linalg_bind', 'frame_bind', 'special_bind', 'regression_bind', 'optimize_bind', 'htest_bind', 'sparse_bind', 'integrate_bind', 'differentiate_bind', 'spatial_bind', 'graph_bind', 'interpolate_bind', 'fft_bind', 'smooth_bind', 'plot_bind', 'stats_bind', 'stats_sample', 'stats_desc', 'stats_mv', 'stats_mvcdf', 'stats_matrix'] },
       ] },
     ]}
   />
 </Fig>
 
-테스트는 Python으로만 써요(pytest와 hypothesis). C++ 단위 테스트는 없어요. 열일곱 영역과 공통 테스트의 코드는 약 111,100줄이에요.
+테스트는 Python으로만 써요(pytest와 hypothesis). C++ 단위 테스트는 없어요. 열여덟 영역과 공통 테스트의 코드는 약 122,000줄이에요.
 
 ## 확장 모듈은 `stardust._core` 하나
 
@@ -370,7 +377,7 @@ True
 | 영역마다 확장 모듈 (`_core`, `_linalg`, `_frame`) | 영역을 따로 빌드할 수 있어요 | 모듈마다 nanobind 타입 등록과 정적으로 링크한 부품(스레드풀 등)이 따로 생겨요. 풀이 여러 벌이고 타입을 직접 넘기지 못하는 문제가 그대로 남아요 |
 | 공유 라이브러리(.dylib) + 영역별 얇은 모듈 | 위 문제가 풀리고, 영역별 빌드도 돼요 | 빌드와 설치가 복잡해져요(rpath 설정, nanobind의 공유 빌드). 영역이 아주 많아져 빌드 시간이 문제가 될 때에야 값을 하는 안이에요 |
 
-대가는 빌드 시간이에요. 번역 단위가 155개이고, 한 영역만 고쳐도 전체 빌드는 모든 영역을 컴파일해요. 개발 중에는 editable 설치가 바뀐 파일만 다시 컴파일하므로(`editable.rebuild = true`) 크게 문제되지 않아요.
+대가는 빌드 시간이에요. 번역 단위가 170개이고, 한 영역만 고쳐도 전체 빌드는 모든 영역을 컴파일해요. 개발 중에는 editable 설치가 바뀐 파일만 다시 컴파일하므로(`editable.rebuild = true`) 크게 문제되지 않아요.
 
 ## 얇은 Python, 두꺼운 C++
 
@@ -390,10 +397,11 @@ True
 | 희소 행렬 | 표준 꼴 만들기와 변환, 곱과 이항 연산, 리덕션, 인덱싱, 삼각 풀이, Accelerate LU 호출과 특이 판정, 반복법 여섯, ARPACK과 `svds` | 희소 배열 클래스와 연산자의 입구, 만들기 함수, `LinearOperator`, 인자 검사, 결과 클래스, `expm`·`expm_multiply`·`onenormest`·`norm`의 절차(희소 곱과 리덕션 커널을 불러요) |
 | 적분 | 반복 전체(QUADPACK의 구간 나누기와 ε-알고리즘, 가중 함수의 모멘트, `quad_vec`·`cubature`의 구간 힙, tanh-sinh의 수준 올리기와 오차 어림, `nsum`의 갈래)와 사용자 함수를 부르는 고리, 표본 규칙의 합과 누적, Gauss–Legendre 마디의 double-double Newton | 공개 함수와 `IntegrateResult`, 인자 검사, 사용자 함수가 돌려준 값의 확인, Gauss–Legendre 마디의 마지막 반올림, `newton_cotes`의 가중치(정확한 유리수에서 한 번 반올림) |
 | 미분 | 반복 전체(스텐실의 점, 차분과 외삽, 간격 줄이기와 멈춤 판정, `jacobian`의 열 호출과 `hessian`의 안쪽 `jacobian`)와 사용자 함수를 부르는 고리 | 공개 함수와 `DifferentiateResult`, 인자 검사, 차분 규칙의 가중치(정확한 유리수에서 한 번 반올림), 최적화와 회귀가 쓰는 정확한 5점 차분 |
-| 공간 | 짝 하나의 거리 커널과 그 구동기, 데이터마다의 준비(정규화, 평균, 비트 묶음), GEMM으로 후보를 고르는 길, KD 트리 만들기와 모든 질의(kNN, 반경, 이중 트리 순회의 짝과 셈), 단위 구 위의 `haversine` 트리, 결과 배열과 CSR 조각 만들기 | 공개 함수와 `KDTree`, `RadiusResult`, 입력 정리(dtype, `DataFrame`, 유한성)와 인자 검사, 계산 길 고르기, `mahalanobis`·`seuclidean`의 기본 행렬, `csr_array`로 감싸기 |
+| 공간 | 짝 하나의 거리 커널과 그 구동기, 데이터마다의 준비(정규화, 평균, 비트 묶음), GEMM으로 후보를 고르는 길, KD 트리 만들기와 모든 질의(kNN, 반경, 이중 트리 순회의 짝과 셈), 단위 구 위의 `haversine` 트리, 결과 배열과 CSR 조각 만들기, 정확한 술어와 삼각분할·볼록 껍질·보로노이 전체, 위치 찾기와 처음 읽는 속성 | 공개 함수와 `KDTree`, `RadiusResult`, `Delaunay`·`ConvexHull`·`Voronoi` 클래스, 입력 정리(dtype, `DataFrame`, 유한성)와 인자 검사, 계산 길 고르기, `mahalanobis`·`seuclidean`의 기본 행렬, 처음 읽는 속성 쥐기, `csr_array`로 감싸기 |
 | 그래프 | 밀집 행렬을 CSR로 바꾸는 일과 무게의 사전 검사, 알고리즘 전체(순회, 합집합–찾기와 Tarjan, 최단 경로의 탐색과 선행 노드 규칙, 블록 Floyd–Warshall, Kruskal, Dinic, Hopcroft–Karp와 배정 풀이, 역 Cuthill–McKee, 라플라시안, PageRank의 반복과 Brandes의 합), 결과 배열과 CSR 조각 만들기 | 공개 함수, 입력을 표준 꼴의 CSR 하나로 정리하기(희소 배열은 그대로, 다른 꼴은 `tocsr()`), 인자 검사와 메시지, `MaximumFlowResult`, `csr_array`와 `LinearOperator`로 감싸기 |
-| 보간 | 구간 찾기와 선형 커널, 스플라인의 띠 풀이와 계수, 조각 다항식의 평가·역미분·적분·근, de Boor 평가와 배치 행렬, 무게중심 꼴의 무게와 평가, Krogh의 차분표, AAA의 반복(LAPACK의 SVD와 일반화 고유값), 격자의 축마다 풀이와 평가, RBF의 계 만들기와 $LDL^\top$ 풀이, 이웃 집합마다의 국소 계 | 보간 객체의 클래스와 함수 꼴, 입력 정리(dtype, `Series`, 축 옮기기)와 인자 검사, 계수와 중단점 보관, `PPoly`의 `derivative`와 `extend`(배열 연산), `KDTree`로 이웃 찾기, `csr_array`로 감싸기 |
+| 보간 | 구간 찾기와 선형 커널, 스플라인의 띠 풀이와 계수, 조각 다항식의 평가·역미분·적분·근, de Boor 평가와 배치 행렬, 무게중심 꼴의 무게와 평가, Krogh의 차분표, AAA의 반복(LAPACK의 SVD와 일반화 고유값), 격자의 축마다 풀이와 평가, RBF의 계 만들기와 $LDL^\top$ 풀이, 이웃 집합마다의 국소 계, 삼각분할 위의 무게와 Clough–Tocher의 계수, 기울기 추정 | 보간 객체의 클래스와 함수 꼴, 입력 정리(dtype, `Series`, 축 옮기기)와 인자 검사, 계수와 중단점 보관, `PPoly`의 `derivative`와 `extend`(배열 연산), `KDTree`로 이웃 찾기, `Delaunay` 만들기, `csr_array`로 감싸기 |
 | 푸리에 변환 | 변환의 인자 검사(`n`, `s`, `axis`, `axes`, `norm`), 길 고르기와 계획·캐시, 축 구동기(줄 모으기와 흩기, 배치, 다차원 패스, 정규화), 혼합 기수·4단계·Bluestein·실수 길·DCT와 DST의 커널, FFTLog의 계수와 변환 | 변환마다 한 줄짜리 입구, 도우미와 FFTLog의 입력 검사. 거의 재노출이에요 |
+| 평활 | 맞춤 전체(정렬과 창 찾기, 국소 다항식의 모멘트와 풀이, 강건 반복, 띠 Givens QR과 선택 역행렬, $\lambda$·대역폭 찾기의 격자와 Brent·Nelder–Mead, FITPACK식 매듭 고르기, 지수를 옮긴 가우스 합과 트리 후보, 구간화와 FFT 합성곱, Savitzky–Golay의 double-double 계수와 거르기), 지렛대와 통계량, `predict` | 공개 함수와 결과 클래스, 입력 정리(dtype, `Series`·`DataFrame`)와 `nan_policy`, 인자 검사, 결과의 `scale`과 `predict_interval`의 분위수, 보간 극한의 `make_interp_spline` 호출, `BSpline`으로 감싸기 |
 | 그림 | 화소나 격자의 칸만큼 도는 반복(2D 래스터라이저, 3D 깊이 버퍼와 시점 점수, marching squares, 경로 좌표를 글자로 쓰기, 긴 선 줄이기, 색띠 입히기) | `Figure`와 칸, 그림 함수와 인자 검사, 눈금, 배치와 범례, 장면 짓기, SVG·PDF·PNG 쓰기, 함수 그림의 적응 표본, LaTeX 조판과 그 캐시. 나머지 전부예요 |
 
 ### 배열에 Python을 거의 두지 않는 이유
@@ -430,7 +438,7 @@ True
 ### 규칙
 
 - **아래로만 의존해요.** `base/`, `parallel/`은 다른 디렉터리를 include하지 않아요. 영역은 바닥을 쓰고, 바닥은 영역을 몰라요.
-- **`array/`는 다른 영역을 몰라요.** `linalg/`, `frame/`, `stats/`, `random/`, `regression/`, `optimize/`, `htest/`, `sparse/`, `integrate/`, `differentiate/`, `spatial/`, `graph/`, `interpolate/`, `fft/`, `plot/`을 include하지 않아요. 같은 x의 sin과 cos를 한 번에 구하는 작은 헤더 `base/sincos.hpp`는 표준 헤더 말고는 아무것도 include하지 않아서 바닥(`base/`)에 있고, 배열의 complex `expm1`, special의 함수들, 공간의 `haversine`, 푸리에 변환의 회전 인자가 함께 써요. 선형 보간 커널 `base/lerp.hpp`와 구간 찾기 `base/interval.hpp`도 같은 까닭으로 바닥에 있어요. 배열의 `sd.interp`(`array/ops/interp.cpp`)와 보간 영역의 선형 길이 이 두 헤더를 함께 써서, 배열이 보간 영역을 include하지 않고도 둘이 같은 비트를 내요.
+- **`array/`는 다른 영역을 몰라요.** `linalg/`, `frame/`, `stats/`, `random/`, `regression/`, `optimize/`, `htest/`, `sparse/`, `integrate/`, `differentiate/`, `spatial/`, `graph/`, `interpolate/`, `fft/`, `smooth/`, `plot/`을 include하지 않아요. 같은 x의 sin과 cos를 한 번에 구하는 작은 헤더 `base/sincos.hpp`는 표준 헤더 말고는 아무것도 include하지 않아서 바닥(`base/`)에 있고, 배열의 complex `expm1`, special의 함수들, 공간의 `haversine`, 푸리에 변환의 회전 인자가 함께 써요. 선형 보간 커널 `base/lerp.hpp`와 구간 찾기 `base/interval.hpp`도 같은 까닭으로 바닥에 있어요. 배열의 `sd.interp`(`array/ops/interp.cpp`)와 보간 영역의 선형 길이 이 두 헤더를 함께 써서, 배열이 보간 영역을 include하지 않고도 둘이 같은 비트를 내요.
 - **`linalg/`는 `array/`의 `NDArray`를 직접 받아요.** 버퍼 프로토콜을 거치지 않아요. 결과 레이아웃(행렬마다 열 우선, 배치 축은 바깥에 C 순서)은 linalg의 정책이라 linalg가 정하고, 배열은 `new_array_strided(dtype, shape, strides, nbytes)`로 메모리와 플래그만 맡아요.
 - **`frame/`은 배열을 한 파일로만 만나요.** Column(1차원, validity 비트맵, 문자열 offsets)과 NDArray(N차원, 임의의 strides, 결측 없음)는 다른 물건이라, Column을 NDArray 위에 올리지 않아요. 둘을 잇는 코드(`to_array`, 배열에서 Series 만들기)는 `frame/interop.cpp` 한 곳에만 있어요. int64 평균처럼 두 영역이 같은 답을 내야 하는 계산은 서로를 부르지 않고 바닥(`base/`)의 같은 정의를 함께 써요. 그 밖에 `array/` 헤더를 include하는 frame 파일은 `frame/ops/elementwise.cpp` 하나예요. float64 거듭제곱에 배열의 커널(`array/kernels/elementwise.hpp`의 `pow_float_run`)을 그대로 써서, Series와 배열의 `**`가 같은 비트를 내게 해요. 이 커널은 포인터와 stride로 도는 루프라서 Column을 NDArray로 바꾸지 않고 그대로 불러요.
 - **`special/`은 배열의 원소별 엔진 위에 올라가요.** 특수함수는 `logsumexp`, `softmax` 같은 몇 개를 빼면 모두 원소별 함수라서, 배열의 n항 디스패처(`array/ops/ufunc.hpp`의 `nary`)와 연속 fast path(`array/kernels/elementwise.hpp`), 스칼라 규칙(`array/kernels/scalar_ops.hpp`)을 그대로 써요. `logsumexp`·`softmax`의 exp도 배열의 NEON `exp`(`array/kernels/vmath.hpp`)예요. 특수함수 때문에 배열 쪽에 일반 n항 디스패처가 있고, 피연산자 상한(`kMaxOperands`)이 5예요.
@@ -442,10 +450,11 @@ True
 - **`sparse/`는 `linalg/`와 배열 위에 올라가요.** 희소 배열의 `data`, `indices`, `indptr`는 `NDArray`이고, 긴 줄과 전체 합의 트리는 바닥의 `base/pairwise.hpp`, 정수 합은 `base/int_sum.hpp`, 나누기는 `sparse/parallel.hpp`(크기로만 자르는 분할)가 맡아요. 특이 행렬과 수렴 실패는 linalg의 `LinAlgError`(`linalg/errors.hpp`)로 알리고, ARPACK과 `svds`의 작은 밀집 부분 문제와 조건수 추정은 LAPACK 래퍼(`linalg/lapack.hpp`)를, 반복법의 노름은 linalg의 `vnorm.hpp`와 `pairwise.hpp`를 써요. Accelerate의 희소 LU는 래퍼 `accelerate/sparse.hpp` 한 곳에서만 불러요. 다른 영역은 `sparse/`를 몰라요. linalg 함수가 희소 배열을 받으면 그 희소 함수를 짚는 `TypeError`를 내는데, 이 판별(`bind/pyutil.hpp`의 `is_sparse_array`)은 객체 클래스의 모듈 이름만 보므로 `sparse/`를 include하지 않아요.
 - **`integrate/`는 배열 타입과 공용 고리 위에 올라가요.** 사용자 함수에 넘기는 점은 새 float64 `sd.ndarray`(`array/ndarray.hpp`)이고, `tanhsinh`과 `nsum`의 원소별 반복은 공용 고리(`elementwise/loop.hpp`)를 써요. 표본 규칙은 항을 `sd.sum`과 같은 pairwise 트리로 더하고, 누적은 `cumulative_sum`의 스캔을 써요(`array/kernels/reduce.hpp`). 나누기는 배열의 기준값(`array/parallel_limits.hpp`)으로 정해요. 반대로 scipy가 numpy로 계산하는 멈춤 판정의 합과 노름(`tanhsinh`의 합, `quad_vec`·`cubature`의 노름)은 numpy의 pairwise 합(누산기 8개, 128개 단위)과 `np.linalg.norm`의 `cblas_ddot`을 옮긴 `integrate/numpy_ops.hpp`로 계산해요. 판정이 갈리면 부르는 점이 달라지기 때문이에요. `cblas_ddot`의 선언만 linalg의 타입 헤더(`linalg/types.hpp`)에서 가져와요. 다른 영역은 `integrate/`를 몰라요.
 - **`differentiate/`는 배열 타입과 공용 고리 위에 올라가요.** `derivative`는 공용 고리의 원소별 반복이고, `jacobian`과 `hessian`도 항목마다의 갱신을 같은 고리로 해요. 이 폴더의 다른 헤더 `steps.hpp`(scipy `approx_derivative`의 간격 규칙)는 `sd.differentiate`가 아니라 최적화의 차분 야코비안·기울기·헤시안 곱이 써요([차분의 간격](/internals/optimize/derivatives/#scipy-approx_derivative의-2점과-3점)). 차분 간격은 미분의 일이라 미분 영역에 두고, 최적화가 아래로 include해요. Python 층에서는 반대로 `sd.differentiate`와 `sd.integrate`가 최적화의 인자 검사(`optimize/_common.py`)와 원소별 입력의 브로드캐스트(`optimize/_elementwise.py`)를 가져다 써서, 같은 실수에 같은 메시지를 내요.
-- **`spatial/`은 배열 타입과 바닥 위에 올라가요.** 결과는 `NDArray`(`array/ndarray.hpp`)로 만들고, `haversine`의 짝 함수와 단위 구 위의 점은 `base/sincos.hpp`로 같은 각의 sin과 cos를 한 번에 구해요. 거리의 합은 이 영역의 타일 순서라서 linalg의 합과 노름에 기대지 않아요. 그래서 `euclidean(x, y)`와 `sd.linalg.vector_norm(x - y)`는 끝자리가 다를 수 있어요(둘 다 정확도 계약 안이에요). 유클리드 계열의 이웃 찾기는 후보를 고르는 데에 `accelerate/blas.hpp`의 `gemm`을 쓰지만, 돌려주는 거리는 언제나 짝 커널로 다시 계산해요([유클리드 혼합 계산](/internals/spatial/euclid-gemm/)). Python 층의 `sd.spatial`은 `sd.sparse`(`csr_array`), `sd.linalg`(`inv`), 배열의 `var`를 쓰고, 다른 영역은 `spatial/`을 몰라요.
+- **`spatial/`은 배열 타입과 바닥 위에 올라가요.** 결과는 `NDArray`(`array/ndarray.hpp`)로 만들고, `haversine`의 짝 함수와 단위 구 위의 점은 `base/sincos.hpp`로 같은 각의 sin과 cos를 한 번에 구해요. 거리의 합은 이 영역의 타일 순서라서 linalg의 합과 노름에 기대지 않아요. 그래서 `euclidean(x, y)`와 `sd.linalg.vector_norm(x - y)`는 끝자리가 다를 수 있어요(둘 다 정확도 계약 안이에요). 유클리드 계열의 이웃 찾기는 후보를 고르는 데에 `accelerate/blas.hpp`의 `gemm`을 쓰지만, 돌려주는 거리는 언제나 짝 커널로 다시 계산해요([유클리드 혼합 계산](/internals/spatial/euclid-gemm/)). 계산 기하는 BLAS와 LAPACK을 부르지 않고 밖의 기하 라이브러리도 쓰지 않아요. 술어의 정확한 단계는 이 영역의 전개식(`expansion.hpp`)과 여러 낱말 정수(`wideint.hpp`)예요. Python 층의 `sd.spatial`은 `sd.sparse`(`csr_array`), `sd.linalg`(`inv`), 배열의 `var`를 써요. C++에서 `spatial/`을 include하는 다른 영역은 `interpolate/`와 `smooth/`예요.
 - **`graph/`는 희소 행렬의 표현과 배열 타입 위에 올라가요.** 그래프는 표준 꼴의 CSR 하나(int64 `indptr`·`indices`와 값)로 읽어요. 희소 영역의 CSR은 언제나 줄 안 색인이 오름차순이고 중복이 없어서, 이웃 목록이 늘 번호 순서이고 중복 변이 없어요. C++의 `graph/`가 `sparse/`에서 가져오는 것은 그 세 배열을 읽는 `sparse/format.hpp`와 전치의 계수 정렬뿐이고, 희소 영역은 `graph/`를 몰라요. PageRank의 벡터 합은 `base/pairwise.hpp`의 트리예요. BLAS·LAPACK은 부르지 않아요. 알고리즘이 색인을 따라가는 탐색과 비교라서 밀집 선형대수에 맡길 계산이 없고, 덕분에 결과가 Accelerate의 스레드 모드와 무관해요. Python 층의 `sd.graph`는 `sd.sparse`(입력, `csr_array` 결과, `LinearOperator`)를 쓰고, 문자열 인자와 실수 인자의 검사는 통계의 도구(`stats/_descriptive.py`의 `_choice`, `stats/_distribution.py`의 `_real_option`)를 함께 써서 같은 실수에 같은 메시지를 내요. `sd.spatial`의 `sparse_distance_matrix`와 `radius_neighbors(...).tocsr()`가 만든 CSR이 그대로 입력이 돼요.
-- **`interpolate/`는 배열 타입, 바닥의 선형 커널, LAPACK 래퍼 위에 올라가요.** 선형 보간과 구간 찾기는 바닥의 `base/lerp.hpp`와 `base/interval.hpp`예요. 스플라인의 삼중대각·띠 연립방정식은 이 영역의 피벗 없는 풀이(`interpolate/banded.hpp`)라서 `sd.linalg.solve_banded`와 끝자리가 다를 수 있어요(둘 다 정확도 계약 안이에요). LAPACK은 두 곳에서만 `linalg/lapack.hpp`로 불러요. RBF의 전역 연립방정식(대칭 부정치 분해 `sytrf`, 꼬리의 랭크를 보는 `gesdd`)과 AAA(`gesdd`와 일반화 고유값 `ggev`)예요. RBF의 거리는 공간 영역의 유클리드 짝 커널(`spatial/metric.hpp`)을 그대로 불러서 `cdist`와 같은 비트의 거리를 쓰고, 핵 함수의 log와 exp는 배열의 NEON 커널(`array/kernels/vmath.hpp`)이에요. `PPoly.integrate`의 조각 합은 `base/pairwise.hpp`의 트리예요. Python 층의 `sd.interpolate`는 `sd.spatial`(`KDTree`)과 `sd.sparse`(`design_matrix`)를 쓰고, 다른 영역은 `interpolate/`를 몰라요.
-- **`fft/`는 배열 타입과 풀 말고는 거의 아무것도 쓰지 않아요.** 바닥에서 가져오는 것은 회전 인자를 만드는 `base/sincos.hpp` 하나예요. 모든 길이를 자체 C++ 커널로 계산하고 Accelerate의 vDSP도 BLAS도 부르지 않아요. 까닭은 셋이에요. vDSP가 받는 길이 꼴에서도 자체 커널이 더 빨라요. vDSP가 받는 길이는 2의 거듭제곱과 그 3배, 5배, 15배뿐이고 DCT는 float 판뿐이라, 쓰더라도 나머지 길이에는 자체 커널이 있어야 해요. 그리고 vDSP는 안쪽 알고리즘을 볼 수 없어서 오차 한계를 증명하지 못하고 잰 값으로만 뒷받침해야 해요. 자체 커널 하나로 모든 길이를 맡으면 변환의 종류와 길이가 계산의 길을 정하고, 단마다의 오차 한계를 코드에서 증명할 수 있고, 결과가 Accelerate의 판이나 스레드 모드에 기대지 않아요([길이마다 한 경로](/internals/fft/determinism/)). FFTLog의 계수에 드는 $\log\Gamma$도 special의 것을 쓰지 않고 이 영역의 double-double 판으로 계산해요. special의 복소 `loggamma`는 $\lvert\log\Gamma\rvert$에 대한 상대 계약이라 위상이 큰 계수에는 모자라요. Python 층도 다른 영역을 쓰지 않고, 다른 영역은 `fft/`를 몰라요.
+- **`interpolate/`는 배열 타입, 바닥의 선형 커널, LAPACK 래퍼 위에 올라가요.** 선형 보간과 구간 찾기는 바닥의 `base/lerp.hpp`와 `base/interval.hpp`예요. 스플라인의 삼중대각·띠 연립방정식은 이 영역의 피벗 없는 풀이(`interpolate/banded.hpp`)라서 `sd.linalg.solve_banded`와 끝자리가 다를 수 있어요(둘 다 정확도 계약 안이에요). LAPACK은 두 곳에서만 `linalg/lapack.hpp`로 불러요. RBF의 전역 연립방정식(대칭 부정치 분해 `sytrf`, 꼬리의 랭크를 보는 `gesdd`)과 AAA(`gesdd`와 일반화 고유값 `ggev`)예요. RBF의 거리는 공간 영역의 유클리드 짝 커널(`spatial/metric.hpp`)을 그대로 불러서 `cdist`와 같은 비트의 거리를 쓰고, 삼각분할 위의 보간(`scattered.cpp`)은 공간 영역의 삼각분할 객체(`spatial/delaunay2.hpp`), 위치 찾기(`spatial/triangulation.hpp`), 값 커널(`spatial/predicates.hpp`)을 써요. 핵 함수의 log와 exp는 배열의 NEON 커널(`array/kernels/vmath.hpp`)이에요. `PPoly.integrate`의 조각 합은 `base/pairwise.hpp`의 트리예요. Python 층의 `sd.interpolate`는 `sd.spatial`(`KDTree`, `Delaunay`)과 `sd.sparse`(`design_matrix`)를 써요. `interpolate/`를 include하는 다른 영역은 de Boor 커널(`interpolate/deboor.hpp`)을 쓰는 `smooth/`뿐이고, 보간 영역은 평활 영역을 몰라요.
+- **`fft/`는 배열 타입과 풀 말고는 거의 아무것도 쓰지 않아요.** 바닥에서 가져오는 것은 회전 인자를 만드는 `base/sincos.hpp` 하나예요. 모든 길이를 자체 C++ 커널로 계산하고 Accelerate의 vDSP도 BLAS도 부르지 않아요. 까닭은 셋이에요. vDSP가 받는 길이 꼴에서도 자체 커널이 더 빨라요. vDSP가 받는 길이는 2의 거듭제곱과 그 3배, 5배, 15배뿐이고 DCT는 float 판뿐이라, 쓰더라도 나머지 길이에는 자체 커널이 있어야 해요. 그리고 vDSP는 안쪽 알고리즘을 볼 수 없어서 오차 한계를 증명하지 못하고 잰 값으로만 뒷받침해야 해요. 자체 커널 하나로 모든 길이를 맡으면 변환의 종류와 길이가 계산의 길을 정하고, 단마다의 오차 한계를 코드에서 증명할 수 있고, 결과가 Accelerate의 판이나 스레드 모드에 기대지 않아요([길이마다 한 경로](/internals/fft/determinism/)). FFTLog의 계수에 드는 $\log\Gamma$도 special의 것을 쓰지 않고 이 영역의 double-double 판으로 계산해요. special의 복소 `loggamma`는 $\lvert\log\Gamma\rvert$에 대한 상대 계약이라 위상이 큰 계수에는 모자라요. Python 층도 다른 영역을 쓰지 않아요. `fft/`를 include하는 다른 영역은 구간화 KDE와 ISJ 대역폭이 계획과 DCT를 부르는 `smooth/`뿐이에요.
+- **`smooth/`는 배열 타입과 보간·공간·푸리에 변환의 커널 위에 올라가요.** 결과는 `NDArray`(`array/ndarray.hpp`)로 만들고, 나누기는 배열의 기준값(`array/parallel_limits.hpp`)으로 정하고, 가우스 합과 핵의 exp는 배열의 NEON 커널(`array/kernels/vmath.hpp`)이에요. 스플라인의 설계 행렬과 평가에 드는 B-스플라인 값은 보간 영역의 de Boor 커널(`interpolate/deboor.hpp`)이라서, 스플라인 결과가 그대로 `sd.interpolate.BSpline`이 돼요. `loess`의 여러 변수 이웃과 가우스 합의 트리 후보는 공간 영역의 KD 트리(`spatial/kdtree.hpp`), 구간화 KDE의 합성곱과 ISJ 대역폭의 DCT-II는 푸리에 변환의 계획(`fft/plan.hpp`, `fft/r2r.hpp`)을 C++에서 바로 불러요. 최소제곱과 벌점 계의 띠 QR, 국소 다항식의 풀이는 이 영역의 코드라서 LAPACK도 BLAS도 부르지 않아요. $\lambda$와 대역폭을 고르는 한 변수 찾기(scipy의 fminbound와 brentq)와 여러 변수의 Nelder–Mead도 C++ 함수를 받는 꼴로 이 영역에 둬요(`smooth/search.hpp`, `kreg.cpp`, `bandwidth.cpp`). 최적화의 커널은 Python 콜백을 받는 꼴이라 C++ 안에서 부를 수 없기 때문이에요. Python 층의 `sd.smooth`는 `sd.interpolate`(`BSpline`, `make_interp_spline`), `sd.stats`(`StudentT`, `Normal`, `Beta`), `sd.random`, `sd.linalg`(`LinAlgError`), `sd.frame`, 회귀의 상자 렌더러(`stardust._summary`)를 써요. 다른 영역은 `smooth/`를 몰라요.
 - **`plot/`은 풀 말고는 아무것도 include하지 않아요.** 래스터라이저와 깊이 버퍼가 `parallel/pool.hpp`로 화소의 띠를 나누는 것이 전부이고, `NDArray`도 nanobind도 몰라요. 대신 Python 층의 `sd.plot`이 맨 위에서 다른 영역을 써요. 자료는 `sd` 배열로 바꿔 배열 연산으로 다루고, `data=`의 `DataFrame`(frame), `strip`의 흩음(random), `qq`의 분위수와 분포 객체(stats), 회귀와 검정의 결과 객체(`fit`, `compare`, `diagnostics`)를 읽어요. 인자 검사 함수는 최적화의 것(`optimize/_common.py`)을 함께 써요. 어느 영역도 `sd.plot`을 가져오지 않아요. 라이브러리 안에서 실행 중에 바깥 프로그램을 부르는 영역도 `sd.plot`뿐이에요. 글자를 TeX Live(`latex`, `xelatex`, `tex`, `xetex`, `dvisvgm`, `kpsewhich`)로 조판하고, 처음 필요할 때 찾아요([바깥 프로그램 TeX](/internals/plot/overview/#바깥-프로그램-tex)).
 - **새 영역은 디렉터리 하나와 Python 하위 모듈 하나로 붙어요.** 아래 층만 쓰고 기존 영역을 고치지 않아요. 영역마다 `docs/design/`, `docs/api/`의 문서와 `tests/<영역>/`, `bench/<영역>/`이 함께 있어요.
 
@@ -480,44 +489,46 @@ True
 | sparse | 저장된 원소와 출력 크기로 센 일이 2¹⁵개 분량 이상이면 나누고(`kParallelThreshold`), 압축 배열의 줄은 `indptr`만으로 저장된 원소 약 2¹⁴개씩의 구간으로 잘라요(`kChunk`, `line_bounds`) | `sparse/parallel.hpp` |
 | integrate | 표본 규칙은 줄 수 × 길이가 배열의 기준값 이상이면 줄을 나누고, 긴 줄 하나는 같은 pairwise 트리를 부분 트리로 나눠요. `fixed_quad`의 마디(n > 100)는 점화식 걸음이 2¹⁵개 이상이면 마디마다 나눠요. `tanhsinh`과 `nsum`은 공용 고리에서 남은 원소 수 × 원소마다의 점 수가 2¹⁵개 이상이면 약 2¹³점씩 나누고, 조각 하나의 길이를 풀에 알려 잠든 워커는 일이 충분히 길 때만 깨워요(`for_weighted`) | `integrate/samples.cpp`, `integrate/gauss.cpp`, `elementwise/loop.hpp` |
 | differentiate | `derivative`는 `tanhsinh`과 같은 공용 고리의 기준(`for_weighted`), `jacobian`과 `hessian`은 남은 항목이 2¹⁵개 이상일 때 항목의 갱신을 나눠요 | `elementwise/loop.hpp` |
-| spatial | 짝의 수 × 특징 수, 질의 수 × 추정 방문 같은 일이 2¹⁵개 분량 이상이면 나눠요(`kParallelWork`, 파일마다). 행 구간, 질의점 조각, 고정 깊이의 노드 쌍처럼 크기로만 자르고, 질의 하나는 한 태스크가 다 해요 | `spatial/*.cpp` |
+| spatial | 짝의 수 × 특징 수, 질의 수 × 추정 방문 같은 일이 2¹⁵개 분량 이상이면 나눠요(`kParallelWork`, 파일마다). 행 구간, 질의점 조각, 고정 깊이의 노드 쌍처럼 크기로만 자르고, 질의 하나는 한 태스크가 다 해요. 계산 기하는 점 512개부터 GIL을 놓고 1,024개를 넘으면 나누며(껍질은 $n d \ge 2^{13}$), 결과가 정의로 하나라 3차원 넣기는 잠금으로 여러 줄이 함께 해요 | `spatial/*.cpp`, `spatial/triangulation.hpp` |
 | graph | 일(변의 수 × 원점 수 등)이 2¹⁵개 분량 이상이면 나눠요(`kParallelWork`). 밀집 행렬을 CSR로 바꾸는 일과 라플라시안은 원소 2¹⁵개쯤의 행 구간, 여러 원점의 최단 경로와 매개 중심성은 원점 1–64개가 태스크 하나, 블록 Floyd–Warshall은 64 × 64 블록 하나가 태스크 하나, PageRank는 저장된 원소 약 2¹⁵개씩의 행 묶음, 약한 연결 요소는 저장된 원소 2¹⁸개부터 2¹⁶개씩이에요. 원점 하나의 탐색, 순회, 신장 트리, 흐름, 매칭은 나누지 않아요 | `graph/graph.hpp`, `graph/*.cpp` |
-| interpolate | 배열의 기준값을 그대로 써요. 평가는 점마다 구간 찾기와 커널의 비용을 세어 일이 2¹⁵개 분량 이상이면 평가점 조각으로 나누고, 계수 만들기는 배치의 열 묶음으로 나눠요. 긴 열 하나의 삼중대각·띠 풀이는 앞뒤로 이어지는 계산이라 나누지 않아요 | `array/parallel_limits.hpp`, `interpolate/*.cpp` |
+| interpolate | 배열의 기준값을 그대로 써요. 평가는 점마다 구간 찾기와 커널의 비용을 세어 일이 2¹⁵개 분량 이상이면 평가점 조각으로 나누고, 계수 만들기는 배치의 열 묶음으로 나눠요. 긴 열 하나의 삼중대각·띠 풀이와 Clough–Tocher 기울기의 훑기는 앞뒤로 이어지는 계산이라 나누지 않아요 | `array/parallel_limits.hpp`, `interpolate/*.cpp` |
 | fft | 줄 수 × 줄 하나의 비용이 2¹⁵ 이상이면 줄들을 크기로만 정한 덩어리로 나눠요(`kParallelWork`, 태스크의 일 `kTaskWork` = 2¹²). 소인수가 31 이하인 길이 2¹⁵ 이상의 변환 하나는 길이로만 정한 4단계 분해의 열과 행을 16개씩, 긴 줄의 $O(n)$ 패스는 2¹⁴칸씩 나눠요 | `fft/driver.hpp`, `fft/cfft.hpp` |
+| smooth | 배열의 기준값을 그대로 써요. 국소 적합(`lowess`, `loess`, 핵 회귀)과 KDE의 직접 합은 평가점 수 × 점 하나의 비용이 2¹⁵개 분량 이상이면 크기로만 정한 평가점 조각(약 2¹⁷의 일)으로 나누고, $\lambda$·대역폭 찾기의 격자는 격자점마다, Savitzky–Golay는 출력 행과 열의 묶음으로 나눠요. 긴 열 하나의 띠 QR은 앞뒤로 이어지는 계산이라 나누지 않아요 | `array/parallel_limits.hpp`, `smooth/*.cpp`, `smooth/kde.hpp` |
 | plot | 화소의 줄을 고정된 띠(점 도장 64줄, 그림 칠하기 32줄, 깊이 버퍼 48줄)로 잘라요. 점 2,000개 이상, 칠할 화소나 깊이 버퍼의 표본 65,536개 이상일 때만 풀에 보내요 | `plot/raster.cpp`, `plot/zbuffer.cpp` |
 
 ### 실제 include 관계
 
 아래 표는 실제 `#include` 줄을 센 값이에요. 칸의 숫자는 그 디렉터리의 파일이 다른 디렉터리의 헤더를 include하는 줄 수예요.
 
-| 누가 → 무엇을 | base | parallel | accelerate | elementwise | array | linalg | frame | special | stats | random | regression | optimize | htest | sparse | integrate | differentiate | spatial | graph | interpolate | fft | plot | bind |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| base | · |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| parallel |  | · |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| accelerate |  |  | · |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| elementwise |  | 1 |  | · | 1 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | 1 |
-| array | 10 | 15 | 3 |  | · |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | 32 |
-| linalg | 4 | 2 |  |  | 3 | · |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | 16 |
-| frame | 6 | 1 |  |  | 2 |  | · |  |  |  |  |  |  |  |  |  |  |  |  |  |  | 2 |
-| special | 5 |  | 1 |  | 7 |  |  | · |  |  |  |  |  |  |  |  |  |  |  |  |  | 1 |
-| stats |  | 1 | 2 |  | 4 |  |  | 36 | · | 2 |  |  |  |  |  |  |  |  |  |  |  |  |
-| random |  |  |  |  | 2 |  |  |  |  | · |  |  |  |  |  |  |  |  |  |  |  | 2 |
-| regression |  | 7 |  |  |  | 8 |  | 9 |  | 2 | · |  | 1 |  |  |  |  |  |  |  |  | 7 |
-| optimize |  | 1 |  | 1 | 5 | 15 |  |  |  |  |  | · |  |  |  | 4 |  |  |  |  |  | 15 |
-| htest |  | 4 |  |  | 17 |  |  | 18 | 55 | 1 |  |  | · |  |  |  |  |  |  |  |  | 8 |
-| sparse | 5 | 10 | 2 |  | 11 | 11 |  |  |  |  |  |  |  | · |  |  |  |  |  |  |  | 12 |
-| integrate | 1 | 2 |  | 1 | 8 | 1 |  |  |  |  |  |  |  |  | · |  |  |  |  |  |  | 9 |
-| differentiate |  | 1 |  | 1 | 2 | 2 |  |  |  |  |  |  |  |  |  | · |  |  |  |  |  | 3 |
-| spatial | 6 | 6 | 1 |  | 6 |  |  |  |  |  |  |  |  |  |  |  | · |  |  |  |  | 6 |
-| graph | 1 | 10 |  |  | 12 |  |  |  |  |  |  |  |  | 2 |  |  |  | · |  |  |  | 10 |
-| interpolate | 8 | 8 |  |  | 19 | 3 |  |  |  |  |  |  |  |  |  |  | 1 |  | · |  |  | 16 |
-| fft | 1 | 3 |  |  | 5 |  |  |  |  |  |  |  |  |  |  |  |  |  |  | · |  | 7 |
-| plot |  | 2 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | · |  |
-| bind | 1 | 3 |  |  | 36 | 17 | 12 | 25 | 42 | 5 | 5 | 5 | 9 | 2 | 1 | 2 | 1 | 1 | 1 | 1 | 4 | · |
+| 누가 → 무엇을 | base | parallel | accelerate | elementwise | array | linalg | frame | special | stats | random | regression | optimize | htest | sparse | integrate | differentiate | spatial | graph | interpolate | fft | smooth | plot | bind |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| base | · |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| parallel |  | · |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| accelerate |  |  | · |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| elementwise |  | 1 |  | · | 1 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | 1 |
+| array | 10 | 15 | 3 |  | · |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | 32 |
+| linalg | 4 | 2 |  |  | 3 | · |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | 16 |
+| frame | 6 | 1 |  |  | 2 |  | · |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | 2 |
+| special | 5 |  | 1 |  | 7 |  |  | · |  |  |  |  |  |  |  |  |  |  |  |  |  |  | 1 |
+| stats |  | 1 | 2 |  | 4 |  |  | 36 | · | 2 |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| random |  |  |  |  | 2 |  |  |  |  | · |  |  |  |  |  |  |  |  |  |  |  |  | 2 |
+| regression |  | 7 |  |  |  | 8 |  | 9 |  | 2 | · |  | 1 |  |  |  |  |  |  |  |  |  | 7 |
+| optimize |  | 1 |  | 1 | 5 | 15 |  |  |  |  |  | · |  |  |  | 4 |  |  |  |  |  |  | 15 |
+| htest |  | 4 |  |  | 17 |  |  | 18 | 55 | 1 |  |  | · |  |  |  |  |  |  |  |  |  | 8 |
+| sparse | 5 | 10 | 2 |  | 11 | 11 |  |  |  |  |  |  |  | · |  |  |  |  |  |  |  |  | 12 |
+| integrate | 1 | 2 |  | 1 | 8 | 1 |  |  |  |  |  |  |  |  | · |  |  |  |  |  |  |  | 9 |
+| differentiate |  | 1 |  | 1 | 2 | 2 |  |  |  |  |  |  |  |  |  | · |  |  |  |  |  |  | 3 |
+| spatial | 8 | 11 | 1 |  | 10 |  |  |  |  |  |  |  |  |  |  |  | · |  |  |  |  |  | 10 |
+| graph | 1 | 10 |  |  | 12 |  |  |  |  |  |  |  |  | 2 |  |  |  | · |  |  |  |  | 10 |
+| interpolate | 8 | 9 |  |  | 20 | 3 |  |  |  |  |  |  |  |  |  |  | 4 |  | · |  |  |  | 17 |
+| fft | 1 | 3 |  |  | 5 |  |  |  |  |  |  |  |  |  |  |  |  |  |  | · |  |  | 7 |
+| smooth | 2 | 9 |  |  | 19 |  |  |  |  |  |  |  |  |  |  |  | 2 |  | 3 | 3 | · |  | 16 |
+| plot |  | 2 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | · |  |
+| bind | 1 | 3 |  |  | 36 | 17 | 12 | 25 | 42 | 5 | 5 | 5 | 9 | 2 | 1 | 2 | 1 | 1 | 1 | 1 | 1 | 4 | · |
 
-읽을 때 알아 둘 점이 열여덟 있어요.
+읽을 때 알아 둘 점이 열아홉 있어요.
 
-- `array`, `linalg`, `special`, `random`, `regression`, `optimize`, `htest`, `sparse`, `integrate`, `differentiate`, `spatial`, `graph`, `interpolate`, `fft`가 `bind/`를 include하는 것은 연산의 입구(`ops/*.cpp`)가 인자 해석 도구(`bind/pyutil.hpp`)와 에러 이름(`bind/errors.hpp`)을 쓰기 때문이에요. `array/kernels/`에는 `bind/` include가 하나도 없어요.
+- `array`, `linalg`, `special`, `random`, `regression`, `optimize`, `htest`, `sparse`, `integrate`, `differentiate`, `spatial`, `graph`, `interpolate`, `fft`, `smooth`가 `bind/`를 include하는 것은 연산의 입구(`ops/*.cpp`)가 인자 해석 도구(`bind/pyutil.hpp`)와 에러 이름(`bind/errors.hpp`)을 쓰기 때문이에요. `array/kernels/`에는 `bind/` include가 하나도 없어요.
 - `accelerate/`는 위의 어느 디렉터리도 include하지 않아요. LAPACK 래퍼는 linalg의 타입(LAPACK 정수 타입 `lint`, 배치 구조 `linalg/batch.hpp`)에 묶여 있고 linalg와 그 위의 regression, optimize, sparse, interpolate만 쓰므로 `linalg/lapack.hpp`에 둬요. 바닥에 두면 바닥이 영역의 헤더를 include하게 돼요. linalg는 Accelerate 프레임워크 헤더를 직접 include하므로 `accelerate/` 헤더가 필요 없어요. 희소 LU의 래퍼(`accelerate/sparse.hpp`)는 linalg의 타입에 묶이지 않아서 바닥에 두고, `sparse/direct.cpp` 한 곳만 include해요. BLAS 래퍼(`accelerate/blas.hpp`)는 배열의 `matmul`·`cov`와 공간의 이웃 찾기(`spatial/neighbors.cpp`)가 include해요.
 - linalg의 `array/` 3줄은 `NDArray`를 받고 돌려주는 `linalg/input.hpp`, `linalg/outblock.hpp`와, 결과 namedtuple의 배열 필드를 쓰기 금지로 만드는 `linalg/pyrefs.cpp`예요. float64 → int64 변환 규칙은 `linalg/types.hpp`가 `base/saturate.hpp`에서 직접 가져와요. 배열의 변환 헤더를 거치지 않으므로 linalg의 타입 정의가 배열 내부에 기대지 않아요.
 - frame의 `array/` 2줄 중 1줄과 `bind/pyutil.hpp` 1줄은 `interop.cpp`에 있고, 나머지 1줄은 float64 거듭제곱 커널을 쓰는 `ops/elementwise.cpp`예요. `base/` 6줄 가운데 2줄은 int64 평균의 정확한 정수 합(`base/int_sum.hpp`)을 쓰는 Series와 그룹별 평균이에요. 배열의 `mean`과 같은 정의라서, frame은 배열을 부르지 않고도 배열과 같은 비트의 int 평균을 내요. `frame/convert.cpp`는 에러 메시지의 타입 이름(`py_type_name`)만 필요해서 `bind/errors.hpp`를 include해요. 이 헤더는 nanobind 말고는 아무것도 끌어오지 않으므로, 배열 헤더가 frame에 들어오는 곳은 이 두 파일로 남아요.
@@ -528,13 +539,14 @@ True
 - sparse 행의 `array/` 11줄은 numpy와 같은 복소 곱과 스칼라 규칙(`array/kernels/scalar_ops.hpp`) 5줄, 변환 2줄, `NDArray` 2줄, 정렬 커널과 복사 1줄씩이에요. `linalg/` 11줄은 `LinAlgError`(`errors.hpp`) 5줄, LAPACK 래퍼 3줄(직접 풀이의 조건수 추정, ARPACK, `svds`), 반복법의 노름과 합(`vnorm.hpp`, `pairwise.hpp`, `fastsum.hpp`) 3줄이고, `base/` 5줄은 dtype, 줄의 조각 합 트리(`pairwise.hpp`), 정수 합(`int_sum.hpp`)이에요. `parallel/` 10줄은 `sparse/parallel.hpp`와, `parallel::Unlocked`나 `parallel_for`를 직접 쓰는 커널 아홉이에요.
 - integrate 행의 `base/` 1줄은 표본 규칙(`samples.cpp`)이 쓰는 pairwise 합의 정의(`base/pairwise.hpp`)예요. `array/` 8줄은 `NDArray` 5줄, 배열의 기준값(`parallel_limits.hpp`) 2줄, 리덕션 커널(`array/kernels/reduce.hpp`) 1줄이에요. `parallel/` 2줄은 표본 규칙(`samples.cpp`)과 Gauss–Legendre 마디(`gauss.cpp`), `elementwise/` 1줄은 `tanhsinh.cpp`, `linalg/` 1줄은 `cblas_ddot`의 선언(`numpy_ops.hpp`)이고, `bind/` 9줄은 인자 해석 도구 5줄과 에러 이름 4줄이에요. `quad` 계열과 `quad_vec`·`cubature`의 파일은 풀을 include하지 않아요. 사용자 함수를 부르는 반복이라 나눌 일이 없어요.
 - differentiate 행은 두 파일의 것이에요. `derivative.cpp`가 공용 고리, `NDArray`, 인자 해석 도구, 에러 이름을, 정확한 차분의 고리 `accurate.hpp`가 `NDArray`, 풀, 입력 읽기(`linalg/input.hpp`)와 합(`linalg/fastsum.hpp`), 인자 해석 도구를 include해요. 최적화가 쓰는 `steps.hpp`는 표준 헤더 말고 아무것도 include하지 않아요.
-- spatial 행은 여섯 번역 단위의 것이에요. `array/` 6줄과 `bind/` 6줄은 결과의 `NDArray`와 인자 해석 도구(`bind/pyutil.hpp`)를 쓰는 파일마다 한 줄씩이고, `parallel/` 6줄도 같은 여섯 파일이에요. `accelerate/` 1줄은 GEMM으로 후보를 고르는 `neighbors.cpp`, `base/` 6줄은 `haversine`의 `sincos.hpp` 2줄(`metric.hpp`, `sphere.cpp`)과 `buffer.hpp` 4줄(`neighbors.cpp`, `query.cpp`, `dual.cpp`, `sphere.cpp`)이에요. `linalg/`가 없는 것은 거리의 합을 이 영역의 순서로 하기 때문이에요.
+- spatial 행은 열한 번역 단위와 공용 헤더의 것이에요. `array/` 10줄과 `bind/` 10줄은 결과의 `NDArray`와 인자 해석 도구(`bind/pyutil.hpp`)를 쓰는 파일마다 한 줄씩이에요. 3차원 넣기(`delaunay3.cpp`)만 둘 다 없어요. 결과 배열은 그 파일이 아니라 `_Delaunay` 바인딩(`delaunay2.cpp`)이 만들어요. `parallel/` 11줄은 테스트용 바인딩(`predicates.cpp`)을 뺀 열 파일과 공용 헤더 `triangulation.hpp`예요. `accelerate/` 1줄은 GEMM으로 후보를 고르는 `neighbors.cpp`, `base/` 8줄은 `haversine`의 `sincos.hpp` 2줄(`metric.hpp`, `sphere.cpp`)과 `buffer.hpp` 6줄(`neighbors.cpp`, `query.cpp`, `dual.cpp`, `sphere.cpp`, `delaunay3.cpp`, `voronoi.cpp`)이에요. `linalg/`가 없는 것은 거리의 합을 이 영역의 순서로 하고, 계산 기하가 행렬식을 이 영역의 값 커널로 구하기 때문이에요.
 - array 행의 `base/` 10줄 가운데 2줄은 `sd.interp`(`array/ops/interp.cpp`)가 쓰는 선형 커널(`base/lerp.hpp`)과 구간 찾기(`base/interval.hpp`)예요. 보간 영역의 선형 길도 같은 두 헤더를 include해요.
 - graph 행은 열 번역 단위의 것이에요. `array/` 12줄 가운데 11줄은 `NDArray`(파일마다와 `graph.hpp`)이고 1줄은 라플라시안이 쓰는 배열의 스칼라 규칙(`array/kernels/scalar_ops.hpp`)이에요. `parallel/` 10줄과 `bind/` 10줄(인자 해석 도구)은 파일마다 한 줄씩이에요. `sparse/` 2줄은 표준 꼴의 CSR을 읽는 `sparse/format.hpp`(`graph.hpp`와 `ordering.cpp`), `base/` 1줄은 PageRank의 벡터 합이 쓰는 `base/pairwise.hpp`예요. `linalg/`와 `accelerate/`가 없어요.
-- interpolate 행은 여덟 번역 단위와 헤더 하나(`search.hpp`)의 것이에요. `array/` 19줄은 `NDArray` 8줄, 배열의 기준값(`parallel_limits.hpp`) 8줄, 변환 1줄, RBF 핵의 log·exp(`array/kernels/vmath.hpp`) 1줄, 구간 찾기의 순서 규칙(`array/kernels/scalar_ops.hpp`) 1줄이에요. `base/` 8줄은 구간 찾기(`interval.hpp`) 5줄, 선형 커널(`lerp.hpp`) 2줄, `PPoly.integrate`의 pairwise 합 1줄이에요. `linalg/` 3줄은 LAPACK 래퍼(`aaa.cpp`, `rbf.cpp`)와 SVD가 수렴하지 않을 때의 `LinAlgError`(`aaa.cpp`), `spatial/` 1줄은 RBF의 거리에 쓰는 유클리드 짝 커널(`spatial/metric.hpp`)이에요. `bind/` 16줄은 파일마다 인자 해석 도구와 에러 이름 한 줄씩이에요.
+- interpolate 행은 아홉 번역 단위와 헤더 하나(`search.hpp`)의 것이에요. `array/` 20줄은 `NDArray` 9줄, 배열의 기준값(`parallel_limits.hpp`) 8줄, 변환 1줄, RBF 핵의 log·exp(`array/kernels/vmath.hpp`) 1줄, 구간 찾기의 순서 규칙(`array/kernels/scalar_ops.hpp`) 1줄이에요. `base/` 8줄은 구간 찾기(`interval.hpp`) 5줄, 선형 커널(`lerp.hpp`) 2줄, `PPoly.integrate`의 pairwise 합 1줄이에요. `linalg/` 3줄은 LAPACK 래퍼(`aaa.cpp`, `rbf.cpp`)와 SVD가 수렴하지 않을 때의 `LinAlgError`(`aaa.cpp`), `spatial/` 4줄은 RBF의 거리에 쓰는 유클리드 짝 커널(`spatial/metric.hpp`)과, 삼각분할 위의 보간(`scattered.cpp`)이 쓰는 삼각분할 객체(`delaunay2.hpp`), 위치 찾기(`triangulation.hpp`), 값 커널(`predicates.hpp`)이에요. `bind/` 17줄은 인자 해석 도구와 에러 이름이고, `scattered.cpp`는 인자 해석 도구 한 줄만이에요.
 - fft 행의 `array/` 5줄은 `NDArray`, `parallel/` 3줄은 계획 만들기(`plan.cpp`), 축 구동기(`driver.cpp`), FFTLog의 계수(`fftlog.cpp`)이고, `base/` 1줄은 회전 인자의 `sincos.hpp`(`twiddle.hpp`), `bind/` 7줄은 인자 해석 도구 4줄과 에러 이름 3줄이에요. `accelerate/`가 없어요. vDSP를 부르지 않기 때문이에요.
+- smooth 행은 여덟 번역 단위와 공용 헤더의 것이에요. `array/` 19줄은 `NDArray` 8줄, 배열의 기준값(`parallel_limits.hpp`) 9줄, 가우스 합과 핵의 exp(`array/kernels/vmath.hpp`, `gauss_sum.hpp`와 `kde.hpp`) 2줄이에요. `parallel/` 9줄은 여덟 번역 단위와 구간화의 `kde.hpp`, `bind/` 16줄은 인자 해석 도구와 에러 이름 8줄씩이에요. `base/` 2줄은 평활 스플라인(`spline.cpp`)의 `buffer.hpp`와 구간 찾기(`interval.hpp`)예요. `interpolate/` 3줄은 de Boor 커널(`deboor.hpp`를 `bandqr.hpp`, `spline.cpp`, `fitpack.cpp`가), `spatial/` 2줄은 KD 트리(`kdtree.hpp`를 `loess.cpp`와 `gauss_tree.hpp`가), `fft/` 3줄은 구간화 KDE와 ISJ 대역폭의 계획(`plan.hpp`를 `kde.cpp`와 `bandwidth.cpp`가)과 DCT(`r2r.hpp`를 `bandwidth.cpp`가)예요. `linalg/`와 `accelerate/`가 없어요. 띠 QR과 국소 계를 이 영역이 직접 풀기 때문이에요.
 - plot 행은 `parallel/` 2줄뿐이에요. 화소의 띠를 나누는 `raster.cpp`와 `zbuffer.cpp`예요. 배열도 nanobind도 include하지 않아서, `plot/`의 커널은 바인딩 없이도 컴파일되는 순수 C++이에요.
-- bind 행의 `htest/` 9줄, `sparse/` 2줄, `integrate/` 1줄, `differentiate/` 2줄, `spatial/` 1줄, `graph/` 1줄, `interpolate/` 1줄, `fft/` 1줄, `plot/` 4줄은 그 영역의 하위 모듈을 등록하는 `htest_bind.cpp`, `sparse_bind.cpp`, `integrate_bind.cpp`, `differentiate_bind.cpp`, `spatial_bind.cpp`, `graph_bind.cpp`, `interpolate_bind.cpp`, `fft_bind.cpp`, `plot_bind.cpp`예요.
+- bind 행의 `htest/` 9줄, `sparse/` 2줄, `integrate/` 1줄, `differentiate/` 2줄, `spatial/` 1줄, `graph/` 1줄, `interpolate/` 1줄, `fft/` 1줄, `smooth/` 1줄, `plot/` 4줄은 그 영역의 하위 모듈을 등록하는 `htest_bind.cpp`, `sparse_bind.cpp`, `integrate_bind.cpp`, `differentiate_bind.cpp`, `spatial_bind.cpp`, `graph_bind.cpp`, `interpolate_bind.cpp`, `fft_bind.cpp`, `smooth_bind.cpp`, `plot_bind.cpp`예요.
 
 ## 결과의 비트: 지키는 것과 따르는 것
 
@@ -554,7 +566,7 @@ numpy, scipy, pandas는 모든 영역의 정답지예요. 다만 정답지와 �
 - 다항식 계산(Horner)과 complex 절댓값은 FMA로 반올림을 하나 줄여요. 같은 x의 sin·cos는 `sd::sincos`로 함께 구해요(아래 "컴파일 플래그와 그 이유").
 - 배열의 `exp`, `expm1`, `log1p`, `cos`는 자체 NEON 커널이라 libm을 부르는 numpy와 끝자리가 다를 수 있어요([원소별 연산](/internals/array/elementwise/)). 아주 작은 float64 행렬 곱은 BLAS 대신 자체 FMA 커널이에요([행렬곱](/internals/array/matmul/)).
 
-그래서 어떤 결과가 numpy·scipy와 비트까지 같다면 그것은 지금 그렇다는 사실이고, 약속은 아니에요. 약속은 같은 설정에서 실행마다 같은 비트, 골든 기록과 같은 비트, 그리고 정확도 계약이에요. Accelerate(BLAS·LAPACK, 희소 LU)를 부르는 계산은 Accelerate의 스레드 모드가 같을 때 비트까지 같아요. 이 모드는 stardust가 정하지도 바꾸지도 않아요([스레드풀과 결정성](/internals/core/threads/)). 희소 LU는 같은 모드 안에서도 순서 매기기에 따라 실행마다 비트가 달라질 수 있어서, 늘 같은 비트를 내는 AMD 순서만 써요. `sd.spatial`은 이 조건도 없어요. GEMM은 이웃의 후보를 고르는 데에만 쓰고 돌려주는 거리는 짝 커널로 직접 계산하므로, 그 영역의 API가 스레드 수, 계산 길(트리, 전수, GEMM 고르기), Accelerate의 스레드 모드와 상관없는 같은 결과를 약속해요([병렬화와 결정성](/internals/spatial/parallel/)). `sd.graph`와 `sd.fft`는 Accelerate를 아예 부르지 않아요. 그래프의 결과(거리, 선행 노드, 순서, 레이블)는 알고리즘의 훑는 순서가 아니라 정의와 동점 규칙으로 정해지고, 푸리에 변환의 한 줄은 그 줄의 값과 변환의 종류·길이·`norm`으로만 정해져서, 둘 다 스레드 수와 상관없는 같은 결과를 API가 약속해요([그래프의 구조](/internals/graph/overview/), [길이마다 한 경로](/internals/fft/determinism/)). `sd.interpolate`도 스레드 수와 상관없는 결과를 약속하되, LAPACK을 부르는 RBF의 전역 풀이와 AAA의 SVD·고유값만은 Accelerate의 스레드 모드가 같을 때 같아요.
+그래서 어떤 결과가 numpy·scipy와 비트까지 같다면 그것은 지금 그렇다는 사실이고, 약속은 아니에요. 약속은 같은 설정에서 실행마다 같은 비트, 골든 기록과 같은 비트, 그리고 정확도 계약이에요. Accelerate(BLAS·LAPACK, 희소 LU)를 부르는 계산은 Accelerate의 스레드 모드가 같을 때 비트까지 같아요. 이 모드는 stardust가 정하지도 바꾸지도 않아요([스레드풀과 결정성](/internals/core/threads/)). 희소 LU는 같은 모드 안에서도 순서 매기기에 따라 실행마다 비트가 달라질 수 있어서, 늘 같은 비트를 내는 AMD 순서만 써요. `sd.spatial`은 이 조건도 없어요. GEMM은 이웃의 후보를 고르는 데에만 쓰고 돌려주는 거리는 짝 커널로 직접 계산하므로, 그 영역의 API가 스레드 수, 계산 길(트리, 전수, GEMM 고르기), Accelerate의 스레드 모드와 상관없는 같은 결과를 약속해요([병렬화와 결정성](/internals/spatial/parallel/)). `sd.graph`와 `sd.fft`는 Accelerate를 아예 부르지 않아요. 그래프의 결과(거리, 선행 노드, 순서, 레이블)는 알고리즘의 훑는 순서가 아니라 정의와 동점 규칙으로 정해지고, 푸리에 변환의 한 줄은 그 줄의 값과 변환의 종류·길이·`norm`으로만 정해져서, 둘 다 스레드 수와 상관없는 같은 결과를 API가 약속해요([그래프의 구조](/internals/graph/overview/), [길이마다 한 경로](/internals/fft/determinism/)). `sd.interpolate`도 스레드 수와 상관없는 결과를 약속하되, LAPACK을 부르는 RBF의 전역 풀이와 AAA의 SVD·고유값만은 Accelerate의 스레드 모드가 같을 때 같아요. `sd.smooth`는 Accelerate를 부르지 않고, 평가점 하나를 언제나 같은 커널로 계산하고 합의 순서를 길이로만 정해서 스레드 수와 상관없는 같은 결과를 API가 약속해요([평활의 병렬화와 결정성](/internals/smooth/determinism/)).
 
 ## 공통 부품
 
@@ -698,7 +710,7 @@ linalg는 매 호출에 쓰는 Python 객체를 처음 한 번만 받아 둬요(
 
 ### 결과의 배열은 쓰기 금지
 
-결과 객체와 namedtuple의 배열 필드는 모든 영역에서 쓰기 금지 배열이에요. 회귀, 최적화, 가설검정, 적분, 미분의 결과 객체와 희소 반복법·고유값 함수의 결과 객체, 배열의 `unique_*`, 선형대수의 `QRResult`·`LstsqResult` 등, 통계의 `DescribeResult` 등, 공간의 `QueryResult`·`RadiusResult`와 `KDTree`의 배열 속성(`data`, `maxes`, `mins`), 그래프의 `ShortestPathResult`·`ConnectedComponentsResult` 등, 보간 객체의 배열 속성(`PPoly`의 `c`와 `x`, `BSpline`의 `t`와 `c` …)이 그래요. 분포의 매개변수 속성과 요약값(`mean()`, `covariance()` 등)이 돌려주는 배열도 같아요. 쓰려고 하면 다른 쓰기 금지 배열과 같은 `ValueError`(`assignment destination is read-only`)이고, 고쳐 쓰려면 `.copy()`로 복사해요.
+결과 객체와 namedtuple의 배열 필드는 모든 영역에서 쓰기 금지 배열이에요. 회귀, 최적화, 가설검정, 적분, 미분의 결과 객체와 희소 반복법·고유값 함수의 결과 객체, 배열의 `unique_*`, 선형대수의 `QRResult`·`LstsqResult` 등, 통계의 `DescribeResult` 등, 공간의 `QueryResult`·`RadiusResult`와 `KDTree`의 배열 속성(`data`, `maxes`, `mins`), 그래프의 `ShortestPathResult`·`ConnectedComponentsResult` 등, 보간 객체의 배열 속성(`PPoly`의 `c`와 `x`, `BSpline`의 `t`와 `c` …), 평활의 결과 객체(`LowessResult`의 `fittedvalues`·`resid`·`leverage`, `KDEResult`의 `covariance` …)가 그래요. 분포의 매개변수 속성과 요약값(`mean()`, `covariance()` 등)이 돌려주는 배열도 같아요. 쓰려고 하면 다른 쓰기 금지 배열과 같은 `ValueError`(`assignment destination is read-only`)이고, 고쳐 쓰려면 `.copy()`로 복사해요.
 
 - **읽을 때 복사하지 않아요.** 결과가 가진 메모리를 쓰기 금지 플래그만 세워 보여 줘요. linalg는 결과 namedtuple을 만드는 곳(`linalg/pyrefs.cpp`의 `make_result`)에서, Python으로 쓴 결과 객체는 배열을 넣을 때 플래그를 세워요. 큰 필드(최적화의 `hess_inv`)도 읽는 비용이 없어요.
 - **필드가 서로에게서 나와서예요.** 회귀의 `bse`는 `cov_params()`의 대각에서 나와요. 필드를 고칠 수 있으면 한 필드를 고친 뒤에 처음 읽는 다른 필드가 바뀌어서, 같은 결과의 값이 읽는 순서에 따라 달라져요.
@@ -756,7 +768,7 @@ find_package(nanobind CONFIG REQUIRED)
 
 nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/base/buffer.cpp
-  csrc/array/...    # 155개 번역 단위
+  csrc/array/...    # 170개 번역 단위
   csrc/bind/module.cpp)
 
 target_include_directories(_core PRIVATE csrc)

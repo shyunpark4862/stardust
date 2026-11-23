@@ -1,0 +1,193 @@
+---
+title: 영역의 구조
+group: 구조
+order: 1
+summary: "평활 영역이 Python 층과 C++ 커널로 어떻게 나뉘고 다른 영역에 어디서 기대는지 보여 줘요. 공개 함수 하나가 인자 검사에서 결과 객체까지 내려가는 길과 영역 전체의 메모리 규칙도 설명해요."
+seeAlso: [determinism, lowess, penalized-spline, kde, accuracy-performance]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import Layers from '../../../components/fig/Layers.astro';
+import Steps from '../../../components/fig/Steps.astro';
+
+## 한눈에 보기
+
+`sd.smooth`는 잡음이 섞인 자료에서 매끄러운 곡선과 밀도를 추정해요. 공개 이름은 스물아홉 개이고 모두 `sd.smooth`에 바로 있어요. 하는 일로 나누면 다섯 묶음이에요.
+
+| 묶음 | 함수 | 안쪽 |
+|---|---|---|
+| 산점도 평활 | `lowess`, `loess` | 정렬된 창이나 KD 트리의 이웃, 국소 다항식 |
+| 스플라인 | `smoothing_spline`, `pspline`, `make_smoothing_spline`, `make_lsq_spline`, `make_splrep`, `make_splprep`, `generate_knots` | 띠 Givens QR 하나 |
+| 핵 회귀 | `kernel_regression`, `bw_dpill` | 지수를 옮긴 가우스 합 |
+| 핵밀도추정 | `kde`와 대역폭 규칙 여덟 | 같은 가우스 합, 구간화 FFT |
+| Savitzky–Golay | `savgol_filter`, `savgol_coeffs` | Gram 다항식의 double-double 계수 |
+
+결과의 꼴은 셋이에요. 맞추는 함수(`lowess`, `loess`, `smoothing_spline`, `pspline`, `kernel_regression`, `kde`)는 `<이름>Result` 객체를, scipy 이름의 스플라인 함수는 `sd.interpolate.BSpline`을, 나머지는 값을 돌려줘요.
+
+## 층과 파일
+
+<Fig column caption="sd.smooth의 층. 위가 사용자가 부르는 것, 아래가 그 밑바탕이에요.">
+  <Layers layers={[
+    { title: '공개 이름 (Python)', note: 'src/stardust/smooth/', items: [
+      { name: '_local.py, _loess.py', note: 'lowess, loess와 그 결과' },
+      { name: '_spline.py, _fitpack.py', note: '평활·P·최소제곱 스플라인, FITPACK 계열' },
+      { name: '_kreg.py, _kde.py, _bandwidth.py', note: '핵 회귀, 핵밀도추정, 대역폭 규칙' },
+      { name: '_savgol.py', note: 'Savitzky–Golay' },
+      { name: '_common.py, _results.py', note: '입력 정리와 nan_policy, 결과의 공통 기반' },
+    ] },
+    { title: '구동기 (C++)', note: 'csrc/smooth/', items: [
+      { name: 'local.cpp, loess.cpp', note: '강건 반복, delta, 지렛대, 통계량, predict' },
+      { name: 'spline.cpp, fitpack.cpp', note: '벌점 행, λ 찾기, 매듭 놓기, p의 근' },
+      { name: 'kreg.cpp, kde.cpp, bandwidth.cpp', note: '한 점 뺀 적합, 직접 합과 구간화, SJ·ISJ·CV' },
+      { name: 'savgol.cpp', note: '계수와 다섯 mode의 거르기' },
+    ] },
+    { title: '공용 커널 (C++)', items: [
+      { name: 'local.hpp', note: '정렬된 창의 국소 직선' },
+      { name: 'bandqr.hpp, search.hpp', note: '띠 Givens QR과 선택 역행렬, Brent의 두 방법' },
+      { name: 'gauss_sum.hpp, gauss_tree.hpp, kde.hpp', note: '가우스 합, 트리 후보, 핵과 구간화' },
+    ] },
+    { title: '바닥', tone: 'dark', items: [
+      { name: 'array, base, parallel', note: '배열, NEON exp·log, 버퍼, 스레드풀' },
+      { name: 'interpolate/deboor.hpp', note: 'B-스플라인 값' },
+      { name: 'spatial/kdtree.hpp', note: 'KD 트리와 거리 커널' },
+      { name: 'fft/plan.hpp, r2r.hpp', note: '실수·복소수 FFT, DCT' },
+    ] },
+  ]} />
+</Fig>
+
+층은 아래로만 기대요. 다른 영역의 C++ 코드는 `smooth/`를 모르고, 이 영역이 다른 영역의 커널을 C++에서 바로 불러요.
+
+- **interpolate.** 설계 행렬과 평가의 B-스플라인 값은 보간의 de Boor 커널이고, 스플라인 결과는 모두 `BSpline`이라 평가·도함수·적분이 그대로 돼요. 보간 극한($\lambda = 0$, $s = 0$)은 Python 층이 `make_interp_spline`을 그대로 불러 같은 비트를 내요.
+- **spatial.** `loess` 여러 변수의 이웃은 `kd_build`와 kNN, 거리는 `kd_distance`예요. 가우스 합의 트리 후보도 같은 `kd_build` 위에 서요.
+- **fft.** 구간화 KDE의 합성곱과 ISJ의 DCT-II가 fft의 계획을 C++에서 바로 불러요.
+- **optimize.** 같은 알고리즘(fminbound, brentq, Nelder–Mead)을 C++ 함수 인자로 받게 이 영역에 다시 뒀어요. optimize의 커널은 Python 콜백을 받는 꼴이라 C++ 안에서 부를 수 없어요.
+
+Python 층은 `sd.interpolate`, `sd.stats`(구간의 $t$·정규 분위수, `sample`의 잡음), `sd.random`, `sd.linalg`(`LinAlgError`), `sd.frame`(`Series`·`DataFrame` 입력), 그리고 회귀 영역의 상자 렌더러(`stardust._summary`)를 써요.
+
+| 파일 | 줄 수 | 맡은 일 |
+|---|---:|---|
+| `kreg.cpp` | 1,357 | 핵 회귀의 국소 적합, 한 점 뺀 적합, CV·AICc, 대역폭 찾기, dpill |
+| `loess.cpp` | 1,346 | loess의 창, 모멘트 Cholesky와 QR, 강건 무게, 통계량, $\delta_2$ |
+| `kde.cpp` | 1,216 | 기수 정렬, 직접 합, `cdf`, 반사, 구간화 FFT |
+| `spline.cpp` | 1,147 | 평활·P·최소제곱 스플라인, $\lambda$ 찾기, 지렛대, Schoenberg–Whitney |
+| `fitpack.cpp` | 716 | 매듭 놓기, 뜀 행렬, p의 근, 주기, 현의 길이 |
+| `bandwidth.cpp` | 701 | SJ, ISJ, 교차 검증 |
+| `savgol.cpp` | 651 | Gram 다항식, 계수, 거르기 |
+| `bandqr.hpp` | 390 | 띠 Givens QR, 선택 역행렬, 조건수 추정 |
+| `gauss_sum.hpp` | 313 | 가우스 합의 커널 |
+| `local.hpp`, `local.cpp` | 300, 292 | 국소 직선의 커널, lowess |
+| `kde.hpp` | 187 | 핵, 2의 지수로 쥔 값, 선형 구간화 |
+| `search.hpp` | 160 | fminbound, brentq |
+| `gauss_tree.hpp` | 143 | 트리 후보 |
+| `smooth.hpp` | 17 | 파일마다의 `bind_*` |
+
+C++은 열다섯 파일 8,936줄, Python은 열한 파일 2,926줄이에요. 바인딩 `bind/smooth_bind.cpp`(22줄)가 `bind_*` 여덟을 차례로 불러 하위 모듈 `stardust._core.smooth`를 만들어요. 네이티브 이름은 공개 API가 아니에요.
+
+```python
+>>> sorted(n for n in dir(sd._core.smooth) if not n.startswith("__"))
+['bw_cv', 'bw_cv_value', 'bw_dpill', 'bw_isj', 'bw_sj', 'fitpack_chord', 'fitpack_fit', 'fitpack_fpknot', 'fitpack_knots', 'fitpack_lsq', 'kde_eval', 'kde_grid', 'kde_moments', 'kde_prepare', 'kde_tree_mode', 'kreg_criterion', 'kreg_fit', 'kreg_predict', 'loess_fit', 'loess_predict', 'loess_two_delta', 'lowess_fit', 'lowess_predict', 'natural_hat', 'pspline_knots', 'savgol_coeffs', 'savgol_filter', 'schoenberg_whitney', 'spline_fit', 'spline_hat', 'spline_merge_weights']
+```
+
+## 한 번의 호출이 지나는 길
+
+`lowess(x, y)`를 부르면 이렇게 내려가요. 다른 맞추는 함수도 같은 모양이에요.
+
+<Fig column caption="lowess 한 번의 흐름. 검사와 nan_policy는 Python 층, 정렬과 적합은 C++, 척도와 결과 객체는 다시 Python 층이에요.">
+  <Steps steps={[
+    { label: 'lowess', note: 'frac, it, delta를 검사하고 창의 점 수 k를 정해요', where: '_local.py' },
+    { label: 'scatter', note: 'x, y, 무게를 1차원 float64로 바꾸고, ±inf와 음수 무게는 ValueError, NaN은 nan_policy대로', where: '_common.py' },
+    { label: 'lowess_fit', note: 'GIL을 놓고(n ≥ 4096) C++로', where: 'local.cpp' },
+    { label: '정렬', note: '(x, y, 무게, 색인)의 사전순', where: 'local.cpp', depth: 1 },
+    { label: 'make_plan', note: 'delta의 건너뛰기 계획(정렬된 x와 delta만의 함수)', where: 'local.cpp', depth: 1 },
+    { label: 'for_points → fit_line', note: '맞출 점을 크기로만 나눈 태스크에서 점마다 국소 직선', where: 'local.hpp', depth: 2 },
+    { label: 'robust_weights', note: '잔차의 정확한 중앙값과 bisquare(it번)', where: 'local.cpp', depth: 2 },
+    { label: 'hat_at', note: '지렛대, df와 RSS를 정렬 순서로 더해요', where: 'local.hpp', depth: 1 },
+    { label: 'LowessResult', note: 'scale을 계산하고 배열을 입력 순서로 되돌려 쓰기 금지로', where: '_local.py, _results.py' },
+  ]} />
+</Fig>
+
+검사는 Python 층이 하고 C++은 받은 배열의 꼴만 다시 확인해요. 메시지는 부른 함수의 이름으로 시작해요(`lowess(): ...`, 결과의 메서드는 `predict(): ...`).
+
+## 입력과 nan_policy
+
+회귀형 함수가 같이 쓰는 입력 정리는 `_common.scatter`예요. `sd.ndarray`, 수의 시퀀스, numpy 배열, frame의 `Series`를 받아 float64로 계산하고(bool과 int64도 float64로), 복소수는 `TypeError`예요(Savitzky–Golay만 복소수를 받아요).
+
+```python
+    # src/stardust/smooth/_common.py
+    named = [("x", x), ("y", y)] + ([("weights", w)] if w is not None else [])
+    for arg, a in named:
+        if bool(_sd.any(_sd.isinf(a))):
+            raise ValueError(f"{func}(): '{arg}' contains infinity")
+    if w is not None and bool(_sd.any(w < 0)):
+        raise ValueError(f"{func}(): 'weights' must be >= 0")
+    bad = _sd.logical_or(_sd.isnan(x), _sd.isnan(y))
+    if w is not None:
+        bad = _sd.logical_or(bad, _sd.isnan(w))
+    keep = None
+    if bool(_sd.any(bad)):
+        if nan_policy == "raise":
+            raise ValueError(f"{func}(): the input contains NaN (nan_policy='raise')")
+        if nan_policy == "propagate":
+            return x, y, w, None, True
+        keep = _sd.logical_not(bad)
+        x, y = contiguous(x[keep]), contiguous(y[keep])
+        w = contiguous(w[keep]) if w is not None else None
+        if x.shape[0] == 0:
+            raise ValueError(f"{func}(): no point is left without NaN (nan_policy='omit')")
+    if w is not None and not bool(_sd.any(w > 0)):
+        raise ValueError(f"{func}(): at least one weight must be positive")
+    return x, y, w, keep, False
+```
+
+`nan_policy`는 회귀 영역과 같은 세 값이에요. `'propagate'`(기본)는 C++에 들어가지 않고 모든 값이 NaN인 결과를 만들어요. `'omit'`은 NaN이 있는 점을 빼고 맞춘 뒤, 결과 배열의 그 자리를 NaN으로 채워 입력의 길이로 되돌려요(`scatter_back`). ±inf와 음수 무게는 정책과 상관없이 `ValueError`예요. 조용히 이상한 값을 내기보다 알리는 편이 낫다는 영역의 규칙이에요. `make_*`, `generate_knots`, `bw_*`에는 `nan_policy`가 없고 NaN이 `ValueError`예요.
+
+무게가 0인 점은 맞춤에 들지 않아요. `nobs`, `df`, 강건 반복의 중앙값, 기준에서 빠지고 `leverage`는 0이지만, `fittedvalues`는 그 $x$에서 계산해요. 회귀의 `wls`와 같은 규칙이에요.
+
+## 결과의 공통 기반
+
+`LowessResult`, `LoessResult`, `SmoothingSplineResult`, `PSplineResult`, `KernelRegressionResult`는 `_results.py`의 `SmootherResult`를 이어받아요.
+
+```python
+    # src/stardust/smooth/_results.py
+    def __getattr__(self, name):
+        fields = object.__getattribute__(self, "_fields")
+        v = fields.get(name, _MISSING)
+        if v is _MISSING:
+            raise AttributeError(f"{type(self).__name__} has no field {name!r}")
+        if callable(v) and not isinstance(v, _sd.ndarray):
+            v = v()
+            if isinstance(v, _sd.ndarray):
+                v._set_readonly()
+            fields[name] = v
+        return v
+```
+
+맞추는 함수가 준 필드를 사전에 쥐고, 배열은 만들 때 쓰기 금지로 바꿔요. 호출할 수 있는 값으로 준 필드는 처음 읽을 때 한 번 계산해 그 값으로 바꿔 두는 게으른 필드예요. `loess`의 `two_delta`가 그래요. 밀집 $I - L$이 필요한 비싼 양이라 읽기 전에는 계산하지 않아요. 필드를 쓰거나 지우면 `AttributeError`예요.
+
+`summary()`는 회귀 영역의 상자 렌더러로 머리만 있는 상자를 그려요. 왼쪽은 방법, `nobs`, 유효 자유도, `scale`이고 오른쪽은 하위 클래스가 `TUNING`에 적은 조절 모수와 기준이에요. 스플라인의 `spline` 필드는 `BSpline`이 호출할 수 있는 객체라 게으른 필드로 오해받지 않게 클래스의 속성으로 따로 둬요. `KDEResult`는 이 기반이 아니에요. 분포 객체의 메서드 이름(`pdf`, `logpdf`, `cdf`, `sample`)을 쓰고 `summary()`가 없어요.
+
+```python
+>>> rng = sd.random.default_rng(7)
+>>> x = 10 * rng.random(200)
+>>> y = sd.sin(x) + 0.3 * sd.stats.Normal().sample(200, rng=rng)
+>>> r = sd.smooth.lowess(x, y)
+>>> r
+LowessResult(nobs=200, df=3.48265, frac=0.666667, it=3)
+>>> r.fittedvalues[0] = 1.0
+Traceback (most recent call last):
+    ...
+ValueError: assignment destination is read-only
+```
+
+결과는 `predict`를 위해 자료의 정렬된 사본을 쥐어요. lowess는 $(x, y, \text{무게}, \text{강건 무게})$, loess는 거기에 열의 눈금, 스플라인은 `BSpline`과 구간을 위한 삼각형의 상태, 핵 회귀는 정렬한 자료와 대역폭이에요.
+
+## 메모리
+
+| 함수 | 쥐는 것 |
+|---|---|
+| `lowess`, `loess` | 정렬된 사본과 강건 무게 $O(n)$, 태스크마다 창의 작업 공간 $O(q\cdot\text{항 수})$. $L$ 전체는 만들지 않아요. `two_delta`만 $\mathit{nobs} \le 4096$에서 밀집 $I - L$(134MB 이하) |
+| 스플라인 | 띠 행렬 $O(n_c\cdot b)$와 선택 역행렬의 띠. $\lambda$ 격자의 태스크마다 작업 공간 하나(태스크는 스레드 수의 두 배까지, 합이 물리 메모리의 1/4을 넘으면 태스크 수를 줄여요) |
+| 핵 회귀의 대역폭 찾기 | 태스크마다 $O(n)$. $n \times n$ 행렬은 만들지 않아요 |
+| KDE | 자료의 사본 $O(np)$와 트리, 구간화 격자 $O(G^p)$. `density`의 출력이 물리 메모리를, 넓힌 격자와 FFT 배열이 물리 메모리의 1/4을 넘으면 할당 전에 `MemoryError` |
+| Savitzky–Golay | 마디 값의 표 $16N(d + 1)$바이트(물리 메모리를 넘으면 `MemoryError`)와 `'interp'`의 끝 창 투영 $O(Nd)$ |
+
+어느 함수도 $n \times n$을 만들지 않는다는 것이 영역의 규칙이에요. 예외는 $\delta_2$ 하나이고 그것도 크기 상한과 게으른 계산으로 묶었어요. 나머지 계산은 평가점마다 창이나 남긴 점들만 보는 꼴이라 메모리가 자료 크기에 비례해요.

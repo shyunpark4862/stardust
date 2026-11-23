@@ -11,7 +11,7 @@
  * the library's tables (bench/accuracy/tables.py) that some shown row has; the
  * count of NaN/inf points only when nonzero.
  *
- *   area     'array' | 'linalg' | 'special' | 'stats' | 'regression' | 'optimize' | 'htest' | 'sparse' | 'integrate' | 'differentiate' | 'spatial' | 'fft' | 'interpolate' | 'graph'
+ *   area     'array' | 'linalg' | 'special' | 'stats' | 'regression' | 'optimize' | 'htest' | 'sparse' | 'integrate' | 'differentiate' | 'spatial' | 'fft' | 'interpolate' | 'smooth' | 'graph'
  *   names    only these sweeps (array, linalg, special: function; stats:
  *            distribution_method, or mv/Class.method and mv/cdf.kind for the
  *            multivariate group; regression: kind/problem; optimize: method)
@@ -61,6 +61,7 @@ const AREA_NAMES: Record<string, string> = {
   spatial: 'sd.spatial',
   fft: 'sd.fft',
   interpolate: 'sd.interpolate',
+  smooth: 'sd.smooth',
   graph: 'sd.graph',
 };
 const GROUP_NAMES: Record<string, string> = {

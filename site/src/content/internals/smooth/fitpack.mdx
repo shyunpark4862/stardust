@@ -1,0 +1,298 @@
+---
+title: FITPACK식 매듭 고르기
+group: 스플라인
+order: 2
+summary: "make_splrep·make_splprep·generate_knots가 매듭을 고르고 맞추는 방법을 설명해요. FITPACK의 규칙대로 잔차가 큰 구간에 매듭을 더하고, 잔차 제곱합이 s가 되는 벌점을 찾으며, 그래서 매듭이 scipy와 비트까지 같아요."
+seeAlso: [penalized-spline, overview, accuracy-performance]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import PlaneFig from '../../../components/fig/PlaneFig.astro';
+
+export const fpPts = [[0.027, 0.153], [0.075, 0.141], [0.238, -0.046], [0.324, 0.731], [0.452, 0.216], [0.621, 0.262], [0.697, 0.771], [1.0, 1.405], [1.027, 0.311], [1.239, 0.72], [1.387, 0.564], [1.452, 1.311], [1.489, 0.85], [1.736, 1.339], [1.972, 0.984], [2.061, 1.033], [2.095, 0.706], [2.119, 0.875], [2.222, 0.709], [2.37, 0.639], [2.47, 0.572], [2.872, 0.367], [2.943, 0.456], [2.99, 0.266], [3.028, 0.47], [3.138, -0.103], [3.257, -0.036], [3.276, 0.019], [3.459, -0.233], [3.506, -0.49], [3.618, -0.107], [3.63, -0.86], [3.719, -0.258], [3.813, -0.78], [3.979, -0.887], [4.166, -0.972], [4.206, -1.158], [4.261, -0.749], [4.347, -1.201], [4.38, -1.002], [4.433, -0.842], [4.688, -1.101], [4.832, -0.822], [4.838, -0.536], [4.858, -0.348], [5.024, -1.165], [5.115, -1.016], [5.139, -1.11], [5.148, -1.158], [5.213, -1.421], [5.277, -0.756], [5.349, -1.084], [5.399, -1.037], [5.43, -0.982], [5.479, -0.368], [5.57, -1.148], [5.749, -1.147], [5.809, -0.323], [5.995, -0.227], [6.05, -0.061], [6.074, -0.056], [6.174, -0.333], [6.314, -0.604], [6.384, -0.173], [6.608, 0.01], [6.62, 0.633], [6.699, 0.784], [6.849, 1.404], [6.99, 0.593], [7.058, 0.924], [7.106, 0.625], [7.119, 0.272], [7.208, 0.515], [7.307, 0.692], [7.363, 1.22], [7.498, 0.994], [7.623, 0.609], [7.638, 1.345], [7.746, 1.3], [7.763, 0.999], [7.939, 0.877], [8.05, 1.44], [8.12, 0.952], [8.157, 0.901], [8.322, 1.096], [8.412, 1.602], [8.642, 0.912], [8.908, 0.615], [9.127, 0.429], [9.149, 0.415], [9.307, 0.203], [9.354, -0.304], [9.374, -0.165], [9.434, 0.091], [9.515, -0.33], [9.625, -0.469], [9.717, -0.424], [9.766, -0.537], [9.86, -0.645], [9.94, -0.58]];
+export const fpSpline = [[0.027, -0.2527], [0.193, 0.04998], [0.359, 0.306], [0.525, 0.518], [0.691, 0.6884], [0.857, 0.8198], [1.022, 0.9148], [1.188, 0.9758], [1.354, 1.006], [1.52, 1.006], [1.686, 0.9811], [1.851, 0.9321], [2.017, 0.8618], [2.183, 0.773], [2.349, 0.6681], [2.515, 0.5496], [2.68, 0.4202], [2.846, 0.2823], [3.012, 0.1386], [3.178, -0.008525], [3.344, -0.1563], [3.509, -0.302], [3.675, -0.4426], [3.841, -0.5753], [4.007, -0.6974], [4.173, -0.8058], [4.338, -0.8977], [4.504, -0.9703], [4.67, -1.021], [4.836, -1.046], [5.002, -1.044], [5.167, -1.01], [5.333, -0.9432], [5.499, -0.8431], [5.665, -0.7154], [5.831, -0.5659], [5.997, -0.4006], [6.162, -0.2254], [6.328, -0.04629], [6.494, 0.1311], [6.66, 0.3023], [6.826, 0.4639], [6.991, 0.6124], [7.157, 0.7443], [7.323, 0.8562], [7.489, 0.9446], [7.655, 1.007], [7.82, 1.041], [7.986, 1.049], [8.152, 1.029], [8.318, 0.9828], [8.484, 0.909], [8.649, 0.8082], [8.815, 0.6803], [8.981, 0.5252], [9.147, 0.3451], [9.313, 0.1468], [9.478, -0.06174], [9.644, -0.2727], [9.81, -0.4782], [9.976, -0.6704]];
+
+## 한눈에 보기
+
+[`make_splrep`](/api/smooth/make_splrep/), `make_splprep`, [`generate_knots`](/api/smooth/generate_knots/)는 FITPACK(Dierckx)의 평활 스플라인이에요. 무게 붙은 잔차 제곱합이 주어진 값 $s$ 아래가 되는 $k$차 스플라인 가운데 가장 매끄러운 것을 찾아요.
+
+$$
+\min_g\ \sum_j \bigl(\text{내부 매듭 } t_j\text{에서 } g^{(k)}\text{의 뜀}\bigr)^2
+\quad\text{조건}\quad \sum_i \bigl(w_i(y_i - g(x_i))\bigr)^2 \le s.
+$$
+
+일은 두 단계예요. 먼저 매듭이 없는 곳에서 시작해 잔차가 큰 구간에 매듭을 더해 가며, 그 매듭의 최소제곱 스플라인이 $s$에 닿을 만큼 매듭을 늘려요(`generate_knots`). 그다음 그 매듭에서 뜀의 무게를 정하는 모수 $p$를, 잔차 제곱합이 정확히 $s$(허용오차 $0.001s$)가 되도록 찾아요. 규칙은 scipy 1.18.1의 `_fitpack_repro`(FITPACK의 `fpcurf`, `fppara`, `fpperi`를 Python으로 옮긴 것)를 그대로 C++로 옮긴 것이고, 풀이는 [벌점 스플라인](/internals/smooth/penalized-spline/)과 같은 띠 Givens QR이에요.
+
+| 파일 | 줄 수 | 맡은 일 |
+|---|---:|---|
+| `csrc/smooth/fitpack.cpp` | 716 | 최소제곱과 잔차, 매듭 걷기(`fpknot`), 매듭 늘리기, 뜀 행렬(`disc`), $F(p)$, 근 찾기(`fprati`와 이분), 현의 길이 |
+| `csrc/smooth/bandqr.hpp` | 390 | 띠 Givens QR과 주기 스플라인의 테두리 열 |
+| `src/stardust/smooth/_fitpack.py` | 321 | 인자 검사, 매듭의 검사(`fpcheck`), $s = 0$의 보간, 닿지 않는 $s$의 에러, 다항식으로의 매듭 삽입 |
+
+무게 `w`는 FITPACK의 뜻($1/\sigma$)이라 잔차에 곱한 뒤 제곱해요. 평활 스플라인의 `weights`($\sum w r^2$)와 다른 점이에요.
+
+## 매듭 늘리기
+
+```python
+>>> rng = sd.random.default_rng(7)
+>>> x = sd.sort(10 * rng.random(200))
+>>> y = sd.sin(x) + 0.3 * sd.stats.Normal().sample(200, rng=rng)
+>>> ks = sd.smooth.generate_knots(x, y, s=16.0)
+>>> [len(t) for t in ks]
+[8, 9, 10, 11, 13]
+>>> [[round(v, 3) for v in t.tolist()[4:-4]] for t in ks]
+[[], [5.277], [5.277, 7.498], [3.138, 5.277, 7.498], [3.138, 5.277, 6.379, 7.498, 8.957]]
+```
+
+`generate_knots`는 지나간 매듭 벡터를 모두 돌려줘요. 내부 매듭이 없는 3차 다항식($2(k + 1) = 8$개의 끝 매듭)에서 시작해 한 번에 하나씩, 마지막 걸음에서는 둘을 더했어요.
+
+<Fig caption="s = 16의 매듭 늘리기. 점선이 내부 매듭이고 번호가 더해진 차례예요(4번째 걸음에서 둘). 마지막 매듭의 최소제곱 스플라인이 s 아래로 내려가 멈췄고, 선은 그 매듭에서 잔차 제곱합이 s가 되도록 맞춘 make_splrep의 스플라인이에요.">
+  <PlaneFig
+    label="흩어진 점 위의 평활 스플라인과 다섯 개의 내부 매듭을 세로 점선으로 표시한 그림"
+    domain={[0, 10]}
+    range={[-1.6, 1.8]}
+    equal={false}
+    width={560}
+    height={260}
+    xTicks={[0, 2, 4, 6, 8, 10]}
+    yTicks={[-1, 0, 1]}
+    layers={[
+      { kind: 'vline', x: 5.277, dashed: true, tone: 'base' },
+      { kind: 'vline', x: 7.498, dashed: true, tone: 'base' },
+      { kind: 'vline', x: 3.138, dashed: true, tone: 'base' },
+      { kind: 'vline', x: 6.379, dashed: true, tone: 'base' },
+      { kind: 'vline', x: 8.957, dashed: true, tone: 'base' },
+      { kind: 'points', pts: fpPts, tone: 'faint', size: 2.5 },
+      { kind: 'line', pts: fpSpline, tone: 'main', width: 2 },
+      { kind: 'text', at: [5.277, 1.65], text: '1', tone: 'ink', anchor: 'middle' },
+      { kind: 'text', at: [7.498, 1.65], text: '2', tone: 'ink', anchor: 'middle' },
+      { kind: 'text', at: [3.138, 1.65], text: '3', tone: 'ink', anchor: 'middle' },
+      { kind: 'text', at: [6.379, 1.65], text: '4', tone: 'ink', anchor: 'middle' },
+      { kind: 'text', at: [8.957, 1.65], text: '4', tone: 'ink', anchor: 'middle' },
+    ]}
+  />
+</Fig>
+
+걸음마다 하는 일은 이래요.
+
+1. 지금 매듭의 최소제곱 스플라인을 맞추고 점마다의 잔차 $(w_i(y_i - g(x_i)))^2$와 그 합 $f_p$를 구해요. 잔차는 맞춘 스플라인을 자료점에서 평가해서 구해요(scipy의 `fpback`과 같은 방식). QR이 덤으로 주는 잔차 제곱합을 쓰지 않는 까닭은 매듭 걷기가 점마다의 잔차를 읽기 때문이에요.
+2. $\lvert f_p - s\rvert \lt 0.001s$이거나 $f_p \lt s$이면 멈춰요.
+3. 한 번에 넣을 매듭의 수를 정하고, 그 수만큼 매듭 걷기로 하나씩 넣어요. 하나 넣을 때마다 다시 맞춰 잔차를 고쳐요.
+4. 매듭이 보간의 수($m + k + 1$)에 닿으면 보간 매듭으로 끝내고, `nest`에 닿으면 거기서 멈춰요.
+
+### 매듭 걷기
+
+어디에 넣을지는 FITPACK의 `fpknot`이에요.
+
+```cpp
+// csrc/smooth/fitpack.cpp
+double fpknot(const double* x, std::int64_t m, const std::vector<double>& t, std::int64_t k, const double* res) {
+    const std::int64_t n = static_cast<std::int64_t>(t.size()), nk1 = n - k - 1;
+    std::vector<double> fpint;
+    std::vector<std::int64_t> nrdata, starts;
+    std::int64_t l = k + 1, start = 0;
+    double fpart = 0.0;
+    for (std::int64_t it = 0; it < m; ++it) {
+        bool fresh = false;
+        if (l < nk1 && x[it] >= t[l]) {
+            fresh = true;
+            ++l;
+        }
+        const double term = res[it];
+        fpart += term;
+        if (fresh) {
+            const double store = term * 0.5;
+            fpint.push_back(fpart - store);
+            fpart = store;
+            nrdata.push_back(it - start - 1);
+            starts.push_back(start);
+            start = it;
+        }
+    }
+    fpint.push_back(fpart);
+    nrdata.push_back(m - 1 - start - 1);
+    starts.push_back(start);
+    double fpmax = 0.0;
+    std::int64_t number = -1;
+    for (std::size_t j = 0; j < fpint.size(); ++j) {
+        if (fpmax >= fpint[j] || nrdata[j] <= 0) continue;
+        fpmax = fpint[j];
+        number = static_cast<std::int64_t>(j);
+    }
+    if (number < 0) return kNaN;
+    return x[starts[number] + nrdata[number] / 2 + 1];
+}
+```
+
+자료를 차례로 걸으며 매듭 구간마다 잔차를 모아요. $x \ge t_l$인 첫 점이 그 매듭의 "매듭 점"이고, 그 점의 잔차는 양쪽 구간에 반씩 나눠요. 구간마다 안쪽 자료점의 수(`nrdata`, 매듭 점은 빼요)도 세어 두고, 안쪽에 점이 있는 구간 가운데 잔차 합이 가장 큰 구간을 골라 그 안쪽 점들의 가운데 점을 새 매듭으로 해요. 새 매듭이 언제나 자료점이라 매듭과 자료가 엇갈리지 않고(Schoenberg–Whitney 조건이 쉽게 서요), 첫 매듭은 자료의 한가운데 점이에요. 위 예의 5.277이 정렬한 200점의 101번째 점이에요.
+
+같은 비교, 같은 순서라서 이 걷기는 scipy의 `_dierckx.fpknot`과 무작위 2000건(같은 $x$ 포함)에서 모두 같은 값을 냈어요.
+
+### 넣을 매듭의 수
+
+```cpp
+            // csrc/smooth/fitpack.cpp
+            const double delta = fpold - fp;
+            std::int64_t npl1;
+            if (delta > acc) {
+                const double v = static_cast<double>(nplus) * fpms / delta;
+                npl1 = v >= 4.0 * static_cast<double>(nplus) + 4.0 ? 4 * nplus + 4 : static_cast<std::int64_t>(v);
+            } else {
+                npl1 = nplus * 2;
+            }
+            nplus = std::min(nplus * 2, std::max({npl1, nplus / 2, std::int64_t{1}}));
+```
+
+직전 걸음에 `nplus`개를 넣어 $f_p$가 $\Delta$만큼 줄었다면, 남은 $f_p - s$를 지우려면 대략 $\mathit{nplus}\cdot(f_p - s)/\Delta$개가 더 필요하다는 선형 어림이에요. 줄어든 것이 거의 없으면 두 배로 늘려요. 그 어림을 직전 수의 절반과 두 배 사이로 눌러 한 걸음에 너무 많이 넣지 않게 해요.
+
+## 뜀의 벌점과 p
+
+매듭이 정해지면 $g$는 그 매듭의 $k$차 스플라인이고, 뜀의 벌점은 계수의 일차식이에요. $k$차 B-스플라인의 $k$차 도함수는 조각마다 상수라서 내부 매듭 $t_j$에서의 뜀이 계수의 일차결합이고, $B_i$가 $t_j$를 지지집합 안에 둔 $k + 2$개 계수만 걸쳐요.
+
+```cpp
+// csrc/smooth/fitpack.cpp
+std::vector<double> disc(const std::vector<double>& t, std::int64_t k, std::int64_t& rows) {
+    const std::int64_t n = static_cast<std::int64_t>(t.size());
+    const double delta = t[n - k - 1] - t[k];
+    const std::int64_t nrint = n - 2 * k - 1;
+    rows = std::max<std::int64_t>(0, nrint - 1);
+    std::vector<double> matr(static_cast<std::size_t>(rows * (k + 2)));
+    const double fac = std::pow(delta / static_cast<double>(nrint), static_cast<double>(k));
+    for (std::int64_t jj = 0; jj < rows; ++jj) {
+        const std::int64_t j = jj + k + 1;
+        for (std::int64_t ii = 0; ii < k + 2; ++ii) {
+            const std::int64_t i = jj + ii;
+            double prod = 1.0;
+            for (std::int64_t q = 0; q < k + 2; ++q)
+                if (i + q != j) prod *= (t[j] - t[i + q]);
+            matr[jj * (k + 2) + ii] = (t[i + k + 1] - t[i]) / prod;
+        }
+    }
+    for (double& v : matr) v *= fac;
+    return matr;
+}
+```
+
+식의 근거는 B-스플라인의 나눗셈 차분 표현이에요. $B_i(x) = (t_{i+k+1} - t_i)\,[t_i, \ldots, t_{i+k+1}]\,(\cdot - x)_+^k$이고, 나눗셈 차분은 $\sum_q f(t_{i+q})/\omega'(t_{i+q})$, $\omega(t) = \prod_q(t - t_{i+q})$예요. $(\tau - x)_+^k$의 $x$에 대한 $k$차 도함수는 $x = \tau$에서 $(-1)^kk!$만큼 뛰니, $B_i^{(k)}$의 $t_j$에서의 뜀은 상수 $k!$을 빼면 $(t_{i+k+1} - t_i)/\prod_{q:\,i+q \ne j}(t_j - t_{i+q})$예요. 모든 행에 같은 상수는 문제를 바꾸지 않아요. 마지막의 `fac` $= (\delta/\mathit{nrint})^k$(평균 매듭 간격의 $k$제곱)는 뜀 행을 자료 행과 같은 크기로 맞추는 눈금이에요.
+
+평활 문제는 라그랑주 승수 꼴로 바꿔 풀어요. 모수 $p \gt 0$마다
+
+$$
+\min_c\ \sum_i\bigl(w_i(y_i - g(x_i))\bigr)^2 + \frac{1}{p^2}\sum_j\bigl(\text{뜀}_j\bigr)^2
+$$
+
+의 해 $g_p$를 구하고, $F(p) = f_p(p) - s$의 근을 찾아요. $p \to \infty$이면 벌점이 사라져 최소제곱 스플라인(가장 작은 $f_p$), $p \to 0$이면 뜀이 모두 0이라 다항식(가장 큰 $f_p$)이고, $F$는 그 사이에서 단조 감소예요.
+
+### p 하나의 계산
+
+```cpp
+        // csrc/smooth/fitpack.cpp
+        for (std::int64_t j = 0; j < L.nb + L.kb; ++j) {
+            const std::int64_t ob = j < L.nb ? j : L.nb;
+            jump_rows(ob - 1);
+            std::fill(h.begin(), h.end(), 0.0);
+            std::fill(hb.begin(), hb.end(), 0.0);
+            if (j < L.nb)
+                for (std::int64_t e = 0; e <= k && j + e < L.nb; ++e) h[e] = data.R[j * (k + 1) + e];
+            for (std::int64_t b = 0; b < L.kb; ++b) hb[b] = data.B[j * L.kb + b];
+            for (std::int64_t q = 0; q < ncol; ++q) y[q] = data.Z[j * ncol + q];
+            Q.add(ob, h.data(), hb.data(), y.data());
+        }
+        jump_rows(L.nb + L.kb);
+```
+
+자료의 삼각형(띠 너비 $k + 1$)은 한 번만 만들고, $p$마다 그 행과 뜀 행$/p$(너비 $k + 2$)를 첫 열의 순서로 새 QR에 넣어요. [벌점 스플라인](/internals/smooth/penalized-spline/)이 $\lambda$마다 하는 일과 같은 구조예요. FITPACK은 뜀 행을 자료 삼각형에 바로 회전해 넣는데 그 채움이 행렬 끝까지 번져 $p$ 하나가 $O(n_c^2k)$예요. 여기서는 첫 열의 순서를 지켜 채움이 띠 안에 머물러 $O(n_cb^2)$예요. 그다음 스플라인을 자료점에서 평가해 $f_p$를 구해요.
+
+### 근 찾기
+
+FITPACK의 근 찾기는 $F$를 유리함수 $(ap + b)/(p + c)$로 어림해요. 세 점 $(p_1, f_1)$, $(p_2, f_2)$, $(p_3, f_3)$을 지나는 그런 함수의 근이 다음 $p$예요.
+
+```cpp
+// csrc/smooth/fitpack.cpp
+double fprati(double p1, double f1, double p2, double f2, double p3, double f3) {
+    const double h1 = f1 * (f2 - f3), h2 = f2 * (f3 - f1), h3 = f3 * (f1 - f2);
+    if (p3 == kInf) return -(p2 * h1 + p1 * h2) / h3;
+    return -(p1 * p2 * h3 + p2 * p3 * h1 + p1 * p3 * h2) / (p1 * h1 + p2 * h2 + p3 * h3);
+}
+```
+
+$F(p)$는 $p$가 커질수록 $f_p(\infty) - s$로 다가가는 꼴이라 유리함수가 다항식보다 잘 맞아요. $p_3 = \infty$이면 $F(\infty)$를 그 극한으로 두고 식의 극한을 써요. 반복(`root`)은 이래요.
+
+- 괄호 $p_1 \lt p \lt p_3$을 쥐고 $F(p_1) \gt 0 \gt F(p_3)$을 지켜요. 시작은 $p_1 = 0$, $p_3 = \infty$이고 $p_0 = n_c/\sum_j R_{jj}$(scipy와 같은 시작값)예요.
+- 새 값이 아직 한쪽 부호만 보였으면 $p$를 0.04배나 25배로 크게 움직여 괄호를 찾아요.
+- 괄호가 있으면 `fprati`로 다음 $p$를 구해요. $\lvert F\rvert \lt 0.001s$이면 멈춰요.
+- 20번 안에 멈추지 않으면 괄호 $[p_1, p_3]$에서 이분해요. $p_3 = \infty$이면 4배씩 키워 괄호를 만들고, 가운데는 기하평균 $\sqrt{p_1}\sqrt{p_3}$이에요($p$가 여러 자릿수를 오가니 로그 눈금의 가운데). 합쳐 100번이에요.
+
+scipy는 20번 뒤에 경고와 함께 그때의 스플라인을 내요. 여기서는 $F$가 단조라는 사실로 이분까지 가서 경고할 일이 없고, 그래도 못 찾으면 `ValueError`예요.
+
+### 닿지 않는 s와 다항식
+
+| 경우 | 결과 |
+|---|---|
+| $f_p(\infty) - s \gt 0.001s$ | 그 매듭으로는 $s$에 닿지 않아요(매듭이 `nest`에 닿았거나 사용자가 준 `t`). `ValueError` |
+| $f_p(0) \le s$ | 최소제곱 다항식이 이미 $s$ 안이에요. 다항식(주기면 상수)을 맞추고 매듭 삽입으로 주어진 매듭에 옮겨 돌려줘요 |
+| 잔차가 NaN | `ValueError`($s$가 자료의 척도에 비해 너무 작아요) |
+
+```python
+>>> sd.smooth.make_splrep(x, y, s=1.0, nest=12)
+Traceback (most recent call last):
+    ...
+ValueError: make_splrep(): s = 1.0 cannot be reached with these knots: the least-squares spline on them has sum (w r)^2 = 16.200207418036282 (more knots: a larger 'nest', or other 't')
+```
+
+## 주기 스플라인
+
+`bc_type='periodic'`이면 계수가 되풀이돼요. 자유 계수가 $n_f = n_c - k$개이고 $c_{n_f + j} = c_j$예요. 어느 행이든 열 번호를 $n_f$로 접으면 마지막 몇 열이 처음 몇 열로 돌아오니 띠가 깨져요. 그래서 자유 계수 $k, \ldots, n_f - 1$을 띠로, $0, \ldots, k - 1$을 $k$개의 밀집 테두리 열로 둬요.
+
+```cpp
+// csrc/smooth/fitpack.cpp
+std::int64_t place_row(
+    const Layout& L, std::int64_t o, const double* v, std::int64_t width, std::int64_t bw, double* h, double* hb
+) {
+    std::fill(h, h + bw, 0.0);
+    std::fill(hb, hb + L.kb, 0.0);
+    if (!L.periodic) {
+        for (std::int64_t e = 0; e < width; ++e) h[e] = v[e];
+        return o;
+    }
+    std::int64_t ob = L.nb;
+    for (std::int64_t e = 0; e < width; ++e) {
+        const std::int64_t j = (o + e) % L.nf;
+        if (j >= L.kb) ob = std::min(ob, j - L.kb);
+    }
+    for (std::int64_t e = 0; e < width; ++e) {
+        const std::int64_t j = (o + e) % L.nf;
+        if (j < L.kb) hb[j] += v[e];
+        else h[j - L.kb - ob] += v[e];
+    }
+    return ob;
+}
+```
+
+`BandQR`은 테두리를 함께 다뤄요. 띠의 각 행이 테두리 열 $k$개를 갖고, 띠의 행 $n_b$개 뒤에 테두리의 밀집 위 삼각 $T$($k \times k$)가 붙어요. 들어온 행의 테두리 원소는 띠와 함께 회전되고, 띠를 다 지난 뒤 $T$로 회전돼 들어가요. 대입은 $T$를 먼저 풀고 띠를 아래에서 위로 풀어요. 마지막 자료점은 첫 점의 복사라서 행으로 넣지 않아요(FITPACK의 `fpperi`).
+
+주기에서는 열의 순서가 FITPACK과 달라 삼각형의 대각이 달라요. 시작값 $p_0 = n_f/\sum R_{jj}$가 달라지니 근 찾기의 길도 달라요. 매듭은 같지만 스플라인은 scipy와 최대 $3.1 \times 10^{-4}$ 달라요. 두 쪽 모두 $\lvert f_p - s\rvert \le 0.001s$를 만족하는 다른 $p$에서 멈춘 것이에요.
+
+## scipy와 같은 매듭
+
+매듭을 놓는 일은 잔차 제곱합의 비교로 내리는 이산 결정이에요(어느 구간에 넣나, 몇 개를 넣나, 언제 멈추나). 반올림이 하나만 달라도 비교가 갈려 다른 매듭 벡터가 나올 수 있어요. 그래서 scipy의 계산과 같은 연산을 같은 순서로 해요. 잔차는 스플라인 평가로, 합은 자료의 순서로, 매듭 걷기와 넣을 수의 규칙은 글자 그대로예요.
+
+```python
+>>> import numpy as np, scipy.interpolate as si
+>>> sp = sd.smooth.make_splrep(x, y, s=16.0)
+>>> ref = si.make_splrep(np.asarray(x.tolist()), np.asarray(y.tolist()), s=16.0)
+>>> ref.t.tolist() == sp.t.tolist()
+True
+```
+
+무작위 자료 300벌($k = 1$–5, 세 가지 모양, $s$ 세 가지), 주기 150벌, 곡선(`make_splprep`) 100벌, 정렬된 시험 자료에서 매듭 벡터가 모두 비트까지 같았어요. 같은 매듭에서 스플라인의 차는 비주기 최대 $1.8 \times 10^{-12}$, 곡선 $6.1 \times 10^{-15}$예요. 근 찾기의 $p$와 QR의 순서가 달라서 생기는 차이예요. 매듭이 같다는 것은 약속이 아니라 측정이에요. 테스트는 갈리는 자료가 생기면 실패해서 알려 줘요.
+
+`make_splprep`의 현의 길이 매개변수 $u_i = \sum_{j \le i}\lVert X_j - X_{j-1}\rVert / \text{전체}$도 같은 이유로 scipy(numpy의 `sum`과 `cumulative_sum`)와 같은 차례로 더해요. 배열 영역의 `cumulative_sum`은 다른 순서로 더해 $n = 10^4$에서 끝자리가 달라지고, 그 차이가 매듭을 가를 수 있어요.
+
+계약은 매듭의 일치가 아니라 결과의 성질이에요. 돌려준 스플라인이 (1) 그 매듭에서 돌려준 $p$의 벌점 최소제곱 해이고(벌점 스플라인과 같은 계수 한계), (2) $\lvert\sum(wr)^2 - s\rvert \le 0.001s$라는 것이에요. 34점에서 잰 최대가 계약 단위 0.82예요.
+
+## 입력과 극한
+
+- $x$(`make_splprep`은 $u$)는 비감소여야 해요. 매듭 규칙이 자료의 순서에 기대니 정렬하지 않아요.
+- $k$는 1–5(FITPACK의 차수), $s$는 유한한 0 이상이에요.
+- $s = 0$은 보간이라 `make_splrep(s=0)`은 `make_interp_spline(x, y, k=k)`(주기는 `bc_type='periodic'`), `make_splprep(s=0)`은 `make_interp_spline(u, x, axis=1)` 그 자체예요. 같은 비트예요.
+- 사용자가 준 `t`는 scipy의 `fpcheck`(FITPACK의 `fpchec`, `fpchep`)로 검사해요. 끝 매듭의 순서, 내부 매듭의 증가, 자료가 $[t_k, t_{n-k-1}]$ 안인지, 그리고 Schoenberg–Whitney 조건이에요.

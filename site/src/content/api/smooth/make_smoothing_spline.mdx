@@ -1,0 +1,135 @@
+---
+title: make_smoothing_spline
+names: [make_smoothing_spline]
+group: 스플라인
+order: 3
+signatures:
+  - "sd.smooth.make_smoothing_spline(x, y, /, *, w=None, lam=None, axis=0)"
+summary: 평활 스플라인을 BSpline 하나로 돌려줘요. smoothing_spline과 같은 문제를 풀되 결과 객체 없이 곡선만 줘요. λ를 주지 않으면 GCV로 골라요.
+params:
+  - name: x
+    type: ndarray, 수의 시퀀스, numpy 배열, Series
+    kind: positional-only
+    desc: "가로축 값 (n,). 정렬되지 않아도 되고 같은 값이 있어도 돼요. 서로 다른 값이 다섯 이상이어야 해요."
+  - name: y
+    type: ndarray, 수의 시퀀스, numpy 배열, Series
+    kind: positional-only
+    desc: "값. axis 축의 길이가 x와 같아요."
+  - name: w
+    type: ndarray, 수의 시퀀스 또는 None
+    kind: keyword-only
+    desc: "점마다의 무게 (n,). 잔차 제곱합이 Σwᵢrᵢ²이에요. 0 이상이고 양수가 하나 이상이어야 해요."
+  - name: lam
+    type: float 또는 None
+    kind: keyword-only
+    desc: "벌점의 크기 λ(0 이상, inf 가능). None(기본값)이면 GCV로 골라요."
+  - name: axis
+    type: int
+    kind: keyword-only
+    desc: "y에서 x와 짝을 이루는 축. 기본값 0."
+returns:
+  type: BSpline
+  desc: "맞춘 자연 3차 스플라인(sd.interpolate.BSpline)."
+raises:
+  - type: TypeError
+    desc: "옵션을 자리로 줄 때, 없는 인자를 줄 때."
+  - type: ValueError
+    desc: "NaN이나 ±inf가 있을 때, 서로 다른 x가 다섯보다 적을 때, 무게가 음수이거나 모두 0일 때, lam이 음수일 때."
+  - type: sd.linalg.LinAlgError
+    desc: "아주 가까이 모인 x 때문에 계가 작업 정밀도에서 특이할 때."
+seeAlso: [smoothing_spline, pspline, make_splrep, make_lsq_spline]
+---
+
+## 한눈에 보기
+
+`make_smoothing_spline`은 [`smoothing_spline`](/api/smooth/smoothing_spline/)과 같은 평활 스플라인
+
+$$
+\sum_i w_i \bigl(y_i - f(x_i)\bigr)^2 + \lambda \int f''(x)^2\,dx
+$$
+
+의 최소점을 [`BSpline`](/api/interpolate/BSpline/)으로만 돌려줘요. 진단(유효 자유도, 고른 $\lambda$, 잔차 척도)이 필요 없고 곡선만 쓰면 이 함수가 간단해요.
+
+```python
+>>> import stardust as sd
+>>> rng = sd.random.default_rng(7)
+>>> x = sd.sort(rng.random(60)) * 10
+>>> y = sd.sin(x) + sd.stats.Normal(sigma=0.3).sample(60, rng=rng)
+>>> s = sd.smooth.make_smoothing_spline(x, y)
+>>> s
+BSpline(degree=3, knots=66, extrapolate=True)
+>>> s([2.0, 5.0, 8.0])
+array([ 0.8426530367536844, -1.0307640993835183,   0.856301319630272], dtype=float64)
+>>> s.derivative(nu=2)(5.0)
+1.2112939718850138
+```
+
+같은 자료, 같은 $\lambda$면 `smoothing_spline(...).spline`과 같은 곡선이에요. $\lambda$를 주지 않으면 GCV로 고르는 것도 같아요.
+
+```python
+>>> r = sd.smooth.smoothing_spline(x, y)
+>>> bool(sd.all(s.c == r.spline.c))
+True
+>>> s2 = sd.smooth.make_smoothing_spline(x, y, lam=r.lam)
+>>> bool(sd.all(s2.c == r.spline.c))
+True
+```
+
+<Reference />
+
+## λ
+
+$\lambda$의 뜻과 단위는 [`smoothing_spline`](/api/smooth/smoothing_spline/)과 같아요. $\lambda = 0$은 자연 3차 보간 스플라인, $\lambda = \infty$는 무게 붙은 최소제곱 직선이에요.
+
+```python
+>>> sd.smooth.make_smoothing_spline(x, y, lam=0.0)(x[:3]) - y[:3]
+array([0.0, 0.0, 0.0], dtype=float64)
+>>> line = sd.smooth.make_smoothing_spline(x, y, lam=float('inf'))
+>>> line.derivative(nu=2)([1.0, 5.0, 9.0])
+array([-2.8140254864559833e-17,   3.279566916494179e-16,
+       -2.0960101621122688e-17], dtype=float64)
+```
+
+유효 자유도로 $\lambda$를 정하거나 CV로 고르려면 `smoothing_spline`의 `df=`, `criterion='cv'`를 써요.
+
+## 매듭
+
+매듭은 서로 다른 x 전부이고 양 끝이 4겹이에요. 계수는 (서로 다른 x의 수) + 2개예요.
+
+```python
+>>> s.t[:6]
+array([0.09910608711773516, 0.09910608711773516, 0.09910608711773516,
+       0.09910608711773516,  0.2379991050660768, 0.37326790349321404], dtype=float64)
+>>> len(s.c), len(s.t)
+(62, 66)
+```
+
+## 입력
+
+`smoothing_spline`과 달리 `nan_policy`가 없어서 NaN과 ±inf는 언제나 에러예요. 정렬되지 않은 x와 같은 x는 받아요. 무게는 0 이상이면 돼요.
+
+```python
+>>> yn = y.copy()
+>>> yn[3] = float('nan')
+>>> sd.smooth.make_smoothing_spline(x, yn)
+Traceback (most recent call last):
+    ...
+ValueError: make_smoothing_spline(): the input contains NaN
+>>> w = sd.ones(60)
+>>> w[0] = 0.0
+>>> sd.smooth.make_smoothing_spline(x, y, w=w)(x[0])
+0.021605781036403166
+>>> sd.smooth.make_smoothing_spline(x, y, 1.0)
+Traceback (most recent call last):
+    ...
+TypeError: make_smoothing_spline(): takes 2 positional arguments but 3 were given
+```
+
+여러 열은 `axis`로 함께 맞추고, GCV는 모든 열의 기준을 더한 값으로 $\lambda$ 하나를 골라요.
+
+## scipy를 아는 분께
+
+- `scipy.interpolate.make_smoothing_spline(x, y, w, lam, axis)`과 같은 문제, 같은 매듭, 같은 $\lambda$의 단위예요. `w`, `lam`, `axis`는 이름으로만 받아요.
+- scipy는 GCV의 $\lambda$를 $(0, n)$에서 찾아 x의 단위가 바뀌면 다른 곡선을 고르고, 고르지 않은 x가 많으면 `ValueError: Seems like the problem is ill-posed`예요. sd의 찾기는 x, y, 무게의 단위와 무관한 구간에서 하고 그런 자료도 풀어요.
+- $\lambda = \infty$, 정렬되지 않은 x, 같은 x, 0인 무게를 받아요. scipy는 받지 않아요.
+- 아주 가까이 모인 x로 계가 특이하면 `LinAlgError`예요.

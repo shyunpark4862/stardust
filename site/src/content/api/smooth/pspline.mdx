@@ -1,0 +1,243 @@
+---
+title: pspline
+names: [pspline, PSplineResult, PSplineResult.spline, PSplineResult.predict, PSplineResult.predict_interval, PSplineResult.summary]
+group: 스플라인
+order: 2
+signatures:
+  - "sd.smooth.pspline(x, y, /, *, n_segments=None, k=3, diff_order=2, lam=None, df=None, criterion='gcv', xb=None, xe=None, weights=None, axis=0, nan_policy='propagate')"
+  - "PSplineResult.predict(x_new, /)"
+  - "PSplineResult.predict_interval(x_new, /, *, alpha=0.05)"
+  - "PSplineResult.summary()"
+summary: 고른 간격의 매듭 위 B-스플라인에 이웃한 계수의 차이를 벌주는 P-스플라인(Eilers–Marx)을 맞춰요. 매듭 수가 점의 수와 무관해서 점이 많아도 빨라요. λ는 직접 주거나, 유효 자유도로 주거나, GCV·CV로 골라요.
+params:
+  - name: x
+    type: ndarray, 수의 시퀀스, numpy 배열, Series
+    kind: positional-only
+    desc: "가로축 값 (n,). 정렬되지 않아도 되고 같은 값이 있어도 돼요."
+  - name: y
+    type: ndarray, 수의 시퀀스, numpy 배열, Series
+    kind: positional-only
+    desc: "값. axis 축의 길이가 x와 같아요."
+  - name: n_segments
+    type: int 또는 None
+    kind: keyword-only
+    desc: "[xb, xe]를 나누는 구간의 수(1 이상). None(기본값)이면 ⌈min(n/4, 40)⌉이에요."
+  - name: k
+    type: int
+    kind: keyword-only
+    desc: "B-스플라인의 차수(0 이상). 기본값 3."
+  - name: diff_order
+    type: int
+    kind: keyword-only
+    desc: "벌점에 쓰는 계수 차분의 차수. 1 이상 k + 1 이하. 기본값 2."
+  - name: lam
+    type: float 또는 None
+    kind: keyword-only
+    desc: "벌점의 크기 λ(0 이상, inf 가능). None(기본값)이면 df나 criterion으로 골라요."
+  - name: df
+    type: float 또는 None
+    kind: keyword-only
+    desc: "원하는 유효 자유도. diff_order < df ≤ min(계수의 수, 양수 무게의 서로 다른 x의 수)."
+  - name: criterion
+    type: str
+    kind: keyword-only
+    desc: "'gcv'(기본값) 또는 'cv'."
+  - name: xb
+    type: float 또는 None
+    kind: keyword-only
+    desc: "매듭 구간의 왼쪽 끝. None이면 x의 최솟값. 자료가 [xb, xe] 안에 있어야 해요."
+  - name: xe
+    type: float 또는 None
+    kind: keyword-only
+    desc: "매듭 구간의 오른쪽 끝. None이면 x의 최댓값."
+  - name: weights
+    type: ndarray, 수의 시퀀스 또는 None
+    kind: keyword-only
+    desc: "점마다의 무게 (n,). 잔차 제곱합이 Σwᵢrᵢ²이에요."
+  - name: axis
+    type: int
+    kind: keyword-only
+    desc: "y에서 x와 짝을 이루는 축. 기본값 0."
+  - name: nan_policy
+    type: str
+    kind: keyword-only
+    desc: "'propagate'(기본값), 'omit', 'raise'."
+returns:
+  type: PSplineResult
+  desc: "smoothing_spline의 결과와 같은 필드(spline, lam, gcv, cv, criterion, status, converged와 공통 필드)에 n_segments, k, diff_order가 더 있어요."
+raises:
+  - type: TypeError
+    desc: "옵션을 자리로 줄 때, 없는 인자를 줄 때, 정수 인자가 int가 아닐 때."
+  - type: ValueError
+    desc: "n_segments·k·diff_order가 범위 밖일 때, 자료가 [xb, xe] 밖에 있을 때, lam과 df를 함께 줄 때, df가 범위 밖일 때, ±inf나 음수 무게, nan_policy='raise'에서 NaN이 있을 때."
+  - type: sd.linalg.LinAlgError
+    desc: "λ = 0의 최소제곱이 랭크가 모자랄 때(자료가 없는 구간이 있을 때), 계가 작업 정밀도에서 특이할 때."
+seeAlso: [smoothing_spline, make_lsq_spline, results, basics]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import PlaneFig from '../../../components/fig/PlaneFig.astro';
+export const psPts = [[0.09911, -0.07339], [0.238, -0.2502], [0.3733, 0.4386], [1.007, 0.5014], [1.027, 1.007], [1.387, 1.071], [1.404, 0.9589], [1.8, 0.5872], [2.017, 1.092], [2.095, 0.9959], [2.096, 0.782], [2.37, 0.8416], [2.374, 0.8027], [2.579, 0.4194], [2.972, -0.4319], [3.028, 0.02379], [3.484, -0.6856], [3.63, -0.08409], [3.638, -0.4107], [4.206, -0.5736], [4.261, -0.9593], [4.38, -1.16], [4.491, -0.7508], [4.688, -1.406], [5.12, -1.337], [5.139, -1.349], [5.213, -1.411], [5.277, -0.4757], [5.332, -0.1228], [5.42, -0.8497], [5.57, -0.9415], [5.748, -0.7379], [6.044, -0.6758], [6.074, -0.02902], [6.149, -0.2803], [6.699, 0.5287], [6.823, 0.5279], [6.895, 0.2946], [7.058, 0.9663], [7.09, 0.7741], [7.208, 1.033], [7.242, 0.692], [7.307, 0.8393], [7.331, 1.067], [7.498, 1.251], [7.602, 0.8344], [7.638, 0.6271], [7.73, 0.8816], [8.023, 1.219], [8.05, 0.5775], [8.157, 0.7925], [8.412, 0.5338], [9.145, 0.4232], [9.149, 0.09095], [9.259, 0.4606], [9.327, -0.3459], [9.354, 0.1065], [9.717, -0.001959], [9.766, -0.02833], [9.86, -0.5789]];
+export const psFit = [[0.09911, -0.02409], [0.1479, 0.0235], [0.1967, 0.07079], [0.2455, 0.1177], [0.2943, 0.1641], [0.3431, 0.21], [0.3919, 0.2552], [0.4407, 0.2997], [0.4895, 0.3433], [0.5383, 0.386], [0.5871, 0.4277], [0.6359, 0.4683], [0.6847, 0.5076], [0.7335, 0.5457], [0.7823, 0.5824], [0.8311, 0.6177], [0.8799, 0.6514], [0.9287, 0.6834], [0.9775, 0.7138], [1.026, 0.7424], [1.075, 0.7691], [1.124, 0.794], [1.173, 0.8168], [1.222, 0.8375], [1.27, 0.856], [1.319, 0.8723], [1.368, 0.8863], [1.417, 0.8979], [1.466, 0.907], [1.514, 0.9137], [1.563, 0.9179], [1.612, 0.9196], [1.661, 0.9188], [1.71, 0.9155], [1.758, 0.9097], [1.807, 0.9013], [1.856, 0.8905], [1.905, 0.877], [1.954, 0.8611], [2.002, 0.8425], [2.051, 0.8214], [2.1, 0.7977], [2.149, 0.7716], [2.198, 0.7432], [2.246, 0.7126], [2.295, 0.68], [2.344, 0.6456], [2.393, 0.6094], [2.442, 0.5717], [2.49, 0.5326], [2.539, 0.4922], [2.588, 0.4506], [2.637, 0.4081], [2.686, 0.3647], [2.734, 0.3206], [2.783, 0.276], [2.832, 0.2309], [2.881, 0.1854], [2.93, 0.1397], [2.978, 0.0938], [3.027, 0.04786], [3.076, 0.001975], [3.125, -0.04375], [3.174, -0.08922], [3.222, -0.1343], [3.271, -0.179], [3.32, -0.223], [3.369, -0.2664], [3.418, -0.309], [3.466, -0.3508], [3.515, -0.3919], [3.564, -0.4321], [3.613, -0.4715], [3.662, -0.51], [3.71, -0.5476], [3.759, -0.5843], [3.808, -0.6202], [3.857, -0.655], [3.906, -0.6889], [3.954, -0.7218], [4.003, -0.7537], [4.052, -0.7846], [4.101, -0.8143], [4.15, -0.8428], [4.198, -0.8699], [4.247, -0.8955], [4.296, -0.9195], [4.345, -0.9418], [4.394, -0.9622], [4.442, -0.9807], [4.491, -0.9971], [4.54, -1.011], [4.589, -1.023], [4.638, -1.033], [4.686, -1.04], [4.735, -1.044], [4.784, -1.046], [4.833, -1.046], [4.882, -1.043], [4.931, -1.037], [4.979, -1.029], [5.028, -1.018], [5.077, -1.005], [5.126, -0.99], [5.175, -0.9722], [5.223, -0.9519], [5.272, -0.9292], [5.321, -0.9042], [5.37, -0.8768], [5.419, -0.8471], [5.467, -0.8153], [5.516, -0.7814], [5.565, -0.7455], [5.614, -0.7077], [5.663, -0.6681], [5.711, -0.6268], [5.76, -0.5838], [5.809, -0.5393], [5.858, -0.4933], [5.907, -0.4459], [5.955, -0.3972], [6.004, -0.3474], [6.053, -0.2965], [6.102, -0.2448], [6.151, -0.1924], [6.199, -0.1395], [6.248, -0.08624], [6.297, -0.03285], [6.346, 0.02052], [6.395, 0.0737], [6.443, 0.1265], [6.492, 0.1788], [6.541, 0.2303], [6.59, 0.281], [6.639, 0.3306], [6.687, 0.3789], [6.736, 0.426], [6.785, 0.4715], [6.834, 0.5155], [6.883, 0.5577], [6.931, 0.598], [6.98, 0.6363], [7.029, 0.6724], [7.078, 0.7063], [7.127, 0.7378], [7.175, 0.7667], [7.224, 0.7929], [7.273, 0.8164], [7.322, 0.837], [7.371, 0.8547], [7.419, 0.8698], [7.468, 0.8822], [7.517, 0.892], [7.566, 0.8993], [7.615, 0.9041], [7.663, 0.9066], [7.712, 0.9067], [7.761, 0.9047], [7.81, 0.9005], [7.859, 0.8942], [7.907, 0.8859], [7.956, 0.8757], [8.005, 0.8636], [8.054, 0.8497], [8.103, 0.8342], [8.151, 0.817], [8.2, 0.7984], [8.249, 0.7783], [8.298, 0.7569], [8.347, 0.7342], [8.395, 0.7104], [8.444, 0.6855], [8.493, 0.6596], [8.542, 0.6328], [8.591, 0.6052], [8.639, 0.5768], [8.688, 0.5476], [8.737, 0.5178], [8.786, 0.4873], [8.835, 0.4562], [8.883, 0.4244], [8.932, 0.3921], [8.981, 0.3593], [9.03, 0.326], [9.079, 0.2923], [9.127, 0.2581], [9.176, 0.2235], [9.225, 0.1886], [9.274, 0.1534], [9.323, 0.1179], [9.371, 0.08207], [9.42, 0.04598], [9.469, 0.009651], [9.518, -0.02692], [9.567, -0.0637], [9.615, -0.1007], [9.664, -0.1379], [9.713, -0.1752], [9.762, -0.2127], [9.811, -0.2503], [9.86, -0.288]];
+export const psKnots = [[0.09911, -1.8, 0.09911, -1.6], [0.7498, -1.8, 0.7498, -1.6], [1.4, -1.8, 1.4, -1.6], [2.051, -1.8, 2.051, -1.6], [2.702, -1.8, 2.702, -1.6], [3.353, -1.8, 3.353, -1.6], [4.003, -1.8, 4.003, -1.6], [4.654, -1.8, 4.654, -1.6], [5.305, -1.8, 5.305, -1.6], [5.955, -1.8, 5.955, -1.6], [6.606, -1.8, 6.606, -1.6], [7.257, -1.8, 7.257, -1.6], [7.907, -1.8, 7.907, -1.6], [8.558, -1.8, 8.558, -1.6], [9.209, -1.8, 9.209, -1.6], [9.86, -1.8, 9.86, -1.6]];
+
+## 한눈에 보기
+
+P-스플라인은 평활 스플라인을 가볍게 만든 것이에요. 매듭을 자료점마다 두지 않고 범위를 고른 간격의 구간 몇 개로 나눠 두고, 그 위의 B-스플라인 계수 $c$를 이렇게 골라요.
+
+$$
+\sum_i w_i \bigl(y_i - f(x_i)\bigr)^2 + \lambda \lVert D_d c \rVert^2
+$$
+
+$D_d$는 이웃한 계수의 $d$차 차분이에요(`diff_order`). 기본 $d = 2$는 $c_{j+1} - 2c_j + c_{j-1}$을 벌줘서, $\lambda$가 클수록 계수가 직선에 가까이 놓이고 곡선이 펴져요. 매듭이 적어도 벌점이 출렁임을 막아 주니 매듭의 수와 자리를 고민하지 않아도 돼요.
+
+```python
+>>> import stardust as sd
+>>> rng = sd.random.default_rng(7)
+>>> x = sd.sort(rng.random(60)) * 10
+>>> y = sd.sin(x) + sd.stats.Normal(sigma=0.3).sample(60, rng=rng)
+>>> p = sd.smooth.pspline(x, y)
+>>> p
+PSplineResult(nobs=60, df=7.86536, lam=0.857122, n_segments=15)
+>>> p.spline
+BSpline(degree=3, knots=22, extrapolate=True)
+>>> p.predict([2.0, 5.0, 8.0])
+array([0.8434885659519396, -1.024841013743487, 0.8648877797354947], dtype=float64)
+>>> p.n_segments, p.k, p.diff_order
+(15, 3, 2)
+```
+
+<Fig caption="같은 점 60개의 P-스플라인(GCV, 구간 15개). 아래 눈금은 고른 간격의 매듭이에요. 평활 스플라인은 점마다 매듭을 두지만 P-스플라인은 구간 수만큼만 둬요.">
+  <PlaneFig
+    label="흩어진 점과 P-스플라인 곡선, 고른 간격의 매듭 위치"
+    domain={[0, 10]}
+    range={[-1.8, 1.8]}
+    equal={false}
+    width={560}
+    height={260}
+    xTicks={[0, 2, 4, 6, 8, 10]}
+    yTicks={[-1, 0, 1]}
+    layers={[
+      { kind: 'segments', segs: psKnots, tone: 'base', width: 1.2 },
+      { kind: 'points', pts: psPts, tone: 'faint', size: 2.6 },
+      { kind: 'line', pts: psFit, tone: 'main', width: 2 },
+    ]}
+    legend={[
+      { label: '자료', tone: 'faint', shape: 'dot' },
+      { label: 'P-스플라인', tone: 'main', shape: 'line' },
+      { label: '매듭', tone: 'base', shape: 'line' },
+    ]}
+  />
+</Fig>
+
+<Reference />
+
+## 매듭과 차수
+
+`[xb, xe]`(기본은 x의 최솟값과 최댓값)를 `n_segments`개의 같은 구간으로 나누고, 그 경계와 바깥으로 $k$개씩 더 이어 놓은 점을 매듭으로 써요. 계수는 `n_segments + k`개예요. 기본 구간 수는 $\lceil \min(n/4, 40) \rceil$이라 점이 160개를 넘으면 늘지 않아요.
+
+```python
+>>> p.spline.t[:6], len(p.spline.c)
+(array([-1.8529729117714169, -1.2022799121416996, -0.5515869125119822,
+       0.09910608711773516,  0.7497990867474525,    1.40049208637717], dtype=float64), 18)
+>>> big = sd.smooth.pspline(sd.linspace(0, 10, 100000), sd.sin(sd.linspace(0, 10, 100000)))
+>>> big.n_segments, len(big.spline.c)
+(40, 43)
+```
+
+구간 수를 늘리면 더 가는 굴곡을 표현할 수 있어요. 다만 매끄러움은 $\lambda$가 정하므로 구간 수에 아주 민감하지는 않아요.
+
+```python
+>>> for ns in (8, 15, 40):
+...     q = sd.smooth.pspline(x, y, n_segments=ns)
+...     print(ns, round(q.df, 3), round(float(q.scale), 4))
+8 7.284 0.286
+15 7.865 0.2864
+40 8.281 0.2862
+```
+
+## λ
+
+`lam`, `df`, `criterion`의 뜻과 찾는 법은 [`smoothing_spline`](/api/smooth/smoothing_spline/)과 같아요. 극한은 차분 벌점에서 나와요.
+
+- $\lambda = \infty$이면 $D_d c = 0$이라 계수가 $d - 1$차 다항식 위에 놓여요. 기본 $d = 2$는 직선의 최소제곱이에요.
+- $\lambda = 0$이면 벌점 없는 B-스플라인 최소제곱이에요. 무게가 1이면 같은 매듭의 [`make_lsq_spline`](/api/smooth/make_lsq_spline/)과 같은 비트예요. 자료가 없는 구간이 있으면 계수가 정해지지 않아 에러예요.
+
+```python
+>>> pi = sd.smooth.pspline(x, y, lam=float('inf'))
+>>> round(pi.df, 6)
+2.0
+>>> p3 = sd.smooth.pspline(x, y, lam=float('inf'), diff_order=3)
+>>> round(p3.df, 6)
+3.0
+>>> p0 = sd.smooth.pspline(x, y, lam=0.0)
+>>> ls = sd.smooth.make_lsq_spline(x, y, p0.spline.t)
+>>> bool(sd.all(p0.spline.c == ls.c))
+True
+>>> sd.smooth.pspline(sd.asarray([0.0, 0.1, 0.2, 0.3, 9.8, 9.9, 10.0]), sd.ones(7), lam=0.0, n_segments=10)
+Traceback (most recent call last):
+    ...
+stardust.linalg.LinAlgError: pspline(): lam=0 is the least-squares spline and its system is singular (an interval without data: the Schoenberg-Whitney conditions fail)
+```
+
+```python
+>>> sd.smooth.pspline(x, y, df=6).lam
+3.888586814385201
+>>> pc = sd.smooth.pspline(x, y, criterion='cv')
+>>> round(pc.df, 4), pc.status, pc.converged
+(8.0035, 0, True)
+```
+
+## 결과 읽기
+
+필드는 [`smoothing_spline`](/api/smooth/smoothing_spline/)의 결과와 같고 받은 값 `n_segments`, `k`, `diff_order`가 더 있어요. `predict(x_new)`는 `spline(x_new)`와 같은 비트예요. 범위 밖에서는 끝 조각의 다항식을 늘여요.
+
+```python
+>>> print(p.summary())
+                               P-Spline Results
+==============================================================================
+Method:                       P-spline  Lambda:                         0.8571
+No. Observations:                   60  Segments:                           15
+Df (effective):                  7.865  Degree:                              3
+Scale:                          0.2864  Penalty order:                       2
+                                        Criterion:                         gcv
+                                        GCV:                           0.09438
+                                        CV:                            0.09413
+                                        Converged:                        True
+==============================================================================
+>>> p.predict_interval([5.0])
+array([[-1.1886842932831234, -0.8609977342038503]], dtype=float64)
+```
+
+## 범위
+
+자료는 `[xb, xe]` 안에 있어야 해요. 범위를 넓혀 두면 나중에 그 범위 끝까지 같은 매듭의 곡선을 쓸 수 있어요.
+
+```python
+>>> sd.smooth.pspline(x, y, xb=0.0, xe=12.0).spline.t[-4:]
+array([12.0, 12.8, 13.6, 14.4], dtype=float64)
+>>> sd.smooth.pspline(x, y, xb=1.0)
+Traceback (most recent call last):
+    ...
+ValueError: pspline(): 'x' must lie within [xb, xe] = [1.0, 9.859501081563495]
+```
+
+## 조심할 점
+
+```python
+>>> sd.smooth.pspline(x, y, diff_order=5)
+Traceback (most recent call last):
+    ...
+ValueError: pspline(): 'diff_order' must be in [1, k + 1] = [1, 4], not 5
+>>> sd.smooth.pspline(x, y, n_segments=0)
+Traceback (most recent call last):
+    ...
+ValueError: pspline(): 'n_segments' must be >= 1, not 0
+```
+
+- 같은 입력이면 스레드 수와 상관없이 같은 비트예요.
+- 여러 열(`axis`), 무게, `nan_policy`는 [`smoothing_spline`](/api/smooth/smoothing_spline/)과 같아요.
+
+## R을 아는 분께
+
+- `mgcv`의 `gam(y ~ s(x, bs="ps"))`와 같은 종류의 평활기예요. 매듭을 놓는 법과 $\lambda$를 고르는 기본 기준이 달라 값은 같지 않아요(GCV의 식은 같아요).
+- R `smooth.spline`의 기본은 점이 많으면 매듭을 줄여요. 그런 쓰임에는 `pspline`이 가까워요.

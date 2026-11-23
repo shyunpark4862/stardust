@@ -1,0 +1,371 @@
+---
+title: lowess
+group: 산점도 평활
+order: 1
+summary: "lowess가 산점도를 매끄럽게 하는 방법을 설명해요. 정렬된 자료에서 평가점마다 창을 이분 탐색으로 찾아 국소 직선을 닫힌 꼴로 풀고, 상쇄가 커지는 창만 다시 훑어 자릿수를 지켜요."
+seeAlso: [loess, overview, determinism, accuracy-performance]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+import PlaneFig from '../../../components/fig/PlaneFig.astro';
+
+export const lwPts = [[0.238, 0.53], [0.373, 0.274], [1.007, 0.305], [1.027, 0.798], [1.387, 0.924], [1.404, 0.711], [2.374, 0.956], [3.028, 0.357], [3.484, -0.134], [3.63, -1.237], [4.206, -0.33], [4.261, -0.563], [4.38, -0.764], [4.688, -0.711], [5.12, -0.898], [5.277, -0.651], [5.332, -1.265], [5.57, -0.853], [6.044, -0.912], [6.074, -0.126], [6.895, 0.669], [7.09, 0.903], [7.602, 1.132], [8.023, 0.476], [8.157, 0.535], [8.412, 0.876], [9.327, 0.07], [9.717, 0.04], [9.766, -0.506], [9.86, -0.158]];
+export const lwFit = [[0.238, 0.561], [0.373, 0.569], [1.007, 0.582], [1.027, 0.582], [1.387, 0.566], [1.404, 0.565], [2.374, 0.394], [3.028, 0.139], [3.484, -0.156], [3.63, -0.272], [4.206, -0.606], [4.261, -0.63], [4.38, -0.678], [4.688, -0.731], [5.12, -0.759], [5.277, -0.762], [5.332, -0.755], [5.57, -0.744], [6.044, -0.304], [6.074, -0.272], [6.895, 0.353], [7.09, 0.42], [7.602, 0.65], [8.023, 0.678], [8.157, 0.605], [8.412, 0.481], [9.327, 0.056], [9.717, -0.133], [9.766, -0.157], [9.86, -0.203]];
+export const lwRowMid = [[0.238, 0], [0.373, 0], [1.007, 0], [1.027, 0], [1.387, 0], [1.404, 0], [2.374, 0], [3.028, 0], [3.484, 0], [3.63, 0], [4.206, 0.0382], [4.261, 0.0456], [4.38, 0.062], [4.688, 0.0996], [5.12, 0.1273], [5.277, 0.1323], [5.332, 0.134], [5.57, 0.1388], [6.044, 0.1131], [6.074, 0.1091], [6.895, 0], [7.09, 0], [7.602, 0], [8.023, 0], [8.157, 0], [8.412, 0], [9.327, 0], [9.717, 0], [9.766, 0], [9.86, 0]];
+export const lwRowEdge = [[0.238, 0.3424], [0.373, 0.3141], [1.007, 0.1779], [1.027, 0.1735], [1.387, 0.0952], [1.404, 0.0917], [2.374, -0.0639], [3.028, -0.0713], [3.484, -0.036], [3.63, -0.0236], [4.206, 0], [4.261, 0], [4.38, 0], [4.688, 0], [5.12, 0], [5.277, 0], [5.332, 0], [5.57, 0], [6.044, 0], [6.074, 0], [6.895, 0], [7.09, 0], [7.602, 0], [8.023, 0], [8.157, 0], [8.412, 0], [9.327, 0], [9.717, 0], [9.766, 0], [9.86, 0]];
+
+## 한눈에 보기
+
+[`lowess`](/api/smooth/lowess/)는 자료점마다 그 점에 가까운 $k$개의 이웃으로 무게 붙은 직선을 맞추고, 그 직선의 그 점에서의 값을 적합값으로 내요. 이웃이 가까울수록 무게가 크고(tricube), 강건 반복을 하면 잔차가 큰 점의 무게를 줄여 다시 맞춰요(bisquare). 반올림이 아닌 동작(창의 크기, 무게의 식, 반복의 규칙)은 statsmodels 0.15.0의 `lowess`와 같아요.
+
+코드는 두 파일이에요.
+
+| 파일 | 줄 수 | 맡은 일 |
+|---|---:|---|
+| `csrc/smooth/local.hpp` | 300 | 창의 왼쪽 끝, 창 끝의 간격, tricube 모멘트의 NEON 훑기, 국소 직선의 닫힌 꼴과 다시 훑기, 모자 행의 원소 |
+| `csrc/smooth/local.cpp` | 292 | 정렬, 강건 반복, `delta`의 계획과 보간, 지렛대, `predict` |
+| `src/stardust/smooth/_local.py` | 142 | 인자 검사, `nan_policy`, `LowessResult`, 구간의 $t$ 분위수 |
+
+`local.hpp`는 [loess](/internals/smooth/loess/)도 써요. 설명변수 하나, 차수 1의 `loess`가 이 커널을 그대로 불러 `lowess(it=0)`과 같은 비트를 내요.
+
+이 글에서 $u = 2^{-53}$은 단위 반올림이고 $x_0$은 평가점, $h$는 창의 반경이에요.
+
+## 정렬
+
+맞추기 전에 자료를 $(x, y, \text{무게}, \text{원래 색인})$의 사전순으로 정렬해요. 그 뒤의 모든 합은 이 순서로 더해요.
+
+```cpp
+        // csrc/smooth/local.cpp
+        std::sort(order.begin(), order.end(), [&](std::int64_t a, std::int64_t b) {
+            if (x[a] != x[b]) return x[a] < x[b];
+            if (y[a] != y[b]) return y[a] < y[b];
+            if (w && w[a] != w[b]) return w[a] < w[b];
+            return a < b;
+        });
+```
+
+$x$만으로 안정 정렬하면 같은 $x$의 점들이 입력 순서대로 남아요. 그러면 같은 점들을 다른 순서로 넣었을 때 창의 합이 다른 순서로 더해져 끝자리가 바뀔 수 있어요. 열쇠에 $y$와 무게까지 넣으면 같은 $x$의 점들도 값으로 정해진 순서에 놓이고, 마지막의 색인은 세 값이 모두 같은 점(서로 바꿔도 합이 같은 점)에서만 쓰여요. 그래서 결과는 점들의 집합의 함수예요.
+
+```python
+>>> rng = sd.random.default_rng(7)
+>>> x = 10 * rng.random(200)
+>>> y = sd.sin(x) + 0.3 * sd.stats.Normal().sample(200, rng=rng)
+>>> r = sd.smooth.lowess(x, y)
+>>> p = rng.permutation(200)
+>>> sd.smooth.lowess(x[p], y[p]).fittedvalues.tolist() == r.fittedvalues[p].tolist()
+True
+```
+
+결과의 배열(`fittedvalues`, `leverage`, `robust_weights`)은 정렬한 자리에서 계산한 뒤 원래 색인으로 되돌려 써요. 결과 객체는 `predict`를 위해 정렬한 사본 $(x, y, \text{무게}, \text{강건 무게})$를 쥐어요.
+
+## 창
+
+평가점 $x_0$의 창은 가장 가까운 $k$개의 점이에요. $k = \min(n, \max(2, \lfloor \mathit{frac}\cdot n + 10^{-10}\rfloor))$이고 statsmodels의 식이에요. 정렬된 자료에서 가장 가까운 $k$개는 언제나 이어진 구간 $[l, l + k)$라서 왼쪽 끝 $l$ 하나만 찾으면 돼요.
+
+```cpp
+// csrc/smooth/local.hpp
+inline std::int64_t window_left(const double* x, std::int64_t n, std::int64_t k, double x0) {
+    std::int64_t lo = 0, hi = n - k;
+    while (lo < hi) {
+        const std::int64_t mid = lo + (hi - lo) / 2;
+        if (x[mid + k] - x0 >= x0 - x[mid]) hi = mid;
+        else lo = mid + 1;
+    }
+    return lo;
+}
+```
+
+창을 오른쪽으로 한 칸 옮기는 조건은 "오른쪽 바깥 점이 왼쪽 끝 점보다 가깝다", 곧 $x_{l+k} - x_0 \lt x_0 - x_l$이에요. statsmodels와 R은 평가점을 오름차순으로 돌며 이 조건이 참인 동안 창을 밀어요. 여기서는 같은 조건이 처음 거짓이 되는 $l$을 이분 탐색으로 찾아요. 술어 $x_{l+k} - x_0 \ge x_0 - x_l$은 $l$에 대해 단조예요. $x$가 정렬되어 있고 반올림한 뺄셈도 피연산자에 단조라서, $l$이 커지면 왼쪽 변은 줄지 않고 오른쪽 변은 늘지 않아요. 그래서 이분 탐색이 밀어 가는 방식과 같은 창을 찾고, 평가점마다 따로 찾으니 평가점을 어떻게 나눠 계산해도 창이 같아요.
+
+반경은 $h = \max(x_0 - x_l,\ x_{l+k-1} - x_0)$, 창의 가장 먼 점까지의 거리예요. 그 점의 무게는 tricube에서 정확히 0이에요. 거리가 $h$인 점이 창의 양쪽에 하나씩 있으면 어느 쪽을 창에 넣을지가 갈리는데, 둘 다 무게가 0이니 어느 쪽이든 합이 같아요. 이 사실을 비트까지 지키려고 합은 "거리가 $h$보다 작고 무게가 양수인 첫 점 $f$와 마지막 점 $g$" 사이 $[f, g]$만 훑어요. 창의 경계가 어느 쪽에서 끊겼는지가 합에 들어갈 자리가 없어요.
+
+<Fig caption="자료 30점(점), frac 0.4의 적합(선), 평가점 x₀ = 5.277의 창(k = 12). 점선이 x₀ ± h이고, h는 창의 가장 먼 점(x = 3.63)까지의 거리라 그 점의 무게는 0이에요.">
+  <PlaneFig
+    label="흩어진 30개의 점, 그 위를 지나는 lowess 곡선, 한 평가점의 창을 표시한 세로 점선"
+    domain={[0, 10]}
+    range={[-1.5, 1.5]}
+    equal={false}
+    width={560}
+    height={260}
+    xTicks={[0, 2, 4, 6, 8, 10]}
+    yTicks={[-1, 0, 1]}
+    layers={[
+      { kind: 'vline', x: 3.63, dashed: true, tone: 'base' },
+      { kind: 'vline', x: 6.924, dashed: true, tone: 'base' },
+      { kind: 'vline', x: 5.277, tone: 'faint' },
+      { kind: 'line', pts: lwFit, tone: 'main', width: 2 },
+      { kind: 'points', pts: lwPts, tone: 'ink', size: 3 },
+      { kind: 'text', at: [5.277, 1.3], text: 'x₀', tone: 'ink', anchor: 'middle' },
+      { kind: 'text', at: [3.63, 1.3], text: 'x₀ − h', tone: 'base', anchor: 'middle' },
+      { kind: 'text', at: [6.924, 1.3], text: 'x₀ + h', tone: 'base', anchor: 'middle' },
+    ]}
+  />
+</Fig>
+
+## 국소 직선
+
+창 안의 점 $j$에서 $d_j = (x_j - x_0)/h \in (-1, 1)$, 무게를 $v_j = (1 - \lvert d_j\rvert^3)^3\rho_j w_j$($\rho$는 강건 무게, $w$는 사용자의 무게)로 두면, 무게 붙은 직선 $\beta_0 + \beta_1 d$의 정규방정식은 모멘트 다섯으로 닫혀요.
+
+$$
+a = \sum v_j,\quad b = \sum v_j d_j,\quad c = \sum v_j d_j^2,\quad s_0 = \sum v_j y_j,\quad s_1 = \sum v_j d_j y_j,
+\qquad \hat y(x_0) = \beta_0 = \frac{c\,s_0 - b\,s_1}{a c - b^2}.
+$$
+
+$d = 0$이 평가점이라 적합값이 절편 그 자체예요. 창 하나에 한 번 훑고 나눗셈 한 번이에요.
+
+### 훑기
+
+```cpp
+    // csrc/smooth/local.hpp
+    const auto step = [&](std::int64_t j, float64x2_t& a, float64x2_t& b, float64x2_t& c, float64x2_t& s0,
+                          float64x2_t& s1) {
+        const float64x2_t xx = vld1q_f64(D.x + j);
+        const float64x2_t raw = vsubq_f64(xx, vx0);
+        float64x2_t diff = raw, right = vsubq_f64(vxr, xx), left = vsubq_f64(xx, vxl);
+        if constexpr (Scaled) {
+            diff = vmulq_f64(diff, vsc);
+            right = vmulq_f64(right, vsc), left = vmulq_f64(left, vsc);
+        }
+        const float64x2_t d = vmulq_f64(diff, vinv);
+        const float64x2_t ad = vabsq_f64(d);
+        const float64x2_t gap =
+            vmaxq_f64(vbslq_f64(vcgezq_f64(raw), vaddq_f64(right, vgr), vaddq_f64(left, vgl)), zero);
+        const float64x2_t edge = vmulq_f64(gap, vinv);
+        const float64x2_t t = vmulq_f64(edge, vaddq_f64(vaddq_f64(one, ad), vmulq_f64(ad, ad)));
+        const float64x2_t v = vmulq_f64(vmulq_f64(vmulq_f64(t, t), t), vld1q_f64(D.pw + j));
+        const float64x2_t vd = vmulq_f64(v, d);
+        const float64x2_t yy = vld1q_f64(D.y + j);
+        a = vaddq_f64(a, v);
+        b = vaddq_f64(b, vd);
+        c = vaddq_f64(c, vmulq_f64(vd, d));
+        s0 = vaddq_f64(s0, vmulq_f64(v, yy));
+        s1 = vaddq_f64(s1, vmulq_f64(vd, yy));
+    };
+    std::int64_t j = lo;
+    for (; j + 4 <= hi; j += 4) {
+        step(j, a0, b0, c0, s00, s10);
+        step(j + 2, a1, b1, c1, s01, s11);
+    }
+    if (j + 2 <= hi) {
+        step(j, a0, b0, c0, s00, s10);
+        j += 2;
+    }
+```
+
+한 번에 두 점(NEON 레인 둘)씩, 누산기 두 벌에 번갈아 더해요. 네 점씩 두 레인 쌍, 남은 두 점, 마지막 한 점의 묶음은 훑는 구간의 길이로만 정해져요. 마지막 한 점은 레인과 같은 연산을 스칼라로 해요. 그래서 모멘트는 자료와 $x_0$의 함수이고, 어느 스레드가 이 창을 계산하든 같은 비트예요.
+
+식에서 읽을 곳이 셋 있어요.
+
+1. **나누기 대신 역수를 곱해요.** $d = ((x_j - x_0)\cdot sc)\cdot\mathit{inv}$, $\mathit{inv} = 1/(h\cdot sc)$예요. $sc$는 보통 1이고, $h \lt 2^{-900}$이면 $2^{1000}$이에요. 비정상 수 간격의 자료에서 $1/h$가 넘치는 것을 막는 눈금이고, 2의 거듭제곱을 곱하는 것은 정확해서 값을 바꾸지 않아요. 그 결과 $x$에 2의 거듭제곱을 곱해도 모든 $d$가 같은 비트로 나와요.
+2. **$1 - \lvert d\rvert^3$을 빼지 않아요.** $1 - \lvert d\rvert^3 = (1 - \lvert d\rvert)(1 + \lvert d\rvert + \lvert d\rvert^2)$으로 쓰고, $1 - \lvert d\rvert$는 간격 $(h - \lvert x_j - x_0\rvert)/h$로 직접 구해요. 창의 끝에서 $\lvert d\rvert$가 1에 가까우면 $1 - \lvert d\rvert^3$의 뺄셈이 상대 $u/(1 - \lvert d\rvert)$를 잃어요. 끝 점들의 무게가 작아도 그 점들이 $c = \sum v d^2$의 큰 몫이 되는 자료(폭 $10^{-8}$의 덩어리)가 있어서, 그런 자료에서는 이 손실이 지렛대의 오차를 계약의 열세 배로 키워요. 바꾼 꼴에는 어느 점에서도 상쇄가 없고, 창 안의 점의 무게는 언제나 양수예요.
+3. **간격은 창 끝에서 재요.** $h - \lvert x_j - x_0\rvert$를 반올림한 $x_j - x_0$에서 빼면, 반경 2.5의 끝에서 $10^{-8}$ 안쪽 점의 간격이 제 크기의 $10^{-8}$만큼 움직여요. 그래서 $x_j$ 쪽의 창 끝 $x_r$(오른쪽)이나 $x_l$(왼쪽)에서 $(x_r - x_j) + g_r$로 재요. 끝 점 사이의 차는 가까운 수끼리의 차라 정확하거나 오차가 작고, $g$는 정확한 반경에서 그 끝의 정확한 거리를 뺀 보정이에요.
+
+```cpp
+// csrc/smooth/local.hpp
+inline Edge window_edge(double xl, double xr, double x0, double sc, double hs, bool exact) {
+    double sl, el, sr, er;
+    two_diff(x0, xl, sl, el);
+    two_diff(xr, x0, sr, er);
+    Edge E{xl, xr, 0.0, 0.0};
+    if (exact) {
+        if (sr > sl || (sr == sl && er >= el)) E.gl = ((sr - sl) + (er - el)) * sc;
+        else E.gr = ((sl - sr) + (el - er)) * sc;
+    } else {
+        E.gl = (hs - sl * sc) - el * sc;
+        E.gr = (hs - sr * sc) - er * sc;
+    }
+    return E;
+}
+```
+
+`two_diff`는 Knuth의 두 합이에요. $a - b = s + e$를 정확히, $s$는 반올림한 차, $e$는 그 반올림 오차로 나눠요. 그러면 창 끝까지의 정확한 거리가 $s + e$의 짝으로 손에 있어요. 반경은 두 끝 거리 가운데 큰 쪽이라 먼 끝의 $g$는 0이고, 가까운 끝의 $g$는 두 거리의 정확한 차를 한 번 반올림한 값이에요. 이 계산은 창마다 한 번이고, 훑기에서는 점마다 연산 넷(뺄셈, 덧셈, 선택, 최댓값)이 늘어요.
+
+### 조건수와 다시 훑기
+
+분모를 풀어 보면 $ac - b^2 = a\sum v_j(d_j - \bar d)^2$, $\bar d = b/a$예요. Cauchy–Schwarz로 0 이상이고, 뺄셈 $ac - b^2$이 잃는 자릿수는
+
+$$
+\kappa_1 = \frac{ac}{ac - b^2} = 1 + \frac{\bar d^{\,2}}{\mathrm{Var}_v(d)}
+$$
+
+배예요. 평가점이 창의 무게중심 가까이 있으면 $\kappa_1$이 작아요. 고른 자료의 한가운데에서 1, 자료의 끝에서 3–4쯤이에요. 커지는 것은 양수 무게의 점이 $x_0$에서 먼 좁은 덩어리에 몰려 있을 때뿐이고, 그것은 덩어리에서 $x_0$까지 직선을 늘이는 문제 자체의 조건수예요. 그래서 계약도 $\kappa_1$을 곱한 꼴이에요([정확도와 성능](/internals/smooth/accuracy-performance/)).
+
+```cpp
+    // csrc/smooth/local.hpp
+    const double ac = m.a * m.c, det = ac - m.b * m.b;
+    if (det > 0 && ac <= kRecentre * det) {
+        F.kind = LineKind::Line;
+        F.value = (m.c * m.s0 - m.b * m.s1) / det;
+        F.P = m.c / det, F.Q = -m.b / det;
+        return F;
+    }
+    // recentred: d - dbar has no cancellation
+    const double dbar = m.b / m.a;
+    double cc = 0, s1 = 0;
+    for (std::int64_t j = f; j <= g; ++j) {
+        const double v = window_weight(D, F, j);
+        const double e = ((x[j] - x0) * F.sc) * F.inv - dbar;
+        cc += v * e * e, s1 += v * e * D.y[j];
+    }
+    if (!(cc > 0)) {
+        F.kind = LineKind::Mean, F.value = m.s0 / m.a, F.P = 1.0 / m.a;
+        return F;
+    }
+    F.kind = LineKind::Line;
+    F.value = m.s0 / m.a - dbar * (s1 / cc);
+    F.P = 1.0 / m.a + dbar * dbar / cc, F.Q = -dbar / cc;
+```
+
+$\kappa_1 \gt 2^{20}$이거나 분모가 양수가 아니면 $\bar d$를 뺀 좌표로 한 번 더 훑어요. $c' = \sum v(d - \bar d)^2$와 $s_1' = \sum v(d - \bar d)y$로 쓰면 $\hat y = s_0/a - \bar d\,s_1'/c'$이고, 같은 직선의 같은 값이지만 상쇄가 없어요. 문턱 $2^{20}$은 닫힌 꼴이 잃는 자릿수가 20비트를 넘기 전에 갈라지려는 것이에요. 갈래는 모멘트로 정해지니 자료의 함수이고 스레드와 상관없어요.
+
+다시 훑기만 쓰지 않는 까닭은 일이 두 배이기 때문이에요. 반대로 창의 모멘트를 앞에서부터 쌓아 두고 창마다 $O(1)$에 꺼내는 누적 모멘트는 쓰지 않아요. tricube는 $d$의 9차 다항식이라 창마다 11차까지의 거듭제곱 모멘트를 큰 누적값의 차로 얻어야 하고, 그 상쇄가 계약 단위로 $10^6$–$10^{14}$이었어요(덩어리 자료에서 $1.6 \times 10^{14}$). 닫힌 꼴은 같은 자료에서 최대 3.86, 다시 훑기는 3.43이었어요.
+
+먼 곳의 `predict`는 다시 훑기로 가는 대표적인 경우예요. $x_0$이 자료에서 멀면 창의 모든 $d$가 $-1$ 가까이에 몰려 $\mathrm{Var}_v(d)$가 작아요.
+
+```python
+>>> r.predict([5.0, 1e6])
+array([-0.5417577041513252, -212582.33049504008], dtype=float64)
+```
+
+### 퇴화한 창
+
+| 경우 | 결과 |
+|---|---|
+| 양수 무게의 점이 둘보다 적음 | 맞춤 없음. 자료점은 자기 $y$(지렛대 1), `predict`는 NaN |
+| 양수 무게의 첫 점과 마지막 점의 $x$가 정확히 같음 | 국소 평균 $s_0/a$ |
+| 다시 훑은 $c'$가 양수가 아님 | 국소 평균 |
+| $h = 0$(창의 $k$점이 모두 $x_0$) | $x_0$에 있는 모든 점의 무게 평균 |
+
+국소 평균으로 바꾸는 조건이 "모두 한 $x$"뿐이라 단위와 상관없어요. statsmodels는 무게 붙은 제곱합이 절댓값 $10^{-12}$보다 작으면 국소 평균으로 바꾸고, R은 $\sqrt{\text{제곱합}}$이 자료 범위의 0.001배 이하이면 바꿔요. 앞의 규칙은 $x$의 단위를 바꾸면 결과가 바뀌어요(시험 자료의 $x$에 $10^{-8}$을 곱하면 `frac=0.1, it=0`의 적합이 0.34만큼 달라졌어요). 여기서는 $x$에 $10^{-8}$을 곱해도 반올림 크기만 달라져요.
+
+```python
+>>> a = sd.smooth.lowess(x * 1e-8, y, frac=0.1, it=0)
+>>> b = sd.smooth.lowess(x, y, frac=0.1, it=0)
+>>> float(sd.max(sd.abs(a.fittedvalues - b.fittedvalues)))
+1.033895191682177e-15
+```
+
+2의 거듭제곱이면 같은 비트예요. $2^{-1000}$을 곱한 $x$는 반경이 $2^{-900}$보다 작아 눈금 $sc = 2^{1000}$의 길로 가지만, 그 길도 같은 $d$를 내요.
+
+```python
+>>> [sd.smooth.lowess(x * s, y).fittedvalues.tolist() == r.fittedvalues.tolist()
+...  for s in (2.0**-60, 2.0**-1000, 2.0**900)]
+[True, True, True]
+```
+
+## 모자 행렬의 행
+
+`lowess(it=0)`은 $y$의 선형 함수 $\hat y = Ly$예요. 국소 직선의 해를 풀어 보면 행 $i$의 원소는
+
+$$
+l_j = v_j(P + Q d_j),\qquad P = \frac{c}{ac - b^2},\quad Q = \frac{-b}{ac - b^2}
+$$
+
+의 꼴이에요. 다시 훑은 창은 $P = 1/a + \bar d^2/c'$, $Q = -\bar d/c'$, 국소 평균은 $P = 1/a$, $Q = 0$이에요. `LineFit`은 값과 함께 이 $P$, $Q$를 쥐고 있어서 행의 원소가 필요할 때마다 같은 무게 $v_j$를 다시 계산해 곱해요(`hat_at`). 행 전체를 저장하지 않아요.
+
+<Fig caption="모자 행렬의 두 행. 가운데 점(x₀ = 5.277)의 행은 창 안에서 모두 양수인 종 모양이고 합이 1이에요. 첫 점(x₀ = 0.238)의 행은 창이 한쪽으로만 펼쳐져 먼 쪽 점들에 음수 무게를 줘요. 직선을 끝으로 늘이는 값이라서예요.">
+  <Plot
+    curves={[
+      { points: lwRowMid, label: 'x₀ = 5.277' },
+      { points: lwRowEdge, label: 'x₀ = 0.238', dashed: true },
+    ]}
+    domain={[0, 10]}
+    range={[-0.1, 0.4]}
+    xTicks={[{ v: 0, label: '0' }, { v: 2, label: '2' }, { v: 4, label: '4' }, { v: 6, label: '6' }, { v: 8, label: '8' }, { v: 10, label: '10' }]}
+    yTicks={[{ v: -0.1, label: '−0.1' }, { v: 0, label: '0' }, { v: 0.2, label: '0.2' }, { v: 0.4, label: '0.4' }]}
+  />
+</Fig>
+
+자료점 $x_i$에서는 $d_i = 0$이라 지렛대가 $l_{ii} = v_i P$예요. `df`는 양수 무게 점의 지렛대의 합(정렬 순서로 더해요), `scale`은 $\sqrt{\sum w_i r_i^2/(\mathit{nobs} - \mathit{df})}$예요.
+
+```python
+>>> r.df, r.k, r.nobs
+(3.482650455258343, 133, 200)
+>>> r.scale
+0.5355990164298811
+```
+
+`predict_interval`은 같은 행으로 $\lVert l\rVert^2 = \sum_j l_j^2/w_j$를 구해 $\hat y \pm t_{\mathit{nobs}-\mathit{df}}\cdot\mathit{scale}\cdot\lVert l\rVert$를 내요(`hat_norm2`). 행의 두 번째 훑기는 구간을 청할 때만 해요. 강건 적합이면 마지막 강건 무게를 고정한 선형 평활기의 행이라 구간은 어림이에요(R도 같아요).
+
+## 강건 반복
+
+`it`번의 반복마다 잔차 $r_j = y_j - \hat y_j$로 무게를 다시 정하고 모든 점을 다시 맞춰요. 적합은 모두 `it + 1`번이고 수렴 판정은 없어요. 반복 수가 고정이라 이것이 상한이자 멈춤 규칙이에요.
+
+```cpp
+// csrc/smooth/local.cpp
+void robust_weights(const double* r, const double* w, std::int64_t n, double* rho, std::vector<double>& buf) {
+    buf.clear();
+    for (std::int64_t j = 0; j < n; ++j)
+        if (!w || w[j] > 0) buf.push_back(std::fabs(r[j]));
+    const std::size_t c = buf.size(), mid = c / 2;
+    std::nth_element(buf.begin(), buf.begin() + mid, buf.end());
+    double m = buf[mid];
+    if (c % 2 == 0) {
+        const double lower = *std::max_element(buf.begin(), buf.begin() + mid);
+        const double s = lower + m;
+        m = std::isfinite(s) ? s / 2 : lower / 2 + m / 2;
+    }
+    if (m == 0) {
+        for (std::int64_t j = 0; j < n; ++j) rho[j] = std::fabs(r[j]) > 0 ? 0.0 : 1.0;
+        return;
+    }
+    const double s6 = 6.0 * m;
+    for (std::int64_t j = 0; j < n; ++j) {
+        double u = std::fabs(r[j]) / s6;
+        if (u > 1) u = 1.0;
+        const double t = 1.0 - u * u;
+        rho[j] = t * t;
+    }
+}
+```
+
+- **중앙값은 정확한 순서통계량이에요.** `nth_element`가 가운데 원소를 제자리에 놓고, 짝수 개면 그 왼쪽 무리의 최댓값이 다른 가운데 원소예요. 두 값의 합이 넘치면 반씩 더해요. 순서통계량은 값 하나라 계산 순서와 상관없어요.
+- **무게가 0인 점은 중앙값에 들지 않아요.** 맞춤에 들지 않은 점의 잔차가 맞춤의 척도를 정하면 안 되니까요.
+- **bisquare는 statsmodels의 식과 연산 순서예요.** $u = \min(1, \lvert r\rvert/(6m))$의 $(1 - u^2)^2$이에요. $m = 0$(잔차의 절반 넘게 0)이면 0인 잔차의 점만 무게 1이에요.
+
+R의 `lowess`는 거리가 $0.001h$ 이하인 점의 tricube 무게를 1로, $0.999h$ 이상을 0으로 자르고 강건 무게도 같은 자리에서 잘라요. 여기서는 자르지 않아서 R과는 상대 $10^{-9}$ 크기로 달라요.
+
+```python
+>>> yo = y.copy()
+>>> yo[[10, 50]] = 8.0
+>>> sd.smooth.lowess(x, yo).robust_weights[[10, 50, 11]].tolist()
+[0.0, 0.0, 0.5343432483237497]
+```
+
+## delta의 건너뛰기
+
+`delta > 0`이면 앞서 맞춘 점에서 `delta` 안의 점들은 맞추지 않고 양옆 맞춤의 직선 보간으로 채워요. 어느 점을 맞출지는 statsmodels의 `update_indices`를 그대로 옮긴 규칙이에요. 바로 앞에 맞춘 점의 $x + \delta$를 넘는 첫 점의 한 칸 앞을 다음에 맞추고, 앞 점과 같은 $x$의 점은 값을 복사하고, 마지막 점은 언제나 맞춰요.
+
+이 선택은 정렬된 $x$와 `delta`만의 함수예요. 값을 보지 않으니 맞출 점의 목록(`Plan`)을 먼저 만들어 두고, 반복마다 그 점들을 나란히 맞춘 뒤 보간은 차례로 해요.
+
+```cpp
+            // csrc/smooth/local.cpp
+            for_points(nf, k, [&](std::int64_t q) {
+                const std::int64_t i = plan.fit[q];
+                LineFit F = fit_line(D, k, xs[i], i);
+                if (F.kind == LineKind::Few) F.value = ys[i];  // statsmodels' rule: the point's own y
+                fits[i] = F;
+            });
+            for (std::int64_t j = 0; j < n; ++j) {
+                if (plan.src[j] >= 0) fit[j] = fits[plan.src[j]].value;
+                else {
+                    const double a = plan.alpha[j];
+                    fit[j] = a * fits[plan.right[j]].value + (1.0 - a) * fits[plan.left[j]].value;
+                }
+            }
+```
+
+보간한 점 $j$의 값은 $\alpha\hat y_{\mathrm{right}} + (1 - \alpha)\hat y_{\mathrm{left}}$이고, 그 점의 모자 행도 두 맞춤의 행을 같은 $\alpha$로 섞은 것이라 지렛대는 $\alpha l_{\mathrm{right},j} + (1 - \alpha)l_{\mathrm{left},j}$예요. 맞춘 점의 값은 `delta = 0`의 값과 같은 비트예요. 같은 커널을 같은 창에 부르니까요.
+
+```python
+>>> d = sd.smooth.lowess(x, y, it=0, delta=0.5)
+>>> e = sd.smooth.lowess(x, y, it=0)
+>>> int(sd.count_nonzero(d.fittedvalues == e.fittedvalues))
+24
+```
+
+200점 가운데 24점을 맞추고 나머지는 보간했어요. 기본값은 statsmodels처럼 0(모든 점)이에요. R의 기본은 범위의 0.01배라 두 라이브러리의 기본 결과가 달라요.
+
+## 일의 크기와 나눔
+
+적합 한 번은 $O(n\cdot k)$, 전체는 $O((\mathit{it} + 1)\,n\,k)$예요. 맞출 점을 크기로만 나눈 태스크에 줘요. 점 하나의 일은 창의 점마다 덧셈 여덟 개 분량으로 셈해, 점 수 $\times$ $k$ $\times$ 8이 $2^{15}$ 이상이면 나누고 태스크 하나는 그 일이 $2^{17}$쯤 되는 점 수예요. 점 하나는 언제나 `fit_line` 한 번이라 어느 태스크에서 계산하든 같은 비트예요. 정렬($O(n\log n)$), 계획, 강건 무게, 지렛대의 합($O(n)$)은 차례 계산이에요. 나눔의 규칙은 [결정성](/internals/smooth/determinism/)에서 영역 전체와 함께 다뤄요.

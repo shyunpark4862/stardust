@@ -1,0 +1,134 @@
+---
+title: generate_knots
+names: [generate_knots]
+group: 스플라인
+order: 6
+signatures:
+  - "sd.smooth.generate_knots(x, y, /, *, w=None, xb=None, xe=None, k=3, s=0.0, nest=None, bc_type=None)"
+summary: make_splrep이 매듭을 늘려 가는 과정을 단계마다의 매듭 배열로 돌려줘요. 마지막 배열이 make_splrep이 쓰는 매듭이에요. 매듭 수와 잔차의 관계를 살피거나, 중간 단계의 매듭을 make_lsq_spline에 넘길 때 써요.
+params:
+  - name: x
+    type: ndarray, 수의 시퀀스, numpy 배열, Series
+    kind: positional-only
+    desc: "줄지 않는 가로축 값 (m,)."
+  - name: y
+    type: ndarray, 수의 시퀀스, numpy 배열, Series
+    kind: positional-only
+    desc: "값 (m,)."
+  - name: w
+    type: ndarray, 수의 시퀀스 또는 None
+    kind: keyword-only
+    desc: "점마다의 무게(1/σ). 잔차 제곱합이 Σ(wᵢrᵢ)²이에요."
+  - name: xb
+    type: float 또는 None
+    kind: keyword-only
+    desc: "구간 왼쪽 끝(기본 x[0])."
+  - name: xe
+    type: float 또는 None
+    kind: keyword-only
+    desc: "구간 오른쪽 끝(기본 x[-1])."
+  - name: k
+    type: int
+    kind: keyword-only
+    desc: "차수, 1–5. 기본값 3."
+  - name: s
+    type: float
+    kind: keyword-only
+    desc: "잔차 제곱합의 목표(0 이상). 기본값 0."
+  - name: nest
+    type: int 또는 None
+    kind: keyword-only
+    desc: "매듭 수의 상한."
+  - name: bc_type
+    type: str 또는 None
+    kind: keyword-only
+    desc: "None, 'not-a-knot', 'periodic'."
+returns:
+  type: list of ndarray
+  desc: "단계마다의 매듭 배열을 차례로 담은 리스트."
+raises:
+  - type: TypeError
+    desc: "옵션을 자리로 줄 때, 없는 인자를 줄 때."
+  - type: ValueError
+    desc: "x가 줄어들 때, NaN·±inf가 있을 때, k가 1–5 밖일 때, s가 음수일 때."
+seeAlso: [make_splrep, make_lsq_spline]
+---
+
+## 한눈에 보기
+
+[`make_splrep`](/api/smooth/make_splrep/)은 매듭이 가장 적은 스플라인(양 끝만 $k + 1$번 겹친 매듭, 곧 $k$차 다항식)에서 시작해 매듭을 늘려 가요. 단계마다 그 매듭의 최소제곱 스플라인을 맞추고, 잔차 제곱합이 `s`보다 크면 잔차가 가장 큰 매듭 구간의 가운데 자료점에 새 매듭을 넣어요. `generate_knots`는 그 단계마다의 매듭을 모두 돌려줘요.
+
+```python
+>>> import stardust as sd
+>>> rng = sd.random.default_rng(7)
+>>> x = sd.sort(rng.random(60)) * 10
+>>> y = sd.sin(x) + sd.stats.Normal(sigma=0.3).sample(60, rng=rng)
+>>> ts = sd.smooth.generate_knots(x, y, s=5.4)
+>>> len(ts)
+3
+>>> [len(t) for t in ts]
+[8, 9, 10]
+>>> ts[-1]
+array([0.09910608711773516, 0.09910608711773516, 0.09910608711773516,
+       0.09910608711773516,   5.569990763634657,   7.602089803599945,
+         9.859501081563495,   9.859501081563495,   9.859501081563495,
+         9.859501081563495], dtype=float64)
+```
+
+마지막 매듭이 `make_splrep(x, y, s=5.4)`의 매듭이에요.
+
+```python
+>>> bool(sd.all(ts[-1] == sd.smooth.make_splrep(x, y, s=5.4).t))
+True
+```
+
+<Reference />
+
+## 단계마다의 잔차
+
+중간 단계의 매듭을 [`make_lsq_spline`](/api/smooth/make_lsq_spline/)에 넘기면 그 단계의 최소제곱 스플라인과 잔차를 볼 수 있어요. 매듭이 늘수록 잔차 제곱합이 줄어요.
+
+```python
+>>> for t in sd.smooth.generate_knots(x, y, s=1.0):
+...     sp = sd.smooth.make_lsq_spline(x, y, t)
+...     print(len(t), round(float(sd.sum((y - sp(x)) ** 2)), 4))
+8 28.139
+9 7.5003
+10 4.5458
+11 4.4274
+13 4.3174
+17 2.7332
+21 2.627
+29 2.1074
+45 0.9143
+```
+
+한 번에 넣는 매듭의 수는 직전 두 단계에서 잔차가 줄어든 정도로 정해요. 잔차가 잘 줄면 하나씩, 더디게 줄면 여러 개를 한꺼번에 넣어요. 잔차 제곱합이 `s`보다 작아지거나 매듭 수가 `nest`에 닿으면 멈춰요.
+
+## `s = 0`과 `s`가 클 때
+
+`s = 0`은 보간이라 단계 없이 보간 스플라인의 매듭 하나를 담아요. `s`가 첫 다항식의 잔차보다 크면 첫 매듭에서 바로 멈춰요.
+
+```python
+>>> [len(t) for t in sd.smooth.generate_knots(x, y)]
+[64]
+>>> sd.smooth.generate_knots(x, y, s=100.0)
+[array([0.09910608711773516, 0.09910608711773516, 0.09910608711773516,
+       0.09910608711773516,   9.859501081563495,   9.859501081563495,
+         9.859501081563495,   9.859501081563495], dtype=float64)]
+```
+
+## 입력
+
+입력의 규칙은 [`make_splrep`](/api/smooth/make_splrep/)과 같아요. x는 줄지 않아야 하고 NaN과 ±inf는 에러예요.
+
+```python
+>>> sd.smooth.generate_knots(x[::-1], y, s=1.0)
+Traceback (most recent call last):
+    ...
+ValueError: generate_knots(): 'x' must be nondecreasing
+```
+
+## scipy를 아는 분께
+
+- `scipy.interpolate.generate_knots`와 같은 인자와 같은 규칙이에요(옵션은 이름으로만). scipy는 생성기를 돌려주고 sd는 리스트를 돌려줘요. 지금은 시험한 모든 자료에서 단계마다의 매듭이 scipy와 비트까지 같아요(약속은 아니에요).

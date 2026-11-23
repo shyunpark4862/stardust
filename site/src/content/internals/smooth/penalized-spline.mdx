@@ -1,0 +1,358 @@
+---
+title: 벌점 스플라인
+group: 스플라인
+order: 1
+summary: "평활 스플라인, P-스플라인, make_lsq_spline을 계산하는 방법을 설명해요. 셋 모두 같은 띠 최소제곱 하나로 풀고, 지렛대는 띠 안의 선택 역행렬로 구하며, λ는 단위와 무관한 구간에서 GCV나 CV로 골라요."
+seeAlso: [fitpack, overview, determinism, accuracy-performance]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+export const gcvCurve = [[-32, 1.331], [-31, 1.331], [-30, 1.331], [-29, 1.331], [-28, 1.331], [-27, 1.331], [-26, 1.331], [-25, 1.331], [-24, 1.331], [-23, 1.331], [-22, 1.33], [-21, 1.33], [-20, 1.328], [-19, 1.322], [-18, 1.309], [-17, 1.276], [-16, 1.204], [-15, 1.085], [-14, 0.9404], [-13, 0.8149], [-12, 0.7414], [-11, 0.7048], [-10, 0.6423], [-9, 0.5017], [-8, 0.282], [-7, 0.04348], [-6, -0.1609], [-5, -0.3318], [-4, -0.4857], [-3, -0.6229], [-2, -0.7217], [-1, -0.7815], [0, -0.8296], [1, -0.8777], [2, -0.9235], [3, -0.9629], [4, -0.9946], [5, -1.02], [6, -1.039], [7, -1.052], [8, -1.06], [9, -1.066], [10, -1.07], [11, -1.074], [12, -1.073], [13, -1.045], [14, -0.9349], [15, -0.7303], [16, -0.5426], [17, -0.4247], [18, -0.3515], [19, -0.2984], [20, -0.2643]];
+export const dfCurve = [[-32, 2.301], [-31, 2.301], [-30, 2.301], [-29, 2.301], [-28, 2.301], [-27, 2.301], [-26, 2.301], [-25, 2.301], [-24, 2.301], [-23, 2.301], [-22, 2.301], [-21, 2.301], [-20, 2.301], [-19, 2.301], [-18, 2.301], [-17, 2.3], [-16, 2.299], [-15, 2.298], [-14, 2.296], [-13, 2.295], [-12, 2.294], [-11, 2.293], [-10, 2.291], [-9, 2.289], [-8, 2.284], [-7, 2.276], [-6, 2.265], [-5, 2.248], [-4, 2.225], [-3, 2.195], [-2, 2.156], [-1, 2.106], [0, 2.046], [1, 1.975], [2, 1.894], [3, 1.806], [4, 1.714], [5, 1.619], [6, 1.522], [7, 1.424], [8, 1.325], [9, 1.225], [10, 1.127], [11, 1.029], [12, 0.9326], [13, 0.8389], [14, 0.7491], [15, 0.6635], [16, 0.582], [17, 0.5053], [18, 0.434], [19, 0.3737], [20, 0.3342]];
+export const chosen = [[11.41, -1.2], [11.41, 2.4]];
+
+## 한눈에 보기
+
+이 글은 세 함수의 안쪽이에요.
+
+- [`smoothing_spline`](/api/smooth/smoothing_spline/)과 [`make_smoothing_spline`](/api/smooth/make_smoothing_spline/): $\sum_i w_i(y_i - f(x_i))^2 + \lambda\int f''(x)^2\,dx$를 가장 작게 하는 3차 스플라인.
+- [`pspline`](/api/smooth/pspline/): 고른 매듭 위의 B-스플라인 계수에 차분 벌점 $\lambda\lVert Dc\rVert^2$을 준 것(Eilers–Marx).
+- [`make_lsq_spline`](/api/smooth/make_lsq_spline/): 주어진 매듭의 무게 붙은 최소제곱.
+
+셋 다 "띠 설계 행렬 아래에 띠 벌점 행을 쌓은 최소제곱"이에요. 계수 $c$에 대해
+
+$$
+\min_c\ \left\lVert\begin{bmatrix} W^{1/2}B \\ \sqrt\lambda\,G\end{bmatrix}c - \begin{bmatrix} W^{1/2}y \\ 0\end{bmatrix}\right\rVert_2^2
+$$
+
+이고, $B$의 행은 한 점에서 0이 아닌 B-스플라인 $k + 1$개, $G$의 행은 이웃한 계수 몇 개만 걸쳐요. 쌓은 행렬은 열 방향으로 좁은 띠라서, 행을 하나씩 Givens 회전으로 삼각형에 녹이면 계수의 수에 비례하는 일로 풀려요. [FITPACK 계열](/internals/smooth/fitpack/)도 같은 커널 위에 서요.
+
+| 파일 | 줄 수 | 맡은 일 |
+|---|---:|---|
+| `csrc/smooth/bandqr.hpp` | 390 | 띠 Givens QR(너비 2–6은 레지스터 판), 띠+테두리, 띠 대입, 선택 역행렬, 조건수 추정 |
+| `csrc/smooth/spline.cpp` | 1,147 | 같은 $x$ 묶기, 설계와 벌점 행, 자료 삼각형과 $\lambda$마다의 QR, 지렛대와 Reinsch 꼴, $\lambda$ 찾기, $\lambda = \infty$, 구간의 행 노름, Schoenberg–Whitney 판정 |
+| `csrc/smooth/search.hpp` | 160 | Brent의 최소화(fminbound)와 근 찾기(brentq) |
+| `src/stardust/smooth/_spline.py` | 572 | 인자 검사, 배치 축, $\lambda = 0$의 보간, 결과 객체와 `predict_interval` |
+
+$u = 2^{-53}$은 단위 반올림, $n_g$는 서로 다른 $x$의 수, $n_c$는 계수의 수, $b$는 띠 너비예요.
+
+## 같은 $x$ 묶기
+
+정렬은 $x$만의 안정 정렬이고, 정확히 같은 $x$(허용오차 없음)의 점들은 무게 합 $W_g$와 무게 평균 $\bar y_g$의 한 점으로 묶어요.
+
+$$
+\sum_{i \in g} w_i\,(y_i - f(x_g))^2 = W_g\,(\bar y_g - f(x_g))^2 + \sum_{i \in g} w_i\,(y_i - \bar y_g)^2
+$$
+
+라서 벌점 문제가 정확히 같고, 뒤의 항은 $f$와 상관없는 상수예요(`within`). RSS를 낼 때 이 상수를 더해요. 그래서 점을 두 번 넣은 자료와 무게 2를 준 자료는 같은 비트의 계수를 내요.
+
+```python
+>>> rng = sd.random.default_rng(7)
+>>> x = 10 * rng.random(200)
+>>> y = sd.sin(x) + 0.3 * sd.stats.Normal().sample(200, rng=rng)
+>>> xd, yd = sd.concat([x, x[:10]]), sd.concat([y, y[:10]])
+>>> w = sd.ones(200)
+>>> w[:10] = 2.0
+>>> a = sd.smooth.smoothing_spline(xd, yd, lam=0.5)
+>>> b = sd.smooth.smoothing_spline(x, y, lam=0.5, weights=w)
+>>> a.spline.c.tolist() == b.spline.c.tolist()
+True
+```
+
+자료 행은 $\sqrt{W_g}\,b_g$이고 $b_g$는 보간 영역의 de Boor 값이에요(`basis_fixed`, [B-스플라인](/internals/interpolate/bspline/)). 무게의 뜻은 함수마다 달라요. 평활 스플라인과 P-스플라인의 `weights`는 $\sum w_ir_i^2$이고, scipy 이름의 `make_lsq_spline`의 `w`는 FITPACK처럼 $1/\sigma$라 $\sum(w_ir_i)^2$이에요. 그래서 최소제곱 스플라인은 묶기 전에 무게를 제곱해요.
+
+## 벌점 행
+
+### 평활 스플라인
+
+매듭은 서로 다른 $x$ 전부이고 양 끝이 네 겹이라 계수가 $n_g + 2$개예요(scipy와 같은 매듭). 3차 스플라인의 $f''$은 매듭 구간 $[x_j, x_{j+1}]$(길이 $h$)에서 $m_0$에서 $m_1$로 가는 직선이라
+
+$$
+\int_{x_j}^{x_{j+1}} f''^2 = \frac{h}{3}(m_0^2 + m_0m_1 + m_1^2) = \frac{h}{4}(m_0 + m_1)^2 + \frac{h}{12}(m_0 - m_1)^2
+$$
+
+이에요(오른쪽을 펼치면 $\tfrac{h}{12}(4m_0^2 + 4m_0m_1 + 4m_1^2)$). $m_0$과 $m_1$은 그 구간의 계수 넷의 일차결합이니 벌점이 두 행의 제곱합이 돼요.
+
+```cpp
+    // csrc/smooth/spline.cpp
+    for (std::int64_t j = 0; j + 1 < ng; ++j) {
+        const std::int64_t l = j + 3;
+        interpolate::basis_values(P.t.data(), 3, l, P.xg[j], 2, e0, hh);
+        interpolate::basis_values(P.t.data(), 3, l, P.xg[j + 1], 2, e1, hh);
+        const double h = P.xg[j + 1] - P.xg[j];
+        const double a = std::sqrt(h / 4.0), b = std::sqrt(h / 12.0);
+        double* r0 = P.prow.data() + (2 * j) * 4;
+        double* r1 = r0 + 4;
+        for (int i = 0; i < 4; ++i) {
+            r0[i] = a * (e0[i] + e1[i]);
+            r1[i] = b * (e0[i] - e1[i]);
+            if (!std::isfinite(r0[i]) || !std::isfinite(r1[i])) return false;
+        }
+        P.poff[2 * j] = P.poff[2 * j + 1] = j;
+    }
+```
+
+이 꼴의 좋은 점은 둘이에요. 벌점 행의 너비가 자료 행과 같은 4라서 쌓은 행렬의 띠 너비가 늘지 않고, $f''$의 Gram 행렬 $\Omega$를 만들어 분해할 필요가 없어요. 자연 경계 조건($f'' = 0$ at 양 끝)도 넣지 않아요. 모든 함수 위의 최소점이 자료점에 매듭이 있는 자연 3차 스플라인이라는 것이 알려져 있고, 그 함수는 이 $n_g + 2$개 계수의 공간 안에 있어요. 그러니 이 공간 위의 최소화가 그대로 그 함수를 찾고 경계 조건은 저절로 나와요.
+
+### P-스플라인
+
+매듭은 $[x_b, x_e]$를 `n_segments`개로 나눈 고른 격자를 양쪽으로 $k$칸 늘인 것이에요. $h = (x_e - x_b)/\mathit{nseg}$에서 $x_b + jh$($j = -k, \ldots, \mathit{nseg} - 1$)와 $x_e + jh$($j = 0, \ldots, k$)이고, 오른쪽 끝을 $x_b + \mathit{nseg}\cdot h$가 아니라 $x_e$에서 다시 세어 끝 매듭이 정확히 $x_e$예요. 벌점 행은 $d$차 차분의 계수 $(-1)^{d-a}\binom{d}{a}$를 $\sqrt\lambda$배 한 것이라 너비가 $d + 1$이에요. 매듭 수가 $n$과 무관해서 큰 자료에서 계수의 수가 작아요(`n_segments`의 기본은 $\lceil\min(n/4, 40)\rceil$).
+
+## 띠 Givens QR
+
+### 회전
+
+회전은 FITPACK의 `fpgivs`와 `fprota`예요.
+
+```cpp
+// csrc/smooth/bandqr.hpp
+inline void givens(double piv, double& ww, double& c, double& s) {
+    const double store = std::abs(piv);
+    const bool first = store >= ww;
+    const double big = first ? store : ww, small = first ? ww : store;
+    const double r = small / big;
+    const double dd = big * std::sqrt(1.0 + r * r);
+    c = ww / dd;
+    s = piv / dd;
+    ww = dd;
+}
+```
+
+들어오는 행의 원소 $p$(piv)를 삼각형의 대각 $w$(ww, 언제나 0 이상)에 녹여 $(p, w) \to (0, d)$로 만드는 회전이고 $d = \sqrt{p^2 + w^2}$예요. $p^2$을 직접 만들면 넘치거나 언더플로할 수 있어, 큰 쪽으로 나눈 몫 $r$로 $d = \mathrm{big}\sqrt{1 + r^2}$를 계산해요. FITPACK은 $\lvert p\rvert \ge w$인지로 두 갈래를 두는데, 반올림한 몫의 크기는 부호와 상관없으니 두 갈래를 "작은 것 / 큰 것" 한 꼴로 합쳐도 같은 비트예요. 갈래가 선택으로 바뀌어 회전을 연달아 돌리는 고리에서 분기 예측이 틀릴 일이 없어요.
+
+### 행을 넣는 순서
+
+삼각형 $R$은 $n_c \times b$로 저장해요($R[j][i]$가 원소 $(j, j + i)$). 첫 열이 $o$인 행은 $R$의 행 $o, o + 1, \ldots$에 차례로 회전해 들어가며 왼쪽 원소를 하나씩 지워요. 행이 첫 열의 오름차순으로 들어오고 어느 행도 너비가 $b$를 넘지 않으면, 회전이 만드는 채움은 그 행의 첫 $b$열 안에 머물러요. $R$의 행 $j$는 열 $o + b - 1$을 넘는 원소를 갖지 않는다는 불변식이 유지되기 때문이에요. 그래서 한 행이 많아야 $b^2/2$번의 회전 쌍이에요.
+
+너비가 2–6이고 테두리가 없으면 들어오는 행을 레지스터에 두고 단계를 펼친 판(`add_band`)으로 가요. 행을 메모리에 두고 단계마다 한 칸씩 옮기면 저장 뒤 겹친 적재의 정체가 단계마다 생겨서예요. 연산과 순서는 일반 판과 같아 같은 비트예요.
+
+### 자료는 한 번, λ마다 다시
+
+자료 행은 $\lambda$와 상관없으니 먼저 한 번 삼각화해 $R_d$를 만들어요(`factor_data`). $\lambda$마다 $R_d$의 행과 벌점 행을 새 QR에 넣는데, 첫 열의 순서를 지키려고 $R_d$의 행 $j$ 바로 뒤에 열 $j$에서 시작하는 벌점 행들을 넣어요.
+
+```cpp
+    // csrc/smooth/spline.cpp
+    for (std::int64_t j = 0; j < nc; ++j) {
+        std::fill(h.begin(), h.end(), 0.0);
+        const double* r = P.data.R.data() + j * P.kd;
+        bool any = false;
+        for (std::int64_t a = 0; a < P.kd && j + a < nc; ++a) {
+            h[a] = r[a];
+            any = any || r[a] != 0.0;
+        }
+        for (std::int64_t q = 0; q < ncol; ++q) y[q] = P.data.Z[j * ncol + q];
+        if (any) F.qr.add(j, h.data(), hb, y.data());
+        penalty_rows(j);
+    }
+```
+
+$\lambda$ 하나의 일이 $O(n_c b^2)$이고 자료의 $O(n b^2)$은 한 번이에요. P-스플라인은 $n_c \ll n$이라 $\lambda$ 격자 53점을 도는 찾기가 거의 자료 크기와 무관해져요. 오른쪽 변은 열마다 같은 회전을 받으니, 배치(`axis`의 열 여럿)는 회전을 한 번 만들어 모든 열에 적용해요.
+
+### 왜 QR인가
+
+같은 문제를 정규방정식 $(B^{\mathsf T}WB + \lambda\Omega)c = B^{\mathsf T}Wy$의 Cholesky로 풀면 조건수가 제곱돼요. Reinsch의 꼴 $(R + \lambda Q^{\mathsf T}W^{-1}Q)\gamma = Q^{\mathsf T}y$는 띠가 좁지만 $\lambda$가 크면 조건수가 $n^4$ 크기까지 자라요. $n = 300$의 난수 $x$, $\lambda/\text{범위}^3 = 10^4$에서 적합값의 오차가 $u\cdot\max\lvert f\rvert$ 단위로 QR $9.0 \times 10^3$, 정규방정식 $1.8 \times 10^{13}$, Reinsch $8.6 \times 10^{10}$이었어요. Givens QR은 최소제곱 문제에 대해 역방향 안정이고, 계수의 오차가 $u\,\kappa(M)\max\lvert c\rvert$의 상수배 안이에요(시제품 최대 1.04배).
+
+## 지렛대와 대각합
+
+모자 행렬은 $L = B\,\Sigma\,B^{\mathsf T}W$, $\Sigma = (M^{\mathsf T}M)^{-1} = (R^{\mathsf T}R)^{-1}$이에요($M$은 쌓은 행렬, $M = QR$). 묶은 점 $g$의 지렛대는 $L_g = W_g\,b_g^{\mathsf T}\Sigma b_g$이고 $b_g$가 이어진 $k + 1$개만 0이 아니니 $\Sigma$의 띠 안 원소만 있으면 돼요.
+
+### 선택 역행렬
+
+$\Sigma$ 전체를 만들지 않고 띠만 구하는 Hutchinson–de Hoog의 점화식이에요. $R\Sigma = R^{-\mathsf T}$이고 $R^{-\mathsf T}$는 대각이 $1/R_{ii}$인 아래 삼각이라, $j \ge i$에서
+
+$$
+R_{ii}\Sigma_{ij} + \sum_{l \gt i}R_{il}\Sigma_{lj} = \frac{\delta_{ij}}{R_{ii}}
+$$
+
+예요. $R$의 행 $i$는 $l \le i + b - 1$에서만 0이 아니고, $j - i \lt b$이면 합에 드는 $\Sigma_{lj}$도 $\lvert l - j\rvert \lt b$라 띠 안이에요. 그래서 $i$를 마지막 행부터 내려가며 띠를 $O(n_cb^2)$에 채워요.
+
+```cpp
+// csrc/smooth/bandqr.hpp
+template <int BW>
+inline void selected_row(const double* R, std::int64_t i, double* S) {
+    const double* r = R + i * BW;
+    const double inv = 1.0 / r[0];
+    double* s = S + i * BW;
+    for (int d = BW - 1; d >= 1; --d) {
+        const std::int64_t j = i + d;
+        double acc = 0.0;
+        for (int e = 1; e < BW; ++e) {
+            const std::int64_t l = i + e;
+            const double sl = e <= d ? S[l * BW + (d - e)] : S[j * BW + (e - d)];
+            acc += r[e] * sl;
+        }
+        s[d] = -acc * inv;
+    }
+    double acc = 0.0;
+    for (int e = 1; e < BW; ++e) acc += r[e] * s[e];
+    s[0] = (inv - acc) * inv;
+}
+```
+
+대각선 밖($d \ge 1$)을 먼저 구하고 대각 $\Sigma_{ii} = (1/R_{ii})(1/R_{ii} - \sum_{l \gt i}R_{il}\Sigma_{il})$을 마지막에 구해요. 대각이 같은 행의 방금 구한 원소를 쓰기 때문이에요. $L_g$는 $b^{\mathsf T}\Sigma b = \sum_a b_a(\Sigma_{aa}b_a + \sum_{e \gt a}2\Sigma_{ae}b_e)$를 정해진 순서로 더해요.
+
+묶음 안의 점 $i$의 지렛대는 $(w_i/W_g)L_g$이고, `df`는 tr L $= \sum_g L_g$예요. CV의 분모 $1 - L_{ii}$는 $(1 - w_i/W_g) + (w_i/W_g)(1 - L_g)$로 계산해요. 묶음 안에서 상쇄가 생기지 않는 꼴이에요.
+
+$$
+\mathrm{GCV} = \frac{n\cdot\mathrm{RSS}_w}{(n - \mathrm{tr}L)^2},\qquad
+\mathrm{CV} = \frac{1}{n}\sum_i w_i\left(\frac{y_i - \hat f_i}{1 - L_{ii}}\right)^2
+$$
+
+이고 $n$은 무게가 양수인 점의 수예요. 두 기준을 모두 계산해 결과에 둬요.
+
+### 지렛대를 믿을 수 있는지
+
+$\mathrm{tr}(\Sigma M^{\mathsf T}M) = n_c$는 정확한 항등식이고, $M^{\mathsf T}M = \sum_g W_gb_gb_g^{\mathsf T} + \lambda\sum_p g_pg_p^{\mathsf T}$이니
+
+$$
+\sum_g L_g + \lambda\sum_p g_p^{\mathsf T}\Sigma g_p = n_c
+$$
+
+예요. 계산한 띠로 왼쪽을 더해 $n_c$와의 차(결함)가 $2^{-10}\max(n - \mathrm{tr}L, 1)$보다 크면 그 $\lambda$의 지렛대를 믿지 않아요. 지렛대의 오차 한계 $u\kappa\max(8, \kappa)$는 떨어진 좁은 간격이 있는 자료에서 실제 오차보다 $10^{13}$배쯤 비관적이라 판정에 쓸 수 없고, 결함은 그 자리에서 띠의 오차를 직접 재는 값이에요.
+
+### λ가 작을 때: Reinsch의 꼴
+
+$\lambda$가 작으면 $L_g$가 1에 가까워 $1 - L_g$(GCV의 분모 $n - \mathrm{tr}L$과 CV의 분모)가 상쇄로 자릿수를 잃어요. 평활 스플라인은 그 반대편을 직접 구하는 꼴이 있어요(Green–Silverman).
+
+$$
+I - L = \lambda W^{-1}Q\,(R + \lambda Q^{\mathsf T}W^{-1}Q)^{-1}Q^{\mathsf T}
+$$
+
+$Q$는 양수 무게 묶음 점의 2차 나눗셈 차분($m \times (m - 2)$, 행마다 원소 셋), $R$은 모자 함수의 Gram 행렬(삼중대각)이에요. $A = R + \lambda Q^{\mathsf T}W^{-1}Q$는 오대각이라 띠 Cholesky와 같은 선택 역행렬로 $A^{-1}$의 띠를 구하고, $1 - L_g = (\lambda/W_g)\,q_g^{\mathsf T}A^{-1}q_g$예요. $\lambda \lt \lambda_0$이면 이것도 계산해, 묶음 점마다 QR의 $L_g$와 Reinsch의 $1 - L_g$ 가운데 작은 쪽을 직접 계산한 값으로 쓰고 나머지를 1에서 빼요. 작은 값은 상대 정확도를 갖고, 큰 값은 1에서 빼도 절대 오차가 작으니까요. $\lambda$와 상관없는 부분($Q$의 곱, $R$의 띠, $Q^{\mathsf T}W^{-1}Q$의 띠)은 문제마다 한 번 만들어 둬요.
+
+$\lambda \ge \lambda_0$에서 Reinsch를 쓰지 않는 까닭은 큰 $\lambda$에서 $A$의 조건수가 $n^4$로 자라 오히려 나빠지기 때문이에요. 갈래가 바뀌는 $\lambda_0$에서 두 값의 차는 $10^{-15}$ 크기라 기준의 뜀이 계약 아래예요. QR만 쓰면 시험 자료에서 $\rho = -32$의 GCV가 상대 오차 1(분모가 반올림으로 0에 가까워 보간이 뽑혀요)이었고, 이 규칙으로 $8.3 \times 10^{-4}$이었어요.
+
+## 거절하는 계
+
+간격이 다른 점들보다 $10^8$배쯤 좁은 덩어리가 있으면 쌓은 행렬이 작업 정밀도에서 특이해져요. 그런 계는 값을 내지 않고 `LinAlgError`예요.
+
+```cpp
+// csrc/smooth/spline.cpp
+double scaled_condition(const std::vector<double>& R, std::int64_t nc, std::int64_t bw) {
+    std::vector<double> norm(static_cast<std::size_t>(nc), 0.0), Rs(R);
+    for (std::int64_t j = 0; j < nc; ++j) {
+        double big = 0.0;
+        for (std::int64_t i = std::max<std::int64_t>(0, j - bw + 1); i <= j; ++i)
+            big = std::max(big, std::abs(R[i * bw + (j - i)]));
+        double s = 0.0;
+        if (big > 0)
+            for (std::int64_t i = std::max<std::int64_t>(0, j - bw + 1); i <= j; ++i) {
+                const double v = R[i * bw + (j - i)] / big;
+                s += v * v;
+            }
+        norm[j] = big * std::sqrt(s);
+    }
+    for (std::int64_t i = 0; i < nc; ++i)
+        for (std::int64_t d = 0; d < bw && i + d < nc; ++d)
+            if (norm[i + d] > 0) Rs[i * bw + d] = R[i * bw + d] / norm[i + d];
+    return condition_estimate(Rs.data(), nc, bw);
+}
+```
+
+판정은 $R$의 열을 단위 2-노름으로 맞춘 뒤의 1-노름 조건수 추정이 $2^{43}$($u\kappa \gt 2^{-10}$, 계수에 10비트가 남지 않음)을 넘는지예요. 열을 맞추는 까닭은 Givens QR이 열의 크기 조정에 불변이기 때문이에요. 회전도 각 원소의 반올림도 열의 배율과 함께 움직이니, 오차를 정하는 조건수는 가장 잘 맞춘 행렬의 것이고 단위 열은 그것의 $\sqrt{n_c}$배 안이에요(van der Sluis). 맞추지 않으면 떨어진 좁은 간격 하나로도 열의 노름이 크게 달라 추정이 부풀어요($n = 10^6$의 난수 $x$에서 맞추지 않은 추정 $4.6 \times 10^{13}$, 맞춘 추정 $2.6 \times 10^{10}$).
+
+추정 자체는 Hager의 방법이에요. $\lVert R^{-1}\rVert_1 = \max_{\lVert x\rVert_1 = 1}\lVert R^{-1}x\rVert_1$은 볼록 함수의 최댓값이라 꼭짓점 $e_j$에서 나와요. $x = (1/n, \ldots, 1/n)$에서 시작해 $R^{-1}x$를 풀고, 그 부호 벡터 $\xi$로 $z = R^{-\mathsf T}\xi$(기울기)를 풀어, 가장 큰 $\lvert z_j\rvert$의 꼭짓점 $e_j$로 옮겨요. 값이 더 커지지 않거나 같은 꼭짓점이 다시 나오면 멈추고, 많아야 다섯 걸음이에요(LAPACK `dlacn2`와 같은 걸음). 마지막에 Higham의 교대 벡터 $x_j = (-1)^j(1 + j/(n - 1))$로 $2\lVert R^{-1}x\rVert_1/(3n)$을 재 큰 쪽을 써요. 기울기 걸음이 놓치기 쉬운 상쇄 구조를 이 벡터가 잡아요. 띠 삼각형이라 풀이 하나가 $O(n_cb)$예요.
+
+```python
+>>> xc = sd.concat([sd.linspace(0, 1, 20), 5 + 1e-8 * sd.linspace(0, 1, 20)])
+>>> sd.smooth.smoothing_spline(xc, sd.sin(xc), lam=1.0)
+Traceback (most recent call last):
+    ...
+stardust.linalg.LinAlgError: smoothing_spline(): the system is singular to working precision (estimated condition number 1.23e+15; a fit takes up to 2^43, and a lam search or df also needs the leverages to keep 10 bits): some values of 'x' are far closer together than the others (merge them)
+```
+
+같은 자료라도 $\lambda$가 작으면 계가 받아들여져요. 묶는 허용오차가 없으니 메시지가 가까운 $x$를 묶으라고 알려요. R의 `smooth.spline`은 사분위범위의 $10^{-6}$ 안의 $x$를 묶어 이런 계를 피해요.
+
+## λ의 두 끝
+
+| $\lambda$ | 계산 |
+|---|---|
+| $0$(평활 스플라인) | 양수 무게 묶음 점을 지나는 `make_interp_spline(bc_type='natural')` 그 자체(같은 비트). 지렛대는 $w_i/W_g$, `df`는 묶음 점의 수. 구간은 정사각 계 $[f''(x_0) = 0;\ B;\ f''(x_{-1}) = 0]$의 띠 QR로 |
+| $0$(P-스플라인) | 벌점 없는 최소제곱. 랭크가 모자라면 `LinAlgError` |
+| $\infty$ | 벌점의 영공간 위의 무게 붙은 최소제곱. 평활 스플라인은 직선(계수 = Greville 좌표의 일차식), P-스플라인은 색인의 $d - 1$차 다항식. 작은 Householder QR($n_g \times d$) |
+
+```python
+>>> r0 = sd.smooth.smoothing_spline(x, y, lam=0)
+>>> o = sd.argsort(x)
+>>> ip = sd.interpolate.make_interp_spline(x[o], y[o], bc_type="natural")
+>>> r0.spline.c.tolist() == ip.c.tolist(), r0.df
+(True, 200.0)
+>>> sd.smooth.smoothing_spline(x, y, lam=sd.inf).df
+1.9999999999999987
+```
+
+$\lambda = \infty$에서 직선이 영공간인 까닭은 B-스플라인의 계수를 Greville 좌표 $\xi_i = (t_{i+1} + t_{i+2} + t_{i+3})/3$의 일차식으로 주면 스플라인이 정확히 그 일차식이 되기 때문이에요. scipy는 $\lambda = \infty$를 받지 않아요.
+
+## λ 고르기
+
+### 단위와 무관한 변수
+
+찾는 변수는 $\rho = \log(\lambda/\lambda_0)$이고 구간은 $\rho \in [-32, 20]$으로 고정이에요.
+
+| 함수 | $\lambda_0$ |
+|---|---|
+| 평활 스플라인 | $\sum w_i\,(x_{\max} - x_{\min})^3\cdot 2^{-35}$ |
+| P-스플라인 | $\mathrm{tr}(B^{\mathsf T}WB)/\mathrm{tr}(D^{\mathsf T}D)$ |
+
+$\lambda$의 단위는 $x$ 단위의 세제곱에 $w$의 단위를 곱한 것이고, 두 $\lambda_0$이 정확히 그 단위를 가져서 $\rho$는 단위가 없어요. 고른 자료의 유효 자유도는 대략 $(\sum w\cdot\text{범위}^3/\lambda)^{1/4}/\pi$라서 위 끝 $\rho = 20$이 직선(df ≈ 2), 아래 끝 $\rho = -32$가 df ≈ $4 \times 10^5$이 되도록 $2^{-35}$을 골랐어요. 평활 스플라인에 P-스플라인과 같은 대각합의 비를 쓰지 않는 까닭은 $\mathrm{tr}(\Omega)$가 간격의 세제곱의 역수($\propto n^3$)로 자라고 가장 좁은 간격 하나가 그것을 차지하기도 해서, 큰 $n$에서 GCV의 극소가 구간 위 끝으로 밀려나기 때문이에요.
+
+scipy는 $\lambda$를 $(0, n)$에서 찾아요. 그래서 $x$의 단위를 바꾸면 다른 곡선을 골라요. 여기서는 $x$에 1024를 곱하면 $\lambda$가 정확히 $2^{30}$배가 되고 적합값이 같은 비트예요. 벌점 행이 $2^{-15}$배, $\sqrt\lambda$가 $2^{15}$배라 쌓은 행렬이 비트까지 같기 때문이에요.
+
+```python
+>>> r = sd.smooth.smoothing_spline(x, y)
+>>> r2 = sd.smooth.smoothing_spline(x * 1024.0, y)
+>>> r2.lam / r.lam == 2.0**30, r2.fittedvalues.tolist() == r.fittedvalues.tolist()
+(True, True)
+>>> r.lam, r.df, r.status, r.converged
+(0.5158715147071884, 9.759565431875362, 0, True)
+```
+
+### 격자와 Brent
+
+1. 구간의 정수 53점에서 기준을 나란히 계산해요. 태스크 하나가 격자점 여럿을 작업 공간 하나로 돌아요(새 배열은 페이지마다 페이지 폴트가 들어요). 태스크는 스레드 수의 두 배까지이고, 작업 공간들이 물리 메모리의 1/4을 넘지 않게 태스크 수를 줄여요. 격자점마다 독립인 같은 계산이라 나눔과 상관없이 같은 값이에요.
+2. 가장 작은 격자점(동점이면 큰 $\lambda$)의 양옆 $[\rho_{j-1}, \rho_{j+1}]$에서 fminbound를 돌려요($\lvert\Delta\rho\rvert \le 10^{-8}$, 값 60번). 그 결과가 격자의 값보다 작으면 쓰고, 아니면 격자점을 써요.
+3. 가장 작은 점이 구간의 끝이면 그 끝이 답이에요. `status`는 $-1$(작은 $\lambda$, 보간 쪽)이나 $1$(큰 $\lambda$, 직선 쪽)이고 `converged=False`예요.
+
+기준이 NaN이거나 계가 특이하거나 지렛대의 결함이 문턱을 넘은 $\lambda$는 $+\infty$로 둬요. 배치는 열마다의 기준을 더해 $\lambda$ 하나를 골라요.
+
+<Fig caption="200점의 평활 스플라인에서 격자 53점의 log₁₀ GCV와 log₁₀ df. GCV는 왼쪽 끝(보간)에서 평평하고 ρ ≈ 11에서 가장 작아요. 점선이 격자의 가장 작은 점 둘레에서 Brent가 찾은 ρ = 11.41이에요.">
+  <Plot
+    curves={[
+      { points: gcvCurve, label: 'log₁₀ GCV' },
+      { points: dfCurve, label: 'log₁₀ df' },
+      { points: chosen, label: '고른 ρ', dashed: true },
+    ]}
+    domain={[-32, 20]}
+    range={[-1.2, 2.4]}
+    xTicks={[{ v: -32, label: '−32' }, { v: -20, label: '−20' }, { v: -10, label: '−10' }, { v: 0, label: '0' }, { v: 10, label: '10' }, { v: 20, label: '20' }]}
+    yTicks={[{ v: -1, label: '−1' }, { v: 0, label: '0' }, { v: 1, label: '1' }, { v: 2, label: '2' }]}
+  />
+</Fig>
+
+격자를 먼저 도는 까닭은 기준에 극소가 여럿일 수 있어서예요. Brent만 돌리면 시작점에 따라 다른 극소에서 멈추고, 격자의 가장 작은 점 둘레라는 규칙이 있으면 "어느 극소인가"가 정의로 정해져요. 계약도 그 꼴이에요. 돌려준 $\hat\lambda$의 기준 값이 격자 53점의 어느 값보다 크지 않고, $\hat\rho$ 둘레 $10^{-6}$ 안에 계약 단위 넘게 더 작은 값이 없다는 것이에요. 기준이 평평하면 $\lambda$가 크게 달라도 곡선은 거의 같으니 참 최소점까지의 거리는 약속하지 않아요.
+
+`df=`는 tr L($\rho$)이 $\rho$에 단조 감소라 같은 구간의 brentq예요($\lvert\mathrm{tr}L - \mathit{df}\rvert \le 10^{-10}\mathit{df}$, 100번). df가 구간 끝의 tr L 밖이면 그 끝과 `status`예요.
+
+```python
+>>> rd = sd.smooth.smoothing_spline(x, y, df=8)
+>>> rd.df
+8.000000000000282
+```
+
+### Brent의 두 방법
+
+두 찾기는 optimize 영역과 같은 알고리즘(scipy의 `fminbound`와 `brentq.c`)을 C++ 함수 인자로 받게 다시 둔 것이에요(`search.hpp`). optimize의 커널은 Python 콜백을 받는 꼴이라 C++ 안에서 부를 수 없어요.
+
+- **fminbound.** 구간 $[a, b]$와 지금까지의 가장 좋은 점 셋 $x$, $w$, $v$를 쥐고, 세 점을 지나는 포물선의 꼭짓점으로 한 걸음 가 봐요. 그 걸음이 구간 안이고 두 걸음 전 걸음의 절반보다 작으면(수렴하고 있다는 표시) 받아들이고, 아니면 황금분할 걸음 $0.381966\cdot$(긴 쪽 구간)을 써요. 걸음은 적어도 $\mathit{tol}_1 = \sqrt{\varepsilon}\lvert x\rvert + \mathit{xatol}/3$이라 같은 점을 두 번 재지 않아요. 구간의 가운데와 $x$의 거리가 $2\mathit{tol}_1 - (b - a)/2$ 이하가 되면 멈춰요. 매끄러운 극소 둘레에서는 포물선 걸음이 초선형으로 수렴하고, 나쁜 함수에서도 황금분할이 구간을 걸음마다 0.618배로 줄여요.
+- **brentq.** 부호가 다른 괄호 $[a, b]$를 늘 쥐고, 세 점의 역2차 보간(두 점뿐이면 할선)으로 근을 어림해요. 어림이 괄호 안쪽 깊숙이(직전 걸음의 절반보다 작게) 들어오지 않으면 이분해요. 그래서 이분법보다 느려지지 않으면서 매끄러운 근에서는 빨라요. $\lvert f\rvert \le \mathit{ftol}$이거나 괄호가 $\mathit{xtol}$보다 좁아지면 멈춰요.
+
+두 방법 모두 값의 수에 고정된 상한이 있어서 어떤 입력에서도 정해진 시간 안에 끝나요.
+
+## predict_interval
+
+$\hat f(x_0) \pm t\cdot\mathit{scale}\cdot\lVert l(x_0)\rVert$의 $\lVert l(x_0)\rVert^2 = \sum_j l_j^2/w_j = \sum_g W_g(b_g^{\mathsf T}\Sigma b_0)^2$이에요. $\Sigma b_0$은 $R$로 두 번의 띠 삼각 풀이(`normal_solve`, $b_0$이 시작하는 열부터)이고, 묶음 점마다 내적 하나예요. 평가점 하나가 $O(n_cb + n_gk)$이고 평가점 조각으로 나란히 해요. $\lambda = \infty$는 영공간의 작은 삼각형으로 $\lVert R_N^{-\mathsf T}N^{\mathsf T}b_0\rVert^2$이에요. 적합값(`fittedvalues`)은 돌려준 `BSpline`을 자료점에서 평가한 값이라 `predict(x)`와 같은 비트예요.
+
+## make_lsq_spline의 판정
+
+`make_lsq_spline`은 정렬되지 않은 $x$와 같은 $x$를 받아요(안정 정렬과 묶기; scipy는 비감소만). 맞추기 전에 Schoenberg–Whitney 조건을 정확히 판정해요. 모든 B-스플라인 $B_j$에, 서로 다른 양수 무게의 자료점을 하나씩 짝지을 수 있는지예요. $x$의 오름차순으로 탐욕스럽게 짝을 지으면 충분해요. $B_j$의 지지집합이 $j$와 함께 오른쪽으로 움직이니, 앞 함수에 가장 왼쪽의 쓸 수 있는 점을 주는 것이 뒤 함수의 선택을 좁히지 않아요. 지지집합의 끝은 왼쪽 끝 매듭이 $k + 1$겹이면 닫힌 끝, 마지막 함수의 오른쪽 끝이 닫힌 끝이에요. 짝이 없는 첫 함수가 있으면 그 번호와 매듭을 담은 `LinAlgError`예요. scipy의 QR 길은 같은 입력에서 NaN 계수를 경고 없이 돌려줘요.

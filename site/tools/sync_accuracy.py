@@ -36,6 +36,7 @@ AREAS = (
     "spatial",
     "fft",
     "interpolate",
+    "smooth",
     "graph",
 )
 GROUPS = {"stats": {"mv": "mv/"}}  # area -> {group: sweep name prefix}

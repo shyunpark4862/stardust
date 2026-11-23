@@ -4,7 +4,7 @@ title: 보간의 기본
 group: 기본 개념
 order: 1
 summary: sd.interpolate가 하는 일과 자료에 맞는 보간 방법을 고르는 법을 설명해요. 보간 객체를 만들어 여러 번 부르는 쓰임, 받는 입력과 dtype, 여러 열을 한 번에 다루는 axis, 자료 범위 밖을 정하는 extrapolate, 스레드 수와 상관없이 같은 결과와 서로 같은 비트를 내는 길들, 에러의 꼴처럼 영역의 모든 이름이 함께 따르는 규칙도 여기에 있어요.
-seeAlso: [CubicSpline, PchipInterpolator, Akima1DInterpolator, PPoly, make_interp_spline, BSpline, RegularGridInterpolator, RBFInterpolator, BarycentricInterpolator, AAA]
+seeAlso: [CubicSpline, PchipInterpolator, Akima1DInterpolator, PPoly, make_interp_spline, BSpline, RegularGridInterpolator, RBFInterpolator, LinearNDInterpolator, griddata, BarycentricInterpolator, AAA]
 ---
 import Callout from '../../../components/Callout.astro';
 import Fig from '../../../components/fig/Fig.astro';
@@ -110,7 +110,7 @@ array([               1.0, 1.3529017857142858,                1.1], dtype=float6
 | 자료가 놓인 꼴 | 방법 |
 |---|---|
 | 축마다 눈금이 있는 격자(위도 × 경도 × 높이의 표) | [`RegularGridInterpolator`](/api/interpolate/RegularGridInterpolator/), 한 번만 부를 때는 [`interpn`](/api/interpolate/interpn/) |
-| 아무 데나 흩어진 점 | [`RBFInterpolator`](/api/interpolate/RBFInterpolator/)(매끄러운 곡면), [`NearestNDInterpolator`](/api/interpolate/NearestNDInterpolator/)(가장 가까운 점의 값) |
+| 아무 데나 흩어진 점 | [`NearestNDInterpolator`](/api/interpolate/NearestNDInterpolator/)(가장 가까운 점의 값), [`LinearNDInterpolator`](/api/interpolate/LinearNDInterpolator/)(2·3차원, 삼각형마다 평면), [`CloughTocher2DInterpolator`](/api/interpolate/CloughTocher2DInterpolator/)(2차원, 기울기까지 이어지는 3차 조각), [`RBFInterpolator`](/api/interpolate/RBFInterpolator/)(어느 차원이든 매끄러운 곡면), 한 번에 부르는 [`griddata`](/api/interpolate/griddata/) |
 
 ## 객체를 만들고, 불러요
 
@@ -167,7 +167,7 @@ True
 1.996205357142857
 ```
 
-`DataFrame`은 열을 나란히 둔 float64 2차원 배열로 읽어요(결측은 NaN). 그래서 여러 차원의 흩어진 점(`RBFInterpolator`와 `NearestNDInterpolator`의 점, 그 평가점)으로 써요. 1차원이어야 하는 인자에 주면 차원의 `ValueError`예요.
+`DataFrame`은 열을 나란히 둔 float64 2차원 배열로 읽어요(결측은 NaN). 그래서 여러 차원의 흩어진 점(`RBFInterpolator`, `NearestNDInterpolator`, `LinearNDInterpolator`, `CloughTocher2DInterpolator`, `griddata`의 점, 그 평가점)으로 써요. 1차원이어야 하는 인자에 주면 차원의 `ValueError`예요.
 
 ```python
 >>> df = sd.frame.DataFrame({"x": [0.0, 1.0, 0.0, 1.0], "y": [0.0, 0.0, 1.0, 1.0]})
@@ -224,7 +224,7 @@ ValueError: CubicSpline(): 'x' must be finite
 
 ### 값은 유한해야 하나요
 
-자료 전체를 한꺼번에 풀어 계수를 만드는 방법(`CubicSpline`, `PchipInterpolator`, `Akima1DInterpolator`, `CubicHermiteSpline`, `make_interp_spline`, `RBFInterpolator`)은 값이 모두 유한해야 해요. NaN 하나가 곡선 전체를 NaN으로 만들기 때문에 만들 때 에러로 알려요.
+자료 전체를 한꺼번에 풀어 계수를 만드는 방법(`CubicSpline`, `PchipInterpolator`, `Akima1DInterpolator`, `CubicHermiteSpline`, `make_interp_spline`, `RBFInterpolator`, 기울기를 함께 어림하는 `CloughTocher2DInterpolator`)은 값이 모두 유한해야 해요. NaN 하나가 곡선 전체를 NaN으로 만들기 때문에 만들 때 에러로 알려요.
 
 ```python
 >>> sd.interpolate.CubicSpline([0, 1, 2, 3], [0.0, sd.nan, 2.0, 3.0])
@@ -233,7 +233,7 @@ Traceback (most recent call last):
 ValueError: CubicSpline(): 'y' must be finite
 ```
 
-결측값이 있으면 그 점을 빼고 만들어요. 자료 전체를 풀지 않는 계산(`sd.interp`, 계수를 직접 준 `PPoly`와 `BSpline`, `RegularGridInterpolator`의 `linear`, `BarycentricInterpolator`, `KroghInterpolator`)은 NaN과 inf를 받아서 부동소수점의 규칙대로 결과에 퍼뜨려요. 조각으로 잇는 계산은 그 값이 닿는 조각에서만 NaN이나 inf가 되지만, 다항식 하나로 잇는 `BarycentricInterpolator`와 `KroghInterpolator`는 NaN 하나가 거의 모든 자리의 결과를 NaN으로 만들어요.
+결측값이 있으면 그 점을 빼고 만들어요. 자료 전체를 풀지 않는 계산(`sd.interp`, 계수를 직접 준 `PPoly`와 `BSpline`, `RegularGridInterpolator`의 `linear`, `LinearNDInterpolator`, `BarycentricInterpolator`, `KroghInterpolator`)은 NaN과 inf를 받아서 부동소수점의 규칙대로 결과에 퍼뜨려요. 조각으로 잇는 계산은 그 값이 닿는 조각에서만 NaN이나 inf가 되지만, 다항식 하나로 잇는 `BarycentricInterpolator`와 `KroghInterpolator`는 NaN 하나가 거의 모든 자리의 결과를 NaN으로 만들어요.
 
 ```python
 >>> sd.interpolate.BarycentricInterpolator([0.0, 1.0, 2.0, 3.0], [0.0, sd.nan, 2.0, 3.0])([0.0, 0.5, 2.0, 2.5])
@@ -328,7 +328,7 @@ array([nan, 1.0, 1.5, nan], dtype=float64)
 
 </Callout>
 
-다른 보간은 저마다의 방법이 있어요. [`sd.interp`](/api/array/interp/)는 `left`·`right`·`period`, [`RegularGridInterpolator`](/api/interpolate/RegularGridInterpolator/)는 `bounds_error`·`fill_value`예요. 식 하나로 잇는 방법(`BarycentricInterpolator`, `KroghInterpolator`, `FloaterHormannInterpolator`, `AAA`)과 흩어진 점의 방법(`RBFInterpolator`, `NearestNDInterpolator`)은 범위라는 것이 없어서 어디서나 같은 식을 계산해요.
+다른 보간은 저마다의 방법이 있어요. [`sd.interp`](/api/array/interp/)는 `left`·`right`·`period`, [`RegularGridInterpolator`](/api/interpolate/RegularGridInterpolator/)는 `bounds_error`·`fill_value`, 삼각분할 위의 [`LinearNDInterpolator`](/api/interpolate/LinearNDInterpolator/)·[`CloughTocher2DInterpolator`](/api/interpolate/CloughTocher2DInterpolator/)·[`griddata`](/api/interpolate/griddata/)는 자료점의 볼록 껍질 밖이 `fill_value`예요. 식 하나로 잇는 방법(`BarycentricInterpolator`, `KroghInterpolator`, `FloaterHormannInterpolator`, `AAA`)과 흩어진 점의 방법(`RBFInterpolator`, `NearestNDInterpolator`)은 범위라는 것이 없어서 어디서나 같은 식을 계산해요.
 
 ## 스레드 수와 상관없이 같은 결과
 
@@ -374,7 +374,7 @@ True
 
 점에서의 기울기를 부르기로 다시 읽을 때, 끝 점의 기울기는 끝 조각의 3차식을 계산한 값이라 정한 기울기와 마지막 비트가 다를 수 있어요. 그때는 끝 조각의 계수만 끝자리가 달라지고 나머지 조각은 그대로 같아요.
 
-**자료의 자리에서는 자료 그대로예요.** 선형 보간, 0차와 1차 B-스플라인, `BarycentricInterpolator`, `AAA`의 지지점, 격자의 `linear`와 `nearest`는 자료의 자리를 물으면 자료의 값을 비트까지 그대로 돌려줘요.
+**자료의 자리에서는 자료 그대로예요.** 선형 보간, 0차와 1차 B-스플라인, `BarycentricInterpolator`, `AAA`의 지지점, 격자의 `linear`와 `nearest`, 흩어진 점의 `LinearNDInterpolator`와 `CloughTocher2DInterpolator`는 자료의 자리를 물으면 자료의 값을 비트까지 그대로 돌려줘요.
 
 노드(지지점)가 하나인 `BarycentricInterpolator`, `KroghInterpolator`, `FloaterHormannInterpolator`, `AAA`는 상수예요. 유한한 모든 점에서 그 값을 비트까지 그대로 돌려줘요.
 
@@ -456,11 +456,11 @@ TypeError: integrate(): 'b' must be an int or a float, not str
 | `InterpolatedUnivariateSpline(x, y, k=3)`, `splrep(x, y, s=0)` | `make_interp_spline(x, y, k=3)` |
 | `splev(x, tck)`, `splint(a, b, tck)`, `sproot(tck)` | `BSpline(*tck)(x)`, `BSpline(*tck).integrate(a, b)`, `PPoly.from_spline(tck).roots()` |
 | `splder(tck, n)`, `splantider(tck, n)`, `insert(x, tck, m)` | `BSpline.derivative(nu=n)`, `BSpline.antiderivative(nu=n)`, `BSpline.insert_knot(x, m=m)` |
-| `interp2d`, `RectBivariateSpline`, `bisplrep` | 격자 자료는 `RegularGridInterpolator((x, y), z, method='cubic')`, 흩어진 자료는 `RBFInterpolator` |
+| `interp2d`, `RectBivariateSpline`, `bisplrep` | 격자 자료는 `RegularGridInterpolator((x, y), z, method='cubic')`, 흩어진 자료는 `RBFInterpolator`나 `CloughTocher2DInterpolator` |
 | `Rbf` | `RBFInterpolator(y, d, kernel=..., epsilon=...)`. 핵의 이름과 `epsilon`의 뜻이 달라요 |
 | `lagrange(x, w)` | `BarycentricInterpolator(x, w)` |
 | `pade` | 유리 근사는 `AAA` |
-| `griddata`, `LinearNDInterpolator`, `CloughTocher2DInterpolator` | 없어요. 가장 가까운 점은 `NearestNDInterpolator`, 매끄러운 곡면은 `RBFInterpolator` |
+| `estimate_gradients_2d_global`, `GradientEstimationWarning` | `CloughTocher2DInterpolator`의 `grad`와 `converged` |
 | `BPoly`, `NdBSpline`, `NdPPoly`, `PPoly.from_bernstein_basis` | 없어요 |
 | `UnivariateSpline`, `make_lsq_spline`, `make_smoothing_spline`, `make_splrep` 등 | 없어요. 자료를 지나지 않고 따라가는 맞추기와 평활은 보간이 아니에요 |
 | `RegularGridInterpolator`의 `solver`, 옛 방법 `'cubic_legacy'` 등, `interpn(method='splinef2d')` | `method='slinear' / 'cubic' / 'quintic'` |

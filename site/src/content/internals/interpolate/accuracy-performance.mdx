@@ -3,7 +3,7 @@ title: 정확도와 성능
 group: 정확도와 성능
 order: 1
 summary: sd.interpolate가 맞게 계산하는지를 식으로 만든 시험 자료, 정확한 유리수와 Arb로 만든 참값, 만들기와 평가의 두 겹으로 적은 계약으로 확인하는 방법을 모았어요. 보간 방법마다의 계약과 잰 값, 정확도 표의 비교 패키지 열을 읽는 법, 계약 없이 성질로 시험하는 것, 그리고 어디가 빠르고 어디가 느린지를 적었어요.
-seeAlso: [overview, linear, cubic, banded, bspline, barycentric, aaa, grid, rbf]
+seeAlso: [overview, linear, cubic, banded, bspline, barycentric, aaa, grid, rbf, scattered]
 ---
 import AccuracySummary from '../../../components/fig/AccuracySummary.astro';
 
@@ -16,7 +16,7 @@ import AccuracySummary from '../../../components/fig/AccuracySummary.astro';
 3. **정확한 성질은 정확히.** 노드에서 자료 그대로, 선형 보간의 단조와 범위, PCHIP의 단조, 같은 비트여야 하는 길들은 한계가 아니라 등호로 시험해요.
 4. **반올림이 아닌 동작은 scipy·numpy와 같게.** 결과의 모양과 형, 구간의 포함 여부, 바깥의 규칙, 기본값을 scipy 1.18.1과 numpy 2.5.4의 기록, 그리고 그 자리에서 부른 scipy·numpy와 견줘요. 다르게 정한 곳은 함수 페이지의 끝 절에 모여 있어요.
 
-오차는 모두 계약 단위(오차를 한계로 나눈 값)로 적어요. 1 이하면 계약 안이에요. 정확도 기준선은 스윕 8개, (스윕, 영역) 60줄, 점 42,642개이고, 수로 된 계약이 있는 57줄이 모두 계약 안이에요. 가장 큰 값은 선형 커널의 0.5예요.
+오차는 모두 계약 단위(오차를 한계로 나눈 값)로 적어요. 1 이하면 계약 안이에요. 정확도 기준선은 스윕 9개, (스윕, 영역) 62줄, 점 46,295개이고, 수로 된 계약이 있는 59줄이 모두 계약 안이에요. 가장 큰 값은 선형 커널의 0.5예요.
 
 이 글에서 $u = 2^{-53}$은 단위 반올림, $\gamma_k = ku/(1 - ku)$, $\eta = 2^{-1075}$는 가장 작은 비정상 수의 반이에요.
 
@@ -41,6 +41,7 @@ import AccuracySummary from '../../../components/fig/AccuracySummary.astro';
 | 선형 커널의 구간 62개 | 끝점 둘레의 이웃 double, 부호가 다른 끝값, 거의 같은 끝값, $a = b$, $\pm 0$, inf와 NaN 끝값, 폭이 비정상 수이거나 넘치는 구간 | [선형 커널](/internals/interpolate/linear/)의 모든 갈래 |
 | 격자 10개 | 1–4차원, 축마다 1점·2점, 감소하는 격자, NaN 값 | [격자](/internals/interpolate/grid/)의 축 처리 |
 | 흩어진 점 6벌 | 2·3차원 균등, 군집, 같은 점, 직선 위의 점, 거리 동점이 많은 격자 점 | [RBF](/internals/interpolate/rbf/)의 특이한 계와 이웃의 동점 |
+| 삼각분할의 점 집합 48벌 | `sd.spatial`의 계산 기하 시험 점(무작위, 정수 격자와 한 원 위의 점, 거의 퇴화, 먼 군집, 극단 범위와 비정상 수)에 매끄러운 값 | [삼각분할 위의 보간](/internals/interpolate/scattered/)의 정확한 단체 찾기, 납작한 단체, 크기 옮기기 |
 | 조각 다항식 7개 | 접하는 근, 붙은 두 근, 0과 같은 조각, 중단점의 부호 변화 | `roots` |
 | 다항식 보간 6벌, AAA 표본 4벌 | 고른 점과 체비쇼프 점 10개·30개, 가까이 붙은 노드, 도함수가 딸린 Hermite 자료, $\tan$, $\lvert x\rvert$, 복소 원 위의 표본, 유한하지 않은 값이 섞인 표본 | 무게중심 꼴, Krogh, [AAA](/internals/interpolate/aaa/) |
 
@@ -64,8 +65,9 @@ import AccuracySummary from '../../../components/fig/AccuracySummary.astro';
 | `grid` | 400 | 격자의 `linear`·`cubic`·`quintic`·`pchip` |
 | `rbf` | 83 | 핵 여덟과 `smoothing`·`neighbors` |
 | `roots` | 36 | Arb로 분리한 실근과 중복도 |
+| `scattered` | 2,342 | 삼각분할 위의 선형 값과 $\sum\lambda_k\lvert f_k\rvert$, 2차원은 sd가 추정한 기울기로 만든 Clough–Tocher의 값과 $K$ |
 
-여덟 묶음을 합쳐 6,925점이에요. AAA는 참값 파일이 없어요. AAA의 무게는 SVD가 고른 것이라 미리 적어 둘 "정확한 무게"가 없고, 테스트가 계산된 (지지점, 값, 무게)를 받아 그 자리에서 Arb로 평가해요. 같은 스플라인의 두 구성(`CubicSpline`의 기울기 계와 B-스플라인의 배치 행렬)이 참값에서 같은지도 테스트가 봐요.
+아홉 묶음을 합쳐 9,267점이에요. AAA는 참값 파일이 없어요. AAA의 무게는 SVD가 고른 것이라 미리 적어 둘 "정확한 무게"가 없고, 테스트가 계산된 (지지점, 값, 무게)를 받아 그 자리에서 Arb로 평가해요. 같은 스플라인의 두 구성(`CubicSpline`의 기울기 계와 B-스플라인의 배치 행렬)이 참값에서 같은지도 테스트가 봐요.
 
 ## 계약
 
@@ -150,6 +152,18 @@ $\hat R_a$는 축 $a$까지 푼 계수예요. 증명은 [격자](/internals/inte
 
 풀이의 한계에서 $\hat A$는 계산한 계, $\hat L$과 $\hat D$는 그 $LDL^{\mathsf T}$ 인수예요. 테스트는 잔차를 오차 없는 곱과 정확한 합으로 구해 이 한계와 견줘요. 평가의 한계는 $\log$와 $\exp$가 1 ULP 안이라는 가정 위에 서 있어요. 증명과 가정은 [RBF](/internals/interpolate/rbf/)에 있어요.
 
+### 삼각분할 위의 보간
+
+평가점을 품은 단체에서 정확한 무게와 계수의 정확한 값 $y$와 견줘요. 단체는 정확한 판정으로 고르니, 참값 생성기도 sd의 단체를 유리수 술어로 확인한 뒤 같은 단체에서 계산해요.
+
+| 대상 | 계약 | 잰 값 |
+|---|---|---|
+| `LinearNDInterpolator`(2·3차원) | $\lvert\hat y - y\rvert \le \gamma_{d+5}\sum_k\lambda_k\lvert f_k\rvert + (d + 2)\,2^{-1074}$ | 0.40 |
+| `CloughTocher2DInterpolator`(주어진 기울기의 조각 3차식) | $\lvert\hat y - y\rvert \le 256u\cdot K + 32\cdot 2^{-1074}$, $K = (1 + \max_k\lvert g_k\rvert)(\max\lvert f\rvert + \max_i(\lvert\partial_x f_i\rvert\lvert e_x\rvert + \lvert\partial_y f_i\rvert\lvert e_y\rvert))$ | 0.014 |
+| 자료점의 값 | 자료 그대로 | 오차 0 |
+
+$\lambda_k$는 무게중심 좌표, $g_k$는 변을 건너는 방향의 계수, $e$는 삼각형의 변이에요. Clough–Tocher의 기울기는 반복의 `tol`만큼만 정해지니 계약 밖이고, 참값도 sd가 추정한 기울기를 그대로 받아 계수부터 정확히 계산해요. 유도는 [삼각분할 위의 보간](/internals/interpolate/scattered/)에 있어요.
+
 ### 근과 적분
 
 `roots`는 한계가 아니라 세 가지로 판정해요. 돌려준 근 $\hat r$마다 계산한 계수의 정확한 값이 $\hat r$와 그 이웃 double 사이에서 부호가 바뀌거나 $\hat r$에서 0인지, 접하는 근이면 $\lvert P(\hat r)\rvert$가 평가 계약 안인지, 그리고 Arb로 분리한 참 근을 하나도 빠뜨리지 않았는지예요. 참값의 근 36개(중근 둘과 $2^{-30}$ 떨어진 두 근 포함)를 모두 0 ULP로 찾아요.
@@ -181,6 +195,8 @@ $\hat R_a$는 축 $a$까지 푼 계수예요. 증명은 [격자](/internals/inte
 
 <AccuracySummary area="interpolate" names={['grid']} caption="격자. linear와 slinear는 꼭짓점 값에 대한 한계, cubic과 quintic은 끝에서 끝의 한계로 판정해요. pchip은 계약이 없어 ULP만 적어요." />
 
+<AccuracySummary area="interpolate" names={['scattered']} caption="삼각분할 위의 보간. linear는 2·3차원 점 집합의 평가점, clough_tocher는 기울기가 유한한 2차원 점 집합의 평가점이에요." />
+
 <AccuracySummary area="interpolate" names={['rbf', 'roots']} caption="RBF의 평가와 roots. rbf의 영역은 핵 이름이고 _s0.1은 smoothing 0.1, _k8은 neighbors=8이에요(전역 RBF와 같은 비트라 따로 판정하지 않아요). roots는 참값의 근마다 가장 가까운 돌려준 근까지의 ULP예요." />
 
 계약 대비가 비어 있는 세 줄(`grid`의 pchip, `rbf`의 thin_plate_spline_k8, `roots`)은 수로 된 계약이 없는 곳이에요. 앞의 두 줄은 같은 비트 관계로, `roots`는 위의 세 가지 판정으로 시험해요.
@@ -194,6 +210,7 @@ $\hat R_a$는 축 $a$까지 푼 계수예요. 증명은 [격자](/internals/inte
 - **조각 다항식의 평가.** scipy가 자기 계수를 자기 평가로 계산한 값은 natural과 akima가 1.04로 초과, clamped가 반올림해 1이지만 초과, makima가 1, not-a-knot 0.89, PCHIP 0.94, periodic 0.66이에요.
 - **격자.** scipy의 `linear`는 0.17, `slinear`는 0.54예요. `cubic`과 `quintic`은 $3.01 \times 10^8$배, $1.12 \times 10^8$배 초과예요. scipy가 이 둘의 계수를 반복 풀이로 구해서, 결과가 그 풀이의 허용오차 크기로 틀리기 때문이에요([격자](/internals/interpolate/grid/)). `pchip`은 참값과 최대 53 ULP예요.
 - **RBF.** scipy의 계수를 scipy가 평가한 값은 같은 한계로 0.015–0.11이에요(gaussian이 0.11).
+- **삼각분할 위의 보간.** scipy를 제 삼각분할과 제 기울기로 같은 단위에 재면 선형이 49.4배, Clough–Tocher가 $7.47 \times 10^4$배 초과예요. Clough–Tocher의 큰 값은 원점에서 먼 작은 군집($10^6 + 10^{-3}$ × 균등)에서 나와요.
 - **`roots`.** scipy의 `PPoly.roots`는 최대 ULP가 inf예요. 참값의 근 가운데 찾지 못한 것이 있다는 뜻이에요.
 - 다항식·유리식과 B-스플라인의 줄은 이 표에서 비교 패키지의 칸이 줄표예요.
 
@@ -211,11 +228,12 @@ scipy·numpy·R과 다른 곳은 계약이 아니라 이 열로 드러나요. �
 | `test_bspline.py`, `test_make_interp_spline.py` | 평가와 계수의 계약, 매듭 규칙, 도함수 조건 |
 | `test_polyint.py`, `test_aaa.py` | 무게와 평가의 계약, 도함수, 차분표, AAA의 성질과 scipy와 같은 지지점 순서 |
 | `test_grid.py`, `test_rbf.py` | 격자의 방법마다의 계약과 1차원의 같은 비트, RBF의 풀이·평가 계약과 이웃 집합의 같은 비트 |
+| `test_scattered.py` | 삼각분할 위의 두 계약, 자료점에서 자료 그대로, 1차식의 재현, 바깥과 NaN·inf, 같은 점의 값, complex와 배치, `points`의 세 꼴과 `rescale`, 기울기의 멈춤 판정, `griddata`의 세 방법, scipy와 견주기 |
 | `test_reference.py`, `test_reference_data.py` | 참값 대비 계약, scipy·numpy·R의 기록과 참값의 일치 |
 | `test_errors.py` | 모든 에러의 종류와 메시지 |
 | `test_threads.py` | 1, 2, 3, 7, 10스레드에서 같은 바이트 |
 
-골든 출력(`tests/golden/cases_interpolate.py`)은 388개예요. 모든 공개 이름에 경계 자료, 바깥의 세 규칙, 틀린 호출, 병렬 길에 드는 큰 사례를 담고, 1·3·10스레드의 결과가 모두 같아야 해요.
+골든 출력(`tests/golden/cases_interpolate.py`)은 418개예요. 모든 공개 이름에 경계 자료, 바깥의 세 규칙, 틀린 호출, 병렬 길에 드는 큰 사례를 담고, 1·3·10스레드의 결과가 모두 같아야 해요.
 
 R과는 정의가 같은 것만 견줘요. `approx(rule = 2)`는 `sd.interp`, `splinefun`의 `natural`과 `periodic`은 `CubicSpline`이에요. R의 기본 스플라인(`fmm`)은 끝 조건이 not-a-knot과 다르고, `monoH.FC`는 PCHIP과 다른 식이라 비교하지 않아요.
 
@@ -229,7 +247,7 @@ scipy·numpy와는 연산 순서가 다른 곳에서 끝자리가 다를 수 있
 
 ## 성능
 
-속도는 통합 측정 체계의 사례(`bench/speed/cases/interpolate.py`, 48개)로 재요. 만들기와 평가를 따로, 노드 수와 평가점 수를 바꿔 가며, 정렬한 평가점과 무작위 평가점, 배치 열을 재고, 사례마다 결과 값도 scipy·numpy와 견줘요. 질적으로 보면 이래요.
+속도는 통합 측정 체계의 사례(`bench/speed/cases/interpolate.py`, 58개)로 재요. 만들기와 평가를 따로, 노드 수와 평가점 수를 바꿔 가며, 정렬한 평가점과 무작위 평가점, 배치 열을 재고, 사례마다 결과 값도 scipy·numpy와 견줘요. 질적으로 보면 이래요.
 
 - **평가는 점마다 독립이에요.** 평가점을 크기로만 정한 조각으로 나눠 스레드에 고르게 줘요. 점이 많으면 모든 스레드가 일을 나눠 가져요. 구간은 이분으로 찾고 정렬된 점은 앞 점의 자리에서 이어 찾아요. 무작위 순서의 점에서도 노드 수의 로그에 비례하는 일이에요.
 - **긴 열 하나의 스플라인은 차례 계산이에요.** 삼중대각과 띠의 분해는 앞 행의 결과가 다음 행에 드는 사슬이라 스레드로 나눌 수 없어요. 열이 여럿인 배치는 열 묶음으로 나눠요. 피벗 없는 풀이라 행마다 하는 일이 적어요.
@@ -240,4 +258,5 @@ scipy·numpy와는 연산 순서가 다른 곳에서 끝자리가 다를 수 있
 - **격자의 `pchip`.** 점마다 둘레의 $4^d$개 값만 읽어요. 점마다 줄 전체로 1차원 보간을 다시 만들지 않으니 격자가 커도 점 하나의 일이 같아요.
 - **RBF.** 전역 만들기는 계 채우기가 병렬이고 분해는 Accelerate예요. 자료점 수의 세제곱에 비례하고 메모리는 $(n + q)^2 \times 8$바이트라, 자료가 수만 점이면 `neighbors`를 쓰는 편이 맞아요. 평가는 점마다 자료점 전부를 훑고, 점 넷을 나란히 계산해요. `neighbors=k`는 KD 트리 질의와 이웃 집합마다의 작은 계라 집합끼리 병렬이에요.
 - **`NearestNDInterpolator`.** 시간의 거의 전부가 `KDTree.query`예요([KD 트리](/internals/spatial/kdtree/)).
+- **삼각분할 위의 보간.** 만들기의 대부분은 `Delaunay`예요([삼각분할 만들기](/internals/spatial/delaunay/)). 이미 만든 `Delaunay`를 `points`로 주면 그 일을 건너뛰어요. 평가는 점마다 위치 격자에서 시작하는 짧은 걸음과 행렬식 몇 개라, 찾은 태스크에서 바로 계산해 단체를 두 번 읽지 않아요. Clough–Tocher의 만들기는 기울기의 Gauss–Seidel 훑기가 더해지는데, 훑기 하나가 변의 수에 비례하고 한 열 안에서는 나눌 수 없는 차례 계산이에요. 열이 여럿이면 열끼리 나란히 돌아요.
 - **`roots`.** 구간마다 독립이라 병렬이지만, 근이 있는 구간과 없는 구간의 일이 달라 스레드에 고르게 나뉘지는 않아요.

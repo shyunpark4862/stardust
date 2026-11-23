@@ -1,0 +1,276 @@
+---
+title: CloughTocher2DInterpolator
+names: [CloughTocher2DInterpolator, CloughTocher2DInterpolator.points, CloughTocher2DInterpolator.values, CloughTocher2DInterpolator.tri, CloughTocher2DInterpolator.fill_value, CloughTocher2DInterpolator.grad, CloughTocher2DInterpolator.converged, CloughTocher2DInterpolator.niter]
+group: 흩어진 점
+order: 3
+signatures:
+  - "sd.interpolate.CloughTocher2DInterpolator(points, values, /, *, fill_value=nan, tol=1e-06, maxiter=400, rescale=False)"
+  - "ct(xi, /)"
+summary: 2차원에 흩어진 점의 값으로 기울기까지 매끄럽게 이어지는 곡면을 만들어요. 자료점의 Delaunay 삼각형마다 3차 조각 다항식(Clough–Tocher)을 놓고, 꼭짓점의 기울기는 곡면이 가장 덜 휘도록 반복으로 어림해요. 자료점에서는 자료 그대로이고, 볼록 껍질 밖은 fill_value예요. 반복의 멈춤은 tol과 maxiter로 정하고, 결과는 converged와 niter로 알려 줘요.
+params:
+  - name: points
+    type: ndarray, 수의 시퀀스, numpy 배열, DataFrame, 좌표 배열의 튜플, Delaunay
+    kind: positional-only
+    desc: "자료점. (n, 2) 배열, 길이가 같은 1차원 좌표 배열 두 개의 튜플, 또는 이미 만든 2차원 sd.spatial.Delaunay. 좌표는 유한해야 하고, 서로 다른 점이 셋 이상이며 모두 한 직선 위가 아니어야 해요."
+  - name: values
+    type: ndarray, 수의 시퀀스, numpy 배열
+    kind: positional-only
+    desc: "자료점마다의 값. 첫 축의 길이가 n이고 나머지 축은 배치예요. float64나 complex128이고 모두 유한해야 해요. 좌표가 같은 자료점은 값도 비트까지 같아야 해요."
+  - name: fill_value
+    type: float 또는 complex
+    kind: keyword-only
+    desc: "자료점의 볼록 껍질 밖에서 돌려줄 값. 수여야 하고, 값이 복소수일 때만 복소수를 줄 수 있어요. 기본값 nan."
+  - name: tol
+    type: float
+    kind: keyword-only
+    desc: "기울기 반복을 멈추는 상대 기준. 한 번의 훑기에서 기울기가 바뀐 가장 큰 양이 tol × (기울기 성분의 가장 큰 크기)보다 작으면 멈춰요. 0 이상의 유한한 수이고, 0이면 언제나 maxiter번 훑어요. 기본값 1e-6."
+  - name: maxiter
+    type: int
+    kind: keyword-only
+    desc: "기울기 반복의 최대 훑기 수(1 이상). 기본값 400."
+  - name: rescale
+    type: bool
+    kind: keyword-only
+    desc: "True면 축마다 자료점의 평균을 빼고 범위(0이면 1)로 나눈 좌표에서 삼각분할하고 기울기를 어림해요. points가 Delaunay면 쓸 수 없어요. 기본값 False."
+returns:
+  type: CloughTocher2DInterpolator
+  desc: "보간 객체. (…, 2) 배열이나 좌표 두 개의 튜플로 불러 (…) + values의 나머지 모양의 값을 받아요. 속성 points, values, tri, fill_value, grad, converged, niter를 가져요."
+raises:
+  - type: TypeError
+    desc: "points·values가 수의 배열이 아닐 때, 좌표가 복소수일 때, fill_value가 수가 아닐 때, tol이 실수가 아니거나 maxiter가 int가 아닐 때, rescale이 True·False가 아닐 때, 옵션을 자리로 주거나 없는 인자를 줄 때."
+  - type: ValueError
+    desc: "points가 (n, 2)가 아닐 때, 좌표나 values에 NaN·inf가 있을 때, 서로 다른 점이 셋보다 적거나 모두 한 직선 위일 때, values의 행 수가 n과 다를 때, 같은 자료점의 값이 다를 때, tol이 음수이거나 유한하지 않을 때, maxiter가 1보다 작을 때, 실수 값에 복소수 fill_value를 줄 때, Delaunay와 rescale=True를 함께 줄 때. 부를 때 평가점의 좌표가 둘이 아닐 때."
+seeAlso: [LinearNDInterpolator, griddata, RBFInterpolator, NearestNDInterpolator, basics]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+export const ctC = [[0.05, 0.06963], [0.06, 0.08508], [0.07, 0.1014], [0.08, 0.1181], [0.09, 0.1349], [0.1, 0.1517], [0.11, 0.1687], [0.12, 0.1857], [0.13, 0.2029], [0.14, 0.22], [0.15, 0.2365], [0.16, 0.2522], [0.17, 0.2664], [0.18, 0.2794], [0.19, 0.2922], [0.2, 0.3053], [0.21, 0.3184], [0.22, 0.3314], [0.23, 0.3442], [0.24, 0.3566], [0.25, 0.3685], [0.26, 0.38], [0.27, 0.3914], [0.28, 0.4024], [0.29, 0.4131], [0.3, 0.4235], [0.31, 0.4334], [0.32, 0.443], [0.33, 0.4521], [0.34, 0.4608], [0.35, 0.4691], [0.36, 0.4769], [0.37, 0.4843], [0.38, 0.4912], [0.39, 0.4977], [0.4, 0.5037], [0.41, 0.5094], [0.42, 0.5146], [0.43, 0.5194], [0.44, 0.5236], [0.45, 0.5274], [0.46, 0.5307], [0.47, 0.5335], [0.48, 0.5357], [0.49, 0.5375], [0.5, 0.5389], [0.51, 0.5397], [0.52, 0.5401], [0.53, 0.5399], [0.54, 0.5393], [0.55, 0.5382], [0.56, 0.5366], [0.57, 0.5346], [0.58, 0.5322], [0.59, 0.5293], [0.6, 0.5261], [0.61, 0.5223], [0.62, 0.5181], [0.63, 0.5134], [0.64, 0.5083], [0.65, 0.5028], [0.66, 0.4967], [0.67, 0.4902], [0.68, 0.4832], [0.69, 0.4756], [0.7, 0.4675], [0.71, 0.4587], [0.72, 0.4495], [0.73, 0.4399], [0.74, 0.4301], [0.75, 0.4201], [0.76, 0.4097], [0.77, 0.399], [0.78, 0.3879], [0.79, 0.3763], [0.8, 0.3642], [0.81, 0.3517], [0.82, 0.3389], [0.83, 0.3259], [0.84, 0.3128], [0.85, 0.2996], [0.86, 0.2861], [0.87, 0.2724], [0.88, 0.2584], [0.89, 0.2441], [0.9, 0.2295], [0.91, 0.2148], [0.92, 0.2], [0.93, 0.1854], [0.94, 0.1709], [0.95, 0.1564]];
+export const linC = [[0.05, 0.0211], [0.06, 0.04302], [0.07, 0.06494], [0.08, 0.08687], [0.09, 0.1088], [0.1, 0.1307], [0.11, 0.1526], [0.12, 0.1746], [0.13, 0.1965], [0.14, 0.2161], [0.15, 0.2354], [0.16, 0.2519], [0.17, 0.2671], [0.18, 0.2823], [0.19, 0.2975], [0.2, 0.3071], [0.21, 0.3163], [0.22, 0.3254], [0.23, 0.3346], [0.24, 0.3437], [0.25, 0.3534], [0.26, 0.3637], [0.27, 0.374], [0.28, 0.3843], [0.29, 0.3946], [0.3, 0.4049], [0.31, 0.4153], [0.32, 0.4256], [0.33, 0.4359], [0.34, 0.4462], [0.35, 0.4565], [0.36, 0.4668], [0.37, 0.4771], [0.38, 0.4874], [0.39, 0.4962], [0.4, 0.4997], [0.41, 0.5031], [0.42, 0.507], [0.43, 0.5111], [0.44, 0.5152], [0.45, 0.5193], [0.46, 0.5234], [0.47, 0.5274], [0.48, 0.5315], [0.49, 0.5337], [0.5, 0.5328], [0.51, 0.5319], [0.52, 0.531], [0.53, 0.5302], [0.54, 0.5293], [0.55, 0.5284], [0.56, 0.527], [0.57, 0.5256], [0.58, 0.5243], [0.59, 0.5229], [0.6, 0.5215], [0.61, 0.5197], [0.62, 0.5138], [0.63, 0.5065], [0.64, 0.4992], [0.65, 0.4924], [0.66, 0.4855], [0.67, 0.4787], [0.68, 0.4718], [0.69, 0.465], [0.7, 0.4582], [0.71, 0.4513], [0.72, 0.4427], [0.73, 0.4339], [0.74, 0.4251], [0.75, 0.4163], [0.76, 0.4075], [0.77, 0.3987], [0.78, 0.3881], [0.79, 0.3732], [0.8, 0.3583], [0.81, 0.3435], [0.82, 0.3286], [0.83, 0.3137], [0.84, 0.2988], [0.85, 0.2855], [0.86, 0.2727], [0.87, 0.2599], [0.88, 0.2472], [0.89, 0.2344], [0.9, 0.2216], [0.91, 0.2089], [0.92, 0.1961], [0.93, 0.1833], [0.94, 0.1699], [0.95, 0.1565]];
+export const trueC = [[0.05, 0.08074], [0.06, 0.09673], [0.07, 0.1126], [0.08, 0.1284], [0.09, 0.1441], [0.1, 0.1597], [0.11, 0.1751], [0.12, 0.1903], [0.13, 0.2054], [0.14, 0.2203], [0.15, 0.235], [0.16, 0.2495], [0.17, 0.2638], [0.18, 0.2778], [0.19, 0.2916], [0.2, 0.3051], [0.21, 0.3183], [0.22, 0.3313], [0.23, 0.3439], [0.24, 0.3563], [0.25, 0.3683], [0.26, 0.38], [0.27, 0.3913], [0.28, 0.4023], [0.29, 0.413], [0.3, 0.4232], [0.31, 0.4331], [0.32, 0.4426], [0.33, 0.4517], [0.34, 0.4604], [0.35, 0.4687], [0.36, 0.4765], [0.37, 0.4839], [0.38, 0.4909], [0.39, 0.4975], [0.4, 0.5036], [0.41, 0.5092], [0.42, 0.5144], [0.43, 0.5191], [0.44, 0.5234], [0.45, 0.5272], [0.46, 0.5305], [0.47, 0.5333], [0.48, 0.5357], [0.49, 0.5376], [0.5, 0.5389], [0.51, 0.5399], [0.52, 0.5403], [0.53, 0.5402], [0.54, 0.5396], [0.55, 0.5386], [0.56, 0.5371], [0.57, 0.5351], [0.58, 0.5326], [0.59, 0.5296], [0.6, 0.5262], [0.61, 0.5223], [0.62, 0.5179], [0.63, 0.513], [0.64, 0.5077], [0.65, 0.5019], [0.66, 0.4957], [0.67, 0.489], [0.68, 0.4819], [0.69, 0.4744], [0.7, 0.4664], [0.71, 0.458], [0.72, 0.4492], [0.73, 0.44], [0.74, 0.4304], [0.75, 0.4204], [0.76, 0.41], [0.77, 0.3993], [0.78, 0.3882], [0.79, 0.3767], [0.8, 0.365], [0.81, 0.3528], [0.82, 0.3404], [0.83, 0.3277], [0.84, 0.3146], [0.85, 0.3013], [0.86, 0.2877], [0.87, 0.2739], [0.88, 0.2598], [0.89, 0.2455], [0.9, 0.2309], [0.91, 0.2162], [0.92, 0.2012], [0.93, 0.1861], [0.94, 0.1708], [0.95, 0.1553]];
+
+## 한눈에 보기
+
+[`LinearNDInterpolator`](/api/interpolate/LinearNDInterpolator/)는 흩어진 점을 삼각형으로 잇고 삼각형마다 평면을 놓아요. 값은 이어지지만 삼각형의 변을 건널 때 기울기가 꺾여요. `CloughTocher2DInterpolator`는 같은 삼각분할 위에 삼각형마다 3차 곡면 조각을 놓아서 **기울기까지** 이어지게 해요. 매끄러운 현상에서 잰 자료(지형의 높이, 온도, 농도)라면 같은 자료점으로 참 곡면에 더 가까운 값을 내요.
+
+```python
+>>> import stardust as sd
+>>> rng = sd.random.default_rng(7)
+>>> X = rng.random((40, 2))
+>>> z = sd.sin(3 * X[:, 0]) * sd.cos(2 * X[:, 1])
+>>> ct = sd.interpolate.CloughTocher2DInterpolator(X, z)
+>>> ct
+CloughTocher2DInterpolator(points=40, dimensions=2)
+>>> q = sd.asarray([[0.3, 0.6], [0.5, 0.5], [0.7, 0.2]])
+>>> ct(q)
+array([0.28349226295844976,  0.5388784500960837,  0.7999791730381254], dtype=float64)
+>>> sd.interpolate.LinearNDInterpolator(X, z)(q)
+array([0.2791825849881682,  0.532818573404182, 0.7671654792169101], dtype=float64)
+>>> sd.sin(3 * q[:, 0]) * sd.cos(2 * q[:, 1])
+array([0.28384457999376717, 0.5389488413540798, 0.7950684772782127], dtype=float64)
+```
+
+무작위 40점에서 $\sin 3x \cos 2y$의 값을 받아, 세 평가점에서 참값과 견줬어요. 선형보다 Clough–Tocher가 참값에 훨씬 가까워요.
+
+<Fig caption="같은 40점의 두 보간을 직선 y = 0.5를 따라 자른 모습. 선형(점선)은 삼각형의 변을 건널 때마다 꺾이고, Clough–Tocher는 꺾임 없이 참 함수 sin 3x cos 1을 따라가요.">
+  <Plot
+    curves={[
+      { points: trueC, label: '참 함수' },
+      { points: linC, label: 'LinearNDInterpolator', dashed: true },
+      { points: ctC, label: 'CloughTocher2DInterpolator' },
+    ]}
+    domain={[0.05, 0.95]}
+    range={[0, 0.6]}
+    xTicks={[{ v: 0.1, label: '0.1' }, { v: 0.3, label: '0.3' }, { v: 0.5, label: '0.5' }, { v: 0.7, label: '0.7' }, { v: 0.9, label: '0.9' }]}
+    yTicks={[{ v: 0, label: '0' }, { v: 0.2, label: '0.2' }, { v: 0.4, label: '0.4' }, { v: 0.6, label: '0.6' }]}
+  />
+</Fig>
+
+<Reference />
+
+## 어떻게 곡면을 만드나요
+
+1. 자료점으로 [Delaunay 삼각분할](/api/spatial/Delaunay/)을 만들어요.
+2. 자료점마다 **기울기**를 어림해요. 곡면 전체가 가장 덜 휘도록(삼각형 변마다 놓은 3차 곡선의 굽은 정도를 모두 더한 것이 가장 작도록) 기울기를 정하는 문제를 반복으로 풀어요. 만들 때 한 번이에요.
+3. 삼각형마다 무게중심을 꼭짓점으로 세 개의 작은 삼각형으로 나누고, 작은 삼각형마다 3차 다항식을 놓아요. 꼭짓점의 값과 기울기, 그리고 이웃 삼각형과 기울기가 이어진다는 조건이 계수를 정해요.
+4. 평가점마다 품은 삼각형을 찾아 그 3차 다항식으로 값을 계산해요.
+
+그래서 곡면은 이런 성질을 가져요.
+
+- **자료점을 지나요.** 자료점에서는 자료 그대로예요(비트까지, −0.0도).
+- **기울기까지 이어져요**(C¹). 삼각형의 변을 건너도 꺾이지 않아요. 굽은 정도(2차 도함수)는 변에서 뛸 수 있어요.
+- 값이 자료의 범위를 조금 넘을 수 있어요. 3차 곡면이라 봉우리 둘레에서 자료보다 높게 솟기도 해요. 범위를 꼭 지켜야 하면 선형 보간을 써요.
+
+```python
+>>> bool(sd.all(ct(X) == z))
+True
+```
+
+## 기울기 어림: `tol`, `maxiter`, `converged`, `niter`
+
+꼭짓점의 기울기는 꼭짓점마다 차례로, 이웃 꼭짓점의 지금 기울기를 써서 다시 정하는 일을 되풀이해서 구해요(Gauss–Seidel 반복). 모든 꼭짓점을 한 번 다시 정하는 것을 **훑기** 한 번이라고 해요.
+
+- 한 훑기에서 기울기 성분이 바뀐 가장 큰 양이 `tol` × (그 훑기 뒤 기울기 성분의 가장 큰 크기)보다 작으면 멈춰요. 그때 `converged`는 `True`예요.
+- `maxiter`번 훑을 때까지 그 기준을 지키지 못하면 거기서 멈추고 `converged`는 `False`예요. 에러나 경고는 없어요.
+- `niter`는 실제로 훑은 횟수예요.
+
+```python
+>>> ct.converged, ct.niter
+(True, 11)
+>>> rough = sd.interpolate.CloughTocher2DInterpolator(X, z, maxiter=1)
+>>> rough.converged, rough.niter
+(False, 1)
+>>> strict = sd.interpolate.CloughTocher2DInterpolator(X, z, tol=1e-12)
+>>> strict.converged, strict.niter
+(True, 21)
+```
+
+멈춤 기준은 상대적이라 자료점의 단위와 상관없어요. 좌표를 $10^6$배 해도(킬로미터를 밀리미터로) 같은 횟수를 훑고 같은 곡면을 만들어요.
+
+```python
+>>> big = sd.interpolate.CloughTocher2DInterpolator(X * 1e6, z)
+>>> big.niter, big([0.3e6, 0.6e6])
+(11, 0.28349226295844965)
+```
+
+`tol=0`이면 기준을 지킬 수 없으니 언제나 `maxiter`번 훑어요. `tol`은 0 이상의 유한한 수, `maxiter`는 1 이상의 int예요.
+
+```python
+>>> sd.interpolate.CloughTocher2DInterpolator(X, z, tol=-1)
+Traceback (most recent call last):
+    ...
+ValueError: CloughTocher2DInterpolator(): 'tol' must be a finite number >= 0, not -1.0
+>>> sd.interpolate.CloughTocher2DInterpolator(X, z, maxiter=0)
+Traceback (most recent call last):
+    ...
+ValueError: CloughTocher2DInterpolator(): 'maxiter' must be >= 1, not 0
+```
+
+기울기는 반복의 허용오차만큼만 맞아요. 그래서 1차식 자료를 넣어도 곡면은 1차식과 아주 조금 달라요. 더 정확한 기울기가 필요하면 `tol`을 줄여요.
+
+```python
+>>> p = 2 * X[:, 0] + 3 * X[:, 1] + 1
+>>> plane = sd.interpolate.CloughTocher2DInterpolator(X, p)
+>>> plane([0.4, 0.6])
+3.6000000020996725
+>>> plane.grad[0]
+array([ 2.00000011169311, 3.0000000206565596], dtype=float64)
+```
+
+어림한 기울기는 `grad` 속성으로 읽어요. 모양은 (n, …, 2)이고 마지막 축이 $(\partial f/\partial x, \partial f/\partial y)$예요.
+
+## 자료점 `points`와 값 `values`
+
+자료점은 (n, 2) 배열이거나 좌표 배열 두 개의 튜플, 또는 이미 만든 2차원 [`Delaunay`](/api/spatial/Delaunay/)예요. 3차원 자료는 받지 않아요(3차원은 [`LinearNDInterpolator`](/api/interpolate/LinearNDInterpolator/)나 [`RBFInterpolator`](/api/interpolate/RBFInterpolator/)를 써요). 삼각분할의 조건과 같은 자료점의 규칙은 `LinearNDInterpolator`와 같아요.
+
+```python
+>>> sd.interpolate.CloughTocher2DInterpolator(rng.random((10, 3)), rng.random(10))
+Traceback (most recent call last):
+    ...
+ValueError: CloughTocher2DInterpolator(): 'points' must have 2 columns, not 3
+```
+
+값은 모두 유한해야 해요. 기울기가 모든 꼭짓점을 함께 푸는 반복이라, NaN 하나가 모든 기울기로 퍼지기 때문이에요.
+
+```python
+>>> bad = z.copy()
+>>> bad[3] = sd.nan
+>>> sd.interpolate.CloughTocher2DInterpolator(X, bad)
+Traceback (most recent call last):
+    ...
+ValueError: CloughTocher2DInterpolator(): 'values' must be finite
+```
+
+값이 여러 열이거나 복소수면 열마다(복소수는 실수부와 허수부를 따로) 기울기를 어림해요. `niter`는 가장 많이 훑은 열의 횟수, `converged`는 모든 열이 `tol`로 멈췄는지예요.
+
+```python
+>>> both = sd.interpolate.CloughTocher2DInterpolator(X, sd.stack([z, 2 * z], axis=1))
+>>> both([0.3, 0.6]), both.grad.shape
+(array([0.28349226295844976,  0.5669845259168995], dtype=float64), (40, 2, 2))
+```
+
+## 바깥, `rescale`, 평가점
+
+[`LinearNDInterpolator`](/api/interpolate/LinearNDInterpolator/)와 같아요.
+
+- 자료점의 볼록 껍질 밖은 `fill_value`(기본 NaN)이고, 안팎은 정확한 판정이에요.
+- 좌표에 NaN이 있는 평가점은 NaN이고, 무한한 좌표의 점은 바깥이에요.
+- `rescale=True`면 축마다 평균과 범위로 옮긴 좌표에서 삼각분할하고 기울기를 어림해요. 이때 `grad`는 옮긴 좌표에서의 기울기예요.
+- 평가점은 (…, 2) 배열이거나 좌표 두 개의 튜플이고, 점 하나에 스칼라 값이면 Python `float`예요.
+
+```python
+>>> ct([[2.0, 2.0], [sd.nan, 0.5]])
+array([nan, nan], dtype=float64)
+>>> ct((0.3, 0.6))
+0.28349226295844976
+```
+
+## 속성
+
+| 속성 | 뜻 |
+|---|---|
+| `points` | 준 그대로의 자료점(옮기기 전), 읽기 전용 (n, 2) float64 |
+| `values` | 준 그대로의 값, 읽기 전용 (n, …) |
+| `tri` | 보간이 쓰는 [`sd.spatial.Delaunay`](/api/spatial/Delaunay/). `rescale=True`면 옮긴 점의 삼각분할 |
+| `fill_value` | 바깥의 값(`float`, 복소수 값이면 `complex`) |
+| `grad` | 자료점마다 어림한 기울기, 읽기 전용 (n, …, 2), 값의 dtype |
+| `converged` | 모든 열이 `tol`로 멈췄으면 `True` |
+| `niter` | 기울기 반복의 훑기 수(열 가운데 가장 많은 것) |
+
+```python
+>>> ct.tri, ct.values.shape, ct.grad.shape
+(Delaunay(n=40, d=2, nsimplex=68), (40,), (40, 2))
+```
+
+## 결과는 언제나 같아요
+
+기울기의 반복은 꼭짓점의 색인 차례 하나로 돌고, 열 하나는 한 스레드가 처음부터 끝까지 계산해요. 그래서 기울기는 [스레드 수](/api/array/threads/)와 상관없이 같은 비트이고, 평가도 평가점마다 정의로 정해져 같은 비트예요.
+
+평가의 오차는 주어진 기울기로 만든 3차 곡면의 정확한 값과 견줘요. 계산한 값과 그 정확한 값의 차이는 $256u \cdot K$ 이하예요($u = 2^{-53}$, $K$는 삼각형의 값과 기울기의 크기로 정한 척도). 기울기 자체는 반복의 `tol`만큼만 정해지므로 이 계약 밖이에요. 자세한 것은 [흩어진 점의 보간](/internals/interpolate/scattered/)에 있어요.
+
+## 복사와 저장(pickle)
+
+`copy.copy`, `copy.deepcopy`, `pickle`이 돼요. 삼각분할은 점으로 다시 만들고, 기울기는 다시 어림하지 않고 그대로 되돌려요. 되살린 객체는 같은 점에서 같은 비트를 내요.
+
+```python
+>>> import pickle
+>>> back = pickle.loads(pickle.dumps(ct))
+>>> back([0.3, 0.6]), back.niter
+(0.28349226295844976, 11)
+```
+
+## 조심할 점
+
+### 껍질 밖은 값이 없어요
+
+바깥까지 값이 필요하면 [`NearestNDInterpolator`](/api/interpolate/NearestNDInterpolator/)로 채우거나 [`RBFInterpolator`](/api/interpolate/RBFInterpolator/)를 써요.
+
+### `converged`를 확인해요
+
+자료점이 아주 많거나 삼각형의 크기가 크게 섞여 있으면 기본 `maxiter`로 수렴하지 못할 수 있어요. 경고가 없으니, 정확한 기울기가 중요하면 `converged`를 보고 필요하면 `maxiter`를 늘려요.
+
+### 옵션은 이름으로 줘요
+
+```python
+>>> sd.interpolate.CloughTocher2DInterpolator(X, z, 1e-6)
+Traceback (most recent call last):
+    ...
+TypeError: CloughTocher2DInterpolator(): takes 2 positional arguments but 3 were given
+```
+
+<Callout type="note" title="어느 흩어진 점 보간을 쓸까요">
+
+빠르고 자료의 범위를 벗어나지 않는 답은 [`LinearNDInterpolator`](/api/interpolate/LinearNDInterpolator/), 2차원에서 매끄러운 곡면은 `CloughTocher2DInterpolator`, 껍질 밖까지 값이 필요하거나 3차원 이상에서 매끄러운 곡면은 [`RBFInterpolator`](/api/interpolate/RBFInterpolator/)예요. 한 번만 부를 때는 [`griddata`](/api/interpolate/griddata/)가 간편해요.
+
+</Callout>
+
+## scipy·numpy를 아는 분께
+
+- 기울기 반복이 수렴하지 못하면 경고(`GradientEstimationWarning`) 대신 `converged=False`예요. 훑은 횟수는 `niter`로 알려 줘요.
+- 멈춤 기준이 상대적이라 단위와 상관없어요. scipy는 점마다 $\max(1, \lvert\text{기울기}\rvert)$로 나눈 변화를 봐서 기울기가 1보다 작은 자료에서 일찍 멈춰요. 좌표를 $10^6$배 하면 scipy의 값이 엄격한 `tol`의 값과 $8 \times 10^{-4}$ 달라지지만, 여기서는 배율과 상관없이 같은 훑기 수예요.
+- 반복의 식과 기본값(`tol=1e-6`, `maxiter=400`)은 scipy와 같아요. 무작위 점에서 기울기는 scipy와 상대 $2 \times 10^{-7}$ 안이에요.
+- `grad` 속성으로 기울기를 바로 읽어요. scipy의 `estimate_gradients_2d_global` 함수는 없어요.
+- 값은 유한해야 해요. 값이 다른 같은 자료점은 에러예요(scipy는 말없이 한 값을 써요).
+- 삼각분할이 정확한 Delaunay이고 껍질 안팎이 정확한 판정이에요. 자료점에서 자료 그대로예요(scipy는 무작위 2,000점에서 757점이 끝자리가 달라요). `__call__`의 `simplex_tolerance`는 없어요.
+- `points`는 옮기기 전의 좌표, `values`는 준 모양 그대로, `grad`는 (n, …, 2)예요(scipy는 (n, 곱, 2)).

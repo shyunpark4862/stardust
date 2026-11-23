@@ -1,0 +1,266 @@
+---
+title: loess
+group: 산점도 평활
+order: 2
+summary: "loess가 여러 변수의 국소 다항식을 맞추는 방법을 설명해요. 이웃 창은 공간 영역의 KD 트리로 찾고, 창마다 모멘트 행렬의 Cholesky로 빠르게 풀되 조건이 나쁜 창만 QR로 넘겨 정확도를 지켜요."
+seeAlso: [lowess, overview, determinism, accuracy-performance]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+export const lo0 = [[0.0, 0.6609], [0.2, 0.6653], [0.4, 0.6695], [0.6, 0.6734], [0.8, 0.6776], [1.0, 0.6833], [1.2, 0.6924], [1.4, 0.7078], [1.6, 0.7316], [1.8, 0.7534], [2.0, 0.7192], [2.2, 0.6183], [2.4, 0.4929], [2.6, 0.3864], [2.8, 0.247], [3.0, 0.08949], [3.2, -0.08994], [3.4, -0.2689], [3.6, -0.4114], [3.8, -0.5399], [4.0, -0.6775], [4.2, -0.8083], [4.4, -0.8976], [4.6, -0.9375], [4.8, -0.9412], [5.0, -0.9166], [5.2, -0.8769], [5.4, -0.8063], [5.6, -0.713], [5.8, -0.5919], [6.0, -0.4318], [6.2, -0.2128], [6.4, 0.02196], [6.6, 0.225], [6.8, 0.3957], [7.0, 0.538], [7.2, 0.6576], [7.4, 0.7379], [7.6, 0.8034], [7.8, 0.8431], [8.0, 0.8684], [8.2, 0.82], [8.4, 0.7485], [8.6, 0.5869], [8.8, 0.4257], [9.0, 0.3286], [9.2, 0.2723], [9.4, 0.2353], [9.6, 0.2069], [9.8, 0.1828], [10.0, 0.1611]];
+export const lo1 = [[0.0, 0.4575], [0.2, 0.5002], [0.4, 0.5402], [0.6, 0.5772], [0.8, 0.6114], [1.0, 0.6431], [1.2, 0.6728], [1.4, 0.7015], [1.6, 0.7312], [1.8, 0.7583], [2.0, 0.731], [2.2, 0.6458], [2.4, 0.5388], [2.6, 0.4435], [2.8, 0.313], [3.0, 0.153], [3.2, -0.02038], [3.4, -0.1989], [3.6, -0.3746], [3.8, -0.541], [4.0, -0.6851], [4.2, -0.8051], [4.4, -0.8851], [4.6, -0.9283], [4.8, -0.9424], [5.0, -0.9211], [5.2, -0.8777], [5.4, -0.791], [5.6, -0.6656], [5.8, -0.5171], [6.0, -0.3641], [6.2, -0.1863], [6.4, -0.0002865], [6.6, 0.186], [6.8, 0.3594], [7.0, 0.5119], [7.2, 0.6433], [7.4, 0.7445], [7.6, 0.8262], [7.8, 0.8633], [8.0, 0.8613], [8.2, 0.7797], [8.4, 0.7087], [8.6, 0.5883], [8.8, 0.4488], [9.0, 0.3059], [9.2, 0.1599], [9.4, 0.01119], [9.6, -0.1401], [9.8, -0.2937], [10.0, -0.4497]];
+export const lo2 = [[0.0, 0.2266], [0.2, 0.3719], [0.4, 0.5001], [0.6, 0.6105], [0.8, 0.7031], [1.0, 0.7781], [1.2, 0.8359], [1.4, 0.877], [1.6, 0.9013], [1.8, 0.9027], [2.0, 0.8817], [2.2, 0.8332], [2.4, 0.7411], [2.6, 0.6243], [2.8, 0.4594], [3.0, 0.2275], [3.2, -0.01845], [3.4, -0.2632], [3.6, -0.486], [3.8, -0.6709], [4.0, -0.7989], [4.2, -0.891], [4.4, -0.9602], [4.6, -1.001], [4.8, -1.015], [5.0, -1.015], [5.2, -0.9718], [5.4, -0.8735], [5.6, -0.7258], [5.8, -0.5676], [6.0, -0.3859], [6.2, -0.2085], [6.4, -0.02647], [6.6, 0.1797], [6.8, 0.4004], [7.0, 0.6007], [7.2, 0.7637], [7.4, 0.8812], [7.6, 0.9672], [7.8, 1.003], [8.0, 0.9907], [8.2, 0.9396], [8.4, 0.8541], [8.6, 0.7227], [8.8, 0.5822], [9.0, 0.4352], [9.2, 0.2647], [9.4, 0.07016], [9.6, -0.1464], [9.8, -0.3827], [10.0, -0.6382]];
+
+## 한눈에 보기
+
+[`loess`](/api/smooth/loess/)는 [lowess](/internals/smooth/lowess/)를 넓힌 것이에요. 설명변수가 여럿일 수 있고, 국소 모형이 상수(차수 0), 직선(차수 1), 2차식(차수 2) 가운데 하나예요. 창은 평가점에 가까운 $q = \lfloor n\cdot\mathit{span} + 10^{-5}\rfloor$개의 점이고 무게는 tricube예요. 반올림이 아닌 동작은 R 4.6.2의 `loess`를 따르되, R의 기본(`surface='interpolate'`)이 하는 어림 대신 모든 평가점에서 직접 맞춰요(R의 `surface='direct'`).
+
+| 파일 | 줄 수 | 맡은 일 |
+|---|---:|---|
+| `csrc/smooth/loess.cpp` | 1,346 | 정규화와 정렬, 창(1변수는 `local.hpp`, 여러 변수는 spatial의 거리 커널과 KD 트리), 모멘트와 고친 Cholesky, Householder QR, R의 강건 무게, tr L과 $\delta_1$의 모으기, `predict`, $\delta_2$의 블록 Gram |
+| `csrc/smooth/local.hpp` | 300 | 1변수의 창과 차수 1의 닫힌 꼴(lowess와 같은 커널) |
+| `src/stardust/smooth/_loess.py` | 232 | 인자 검사, $q$와 항 수의 검사, `LoessResult`, 구간의 분위수 |
+
+평가점 하나의 계산은 `fit_point` 하나예요. 창을 모으고(`gather_1d`나 `gather_nd`), 국소 다항식을 풀고(`solve_window`), 청하면 모자 행의 통계를 모아요. 아래 절이 이 순서예요.
+
+<Fig caption="같은 200점에 span 0.3으로 맞춘 세 차수. 국소 상수(차수 0)는 자료의 끝에서 평평하게 눌리고, 국소 직선과 2차식은 끝의 기울기를 따라가요. 2차식은 봉우리와 골짜기를 덜 깎아요.">
+  <Plot
+    curves={[
+      { points: lo0, label: '차수 0', dashed: true },
+      { points: lo1, label: '차수 1' },
+      { points: lo2, label: '차수 2' },
+    ]}
+    domain={[0, 10]}
+    range={[-1.2, 1.2]}
+    xTicks={[{ v: 0, label: '0' }, { v: 2, label: '2' }, { v: 4, label: '4' }, { v: 6, label: '6' }, { v: 8, label: '8' }, { v: 10, label: '10' }]}
+    yTicks={[{ v: -1, label: '−1' }, { v: 0, label: '0' }, { v: 1, label: '1' }]}
+  />
+</Fig>
+
+## 정규화와 정렬
+
+`normalize=True`이고 변수가 둘 이상이면 열마다 10% 절사 표준편차로 나눠요. R의 식 그대로예요. $\mathit{trim} = \lceil 0.1n\rceil$을 정렬한 열의 양 끝에서 빼고, 가운데 $n - 2\,\mathit{trim}$개의 표본 표준편차(그 개수에서 1을 뺀 수로 나눠요)를 구해요. 그 값이 0이거나 유한하지 않으면 `ValueError`예요. 평가점도 같은 수로 나눠요.
+
+나눈 좌표로 $(\text{좌표}\ldots, y, \text{무게}, \text{색인})$의 사전순으로 정렬해요. 이유는 [lowess](/internals/smooth/lowess/)의 정렬과 같아요. 합의 순서가 값으로 정해져 결과가 입력의 순서와 무관해요. 표준편차로 나누는 것은 열에 2의 거듭제곱을 곱해도 나눈 좌표가 같은 비트가 되게 해요. 그래서 그런 곱은 결과를 바꾸지 않아요.
+
+```python
+>>> rng = sd.random.default_rng(7)
+>>> x = 10 * rng.random(200)
+>>> y = sd.sin(x) + 0.3 * sd.stats.Normal().sample(200, rng=rng)
+>>> X = rng.random((300, 2))
+>>> yy = sd.sin(4 * X[:, 0]) + X[:, 1] ** 2 + 0.1 * sd.stats.Normal().sample(300, rng=rng)
+>>> r = sd.smooth.loess(X, yy)
+>>> X2 = X.copy()
+>>> X2[:, 1] = X2[:, 1] * 1024.0
+>>> sd.smooth.loess(X2, yy).fittedvalues.tolist() == r.fittedvalues.tolist()
+True
+```
+
+1024 대신 1000을 곱하면 나눈 좌표가 끝자리에서 달라 결과도 그만큼($4 \times 10^{-16}$쯤) 달라요.
+
+## 창
+
+### 한 변수
+
+설명변수가 하나면 정렬된 $x$의 이어진 구간이 창이고, [lowess](/internals/smooth/lowess/)의 `window_left`, 창 끝의 간격, tricube 무게를 그대로 써요(`gather_1d`). 무게는 두 레인으로 계산하지만 레인 하나의 연산은 `local.hpp`의 `tricube_of`와 같아서 같은 비트예요. 차수 1이면 국소 직선의 닫힌 꼴 `fit_line`까지 그대로 불러요. 그래서 $q$와 $k$가 같으면 `loess(degree=1, span=f)`와 `lowess(frac=f, it=0)`이 같은 비트예요.
+
+```python
+>>> a = sd.smooth.loess(x, y, degree=1, span=0.5)
+>>> b = sd.smooth.lowess(x, y, frac=0.5, it=0)
+>>> a.q, b.k
+(100, 100)
+>>> a.fittedvalues.tolist() == b.fittedvalues.tolist(), a.leverage.tolist() == b.leverage.tolist()
+(True, True)
+```
+
+두 함수가 다른 곳은 창의 양수 무게가 하나뿐인 때예요. `lowess`는 statsmodels처럼 자료점에서 자기 $y$, `predict`에서 NaN을 내고, `loess`는 그 한 점의 $y$를 내요. 무게가 0인 자료점과 새 점에서만 생겨요.
+
+### 여러 변수
+
+거리는 spatial의 유클리드 커널 `kd_distance`가 정의해요. 반경 $h$는 $q$번째로 작은 거리이고, 창은 거리가 $h$보다 작은 점들이에요. 그 점들을 찾는 길이 둘 있어요.
+
+- **KD 트리.** $32q \le n$이면 spatial의 `KdTree`를 짓고 kNN으로 $q$개를 받아요. 창이 자료의 작은 조각이라 거리를 모두 재는 것보다 싸요.
+- **훑기.** 그 밖에는 모든 점의 거리를 재고 $q$번째 순서통계량을 골라요. 2·3차원은 두 점씩 NEON 레인으로 커널과 같은 연산 사슬($z = x_0 - x$, 0에서 시작해 축 순서로 `fma`)을 돌려 커널과 같은 비트를 내요.
+
+두 길은 같은 커널의 같은 거리를 보고, $q$번째 거리는 값 하나이며, 창은 "거리 $\lt h$"인 점을 색인 순서로 모은 것이라 반경과 창이 같아요. 트리가 $h = 0$을 내면(평가점에 점이 $q$개보다 많이 겹친 경우) 트리의 $q$개만으로는 모자랄 수 있어 훑기로 다시 세요.
+
+```cpp
+    // csrc/smooth/loess.cpp
+    if (P.tree && P.widen == 1.0) {
+        S.search->run(x0, kInf, S.knn);
+        h = S.knn[static_cast<std::size_t>(q - 1)].first;
+        // h = 0: more than q points may sit at x0; the scan finds them all
+        scan = h == 0;
+        if (!scan) {
+            for (const auto& e : S.knn) S.dist[static_cast<std::size_t>(e.second)] = e.first;
+            S.idx.clear();
+            for (const auto& e : S.knn)
+                if (e.first < h) S.idx.push_back(e.second);
+            std::sort(S.idx.begin(), S.idx.end());
+        }
+    }
+```
+
+테스트는 내부 인자 `path`로 두 길을 같은 비트까지 견줘요(0은 훑기, 1은 트리).
+
+```python
+>>> C = sd._core.smooth
+>>> fits = [C.loess_fit(X, yy, None, 1, 9, 1.0, 1, False, path)[0] for path in (0, 1)]
+>>> fits[0].tolist() == fits[1].tolist()
+True
+```
+
+훑기의 순서통계량도 빨리 골라요. 점이 2048개보다 많으면 거리 512개를 고르게 뽑아 정렬하고, 그 표본에서 $q/n$ 분위수 둘레(표본 분위수 순위의 표준편차 세 배)를 괄호로 잡아요. 가지 없는 한 번의 훑기로 괄호 아래의 점을 세고 괄호 안의 거리만 모아 그 위에서 `nth_element`를 돌려요. 괄호가 순위를 놓치면 모든 거리에서 다시 골라요. 어느 쪽으로 골라도 순서통계량은 같은 값이에요.
+
+### span이 1보다 클 때
+
+$\mathit{span} \gt 1$이면 $q = n$이고 반경은 가장 먼 거리의 $\sqrt{\mathit{span}}$배예요. R의 문서는 $\mathit{span}^{1/p}$배라고 적지만 R의 코드(`ehg127`)는 제곱 거리에 span을 곱해서 차원과 상관없이 $\sqrt{\mathit{span}}$배가 돼요. 기준 라이브러리의 계산을 따라요(1차원 $n = 40$에서 두 읽기의 적합이 0.10 달랐어요). 넓힐 때는 비정상 수 간격의 자료를 위한 눈금 $2^{1000}$을 먼저 곱하고 넓혀, 반경이 비정상 수에서 반올림되지 않게 해요.
+
+```python
+>>> sd.smooth.loess(x, y, span=2.0).q
+200
+```
+
+## 국소 다항식의 풀이
+
+창의 좌표를 $u = (x - x_0)/h$로 옮긴 단항식 기저 $\varphi = (1, u_a, u_au_b)$(차수 1은 $p + 1$개, 차수 2는 $(p + 1)(p + 2)/2$개)로 무게 붙은 최소제곱을 풀고, 적합값은 절편 $\beta_0$이에요. 옮긴 좌표에서 기저의 값이 $[-1, 1]$ 안이라 조건수가 $x$의 척도와 무관해요. 차수 0은 무게 평균이에요.
+
+### 모멘트 행렬과 한 번의 고침
+
+정규방정식 $M\beta = b$, $M = \sum v_j\varphi_j\varphi_j^{\mathsf T}$, $b = \sum v_j\varphi_jy_j$를 Cholesky로 풀면 빠르지만, 오차가 조건수의 제곱에 비례해요. 이 영역은 잔차로 한 번 고쳐 그 손해를 거의 되돌려요(corrected semi-normal equations).
+
+```cpp
+    // csrc/smooth/loess.cpp
+    moments(cols, v, yv, m, t, S.M.data(), S.b.data(), S.mt);
+    if (cholesky(S.M.data(), t, S.L.data())) {
+        double *c = S.c.data(), *s = S.s.data();
+        std::copy(S.b.begin(), S.b.end(), c);
+        chol_solve(S.L.data(), t, c);
+        // one correction: s = sum v phi (y - phi^T c), c += M^-1 s
+        S.r.resize(static_cast<std::size_t>(m));
+        double* r = S.r.data();
+        phi_dots(cols, m, t, c, r);
+        for (std::int64_t k = 0; k < m; ++k) r[k] = v[k] * (yv[k] - r[k]);
+        for (std::int64_t a = 0; a < t; ++a) s[a] = dot(cols + a * m, r, m);
+        chol_solve(S.L.data(), t, s);
+        for (std::int64_t a = 0; a < t; ++a) c[a] += s[a];
+        value = c[0];
+```
+
+첫 풀이 $c$의 오차는 $u\kappa^2$ 크기예요. 잔차 $r = y - \Phi c$를 원래 자료에서 다시 계산하면 그 잔차는 정확한 해의 잔차와 $\Phi(c - \beta)$만큼 다르고, $M\delta = \Phi^{\mathsf T}Wr$를 같은 Cholesky로 풀어 더하면 오차가 $\kappa$ 하나만큼 줄어요. 고친 해의 오차가 $u\kappa$ 크기가 되는 것은 첫 해의 오차가 $u\kappa^2 \lt 1$일 때까지예요. 그래서 Cholesky가 양수가 아닌 축을 만나거나 대각 비의 제곱 $(\max L_{ii}/\min L_{ii})^2$이 $2^{32}$을 넘으면 그 창은 QR로 넘겨요. 대각 비의 제곱은 $\kappa(M)$의 값싼 어림이에요.
+
+이 문턱은 잰 값으로 정했어요. 2변수 2차의 시험 자료에서 고친 Cholesky는 대각 비의 제곱 $1.5 \times 10^{11}$까지 계약 단위 0.024 이하였고 $2.3 \times 10^{14}$에서 $1.4 \times 10^4$였어요. QR은 $\kappa$ $7 \times 10^{17}$까지 0.072 이하였어요. 조건이 좋은 창에서는 고친 Cholesky(0.48)가 QR(0.93)보다 오히려 정확했고, 창의 점마다 3.0 ns로 QR(20–33 ns)보다 훨씬 빨랐어요.
+
+모멘트의 훑기는 레지스터 판이에요. 항 수 $t = 2, 3, 4, 6$(1변수 1차와 2차, 2변수 1차와 2차)은 템플릿으로 $t(t + 1)/2$개의 누산기를 레지스터에 두고, 두 점씩 레인으로 256점 묶음마다 모아 전체 합에 더해요. 그 밖의 $t$는 같은 연산을 메모리의 누산기로 해요. 합의 묶음은 창의 점 수로만 정해져요.
+
+모자 행도 같은 분해에서 나와요. $g = M^{-1}e_0$을 풀면 $l_j = v_j\varphi_j^{\mathsf T}g$예요. 적합에서는 행을 쥐지 않고 통계량($l_{ii}$, $\sum l_j^2$, $\sum l_j^2/w_j$)만 모아요.
+
+### Householder QR
+
+Cholesky를 넘긴 창은 무게를 곱한 설계 $A = W^{1/2}\Phi$를 열 피벗 없이 Householder QR로 분해해요. 이때 모자 행과 값을 구하는 꼴이 다르다는 것이 요점이에요.
+
+```cpp
+    // csrc/smooth/loess.cpp
+    double* z = S.g.data();
+    for (std::int64_t i = 0; i < rk; ++i) {
+        double s = i == 0 ? 1.0 : 0.0;
+        for (std::int64_t c2 = 0; c2 < i; ++c2) s -= R(c2, i) * z[c2];
+        z[i] = s / R(i, i);
+    }
+    S.lrow.assign(static_cast<std::size_t>(m), 0.0);
+    double* l = S.lrow.data();
+    for (std::int64_t i = 0; i < rk; ++i) l[i] = z[i];
+    for (std::int64_t i = rk - 1; i >= 0; --i) {  // Q = H_0 H_1 ... H_(rk-1)
+        const double* col = A + kept[i] * m;
+        double d = l[i];
+        for (std::int64_t k = i + 1; k < m; ++k) d += col[k] * l[k];
+        d *= tau[i];
+        l[i] -= d;
+        for (std::int64_t k = i + 1; k < m; ++k) l[k] -= d * col[k];
+    }
+    for (std::int64_t k = 0; k < m; ++k) l[k] *= sv[k];
+    value = dot(l, yv, m);
+```
+
+절편은 $\beta_0 = e_0^{\mathsf T}R^{-1}Q^{\mathsf T}W^{1/2}y$예요. 모자 행 $l$은 $\Phi^{\mathsf T}l = e_0$을 만족하는 최소 노름의 해이고, $l = W^{1/2}Qz$, $z = R^{-\mathsf T}e_0$로 구할 수 있어요. $R^{-\mathsf T}$의 첫 열 하나만 앞으로 대입해 구하고 반사를 차례로 되돌려 곱하면 돼요. 값은 $l^{\mathsf T}y$예요. 이 길은 $R^{-1}$을 한 번만 거치니 오차에 $\kappa$가 한 번 들어요. 반사는 $H = I - \tau vv^{\mathsf T}$이고 $v$의 첫 원소를 1로 맞춰 나머지만 열 자리에 저장해요.
+
+### 랭크가 모자란 창
+
+| 경우 | 처리 |
+|---|---|
+| 1변수 | 창의 양수 무게 점의 서로 다른 $x$의 수 $- 1$로 차수를 정확히 낮춰요. 서로 다른 $x$가 둘이면 직선, 하나면 평균 |
+| 여러 변수 | QR에서 남은 노름이 $\max(m, t)\cdot\varepsilon\cdot$(그 열의 노름) 이하인 열을 빼요(회귀 영역의 규칙). 빠진 열은 반사를 받지도 주지도 않아요 |
+| 양수 무게의 점이 하나 | 그 점의 $y$($l = 1$) |
+| 양수 무게의 점이 없음 | 자료점은 자기 $y$(지렛대 1), 새 점은 NaN |
+| $h = 0$ | 평가점에 있는 양수 무게 점들의 무게 평균 |
+
+차수를 낮추거나 열을 뺀 평가점은 마지막 적합의 자료점에서 세어 `n_rank_deficient`로 줘요. R은 유사역행렬을 쓰고 경고해요. 정수 $x$가 세 번씩 되풀이되는 자료에 창이 $q = 6$이면 모든 창에 서로 다른 $x$가 둘뿐이라 모든 점이 직선으로 내려가요.
+
+```python
+>>> t = sd.asarray([float(i // 3) for i in range(30)])
+>>> yt = sd.sin(t) + 0.1 * sd.stats.Normal().sample(30, rng=rng)
+>>> rt = sd.smooth.loess(t, yt, degree=2, span=0.2)
+>>> rt.q, rt.n_rank_deficient
+(6, 30)
+```
+
+$q$가 국소 다항식의 항 수보다 작으면 맞추기 전에 `ValueError`예요(R도 에러예요).
+
+## R의 강건 무게
+
+`family='symmetric'`은 `iterations`번 맞춰요(기본 4). 무게는 R의 `lowesw`예요.
+
+```cpp
+    // csrc/smooth/loess.cpp
+    const double hi = cmad * 0.999, lo = cmad * 0.001;
+    for (std::int64_t j = 0; j < n; ++j) {
+        const double a = std::fabs(r[j]);
+        if (hi < a) rho[j] = 0.0;
+        else if (lo < a) {
+            const double u = a / cmad;
+            const double t = 1.0 - u * u;
+            rho[j] = t * t;
+        } else rho[j] = 1.0;
+    }
+```
+
+$\mathit{cmad} = 6\cdot\mathrm{median}\lvert r\rvert$(짝수 개는 $3\cdot$(가운데 둘의 합))이고 $0.001\,\mathit{cmad}$ 이하의 잔차는 무게 1, $0.999\,\mathit{cmad}$를 넘으면 0이에요. $\mathit{cmad}$가 가장 작은 정규 수보다 작으면 모두 1이에요. 중앙값은 양수 무게 점에서만 재요(R은 모든 점). [lowess](/internals/smooth/lowess/)의 강건 무게는 statsmodels의 규칙(자르지 않는 bisquare)이라 두 함수의 강건 무게가 달라요. 함수마다 기준 라이브러리가 다르기 때문이에요. symmetric 적합은 R과 상대 $10^{-12}$ 안에서 같아요.
+
+## 통계량
+
+공통 필드 `df` = tr L, `leverage` = $l_{ii}$와 함께 R이 쓰는 두 양을 모아요.
+
+$$
+\delta_1 = \mathrm{tr}\bigl((I - L)^{\mathsf T}(I - L)\bigr) = \sum_i\Bigl[(1 - l_{ii})^2 + \sum_{j \ne i}l_{ij}^2\Bigr],
+\qquad
+\delta_2 = \mathrm{tr}\Bigl(\bigl((I - L)^{\mathsf T}(I - L)\bigr)^2\Bigr).
+$$
+
+$\delta_1$은 행마다 $(1 - l_{ii})^2 + (\sum_j l_{ij}^2 - l_{ii}^2)$로 적합할 때 함께 나와요. 행을 저장하지 않으니 $O(n\cdot q)$이고 메모리는 창 하나 분량이에요. 1변수 1차는 lowess의 무게 계산을 그대로 두 레인으로 돌려 $\sum l^2$를 모으고(지렛대는 lowess의 `hat_at` 그대로), 차수 0은 평균을 훑으며 $\sum v^2/a^2$를 함께 구해요.
+
+`scale` = $\sqrt{\sum w_ir_i^2/\delta_1}$이고 `enp` = $\delta_1 + 2\,\mathrm{tr}L - \mathit{nobs} = \mathrm{tr}(L^{\mathsf T}L)$이에요. 둘 다 R의 식이고 `enp`는 `df`와 달라요.
+
+```python
+>>> r.q, r.df, r.enp
+(225, 11.621628300107188, 10.06875648458066)
+>>> r.one_delta, r.scale
+(286.8254998843663, 0.10977473150947084)
+```
+
+$\delta_2$는 $L$의 행 전체가 필요해요. 그래서 `two_delta`를 처음 읽을 때만, $\mathit{nobs} \le 4096$에서만 계산해요(양수 무게 점의 밀집 $I - L$이 134MB 이하). 행마다 나란히 만든 $A = I - L$에서 $\delta_2 = \lVert AA^{\mathsf T}\rVert_F^2 = \sum_{i,j}(a_i\cdot a_j)^2$이고, Gram 행렬의 위 삼각을 $4 \times 4$ 블록으로 나눠 블록 행마다 한 태스크가 더해요. 블록 안의 내적은 두 레인 `fma`이고 열 범위는 두 블록의 0 아닌 범위의 교집합만 훑어요. 블록 행의 합은 차례로 더하니 스레드 수와 무관해요.
+
+```python
+>>> r.two_delta
+285.8566645731843
+```
+
+`predict_interval`은 $\hat y \pm q\cdot\mathit{scale}\cdot\lVert l\rVert$이고 $q$는 자유도 $\delta_1^2/\delta_2$의 $t$ 분위수예요(R의 `predict(se=TRUE)`와 같은 쓰임). $\delta_2$를 계산하지 않는 $\mathit{nobs} \gt 4096$에서는 정규 분위수예요. R의 기본(`statistics='approximate'`)은 $\delta_1$, $\delta_2$를 표의 보간식으로 어림하는데, 그 식은 따라 하지 않아요.
+
+R과 다른 곳이 하나 더 있어요. symmetric의 `df`, `leverage`, $\delta_1$, $\delta_2$, `scale`은 마지막 적합의 선형 평활기(마지막 강건 무게를 고정한 $L$)의 것이에요. R은 trace.hat과 $\delta_1$, $\delta_2$를 첫(가우스) 적합에서 재고 척도를 의사값의 잔차로 재요. 공통 필드의 정의를 `lowess`와 맞추려는 것이에요.
+
+## 일의 크기와 나눔
+
+평가점(자료점)을 크기로만 나눠요. 점 하나의 일은 $q\cdot(4 + t + t(t + 1)/2)$이고 여러 변수는 거리 계산 $n(p + 2)$를 더해요. 태스크 하나는 약 $2^{17}$이되 256개까지라서, 점 하나가 $2^{17}$을 넘는 큰 창에서도 태스크마다 작업 공간(창의 열, KD 탐색기)을 한 번만 만들어요. 점 하나는 언제나 `fit_point` 한 번이에요. 정규화, 정렬, 강건 무게, 통계량의 합은 차례 계산이에요.
+
+R의 기본 곡면(KD 트리의 꼭짓점에서만 맞추고 그 사이를 값과 기울기의 3차 혼합으로 채우는 것)을 두지 않는 까닭은 정확도와 정의예요. 잡음의 표준편차가 0.3인 시험 자료에서 두 곡면이 0.12 달랐고, 어림은 칸을 나누는 순서와 꼭짓점의 기울기 같은 구현의 세부가 값을 정해서 정의로 적을 수 없어요. 직접 계산은 평가점마다 독립이라 스레드로 나누기 쉬워요.

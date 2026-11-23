@@ -1,0 +1,340 @@
+---
+title: LinearNDInterpolator
+names: [LinearNDInterpolator, LinearNDInterpolator.points, LinearNDInterpolator.values, LinearNDInterpolator.tri, LinearNDInterpolator.fill_value]
+group: 흩어진 점
+order: 2
+signatures:
+  - "sd.interpolate.LinearNDInterpolator(points, values, /, *, fill_value=nan, rescale=False)"
+  - "lin(xi, /)"
+summary: 2차원이나 3차원에 흩어진 점의 값으로 조각마다 평면인 곡면을 만들어요. 자료점을 Delaunay 삼각분할로 나누고, 평가점이 든 삼각형(사면체)의 꼭짓점 값을 무게중심 좌표로 섞어요. 자료점에서는 자료 그대로이고, 자료점의 볼록 껍질 밖은 fill_value예요.
+params:
+  - name: points
+    type: ndarray, 수의 시퀀스, numpy 배열, DataFrame, 좌표 배열의 튜플, Delaunay
+    kind: positional-only
+    desc: "자료점. (n, d) 배열(d = 2 또는 3), 길이가 같은 1차원 좌표 배열 d개의 튜플, 또는 이미 만든 sd.spatial.Delaunay. 좌표는 유한해야 하고, 서로 다른 점이 d + 1개 이상이며 모두 한 직선(3차원은 한 평면) 위가 아니어야 해요."
+  - name: values
+    type: ndarray, 수의 시퀀스, numpy 배열
+    kind: positional-only
+    desc: "자료점마다의 값. 첫 축의 길이가 n이고 나머지 축은 함께 보간하는 여러 값(배치)이에요. float64나 complex128이고 NaN·inf가 있어도 돼요. 좌표가 같은 자료점은 값도 비트까지 같아야 해요."
+  - name: fill_value
+    type: float 또는 complex
+    kind: keyword-only
+    desc: "자료점의 볼록 껍질 밖에서 돌려줄 값. 수여야 하고(bool, None, 배열은 안 돼요), 값이 복소수일 때만 복소수를 줄 수 있어요. 기본값 nan."
+  - name: rescale
+    type: bool
+    kind: keyword-only
+    desc: "True면 축마다 자료점의 평균을 빼고 범위(최댓값 − 최솟값, 0이면 1)로 나눈 좌표에서 삼각분할하고 평가점도 같게 옮겨요. points가 Delaunay면 쓸 수 없어요. 기본값 False."
+returns:
+  type: LinearNDInterpolator
+  desc: "보간 객체. (…, d) 배열이나 좌표 d개의 튜플로 불러 (…) + values의 나머지 모양의 값을 받아요. 속성 points, values, tri, fill_value를 가져요."
+raises:
+  - type: TypeError
+    desc: "points·values가 수의 배열이 아닐 때, 좌표가 복소수일 때, fill_value가 수가 아닐 때, rescale이 True·False가 아닐 때, 옵션을 자리로 주거나 없는 인자를 줄 때."
+  - type: ValueError
+    desc: "points가 2차원 배열이 아니거나 열이 2·3개가 아닐 때, 좌표에 NaN·inf가 있을 때, 서로 다른 점이 d + 1개보다 적거나 모두 한 직선(평면) 위일 때, values의 행 수가 n과 다를 때, 같은 자료점의 값이 다를 때, 실수 값에 복소수 fill_value를 줄 때, Delaunay와 rescale=True를 함께 줄 때. 부를 때 평가점의 좌표 수가 d와 다를 때."
+seeAlso: [CloughTocher2DInterpolator, griddata, NearestNDInterpolator, RBFInterpolator, basics]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import PlaneFig from '../../../components/fig/PlaneFig.astro';
+
+export const stPts = [[0, 0], [1, 0], [0, 1], [1, 1], [0.5, 0.5]];
+export const stSegs = [[0, 0, 1, 0], [1, 0, 1, 1], [1, 1, 0, 1], [0, 1, 0, 0], [0, 0, 0.5, 0.5], [1, 0, 0.5, 0.5], [1, 1, 0.5, 0.5], [0, 1, 0.5, 0.5]];
+export const tri1 = [[0, 0], [0.5, 0.5], [0, 1]];
+
+## 한눈에 보기
+
+관측소 다섯 곳의 기온이 있고, 관측소 사이 어느 자리의 기온을 어림하고 싶다고 해 볼게요. `LinearNDInterpolator`는 관측소를 꼭짓점으로 땅을 삼각형으로 나누고, 삼각형마다 세 꼭짓점의 값을 지나는 평면을 놓아요. 한 자리의 값은 그 자리를 품은 삼각형의 평면에서 읽어요.
+
+```python
+>>> import stardust as sd
+>>> st = sd.asarray([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0], [0.5, 0.5]])
+>>> temp = sd.asarray([10.0, 14.0, 12.0, 20.0, 15.0])
+>>> lin = sd.interpolate.LinearNDInterpolator(st, temp)
+>>> lin
+LinearNDInterpolator(points=5, dimensions=2)
+>>> lin([0.1, 0.2])
+11.2
+>>> lin([[0.1, 0.2], [0.9, 0.8], [0.5, 0.5], [2.0, 2.0]])
+array([11.2, 18.4, 15.0,  nan], dtype=float64)
+```
+
+(0.5, 0.5)는 관측소 4의 자리라 그 값 15.0 그대로예요. (2, 2)는 관측소들을 감싸는 볼록 껍질 밖이라 값을 지어내지 않고 NaN이에요.
+
+<Fig caption="관측소 다섯 곳(점, 옆의 수는 기온)의 삼각분할. 평가점 (0.1, 0.2)(×)는 칠한 삼각형 안에 있고, 그 세 꼭짓점 10, 15, 12를 무게 0.7, 0.2, 0.1로 섞은 11.2가 값이에요.">
+  <PlaneFig
+    label="정사각형의 네 모서리와 가운데 점을 잇는 삼각형 넷, 평가점이 든 삼각형과 꼭짓점의 기온"
+    domain={[-0.1, 1.1]}
+    range={[-0.1, 1.1]}
+    xTicks={[0, 0.5, 1]}
+    yTicks={[0, 0.5, 1]}
+    width={340}
+    layers={[
+      { kind: 'line', pts: tri1, closed: true, fill: true, tone: 'soft', width: 0.5 },
+      { kind: 'segments', segs: stSegs, tone: 'base', width: 1.2 },
+      { kind: 'points', pts: stPts, tone: 'ink', size: 3.4, labels: ['10', '14', '12', '20', '15'] },
+      { kind: 'points', pts: [[0.1, 0.2]], tone: 'main', shape: 'cross', size: 4.5, labels: ['11.2'] },
+    ]}
+  />
+</Fig>
+
+<Reference />
+
+## 어떻게 값을 정하나요
+
+1. 자료점으로 [Delaunay 삼각분할](/api/spatial/Delaunay/)을 만들어요(3차원은 사면체로 나눠요). 만들 때 한 번이에요.
+2. 평가점마다 그 점을 품은 삼각형을 찾아요. 변이나 꼭짓점 위처럼 여러 삼각형이 품으면 번호가 가장 작은 것이에요([`find_simplex`](/api/spatial/find_simplex/)와 같은 규칙).
+3. 그 삼각형 안에서 평가점의 **무게중심 좌표** $\lambda_0, \lambda_1, \lambda_2$를 구해요. 평가점을 세 꼭짓점의 가중 평균 $x = \sum_k \lambda_k v_k$, $\sum_k \lambda_k = 1$로 적는 무게이고, 안쪽 점에서는 모두 0 이상이에요.
+4. 값은 $\sum_k \lambda_k f_k$예요. 3차원은 꼭짓점 넷으로 같은 일을 해요.
+
+위 그림의 평가점 (0.1, 0.2)는 꼭짓점 (0, 0), (0.5, 0.5), (0, 1)의 무게가 0.7, 0.2, 0.1이라 $0.7 \cdot 10 + 0.2 \cdot 15 + 0.1 \cdot 12 = 11.2$예요.
+
+이렇게 만든 곡면에는 이런 성질이 있어요.
+
+- **자료점을 지나요.** 자료점에서는 무게가 (1, 0, 0)이라 값이 자료 그대로예요. 비트까지 같고 −0.0도 그대로예요.
+- **이어져 있어요.** 이웃한 두 삼각형은 함께 가진 변 위에서 같은 값을 줘요. 다만 변을 건널 때 기울기가 꺾여요.
+- **새 봉우리를 만들지 않아요.** 삼각형 안의 값은 세 꼭짓점 값의 가중 평균이라, 그 사이를 벗어나지 않아요.
+- **1차식을 그대로 재현해요.** 자료가 $a + bx + cy$에서 왔으면 껍질 안 어디서나 그 식의 값이 나와요(반올림만큼의 차이 안에서).
+
+```python
+>>> rng = sd.random.default_rng(1)
+>>> X = rng.random((50, 2))
+>>> plane = sd.interpolate.LinearNDInterpolator(X, 2 * X[:, 0] + 3 * X[:, 1] + 1)
+>>> plane([0.4, 0.6]), 2 * 0.4 + 3 * 0.6 + 1
+(3.6, 3.5999999999999996)
+```
+
+## 자료점 `points`
+
+(n, d) 배열이고 d는 2나 3이에요. 길이가 같은 좌표 배열 d개의 튜플로 줘도 같아요. 삼각분할의 조건은 [`sd.spatial.Delaunay`](/api/spatial/Delaunay/)와 같아서, 서로 다른 점이 $d + 1$개보다 적거나 모두 한 직선(3차원은 한 평면) 위면 에러예요. 에러 메시지는 이 클래스의 이름으로 시작해요.
+
+```python
+>>> xs, ys = [0.0, 1.0, 0.0, 1.0, 0.5], [0.0, 0.0, 1.0, 1.0, 0.5]
+>>> sd.interpolate.LinearNDInterpolator((xs, ys), temp)([0.1, 0.2])
+11.2
+>>> sd.interpolate.LinearNDInterpolator([[0, 0], [1, 1], [2, 2]], [1.0, 2.0, 3.0])
+Traceback (most recent call last):
+    ...
+ValueError: LinearNDInterpolator(): 'points' are collinear
+>>> sd.interpolate.LinearNDInterpolator([0.0, 1.0, 2.0], [1.0, 2.0, 3.0])
+Traceback (most recent call last):
+    ...
+ValueError: LinearNDInterpolator(): 'points' must have 2 dimensions (points, coordinates), not 1
+```
+
+1차원 자료는 받지 않아요. 한 변수의 선형 보간은 [`sd.interp`](/api/array/interp/)나 [`make_interp_spline(x, y, k=1)`](/api/interpolate/make_interp_spline/)이에요.
+
+### 삼각분할을 다시 쓰기
+
+같은 자료점에 값만 바꿔 여러 번 보간하면, [`Delaunay`](/api/spatial/Delaunay/)를 한 번 만들어 `points` 자리에 줘요. 삼각분할을 다시 하지 않아요.
+
+```python
+>>> tri = sd.spatial.Delaunay(st)
+>>> a = sd.interpolate.LinearNDInterpolator(tri, temp)
+>>> b = sd.interpolate.LinearNDInterpolator(tri, temp * 2)
+>>> a([0.1, 0.2]), b([0.1, 0.2])
+(11.2, 22.4)
+>>> a.tri is tri
+True
+```
+
+### 같은 자료점
+
+좌표가 같은 자료점은 삼각분할에서 하나로 합쳐져요. 그 값이 비트까지 같으면 받고, 다르면 어느 값을 쓸지 정할 수 없으니 에러예요. 메시지는 대표(색인이 가장 작은 점)와, 값이 다른 같은 점 가운데 색인이 가장 작은 점을 알려 줘요.
+
+```python
+>>> sd.interpolate.LinearNDInterpolator([[0, 0], [1, 0], [0, 1], [1, 0]], [1.0, 2.0, 3.0, 4.0])
+Traceback (most recent call last):
+    ...
+ValueError: LinearNDInterpolator(): data points 1 and 3 are equal and their values differ
+```
+
+같은 자리를 여러 번 잰 자료라면 먼저 평균 같은 한 값으로 합쳐 두세요.
+
+## 값 `values`
+
+첫 축의 길이가 자료점의 수 n이에요. 뒤의 축은 함께 보간하는 여러 값이고, 결과의 모양 끝에 그대로 붙어요. complex128도 받고 실수부와 허수부를 따로 보간해요.
+
+```python
+>>> two = sd.interpolate.LinearNDInterpolator(st, sd.stack([temp, -temp], axis=1))
+>>> two([[0.1, 0.2], [0.9, 0.8]])
+array([[ 11.2, -11.2],
+       [ 18.4, -18.4]], dtype=float64)
+>>> sd.interpolate.LinearNDInterpolator(st, temp * (1 + 1j))([0.25, 0.25])
+(12.5+12.5j)
+```
+
+값에 NaN이나 inf가 있으면 그 자료점의 무게가 0이 아닌 평가점에만 퍼져요. 그 자료점을 꼭짓점으로 갖지 않는 삼각형이나, 그 꼭짓점의 맞은편 변 위의 점은 영향을 받지 않아요.
+
+```python
+>>> holes = sd.asarray([10.0, sd.nan, 12.0, 20.0, 15.0])
+>>> sd.interpolate.LinearNDInterpolator(st, holes)([[0.1, 0.05], [0.1, 0.6], [0.0, 0.0]])
+array([ nan, 12.0, 10.0], dtype=float64)
+```
+
+첫 점은 NaN인 관측소 1이 꼭짓점인 삼각형 안이라 NaN이고, 둘째 점은 다른 삼각형 안이라 값이 나와요. 셋째 점은 관측소 0의 자리라 그 값 그대로예요.
+
+## 바깥: `fill_value`
+
+자료점의 볼록 껍질 밖에서는 값을 늘여 만들지 않고 `fill_value`를 돌려줘요. 기본은 NaN이에요. 껍질의 경계 위는 안이에요. 안팎의 판정은 정확해서, 경계에서 float64 한 칸 밖의 점은 밖이에요.
+
+```python
+>>> lin([[1.0, 0.5], [1.0000000000000002, 0.5]])
+array([17.0,  nan], dtype=float64)
+>>> sd.interpolate.LinearNDInterpolator(st, temp, fill_value=-1.0)([[2.0, 2.0], [0.5, 0.5]])
+array([-1.0, 15.0], dtype=float64)
+```
+
+`fill_value`는 수여야 해요. 값이 실수인데 복소수를 주면 에러이고, 값이 복소수면 실수 `fill_value`는 허수부 0인 복소수가 돼요.
+
+```python
+>>> sd.interpolate.LinearNDInterpolator(st, temp, fill_value=None)
+Traceback (most recent call last):
+    ...
+TypeError: LinearNDInterpolator(): 'fill_value' must be a number, not NoneType
+>>> sd.interpolate.LinearNDInterpolator(st, temp, fill_value=1j)
+Traceback (most recent call last):
+    ...
+ValueError: LinearNDInterpolator(): 'fill_value' must be a real number for real values, not complex
+>>> sd.interpolate.LinearNDInterpolator(st, temp * (1 + 1j))([2.0, 2.0])
+(nan+0j)
+```
+
+## 축의 척도: `rescale`
+
+Delaunay 삼각분할은 거리로 정해지므로, 축마다 단위가 크게 다르면(한 축은 0–1, 다른 축은 0–1000) 큰 축을 따라 길쭉한 삼각형이 생겨요. `rescale=True`면 축마다 자료점의 평균을 빼고 범위로 나눈 좌표에서 삼각분할하고, 평가점도 같게 옮겨요.
+
+```python
+>>> pos = sd.asarray([[0.0, 0.0], [1.0, 100.0], [0.4, 900.0], [0.9, 600.0], [0.2, 400.0], [0.7, 0.0]])
+>>> v = sd.asarray([0.0, 1.0, 2.0, 3.0, 5.0, 1.0])
+>>> sd.interpolate.LinearNDInterpolator(pos, v)([0.6, 300.0])
+3.1621621621621627
+>>> sd.interpolate.LinearNDInterpolator(pos, v, rescale=True)([0.6, 300.0])
+2.8421052631578947
+```
+
+삼각분할이 달라져서 값도 달라요. 어느 쪽이 맞는지는 자료에 달렸어요. 두 축이 같은 단위(예: 둘 다 미터)면 그대로 두고, 단위가 다르면 `rescale`을 켜거나 알맞은 척도로 직접 바꿔요. `points`에 이미 만든 `Delaunay`를 주면 그 삼각분할을 그대로 써야 하니 `rescale=True`와 함께 줄 수 없어요.
+
+```python
+>>> sd.interpolate.LinearNDInterpolator(tri, temp, rescale=True)
+Traceback (most recent call last):
+    ...
+ValueError: LinearNDInterpolator(): 'rescale' must be False when 'points' is a Delaunay
+```
+
+## 부르기: 평가점 `xi`
+
+평가점은 마지막 축이 좌표인 (…, d) 배열이거나, 좌표 d개의 튜플이에요. 튜플의 좌표는 서로 브로드캐스트해요. 수만으로 된 튜플이나 (d,) 배열은 점 하나라, 값이 스칼라면 Python `float`(복소수 값은 `complex`)이에요.
+
+```python
+>>> lin((0.1, 0.2))
+11.2
+>>> lin(([0.1, 0.9], [0.2, 0.8]))
+array([11.2, 18.4], dtype=float64)
+>>> lin(sd.full((2, 3, 2), 0.25)).shape
+(2, 3)
+```
+
+좌표에 NaN이 있는 평가점은 `fill_value`가 아니라 NaN이에요. 무한한 좌표의 점은 껍질 밖이라 `fill_value`예요.
+
+```python
+>>> sd.interpolate.LinearNDInterpolator(st, temp, fill_value=0.0)([[sd.nan, 0.5], [sd.inf, 0.5]])
+array([nan, 0.0], dtype=float64)
+```
+
+좌표의 수가 d와 다르면 에러예요.
+
+```python
+>>> lin([0.1, 0.2, 0.3])
+Traceback (most recent call last):
+    ...
+ValueError: LinearNDInterpolator(): 'xi' must have 2 entries on its last axis (the data points' dimension), not 3
+```
+
+## 속성
+
+| 속성 | 뜻 |
+|---|---|
+| `points` | 준 그대로의 자료점(옮기기 전), 읽기 전용 (n, d) float64 |
+| `values` | 준 그대로의 값, 읽기 전용 (n, …) |
+| `tri` | 보간이 쓰는 [`sd.spatial.Delaunay`](/api/spatial/Delaunay/). `rescale=True`면 옮긴 점의 삼각분할 |
+| `fill_value` | 바깥의 값(`float`, 복소수 값이면 `complex`) |
+
+```python
+>>> lin.tri
+Delaunay(n=5, d=2, nsimplex=4)
+>>> lin.fill_value
+nan
+```
+
+## 3차원
+
+열이 셋인 자료점은 사면체로 나누고 꼭짓점 넷의 무게로 섞어요.
+
+```python
+>>> cube = [[i, j, k] for i in (0, 1) for j in (0, 1) for k in (0, 1)]
+>>> f = sd.asarray([x + 2 * y + 3 * z for x, y, z in cube], dtype=sd.float64)
+>>> sd.interpolate.LinearNDInterpolator(cube, f)([[0.5, 0.5, 0.5], [0.1, 0.2, 0.3]])
+array([3.0, 1.4], dtype=float64)
+```
+
+1차식 $x + 2y + 3z$를 정확히 재현해요.
+
+## 결과는 언제나 같아요
+
+평가점마다 품은 단체와 무게가 정의로 정해지므로, 평가점의 차례나 개수, [스레드 수](/api/array/threads/)를 바꿔도 같은 점에는 같은 비트가 나와요. 자료점에서는 자료 그대로예요.
+
+오차는 평가점을 품은 단체의 꼭짓점 값으로 재요. 참값 $y = \sum_k \lambda_k f_k$(정확한 무게)에 대해 $\lvert \hat y - y \rvert \le \gamma_{d+5} \sum_k \lambda_k \lvert f_k \rvert$이고($\gamma_k = ku/(1 - ku)$, $u = 2^{-53}$), 삼각형이 아주 가늘어도 이 한계는 그대로예요. 무게를 역행렬로 구하지 않고 행렬식의 비로 정확도를 지켜 구하기 때문이에요. 자세한 것은 [흩어진 점의 보간](/internals/interpolate/scattered/)에 있어요.
+
+## 복사와 저장(pickle)
+
+`copy.copy`, `copy.deepcopy`, `pickle`이 돼요. 삼각분할은 점으로 다시 만들어지고(같은 삼각분할이에요), 되살린 객체는 같은 점에서 같은 비트를 내요.
+
+```python
+>>> import pickle
+>>> pickle.loads(pickle.dumps(lin))([0.1, 0.2])
+11.2
+```
+
+## 조심할 점
+
+### 껍질 밖은 값이 없어요
+
+바깥까지 값이 필요하면 [`NearestNDInterpolator`](/api/interpolate/NearestNDInterpolator/)로 채우거나, 어디서나 식을 계산하는 [`RBFInterpolator`](/api/interpolate/RBFInterpolator/)를 써요. 두 보간을 섞을 때는 `fill_value=sd.nan`으로 두고 NaN인 자리만 다른 보간으로 채워요.
+
+```python
+>>> near = sd.interpolate.NearestNDInterpolator(st, temp)
+>>> q = sd.asarray([[0.1, 0.2], [2.0, 2.0]])
+>>> y = lin(q)
+>>> sd.where(sd.isnan(y), near(q), y)
+array([11.2, 20.0], dtype=float64)
+```
+
+### 껍질 가까이의 가는 삼각형
+
+자료점의 껍질 가장자리에는 길고 가는 삼각형이 생기기 쉬워요. 그런 삼각형 안의 값은 멀리 떨어진 두 자료점을 섞은 것이라 자료가 말해 주는 것이 적어요. 결과는 정확하게 계산되지만, 해석할 때는 조심해요.
+
+### 옵션은 이름으로 줘요
+
+```python
+>>> sd.interpolate.LinearNDInterpolator(st, temp, 0.0)
+Traceback (most recent call last):
+    ...
+TypeError: LinearNDInterpolator(): takes 2 positional arguments but 3 were given
+```
+
+<Callout type="note" title="매끄러운 곡면이 필요하면">
+
+선형 보간은 삼각형의 변에서 기울기가 꺾여요. 기울기까지 이어지는 곡면이 필요하면 2차원은 [`CloughTocher2DInterpolator`](/api/interpolate/CloughTocher2DInterpolator/), 차원에 상관없이는 [`RBFInterpolator`](/api/interpolate/RBFInterpolator/)를 써요.
+
+</Callout>
+
+## scipy·numpy를 아는 분께
+
+- 자료점의 차원은 2와 3이에요. scipy는 모든 차원을 받아요.
+- 삼각분할이 정확한 Delaunay이고 가까운 점을 버리지 않아요. scipy의 Qhull은 원점에서 먼 작은 군집 같은 입력에서 점을 버려 그 자료점의 값이 쓰이지 않고, 비정상 수나 $10^{300}$ 크기의 좌표는 `QhullError`예요.
+- 껍질 안팎이 정확한 판정이에요. scipy는 허용오차로 껍질 밖 $10^{-15}$ 안쪽의 점을 안으로 쳐요(단위 정사각형의 변 밖 $10^{-15}$의 점에서 값을 내요). `__call__`의 `simplex_tolerance`는 없어요.
+- 자료점에서 자료 그대로예요. scipy는 끝자리가 다를 수 있어요(무작위 2,000점에서 165점).
+- 값이 다른 같은 자료점은 에러예요. scipy는 말없이 한 값을 써요.
+- `points` 속성은 `rescale` 전의 좌표예요(scipy는 옮긴 좌표). `values`는 준 모양 그대로예요(scipy는 (n, 곱)). scipy의 `is_complex`, `scale`, `offset`, `values_shape`은 없어요.
+- `fill_value`는 수만 받아요(`None`은 `TypeError`).

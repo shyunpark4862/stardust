@@ -61,6 +61,7 @@ NAMESPACES = {
     "spatial": sd.spatial,
     "fft": sd.fft,
     "interpolate": sd.interpolate,
+    "smooth": sd.smooth,
     "graph": sd.graph,
     "plot": sd.plot,
 }
@@ -104,8 +105,9 @@ def names_of(path: Path) -> list[str]:
 # Classes whose public members are documented by name too, as `Class.member`.
 MEMBERS = {
     "frame": ("Series", "DataFrame", "Index", "RangeIndex"),
-    "spatial": ("KDTree",),
+    "spatial": ("KDTree", "Delaunay", "ConvexHull", "Voronoi"),
     "interpolate": tuple(n for n in sd.interpolate.__all__ if isinstance(getattr(sd.interpolate, n), type)),
+    "smooth": tuple(n for n in sd.smooth.__all__ if isinstance(getattr(sd.smooth, n), type)),
     "plot": ("Figure",),
 }
 

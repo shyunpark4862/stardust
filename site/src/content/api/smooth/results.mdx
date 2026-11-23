@@ -1,0 +1,180 @@
+---
+kind: concept
+title: 결과 객체 읽기
+group: 기본 개념
+order: 2
+summary: 평활기를 맞추는 함수들이 돌려주는 결과 객체를 읽는 법을 설명해요. 회귀형 결과 다섯 가지가 함께 갖는 적합값·잔차·유효 자유도·지렛대·잔차 척도, 새 점의 값을 내는 predict와 평균의 점별 구간 predict_interval, 요약 상자 summary와 한 줄 repr, 쓰기 금지와 처음 읽을 때 계산하는 필드, 찾기의 상태를 다뤄요.
+seeAlso: [basics, lowess, loess, smoothing_spline, pspline, kernel_regression, kde]
+---
+
+## 한눈에 보기
+
+곡선을 맞추는 함수는 모두 `<이름>Result` 객체를 돌려줘요. 그 가운데 회귀처럼 자료 $(x_i, y_i)$에 곡선을 맞추는 다섯 가지는 같은 필드와 메서드를 함께 가져요.
+
+| 결과 | 만드는 함수 | 이 결과만의 필드 |
+|---|---|---|
+| `LowessResult` | [`lowess`](/api/smooth/lowess/) | `frac`, `k`, `it`, `delta`, `robust_weights` |
+| `LoessResult` | [`loess`](/api/smooth/loess/) | `span`, `q`, `degree`, `family`, `enp`, `one_delta`, `two_delta`, `robust_weights`, `n_rank_deficient` |
+| `SmoothingSplineResult` | [`smoothing_spline`](/api/smooth/smoothing_spline/) | `spline`, `lam`, `gcv`, `cv`, `criterion`, `status`, `converged` |
+| `PSplineResult` | [`pspline`](/api/smooth/pspline/) | 위와 같고 `n_segments`, `k`, `diff_order` |
+| `KernelRegressionResult` | [`kernel_regression`](/api/smooth/kernel_regression/) | `bw`, `degree`, `kernel`, `criterion`, `criterion_value`, `status`, `converged`, `gradient()` |
+
+밀도의 결과 [`KDEResult`](/api/smooth/kde/)는 꼴이 달라요. 분포 객체처럼 `pdf`, `logpdf`, `cdf`, `sample`을 쓰고 `summary()`가 없어요. 이 쪽은 회귀형 결과 다섯 가지를 다뤄요.
+
+```python
+>>> import stardust as sd
+>>> rng = sd.random.default_rng(7)
+>>> x = sd.sort(rng.random(60)) * 10
+>>> y = sd.sin(x) + sd.stats.Normal(sigma=0.3).sample(60, rng=rng)
+>>> r = sd.smooth.smoothing_spline(x, y)
+>>> r
+SmoothingSplineResult(nobs=60, df=8.40871, lam=0.277509)
+>>> r.fittedvalues[:3]
+array([-0.011447757450371375,    0.1161797141432828,   0.23936251925408733], dtype=float64)
+>>> r.resid[:3]
+array([-0.06194065372004894,  -0.3663354814794659,   0.1992101933979141], dtype=float64)
+>>> r.nobs, round(r.df, 4), round(float(r.scale), 4)
+(60, 8.4087, 0.286)
+```
+
+## 공통 필드
+
+| 필드 | 뜻 |
+|---|---|
+| `fittedvalues` | 자료점의 적합값 $\hat y_i$ (n,), 입력의 순서 |
+| `resid` | `y - fittedvalues` |
+| `nobs` | 맞춤에 든 점의 수. `nan_policy='omit'`이 뺀 점과 무게가 0인 점은 세지 않아요 |
+| `df` | 유효 자유도 $\mathrm{tr}\,L$ |
+| `leverage` | $L$의 대각 $L_{ii}$ (n,) |
+| `scale` | 잔차 척도 $\hat\sigma$ |
+
+모든 평활기는 맞춘 값이 자료 $y$의 일차결합 $\hat y = L y$인 **선형 평활기**예요(강건 반복은 마지막 반복의 무게를 고정했을 때 그래요). $n \times n$ 행렬 $L$을 모자 행렬이라 불러요. $L$의 $i$째 행은 점 $i$의 적합값이 어느 점의 $y$를 얼마씩 섞었는지를 말해요.
+
+- `leverage`의 $L_{ii}$는 점 $i$의 $y$가 자기 적합값에 주는 몫이에요. 1에 가까우면 곡선이 그 점을 거의 지나요.
+- `df` $= \mathrm{tr}\,L = \sum_i L_{ii}$는 곡선이 쓰는 자유의 양이에요. 직선 맞춤이면 2, 모든 점을 지나는 보간이면 점의 수예요. 서로 다른 평활기의 매끄러움을 견줄 때 이 값을 써요.
+
+```python
+>>> round(float(sd.sum(r.leverage)), 10) == round(r.df, 10)
+True
+>>> for res in (sd.smooth.lowess(x, y, frac=0.3), sd.smooth.loess(x, y, span=0.4),
+...             sd.smooth.pspline(x, y), sd.smooth.kernel_regression(x, y)):
+...     print(type(res).__name__, round(res.df, 3), round(float(res.scale), 4))
+LowessResult 6.926 0.3149
+LoessResult 8.961 0.2901
+PSplineResult 7.865 0.2864
+KernelRegressionResult 10.312 0.2902
+```
+
+`scale`은 $\sqrt{\sum_i w_i r_i^2 / (\mathit{nobs} - \mathit{df})}$이에요. 분모가 0 이하이면(보간처럼 $\mathrm{df} = \mathit{nobs}$) NaN이에요. `loess`만 R을 따라 $\sqrt{\sum_i w_i r_i^2 / \delta_1}$이에요.
+
+```python
+>>> sd.smooth.smoothing_spline(x, y, lam=0.0).scale
+nan
+```
+
+배열 필드는 입력의 순서예요. 정렬되지 않은 x를 주어도 그 순서 그대로 돌려줘요.
+
+## 새 점의 값: `predict`
+
+`predict(x_new)`는 새 자리의 곡선 값이에요. 맞출 때와 같은 정의로 계산해요(스플라인은 맞춘 `BSpline`의 값, 국소 적합은 그 자리의 국소 적합). 한 변수의 결과는 어떤 모양의 배열이든 받아 같은 모양으로 돌려주고, 수 하나는 float예요. 여러 변수의 결과는 (m, p)나 점 하나 (p,)를 받아요. 평가점의 NaN은 그 자리의 결과가 NaN이에요.
+
+```python
+>>> r.predict(5.0)
+-1.0307640993835183
+>>> r.predict([[1.0, 2.0], [3.0, float('nan')]])
+array([[  0.7219288706269821,   0.8426530367536844],
+       [0.054414236443529725,                  nan]], dtype=float64)
+```
+
+결과는 `predict`를 위해 자료의 사본을 쥐고 있어서, 나중에 원래 배열을 바꿔도 결과가 바뀌지 않아요.
+
+## 평균의 구간: `predict_interval`
+
+`predict_interval(x_new, alpha=0.05)`은 곡선 값 $\hat y(x_0)$의 점별 신뢰 구간이에요. 결과는 (m, 2)(한 변수의 수 하나는 (2,))이고 열은 아래 끝과 위 끝이에요.
+
+$$
+\hat y(x_0) \pm t_{1-\alpha/2}\;\hat\sigma\,\sqrt{\sum_j l_j(x_0)^2 / w_j}
+$$
+
+$l(x_0)$는 $x_0$의 곡선 값이 자료의 $y$를 섞는 무게(모자 행렬의 행), $w_j$는 점마다의 무게(없으면 1)예요. 잡음이 서로 독립이고 분산이 $\sigma^2/w_j$이면 $\hat y(x_0)$의 표준오차가 $\sigma\lVert l\rVert$이라서 나온 식이에요. 분위수 $t$는 자유도 $\mathit{nobs} - \mathit{df}$의 t 분포예요(`loess`는 R처럼 자유도 $\delta_1^2/\delta_2$).
+
+```python
+>>> r.predict_interval([2.0, 5.0])
+array([[  0.660487425613492,  1.0248186478938768],
+       [-1.1967996820016578,  -0.864728516765379]], dtype=float64)
+>>> r.predict_interval(5.0)
+array([-1.1967996820016578,  -0.864728516765379], dtype=float64)
+>>> r.predict_interval([5.0], alpha=0.32)
+array([[ -1.113833393489286, -0.9476948052777507]], dtype=float64)
+>>> r.predict_interval([5.0], alpha=1.5)
+Traceback (most recent call last):
+    ...
+ValueError: predict_interval(): 'alpha' must be between 0 and 1 (exclusive)
+```
+
+이 구간은 곡선의 **분산**만 담아요. 평활은 봉우리를 깎는 식의 **편향**이 있는데 그것은 넣지 않아요. 그래서 봉우리나 골짜기에서는 참 곡선이 구간 밖에 있기 쉬워요. 새 관측값 하나가 들어갈 구간(예측 구간)도 아니에요. 그것은 잡음의 분산 $\hat\sigma^2$을 더해야 해요. 강건 반복을 한 적합의 구간은 마지막 강건 무게를 고정된 것으로 본 어림이에요.
+
+## 요약: `summary`와 `repr`
+
+`summary()`는 회귀 영역과 같은 상자 꼴의 글이에요. 왼쪽에 방법, 점의 수, 유효 자유도, 잔차 척도가, 오른쪽에 조절 모수와 기준이 있어요. 계수 표는 없어요(평활기에는 해석할 계수가 없어요).
+
+```python
+>>> print(r.summary())
+                           Smoothing Spline Results
+==============================================================================
+Method:               Smoothing spline  Lambda:                         0.2775
+No. Observations:                   60  Criterion:                         gcv
+Df (effective):                  8.409  GCV:                           0.09513
+Scale:                          0.2860  CV:                            0.09488
+                                        Converged:                        True
+==============================================================================
+>>> sd.smooth.lowess(x, y)
+LowessResult(nobs=60, df=3.50314, frac=0.666667, it=3)
+```
+
+`repr`는 한 줄이에요. 여러 열을 함께 맞춘 스플라인은 `scale`이 열마다라 상자에서 줄여 보여요.
+
+## 쓰기 금지와 늦은 계산
+
+결과의 필드는 읽기만 해요. 배열 필드도 쓰기 금지라, 고치려면 사본을 만들어요. 비싼 필드(`loess`의 `two_delta`)는 처음 읽을 때 한 번 계산해요.
+
+```python
+>>> r.fittedvalues[0] = 1.0
+Traceback (most recent call last):
+    ...
+ValueError: assignment destination is read-only
+>>> r.lam = 1.0
+Traceback (most recent call last):
+    ...
+AttributeError: SmoothingSplineResult: the fields are read-only
+>>> f = r.fittedvalues.copy()
+>>> f[0] = 1.0
+```
+
+결과 클래스는 사용자가 직접 만들지 않아요. 생성자는 공개된 쓰임이 아니에요.
+
+## 찾기의 상태: `status`, `converged`
+
+$\lambda$나 대역폭을 기준으로 고르는 결과(`SmoothingSplineResult`, `PSplineResult`, `KernelRegressionResult`)는 찾기가 어떻게 끝났는지 알려 줘요.
+
+| `status` | 뜻 | `converged` |
+|---|---|---|
+| 0 | 구간 안에서 기준의 최소를 찾았어요. 값을 직접 주었을 때도 0이에요 | `True` |
+| $-1$ | 작은 쪽 끝(보간·좁은 대역폭)에서 끝났어요 | `False` |
+| 1 | 큰 쪽 끝(직선·넓은 대역폭)에서 끝났어요 | `False` |
+| 2 | 평가 수의 상한에 닿았어요(여러 변수의 대역폭 찾기) | `False` |
+
+`converged=False`는 에러가 아니에요. 찾는 구간이 충분히 넓어서 끝에서 멈췄다면 그 끝의 곡선이 자료에 맞는 답인 경우가 많아요(직선 같은 자료의 평활 스플라인이 직선이 되는 것처럼). 경고는 내지 않으니 필요하면 이 필드를 봐요.
+
+```python
+>>> yl = 2 * x + sd.stats.Normal(sigma=0.3).sample(60, rng=rng)
+>>> rl = sd.smooth.smoothing_spline(x, yl)
+>>> rl.status, rl.converged
+(1, False)
+```
+
+## statsmodels·R을 아는 분께
+
+- statsmodels의 `lowess`는 정렬한 (n, 2) 배열을, `KernelReg.fit`은 (값, 기울기) 튜플을 돌려줘요. sd는 결과 객체이고 배열은 입력의 순서예요.
+- R의 `loess` 결과의 `trace.hat`은 `df`, `enp`는 `enp`, `one.delta`·`two.delta`는 `one_delta`·`two_delta`, `s`는 `scale`이에요. `predict(m, se=TRUE)`의 `se.fit`으로 만드는 구간이 `predict_interval`이에요.
+- R의 `smooth.spline` 결과의 `df`, `lambda`(눈금이 달라요, [`smoothing_spline`](/api/smooth/smoothing_spline/)), `cv.crit`, `lev`는 `df`, `lam`, `gcv`·`cv`, `leverage`예요.
