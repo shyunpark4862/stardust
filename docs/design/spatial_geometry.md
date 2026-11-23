@@ -1,0 +1,572 @@
+# 공간 영역 설계: 계산 기하 (sd.spatial의 삼각분할, 볼록 껍질, 보로노이)
+
+> 상태: **설계 초안** (2026-11-23). 큰 결정(§1.1 SPT90–SPT92)은 사용자가 정했다. 나머지 결정(SPT93–SPT111, IP108–IP113)은 §9의 추천안으로, SPT112–SPT123은 SPT8 마일스톤에서 추천안으로 정했다(사용자 위임 2026-11-23). SPT8 마일스톤(술어, 정렬, 검사기, 시험 데이터, 탐침 기록, API 초안 [docs/api/spatial_geometry.md](../api/spatial_geometry.md))은 완료·승인(위임)이다. SPT9 마일스톤(2차원 `Delaunay`, 결정 SPT124–SPT139)과 SPT11 마일스톤(`ConvexHull`, 결정 SPT140–SPT153)은 완료·승인(위임)이다. 3차원 `Delaunay`와 `Voronoi`는 그 마일스톤(SPT10, SPT12)에서 구현된다. §3.1의 술어 시간은 sd를 잰 값이고, 그 밖의 시간과 메모리는 scipy를 잰 값이며 sd의 수치는 목표다.
+
+`sd.spatial`에 더하는 계산 기하(`Delaunay`, `ConvexHull`, `Voronoi`)와, 그 위에 서는 `sd.interpolate`의 흩어진 점 보간(`LinearNDInterpolator`, `CloughTocher2DInterpolator`, `griddata`)의 설계를 적는다. 거리와 이웃 찾기는 [spatial.md](spatial.md)에 있고 이 문서는 그 결정 번호(SPT1–SPT89)와 마일스톤 번호(SPT0–SPT7)를 이어 쓴다.
+
+- 공통 규칙은 [DESIGN.md](../../DESIGN.md), 층 구조는 [ARCHITECTURE.md](../../ARCHITECTURE.md), 모든 영역의 API 규칙은 [API.md](../../API.md)에 있다. 보간 쪽의 규칙(입력, 바깥, 값의 dtype)은 [interpolate.md](interpolate.md) §2.1–§2.3이다.
+- 비교 대상은 scipy 1.18.1의 `scipy.spatial`(`Delaunay`, `ConvexHull`, `Voronoi`; 안은 Qhull)과 `scipy.interpolate`(`LinearNDInterpolator`, `CloughTocher2DInterpolator`, `griddata`)다. R 4.6.2에는 `geometry`, `deldir`, `interp`, `tripack`, `akima`, `RTriangle`, `alphahull`, `sf`, `terra`가 설치되어 있지 않다. 설치하지 않는다(비교 패키지는 scipy 하나다).
+- 바닥은 배열(`csrc/array/`), 스레드풀(`csrc/parallel/`), 이 영역의 유클리드 짝 커널(`csrc/spatial/metric.hpp`; 둘레의 변 길이)이다. BLAS·LAPACK을 부르지 않는다. 밖의 기하 라이브러리(Qhull, CGAL, Triangle)의 코드는 쓰지 않는다(SPT90).
+- 이 문서의 잰 값은 Apple M4 Pro, macOS 26.6.2에서 본 scipy 1.18.1이다. 다른 작업과 기기를 나눠 썼다(부하 평균 3.2–4.2). 세 번 중 가장 좋은 값이고 점 10⁶개는 한 번 쟀다.
+- u는 단위 반올림 2⁻⁵³, γ_k = ku/(1 − ku)다(spatial.md와 같은 기호). n은 점의 수, d는 차원(2 또는 3), t는 단체(삼각형·사면체)의 수, h는 껍질의 꼭짓점 수다. "단체"는 d = 2에서 삼각형, d = 3에서 사면체를, "면"은 단체의 (d − 1)차원 면(변·삼각형)을 뜻한다.
+
+---
+
+## 1. 기반
+
+### 1.1 결정 기록 (사용자, 2026-11-23)
+| 번호 | 결정 |
+|---|---|
+| SPT90 바닥 | 직접 쓴 C++ 구현이다. Qhull을 쓰지 않는다. 기하 술어(방향 `orient`, 원 안 `incircle`, 구 안 `insphere`)는 **정확하다**: 부동소수점 거르기를 먼저 하고, 부호를 정하지 못하면 정확한 계산(Shewchuk 꼴의 전개식이나 그에 맞먹는 것, 직접 쓴 것)으로 간다. 그래서 퇴화 입력(한 직선 위, 한 원 위, 같은 점)에서도 결과가 정해진 동점 규칙으로 하나이고 스레드 수와 무관하다 (사용자 결정 2026-11-23) |
+| SPT91 범위 | `Delaunay`(`simplices`, `neighbors`, `find_simplex`, `vertex_neighbor_vertices`, `transform`(무게중심 좌표), `convex_hull`, `vertex_to_simplex` 등: scipy 1.18.1의 이름을 하나씩 정한다, §1.2), `ConvexHull`(`vertices`, `simplices`, `equations`, `area`, `volume`, `neighbors` 등), `Voronoi`(`vertices`, `regions`, `ridge_*`, `point_region` 등)이고 **2차원과 3차원만**이다. 나중 후보: 더 높은 차원, `SphericalVoronoi`, `HalfspaceIntersection`, 점을 더하는 방식(`incremental`), Qhull 옵션 문자열, `tsearch`, `delaunay_plot_2d` 꼴의 그림(그림은 `sd.plot`의 일이다) (사용자 결정 2026-11-23) |
+| SPT92 보간으로 잇기 | `sd.interpolate`에 `LinearNDInterpolator`, `CloughTocher2DInterpolator`, `griddata`를 이 `Delaunay` 위에 만든다(2차원; 선형의 3차원은 §9의 20). 이 문서의 마지막 마일스톤이다. 보간 쪽 결정은 그 영역의 번호를 IP108부터 이어 쓴다 (사용자 결정 2026-11-23) |
+| SPT93 색인의 dtype | int64다(`[scipy와 다름]`: scipy는 int32). 없음의 표시는 −1이다(§9의 1) (추천안, 사용자 위임 2026-11-23) |
+| SPT94 표준 꼴 | 단체는 양의 방향이고 가장 작은 색인이 먼저다. 단체의 차례는 그 행의 사전 순서다. `neighbors[i, k]`는 꼭짓점 k의 맞은편이다(§2.2, §9의 2) (추천안, 사용자 위임 2026-11-23) |
+| SPT95 동점 규칙 | 한 원(구) 위의 점은 올림 높이만 건드리는 기호 섭동으로 가른다. 섭동의 차례는 좌표의 사전 순서다. 그래서 삼각분할은 점 집합의 함수이고 입력 순서, 알고리즘, 스레드 수와 무관하다(§3.2, §9의 3) (추천안, 사용자 위임 2026-11-23) |
+| SPT96 같은 점 | 합친다. 가장 작은 색인이 대표이고 나머지는 `coplanar`에 적는다(§9의 4) (추천안, 사용자 위임 2026-11-23) |
+| SPT97 퇴화 입력 | 점이 d + 1개보다 적거나 모두 한 직선(평면) 위면 `ValueError`다. 판정은 정확하다(§9의 5) (추천안, 사용자 위임 2026-11-23) |
+| SPT98 입력 | API.md §5의 상위 함수 입력이고 float64로 계산한다. NaN·inf는 `ValueError`, complex는 `TypeError`다. 점은 언제나 복사한다(§9의 6) (추천안, 사용자 위임 2026-11-23) |
+| SPT99 Qhull의 옵션 | `qhull_options`, `furthest_site`, `incremental`, `add_points`, `close`는 없다(`[scipy와 다름]`; §9의 7) (추천안, 사용자 위임 2026-11-23) |
+| SPT100 술어의 범위 | 전개식이 정확한 좌표 범위 밖(아주 큰 값과 아주 작은 값이 섞인 입력)은 직접 쓴 여러 낱말 정수 길로 간다. 모든 유한한 float64 입력에서 술어가 정확하다(§3.1, §9의 8) (추천안, 사용자 위임 2026-11-23) |
+| SPT101 차원 | d = 2, 3만 받는다. 그 밖은 `ValueError`다(§9의 9) (추천안, 사용자 위임 2026-11-23) |
+| SPT102 `Delaunay`의 속성 | §1.2의 표다(§9의 10) (추천안, 사용자 위임 2026-11-23) |
+| SPT103 `find_simplex` | 닫힌 단체로 정확히 판정한다. 밖과 NaN은 −1, 여러 단체에 걸친 점은 가장 작은 번호다. `bruteforce`, `tol`은 없다(§9의 11) (추천안, 사용자 위임 2026-11-23) |
+| SPT104 2차원 알고리즘 | 나눠서 합치기(분할 정복)다. 3차원은 점을 하나씩 넣는다(§3.3, §3.4, §9의 12) (추천안, 사용자 위임 2026-11-23) |
+| SPT105 피클과 `repr` | 점의 바이트로 다시 만든다. `repr`는 한 줄이다(§9의 13) (추천안, 사용자 위임 2026-11-23) |
+| SPT106 `transform` | scipy의 꼴 (t, d + 1, d)이고 처음 읽을 때 만든다. 값 커널로 구해 원소마다 상대오차가 정해진다(§9의 14) (추천안, 사용자 위임 2026-11-23) |
+| SPT107 3차원 만들기의 병렬 | 첫 판은 넣기가 한 스레드다(정렬, 표준 꼴 만들기, 질의는 병렬). 병렬 넣기는 SPT13 마일스톤에서 재서 정한다(§9의 15) (추천안, 사용자 위임 2026-11-23) |
+| SPT108 `ConvexHull`의 길 | 삼각분할을 거치지 않고 직접 구한다(§3.6, §9의 16) (추천안, 사용자 위임 2026-11-23) |
+| SPT109 `ConvexHull`의 꼴 | 꼭짓점은 극점만이다. 3차원의 평평한 면은 가장 작은 색인에서 부채꼴로 나눈다. `area`·`volume`은 scipy의 뜻이다. `coplanar`, `good`은 없다(§9의 17) (추천안, 사용자 위임 2026-11-23) |
+| SPT110 `Voronoi`의 꼴 | `regions`와 `ridge_vertices`는 `(indptr, indices)` 짝이고 영역 i는 점 i의 것이다. `ridge_dict`는 없다(§9의 18) (추천안, 사용자 위임 2026-11-23) |
+| SPT111 `Voronoi`의 꼭짓점 | 한 원(구) 위의 단체들은 꼭짓점 하나로 합친다. 좌표는 값 커널로 구하고 계약은 §4다(§9의 19) (추천안, 사용자 위임 2026-11-23) |
+| SPT112 술어의 세 단계 | 거르기(A) → 전개식(B) → 넓은 정수(W)다. B는 차이가 모두 정확할 때(`two_diff`의 꼬리가 0)만 돌고 꼬리가 있으면 W로 간다. Shewchuk의 꼬리 있는 적응 단계는 두지 않는다. 까닭: 균등 [0, 1)의 2×10⁶ 행과 KD 트리 이웃 묶음(삼각분할이 묻는 꼴)은 모두 A에서 정해지고, 정수·격자·군집(Sterbenz) 점은 B에서 끝난다. 꼬리 있는 적응 단계가 아끼는 곳(거의 퇴화이고 차이가 정확하지 않은 행)에서 W는 한 낱말 정수라 `orient2d` 84 ns, `incircle` 201 ns, `insphere` 551 ns이고(§3.1의 시간), 그 단계의 코드(Shewchuk의 `orient3dadapt`·`insphereadapt` 꼴)는 W보다 크다 (추천안, 사용자 위임 2026-11-23) |
+| SPT113 길 고르기와 범위 조건 | 좌표의 hi(가장 큰 ⌊log₂\|x\|⌋)와 lo(0 아닌 좌표의 가장 낮은 비트의 지수)로, 차수 q(`orient2d` 2, `orient3d` 3, `incircle` 4, `insphere` 5)에서 q(hi + 2) + 8 ≤ 1023이고 (lo ≥ 0 또는 q·lo ≥ −1074)면 A·B, 아니면 W만 쓴다. 점 집합의 범위로 한 번 고르고(`Predicates` 객체), 범위를 모르는 호출(`find_simplex`의 평가점)은 호출마다 그 점들의 범위를 보는 `*_any`다. 까닭: 이 조건에서 모든 연산이 넘침·아래넘침 없이 (1 + δ) 꼴이라 거르기의 증명과 전개식의 정확성이 선다(§3.1). 초안의 q(E + 2) < 1024는 합의 항 수(`insphere` 72개 곱의 7비트)와 반올림 1비트를 빠뜨렸다 (추천안, 사용자 위임 2026-11-23) |
+| SPT114 거르기 상수 | `orient2d` (3 + 32u)u, `orient3d` (7 + 96u)u, `incircle` (10 + 176u)u, `insphere` (15 + 400u)u. 까닭: 우리 계산 순서의 반올림을 센 보조정리(§3.1)가 요구하는 K ≥ θ_{c−1}/(1 − u)^{c_P+2} 위의 가장 작은 (k + 16j·u)u이고, 각각 float64로 정확하다. 테스트가 부등식을 유리수로 확인한다. 초안이 적은 Shewchuk의 상수와는 둘째 차수가 다르고, `insphere`는 행렬식을 두 짝의 차로 묶어 깊이가 16이라 첫째 차수가 16이 아니라 15다 (추천안, 사용자 위임 2026-11-23) |
+| SPT115 값 커널 | `det2`·`det3`은 \|r − x\| ≤ 1.002u\|x\| + 2⁻¹⁰⁷⁵(x = 0이면 정확히 0, 넘치면 ±inf)다. 빠른 길(차이를 정확한 짝으로, 머리 행렬식을 오차 없는 곱·합으로, 꼬리와 오차항을 float64로)은 \|r\| ≥ 2⁻³⁶·P̂(P̂는 float 퍼머넌트)일 때만 받고, 아니면 W로 정확히 구해 올바르게 반올림한다. 까닭: 초안의 2u보다 강하고, 균등 입력에서 빠른 길이 모두 받는다(`det2` 2.1 ns, `det3` 10 ns). 거의 퇴화인 행에서는 70–94%가 W로 가 70–230 ns다 (추천안, 사용자 위임 2026-11-23) |
+| SPT116 섭동 규칙의 꼴 | §3.2의 규칙(사전 순서로 k번째로 큰 점의 올림 높이 + εᵏ)의 닫힌 꼴: `incircle`이 0이면 네 점을 사전 순서가 큰 것부터 보며, 인자 자리 i(0부터)의 점을 뺀 세 점(인자 순서)의 `orient2d`가 0이 아닌 첫 점에서 (−1)ⁱ·`orient2d`다. `insphere`는 (−1)ⁱ⁺¹·`orient3d`다. 그 점들 사이의 순서만 쓰므로 전역 순위가 필요 없다. 까닭: ε 다항식(`fmpq_poly`)으로 계산한 올림 행렬식과 모든 인자 순서에서 같고(§7.3), 그 규칙의 참조 삼각분할이 모든 `small` 점 집합에서 삼각분할이며 행을 섞어도 같다. Devillers–Teillaud의 원문은 확인하지 않았고 규칙은 이 계산으로 선다 (추천안, 사용자 위임 2026-11-23) |
+| SPT117 시험 데이터의 자리 | 새 모듈 `tests/spatial/geompoints.py`(같은 `rng`·`PointSet`; 점 집합 56개와 술어 행 일곱 종류)다. 까닭: `points.py`의 id는 참값 파일과 다른 테스트가 열거하므로 섞으면 그 열거가 바뀐다 (추천안, 사용자 위임 2026-11-23) |
+| SPT118 API 초안의 자리 | `docs/api/spatial_geometry.md`(초안 표시)이고 SPT14 마일스톤에서 `docs/api/spatial.md`에 합치고 지운다. 까닭: `spatial.md`는 `test_api_surface`가 읽는 확정 문서라 아직 없는 이름을 넣으면 표면 테스트가 깨지고, 다른 세션이 고치는 중이다 (추천안, 사용자 위임 2026-11-23) |
+| SPT119 §4 실수 계약의 상수 | §4의 표와 그 아래의 유도다(SPT8 마일스톤에서 계산 순서대로 셈). 보로노이 꼭짓점의 분자(제곱 길이 열의 행렬식)는 SPT12, Clough–Tocher의 c는 IP9 마일스톤에서 같은 방법(1.002u의 값 커널, 반올림 셈)으로 정한다 (추천안, 사용자 위임 2026-11-23) |
+| SPT120 정렬의 상수 | 힐베르트 키는 축마다 2²¹칸(Skilling의 전치 꼴), BRIO의 첫 묶음은 64점 이하, 점의 묶음은 사전 순위의 splitmix64에서 끝의 0비트 수, 묶음 안은 (힐베르트 키, 사전 순위)다. 사전 순서 정렬은 지금 한 스레드(`std::sort`)이고 SPT9 마일스톤에서 병렬 병합 정렬로 바꾼다(전순서라 결과가 같다) (추천안, 사용자 위임 2026-11-23) |
+| SPT121 scipy 탐침의 자리 | 새 도구 `tools/spatial_geometry_probe.py`(절 `exact shape edge time`, 이름으로만 도는 `predicates`) → `tests/spatial/data/scipy_geometry.json`이고 `test_geometry_records.py`가 그 파일을 읽는다. 까닭: `tools/spatial_probe.py`는 다른 세션이 고치는 파일이고, 이 기록의 점은 `geompoints.py`에 있다(SPT117) (추천안, 사용자 위임 2026-11-23) |
+| SPT122 술어의 바인딩 | `sd._core.spatial`의 비공개 함수 `_predicate _predicate_stages _det _predicate_constants _range _wide_eval _wide_round _expansion_eval _lex_order _hilbert_keys _brio_order`(`csrc/spatial/predicates.cpp`)이고 단계마다 강제할 수 있다(`mode`). 공개 API가 아니고 테스트와 측정만 쓴다 (추천안, 사용자 위임 2026-11-23) |
+| SPT123 −0.0 | 좌표를 견줄 때(같은 점, 사전 순서, 섭동의 순위) −0.0은 0.0과 같다. 술어는 값만 보므로 원래 같다 (추천안, 사용자 위임 2026-11-23) |
+| SPT124 사전 순서의 병렬 정렬 | `triangulation.hpp`의 `lex_order_parallel`이다: 2¹⁴점의 조각을 태스크마다 `std::sort`로 정렬하고 짝지은 조각을 차례로 `std::merge`한다(조각과 병합 단계는 n으로만 정한다). (좌표, 색인)의 전순서라 결과가 `sfc.hpp`의 `lex_order`와 같고 스레드 수와 무관하다. 껍질(`hull.cpp`)도 쓸 수 있는 자리에 둔다. 까닭: SPT120이 SPT9에 넘긴 일이고, 10⁶점에서 한 스레드 정렬이 만들기의 큰 몫이다 (추천안, 사용자 위임 2026-11-23) |
+| SPT125 2차원 분할 정복의 자르기 | 노드는 깊이의 홀짝으로 축을 번갈아(뿌리는 x) 그 축 순서의 가운데 자리(점 수의 절반)에서 나눈다(`std::nth_element`; 뿌리는 이미 사전 순서라 나누기가 없다). 축 1의 순서는 (y, −x)이고 이것은 점을 시계 방향으로 4분의 1 돌린 것의 사전 순서다. 돌리기는 방향과 원 판정을 바꾸지 않으므로 축 1의 합치기는 돌린 점의 Guibas–Stolfi 합치기 그대로다(한 직선 위의 점이 있어도 두 반이 사전 순서로 나뉘면 선다). 자식은 자기 축의 끝점에서 껍질 변을 돌려주고 부모는 자식의 껍질을 따라 자기 축의 끝점까지 걷는다(볼록한 경계 위에서 순서는 한 번 오르고 한 번 내린다). 까닭: Dwyer의 번갈아 자르기가 세로로만 자르기보다 지우는 긴 변이 적고, 위쪽 합치기의 이음매가 짧아 병렬의 마지막 단계가 싸다 (추천안, 사용자 위임 2026-11-23) |
+| SPT126 만드는 동안의 자료구조 | 쌍대 없는 quad-edge다: 반변 e와 짝 e ^ 1마다 시작점, 시작점 둘레의 다음(`onext`)·앞(`oprev`)을 int32로 둔다(분리된 점 하나당 변 칸 3개, 72바이트). splice·connect·delete는 Guibas–Stolfi의 연산을 시작점 고리에서만 한다. 다 만든 뒤 바깥 면을 표시하고 안쪽 면(모두 삼각형)을 반변 번호가 가장 작은 변으로 이름 지어 삼각형과 이웃을 내고 놓는다. `[설계와 다름]`: §3.3의 삼각형 기반 구조(48n바이트) 대신이다. 까닭: 합치기가 변을 잇고 지우는 일이라 코드가 작고 정확성 논증이 원 논문의 것 그대로다. 만드는 동안만의 메모리이고 결과의 크기는 같다 (추천안, 사용자 위임 2026-11-23) |
+| SPT127 합치기의 후보 지우기 | 후보 변은 그다음 후보도 valid(기준선의 오른쪽, 정확한 `orient2d` > 0)일 때만 원 판정으로 지운다. 까닭: 원 논문은 다음 후보의 끝점으로 바로 `incircle`을 부르는데, 다음 후보가 기준선의 짝이면 그 끝점이 기준선의 시작점과 같은 점이고 섭동 규칙(§3.2)은 같은 점이 둘인 행에 +1(안)을 줄 수 있어 지우면 안 될 변을 지운다. valid가 아닌 끝점은 섭동한 원의 밖이므로(기준선 아래는 이미 섭동한 Delaunay라) 판정을 건너뛰어도 결과가 같다 (추천안, 사용자 위임 2026-11-23) |
+| SPT128 만들기의 병렬 | 분할 나무는 크기로만 정한다. 2¹⁴점보다 큰 노드가 나무의 위쪽이고, 그 나누기를 층마다(한 층의 노드는 나란히) 위에서 아래로, 2¹⁴점 이하의 부분 나무를 태스크로, 합치기를 층마다 아래에서 위로 한다. 노드는 자기 점 자리 lo..hi의 변 칸 3lo..3hi를 갖고(V개 점의 평면 그래프는 변이 3V − 6개 이하이고 합치기는 그래프를 평면으로 둔다) 빈 칸 목록을 자식에서 이어받으므로 태스크의 메모리가 겹치지 않는다. 변 번호와 결과의 배열이 스레드 수와 무관하다. GIL은 n·64 ≥ 2¹⁵(배열의 규칙)에서 놓고, 나누기는 n > 2¹⁴일 때만 한다(그 아래는 선형 훑기의 조각이 너무 적어 일꾼을 깨우는 값이 더 크다: 10⁴점이 10스레드에서 1스레드보다 느렸다). `vertex_neighbor_vertices`·`transform`은 단체가 2¹⁵개를 넘을 때 나눈다 (추천안, 사용자 위임 2026-11-23) |
+| SPT129 표준 꼴 만들기 | `triangulation.hpp`의 `canonical_form<D>`(d = 2, 3 함께)다: 단체마다 짝순열로 돌려 가장 작은 색인을 앞에(d = 3은 둘째도 가장 작게), 첫 꼭짓점의 셈 정렬(원자적 셈과 자리), 묶음 안을 나머지 꼭짓점으로 정렬, 이웃을 새 번호로 옮긴다. 묶음 안을 다 정렬하므로 원자적 자리의 차례가 결과에 들지 않는다. 까닭: O(t)이고 병렬이며 SPT10이 사면체에 그대로 쓴다 (추천안, 사용자 위임 2026-11-23) |
+| SPT130 만들 때와 처음 읽을 때 | `simplices`, `neighbors`, `vertex_to_simplex`(n개 int64)는 만들 때 만든다: `vertex_to_simplex`는 `find_simplex`의 꼭짓점 판정과 위치 격자에 필요하다. `convex_hull`, `vertex_neighbor_vertices`, `coplanar`, `transform`, `min_bound`, `max_bound`는 처음 읽을 때 네이티브 함수가 만들고 Python 객체가 쥔다(§3.5의 "처음 읽을 때"에서 `vertex_to_simplex`만 당겼다). `vertex_to_simplex`는 단체마다 원자적 최솟값이라 차례와 무관하다 (추천안, 사용자 위임 2026-11-23) |
+| SPT131 위치 격자 | 경계 상자를 칸 약 m/4개로 나누고 축마다 칸 수를 폭의 비율로 정한다(아주 납작한 상자는 긴 축을 반씩 줄여 칸이 4(m/4) + 16을 넘지 않게). 칸의 시작 단체는 그 칸의 가장 작은 대표 점의 `vertex_to_simplex`(빈 칸은 같은 행의 앞 칸의 것)에서 칸 중심까지 걸어 닿은 단체다(밖이면 멈춘 단체). 행 64개가 태스크 하나다. 결과는 시작점과 무관하므로 속도만 정한다 (추천안, 사용자 위임 2026-11-23) |
+| SPT132 `find_simplex`의 걷기와 닫힌 판정 | 시작 단체에서 보이는 면을 건너 걷는다(평가점이 엄격히 너머인 면; 온 면은 건너뛰고, 보는 면의 첫 자리는 걸음마다 돈다; Delaunay에는 이 걸음의 순환이 없다). 닫힌 단체에 닿으면 값이 0인 면을 센다: 0개면 그 단체, d개면 평가점이 그 꼭짓점이라 `vertex_to_simplex`, 그 밖은 0인 면 너머로 너비 우선으로 모은 단체 중 가장 작은 번호다. 평가점마다 점 집합의 범위에 그 점을 더해 빠른 길을 고르고(SPT113) 아니면 넓은 정수 길만 쓴다. 평가점 256개가 태스크 하나다 (추천안, 사용자 위임 2026-11-23) |
+| SPT133 `find_simplex`의 입력과 결과 | `xi`는 상위 함수 입력이고 마지막 축이 d가 아니거나 0차원이면 `ValueError`(`find_simplex(): 'xi' must have 2 entries on its last axis, not 3`), complex는 `TypeError`다. NaN·inf는 받는다(−1). 결과는 쓰기 가능한 새 배열이다(속성이 아니라 호출의 결과다). (d,)는 Python `int`다 (추천안, 사용자 위임 2026-11-23) |
+| SPT134 3차원 입력의 임시 에러 | SPT10이 끝날 때까지 3열의 점은 `ValueError`(`Delaunay(): 3-D points come with milestone SPT10`)다. 검사(모양, 유한성)는 3차원에도 그대로 돈다 (추천안, 사용자 위임 2026-11-23) |
+| SPT135 점의 사본 | Python은 모양과 유한성만 보고(`_delaunay.geometry_points`: 2차원 배열, 열 2·3개, 유한) 네이티브 클래스가 어떤 걸음의 배열이든 C 연속 사본을 하나 만든다. 그 사본이 `points` 속성이다. 까닭: `sd.ndarray.copy()`는 F 연속(`DataFrame`의 `to_array`)을 F 연속으로 두어, Python에서 복사하면 두 번 복사해야 한다 (추천안, 사용자 위임 2026-11-23) |
+| SPT136 메모리 검사 | 만들기 전에 360·n 바이트를 물리 메모리와 견준다(`check_alloc`, SPT68과 같은 방법): 사본과 정렬 키, 변 구조 72m, 안쪽·표준 삼각형과 이웃의 합의 위쪽 어림이다 (추천안, 사용자 위임 2026-11-23) |
+| SPT137 API 표면 테스트 | `test_api_surface.py`에 초안 이름의 집합 `DRAFTED`(`Delaunay`, `ConvexHull`, `Voronoi`)를 두어 `spatial.md`와의 대조에서 빼고 시그니처는 `docs/api/spatial_geometry.md`와 견준다. SPT14에서 집합을 없앤다 (추천안, 사용자 위임 2026-11-23) |
+| SPT138 테스트 파일 | `test_delaunay.py`(§4의 1–4번, 속성, 에러, 피클, scipy와 단체 집합·무게중심 좌표의 견줌)와 `test_delaunay_threads.py`(1·3·10스레드의 바이트)다. `[설계와 다름]`: §7.3의 `test_find_simplex.py`·`test_geometry_threads.py`·`test_geometry_scipy.py`로 나누지 않았다: SPT11과 나란히 일해 같은 파일을 함께 고치지 않으려는 것이고, SPT13에서 합칠 수 있다 (추천안, 사용자 위임 2026-11-23) |
+| SPT139 속도·골든 사례 | 속도 사례는 `bench/speed/cases/spatial.py`의 묶음 `delaunay`(§5의 2차원 줄: 균등 10³–10⁶, 정규 10⁵, 격자 316², 원 위 10⁴, `find_simplex` 10³–10⁵, `vertex_neighbor_vertices` 10⁴–10⁶; 뒤쪽은 두 쪽 모두 쥔 값을 지워 잰다)다. 골든은 `tests/golden/cases_spatial.py`의 `_delaunay_cases`(작은 퇴화 집합의 모든 속성, 3×10⁴점, 틀린 호출)를 더하고 기록은 하지 않았다. 정확도 스윕(§7.5의 `barycentric`, `delaunay_exact`)은 SPT13의 일로 남긴다 (추천안, 사용자 위임 2026-11-23) |
+| SPT140 `ConvexHull`의 네이티브 꼴 | 비공개 함수 `_convex_hull(points)`(`csrc/spatial/hull.cpp`)가 점의 사본과 모든 배열, `area`, `volume`, 경계를 한 번에 돌려주고 Python 클래스(`_hull.py`)가 쓰기 금지로 쥔다. 네이티브 객체와 지연 속성이 없다. 까닭: 껍질에는 질의가 없고 모든 속성이 만들기의 부산물이라 따로 쥘 것이 없다(`Delaunay`는 `find_simplex` 때문에 객체를 쥔다) (추천안, 사용자 위임 2026-11-23) |
+| SPT141 훑기와 후보 | 한 번의 병렬 훑기(조각 2¹⁴점)가 유한성, 경계, 좌표 크기의 범위, 방향마다의 극점을 함께 본다. 방향은 d = 2에서 ±x, ±y, ±(x + y), ±(x − y)의 8개, d = 3에서 ±x, ±y, ±z와 (±1, ±1, ±1)의 14개이고, 같은 점수는 (사전 순서, 색인)으로 가른다(엄격한 전순서라 조각을 어떻게 묶어도 같다). 술어의 범위(`Range`)는 가장 큰 크기와 가장 작은 0 아닌 크기로 만든다: hi는 정확하고 lo는 (가장 작은 크기의 지수 − 52)로 아래에서 막는다. 까닭: 좌표마다 `Range::add`를 부르는 것보다 싸고, lo를 아래에서 막으면 `safe`는 여전히 충분조건이다(넘으면 `*_any` 길로 갈 뿐) (추천안, 사용자 위임 2026-11-23) |
+| SPT142 미리 거르기의 정적 필터 | §3.6의 미리 거르기는 후보의 정확한 껍질(다각형·다면체)의 변·면마다 float64 평면 하나와 고정 한계 B로 한다: 원점은 상자의 아래 모서리(입력 좌표라 2^lo의 배수), d = 2는 B = 10u(\|e_x\|E_y + \|e_y\|E_x)(셈 5, 필요한 것 θ₄S), d = 3은 B = 18u Σ N_k E_k(셈 9, θ₈S)이고 증명은 `hull.cpp` 머리의 주석이다(술어 거르기의 보조정리 그대로). B가 2⁻¹⁰⁰⁰ 아래거나 유한하지 않으면 그 평면은 아무것도 정하지 않는다. 정하지 못한 점은 d = 2에서 남기고 d = 3에서 정확한 `orient3d`로 정한다. 까닭: 점마다 `orient3d_filter`(약 3 ns)를 면 24개에 부르면 10⁶점 3차원에서 미리 거르기만 70 ms쯤이다. 평면을 미리 계산하면 면마다 곱 셋과 합 셋이다 (추천안, 사용자 위임 2026-11-23) |
+| SPT143 퀵헐의 세부 | 시작 다면체는 후보의 껍질이다(후보 넷의 사면체에 나머지 후보를 퀵헐로 더함; 후보가 한 평면이면 모든 점을 정확히 훑어 사면체를 고름). 그 뒤 모든 점을 면 번호 순서로 처음 엄격히 바깥인 면의 충돌 목록에 넣고(병렬; 목록은 점 순서), 목록의 가장 먼 점(float64 거리, 같으면 작은 색인)을 더한다. 보이는 면은 정확한 `orient3d` > 0이고 평면 위는 보이지 않음이다. 지운 면의 점은 처음 엄격히 바깥인 새 면으로 가거나 버린다. 지운 면의 칸은 다시 쓴다. 같은 점은 정렬하지 않는다: 같은 좌표는 언제나 같은 목록에 함께 있고 거리가 같아 작은 색인이 먼저 꼭짓점이 되고, 나머지는 그 꼭짓점의 평면 위라 버려진다. 넣기는 한 스레드다(SPT107과 같다; 병렬은 SPT13) (추천안, 사용자 위임 2026-11-23) |
+| SPT144 평평한 면 | 이웃한 두 삼각형이 정확히 한 평면 위면(맞은편 꼭짓점의 `orient3d` = 0, 병렬로 판정) 합집합 찾기로 묶는다. 묶음의 경계 변을 방향대로 이어 순환을 만들고, 순환의 원래 이웃 둘과 정확히 한 직선 위인 점(묶음의 첫 삼각형이 평평하지 않게 보이는 좌표면에 사영한 `orient2d` = 0)과 묶음 안쪽의 점을 뺀다. 남은 모서리를 가장 작은 색인에서 부채꼴로 나눈다(SPT109). 까닭: 볼록 다각형에서 변 가운데의 점은 두 이웃이 같은 직선 위이고 모서리는 아니다. 사영은 그 평면에서 일대일 아핀 사상이라 한 직선 판정이 정확하다 (추천안, 사용자 위임 2026-11-23) |
+| SPT145 합의 차례와 나누기 | 둘레(d = 2)는 `simplices`의 행 차례, 넓이(d = 2)는 `vertices` 차례의 부채꼴(`vertices[0]`에서), 겉넓이와 부피(d = 3)는 `simplices`의 행 차례이고 부피의 기준점은 `vertices[0]`(가장 작은 색인의 극점)이다. /2와 /6은 4,096항 부분합의 합 뒤에 한 번 한다. 계약은 그대로다: /2는 정확하고 /6 한 번은 항마다 나눈 것과 같은 반올림 하나다(§4의 표) (추천안, 사용자 위임 2026-11-23) |
+| SPT146 `equations`의 법선 | d = 3은 다각형의 첫 부채꼴 삼각형 (v₀, v₁, v₂)의 교차곱(성분마다 `det2`)을 유클리드 커널의 길이로 나눈다. 성분의 가장 큰 크기가 [2⁻⁹⁶⁰, 2⁹⁶⁰] 밖이면 넓은 정수로 정확히 구해 가장 큰 성분이 [1, 2)가 되게 2의 거듭제곱 배율을 맞춘 뒤(성분마다 올바른 반올림) 나눈다. d = 2는 (Δy, −Δx)/(변의 길이)이고 Δ나 길이가 넘치거나 길이가 2⁻¹⁰⁰⁰ 아래면 같은 방법이다. 까닭: 1e300 둘레나 비정상 수의 좌표에서도 법선이 단위 벡터이고 §4의 8u가 선다(넓이·부피는 결과가 실제로 넘칠 때만 inf) (추천안, 사용자 위임 2026-11-23) |
+| SPT147 2차원의 정렬 | 미리 거르기에서 남은 점만 사전 순서로 정렬한다(한 스레드 `std::sort`; 같은 점은 그 정렬의 첫 점). 균등 10⁶점에서 남는 점은 수백 개다. 모든 점이 극점인 입력(원 위)의 병렬 정렬은 SPT13에서 잰다 (추천안, 사용자 위임 2026-11-23) |
+| SPT148 3차원 표준 꼴 만들기 | 극점은 n칸 표시의 훑기로 오름차순이 되고, 행은 첫 점의 순위로 셈 정렬한 뒤 묶음 안을 (둘째, 셋째)로 정렬한다. `neighbors`는 방향 변을 첫 점의 순위로 셈 정렬하고 묶음 안을 끝점으로 정렬해 쌍둥이 변을 이분 탐색한다. 까닭: 행 전체의 비교 정렬(2 × 10⁶행에서 수백 ms)과 해시가 없고, 부채꼴 중심처럼 차수가 큰 꼭짓점에서도 O(F log 차수)다 (추천안, 사용자 위임 2026-11-23) |
+| SPT149 입력 검사의 자리 | 모양(2차원 배열, 열 2·3개)은 Python의 `_hull._points`, 유한성은 네이티브 훑기가 본다. 말은 `Delaunay`와 같다(`ConvexHull(): 'points' must be finite` 등). 두 클래스의 검사 도우미는 SPT13에서 `_common.points()` 하나로 합친다 (추천안, 사용자 위임 2026-11-23) |
+| SPT150 퇴화의 판정 | 껍질의 길이 판정한다: d = 2는 단조 사슬의 꼭짓점이 셋보다 적을 때, d = 3은 시작 사면체를 정확히 찾지 못할 때다. 그때만 서로 다른 점을 세어 d + 1보다 적으면 `needs at least … distinct points, got k`, 아니면 `collinear`(d = 2)·`coplanar`(d = 3; 한 직선 위의 3차원 점도)다 (추천안, 사용자 위임 2026-11-23) |
+| SPT151 병렬과 결정성 | n·d ≥ 2¹⁵이면 나누고 GIL을 놓는다(배열의 규칙). 훑기·미리 거르기·충돌 목록은 2¹⁴점 조각, 같은 평면 판정·`equations`·항은 면 4,096개 조각, 합은 4,096항 부분합이다. 조각의 결과는 조각 순서로 합치므로 1·3·10스레드에서 바이트가 같다(`test_hull_threads.py`). `min_bound`·`max_bound`는 훑기의 최소·최대(조각 순서로 합침)다 (추천안, 사용자 위임 2026-11-23) |
+| SPT152 계약의 참값 | §4의 넓이·부피·둘레·겉넓이·`equations`의 참값은 테스트가 그 자리에서 유리수(`fractions`)와 Arb(제곱근, 256비트)로 구한다(`test_hull.py`). `tests/spatial/ref/`의 파일은 만들지 않는다. 까닭: 점 수천 개에서 몇 초이고, 검사기(`exactgeom.py`)가 이미 같은 꼴로 그 자리에서 정확히 계산한다. §7.2의 참값 파일은 SPT13에서 정확도 스윕(`geom_measure`)과 함께 정한다 (추천안, 사용자 위임 2026-11-23) |
+| SPT153 속도와 골든 사례 | 속도 사례는 `bench/speed/cases/spatial.py`의 묶음 `hull`이다(§5의 줄: 2·3차원 균등 10⁴–10⁶, 원·구 위 10⁵; 비교 scipy). 골든은 `tests/golden/cases_spatial.py`의 `_hull_cases`(작은 퇴화 데이터의 모든 속성, 5 × 10⁴점, 틀린 호출)이고 기록은 하지 않았다 (추천안, 사용자 위임 2026-11-23) |
+| IP108 흩어진 점 보간의 범위 | `LinearNDInterpolator`는 d = 2, 3, `CloughTocher2DInterpolator`는 d = 2, `griddata`는 d = 2, 3이고 `method`는 `'nearest'`, `'linear'`, `'cubic'`(d = 2)이다. 1차원 `griddata`는 없다(§9의 20) (추천안, 사용자 위임 2026-11-23) |
+| IP109 `fill_value` | 볼록 껍질 밖의 값이다(기본 NaN). 안팎은 `find_simplex`의 정확한 판정이다. NaN 평가점은 언제나 NaN이다. `None`은 받지 않는다(§9의 21) (추천안, 사용자 위임 2026-11-23) |
+| IP110 같은 점의 값 | 값이 비트까지 같으면 받고 다르면 `ValueError`다(§9의 22) (추천안, 사용자 위임 2026-11-23) |
+| IP111 Clough–Tocher의 기울기 | scipy의 전역 방법(곡률을 줄이는 Gauss–Seidel 훑기)이고 `tol=1e-6`, `maxiter=400`을 둔다. 훑기는 색인 순서 하나이고 `maxiter`에서 멈춘다. 수렴 여부는 속성 `converged`, 훑은 횟수는 `niter`다(§9의 23) (추천안, 사용자 위임 2026-11-23) |
+| IP112 평가점과 옵션 | `xi`는 (…, d) 배열이나 d개 배열의 튜플이다. `points` 자리에 `Delaunay`를 받는다. `rescale`은 둔다. `simplex_tolerance`는 없다(§9의 24) (추천안, 사용자 위임 2026-11-23) |
+| IP113 속성과 피클 | `points`, `values`, `tri`, `fill_value`(과 `grad`, `converged`, `niter`)다. 피클은 점과 값의 바이트로 다시 만든다(§9의 25) (추천안, 사용자 위임 2026-11-23) |
+
+### 1.2 범위
+**넣는 것** (모두 `sd.spatial`에 바로 둔다, SPT5·SPT6)
+
+| scipy 1.18.1 | sd | 메모 |
+|---|---|---|
+| `Delaunay(points, furthest_site=False, incremental=False, qhull_options=None)` | `Delaunay(points, /)` | 옵션 없음(SPT99) |
+| `Delaunay.points`, `ndim`, `npoints`, `nsimplex`, `min_bound`, `max_bound` | 같은 이름 | `points`는 쓰기 금지 사본 |
+| `Delaunay.simplices` (t, d + 1) int32 | 같은 이름, int64 | 표준 꼴(SPT94). scipy는 2차원이 반시계, 3차원은 방향이 섞여 있다(무작위 30점에서 양 57, 음 59) |
+| `Delaunay.neighbors` (t, d + 1) | 같은 이름 | k번째는 꼭짓점 k의 맞은편, 없으면 −1(scipy와 같다) |
+| `Delaunay.convex_hull` (면 수, d) | 같은 이름 | 삼각분할의 경계 면. 표준 꼴(§2.2) |
+| `Delaunay.vertex_to_simplex` (n,) | 같은 이름 | 그 점을 가진 가장 작은 번호의 단체. 같은 점은 대표의 값 |
+| `Delaunay.vertex_neighbor_vertices` `(indptr, indices)` | 같은 이름 | 행 안은 색인 오름차순(scipy는 차례가 없다). 대표가 아닌 같은 점은 빈 행 |
+| `Delaunay.transform` (t, d + 1, d) | 같은 이름 | 처음 읽을 때 만든다(SPT106) |
+| `Delaunay.coplanar` (k, 3) | 같은 이름 | 삼각분할에 들지 않은 점: sd에서는 같은 점뿐이다(SPT96) |
+| `Delaunay.find_simplex(xi, bruteforce=False, tol=None)` | `find_simplex(xi, /)` | SPT103 |
+| `Delaunay.equations`, `paraboloid_scale`, `paraboloid_shift`, `good`, `furthest_site`, `plane_distance`, `lift_points`, `add_points`, `close` | 없음 | Qhull의 올림 좌표와 옵션에 묶인 것이다 |
+| `ConvexHull(points, incremental=False, qhull_options=None)` | `ConvexHull(points, /)` | |
+| `ConvexHull.points`, `ndim`, `npoints`, `nsimplex`, `min_bound`, `max_bound`, `vertices`, `simplices`, `neighbors`, `equations`, `area`, `volume` | 같은 이름 | SPT109 |
+| `ConvexHull.coplanar`, `good`, `add_points`, `close` | 없음 | scipy의 기본 옵션에서 `coplanar`는 비어 있고 `good`은 None이다 |
+| `Voronoi(points, furthest_site=False, incremental=False, qhull_options=None)` | `Voronoi(points, /)` | |
+| `Voronoi.points`, `ndim`, `npoints`, `min_bound`, `max_bound`, `vertices`, `ridge_points`, `point_region` | 같은 이름 | |
+| `Voronoi.regions`, `ridge_vertices` (list의 list) | 같은 이름, `(indptr, indices)` 짝 | SPT110 |
+| `Voronoi.ridge_dict`, `furthest_site`, `add_points`, `close` | 없음 | |
+
+**빼는 것** (나중 후보): d ≥ 4와 d = 1, `SphericalVoronoi`, `HalfspaceIntersection`, 점을 더하는 방식, 가장 먼 점의 삼각분할(`furthest_site`), `tsearch`(`find_simplex`와 같은 일이다), 제약 삼각분할과 메시 다듬기, 알파 모양, `delaunay_plot_2d`·`convex_hull_plot_2d`·`voronoi_plot_2d`(그림은 `sd.plot`).
+
+**보간 쪽** (`sd.interpolate`, §2.6): `LinearNDInterpolator`, `CloughTocher2DInterpolator`, `griddata`. `NearestNDInterpolator`는 이미 있다.
+
+### 1.3 공통 원칙
+- **결과는 정의로 정해진다.** 삼각분할은 "섭동한 점 집합의 Delaunay 삼각분할"(§3.2) 하나이고, 배열은 표준 꼴(§2.2) 하나다. 어떤 알고리즘, 어떤 순서, 몇 스레드로 구하든 같은 바이트다. spatial.md의 "결과는 길과 무관하다"와 같은 원칙이다.
+- **조합 구조는 정확하다.** 어느 점이 껍질의 꼭짓점인지, 어느 단체가 있는지, 어느 점이 이웃인지, 평가점이 어느 단체 안인지는 입력 float64 값을 유리수로 읽은 정확한 답이다. 허용오차 인자가 없다.
+- **실수 출력은 계약이 있다.** 넓이·부피·둘레, 평면의 식, 보로노이 꼭짓점, 무게중심 변환, 보간 값은 §4의 한계 안이다.
+- 경고를 내지 않는다. 옵션은 키워드만이다. 스레드 수는 `sd.set_num_threads` 하나다. 결과 객체의 배열은 쓰기 금지다.
+
+### 1.4 다른 영역과의 관계
+- `sd.interpolate`: 흩어진 점 보간이 `Delaunay`의 네이티브 객체(단체, 이웃, 위치 찾기)를 직접 쓴다. `interpolate/`는 이미 `spatial/`에 기댄다(KD 트리).
+- `sd.plot`: 삼각분할·껍질·보로노이의 그림은 `sd.plot`이 이 객체의 배열을 받아 그린다(이 문서의 범위 밖).
+- `sd.sparse`·`sd.graph`: `vertex_neighbor_vertices`의 `(indptr, indices)`는 CSR의 두 배열이라 `sd.sparse.csr_array`의 생성자에 그대로 들어간다(삼각분할의 변 그래프). 따로 변환 함수를 두지 않는다.
+
+---
+
+## 2. API
+
+### 2.1 입력
+- `points`는 (n, d)이고 d = 2 또는 3이다. API.md §5의 상위 함수 입력(`sd.ndarray`, 수의 시퀀스, numpy 배열, `DataFrame`)을 받는다. bool·int64는 float64로 바꾼다. complex128은 `TypeError`다(scipy는 허수부를 버리고 `ComplexWarning`을 낸다). 1차원과 3차원 이상의 배열, d가 2·3이 아닌 것은 `ValueError`다(`Delaunay(): 'points' must have 2 or 3 columns, not 4`).
+- NaN·inf는 `ValueError`다(`Delaunay(): 'points' must be finite`; KD 트리와 같은 말이다). scipy는 NaN을 `ValueError`로, inf를 Qhull의 내부 에러(QH6019)로 막는다.
+- 점은 언제나 복사한다. `[scipy와 다름]`: scipy의 `Delaunay(P).points`는 `P`와 메모리를 함께 쓴다(만든 뒤에 `P`를 고치면 객체가 틀려진다).
+- 점이 d + 1개보다 적거나, 서로 다른 점이 모두 한 직선(d = 3이면 한 평면) 위면 `ValueError`다(`Delaunay(): 'points' are collinear`, `'points' are coplanar`, `needs at least 3 distinct points, got 2`). 판정은 정확한 `orient`다: 거의 한 직선인 입력(y = 10⁻¹⁴x²의 300점)도 퇴화가 아니면 삼각분할한다(scipy는 이 입력에서 `QhullError: QH6154 … Initial simplex is flat`).
+- 좌표의 크기에 제한이 없다(SPT100).
+
+### 2.2 표준 꼴 (모든 클래스가 함께 쓴다)
+- **단체의 방향**: 양이다. d = 2는 반시계(`orient2d(a, b, c) > 0`), d = 3은 det[b − a, c − a, d − a] > 0이다(a에서 볼 때 b, c, d가 시계 방향).
+- **단체 안의 차례**: 양의 방향을 지키는 차례 가운데 가장 작은 색인이 먼저인 것이다. d = 2는 돌리기 셋 중 하나다. d = 3은 짝순열 열둘 중 첫째가 가장 작고, 나머지 셋을 돌려 그중 가장 작은 것이 둘째다.
+- **단체의 차례**: 행 (i₀, i₁, …)의 사전 순서다.
+- **`neighbors[i, k]`**: 단체 i에서 꼭짓점 k를 뺀 면을 함께 가진 단체, 없으면 −1이다.
+- **경계 면**(`Delaunay.convex_hull`, `ConvexHull.simplices`): 바깥을 향한다(d = 2는 내부가 왼쪽인 변 (i, j), d = 3은 밖에서 볼 때 반시계). 가장 작은 색인이 먼저이고(d = 2는 방향이 차례를 정하므로 돌리지 않는다) 행의 사전 순서다.
+- **색인 목록**(`vertex_neighbor_vertices`, `coplanar`): 오름차순이다.
+- **같은 점**: 삼각분할의 꼭짓점은 대표(가장 작은 색인)다. 다른 색인은 `simplices`에 나오지 않는다.
+- `[scipy와 다름]`: scipy의 차례는 Qhull이 만든 순서라 약속이 없고, 3차원 단체의 방향이 섞여 있고, 색인이 int32다.
+
+### 2.3 `Delaunay`
+```
+Delaunay(points, /)
+Delaunay.find_simplex(xi, /)
+```
+- 속성(모두 쓰기 금지): `points` (n, d) float64, `simplices` (t, d + 1) int64, `neighbors` (t, d + 1) int64, `convex_hull` (면 수, d) int64, `vertex_to_simplex` (n,) int64, `vertex_neighbor_vertices` `(indptr, indices)` int64 짝, `coplanar` (k, 3) int64, `transform` (t, d + 1, d) float64, `ndim`, `npoints`, `nsimplex`, `min_bound`, `max_bound`.
+- **단체의 수**: d = 2에서 서로 다른 점이 m개이고 삼각분할 경계의 점이 b개면 t = 2m − 2 − b다. 한 직선 위의 경계점도 꼭짓점이다(변이 그 점에서 나뉜다).
+- **`coplanar`**: 행 (점, 단체, 꼭짓점)이고 scipy의 꼴이다. sd에서 삼각분할에 들지 않는 점은 대표가 아닌 같은 점뿐이라, 꼭짓점은 대표이고 단체는 `vertex_to_simplex[대표]`다. 점의 오름차순이다. `[scipy와 다름]`: scipy는 가까운 점도 버린다. 10⁸ + 0.1 × (30 × 30 격자)의 900점에서 896점을, 10⁶ + 10⁻³ × (균등 500점)에서 484점을 `coplanar`로 돌리고 단체 2개와 14개만 남긴다.
+- **`transform`**: scipy의 뜻이다. `transform[i, :d, :]`는 T⁻¹(T의 열이 꼭짓점 k − 꼭짓점 d, k < d), `transform[i, d, :]`는 꼭짓점 d다. 점 x의 무게중심 좌표는 c = T⁻¹(x − r)과 1 − Σc다. 퇴화 단체가 없으므로 NaN이 없다(scipy는 평평한 단체에 NaN을 적는다). 처음 읽을 때 만들어 쥔다(d = 2, 10⁶점에서 96 MB).
+- **`find_simplex(xi)`**: `xi`는 (…, d)이고 결과는 그 앞 모양의 int64 배열이다(점 하나 (d,)는 Python `int`; scipy는 0차원 배열). 평가점을 품은 **닫힌** 단체의 번호다: 단체의 모든 면에 대해 정확한 `orient` ≥ 0이다. 변이나 꼭짓점 위에 있어 여러 단체가 품으면 가장 작은 번호다. 볼록 껍질 밖은 −1이다(경계 위는 안). NaN·inf 좌표의 점은 −1이다(scipy와 같다). 마지막 축이 d가 아니면 `ValueError`다.
+  - `[scipy와 다름]`: `tol`과 `bruteforce`가 없다. scipy는 무게중심 좌표에 허용오차(기본 100ε)를 두어 경계 밖 10⁻¹⁴ 안의 점을 안으로 치고, 걸친 점에서 고르는 단체를 정해 두지 않는다.
+- `repr`는 `Delaunay(n=1000, d=2, nsimplex=1975)`다. 피클과 `copy`는 점의 바이트로 다시 만든다(SPT56과 같은 방법; 만들기가 정의로 정해져 같은 객체다).
+
+### 2.4 `ConvexHull`
+```
+ConvexHull(points, /)
+```
+- 속성: `points`, `vertices` (h,) int64, `simplices` (면 수, d) int64, `neighbors` (면 수, d) int64, `equations` (면 수, d + 1) float64, `area`, `volume`(Python `float`), `ndim`, `npoints`, `nsimplex`, `min_bound`, `max_bound`.
+- **`vertices`**: 극점(볼록 껍질의 꼭짓점)만이다. 변이나 면의 안쪽에 놓인 경계점과 같은 점의 대표 아닌 색인은 들지 않는다(scipy의 기본도 같다: 정사각형의 변 위 점은 `vertices`에 없다). d = 2는 반시계이고 가장 작은 색인에서 시작한다(scipy는 반시계, 시작은 정해 두지 않음). d = 3은 오름차순이다(scipy와 같다).
+- **`simplices`**: d = 2는 이웃한 극점의 변 (i, j)이다. d = 3은 삼각형이고, 평평한 면(꼭짓점이 넷 이상인 볼록 다각형)은 그 면의 가장 작은 색인에서 부채꼴로 나눈다. 표준 꼴은 §2.2다. `[scipy와 다름]`: scipy의 3차원 면은 방향이 섞여 있고(무작위 30점에서 바깥 15, 안 15) 평평한 면을 나누는 방법이 Qhull의 것이다.
+- **`neighbors[i, k]`**: 면 i에서 꼭짓점 k의 맞은편 이웃 면이다(scipy와 같다). 닫힌 곡면이라 −1이 없다.
+- **`equations`**: 행 (법선, 절편)이고 법선은 바깥을 향하는 단위 벡터다. 내부의 점 x에서 법선·x + 절편 < 0이다(scipy와 같다). 한 평평한 면에서 나온 삼각형들은 같은 행(같은 비트)이다.
+- **`area`, `volume`**: scipy의 뜻 그대로다. d = 3에서 `area`는 겉넓이, `volume`은 부피이고, d = 2에서 `area`는 **둘레**, `volume`은 **넓이**다.
+- `ConvexHull`의 `simplices`와 `Delaunay.convex_hull`은 다를 수 있다: 뒤쪽은 삼각분할의 경계라 변·면 위의 경계점에서 나뉜다.
+- 퇴화 입력의 `ValueError`, `repr`(`ConvexHull(n=1000, d=3, nvertices=87)`), 피클은 `Delaunay`와 같다.
+
+### 2.5 `Voronoi`
+```
+Voronoi(points, /)
+```
+- 속성: `points`, `vertices` (꼭짓점 수, d) float64, `ridge_points` (능선 수, 2) int64, `ridge_vertices` `(indptr, indices)`, `regions` `(indptr, indices)`, `point_region` (n,) int64, `ndim`, `npoints`, `min_bound`, `max_bound`.
+- **뜻**: 입력 점 집합의 참 보로노이 그림이다. 섭동의 흔적이 없다: 한 원(구) 위에 있는 d + 2개 이상의 점은 꼭짓점 **하나**를 함께 갖고, 길이(넓이)가 0인 능선은 없다. 3 × 3 격자의 꼭짓점은 4개, 능선은 격자의 변 12개다(scipy와 같다).
+- **`vertices`**: Delaunay 단체의 외심이다. 한 원(구) 위의 단체들은 한 묶음이고 꼭짓점 하나다. 번호는 묶음에서 가장 작은 단체 번호의 차례다.
+- **`regions`**: 영역 i는 점 i의 것이다. `indices[indptr[i]:indptr[i+1]]`가 그 영역의 꼭짓점 번호이고 끝없는 영역은 −1을 하나 갖는다. d = 2는 점 둘레의 반시계 차례이고 −1이 있으면 −1이, 없으면 가장 작은 번호가 먼저다. d = 3은 오름차순이다(−1이 먼저).
+- **`point_region`**: 점의 영역 번호다. 대표인 점은 자기 색인이고 같은 점은 대표의 색인이다(scipy도 같은 점에 같은 영역을 준다).
+- **`ridge_points`**: 영역이 능선을 함께 가진 점의 짝 (i, j), i < j이고 사전 순서다.
+- **`ridge_vertices`**: 능선 k의 꼭짓점 번호다. 끝없는 능선은 −1을 하나 갖고 그것이 먼저다. d = 2는 꼭짓점 둘(끝없으면 −1과 하나)이다. d = 3은 `ridge_points[k]`의 첫 점에서 둘째 점을 볼 때 반시계의 차례이고 −1이 없으면 가장 작은 번호가 먼저다.
+- `[scipy와 다름]`: scipy의 `regions`·`ridge_vertices`는 Python list의 list이고, `regions`에 빈 영역 하나가 끼어 있어 `point_region`으로 풀어야 하고, 3차원 영역은 차례가 없고, 2차원 영역의 도는 방향이 섞여 있다(무작위 40점에서 양·음이 함께 나온다). `ridge_dict`는 없다(`ridge_points`와 `ridge_vertices`로 만든다).
+- 끝없는 능선의 방향은 scipy처럼 돌려주지 않는다(`ridge_points`의 두 점을 잇는 선분의 수직 방향이다).
+
+### 2.6 흩어진 점 보간 (`sd.interpolate`)
+```
+LinearNDInterpolator(points, values, /, *, fill_value=nan, rescale=False)
+LinearNDInterpolator.__call__(xi, /)
+CloughTocher2DInterpolator(points, values, /, *, fill_value=nan, tol=1e-6, maxiter=400, rescale=False)
+CloughTocher2DInterpolator.__call__(xi, /)
+griddata(points, values, xi, /, *, method='linear', fill_value=nan, rescale=False)
+```
+- `points`는 (n, d) 배열이나 `sd.spatial.Delaunay`다(뒤쪽이면 삼각분할을 다시 하지 않는다; `rescale=True`와 함께 주면 `ValueError`, scipy와 같다). `values`는 (n,)이나 (n, …)이고 float64·complex128이다(interpolate.md §2.1).
+- `LinearNDInterpolator`는 d = 2, 3, `CloughTocher2DInterpolator`는 d = 2다. `griddata`의 `method`는 `'nearest'`(모든 d ≥ 1; `NearestNDInterpolator`), `'linear'`(d = 2, 3), `'cubic'`(d = 2)다. `[scipy와 다름]`: scipy의 `LinearNDInterpolator`는 모든 차원을, `griddata`는 d = 1(1차원 보간으로 넘김)도 받는다.
+- **값**: 평가점을 품은 단체(`find_simplex`)에서 선형은 무게중심 좌표의 가중합, Clough–Tocher는 C¹인 조각 3차식이다. 자료점에서는 그 값과 비트까지 같다(scipy는 자료점에서 1 ULP 다를 수 있다).
+- **바깥**: 볼록 껍질 밖은 `fill_value`다(실수나, 값이 complex면 복소수; 기본 NaN). NaN 좌표의 평가점은 `fill_value`가 아니라 NaN이다(interpolate.md §2.3의 규칙).
+- **같은 점**: 값이 같으면 받고 다르면 `ValueError`다(`[scipy와 다름]`: scipy는 말없이 한 값을 쓴다: 첫 점과 같은 점을 값 99로 더해도 첫 값이 나온다).
+- **`rescale`**: 삼각분할 전에 축마다 (x − 최솟값)/(범위)로 옮긴다(scipy의 뜻). 평가점도 같게 옮긴다.
+- **Clough–Tocher의 기울기**: `tol`, `maxiter`는 §3.9다. 속성 `grad` (n, …, 2), `converged`, `niter`를 둔다. `[scipy와 다름]`: scipy는 수렴하지 못하면 `GradientEstimationWarning`을 낸다.
+- `xi`는 (…, d) 배열이나 d개 배열의 튜플이다(`NearestNDInterpolator`와 같다). `[scipy와 다름]`: `__call__`의 `simplex_tolerance`가 없다.
+
+### 2.7 scipy와 다른 곳 (모음)
+- 옵션: `qhull_options`, `furthest_site`, `incremental`, `add_points`, `close`, `tol`, `bruteforce`, `simplex_tolerance` 없음. d = 2, 3만.
+- 결과: 색인 int64, 표준 꼴(방향, 차례), 점의 복사, 쓰기 금지, `regions`·`ridge_vertices`는 `(indptr, indices)`, 영역 번호 = 점 번호, `ridge_dict`·`equations`(Delaunay)·`paraboloid_*`·`good`·`ConvexHull.coplanar` 없음.
+- 정확성: 가까운 점을 버리지 않는다. 정확한 Delaunay다(scipy는 아래 표처럼 어긴다). 퇴화의 판정이 정확하다. `find_simplex`에 허용오차가 없다.
+- 에러: `QhullError` 대신 `ValueError`(퇴화, 유한하지 않은 값), complex는 `TypeError`.
+
+scipy 1.18.1의 삼각분할을 유리수 산술로 검사한 것이다(양의 방향이고 이웃한 두 삼각형이 원 안 조건을 지키는지):
+
+| 입력 (2차원) | 점 | scipy의 삼각형 | 뒤집힌 삼각형 | 원 안 조건을 어긴 변 | 버린 점 |
+|---|---:|---:|---:|---:|---:|
+| 30 × 30 정수 격자 | 900 | 1,682 | 0 | 0 | 0 |
+| 격자 + 10⁻¹³ 크기의 흔들림 | 900 | 1,711 | 14 | 437 | 0 |
+| 10⁸ + 0.1 × 격자 | 900 | 2 | 0 | 0 | 896 |
+| 단위원 위의 같은 간격 200점 | 200 | 198 | 0 | 88 | 0 |
+| y = 10⁻⁹x²의 300점 | 300 | 298 | 0 | 159 | 0 |
+| 10⁶ + 10⁻³ × 균등 | 500 | 14 | 0 | 6 | 484 |
+
+---
+
+## 3. 수치 방법
+
+### 3.1 술어 (`csrc/spatial/predicates.hpp`)
+넷이다: `orient2d(a, b, c)`, `orient3d(a, b, c, d)`, `incircle(a, b, c, d)`, `insphere(a, b, c, d, e)`. 각각 좌표의 2, 3, 4, 5차 다항식(행렬식)의 부호이고, 돌려주는 부호는 입력 float64를 유리수로 읽은 정확한 값의 부호다.
+
+**세 단계** (SPT112)
+1. **거르기 (A)**: 차이를 뺀 행렬식을 float64로 계산하고, 같은 식을 절댓값으로(곱의 잎에 |·|, 모든 −를 +로) 계산한 퍼머넌트 P̂에 상수 K를 곱한 한계와 견준다. \|det̂\| > fl(K·P̂)면 부호가 정해진다. 상수와 증명은 아래(SPT114)다.
+2. **전개식 (B)**: 차이가 모두 정확하면(`two_diff`의 꼬리가 0: 정수와 격자, Sterbenz가 닿는 가까운 점) 그 double들의 행렬식을 전개식(`expansion.hpp`; 바닥은 `two_sum`과 `two_prod`: p = fl(ab), e = `fma(a, b, −p)`)으로 정확히 구한다. 부호는 맨 위 항이 나머지 항의 크기 합보다 크면 정해지고, 아니면 `two_sum` 한 훑기로 다시 모아 또 본다(여섯 번 뒤에는 W; 시험에서 나오지 않았다). 그래서 전개식의 겹침·정렬에 기대지 않고 틀린 부호가 없다. 꼬리가 있으면 W로 간다(Shewchuk의 꼬리 있는 적응 단계는 두지 않는다).
+3. **넓은 정수 (W, SPT100)**: 호출의 점들의 좌표를 그 가장 낮은 비트 2^lo로 나눠 정수로 읽고(모든 유한한 float64는 m·2ᵉ, m < 2⁵³, e ≥ −1074라 정수는 2²⁰⁹⁸ 아래) 행렬식을 여러 낱말 정수(`wideint.hpp`: 덧셈, 뺄셈, 학교식 곱셈)로 정확히 구한다. 가장 큰 값은 `insphere`의 2¹⁰⁵⁰² 아래(165낱말, 용량 168)다. 낱말 수가 실제 크기를 따르므로 [0, 1)의 53비트 좌표는 한 낱말이다. 반올림이 없으니 넘침·아래넘침·범위 검사가 없다.
+
+**범위 조건** (SPT113): hi = 0 아닌 좌표의 가장 큰 ⌊log₂\|x\|⌋, lo = 0 아닌 좌표의 가장 낮은 비트의 지수다. 차수 q(`orient2d` 2, `orient3d` 3, `incircle` 4, `insphere` 5)에서
+
+  q(hi + 2) + 8 ≤ 1023이고 (lo ≥ 0 또는 q·lo ≥ −1074)
+
+면 A와 B에서 (i) 넘침이 없다: 차이는 2^(hi+2) 아래, q개의 곱은 2^(q(hi+2)) 아래, 72개 이하의 곱의 합(`insphere`: 세 제곱의 올림 넷 × 곱 여섯; 모든 부분합, 퍼머넌트, 전개식의 항은 그 크기 합 아래)은 2^(q(hi+2)+7) 아래이고 반올림에 1비트를 더 둔다. (ii) 아래넘침이 없다: 모든 정확한 중간값은 어떤 k ≤ q의 2^(k·lo)의 배수라 2⁻¹⁰⁷⁴의 배수이고, 그 반올림도 그렇다(그 크기의 float 격자는 더 굵은 2의 거듭제곱이거나 값이 표현된다). 2⁻¹⁰⁷⁴의 배수로 2⁻¹⁰²² 아래인 값은 표현되므로 모든 연산에서
+
+  fl(x op y) = (x op y)(1 + δ), \|δ\| ≤ u = 2⁻⁵³,  그리고 \|fl(z) − z\| ≤ u\|fl(z)\|     (M)
+
+이고 `two_prod`의 오차항이 표현된다(정확하다). `insphere`에서는 \|x\| < 2²⁰²이고 가장 낮은 비트가 2⁻²¹⁴ 이상, `orient2d`에서는 \|x\| < 2⁵⁰⁶이고 2⁻⁵³⁷ 이상이다. 점 집합의 범위로 `Predicates`를 만들 때 차수마다 한 번 고르고(조건 밖이면 W만), 범위를 모르는 호출(`find_simplex`의 평가점)은 `*_any`가 호출마다 그 점들로 본다.
+
+**거르기 상수의 증명** (SPT114). *보조정리.* 차이의 다항식을 float64 연산의 나무로 계산하고 마디마다 셈 c를 준다: 차이 fl(a − b)는 1, 두 마디의 합·차는 max(c_l, c_r) + 1, 곱은 c_l + c_r + 1이다. 마디의 정확한 퍼머넌트 S는 차이에서 \|a − b\|, 합·차에서 S_l + S_r, 곱에서 S_l·S_r다. (M) 아래에서 계산값은 x̂ = Σ_j m_j Π_{i ≤ c}(1 + δ_ji)(m_j는 차이의 곱인 단항식)이라
+
+  \|x̂ − x\| ≤ θ_c·S,  θ_k = (1 + u)ᵏ − 1
+
+이다(귀납: 반올림한 합은 양쪽의 모든 단항식에 인자 하나를 더하고, 곱은 한쪽의 모든 단항식을 다른 쪽의 모든 단항식과 짝지어 c_l + c_r개의 인자에 하나를 더한다). 퍼머넌트의 나무는 모든 값이 음이 아니라 P̂ ≥ (1 − u)^(c_P)·S다. 마지막 연산이 합·차이면 \|x̂ − (l̂ ± r̂)\| ≤ u\|x̂\|라 \|x̂ − x\| ≤ u\|x̂\| + θ_{c−1}S이고, (1 − u)\|x̂\| > θ_{c−1}S면 x̂의 부호가 x의 부호다. \|x̂\| > fl(K·P̂) ≥ K·P̂·(1 − u)가 이것을 주려면
+
+  K ≥ θ_{c−1} / (1 − u)^(c_P + 2)
+
+면 된다. fl(K·P̂)가 비정상 수의 범위면 상대 한계 대신: x̂와 fl(K·P̂)가 모두 2⁻¹⁰⁷⁴의 배수라 \|x̂\| > fl(K·P̂)는 \|x̂\| ≥ fl(K·P̂) + 2⁻¹⁰⁷⁴ > K·P̂를 뜻하고 결론이 같다. ∎
+
+우리 계산 순서(`predicates.hpp`의 `*_filter`; 모든 연산을 적어 두었고 전역 FMA 축약은 꺼져 있다)의 셈:
+
+| 술어 | 계산 순서의 셈 | c | c_P | 필요한 K(둘째 차수까지) | 쓰는 K |
+|---|---|---:|---:|---|---|
+| `orient2d` | 차이 1, 곱 3, 차 4 | 4 | 4 | 3u + 21.0u² | (3 + 32u)u |
+| `orient3d` | 2 × 2 소행렬식 4, z와의 곱 6, 두 합 7, 8 | 8 | 8 | 7u + 91.0u² | (7 + 96u)u |
+| `incircle` | 올림 4, 소행렬식 4, 곱 9, 두 합 10, 11 | 11 | 11 | 10u + 175.0u² | (10 + 176u)u |
+| `insphere` | 올림 5, 2 × 2 소행렬식 4, 3 × 3 소행렬식 8, 곱 14, 두 짝의 차 15, 합 16 | 16 | 17 | 15u + 390.1u² | (15 + 400u)u |
+
+쓰는 K는 부등식을 지키는 가장 작은 (k + 16j·u)u이고 각각 float64로 정확하다. `test_predicates.py`가 컴파일된 값으로 부등식(과 16u 작은 값은 지키지 못함)을 유리수로 확인한다. 초안의 Shewchuk 상수((3 + 16u)u, (7 + 56u)u, (10 + 96u)u, (16 + 224u)u)는 그의 계산 순서와 더 고운 셈의 것이다. 우리 것은 둘째 차수가 다르고, `insphere`는 행렬식을 (cl·dab − dl·abc) + (al·bcd − bl·cda)의 두 짝으로 묶어 깊이가 16이라 첫째 차수가 15다.
+
+**값 커널** (SPT115): 같은 길로 행렬식의 **값**도 준다: `det2(a, b, c)` = det[a − c; b − c], `det3(a, b, c, d)` = det[b − a, c − a, d − a]이고 \|r − x\| ≤ 1.002u\|x\| + 2⁻¹⁰⁷⁵(x = 0이면 정확히 0, x가 넘치면 ±inf)다.
+- 빠른 길(범위 조건 q = 2, 3): 차이를 정확한 짝 h + t(`two_diff`)로 두고 머리 행렬식을 오차 없는 곱·합으로, 첫째 차수의 꼬리 항과 머리 쪽 반올림 오차를 float64로 더한다. `det2`: (p, e) = `two_prod`(h₁, h₂), (q, f) = `two_prod`(h₃, h₄), (s, g) = `two_diff`(p, q), C = (e − f + g) + (h₁t₂ + t₁h₂ − h₃t₄ − t₃h₄), N = t₁t₂ − t₃t₄. \|t\| ≤ u\|h\|와 P_m = \|h₁h₂\| + \|h₃h₄\|로 C의 항은 크기 합이 (4u + u²)P_m 이하이고 반올림을 네 번 이하 거치므로 \|ĉ − C\| ≤ 17u²P_m, \|N\| ≤ u²P_m, r = fl(s + ĉ)는 \|r − x\| ≤ u\|r\| + 18u²P_m이다. `det3`(행 A, B, C의 세 2 × 2 소행렬식 M_i와 z_i, Π는 \|H\|의 퍼머넌트): M_i = s_i + (e_i − f_i + g_i)이고 m_i = fl(fl(e_i − f_i) + g_i)는 4.1u²μ_i 안, (P_i, E_i) = `two_prod`(z_i, s_i), l_i = fl(z_i m_i)는 6.2u²\|z_i\|μ_i 안이다. P₁ + P₂ + P₃ = S + g_a + g_b(`two_sum` 둘), 꼬리 하나의 항 아홉 t_ij·cof_ij(H)는 반올림 셋 이하로 합쳐 9.3u²Π 안, 꼬리가 둘 이상인 항은 3.1u²Π 아래, 낮은 항 17개의 float 합(크기 합 8.4uΠ 이하, 덧셈 16번 이하)은 136u²Π 이하를 잃는다. 그래서 r = fl(S + low)는 \|r − x\| ≤ u\|r\| + 160u²Π다.
+- 둘 다 \|r\| ≥ 2⁻³⁶·P̂(P̂는 float 퍼머넌트, 정확한 것의 (1 − u)⁵ 이상)일 때만 r을 받는다. 그러면 둘째 차수의 몫이 0.002u\|r\| 아래라 \|r − x\| ≤ 1.002u\|x\|다. 아니면(항보다 2³⁶배 작은 행렬식이거나 범위 밖) W로 정확히 구해 올바르게 반올림한다.
+- 넓이·부피, 평면의 식, 외심, 무게중심 좌표가 이 커널을 써서 가늘고 납작한 단체에서도 계약이 선다(§4).
+
+**시간** (SPT8 마일스톤에 잼; Apple M4 Pro, 1스레드, 호출당 ns, 세 번 또는 일곱 번 중 가장 좋은 값, `tools/spatial_geometry_probe.py predicates`; 다른 작업과 기기를 나눠 썼다(부하 평균 9.8); 테스트용 바인딩의 반복이라 행마다의 분기 비용이 든다)
+
+| 술어 | A 균등 | A 이웃 묶음 | `*_any` 균등 | 정수 격자 | B(정확히 0) | 거의 퇴화 | W 균등 | W 극단 | 섭동(정확히 0) |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `orient2d` | 0.8 | 0.8 | 8.9 | 3.0 | 10 | 48 | 84 | 643 | |
+| `orient3d` | 2.9 | 2.9 | 13.6 | 5.2 | 36 | 197 | 235 | 4,498 | |
+| `incircle` | 3.0 | 3.0 | 11.2 | 12.1 | 56 | 203 | 201 | 8,370 | 77 |
+| `insphere` | 8.3 | 8.2 | 20.3 | 15.8 | 180 | 786 | 551 | 26,247 | 226 |
+
+- 열의 뜻: 균등은 [0, 1)의 무작위 행, 이웃 묶음은 균등 2×10⁵점에서 점과 그 KD 트리 이웃(삼각분할이 묻는 꼴), `*_any`는 호출마다 범위를 보는 길, 정수 격자는 [−3, 3]의 정수 행(4–14%가 B), B는 정확히 퇴화한 정수 행, 거의 퇴화는 그 행을 무작위 배율·이동 뒤 0–2 ULP 옮긴 행(`orient2d` 55%, `orient3d` 92%, `incircle` 88%, `insphere` 76%가 W), 극단은 1e300·1e-300·비정상 수·DBL_MAX가 섞인 행이다.
+- 목표(거르기 통과 `orient2d` 2 ns, `incircle` 6 ns, `insphere` 15 ns 아래)를 지킨다. 전개식 이후로 가는 비율은 균등 2×10⁶ 행과 이웃 묶음 2×10⁵ 행에서 0이다(목표 10⁻⁴ 아래).
+- 값 커널: `det2` 2.1 ns, `det3` 10.0 ns(균등, 빠른 길이 모두 받음), 거의 퇴화인 행에서 `det2` 68 ns(70%가 W), `det3` 227 ns(94%가 W).
+
+### 3.2 동점 규칙: 올림 높이의 기호 섭동 (SPT95)
+- Delaunay 삼각분할은 점 p를 (p, ‖p‖²)로 올린 점들의 아래 볼록 껍질을 내려놓은 것이다. d + 2개의 점이 한 원(구) 위에 있으면 아래 껍질의 면이 단체가 아니라서 삼각분할이 여럿이다.
+- **규칙**: 서로 다른 점을 좌표의 사전 순서(x, 그다음 y, z)로 줄 세우고, k번째로 큰 점의 올림 높이에 εᵏ을 더한다(0 < ε이고 ε은 어떤 양수보다도 작다; 큰 점일수록 섭동이 크다). 결과는 이 섭동한 높이의 아래 껍질이다. 점의 **자리**는 건드리지 않으므로 `orient`는 섭동이 없고 평평한 단체가 생기지 않는다. 올린 점들은 포물면 위에서 엄격한 볼록 위치라 섭동해도 모든 점이 꼭짓점으로 남는다.
+- **계산** (SPT116): `incircle`·`insphere`의 정확한 값이 0일 때만 섭동이 쓰인다. 올림 행렬식은 높이에 대해 선형이라 그때 부호는 ε의 다항식으로 본 행렬식의 첫 0 아닌 계수의 부호이고, 그 계수는 한 점의 높이의 여인수다. 닫힌 꼴: 관련된 d + 2개의 점을 사전 순서가 큰 것부터 보며, 인자 자리 i(0부터)의 점을 뺀 나머지(인자 순서)의 `orient`가 0이 아닌 첫 점에서
+  - `incircle_sos(a, b, c, d)` = (−1)ⁱ · `orient2d`(나머지 셋),
+  - `insphere_sos(a, b, c, d, e)` = (−1)ⁱ⁺¹ · `orient3d`(나머지 넷)
+  이다(부호는 `incircle`·`insphere`의 관례 그대로: 앞 d + 1개가 양의 방향일 때 마지막 점이 안이면 +1). 그 점들 사이의 순서만 쓰므로 전역 순위가 필요 없다. 서로 다른 점이고 앞 d + 1개가 퇴화가 아니면 0이 아니다(마지막 점의 여인수가 그 단체의 방향이다).
+- **검증**: `tests/spatial/exactgeom.py`의 `in_sphere_eps`가 올림 높이에 εᵏ을 더한 행렬식을 `fmpq_poly`로 정확히 계산한다. 닫힌 꼴(`sos_rule`)과 C++의 `*_sos`가 정확히 퇴화한 행, 정수 격자 행, 거의 퇴화 행, 극단 범위 행의 모든 인자 순서에서 그것과 같고, 그 규칙으로 만든 전수 참조(모든 (d + 1)-부분집합에서 섭동한 빈 원)가 모든 `small` 점 집합에서 겹치지 않고 껍질을 덮는 삼각분할이며 행을 섞어도 같은 점 집합의 삼각분할이다(`test_exactgeom.py`, `test_predicates.py`). 한 원 위의 네 점에서는 두 대각선 가운데 정확히 하나가 고른다.
+- **뜻**: 삼각분할은 좌표의 집합으로만 정해진다. 입력 순서를 바꾸면 색인만 바뀌고 기하는 같다. 알고리즘과 스레드 수가 결과를 바꿀 길이 없다. 이 꼴의 섭동은 Devillers–Teillaud의 방법으로 알려져 있지만 원문은 확인하지 않았고, 규칙은 위의 ε 다항식 계산으로 선다.
+- 볼록 껍질과 보로노이는 섭동과 무관하다(§3.6, §3.7): 껍질은 극점의 집합과 평평한 면의 부채꼴, 보로노이는 묶음을 합친 참 그림이다.
+
+### 3.3 2차원 삼각분할: 나눠서 합치기 (새 파일 `delaunay2.cpp`, §6)
+- 서로 다른 점을 사전 순서로 정렬하고(같은 점 찾기도 이 정렬이 한다), Guibas–Stolfi의 분할 정복을 Dwyer처럼 자르는 축을 번갈아 가며 돈다. 삼각형 기반 자료구조다(삼각형마다 꼭짓점 셋과 이웃 셋, int32).
+- 고른 까닭: (1) 최악의 경우에도 O(n log n)이다(한 원 위의 점처럼 넣는 방식이 나빠지는 입력이 없다: scipy는 원 위의 10⁴점에 3.05초가 걸린다), (2) 실측으로 가장 빠른 방법으로 알려져 있다, (3) 하위 문제가 독립이라 태스크 나무가 그대로 병렬이다, (4) `orient2d`와 섭동한 `incircle`만 쓴다.
+- 합치기는 두 부분 삼각분할의 아래 공통 접선에서 시작해 위로 올라가며 변을 잇고 `incircle`을 어기는 변을 지운다. 한 직선 위의 점들(하위 문제가 통째로 한 직선일 수 있다)은 삼각형 없는 사슬로 다룬다.
+- 병렬: 정렬은 병렬 병합 정렬이다. 분할 나무의 위쪽 깊이(점이 2¹⁴개 이하가 될 때까지, 크기로만 정함)는 태스크이고 합치기는 부모 태스크가 한다. 맨 위의 합치기 몇 번은 한 스레드라 10스레드의 목표를 8배가 아니라 3배쯤으로 잡는다(§5).
+- 대안으로 본 것: 점을 하나씩 넣기(3차원과 코드를 함께 쓰지만 느리고 병렬이 어렵다), 훑기 선(Fortune; 정확한 술어로 쓰기 까다롭고 빠르지 않다).
+
+### 3.4 3차원 삼각분할: 하나씩 넣기 (새 파일 `delaunay3.cpp`, §6)
+- 순서: 점을 무작위 묶음으로 나누고(BRIO: 묶음의 크기가 뒤로 갈수록 배가 된다) 묶음 안은 힐베르트 곡선의 차례로 넣는다. 무작위는 난수 상태가 아니라 사전 순위의 고정된 해시(splitmix64)다. 힐베르트 키는 경계 상자를 축마다 2²¹칸으로 나눈 격자 좌표로 만든다(키의 반올림은 넣는 순서만 바꾸고 결과를 바꾸지 않는다).
+- 넣기: 앞에 넣은 점의 사면체에서 걸어가(면마다 `orient3d`) 새 점을 품은 사면체를 찾고, 섭동한 `insphere`가 어긋나는 사면체들(충돌 영역)을 너비 우선으로 모아 지운 뒤 그 경계 면마다 새 점과 사면체를 만든다(Bowyer–Watson). 충돌 영역이 별 모양임은 술어가 정확하고 섭동이 일관되므로 보장된다.
+- 처음 단체는 사전 순서의 첫 점과, 그것과 한 직선·한 평면에 있지 않은 첫 점들이다(없으면 §2.1의 `ValueError`). 껍질 밖은 무한 꼭짓점 하나를 둔 유령 사면체로 다룬다.
+- 걷기의 갈림은 고정된 규칙(면 번호의 돌림 순서)이다. 난수를 쓰지 않는다.
+- 사면체의 수는 균등 입력에서 약 6.7n이고 최악은 O(n²)이다(모멘트 곡선). 만드는 동안 사면체 수를 세어 물리 메모리를 넘으면 `MemoryError`다(SPT68과 같은 방법).
+- 병렬(SPT107): 첫 판의 넣기는 한 스레드다. 결과가 정의로 하나이므로 어떤 병렬 넣기도 같은 답을 내지만, 잠금 영역을 둔 병렬 넣기는 SPT13 마일스톤에서 재서 정한다.
+
+### 3.5 표준 꼴 만들기와 위치 찾기
+- **표준 꼴**: 만든 뒤 유령을 지우고, 단체마다 §2.2의 차례로 돌리고, 행을 정렬해 번호를 매기고, 이웃을 새 번호로 옮긴다. 단체마다의 일은 독립이고 정렬은 전순서(행이 서로 다르다)라 병렬로 해도 같은 배열이다. `vertex_neighbor_vertices`, `vertex_to_simplex`, `convex_hull`은 이 배열에서 만든다(처음 읽을 때; 셈, 누적합, 채우기의 세 훑기).
+- **위치 찾기**(`find_simplex`): 만들 때 경계 상자의 고른 격자(칸마다 그 칸 중심을 품은 단체 하나; 칸 수는 약 n/4)를 둔다. 평가점마다 그 칸의 단체에서 시작해 정확한 `orient`로 걸어간다(면 너머가 음이면 그 이웃으로). 닫힌 단체에 닿으면 값이 0인 면들 너머의 단체를 모두 보고(꼭짓점 위면 그 꼭짓점의 별) 가장 작은 번호를 고른다. 그래서 답은 시작점, 걷는 길, 스레드 수와 무관하다. 껍질 밖으로 나가면 −1이다.
+- 병렬: 평가점 256개가 태스크 하나다(크기로만). 평가점을 정렬하지 않는다(시작이 격자라 필요 없다).
+- 넓은 범위 길의 판정은 평가점마다다(그 점의 지수가 범위 안이면 전개식).
+
+### 3.6 볼록 껍질 (새 파일 `hull.cpp`, §6)
+- **직접 구한다**(SPT108). 삼각분할보다 훨씬 싸다: scipy도 10⁶점의 껍질이 55 ms(2차원), 101 ms(3차원)이고 삼각분할은 3.75초다.
+- **미리 거르기**(병렬): 몇 방향의 극점(d = 2는 8방향, d = 3은 14방향; 같은 값은 사전 순서로)을 조각마다 찾아 합치고, 그 볼록 다각형(다면체) 안에 **엄격히** 든 점을 버린다. 판정은 거르기 단계의 `orient`다(정하지 못한 점은 남긴다). 버린 점은 극점일 수 없으므로 결과가 같다.
+- **d = 2**: 남은 점을 사전 순서로 정렬하고 Andrew의 단조 사슬을 돈다. 꺾임의 판정은 정확한 `orient2d` > 0이라 한 직선 위의 점과 같은 점이 빠진다.
+- **d = 3**: 퀵헐이다. 면마다 그 면 바깥의 점 목록을 두고, 가장 먼 점(거리는 float64 어림, 판정은 정확한 `orient3d`)을 골라 보이는 면들을 지우고 지평선의 변마다 새 면을 만든다. 정확히 한 평면 위의 점은 "보이지 않음"으로 다루고, 끝난 뒤 이웃한 면 가운데 정확히 같은 평면인 것을 합쳐 다각형 면으로 만든다. 다각형의 꼭짓점 가운데 변의 안쪽에 놓인 것(한 직선 위)은 뺀다. 남은 것이 극점이다. 면은 가장 작은 색인에서 부채꼴로 나눈다(SPT109).
+- 극점의 집합, 평평한 면, 부채꼴이 모두 점 집합의 함수라 결과가 고르는 순서와 무관하다.
+- **`equations`**: 면마다 법선을 값 커널로 구해(d = 3은 세 2 × 2 행렬식) 유클리드 커널로 길이를 나누고, 절편은 −법선·(면의 가장 작은 색인의 점)이다. 다각형 면은 한 번만 구한다.
+- **`area`, `volume`**: d = 2의 둘레는 변 길이(`euclidean` 짝 커널)의 합, 넓이는 `vertices[0]`에서의 부채꼴 삼각형의 `det2`/2의 합이다. d = 3의 겉넓이는 면 삼각형의 넓이(법선의 길이/2)의 합, 부피는 가장 작은 색인의 극점에서 면마다 선 사면체의 `det3`/6의 합이다. 기준점이 껍질 위라 모든 항의 부호가 같다(상쇄가 없다). 합은 표준 꼴의 차례로 4,096항씩의 부분합을 그 순서로 더한다(크기로만 정해 스레드 수와 무관하다).
+
+### 3.7 보로노이 (새 파일 `voronoi.cpp`, §6)
+- 삼각분할(§3.3, §3.4)을 안에서 만들고 그 쌍대를 낸다.
+- **묶음**: 이웃한 두 단체가, 맞은편 꼭짓점의 **섭동 없는** `incircle`(`insphere`)이 정확히 0이면 같은 묶음이다(합집합 찾기). 묶음 하나가 꼭짓점 하나다. 좌표는 묶음에서 번호가 가장 작은 단체의 외심이다.
+- **외심**: 첫 꼭짓점 a에서 본 자리 v − a = N/(2D)이고 D는 단체의 `det2`(`det3`), N의 성분은 제곱 길이를 한 열에 넣은 행렬식이다. 둘 다 값 커널의 방법(거르고, 모자라면 전개식)으로 구한다. 계약은 §4다.
+- **능선**: Delaunay의 변 (i, j)마다 하나다. 그 변을 도는 단체들의 묶음을 차례로 적고 이어진 같은 묶음을 하나로 줄인다. 변이 삼각분할의 경계에 있으면 끝없는 능선이라 −1이 든다. 줄인 뒤 꼭짓점이 d개보다 적은 닫힌 능선(d = 2는 꼭짓점 하나, d = 3은 둘 이하)은 길이(넓이)가 0이라 버린다: 그 두 점은 참 그림에서 이웃이 아니다.
+- **영역**: 점의 별(그 점을 가진 단체들)의 묶음이다. d = 2는 별을 반시계로 돈 차례, d = 3은 오름차순이다. 점이 껍질 위면 −1이 든다.
+- 병렬: 외심은 단체마다, 능선과 영역은 점 구간마다 세고(누적합) 채운다. 번호는 표준 꼴에서 정해지므로 스레드 수와 무관하다.
+
+### 3.8 선형 보간 (새 파일 `scattered.cpp`, §6)
+- 평가점마다 `find_simplex`의 단체에서 무게중심 좌표 λ_k = D_k/D를 구한다. D는 단체의 행렬식, D_k는 꼭짓점 k를 평가점으로 바꾼 행렬식이고 둘 다 값 커널이다(상대오차 2u). 안의 점에서 λ_k ≥ 0이 정확한 부호로 보장된다. 값은 Σλ_k f_k를 꼭짓점 차례로 더한다.
+- 평가점이 꼭짓점과 같으면 그 값을 그대로 돌려준다(λ가 정확히 1과 0이다: D_k가 정확히 0이거나 D와 같은 계산이다).
+- `transform`을 쓰지 않는다(납작한 단체에서 역행렬 꼴의 오차가 커진다).
+- 병렬은 `find_simplex`의 조각 그대로다. 값의 열이 여럿이면 λ를 한 번 구해 열마다 쓴다.
+
+### 3.9 Clough–Tocher 보간과 기울기 (새 파일 `scattered.cpp`, §6)
+- **조각 3차식**: 삼각형을 무게중심에서 셋으로 나누고, 꼭짓점의 값과 기울기, 변을 건너는 방향의 도함수 조건으로 Bézier 계수를 정한다(scipy와 같은 조건이다: 이웃 삼각형의 무게중심을 잇는 방향으로 C¹). 평가는 작은 삼각형을 무게중심 좌표의 부호로 고르고 de Casteljau의 고정된 차례로 계산한다. 무게중심 좌표는 §3.8의 것이다.
+- **기울기 추정**(IP111): scipy의 전역 방법이다(Nielson 1983, Renka–Cline 1984 꼴: 변마다의 3차 Hermite 곡선의 곡률 제곱 적분의 합을 줄인다). 꼭짓점마다 이웃 변으로 만든 2 × 2 계를 풀어 기울기를 갱신하는 Gauss–Seidel 훑기다.
+  - 훑기는 꼭짓점의 색인 순서 하나이고 한 스레드다(순서가 값에 들어가므로 나누지 않는다). 2 × 2 계의 합은 이웃의 오름차순이다.
+  - 멈춤: 한 훑기의 가장 큰 변화가 `tol` × (기울기의 가장 큰 크기) 아래거나 훑기가 `maxiter`번이 되면 멈춘다. `maxiter`는 1 이상의 int, `tol`은 0 이상의 유한한 실수다(`tol=0`이면 언제나 `maxiter`번).
+  - 수렴하지 못해도 에러가 아니다. `converged`가 False다(interpolate.md의 `AAA.converged`와 같은 꼴이다).
+  - complex 값은 실수부와 허수부를 따로 추정한다(scipy와 같다). 값의 열마다 독립이라 열은 태스크로 나눈다.
+- scipy에서 본 것: 기본 `tol=1e-6`에서 1차식 자료 2x + 3y + 1의 보간이 참값과 7.3×10⁻⁹ 다르다(기울기가 반복의 허용오차만큼만 맞다). `maxiter=1`은 경고와 함께 값을 낸다. 기본값을 scipy와 같게 두는지는 §9의 23이다.
+
+### 3.10 병렬화와 결정성
+**같은 입력이면 스레드 수, 알고리즘의 갈래, 넣는 순서와 상관없이 같은 바이트다.**
+
+| 병렬 경로 | 나누는 방법 | 결과가 같은 이유 |
+|---|---|---|
+| 정렬(사전 순서, 힐베르트 키), 같은 점 찾기 | 병합 정렬의 구간 | 전순서(좌표, 색인)다 |
+| 2차원 만들기 | 분할 나무의 하위 문제 | 섭동한 삼각분할이 하나다(§3.2) |
+| 3차원 만들기 | 첫 판은 한 스레드 | 같다 |
+| 표준 꼴(돌리기, 행 정렬, 이웃 옮기기) | 단체 구간 | 행이 서로 달라 정렬이 전순서다 |
+| `vertex_neighbor_vertices` 등 | 셈, 누적합, 채우기 | 행마다 정렬한 집합이다 |
+| `find_simplex`, 보간의 평가 | 평가점 256개 | 답이 길과 무관한 정의다(가장 작은 번호) |
+| 껍질의 미리 거르기 | 점 구간 | 버리는 점은 극점이 아니다 |
+| 외심, `equations`, `transform` | 단체(면)마다 | 원소 하나의 계산이다 |
+| `area`, `volume` | 표준 차례의 4,096항 부분합 | 크기로만 나눈다 |
+| Clough–Tocher 기울기 | 값의 열(열 안은 한 스레드) | 훑기 순서가 하나다 |
+
+- 병렬 기준값은 배열의 규칙이다(작업량이 float64 연산 2¹⁵개 분량 이상이면 나누고 GIL을 놓는다).
+- 실수 출력에 BLAS가 없어 Accelerate의 스레드 모드와도 무관하다.
+
+### 3.11 메모리
+- 쥐는 것(d = 2, 서로 다른 점 n개): 점의 사본 16n, `simplices`와 `neighbors` 각 48n(t ≤ 2n), 위치 격자 2n 바이트쯤. 합쳐 약 115n 바이트다(10⁶점에서 115 MB; scipy의 `Delaunay`는 프로세스 최대 RSS가 935 MB였다). 처음 읽을 때 만드는 것: `transform` 96n, `vertex_neighbor_vertices` 약 56n, `vertex_to_simplex` 8n.
+- d = 3(균등, t ≈ 6.7n): `simplices`와 `neighbors` 각 214n, 합쳐 약 460n 바이트다(10⁵점에서 46 MB; scipy는 466 MB).
+- 만드는 동안: int32의 작업 구조(d = 2는 48n, d = 3은 약 215n)와 정렬 키 16n이 더 든다. 표준 꼴을 만든 뒤 놓는다. d = 2의 작업 구조는 SPT126의 반변이라 72n이다.
+- `Voronoi`: 삼각분할은 만든 뒤 놓고 결과만 쥔다(d = 2에서 꼭짓점 32n, 능선 약 3n개 × 32, 영역 약 6n × 8 + 8n: 약 190n 바이트).
+- 결과의 크기는 d = 2에서 n으로 정해지므로 만들기 전에 물리 메모리와 견준다. d = 3은 만드는 동안 센다(§3.4).
+
+---
+
+## 4. 정확성과 정확도 계약
+
+**조합 구조 (정확; 참값은 유리수 산술)**
+1. **삼각분할**: 모든 단체가 양의 방향이다(`orient` > 0). 단체들이 서로 다른 점의 볼록 껍질을 겹치지 않게 덮는다. 서로 다른 모든 점이 꼭짓점이다. 모든 단체의 외접원(구)의 **열린** 안쪽에 점이 없다(빈 원 성질; 원 위의 점은 허락된다).
+2. **동점 규칙**: 삼각분할이 §3.2의 섭동한 점 집합의 삼각분할과 같다(작은 입력에서 ε 다항식의 정확한 계산으로 만든 참조와 단체의 집합이 같다).
+3. **표준 꼴**: §2.2의 모든 규칙. 입력의 행을 섞으면 결과가 색인의 바꿔 적기만큼만 다르다.
+4. **`find_simplex`**: 돌려준 단체가 평가점을 닫힌 뜻으로 품고, 품는 단체 가운데 번호가 가장 작다. −1이면 어떤 단체도 품지 않는다.
+5. **볼록 껍질**: `vertices`가 극점의 집합과 같다. 모든 점이 모든 면의 안쪽이거나 위다(`orient` ≤ 0). 면의 삼각형이 닫힌 곡면을 이룬다. `ConvexHull.vertices`는 `Delaunay`의 경계 꼭짓점 가운데 극점인 것과 같다.
+6. **보로노이**: 묶음이 "외접원(구)이 정확히 같은 단체들"과 같다. 능선 (i, j)가 있는 것과 "두 점에서 같은 거리이고 다른 모든 점에서 더 멀지 않은 점의 집합이 d − 1차원"인 것이 같다. 끝없는 영역은 껍질 위의 점의 것이다.
+
+**실수 출력** (참값은 Arb와 유리수; 잰 값은 그 마일스톤에서 채운다. 상수는 SPT8 마일스톤에서 아래의 계산 순서대로 세어 확정했다: SPT119)
+
+기호: u = 2⁻⁵³, γ_k = ku/(1 − ku), N은 합의 항 수, s = min(N, 4096) + ⌈N/4096⌉ − 2는 4,096항 부분합을 차례로 더하는 합(§3.6)에서 한 항이 거치는 덧셈의 가장 큰 수, e_m = γ_{m+3}/2 + u는 m차원 `euclidean`의 계약(spatial.md §4; m ≤ 32에서 합의 깊이가 m), p는 점, c는 참 단위 법선이다. 모든 한계는 결과가 넘치지 않을 때이고(넘치면 ±inf), 비정상 수 둘레에서는 항마다 2⁻¹⁰⁷⁴을 더한다.
+
+| 출력 | 계약 | 유도한 값 |
+|---|---|---|
+| 값 커널 `det2`, `det3` | \|r − x\| ≤ 1.002u\|x\| + 2⁻¹⁰⁷⁵(x = 0이면 정확히 0) | §3.1 (SPT115) |
+| 껍질의 둘레(d = 2) | 상대오차 ≤ γ_{s+4} | 변마다 e₂ = γ₅/2 + u ≤ 3.5u + O(u²)와 양수의 합: (1 + e₂)(1 + u)ˢ ≤ (1 + u)^(s+4) |
+| 껍질의 넓이(d = 2) | 상대오차 ≤ γ_{s+2} | 항 `det2`/2(나누기는 정확), 모든 항이 같은 부호: (1 + 1.002u)(1 + u)ˢ |
+| 껍질의 부피(d = 3) | 상대오차 ≤ γ_{s+3} | 항 `det3`/6(나누기 한 번), 같은 부호: (1 + 1.002u)(1 + u)^(s+1) |
+| 겉넓이(d = 3) | 상대오차 ≤ γ_{s+6} | 삼각형마다 ‖n̂‖/2, n̂의 성분은 `det2` 셋(1.002u), 노름 e₃ ≤ 4u + O(u²): (1 + 1.002u)(1 + e₃)(1 + u)ˢ |
+| `equations`의 법선 | 성분마다 \|ĉ_k − c_k\| ≤ 8u\|c_k\| | d = 3: n̂_k(1.002u) / 노름(1.002u + e₃) 한 번 나누기(u): 7.01u. d = 2: n = (Δy, −Δx)의 차이 u씩과 e₂: 6.5u |
+| `equations`의 절편 | \|b̂ − b\| ≤ 12u·Σ_k\|c_k p_k\| (≤ 12u‖p‖₂) | b = −c·p(p는 면의 가장 작은 색인의 점)를 차례 합(FMA 없음)으로: 법선의 8u와 내적의 γ_d |
+| 보로노이 꼭짓점 | 좌표마다 \|v̂_k − v_k\| ≤ u\|v_k\| + 4u\|v_k − a_k\|(a는 묶음의 대표 단체의 첫 꼭짓점) | (v − a)_k = N_k/(2D), N_k와 D가 1.002u의 값 커널, 나누기 한 번: 3.01u, 더하기 한 번: u\|v_k\| + 3.02u\|v_k − a_k\|. N의 커널은 SPT12. 외심이 넘치면 inf가 아니라 `ValueError`를 낼지는 SPT12에서 정한다 |
+| `transform` | T⁻¹의 원소마다 상대오차 ≤ 4u, 마지막 행은 정확 | T⁻¹ = adj(T)/D: adj의 원소는 d = 2에서 차이(u), d = 3에서 `det2`(1.002u), D는 값 커널, 나누기 한 번: 3.01u |
+| 선형 보간 | \|ŷ − y\| ≤ γ_{d+5} Σλ_k\|f_k\|, 자료점에서는 정확 | λ_k = D_k/D(값 커널 둘과 나누기: 3.01u), Σλ̂_k f_k를 꼭짓점 차례로(γ_{d+1}): (1 + 3.01u)(1 + u)^(d+1) ≤ (1 + u)^(d+5) |
+| Clough–Tocher | 주어진 기울기에 대한 조각 3차식의 값: \|ŷ − y\| ≤ γ_c Σ\|Bézier 계수\| | c는 IP9 마일스톤에서 평가 순서대로 센다. 기울기 자체는 반복의 `tol`만큼만 정해진다(계약 밖; 같은 입력에서는 같은 비트다) |
+
+- 계약의 뜻: 가늘거나 납작한 단체에서도 한계가 조건수에 기대지 않는다(값 커널이 필요할 때 넓은 정수로 정확히 가기 때문이다). scipy는 이런 약속이 없다.
+- 유도의 바탕: 값 커널의 상대오차 1.002u(§3.1)와, 넘침·아래넘침이 없을 때 연산마다 (1 + δ), \|δ\| ≤ u다. 합의 항이 모두 같은 부호라(껍질 위의 기준점, 음이 아닌 길이) 합의 오차가 결과에 상대적이다. 계약은 유도한 값을 깔끔한 수로 올린 것이고, 셈의 순서가 바뀌면(SPT11·SPT12·IP9의 구현) 그 마일스톤에서 다시 센다.
+- 초안과 달라진 것: 둘레 γ_{⌈log₂ h⌉+6} → γ_{s+4}(합이 짝 합이 아니라 4,096항 부분합이다), 넓이·부피 γ_{s+6} → γ_{s+2}·γ_{s+3}, 겉넓이 γ_{s+12} → γ_{s+6}, 법선 절대 8u → 상대 8u, 절편 8u(1 + ‖p‖₁) → 12u·Σ\|c_k p_k\|(초안은 내적의 반올림을 빠뜨렸다), 보로노이 8u → 4u, `transform` 8u → 4u, 선형 보간 γ₁₀ → γ_{d+5}.
+
+---
+
+## 5. 성능
+
+scipy 1.18.1의 시간이다(ms; 1스레드. Qhull은 스레드를 쓰지 않는다). 균등은 [0, 1)ᵈ, 평가점은 같은 상자의 균등 무작위이고 수는 점의 수와 같다.
+
+| 일 | n = 10³ | 10⁴ | 10⁵ | 10⁶ | 메모 |
+|---|---:|---:|---:|---:|---|
+| `Delaunay` 2차원 균등 | 1.3 | 13.8 | 212 | 3,754 | 10⁶에서 최대 RSS 935 MB |
+| `Delaunay` 2차원 정규 | | | 266 | | |
+| `Delaunay` 2차원 격자 316² | | | 479 | | 모든 칸이 한 원 위 |
+| `Delaunay` 2차원 단위원 위 | | 3,051 | | | Qhull이 크게 느려지는 입력 |
+| `Delaunay` 3차원 균등 | 5.2 | 81.5 | 1,339 | — | 10⁵에서 466 MB |
+| `Delaunay` 3차원 격자 46³ | | | 3,071 | | 967 MB |
+| `find_simplex` 2차원 | 0.2 | 13.7 | 685 | 42,203 | 평가점마다 1.4, 6.8, 42 µs |
+| `find_simplex` 3차원 | 0.3 | 14.5 | 654 | — | |
+| `vertex_neighbor_vertices` 2차원 / 3차원 | | 1.6 / 13.5 | 20.9 / 142 | 277 / — | |
+| `ConvexHull` 2차원 균등 | | 0.6 | 7.3 | 55 | 꼭짓점 24–35개 |
+| `ConvexHull` 2차원 단위원 위 | | | 84 | | 모든 점이 극점 |
+| `ConvexHull` 3차원 균등 | | 1.3 | 12.5 | 101 | 꼭짓점 141–248개 |
+| `ConvexHull` 3차원 단위구 위 | | | 249 | | 모든 점이 극점 |
+| `Voronoi` 2차원 균등 | | 21.9 | 406 | — | 10⁵에서 343 MB |
+| `Voronoi` 3차원 균등 | | 116 | 2,205 | — | 10⁵에서 1,057 MB |
+| `LinearNDInterpolator` 평가(2차원) | 0.2 | 13.2 | 696 | 43,248 | 시간은 위치 찾기다 |
+| `CloughTocher2DInterpolator` 만들기(삼각분할 뺌) | 0.3 | 3.2 | 43.4 | 1,392 | 기울기 추정 |
+| `CloughTocher2DInterpolator` 평가 | 0.3 | 13.7 | 724 | 42,927 | |
+
+재지 않은 것: 3차원 10⁶점, `Voronoi` 10⁶점(메모리가 2 GB를 넘을 것으로 보아 뺐다).
+
+**목표** (sd; 1스레드 / 10스레드에서 scipy보다 몇 배 빠른가. 재지 않은 값이고 SPT13 마일스톤에서 확정한다)
+
+| 일 | 1스레드 | 10스레드 | 근거 |
+|---|---:|---:|---|
+| `Delaunay` 2차원 10⁵–10⁶ 균등 | 4배 | 10배 | 분할 정복은 점마다 0.5–1 µs로 알려져 있다(Qhull 3.75 µs). 맨 위 합치기가 한 스레드 |
+| `Delaunay` 2차원 10³–10⁴ | 2배 | 2배 | 호출 비용이 보인다 |
+| `Delaunay` 2차원 격자·원 위 | 균등과 같은 시간(±2배) | | 퇴화 입력에서도 O(n log n); 전개식 비율이 높다 |
+| `Delaunay` 3차원 10⁴–10⁵ 균등 | 2배 | 2.5배 | 넣기가 한 스레드(SPT107). 병렬 넣기를 하면 6배 |
+| `find_simplex` 무작위 평가점 | 20배(10⁵), 50배(10⁶) | 10스레드에서 그 6배 | 격자에서 시작하면 걷기가 O(1)이다. scipy는 앞 평가점의 단체에서 걷는다 |
+| `ConvexHull` 2차원 균등 | 5배 | 15배 | 거르기가 점마다 몇 ns, 남는 점이 적다 |
+| `ConvexHull` 3차원 균등 | 2배 | 6배 | |
+| `ConvexHull` 모든 점이 극점 | 2배 | 3배 | 정렬(2차원)과 퀵헐(3차원)이 시간을 정한다 |
+| `Voronoi` 2차원 / 3차원 | 4배 / 2배 | 8배 / 3배 | 삼각분할 + 병렬인 쌍대 |
+| 선형·Clough–Tocher 평가 | `find_simplex`와 같다 | | |
+| Clough–Tocher 기울기 | 2배 | 2배(열이 하나면) | 같은 반복이다 |
+
+- SPT9 마일스톤에서 잰 2차원 값(sd 1스레드 / 10스레드 대 scipy, ms; 부하 평균 9–17로 기기를 나눠 썼고 다섯 번(10⁶은 두 번) 중 가장 좋은 값): `Delaunay` 균등 10³ 0.65 / 0.58 대 1.25, 10⁴ 4.0 / 6.0 대 15.3, 10⁵ 60 / 41 대 424, 10⁶ 924 / 266 대 5,459, 정규 10⁵ 46 / 18 대 216, 격자 316² 39 / 13 대 538, 원 위 10⁴ 4.3 / 3.9 대 2,351; `find_simplex` 10³ 0.020 / 0.027 대 0.25, 10⁴ 0.42 / 0.074 대 14.3, 10⁵ 8.3 / 0.97 대 572, 10⁶ 217 / 22(scipy는 재지 않음); `vertex_neighbor_vertices` 10⁴ 0.28 / 0.46 대 1.5, 10⁵ 3.9 / 2.8 대 17.3, 10⁶ 49 / 26 대 309. 10⁴의 10스레드 값은 SPT128의 나누기 기준을 바꾸기 전의 것이고, 바꾼 뒤 10⁴는 1·10스레드 모두 3.9 ms다. 10⁶점을 만드는 동안 프로세스의 최대 RSS는 332 MB 늘었다(scipy는 935 MB). 확정은 SPT13이다.
+- 메모리의 목표는 §3.11이다(scipy의 1/8쯤).
+- 지는 곳이 있으면 SPT13 마일스톤에서 까닭과 함께 적는다. 작은 n(10³ 아래)은 Python 층의 비용이 정하므로 따로 잰다.
+
+---
+
+## 6. 층과 파일
+- **층**: 계산 기하는 `spatial/` 안에 있고 `array/`, `parallel/`, `base/`만 쓴다. `interpolate/`의 흩어진 점 보간이 `spatial/`의 삼각분할 헤더를 쓴다(`interpolate/ → spatial/`은 이미 있는 의존이다).
+- `csrc/spatial/`(새 파일)
+  - `expansion.hpp`: `two_sum`, `two_product`, 전개식의 덧셈·곱셈·줄이기, 어림값.
+  - `wideint.hpp`: 넓은 범위 길의 여러 낱말 정수(덧셈, 곱셈, 부호)와 float64 → 정수 × 2ᵉ.
+  - `predicates.hpp`: 술어 넷(거르기, 전개식, 넓은 범위), 섭동한 `incircle`·`insphere`, 값 커널 `det2`·`det3`, 범위 검사.
+  - `sfc.hpp`: 힐베르트 키, BRIO의 묶음, 사전 순서 정렬과 같은 점 찾기.
+  - `predicates.cpp`: 술어·값 커널·정렬의 비공개 바인딩 `bind_predicates`(테스트와 측정용, SPT122).
+  - `triangulation.hpp`: 결과의 꼴(`Triangulation`: 점, 단체, 이웃, 대표), 표준 꼴 만들기, 위치 격자, 걷기.
+  - `delaunay2.cpp`, `delaunay3.cpp`: 만들기와 `_Delaunay` 바인딩(속성, `find_simplex`, 지연 속성).
+  - `hull.cpp`: `_ConvexHull`(거르기, 단조 사슬, 퀵헐, 면 합치기, 식, 넓이·부피).
+  - `voronoi.cpp`: `_Voronoi`(묶음, 외심, 능선, 영역).
+  - `spatial.hpp`에 `bind_delaunay`, `bind_hull`, `bind_voronoi`를 더한다.
+- `csrc/interpolate/`의 새 파일 `scattered.cpp`: 무게중심 평가, Clough–Tocher의 계수와 평가, 기울기 추정.
+- `src/stardust/spatial/`: `_delaunay.py`, `_hull.py`, `_voronoi.py`(클래스는 네이티브 객체를 필드로 쥔다; `KDTree`와 같은 꼴), `_common.py`에 점의 검사(`points()`), `__init__.py`에 세 이름.
+- `src/stardust/interpolate/`: `_scattered.py`(`LinearNDInterpolator`, `CloughTocher2DInterpolator`, `griddata`).
+- 문서: `docs/api/spatial.md`와 `docs/api/interpolate.md`에 절을 더하고 두 문서의 "없음" 줄(Qhull 기하, `griddata` 등)을 고친다. ARCHITECTURE §2의 `spatial/`·`interpolate/` 줄에 파일을 더한다.
+
+---
+
+## 7. 참값과 검증
+spatial 영역의 체계를 그대로 쓴다(spatial.md §7). 참값과 검증에는 Python의 `fractions`와 python-flint 0.9.0(`fmpq`, `fmpq_mat`, `fmpq_poly`, `arb`)만 쓴다.
+
+### 7.1 시험 데이터 (`tests/spatial/geompoints.py`, SPT117)
+- 무작위: 균등, 정규, 군집, 원반·공 안, n = 12–2×10⁴(더 큰 n은 그 마일스톤의 테스트와 속도 사례가 만든다).
+- **퇴화**: 정수 격자(모든 칸이 한 원·구 위), 정다각형과 정확히 한 원 위의 정수 점(예: (±2, ±1), (±1, ±2)), 정육면체와 그 안의 격자, 한 직선·한 평면 위의 점과 점 하나, 변·면 위의 경계점, 같은 점의 무더기, 모든 점이 극점(포물선·원·구 위), 점이 d + 1개와 d + 2개.
+- **거의 퇴화**: 격자 + 10⁻¹³ 흔들림, y = 10⁻⁹x²와 10⁻¹⁴x², 10⁸ + 작은 격자, 10⁶ + 10⁻³ × 균등, 1 ULP씩 옮긴 한 원 위의 점(거르기가 정하지 못하는 입력).
+- **극단 범위**: 1e150과 1e-150이 섞인 좌표, 비정상 수, DBL_MAX 둘레(넓은 범위 길).
+- hypothesis: 작은 정수 좌표(동점이 많다), 2의 거듭제곱 비율, 위의 생성기의 조합.
+
+### 7.2 참값 (`tools/spatial_ref.py`에 더한다 → `tests/spatial/ref/`)
+- 넓이·부피·둘레·겉넓이, 외심, 무게중심 좌표, 평면의 식, 선형 보간 값, 주어진 기울기의 Clough–Tocher 값: 유리수(√가 드는 것은 Arb)로 구해 npz에 둔다. 파일은 작게 둔다(점 수천 개).
+- 조합 구조는 참값 파일이 아니라 검사기로 본다(§7.3).
+
+### 7.3 테스트 (`tests/spatial/`, `tests/interpolate/`)
+- `tests/spatial/exactgeom.py`(도우미): 유리수 술어, §4의 1·4·5·6번을 검사하는 함수(빈 원은 작은 n에서 모든 (단체, 점) 짝, 큰 n에서 모든 안쪽 면의 국소 조건 + 덮기), ε 다항식(`fmpq_poly`)으로 섭동한 술어를 계산해 모든 (d + 1)-부분집합에서 빈 원을 보는 전수 참조(n ≤ 40).
+- `test_predicates.py`: 술어 넷이 유리수와 같은 부호임을 무작위·정수·정확히 퇴화·거의 퇴화·먼 군집·2의 거듭제곱·극단 범위의 행, 모든 점 집합에서 뽑은 묶음, hypothesis에서, 세 단계 각각을 강제로(`mode`) 돌려서. 거르기 상수의 부등식(유리수), 값 커널의 1.002u와 넓은 길의 올바른 반올림, 섭동한 술어가 ε 다항식과 같음, 여러 낱말 정수와 전개식이 정확함. 정렬은 `test_sfc.py`, 검사기 자신은 `test_exactgeom.py`(검사기가 옳은 구조를 받고 틀린 구조를 거부함, scipy의 일반 위치 결과와 같음), 기록은 `test_geometry_records.py`다.
+- `test_delaunay.py`, `test_delaunay3.py`: §4의 1–3번, 속성의 꼴과 정의(`neighbors`, `convex_hull`, `vertex_to_simplex`, `vertex_neighbor_vertices`, `coplanar`, `transform`), 행 섞기, 에러, 피클.
+- `test_find_simplex.py`: 4번(꼭짓점·변·면 위, 껍질 경계, 밖, NaN), 전수와 같음.
+- `test_hull.py`, `test_voronoi.py`: 5·6번과 실수 계약, 속성의 꼴.
+- `test_geometry_threads.py`: 1·2·3·7·10스레드에서 모든 배열의 바이트가 같음.
+- `test_geometry_scipy.py`: 일반 위치의 데이터에서 scipy와 단체의 집합, 극점, 능선의 집합이 같고 넓이·부피·꼭짓점이 계약 + scipy의 오차 안. 퇴화 데이터는 scipy의 기록만 남긴다.
+- `tests/interpolate/`의 새 파일 `test_scattered.py`: 자료점에서 정확, 1차식의 재현(선형: 계약 안; Clough–Tocher: 정확한 기울기를 주는 테스트용 길에서 2차식까지), 바깥과 NaN, 같은 점, complex, 배치, `griddata`의 세 방법, scipy와 견주기(선형은 계약 안, 3차는 `tol` 크기).
+- 골든(`tests/golden/cases_spatial.py`, `cases_interpolate.py`): 작은 퇴화 데이터의 모든 속성, 틀린 호출.
+
+### 7.4 scipy의 기록 (`tools/spatial_geometry_probe.py` → `tests/spatial/data/scipy_geometry.json`, SPT121)
+- 절 `exact`(§2.7의 표: scipy의 삼각분할을 유리수로 검사), `shape`(속성의 dtype·모양·방향, scipy가 빼놓는 3차원 능선), `edge`(NaN, inf, complex, 퇴화, 같은 점, 4차원, `find_simplex`의 허용오차, 점의 공유), `time`(§5의 시간). `test_geometry_records.py`가 파일을 읽는다(설치된 scipy가 아니라). 이름으로만 도는 `predicates`는 sd 술어의 시간(§3.1)을 터미널과 로그에만 적는다. R의 기록은 없다(비교 패키지가 없다).
+
+### 7.5 정확도·속도 체계
+- **정확도**(`bench/accuracy/spatial.py`에 더한다): 스윕 `geom_measure`(넓이·부피·둘레), `voronoi_vertices`, `barycentric`(판정은 §4의 계약, 비교는 scipy), `delaunay_exact`(데이터 집합마다 §4의 1번을 지키는지: sd는 100%, scipy는 기록). 보간은 `bench/accuracy/interpolate.py`에 `scattered_linear`.
+- **속도**(`bench/speed/cases/spatial.py`, `interpolate.py`에 더한다): §5의 표의 줄마다 사례(마일스톤과 필요한 이름을 적어 두는 기존 틀).
+
+---
+
+## 8. 마일스톤
+| 마일스톤 | 내용 | 끝났다는 뜻 |
+|---|---|---|
+| SPT8 마일스톤: 준비와 술어 — **완료·승인(위임, 2026-11-23)** | API 문서 초안(세 클래스의 시그니처, scipy → sd 대응표), 시험 데이터, 검사기 `exactgeom.py`, 탐침 기록, `expansion.hpp`·`wideint.hpp`·`predicates.hpp`·`sfc.hpp`, 거르기 상수의 증명, 섭동 규칙의 확정, §4 상수의 확정 | 술어가 유리수와 모든 시험 데이터에서 같은 부호, 섭동이 ε 다항식과 같음, 술어의 시간 측정 |
+| SPT9 마일스톤: 2차원 Delaunay — **완료·승인(위임, 2026-11-23)** | `Delaunay`(d = 2)의 모든 속성과 `find_simplex`, 표준 꼴, 피클 | §4의 1–4번, 스레드마다 같은 바이트, scipy와의 속도 사례 |
+| SPT10 마일스톤: 3차원 Delaunay | d = 3의 만들기와 위치 찾기 | 같은 것(d = 3), 메모리 한도의 `MemoryError` |
+| SPT11 마일스톤: 볼록 껍질 — **완료·승인(위임, 2026-11-23)** | `ConvexHull`(d = 2, 3) | §4의 5번과 실수 계약, 속도 사례 |
+| SPT12 마일스톤: 보로노이 | `Voronoi`(d = 2, 3) | §4의 6번과 꼭짓점 계약, 속도 사례 |
+| SPT13 마일스톤: 성능 점검 | §5의 모든 줄을 재서 고치기, 병렬 기준값과 조각 크기, 3차원 병렬 넣기를 할지, 메모리(§3.11), 코드 리뷰 | 속도 표가 목표와 함께 문서에 있고 지는 곳의 까닭이 적혀 있다 |
+| SPT14 마일스톤: 문서 | `docs/api/spatial.md`의 확정, 이 문서를 구현대로 고치기, spatial.md와 잇기 | 문서가 코드와 맞고 `test_api_surface`가 통과한다 |
+| IP9 마일스톤: 흩어진 점 보간 | `LinearNDInterpolator`, `CloughTocher2DInterpolator`, `griddata`, 그 속도·정확도 사례와 `docs/api/interpolate.md` | 선형 계약, 자료점에서 정확, scipy와 견주기, 스레드마다 같은 바이트 |
+
+- SPT5(BallTree)는 건너뛴 그대로다.
+- SPT9와 SPT11은 SPT8에만 기대므로 함께 갈 수 있다. SPT10은 SPT9의 `triangulation.hpp`, SPT12는 SPT9·SPT10, IP9는 SPT9·SPT10에 기댄다. IP9는 SPT9가 끝나면 2차원부터 시작할 수 있지만 문서의 차례로는 마지막이다.
+
+**나중 후보**: d ≥ 4, `SphericalVoronoi`, `HalfspaceIntersection`, 점 더하기, `furthest_site`, 제약 삼각분할, 알파 모양, 끝없는 보로노이 영역을 상자로 자르기, 자연 이웃 보간, 껍질 밖의 늘이기.
+
+---
+
+## 9. 마일스톤을 시작하기 전에 물을 것
+추천을 첫째에 둔다.
+
+**SPT8 마일스톤 전**
+1. **색인의 dtype** (SPT93). (a) int64. 추천: 이 라이브러리의 색인은 모두 int64이고(`KDTree`, 희소) int32 dtype이 없다. 안의 작업 구조만 int32다. (b) scipy처럼 int32: dtype을 새로 들여야 한다.
+2. **표준 꼴** (SPT94). (a) 양의 방향, 가장 작은 색인이 먼저, 행의 사전 순서. 추천: 결과가 하나로 정해지고 스레드마다 바이트가 같음을 테스트할 수 있다. 비용은 행 정렬 한 번이다(2차원 10⁶점에서 삼각분할의 몇 %로 본다). (b) 만든 순서 그대로(힐베르트 차례라 `find_simplex`의 걷기에 좋다): 알고리즘과 병렬 나누기가 번호에 드러난다. (c) scipy의 차례를 흉내 낸다: Qhull의 차례는 정의가 없어 할 수 없다.
+3. **동점 규칙** (SPT95). (a) 좌표의 사전 순서로 정한 올림 높이의 기호 섭동. 추천: 삼각분할이 점 집합의 함수가 되고, 자리를 건드리지 않아 평평한 단체가 없고, 술어 값이 0일 때만 비용이 든다. (b) 입력 색인 순서의 섭동: 구현은 같고 입력 순서를 바꾸면 기하가 바뀐다. (c) 한 원 위의 점을 다각형 칸으로 남긴다(삼각형이 아닌 칸): `simplices`가 배열이 아니게 되고 보간이 쓸 수 없다. (d) 좌표를 실제로 흔든다(Qhull의 `QJ`): 정확하지 않다.
+4. **같은 점** (SPT96). (a) 합치고(대표는 가장 작은 색인) 나머지를 `coplanar`에 적는다. 추천: 실제 자료에 같은 점이 흔하고, scipy의 속성 이름과 꼴이 그대로 쓰인다. 보간은 값이 다를 때만 에러다(IP110). (b) `ValueError`: 사용자가 먼저 `unique`를 해야 한다. (c) 합치되 속성 이름을 `duplicates`로: 뜻은 맞지만 scipy 코드가 못 읽는다.
+5. **퇴화 입력** (SPT97). (a) `ValueError`(점이 모자람, 모두 한 직선, 모두 한 평면). 추천: scipy와 같은 자리에서 에러이고(종류는 `QhullError` 대신 `ValueError`), 결과의 꼴이 하나다. (b) 낮은 차원의 결과(한 직선 위면 선분의 사슬): `simplices`의 열 수가 입력에 따라 바뀐다.
+6. **입력** (SPT98). (a) 상위 함수 입력, float64로 계산, NaN·inf는 `ValueError`, complex는 `TypeError`, 언제나 복사. 추천: `KDTree`와 같다. (b) scipy처럼 복사하지 않는다: 만든 뒤 원본을 고치면 객체가 틀려진다.
+7. **Qhull의 옵션** (SPT99). (a) `qhull_options`, `furthest_site`, `incremental`(과 `add_points`, `close`)은 없다: 주면 모르는 키워드의 `TypeError`다. 추천: 옵션 문자열은 Qhull의 것이고(허용오차, 흔들기, 합치기) 정확한 술어에서는 뜻이 없다. 가장 먼 점의 삼각분할과 점 더하기는 따로 설계할 기능이다(나중 후보). (b) `qhull_options`를 받고 무시한다: 말없이 다른 결과다. (c) `furthest_site`만 넣는다: 섭동의 부호를 뒤집은 위 껍질이라 할 수는 있지만 쓰임이 드물다.
+8. **술어의 범위** (SPT100). (a) 전개식의 범위 밖은 여러 낱말 정수 길. 추천: "모든 유한한 float64에서 정확하다"가 예외 없이 서고, 코드는 작다(덧셈, 곱셈, 부호). `euclidean`이 넘치지 않는 것과 같은 태도다. (b) 범위 밖은 `ValueError`: 단순하지만 1e200 크기의 좌표를 못 받는다. (c) 2의 거듭제곱으로 비율을 맞춘다: 큰 값과 작은 값이 섞이면 비율 맞추기가 정확하지 않다.
+9. **차원** (SPT101). (a) d = 2, 3만이고 클래스 하나가 둘을 받는다. 추천: SPT91의 범위다. d = 1(정렬)과 d ≥ 4는 `ValueError`다. (b) d = 1도 받는다(구간의 사슬): 쓰임이 없다.
+
+**SPT9 마일스톤 전**
+10. **`Delaunay`의 속성** (SPT102). (a) §1.2의 표: `points simplices neighbors convex_hull vertex_to_simplex vertex_neighbor_vertices transform coplanar find_simplex ndim npoints nsimplex min_bound max_bound`를 두고 `equations paraboloid_scale paraboloid_shift good furthest_site plane_distance lift_points`를 뺀다. 추천: 뺀 것은 Qhull의 올림 좌표(비율을 맞춘 포물면)의 값이라 sd에 대응이 없다. (b) `equations`를 올림 좌표의 식으로 다시 정의해 둔다: 쓰임이 scipy 안쪽(`find_simplex`의 거르기)뿐이다. (c) `transform`도 뺀다: 무게중심 좌표를 쓰는 scipy 코드가 많다.
+11. **`find_simplex`** (SPT103). (a) 정확한 닫힌 단체, 밖과 NaN은 −1, 걸친 점은 가장 작은 번호, `tol`·`bruteforce` 없음. 추천: 답이 정의로 하나이고 보간의 안팎이 이것으로 정해진다. (b) `tol`을 두어 경계 밖 조금을 안으로 친다(scipy): 정확한 판정과 함께 둘 수 없고, 필요하면 사용자가 점을 옮긴다. (c) 밖이면 `ValueError`: 격자 평가에서 밖의 점이 흔하다.
+12. **2차원의 알고리즘** (SPT104). (a) 나눠서 합치기. 추천: §3.3의 까닭 넷. (b) 3차원과 같은 하나씩 넣기 하나로: 코드가 반이지만 느리고(목표 4배 대신 2배쯤) 2차원 만들기가 한 스레드다. SPT9를 (b)로 먼저 끝내고 SPT13에서 (a)로 바꾸는 길도 있다(결과가 같으므로 바꿔도 테스트와 골든이 그대로다).
+13. **피클, `copy`, `repr`** (SPT105). (a) 피클과 `copy`는 점의 바이트로 다시 만든다. `repr`는 한 줄. 추천: `KDTree`와 같고, 만들기가 정의로 정해져 같은 객체다. (b) 단체와 이웃도 담는다: 풀 때 빠르지만 파일이 6배 크고 담긴 배열을 믿어야 한다.
+14. **`transform`** (SPT106). (a) scipy의 꼴, 처음 읽을 때 만들고 쥔다, 값 커널. 추천: 쓰지 않으면 메모리가 들지 않는다(10⁶점에서 96 MB). (b) 만들 때 함께: 언제나 든다. (c) 무게중심 좌표를 바로 주는 메서드를 더한다(`barycentric(xi)`): scipy에 없는 이름이라 첫 판에는 두지 않는다.
+
+**SPT10 마일스톤 전**
+15. **3차원 만들기의 병렬** (SPT107). (a) 첫 판은 한 스레드 넣기, 병렬 넣기는 SPT13에서 재서 정한다. 추천: 1스레드로도 scipy의 2배가 목표이고, 병렬 넣기(영역 잠금)는 코드가 크다. 결과가 정의로 하나라 뒤에 더해도 바이트가 같다. (b) 처음부터 병렬: SPT10이 길어진다.
+
+**SPT11 마일스톤 전**
+16. **`ConvexHull`을 `Delaunay`에서 만들까** (SPT108). (a) 직접 구한다. 추천: 껍질은 O(n)에 가까운 일이고(scipy 10⁶점 55 ms) 삼각분할은 그 수십 배다. `ConvexHull`과 `Voronoi`의 생성자는 점만 받는다. (b) `ConvexHull(tri)`처럼 `Delaunay`도 받는다: 이미 삼각분할이 있으면 빠르지만 `tri.convex_hull`이 있고 생성자의 꼴이 둘이 된다.
+17. **`ConvexHull`의 꼴** (SPT109). (a) 꼭짓점은 극점만, 3차원의 평평한 면은 가장 작은 색인의 부채꼴, `area`·`volume`은 scipy의 뜻(2차원에서 둘레와 넓이), `coplanar`·`good` 없음. 추천: scipy의 기본 동작과 같은 뜻이고 정의가 하나다. (b) 변·면 위의 경계점도 꼭짓점으로: `Delaunay.convex_hull`과 같아지지만 scipy와 다르다. (c) 2차원에 `perimeter`를 더한다: 뜻은 분명하지만 같은 값에 이름이 둘이다.
+
+**SPT12 마일스톤 전**
+18. **`Voronoi`의 꼴** (SPT110). (a) `regions`와 `ridge_vertices`는 `(indptr, indices)` 짝(d = 2의 능선도 같은 꼴), 영역 i는 점 i의 것, `point_region`은 남긴다, `ridge_dict` 없음. 추천: 10⁶점의 list의 list는 만들기보다 느리고, `vertex_neighbor_vertices`·`RadiusResult`와 같은 꼴이다. scipy 코드의 `vor.regions[vor.point_region[i]]`는 `indices[indptr[r]:indptr[r+1]]`로 바뀐다. (b) scipy처럼 list의 list: 그대로 읽히지만 느리고 크다. (c) d = 2의 `ridge_vertices`만 (능선 수, 2) 배열: 편하지만 차원에 따라 꼴이 다르다.
+19. **`Voronoi`의 꼭짓점** (SPT111). (a) 한 원(구) 위의 단체들을 꼭짓점 하나로 합치고 0 길이 능선을 버린다. 좌표는 값 커널로 구한다(§4). 추천: 참 그림이고 scipy(Qhull)도 격자에서 합친다. (b) 단체마다 꼭짓점 하나(합치지 않음): 섭동의 흔적(같은 좌표의 꼭짓점 여럿, 길이 0인 능선)이 결과에 남는다.
+
+**IP9 마일스톤 전**
+20. **보간의 범위** (IP108). (a) 선형은 d = 2, 3, Clough–Tocher는 d = 2, `griddata`는 d = 2, 3(`'nearest'`는 모든 d)이고 1차원 `griddata`는 `ValueError`(메시지가 `sd.interp`와 `CubicSpline`을 짚는다). 추천: `Delaunay`가 받는 차원 그대로이고, 1차원은 이미 있는 보간이 맡는다. (b) 선형을 2차원만: 3차원 삼각분할이 있는데 막을 까닭이 없다. (c) 1차원 `griddata`도 받는다: scipy의 그 길은 다른 함수로 넘기는 것이고 1.18.1에서 `'cubic'`이 점 셋에 에러다.
+21. **`fill_value`** (IP109). (a) 껍질 밖의 값(기본 NaN, 값이 complex면 복소수도), 안팎은 정확한 판정, NaN 평가점은 NaN, `None`은 `TypeError`. 추천: scipy의 뜻이고 NaN의 규칙은 다른 보간과 같다. (b) `None`이면 가장 가까운 점의 값으로 채운다: 편하지만 scipy에 없는 뜻이고 `griddata(method='nearest')`와 두 번 부르면 된다. (c) RGI처럼 `bounds_error`도 둔다: scipy에 없다.
+22. **같은 점의 값** (IP110). (a) 값이 비트까지 같으면 받고 다르면 `ValueError`. 추천: 모순된 자료를 말없이 고르지 않는다(RBF가 같은 점에서 `LinAlgError`인 것과 같은 태도다). (b) scipy처럼 한 값을 쓴다(대표의 값): 말없이 자료를 버린다. (c) 평균: 새 뜻이다.
+23. **Clough–Tocher의 기울기** (IP111). (a) scipy의 Gauss–Seidel 훑기, `tol=1e-6`·`maxiter=400`(scipy의 기본), 색인 순서의 훑기, `maxiter`에서 멈추고 `converged`·`niter` 속성. 추천: scipy와 `tol` 크기 안에서 같은 값이고, 반복이 정해진 횟수 안에서 끝나고, 같은 입력에서 같은 비트다. (b) 같은 방법에 기본 `tol`만 조인다(예: 1e-12): 1차식 재현이 7×10⁻⁹에서 10⁻¹⁴쯤으로 좋아지지만 scipy의 기본과 값이 `1e-6` 크기로 다르고 느려진다. (c) 전역 2n × 2n 희소 계를 직접 푼다: 반복 인자가 없지만 희소 분해의 결정성 문제(`sd.sparse`)와 `tol`·`maxiter`가 뜻을 잃는다. (d) 국소 최소제곱 기울기: 반복이 없고 병렬이지만 scipy와 다른 보간이다.
+24. **평가점과 옵션** (IP112). (a) `xi`는 (…, d) 배열이나 d개 배열의 튜플, `points`에 `Delaunay`를 받음, `rescale` 둠, `simplex_tolerance` 없음. 추천: `NearestNDInterpolator`와 같은 꼴이고 `griddata(points, values, (grid_x, grid_y))`가 그대로 돈다. (b) 배열만: scipy 코드가 가장 흔히 쓰는 꼴을 못 받는다.
+25. **속성과 피클** (IP113). (a) `points`, `values`, `tri`(`Delaunay`), `fill_value`, Clough–Tocher는 `grad`·`converged`·`niter`도; 피클은 점과 값(과 옵션)의 바이트로 다시 만든다. 추천: scipy의 속성 가운데 뜻이 있는 것이고(`is_complex`, `scale`, `values_shape`은 뺀다) 기울기 추정이 결정적이라 다시 만들어도 같은 객체다. (b) `grad`도 담는다: 풀 때 반복을 다시 하지 않지만 담긴 값을 믿어야 한다.

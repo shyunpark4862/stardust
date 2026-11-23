@@ -9,9 +9,11 @@ docs/design/spatial.md §1.1).
 
 The public names come milestone by milestone (docs/design/spatial.md §8): SPT1 the distances (pdist,
 cdist, squareform and the fourteen distance functions), SPT2 kneighbors and radius_neighbors, SPT3 KDTree
-with its query, SPT4 KDTree's radius, pair and count queries.
+with its query, SPT4 KDTree's radius, pair and count queries. The computational geometry
+(docs/design/spatial_geometry.md §8, drafted in docs/api/spatial_geometry.md): SPT9 Delaunay (d = 2).
 """
 
+from ._delaunay import Delaunay
 from ._distance import (
     braycurtis,
     canberra,
@@ -31,6 +33,7 @@ from ._distance import (
     sqeuclidean,
     squareform,
 )
+from ._hull import ConvexHull
 from ._kdtree import KDTree
 from ._neighbors import kneighbors, radius_neighbors
 
@@ -53,6 +56,8 @@ __all__ = [
     "seuclidean",
     "sqeuclidean",
     "KDTree",
+    "Delaunay",
+    "ConvexHull",
     "kneighbors",
     "radius_neighbors",
 ]

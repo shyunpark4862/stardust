@@ -11,5 +11,8 @@ void bind_neighbors(nanobind::module_& m);
 void bind_query(nanobind::module_& m);
 void bind_dual(nanobind::module_& m);
 void bind_sphere(nanobind::module_& m);
+void bind_predicates(nanobind::module_& m);
+void bind_hull(nanobind::module_& m);
+void bind_delaunay(nanobind::module_& m);
 
 }  // namespace sd::spatial

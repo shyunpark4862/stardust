@@ -412,7 +412,157 @@ def _sk_tree():
     return KDTree
 
 
-SPECS = _distance_specs() + _neighbor_specs() + _tree_specs()
+# ---- Delaunay (SPT9: d = 2; docs/design/spatial_geometry.md §5) ----
+
+
+def _plane(kind, npts, seed=20261127):
+    """2-D points: 'uniform' in [0, 1)^2, 'normal', 'grid' (an integer grid of side npts, shuffled: every cell
+    cocircular), 'circle' (computed points of the unit circle)."""
+
+    def setup():
+        import stardust as sd
+
+        g = np.random.Generator(np.random.PCG64([seed, npts, len(kind)]))
+        if kind == "uniform":
+            x = g.random((npts, 2))
+        elif kind == "normal":
+            x = g.standard_normal((npts, 2))
+        elif kind == "grid":
+            i, j = np.divmod(np.arange(npts * npts), npts)
+            x = np.column_stack([i, j]).astype(np.float64)[g.permutation(npts * npts)]
+        else:
+            a = 2 * np.pi * np.arange(npts) / npts
+            x = np.column_stack([np.cos(a), np.sin(a)])
+        q = g.random((len(x), 2)) * (x.max(0) - x.min(0)) + x.min(0)
+        return {"x": x, "sx": sd.asarray(x), "q": q, "sq": sd.asarray(q)}
+
+    return setup
+
+
+def _built(kind, npts):
+    base = _plane(kind, npts)
+
+    def setup():
+        import scipy.spatial as S
+
+        import stardust as sd
+
+        d = base()
+        d["T"], d["sT"] = S.Delaunay(d["x"]), sd.spatial.Delaunay(d["sx"])
+        return d
+
+    return setup
+
+
+def _simplex_set(s):
+    """The simplices as sorted rows in lexicographic order (sd's canonical rows or scipy's)."""
+    a = np.sort(np.asarray(s.simplices, dtype=np.int64), axis=1)
+    return a[np.lexsort(a.T[::-1])].astype(np.float64).ravel()
+
+
+SIMPLICES_CHECK = Check(sd=_simplex_set, ref=lambda label, s: _simplex_set(s), rtol=0.0, atol=0.0)
+NSIMPLEX_CHECK = Check(sd=lambda s: float(s.nsimplex), ref=lambda label, s: float(s.nsimplex), rtol=0.0, atol=0.0)
+
+
+def _vnv(v):
+    """vertex_neighbor_vertices as its rows, each sorted (scipy's rows have no order)."""
+    indptr, indices = (np.asarray(a) for a in v)
+    return np.concatenate([np.sort(indices[indptr[i] : indptr[i + 1]]) for i in range(len(indptr) - 1)]).astype(float)
+
+
+def _scipy_vnv(d):
+    T = d["T"]
+
+    def run():
+        T._vertex_neighbor_vertices = None  # scipy keeps it after the first use
+        return T.vertex_neighbor_vertices
+
+    return run
+
+
+def _geometry_specs():
+    out = []
+    for npts in (10**3, 10**4, 10**5, 10**6):
+        exp = int(round(np.log10(npts)))
+        out.append(Spec("SPT9", "delaunay", "Delaunay 2-D uniform", ("Delaunay",), f"10^{exp} points",
+                        _plane("uniform", npts), lambda d: lambda: _sp().Delaunay(d["sx"]),
+                        (Ref("scipy", lambda d: (lambda S: lambda: S.Delaunay(d["x"]))(_scipy_s())),),
+                        quick=npts == 10**5, note="scipy (Qhull) on one thread" if npts == 10**6 else "",
+                        check=SIMPLICES_CHECK))  # fmt: skip
+    for kind, npts, size, note, check in (
+        ("normal", 10**5, "10^5 points", "", SIMPLICES_CHECK),
+        ("grid", 316, "316^2 points", "every cell cocircular: the tie rule decides", NSIMPLEX_CHECK),
+        ("circle", 10**4, "10^4 points", "points of the unit circle", NSIMPLEX_CHECK),
+    ):
+        out.append(Spec("SPT9", "delaunay", f"Delaunay 2-D {kind}", ("Delaunay",), size, _plane(kind, npts),
+                        lambda d: lambda: _sp().Delaunay(d["sx"]),
+                        (Ref("scipy", lambda d: (lambda S: lambda: S.Delaunay(d["x"]))(_scipy_s())),), note=note,
+                        check=check))  # fmt: skip
+    for npts in (10**3, 10**4, 10**5):
+        exp = int(round(np.log10(npts)))
+        out.append(Spec("SPT9", "delaunay", "Delaunay.find_simplex 2-D", ("Delaunay.find_simplex",),
+                        f"10^{exp} points", _built("uniform", npts), lambda d: lambda: d["sT"].find_simplex(d["sq"]),
+                        (Ref("scipy", lambda d: lambda: d["T"].find_simplex(d["q"])),),
+                        note="as many uniform query points as points",
+                        check=Check(skip="the simplex numbers differ (sd's canonical order)")))  # fmt: skip
+    for npts in (10**4, 10**5, 10**6):
+        exp = int(round(np.log10(npts)))
+        out.append(Spec("SPT9", "delaunay", "Delaunay.vertex_neighbor_vertices 2-D",
+                        ("Delaunay.vertex_neighbor_vertices",), f"10^{exp} points", _built("uniform", npts),
+                        lambda d: lambda: d["sT"]._tri.vertex_neighbor_vertices(), (Ref("scipy", _scipy_vnv),),
+                        note="both are made on first use and kept: timed uncached",
+                        check=Check(sd=_vnv, ref=lambda label, v: _vnv(v), rtol=0.0, atol=0.0)))  # fmt: skip
+    return out
+
+
+# ---- ConvexHull (SPT11; docs/design/spatial_geometry.md §5) ----
+
+
+def _hull_points(d, kind, npts, seed=20261128):
+    """d-D points: 'uniform' in [0, 1)^d, or 'sphere' (every point extreme: the unit circle's computed points
+    for d = 2, normalized normal vectors for d = 3)."""
+
+    def setup():
+        import stardust as sd
+
+        g = np.random.Generator(np.random.PCG64([seed, d, npts, len(kind)]))
+        if kind == "uniform":
+            x = g.random((npts, d))
+        elif d == 2:
+            a = 2 * np.pi * np.arange(npts) / npts
+            x = np.column_stack([np.cos(a), np.sin(a)])
+        else:
+            x = g.standard_normal((npts, 3))
+            x /= np.linalg.norm(x, axis=1)[:, None]
+        return {"x": x, "sx": sd.asarray(x)}
+
+    return setup
+
+
+def _hull_measure(h):
+    """A hull as what the smoke check compares: the extreme points (sorted), area and volume."""
+    return np.concatenate([np.sort(np.asarray(h.vertices, dtype=np.float64)), [h.area, h.volume]])
+
+
+HULL_CHECK = Check(sd=_hull_measure, ref=lambda label, h: _hull_measure(h), rtol=1e-12)
+
+
+def _hull_specs():
+    out = []
+    for d, kind, sizes in ((2, "uniform", (10**4, 10**5, 10**6)), (3, "uniform", (10**4, 10**5, 10**6)),
+                           (2, "sphere", (10**5,)), (3, "sphere", (10**5,))):  # fmt: skip
+        for npts in sizes:
+            exp = int(round(np.log10(npts)))
+            name = f"ConvexHull {d}-D {'uniform' if kind == 'uniform' else 'circle' if d == 2 else 'sphere'}"
+            out.append(Spec("SPT11", "hull", name, ("ConvexHull",), f"10^{exp} points", _hull_points(d, kind, npts),
+                            lambda d: lambda: _sp().ConvexHull(d["sx"]),
+                            (Ref("scipy", lambda d: (lambda S: lambda: S.ConvexHull(d["x"]))(_scipy_s())),),
+                            quick=(kind, npts) == ("uniform", 10**5),
+                            note="every point extreme" if kind == "sphere" else "", check=HULL_CHECK))  # fmt: skip
+    return out
+
+
+SPECS = _distance_specs() + _neighbor_specs() + _tree_specs() + _geometry_specs() + _hull_specs()
 
 
 def _public(names) -> bool:
@@ -438,4 +588,6 @@ TITLES = {
     "distance": "거리 (`pdist`, `cdist`)",
     "neighbors": "한 번에 끝나는 이웃 찾기",
     "tree": "KD 트리",
+    "delaunay": "삼각분할 (`Delaunay`)",
+    "hull": "볼록 껍질 (`ConvexHull`)",
 }

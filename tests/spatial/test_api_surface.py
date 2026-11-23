@@ -19,6 +19,10 @@ API = pathlib.Path(__file__).parents[2] / "docs" / "api" / "spatial.md"
 # Documented, not implemented yet (docs/design/spatial.md §8): SPT1 made the distances public. A
 # milestone moves its names from here to sd.spatial.__all__.
 PLANNED: set[str] = set()  # SPT1-SPT3 made every module-level name public
+# The computational geometry's classes are drafted in docs/api/spatial_geometry.md until milestone SPT14 merges
+# that draft into spatial.md (decision SPT118); their signatures are checked against the draft.
+DRAFT = API.parent / "spatial_geometry.md"
+DRAFTED = {"Delaunay", "ConvexHull", "Voronoi"}
 CLASSES = {"KDTree", "QueryResult", "RadiusResult"}
 METRICS = ("euclidean", "sqeuclidean", "cityblock", "chebyshev", "minkowski", "seuclidean", "mahalanobis", "cosine",
            "correlation", "canberra", "braycurtis", "hamming", "jaccard", "haversine")  # fmt: skip
@@ -57,7 +61,7 @@ def params(sig):
 
 def test_exports_match_api_md():
     doc = set(module_names())
-    exported = set(sd.spatial.__all__)
+    exported = set(sd.spatial.__all__) - DRAFTED
     assert exported.isdisjoint(PLANNED)
     assert exported | PLANNED == doc
     for name in exported:
@@ -67,7 +71,19 @@ def test_exports_match_api_md():
 def test_exported_signatures_match_api_md():
     doc = module_names()
     for name in sd.spatial.__all__:
-        assert str(inspect.signature(getattr(sd.spatial, name)))[1:-1] == doc[name], name
+        if name not in DRAFTED:
+            assert str(inspect.signature(getattr(sd.spatial, name)))[1:-1] == doc[name], name
+
+
+def test_drafted_signatures_match_the_draft():
+    draft = {}
+    for block in signature_blocks(DRAFT.read_text()):
+        for line in block:
+            m = LINE.match(line.split("#")[0].strip())
+            if m and m.group("cls") is None:
+                draft[m.group("name")] = m.group("sig")
+    for name in DRAFTED & set(sd.spatial.__all__):
+        assert str(inspect.signature(getattr(sd.spatial, name)))[1:-1] == draft[name], name
 
 
 def test_lines_are_unique_and_methods_belong_to_documented_classes():
@@ -109,7 +125,7 @@ def test_no_distance_submodule_or_aliases():
     # SPT5, SPT6: one flat namespace; no aliases (cKDTree, distance_matrix)
     doc = module_names()
     absent = ("distance", "cKDTree", "distance_matrix", "minkowski_distance", "minkowski_distance_p", "Rectangle",
-              "BallTree", "NearestNeighbors", "pairwise_distances_argmin_min", "ConvexHull", "Delaunay")  # fmt: skip
+              "BallTree", "NearestNeighbors", "pairwise_distances_argmin_min")  # fmt: skip
     for name in absent:
         assert name not in doc, name
         assert not hasattr(sd.spatial, name), name
@@ -133,7 +149,7 @@ def test_shared_options_have_one_spelling():
 def test_module_is_wired():
     # SPT1: pdist, cdist, squareform and the fourteen distance functions; SPT3: KDTree
     assert {"pdist", "cdist", "squareform", "KDTree"} <= set(sd.spatial.__all__)
-    assert len([n for n in sd.spatial.__all__ if n not in ("kneighbors", "radius_neighbors")]) == 18
+    assert len([n for n in sd.spatial.__all__ if n not in ("kneighbors", "radius_neighbors") + tuple(DRAFTED)]) == 18
     assert not hasattr(sd.spatial, "distance")
     assert {"kneighbors", "radius_neighbors"} <= set(sd.spatial.__all__)  # SPT2
 

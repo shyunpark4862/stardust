@@ -198,6 +198,8 @@ def cases(L):
     yield from _neighbor_cases(L)
     yield from _kdtree_cases(L)
     yield from _kdtree_radius_cases(L)
+    yield from _delaunay_cases(L)
+    yield from _hull_cases(L)
 
 
 def _neighbor_cases(L):
@@ -421,3 +423,73 @@ def _kdtree_radius_cases(L):
     yield "error count_neighbors weights length", lambda: t.count_neighbors(t, 1.0, weights=(a(w[:5]), None))
     yield "error count_neighbors weights nan", lambda: t.count_neighbors(t, 1.0, weights=a(np.full(40, NAN)))
     yield "error sparse_distance_matrix max_distance", lambda: t.sparse_distance_matrix(t, NAN)
+
+
+def _delaunay_cases(L):
+    """Delaunay for d = 2 (milestone SPT9, docs/design/spatial_geometry.md §2.3): every attribute and
+    find_simplex on small degenerate sets (an integer grid, integer points on one circle, equal points with
+    -0.0, a line with one point off it, huge and tiny coordinates), 3 * 10^4 uniform points (the parallel
+    build, canonical form and queries at 3 and 10 threads), the wrong calls."""
+    S = L.sd.spatial
+    a = L.arr
+    r = L.rng(705)
+    grid = np.array([[i, j] for i in range(6) for j in range(6)], dtype=float)[r.permutation(36)]
+    circle = np.array([[5.0, 0.0], [4.0, 3.0], [3.0, 4.0], [0.0, 5.0], [-3.0, 4.0], [-4.0, 3.0], [-5.0, 0.0],
+                       [-4.0, -3.0], [-3.0, -4.0], [0.0, -5.0], [3.0, -4.0], [4.0, -3.0], [0.0, 0.0]])  # fmt: skip
+    dup = np.array([[0.0, 0.0], [1.0, 0.0], [-0.0, 0.0], [0.0, 1.0], [1.0, 0.0], [1.0, 1.0], [0.0, -0.0]])
+    line = np.array([[float(i), 0.0] for i in range(8)] + [[3.5, 2.0]])
+    wide = np.array([[1e200, 0.0], [-1e200, 3e-300], [0.0, 1e200], [5e-324, -1e-310], [2e-300, 7e199]])
+    big = r.random((30_000, 2))
+    q = np.array([[0.5, 0.5], [2.5, 2.5], [1.0, 1.0], [-1.0, 0.0], [NAN, 0.0], [2.0, 2.5], [5.0, 5.0]])
+
+    def attrs(t):
+        return (t.npoints, t.ndim, t.nsimplex, t.points, t.simplices, t.neighbors, t.convex_hull,
+                t.vertex_to_simplex, *t.vertex_neighbor_vertices, t.coplanar, t.transform, t.min_bound,
+                t.max_bound, repr(t))  # fmt: skip
+
+    for name, x in (("grid", grid), ("circle", circle), ("dup", dup), ("line", line), ("wide", wide)):
+        yield f"Delaunay attributes {name}", lambda x=x: attrs(S.Delaunay(a(x)))
+    yield "Delaunay attributes big", lambda: attrs(S.Delaunay(a(big)))
+    yield "Delaunay find_simplex grid", lambda: S.Delaunay(a(grid)).find_simplex(a(q))
+    yield "Delaunay find_simplex one point", lambda: S.Delaunay(a(grid)).find_simplex(a(q[0]))
+    yield "Delaunay find_simplex batch", lambda: S.Delaunay(a(circle)).find_simplex(a(q[:6].reshape(3, 2, 2)))
+    yield "Delaunay find_simplex big", lambda: S.Delaunay(a(big)).find_simplex(a(r.random((5000, 2)) * 1.2 - 0.1))
+    yield "error Delaunay collinear", lambda: S.Delaunay(a(line[:8]))
+    yield "error Delaunay too few", lambda: S.Delaunay(a(dup[:3]))
+    yield "error Delaunay nan", lambda: S.Delaunay(a(np.array([[0.0, 0.0], [1.0, NAN], [0.0, 1.0]])))
+    yield "error Delaunay columns", lambda: S.Delaunay(a(np.zeros((5, 4))))
+    yield "error Delaunay qhull_options", lambda: S.Delaunay(a(grid), qhull_options="Qbb")
+    yield "error find_simplex columns", lambda: S.Delaunay(a(grid)).find_simplex(a(np.zeros((2, 3))))
+
+
+def _hull_cases(L):
+    """ConvexHull (milestone SPT11, docs/design/spatial_geometry.md §2.4): every attribute on small degenerate
+    sets (a square with points on its edges, equal points with -0.0, the unit cube with its grid, integer points
+    on one sphere, huge and tiny coordinates), 5 * 10^4 uniform points in 2-D and 3-D (the parallel scans and
+    pre-filter at 3 and 10 threads), the wrong calls."""
+    S = L.sd.spatial
+    a = L.arr
+    r = L.rng(711)
+    square = np.array([[0.0, 0.0], [4.0, 0.0], [4.0, 4.0], [0.0, 4.0], [2.0, 0.0], [4.0, 1.0], [1.0, 1.0],
+                       [0.0, 3.0], [2.0, 4.0]])  # fmt: skip
+    dup = np.array([[0.0, 0.0], [1.0, 0.0], [-0.0, 0.0], [0.0, 1.0], [1.0, 0.0], [1.0, 1.0], [0.0, -0.0]])
+    cube = np.array([[i, j, k] for i in range(3) for j in range(3) for k in range(3)], dtype=float) / 2
+    sphere = np.array([[x, y, z] for x in range(-3, 4) for y in range(-3, 4) for z in range(-3, 4)
+                       if x * x + y * y + z * z == 9], dtype=float)  # fmt: skip
+    wide = np.array([[1e200, 0.0, 0.0], [-1e200, 3e-300, 0.0], [0.0, 1e200, 1e-300], [5e-324, -1e-310, 1e200],
+                     [2e-300, 7e199, -1e200], [0.0, 0.0, 0.0]])  # fmt: skip
+
+    def attrs(h):
+        return (h.npoints, h.ndim, h.nsimplex, h.points, h.vertices, h.simplices, h.neighbors, h.equations,
+                h.area, h.volume, h.min_bound, h.max_bound, repr(h))  # fmt: skip
+
+    for name, x in (("square", square), ("dup", dup), ("cube", cube), ("sphere", sphere), ("wide", wide)):
+        yield f"ConvexHull attributes {name}", lambda x=x: attrs(S.ConvexHull(a(x)))
+    yield "ConvexHull attributes big 2-D", lambda: attrs(S.ConvexHull(a(r.random((50_000, 2)))))
+    yield "ConvexHull attributes big 3-D", lambda: attrs(S.ConvexHull(a(r.random((50_000, 3)))))
+    yield "error ConvexHull collinear", lambda: S.ConvexHull(a(square[[0, 1, 4]]))
+    yield "error ConvexHull coplanar", lambda: S.ConvexHull(a(cube[cube[:, 2] == 0.5]))
+    yield "error ConvexHull too few", lambda: S.ConvexHull(a(dup[:3]))
+    yield "error ConvexHull nan", lambda: S.ConvexHull(a(np.array([[0.0, 0.0], [1.0, NAN], [0.0, 1.0]])))
+    yield "error ConvexHull columns", lambda: S.ConvexHull(a(np.zeros((5, 4))))
+    yield "error ConvexHull qhull_options", lambda: S.ConvexHull(a(square), qhull_options="Qt")

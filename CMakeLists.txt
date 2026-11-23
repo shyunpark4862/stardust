@@ -108,6 +108,9 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/spatial/query.cpp
   csrc/spatial/dual.cpp
   csrc/spatial/sphere.cpp
+  csrc/spatial/predicates.cpp
+  csrc/spatial/hull.cpp
+  csrc/spatial/delaunay2.cpp
   csrc/graph/input.cpp
   csrc/graph/traversal.cpp
   csrc/graph/paths.cpp
