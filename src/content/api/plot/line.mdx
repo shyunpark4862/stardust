@@ -52,7 +52,7 @@ raises:
   - type: TypeError
     desc: data 없이 자료 인자에 문자열을 줬을 때, data가 DataFrame이 아닐 때, 수가 아닌 열을 줬을 때, 옵션의 형이 틀릴 때, 모르는 키워드를 줬을 때.
   - type: ValueError
-    desc: x와 y의 길이가 다를 때, 자료가 1차원이 아닐 때, 없는 열 이름일 때, group의 길이가 자료와 다를 때, group과 color나 label을 함께 줬을 때, 색이나 style을 알 수 없을 때, alpha가 [0, 1] 밖일 때, width가 0 이하일 때.
+    desc: x와 y의 길이가 다를 때, 자료가 1차원이 아닐 때, 없는 열 이름일 때, group의 길이가 자료와 다를 때, group과 color나 label을 함께 줬을 때, 색이나 style을 알 수 없을 때, alpha가 [0, 1] 밖일 때, width가 0 이하일 때, 3D 층이 있는 칸에 그릴 때.
 seeAlso: [basics, scatter, step, area, customize]
 ---
 import PlotImage from '../../../components/fig/PlotImage.astro';
@@ -73,10 +73,10 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
 >>> x = sd.linspace(0.0, 2 * math.pi, 200)
 >>> fig = sd.plot.line(x, sd.sin(x), label=r"$\sin x$")
 >>> fig = fig.line(x, sd.cos(x), label=r"$\cos x$")
->>> fig = fig.xlabel(r"$x$").xticks("pi").legend(loc="lower left")
+>>> fig = fig.xlabel(r"$x$").xticks("pi")
 ```
 
-<PlotImage name="line-sin-cos" alt="0에서 2π까지 사인과 코사인 두 곡선이 파랑과 노랑으로 그려지고, 왼쪽 아래에 범례가 있는 그림" caption="두 번째 선은 메서드로 겹쳤어요. 색을 주지 않으면 팔레트의 다음 색을 받고, label을 준 선이 있으면 범례가 생겨요. 범례는 legend로 왼쪽 아래에 두었어요." />
+<PlotImage name="line-sin-cos" alt="0에서 2π까지 사인과 코사인 두 곡선이 파랑과 노랑으로 그려지고, 왼쪽 아래에 범례가 있는 그림" caption="두 번째 선은 메서드로 겹쳤어요. 색을 주지 않으면 팔레트의 다음 색을 받고, label을 준 선이 있으면 범례가 생겨요. 범례는 곡선이 지나지 않는 구석을 알아서 골라요." />
 
 200개의 점이면 사인 곡선이 매끈해 보여요. 색을 주지 않은 선은 칸마다 팔레트의 색을 차례로 받아요. 첫 선은 `'C0'`, 다음 선은 `'C1'`이에요. 축의 범위는 자료의 범위에 조금 여유를 둬서 잡히고, [`xlim`, `ylim`](/api/plot/customize/)으로 바꿀 수 있어요.
 
@@ -114,10 +114,9 @@ $(\cos 3t, \sin 2t)$의 리사주 곡선이에요. 거꾸로, 측정값처럼 `x
 >>> fig = fig.line(x, x * 0 + 2, style=":", label=r"\texttt{':'}")
 >>> fig = fig.line(x, x * 0 + 1, style="-.", label=r"\texttt{'-.'}")
 >>> fig = fig.line(x, sd.sin(x) * 0.3 + 5.5, color="#cd534c", width=2.5, alpha=0.5)
->>> fig = fig.ylim(0, 6.5).legend(loc="right")
 ```
 
-<PlotImage name="line-styles" alt="가로선 넷이 실선, 파선, 점선, 일점쇄선으로 그려지고 그 위에 굵고 반투명한 붉은 물결선이 있는 그림. 범례는 칸 오른쪽 밖에 있어요." caption="style의 네 꼴과, color·width·alpha를 준 선. 굵기를 주지 않은 선은 모두 테마의 굵기예요." />
+<PlotImage name="line-styles" alt="가로선 넷이 실선, 파선, 점선, 일점쇄선으로 그려지고 그 위에 굵고 반투명한 붉은 물결선이 있는 그림. 범례는 칸 위에 한 줄로 있어요." caption="style의 네 꼴과, color·width·alpha를 준 선. 굵기를 주지 않은 선은 모두 테마의 굵기예요. 선이 칸을 끝에서 끝까지 가로질러 빈 구석이 없으니 범례가 칸 위로 나갔어요." />
 
 색의 꼴은 이름(`'gray'`, `'red'` 등 CSS의 이름 열다섯), `'#rrggbb'`, 투명도까지 담은 `'#rrggbbaa'`, 0과 1 사이의 수 셋이나 넷의 튜플, 팔레트의 번호 `'C0'`–`'C9'`예요. `'C0'`은 그림의 `palette`에서 첫 색이라, 다른 층과 색을 맞출 때 써요. 색 이름의 목록과 팔레트는 [그림의 기본](/api/plot/basics/)과 [스타일](/api/plot/style/)에 있어요.
 
@@ -137,7 +136,7 @@ $(\cos 3t, \sin 2t)$의 리사주 곡선이에요. 거꾸로, 측정값처럼 `x
 >>> df.shape
 (39, 3)
 >>> fig = sd.plot.line("day", "mass", data=df, group="strain")
->>> fig = fig.xlabel("day").ylabel("mass (mg)").legend(loc="upper left", title="strain")
+>>> fig = fig.xlabel("day").ylabel("mass (mg)").legend(title="strain")
 ```
 
 <PlotImage name="line-group" alt="0일에서 12일까지 무게가 S자로 느는 세 곡선 wild, mutant, control이 파랑, 노랑, 회색으로 그려지고 왼쪽 위에 strain이라는 제목의 범례가 있는 그림" caption="group의 무리는 처음 나온 차례로 색을 받아요. 범례의 이름은 무리의 값을 글자 그대로 적어요." />
@@ -175,11 +174,12 @@ TypeError: line(): 'y' must be numeric, not a Series of string
 
 ## 점이 아주 많을 때
 
-점이 수만, 수십만 개여도 그대로 넘기면 돼요. 그릴 때 가로로 어느 화소보다도 좁은 폭에 잇달아 놓인 점은 그 폭의 처음, 가장 낮은, 가장 높은, 마지막 점만 남기고 덜어 내요. 그래서 보이는 모양은 그대로이고 SVG·PDF 파일은 점의 수만큼 커지지 않아요.
+점이 수만, 수십만 개여도 그대로 넘기면 돼요. 그릴 때 가로로 어느 화소보다도 좁은 폭에 잇달아 놓인 점은 그 폭의 처음, 가장 낮은, 가장 높은, 마지막 점만 남기고 덜어 내요. 그리고 점의 수와 상관없이, 빼도 선이 0.02 pt 넘게 움직이지 않는 점은 솎아 내요. 곧은 구간에 촘촘히 놓인 점이 그래요. 그래서 보이는 모양은 그대로이고 SVG·PDF 파일은 점의 수만큼 커지지 않아요.
 
 ## 조심할 점
 
-- `width`는 메서드와 모듈 함수 모두 선의 굵기(pt)예요. 그림의 너비는 모듈 함수에서도 `width`라는 이름이라 겹치는데, 이때 `line`의 키워드로 쓰여요. 그림의 너비를 바꾸려면 `fig.size(120)`을 쓰거나 `sd.plot.Figure(width=120)`로 그림을 먼저 만들고 `.line(...)`을 부르세요.
+- `width`는 메서드와 모듈 함수 모두 선의 굵기(pt)예요. 그림 옵션의 너비도 `width`라는 이름이지만 `line`에서는 선의 굵기가 그 이름을 가져요. 그림의 너비를 바꾸려면 `fig.size(120)`을 쓰거나 `sd.plot.Figure(width=120)`로 그림을 먼저 만들고 `.line(...)`을 부르세요.
+- 곡면이나 공간 곡선을 그린 3D 칸에는 선을 얹을 수 없어요(`ValueError`). 공간의 선은 [`curve3d`](/api/plot/curve3d/)로 그려요.
 - 로그 축에서는 0 이하의 값이 NaN과 같이 다뤄져 선이 끊겨요([축 고치기](/api/plot/customize/)).
 - 범례의 이름은 LaTeX 원문이에요. 수식은 `$...$`에 넣고, `%`, `_`, `&`, `#`은 `\`로 숨겨요. 조판 오류는 그릴 때(`save`, `to_svg`, 노트북 표시) 나요.
 

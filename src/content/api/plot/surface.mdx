@@ -10,9 +10,9 @@ signatures:
 summary: 두 변수 함수의 그래프 z = f(x, y)를 음영과 격자선이 있는 곡면으로 그려요. 함수를 주면 표본을 알아서 고르고, 꺾이는 곳·극점의 옆구리·정의역의 가장자리만 더 촘촘히 재며, 높이의 범위를 값의 대부분에 맞춰 잡아요.
 params:
   - name: f
-    type: 호출 가능한 객체
+    type: 호출 가능한 객체 또는 2차원 배열
     kind: positional-only
-    desc: "f(x, y). 같은 모양의 float64 sd.ndarray 둘(x, y)을 받아 같은 모양의 실수 배열을 돌려줘요. 수 하나를 돌려주면 상수 함수예요. 정의되지 않는 점은 NaN을 돌려줘요."
+    desc: "f(x, y). 같은 모양의 float64 sd.ndarray 둘(x, y)을 받아 같은 모양의 실수 배열을 돌려줘요. 수 하나를 돌려주면 상수 함수예요. 정의되지 않는 점은 NaN을 돌려줘요. 함수 대신 이미 계산한 높이의 2차원 배열(2 × 2 이상)을 줘도 돼요. Z[j, i]가 직사각형을 고르게 나눈 격자의 점 (x_i, y_j)의 높이예요."
   - name: x0, x1
     type: 실수
     kind: positional-only
@@ -48,11 +48,11 @@ params:
   - name: samples
     type: int, (int, int) 또는 None
     kind: keyword-only
-    desc: "첫 격자의 점의 수. 수 하나면 두 방향이 같고, 쌍이면 (x 방향, y 방향)이에요. 3–2000. None(기본값)이면 121 × 121이에요."
+    desc: "첫 격자의 점의 수. 수 하나면 두 방향이 같고, 쌍이면 (x 방향, y 방향)이에요. 3–2000. None(기본값)이면 121 × 121이에요. 값의 배열에는 줄 수 없어요."
   - name: refine
     type: int 또는 None
     kind: keyword-only
-    desc: "모자란 칸을 다시 재는 횟수의 한계(0–2). 한 번에 칸을 4 × 4로 나눠요. 0이면 적응형 표본을 꺼요. None(기본값)이면 2예요."
+    desc: "모자란 칸을 다시 재는 횟수의 한계(0–2). 한 번에 칸을 4 × 4로 나눠요. 0이면 적응형 표본을 꺼요. None(기본값)이면 2예요. 값의 배열에는 줄 수 없어요."
   - name: azimuth, elevation
     type: 실수 또는 None
     kind: keyword-only
@@ -70,16 +70,16 @@ returns:
   desc: 곡면을 그린 그림. 메서드로 부르면 그 그림 자신이에요.
 raises:
   - type: TypeError
-    desc: "f가 호출 가능하지 않을 때, f가 배열이나 수가 아닌 것(리스트 등)이나 복소수를 돌려줄 때, 범위·각·alpha가 수가 아닐 때, zlim이 쌍이 아닐 때, mesh·contours가 bool이나 정수가 아닐 때, samples·refine이 정수가 아닐 때, perspective가 bool이 아닐 때. f 안에서 난 에러도 그대로 나와요."
+    desc: "f가 함수도 2차원 값 배열도 아닐 때, f가 배열이나 수가 아닌 것(리스트 등)이나 복소수를 돌려줄 때, 범위·각·alpha가 수가 아닐 때, zlim이 쌍이 아닐 때, mesh·contours가 bool이나 정수가 아닐 때, samples·refine이 정수가 아닐 때, perspective가 bool이 아닐 때. f 안에서 난 에러도 그대로 나와요."
   - type: ValueError
-    desc: "범위가 유한하지 않거나 x0 < x1, y0 < y1이 아닐 때, zlim이 low < high가 아닐 때, f가 다른 모양의 배열을 돌려줄 때, color와 cmap을 함께 줄 때, 모르는 cmap이나 색, mesh·contours·samples·refine·alpha·elevation이 범위 밖일 때, 2D 층이 있는 칸에 더할 때."
+    desc: "범위가 유한하지 않거나 x0 < x1, y0 < y1이 아닐 때, zlim이 low < high가 아닐 때, f가 다른 모양의 배열을 돌려줄 때, color와 cmap을 함께 줄 때, 모르는 cmap이나 색, mesh·contours·samples·refine·alpha·elevation이 범위 밖일 때, 값의 배열이 2차원이 아니거나 2 × 2보다 작을 때, 값의 배열과 함께 samples나 refine을 줄 때, 2D 층이 있는 칸에 더할 때."
 seeAlso: [view3d, parametric_surface, contour, density, sampling, basics]
 ---
 import PlotImage from '../../../components/fig/PlotImage.astro';
 
 ## 한눈에 보기
 
-`surface(f, x0, x1, y0, y1)`은 직사각형 $[x_0, x_1] \times [y_0, y_1]$ 위에서 높이가 $z = f(x, y)$인 곡면을 그려요. 함수를 그대로 넘기면 돼요. 격자를 만들거나 값을 미리 계산하지 않아요.
+`surface(f, x0, x1, y0, y1)`은 직사각형 $[x_0, x_1] \times [y_0, y_1]$ 위에서 높이가 $z = f(x, y)$인 곡면을 그려요. 함수를 그대로 넘기면 돼요. 격자를 만들거나 값을 미리 계산할 필요가 없어요.
 
 ```python
 >>> ripple = lambda x, y: sd.cos(2 * sd.hypot(x, y)) * sd.exp(-(x**2 + y**2) / 6)
@@ -194,6 +194,33 @@ ValueError: surface(): 'f' must return an array of its arguments' shape (121, 12
 
 매끈한 곡면은 기본값으로 충분해요. 아주 잔물결이 많은 곡면은 `samples`를 키우고, 그리는 시간을 줄이고 싶으면 `refine=0`으로 첫 격자만 써요. 모든 함수 그림이 같은 두 인자를 받아요([표본 고르기](/api/plot/sampling/)).
 
+## 값의 배열로 그리기
+
+함수 자리에 이미 계산한 높이의 2차원 배열을 줄 수 있어요. 잰 값이나 시뮬레이션의 결과처럼 식이 없는 곡면을 그릴 때 써요. `Z[j, i]`는 직사각형을 고르게 나눈 격자의 점 $(x_i, y_j)$의 높이이고, 첫 줄이 `y0`이에요. `sd.meshgrid(x, y, indexing="xy")`의 격자에서 계산한 값이 그대로 맞아요.
+
+```python
+>>> x = sd.linspace(-3.0, 3.0, 25)
+>>> y = sd.linspace(-3.0, 3.0, 25)
+>>> X, Y = sd.meshgrid(x, y, indexing="xy")
+>>> Z = ripple(X, Y)
+>>> Z.shape
+(25, 25)
+>>> fig = sd.plot.surface(Z, -3, 3, -3, 3)
+```
+
+<PlotImage name="surface-values" format="png" alt="맨 위 그림과 같은 물결 곡면이지만 봉우리와 물결의 마루가 각져 있어요. 높이에 따른 색과 격자선은 같아요." caption="25 × 25점의 높이 배열로 그린 곡면이에요. 점 사이는 평평한 조각으로 이으므로 성긴 격자에서는 마루가 각져요." />
+
+값만 있으면 다시 잴 수 없어요. 곡면은 준 격자 그대로이고, `samples`와 `refine`을 함께 주면 에러예요. 색, 격자선, 바닥 등고선, `zlim`, 높이 범위를 잡는 법은 함수일 때와 같아요. NaN인 값의 자리에는 곡면이 없어요.
+
+```python
+>>> sd.plot.surface(Z, -3, 3, -3, 3, refine=0)
+Traceback (most recent call last):
+    ...
+ValueError: surface(): 'samples' and 'refine' are for a function; the values given are the grid
+```
+
+고르지 않은 격자나 흩어진 점 $(x_i, y_i, z_i)$의 곡면은 받지 않아요. 흩어진 점은 [`scatter3d`](/api/plot/scatter3d/)로 찍어요.
+
 ## 곡면 여럿과 다른 층
 
 메서드 `fig.surface(...)`로 같은 칸에 곡면을 더해요. 곡면이 서로 뚫고 지나가도 교선을 따라 옳게 갈리고, `alpha`를 주면 반투명이에요. 곡면 위에 [`curve3d`](/api/plot/curve3d/)로 길을, [`scatter3d`](/api/plot/scatter3d/)로 점을 얹을 수도 있어요. 보기와 규칙은 [3D 칸과 시점](/api/plot/view3d/#한-칸에-여러-층)에 있어요.
@@ -203,7 +230,7 @@ ValueError: surface(): 'f' must return an array of its arguments' shape (121, 12
 >>> fig = fig.surface(lambda x, y: 0 * x + 0.2, -1, 1, -1, 1, color="gray", mesh=False)
 ```
 
-시점(`azimuth`, `elevation`, `perspective`)은 칸의 첫 층의 것이 쓰여요. 이미 2D 그림이 있는 칸에는 더할 수 없어요.
+시점(`azimuth`, `elevation`, `perspective`)은 칸의 첫 층의 것이 쓰여요. 이미 2D 그림이 있는 칸에는 더할 수 없고, 곡면이 있는 칸에 2D 그림을 더할 수도 없어요.
 
 ## 조심할 점
 
@@ -213,7 +240,7 @@ ValueError: surface(): 'f' must return an array of its arguments' shape (121, 12
 
 ## matplotlib을 아는 분께
 
-- matplotlib의 `plot_surface(X, Y, Z)`는 격자 `X`, `Y`와 값 `Z`를 받아요. `surface`는 함수와 범위를 받아 격자를 스스로 정하고, 필요한 곳만 더 촘촘히 재요. 이미 계산한 값의 격자를 그리는 꼴은 없어요.
+- matplotlib의 `plot_surface(X, Y, Z)`는 격자 `X`, `Y`와 값 `Z`를 받아요. `surface`는 함수와 범위를 받아 격자를 스스로 정하고, 필요한 곳만 더 촘촘히 재요. 값의 배열 `Z`도 받지만 `X`, `Y` 대신 직사각형의 범위를 주고, 격자는 그 직사각형을 고르게 나눈 것으로 봐요.
 - `rstride`, `cstride`(그리는 격자의 성김)는 없고, 격자선의 칸 수는 `mesh`, 표본의 수는 `samples`가 정해요. 격자선은 삼각형의 변이 아니라 $x$, $y$가 고른 선이라 표본을 촘촘히 해도 격자선의 수는 그대로예요.
 - 높이에 따른 색은 `cmap`, 한 색은 `color`예요. 둘 다 주면 에러예요. `facecolors`처럼 다른 값으로 칠하는 꼴은 없어요.
 - `ax.contour(..., zdir='z', offset=...)`로 바닥에 등고선을 그리던 것은 `contours=True`예요.

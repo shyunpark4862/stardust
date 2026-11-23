@@ -64,6 +64,33 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
 
 결과는 `Space.surfaces`에 튜플 하나로 쌓여요. 첫 격자 `X, Y, Z`, 색, 격자선의 칸 수, 불투명도, 그리고 적응형 표본이 더한 것 `fine`이에요. 아무것도 더하지 않았으면 `fine`은 `None`이에요.
 
+### 값 배열을 주면
+
+`f` 자리에 함수 대신 2차원 배열을 주면 그 배열이 곧 첫 격자의 높이예요. `Z[j, i]`가 $(x_i, y_j)$의 높이이고 첫 행이 `y0`인, [두 변수 함수의 그림](/internals/plot/fields/)과 같은 약속이에요. 꼭짓점의 좌표는 상자를 배열의 모양대로 고르게 나눈 것이에요.
+
+```python
+    # src/stardust/plot/_surface.py
+    if given is not None:  # the heights given on an even grid over the box
+        ny, nx = given.shape
+        X, Y = sd.meshgrid(sd.linspace(x0, x1, nx), sd.linspace(y0, y1, ny), indexing="xy")
+        sp = _space(self, who, azimuth, elevation, perspective)
+        sp.surfaces.append((X, Y, given, spec, mesh, alpha, None, _contours(who, contours)))
+        sp.equal = False
+        if zlim is not None:
+            sp.zlim = zlim
+        return self._touch()
+```
+
+값만으로는 다시 잴 수 없으므로 아래의 적응형 표본은 모두 건너뛰고 `fine` 자리에 `None`을 넣어요. `samples`나 `refine`을 함께 주면 `ValueError`예요. 극점의 자르기와 격자선, 바닥 등고선은 그릴 때의 일이라 함수로 준 곡면과 똑같이 돼요.
+
+```python
+>>> gx, gy = sd.meshgrid(sd.linspace(-2.0, 2.0, 41), sd.linspace(-2.0, 2.0, 31), indexing="xy")
+>>> given = sd.plot.surface(gx * gy, -2, 2, -2, 2)
+>>> s = given._cell.layers[0].surfaces[0]
+>>> tuple(s[2].shape), s[6] is None
+((31, 41), True)
+```
+
 ## 모자란 칸 고르기
 
 ### 상자의 단위로 재기
@@ -443,10 +470,12 @@ $1/(x^2 + y^2)$는 원점에서 무한히 커요. 높이의 축은 분위수 규
     view = (-0.9, 0.9)
     found = _sample.refine(lambda t: screen(at(t)), t0, *screen(first), view, view, depth)
     x, y, z = _sample.cut(found, at(found.t))
-    sp.curves.append((x, y, z, c, width))
+    sp.curves.append((x, y, z, c, width, _basic._label(who, label)))
 ```
 
 첫 격자 257점(황금비로 흩은 격자)의 값에서 좌표마다 분위수 규칙의 범위를 잡고, 그 범위를 상자처럼 $[-1, 1]$ 부근으로 옮긴 뒤 늘 쓰던 시점(방위각 −60°, 고도 30°)의 화면에 투영해요. 실제 시점은 장면이 다 모인 뒤 [카메라](/internals/plot/camera/)가 고르므로 곡선을 잴 때는 아직 알 수 없어요. 어느 방향에서 보든 3차원에서 꺾이는 곳은 대개 화면에서도 꺾이니, 한 화면이면 충분해요.
+
+튜플의 마지막은 범례에 쓸 이름이에요. `label`을 준 곡선과 점은 `Space.entries`가 선과 점의 견본으로 범례에 내고, 3D 칸의 범례는 상자 오른쪽 밖에 서요([상자와 카메라](/internals/plot/camera/)).
 
 표본기가 찾은 극점과 뜀에서 `cut`이 선을 NaN으로 끊어요. 축의 범위도 분위수 규칙이라 극점 근처의 큰 값은 상자 밖으로 나가고, 그리는 때 `_clip`이 상자를 벗어나는 선분을 상자의 면에서 잘라 그 면 위의 점을 넣어요.
 

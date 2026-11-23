@@ -64,7 +64,7 @@ TeX는 바깥 프로그램이라 부를 때마다 프로세스를 띄워야 해�
 | `glyphs` | `(fonts의 번호, 글리프 코드, h, v)`. (h, v)는 글리프의 기준점(기준선의 왼쪽 끝) |
 | `rules` | 괘선 `(h, 아래 변의 v, 너비, 높이)`. 분수의 가로줄, 근호의 윗줄 |
 
-첫 글리프는 `ntxmi`(newtxmath의 수식 이탤릭)의 코드 11, α예요. 기준선이 v = 560823, 상자의 높이와 같은 곳에 있어요. 위첨자 2는 7.3pt 글꼴로 v = 322928, 기준선보다 237895 sp(3.63pt) 위에 놓였어요. 글리프마다 글꼴의 이름과 코드만 남기고 모양은 남기지 않아요. 모양은 [글리프 윤곽선](#글리프-윤곽선)에서 (글꼴, 코드)마다 한 번 받아요.
+첫 글리프는 `ntxmi`(newtxmath의 수식 이탤릭)의 코드 11, $\alpha$예요. 기준선이 `v = 560823`, 상자의 높이와 같은 곳에 있어요. 위첨자 2는 7.3pt 글꼴로 `v = 322928`, 기준선보다 237895 sp(3.63pt) 위에 놓였어요. 글리프마다 글꼴의 이름과 코드만 남기고 모양은 남기지 않아요. 모양은 [글리프 윤곽선](#글리프-윤곽선)에서 (글꼴, 코드)마다 한 번 받아요.
 
 ## 상자를 재고 쪽으로 나누기
 
@@ -142,7 +142,7 @@ LaTeX의 머리말을 읽는 데에는 문자열을 조판하는 것보다 긴 �
 
 한글이 든 문자열은 `xelatex`가 조판해요. 한글 글꼴(세리프 벌은 KoPubWorld 바탕, 산세리프 벌은 Apple SD Gothic Neo)이 OpenType 시스템 글꼴이라 pdfTeX가 바로 쓰지 못하기 때문이에요. 어느 문자열이 이 길로 가는지는 정규식 `_CJK` 하나가 정해요. 한글 자모, 한글 음절, CJK 한자와 부호, 전각 글자의 범위 중 하나라도 들어 있으면 XeLaTeX 길이에요.
 
-XeLaTeX의 머리말(`_XE`)은 newtx 꾸러미를 먼저 읽고 그 위에 `fontspec`(수식 글꼴은 건드리지 않는 `no-math`)과 `xeCJK`로 한글 글꼴을 얹어요. 한글 글꼴은 이름이 아니라 파일 경로로 줘요. `xeCJK`의 `CJKspace=true`는 한글 낱말 사이의 띄어쓰기를 남겨요. 이 길에서는 라틴 글자도 OpenType 판(세리프는 TeX Gyre Termes X)으로 조판돼요. `xelatex -no-pdf`는 PDF 대신 XDV 파일을 내요. XDV는 DVI를 넓힌 형식이에요([XDV](#xdv)).
+XeLaTeX의 머리말(`_XE`)은 newtx 꾸러미를 먼저 읽고 그 위에 `fontspec`(수식 글꼴은 건드리지 않는 `no-math`)과 `xeCJK`로 한글 글꼴을 얹어요. 한글 글꼴은 이름이 아니라 파일 경로로 줘요. `xeCJK`의 `CJKspace=true`는 한글 낱말 사이의 띄어쓰기를 남겨요. `CJKecglue={}`는 한글과 라틴 글자·숫자가 맞닿는 곳에 `xeCJK`가 넣는 풀을 없애요. 기본값은 낱말 사이 공백만 한 풀이라, 두지 않으면 `3개`나 `x축`처럼 붙여 쓴 글자 사이가 벌어져요. 이 길에서는 라틴 글자도 OpenType 판(세리프는 TeX Gyre Termes X)으로 조판돼요. `xelatex -no-pdf`는 PDF 대신 XDV 파일을 내요. XDV는 DVI를 넓힌 형식이에요([XDV](#xdv)).
 
 ### 문자열 하나는 한 길로만
 
@@ -225,7 +225,7 @@ def scaled(fix, size):
     return sw if a == 0 else sw - alpha
 ```
 
-너비는 fix_word예요. 부호 있는 32비트 정수를 2²⁰으로 나눈 고정 소수점 수이고, 단위는 글꼴의 설계 크기예요. 크기 s(sp)로 실은 글꼴에서 글자의 너비는 fix · s / 2²⁰ sp인데, TeX는 이 곱을 32비트 정수 안에서 하려고 `tex.web` 571–575절의 차례로 계산해요. fix_word를 바이트 넷 a, b, c, d로 나누고, 크기 z를 2²³ 아래로 줄인 뒤(그만큼 α와 β를 맞춰요), 아래 바이트부터 곱해 256으로 나누기를 되풀이해요. a가 255(음수)면 α를 빼요. 크기가 128pt보다 작으면 이 결과는 정확히 ⌊fix · s / 2²⁰⌋이고, 그보다 크면 z를 반으로 줄일 때의 버림이 결과에 남아요. `scaled`는 이 차례를 그대로 따르므로 어느 크기에서나 TeX가 계산한 h와 같은 정수를 얻어요. 반올림이 아니라 버림이라는 것도 그대로예요.
+너비는 fix_word예요. 부호 있는 32비트 정수를 $2^{20}$으로 나눈 고정 소수점 수이고, 단위는 글꼴의 설계 크기예요. 크기 $s$(sp)로 실은 글꼴에서 fix_word의 정수 값이 $f$인 글자의 너비는 $f s / 2^{20}$ sp인데, TeX는 이 곱을 32비트 정수 안에서 하려고 `tex.web` 571–575절의 차례로 계산해요. fix_word를 바이트 넷 a, b, c, d로 나누고, 크기 z를 $2^{23}$ 아래로 줄인 뒤(그만큼 `alpha`와 `beta`를 맞춰요), 아래 바이트부터 곱해 256으로 나누기를 되풀이해요. a가 255(음수)면 `alpha`를 빼요. 크기가 128pt보다 작으면 이 결과는 정확히 $\lfloor f s / 2^{20} \rfloor$이고, 그보다 크면 z를 반으로 줄일 때의 버림이 결과에 남아요. `scaled`는 이 차례를 그대로 따르므로 어느 크기에서나 TeX가 계산한 `h`와 같은 정수를 얻어요. 반올림이 아니라 버림이라는 것도 그대로예요.
 
 ```python
 >>> from stardust.plot import _dvi
@@ -234,7 +234,7 @@ def scaled(fix, size):
 (629146, 393216.25, 393216)
 ```
 
-α의 너비 fix_word 629146에 10pt를 곱하면 393216.25 sp이고, TeX는 393216 sp(6pt)로 버려요. 위 예제에서 위첨자 2가 h = 408944에 놓였던 것은 이 너비에 α의 이탤릭 보정 15728 sp를 더한 자리예요. 이탤릭 보정은 TeX가 첨자를 붙이기 전에 이미 h를 옮기는 명령(`right`)으로 적어 두므로 읽기가 따로 계산하지 않아요.
+$\alpha$의 너비 fix_word 629146에 10pt를 곱하면 393216.25 sp이고, TeX는 393216 sp(6pt)로 버려요. 위 예제에서 위첨자 2가 `h = 408944`에 놓였던 것은 이 너비에 $\alpha$의 이탤릭 보정 15728 sp를 더한 자리예요. 이탤릭 보정은 TeX가 첨자를 붙이기 전에 이미 `h`를 옮기는 명령(`right`)으로 적어 두므로 읽기가 따로 계산하지 않아요.
 
 넘겨받은 쪽마다 글꼴은 처음 쓰인 차례로 번호를 다시 받아요(`use`). 그래서 `Layout.fonts`에는 그 문자열에 쓰인 글꼴만 들어가요. TeX 글꼴 이름이 가상 글꼴(VF)일 때도 있어요. newtxmath의 `ntxmi`가 그렇고, 실제 모양은 다른 Type 1 글꼴의 글리프를 옮기거나 합친 것이에요. 가상 글꼴에도 TFM이 있으므로 너비 계산은 같고, 모양은 dvisvgm이 실제 글꼴까지 풀어서 줘요.
 
@@ -550,7 +550,7 @@ serif/strings.jsonl
 
 사용자의 캐시는 `~/Library/Caches/stardust/plot/<도장>/`이에요. 도장은 캐시의 내용을 바꿀 수 있는 것을 모두 SHA-256 하나에 넣은 값의 앞 16자리예요. 캐시 파일 형식의 판(`FORMAT`), 머리말과 매크로의 글 전부, 그리고 `latex`, `xelatex`, `dvisvgm` 실행 파일의 실제 경로, 크기, 수정 시각이에요. TeX Live를 올리거나 머리말을 고치면 도장이 바뀌어 빈 폴더에서 시작하고, 예전 캐시와 섞이지 않아요. 미리 구운 포맷 `<벌>.fmt`도 이 폴더에 있어요.
 
-사용자 캐시의 첫 묶음에는 문자열 몇 개(`_WARM`)가 더 붙어요. 대소문자 알파벳, 숫자, 문장 부호, 굵은 글자와 이탤릭, 그리스 문자, 자주 쓰는 수식 기호와 연산자 이름, 첨자 크기의 글자들이에요. 이 묶음에서 흔한 글리프의 윤곽선을 dvisvgm 한 번에 받아 두면, 그 뒤의 라벨은 대개 아는 글리프로만 되어 있어 TeX 조판 한 번으로 끝나요. 폴더의 `warm` 파일이 이 일을 했다는 표시예요.
+사용자 캐시의 첫 묶음에는 문자열 몇 개(`_WARM`)가 더 붙어요. 대소문자 알파벳, 숫자, 문장 부호, 굵은 글자와 이탤릭, 그리스 문자, 자주 쓰는 수식 기호와 연산자 이름, 첨자 크기의 글자들이에요. 이 묶음에서 흔한 글리프의 윤곽선을 dvisvgm 한 번에 받아 두면, 그 뒤의 라벨은 대개 아는 글리프로만 되어 있어 TeX 조판 한 번으로 끝나요. 폴더의 `warm` 파일이 이 일을 했다는 표시예요. 표시는 그 묶음이 끝까지 조판된 뒤에 남겨요. 첫 묶음이 사용자의 문자열 때문에 실패하면 표시가 없으므로 다음 묶음이 흔한 글리프를 다시 받아요.
 
 테스트는 녹음해 둔 캐시 폴더를 "얼린" 채로 써요(`frozen=True`). 얼린 캐시에 없는 문자열은 TeX를 부르는 대신 `FrozenMiss`가 나므로, TeX Live가 없는 기계에서도 그림 테스트가 같은 결과로 돌아요([검증](/internals/plot/verification/)).
 
@@ -610,6 +610,8 @@ $\foo$
 False
 ```
 
+글꼴에 없는 글자는 TeX의 오류가 아니에요. TeX는 로그에 `Missing character` 한 줄만 남기고 그 글자를 뺀 채 조판을 끝내요. 그대로 두면 글자가 빠진 라벨이 조용히 그려지므로, 조판이 끝난 로그에서 그 줄을 찾아 그 글자가 든 첫 문자열의 조판 오류(`the font has no character …`)로 바꿔요.
+
 묶음 하나가 실패하면 그 묶음의 문자열은 하나도 캐시에 넣지 않아요. 배치를 파일에 쓰는 일은 두 길의 조판과 윤곽선 받기가 모두 끝난 뒤에만 하기 때문이에요(아래 `_typeset`의 마지막 `with open`). 그래서 `first`는 TeX가 문제없이 조판했지만 남지 않았어요. 고친 문자열로 다시 그리면 묶음 전체를 다시 조판해요.
 
 그림의 메서드에서는 이 오류가 그리는 메서드의 이름을 단 `ValueError`로 나요. TeX Live 프로그램이 없으면(`MissingTool`) `RuntimeError`예요. 글자를 주는 `xlabel` 같은 메서드는 조판을 기다리지 않으므로 오류는 그릴 때 나요([기본 개념](/api/plot/basics/)).
@@ -631,9 +633,9 @@ to_svg(): LaTeX could not typeset '$\\foo$': ! Undefined control sequence.
     def _typeset(self, need):
         self.dir.mkdir(parents=True, exist_ok=True)
         warm = self.dir / "warm"
-        if self.warm and not warm.exists():
+        warming = self.warm and not warm.exists()
+        if warming:
             need = list(need) + [s for s in _WARM if s not in need and s not in self.strings]
-            warm.touch()
         latin = [s for s in need if not _CJK.search(s)]
         hangul = [s for s in need if _CJK.search(s)]
         with tempfile.TemporaryDirectory(prefix="sdplot_") as tmp:
@@ -656,6 +658,8 @@ to_svg(): LaTeX could not typeset '$\\foo$': ! Undefined control sequence.
                 for s, (lay, _) in zip(strings, results):
                     self.strings[s] = lay
                     f.write(json.dumps({"s": s, **lay.to_json()}, ensure_ascii=False, separators=(",", ":")) + "\n")
+        if warming:
+            warm.touch()  # only once the batch with the common glyphs went through
 ```
 
 두 길은 스레드 두 개에서 함께 돌아요. 스레드는 바깥 프로세스를 기다리는 동안 Python의 인터프리터 잠금을 놓으므로, 한글 라벨이 있는 그림의 조판 시간은 두 길의 합이 아니라 긴 쪽이에요. 조판이 끝나면 두 길에서 쓰인 (글꼴, 코드)를 모아 `_calibrate`에 넘기고, 거기서도 TFM 글꼴의 plain TeX 쪽과 시스템 글꼴의 plain XeTeX 쪽을 스레드 두 개로 함께 돌려요. 모든 일은 엔진의 잠금 안에서 일어나므로, 여러 스레드가 그림을 함께 그려도 같은 문자열을 두 번 조판하지 않아요.

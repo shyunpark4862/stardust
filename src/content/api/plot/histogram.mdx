@@ -57,7 +57,7 @@ raises:
     desc: "data 없이 x에 문자열(열 이름)을 줬을 때, data가 DataFrame이 아닐 때, x가 수가 아닐 때, bins가 int도 sd.ndarray도 아닐 때(리스트 포함), density가 True·False가 아닐 때."
   - type: ValueError
     desc: "x가 1차원이 아닐 때, bins가 0 이하이거나 경계가 증가하지 않을 때, range의 순서가 거꾸로이거나 유한하지 않을 때, alpha가 0과 1 사이가 아닐 때, group의 길이가 x와 다를 때, color나 label을 group과 함께 줬을 때."
-seeAlso: [basics, ecdf, boxplot, pairs, distribution, bar]
+seeAlso: [basics, ecdf, boxplot, hist2d, facet, pairs, distribution, bar]
 ---
 import Callout from '../../../components/Callout.astro';
 import PlotImage from '../../../components/fig/PlotImage.astro';
@@ -137,13 +137,15 @@ array([ 1,  4,  9, 33, 57, 44, 26, 16,  8,  2], dtype=int64)
 
 ```python
 >>> N = sd.stats.Normal(mu=170.0, sigma=8.0)
->>> fig = sd.plot.histogram(x, bins=15, density=True)
+>>> fig = sd.plot.histogram(x, bins=15, density=True).ylim(0, None)
 >>> fig = fig.distribution(N, label=r"$N(170,\ 8^2)$").xlabel("키 (cm)")
 ```
 
 <PlotImage name="histogram-density" alt="키 자료의 밀도 히스토그램 위에 평균 170, 표준편차 8인 정규분포의 밀도 곡선을 겹친 그림" caption="밀도로 그린 히스토그램과, 자료를 뽑은 정규분포의 밀도. 막대가 곡선을 따라 오르내려요." />
 
-[`fig.distribution`](/api/plot/distribution/)은 분포의 밀도를 같은 칸에 더해요. 막대의 넓이를 모두 더하면 1인지 `sd.histogram`으로 확인할 수 있어요.
+[`fig.distribution`](/api/plot/distribution/)은 분포의 밀도를 같은 칸에 더해요. 세로 범위를 정하지 않은 칸에 밀도를 더하면 세로축이 그 밀도의 봉우리에 맞춰져요. 표본의 막대는 봉우리보다 높이 솟을 수 있으므로(여기서는 가장 높은 막대가 0.059, 밀도의 봉우리가 0.050이에요), 먼저 `ylim(0, None)`으로 아래만 0에 두고 위는 그려진 것 모두에 맞추게 했어요.
+
+막대의 넓이를 모두 더하면 1인지 `sd.histogram`으로 확인할 수 있어요.
 
 ```python
 >>> r = sd.histogram(x, bins=15, density=True)
@@ -177,13 +179,13 @@ array([ 1,  4,  9, 33, 57, 44, 26, 16,  8,  2], dtype=int64)
 array([3, 5, 7, 8, 5, 9, 3, 0, 0, 0, 0, 0], dtype=int64)
 ```
 
-control 무리(파란 막대)의 높이예요. 무리가 셋 이상이고 많이 겹치면 색이 섞여 읽기 어려워져요. 그럴 때는 [`ecdf`](/api/plot/ecdf/)의 계단을 겹치거나, 무리마다 그림을 따로 만들어 [`grid`](/api/plot/figure/)로 늘어놓는 편이 나아요.
+control 무리(파란 막대)의 높이예요. 무리가 셋 이상이고 많이 겹치면 색이 섞여 읽기 어려워져요. 그럴 때는 [`ecdf`](/api/plot/ecdf/)의 계단을 겹치거나, [`facet`](/api/plot/facet/)으로 무리마다 칸을 나눠 같은 축에 늘어놓는 편이 나아요. `sd.plot.facet(df, "dose").histogram("response", bins=12)`처럼 불러요.
 
 `group=`에는 열 이름 대신 값과 길이가 같은 라벨의 시퀀스를 줘도 돼요. 무리의 순서는 라벨이 처음 나온 순서이고, 그 순서대로 팔레트의 색을 받아요. 라벨이 `None`이나 NaN인 값은 어느 무리에도 들지 않아요.
 
 ## 색과 겹치기
 
-`color=`로 막대의 색 하나를 정해요. 색의 꼴(이름, `'#rrggbb'`, 튜플, `'C0'`)은 [기본 개념](/api/plot/basics/)에 있어요. `label=`을 주면 범례에 그 이름이 나와요.
+`color=`로 막대의 색 하나를 정해요. 막대 안은 그 색을 옅게 칠하고 테두리는 그 색의 가는 선이에요. 색의 꼴(이름, `'#rrggbb'`, 튜플, `'C0'`)은 [기본 개념](/api/plot/basics/)에 있어요. `label=`을 주면 범례에 그 이름이 나와요.
 
 이미 있는 그림에 히스토그램을 더하려면 메서드 `fig.histogram`을 불러요. 받는 인자는 모듈 함수와 같고, 그림 옵션(`width` 등)만 받지 않아요. 반대로 히스토그램 위에 다른 층을 얹을 수도 있어요. 평균의 자리에 세로선을 그어 볼게요.
 
@@ -200,6 +202,7 @@ control 무리(파란 막대)의 높이예요. 무리가 셋 이상이고 많이
 - `density=True`와 `group=`을 함께 주면 무리마다 넓이가 1이에요. 무리의 크기가 달라도 모양만 견주게 되므로, 크기의 차이까지 보려면 개수로 그려요.
 - `bins`가 int이고 값이 모두 같으면, `sd.histogram`처럼 그 값을 가운데 둔 폭 1의 범위를 나눠요.
 - 막대는 0에서 시작해요. 그래서 막대가 있는 칸의 세로축은 늘 0을 포함해요.
+- 변수 둘의 짝이 어디에 몰려 있는지를 세려면 [`hist2d`](/api/plot/hist2d/)나 [`hexbin`](/api/plot/hexbin/)이 평면을 칸으로 나눠 칸마다의 개수를 색으로 칠해요.
 
 ## matplotlib을 아는 분께
 

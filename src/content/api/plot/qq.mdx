@@ -65,7 +65,7 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
 
 ## 점의 자리
 
-표본에서 유한한 값 n개를 정렬했을 때, i번째 값(1부터 셈)은 확률 p = (i − 0.5)/n에 맞대어요. 그 확률의 이론 분위수가 분포의 `icdf(p)`예요. 그림이 다른 식을 쓰지 않으므로, 점의 가로 자리는 이렇게 그대로 구할 수 있어요.
+표본에서 유한한 값 $n$개를 정렬했을 때, $i$번째 값(1부터 셈)은 확률 $p = (i - 0.5)/n$에 맞대어요. 그 확률의 이론 분위수가 분포의 `icdf(p)`예요. 그림이 다른 식을 쓰지 않으므로, 점의 가로 자리는 이렇게 그대로 구할 수 있어요.
 
 ```python
 >>> N = sd.stats.Normal(mu=0.0, sigma=1.0)
@@ -126,4 +126,4 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
 ## matplotlib을 아는 분께
 
 - matplotlib에는 QQ 그림이 없어서 `scipy.stats.probplot`이나 statsmodels의 `qqplot`을 써요. 여기서는 그림 함수 하나예요.
-- 사분위를 잇는 기준선은 R의 `qqline`과 같아요. 확률의 자리 (i − 0.5)/n은 n이 10보다 클 때 R의 `qqnorm`과 같아요. `probplot`의 최소제곱 직선과는 달라요.
+- 사분위를 잇는 기준선은 R의 `qqline`과 같아요. 확률의 자리 $(i - 0.5)/n$은 $n$이 10보다 클 때 R의 `qqnorm`과 같아요. `probplot`의 최소제곱 직선과는 달라요.

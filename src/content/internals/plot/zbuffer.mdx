@@ -15,7 +15,7 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
 
 1. 삼각형을 높이 범위의 두 평면에서 자르고 화면으로 투영해요.
 2. 화소마다 3 × 3개의 표본을 두고, 삼각형마다 덮는 표본에서 깊이를 견줘 가장 가까운 곡면의 색을 남겨요. 색은 그 표본에서 보간한 법선으로 빛을 계산한 값이에요.
-3. 선과 점을 같은 깊이로 검사해 그 위에 칠해요.
+3. 선과 점을 같은 깊이로 검사해 그 위에 칠하고, 칠한 자리의 깊이를 제 깊이로 올려요. 선과 점끼리도 앞뒤가 가려져요.
 4. 반투명한 곡면이 있으면 표본마다 그 앞의 반투명 조각을 가까운 것부터 12겹까지 모아 얹어요.
 5. 화소의 아홉 표본을 평균해 RGBA 그림으로 돌려줘요.
 
@@ -325,7 +325,7 @@ $$
 
 ```cpp
         // csrc/plot/zbuffer.cpp
-        if (!peel) {  // nothing translucent but the lines: they are painted over, in their order
+        if (!peel) {  // nothing translucent but the lines: lines and points test and keep the depth, in their order
             for (const Quad& q : quads) {
                 each_quad(q, r0, r1, [&](std::size_t at2, float d) {
                     if (d + bias < depth[at2]) return;
@@ -334,7 +334,7 @@ $$
                         mark[at2] = q.strip;
                     }
                     over(at2, q.rgba);
-                    if (q.disc && d > depth[at2]) depth[at2] = d;  // a point hides what is behind it
+                    if (d > depth[at2]) depth[at2] = d;  // a line or a point hides what lies behind it
                 });
             }
             return;
@@ -343,7 +343,7 @@ $$
 
 선의 표본은 깊이 버퍼와 견줘서 그 자리의 곡면보다 뒤에 있으면 그리지 않아요. 격자선은 곡면 **위**에 놓인 선이라 깊이가 곡면과 거의 같고, 반올림만으로도 앞뒤가 갈려 선이 점선처럼 끊겨요. 그래서 장면의 깊이 폭의 0.4%만큼 여유(`bias`)를 줘요. 이만큼 뒤에 있는 선까지는 보여요.
 
-한 줄의 선분들은 마디에서 캡슐이 겹쳐요. 반투명한 격자선을 그대로 겹쳐 칠하면 마디마다 진한 점이 생기므로, 표본마다 마지막으로 칠한 줄의 번호(`mark`)를 적어 두고 같은 줄은 한 번만 칠해요. 원판은 칠한 자리의 깊이를 바꿔서, 점 뒤의 다른 점이나 선이 비치지 않아요.
+한 줄의 선분들은 마디에서 캡슐이 겹쳐요. 반투명한 격자선을 그대로 겹쳐 칠하면 마디마다 진한 점이 생기므로, 표본마다 마지막으로 칠한 줄의 번호(`mark`)를 적어 두고 같은 줄은 한 번만 칠해요. 선과 원판은 칠한 자리의 깊이를 제 깊이로 올려요. 그 뒤에 그리는 선이나 점이 그보다 뒤에 있으면 깊이 검사에서 걸러져요. 그래서 곡선끼리, 점끼리, 곡선과 점이 놓인 대로 서로를 가려요. 매듭 곡선의 앞 가닥이 뒤 가닥을 끊고, 앞의 점이 뒤의 점을 덮어요. 선과 점은 준 차례대로 그리므로, 먼저 그린 것이 더 가까우면 나중 것이 걸러지고, 나중 것이 더 가까우면 그 위에 덧칠돼요. 어느 쪽이든 가까운 것이 보여요.
 
 ## 반투명
 

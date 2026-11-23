@@ -52,8 +52,8 @@ raises:
   - type: TypeError
     desc: data 없이 자료 인자에 문자열을 줬을 때, data가 DataFrame이 아닐 때, 수가 아닌 열을 줬을 때, size·alpha가 수가 아닐 때, 모르는 키워드를 줬을 때.
   - type: ValueError
-    desc: x와 y의 길이가 다를 때, 자료가 1차원이 아닐 때, 없는 열 이름일 때, group의 길이가 자료와 다를 때, group과 color나 label을 함께 줬을 때, 색이나 shape를 알 수 없을 때, alpha가 [0, 1] 밖일 때, size가 0 이하일 때.
-seeAlso: [basics, line, strip, pairs, fit]
+    desc: x와 y의 길이가 다를 때, 자료가 1차원이 아닐 때, 없는 열 이름일 때, group의 길이가 자료와 다를 때, group과 color나 label을 함께 줬을 때, 색이나 shape를 알 수 없을 때, alpha가 [0, 1] 밖일 때, size가 0 이하일 때, 3D 층이 있는 칸에 그릴 때.
+seeAlso: [basics, line, strip, pairs, fit, hist2d, hexbin]
 ---
 import PlotImage from '../../../components/fig/PlotImage.astro';
 
@@ -76,7 +76,7 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
 
 <PlotImage name="scatter-basic" alt="양의 상관이 있는 점 150개가 오른쪽 위로 비스듬히 퍼진 산점도" caption="점마다 가는 흰 테두리가 있어서 겹친 점도 하나하나 구별돼요." />
 
-점 기호는 칸의 가장자리에 걸려도 잘리지 않고 온전히 보여요. 축의 범위는 점들의 범위에 조금 여유를 두고 잡혀요.
+점 기호는 칸의 가장자리에 걸려도 잘리지 않고 온전히 보여요. 축의 범위는 점들의 범위에 조금 여유를 두고 잡혀요. [`xlim`, `ylim`](/api/plot/customize/)으로 범위를 좁히면 범위 밖의 점은 그리지 않아요.
 
 점을 하나하나 가려 보이도록 기호에 가는 흰 테두리를 둘러요. 점이 수천 개를 넘는 구름이거나 기호가 아주 작으면 테두리가 구름을 하얗게 씻어 내므로 두르지 않아요.
 
@@ -125,10 +125,9 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
 ...                          "species": [r[2] for r in rows]})
 >>> fig = sd.plot.scatter("sepal_length", "sepal_width", data=df, group="species", alpha=0.85)
 >>> fig = fig.xlabel("sepal length (cm)").ylabel("sepal width (cm)")
->>> fig = fig.legend(loc="top")
 ```
 
-<PlotImage name="scatter-group" alt="세 무리 setosa, versicolor, virginica의 점이 파랑, 노랑, 회색으로 찍힌 산점도. 칸 위에 범례가 한 줄로 있어요." caption="group은 처음 나온 차례로 팔레트의 색을 받아요. 칸 안에 빈 구석이 없어 범례는 legend(loc='top')로 칸 위에 두었어요." />
+<PlotImage name="scatter-group" alt="세 무리 setosa, versicolor, virginica의 점이 파랑, 노랑, 회색으로 찍힌 산점도. 왼쪽 아래 구석에 범례가 있어요." caption="group은 처음 나온 차례로 팔레트의 색을 받아요. 범례는 점이 없는 구석을 알아서 골라요." />
 
 무리의 색은 그림의 `palette`가 정해요. `sd.plot.scatter(..., palette="okabe-ito")`처럼 모듈 함수에 그림 옵션으로 주면 돼요. 팔레트 목록은 [스타일](/api/plot/style/)에 있어요.
 
@@ -149,7 +148,6 @@ ValueError: scatter(): 'color' and 'group' cannot both be given (a group takes t
 >>> line_x = sd.linspace(-3.0, 3.0, 2)
 >>> fig = sd.plot.scatter(x, y, color="gray", alpha=0.6, label="sample")
 >>> fig = fig.line(line_x, 0.6 * line_x, color="C0", label=r"$y = 0.6x$")
->>> fig = fig.legend(loc="upper left")
 ```
 
 ## NaN
@@ -165,11 +163,11 @@ ValueError: scatter(): 'color' and 'group' cannot both be given (a group takes t
 ## 조심할 점
 
 - 점의 크기 `size`는 pt 단위의 지름이에요. 점의 넓이가 아니에요.
-- 점의 수만큼 기호가 SVG·PDF에 들어가요. 수만 개의 점을 벡터로 내보내면 파일이 커지니, 그럴 때는 PNG로 저장하거나 [`heatmap`](/api/plot/heatmap/), [`histogram`](/api/plot/histogram/)처럼 모아서 보이는 그림을 생각해 보세요.
+- 점의 수만큼 기호가 SVG·PDF에 들어가요. 한 층의 점이 2만 개를 넘으면 벡터 파일 안에서 그 점들이 화소의 그림 한 장이 돼요([내보내기](/api/plot/export/)). 점이 수만 개를 넘어 구름이 뭉개지면 칸마다 점을 세어 색으로 보이는 [`hist2d`](/api/plot/hist2d/)나 [`hexbin`](/api/plot/hexbin/)이 더 잘 읽혀요.
 - 범주 축(문자열의 `x`)은 받지 않아요. 범주마다 값을 흩어 찍으려면 [`strip`](/api/plot/strip/)을 써요.
 
 ## matplotlib을 아는 분께
 
-- `plt.scatter(x, y, s=..., c=..., marker=...)` 대신 `sd.plot.scatter(x, y, size=..., color=..., shape=...)`예요. `size`는 넓이(pt²)가 아니라 지름(pt)이에요.
+- `plt.scatter(x, y, s=..., c=..., marker=...)` 대신 `sd.plot.scatter(x, y, size=..., color=..., shape=...)`예요. `size`는 넓이($\text{pt}^2$)가 아니라 지름(pt)이에요.
 - `c=`에 값의 배열을 주어 색띠로 칠하는 기능과 점마다 다른 크기는 없어요. 무리는 `group=`으로 나눠요.
 - 점 기호의 꼴은 일곱 가지만 있어요(`'*'`, `'.'`, `','` 등은 없어요).

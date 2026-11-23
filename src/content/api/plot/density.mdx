@@ -10,9 +10,9 @@ signatures:
 summary: 두 변수 함수 f(x, y)의 값을 색으로 칠한 그림(밀도 그림)을 사각형 [x0, x1] × [y0, y1]에 그려요. 화소마다 함수를 한 번 계산하고, 값을 연속 색띠의 색으로 바꾸고, 칸 오른쪽에 색 막대를 붙여요.
 params:
   - name: f
-    type: 호출 가능한 객체
+    type: 호출 가능한 객체 또는 2차원 배열
     kind: positional-only
-    desc: "f(x, y). 같은 모양의 float64 sd.ndarray 둘을 받아 같은 모양의 실수 배열(또는 수 하나)을 돌려줘요. 화소 전체의 격자로 한 번 불려요."
+    desc: "f(x, y). 같은 모양의 float64 sd.ndarray 둘을 받아 같은 모양의 실수 배열(또는 수 하나)을 돌려줘요. 화소 전체의 격자로 한 번 불려요. 함수 대신 이미 계산한 값의 2차원 배열(2 × 2 이상)을 줘도 돼요. 값 하나가 화소 하나이고 첫 줄이 y0 쪽이에요."
   - name: x0, x1
     type: float
     kind: positional-only
@@ -24,7 +24,7 @@ params:
   - name: samples
     type: int, (int, int) 또는 None
     kind: keyword-only
-    desc: "그림의 화소 수. 정수 하나면 가로세로가 같고, 쌍이면 (가로, 세로)예요. 한 방향 3 이상 4000 이하. 기본값 None은 (480, 360)이에요."
+    desc: "그림의 화소 수. 정수 하나면 가로세로가 같고, 쌍이면 (가로, 세로)예요. 한 방향 3 이상 4000 이하. 기본값 None은 (480, 360)이에요. 값의 배열에는 줄 수 없어요(배열의 모양이 화소 수예요)."
   - name: cmap
     type: str 또는 None
     kind: keyword-only
@@ -46,10 +46,10 @@ returns:
   desc: 모듈 함수는 새 Figure를, 메서드는 그림을 더한 그 Figure 자신을 돌려줘요.
 raises:
   - type: TypeError
-    desc: f가 호출 가능하지 않을 때, f가 sd.ndarray나 수가 아닌 것이나 복소수를 돌려줄 때, vmin·vmax가 수가 아닐 때, colorbar가 bool이 아닐 때, samples가 정수가 아닐 때, 모르는 키워드(refine 등)를 줬을 때.
+    desc: f가 함수도 2차원 값 배열도 아닐 때, f가 sd.ndarray나 수가 아닌 것이나 복소수를 돌려줄 때, vmin·vmax가 수가 아닐 때, colorbar가 bool이 아닐 때, samples가 정수가 아닐 때, 모르는 키워드(refine 등)를 줬을 때.
   - type: ValueError
-    desc: x0 < x1이나 y0 < y1이 아니거나 범위가 유한하지 않을 때, vmin과 vmax를 함께 줬는데 vmin < vmax가 아닐 때, cmap이 모르는 이름일 때, f가 받은 것과 다른 모양을 돌려줄 때, samples가 범위 밖일 때.
-seeAlso: [contour, phase, heatmap, sampling]
+    desc: x0 < x1이나 y0 < y1이 아니거나 범위가 유한하지 않을 때, vmin과 vmax를 함께 줬는데 vmin < vmax가 아닐 때, cmap이 모르는 이름일 때, f가 받은 것과 다른 모양을 돌려줄 때, samples가 범위 밖일 때, 값의 배열이 2차원이 아니거나 2 × 2보다 작을 때, 값의 배열과 함께 samples를 줬을 때.
+seeAlso: [contour, phase, heatmap, hist2d, sampling]
 ---
 import PlotImage from '../../../components/fig/PlotImage.astro';
 
@@ -110,9 +110,31 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
 
 이 그림은 $60 \times 45$ 화소이고 색 막대가 없어요.
 
+## 값의 배열로 그리기
+
+함수 자리에 이미 계산한 값의 2차원 배열을 줄 수 있어요. 배열의 값 하나가 화소 하나예요. 줄의 수가 세로 화소 수, 열의 수가 가로 화소 수이고, 첫 줄이 `y0` 쪽(아래)이에요. 값은 화소의 **가운데 점**의 값으로 봐요. 그림은 준 사각형을 정확히 덮어요. 그래서 값을 직접 계산할 때는 사각형의 끝에서 끝까지가 아니라, 사각형을 나눈 칸의 가운데에서 계산해야 자리가 맞아요. 가로 24칸이면 칸의 너비가 $6/24 = 0.25$이고 첫 가운데는 $-3 + 0.125$예요.
+
+```python
+>>> x = sd.linspace(-3.0 + 0.125, 3.0 - 0.125, 24)
+>>> y = sd.linspace(-2.2 + 4.4 / 36, 2.2 - 4.4 / 36, 18)
+>>> X, Y = sd.meshgrid(x, y, indexing="xy")
+>>> Z = g(X, Y)
+>>> Z.shape
+(18, 24)
+>>> fig = sd.plot.density(Z, -3, 3, -2.2, 2.2)
+```
+
+<PlotImage name="density-values" alt="맨 위 그림과 같은 무늬의 색 그림이지만 흐릿해요. 가운데에 빨간 세로 띠, 양쪽에 하늘색 띠가 있고 오른쪽에 색 막대가 있어요" caption="24 × 18개의 값으로 그린 그림이에요. 화소가 적어서 맨 위 그림보다 흐리고, 화소 사이는 부드럽게 이어 그려요." />
+
+화소 수는 배열의 모양이 정하므로 `samples`는 줄 수 없어요. `cmap`, `vmin`, `vmax`, `colorbar`는 함수일 때와 같고, NaN인 값은 비워요.
+
 ## 에러
 
 ```python
+>>> sd.plot.density(Z, -3, 3, -2.2, 2.2, samples=100)
+Traceback (most recent call last):
+    ...
+ValueError: density(): 'samples' and 'refine' are for a function; the values given are the grid
 >>> sd.plot.density(g, -3, 3, -2, 2, vmin=1, vmax=1)
 Traceback (most recent call last):
     ...
@@ -124,7 +146,7 @@ ValueError: density(): 'cmap' must be 'cool', 'viridis', 'magma', 'cividis', 'rd
 >>> sd.plot.density(g, -3, 3, -2, 2, refine=1)
 Traceback (most recent call last):
     ...
-TypeError: density(): got an unexpected keyword argument 'refine'
+TypeError: density(): unexpected keyword argument 'refine'
 ```
 
 ## 조심할 점
@@ -132,9 +154,9 @@ TypeError: density(): got an unexpected keyword argument 'refine'
 - **값의 범위는 가장 작은 값과 가장 큰 값이에요.** 극점이 있거나 한쪽으로 달아나는 함수는 대부분이 한 색이 되니 `vmin`, `vmax`를 줘요.
 - **표본은 화소의 가운데예요.** 화소보다 좁은 무늬는 보이지 않거나 얼룩(엘리어싱)이 돼요. 빨리 진동하는 함수는 `samples`를 늘려요.
 - **칸의 비율은 자유예요.** 한 단위를 가로세로 같은 길이로 맞추지 않아요.
-- 이미 계산한 격자의 값(배열)은 [heatmap](/api/plot/heatmap/)이에요. 복소 함수는 [phase](/api/plot/phase/)로 위상과 크기를 함께 보여요.
+- 행과 열에 이름이 붙은 표 꼴의 값(상관 행렬 등)은 [heatmap](/api/plot/heatmap/)이에요. 흩어진 점 $(x_i, y_i)$가 어디에 몰려 있는지는 [hist2d](/api/plot/hist2d/)가 세어 그려요. 복소 함수는 [phase](/api/plot/phase/)로 위상과 크기를 함께 보여요.
 
 ## matplotlib을 아는 분께
 
-- `plt.imshow(Z, extent=...)`나 `plt.pcolormesh(X, Y, Z)`가 미리 계산한 배열을 받는 것과 달리, 여기서는 함수를 받아 화소의 가운데에서 계산해요. 배열을 그리는 쪽은 `heatmap`이에요.
-- `imshow`의 `origin`을 신경 쓸 필요가 없어요. $y$가 위로 커지는 보통의 축 방향이에요.
+- `plt.imshow(Z, extent=...)`나 `plt.pcolormesh(X, Y, Z)`는 미리 계산한 배열을 받아요. 여기서는 함수를 받아 화소의 가운데에서 계산하는 것이 기본이고, 배열을 주면 `imshow(Z, extent=(x0, x1, y0, y1), origin='lower')`와 같은 놓임이에요.
+- `imshow`의 `origin`을 신경 쓸 필요가 없어요. $y$가 위로 커지는 보통의 축 방향이고, 배열의 첫 줄이 아래예요.

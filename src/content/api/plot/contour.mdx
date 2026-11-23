@@ -10,9 +10,9 @@ signatures:
 summary: 두 변수 함수 f(x, y)의 등고선을 사각형 [x0, x1] × [y0, y1] 안에서 그려요. 수준은 값의 대부분이 있는 범위에서 고르게 고르고, 선 위에 그 값을 적어요. filled=True면 수준 사이를 색으로 칠하고 색 막대를 붙여요.
 params:
   - name: f
-    type: 호출 가능한 객체
+    type: 호출 가능한 객체 또는 2차원 배열
     kind: positional-only
-    desc: "f(x, y). 같은 모양의 float64 sd.ndarray 둘을 받아 같은 모양의 실수 배열(또는 수 하나)을 돌려줘요."
+    desc: "f(x, y). 같은 모양의 float64 sd.ndarray 둘을 받아 같은 모양의 실수 배열(또는 수 하나)을 돌려줘요. 함수 대신 이미 계산한 값의 2차원 배열(2 × 2 이상)을 줘도 돼요. Z[j, i]가 사각형을 고르게 나눈 격자의 점 (x_i, y_j)의 값이에요."
   - name: x0, x1
     type: float
     kind: positional-only
@@ -36,11 +36,11 @@ params:
   - name: samples
     type: int, (int, int) 또는 None
     kind: keyword-only
-    desc: "격자의 점의 수. 정수 하나면 가로세로가 같고, 쌍이면 (가로, 세로)예요. 한 방향 3 이상 4000 이하. 기본값 None은 (321, 241)이에요."
+    desc: "격자의 점의 수. 정수 하나면 가로세로가 같고, 쌍이면 (가로, 세로)예요. 한 방향 3 이상 4000 이하. 기본값 None은 (321, 241)이에요. 값의 배열에는 줄 수 없어요."
   - name: refine
     type: int 또는 None
     kind: keyword-only
-    desc: "1이면 한 칸 안에서 수준 간격의 반보다 많이 변하는 칸과 그 둘레를 가로세로 4배로 다시 재요. 0이면 격자를 그대로 써요. 기본값 None은 1이에요."
+    desc: "1이면 한 칸 안에서 수준 간격의 반보다 많이 변하는 칸과 그 둘레를 가로세로 4배로 다시 재요. 0이면 격자를 그대로 써요. 기본값 None은 1이에요. 값의 배열에는 줄 수 없어요."
   - name: cmap
     type: str 또는 None
     kind: keyword-only
@@ -58,10 +58,10 @@ returns:
   desc: 모듈 함수는 새 Figure를, 메서드는 등고선을 더한 그 Figure 자신을 돌려줘요.
 raises:
   - type: TypeError
-    desc: f가 호출 가능하지 않을 때, f가 sd.ndarray나 수가 아닌 것이나 복소수를 돌려줄 때, levels가 정수나 수의 시퀀스가 아닐 때, filled·labels가 bool이 아닐 때, samples·refine이 정수가 아닐 때.
+    desc: f가 함수도 2차원 값 배열도 아닐 때, f가 sd.ndarray나 수가 아닌 것이나 복소수를 돌려줄 때, 값의 배열이 복소수일 때, levels가 정수나 수의 시퀀스가 아닐 때, filled·labels가 bool이 아닐 때, samples·refine이 정수가 아닐 때.
   - type: ValueError
-    desc: x0 < x1이나 y0 < y1이 아니거나 범위가 유한하지 않을 때, levels가 1보다 작거나 빈 시퀀스일 때, cmap이 모르는 이름일 때, color와 cmap을 함께 줬을 때, f가 격자에서 유한한 값을 하나도 내지 않을 때, samples·refine이 범위 밖일 때.
-seeAlso: [density, implicit, region, heatmap, sampling]
+    desc: x0 < x1이나 y0 < y1이 아니거나 범위가 유한하지 않을 때, levels가 1보다 작거나 빈 시퀀스일 때, cmap이 모르는 이름일 때, color와 cmap을 함께 줬을 때, f가 격자에서 유한한 값을 하나도 내지 않을 때, samples·refine이 범위 밖일 때, 값의 배열이 2차원이 아니거나 2 × 2보다 작을 때, 값의 배열과 함께 samples나 refine을 줬을 때.
+seeAlso: [density, implicit, region, heatmap, sampling, vectorfield]
 ---
 import PlotImage from '../../../components/fig/PlotImage.astro';
 
@@ -109,7 +109,7 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
 
 ## 칠한 등고선: filled
 
-`filled=True`면 이웃한 수준 사이의 띠를 색으로 칠해요. 가장 낮은 수준 아래와 가장 높은 수준 위도 칠해요. 선은 가는 짙은 선이 되고, 숫자 대신 칸 오른쪽에 색 막대가 붙어요. 로젠브록 함수의 휘어진 골짜기를 칠해 보고, 최솟값 $(1, 1)$에 점을 찍어 볼게요.
+`filled=True`면 이웃한 수준 사이의 띠를 색으로 칠해요. 가장 낮은 수준 아래와 가장 높은 수준 위도 칠해요. 선은 가는 짙은 선이 되고, 숫자 대신 칸 오른쪽에 색 막대가 붙어요. 띠의 가장자리와 선은 같은 점들이라 서로 어긋나지 않아요. 로젠브록 함수의 휘어진 골짜기를 칠해 보고, 최솟값 $(1, 1)$에 점을 찍어 볼게요.
 
 ```python
 >>> rosen = lambda x, y: (1 - x) ** 2 + 100 * (y - x * x) ** 2
@@ -117,7 +117,7 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
 >>> fig = fig.scatter([1.0], [1.0], color="white")
 ```
 
-<PlotImage name="contour-filled" format="png" alt="로젠브록 함수의 칠한 등고선. 바나나 모양으로 휜 하늘색 골짜기가 가운데 있고, 바깥으로 갈수록 보라와 빨강이에요. 오른쪽에 색 막대가 있어요" caption="수준 일곱을 직접 줬어요. 띠의 색은 그 띠의 가운데 값의 색이고, 색 막대는 값에 비례해요. 흰 점이 최솟값 (1, 1)이에요." />
+<PlotImage name="contour-filled" alt="로젠브록 함수의 칠한 등고선. 바나나 모양으로 휜 하늘색 골짜기가 가운데 있고, 바깥으로 갈수록 보라와 빨강이에요. 오른쪽에 색 막대가 있어요" caption="수준 일곱을 직접 줬어요. 띠의 색은 그 띠의 가운데 값의 색이고, 색 막대는 값에 비례해요. 흰 점이 최솟값 (1, 1)이에요." />
 
 색 막대는 값에 비례하는 눈금이라, 위처럼 간격이 고르지 않은 수준은 낮은 띠들이 막대의 아래쪽에 몰려 비슷한 색으로 보여요. 색의 차이를 고르게 보이고 싶으면 수준을 고른 간격으로 주거나 `levels`에 개수를 줘요.
 
@@ -131,6 +131,24 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
 
 `contour`의 칸은 가로세로 비가 그림의 기본(4:3)이에요. `implicit`처럼 한 단위를 같은 길이로 맞추지 않아요. 원이 원으로 보여야 하면 `height`로 칸의 모양을 맞춰요.
 
+## 값의 배열로 그리기
+
+함수 자리에 이미 계산한 값의 2차원 배열을 줄 수 있어요. 잰 값이나 시뮬레이션의 결과처럼 식이 없는 자료의 등고선을 그릴 때 써요. `Z[j, i]`는 사각형을 고르게 나눈 격자의 점 $(x_i, y_j)$의 값이고, 첫 줄이 `y0`이에요. `sd.meshgrid(x, y, indexing="xy")`의 격자에서 계산한 값이 그대로 맞아요.
+
+```python
+>>> x = sd.linspace(-3.0, 3.0, 48)
+>>> y = sd.linspace(-2.0, 2.0, 32)
+>>> X, Y = sd.meshgrid(x, y, indexing="xy")
+>>> Z = f(X, Y)
+>>> Z.shape
+(32, 48)
+>>> fig = sd.plot.contour(Z, -3, 3, -2, 2, filled=True)
+```
+
+<PlotImage name="contour-values" alt="사인과 코사인을 곱한 함수의 칠한 등고선. 왼쪽에 하늘색 골짜기, 오른쪽에 빨간 봉우리가 있고 띠의 경계에 가는 짙은 선이 있어요. 오른쪽에 색 막대가 있어요" caption="맨 위 그림과 같은 함수를 48 × 32점에서 미리 계산한 값으로 그렸어요. 수준 고르기와 색은 함수일 때와 같아요. 0 수준의 선들이 만나는 곳(가운데 위아래)은 격자가 성겨서 조금 어긋나 보여요." />
+
+수준을 고르는 법, 숫자, 칠, 색은 함수일 때와 같아요. 다만 값만 있으면 다시 잴 수 없어서, 수준선의 자리는 격자의 값을 칸 안에서 직선으로 이어 어림한 것이에요. `samples`와 `refine`은 줄 수 없어요. 격자가 성기면 선이 그만큼 각져요.
+
 ## 겹치기
 
 메서드 `fig.contour`로 다른 그림 위에 등고선을 얹어요. [density](/api/plot/density/)의 색 그림 위에 몇 수준의 선을 얹는 것이 흔한 쓰임이에요. 등고선 위에는 `scatter`로 점을, `implicit`으로 제약 곡선을 얹을 수 있어요.
@@ -143,6 +161,10 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
 ## 에러
 
 ```python
+>>> sd.plot.contour(Z, -3, 3, -2, 2, samples=11)
+Traceback (most recent call last):
+    ...
+ValueError: contour(): 'samples' and 'refine' are for a function; the values given are the grid
 >>> sd.plot.contour(f, -3, 3, -2, 2, levels=0)
 Traceback (most recent call last):
     ...
@@ -170,9 +192,10 @@ ValueError: contour(): 'f' has no finite value on the grid
 - **수준의 개수는 대략이에요.** 정확한 값이 필요하면 시퀀스로 줘요.
 - **극점 둘레는 수준을 받지 않아요.** 값의 대부분이 있는 범위에서 수준을 고르므로, 아주 큰 값의 수준이 필요하면 시퀀스로 직접 줘요.
 - **칸의 비율은 자유예요.** 한 단위를 가로세로 같은 길이로 맞추지 않아요.
-- 이미 계산한 격자의 값(배열)에는 등고선을 그리지 않아요. 함수를 받아야 해요. 배열은 [heatmap](/api/plot/heatmap/)으로 색 그림을 그려요.
+- **값의 배열은 준 격자만큼만 정확해요.** 식이 있으면 함수로 넘겨요. 그림이 수준선 둘레를 골라 더 촘촘히 재요.
+- 기울기의 방향을 함께 보이려면 [vectorfield](/api/plot/vectorfield/)를 겹쳐요.
 
 ## matplotlib을 아는 분께
 
-- `plt.contour(X, Y, Z)`는 미리 계산한 격자를 받아요. 여기서는 함수와 사각형을 받고, 격자와 다시 잴 곳은 그림이 정해요.
+- `plt.contour(X, Y, Z)`는 미리 계산한 격자를 받아요. 여기서는 함수와 사각형을 받고, 격자와 다시 잴 곳은 그림이 정해요. 값의 배열도 받지만 `X`, `Y` 대신 사각형의 범위를 주고, 격자는 그 사각형을 고르게 나눈 것으로 봐요.
 - `plt.contourf`는 `filled=True`, `plt.clabel`은 `labels=True`(기본)예요. 수준이 정수일 때 고운 값을 고르는 것은 같지만, 여기서는 값의 대부분이 있는 범위에서 골라 극점이 수준을 다 가져가지 않아요.

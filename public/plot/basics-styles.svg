@@ -28,7 +28,7 @@
 <g fill="#cd534c" stroke="#ffffff" stroke-width="0.5"><use xlink:href="#m4" x="167.0176" y="124.3476"/></g>
 <g fill="none" stroke="#cd534c" stroke-width="0.72"><use xlink:href="#m5" x="203.7434" y="124.3476"/></g>
 <g fill="none" stroke="#cd534c" stroke-width="0.72"><use xlink:href="#m6" x="240.4693" y="124.3476"/></g>
-<path d="M11.3 3L11.3 129.0148L249.2835 129.0148" fill="none" stroke="#212121" stroke-width="0.6" stroke-linecap="square"/>
+<path d="M11.3 3L11.3 129.0148L249.2835 129.0148" fill="none" stroke="#212121" stroke-width="0.6" stroke-linecap="square" stroke-miterlimit="10"/>
 <path d="M20.1142 129.0148L20.1142 131.8148" fill="none" stroke="#212121" stroke-width="0.6"/>
 <g fill="#212121" transform="matrix(1 -0 0 1 18.364202 138.634284)"><use xlink:href="#g0" transform="matrix(0.702625 0 0 0.702625 0 0)"/></g>
 <path d="M56.84 129.0148L56.84 131.8148" fill="none" stroke="#212121" stroke-width="0.6"/>

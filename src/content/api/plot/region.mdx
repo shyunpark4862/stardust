@@ -10,9 +10,9 @@ signatures:
 summary: 부등식 f(x, y) > 0을 만족하는 영역을 사각형 [x0, x1] × [y0, y1] 안에서 반투명하게 칠해요. 여러 부등식의 그리고·또는은 sd.minimum과 sd.maximum으로 엮어요.
 params:
   - name: f
-    type: 호출 가능한 객체
+    type: 호출 가능한 객체 또는 2차원 배열
     kind: positional-only
-    desc: "f(x, y). 같은 모양의 float64 sd.ndarray 둘을 받아 같은 모양의 실수 배열(또는 수 하나)을 돌려줘요. f > 0인 곳을 칠해요."
+    desc: "f(x, y). 같은 모양의 float64 sd.ndarray 둘을 받아 같은 모양의 실수 배열(또는 수 하나)을 돌려줘요. f > 0인 곳을 칠해요. 함수 대신 이미 계산한 값의 2차원 배열(2 × 2 이상)을 줘도 돼요. Z[j, i]가 사각형을 고르게 나눈 격자의 점 (x_i, y_j)의 값이에요."
   - name: x0, x1
     type: float
     kind: positional-only
@@ -24,11 +24,11 @@ params:
   - name: samples
     type: int, (int, int) 또는 None
     kind: keyword-only
-    desc: "격자의 점의 수. 정수 하나면 가로세로가 같고, 쌍이면 (가로, 세로)예요. 한 방향 3 이상 4000 이하. 기본값 None은 (321, 241)이에요."
+    desc: "격자의 점의 수. 정수 하나면 가로세로가 같고, 쌍이면 (가로, 세로)예요. 한 방향 3 이상 4000 이하. 기본값 None은 (321, 241)이에요. 값의 배열에는 줄 수 없어요."
   - name: refine
     type: int 또는 None
     kind: keyword-only
-    desc: "1이면 경계가 지나는 칸과 그 둘레를 가로세로 4배로 다시 재요. 0이면 격자를 그대로 써요. 기본값 None은 1이에요."
+    desc: "1이면 경계가 지나는 칸과 그 둘레를 가로세로 4배로 다시 재요. 0이면 격자를 그대로 써요. 기본값 None은 1이에요. 값의 배열에는 줄 수 없어요."
   - name: color
     type: 색 또는 None
     kind: keyword-only
@@ -50,9 +50,9 @@ returns:
   desc: 모듈 함수는 새 Figure를, 메서드는 영역을 더한 그 Figure 자신을 돌려줘요.
 raises:
   - type: TypeError
-    desc: f가 호출 가능하지 않을 때, f가 sd.ndarray나 수가 아닌 것이나 복소수를 돌려줄 때, alpha가 수가 아닐 때, samples·refine이 정수가 아닐 때.
+    desc: f가 함수도 2차원 값 배열도 아닐 때, f가 sd.ndarray나 수가 아닌 것이나 복소수를 돌려줄 때, alpha가 수가 아닐 때, samples·refine이 정수가 아닐 때.
   - type: ValueError
-    desc: x0 < x1이나 y0 < y1이 아니거나 범위가 유한하지 않을 때, alpha가 0과 1 사이가 아닐 때, f가 받은 것과 다른 모양을 돌려줄 때, samples·refine이 범위 밖일 때.
+    desc: x0 < x1이나 y0 < y1이 아니거나 범위가 유한하지 않을 때, alpha가 0과 1 사이가 아닐 때, f가 받은 것과 다른 모양을 돌려줄 때, samples·refine이 범위 밖일 때, 값의 배열이 2차원이 아니거나 2 × 2보다 작을 때, 값의 배열과 함께 samples나 refine을 줬을 때.
 seeAlso: [implicit, contour, area, sampling]
 ---
 import PlotImage from '../../../components/fig/PlotImage.astro';
@@ -70,7 +70,7 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
 >>> fig = fig.implicit(above, -1.5, 1.5, -1.5, 1.5, style=":", color="C2")
 ```
 
-<PlotImage name="region-both" format="png" alt="단위원과 포물선이 겹친 렌즈 모양의 영역이 옅은 파랑으로 칠해져 있고, 원은 파선, 포물선은 점선이에요" caption="두 부등식을 모두 만족하는 곳만 칠했어요. 칠한 영역의 가장자리는 두 경계선과 정확히 맞아요." />
+<PlotImage name="region-both" alt="단위원과 포물선이 겹친 렌즈 모양의 영역이 옅은 파랑으로 칠해져 있고, 원은 파선, 포물선은 점선이에요" caption="두 부등식을 모두 만족하는 곳만 칠했어요. 칠한 영역의 가장자리는 두 경계선과 정확히 맞아요." />
 
 <Reference />
 
@@ -102,7 +102,7 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
 >>> fig = sd.plot.grid([a.title("$A \\cup B$"), b.title("$A \\setminus B$")], ncols=2, labels="A", width=183)
 ```
 
-<PlotImage name="region-setops" format="png" alt="왼쪽은 두 원을 합친 땅콩 모양의 영역, 오른쪽은 왼쪽 원에서 오른쪽 원을 뺀 초승달 모양의 영역" caption="A는 maximum(c1, c2)로 두 원의 합집합이고, B는 minimum(c1, −c2)로 왼쪽 원에서 오른쪽 원을 뺀 차집합이에요." scale={1} />
+<PlotImage name="region-setops" alt="왼쪽은 두 원을 합친 땅콩 모양의 영역, 오른쪽은 왼쪽 원에서 오른쪽 원을 뺀 초승달 모양의 영역" caption="A는 maximum(c1, c2)로 두 원의 합집합이고, B는 minimum(c1, −c2)로 왼쪽 원에서 오른쪽 원을 뺀 차집합이에요." scale={1} />
 
 ## 겹치기와 alpha
 
@@ -113,21 +113,53 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
 >>> fig = fig.region(c2, -2, 2, -1.5, 1.5, label="$B$")
 ```
 
-<PlotImage name="region-venn" format="png" alt="겹친 두 원. 왼쪽 원은 옅은 파랑, 오른쪽 원은 옅은 노랑이고 겹친 곳은 두 색이 섞인 색이에요" caption="반투명한 두 영역을 겹쳤어요. 겹친 곳은 두 칠이 섞여 진해져요. 범례의 견본은 각 영역의 칠과 같은 색이에요." />
+<PlotImage name="region-venn" alt="겹친 두 원. 왼쪽 원은 옅은 파랑, 오른쪽 원은 옅은 노랑이고 겹친 곳은 두 색이 섞인 색이에요" caption="반투명한 두 영역을 겹쳤어요. 겹친 곳은 두 칠이 섞여 진해져요. 범례의 견본은 각 영역의 칠과 같은 색이에요." />
 
 `alpha=1`이면 불투명하게 칠해서 뒤의 것을 가려요. `color`로 색을 정해요.
 
 ## 경계는 정확하게
 
-영역은 격자의 칸마다 경계 안쪽의 다각형으로 나눠 칠해요. 경계가 지나는 칸은 경계선의 점(할선법으로 다듬은 점)을 꼭짓점으로 쓰므로, 칠의 가장자리가 같은 함수로 그린 `implicit` 곡선과 맞아요. 이웃한 칸의 다각형은 틈 없이 맞물려요.
+영역의 윤곽선은 같은 함수로 그린 `implicit` 곡선과 같은 점들이에요. 경계가 사각형의 변에 닿으면 변을 따라 윤곽선을 닫고, 닫힌 윤곽선의 안쪽을 한 번에 칠해요. 그래서 칠의 가장자리가 경계선과 맞고, 칠 안에 이음매가 없어요. 고리 모양의 영역처럼 윤곽선 안에 또 윤곽선이 있으면 안쪽 윤곽선은 구멍이 돼요.
+
+```python
+>>> ring = lambda x, y: sd.minimum(1 - x * x - y * y, x * x + y * y - 0.25)
+>>> fig = sd.plot.region(ring, -1.5, 1.5, -1.5, 1.5)
+```
+
+함수가 NaN을 돌려주는 곳은 칠하지 않아요. 정의역에 구멍이 있어 윤곽선이 닫히지 않는 영역도 값이 있는 곳까지만 칠해져요.
 
 `samples`와 `refine`은 `implicit`과 같아요. 기본으로 경계 둘레의 칸만 가로세로 4배로 다시 재서, 뾰족한 모서리나 두 경계가 만나는 곳이 또렷해요. 영역의 범위는 준 사각형이고, 칸은 가로와 세로의 한 단위가 같은 길이예요.
 
 부등식을 만족하는 곳이 없으면 빈 칸이 되고, 사각형 전체가 만족하면 전체가 칠해져요. 어느 쪽도 에러가 아니에요.
 
+## 값의 배열로 그리기
+
+함수 자리에 이미 계산한 값의 2차원 배열을 줄 수 있어요. `Z[j, i]`는 사각형을 고르게 나눈 격자의 점 $(x_i, y_j)$의 값이고, 첫 줄이 `y0`이에요. 값이 0보다 큰 곳을 칠하므로, 문턱값보다 큰 곳을 칠하려면 배열에서 문턱값을 빼서 넘겨요.
+
+```python
+>>> x = sd.linspace(-3.0, 3.0, 61)
+>>> y = sd.linspace(-2.0, 2.0, 41)
+>>> X, Y = sd.meshgrid(x, y, indexing="xy")
+>>> Z = sd.sin(X) * sd.cos(Y)
+>>> fig = sd.plot.region(Z - 0.5, -3, 3, -2, 2, label="$z > 0.5$")
+>>> fig = fig.region(-0.5 - Z, -3, 3, -2, 2, label="$z < -0.5$")
+```
+
+<PlotImage name="region-values" alt="가로 −3에서 3, 세로 −2에서 2의 칸. 오른쪽에 옅은 파랑, 왼쪽에 옅은 노랑의 모서리가 둥근 네모 꼴 영역이 하나씩 있고 오른쪽 위에 범례가 있어요" caption="61 × 41점의 값 배열에서 0.5보다 큰 곳과 −0.5보다 작은 곳을 칠했어요. 경계는 격자의 값을 칸 안에서 직선으로 이어 어림해요." />
+
+값만 있으면 경계 둘레를 다시 잴 수 없으니 `samples`와 `refine`은 줄 수 없어요. 경계의 정확도는 준 격자가 정해요.
+
 ## 에러
 
 ```python
+>>> sd.plot.region(Z, -3, 3, -2, 2, samples=101)
+Traceback (most recent call last):
+    ...
+ValueError: region(): 'samples' and 'refine' are for a function; the values given are the grid
+>>> sd.plot.region("Z", -3, 3, -2, 2)
+Traceback (most recent call last):
+    ...
+TypeError: region(): 'f' must be callable or a 2-D array of values, not str
 >>> sd.plot.region(lambda x, y: [1], 0, 1, 0, 1)
 Traceback (most recent call last):
     ...

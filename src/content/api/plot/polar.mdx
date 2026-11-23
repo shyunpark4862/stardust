@@ -123,7 +123,15 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
 
 ## 달아나는 반지름
 
-범위는 곡선의 값 전체예요. $r = 1/\cos\theta$(직선 $x = 1$)처럼 반지름이 한없이 커지는 각이 있으면 그 값이 축을 차지하니 `xlim`, `ylim`으로 범위를 정해요.
+범위는 [parametric](/api/plot/parametric/#같은-비율의-칸)과 같은 규칙으로 잡아요. $x$와 $y$ 저마다 값의 대부분이 있는 띠를 보고 멀리 달아난 값을 빼요. 쌍곡 나선 $r = 1/\theta$는 $\theta$가 0에 가까워질수록 반지름이 한없이 커지지만, 범위는 원점 둘레의 소용돌이에 맞춰져요.
+
+```python
+>>> fig = sd.plot.polar(lambda t: 1 / t, 0, 8 * math.pi)
+>>> fig.info[0].undefined[0][0]
+0.0
+```
+
+$\theta = 0$에서는 값이 없어서 그 끝이 `undefined`에 적혀요. 보고 싶은 곳이 따로 있으면 `xlim`, `ylim`으로 정해요. $r = 1/\cos\theta$는 직선 $x = 1$이에요.
 
 ```python
 >>> fig = sd.plot.polar(lambda t: 1 / sd.cos(t), 0, 2 * math.pi)
@@ -132,7 +140,7 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
 >>> fig = fig.xlim(-2, 2).ylim(-2, 2)
 ```
 
-극점은 찾아서 선을 끊어요. 범위를 정하지 않으면 세로축이 수십만 단위까지 늘어나 직선 하나만 보여요.
+극점은 찾아서 선을 끊어요. 범위를 정하지 않으면 값의 대부분이 있는 범위(세로로 대략 −9에서 9)에 그려져요. 여기서는 원점 둘레를 보려고 범위를 직접 줬어요.
 
 ## 에러
 
@@ -154,6 +162,6 @@ TypeError: polar(): 'r' must return real values, not complex128
 ## 조심할 점
 
 - **각은 라디안이에요.** 한 바퀴는 `2 * math.pi`예요.
-- **범위는 값 전체예요.** 달아나는 반지름이 있으면 `xlim`, `ylim`으로 정해요.
+- **자동 범위는 달아나는 값을 빼요.** 곡선의 일부가 잘려 보이면 `xlim`, `ylim`으로 정해요.
 - **극좌표 격자는 없어요.** 동심원이 필요하면 `fig.polar(lambda t: 1.0, ...)`처럼 상수 반지름의 원을 가는 선으로 더해요.
 - 매개변수로 쓰는 편이 쉬운 곡선은 [parametric](/api/plot/parametric/), 식 $F(x, y) = 0$으로 주어진 곡선은 [implicit](/api/plot/implicit/)이에요.

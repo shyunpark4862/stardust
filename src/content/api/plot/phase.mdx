@@ -12,7 +12,7 @@ params:
   - name: f
     type: 호출 가능한 객체
     kind: positional-only
-    desc: "f(z). complex128 sd.ndarray z를 받아 같은 모양의 배열을 돌려줘요. 실수 배열을 돌려주면 복소수로 바꿔 써요. 화소 전체의 격자로 한 번 불려요."
+    desc: "f(z). complex128 sd.ndarray z를 받아 같은 모양의 배열을 돌려줘요. 실수 배열을 돌려주면 복소수로 바꿔 써요. 수 하나(실수나 복소수)를 돌려주면 상수 함수예요. 화소 전체의 격자로 한 번 불려요."
   - name: re0, re1
     type: float
     kind: positional-only
@@ -38,7 +38,7 @@ returns:
   desc: 모듈 함수는 새 Figure를, 메서드는 그림을 더한 그 Figure 자신을 돌려줘요.
 raises:
   - type: TypeError
-    desc: f가 호출 가능하지 않을 때, f가 z와 같은 모양의 sd.ndarray를 돌려주지 않을 때(수 하나도 포함), contours가 bool이 아닐 때, samples가 정수가 아닐 때.
+    desc: f가 호출 가능하지 않을 때, f가 z와 같은 모양의 sd.ndarray나 수 하나를 돌려주지 않을 때, contours가 bool이 아닐 때, samples가 정수가 아닐 때.
   - type: ValueError
     desc: re0 < re1이나 im0 < im1이 아니거나 범위가 유한하지 않을 때, samples가 범위 밖일 때.
 seeAlso: [density, contour, sampling]
@@ -103,7 +103,11 @@ $e^{1/z}$는 원점이 진성 특이점이라 원점 가까이에서 색이 끝�
 
 <PlotImage name="phase-sine" alt="가로로 긴 위상 그림. 가로축 위 −π, 0, π에 영점이 있고 그 사이의 ±π/2 근처에서 색이 크게 바뀌어요" caption="sin z의 영점은 실수축 위의 0, ±π이고 모두 단순 영점이에요. 허수부가 커지면 크기가 지수적으로 커져서 위아래로 밝기의 띠가 가로로 늘어서요." />
 
-다른 함수 그림과 달리 `phase`의 `f`는 **수 하나를 돌려주면 에러**예요. 상수 함수는 `lambda z: 0 * z + c`처럼 배열로 돌려줘요.
+다른 함수 그림처럼 `f`가 수 하나(실수나 복소수)를 돌려주면 상수 함수로 봐요. 그림 전체가 그 수의 편각의 한 색이에요.
+
+```python
+>>> fig = sd.plot.phase(lambda z: 1j, -1, 1, -1, 1)
+```
 
 화소의 값이 NaN이면 투명하게 비우고, 0이면 검정, 무한대면 흰색이에요.
 
@@ -114,7 +118,7 @@ $e^{1/z}$는 원점이 진성 특이점이라 원점 가까이에서 색이 끝�
 ## 에러
 
 ```python
->>> sd.plot.phase(lambda z: 1.0, -1, 1, -1, 1)
+>>> sd.plot.phase(lambda z: [1.0], -1, 1, -1, 1)
 Traceback (most recent call last):
     ...
 TypeError: phase(): 'f' must return an sd.ndarray of its argument's shape (360, 480) (it is called with a complex128 array)

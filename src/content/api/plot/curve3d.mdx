@@ -5,8 +5,8 @@ names: [curve3d]
 group: 3D
 order: 4
 signatures:
-  - "sd.plot.curve3d(fx, fy, fz, a, b, /, *, samples=None, refine=None, color=None, width=None, azimuth=None, elevation=None, perspective=True, **figure)"
-  - "fig.curve3d(fx, fy, fz, a, b, /, *, samples=None, refine=None, color=None, width=None, azimuth=None, elevation=None, perspective=True)"
+  - "sd.plot.curve3d(fx, fy, fz, a, b, /, *, samples=None, refine=None, color=None, width=None, label=None, azimuth=None, elevation=None, perspective=True, **figure)"
+  - "fig.curve3d(fx, fy, fz, a, b, /, *, samples=None, refine=None, color=None, width=None, label=None, azimuth=None, elevation=None, perspective=True)"
 summary: 매개변수 t의 함수 셋으로 주어진 공간 곡선 (x(t), y(t), z(t))를 3D 칸에 그려요. 곡선이 화면에서 꺾이는 곳만 더 촘촘히 재고, 값이 달아나는 극점에서는 선을 끊으며, 상자를 벗어나는 선은 상자의 면에서 잘라요.
 params:
   - name: fx, fy, fz
@@ -33,6 +33,10 @@ params:
     type: 실수 또는 None
     kind: keyword-only
     desc: "선의 굵기(pt). 0보다 커야 해요. None(기본값)이면 1 pt예요."
+  - name: label
+    type: str 또는 None
+    kind: keyword-only
+    desc: "범례에 적을 이름(LaTeX 원문). 주면 상자 오른쪽 밖의 범례에 들어요."
   - name: azimuth, elevation
     type: 실수 또는 None
     kind: keyword-only
@@ -44,13 +48,13 @@ params:
   - name: "**figure"
     type: 그림 옵션
     kind: keyword-only
-    desc: "width, height, font, theme, palette. 모듈 함수만 받아요. 뜻은 그림의 기본에 있어요."
+    desc: "height, font, theme, palette. 모듈 함수만 받아요. 여기서 width는 선의 굵기라서 그림의 너비가 되지 않아요(그림의 너비는 Figure(width=...)에 메서드로 그리거나 fig.size로 정해요). 뜻은 그림의 기본에 있어요."
 returns:
   type: Figure
   desc: 곡선을 그린 그림. 메서드로 부르면 그 그림 자신이에요.
 raises:
   - type: TypeError
-    desc: "fx·fy·fz가 호출 가능하지 않을 때, 그 함수가 배열이나 수가 아닌 것이나 복소수를 돌려줄 때, a·b·width·각이 수가 아닐 때, samples·refine이 정수가 아닐 때, perspective가 bool이 아닐 때. 함수 안에서 난 에러도 그대로 나와요."
+    desc: "fx·fy·fz가 호출 가능하지 않을 때, 그 함수가 배열이나 수가 아닌 것이나 복소수를 돌려줄 때, a·b·width·각이 수가 아닐 때, label이 문자열이 아닐 때, samples·refine이 정수가 아닐 때, perspective가 bool이 아닐 때. 함수 안에서 난 에러도 그대로 나와요."
   - type: ValueError
     desc: "a, b가 유한하지 않거나 a < b가 아닐 때, 함수가 다른 모양의 배열을 돌려줄 때, 모르는 색, width가 0 이하일 때, samples·refine·elevation이 범위 밖일 때, 2D 층이 있는 칸에 더할 때."
 seeAlso: [view3d, parametric, scatter3d, parametric_surface, sampling]
@@ -125,10 +129,18 @@ $z = \tan t$는 $t = \pm\pi/2$에서 극점이에요. 선은 세 가지로 끊�
 
 - `color`를 주지 않으면 팔레트의 다음 색이에요. 같은 칸에 곡선을 여럿 더하면 차례로 다른 색을 받아요.
 - `width`는 선의 굵기(pt)이고 기본은 1 pt예요.
-- 선은 곡면과 깊이를 견줘 그려요. 곡면 뒤로 지나가는 부분은 가려져요. 곡면 위를 지나는 길을 보이려면 곡선을 곡면보다 조금 띄워요([3D 칸과 시점](/api/plot/view3d/)의 첫 그림).
-- 선과 선은 깊이를 견주지 않아요. 곡선 둘이 화면에서 엇갈리면 나중에 더한 곡선이 위에 오고, 한 곡선이 스스로 엇갈리는 곳은 먼저 지나간($t$가 작은) 부분이 위에 와요. 3D 점([`scatter3d`](/api/plot/scatter3d/))도 곡선보다 위에 찍혀요.
+- 선은 깊이를 견줘 그려요. 곡면 뒤로 지나가는 부분은 가려져요. 곡면 위를 지나는 길을 보이려면 곡선을 곡면보다 조금 띄워요([3D 칸과 시점](/api/plot/view3d/)의 첫 그림).
+- 선과 선, 선과 점([`scatter3d`](/api/plot/scatter3d/))도 깊이를 견줘요. 곡선 둘이 화면에서 엇갈리거나 한 곡선이 스스로 엇갈리는 곳에서는 보는 사람에게 가까운 쪽이 위에 와요. 위의 매듭에서 고리가 위아래로 엇갈려 보이는 것이 그래서예요.
+- `label`을 주면 그 이름이 범례에 들어요. 범례는 상자의 오른쪽 밖에 서요.
 
-선의 꼴(`style`), 불투명도(`alpha`), 범례 이름(`label`)은 받지 않아요.
+```python
+>>> fig = sd.plot.curve3d(sd.cos, sd.sin, lambda t: t / 6, 0, 4 * math.pi, label="right-handed")
+>>> fig = fig.curve3d(sd.cos, lambda t: -sd.sin(t), lambda t: t / 6, 0, 4 * math.pi, label="left-handed")
+```
+
+<PlotImage name="curve3d-labels" format="png" alt="같은 원기둥을 서로 반대 방향으로 감아 오르는 파란 나선과 노란 나선. 두 나선이 만나는 곳마다 앞에 있는 쪽이 위에 보여요. 상자 오른쪽 밖에 right-handed와 left-handed 두 줄의 범례가 있어요." caption="label을 준 두 나선이에요. 색은 팔레트에서 차례로 받고, 범례는 상자 밖에 서요." />
+
+선의 꼴(`style`)과 불투명도(`alpha`)는 받지 않아요.
 
 ## 다른 층과 겹치기
 
@@ -139,7 +151,7 @@ $z = \tan t$는 $t = \pm\pi/2$에서 극점이에요. 선은 세 가지로 끊�
 ...                         color="C1", size=5)
 ```
 
-메서드로 곡선, 곡면, 점을 같은 칸에 더해요. 시점은 첫 층의 것이 쓰여요. 곡선만 있는 칸에서 시점을 주지 않으면 곡선이 화면에 가장 넓게 퍼지는 방향을 골라요([3D 칸과 시점](/api/plot/view3d/#시점-azimuth와-elevation)).
+메서드로 곡선, 곡면, 점을 같은 칸에 더해요. 2D 그림(`line` 등)은 3D 칸에 더할 수 없어요. 시점은 첫 층의 것이 쓰여요. 곡선만 있는 칸에서 시점을 주지 않으면 곡선이 화면에 가장 넓게 퍼지는 방향을 골라요([3D 칸과 시점](/api/plot/view3d/#시점-azimuth와-elevation)).
 
 ## 조심할 점
 

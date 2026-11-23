@@ -5,9 +5,9 @@ names: [scatter3d]
 group: 3D
 order: 5
 signatures:
-  - "sd.plot.scatter3d(x, y, z, /, *, data=None, group=None, color=None, size=None, azimuth=None, elevation=None, perspective=True, **figure)"
-  - "fig.scatter3d(x, y, z, /, *, data=None, group=None, color=None, size=None, azimuth=None, elevation=None, perspective=True)"
-summary: 세 좌표 (x, y, z)의 점들을 3D 칸에 둥근 점으로 찍어요. 열 이름과 data=로 표의 열을 받고, group=으로 무리마다 팔레트의 색을 줘요. 시점을 주지 않으면 점들이 화면에 가장 넓게 퍼지는 방향을 골라요.
+  - "sd.plot.scatter3d(x, y, z, /, *, data=None, group=None, color=None, size=None, label=None, azimuth=None, elevation=None, perspective=True, **figure)"
+  - "fig.scatter3d(x, y, z, /, *, data=None, group=None, color=None, size=None, label=None, azimuth=None, elevation=None, perspective=True)"
+summary: 세 좌표 (x, y, z)의 점들을 3D 칸에 둥근 점으로 찍어요. 열 이름과 data=로 표의 열을 받고, group=으로 무리마다 팔레트의 색을 주고 범례를 붙여요. 시점을 주지 않으면 점들이 화면에 가장 넓게 퍼지는 방향을 골라요.
 params:
   - name: x, y, z
     type: ndarray, 수의 시퀀스, numpy 배열, frame의 Series, 또는 열 이름
@@ -20,7 +20,7 @@ params:
   - name: group
     type: 열 이름, 시퀀스 또는 None
     kind: keyword-only
-    desc: "점을 무리로 나누는 값(점과 길이가 같은 시퀀스나 data의 열 이름). 무리마다 팔레트의 색을 차례로 받아요. color와 함께 줄 수 없어요."
+    desc: "점을 무리로 나누는 값(점과 길이가 같은 시퀀스나 data의 열 이름). 무리마다 팔레트의 색을 차례로 받고, 무리의 값이 범례의 이름이 돼요. color나 label과 함께 줄 수 없어요."
   - name: color
     type: 색 또는 None
     kind: keyword-only
@@ -29,6 +29,10 @@ params:
     type: 실수 또는 None
     kind: keyword-only
     desc: "점의 지름(pt). 0보다 커야 해요. None(기본값)이면 테마의 점 크기(3.8 pt)예요."
+  - name: label
+    type: str 또는 None
+    kind: keyword-only
+    desc: "범례에 적을 이름(LaTeX 원문). 주면 상자 오른쪽 밖의 범례에 들어요. group과 함께 줄 수 없어요."
   - name: azimuth, elevation
     type: 실수 또는 None
     kind: keyword-only
@@ -46,9 +50,9 @@ returns:
   desc: 점을 찍은 그림. 메서드로 부르면 그 그림 자신이에요.
 raises:
   - type: TypeError
-    desc: "좌표가 수의 모임이 아닐 때, data 없이 열 이름(str)을 줄 때, data가 DataFrame이 아닐 때, size·각이 수가 아닐 때, perspective가 bool이 아닐 때."
+    desc: "좌표가 수의 모임이 아닐 때, data 없이 열 이름(str)을 줄 때, data가 DataFrame이 아닐 때, size·각이 수가 아닐 때, label이 문자열이 아닐 때, perspective가 bool이 아닐 때."
   - type: ValueError
-    desc: "x, y, z의 길이가 다를 때, data에 없는 열 이름일 때, color와 group을 함께 줄 때, 모르는 색, size가 0 이하일 때, elevation이 범위 밖일 때, 2D 층이 있는 칸에 더할 때."
+    desc: "x, y, z의 길이가 다를 때, data에 없는 열 이름일 때, color와 group을 함께 줄 때, label과 group을 함께 줄 때, 모르는 색, size가 0 이하일 때, elevation이 범위 밖일 때, 2D 층이 있는 칸에 더할 때."
 seeAlso: [view3d, scatter, curve3d, surface, basics]
 ---
 import PlotImage from '../../../components/fig/PlotImage.astro';
@@ -66,9 +70,9 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
 >>> fig = sd.plot.scatter3d(x, y, z, group=kind)
 ```
 
-<PlotImage name="scatter3d-clouds" format="png" alt="상자 안의 두 점 구름. 원점 둘레에 넓게 퍼진 파란 점 150개와, (2.5, 2.5, 2.5) 둘레에 좁게 모인 노란 점 150개가 있어요." caption="group=으로 나눈 두 무리. 무리마다 팔레트 'jco'의 색을 차례로 받았어요." />
+<PlotImage name="scatter3d-clouds" format="png" alt="상자 안의 두 점 구름. 원점 둘레에 넓게 퍼진 파란 점 150개와, (2.5, 2.5, 2.5) 둘레에 좁게 모인 노란 점 150개가 있어요. 상자 오른쪽 밖에 A와 B 두 줄의 범례가 있어요." caption="group=으로 나눈 두 무리. 무리마다 팔레트 'jco'의 색을 차례로 받고, 무리의 값 A와 B가 범례의 이름이 됐어요." />
 
-점은 화면을 향한 둥근 원이에요. 깊이를 견줘 찍으므로 가까운 점이 먼 점을 가려요. 곡면과 함께 그리면 곡면 뒤의 점은 가려지고 앞의 점은 곡면 위에 보여요. 곡선([`curve3d`](/api/plot/curve3d/))과는 깊이를 견주지 않아서 점이 언제나 곡선 위에 찍혀요.
+점은 화면을 향한 둥근 원이에요. 깊이를 견줘 찍으므로 가까운 점이 먼 점을 가려요. 곡면이나 곡선([`curve3d`](/api/plot/curve3d/))과 함께 그려도 같아요. 뒤에 있는 점은 가려지고 앞에 있는 점은 그 위에 보여요.
 
 <Reference />
 
@@ -91,9 +95,9 @@ Traceback (most recent call last):
 TypeError: scatter3d(): 'x' is a column name ('x'), which needs 'data'
 ```
 
-좌표 가운데 하나라도 NaN인 점은 찍지 않아요. 축의 범위는 유한한 좌표로만 잡아요.
+좌표 가운데 하나라도 NaN인 점은 찍지 않아요. 축의 범위는 유한한 좌표로만 잡아요. 곡면이 없는 칸의 상자는 2D 그림처럼 자료의 범위를 4%씩 넓혀서, 가장 바깥의 점이 상자의 모서리와 눈금 위에 놓이지 않아요.
 
-## 색과 크기
+## 색, 크기, 범례
 
 - `color`를 주지 않으면 모든 점이 팔레트의 다음 색이에요. `group=`을 주면 무리마다 팔레트의 색을 차례로 받아요. 둘을 함께 줄 수는 없어요.
 - `size`는 점의 지름(pt)이에요. 기본은 테마의 점 크기 3.8 pt예요.
@@ -105,7 +109,23 @@ Traceback (most recent call last):
 ValueError: scatter3d(): 'color' and 'group' cannot both be given (a group takes the palette's colours)
 ```
 
-3D 칸은 범례를 그리지 않아요. 무리의 이름은 그림에 나오지 않으므로 캡션이나 제목으로 어느 색이 어느 무리인지 알려 주세요. 2D의 `scatter`가 받는 점의 꼴(`shape`), 불투명도(`alpha`), 범례 이름(`label`)은 받지 않아요. 점은 언제나 둥근 원이에요.
+범례는 두 가지로 생겨요. `group=`을 주면 무리의 값이 이름이 되고, 무리 없이 `label=`을 주면 그 이름이 돼요. 범례는 상자를 가리지 않게 상자의 오른쪽 밖에 서요. 여러 번 나눠 찍은 점들에 이름을 붙일 때 `label`을 써요.
+
+```python
+>>> fig = sd.plot.scatter3d(a[0], a[1], a[2], label="control")
+>>> fig = fig.scatter3d(b[0], b[1], b[2], label="treated")
+```
+
+`group`과 `label`을 함께 줄 수는 없어요. 범례가 필요 없으면 `fig.legend(loc=None)`으로 없애요.
+
+```python
+>>> sd.plot.scatter3d([1.0, 2.0], [1.0, 2.0], [1.0, 2.0], group=["a", "b"], label="x")
+Traceback (most recent call last):
+    ...
+ValueError: scatter3d(): 'label' and 'group' cannot both be given (a group is named by its value)
+```
+
+2D의 `scatter`가 받는 점의 꼴(`shape`)과 불투명도(`alpha`)는 받지 않아요. 점은 언제나 둥근 원이에요.
 
 ## 상자와 시점
 
@@ -131,4 +151,4 @@ ValueError: scatter3d(): 'color' and 'group' cannot both be given (a group takes
 
 - matplotlib의 `ax.scatter(x, y, z)`는 점을 깊이로 정렬하지 않고 준 순서로 찍어서, 무리를 나눠 여러 번 부르면 뒤의 무리가 앞의 무리를 덮어요. `scatter3d`는 점마다 깊이를 견줘요.
 - matplotlib의 `depthshade`(먼 점을 옅게)는 없어요. 점의 색은 거리와 무관하게 같아요.
-- `s=`(넓이, pt²) 대신 `size=`(지름, pt)예요. `c=`로 값에 따라 칠하는 꼴은 없고, 무리는 `group=`이에요.
+- `s=`(넓이, pt²) 대신 `size=`(지름, pt)예요. `c=`로 값에 따라 칠하는 꼴은 없고, 무리는 `group=`이에요. `ax.legend()`를 따로 부르지 않아도 무리나 `label`이 있으면 범례가 서요.

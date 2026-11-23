@@ -30,9 +30,9 @@ params:
     kind: keyword-only
     desc: "색띠의 양 끝에 놓을 값. 이 밖의 값은 끝의 색이에요. None이면 유한한 값의 최솟값과 최댓값이에요."
   - name: annotate
-    type: bool
+    type: bool 또는 str
     kind: keyword-only
-    desc: "True면 칸마다 값을 유효숫자 세 자리로 적어요. 글자 색은 칸의 밝기에 따라 검정이나 흰색이에요. 기본값 False."
+    desc: "True면 칸마다 값을 유효숫자 세 자리로 적어요. 문자열이면 Python의 수 서식('.2f', '.0%', ',.0f' 등)으로 적어요. 글자 색은 칸의 밝기에 따라 검정이나 흰색이에요. 기본값 False."
   - name: colorbar
     type: bool
     kind: keyword-only
@@ -46,10 +46,10 @@ returns:
   desc: "색칠한 격자 층을 더한 그림. 모듈 함수는 새 그림을, 메서드는 그 그림 자신을 돌려줘요."
 raises:
   - type: TypeError
-    desc: "z가 수의 배열이 아닐 때, vmin·vmax가 수가 아닐 때, annotate·colorbar가 True·False가 아닐 때."
+    desc: "z가 수의 배열이 아닐 때, vmin·vmax가 수가 아닐 때, annotate가 bool도 문자열도 아닐 때, colorbar가 True·False가 아닐 때."
   - type: ValueError
-    desc: "z가 2차원이 아니거나 비어 있을 때, xlabels·ylabels가 열·행의 수만큼의 문자열이 아닐 때, cmap이 없는 이름일 때, vmin과 vmax를 둘 다 줬는데 vmin이 vmax보다 작지 않을 때."
-seeAlso: [basics, density, contour, pairs, style]
+    desc: "z가 2차원이 아니거나 비어 있을 때, xlabels·ylabels가 열·행의 수만큼의 문자열이 아닐 때, cmap이 없는 이름일 때, annotate의 문자열이 수의 서식이 아닐 때, vmin과 vmax를 둘 다 줬는데 vmin이 vmax보다 작지 않을 때."
+seeAlso: [basics, hist2d, density, contour, pairs, bar, style]
 ---
 import Callout from '../../../components/Callout.astro';
 import PlotImage from '../../../components/fig/PlotImage.astro';
@@ -66,13 +66,12 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
 >>> h, w, a, s = z1, 0.8 * z1 + 0.6 * z2, z3, -0.7 * z3 + 0.7 * z2
 >>> r = sd.corrcoef(sd.stack([h, w, a, s]))
 >>> names = ["height", "weight", "age", "score"]
->>> r2 = sd.round(r * 100) / 100
->>> fig = sd.plot.heatmap(r2, xlabels=names, ylabels=names, cmap="rdbu", vmin=-1, vmax=1, annotate=True)
+>>> fig = sd.plot.heatmap(r, xlabels=names, ylabels=names, cmap="rdbu", vmin=-1, vmax=1, annotate=".2f")
 ```
 
 <PlotImage name="heatmap-corr" alt="height, weight, age, score 네 변수의 상관 행렬 열지도. 대각선은 짙은 파랑, height와 weight는 파랑, age와 score는 빨강이에요." caption="상관 행렬의 열지도. 파랑이 양의 상관, 빨강이 음의 상관이고, 칸마다 그 값을 적었어요." />
 
-행렬의 0번 행이 맨 위, 0번 열이 맨 왼쪽이에요. 표를 읽는 순서 그대로예요. 대각선은 자기 자신과의 상관이라 1이고, height와 weight, age와 score의 칸이 짙어요. 칸의 수는 `sd.corrcoef`가 낸 값을 소수 둘째 자리로 반올림한 것이에요(`r2`).
+행렬의 0번 행이 맨 위, 0번 열이 맨 왼쪽이에요. 표를 읽는 순서 그대로예요. 대각선은 자기 자신과의 상관이라 1이고, height와 weight, age와 score의 칸이 짙어요. 칸의 수는 `sd.corrcoef`가 낸 값을 소수 둘째 자리까지 적은 것이에요(`annotate=".2f"`).
 
 ```python
 >>> [[round(v, 2) for v in row] for row in r.tolist()]
@@ -104,15 +103,40 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
 
 ## 칸 안의 수: `annotate`
 
-`annotate=True`면 칸마다 값을 적어요. 값마다 유효숫자 세 자리로 줄인 뒤, 모든 칸이 같은 소수 자릿수를 쓰도록 맞춰 적어요. 0.8과 −0.31이 함께 있으면 `0.80`, `−0.31`이에요. 글자 색은 칸의 색이 밝으면 검정, 어두우면 흰색이에요.
-
-자릿수는 유효숫자를 가장 많은 소수 자리로 보여야 하는 칸에 맞춰요. 그래서 0.807과 0.00869처럼 크기가 많이 다른 값이 섞이면 `0.80700`, `0.00869`처럼 모든 칸이 소수 다섯 자리가 돼요. 적고 싶은 자릿수가 정해져 있으면, 앞의 상관 행렬처럼 먼저 반올림한 값을 넘겨요.
+`annotate=True`면 칸마다 값을 적어요. 값마다 따로 유효숫자 세 자리로 적으므로, 0.807과 0.00869가 함께 있으면 `0.807`, `0.00869`예요. 작은 값 하나 때문에 다른 칸의 자릿수가 길어지지 않아요. 글자 색은 칸의 색이 밝으면 검정, 어두우면 흰색이에요.
 
 ```python
 >>> fig = sd.plot.heatmap(visits, xlabels=days, ylabels=["A", "B", "C", "D"], annotate=True, colorbar=False)
 ```
 
 <PlotImage name="heatmap-annotate" alt="요일별 손님 수 열지도의 칸마다 그 수를 적은 그림. 색띠는 없어요." caption="칸마다 값을 적고 색띠를 뺀 그림." />
+
+모든 칸을 같은 꼴로 적고 싶으면 `annotate`에 Python의 수 서식을 문자열로 줘요. `format(값, 서식)`이 받는 서식 그대로이고, [`bar`](/api/plot/bar/)의 `annotate`와 같아요.
+
+| `annotate` | 0.807 | 1234.5 |
+|---|---|---|
+| `True` | 0.807 | $1.23\times10^{3}$ |
+| `'.2f'` | 0.81 | 1234.50 |
+| `'.0%'` | 81% | 123450% |
+| `',.0f'` | 1 | 1,234 |
+
+앞의 상관 행렬은 `'.2f'`로 모든 칸을 소수 둘째 자리에 맞췄어요. 비율의 표는 `'.0%'`가 알맞아요.
+
+```python
+>>> share = [[0.42, 0.35, 0.23], [0.18, 0.31, 0.51]]
+>>> fig = sd.plot.heatmap(share, xlabels=["A", "B", "C"], ylabels=["2025", "2026"], annotate=".0%", colorbar=False)
+```
+
+<PlotImage name="heatmap-percent" alt="2행 3열 열지도의 칸마다 42%, 35%, 23%, 18%, 31%, 51%가 적힌 그림" caption="비율을 annotate='.0%'로 적은 그림." />
+
+수의 서식이 아닌 문자열은 `ValueError`예요.
+
+```python
+>>> sd.plot.heatmap(share, annotate="{:.2f}")
+Traceback (most recent call last):
+    ...
+ValueError: heatmap(): 'annotate' is not a format spec for numbers: '{:.2f}'
+```
 
 칸이 많으면 글자가 칸보다 커져 겹쳐요. 칸 안의 수는 행과 열이 열 개 안팎일 때까지 쓰는 편이 좋아요.
 
@@ -137,6 +161,7 @@ NaN인 칸은 칠하지 않고 비워 둬요. `annotate=True`여도 수를 적�
 
 - 열지도는 이미 계산한 값의 격자를 그려요. 함수 f(x, y)의 값을 색으로 보이려면 [`density`](/api/plot/density/)가 알맞아요. 함수를 받아 표본을 알아서 고르고, 축이 x와 y의 값이에요.
 - 모든 값이 같으면 그 값을 가운데 두고 ±0.5를 색띠의 범위로 써요.
+- 자료의 짝 (x, y)가 평면의 어느 칸에 몇 개 드는지 세어 칠하려면 [`hist2d`](/api/plot/hist2d/)가 세기까지 해 줘요. 열지도는 이미 센 표를 받아요.
 - 칸은 정사각형으로 고정되지 않고, 그림의 크기에 맞춰 늘어나요. 칸을 정사각형에 가깝게 하려면 `width`와 `height`를 행과 열의 수에 맞춰 줘요.
 
 ## matplotlib을 아는 분께

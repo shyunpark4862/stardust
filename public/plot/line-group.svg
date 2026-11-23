@@ -29,7 +29,7 @@
 <path d="M33.7305 164.6647L51.0024 163.6466L68.2742 161.1981L85.5461 155.4922L102.818 143.1196L120.0899 120.0303L137.3617 86.9413L154.6336 53.8523L171.9055 30.763L189.1773 18.3904L206.4492 12.6845L223.7211 10.236L240.993 9.2179" fill="none" stroke="#0073c2" stroke-width="1.2" stroke-linejoin="round" clip-path="url(#c0)"/>
 <path d="M33.7305 157.9309L51.0024 153.4711L68.2742 146.6721L85.5461 136.7552L102.818 123.1846L120.0899 106.15L137.3617 86.9413L154.6336 67.7327L171.9055 50.6981L189.1773 37.1274L206.4492 27.2105L223.7211 20.4115L240.993 15.9517" fill="none" stroke="#efc000" stroke-width="1.2" stroke-linejoin="round" clip-path="url(#c0)"/>
 <path d="M33.7305 136.7552L51.0024 130.4378L68.2742 123.1846L85.5461 115.0468L102.818 106.15L120.0899 96.6941L137.3617 86.9413L154.6336 77.1885L171.9055 67.7327L189.1773 58.8358L206.4492 50.6981L223.7211 43.4448L240.993 37.1274" fill="none" stroke="#868686" stroke-width="1.2" stroke-linejoin="round" clip-path="url(#c0)"/>
-<path d="M25.44 3L25.44 170.8826L249.2835 170.8826" fill="none" stroke="#212121" stroke-width="0.6" stroke-linecap="square"/>
+<path d="M25.44 3L25.44 170.8826L249.2835 170.8826" fill="none" stroke="#212121" stroke-width="0.6" stroke-linecap="square" stroke-miterlimit="10"/>
 <path d="M33.7305 170.8826L33.7305 173.6826" fill="none" stroke="#212121" stroke-width="0.6"/>
 <g fill="#212121" transform="matrix(1 -0 0 1 31.980489 180.502102)"><use xlink:href="#g0" transform="matrix(0.702625 0 0 0.702625 0 0)"/></g>
 <path d="M68.2742 170.8826L68.2742 173.6826" fill="none" stroke="#212121" stroke-width="0.6"/>

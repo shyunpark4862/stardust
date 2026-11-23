@@ -48,7 +48,7 @@ raises:
   - type: TypeError
     desc: data 없이 문자열을 열 이름으로 줬을 때, data가 DataFrame이 아닐 때, 수가 아닌 자료를 줬을 때, 모르는 키워드를 줬을 때.
   - type: ValueError
-    desc: x와 y1, y2의 길이가 다를 때, 자료가 1차원이 아닐 때, 없는 열 이름일 때, 색을 알 수 없을 때, alpha가 [0, 1] 밖일 때, y2가 유한하지 않은 수일 때.
+    desc: x와 y1, y2의 길이가 다를 때, 자료가 1차원이 아닐 때, 없는 열 이름일 때, 색을 알 수 없을 때, alpha가 [0, 1] 밖일 때, y2가 유한하지 않은 수일 때, 3D 층이 있는 칸에 그릴 때.
 seeAlso: [basics, line, fit, region]
 ---
 import PlotImage from '../../../components/fig/PlotImage.astro';
@@ -70,7 +70,7 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
 >>> half = 0.15 + 0.03 * x
 >>> fig = sd.plot.area(x, mid - half, mid + half, color="C0", label="band")
 >>> fig = fig.line(x, mid, color="C0", label="estimate")
->>> fig = fig.xlabel(r"$t$").legend(loc="upper right")
+>>> fig = fig.xlabel(r"$t$")
 ```
 
 <PlotImage name="area-band" alt="감쇠하는 사인 곡선이 파란 선으로 그려지고, 그 둘레에 오른쪽으로 갈수록 넓어지는 옅은 파란 띠가 있는 그림" caption="area로 띠를 칠하고 line으로 가운데 곡선을 얹었어요. 둘 다 color='C0'을 줘서 색을 맞췄어요." />
@@ -106,7 +106,6 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
 >>> b = sd.stats.Normal(mu=2.5, sigma=1.4).pdf(t)
 >>> fig = sd.plot.area(t, a, label="control").area(t, b, label="treated")
 >>> fig = fig.line(t, a, color="C0", width=0.8).line(t, b, color="C1", width=0.8)
->>> fig = fig.legend(loc="upper right")
 ```
 
 <PlotImage name="area-overlap" alt="왼쪽의 파란 종 모양과 오른쪽의 노란 종 모양 두 밀도가 반투명하게 칠해져 가운데에서 겹친 그림" caption="area 둘은 팔레트의 첫 두 색을 받았고, 선은 같은 번호의 색으로 맞췄어요. 겹친 곳은 두 칠이 섞여 보여요." />

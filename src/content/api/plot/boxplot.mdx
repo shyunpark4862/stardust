@@ -49,7 +49,7 @@ raises:
     desc: "data 없이 x나 y에 문자열(열 이름)을 줬을 때, data가 DataFrame이 아닐 때, y가 수가 아닐 때, points가 True·False가 아닐 때."
   - type: ValueError
     desc: "x와 y의 길이가 다를 때, y가 1차원이 아닐 때, width가 0 이하일 때, group의 길이가 y와 다를 때, color를 group과 함께 줬을 때."
-seeAlso: [basics, strip, histogram, compare, bar]
+seeAlso: [basics, strip, histogram, compare, facet, bar]
 ---
 import Callout from '../../../components/Callout.astro';
 import PlotImage from '../../../components/fig/PlotImage.astro';
@@ -109,7 +109,7 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
 
 ```python
 >>> sex = (["F"] * 20 + ["M"] * 20) * 3
->>> fig = sd.plot.boxplot("dose", "response", data=df, group=sex).ylabel("response").legend(loc="upper left")
+>>> fig = sd.plot.boxplot("dose", "response", data=df, group=sex).ylabel("response")
 ```
 
 <PlotImage name="boxplot-group" alt="세 범주마다 F와 M 두 상자가 나란히 선 상자 그림" caption="범주마다 무리 둘의 상자가 나란히 서요. 무리는 팔레트의 색 순서대로 색을 받아요." />
@@ -139,13 +139,13 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
 >>> fig = sd.plot.boxplot("dose", "response", data=df).compare(sd.htest.tukey_hsd(a, b, c)).ylabel("response")
 ```
 
-<PlotImage name="boxplot-compare" alt="세 범주의 상자 그림 위에 범주 쌍마다 괄호와 p값을 쌓은 그림" caption="Tukey HSD의 결과를 얹은 상자 그림. 괄호 하나가 범주 한 쌍의 비교예요." />
+<PlotImage name="boxplot-compare" alt="세 범주의 상자 그림 위에 범주 쌍마다 괄호와 p값을 쌓은 그림. 이웃한 범주를 잇는 짧은 괄호가 아래, control과 high를 잇는 긴 괄호가 맨 위에 있어요." caption="Tukey HSD의 결과를 얹은 상자 그림. 괄호 하나가 범주 한 쌍의 비교이고, 가까운 짝의 괄호가 아래에 놓여요." />
 
 ## 색과 너비
 
 `color=`는 상자의 색이에요. 테두리, 수염, 중앙값의 선, 바깥 점이 이 색이고, 상자 안은 이 색을 옅게 칠해요. `width=`는 상자가 차지하는 너비예요.
 
-`sd.plot.boxplot`의 `width`는 상자의 너비라서 그림의 너비로 쓸 수 없어요. 그림의 크기를 정하려면 `Figure`를 먼저 만들고 메서드를 불러요. 앞의 상자 하나짜리 그림이 그렇게 만든 것이에요.
+`sd.plot.boxplot`의 `width`는 상자의 너비라서 그림의 너비로 쓸 수 없어요. 그림의 크기를 정하려면 `Figure`를 먼저 만들고 메서드를 부르거나, 그린 뒤에 `fig.size(너비, 높이)`를 불러요. 앞의 상자 하나짜리 그림이 앞의 방법으로 만든 것이에요.
 
 ```python
 >>> fig = sd.plot.Figure(width=70, height=50).boxplot(None, y, color="C3", width=0.3)

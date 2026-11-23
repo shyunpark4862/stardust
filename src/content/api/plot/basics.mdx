@@ -47,17 +47,36 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
 
 | 꼴 | 함수 | 까닭 |
 |---|---|---|
-| 모듈 함수만 | [`grid`](/api/plot/figure/), [`diagnostics`](/api/plot/diagnostics/), [`pairs`](/api/plot/pairs/) | 칸 여럿을 스스로 만들어요 |
+| 모듈 함수만 | [`grid`](/api/plot/figure/), [`diagnostics`](/api/plot/diagnostics/), [`pairs`](/api/plot/pairs/), [`facet`](/api/plot/facet/) | 칸 여럿을 스스로 만들어요 |
 | 메서드만 | [`Figure.compare`](/api/plot/compare/), [`Figure.fit`](/api/plot/fit/) | 이미 그린 자료 위에 얹어요 |
+| 메서드만 | [`Figure.twin`](/api/plot/twin-inset/), [`Figure.inset`](/api/plot/twin-inset/) | 있는 칸에 둘째 세로축이나 작은 그림을 더해요 |
 | 둘 다 | 나머지 모두 | |
 
 <Callout type="note" title="셸에서 찍히는 한 줄">
 
-메서드가 그림을 돌려주니, 대화형 셸에서 `fig.line(...)`을 그냥 부르면 그 그림의 repr 한 줄이 찍혀요. 노트북에서는 셀의 마지막 줄이면 그림이 보여요. 이 사이트의 예제는 `fig = fig.line(...)`처럼 결과를 다시 이름에 받아 그 줄을 감춰요. 둘은 같은 객체예요.
+메서드가 그림을 돌려주니, 대화형 셸에서 `fig.line(...)`을 그냥 부르면 그 그림의 repr 한 줄이 찍혀요. 크기(mm), 칸의 수, 층의 수예요. 높이를 주지 않은 그림은 `auto`라고 적어요. 높이는 그릴 때 배치가 정하고, 그 값은 `fig.height`로 읽어요.
+
+```python
+>>> fig.line([1, 4], [2, 3])
+Figure(89 x auto mm, 1 axes, 3 layers)
+>>> sd.plot.Figure(width=120, height=80)
+Figure(120 x 80 mm, 1 axes, 0 layers)
+```
+
+노트북에서는 셀의 마지막 줄이면 그림이 보여요. 이 사이트의 예제는 `fig = fig.line(...)`처럼 결과를 다시 이름에 받아 그 줄을 감춰요. 둘은 같은 객체예요.
 
 </Callout>
 
 여러 칸으로 된 그림은 `fig[0, 1].line(...)`처럼 칸을 골라 그려요. 칸과 여러 그림 모으기는 [Figure와 칸](/api/plot/figure/)에 있어요.
+
+한 칸은 2D이거나 3D예요. 곡면이나 공간 곡선을 그린 [3D 칸](/api/plot/view3d/)에는 `line` 같은 2D 층을 얹을 수 없고, 2D 칸에 3D 층을 얹을 수도 없어요.
+
+```python
+>>> sd.plot.surface(lambda x, y: x * y, -1, 1, -1, 1).line([0, 1], [0, 1])
+Traceback (most recent call last):
+    ...
+ValueError: line(): the cell already holds a 3D plot
+```
 
 ## 그림 옵션: \*\*figure
 
@@ -90,7 +109,7 @@ TypeError: Figure.line() got an unexpected keyword argument 'theme'
 
 <Callout type="warning" title="width가 선의 굵기인 함수">
 
-`line`, `step`, `hline`, `vline`, `function`, `parametric`, `polar`, `implicit`, `ecdf`, `curve3d`에서 `width=`는 선의 굵기(pt)이고, `bar`와 `boxplot`에서는 막대와 상자의 너비예요. 이 함수들에 준 `width=`는 그림의 너비가 되지 않아요. 그림의 너비는 `Figure(width=...)`로 만든 그림에 메서드로 그리거나, 다 그린 뒤 `fig.size(...)`로 정해요.
+`line`, `step`, `hline`, `vline`, `function`, `parametric`, `polar`, `implicit`, `ecdf`, `curve3d`, `vectorfield`, `streamlines`에서 `width=`는 선의 굵기(pt)이고, `bar`와 `boxplot`에서는 막대와 상자의 너비예요. 이 함수들에 준 `width=`는 그림의 너비가 되지 않아요. 그림의 너비는 `Figure(width=...)`로 만든 그림에 메서드로 그리거나, 다 그린 뒤 `fig.size(...)`로 정해요.
 
 ```python
 >>> fig = sd.plot.line([0, 1], [0, 1], width=2.0)
@@ -136,7 +155,7 @@ ValueError: scatter(): 'x' and 'y' must have the same length: 2 and 3
 ...     "sex": ["F", "F", "F", "M", "F", "M", "M", "F"],
 ... })
 >>> fig = sd.plot.scatter("height", "weight", data=df, group="sex")
->>> fig = fig.xlabel("키 (cm)").ylabel("몸무게 (kg)").legend(loc="upper left")
+>>> fig = fig.xlabel("키 (cm)").ylabel("몸무게 (kg)")
 ```
 
 <PlotImage name="basics-data" alt="키와 몸무게의 산점도. F인 다섯 점은 파랑, M인 세 점은 노랑이고 왼쪽 위에 F, M 범례" caption="group='sex'로 나눈 무리마다 팔레트의 색이 하나씩 가고, 무리의 값(F, M)이 범례의 이름이 돼요." />
@@ -274,10 +293,10 @@ ValueError: to_png(): LaTeX could not typeset '50% of': an unescaped % (write \%
 
 ## TeX가 있어야 해요
 
-글자를 조판하려면 TeX Live의 `latex`, `xelatex`, `dvisvgm`, `kpsewhich`가 `PATH`(또는 macOS의 `/Library/TeX/texbin`)에 있어야 해요. 없으면 그릴 때 `RuntimeError`예요.
+글자를 조판하려면 TeX Live의 `latex`, `xelatex`, `tex`, `xetex`, `dvisvgm`, `kpsewhich`가 `PATH`(또는 macOS의 `/Library/TeX/texbin`)에 있어야 해요. 없으면 그릴 때 `RuntimeError`예요.
 
 ```text
-RuntimeError: save(): sd.plot needs 'latex', 'xelatex', 'dvisvgm' and 'kpsewhich' (TeX Live) on PATH; 'latex' was not found
+RuntimeError: save(): sd.plot needs 'latex', 'xelatex', 'tex', 'xetex', 'dvisvgm' and 'kpsewhich' (TeX Live) on PATH; 'latex' was not found
 ```
 
 `import stardust`와 그림을 짓는 일(`sd.plot.line(...)`, `fig.xlabel(...)`)은 TeX 없이도 돼요. TeX는 처음 그릴 때 찾아요. 글꼴은 [테마, 팔레트, 글꼴](/api/plot/style/#글꼴)에 있는 것을 써요.
@@ -302,7 +321,7 @@ $\tan x$의 극점 둘($\pm\pi/2$)을 찾았고, 세로 범위가 위아래 모�
 | 에러 | 언제 |
 |---|---|
 | `TypeError` | 인자의 형이 틀렸을 때(수 자리에 문자열, 모르는 키워드 인자, `data=` 없이 준 열 이름) |
-| `ValueError` | 값이 틀렸을 때(길이가 다른 자료, 모르는 색이나 선의 꼴, `low ≥ high`인 범위, 조판 오류) |
+| `ValueError` | 값이 틀렸을 때(길이가 다른 자료, 모르는 색이나 선의 꼴, `low`가 `high` 이상인 범위, 3D 칸에 얹는 2D 층, 조판 오류) |
 | `IndexError` | 그림에 없는 칸을 고를 때 |
 | `RuntimeError` | TeX가 없을 때 |
 

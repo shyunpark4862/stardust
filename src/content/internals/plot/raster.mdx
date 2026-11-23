@@ -65,7 +65,7 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
             cy = y3;
 ```
 
-n을 정하는 식은 Wang의 식(Wang Guozhao, 1984)이에요. 근거는 두 가지 사실이에요. 첫째, 매끄러운 곡선 B(t)를 간격 h의 점들에서 선형 보간하면 오차는 h²/8 · max|B″|을 넘지 않아요. 둘째, d차 베지어 곡선의 2계 도함수는 조절점의 2계 차분 Δ²Pᵢ = Pᵢ − 2Pᵢ₊₁ + Pᵢ₊₂로 쓴 (d − 2)차 베지어 곡선에 d(d − 1)을 곱한 것이라, 그 크기는 d(d − 1) · max|Δ²Pᵢ|을 넘지 않아요. h = 1/n을 넣으면
+n을 정하는 식은 Wang의 식(Wang Guozhao, 1984)이에요. 근거는 두 가지 사실이에요. 첫째, 매끄러운 곡선 $B(t)$를 간격 $h$의 점들에서 선형 보간하면 오차는 $\frac{h^2}{8}\max\lvert B''\rvert$을 넘지 않아요. 둘째, $d$차 베지어 곡선의 2계 도함수는 조절점의 2계 차분 $\Delta^2 P_i = P_i - 2P_{i+1} + P_{i+2}$로 쓴 $(d-2)$차 베지어 곡선에 $d(d-1)$을 곱한 것이라, 그 크기는 $d(d-1)\max\lvert\Delta^2 P_i\rvert$을 넘지 않아요. $h = 1/n$을 넣으면
 
 $$
 \text{오차} \le \frac{d(d-1)}{8n^2}\max_i \lvert \Delta^2 P_i \rvert \le \varepsilon
@@ -81,7 +81,7 @@ $$
 
 ### 감김수의 넓이
 
-닫힌 경로의 점 (x, y)에서의 감김수는, 그 점에서 왼쪽으로 뻗은 수평선이 가로지르는 변들의 방향(아래로 가는 변 +1, 위로 가는 변 −1)의 합이에요. 그러면 픽셀 하나에서 감김수를 적분한 값은 변마다의 몫으로 나뉘어요.
+닫힌 경로의 점 $(x, y)$에서의 감김수는, 그 점에서 왼쪽으로 뻗은 수평선이 가로지르는 변들의 방향(아래로 가는 변 +1, 위로 가는 변 −1)의 합이에요. 그러면 픽셀 하나에서 감김수를 적분한 값은 변마다의 몫으로 나뉘어요.
 
 $$
 \iint_{\text{픽셀}} w(x, y)\,dx\,dy \;=\; \sum_{\text{변 } e} \operatorname{dir}(e)\, A_e
@@ -124,10 +124,10 @@ $A_e$는 그 픽셀 안에서, 변 e가 걸친 y 범위 안에서, 변의 오른
         }
 ```
 
-여기서 (xa, xb)는 변이 이 행에 들어오고 나가는 x, d는 방향을 곱한 높이 dy예요(변이 창의 왼쪽이나 오른쪽으로 삐져나간 부분은 그 앞에서 잘라 내요). 두 경우가 있어요.
+여기서 `xa`, `xb`는 변이 이 행에 들어오고 나가는 x, `d`는 방향을 곱한 높이 `dy`예요(변이 창의 왼쪽이나 오른쪽으로 삐져나간 부분은 그 앞에서 잘라 내요). 두 경우가 있어요.
 
-- **변이 픽셀 한 열 안에 있을 때.** 픽셀 i₀ 안에서 변의 오른쪽 넓이는 dy · (1 − xm)이고, xm은 픽셀 안에서 변의 x 평균이에요(변이 직선이라 사다리꼴의 넓이가 평균 폭으로 정확히 나와요). 그래서 i₀에 d(1 − xm), 다음 칸에 나머지 d · xm을 적어요. 누적 합은 i₀에서 d(1 − xm), 그 오른쪽부터 d예요.
-- **여러 열에 걸칠 때.** s = 1/(xr − xl)은 x가 1 늘 때 변의 높이가 얼마나 쌓이는지의 비율이에요. 첫 픽셀에서 변의 오른쪽은 밑변 1 − f₀, 높이 s(1 − f₀)인 삼각형이라 a₀ = s(1 − f₀)²/2이에요. 가운데 픽셀은 누적 몫이 한 칸에 s씩 늘어요. 마지막 픽셀의 꼬리 삼각형이 am이고, 남는 몫이 끝 칸을 채워 누적 합이 정확히 d가 되게 해요.
+- **변이 픽셀 한 열 안에 있을 때.** 픽셀 $i_0$ 안에서 변의 오른쪽 넓이는 $d\,(1 - x_m)$이고, $x_m$(`xm`)은 픽셀 안에서 변의 x 평균이에요(변이 직선이라 사다리꼴의 넓이가 평균 폭으로 정확히 나와요). 그래서 $i_0$에 $d\,(1 - x_m)$, 다음 칸에 나머지 $d\,x_m$을 적어요. 누적 합은 $i_0$에서 $d\,(1 - x_m)$, 그 오른쪽부터 $d$예요.
+- **여러 열에 걸칠 때.** $s = 1/(x_r - x_l)$은 x가 1 늘 때 변의 높이가 얼마나 쌓이는지의 비율이에요. 첫 픽셀에서 변의 오른쪽은 밑변 $1 - f_0$, 높이 $s(1 - f_0)$인 삼각형이라 $a_0 = s(1 - f_0)^2/2$이에요. 가운데 픽셀은 누적 몫이 한 칸에 $s$씩 늘어요. 마지막 픽셀의 꼬리 삼각형이 `am`이고, 남는 몫이 끝 칸을 채워 누적 합이 정확히 $d$가 되게 해요.
 
 행마다 건드린 열의 범위 `[lo, hi)`를 기억해 두므로, 합치는 단계는 그 범위만 훑어요. 행에 칸이 둘 더 있는 것(`bw + 2`)은 오른쪽 끝 픽셀의 다음 칸에 적는 몫을 받아 두기 위해서예요.
 
@@ -137,7 +137,14 @@ $A_e$는 그 픽셀 안에서, 변 e가 걸친 y 범위 안에서, 변의 오른
 
 ```cpp
 // csrc/plot/raster.cpp
-void Canvas::composite(Window& win, const float rgba[4], const Clip* clip) {
+void Canvas::composite(Window& win, const float rgba[4], const Clip* clip, bool evenodd) {
+    // the coverage of a winding sum: non-zero, or even-odd (a triangle wave of period 2)
+    const auto cover = [evenodd](float sum) {
+        float c = std::abs(sum);
+        if (!evenodd) return std::min(c, 1.0f);
+        c = std::fmod(c, 2.0f);
+        return c > 1.0f ? 2.0f - c : c;
+    };
     const float a = rgba[3];
     const float sr = rgba[0] * a, sg = rgba[1] * a, sb = rgba[2] * a;
     for (int r = 0; r < win.bh; ++r) {
@@ -149,10 +156,10 @@ void Canvas::composite(Window& win, const float rgba[4], const Clip* clip) {
         const int end = std::min(hi, win.bw + 2);
         for (int i = lo; i < end; ++i) {
             sum += row[i];
-            row[i] = std::min(std::abs(sum), 1.0f);
+            row[i] = cover(sum);
         }
         if (std::abs(sum) > 1e-4f) {  // an edge right of the window was cut off: covered to the end
-            const float c = std::min(std::abs(sum), 1.0f);
+            const float c = cover(sum);
             for (int i = end; i < win.bw; ++i) row[i] = c;
             hi = win.hi[r] = win.bw + 2;
         }
@@ -194,7 +201,7 @@ void Canvas::composite(Window& win, const float rgba[4], const Clip* clip) {
 
 ### 채움 규칙
 
-덮임은 감김수 적분의 절댓값을 1에서 자른 값 `min(|sum|, 1)`이에요. 이 한 줄이 채움 규칙을 정해요.
+누적 합을 덮임으로 바꾸는 것은 `composite` 첫머리의 `cover`예요. 기본 규칙(nonzero)에서 덮임은 감김수 적분의 절댓값을 1에서 자른 값 `min(|sum|, 1)`이에요. 이 한 줄이 채움 규칙을 정해요.
 
 - 도는 방향이 반대인 안쪽 윤곽은 감김수를 0으로 돌려놓아 구멍이 돼요. 글리프의 구멍(`a`, `o`, `e`의 안쪽)이 그렇게 비어요.
 - 같은 방향으로 겹친 부분은 감김수가 2가 되지만 1에서 잘려서 한 번만 칠해져요. 글리프의 부분 경로나 획의 윤곽 조각이 겹쳐도 그 자리가 더 진해지지 않아요.
@@ -211,6 +218,26 @@ void Canvas::composite(Window& win, const float rgba[4], const Clip* clip) {
 ```
 
 첫 줄은 반대 방향의 안쪽 사각형이 구멍을 낸 것이고, 둘째 줄은 같은 방향이라 한 번만 칠해진 것이에요. 픽셀 안이 한 감김수로 고른 곳에서 이것은 SVG와 PDF의 nonzero 규칙과 같아요. 두 윤곽이 겹치기 시작하는 경계가 픽셀 하나 안에 걸치면 그 픽셀은 적분을 자르므로 근사예요. 그런 픽셀은 글리프의 획이 만나는 곳 정도이고 덮임의 차이는 그 픽셀 안에서 끝나요.
+
+### 짝홀 규칙
+
+`fill`에 `evenodd`를 주면 덮임이 달라져요. 짝홀 규칙에서 점은 감김수가 홀수일 때 안이에요. 감김수 적분 $s$를 덮임으로 바꾸는 함수를 주기 2의 세모 물결로 잡으면 그 규칙이 돼요.
+
+$$
+c(s) = \begin{cases} m & m \le 1 \\ 2 - m & m > 1 \end{cases}, \qquad m = |s| \bmod 2
+$$
+
+감김수가 0, 1, 2, 3인 곳에서 $c$는 0, 1, 0, 1이에요. 픽셀 안에 변이 지나 적분이 정수 사이의 값이면 그 사이를 곧게 이은 값이 덮임이라, 변 위의 안티에일리어싱이 nonzero와 같은 모양으로 나와요.
+
+```python
+>>> c = core.Canvas(10, 10)
+>>> c.fill(b"MLLLZMLLLZ", sq + pack(3, 3, 7, 3, 7, 7, 3, 7), ID, [0, 0, 0, 1], [], True)
+>>> a = c.rgba8()[3::4]
+>>> a[10 * 5 + 5], a[10 * 2 + 2]
+(0, 255)
+```
+
+같은 방향으로 겹친 두 사각형인데 안쪽이 비어요. 고리의 방향을 따지지 않고 "고리 안의 고리는 구멍"이 되므로, 등고선을 따라 얻은 닫힌 윤곽선들을 방향을 맞추지 않고 한 번에 칠할 수 있어요. 영역과 채운 등고선이 이 규칙으로 칠해요([두 변수 함수의 그림](/internals/plot/fields/)). SVG의 `fill-rule="evenodd"`, PDF의 `f*`와 같은 규칙이에요.
 
 ## 색 섞기
 
@@ -262,7 +289,7 @@ $$
                 add(px + nux * hw, py + nuy * hw);
                 arc(px, py, nux, nuy, nvx, nvy);
                 add(px + nvx * hw, py + nvy * hw);
-            } else if (half > 1e-12 && 2.0 / half <= kMiterLimit * kMiterLimit) {
+            } else if (join == Join::Miter && half > 1e-12 && 2.0 / half <= kMiterLimit * kMiterLimit) {
                 add(px + (nux + nvx) * hw / half, py + (nuy + nvy) * hw / half);
             } else {
                 add(px + nux * hw, py + nuy * hw);
@@ -281,11 +308,12 @@ $$
     }
 ```
 
-꺾인 각을 θ라 하면 `dot` = cos θ, `cross` = sin θ, `half` = 1 + cos θ = 2cos²(θ/2)예요. 두 변의 법선을 더한 벡터의 길이는 2cos(θ/2)이므로, `(n_u + n_v) · hw / half`는 꺾인 점에서 hw / cos(θ/2) 떨어진 점, 곧 두 오프셋 변이 만나는 점이에요.
+꺾인 각을 $\theta$, 반폭 `hw`를 $w$라 하면 `dot`은 $\cos\theta$, `cross`는 $\sin\theta$, `half`는 $1 + \cos\theta = 2\cos^2(\theta/2)$예요. 두 변의 법선을 더한 벡터의 길이는 $2\cos(\theta/2)$이므로, `(n_u + n_v) * hw / half`는 꺾인 점에서 $w / \cos(\theta/2)$ 떨어진 점, 곧 두 오프셋 변이 만나는 점이에요.
 
-- **바깥쪽, 마이터.** 그 교점까지의 거리와 반폭의 비 1/cos(θ/2)가 `kMiterLimit` = 10 이하면 교점 하나를 놓아 뾰족하게 잇고, 넘으면 두 변의 끝을 바로 이어 깎아요(bevel). 이 비는 SVG·PDF의 miter limit(마이터 길이와 획 너비의 비)과 같은 양이에요.
-- **바깥쪽, 둥근 이음.** 두 법선 사이를 원호로 채워요. 원호는 반지름 hw의 원을 각 φ씩 나눈 현으로 펴고, 현과 원호의 거리 hw(1 − cos(φ/2))가 0.05픽셀을 넘지 않게 φ = 2 arccos(1 − 0.05/hw)로 잡아요.
-- **안쪽.** 두 오프셋 변은 꺾인 점에서 hw · tan(θ/2)만큼 물러난 곳에서 만나요(`hw * |cross| / half`). 그 거리가 앞뒤 선분의 길이 안이면 교점 하나를 놓아요. 선분이 너무 짧아 교점이 선분 밖이면 변의 끝, 꺾인 점 자신, 다음 변의 시작을 차례로 지나요. 이때 윤곽의 조각들이 겹치는데, 같은 방향으로 돌므로 채움이 한 번만 칠해요.
+- **바깥쪽, 마이터.** 그 교점까지의 거리와 반폭의 비 $1/\cos(\theta/2)$가 `kMiterLimit`(10) 이하면 교점 하나를 놓아 뾰족하게 잇고, 넘으면 두 변의 끝을 바로 이어 깎아요. 이 비는 SVG·PDF의 miter limit(마이터 길이와 획 너비의 비)과 같은 양이고, SVG 출력도 같은 한계 10을 적어요.
+- **바깥쪽, 깎은 이음(bevel).** 한계를 넘은 마이터와 같은 길이에요. 교점을 놓지 않고 두 변의 끝을 곧게 이어요.
+- **바깥쪽, 둥근 이음.** 두 법선 사이를 원호로 채워요. 원호는 반지름 $w$의 원을 각 $\varphi$씩 나눈 현으로 펴고, 현과 원호의 거리 $w\,(1 - \cos(\varphi/2))$가 0.05픽셀을 넘지 않게 $\varphi = 2\arccos(1 - 0.05/w)$로 잡아요.
+- **안쪽.** 두 오프셋 변은 꺾인 점에서 $w\tan(\theta/2)$만큼 물러난 곳에서 만나요(`hw * |cross| / half`). 그 거리가 앞뒤 선분의 길이 안이면 교점 하나를 놓아요. 선분이 너무 짧아 교점이 선분 밖이면 변의 끝, 꺾인 점 자신, 다음 변의 시작을 차례로 지나요. 이때 윤곽의 조각들이 겹치는데, 같은 방향으로 돌므로 채움이 한 번만 칠해요.
 
 끝 모양은 butt(선분 끝에서 자름), square(반폭만큼 늘인 사각형), round(반원)예요. 점선은 펴진 점들을 따라 길이를 재며 켜짐 구간마다 따로 윤곽을 만들고, 모든 조각을 한 번의 채움으로 칠해요. 그래서 반투명한 획이 꺾이는 곳이나 점이 촘촘한 곳에서도 두 번 칠해지는 자리가 없어요. 선 그림(`line`)의 층은 둥근 이음으로, 축 선은 마이터 이음과 square 끝으로 그려요.
 
@@ -415,6 +443,74 @@ std::vector<double> decimate(const double* xy, std::size_t n, double column) {
 ```
 
 <PlotImage name="in-raster-decimate" alt="회색의 들쭉날쭉한 선 위에 파란 꺾은선이 겹쳐 있어요. 점선으로 나눈 폭 1의 열마다 파란 점이 네 개씩 있고, 각 열의 가장 높은 점과 가장 낮은 점을 지나요." caption="열의 너비 1로 줄인 600개의 점(회색)과 남긴 25개의 점(파랑). 열마다 처음, 가장 낮은 점, 가장 높은 점, 마지막 점이 남아요. 실제 그림에서는 열의 너비가 0.05 bp라 두 선이 겹쳐 보여요." />
+
+### 곧은 줄 위의 점 빼기
+
+열로 줄이는 것은 점이 수천 개를 넘는 선에만 해요. 그보다 훨씬 흔한 것은 매끈한 곡선이에요. 함수 그림의 표본이나 등고선의 윤곽선은 화면에서 거의 곧은 구간에도 점이 촘촘해서, 그대로 쓰면 SVG와 PDF의 경로가 필요 이상으로 길어져요. `simplify`는 Ramer–Douglas–Peucker 알고리즘으로 그런 점을 빼요.
+
+알고리즘은 구간을 반씩 나누며 "꼭 남겨야 할 점"을 찾아요. 구간의 두 끝을 이은 곧은 줄에서 가장 먼 점을 찾고, 그 거리가 허용오차보다 크면 그 점을 남기고 구간을 그 점에서 둘로 나눠 각각 되풀이해요. 허용오차 안이면 구간 안의 점을 모두 버려요. 그러면 버린 점은 모두 남긴 이웃 점을 이은 줄에서 허용오차 안에 있어요.
+
+```cpp
+// csrc/plot/raster.cpp
+std::vector<double> simplify(const double* xy, std::size_t n, double tol) {
+    if (n < 3) return std::vector<double>(xy, xy + 2 * n);
+    std::vector<char> keep(n, 0);
+    keep[0] = keep[n - 1] = 1;
+    const double t2 = tol * tol;
+    std::vector<std::pair<std::size_t, std::size_t>> todo{{0, n - 1}};
+    while (!todo.empty()) {
+        const auto [a, b] = todo.back();
+        todo.pop_back();
+        if (b <= a + 1) continue;
+        const double ax = xy[2 * a], ay = xy[2 * a + 1], dx = xy[2 * b] - ax, dy = xy[2 * b + 1] - ay;
+        const double len2 = dx * dx + dy * dy;
+        double far = -1.0;
+        std::size_t at = a;
+        for (std::size_t i = a + 1; i < b; ++i) {
+            const double px = xy[2 * i] - ax, py = xy[2 * i + 1] - ay;
+            double d2;
+            if (len2 > 0.0) {
+                const double cr = px * dy - py * dx;
+                d2 = cr * cr / len2;  // to the line through a and b
+            } else {
+                d2 = px * px + py * py;  // a and b at one place (a closed run): to that place
+            }
+            if (d2 > far) {
+                far = d2;
+                at = i;
+            }
+        }
+        if (far > t2) {
+            keep[at] = 1;
+            todo.push_back({a, at});
+            todo.push_back({at, b});
+        }
+    }
+    std::vector<double> out;
+    for (std::size_t i = 0; i < n; ++i) {
+        if (keep[i]) out.insert(out.end(), {xy[2 * i], xy[2 * i + 1]});
+    }
+    return out;
+}
+```
+
+- 재귀 대신 할 일 더미(`todo`)를 써요. 구간이 수만 점이어도 호출 깊이가 늘지 않아요.
+- 점과 줄 사이의 거리는 외적으로 재요. 끝점 $a$에서 본 점의 벡터 $p$와 구간의 벡터 $d$에 대해 거리의 제곱은 $(p \times d)^2 / |d|^2$이에요. 제곱끼리 견주므로 제곱근이 없어요.
+- 두 끝이 같은 자리면(닫힌 고리) 줄이 없으므로 그 자리까지의 거리를 써요. 가장 먼 점이 남아 고리가 둘로 나뉘고, 그 뒤는 보통의 구간이에요.
+- 첫 점과 마지막 점은 늘 남아요. 닫힌 꺾은선은 닫힌 채로 남아요.
+
+선 그림의 층과 등고선·영역의 윤곽선은 쪽 좌표로 옮긴 뒤 점이 16개 이상이면 허용오차 0.02 bp로 이것을 지나요. 200 dpi에서 픽셀의 1/20이고 600 dpi에서도 1/6이라, 그린 선이 움직인 것을 어느 출력에서도 볼 수 없어요. 열로 줄인 긴 선도 그 뒤에 한 번 더 이것을 지나요.
+
+```python
+>>> t = sd.linspace(0.0, 6.28, 400)
+>>> wave = array("d", [v for p in zip((40.0 * t).tolist(), (60.0 * sd.sin(t)).tolist()) for v in p])
+>>> thin = array("d")
+>>> thin.frombytes(core.simplify(wave.tobytes(), 0.02))
+>>> len(wave) // 2, len(thin) // 2
+(400, 113)
+```
+
+가로 251 bp, 세로 120 bp로 그린 사인 곡선 한 주기예요. 점 400개 가운데 113개만 이어도 곡선이 0.02 bp 넘게 움직이지 않아요. 굽은 곳에는 점이 촘촘히, 변곡점 둘레의 곧은 곳에는 성기게 남아요.
 
 ## 스레드 수와 결정성
 

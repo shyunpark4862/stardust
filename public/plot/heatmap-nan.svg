@@ -16,7 +16,7 @@
 <g fill="#ffffff" transform="matrix(1 -0 0 1 46.047244 127.359444)"><use xlink:href="#g2" transform="matrix(0.60225 0 0 0.60225 0 0)"/></g>
 <g fill="#ffffff" transform="matrix(1 -0 0 1 118.541732 127.357947)"><use xlink:href="#g3" transform="matrix(0.60225 0 0 0.60225 0 0)"/></g>
 <g fill="#ffffff" transform="matrix(1 -0 0 1 191.03622 127.357947)"><use xlink:href="#g4" transform="matrix(0.60225 0 0 0.60225 0 0)"/></g>
-<path d="M11.3 3L11.3 166.1126L228.7835 166.1126" fill="none" stroke="#212121" stroke-width="0.6" stroke-linecap="square"/>
+<path d="M11.3 3L11.3 166.1126L228.7835 166.1126" fill="none" stroke="#212121" stroke-width="0.6" stroke-linecap="square" stroke-miterlimit="10"/>
 <path d="M47.5472 166.1126L47.5472 168.9126" fill="none" stroke="#212121" stroke-width="0.6"/>
 <g fill="#212121" transform="matrix(1 -0 0 1 45.797244 175.637588)"><use xlink:href="#g5" transform="matrix(0.702625 0 0 0.702625 0 0)"/></g>
 <path d="M120.0417 166.1126L120.0417 168.9126" fill="none" stroke="#212121" stroke-width="0.6"/>
@@ -28,7 +28,7 @@
 <path d="M11.3 125.3344L8.5 125.3344" fill="none" stroke="#212121" stroke-width="0.6"/>
 <g fill="#212121" transform="matrix(1 -0 0 1 3 127.696943)"><use xlink:href="#g0" transform="matrix(0.702625 0 0 0.702625 0 0)"/></g>
 <image x="234.7835" y="3" width="7" height="163.1126" preserveAspectRatio="none" xlink:href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAEACAYAAAByPhyYAAADH0lEQVR4nDXEZVsUCBgF0PunNt1dVxkaxsGhO0UaJCQEEURSSlJSSlJSuhu7u7uD9fvd951HzoeDH1a7iR9We4j/rPZKBgOxbbDRbDV74rvBUbJ20ozEN2uT5kJ8tTFrbpo78cXGU/OWbH2Iz7Z+WgDxyTZQC5bsQomPdmFauBZBfLCP1KKJ9/axWpyWQLxzSNSStBTirUOqlka8cczQMrUs4rVjtpYjOeUSr5zytHzipXMB8cK5kHjuXCQZi4lnxhLiqbGUeLKvTCsnHpsqiEemSuKhqUpyqSYeuNQQ911qiXv767R64q65gbhjbiRum5sk12bilmsLcdO1lbjh1qa1E9fdO4hr7p3EVfcuyaObuOLRQ1z26CUuefZp/cRFrwHigtcgseU1JHkPE5veI8SG9yix7jOmjRNrvhPEqu8kseI7RSz7TRNL2qL/DLHgP0vMB8wRc9ps4DwxE7hATAcuElNB0mTQEjERvEyMB68Q50OksZBVYjR0jRgJXSeGtaGwDWIwbJM4d2CLGND6wy8QfeEXid6Dl4gerTviMnE24grRFXGV6IyUOiKvEe1R14m2qBvEmWipNfom0RJzi2iOuU00aY2xd4iG2LvE6bh7RL1WFy/Vxt8nahKkaq3q0APiVKJUqVUkPSTKtbJkqTT5EXEyRSrRig8/Joq0wlSpIPUJkZ8mnUiX8tKfEsczpFwt58gz4piWnSkdzXxOZGVJmdqRoy+IjGwpXUs79pJI1Q7nSCk5r4jkXClJSzz+mjikJeRJ8XlviLgTUmy+FFMgRRe8lQqlqCIpsliK0A6WvCPCT0oHSqUwS2VSaLkUUvGeCNaCKqXAU1JAleRf9UGqlvxqJN9ayUfzrvtIeNVLnqclD0sNknuj5Nb0iXDVzM3S/hbJpdXSZ8J0RtrXJhnbJWfNqeML4dgpOXTtZH9W65bserReybbv689s+rUByfqcNigZLA1JVsPaiLR3VBv7RuyxdF76d1ybkHZPalPSP5ampb9ntFnpr7nvP9s1ry1Ify5qS9Ifyzv9vqKtSr+tbUvr0q8bO/2yqW1t838cds4SQej8vwAAAABJRU5ErkJggg=="/>
-<path d="M234.7835 3L241.7835 3L241.7835 166.1126L234.7835 166.1126Z" fill="none" stroke="#212121" stroke-width="0.4"/>
+<path d="M234.7835 3L241.7835 3L241.7835 166.1126L234.7835 166.1126Z" fill="none" stroke="#212121" stroke-width="0.4" stroke-miterlimit="10"/>
 <path d="M241.7835 166.1126L243.7835 166.1126" fill="none" stroke="#212121" stroke-width="0.4"/>
 <g fill="#212121" transform="matrix(1 -0 0 1 245.783465 168.475093)"><use xlink:href="#g0" transform="matrix(0.702625 0 0 0.702625 0 0)"/></g>
 <path d="M241.7835 133.4901L243.7835 133.4901" fill="none" stroke="#212121" stroke-width="0.4"/>

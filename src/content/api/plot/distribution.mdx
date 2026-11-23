@@ -7,7 +7,7 @@ order: 5
 signatures:
   - "sd.plot.distribution(dist, /, *, kind='pdf', a=None, b=None, color=None, label=None, **figure)"
   - "fig.distribution(dist, /, *, kind='pdf', a=None, b=None, color=None, label=None)"
-summary: sd.stats의 분포 객체를 그려요. 확률밀도(이산 분포는 확률질량의 막대), 누적분포, 생존함수 가운데 하나를 고르고, 범위는 분포의 분위수로 알아서 잡아요. 히스토그램 위에 겹쳐 자료와 모형을 견줄 때 좋아요.
+summary: sd.stats의 분포 객체를 그려요. 확률밀도(이산 분포는 확률질량의 막대), 누적분포, 생존함수 가운데 하나를 고르고, 가로 범위는 분포의 분위수로, 밀도의 세로 범위는 봉우리까지 알아서 잡아요. 히스토그램 위에 겹쳐 자료와 모형을 견줄 때 좋아요.
 params:
   - name: dist
     type: sd.stats의 분포
@@ -38,9 +38,9 @@ returns:
   desc: "모듈 함수는 새 그림을, 메서드는 층을 더한 그 그림(fig 자신)을 돌려줘요."
 raises:
   - type: TypeError
-    desc: "dist에 cdf나 icdf가 없을 때(다변량 분포, 분포가 아닌 값), 매개변수가 배열인 분포일 때, a·b가 실수가 아닐 때."
+    desc: "dist에 cdf나 icdf가 없을 때(다변량 분포, 분포가 아닌 값), a·b가 실수가 아닐 때."
   - type: ValueError
-    desc: "kind가 'pdf', 'cdf', 'sf'가 아닐 때, a가 b보다 작지 않을 때, 색을 알 수 없을 때."
+    desc: "매개변수가 배열인 분포(배치)일 때, kind가 'pdf', 'cdf', 'sf'가 아닐 때, a가 b보다 작지 않을 때, 색을 알 수 없을 때."
 seeAlso: [function, histogram, qq, ecdf, step, basics]
 ---
 import PlotImage from '../../../components/fig/PlotImage.astro';
@@ -54,7 +54,7 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
 >>> gam = sd.stats.Gamma(a=2.0, scale=1.0)
 >>> binom = sd.stats.Binomial(n=20, p=0.3)
 >>> fig = sd.plot.grid([sd.plot.distribution(gam).xlabel("$x$"),
-...                     sd.plot.distribution(binom).xlabel("$k$").xticks([0, 5, 10])],
+...                     sd.plot.distribution(binom).xlabel("$k$")],
 ...                    ncols=2, width=160)
 ```
 
@@ -72,7 +72,7 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
 | `'cdf'` | `dist.cdf`의 곡선 | `dist.cdf`의 계단 |
 | `'sf'` | `dist.ccdf`의 곡선 | `dist.ccdf`의 계단 |
 
-연속 분포의 곡선은 [`function`](/api/plot/function/)과 같은 방법으로 그려요. 곡선이 빨리 휘는 곳에 표본을 더 두므로 봉우리가 뾰족해도 매끈해요. 그래서 그 그림이 한 일이 [`fig.info`](/api/plot/function/)에 남아요. 이산 분포는 `[a, b]` 안의 정수 k마다 값을 하나씩 계산해요. 막대는 k를 가운데에 두고, 계단은 k에서 오른쪽으로 다음 정수까지 이어져요(누적분포가 오른쪽 연속이니까요).
+연속 분포의 곡선은 [`function`](/api/plot/function/)과 같은 방법으로 그려요. 곡선이 빨리 휘는 곳에 표본을 더 두므로 봉우리가 뾰족해도 매끈해요. 그래서 그 그림이 한 일이 [`fig.info`](/api/plot/function/)에 남아요. 이산 분포는 `[a, b]` 안의 정수 k마다 값을 하나씩 계산해요. 막대는 k를 가운데에 두고, 계단은 k에서 오른쪽으로 다음 정수까지 이어져요(누적분포가 오른쪽 연속이니까요). 값이 정수에만 있으므로 가로 눈금도 정수에만 놓여요. 위 그림의 눈금은 0, 5, 10이에요.
 
 그림의 수는 분포 객체가 주는 수 그대로예요.
 
@@ -107,7 +107,7 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
 >>> fig = fig.distribution(t1, a=-5, b=5, label="$t_1$").xlabel("$x$")
 ```
 
-<PlotImage name="distribution-tails" alt="−5에서 5까지 세 밀도 곡선. 파란 표준정규분포가 가운데에서 가장 높고 양 끝에서 가장 빨리 0에 붙고, 노란 t₃와 회색 t₁은 봉우리가 낮고 꼬리가 두꺼워요. 오른쪽 위에 범례가 있어요." caption="세 분포를 메서드로 겹쳤어요. 자유도가 작을수록 봉우리가 낮고 꼬리가 두꺼워요. 범위를 −5에서 5로 정해 세 곡선의 모양을 견줄 수 있게 했어요." />
+<PlotImage name="distribution-tails" alt="−5에서 5까지 세 밀도 곡선. 파란 표준정규분포가 가운데에서 가장 높고 양 끝에서 가장 빨리 0에 붙고, 노란 t3과 회색 t1은 봉우리가 낮고 꼬리가 두꺼워요. 오른쪽 위에 범례가 있어요." caption="세 분포를 메서드로 겹쳤어요. 자유도가 작을수록 봉우리가 낮고 꼬리가 두꺼워요. 범위를 −5에서 5로 정해 세 곡선의 모양을 견줄 수 있게 했어요." />
 
 곡선마다 범위를 따로 잡으므로, 메서드로 겹칠 때 범위를 주지 않으면 곡선의 길이가 서로 달라요. 견주려는 곡선에는 같은 `a`, `b`를 주세요.
 
@@ -130,28 +130,40 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
 ```python
 >>> model = sd.stats.Gamma(a=3.0, scale=2.0)
 >>> x = model.sample((300,), rng=sd.random.default_rng(1))
->>> fig = sd.plot.histogram(x, bins=20, density=True, alpha=0.5, label="sample")
+>>> fig = sd.plot.histogram(x, bins=20, density=True, alpha=0.5, label="sample").ylim(0, None)
 >>> fig = fig.distribution(model, color="C1", label="Gamma(3, 2)").xlabel("$x$").ylabel("density")
 ```
 
 <PlotImage name="distribution-histogram" alt="옅은 파란 막대의 히스토그램 위에 노란 감마 분포의 밀도 곡선이 겹쳐 있어요. 곡선이 막대의 윤곽을 대체로 따라가요." caption="Gamma(a=3, scale=2)에서 뽑은 표본 300개의 히스토그램과 그 분포의 밀도예요. 막대가 곡선을 둘레로 오르내리는 정도가 표본의 흔들림이에요." />
 
+표본의 막대는 밀도의 봉우리보다 높이 솟을 수 있어요. 세로 범위를 정하지 않은 칸에 밀도를 더하면 세로축이 그 밀도의 봉우리에 맞춰지므로, 먼저 `ylim(0, None)`으로 아래만 0에 두고 위는 그려진 것 모두에 맞추게 했어요.
+
 모형을 자료로 추정했다면 그 추정값으로 분포 객체를 만들어 넘기면 돼요. 겹쳐 본 뒤에는 [`qq`](/api/plot/qq/)로 꼬리까지 보거나, [`ks_1samp`](/api/htest/ks_1samp/) 같은 적합도 검정으로 수를 확인하세요.
 
-## 봉우리가 잘릴 때
+## 밀도의 세로 범위
 
-연속 분포의 세로 범위는 `function`처럼 곡선의 대부분이 잘 보이게 잡아요. 그래서 봉우리가 아주 좁고 높은 분포는 봉우리가 칸 위로 잘릴 수 있어요. 잘렸는지는 `fig.info`의 `clipped`가 알려 줘요.
+밀도 그림에서 가장 보고 싶은 것은 봉우리예요. 그래서 `kind='pdf'`의 세로축은 0에서 시작해 봉우리의 조금 위까지 가요. 꼬리가 길어 가로 범위가 넓은 분포도 봉우리가 잘리지 않아요. 로그정규분포는 0.999 분위수가 22쯤이라 봉우리가 왼쪽 끝에 좁게 몰리지만, 봉우리 0.658까지 다 보여요.
 
 ```python
->>> fig = sd.plot.distribution(sd.stats.LogNormal(mu=0.0, sigma=1.0))
->>> fig.info[0].clipped
-(False, True)
->>> fig = sd.plot.distribution(sd.stats.LogNormal(mu=0.0, sigma=1.0), b=6)
+>>> ln = sd.stats.LogNormal(mu=0.0, sigma=1.0)
+>>> fig = sd.plot.distribution(ln)
 >>> fig.info[0].clipped
 (False, False)
+>>> round(fig.info[0].ylim[1], 3)
+0.658
 ```
 
-로그정규분포는 오른쪽 꼬리가 길어서(0.999 분위수가 22쯤) 범위가 넓어지고, 그만큼 왼쪽의 좁은 봉우리가 세로 범위에서 밀려나요. `b`로 범위를 좁히거나 [`ylim`](/api/plot/customize/)으로 세로 범위를 수로 정하면 봉우리까지 보여요. `clipped`의 둘째 값이 위쪽, 첫째 값이 아래쪽이에요.
+밀도가 범위의 끝에서 한없이 커지는 분포는 봉우리가 없어요. 모양 매개변수가 1보다 작은 감마 분포가 그래요. 이럴 때는 [`function`](/api/plot/function/)이 극점을 다루는 방법 그대로, 곡선의 대부분이 잘 보이는 범위에서 자르고 `fig.info`의 `clipped`에 잘랐다고 남겨요. `clipped`의 둘째 값이 위쪽, 첫째 값이 아래쪽이에요.
+
+```python
+>>> fig = sd.plot.distribution(sd.stats.Gamma(a=0.5, scale=1.0)).xlabel("$x$")
+>>> fig.info[0].clipped
+(False, True)
+```
+
+<PlotImage name="distribution-pole" alt="왼쪽 끝 0에서 칸의 위 끝까지 솟았다가 오른쪽으로 빠르게 내려가 0에 붙는 감마 분포의 밀도 곡선" caption="Gamma(a=0.5)의 밀도는 0에서 한없이 커져요. 세로 범위를 곡선의 대부분이 보이는 데서 잘랐어요." />
+
+자른 높이를 바꾸려면 [`ylim`](/api/plot/customize/)으로 세로 범위를 수로 정해요. `'cdf'`와 `'sf'`는 0과 1 사이의 값이라 범위를 따로 맞추지 않아요.
 
 ## 에러
 
@@ -168,15 +180,20 @@ ValueError: distribution(): 'kind' must be 'pdf', 'cdf' or 'sf', not 'pmf'
 Traceback (most recent call last):
     ...
 ValueError: distribution(): 'a' must be less than 'b'
+>>> sd.plot.distribution(sd.stats.Normal(mu=sd.asarray([0.0, 1.0]), sigma=1.0))
+Traceback (most recent call last):
+    ...
+ValueError: distribution(): a batch of distributions cannot be drawn; give one
 ```
 
 이산 분포의 확률질량은 `kind='pdf'`로 그려요. `'pmf'`라는 값은 없어요.
 
 ## 조심할 점
 
-- 매개변수가 배열인 분포(예: `Normal(mu=sd.asarray([0.0, 1.0]), sigma=1.0)`)는 그릴 수 없어요. 분포마다 객체를 따로 만들어 메서드로 겹쳐요.
+- 매개변수가 배열인 분포(예: `Normal(mu=sd.asarray([0.0, 1.0]), sigma=1.0)`)는 `ValueError`예요. 분포마다 객체를 따로 만들어 메서드로 겹쳐요.
+- 세로 범위를 정하지 않은 칸에 밀도를 그리면 세로축이 그 밀도의 봉우리에 맞춰지고, 뒤에 겹치는 층은 그 범위를 따라요. 봉우리가 더 높은 밀도나 히스토그램을 함께 그릴 때는 가장 높은 것을 먼저 그리거나, `ylim(0, None)`을 먼저 불러 위쪽을 그려진 것 모두에 맞추게 해요.
 - 다변량 분포(`MultivariateNormal` 등)는 `icdf`가 없어서 받지 않아요. 두 변수의 밀도는 `pdf`를 두 변수 x, y의 함수로 감싸 [`density`](/api/plot/density/)나 [`contour`](/api/plot/contour/)로 그려요.
-- 이산 분포의 가로축은 연속 축이라 눈금이 정수가 아닐 수 있어요. 위의 첫 그림처럼 [`xticks`](/api/plot/customize/)로 정수 눈금을 주세요.
+- 이산 분포의 정수 눈금은 눈금을 정하지 않은 칸에만 놓아요. [`xticks`](/api/plot/customize/)로 먼저 준 눈금이 있으면 그대로 둬요.
 - 이산 분포의 `a`, `b`가 정수가 아니면 그 안의 정수만 그려요. `a=-0.5, b=6.5`는 0부터 6까지예요.
 
 ## matplotlib을 아는 분께

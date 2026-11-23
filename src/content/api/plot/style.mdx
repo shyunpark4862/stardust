@@ -4,7 +4,7 @@ title: 테마, 팔레트, 글꼴
 group: 기본 개념
 order: 5
 summary: 그림의 생김새를 정하는 네 가지를 그림으로 견줘 봐요. 축 선과 격자의 테마 셋(paper, boxed, grid), 층마다 차례로 주는 범주 색의 팔레트 아홉, 세리프와 산세리프 두 벌의 글꼴, 등고선·밀도·열지도·곡면이 쓰는 연속 색띠 아홉이에요.
-seeAlso: [basics, figure, customize, export, density, heatmap, surface]
+seeAlso: [basics, figure, customize, export, density, heatmap, hist2d, surface]
 ---
 import PlotImage from '../../../components/fig/PlotImage.astro';
 
@@ -17,7 +17,7 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
 | `theme=` | `'paper'` | 축 선, 격자, 글자 크기, 선 굵기 | 그림을 만드는 함수, `Figure(...)` |
 | `palette=` | `'jco'` | 층마다 차례로 주는 범주 색 | 그림을 만드는 함수, `Figure(...)` |
 | `font=` | `'serif'` | 글꼴 벌 | 그림을 만드는 함수, `Figure(...)` |
-| `cmap=` | `'cool'` | 값을 색으로 바꾸는 연속 색띠 | `contour`, `density`, `heatmap`, `surface` 같은 층 |
+| `cmap=` | `'cool'` | 값을 색으로 바꾸는 연속 색띠 | `contour`, `density`, `heatmap`, `hist2d`, `surface` 같은 층 |
 
 모든 그림에 한꺼번에 거는 전역 설정은 없어요. 여러 그림을 같은 생김새로 맞추려면 옵션을 dict 하나에 담아 두고 그림마다 `**opts`로 넘겨요.
 
@@ -59,11 +59,11 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
 ...     fig = sd.plot.Figure(width=80, **options)
 ...     for k in range(3):
 ...         fig = fig.line(x, sd.sin(x + k), label=f"$k = {k}$")
-...     return fig.xlabel(r"$x$").ylabel(r"$\sin(x + k)$").legend(loc="right")
+...     return fig.xlabel(r"$x$").ylabel(r"$\sin(x + k)$")
 >>> fig = sample(theme="boxed")
 ```
 
-<PlotImage name="style-boxed" alt="사인 곡선 셋이 네 변의 축 선으로 둘러싸인 칸 안에 있고 오른쪽에 k = 0, 1, 2 범례" caption="theme='boxed'는 칸의 네 변에 축 선을 그어요." />
+<PlotImage name="style-boxed" alt="사인 곡선 셋이 네 변의 축 선으로 둘러싸인 칸 안에 있고 왼쪽 아래 구석에 k = 0, 1, 2 범례" caption="theme='boxed'는 칸의 네 변에 축 선을 그어요." />
 
 ```python
 >>> fig = sample(theme="grid")
@@ -125,7 +125,7 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
 
 ## 연속 색띠
 
-값을 색으로 바꾸는 층(`contour`, `density`, `heatmap`, `surface`, `parametric_surface`)은 `cmap=`으로 연속 색띠를 받아요. 주지 않으면 어디서나 `'cool'`이에요. 색 막대(`colorbar=True`)도 같은 색띠로 그려요. 3D 칸에 곡면이 여럿이면 기본으로는 색띠 대신 곡면마다 팔레트의 색을 받아요([3D 칸](/api/plot/view3d/)).
+값을 색으로 바꾸는 층(`contour`, `density`, `heatmap`, `hist2d`, `hexbin`, `vectorfield`, `streamlines`, `surface`, `parametric_surface`)은 `cmap=`으로 연속 색띠를 받아요. 주지 않으면 어디서나 `'cool'`이에요. 색 막대(`colorbar=True`)도 같은 색띠로 그려요. 3D 칸에 곡면이 여럿이면 기본으로는 색띠 대신 곡면마다 팔레트의 색을 받아요([3D 칸](/api/plot/view3d/)).
 
 | 이름 | 생김새 |
 |---|---|

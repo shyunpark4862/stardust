@@ -42,7 +42,7 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
 [1.0, 1.0, 0.333]
 ```
 
-범위는 `limits`가 정해요. 곡면과 점은 유한한 값의 전체 범위, 공간 곡선은 극점의 큰 값이 축을 차지하지 않도록 분위수 규칙의 범위예요. 높이는 `zlim`을 주면 그것이고, 아니면 모든 곡면의 높이에 분위수 규칙을 써서 극점을 잘라요([곡면의 표본](/internals/plot/surface/#극점의-자르기)). 범위의 폭이 0이면(평평한 평면) 조금 넓혀요.
+범위는 `limits`가 정해요. 곡면과 점은 유한한 값의 전체 범위, 공간 곡선은 극점의 큰 값이 축을 차지하지 않도록 분위수 규칙의 범위예요. 높이는 `zlim`을 주면 그것이고, 아니면 모든 곡면의 높이에 분위수 규칙을 써서 극점을 잘라요([곡면의 표본](/internals/plot/surface/#극점의-자르기)). 범위의 폭이 0이면(평평한 평면) 조금 넓혀요. 곡면 없이 점만 있는 칸은 세 축의 범위를 양쪽으로 4%씩 넓혀요. 2D 칸의 여백과 같은 까닭으로, 가장 바깥의 점이 상자의 모서리나 축 선 위에 놓이지 않게 하려는 것이에요.
 
 ## 회전과 투영
 
@@ -277,7 +277,7 @@ def _rot(azimuth, elevation):
 
 ### 여백
 
-3D 칸의 여백은 `margins`가 글자의 실제 크기로 재요. 왼쪽에는 z 눈금의 가장 넓은 숫자와 z축 이름, 아래에는 눈금 숫자 한 줄과(x나 y의 이름이 있으면) 이름 한 줄, 오른쪽에는 x·y 눈금 숫자 너비의 반이에요. 눈금은 아직 몇 개일지 모르므로 축마다 4개를 가정한 숫자로 재요. 배치가 이 여백을 2D 칸의 여백과 함께 풀어 그림 사각형을 정하므로, 같은 줄과 열의 칸들과 그림 사각형의 가장자리가 맞아요.
+3D 칸의 여백은 `margins`가 글자의 실제 크기로 재요. 왼쪽에는 z 눈금의 가장 넓은 숫자와 z축 이름의 너비(z축 이름은 돌려 세우지 않고 가로로 놓아요), 아래에는 눈금 숫자 한 줄과(x나 y의 이름이 있으면) 이름 한 줄, 오른쪽에는 x·y 눈금 숫자 너비의 반이에요. 눈금은 아직 몇 개일지 모르므로 축마다 4개를 가정한 숫자로 재요. 배치가 이 여백을 2D 칸의 여백과 함께 풀어 그림 사각형을 정하므로, 같은 줄과 열의 칸들과 그림 사각형의 가장자리가 맞아요. 이름을 준 곡선이나 점(`curve3d`·`scatter3d`의 `label`, `scatter3d`의 `group`)이 있으면 범례가 상자 오른쪽 밖에 서고, 배치가 그 너비를 오른쪽 여백에 더해요([배치](/internals/plot/layout/)).
 
 ### 배율과 자리
 
@@ -298,10 +298,10 @@ def _rot(azimuth, elevation):
 >>> import itertools
 >>> kinds = [it["type"] for it in wave.scene()["items"]]
 >>> [(k, len(list(run))) for k, run in itertools.groupby(kinds)]
-[('path', 7), ('image', 1), ('path', 1), ('text', 7), ('path', 2), ('text', 7), ('path', 2), ('text', 5), ('path', 1)]
+[('path', 7), ('image', 1), ('path', 1), ('text', 7), ('path', 2), ('text', 3), ('path', 2), ('text', 5), ('path', 1)]
 ```
 
-첫 경로는 그림 전체의 흰 바탕이고, 다음 여섯이 뒤쪽 세 면의 격자와 테두리예요. 그 위에 곡면의 그림 한 장, 그 위에 x축(모서리, 눈금 숫자 7, 눈금), y축, z축이 차례로 얹혀요.
+첫 경로는 그림 전체의 흰 바탕이고, 다음 여섯이 뒤쪽 세 면의 격자와 테두리예요. 그 위에 곡면의 그림 한 장, 그 위에 x축(모서리, 눈금 숫자 7, 눈금), y축(숫자 3), z축(숫자 5)이 차례로 얹혀요. 이 시점에서 y축은 눈 쪽으로 누워 화면에서 짧으므로 눈금을 덜 받아요.
 
 ### 뒤쪽 세 면
 
@@ -332,11 +332,32 @@ x축과 y축은 바닥의 앞쪽 모서리, 눈에 가까운 쪽에 그려요. �
 
 ```python
         # src/stardust/plot/_surface.py
-        # as many ticks as the drawn length of each axis has room for
-        want = [max(2, min(6, round(scale * 2.0 * BOX[k] * 0.8 / (24.0 if k < 2 else 20.0)) + 1)) for k in range(3)]
+        # as many ticks as the drawn length of each axis has room for (an axis seen end on is short)
+        drawn = {k_: math.dist(P(a), P(b)) for k_, (a, b), _ in axes}
+        want = [max(2, min(6, round(drawn[k] * 0.8 / (24.0 if k < 2 else 18.0)) + 1)) for k in range(3)]
 ```
 
-눈금의 수는 그려진 축의 길이에 맞춰요. x, y는 24 bp, z는 20 bp에 하나꼴로 2–6개를 원하고, [확장 Wilkinson 눈금](/internals/plot/layout/)이 그 수에 가까운 고운 값을 골라요. 상자가 얇아 거의 정면으로 보이는 축(그려진 길이 14 bp 미만)은 눈금을 그리지 않아요. 눈금이 한 점에 겹쳐 읽을 수 없기 때문이에요.
+눈금의 수는 축이 **화면에 그려진 길이**에 맞춰요. 축의 두 끝을 투영한 점 사이의 거리를 재고, x와 y는 24 bp, z는 18 bp에 하나꼴로 2–6개를 원해요. [확장 Wilkinson 눈금](/internals/plot/layout/)이 그 수에 가까운 고운 값을 골라요. 상자의 변이 같아도 눈 쪽으로 누운 축은 화면에서 짧으므로 눈금을 덜 받아요. 거의 정면으로 보이는 축(그려진 길이 14 bp 미만)은 눈금을 그리지 않아요. 눈금이 한 점에 겹쳐 읽을 수 없기 때문이에요.
+
+### 눈금 숫자 솎기
+
+x축과 y축은 바닥의 한 꼭짓점에서 만나요. 두 축의 끝 눈금이 그 꼭짓점 가까이에 있으면 두 숫자가 나란히 붙어 한 수처럼 읽히거나 어느 축의 것인지 알 수 없게 돼요. 그래서 숫자를 놓을 때마다 이미 놓은 숫자들의 상자와 견줘요.
+
+```python
+                # src/stardust/plot/_surface.py
+                rect = (lx - w / 2, ly - (h + d) / 2, lx + w / 2, ly + (h + d) / 2)
+                # A label needs clear room around it: a little from its own axis's labels, and from
+                # another axis's (at a corner where two axes meet) enough that the two numbers are
+                # not read as one or as each other's.
+                if any(
+                    rect[0] - q[2] < gx and q[0] - rect[2] < gx and rect[1] - q[3] < gy and q[1] - rect[3] < gy
+                    for q, (gx, gy) in ((q, (3.0, 2.0) if n == k_ else (ts, 0.6 * ts)) for n, q in placed)
+                ):
+                    continue  # left out
+                placed.append((k_, rect))
+```
+
+두 상자 사이의 틈이 가로와 세로 **모두** 모자라면 그 숫자를 빼요. 필요한 틈은 상대가 누구냐에 따라 달라요. 같은 축의 숫자끼리는 가로 3 bp, 세로 2 bp면 돼요. 다른 축의 숫자와는 가로로 눈금 글자 크기만큼, 세로로 그 0.6배만큼 떨어져야 해요. 축은 x, y, z의 차례로 그리므로 꼭짓점에서 부딪히면 나중 축의 숫자가 빠져요. 눈금 선은 빼지 않아요. 숫자가 빠진 자리에도 눈금은 남아 간격을 읽을 수 있어요.
 
 ## 그림 한 장과 한 번만 굽기
 
@@ -353,7 +374,7 @@ x축과 y축은 바닥의 앞쪽 모서리, 눈에 가까운 쪽에 그려요. �
 
 그림은 한 번 만든 장면을 SVG, PDF, PNG가 함께 쓰는데, 3D 칸이 있으면 장면에 든 그림의 해상도가 다를 수 있어서 dpi가 바뀌면 장면을 다시 만들어요. `to_svg()`와 `to_pdf()`는 300 dpi의 그림을 넣고, `to_png(dpi=...)`와 `save(..., dpi=...)`는 그 dpi예요. SVG와 PDF에서 그림은 보간해서 늘리는 이미지로 들어가요.
 
-노트북은 그림 하나를 SVG와 PNG로 두 번 물어요. 두 표시가 같은 200 dpi를 쓰고, `Space`가 마지막 그림을 크기와 시점과 장면의 열쇠와 함께 남겨 두어 같은 장면, 같은 크기면 다시 굽지 않아요.
+`Space`는 마지막에 구운 그림을 크기와 시점과 장면의 열쇠와 함께 남겨 둬요. 장면을 다시 지어도 같은 장면, 같은 크기면 다시 굽지 않아요. 제목이나 축 이름만 고친 뒤의 출력, 같은 dpi로 한 번 더 부른 출력이 그래요. 노트북은 3D 칸이 있는 그림을 200 dpi의 PNG 한 꼴로만 받아요([장면과 세 출력](/internals/plot/scene-outputs/)).
 
 ```python
 >>> sp = wave._cell.layers[0]

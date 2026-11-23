@@ -1,0 +1,162 @@
+---
+kind: function
+title: facet
+names: [facet]
+group: 통계 그림
+order: 10
+signatures:
+  - "sd.plot.facet(data, by, /, *, ncols=None, sharex=True, sharey=True, width=None, height=None, font='serif', theme='paper', palette='jco')"
+summary: DataFrame을 한 열의 값마다 나눠, 값 하나에 칸 하나씩 같은 그림을 그려요. 무리마다의 모양을 같은 축 위에서 나란히 견줄 때 써요.
+params:
+  - name: data
+    type: DataFrame
+    kind: positional-only
+    desc: "그릴 자료. 행 하나가 관측 하나예요."
+  - name: by
+    type: str
+    kind: positional-only
+    desc: "칸을 나누는 열의 이름. 이 열의 서로 다른 값마다 칸 하나를 만들고, 그 값을 칸의 제목으로 적어요. 값이 수면 작은 값부터, 아니면 처음 나온 순서로 놓아요."
+  - name: ncols
+    type: int 또는 None
+    kind: keyword-only
+    desc: "한 줄에 놓을 칸의 수. 줄의 수는 칸의 수에 맞춰 정해져요. None(기본값)이면 3이고, 칸이 3개보다 적으면 그 수예요."
+  - name: sharex, sharey
+    type: bool 또는 'all'
+    kind: keyword-only
+    desc: "True(기본값)나 'all'이면 모든 칸이 그 축의 범위를 함께 쓰고, 눈금 숫자는 바깥 칸에만 적어요. False면 칸마다 자기 자료에 맞춰 범위를 정해요."
+  - name: width
+    type: float 또는 None
+    kind: keyword-only
+    desc: "그림 전체의 너비(mm). None이면 183이에요."
+  - name: height
+    type: float 또는 None
+    kind: keyword-only
+    desc: "그림 전체의 높이(mm). None이면 칸의 가로세로 비가 4:3이 되게 정해요."
+  - name: font, theme, palette
+    type: str
+    kind: keyword-only
+    desc: "글꼴, 테마, 팔레트. Figure의 같은 인자와 같아요. 기본값 'serif', 'paper', 'jco'."
+returns:
+  type: Facets
+  desc: "칸들의 묶음. 그림 메서드를 부르면 모든 칸에 그리고 자신을 돌려줘요. 속성 figure가 그 칸들을 담은 Figure예요."
+raises:
+  - type: TypeError
+    desc: "data가 DataFrame이 아닐 때, by가 문자열이 아닐 때, ncols가 int가 아닐 때. 그림 메서드에 data=를 줬을 때도 TypeError예요."
+  - type: ValueError
+    desc: "data에 by라는 열이 없을 때, 그 열에 값이 하나도 없을 때, ncols가 1보다 작을 때, sharex·sharey가 False, True, 'all'이 아닐 때, font·theme·palette가 없는 이름일 때."
+seeAlso: [figure, pairs, basics, scatter, histogram, customize]
+---
+import Callout from '../../../components/Callout.astro';
+import PlotImage from '../../../components/fig/PlotImage.astro';
+
+## 한눈에 보기
+
+네 지역에서 잰 물고기의 길이와 무게가 있어요. 한 칸에 모두 찍으면 지역마다의 모양이 서로 겹쳐 가려져요. 지역마다 칸을 따로 두고 같은 축으로 그리면 모양을 하나씩 보면서도 서로 견줄 수 있어요. 이렇게 자료를 한 열의 값으로 나눠 같은 그림을 칸마다 되풀이하는 것이 `facet`이에요.
+
+```python
+>>> import stardust as sd
+>>> rng = sd.random.default_rng(11)
+>>> N = sd.stats.Normal(mu=0.0, sigma=1.0)
+>>> n = 40
+>>> site = ["north"] * n + ["south"] * n + ["east"] * n + ["west"] * n
+>>> center = sd.asarray([30.0] * n + [36.0] * n + [33.0] * n + [28.0] * n)
+>>> slope = sd.asarray([0.9] * n + [1.2] * n + [1.0] * n + [0.8] * n)
+>>> length = center + 3.0 * N.sample(4 * n, rng=rng)
+>>> weight = slope * length + 2.0 * N.sample(4 * n, rng=rng)
+>>> df = sd.frame.DataFrame({"site": site, "sex": ["F", "M"] * (2 * n), "length": length, "weight": weight})
+>>> g = sd.plot.facet(df, "site").scatter("length", "weight")
+>>> g = g.xlabel("length (mm)").ylabel("weight (g)")
+>>> fig = g.figure
+```
+
+<PlotImage name="facet-overview" alt="north, south, east, west 네 칸의 산점도. 첫 줄에 세 칸, 둘째 줄에 한 칸이 있고 모든 칸의 축 범위가 같아요. south의 점들이 가장 오른쪽 위에, west의 점들이 가장 왼쪽 아래에 있어요." caption="지역마다 칸 하나씩 그린 길이와 무게의 산점도. 축이 같아서 south의 물고기가 길고 무겁다는 것이 칸의 자리만으로 보여요." />
+
+`sd.plot.facet(df, "site")`는 `site` 열의 값마다 칸 하나를 만들어요. 값이 넷이니 칸이 넷이고, 칸의 제목이 그 값이에요. 이어서 부른 `scatter("length", "weight")`는 네 칸 모두에 그려요. 칸마다 그 지역의 행만 골라 `length` 열과 `weight` 열을 찍어요.
+
+<Reference />
+
+## 돌려주는 것: `Facets`
+
+`facet`이 돌려주는 것은 `Figure`가 아니라 칸들의 묶음인 `Facets`예요. `Facets`에 하는 일은 세 가지예요.
+
+**그리기.** [`scatter`](/api/plot/scatter/), [`line`](/api/plot/line/), [`histogram`](/api/plot/histogram/), [`ecdf`](/api/plot/ecdf/), [`boxplot`](/api/plot/boxplot/)처럼 `data=`를 받는 그림 메서드를 부르면 모든 칸에 같은 층을 더해요. 인자는 **열 이름**으로 줘요. `data=`는 칸마다 그 칸의 행으로 채워지니 직접 주지 않아요. 색이나 크기 같은 나머지 인자는 모든 칸에 그대로 전해져요. 메서드는 `Facets` 자신을 돌려줘서 이어 부를 수 있어요.
+
+**축 고치기.** `xlabel`은 맨 아래 칸들에, `ylabel`은 맨 왼쪽 칸들에만 이름을 붙여요. `xlim`, `ylim`, `xscale`, `yscale`, `xticks`, `yticks`, `legend`는 모든 칸에 똑같이 적용해요. 인자는 [`Figure`의 같은 메서드](/api/plot/customize/)와 같아요.
+
+**내보내기.** `save`, `to_svg`, `to_pdf`, `to_png`, `scene`, 노트북 표시는 그림 전체의 것이에요. `width`, `height`, `shape`, `axes`, `info`도 그림의 값을 그대로 보여요.
+
+```python
+>>> g.shape
+(2, 3)
+>>> g.width
+183.0
+```
+
+그림 전체를 `Figure`로 다뤄야 할 때는 `g.figure`를 써요. [`grid`](/api/plot/figure/)에 넣거나, 칸 하나만 골라 고칠 때예요.
+
+## 칸의 순서와 배치: `ncols`
+
+칸은 왼쪽 위부터 오른쪽으로, 줄이 차면 다음 줄로 놓여요. `by` 열의 값이 수면 작은 값부터, 문자열이면 자료에 처음 나온 순서예요. 위의 그림이 north, south, east, west 순서인 까닭이에요. 순서를 바꾸려면 DataFrame의 행을 먼저 그 순서로 정렬해요.
+
+`ncols`는 한 줄에 놓을 칸의 수예요. 주지 않으면 3이에요. 마지막 줄에 칸이 모자라면 남는 자리는 비워 둬요.
+
+## 무리와 범례: `group=`
+
+그림 메서드의 `group=`에 다른 열을 주면 칸 안에서 다시 무리를 나눠 색을 달리해요. 한 무리는 모든 칸에서 같은 색이에요. 어떤 칸에 그 무리의 행이 없어도 나머지 무리의 색은 밀리지 않아요. 범례는 마지막 칸에 한 번만 붙여요.
+
+```python
+>>> g = sd.plot.facet(df, "site").scatter("length", "weight", group="sex", size=2.5)
+>>> g = g.xlabel("length (mm)").ylabel("weight (g)")
+>>> fig = g.figure
+```
+
+<PlotImage name="facet-group" alt="네 지역의 산점도. 점이 F는 파랑, M은 노랑이고, 범례는 마지막 칸인 west에만 있어요." caption="성별로 색을 나눈 그림. 네 칸 모두 F가 파랑, M이 노랑이고, 범례는 마지막 칸 하나에만 있어요." />
+
+`g.legend(loc=...)`를 부르면 모든 칸에 범례가 붙어요. 범례의 자리만 옮기고 싶으면 마지막 칸 하나를 골라 고쳐요(아래 "칸 하나만 고치기").
+
+## 축을 함께 쓰기: `sharex`, `sharey`
+
+기본으로 모든 칸이 x축과 y축의 범위를 함께 써요. 범위는 모든 칸의 자료를 합쳐 정하고, 눈금 숫자는 바깥 칸(맨 왼쪽 칸의 y축, 아래에 다른 칸이 없는 칸의 x축)에만 적어요. 같은 자리가 같은 값이라 칸끼리 바로 견줄 수 있어요.
+
+칸마다 값의 크기가 많이 달라 한 범위로는 작은 쪽이 납작해질 때, 또는 견줄 것이 크기가 아니라 모양일 때는 `False`를 줘요. 그 축은 칸마다 자기 자료에 맞춰 범위를 정하고 눈금 숫자도 칸마다 적어요.
+
+```python
+>>> g = sd.plot.facet(df, "site", ncols=4, sharey=False, height=45).histogram("length", bins=8)
+>>> g = g.xlabel("length (mm)")
+>>> fig = g.figure
+```
+
+<PlotImage name="facet-sharey" alt="한 줄에 네 칸으로 놓인 지역별 길이 히스토그램. x축 범위는 네 칸이 같고, y축은 칸마다 눈금이 달라요." caption="x축은 함께 쓰고 y축은 칸마다 따로 잡은 히스토그램. 봉우리의 자리는 칸끼리 견줄 수 있고, 높이는 칸마다 자기 눈금으로 읽어요." />
+
+x축은 여전히 함께 쓰니 south의 봉우리가 오른쪽에, west의 봉우리가 왼쪽에 있는 것이 그대로 보여요. `facet`에서는 `True`와 `'all'`이 같은 뜻이에요.
+
+## 칸 하나만 고치기
+
+`Facets`의 메서드는 모든 칸에 같은 일을 해요. 한 칸에만 층을 더하거나 설정을 바꾸려면 `g.figure[i, j]`로 그 칸을 골라요. 줄과 열의 번호는 0부터예요.
+
+```python
+>>> g = sd.plot.facet(df, "site").scatter("length", "weight")
+>>> cell = g.figure[0, 1].hline(40.0, color="gray")
+```
+
+`hline`, `vline`, `function`, `text`처럼 자료의 열을 받지 않는 메서드는 `Facets`로 한꺼번에 부를 수 없어요. 모든 칸에 같은 기준선을 그으려면 칸을 하나씩 골라 불러요.
+
+```python
+>>> for i, j in [(0, 0), (0, 1), (0, 2), (1, 0)]:
+...     cell = g.figure[i, j].hline(40.0, color="gray")
+```
+
+## 조심할 점
+
+- `by`에는 값의 가짓수가 적은 열을 줘요. 값마다 칸을 만드니, 잰 값처럼 행마다 다른 수가 든 열을 주면 행의 수만큼 칸이 생겨요.
+- `Facets`에는 `title`, `zlabel`, `compare`, `fit`이 없어요(`AttributeError`). 칸의 제목은 `by`의 값이 차지하고 있어요.
+- `Facets`는 `g[i, j]`처럼 직접 고를 수 없어요. `g.figure[i, j]`를 써요.
+- 그림 메서드의 인자를 배열로 주면 칸마다 나누어지지 않아요. 열 이름으로 줘요.
+- [`hist2d`](/api/plot/hist2d/)와 [`hexbin`](/api/plot/hexbin/)을 칸마다 그리면 색띠가 칸마다 붙고 그 범위도 칸마다 달라요. 같은 색이 칸마다 다른 개수를 뜻하게 돼요.
+- 변수 여럿을 서로 짝지어 훑어보려면 [`pairs`](/api/plot/pairs/)가 알맞아요. `facet`은 같은 변수를 무리마다 되풀이해 그려요.
+
+## matplotlib을 아는 분께
+
+- matplotlib에는 이에 해당하는 함수가 없고, `plt.subplots(sharex=True, sharey=True)`로 칸을 만든 뒤 무리마다 반복문으로 그려야 해요. seaborn의 `FacetGrid(df, col="site", col_wrap=3).map(...)`이나 ggplot2의 `facet_wrap(~site)`에 가까워요.
+- 줄과 열을 두 변수로 나누는 꼴(`facet_grid(row ~ col)`)은 없어요. 열 하나의 값으로만 나눠요.
+- 축을 풀어 주는 인자는 `sharex=False`, `sharey=False`예요(ggplot2의 `scales="free_x"`, `"free_y"`).

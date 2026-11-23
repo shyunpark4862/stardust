@@ -69,7 +69,7 @@ def first_grid(a, b, n=N0):
     return sd.where(i == float(n), b, sd.where(i == 0.0, a, t))  # the ends exactly
 ```
 
-$i$번째 점의 어긋남은 $(\{i\varphi\} - \tfrac12)\cdot 0.3$칸이에요. $\{\cdot\}$은 소수 부분, $\varphi = (\sqrt5 - 1)/2$이에요. 수열 $\{i\varphi\}$는 Weyl의 덧셈 수열(Kronecker 수열)이에요. 무리수 α에 대해 $\{i\alpha\}$는 [0, 1)에 고르게 퍼지고(Weyl의 고른 분포 정리), 세 거리 정리(Steinhaus 추측, Sós 1958)에 따르면 처음 N개의 점이 [0, 1)을 나누는 간격은 많아야 세 가지 길이예요. 황금비는 연분수 전개가 $[0; 1, 1, 1, \ldots]$로 모든 부분 몫이 가장 작은 수라, 어떤 N에서도 가장 긴 간격과 가장 짧은 간격의 비가 작게 머물러요. 그래서 이웃한 점의 어긋남이 규칙적으로 되풀이되지 않고 고르게 섞여요. 이 어긋남은 고정된 수열이라 결정적이에요. 같은 a, b, n이면 언제나 같은 격자예요.
+$i$번째 점의 어긋남은 $(\{i\varphi\} - \tfrac12)\cdot 0.3$칸이에요. $\{\cdot\}$은 소수 부분, $\varphi = (\sqrt5 - 1)/2$이에요. 수열 $\{i\varphi\}$는 Weyl의 덧셈 수열(Kronecker 수열)이에요. 무리수 $\alpha$에 대해 $\{i\alpha\}$는 $[0, 1)$에 고르게 퍼지고(Weyl의 고른 분포 정리), 세 거리 정리(Steinhaus 추측, Sós 1958)에 따르면 처음 N개의 점이 [0, 1)을 나누는 간격은 많아야 세 가지 길이예요. 황금비는 연분수 전개가 $[0; 1, 1, 1, \ldots]$로 모든 부분 몫이 가장 작은 수라, 어떤 N에서도 가장 긴 간격과 가장 짧은 간격의 비가 작게 머물러요. 그래서 이웃한 점의 어긋남이 규칙적으로 되풀이되지 않고 고르게 섞여요. 이 어긋남은 고정된 수열이라 결정적이에요. 같은 a, b, n이면 언제나 같은 격자예요.
 
 흩는 까닭은 주기 함수와 격자가 발을 맞추는 일을 피하려는 것이에요. 주기가 격자 간격과 같은 함수를 고른 격자로 재면 모든 점에서 같은 값이 나와 곡선이 평평한 선이 돼요.
 
@@ -92,14 +92,14 @@ True
     # src/stardust/plot/_sample.py, robust_range
     q10, q50, q90 = (float(q) for q in sd.quantile(w, sd.asarray([0.1, 0.5, 0.9])))
     spread = q90 - q10
-    if spread <= 0.0:
-        spread = max(abs(q50), 1.0) * 1e-9
+    if spread <= 0.0:  # most values alike (a function nearly everywhere constant): the full range
+        return lo, hi, False, False
     clip_hi = hi - q90 > 4.0 * spread
     clip_lo = q10 - lo > 4.0 * spread
     return (q10 - spread if clip_lo else lo), (q90 + spread if clip_hi else hi), clip_lo, clip_hi
 ```
 
-유한한 값 w의 10%, 50%, 90% 분위수(`sd.quantile`의 기본 `'linear'`)를 구하고, 가운데 80%의 폭을 퍼짐 $s = q_{90} - q_{10}$으로 둬요. 최댓값이 $q_{90}$보다 $4s$ 넘게 멀면 위쪽은 극점 둘레에서 달아난 몇 점이라고 보고 범위를 $q_{90} + s$에서 잘라요. 아래쪽도 같아요. 그렇지 않은 쪽은 최솟값과 최댓값 그대로예요. 이 규칙은 두 경우를 가려요.
+유한한 값 w의 10%, 50%, 90% 분위수(`sd.quantile`의 기본 `'linear'`)를 구하고, 가운데 80%의 폭을 퍼짐 $s = q_{90} - q_{10}$으로 둬요. 최댓값이 $q_{90}$보다 $4s$ 넘게 멀면 위쪽은 극점 둘레에서 달아난 몇 점이라고 보고 범위를 $q_{90} + s$에서 잘라요. 아래쪽도 같아요. 그렇지 않은 쪽은 최솟값과 최댓값 그대로예요. 퍼짐이 0이면 자르지 않고 값 전체의 범위를 써요. 거의 어디서나 같은 값이다가 좁은 봉우리 하나가 솟는 함수는 가운데 80%가 한 값이라 견줄 폭이 없고, 그런 함수에서 볼 것은 바로 그 봉우리이기 때문이에요. 이 규칙은 두 경우를 가려요.
 
 - $\tan x$처럼 극점 근처의 몇 점만 크면 그 점들이 분위수를 움직이지 못해서 잘려요.
 - $e^x$이나 $x^3$처럼 값이 꾸준히 크게 자라면 큰 값이 10%를 넘게 차지해서 $q_{90}$도 함께 커지고, 잘리지 않아요.
@@ -161,7 +161,7 @@ True
         t, x, y = sd.take(t, order), sd.take(sd.concat([x, xm]), order), sd.take(sd.concat([y, ym]), order)
 ```
 
-안쪽 꼭짓점마다 앞 선분 $d_1 = (\Delta u_1, \Delta v_1)$과 뒤 선분 $d_2$가 이루는 꺾임각 θ를 재요. $d_1 \times d_2 = \lvert d_1\rvert\lvert d_2\rvert\sin\theta$, $d_1\cdot d_2 = \lvert d_1\rvert\lvert d_2\rvert\cos\theta$이므로 $\lvert d_1\times d_2\rvert > \tan 4°\,(d_1\cdot d_2)$는 θ > 4°와 같아요. 각을 `atan2`로 구하지 않고 외적과 내적의 비교 하나로 끝내요. 선분이 90°보다 크게 꺾이면 내적이 음수라 언제나 참이에요. 한 구간은 아래가 모두 맞을 때 가운데 점을 받아요.
+안쪽 꼭짓점마다 앞 선분 $d_1 = (\Delta u_1, \Delta v_1)$과 뒤 선분 $d_2$가 이루는 꺾임각 $\theta$를 재요. $d_1 \times d_2 = \lvert d_1\rvert\lvert d_2\rvert\sin\theta$, $d_1\cdot d_2 = \lvert d_1\rvert\lvert d_2\rvert\cos\theta$이므로 $\lvert d_1\times d_2\rvert > \tan 4°\,(d_1\cdot d_2)$는 $\theta > 4°$와 같아요. 각을 `atan2`로 구하지 않고 외적과 내적의 비교 하나로 끝내요. 선분이 90°보다 크게 꺾이면 내적이 음수라 언제나 참이에요. 한 구간은 아래가 모두 맞을 때 가운데 점을 받아요.
 
 - 양 끝 가운데 한 곳이라도 4°보다 크게 꺾여요(`at`).
 - 화면에서 1.5 단위보다 길어요(`long_`). 이미 짧은 선분은 꺾여 있어도 더 나눠 봐야 보이는 것이 없어요.
@@ -210,6 +210,11 @@ True
     # (without refinement nothing was narrowed down: a steep segment is not known to be a break)
     brk = both & narrow & ((dv > JUMP) | (du > JUMP)) & (depth > 0)
     idx = [int(i) for i in sd.nonzero(brk)[0].tolist()]
+    # a steep step beside the end of the domain is the curve running into that end (ln x at 0),
+    # not a break in it
+    nfin = fin.shape[0]
+    flags = bytes(memoryview(fin))
+    idx = [i for i in idx if all(flags[k] for k in range(max(0, i - 4), min(nfin, i + 6)))]
     c.breaks, c.poles, c.jumps = idx, [], []
     last_t, last_kind = None, None
     for i in idx:
@@ -229,6 +234,14 @@ True
 ```
 
 연속 함수는 구간을 반으로 줄일 때마다 양 끝의 차이도 줄어요. 끊긴 함수는 그렇지 않아요. 뜀이 든 구간은 양 끝에서 크게 꺾이므로 바퀴마다 나눠지고, hmin까지 좁아져도 차이가 그대로 남아요. 그래서 가장 좁은 구간에서 세로나 가로로 `JUMP` = 15 단위(화면 높이의 2%)보다 크게 뛰면 끊어요. $\tanh(50x)$처럼 가파르지만 이어진 함수는 좁혀 가는 사이에 차이가 줄어서 끊기지 않아요.
+
+정의역 끝 바로 옆의 가파른 구간은 끊는 자리에서 빼요. $\ln x$는 0으로 다가가며 끝없이 내려가므로, 정의역 끝을 가두려고 좁힌 구간들에서 값이 크게 뛰어요. 그것은 곡선이 끊긴 것이 아니라 정의역 끝으로 달려가는 것이에요. 그래서 구간의 앞 네 표본과 뒤 다섯 표본 가운데 유한하지 않은 값이 하나라도 있으면 그 구간을 끊지 않고, 선이 정의역 끝까지 이어져요.
+
+```python
+>>> info = sd.plot.function(sd.log, -1, 4).info[0]
+>>> info.poles, info.jumps, [(round(a, 4), round(b, 4)) for a, b in info.undefined]
+((), (), [(-1.0, 0.0)])
+```
 
 끊는 자리는 둘로 나눠요. 양 끝이 모두 보이는 범위에서 두 화면 높이 넘게 벗어나 있으면(기준 화면 좌표로 $v > 3H_0$ 또는 $v < -2H_0$) **극점**, 아니면 **뜀**이에요. 극점 하나 둘레에는 좁은 구간이 여럿 이어질 수 있어서, 앞의 자리와 64 hmin 안에 있는 것은 같은 것으로 묶어요. 묶음 안에서 한 번이라도 극점으로 보였으면 극점이에요. 자리는 구간의 가운데라 정밀도는 hmin, 곧 범위의 $1/(256\cdot 2^{10})$(약 $4\times10^{-6}$)이에요.
 
@@ -274,7 +287,18 @@ $\sin(1/x)$는 0 근처에서 어떤 표본으로도 따라갈 수 없을 만큼
 
 ## 평면 곡선의 화면
 
-`parametric`과 `polar`는 가로세로 같은 단위로 그리므로(칸의 `aspect` = 1), 기준 화면도 두 축을 같은 비율로 늘여요. 첫 격자 값의 x 범위와 y 범위를 구하고, 둘 가운데 기준 화면에서 더 넓게 차지하는 쪽에 맞춰 한 척도를 써요. 자동 범위의 분위수 규칙은 쓰지 않고, 첫 격자의 유한한 값 전체의 범위를 써요.
+`parametric`과 `polar`는 가로세로 같은 단위로 그리므로(칸의 `aspect` = 1), 기준 화면도 두 축을 같은 비율로 늘여요. 첫 격자 값의 x 범위와 y 범위를 구하고, 둘 가운데 기준 화면에서 더 넓게 차지하는 쪽에 맞춰 한 척도를 써요. x와 y의 범위는 `function`과 같은 분위수 규칙(`robust_range`)으로 따로 골라요. $(t, \tan t)$나 $r = 1/\cos t$처럼 한쪽으로 달아나는 곡선은 본체의 범위에서 잘려요. 잘린 축은 곡선 층이 그 범위를 배치에 알리고(`CurveLine`의 `xclip`·`yclip`), 선은 칸의 테두리에서 잘려 보여요. 잘리지 않은 축은 표본 전체의 범위예요.
+
+한 축으로 곧은 선인 곡선은 따로 다뤄요. $r = 1/\cos t$는 직선 $x = 1$이라 x 값이 반올림만큼만 달라요. 가로세로 같은 단위에서 그 폭을 그대로 쓰면 칸이 세로줄 하나로 찌부러져요. 그래서 폭이 없는 축은 다른 축의 폭만큼을 선의 둘레에 잡고(곡선이 점 하나면 두 축 모두 1 단위), 곡선 층이 그 범위를 값의 범위 대신 그대로 알려요.
+
+```python
+>>> fig = sd.plot.polar(lambda t: 1 / sd.cos(t), 0, 2 * math.pi)
+>>> layer = fig._cells[0].layers[0]
+>>> layer.held, [round(v, 2) for v in layer.xclip], [round(v, 2) for v in layer.yclip]
+(('x',), [-8.03, 10.03], [-9.13, 8.92])
+```
+
+y는 분위수 규칙이 본체로 자른 범위이고, x는 그 폭 18.05를 $x = 1$의 둘레에 잡은 범위예요.
 
 ## `PlotInfo` 채우기
 
@@ -283,7 +307,11 @@ $\sin(1/x)$는 0 근처에서 어떤 표본으로도 따라갈 수 없을 만큼
 ```python
         # src/stardust/plot/_function.py, function
         e = self._cell.layers[-1].extent("y", False)
-        cut = (clipped[0] or (e is not None and e[0] <= yclip[0]), clipped[1] or (e is not None and e[1] >= yclip[1]))
+        # cut: some value of the curve lies beyond the range drawn (touching its end is not)
+        cut = (
+            clipped[0] or bool(sd.any(c.y < yclip[0])),
+            clipped[1] or bool(sd.any(c.y > yclip[1])),
+        )
         jumps = tuple(j for j in c.jumps if not any(x0 <= j <= x1 for x0, x1 in osc))
         self._root._infos.append(
             PlotInfo(
@@ -305,11 +333,11 @@ $\sin(1/x)$는 0 근처에서 어떤 표본으로도 따라갈 수 없을 만큼
 | `n` | 나누기가 끝난 뒤의 표본 수 |
 | `poles`, `jumps` | 끊는 자리의 분류. 띠 안의 뜀은 빼요 |
 | `ylim` | 곡선 층이 배치에 알리는 y 범위(`yclip` 안으로 줄인 값) |
-| `clipped` | 분위수 규칙이 잘랐거나, 나누기가 찾은 값이 `yclip`의 끝에 닿았는지 |
+| `clipped` | 분위수 규칙이 잘랐거나, 표본 가운데 `yclip` 밖의 값이 있는지 |
 | `undefined` | 유한하지 않은 값이 이어진 구간 |
 | `oscillating` | 띠로 그린 구간 |
 
-`ylim=`을 직접 주면 분위수 규칙을 쓰지 않고, 그 범위가 기준 화면이자 `yclip`이 돼요. `clipped`는 `(False, False)`에서 시작하고 곡선이 그 끝에 닿으면 참이 돼요. `parametric`과 `polar`의 기록은 `ylim`이 `None`, `clipped`가 `(False, False)`, `oscillating`이 비어 있어요.
+`ylim=`을 직접 주면 분위수 규칙을 쓰지 않고, 그 범위가 기준 화면이자 `yclip`이 돼요. `clipped`는 `(False, False)`에서 시작하고 곡선의 값이 그 범위를 넘어가면 참이 돼요. 끝에 닿기만 한 것은 잘린 것이 아니에요. $\sin x$에 `ylim=(-1, 1)`을 주면 `(False, False)`예요. `parametric`과 `polar`의 기록은 `ylim`이 `None`, `clipped`가 `(False, False)`, `oscillating`이 비어 있어요.
 
 ## 결정성
 

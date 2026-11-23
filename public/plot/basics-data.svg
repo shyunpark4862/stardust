@@ -26,7 +26,7 @@
 <path d="M0 0L252.2835 0L252.2835 194.1531L0 194.1531Z" fill="#ffffff"/>
 <g fill="#0073c2" stroke="#ffffff" stroke-width="0.5"><use xlink:href="#m0" x="34.6588" y="163.9685"/><use xlink:href="#m0" x="70.5492" y="137.2828"/><use xlink:href="#m0" x="151.3026" y="99.9227"/><use xlink:href="#m0" x="124.3848" y="115.9341"/><use xlink:href="#m0" x="97.467" y="126.6085"/></g>
 <g fill="#efc000" stroke="#ffffff" stroke-width="0.5"><use xlink:href="#m1" x="187.193" y="51.8883"/><use xlink:href="#m1" x="241.0287" y="9.1911"/><use xlink:href="#m1" x="205.1383" y="41.214"/></g>
-<path d="M26.404 3L26.404 170.1596L249.2835 170.1596" fill="none" stroke="#212121" stroke-width="0.6" stroke-linecap="square"/>
+<path d="M26.404 3L26.404 170.1596L249.2835 170.1596" fill="none" stroke="#212121" stroke-width="0.6" stroke-linecap="square" stroke-miterlimit="10"/>
 <path d="M52.604 170.1596L52.604 172.9596" fill="none" stroke="#212121" stroke-width="0.6"/>
 <g fill="#212121" transform="matrix(1 -0 0 1 47.353983 179.77911)"><use xlink:href="#g0" transform="matrix(0.702625 0 0 0.702625 0 0)"/><use xlink:href="#g1" transform="matrix(0.702625 0 0 0.702625 3.5 0)"/><use xlink:href="#g2" transform="matrix(0.702625 0 0 0.702625 7 0)"/></g>
 <path d="M97.467 170.1596L97.467 172.9596" fill="none" stroke="#212121" stroke-width="0.6"/>

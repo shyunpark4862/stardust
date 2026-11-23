@@ -55,13 +55,22 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
 - $x$와 $y$: 상자의 바닥에서 보는 사람 쪽에 가까운 두 모서리
 - $z$: 상자의 왼쪽에 서 있는 세로 모서리
 
-눈금의 수는 상자가 그려진 크기에 맞춰 정해요. 거의 정면으로 보여 아주 짧게 그려진 모서리에는 눈금을 달지 않아요. 눈금 숫자가 아주 크거나 작으면 2D 축처럼 공통 10의 거듭제곱을 축 이름 옆에 한 번 적어요.
+눈금의 수는 모서리가 화면에 그려진 길이에 맞춰 정해요. 비스듬히 보여 짧게 그려진 모서리에는 눈금이 적고, 거의 정면으로 보여 아주 짧은 모서리에는 눈금을 달지 않아요. 두 축이 만나는 꼭짓점에서 눈금 숫자가 서로 닿으면 나중 것을 빼요. 눈금 숫자가 아주 크거나 작으면 2D 축처럼 공통 10의 거듭제곱을 축 이름 옆에 한 번 적어요.
 
-축 이름은 [`xlabel`](/api/plot/customize/), `ylabel`, `zlabel`로, 칸의 제목은 `title`로 붙여요. 이름은 눈금 숫자 바깥에 서요.
+축 이름은 [`xlabel`](/api/plot/customize/), `ylabel`, `zlabel`로, 칸의 제목은 `title`로 붙여요. 이름은 눈금 숫자 바깥에 서요. $z$의 이름은 눕히지 않고 바로 세워 적고, 그 너비만큼 왼쪽 여백이 늘어나요.
 
 ### 범위
 
-세 축의 범위는 자료가 정해요. 곡면의 높이는 값의 대부분이 있는 범위로 잡고, 극점처럼 몇 점만 멀리 달아나면 그 부분은 상자의 면에서 잘라요. 높이의 범위를 직접 정하려면 `surface`의 `zlim=(low, high)`을 줘요. 2D 칸의 `xlim`, `ylim`, `xscale`, `xticks`는 3D 칸에 쓰이지 않아요.
+세 축의 범위는 자료가 정해요. 곡면의 높이는 값의 대부분이 있는 범위로 잡고, 극점처럼 몇 점만 멀리 달아나면 그 부분은 상자의 면에서 잘라요. 높이의 범위를 직접 정하려면 `surface`의 `zlim=(low, high)`을 줘요. 곡면 없이 점이 든 칸은 2D 그림처럼 자료의 범위를 4%씩 넓혀서, 가장 바깥의 점이 상자의 모서리 위에 놓이지 않아요.
+
+2D 칸의 축 설정 `xlim`, `ylim`, `xscale`, `yscale`, `xticks`, `yticks`는 3D 칸에 없어요. 부르면 에러예요.
+
+```python
+>>> fig.xlim(-1, 1)
+Traceback (most recent call last):
+    ...
+ValueError: xlim(): a 3D cell has no such axis setting; its ranges are those of the data
+```
 
 ### 그림의 크기
 
@@ -69,10 +78,10 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
 
 ```python
 >>> fig.width, round(fig.height, 2)
-(89.0, 86.31)
+(89.0, 86.49)
 ```
 
-[`grid`](/api/plot/figure/)로 3D 칸과 2D 칸을 한 줄에 두면 두 칸의 그림 자리가 위아래로 맞춰져요.
+[`grid`](/api/plot/figure/)로 3D 칸과 2D 칸을 한 줄에 두면 두 칸의 그림 자리가 위아래로 맞춰져요. 3D 칸끼리 한 줄에 두면 상자의 모양이 달라도 제목이 한 높이에 서요.
 
 ## 시점: azimuth와 elevation
 
@@ -132,18 +141,35 @@ $$
 - **색**: 곡면이 하나면 높이에 따른 색띠, 둘 이상이면 곡면마다 팔레트의 색(조금 옅게)을 차례로 받아요. 색이 정해지는 때는 칸을 그릴 때라서, 곡면을 하나 더하면 앞의 곡면도 팔레트의 색으로 칠해져요. `cmap=`이나 `color=`를 주면 그것이 우선이에요.
 - **시점**: 그 칸의 첫 3D 층이 시점(`azimuth`, `elevation`, `perspective`)을 정해요. 뒤에 더한 층의 시점 인자는 쓰이지 않아요.
 - **상자와 범위**: 모든 층의 자료를 함께 담도록 잡아요.
-- **곡선과 점의 앞뒤**: 곡선과 점은 곡면과 깊이를 견줘 곡면 뒤의 부분이 가려져요. 점끼리도 가까운 점이 먼 점을 가려요. 곡선과 곡선, 곡선과 점은 깊이를 견주지 않고 나중에 그린 것이 위에 와요(점은 언제나 곡선 위예요).
+- **곡선과 점의 앞뒤**: 곡선과 점도 깊이를 견줘요. 곡면 뒤의 부분은 가려지고, 곡선끼리 엇갈리는 곳이나 곡선과 점이 겹치는 곳에서도 보는 사람에게 가까운 것이 위에 와요. 더한 순서와 무관해요.
 
-한 칸에 2D 그림과 3D 그림을 함께 둘 수는 없어요. 이미 2D 층이 있는 칸에 3D 층을 더하면 에러예요. 나란히 보이려면 [`grid`](/api/plot/figure/)로 칸을 나눠요.
+한 칸에 2D 그림과 3D 그림을 함께 둘 수는 없어요. 2D 층이 있는 칸에 3D 층을 더해도, 3D 칸에 2D 층(`line`, `scatter`, `function` 등)을 더해도 에러예요. 나란히 보이려면 [`grid`](/api/plot/figure/)로 칸을 나눠요.
 
 ```python
 >>> sd.plot.line([0, 1], [0, 1]).surface(saddle, -1, 1, -1, 1)
 Traceback (most recent call last):
     ...
 ValueError: surface(): the cell already holds a 2D plot
+>>> sd.plot.surface(saddle, -1, 1, -1, 1).line([0, 1], [0, 1])
+Traceback (most recent call last):
+    ...
+ValueError: line(): the cell already holds a 3D plot
 ```
 
-3D 칸에는 2D 층(`line`, `scatter` 등)을 더하지 마세요. 3D 칸은 범례도 그리지 않아요. 층이나 무리가 무엇인지는 제목이나 캡션으로 알려 주세요.
+### 범례
+
+3D 칸도 범례를 그려요. `label=`을 준 [`curve3d`](/api/plot/curve3d/)와 [`scatter3d`](/api/plot/scatter3d/), 그리고 `scatter3d`의 `group=`이 나눈 무리가 범례에 들어요. 범례는 상자를 가리지 않게 상자의 오른쪽 밖에 서요. 곡면은 범례에 들지 않아요.
+
+```python
+>>> t2 = lambda t: t / (4 * math.pi)
+>>> fig = sd.plot.curve3d(sd.cos, sd.sin, t2, 0, 8 * math.pi, label="helix")
+>>> fig = fig.curve3d(lambda t: 0 * t, lambda t: 0 * t, t2, 0, 8 * math.pi, color="gray", label="axis")
+>>> fig = fig.scatter3d([1.0, 1.0], [0.0, 0.0], [0.0, 2.0], color="C3", size=6, label="ends")
+```
+
+<PlotImage name="view3d-legend" format="png" alt="세로로 선 파란 나선과 그 가운데를 지나는 회색 곧은 선, 나선의 양 끝에 빨간 점 둘. 나선이 회색 선의 앞을 지날 때는 나선이, 뒤를 지날 때는 회색 선이 위에 보여요. 상자의 오른쪽 밖에 helix, axis, ends 세 줄의 범례가 있어요." caption="이름을 준 곡선 둘과 점이 범례에 들었어요. 나선과 가운데 축은 깊이를 견줘서, 나선이 축의 앞을 지나는 곳과 뒤를 지나는 곳이 갈려요." />
+
+범례를 없애려면 `fig.legend(loc=None)`이에요.
 
 ## 빛과 음영
 
@@ -181,7 +207,7 @@ ValueError: surface(): the cell already holds a 2D plot
 - 그림의 해상도는 내보낼 때의 `dpi`(기본값 300)예요. `fig.save("saddle.pdf", dpi=600)`은 곡면을 600 dpi로 구워 넣고, 글자와 축은 그대로 벡터예요. PNG는 전체를 그 dpi로 한 번에 구워요.
 - 화면의 한 화소를 3 × 3의 점으로 나눠 재고 평균하므로 곡면의 가장자리와 격자선이 계단지지 않아요.
 - 그림에서 곡면이 없는 자리는 투명해서 뒤쪽 면의 격자와 바탕이 비쳐요.
-- 노트북은 그림을 SVG와 PNG 두 꼴로 받아 그중 하나를 보여요. 어느 쪽이든 3D 칸의 그림은 200 dpi로 굽고, 같은 장면을 두 번 굽지 않아요.
+- 노트북에서는 3D 칸이 있는 그림을 200 dpi의 PNG 한 장으로 보여요.
 - 같은 기계, 같은 스레드 수, 같은 입력이면 같은 바이트예요. 화면을 고정한 높이의 띠로 나눠 스레드에 나눠 주므로 지금은 스레드 수를 바꿔도 같은 그림이에요(약속은 아니에요).
 
 내보내기의 나머지는 [그림 내보내기](/api/plot/export/)에 있어요.
@@ -199,6 +225,8 @@ ValueError: surface(): the cell already holds a 2D plot
 | `ax.set_proj_type('ortho')` | `perspective=False` |
 | 도형을 깊이로 정렬해 덮어 그려요. 교차하는 곡면이나 곡면을 지나는 곡선이 엉뚱하게 가려질 수 있어요 | 화면의 점마다 깊이를 견줘요. 교차하는 곡면이 교선을 따라 옳게 갈려요 |
 | `ax.set_zlim(...)` | `surface`의 `zlim=` |
+| `ax.set_xlim(...)`, `ax.set_xscale(...)` | 없어요. $x$, $y$의 범위는 자료가 정해요 |
+| `ax.legend()` | `label=`이나 `group=`을 주면 상자 오른쪽 밖에 범례가 서요 |
 | `ax.set_box_aspect(...)` | 상자의 비율은 자동이에요(곡면은 1 : 1 : 0.72, 나머지는 자료의 비율) |
 | `LightSource`로 빛을 바꿔요 | 빛은 고정이에요 |
 | 창에서 마우스로 돌려 봐요 | 돌려 보기가 없어요 |

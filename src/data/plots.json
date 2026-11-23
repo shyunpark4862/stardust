@@ -17,11 +17,23 @@
   "width": 89.0,
   "height": 67.0611
  },
+ "bar-annotate": {
+  "page": "api/plot/bar",
+  "format": "svg",
+  "width": 89.0,
+  "height": 67.9127
+ },
  "bar-basic": {
   "page": "api/plot/bar",
   "format": "svg",
   "width": 89.0,
   "height": 69.3304
+ },
+ "bar-err": {
+  "page": "api/plot/bar",
+  "format": "svg",
+  "width": 89.0,
+  "height": 66.5696
  },
  "bar-group": {
   "page": "api/plot/bar",
@@ -34,6 +46,12 @@
   "format": "svg",
   "width": 89.0,
   "height": 66.1587
+ },
+ "bar-stack": {
+  "page": "api/plot/bar",
+  "format": "svg",
+  "width": 89.0,
+  "height": 65.5879
  },
  "basics-data": {
   "page": "api/plot/basics",
@@ -101,6 +119,18 @@
   "width": 89.0,
   "height": 63.9514
  },
+ "coefficients-ridge": {
+  "page": "api/plot/coefficients",
+  "format": "svg",
+  "width": 89.0,
+  "height": 66.4259
+ },
+ "compare-dunnett": {
+  "page": "api/plot/compare",
+  "format": "svg",
+  "width": 89.0,
+  "height": 66.1653
+ },
  "compare-stars": {
   "page": "api/plot/compare",
   "format": "svg",
@@ -127,7 +157,7 @@
  },
  "contour-filled": {
   "page": "api/plot/contour",
-  "format": "png",
+  "format": "svg",
   "width": 89.0,
   "height": 59.7199
  },
@@ -136,6 +166,18 @@
   "format": "svg",
   "width": 89.0,
   "height": 80.0
+ },
+ "contour-values": {
+  "page": "api/plot/contour",
+  "format": "svg",
+  "width": 89.0,
+  "height": 59.6183
+ },
+ "curve3d-labels": {
+  "page": "api/plot/curve3d",
+  "format": "png",
+  "width": 89.0,
+  "height": 72.2939
  },
  "curve3d-trefoil": {
   "page": "api/plot/curve3d",
@@ -173,6 +215,12 @@
   "width": 89.0,
   "height": 58.7849
  },
+ "density-values": {
+  "page": "api/plot/density",
+  "format": "svg",
+  "width": 89.0,
+  "height": 57.8589
+ },
  "density-wave": {
   "page": "api/plot/density",
   "format": "svg",
@@ -202,6 +250,12 @@
   "format": "svg",
   "width": 89.0,
   "height": 65.8048
+ },
+ "distribution-pole": {
+  "page": "api/plot/distribution",
+  "format": "svg",
+  "width": 89.0,
+  "height": 69.546
  },
  "distribution-tails": {
   "page": "api/plot/distribution",
@@ -237,7 +291,7 @@
   "page": "api/plot/errorbar",
   "format": "svg",
   "width": 89.0,
-  "height": 68.4316
+  "height": 68.4328
  },
  "errorbar-shapes": {
   "page": "api/plot/errorbar",
@@ -251,6 +305,24 @@
   "width": 89.0,
   "height": 68.2921
  },
+ "facet-group": {
+  "page": "api/plot/facet",
+  "format": "svg",
+  "width": 183.0,
+  "height": 101.8747
+ },
+ "facet-overview": {
+  "page": "api/plot/facet",
+  "format": "svg",
+  "width": 183.0,
+  "height": 101.8747
+ },
+ "facet-sharey": {
+  "page": "api/plot/facet",
+  "format": "svg",
+  "width": 183.0,
+  "height": 45.0
+ },
  "figure-cells": {
   "page": "api/plot/figure",
   "format": "svg",
@@ -263,6 +335,12 @@
   "width": 183.0,
   "height": 48.707
  },
+ "figure-share": {
+  "page": "api/plot/figure",
+  "format": "svg",
+  "width": 140.0,
+  "height": 109.339
+ },
  "fit-alpha": {
   "page": "api/plot/fit",
   "format": "svg",
@@ -274,6 +352,12 @@
   "format": "svg",
   "width": 89.0,
   "height": 67.7842
+ },
+ "fit-glm": {
+  "page": "api/plot/fit",
+  "format": "svg",
+  "width": 89.0,
+  "height": 68.3202
  },
  "fit-groups": {
   "page": "api/plot/fit",
@@ -317,11 +401,53 @@
   "width": 89.0,
   "height": 63.0539
  },
+ "heatmap-percent": {
+  "page": "api/plot/heatmap",
+  "format": "svg",
+  "width": 89.0,
+  "height": 65.6985
+ },
  "heatmap-visits": {
   "page": "api/plot/heatmap",
   "format": "svg",
   "width": 89.0,
   "height": 58.6506
+ },
+ "hexbin-overview": {
+  "page": "api/plot/hexbin",
+  "format": "svg",
+  "width": 89.0,
+  "height": 60.2229
+ },
+ "hexbin-range": {
+  "page": "api/plot/hexbin",
+  "format": "svg",
+  "width": 89.0,
+  "height": 64.0184
+ },
+ "hexbin-size": {
+  "page": "api/plot/hexbin",
+  "format": "svg",
+  "width": 89.0,
+  "height": 59.0979
+ },
+ "hist2d-bins": {
+  "page": "api/plot/hist2d",
+  "format": "svg",
+  "width": 89.0,
+  "height": 60.0239
+ },
+ "hist2d-density": {
+  "page": "api/plot/hist2d",
+  "format": "svg",
+  "width": 89.0,
+  "height": 59.1785
+ },
+ "hist2d-overview": {
+  "page": "api/plot/hist2d",
+  "format": "svg",
+  "width": 89.0,
+  "height": 60.2229
  },
  "histogram-bins": {
   "page": "api/plot/histogram",
@@ -357,7 +483,7 @@
   "page": "api/plot/hline-vline",
   "format": "svg",
   "width": 89.0,
-  "height": 68.3348
+  "height": 72.5681
  },
  "hline-vline-walk": {
   "page": "api/plot/hline-vline",
@@ -381,7 +507,13 @@
   "page": "api/plot/implicit",
   "format": "svg",
   "width": 89.0,
-  "height": 60.6589
+  "height": 66.2375
+ },
+ "implicit-values": {
+  "page": "api/plot/implicit",
+  "format": "svg",
+  "width": 89.0,
+  "height": 65.5624
  },
  "in-camera-scores": {
   "page": "internals/plot/camera",
@@ -401,6 +533,12 @@
   "width": 89.0,
   "height": 65.5458
  },
+ "in-fields-evenodd": {
+  "page": "internals/plot/fields",
+  "format": "svg",
+  "width": 150.0,
+  "height": 60.6576
+ },
  "in-fields-near": {
   "page": "internals/plot/fields",
   "format": "svg",
@@ -413,6 +551,12 @@
   "width": 89.0,
   "height": 70.1165
  },
+ "in-fields-streams": {
+  "page": "internals/plot/fields",
+  "format": "svg",
+  "width": 160.0,
+  "height": 56.1172
+ },
  "in-layout-align": {
   "page": "internals/plot/layout",
   "format": "svg",
@@ -424,6 +568,18 @@
   "format": "svg",
   "width": 178.0,
   "height": 71.2944
+ },
+ "in-layout-share": {
+  "page": "internals/plot/layout",
+  "format": "svg",
+  "width": 89.0,
+  "height": 128.6528
+ },
+ "in-layout-twin": {
+  "page": "internals/plot/layout",
+  "format": "svg",
+  "width": 178.0,
+  "height": 61.9701
  },
  "in-overview-mixed": {
   "page": "internals/plot/overview",
@@ -479,6 +635,12 @@
   "width": 89.0,
   "height": 67.4989
  },
+ "in-stat-bins": {
+  "page": "internals/plot/stat",
+  "format": "svg",
+  "width": 160.0,
+  "height": 57.6872
+ },
  "in-stat-compare": {
   "page": "internals/plot/stat",
   "format": "svg",
@@ -527,6 +689,12 @@
   "width": 89.0,
   "height": 89.0264
  },
+ "inset-zoom": {
+  "page": "api/plot/twin-inset",
+  "format": "svg",
+  "width": 89.0,
+  "height": 66.3855
+ },
  "line-group": {
   "page": "api/plot/line",
   "format": "svg",
@@ -543,25 +711,25 @@
   "page": "api/plot/line",
   "format": "svg",
   "width": 89.0,
-  "height": 58.5365
+  "height": 72.7446
  },
  "pairs-body": {
   "page": "api/plot/pairs",
   "format": "svg",
   "width": 183.0,
-  "height": 135.3106
+  "height": 132.5471
  },
  "pairs-cell": {
   "page": "api/plot/pairs",
   "format": "svg",
   "width": 120.0,
-  "height": 90.0524
+  "height": 88.2149
  },
  "pairs-group": {
   "page": "api/plot/pairs",
   "format": "svg",
   "width": 183.0,
-  "height": 135.3106
+  "height": 132.5471
  },
  "parametric-cycloid": {
   "page": "api/plot/parametric",
@@ -649,19 +817,25 @@
  },
  "region-both": {
   "page": "api/plot/region",
-  "format": "png",
+  "format": "svg",
   "width": 89.0,
   "height": 65.5624
  },
  "region-setops": {
   "page": "api/plot/region",
-  "format": "png",
+  "format": "svg",
   "width": 183.0,
   "height": 75.2059
  },
+ "region-values": {
+  "page": "api/plot/region",
+  "format": "svg",
+  "width": 89.0,
+  "height": 67.6704
+ },
  "region-venn": {
   "page": "api/plot/region",
-  "format": "png",
+  "format": "svg",
   "width": 89.0,
   "height": 65.5624
  },
@@ -687,7 +861,7 @@
   "page": "api/plot/scatter",
   "format": "svg",
   "width": 89.0,
-  "height": 72.2328
+  "height": 67.9995
  },
  "scatter-shapes": {
   "page": "api/plot/scatter",
@@ -699,7 +873,7 @@
   "page": "api/plot/scatter3d",
   "format": "png",
   "width": 89.0,
-  "height": 91.6502
+  "height": 82.1144
  },
  "step-survival": {
   "page": "api/plot/step",
@@ -712,6 +886,24 @@
   "format": "svg",
   "width": 150.0,
   "height": 45.0
+ },
+ "streamlines-cells": {
+  "page": "api/plot/streamlines",
+  "format": "svg",
+  "width": 183.0,
+  "height": 52.0
+ },
+ "streamlines-gradient": {
+  "page": "api/plot/streamlines",
+  "format": "svg",
+  "width": 89.0,
+  "height": 60.8135
+ },
+ "streamlines-pendulum": {
+  "page": "api/plot/streamlines",
+  "format": "svg",
+  "width": 89.0,
+  "height": 54.0
  },
  "strip-box": {
   "page": "api/plot/strip",
@@ -741,7 +933,7 @@
   "page": "api/plot/style",
   "format": "svg",
   "width": 80.0,
-  "height": 48.5139
+  "height": 58.7786
  },
  "style-cmaps": {
   "page": "api/plot/style",
@@ -753,7 +945,7 @@
   "page": "api/plot/style",
   "format": "svg",
   "width": 80.0,
-  "height": 48.5139
+  "height": 58.7786
  },
  "style-palettes": {
   "page": "api/plot/style",
@@ -765,7 +957,7 @@
   "page": "api/plot/style",
   "format": "svg",
   "width": 80.0,
-  "height": 52.6079
+  "height": 62.9486
  },
  "surface-edges": {
   "page": "api/plot/surface",
@@ -783,7 +975,13 @@
   "page": "api/plot/surface",
   "format": "png",
   "width": 89.0,
-  "height": 85.1285
+  "height": 85.3273
+ },
+ "surface-values": {
+  "page": "api/plot/surface",
+  "format": "png",
+  "width": 89.0,
+  "height": 83.7336
  },
  "text-annotate-align": {
   "page": "api/plot/text-annotate",
@@ -803,11 +1001,53 @@
   "width": 89.0,
   "height": 67.4087
  },
+ "twin-climate": {
+  "page": "api/plot/twin-inset",
+  "format": "svg",
+  "width": 89.0,
+  "height": 61.0313
+ },
+ "twin-ecdf": {
+  "page": "api/plot/twin-inset",
+  "format": "svg",
+  "width": 89.0,
+  "height": 62.2401
+ },
+ "twin-inset-grid": {
+  "page": "api/plot/twin-inset",
+  "format": "svg",
+  "width": 183.0,
+  "height": 67.8958
+ },
+ "vectorfield-gradient": {
+  "page": "api/plot/vectorfield",
+  "format": "svg",
+  "width": 89.0,
+  "height": 58.7096
+ },
+ "vectorfield-rotation": {
+  "page": "api/plot/vectorfield",
+  "format": "svg",
+  "width": 89.0,
+  "height": 60.9952
+ },
+ "vectorfield-samples": {
+  "page": "api/plot/vectorfield",
+  "format": "svg",
+  "width": 183.0,
+  "height": 73.0499
+ },
+ "vectorfield-source": {
+  "page": "api/plot/vectorfield",
+  "format": "svg",
+  "width": 89.0,
+  "height": 60.7963
+ },
  "view3d-anatomy": {
   "page": "api/plot/view3d",
   "format": "png",
   "width": 89.0,
-  "height": 86.311
+  "height": 86.495
  },
  "view3d-angles": {
   "page": "api/plot/view3d",
@@ -820,5 +1060,11 @@
   "format": "png",
   "width": 89.0,
   "height": 78.037
+ },
+ "view3d-legend": {
+  "page": "api/plot/view3d",
+  "format": "png",
+  "width": 89.0,
+  "height": 79.9248
  }
 }

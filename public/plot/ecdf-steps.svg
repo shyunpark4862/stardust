@@ -19,7 +19,7 @@
 </defs>
 <path d="M0 0L252.2835 0L252.2835 188.1313L0 188.1313Z" fill="#ffffff"/>
 <path d="M37.044 162.1796L37.044 131.5681L71.0568 131.5681L71.0568 100.9567L71.0568 100.9567L71.0568 70.3452L139.0822 70.3452L139.0822 39.7337L241.1204 39.7337L241.1204 9.1223" fill="none" stroke="#0073c2" stroke-width="1.2" stroke-linejoin="round" clip-path="url(#c0)"/>
-<path d="M28.881 3L28.881 168.3019L249.2835 168.3019" fill="none" stroke="#212121" stroke-width="0.6" stroke-linecap="square"/>
+<path d="M28.881 3L28.881 168.3019L249.2835 168.3019" fill="none" stroke="#212121" stroke-width="0.6" stroke-linecap="square" stroke-miterlimit="10"/>
 <path d="M37.044 168.3019L37.044 171.1019" fill="none" stroke="#212121" stroke-width="0.6"/>
 <g fill="#212121" transform="matrix(1 -0 0 1 35.294033 177.921361)"><use xlink:href="#g0" transform="matrix(0.702625 0 0 0.702625 0 0)"/></g>
 <path d="M71.0568 168.3019L71.0568 171.1019" fill="none" stroke="#212121" stroke-width="0.6"/>

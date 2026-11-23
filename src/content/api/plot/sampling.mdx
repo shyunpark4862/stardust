@@ -4,7 +4,7 @@ title: 함수 그림의 표본
 group: 함수 그림
 order: 1
 summary: 함수를 받는 그림을 처음 쓸 때 읽는 페이지예요. 함수를 넘기는 법, 그림이 함수를 어디서 몇 번 계산할지 스스로 고르는 방법, 그것을 조절하는 두 인자 samples와 refine을 그림으로 견줘 보여요.
-seeAlso: [function, parametric, implicit, contour, density]
+seeAlso: [function, parametric, implicit, contour, density, surface, vectorfield]
 ---
 import PlotImage from '../../../components/fig/PlotImage.astro';
 import Callout from '../../../components/Callout.astro';
@@ -73,7 +73,7 @@ array([0.0, 0.5, 1.0, 0.5], dtype=float64)
 >>> fig = sd.plot.function(hat, -2, 2)
 ```
 
-두 변수의 그림(`implicit`, `region`, `contour`, `density`)에서는 함수가 같은 모양의 배열 둘 `x`, `y`를 받아요. 복소 함수의 그림 `phase`에서는 complex128 배열 하나를 받아요. 약속은 같아요. 같은 모양의 배열을 돌려주면 돼요.
+두 변수의 그림(`implicit`, `region`, `contour`, `density`)에서는 함수가 같은 모양의 배열 둘 `x`, `y`를 받아요. 복소 함수의 그림 `phase`에서는 complex128 배열 하나를 받아요. 약속은 같아요. 같은 모양의 배열을 돌려주면 되고, 수 하나를 돌려주면 상수 함수예요.
 
 ## 곡선의 표본은 이렇게 골라요
 
@@ -151,9 +151,38 @@ array([0.0, 0.5, 1.0, 0.5], dtype=float64)
 (7.106702748074495e-10, 0.9994233560307177)
 ```
 
-폭이 $10^{-4}$인 봉우리는 기본 격자(간격 약 0.004)의 표본 사이에 숨어서, 가장 높은 표본이 $7 \times 10^{-10}$이에요. 처음 격자를 20001점(간격 $5 \times 10^{-5}$)으로 늘리면 봉우리에 표본이 닿고, 그 뒤는 쪼개기가 모양을 채워요. 여기서 `ylim`을 준 까닭은 [function의 자동 범위](/api/plot/function/#자동-범위와-ylim)가 거의 어디서나 0인 함수의 봉우리를 극점처럼 잘라 내기 때문이에요.
+폭이 $10^{-4}$인 봉우리는 기본 격자(간격 약 0.004)의 표본 사이에 숨어서, 가장 높은 표본이 $7 \times 10^{-10}$이에요. 처음 격자를 20001점(간격 $5 \times 10^{-5}$)으로 늘리면 봉우리에 표본이 닿고, 그 뒤는 쪼개기가 모양을 채워요. 두 그림의 세로축을 같게 두려고 `ylim`을 줬어요. 주지 않으면 세로 범위는 처음 격자가 본 값에서 정해지므로([function의 자동 범위](/api/plot/function/#자동-범위와-ylim)), 봉우리를 보지 못한 기본 격자의 그림은 세로축이 $10^{-9}$ 크기가 돼요.
 
 두 변수의 그림에서는 `samples`가 격자의 점의 수, `refine`이 곡선이 지나는 칸을 다시 재는지(1)와 그러지 않는지(0)예요. 이 그림들의 표본은 [implicit](/api/plot/implicit/)과 [contour](/api/plot/contour/)에서 그림으로 견줘요. `density`와 `phase`는 격자 점 하나가 그림의 화소 하나라 `samples`만 받아요.
+
+벡터장의 그림 [vectorfield](/api/plot/vectorfield/)와 [streamlines](/api/plot/streamlines/)도 `samples`만 받는데 뜻이 그림에 맞춰져 있어요. `vectorfield`에서는 화살표의 수이고, `streamlines`에서는 벡터장을 재는 격자의 점의 수예요.
+
+## 함수 대신 값의 배열
+
+두 변수의 그림 가운데 `implicit`, `region`, `contour`, `density`와 3D의 `surface`는 함수 자리에 **이미 계산한 값의 2차원 배열**도 받아요. 시뮬레이션의 결과나 잰 값처럼 식이 없는 자료를 그릴 때 써요.
+
+배열 `Z`의 `Z[j, i]`는 사각형을 고르게 나눈 격자의 점 $(x_i, y_j)$의 값이에요. 첫 줄이 `y0`이고 줄이 내려갈수록 $y$가 커져요. `sd.meshgrid(x, y, indexing="xy")`로 만든 격자에서 계산한 값이 그대로 이 꼴이에요. 배열은 `sd.ndarray`이거나 수의 리스트의 리스트예요.
+
+```python
+>>> x = sd.linspace(-2.0, 2.0, 81)
+>>> y = sd.linspace(-1.5, 1.5, 61)
+>>> X, Y = sd.meshgrid(x, y, indexing="xy")
+>>> Z = X * X + Y * Y
+>>> Z.shape
+(61, 81)
+>>> fig = sd.plot.implicit(Z, -2, 2, -1.5, 1.5, level=1.0)
+```
+
+값만 있으면 그림이 표본을 더 고를 수 없어요. 곡선의 자리는 준 격자의 값을 칸 안에서 직선으로 이어 어림하고, 격자가 성기면 그만큼 거칠어요. 그래서 값의 배열에는 `samples`와 `refine`을 줄 수 없어요.
+
+```python
+>>> sd.plot.implicit(Z, -2, 2, -1.5, 1.5, samples=101)
+Traceback (most recent call last):
+    ...
+ValueError: implicit(): 'samples' and 'refine' are for a function; the values given are the grid
+```
+
+식이 있으면 함수로 넘기는 쪽이 좋아요. 그림이 필요한 곳을 골라 더 촘촘히 재요.
 
 ## 잘못된 값
 
@@ -184,6 +213,6 @@ TypeError: function(): 'samples' must be an int, not tuple
 - **같은 입력이면 같은 그림이에요.** 표본의 자리는 함수의 값만으로 정해져요(흩은 격자도 고정된 수열이에요). 같은 기계, 같은 스레드 수, 같은 입력이면 같은 바이트의 파일이 나와요.
 - **경고를 내지 않아요.** 극점을 찾거나 범위를 자른 것은 경고 대신 `fig.info`에 적혀요. 읽는 법은 [function](/api/plot/function/#figureinfo-그림이-한-일)에 있어요.
 
-<Callout type="tip" title="함수 대신 값이 있을 때">
-이미 계산한 점들이 있으면 함수 그림이 아니라 [line](/api/plot/line/)으로 이어요. 격자 위의 값의 배열은 [heatmap](/api/plot/heatmap/)이에요. 함수 그림은 함수를 받아야 표본을 고를 수 있어요.
+<Callout type="tip" title="곡선의 점이 이미 있을 때">
+곡선 위의 점들을 이미 계산해 두었으면 함수 그림이 아니라 [line](/api/plot/line/)으로 이어요. 한 변수의 함수 그림(`function`, `parametric`, `polar`, `curve3d`)은 함수만 받아요. 행과 열에 이름이 붙은 표 꼴의 값은 [heatmap](/api/plot/heatmap/)이에요.
 </Callout>

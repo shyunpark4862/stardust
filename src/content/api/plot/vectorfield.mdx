@@ -1,0 +1,220 @@
+---
+kind: function
+title: vectorfield
+names: [vectorfield]
+group: 함수 그림
+order: 10
+signatures:
+  - "sd.plot.vectorfield(fu, fv, x0, x1, y0, y1, /, *, samples=None, scale=1.0, color=None, cmap=None, width=None, colorbar=True, label=None, **figure)"
+  - "fig.vectorfield(fu, fv, x0, x1, y0, y1, /, *, samples=None, scale=1.0, color=None, cmap=None, width=None, colorbar=True, label=None)"
+summary: 벡터장 (fu(x, y), fv(x, y))를 사각형 [x0, x1] × [y0, y1]에 고르게 놓은 화살표로 그려요. 화살표의 방향이 그 자리의 벡터의 방향, 길이와 색이 벡터의 크기예요.
+params:
+  - name: fu, fv
+    type: 호출 가능한 객체 둘, 또는 2차원 값 배열 둘
+    kind: positional-only
+    desc: "벡터의 가로 성분과 세로 성분. 함수면 같은 모양의 float64 sd.ndarray 둘 (x, y)를 받아 같은 모양의 실수 배열(또는 수 하나)을 돌려줘요. 화살표 자리 전체의 격자로 한 번씩 불려요. 함수 대신 모양이 같은 2차원 배열 둘을 주면 그 값마다 화살표 하나를 그려요. 둘 다 함수이거나 둘 다 배열이어야 해요."
+  - name: x0, x1
+    type: float
+    kind: positional-only
+    desc: 가로 범위. 유한하고 x0 < x1이어야 해요.
+  - name: y0, y1
+    type: float
+    kind: positional-only
+    desc: 세로 범위. 유한하고 y0 < y1이어야 해요.
+  - name: samples
+    type: int, (int, int) 또는 None
+    kind: keyword-only
+    desc: "화살표의 수. 정수 하나면 가로세로가 같은 수이고, 쌍이면 (가로, 세로)예요. 한 방향 3 이상 400 이하. 기본값 None은 가로 21개에, 세로는 화살표의 간격이 가로와 같아지는 수(3 이상)예요."
+  - name: scale
+    type: float
+    kind: keyword-only
+    desc: "화살표의 길이에 곱하는 수. 0보다 커야 해요. 기본값 1.0에서는 가장 긴 화살표가 화살표 간격의 90%예요."
+  - name: color
+    type: 색 또는 None
+    kind: keyword-only
+    desc: "주면 모든 화살표가 이 한 색이고 색 막대가 없어요. cmap과 함께 줄 수 없어요. 기본값 None이면 크기에 따라 cmap의 색을 입혀요."
+  - name: cmap
+    type: str 또는 None
+    kind: keyword-only
+    desc: "벡터의 크기를 나타낼 연속 색띠의 이름. 'cool'(기본값), 'viridis', 'magma', 'cividis', 'rdbu', 'spectral', 'coolwarm', 'sunrise', 'lagoon'."
+  - name: width
+    type: float 또는 None
+    kind: keyword-only
+    desc: "화살표의 선 굵기(pt). 0보다 커야 해요. 기본값 None이면 테마의 선 굵기의 0.6배예요."
+  - name: colorbar
+    type: bool
+    kind: keyword-only
+    desc: "True(기본값)면 칸 오른쪽에 벡터의 크기를 읽는 색 막대를 붙여요. color를 준 그림에는 색 막대가 없어요."
+  - name: label
+    type: str 또는 None
+    kind: keyword-only
+    desc: "범례에 쓸 이름(LaTeX 원문). 기본값 None이면 범례에 넣지 않아요."
+  - name: "**figure"
+    type: 그림 옵션
+    kind: keyword-only
+    desc: "새 그림의 height, font, theme, palette. 모듈 함수만 받아요. width는 화살표의 선 굵기라서, 그림의 너비는 빈 Figure(width=...)의 메서드로 그리거나 fig.size로 정해요."
+returns:
+  type: Figure
+  desc: 모듈 함수는 새 Figure를, 메서드는 화살표를 더한 그 Figure 자신을 돌려줘요.
+raises:
+  - type: TypeError
+    desc: fu·fv가 함수도 2차원 값 배열도 아닐 때, 하나는 함수이고 하나는 배열일 때, 함수가 sd.ndarray나 수가 아닌 것을 돌려줄 때, samples가 정수나 정수 쌍이 아닐 때, colorbar가 bool이 아닐 때, 모르는 키워드(refine 등)를 줬을 때.
+  - type: ValueError
+    desc: x0 < x1이나 y0 < y1이 아니거나 범위가 유한하지 않을 때, 값 배열 둘의 모양이 다르거나 2 × 2보다 작을 때, 함수가 받은 것과 다른 모양을 돌려줄 때, samples가 범위 밖일 때, scale이나 width가 0 이하일 때, color와 cmap을 함께 줬을 때, cmap이 모르는 이름일 때, 색을 알 수 없을 때, 3D 그림이 든 칸에 그릴 때.
+seeAlso: [streamlines, contour, density, phase, sampling]
+---
+import PlotImage from '../../../components/fig/PlotImage.astro';
+
+## 한눈에 보기
+
+평면의 점마다 벡터가 하나씩 있는 것이 벡터장이에요. 바람의 속도, 전기장, 미분방정식 $x' = u(x, y),\ y' = v(x, y)$의 오른쪽이 그런 것들이에요. `vectorfield`는 사각형에 고르게 놓은 자리마다 그 자리의 벡터를 화살표로 그려요. 원점 둘레를 도는 장 $(-y,\ x)$를 그려 볼게요.
+
+```python
+>>> import stardust as sd
+>>> u = lambda x, y: -y
+>>> v = lambda x, y: x
+>>> fig = sd.plot.vectorfield(u, v, -2, 2, -2, 2).xlabel(r"$x$").ylabel(r"$y$")
+```
+
+<PlotImage name="vectorfield-rotation" alt="정사각형 칸에 가로세로 21개씩 놓인 화살표. 원점 둘레를 시계 반대 방향으로 돌고, 가운데는 짧은 하늘색, 모서리로 갈수록 긴 빨간 화살표예요. 오른쪽에 0에서 2.7쯤까지의 색 막대가 있어요" caption="화살표는 원점 둘레를 시계 반대 방향으로 돌아요. 벡터의 크기는 원점에서의 거리와 같아서, 바깥으로 갈수록 화살표가 길어지고 색이 하늘색에서 빨강으로 바뀌어요." />
+
+<Reference />
+
+## 무엇을 그리나요
+
+`vectorfield(fu, fv, x0, x1, y0, y1)`는 사각형을 가로 21칸으로 나누고, 세로는 칸이 정사각형에 가깝게 되는 수로 나눠요. 칸마다 그 **가운데 점** $(x, y)$에서 벡터 $(u, v) = (f_u(x, y),\ f_v(x, y))$를 구해 화살표 하나를 그려요. 함수는 가운데 점 전체의 격자를 2차원 배열로 받는 한 번의 호출로 계산해요. 그래서 `fu`, `fv`는 배열을 받아 배열을 돌려주는 꼴로 써요([함수 그림의 표본](/api/plot/sampling/)).
+
+- **방향**: 화살표는 벡터의 방향을 가리켜요. 칸은 가로와 세로의 한 단위가 같은 길이라서, 화면의 각이 벡터의 실제 각이에요.
+- **자리**: 화살표의 가운데가 칸의 가운데 점에 와요. 꼬리가 그 점에서 시작하지 않아요.
+- **길이**: 벡터의 크기 $\sqrt{u^2 + v^2}$에 비례해요. 가장 긴 화살표가 화살표 간격의 90%라서 이웃한 화살표끼리 닿지 않아요.
+- **색**: 벡터의 크기를 색띠의 색으로 나타내요. 색 막대의 아래 끝이 0, 위 끝이 가장 큰 크기예요.
+
+벡터가 0인 자리에는 화살표가 없어요. 성분이 NaN이나 무한대인 자리도 비워 둬요.
+
+축의 범위는 준 사각형 그대로이고 여백이 없어요. 칸이 자료의 모양을 따르므로, 납작한 사각형을 그리면 기본 크기의 그림에서 위아래에 빈 곳이 남아요. 그럴 때는 그림 옵션 `height`를 줄여요.
+
+## 화살표의 수: samples
+
+`samples`는 화살표의 수예요. 쌍 `(가로, 세로)`로 주거나, 정수 하나로 가로세로에 같은 수를 줘요. 화살표가 적으면 하나하나가 길고 또렷하고, 많으면 장의 잔 구조가 보이는 대신 화살표가 작아져요. 흔들이의 방정식 $\theta'' = -\sin\theta$를 $(\theta,\ \omega)$ 평면의 장 $(\omega,\ -\sin\theta)$로 놓고 두 가지로 그려 볼게요.
+
+```python
+>>> pu = lambda th, om: om
+>>> pv = lambda th, om: -sd.sin(th)
+>>> a = sd.plot.vectorfield(pu, pv, -4, 4, -3, 3, samples=(12, 9), colorbar=False)
+>>> b = sd.plot.vectorfield(pu, pv, -4, 4, -3, 3, samples=(32, 24), colorbar=False)
+>>> fig = sd.plot.grid([a, b], labels="a", width=183)
+```
+
+<PlotImage name="vectorfield-samples" alt="같은 흔들이 벡터장의 두 그림. a는 가로 12개, 세로 9개의 큰 화살표, b는 가로 32개, 세로 24개의 잔 화살표예요. 둘 다 원점 둘레를 시계 방향으로 돌아요" caption="같은 장을 화살표 12 × 9개(a)와 32 × 24개(b)로 그렸어요. 가장 긴 화살표가 간격의 90%라는 규칙이 같아서, 화살표가 많아지면 저마다 짧아져요." />
+
+사각형이 정사각형이 아닐 때 정수 하나를 주면 가로와 세로의 간격이 달라져요. 화살표의 길이는 좁은 쪽 간격에 맞춰요. 간격을 같게 하려면 사각형의 비에 맞는 쌍을 줘요.
+
+화살표마다 함수를 한 번 계산할 뿐, 적응형으로 더 쪼개지 않아요. 그래서 `refine`은 받지 않아요.
+
+## 길이: scale
+
+`scale`은 모든 화살표의 길이에 곱하는 수예요. 크기의 차이가 커서 대부분의 화살표가 점처럼 보일 때 1보다 큰 값을 줘요. 긴 화살표는 이웃 칸으로 넘어가 겹쳐요. 길이가 늘어도 색이 나타내는 크기는 그대로예요.
+
+```python
+>>> fig = sd.plot.vectorfield(u, v, -2, 2, -2, 2, scale=1.5)
+```
+
+## 색: cmap, color, colorbar
+
+기본은 크기에 따른 연속 색이에요. `cmap`으로 색띠를 바꾸고([스타일](/api/plot/style/)), `colorbar=False`로 색 막대를 빼요.
+
+`color`를 주면 모든 화살표가 그 한 색이고 색 막대가 붙지 않아요. 크기는 길이로만 읽어요. 다른 그림 위에 화살표를 얹을 때 쓰기 좋아요. 채운 등고선 위에 그 함수의 기울기 $\nabla h$를 얹어 볼게요. $h(x, y) = \sin x \cos y$이면 $\nabla h = (\cos x \cos y,\ -\sin x \sin y)$예요.
+
+```python
+>>> h = lambda x, y: sd.sin(x) * sd.cos(y)
+>>> hx = lambda x, y: sd.cos(x) * sd.cos(y)
+>>> hy = lambda x, y: -sd.sin(x) * sd.sin(y)
+>>> fig = sd.plot.contour(h, -3, 3, -3, 3, filled=True)
+>>> fig = fig.vectorfield(hx, hy, -3, 3, -3, 3, color="black", samples=17)
+```
+
+<PlotImage name="vectorfield-gradient" alt="채운 등고선 위에 검은 화살표를 얹은 그림. 빨간 봉우리 쪽으로 화살표가 모이고 하늘색 골짜기에서 퍼져 나가요. 오른쪽에 등고선의 색 막대가 있어요" caption="기울기는 값이 가장 빨리 커지는 쪽을 가리켜요. 화살표가 등고선과 수직으로 만나고, 낮은 곳(하늘색)에서 나와 높은 곳(빨강)으로 모여요. 색 막대는 등고선의 것이에요." />
+
+색 막대는 칸에 하나예요. 색 막대가 있는 그림([`density`](/api/plot/density/), 채운 [`contour`](/api/plot/contour/)) 위에 `color` 없이 화살표를 얹으면 색 막대가 화살표의 크기를 읽는 것으로 바뀌어요. 바탕의 색 막대를 남기려면 위처럼 `color`를 주거나 `colorbar=False`를 줘요.
+
+`label`을 주면 범례에 그 이름이 선과 함께 들어가요. 한 색의 화살표에 쓰기 좋아요.
+
+## 크기가 한없이 커지는 곳
+
+원점에 놓인 점 샘에서 퍼져 나가는 장 $(x,\ y)/(x^2 + y^2)$는 크기가 $1/r$이라 원점으로 갈수록 한없이 커져요. 가장 큰 값에 길이와 색을 맞추면 원점 옆의 화살표 몇 개만 보이고 나머지는 점이 돼요. 그래서 몇 개의 값만 나머지보다 훨씬 크면, 길이와 색의 기준을 값의 대부분이 있는 범위의 위 끝으로 잡아요. 그보다 큰 벡터는 가장 긴 길이, 색띠의 끝 색으로 그려요.
+
+```python
+>>> su = lambda x, y: x / (x * x + y * y)
+>>> sv = lambda x, y: y / (x * x + y * y)
+>>> fig = sd.plot.vectorfield(su, sv, -2, 2, -2, 2)
+```
+
+<PlotImage name="vectorfield-source" alt="원점에서 사방으로 퍼져 나가는 화살표. 원점 둘레의 화살표 몇 개가 같은 길이의 빨강이고 바깥으로 갈수록 짧은 하늘색이에요. 색 막대는 0에서 2.2쯤까지예요" caption="원점 둘레의 화살표들은 크기가 색 막대의 위 끝(2.2쯤)을 넘어서, 모두 가장 긴 길이의 끝 색이에요. 원점 자리는 0/0이라 화살표가 없어요." />
+
+이런 그림에서 색 막대의 위 끝은 "이 값 이상"으로 읽어요.
+
+## 이미 계산한 값
+
+`fu`, `fv`에 함수 대신 모양이 같은 2차원 배열 둘을 줄 수 있어요. 측정한 값이나 다른 계산의 결과를 그릴 때 써요. `U[j, i]`는 사각형을 끝에서 끝까지 고르게 나눈 격자의 점 $(x_i, y_j)$의 값이고, 첫 줄이 `y0`예요. `sd.meshgrid(x, y, indexing="xy")`로 만든 격자의 값이 그대로 맞아요. 값마다 화살표 하나를 그리므로 화살표의 수는 배열의 모양이에요.
+
+```python
+>>> x = sd.linspace(-2, 2, 15)
+>>> y = sd.linspace(-1, 1, 8)
+>>> X, Y = sd.meshgrid(x, y, indexing="xy")
+>>> fig = sd.plot.vectorfield(-Y, X, -2, 2, -1, 1, height=50)
+```
+
+함수를 줄 때는 화살표가 칸의 가운데에 서지만, 값을 줄 때는 격자의 점이 사각형의 가장자리까지 가요. 그래서 가장자리의 화살표는 절반쯤이 칸 밖으로 나가 잘려요. 온전히 보이게 하려면 [`xlim`, `ylim`](/api/plot/customize/)으로 범위를 반 칸쯤 넓혀요.
+
+```python
+>>> fig = fig.xlim(-2.2, 2.2).ylim(-1.2, 1.2)
+```
+
+## 겹치기
+
+메서드 `fig.vectorfield(...)`는 있는 칸에 화살표를 더해요. 같은 장의 [`streamlines`](/api/plot/streamlines/)와 겹치면 흐름의 길과 세기를 함께 볼 수 있어요. 3D 그림이 든 칸에는 그릴 수 없어요.
+
+```python
+>>> fig = sd.plot.streamlines(pu, pv, -4, 4, -3, 3, color="gray", arrows=False)
+>>> fig = fig.vectorfield(pu, pv, -4, 4, -3, 3, samples=(16, 12))
+```
+
+## 에러
+
+```python
+>>> sd.plot.vectorfield(u, v, 2, -2, -2, 2)
+Traceback (most recent call last):
+    ...
+ValueError: vectorfield(): 'x0' must be less than 'x1'
+>>> sd.plot.vectorfield(u, v, -2, 2, -2, 2, samples=500)
+Traceback (most recent call last):
+    ...
+ValueError: vectorfield(): 'samples' must be between 3 and 400
+>>> sd.plot.vectorfield(u, v, -2, 2, -2, 2, color="red", cmap="viridis")
+Traceback (most recent call last):
+    ...
+ValueError: vectorfield(): 'color' and 'cmap' cannot both be given
+>>> sd.plot.vectorfield(-Y, v, -2, 2, -1, 1)
+Traceback (most recent call last):
+    ...
+TypeError: vectorfield(): 'fu' and 'fv' must both be functions or both be 2-D arrays of values
+>>> sd.plot.vectorfield(u, v, -2, 2, -2, 2, refine=1)
+Traceback (most recent call last):
+    ...
+TypeError: vectorfield(): unexpected keyword argument 'refine'
+```
+
+## 조심할 점
+
+- **화살표의 길이는 그림 안에서만 견줘요.** 길이는 그 그림의 가장 큰 크기에 맞춘 것이라, 두 그림의 화살표 길이를 서로 견줄 수 없어요. 크기의 값은 색 막대로 읽어요.
+- **`width`는 선 굵기예요.** 모듈 함수에 준 `width`는 그림의 너비가 아니에요. 그림의 너비는 `sd.plot.Figure(width=120).vectorfield(...)`처럼 정해요.
+- **표본은 화살표의 자리뿐이에요.** 화살표 사이에서 장이 빨리 변하면 그림에 드러나지 않아요. 고정점 둘레를 자세히 보려면 사각형을 좁혀 다시 그려요.
+- **크기 차이가 아주 큰 장**은 방향만 보이게 미리 정규화해도 좋아요. `fu`, `fv`가 $(u, v)/\sqrt{u^2 + v^2}$를 돌려주게 하면 모든 화살표가 같은 길이예요.
+- 흐름을 따라가는 곡선은 [`streamlines`](/api/plot/streamlines/)가 그려요.
+
+## matplotlib을 아는 분께
+
+- `plt.quiver(X, Y, U, V)`는 격자와 값의 배열을 받아요. 여기서는 함수 둘과 사각형을 주면 격자를 알아서 놓고, 값의 배열 둘도 받아요.
+- `quiver`의 `scale`은 클수록 화살표가 짧아지지만, 여기의 `scale`은 길이에 곱하는 수라 클수록 길어요.
+- 화살표가 자리의 가운데에 오는 것은 `quiver(pivot="mid")`와 같아요.
+- 크기에 따른 색은 `quiver(X, Y, U, V, C)`에 크기 배열을 따로 넘기지 않아도 기본으로 입혀요.

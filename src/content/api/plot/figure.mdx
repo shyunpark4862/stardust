@@ -7,8 +7,8 @@ order: 2
 signatures:
   - "sd.plot.Figure(*, width=89.0, height=None, nrows=1, ncols=1, font='serif', theme='paper', palette='jco')"
   - "fig.size(width, height=None, /)"
-  - "sd.plot.grid(figures, /, *, nrows=None, ncols=None, labels=None, width=None, height=None)"
-summary: 그림 한 장을 이루는 Figure 객체와 그 안의 칸을 다뤄요. 빈 그림을 칸 여럿으로 만들고 fig[i, j]로 칸을 골라 그리거나, 이미 그린 그림들을 grid로 모아 A, B, C 이름이 붙은 한 장으로 만들어요. 그림의 크기(mm)와 모양을 읽고 바꾸는 속성도 여기 있어요.
+  - "sd.plot.grid(figures, /, *, nrows=None, ncols=None, labels=None, sharex=False, sharey=False, width=None, height=None)"
+summary: 그림 한 장을 이루는 Figure 객체와 그 안의 칸을 다뤄요. 빈 그림을 칸 여럿으로 만들고 fig[i, j]로 칸을 골라 그리거나, 이미 그린 그림들을 grid로 모아 A, B, C 이름이 붙은 한 장으로 만들고, 모은 칸들의 축 범위를 서로 맞춰요. 그림의 크기(mm)와 모양을 읽고 바꾸는 속성도 여기 있어요.
 params:
   - name: width
     type: float
@@ -41,11 +41,15 @@ params:
   - name: figures
     type: Figure의 리스트나 튜플
     kind: positional-only
-    desc: "grid로 모을 그림들. 칸이 여럿인 그림은 그 칸이 모두 차례로 들어가고, fig[i, j]로 고른 칸은 그 칸 하나가 들어가요."
+    desc: "grid로 모을 그림들. 칸이 여럿인 그림은 그 칸이 모두 차례로 들어가고, fig[i, j]로 고른 칸은 그 칸 하나가 들어가요. 칸은 복사해 넣어요."
   - name: labels
     type: "'A', 'a', str의 시퀀스, 또는 None"
     kind: keyword-only
     desc: "grid의 칸 이름. 'A'는 A, B, C…, 'a'는 a, b, c…를 칸의 왼쪽 위에 굵게 붙여요. 문자열을 칸의 수만큼 주면 그 글자를 붙여요(LaTeX 원문). None(기본값)이면 붙이지 않아요."
+  - name: sharex, sharey
+    type: "False, True 또는 'all'"
+    kind: keyword-only
+    desc: "grid의 칸들이 x축(sharex)이나 y축(sharey)의 범위를 함께 쓸지. True면 같은 열의 칸끼리 x 범위를, 같은 줄의 칸끼리 y 범위를 맞춰요. 'all'이면 모든 칸이 한 범위예요. 맞춘 축의 눈금 숫자는 바깥 칸(열의 맨 아래, 줄의 맨 왼쪽)에만 적어요. 기본값 False."
 returns:
   type: Figure
   desc: "Figure(...)와 grid는 새 그림, fig[i, j]는 그 칸을 가리키는 같은 그림의 보기, size는 fig 자신이에요. width·height는 float(mm), shape는 (줄 수, 열 수), axes는 칸마다의 보기를 줄 순서로 담은 튜플이에요."
@@ -53,10 +57,10 @@ raises:
   - type: TypeError
     desc: 크기가 수가 아니거나, nrows·ncols가 정수가 아니거나, 칸 번호가 정수가 아닐 때, grid의 figures가 Figure의 시퀀스가 아니거나 비었을 때.
   - type: ValueError
-    desc: 크기가 0 이하이거나 유한하지 않을 때, nrows·ncols가 1보다 작을 때, font·theme·palette의 이름이 틀렸을 때, grid의 nrows × ncols가 그림의 칸 수보다 작을 때, labels가 'A', 'a', 칸 수만큼의 문자열 가운데 하나가 아닐 때.
+    desc: 크기가 0 이하이거나 유한하지 않을 때, nrows·ncols가 1보다 작을 때, font·theme·palette의 이름이 틀렸을 때, grid의 nrows × ncols가 그림의 칸 수보다 작을 때, labels가 'A', 'a', 칸 수만큼의 문자열 가운데 하나가 아닐 때, sharex·sharey가 False, True, 'all'이 아닐 때.
   - type: IndexError
     desc: 그림에 없는 칸을 고를 때, 줄과 열이 둘 다 여럿인 그림을 번호 하나로 고를 때, 칸의 보기에서 다시 칸을 고를 때.
-seeAlso: [basics, customize, export, style, diagnostics, pairs]
+seeAlso: [basics, customize, twin-inset, facet, export, style, diagnostics, pairs]
 ---
 import Callout from '../../../components/Callout.astro';
 import PlotImage from '../../../components/fig/PlotImage.astro';
@@ -104,6 +108,15 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
 >>> b = sd.plot.line([0, 1], [0, 1], palette="npg")
 >>> a.to_svg() == b.to_svg()
 True
+```
+
+셸에서 그림을 그대로 치면 크기, 칸의 수, 층의 수를 한 줄로 알려 줘요. 높이를 주지 않은 그림은 높이 자리가 `auto`예요. 높이는 배치가 정하는데, 이 한 줄을 찍으려고 그림을 짓지는 않기 때문이에요. 배치가 정한 높이는 아래의 `fig.height`로 읽어요.
+
+```python
+>>> a
+Figure(89 x auto mm, 1 axes, 1 layer)
+>>> sd.plot.Figure(width=140, height=90, nrows=2, ncols=2)
+Figure(140 x 90 mm, 4 axes, 0 layers)
 ```
 
 빈 `Figure`로 시작하면 좋은 때가 둘 있어요. 칸이 여럿인 그림을 만들 때, 그리고 `width=`가 선의 굵기를 뜻하는 함수(`line`, `function` 등)로 그림의 너비를 정하고 싶을 때예요([그림 옵션](/api/plot/basics/#그림-옵션-figure)).
@@ -180,7 +193,9 @@ IndexError: a figure of 2 x 3 cells takes two indices
 (3, (1, 3), (1, 3))
 ```
 
-칸마다 축은 따로예요. 범위와 눈금은 칸의 자료로 저마다 잡혀요. 칸끼리 범위를 맞추려면 칸마다 `xlim`, `ylim`을 같게 줘요([제목, 축, 범례](/api/plot/customize/)).
+칸마다 축은 따로예요. 범위와 눈금은 칸의 자료로 저마다 잡혀요. 칸끼리 범위를 맞추려면 칸마다 `xlim`, `ylim`을 같게 주거나([제목, 축, 범례](/api/plot/customize/)), 따로 그린 그림을 아래의 `grid`로 모으면서 `sharex`, `sharey`를 줘요. 자료를 한 열의 값으로 나눠 칸마다 같은 그림을 되풀이하는 일은 [`facet`](/api/plot/facet/)이 해요.
+
+칸 하나에 세로축을 하나 더 두거나 작은 그림을 끼워 넣는 일은 [`fig.twin()`과 `fig.inset()`](/api/plot/twin-inset/)이에요.
 
 ## grid: 그린 그림을 모으기
 
@@ -205,6 +220,7 @@ IndexError: a figure of 2 x 3 cells takes two indices
 - **글꼴과 테마**: 첫 그림의 `font`, `theme`, `palette`를 따라요. 층의 색은 저마다의 그림에서 이미 정해졌으므로 그대로예요.
 - **칸 이름**: `labels="A"`는 A, B, C…, `"a"`는 a, b, c…예요. 문자열의 목록을 칸의 수만큼 주면 그 글자를 붙여요.
 - **기록**: 모은 그림들의 `fig.info`(함수 그림의 기록)를 이어 붙여 가져요.
+- **복사**: 칸은 복사해 넣어요. 아래에서 따로 봐요.
 
 ```python
 >>> sd.plot.grid([a, b, c]).shape
@@ -215,7 +231,69 @@ Traceback (most recent call last):
 ValueError: grid(): 'labels' must be 'A', 'a' or 3 strings
 ```
 
-`grid`는 칸 여럿을 스스로 만드는 함수라서 같은 이름의 메서드가 없어요. [`diagnostics`](/api/plot/diagnostics/)와 [`pairs`](/api/plot/pairs/)도 그래요.
+`grid`는 칸 여럿을 스스로 만드는 함수라서 같은 이름의 메서드가 없어요. [`diagnostics`](/api/plot/diagnostics/), [`pairs`](/api/plot/pairs/), [`facet`](/api/plot/facet/)도 그래요.
+
+### 모은 그림과 원래 그림은 따로예요
+
+`grid`는 받은 그림의 칸을 복사해 새 그림에 넣어요. 그래서 모은 뒤에 모은 그림의 칸을 고쳐도 원래 그림은 그대로이고, 원래 그림을 고쳐도 모은 그림은 그대로예요. 같은 그림을 여러 장에 다른 모습으로 넣을 수 있어요.
+
+```python
+>>> p = sd.plot.line([0, 1], [0, 1])
+>>> q = sd.plot.line([0, 1], [1, 0])
+>>> g = sd.plot.grid([p, q])
+>>> snapshot = g.to_svg()
+>>> _ = p.title("Rising")
+>>> g.to_svg() == snapshot
+True
+>>> before = p.to_svg()
+>>> _ = g[0].xlabel(r"$x$")
+>>> p.to_svg() == before
+True
+```
+
+`p`에 나중에 붙인 제목은 `g`에 없고, `g`의 첫 칸에 붙인 축 이름은 `p`에 없어요. 모은 그림에 원래 그림의 고친 모습을 담으려면 `grid`를 다시 불러요.
+
+### 축을 함께 쓰기: sharex, sharey
+
+따로 그린 그림은 저마다의 자료로 축 범위를 잡아요. 칸끼리 값을 견주려면 범위가 같아야 눈금을 하나하나 읽지 않고 자리만으로 견줄 수 있어요. `sharex`, `sharey`가 모은 칸들의 범위를 맞춰요.
+
+| 값 | `sharex` | `sharey` |
+|---|---|---|
+| `False`(기본값) | 칸마다 따로 | 칸마다 따로 |
+| `True` | 같은 **열**의 칸끼리 한 범위 | 같은 **줄**의 칸끼리 한 범위 |
+| `'all'` | 모든 칸이 한 범위 | 모든 칸이 한 범위 |
+
+`True`는 위아래로 놓인 칸이 가로축을, 옆으로 놓인 칸이 세로축을 함께 쓰는 것이에요. 맞춘 범위는 그 칸들의 범위를 모두 덮는 범위예요. 가운데와 퍼짐이 서로 다른 점 구름 넷을 $2 \times 2$로 모아 볼게요.
+
+```python
+>>> rng = sd.random.default_rng(5)
+>>> N = sd.stats.Normal(mu=0.0, sigma=1.0)
+>>> def cloud(cx, cy, sx, sy):
+...     return sd.plot.scatter(cx + sx * N.sample(60, rng=rng), cy + sy * N.sample(60, rng=rng), size=2.5)
+>>> p1 = cloud(0, 0, 1.0, 1.0).ylabel(r"$y$")
+>>> p2 = cloud(4, 0, 2.0, 0.4)
+>>> p3 = cloud(1, 5, 0.5, 2.0).xlabel(r"$x$").ylabel(r"$y$")
+>>> p4 = cloud(5, 6, 1.0, 1.0).xlabel(r"$x$")
+>>> fig = sd.plot.grid([p1, p2, p3, p4], labels="a", sharex=True, sharey=True, width=140)
+```
+
+<PlotImage name="figure-share" alt="2 × 2 칸의 산점도. 왼쪽 열의 두 칸은 가로 범위가 같고 오른쪽 열의 두 칸도 가로 범위가 같아요. 위 줄의 두 칸은 세로 범위가 같고 아래 줄도 그래요. 가로 눈금 숫자는 아래 줄에만, 세로 눈금 숫자는 왼쪽 열에만 있어요" caption="같은 열(a와 c, b와 d)은 가로 범위가, 같은 줄(a와 b, c와 d)은 세로 범위가 같아요. 눈금 숫자는 열의 맨 아래 칸과 줄의 맨 왼쪽 칸에만 적혀요. 안쪽 칸에는 눈금 표시만 남아요." />
+
+- **눈금 숫자는 바깥 칸에만 적어요.** x축을 함께 쓰면 아래에 다른 칸이 있는 칸의 숫자를 빼고, y축을 함께 쓰면 왼쪽에 다른 칸이 있는 칸의 숫자를 빼요. 눈금 표시는 모든 칸에 남아요.
+- **축 이름은 준 대로예요.** 숫자와 달리 `xlabel`, `ylabel`은 알아서 빼지 않아요. 위처럼 바깥 칸의 그림에만 이름을 붙이면 안쪽이 비어서 칸이 넓어져요.
+- **범위를 준 칸은 그 범위를 지켜요.** `xlim`이나 `ylim`으로 범위를 준 칸은 그대로 두고, 나머지 칸의 범위가 그 칸까지 덮게 맞춰져요.
+- **범주 축은 맞추지 않아요.** 막대그림의 범주 축처럼 수가 아닌 축은 함께 쓰는 데서 빠져요.
+- **한 줄짜리 그림에서 `sharex=True`는 하는 일이 없어요.** 열마다 칸이 하나뿐이라서예요. 한 줄의 칸들이 가로 범위까지 같아야 하면 `'all'`을 줘요.
+
+```python
+>>> row = sd.plot.grid([p1, p2, p4], ncols=3, sharex="all", sharey="all", width=183)
+>>> sd.plot.grid([p1, p2], sharex="columns")
+Traceback (most recent call last):
+    ...
+ValueError: grid(): 'sharex' must be False, True or 'all', not 'columns'
+```
+
+빈 `Figure(nrows=, ncols=)`의 칸에 바로 그린 그림에는 이 옵션이 없어요. 그런 그림도 `sd.plot.grid([fig], nrows=2, sharex=True)`처럼 한 번 모으면 칸들이 축을 함께 써요.
 
 ## matplotlib을 아는 분께
 
@@ -225,5 +303,7 @@ ValueError: grid(): 'labels' must be 'A', 'a' or 3 strings
 | `axes[0, 1].plot(...)` | `fig[0, 1].line(...)` |
 | `figsize=(7, 5)`(인치) | `width=`, `height=`(mm) |
 | `fig.set_size_inches(...)` | `fig.size(width, height)` |
-| `sharex=True` | 없어요. 칸마다 `xlim`을 같게 줘요 |
+| `plt.subplots(2, 2, sharex=True)` | `sd.plot.grid([...], sharex='all')`. `True`는 matplotlib의 `sharex='col'`이에요 |
+| `sharey=True` | `sharey='all'`. `True`는 matplotlib의 `sharey='row'`예요 |
+| `ax.twinx()`, `ax.inset_axes(...)` | [`fig.twin()`, `fig.inset(...)`](/api/plot/twin-inset/) |
 | 따로 그린 그림을 모으는 함수가 없어요 | `sd.plot.grid([...], labels="A")`(R ggpubr의 `ggarrange`와 비슷해요) |

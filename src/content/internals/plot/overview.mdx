@@ -19,8 +19,9 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
   <Layers layers={[
     { title: '그림 함수 (Python)', note: 'src/stardust/plot/', items: [
       { name: '_basic.py', note: 'line, scatter, bar 등 기본 그림, grid, 모듈 함수 만들기' },
+      { name: '_facet.py', note: 'facet: 열의 값마다 칸 하나' },
       { name: '_function.py', note: 'function, parametric, polar', uses: '_sample.py' },
-      { name: '_field.py', note: 'implicit, region, contour, density, phase' },
+      { name: '_field.py', note: 'implicit, region, contour, density, phase, vectorfield, streamlines' },
       { name: '_stat.py', note: '통계 그림과 결과 객체의 그림' },
       { name: '_surface.py', note: '3D 칸(Space)과 곡면·곡선·점', uses: '_adapt.py' },
     ] },
@@ -39,6 +40,7 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
       { name: 'raster.cpp', note: '2D 래스터라이저, 경로 글자, 선 줄이기, 색 입히기' },
       { name: 'zbuffer.cpp', note: '3D 깊이 버퍼, 시점 점수' },
       { name: 'levels.cpp', note: 'marching squares' },
+      { name: 'streams.cpp', note: '고르게 퍼진 유선' },
     ] },
     { title: '바닥', tone: 'dark', items: [
       { name: 'array', note: 'sd 배열과 원소별 연산' },
@@ -48,7 +50,7 @@ import PlotImage from '../../../components/fig/PlotImage.astro';
   ]} />
 </Fig>
 
-다른 영역은 "얇은 Python, 두꺼운 C++"인데 이 영역은 Python이 두꺼워요. 배치, 눈금, 범례, 장면 짓기는 다루는 도형이 수십에서 수백 개라서 Python으로 충분해요. 반복이 화소나 표본의 수만큼 도는 곳만 C++예요. 화소를 칠하는 래스터라이저와 깊이 버퍼, 격자를 넘기는 marching squares, 수만 개의 좌표를 글자로 쓰는 경로 쓰기가 그래요.
+다른 영역은 "얇은 Python, 두꺼운 C++"인데 이 영역은 Python이 두꺼워요. 배치, 눈금, 범례, 장면 짓기는 다루는 도형이 수십에서 수백 개라서 Python으로 충분해요. 반복이 화소나 표본의 수만큼 도는 곳만 C++예요. 화소를 칠하는 래스터라이저와 깊이 버퍼, 격자를 넘기는 marching squares, 걸음마다 장을 읽으며 자라는 유선, 수만 개의 좌표를 글자로 쓰는 경로 쓰기가 그래요.
 
 ## 그림 하나가 지나는 길
 
@@ -98,20 +100,17 @@ Counter({'path': 15, 'text': 14})
 ```python
 # src/stardust/plot/_basic.py
 def module_function(name, method):
-    """The module function of a Figure method: a new figure, then the method."""
+    """The module function of a Figure method: a new figure, then the method. A wrong call shape
+    is reported as the other areas report it ("line(): unexpected keyword argument 'foo'")."""
     sig = inspect.signature(method)
     params = list(sig.parameters.values())[1:]
-    own = inspect.Signature(params)
     public = inspect.Signature(params + [inspect.Parameter("figure", inspect.Parameter.VAR_KEYWORD)])
     names = {p.name for p in params if p.kind is inspect.Parameter.KEYWORD_ONLY}
+    bound = _calls.method(name)(method)
 
     def f(*args, **kw):
         options = {k: kw.pop(k) for k in list(kw) if k in FIGURE_OPTIONS and k not in names}
-        try:
-            own.bind(*args, **kw)
-        except TypeError as e:
-            raise TypeError(f"{name}(): {e}") from None
-        return method(new_figure(name, options), *args, **kw)
+        return bound(new_figure(name, options), *args, **kw)
 
     f.__name__ = f.__qualname__ = name
     f.__signature__ = public
@@ -119,7 +118,7 @@ def module_function(name, method):
     return f
 ```
 
-모듈 함수의 시그니처는 메서드의 인자 뒤에 `**figure`를 붙인 것이에요. 부르면 키워드 가운데 그림 옵션(`FIGURE_OPTIONS`의 `width height font theme palette`)을 떼어 새 그림을 만들고, 남은 인자를 메서드의 시그니처에 맞춰 본 뒤 메서드를 불러요. 맞지 않으면 함수 이름을 붙인 `TypeError`예요. 그래서 메서드와 모듈 함수의 인자, 기본값, 에러가 따로 놀 수 없어요. API 표면 테스트도 이것을 봐요([검증](/internals/plot/verification/)).
+모듈 함수의 시그니처는 메서드의 인자 뒤에 `**figure`를 붙인 것이에요. 부르면 키워드 가운데 그림 옵션(`FIGURE_OPTIONS`의 `width height font theme palette`)을 떼어 새 그림을 만들고, 남은 인자로 메서드를 불러요. 인자의 수나 이름이 맞지 않으면 Python이 내는 `TypeError`를 `_calls.method`가 다른 영역과 같은 꼴(`line(): unexpected keyword argument 'foo'`)로 바꿔요. 메서드 안에서 난 `TypeError`는 그대로 지나가요. 메서드 하나에서 둘이 나오므로 메서드와 모듈 함수의 인자, 기본값, 에러가 따로 놀 수 없어요. API 표면 테스트도 이것을 봐요([검증](/internals/plot/verification/)).
 
 메서드 자신이 같은 이름의 키워드를 가지면 그 키워드는 메서드로 가요(`k not in names`). `line`의 `width`는 선 굵기라서 `sd.plot.line(x, y, width=1.0)`은 1 pt 선이고 그림 너비는 기본 89 mm 그대로예요. 이런 함수로 만든 그림의 크기는 `fig.size(...)`로 바꿔요.
 
@@ -131,7 +130,7 @@ def module_function(name, method):
 60.0
 ```
 
-`grid`, `diagnostics`, `pairs`처럼 칸 여럿을 스스로 만드는 함수는 메서드가 없고 모듈 함수만 있어요. 거꾸로 `compare`와 `fit`은 이미 있는 그림 위에 그리므로 메서드만 있어요.
+`grid`, `diagnostics`, `pairs`, `facet`처럼 칸 여럿을 스스로 만드는 함수는 메서드가 없고 모듈 함수만 있어요. 거꾸로 `compare`와 `fit`은 이미 있는 그림 위에 그리므로 메서드만 있어요.
 
 ## 칸과 보기
 
@@ -146,14 +145,15 @@ def module_function(name, method):
 
     @property
     def _cell(self):
-        return self._root._cells[self._index]
-
+        c = self._root._cells[self._index]
+        return c.twin if self.__dict__.get("_twinned") else c
+    # ...
     def _touch(self):
         self._root._scene = None
         return self
 ```
 
-메서드는 모두 `self._cell`에 쓰고 `self._touch()`를 돌려줘요. 보기에서 부르면 그 칸에, 뿌리에서 부르면 첫 칸에 쓰고, 어느 쪽이든 뿌리가 지어 둔 장면을 버려요. 그래서 다음 출력이 장면을 다시 지어요. 크기, 글꼴, 테마, 팔레트, 장면 같은 그림 전체의 값은 뿌리에만 있어요.
+메서드는 모두 `self._cell`에 쓰고 `self._touch()`를 돌려줘요. 보기에서 부르면 그 칸에, 뿌리에서 부르면 첫 칸에 쓰고, 어느 쪽이든 뿌리가 지어 둔 장면을 버려요. 그래서 다음 출력이 장면을 다시 지어요. 크기, 글꼴, 테마, 팔레트, 장면 같은 그림 전체의 값은 뿌리에만 있어요. `fig.twin()`이 돌려주는 것도 같은 보기인데 `_twinned` 표시가 붙어 있어서, `_cell`이 칸 대신 그 칸의 두 번째 y축 칸(`cell.twin`)을 내줘요. 그래서 그림 메서드와 `ylabel`·`ylim` 같은 설정이 한 줄도 바뀌지 않고 오른쪽 축에 쓰여요([배치](/internals/plot/layout/)).
 
 ```python
 >>> fig = sd.plot.Figure(ncols=2)
@@ -164,7 +164,16 @@ True
 ([0, 1], (1, 2))
 ```
 
-`sd.plot.grid`는 받은 그림들의 칸 객체를 새 그림의 칸 자리에 그대로 넣어요. 남는 자리는 축이 없는 빈 칸이에요.
+`sd.plot.grid`는 받은 그림들의 칸을 복사해 새 그림의 칸 자리에 넣어요. `Cell.copy`가 칸의 설정과 층 목록을 따로 만들므로, 모은 뒤에 원래 그림을 고쳐도 모은 그림은 그대로이고 거꾸로도 같아요. 남는 자리는 축이 없는 빈 칸이에요.
+
+```python
+>>> a = sd.plot.line([0.0, 1.0], [0.0, 1.0])
+>>> g = sd.plot.grid([a, a], ncols=2)
+>>> a.line([0.0, 1.0], [1.0, 0.0]) is a
+True
+>>> len(a._cells[0].layers), [len(c.layers) for c in g._cells]
+(2, [1, 1])
+```
 
 ## 그릴 때까지 미루기
 
@@ -201,7 +210,14 @@ ValueError: to_svg(): LaTeX could not typeset '50% of': an unescaped % (write \%
 
 ## 3D 칸
 
-3D 그림 함수는 칸에 `Space` 층 하나를 두고, 그 칸의 `frame`을 끄고, 곡면·곡선·점을 그 `Space`에 모아요. 한 칸에 2D 층과 3D 층을 섞을 수 없어요.
+3D 그림 함수는 칸에 `Space` 층 하나를 두고, 그 칸의 `frame`을 끄고, 곡면·곡선·점을 그 `Space`에 모아요. 한 칸에 2D 층과 3D 층을 섞을 수 없어요. `install`이 `Figure`에 붙이는 2D 그림 메서드를 `flat_only`로 감싸서 `Space`가 든 칸에 부르면 `ValueError`를 내고(새 그림을 만드는 모듈 함수는 감쌀 까닭이 없어요), 3D 메서드는 2D 층이 있는 칸을 거절해요. 축 설정(`xlim ylim xscale yscale xticks yticks`)도 3D 칸에서는 `ValueError`예요. 3D 상자의 범위는 자료가 정해요.
+
+```python
+>>> sd.plot.surface(lambda x, y: x * y, -1, 1, -1, 1).line([0.0, 1.0], [0.0, 1.0])
+Traceback (most recent call last):
+    ...
+ValueError: line(): the cell already holds a 3D plot
+```
 
 배치는 3D 칸을 축이 없는 칸으로 다뤄요. 대신 `Space`가 두 가지를 알려 줘요. `margins`는 상자 둘레의 눈금 숫자와 축 이름이 차지할 여백이고, `aspect`는 상자를 화면에 투영한 모양의 세로 대 가로예요. 그림의 높이를 주지 않으면 3D 칸만 있는 줄은 이 비율로 높이를 정하고, 2D 칸이 섞인 줄은 2D 칸의 4:3을 따라요.
 
@@ -226,12 +242,13 @@ ValueError: to_svg(): LaTeX could not typeset '50% of': an unescaped % (write \%
 | `__init__.py` | 공개 이름. 그림 모듈마다 `install`로 메서드를 붙이고 모듈 함수를 받아요 |
 | `_figure.py` | `Figure`, `Cell`, 축 고르기(`_axis`), 여백 재기(`_measure`), 배치(`_layout`), 범례, 내보내기 |
 | `_basic.py` | 기본 그림의 메서드, 자료 인자 읽기(`data=`, `group=`), `grid`, `module_function` |
+| `_facet.py` | `facet`과 `Facets`: 열의 값마다 칸을 만들고 그림 메서드를 칸마다 불러요 |
 | `_layers.py` | 층의 바탕 `Layer`와 기본 층들, 점 기호 |
 | `_ticks.py` | 확장 Wilkinson 눈금, 로그 눈금, 라벨 문자열 |
 | `_color.py` | 색 값 읽기, 팔레트, 색띠의 표 |
 | `_function.py`, `_sample.py` | 한 변수 함수의 그림과 곡선의 적응 표본, `PlotInfo` |
-| `_field.py` | 두 변수 함수의 그림: 격자, marching squares의 앞뒤, 채운 등고선, 색 그림 |
-| `_stat.py` | 통계 그림, `compare`, `fit`, `diagnostics`, `coefficients`, `distribution`, `pairs` |
+| `_field.py` | 두 변수 함수의 그림: 격자, marching squares의 앞뒤, 채운 등고선, 색 그림, 벡터장의 화살표와 유선 |
+| `_stat.py` | 통계 그림(2차원 히스토그램 `hist2d`·`hexbin` 포함), `compare`, `fit`, `diagnostics`, `coefficients`, `distribution`, `pairs` |
 | `_surface.py`, `_adapt.py` | 3D 칸 `Space`, 곡면의 적응 표본 |
 | `_scene.py` | 장면의 네 항목과 글자의 자리 잡기 |
 | `_svg.py`, `_pdf.py`, `_png.py` | 세 출력, 큰 점 묶음을 그림으로 바꾸기, 나란한 압축 |
@@ -247,8 +264,10 @@ C++ 쪽은 `stardust._core.plot` 하나로 묶여 있어요.
 | `render3` | 삼각형, 선, 원판을 깊이 버퍼로 그린 그림 한 장 | 3D 칸 |
 | `view_scores` | 시점 후보마다 곡면이 보이는 넓이의 점수 | 3D 칸의 시점 고르기 |
 | `Levels` | 격자 위의 수준선(marching squares): 변의 교점, 곡선 잇기, 안쪽 다각형 | 음함수, 영역, 등고선 |
+| `streamlines` | 격자에 잰 벡터장의 유선을 상자에 고르게 퍼뜨려 따라가기 | 유선 그림 |
 | `path_text` | 경로의 좌표를 SVG 경로 글이나 PDF 연산자로 쓰기 | SVG, PDF |
 | `decimate` | 점이 아주 많은 선을 열마다 네 점으로 줄이기 | 긴 선 |
+| `simplify` | 꺾은선에서 곧은 줄 위의 점을 빼기(Ramer–Douglas–Peucker) | 선 층, 윤곽선 |
 | `colormap`, `phase_colors` | 값을 색띠의 색으로, 복소수를 위상의 색으로 | 밀도, 열지도, 위상 그림 |
 
 Python은 경로를 `ops` 바이트(`"MLQCZ"` 위의 글자)와 float64를 이어 붙인 바이트로 넘기고, 행렬과 색과 자르기 사각형은 수로 넘겨요. 바인딩은 개수가 맞지 않거나 모르는 연산이 오면 `ValueError`를 내요. 사용자의 값은 이미 Python 쪽에서 검사했으므로, 여기서 나는 에러는 영역 안의 실수예요. 화소를 칠하는 방법은 [래스터라이저](/internals/plot/raster/)에서 다뤄요.
