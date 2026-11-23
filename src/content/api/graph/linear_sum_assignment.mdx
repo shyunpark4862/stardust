@@ -1,0 +1,224 @@
+---
+kind: function
+title: linear_sum_assignment
+names: [linear_sum_assignment]
+group: 트리, 흐름, 매칭
+order: 5
+signatures:
+  - "sd.graph.linear_sum_assignment(cost_matrix, /, *, maximize=False)"
+summary: 사람과 일처럼 두 무리를 하나씩 짝지을 때, 짝마다 드는 비용을 모두 적은 행렬을 받아 비용의 합이 가장 작은 짝짓기를 찾아요. 직사각 행렬이면 작은 쪽이 모두 짝을 얻어요. 정수 비용에서는 정확한 최적이에요.
+params:
+  - name: cost_matrix
+    type: ndarray, numpy 배열, 또는 수의 중첩 시퀀스
+    kind: positional-only
+    desc: (행 수, 열 수) 비용 행렬. 행 i, 열 j의 원소가 행 쪽의 i와 열 쪽의 j를 짝지을 때의 비용이에요. 모든 원소가 고를 수 있는 짝이고, 0도 비용 0의 짝이에요. +inf는 고를 수 없는 짝이에요. bool, int64, float64를 받고 float64로 계산해요. 희소 배열은 받지 않아요.
+  - name: maximize
+    type: bool
+    kind: keyword-only
+    desc: True면 합이 가장 큰 짝짓기를 찾아요. 이때는 −inf가 고를 수 없는 짝이에요. 기본값은 False예요.
+returns:
+  type: AssignmentResult
+  desc: "row_ind와 col_ind(둘 다 int64 1차원 배열)를 가진 이름 있는 튜플. k번째 짝이 (row_ind[k], col_ind[k])이고 row_ind는 오름차순이에요. 길이는 min(행 수, 열 수)예요."
+raises:
+  - type: TypeError
+    desc: cost_matrix가 sd.sparse 배열이거나 scipy의 희소 객체일 때, 복소수일 때, 수가 아닌 원소가 있을 때, maximize가 True나 False가 아닐 때, maximize를 위치로 줬을 때.
+  - type: ValueError
+    desc: cost_matrix가 2차원이 아닐 때, NaN이나 −inf가 있을 때(maximize=True면 NaN이나 +inf), 고를 수 없는 짝(inf) 때문에 작은 쪽을 모두 짝지을 방법이 없을 때.
+seeAlso: [min_weight_full_bipartite_matching, maximum_bipartite_matching, results, maximum_flow, basics]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+
+export const costData = [[9, 2, 7, 8], [6, 4, 3, 7], [5, 8, 1, 8], [7, 6, 9, 4]];
+export const costTones = [['', 'b', '', ''], ['b', '', '', ''], ['', '', 'b', ''], ['', '', '', 'b']];
+
+## 무엇을 계산하나요
+
+일꾼 넷에게 일 넷을 하나씩 맡기려고 해요. 일꾼마다 잘하는 일이 달라서, 누가 어떤 일을 하느냐에 따라 걸리는 시간이 달라요. 모든 일을 끝내는 데 드는 시간의 합을 가장 작게 하려면 누구에게 무엇을 맡겨야 할까요?
+
+이것이 **배정 문제**예요. 행이 한 무리(일꾼), 열이 다른 무리(일)이고, 행 $i$와 열 $j$의 원소가 $i$에게 $j$를 맡길 때의 비용이에요. 행마다 열을 하나씩, 열이 겹치지 않게 골라서 고른 원소의 합을 가장 작게 만들어요. 택시와 손님 잇기, 추적 중인 물체와 다음 장면에서 잡힌 점 잇기, 두 목록의 항목 맞추기가 모두 같은 꼴이에요.
+
+```python
+>>> import stardust as sd
+>>> cost = sd.asarray([[9, 2, 7, 8],      # 일꾼 0이 일 0, 1, 2, 3을 할 때의 시간
+...                    [6, 4, 3, 7],
+...                    [5, 8, 1, 8],
+...                    [7, 6, 9, 4]])
+>>> res = sd.graph.linear_sum_assignment(cost)
+>>> res
+AssignmentResult(row_ind=array([0, 1, 2, 3], dtype=int64), col_ind=array([1, 0, 2, 3], dtype=int64))
+>>> cost[res.row_ind, res.col_ind]
+array([2, 6, 1, 4], dtype=int64)
+>>> cost[res.row_ind, res.col_ind].sum()
+13
+```
+
+일꾼 0은 일 1, 일꾼 1은 일 0, 일꾼 2는 일 2, 일꾼 3은 일 3을 맡고 시간의 합은 13이에요. 일꾼 1은 일 2를 가장 빨리(3) 하지만 일꾼 2가 그 일을 더 빨리(1) 해서 일꾼 1은 다음으로 나은 일 0을 맡아요. 일꾼마다 제일 나은 일을 고르는 방법으로는 이런 답이 나오지 않아요.
+
+<Fig caption="비용 행렬에서 고른 원소. 행마다 하나, 열마다 하나를 골랐고 고른 원소의 합(2 + 6 + 1 + 4 = 13)이 가장 작아요.">
+  <ArrayFig name="cost" data={costData} tones={costTones} />
+</Fig>
+
+<Reference />
+
+## 결과 읽기
+
+결과는 `row_ind`와 `col_ind`를 가진 이름 있는 튜플이에요. 같은 자리끼리 한 짝이에요. `row_ind`는 언제나 오름차순이라 정방 행렬이면 `0, 1, …, n − 1` 그대로이고, `col_ind[i]`가 행 $i$의 짝이에요.
+
+```python
+>>> rows, cols = sd.graph.linear_sum_assignment(cost)
+>>> [(int(i), int(j)) for i, j in zip(rows, cols)]
+[(0, 1), (1, 0), (2, 2), (3, 3)]
+```
+
+두 배열을 함께 색인으로 쓰면 고른 원소가 나와요. 위의 `cost[res.row_ind, res.col_ind]`처럼요. 결과의 두 배열은 읽기 전용이에요. 고쳐 쓰려면 `.copy()`로 복사해요.
+
+## 정방이 아닐 때
+
+행과 열의 수가 다르면 **작은 쪽이 모두** 짝을 얻고 큰 쪽의 일부는 남아요. 결과의 길이는 작은 쪽의 크기예요.
+
+```python
+>>> three_jobs = cost[:, :3]            # 일꾼 넷, 일 셋
+>>> sd.graph.linear_sum_assignment(three_jobs)
+AssignmentResult(row_ind=array([0, 1, 2], dtype=int64), col_ind=array([1, 0, 2], dtype=int64))
+>>> three_workers = cost[:3]            # 일꾼 셋, 일 넷
+>>> sd.graph.linear_sum_assignment(three_workers)
+AssignmentResult(row_ind=array([0, 1, 2], dtype=int64), col_ind=array([1, 0, 2], dtype=int64))
+```
+
+일이 셋이면 일꾼 하나가 쉬고, 일꾼이 셋이면 일 하나가 남아요. 남는 쪽은 결과에 나오지 않아요.
+
+## 합을 가장 크게: `maximize`
+
+비용 대신 이익이나 점수를 적었다면 `maximize=True`로 합이 가장 큰 짝짓기를 찾아요.
+
+```python
+>>> score = sd.asarray([[7, 3, 5],
+...                     [2, 8, 6],
+...                     [4, 6, 9]])
+>>> best = sd.graph.linear_sum_assignment(score, maximize=True)
+>>> best.col_ind
+array([0, 1, 2], dtype=int64)
+>>> score[best.row_ind, best.col_ind].sum()
+24
+```
+
+`maximize=True`는 모든 원소의 부호를 바꿔 가장 작은 합을 찾는 것과 같아요.
+
+## 고를 수 없는 짝: `inf`
+
+어떤 일꾼이 어떤 일을 아예 못 한다면 그 자리에 `sd.inf`를 적어요. 그 짝은 고르지 않아요. 비용을 아주 큰 수로 적는 것과 달리 결과가 그 수에 따라 흔들리지 않아요.
+
+```python
+>>> c = sd.asarray([[sd.inf, 2.0, 5.0],
+...                 [1.0, sd.inf, 3.0],
+...                 [4.0, 6.0, sd.inf]])
+>>> sd.graph.linear_sum_assignment(c)
+AssignmentResult(row_ind=array([0, 1, 2], dtype=int64), col_ind=array([1, 2, 0], dtype=int64))
+```
+
+`inf`가 많아서 작은 쪽을 모두 짝지을 방법이 없으면 `ValueError`예요. 아래에서 일꾼 둘이 모두 일 1만 할 수 있어요.
+
+```python
+>>> sd.graph.linear_sum_assignment([[sd.inf, 1.0], [sd.inf, 2.0]])
+Traceback (most recent call last):
+    ...
+ValueError: linear_sum_assignment(): cost matrix is infeasible
+```
+
+`maximize=True`에서는 고를 수 없는 짝을 `-sd.inf`로 적어요. 부호를 바꾸면 `-inf`가 `+inf`가 되기 때문이에요.
+
+```python
+>>> sd.graph.linear_sum_assignment([[-sd.inf, 3.0], [2.0, 1.0]], maximize=True)
+AssignmentResult(row_ind=array([0, 1], dtype=int64), col_ind=array([1, 0], dtype=int64))
+```
+
+## 0은 비용 0의 짝이에요
+
+이 함수에서는 행렬의 **모든 원소가 짝**이에요. 0도 "비용이 0인 짝"이지 "짝이 없음"이 아니에요. 인접 행렬로 그래프를 적는 다른 그래프 함수들과 읽는 법이 달라요.
+
+```python
+>>> z = sd.asarray([[0.0, 5.0],
+...                 [4.0, 0.0]])
+>>> sd.graph.linear_sum_assignment(z)
+AssignmentResult(row_ind=array([0, 1], dtype=int64), col_ind=array([0, 1], dtype=int64))
+```
+
+대각의 두 0을 골랐어요. 0을 "짝이 될 수 없음"으로 읽고 싶다면, 그 자리를 `inf`로 바꾸거나 짝이 될 수 있는 자리만 저장한 희소 배열을 만들어 [`min_weight_full_bipartite_matching`](/api/graph/min_weight_full_bipartite_matching/)에 넘겨요. 짝이 될 수 있는 자리가 드문 큰 문제도 그쪽이 알맞아요.
+
+```python
+>>> sd.graph.min_weight_full_bipartite_matching(z)
+AssignmentResult(row_ind=array([0, 1], dtype=int64), col_ind=array([1, 0], dtype=int64))
+```
+
+같은 행렬을 주었는데, 이번에는 0이 짝이 아니라서 5와 4를 골랐어요. 희소 배열을 이 함수에 주면 그 함수를 짚는 `TypeError`가 나요.
+
+```python
+>>> sd.graph.linear_sum_assignment(sd.sparse.csr_array(z))
+Traceback (most recent call last):
+    ...
+TypeError: linear_sum_assignment(): 'cost_matrix' must be a dense matrix, not csr_array; the assignment of a sparse matrix's stored pairs is min_weight_full_bipartite_matching
+```
+
+## 비용이 같은 답이 여럿일 때
+
+합이 같은 최적의 짝짓기가 여럿일 수 있어요. 이 함수는 그 가운데 하나를 정해진 차례로 골라, 같은 입력이면 언제나 같은 답을 돌려줘요. 모든 원소가 같은 아래 행렬에서는 어떤 짝짓기든 합이 3이고, 그 가운데 (0, 2), (1, 0), (2, 1)을 골라요.
+
+```python
+>>> sd.graph.linear_sum_assignment(sd.ones((3, 3)))
+AssignmentResult(row_ind=array([0, 1, 2], dtype=int64), col_ind=array([2, 0, 1], dtype=int64))
+```
+
+같은 짝들을 [`min_weight_full_bipartite_matching`](/api/graph/min_weight_full_bipartite_matching/)에 주어도 같은 답이 나와요. 두 함수는 같은 방법으로 풀고 짝을 읽는 법만 달라요.
+
+## 정확도
+
+비용이 정수면(정수나 bool 행렬, 또는 정수 값의 float64) 돌려준 짝짓기의 합은 **정확히 가장 작은 합**이에요. 실수 비용에서는 계산 중의 반올림 때문에 합의 차이가 반올림 크기쯤인 다른 짝짓기를 고를 수 있어요. 돌려준 짝짓기의 정확한 비용은 최적 비용에서 많아야 $\gamma_{2r} \sum (\lvert c_{\text{고른 짝}} \rvert + \lvert c_{\text{최적 짝}} \rvert)$ 만큼 커요. 여기서 $r$은 작은 쪽의 크기, $\gamma_k = k u / (1 - k u)$, $u = 2^{-53}$이에요. 무작위 행렬과 동점에 가까운 행렬로 시험한 모든 경우에 참 최적을 골랐어요.
+
+## 경계의 값
+
+| 입력 | 결과 |
+|---|---|
+| 행이나 열이 0개 | 빈 `row_ind`, `col_ind` |
+| (1, 1) 행렬 | 짝 하나 (0, 0) |
+| +inf | 고를 수 없는 짝 (`maximize=True`면 −inf) |
+| NaN, −inf | `ValueError` (`maximize=True`면 NaN, +inf) |
+| 모든 짝을 고를 수 없음 | `ValueError` |
+| 1차원 배열 | `ValueError` |
+
+```python
+>>> sd.graph.linear_sum_assignment(sd.zeros((0, 3)))
+AssignmentResult(row_ind=array([], dtype=int64), col_ind=array([], dtype=int64))
+>>> sd.graph.linear_sum_assignment([[sd.nan, 1.0], [3.0, 2.0]])
+Traceback (most recent call last):
+    ...
+ValueError: linear_sum_assignment(): 'cost_matrix' must not hold NaN or -inf
+>>> sd.graph.linear_sum_assignment([[sd.inf, 1.0], [3.0, 2.0]], maximize=True)
+Traceback (most recent call last):
+    ...
+ValueError: linear_sum_assignment(): 'cost_matrix' must not hold NaN or +inf
+>>> sd.graph.linear_sum_assignment([1, 2, 3])
+Traceback (most recent call last):
+    ...
+ValueError: linear_sum_assignment(): 'cost_matrix' must have 2 dimensions, not 1
+>>> sd.graph.linear_sum_assignment([[1, 2]], maximize=1)
+Traceback (most recent call last):
+    ...
+TypeError: linear_sum_assignment(): 'maximize' must be True or False, not int
+```
+
+<Callout type="note" title="비용의 단위는 상관없어요">
+
+모든 원소에 같은 수를 더하거나 같은 양수를 곱해도 답은 그대로예요. 어떤 짝짓기든 짝의 수가 같기 때문이에요. 정방 행렬이면 한 행이나 한 열의 원소에만 같은 수를 더해도 그대로예요. 어떤 짝짓기든 그 행(열)에서 꼭 하나를 고르기 때문이에요.
+
+</Callout>
+
+## scipy·networkx를 아는 분께
+
+- `scipy.optimize.linear_sum_assignment`와 뜻이 같아요. 자리만 `sd.graph`예요. +inf가 고를 수 없는 짝이고, 모든 짝을 고를 수 없으면 `ValueError`인 것, `maximize=True`에서 −inf와 +inf의 뜻이 바뀌는 것도 같아요.
+- 결과가 이름 있는 튜플 `AssignmentResult(row_ind, col_ind)`이고 두 배열이 int64예요. scipy처럼 `r, c = linear_sum_assignment(C)`로 풀 수 있어요.
+- `maximize`는 키워드로만 받고 True나 False여야 해요.
+- 합이 같은 최적이 여럿이면 고른 답이 scipy와 다를 수 있어요(합은 같아요).
+- 희소 배열은 받지 않아요. 희소한 짝은 `min_weight_full_bipartite_matching`에 넘겨요.
+- networkx에서 가까운 함수는 `bipartite.minimum_weight_full_matching`이에요. 그래프 객체를 받아 짝의 사전을 돌려줘요.

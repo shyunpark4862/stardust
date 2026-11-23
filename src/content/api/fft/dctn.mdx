@@ -1,0 +1,276 @@
+---
+kind: function
+title: 여러 축의 코사인 변환
+names: [dctn, idctn]
+group: DCT와 DST
+order: 3
+signatures:
+  - "sd.fft.dctn(x, /, *, type=2, s=None, axes=None, norm='backward', orthogonalize=None)"
+  - "sd.fft.idctn(x, /, *, type=2, s=None, axes=None, norm='backward', orthogonalize=None)"
+summary: 표나 영상처럼 축이 여럿인 배열을 축마다 코사인 변환해요. 2차원이면 가로로 떨리는 코사인과 세로로 떨리는 코사인을 곱한 무늬들의 합으로 풀어 쓰는 것이고, 부드러운 영상의 정보가 한쪽 구석의 계수 몇 개에 모여요. dctn이 계수를 구하고 idctn이 되돌려요.
+params:
+  - name: x
+    type: ndarray
+    kind: positional-only
+    desc: 변환할 배열. 1차원 이상이에요. bool·int64는 float64로 바꿔 계산하고, complex128은 실수부와 허수부를 따로 변환해요. 리스트와 numpy 배열은 받지 않아요.
+  - name: type
+    type: int
+    kind: keyword-only
+    desc: 변환의 형(1, 2, 3, 4). 기본값은 2이고 모든 축에 같은 형을 써요. idctn에서는 되돌릴 dctn의 형을 적어요.
+  - name: s
+    type: int, int의 tuple·list, 또는 None
+    kind: keyword-only
+    desc: 축마다의 변환 길이. None(기본값)이면 입력의 길이 그대로예요. 원소는 1 이상의 int이거나 -1(그 축의 입력 길이)이에요. 입력보다 짧은 축은 앞에서 자르고 긴 축은 끝에 0을 채워요. axes와 함께 주면 길이가 같아야 하고, axes 없이 주면 마지막 len(s)개 축에 적용해요.
+  - name: axes
+    type: int, int의 tuple·list, 또는 None
+    kind: keyword-only
+    desc: 변환할 축들. None(기본값)이면 모든 축(s를 줬으면 마지막 len(s)개 축)이에요. 같은 축을 두 번 적을 수 없고 비어 있을 수 없어요.
+  - name: norm
+    type: str
+    kind: keyword-only
+    desc: 결과에 곱하는 인자. 'backward'(기본값)는 dctn에 1, idctn에 1/N′을 곱해요. 'ortho'는 양쪽에 1/√N′, 'forward'는 dctn에 1/N′, idctn에 1을 곱해요. N′은 변환하는 축마다의 길이(형 1은 2(N − 1), 나머지는 2N)를 모두 곱한 값이에요.
+  - name: orthogonalize
+    type: bool 또는 None
+    kind: keyword-only
+    desc: True면 형 1, 2, 3에서 축마다 첫 칸(형 1은 끝 칸도)을 √2로 맞춰 norm='ortho'의 변환이 직교가 되게 해요. None(기본값)은 norm이 'ortho'일 때만 True예요.
+returns:
+  type: ndarray
+  desc: 변환한 축의 길이가 s를 따르는 새 배열. 입력이 complex128이면 complex128, 아니면 float64예요.
+raises:
+  - type: TypeError
+    desc: x가 sd.ndarray가 아닐 때, type이 int가 아닐 때, s·axes의 원소가 int가 아닐 때(bool, None 포함), norm이 문자열이 아닐 때, orthogonalize가 True·False·None이 아닐 때, 옵션을 위치로 줬을 때.
+  - type: ValueError
+    desc: type이 1–4가 아닐 때, 변환하는 축의 길이가 0일 때, 형 1인데 길이 1인 축이 있을 때, s의 원소가 0이거나 -2 이하일 때, s가 비었거나 축보다 많거나 axes와 길이가 다를 때, axes가 비었거나 범위 밖이거나 같은 축을 거듭 적었을 때, norm이 세 값 밖의 문자열일 때.
+seeAlso: [dct, dstn, dst, fftn, rfftn, basics]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+export const COEF = [[484.2, -18.0, -0.2, -0.9], [-44.7, 0.1, 0.1, -0.2], [-0.3, 0.1, 0.2, -0.3], [-2.8, -0.2, -0.3, 0.4]];
+export const COEF_TONES = [["b", "b", "", ""], ["b", "", "", ""], ["", "", "", ""], ["b", "", "", ""]];
+
+## 한눈에 보기
+
+`dctn`은 [`dct`](/api/fft/dct/)를 여러 축에 차례로 적용해요. 2차원 배열이면 행마다 변환한 뒤 열마다 변환한 것이에요. 결과의 $(k_0, k_1)$ 칸은 세로로 $k_0$번째, 가로로 $k_1$번째 코사인을 곱한 무늬가 입력에 얼마나 들어 있는지예요. 형 2라면
+
+$$
+y_{k_0 k_1} = 4 \sum_{n_0=0}^{N_0-1} \sum_{n_1=0}^{N_1-1} x_{n_0 n_1} \cos\frac{\pi k_0 (2n_0+1)}{2N_0} \cos\frac{\pi k_1 (2n_1+1)}{2N_1}
+$$
+
+이에요. `idctn`은 계수에서 원래 배열을 되찾아요.
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([[1.0, 2.0, 3.0],
+...                 [4.0, 5.0, 6.0]])
+>>> y = sd.fft.dctn(x)
+>>> y
+array([[                  84.0,    -13.856406460551018,
+        1.9292739048403148e-16],
+       [    -25.45584412271571,                    0.0,
+                           0.0]], dtype=float64)
+>>> sd.fft.idctn(y)
+array([[1.0, 2.0, 3.0],
+       [4.0, 5.0, 6.0]], dtype=float64)
+```
+
+왼쪽 위 칸 84는 모든 원소의 합 21의 4배예요(축마다 2배씩이에요). 첫 행의 셋째 칸은 정확한 값이 0이고 반올림 크기의 값이 남았어요.
+
+<Reference />
+
+## 영상 조각의 계수
+
+밝기가 천천히 바뀌는 4×4 영상 조각을 변환하면 큰 계수가 왼쪽 위에 모여요. 왼쪽 위 칸은 조각 전체의 밝기, 첫 행은 가로 방향의 변화, 첫 열은 세로 방향의 변화예요. 오른쪽 아래로 갈수록 두 방향으로 모두 빠르게 떨리는 무늬의 몫이에요.
+
+```python
+>>> block = sd.asarray([[100.0, 104.0, 108.0, 112.0],
+...                     [110.0, 114.0, 118.0, 122.0],
+...                     [120.0, 124.0, 129.0, 132.0],
+...                     [130.0, 134.0, 138.0, 142.0]])
+>>> c = sd.fft.dctn(block, norm='ortho')
+>>> sd.round(c * 10) / 10
+array([[484.2, -18.0,  -0.2,  -0.9],
+       [-44.7,   0.1,   0.1,  -0.2],
+       [ -0.3,   0.1,   0.2,  -0.3],
+       [ -2.8,  -0.2,  -0.3,   0.4]], dtype=float64)
+```
+
+<Fig caption="4×4 조각과 그 계수(소수 첫째 자리로 반올림)예요. 크기가 1을 넘는 계수(짙은 칸)는 넷이고 모두 첫 행과 첫 열에 있어요.">
+  <ArrayFig name="block" data={[[100, 104, 108, 112], [110, 114, 118, 122], [120, 124, 129, 132], [130, 134, 138, 142]]} />
+  <Op note="norm='ortho'">→</Op>
+  <ArrayFig name="dctn(block)" data={COEF} tones={COEF_TONES} />
+</Fig>
+
+작은 계수를 버리고 되돌려도 조각이 거의 그대로예요. 영상 압축은 조각마다 이렇게 큰 계수만 남겨요.
+
+```python
+>>> kept = sd.where(sd.abs(c) > 1.0, c, 0.0)
+>>> sd.round(sd.fft.idctn(kept, norm='ortho') * 10) / 10
+array([[100.2, 103.6, 108.5, 111.9],
+       [110.1, 113.5, 118.4, 121.8],
+       [120.3, 123.8, 128.6, 132.1],
+       [130.2, 133.6, 138.5, 141.9]], dtype=float64)
+```
+
+## 축마다 차례로
+
+`dctn`은 `axes`의 마지막 축부터 첫 축까지 한 축씩 `dct`를 해요. 그래서 기본 `norm`에서는 `dct`를 그 순서로 이어 부른 것과 비트까지 같아요.
+
+```python
+>>> step = sd.fft.dct(sd.fft.dct(x, axis=1), axis=0)
+>>> bool(sd.all(sd.fft.dctn(x) == step))
+True
+```
+
+`axes`로 변환할 축을 골라요. 축 하나만 주면 `dct`와 같아요.
+
+```python
+>>> sd.fft.dctn(x, axes=1)
+array([[                 12.0,   -3.4641016151377544, 4.823184762100787e-17],
+       [                 30.0,   -3.4641016151377544, 4.823184762100787e-17]], dtype=float64)
+>>> bool(sd.all(sd.fft.dctn(x, axes=1) == sd.fft.dct(x, axis=1)))
+True
+>>> sd.fft.dctn(x, axes=(0,))
+array([[              10.0,               14.0,               18.0],
+       [-4.242640687119285, -4.242640687119285, -4.242640687119285]], dtype=float64)
+```
+
+영상 여러 장을 쌓은 3차원 배열에서 장마다 2차원 변환을 하려면 `axes=(-2, -1)`을 줘요.
+
+```python
+>>> stack = sd.asarray([[[1.0, 2.0], [3.0, 4.0]],
+...                     [[5.0, 6.0], [7.0, 8.0]]])
+>>> sd.fft.dctn(stack, axes=(-2, -1))
+array([[[              40.0,  -5.65685424949238],
+        [-11.31370849898476,                0.0]],
+
+       [[             104.0,  -5.65685424949238],
+        [-11.31370849898476,                0.0]]], dtype=float64)
+```
+
+## 길이 `s`
+
+`s`는 축마다의 변환 길이예요. 입력보다 길면 끝에 0을 채우고 짧으면 앞에서 잘라요. `-1`은 그 축의 입력 길이를 그대로 쓴다는 뜻이에요.
+
+```python
+>>> sd.fft.dctn(x, s=(2, 2))             # 열을 둘로 잘라요
+array([[              48.0,  -5.65685424949238],
+       [-16.97056274847714,                0.0]], dtype=float64)
+>>> sd.fft.dctn(x, s=(-1, 4)).shape      # 열에 0을 하나 채워요
+(2, 4)
+```
+
+`axes` 없이 `s`만 주면 마지막 `len(s)`개 축을 변환해요. int 하나는 마지막 축 하나예요.
+
+```python
+>>> sd.fft.dctn(x, s=2)
+array([[               6.0, -1.414213562373095],
+       [              18.0, -1.414213562373095]], dtype=float64)
+```
+
+## 정규화와 형
+
+`norm`의 인자는 변환이 끝난 뒤 한 번만 곱해요. $N'$은 변환한 축마다의 길이를 모두 곱한 값이고, 형 2의 2×3 배열이면 $(2 \cdot 2)(2 \cdot 3) = 24$예요.
+
+```python
+>>> sd.fft.dctn(x, norm='forward')       # 84 / 24 = 3.5, 원소의 평균
+array([[                  3.5,   -0.5773502691896257, 8.038641270167978e-18],
+       [  -1.0606601717798212,                   0.0,                   0.0]], dtype=float64)
+>>> sd.fft.dctn(x, norm='ortho')
+array([[     8.573214099741124,                   -2.0,
+        2.7846670207501905e-17],
+       [    -3.674234614174767,                    0.0,
+                           0.0]], dtype=float64)
+```
+
+`norm='ortho'`면 `orthogonalize`가 True가 되어 변환이 길이를 지켜요. 원소 제곱의 합이 변환 앞뒤로 같아요.
+
+```python
+>>> c2 = sd.fft.dctn(x, norm='ortho')
+>>> float(sd.sum(x * x)), float(sd.sum(c2 * c2))
+(91.0, 91.00000000000001)
+```
+
+`type`은 모든 축에 똑같이 적용돼요. 형마다의 정의와 쓰임은 [`dct`](/api/fft/dct/)에 있어요. 축마다 다른 형을 쓰려면 `dct`를 축마다 따로 불러요.
+
+```python
+>>> sd.fft.dctn(x, type=1)
+array([[ 28.0,  -4.0,   0.0],
+       [-12.0,   0.0,   0.0]], dtype=float64)
+```
+
+## 경계의 값
+
+- 변환하는 축의 길이가 0이면 `ValueError`예요. 변환하지 않는 축의 길이가 0이면 빈 결과예요.
+- 길이 1인 축은 형 2에서 값을 2배 해요. 형 1은 길이 1인 축을 받지 않아요.
+- NaN·inf는 그 원소와 같은 줄을 지나 변환하는 축들을 따라 퍼져요. 모든 축을 변환하면 배열 전체로 퍼져요. 어느 칸이 NaN이고 어느 칸이 inf인지는 약속하지 않아요.
+- complex128 입력은 실수부와 허수부를 따로 변환해요.
+
+```python
+>>> sd.fft.dctn(sd.zeros((0, 3)), axes=1).shape
+(0, 3)
+>>> sd.fft.dctn(sd.zeros((0, 3)))
+Traceback (most recent call last):
+    ...
+ValueError: dctn(): cannot transform an axis of length 0
+>>> sd.fft.dctn(sd.asarray([[1.0, sd.nan], [3.0, 4.0]]))
+array([[nan, nan],
+       [nan, nan]], dtype=float64)
+>>> sd.fft.dctn(sd.asarray([[1.0, sd.nan], [3.0, 4.0]]), axes=1)
+array([[               nan,                nan],
+       [              14.0, -1.414213562373095]], dtype=float64)
+```
+
+## 에러
+
+```python
+>>> sd.fft.dctn(x, axes=(0, 0))
+Traceback (most recent call last):
+    ...
+ValueError: dctn(): repeated axis
+>>> sd.fft.dctn(x, axes=())
+Traceback (most recent call last):
+    ...
+ValueError: dctn(): 'axes' must not be empty
+>>> sd.fft.dctn(x, axes=2)
+Traceback (most recent call last):
+    ...
+ValueError: dctn(): axis 2 is out of bounds for an array of dimension 2
+>>> sd.fft.dctn(x, s=(1, 2, 3))
+Traceback (most recent call last):
+    ...
+ValueError: dctn(): 's' has 3 entries for an array of dimension 2
+>>> sd.fft.dctn(x, s=(2, 2), axes=(0,))
+Traceback (most recent call last):
+    ...
+ValueError: dctn(): 's' and 'axes' must have the same length, not 2 and 1
+>>> sd.fft.dctn(x, s=(0, 2))
+Traceback (most recent call last):
+    ...
+ValueError: dctn(): the entries of 's' must be at least 1 (or -1), not 0
+>>> sd.fft.dctn(x, s=(None, 2))
+Traceback (most recent call last):
+    ...
+TypeError: dctn(): 's' must be an int or a tuple or list of ints, not NoneType
+>>> sd.fft.dctn(x, type=1, s=(1, 3))
+Traceback (most recent call last):
+    ...
+ValueError: dctn(): type=1 needs at least 2 points, not 1
+```
+
+## 정확도와 결정성
+
+한 축의 변환이 지키는 약속은 [`dct`](/api/fft/dct/)에 있어요. 여러 축의 변환은 축마다의 한계를 더한 한계를 지켜요. 결과 전체의 오차가 결과 전체의 크기에 견주어 작다는 약속이고, 칸 하나하나의 상대오차는 약속하지 않아요.
+
+같은 입력이면 스레드 수, 메모리 배치와 상관없이 같은 비트의 결과가 나와요. 축을 도는 순서가 `axes`의 뒤에서 앞으로 정해져 있고, 한 줄의 변환이 그 줄의 값으로만 정해지기 때문이에요.
+
+## numpy·scipy를 아는 분께
+
+- 정의와 인자 이름은 `scipy.fft.dctn`·`idctn`과 같아요. numpy에는 없어요.
+- 옵션은 키워드로만 받고, 입력은 `sd.ndarray`만 받아요. `workers`, `overwrite_x`가 없어요.
+- `s`에 int 하나를 줄 수 있고(`axes`와 같은 꼴), `s`의 원소 None은 `TypeError`예요.
+- 범위 밖의 축은 `ValueError`예요(scipy는 `IndexError`). 빈 `axes`도 `ValueError`예요.
+- 정규화 인자 하나를 모든 축의 변환이 끝난 뒤에 곱해요. scipy와 값은 같고 끝자리가 다를 수 있어요.
+- 형 1에 길이 1인 축을 주면 `ValueError`예요.

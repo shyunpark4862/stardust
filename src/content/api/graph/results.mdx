@@ -1,0 +1,295 @@
+---
+kind: concept
+title: 결과 객체 읽기
+group: 기본 개념
+order: 2
+summary: sd.graph의 함수가 배열 여러 개를 함께 돌려줄 때 쓰는 결과 객체를 읽는 법을 설명해요. 이름 붙은 튜플 여덟(ShortestPathResult, MinOnlyResult, YenResult, TraversalResult, ConnectedComponentsResult, AssignmentResult, LaplacianResult, BiconnectedComponentsResult)과 클래스 MaximumFlowResult의 필드, 튜플로 풀기, 쓰기 금지 규칙, −9999와 −1 같은 표식, 개수가 Python int인 까닭을 다뤄요.
+seeAlso: [basics, connected_components, breadth_first_order, shortest_path, dijkstra, yen, maximum_flow, laplacian]
+---
+import Callout from '../../../components/Callout.astro';
+
+## 한눈에 보기
+
+그래프 함수의 결과는 대부분 배열 하나예요. 거리, 순서, 순열, 트리가 그래요. 배열을 둘 이상 함께 돌려줄 때만 결과 객체를 써요. 최단 거리와 그 경로를 그리는 선행 노드, 연결 요소의 수와 노드마다의 번호처럼 함께 읽어야 뜻이 있는 묶음이에요.
+
+| 결과 | 필드 | 돌려주는 곳 |
+|---|---|---|
+| `ConnectedComponentsResult` | `n_components`, `labels` | [`connected_components`](/api/graph/connected_components/) |
+| `TraversalResult` | `node_array`, `predecessors` | [`breadth_first_order`](/api/graph/breadth_first_order/), [`depth_first_order`](/api/graph/depth_first_order/) |
+| `ShortestPathResult` | `dist_matrix`, `predecessors` | [`shortest_path`](/api/graph/shortest_path/), [`dijkstra`](/api/graph/dijkstra/), [`bellman_ford`](/api/graph/bellman_ford/), [`johnson`](/api/graph/johnson/), [`floyd_warshall`](/api/graph/floyd_warshall/)(`return_predecessors=True`) |
+| `MinOnlyResult` | `dist_matrix`, `predecessors`, `sources` | `dijkstra(min_only=True, return_predecessors=True)` |
+| `YenResult` | `dist_array`, `predecessors` | [`yen`](/api/graph/yen/)(`return_predecessors=True`) |
+| `AssignmentResult` | `row_ind`, `col_ind` | [`linear_sum_assignment`](/api/graph/linear_sum_assignment/), [`min_weight_full_bipartite_matching`](/api/graph/min_weight_full_bipartite_matching/) |
+| `LaplacianResult` | `laplacian`, `diag` | [`laplacian`](/api/graph/laplacian/)(`return_diag=True`) |
+| `BiconnectedComponentsResult` | `n_components`, `edges`, `labels` | [`biconnected_components`](/api/graph/articulation_points/) |
+| `MaximumFlowResult` | `flow_value`, `flow` | [`maximum_flow`](/api/graph/maximum_flow/) |
+
+이 페이지의 예제는 모두 아래 그래프를 써요. [그래프 영역의 기본](/api/graph/basics/)의 첫 예와 같은 다섯 노드의 무향 그래프예요.
+
+```python
+>>> import stardust as sd
+>>> G = sd.asarray([[0, 2, 0, 6, 0],
+...                 [2, 0, 3, 8, 5],
+...                 [0, 3, 0, 0, 7],
+...                 [6, 8, 0, 0, 9],
+...                 [0, 5, 7, 9, 0]])
+>>> sd.graph.shortest_path(G, indices=0, return_predecessors=True)
+ShortestPathResult(dist_matrix=array([0.0, 2.0, 5.0, 6.0, 7.0], dtype=float64), predecessors=array([-9999,     0,     1,     0,     1], dtype=int64))
+```
+
+## 이름 붙은 튜플
+
+`MaximumFlowResult`를 뺀 여덟은 이름 붙은 튜플(namedtuple)이에요. 필드를 이름으로 읽어도 되고, 보통의 튜플처럼 변수 여럿으로 풀어도 돼요.
+
+```python
+>>> r = sd.graph.shortest_path(G, indices=0, return_predecessors=True)
+>>> r.dist_matrix
+array([0.0, 2.0, 5.0, 6.0, 7.0], dtype=float64)
+>>> d, p = r
+>>> p
+array([-9999,     0,     1,     0,     1], dtype=int64)
+>>> r[1] is r.predecessors
+True
+>>> r._fields
+('dist_matrix', 'predecessors')
+```
+
+푸는 순서는 표에 적은 필드의 순서예요. 거리 다음에 선행 노드, 개수 다음에 레이블이에요.
+
+결과 객체의 클래스는 `sd.graph`에서 꺼내 쓰는 이름이 아니에요. 결과를 만드는 것은 함수뿐이고, 사용자 코드는 필드를 읽기만 하면 돼요.
+
+```python
+>>> hasattr(sd.graph, "ShortestPathResult")
+False
+```
+
+### 결과의 배열은 쓰기 금지
+
+결과 객체에 담긴 배열은 읽기 전용이에요. 값을 바꾸려고 하면 `ValueError`예요. 함수가 돌려준 결과를 나중에 다른 곳에서 읽을 때 누군가 고쳐 놓았을까 걱정하지 않아도 되게 하려는 것이에요.
+
+```python
+>>> r.predecessors[0] = 3
+Traceback (most recent call last):
+    ...
+ValueError: assignment destination is read-only
+```
+
+고쳐 쓰고 싶으면 `copy()`로 복사해요.
+
+```python
+>>> c = r.predecessors.copy()
+>>> c[0] = 0
+>>> c
+array([0, 0, 1, 0, 1], dtype=int64)
+```
+
+결과 객체가 아닌 결과(거리 배열 하나, 순서, 순열, 트리, 라플라시안)는 보통의 새 배열이라 바로 고쳐 써도 돼요.
+
+```python
+>>> x = sd.graph.dijkstra(G, indices=0)
+>>> x[0] = 5.0
+>>> x
+array([5.0, 2.0, 5.0, 6.0, 7.0], dtype=float64)
+```
+
+### 개수는 Python int
+
+`n_components` 같은 개수는 배열이 아니라 Python `int`예요. `range`, 리스트 만들기, 서식 문자열에 그대로 써요.
+
+```python
+>>> cc = sd.graph.connected_components(G)
+>>> cc
+ConnectedComponentsResult(n_components=1, labels=array([0, 0, 0, 0, 0], dtype=int64))
+>>> cc.n_components, type(cc.n_components)
+(1, <class 'int'>)
+```
+
+## 필드마다
+
+### ConnectedComponentsResult
+
+| 필드 | 꼴 | 뜻 |
+|---|---|---|
+| `n_components` | Python `int` | 연결 요소의 수 |
+| `labels` | int64 $(n,)$ | 노드마다의 요소 번호. 요소 안의 가장 작은 노드의 차례로 0부터 매겨요 |
+
+`return_labels=False`면 결과 객체 없이 `n_components`만 돌려줘요.
+
+### TraversalResult
+
+| 필드 | 꼴 | 뜻 |
+|---|---|---|
+| `node_array` | int64 | 시작 노드에서 닿은 노드를 찾은 차례대로. 길이는 닿은 노드의 수예요 |
+| `predecessors` | int64 $(n,)$ | 노드마다 순회 트리의 부모. 시작 노드와 닿지 않은 노드는 −9999 |
+
+```python
+>>> sd.graph.breadth_first_order(G, 0)
+TraversalResult(node_array=array([0, 1, 3, 2, 4], dtype=int64), predecessors=array([-9999,     0,     1,     0,     1], dtype=int64))
+```
+
+`return_predecessors=False`면 `node_array`만 돌려줘요.
+
+### ShortestPathResult
+
+| 필드 | 꼴 | 뜻 |
+|---|---|---|
+| `dist_matrix` | float64, 원점의 꼴에 따라 $(n,)$, $(k, n)$, $(n, n)$ | 최단 거리. 닿지 못하면 inf |
+| `predecessors` | int64, `dist_matrix`와 같은 모양 | 최단 경로에서 그 노드 바로 앞의 노드. 원점과 닿지 못한 노드는 −9999 |
+
+선행 노드를 도착점에서 원점까지 거꾸로 따라가면 최단 경로가 나와요. 노드 4까지의 경로를 꺼내 볼게요.
+
+```python
+>>> path = [4]
+>>> while r.predecessors[path[-1]] != -9999:
+...     path.append(int(r.predecessors[path[-1]]))
+>>> path[::-1]
+[0, 1, 4]
+```
+
+경로가 0 → 1 → 4이고 거리는 $2 + 5 = 7$이에요. 여러 노드의 경로를 한 번에 트리로 받으려면 [`reconstruct_path`](/api/graph/reconstruct_path/)를 써요.
+
+### MinOnlyResult
+
+`dijkstra(min_only=True)`는 원점 여럿을 한 덩어리로 보고 노드마다 "가장 가까운 원점까지의 거리" 하나를 구해요. `return_predecessors=True`면 어느 원점에서 온 거리인지를 `sources`로 함께 줘요.
+
+| 필드 | 꼴 | 뜻 |
+|---|---|---|
+| `dist_matrix` | float64 $(n,)$ | 가장 가까운 원점까지의 거리 |
+| `predecessors` | int64 $(n,)$ | 그 경로의 선행 노드. 원점과 닿지 못한 노드는 −9999 |
+| `sources` | int64 $(n,)$ | 선행 노드 사슬이 끝나는 원점. 닿지 못하면 −9999 |
+
+```python
+>>> sd.graph.dijkstra(G, indices=[0, 4], min_only=True, return_predecessors=True)
+MinOnlyResult(dist_matrix=array([0.0, 2.0, 5.0, 6.0, 0.0], dtype=float64), predecessors=array([-9999,     0,     1,     0, -9999], dtype=int64), sources=array([0, 0, 0, 0, 4], dtype=int64))
+```
+
+노드 2는 원점 0까지 5, 원점 4까지 7이라 `sources`가 0이에요.
+
+### YenResult
+
+`yen`은 두 노드 사이의 짧은 경로를 차례로 여러 개 찾아요. 경로마다 거리와 선행 노드 한 줄이에요.
+
+| 필드 | 꼴 | 뜻 |
+|---|---|---|
+| `dist_array` | float64 $(M,)$ | 찾은 경로의 길이. 짧은 순서이고 $M \le K$ |
+| `predecessors` | int64 $(M, n)$ | 행마다 그 경로 하나의 선행 노드. 그 경로에 없는 노드는 −9999 |
+
+```python
+>>> sd.graph.yen(G, 0, 4, 3, return_predecessors=True)
+YenResult(dist_array=array([ 7.0, 12.0, 15.0], dtype=float64), predecessors=array([[-9999,     0, -9999, -9999,     1],
+       [-9999,     0,     1, -9999,     2],
+       [-9999, -9999, -9999,     0,     3]], dtype=int64))
+```
+
+### AssignmentResult
+
+| 필드 | 꼴 | 뜻 |
+|---|---|---|
+| `row_ind` | int64 | 짝을 지은 행. 오름차순이에요 |
+| `col_ind` | int64 | 같은 자리 행의 짝인 열 |
+
+```python
+>>> cost = sd.asarray([[4, 1, 3], [2, 0, 5], [3, 2, 2]])
+>>> a = sd.graph.linear_sum_assignment(cost)
+>>> a
+AssignmentResult(row_ind=array([0, 1, 2], dtype=int64), col_ind=array([1, 0, 2], dtype=int64))
+>>> int(cost[a.row_ind, a.col_ind].sum())
+5
+```
+
+`cost[row_ind, col_ind]`로 고른 비용을 바로 꺼낼 수 있어요.
+
+### LaplacianResult
+
+| 필드 | 꼴 | 뜻 |
+|---|---|---|
+| `laplacian` | 입력의 꼴(밀집이면 `sd.ndarray`, 희소면 `csr_array`, `form='lo'`면 `LinearOperator`) | 라플라시안 행렬 |
+| `diag` | $(n,)$ | 노드마다의 차수. `normed=True`면 차수의 제곱근(차수 0은 1) |
+
+```python
+>>> sd.graph.laplacian(G, return_diag=True)
+LaplacianResult(laplacian=array([[ 8, -2,  0, -6,  0],
+       [-2, 18, -3, -8, -5],
+       [ 0, -3, 10,  0, -7],
+       [-6, -8,  0, 23, -9],
+       [ 0, -5, -7, -9, 21]], dtype=int64), diag=array([ 8, 18, 10, 23, 21], dtype=int64))
+```
+
+### BiconnectedComponentsResult
+
+| 필드 | 꼴 | 뜻 |
+|---|---|---|
+| `n_components` | Python `int` | 이중 연결 요소의 수 |
+| `edges` | int64 $(m, 2)$ | 그래프의 모든 변. 행 $(i, j)$는 $i \lt j$이고 사전 순서예요 |
+| `labels` | int64 $(m,)$ | 변마다의 요소 번호 |
+
+```python
+>>> sd.graph.biconnected_components(G)
+BiconnectedComponentsResult(n_components=1, edges=array([[0, 1],
+       [0, 3],
+       [1, 2],
+       [1, 3],
+       [1, 4],
+       [2, 4],
+       [3, 4]], dtype=int64), labels=array([0, 0, 0, 0, 0, 0, 0], dtype=int64))
+```
+
+이 그래프는 어느 노드 하나를 지워도 끊어지지 않아서 모든 변이 한 요소예요.
+
+## MaximumFlowResult
+
+`maximum_flow`의 결과는 튜플이 아니라 클래스예요. 흐름 값 하나와 흐름 행렬을 담아요.
+
+| 속성 | 꼴 | 뜻 |
+|---|---|---|
+| `flow_value` | Python `int` | 원점에서 싱크로 보낸 흐름의 크기 |
+| `flow` | `csr_array` int64 $(n, n)$ | 변마다의 흐름. 반대 방향에는 음수로 적혀요 $(f_{ij} = -f_{ji})$ |
+
+```python
+>>> f = sd.graph.maximum_flow(G, 0, 4)
+>>> f
+MaximumFlowResult(flow_value=8, flow=<csr_array (5, 5), nnz 14>)
+>>> f.flow_value
+8
+>>> f.flow.toarray()
+array([[ 0,  2,  0,  6,  0],
+       [-2,  0,  0,  0,  2],
+       [ 0,  0,  0,  0,  0],
+       [-6,  0,  0,  0,  6],
+       [ 0, -2,  0, -6,  0]], dtype=int64)
+```
+
+`repr`는 흐름 행렬을 펼치지 않고 모양과 저장된 원소의 수만 한 줄로 보여 줘요. 큰 망에서도 화면을 채우지 않게 하려는 것이에요.
+
+`flow`는 읽을 때마다 **새** 희소 배열을 만들어 줘요. 희소 배열의 값은 고칠 수 있어서, 한 번 읽어 고친 것이 다음에 읽는 흐름을 바꾸지 않게 하려는 것이에요. 여러 번 쓸 거면 한 번 받아 변수에 두세요.
+
+```python
+>>> f.flow is f.flow
+False
+```
+
+튜플이 아니라서 `a, b = f`처럼 풀 수 없어요. scipy의 `maximum_flow` 결과도 같은 꼴의 클래스예요.
+
+## 표식 값
+
+결과 배열에서 "해당 없음"을 적는 값이 정해져 있어요.
+
+| 값 | 어디서 | 뜻 |
+|---|---|---|
+| −9999 | 선행 노드(`predecessors`), `MinOnlyResult.sources` | 원점이거나 원점에서 닿지 못한 노드 |
+| −1 | [`maximum_bipartite_matching`](/api/graph/maximum_bipartite_matching/)의 결과 | 짝이 없는 행이나 열 |
+| inf | 거리(`dist_matrix`, `dist_array`) | 닿지 못한 노드 |
+
+<Callout type="note" title="−9999를 노드 번호로 쓰지 마세요">
+
+−9999는 int64 배열 안의 보통 정수라서, 그대로 색인에 쓰면 에러 없이 끝에서 9999번째 원소를 가리키거나 범위 밖 에러가 나요. 선행 노드를 따라갈 때는 위의 경로 꺼내기처럼 −9999를 만나면 멈춰요.
+
+</Callout>
+
+## scipy·networkx를 아는 분께
+
+- scipy가 튜플을 돌려주는 곳은 같은 순서의 이름 붙은 튜플이에요. `d, p = dijkstra(G, return_predecessors=True)`, `n, labels = connected_components(G)`, `row_ind, col_ind = linear_sum_assignment(C)`처럼 scipy와 똑같이 풀려요.
+- 색인 배열(선행 노드, 레이블, 순서, `col_ind`, 흐름)은 모두 int64예요. scipy는 선행 노드와 레이블, 순서를 int32로 줘요.
+- 개수(`n_components`)는 Python `int`예요. scipy의 `structural_rank`는 numpy 정수를 줘요.
+- 결과 객체의 배열은 쓰기 금지예요. scipy의 결과는 쓸 수 있어요.
+- `MaximumFlowResult`는 scipy처럼 클래스이고 `flow_value`와 `flow`를 가져요. `flow`는 int64예요(scipy는 int32).

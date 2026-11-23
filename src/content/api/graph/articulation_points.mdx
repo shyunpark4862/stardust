@@ -1,0 +1,193 @@
+---
+kind: function
+title: 단절점, 다리, 이중 연결 요소
+names: [articulation_points, bridges, biconnected_components]
+group: 구조와 중심성
+order: 1
+signatures:
+  - "sd.graph.articulation_points(csgraph, /)"
+  - "sd.graph.bridges(csgraph, /)"
+  - "sd.graph.biconnected_components(csgraph, /)"
+summary: 하나가 끊기면 그래프가 갈라지는 노드(단절점)와 변(다리)을 찾고, 변을 노드 하나가 끊겨도 이어져 있는 덩어리(이중 연결 요소)로 나눠요. 그래프를 언제나 무향으로 읽어요.
+params:
+  - name: csgraph
+    type: sd.sparse 배열, ndarray, numpy 배열, 또는 수의 중첩 시퀀스
+    kind: positional-only
+    desc: (n, n) 인접 행렬. G[i, j]나 G[j, i]에 원소가 있으면 i와 j가 이어져 있어요. 희소 배열은 저장된 원소가 변이고(저장된 0도), 밀집 배열은 0도 NaN도 ±inf도 아닌 원소가 변이에요. 값의 크기와 방향은 읽지 않고, 대각 원소(자기 고리)도 읽지 않아요.
+returns:
+  type: ndarray 또는 BiconnectedComponentsResult
+  desc: "articulation_points는 단절점의 int64 배열(오름차순). bridges는 다리의 (k, 2) int64 배열로, 행마다 (i, j)이고 i < j이며 행은 사전 순서예요. biconnected_components는 BiconnectedComponentsResult(n_components, edges, labels)예요. edges는 모든 변을 bridges와 같은 꼴로, labels는 변마다의 요소 번호를 담아요."
+raises:
+  - type: TypeError
+    desc: csgraph가 sd.sparse 배열이나 밀집 행렬이 아닐 때(scipy의 희소 객체, DataFrame), 복소수일 때.
+  - type: ValueError
+    desc: csgraph가 2차원 정방 행렬이 아닐 때.
+seeAlso: [connected_components, core_number, results, basics, minimum_spanning_tree]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import PlaneFig from '../../../components/fig/PlaneFig.astro';
+
+export const apPts = [[0, 2], [0, 0], [1.5, 1], [3, 1], [4.5, 1], [6, 2], [6, 0], [7.5, 0]];
+export const apEdges = [[0, 2, 0, 0], [0, 2, 1.5, 1], [0, 0, 1.5, 1], [4.5, 1, 6, 2], [4.5, 1, 6, 0], [6, 2, 6, 0]];
+export const apBridges = [[1.5, 1, 3, 1], [3, 1, 4.5, 1], [6, 0, 7.5, 0]];
+export const apCut = [[1.5, 1], [3, 1], [4.5, 1], [6, 0]];
+
+## 무엇을 계산하나요
+
+컴퓨터 여덟 대가 선으로 이어진 망이 있어요. 어떤 컴퓨터가 꺼지거나 어떤 선이 끊어지면 망이 둘로 갈라질까요? 그런 곳이 망의 약한 고리이고, 예비 선을 놓아야 할 곳이에요.
+
+- **단절점**(articulation point)은 지우면 그래프의 연결 요소가 늘어나는 노드예요. 그 노드를 거치지 않고는 오갈 수 없는 노드 쌍이 있어요.
+- **다리**(bridge)는 지우면 연결 요소가 늘어나는 변이에요. 다리는 어떤 순환에도 들어 있지 않아요. 순환에 든 변은 끊어져도 순환의 나머지로 돌아갈 수 있어요.
+- **이중 연결 요소**(biconnected component)는 노드 하나가 빠져도 이어져 있는 가장 큰 덩어리예요. 변을 이 덩어리로 나누면 단절점이 덩어리들을 잇는 마디가 돼요.
+
+```python
+>>> import stardust as sd
+>>> links = [(0, 1), (1, 2), (0, 2), (2, 3), (3, 4),
+...          (4, 5), (5, 6), (4, 6), (6, 7)]
+>>> G = sd.zeros((8, 8))
+>>> for i, j in links:
+...     G[i, j] = 1
+>>> sd.graph.articulation_points(G)
+array([2, 3, 4, 6], dtype=int64)
+>>> sd.graph.bridges(G)
+array([[2, 3],
+       [3, 4],
+       [6, 7]], dtype=int64)
+```
+
+컴퓨터 2, 3, 4, 6 가운데 하나가 꺼지면 망이 갈라지고, 선 2–3, 3–4, 6–7 가운데 하나가 끊어져도 갈라져요. 삼각형 0–1–2와 4–5–6의 선은 하나가 끊어져도 삼각형의 다른 두 선으로 돌아갈 수 있어서 다리가 아니에요.
+
+<Fig caption="여덟 노드의 망. 파란 네모가 단절점이고 굵은 파란 선이 다리예요. 삼각형 두 개는 노드 하나나 변 하나가 빠져도 이어져 있어요. 다리는 저마다 혼자서 이중 연결 요소 하나예요.">
+  <PlaneFig
+    label="삼각형 두 개를 경로로 잇고 끝에 노드 하나를 단 그래프에서 단절점과 다리를 표시한 그림"
+    domain={[-0.7, 8.2]}
+    range={[-0.6, 2.6]}
+    width={560}
+    layers={[
+      { kind: 'segments', segs: apEdges, tone: 'base', width: 1.4 },
+      { kind: 'segments', segs: apBridges, tone: 'main', width: 2.6 },
+      { kind: 'points', pts: apPts, tone: 'ink', size: 4.2, labels: ['0', '1', '2', '3', '4', '5', '6', '7'] },
+      { kind: 'points', pts: apCut, tone: 'main', shape: 'square', size: 6 },
+    ]}
+    legend={[
+      { label: '단절점', tone: 'main', shape: 'square' },
+      { label: '다리', tone: 'main', shape: 'line' },
+      { label: '다른 변', tone: 'base', shape: 'line' },
+    ]}
+  />
+</Fig>
+
+<Reference />
+
+## 이중 연결 요소
+
+`biconnected_components`는 모든 변을 이중 연결 요소로 나눠요. 결과는 세 필드를 가진 이름 있는 튜플이에요.
+
+| 필드 | 뜻 |
+|---|---|
+| `n_components` | 요소의 수(Python `int`) |
+| `edges` | 모든 변. (변 수, 2) int64 배열이고 행마다 (i, j), i < j, 사전 순서 |
+| `labels` | 변마다의 요소 번호. `edges`의 행과 같은 차례 |
+
+```python
+>>> bc = sd.graph.biconnected_components(G)
+>>> bc.n_components
+5
+>>> bc.edges
+array([[0, 1],
+       [0, 2],
+       [1, 2],
+       [2, 3],
+       [3, 4],
+       [4, 5],
+       [4, 6],
+       [5, 6],
+       [6, 7]], dtype=int64)
+>>> bc.labels
+array([0, 0, 0, 1, 2, 3, 3, 3, 4], dtype=int64)
+```
+
+요소의 번호는 요소에 든 가장 작은 변의 차례로 매겨요. 변 (0, 1)이 든 요소가 0번, 그다음 처음 나오는 요소가 1번이에요. 그래서 같은 그래프면 번호가 언제나 같아요.
+
+한 요소의 변과 노드는 `labels`로 골라 내요.
+
+```python
+>>> for c in range(bc.n_components):
+...     part = bc.edges[bc.labels == c]
+...     nodes = sorted(set(sum(part.tolist(), [])))
+...     print(c, nodes, part.tolist())
+0 [0, 1, 2] [[0, 1], [0, 2], [1, 2]]
+1 [2, 3] [[2, 3]]
+2 [3, 4] [[3, 4]]
+3 [4, 5, 6] [[4, 5], [4, 6], [5, 6]]
+4 [6, 7] [[6, 7]]
+```
+
+요소 1, 2, 4는 변이 하나뿐인 요소이고, 그 변이 곧 다리예요. 두 요소에 함께 든 노드(2, 3, 4, 6)가 단절점이에요. 변이 둘 이상인 이중 연결 요소에서는 어느 두 노드 사이에도 노드를 함께 쓰지 않는 길이 둘 이상 있어요.
+
+## 방향은 보지 않아요
+
+세 함수 모두 그래프를 언제나 무향으로 읽어요. `G[i, j]`와 `G[j, i]` 가운데 하나라도 있으면 $i$와 $j$가 이어져 있어요. 위 예제처럼 위 삼각에만 적어도 되고, 유향 그래프를 주면 방향을 지운 그래프의 답이 나와요.
+
+```python
+>>> bool((sd.graph.bridges(G) == sd.graph.bridges(G.T)).all())
+True
+>>> sd.graph.articulation_points(G + G.T)
+array([2, 3, 4, 6], dtype=int64)
+```
+
+값의 크기도 읽지 않아요. 희소 배열에서는 저장된 원소가 모두 변이라, 0이나 NaN으로 저장된 원소도 변이에요. 대각 원소(자기 고리)는 연결에 보탬이 되지 않으니 읽지 않아요.
+
+## 이어지지 않은 그래프
+
+그래프가 여러 덩어리여도 받아요. 덩어리마다 따로 찾은 답을 모아 돌려줘요. 단절점은 "그 노드가 든 덩어리를 갈라지게 하는 노드"이고, 이미 떨어져 있는 덩어리는 상관이 없어요.
+
+```python
+>>> two = sd.zeros((6, 6))
+>>> two[0, 1] = two[1, 2] = 1          # 경로 0–1–2
+>>> two[3, 4] = two[4, 5] = two[3, 5] = 1   # 삼각형 3–4–5
+>>> sd.graph.articulation_points(two)
+array([1], dtype=int64)
+>>> sd.graph.bridges(two)
+array([[0, 1],
+       [1, 2]], dtype=int64)
+>>> sd.graph.biconnected_components(two).labels
+array([0, 1, 2, 2, 2], dtype=int64)
+```
+
+## 경계의 값
+
+| 입력 | 결과 |
+|---|---|
+| 노드가 없는 (0, 0) 행렬 | 빈 배열, `bridges`는 (0, 2) 배열 |
+| 변이 없는 그래프 | 단절점도 다리도 없고, 요소도 0개 |
+| 변 하나 | 다리 하나, 요소 하나, 단절점은 없어요 |
+| 자기 고리만 있는 노드 | 변이 없는 노드와 같아요 |
+
+```python
+>>> sd.graph.bridges(sd.zeros((0, 0)))
+array([], shape=(0, 2), dtype=int64)
+>>> sd.graph.biconnected_components(sd.zeros((3, 3)))
+BiconnectedComponentsResult(n_components=0, edges=array([], shape=(0, 2), dtype=int64), labels=array([], dtype=int64))
+>>> one = sd.asarray([[0, 1], [0, 0]])
+>>> sd.graph.articulation_points(one), sd.graph.bridges(one)
+(array([], dtype=int64), array([[0, 1]], dtype=int64))
+>>> sd.graph.bridges(sd.ones((2, 3)))
+Traceback (most recent call last):
+    ...
+ValueError: bridges(): 'csgraph' must be a square matrix, not of shape (2, 3)
+```
+
+<Callout type="note" title="답은 하나예요">
+
+단절점의 집합, 다리의 집합, 변을 이중 연결 요소로 나누는 법은 그래프가 정하는 하나의 답이에요. 결과는 그 답을 오름차순과 사전 순서로 늘어놓은 것이라 노드를 훑는 차례나 스레드 수와 상관없이 같아요. 근사가 없는 정확한 답이에요.
+
+</Callout>
+
+## scipy·networkx를 아는 분께
+
+- scipy에는 없는 함수예요. 이름과 뜻은 networkx의 `articulation_points`, `bridges`, `biconnected_components`를 따랐어요.
+- networkx의 세 함수는 차례가 정해지지 않은 생성기를 돌려줘요. 여기서는 정렬된 배열을 돌려줘요.
+- networkx의 `biconnected_components`는 요소마다 노드의 집합을 돌려줘요. 여기서는 변을 나눈 레이블을 돌려줘요. 노드의 집합은 `edges[labels == c]`에 나오는 노드예요. 노드 하나가 여러 요소에 들 수 있지만 변은 꼭 한 요소에 들어서, 변으로 나누면 겹침이 없어요. networkx의 `biconnected_component_edges`에 가까워요.
+- networkx는 무향 그래프만 받고 유향 그래프는 에러예요. 여기서는 유향 그래프도 방향을 지우고 읽어요.

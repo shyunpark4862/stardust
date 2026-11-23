@@ -1,0 +1,243 @@
+---
+title: 정확도와 성능
+group: 정확도와 성능
+order: 1
+summary: sd.interpolate가 맞게 계산하는지를 식으로 만든 시험 자료, 정확한 유리수와 Arb로 만든 참값, 만들기와 평가의 두 겹으로 적은 계약으로 확인하는 방법을 모았어요. 보간 방법마다의 계약과 잰 값, 정확도 표의 비교 패키지 열을 읽는 법, 계약 없이 성질로 시험하는 것, 그리고 어디가 빠르고 어디가 느린지를 적었어요.
+seeAlso: [overview, linear, cubic, banded, bspline, barycentric, aaa, grid, rbf]
+---
+import AccuracySummary from '../../../components/fig/AccuracySummary.astro';
+
+## 한눈에 보기
+
+보간 영역의 결과는 네 가지로 확인해요.
+
+1. **계수는 계약 안.** 자료에서 만든 계수(3차 계열의 기울기, B-스플라인 계수, 무게중심 무게, 차분표)를 같은 자료의 정확한 해와 견줘요. 정확한 해는 유리수 풀이를 올바르게 반올림한 값이에요.
+2. **평가는 계약 안.** 계산한 계수가 나타내는 함수를 그 계수 그대로 정확히 평가한 값과 견줘요. 계수의 오차와 평가의 오차를 따로 재려는 것이에요.
+3. **정확한 성질은 정확히.** 노드에서 자료 그대로, 선형 보간의 단조와 범위, PCHIP의 단조, 같은 비트여야 하는 길들은 한계가 아니라 등호로 시험해요.
+4. **반올림이 아닌 동작은 scipy·numpy와 같게.** 결과의 모양과 형, 구간의 포함 여부, 바깥의 규칙, 기본값을 scipy 1.18.1과 numpy 2.5.4의 기록, 그리고 그 자리에서 부른 scipy·numpy와 견줘요. 다르게 정한 곳은 함수 페이지의 끝 절에 모여 있어요.
+
+오차는 모두 계약 단위(오차를 한계로 나눈 값)로 적어요. 1 이하면 계약 안이에요. 정확도 기준선은 스윕 8개, (스윕, 영역) 60줄, 점 42,642개이고, 수로 된 계약이 있는 57줄이 모두 계약 안이에요. 가장 큰 값은 선형 커널의 0.5예요.
+
+이 글에서 $u = 2^{-53}$은 단위 반올림, $\gamma_k = ku/(1 - ku)$, $\eta = 2^{-1075}$는 가장 작은 비정상 수의 반이에요.
+
+## 두 겹의 계약
+
+보간은 두 단계예요. 자료 $(x_i, y_i)$에서 계수를 만들고, 그 계수로 점 $x$의 값을 계산해요. 오차도 두 곳에서 생기고 성격이 달라요.
+
+- **만들기의 오차**는 풀어야 하는 계의 조건에 달려 있어요. 간격이 $10^{10}$배 다른 노드의 not-a-knot 스플라인은 계가 나쁜 조건이라, 가장 좋은 풀이로도 기울기의 끝자리가 여러 개 틀려요. 그래서 만들기의 계약은 $\lvert A^{-1}\rvert\lvert A\rvert$ 같은 조건 인자를 담은 꼴이에요.
+- **평가의 오차**는 계수가 정해진 뒤의 덧셈과 곱셈 몇 번이에요. 계수가 조금 틀렸어도 그 계수의 함수는 정확히 정의되어 있으니, 평가는 그 함수에 대해 반올림 몇 번 안이어야 해요.
+
+두 겹을 합친 끝에서 끝의 오차(정확한 자료의 정확한 보간과 견준 것)는 정확도 표에 보이지만 약속은 두 겹 각각이에요. 무게중심 다항식 보간([무게중심 꼴](/internals/interpolate/barycentric/))만은 무게의 반올림까지 넣은 끝에서 끝의 계약이 있어요. 그 한계에 조건 인자(Lebesgue 함수)가 이미 들어 있기 때문이에요.
+
+입력이 float64라 자료는 분모가 2의 거듭제곱인 유리수예요. 그래서 "정확한 해"와 "계수 그대로의 정확한 값"이 유리수 산술로 실제로 구해져요.
+
+## 시험 자료
+
+모든 테스트, 참값 도구, scipy·numpy·R의 기록, 정확도 스윕이 같은 자료 목록(`tests/interpolate/samples.py`)에서 아이디로 자료를 가져와요. 모두 식과 고정한 씨앗으로 만들고 내려받는 것이 없어요.
+
+| 묶음 | 자료 | 무엇을 보려고 |
+|---|---|---|
+| 곡선 25개 | 고른 노드, 무작위 노드, 간격이 $10^{10}$배 다른 노드, 체비쇼프 점, 노드 2·3·4·5개, 단조 자료(0인 걸음 포함), 평평한 구간, 계단, Runge의 진동, $10^{300}$ 둘레의 큰 값과 아주 작은 값, 상쇄($10^{15}$ + 작은 변화), 비정상 수 간격, 주기 자료, 복소수 값, 3열 배치 | 경계 조건의 특수한 경우, 조건이 나쁜 계, 넘침과 언더플로 |
+| 선형 커널의 구간 62개 | 끝점 둘레의 이웃 double, 부호가 다른 끝값, 거의 같은 끝값, $a = b$, $\pm 0$, inf와 NaN 끝값, 폭이 비정상 수이거나 넘치는 구간 | [선형 커널](/internals/interpolate/linear/)의 모든 갈래 |
+| 격자 10개 | 1–4차원, 축마다 1점·2점, 감소하는 격자, NaN 값 | [격자](/internals/interpolate/grid/)의 축 처리 |
+| 흩어진 점 6벌 | 2·3차원 균등, 군집, 같은 점, 직선 위의 점, 거리 동점이 많은 격자 점 | [RBF](/internals/interpolate/rbf/)의 특이한 계와 이웃의 동점 |
+| 조각 다항식 7개 | 접하는 근, 붙은 두 근, 0과 같은 조각, 중단점의 부호 변화 | `roots` |
+| 다항식 보간 6벌, AAA 표본 4벌 | 고른 점과 체비쇼프 점 10개·30개, 가까이 붙은 노드, 도함수가 딸린 Hermite 자료, $\tan$, $\lvert x\rvert$, 복소 원 위의 표본, 유한하지 않은 값이 섞인 표본 | 무게중심 꼴, Krogh, [AAA](/internals/interpolate/aaa/) |
+
+평가점은 노드, 노드 양옆의 double, 구간의 중점, 무작위 점, 양 끝 밖의 점이에요. 참값 파일과 기록 파일은 자료마다 입력의 해시(`digest`)를 적어 두어, 자료를 만드는 식이 달라지면 테스트가 바로 알아요.
+
+## 참값
+
+참값은 python-flint의 정확한 유리수(`fmpq`)와 Arb(구간 산술)로 만들어요(`tools/interpolate_ref.py`).
+
+- **계수.** 스플라인의 기울기와 B-스플라인 계수는 유리수 행렬의 정확한 풀이예요. 풀이의 결과를 double로 올바르게 반올림해 저장해요.
+- **평가.** 다항식 조각과 B-스플라인, 무게중심 꼴은 덧셈·곱셈·나눗셈뿐이라 유리수로 정확히 평가해요. $\log$, $\exp$, $\sqrt{\cdot}$가 드는 RBF의 핵과 복소수의 크기가 드는 AAA는 Arb의 구간으로, 올바른 반올림이 정해질 때까지 정밀도를 올려요.
+- **계약의 오른쪽.** Lebesgue 함수 $\Lambda(x)$, $\sum_j\lvert\ell_j(x)y_j\rvert$, $\lVert A^{-1}\rVert_\infty$ 같은 한계의 재료도 같은 도구가 정확히 구해 둬요.
+
+| 묶음 | 점 | 내용 |
+|---|---:|---|
+| `linear` | 2,954 | 정확한 $a + t(b - a)$ |
+| `slopes` | 577 | `CubicSpline`의 네 경계 조건, PCHIP, Akima·makima의 정확한 기울기 |
+| `bspline` | 627 | $k = 0$–$5$, $k = 3$의 natural·clamped, $k = 3, 5$의 periodic 계수와 곡선마다의 $\lVert A^{-1}\rVert_\infty$ |
+| `curves` | 1,870 | 위 보간들의 정확한 값(끝에서 끝) |
+| `polynomial` | 378 | 보간 다항식과 두 도함수, Krogh의 Hermite 자료, Lebesgue 함수, $\sum\lvert\ell_jy_j\rvert$, Floater–Hormann $d = 3$ |
+| `grid` | 400 | 격자의 `linear`·`cubic`·`quintic`·`pchip` |
+| `rbf` | 83 | 핵 여덟과 `smoothing`·`neighbors` |
+| `roots` | 36 | Arb로 분리한 실근과 중복도 |
+
+여덟 묶음을 합쳐 6,925점이에요. AAA는 참값 파일이 없어요. AAA의 무게는 SVD가 고른 것이라 미리 적어 둘 "정확한 무게"가 없고, 테스트가 계산된 (지지점, 값, 무게)를 받아 그 자리에서 Arb로 평가해요. 같은 스플라인의 두 구성(`CubicSpline`의 기울기 계와 B-스플라인의 배치 행렬)이 참값에서 같은지도 테스트가 봐요.
+
+## 계약
+
+계약은 테스트와 정확도 스윕이 함께 쓰는 한 곳(`tests/interpolate/refdata.py`)에 있어요. 상수의 증명은 방법마다의 글에 있고, 여기에는 꼴과 잰 값을 모아요. 잰 값은 정확도 기준선(`bench/interpolate/accuracy.md`)과 테스트의 것이에요.
+
+### 선형
+
+`sd.interp`, $k = 1$ B-스플라인, 격자 선형의 1차원이 한 커널을 써요. 끝값 $a$, $b$와 정확한 $t$에 대해 $y = (1 - t)a + tb$가 참값이에요.
+
+| 대상 | 계약 | 잰 값 |
+|---|---|---|
+| 구간 안($0 \le t \le 1$) | $\lvert\hat y - y\rvert \le \gamma_6(\lvert a\rvert + \lvert b\rvert) + 3\eta$ | 곡선 0.23, 커널 구간 0.5 |
+| 늘이기 | $\lvert\hat y - y\rvert \le \gamma_{10}\max(1, \lvert t\rvert)(\lvert a\rvert + \lvert b\rvert) + 3\eta$ | $k = 1$ 평가 0.27 |
+| 노드에서 오차 0, 단조인 자료에서 단조, 구간 끝값 사이 | 정확한 성질 | 등호로 시험 |
+
+커널 구간의 0.5는 비정상 수인 끝값에서 나와요. 올바르게 반올림한 결과의 오차 $2^{-1075}$가 그 자리의 한계 $2^{-1073}$의 반이에요. 증명은 [선형 보간](/internals/interpolate/linear/)에 있어요.
+
+### 조각 다항식과 3차 계열
+
+평가는 Horner예요. 조각의 왼쪽 중단점에서 잰 $s = x - x_i$, $\nu$번 미분한 뒤의 차수 $e$, 미분에서 나온 정수 인자 $f_e$에 대해
+
+$$
+\lvert\hat p - p(x)\rvert \le \sum_e \gamma_{2e+2}\, f_e\lvert c_e\rvert\lvert s\rvert^e + 2^{-1074}\sum_e \lvert s\rvert^e
+$$
+
+예요. $p$는 계산한 계수 그대로의 정확한 값이에요. 일곱 방법(`CubicSpline`의 네 경계 조건, PCHIP, akima, makima)의 $\nu = 0$–$3$, 끝 조각을 늘인 바깥까지 넣어 최대 0.49예요.
+
+만들기의 계약은 방법마다 달라요.
+
+| 대상 | 계약 | 잰 값 |
+|---|---|---|
+| `CubicSpline`의 기울기 | 성분마다 $\lvert\hat s - s\rvert \le \gamma_{12}\lvert A^{-1}\rvert(\lvert A\rvert\lvert\hat s\rvert + \lvert b\rvert_a)$, $A$와 $b$는 정확한 자료의 계 | natural 0.084, clamped 0.098, not-a-knot 0.069, periodic 0.053 |
+| `PchipInterpolator`의 기울기 | $\lvert\hat s_i - s_i\rvert \le 40u\cdot\max$(그 식이 읽는 두 차분 몫의 크기) | 0.068 |
+| `Akima1DInterpolator`의 기울기 | 이웃 차분 몫의 차 $\lvert m_2 - m_1\rvert$를 무게의 합으로 나눈 값이 조건수로 드는 한계 | akima 0.29, makima 0.29 |
+| Hermite 계수 $c_2$, $c_3$ | 계산한 기울기의 정확한 계수 대비, $h$의 거듭제곱으로 나눈 $\gamma_7$·$\gamma_8$ 꼴과 비정상 수의 바닥 | 0.27, 0.22 |
+
+natural과 clamped는 계가 대각 우세라 조건 인자 없이 $\lvert\hat s_i - s_i\rvert \le 150u\max_j\lvert D_j\rvert$($D_j$는 차분 몫)도 서요. not-a-knot에는 그런 한계가 없어요. 간격이 $10^{10}$배 다른 노드에서 조건 인자가 $10^9$을 넘기 때문이에요. 계수가 넘쳐 유한하지 않게 되는 자료는 값을 내지 않고 구간을 알려 주는 `ValueError`예요. 증명은 [3차 계열](/internals/interpolate/cubic/)과 [띠 풀이](/internals/interpolate/banded/)에 있어요.
+
+### B-스플라인
+
+| 대상 | 계약 | 잰 값 |
+|---|---|---|
+| 평가(모든 $k$, $\nu = 0, \ldots, k + 1$, 늘이는 바깥 포함) | $\lvert\hat y - \sum_j c_jB_j^{(\nu)}(x)\rvert \le \gamma_{6k+1}\sum_j\lvert c_j\rvert\tilde B_j(x) + (6k + 2)\,2^{-1074}\bigl(1 + \sum_j\lvert c_j\rvert\bigr)$ | $k = 2$–$5$에서 0.2, 0.2, 0.2, 0.17, natural 0.18, clamped 0.22, periodic 0.17과 0.1 |
+| `make_interp_spline`의 계수 | 성분마다 $\lvert\hat c - c\rvert \le 2\gamma_{8k+8}\lvert A^{-1}\rvert\lvert A\rvert\lvert\hat c\rvert$, $A$는 정확한 자료의 배치 행렬 | $k = 2$–$5$에서 0.032, 0.024, 0.021, 0.019, natural 0.021, clamped 0.022, periodic 0.018과 0.0066 |
+
+$\tilde B_j$는 de Boor 재귀의 항을 절댓값으로 바꾼 것이고, 기본 구간의 $\nu = 0$에서는 $B_j$ 자신이에요. $k = 1$, $\nu = 0$의 평가는 선형 계약 그대로예요. 증명은 [B-스플라인](/internals/interpolate/bspline/)에 있어요.
+
+### 다항식과 유리식
+
+$N$은 노드(지지점)의 수이고 언더플로가 없다고 둬요. 증명은 [무게중심 꼴](/internals/interpolate/barycentric/)과 [AAA](/internals/interpolate/aaa/)에 있어요.
+
+| 대상 | 계약 | 잰 값 |
+|---|---|---|
+| `BarycentricInterpolator`(끝에서 끝) | $\lvert\hat p - p\rvert \le \dfrac{\gamma_{3N+1}\sum_j\lvert\ell_j(x)y_j\rvert + \gamma_{3N}\Lambda(x)\lvert p(x)\rvert}{1 - \gamma_{3N-1}\Lambda(x)}$ | 0.064 |
+| 그 도함수 | 노드 값 $D^ky$의 한계를 차수마다 옮기고 평가의 한계를 더한 것 | 1차 0.022, 2차 0.02 |
+| `KroghInterpolator`(끝에서 끝) | 차분표 $\lvert\hat c_k - c_k\rvert \le \gamma_{3k+2}\tilde C_k$를 평가의 걸음으로 옮기고, 평가 $m!\,\gamma_{2N+1}\tilde A_m$을 더한 것 | 값 0.0039, 1차 $4.3 \times 10^{-5}$, 2차 $1.2 \times 10^{-5}$ |
+| `FloaterHormannInterpolator`(끝에서 끝) | 무게 $\lvert\hat w_k - w_k\rvert \le \gamma_{3d}\lvert w_k\rvert$를 넣은 유리식의 한계 | 0.059 |
+| 유리식의 평가(계산한 지지점·값·무게 대비) | $\lvert\hat r - r\rvert \le \dfrac{\gamma_a\sum_j\lvert\lambda_jf_j\rvert + \gamma_b\lvert r\rvert\sum_j\lvert\lambda_j\rvert}{\lvert\sum_j\lambda_j\rvert - \gamma_c\sum_j\lvert\lambda_j\rvert}$, $\lambda_j = w_j/(z - z_j)$ | AAA의 네 표본에서 0.31, 0.096, 0.056, 0.24 |
+
+유리식의 $(a, b, c)$는 실수 커널이 $(N + 3, N + 2, N + 1)$, 복소 커널이 $(3N + 16, 2N + 16, 2N + 8)$이에요. AAA의 무게는 SVD의 결과라 계약이 없고, 그 대신 성질 둘을 봐요. 지지점에서는 값이 표본 그대로이고, 수렴한 객체는 표본에서 $\max_i\lvert r(z_i) - f_i\rvert \le \mathrm{rtol}\cdot\max\lvert f\rvert$예요.
+
+### 격자
+
+| 대상 | 계약 | 잰 값 |
+|---|---|---|
+| `linear`·`slinear`($d$차원) | 축마다 1차원 선형 계약을 쌓은 것. 격자 안에서 $\lvert\hat y - y\rvert \le d\,(\gamma_{13}M + 3\eta)$, $M$은 꼭짓점 값의 최대 크기 | 0.34, 0.34 |
+| `nearest` | 고른 노드의 값 그대로 | 오차 0 |
+| `cubic`·`quintic`(끝에서 끝) | 축마다의 계수 한계 $2\gamma_{8k+8}\lvert A_a^{-1}\rvert\lvert A_a\rvert\lvert\hat R_a\rvert$를 뒤 축의 $\lvert A_b^{-1}\rvert$로 옮겨 더하고, 평가 $\gamma_{d(6k+1)}\sum_j\lvert c_j\rvert\prod\tilde B$를 더한 것 | 0.012, 0.0045 |
+| `pchip` | 계약 없음. 1차원 `PchipInterpolator`를 축마다 접은 것과 같은 비트 | 참값과 최대 87 ULP |
+
+$\hat R_a$는 축 $a$까지 푼 계수예요. 증명은 [격자](/internals/interpolate/grid/)에 있어요.
+
+### RBF와 가장 가까운 점
+
+| 대상 | 계약 | 잰 값 |
+|---|---|---|
+| 풀이 | 성분마다 $\lvert\hat A\hat c - d\rvert \le \gamma_{4N}\bigl(\lvert\hat A\rvert + \lvert\hat L\rvert\lvert\hat D\rvert\lvert\hat L\rvert^{\mathsf T}\bigr)\lvert\hat c\rvert$, $N = n + q$ | 핵 여덟과 `smoothing` 0.1에서 최대 0.0099 |
+| 평가 | 계산한 계수·shift·scale의 정확한 함수 대비, 항마다의 핵 오차 $E_j$와 합의 $\gamma_N$ | 최대 0.055 |
+| 자료점의 잔차, 끝에서 끝 | 계약 없음(계의 조건수가 정해요) | 정확도 표에 없음 |
+| `neighbors=k` | 그 이웃 집합의 자료점으로 만든 전역 RBF와 같은 비트 | 등호로 시험 |
+| `NearestNDInterpolator` | (거리, 색인)이 가장 작은 자료점의 값 그대로 | 모든 짝을 견준 것과 같은 점 |
+
+풀이의 한계에서 $\hat A$는 계산한 계, $\hat L$과 $\hat D$는 그 $LDL^{\mathsf T}$ 인수예요. 테스트는 잔차를 오차 없는 곱과 정확한 합으로 구해 이 한계와 견줘요. 평가의 한계는 $\log$와 $\exp$가 1 ULP 안이라는 가정 위에 서 있어요. 증명과 가정은 [RBF](/internals/interpolate/rbf/)에 있어요.
+
+### 근과 적분
+
+`roots`는 한계가 아니라 세 가지로 판정해요. 돌려준 근 $\hat r$마다 계산한 계수의 정확한 값이 $\hat r$와 그 이웃 double 사이에서 부호가 바뀌거나 $\hat r$에서 0인지, 접하는 근이면 $\lvert P(\hat r)\rvert$가 평가 계약 안인지, 그리고 Arb로 분리한 참 근을 하나도 빠뜨리지 않았는지예요. 참값의 근 36개(중근 둘과 $2^{-30}$ 떨어진 두 근 포함)를 모두 0 ULP로 찾아요.
+
+`derivative`는 계수마다 곱셈 한 번, `antiderivative`는 나눗셈 한 번과 앞 조각들의 누적합, `integrate`는 조각마다의 Horner와 pairwise 합이에요. 테스트는 정확한 유리수의 역미분과 적분에 대해, 그 연산을 센 한계로 봐요.
+
+## 한계가 아닌 성질
+
+수로 된 한계 대신 등호나 부등호로 시험하는 것들이에요.
+
+- **노드에서 자료 그대로.** 선형, $k = 0, 1$ B-스플라인, `BarycentricInterpolator`, AAA의 지지점, 격자의 `linear`·`nearest`.
+- **선형은 어느 길이든 같은 비트.** `sd.interp(x, xp, fp)`, `make_interp_spline(xp, fp, k=1)(x)`, 격자의 1차원 `linear`와 `slinear`, `interpn`의 1차원 선형이 구간 안에서 비트까지 같아요. 늘이기에서도 $k = 1$과 격자의 `fill_value=None`이 같아요.
+- **3차 계열은 같은 기울기면 같은 계수.** `CubicHermiteSpline(x, y, s)`와 같은 기울기의 `CubicSpline`, `PchipInterpolator`, `Akima1DInterpolator`의 계수가 비트까지 같아요.
+- **격자의 1차원은 1차원 보간과 같은 비트.** `cubic`·`quintic`은 `make_interp_spline`, `pchip`은 `PchipInterpolator`와 같아요.
+- **PCHIP의 단조.** 단조인 자료(시험 곡선, 고정한 씨앗의 무작위 단조 자료, 비정상 수 둘레의 걸음, hypothesis가 만든 자료)에서 세 겹을 봐요. 계산한 기울기가 0이거나 자료와 같은 부호이고 크기가 차분 몫의 세 배(반올림 여유 포함) 안인지, 계산한 계수의 도함수가 구간 안에서 계수 계약만큼의 여유로 자료의 부호를 지키는지, 정렬한 평가점의 값이 평가 계약 안에서만 거꾸로 가는지예요.
+- **Akima의 평평한 구간.** makima는 평평한 구간이 정확히 평평하고, akima는 그 구간 안쪽 노드의 기울기가 0이에요.
+
+## 잰 결과
+
+아래 표들은 결과 파일에서 그대로 만든 것이에요. 영역은 방법이나 시험 자료의 이름이에요.
+
+<AccuracySummary area="interpolate" names={['linear']} caption="선형. curves는 실수 곡선마다 구간 안의 평가점, intervals는 선형 커널의 구간(끝점 둘레의 이웃 double, 반대 부호, 거의 같은 값, ±0, 비정상 수와 넘치는 폭)의 안쪽 점이에요." />
+
+<AccuracySummary area="interpolate" names={['coefficients']} caption="만들기. 3차 계열은 노드의 기울기, k2–k5와 k3_·k5_는 make_interp_spline의 계수예요. 최대 ULP와 최대 상대오차가 큰 줄은 조건이 나쁜 계(간격이 10¹⁰배 다른 노드, 상쇄가 있는 자료)에서 나오고, 판정은 조건 인자를 담은 계약 대비로 해요." />
+
+<AccuracySummary area="interpolate" names={['evaluation']} caption="평가. 계산한 계수 그대로의 정확한 값과 견줘요. 참값이 0에 가까운 점에서는 한계 안의 절대오차도 ULP로는 커서, 판정은 계약 대비로 해요." />
+
+<AccuracySummary area="interpolate" names={['polynomial', 'aaa']} caption="다항식과 유리식. krogh와 barycentric의 _d1, _d2는 1차와 2차 도함수예요. aaa의 영역은 표본의 이름(tan, abs, 복소 원, 유한하지 않은 값이 섞인 표본)이고 계산한 유리식의 평가를 재요." />
+
+<AccuracySummary area="interpolate" names={['grid']} caption="격자. linear와 slinear는 꼭짓점 값에 대한 한계, cubic과 quintic은 끝에서 끝의 한계로 판정해요. pchip은 계약이 없어 ULP만 적어요." />
+
+<AccuracySummary area="interpolate" names={['rbf', 'roots']} caption="RBF의 평가와 roots. rbf의 영역은 핵 이름이고 _s0.1은 smoothing 0.1, _k8은 neighbors=8이에요(전역 RBF와 같은 비트라 따로 판정하지 않아요). roots는 참값의 근마다 가장 가까운 돌려준 근까지의 ULP예요." />
+
+계약 대비가 비어 있는 세 줄(`grid`의 pchip, `rbf`의 thin_plate_spline_k8, `roots`)은 수로 된 계약이 없는 곳이에요. 앞의 두 줄은 같은 비트 관계로, `roots`는 위의 세 가지 판정으로 시험해요.
+
+### 비교 패키지 열
+
+라이브러리의 정확도 표(`bench/interpolate/accuracy.md`)에는 같은 자료, 같은 점에서 그 자리에서 잰 비교 패키지의 열이 더 있어요. 같은 참값, 같은 척도이고 "초과"는 계약 대비가 1을 넘은 것이에요. 같은 양을 계산하는 공개 함수가 없으면 칸에 줄표만 있고, "제외"는 참값이 유한한데 그 라이브러리가 NaN이나 inf를 낸 점의 수예요(그 점은 다른 열에서 빠져요).
+
+- **선형.** scipy 1.18.1(`make_interp_spline(k=1)`)은 곡선 0.23, 구간 0.5이고 64점이 제외예요. numpy 2.5.4(`interp`)는 0.26과 0.72이고 60점이 제외예요. 간격이 비정상 수인 구간에서 기울기가 넘치는 점들이에요. R 4.6.2(`approx`)는 0.23과 0.72, 제외 26점이에요.
+- **3차 계열의 기울기.** scipy의 `CubicSpline`은 natural 2.99, clamped 3.29, not-a-knot 6.51로 초과예요. periodic, PCHIP, akima, makima는 sd와 같은 값이에요(0.053, 0.068, 0.29, 0.29).
+- **조각 다항식의 평가.** scipy가 자기 계수를 자기 평가로 계산한 값은 natural과 akima가 1.04로 초과, clamped가 반올림해 1이지만 초과, makima가 1, not-a-knot 0.89, PCHIP 0.94, periodic 0.66이에요.
+- **격자.** scipy의 `linear`는 0.17, `slinear`는 0.54예요. `cubic`과 `quintic`은 $3.01 \times 10^8$배, $1.12 \times 10^8$배 초과예요. scipy가 이 둘의 계수를 반복 풀이로 구해서, 결과가 그 풀이의 허용오차 크기로 틀리기 때문이에요([격자](/internals/interpolate/grid/)). `pchip`은 참값과 최대 53 ULP예요.
+- **RBF.** scipy의 계수를 scipy가 평가한 값은 같은 한계로 0.015–0.11이에요(gaussian이 0.11).
+- **`roots`.** scipy의 `PPoly.roots`는 최대 ULP가 inf예요. 참값의 근 가운데 찾지 못한 것이 있다는 뜻이에요.
+- 다항식·유리식과 B-스플라인의 줄은 이 표에서 비교 패키지의 칸이 줄표예요.
+
+scipy·numpy·R과 다른 곳은 계약이 아니라 이 열로 드러나요. 반올림 크기의 결과는 서로 끝자리가 다를 수 있고, 계약 안이라면 어느 쪽이 틀린 것이 아니에요.
+
+## 테스트
+
+`tests/interpolate/`의 테스트는 주제마다 한 파일이에요.
+
+| 파일 | 보는 것 |
+|---|---|
+| `test_api_surface.py` | 공개 이름과 시그니처 |
+| `test_interp.py`, `test_lerp.py`, `test_linear_bits.py` | `sd.interp`의 뜻, 선형 커널의 정확한 성질(hypothesis), 선형 길들의 같은 비트 |
+| `test_ppoly.py`, `test_cubic.py`, `test_pchip.py`, `test_roots.py` | 평가 계약, 미분·역미분·적분, 기울기 계약과 경계 조건, 단조성의 세 겹, 근의 판정 |
+| `test_bspline.py`, `test_make_interp_spline.py` | 평가와 계수의 계약, 매듭 규칙, 도함수 조건 |
+| `test_polyint.py`, `test_aaa.py` | 무게와 평가의 계약, 도함수, 차분표, AAA의 성질과 scipy와 같은 지지점 순서 |
+| `test_grid.py`, `test_rbf.py` | 격자의 방법마다의 계약과 1차원의 같은 비트, RBF의 풀이·평가 계약과 이웃 집합의 같은 비트 |
+| `test_reference.py`, `test_reference_data.py` | 참값 대비 계약, scipy·numpy·R의 기록과 참값의 일치 |
+| `test_errors.py` | 모든 에러의 종류와 메시지 |
+| `test_threads.py` | 1, 2, 3, 7, 10스레드에서 같은 바이트 |
+
+골든 출력(`tests/golden/cases_interpolate.py`)은 388개예요. 모든 공개 이름에 경계 자료, 바깥의 세 규칙, 틀린 호출, 병렬 길에 드는 큰 사례를 담고, 1·3·10스레드의 결과가 모두 같아야 해요.
+
+R과는 정의가 같은 것만 견줘요. `approx(rule = 2)`는 `sd.interp`, `splinefun`의 `natural`과 `periodic`은 `CubicSpline`이에요. R의 기본 스플라인(`fmm`)은 끝 조건이 not-a-knot과 다르고, `monoH.FC`는 PCHIP과 다른 식이라 비교하지 않아요.
+
+## 결정성
+
+같은 입력이면 스레드 수와 상관없이 같은 결과예요. 근거는 영역 전체에서 같아요. 점 하나, 노드 하나, 열 하나의 값은 어느 태스크에서 계산하든 같은 커널의 같은 연산 순서이고, 합이 있는 곳은 순서가 크기로만 정해지고, 일을 나누는 경계도 크기로만 정해요. 자세한 것은 [보간 영역의 구조](/internals/interpolate/overview/)에 있어요.
+
+LAPACK을 부르는 곳은 따로예요. RBF의 전역 풀이(`sytrf`)와 랭크 검사(`gesdd`), AAA의 SVD(`gesdd`)와 극점·영점(`ggev`)은 Accelerate가 계산하고, Accelerate의 스레드 모드가 같을 때 같은 비트예요. `neighbors=k`의 국소 계는 이웃 집합마다 따로 풀고, 테스트가 1·3·10스레드에서 같은 비트를 확인해요.
+
+scipy·numpy와는 연산 순서가 다른 곳에서 끝자리가 다를 수 있어요. 지금은 PCHIP과 Akima의 기울기, Floater–Hormann의 무게가 시험 자료에서 scipy와 비트까지 같고 AAA가 scipy와 같은 지지점을 같은 순서로 골라요(약속은 아니에요).
+
+## 성능
+
+속도는 통합 측정 체계의 사례(`bench/speed/cases/interpolate.py`, 48개)로 재요. 만들기와 평가를 따로, 노드 수와 평가점 수를 바꿔 가며, 정렬한 평가점과 무작위 평가점, 배치 열을 재고, 사례마다 결과 값도 scipy·numpy와 견줘요. 질적으로 보면 이래요.
+
+- **평가는 점마다 독립이에요.** 평가점을 크기로만 정한 조각으로 나눠 스레드에 고르게 줘요. 점이 많으면 모든 스레드가 일을 나눠 가져요. 구간은 이분으로 찾고 정렬된 점은 앞 점의 자리에서 이어 찾아요. 무작위 순서의 점에서도 노드 수의 로그에 비례하는 일이에요.
+- **긴 열 하나의 스플라인은 차례 계산이에요.** 삼중대각과 띠의 분해는 앞 행의 결과가 다음 행에 드는 사슬이라 스레드로 나눌 수 없어요. 열이 여럿인 배치는 열 묶음으로 나눠요. 피벗 없는 풀이라 행마다 하는 일이 적어요.
+- **무게중심 꼴.** 무게는 노드 수의 제곱에 비례하고 노드 조각으로 나눠요. 평가는 점 여덟을 나란히 계산해 나눗셈이 SIMD로 가요.
+- **AAA.** 만들기는 걸음마다의 SVD가 시간의 거의 전부이고 그것은 LAPACK 안이라, 이 영역의 스레드풀이 나누지 않아요. 극점과 영점은 지지점 수의 세제곱에 비례하는 QZ 반복이라, 지지점이 수천 개면 오래 걸려요.
+- **격자의 `linear`.** 격자가 캐시보다 크면 꼭짓점을 읽는 메모리 지연이 시간을 정해요. 256점 블록의 꼭짓점 값을 먼저 모아서 여러 읽기가 겹쳐 나가게 해요.
+- **격자의 `cubic`·`quintic`.** 계수는 축마다의 띠 풀이를 한 번씩 하는 직접 풀이예요. 반복이 없어 만들기가 가볍고, 차수마다 한 번 만들어 객체에 둬요.
+- **격자의 `pchip`.** 점마다 둘레의 $4^d$개 값만 읽어요. 점마다 줄 전체로 1차원 보간을 다시 만들지 않으니 격자가 커도 점 하나의 일이 같아요.
+- **RBF.** 전역 만들기는 계 채우기가 병렬이고 분해는 Accelerate예요. 자료점 수의 세제곱에 비례하고 메모리는 $(n + q)^2 \times 8$바이트라, 자료가 수만 점이면 `neighbors`를 쓰는 편이 맞아요. 평가는 점마다 자료점 전부를 훑고, 점 넷을 나란히 계산해요. `neighbors=k`는 KD 트리 질의와 이웃 집합마다의 작은 계라 집합끼리 병렬이에요.
+- **`NearestNDInterpolator`.** 시간의 거의 전부가 `KDTree.query`예요([KD 트리](/internals/spatial/kdtree/)).
+- **`roots`.** 구간마다 독립이라 병렬이지만, 근이 있는 구간과 없는 구간의 일이 달라 스레드에 고르게 나뉘지는 않아요.

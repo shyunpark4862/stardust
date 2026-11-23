@@ -1,0 +1,439 @@
+---
+title: 순회, 연결 요소, 위상 정렬
+group: 구조
+order: 2
+summary: 너비 우선과 깊이 우선 순회가 큐와 명시적 스택으로 도는 모습, 무향 그래프를 합치지 않고 두 줄로 읽는 방법, 약한 연결 요소의 합집합–찾기와 그 병렬 꼴이 같은 분할에 닿는 까닭, 강한 연결 요소의 반복형 Tarjan, 사전 순서로 가장 작은 위상 순서를 내는 Kahn 알고리즘과 층을 이룬 비트맵을 설명해요.
+seeAlso: [overview, shortest-paths, structure]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import PlaneFig from '../../../components/fig/PlaneFig.astro';
+
+export const nodePts = [[1, 2], [2, 3], [2, 1], [3, 2], [4, 2], [0, 2]];
+export const treeSegs = [[3, 2, 2, 3], [3, 2, 2, 1], [3, 2, 4, 2], [2, 3, 1, 2], [1, 2, 0, 2]];
+export const otherSegs = [[1, 2, 2, 1]];
+
+## 한눈에 보기
+
+이 페이지의 함수는 모두 그래프의 패턴만 읽어요. 무게는 트리 함수가 결과에 옮겨 적을 때만 써요. 답은 세 정의로 정해져요.
+
+- **순회**는 노드의 이웃을 번호 오름차순으로 봐요.
+- **연결 요소**의 번호는 요소의 가장 작은 노드의 순서예요.
+- **위상 순서**는 가능한 것 가운데 사전 순서로 가장 작은 것이에요.
+
+세 정의 모두 데이터만으로 답이 하나라서, 어떻게 계산하든 같은 배열이 나와요. 모든 탐색의 시간은 노드 수 $n$과 변의 수 $E$에 대해 $O(n + E)$예요.
+
+## 찾은 노드의 표시
+
+순회는 원소 하나를 볼 때마다 "이 노드를 이미 찾았는가"를 물어요. 이 표시를 노드마다 한 비트로 둬요.
+
+```cpp
+// csrc/graph/traversal.cpp
+struct Bits {
+    std::vector<uint64_t> w;
+    explicit Bits(int64_t n) : w(static_cast<size_t>((n + 63) / 64), 0) {}
+    bool test(int64_t i) const { return (w[static_cast<size_t>(i >> 6)] >> (i & 63)) & 1; }
+    void set(int64_t i) { w[static_cast<size_t>(i >> 6)] |= uint64_t{1} << (i & 63); }
+};
+```
+
+노드마다 한 바이트를 쓰면 $n = 10^6$에서 1 MB라 1차 캐시에 들어가지 않아요. 비트로 두면 125 KB이고, 큰 그래프에서도 자주 보는 부분이 캐시에 남아요.
+
+## 너비 우선
+
+너비 우선 순회는 큐 하나예요. 큐에서 노드를 꺼내 아직 찾지 않은 이웃을 뒤에 넣어요. 넣은 순서가 곧 결과의 순서라서, 결과 배열 자체를 큐로 써요.
+
+```cpp
+// csrc/graph/traversal.cpp
+void bfs(const View& g, const View* t, int64_t s, int64_t* pred, Bits& seen, Search& out, bool tree) {
+    std::vector<int64_t>& q = out.order;
+    double* W = tree ? out.weight.data() : nullptr;
+    std::vector<int64_t> run;
+    q.push_back(s);
+    seen.set(s);
+    for (size_t head = 0; head < q.size(); ++head) {
+        const int64_t v = q[head];
+        const size_t qa = q.size();
+        for (int64_t k = g.indptr[v], e = g.indptr[v + 1]; k < e; ++k) {
+            const int64_t w = g.indices[k];
+            if (seen.test(w)) continue;
+            seen.set(w);
+            pred[w] = v;
+            if (W) W[w] = g.data[k];
+            q.push_back(w);
+        }
+        if (!t) continue;
+        const size_t qb = q.size();
+        for (int64_t k = t->indptr[v], e = t->indptr[v + 1]; k < e; ++k) {
+            const int64_t w = t->indices[k];
+            if (seen.test(w)) {
+                if (W && pred[w] == v) W[w] = undirected_weight(W[w], t->data[k]);  // found from v in g too
+                continue;
+            }
+            seen.set(w);
+            pred[w] = v;
+            if (W) W[w] = t->data[k];
+            q.push_back(w);
+        }
+        if (qb == qa || q.size() == qb) continue;
+        run.assign(q.begin() + static_cast<std::ptrdiff_t>(qa), q.begin() + static_cast<std::ptrdiff_t>(qb));
+        std::merge(
+            run.begin(), run.end(), q.begin() + static_cast<std::ptrdiff_t>(qb), q.end(),
+            q.begin() + static_cast<std::ptrdiff_t>(qa)
+        );
+    }
+}
+```
+
+유향이면 `t`가 없고 앞쪽 고리만 돌아요. CSR의 줄이 오름차순이니 이웃이 번호 순서로 큐에 들어가요.
+
+무향이고 그래프가 대칭이 아니면 `t`가 전치예요. 노드 $v$의 이웃은 $G$의 행 $v$(나가는 이웃)와 전치의 행 $v$(들어오는 이웃)의 합집합이에요. 두 줄을 원소마다 견주며 합치는 것이 가장 곧은 방법이지만, 그러면 원소 하나를 처리할 때마다 앞의 비교가 끝나기를 기다려야 해요. 여기서는 두 줄을 따로 훑어요. 줄마다 찾은 노드를 건너뛰고 처음 보는 노드만 큐 끝에 붙이면, 큐 끝에 오름차순 묶음 둘(`qa`부터 `qb` 앞까지, `qb`부터 끝까지)이 생겨요. 이 둘만 `std::merge`로 합쳐요. 이미 찾은 노드가 대부분인 큰 그래프에서는 합칠 것이 몇 개뿐이에요.
+
+두 방향에 모두 변이 있는 이웃은 앞쪽 고리가 먼저 찾아요. 뒤쪽 고리가 그 노드를 다시 만나면 `pred[w] == v`로 알아보고, 트리에 적을 무게를 두 방향의 무향 무게로 고쳐요.
+
+```python
+>>> import stardust as sd
+>>> g = sd.graph
+>>> rows, cols = [0, 0, 1, 2, 3, 5], [1, 2, 3, 3, 4, 0]
+>>> G = sd.sparse.coo_array(([1.0] * 6, (rows, cols)), shape=(6, 6))
+>>> g.breadth_first_order(G, 0)
+TraversalResult(node_array=array([0, 1, 2, 3, 4], dtype=int64), predecessors=array([-9999,     0,     0,     1,     3, -9999], dtype=int64))
+>>> g.breadth_first_order(G, 3, directed=False)
+TraversalResult(node_array=array([3, 1, 2, 4, 0, 5], dtype=int64), predecessors=array([    1,     3,     3, -9999,     3,     0], dtype=int64))
+>>> GT = sd.sparse.coo_array(([1.0] * 6, (cols, rows)), shape=(6, 6))
+>>> g.breadth_first_order(GT, 3, directed=False).node_array.tolist()
+[3, 1, 2, 4, 0, 5]
+```
+
+노드 3에서 무향으로 시작하면, 나가는 이웃은 4뿐이고 들어오는 이웃이 1과 2예요. 나가는 이웃을 먼저 넣는다면 순서가 4, 1, 2였을 거예요. 두 묶음을 합치니 1, 2, 4이고, 변의 방향을 모두 뒤집은 `GT`에서도 같은 순서예요. 같은 무향 그래프를 적는 두 행렬이 같은 답을 내요.
+
+<Fig caption="무향으로 읽은 그래프와 노드 3에서 시작한 너비 우선 순회. 앞의 숫자가 노드 번호, 괄호 안이 찾은 순서예요. 파란 선이 순회 트리의 변이에요.">
+  <PlaneFig
+    label="노드 여섯 개의 그래프에서 노드 3부터 너비 우선으로 찾은 순서와 순회 트리"
+    domain={[-0.5, 4.5]}
+    range={[0.5, 3.5]}
+    width={460}
+    layers={[
+      { kind: 'segments', segs: otherSegs, tone: 'faint', width: 1.5 },
+      { kind: 'segments', segs: treeSegs, tone: 'main', width: 2 },
+      { kind: 'points', pts: nodePts, tone: 'ink', size: 4, labels: ['0 (5)', '1 (2)', '2 (3)', '3 (1)', '4 (4)', '5 (6)'] },
+    ]}
+    legend={[
+      { label: '순회 트리의 변', tone: 'main', shape: 'line' },
+      { label: '그 밖의 변', tone: 'faint', shape: 'line' },
+    ]}
+  />
+</Fig>
+
+## 깊이 우선
+
+깊이 우선 순회의 순서는 재귀로 짠 깊이 우선과 같아요. 노드에 들어가면 그 노드를 적고, 아직 찾지 않은 가장 작은 이웃으로 내려가요. 재귀는 쓰지 않아요. 긴 경로 그래프에서 재귀는 깊이가 $n$이라 호출 스택이 넘치기 때문이에요. 그 대신 스택에 (노드, 그 줄에서 다음에 볼 자리, 줄의 끝)을 쌓아요.
+
+```cpp
+// csrc/graph/traversal.cpp
+void dfs_one(const View& g, int64_t s, int64_t* pred, Bits& seen, Search& out, bool tree) {
+    struct Frame {
+        int64_t v, a, ae;
+    };
+    double* W = tree ? out.weight.data() : nullptr;
+    std::vector<Frame> stack;
+    stack.push_back({s, g.indptr[s], g.indptr[s + 1]});
+    seen.set(s);
+    out.order.push_back(s);
+    while (!stack.empty()) {
+        Frame& f = stack.back();
+        int64_t a = f.a;
+        const int64_t ae = f.ae;
+        while (a < ae && seen.test(g.indices[a])) ++a;
+        if (a == ae) {
+            stack.pop_back();
+            continue;
+        }
+        const int64_t v = f.v, w = g.indices[a];
+        if (W) W[w] = g.data[a];
+        f.a = a + 1;
+        seen.set(w);
+        pred[w] = v;
+        out.order.push_back(w);
+        stack.push_back({w, g.indptr[w], g.indptr[w + 1]});  // f is not used past this point
+    }
+}
+```
+
+스택의 꼭대기에서 찾은 이웃을 건너뛰다가, 처음 보는 이웃 `w`가 나오면 자리를 하나 넘겨 두고 `w`를 쌓아요. `w`에서 돌아오면 그 자리부터 이어서 봐요. 줄이 끝나면 스택에서 내려요. 원소마다 한 번씩만 지나가니 $O(n + E)$예요.
+
+무향이고 대칭이 아니면 스택의 틀이 줄 둘의 자리를 쥐어요. 두 줄에서 찾은 노드를 따로 건너뛴 뒤, 두 머리 가운데 작은 것이 다음 노드예요.
+
+```cpp
+        // csrc/graph/traversal.cpp
+        Frame& f = stack.back();
+        int64_t a = f.a, b = f.b;
+        const int64_t ae = f.ae, be = f.be;
+        while (a < ae && seen.test(g.indices[a])) ++a;
+        while (b < be && seen.test(t.indices[b])) ++b;
+        const int64_t ja = a < ae ? g.indices[a] : INT64_MAX;
+        const int64_t jb = b < be ? t.indices[b] : INT64_MAX;
+        const int64_t w = std::min(ja, jb);  // the next node: no branch on which row holds it
+        if (w == INT64_MAX) {
+            stack.pop_back();
+            continue;
+        }
+        const bool in_a = ja == w, in_b = jb == w;
+        double wt = 0.0;
+        if (W) wt = !in_b ? g.data[a] : !in_a ? t.data[b] : undirected_weight(g.data[a], t.data[b]);
+        a += in_a;
+        b += in_b;
+```
+
+줄이 끝났으면 머리를 `INT64_MAX`로 두고 `std::min`으로 골라요. "어느 줄의 머리인가"로 가지를 치지 않고, 고른 뒤에 두 줄의 자리를 `in_a`, `in_b`만큼 올려요. 두 줄에 다 있는 노드면 둘 다 한 칸 가요.
+
+```python
+>>> g.depth_first_order(G, 0)
+TraversalResult(node_array=array([0, 1, 3, 4, 2], dtype=int64), predecessors=array([-9999,     0,     0,     1,     3, -9999], dtype=int64))
+>>> g.depth_first_order(G, 3, directed=False).node_array.tolist()
+[3, 1, 0, 2, 5, 4]
+```
+
+### 트리 만들기
+
+`breadth_first_tree`와 `depth_first_tree`는 순회가 노드를 찾을 때 지난 변의 무게를 노드 번호 자리에 적어 두고, 끝에 CSR을 만들어요. 노드를 오름차순으로 돌며 부모의 줄에 자식을 넣으니, 줄 안이 자식 번호 오름차순인 표준 꼴이 정렬 없이 나와요. 변은 부모에서 자식 방향이고 값은 원래 무게예요. 무게 0의 변은 저장된 0으로 남아요.
+
+```python
+>>> T = g.breadth_first_tree(G, 3, directed=False)
+>>> T.indptr.tolist(), T.indices.tolist()
+([0, 1, 2, 2, 5, 5, 5], [5, 0, 1, 2, 4])
+```
+
+## 약한 연결 요소
+
+약한 연결 요소(와 무향 그래프의 연결 요소)는 합집합–찾기로 구해요. 노드마다 부모 하나를 두고, 부모를 따라 올라가 닿는 뿌리가 그 노드가 든 집합의 대표예요. 변 $(i, j)$를 볼 때마다 $i$의 집합과 $j$의 집합을 합쳐요. 변의 방향은 보지 않으니 전치도 무향 사본도 필요 없어요.
+
+```cpp
+// csrc/graph/traversal.cpp
+int64_t find(int64_t* parent, int64_t x) {
+    while (parent[x] != x) {
+        parent[x] = parent[parent[x]];
+        x = parent[x];
+    }
+    return x;
+}
+
+void unite_serial(const View& g, int64_t* parent) {
+    for (int64_t i = 0; i < g.n; ++i) {
+        for (int64_t k = g.indptr[i], e = g.indptr[i + 1]; k < e; ++k) {
+            int64_t a = find(parent, i), b = find(parent, g.indices[k]);
+            if (a == b) continue;
+            if (a < b) parent[b] = a;
+            else parent[a] = b;
+        }
+    }
+}
+```
+
+`find`는 올라가면서 노드의 부모를 할아버지로 바꿔요(경로 반감). 지나간 길이 반으로 줄어 다음 `find`가 빨라져요. 합칠 때는 언제나 **번호가 큰 뿌리를 작은 뿌리 밑에** 달아요. 그래서 부모는 자기보다 번호가 크지 않고, 집합의 뿌리는 그 집합의 가장 작은 노드예요. 흔히 쓰는 "작은 나무를 큰 나무 밑에"(크기나 랭크로 합치기) 대신 이 규칙을 쓰는 까닭이 번호 매기기에 있어요.
+
+```cpp
+// csrc/graph/traversal.cpp
+int64_t weak_labels(const View& g, int64_t* label) {
+    const int64_t n = g.n;
+    std::vector<int64_t> parent(static_cast<size_t>(n));
+    for (int64_t i = 0; i < n; ++i) parent[static_cast<size_t>(i)] = i;
+    if (g.nnz() >= kUniteSplit && parallel::available()) unite_parallel(g, parent.data());
+    else unite_serial(g, parent.data());
+    // The root of a set is its smallest node, met first in ascending order.
+    int64_t c = 0;
+    for (int64_t v = 0; v < n; ++v) {
+        const int64_t r = find(parent.data(), v);
+        label[v] = r == v ? c++ : label[r];
+    }
+    return c;
+}
+```
+
+노드를 오름차순으로 돌면 집합의 뿌리(가장 작은 노드)를 그 집합의 다른 노드보다 먼저 만나요. 뿌리를 만나면 다음 번호를 주고, 뿌리가 아닌 노드는 뿌리의 번호를 받아요. 따로 정렬하거나 번호를 다시 매기지 않아도 "가장 작은 노드의 순서"가 돼요.
+
+```python
+>>> H = sd.sparse.coo_array(([1.0] * 6, ([0, 1, 0, 2, 3, 4], [1, 0, 2, 3, 4, 2])), shape=(6, 6))
+>>> g.connected_components(H)
+ConnectedComponentsResult(n_components=2, labels=array([0, 0, 0, 0, 0, 1], dtype=int64))
+```
+
+### 병렬 합집합–찾기
+
+저장된 원소가 $2^{18}$개 이상이고 스레드풀을 쓸 수 있으면, 행을 원소 $2^{16}$개쯤의 구간으로 나눠 구간마다 태스크 하나가 합쳐요. 여러 스레드가 같은 부모 배열을 고치니 합치기는 비교 교환(compare-and-swap)으로 해요.
+
+```cpp
+// csrc/graph/traversal.cpp
+void unite_shared(int64_t* parent, int64_t a, int64_t b) {
+    for (;;) {
+        a = find_shared(parent, a);
+        b = find_shared(parent, b);
+        if (a == b) return;
+        if (a < b) std::swap(a, b);  // link the larger root a under b
+        int64_t expected = a;
+        if (std::atomic_ref<int64_t>(parent[a]).compare_exchange_weak(
+                expected, b, std::memory_order_relaxed, std::memory_order_relaxed
+            ))
+            return;
+    }
+}
+```
+
+두 뿌리를 찾고, 큰 쪽 `a`의 부모가 아직 자기 자신일 때만 작은 쪽 `b`로 바꿔요. 그 사이에 다른 스레드가 `a`를 다른 곳에 달았으면 교환이 실패하고, 뿌리를 다시 찾아 되풀이해요.
+
+스레드가 어떤 순서로 끼어들어도 직렬 꼴과 같은 레이블이 나와요. 세 가지가 서기 때문이에요.
+
+1. **부모는 줄어들기만 해요.** 뿌리의 부모는 더 작은 노드로만 바뀌고, 경로 반감은 부모를 그 부모의 부모(더 작거나 같은 노드)로 바꿔요. 그래서 부모 사슬은 번호가 줄어드는 사슬이라 순환이 생기지 않고, 언제나 뿌리에서 끝나요.
+2. **포인터는 집합 밖으로 나가지 않아요.** 부모를 바꾸는 것은 변으로 이어진 두 노드의 뿌리를 잇는 일과, 같은 사슬 위에서 건너뛰는 일뿐이에요. 그래서 한 나무 안의 노드는 모두 변으로 이어져 있어요. 거꾸로, `unite_shared`는 두 노드의 뿌리가 같아졌거나 자기가 이었을 때만 돌아오니, 모든 변을 처리하고 나면 변으로 이어진 노드는 모두 한 나무에 있어요. 나무들이 곧 연결 요소예요.
+3. **뿌리는 집합의 가장 작은 노드예요.** 1에서 모든 노드의 사슬이 번호가 줄어들며 뿌리에 닿으니, 뿌리는 그 나무의 어느 노드보다도 크지 않아요.
+
+연결 요소라는 분할은 그래프가 정하는 하나뿐이고, 뿌리도 번호도 그 분할만으로 정해져요. 끼어드는 순서가 바꾸는 것은 나무의 모양뿐이에요.
+
+```python
+>>> rng = sd.random.default_rng(11)
+>>> r, c = rng.integers(0, 150_000, shape=300_000), rng.integers(0, 150_000, shape=300_000)
+>>> R = sd.sparse.coo_array((sd.ones(300_000), (r, c)), shape=(150_000, 150_000)).tocsr()
+>>> R.nnz >= 2**18
+True
+>>> n0 = sd.get_num_threads()
+>>> sd.set_num_threads(1)
+>>> one = g.connected_components(R)
+>>> sd.set_num_threads(10)
+>>> ten = g.connected_components(R)
+>>> sd.set_num_threads(n0)
+>>> one.n_components == ten.n_components, one.labels.tolist() == ten.labels.tolist()
+(True, True)
+```
+
+## 강한 연결 요소
+
+강한 연결 요소는 서로 오갈 수 있는 노드의 묶음이에요. 방향이 중요하니 합집합–찾기로는 구할 수 없고, Tarjan의 알고리즘을 써요. 깊이 우선 순회 한 번으로 끝나요.
+
+깊이 우선으로 내려가며 노드마다 발견 번호 `index`를 붙이고, 아직 요소가 정해지지 않은 노드를 스택에 쌓아요. 노드 $v$의 `low`는 "$v$에서 내려간 부분 트리에서, 스택에 남아 있는 노드로 가는 변 하나로 닿을 수 있는 가장 이른 발견 번호"예요. $v$의 일을 마쳤을 때 `low[v] == index[v]`면, $v$의 아래에서 $v$보다 먼저 찾은 노드로 돌아가는 길이 없다는 뜻이에요. 그때 스택에서 $v$까지 내린 노드들이 요소 하나예요. 그 노드들은 $v$에서 닿고(부분 트리), 저마다 $v$로 돌아오는 길이 있어요(그렇지 않은 노드는 자기가 뿌리가 되어 먼저 내려졌어요).
+
+재귀 대신 호출 스택 `calls`와 노드마다의 다음 변 자리 `pos`를 써요.
+
+```cpp
+        // csrc/graph/traversal.cpp
+        while (!calls.empty()) {
+            const int64_t v = calls.back();
+            const size_t vi = static_cast<size_t>(v);
+            int64_t& k = pos[vi];
+            const int64_t e = g.indptr[v + 1];
+            bool descended = false;
+            while (k < e) {
+                const int64_t w = g.indices[k++];
+                const size_t wi = static_cast<size_t>(w);
+                if (index[wi] == kNone) {
+                    index[wi] = low[wi] = counter++;
+                    pos[wi] = g.indptr[w];
+                    stack.push_back(w);
+                    calls.push_back(w);
+                    descended = true;
+                    break;
+                }
+                if (comp[wi] == kNone && index[wi] < low[vi]) low[vi] = index[wi];  // w on the stack
+            }
+            if (descended) continue;
+            calls.pop_back();
+            if (low[vi] == index[vi]) {
+                int64_t w;
+                do {
+                    w = stack.back();
+                    stack.pop_back();
+                    comp[static_cast<size_t>(w)] = ncomp;
+                } while (w != v);
+                ++ncomp;
+            }
+            if (!calls.empty()) {
+                const size_t ui = static_cast<size_t>(calls.back());
+                if (low[vi] < low[ui]) low[ui] = low[vi];
+            }
+        }
+```
+
+처음 보는 이웃이면 번호를 붙이고 내려가요(`descended`). 이미 찾았고 아직 요소가 없는 이웃(스택에 있는 노드)이면 그 발견 번호로 `low`를 낮춰요. 요소가 정해진 이웃으로 가는 변은 다른 요소로 넘어가는 변이라 무시해요. 줄이 끝나면 요소를 닫을지 보고, 부모의 `low`를 자기 `low`로 낮춰요.
+
+Tarjan이 요소를 닫는 순서는 깊이 우선의 길에 달려 있어요. 그래서 닫는 순서의 임시 번호를 붙여 두었다가, 끝에 노드를 오름차순으로 돌며 처음 만나는 임시 번호부터 0, 1, 2를 다시 줘요. 위의 `H`에서 Tarjan은 $\{2, 3, 4\}$를 먼저 닫지만, 돌려주는 번호는 노드 0이 든 요소가 0이에요.
+
+```python
+>>> g.connected_components(H, connection="strong")
+ConnectedComponentsResult(n_components=3, labels=array([0, 0, 1, 1, 1, 2], dtype=int64))
+```
+
+강한 연결은 직렬이에요. 깊이 우선의 순서에 기대는 알고리즘이라 나누기 어렵고, 한 번의 훑기라 큰 그래프에서도 가벼워요.
+
+## 위상 정렬
+
+위상 순서는 모든 변 $i \to j$에서 $i$가 $j$보다 앞에 오는 순서예요. 보통 여럿이에요. `topological_sort`는 그 가운데 사전 순서로 가장 작은 것을 돌려줘요.
+
+Kahn의 알고리즘이 바탕이에요. 들어오는 변의 수(진입 차수)가 0인 노드는 앞에 와야 할 노드가 없으니 지금 놓을 수 있어요. 그런 노드 하나를 놓고, 거기서 나가는 변을 지우면(이웃의 진입 차수를 하나씩 줄이면) 놓을 수 있는 노드가 더 생겨요. 놓을 수 있는 노드 가운데 **언제나 가장 작은 것**을 고르면 사전 순서로 가장 작은 순서가 돼요.
+
+```cpp
+        // csrc/graph/traversal.cpp
+        std::vector<int64_t> indeg(static_cast<size_t>(n), 0);
+        for (int64_t k = 0, e = g.nnz(); k < e; ++k) ++indeg[static_cast<size_t>(g.indices[k])];
+        if (n > 0) {
+            MinSet ready(n);
+            for (int64_t v = 0; v < n; ++v)
+                if (indeg[static_cast<size_t>(v)] == 0) ready.insert(v);
+            while (!ready.empty()) {
+                const int64_t v = ready.pop_min();
+                order[done++] = v;
+                for (int64_t k = g.indptr[v], e = g.indptr[v + 1]; k < e; ++k)
+                    if (--indeg[static_cast<size_t>(g.indices[k])] == 0) ready.insert(g.indices[k]);
+            }
+        }
+```
+
+가장 작은 것을 고르는 것이 맞는 까닭은 이래요. 어떤 위상 순서든 $k$번째 자리에는 그때 놓을 수 있는 노드만 올 수 있어요. 앞의 $k - 1$자리가 같은 순서들 가운데 사전 순서로 가장 작으려면 $k$번째가 가장 작아야 하고, 놓을 수 있는 노드 가운데 가장 작은 것을 놓아도 나머지를 끝까지 놓을 수 있어요(놓을 수 있는 노드는 뒤로 미뤄도 앞으로 당겨도 조건을 깨지 않아요). 자리마다 이 고르기를 되풀이하면 답이 하나로 정해져요.
+
+순환이 있으면 순환 위의 노드는 진입 차수가 0이 되지 않아 끝까지 남아요. 자기 고리도 마찬가지예요. 놓은 노드가 $n$개보다 적으면 `ValueError`예요.
+
+```python
+>>> D = sd.sparse.coo_array(([1.0] * 4, ([3, 2, 1, 2], [1, 1, 0, 4])), shape=(5, 5))
+>>> g.topological_sort(D)
+array([2, 3, 1, 0, 4], dtype=int64)
+>>> cyc = sd.sparse.coo_array(([1.0] * 5, ([3, 2, 1, 2, 0], [1, 1, 0, 4, 3])), shape=(5, 5))
+>>> try:
+...     g.topological_sort(cyc)
+... except ValueError as e:
+...     print(e)
+topological_sort(): the graph has a cycle
+```
+
+### 층을 이룬 비트맵
+
+"넣기"와 "가장 작은 것 꺼내기"가 필요한 자료 구조로는 보통 힙을 써요. 힙은 연산마다 $O(\log n)$의 비교와 옮기기가 들어요. 여기서는 원소가 0부터 $n - 1$까지의 정수라는 점을 써서 비트맵을 층으로 쌓아요.
+
+```cpp
+    // csrc/graph/traversal.cpp
+    void insert(int64_t v) {
+        for (auto& lv : levels_) {
+            const uint64_t bit = uint64_t{1} << (v & 63);
+            v >>= 6;
+            const bool was = lv[static_cast<size_t>(v)] != 0;
+            lv[static_cast<size_t>(v)] |= bit;
+            if (was) return;
+        }
+    }
+    bool empty() const { return levels_.back()[0] == 0; }
+    int64_t pop_min() {
+        int64_t v = 0;
+        for (size_t l = levels_.size(); l-- > 0;) v = (v << 6) | std::countr_zero(levels_[l][static_cast<size_t>(v)]);
+        const int64_t out = v;
+        for (auto& lv : levels_) {
+            uint64_t& w = lv[static_cast<size_t>(v >> 6)];
+            w &= ~(uint64_t{1} << (v & 63));
+            if (w) break;
+            v >>= 6;
+        }
+        return out;
+    }
+```
+
+맨 아래 층은 노드마다 한 비트예요. 그 위 층의 비트 하나는 아래 층의 64비트 낱말 하나가 비어 있지 않은지를 적어요. 층을 하나 올라갈 때마다 길이가 64분의 1이 되니 $n = 10^6$이어도 네 층이에요($64^4 \gt 10^6$).
+
+- **넣기**는 아래에서부터 비트를 켜요. 낱말에 이미 켜진 비트가 있었으면 위 층은 벌써 그 사실을 알고 있으니 거기서 멈춰요.
+- **가장 작은 것 꺼내기**는 맨 위 층에서 내려와요. 낱말에서 가장 낮은 켜진 비트의 자리(`countr_zero`, 명령 하나)가 아래 층에서 볼 낱말의 번호예요. 맨 아래에 닿으면 그 비트가 가장 작은 노드예요. 그 비트를 끄고, 낱말이 비었으면 위 층의 비트도 꺼요.
+
+두 연산 모두 층 수만큼의 낱말 연산이고 비교나 옮기기가 없어요.

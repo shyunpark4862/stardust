@@ -1,0 +1,216 @@
+---
+kind: function
+title: 여러 축의 사인 변환
+names: [dstn, idstn]
+group: DCT와 DST
+order: 4
+signatures:
+  - "sd.fft.dstn(x, /, *, type=2, s=None, axes=None, norm='backward', orthogonalize=None)"
+  - "sd.fft.idstn(x, /, *, type=2, s=None, axes=None, norm='backward', orthogonalize=None)"
+summary: 축이 여럿인 배열을 축마다 사인 변환해요. 가장자리 전체에서 값이 0인 판이나 상자 안의 자료를, 가장자리에서 0이 되는 사인 무늬들의 합으로 풀어 써요. dstn이 계수를 구하고 idstn이 되돌려요.
+params:
+  - name: x
+    type: ndarray
+    kind: positional-only
+    desc: 변환할 배열. 1차원 이상이에요. bool·int64는 float64로 바꿔 계산하고, complex128은 실수부와 허수부를 따로 변환해요. 리스트와 numpy 배열은 받지 않아요.
+  - name: type
+    type: int
+    kind: keyword-only
+    desc: 변환의 형(1, 2, 3, 4). 기본값은 2이고 모든 축에 같은 형을 써요. idstn에서는 되돌릴 dstn의 형을 적어요.
+  - name: s
+    type: int, int의 tuple·list, 또는 None
+    kind: keyword-only
+    desc: 축마다의 변환 길이. None(기본값)이면 입력의 길이 그대로예요. 원소는 1 이상의 int이거나 -1(그 축의 입력 길이)이에요. 입력보다 짧은 축은 앞에서 자르고 긴 축은 끝에 0을 채워요. axes와 함께 주면 길이가 같아야 하고, axes 없이 주면 마지막 len(s)개 축에 적용해요.
+  - name: axes
+    type: int, int의 tuple·list, 또는 None
+    kind: keyword-only
+    desc: 변환할 축들. None(기본값)이면 모든 축(s를 줬으면 마지막 len(s)개 축)이에요. 같은 축을 두 번 적을 수 없고 비어 있을 수 없어요.
+  - name: norm
+    type: str
+    kind: keyword-only
+    desc: 결과에 곱하는 인자. 'backward'(기본값)는 dstn에 1, idstn에 1/N′을 곱해요. 'ortho'는 양쪽에 1/√N′, 'forward'는 dstn에 1/N′, idstn에 1을 곱해요. N′은 변환하는 축마다의 길이(형 1은 2(N + 1), 나머지는 2N)를 모두 곱한 값이에요.
+  - name: orthogonalize
+    type: bool 또는 None
+    kind: keyword-only
+    desc: True면 형 2와 3에서 축마다 끝 칸을 √2로 맞춰 norm='ortho'의 변환이 직교가 되게 해요. None(기본값)은 norm이 'ortho'일 때만 True예요.
+returns:
+  type: ndarray
+  desc: 변환한 축의 길이가 s를 따르는 새 배열. 입력이 complex128이면 complex128, 아니면 float64예요.
+raises:
+  - type: TypeError
+    desc: x가 sd.ndarray가 아닐 때, type이 int가 아닐 때, s·axes의 원소가 int가 아닐 때(bool, None 포함), norm이 문자열이 아닐 때, orthogonalize가 True·False·None이 아닐 때, 옵션을 위치로 줬을 때.
+  - type: ValueError
+    desc: type이 1–4가 아닐 때, 변환하는 축의 길이가 0일 때, s의 원소가 0이거나 -2 이하일 때, s가 비었거나 축보다 많거나 axes와 길이가 다를 때, axes가 비었거나 범위 밖이거나 같은 축을 거듭 적었을 때, norm이 세 값 밖의 문자열일 때.
+seeAlso: [dst, dctn, dct, fftn, basics]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+`dstn`은 [`dst`](/api/fft/dst/)를 여러 축에 차례로 적용해요. 2차원 배열이면 행마다 변환한 뒤 열마다 변환한 것이에요. 결과의 $(k_0, k_1)$ 칸은 세로 방향의 $k_0$번째 사인과 가로 방향의 $k_1$번째 사인을 곱한 무늬가 입력에 얼마나 들어 있는지예요. `idstn`은 계수에서 원래 배열을 되찾아요.
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([[1.0, 2.0, 3.0],
+...                 [4.0, 5.0, 6.0]])
+>>> y = sd.fft.dstn(x)
+>>> y
+array([[ 39.597979746446654,  -9.797958971132708,  19.798989873223327],
+       [-23.999999999999993,                 0.0,               -12.0]], dtype=float64)
+>>> sd.fft.idstn(y)
+array([[1.0000000000000002, 1.9999999999999996, 2.9999999999999987],
+       [3.9999999999999987,  4.999999999999997,  5.999999999999998]], dtype=float64)
+```
+
+되돌린 값은 반올림만큼 원래 값과 다를 수 있어요. 인자와 규칙은 [`dctn`](/api/fft/dctn/)과 같고, 형마다의 정의는 [`dst`](/api/fft/dst/)에 있어요.
+
+<Reference />
+
+## 가장자리가 0인 판
+
+사인 무늬는 배열의 가장자리 바로 밖에서 모두 0이에요. 그래서 `dstn`은 가장자리 값이 0으로 정해진 2차원, 3차원 문제에 맞아요. 네 변을 붙든 막의 모양, 가장자리 온도를 0으로 둔 판의 온도가 그런 문제예요.
+
+정사각형 $(0, 1)^2$에서 $-(u_{xx} + u_{yy}) = f$이고 가장자리에서 $u = 0$인 $u$를 찾아요. 한 변을 $N + 1$칸으로 나누고 안쪽 격자점 $N \times N$개에서 둘째 도함수를 이웃 점과의 차로 바꿔요. 형 1의 사인 무늬는 이 차분을 해도 모양이 그대로이고 크기만 $\lambda_{k_0} + \lambda_{k_1}$배가 돼요($\lambda_k = (2 - 2\cos\frac{\pi(k+1)}{N+1})/h^2$). 오른쪽을 `dstn`으로 풀어 쓰고, 칸마다 그 값으로 나누고, `idstn`으로 되돌리면 풀려요.
+
+```python
+>>> N = 3
+>>> h = 1.0 / (N + 1)
+>>> p = (sd.arange(N) + 1) * h
+>>> q = p * (1.0 - p)
+>>> f = 2.0 * (q.reshape((N, 1)) + q.reshape((1, N)))
+>>> lam = (2.0 - 2.0 * sd.cos(sd.pi * (sd.arange(N) + 1) / (N + 1))) / h**2
+>>> u = sd.fft.idstn(sd.fft.dstn(f, type=1) / (lam.reshape((N, 1)) + lam.reshape((1, N))), type=1)
+>>> sd.round(u * 1e6) / 1e6
+array([[0.035156, 0.046875, 0.035156],
+       [0.046875,   0.0625, 0.046875],
+       [0.035156, 0.046875, 0.035156]], dtype=float64)
+>>> exact = q.reshape((N, 1)) * q.reshape((1, N))
+>>> float(sd.max(sd.abs(u - exact)))
+1.3877787807814457e-17
+```
+
+이 $f = 2x(1-x) + 2y(1-y)$의 정확한 해는 $u = x(1-x)\,y(1-y)$예요. 2차식은 세 점 차분이 둘째 도함수와 정확히 같아서 계산한 해가 반올림만큼만 달라요.
+
+<Fig caption="안쪽 격자점 3×3의 해 u예요. 배열 바깥을 한 칸 두른 가장자리(옅은 칸)의 값은 저장하지 않지만 사인 변환이 0으로 봐요.">
+  <ArrayFig
+    name="u"
+    data={[[0, 0, 0, 0, 0], [0, 0.0352, 0.0469, 0.0352, 0], [0, 0.0469, 0.0625, 0.0469, 0], [0, 0.0352, 0.0469, 0.0352, 0], [0, 0, 0, 0, 0]]}
+    tones={[['g', 'g', 'g', 'g', 'g'], ['g', 'a', 'a', 'a', 'g'], ['g', 'a', 'b', 'a', 'g'], ['g', 'a', 'a', 'a', 'g'], ['g', 'g', 'g', 'g', 'g']]}
+  />
+</Fig>
+
+## 축마다 차례로
+
+`dstn`은 `axes`의 마지막 축부터 첫 축까지 한 축씩 `dst`를 해요. 기본 `norm`에서는 `dst`를 그 순서로 이어 부른 것과 비트까지 같아요.
+
+```python
+>>> step = sd.fft.dst(sd.fft.dst(x, axis=1), axis=0)
+>>> bool(sd.all(sd.fft.dstn(x) == step))
+True
+>>> sd.fft.dstn(x, axes=1)
+array([[  7.999999999999999, -3.4641016151377535,                 4.0],
+       [ 19.999999999999996, -3.4641016151377535,                10.0]], dtype=float64)
+>>> bool(sd.all(sd.fft.dstn(x, axes=1) == sd.fft.dst(x, axis=1)))
+True
+```
+
+`s`는 축마다의 변환 길이예요. 길면 끝에 0을 채우고 짧으면 앞에서 잘라요. `-1`은 입력 길이 그대로예요.
+
+```python
+>>> sd.fft.dstn(x, s=(2, 2))
+array([[ 23.999999999999996,   -5.65685424949238],
+       [-16.970562748477143,                 0.0]], dtype=float64)
+>>> sd.fft.dstn(x, s=(-1, 4)).shape
+(2, 4)
+```
+
+## 정규화와 형
+
+`norm`의 인자는 마지막에 한 번만 곱해요. $N'$은 변환한 축마다의 길이(형 1은 $2(N+1)$, 나머지는 $2N$)를 모두 곱한 값이에요. `norm='ortho'`면 변환이 길이를 지켜요.
+
+```python
+>>> c = sd.fft.dstn(x, norm='ortho')
+>>> c
+array([[  8.082903768654761, -1.9999999999999993,  2.8577380332470406],
+       [ -3.464101615137754,                 0.0,  -1.224744871391589]], dtype=float64)
+>>> float(sd.sum(x * x)), float(sd.sum(c * c))
+(91.0, 91.0)
+```
+
+`type`은 모든 축에 똑같이 적용돼요.
+
+```python
+>>> sd.fft.dstn(x, type=1)
+array([[  58.54156770492877, -13.856406460551018,   10.04414509300021],
+       [-25.089243302112333,                 0.0,  -4.304633611285806]], dtype=float64)
+>>> sd.fft.idstn(sd.fft.dstn(x, type=1), type=1)
+array([[0.9999999999999997, 1.9999999999999987, 2.9999999999999982],
+       [               4.0,  4.999999999999998,  5.999999999999997]], dtype=float64)
+```
+
+## 경계의 값
+
+- 변환하는 축의 길이가 0이면 `ValueError`예요. 변환하지 않는 축의 길이가 0이면 빈 결과예요.
+- 길이 1인 축은 모든 형이 받아요. 형 1과 2는 값을 2배 해요.
+- NaN·inf는 변환하는 축들을 따라 퍼져요. 어느 칸이 NaN이고 어느 칸이 inf인지는 약속하지 않아요.
+- complex128 입력은 실수부와 허수부를 따로 변환해요.
+
+```python
+>>> sd.fft.dstn(sd.zeros((0, 3)), axes=1).shape
+(0, 3)
+>>> sd.fft.dstn(sd.asarray([[5.0]]), type=1)
+array([[20.0]], dtype=float64)
+>>> sd.fft.dstn(sd.asarray([[1.0, sd.nan], [3.0, 4.0]]), axes=1)
+array([[              nan,               nan],
+       [9.899494936611664,              -2.0]], dtype=float64)
+```
+
+## 에러
+
+```python
+>>> sd.fft.dstn(sd.zeros((0, 3)))
+Traceback (most recent call last):
+    ...
+ValueError: dstn(): cannot transform an axis of length 0
+>>> sd.fft.dstn(x, axes=(1, 1))
+Traceback (most recent call last):
+    ...
+ValueError: dstn(): repeated axis
+>>> sd.fft.dstn(x, axes=[])
+Traceback (most recent call last):
+    ...
+ValueError: dstn(): 'axes' must not be empty
+>>> sd.fft.dstn(x, s=(2, 0))
+Traceback (most recent call last):
+    ...
+ValueError: dstn(): the entries of 's' must be at least 1 (or -1), not 0
+>>> sd.fft.dstn(x, s=(2, 2), axes=(0,))
+Traceback (most recent call last):
+    ...
+ValueError: dstn(): 's' and 'axes' must have the same length, not 2 and 1
+>>> sd.fft.dstn(x, type=5)
+Traceback (most recent call last):
+    ...
+ValueError: dstn(): 'type' must be 1, 2, 3 or 4, not 5
+>>> sd.fft.dstn(x, (2, 2))
+Traceback (most recent call last):
+    ...
+TypeError: dstn(): takes 1 positional argument but 2 were given
+```
+
+## 정확도와 결정성
+
+한 축의 변환이 지키는 약속은 [`dst`](/api/fft/dst/)에 있어요. 여러 축의 변환은 축마다의 한계를 더한 한계를 지켜요. 결과 전체의 오차가 결과 전체의 크기에 견주어 작다는 약속이고, 칸 하나하나의 상대오차는 약속하지 않아요.
+
+같은 입력이면 스레드 수, 메모리 배치와 상관없이 같은 비트의 결과가 나와요.
+
+## numpy·scipy를 아는 분께
+
+- 정의와 인자 이름은 `scipy.fft.dstn`·`idstn`과 같아요. numpy에는 없어요.
+- 옵션은 키워드로만 받고, 입력은 `sd.ndarray`만 받아요. `workers`, `overwrite_x`가 없어요.
+- `s`에 int 하나를 줄 수 있고, `s`의 원소 None은 `TypeError`예요.
+- 범위 밖의 축은 `ValueError`예요(scipy는 `IndexError`). 빈 `axes`도 `ValueError`예요.
+- 정규화 인자 하나를 모든 축의 변환이 끝난 뒤에 곱해요. scipy와 값은 같고 끝자리가 다를 수 있어요.

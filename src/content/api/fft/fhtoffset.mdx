@@ -1,0 +1,150 @@
+---
+kind: function
+title: 링잉이 적은 offset
+names: [fhtoffset]
+group: FFTLog
+order: 2
+signatures:
+  - "sd.fft.fhtoffset(dln, mu, /, *, initial=0.0, bias=0.0)"
+summary: fht의 결과 격자를 정하는 offset 가운데, 원하는 값에 가장 가까우면서 결과 끝의 물결(링잉)이 적은 값을 찾아 줘요. 가장 높은 진동수의 계수가 실수가 되는 값이에요.
+params:
+  - name: dln
+    type: float
+    kind: positional-only
+    desc: fht에 줄 로그 간격. 0이 아닌 유한한 수여야 하고 음수도 받아요.
+  - name: mu
+    type: float
+    kind: positional-only
+    desc: fht에 줄 베셀 함수의 차수. 유한한 실수예요.
+  - name: initial
+    type: float
+    kind: keyword-only
+    desc: 바라는 offset. 기본값은 0이에요. 결과는 이 값에서 dln/2 이내에 있어요.
+  - name: bias
+    type: float
+    kind: keyword-only
+    desc: fht에 줄 거듭제곱 바이어스. 기본값은 0이에요.
+returns:
+  type: float
+  desc: Python float. 이 값을 fht·ifht의 offset에 그대로 줘요.
+raises:
+  - type: TypeError
+    desc: dln·mu·initial·bias가 int나 float가 아닐 때(bool 포함), initial·bias를 위치로 줬을 때.
+  - type: ValueError
+    desc: dln이 0이거나 NaN·inf일 때, mu·initial·bias가 NaN·inf일 때.
+seeAlso: [fht, basics]
+---
+import Callout from '../../../components/Callout.astro';
+
+## 한눈에 보기
+
+[`fht`](/api/fft/fht/)의 `offset`은 입력 격자와 결과 격자의 중심을 잇는 값 $\ln(k_c r_c)$예요. 어느 값을 줘도 변환은 되지만, 그 가운데 결과 끝의 물결이 적은 값들이 `dln` 간격으로 띄엄띄엄 있어요. `fhtoffset`은 `initial`에 가장 가까운 그런 값을 돌려줘요.
+
+```python
+>>> import math
+>>> import stardust as sd
+>>> dln = math.log(10.0) * 6 / 64
+>>> sd.fft.fhtoffset(dln, 0.0)
+-0.04832998670569435
+>>> sd.fft.fhtoffset(dln, 0.0, initial=1.0)
+1.0310067756352648
+>>> sd.fft.fhtoffset(dln, 1.0)
+0.05724110276215111
+```
+
+얻은 값을 같은 `dln`, `mu`, `bias`와 함께 `fht`에 줘요.
+
+<Reference />
+
+## 링잉과 가장 높은 진동수
+
+`fht`는 표본을 실수 FFT로 바꾸고, 진동수 $m$의 칸마다 복소수 계수 $U_m$을 곱한 뒤 되돌려요. 줄의 길이 $n$이 짝수면 가장 높은 진동수 $m = n/2$의 칸은 실수 FFT에서 실수 하나뿐이라서, 그 칸에서는 계수의 실수부만 쓸 수 있어요. 계수가 실수가 아니면 허수부가 버려지고, 계산한 결과는 연속 한켈 변환을 표본으로 옮긴 것과 그만큼 어긋나요. 그 어긋남이 가장 빠르게 떨리는 성분이라 결과 끝의 물결로 보여요.
+
+계수의 위상은 `offset`에 따라 고르게 돌아요. $m = n/2$에서 $y = \pi/(2\Delta)$이고
+
+$$
+U_{n/2} = 2^{q}\, \frac{\Gamma(x_+ + i y)}{\Gamma(x_- - i y)}\, e^{2 i y (\ln 2 - \text{offset})}, \qquad x_\pm = \frac{\mu + 1 \pm q}{2}
+$$
+
+이므로 `offset`이 $\Delta$만큼 바뀌면 위상이 $\pi$만큼 돌아요. 그래서 이 계수가 실수인 `offset`은 간격 $\Delta$로 놓이고, `fhtoffset`이 그 가운데 `initial`에 가장 가까운 것을 골라요. 식으로는
+
+$$
+\text{arg} = \frac{\ln 2 - \text{initial}}{\Delta} + \frac{\operatorname{Im}\ln\Gamma(x_+ + iy) + \operatorname{Im}\ln\Gamma(x_- + iy)}{\pi}, \qquad \text{offset} = \text{initial} + \bigl(\text{arg} - \mathrm{round}(\text{arg})\bigr)\,\Delta
+$$
+
+이고 $\mathrm{round}$는 가운데 값을 짝수 쪽으로 보내는 반올림이에요. 결과는 `initial`에서 $\Delta/2$ 이내에 있어요.
+
+```python
+>>> o = sd.fft.fhtoffset(dln, 0.0, initial=1.0)
+>>> abs(o - 1.0) <= dln / 2
+True
+>>> sd.fft.fhtoffset(dln, 0.0, initial=o) == o
+True
+```
+
+찾은 값을 다시 `initial`로 주면 그 값이 그대로 나와요.
+
+## 무엇이 달라지나요
+
+가장 빠르게 떨리는 줄 $(1, -1, 1, -1, \dots)$은 실수 FFT에서 $m = n/2$ 칸 하나에만 값이 있어요. 그래서 그 줄을 `fht`하면 계수의 실수부 $\operatorname{Re} U_{n/2}$만큼만 남아요. 아무 `offset`에서는 그 크기가 1보다 작아 줄이 줄어들고, `fhtoffset`의 값에서는 계수가 $\pm 1$이라 크기가 그대로예요.
+
+```python
+>>> alt = sd.asarray([1.0, -1.0] * 8)
+>>> float(sd.max(sd.abs(sd.fft.fht(alt, dln, 0.0))))
+0.7626712946352948
+>>> float(sd.max(sd.abs(sd.fft.fht(alt, dln, 0.0, offset=sd.fft.fhtoffset(dln, 0.0)))))
+1.0
+```
+
+줄어든 만큼은 연속 한켈 변환을 표본으로 옮긴 값과의 어긋남이고, 결과에서 가장 빠른 물결로 나타나요. 매끄럽고 양 끝이 작은 입력은 이 성분이 거의 없어서 어느 `offset`이든 결과의 오차가 비슷하고, 높은 진동수 성분이 큰 입력일수록 차이가 커요.
+
+`offset`을 바꾸면 결과의 점 $k_j = e^{\text{offset}}/r_c \cdot e^{(j - j_c)\Delta}$도 바뀌므로, 정확한 값과 견줄 때는 그 `offset`으로 만든 점을 써요.
+
+<Callout type="info" title="bias를 쓰면">
+
+`fht`에 `bias`를 주면 계수가 바뀌므로 `fhtoffset`에도 같은 `bias`를 줘요. 차수 `mu`와 `dln`도 `fht`에 줄 값과 같아야 해요.
+
+</Callout>
+
+```python
+>>> sd.fft.fhtoffset(0.1, 0.5)
+-0.02764280150069899
+>>> sd.fft.fhtoffset(0.1, 0.5, bias=0.3)
+-0.027688399191167834
+```
+
+## 정확도와 결정성
+
+결과는 정확한 값의 반 ulp 안이에요. 위 식의 `arg`를 두 배 정밀도(double-double)로 만들고 마지막에 한 번만 반올림하기 때문이에요. 감마 함수 로그의 허수부는 $2\pi$의 배수만큼 정해지지 않지만, 그 차이는 `arg`를 짝수만큼 옮길 뿐이라 반올림이 정확히 지워요. 같은 인자면 언제나 같은 값이에요.
+
+## 에러
+
+```python
+>>> sd.fft.fhtoffset(0.0, 0.0)
+Traceback (most recent call last):
+    ...
+ValueError: fhtoffset(): 'dln' must be finite and nonzero, not 0.0
+>>> sd.fft.fhtoffset(0.1, sd.nan)
+Traceback (most recent call last):
+    ...
+ValueError: fhtoffset(): 'mu' must be finite, not nan
+>>> sd.fft.fhtoffset(0.1, 0.0, initial=sd.inf)
+Traceback (most recent call last):
+    ...
+ValueError: fhtoffset(): 'initial' must be finite, not inf
+>>> sd.fft.fhtoffset(0.1, 0.0, 1.0)
+Traceback (most recent call last):
+    ...
+TypeError: fhtoffset(): takes 2 positional arguments but 3 were given
+>>> sd.fft.fhtoffset(0.1, '0')
+Traceback (most recent call last):
+    ...
+TypeError: fhtoffset(): 'mu' must be an int or a float, not str
+```
+
+## numpy·scipy를 아는 분께
+
+- `scipy.fft.fhtoffset`과 같은 식이에요. numpy에는 없어요.
+- `initial`과 `bias`는 키워드로만 받아요. scipy는 위치로도 받아요.
+- 결과는 Python float예요. scipy는 `numpy.float64`를 돌려줘요.
+- `dln`이 0이거나 NaN·inf면, 또는 다른 인자가 NaN·inf면 `ValueError`예요. scipy는 경고와 함께 NaN을 내요.

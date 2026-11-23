@@ -1,0 +1,209 @@
+---
+kind: function
+title: maximum_bipartite_matching
+names: [maximum_bipartite_matching]
+group: 트리, 흐름, 매칭
+order: 3
+signatures:
+  - "sd.graph.maximum_bipartite_matching(graph, /, *, perm_type='row')"
+summary: 두 무리(행 쪽과 열 쪽) 사이에서 짝이 될 수 있는 쌍이 주어졌을 때, 한 번에 가장 많은 짝을 맺는 방법을 찾아요. 누구도 두 번 짝지어지지 않아요.
+params:
+  - name: graph
+    type: sd.sparse 배열, ndarray, numpy 배열, 또는 수의 중첩 시퀀스
+    kind: positional-only
+    desc: (행 수, 열 수) 행렬. 정방이 아니어도 돼요. 행 i, 열 j에 원소가 있으면 행 쪽의 i와 열 쪽의 j가 짝이 될 수 있어요. 희소 배열은 저장된 원소가 모두 변이고(저장된 0도), 밀집 배열은 0도 NaN도 ±inf도 아닌 원소가 변이에요. 값의 크기는 읽지 않아요.
+  - name: perm_type
+    type: str
+    kind: keyword-only
+    desc: "결과의 방향. 'row'(기본값)면 열마다 짝지은 행을, 'column'이면 행마다 짝지은 열을 돌려줘요."
+returns:
+  type: ndarray
+  desc: "int64 배열. perm_type='row'면 길이가 열 수이고 j번째 값이 열 j와 짝지은 행이에요. 'column'이면 길이가 행 수이고 i번째 값이 행 i와 짝지은 열이에요. 짝이 없는 자리는 −1이에요."
+raises:
+  - type: TypeError
+    desc: graph가 sd.sparse 배열이나 밀집 행렬이 아닐 때, 복소수일 때, perm_type이 str이 아닐 때.
+  - type: ValueError
+    desc: graph가 2차원이 아닐 때, perm_type이 'row'나 'column'이 아닐 때.
+seeAlso: [min_weight_full_bipartite_matching, linear_sum_assignment, structural_rank, maximum_flow, basics]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import PlaneFig from '../../../components/fig/PlaneFig.astro';
+
+export const bmRows = [[0, 4], [0, 3], [0, 2], [0, 1], [0, 0]];
+export const bmCols = [[3, 3.5], [3, 2.5], [3, 1.5], [3, 0.5]];
+export const bmAll = [[0, 4, 3, 3.5], [0, 4, 3, 2.5], [0, 3, 3, 3.5], [0, 2, 3, 2.5], [0, 2, 3, 1.5], [0, 1, 3, 1.5], [0, 0, 3, 1.5], [0, 0, 3, 0.5]];
+export const bmMatch = [[0, 4, 3, 3.5], [0, 2, 3, 2.5], [0, 1, 3, 1.5], [0, 0, 3, 0.5]];
+
+## 무엇을 계산하나요
+
+사람 다섯과 일 넷이 있어요. 사람마다 할 수 있는 일이 정해져 있고, 한 사람은 일 하나만, 일 하나는 한 사람만 맡아요. 일을 가장 많이 채우려면 누구에게 무엇을 맡겨야 할까요?
+
+두 무리가 있고 변이 한 무리와 다른 무리 사이에만 있는 그래프를 **이분 그래프**라고 해요. 끝점이 겹치지 않게 고른 변들이 **매칭**이고, 이 함수는 변이 가장 많은 매칭을 찾아요.
+
+입력은 인접 행렬이 아니라 **행이 한 무리, 열이 다른 무리**인 행렬이에요. `B[i, j]`가 0이 아니면 사람 $i$가 일 $j$를 할 수 있어요.
+
+```python
+>>> import stardust as sd
+>>> B = sd.asarray([[1, 1, 0, 0],      # 사람 0: 일 0, 1
+...                 [1, 0, 0, 0],      # 사람 1: 일 0
+...                 [0, 1, 1, 0],      # 사람 2: 일 1, 2
+...                 [0, 0, 1, 0],      # 사람 3: 일 2
+...                 [0, 0, 1, 1]])     # 사람 4: 일 2, 3
+>>> sd.graph.maximum_bipartite_matching(B, perm_type='column')
+array([ 0, -1,  1,  2,  3], dtype=int64)
+>>> sd.graph.maximum_bipartite_matching(B)
+array([0, 2, 3, 4], dtype=int64)
+```
+
+<Reference />
+
+## 결과 읽기
+
+`perm_type`은 결과를 어느 쪽에서 읽을지를 정해요.
+
+| `perm_type` | 길이 | $k$번째 값 |
+|---|---|---|
+| `'row'` (기본값) | 열 수 | 열 $k$와 짝지은 **행** |
+| `'column'` | 행 수 | 행 $k$와 짝지은 **열** |
+
+같은 매칭을 두 방향에서 적은 것이라 내용은 같아요. 짝이 없는 자리는 −1이에요. 위에서 일은 넷 다 찼고, 사람 다섯 가운데 하나는 일을 받지 못했어요.
+
+짝의 목록과 매칭의 크기는 이렇게 읽어요.
+
+```python
+>>> job_of = sd.graph.maximum_bipartite_matching(B, perm_type='column')
+>>> [(person, job) for person, job in enumerate(job_of.tolist()) if job >= 0]
+[(0, 0), (2, 1), (3, 2), (4, 3)]
+>>> int((job_of >= 0).sum())
+4
+```
+
+<Fig caption="왼쪽이 사람(행), 오른쪽이 일(열)이에요. 회색 선은 할 수 있는 일이고 굵은 파란 선이 맺은 짝이에요. 일 2를 할 수 있는 사람이 셋(2, 3, 4)인데 사람 3은 일 2밖에 못 해요. 일은 넷이고 사람은 다섯이라 일을 모두 채워도 한 사람은 남아요. 여기서는 사람 1이 남았어요.">
+  <PlaneFig
+    label="사람 다섯과 일 넷의 이분 그래프와 크기 4의 매칭"
+    domain={[-0.9, 4.1]}
+    range={[-0.5, 4.5]}
+    width={420}
+    layers={[
+      { kind: 'segments', segs: bmAll, tone: 'faint', width: 1.4 },
+      { kind: 'segments', segs: bmMatch, tone: 'main', width: 2.6 },
+      { kind: 'points', pts: bmRows, tone: 'ink', size: 4.5 },
+      { kind: 'points', pts: bmCols, tone: 'ink', shape: 'square', size: 4.2 },
+      { kind: 'text', at: [0, 4], text: '사람 0', dx: -10, dy: 4, anchor: 'end' },
+      { kind: 'text', at: [0, 3], text: '사람 1', dx: -10, dy: 4, anchor: 'end' },
+      { kind: 'text', at: [0, 2], text: '사람 2', dx: -10, dy: 4, anchor: 'end' },
+      { kind: 'text', at: [0, 1], text: '사람 3', dx: -10, dy: 4, anchor: 'end' },
+      { kind: 'text', at: [0, 0], text: '사람 4', dx: -10, dy: 4, anchor: 'end' },
+      { kind: 'text', at: [3, 3.5], text: '일 0', dx: 10, dy: 4, anchor: 'start' },
+      { kind: 'text', at: [3, 2.5], text: '일 1', dx: 10, dy: 4, anchor: 'start' },
+      { kind: 'text', at: [3, 1.5], text: '일 2', dx: 10, dy: 4, anchor: 'start' },
+      { kind: 'text', at: [3, 0.5], text: '일 3', dx: 10, dy: 4, anchor: 'start' },
+    ]}
+    legend={[
+      { label: '맺은 짝', tone: 'main', shape: 'line' },
+      { label: '할 수 있는 일', tone: 'faint', shape: 'line' },
+    ]}
+  />
+</Fig>
+
+## 눈앞의 짝부터 맺으면 안 되는 까닭
+
+차례대로 "아직 비어 있는 첫 일"을 주는 방법은 가장 큰 매칭을 놓칠 수 있어요. 아래에서 사람 0에게 일 0을 먼저 주면 사람 1은 할 일이 없어요. 사람 0을 일 1로 옮기면 둘 다 일을 받아요.
+
+```python
+>>> small = sd.asarray([[1, 1],
+...                     [1, 0]])
+>>> sd.graph.maximum_bipartite_matching(small, perm_type='column')
+array([1, 0], dtype=int64)
+```
+
+이 함수는 이미 맺은 짝을 바꿔 가며 짝을 하나 더 늘릴 수 있는 길이 남아 있지 않을 때까지 찾아요. 그래서 결과의 크기는 언제나 가능한 가장 큰 값이에요.
+
+## 가장 큰 매칭이 여럿일 때
+
+크기는 하나로 정해지지만 그 크기의 매칭은 여럿일 수 있어요. 처음 예제에서도 사람 1이 일 0, 사람 0이 일 1, 사람 2가 일 2를 맡고 사람 3이 남는 매칭이 있어요. 이 함수는 행과 이웃을 번호가 작은 것부터 보는 정해진 차례로 찾기 때문에, 같은 입력이면 언제나 같은 매칭을 돌려줘요. 스레드 수와도 상관없어요.
+
+어떤 짝이 더 좋은지에 차이가 있다면(비용, 선호도) 변에 무게를 주고 [`min_weight_full_bipartite_matching`](/api/graph/min_weight_full_bipartite_matching/)이나 [`linear_sum_assignment`](/api/graph/linear_sum_assignment/)를 써요. 이 함수는 값의 크기를 읽지 않아요.
+
+## 값이 아니라 자리를 읽어요
+
+밀집 행렬에서는 0이 아닌 원소가 변이에요. 값이 1이든 7.5든 같아요. 희소 배열에서는 **저장된 원소가 모두 변**이라, 0으로 저장된 원소도 변이에요.
+
+```python
+>>> S = sd.sparse.coo_array(([0.0, 5.0], ([0, 1], [0, 0])), shape=(2, 2))
+>>> S.toarray()
+array([[0.0, 0.0],
+       [5.0, 0.0]], dtype=float64)
+>>> sd.graph.maximum_bipartite_matching(S, perm_type='column')
+array([ 0, -1], dtype=int64)
+>>> sd.graph.maximum_bipartite_matching(S.toarray(), perm_type='column')
+array([-1,  0], dtype=int64)
+```
+
+희소 배열 `S`에서는 행 0과 행 1이 모두 열 0에 이어져 있어요. 밀집으로 펼치면 `[0, 0]`의 0이 변이 아니게 돼서 행 0은 이웃이 없어요. 두 경우 모두 열 0은 하나뿐이라 짝은 하나이고, 누가 짝이 되는지만 달라요.
+
+## 행렬의 대각을 채우는 순열
+
+`perm_type`이라는 이름은 이 함수의 다른 쓰임에서 왔어요. 정방 행렬의 행을 바꿔 놓아 대각에 0이 없게 만드는 일이에요. 연립방정식을 풀기 전에 흔히 하는 준비예요. 행을 한 무리, 열을 다른 무리로 보면, 모든 열에 짝이 있는 매칭이 곧 그런 순열이에요. `perm_type='row'`의 결과로 행을 고르면 돼요.
+
+```python
+>>> A = sd.asarray([[0.0, 2.0, 0.0],
+...                 [0.0, 0.0, 3.0],
+...                 [4.0, 0.0, 1.0]])
+>>> perm = sd.graph.maximum_bipartite_matching(A)
+>>> perm
+array([2, 0, 1], dtype=int64)
+>>> A[perm]
+array([[4.0, 0.0, 1.0],
+       [0.0, 2.0, 0.0],
+       [0.0, 0.0, 3.0]], dtype=float64)
+```
+
+결과에 −1이 있으면 어떻게 바꿔 놓아도 대각을 다 채울 수 없는 행렬이에요. 그런 행렬은 값이 무엇이든 특이 행렬이에요. 매칭의 크기만 필요하면 [`structural_rank`](/api/graph/structural_rank/)가 그 수를 바로 돌려줘요.
+
+```python
+>>> sd.graph.structural_rank(B)
+4
+```
+
+## 경계의 값
+
+| 입력 | 결과 |
+|---|---|
+| 변이 없는 행렬 | 모두 −1 |
+| 행이 0개이거나 열이 0개 | 길이가 그쪽 크기인 배열(빈 배열이거나 모두 −1) |
+| 직사각 행렬 | 매칭의 크기는 많아야 작은 쪽의 크기 |
+| 밀집 행렬의 NaN, ±inf | 변 없음 |
+
+```python
+>>> sd.graph.maximum_bipartite_matching(sd.zeros((2, 3)))
+array([-1, -1, -1], dtype=int64)
+>>> sd.graph.maximum_bipartite_matching(sd.zeros((0, 3)))
+array([-1, -1, -1], dtype=int64)
+>>> sd.graph.maximum_bipartite_matching(sd.zeros((0, 3)), perm_type='column')
+array([], dtype=int64)
+>>> sd.graph.maximum_bipartite_matching(B, perm_type='both')
+Traceback (most recent call last):
+    ...
+ValueError: maximum_bipartite_matching(): 'perm_type' must be 'row' or 'column', not 'both'
+>>> sd.graph.maximum_bipartite_matching([1, 0, 1])
+Traceback (most recent call last):
+    ...
+ValueError: maximum_bipartite_matching(): 'graph' must have 2 dimensions, not 1
+```
+
+<Callout type="warn" title="인접 행렬이 아니에요">
+
+이 함수의 행렬은 행과 열이 서로 다른 무리예요. 행 2와 열 2는 다른 노드예요. 노드 하나하나가 행이자 열인 (n, n) 인접 행렬을 그대로 넣으면 뜻이 다른 문제를 풀게 돼요. 인접 행렬로 가진 이분 그래프는 한 무리의 행과 다른 무리의 열만 잘라서 `G[left][:, right]`로 넘겨요.
+
+</Callout>
+
+## scipy·networkx를 아는 분께
+
+- `scipy.sparse.csgraph.maximum_bipartite_matching`과 이름, `perm_type`의 뜻, −1로 적는 빈자리가 같아요.
+- 결과가 int64예요.
+- 밀집 행렬도 받아요. scipy는 희소 배열만 받아요.
+- 매칭의 크기는 scipy와 언제나 같아요. 가장 큰 매칭이 여럿이면 고른 매칭이 scipy와 다를 수 있어요.
+- `perm_type`은 키워드로만 받아요.
+- networkx의 `bipartite.maximum_matching(G, top_nodes)`는 두 방향을 모두 담은 사전을 돌려줘요. 여기서는 행렬을 받고 한쪽에서 본 배열을 돌려줘요.

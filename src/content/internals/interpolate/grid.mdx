@@ -1,0 +1,390 @@
+---
+title: 격자 보간
+group: 여러 변수
+order: 1
+summary: RegularGridInterpolator의 여섯 방법을 코드를 따라 설명해요. 꼭짓점 값을 마지막 축부터 선형 커널로 줄이는 linear와 그 오차 한계, 텐서곱 스플라인의 계수가 축마다의 1차원 풀이와 정확히 같은 까닭(배치 행렬이 크로네커 곱이에요)과 반복 풀이 없이 띠 풀이로 푸는 방법, 평가점마다 이웃 4^d개의 값만 읽는 pchip, 바깥과 NaN의 규칙, 일을 나누는 방법을 다뤄요.
+seeAlso: [linear, bspline, cubic, banded, overview, accuracy-performance]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import PlaneFig from '../../../components/fig/PlaneFig.astro';
+
+export const gridLines = [[0, 0, 0, 3], [1, 0, 1, 3], [2, 0, 2, 3], [4, 0, 4, 3], [0, 0, 4, 0], [0, 1, 4, 1], [0, 3, 4, 3]];
+export const gridNodes = [[0, 0], [0, 1], [0, 3], [1, 0], [1, 1], [1, 3], [2, 0], [2, 1], [2, 3], [4, 0], [4, 1], [4, 3]];
+export const pchipLines = [[0, 0, 0, 6], [1, 0, 1, 6], [2, 0, 2, 6], [3, 0, 3, 6], [5, 0, 5, 6], [6, 0, 6, 6], [0, 0, 6, 0], [0, 1, 6, 1], [0, 2, 6, 2], [0, 3, 6, 3], [0, 5, 6, 5], [0, 6, 6, 6]];
+export const pchipAll = [[0, 0], [0, 1], [0, 2], [0, 3], [0, 5], [0, 6], [1, 0], [1, 1], [1, 2], [1, 3], [1, 5], [1, 6], [2, 0], [2, 1], [2, 2], [2, 3], [2, 5], [2, 6], [3, 0], [3, 1], [3, 2], [3, 3], [3, 5], [3, 6], [5, 0], [5, 1], [5, 2], [5, 3], [5, 5], [5, 6], [6, 0], [6, 1], [6, 2], [6, 3], [6, 5], [6, 6]];
+export const pchipWin = [[1, 2], [1, 3], [1, 5], [1, 6], [2, 2], [2, 3], [2, 5], [2, 6], [3, 2], [3, 3], [3, 5], [3, 6], [5, 2], [5, 3], [5, 5], [5, 6]];
+
+## 한눈에 보기
+
+[`RegularGridInterpolator`](/api/interpolate/RegularGridInterpolator/)와 [`interpn`](/api/interpolate/interpn/)은 축마다 오름차순 노드 $x^{(a)}$($n_a$개)가 있고 모든 격자점에 값이 있는 자료를 보간해요. 값은 C++에 $(n_0\cdots n_{d-1}, K)$ 꼴의 행 우선 배열로 넘어가요. 축 0이 가장 느리게 변하고, $K$는 배치의 열이에요. 감소하는 축은 만들 때 뒤집어 둬요.
+
+| 방법 | 계산 | 1차원에서 같은 비트인 것 |
+|---|---|---|
+| `linear`, `slinear` | 꼭짓점 $2^d$개를 마지막 축부터 선형 커널로 줄여요 | `sd.interp`, `make_interp_spline(k=1)` |
+| `nearest` | 축마다 $t \le 0.5$면 왼쪽, 아니면 오른쪽 노드 | |
+| `cubic`, `quintic` | not-a-knot B-스플라인의 텐서곱. 계수는 축마다의 1차원 풀이 | `make_interp_spline(k=3, 5)` |
+| `pchip` | 점마다 이웃 $4^d$개 값으로 축마다 1차원 PCHIP | `PchipInterpolator` |
+
+| 파일 | 하는 일 |
+|---|---|
+| `src/stardust/interpolate/_grid.py` | 축과 값의 검사, 감소하는 축 뒤집기, 평가점의 꼴, 방법 고르기, 스플라인 계수를 차수마다 쌓아 두기 |
+| `csrc/interpolate/grid.cpp` | 여섯 방법의 평가, 텐서곱 계수의 풀이, 바깥의 규칙 |
+| `csrc/base/lerp.hpp`, `base/interval.hpp` | 선형 커널과 구간 찾기([선형 보간](/internals/interpolate/linear/)) |
+| `csrc/interpolate/banded.hpp`, `deboor.hpp`, `pchip.hpp` | 띠 풀이, de Boor 기저, PCHIP 기울기(1차원 보간과 같은 코드) |
+
+모든 방법이 한 가지 모양을 따라요. 평가점마다 축별로 구간을 찾고, 그 둘레의 값 묶음을 모은 뒤, **마지막 축부터 첫 축까지** 한 축씩 1차원 계산으로 줄여요. 축마다의 1차원 계산이 1차원 보간과 같은 코드라서, 축이 하나인 격자는 1차원 보간과 비트까지 같아요.
+
+평가점은 256점 블록으로 나눠 축마다 `count_le_block`으로 구간을 한꺼번에 찾아요. 정렬된 점은 앞 점의 자리에서 이어 찾고, 어떤 탐색으로 찾든 같은 구간이 나와요([영역의 구조](/internals/interpolate/overview/)).
+
+## 바깥과 NaN
+
+```cpp
+// csrc/interpolate/grid.cpp
+// What a point's row gets before any interpolation: 0 compute it, 1 NaN, 2 the fill value. The lowest axis where a
+// point lies outside goes to `low` under rule 2.
+inline int classify(const double* p, const std::vector<Axis>& ax, int rule, std::int64_t& low) {
+    const std::int64_t d = static_cast<std::int64_t>(ax.size());
+    std::int64_t out = -1;
+    for (std::int64_t a = 0; a < d; ++a) {
+        if (p[a] != p[a]) return 1;
+        if (out < 0 && (p[a] < ax[a].x[0] || p[a] > ax[a].x[ax[a].n - 1])) out = a;
+    }
+    if (out < 0) return 0;
+    if (rule == 0) return 2;
+    if (rule == 2) low = std::min(low, out);
+    return 0;
+}
+```
+
+점마다 먼저 무엇을 할지 정해요. 좌표에 NaN이 있으면 규칙과 상관없이 NaN이에요. 어느 축에서든 범위 밖이면 규칙 0(`bounds_error=False`와 수인 `fill_value`)은 채울 값, 규칙 1(`fill_value=None`)은 끝 조각을 늘여 계산, 규칙 2(`bounds_error=True`)도 일단 계산하고 범위 밖인 가장 작은 축을 기록해요. 블록마다 찾은 가장 작은 축을 원자적으로 합치고, Python 층이 그 축을 말하는 `ValueError`를 내요. 범위 검사를 평가와 한 번에 하니 점을 두 번 훑지 않아요.
+
+## linear: 꼭짓점을 축마다 줄이기
+
+점 $p$가 축마다 구간 $j_a$와 $t_a = (p_a - x^{(a)}_{j_a})/(x^{(a)}_{j_a+1} - x^{(a)}_{j_a})$에 있으면, 그 둘레의 꼭짓점 $2^d$개가 값을 정해요. 축 하나를 선형으로 줄이면 꼭짓점이 반으로 줄고, $d$번 줄이면 하나가 남아요.
+
+```cpp
+            // csrc/interpolate/grid.cpp
+            // the corners: axis act[0] the highest bit, the last active axis the lowest
+            off[0] = 0;
+            std::int64_t size = 1;
+            for (std::int64_t q = 0; q < da; ++q) {
+                const std::int64_t a = act[q];
+                const Axis& A = J.ax[a];
+                const std::int64_t j = interval_of(cnt[a * kBlock + i], A.n);
+                t[q] = lerp_t(p[a], A.x[j], A.x[j + 1]);
+                const std::int64_t s = J.stride[a];
+                for (std::int64_t c = size - 1; c >= 0; --c) {
+                    off[2 * c + 1] = off[c] + (j + 1) * s;
+                    off[2 * c] = off[c] + j * s;
+                }
+                size *= 2;
+            }
+            for (std::int64_t col = 0; col < K; ++col) {
+                for (std::int64_t c = 0; c < nc; ++c) w[c] = J.v[off[c] * K + col];
+                std::int64_t n = nc;
+                for (std::int64_t q = da - 1; q >= 0; --q) {
+                    n /= 2;
+                    for (std::int64_t c = 0; c < n; ++c) w[c] = lerp(w[2 * c], w[2 * c + 1], t[q]);
+                }
+                row[col] = w[0];
+            }
+```
+
+꼭짓점의 번호는 첫 축이 가장 높은 자리, 마지막 축이 가장 낮은 자리인 이진수예요. 그래서 이웃한 두 칸 `w[2c]`, `w[2c + 1]`은 마지막 축만 다른 짝이고, 첫 줄이기는 마지막 축이에요. 줄일 때마다 `lerp(a, b, t)`는 1차원 선형 보간과 같은 커널이고 $t$도 같은 `lerp_t`로 구해요. 노드가 하나인 축은 줄이기에 들지 않아요. 그 축을 따라 값이 상수라는 뜻이에요.
+
+이 꼴에서 세 성질이 바로 나와요.
+
+- **노드에서 정확해요.** $t = 0$이면 선형 커널이 $a$를, $t = 1$이면 $b$를 정확히 돌려줘요. 모든 축에서 노드 위인 점은 꼭짓점 값 그대로예요.
+- **꼭짓점 값의 범위 안이에요.** 선형 커널의 결과는 $0 \le t \le 1$에서 두 입력 사이에 있으니, 몇 번 줄여도 꼭짓점 값의 최솟값과 최댓값 사이예요.
+- **1차원은 `sd.interp`와 같은 비트예요.** 축이 하나면 줄이기 한 번이 곧 1차원 선형 길의 계산이에요.
+
+scipy는 꼭짓점 값에 무게의 곱 $\prod_a t_a$ 또는 $1 - t_a$를 곱해 더해요. 같은 함수지만 연산이 달라 끝자리가 다를 수 있어요.
+
+값이 실수이고 꼭짓점이 64개 이하이며 한 조각의 평가점이 32개 이상이면 블록 길을 써요. 256점 블록의 꼭짓점 값을 먼저 모두 모아(서로 독립인 읽기라 여러 읽기가 겹쳐 나가요) 줄이기 한 단계를 블록 전체에 대해 벡터 커널 `lerp_ab_block`으로 해요. 점마다 연산은 위와 같고, 블록에 유한하지 않은 꼭짓점 값이 있으면 그 단계를 `lerp`로 다시 해요. 결과는 같은 비트예요.
+
+<Fig caption="2차원 격자(x 노드 0, 1, 2, 4와 y 노드 0, 1, 3)의 점 (1.5, 2)에서 linear가 하는 일. 둘레의 꼭짓점 넷(번호는 첫 축이 높은 자리인 이진수)을 먼저 마지막 축(y)으로 줄여 x = 1과 x = 2 위의 두 값(파랑)을 만들고, 그 둘을 첫 축(x)으로 줄여 답을 내요.">
+  <PlaneFig
+    label="2차원 격자에서 꼭짓점 넷을 마지막 축부터 줄이는 순서"
+    domain={[-0.3, 4.3]}
+    range={[-0.3, 3.3]}
+    width={440}
+    xTicks={[0, 1, 2, 4]}
+    yTicks={[0, 1, 3]}
+    layers={[
+      { kind: 'segments', segs: gridLines, tone: 'faint' },
+      { kind: 'points', pts: gridNodes, tone: 'faint', size: 2.6 },
+      { kind: 'segments', segs: [[1, 1, 1, 3], [2, 1, 2, 3]], tone: 'soft', width: 2 },
+      { kind: 'segments', segs: [[1, 2, 2, 2]], tone: 'main', width: 2, dashed: true },
+      { kind: 'points', pts: [[1, 1], [1, 3], [2, 1], [2, 3]], tone: 'ink', size: 3.4, labels: ['00', '01', '10', '11'] },
+      { kind: 'points', pts: [[1, 2], [2, 2]], tone: 'main', size: 3.4 },
+      { kind: 'points', pts: [[1.5, 2]], tone: 'main', shape: 'cross', size: 5 },
+    ]}
+    legend={[
+      { label: '꼭짓점', tone: 'ink', shape: 'dot' },
+      { label: 'y로 줄인 값', tone: 'main', shape: 'dot' },
+      { label: '평가점', tone: 'main', shape: 'cross' },
+    ]}
+  />
+</Fig>
+
+```python
+>>> I = sd.interpolate
+>>> x = sd.asarray([0.0, 1.0, 2.0, 4.0])
+>>> y = sd.asarray([0.0, 1.0, 3.0])
+>>> v = sd.asarray([[1.0, 2.0, 4.0], [3.0, 5.0, 6.0], [2.0, 2.0, 8.0], [0.0, 1.0, 7.0]])
+>>> g = I.RegularGridInterpolator((x, y), v)
+>>> g
+RegularGridInterpolator(grid=4x3, method='linear')
+>>> g((1.5, 2.0))
+5.25
+>>> left, right = sd.interp(2.0, y, v[1]), sd.interp(2.0, y, v[2])
+>>> left, right
+(5.5, 5.0)
+>>> sd.interp(1.5, x[1:3], sd.asarray([left, right])) == g((1.5, 2.0))
+True
+>>> g((1.5, 2.0), method='nearest'), g((2.5, 0.5), method='nearest')
+(5.0, 2.0)
+>>> g((5.0, 1.0))
+Traceback (most recent call last):
+    ...
+ValueError: RegularGridInterpolator(): one of the requested xi is out of bounds in dimension 0
+>>> g2 = I.RegularGridInterpolator((x, y), v, bounds_error=False)
+>>> g2([[5.0, 1.0], [float('nan'), 1.0]])
+array([nan, nan], dtype=float64)
+```
+
+마지막 축 $y$로 먼저 줄인 두 값 5.5와 5.0을 첫 축 $x$로 줄인 결과가 `sd.interp`를 두 번 쓴 것과 비트까지 같아요. NaN 좌표의 점은 `bounds_error=False`에서도 채울 값이 아니라 NaN이에요.
+
+### 오차 한계
+
+1차원 선형 커널은 정확한 $t$와 $y = (1 - t)a + tb$에 대해 $0 \le t \le 1$이면 $\lvert\hat y - y\rvert \le \gamma_6(\lvert a\rvert + \lvert b\rvert) + 3\eta$($\eta = 2^{-1075}$)예요. 격자에서는 입력 $a$, $b$ 자체가 앞 단계의 계산값이에요. 한 단계의 결과 오차는 이번 반올림 $\gamma_6(\lvert\hat a\rvert + \lvert\hat b\rvert) + 3\eta$에 입력의 오차를 $(1 - t)$와 $t$로 섞은 것이 더해져요. 구간 안에서 섞은 오차는 두 입력 오차의 최대를 넘지 않으니, 단계 $\ell$의 오차 $E_\ell$은
+
+$$
+E_{\ell+1} \le E_\ell + 2\gamma_6(M + E_\ell) + 3\eta
+$$
+
+로 자라요($M$은 꼭짓점 값의 최대 크기). $d$단계를 쌓으면 격자 안에서 $\lvert\hat y - y\rvert \le d\,(\gamma_{13}M + 3\eta)$예요. 테스트와 정확도 스윕은 이 재귀를 그대로 정확한 유리수로 따라가 점마다의 한계를 만들어요.
+
+## nearest
+
+축마다 같은 $t$를 구해 $t \le 0.5$면 왼쪽, 아니면 오른쪽 노드를 골라 그 값을 그대로 돌려줘요. 한가운데에서는 작은 색인이에요. 줄이기가 없으니 오차는 0이에요.
+
+## cubic, quintic: 텐서곱 스플라인
+
+### 계수가 축마다의 풀이인 까닭
+
+차수 $k$의 텐서곱 스플라인은
+
+$$
+s(x) = \sum_{j_0, \ldots, j_{d-1}} c_{j_0\cdots j_{d-1}}\,B^{(0)}_{j_0}(x_0)\cdots B^{(d-1)}_{j_{d-1}}(x_{d-1})
+$$
+
+이고, 축마다의 B-스플라인 기저 $B^{(a)}_j$는 그 축 노드의 not-a-knot 매듭으로 만들어요. 모든 격자점에서 $s$가 값과 같아야 한다는 조건은, 축 $a$의 배치 행렬 $A_a$($(A_a)_{ij} = B^{(a)}_j(x^{(a)}_i)$, $n_a \times n_a$)로 적으면
+
+$$
+V = (A_0 \otimes A_1 \otimes \cdots \otimes A_{d-1})\,c
+$$
+
+예요. 크로네커 곱의 역은 역의 크로네커 곱이니 $c = (A_0^{-1} \otimes \cdots \otimes A_{d-1}^{-1})V$이고, 이것은 **축 0을 따라 모든 줄에 $A_0^{-1}$을 곱하고, 그 결과에 축 1을 따라 $A_1^{-1}$을 곱하고, …를 차례로 한 것**과 같아요. 2차원으로 적으면 $V = A_0CA_1^{\mathsf T}$이고 $C = A_0^{-1}VA_1^{-\mathsf T}$예요. 정확한 산술에서는 축의 차례가 상관없지만 부동소수점에서는 끝자리가 달라질 수 있어서, 코드는 언제나 축 0부터 풀어요.
+
+그래서 $\prod n_a$ 크기의 큰 계를 풀 필요가 없어요. 축마다 $n_a \times n_a$ 띠 행렬 하나를 한 번 분해하고 그 축의 모든 줄에 대입만 하면 돼요. scipy는 이 계수를 반복 풀이(기본 `gcrotmk`)로 구해서, 결과가 반복의 허용오차 크기로 틀려요. 여기서는 반복이 없어요.
+
+```cpp
+    // csrc/interpolate/grid.cpp
+    for (std::int64_t a = 0; a < d; ++a) {
+        int st;
+        const BandSolver S = [&] {  // the GIL released for the factorization alone (no Python object inside)
+            const parallel::Unlocked unlocked(n[a] * (k + 1) * (k + 1) >= kParallelThreshold);
+            return collocation(ax[a], kt[a], k, st);
+        }();
+        if (st < 0) return pair(std::move(out), -1);
+        status = std::max(status, st);
+        // the lines of axis a: P slabs of (n_a, Q) doubles, row-major; the columns of a slab by groups of 8
+        const std::int64_t P = rows / (n[a] * stride[a]), Q = stride[a] * V.D;
+        constexpr std::int64_t kGroup = 8;
+        const std::int64_t groups = (Q + kGroup - 1) / kGroup, units = P * groups;
+        const std::int64_t width = 2 * k + 2;
+        split_range(units, units * n[a] * width * 2 * std::min(Q, kGroup), 1, [&](std::int64_t u0, std::int64_t u1) {
+            for (std::int64_t u = u0; u < u1; ++u) {
+                const std::int64_t slab = u / groups, g = u % groups;
+                S.solve(C + slab * n[a] * Q, Q, g * kGroup, std::min(Q, (g + 1) * kGroup));
+            }
+        });
+    }
+```
+
+축 $a$의 배치 행렬은 1차원 `make_interp_spline`과 같은 행, 같은 띠, 같은 기저로 만들어 `BandSolver`로 분해해요([띠 풀이](/internals/interpolate/banded/)). 피벗 없는 소거가 안정하다고 증명되는 꼴이면 피벗 없이, 아니면 부분 피벗으로 풀어요. 정확한 0 피벗이면 특이하다고 알려 `LinAlgError`가 돼요.
+
+행 우선 배열에서 축 $a$의 줄들은 $(n_a, Q)$ 꼴의 판 $P$장이에요. $Q$는 축 $a$보다 뒤인 축의 크기와 열 수의 곱이에요. 판마다 열을 8개씩 묶어 한 번에 대입하고, (판, 열 묶음)을 일의 단위로 나눠 병렬로 해요. 줄마다 같은 분해, 같은 대입이라 나누는 방법과 무관하게 같은 비트예요. 1차원이면 이것이 곧 `make_interp_spline`의 풀이라 계수가 비트까지 같아요.
+
+계수는 차수마다 한 번 만들어 객체에 둬요. `__call__(method='quintic')`처럼 만들 때와 다른 방법을 부르면 그때 그 차수의 계수를 만들어 쌓아요.
+
+```python
+    # src/stardust/interpolate/_grid.py
+    def _spline(self, k, name):
+        """(the knots of every axis, the coefficients (rows, K)) of the degree-k tensor spline."""
+        got = self._coefs.get(k)
+        if got is None:
+            knots = [_core.bspline_knots(p, k, _KNOTS_NOT_A_KNOT) for p in self._grid]
+            if k == 1:
+                c = self._v2
+            else:
+                c, status = _core.grid_spline_coefs(list(self._grid), knots, k, self._v2)
+                if status < 0:
+                    from ..linalg import LinAlgError
+
+                    raise LinAlgError(f"{name}(): the collocation matrix of an axis is singular")
+            got = self._coefs[k] = (knots, _readonly(c))
+        return got
+```
+
+```python
+>>> xs = sd.linspace(0.0, 5.0, 6)
+>>> X, Y = sd.meshgrid(xs, xs, indexing='ij')
+>>> q = X * X + Y * Y
+>>> c = I.RegularGridInterpolator((xs, xs), q, method='cubic')
+>>> c((2.5, 2.5)), c((0.3, 4.9)), c((2.5, 2.5), nu=(1, 0))
+(12.500000000000004, 24.100000000000005, 5.000000000000001)
+>>> s1 = I.make_interp_spline(xs, q, k=3, axis=0)
+>>> s2 = I.make_interp_spline(xs, s1.c, k=3, axis=1)
+>>> s1.c.shape, s2.c.shape
+((6, 6), (6, 6))
+>>> bool(sd.all(s2.c.T == c._coefs[3][1].reshape((6, 6))))
+True
+>>> t1 = I.make_interp_spline(xs, q, k=3, axis=1)
+>>> t2 = I.make_interp_spline(xs, t1.c, k=3, axis=1)
+>>> bool(sd.all(t2.c == s2.c.T)), float(sd.max(sd.abs(t2.c - s2.c.T)))
+(False, 1.4210854715202004e-14)
+```
+
+2차식 $x^2 + y^2$는 3차 스플라인 공간에 들어 있어 반올림 크기 안에서 그대로 나와요. 축 0부터 1차원 `make_interp_spline`을 두 번 쓴 계수(`make_interp_spline`은 보간 축을 계수의 첫 축으로 두니 전치해서 견줘요)는 객체의 계수와 비트까지 같아요. 축 1부터 풀면 정확한 산술에서는 같은 계수지만 끝자리가 $10^{-14}$ 크기로 달라져요.
+
+### 평가
+
+```cpp
+            // csrc/interpolate/grid.cpp
+            for (std::int64_t col = 0; col < D; ++col) {
+                for (std::int64_t c = 0; c < nc; ++c) w[c] = J.c[off[c] * D + col];
+                std::int64_t len = nc;
+                for (std::int64_t a = d - 1; a >= 0; --a) {
+                    const double* ha = h.data() + a * K1;
+                    len /= K1;
+                    for (std::int64_t g = 0; g < len; ++g) {
+                        const double* wg = w.data() + g * K1;
+                        double acc = wg[0] * ha[0];
+                        for (std::int64_t r = 1; r < K1; ++r) acc = std::fma(wg[r], ha[r], acc);
+                        w[g] = acc;
+                    }
+                }
+                row[col] = w[0];
+```
+
+점마다 축별로 매듭 구간 $l_a$와 그 구간의 기저 값 $k + 1$개를 de Boor 재귀로 구하고(1차원 B-스플라인과 같은 `deboor.hpp`), 둘레의 계수 $(k + 1)^d$개를 모아요. 그리고 마지막 축부터 한 축씩 기저 값과의 합으로 줄여요. 합은 첫 곱 뒤에 항마다 fma 하나로, 1차원 B-스플라인의 평가와 같은 연산이에요. `nu`가 있으면 그 축의 기저 값이 도함수의 값이고, 어떤 축의 `nu`가 $k$를 넘으면 0이에요.
+
+### 오차 한계
+
+만들기와 평가를 따로 적어요. 축 $a$의 1차원 풀이는 B-스플라인의 계약 그대로 성분마다 $2\gamma_{8k+8}\lvert A_a^{-1}\rvert\lvert A_a\rvert\lvert\hat R_a\rvert$ 안이에요. $\hat R_a$는 축 $a$까지 푼 계수예요. 이 오차가 뒤 축들의 풀이를 지나며 $\lvert A_b^{-1}\rvert$($b \gt a$)로 옮겨 가니, 계수의 한계는
+
+$$
+\lvert\hat c - c\rvert \le \sum_a\Bigl(\bigotimes_{b \gt a}\lvert A_b^{-1}\rvert\Bigr)\,2\gamma_{8k+8}\lvert A_a^{-1}\rvert\lvert A_a\rvert\lvert\hat R_a\rvert
+$$
+
+예요. 평가는 축마다 1차원 de Boor의 한계 $\gamma_{6k+1}$이 $d$번 쌓여
+
+$$
+\Bigl\lvert\hat s - \sum_j c_j\prod_a B^{(a)}_{j_a}\Bigr\rvert \le \gamma_{d(6k+1)}\sum_j\lvert c_j\rvert\prod_a\tilde B^{(a)}_{j_a} + d(6k + 2)\,2^{-1074}\Bigl(1 + 2^d\sum_j\lvert c_j\rvert\Bigr)
+$$
+
+예요. $\tilde B$는 de Boor 재귀의 항을 절댓값으로 바꾼 것이고, 기본 구간의 $\nu = 0$에서는 $B$ 자신이에요. 끝에서 끝은 계수의 한계를 같은 기저로 옮겨 더해요.
+
+## pchip: 이웃 넷의 창
+
+PCHIP의 기울기는 국소적이에요. 노드 $i$의 기울기는 양옆 구간의 차분 몫 둘만 읽고, 구간 $j$의 값은 노드 $j$, $j + 1$의 값과 기울기로 정해지니, 구간 $j$ 안의 값은 노드 $j - 1, \ldots, j + 2$의 값 넷만으로 정해져요. 양 끝 구간은 끝 기울기가 노드 셋을 읽으니 창을 안쪽으로 밀어 $[0, 3]$이나 $[n - 4, n - 1]$로 해요.
+
+```cpp
+// csrc/interpolate/grid.cpp
+// The 1-D PCHIP of the nodes X (n >= 4) at s = x - X[j] in the interval j, from the values y of the window of four
+// nodes w0 .. w0 + 3 (w0 = clamp(j - 1, 0, n - 4)): the slopes of cubic.cpp's pchip_slopes at j and j + 1 (the
+// window holds every value they read), cubic.cpp's Hermite coefficients and ppoly.cpp's Horner, the same operations.
+inline double pchip_1d(const double* X, std::int64_t n, const double* y, std::int64_t w0, std::int64_t j, double s) {
+    auto m = [&](std::int64_t i) { return (y[i + 1 - w0] - y[i - w0]) / (X[i + 1] - X[i]); };
+    auto slope = [&](std::int64_t i) {
+        if (i == 0) return pchip_edge(X[1] - X[0], X[2] - X[1], m(0), m(1));
+        if (i == n - 1) return pchip_edge(X[n - 1] - X[n - 2], X[n - 2] - X[n - 3], m(n - 2), m(n - 3));
+        const double hl = X[i] - X[i - 1], hr = X[i + 1] - X[i];
+        return pchip_interior(2.0 * hr + hl, hr + 2.0 * hl, m(i - 1), m(i));
+    };
+    const double s0 = slope(j), s1 = slope(j + 1);
+    const double h = X[j + 1] - X[j];
+    const double y0 = y[j - w0], y1 = y[j + 1 - w0];
+    const double dd = (y1 - y0) / h;
+    const double t = ((s0 + s1) - 2.0 * dd) / h;
+    const double c3 = t / h, c2 = (dd - s0) / h - t;
+    return std::fma(std::fma(std::fma(c3, s, c2), s, s0), s, y0);
+}
+```
+
+창의 값 넷과 축의 노드 전체(간격을 읽으려고)로 1차원 PCHIP의 기울기, Hermite 계수, Horner를 같은 연산 순서로 해요. 1차원 `PchipInterpolator`의 식들이라 1차원 격자는 비트까지 같아요.
+
+```cpp
+            // csrc/interpolate/grid.cpp
+            for (std::int64_t a = 0; a < d; ++a) {
+                const Axis& A = J.ax[a];
+                const std::int64_t j = interval_of(cnt[a * kBlock + i], A.n);
+                const std::int64_t w0 = std::clamp<std::int64_t>(j - 1, 0, A.n - 4);
+                jj[a] = j, ww[a] = w0, ss[a] = p[a] - A.x[j];
+                const std::int64_t s = J.stride[a];
+                for (std::int64_t c = size - 1; c >= 0; --c)
+                    for (std::int64_t r = 3; r >= 0; --r) off[c * 4 + r] = off[c] + (w0 + r) * s;
+                size *= 4;
+            }
+```
+
+점마다 축별로 창의 시작 `w0`을 정하고 창 안의 값 $4^d$개를 모아, 마지막 축부터 한 축씩 `pchip_1d`로 줄여요. scipy는 평가점마다 첫 축의 줄 전체로 1차원 PCHIP을 따로 만들어 접어요. 국소성 덕분에 그 결과는 창 넷만 쓴 이 계산과 같은 함수예요. 격자가 커도 점 하나의 일이 같아요.
+
+PCHIP은 기울기가 차분 몫의 조화 평균 꼴이라 값의 선형 함수가 아니에요. 그래서 축마다 접는 차례가 결과를 바꿀 수 있고, 차례는 언제나 마지막 축부터예요(scipy와 같은 차례). 수로 된 계약은 없고, 1차원 `PchipInterpolator`를 접은 것과 같은 비트라는 성질로 시험해요.
+
+```python
+>>> xp = sd.asarray([0.0, 1.0, 2.0, 3.0, 5.0, 6.0])
+>>> W = sd.asarray([[0.0, 0.0, 1.0, 4.0, 4.5, 4.5]] * 6) + sd.reshape(sd.asarray([0.0, 1.0, 4.0, 9.0, 25.0, 36.0]), (6, 1))
+>>> gp = I.RegularGridInterpolator((xp, xp), W, method='pchip')
+>>> gp((2.5, 4.0))
+10.596108490566039
+>>> inner = sd.asarray([float(I.PchipInterpolator(xp, W[i])(4.0)) for i in range(6)])
+>>> float(I.PchipInterpolator(xp, inner)(2.5))
+10.596108490566039
+```
+
+마지막 축의 줄마다 1차원 PCHIP을 만들어 $y = 4$의 값을 얻고, 그 여섯 값으로 첫 축의 PCHIP을 만들어 $x = 2.5$에서 계산한 것과 비트까지 같아요. 격자 쪽은 줄 전체가 아니라 창의 값 16개만 읽었어요.
+
+<Fig caption="6 × 6 격자에서 점 (2.5, 4)의 pchip이 읽는 창. x 축은 구간 [2, 3]이라 창이 노드 1–4이고, y 축은 구간 [3, 5]라 창이 노드 2–5예요. 진한 점 16개만 읽고 나머지 20개는 읽지 않아요.">
+  <PlaneFig
+    label="6 × 6 격자에서 한 점의 pchip이 읽는 4 × 4 창"
+    domain={[-0.5, 6.5]}
+    range={[-0.5, 6.5]}
+    width={380}
+    xTicks={[0, 1, 2, 3, 5, 6]}
+    yTicks={[0, 1, 2, 3, 5, 6]}
+    layers={[
+      { kind: 'segments', segs: pchipLines, tone: 'faint' },
+      { kind: 'points', pts: pchipAll, tone: 'faint', size: 2.6 },
+      { kind: 'rects', rects: [[0.7, 1.7, 5.3, 6.3]], tone: 'soft', fill: true },
+      { kind: 'points', pts: pchipWin, tone: 'ink', size: 3.2 },
+      { kind: 'points', pts: [[2.5, 4]], tone: 'main', shape: 'cross', size: 5 },
+    ]}
+    legend={[
+      { label: '창의 노드', tone: 'ink', shape: 'dot' },
+      { label: '평가점', tone: 'main', shape: 'cross' },
+    ]}
+  />
+</Fig>
+
+## 병렬화와 메모리
+
+| 일 | 나누는 단위 | 같은 비트인 까닭 |
+|---|---|---|
+| 모든 방법의 평가 | 평가점 조각(256점 블록의 배수) | 점마다 같은 커널이에요. 구간 찾기는 결과를 바꾸지 않아요 |
+| 텐서곱 계수 | 축마다 (판, 8열 묶음) | 줄마다 같은 분해와 대입이에요 |
+| 배치 행렬의 분해 | 축마다 한 번, 차례로 | 축 하나에 계산 하나예요 |
+
+조각의 크기는 점 수, 축의 크기, 꼭짓점 수, 열 수로만 정해져요. 점 하나의 작업 공간은 꼭짓점이나 창의 값 $2^d$, $(k + 1)^d$, $4^d$개라, 그것이 $2^{30}$개를 넘는 차원이면 할당 전에 `MemoryError`예요. 격자점의 수가 $2^{62}$을 넘어도 `MemoryError`예요. 객체는 값의 사본 하나와 차수마다의 계수 배열을 쥐어요.

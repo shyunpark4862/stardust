@@ -1,0 +1,228 @@
+---
+kind: function
+title: construct_dist_matrix, reconstruct_path
+names: [construct_dist_matrix, reconstruct_path]
+group: 최단 경로
+order: 7
+signatures:
+  - "sd.graph.construct_dist_matrix(csgraph, predecessors, /, *, directed=True, null_value=inf)"
+  - "sd.graph.reconstruct_path(csgraph, predecessors, /, *, directed=True)"
+summary: 최단 경로 함수가 돌려준 선행 노드를 다시 쓰는 두 도우미예요. construct_dist_matrix는 선행 노드가 그리는 경로의 길이를, reconstruct_path는 선행 노드가 그리는 트리를 희소 행렬로 만들어요.
+params:
+  - name: csgraph
+    type: sd.sparse의 희소 배열 또는 밀집 행렬(ndarray, numpy 배열, 수의 중첩 시퀀스)
+    kind: positional-only
+    desc: "선행 노드를 구할 때 쓴 (n, n) 인접 행렬. 무게를 여기서 읽어요. 희소 입력에 저장된 NaN과 무한대는 받지 않아요."
+  - name: predecessors
+    type: 정수 배열
+    kind: positional-only
+    desc: "construct_dist_matrix는 (n, n), reconstruct_path는 (n,)인 선행 노드 배열. 원소는 노드 번호이거나 −9999(앞이 없음)이고, 그래프의 변을 따라 원점에 닿는 경로를 그려야 해요."
+  - name: directed
+    type: bool
+    kind: keyword-only
+    desc: "True(기본값)면 (i, j) 원소를 i에서 j로만 가는 변으로 읽어요. False면 양쪽으로 다닐 수 있는 변으로 읽고, 두 방향이 모두 있으면 작은 무게를 써요. 선행 노드를 구할 때와 같은 값을 줘요."
+  - name: null_value
+    type: float
+    kind: keyword-only
+    desc: "construct_dist_matrix만. 경로가 없는 자리에 넣을 값. 기본값은 inf예요."
+returns:
+  type: ndarray(float64) 또는 csr_array
+  desc: "construct_dist_matrix는 (n, n) float64 거리 행렬(대각 0, 경로가 없으면 null_value). reconstruct_path는 (n, n) float64 csr_array이고, 선행 노드가 있는 노드 v마다 pred[v] → v 자리에 그 변의 무게를 저장해요."
+raises:
+  - type: ValueError
+    desc: "predecessors의 모양이 맞지 않을 때, 원소가 노드도 −9999도 아닐 때, 그래프에 없는 변을 가리킬 때, 자기를 가리킬 때, 선행 노드가 순환을 이룰 때, 사슬이 원점이 아닌 곳에서 끝날 때(construct_dist_matrix), 희소 입력에 저장된 무게가 NaN이나 무한대일 때."
+  - type: TypeError
+    desc: "predecessors가 정수 배열이 아닐 때, csgraph가 받는 꼴이 아닐 때, directed가 bool이 아닐 때, null_value가 수가 아닐 때, 옵션을 자리로 줄 때."
+seeAlso: [shortest_path, dijkstra, floyd_warshall, yen, results]
+---
+
+## 한눈에 보기
+
+[`shortest_path`](/api/graph/shortest_path/) 같은 함수에 `return_predecessors=True`를 주면 거리와 함께 **선행 노드**를 받아요. `predecessors[i, j]`는 노드 $i$에서 $j$로 가는 최단 경로에서 $j$ 바로 앞의 노드이고, −9999는 "앞이 없음"이에요. 이 두 함수는 선행 노드를 다른 꼴로 바꿔요.
+
+- `construct_dist_matrix`는 선행 노드가 그리는 경로를 따라 무게를 더해 **거리 행렬**을 만들어요.
+- `reconstruct_path`는 원점 하나의 선행 노드가 그리는 **트리**를 희소 행렬로 만들어요.
+
+[`shortest_path`](/api/graph/shortest_path/)의 마을 그래프로 해 볼게요.
+
+```python
+>>> import stardust as sd
+>>> G = [[0, 7, 9,  0, 0, 14],
+...      [0, 0, 10, 15, 0, 0],
+...      [0, 0, 0, 11, 0, 2],
+...      [0, 0, 0,  0, 6, 0],
+...      [0, 0, 0,  0, 0, 9],
+...      [0, 0, 0,  0, 0, 0]]
+>>> r = sd.graph.shortest_path(G, directed=False, return_predecessors=True)
+>>> D = sd.graph.construct_dist_matrix(G, r.predecessors, directed=False)
+>>> bool((D == r.dist_matrix).all())
+True
+>>> T = sd.graph.reconstruct_path(G, r.predecessors[0], directed=False)
+>>> T
+<csr_array of shape (6, 6), float64, 5 stored elements>
+>>> T.toarray()
+array([[ 0.0,  7.0,  9.0,  0.0,  0.0,  0.0],
+       [ 0.0,  0.0,  0.0,  0.0,  0.0,  0.0],
+       [ 0.0,  0.0,  0.0, 11.0,  0.0,  2.0],
+       [ 0.0,  0.0,  0.0,  0.0,  0.0,  0.0],
+       [ 0.0,  0.0,  0.0,  0.0,  0.0,  0.0],
+       [ 0.0,  0.0,  0.0,  0.0,  9.0,  0.0]], dtype=float64)
+```
+
+`T`는 마을 0에서 출발한 최단 경로 트리예요. 변 다섯 개가 0 → 1, 0 → 2, 2 → 3, 2 → 5, 5 → 4이고, 값은 그 길의 길이예요.
+
+<Reference />
+
+## `construct_dist_matrix`: 선행 노드를 거리로
+
+`predecessors`는 $(n, n)$이고 행 $i$가 노드 $i$에서 출발한 선행 노드예요. 행 $i$, 열 $j$마다 $j$에서 선행 노드를 거꾸로 따라가 $i$에 닿는 경로를 찾고, 그 경로의 무게를 **원점 $i$에서부터 차례로** 더해요. 대각은 0, 경로가 없는 자리는 `null_value`예요.
+
+```python
+>>> P = sd.graph.shortest_path(G, return_predecessors=True).predecessors
+>>> sd.graph.construct_dist_matrix(G, P)
+array([[ 0.0,  7.0,  9.0, 20.0, 26.0, 11.0],
+       [ inf,  0.0, 10.0, 15.0, 21.0, 12.0],
+       [ inf,  inf,  0.0, 11.0, 17.0,  2.0],
+       [ inf,  inf,  inf,  0.0,  6.0, 15.0],
+       [ inf,  inf,  inf,  inf,  0.0,  9.0],
+       [ inf,  inf,  inf,  inf,  inf,  0.0]], dtype=float64)
+>>> sd.graph.construct_dist_matrix(G, P, null_value=-1)[5]
+array([-1.0, -1.0, -1.0, -1.0, -1.0,  0.0], dtype=float64)
+```
+
+최단 경로 함수도 거리를 원점에서부터 차례로 더한 값으로 정의하므로, [`floyd_warshall`](/api/graph/floyd_warshall/)을 뺀 함수(`shortest_path`의 `'D'`, `'BF'`, `'J'`, `'auto'`, [`dijkstra`](/api/graph/dijkstra/), [`bellman_ford`](/api/graph/bellman_ford/), [`johnson`](/api/graph/johnson/))가 돌려준 선행 노드에서는 그 함수의 거리와 **비트까지** 같아요. 거리 행렬을 버리고 선행 노드만 저장해 두었다가 나중에 거리를 되살릴 때 쓸 수 있어요.
+
+`floyd_warshall`은 경로를 가운데에서 이어 더하므로, 그 선행 노드에서 다시 더한 값은 끝자리가 다를 수 있어요.
+
+```python
+>>> F = [[0, 0,   0.1, 0  ],
+...      [0, 0,   0,   0.3],
+...      [0, 0.2, 0,   0  ],
+...      [0, 0,   0,   0  ]]
+>>> fw = sd.graph.floyd_warshall(F, return_predecessors=True)
+>>> fw.dist_matrix[0]
+array([                0.0, 0.30000000000000004,                 0.1,
+                       0.6], dtype=float64)
+>>> sd.graph.construct_dist_matrix(F, fw.predecessors)[0]
+array([                0.0, 0.30000000000000004,                 0.1,
+        0.6000000000000001], dtype=float64)
+```
+
+## `reconstruct_path`: 선행 노드를 트리로
+
+`predecessors`는 원점 하나의 선행 노드 $(n,)$이에요. 선행 노드가 있는 노드 $v$마다 변 `pred[v]` → $v$를 하나씩 저장한 $(n, n)$ `csr_array`를 돌려줘요. 저장되는 값은 그래프에서 그 변의 무게예요. `directed=False`면 두 방향 가운데 저장된 쪽, 둘 다면 작은 쪽의 무게예요.
+
+결과는 그 자체로 그래프라서 다른 `sd.graph` 함수에 넣을 수 있어요. 예를 들어 트리의 변을 모두 더하면 최단 경로 트리의 전체 길이예요.
+
+```python
+>>> float(T.sum())
+38.0
+>>> sd.graph.reconstruct_path(G, [-9999, 0, 0, 2, 5, 2], directed=False).nnz
+5
+```
+
+원점 하나의 행이면 무엇이든 돼요. [`dijkstra`](/api/graph/dijkstra/)의 결과든, [`yen`](/api/graph/yen/)이 경로마다 돌려준 행이든 같은 꼴이에요. 아래는 `yen`이 찾은 두 번째 경로를 행렬로 바꾼 것이에요.
+
+```python
+>>> y = sd.graph.yen(G, 0, 4, 3, directed=False, return_predecessors=True)
+>>> sd.graph.reconstruct_path(G, y.predecessors[1], directed=False).toarray()
+array([[ 0.0,  0.0,  0.0,  0.0,  0.0, 14.0],
+       [ 0.0,  0.0,  0.0,  0.0,  0.0,  0.0],
+       [ 0.0,  0.0,  0.0,  0.0,  0.0,  0.0],
+       [ 0.0,  0.0,  0.0,  0.0,  0.0,  0.0],
+       [ 0.0,  0.0,  0.0,  0.0,  0.0,  0.0],
+       [ 0.0,  0.0,  0.0,  0.0,  9.0,  0.0]], dtype=float64)
+```
+
+무게 0의 변은 **저장된 0**으로 남아요. 결과를 다시 그래프로 넣을 때 그 변이 사라지지 않게 하려는 것이에요.
+
+```python
+>>> Z = sd.sparse.csr_array(([0.0, 2.0, 5.0], ([0, 1, 0], [1, 2, 2])), shape=(3, 3))
+>>> t = sd.graph.reconstruct_path(Z, [-9999, 0, 1])
+>>> t.nnz, t.data
+(2, array([0.0, 2.0], dtype=float64))
+```
+
+## 선행 노드는 경로를 그려야 해요
+
+두 함수는 받은 선행 노드가 정말 그래프의 경로를 그리는지 확인하고, 아니면 `ValueError`로 어디가 틀렸는지 알려 줘요. 손으로 만들거나 고친 선행 노드를 넣을 때 실수를 잡아 줘요.
+
+```python
+>>> bad = r.predecessors.copy(); bad[0, 3] = 7
+>>> sd.graph.construct_dist_matrix(G, bad, directed=False)
+Traceback (most recent call last):
+    ...
+ValueError: construct_dist_matrix(): predecessors[0, 3] = 7: a predecessor is a node (0 .. 5) or -9999
+>>> bad = r.predecessors.copy(); bad[0, 3] = 0
+>>> sd.graph.construct_dist_matrix(G, bad, directed=False)
+Traceback (most recent call last):
+    ...
+ValueError: construct_dist_matrix(): predecessors[0, 3] = 0, but the graph has no edge 0 -> 3
+>>> bad = r.predecessors.copy(); bad[0, 3] = 4; bad[0, 4] = 3
+>>> sd.graph.construct_dist_matrix(G, bad, directed=False)
+Traceback (most recent call last):
+    ...
+ValueError: construct_dist_matrix(): the predecessors of row 0 go round a cycle through node 3
+```
+
+틀린 경우는 다섯 가지예요.
+
+| 틀린 곳 | 예 |
+|---|---|
+| 노드도 −9999도 아닌 값 | `predecessors[0, 3] = 7`(노드가 여섯 개일 때) |
+| 그래프에 없는 변 | 0과 3 사이에 변이 없는데 3의 앞이 0 |
+| 자기를 가리킴 | `predecessors[1] = 1`(`reconstruct_path`만; `construct_dist_matrix`에서는 한 바퀴짜리 순환이에요) |
+| 순환 | 3의 앞이 4, 4의 앞이 3 |
+| 원점이 아닌 곳에서 끝나는 사슬 | 행 0인데 사슬이 앞이 없는 노드 2에서 끝남(`construct_dist_matrix`만) |
+
+```python
+>>> sd.graph.reconstruct_path(G, [-9999, 1, 0, 2, 5, 2], directed=False)
+Traceback (most recent call last):
+    ...
+ValueError: reconstruct_path(): predecessors[1] = 1: a node is not its own predecessor
+>>> bad = r.predecessors.copy(); bad[0, 2] = -9999
+>>> sd.graph.construct_dist_matrix(G, bad, directed=False)
+Traceback (most recent call last):
+    ...
+ValueError: construct_dist_matrix(): the predecessors of row 0 lead from node 3 to node 2, which has no predecessor, not to node 0
+```
+
+`construct_dist_matrix`는 행 $i$의 대각, 곧 원점 $i$ 자신의 선행 노드는 읽지 않아요(노드 번호이거나 −9999이기만 하면 돼요). `reconstruct_path`는 트리만 만들 뿐 원점을 모르므로, 앞이 없는 노드가 여럿이어도 괜찮아요(숲이 돼요). 모든 원소가 −9999면 변이 없는 행렬이에요.
+
+## 받는 꼴
+
+- <strong>`predecessors`</strong>는 정수 배열이에요. 최단 경로 함수가 돌려주는 int64는 물론, 다른 라이브러리가 만든 int32 배열도 받아요. 실수 배열은 `TypeError`예요.
+- **모양**은 `construct_dist_matrix`가 $(n, n)$, `reconstruct_path`가 $(n,)$이에요. 다르면 `ValueError`예요.
+- <strong>`directed`</strong>는 선행 노드를 구할 때와 같게 줘요. 방향 없이 구한 선행 노드를 `directed=True`로 넣으면, 행렬에 반대 방향으로만 적힌 변을 "없는 변"으로 보아 `ValueError`가 날 수 있어요.
+- <strong>`csgraph`</strong>는 무게를 읽는 데 써요. 희소 입력에 저장된 NaN과 무한대는 `ValueError`예요.
+
+```python
+>>> sd.graph.construct_dist_matrix(G, r.predecessors)   # 방향 없이 구한 선행 노드에 directed=True
+Traceback (most recent call last):
+    ...
+ValueError: construct_dist_matrix(): predecessors[0, 4] = 5, but the graph has no edge 5 -> 4
+```
+
+`G`는 위 삼각에만 적었으니 5 → 4 방향의 변이 없어요. `directed=False`를 주면 돼요.
+
+```python
+>>> sd.graph.construct_dist_matrix(G, r.predecessors[0])
+Traceback (most recent call last):
+    ...
+ValueError: construct_dist_matrix(): 'predecessors' must have the shape (6, 6), not (6,)
+>>> sd.graph.construct_dist_matrix(G, r.predecessors.astype(sd.float64), directed=False)
+Traceback (most recent call last):
+    ...
+TypeError: construct_dist_matrix(): 'predecessors' must hold ints, not float64
+```
+
+## scipy·networkx를 아는 분께
+
+`scipy.sparse.csgraph`의 두 함수와 이름, 인자 이름, 결과가 같아요. 다른 점은 이래요.
+
+- **`construct_dist_matrix`는 원점에서부터 더해요.** scipy는 도착점에서 거꾸로 더해서, 자기 `shortest_path`의 거리와 끝자리가 다를 수 있어요. 여기서는 Floyd–Warshall을 뺀 최단 경로 함수의 거리와 비트까지 같아요.
+- **경로가 아닌 선행 노드는 `ValueError`예요.** scipy는 없는 변에 `inf`를 더하거나 말없이 0을 넣고, 순환에서 끝나지 않을 수 있어요.
+- **`predecessors`는 정수 dtype이면 받아요.** scipy의 `construct_dist_matrix`는 int32만 받아요.
+- **옵션은 키워드로만** 받아요. 밀집 입력의 아주 작은 무게도 변이에요(scipy는 절댓값 $10^{-8}$ 이하를 버려요).
+
+networkx에서 `nx.reconstruct_path(source, target, predecessors)`는 경로 하나를 노드 목록으로 돌려줘요. 그 일은 선행 노드를 거꾸로 따라가는 몇 줄로 해요([`shortest_path`](/api/graph/shortest_path/)의 "어느 길로 갔는지 알아내기").

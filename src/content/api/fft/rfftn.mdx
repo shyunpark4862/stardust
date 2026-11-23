@@ -1,0 +1,254 @@
+---
+kind: function
+title: rfftn과 irfftn
+names: [rfftn, irfftn]
+group: 실수와 에르미트 변환
+order: 3
+signatures:
+  - "sd.fft.rfftn(x, /, *, s=None, axes=None, norm='backward')"
+  - "sd.fft.irfftn(x, /, *, s=None, axes=None, norm='backward')"
+summary: rfftn은 실수 배열의 여러 축을 한꺼번에 푸리에 변환하면서 axes의 마지막 축은 앞쪽 절반만 남기고, irfftn은 그것에서 실수 배열을 다시 만들어요. 기본으로 모든 축을 변환해요. 3차원 격자 위의 실수 자료나, 축을 자유롭게 골라야 하는 실수 변환에 써요.
+params:
+  - name: x
+    type: ndarray
+    kind: positional-only
+    desc: 변환할 배열. 1차원 이상이에요. rfftn은 bool, int64, float64를 받고 complex128은 받지 않아요. irfftn은 반쪽 스펙트럼을 받는데, bool, int64, float64는 허수부가 0인 복소수로 봐요.
+  - name: s
+    type: int의 tuple이나 list, int, 또는 None
+    kind: keyword-only
+    desc: 실수 쪽 배열의 축마다의 길이. 원소는 1 이상이거나 -1(그 축의 입력 길이)이에요. axes를 함께 주면 길이가 같아야 하고, axes 없이 주면 마지막 len(s)개 축을 변환해요. None(기본값)이면 rfftn은 입력의 길이, irfftn은 마지막 축만 2(m - 1)이고 나머지는 입력의 길이예요(m은 입력의 그 축 길이).
+  - name: axes
+    type: int, int의 tuple이나 list, 또는 None
+    kind: keyword-only
+    desc: 변환할 축. None(기본값)이면 모든 축(s를 줬으면 마지막 len(s)개 축)이에요. 절반만 남는 축은 axes의 마지막 축이에요. 같은 축을 두 번 적을 수 없고, 비어 있을 수 없어요.
+  - name: norm
+    type: "'backward', 'ortho' 또는 'forward'"
+    kind: keyword-only
+    desc: 정규화. N을 실수 쪽 배열의 변환한 축 길이의 곱이라 하면 'backward'(기본값)는 rfftn에 1, irfftn에 1/N을 곱하고, 'ortho'는 양쪽에 1/√N을, 'forward'는 rfftn에 1/N, irfftn에 1을 곱해요.
+returns:
+  type: ndarray
+  desc: rfftn은 complex128 배열이고 axes의 마지막 축 길이가 n//2 + 1이에요(n은 그 축의 실수 쪽 길이). irfftn은 float64 배열이고 변환한 축의 길이가 s예요. 언제나 새 배열이에요.
+raises:
+  - type: TypeError
+    desc: x가 sd.ndarray가 아닐 때, rfftn에 complex128을 줬을 때, s나 axes의 원소가 int가 아닐 때(bool, None 포함), norm이 문자열이 아닐 때, 옵션을 위치로 줬거나 모르는 키워드를 줬을 때.
+  - type: ValueError
+    desc: 변환할 축의 길이가 0일 때, irfftn에 s를 주지 않았는데 마지막 축의 길이가 1일 때, s의 원소가 0이거나 -2 이하일 때, s가 비었거나 축 수보다 길거나 axes와 길이가 다를 때, axes가 비었거나 범위 밖이거나 같은 축을 두 번 담았을 때, norm이 세 값이 아닌 문자열일 때.
+  - type: OverflowError
+    desc: s나 axes의 원소가 int64 범위 밖일 때.
+  - type: MemoryError
+    desc: s로 요청한 결과가 기계의 메모리보다 클 때.
+seeAlso: [basics, rfft, rfft2, fftn, hfftn, fftfreq, dctn]
+---
+import Callout from '../../../components/Callout.astro';
+import AccuracySummary from '../../../components/fig/AccuracySummary.astro';
+
+## 한눈에 보기
+
+`rfftn`은 실수 배열의 **모든 축**을 한꺼번에 푸리에 변환하고, 결과에서 마지막 축의 앞쪽 절반만 남겨요. 실수 배열의 스펙트럼은 켤레 대칭이라서 나머지 절반은 이것에서 얻어져요. `irfftn`은 그것에서 실수 배열을 다시 만들어요.
+
+```python
+>>> import stardust as sd
+>>> v = sd.random.default_rng(0).random((4, 5, 6))
+>>> V = sd.fft.rfftn(v)
+>>> V.shape
+(4, 5, 4)
+>>> sd.fft.fftn(v).shape
+(4, 5, 6)
+>>> back = sd.fft.irfftn(V, s=v.shape)
+>>> back.dtype, float(sd.max(sd.abs(back - v))) < 1e-15
+(float64, True)
+```
+
+모양 (4, 5, 6)의 배열에서 `fftn`은 4×5×6칸을 내지만 `rfftn`은 마지막 축이 $6/2 + 1 = 4$인 4×5×4칸만 내요. 1차원 배열에서는 [`rfft`](/api/fft/rfft/)와, 2차원 배열에서는 [`rfft2`](/api/fft/rfft2/)와 같은 일을 해요.
+
+<Reference />
+
+## 무엇을 계산하나요
+
+`rfftn`은 [`fftn`](/api/fft/fftn/)과 같은 합을, `axes`의 마지막 축의 칸 $k = 0, \dots, \lfloor n/2 \rfloor$에서만 계산해요. 계산 순서는 이래요.
+
+1. `axes`의 마지막 축을 따라 [`rfft`](/api/fft/rfft/)를 해요. 이 축이 절반이 돼요.
+2. 남은 축을 `axes`의 뒤에서 앞으로 하나씩 [`fft`](/api/fft/fft/)해요.
+
+`irfftn`은 이 순서를 거꾸로 해요. 마지막 축을 뺀 축들을 하나씩 [`ifft`](/api/fft/fft/)하고, 마지막으로 그 축을 따라 [`irfft`](/api/fft/rfft/)를 해서 실수 배열을 만들어요.
+
+```python
+>>> a = sd.asarray([[1.0, 2.0, 3.0, 4.0],
+...                 [0.0, 1.0, 0.0, 1.0]])
+>>> sd.fft.rfftn(a)
+array([[(12+0j), (-2+2j), (-4+0j)],
+       [ (8+0j), (-2+2j),      0j]], dtype=complex128)
+>>> bool(sd.all(sd.fft.rfftn(a) == sd.fft.fft(sd.fft.rfft(a, axis=1), axis=0)))
+True
+>>> sd.fft.irfftn(sd.fft.rfftn(a))
+array([[1.0, 2.0, 3.0, 4.0],
+       [0.0, 1.0, 0.0, 1.0]], dtype=float64)
+```
+
+## 축 `axes`
+
+`axes`를 주지 않으면 모든 축을 변환하고 마지막 축이 절반이 돼요. 일부만 변환하려면 축 번호를 적어요. **`axes`에 적은 순서의 마지막 축**이 절반이 되므로, 순서를 바꾸면 결과의 모양이 달라져요.
+
+```python
+>>> sd.fft.rfftn(v, axes=(0, 2)).shape
+(4, 5, 4)
+>>> sd.fft.rfftn(v, axes=(2, 0)).shape
+(3, 5, 6)
+>>> sd.fft.rfftn(v, axes=1).shape
+(4, 3, 6)
+>>> bool(sd.all(sd.fft.rfftn(v, axes=1) == sd.fft.rfft(v, axis=1)))
+True
+```
+
+축 하나만 적은 `rfftn`은 그 축의 [`rfft`](/api/fft/rfft/)와 같은 비트예요.
+
+`irfftn`에도 `rfftn`과 같은 `axes`를 주면 돼요. 절반이 된 축이 다시 마지막에 실수 쪽 길이로 돌아와요.
+
+```python
+>>> W = sd.fft.rfftn(v, axes=(2, 0))
+>>> sd.fft.irfftn(W, s=(6, 4), axes=(2, 0)).shape
+(4, 5, 6)
+```
+
+## 길이 `s`
+
+`rfftn`의 `s`는 [`fftn`](/api/fft/fftn/)과 같아요. 입력을 그 길이로 자르거나 끝에 0을 채운 뒤 변환해요. 결과의 마지막 축은 `s[-1] // 2 + 1`칸이에요.
+
+```python
+>>> sd.fft.rfftn(v, s=(8, 8)).shape
+(4, 8, 5)
+>>> sd.fft.rfftn(v, s=(-1, 3), axes=(0, 1)).shape
+(4, 2, 6)
+```
+
+`irfftn`의 `s`는 **만들 실수 배열의 크기**예요. 마지막 축의 실수 쪽 길이는 반쪽 스펙트럼만 보고는 알 수 없어서(길이 4와 5가 같은 3칸이 돼요), `s`를 주지 않으면 $2(m-1)$로 정해요($m$은 입력의 그 축 길이). 원래 길이가 홀수였다면 `s`를 꼭 줘요. `s[-1]`의 −1은 입력의 길이 $m$ 그대로예요.
+
+```python
+>>> odd = sd.random.default_rng(1).random((3, 5))
+>>> H = sd.fft.rfftn(odd)
+>>> H.shape
+(3, 3)
+>>> sd.fft.irfftn(H).shape
+(3, 4)
+>>> sd.fft.irfftn(H, s=odd.shape).shape
+(3, 5)
+>>> sd.fft.irfftn(H, s=(3, -1)).shape
+(3, 3)
+```
+
+`irfftn`은 앞 축을 `s`의 길이로 자르거나 0을 채우고, 마지막 축은 입력에서 `s[-1] // 2 + 1`칸만 써요(모자라면 0을 채워요).
+
+## 켤레 대칭이 아닌 입력
+
+`irfftn`의 입력이 어떤 실수 배열의 `rfftn` 결과라면 문제가 없어요. 손으로 고친 스펙트럼처럼 켤레 대칭이 맞지 않는 입력이면, 실수 배열로 만드는 과정에서 일부가 버려져요. 무엇이 버려지는지는 계산 순서가 정해요.
+
+- 앞 축들의 역변환을 먼저 마친 뒤, 마지막 축의 칸 0과(실수 쪽 길이가 짝수면) 마지막 칸의 허수부를 버려요.
+- 마지막 축에서 `s[-1] // 2 + 1`칸 밖은 읽지 않아요. 그 자리의 NaN도 결과에 들어가지 않아요.
+
+```python
+>>> Q = sd.fft.rfftn(a)
+>>> Q[1, 0] = Q[1, 0] + 5j
+>>> sd.fft.irfftn(Q)
+array([[1.0, 2.0, 3.0, 4.0],
+       [0.0, 1.0, 0.0, 1.0]], dtype=float64)
+```
+
+칸 (1, 0)에 허수부를 더했지만 첫 축의 역변환을 거치면 그 값이 마지막 축의 칸 0의 허수부로 가서 버려져요. 결과는 원래의 `a`와 같아요. 이 순서는 numpy, scipy와 같아서 같은 부분이 버려져요.
+
+## 정규화 `norm`
+
+$N$은 **실수 쪽 배열**에서 변환한 축들의 길이를 모두 곱한 수예요. 반쪽 스펙트럼의 칸 수가 아니에요.
+
+| `norm` | `rfftn`에 곱하는 수 | `irfftn`에 곱하는 수 |
+|---|:---:|:---:|
+| `'backward'`(기본값) | $1$ | $1/N$ |
+| `'ortho'` | $1/\sqrt{N}$ | $1/\sqrt{N}$ |
+| `'forward'` | $1/N$ | $1$ |
+
+```python
+>>> sd.fft.rfftn(a, norm='forward')[0, 0], float(sd.mean(a))
+((1.5+0j), 1.5)
+>>> sd.fft.irfftn(sd.fft.rfftn(a, norm='ortho'), norm='ortho')
+array([[0.9999999999999998, 1.9999999999999996, 2.9999999999999996,
+         3.999999999999999],
+       [               0.0, 0.9999999999999998,                0.0,
+        0.9999999999999998]], dtype=float64)
+```
+
+`'ortho'`로 갔다가 돌아온 값은 원래 값과 반올림 끝자리만큼 다를 수 있어요. 인자는 축마다 따로 곱하지 않고 마지막에 한 번 곱해요.
+
+## 경계의 값
+
+- 변환할 축의 길이가 0이면 `ValueError`이고, 변환하지 않는 축의 길이가 0이면 빈 결과예요.
+- `irfftn`에 `s` 없이 마지막 축 길이가 1인 입력을 주면 기본 길이가 0이라 `ValueError`예요. `s`를 주면 돼요.
+- NaN이나 inf가 있으면 그 값과 같은 배치 조각의 결과 칸에 NaN이나 inf가 섞여요. 어느 칸인지는 약속하지 않아요.
+
+```python
+>>> sd.fft.rfftn(sd.zeros((3, 0)))
+Traceback (most recent call last):
+    ...
+ValueError: rfftn(): cannot transform an axis of length 0
+>>> sd.fft.rfftn(sd.zeros((3, 0)), axes=0)
+array([], shape=(2, 0), dtype=complex128)
+>>> sd.fft.irfftn(sd.asarray([[1 + 0j], [2 + 0j]]))
+Traceback (most recent call last):
+    ...
+ValueError: irfftn(): the default s[-1] = 2 (m - 1) is 0 for an axis of length m = 1; give 's'
+>>> sd.fft.irfftn(sd.asarray([[1 + 0j], [2 + 0j]]), s=(2, 1))
+array([[ 1.5],
+       [-0.5]], dtype=float64)
+```
+
+## 에러
+
+```python
+>>> sd.fft.rfftn(v + 0j)
+Traceback (most recent call last):
+    ...
+TypeError: rfftn(): 'x' must be real, not complex128
+>>> sd.fft.rfftn(v, axes=())
+Traceback (most recent call last):
+    ...
+ValueError: rfftn(): 'axes' must not be empty
+>>> sd.fft.rfftn(v, axes=(0, 0))
+Traceback (most recent call last):
+    ...
+ValueError: rfftn(): repeated axis
+>>> sd.fft.rfftn(v, s=(2, 2, 2, 2))
+Traceback (most recent call last):
+    ...
+ValueError: rfftn(): 's' has 4 entries for an array of dimension 3
+>>> sd.fft.irfftn(V, s=(4, 5, 0))
+Traceback (most recent call last):
+    ...
+ValueError: irfftn(): the entries of 's' must be at least 1 (or -1), not 0
+```
+
+## 정확도와 같은 결과
+
+정확도는 배열 전체의 노름 상대오차로 약속해요. 한계는 [`fftn`](/api/fft/fftn/)의 꼴에서 마지막 축의 몫을 실수 변환의 것으로 바꾼 것이에요. `rfftn`은 전체 스펙트럼의 크기 $s\sqrt{N}\lVert x \rVert$에 견주고, `irfftn`은 입력 스펙트럼의 크기를 마지막 축의 짝이 있는 칸에 $\sqrt{2}$의 무게를 줘서(켤레로 펴면 두 번 세어지는 칸이라서) 재요. 칸 하나의 상대오차는 약속하지 않아요.
+
+<AccuracySummary area="fft" names={['nd']} regions={['rfftn/smooth', 'rfftn/bluestein', 'irfftn/smooth', 'irfftn/bluestein']} caption="여러 차원의 실수 변환을 Arb(구간 산술)로 만든 참값과 견준 결과. 점 하나가 배열 하나이고, 상대오차는 배열 전체의 노름 상대오차예요. irfftn은 정규화하지 않은 역변환이에요. smooth는 모든 축의 소인수가 31 이하인 모양, bluestein은 31보다 큰 소인수가 있는 축이 있는 모양이에요. 계약 대비가 1 이하면 약속 안이에요." />
+
+같은 입력이면 스레드 수, 배치, 배열이 메모리에 놓인 모양과 상관없이 같은 비트예요. 지키는 관계는 이래요.
+
+- 실수 입력의 [`fftn`](/api/fft/fftn/)은 마지막 축의 앞쪽 $\lfloor n/2 \rfloor + 1$칸이 `rfftn`과 같은 비트예요.
+- 축 하나의 `rfftn`·`irfftn`은 [`rfft`](/api/fft/rfft/)·`irfft`와 같은 비트예요.
+- [`ihfftn`](/api/fft/hfftn/)은 `rfftn`의 켤레에, [`hfftn`](/api/fft/hfftn/)은 켤레를 취한 입력의 `irfftn`에 정규화만 바꾼 것과 같은 비트예요.
+
+```python
+>>> bool(sd.all(sd.fft.fftn(v)[:, :, :4] == sd.fft.rfftn(v)))
+True
+>>> bool(sd.all(sd.fft.irfftn(V, axes=2) == sd.fft.irfft(V, axis=2)))
+True
+```
+
+## numpy·scipy를 아는 분께
+
+- `numpy.fft.rfftn`·`irfftn`, `scipy.fft.rfftn`·`irfftn`과 정의가 같아요. `s`, `axes`, `norm`은 키워드로만 받아요.
+- 계산 순서(`rfftn`은 실수 변환이 먼저, `irfftn`은 실수 역변환이 나중)가 numpy, scipy와 같아서, 켤레 대칭이 아닌 입력에서 버려지는 부분도 같아요.
+- `axes` 없이 `s`만 주면 마지막 `len(s)`개 축을 변환해요. scipy, 지금의 numpy와 같아요. `s`에 int 하나를 줄 수 있는 것은 scipy와 같고, `s`의 `None` 원소는 `TypeError`예요.
+- 같은 축을 두 번 적으면 `ValueError`예요(numpy는 받아요). 빈 `axes`는 `ValueError`예요(numpy와 scipy는 입력을 그대로 돌려줘요).
+- 범위 밖의 축은 `ValueError`예요. numpy와 scipy는 `IndexError`예요.
+- 정규화는 $N$으로 한 번 곱해요. numpy는 축마다 곱해서 끝자리가 다를 수 있어요.
+- `norm=None`, `out`, `workers`, `overwrite_x`, `plan`이 없어요.

@@ -1,0 +1,463 @@
+---
+title: make_interp_spline
+names: [make_interp_spline]
+group: B-스플라인
+order: 2
+signatures:
+  - "sd.interpolate.make_interp_spline(x, y, /, *, k=3, t=None, bc_type=None, axis=0)"
+summary: 점들을 모두 지나는 차수 k의 스플라인을 B-스플라인 꼴(BSpline)로 만들어요. 계단(k = 0), 꺾은선(k = 1), 3차(기본), 5차처럼 차수를 고르고, 양 끝에서 기울기나 굽은 정도를 정하는 조건과 주기 조건, 직접 고른 매듭도 받아요.
+params:
+  - name: x
+    type: ndarray, 수의 시퀀스, numpy 배열, Series
+    kind: positional-only
+    desc: "자료의 가로축 값(노드). 1차원이고 유한하며 엄격히 증가해야 해요. 2개 이상이어야 해요."
+  - name: y
+    type: ndarray, 수의 시퀀스, numpy 배열, Series
+    kind: positional-only
+    desc: "노드마다의 값. axis 축의 길이가 x와 같아야 하고 나머지 축은 함께 다루는 여러 열(배치)이에요. float64나 complex128이고 모두 유한해야 해요."
+  - name: k
+    type: int
+    kind: keyword-only
+    desc: "스플라인의 차수(0 이상). 0은 계단, 1은 꺾은선, 3은 3차 스플라인이에요. 기본값 3."
+  - name: t
+    type: ndarray, 수의 시퀀스, numpy 배열 또는 None
+    kind: keyword-only
+    desc: "매듭. 줄지 않는 유한한 1차원 배열이고 길이가 len(x) + k + 1 이상이어야 해요. None(기본값)이면 차수와 bc_type에 맞는 표준 매듭을 만들어요."
+  - name: bc_type
+    type: str, 두 끝 조건의 짝 또는 None
+    kind: keyword-only
+    desc: "끝 조건. None과 'not-a-knot'은 조건 없음, 'natural'은 양 끝의 2차 도함수 0, 'clamped'는 양 끝의 기울기 0, 'periodic'은 주기 스플라인이에요. 끝마다 다르게 주려면 (왼쪽, 오른쪽) 짝이고, 각 끝은 None, 'natural', 'clamped' 또는 (차수, 값) 쌍의 리스트예요."
+  - name: axis
+    type: int
+    kind: keyword-only
+    desc: "y에서 x와 짝을 이루는 축. 음수도 받아요. 결과를 부를 때 평가점의 모양이 이 자리에 들어가요. 기본값 0."
+returns:
+  type: BSpline
+  desc: "보간 스플라인. k = 0, 1과 끝 조건이 있는 스플라인, 주어진 매듭의 스플라인은 extrapolate=True, bc_type='periodic'이면 extrapolate='periodic'이에요."
+raises:
+  - type: TypeError
+    desc: "x·y가 수의 배열이 아닐 때, x가 복소수일 때, k가 int가 아닐 때(2.0, True), bc_type이 문자열·짝·None이 아닐 때, 옵션을 자리로 주거나 없는 인자(check_finite, extrapolate)를 줄 때."
+  - type: ValueError
+    desc: "x가 1차원이 아니거나 2점보다 적거나 유한하지 않거나 엄격히 증가하지 않을 때, y의 길이가 x와 다를 때, y에 NaN이나 inf가 있을 때, k가 음수일 때, bc_type의 이름이 틀렸을 때, 끝 조건의 수가 매듭과 맞지 않을 때, 끝 조건의 차수가 0..k 밖일 때, 끝 조건 값의 모양이 배치와 다를 때, 'periodic'인데 y의 처음과 끝 값이 다를 때, t가 너무 짧을 때, x가 매듭 범위 밖일 때, 끝 간격이 비정상 수만큼 작아 도함수 조건이 넘칠 때."
+  - type: sd.linalg.LinAlgError
+    desc: "연립방정식이 풀리지 않을 때. 주어진 매듭과 노드가 Schoenberg–Whitney 조건을 어기거나 같은 끝 조건을 두 번 줄 때예요."
+seeAlso: [BSpline, CubicSpline, PPoly, basics, RegularGridInterpolator]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import PlaneFig from '../../../components/fig/PlaneFig.astro';
+
+export const misPts = [[0.0, 1.0], [1.0, 2.7], [2.0, 3.1], [3.0, 2.2], [4.0, 2.9], [5.0, 4.8]];
+export const misK0 = [[0.0, 1.0], [1.0, 1.0], [1.0, 2.7], [2.0, 2.7], [2.0, 3.1], [3.0, 3.1], [3.0, 2.2], [4.0, 2.2], [4.0, 2.9], [5.0, 2.9]];
+export const misK1 = [[0.0, 1.0], [0.05, 1.085], [0.1, 1.17], [0.15, 1.255], [0.2, 1.34], [0.25, 1.425], [0.3, 1.51], [0.35, 1.595], [0.4, 1.68], [0.45, 1.765], [0.5, 1.85], [0.55, 1.935], [0.6, 2.02], [0.65, 2.105], [0.7, 2.19], [0.75, 2.275], [0.8, 2.36], [0.85, 2.445], [0.9, 2.53], [0.95, 2.615], [1.0, 2.7], [1.05, 2.72], [1.1, 2.74], [1.15, 2.76], [1.2, 2.78], [1.25, 2.8], [1.3, 2.82], [1.35, 2.84], [1.4, 2.86], [1.45, 2.88], [1.5, 2.9], [1.55, 2.92], [1.6, 2.94], [1.65, 2.96], [1.7, 2.98], [1.75, 3.0], [1.8, 3.02], [1.85, 3.04], [1.9, 3.06], [1.95, 3.08], [2.0, 3.1], [2.05, 3.055], [2.1, 3.01], [2.15, 2.965], [2.2, 2.92], [2.25, 2.875], [2.3, 2.83], [2.35, 2.785], [2.4, 2.74], [2.45, 2.695], [2.5, 2.65], [2.55, 2.605], [2.6, 2.56], [2.65, 2.515], [2.7, 2.47], [2.75, 2.425], [2.8, 2.38], [2.85, 2.335], [2.9, 2.29], [2.95, 2.245], [3.0, 2.2], [3.05, 2.235], [3.1, 2.27], [3.15, 2.305], [3.2, 2.34], [3.25, 2.375], [3.3, 2.41], [3.35, 2.445], [3.4, 2.48], [3.45, 2.515], [3.5, 2.55], [3.55, 2.585], [3.6, 2.62], [3.65, 2.655], [3.7, 2.69], [3.75, 2.725], [3.8, 2.76], [3.85, 2.795], [3.9, 2.83], [3.95, 2.865], [4.0, 2.9], [4.05, 2.995], [4.1, 3.09], [4.15, 3.185], [4.2, 3.28], [4.25, 3.375], [4.3, 3.47], [4.35, 3.565], [4.4, 3.66], [4.45, 3.755], [4.5, 3.85], [4.55, 3.945], [4.6, 4.04], [4.65, 4.135], [4.7, 4.23], [4.75, 4.325], [4.8, 4.42], [4.85, 4.515], [4.9, 4.61], [4.95, 4.705], [5.0, 4.8]];
+export const misK3 = [[0.0, 1.0], [0.05, 1.101], [0.1, 1.2], [0.15, 1.299], [0.2, 1.396], [0.25, 1.493], [0.3, 1.587], [0.35, 1.681], [0.4, 1.772], [0.45, 1.862], [0.5, 1.95], [0.55, 2.036], [0.6, 2.12], [0.65, 2.202], [0.7, 2.281], [0.75, 2.358], [0.8, 2.432], [0.85, 2.504], [0.9, 2.572], [0.95, 2.638], [1.0, 2.7], [1.05, 2.759], [1.1, 2.815], [1.15, 2.867], [1.2, 2.916], [1.25, 2.961], [1.3, 3.002], [1.35, 3.039], [1.4, 3.072], [1.45, 3.1], [1.5, 3.125], [1.55, 3.144], [1.6, 3.16], [1.65, 3.17], [1.7, 3.176], [1.75, 3.176], [1.8, 3.172], [1.85, 3.162], [1.9, 3.147], [1.95, 3.126], [2.0, 3.1], [2.05, 3.068], [2.1, 3.031], [2.15, 2.99], [2.2, 2.945], [2.25, 2.896], [2.3, 2.845], [2.35, 2.792], [2.4, 2.737], [2.45, 2.682], [2.5, 2.626], [2.55, 2.571], [2.6, 2.517], [2.65, 2.465], [2.7, 2.415], [2.75, 2.368], [2.8, 2.325], [2.85, 2.286], [2.9, 2.252], [2.95, 2.223], [3.0, 2.2], [3.05, 2.184], [3.1, 2.174], [3.15, 2.171], [3.2, 2.173], [3.25, 2.182], [3.3, 2.196], [3.35, 2.216], [3.4, 2.242], [3.45, 2.272], [3.5, 2.308], [3.55, 2.348], [3.6, 2.393], [3.65, 2.443], [3.7, 2.497], [3.75, 2.555], [3.8, 2.617], [3.85, 2.682], [3.9, 2.752], [3.95, 2.824], [4.0, 2.9], [4.05, 2.979], [4.1, 3.06], [4.15, 3.145], [4.2, 3.231], [4.25, 3.32], [4.3, 3.411], [4.35, 3.504], [4.4, 3.599], [4.45, 3.695], [4.5, 3.792], [4.55, 3.891], [4.6, 3.99], [4.65, 4.091], [4.7, 4.192], [4.75, 4.293], [4.8, 4.395], [4.85, 4.496], [4.9, 4.598], [4.95, 4.699], [5.0, 4.8]];
+
+## 한눈에 보기
+
+`make_interp_spline`은 점들을 모두 지나는 **스플라인**을 만들어요. 스플라인은 이웃한 점 사이마다 낮은 차수의 다항식 조각을 놓고, 조각이 만나는 곳에서 매끄럽게 이어 붙인 곡선이에요. 차수 $k$를 고를 수 있어요. 결과는 [`BSpline`](/api/interpolate/BSpline/) 객체이고, 함수처럼 불러 값을 읽어요.
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([0.0, 1.0, 2.0, 3.0, 4.0, 5.0])
+>>> y = sd.asarray([1.0, 2.7, 3.1, 2.2, 2.9, 4.8])
+>>> s = sd.interpolate.make_interp_spline(x, y)
+>>> s
+BSpline(degree=3, knots=10, extrapolate=True)
+>>> s(2.5)
+2.62625
+>>> s(x)
+array([               1.0, 2.7000000000000006, 3.0999999999999996,
+                      2.2,                2.9,                4.8], dtype=float64)
+>>> s([0.5, 1.5, 4.5])
+array([1.9504166666666676, 3.1245833333333333, 3.7920833333333337], dtype=float64)
+```
+
+기본은 3차($k = 3$)라서 곡선의 기울기와 굽은 정도(2차 도함수)까지 이어져요. 노드에서는 자료의 값을 지나요. 반올림 때문에 끝자리가 조금 다를 수 있어요.
+
+차수를 바꾸면 노드 사이의 모양이 달라져요.
+
+```python
+>>> for k in (0, 1, 2, 3, 5):
+...     print(k, sd.interpolate.make_interp_spline(x, y, k=k)(2.5))
+0 3.1
+1 2.6500000000000004
+2 2.627083333333333
+3 2.62625
+5 2.6265625
+```
+
+<Fig caption="같은 여섯 점을 지나는 차수 0, 1, 3의 스플라인. k = 0은 다음 노드까지 값을 그대로 두는 계단, k = 1은 꺾은선, k = 3은 매끄러운 곡선이에요.">
+  <PlaneFig
+    label="여섯 점과 그 점들을 지나는 계단, 꺾은선, 3차 스플라인"
+    domain={[0, 5]}
+    range={[0.5, 5.2]}
+    equal={false}
+    width={560}
+    height={260}
+    xTicks={[0, 1, 2, 3, 4, 5]}
+    yTicks={[1, 2, 3, 4, 5]}
+    layers={[
+      { kind: 'line', pts: misK0, tone: 'faint', dashed: true },
+      { kind: 'line', pts: misK1, tone: 'base' },
+      { kind: 'line', pts: misK3, tone: 'main', width: 2 },
+      { kind: 'points', pts: misPts, tone: 'ink', size: 3.6 },
+    ]}
+    legend={[
+      { label: '자료', tone: 'ink', shape: 'dot' },
+      { label: 'k = 0', tone: 'faint', shape: 'dash' },
+      { label: 'k = 1', tone: 'base', shape: 'line' },
+      { label: 'k = 3', tone: 'main', shape: 'line' },
+    ]}
+  />
+</Fig>
+
+<Reference />
+
+## 언제 쓰나요
+
+3차 스플라인만 필요하면 [`CubicSpline`](/api/interpolate/CubicSpline/)도 같은 곡선을 만들어요. 기본 끝 조건(not-a-knot)과 natural에서 두 객체는 같은 함수예요(반올림 차이만 있어요).
+
+```python
+>>> xs = sd.linspace(0, 5, 11)
+>>> float(sd.max(sd.abs(s(xs) - sd.interpolate.CubicSpline(x, y)(xs))))
+8.881784197001252e-16
+```
+
+`make_interp_spline`을 고르는 때는 이래요.
+
+- 3차가 아닌 차수가 필요할 때. 계단(0), 꺾은선(1), 2차, 5차 같은 것이에요. 5차 스플라인은 4차 도함수까지 이어져서, 가속도의 변화까지 매끄러워야 하는 궤적에 써요.
+- 결과를 B-스플라인 꼴로 다뤄야 할 때. 매듭에 매듭을 더 넣거나(`insert_knot`), 기저 함수의 행렬(`design_matrix`)과 함께 쓰는 일이에요.
+- 매듭을 직접 고르고 싶을 때(`t=`).
+
+## 차수 `k`
+
+`k`는 조각 다항식의 차수예요. 스플라인은 노드에서 $k - 1$차 도함수까지 이어져요.
+
+| `k` | 모양 | 이어지는 것 |
+|---|---|---|
+| 0 | 계단. 노드에서 다음 노드 직전까지 그 노드의 값 | 이어지지 않아요(노드에서 뛰어요) |
+| 1 | 꺾은선 | 값 |
+| 2 | 2차 조각 | 기울기 |
+| 3 | 3차 조각(기본) | 기울기, 2차 도함수 |
+| 5 | 5차 조각 | 4차 도함수까지 |
+
+### `k = 0`: 계단
+
+$[x_i, x_{i+1})$에서 값이 $y_i$예요. 마지막 노드에서는 마지막 값이에요. 첫 노드의 왼쪽은 첫 값, 마지막 노드의 오른쪽은 마지막 값이 이어져요.
+
+```python
+>>> s0 = sd.interpolate.make_interp_spline(x, y, k=0)
+>>> s0([0.0, 0.5, 0.999, 1.0, 4.9, 5.0, 6.0, -1.0])
+array([1.0, 1.0, 1.0, 2.7, 2.9, 4.8, 4.8, 1.0], dtype=float64)
+```
+
+### `k = 1`: 꺾은선
+
+이웃한 두 점을 곧은 선으로 이어요. 자료 범위 안에서는 [`sd.interp`](/api/array/interp/)와 비트까지 같은 값이에요. 다른 점은 범위 밖이에요. `sd.interp`는 끝값을 그대로 두지만 `make_interp_spline`은 끝 조각의 직선을 늘여요.
+
+```python
+>>> s1 = sd.interpolate.make_interp_spline(x, y, k=1)
+>>> xq = sd.asarray([0.5, 2.5, 3.3, 4.75])
+>>> bool(sd.all(s1(xq) == sd.interp(xq, x, y)))
+True
+>>> s1([-1.0, 6.0]), sd.interp(sd.asarray([-1.0, 6.0]), x, y)
+(array([-0.7000000000000002,   6.699999999999999], dtype=float64), array([1.0, 4.8], dtype=float64))
+```
+
+노드에서는 언제나 자료의 값 그대로예요.
+
+```python
+>>> bool(sd.all(s1(x) == y))
+True
+```
+
+### 차수와 점의 수
+
+차수가 높으면 점이 더 있어야 해요. 끝 조건 없이 만들 수 있는 가장 작은 점의 수는 $k + 1$이에요. 3차는 점이 4개 이상, 2차는 3개 이상이어야 해요. 점이 둘뿐이면 `k=1`, 셋이면 `k=2`를 써요.
+
+```python
+>>> sd.interpolate.make_interp_spline([0.0, 1.0, 2.0], [1.0, 2.0, 5.0])
+Traceback (most recent call last):
+    ...
+ValueError: make_interp_spline(): the knots need 1 derivative condition at the ends, not 0 + 0
+>>> sd.interpolate.make_interp_spline([0.0, 1.0, 2.0], [1.0, 2.0, 5.0], k=2)(1.5)
+3.25
+>>> sd.interpolate.make_interp_spline([0.0, 1.0], [1.0, 2.0], k=1)(0.5)
+1.5
+```
+
+메시지는 매듭이 요구하는 끝 조건의 수를 말해요. 점이 모자란 만큼 끝 조건(`bc_type`)을 더 주면 만들 수 있어요.
+
+## 매듭
+
+B-스플라인은 **매듭** `t`로 정해져요. 매듭은 조각의 경계가 되는 점들이에요. `t`를 주지 않으면 차수에 맞춰 표준 매듭을 만들어요.
+
+```python
+>>> for k in (0, 1, 2, 3, 5):
+...     print(k, sd.interpolate.make_interp_spline(x, y, k=k).t)
+0 [0.0 1.0 2.0 3.0 4.0 5.0 5.0]
+1 [0.0 0.0 1.0 2.0 3.0 4.0 5.0 5.0]
+2 [0.0 0.0 0.0 1.5 2.5 3.5 5.0 5.0 5.0]
+3 [0.0 0.0 0.0 0.0 2.0 3.0 5.0 5.0 5.0 5.0]
+5 [0.0 0.0 0.0 0.0 0.0 0.0 5.0 5.0 5.0 5.0 5.0 5.0]
+```
+
+양 끝 매듭은 $k + 1$번 겹쳐요. 그래서 스플라인이 끝 노드에서 자유롭게 시작하고 끝나요. 안쪽 매듭은 이렇게 골라요.
+
+- 홀수 차수(1, 3, 5)는 노드 자체를 매듭으로 쓰되, 양 끝에서 $(k - 1)/2$개씩 노드를 매듭에서 빼요. 3차에서는 둘째 노드와 끝에서 둘째 노드가 빠져요. 그 노드에서는 양쪽 조각이 같은 다항식이에요. 이것을 **not-a-knot** 조건이라고 불러요.
+- 짝수 차수(2, 4)는 이웃한 두 노드의 가운데를 매듭으로 써요. 양 끝에서 $k/2$개씩 빼요.
+
+매듭은 결과의 `t` 속성에 있어요. 매듭의 수는 (계수의 수) + $k$ + 1이에요.
+
+### 매듭을 직접 주기: `t`
+
+`t`에 매듭을 주면 그 매듭으로 스플라인을 만들어요. 길이는 `len(x) + k + 1` 이상이어야 하고, 매듭이 노드를 감싸야 해요.
+
+```python
+>>> t = [0.0, 0.0, 0.0, 0.0, 1.5, 3.5, 5.0, 5.0, 5.0, 5.0]
+>>> st = sd.interpolate.make_interp_spline(x, y, t=t)
+>>> st(x)
+array([1.0, 2.7, 3.1, 2.2, 2.9, 4.8], dtype=float64)
+>>> st(2.5)
+2.630208333333334
+```
+
+아무 매듭이나 되는 것은 아니에요. 노드마다 그 노드를 덮는 기저 함수가 있어야 해서, 매듭이 한쪽에 몰리면 연립방정식이 풀리지 않아요. 이 조건을 **Schoenberg–Whitney 조건**이라고 해요. 대략 $i$째 노드가 $t_i$와 $t_{i+k+1}$ 사이에 있어야 한다는 조건이에요.
+
+```python
+>>> sd.interpolate.make_interp_spline(x, y, t=[0, 0, 0, 0, 0.1, 0.2, 5, 5, 5, 5])
+Traceback (most recent call last):
+    ...
+stardust.linalg.LinAlgError: make_interp_spline(): the collocation matrix is singular (the knots and the points fail the Schoenberg-Whitney conditions, or the end conditions repeat)
+>>> sd.interpolate.make_interp_spline(x, y, t=[0, 0, 0, 0, 5, 5, 5, 5])
+Traceback (most recent call last):
+    ...
+ValueError: make_interp_spline(): 't' must have at least len(x) + k + 1 = 10 knots, not 8
+```
+
+## 끝 조건 `bc_type`
+
+3차 스플라인은 점만으로는 하나로 정해지지 않아요. 조각마다 계수가 넷인데 점과 이어짐 조건만으로는 두 개가 모자라요. 그 두 개를 끝에서 정하는 것이 끝 조건이에요. 기본(`None`, `'not-a-knot'`)은 위의 not-a-knot 매듭으로 모자란 자리를 채우고, 다른 조건은 양 끝에 도함수의 값을 정해요.
+
+| `bc_type` | 뜻 |
+|---|---|
+| `None`, `'not-a-knot'` | 끝 조건 없이 not-a-knot 매듭(기본) |
+| `'natural'` | 양 끝에서 2차 도함수가 0. 끝에서 곡선이 곧게 펴져요 |
+| `'clamped'` | 양 끝에서 기울기가 0 |
+| `'periodic'` | 처음과 끝이 이어지는 주기 스플라인 |
+| `(왼쪽, 오른쪽)` | 끝마다 따로. 각각 `None`, `'natural'`, `'clamped'`, 또는 `[(차수, 값), ...]` |
+
+```python
+>>> sn = sd.interpolate.make_interp_spline(x, y, bc_type='natural')
+>>> sn(0.0, nu=2), sn(5.0, nu=2)
+(1.3322676295501878e-15, 1.7763568394002505e-15)
+>>> sc = sd.interpolate.make_interp_spline(x, y, bc_type='clamped')
+>>> sc(0.0, nu=1), sc(5.0, nu=1)
+(0.0, 2.6645352591003757e-15)
+```
+
+끝의 도함수 값은 0에 아주 가까운 수로 나와요. 계수가 반올림된 탓이에요.
+
+### 끝마다 다른 조건
+
+`(차수, 값)` 쌍의 리스트로 끝에서 원하는 도함수의 값을 정해요. 왼쪽 끝은 기울기 2, 오른쪽 끝은 2차 도함수 0인 스플라인은 이래요.
+
+```python
+>>> sm = sd.interpolate.make_interp_spline(x, y, bc_type=([(1, 2.0)], [(2, 0.0)]))
+>>> sm(0.0, nu=1), sm(5.0, nu=2)
+(1.9999999999999996, 8.881784197001252e-15)
+>>> sd.interpolate.make_interp_spline(x, y, bc_type=('natural', 'clamped'))(5.0, nu=1)
+2.6645352591003757e-15
+```
+
+### 조건의 수는 차수가 정해요
+
+끝 조건을 주면 매듭은 노드 전부에 양 끝을 $k + 1$번 겹친 것이 돼요. 이 매듭에서는 미지수가 노드보다 $k - 1$개 많아서, 끝 조건의 수가 모두 합쳐 $k - 1$개여야 해요. 3차는 둘, 5차는 넷, 2차는 하나, 4차는 셋이에요. 짝수 차수는 양 끝에 같은 수로 나눌 수 없어서 한쪽에 하나를 더 줘요. 수가 맞지 않으면 필요한 수와 받은 수(왼쪽 + 오른쪽)를 말하는 에러예요.
+
+```python
+>>> sd.interpolate.make_interp_spline(x, y, bc_type=([(1, 2.0)], None))
+Traceback (most recent call last):
+    ...
+ValueError: make_interp_spline(): the knots need 2 derivative conditions at the ends, not 1 + 0
+>>> sd.interpolate.make_interp_spline(x, y, k=5, bc_type='natural')
+Traceback (most recent call last):
+    ...
+ValueError: make_interp_spline(): the knots need 4 derivative conditions at the ends, not 1 + 1
+>>> s5 = sd.interpolate.make_interp_spline(x, y, k=5, bc_type=([(1, 0.0), (2, 0.0)], [(1, 0.0), (2, 0.0)]))
+>>> s5(0.0, nu=1), s5(5.0, nu=2)
+(0.0, 1.0658141036401503e-14)
+>>> sd.interpolate.make_interp_spline(x, y, k=2, bc_type=([(1, 0.0)], None))(0.0, nu=1)
+0.0
+```
+
+`'natural'`과 `'clamped'`는 끝마다 조건 하나라서 3차에만 맞아요. `k=0`은 끝 조건을 받지 않고, `k=1`은 매듭을 직접 줄 때만 받아요.
+
+```python
+>>> sd.interpolate.make_interp_spline(x, y, k=1, bc_type='natural')
+Traceback (most recent call last):
+    ...
+ValueError: make_interp_spline(): k=1 takes no end conditions in 'bc_type' (unless 't' is given)
+```
+
+같은 끝에 같은 차수를 두 번 주거나, 차수가 0..k 밖이면 풀 수 없어요.
+
+```python
+>>> sd.interpolate.make_interp_spline(x, y, bc_type=([(1, 0.0), (1, 1.0)], None))
+Traceback (most recent call last):
+    ...
+stardust.linalg.LinAlgError: make_interp_spline(): the collocation matrix is singular (the knots and the points fail the Schoenberg-Whitney conditions, or the end conditions repeat)
+>>> sd.interpolate.make_interp_spline(x, y, bc_type=([(4, 0.0)], [(1, 0.0)]))
+Traceback (most recent call last):
+    ...
+ValueError: make_interp_spline(): a derivative order at x[0] must be in [0, k] = [0, 3], not 4
+```
+
+### 주기 조건: `'periodic'`
+
+하루의 기온이나 각도에 따른 값처럼 처음과 끝이 같은 자리인 자료에 써요. 처음 값과 끝 값이 같아야 하고(상대·절대 $10^{-15}$ 안), 끝에서 기울기와 2차 도함수까지 처음과 이어져요. 결과는 `extrapolate='periodic'`이라 범위 밖의 점은 한 주기만큼 감아서 계산해요.
+
+```python
+>>> th = sd.linspace(0, 2 * sd.pi, 9)
+>>> yp = sd.sin(th)
+>>> yp[-1] = yp[0]
+>>> sp = sd.interpolate.make_interp_spline(th, yp, bc_type='periodic')
+>>> sp
+BSpline(degree=3, knots=15, extrapolate='periodic')
+>>> sp(th[2]), sp(th[2] + 2 * sd.pi)
+(1.0, 1.0)
+>>> sp(0.0, nu=1), sp(2 * sd.pi, nu=1)
+(0.997725308525684, 0.997725308525684)
+```
+
+`sd.sin(2π)`는 정확히 0이 아니라 $-2.4 \times 10^{-16}$ 둘레의 수라서, 위에서는 끝 값을 처음 값으로 바꿔 넣었어요. 끝 값이 다르면 에러예요.
+
+```python
+>>> sd.interpolate.make_interp_spline(x, y, bc_type='periodic')
+Traceback (most recent call last):
+    ...
+ValueError: make_interp_spline(): 'y' must have equal first and last values along axis 0 for bc_type='periodic' (within rtol = atol = 1e-15)
+```
+
+주기 스플라인은 자기 매듭을 만들므로 `t`와 함께 줄 수 없어요.
+
+## 여러 열을 한 번에: `axis`
+
+`y`가 2차원 이상이면 `axis` 축이 노드와 짝을 이루고 나머지 축은 같은 노드를 쓰는 여러 열이에요. 열마다 따로 스플라인을 만든 것과 같아요.
+
+```python
+>>> Y = sd.stack([y, 10 * y], axis=1)
+>>> sY = sd.interpolate.make_interp_spline(x, Y)
+>>> sY(2.5)
+array([           2.62625, 26.262500000000003], dtype=float64)
+>>> sY([0.5, 2.5, 4.5]).shape
+(3, 2)
+>>> sd.interpolate.make_interp_spline(x, Y.T, axis=1)(2.5)
+array([           2.62625, 26.262500000000003], dtype=float64)
+```
+
+열이 여럿이면 끝 조건의 값도 열의 모양으로 줘요.
+
+```python
+>>> sd.interpolate.make_interp_spline(x, Y, bc_type=([(1, [0.0, 1.0])], [(1, [0.0, 0.0])]))(0.0, nu=1)
+array([               0.0, 0.9999999999999964], dtype=float64)
+>>> sd.interpolate.make_interp_spline(x, Y, bc_type=([(1, 0.0)], [(1, 0.0)]))
+Traceback (most recent call last):
+    ...
+ValueError: make_interp_spline(): a boundary value must have the shape (2,), not ()
+```
+
+`axis=1`로 만든 스플라인을 부르면 평가점의 모양이 결과의 1번 축에 들어가요. 규칙은 [`BSpline`](/api/interpolate/BSpline/)의 배치 설명과 같아요.
+
+## 받는 값
+
+`x`와 `y`는 `sd.ndarray`, 수의 리스트, numpy 배열, `sd.frame`의 `Series`를 받아요. 정수는 float64로 바꿔요. `y`는 복소수여도 되고, 실수부와 허수부를 같은 계산으로 따로 보간해요.
+
+```python
+>>> df = sd.frame.DataFrame({"x": [0.0, 1.0, 2.0, 3.0], "y": [1.0, 3.0, 2.0, 5.0]})
+>>> sd.interpolate.make_interp_spline(df["x"], df["y"])(1.5)
+2.4375
+>>> sd.interpolate.make_interp_spline([0, 1, 2, 3], [1, 3, 2, 5])(1.5)
+2.4375
+>>> sd.interpolate.make_interp_spline(x, y + 1j * y)(2.5)
+(2.62625+2.62625j)
+```
+
+모든 값은 유한해야 해요. 계수를 연립방정식으로 한꺼번에 구하므로 NaN 하나가 모든 계수를 NaN으로 만들기 때문이에요. 결측값은 먼저 빼고 만들어요.
+
+```python
+>>> sd.interpolate.make_interp_spline(x, [1.0, 2, float('nan'), 4, 5, 6])
+Traceback (most recent call last):
+    ...
+ValueError: make_interp_spline(): 'y' must be finite
+>>> sd.interpolate.make_interp_spline(x, [1.0, 2, 3])
+Traceback (most recent call last):
+    ...
+ValueError: make_interp_spline(): 'y' must have as many points as 'x' (6) along axis 0, not 3
+```
+
+노드는 엄격히 증가해야 해요. 정렬되지 않은 자료는 먼저 정렬하고, 같은 노드가 있으면 하나로 줄여요.
+
+```python
+>>> sd.interpolate.make_interp_spline([0, 2, 1, 3], [1.0, 2, 3, 4])
+Traceback (most recent call last):
+    ...
+ValueError: make_interp_spline(): 'x' must be strictly increasing
+>>> sd.interpolate.make_interp_spline([0.0], [1.0])
+Traceback (most recent call last):
+    ...
+ValueError: make_interp_spline(): 'x' must have at least 2 points, not 1
+```
+
+## 정확도
+
+계수는 정해진 매듭의 연립방정식을 풀어 구해요. 양 끝에 끝 조건이 있어도 계수가 크게 틀리지 않게 식을 놓는 순서와 푸는 방법을 골라요. 정확한 유리수 참값과 견준 시험에서, 계수의 오차는 차수와 끝 조건마다 보장하는 한계의 0.032배 이하(2차 0.032, 3차 0.024, 4차 0.021, 5차 0.019, 3차 natural 0.021, 3차 clamped 0.022, 3차 주기 0.018)였어요. 한계와 그 증명은 [정확도와 성능](/internals/interpolate/accuracy-performance/)에 있어요.
+
+같은 자료, 같은 인자면 스레드 수와 상관없이 같은 비트의 계수가 나와요.
+
+## 조심할 점
+
+### 옵션은 이름으로 줘요
+
+`k`를 포함한 모든 옵션은 이름으로 줘요.
+
+```python
+>>> sd.interpolate.make_interp_spline(x, y, 3)
+Traceback (most recent call last):
+    ...
+TypeError: make_interp_spline(): takes 2 positional arguments but 3 were given
+>>> sd.interpolate.make_interp_spline(x, y, k=2.0)
+Traceback (most recent call last):
+    ...
+TypeError: make_interp_spline(): 'k' must be an int, not float
+>>> sd.interpolate.make_interp_spline(x, y, bc_type='Natural')
+Traceback (most recent call last):
+    ...
+ValueError: make_interp_spline(): 'bc_type' must be None, 'not-a-knot', 'natural', 'clamped', 'periodic' or a pair of end conditions, not 'Natural'
+```
+
+### 결과의 바깥은 늘인 다항식이에요
+
+결과 스플라인은 범위 밖에서 끝 조각의 다항식을 그대로 늘여요(주기 스플라인은 감아요). 고차 다항식은 범위를 조금만 벗어나도 크게 움직일 수 있어요. 범위 밖을 NaN으로 하려면 부를 때 `extrapolate=False`를 줘요. `make_interp_spline`은 `extrapolate`를 받지 않아요.
+
+```python
+>>> s(6.0), s(6.0, extrapolate=False)
+(6.426666666666668, nan)
+>>> sd.interpolate.make_interp_spline(x, y, extrapolate=False)
+Traceback (most recent call last):
+    ...
+TypeError: make_interp_spline(): unexpected keyword argument 'extrapolate'
+```
+
+### 높은 차수가 언제나 좋지는 않아요
+
+차수를 높이면 노드 사이가 더 매끄러워지지만, 자료가 갑자기 꺾이는 곳에서 출렁임이 커질 수 있어요. 보통은 3차로 충분하고, 넘치거나 음수가 되면 안 되는 자료에는 [`PchipInterpolator`](/api/interpolate/PchipInterpolator/)가 알맞아요.
+
+## scipy·numpy를 아는 분께
+
+- `k`, `t`, `bc_type`, `axis`는 이름으로만 받아요. scipy의 `make_interp_spline(x, y, 3)`은 `TypeError`예요. `check_finite`는 없어요(언제나 검사해요).
+- 기본 매듭과 끝 조건의 짝 맞추기, 에러가 나는 경우는 scipy와 같아요. 지금은 기본 매듭이 시험 자료 전부에서 scipy의 매듭과 비트까지 같아요(약속은 아니에요).
+- `bc_type='periodic'`의 끝 값 검사는 `CubicSpline`과 같은 허용(상대·절대 $10^{-15}$)이에요. scipy의 `make_interp_spline`은 상대 $10^{-5}$라서 아주 큰 값의 자료는 끝 값이 꽤 달라도 받아요.
+- `k=1`의 결과는 노드에서 `y` 그대로이고, 범위 안에서 `sd.interp`와 비트까지 같아요. scipy는 노드에서 끝자리가 다를 수 있어요.
+- 끝 조건이 있는 계를 놓는 순서가 달라요. 도함수 조건의 행을 그 끝의 보간 행 바로 안쪽에 두고, 안정성을 증명할 수 있는 경우(끝 조건 없음, 끝마다 1, 2, …차의 조건, 3차 natural)는 피벗 없이, 그 밖은 부분 피벗으로 풀어요. scipy와 계수의 끝자리가 다를 수 있어요.
+- 노드 끝의 간격이 비정상 수만큼 작아 도함수 조건이 넘치면 `ValueError`예요.
+- `bc_type` 문자열은 소문자 정식 이름만 받아요.

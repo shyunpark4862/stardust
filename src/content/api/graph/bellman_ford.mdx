@@ -1,0 +1,204 @@
+---
+kind: function
+title: bellman_ford
+names: [bellman_ford]
+group: 최단 경로
+order: 3
+signatures:
+  - "sd.graph.bellman_ford(csgraph, /, *, directed=True, indices=None, return_predecessors=False, unweighted=False)"
+summary: 음수 무게가 있는 그래프에서 최단 거리를 구하는 Bellman–Ford 알고리즘이에요. 원점에서 닿을 수 있는 음수 순환이 있으면 NegativeCycleError로 알려 줘요.
+params:
+  - name: csgraph
+    type: sd.sparse의 희소 배열 또는 밀집 행렬(ndarray, numpy 배열, 수의 중첩 시퀀스)
+    kind: positional-only
+    desc: "(n, n) 인접 행렬. 행 i, 열 j의 원소가 i에서 j로 가는 변의 무게예요. 음수 무게도 받아요. 희소 배열은 저장된 원소가 모두 변이고, 밀집 행렬은 0, NaN, 무한대가 아닌 원소가 변이에요."
+  - name: directed
+    type: bool
+    kind: keyword-only
+    desc: "True(기본값)면 (i, j) 원소를 i에서 j로만 가는 변으로 읽어요. False면 양쪽으로 다닐 수 있는 변으로 읽어요. 이때 음수 무게의 변은 그 자체로 음수 순환이에요."
+  - name: indices
+    type: None, int, 또는 int의 1차원 배열
+    kind: keyword-only
+    desc: "원점. None(기본값)이면 모든 노드가 원점이에요. 노드 번호는 0 이상 n 미만의 int예요."
+  - name: return_predecessors
+    type: bool
+    kind: keyword-only
+    desc: "True면 거리와 함께 선행 노드 배열을 돌려줘요."
+  - name: unweighted
+    type: bool
+    kind: keyword-only
+    desc: "True면 모든 변의 무게를 1로 봐요. 값을 읽지 않으니 음수 무게도 음수 순환도 상관없어요."
+returns:
+  type: ndarray(float64) 또는 ShortestPathResult
+  desc: "거리 배열. indices가 None이면 (n, n), int 하나면 (n,), 1차원 배열이면 (원점 수, n)이에요. 닿지 못한 노드는 inf예요. return_predecessors=True면 ShortestPathResult(dist_matrix, predecessors)예요."
+raises:
+  - type: NegativeCycleError
+    desc: "원점에서 닿을 수 있는 음수 순환이 있을 때. indices가 None이면 그래프 어디든 음수 순환이 있을 때예요. ValueError의 하위 클래스예요."
+  - type: TypeError
+    desc: "csgraph가 받는 꼴이 아닐 때, directed 등이 bool이 아닐 때, 노드 번호가 int가 아닐 때, 옵션을 자리로 줄 때, 없는 키워드를 줄 때."
+  - type: ValueError
+    desc: "행렬이 2차원 정방이 아닐 때, 노드 번호가 범위 밖일 때, indices가 2차원 이상일 때, 희소 입력에 저장된 무게가 NaN이나 무한대일 때."
+  - type: MemoryError
+    desc: "요청한 결과가 이 컴퓨터의 물리 메모리보다 클 때. 할당하기 전에 알려 줘요."
+seeAlso: [shortest_path, johnson, dijkstra, floyd_warshall, basics]
+---
+import Callout from '../../../components/Callout.astro';
+
+## 한눈에 보기
+
+무게가 비용만이 아니라 이득도 적는다면 음수가 나와요. 환전에서 얻는 이익, 화학 반응에서 나오는 에너지, 어떤 일을 하면 줄어드는 시간 같은 것들이에요. 음수 무게가 있으면 [`dijkstra`](/api/graph/dijkstra/)는 쓸 수 없고, `bellman_ford`를 써요.
+
+```python
+>>> import stardust as sd
+>>> N = [[0, 4,  0, 0],
+...      [0, 0, -2, 0],
+...      [0, 0,  0, 3],
+...      [0, 0,  0, 0]]
+>>> sd.graph.bellman_ford(N, indices=0)
+array([0.0, 4.0, 2.0, 5.0], dtype=float64)
+```
+
+노드 0에서 1까지 4, 1에서 2까지 −2라 노드 2까지는 $4 + (-2) = 2$, 노드 3까지는 $2 + 3 = 5$예요.
+
+Bellman–Ford의 생각은 단순해요. 처음에는 원점만 거리 0이고 나머지는 모두 $\infty$예요. 그다음 "변 $u \to v$를 거치면 $v$까지 더 짧아지는가"를 모든 변에서 묻고, 짧아지면 $v$의 거리를 고쳐요. 이것을 **이완**이라고 불러요. 더 고칠 것이 없을 때까지 되풀이하면 그때의 값이 최단 거리예요. 음수 순환이 없으면 최단 경로는 변을 $n - 1$개까지만 거치므로, 모든 변을 $n - 1$번 훑기 전에 반드시 멈춰요.
+
+<Reference />
+
+## 음수 순환
+
+한 바퀴 돌았을 때 무게의 합이 음수인 순환이 있으면, 그 순환을 돌 때마다 길이가 줄어 최단 거리가 정해지지 않아요. 이완도 끝없이 계속돼요. `bellman_ford`는 이런 순환을 찾아 `NegativeCycleError`를 내요. 메시지는 순환 위의 가장 작은 노드를 적어요.
+
+```python
+>>> C = [[0, 1, 0,  0],
+...      [0, 0, 2,  0],
+...      [0, 0, 0, -4],
+...      [0, 1, 0,  0]]
+>>> sd.graph.bellman_ford(C, indices=0)
+Traceback (most recent call last):
+    ...
+stardust.graph.NegativeCycleError: bellman_ford(): negative cycle through node 1
+```
+
+노드 1 → 2 → 3 → 1을 도는 합이 $2 - 4 + 1 = -1$이에요. `NegativeCycleError`는 `ValueError`의 하위 클래스예요.
+
+```python
+>>> try:
+...     sd.graph.bellman_ford(C)
+... except ValueError as e:
+...     print(type(e).__name__, isinstance(e, sd.graph.NegativeCycleError))
+...
+NegativeCycleError True
+```
+
+### 원점에서 닿는 순환만 문제예요
+
+음수 순환이 있어도, 원점에서 그 순환에 닿을 수 없으면 원점의 거리는 잘 정해져요. 그래서 에러는 **요청한 원점에서 닿을 수 있는** 음수 순환이 있을 때만 나요. `indices`가 None이면 모든 노드가 원점이니 그래프 어디든 음수 순환이 있으면 에러예요.
+
+```python
+>>> C2 = [[0, 1, 0,  0],
+...       [0, 0, 0,  0],
+...       [0, 0, 0, -4],
+...       [0, 0, 1,  0]]
+>>> sd.graph.bellman_ford(C2, indices=0)
+array([0.0, 1.0, inf, inf], dtype=float64)
+>>> sd.graph.bellman_ford(C2, indices=2)
+Traceback (most recent call last):
+    ...
+stardust.graph.NegativeCycleError: bellman_ford(): negative cycle through node 2
+>>> sd.graph.bellman_ford(C2)
+Traceback (most recent call last):
+    ...
+stardust.graph.NegativeCycleError: bellman_ford(): negative cycle through node 2
+```
+
+`C2`의 노드 2와 3은 합이 $-4 + 1 = -3$인 순환이지만, 노드 0에서는 거기에 닿지 못해요. 이 규칙은 [`johnson`](/api/graph/johnson/), [`floyd_warshall`](/api/graph/floyd_warshall/), [`shortest_path`](/api/graph/shortest_path/), [`yen`](/api/graph/yen/)에서도 같아요. 메시지에 적히는 노드도 같아요.
+
+음수 무게의 자기 고리(대각 원소)는 그 자체로 음수 순환이에요. 양수나 0의 자기 고리는 쓰이지 않아요.
+
+```python
+>>> sd.graph.bellman_ford([[0, 1], [0, -1]], indices=0)
+Traceback (most recent call last):
+    ...
+stardust.graph.NegativeCycleError: bellman_ford(): negative cycle through node 1
+```
+
+<Callout type="warn" title="방향 없는 그래프의 음수 변">
+`directed=False`에서 음수 무게의 변은 갔다가 되돌아오는 것만으로 합이 음수라, 그 자체로 음수 순환이에요. 음수 무게는 방향이 있는 그래프에서만 뜻이 있어요.
+</Callout>
+
+```python
+>>> sd.graph.bellman_ford(N, directed=False, indices=0)
+Traceback (most recent call last):
+    ...
+stardust.graph.NegativeCycleError: bellman_ford(): negative cycle through node 1
+```
+
+## 원점, 선행 노드, 결과
+
+`indices`, `return_predecessors`, `unweighted`와 결과의 모양은 [`shortest_path`](/api/graph/shortest_path/)와 같아요.
+
+```python
+>>> r = sd.graph.bellman_ford(N, indices=0, return_predecessors=True)
+>>> r.predecessors
+array([-9999,     0,     1,     2], dtype=int64)
+>>> sd.graph.bellman_ford(N)
+array([[ 0.0,  4.0,  2.0,  5.0],
+       [ inf,  0.0, -2.0,  1.0],
+       [ inf,  inf,  0.0,  3.0],
+       [ inf,  inf,  inf,  0.0]], dtype=float64)
+```
+
+선행 노드는 거리에서 정해져요. 길이가 같은 길이 여럿이면 거치는 변이 적은 길, 그다음 번호가 작은 노드가 앞이에요. 그래서 무게가 0 이상인 그래프에서는 `bellman_ford`, [`dijkstra`](/api/graph/dijkstra/), [`johnson`](/api/graph/johnson/)이 거리와 선행 노드 모두 같은 비트를 내요.
+
+## `johnson`과 무엇이 다른가요
+
+`bellman_ford`와 `johnson`은 같은 그래프에서 같은 비트를 내요. 다른 것은 빠르기뿐이에요.
+
+- `bellman_ford`는 원점마다 이완을 되풀이해요. 원점이 하나나 몇 개뿐일 때 알맞아요.
+- [`johnson`](/api/graph/johnson/)은 Bellman–Ford를 한 번만 돌려 무게를 고친 뒤 원점마다 Dijkstra를 돌려요. 원점이 많거나 모든 쌍이 필요할 때 알맞아요.
+
+모르겠으면 [`shortest_path`](/api/graph/shortest_path/)의 `method='auto'`에 맡겨요. 음수 무게가 있으면 `johnson`의 방법을 골라요.
+
+## 경계의 값
+
+- **닿지 못한 노드**는 거리 `inf`, 선행 노드 −9999예요.
+- **정확한 합이 0인 순환**은 음수 순환이 아니에요. 에러 없이 거리를 구해요.
+- **노드가 없는 그래프**($n = 0$)와 빈 `indices`도 받아요.
+- **무게 0의 변**은 희소 배열에 0을 저장해서 적어요. 밀집 행렬의 0, NaN, 무한대는 "변 없음"이에요.
+- **희소 배열에 저장된 NaN과 무한대**는 `ValueError`예요. `unweighted=True`면 값을 읽지 않으니 에러가 아니에요.
+
+## 정확도
+
+무게가 정수이고 경로의 합이 $2^{53}$을 넘지 않거나 `unweighted=True`면 거리는 정확해요. 일반 실수 무게에서는 덧셈마다 반올림이 쌓이고, 그 한계와 측정값은 [`shortest_path`](/api/graph/shortest_path/)의 "결정성과 정확도"에 있어요. 같은 입력이면 스레드 수와 상관없이 같은 비트예요.
+
+정확한 합이 음수인 순환은 언제나 찾아요. 아주 드물게, 정확한 합이 0인데 덧셈의 반올림 때문에 돌 때마다 값이 조금씩 줄어드는 순환이 음수 순환으로 보일 수 있어요. 무게가 정수면 이런 일은 없어요.
+
+## 에러
+
+```python
+>>> sd.graph.bellman_ford(N, indices=4)
+Traceback (most recent call last):
+    ...
+ValueError: bellman_ford(): 'indices' must be a node of the graph (0 .. 3), not 4
+>>> sd.graph.bellman_ford(N, True)
+Traceback (most recent call last):
+    ...
+TypeError: bellman_ford(): takes 1 positional argument but 2 were given
+>>> W = sd.sparse.csr_array(([1.0, float('nan')], ([0, 1], [1, 2])), shape=(3, 3))
+>>> sd.graph.bellman_ford(W, indices=0)
+Traceback (most recent call last):
+    ...
+ValueError: bellman_ford(): stored edge weights must be finite
+```
+
+## scipy·networkx를 아는 분께
+
+`scipy.sparse.csgraph.bellman_ford`와 이름, 인자 이름, 결과의 모양이 같아요. 다른 점은 이래요.
+
+- **음수 순환의 규칙이 하나예요.** "요청한 원점에서 닿는 음수 순환"이면 에러이고 모든 최단 경로 함수가 같아요. scipy의 `bellman_ford(indices=0)`은 닿지 않는 순환을 무시하지만 `johnson(indices=0)`은 그 순환에서 에러를 내요.
+- **`NegativeCycleError`는 `ValueError`의 하위 클래스**예요. scipy의 것은 `Exception`의 하위 클래스예요.
+- **선행 노드의 동점 규칙이 정해져 있어요.** scipy는 마름모 그래프처럼 길이가 같은 길이 있을 때 Bellman–Ford와 Dijkstra의 선행 노드가 다를 수 있어요. 여기서는 같아요.
+- **옵션은 키워드로만**, **노드 번호는 0 이상 $n$ 미만의 int만** 받아요. `overwrite`는 없어요. 선행 노드는 int64예요.
+- **밀집 입력의 아주 작은 무게도 변이에요.** scipy는 밀집 행렬에서 절댓값이 $10^{-8}$ 이하인 원소를 버려요.
+
+networkx의 `single_source_bellman_ford_path_length`와 `negative_edge_cycle`이 하는 일이에요.

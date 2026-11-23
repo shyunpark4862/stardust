@@ -1,0 +1,268 @@
+---
+kind: function
+title: yen
+names: [yen]
+group: 최단 경로
+order: 6
+signatures:
+  - "sd.graph.yen(csgraph, source, sink, K, /, *, directed=True, return_predecessors=False, unweighted=False)"
+summary: 두 노드 사이에서 짧은 길을 하나가 아니라 K개 찾아요(Yen 알고리즘). 같은 노드를 두 번 지나지 않는 경로를 길이, 변의 수, 노드 차례의 순서로 늘어놓은 앞의 K개예요.
+params:
+  - name: csgraph
+    type: sd.sparse의 희소 배열 또는 밀집 행렬(ndarray, numpy 배열, 수의 중첩 시퀀스)
+    kind: positional-only
+    desc: "(n, n) 인접 행렬. 행 i, 열 j의 원소가 i에서 j로 가는 변의 무게예요. 음수 무게도 받아요. 희소 배열은 저장된 원소가 모두 변이고, 밀집 행렬은 0, NaN, 무한대가 아닌 원소가 변이에요."
+  - name: source
+    type: int
+    kind: positional-only
+    desc: "출발 노드. 0 이상 n 미만의 int예요."
+  - name: sink
+    type: int
+    kind: positional-only
+    desc: "도착 노드. 0 이상 n 미만의 int예요."
+  - name: K
+    type: int
+    kind: positional-only
+    desc: "찾을 경로의 수. 0 이상의 int예요. 경로가 K개보다 적으면 있는 만큼 돌려줘요."
+  - name: directed
+    type: bool
+    kind: keyword-only
+    desc: "True(기본값)면 (i, j) 원소를 i에서 j로만 가는 변으로 읽어요. False면 양쪽으로 다닐 수 있는 변으로 읽고, 두 방향이 모두 있으면 작은 무게를 써요."
+  - name: return_predecessors
+    type: bool
+    kind: keyword-only
+    desc: "True면 길이와 함께 경로마다의 선행 노드 행을 돌려줘요."
+  - name: unweighted
+    type: bool
+    kind: keyword-only
+    desc: "True면 모든 변의 무게를 1로 봐요. 길이는 변의 수예요."
+returns:
+  type: ndarray(float64) 또는 YenResult
+  desc: "찾은 경로 M개(M ≤ K)의 길이, (M,) float64. 짧은 것부터예요. return_predecessors=True면 YenResult(dist_array, predecessors)이고 predecessors는 (M, n) int64로 행 하나가 경로 하나예요(경로에 없는 노드와 출발 노드는 −9999)."
+raises:
+  - type: NegativeCycleError
+    desc: "출발 노드에서 닿을 수 있는 음수 순환이 있을 때. ValueError의 하위 클래스예요."
+  - type: TypeError
+    desc: "source, sink, K가 int가 아닐 때(실수, bool), csgraph가 받는 꼴이 아닐 때, 옵션을 자리로 줄 때, 없는 키워드를 줄 때."
+  - type: ValueError
+    desc: "source나 sink가 범위 밖일 때, K가 음수일 때, 행렬이 2차원 정방이 아닐 때, 희소 입력에 저장된 무게가 NaN이나 무한대일 때."
+  - type: MemoryError
+    desc: "return_predecessors=True일 때 K × n 선행 노드가 이 컴퓨터의 물리 메모리보다 클 때."
+seeAlso: [shortest_path, dijkstra, reconstruct_path, results]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import PlaneFig from '../../../components/fig/PlaneFig.astro';
+
+export const nodePts = [[0, 1], [1.3, 2], [1.6, 1], [3, 1.7], [3, 0.3], [1.3, 0]];
+export const allEdges = [[0, 1, 1.3, 2], [0, 1, 1.6, 1], [0, 1, 1.3, 0], [1.3, 2, 1.6, 1], [1.3, 2, 3, 1.7], [1.6, 1, 3, 1.7], [1.6, 1, 1.3, 0], [3, 1.7, 3, 0.3], [3, 0.3, 1.3, 0]];
+export const path1 = [[0, 1, 1.6, 1], [1.6, 1, 1.3, 0], [1.3, 0, 3, 0.3]];
+export const path2 = [[0, 1, 1.3, 0], [1.3, 0, 3, 0.3]];
+export const path3 = [[0, 1, 1.6, 1], [1.6, 1, 3, 1.7], [3, 1.7, 3, 0.3]];
+export const nodeLabels = ['0', '1', '2', '3', '4', '5'];
+
+## 한눈에 보기
+
+길찾기 앱은 가장 빠른 길 하나만이 아니라 두세 개의 다른 길도 보여 줘요. 가장 짧은 길이 막혔을 때의 대안, 비용이 비슷한 여러 선택지가 필요할 때가 많아요. `yen`은 노드 `source`에서 `sink`까지 가는 경로 가운데 짧은 것부터 `K`개를 찾아요. 같은 노드를 두 번 지나는 경로(고리가 있는 경로)는 세지 않아요.
+
+[`shortest_path`](/api/graph/shortest_path/)의 마을 그래프에서 마을 0에서 4로 가는 길을 세 개 찾아볼게요.
+
+```python
+>>> import stardust as sd
+>>> G = [[0, 7, 9,  0, 0, 14],
+...      [0, 0, 10, 15, 0, 0],
+...      [0, 0, 0, 11, 0, 2],
+...      [0, 0, 0,  0, 6, 0],
+...      [0, 0, 0,  0, 0, 9],
+...      [0, 0, 0,  0, 0, 0]]
+>>> sd.graph.yen(G, 0, 4, 3, directed=False)
+array([20.0, 23.0, 26.0], dtype=float64)
+```
+
+가장 짧은 길은 20, 그다음은 23과 26이에요. 첫 번째 값은 언제나 [`shortest_path`](/api/graph/shortest_path/)가 구하는 최단 거리와 같아요.
+
+<Fig caption="마을 0에서 4로 가는 짧은 길 세 개. 왼쪽부터 0, 2, 5, 4(길이 20), 0, 5, 4(길이 23), 0, 2, 3, 4(길이 26)예요. 두 번째 길은 첫 번째 길과 5에서 4로 가는 마지막 변을 같이 써요.">
+  <PlaneFig
+    title="1번째, 길이 20"
+    label="노드 0에서 2, 5를 거쳐 4로 가는 경로를 강조한 그래프"
+    domain={[-0.4, 3.4]}
+    range={[-0.4, 2.4]}
+    width={230}
+    layers={[
+      { kind: 'segments', segs: allEdges, tone: 'faint' },
+      { kind: 'segments', segs: path1, tone: 'main', width: 2.4 },
+      { kind: 'points', pts: nodePts, tone: 'ink', size: 3.6, labels: nodeLabels },
+    ]}
+  />
+  <PlaneFig
+    title="2번째, 길이 23"
+    label="노드 0에서 5를 거쳐 4로 가는 경로를 강조한 그래프"
+    domain={[-0.4, 3.4]}
+    range={[-0.4, 2.4]}
+    width={230}
+    layers={[
+      { kind: 'segments', segs: allEdges, tone: 'faint' },
+      { kind: 'segments', segs: path2, tone: 'main', width: 2.4 },
+      { kind: 'points', pts: nodePts, tone: 'ink', size: 3.6, labels: nodeLabels },
+    ]}
+  />
+  <PlaneFig
+    title="3번째, 길이 26"
+    label="노드 0에서 2, 3을 거쳐 4로 가는 경로를 강조한 그래프"
+    domain={[-0.4, 3.4]}
+    range={[-0.4, 2.4]}
+    width={230}
+    layers={[
+      { kind: 'segments', segs: allEdges, tone: 'faint' },
+      { kind: 'segments', segs: path3, tone: 'main', width: 2.4 },
+      { kind: 'points', pts: nodePts, tone: 'ink', size: 3.6, labels: nodeLabels },
+    ]}
+  />
+</Fig>
+
+<Reference />
+
+## 경로 꺼내기
+
+길이만으로는 어느 길인지 모르니, 보통 `return_predecessors=True`를 함께 줘요. 결과는 `YenResult(dist_array, predecessors)`이고, `predecessors`의 행 하나가 경로 하나예요. 행 $k$의 원소 $v$는 $k$번째 경로에서 $v$ 바로 앞의 노드이고, 출발 노드와 그 경로에 없는 노드는 −9999예요.
+
+```python
+>>> y = sd.graph.yen(G, 0, 4, 3, directed=False, return_predecessors=True)
+>>> y.dist_array
+array([20.0, 23.0, 26.0], dtype=float64)
+>>> y.predecessors
+array([[-9999, -9999,     0, -9999,     5,     2],
+       [-9999, -9999, -9999, -9999,     5,     0],
+       [-9999, -9999,     0,     2,     3, -9999]], dtype=int64)
+```
+
+`sink`에서 시작해 거꾸로 따라가면 경로가 나와요.
+
+```python
+>>> def path(pred, sink):
+...     out = [sink]
+...     while pred[out[-1]] != -9999:
+...         out.append(int(pred[out[-1]]))
+...     return out[::-1]
+...
+>>> [path(row, 4) for row in y.predecessors]
+[[0, 2, 5, 4], [0, 5, 4], [0, 2, 3, 4]]
+```
+
+행 하나는 [`reconstruct_path`](/api/graph/reconstruct_path/)에 넣어 그 경로의 변만 담은 희소 행렬로 바꿀 수도 있어요.
+
+## 경로의 순서
+
+경로는 다음 순서로 늘어놓아요.
+
+1. **길이**가 짧은 것. 길이는 경로의 무게를 출발 노드에서부터 차례로 더한 값이에요.
+2. 길이가 같으면 **거치는 변이 적은** 것.
+3. 그것도 같으면 **노드 차례**를 앞에서부터 견주어 번호가 작은 것(사전 순서).
+
+이 순서는 데이터만으로 정해져서, 길이가 같은 경로가 많아도 어느 K개가 나올지가 분명해요. 마을 그래프에서 다섯 개를 찾으면 넷째와 다섯째가 둘 다 길이 28이에요.
+
+```python
+>>> y = sd.graph.yen(G, 0, 4, 5, directed=False, return_predecessors=True)
+>>> y.dist_array
+array([20.0, 23.0, 26.0, 28.0, 28.0], dtype=float64)
+>>> [path(row, 4) for row in y.predecessors]
+[[0, 2, 5, 4], [0, 5, 4], [0, 2, 3, 4], [0, 1, 3, 4], [0, 1, 2, 5, 4]]
+```
+
+0, 1, 3, 4는 변이 셋, 0, 1, 2, 5, 4는 넷이라 앞의 것이 먼저예요.
+
+## 경로가 K개보다 적을 때
+
+고리 없는 경로가 `K`개보다 적으면 있는 만큼만 돌려줘요. 결과의 길이로 몇 개인지 알 수 있어요. 아주 큰 `K`를 주면 고리 없는 경로를 모두 얻어요(경로의 수는 그래프가 커지면 아주 빠르게 늘어나니 조심해요).
+
+```python
+>>> sd.graph.yen(G, 0, 4, 100, directed=False)
+array([20.0, 23.0, 26.0, 28.0, 28.0, 33.0, 34.0, 40.0, 44.0, 47.0], dtype=float64)
+>>> sd.graph.yen(G, 4, 0, 3)
+array([], dtype=float64)
+```
+
+방향을 살린 `G`에서는 4에서 0으로 가는 길이 없어 빈 배열이에요.
+
+- `source == sink`면 길이 0의 경로 하나예요(선행 노드 행은 모두 −9999).
+- `K = 0`이면 빈 결과예요(`predecessors`는 `(0, n)`).
+
+```python
+>>> sd.graph.yen(G, 2, 2, 3, directed=False)
+array([0.0], dtype=float64)
+>>> sd.graph.yen(G, 0, 4, 0, directed=False, return_predecessors=True)
+YenResult(dist_array=array([], dtype=float64), predecessors=array([], shape=(0, 6), dtype=int64))
+```
+
+## 음수 무게
+
+음수 무게를 받아요. 출발 노드에서 닿을 수 있는 음수 순환이 있으면 `NegativeCycleError`예요. 고리 없는 경로끼리의 순서는 순환이 있어도 정할 수 있지만, 이 함수는 앞서 찾은 경로에서 갈라져 나가는 길을 최단 경로 탐색으로 찾아요. 음수 순환이 있으면 그 탐색의 최단 거리가 정해지지 않으니 에러로 알려요. 이 규칙은 다른 최단 경로 함수와 같아요.
+
+```python
+>>> N = [[0, 4,  0, 0],
+...      [0, 0, -2, 0],
+...      [0, 0,  0, 3],
+...      [0, 4.5, 0, 0]]
+>>> sd.graph.yen(N, 0, 3, 5)
+array([5.0], dtype=float64)
+>>> C = [[0, 1, 0,  0],
+...      [0, 0, 2,  0],
+...      [0, 0, 0, -4],
+...      [0, 1, 0,  0]]
+>>> sd.graph.yen(C, 0, 3, 2)
+Traceback (most recent call last):
+    ...
+stardust.graph.NegativeCycleError: yen(): negative cycle through node 1
+```
+
+`N`에서 3에서 1로 돌아가는 변이 있지만 그 길은 노드 1을 두 번 지나므로 세지 않아요. `directed=False`에서는 음수 무게의 변이 그 자체로 음수 순환이에요.
+
+## 무게 없이 세기
+
+`unweighted=True`면 길이가 거치는 변의 수예요. 같은 길이의 경로가 많아지고, 그 사이의 순서는 위의 규칙(변의 수가 같으니 노드 차례)이 정해요.
+
+```python
+>>> y = sd.graph.yen(G, 0, 4, 3, unweighted=True, directed=False, return_predecessors=True)
+>>> y.dist_array
+array([2.0, 3.0, 3.0], dtype=float64)
+>>> [path(row, 4) for row in y.predecessors]
+[[0, 5, 4], [0, 1, 3, 4], [0, 2, 3, 4]]
+```
+
+## 정확도
+
+무게가 정수이고 경로의 합이 $2^{53}$을 넘지 않거나 `unweighted=True`면 길이와 순서 모두 정확해요. 작은 그래프에서 고리 없는 경로를 모두 늘어놓고 정확히 정렬한 앞의 $K$개와 같아요. 일반 실수 무게에서는 경로마다 [`shortest_path`](/api/graph/shortest_path/)와 같은 오차 한계 안이에요. 길이는 덧셈마다 반올림한 값이라, 정확한 합이 아주 가까운 두 경로는 순서가 바뀔 수 있어요.
+
+같은 입력이면 실행마다, 스레드 수와 상관없이 같은 경로가 같은 순서로 나와요.
+
+## 에러
+
+```python
+>>> sd.graph.yen(G, 0, 4, 2.0)
+Traceback (most recent call last):
+    ...
+TypeError: yen(): 'K' must be an int, not float
+>>> sd.graph.yen(G, 0, 4, -1)
+Traceback (most recent call last):
+    ...
+ValueError: yen(): 'K' must be 0 or more, not -1
+>>> sd.graph.yen(G, 0, 9, 2)
+Traceback (most recent call last):
+    ...
+ValueError: yen(): 'sink' must be a node of the graph (0 .. 5), not 9
+>>> sd.graph.yen(G, 0, 4)
+Traceback (most recent call last):
+    ...
+TypeError: yen(): missing 1 required positional argument: 'K'
+```
+
+## scipy·networkx를 아는 분께
+
+`scipy.sparse.csgraph.yen`과 이름, 인자, 결과의 꼴이 같아요. 다른 점은 이래요.
+
+- **길이가 같은 경로의 순서가 정해져 있어요.** (변의 수, 노드 차례)로 정하므로, 동점이 있으면 scipy와 다른 경로가 먼저 나오거나 K번째 경계에서 다른 경로가 들어갈 수 있어요. 동점이 없으면 같은 경로가 나와요.
+- **길이는 출발 노드에서부터 차례로 더한 값**이라 [`shortest_path`](/api/graph/shortest_path/)의 거리와 같은 비트예요.
+- **옵션은 키워드로만** 받아요. `source`, `sink`, `K`는 자리로도 받아요. 노드 번호는 0 이상 $n$ 미만의 int만 받아요.
+- **`NegativeCycleError`는 `ValueError`의 하위 클래스**예요. 선행 노드는 int64예요.
+- **밀집 입력의 아주 작은 무게도 변이에요.** scipy는 밀집 행렬에서 절댓값이 $10^{-8}$ 이하인 원소를 버려요.
+
+networkx의 `shortest_simple_paths`는 경로를 차례로 내놓는 생성기예요. 여기서는 앞의 `K`개를 길이 배열과 선행 노드 행으로 한 번에 받아요.

@@ -71,6 +71,9 @@ export const areas = [
   { key: 'differentiate', name: '미분', ns: 'sd.differentiate', desc: '도함수, 야코비안, 헤시안의 수치 미분', status: 'done' },
   { key: 'random', name: '난수', ns: 'sd.random', desc: '계수기형 생성기, 스레드 수와 무관한 결정성', status: 'done' },
   { key: 'spatial', name: '공간', ns: 'sd.spatial', desc: '거리 행렬과 거리 함수 14종, 가장 가까운 이웃, KD 트리', status: 'done' },
+  { key: 'fft', name: '푸리에 변환', ns: 'sd.fft', desc: '복소·실수·에르미트 FFT, DCT·DST 네 형, 다차원 변환, FFTLog', status: 'done' },
+  { key: 'interpolate', name: '보간', ns: 'sd.interpolate', desc: '조각 다항식과 스플라인, 무게중심 다항식·유리식, 격자와 흩어진 점의 보간', status: 'done' },
+  { key: 'graph', name: '그래프', ns: 'sd.graph', desc: '순회와 연결 요소, 최단 경로, 신장 트리·흐름·매칭, 중심성', status: 'done' },
   { key: 'plot', name: '그림', ns: 'sd.plot', desc: '함수 그림, 논문용 통계 그림, 3D 곡면, PDF·SVG·PNG 출력', status: 'done' },
 ] as const;
 
@@ -90,5 +93,8 @@ export const internalsAreas = [
   { key: 'differentiate', name: '미분', ns: 'sd.differentiate', desc: '유한 차분과 Richardson 외삽, 간격 고르기, 야코비안과 헤시안, 정확도와 성능' },
   { key: 'random', name: '난수', ns: 'sd.random', desc: '계수기형 생성기 Philox, 시드와 spawn, 정수·순열·가중치 추출의 알고리즘, 성능과 검증' },
   { key: 'spatial', name: '공간', ns: 'sd.spatial', desc: '타일 순서의 짝 커널, 유클리드 혼합 계산과 GEMM, KD 트리의 만들기와 가지치기, 이중 트리 순회, 단위 구 위의 haversine, 정확도와 성능' },
+  { key: 'fft', name: '푸리에 변환', ns: 'sd.fft', desc: '혼합 기수 Stockham과 Bluestein, 4단계 분해, 실수·에르미트 길, DCT·DST, FFTLog, 길이마다 한 경로' },
+  { key: 'interpolate', name: '보간', ns: 'sd.interpolate', desc: '끝에서 정확한 선형 보간, 띠 풀이와 de Boor, 조각 다항식, 무게중심 꼴과 AAA, 격자와 RBF' },
+  { key: 'graph', name: '그래프', ns: 'sd.graph', desc: '정의로 정한 결과와 동점 규칙, 최단 경로와 블록 Floyd–Warshall, 흐름과 매칭, PageRank와 Brandes' },
   { key: 'plot', name: '그림', ns: 'sd.plot', desc: '장면과 배치, LaTeX 글자와 글리프 캐시, 래스터라이저와 세 출력, 적응 표본, 3D 깊이 버퍼' },
 ] as const;

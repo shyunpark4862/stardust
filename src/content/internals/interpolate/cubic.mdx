@@ -1,0 +1,399 @@
+---
+title: 3차 계열과 조각 다항식의 연산
+group: 한 변수
+order: 2
+summary: 3차 계열이 노드의 기울기를 정하는 네 가지 방법(주어진 기울기, CubicSpline의 경계 조건과 삼중대각 계, PCHIP의 가중 조화 평균과 단조성, Akima·makima의 무게), 모두가 함께 쓰는 Hermite 계수의 연산 순서와 오차, 기울기 하나가 읽는 자료의 창, 그리고 PPoly의 평가(Horner와 fma), 미분, 역미분의 상수, 적분, 보정한 Horner로 부호를 정하는 근 찾기를 설명해요.
+seeAlso: [banded, linear, bspline, overview, accuracy-performance]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import PlaneFig from '../../../components/fig/PlaneFig.astro';
+
+export const csPts = [[0.0, 0.0], [0.05, 0.1021], [0.1, 0.191], [0.15, 0.2673], [0.2, 0.3316], [0.25, 0.3846], [0.3, 0.4266], [0.35, 0.4584], [0.4, 0.4805], [0.45, 0.4935], [0.5, 0.498], [0.55, 0.4945], [0.6, 0.4836], [0.65, 0.4659], [0.7, 0.442], [0.75, 0.4124], [0.8, 0.3778], [0.85, 0.3386], [0.9, 0.2956], [0.95, 0.2492], [1.0, 0.2], [1.05, 0.1486], [1.1, 0.09566], [1.15, 0.04164], [1.2, -0.01283], [1.25, -0.06719], [1.3, -0.1208], [1.35, -0.1732], [1.4, -0.2238], [1.45, -0.2719], [1.5, -0.317], [1.55, -0.3585], [1.6, -0.3959], [1.65, -0.4285], [1.7, -0.4559], [1.75, -0.4773], [1.8, -0.4923], [1.85, -0.5002], [1.9, -0.5005], [1.95, -0.4927], [2.0, -0.476], [2.05, -0.45], [2.1, -0.4141], [2.15, -0.3676], [2.2, -0.3101], [2.25, -0.2409], [2.3, -0.1595], [2.35, -0.06531], [2.4, 0.0423], [2.45, 0.1639], [2.5, 0.3], [2.55, 0.4507], [2.6, 0.6135], [2.65, 0.7855], [2.7, 0.9638], [2.75, 1.145], [2.8, 1.327], [2.85, 1.507], [2.9, 1.681], [2.95, 1.846], [3.0, 2.0], [3.05, 2.14], [3.1, 2.266], [3.15, 2.379], [3.2, 2.479], [3.25, 2.566], [3.3, 2.642], [3.35, 2.705], [3.4, 2.758], [3.45, 2.801], [3.5, 2.833], [3.55, 2.855], [3.6, 2.869], [3.65, 2.874], [3.7, 2.87], [3.75, 2.859], [3.8, 2.841], [3.85, 2.816], [3.9, 2.785], [3.95, 2.748], [4.0, 2.706], [4.05, 2.659], [4.1, 2.608], [4.15, 2.553], [4.2, 2.494], [4.25, 2.433], [4.3, 2.369], [4.35, 2.304], [4.4, 2.237], [4.45, 2.169], [4.5, 2.1], [4.55, 2.031], [4.6, 1.963], [4.65, 1.896], [4.7, 1.831], [4.75, 1.767], [4.8, 1.706], [4.85, 1.647], [4.9, 1.592], [4.95, 1.541], [5.0, 1.494], [5.05, 1.452], [5.1, 1.415], [5.15, 1.384], [5.2, 1.359], [5.25, 1.341], [5.3, 1.33], [5.35, 1.326], [5.4, 1.331], [5.45, 1.345], [5.5, 1.367], [5.55, 1.399], [5.6, 1.442], [5.65, 1.495], [5.7, 1.558], [5.75, 1.634], [5.8, 1.721], [5.85, 1.821], [5.9, 1.934], [5.95, 2.06], [6.0, 2.2]];
+export const pcPts = [[0.0, 0.0], [0.05, 0.01264], [0.1, 0.02519], [0.15, 0.03763], [0.2, 0.04992], [0.25, 0.06203], [0.3, 0.07392], [0.35, 0.08557], [0.4, 0.09695], [0.45, 0.108], [0.5, 0.1187], [0.55, 0.1291], [0.6, 0.139], [0.65, 0.1485], [0.7, 0.1576], [0.75, 0.1661], [0.8, 0.1741], [0.85, 0.1815], [0.9, 0.1883], [0.95, 0.1945], [1.0, 0.2], [1.05, 0.2049], [1.1, 0.2093], [1.15, 0.2133], [1.2, 0.2168], [1.25, 0.22], [1.3, 0.2228], [1.35, 0.2253], [1.4, 0.2276], [1.45, 0.2297], [1.5, 0.2316], [1.55, 0.2334], [1.6, 0.2351], [1.65, 0.2368], [1.7, 0.2385], [1.75, 0.2402], [1.8, 0.242], [1.85, 0.2439], [1.9, 0.2461], [1.95, 0.2484], [2.0, 0.251], [2.05, 0.2538], [2.1, 0.2571], [2.15, 0.2606], [2.2, 0.2647], [2.25, 0.2691], [2.3, 0.2741], [2.35, 0.2797], [2.4, 0.2858], [2.45, 0.2926], [2.5, 0.3], [2.55, 0.3532], [2.6, 0.4843], [2.65, 0.6737], [2.7, 0.9021], [2.75, 1.15], [2.8, 1.398], [2.85, 1.626], [2.9, 1.816], [2.95, 1.947], [3.0, 2.0], [3.05, 2.007], [3.1, 2.014], [3.15, 2.021], [3.2, 2.027], [3.25, 2.032], [3.3, 2.037], [3.35, 2.042], [3.4, 2.046], [3.45, 2.05], [3.5, 2.053], [3.55, 2.056], [3.6, 2.059], [3.65, 2.062], [3.7, 2.064], [3.75, 2.067], [3.8, 2.069], [3.85, 2.071], [3.9, 2.073], [3.95, 2.075], [4.0, 2.077], [4.05, 2.078], [4.1, 2.08], [4.15, 2.082], [4.2, 2.084], [4.25, 2.086], [4.3, 2.089], [4.35, 2.091], [4.4, 2.094], [4.45, 2.097], [4.5, 2.1], [4.55, 2.103], [4.6, 2.107], [4.65, 2.11], [4.7, 2.113], [4.75, 2.117], [4.8, 2.12], [4.85, 2.123], [4.9, 2.127], [4.95, 2.13], [5.0, 2.133], [5.05, 2.137], [5.1, 2.14], [5.15, 2.143], [5.2, 2.147], [5.25, 2.15], [5.3, 2.153], [5.35, 2.157], [5.4, 2.16], [5.45, 2.163], [5.5, 2.167], [5.55, 2.17], [5.6, 2.173], [5.65, 2.177], [5.7, 2.18], [5.75, 2.183], [5.8, 2.187], [5.85, 2.19], [5.9, 2.193], [5.95, 2.197], [6.0, 2.2]];
+export const nodePts = [[0, 0], [1, 0.2], [2.5, 0.3], [3, 2], [4.5, 2.1], [6, 2.2]];
+
+## 한눈에 보기
+
+`CubicHermiteSpline`, `CubicSpline`, `PchipInterpolator`, `Akima1DInterpolator`는 모두 구간마다 3차 다항식인 `PPoly`예요. 넷은 **노드의 기울기 $s_i$를 정하는 방법만** 달라요. 기울기가 정해지면 구간 $[x_i, x_{i+1}]$의 다항식은 양 끝의 값 $y_i, y_{i+1}$과 기울기 $s_i, s_{i+1}$을 맞추는 3차 Hermite 다항식 하나로 정해져요.
+
+| 클래스 | 기울기 | 기울기 하나가 읽는 자료 |
+|---|---|---|
+| `CubicHermiteSpline` | 사용자가 준 `dydx` | 없음 |
+| `CubicSpline` | 2차 도함수까지 이어지게 하는 삼중대각 계 | 전체 |
+| `PchipInterpolator` | 이웃 두 기울기의 가중 조화 평균(Fritsch–Butland) | 이웃 노드 둘 |
+| `Akima1DInterpolator` | 이웃 네 기울기의 무게 평균(Akima, makima) | 양쪽 노드 둘씩 |
+
+기울기는 `csrc/interpolate/cubic.cpp`의 `spline_slopes`, `pchip_slopes`, `akima_slopes`가 구하고, 계수는 넷 모두 같은 `hermite` 하나가 만들어요. 그래서 기울기가 같으면 계수도 비트까지 같아요. 이 쪽의 뒷부분은 그렇게 만든 `PPoly`의 연산(`ppoly.cpp`)이에요.
+
+<Fig caption="같은 여섯 점을 지나는 CubicSpline(점선)과 PchipInterpolator(실선). 자료는 단조로 늘지만 CubicSpline은 2차 도함수까지 매끄럽게 이으려다 1과 2.5 사이에서 0 아래로(최저 약 -0.5), 3과 4.5 사이에서 2.2 위로(최고 약 2.87) 넘쳐요. PCHIP은 각 구간에서 단조이고 노드 값을 넘지 않아요.">
+  <PlaneFig
+    label="CubicSpline과 PCHIP"
+    domain={[0, 6]}
+    range={[-0.6, 3]}
+    equal={false}
+    width={560}
+    height={260}
+    xTicks={[0, 1, 2, 3, 4, 5, 6]}
+    yTicks={[0, 1, 2, 3]}
+    layers={[
+      { kind: 'line', pts: csPts, tone: 'base', dashed: true },
+      { kind: 'line', pts: pcPts, tone: 'main' },
+      { kind: 'points', pts: nodePts, tone: 'ink', size: 4 },
+    ]}
+    legend={[
+      { label: 'CubicSpline', tone: 'base', shape: 'dash' },
+      { label: 'PchipInterpolator', tone: 'main', shape: 'line' },
+      { label: '자료', tone: 'ink', shape: 'dot' },
+    ]}
+  />
+</Fig>
+
+## Hermite 계수
+
+구간의 폭을 $h$, 나눗차를 $D = (y_1 - y_0)/h$라 하면, 국소 변수 $s = x - x_i$의 3차식 $c_3 s^3 + c_2 s^2 + c_1 s + c_0$이 양 끝의 값과 기울기를 맞추는 조건에서
+
+$$
+c_3 = \frac{s_0 + s_1 - 2D}{h^2}, \qquad c_2 = \frac{3D - 2s_0 - s_1}{h}, \qquad c_1 = s_0, \qquad c_0 = y_0
+$$
+
+이 나와요. 코드는 이 식을 scipy의 연산 순서 그대로 계산해요.
+
+```cpp
+            // csrc/interpolate/cubic.cpp
+            for (std::int64_t j = 0; j < K; ++j) {
+                const double d = (y1[j] - y0[j]) / h;
+                const double t = ((s0[j] + s1[j]) - 2.0 * d) / h;
+                c3[j] = t / h;
+                c2[j] = (d - s0[j]) / h - t;
+                c1[j] = s0[j];
+                c0[j] = y0[j];
+                finite = finite && std::isfinite(c3[j]) && std::isfinite(c2[j]) && std::isfinite(c1[j]);
+            }
+```
+
+$c_2 = (D - s_0)/h - t$는 $(3D - 2s_0 - s_1)/h$를 $t$를 다시 써서 적은 것이에요. 연산이 몇 개 안 되고 순서가 고정이라 오차 한계가 바로 나와요. 계산한 기울기에 대한 정확한 Hermite 계수와 견줘
+
+$$
+\lvert \hat c_3 - c_3\rvert \le \gamma_8\frac{\lvert s_0\rvert + \lvert s_1\rvert + 2\lvert D\rvert}{h^2}, \qquad
+\lvert \hat c_2 - c_2\rvert \le \gamma_7\frac{3\lvert D\rvert + 2\lvert s_0\rvert + \lvert s_1\rvert}{h}
+$$
+
+이에요(결과가 비정상 수일 때의 바닥 항은 빼고 적었어요). $c_1$과 $c_0$은 정확해요.
+
+기울기와 $D$가 유한해도 $c_2$, $c_3$은 넘칠 수 있어요. 값이 $10^{300}$ 둘레이고 간격이 $0.001$ 둘레면 $h^2$으로 나누는 순간 넘쳐요. 그런 계수를 객체에 담으면 평가가 조용히 inf나 NaN을 내니, 만들 때 첫 구간을 알려 주는 `ValueError`로 멈춰요.
+
+```python
+>>> import stardust as sd
+>>> I = sd.interpolate
+>>> try:
+...     I.CubicSpline([0.0, 0.001, 0.002, 0.003], [1e300, -1e300, 1e300, -1e300], bc_type="clamped")
+... except ValueError as err:
+...     print(err)
+CubicSpline(): the coefficients overflow on interval 0, [x[0], x[1]] = [0.0, 0.001]
+```
+
+## CubicSpline의 기울기
+
+`CubicSpline`은 2차 도함수가 노드에서 이어지게 기울기를 골라요. 구간 $i - 1$의 오른쪽 끝과 구간 $i$의 왼쪽 끝에서 2차 도함수 $2c_2 + 6c_3 s$를 같게 놓고 Hermite 계수를 넣으면, 안쪽 노드마다 식 하나가 나와요.
+
+$$
+h_i\,s_{i-1} + 2(h_{i-1} + h_i)\,s_i + h_{i-1}\,s_{i+1} = 3(h_i\Delta_{i-1} + h_{i-1}\Delta_i)
+$$
+
+$\Delta_i$는 구간 $i$의 나눗차예요. 미지수가 $n$개이고 식이 $n - 2$개라 양 끝에 조건이 하나씩 더 필요해요. 그것이 `bc_type`이에요.
+
+| `bc_type` | 첫 행 | 오른쪽 | 뜻 |
+|---|---|---|---|
+| `'not-a-knot'` | $[h_1,\ x_2 - x_0]$ | $((h_0 + 2(x_2 - x_0))h_1\Delta_0 + h_0^2\Delta_1)/(x_2 - x_0)$ | $x_1$에서 3차 도함수도 이어져요(첫 두 구간이 한 다항식) |
+| `'clamped'`, `(1, v)` | $[1,\ 0]$ | $v$ | 끝의 1차 도함수가 $v$(clamped는 0) |
+| `'natural'`, `(2, v)` | $[2h_0,\ h_0]$ | $3(y_1 - y_0) - v h_0^2/2$ | 끝의 2차 도함수가 $v$(natural은 0) |
+
+끝 행은 거울에 비친 꼴이에요. 점이 둘이면 not-a-knot과 periodic이 "끝의 기울기 = 나눗차"가 되어 직선이고, 점이 셋이고 양 끝이 not-a-knot이면 세 점을 지나는 포물선의 계 $[1, 1, 0]$, $[h_1, 2(h_0 + h_1), h_0]$, $[0, 1, 1]$(오른쪽 $2\Delta_0$, …, $2\Delta_1$)이에요. scipy와 같은 특수한 경우예요.
+
+```python
+>>> x = sd.asarray([0.0, 1.0, 2.5, 3.0, 4.5, 6.0])
+>>> y = sd.asarray([0.0, 0.2, 0.3, 2.0, 2.1, 2.2])
+>>> for bc in ("not-a-knot", "natural", "clamped"):
+...     c = I.CubicSpline(x, y, bc_type=bc)
+...     print(bc, c(sd.asarray([0.0, 6.0]), nu=1).tolist(), c(sd.asarray([0.0, 6.0]), nu=2).tolist())
+not-a-knot [2.1766666666666663, 2.9446666666666674] [-5.491999999999999, 5.756000000000001]
+natural [0.5570084200099059, 0.46844972758791503] [-1.1102230246251565e-16, 2.220446049250313e-16]
+clamped [0.0, -1.1102230246251565e-16] [1.8864917395529641, -1.0903790087463556]
+>>> c = I.CubicSpline(x, y, bc_type=((1, 0.5), (2, -1.0)))
+>>> c(0.0, nu=1), c(6.0, nu=2)
+(0.5, -1.0)
+>>> I.CubicSpline([0.0, 2.0], [1.0, 5.0]).c.tolist()
+[[0.0], [0.0], [2.0], [1.0]]
+```
+
+계의 행렬은 원소가 모두 0 이상이고 피벗이 양수라 행을 바꾸지 않고 풀어요. 증명과 오차 한계는 [피벗 없는 띠 풀이](/internals/interpolate/banded/)에 있어요. 배치의 열이 8개 이하면 행렬을 배열로 만들지 않고 한 번 훑으며 분해, 오른쪽, 앞 대입을 함께 해요.
+
+```cpp
+        // csrc/interpolate/cubic.cpp
+        for (std::int64_t i = 1; i < n; ++i) {
+            const bool interior = i + 1 < n;
+            const double hl = H(i - 1), hr = interior ? H(i) : 0.0;
+            const double ai = interior ? hr : anl;
+            const double l = ai / bprev;
+            const double bi = (interior ? 2.0 * (hl + hr) : bnl) - l * cprev;
+            if (!(bi > 0.0 && std::isfinite(bi))) return i;
+            w[i] = 1.0 / bi;
+            bprev = bi;
+            cprev = hl;
+            double* r = S + i * K;
+            const double* p = r - K;
+            if (interior) {
+                for (std::int64_t j = 0; j < K; ++j) {
+                    dcur[j] = (V.y[(i + 1) * K + j] - V.y[i * K + j]) / hr;
+                    r[j] = 3.0 * (hr * dprev[j] + hl * dcur[j]);
+                    r[j] = r[j] - l * p[j];
+                    dprev[j] = dcur[j];
+                }
+            } else {
+```
+
+사슬의 피벗(`bprev`)과 위 대각(`cprev`)은 레지스터에 두고, 뒤 대입에 필요한 피벗의 역수 `w`만 배열로 남겨요. 간격 $h$도 저장하지 않고 쓸 때마다 $x_{i+1} - x_i$로 다시 계산해요. 같은 뺄셈이라 같은 값이에요. 열이 많으면 행렬과 나눗차를 배열로 만든 뒤 열 묶음마다 대입하는데, 한 열이 받는 연산과 순서는 두 길이 같아서 결과도 같은 비트예요.
+
+`'periodic'`은 마지막 기울기가 첫 기울기와 같은 순환 계예요. 앞 $n - 2$행의 삼중대각 블록으로 자료의 오른쪽과 결합 열을 풀고 마지막 기울기를 Schur 보수로 구하는 압축 꼴이에요(scipy와 같은 꼴). 식은 [피벗 없는 띠 풀이](/internals/interpolate/banded/)에 있어요. 점이 셋이면 scipy의 닫힌 식으로 세 노드에 같은 기울기 하나를 줘요.
+
+```python
+>>> yp = sd.asarray([1.0, 0.2, 0.3, 2.0, 2.1, 1.0])
+>>> p = I.CubicSpline(x, yp, bc_type="periodic")
+>>> p, p(sd.asarray([0.0, 6.0]), nu=1).tolist(), p(6.5) == p(0.5)
+(CubicSpline(degree=3, pieces=5, extrapolate='periodic'), [-0.6247619047619049, -0.6247619047619049], True)
+```
+
+정확도 기준선(`coefficients`)에서 기울기의 계약 대비는 natural 0.084, clamped 0.098, not-a-knot 0.069, periodic 0.053이었어요. 같은 한계로 잰 scipy는 2.99, 3.29, 6.51, 0.053이에요.
+
+## PCHIP
+
+PCHIP(조각 3차 Hermite 보간)은 단조인 자료에서 단조인 곡선을 만들려고 기울기를 국소적으로 정해요. Fritsch와 Butland(1984)의 가중 조화 평균이에요. 안쪽 노드의 왼쪽 나눗차를 $m_l$, 오른쪽을 $m_r$, 두 구간의 폭을 $h_l$, $h_r$이라 하면
+
+$$
+s = \begin{cases} 0 & m_l m_r \le 0 \\[2pt] \dfrac{w_1 + w_2}{w_1/m_l + w_2/m_r} & \text{그 밖}, \end{cases}
+\qquad w_1 = 2h_r + h_l,\quad w_2 = h_r + 2h_l
+$$
+
+이에요. 자료가 노드에서 꺾여 내려가거나(극값) 평평하면 기울기가 0이에요.
+
+```cpp
+// csrc/interpolate/pchip.hpp
+inline double pchip_interior(double w1, double w2, double ml, double mr) {
+    if (pchip_sgn(mr) != pchip_sgn(ml) || mr == 0.0 || ml == 0.0) return 0.0;
+    const double whmean = (w1 / ml + w2 / mr) / (w1 + w2);
+    return 1.0 / whmean;
+}
+```
+
+**단조인 까닭.** 무게의 몫 $\lambda = w_1/(w_1 + w_2)$는 $[1/3, 2/3]$에 있어요. 두 나눗차가 같은 부호(양수라 할게요)면 $s = 1/(\lambda/m_l + (1 - \lambda)/m_r)$이고, 분모의 한 항만 남겨도 $s \le m_l/\lambda \le 3m_l$, $s \le m_r/(1 - \lambda) \le 3m_r$이에요. 곧 $0 \le s \le 3\min(m_l, m_r)$이에요. 구간 하나에서 양 끝 기울기를 나눗차로 나눈 $\alpha = s_0/\Delta$, $\beta = s_1/\Delta$가 둘 다 $[0, 3]$에 있으면 그 3차 Hermite 다항식은 구간에서 단조라는 것이 Fritsch와 Carlson(1980)의 충분 조건이에요(도함수 2차식이 구간에서 부호를 바꾸지 않아요). 안쪽 노드의 기울기는 양쪽 구간 모두에 대해 이 조건을 지켜요.
+
+끝 노드는 scipy의 세 점 한쪽 식이에요.
+
+```cpp
+// csrc/interpolate/pchip.hpp
+inline double pchip_edge(double h0, double h1, double m0, double m1) {
+    const double d = ((2.0 * h0 + h1) * m0 - h0 * m1) / (h0 + h1);
+    if (pchip_sgn(d) != pchip_sgn(m0)) return 0.0;
+    if (pchip_sgn(m0) != pchip_sgn(m1) && std::fabs(d) > 3.0 * std::fabs(m0)) return 3.0 * m0;
+    return d;
+}
+```
+
+처음 세 점을 지나는 포물선의 끝 기울기를 구하고, 부호가 첫 나눗차와 다르면 0, 크기가 $3\lvert m_0\rvert$를 넘으면 $3m_0$으로 잘라 같은 단조 조건 안에 넣어요. 이 함수는 격자의 `pchip`도 함께 써서, 축 하나짜리 격자의 `pchip`이 1차원 `PchipInterpolator`와 같은 기울기를 내요.
+
+```python
+>>> pc = I.PchipInterpolator(x, y)
+>>> hl, hr = 2.5 - 1.0, 3.0 - 2.5
+>>> ml, mr = (0.3 - 0.2) / hl, (2.0 - 0.3) / hr
+>>> w1, w2 = 2 * hr + hl, hr + 2 * hl
+>>> 1.0 / ((w1 / ml + w2 / mr) / (w1 + w2)) == pc(2.5, nu=1)
+True
+>>> pc(x, nu=1).tolist()
+[0.25333333333333335, 0.10344827586206895, 0.15572519083969463, 0.15572519083969474, 0.06666666666666672, 0.06666666666666672]
+```
+
+계산한 기울기의 오차는 같은 부호의 항의 합과 곱, 나눗셈뿐이라 상대 몇 $u$이고, 갈래(부호와 0)는 계산한 나눗차의 부호가 정확한 나눗차의 부호와 같으니(언더플로가 없으면) 정확해요. 가중 조화 평균이 $3\min$ 이하라는 것과 끝 식의 상쇄를 더하면 $\lvert \hat s_i - s_i\rvert \le 40u \cdot \max(\text{그 식이 읽는 } \lvert \Delta\rvert \text{ 둘})$이에요. 기준선은 0.068이고 scipy와 같은 비트예요.
+
+## Akima와 makima
+
+Akima(1970)의 기울기는 이웃 나눗차 넷 $m_0, m_1, m_2, m_3$(노드는 $m_1$과 $m_2$ 사이)의 무게 평균이에요.
+
+$$
+s = \frac{f_1 m_1 + f_2 m_2}{f_1 + f_2}, \qquad f_1 = \lvert m_3 - m_2\rvert, \quad f_2 = \lvert m_1 - m_0\rvert
+$$
+
+한쪽에서 나눗차가 크게 바뀌면 그쪽 무게가 커져, 기울기가 반대쪽의 평평한 나눗차를 따라가요. 그래서 큰 계단 옆에서 출렁임이 작아요. `method="makima"`(수정 Akima)는 무게에 $\lvert m_3 + m_2\rvert/2$, $\lvert m_1 + m_0\rvert/2$를 더해요. 같은 값이 셋 이상 이어지는 평평한 구간에서 무게가 모두 0이 되는 경우를 없애고, 평평한 구간을 정확히 평평하게 만들어요.
+
+```cpp
+    // csrc/interpolate/cubic.cpp
+    split_range(n, n * K * 14, 1024, [&](std::int64_t i0, std::int64_t i1) {
+        for (std::int64_t i = i0; i < i1; ++i)
+            for (std::int64_t j = 0; j < K; ++j) {
+                double f1, f2;
+                f1f2(i, j, f1, f2);
+                const double f12 = f1 + f2;
+                if (f12 > cut[j]) S[i * K + j] = M(i + 1, j) + (f2 / f12) * (M(i + 2, j) - M(i + 1, j));
+                else S[i * K + j] = 0.5 * (M(i + 3, j) + M(i, j));
+            }
+    });
+```
+
+끝 노드에는 이웃 나눗차가 모자라서, 양쪽에 $m_{-1} = 2m_0 - m_1$처럼 직선으로 늘린 나눗차를 둘씩 붙여요. 무게의 합이 그 열의 가장 큰 합의 $10^{-9}$배 이하면 Akima의 식이 정해지지 않는 경우(양쪽이 모두 평평)라 두 바깥 나눗차의 평균을 써요. 이 문턱의 최댓값은 열마다 따로 구해서, 배치의 한 열이 다른 열의 크기에 영향을 받지 않아요.
+
+계약은 노드의 창에서 가장 큰 $\lvert m\rvert$를 $M$, $m$의 오차를 $E = 3\gamma_8 M$이라 할 때 $3E + 6uM + \lvert m_2 - m_1\rvert(9E/f_{12} + \gamma_6)$이에요. $\lvert m_2 - m_1\rvert/f_{12}$가 조건수예요. $f_{12}$가 반올림 크기면 Akima의 기울기 자체가 자료의 반올림으로 정해지지 않아요. 기준선은 akima와 makima 모두 0.29이고 scipy와 같은 비트예요.
+
+## 기울기 하나가 읽는 창
+
+국소 방법은 자료 하나를 바꾸면 그 둘레의 조각만 바뀌어요. 노드 5의 값만 바꿔 어느 조각의 계수가 달라지는지 보면 이래요.
+
+```python
+>>> xl = sd.linspace(0.0, 11.0, 12)
+>>> yl = sd.sin(xl)
+>>> yl2 = yl.copy()
+>>> yl2[5] = 5.0
+>>> def changed(cls):
+...     a, b = cls(xl, yl).c, cls(xl, yl2).c
+...     return [j for j in range(11) if bool(sd.any(a[:, j] != b[:, j]))]
+>>> changed(I.PchipInterpolator), changed(I.Akima1DInterpolator), changed(I.CubicSpline)
+([3, 4, 5, 6], [2, 3, 4, 5, 6, 7], [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+```
+
+PCHIP의 기울기는 이웃 노드 하나씩만 읽으니 노드 4, 5, 6의 기울기가 바뀌고, 그 기울기를 쓰는 조각 3–6이 바뀌어요. Akima는 양쪽 둘씩 읽어 노드 3–7, 조각 2–7이 바뀌어요. `CubicSpline`은 연립방정식이라 모든 조각이 바뀌어요. 국소 방법은 그래서 노드 조각으로 나눠 나란히 계산하고, `CubicSpline`은 열 묶음으로만 나눠요.
+
+## 조각 다항식의 평가
+
+`PPoly`의 계수는 $(k + 1, m, \text{열})$이고 높은 차수가 먼저예요. 조각 $i$는 국소 변수 $s = x - x_i$의 다항식이에요. 평가점마다 구간 $i$를 찾아([영역의 구조](/internals/interpolate/overview/)) $s = \mathrm{fl}(x - x_i)$를 구하고 Horner로 계산해요.
+
+```cpp
+// csrc/interpolate/ppoly.cpp
+inline double horner(const Coef& C, std::int64_t i, std::int64_t col, std::int64_t nu, const double* f, double s) {
+    const std::int64_t top = C.K1 - nu;
+    if (top <= 0) return 0.0;
+    const std::int64_t plane = C.m * C.D;
+    const double* p = C.c + i * C.D + col;
+    if (nu == 0) {
+        double r = p[0];
+        for (std::int64_t j = 1; j < top; ++j) r = std::fma(r, s, p[j * plane]);
+        return r;
+    }
+    double r = p[0] * f[0];
+    for (std::int64_t j = 1; j < top; ++j) r = std::fma(r, s, p[j * plane] * f[j]);
+    return r;
+}
+```
+
+단계마다 `fma` 하나라 반올림이 하나예요(빌드 전체는 FMA 축약을 끄고, FMA가 필요한 곳은 이렇게 코드에 적어요). 도함수는 계수를 미리 바꾸지 않고 평가하면서 $d!/(d - \nu)!$를 곱해요. 3차이고 미분하지 않는 흔한 경우는 같은 연산을 펼친 `horner4`예요.
+
+**계약.** $\hat s = s(1 + \varepsilon)$이고, 차수 $e$인 항의 계수는 Horner의 반올림을 $e + 1$번 거치고 $\hat s^e$이 $(1 + \varepsilon)$를 $e$번, 도함수의 정수배 곱이 하나를 더해요. 언더플로는 반올림마다 절대 $2^{-1075}$이고 $\lvert s\rvert^e$로 퍼져요. 그래서
+
+$$
+\lvert \hat p - p(x)\rvert \le \sum_e \gamma_{2e+2}\,f_e\lvert c_e\rvert\lvert s\rvert^e + 2^{-1074}\sum_e \lvert s\rvert^e
+$$
+
+예요. $e$는 미분한 뒤의 차수, $f_e$는 그 정수배, $s$는 정확한 $x - x_i$이고, $p$는 객체가 쥔 계수 그대로의 정확한 값이에요. 노드($s = 0$)에서는 상수 계수 그대로라 오차가 없어요. 기준선(`evaluation`)에서 `CubicSpline` 네 조건과 PCHIP, makima가 0.46–0.48, akima가 0.49였어요. scipy는 같은 한계로 0.66–1.04였어요.
+
+감소하는 중단점의 `PPoly`는 평가할 때 중단점의 부호를 뒤집은 사본을 만들어 같은 탐색을 써요. 그 사본에서의 오른쪽 열린 규칙이 원래 중단점에서는 거울 규칙 $x_{i+1} \lt x \le x_i$가 되고, 값은 원래 조각의 다항식으로 계산해요.
+
+## 미분과 역미분
+
+`derivative(nu)`는 Python 층에서 계수에 $d!/(d - \nu)!$를 곱한 새 배열을 만들어요. 계수마다 곱셈 한 번이에요. `antiderivative(nu)`는 계수를 $(d + 1)\cdots(d + \nu)$로 나눠 차수를 올리고, 차수 $q \lt \nu$인 새 상수를 $q = \nu - 1$부터 차례로 정해요. 앞 조각의 오른쪽 끝에서 그 도함수가 이어지도록
+
+$$
+c_q[i] = c_q[i - 1] + \sum_{d \gt q} c_d[i - 1]\binom{d}{q}h_{i-1}^{\,d-q}
+$$
+
+이고, $c_q[0] = 0$이라 역미분이 $x_0$에서 0이에요. 합 $\sum_{d \gt q}$는 $h$의 Horner로 조각마다 나란히 구하고, 그다음 누적합을 길이로만 정한 4096조각 블록으로 계산해요.
+
+```cpp
+        // csrc/interpolate/ppoly.cpp
+        split_range(nblocks, (m - 1) * Dc, 1, [&](std::int64_t b0, std::int64_t b1) {
+            for (std::int64_t b = b0; b < b1; ++b) {
+                const std::int64_t i0 = b * kPrefixBlock, i1 = std::min(m - 1, i0 + kPrefixBlock);
+                for (std::int64_t col = 0; col < Dc; ++col) {
+                    double acc = 0.0;
+                    for (std::int64_t i = i0; i < i1; ++i) {
+                        acc = i == i0 ? w[i * Dc + col] : acc + w[i * Dc + col];
+                        c2[row * plane + (i + 1) * Dc + col] = acc;
+                    }
+                    totals[b * Dc + col] = acc;
+                }
+            }
+        });
+```
+
+블록 안은 0부터의 차례 합이고, 블록의 합계로 오프셋을 차례로 구한 뒤 각 블록에 더해요. 블록의 경계가 조각 수로만 정해지니 덧셈의 순서가 스레드 수와 무관해요. 조각이 4096개 이하면 블록이 하나라 그냥 차례 합이에요.
+
+```python
+>>> big = I.PPoly(sd.random.default_rng(5).random((4, 20000)) * 2.0 - 1.0, sd.cumulative_sum(sd.random.default_rng(6).random(20001)))
+>>> n0 = sd.get_num_threads()
+>>> outs = []
+>>> for th in (1, 3, 10):
+...     sd.set_num_threads(th)
+...     outs.append(big.antiderivative().c.tolist())
+>>> sd.set_num_threads(n0)
+>>> outs[0] == outs[1] == outs[2]
+True
+```
+
+## 적분
+
+`integrate(a, b)`는 조각마다 국소 역미분 $F(s) = s \cdot \mathrm{Horner}(c_e/(e + 1))$의 차이를 구하고(안쪽 조각은 $F(h)$), 조각들을 배열의 pairwise 합과 같은 트리(`base/pairwise.hpp`)로 더해요. 잎의 크기와 트리의 모양이 조각 수로만 정해져서, $2^{14}$조각을 넘으면 잎을 나란히 계산해도 같은 비트예요. pairwise 합의 오차는 조각 수의 로그에 비례해요. $a \gt b$면 부호를 바꾸고, 끝이 NaN이면 NaN이에요. `'periodic'`이면 온전한 주기의 수 곱하기 한 주기의 적분에 나머지 구간의 적분을 더해요. 감소하는 중단점에서도 적분의 방향은 $a$에서 $b$예요.
+
+```python
+>>> pp = I.PPoly([[1.0, -1.0], [0.0, 1.0], [0.0, 1.0]], [0.0, 1.0, 2.0])
+>>> pp.integrate(0.0, 2.0), pp.integrate(2.0, 0.0), pp.antiderivative()(2.0)
+(1.5, -1.5, 1.5)
+```
+
+## 근
+
+`roots()`와 `solve(y)`는 조각마다 실근을 찾아 구간 순서로 모아요. 조각 하나에서 하는 일은 셋이에요.
+
+1. **단조 구간으로 나누기.** 도함수의 근(임계점)으로 조각을 나눠요. 도함수가 1차면 바로, 2차면 상쇄 없는 근의 공식 $q = -\tfrac12(B + \mathrm{sign}(B)\sqrt{B^2 - 4AC})$, $r_1 = q/A$, $r_2 = C/q$로, 그보다 높으면 같은 근 찾기를 재귀로 써요.
+2. **이분.** 단조 구간의 양 끝에서 부호가 다르면 그 사이에 근이 정확히 하나 있어요. double을 순서대로 센 정수(음수는 비트를 뒤집어 $-0$과 $+0$이 같은 0)에서 반씩 줄여 이웃한 두 double까지 좁혀요. 64비트라 언제나 64걸음 이하이고, 걸음마다 평가 한 번이에요. 마지막 두 double 가운데 $\lvert p\rvert$가 작은 쪽을 돌려줘요.
+3. **접하는 근.** 이웃 단조 구간의 끝 부호가 같은 극값은 축을 지나지 않아요. 그 극값의 값이 평가 계약 안이면(곧 계산한 값으로는 0과 구별되지 않으면) 중근으로 넣어요.
+
+부호는 보정한 Horner(Graillat, Langlois, Louvet)로 정해요.
+
+```cpp
+// csrc/interpolate/ppoly.cpp
+inline double eval_comp(const Poly& P, double s) {
+    double r = P.a[0], c = 0.0;
+    for (std::size_t j = 1; j < P.a.size(); ++j) {
+        const double p = r * s;
+        const double pe = std::fma(r, s, -p);
+        double sum, se;
+        two_sum(p, P.a[j], sum, se);
+        r = sum;
+        c = std::fma(c, s, pe + se);
+    }
+    return r + c;
+}
+```
+
+Horner의 단계마다 곱의 반올림 오차를 `fma(r, s, -p)`로 정확히 얻고(곱 $rs$의 정확한 값은 $p$ + 이 값), 합의 오차를 Knuth의 TwoSum으로 정확히 얻어요. 이 오차들을 둘째 Horner `c`로 모아 마지막에 더하면, 결과가 작업 정밀도의 두 배로 계산한 뒤 반올림한 것과 같은 정확도예요. 오차가 $u\lvert p\rvert + \gamma_{2n}^2\sum\lvert c_e s^e\rvert$ 꼴이라, $\lvert p\rvert$가 $u^2\sum\lvert c_e s^e\rvert$의 몇 배만 넘으면 부호가 맞아요. 보통의 Horner는 $u\sum\lvert c_e s^e\rvert$ 아래의 값에서 부호를 틀릴 수 있어서, $2^{-30}$만큼 떨어진 두 근 사이의 극값($2^{-62}$ 크기) 같은 것을 놓쳐요.
+
+```python
+>>> I.PPoly([[1.0], [-0.5], [0.0625]], [0.0, 1.0]).roots(extrapolate=False).tolist()
+[0.25]
+>>> e = 2.0**-30
+>>> close = I.PPoly([[1.0], [-(1.0 + e)], [0.25 * (1 + e) * (1 + e) - 0.25 * e * e]], [0.0, 1.0])
+>>> r = close.roots(extrapolate=False)
+>>> r.tolist(), float(r[1] - r[0]) == e
+([0.5, 0.5000000009313226], True)
+```
+
+첫 줄은 $(x - 0.25)^2$의 중근이에요. 극값의 값이 정확히 0이라 접하는 근으로 들어가요. 둘째는 $0.5$와 $0.5 + 2^{-30}$의 두 근이에요. 계수가 double로 정확히 $(s - 0.5)(s - 0.5 - 2^{-30})$이 되도록 고른 자료이고, 두 근 사이의 극값이 $-2^{-62}$라 보통의 Horner로는 부호를 가릴 수 없는 크기인데도 두 근이 모두 정확히 나와요.
+
+모을 때는 scipy처럼 앞 근과 같은 값을 거르고, `discontinuity=True`면 중단점에서 왼쪽 조각의 끝값과 오른쪽 조각의 시작값의 부호가 바뀌는 점도 근으로 넣고, 0과 같은 조각은 $[x_i, \mathrm{nan}]$으로 알려요. 늘이는 끝 조각은 Cauchy 한계 $1 + \max\lvert c_j/c_k\rvert$의 두 배까지만 봐요. 그 밖에는 근이 없어요.
+
+```python
+>>> I.PPoly([[1.0, 1.0], [-2.0, 1.0]], [0.0, 1.0, 2.0]).roots().tolist()
+[1.0]
+>>> I.PPoly([[1.0, 1.0], [-2.0, 1.0]], [0.0, 1.0, 2.0]).roots(discontinuity=False).tolist()
+[]
+>>> I.PPoly([[0.0, 1.0], [0.0, -1.0]], [0.0, 1.0, 3.0]).roots().tolist()
+[0.0, nan, 2.0]
+```
+
+조각마다 독립이라 조각 묶음으로 나눠 나란히 찾고, 결과는 조각 순서로 모아요. 정확도 기준선(`roots`)의 참값 근 36개(중근과 $2^{-30}$ 떨어진 두 근 포함)를 모두 0 ULP로 찾았어요. scipy는 3차 이하를 닫힌 식, 그 위를 동반 행렬의 고유값으로 구하는데, 중근을 놓쳐 같은 기준선에서 최대 ULP가 inf였어요.

@@ -1,0 +1,224 @@
+---
+title: reverse_cuthill_mckee
+names: [reverse_cuthill_mckee]
+group: 순서와 라플라시안
+order: 1
+signatures:
+  - "sd.graph.reverse_cuthill_mckee(graph, /, *, symmetric_mode=False)"
+summary: 희소 행렬의 행과 열을 같은 순열로 다시 늘어놓아 0이 아닌 원소를 주대각선 가까이 모으는 순서(역 Cuthill–McKee 순서)를 구해요. 띠 폭이 줄면 띠 행렬 풀이와 분해가 빨라지고 메모리가 덜 들어요. 원소의 값은 보지 않고 자리만 보며, 동점은 (차수, 번호)로 정해 언제나 같은 순열을 줘요.
+params:
+  - name: graph
+    type: sd.sparse의 희소 배열 또는 밀집 행렬(ndarray, numpy 배열, 수의 중첩 시퀀스)
+    kind: positional-only
+    desc: "(n, n) 정방 행렬. 희소 배열은 저장된 원소가 모두 이웃 관계이고(저장된 0과 NaN도), 밀집 행렬은 0, NaN, ±inf가 아닌 원소가 이웃 관계예요. 값은 읽지 않아요."
+  - name: symmetric_mode
+    type: bool
+    kind: keyword-only
+    desc: "False(기본값)면 A와 그 전치의 자리를 합쳐서 읽어요(어느 한쪽에라도 원소가 있으면 이웃). True면 A의 자리를 그대로 읽어요. 패턴이 대칭임을 알 때만 True를 줘요."
+returns:
+  type: ndarray(int64)
+  desc: "길이 n의 순열(int64). perm[k]는 새 순서에서 k번째에 놓을 원래 번호예요. A[perm][:, perm]이 다시 늘어놓은 행렬이에요. 보통의 새 배열이에요."
+raises:
+  - type: TypeError
+    desc: "graph가 받는 꼴이 아닐 때(scipy 희소 행렬, DataFrame, 문자열, 복소수), symmetric_mode가 True·False가 아닐 때, 옵션을 자리로 넘기거나 없는 키워드를 줄 때."
+  - type: ValueError
+    desc: "graph가 2차원 정방이 아닐 때."
+seeAlso: [structural_rank, laplacian, breadth_first_order, connected_components, basics]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import PlaneFig from '../../../components/fig/PlaneFig.astro';
+
+export const rcmA = [[4.08,7.08,4.92,7.92],[6.08,7.08,6.92,7.92],[3.08,6.08,3.92,6.92],[5.08,6.08,5.92,6.92],[7.08,6.08,7.92,6.92],[5.08,5.08,5.92,5.92],[6.08,5.08,6.92,5.92],[1.08,4.08,1.92,4.92],[7.08,4.08,7.92,4.92],[0.08,3.08,0.92,3.92],[6.08,3.08,6.92,3.92],[1.08,2.08,1.92,2.92],[2.08,2.08,2.92,2.92],[7.08,2.08,7.92,2.92],[0.08,1.08,0.92,1.92],[2.08,1.08,2.92,1.92],[4.08,1.08,4.92,1.92],[1.08,0.08,1.92,0.92],[3.08,0.08,3.92,0.92],[5.08,0.08,5.92,0.92]];
+export const rcmB = [[1.08,7.08,1.92,7.92],[2.08,7.08,2.92,7.92],[0.08,6.08,0.92,6.92],[2.08,6.08,2.92,6.92],[3.08,6.08,3.92,6.92],[0.08,5.08,0.92,5.92],[1.08,5.08,1.92,5.92],[3.08,5.08,3.92,5.92],[1.08,4.08,1.92,4.92],[2.08,4.08,2.92,4.92],[4.08,4.08,4.92,4.92],[3.08,3.08,3.92,3.92],[5.08,3.08,5.92,3.92],[4.08,2.08,4.92,2.92],[6.08,2.08,6.92,2.92],[7.08,2.08,7.92,2.92],[5.08,1.08,5.92,1.92],[7.08,1.08,7.92,1.92],[5.08,0.08,5.92,0.92],[6.08,0.08,6.92,0.92]];
+
+## 한눈에 보기
+
+희소 행렬의 원소가 주대각선 가까이에만 있으면 **띠 행렬**이라고 해요. 원소가 대각선에서 떨어진 가장 먼 거리가 **띠 폭**이에요. 띠 폭이 좁으면 연립방정식 풀이와 LU·숄레스키 분해가 그 띠 안에서만 일하고, 분해하며 생겨나는 원소(채움)도 띠 밖으로 나가지 않아서 빠르고 메모리가 덜 들어요.
+
+같은 행렬이라도 행과 열의 번호를 어떻게 매기느냐에 따라 띠 폭이 크게 달라요. `reverse_cuthill_mckee`는 행과 열을 **같은 순열**로 다시 늘어놓아 띠 폭을 줄이는 순서를 찾아요. 행렬을 그래프로 보면(행 $i$와 열 $j$에 원소가 있으면 노드 $i$와 $j$가 이웃) 이웃끼리 번호가 가깝도록 노드에 새 번호를 붙이는 일이에요.
+
+```python
+>>> import stardust as sd
+>>> def undirected(n, edges):
+...     A = sd.zeros((n, n), dtype=sd.int64)
+...     for i, j in edges:
+...         A[i, j] = A[j, i] = 1
+...     return A
+>>> A = undirected(8, [(0, 4), (0, 6), (1, 3), (1, 5), (1, 7), (2, 5), (2, 6), (3, 7), (4, 6), (5, 7)])
+>>> A
+array([[0, 0, 0, 0, 1, 0, 1, 0],
+       [0, 0, 0, 1, 0, 1, 0, 1],
+       [0, 0, 0, 0, 0, 1, 1, 0],
+       [0, 1, 0, 0, 0, 0, 0, 1],
+       [1, 0, 0, 0, 0, 0, 1, 0],
+       [0, 1, 1, 0, 0, 0, 0, 1],
+       [1, 0, 1, 0, 1, 0, 0, 0],
+       [0, 1, 0, 1, 0, 1, 0, 0]], dtype=int64)
+>>> perm = sd.graph.reverse_cuthill_mckee(A)
+>>> perm
+array([3, 7, 1, 5, 2, 6, 4, 0], dtype=int64)
+>>> B = A[perm][:, perm]
+>>> B
+array([[0, 1, 1, 0, 0, 0, 0, 0],
+       [1, 0, 1, 1, 0, 0, 0, 0],
+       [1, 1, 0, 1, 0, 0, 0, 0],
+       [0, 1, 1, 0, 1, 0, 0, 0],
+       [0, 0, 0, 1, 0, 1, 0, 0],
+       [0, 0, 0, 0, 1, 0, 1, 1],
+       [0, 0, 0, 0, 0, 1, 0, 1],
+       [0, 0, 0, 0, 0, 1, 1, 0]], dtype=int64)
+>>> sd.sparse.spbandwidth(sd.sparse.csr_array(A)), sd.sparse.spbandwidth(sd.sparse.csr_array(B))
+(BandwidthResult(lower=6, upper=6), BandwidthResult(lower=2, upper=2))
+```
+
+원래 순서에서는 원소가 대각선에서 6칸까지 떨어져 있었는데, 다시 늘어놓으면 모든 원소가 대각선에서 2칸 안에 모여요. `spbandwidth`가 돌려주는 아래쪽과 위쪽 띠 폭이 6에서 2로 줄었어요.
+
+<Fig caption="같은 행렬의 0이 아닌 원소(칸 하나가 원소 하나)를 원래 순서(왼쪽)와 역 Cuthill–McKee 순서(오른쪽)로 그린 것. 오른쪽은 모든 원소가 점선 사이, 곧 대각선에서 2칸 안에 있어요.">
+  <PlaneFig
+    title="원래 순서"
+    label="8 × 8 행렬의 0이 아닌 원소 20개, 대각선에서 멀리 흩어져 있음"
+    domain={[0, 8]}
+    range={[0, 8]}
+    width={220}
+    layers={[
+      { kind: 'line', pts: [[0, 8], [8, 0]], tone: 'faint' },
+      { kind: 'rects', rects: rcmA, tone: 'main', fill: true },
+    ]}
+  />
+  <PlaneFig
+    title="RCM 순서"
+    label="같은 행렬을 역 Cuthill–McKee 순서로 바꾼 것, 원소가 대각선 둘레의 띠 안에 모여 있음"
+    domain={[0, 8]}
+    range={[0, 8]}
+    width={220}
+    layers={[
+      { kind: 'line', pts: [[0, 8], [8, 0]], tone: 'faint' },
+      { kind: 'line', pts: [[3, 8], [8, 3]], tone: 'base', dashed: true },
+      { kind: 'line', pts: [[0, 5], [5, 0]], tone: 'base', dashed: true },
+      { kind: 'rects', rects: rcmB, tone: 'main', fill: true },
+    ]}
+  />
+</Fig>
+
+<Reference />
+
+## 결과 읽기
+
+결과는 길이 $n$의 순열이에요. `perm[k]`는 새 순서에서 $k$번째 자리에 놓을 원래 번호예요. 행과 열을 함께 바꿔야 하므로 `A[perm][:, perm]`으로 써요. 희소 배열에도 같은 인덱싱이 돼요.
+
+```python
+>>> S = sd.sparse.csr_array(A)
+>>> S[perm][:, perm]
+<csr_array of shape (8, 8), int64, 20 stored elements>
+```
+
+순열로 바꾼 행렬로 연립방정식 $Ax = b$를 풀려면 $b$도 같은 순서로 바꾸고, 얻은 해를 원래 순서로 되돌려요. 되돌리는 순열은 `inv[perm] = arange(n)`으로 만들어요.
+
+```python
+>>> b = sd.arange(8, dtype=sd.float64)
+>>> M = A + 4 * sd.eye(8, dtype=sd.int64)
+>>> y = sd.linalg.solve(M[perm][:, perm].astype(sd.float64), b[perm])
+>>> inv = sd.empty(8, dtype=sd.int64)
+>>> inv[perm] = sd.arange(8)
+>>> x = y[inv]
+>>> bool(sd.all(sd.abs(M @ x - b) < 1e-12))
+True
+```
+
+### 순서를 정하는 법
+
+이름의 Cuthill–McKee는 너비 우선 탐색으로 번호를 매기는 방법이에요. 너비 우선은 시작 노드에서 가까운 층부터 차례로 찾으므로, 이웃끼리는 같은 층이나 이웃한 층에 들어가 번호가 가까워져요. 여기에 두 규칙을 더해요.
+
+1. **차수가 가장 작은 노드에서 시작해요.** 차수는 이웃의 수예요(대각에 원소가 저장되어 있으면 1을 더해요). 그래프의 가장자리에 있는 노드에서 시작해야 층이 가늘고 길게 나와 띠가 좁아요.
+2. **처음 찾은 이웃은 차수가 작은 것부터 번호를 줘요.** 이웃이 적은 노드를 먼저 두면 다음 층이 덜 넓게 퍼져요.
+
+차수가 같으면 노드 번호가 작은 것이 먼저예요. 그래프가 여러 덩어리로 나뉘어 있으면 덩어리마다 아직 찾지 않은 노드 가운데 (차수, 번호)가 가장 작은 노드에서 다시 시작해 이어 붙여요. 마지막으로 전체 순서를 **뒤집어요**. 뒤집어도 띠 폭은 같지만, 분해할 때 생기는 채움이 대개 줄어든다고 알려져 있어 역순(reverse)을 써요.
+
+이 규칙이 모든 동점을 정하므로 같은 행렬이면 언제나 같은 순열이에요.
+
+### 섞인 번호를 되찾기
+
+번호가 무작위로 섞인 띠 행렬을 주면 띠 폭이 작은 순서를 다시 찾아요. 아래는 이웃이 앞뒤 두 칸까지인 길(띠 폭 2)의 번호를 섞은 것이에요.
+
+```python
+>>> rng = sd.random.default_rng(3)
+>>> n = 30
+>>> band = undirected(n, [(i, i + 1) for i in range(n - 1)] + [(i, i + 2) for i in range(n - 2)])
+>>> sh = rng.permutation(n)
+>>> R = band[sh][:, sh]
+>>> sd.sparse.spbandwidth(sd.sparse.csr_array(R))
+BandwidthResult(lower=28, upper=28)
+>>> q = sd.graph.reverse_cuthill_mckee(R)
+>>> sd.sparse.spbandwidth(sd.sparse.csr_array(R[q][:, q]))
+BandwidthResult(lower=2, upper=2)
+```
+
+<Callout type="note" title="가장 좋은 순서는 아니에요">
+
+띠 폭을 가장 작게 만드는 순서를 찾는 문제는 어려운 문제(NP-hard)라서, 이 방법은 빠르게 좋은 순서를 찾는 어림 방법이에요. 대부분의 희소 행렬에서 띠 폭을 크게 줄이지만 가장 작은 띠 폭을 약속하지는 않아요.
+
+</Callout>
+
+## symmetric_mode: 대칭이 아닌 패턴
+
+띠 폭은 행과 열을 함께 바꿔서 줄이므로, 원소 $(i, j)$와 $(j, i)$는 같은 이웃 관계로 봐요. 기본 `symmetric_mode=False`는 A와 그 전치의 자리를 **합쳐서** 읽어요. 어느 한쪽에라도 원소가 있으면 이웃이에요.
+
+```python
+>>> U = sd.asarray([[0, 1, 0, 0],
+...                 [0, 0, 0, 1],
+...                 [0, 0, 0, 0],
+...                 [0, 0, 1, 0]])
+>>> sd.graph.reverse_cuthill_mckee(U)
+array([2, 3, 1, 0], dtype=int64)
+>>> sd.graph.reverse_cuthill_mckee(U + U.T, symmetric_mode=True)
+array([2, 3, 1, 0], dtype=int64)
+```
+
+`symmetric_mode=True`는 A의 자리를 그대로 이웃 목록으로 읽어서 전치를 만들지 않아요. 패턴이 대칭임을 알 때 쓰면 일이 조금 줄어요. 대칭이 아닌 행렬에 `True`를 주면 한 방향으로만 이어진 그래프로 탐색해서 순서가 달라질 수 있어요.
+
+```python
+>>> sd.graph.reverse_cuthill_mckee(U, symmetric_mode=True)
+array([3, 1, 0, 2], dtype=int64)
+```
+
+## 자리만 봐요
+
+원소의 값은 읽지 않아요. 희소 배열은 저장된 자리가 모두 이웃 관계라서 저장된 0이나 NaN도 세요. 밀집 행렬은 0, NaN, ±inf가 아닌 자리만 이웃 관계예요. 대칭인 희소 배열과 밀집 행렬의 같은 패턴은 같은 순열을 줘요.
+
+```python
+>>> sd.graph.reverse_cuthill_mckee(S)
+array([3, 7, 1, 5, 2, 6, 4, 0], dtype=int64)
+```
+
+## 경계의 값
+
+원소가 하나도 없으면 모든 노드의 차수가 0이고 각자 한 덩어리라서, 번호 차례로 이은 뒤 뒤집은 순서가 나와요. 노드가 없으면 빈 배열이에요. 정방이 아니면 `ValueError`예요.
+
+```python
+>>> sd.graph.reverse_cuthill_mckee(sd.zeros((4, 4)))
+array([3, 2, 1, 0], dtype=int64)
+>>> sd.graph.reverse_cuthill_mckee(sd.zeros((0, 0)))
+array([], dtype=int64)
+>>> sd.graph.reverse_cuthill_mckee(sd.zeros((2, 3)))
+Traceback (most recent call last):
+    ...
+ValueError: reverse_cuthill_mckee(): 'graph' must be a square matrix, not of shape (2, 3)
+```
+
+`symmetric_mode`는 이름을 붙여 True나 False로 줘요.
+
+```python
+>>> sd.graph.reverse_cuthill_mckee(A, True)
+Traceback (most recent call last):
+    ...
+TypeError: reverse_cuthill_mckee(): takes 1 positional argument but 2 were given
+```
+
+## scipy·networkx를 아는 분께
+
+- scipy와 같은 알고리즘이고, 노드가 16개 이하면 scipy와 같은 순열이에요. 더 크면 시작 노드의 동점에서 다를 수 있어요. scipy는 같은 차수의 시작 노드 순서를 numpy의 불안정 정렬로 정해 기계와 numpy 판에 따라 달라질 수 있고, 여기서는 언제나 (차수, 번호)의 순서예요.
+- `symmetric_mode=False`는 $A$와 $A^T$의 <strong>자리의 합집합</strong>이에요. scipy는 값을 더한 $A + A^T$를 써서, 한 방향의 저장된 0이나 $A_{ij} = -A_{ji}$처럼 합이 0이 된 자리를 이웃으로 보지 않아요.
+- 밀집 행렬도 받아요(scipy는 CSR·CSC만).
+- `reverse_cuthill_mckee(A, True)`처럼 `symmetric_mode`를 자리로 넘기면 `TypeError`예요.
+- networkx의 `reverse_cuthill_mckee_ordering`은 노드의 생성기를 주고 시작 노드를 고르는 규칙이 달라 순서가 다를 수 있어요.

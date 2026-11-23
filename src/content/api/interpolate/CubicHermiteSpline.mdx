@@ -1,0 +1,285 @@
+---
+title: CubicHermiteSpline
+names: [CubicHermiteSpline]
+group: 조각 다항식
+order: 2
+signatures:
+  - "sd.interpolate.CubicHermiteSpline(x, y, dydx, /, *, axis=0, extrapolate=None)"
+summary: 점마다 값과 기울기를 함께 주면, 그 값을 지나면서 그 기울기로 지나가는 3차 조각 곡선을 만들어요. 위치와 속도를 함께 잰 자료, 미분방정식을 푼 결과처럼 도함수까지 아는 자료에 써요. 결과는 PPoly의 한 종류라서 미분, 적분, 근 찾기를 그대로 해요.
+params:
+  - name: x
+    type: ndarray, 수의 시퀀스, numpy 배열, Series
+    kind: positional-only
+    desc: "자료의 자리를 담은 (n,) 배열. 1차원이고, 유한하고, 엄격히 증가해야 해요. 점이 둘 이상이어야 해요."
+  - name: y
+    type: ndarray, 수의 시퀀스, numpy 배열, Series
+    kind: positional-only
+    desc: "자리마다의 값. axis 축의 길이가 n이고 나머지 축은 함께 다루는 여러 열이에요. float64나 complex128이고 유한해야 해요."
+  - name: dydx
+    type: ndarray, 수의 시퀀스, numpy 배열, Series
+    kind: positional-only
+    desc: "자리마다의 기울기(도함수). y와 모양이 같아야 하고 유한해야 해요. 복소수도 받아요."
+  - name: axis
+    type: int
+    kind: keyword-only
+    desc: "y와 dydx에서 x에 맞는 축. 음수도 받아요. 기본값 0."
+  - name: extrapolate
+    type: bool, 'periodic' 또는 None
+    kind: keyword-only
+    desc: "자료 범위 밖을 어떻게 할지. True면 끝 조각을 늘이고, False면 NaN, 'periodic'이면 범위의 길이로 감아요. 기본값 None은 True예요."
+returns:
+  type: CubicHermiteSpline
+  desc: "3차 조각 다항식 객체. PPoly의 한 종류라서 부르기, derivative, antiderivative, integrate, roots, solve, extend와 속성 c, x, extrapolate, axis가 PPoly와 같아요. 조각은 n − 1개예요."
+raises:
+  - type: TypeError
+    desc: "자료가 수의 배열이 아닐 때, x가 복소수일 때, axis가 int가 아닐 때, extrapolate가 받는 타입이 아닐 때, 옵션을 자리로 줄 때."
+  - type: ValueError
+    desc: "x가 1차원이 아니거나 점이 둘보다 적을 때, x가 유한하지 않거나 엄격히 증가하지 않을 때, y의 axis 축 길이가 x와 다를 때, dydx의 모양이 y와 다를 때, y나 dydx에 NaN이나 inf가 있을 때, 계수가 float64를 넘칠 때."
+seeAlso: [basics, PPoly, CubicSpline, PchipInterpolator, Akima1DInterpolator, KroghInterpolator]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import PlaneFig from '../../../components/fig/PlaneFig.astro';
+
+export const chPts = [[0, 0], [10, 150], [20, 400], [30, 600]];
+export const chCurve = [[0, 0], [0.25, 2.531], [0.5, 5.125], [0.75, 7.781], [1, 10.5], [1.25, 13.28], [1.5, 16.12], [1.75, 19.03], [2, 22], [2.25, 25.03], [2.5, 28.12], [2.75, 31.28], [3, 34.5], [3.25, 37.78], [3.5, 41.12], [3.75, 44.53], [4, 48], [4.25, 51.53], [4.5, 55.12], [4.75, 58.78], [5, 62.5], [5.25, 66.28], [5.5, 70.12], [5.75, 74.03], [6, 78], [6.25, 82.03], [6.5, 86.12], [6.75, 90.28], [7, 94.5], [7.25, 98.78], [7.5, 103.1], [7.75, 107.5], [8, 112], [8.25, 116.5], [8.5, 121.1], [8.75, 125.8], [9, 130.5], [9.25, 135.3], [9.5, 140.1], [9.75, 145], [10, 150], [10.25, 155.1], [10.5, 160.2], [10.75, 165.5], [11, 170.9], [11.25, 176.5], [11.5, 182.1], [11.75, 187.8], [12, 193.6], [12.25, 199.5], [12.5, 205.5], [12.75, 211.5], [13, 217.7], [13.25, 223.8], [13.5, 230.1], [13.75, 236.4], [14, 242.8], [14.25, 249.2], [14.5, 255.7], [14.75, 262.2], [15, 268.8], [15.25, 275.3], [15.5, 281.9], [15.75, 288.6], [16, 295.2], [16.25, 301.9], [16.5, 308.5], [16.75, 315.2], [17, 321.9], [17.25, 328.5], [17.5, 335.2], [17.75, 341.8], [18, 348.4], [18.25, 355], [18.5, 361.5], [18.75, 368.1], [19, 374.6], [19.25, 381], [19.5, 387.4], [19.75, 393.7], [20, 400], [20.25, 406.2], [20.5, 412.4], [20.75, 418.5], [21, 424.5], [21.25, 430.5], [21.5, 436.4], [21.75, 442.2], [22, 448], [22.25, 453.7], [22.5, 459.4], [22.75, 465], [23, 470.5], [23.25, 476], [23.5, 481.4], [23.75, 486.7], [24, 492], [24.25, 497.2], [24.5, 502.4], [24.75, 507.5], [25, 512.5], [25.25, 517.5], [25.5, 522.4], [25.75, 527.2], [26, 532], [26.25, 536.7], [26.5, 541.4], [26.75, 546], [27, 550.5], [27.25, 555], [27.5, 559.4], [27.75, 563.7], [28, 568], [28.25, 572.2], [28.5, 576.4], [28.75, 580.5], [29, 584.5], [29.25, 588.5], [29.5, 592.4], [29.75, 596.2], [30, 600]];
+export const chTan = [[-2.5, -25, 2.5, 25], [7.5, 100, 12.5, 200], [17.5, 337.5, 22.5, 462.5], [27.5, 562.5, 32.5, 637.5]];
+
+## 한눈에 보기
+
+자동차가 달리는 동안 10초마다 위치와 속도계의 값을 함께 적었다고 해 볼게요. 위치만 있으면 점 사이를 어떻게 이을지 짐작해야 하지만, 속도를 알면 각 점에서 곡선이 얼마나 가파르게 지나가야 하는지까지 알아요. 속도는 위치의 기울기(도함수)이니까요.
+
+`CubicHermiteSpline`은 점마다 값 `y`와 기울기 `dydx`를 받아서, 모든 점을 그 값으로 지나고 그 기울기로 지나가는 곡선을 만들어요. 이웃한 두 점 사이는 3차 다항식 하나예요.
+
+```python
+>>> import stardust as sd
+>>> t = sd.asarray([0.0, 10.0, 20.0, 30.0])          # 초
+>>> pos = sd.asarray([0.0, 150.0, 400.0, 600.0])     # 미터
+>>> vel = sd.asarray([10.0, 20.0, 25.0, 15.0])       # 미터/초
+>>> car = sd.interpolate.CubicHermiteSpline(t, pos, vel)
+>>> car
+CubicHermiteSpline(degree=3, pieces=3, extrapolate=True)
+>>> car(15.0)
+268.75
+>>> car([10.0, 20.0])
+array([150.0, 400.0], dtype=float64)
+>>> car([10.0, 20.0], nu=1)
+array([20.0, 25.0], dtype=float64)
+```
+
+점에서 물으면 준 값과 준 기울기가 그대로 나와요. 15초의 위치는 그 둘을 모두 만족하는 3차식에서 읽은 값이에요.
+
+<Fig caption="네 점에서 값과 기울기를 함께 준 곡선. 점마다 그은 짧은 선분이 준 기울기이고, 곡선은 점을 지나면서 그 선분에 접해요.">
+  <PlaneFig
+    label="시간과 위치의 네 점, 점마다의 접선 선분, 그 모두를 만족하는 3차 조각 곡선"
+    domain={[-2, 32]}
+    range={[-50, 680]}
+    equal={false}
+    width={600}
+    height={320}
+    xTicks={[0, 10, 20, 30]}
+    yTicks={[0, 200, 400, 600]}
+    layers={[
+      { kind: 'line', pts: chCurve, tone: 'main', width: 1.8 },
+      { kind: 'segments', segs: chTan, tone: 'ink', width: 2.2 },
+      { kind: 'points', pts: chPts, tone: 'ink', size: 3.6 },
+    ]}
+    legend={[
+      { label: '자료 (t, 위치)', tone: 'ink', shape: 'dot' },
+      { label: '준 기울기 (속도)', tone: 'ink', shape: 'line' },
+      { label: 'CubicHermiteSpline', tone: 'main', shape: 'line' },
+    ]}
+  />
+</Fig>
+
+<Reference />
+
+## 무엇을 계산하나요
+
+두 점 $x_i$, $x_{i+1}$ 사이에서 값 $y_i$, $y_{i+1}$과 기울기 $s_i$, $s_{i+1}$을 모두 맞추는 조건은 네 개예요. 3차 다항식의 계수도 네 개라서 이 조건을 맞추는 3차식은 꼭 하나 있어요. 이것을 **3차 에르미트 보간**이라고 해요.
+
+구간의 폭을 $h_i = x_{i+1} - x_i$, 구간의 평균 기울기를 $\Delta_i = (y_{i+1} - y_i)/h_i$라 하면, 조각 $i$는 왼쪽 끝에서 잰 거리 $u = x - x_i$의 다항식으로
+
+$$
+p_i(x) = y_i + s_i\,u + \frac{3\Delta_i - 2s_i - s_{i+1}}{h_i}\,u^2 + \frac{s_i + s_{i+1} - 2\Delta_i}{h_i^2}\,u^3
+$$
+
+이에요. 그래서 결과 객체의 계수 `c`에서 아래 두 행은 언제나 준 값과 준 기울기예요.
+
+```python
+>>> car.c
+array([[  0.0, -0.05,   0.0],
+       [  0.5,   1.0,  -0.5],
+       [ 10.0,  20.0,  25.0],
+       [  0.0, 150.0, 400.0]], dtype=float64)
+>>> car.c[-1]          # 각 조각의 왼쪽 끝 값 = pos[:-1]
+array([  0.0, 150.0, 400.0], dtype=float64)
+>>> car.c[-2]          # 각 조각의 왼쪽 끝 기울기 = vel[:-1]
+array([10.0, 20.0, 25.0], dtype=float64)
+```
+
+조각마다 자기 양 끝의 값과 기울기만 보기 때문에, 한 점의 자료를 바꾸면 그 점에 닿은 두 조각만 바뀌어요.
+
+```python
+>>> vel2 = sd.asarray([10.0, 20.0, 40.0, 15.0])
+>>> car2 = sd.interpolate.CubicHermiteSpline(t, pos, vel2)
+>>> car(5.0) == car2(5.0), car(15.0) == car2(15.0), car(25.0) == car2(25.0)
+(True, False, False)
+```
+
+이웃한 조각은 점에서 값과 기울기가 같아서 곡선이 꺾이지 않아요. 굽은 정도(2차 도함수)는 점에서 뛸 수 있어요.
+
+```python
+>>> car(10.0 - 1e-9, nu=2), car(10.0, nu=2)
+(1.0, 2.0)
+```
+
+## 결과는 PPoly예요
+
+`CubicHermiteSpline`은 [`PPoly`](/api/interpolate/PPoly/)(조각 다항식)의 한 종류예요. 값과 도함수 읽기, 미분, 적분, 근 찾기를 모두 `PPoly`의 메서드로 해요. 인자와 규칙은 그 페이지에 있어요.
+
+```python
+>>> isinstance(car, sd.interpolate.PPoly)
+True
+>>> car.integrate(0.0, 30.0) / 30.0       # 30초 동안의 평균 위치
+281.9444444444444
+>>> car.solve(300.0, extrapolate=False)   # 300 m를 지난 때
+array([16.18033988749895], dtype=float64)
+>>> car.derivative()(15.0)                # 15초의 속도
+26.25
+>>> type(car.derivative()).__name__
+'CubicHermiteSpline'
+```
+
+미분하거나 적분한 객체도 `CubicHermiteSpline`이에요. 차수는 바뀌어서 `derivative()`는 2차, `antiderivative()`는 4차 조각 다항식이에요.
+
+## 인자
+
+### `x`와 `y`
+
+`x`는 엄격히 증가하는 유한한 1차원 배열이고 점이 둘 이상이에요. 점이 둘이면 조각 하나짜리 3차식이에요. `y`는 유한해야 해요. 계수를 만들 때 NaN 하나가 그 점에 닿은 두 조각을 모두 망가뜨리므로 만들 때 에러로 알려요.
+
+```python
+>>> sd.interpolate.CubicHermiteSpline([0.0, 1.0], [0.0, 1.0], [0.0, 0.0])(0.5)
+0.5
+>>> sd.interpolate.CubicHermiteSpline([0.0, 1.0, 1.0], [0.0, 1.0, 2.0], [1.0, 1.0, 1.0])
+Traceback (most recent call last):
+    ...
+ValueError: CubicHermiteSpline(): 'x' must be strictly increasing
+>>> sd.interpolate.CubicHermiteSpline([0.0, 1.0], [0.0, sd.nan], [1.0, 1.0])
+Traceback (most recent call last):
+    ...
+ValueError: CubicHermiteSpline(): 'y' must be finite
+```
+
+### `dydx`: 점마다의 기울기
+
+`dydx`는 `y`와 모양이 같아야 해요. 값이 같아도 기울기에 따라 곡선의 모양이 크게 달라져요. 아래는 같은 두 점 (0, 0)과 (1, 1)을 지나는 두 곡선이에요. 하나는 양 끝의 기울기가 0이고, 다른 하나는 기울기 6으로 출발해 기울기 0으로 도착해요.
+
+```python
+>>> flat = sd.interpolate.CubicHermiteSpline([0.0, 1.0], [0.0, 1.0], [0.0, 0.0])
+>>> steep = sd.interpolate.CubicHermiteSpline([0.0, 1.0], [0.0, 1.0], [6.0, 0.0])
+>>> flat([0.25, 0.5, 0.75])
+array([0.15625,     0.5, 0.84375], dtype=float64)
+>>> steep([0.25, 0.5, 0.75])
+array([  1.0,  1.25, 1.125], dtype=float64)
+>>> sd.interpolate.CubicHermiteSpline([0.0, 1.0], [0.0, 1.0], [6.0])
+Traceback (most recent call last):
+    ...
+ValueError: CubicHermiteSpline(): 'dydx' must have the shape of 'y' (2,), not (1,)
+```
+
+기울기 6으로 출발한 곡선은 가운데에서 1.25까지 올라갔다가 1로 내려와요. 준 기울기가 자료의 평균 기울기(여기서는 1)에서 멀면 곡선이 두 끝값의 범위를 넘을 수 있어요. 기울기만 맞추고 범위는 지키지 않는 계산이라서 그래요.
+
+### `axis`: 여러 열을 한 번에
+
+`y`가 여러 차원이면 `axis` 축이 `x`에 맞는 축이고, 나머지 축은 서로 독립인 열이에요. `dydx`도 같은 모양이에요. 평면 위를 움직이는 점의 $x$, $y$ 좌표를 두 열로 주면 한 객체가 궤적 전체를 그려요.
+
+```python
+>>> tt = sd.asarray([0.0, 1.0, 2.0])
+>>> xy = sd.asarray([[0.0, 0.0], [1.0, 1.0], [2.0, 0.0]])      # (3, 2): 점마다 (x, y)
+>>> vxy = sd.asarray([[1.0, 2.0], [1.0, 0.0], [1.0, -2.0]])    # 점마다 (vx, vy)
+>>> path = sd.interpolate.CubicHermiteSpline(tt, xy, vxy)
+>>> path(0.5)
+array([ 0.5, 0.75], dtype=float64)
+>>> path([0.5, 1.5]).shape
+(2, 2)
+```
+
+결과의 모양은 `y`의 모양에서 `axis` 자리를 평가점의 모양으로 바꾼 것이에요. 자세한 규칙은 [보간의 기본](/api/interpolate/basics/#axis-여러-열을-한-번에)에 있어요.
+
+### 복소수
+
+`y`나 `dydx`가 복소수면 실수부와 허수부를 같은 계산으로 따로 보간해요. 한쪽만 복소수여도 돼요.
+
+```python
+>>> sd.interpolate.CubicHermiteSpline([0.0, 1.0], [1.0, 1j], [1j, -1.0])(0.5)
+(0.625+0.625j)
+```
+
+## 자료 범위 밖
+
+기본값은 `extrapolate=True`라서 끝 조각의 3차식을 밖으로 늘여요. `False`면 범위 밖이 NaN이에요. 부를 때 `extrapolate=`를 주면 그 호출에서만 바뀌어요.
+
+```python
+>>> car([-5.0, 35.0])
+array([-37.5, 662.5], dtype=float64)
+>>> car([-5.0, 35.0], extrapolate=False)
+array([nan, nan], dtype=float64)
+>>> sd.interpolate.CubicHermiteSpline(t, pos, vel, extrapolate=False)(35.0)
+nan
+```
+
+평가점이 NaN이면 결과도 NaN이에요.
+
+## 조심할 점
+
+### 기울기를 모르면 다른 클래스를 써요
+
+`dydx`는 자료에서 오는 값이어야 뜻이 있어요. 기울기를 모를 때 점들에서 기울기를 정하는 방법은 여럿이고, 그 방법마다 클래스가 있어요.
+
+| 클래스 | 기울기를 정하는 법 |
+|---|---|
+| [`CubicSpline`](/api/interpolate/CubicSpline/) | 2차 도함수까지 이어지게 모든 점을 함께 풀어요 |
+| [`PchipInterpolator`](/api/interpolate/PchipInterpolator/) | 이웃 두 구간의 평균 기울기를 조화 평균해 자료의 모양을 지켜요 |
+| [`Akima1DInterpolator`](/api/interpolate/Akima1DInterpolator/) | 가까운 네 구간의 평균 기울기에 무게를 주어 섞어요 |
+
+세 클래스는 기울기만 다르게 정하고, 그 기울기로 계수를 만드는 계산은 `CubicHermiteSpline`과 같아요. 그래서 어느 객체든 점에서의 기울기를 꺼내 `CubicHermiteSpline`에 주면 계수가 비트까지 같아요.
+
+```python
+>>> xs = sd.asarray([0.0, 1.0, 2.0, 3.0, 4.0, 5.0])
+>>> ys = sd.asarray([0.0, 0.8, 0.9, 0.1, -0.8, -1.0])
+>>> spline = sd.interpolate.CubicSpline(xs, ys)
+>>> same = sd.interpolate.CubicHermiteSpline(xs, ys, spline(xs, nu=1))
+>>> bool(sd.all(same.c == spline.c))
+True
+```
+
+끝 점의 기울기를 부르기로 다시 읽으면 끝 조각의 3차식을 계산한 값이라, 자료에 따라 정한 기울기와 마지막 비트가 다를 수 있어요. 그때는 끝 조각의 계수만 끝자리가 달라져요.
+
+### 계수가 넘치면 에러예요
+
+값과 기울기가 유한해도 간격이 아주 좁고 값이 아주 크면 3차 계수가 float64의 범위를 넘을 수 있어요. 그때는 만들 때 `ValueError`이고 메시지가 어느 구간인지 말해 줘요.
+
+```python
+>>> sd.interpolate.CubicHermiteSpline([0.0, 0.01], [1e300, -1e300], [0.0, 0.0])
+CubicHermiteSpline(degree=3, pieces=1, extrapolate=True)
+```
+
+### 옵션은 이름으로 줘요
+
+```python
+>>> sd.interpolate.CubicHermiteSpline(t, pos, vel, 0)
+Traceback (most recent call last):
+    ...
+TypeError: CubicHermiteSpline(): takes 3 positional arguments but 4 were given
+```
+
+## scipy·numpy를 아는 분께
+
+- `scipy.interpolate.CubicHermiteSpline`과 같은 이름, 같은 인자, 같은 계수의 꼴이에요.
+- `axis`와 `extrapolate`는 이름으로만 받아요. scipy의 `CubicHermiteSpline(x, y, dydx, 0)`은 `TypeError`예요.
+- 계수가 float64를 넘치면 만들 때 `ValueError`예요. scipy는 계수에 inf나 NaN이 든 객체를 만들어서, 그 구간에서는 자료의 점에서도 NaN이 나와요.
+- 계수와 중단점은 복사한 읽기 전용 배열이에요.
+- `x`가 복소수면 `TypeError`예요. 평가점이 수 하나면 결과는 Python `float`·`complex`예요.
+- `PPoly`에서 물려받은 메서드의 차이는 [`PPoly`](/api/interpolate/PPoly/) 페이지의 마지막 절에 있어요.

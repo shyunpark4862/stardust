@@ -236,6 +236,21 @@
   --area-soft: #eef0fd;
   --area-line: #c9cdf6;
 }
+[data-area='fft'] {
+  --area: #5b21b6;
+  --area-soft: #f3eefd;
+  --area-line: #d9c9f7;
+}
+[data-area='interpolate'] {
+  --area: #047857;
+  --area-soft: #e8f7f1;
+  --area-line: #b5e3d2;
+}
+[data-area='graph'] {
+  --area: #9f1239;
+  --area-soft: #fdecf0;
+  --area-line: #f4c0cc;
+}
 [data-area='plot'] {
   --area: #b42318;
   --area-soft: #fdeeec;

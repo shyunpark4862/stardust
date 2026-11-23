@@ -1,0 +1,176 @@
+---
+kind: function
+title: 빠른 변환 길이
+names: [next_fast_len, prev_fast_len]
+group: 도우미
+order: 3
+signatures:
+  - "sd.fft.next_fast_len(target, /, *, real=False)"
+  - "sd.fft.prev_fast_len(target, /, *, real=False)"
+summary: 푸리에 변환은 길이가 작은 소수들의 곱일 때 가장 빨라요. next_fast_len은 주어진 길이 이상에서 가장 작은 그런 길이를, prev_fast_len은 주어진 길이 이하에서 가장 큰 그런 길이를 알려 줘요. 신호에 0을 채우거나 끝을 잘라 변환을 빠르게 할 때 써요.
+params:
+  - name: target
+    type: int
+    kind: positional-only
+    desc: 기준 길이. 1 이상이어야 해요.
+  - name: real
+    type: bool
+    kind: keyword-only
+    desc: False(기본값)면 소인수가 2, 3, 5, 7, 11뿐인 길이를 찾아요. True면 소인수가 2, 3, 5뿐인 길이를 찾아요. 실수 변환(rfft, dct, dst)에 쓸 길이는 True로 찾아요.
+returns:
+  type: int
+  desc: Python int. next_fast_len은 target 이상의 가장 작은 빠른 길이, prev_fast_len은 target 이하의 가장 큰 빠른 길이예요.
+raises:
+  - type: TypeError
+    desc: target이 int가 아닐 때(float, bool 포함), real이 True·False가 아닐 때, real을 위치로 줬을 때.
+  - type: ValueError
+    desc: target이 1보다 작을 때, next_fast_len의 결과가 int64에 담기지 않을 때.
+  - type: OverflowError
+    desc: target이 int64의 범위 밖일 때.
+seeAlso: [fft, rfft, dct, fftfreq, basics]
+---
+import Callout from '../../../components/Callout.astro';
+
+## 한눈에 보기
+
+변환에 걸리는 시간은 길이의 크기만이 아니라 그 길이가 어떤 소수들의 곱인지에 달려 있어요. 1024($2^{10}$)나 1000($2^3 \cdot 5^3$)처럼 작은 소수만 곱한 길이는 빠르고, 1021(소수)처럼 큰 소인수가 있는 길이는 느려요. `next_fast_len`은 주어진 길이에서 위로 가장 가까운 빠른 길이를 찾아 줘요.
+
+```python
+>>> import stardust as sd
+>>> sd.fft.next_fast_len(1021)
+1024
+>>> sd.fft.prev_fast_len(1021)
+1008
+>>> sd.fft.next_fast_len(1000)
+1000
+```
+
+1021 이상에서 가장 작은 빠른 길이는 1024, 1021 이하에서 가장 큰 것은 1008($2^4 \cdot 3^2 \cdot 7$)이에요. 1000은 이미 빠른 길이라 그대로예요.
+
+<Reference />
+
+## 빠른 길이란
+
+길이 $n$의 변환은 $n$을 소인수로 쪼개서, 작은 조각의 변환을 여러 번 하는 것으로 바꿔 계산해요. 조각이 작을수록 일이 적어요. 이 함수들이 말하는 빠른 길이는 소인수가 모두 11 이하인 수예요.
+
+| `real` | 빠른 길이 | 처음 몇 개 |
+|---|---|---|
+| `False` (기본값) | 소인수가 2, 3, 5, 7, 11뿐인 수 | 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 15, 16, … |
+| `True` | 소인수가 2, 3, 5뿐인 수 | 1, 2, 3, 4, 5, 6, 8, 9, 10, 12, 15, 16, 18, 20, … |
+
+```python
+>>> [sd.fft.next_fast_len(n) for n in range(10, 20)]
+[10, 11, 12, 14, 14, 15, 16, 18, 18, 20]
+>>> [sd.fft.next_fast_len(n, real=True) for n in range(10, 20)]
+[10, 12, 12, 15, 15, 15, 16, 18, 18, 20]
+```
+
+13은 소수이고 11보다 커서 빠른 길이가 아니에요. 그 위의 14($2 \cdot 7$)가 답이고, `real=True`면 7도 쓸 수 없어서 15($3 \cdot 5$)예요.
+
+```python
+>>> sd.fft.next_fast_len(13), sd.fft.next_fast_len(13, real=True)
+(14, 15)
+>>> sd.fft.prev_fast_len(13), sd.fft.prev_fast_len(13, real=True)
+(12, 12)
+```
+
+다른 길이도 변환할 수 있어요. 13부터 31까지의 소인수가 있는 길이는 같은 방식으로 계산하되 조각이 커서 더 느리고, 31보다 큰 소인수가 있는 길이는 더 긴 빠른 길이의 변환 몇 번으로 바꿔 계산해서 그보다 더 느려요. 결과의 정확도는 어느 길이든 약속 안이에요.
+
+## 0을 채워 길이 맞추기
+
+변환 함수의 `n`에 빠른 길이를 주면 신호 끝에 0을 채운 뒤 변환해요.
+
+```python
+>>> x = sd.ones(1021)
+>>> n = sd.fft.next_fast_len(x.shape[0], real=True)
+>>> n
+1024
+>>> sd.fft.rfft(x, n=n).shape
+(513,)
+```
+
+<Callout type="warn" title="0을 채우면 결과의 칸이 달라져요">
+
+길이 1024로 변환한 결과는 길이 1021로 변환한 결과와 칸 수도, 칸마다의 진동수도 달라요([`fftfreq`](/api/fft/fftfreq/)). 같은 스펙트럼을 더 촘촘한 진동수에서 읽은 것이에요. 칸마다의 값을 원래 길이의 것과 견줘야 하는 계산이라면 채우지 않아요.
+
+두 신호의 합성곱이나 상관을 변환으로 구할 때는 두 길이의 합 이상으로 0을 채워야 하고 그보다 더 채워도 답이 같아요. 그런 계산에서 `next_fast_len`으로 길이를 고르면 손해가 없어요.
+
+</Callout>
+
+0을 채울 수 없고 끝을 조금 버려도 되는 자료(긴 녹음의 한 구간처럼)는 `prev_fast_len`으로 길이를 줄여요.
+
+```python
+>>> m = sd.fft.prev_fast_len(x.shape[0], real=True)
+>>> m
+1000
+>>> sd.fft.rfft(x[:m]).shape
+(501,)
+```
+
+## `real`을 언제 True로 주나요
+
+실수 신호의 변환([`rfft`](/api/fft/rfft/), [`dct`](/api/fft/dct/), [`dst`](/api/fft/dst/))에 쓸 길이는 `real=True`로 찾아요. 복소 변환([`fft`](/api/fft/fft/))에 쓸 길이는 기본값으로 찾아요. `real=True`의 길이는 기본값의 길이이기도 하므로 어느 변환에 써도 빠른 길이예요.
+
+```python
+>>> sd.fft.next_fast_len(97), sd.fft.next_fast_len(97, real=True)
+(98, 100)
+```
+
+## 경계의 값
+
+`target`이 이미 빠른 길이면 그대로 돌려줘요. 1도 빠른 길이예요. int64에 담기는 모든 `target`을 받아요. `next_fast_len`의 답이 int64를 넘으면 `ValueError`예요.
+
+```python
+>>> sd.fft.next_fast_len(1), sd.fft.prev_fast_len(1)
+(1, 1)
+>>> sd.fft.next_fast_len(2**62)
+4611686018427387904
+>>> sd.fft.prev_fast_len(2**63 - 1)
+9223306985706024960
+>>> sd.fft.next_fast_len(2**63 - 1)
+Traceback (most recent call last):
+    ...
+ValueError: next_fast_len(): the next fast length after 9223372036854775807 is beyond int64
+```
+
+## 에러
+
+```python
+>>> sd.fft.next_fast_len(0)
+Traceback (most recent call last):
+    ...
+ValueError: next_fast_len(): 'target' must be at least 1, not 0
+>>> sd.fft.prev_fast_len(-3)
+Traceback (most recent call last):
+    ...
+ValueError: prev_fast_len(): 'target' must be at least 1, not -3
+>>> sd.fft.next_fast_len(7.0)
+Traceback (most recent call last):
+    ...
+TypeError: next_fast_len(): 'target' must be an int, not float
+>>> sd.fft.next_fast_len(True)
+Traceback (most recent call last):
+    ...
+TypeError: next_fast_len(): 'target' must be an int, not bool
+>>> sd.fft.next_fast_len(7, real=1)
+Traceback (most recent call last):
+    ...
+TypeError: next_fast_len(): 'real' must be True or False, not int
+>>> sd.fft.next_fast_len(7, True)
+Traceback (most recent call last):
+    ...
+TypeError: next_fast_len(): takes 1 positional argument but 2 were given
+>>> sd.fft.next_fast_len(2**63)
+Traceback (most recent call last):
+    ...
+OverflowError: next_fast_len(): 'target' is out of range
+```
+
+## numpy·scipy를 아는 분께
+
+- `scipy.fft.next_fast_len`·`prev_fast_len`과 같은 값을 내요. numpy에는 없어요.
+- `real`은 키워드로만 받고 `True`·`False`만 받아요.
+- `target`이 0이거나 음수면 `ValueError`예요. scipy는 0에서 0을 돌려줘요.
+- `target`에 bool을 주면 `TypeError`예요. scipy는 `True`를 1로 받아요.
+- int64에 담기는 모든 `target`을 받아요. scipy는 약 $2^{61}$보다 큰 `target`을 받지 않아요.
+- R의 `nextn(n)`(기본 인수 2, 3, 5)은 `next_fast_len(n, real=True)`와 같은 값이에요.

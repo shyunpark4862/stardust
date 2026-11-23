@@ -54,6 +54,9 @@ NAMESPACES = {
     "integrate": sd.integrate,
     "differentiate": sd.differentiate,
     "spatial": sd.spatial,
+    "fft": sd.fft,
+    "interpolate": sd.interpolate,
+    "graph": sd.graph,
     "plot": sd.plot,
 }
 
@@ -97,6 +100,7 @@ def names_of(path: Path) -> list[str]:
 MEMBERS = {
     "frame": ("Series", "DataFrame", "Index", "RangeIndex"),
     "spatial": ("KDTree",),
+    "interpolate": tuple(n for n in sd.interpolate.__all__ if isinstance(getattr(sd.interpolate, n), type)),
     "plot": ("Figure",),
 }
 
@@ -108,8 +112,11 @@ SHARED_METHODS = {"plot"}
 def coverage(area: str) -> int:
     ns = NAMESPACES[area]
     public = set(ns.__all__)
-    for cls in MEMBERS.get(area, ()):
-        public |= {f"{cls}.{m}" for m in dir(getattr(ns, cls)) if not m.startswith("_")}
+    classes = [getattr(ns, c) for c in MEMBERS.get(area, ())]
+    for cls in classes:
+        # A member inherited from another public class is documented on that class's page.
+        bases = [b for b in cls.__mro__[1:] if b in classes]
+        public |= {f"{cls.__name__}.{m}" for m in dir(cls) if not m.startswith("_") and not any(hasattr(b, m) for b in bases)}
     seen: dict[str, str] = {}
     twice = []
     for path in sorted((ROOT / area).glob("*.mdx")):

@@ -1,0 +1,614 @@
+---
+title: PPoly
+names: [PPoly, PPoly.c, PPoly.x, PPoly.extrapolate, PPoly.axis, PPoly.derivative, PPoly.antiderivative, PPoly.integrate, PPoly.roots, PPoly.solve, PPoly.extend, PPoly.from_spline]
+group: 조각 다항식
+order: 1
+signatures:
+  - "sd.interpolate.PPoly(c, x, /, *, extrapolate=None, axis=0)"
+  - "pp(x, /, *, nu=0, extrapolate=None)"
+  - "pp.derivative(*, nu=1)"
+  - "pp.antiderivative(*, nu=1)"
+  - "pp.integrate(a, b, /, *, extrapolate=None)"
+  - "pp.roots(*, discontinuity=True, extrapolate=None)"
+  - "pp.solve(y=0.0, /, *, discontinuity=True, extrapolate=None)"
+  - "pp.extend(c, x, /)"
+  - "sd.interpolate.PPoly.from_spline(tck, /, *, extrapolate=None)"
+summary: 구간마다 다른 다항식을 이어 붙인 함수(조각 다항식)를 계수로 직접 만들어요. 값과 도함수를 계산하고, 미분하고, 적분하고, 근을 찾아요. CubicSpline, PchipInterpolator, Akima1DInterpolator, CubicHermiteSpline이 모두 이 클래스의 한 종류라서 이 페이지의 메서드를 그대로 써요.
+params:
+  - name: c
+    type: ndarray, 수의 시퀀스, numpy 배열
+    kind: positional-only
+    desc: "계수를 담은 (k + 1, m, …) 배열. k는 다항식의 차수, m은 조각의 수예요. c[j, i]는 조각 i에서 (x − x[i])의 (k − j)제곱에 곱하는 수라서 높은 차수가 먼저예요. 뒤의 축은 함께 다루는 여러 함수(배치)예요. float64나 complex128이에요."
+  - name: x
+    type: ndarray, 수의 시퀀스, numpy 배열
+    kind: positional-only
+    desc: "조각의 경계(중단점)를 담은 (m + 1,) 배열. 유한하고, 엄격히 증가하거나 엄격히 감소해야 해요."
+  - name: extrapolate
+    type: bool, 'periodic' 또는 None
+    kind: keyword-only
+    desc: "중단점 범위 밖을 어떻게 할지. True면 끝 조각의 다항식을 늘이고, False면 NaN, 'periodic'이면 범위의 길이로 감아요. 기본값 None은 True예요."
+  - name: axis
+    type: int
+    kind: keyword-only
+    desc: "평가점의 모양이 들어갈 결과의 축. 0이 아니면 c의 그 자리에 (k + 1, m) 두 축이 있다고 읽어요. 기본값 0."
+returns:
+  type: PPoly
+  desc: "조각 다항식 객체. 함수처럼 불러 값을 계산하고, 속성 c, x, extrapolate, axis와 메서드 derivative, antiderivative, integrate, roots, solve, extend를 가져요."
+raises:
+  - type: TypeError
+    desc: "c나 x가 수의 배열이 아닐 때, x가 복소수일 때, extrapolate가 True·False·'periodic'·None이 아닌 타입일 때, axis가 int가 아닐 때, 옵션을 자리로 줄 때."
+  - type: ValueError
+    desc: "c가 2차원보다 낮을 때, c의 조각 수가 x의 구간 수와 다를 때, x가 1차원이 아니거나 점이 둘보다 적을 때, x에 NaN이나 inf가 있을 때, x가 엄격히 단조가 아닐 때, axis가 범위 밖일 때."
+seeAlso: [basics, CubicSpline, PchipInterpolator, Akima1DInterpolator, CubicHermiteSpline, BSpline, make_interp_spline]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import PlaneFig from '../../../components/fig/PlaneFig.astro';
+
+export const ppA = [[0, 0], [0.05, 0.0025], [0.1, 0.01], [0.15, 0.0225], [0.2, 0.04], [0.25, 0.0625], [0.3, 0.09], [0.35, 0.1225], [0.4, 0.16], [0.45, 0.2025], [0.5, 0.25], [0.55, 0.3025], [0.6, 0.36], [0.65, 0.4225], [0.7, 0.49], [0.75, 0.5625], [0.8, 0.64], [0.85, 0.7225], [0.9, 0.81], [0.95, 0.9025], [1, 1], [1.05, 1.103], [1.1, 1.21], [1.15, 1.323], [1.2, 1.44], [1.25, 1.562], [1.3, 1.69], [1.35, 1.823], [1.4, 1.96], [1.45, 2.103], [1.5, 2.25], [1.55, 2.403], [1.6, 2.56], [1.65, 2.723], [1.7, 2.89], [1.75, 3.062], [1.8, 3.24], [1.85, 3.423], [1.9, 3.61], [1.95, 3.803], [2, 4]];
+export const ppB = [[2, 4], [2.05, 4.195], [2.1, 4.38], [2.15, 4.555], [2.2, 4.72], [2.25, 4.875], [2.3, 5.02], [2.35, 5.155], [2.4, 5.28], [2.45, 5.395], [2.5, 5.5], [2.55, 5.595], [2.6, 5.68], [2.65, 5.755], [2.7, 5.82], [2.75, 5.875], [2.8, 5.92], [2.85, 5.955], [2.9, 5.98], [2.95, 5.995], [3, 6], [3.05, 5.995], [3.1, 5.98], [3.15, 5.955], [3.2, 5.92], [3.25, 5.875], [3.3, 5.82], [3.35, 5.755], [3.4, 5.68], [3.45, 5.595], [3.5, 5.5], [3.55, 5.395], [3.6, 5.28], [3.65, 5.155], [3.7, 5.02], [3.75, 4.875], [3.8, 4.72], [3.85, 4.555], [3.9, 4.38], [3.95, 4.195], [4, 4]];
+export const ppExt = [[4, 4], [4.05, 3.795], [4.1, 3.58], [4.15, 3.355], [4.2, 3.12], [4.25, 2.875], [4.3, 2.62], [4.35, 2.355], [4.4, 2.08], [4.45, 1.795], [4.5, 1.5], [4.55, 1.195], [4.6, 0.88], [4.65, 0.555], [4.7, 0.22], [4.75, -0.125], [4.8, -0.48], [4.85, -0.845], [4.9, -1.22], [4.95, -1.605], [5, -2]];
+export const ppSolve = [[2.293, 5], [3.707, 5]];
+export const ppRoots = [[0, 0], [4.732, 0]];
+
+## 한눈에 보기
+
+**조각 다항식**은 구간마다 다른 다항식을 쓰는 함수예요. 경계가 되는 점을 **중단점**이라 하고, 이웃한 두 중단점 사이가 **조각** 하나예요. 스플라인을 비롯해 점 사이를 곡선 조각으로 잇는 보간은 모두 조각 다항식이에요.
+
+$[0, 2]$에서는 $x^2$, $[2, 4]$에서는 $4 + 4(x - 2) - 2(x - 2)^2$인 함수를 만들어 볼게요. 조각마다 계수를 높은 차수부터 세로로 적어요.
+
+```python
+>>> import stardust as sd
+>>> c = sd.asarray([[1.0, -2.0],      # 2차 항
+...                 [0.0,  4.0],      # 1차 항
+...                 [0.0,  4.0]])     # 상수항
+>>> pp = sd.interpolate.PPoly(c, [0.0, 2.0, 4.0])
+>>> pp
+PPoly(degree=2, pieces=2, extrapolate=True)
+>>> pp(1.0), pp(2.0), pp(3.0)
+(1.0, 4.0, 6.0)
+>>> pp([0.5, 1.5, 2.5, 3.5])
+array([0.25, 2.25,  5.5,  5.5], dtype=float64)
+```
+
+열 하나가 조각 하나예요. 첫 열 `[1, 0, 0]`이 $x^2$이고, 둘째 열 `[-2, 4, 4]`가 $-2s^2 + 4s + 4$예요. 여기서 $s = x - 2$는 그 조각의 왼쪽 끝에서 잰 거리예요.
+
+<Fig caption="조각 0은 [0, 2]에서 x², 조각 1은 [2, 4]에서 왼쪽 끝 2에서 잰 거리 s의 다항식 4 + 4s − 2s²이에요. 4의 오른쪽(점선)은 extrapolate=True일 때 조각 1의 식을 그대로 늘인 것이에요.">
+  <PlaneFig
+    label="중단점 0, 2, 4로 나뉜 두 조각의 곡선과 오른쪽으로 늘인 점선"
+    domain={[0, 5]}
+    range={[-2.5, 7]}
+    equal={false}
+    width={600}
+    height={320}
+    xTicks={[0, 1, 2, 3, 4, 5]}
+    yTicks={[-2, 0, 2, 4, 6]}
+    layers={[
+      { kind: 'vline', x: 2, tone: 'faint', dashed: true },
+      { kind: 'vline', x: 4, tone: 'faint', dashed: true },
+      { kind: 'line', pts: ppExt, tone: 'base', dashed: true },
+      { kind: 'line', pts: ppA, tone: 'main', width: 1.8 },
+      { kind: 'line', pts: ppB, tone: 'soft', width: 1.8 },
+      { kind: 'points', pts: [[0, 0], [2, 4], [4, 4]], tone: 'ink', size: 3.4 },
+      { kind: 'text', at: [1, 6.2], text: '조각 0', anchor: 'middle' },
+      { kind: 'text', at: [3, 6.6], text: '조각 1', anchor: 'middle' },
+      { kind: 'text', at: [4.5, 6.2], text: '바깥', anchor: 'middle' },
+    ]}
+    legend={[
+      { label: '조각 0', tone: 'main', shape: 'line' },
+      { label: '조각 1', tone: 'soft', shape: 'line' },
+      { label: '중단점', tone: 'ink', shape: 'dot' },
+      { label: '늘인 부분', tone: 'base', shape: 'dash' },
+    ]}
+  />
+</Fig>
+
+<Reference />
+
+## 언제 직접 만드나요
+
+대부분은 `PPoly`를 직접 만들 일이 없어요. 자료에서 곡선을 만드는 [`CubicSpline`](/api/interpolate/CubicSpline/), [`PchipInterpolator`](/api/interpolate/PchipInterpolator/), [`Akima1DInterpolator`](/api/interpolate/Akima1DInterpolator/), [`CubicHermiteSpline`](/api/interpolate/CubicHermiteSpline/)이 `PPoly`의 한 종류라서, 그 객체에 이 페이지의 메서드를 그대로 쓰게 돼요.
+
+```python
+>>> spline = sd.interpolate.CubicSpline([0.0, 1.0, 2.0, 3.0], [0.0, 1.0, 0.0, 1.0])
+>>> isinstance(spline, sd.interpolate.PPoly)
+True
+>>> spline.integrate(0.0, 3.0)
+1.5
+>>> spline.derivative()(1.0)
+-0.6666666666666667
+```
+
+직접 만드는 것은 조각마다의 식을 이미 알고 있을 때예요. 구간마다 요율이 다른 요금표, 구간별로 정의한 물리 모형, 다른 프로그램이 내놓은 스플라인 계수 같은 것이에요.
+
+## `c`와 `x`: 계수와 중단점
+
+중단점이 $x_0, x_1, \dots, x_m$이면 조각은 $m$개예요. 조각 $i$는 $x_i$와 $x_{i+1}$ 사이를 맡고, 차수가 $k$면 계수가 $k + 1$개예요. 그래서 `c`의 모양은 $(k + 1, m)$이에요.
+
+$$
+p_i(x) = \sum_{j=0}^{k} c_{j,i}\,(x - x_i)^{k - j}
+$$
+
+다항식의 변수가 $x$가 아니라 $x - x_i$라는 점이 중요해요. 조각마다 자기 왼쪽 끝을 원점으로 삼아요. 그래서 맨 아래 행 `c[-1]`은 각 조각의 왼쪽 끝에서의 값이고, 그 위 행은 거기서의 기울기예요.
+
+```python
+>>> pp.c
+array([[ 1.0, -2.0],
+       [ 0.0,  4.0],
+       [ 0.0,  4.0]], dtype=float64)
+>>> pp.c[-1]                 # 각 조각의 왼쪽 끝(0과 2)에서의 값
+array([0.0, 4.0], dtype=float64)
+>>> pp.c[-2]                 # 거기서의 기울기
+array([0.0, 4.0], dtype=float64)
+```
+
+조각끼리 이어지게 해 주지는 않아요. 준 계수 그대로의 함수예요. 이웃한 조각의 값이 경계에서 다르면 거기서 뛰는 함수가 돼요. 아래는 구간마다 값이 일정한 0차 조각(계단)이에요.
+
+```python
+>>> step = sd.interpolate.PPoly([[10.0, 20.0, 50.0]], [0.0, 1.0, 2.0, 3.0])
+>>> step([0.5, 1.5, 2.5])
+array([10.0, 20.0, 50.0], dtype=float64)
+```
+
+### 중단점의 조건
+
+`x`는 유한하고 엄격히 증가하거나 엄격히 감소해야 해요. 같은 중단점이 되풀이되면 폭이 0인 조각이 생기므로 받지 않아요.
+
+```python
+>>> sd.interpolate.PPoly(c, [0.0, 2.0, 2.0])
+Traceback (most recent call last):
+    ...
+ValueError: PPoly(): 'x' must be strictly increasing or strictly decreasing
+>>> sd.interpolate.PPoly(c, [0.0, 2.0, sd.inf])
+Traceback (most recent call last):
+    ...
+ValueError: PPoly(): 'x' must be finite
+>>> sd.interpolate.PPoly(c, [0.0, 2.0])
+Traceback (most recent call last):
+    ...
+ValueError: PPoly(): 'c' must have one piece per interval of 'x' (1) along axis 1, not 2
+```
+
+감소하는 중단점도 받아요. 그때도 조각 $i$의 변수는 $x - x_i$예요(그때는 $x_i$가 조각의 오른쪽 끝이라 이 값이 음수예요).
+
+```python
+>>> down = sd.interpolate.PPoly([[1.0, 1.0], [0.0, -2.0]], [4.0, 2.0, 0.0])
+>>> down([3.0, 1.0])         # (3 − 4) + 0,  (1 − 2) − 2
+array([-1.0, -3.0], dtype=float64)
+```
+
+### 계수는 복사해 둬요
+
+객체는 계수와 중단점을 복사해 쥐고, 그 배열은 읽기 전용이에요. 만든 뒤 원래 배열을 고쳐도 객체는 바뀌지 않아요.
+
+```python
+>>> c[0, 0] = 99.0
+>>> pp(1.0)
+1.0
+>>> c[0, 0] = 1.0
+>>> pp.c[0, 0] = 99.0
+Traceback (most recent call last):
+    ...
+ValueError: assignment destination is read-only
+```
+
+## 부르기: 값과 도함수
+
+객체를 함수처럼 부르면 그 자리의 값이에요. 평가점은 수 하나나 아무 모양의 배열이고 결과는 같은 모양이에요.
+
+| 인자 | 뜻 |
+|---|---|
+| `x` | 평가점. 실수예요 |
+| `nu` | 미분 차수(0 이상의 int). 0이면 값, 1이면 기울기예요. 기본값 0 |
+| `extrapolate` | 이 호출에서만 쓸 바깥 규칙. 기본값 `None`은 객체의 값이에요 |
+
+```python
+>>> pp(1.0), pp(1.0, nu=1), pp(1.0, nu=2), pp(1.0, nu=3)
+(1.0, 2.0, 2.0, 0.0)
+>>> pp(sd.asarray([[0.5, 1.5], [2.5, 3.5]]))
+array([[0.25, 2.25],
+       [ 5.5,  5.5]], dtype=float64)
+```
+
+차수보다 높은 미분은 0이에요. `nu`는 int만 받고, 음수는 에러예요. 적분은 `antiderivative`의 일이에요.
+
+```python
+>>> pp(1.0, nu=1.0)
+Traceback (most recent call last):
+    ...
+TypeError: PPoly(): 'nu' must be an int, not float
+>>> pp(1.0, nu=-1)
+Traceback (most recent call last):
+    ...
+ValueError: PPoly(): 'nu' must be 0 or more, not -1
+```
+
+### 경계에서는 오른쪽 조각
+
+평가점이 중단점과 꼭 같으면 그 점에서 시작하는 조각, 곧 오른쪽 조각으로 계산해요. 조각 $i$가 맡는 범위가 $x_i \le x \lt x_{i+1}$이기 때문이에요. 마지막 중단점만 예외로 마지막 조각에 들어요. 이어진 함수에서는 어느 쪽이든 같은 값이지만, 뛰는 함수나 도함수에서는 차이가 나요.
+
+```python
+>>> step([1.0, 2.0, 3.0])            # 1과 2는 오른쪽 조각, 3은 마지막 조각
+array([20.0, 50.0, 50.0], dtype=float64)
+>>> pp(2.0, nu=2)                    # 조각 1의 2차 도함수
+-4.0
+```
+
+중단점이 감소하면 거울처럼 뒤집혀서 조각 $i$가 $x_{i+1} \lt x \le x_i$를 맡아요.
+
+### 바깥: `extrapolate`
+
+중단점 범위 $[x_0, x_m]$ 밖은 `extrapolate`가 정해요.
+
+```python
+>>> out = sd.asarray([-1.0, 4.0, 5.0])
+>>> pp(out)                                  # True: 끝 조각의 식을 늘여요
+array([ 1.0,  4.0, -2.0], dtype=float64)
+>>> pp(out, extrapolate=False)               # 밖은 NaN
+array([nan, 4.0, nan], dtype=float64)
+>>> pp(out, extrapolate="periodic")          # 길이 4로 감아요: −1 → 3, 5 → 1
+array([6.0, 0.0, 1.0], dtype=float64)
+```
+
+`'periodic'`에서는 범위의 오른쪽 끝이 왼쪽 끝으로 감겨요. 위에서 4가 $p(0) = 0$이 된 까닭이에요.
+
+평가점이 NaN이면 어느 규칙에서든 NaN이에요.
+
+```python
+>>> pp(sd.nan), pp(sd.nan, nu=5)
+(nan, nan)
+```
+
+## 속성
+
+| 속성 | 뜻 | 타입 |
+|---|---|---|
+| `c` | 계수. $(k + 1, m, \dots)$이고 높은 차수가 먼저예요 | 읽기 전용 float64 또는 complex128 배열 |
+| `x` | 중단점 $(m + 1,)$ | 읽기 전용 float64 배열 |
+| `extrapolate` | 바깥 규칙 | `True`, `False` 또는 `'periodic'` |
+| `axis` | 평가점의 모양이 들어가는 결과의 축 | `int` |
+
+```python
+>>> pp.x
+array([0.0, 2.0, 4.0], dtype=float64)
+>>> pp.extrapolate, pp.axis
+(True, 0)
+>>> pp.c.shape
+(3, 2)
+```
+
+`repr`는 차수, 조각 수, 바깥 규칙을 보여 줘요. 속성에 대입할 수는 없어요.
+
+```python
+>>> pp.extrapolate = False
+Traceback (most recent call last):
+    ...
+AttributeError: property 'extrapolate' of 'PPoly' object has no setter
+```
+
+## `derivative`와 `antiderivative`: 미분하고 적분한 함수
+
+`derivative(nu=1)`은 `nu`번 미분한 조각 다항식을, `antiderivative(nu=1)`은 `nu`번 적분한 조각 다항식을 새 객체로 돌려줘요. 원래 객체와 같은 클래스이고 같은 중단점이에요.
+
+```python
+>>> d = pp.derivative()
+>>> d
+PPoly(degree=1, pieces=2, extrapolate=True)
+>>> d.c
+array([[ 2.0, -4.0],
+       [ 0.0,  4.0]], dtype=float64)
+>>> d([1.0, 3.0])                    # 2x,  4 − 4(x − 2)
+array([2.0, 0.0], dtype=float64)
+>>> pp.derivative(nu=2)([1.0, 3.0])
+array([ 2.0, -4.0], dtype=float64)
+```
+
+`pp(x, nu=1)`과 `pp.derivative()(x)`는 같은 값이에요. 여러 자리에서 도함수를 거듭 계산하거나 도함수의 근을 찾을 때는 `derivative()`로 객체를 만들어 두는 쪽이 편해요. 차수보다 많이 미분하면 0인 0차 조각 다항식이에요.
+
+역도함수는 첫 중단점 $x_0$에서 0이고, 조각의 경계에서 이어지게 상수를 골라요. 그래서 `antiderivative()(b)`가 $x_0$에서 $b$까지의 적분이에요.
+
+```python
+>>> F = pp.antiderivative()
+>>> F
+PPoly(degree=3, pieces=2, extrapolate=True)
+>>> F(0.0), F(2.0), F(4.0)
+(0.0, 2.6666666666666665, 13.333333333333334)
+>>> F.derivative().c
+array([[ 1.0, -2.0],
+       [ 0.0,  4.0],
+       [ 0.0,  4.0]], dtype=float64)
+```
+
+`derivative(nu=-1)`은 `antiderivative(nu=1)`과 같고, 그 반대도 같아요. `'periodic'`인 객체의 역도함수는 주기 함수가 아니므로(한 주기의 적분만큼 계속 올라가요) `extrapolate=False`로 돌려줘요.
+
+## `integrate`: 정적분
+
+`integrate(a, b)`는 $a$에서 $b$까지의 정적분을 수 하나로 돌려줘요. 조각마다 다항식을 정확히 적분해 더하므로 수치 적분의 근사가 없어요.
+
+```python
+>>> pp.integrate(0.0, 4.0)           # 8/3 + 32/3
+13.333333333333334
+>>> pp.integrate(1.0, 3.0)
+7.666666666666667
+>>> pp.integrate(3.0, 1.0)           # 방향을 바꾸면 부호가 바뀌어요
+-7.666666666666667
+```
+
+구간이 범위 밖으로 나가면 `extrapolate`의 규칙을 따라요.
+
+```python
+>>> pp.integrate(0.0, 5.0)                           # 늘인 식까지 적분
+14.666666666666666
+>>> pp.integrate(0.0, 5.0, extrapolate=False)        # 밖은 정의되지 않아요
+nan
+>>> pp.integrate(0.0, 9.0, extrapolate="periodic")   # 두 주기 + [0, 1]
+27.0
+>>> 2 * pp.integrate(0.0, 4.0) + pp.integrate(0.0, 1.0)
+27.0
+```
+
+$a$나 $b$가 NaN이면 결과는 NaN이에요.
+
+## `roots`와 `solve`: 값이 0이 되는 곳, y가 되는 곳
+
+`roots()`는 함수가 0이 되는 실수 $x$를 모두 찾아 작은 순서의 배열로 돌려줘요. `solve(y)`는 함수가 $y$가 되는 곳이에요. `roots()`는 `solve(0.0)`과 같아요.
+
+```python
+>>> pp.solve(5.0)
+array([ -2.23606797749979, 2.2928932188134525, 3.7071067811865475], dtype=float64)
+>>> pp.roots()
+array([              0.0, 4.732050807568878], dtype=float64)
+```
+
+`solve(5.0)`의 뒤의 두 값은 조각 1의 봉우리(높이 6) 양쪽에서 곡선이 5를 지나는 곳이에요. 맨 앞의 $-2.236\ldots = -\sqrt{5}$와 `roots()`의 4.73…은 중단점 범위 $[0, 4]$ 밖이에요. 기본 `extrapolate=True`에서는 첫 조각($x^2$)을 왼쪽으로, 끝 조각을 오른쪽으로 늘인 부분의 답도 찾기 때문이에요. `roots()`의 0.0은 $x^2$이 축에 닿는 곳이에요. 범위 안의 근만 원하면 `extrapolate=False`를 줘요.
+
+```python
+>>> pp.roots(extrapolate=False)
+array([0.0], dtype=float64)
+>>> pp.solve(6.0, extrapolate=False) # 봉우리에 꼭 닿는 곳
+array([3.0], dtype=float64)
+>>> pp.solve(7.0, extrapolate=False) # 닿지 않으면 빈 배열
+array([], dtype=float64)
+```
+
+<Fig caption="solve(5.0)은 곡선이 높이 5를 지나는 곳을, roots()는 높이 0에 닿는 곳을 찾아요. 오른쪽 근은 중단점 범위 밖의 늘인 부분에 있어서 extrapolate=False면 나오지 않아요. 그림 왼쪽 밖의 답(−√5)은 그리지 않았어요.">
+  <PlaneFig
+    label="조각 다항식의 곡선과 높이 5의 가로선이 만나는 두 점, 높이 0에 닿는 두 점"
+    domain={[0, 5]}
+    range={[-2.5, 7]}
+    equal={false}
+    width={600}
+    height={320}
+    xTicks={[0, 1, 2, 3, 4, 5]}
+    yTicks={[0, 5]}
+    layers={[
+      { kind: 'vline', x: 4, tone: 'faint', dashed: true },
+      { kind: 'hline', y: 5, tone: 'base', dashed: true },
+      { kind: 'hline', y: 0, tone: 'base', dashed: true },
+      { kind: 'line', pts: ppExt, tone: 'soft', dashed: true },
+      { kind: 'line', pts: ppA, tone: 'soft', width: 1.6 },
+      { kind: 'line', pts: ppB, tone: 'soft', width: 1.6 },
+      { kind: 'points', pts: ppSolve, tone: 'main', size: 4, labels: ['2.29', '3.71'] },
+      { kind: 'points', pts: ppRoots, tone: 'ink', shape: 'diamond', size: 3.6, labels: ['0', '4.73'] },
+    ]}
+    legend={[
+      { label: 'solve(5.0)', tone: 'main', shape: 'dot' },
+      { label: 'roots()', tone: 'ink', shape: 'diamond' },
+    ]}
+  />
+</Fig>
+
+| 인자 | 뜻 |
+|---|---|
+| `y` | (`solve`만) 찾을 값. 유한한 실수예요. 기본값 0.0 |
+| `discontinuity` | `True`(기본)면 경계에서 값이 뛰면서 $y$를 건너는 중단점도 답에 넣어요 |
+| `extrapolate` | `True`면 양 끝 조각을 늘인 부분의 답도 찾아요. `'periodic'`은 `True`로 쳐요. 기본값 `None`은 객체의 값이에요 |
+
+### 축에 닿기만 하는 근도 찾아요
+
+곡선이 축을 건너지 않고 닿기만 하는 근(중근)은 부호 변화가 없어서 놓치기 쉬워요. `roots`는 이런 근도 찾고, 아주 가까이 붙은 두 근도 따로 찾아요.
+
+```python
+>>> touch = sd.interpolate.PPoly([[1.0], [-0.5], [0.0625]], [0.0, 1.0])     # (x − 0.25)²
+>>> touch.roots()
+array([0.25], dtype=float64)
+>>> near = sd.interpolate.PPoly([[1.0], [-3 * 2.0**-30], [2.0**-59]], [0.0, 1.0])   # 근이 2**-30과 2**-29
+>>> r = near.roots()
+>>> r
+array([9.313225746154785e-10, 1.862645149230957e-09], dtype=float64)
+>>> r[1] - r[0] == 2.0**-30
+True
+```
+
+### 뛰는 곳에서 건너는 경우: `discontinuity`
+
+조각 사이에서 값이 뛰면, 어느 조각 안에서도 $y$가 되지 않으면서 $y$를 건너뛸 수 있어요. `discontinuity=True`면 그 중단점도 답에 넣어요.
+
+```python
+>>> jump = sd.interpolate.PPoly([[-1.0, 1.0]], [0.0, 1.0, 2.0])     # 1에서 −1이 +1로 뛰어요
+>>> jump.roots()
+array([1.0], dtype=float64)
+>>> jump.roots(discontinuity=False)
+array([], dtype=float64)
+```
+
+### 조각 전체가 답일 때
+
+어떤 조각이 통째로 $y$와 같으면 그 구간의 모든 점이 답이에요. 그때는 구간의 왼쪽 끝과 NaN을 이어 넣어 "여기서부터 구간 전체"라는 표시로 삼아요.
+
+```python
+>>> flat = sd.interpolate.PPoly([[0.0, 1.0], [0.0, 0.0]], [0.0, 1.0, 2.0])  # [0, 1]에서 0, 그 뒤로 x − 1
+>>> flat.roots(extrapolate=False)
+array([0.0, nan, 1.0], dtype=float64)
+```
+
+### 복소수 계수는 안 돼요
+
+근 찾기는 실수 계수에서만 해요.
+
+```python
+>>> sd.interpolate.PPoly([[1j], [1.0]], [0.0, 1.0]).roots()
+Traceback (most recent call last):
+    ...
+ValueError: roots(): root finding is only for real-valued polynomials
+>>> pp.solve(sd.inf)
+Traceback (most recent call last):
+    ...
+ValueError: solve(): 'y' must be finite
+```
+
+## `extend`: 조각을 더 붙이기
+
+`extend(c, x)`는 객체의 오른쪽(또는 왼쪽)에 조각을 더해요. `c`는 새 조각들의 계수 $(k' + 1, m', \dots)$이고, `x`는 새 조각마다 한 점씩 늘어나는 중단점 $(m',)$이에요. **객체 자신을 고치는** 하나뿐인 메서드이고 돌려주는 값은 없어요.
+
+```python
+>>> grow = sd.interpolate.PPoly(c, [0.0, 2.0, 4.0])
+>>> grow.extend([[1.0], [-4.0], [4.0]], [6.0])       # [4, 6]에서 4 − 4s + s²
+>>> grow
+PPoly(degree=2, pieces=3, extrapolate=True)
+>>> grow.x
+array([0.0, 2.0, 4.0, 6.0], dtype=float64)
+>>> grow([4.0, 5.0, 6.0])
+array([4.0, 1.0, 0.0], dtype=float64)
+```
+
+새 중단점이 지금 범위의 오른쪽에 있으면 오른쪽에, 왼쪽에 있으면 왼쪽에 붙어요. 지금의 끝 중단점과 겹치거나 범위 안에 들어오면 에러예요. 차수가 다르면 낮은 쪽의 높은 차수 계수를 0으로 채워 맞춰요.
+
+```python
+>>> grow.extend([[5.0]], [-1.0])                     # 왼쪽 [−1, 0]에 상수 5
+>>> grow.c
+array([[ 0.0,  1.0, -2.0,  1.0],
+       [ 0.0,  0.0,  4.0, -4.0],
+       [ 5.0,  0.0,  4.0,  4.0]], dtype=float64)
+>>> grow.extend([[5.0]], [6.0])
+Traceback (most recent call last):
+    ...
+ValueError: extend(): 'x' must lie beyond either end of self.x, without touching it
+```
+
+## `from_spline`: B-스플라인에서 바꾸기
+
+[`BSpline`](/api/interpolate/BSpline/) 객체나 `(t, c, k)` 튜플(매듭, 계수, 차수)을 같은 함수의 `PPoly`로 바꿔요. B-스플라인으로 만든 곡선의 근을 찾고 싶을 때 써요.
+
+```python
+>>> xs = sd.asarray([0.0, 1.0, 2.0, 3.0, 4.0, 5.0])
+>>> ys = sd.asarray([1.0, -1.0, 0.5, 2.0, -0.5, 1.0])
+>>> b = sd.interpolate.make_interp_spline(xs, ys, k=3)
+>>> q = sd.interpolate.PPoly.from_spline(b)
+>>> q
+PPoly(degree=3, pieces=3, extrapolate=True)
+>>> q.x
+array([0.0, 2.0, 3.0, 5.0], dtype=float64)
+>>> float(sd.max(sd.abs(q(sd.linspace(0.0, 5.0, 501)) - b(sd.linspace(0.0, 5.0, 501)))))
+1.1102230246251565e-15
+>>> q.roots(extrapolate=False)
+array([0.26002897901835237,  1.7798289191484662,   3.813444933568141,
+         4.834257995876261], dtype=float64)
+```
+
+중단점은 스플라인의 정의 구간 안에 있는 서로 다른 매듭이에요. 그래서 바깥 규칙이 무엇이든 원래 스플라인과 같은 함수예요. `extrapolate=None`이면 `BSpline` 객체의 값을 물려받고, 튜플이면 `True`예요.
+
+```python
+>>> sd.interpolate.PPoly.from_spline(b.tck).extrapolate
+True
+>>> sd.interpolate.PPoly.from_spline((b.t, b.c, b.k), extrapolate=False)
+PPoly(degree=3, pieces=3, extrapolate=False)
+```
+
+## 여러 함수를 한 번에: 배치와 `axis`
+
+`c`에 축이 더 있으면 같은 중단점을 쓰는 여러 조각 다항식을 한 객체에 담아요. `c`가 $(k + 1, m, 2)$면 함수가 둘이에요.
+
+```python
+>>> c2 = sd.zeros((2, 2, 2))
+>>> c2[:, :, 0] = sd.asarray([[1.0, 1.0], [0.0, 1.0]])       # 함수 0: x
+>>> c2[:, :, 1] = sd.asarray([[-1.0, -1.0], [3.0, 2.0]])     # 함수 1: 3 − x
+>>> two = sd.interpolate.PPoly(c2, [0.0, 1.0, 2.0])
+>>> two(0.5)
+array([0.5, 2.5], dtype=float64)
+>>> two([0.5, 1.5])
+array([[0.5, 2.5],
+       [1.5, 1.5]], dtype=float64)
+>>> two.integrate(0.0, 2.0)
+array([2.0, 4.0], dtype=float64)
+>>> two.solve(1.0)
+[array([1.0], dtype=float64), array([2.0], dtype=float64)]
+```
+
+값과 적분은 함수마다의 결과를 배치 모양의 배열로 돌려줘요. `roots`와 `solve`는 함수마다 근의 수가 달라서 배열 하나로 묶을 수 없으므로, 배치 모양으로 겹친 리스트에 함수마다의 배열을 담아 돌려줘요.
+
+`axis`는 결과에서 평가점의 모양이 놓이는 축이에요. 기본값 0이면 결과가 (평가점의 모양) + (배치)예요. `axis=1`이면 `c`를 $(b_0, k + 1, m, \dots)$로 읽고 결과는 $(b_0,)$ + (평가점의 모양) + (나머지 배치)예요. 음수도 받아요.
+
+```python
+>>> c3 = sd.permute_dims(c2, (2, 0, 1))              # (2, k + 1, m)
+>>> swapped = sd.interpolate.PPoly(c3, [0.0, 1.0, 2.0], axis=1)
+>>> swapped.axis
+1
+>>> swapped([0.5, 1.0, 1.5]).shape
+(2, 3)
+>>> swapped([0.5, 1.0, 1.5])
+array([[0.5, 1.0, 1.5],
+       [2.5, 2.0, 1.5]], dtype=float64)
+```
+
+## 계수의 NaN과 inf
+
+직접 준 계수에 NaN이나 inf가 있어도 받아요. 그 조각에서만 결과가 NaN이나 inf가 되고 다른 조각은 그대로예요.
+
+```python
+>>> hole = sd.interpolate.PPoly([[1.0, sd.nan, 1.0], [0.0, 0.0, 2.0]], [0.0, 1.0, 2.0, 3.0])
+>>> hole([0.5, 1.5, 2.5])
+array([0.5, nan, 2.5], dtype=float64)
+```
+
+자료에서 계수를 만드는 종류(`CubicSpline` 등)는 달라요. 자료가 유한해야 하고, 계수가 넘치면 만들 때 에러로 알려요.
+
+## 조심할 점
+
+### 계수의 변수는 조각의 왼쪽 끝에서 잰 거리예요
+
+전체 다항식 $ax^2 + bx + c$의 계수를 그대로 넣으면 첫 조각만 맞고 나머지는 틀려요. 조각 $i$의 계수는 $(x - x_i)$의 다항식으로 다시 써서 넣어야 해요. 어느 조각에서나 $x^2$인 함수를 만들려면 $x^2 = (x - x_i)^2 + 2x_i(x - x_i) + x_i^2$을 써요.
+
+```python
+>>> wrong = sd.interpolate.PPoly([[1.0, 1.0], [0.0, 0.0], [0.0, 0.0]], [0.0, 2.0, 4.0])
+>>> wrong(3.0)                       # (3 − 2)² = 1
+1.0
+>>> right = sd.interpolate.PPoly([[1.0, 1.0], [0.0, 4.0], [0.0, 4.0]], [0.0, 2.0, 4.0])
+>>> right(3.0)
+9.0
+```
+
+### 높은 차수가 먼저예요
+
+`c[0]`이 가장 높은 차수의 계수이고 `c[-1]`이 상수항이에요.
+
+### 옵션은 이름으로 줘요
+
+```python
+>>> sd.interpolate.PPoly(c, [0.0, 2.0, 4.0], False)
+Traceback (most recent call last):
+    ...
+TypeError: PPoly(): takes 2 positional arguments but 3 were given
+>>> pp.derivative(2)
+Traceback (most recent call last):
+    ...
+TypeError: PPoly.derivative() takes 1 positional argument but 2 were given
+```
+
+### `extend`만 객체를 고쳐요
+
+다른 메서드는 모두 새 객체나 값을 돌려주고 원래 객체는 그대로 둬요. `extend`를 쓴 객체를 다른 곳에서도 쥐고 있다면 그쪽도 함께 바뀌어요.
+
+## scipy·numpy를 아는 분께
+
+- `scipy.interpolate.PPoly`와 이름, 계수의 꼴, 구간 규칙이 같아요.
+- `extrapolate`와 `axis`, 메서드의 `nu`, `discontinuity`는 이름으로만 받아요. scipy의 `PPoly(c, x, True)`, `pp(x, 1)`, `pp.derivative(2)`는 `TypeError`예요.
+- 계수와 중단점을 복사해 읽기 전용으로 쥐어요. scipy는 넘긴 배열을 그대로 쥘 수 있어서 그 배열을 고치면 객체가 바뀌어요.
+- 중단점은 유한하고 엄격히 단조여야 해요. scipy는 같은 중단점이 되풀이되는 것과 무한한 중단점을 받아요. `extend`도 끝 중단점과 같은 새 중단점을 받지 않아요.
+- `nu`는 int만 받아요. scipy는 `nu=1.0`을 받아요. `axis`는 음수도 받아요.
+- `roots`와 `solve`의 배치 결과는 배치 모양으로 겹친 Python 리스트예요. scipy는 dtype이 `object`인 배열이에요.
+- `roots`가 축에 닿기만 하는 근과 아주 가까이 붙은 두 근을 찾아요. scipy는 이런 근을 놓치거나 덜 정확하게 내는 일이 있어요.
+- `integrate`의 끝이 NaN이면 NaN이에요. scipy는 `ValueError`예요.
+- `from_spline`의 중단점은 정의 구간 안의 서로 다른 매듭이에요. scipy는 모든 매듭을 중단점으로 써서 폭이 0인 조각이 생기고, 바깥에서 원래 스플라인과 다른 함수가 돼요.
+- `construct_fast`와 `from_bernstein_basis`는 없어요.
+- 평가점이 수 하나면 결과는 Python `float`·`complex`예요.

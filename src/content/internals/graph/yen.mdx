@@ -1,0 +1,280 @@
+---
+title: Yen의 K개 최단 경로
+group: 경로
+order: 3
+summary: yen이 고리 없는 경로 K개를 (차례 합, 변 수, 노드 열)의 전순서로 고르는 방법, Yen 알고리즘의 뿌리와 갈래, 다음 경로가 언제나 후보 안에 있다는 증명, 갈래 탐색이 뿌리의 합에서 시작하는 까닭, 같은 길이의 갈래 가운데 변 수와 사전 순서로 하나를 고르는 층 나누기, 음수 무게의 갈래 탐색을 설명해요.
+seeAlso: [shortest-paths, overview]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import PlaneFig from '../../../components/fig/PlaneFig.astro';
+
+export const yPts = [[0, 1], [1, 2.3], [1, 1.4], [1, 0], [2.2, 1]];
+export const yRoot = [[0, 1, 1, 2.3]];
+export const ySpur = [[1, 2.3, 1, 1.4], [1, 1.4, 2.2, 1]];
+export const yBanned = [[1, 2.3, 2.2, 1]];
+export const yOther = [[0, 1, 1, 1.4], [0, 1, 1, 0], [1, 0, 2.2, 1], [0, 1, 2.2, 1]];
+
+## 한눈에 보기
+
+[`yen(csgraph, source, sink, K)`](/api/graph/yen/)는 `source`에서 `sink`로 가는 **고리 없는** 경로 가운데 앞선 $K$개를 돌려줘요. "앞선"은 이 전순서예요.
+
+1. 경로의 길이 $L(p)$. 원점에서부터 차례로 더한 float64 합이에요([최단 경로의 정의](/internals/graph/shortest-paths/)).
+2. 길이가 같으면 변의 수가 적은 것.
+3. 그것도 같으면 노드 열의 사전 순서가 작은 것.
+
+노드 열이 다른 두 경로는 셋째 기준에서 반드시 갈리니 이것은 전순서예요. 그래서 동점이 아주 많은 그래프에서도 앞선 $K$개가 데이터만으로 정해져요. 계산은 Yen 알고리즘이고, 갈래 탐색 하나하나가 이 전순서의 가장 앞선 갈래를 돌려주게 만든 것이 이 구현의 요점이에요.
+
+```cpp
+// csrc/graph/yen.cpp
+struct Order {
+    bool operator()(const Path& a, const Path& b) const {
+        if (a.length != b.length) return a.length < b.length;
+        if (a.nodes.size() != b.nodes.size()) return a.nodes.size() < b.nodes.size();
+        return a.nodes < b.nodes;
+    }
+};
+```
+
+## Yen 알고리즘
+
+찾은 경로의 목록 $A$와 후보의 집합 $B$를 둬요. $A$의 첫 경로는 최단 경로예요. 그다음부터는 $A$에 마지막으로 들어온 경로 $q = (q_0, \ldots, q_m)$를 보고 후보를 더 만든 뒤, $B$에서 가장 앞선 것을 $A$로 옮겨요.
+
+$q$의 자리 $i = 0, \ldots, m - 1$마다 이렇게 해요.
+
+- **뿌리**는 $q_0, \ldots, q_i$이고 **갈래 노드**는 $q_i$예요.
+- 뿌리가 같은(앞 $i + 1$개 노드가 $q$와 같은) 찾은 경로들이 $q_i$에서 다음으로 간 노드를 모아, 그 변 $q_i \to \cdot$을 막아요.
+- 경로가 고리 없게 뿌리의 다른 노드 $q_0, \ldots, q_{i-1}$을 지워요.
+- 그 그래프에서 $q_i$부터 싱크까지 가장 앞선 경로(갈래)를 찾아, 뿌리에 이은 것을 후보로 넣어요.
+
+```cpp
+                // csrc/graph/yen.cpp
+                std::set<Path, Order> candidates;
+                while (!found.empty() && static_cast<int64_t>(found.size()) < K) {
+                    const std::vector<int64_t> prev = found.back().nodes;
+                    double root_sum = 0.0;
+                    for (size_t i = 0; i + 1 < prev.size(); ++i) {
+                        if (i > 0) {
+                            double w = 0.0;
+                            paths::edge_weight(g, prev[i - 1], prev[i], w);
+                            root_sum += w;
+                        }
+                        banned.clear();
+                        for (const Path& p : found)
+                            if (p.nodes.size() > i + 1 &&
+                                std::equal(
+                                    prev.begin(), prev.begin() + static_cast<std::ptrdiff_t>(i) + 1, p.nodes.begin()
+                                ))
+                                banned.push_back(p.nodes[i + 1]);
+                        std::sort(banned.begin(), banned.end());
+                        for (size_t r = 0; r < i; ++r) removed[static_cast<size_t>(prev[r])] = 1;
+                        if (spur.search(prev[i], root_sum, t, removed, banned, part, length)) {
+                            Path c{
+                                length,
+                                std::vector<int64_t>(prev.begin(), prev.begin() + static_cast<std::ptrdiff_t>(i))
+                            };
+                            c.nodes.insert(c.nodes.end(), part.begin(), part.end());
+                            candidates.insert(std::move(c));
+                        }
+                        for (size_t r = 0; r < i; ++r) removed[static_cast<size_t>(prev[r])] = 0;
+                    }
+                    if (candidates.empty()) break;
+                    found.push_back(*candidates.begin());
+                    candidates.erase(candidates.begin());
+                }
+```
+
+후보 집합은 `std::set`이라 같은 경로는 한 번만 들어가고, 맨 앞이 언제나 전순서의 가장 앞선 후보예요. 후보가 바닥나면 경로가 $K$개보다 적어도 멈춰요. 그래서 $K$는 아주 커도 돼요. 있는 경로만큼만 돌려줘요.
+
+### 다음 경로는 언제나 후보 안에 있어요
+
+$A$에 $k$개가 있고, 아직 찾지 않은 고리 없는 경로 가운데 가장 앞선 것을 $p$라 할게요. $B$의 맨 앞이 $p$라는 것을 보이면 돼요.
+
+$p$와 앞부분이 겹치는 찾은 경로들 가운데 가장 길게 겹치는 앞부분을 $r = (p_0, \ldots, p_i)$라 해요. 원점은 모든 경로가 같이 쓰니 $r$은 비어 있지 않아요. $r$이 $p$ 전체라면 $p$는 어떤 찾은 경로의 앞부분인데, 둘 다 싱크에서 끝나고 고리가 없으니 같은 경로라 모순이에요. 그러니 $p_i$ 다음에 노드가 더 있어요.
+
+뿌리가 $r$인 찾은 경로 가운데 가장 늦게 찾은 것을 $q$라 하면, $q$를 처리할 때 자리 $i$에서 갈래를 찾았어요.
+
+- 그때 막은 변에 $p_i \to p_{i+1}$은 없어요. 있었다면 $r$에 $p_{i+1}$을 이은 더 긴 앞부분을 어떤 찾은 경로가 가졌을 테니 $r$이 가장 길다는 것과 어긋나요.
+- $p$는 고리가 없으니 갈래 부분이 뿌리의 다른 노드를 지나지 않아요.
+
+그래서 $p$의 갈래 부분은 그 탐색이 고를 수 있는 갈래였고, 탐색은 그보다 앞서거나 같은 갈래를 돌려줬어요. 뿌리가 같으니 그렇게 만든 후보 $c$도 $p$보다 앞서거나 같아요. $c$가 그 뒤에 $A$로 옮겨졌다면 $c$는 뿌리가 $r$인 찾은 경로이고 $q$보다 늦게 찾은 것이라 $q$의 고름과 어긋나요. 그러니 $c$는 아직 $B$에 있어요. 한편 $B$에는 찾은 경로가 없어요(갈래의 첫 변이 막혀 있어 뿌리가 같은 찾은 경로와 같을 수 없어요). $B$의 맨 앞은 찾지 않은 경로이면서 $c$ 이하, 곧 $p$ 이하이고, $p$가 찾지 않은 것 가운데 가장 앞서니 맨 앞이 $p$예요.
+
+이 증명은 갈래 탐색이 "조건에 맞는 갈래 가운데 전순서로 가장 앞선 것"을 정확히 돌려줄 때만 서요. 다음 두 절이 그것을 만드는 방법이에요.
+
+## 갈래 탐색
+
+### 뿌리의 합에서 시작하기
+
+후보의 길이는 뿌리와 갈래를 이은 경로 전체의 차례 합이어야 해요. 갈래의 길이를 따로 구해 뿌리의 길이에 더하면 덧셈의 순서가 달라져 끝자리가 바뀔 수 있어요. 그래서 갈래 노드의 처음 값을 0이 아니라 **뿌리의 차례 합** $x$로 두고 Dijkstra를 시작해요. 그러면 탐색이 이완하며 쓰는 값이 곧 원점에서부터의 차례 합이에요. 뿌리의 합은 위 고리의 `root_sum`이 뿌리의 변을 하나씩 더해 만들어요.
+
+```cpp
+        // csrc/graph/yen.cpp
+        d[s] = x;
+        if (!h_) {
+            // Dijkstra; once t is taken, the nodes of the same distance still come (zero-weight edges may
+            // join them to t), and nothing past it can be on a tight path to t
+            w_.q_set(s, x);
+            while (!w_.q_empty()) {
+                if (done[static_cast<size_t>(t)] && w_.hk[0] > d[t]) break;
+                const int64_t u = w_.q_pop().v;
+                done[static_cast<size_t>(u)] = 1;
+                const double du = d[u];
+                for (int64_t k = g_.ip[u]; k < g_.ip[u + 1]; ++k) {
+                    const int64_t v = g_.ix[k];
+                    if (!allowed(u, v)) continue;
+                    const double tt = du + g_.weight(k);
+                    if (tt < d[v]) {
+                        d[v] = tt;
+                        w_.q_set(v, tt);
+                    }
+                }
+            }
+            w_.q_clear();
+            for (int64_t v = 0; v < n; ++v)
+                if (!done[static_cast<size_t>(v)]) d[v] = kInf;
+        } else {
+            // negative weights: the label-correcting search on the potentials (a node taken comes back
+            // when its distance drops), to the end
+            w_.q_set(s, x - h_[s]);
+            while (!w_.q_empty()) {
+                const int64_t u = w_.q_pop().v;
+                const double du = d[u];
+                for (int64_t k = g_.ip[u]; k < g_.ip[u + 1]; ++k) {
+                    const int64_t v = g_.ix[k];
+                    if (!allowed(u, v)) continue;
+                    const double tt = du + g_.weight(k);
+                    if (tt < d[v]) {
+                        d[v] = tt;
+                        w_.q_set(v, tt - h_[v]);
+                    }
+                }
+            }
+        }
+```
+
+음수 무게가 없으면 `h_`가 없어 위쪽 갈래를 타요. `allowed`가 지운 노드와 막은 변을 거르고, 나머지는 [Dijkstra](/internals/graph/shortest-paths/#4진-색인-힙의-dijkstra)와 같아요. 싱크를 꺼낸 뒤에도 바로 멈추지 않고, 큐의 맨 앞 키가 싱크의 거리보다 커질 때까지 꺼내요. 거리가 싱크와 같은 노드가 무게 0의 변으로 싱크에 이어질 수 있어서예요. 음이 아닌 무게에서는 싱크로 가는 꼭 맞는 경로 위의 노드가 모두 싱크의 거리 이하이니, 그보다 먼 노드는 버려도 돼요. 꺼내지 않은 노드의 거리는 $\infty$로 지워 다음 단계가 보지 않게 해요.
+
+### 같은 길이의 갈래에서 하나 고르기
+
+길이가 가장 짧은 갈래가 여럿이면 변 수가 적은 것, 그다음 노드 열이 작은 것을 골라야 해요. 거리 $d$가 정해지면 꼭 맞는 변($\mathrm{fl}(d(u) + w) = d(v)$)만 남겨 갈래 노드에서 너비 우선으로 층을 매겨요.
+
+```cpp
+        // csrc/graph/yen.cpp
+        // the layering of the tight edges by breadth-first edge count from s (stopping at t's level)
+        int64_t* level = w_.level.data();
+        int64_t* order = w_.order.data();
+        std::fill(level, level + n, int64_t{-1});
+        level[s] = 0;
+        int64_t qn = 0;
+        order[qn++] = s;
+        for (int64_t q = 0; q < qn; ++q) {
+            const int64_t u = order[q];
+            if (u == t || (level[t] >= 0 && level[u] >= level[t])) continue;
+            for (int64_t k = g_.ip[u]; k < g_.ip[u + 1]; ++k) {
+                const int64_t v = g_.ix[k];
+                if (level[v] >= 0 || !(d[v] < kInf) || !allowed(u, v) || d[u] + g_.weight(k) != d[v]) continue;
+                level[v] = level[u] + 1;
+                order[qn++] = v;
+            }
+        }
+```
+
+꼭 맞는 변으로 갈래 노드에서 싱크까지 가는 경로는 모두 가장 짧은 갈래이고, 그 가운데 변이 가장 적은 것은 변 수가 싱크의 층 $\ell(t)$와 같아요. 꼭 맞는 변 $(u, v)$에서는 언제나 $\ell(v) \le \ell(u) + 1$이니, 변 $\ell(t)$개로 층 $0$에서 층 $\ell(t)$에 닿으려면 걸음마다 층이 정확히 하나씩 올라야 해요. 그래서 "가장 짧고 변이 가장 적은 갈래"는 곧 "층을 하나씩 오르는 꼭 맞는 경로"예요. 싱크의 층을 넘는 노드는 더 펼치지 않아요.
+
+그다음 뒤에서부터, 층을 하나씩 오르는 꼭 맞는 변으로 싱크에 닿을 수 있는 노드를 `good`으로 표시해요.
+
+```cpp
+        // csrc/graph/yen.cpp
+        // good: the nodes from which the layering reaches t, found backward
+        std::vector<uint8_t>& good = done;  // reused
+        std::fill(good.begin(), good.end(), uint8_t{0});
+        good[static_cast<size_t>(t)] = 1;
+        auto layered = [&](int64_t u, int64_t k) {
+            const int64_t v = g_.ix[k];
+            return level[v] == level[u] + 1 && allowed(u, v) && d[u] + g_.weight(k) == d[v];
+        };
+        for (int64_t q = qn; q-- > 0;) {
+            const int64_t u = order[q];
+            if (u == t) continue;
+            for (int64_t k = g_.ip[u]; k < g_.ip[u + 1]; ++k) {
+                if (good[static_cast<size_t>(g_.ix[k])] && layered(u, k)) {
+                    good[static_cast<size_t>(u)] = 1;
+                    break;
+                }
+            }
+        }
+```
+
+마지막으로 갈래 노드에서 출발해 `good`인 다음 노드 가운데 가장 작은 것을 차례로 골라요. 행이 오름차순이라 처음 만나는 것이 가장 작아요.
+
+```cpp
+        // csrc/graph/yen.cpp
+        out.clear();
+        out.push_back(s);
+        for (int64_t u = s; u != t;) {
+            int64_t next = -1;
+            for (int64_t k = g_.ip[u]; k < g_.ip[u + 1]; ++k) {  // ascending: the first is the smallest
+                if (good[static_cast<size_t>(g_.ix[k])] && layered(u, k)) {
+                    next = g_.ix[k];
+                    break;
+                }
+            }
+            out.push_back(next);
+            u = next;
+        }
+        length = d[t];
+        return true;
+```
+
+이렇게 고른 경로가 사전 순서로 가장 작아요. 고를 수 있는 경로는 모두 길이(노드 수)가 같으니, 사전 순서는 처음 다른 자리에서 갈려요. 첫 자리부터 가장 작은 `good` 노드를 고르면, 그 노드에서도 층을 오르며 싱크에 닿는 길이 있으니(`good`의 뜻) 끝까지 이어 갈 수 있고, 어느 자리에서든 더 작은 선택은 싱크에 닿지 못하는 노드뿐이에요. 층이 하나씩 오르니 고른 갈래에는 같은 노드가 두 번 나오지 않아요. 지운 뿌리 노드도 지나지 않으니 후보 전체가 고리 없는 경로예요.
+
+## 예
+
+```python
+>>> import stardust as sd
+>>> g = sd.graph
+>>> rows = [0, 0, 0, 0, 1, 1, 2, 3]
+>>> cols = [1, 2, 3, 4, 2, 4, 4, 4]
+>>> w = [1.0, 1.0, 2.0, 4.0, 0.0, 2.0, 2.0, 1.0]
+>>> G = sd.sparse.coo_array((w, (rows, cols)), shape=(5, 5))
+>>> r = g.yen(G, 0, 4, 10, return_predecessors=True)
+>>> r.dist_array.tolist()
+[3.0, 3.0, 3.0, 3.0, 4.0]
+>>> def path(pred, t):
+...     out = [t]
+...     while pred[out[-1]] != -9999:
+...         out.append(pred[out[-1]])
+...     return out[::-1]
+>>> [path(row, 4) for row in r.predecessors.tolist()]
+[[0, 1, 4], [0, 2, 4], [0, 3, 4], [0, 1, 2, 4], [0, 4]]
+```
+
+길이 3인 경로가 넷이에요. 변 둘인 셋이 노드 열의 사전 순서로 먼저 오고, 변이 셋인 `[0, 1, 2, 4]`가 그 뒤에 와요. $K = 10$이지만 고리 없는 경로가 다섯뿐이라 다섯을 돌려줘요.
+
+<Fig caption="넷째 경로 [0, 1, 2, 4]가 생기는 자리. 첫 경로 [0, 1, 4]를 처리할 때 갈래 노드 1에서, 뿌리 0 → 1(진한 점선)은 그대로 두고 첫 경로가 쓴 변 1 → 4(회색 점선)를 막은 채 갈래 1 → 2 → 4(진한 선)를 찾아요. 1 → 2의 무게가 0이라 길이는 그대로 3이에요.">
+  <PlaneFig
+    label="노드 다섯의 그래프에서 뿌리, 막은 변, 갈래"
+    domain={[-0.4, 2.6]}
+    range={[-0.4, 2.7]}
+    width={400}
+    layers={[
+      { kind: 'segments', segs: yOther, tone: 'faint', width: 1.5 },
+      { kind: 'segments', segs: yBanned, tone: 'base', width: 1.5, dashed: true },
+      { kind: 'segments', segs: yRoot, tone: 'main', width: 2.5, dashed: true },
+      { kind: 'segments', segs: ySpur, tone: 'main', width: 2.5 },
+      { kind: 'points', pts: yPts, tone: 'ink', size: 4, labels: ['0', '1', '2', '3', '4'] },
+    ]}
+    legend={[
+      { label: '뿌리', tone: 'main', shape: 'dash' },
+      { label: '갈래', tone: 'main', shape: 'line' },
+      { label: '막은 변', tone: 'base', shape: 'dash' },
+    ]}
+  />
+</Fig>
+
+## 음수 무게
+
+음수 무게가 있으면 먼저 [음수 순환 검사](/internals/graph/shortest-paths/#음수-순환)를 원점에서 닿는 노드에 대해 해요. 순환이 있으면 `NegativeCycleError`이고, 없으면 검사가 남긴 퍼텐셜 $h$로 갈래 탐색의 순서를 정해요. 키가 $d(v) - h(v)$이고 거리가 줄면 다시 넣는 Johnson 꼴의 탐색으로, 앞의 발췌에서 `else` 갈래예요(`h_`가 퍼텐셜이에요). 이 꼴은 키의 순서가 반올림으로 조금 어긋날 수 있어 싱크를 꺼낸 뒤 멈추는 지름길을 쓰지 않고 큐가 빌 때까지 돌아요. 거리가 정해진 뒤의 층 나누기와 고르기는 같아요. 음수 순환이 없으면 꼭 맞는 변의 층도 하나씩 오르니 고른 갈래는 여전히 고리가 없어요.
+
+## 그 밖의 경계
+
+`source == sink`면 길이 0의 경로 하나 $[s]$예요. $K = 0$이면 빈 결과예요. `return_predecessors=True`면 경로마다 한 행($n$칸)의 선행 노드를 쓰므로, 할당하기 전에 $8Kn$바이트를 물리 메모리와 견줘요. $K$가 아주 크면 이 검사에서 `MemoryError`가 날 수 있어요. 탐색은 직렬이고, 그래프가 크면 GIL을 놓고 돌아요.

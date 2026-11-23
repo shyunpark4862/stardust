@@ -1,0 +1,366 @@
+---
+title: 피벗 없는 띠 풀이
+group: 한 변수
+order: 3
+summary: CubicSpline의 기울기 계와 make_interp_spline의 배치 계를 행을 바꾸지 않고 소거하는 까닭, 정확한 피벗과 계산한 피벗이 양수라는 증명에서 성분마다의 역오차와 앞 오차까지, 도함수 조건의 행을 어디에 두면 성장이 1이나 2 미만으로 묶이는지, 증명이 서지 않는 계를 LAPACK gbtf2 꼴의 부분 피벗으로 푸는 길, 그리고 배치의 열을 묶어 풀어도 같은 비트인 까닭을 설명해요.
+seeAlso: [cubic, bspline, overview, accuracy-performance]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+
+## 한눈에 보기
+
+스플라인을 만들려면 연립방정식을 풀어야 해요. `CubicSpline`은 노드의 기울기 $n$개를 삼중대각 계로, `make_interp_spline`은 B-스플라인 계수 $n$개를 띠 계(배치 행렬)로 구해요. 이 영역은 두 계를 LAPACK에 넘기지 않고 `csrc/interpolate/banded.hpp`의 풀이로 풀어요.
+
+| 풀이 | 쓰는 곳 | 피벗 |
+|---|---|---|
+| `tridiagonal_factor`·`tridiagonal_solve` | `CubicSpline`의 기울기(주기 조건의 앞 블록 포함) | 없음 |
+| `BandSolver` | `make_interp_spline`의 배치 계, 주기 B-스플라인의 띠 부분 | 증명이 서는 계는 없음, 그 밖은 부분 피벗 |
+| `dense_solve` | 주기 스플라인의 작은 보정 계, 점이 차수 이하인 주기 계 | 부분 피벗 |
+
+행을 바꾸지 않는 소거(가우스 소거를 위에서 아래로 그대로)는 보통 위험해요. 피벗이 0에 가까우면 승수가 커지고 반올림이 불어나요. 그래서 일반 라이브러리는 부분 피벗(열에서 가장 큰 원소를 피벗으로 올리기)을 써요. 그런데 스플라인의 계에서는 피벗 없는 소거가 **더 정확해요**. 정확한 산술에서 피벗이 모두 양수이고 $L \ge 0$, $U \ge 0$(원소마다)이면 $\lvert L\rvert\lvert U\rvert = LU = A$라서, 소거의 역오차가 행렬의 원소마다 그 원소의 몇 $u$배로 묶여요. 부분 피벗의 역오차도 $\lvert L\rvert\lvert U\rvert$로 묶이지만, 행을 바꾼 뒤의 $\lvert L\rvert\lvert U\rvert$는 원소마다 $\lvert A\rvert$보다 클 수 있어요. 그래서 크기가 크게 다른 원소가 섞인 스플라인 계에서는 성분마다의 정확도가 떨어질 수 있어요.
+
+이 쪽은 이 주장을 증명하고, 증명이 서지 않는 계를 어떻게 피해 가는지 설명해요.
+
+## 삼중대각 분해
+
+삼중대각 행렬의 아래 대각을 $a_i$, 대각을 $b_i$, 위 대각을 $c_i$라 하면 피벗 없는 LU(Thomas 알고리즘)는 이래요.
+
+$$
+l_i = a_i / u_{i-1}, \qquad u_i = b_i - l_i c_{i-1}, \qquad w_i = 1/u_i
+$$
+
+앞 대입은 $r_i \leftarrow r_i - l_i r_{i-1}$, 뒤 대입은 $r_{n-1} \leftarrow r_{n-1}w_{n-1}$, $r_i \leftarrow (r_i - c_i r_{i+1})w_i$예요.
+
+```cpp
+// csrc/interpolate/banded.hpp
+inline std::int64_t tridiagonal_factor(double* a, double* b, const double* c, double* w, std::int64_t n) {
+    if (!(b[0] > 0.0 && std::isfinite(b[0]))) return 0;
+    w[0] = 1.0 / b[0];
+    for (std::int64_t i = 1; i < n; ++i) {
+        a[i] = a[i] / b[i - 1];
+        b[i] = b[i] - a[i] * c[i - 1];
+        if (!(b[i] > 0.0 && std::isfinite(b[i]))) return i;
+        w[i] = 1.0 / b[i];
+    }
+    return -1;
+}
+```
+
+분해는 피벗 $u_i$가 양의 유한한 수가 아닌 첫 행을 돌려줘요. 아래 증명에서 보듯 그런 일은 not-a-knot 끝의 간격이 $2^{50}$배쯤 넘게 다를 때만 생길 수 있고, 그때 `CubicSpline`은 `ValueError`를 내요.
+
+뒤 대입이 나눗셈 대신 역수 $w_i$를 곱하는 것은 속도 때문이에요. 긴 열 하나의 풀이는 앞 행의 결과를 받아 다음 행을 계산하는 사슬이라, 사슬 위의 연산 하나하나의 지연 시간이 전체 시간을 정해요. 나눗셈은 곱셈보다 지연이 길어요. 역수는 분해 때 사슬 밖에서 미리 구해 두니 뒤 대입의 사슬에는 곱셈만 남아요. 그 대가로 행마다 반올림이 하나 늘고, 증명이 그것까지 세요.
+
+```cpp
+    // csrc/interpolate/banded.hpp
+    for (std::int64_t i = 1; i < n; ++i) {
+        double* r = R + i * K;
+        const double* p = r - K;
+        const double li = l[i];
+        for (std::int64_t j = c0; j < c1; ++j) r[j] = r[j] - li * p[j];
+    }
+    {
+        double* r = R + (n - 1) * K;
+        const double wn = w[n - 1];
+        for (std::int64_t j = c0; j < c1; ++j) r[j] = r[j] * wn;
+    }
+    for (std::int64_t i = n - 2; i >= 0; --i) {
+        double* r = R + i * K;
+        const double* q = r + K;
+        const double ci = c[i], wi = w[i];
+        for (std::int64_t j = c0; j < c1; ++j) r[j] = (r[j] - ci * q[j]) * wi;
+    }
+```
+
+오른쪽은 $(n, K)$ 행 우선이라 한 행의 열들이 이어져 있어요. 대입의 한 걸음이 한 행의 열 $[c_0, c_1)$을 한꺼번에 계산해요. 행렬은 배치의 모든 열에 같으니 분해는 한 번이고, 열마다 같은 대입을 해요. 열이 8개 이하면 `CubicSpline`은 행렬을 배열로 만들지 않고 분해·오른쪽·앞 대입을 한 번에 훑어요([3차 계열](/internals/interpolate/cubic/)). 연산과 순서가 이 두 함수와 같아서 결과도 같은 비트예요.
+
+## CubicSpline의 계에서 피벗 없는 풀이가 안전한 까닭
+
+기울기 계의 행은 이래요($h_i = x_{i+1} - x_i$).
+
+| 행 | 아래 대각 | 대각 | 위 대각 |
+|---|---|---|---|
+| 안쪽 $i$ | $h_i$ | $2(h_{i-1} + h_i)$ | $h_{i-1}$ |
+| 첫 행, natural·`(2, v)` |  | $2h_0$ | $h_0$ |
+| 첫 행, clamped·`(1, v)` |  | $1$ | $0$ |
+| 첫 행, not-a-knot |  | $h_1$ | $x_2 - x_0$ |
+| 끝 행, natural·`(2, v)` | $h_{n-2}$ | $2h_{n-2}$ |  |
+| 끝 행, clamped·`(1, v)` | $0$ | $1$ |  |
+| 끝 행, not-a-knot | $x_{n-1} - x_{n-3}$ | $h_{n-3}$ |  |
+
+점이 셋이고 양 끝이 not-a-knot이면 포물선의 계 $[1, 1, 0]$, $[h_1, 2(h_0 + h_1), h_0]$, $[0, 1, 1]$이에요. 모든 원소가 0 이상이에요.
+
+**1. 정확한 피벗은 양수예요.** 귀납 가정을 $u_{i-1} \ge c_{i-1}$(앞 행의 피벗이 그 행의 위 대각 이상)으로 둘게요. 그러면 $l_i c_{i-1} = h_i c_{i-1}/u_{i-1} \le h_i$라 안쪽 행의 피벗은 $u_i \ge 2(h_{i-1} + h_i) - h_i = 2h_{i-1} + h_i \ge c_i = h_{i-1}$이고 가정이 이어져요. natural($2h_0 \ge h_0$)과 clamped($1 \ge 0$)로 시작하면 가정이 처음부터 서요. not-a-knot으로 시작하면 $u_0 = h_1 \lt c_0 = h_0 + h_1$이라 첫 행에서는 서지 않지만, $l_1 = h_1/h_1 = 1$이라 $u_1 = 2(h_0 + h_1) - (h_0 + h_1) = h_0 + h_1 \ge c_1 = h_0$이 되어 둘째 행부터 서요. 끝 행의 피벗은 natural이 $2h_{n-2} - h_{n-2}h_{n-3}/u_{n-2} \ge h_{n-2}$, clamped가 1, not-a-knot이
+
+$$
+u_{n-1} = h_{n-3} - (x_{n-1} - x_{n-3})\frac{h_{n-3}}{u_{n-2}} = h_{n-3}\Bigl(1 - \frac{h_{n-3} + h_{n-2}}{u_{n-2}}\Bigr) \gt 0
+$$
+
+이에요. 마지막 부등식은 $u_{n-2} \ge 2h_{n-3} + h_{n-2}$에서 나와요. 피벗과 승수가 모두 0 이상이니 $L \ge 0$, $U \ge 0$이고 $\lvert L\rvert\lvert U\rvert = LU = A$예요.
+
+**2. 계산한 피벗도 양수예요.** 안쪽 행과 natural·clamped 끝에서 빼는 값 $\mathrm{fl}(l_i c_{i-1})$은 대각의 반 이하라서 뺄셈에 상쇄가 없어요. not-a-knot 시작의 $l_1$은 같은 double $h_1$끼리의 나눗셈이라 정확히 1이에요. 상쇄가 있는 곳은 not-a-knot의 끝 피벗 하나뿐이에요. 정확한 값은 1의 식대로 양수이고, 계산한 값은 $h_{n-3}$이 $6u(h_{n-3} + h_{n-2})$보다 크면 양수로 남아요. 그보다 작으면 반올림한 원소의 행렬이 작업 정밀도에서 이미 특이한 경우라, 풀이를 멈추고 `CubicSpline`이 `ValueError`(기울기의 계가 부동소수점에서 특이하다는 메시지)를 내요.
+
+```python
+>>> import stardust as sd
+>>> I = sd.interpolate
+```
+
+**3. 역오차.** 연산마다 반올림이 하나예요. 분해의 $\hat u_i = (b_i - \hat l_i c_{i-1}(1 + \delta_1))(1 + \delta_2)$, $\hat l_i = a_i(1 + \delta_3)/\hat u_{i-1}$에서 $\hat L\hat U = \hat A + \Delta A_1$, $\lvert \Delta A_1\rvert \le \gamma_1\lvert \hat L\rvert\lvert \hat U\rvert$예요. 앞 대입은 $\hat L$에 $\lvert \Delta L\rvert \le \gamma_2\lvert \hat L\rvert$를, 역수를 곱하는 뒤 대입 $\hat s_i = (\hat z_i - c_i\hat s_{i+1}(1 + \delta))(1 + \delta)\hat w_i(1 + \delta)$, $\hat w_i = (1 + \delta)/\hat u_i$는 $\hat U$에 $\lvert \Delta U\rvert \le \gamma_4\lvert \hat U\rvert$를 보태요. 모으면 $(\hat A + \Delta A)\hat s = \hat b$이고
+
+$$
+\lvert \Delta A\rvert \le (\gamma_1 + \gamma_2 + \gamma_4 + \gamma_2\gamma_4)\lvert \hat L\rvert\lvert \hat U\rvert \le \gamma_7\lvert \hat L\rvert\lvert \hat U\rvert
+$$
+
+예요. 2에서 $\hat L, \hat U \ge 0$이니 $\lvert \hat L\rvert\lvert \hat U\rvert = \lvert \hat L\hat U\rvert = \lvert \hat A + \Delta A_1\rvert \le (1 + \gamma_1)\lvert \hat A\rvert$, 곧 $\lvert \Delta A\rvert \le \gamma_8\lvert \hat A\rvert$예요. Higham의 *Accuracy and Stability of Numerical Algorithms*에 있는 LU 역오차의 셈을 삼중대각에서 원소마다 한 것이에요. 원소 자체의 반올림($h$, $2(h + h)$, $x_2 - x_0$이 상대 $\gamma_2$)을 더하면 정확한 자료의 행렬 $A$에 대해 $\lvert \delta A\rvert \le \gamma_{10}\lvert A\rvert$예요. 오른쪽은 항마다 상대 $\gamma_{11}$ 안이에요(나눗차의 $\gamma_3$에 곱과 합; not-a-knot 행이 연산이 가장 많아요). 항을 절댓값으로 바꿔 만든 오른쪽을 $\lvert b\rvert_a$라 하면 $\lvert \delta b\rvert \le \gamma_{11}\lvert b\rvert_a$예요.
+
+**4. 앞 오차.** $A(\hat s - s) = \delta b - \delta A\,\hat s$에서 성분마다
+
+$$
+\lvert \hat s - s\rvert \le \gamma_{11}\lvert A^{-1}\rvert\bigl(\lvert A\rvert\lvert \hat s\rvert + \lvert b\rvert_a\bigr)
+$$
+
+예요. 모든 경계 조건에 서는 한계이고, 정확도 표의 `coefficients` 줄이 이 꼴(참값 쪽은 $\gamma_{12}$)로 잰 값이에요. natural 0.084, clamped 0.098, not-a-knot 0.069, periodic 0.053이고, 같은 한계로 잰 scipy(LAPACK의 부분 피벗 띠 풀이)는 2.99, 3.29, 6.51, 0.053이에요. scipy가 한계를 넘는 곳은 0인 걸음이 있는 단조 자료의 둘레예요. 부분 피벗이 행을 바꾸면 작은 원소가 큰 원소와 섞여 성분마다의 역오차가 깨져요.
+
+**5. 대각 우세에서 나오는 따름.** natural과 clamped는 행마다 대각이 비대각 합의 두 배예요. $D = \mathrm{diag}(A)^{-1}$로 $B = DA = I + E$라 하면 $\lVert E\rVert_\infty \le 1/2$이라 $\lVert B^{-1}\rVert_\infty \le 2$, $\lVert B\rVert_\infty \le 3/2$이고 $\lvert A^{-1}\rvert\lvert A\rvert = \lvert B^{-1}\rvert\lvert B\rvert$예요. 나눗차의 최대 크기를 $M = \max_j\lvert \Delta_j\rvert$라 하면 $\lVert D\lvert b\rvert_a\rVert_\infty \le (3/2)M$, $\lVert s\rVert_\infty \le 3M$이라 4에서
+
+$$
+\lvert \hat s_i - s_i\rvert \le \gamma_{11}\Bigl(3 \cdot 3M + 2 \cdot \tfrac{3}{2}M\Bigr)(1 + O(u)) \le 150\,uM
+$$
+
+이에요. 기울기의 오차가 자료의 가장 가파른 기울기의 몇 $u$배로 묶인다는 뜻이에요. not-a-knot에는 이 따름이 없어요. 끝 행이 대각 우세가 아니어서, 간격이 $10^{10}$배 다른 자료에서는 $\lvert \hat s - s\rvert/(uM)$이 $10^9$을 넘어요. 그래도 4의 꼴로는 계약 안이에요. 그 자료에서는 $\lvert A^{-1}\rvert$ 자체가 큰, 곧 문제의 조건이 나쁜 것이에요.
+
+정확한 유리수로 소거해 보면 1의 주장대로 $\lvert L\rvert\lvert U\rvert$가 $A$와 원소마다 같아요.
+
+```python
+>>> from fractions import Fraction as F
+>>> def spline_matrix(x, start="natural", end="natural"):
+...     n = len(x)
+...     h = [F(x[i + 1]) - F(x[i]) for i in range(n - 1)]
+...     A = [[F(0)] * n for _ in range(n)]
+...     for i in range(1, n - 1):
+...         A[i][i - 1], A[i][i], A[i][i + 1] = h[i], 2 * (h[i - 1] + h[i]), h[i - 1]
+...     A[0][0], A[0][1] = (2 * h[0], h[0]) if start == "natural" else (h[1], F(x[2]) - F(x[0]))
+...     A[n - 1][n - 2], A[n - 1][n - 1] = (h[n - 2], 2 * h[n - 2]) if end == "natural" else (F(x[n - 1]) - F(x[n - 3]), h[n - 3])
+...     return A
+>>> def growth(A):
+...     n = len(A)
+...     L = [[F(int(i == j)) for j in range(n)] for i in range(n)]
+...     U = [row[:] for row in A]
+...     for j in range(n):
+...         for i in range(j + 1, n):
+...             L[i][j] = U[i][j] / U[j][j]
+...             U[i] = [u - L[i][j] * v for u, v in zip(U[i], U[j])]
+...     LU = [[sum(abs(L[i][k]) * abs(U[k][j]) for k in range(n)) for j in range(n)] for i in range(n)]
+...     return LU == [[abs(v) for v in row] for row in A], min(U[i][i] for i in range(n)) > 0
+>>> x = [0.0, 1.0, 2.5, 3.0, 4.5, 6.0]
+>>> growth(spline_matrix(x)), growth(spline_matrix(x, "not-a-knot", "not-a-knot"))
+((True, True), (True, True))
+```
+
+**6. 주기 조건.** 주기 스플라인의 계는 $(n - 1) \times (n - 1)$ 순환 행렬이에요(마지막 노드의 기울기는 첫 노드의 것과 같아요). scipy와 같은 압축 꼴로 풀어요. 앞 $n - 2$행·열의 블록 $A_c$는 첫 행이 $[2(h_{n-2} + h_0), h_{n-2}]$인, natural과 같은 꼴의 대각 우세 삼중대각이라 1–4가 그대로 서요. $A_c$로 자료의 오른쪽 $s_1$과 결합 열 $s_2 = A_c^{-1}(-h_0 e_0 - h_{n-4}e_{n-3})$를 풀고, 마지막 기울기를 Schur 보수로 구해요.
+
+$$
+s_{\text{last}} = \frac{b_{\text{last}} - h_{n-3}s_1[0] - h_{n-2}s_1[n-3]}{2(h_{n-2} + h_{n-3}) + h_{n-3}s_2[0] + h_{n-2}s_2[n-3]}, \qquad s = s_1 + s_{\text{last}}\,s_2
+$$
+
+$\lVert D b_2\rVert_\infty \lt 1/2$이라 $\lVert s_2\rVert_\infty \lt 1$이고, 분모는 $h_{n-2} + h_{n-3}$ 이상이라 세 배를 넘는 상쇄가 없어요. 그래서 마지막 기울기와 $s$의 오차도 $uM$의 상수배예요. 상수는 증명하지 않고 정확도 표로 봐요.
+
+## 일반 띠: BandSolver
+
+`make_interp_spline`의 배치 행렬은 행 $r$이 조건 하나(점 $x_i$에서의 값, 또는 끝점에서의 도함수)이고, 그 행의 원소는 그 점이 든 매듭 구간의 B-스플라인 $k + 1$개의 값이에요. 대각 왼쪽에 많아야 $p$개, 오른쪽에 $q$개가 있는 띠 행렬이에요. `BandSolver`는 행마다 $p + q + 1$칸을 두고 띠 안의 원소만 저장해요.
+
+```cpp
+    // csrc/interpolate/banded.hpp
+    std::int64_t factor_plain() {
+        for (std::int64_t j = 0; j < n_; ++j) {
+            const double* rj = a_.data() + j * w_ - j + p_;
+            const double u = rj[j];
+            if (!usable(u)) return j;
+            inv_[j] = 1.0 / u;
+            const std::int64_t iend = std::min(n_ - 1, j + p_), cend = std::min(n_ - 1, j + q_);
+            for (std::int64_t i = j + 1; i <= iend; ++i) {
+                double* ri = a_.data() + i * w_ - i + p_;
+                if (ri[j] == 0.0) continue;
+                const double l = ri[j] / u;
+                ri[j] = l;
+                for (std::int64_t c = j + 1; c <= cend; ++c) ri[c] = ri[c] - l * rj[c];
+            }
+        }
+        return -1;
+    }
+```
+
+삼중대각과 같은 연산이에요. 승수 $l = a/u$, 행 갱신 $a - lu$, 뒤 대입은 $1/u$의 곱이에요. 행 $j$ 아래로 $p$행, 오른쪽으로 $q$열만 건드리니 띠 밖에 새 원소(채움)가 생기지 않아요.
+
+### 도함수 조건이 없는 계
+
+not-a-knot처럼 보간 조건만 있는 배치 행렬 $A_{ij} = B_j(x_i)$는 **완전 비음**(totally nonnegative)이에요. 모든 정사각 소행렬식이 0 이상이라는 뜻이에요(Karlin; de Boor, *A Practical Guide to Splines*). 점과 매듭이 Schoenberg–Whitney 조건($t_i \lt x_i \lt t_{i+k+1}$, 끝은 등호 허용)을 지키면 정칙이기도 해요. 완전 비음인 정칙 행렬은 피벗 없는 소거의 $L$과 $U$가 모두 비음이에요. 피벗 $u_j$는 앞 $j + 1$행·열의 소행렬식의 비라 양수이고, 승수와 $U$의 원소도 소행렬식의 비라 0 이상이에요. 그래서 $\lvert L\rvert\lvert U\rvert = \lvert A\rvert$, 성장이 1이에요(de Boor와 Pinkus, "Backward error analysis for totally positive linear systems", 1977). 삼중대각의 3과 같은 셈으로 성분마다의 역오차가 나와요.
+
+### 도함수 조건의 행을 두는 자리
+
+clamped, natural, 사용자가 준 `(차수, 값)`처럼 끝점에서 도함수를 정하는 행은 그 끝의 보간 행 **바로 안쪽**에 둬요. 왼쪽 끝은 차수가 오르는 순서, 오른쪽 끝은 차수가 내리는 순서예요.
+
+```cpp
+    // csrc/interpolate/bspline.cpp
+    rows.push_back({x[0], 0, Y.c});
+    for (std::int64_t i = 0; i < nl; ++i) rows.push_back({x[0], lord[i], LV.c + i * Y.D});
+    for (std::int64_t i = 1; i + 1 < n; ++i) rows.push_back({x[i], 0, Y.c + i * Y.D});
+    for (std::int64_t i = 0; i < nr; ++i) rows.push_back({x[n - 1], rord[i], RV.c + i * Y.D});
+    rows.push_back({x[n - 1], 0, Y.c + (n - 1) * Y.D});
+```
+
+<Fig caption="k = 3, 점 6개, 양 끝 clamped의 배치 행렬에서 0이 아닌 자리. 행은 위에서부터 x0의 값, x0의 1차 도함수, x1부터 x4까지의 값, x5의 1차 도함수, x5의 값이에요. 진한 칸이 도함수 행이에요. 끝점에서 B-스플라인의 값은 하나만 1이고 1차 도함수는 둘만 0이 아니라서, 왼쪽 위 두 행은 아래 삼각이고 이 행으로 소거해도 다른 열이 바뀌지 않아요.">
+  <ArrayFig
+    data={[
+      [1, '', '', '', '', '', '', ''],
+      ['−', '+', '', '', '', '', '', ''],
+      ['', '+', '+', '+', '', '', '', ''],
+      ['', '', '+', '+', '+', '', '', ''],
+      ['', '', '', '+', '+', '+', '', ''],
+      ['', '', '', '', '+', '+', '+', ''],
+      ['', '', '', '', '', '', '−', '+'],
+      ['', '', '', '', '', '', '', 1],
+    ]}
+    tones={[
+      ['a', '', '', '', '', '', '', ''],
+      ['b', 'b', '', '', '', '', '', ''],
+      ['', 'a', 'a', 'a', '', '', '', ''],
+      ['', '', 'a', 'a', 'a', '', '', ''],
+      ['', '', '', 'a', 'a', 'a', '', ''],
+      ['', '', '', '', 'a', 'a', 'a', ''],
+      ['', '', '', '', '', '', 'b', 'b'],
+      ['', '', '', '', '', '', '', 'a'],
+    ]}
+    name="A"
+    note="8 x 8, 계수 8개"
+  />
+</Fig>
+
+이 자리가 성장을 묶어요.
+
+- **각 끝의 차수가 $1, \dots, r$일 때**(clamped, k = 5의 `[(1, ·), (2, ·)]` 등). `make_interp_spline`의 매듭은 끝점이 $k + 1$겹이라 $x_0$의 보간 행은 $e_0$이고, 차수 $\nu$의 도함수 행은 열 $0, \dots, \nu$에만 원소가 있어요($B_j$가 $x_0$ 둘레에서 $(x - x_0)^j$처럼 사라지기 때문이에요). 차수가 오르는 순서로 놓으면 이 블록이 아래 삼각이라 $U$의 행은 대각 하나뿐이고, 이 행들로 소거해도 다른 열이 바뀌지 않아요. 안쪽 행은 앞 절의 완전 비음 계로 남고, 오른쪽은 차수가 내리는 순서라 행마다 대각 왼쪽에 원소가 없어요. 성장이 1이에요.
+- **k = 3의 natural**(각 끝에 2차 도함수 하나). 왼쪽 행은 $(6/h_0^2)[1, -(1 + r), r]$, $r = h_0/(h_0 + h_1)$이에요. $e_0$로 첫 열을 지우면 피벗이 $-(1 + r)\,6/h_0^2$(음수)이고, 이 행으로 $x_1$의 보간 행을 지우면 열 2에 양수 $\delta$가 더해져요. 그 자리의 성장은 $1 + 2(1 - r)^2/((1 + r)(1 - r + s))$이고 $s = (h_1 + h_2)/(h_0 + h_1 + h_2) \ge 1 - r$이라 **$1 + (1 - r)/(1 + r) \lt 2$** 이하예요. 완전 비음 행렬의 대각에 양수를 더해도 완전 비음이라(그 원소를 품은 소행렬식이 $\delta$ 곱하기 0 이상의 소행렬식만큼 늘어요) 나머지는 앞 절 그대로예요. 오른쪽 끝도 같은 꼴의 셈(마지막 구간의 3차 스플라인과 모멘트 점화식)으로 성장이 $1 + (1 - q)/(1 + q) \lt 2$, $q = h_{n-2}/(h_{n-2} + h_{n-3})$예요. 두 끝을 합쳐 원소마다 $(\lvert L\rvert\lvert U\rvert)_{ij} \le 2\lvert A_{ij}\rvert$예요.
+
+정확한 유리수 소거에서도 이 한계가 보여요. 간격이 $10^{-5}$–$10^{5}$배로 흩어진 무작위 자료에서 not-a-knot, clamped, k = 5와 k = 4의 $(1, 2)$는 성장이 정확히 1이고 natural은 2에 가깝지만 2 아래예요. scipy의 행 순서(도함수 행을 맨 앞에)로는 첫 피벗이 0이라 피벗 없이 풀 수 없어요.
+
+두 한계를 모으면 역오차가 원소마다 $2\gamma_{8k+8}\lvert A\rvert$ 안이고(보간 행 원소의 반올림 $\gamma_{5k}$, 끝점 도함수 행의 $\gamma_{4k}$, 띠 LU와 대입의 $\gamma_{3k+4}$), 앞 오차는 성분마다
+
+$$
+\lvert \hat c - c\rvert \le 2\gamma_{8k+8}\lvert A^{-1}\rvert\lvert A\rvert\lvert \hat c\rvert
+$$
+
+예요. 정확도 표의 `coefficients`에서 k2 0.032, k3 0.024, k4 0.021, k5 0.019, natural 0.021, clamped 0.022였어요.
+
+### 부분 피벗의 길
+
+그 밖의 계는 처음부터 부분 피벗으로 풀어요. 차수 집합이 $1, \dots, r$이 아닌 경우(k = 5의 $\{2, 3\}$, k = 4의 $\{2\}$), 그리고 사용자가 매듭 `t`를 준 경우예요. 앞의 증명은 `make_interp_spline`이 만드는 매듭(끝점 $k + 1$겹)에 기대는데, 주어진 매듭에서는 그 꼴을 보장할 수 없어요. 차수 $\{2, 3\}$을 피벗 없이 소거하면 성장이 첫 간격 $h$에 대해 $1/h^2$으로 자라요.
+
+```python
+    # src/stardust/interpolate/_bspline.py
+    stable = t is None and all(_prefix_or_natural(sorted(p[0] for p in side), kk) for side in (left, right))
+```
+
+```python
+>>> x = sd.asarray([0.0, 1.0, 2.5, 3.0, 4.5, 6.0])
+>>> y = sd.asarray([0.0, 0.2, 0.3, 2.0, 2.1, 2.2])
+>>> core = sd._core.interpolate
+>>> col = sd.reshape(y, (6, 1))
+>>> none = sd.asarray([], dtype=sd.int64)
+>>> empty = sd.zeros((0, 1))
+>>> t3 = core.bspline_knots(x, 3, 0)
+>>> core.bspline_interp(x, col, t3, 3, none, empty, none, empty, False)[1]
+0
+>>> t5 = core.bspline_knots(x, 5, 1)
+>>> o23, o32, zero2 = sd.asarray([2, 3], dtype=sd.int64), sd.asarray([3, 2], dtype=sd.int64), sd.zeros((2, 1))
+>>> core.bspline_interp(x, col, t5, 5, o23, zero2, o32, zero2, True)[1]
+1
+```
+
+마지막 값은 풀이가 어느 길을 탔는지(0 피벗 없음, 1 부분 피벗)예요. 부분 피벗의 꼴은 LAPACK `gbtf2`의 것이에요. 열 $j$에서 대각과 그 아래 $p$행 가운데 절댓값이 가장 큰 행을 고르고(같으면 앞의 행), 그 행과 $j$행을 띠 안에서 바꾸고, 승수를 단계마다 따로 저장한 뒤 아래 행들을 갱신해요. 행을 바꾸면 $j$행의 원소가 오른쪽으로 $p$칸까지 더 퍼질 수 있어서, 행마다 $2p + q + 1$칸을 두고 $U$의 위 너비를 $p + q$로 잡아요.
+
+```cpp
+    // csrc/interpolate/banded.hpp
+    std::int64_t factor_pivoted() {
+        const std::int64_t up = p_ + q_;
+        for (std::int64_t j = 0; j < n_; ++j) {
+            const std::int64_t iend = std::min(n_ - 1, j + p_), cend = std::min(n_ - 1, j + up);
+            std::int64_t best = j;
+            double bv = std::fabs(a_[j * w_ + p_]);
+            for (std::int64_t i = j + 1; i <= iend; ++i) {
+                const double v = std::fabs(a_[i * w_ + j - i + p_]);
+                if (v > bv) best = i, bv = v;
+            }
+            piv_[j] = best;
+            if (!usable(bv)) return j;
+            if (best != j)
+                for (std::int64_t c = j; c <= cend; ++c)
+                    std::swap(a_[j * w_ + c - j + p_], a_[best * w_ + c - best + p_]);
+            const double* rj = a_.data() + j * w_ - j + p_;
+            const double u = rj[j];
+            inv_[j] = 1.0 / u;
+            for (std::int64_t i = j + 1; i <= iend; ++i) {
+                double* ri = a_.data() + i * w_ - i + p_;
+                const double l = ri[j] / u;
+                lm_[j * p_ + (i - j - 1)] = l;
+                ri[j] = 0.0;
+                if (l == 0.0) continue;
+                for (std::int64_t c = j + 1; c <= cend; ++c) ri[c] = ri[c] - l * rj[c];
+            }
+        }
+        return -1;
+    }
+```
+
+scipy가 쓰는 LAPACK `gbsv`도 안에서 같은 일을 해요. `gbtrf`가 띠 저장(열마다 $2k_l + k_u + 1$칸, 위의 $k_l$칸은 행 교환의 채움 자리)에서 이 단계를 열 블록으로 묶어 돌리고(작은 행렬은 블록 없는 `gbtf2`), `gbtrs`가 저장한 행 교환과 승수를 오른쪽에 적용한 뒤 위 너비 $k_l + k_u$의 위 삼각 띠로 뒤 대입을 해요. 차이는 이 영역이 증명이 서는 계에서는 이 길을 타지 않는다는 것뿐이에요.
+
+피벗 없는 분해가 0이거나 유한하지 않은 피벗을 만나도 이 길로 다시 해요. 긴 띠의 사본을 두지 않으려고 행렬을 처음부터 다시 채워서 분해해요. 부분 피벗으로도 막히면 `sd.linalg.LinAlgError`예요. Schoenberg–Whitney 조건이 깨졌거나 같은 조건을 두 번 준 경우예요.
+
+```python
+>>> try:
+...     I.make_interp_spline(x, y, k=3, t=[0.0, 0.0, 0.0, 0.0, 0.1, 0.2, 6.0, 6.0, 6.0, 6.0])
+... except sd.linalg.LinAlgError as err:
+...     print(err)
+make_interp_spline(): the collocation matrix is singular (the knots and the points fail the Schoenberg-Whitney conditions, or the end conditions repeat)
+```
+
+## 작은 밀집 계
+
+주기 B-스플라인의 Woodbury 보정(구석 원소가 많아야 $k$개라 $k \times k$ 이하)과 점이 차수 이하인 주기 계는 `dense_solve`로 풀어요. 열마다 가장 큰 원소를 피벗으로 고르는(같으면 앞의 것) 보통의 가우스 소거이고, 뒤 대입은 여기서도 역수의 곱이에요. 크기가 수십 이하라 띠를 따질 것이 없어요.
+
+## 배치와 결정성
+
+두 풀이 모두 분해는 한 번, 대입은 열마다예요. 대입은 열 묶음(`BandSolver`는 8열씩)으로 나눠 스레드풀에 올리는데, 한 열이 받는 연산은 그 열이 어느 묶음에 들었든 같은 순서의 같은 연산이에요. 그래서 배치의 한 열은 그 열만 따로 푼 것과 같은 비트이고, 스레드 수와도 무관해요.
+
+```python
+>>> rng = sd.random.default_rng(11)
+>>> xs = sd.cumulative_sum(rng.random(200))
+>>> Y = rng.random((200, 12)) * 2.0 - 1.0
+>>> batch = I.CubicSpline(xs, Y, bc_type="natural")
+>>> one = I.CubicSpline(xs, Y[:, 5], bc_type="natural")
+>>> batch.c[:, :, 5].tolist() == one.c.tolist()
+True
+>>> bs = I.make_interp_spline(xs, Y)
+>>> bs.c[:, 5].tolist() == I.make_interp_spline(xs, Y[:, 5]).c.tolist()
+True
+```
+
+열이 12개인 `CubicSpline`은 행렬을 저장하는 배치 길로, 열 하나는 한 번 훑는 길로 가요. 두 길의 연산이 같은 순서라 같은 비트예요.
+
+하나의 긴 열은 나누지 않아요. 분해도 대입도 앞 행의 결과로 다음 행을 계산하는 사슬이라, 점 $10^6$개의 열 하나는 한 스레드가 풀어요. 사슬을 끊어 나란히 푸는 순환 소거(cyclic reduction)는 연산의 순서가 달라져 반올림이 바뀌고, 위의 증명은 위에서 아래로의 소거 순서에 서 있어서 쓰지 않아요.
+
+`sd.linalg.solve_banded`는 LAPACK의 부분 피벗 풀이를 써요. 띠가 삼중대각이면 `gtsv`인데, 열마다 대각과 그 아래 원소의 크기를 견줘 아래가 크면 두 행을 바꾸고(그 자리에 둘째 위 대각이 생겨요) 소거해요. 이 영역의 풀이와 소거의 순서가 다르니 같은 계를 풀어도 끝자리가 다를 수 있어요. 둘 다 틀린 것이 아니에요. 아래의 작은 계에서는 행을 바꿀 일이 없어 두 풀이가 같은 값을 냈지만, 언제나 그렇다는 약속은 아니에요.
+
+```python
+>>> cs = I.CubicSpline(x, y, bc_type="natural")
+>>> h = [float(x[i + 1] - x[i]) for i in range(5)]
+>>> d = [float(y[i + 1] - y[i]) / h[i] for i in range(5)]
+>>> upper = [0.0, h[0]] + h[0:4]
+>>> diag = [2 * h[0]] + [2 * (h[i - 1] + h[i]) for i in range(1, 5)] + [2 * h[4]]
+>>> lower = h[1:5] + [h[4], 0.0]
+>>> rhs = [3 * float(y[1] - y[0])] + [3 * (h[i] * d[i - 1] + h[i - 1] * d[i]) for i in range(1, 5)] + [3 * float(y[5] - y[4])]
+>>> lapack = sd.linalg.solve_banded(sd.asarray([upper, diag, lower]), sd.asarray(rhs), lower_bandwidth=1, upper_bandwidth=1)
+>>> cs.c[2].tolist()
+[0.5570084200099059, -0.5140168400198117, 2.8345715700842, 2.8791480931154037, -0.7368994551758294]
+>>> lapack.tolist()[:5]
+[0.5570084200099059, -0.5140168400198117, 2.8345715700842, 2.8791480931154037, -0.7368994551758294]
+```

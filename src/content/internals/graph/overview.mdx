@@ -1,0 +1,352 @@
+---
+title: 영역의 구조
+group: 구조
+order: 1
+summary: sd.graph가 Python 검사 층과 C++ 탐색으로 나뉜 모습, 어떤 입력이든 CSR 하나로 바뀌어 내려가는 길, 무향 그래프를 읽는 방법, 결과를 알고리즘이 아니라 정의로 정한 까닭과 그 정의들, Accelerate를 쓰지 않는 까닭, 병렬로 나누는 자리와 스레드 수가 답을 바꾸지 않는 이유, 메모리 검사를 설명해요.
+seeAlso: [traversal, shortest-paths, floyd-warshall, yen, spanning-tree, centrality, accuracy-performance]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import Layers from '../../../components/fig/Layers.astro';
+import Steps from '../../../components/fig/Steps.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+`sd.graph`는 인접 행렬로 준 그래프에서 순회, 연결 요소, 최단 경로, 신장 트리, 흐름, 매칭, 순서 매기기, 중심성을 계산해요. 그래프를 담는 클래스는 없어요. 함수가 행렬을 받아 배열이나 결과 객체를 돌려줘요.
+
+이 영역의 설계는 한 문장으로 모여요. **답은 알고리즘이 아니라 정의가 정해요.** 최단 거리는 "원점에서부터 차례로 더한 합의 최솟값", 연결 요소의 번호는 "요소의 가장 작은 노드의 순서", 순회는 "이웃을 번호 오름차순으로"처럼 답을 데이터만으로 적어 두고, 알고리즘은 그 답에 닿는 빠른 길로만 써요. 그래서 Dijkstra로 구하든 Bellman–Ford로 구하든, 한 스레드로 돌든 열 스레드로 돌든 같은 비트가 나와요.
+
+## 층과 파일
+
+<Fig column caption="sd.graph의 층. 위가 사용자가 부르는 것, 아래가 그 밑바탕이에요.">
+  <Layers layers={[
+    { title: '공개 이름 (Python)', note: 'src/stardust/graph/', items: [
+      { name: '_common.py', note: '입력을 CSR로, dtype·모양·노드 인자 검사, NegativeCycleError, 메모리 검사' },
+      { name: '_traversal.py, _convert.py', note: '순회, 연결 요소, 위상 정렬, 밀집과 희소 사이의 변환' },
+      { name: '_paths.py', note: '최단 경로 아홉 이름, 방법 고르기' },
+      { name: '_tree.py, _flow.py, _matching.py', note: '최소 신장 트리, 최대 흐름, 매칭과 배정' },
+      { name: '_ordering.py, _structure.py, _centrality.py', note: 'RCM·구조적 랭크·라플라시안, 단절점·다리·코어 수, PageRank·매개 중심성' },
+    ] },
+    { title: '탐색과 커널 (C++)', note: 'csrc/graph/', items: [
+      { name: 'graph.hpp, input.cpp', note: 'CSR 보기, 밀집 → CSR, 전치, 대칭 확인, 무향 무게' },
+      { name: 'traversal.cpp', note: '너비·깊이 우선, 합집합–찾기, Tarjan, Kahn' },
+      { name: 'paths.hpp, paths.cpp, yen.cpp', note: '4진 색인 힙, Dijkstra, Bellman–Ford, Johnson, 블록 Floyd–Warshall, Yen' },
+      { name: 'tree.cpp, flow.cpp, matching.cpp', note: 'Kruskal, Dinic과 Edmonds–Karp, Hopcroft–Karp와 배정 풀이' },
+      { name: 'ordering.cpp, structure.cpp, centrality.cpp', note: 'RCM과 라플라시안, 이중 연결과 코어 수, PageRank와 Brandes' },
+    ] },
+    { title: '바닥', tone: 'dark', items: [
+      { name: 'sparse/format.hpp', note: '표준 꼴 CSR 읽기, 전치의 계수 정렬' },
+      { name: 'array', note: 'sd.ndarray와 결과 배열' },
+      { name: 'base/pairwise.hpp', note: '고정된 합 나무 (PageRank)' },
+      { name: 'parallel', note: '스레드풀, GIL 놓기' },
+    ] },
+  ]} />
+</Fig>
+
+층은 아래로만 기대요. `csrc/graph/`는 희소 영역의 CSR 꼴과 전치, 배열, 공용 pairwise 합, 스레드풀 위에 서고, 다른 영역의 C++ 코드는 `graph/`를 몰라요. Python 쪽의 `stardust.graph`는 `stardust.sparse`를 써요. 희소 배열이 입력의 주된 꼴이고, 트리·흐름·라플라시안 같은 행렬 결과가 `sd.sparse.csr_array`이기 때문이에요.
+
+C++ 하위 모듈 `stardust._core.graph`의 이름은 모두 밑줄로 시작하는 내부 이름이에요. 소스 파일마다 하나씩 있는 `bind_*`가 만들어요.
+
+```python
+>>> import math
+>>> import stardust as sd
+>>> sorted(n for n in dir(sd._core.graph) if not n.startswith("__"))
+['_assign_dense', '_assign_sparse', '_betweenness', '_biconnected', '_bipartite_matching', '_components', '_construct', '_core_number', '_dense_csr', '_floyd_warshall', '_laplacian_csr', '_laplacian_dense', '_max_flow', '_mst', '_pagerank', '_paths', '_rcm', '_reconstruct', '_scan', '_to_dense', '_toposort', '_traverse', '_yen']
+```
+
+| 파일 | 줄 수 | 맡은 일 |
+|---|---:|---|
+| `graph.hpp` | 69 | CSR 보기 `View`, 전치 `Transposed`, 대칭 확인 `symmetric`, 무향 무게 `undirected_weight`, 표식 $-9999$, 병렬 기준값 |
+| `input.cpp` | 238 | `_dense_csr`(밀집 → CSR), `_to_dense`, `view_arg`·`transpose`·`symmetric`의 구현 |
+| `traversal.cpp` | 483 | `_traverse`, `_components`, `_toposort` |
+| `paths.hpp`, `paths.cpp` | 157, 976 | 무향 읽기, 음수 순환 검사, 4진 색인 힙, 단일 탐색 넷, 선행 노드 규칙, `_paths`, `_floyd_warshall`, `_construct`, `_reconstruct` |
+| `yen.cpp` | 278 | `_yen` |
+| `tree.cpp` | 213 | `_mst` |
+| `flow.cpp` | 237 | `_max_flow` |
+| `matching.cpp` | 645 | `_bipartite_matching`, `_assign_dense`, `_assign_sparse` |
+| `ordering.cpp` | 585 | `_rcm`, `_laplacian_csr`, `_laplacian_dense` |
+| `structure.cpp` | 323 | `_biconnected`, `_core_number` |
+| `centrality.cpp` | 595 | `_pagerank`, `_betweenness` |
+
+Python 층이 인자를 모두 검사하고 C++ 층은 넘겨받은 배열의 배치(dtype, 차원, 연속성, 길이)만 확인해요. 공개 함수의 에러는 부른 함수의 이름으로 시작하고(`dijkstra(): ...`), C++ 쪽의 에러는 Python이 이미 막은 배치가 어긋났을 때만 나요.
+
+## 한 번의 호출이 지나는 길
+
+`dijkstra(G, indices=[0, 5], return_predecessors=True)`가 지나는 길을 따라가 볼게요.
+
+<Fig column caption="dijkstra 한 번의 흐름. 검사와 방법 고르기는 Python, 탐색은 C++가 해요.">
+  <Steps steps={[
+    { label: 'dijkstra', note: 'directed, return_predecessors, unweighted, min_only가 True나 False인지, limit이 0 이상인지 봐요', where: '_paths.py' },
+    { label: '_weights → C.graph', note: '입력을 CSR의 세 배열로 바꿔요. 희소 CSR은 그대로, 밀집은 _dense_csr로', where: '_common.py', depth: 1 },
+    { label: '_core._scan(data)', note: '저장된 무게를 한 번 훑어 NaN·inf가 있는지, 음수가 있는지 알아내요. 있으면 여기서 ValueError', where: 'paths.cpp', depth: 1 },
+    { label: '_sources(indices)', note: '원점을 int64 배열로. 범위 밖은 ValueError, 정수가 아니면 TypeError', where: '_paths.py', depth: 1 },
+    { label: 'C.room(8 · 행 수 · n · 2)', note: '요청한 결과가 물리 메모리보다 크면 할당 전에 MemoryError', where: '_common.py', depth: 1 },
+    { label: '_core._paths(…, "D", …)', note: '무향이면 읽을 그래프를 정하고, 원점들을 크기로만 정한 태스크로 나눠 원점마다 Dijkstra를 돌려요', where: 'paths.cpp' },
+    { label: 'paths::predecessors', note: '원점마다 거리에서 선행 노드를 한 번의 훑기로 정해요', where: 'paths.cpp', depth: 1 },
+    { label: 'ShortestPathResult(dist_matrix, predecessors)', note: '두 배열을 쓰기 금지로 만들어 돌려줘요', where: '_paths.py' },
+  ]} />
+</Fig>
+
+무게 검사가 계산보다 앞에 있어서, 실패한 호출은 아무것도 만들지 않아요.
+
+## 그래프의 내부 표현
+
+C++의 모든 함수는 그래프를 **표준 꼴 CSR 하나**로 받아요. int64 `indptr`(길이 $n + 1$)와 `indices`(줄 안에서 오름차순, 중복 없음), 그리고 float64 값이에요. 패턴만 읽는 함수(연결 요소, 순회, 위상 정렬 같은 것)에는 값을 넘기지 않아요.
+
+```cpp
+// csrc/graph/graph.hpp
+struct View {
+    std::int64_t n = 0;
+    const std::int64_t* indptr = nullptr;
+    const std::int64_t* indices = nullptr;
+    const double* data = nullptr;
+    std::int64_t nnz() const { return indptr[n]; }
+};
+```
+
+`View`는 배열을 가리키기만 하고 소유하지 않아요. 줄 안이 오름차순이라는 것이 이 영역 전체의 바탕이에요. 노드의 이웃 목록이 언제나 번호 오름차순이라서, "이웃을 차례로 본다"는 말이 데이터만으로 뜻이 정해져요.
+
+Python 층의 `graph()`가 입력을 이 꼴로 바꿔요.
+
+```python
+# src/stardust/graph/_common.py
+def _csr(a, values):
+    """(indptr, indices, float64 data or None) of an accepted matrix (_matrix's result)."""
+    if isinstance(a, _sparse.sparray):
+        A = a.tocsr()
+        data = None
+        if values:
+            data = A.data if A.dtype == _sd.float64 else A.data.astype(_sd.float64)
+        return A.indptr, A.indices, data
+    return _core._dense_csr(a, 0.0, True, True, True, values)
+
+
+def graph(csgraph, name, *, values=False, arg="csgraph"):
+    """(n, indptr, indices, data) of a square graph argument: canonical CSR arrays and, with `values`, the
+    float64 weights (else None: the functions that read only the pattern)."""
+    a = _matrix(csgraph, name, arg)
+    n = _square(a.shape, name, arg)
+    return (n, *_csr(a, values))
+```
+
+- **희소 입력**은 `tocsr()` 한 번이에요. `csr_array`는 복사하지 않고 그 배열을 그대로 읽어요. 희소 영역의 CSR은 언제나 표준 꼴이라 확인할 것이 없어요. 다른 형식(CSC, COO, DOK)은 한 번 CSR로 바꾸고, COO의 중복은 그때 더해져요. 저장된 원소 하나하나가 변이고, 저장된 0도 무게 0의 변이에요.
+- **밀집 입력**은 `_dense_csr`가 변 규칙으로 CSR을 만들어요. 0이 아니고 NaN도 $\pm\infty$도 아닌 원소가 변이에요.
+
+```python
+>>> S = sd.sparse.csr_array(([1.0, 0.0, 2.0], [1, 2, 0], [0, 1, 2, 3]), shape=(3, 3))
+>>> from stardust.graph import _common as C
+>>> n, indptr, indices, data = C.graph(S, "f", values=True)
+>>> indptr is S.indptr, data is S.data
+(True, True)
+>>> A = sd.asarray([[0.0, 2.0, math.nan], [math.inf, 0.0, 1e-12], [3.0, 0.0, 5.0]])
+>>> C.graph(A, "f", values=True)
+(3, array([0, 1, 2, 4], dtype=int64), array([1, 2, 0, 2], dtype=int64), array([  2.0, 1e-12,   3.0,   5.0], dtype=float64))
+```
+
+<Fig caption="밀집 행렬 A와 그 CSR. 0, NaN, inf는 변이 아니라서 빠지고, 아주 작은 1e-12도 0이 아니니 변이에요. indptr[i]부터 indptr[i + 1] 앞까지가 노드 i에서 나가는 변이에요.">
+  <ArrayFig name="A" data={[[0, 2, 'nan'], ['inf', 0, '1e-12'], [3, 0, 5]]} tones={[['m', 'a', 'm'], ['m', 'm', 'a'], ['a', 'm', 'a']]} />
+  <Op>→</Op>
+  <ArrayFig name="indptr" data={[0, 1, 2, 4]} />
+  <ArrayFig name="indices" data={[1, 2, 0, 2]} />
+  <ArrayFig name="data" data={[2, '1e-12', 3, 5]} />
+</Fig>
+
+### 밀집에서 CSR로
+
+`_dense_csr`는 행렬을 두 번 훑어요. 첫 번은 행마다 남길 원소를 세고, 누적 합으로 행의 자리를 정한 뒤, 둘째 번에 색인과 값을 써요. 두 번 모두 가지(분기)가 없어요. 남길지 말지는 원소마다 제각각이라 가지 예측이 잘 맞지 않고, 가지가 없어야 세는 고리가 벡터 명령으로 바뀌어요.
+
+```cpp
+// csrc/graph/input.cpp
+template <class T>
+struct Keep {
+    double null;
+    bool use_null, nan_null, inf_null;
+    bool operator()(T v) const {
+        const double x = static_cast<double>(v);
+        bool drop = use_null & (x == null);
+        if constexpr (std::is_same_v<T, double>)
+            drop = drop | (nan_null & (x != x)) | (inf_null & (std::fabs(x) == INFINITY));
+        return !drop;
+    }
+};
+```
+
+`drop`은 비교 결과를 `&`와 `|`로 묶은 값이에요. `&&`나 `||`와 달리 앞의 결과에 따라 뒤를 건너뛰지 않으니 가지가 생기지 않아요. 쓰는 고리도 같은 생각이에요.
+
+```cpp
+            // csrc/graph/input.cpp
+            for (int64_t i = t * rows_per, e = std::min(n, (t + 1) * rows_per); i < e; ++i) {
+                const T* row = A + i * m;
+                int64_t k = 0;
+                if (values) {
+                    for (int64_t j = 0; j < m; ++j) {
+                        si[static_cast<size_t>(k)] = j;
+                        sv[static_cast<size_t>(k)] = static_cast<V>(row[j]);
+                        k += keep(row[j]);
+                    }
+                    std::memcpy(D + P[i], sv.data(), static_cast<size_t>(k) * sizeof(V));
+                } else {
+                    for (int64_t j = 0; j < m; ++j) {
+                        si[static_cast<size_t>(k)] = j;
+                        k += keep(row[j]);
+                    }
+                }
+                std::memcpy(I + P[i], si.data(), static_cast<size_t>(k) * sizeof(int64_t));
+            }
+```
+
+원소를 일단 임시 행의 `k`번 자리에 쓰고, 남길 원소일 때만 `k`를 하나 올려요. 버릴 원소는 다음 원소가 같은 자리에 덮어써요. 행 하나를 다 훑으면 앞의 `k`개만 제자리로 옮겨요.
+
+행은 크기로만 정한 묶음(원소 $2^{15}$개쯤)으로 나눠 태스크에 맡겨요. 행 하나는 한 태스크가 처음부터 끝까지 쓰고 자리는 누적 합이 미리 정해 두니, 스레드 수가 결과의 바이트를 바꾸지 않아요. 흐름의 용량처럼 정수가 필요한 곳은 같은 함수가 값을 int64로 써요.
+
+### 무향으로 읽기
+
+`directed=False`면 $i$와 $j$ 사이의 변은 $i \to j$와 $j \to i$ 가운데 저장된 것이고, 둘 다 있으면 작은 무게예요.
+
+```cpp
+// csrc/graph/graph.hpp
+inline double undirected_weight(double a, double b) {
+    if (a != a || b != b) return a != a ? a : b;
+    if (a < b) return a;
+    if (b < a) return b;
+    return std::signbit(a) ? a : b;
+}
+```
+
+NaN이 끼면 NaN이고, $0.0$과 $-0.0$이면 $-0.0$이에요. 두 인자를 바꿔 넣어도 같은 비트가 나오게 한 규칙이라, $G$와 그 전치 $G^\top$의 무향 읽기가 비트까지 같아요.
+
+무향 읽기의 첫 일은 $G$가 이미 대칭인지 보는 거예요. 대칭이면 $G$ 자체가 무향 읽기라서 아무것도 만들지 않아도 돼요. 이 확인은 전치를 만들지 않고 한 번의 훑기로 해요.
+
+```cpp
+// csrc/graph/input.cpp
+bool symmetric(const View& g, bool weights, bool no_diagonal) {
+    // Row u's entries, met for u ascending, are the mirrors of the next unseen entries of their columns'
+    // rows when the pattern is symmetric (a canonical row v lists its u ascending): one cursor per row.
+    const int64_t n = g.n;
+    std::vector<int64_t> cursor(g.indptr, g.indptr + n);
+    for (int64_t u = 0; u < n; ++u) {
+        for (int64_t k = g.indptr[u], e = g.indptr[u + 1]; k < e; ++k) {
+            const int64_t v = g.indices[k];
+            const int64_t c = cursor[static_cast<size_t>(v)]++;
+            if (c >= g.indptr[v + 1] || g.indices[c] != u || (no_diagonal && v == u)) return false;
+            if (weights && g.data) {
+                const double a = g.data[k], w = undirected_weight(a, g.data[c]);
+                if (std::memcmp(&a, &w, sizeof(double)) != 0 && !(a != a && w != w)) return false;
+            }
+        }
+    }
+    return true;  // every entry used one place of its column's row and none ran past it: all are used
+}
+```
+
+행 $u$를 오름차순으로 훑으며 원소 $(u, v)$를 만날 때마다, 행 $v$의 커서가 가리키는 원소가 $u$인지 봐요. 패턴이 대칭이면 행 $v$에는 $v$로 들어오는 $u$들이 오름차순으로 적혀 있고, 바깥 고리도 $u$를 오름차순으로 도니, 행 $v$의 원소는 꼭 적힌 순서대로 쓰여요. 커서 하나가 앞으로만 가면 돼요. 한 번이라도 어긋나면 대칭이 아니에요. 모든 원소가 어긋남 없이 자기 짝을 하나씩 썼으면, 원소 수만큼의 자리가 서로 다른 원소에게 쓰인 것이라 남는 원소가 없고 패턴이 대칭이에요. 무게를 읽는 함수는 짝의 무게가 무향 무게와 같은 비트인지도 함께 봐요.
+
+대칭이 아닐 때 하는 일은 함수마다 달라요.
+
+| 함수 | 대칭이 아닌 입력의 무향 읽기 |
+|---|---|
+| 순회 | 전치를 한 번 만들고 $G$의 행과 전치의 행, 두 줄을 함께 읽어요([순회](/internals/graph/traversal/)) |
+| 최단 경로, `yen`, 매개 중심성, PageRank | 두 방향 이웃을 합친 CSR을 만들어요(`paths::undirected`) |
+| 단절점, 다리, 이중 연결 요소, 코어 수 | 두 방향 패턴의 합집합에서 대각을 뺀 CSR을 만들어요 |
+| 역 Cuthill–McKee | 전치를 만들어 두 줄을 함께 읽어요 |
+| 연결 요소 | 아무것도 만들지 않아요. 합집합–찾기는 변의 방향을 보지 않아요 |
+| 최소 신장 트리, 최대 흐름 | 자기 꼴의 변 목록과 잔여 그래프를 따로 만들어요 |
+
+전치는 희소 영역의 전치(안정 계수 정렬)를 그대로 써요. 표준 꼴의 전치는 하나뿐이라 어떤 길로 만들어도 같은 배열이에요.
+
+## 정의로 정한 결과
+
+그래프 문제의 답은 흔히 여럿이에요. 같은 길이의 최단 경로가 둘이면 선행 노드가 둘 가운데 어느 쪽이어도 맞고, 연결 요소에 붙이는 번호는 어떤 순서여도 분할은 같아요. 알고리즘이 "먼저 찾은 것"을 답으로 삼으면, 답이 알고리즘과 그 구현의 훑는 순서에 묶여요. 방법을 바꾸거나 일을 스레드로 나누면 답이 달라질 수 있어요.
+
+이 영역은 동점마다 규칙을 정해 답을 하나로 만들어요.
+
+| 결과 | 정의 |
+|---|---|
+| 순회의 순서 | 노드의 이웃을 번호 오름차순으로 봐요. 무향이면 두 방향 이웃을 합친 오름차순이에요 |
+| 연결 요소의 번호 | 요소의 가장 작은 노드의 순서예요. 노드 0의 요소가 0번이에요 |
+| 위상 순서 | 가능한 순서 가운데 사전 순서로 가장 작은 것이에요 |
+| 최단 거리 | 경로의 무게를 원점에서부터 차례로 더한 float64 합 가운데 가장 작은 값이에요 |
+| 선행 노드 | 거리에 꼭 맞는 변 가운데 원점에서 변 수가 가장 적은 것, 그다음 번호가 가장 작은 것이에요 |
+| K개의 최단 경로 | (차례 합, 변의 수, 노드 열의 사전 순서)로 앞선 K개예요 |
+| 최소 신장 트리 | 변을 (무게, 작은 끝, 큰 끝)으로 견준 전순서에서 유일한 트리예요 |
+| 단절점, 다리, 이중 연결 요소, 코어 수 | 집합이나 분할이라 답이 본래 하나예요. 번호만 가장 작은 변의 순서로 붙여요 |
+| 흐름 값, 매칭의 크기, 배정의 최적 비용 | 본래 하나예요. 여러 최적해 가운데 돌려주는 하나는 행과 이웃을 오름차순으로 훑는 고정된 차례가 정해요 |
+| PageRank, 매개 중심성 | 합의 순서를 고정한 나무와 번호 오름차순의 합이에요 |
+
+정의가 서면 알고리즘에 자유가 생겨요. 분할이나 집합이 답인 문제는 어떤 순서로 찾아도 답이 같으니 병렬 알고리즘을 쓸 수 있어요. 최단 거리가 "차례 합의 최솟값"이면 그 값에 닿는 방법이 무엇이든 같은 비트라서, 그래프의 모양에 맞는 가장 빠른 방법을 골라도 답이 바뀌지 않아요.
+
+```python
+>>> rng = sd.random.default_rng(3)
+>>> W = rng.random((300, 300)) * (rng.random((300, 300)) < 0.03)
+>>> g = sd.graph
+>>> outs = [g.shortest_path(W, method=m, return_predecessors=True) for m in ("D", "BF", "J", "auto")]
+>>> [o.dist_matrix.tolist() == outs[0].dist_matrix.tolist() for o in outs]
+[True, True, True, True]
+>>> [o.predecessors.tolist() == outs[0].predecessors.tolist() for o in outs]
+[True, True, True, True]
+```
+
+하나만 예외예요. `method='FW'`와 `floyd_warshall`은 경로를 가운데에서 잇는 합이라 끝자리가 다른 방법과 다를 수 있어요. 정확도 계약 안이고 스레드 수와는 무관해요. 까닭은 [블록 Floyd–Warshall](/internals/graph/floyd-warshall/)에 있어요.
+
+## Accelerate를 쓰지 않는 까닭
+
+이 영역은 Accelerate(BLAS, LAPACK, 희소 풀이)의 함수를 하나도 부르지 않아요. `csrc/graph/`가 기대는 것은 희소 영역의 CSR 꼴과 전치, 배열, pairwise 합, 스레드풀뿐이에요. 까닭은 셋이에요.
+
+1. **맞는 연산이 없어요.** 그래프 알고리즘의 안쪽 고리는 색인을 따라가고, 견주고, 힙을 고치고, 집합을 합치는 일이에요. BLAS와 LAPACK은 곱하고 더하는 행렬 계산을 해요. 행렬 꼴에 가장 가까운 Floyd–Warshall도 안쪽 연산이 $c_{ij} \leftarrow \min(c_{ij},\ a_{ik} + b_{kj})$, 곧 더하고 최솟값을 고르는 것이라 GEMM의 곱하고 더하기와 달라요. 그래서 이 커널은 NEON 명령으로 직접 짰어요.
+2. **합의 순서가 곧 답이에요.** 최단 거리는 원점에서부터의 차례 합이고, PageRank의 한 걸음은 줄마다 정해진 pairwise 나무의 합이에요. 남의 곱 루틴에 맡기면 합의 순서가 그 구현의 것이 되고, 구현이 스레드 수에 따라 일을 달리 나누면 끝자리도 따라 바뀌어요. 정의로 정한 답을 지키려면 합을 직접 쥐어야 해요.
+3. **대부분의 답이 정수예요.** 순서, 레이블, 선행 노드, 매칭, 흐름은 정수 배열이에요. 부동소수 선형대수가 도울 곳이 본래 적어요.
+
+선형대수가 필요한 일은 이 영역 밖에서 해요. `laplacian`이 만든 행렬의 고유값은 `sd.sparse.eigsh`가 구하고, `form='lo'`의 곱은 희소 영역의 곱이에요.
+
+## 병렬화와 결정성
+
+같은 입력이면 스레드 수와 상관없이 같은 결과예요. 값만이 아니라 선행 노드, 순서, 레이블, 흐름, 매칭까지 같아요. 나누는 방법은 언제나 크기로만 정하고, 나뉜 조각 하나의 답은 정의로 정해져 있어요.
+
+| 병렬로 도는 일 | 나누는 방법 | 결과가 같은 까닭 |
+|---|---|---|
+| 밀집 → CSR, `csgraph_to_dense`, 전치 | 행 묶음(원소 $2^{15}$개쯤) | 행 하나는 한 태스크가 쓰고 자리가 미리 정해져 있어요 |
+| 여러 원점의 최단 경로 | 태스크 하나가 원점 1–64개 | 원점 하나의 답은 정의로 정해져요 |
+| `construct_dist_matrix` | 행(원점) 하나가 태스크 하나 | 행 하나의 합이 정해져 있고, 틀린 선행 노드는 행 순서로 가장 앞선 것을 알려요 |
+| 블록 Floyd–Warshall | 단계마다 $64 \times 64$ 블록 하나가 태스크 하나 | 블록 하나의 연산 순서가 블록 크기로만 정해져요 |
+| 약한 연결 요소(저장 원소 $2^{18}$개부터) | 행 구간(원소 $2^{16}$개쯤) | 분할이 유일하고 번호는 가장 작은 노드 순서예요 |
+| 라플라시안 | 크기로만 정한 행 구간과 열 묶음 | 행 하나, 열 하나의 합이 한 태스크이고 순서가 정해져 있어요 |
+| PageRank | 행 구간, 벡터 합은 $2^{16}$항 잎 | 줄마다의 합 나무가 정해져 있고, 잎을 같은 나무로 합쳐요 |
+| 매개 중심성 | 원점 묶음 | 부분합을 태스크 번호 순서로 더해요 |
+
+나머지는 직렬이에요. 원점 하나의 Dijkstra·Bellman–Ford·Johnson, `min_only`, `yen`, 순회, 강한 연결 요소, 위상 정렬, 최소 신장 트리, 흐름, 매칭과 배정, 역 Cuthill–McKee, 단절점과 다리, 코어 수가 그래요. 고정된 순서로 한 번 훑으니 본래 결정적이에요.
+
+나누기 시작하는 크기는 배열 영역의 규칙과 같아요. 작업량(훑는 원소와 노드의 수)이 $2^{15}$ 이상이면 나누고, 그 크기부터는 스레드 수와 상관없이 GIL을 놓아요. 직렬 알고리즘도 그 크기부터 GIL을 놓으니, 큰 그래프의 탐색이 도는 동안 다른 Python 스레드가 돌 수 있어요.
+
+```python
+>>> n0 = sd.get_num_threads()
+>>> runs = []
+>>> for t in (1, 3, 10):
+...     sd.set_num_threads(t)
+...     r = g.shortest_path(W, method="FW", return_predecessors=True)
+...     c = g.connected_components(W, connection="strong")
+...     runs.append((r.dist_matrix.tolist(), r.predecessors.tolist(), c.labels.tolist()))
+>>> sd.set_num_threads(n0)
+>>> runs[0] == runs[1] == runs[2]
+True
+```
+
+## 메모리
+
+사용자가 모양으로 요청한 출력은 할당하기 전에 물리 메모리와 견줘요. 모든 쌍의 거리와 선행 노드($n^2$), `yen`의 선행 노드($K \times n$), `csgraph_to_dense`($n^2$)가 그래요. 넘으면 아무것도 잡지 않고 `MemoryError`를 내요.
+
+```python
+>>> big = sd.sparse.csr_array((1_000_000, 1_000_000))
+>>> try:
+...     g.shortest_path(big)
+... except MemoryError as e:
+...     print(e)
+shortest_path(): cannot allocate 8000000000000 bytes: more than this machine's physical memory
+```
+
+안에서 쓰는 메모리는 입력에 비례해요.
+
+- CSR 사본(무향의 합친 CSR, 전치, 흐름의 잔여 그래프)은 입력 크기의 한두 배예요. 대칭 입력은 사본을 만들지 않아요.
+- 원점마다의 작업 공간(색인 힙, 거리, 변 수, 순서)은 태스크마다 길이 $n$의 배열 몇 줄이에요.
+- `method='auto'`가 밀집한 그래프에서 고르는 밀집 Dijkstra는 $n \times n$ 행렬 하나를 만들어요. 메모리 검사가 이 몫도 함께 세요.
+- Floyd–Warshall은 결과 $n^2$와, 64의 배수 $N$으로 채운 블록 작업 사본 $N^2$을 써요. 선행 노드를 구하면 둘 다 한 벌씩 늘어요. 메모리 검사가 결과와 사본을 함께 세요.

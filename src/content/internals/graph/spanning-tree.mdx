@@ -1,0 +1,282 @@
+---
+title: 최소 신장 트리
+group: 트리, 흐름, 매칭
+order: 1
+summary: minimum_spanning_tree가 답을 하나로 정하는 방법(변을 (무게, 작은 끝, 큰 끝)의 전순서로 견주기)과 그 증명, 무향 변 목록을 두 삼각에서 합쳐 만드는 법, double을 정수 키로 바꾼 안정 기수 정렬, 합집합-찾기의 Kruskal, 고른 변을 입력의 저장 자리 그대로 돌려주는 까닭을 코드를 따라 설명해요.
+seeAlso: [flow, matching, structure, accuracy-performance]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import PlaneFig from '../../../components/fig/PlaneFig.astro';
+
+export const mstPts = [[0, 1], [1, 2], [1, 0], [2.2, 1], [3.4, 2], [3.4, 0], [4.6, 1]];
+export const mstAll = [[0, 1, 1, 2], [0, 1, 1, 0], [1, 2, 1, 0], [1, 2, 2.2, 1], [1, 0, 2.2, 1], [2.2, 1, 3.4, 2], [2.2, 1, 3.4, 0], [3.4, 2, 3.4, 0], [3.4, 2, 4.6, 1], [3.4, 0, 4.6, 1], [1, 2, 3.4, 2]];
+export const mstTree = [[0, 1, 1, 2], [0, 1, 1, 0], [1, 2, 2.2, 1], [2.2, 1, 3.4, 2], [3.4, 2, 3.4, 0], [3.4, 2, 4.6, 1]];
+export const mstWeights = [[0.5, 1.5, '2'], [0.5, 0.5, '2'], [1, 1, '3'], [1.6, 1.5, '2'], [1.6, 0.5, '2'], [2.8, 1.5, '1'], [2.8, 0.5, '4'], [3.4, 1, '1'], [4, 1.5, '3'], [4, 0.5, '3'], [2.2, 2, '5']];
+
+## 한눈에 보기
+
+[`minimum_spanning_tree`](/api/graph/minimum_spanning_tree/)는 그래프를 무향으로 읽고, 모든 노드를 잇되 무게의 합이 가장 작은 변의 묶음을 골라요. 그래프가 여러 조각이면 조각마다 트리 하나씩, 곧 숲을 돌려줘요.
+
+같은 무게의 변이 있으면 합이 가장 작은 트리가 여럿일 수 있어요. 이 함수는 그 가운데 하나를 계산 순서가 아니라 규칙으로 정해요. 약속은 둘이에요.
+
+1. **답은 하나예요.** 변을 (무게, 작은 끝 노드, 큰 끝 노드)의 순서로 견줘요. 이 순서에서는 서로 다른 두 변이 같을 수 없고, 그러면 최소 신장 숲이 하나뿐이에요. 어떤 알고리즘으로 찾아도 같은 답이니 계산 방법이 결과에 드러나지 않아요.
+2. **결과는 입력을 거른 것이에요.** 고른 변은 그 무게를 준 저장 원소의 자리에 저장된 값 그대로 남아요. 그래서 결과가 표준 꼴 CSR이고 값의 비트가 입력과 같아요.
+
+| 파일 | 하는 일 |
+|---|---|
+| `src/stardust/graph/_tree.py` | 입력을 float64 CSR로 바꾸고, 저장된 NaN과 무한대를 막고, 결과를 `csr_array`로 감싸요 |
+| `csrc/graph/tree.cpp` | 무향 변 목록, 기수 정렬, Kruskal, 고른 원소로 결과 만들기 |
+| `csrc/graph/graph.hpp` | 두 방향의 무게를 하나로 읽는 `undirected_weight` |
+
+<Fig caption="노드 일곱, 변 열하나의 그래프와 그 최소 신장 트리(파란 선). 무게 2인 변이 넷이라 합이 같은 트리가 여럿인데, 0–1, 0–2, 1–3을 고르고 2–3을 버리는 것은 끝 노드 번호의 순서예요.">
+  <PlaneFig
+    label="노드 일곱 개의 그래프에서 최소 신장 트리의 변 여섯 개를 굵게 그린 그림"
+    domain={[-0.4, 5]}
+    range={[-0.5, 2.5]}
+    width={460}
+    layers={[
+      { kind: 'segments', segs: mstAll, tone: 'faint', width: 1.5 },
+      { kind: 'segments', segs: mstTree, tone: 'main', width: 2.5 },
+      { kind: 'points', pts: mstPts, tone: 'ink', size: 4, labels: ['0', '1', '2', '3', '4', '5', '6'] },
+      ...mstWeights.map(([x, y, t]) => ({ kind: 'text', at: [x, y], text: t, tone: 'base', dx: 4, dy: -4 })),
+    ]}
+  />
+</Fig>
+
+그림의 그래프를 실제로 넣어 보면 이래요. 밀집 행렬의 위 삼각에만 무게를 적었어요.
+
+```python
+>>> edges = [(0, 1, 2), (0, 2, 2), (1, 2, 3), (1, 3, 2), (2, 3, 2), (3, 4, 1),
+...          (3, 5, 4), (4, 5, 1), (4, 6, 3), (5, 6, 3), (1, 4, 5)]
+>>> W = sd.zeros((7, 7))
+>>> for i, j, w in edges:
+...     W[i, j] = w
+>>> T = sd.graph.minimum_spanning_tree(W).tocoo()
+>>> r, c = T.coords
+>>> list(zip(r.tolist(), c.tolist(), T.data.tolist()))
+[(0, 1, 2.0), (0, 2, 2.0), (1, 3, 2.0), (3, 4, 1.0), (4, 5, 1.0), (4, 6, 3.0)]
+```
+
+## 답이 하나인 까닭
+
+모든 변의 무게가 서로 다르면 최소 신장 트리는 하나뿐이라는 정리가 있어요. 이 함수는 무게가 같은 변도 끝 노드로 구별해서 그 정리를 언제나 쓸 수 있게 해요.
+
+변 $\{i, j\}$의 키를 $\kappa = (w, \min(i, j), \max(i, j))$로 두고 사전 순서로 견줘요. 무향으로 읽은 그래프에는 같은 두 노드를 잇는 변이 하나뿐이라(두 방향이 다 저장되어 있으면 하나로 합쳐요) 서로 다른 변의 키는 언제나 달라요. 곧 전순서예요.
+
+**정리.** 변의 키가 전순서이면, 연결된 그래프의 신장 트리 가운데 "변의 키를 오름차순으로 늘어놓은 열"이 사전 순서로 가장 작은 것은 하나이고, 그것이 Kruskal이 고르는 트리이며, 무게의 합도 가장 작아요.
+
+**증명.** Kruskal은 변을 키의 오름차순으로 보면서, 이미 고른 변들과 순환을 만들지 않는 변을 골라요. 이렇게 고른 트리를 $T$라고 하고, 무게 합이 가장 작은 신장 트리 가운데 $T$와 가장 많은 변을 함께 가진 것을 $T'$라고 해요. $T \ne T'$라고 가정하고, $T$에는 있고 $T'$에는 없는 변 가운데 키가 가장 작은 것을 $e$라고 해요. $T'$에 $e$를 더하면 순환이 하나 생겨요. 그 순환의 변이 모두 $T$에 있을 수는 없으니($T$에는 순환이 없어요) 순환 위에 $T$에 없는 변 $f$가 있어요.
+
+$\kappa(f) \lt \kappa(e)$일 수 있는지 봐요. Kruskal이 $f$를 버린 것은 그때까지 고른 변, 곧 키가 $f$보다 작은 $T$의 변들이 $f$의 두 끝을 이미 잇고 있었기 때문이에요. 그런데 $e$는 $T \setminus T'$에서 키가 가장 작으니 $e$보다 키가 작은 $T$의 변은 모두 $T'$에도 있어요. 그러면 $T'$ 안에서 그 변들과 $f$가 순환을 이루게 되어 모순이에요. 그래서 $\kappa(f) \gt \kappa(e)$이고, 따라서 $w(f) \ge w(e)$예요. $T'$에서 $f$를 빼고 $e$를 넣은 것도 신장 트리이고 무게 합은 $w(f) - w(e) \ge 0$만큼 줄거나 같아요. $T'$가 최소이니 합은 같고, 새 트리는 $T$와 변을 하나 더 함께 가져서 $T'$를 고른 기준과 어긋나요. 그러므로 $T = T'$예요. $\blacksquare$
+
+증명에서 쓴 것은 "키가 전순서"라는 것뿐이에요. 무게가 double이든 음수든 상관없고, 연결되지 않은 그래프는 조각마다 같은 말이 성립해요. 그래서 결과가 스레드 수나 정렬 구현과 무관하고, 테스트는 작은 그래프에서 정의를 그대로 옮긴 구현(정확한 유리수로 견주는 Kruskal)과 고른 변의 집합과 자리가 정확히 같은지 봐요.
+
+```python
+>>> ring = sd.asarray([[0, 1, 0, 1], [1, 0, 1, 0], [0, 1, 0, 1], [1, 0, 1, 0]], dtype=sd.float64)
+>>> sd.graph.minimum_spanning_tree(ring).toarray()
+array([[0.0, 1.0, 0.0, 1.0],
+       [0.0, 0.0, 1.0, 0.0],
+       [0.0, 0.0, 0.0, 0.0],
+       [0.0, 0.0, 0.0, 0.0]], dtype=float64)
+```
+
+네 변의 무게가 모두 1인 고리에서 키는 $(1, 0, 1) \lt (1, 0, 3) \lt (1, 1, 2) \lt (1, 2, 3)$이에요. 앞의 셋이 순환 없이 들어가고 마지막 변 2–3이 빠져요.
+
+## 무향 변 목록
+
+입력은 유향 인접 행렬의 CSR이에요. 무향 변 $\{i, j\}$는 원소 $(i, j)$와 $(j, i)$ 가운데 저장된 것이고, 둘 다 있으면 작은 무게예요. 대각 원소는 읽지 않아요.
+
+```python
+>>> S = sd.sparse
+>>> A = S.csr_array((sd.asarray([3.0, 2.0, 5.0]), (sd.asarray([0, 1, 1]), sd.asarray([1, 0, 2]))), shape=(3, 3))
+>>> sd.graph.minimum_spanning_tree(A).toarray()
+array([[0.0, 0.0, 0.0],
+       [2.0, 0.0, 5.0],
+       [0.0, 0.0, 0.0]], dtype=float64)
+```
+
+0과 1 사이에는 $0 \to 1$의 3과 $1 \to 0$의 2가 있어요. 변의 무게는 2이고, 결과에서도 그 2가 저장되어 있던 자리 $(1, 0)$에 남아요.
+
+두 방향을 하나로 읽는 규칙은 영역 전체가 함께 쓰는 함수예요.
+
+```cpp
+// csrc/graph/graph.hpp
+inline double undirected_weight(double a, double b) {
+    if (a != a || b != b) return a != a ? a : b;
+    if (a < b) return a;
+    if (b < a) return b;
+    return std::signbit(a) ? a : b;
+}
+```
+
+같은 값이면 부호 비트가 선 쪽을 고르니 $0.0$과 $-0.0$에서는 $-0.0$이에요. 어느 쪽이 `a`이고 어느 쪽이 `b`인지에 결과가 달려 있지 않아서, $G$와 그 전치가 같은 무향 그래프로 읽혀요. NaN의 갈래는 다른 함수를 위한 것이고, 이 함수에는 NaN이 오지 않아요(파이썬 층이 저장된 NaN과 $\pm\infty$를 `ValueError`로 막아요).
+
+변 목록은 $(\min, \max)$의 사전 순서로 만들어요. 행 $i$에서 만날 변은 $j \gt i$인 $\{i, j\}$이고, 그것은 두 곳에 흩어져 있어요. 행 $i$의 위 삼각 원소 $(i, j)$와, 다른 행 $j$에 있는 아래 삼각 원소 $(j, i)$예요. 뒤의 것을 행 $i$에서 바로 읽을 수 있도록, 먼저 아래 삼각 원소를 열별로 모아 둬요. 계수 정렬 한 번이고, 행을 오름차순으로 훑으며 넣으니 열 $i$의 묶음 안에서 $j$가 오름차순이에요. `low`는 그 원소의 번호, `lowr`는 그 원소의 행이에요.
+
+그다음 행마다 두 오름차순 줄을 합쳐요.
+
+```cpp
+    // csrc/graph/tree.cpp
+    for (int64_t i = 0; i < n; ++i) {
+        int64_t a = g.indptr[i];
+        const int64_t ae = g.indptr[i + 1];
+        while (a < ae && g.indices[a] <= i) ++a;  // the upper part of row i: (i, j), j > i
+        int64_t b = lp[static_cast<size_t>(i)];
+        const int64_t be = lp[static_cast<size_t>(i + 1)];
+        while (a < ae || b < be) {
+            const int64_t kb = b < be ? low[static_cast<size_t>(b)] : -1;
+            const int64_t ja = a < ae ? g.indices[a] : INT64_MAX;
+            const int64_t jb = b < be ? lowr[static_cast<size_t>(b)] : INT64_MAX;
+            if (ja < jb) {
+                add(i, ja, a, g.data[a]);
+                ++a;
+            } else if (jb < ja) {
+                add(i, jb, kb, g.data[kb]);
+                ++b;
+            } else {
+                const double wu = g.data[a], wl = g.data[kb], w = undirected_weight(wu, wl);
+                const bool upper = std::memcmp(&wu, &w, sizeof(double)) == 0;
+                add(i, ja, upper ? a : kb, w);
+                ++a;
+                ++b;
+            }
+        }
+    }
+```
+
+`add`는 변의 두 끝, 무게를 준 원소의 번호, 정렬 키를 적어요. 같은 $j$가 두 줄에 다 있으면 `undirected_weight`로 무게를 정하고, 위 삼각 원소의 비트가 그 무게와 같으면(`memcmp`) 위 삼각의 자리를, 아니면 아래 삼각의 자리를 적어요. 그래서 두 방향의 비트가 같을 때는 위 삼각($i \lt j$)이 남고, $0.0$과 $-0.0$이면 $-0.0$이 있는 자리가 남아요.
+
+```python
+>>> Z = S.csr_array((sd.asarray([0.0, -0.0]), (sd.asarray([0, 1]), sd.asarray([1, 0]))), shape=(2, 2))
+>>> T = sd.graph.minimum_spanning_tree(Z)
+>>> T.indptr, T.indices, T.data
+(array([0, 0, 1], dtype=int64), array([0], dtype=int64), array([-0.0], dtype=float64))
+>>> E = S.csr_array((sd.asarray([2.0, 2.0]), (sd.asarray([0, 1]), sd.asarray([1, 0]))), shape=(2, 2))
+>>> sd.graph.minimum_spanning_tree(E).toarray()
+array([[0.0, 2.0],
+       [0.0, 0.0]], dtype=float64)
+```
+
+이 순서로 만들었기 때문에 변의 번호가 곧 $(\min, \max)$의 순위예요. 정렬은 무게만 보면 돼요.
+
+## 정렬: double을 정수 키로
+
+변의 수가 많으면 비교 정렬보다 기수 정렬이 빨라요. 기수 정렬은 부호 없는 정수를 자리별로 나눠 세는 정렬이라, 먼저 double의 순서를 부호 없는 64비트 정수의 순서로 옮겨야 해요.
+
+```cpp
+// csrc/graph/tree.cpp
+// The order of doubles as unsigned integers (-0.0 read as 0.0; no NaN reaches here).
+inline uint64_t order_key(double w) {
+    const uint64_t b = std::bit_cast<uint64_t>(w + 0.0);
+    return (b >> 63) ? ~b : (b | (uint64_t{1} << 63));
+}
+```
+
+IEEE 754의 double은 부호 비트 하나, 지수 11비트, 가수 52비트예요. 양수끼리는 비트를 정수로 읽은 순서가 값의 순서와 같아요(지수가 크면 값이 크고, 지수가 같으면 가수가 큰 쪽이 커요). 음수는 절댓값이 클수록 정수로는 커서 순서가 뒤집혀 있어요. 그래서 음수는 모든 비트를 뒤집고(`~b`: 순서가 바로 서고 맨 윗비트가 0이 되어 양수 아래로 가요), 양수는 맨 윗비트를 세워 음수 위로 올려요. `w + 0.0`은 $-0.0$을 $+0.0$으로 바꿔요(반올림 모드가 가까운 쪽일 때 $-0 + 0 = +0$이에요). 전순서는 무게를 값으로 견주므로 두 0이 같은 키여야 해요.
+
+```cpp
+// csrc/graph/tree.cpp
+// A stable sort of items by key (ties keep their order).
+void radix_sort(std::vector<Item>& a) {
+    const size_t m = a.size();
+    if (m < 2) return;
+    if (m <= 256) {
+        std::stable_sort(a.begin(), a.end(), [](const Item& x, const Item& y) { return x.key < y.key; });
+        return;
+    }
+    constexpr int kBits = 11;
+    constexpr uint64_t kMask = (uint64_t{1} << kBits) - 1;
+    uint64_t all_and = ~uint64_t{0}, all_or = 0;
+    for (const Item& it : a) {
+        all_and &= it.key;
+        all_or |= it.key;
+    }
+    const uint64_t varying = all_and ^ all_or;  // the bits not every key shares
+    std::vector<Item> b(m);
+    std::vector<int64_t> count(size_t{1} << kBits);
+    for (int shift = 0; shift < 64; shift += kBits) {
+        if (((varying >> shift) & kMask) == 0) continue;
+        std::fill(count.begin(), count.end(), 0);
+        for (const Item& it : a) ++count[(it.key >> shift) & kMask];
+        int64_t sum = 0;
+        for (int64_t& c : count) {
+            const int64_t t = c;
+            c = sum;
+            sum += t;
+        }
+        for (const Item& it : a) b[static_cast<size_t>(count[(it.key >> shift) & kMask]++)] = it;
+        a.swap(b);
+    }
+}
+```
+
+낮은 자리부터 높은 자리로 가는 LSD 기수 정렬이에요. 11비트씩 여섯 자리(64비트를 11로 나누면 여섯 번)이고 자리마다 세기 한 번, 누적 한 번, 옮기기 한 번이에요. 세 가지가 눈에 띄어요.
+
+- **안정이에요.** 옮기기가 앞에서부터 차례로 자기 통의 다음 칸에 넣으니, 같은 자릿값의 항목은 들어온 순서를 지켜요. LSD 기수 정렬이 맞는 까닭이 바로 이 성질이고(높은 자리로 정렬할 때 낮은 자리의 순서가 남아야 해요), 같은 무게의 변이 변 번호 순서, 곧 $(\min, \max)$ 순서로 남는 까닭이기도 해요. 그래서 정렬이 끝난 열이 정확히 키 $\kappa$의 오름차순이에요.
+- **모든 키가 같은 자리는 건너뛰어요.** 모든 키의 AND와 OR을 구해 두면 둘이 다른 비트가 "키마다 다를 수 있는 비트"예요. 어떤 자리의 11비트가 모두 그 밖이면 그 자리로는 순서가 바뀌지 않으니 훑지 않아요. 무게가 작은 정수이거나 범위가 좁으면 가수의 낮은 자리와 지수의 높은 자리가 통째로 빠져요.
+- **변이 256개 이하이면 `std::stable_sort`예요.** 통 2,048개를 여섯 번 비우는 것보다 싸요. 둘 다 안정 정렬이라 결과는 같아요.
+
+## Kruskal과 합집합-찾기
+
+정렬한 변을 앞에서부터 보면서, 두 끝이 아직 다른 조각이면 고르고 두 조각을 합쳐요. 조각을 관리하는 자료 구조가 합집합-찾기예요. 노드마다 부모를 하나 두고, 부모를 따라 올라가 닿는 뿌리가 그 조각의 이름이에요.
+
+```cpp
+// csrc/graph/tree.cpp
+int64_t find(std::vector<int64_t>& parent, int64_t x) {
+    while (parent[static_cast<size_t>(x)] != x) {
+        const int64_t g = parent[static_cast<size_t>(parent[static_cast<size_t>(x)])];
+        parent[static_cast<size_t>(x)] = g;  // path halving
+        x = g;
+    }
+    return x;
+}
+```
+
+`find`는 올라가는 길에 노드의 부모를 할아버지로 바꿔요(경로 반감). 한 번 지나간 길이 반으로 줄어서 다음 `find`가 짧아져요. 재귀도, 두 번째 훑기도 없어요.
+
+```cpp
+    // csrc/graph/tree.cpp
+    radix_sort(items);
+    std::vector<int64_t> parent(static_cast<size_t>(n));
+    std::iota(parent.begin(), parent.end(), int64_t{0});
+    int64_t chosen = 0;
+    for (const Item& it : items) {
+        const size_t e = static_cast<size_t>(it.edge);
+        const int64_t ra = find(parent, ea[e]), rb = find(parent, eb[e]);
+        if (ra == rb) continue;
+        parent[static_cast<size_t>(std::max(ra, rb))] = std::min(ra, rb);
+        mark[static_cast<size_t>(ek[e])] = 1;
+        if (++chosen == n - 1) break;
+    }
+```
+
+두 뿌리 가운데 번호가 큰 쪽을 작은 쪽 밑에 달아요. 그래서 뿌리가 언제나 조각의 가장 작은 노드예요. 높이나 크기를 따로 적어 두는 꼴보다 배열이 하나 적고, 경로 반감만으로도 연산 하나의 상각 비용이 $O(\log n)$ 안이에요(Tarjan과 van Leeuwen의 분석). 변을 $n - 1$개 골랐으면 트리가 다 된 것이니 남은 변을 보지 않고 멈춰요. 연결되지 않은 그래프에서는 끝까지 가요.
+
+고른 변마다 무게를 준 원소의 번호에 표시(`mark`)를 해 둬요. 결과는 입력의 CSR을 행 순서대로 다시 훑으며 표시된 원소만 옮긴 것이에요. 입력의 줄이 오름차순이었으니 결과의 줄도 오름차순이고, 값은 옮기기만 해서 비트가 그대로예요.
+
+전체 비용은 변 목록을 만드는 훑기, 정렬의 여섯 번 이하의 훑기, 합집합-찾기예요. 직렬이고, 저장된 원소가 $2^{15}$개 이상이면 계산하는 동안 GIL을 놓아 다른 파이썬 스레드가 돌 수 있어요.
+
+### 병렬 알고리즘을 쓰지 않는 까닭
+
+답이 유일하니 Borůvka처럼 조각마다 가장 가벼운 변을 한꺼번에 고르는 병렬 알고리즘으로 바꿔도 결과는 같아요. 결과가 알고리즘에 달려 있지 않으니까요. 그래도 Kruskal 하나만 둔 것은 이 꼴이 이미 메모리를 차례로 훑는 몇 번의 고리라서 병렬 알고리즘으로 얻을 몫이 작고, 바꾸면 같은 답을 내는 코드가 한 벌 더 생겨 둘이 같은지를 따로 지켜야 하기 때문이에요.
+
+## 경계의 값
+
+- **음수 무게**는 그대로 받아요. 전순서와 증명 어디에도 부호가 쓰이지 않아요.
+- **연결되지 않은 그래프**는 조각마다의 트리를 한 행렬에 돌려줘요. 고립된 노드는 빈 행이에요.
+- **대각**은 읽지 않아요. 자기 고리는 어떤 트리에도 들지 않으니까요.
+- **저장된 0**은 무게 0의 변이에요. 밀집 입력에서는 0이 변 없음이라, 무게 0의 변은 희소 입력으로 줘요.
+- <strong>저장된 NaN, $\pm\infty$</strong>는 `ValueError`예요. NaN은 어떤 순서에도 들어가지 않아 전순서가 깨지고, 그러면 답이 하나라는 약속을 할 수 없어요.
+
+```python
+>>> N = sd.asarray([[0, -1.0, 2], [0, 0, -3], [0, 0, 0]])
+>>> sd.graph.minimum_spanning_tree(N).toarray()
+array([[ 0.0, -1.0,  0.0],
+       [ 0.0,  0.0, -3.0],
+       [ 0.0,  0.0,  0.0]], dtype=float64)
+>>> bad = S.csr_array((sd.asarray([sd.nan]), (sd.asarray([0]), sd.asarray([1]))), shape=(2, 2))
+>>> sd.graph.minimum_spanning_tree(bad)
+Traceback (most recent call last):
+  ...
+ValueError: minimum_spanning_tree(): stored edge weights must be finite
+```

@@ -1,0 +1,254 @@
+---
+kind: function
+title: dijkstra
+names: [dijkstra]
+group: 최단 경로
+order: 2
+signatures:
+  - "sd.graph.dijkstra(csgraph, /, *, directed=True, indices=None, return_predecessors=False, unweighted=False, limit=inf, min_only=False)"
+summary: 무게가 모두 0 이상인 그래프에서 최단 거리를 구해요. 가까운 노드부터 차례로 거리를 확정해 나가고, 거리 한도(limit)에서 멈추거나 여러 원점 가운데 가장 가까운 것까지의 거리(min_only)를 한 번에 구할 수 있어요.
+params:
+  - name: csgraph
+    type: sd.sparse의 희소 배열 또는 밀집 행렬(ndarray, numpy 배열, 수의 중첩 시퀀스)
+    kind: positional-only
+    desc: "(n, n) 인접 행렬. 행 i, 열 j의 원소가 i에서 j로 가는 변의 무게예요. 희소 배열은 저장된 원소가 모두 변이고(저장된 0도 무게 0의 변), 밀집 행렬은 0, NaN, 무한대가 아닌 원소가 변이에요. 무게는 모두 0 이상이어야 해요."
+  - name: directed
+    type: bool
+    kind: keyword-only
+    desc: "True(기본값)면 (i, j) 원소를 i에서 j로만 가는 변으로 읽어요. False면 양쪽으로 다닐 수 있는 변으로 읽고, 두 방향이 모두 있으면 작은 무게를 써요."
+  - name: indices
+    type: None, int, 또는 int의 1차원 배열
+    kind: keyword-only
+    desc: "원점. None(기본값)이면 모든 노드가 원점이에요. 노드 번호는 0 이상 n 미만의 int이고, 같은 번호를 여러 번 적어도 돼요."
+  - name: return_predecessors
+    type: bool
+    kind: keyword-only
+    desc: "True면 거리와 함께 선행 노드 배열을 돌려줘요."
+  - name: unweighted
+    type: bool
+    kind: keyword-only
+    desc: "True면 모든 변의 무게를 1로 봐요. 거리는 거쳐 간 변의 수예요. 저장된 값은 읽지 않아요."
+  - name: limit
+    type: float
+    kind: keyword-only
+    desc: "거리 한도. 거리가 limit 이하인 노드만 찾고, 더 먼 노드는 닿지 못한 것(inf, −9999)으로 둬요. 0 이상의 수이거나 inf(기본값)여야 해요."
+  - name: min_only
+    type: bool
+    kind: keyword-only
+    desc: "True면 indices의 모든 원점을 한꺼번에 출발점으로 두고, 노드마다 가장 가까운 원점까지의 거리 하나를 구해요. 결과는 (n,)이에요."
+returns:
+  type: ndarray(float64), ShortestPathResult 또는 MinOnlyResult
+  desc: "거리 배열. indices가 None이면 (n, n), int 하나면 (n,), 1차원 배열이면 (원점 수, n)이고, min_only=True면 언제나 (n,)이에요. 닿지 못한 노드는 inf예요. return_predecessors=True면 ShortestPathResult(dist_matrix, predecessors), min_only=True와 함께면 MinOnlyResult(dist_matrix, predecessors, sources)예요."
+raises:
+  - type: TypeError
+    desc: "csgraph가 받는 꼴이 아닐 때, limit이 수가 아닐 때, directed 등이 bool이 아닐 때, 노드 번호가 int가 아닐 때, 옵션을 자리로 줄 때, 없는 키워드를 줄 때."
+  - type: ValueError
+    desc: "음수 무게가 있을 때, limit이 음수이거나 NaN일 때, 행렬이 2차원 정방이 아닐 때, 노드 번호가 범위 밖일 때, indices가 2차원 이상일 때, 희소 입력에 저장된 무게가 NaN이나 무한대일 때."
+  - type: MemoryError
+    desc: "요청한 결과가 이 컴퓨터의 물리 메모리보다 클 때. 할당하기 전에 알려 줘요."
+seeAlso: [shortest_path, bellman_ford, johnson, yen, reconstruct_path, basics]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import PlaneFig from '../../../components/fig/PlaneFig.astro';
+
+export const nodePts = [[0, 1], [1.3, 2], [1.6, 1], [3, 1.7], [3, 0.3], [1.3, 0]];
+export const allEdges = [[0, 1, 1.3, 2], [0, 1, 1.6, 1], [0, 1, 1.3, 0], [1.3, 2, 1.6, 1], [1.3, 2, 3, 1.7], [1.6, 1, 3, 1.7], [1.6, 1, 1.3, 0], [3, 1.7, 3, 0.3], [3, 0.3, 1.3, 0]];
+export const insideEdges = [[0, 1, 1.3, 2], [0, 1, 1.6, 1], [1.6, 1, 1.3, 0]];
+export const insidePts = [[0, 1], [1.3, 2], [1.6, 1], [1.3, 0]];
+export const outsidePts = [[3, 1.7], [3, 0.3]];
+export const distLabels = [
+  { kind: 'text', at: [0, 1], text: 'd=0', dx: -10, dy: 4, anchor: 'end', tone: 'main' },
+  { kind: 'text', at: [1.3, 2], text: 'd=7', dy: -12, anchor: 'middle', tone: 'main' },
+  { kind: 'text', at: [1.6, 1], text: 'd=9', dx: 10, dy: -8, tone: 'main' },
+  { kind: 'text', at: [1.3, 0], text: 'd=11', dy: 20, anchor: 'middle', tone: 'main' },
+  { kind: 'text', at: [3, 1.7], text: 'd=20', dx: 10, dy: 4, tone: 'base' },
+  { kind: 'text', at: [3, 0.3], text: 'd=20', dx: 10, dy: 4, tone: 'base' },
+];
+
+## 한눈에 보기
+
+`dijkstra`는 무게가 모두 0 이상인 그래프에서 최단 거리를 구하는 Dijkstra 알고리즘이에요. 연못에 돌을 던졌을 때 물결이 퍼지듯, 원점에서 가까운 노드부터 하나씩 거리를 확정해 나가요. 아직 확정하지 않은 노드 가운데 지금까지 알려진 거리가 가장 작은 것을 꺼내 확정하고, 그 노드에서 나가는 변으로 이웃의 거리를 고쳐요. 무게가 음수가 아니면 나중에 다른 길로 돌아와도 더 짧아질 수 없으니, 한 번 꺼낸 노드의 거리는 그대로 답이에요.
+
+[`shortest_path`](/api/graph/shortest_path/)의 마을 여섯 곳 그래프로 해 볼게요.
+
+```python
+>>> import stardust as sd
+>>> G = [[0, 7, 9,  0, 0, 14],
+...      [0, 0, 10, 15, 0, 0],
+...      [0, 0, 0, 11, 0, 2],
+...      [0, 0, 0,  0, 6, 0],
+...      [0, 0, 0,  0, 0, 9],
+...      [0, 0, 0,  0, 0, 0]]
+>>> sd.graph.dijkstra(G, directed=False, indices=0)
+array([ 0.0,  7.0,  9.0, 20.0, 20.0, 11.0], dtype=float64)
+```
+
+마을 0에서 출발하면 거리 0인 0, 7인 1, 9인 2, 11인 5, 20인 3과 4의 차례로 확정돼요. 결과는 `shortest_path(G, method='D')`와 비트까지 같아요. `shortest_path`가 하는 일 가운데 무게가 0 이상인 경우만 맡고, 그 대신 거리 한도와 가장 가까운 원점 찾기라는 두 기능이 더 있어요.
+
+<Reference />
+
+## 원점과 결과의 꼴
+
+`indices`, `directed`, `return_predecessors`, `unweighted`는 [`shortest_path`](/api/graph/shortest_path/)와 같아요. `indices`가 None이면 `(n, n)`, int 하나면 `(n,)`, 1차원 배열이면 `(원점 수, n)`이에요. 닿지 못한 노드는 거리가 `inf`, 선행 노드가 −9999예요.
+
+```python
+>>> r = sd.graph.dijkstra(G, directed=False, indices=0, return_predecessors=True)
+>>> r.predecessors
+array([-9999,     0,     0,     2,     5,     2], dtype=int64)
+>>> sd.graph.dijkstra(G, directed=False, indices=0, unweighted=True)
+array([0.0, 1.0, 1.0, 2.0, 2.0, 1.0], dtype=float64)
+```
+
+길이가 같은 길이 여럿일 때 선행 노드를 고르는 규칙(거치는 변이 적은 길, 그다음 번호가 작은 노드)도 같아요.
+
+## 거리 한도: `limit`
+
+배달 가능 지역처럼 "원점에서 얼마 안쪽"만 알면 될 때가 있어요. `limit`을 주면 거리가 `limit` 이하인 노드까지만 찾고 멈춰요. 더 먼 노드는 닿지 못한 것으로 둬요. 큰 그래프에서 원점 근처만 보면 될 때 그래프 전체를 훑지 않아도 돼요.
+
+```python
+>>> sd.graph.dijkstra(G, directed=False, indices=0, limit=10)
+array([0.0, 7.0, 9.0, inf, inf, inf], dtype=float64)
+>>> r = sd.graph.dijkstra(G, directed=False, indices=0, limit=11, return_predecessors=True)
+>>> r.dist_matrix
+array([ 0.0,  7.0,  9.0,  inf,  inf, 11.0], dtype=float64)
+>>> r.predecessors
+array([-9999,     0,     0, -9999, -9999,     2], dtype=int64)
+```
+
+거리가 꼭 `limit`인 노드는 들어가요. `limit=11`에서 거리 11인 마을 5가 들어간 것이 그 예예요. 안쪽 노드의 거리와 선행 노드는 한도가 없을 때와 같아요.
+
+<Fig caption="limit=11로 마을 0에서 찾은 범위. 굵은 선과 파란 점이 거리 11 이하에서 찾은 노드와 그 최단 경로이고, 거리 20인 마을 3과 4는 찾지 않아요.">
+  <PlaneFig
+    label="노드 여섯 개의 그래프에서 노드 0으로부터 거리 11 이하인 노드 0, 1, 2, 5를 강조하고 각 노드 옆에 거리를 적은 그림"
+    domain={[-0.6, 3.6]}
+    range={[-0.45, 2.45]}
+    width={460}
+    layers={[
+      { kind: 'segments', segs: allEdges, tone: 'faint' },
+      { kind: 'segments', segs: insideEdges, tone: 'main', width: 2.2 },
+      ...distLabels,
+      { kind: 'points', pts: outsidePts, tone: 'base', size: 4.2, labels: ['3', '4'] },
+      { kind: 'points', pts: insidePts, tone: 'main', size: 4.2, labels: ['0', '1', '2', '5'] },
+    ]}
+    legend={[
+      { label: '거리 11 이하', tone: 'main', shape: 'dot' },
+      { label: '한도 밖', tone: 'base', shape: 'dot' },
+    ]}
+  />
+</Fig>
+
+`limit=0`이면 원점 자신(과 무게 0의 변으로 이어진 노드)만 남아요. 음수와 NaN은 한도가 될 수 없어 `ValueError`예요.
+
+```python
+>>> sd.graph.dijkstra(G, directed=False, indices=0, limit=0)
+array([0.0, inf, inf, inf, inf, inf], dtype=float64)
+>>> sd.graph.dijkstra(G, directed=False, indices=0, limit=float('nan'))
+Traceback (most recent call last):
+    ...
+ValueError: dijkstra(): 'limit' must be a nonnegative number or inf, not nan
+```
+
+## 가장 가까운 원점: `min_only`
+
+소방서가 여러 곳 있을 때 마을마다 가장 가까운 소방서까지의 거리가 궁금하다고 해 볼게요. 원점마다 행을 하나씩 구해 열마다 최솟값을 고를 수도 있지만, `min_only=True`를 주면 모든 원점을 한꺼번에 출발점으로 두고 한 번에 구해요. 원점이 많아도 결과는 `(n,)` 하나예요.
+
+```python
+>>> sd.graph.dijkstra(G, directed=False, indices=[1, 4])
+array([[ 7.0,  0.0, 10.0, 15.0, 21.0, 12.0],
+       [20.0, 21.0, 11.0,  6.0,  0.0,  9.0]], dtype=float64)
+>>> sd.graph.dijkstra(G, directed=False, indices=[1, 4], min_only=True)
+array([ 7.0,  0.0, 10.0,  6.0,  0.0,  9.0], dtype=float64)
+```
+
+두 번째 결과의 값마다 첫 번째 결과의 같은 열의 작은 쪽이에요. 선행 노드를 함께 받으면 `sources`가 덧붙어서, 노드마다 어느 원점이 가장 가까운지 알려 줘요.
+
+```python
+>>> m = sd.graph.dijkstra(G, directed=False, indices=[1, 4], min_only=True, return_predecessors=True)
+>>> m.predecessors
+array([    1, -9999,     1,     4, -9999,     4], dtype=int64)
+>>> m.sources
+array([1, 1, 1, 4, 4, 4], dtype=int64)
+```
+
+마을 0, 1, 2는 소방서 1이, 3, 4, 5는 소방서 4가 맡아요. `sources[v]`는 $v$의 선행 노드를 따라가다 끝나는 원점이고, 닿지 못한 노드는 −9999예요. 원점은 선행 노드가 −9999이고 `sources`는 자기 자신이에요. 거리가 같은 원점이 둘이면 선행 노드 규칙(변이 적은 길, 번호가 작은 노드)이 정한 쪽이에요.
+
+`min_only`와 `limit`을 함께 주면 "어느 원점에서든 한도 안"인 노드만 찾아요. `indices`가 None이면 모든 노드가 원점이라 거리가 모두 0이에요.
+
+## 음수 무게는 받지 않아요
+
+Dijkstra는 꺼낸 노드의 거리가 다시 줄지 않는다는 데 기대요. 음수 무게가 있으면 이 전제가 깨져서 틀린 답이 나올 수 있어요. 그래서 저장된 무게에 음수가 하나라도 있으면 계산하지 않고 `ValueError`를 내요.
+
+```python
+>>> N = [[0, 4,  0, 0],
+...      [0, 0, -2, 0],
+...      [0, 0,  0, 3],
+...      [0, 0,  0, 0]]
+>>> sd.graph.dijkstra(N, indices=0)
+Traceback (most recent call last):
+    ...
+ValueError: dijkstra(): negative edge weights are not allowed; use bellman_ford or johnson
+```
+
+음수 무게가 있으면 [`bellman_ford`](/api/graph/bellman_ford/)나 [`johnson`](/api/graph/johnson/)을 써요. 두 함수는 무게가 0 이상인 그래프에서 `dijkstra`와 같은 비트를 내요. `unweighted=True`면 값을 읽지 않으니 음수 무게가 있어도 변의 수를 세요.
+
+```python
+>>> sd.graph.dijkstra(N, indices=0, unweighted=True)
+array([0.0, 1.0, 2.0, 3.0], dtype=float64)
+```
+
+## 경계의 값
+
+- **무게 0의 변**은 희소 배열에 0을 저장해서 적어요. 밀집 행렬의 0은 "변 없음"이에요. 무게 0의 변으로 이어진 노드는 거리가 같고, 선행 노드는 거치는 변이 적은 쪽이에요.
+- **자기 고리**(대각 원소)는 쓰이지 않아요.
+- <strong>빈 `indices`</strong>는 `(0, n)` 배열, `min_only=True`와 함께면 모두 `inf`인 `(n,)` 배열이에요.
+- **노드가 없는 그래프**($n = 0$)도 받아요.
+- **희소 배열에 저장된 NaN과 무한대**는 `ValueError`예요. 밀집 행렬의 NaN과 무한대는 "변 없음"이에요.
+
+```python
+>>> Z = sd.sparse.csr_array(([0.0, 2.0, 5.0], ([0, 1, 0], [1, 2, 2])), shape=(3, 3))
+>>> sd.graph.dijkstra(Z, indices=0, return_predecessors=True)
+ShortestPathResult(dist_matrix=array([0.0, 0.0, 2.0], dtype=float64), predecessors=array([-9999,     0,     1], dtype=int64))
+>>> sd.graph.dijkstra(G, directed=False, indices=[], min_only=True)
+array([inf, inf, inf, inf, inf, inf], dtype=float64)
+```
+
+## 결정성과 정확도
+
+같은 입력이면 스레드 수와 상관없이 거리와 선행 노드가 같은 비트로 나와요. 거리는 경로의 무게를 원점에서부터 차례로 더한 값의 최솟값으로 정의되고, `dijkstra`, [`bellman_ford`](/api/graph/bellman_ford/), [`johnson`](/api/graph/johnson/), `shortest_path`의 `'D'`·`'BF'`·`'J'`·`'auto'`가 모두 같은 비트를 내요.
+
+무게가 정수이고 경로의 합이 $2^{53}$을 넘지 않거나 `unweighted=True`면 거리는 정확해요. 일반 실수 무게의 오차 한계와 측정값은 [`shortest_path`](/api/graph/shortest_path/)의 "결정성과 정확도"에 있어요. 변이 $H$개인 경로라면 상대오차가 대략 $(H - 1) \times 1.1 \times 10^{-16}$을 넘지 않아요.
+
+## 에러
+
+```python
+>>> sd.graph.dijkstra(G, directed=False, indices=0, limit=-1)
+Traceback (most recent call last):
+    ...
+ValueError: dijkstra(): 'limit' must be a nonnegative number or inf, not -1.0
+>>> sd.graph.dijkstra(G, directed=False, indices=0, limit='a')
+Traceback (most recent call last):
+    ...
+TypeError: dijkstra(): 'limit' must be an int or a float, not str
+>>> sd.graph.dijkstra(G, False)
+Traceback (most recent call last):
+    ...
+TypeError: dijkstra(): takes 1 positional argument but 2 were given
+>>> sd.graph.dijkstra(G, indices=6)
+Traceback (most recent call last):
+    ...
+ValueError: dijkstra(): 'indices' must be a node of the graph (0 .. 5), not 6
+```
+
+## scipy·networkx를 아는 분께
+
+`scipy.sparse.csgraph.dijkstra`와 이름, 인자 이름, 결과의 모양이 같아요. 다른 점은 이래요.
+
+- **음수 무게는 `ValueError`예요.** scipy는 경고를 내고 틀릴 수 있는 값을 돌려줘요.
+- **NaN `limit`은 `ValueError`예요.** scipy는 모든 노드를 `inf`로 내요.
+- **선행 노드의 동점 규칙이 정해져 있어요**(변이 적은 길, 번호가 작은 노드). scipy는 방법마다 동점에서 다른 선행 노드를 낼 수 있어요. 여기서는 `dijkstra`, `bellman_ford`, `johnson`이 같은 선행 노드를 내요.
+- **옵션은 키워드로만**, **노드 번호는 0 이상 $n$ 미만의 int만** 받아요. `overwrite`는 없어요.
+- **선행 노드와 `sources`는 int64**예요.
+- **밀집 입력의 아주 작은 무게도 변이에요.** scipy는 밀집 행렬에서 절댓값이 $10^{-8}$ 이하인 원소를 버려요.
+- scipy의 희소 객체는 받지 않아요. `sd.sparse.csr_array(A)`로 바꿔서 넣어요.
+
+networkx의 `single_source_dijkstra_path_length`는 `indices` 하나, `multi_source_dijkstra_path_length`는 `min_only=True`, `cutoff` 인자는 `limit`에 해당해요.

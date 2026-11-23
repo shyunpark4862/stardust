@@ -1,0 +1,323 @@
+---
+title: 최대 흐름
+group: 트리, 흐름, 매칭
+order: 2
+summary: maximum_flow가 만드는 잔여 그래프(두 방향 패턴의 CSR과 반대 변의 자리), int64를 넘지 않음을 보이는 원점 용량 검사와 uint64 잔여 용량, Edmonds–Karp와 Dinic의 고리, 두 방법이 같은 흐름 값을 내고 돌려주는 흐름이 데이터로만 정해지는 까닭을 코드를 따라 설명해요.
+seeAlso: [matching, spanning-tree, overview, accuracy-performance]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import PlaneFig from '../../../components/fig/PlaneFig.astro';
+
+export const flowPts = [[0, 1], [1.6, 2], [1.6, 0], [3.2, 1]];
+export const flowCut = [[0, 1, 1.6, 0], [1.6, 2, 1.6, 0], [1.6, 2, 3.2, 1]];
+export const flowAllSegs = [[0, 1, 1.6, 2], [0, 1, 1.6, 0], [1.6, 2, 1.6, 0], [1.6, 2, 3.2, 1], [1.6, 0, 3.2, 1]];
+export const flowText = [[0.8, 1.5, '3/4', 'end'], [0.8, 0.5, '2/2', 'end'], [1.6, 1, '1/1', 'start'], [2.4, 1.5, '2/2', 'start'], [2.4, 0.5, '3/3', 'start']];
+
+## 한눈에 보기
+
+[`maximum_flow`](/api/graph/maximum_flow/)는 저장된 원소 $(u, v)$를 용량이 그 값인 변 $u \to v$로 읽고, 원점 $s$에서 싱크 $t$로 보낼 수 있는 가장 큰 흐름을 구해요. 흐름 $f$는 변마다 $0 \le f(u, v) \le c(u, v)$이고, $s$와 $t$를 뺀 노드에서 들어오는 양과 나가는 양이 같아야 해요. 흐름 값은 $s$에서 나가는 알짜 양이에요.
+
+약속은 셋이에요.
+
+1. **흐름 값은 하나예요.** 최대 흐름 최소 절단 정리로 흐름 값은 가장 작은 절단의 용량과 같아서, 방법(`'dinic'`, `'edmonds_karp'`)과 무관해요.
+2. **돌려주는 흐름은 데이터로만 정해져요.** 최대 흐름 자체는 여럿일 수 있어요. 두 방법 모두 이웃을 번호 오름차순으로 보니, 같은 입력과 같은 방법이면 언제나 같은 흐름이에요. 직렬이라 스레드 수와도 무관해요.
+3. **정수는 정확해요.** 용량은 bool과 int64만 받고, 계산은 모두 정수예요. 원점에서 나가는 용량의 합이 int64 안이면 어떤 흐름도 넘치지 않아요.
+
+| 파일 | 하는 일 |
+|---|---|
+| `src/stardust/graph/_flow.py` | 용량을 int64 CSR로 바꾸고, 노드와 음수 용량을 확인하고, `MaximumFlowResult`를 만들어요 |
+| `csrc/graph/flow.cpp` | 넘침 검사, 잔여 그래프, Edmonds–Karp, Dinic, 결과의 흐름 |
+
+<Fig caption="용량을 적은 망에서 원점 0, 싱크 3의 최대 흐름(흐름/용량). 변은 번호가 작은 노드에서 큰 노드로 가요. 파란 세 변 0–2, 1–2, 1–3이 노드 {0, 1}과 {2, 3}을 가르는 절단이고, 그 용량의 합 5가 흐름 값이에요.">
+  <PlaneFig
+    label="노드 네 개의 망과 변마다의 흐름과 용량, 최소 절단의 변 세 개를 굵게 그린 그림"
+    domain={[-0.4, 3.6]}
+    range={[-0.4, 2.4]}
+    width={420}
+    layers={[
+      { kind: 'segments', segs: flowAllSegs, tone: 'faint', width: 1.5 },
+      { kind: 'segments', segs: flowCut, tone: 'main', width: 2.5 },
+      { kind: 'points', pts: flowPts, tone: 'ink', size: 4, labels: ['0', '1', '2', '3'] },
+      ...flowText.map(([x, y, t, a]) => ({ kind: 'text', at: [x, y], text: t, tone: 'base', anchor: a, dx: a === 'end' ? -6 : 6, dy: -2 })),
+    ]}
+  />
+</Fig>
+
+```python
+>>> C = sd.asarray([[0, 4, 2, 0],
+...                 [0, 0, 1, 2],
+...                 [0, 0, 0, 3],
+...                 [0, 0, 0, 0]])
+>>> r = sd.graph.maximum_flow(C, 0, 3)
+>>> r
+MaximumFlowResult(flow_value=5, flow=<csr_array (4, 4), nnz 10>)
+>>> r.flow.toarray()
+array([[ 0,  3,  2,  0],
+       [-3,  0,  1,  2],
+       [-2, -1,  0,  3],
+       [ 0, -2, -3,  0]], dtype=int64)
+```
+
+## 잔여 그래프
+
+증가 경로 알고리즘은 잔여 그래프 위에서 움직여요. 변 $u \to v$에 흐름 $f$가 있으면 $u \to v$로는 $c(u, v) - f(u, v)$만큼 더 보낼 수 있고, $v \to u$로는 $f(u, v)$만큼 되돌릴 수 있어요. 흐름을 반대칭($f(v, u) = -f(u, v)$)으로 적으면 두 경우가 한 식이에요. 잔여 용량은 $r(u, v) = c(u, v) - f(u, v)$이고, 입력에 없는 방향은 $c = 0$으로 봐요.
+
+그래서 잔여 그래프의 패턴은 입력과 그 전치의 패턴의 합집합이에요. 먼저 전치의 패턴을 계수 정렬로 만들고, 행마다 두 오름차순 줄을 합쳐요.
+
+```cpp
+// csrc/graph/flow.cpp
+void residual(const View& g, const int64_t* caps, Residual& r) {
+    const int64_t n = g.n, nnz = g.nnz();
+    std::vector<int64_t> tp(static_cast<size_t>(n + 1), 0), ti(static_cast<size_t>(nnz));
+    for (int64_t k = 0; k < nnz; ++k) ++tp[static_cast<size_t>(g.indices[k] + 1)];
+    for (int64_t i = 0; i < n; ++i) tp[static_cast<size_t>(i + 1)] += tp[static_cast<size_t>(i)];
+    {
+        std::vector<int64_t> next(tp.begin(), tp.end() - 1);
+        for (int64_t i = 0; i < n; ++i)
+            for (int64_t k = g.indptr[i]; k < g.indptr[i + 1]; ++k)
+                ti[static_cast<size_t>(next[static_cast<size_t>(g.indices[k])]++)] = i;
+    }
+    r.n = n;
+    r.ip.assign(static_cast<size_t>(n + 1), 0);
+    r.ix.clear();
+    r.cap.clear();
+    r.ix.reserve(static_cast<size_t>(2 * nnz));
+    r.cap.reserve(static_cast<size_t>(2 * nnz));
+    for (int64_t i = 0; i < n; ++i) {
+        int64_t a = g.indptr[i], b = tp[static_cast<size_t>(i)];
+        const int64_t ae = g.indptr[i + 1], be = tp[static_cast<size_t>(i + 1)];
+        while (a < ae || b < be) {
+            const int64_t ja = a < ae ? g.indices[a] : INT64_MAX, jb = b < be ? ti[static_cast<size_t>(b)] : INT64_MAX;
+            const int64_t j = std::min(ja, jb);
+            r.ix.push_back(j);
+            r.cap.push_back(ja == j && j != i ? caps[a] : 0);
+            if (ja == j) ++a;
+            if (jb == j) ++b;
+        }
+        r.ip[static_cast<size_t>(i + 1)] = static_cast<int64_t>(r.ix.size());
+    }
+    // The pattern is symmetric: row v lists the u with (u, v) ascending, the order rows are walked in here.
+    const size_t m = r.ix.size();
+    r.rev.assign(m, 0);
+    r.res.assign(r.cap.begin(), r.cap.end());
+    std::vector<int64_t> next(r.ip.begin(), r.ip.end() - 1);
+    for (int64_t u = 0; u < n; ++u)
+        for (int64_t k = r.ip[static_cast<size_t>(u)]; k < r.ip[static_cast<size_t>(u + 1)]; ++k)
+            r.rev[static_cast<size_t>(k)] = next[static_cast<size_t>(r.ix[static_cast<size_t>(k)])]++;
+}
+```
+
+- 합친 행의 원소는 입력에 $(i, j)$가 있으면 그 용량을, 전치에만 있으면(곧 입력에 $(j, i)$만 있으면) 0을 가져요. 대각 원소는 용량을 0으로 두고 자리만 남겨요. 자기 고리는 흐름 값에 쓰이지 않지만 결과의 패턴에는 입력의 저장 원소가 모두 있게 하려는 것이에요.
+- 증가 경로를 밀 때는 원소 $k = (u, v)$와 그 반대 원소 $(v, u)$를 함께 바꿔야 해요. `rev[k]`가 그 반대 원소의 자리예요. 패턴이 대칭이라는 것만으로 찾을 수 있어요. 행을 $u = 0, 1, \ldots$ 차례로 훑으면 열 $v$에 놓인 원소 $(u, v)$들을 $u$의 오름차순으로 만나요. 한편 행 $v$는 열 번호 $u$를 오름차순으로 저장하고 있으니, 열 $v$에서 $m$번째로 만난 원소의 반대는 행 $v$의 $m$번째 원소예요. 행마다 커서 하나(`next`)로 한 번 훑으면 끝나요.
+
+### 잔여 용량은 uint64
+
+```cpp
+// csrc/graph/flow.cpp
+struct Residual {
+    int64_t n = 0;
+    std::vector<int64_t> ip, ix, rev, cap;
+    std::vector<uint64_t> res;  // the residual capacities c - f
+    uint64_t left(int64_t k) const { return res[static_cast<size_t>(k)]; }
+    void push(int64_t k, uint64_t d) {
+        res[static_cast<size_t>(k)] -= d;
+        res[static_cast<size_t>(rev[static_cast<size_t>(k)])] += d;
+    }
+    int64_t flow(size_t k) const { return static_cast<int64_t>(static_cast<uint64_t>(cap[k]) - res[k]); }
+};
+```
+
+잔여 용량 $r(u, v) = c(u, v) - f(u, v)$는 0에서 $c(u, v) + c(v, u)$까지 움직여요. 두 방향이 모두 $2^{62}$를 넘는 용량이면 이 합은 int64를 넘어요. 그래서 잔여 용량은 부호 없는 64비트로 두어요. 용량 하나가 $2^{63} - 1$ 이하이니 합은 $2^{64}$ 아래이고, uint64의 덧셈과 뺄셈이 정확해요. 흐름은 끝에서 $f = c - r$로 읽어 int64로 바꿔요.
+
+그 바꿈이 맞으려면 흐름 자체가 int64 안이어야 해요. 그것을 호출의 맨 앞에서 확인해요.
+
+```cpp
+    // csrc/graph/flow.cpp
+    const int64_t* caps = reinterpret_cast<const int64_t*>(c.data);
+    int64_t out_of_source = 0;
+    for (int64_t k = g.indptr[s]; k < g.indptr[s + 1]; ++k)
+        if (g.indices[k] != s && __builtin_add_overflow(out_of_source, caps[k], &out_of_source)) return nb::none();
+```
+
+원점에서 나가는 용량의 합 $C_s$가 int64를 넘으면 `None`을 돌려주고 파이썬 층이 `OverflowError`를 내요(대각은 빼요). 넘지 않으면 다음 논증으로 모든 흐름이 $C_s$ 이하예요.
+
+- 알고리즘은 증가 경로 하나에 병목 $d \gt 0$을 더하기를 되풀이해요. 경로는 같은 노드를 두 번 지나지 않으니 변 하나의 $\lvert f \rvert$는 경로 하나에서 많아야 $d$만큼 변해요.
+- 그래서 어느 때든 $\lvert f(u, v) \rvert \le \sum d$이고, $\sum d$는 지금의 흐름 값이에요.
+- 흐름 값은 절단 $(\{s\}, V \setminus \{s\})$의 용량 $C_s$ 이하예요.
+
+곧 $\lvert f(u, v) \rvert \le C_s \le 2^{63} - 1$이고, 흐름 값을 더하는 마지막 합도 넘치지 않아요.
+
+```python
+>>> big = 2**62
+>>> sd.graph.maximum_flow(sd.asarray([[0, big, big], [0, 0, 0], [0, 0, 0]]), 0, 2)
+Traceback (most recent call last):
+  ...
+OverflowError: maximum_flow(): the capacities out of the source sum past the int64 range
+>>> r = sd.graph.maximum_flow(sd.asarray([[0, big, 0], [big, 0, big], [0, 0, 0]]), 0, 2)
+>>> r.flow_value
+4611686018427387904
+>>> r.flow.toarray()
+array([[                   0,  4611686018427387904,                    0],
+       [-4611686018427387904,                    0,  4611686018427387904],
+       [                   0, -4611686018427387904,                    0]], dtype=int64)
+```
+
+둘째 그래프에서 $0 \leftrightarrow 1$의 잔여 용량은 흐름을 보내기 전에 $2^{62} + 2^{62} = 2^{63}$까지 갈 수 있는 자리예요(되돌리는 쪽). int64로는 담을 수 없는 값이지만 uint64에서는 정확해요.
+
+## Edmonds–Karp
+
+Edmonds와 Karp의 방법은 Ford–Fulkerson의 증가 경로를 너비 우선으로 찾아요. 그러면 언제나 변의 수가 가장 적은 증가 경로를 고르게 돼요.
+
+```cpp
+// csrc/graph/flow.cpp
+void edmonds_karp(Residual& r, int64_t s, int64_t t) {
+    const int64_t n = r.n;
+    std::vector<int64_t> pred(static_cast<size_t>(n)), queue(static_cast<size_t>(n)), seen(static_cast<size_t>(n), -1);
+    for (int64_t round = 0;; ++round) {
+        int64_t head = 0, tail = 0;
+        queue[static_cast<size_t>(tail++)] = s;
+        seen[static_cast<size_t>(s)] = round;
+        bool reached = false;
+        while (head < tail && !reached) {
+            const int64_t u = queue[static_cast<size_t>(head++)];
+            for (int64_t k = r.ip[static_cast<size_t>(u)]; k < r.ip[static_cast<size_t>(u + 1)]; ++k) {
+                const int64_t v = r.ix[static_cast<size_t>(k)];
+                if (seen[static_cast<size_t>(v)] == round || r.left(k) == 0) continue;
+                seen[static_cast<size_t>(v)] = round;
+                pred[static_cast<size_t>(v)] = k;
+                if (v == t) {
+                    reached = true;
+                    break;
+                }
+                queue[static_cast<size_t>(tail++)] = v;
+            }
+        }
+        if (!reached) return;
+        uint64_t d = ~uint64_t{0};
+        for (int64_t v = t; v != s;
+             v = r.ix[static_cast<size_t>(r.rev[static_cast<size_t>(pred[static_cast<size_t>(v)])])])
+            d = std::min(d, r.left(pred[static_cast<size_t>(v)]));
+        for (int64_t v = t; v != s;
+             v = r.ix[static_cast<size_t>(r.rev[static_cast<size_t>(pred[static_cast<size_t>(v)])])])
+            r.push(pred[static_cast<size_t>(v)], d);
+    }
+}
+```
+
+한 바퀴는 원점에서 너비 우선으로 퍼지다가 싱크에 닿는 순간 멈춰요. 그때까지 노드마다 들어온 원소(`pred`)를 적어 두었으니, 싱크에서 그것을 거슬러 올라가며 병목 $d$를 구하고 같은 길을 다시 걸으며 $d$만큼 밀어요. `seen`에는 바퀴 번호를 적어서 바퀴마다 배열을 지우지 않아요.
+
+변의 수가 가장 적은 경로를 고르면 바퀴의 수가 $O(VE)$로 묶여요. 증가하고 나면 원점에서 각 노드까지의 잔여 그래프 거리가 줄지 않고, 경로 위에서 포화된 변 $(u, v)$가 다시 쓰이려면 먼저 $(v, u)$가 경로에 들어야 하는데 그때 $v$까지의 거리가 2 이상 늘어 있어요. 거리는 $V$를 넘지 않으니 변 하나가 병목이 되는 횟수가 $O(V)$이고, 바퀴마다 병목이 되는 변이 하나는 있어요. 바퀴 하나가 $O(E)$라 전체는 $O(VE^2)$예요.
+
+## Dinic
+
+Dinic의 방법은 한 단계에서 같은 길이의 증가 경로를 한꺼번에 처리해요. 단계마다 원점에서 너비 우선으로 층(`level`)을 매기고, 층이 정확히 하나씩 올라가는 변만 쓰는 층 그래프에서 더는 경로가 없을 때까지(막는 흐름) 깊이 우선으로 경로를 밀어요.
+
+```cpp
+// csrc/graph/flow.cpp
+void dinic(Residual& r, int64_t s, int64_t t) {
+    const int64_t n = r.n;
+    std::vector<int64_t> level(static_cast<size_t>(n)), queue(static_cast<size_t>(n)), arc(static_cast<size_t>(n));
+    std::vector<int64_t> path;  // the entries of the current path from s
+    path.reserve(static_cast<size_t>(n));
+    for (;;) {
+        std::fill(level.begin(), level.end(), -1);
+        int64_t head = 0, tail = 0;
+        queue[static_cast<size_t>(tail++)] = s;
+        level[static_cast<size_t>(s)] = 0;
+        while (head < tail) {
+            const int64_t u = queue[static_cast<size_t>(head++)];
+            if (level[static_cast<size_t>(u)] >= level[static_cast<size_t>(t)] && level[static_cast<size_t>(t)] >= 0)
+                break;
+            for (int64_t k = r.ip[static_cast<size_t>(u)]; k < r.ip[static_cast<size_t>(u + 1)]; ++k) {
+                const int64_t v = r.ix[static_cast<size_t>(k)];
+                if (level[static_cast<size_t>(v)] >= 0 || r.left(k) == 0) continue;
+                level[static_cast<size_t>(v)] = level[static_cast<size_t>(u)] + 1;
+                queue[static_cast<size_t>(tail++)] = v;
+            }
+        }
+        if (level[static_cast<size_t>(t)] < 0) return;
+        for (int64_t v = 0; v < n; ++v) arc[static_cast<size_t>(v)] = r.ip[static_cast<size_t>(v)];
+        path.clear();
+        int64_t u = s;
+        for (;;) {
+            if (u == t) {
+                uint64_t d = ~uint64_t{0};
+                for (int64_t k : path) d = std::min(d, r.left(k));
+                size_t cut = path.size();
+                for (size_t q = 0; q < path.size(); ++q) {
+                    r.push(path[q], d);
+                    if (cut == path.size() && r.left(path[q]) == 0) cut = q;  // the first saturated entry
+                }
+                path.resize(cut);  // go back to its tail
+                u = cut ? r.ix[static_cast<size_t>(path[cut - 1])] : s;
+                continue;
+            }
+            int64_t& k = arc[static_cast<size_t>(u)];
+            const int64_t end = r.ip[static_cast<size_t>(u + 1)], next = level[static_cast<size_t>(u)] + 1;
+            while (k < end && (level[static_cast<size_t>(r.ix[static_cast<size_t>(k)])] != next || r.left(k) == 0)) ++k;
+            if (k < end) {
+                path.push_back(k);
+                u = r.ix[static_cast<size_t>(k)];
+                continue;
+            }
+            // a dead end: no path to t through u in this level graph
+            if (u == s) break;
+            level[static_cast<size_t>(u)] = -1;
+            path.pop_back();
+            u = path.empty() ? s : r.ix[static_cast<size_t>(path.back())];
+            ++arc[static_cast<size_t>(u)];
+        }
+    }
+}
+```
+
+- **층 매기기.** 싱크의 층이 정해진 뒤에는 그 층 이상의 노드를 더 펼치지 않아요. 싱크보다 깊은 노드는 이번 단계의 경로에 들 수 없으니까요. 싱크에 닿지 못하면 끝이에요.
+- **현재 호.** 노드마다 다음에 볼 원소의 자리(`arc`)를 쥐고 이웃을 오름차순으로 봐요. 한 번 지나친 원소는 이 단계에서 다시 보지 않아요. 층 그래프에서 막힌 원소는 이 단계 안에서 다시 열리지 않기 때문이에요(밀면 열리는 반대 원소는 층을 거꾸로 가는 원소라 층 그래프에 없어요).
+- **밀고 되돌아가기.** 싱크에 닿으면 경로 위의 병목만큼 밀고, 처음으로 포화된 원소의 꼬리까지만 되돌아가 거기서 다시 찾아요. 그 앞의 원소들은 아직 여유가 있으니 다시 걸을 필요가 없어요.
+- **막다른 노드.** 어떤 노드에서 갈 원소가 없으면 그 노드의 층을 $-1$로 지워 다른 경로가 들르지 않게 하고, 부모로 물러나 부모의 현재 호를 하나 넘겨요.
+
+단계가 끝날 때마다 원점에서 싱크까지의 잔여 그래프 거리가 적어도 1 늘어요. 막는 흐름을 보낸 뒤에는 이전 층 그래프의 모든 최단 경로에 포화된 변이 하나씩 있고, 밀면서 생긴 반대 변은 층을 내려가는 변이라 그것을 쓰는 경로는 더 길기 때문이에요. 거리는 $V - 1$을 넘지 않으니 단계는 $V$개 이하이고, 현재 호 덕에 한 단계가 $O(VE)$라 전체는 $O(V^2E)$예요. 용량이 모두 1이고 노드마다 들어오는 변이나 나가는 변이 하나뿐인 망(이분 매칭을 흐름으로 옮긴 망)에서는 단계가 $O(\sqrt V)$개라 전체가 $O(E\sqrt V)$예요. [Hopcroft–Karp](/internals/graph/matching/)와 같은 논증이에요.
+
+## 두 방법의 결과
+
+흐름 값은 정리로 같아요. 돌려주는 흐름은 방법마다 자기 훑기가 정하는 것이라, 두 방법이 같은 흐름을 낸다는 약속은 없어요. 그래도 둘은 비슷하게 움직여요. Dinic의 한 단계는 Edmonds–Karp가 차례로 찾을 같은 길이의 경로들을 층 그래프 하나에서 번호가 작은 쪽부터 밀어요. 아래 망은 0에서 5로 가는 길이 3의 경로 0–1–3–5, 0–1–4–5, 0–2–3–5가 있고, 두 방법 모두 먼저 0–1–3–5를 밀어요. 다음 경로는 3–5가 막혀 0–2–3에서 되돌아가는 반대 변 3→1을 거쳐 0–2–3–1–4–5가 되고, 두 방법이 같은 흐름에 닿아요.
+
+```python
+>>> C4 = sd.zeros((6, 6), dtype=sd.int64)
+>>> for u, v in [(0, 1), (0, 2), (1, 3), (1, 4), (2, 3), (3, 5), (4, 5)]:
+...     C4[u, v] = 1
+>>> a = sd.graph.maximum_flow(C4, 0, 5)
+>>> b = sd.graph.maximum_flow(C4, 0, 5, method='edmonds_karp')
+>>> a.flow_value, b.flow_value
+(2, 2)
+>>> a.flow.toarray()[0], a.flow.toarray()[1]
+(array([0, 1, 1, 0, 0, 0], dtype=int64), array([-1,  0,  0,  0,  1,  0], dtype=int64))
+```
+
+1→3의 흐름은 처음 경로에서 1이 되었다가 둘째 경로가 반대 변으로 되돌려 0이에요. 약속은 같은 입력과 같은 `method`이면 언제나 같은 흐름이라는 것이에요. 이웃을 오름차순으로 보는 고정된 훑기이고 직렬이니까요.
+
+## 흐름 값과 결과
+
+흐름 값은 잔여 그래프에서 원점의 행을 훑어 흐름을 더한 것이에요.
+
+```cpp
+    // csrc/graph/flow.cpp
+    int64_t value = 0;
+    for (int64_t k = r.ip[static_cast<size_t>(s)]; k < r.ip[static_cast<size_t>(s + 1)]; ++k)
+        value += r.flow(static_cast<size_t>(k));
+```
+
+원점으로 들어오는 원소의 흐름은 음수로 적혀 있으니 알짜 양이 돼요. 결과의 `flow`는 잔여 그래프의 CSR 그대로라 패턴이 입력과 그 전치의 합집합이고, 저장된 용량 0의 변과 대각의 저장 원소도 흐름 0으로 있어요. `MaximumFlowResult.flow`는 부를 때마다 이 세 배열을 복사한 새 `csr_array`예요.
+
+```python
+>>> Z = sd.sparse.csr_array((sd.asarray([0, 5, 2]), (sd.asarray([0, 0, 1]), sd.asarray([0, 1, 2]))), shape=(3, 3))
+>>> f = sd.graph.maximum_flow(Z, 0, 2).flow
+>>> f.indptr, f.indices, f.data
+(array([0, 2, 4, 5], dtype=int64), array([0, 1, 0, 2, 1], dtype=int64), array([ 0,  2, -2,  2, -2], dtype=int64))
+```
+
+## 병렬화와 메모리
+
+최대 흐름은 직렬이에요. 증가 경로 알고리즘은 한 경로를 민 결과가 다음 탐색의 출발점이라 나눌 곳이 없어요. 병렬로 도는 push–relabel 계열은 흐름 값은 같아도 어떤 흐름에 닿는지가 작업 순서에 달려 있어서, 돌려주는 흐름이 데이터로만 정해진다는 약속을 지키기 어려워요. 저장된 원소가 $2^{15}$개 이상이면 계산하는 동안 GIL을 놓아요.
+
+메모리는 잔여 그래프가 전부예요. 원소는 많아야 $2 \cdot \mathrm{nnz}$이고, 원소마다 열 번호, 반대 자리, 용량, 잔여 용량의 8바이트 넷이에요. 탐색의 작업 배열은 길이 $n$의 몇 줄이에요.

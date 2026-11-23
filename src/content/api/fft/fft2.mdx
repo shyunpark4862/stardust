@@ -1,0 +1,268 @@
+---
+kind: function
+title: fft2와 ifft2
+names: [fft2, ifft2]
+group: 복소 변환
+order: 2
+signatures:
+  - "sd.fft.fft2(x, /, *, s=None, axes=(-2, -1), norm='backward')"
+  - "sd.fft.ifft2(x, /, *, s=None, axes=(-2, -1), norm='backward')"
+summary: fft2는 두 축을 한꺼번에 변환하는 2차원 푸리에 변환이고, ifft2는 그 역변환이에요. 사진이나 격자 위의 자료를 가로 방향과 세로 방향의 물결로 나눠요. 기본으로 마지막 두 축을 변환하고, 앞쪽 축은 배치예요.
+params:
+  - name: x
+    type: ndarray
+    kind: positional-only
+    desc: 변환할 배열. 2차원 이상이고 bool, int64, float64, complex128을 받아요. bool과 int64는 float64로 바꿔 계산해요.
+  - name: s
+    type: int의 tuple이나 list, int, 또는 None
+    kind: keyword-only
+    desc: 변환할 축마다의 길이. 원소는 1 이상이거나 -1(그 축의 입력 길이)이에요. 입력이 더 길면 앞에서 자르고 짧으면 끝에 0을 채워요. axes와 길이가 같아야 해요. None(기본값)이면 입력의 길이예요.
+  - name: axes
+    type: int의 tuple이나 list
+    kind: keyword-only
+    desc: 변환할 축. 기본값은 마지막 두 축 (-2, -1)이에요. 같은 축을 두 번 적을 수 없어요.
+  - name: norm
+    type: "'backward', 'ortho' 또는 'forward'"
+    kind: keyword-only
+    desc: 정규화. N을 변환한 축들의 길이의 곱이라 하면 'backward'(기본값)는 fft2에 1, ifft2에 1/N을 곱하고, 'ortho'는 양쪽에 1/√N을, 'forward'는 fft2에 1/N, ifft2에 1을 곱해요.
+returns:
+  type: ndarray
+  desc: complex128 배열. 모양은 입력과 같고, s를 줬으면 변환한 축의 길이가 s예요. 언제나 새 배열이에요.
+raises:
+  - type: TypeError
+    desc: x가 sd.ndarray가 아닐 때, s나 axes의 원소가 int가 아닐 때(bool, None 포함), norm이 문자열이 아닐 때, 옵션을 위치로 줬거나 모르는 키워드를 줬을 때.
+  - type: ValueError
+    desc: x가 1차원일 때(축 -2가 없어요), 변환할 축의 길이가 0일 때, s의 원소가 0이거나 -2 이하일 때, s와 axes의 길이가 다를 때, axes가 비었거나 범위 밖이거나 같은 축을 두 번 담았을 때, norm이 세 값이 아닌 문자열일 때.
+  - type: OverflowError
+    desc: s나 axes의 원소가 int64 범위 밖일 때.
+  - type: MemoryError
+    desc: s로 요청한 결과가 기계의 메모리보다 클 때.
+seeAlso: [basics, fft, fftn, rfft2, hfftn, fftshift, fftfreq, dctn]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+`fft2`는 표(2차원 배열)를 **가로 방향과 세로 방향의 물결**로 나눠요. [`fft`](/api/fft/fft/)가 줄 하나를 주파수마다의 성분으로 바꾸듯이, `fft2`는 표를 (세로 주파수, 가로 주파수) 짝마다의 성분으로 바꿔요. `ifft2`는 그것을 되돌려요.
+
+```python
+>>> import stardust as sd
+>>> img = sd.asarray([[1.0, -1.0, 1.0, -1.0],
+...                   [1.0, -1.0, 1.0, -1.0],
+...                   [1.0, -1.0, 1.0, -1.0],
+...                   [1.0, -1.0, 1.0, -1.0]])
+>>> sd.real(sd.fft.fft2(img))
+array([[ 0.0,  0.0, 16.0,  0.0],
+       [ 0.0,  0.0,  0.0,  0.0],
+       [ 0.0,  0.0,  0.0,  0.0],
+       [ 0.0,  0.0,  0.0,  0.0]], dtype=float64)
+```
+
+`img`는 세로 줄무늬예요. 가로로는 두 칸마다 한 번 오르내리고(가로 주파수 2), 세로로는 변하지 않아요(세로 주파수 0). 그래서 결과에서 0이 아닌 칸은 행 0, 열 2 하나뿐이에요. 값 16은 칸의 수예요.
+
+<Fig caption="세로 줄무늬의 2차원 변환. 결과의 행 번호는 세로 방향의 주파수, 열 번호는 가로 방향의 주파수예요. 세로로는 변하지 않고 가로로 가장 빠르게 오르내리는 무늬라서 (0, 2) 칸에만 값이 있어요.">
+  <ArrayFig name="img" data={[[1, -1, 1, -1], [1, -1, 1, -1], [1, -1, 1, -1], [1, -1, 1, -1]]} tones={[['a', '', 'a', ''], ['a', '', 'a', ''], ['a', '', 'a', ''], ['a', '', 'a', '']]} axes />
+  <Op note="fft2">→</Op>
+  <ArrayFig name="fft2(img)" data={[[0, 0, 16, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]} tones={[['m', 'm', 'b', 'm'], ['m', 'm', 'm', 'm'], ['m', 'm', 'm', 'm'], ['m', 'm', 'm', 'm']]} note="행: 세로 주파수, 열: 가로 주파수" />
+</Fig>
+
+<Reference />
+
+## 무엇을 계산하나요
+
+모양 $(n_0, n_1)$인 표 $x$의 2차원 변환은 이 합이에요(`norm='backward'`일 때).
+
+$$
+y_{k_0 k_1} = \sum_{j_0=0}^{n_0-1} \sum_{j_1=0}^{n_1-1} x_{j_0 j_1} \, e^{-2\pi i\,(j_0 k_0/n_0 + j_1 k_1/n_1)}
+$$
+
+`ifft2`는 지수의 부호가 +이고 $1/(n_0 n_1)$을 곱해요. 이 합은 행마다 1차원 변환을 하고, 그 결과를 열마다 다시 1차원 변환한 것과 같아요.
+
+```python
+>>> a = sd.asarray([[1.0, 2.0, 3.0],
+...                 [4.0, 5.0, 6.0]])
+>>> y = sd.fft.fft2(a)
+>>> y
+array([[                 (21+0j), (-3+1.7320508075688772j),
+        (-3-1.7320508075688772j)],
+       [                 (-9+0j),                       0j,
+                              0j]], dtype=complex128)
+>>> bool(sd.all(y == sd.fft.fft(sd.fft.fft(a, axis=1), axis=0)))
+True
+>>> sd.fft.ifft2(y)
+array([[(1+0j), (2+0j), (3+0j)],
+       [(4+0j), (5+0j), (6+0j)]], dtype=complex128)
+```
+
+칸 (0, 0)의 21은 모든 값의 합이에요. 축 하나씩의 변환을 이은 것과 같은 비트예요.
+
+## 결과 읽기
+
+칸 $(k_0, k_1)$은 세로로 $k_0$번, 가로로 $k_1$번 도는 평면 물결의 성분이에요. 가로 줄무늬는 행 쪽에, 비스듬한 무늬는 두 주파수가 모두 0이 아닌 칸에 나와요.
+
+```python
+>>> rows = sd.asarray([[1.0, 1.0, 1.0, 1.0],
+...                    [-1.0, -1.0, -1.0, -1.0],
+...                    [1.0, 1.0, 1.0, 1.0],
+...                    [-1.0, -1.0, -1.0, -1.0]])
+>>> sd.real(sd.fft.fft2(rows))
+array([[ 0.0,  0.0,  0.0,  0.0],
+       [ 0.0,  0.0,  0.0,  0.0],
+       [16.0,  0.0,  0.0,  0.0],
+       [ 0.0,  0.0,  0.0,  0.0]], dtype=float64)
+>>> checker = img * rows
+>>> sd.real(sd.fft.fft2(checker))
+array([[ 0.0,  0.0,  0.0,  0.0],
+       [ 0.0,  0.0,  0.0,  0.0],
+       [ 0.0,  0.0, 16.0,  0.0],
+       [ 0.0,  0.0,  0.0,  0.0]], dtype=float64)
+```
+
+가로 줄무늬는 (2, 0)에, 바둑판 무늬는 (2, 2)에 값이 있어요.
+
+1차원과 마찬가지로 각 축의 뒤쪽 절반은 음의 주파수예요. 주파수 0이 가운데에 오게 하려면 [`fftshift`](/api/fft/fftshift/)를, 칸마다의 주파수 값은 축마다 [`fftfreq`](/api/fft/fftfreq/)를 써요.
+
+입력이 실수이면 결과는 켤레 대칭이에요. 칸 $(n_0 - k_0, n_1 - k_1)$이 칸 $(k_0, k_1)$의 켤레예요. 절반만 계산하는 [`rfft2`](/api/fft/rfft2/)가 실수 자료에 더 알맞아요.
+
+## 길이 `s`
+
+`s`는 변환할 두 축의 길이예요. 입력을 그 크기로 자르거나 끝에 0을 채운 뒤 변환해요. −1은 그 축의 입력 길이 그대로예요.
+
+```python
+>>> sd.fft.fft2(a, s=(2, 2))
+array([[(12+0j), (-2+0j)],
+       [(-6+0j),      0j]], dtype=complex128)
+>>> sd.fft.fft2(a[:, :2])
+array([[(12+0j), (-2+0j)],
+       [(-6+0j),      0j]], dtype=complex128)
+>>> sd.fft.fft2(a, s=(4, 8)).shape
+(4, 8)
+>>> sd.fft.fft2(a, s=(4, -1)).shape
+(4, 3)
+```
+
+`s=(2, 2)`는 왼쪽 위 2×2만 변환한 것이에요.
+
+## 축 `axes`와 배치
+
+기본으로 마지막 두 축을 변환해요. 3차원 이상의 배열은 앞쪽 축이 배치라서, 표 여러 장을 쌓아 한 번에 변환할 수 있어요.
+
+```python
+>>> stack = sd.stack([img, rows, checker])
+>>> stack.shape
+(3, 4, 4)
+>>> Y = sd.fft.fft2(stack)
+>>> Y.shape
+(3, 4, 4)
+>>> bool(sd.all(Y[1] == sd.fft.fft2(rows)))
+True
+```
+
+다른 두 축을 변환하려면 `axes`에 적어요. 축 하나만 적으면 그 축만 변환하고, [`fft`](/api/fft/fft/)와 같은 결과예요. 이때 `s`를 준다면 길이도 하나여야 해요.
+
+```python
+>>> sd.fft.fft2(stack, axes=(0, 2)).shape
+(3, 4, 4)
+>>> bool(sd.all(sd.fft.fft2(a, axes=(1,)) == sd.fft.fft(a, axis=1)))
+True
+```
+
+축을 몇 개든 자유롭게 고르려면 [`fftn`](/api/fft/fftn/)을 써요. `fft2`는 `axes`의 기본값만 다른 `fftn`이에요.
+
+## 정규화 `norm`
+
+$N$은 변환한 두 축의 길이를 곱한 수예요. `'backward'`(기본값)는 `ifft2`에서 $N$으로 나누고, `'forward'`는 `fft2`에서 나누고, `'ortho'`는 양쪽에서 $\sqrt{N}$으로 나눠요. 인자는 축마다 따로가 아니라 마지막에 한 번 곱해요.
+
+```python
+>>> sd.fft.fft2(a, norm='forward')
+array([[                   (3.5+0j), (-0.5+0.28867513459481287j),
+        (-0.5-0.28867513459481287j)],
+       [                  (-1.5+0j),                          0j,
+                                 0j]], dtype=complex128)
+>>> sd.fft.ifft2(sd.fft.fft2(a, norm='ortho'), norm='ortho')
+array([[(0.9999999999999999+0j),                  (2+0j),
+        (3.0000000000000004+0j)],
+       [ (4.000000000000001+0j),  (5.000000000000002+0j),
+         (6.000000000000002+0j)]], dtype=complex128)
+```
+
+`'forward'`의 칸 (0, 0)은 평균이에요. `'ortho'`로 갔다가 돌아온 값은 원래 값과 반올림 끝자리만큼 다를 수 있어요.
+
+## 경계의 값
+
+- 1차원 배열은 받지 않아요. 축 −2가 없어서 `ValueError`예요.
+- 변환할 축의 길이가 0이면 `ValueError`이고, 배치 축의 길이가 0이면 빈 결과예요.
+- 길이 1인 축은 변환해도 값이 그대로예요.
+- NaN이나 inf가 하나 있으면 그 표의 결과 칸에 NaN이나 inf가 섞여요. 배치의 다른 표는 영향을 받지 않아요. 어느 칸이 NaN이고 어느 칸이 inf인지는 약속하지 않아요.
+
+```python
+>>> sd.fft.fft2(sd.asarray([1.0, 2.0, 3.0]))
+Traceback (most recent call last):
+    ...
+ValueError: fft2(): axis -2 is out of bounds for an array of dimension 1
+>>> sd.fft.fft2(sd.zeros((0, 2, 2)))
+array([], shape=(0, 2, 2), dtype=complex128)
+>>> sd.fft.fft2(sd.asarray([[1.0, sd.nan], [3.0, 4.0]]))
+array([[(nan+0j), (nan+0j)],
+       [(nan+0j), (nan+0j)]], dtype=complex128)
+```
+
+## 에러
+
+```python
+>>> sd.fft.fft2(a, s=(2, 2, 2))
+Traceback (most recent call last):
+    ...
+ValueError: fft2(): 's' and 'axes' must have the same length, not 3 and 2
+>>> sd.fft.fft2(a, s=(2, 0))
+Traceback (most recent call last):
+    ...
+ValueError: fft2(): the entries of 's' must be at least 1 (or -1), not 0
+>>> sd.fft.fft2(a, s=(2, None))
+Traceback (most recent call last):
+    ...
+TypeError: fft2(): 's' must be an int or a tuple or list of ints, not NoneType
+>>> sd.fft.fft2(a, axes=(0, 0))
+Traceback (most recent call last):
+    ...
+ValueError: fft2(): repeated axis
+>>> sd.fft.fft2(a, axes=(0, 2))
+Traceback (most recent call last):
+    ...
+ValueError: fft2(): axis 2 is out of bounds for an array of dimension 2
+>>> sd.fft.fft2(a, (2, 2))
+Traceback (most recent call last):
+    ...
+TypeError: fft2(): takes 1 positional argument but 2 were given
+```
+
+## 정확도와 같은 결과
+
+정확도는 표 전체의 노름 상대오차로 약속해요. 한계는 [`fft`](/api/fft/fft/)의 한계를 축마다 더한 꼴이에요. 모양 $(n_0, n_1)$이고 두 길이의 소인수가 모두 11 이하이면
+
+$$
+\lVert \hat y - y \rVert \le \bigl(8 (\lceil \log_2 n_0 \rceil + \lceil \log_2 n_1 \rceil) + 6\bigr)\, u \,\lVert y \rVert, \qquad u = 2^{-53}
+$$
+
+이에요. 참값이 0에 가까운 칸 하나의 상대오차는 약속하지 않아요. 잰 값은 [`fftn`](/api/fft/fftn/)에 있어요.
+
+같은 입력이면 스레드 수, 배치, 배열이 메모리에 놓인 모양과 상관없이 같은 비트예요. 계산은 `axes`에 적힌 순서의 뒤에서 앞으로 한 축씩 해요. 그래서 기본 `norm`의 `fft2(x)`는 `fft(fft(x, axis=-1), axis=-2)`와 같은 비트예요. 실수 입력이면 마지막 축의 앞쪽 $\lfloor n_1/2 \rfloor + 1$칸이 [`rfft2`](/api/fft/rfft2/)와 같은 비트예요.
+
+```python
+>>> g = sd.random.default_rng(2).random((6, 8))
+>>> bool(sd.all(sd.fft.fft2(g)[:, :5] == sd.fft.rfft2(g)))
+True
+```
+
+## numpy·scipy를 아는 분께
+
+- `numpy.fft.fft2`·`scipy.fft.fft2`와 정의가 같아요. `s`, `axes`, `norm`은 키워드로만 받아요.
+- 1차원 입력은 `ValueError`예요. numpy는 `IndexError`예요.
+- 같은 축을 두 번 적으면 `ValueError`예요. scipy도 그렇고, numpy는 그 축을 두 번 변환해요.
+- 빈 `axes`는 `ValueError`예요. numpy와 scipy는 입력을 그대로 돌려줘요.
+- `s`의 `None` 원소는 `TypeError`예요. numpy는 폐기 예고와 함께 받아요.
+- 정규화는 $N$으로 한 번 곱해요. numpy는 축마다 곱해서 `'ortho'`와 `'forward'`의 끝자리가 다를 수 있어요.
+- `norm=None`, `out`, `workers`, `overwrite_x`, `plan`이 없어요.
