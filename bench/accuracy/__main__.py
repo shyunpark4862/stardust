@@ -57,6 +57,9 @@ MEASURES = (
     "solve_max",
     "growth_max",
     "residual_max",
+    "exact_data_max",
+    "nonfinite_max",
+    "rejected_max",
 )
 
 # Counts where fewer is worse: the converged runs of integrate, the converged entries of differentiate.
