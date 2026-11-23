@@ -69,7 +69,7 @@ Figure.inset(figure, rect, /)
 - `fig[i, j]`(여러 칸)와 `fig[i]`(한 줄이나 한 열)는 그 칸만 가리키는 `Figure`의 보기다. 그 보기의 메서드는 그 칸에 그린다. 칸을 고르지 않은 메서드는 첫 칸에 그린다(칸이 하나면 그 칸이다).
 - `grid`는 이미 지은 그림들을 칸으로 모아 새 `Figure`를 만든다. 칸은 복사해 넣으므로, 모은 뒤에 원래 그림이나 모은 그림을 고쳐도 다른 쪽은 그대로다. `labels='A'`는 칸마다 A, B, C…를, `'a'`는 a, b, c…를 왼쪽 위에 굵게 붙인다. 같은 열의 칸은 축의 왼쪽 끝이 한 줄에 선다.
 - `grid`의 `sharex`, `sharey`는 칸들의 축 범위를 맞춘다: `True`면 같은 열(x)·같은 줄(y)끼리, `'all'`이면 모든 칸이 한 범위다(범위를 준 칸과 범주 축은 빼고). 한 범위를 함께 쓰는 칸들은 눈금도 한 번 골라 같이 쓰고, 그 눈금 숫자는 바깥 칸(열의 맨 아래, 줄의 맨 왼쪽)에만 적는다. 아래(x)나 왼쪽(y)의 칸이 다른 축(범위를 따로 준 칸, 다른 범주)이면 숫자를 지우지 않는다.
-- `facet`은 DataFrame의 열 `by`의 값마다 칸 하나를 만든 `Facets`를 돌려준다(수면 정렬, 아니면 처음 나온 순서; 칸의 제목이 그 값). `Facets`의 그림 메서드(`scatter`, `line`, `histogram` 등)는 모든 칸에 그리고, 칸마다 그 값의 행을 `data`로 준다: 인자는 열 이름이다(`data`는 주지 않는다). `data`를 받지 않는 메서드(`hline`, `vline`, `text`, `function` 등)는 모든 칸에 같은 것을 그린다. 칸 하나나 그림 전체의 것인 `title zlabel compare fit twin inset`은 없다(칸마다 `Facets.axes[i]`로 부른다). 축은 기본으로 모든 칸이 맞추고, `group=`의 무리는 칸마다 같은 색이며 범례는 마지막 칸에만 선다. `xlabel`은 맨 아래 칸들에, `ylabel`은 맨 왼쪽 칸들에, `xlim ylim xscale yscale xticks yticks legend`는 모든 칸에 준다. `save`, `to_svg` 등과 노트북 표시는 그 그림의 것이고, `Facets.figure`가 그 `Figure`다. `Facets.axes`는 값의 칸들(그 순서대로의 보기)이고, 격자의 남는 빈자리는 들지 않는다.
+- `facet`은 DataFrame의 열 `by`의 값마다 칸 하나를 만든 `Facets`를 돌려준다(수면 정렬, 아니면 처음 나온 순서; 칸의 제목이 그 값). `Facets`의 그림 메서드(`scatter`, `line`, `histogram` 등)는 모든 칸에 그리고, 칸마다 그 값의 행을 `data`로 준다: 인자는 열 이름이다(`data`는 주지 않는다). `data`를 받지 않는 메서드(`hline`, `vline`, `text`, `function` 등)는 모든 칸에 같은 것을 그린다. 칸 하나나 그림 전체의 것인 `title zlabel compare fit twin inset`은 없다(칸마다 `Facets.axes[i]`로 부른다). 축은 기본으로 모든 칸이 맞추고, `group=`의 무리는 칸마다 같은 색이며 범례는 마지막 칸에만 선다. `xlabel`은 맨 아래 칸들에, `ylabel`은 맨 왼쪽 칸들에, `xlim ylim xscale yscale xticks yticks legend`는 모든 칸에 준다. `save`, `to_svg` 등과 노트북 표시는 그 그림의 것이고, `Facets.figure`가 그 `Figure`다. `Facets.axes`는 값의 칸들(그 순서대로의 보기)이고, 격자의 남는 빈자리는 들지 않는다. `hist2d`와 `hexbin`은 모든 칸이 한 격자(`range`를 주지 않으면 모든 행의 상자)로 세고 한 색 범위(위 끝은 모든 칸의 가장 큰 개수)로 칠하며, 색 막대는 마지막 칸에 하나만 둔다. `by`의 값이 64개를 넘으면 `ValueError`다(`facet(): the column 'length' has 160 values; a facet has at most 64 cells`).
 - `twin()`은 그 칸의 오른쪽에 두 번째 y축을 두고 그 축을 가리키는 보기를 돌려준다. 보기의 그림 메서드와 `ylabel ylim yscale yticks`는 두 번째 축의 것이고 x축은 함께 쓴다. 보기에 부른 `title xlabel xlim xscale xticks legend inset`은 그 칸의 것이다(첫 보기에 부른 것과 같다). `grid`에 보기를 주면 두 축을 다 가진 칸이 들어간다. 색은 첫 축의 층들 다음 색부터 이어지고, 범례는 두 축의 이름을 한데 모은다.
 - `inset(figure, rect)`는 칸 하나짜리 그림 `figure`를 이 칸의 그림 위에 얹는다. `rect = (x, y, w, h)`는 그림 사각형에 대한 몫(왼쪽 아래 기준)이고, 작은 그림의 눈금과 글자도 그 안에 든다(흰 바탕). `figure`는 복사해 넣는다.
 - 모든 그림의 기본값을 한 번에 바꾸는 전역 설정은 없다. 그림 옵션은 그림마다 준다(전역 상태를 두지 않는다, PL6).
@@ -92,7 +92,7 @@ Figure.size(width, height=None, /)
 - 모두 `fig` 자신을 돌려준다(§10의 6): `fig.xlabel(r"$x$").ylabel(r"$\Gamma(x)$").xlim(-4, 4)`.
 - `xlim`·`ylim`의 `None`은 그 끝을 자동으로 둔다. `kind`는 `'linear'`와 `'log'`다. 로그 축에서 0 이하의 값은 그리지 않고, 눈금은 10의 거듭제곱이다.
 - `xticks(values)`의 `values`가 `'pi'`면 π 단위의 눈금이다(§10의 17).
-- `legend(loc=None)`은 범례를 없앤다. `loc`은 `'best'`, `'top'`, `'right'`, `'bottom'`과 칸 안의 `'upper left'` 등이다. `'best'`는 그려진 것을 가리지 않는 구석을 고르고, 그런 구석이 없으면 칸 밖(한 줄에 들어가면 위, 아니면 오른쪽)에 둔다.
+- `legend(loc=None)`은 범례를 없앤다. `loc`은 `'best'`, `'top'`, `'right'`, `'bottom'`과 칸 안의 `'upper left'` 등이다. `'best'`는 그려진 것을 가리지 않는 구석을 고르고, 그런 구석이 없으면 칸 밖(한 줄에 들어가면 위, 아니면 오른쪽)에 둔다. 선 견본의 색이 흰 바탕과 거의 같으면(흰 바탕과의 명암비 1.25 미만: 흰색이나 아주 옅은 색; 팔레트의 색은 모두 그보다 진하다) 견본 둘레에 가는 회색 테두리를 둘러 보이게 한다. 색은 바꾸지 않는다.
 
 ### §2.3 내보내기
 ```
@@ -205,7 +205,7 @@ pairs(data, /, *, columns=None, group=None, width=None, height=None, font='serif
 - `boxplot`과 `strip`의 `x`는 범주, `y`는 값이다. `x`를 `None`으로 주면 상자 하나다.
 - `strip`의 흩음은 `rng`(`sd.random`의 생성기나 씨)로 정해진다. `rng=None`은 고정된 씨다. 같은 호출은 같은 그림이다.
 - `sd.plot.histogram`은 그림을, `sd.histogram`은 값을 돌려준다(API.md §6에 적는다; §10의 4).
-- `hist2d`는 (x, y) 짝을 격자의 칸에 세어 그림으로 그린다. `bins`는 수 하나(두 방향 같게)이거나 `(가로, 세로)`, `range`는 `((x0, x1), (y0, y1))`이다(밖의 짝은 세지 않는다; `x0 > x1`이나 `y0 > y1`이면 `ValueError`). `density=True`면 넓이로 나눈 밀도다. `hexbin`은 같은 일을 육각형 칸으로 하고, `size`는 가로로 놓이는 육각형의 수다(4 : 3 칸에서 정육각형으로 보인다). 둘 다 빈 칸은 비워 두고 색 막대를 붙인다. 칸은 값을 같은 너비로 나눈 것이라 로그 축에서는 칸이 그 값의 자리에 그대로 서서 너비가 다르게 보인다(0 이하의 부분은 그리지 않는다). 점이 수만 개 넘어 산점도가 뭉칠 때 쓴다.
+- `hist2d`는 (x, y) 짝을 격자의 칸에 세어 그림으로 그린다. `bins`는 수 하나(두 방향 같게)이거나 `(가로, 세로)`, `range`는 `((x0, x1), (y0, y1))`이다(밖의 짝은 세지 않는다; `x0 > x1`이나 `y0 > y1`이면 `ValueError`). `density=True`면 넓이로 나눈 밀도다. `hexbin`은 같은 일을 육각형 칸으로 하고, `size`는 가로로 놓이는 육각형의 수다(4 : 3 칸에서 정육각형으로 보인다). 둘 다 빈 칸은 비워 두고 색 막대를 붙인다. `hist2d`의 칸은 값을 같은 너비로 나눈 것이라 로그 축에서는 칸이 그 값의 자리에 그대로 서서 너비가 다르게 보인다(0 이하의 부분은 그리지 않는다). `hexbin`은 그릴 축에 맞춰 센다: 로그 축이면 값의 로그(10진)로 육각형을 나눠, 로그 축에서도 육각형이 정육각형으로 보인다(0 이하의 값은 세지 않는다). 점이 수만 개 넘어 산점도가 뭉칠 때 쓴다.
 - `heatmap`의 `annotate`는 칸마다 값을 적는다: `True`면 값마다 유효숫자 세 자리, 문자열이면 `bar`와 같은 서식(`'.2f'` 등)이다. 글자는 칸의 밝기에 따라 검정이나 흰색이다.
 - **아직 없는 것**: 밀도 곡선과 바이올린은 `sd.stats`에 핵밀도추정이 생기면 넣는다(PL15). 평균과 오차 막대는 `sd.stats`의 값으로 `errorbar`를 부른다.
 

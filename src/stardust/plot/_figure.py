@@ -461,7 +461,7 @@ class Figure:
         portrait, a heatmap, a hist2d): a notebook shows it as PNG, the rest as SVG."""
         for cell in self._root._cells:
             for layer in cell.layers:
-                if type(layer).__name__ in ("Space", "Picture"):
+                if type(layer).__name__ in ("Space", "Picture", "Counts"):
                     return True
         return False
 
@@ -905,6 +905,32 @@ def _share(fig, th):
     return shared
 
 
+def _settle(fig):
+    """The layers that depend on the axes they are drawn on (a hexbin's bins on log axes) made for
+    them, and the colours of the layers that share one colour range (a facet's counts) set by
+    the largest value of all of them."""
+    found = []
+
+    def walk(cell, xscale):
+        for layer in cell.layers:
+            if hasattr(layer, "settle"):
+                layer.settle(xscale == "log", cell.yscale == "log")
+                found.append((cell, layer))
+        if cell.twin is not None:
+            walk(cell.twin, xscale)  # (the x axis is the cell's)
+        for inner, _ in cell.insets:
+            walk(inner, inner.xscale)
+
+    for cell in fig._cells:
+        walk(cell, cell.xscale)
+    tops = {}
+    for _, layer in found:
+        if layer.share is not None:
+            tops[layer.share] = max(tops.get(layer.share, 0.0), layer.most)
+    for cell, layer in found:
+        layer.paint(cell, tops.get(layer.share) if layer.share is not None else None)
+
+
 def _layout(fig, dpi=300.0):
     """The scene of a figure."""
     th = THEMES[fig._theme]
@@ -912,6 +938,7 @@ def _layout(fig, dpi=300.0):
     engine.layout(_static_strings(fig))  # one TeX run for all that is new
     for cell in fig._cells:
         cell.placed = None
+    _settle(fig)
     shared = _share(fig, THEMES[fig._theme])
     nr, nc = fig._nrows, fig._ncols
     W = fig._w * MM

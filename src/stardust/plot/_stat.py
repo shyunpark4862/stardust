@@ -808,95 +808,169 @@ def hist2d(self, x, y, /, *, data=None, bins=40, range=None, density=False, cmap
         counts = counts / (X.shape[0] * (x1 - x0) / nx * (y1 - y0) / ny)
     F = sd.reshape(sd.where(counts > 0.0, counts, math.nan), (ny, nx))
     hi = float(sd.max(counts)) if counts.shape[0] else 1.0
-    lo = 0.0
-    if not hi > lo:
+    if not hi > 0.0:
         hi = 1.0
     cell = self._cell
-    cell.layers.append(_field.Picture((x0, x1, y0, y1), nx, ny, _field._picture(F, lo, hi, _color.table(name)), False))
+    table = _color.table(name)
+    pic = Counts((x0, x1, y0, y1), nx, ny, _field._picture(F, 0.0, hi, table), False)
+    pic.counts, pic.name, pic.table, pic.most, pic.top = F, name, table, hi, hi
+    cell.layers.append(pic)
     if colorbar:
-        cell.colorbar = (name, lo, hi)
+        cell.colorbar = pic.bar = (name, 0.0, hi)
     return self._touch()
 
 
-class Hexes(_layers.Layer):
-    """Hexagonal bins: centres and the half sizes of a hexagon in data units, a colour each."""
+class Counts(_field.Picture):
+    """The picture of a hist2d: its counts kept, so that cells that share one colour range (a
+    facet's) are coloured again by it. `share`: a key the layers of one colour range have in
+    common (None: their own); `bar`: the colour bar the layer gave its cell."""
 
-    def __init__(self, cx, cy, rx, ry, colors, box):
-        self.cx, self.cy, self.rx, self.ry, self.colors, self.box = cx, cy, rx, ry, colors, box
+    share = bar = None
+
+    def settle(self, xlog, ylog):
+        pass
+
+    def paint(self, cell, top):
+        """The colours for counts up to `top` (None: the layer's own largest count, `most`)."""
+        top = self.most if top is None else top
+        if top == self.top:
+            return
+        self.top = top
+        self.rgba = _field._picture(self.counts, 0.0, top, self.table)
+        if self.bar is not None and cell.colorbar is self.bar:
+            cell.colorbar = self.bar = (self.name, 0.0, top)
+
+
+_CORNERS = [(math.cos(math.radians(90 + 60 * k)), math.sin(math.radians(90 + 60 * k))) for k in range(6)]
+
+
+class Hexes(_layers.Layer):
+    """Hexagonal bins of (x, y) pairs over a box, `n` hexagons across, coloured by their counts.
+    The pairs are binned again for the axes they are drawn on (settle, from the layout): on a log
+    axis in the logarithms of the values, so that the hexagons are regular on the page there as
+    on linear axes. The centres are values; the corners lie at the half sizes (rx, ry) from a
+    centre along the axis (in decades on a log axis). `share`, `bar`: as of Counts."""
+
+    share = bar = None
+
+    def __init__(self, X, Y, n, box, name):
+        self.X, self.Y, self.n, self.box, self.name = X, Y, n, box, name
+        self.scales = None
+        self.settle(False, False)
+        self.paint(None, None)
+
+    def settle(self, xlog, ylog):
+        """Bin the pairs for linear or log axes (what is not positive is left out on a log one)."""
+        if self.scales == (xlog, ylog):
+            return
+        self.scales = (xlog, ylog)
+        X, Y = self.X, self.Y
+        x0, x1, y0, y1 = self.box
+        if xlog or ylog:
+            keep = ((X > 0.0) if xlog else sd.isfinite(X)) & ((Y > 0.0) if ylog else sd.isfinite(Y))
+            X, Y = X[keep], Y[keep]
+
+        def axis(V, lo, hi, log):
+            """The values along an axis as the lattice takes them, and their box."""
+            if not log:
+                return V, lo, hi
+            if not hi > 0.0:
+                return V, None, None
+            low = lo if lo > 0.0 else (float(sd.min(V)) if V.shape[0] else hi)
+            a, b = math.log10(low), math.log10(hi)
+            if not a < b:
+                a, b = a - 0.05, b + 0.05
+            return sd.log10(V), a, b
+
+        (U, a0, a1), (V, b0, b1) = axis(X, x0, x1, xlog), axis(Y, y0, y1, ylog)
+        self.cx, self.cy, self.counts = [], [], []
+        if a0 is None or b0 is None:
+            self.rx = self.ry = 0.0
+            return
+        n = self.n
+        # the lattice in units where a plot of the default shape (4 : 3) shows the hexagons regular
+        W, H = 4.0, 3.0
+        u, v = (U - a0) / (a1 - a0) * W, (V - b0) / (b1 - b0) * H
+        dx = W / n
+        dy = dx * math.sqrt(3.0)
+        ia, ja = sd.round(u / dx), sd.round(v / dy)  # two rectangular lattices; the nearer centre wins
+        ib, jb = sd.floor(u / dx), sd.floor(v / dy)
+        da = (u - ia * dx) ** 2 + (v - ja * dy) ** 2
+        db = (u - (ib + 0.5) * dx) ** 2 + (v - (jb + 0.5) * dy) ** 2
+        first = da <= db
+        na, nb = n + 2, int(H / dy) + 3
+        key = sd.where(first, (ja + 1) * na + (ia + 1), na * nb + (jb + 1) * na + (ib + 1)).astype(sd.int64)
+        counts = sd.bincount(key, minlength=2 * na * nb)
+        full = sd.nonzero(counts > 0)[0]
+        if full.shape[0]:
+            self.counts = counts[full].astype(sd.float64).tolist()
+            for key_ in full.tolist():
+                second, rest = divmod(key_, na * nb)
+                j_, i_ = divmod(rest, na)
+                i_, j_ = i_ - 1, j_ - 1
+                uu, vv = (i_ * dx, j_ * dy) if not second else ((i_ + 0.5) * dx, (j_ + 0.5) * dy)
+                cu, cv = a0 + uu / W * (a1 - a0), b0 + vv / H * (b1 - b0)
+                self.cx.append(10.0**cu if xlog else cu)
+                self.cy.append(10.0**cv if ylog else cv)
+        self.rx = dx / math.sqrt(3.0) / W * (a1 - a0)  # the circumradius, in the lattice's units
+        self.ry = dx / math.sqrt(3.0) / H * (b1 - b0)
+        self.most = max(self.counts, default=1.0)
+        self.colors = None
+
+    def paint(self, cell, top):
+        """The colours for counts up to `top` (None: the layer's own largest count)."""
+        top = self.most if top is None else top
+        if self.colors is not None and top == self.top:
+            return
+        self.top = top
+        self.colors = [_color.cmap(self.name, c / top) for c in self.counts]
+        if cell is not None and self.bar is not None and cell.colorbar is self.bar:
+            cell.colorbar = self.bar = (self.name, 0.0, top)
 
     def extent(self, axis, positive):
         lo, hi = (self.box[0], self.box[1]) if axis == "x" else (self.box[2], self.box[3])
-        if positive and not lo > 0.0:  # a log axis: from the lowest centre of a hexagon on it
+        if positive and not lo > 0.0:  # a log axis: from the lowest hexagon on it
             low = [v for v in (self.cx if axis == "x" else self.cy) if v > 0.0]
             if not low or not hi > 0.0:
                 return None
-            lo = min(low)
+            log = self.scales[0 if axis == "x" else 1]
+            lo = min(low) * 10.0 ** -(self.rx if axis == "x" else self.ry) if log else min(low)
         return (lo, hi, ())
 
     def draw(self, fr):
         # pointy-top hexagons; those of one colour go in one path
-        corners = [(math.cos(math.radians(90 + 60 * k)), math.sin(math.radians(90 + 60 * k))) for k in range(6)]
+        xlog, ylog = fr.xa.scale == "log", fr.ya.scale == "log"
         groups = {}
         for x, y, c in zip(self.cx, self.cy, self.colors):
             groups.setdefault(c, []).append((x, y))
-        # on a log axis a corner at zero or below is drawn off the low end of the axis
-        fx = fr.xa.lo / 10.0 if fr.xa.scale == "log" else -math.inf
-        fy = fr.ya.lo / 10.0 if fr.ya.scale == "log" else -math.inf
+        sx = [10.0 ** (ux * self.rx) for ux, _ in _CORNERS] if xlog else None
+        sy = [10.0 ** (uy * self.ry) for _, uy in _CORNERS] if ylog else None
         for c, pts in groups.items():
             ops, xy = [], array("d")
             for x, y in pts:
                 ops.append("MLLLLLZ")
-                for ux, uy in corners:
-                    xy.extend((fr.px(max(x + ux * self.rx, fx)), fr.py(max(y + uy * self.ry, fy))))
+                for k, (ux, uy) in enumerate(_CORNERS):
+                    px = x * sx[k] if xlog else x + ux * self.rx
+                    py = y * sy[k] if ylog else y + uy * self.ry
+                    xy.extend((fr.px(px), fr.py(py)))
             # a hairline of the same colour closes the seams between neighbours
             fr.scene.add(_scene.Path("".join(ops), xy, fill=c, stroke=c, width=0.25, clip=fr.clip))
 
 
 def hexbin(self, x, y, /, *, data=None, size=30, range=None, cmap=None, colorbar=True):
-    """The counts of (x, y) pairs in hexagonal bins, `size` hexagons across; empty ones blank."""
+    """The counts of (x, y) pairs in hexagonal bins, `size` hexagons across; empty ones blank
+    (Hexes: binned for the axes they are drawn on)."""
     who = "hexbin"
     _basic._check_data(who, data)
     _check_bool(colorbar, who, "colorbar")
     name = _field._cmap(who, cmap)
     n = integer(size, who, "size", 2)
-    X, Y, (x0, x1, y0, y1) = _pairs_xy(who, x, y, data, range)
-    # the lattice in units where a plot of the default shape (4 : 3) shows the hexagons regular
-    W, H = 4.0, 3.0
-    u, v = (X - x0) / (x1 - x0) * W, (Y - y0) / (y1 - y0) * H
-    dx = W / n
-    dy = dx * math.sqrt(3.0)
-    ia, ja = sd.round(u / dx), sd.round(v / dy)  # two rectangular lattices; the nearer centre wins
-    ib, jb = sd.floor(u / dx), sd.floor(v / dy)
-    da = (u - ia * dx) ** 2 + (v - ja * dy) ** 2
-    db = (u - (ib + 0.5) * dx) ** 2 + (v - (jb + 0.5) * dy) ** 2
-    first = da <= db
-    na, nb = n + 2, int(H / dy) + 3
-    key = sd.where(first, (ja + 1) * na + (ia + 1), na * nb + (jb + 1) * na + (ib + 1)).astype(sd.int64)
-    counts = sd.bincount(key, minlength=2 * na * nb)
-    full = sd.nonzero(counts > 0)[0]
-    k = full.tolist()
-    if not k:
-        hi = 1.0
-        cx = cy = []
-        cols = []
-    else:
-        c = counts[full].astype(sd.float64).tolist()
-        hi = max(c)
-        cx, cy = [], []
-        for key_ in k:
-            second, rest = divmod(key_, na * nb)
-            j_, i_ = divmod(rest, na)
-            i_, j_ = i_ - 1, j_ - 1
-            uu, vv = (i_ * dx, j_ * dy) if not second else ((i_ + 0.5) * dx, (j_ + 0.5) * dy)
-            cx.append(x0 + uu / W * (x1 - x0))
-            cy.append(y0 + vv / H * (y1 - y0))
-        cols = [_color.cmap(name, v / hi) for v in c]
-    rx = dx / math.sqrt(3.0) / W * (x1 - x0)  # the circumradius, as data units along each axis
-    ry = dx / math.sqrt(3.0) / H * (y1 - y0)
+    X, Y, box = _pairs_xy(who, x, y, data, range)
+    hexes = Hexes(X, Y, n, tuple(box), name)
     cell = self._cell
-    cell.layers.append(Hexes(cx, cy, rx, ry, cols, (x0, x1, y0, y1)))
+    cell.layers.append(hexes)
     if colorbar:
-        cell.colorbar = (name, 0.0, hi)
+        cell.colorbar = hexes.bar = (name, 0.0, hexes.most)
     return self._touch()
 
 

@@ -467,6 +467,10 @@ def test_facet_methods_without_data_draw_in_every_cell():
     assert len(g.axes) == 4  # the cells of the values; the grid's two empty places are not among them
     assert all(len(cell._cell.layers) == 3 for cell in g.axes)
     assert repr(g) == "Facets('site': 4 cells, 12 layers; 183 x auto mm)"
+    many = sd.frame.DataFrame({"k": [float(i) for i in range(65)], "y": [1.0] * 65})
+    with pytest.raises(ValueError, match=r"facet\(\): the column 'k' has 65 values; a facet has at most 64 cells"):
+        P.facet(many, "k")
+    assert len(P.facet(many[many["k"] < 64.0], "k").axes) == 64
     with pytest.raises(AttributeError, match="Facets has no method 'twin'"):
         g.twin()
     with pytest.raises(AttributeError, match="Facets has no method 'inset'"):
@@ -535,3 +539,20 @@ def test_the_titles_of_a_row_stand_on_one_baseline():
     _, top, _, _ = axis_lines(one)
     (q,) = [i for i in one.items if isinstance(i, _scene.Text) and i.s == "y"]
     assert q.y + depth < top
+
+
+def test_a_legend_swatch_as_light_as_the_ground_is_outlined():
+    from stardust.plot import _color, _layers
+
+    def outlines(color):
+        sc = scene_of(P.line([0.0, 1.0], [0.0, 1.0], color=color, label="Group A").legend(loc="top"))
+        return [i for i in sc.items if isinstance(i, _scene.Path) and i.stroke == _layers.OUTLINE]
+
+    assert len(outlines("white")) == 1 and len(outlines("#f8f8f8")) == 1
+    assert outlines("C0") == [] and outlines("#efc000") == []
+    # no colour of any palette is that light: their swatches are as they were
+    assert all(
+        _color.contrast_on_white(_color.parse(c, "t", "c", name)) >= _layers.FAINT
+        for name, colours in _color.PALETTES.items()
+        for c in colours
+    )

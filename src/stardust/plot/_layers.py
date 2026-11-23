@@ -137,9 +137,19 @@ class Layer:
         return []
 
 
+# A legend's line swatch whose colour is nearly the white it stands on (a contrast ratio below
+# FAINT; the lightest colour of every palette is above it) is drawn over a slightly wider grey line,
+# a thin outline that keeps it visible.
+FAINT = 1.25
+OUTLINE = (0.6, 0.6, 0.6, 1.0)
+
+
 def _line_handle(color, width, dash):
     def handle(scene, x, y, w, th):
-        scene.add(_scene.Path(*_scene.polyline([(x, y), (x + w, y)]), stroke=color, width=width, dash=dash))
+        line = _scene.polyline([(x, y), (x + w, y)])
+        if _color.contrast_on_white(color) < FAINT:
+            scene.add(_scene.Path(*line, stroke=OUTLINE, width=width + 0.6, dash=dash))
+        scene.add(_scene.Path(*line, stroke=color, width=width, dash=dash))
 
     return handle
 

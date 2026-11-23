@@ -207,6 +207,14 @@ def fill_of(c, t=0.42):
     return (c[0] + (1.0 - c[0]) * t, c[1] + (1.0 - c[1]) * t, c[2] + (1.0 - c[2]) * t, c[3])
 
 
+def contrast_on_white(c):
+    """The contrast ratio (WCAG: (L1 + 0.05) / (L2 + 0.05) of relative luminances) of a colour,
+    laid over white with its alpha, against white: 1 for white itself, 21 for black."""
+    r, g, b = (a * c[3] + (1.0 - c[3]) for a in c[:3])
+    lum = 0.2126 * _linear(r) + 0.7152 * _linear(g) + 0.0722 * _linear(b)
+    return 1.05 / (lum + 0.05)
+
+
 def _linear(v):
     return v / 12.92 if v <= 0.04045 else ((v + 0.055) / 1.055) ** 2.4
 

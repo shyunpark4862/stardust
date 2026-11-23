@@ -412,9 +412,45 @@ def test_hist2d_and_hexbin_take_a_range_in_order_and_stand_on_a_log_axis():
     lo, hi = h._cell.layers[0].extent("x", True)[:2]
     assert lo == 1.0 and hi == 100.0
     assert edge / img.iw == pytest.approx(math.log10(50.5) / 2.0, abs=2.0 / img.iw)
-    hx = P.hexbin([0.0, 1.0, 10.0, 100.0], [1.0, 2.0, 3.0, 4.0], size=4).xscale("log")
-    paths = [i for i in hx._root._build("test").items if isinstance(i, _scene.Path) and i.fill is not None]
-    assert paths and all(math.isfinite(v) for p in paths for v in p.xy)
+    # hexbin on log axes bins the logarithms: every hexagon has one size on the page
+    xs = [10.0 ** (k / 7.0) for k in range(-14, 15)]
+    ys = [10.0 ** ((k * 5 % 29) / 9.0) for k in range(-14, 15)]
+    hx = P.hexbin(xs + [0.0, -1.0], ys + [1.0, 1.0], size=5).xscale("log").yscale("log")
+    sizes = []
+    for item in hx._root._build("test").items:
+        if isinstance(item, _scene.Path) and item.fill is not None and item.ops.startswith("MLLLLLZ"):
+            for k in range(0, len(item.xy), 12):
+                px, py = item.xy[k : k + 12 : 2], item.xy[k + 1 : k + 12 : 2]
+                sizes.append((max(px) - min(px), max(py) - min(py)))
+    assert len(sizes) >= 5 and all(math.isfinite(a) and math.isfinite(b) for a, b in sizes)
+    w, h = sizes[0]
+    assert all(a == pytest.approx(w, rel=1e-6) and b == pytest.approx(h, rel=1e-6) for a, b in sizes)
+    layer = hx._cell.layers[0]
+    assert sum(layer.counts) == len(xs)  # the pairs at zero and below are not counted on a log axis
+    assert min(layer.cx) > 0.0 and min(layer.cy) > 0.0
+    lin = P.hexbin(xs, ys, size=5)._cell.layers[0]
+    assert lin.scales == (False, False) and sum(lin.counts) == len(xs)
+
+
+def test_a_facet_counts_on_one_grid_with_one_colour_range():
+    df = sd.frame.DataFrame(
+        {
+            "s": ["u"] * 6 + ["v"] * 3,
+            "x": [0.0, 0.1, 0.1, 0.1, 0.2, 0.3, 2.0, 2.5, 3.0],
+            "y": [0.0, 0.1, 0.1, 0.1, 0.2, 0.3, 4.0, 4.5, 5.0],
+        }
+    )
+    for name in ("hexbin", "hist2d"):
+        g = getattr(P.facet(df, "s"), name)("x", "y")
+        u, v = (cell._cell for cell in g.axes)
+        a, b = u.layers[0], v.layers[0]
+        assert a.box == b.box == (0.0, 3.0, 0.0, 5.0)  # the box of all the rows
+        assert u.colorbar is None and v.colorbar is not None  # one bar, on the last cell
+        g.figure._root._build("test")
+        assert a.top == b.top == a.most == 3.0 and b.most == 1.0  # the largest count of all
+        assert v.colorbar[1:] == (0.0, 3.0) and u.colorbar is None
+    own = P.facet(df, "s").hexbin("x", "y", range=((0.0, 4.0), (0.0, 6.0)))
+    assert all(cell._cell.layers[0].box == (0.0, 4.0, 0.0, 6.0) for cell in own.axes)
 
 
 def test_a_density_over_a_taller_layer_leaves_the_range_to_it():
