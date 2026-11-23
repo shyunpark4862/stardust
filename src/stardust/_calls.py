@@ -16,6 +16,8 @@ The forms:
     method(name)         a method or an __init__ named `name`; Python's counts include self,
                          which the caller never passes
     methods(cls)         every public method defined in cls, each named by itself
+    call(fn)             an object's __call__, named by the object's class (a subclass sharing
+                         the __call__ says its own name)
     keyword_init(cls)    a constructor with keyword-only parameters, named by the class called
 """
 
@@ -114,6 +116,26 @@ def _bound(fn, name):
 
     call._calls_wrapped = True
     return call
+
+
+def call(fn):
+    """fn (a __call__) with its call-shape errors named by the class of the object called:
+    "CubicSpline(): unexpected keyword argument 'foo'" for a CubicSpline whose __call__ is
+    PPoly's, not "PPoly.__call__() got ..."."""
+    head = f"{fn.__qualname__}() "
+
+    @functools.wraps(fn)
+    def __call__(self, *args, **kwargs):
+        try:
+            return fn(self, *args, **kwargs)
+        except TypeError as e:
+            c = _converted(e, head, type(self).__name__, True)
+            if c is None:
+                raise
+            raise c from None
+
+    __call__._calls_wrapped = True
+    return __call__
 
 
 def keyword_init(cls):

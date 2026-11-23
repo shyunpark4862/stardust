@@ -21,7 +21,7 @@ import math
 import numbers
 
 from .. import _core as _sd
-from .._calls import method
+from .._calls import call, method, methods
 from . import _common as C
 from ._polyint import _finish, _readonly
 
@@ -54,10 +54,14 @@ def _nonneg(v, name, arg):
     return t
 
 
+@methods
 class _Rational:
     """A barycentric rational: support points _zj (m,), values _fj (m, K), weights _wj (m,)."""
 
     __slots__ = ("_zj", "_fj", "_wj", "_rest", "_axis", "_poles", "_residues", "_roots")
+
+    def __reduce__(self):  # sd.ndarray does not pickle: the slots, arrays as bytes
+        return C.reduce(self)
 
     def _set(self, zj, fj, wj):
         self._zj, self._fj, self._wj = _readonly(zj), _readonly(fj), _readonly(wj)
@@ -67,6 +71,7 @@ class _Rational:
         f64 = _sd.float64
         return self._zj.dtype == f64 and self._wj.dtype == f64 and self._fj.dtype == f64
 
+    @call
     def __call__(self, z, /):
         """The rational's value at z (real or complex)."""
         name = type(self).__name__
@@ -123,6 +128,7 @@ class _Rational:
         return self._wj
 
 
+@methods
 class AAA(_Rational):
     """The AAA rational approximation (Nakatsukasa, Sete, Trefethen) of the samples (x, y), real or complex."""
 
@@ -239,19 +245,3 @@ class FloaterHormannInterpolator(_Rational):
 
     def __repr__(self):
         return f"FloaterHormannInterpolator(points={self._zj.shape[0]})"
-
-
-def _own_methods(cls):
-    """Copies of _Rational's public methods named after cls, so that a wrong call names the public class
-    (`AAA.roots() got an unexpected keyword argument ...`, not the private base; API.md §2.1)."""
-    import types
-
-    for name in ("__call__", "poles", "residues", "roots"):
-        f = getattr(_Rational, name)
-        g = types.FunctionType(f.__code__, f.__globals__, f.__name__, f.__defaults__, f.__closure__)
-        g.__kwdefaults__, g.__doc__, g.__qualname__ = f.__kwdefaults__, f.__doc__, f"{cls.__name__}.{name}"
-        setattr(cls, name, g)
-
-
-_own_methods(AAA)
-_own_methods(FloaterHormannInterpolator)

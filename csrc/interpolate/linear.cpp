@@ -1,13 +1,13 @@
 // The linear path of sd.interpolate (docs/design/interpolate.md §3.2, §6): the piecewise linear function
-// through (x[i], y[i]) with a batch of columns, under the three outside rules. The k = 1 B-spline
-// (milestone IP3) and the 1-D linear grid (milestone IP5) evaluate through it, so that they, sd.interp and
-// each other give the same bits on [x[0], x[n - 1]] (§2.2): one interval count (base/interval.hpp), one
-// t per point for all columns, one kernel (base/lerp.hpp).
+// through (x[i], y[i]) with a batch of columns, under the three outside rules. The k = 1 B-spline evaluates
+// through it (BSpline._eval, src/stardust/interpolate/_bspline.py), and the 1-D linear grid (grid.cpp) takes the
+// same steps, so that they, sd.interp and each other give the same bits on [x[0], x[n - 1]] (§2.2): one interval
+// count (base/interval.hpp), one t per point for all columns, one kernel (base/lerp.hpp).
 //
 // _core.interpolate.linear(x, xp, fp, extrapolate) -> (m, k): x (m,) float64, xp (n,) float64 strictly
 // increasing (n >= 2; the Python layer checks the order), fp (n, k) float64 or complex128, all
 // C-contiguous; extrapolate 0 (NaN outside), 1 (extend the end pieces) or 2 (periodic). A NaN point gives
-// NaN in every column (NaN in both parts of a complex value). Nothing public calls it yet.
+// NaN in every column (NaN in both parts of a complex value).
 
 #include "interpolate/interpolate.hpp"
 

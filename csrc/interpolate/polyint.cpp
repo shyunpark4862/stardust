@@ -15,7 +15,9 @@
 //   evaluation   the second (true) barycentric formula: s_j = w_j / (x - x_j), num = sum_j s_j y_j (one fma per
 //                term), den = sum_j s_j, both in the order of the nodes; num / den. At a node its value as it is;
 //                where s_j overflows (x within a subnormal distance of a node) the nearest node's value. At an
-//                infinite point the rational's limit sum w y / sum w (limit = true) or IEEE's NaN (the polynomial)
+//                infinite point the rational's limit sum w y / sum w (limit = true) or IEEE's NaN (the polynomial).
+//                One node is a constant: its value as it is at every finite point (and as the limit), not
+//                (s y) / s rounded twice
 //   derivatives  scipy's recursion: D_ij = (w_j / w_i) / (x_i - x_j) computed as w_j / ((x_i - x_j) w_i),
 //                D_ii = -sum_{j != i} D_ij; the derivative of order k is the barycentric interpolant of D^k y
 //   Krogh        scipy's Hermite divided-difference table (a repeated node carries the next derivative, divided
@@ -271,6 +273,15 @@ nb::object bary_eval(nb::handle xo, nb::handle wo, nb::handle yo, nb::handle qo,
         }
     }
     auto* o = reinterpret_cast<double*>(out.data);
+    if (n == 1) {  // a constant
+        for (std::int64_t i = 0; i < nq; ++i) {
+            const double v = Q.p[i];
+            double* row = o + i * D;
+            if (v != v || (std::isinf(v) && !limit)) std::fill(row, row + D, kNaN);
+            else std::memcpy(row, Y.p, sizeof(double) * D);
+        }
+        return wrap(std::move(out));
+    }
     split_range(nq, nq * n * (3 + D), 64, [&](std::int64_t b, std::int64_t e) {
         std::vector<double> s(n);
         std::int64_t i = b;
@@ -477,6 +488,15 @@ nb::object rat_eval(nb::handle zjo, nb::handle wjo, nb::handle fjo, nb::handle z
     NDArray out = new_array(DType::Complex128, shape);
     if (nq == 0 || K == 0) return wrap(std::move(out));
     auto* o = reinterpret_cast<double*>(out.data);
+    if (m == 1) {  // one support point: a constant, its value as it is at every point but NaN (and as the limit)
+        for (std::int64_t q = 0; q < nq; ++q) {
+            double* row = o + q * 2 * K;
+            const double zr = Qz[2 * q], zi = Qz[2 * q + 1];
+            if (!std::isinf(zr) && !std::isinf(zi) && (zr != zr || zi != zi)) std::fill(row, row + 2 * K, kNaN);
+            else std::memcpy(row, F.p, sizeof(double) * 2 * K);
+        }
+        return wrap(std::move(out));
+    }
     // the limit at infinity: sum w f / sum w
     std::vector<double> lim(2 * K);
     {

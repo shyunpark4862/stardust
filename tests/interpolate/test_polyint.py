@@ -365,3 +365,16 @@ def test_function_forms_are_the_objects(pid):
         got = IP.barycentric_interpolate(P.xi, P.yi, P.x, der=[0, 1])
         assert np.array_equal(np.asarray(got[0]), np.asarray(b(P.x)))
         assert np.array_equal(np.asarray(got[1]), np.asarray(b.derivative(P.x)))
+
+
+def test_one_node_is_its_value_everywhere():
+    """One node is the constant polynomial: its value as it is at every finite point (not (s y) / s rounded
+    twice), NaN at NaN, and the polynomial's NaN at infinity; Krogh's Horner has nothing to round."""
+    xs = [-1e300, -3.5, 0.0, 1e-310, 5.0, 2.0**60]
+    for x0, y0 in ((2.0, 7.0), (0.1, 0.3), (-3.0, 1.0 / 3.0)):
+        b = IP.BarycentricInterpolator([x0], [y0])
+        assert np.asarray(b(xs)).tolist() == [y0] * len(xs)
+        assert b(5.0) == y0 and math.isnan(b(math.nan)) and math.isnan(b(math.inf))
+        assert np.asarray(IP.BarycentricInterpolator([x0], [[y0, -y0]])(xs)).tolist() == [[y0, -y0]] * len(xs)
+        assert IP.barycentric_interpolate([x0], [y0], 5.0) == y0
+        assert IP.KroghInterpolator([x0], [y0])(9.0) == y0

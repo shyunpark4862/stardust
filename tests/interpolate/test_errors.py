@@ -93,6 +93,13 @@ CASES_IP2 = [
      "CubicSpline(): bc_type='periodic' applies to both ends at once"),
     (lambda: IP.CubicSpline(X, Y, bc_type=((3, 0.0), "natural")), ValueError,
      "CubicSpline(): the derivative order of a boundary condition must be 1 or 2, not 3"),
+    # a pair is always (left end, right end): (1, 0.0) is not one condition for both ends (scipy)
+    (lambda: IP.CubicSpline(X, Y, bc_type=(1, 0.0)), ValueError,
+     "CubicSpline(): a pair 'bc_type' is read as (left end, right end), and each end must be a condition name "
+     "or an (order, value) pair, not 1"),
+    (lambda: IP.CubicSpline(X, Y, bc_type=("natural", None)), ValueError,
+     "CubicSpline(): a pair 'bc_type' is read as (left end, right end), and each end must be a condition name "
+     "or an (order, value) pair, not NoneType"),
     (lambda: IP.CubicSpline(X, Y, bc_type=((1, [0.0, 1.0]), "natural")), ValueError,
      "CubicSpline(): a boundary value must have the shape (), not (2,)"),
     (lambda: IP.CubicSpline(X, Y, bc_type=("natural",) * 3), ValueError,
@@ -129,9 +136,11 @@ CASES_IP2 = [
     (lambda: P(0.5j), TypeError, "PPoly(): 'x' must be real, not complex"),
     (lambda: P([0.5j]), TypeError, "PPoly(): 'x' must be real, not complex128"),
     (lambda: P("a"), TypeError,
-     "PPoly(): 'x' must be an sd.ndarray, a sequence of numbers, a numpy array or a frame Series, not str"),
+     "PPoly(): 'x' must be an sd.ndarray, a sequence of numbers, a numpy array or a frame Series or DataFrame, "
+     "not str"),
     (lambda: P(["a"]), TypeError,
-     "PPoly(): 'x' must be an sd.ndarray, a sequence of numbers, a numpy array or a frame Series, not list"),
+     "PPoly(): 'x' must be an sd.ndarray, a sequence of numbers, a numpy array or a frame Series or DataFrame, "
+     "not list"),
     (lambda: P(0.5, nu=-1), ValueError, "PPoly(): 'nu' must be 0 or more, not -1"),
     (lambda: P(0.5, nu=1.0), TypeError, "PPoly(): 'nu' must be an int, not float"),
     (lambda: P(0.5, nu=True), TypeError, "PPoly(): 'nu' must be an int, not bool"),
@@ -275,7 +284,7 @@ BI = IP.BarycentricInterpolator([0.0, 1.0, 2.0], [1.0, 0.0, 3.0])
 KI = IP.KroghInterpolator([0.0, 1.0, 2.0], [1.0, 0.0, 3.0])
 AA = IP.AAA([0.0, 0.25, 0.5, 0.75, 1.0], [1.0, 1.25, 1.5, 2.0, 2.5])
 FH = IP.FloaterHormannInterpolator([0.0, 1.0, 2.0, 3.0, 4.0], [1.0, 2.0, 0.0, 1.0, 3.0])
-NOT_DATA = "must be an sd.ndarray, a sequence of numbers, a numpy array or a frame Series, not str"
+NOT_DATA = "must be an sd.ndarray, a sequence of numbers, a numpy array or a frame Series or DataFrame, not str"
 
 CASES_IP4 = [
     (lambda: IP.BarycentricInterpolator([0.0, 1.0, 1.0], Y[:3]), ValueError,
@@ -462,3 +471,83 @@ def test_call_shape_ip6():
         IP.RBFInterpolator(Y2, D5, workers=1)
     with pytest.raises(TypeError, match=r"^NearestNDInterpolator\(\): unexpected keyword argument 'tree_options'"):
         IP.NearestNDInterpolator(Y2, D5, tree_options={})  # IP31
+
+
+# ---- the methods' call shapes (docs/api/interpolate.md §1.1): the method's name, and an object's call its class
+
+
+def _shape_error(call):
+    with pytest.raises(TypeError) as e:
+        call()
+    return str(e.value)
+
+
+def test_method_call_shapes_name_the_method():
+    cs = IP.CubicSpline([0.0, 1.0, 2.0], [0.0, 1.0, 0.0])
+    x6 = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
+    y6 = [v * v for v in x6]
+    bs = IP.make_interp_spline(x6, y6)
+    aaa, fh = IP.AAA(x6, y6), IP.FloaterHormannInterpolator(x6, y6)
+    bary, krogh = IP.BarycentricInterpolator(x6, y6), IP.KroghInterpolator(x6, y6)
+    for call, msg in (
+        (lambda: cs.integrate(0, 1, 2), "integrate(): takes 2 positional arguments but 3 were given"),
+        (lambda: cs.integrate(0, 1, foo=1), "integrate(): unexpected keyword argument 'foo'"),
+        (lambda: cs.derivative(2), "derivative(): takes 0 positional arguments but 1 was given"),
+        (lambda: cs.antiderivative(2), "antiderivative(): takes 0 positional arguments but 1 was given"),
+        (lambda: cs.roots(foo=1), "roots(): unexpected keyword argument 'foo'"),
+        (lambda: cs.solve(0.0, 1), "solve(): takes from 0 to 1 positional arguments but 2 were given"),
+        (lambda: cs.extend(), "extend(): missing 2 required positional arguments: 'c' and 'x'"),
+        (lambda: IP.PPoly.from_spline(bs, True), "from_spline(): takes 1 positional argument but 2 were given"),
+        (lambda: IP.CubicSpline.from_spline(bs, True), "from_spline(): takes 1 positional argument but 2 were given"),
+        (lambda: cs(0.5, foo=1), "CubicSpline(): unexpected keyword argument 'foo'"),
+        (lambda: IP.PPoly(cs.c, cs.x)(0.5, 1), "PPoly(): takes 1 positional argument but 2 were given"),
+        (lambda: bs(0.5, foo=1), "BSpline(): unexpected keyword argument 'foo'"),
+        (lambda: bs.integrate(0, 1, 2), "integrate(): takes 2 positional arguments but 3 were given"),
+        (lambda: bs.insert_knot(), "insert_knot(): missing 1 required positional argument: 'x'"),
+        (lambda: IP.BSpline.basis_element(), "basis_element(): missing 1 required positional argument: 't'"),
+        (lambda: IP.BSpline.design_matrix(x6, x6), "design_matrix(): missing 1 required positional argument: 'k'"),
+        (lambda: IP.BSpline.from_power_basis(cs, 1),
+         "from_power_basis(): takes 1 positional argument but 2 were given"),
+        (lambda: aaa.roots(foo=1), "roots(): unexpected keyword argument 'foo'"),
+        (lambda: aaa.poles(1), "poles(): takes 0 positional arguments but 1 was given"),
+        (lambda: aaa.clean_up(1e-13), "clean_up(): takes 0 positional arguments but 1 was given"),
+        (lambda: aaa(0.5, 1), "AAA(): takes 1 positional argument but 2 were given"),
+        (lambda: fh.residues(1), "residues(): takes 0 positional arguments but 1 was given"),
+        (lambda: fh(0.5, foo=1), "FloaterHormannInterpolator(): unexpected keyword argument 'foo'"),
+        (lambda: bary.derivative(), "derivative(): missing 1 required positional argument: 'x'"),
+        (lambda: bary.set_yi(), "set_yi(): missing 1 required positional argument: 'yi'"),
+        (lambda: bary(0.5, foo=1), "BarycentricInterpolator(): unexpected keyword argument 'foo'"),
+        (lambda: krogh.derivatives(0.5, 2), "derivatives(): takes 1 positional argument but 2 were given"),
+        (lambda: krogh(), "KroghInterpolator(): missing 1 required positional argument: 'x'"),
+        (lambda: RBF(0.5, foo=1), "RBFInterpolator(): unexpected keyword argument 'foo'"),
+        (lambda: IP.NearestNDInterpolator(Y2, D5)(),
+         "NearestNDInterpolator(): missing 1 required positional argument: 'xi'"),
+        (lambda: IP.RegularGridInterpolator(([0.0, 1.0],), [1.0, 2.0])(0.5, foo=1),
+         "RegularGridInterpolator(): unexpected keyword argument 'foo'"),
+    ):  # fmt: skip
+        assert _shape_error(call) == msg
+    # an error raised inside a method keeps its own message
+    with pytest.raises(TypeError, match=r"^integrate\(\): 'a' must be"):
+        cs.integrate("a", 1)
+
+
+# ---- frame inputs (docs/api/interpolate.md §1.2): a DataFrame is its columns side by side
+
+
+def test_dataframe_points():
+    F = sd.frame
+    df = F.DataFrame({"x": [0.0, 1.0, 0.0, 1.0, 0.5], "y": [0.0, 0.0, 1.0, 1.0, 0.3]})
+    pts = [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0], [0.5, 0.3]]
+    d = [0.0, 1.0, 1.0, 2.0, 0.8]
+    q = F.DataFrame({"x": [0.25, 0.75], "y": [0.5, 0.125]})
+    qa = [[0.25, 0.5], [0.75, 0.125]]
+    for cls in (IP.RBFInterpolator, IP.NearestNDInterpolator):
+        want = cls(pts, d)(qa)
+        assert cls(df, d)(q).tolist() == want.tolist()
+        assert cls(df, F.Series(d))(qa).tolist() == want.tolist()
+    g = IP.RegularGridInterpolator(([0.0, 1.0], [0.0, 1.0]), [[0.0, 1.0], [1.0, 2.0]])
+    assert g(q).tolist() == g(qa).tolist()
+    with pytest.raises(ValueError, match=r"^CubicSpline\(\): 'x' must be 1-D, not 2-D$"):
+        IP.CubicSpline(df, [0.0, 1.0])
+    with pytest.raises(TypeError, match=r"^RBFInterpolator\(\): 'y' must have numeric columns$"):
+        IP.RBFInterpolator(F.DataFrame({"s": ["a", "b"]}), [0.0, 1.0])

@@ -18,7 +18,7 @@ point: decision IP52's rule, IP64).
 import math
 
 from .. import _core as _sd
-from .._calls import function, method
+from .._calls import call, function, method, methods
 from . import _common as C
 
 _core = _sd.interpolate
@@ -100,10 +100,14 @@ def _renamed(e, old, new):
 # ---------------------------------------------------------------- BarycentricInterpolator
 
 
+@methods
 class BarycentricInterpolator:
     """The interpolating polynomial through (xi, yi) in the second barycentric form."""
 
     __slots__ = ("_xi", "_wi", "_y", "_rest", "_axis", "_nodal")
+
+    def __reduce__(self):  # sd.ndarray does not pickle: the slots, arrays as bytes
+        return C.reduce(self)
 
     @method("BarycentricInterpolator")
     def __init__(self, xi, yi=None, /, *, axis=0, wi=None):
@@ -161,6 +165,7 @@ class BarycentricInterpolator:
     def _eval(self, v, flat):
         return _core.bary_eval(self._xi, self._wi, v, flat, False)
 
+    @call
     def __call__(self, x, /):
         """The polynomial's value at x."""
         name = "BarycentricInterpolator"
@@ -260,10 +265,14 @@ def _distinct(x, name):
 # ---------------------------------------------------------------- KroghInterpolator
 
 
+@methods
 class KroghInterpolator:
     """The (Hermite) interpolating polynomial in Newton form: a repeated node carries the next derivative."""
 
     __slots__ = ("_xi", "_c", "_rest", "_axis")
+
+    def __reduce__(self):  # sd.ndarray does not pickle: the slots, arrays as bytes
+        return C.reduce(self)
 
     @method("KroghInterpolator")
     def __init__(self, xi, yi, /, *, axis=0):
@@ -285,6 +294,7 @@ class KroghInterpolator:
     def _orders(self, flat, first, count):
         return _core.krogh_eval(self._xi, self._c, flat, first, count)
 
+    @call
     def __call__(self, x, /):
         """The polynomial's value at x."""
         flat, shape = C.points(x, "KroghInterpolator")

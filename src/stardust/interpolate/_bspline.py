@@ -12,7 +12,7 @@ derivative conditions right after their end's interpolation row (decision IP35).
 import math
 
 from .. import _core as _sd
-from .._calls import function, method
+from .._calls import call, function, method, methods
 from . import _common as C
 
 _core = _sd.interpolate
@@ -71,10 +71,14 @@ def _degree(k, name):
     return kk
 
 
+@methods
 class BSpline:
     """A spline of degree k in the B-spline basis of the knots t: sum_j c[j] B_{j,k,t}(x)."""
 
     __slots__ = ("_t", "_c", "_k", "_extrapolate", "_axis", "_linear")
+
+    def __reduce__(self):  # sd.ndarray does not pickle: the slots, arrays as bytes
+        return C.reduce(self)
 
     @method("BSpline")
     def __init__(self, t, c, k, /, *, extrapolate=True, axis=0):
@@ -169,6 +173,7 @@ class BSpline:
 
     # ---- evaluation ----
 
+    @call
     def __call__(self, x, /, *, nu=0, extrapolate=None):
         """The value (or the derivative of order nu) at x: x's shape at `axis` of the coefficients' batch shape."""
         name = type(self).__name__
@@ -267,6 +272,7 @@ class BSpline:
     # ---- construction from other forms ----
 
     @classmethod
+    @method("basis_element")
     def basis_element(cls, t, /, *, extrapolate=True):
         """The single B-spline B(x | t[0], ..., t[k+1]) of degree k = len(t) - 2: k more knots at each end (t[0] - 1
         and t[-1] + 1) and the coefficient 1 at position k (scipy)."""
@@ -286,6 +292,7 @@ class BSpline:
         return cls._make(tk, c, k, True if ext is None else ext, 0)
 
     @classmethod
+    @method("design_matrix")
     def design_matrix(cls, x, t, k, /, *, extrapolate=False):
         """The (len(x), n) sd.sparse.csr_array of the basis functions at x: row i holds the k + 1 functions of x[i]'s
         interval, zeros included (scipy). extrapolate=False refuses points outside [t[k], t[n]]."""
@@ -334,6 +341,7 @@ class BSpline:
                                 self._axis)  # fmt: skip
 
     @classmethod
+    @method("from_power_basis")
     def from_power_basis(cls, pp, /, *, bc_type="not-a-knot"):
         """The CubicSpline pp in the B-spline basis of the knots its boundary condition bc_type implies (scipy: only
         CubicSpline objects)."""
@@ -507,10 +515,12 @@ def make_interp_spline(x, y, /, *, k=3, t=None, bc_type=None, axis=0):
         y2 = y2.astype(sd.complex128)
     left = sorted(left, key=lambda p: p[0])  # in row order (IP35): ascending away from x[0] ...
     right = sorted(right, key=lambda p: -p[0])  # ... and descending toward x[-1]
-    # elimination without pivoting where docs/design/interpolate.md §3.4 proves it stable (decision IP53): the
-    # knots of make_interp_spline and, at each end, the orders 1 .. r (growth 1) or k = 3's second derivative alone
+    # elimination without pivoting where docs/design/interpolate.md §3.4 proves it stable (decision IP53): no
+    # derivative condition, the knots given or not (a totally nonnegative matrix, growth 1), and with
+    # make_interp_spline's own knots, at each end, the orders 1 .. r (growth 1) or k = 3's second derivative alone
     # (growth below 2); any other set of orders (or knots given with end conditions) pivots
-    stable = t is None and all(_prefix_or_natural(sorted(p[0] for p in side), kk) for side in (left, right))
+    plain = not left and not right
+    stable = plain or (t is None and all(_prefix_or_natural(sorted(p[0] for p in side), kk) for side in (left, right)))
     lo = sd.asarray([p[0] for p in left], dtype=sd.int64)
     ro = sd.asarray([p[0] for p in right], dtype=sd.int64)
     c, status = _core.bspline_interp(xx, y2, tt, kk, lo, _stack([p[1] for p in left], ncol, y2.dtype), ro,

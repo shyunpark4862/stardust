@@ -1,14 +1,16 @@
 """The argument checks and messages sd.interpolate's functions share (docs/api/interpolate.md §1; decisions
 IP6, IP11, IP13, IP14, IP19 in docs/design/interpolate.md §1.1).
 
-- Data (API.md §5, IP6): an sd.ndarray, a sequence of numbers, a numpy array or a frame Series, computed in
-  float64; bool and int64 become float64. The abscissae (nodes, breakpoints, evaluation points) are real:
+- Data (API.md §5, IP6): an sd.ndarray, a sequence of numbers, a numpy array, a frame Series or a frame
+  DataFrame (its columns side by side, as sd.spatial takes a point set), computed in float64; bool and int64
+  become float64. The abscissae (nodes, breakpoints, evaluation points) are real:
   complex128 is a TypeError. The values may be complex128 where scipy takes them.
 - Nodes are 1-D, finite and strictly increasing (breakpoints of a PPoly may strictly decrease).
 - extrapolate= (IP13): True, False, 'periodic' or None.
 - Options are keyword only (IP14); ints follow operator.index (API.md §2).
 """
 
+import collections
 import math
 import numbers
 import operator
@@ -17,7 +19,7 @@ from .. import _core as _sd
 
 _core = _sd.interpolate
 
-_TAKES = "an sd.ndarray, a sequence of numbers, a numpy array or a frame Series"
+_TAKES = "an sd.ndarray, a sequence of numbers, a numpy array or a frame Series or DataFrame"
 EXTRAPOLATE = ("True", "False", "'periodic'", "None")
 
 
@@ -34,6 +36,71 @@ def contiguous(a):
     return out
 
 
+# ---- pickling: sd.ndarray does not pickle, so an object's slots go out with their arrays as bytes
+
+_ArrayState = collections.namedtuple("_ArrayState", "raw shape kind readonly")
+_KINDS = {"float64": "d", "int64": "q", "bool": "?", "complex128": "c"}
+
+
+def _pack(v):
+    sd = _sd
+    if isinstance(v, sd.ndarray):
+        a = contiguous(v)
+        raw = memoryview(a).tobytes() if a.size else b""
+        return _ArrayState(raw, tuple(v.shape), _KINDS[str(v.dtype)], not v._flags()["writeable"])
+    if isinstance(v, tuple):
+        return tuple(_pack(e) for e in v)
+    if isinstance(v, list):
+        return [_pack(e) for e in v]
+    if isinstance(v, dict):
+        return {k: _pack(e) for k, e in v.items()}
+    return v
+
+
+def _unpack(v):
+    sd = _sd
+    if isinstance(v, _ArrayState):
+        dtype = {"d": sd.float64, "q": sd.int64, "?": sd.bool, "c": sd.complex128}[v.kind]
+        if not v.raw:
+            a = sd.zeros(v.shape, dtype=dtype)
+        elif v.kind == "c":  # the parts side by side (memoryview has no complex format)
+            parts = sd.reshape(sd.asarray(memoryview(v.raw).cast("d")), (-1, 2))
+            a = sd.empty((parts.shape[0],), dtype=dtype)
+            sd.real(a)[...] = parts[:, 0]
+            sd.imag(a)[...] = parts[:, 1]
+            a = sd.reshape(a, v.shape)
+        else:
+            a = sd.reshape(sd.asarray(memoryview(v.raw).cast(v.kind)).copy(), v.shape)
+        if v.readonly:
+            a._set_readonly()
+        return a
+    if type(v) is tuple:
+        return tuple(_unpack(e) for e in v)
+    if isinstance(v, list):
+        return [_unpack(e) for e in v]
+    if isinstance(v, dict):
+        return {k: _unpack(e) for k, e in v.items()}
+    return v
+
+
+def reduce(obj):
+    """obj's __reduce__: its class and its slots (every slot of every class of its mro that is set), the arrays as
+    bytes. The object comes back with the same arrays to the bit, so it computes the same bits."""
+    state = {}
+    for cls in type(obj).__mro__:
+        for name in getattr(cls, "__slots__", ()):
+            if hasattr(obj, name):
+                state[name] = _pack(getattr(obj, name))
+    return _restore, (type(obj), state)
+
+
+def _restore(cls, state):
+    obj = cls.__new__(cls)
+    for name, v in state.items():
+        object.__setattr__(obj, name, _unpack(v))
+    return obj
+
+
 def _is_numpy_scalar(x):
     return type(x).__module__ == "numpy" and getattr(x, "ndim", None) == 0
 
@@ -46,12 +113,14 @@ def array(x, name, arg, *, complex_ok=False):
     elif type(x).__module__.startswith("stardust.frame"):
         from .. import frame as _frame
 
-        if not isinstance(x, _frame.Series):
+        if not isinstance(x, (_frame.Series, _frame.DataFrame)):
             raise TypeError(f"{name}(): '{arg}' must be {_TAKES}, not {type_name(x)}")
         try:
             a = x.to_array(dtype=sd.float64, na_value=math.nan)
         except TypeError, ValueError:
-            raise TypeError(f"{name}(): '{arg}' must have a numeric column") from None
+            what = "a numeric column" if isinstance(x, _frame.Series) else "numeric columns"
+            raise TypeError(f"{name}(): '{arg}' must have {what}") from None
+        a = contiguous(a)  # a DataFrame's array is column-major
     else:
         try:
             a = sd.asarray(x)

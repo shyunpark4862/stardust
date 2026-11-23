@@ -56,7 +56,13 @@ def _tree_p(km, pv, wv):
 
 
 def _rows(A):
-    return A if A._flags()["c_contiguous"] else A.copy()
+    """A as a C-contiguous array: A itself when it is one, else a C-ordered copy (copy() keeps an F-ordered array,
+    such as a DataFrame's, F-ordered)."""
+    if A._flags()["c_contiguous"]:
+        return A
+    out = _sd.empty(tuple(A.shape), dtype=A.dtype)
+    out[...] = A
+    return out
 
 
 def _use_tree(path, tp, ma, mb, n, k=1):

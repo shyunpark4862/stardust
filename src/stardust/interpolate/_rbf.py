@@ -19,7 +19,7 @@ systems, NearestND); the global interpolant computes its formula there as scipy 
 import math
 
 from .. import _core as _sd
-from .._calls import method
+from .._calls import call, method
 from . import _common as C
 
 _core = _sd.interpolate
@@ -124,6 +124,9 @@ class RBFInterpolator:
     __slots__ = ("_y", "_d", "_rest", "_smoothing", "_kernel", "_kid", "_epsilon", "_degree", "_powers", "_k",
                  "_tree", "_coeffs", "_shift", "_scale")  # fmt: skip
 
+    def __reduce__(self):  # sd.ndarray does not pickle: the slots, arrays as bytes
+        return C.reduce(self)
+
     @method("RBFInterpolator")
     def __init__(self, y, d, /, *, neighbors=None, smoothing=0.0, kernel="thin_plate_spline", epsilon=None,
                  degree=None):  # fmt: skip
@@ -201,6 +204,7 @@ class RBFInterpolator:
         nb = "" if self._k is None else f", neighbors={self._k}"
         return f"RBFInterpolator(points={n}, dimensions={m}, kernel='{self._kernel}'{nb})"
 
+    @call
     def __call__(self, x, /):
         """The interpolant's value at the points x (..., m)."""
         name = "RBFInterpolator"
@@ -269,6 +273,9 @@ class NearestNDInterpolator:
 
     __slots__ = ("_x", "_y", "_rest", "_tree", "_offset", "_scale")
 
+    def __reduce__(self):  # sd.ndarray does not pickle: the slots, arrays as bytes
+        return C.reduce(self)
+
     @method("NearestNDInterpolator")
     def __init__(self, x, y, /, *, rescale=False):
         name = "NearestNDInterpolator"
@@ -294,6 +301,7 @@ class NearestNDInterpolator:
         n, m = self._x.shape
         return f"NearestNDInterpolator(points={n}, dimensions={m})"
 
+    @call
     def __call__(self, xi, /):
         """The value of the nearest data point at each point of xi ((..., m), or a tuple of m coordinate arrays)."""
         name = "NearestNDInterpolator"

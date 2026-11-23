@@ -344,6 +344,26 @@ def test_construct_dist_matrix_errors():
             GR.construct_dist_matrix(G3, P)
 
 
+def test_construct_dist_matrix_checks_only_the_range_of_the_diagonal():
+    """The path from a node to itself is empty, so predecessors[i, i] is range-checked and not followed (scipy
+    reads it neither): a node number there, the row's own one included, changes nothing; off the diagonal a
+    node pointing at itself is a cycle."""
+    G3 = sd.sparse.csr_array(np.array([[0, 1.0, 0], [0, 0, 2.0], [0, 0, 0]]))
+    P = [[NONE, 0, 1], [NONE, NONE, 1], [NONE] * 3]
+    want = np.asarray(GR.construct_dist_matrix(G3, P)).tolist()
+    for diag in ([0, 1, 2], [2, 0, 1]):
+        Q = [row[:] for row in P]
+        for i, v in enumerate(diag):
+            Q[i][i] = v
+        assert np.asarray(GR.construct_dist_matrix(G3, Q)).tolist() == want
+    Q = [row[:] for row in P]
+    Q[0][0] = 3
+    with pytest.raises(ValueError, match=r"predecessors\[0, 0\] = 3: a predecessor is a node \(0 \.\. 2\) or -9999$"):
+        GR.construct_dist_matrix(G3, Q)
+    with pytest.raises(ValueError, match=r"the predecessors of row 0 go round a cycle through node 2$"):
+        GR.construct_dist_matrix(G3, [[NONE, 0, 2], [NONE, NONE, 1], [NONE] * 3])
+
+
 def test_reconstruct_path():
     A = small()
     r = GR.shortest_path(A, indices=4, return_predecessors=True)

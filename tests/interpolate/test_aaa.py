@@ -210,3 +210,21 @@ def test_complex_points_on_a_real_rational():
     assert abs(v - 1 / (0.25 + 0.1j - 0.5 + 1e-3)) < 1e-9
     assert a(math.inf) == a(-math.inf)  # the limit sum w f / sum w
     assert math.isnan(a(math.nan))
+
+
+def test_one_support_point_is_its_value_everywhere():
+    """One support point is a constant: its value as it is at every finite point and at infinity, real or
+    complex, and NaN at NaN (not w f / w rounded twice)."""
+    zs = [-1e300, -3.5, 1e-310, 5.0, math.inf, -math.inf]
+    for x0, y0 in ((0.0, 3.0), (0.1, 0.3), (-3.0, 1.0 / 3.0)):
+        for r in (IP.AAA([x0], [y0]), IP.FloaterHormannInterpolator([x0], [y0], d=0)):
+            assert np.asarray(r(zs)).tolist() == [y0] * len(zs)
+            assert math.isnan(r(math.nan))
+            assert r(5.0 + 1j) == y0 and r(complex(math.inf, 1.0)) == y0
+        c = IP.AAA([complex(x0)], [complex(y0, -y0)])
+        assert np.asarray(c([5.0, 1e-310 + 2j, math.inf])).tolist() == [complex(y0, -y0)] * 3
+        assert cmath_isnan(c(complex(math.nan, 0.0)))
+
+
+def cmath_isnan(v):
+    return math.isnan(v.real) and math.isnan(v.imag)

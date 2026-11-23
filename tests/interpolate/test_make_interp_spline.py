@@ -275,3 +275,43 @@ def test_construction_is_direct_and_quick_for_a_long_column():
     b = IP.make_interp_spline(x, y)
     q = (np.arange(1000) + 0.5) / 1000
     assert np.max(np.abs(np.asarray(b(q)) - np.sin(40 * q))) < 1e-12
+
+
+def test_knots_given_without_conditions_solve_without_pivoting():
+    """IP114: with no derivative condition the collocation matrix is totally nonnegative whatever the knots, so
+    the knots given are solved without pivoting too: make_interp_spline's own knots given as t give the bits of
+    t=None, and on spacings that span 10^10 (where partial pivoting leaves the contract by up to 10^6) the
+    coefficients stay within the construction contract against the exact rational solve."""
+    core = sd._core.interpolate
+    g = np.random.default_rng(41)
+    for k in (2, 3, 4, 5):
+        x = np.cumsum(np.r_[0.0, 10.0 ** g.uniform(-5, 5, 11)])
+        y = g.standard_normal(12)
+        t = np.asarray(core.bspline_knots(sd.asarray(x), k, 0))
+        mine = IP.make_interp_spline(x, y, k=k, t=t)
+        assert np.asarray(mine.c).tobytes() == np.asarray(IP.make_interp_spline(x, y, k=k).c).tobytes(), k
+        T = [Fraction(float(v)) for v in t]
+        n = len(x)
+        A = []
+        for v in x:
+            V = Fraction(float(v))
+            row = [Fraction(0)] * n
+            l = refdata.knot_interval(T, k, V)
+            for s, b in enumerate(refdata._basis(T, k, l, V, 0, Fraction(0))):
+                row[l - k + s] = b
+            A.append(row)
+        b = [Fraction(float(v)) for v in y]
+        for i in range(n):  # exact elimination (any nonzero pivot)
+            p = next(r for r in range(i, n) if A[r][i] != 0)
+            A[i], A[p], b[i], b[p] = A[p], A[i], b[p], b[i]
+            for r in range(i + 1, n):
+                if A[r][i] != 0:
+                    f = A[r][i] / A[i][i]
+                    A[r] = [a - f * c for a, c in zip(A[r], A[i], strict=True)]
+                    b[r] -= f * b[i]
+        exact = [Fraction(0)] * n
+        for i in range(n - 1, -1, -1):
+            exact[i] = (b[i] - sum(A[i][j] * exact[j] for j in range(i + 1, n))) / A[i][i]
+        c = np.asarray(mine.c)
+        err = np.abs(c - np.array([float(v) for v in exact]))
+        assert np.all(err <= refdata.collocation_bound(x, t, k, None, c)), k

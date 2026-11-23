@@ -49,6 +49,20 @@ MEASURES = (
     "unconverged",
     "off_target",
     "numpy_dist_max",
+    "short_max",
+    "error_below_true",
+    "e2e_rel_max",
+    "missed_max",
+    "extra_max",
+    "solve_max",
+    "growth_max",
+    "residual_max",
+)
+
+# Counts where fewer is worse: the converged runs of integrate, the converged entries of differentiate.
+MEASURES_DOWN = (
+    "converged_max",
+    "entries",
 )
 
 
@@ -118,7 +132,8 @@ def cmd_run(a):
 def compare(run, base, partial=False) -> dict:
     """The findings of a run against the baselines: beyond (the contract), worse (id, region,
     moves, worst point), new, gone, changed (comparators: id, what, moves), better (a count).
-    A measure is worse when it grew, or became None or NaN where the baseline had a value; a
+    A measure is worse when it grew (a measure of MEASURES_DOWN: when it fell), or became None or
+    NaN where the baseline had a value; a
     region is worse when it is gone, has fewer points than the baseline, or is unmapped (its
     field has no value from the measurement). partial: the run measured only some sweeps of
     its areas, so missing ones are not gone."""
@@ -145,13 +160,13 @@ def compare(run, base, partial=False) -> dict:
                 got_worse.append(f"points {po} -> {pn}")
             elif pn > po:
                 f["better"] += 1
-            for m in MEASURES:
+            for m in MEASURES + MEASURES_DOWN:
                 new, old = r.get(m), rb.get(m)
                 if old is None or new == old or (new != new and old != old):  # NaN = NaN
                     continue
                 if new is None or new != new:  # a value lost, or turned NaN
                     got_worse.append(f"{m} {tables.num(old)} -> {'none' if new is None else 'NaN'}")
-                elif old != old or new < old:
+                elif old != old or (new > old if m in MEASURES_DOWN else new < old):
                     f["better"] += 1
                 else:
                     got_worse.append(f"{m} {tables.num(old)} -> {tables.num(new)}")
@@ -178,7 +193,7 @@ def comparator_changes(s, b) -> list:
             continue
         for label, r in regs.items():
             moved = [f"{m} {tables.num(prev.get(label, {}).get(m))} -> {tables.num(r.get(m))}"
-                     for m in MEASURES if r.get(m) != prev.get(label, {}).get(m)]  # fmt: skip
+                     for m in MEASURES + MEASURES_DOWN if r.get(m) != prev.get(label, {}).get(m)]  # fmt: skip
             if moved:
                 out.append((s["id"], f"{lib} {label}", moved))
     return out

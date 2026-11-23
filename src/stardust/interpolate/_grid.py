@@ -21,7 +21,7 @@ import math
 import numbers
 
 from .. import _core as _sd
-from .._calls import function, method
+from .._calls import call, function, method
 from . import _common as C
 from ._bspline import _KNOTS_NOT_A_KNOT
 
@@ -151,6 +151,9 @@ class RegularGridInterpolator:
 
     __slots__ = ("_grid", "_values", "_v2", "_batch", "_method", "_bounds_error", "_fill_value", "_coefs", "_finite")
 
+    def __reduce__(self):  # sd.ndarray does not pickle: the slots, arrays as bytes
+        return C.reduce(self)
+
     @method("RegularGridInterpolator")
     def __init__(self, points, values, /, *, method="linear", bounds_error=True, fill_value=math.nan):
         self._build(points, values, method, bounds_error, fill_value, "RegularGridInterpolator")
@@ -248,6 +251,7 @@ class RegularGridInterpolator:
 
     # ---- evaluation ----
 
+    @call
     def __call__(self, xi, /, *, method=None, nu=None):
         """The interpolated values at the points xi: (...xi's points, ...batch)."""
         return self._evaluate(xi, method, nu, type(self).__name__)

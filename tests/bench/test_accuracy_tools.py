@@ -173,6 +173,34 @@ def test_compare_counts_lost_regions_points_and_values_as_worse():
     assert f["worse"] == [] and f["better"] == 2
 
 
+def test_compare_judges_every_recorded_measure_in_its_direction():
+    """Every measure a result file records is compared: errors and failure counts (roots missed, short
+    runs, estimates below the true error) are worse when they grow, the converged counts when they fall."""
+    base = {"a/f": {"id": "a/f", "area": "a", "regions": {"g": {
+        "points": 4, "missed_max": 0.0, "e2e_rel_max": 1e-16, "short_max": 0.0, "error_below_true": 0,
+        "converged_max": 10.0, "entries": 40}}}}  # fmt: skip
+
+    def moves(**r):
+        g = {**base["a/f"]["regions"]["g"], **r}
+        w = acc.compare(_run({"g": g}), base)["worse"]
+        return [m.split()[0] for m in w[0][2]] if w else []
+
+    assert moves() == []
+    assert moves(missed_max=1.0) == ["missed_max"]
+    assert moves(e2e_rel_max=1e-15, short_max=1.0, error_below_true=2) == [
+        "short_max",
+        "error_below_true",
+        "e2e_rel_max",
+    ]
+    assert moves(converged_max=9.0, entries=39) == ["converged_max", "entries"]
+    assert moves(converged_max=11.0, entries=41) == []
+    measures = set(acc.MEASURES + acc.MEASURES_DOWN)
+    for area in ("integrate", "differentiate", "interpolate"):
+        for s in results.load_baseline(area)["sweeps"]:
+            for r in s["regions"].values():
+                assert set(r) - {"points", "worst", "bound", "unmapped", "excluded"} <= measures, s["id"]
+
+
 def test_regression_linear_params_carry_the_documented_contract(monkeypatch):
     rng = np.random.default_rng(0)
     X = rng.standard_normal((20, 2))

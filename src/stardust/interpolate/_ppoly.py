@@ -16,7 +16,7 @@ import math
 import numbers
 
 from .. import _core as _sd
-from .._calls import function, method
+from .._calls import call, function, method, methods
 from . import _common as C
 
 _core = _sd.interpolate
@@ -45,10 +45,14 @@ def _scalar_or(a, shape):
     return _sd.reshape(a, shape)
 
 
+@methods
 class PPoly:
     """A piecewise polynomial: coefficients c (k + 1, m, ...) in the local power basis of the breakpoints x."""
 
     __slots__ = ("_c", "_x", "_extrapolate", "_axis", "_ascending")
+
+    def __reduce__(self):  # sd.ndarray does not pickle: the slots, arrays as bytes
+        return C.reduce(self)
 
     @method("PPoly")
     def __init__(self, c, x, /, *, extrapolate=None, axis=0):
@@ -125,6 +129,7 @@ class PPoly:
 
     # ---- evaluation ----
 
+    @call
     def __call__(self, x, /, *, nu=0, extrapolate=None):
         """The value (or the derivative of order nu) at x: x's shape at `axis` of the values' shape."""
         name = type(self).__name__
@@ -237,6 +242,7 @@ class PPoly:
     # ---- from a B-spline ----
 
     @classmethod
+    @method("from_spline")
     def from_spline(cls, tck, /, *, extrapolate=None):
         """The B-spline tck (a BSpline or a (t, c, k) tuple) as a piecewise polynomial of the same function: the
         breakpoints are the distinct knots of the base interval [t[k], t[n]], so the two agree under every outside
@@ -395,7 +401,10 @@ def _bc(v, name, rest, dtype):
             f"not {v!r}"
         )
     if not isinstance(v, (tuple, list)) or len(v) != 2:
-        raise ValueError(f"{name}(): a boundary condition must be a name or an (order, value) pair")
+        raise ValueError(
+            f"{name}(): a pair 'bc_type' is read as (left end, right end), and each end must be a condition name "
+            f"or an (order, value) pair, not {C.type_name(v) if not isinstance(v, numbers.Real) else repr(v)}"
+        )
     order, value = v
     k = C.integer(order, name, "bc_type")
     if k not in (1, 2):

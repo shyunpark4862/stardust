@@ -169,8 +169,10 @@ class KDTree:
         C.finite(X, name, "x")
         batch = tuple(X.shape[:-1])
         X2 = sd.reshape(X, (math.prod(batch), m))
-        if not X2._flags()["c_contiguous"]:
-            X2 = X2.copy()
+        if not X2._flags()["c_contiguous"]:  # copy() keeps an F-ordered array F-ordered
+            out = sd.empty(tuple(X2.shape), dtype=X2.dtype)
+            out[...] = X2
+            X2 = out
         return X2, batch
 
     @method("query_ball_point")

@@ -126,6 +126,39 @@ def test_counting_dtypes_and_haversine():
     check_radius(q, h, 0.3, "haversine")
 
 
+def _column_major(a):
+    """a (numpy, 2-D) as F-ordered sd arrays: a DataFrame's array and a transposed view."""
+    df = sd.frame.DataFrame({f"c{j}": a[:, j].tolist() for j in range(a.shape[1])})
+    out = [df.to_array(), sd.permute_dims(sd.asarray(np.ascontiguousarray(a.T)), (1, 0))]
+    for f in out:
+        assert f._flags()["f_contiguous"] and not f._flags()["c_contiguous"]
+    return out + [df]
+
+
+def test_column_major_inputs():
+    """F-ordered data (a DataFrame's columns, a transposed array) give the bits of the C-ordered data on every
+    path: the paths that hand the rows to the native search make a C-ordered copy."""
+    g = np.random.default_rng(21)
+    cases = [("euclidean", g.standard_normal((40, 2)), g.standard_normal((300, 2)), 0.4),
+             ("cityblock", g.standard_normal((40, 3)), g.standard_normal((300, 3)), 0.6),
+             ("haversine", g.uniform(-1.5, 1.5, (40, 2)), g.uniform(-1.5, 1.5, (300, 2)), 0.3)]  # fmt: skip
+    for metric, A, B, r in cases:
+        D = np.asarray(S.cdist(A, B, metric=metric))
+        wd, wi = brute_knn(D, 3)
+        wp, wj, wdist = brute_radius(D, r)
+        for FA, FB in zip(_column_major(A), _column_major(B), strict=True):
+            for path in (0, 1, 2, 3):
+                got = N._knn("kneighbors", FA, FB, 3, metric, None, None, None, None, INF, path)
+                assert same_bits(got.distances, wd) and same_bits(got.indices, wi), (metric, path)
+                got = N._radius("radius_neighbors", FA, FB, r, metric, None, None, None, None, False, path)
+                assert same_bits(got.indptr, wp) and same_bits(got.indices, wj), (metric, path)
+                assert same_bits(got.distances, wdist), (metric, path)
+            got = S.kneighbors(FA, FB, k=3, metric=metric)
+            assert same_bits(got.distances, wd) and same_bits(got.indices, wi), metric
+            got = S.radius_neighbors(FA, FB, r, metric=metric, return_length=True)
+            assert same_bits(got, np.diff(wp)), metric
+
+
 def test_many_blocks_and_segments():
     # more XB rows than a GEMM block (2048) and a direct block, few XA rows (XB cut into segments), many
     # XA rows (chunks), k past a block
