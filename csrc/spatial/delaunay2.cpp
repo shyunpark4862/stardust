@@ -456,11 +456,6 @@ T* data_of(const nb::object& a) {
     return reinterpret_cast<T*>(as_ndarray(a).data);
 }
 
-struct DelaunayObj {
-    nb::object points, simplices, neighbors, v2s;
-    Triangulation T;
-};
-
 const NDArray& points_arg(nb::handle h, const char* func, bool contiguous = true) {
     if (!is_ndarray(h)) throw nb::type_error((std::string(func) + "(): expected an sd.ndarray").c_str());
     const NDArray& a = as_ndarray(h);

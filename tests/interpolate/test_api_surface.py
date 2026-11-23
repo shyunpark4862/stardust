@@ -26,12 +26,14 @@ IP4 = {"BarycentricInterpolator", "barycentric_interpolate", "KroghInterpolator"
        "FloaterHormannInterpolator", "AAA"}  # fmt: skip
 IP5 = {"RegularGridInterpolator", "interpn"}
 IP6 = {"RBFInterpolator", "NearestNDInterpolator"}
-CLASSES = {n for n in PLANNED | IP2 | IP3 | IP4 | IP5 | IP6 if n[0].isupper()}
+IP9 = {"LinearNDInterpolator", "CloughTocher2DInterpolator", "griddata"}
+CLASSES = {n for n in PLANNED | IP2 | IP3 | IP4 | IP5 | IP6 | IP9 if n[0].isupper()}
 PPOLY_FAMILY = ("PPoly", "CubicHermiteSpline", "CubicSpline", "PchipInterpolator", "Akima1DInterpolator")
 INTERP = "interp(x, xp, fp, /, *, left=None, right=None, period=None)"
 LINE = re.compile(r"^(?:(?P<cls>[A-Za-z_]\w*)\.)?(?P<name>[A-Za-z_]\w*)(?:\((?P<sig>.*)\))?$")
 OPTIONS = ("axis", "extrapolate", "bc_type", "method", "kernel", "nu", "der", "epsilon", "degree", "smoothing",
-           "neighbors", "bounds_error", "fill_value", "rtol", "max_terms", "left", "right", "period")  # fmt: skip
+           "neighbors", "bounds_error", "fill_value", "rtol", "max_terms", "left", "right", "period", "rescale", "tol",
+           "maxiter")  # fmt: skip
 
 
 def entries():
@@ -121,9 +123,9 @@ def test_no_legacy_names_or_submodules():
     doc = module_names()
     absent = ("interp1d", "interp2d", "Rbf", "InterpolatedUnivariateSpline", "UnivariateSpline", "RectBivariateSpline",
               "splrep", "splev", "splint", "sproot", "spalde", "splder", "splantider", "insert", "bisplrep", "bisplev",
-              "lagrange", "approximate_taylor_polynomial", "pade", "griddata", "LinearNDInterpolator",
-              "CloughTocher2DInterpolator", "BPoly", "NdBSpline", "NdPPoly", "make_smoothing_spline", "make_lsq_spline",
-              "fitpack", "fitpack2", "interpnd", "polyint", "rbf", "ndgriddata", "interp")  # fmt: skip
+              "lagrange", "approximate_taylor_polynomial", "pade", "BPoly", "NdBSpline", "NdPPoly",
+              "make_smoothing_spline", "make_lsq_spline", "fitpack", "fitpack2", "interpnd", "polyint", "rbf",
+              "ndgriddata", "interp", "estimate_gradients_2d_global", "GradientEstimationWarning")  # fmt: skip
     for name in absent:
         assert name not in doc, name
         assert not hasattr(sd.interpolate, name), name
@@ -150,6 +152,12 @@ def test_shared_options_have_one_spelling():
     for fn in ("pchip_interpolate", "krogh_interpolate", "barycentric_interpolate"):
         assert params(tree[(None, fn)])["der"] == "0", fn
     assert params(tree[(None, "AAA")])["clean_up_tol"] == params(tree[("AAA", "clean_up")])["clean_up_tol"]  # IP32
+    # IP9: the triangulation's interpolants and griddata share fill_value and rescale; griddata's defaults are theirs
+    lin, ct = params(tree[(None, "LinearNDInterpolator")]), params(tree[(None, "CloughTocher2DInterpolator")])
+    grid, near = params(tree[(None, "griddata")]), params(tree[(None, "NearestNDInterpolator")])
+    for key in ("fill_value", "rescale"):
+        assert lin[key] == ct[key] == grid[key], key
+    assert grid["rescale"] == near["rescale"] == "False" and grid["method"] == "'linear'"
 
 
 def test_interp_is_the_array_areas():
@@ -163,7 +171,7 @@ def test_interp_is_the_array_areas():
 
 
 def test_module_is_wired():
-    assert set(sd.interpolate.__all__) == IP2 | IP3 | IP4 | IP5 | IP6
+    assert set(sd.interpolate.__all__) == IP2 | IP3 | IP4 | IP5 | IP6 | IP9
     assert not hasattr(sd.interpolate, "interp")
 
 

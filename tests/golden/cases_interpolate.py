@@ -26,6 +26,12 @@ the coefficients' solves).
 Milestone IP6 brought the scattered-data interpolants: RBFInterpolator (every kernel on uniform, clustered and lattice
 points, smoothing, neighbors with ties, degree -1 and above the minimum, complex values with a batch, one point, a NaN
 point) and NearestNDInterpolator (rescale, ties, a tuple of coordinates), with large cases for the parallel paths.
+Milestone IP9 brought the interpolants on sd.spatial's Delaunay triangulation: LinearNDInterpolator (2-D and 3-D;
+uniform, grid, cocircular and duplicated points, points on edges and vertices, outside, NaN and inf points, fill_value,
+complex values with a batch, rescale, a Delaunay as the points, a tuple of coordinate arrays, values that are not
+finite), CloughTocher2DInterpolator (the same with the gradients, converged and niter, tol and maxiter, points far from
+the origin and near the largest doubles) and griddata (its three methods, 1-D and 5-D nearest), with large cases for
+the parallel paths, and the wrong calls.
 """
 
 import math
@@ -359,6 +365,96 @@ def _rbf_cases(L):
     yield "error nearest shape", lambda: IP.NearestNDInterpolator(yd[:5], t[:4])
 
 
+def _scattered_cases(L):
+    np = L.np
+    IP = L.sd.interpolate
+    r = L.rng(3130)
+    a = np.arange(6) / 5
+    pts = {
+        "uniform2d": r.random((50, 2)),
+        "uniform3d": r.random((40, 3)),
+        "grid2d": np.stack(np.meshgrid(a, a, indexing="ij"), axis=-1).reshape(-1, 2),
+        "circle2d": np.array([[2.0, 1.0], [1.0, 2.0], [-1.0, 2.0], [-2.0, 1.0], [-2.0, -1.0], [-1.0, -2.0], [1.0, -2.0],
+                              [2.0, -1.0], [0.0, 0.0]]),
+        "cube3d": np.array([[i, j, k] for i in (0.0, 1.0) for j in (0.0, 1.0) for k in (0.0, 1.0)] + [[0.5, 0.5, 0.5]]),
+    }  # fmt: skip
+    pts["duplicate2d"] = np.vstack([pts["uniform2d"][:20], pts["uniform2d"][[3, 7, 3]]])
+
+    def field(y):
+        return np.sin(3 * y[:, 0]) + np.cos(2 * y[:, -1]) + 0.1 * y.sum(axis=1)
+
+    for name, y in pts.items():
+        d = y.shape[1]
+        f = field(y)
+        lo, hi = y.min(0), y.max(0)
+        x = np.vstack([lo + (hi - lo) * r.random((15, d)), y[:3], (y[0] + y[1]) / 2, hi + 0.5,
+                       np.full((1, d), NAN), np.where(np.arange(d) == 0, INF, 0.5)[None, :]])  # fmt: skip
+        yield f"LinearNDInterpolator {name}", lambda y=y, f=f, x=x: (
+            IP.LinearNDInterpolator(y, f)(x), IP.LinearNDInterpolator(y, f, fill_value=-2.5)(x))  # fmt: skip
+        if d == 2:
+            yield f"CloughTocher2DInterpolator {name}", lambda y=y, f=f, x=x: (
+                lambda c: (c.grad, c.niter, c.converged, c(x), IP.CloughTocher2DInterpolator(y, f, fill_value=0.0)(x)))(
+                IP.CloughTocher2DInterpolator(y, f))  # fmt: skip
+    y, x = pts["uniform2d"], r.random((6, 2))
+    f = field(y)
+    fb = np.stack([f, f * 1j, f**2], axis=1).reshape(50, 3, 1)
+    yield "LinearNDInterpolator complex batch", lambda: IP.LinearNDInterpolator(y, fb, fill_value=1 + 2j)(
+        x.reshape(3, 2, 2))  # fmt: skip
+    yield "CloughTocher2DInterpolator complex batch", lambda: (lambda c: (c.grad, c(x.reshape(3, 2, 2))))(
+        IP.CloughTocher2DInterpolator(y, fb))  # fmt: skip
+    yield "LinearNDInterpolator rescale tuple", lambda: (
+        IP.LinearNDInterpolator(y * [1e6, 1e-3], f, rescale=True)(x * [1e6, 1e-3]),
+        IP.LinearNDInterpolator((y[:, 0], y[:, 1]), f)((x[:, 0], x[:, 1])),
+        IP.LinearNDInterpolator(L.sd.spatial.Delaunay(y), f)([0.5, 0.5]))  # fmt: skip
+    fn = np.where(np.arange(50) % 7 == 0, NAN, np.where(np.arange(50) % 11 == 0, INF, f))
+    yield "LinearNDInterpolator nonfinite values", lambda: IP.LinearNDInterpolator(y, fn)(np.vstack([y, x]))
+    CT = IP.CloughTocher2DInterpolator
+    yield (
+        "CloughTocher2DInterpolator options",
+        lambda: [
+            (c.grad, c.niter, c.converged, c(x))
+            for c in (
+                CT(y, f, maxiter=1),
+                CT(y, f, tol=0.0, maxiter=7),
+                CT(y, f, tol=1e-12, rescale=True),
+                CT(y, 1e6 * f),
+            )
+        ],
+    )
+    yield "CloughTocher2DInterpolator far and huge", lambda: (
+        IP.CloughTocher2DInterpolator(1e8 + y, f)(1e8 + x), IP.CloughTocher2DInterpolator(1e300 * (y - 0.5), f)(
+            1e300 * (x - 0.5)), IP.CloughTocher2DInterpolator(1e-200 * y, f).grad)  # fmt: skip
+    t = np.linspace(0, 1, 9)
+    yield "griddata", lambda: (
+        IP.griddata(y, f, (x[:, 0], x[:, 1])), IP.griddata(y, f, x, method="cubic", fill_value=0.0),
+        IP.griddata(y, f, x, method="nearest", rescale=True), IP.griddata(t, t**2, [0.1, 0.55], method="nearest"),
+        IP.griddata(r.random((20, 5)), t[:4].repeat(5), r.random((3, 5)), method="nearest"),
+        IP.griddata(pts["uniform3d"], field(pts["uniform3d"]), pts["uniform3d"][:4] * 0.9))  # fmt: skip
+    # large: the parallel paths (the located points by blocks, the gradients' columns)
+    yl = L.rng(3131).random((30000, 2))
+    xl = L.rng(3132).random((100000, 2))
+    fl = np.sin(5 * yl[:, 0]) * yl[:, 1]
+    yield "large LinearNDInterpolator", lambda: IP.LinearNDInterpolator(yl, fl)(xl)
+    y3 = L.rng(3133).random((10000, 3))
+    yield "large LinearNDInterpolator 3d", lambda: IP.LinearNDInterpolator(y3, np.cos(y3.sum(1)))(
+        L.rng(3134).random((50000, 3)))  # fmt: skip
+    yield "large CloughTocher2DInterpolator", lambda: (lambda c: (c.grad, c.niter, c(xl)))(
+        IP.CloughTocher2DInterpolator(yl, np.stack([fl, fl**2, -fl], axis=1)))  # fmt: skip
+    # wrong calls
+    yd = pts["duplicate2d"]
+    yield "error scattered duplicate", lambda: IP.LinearNDInterpolator(yd, np.arange(23.0))
+    yield "error scattered collinear", lambda: IP.CloughTocher2DInterpolator([[0, 0], [1, 1], [2, 2]], [1, 2, 3])
+    yield "error scattered columns", lambda: IP.CloughTocher2DInterpolator(pts["uniform3d"], pts["uniform3d"][:, 0])
+    yield "error scattered fill_value", lambda: IP.LinearNDInterpolator(y, f, fill_value=1j)
+    yield "error scattered tol", lambda: IP.CloughTocher2DInterpolator(y, f, tol=-1.0)
+    yield "error scattered maxiter", lambda: IP.CloughTocher2DInterpolator(y, f, maxiter=0)
+    yield "error scattered values", lambda: IP.CloughTocher2DInterpolator(y, np.where(t[:1] > 0, f, NAN))
+    yield "error scattered xi", lambda: IP.LinearNDInterpolator(y, f)([0.5, 0.5, 0.5])
+    yield "error griddata 1-D", lambda: IP.griddata(t, t, [0.5])
+    yield "error griddata cubic 3-D", lambda: IP.griddata(pts["uniform3d"], pts["uniform3d"][:, 0], [[0.5] * 3],
+                                                          method="cubic")  # fmt: skip
+
+
 def _grid_cases(L):
     np = L.np
     IP = L.sd.interpolate
@@ -584,6 +680,7 @@ def cases(L):
     yield from _polyint_cases(L, curves, q)
     yield from _grid_cases(L)
     yield from _rbf_cases(L)
+    yield from _scattered_cases(L)
     # large: the parallel paths (evaluation, coefficients, prefix sums over several blocks, pairwise sums, roots)
     n = 40000
     bigx = np.sort(L.rng(3103).random(n))

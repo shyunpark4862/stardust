@@ -131,6 +131,7 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/interpolate/aaa.cpp
   csrc/interpolate/grid.cpp
   csrc/interpolate/rbf.cpp
+  csrc/interpolate/scattered.cpp
   csrc/fft/plan.cpp
   csrc/fft/driver.cpp
   csrc/fft/basic.cpp

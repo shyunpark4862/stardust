@@ -819,9 +819,9 @@
 
 ## 계산 기하 (Delaunay, ConvexHull, Voronoi)와 흩어진 점 보간
 
-> 상태: **계산 기하 완료** (SPT8–SPT14 완료·승인(위임), 2026-11-23). `Delaunay`, `ConvexHull`, `Voronoi`가 모두 구현되었다. 흩어진 점 보간(IP9)은 나중 후보로 남겼다(SPT194). 설계는 [docs/design/spatial_geometry.md](docs/design/spatial_geometry.md)(확정), API는 [docs/api/spatial.md](docs/api/spatial.md) §6–§9(확정)다.
+> 상태: **완료** (SPT8–SPT14와 IP9 완료·승인(위임), 2026-11-23). `Delaunay`, `ConvexHull`, `Voronoi`와 그 위의 흩어진 점 보간(`sd.interpolate`의 `LinearNDInterpolator`, `CloughTocher2DInterpolator`, `griddata`)이 모두 구현되었다(SPT196). 설계는 [docs/design/spatial_geometry.md](docs/design/spatial_geometry.md)(확정), API는 [docs/api/spatial.md](docs/api/spatial.md) §6–§9(확정)다.
 
-- 큰 결정(사용자, 2026-11-23): Qhull 없이 직접 쓴 C++과 정확한 술어(거르기 → 전개식 → 넓은 정수), 범위는 `Delaunay`·`ConvexHull`·`Voronoi`의 2·3차원, 그 위에 `sd.interpolate`의 `LinearNDInterpolator`·`CloughTocher2DInterpolator`·`griddata`(docs/design/spatial_geometry.md §1.1 SPT90–SPT92). 나머지는 추천안이다(SPT93–SPT123, IP108–IP113, 사용자 위임 2026-11-23).
+- 큰 결정(사용자, 2026-11-23): Qhull 없이 직접 쓴 C++과 정확한 술어(거르기 → 전개식 → 넓은 정수), 범위는 `Delaunay`·`ConvexHull`·`Voronoi`의 2·3차원, 그 위에 `sd.interpolate`의 `LinearNDInterpolator`·`CloughTocher2DInterpolator`·`griddata`(docs/design/spatial_geometry.md §1.1 SPT90–SPT92). 나머지는 추천안이다(SPT93–SPT197, 보간 쪽은 docs/design/interpolate.md의 IP115–IP130, 사용자 위임 2026-11-23).
 - 비교 대상은 scipy 1.18.1(Qhull)이다. R의 기하 패키지는 설치되어 있지 않고 설치하지 않는다. 조합 구조의 참값은 유리수 검사기(tests/spatial/exactgeom.py), 실수 출력의 참값은 유리수와 Arb다.
 
 | 마일스톤 | 상태 |
@@ -833,7 +833,7 @@
 | SPT12 보로노이: `Voronoi`(d = 2, 3) | 완료·승인(위임, 2026-11-23) |
 | SPT13 성능 점검 | 완료·승인(위임, 2026-11-23) |
 | SPT14 문서: `docs/api/spatial.md`의 확정, 설계 문서를 구현대로, API 표면 테스트 | 완료·승인(위임, 2026-11-23) |
-| IP9 흩어진 점 보간(`sd.interpolate`): `LinearNDInterpolator`, `CloughTocher2DInterpolator`, `griddata` | 나중 후보(SPT194; 설계만 있다) |
+| IP9 흩어진 점 보간(`sd.interpolate`): `LinearNDInterpolator`, `CloughTocher2DInterpolator`, `griddata` | 완료·승인(위임, 2026-11-23) |
 
 ### SPT8. 준비와 술어 — 완료·승인(위임, 2026-11-23)
 - 결정(추천안, 사용자 위임 2026-11-23): docs/design/spatial_geometry.md §1.1 SPT112–SPT123(세 단계에서 전개식은 차이가 정확할 때만, 아니면 넓은 정수; 점 집합의 범위로 길을 한 번 고르는 범위 조건 q(hi + 2) + 8 ≤ 1023, q·lo ≥ −1074; 거르기 상수 (3 + 32u)u, (7 + 96u)u, (10 + 176u)u, (15 + 400u)u; 값 커널 1.002u + 2⁻¹⁰⁷⁵; 섭동의 닫힌 꼴 (−1)ⁱ·`orient2d`, (−1)ⁱ⁺¹·`orient3d`; 시험 데이터 geompoints.py; API 초안의 따로 둔 파일; §4 상수; 정렬 상수; 탐침 도구의 자리; 비공개 바인딩; −0.0).
@@ -869,6 +869,10 @@
 - 결정(추천안, 사용자 위임 2026-11-23): docs/design/spatial_geometry.md §1.1 SPT192–SPT195(초안을 docs/api/spatial.md의 §6 공통 규칙과 §7–§9 클래스마다의 절로 합치고 대응표·정확도는 §10·§11, 대응표의 마일스톤 열은 뺌; API 표면 테스트의 `DRAFTED`를 없애고 세 클래스를 `KDTree`처럼 견줌; 흩어진 점 보간(IP9)은 나중 후보로 남기고 설계만 표시해 둠; scipy의 수치는 탐침 기록과 다시 잰 값으로 맞추고 출처 없는 수치는 지움, `Voronoi`의 지연 속성을 `Delaunay`와 같은 꼴로).
 - 결과: docs/api/spatial.md(§6–§9 계산 기하: 이름과 호출 모양, 입력과 에러의 말, 표준 꼴·동점·정확성, 크기와 메모리, 세 클래스의 시그니처·속성·메서드와 `[scipy와 다름]`, 실행한 예; §10 대응표, §11 정확도), 초안 파일을 지우고 참조를 고침, docs/design/spatial_geometry.md(확정; 본문을 구현대로: 쌍대 없는 quad-edge, 줄 넣기, 잰 병렬 기준, 정적 필터, 파일과 테스트의 실제 이름, 메모리 표, 정확도 스윕의 잰 값), docs/design/spatial.md와 서로 이음, tests/spatial/test_api_surface.py, src/stardust/spatial/(머리 주석, `Voronoi._made`), API.md·README.md·ARCHITECTURE.md.
 - 찾은 것: 초안과 설계의 scipy 수치 몇이 기록과 달랐다(10⁻¹³ 흔든 격자의 삼각형 1,711 → 1,751, 뒤집힌 것 14 → 17, 어긴 변 437 → 453; 10⁶ + 10⁻³ 균등의 단체 14 → 12, 버린 점 484 → 486; y = 10⁻⁹x²의 어긴 변 159 → 161). y = 10⁻¹⁴x²에서 scipy가 `QhullError`라고 적혀 있었지만 실제로는 283점을 버리고 단체 15개를 낸다. scipy의 메모리는 프로세스 전체의 RSS가 sd의 늘어난 RSS와 견주어져 있었다: 새 프로세스에서 늘어난 RSS로 다시 재니 2차원 `Delaunay` 10⁶점 676 MB, 3차원 10⁵점 231 MB, `Voronoi` 2·3차원 10⁵점 152·569 MB이고 sd는 그 1/1.8–1/2.2다(전에 적은 1/2.8–1/4.1이 아니다). scipy의 2차원 `find_simplex` 10⁶점은 38.2초(sd 1스레드의 250배, 10스레드의 1,787배)다. 시험 점 집합 48개에서 scipy는 7개를 거부하고 14개에서 §4의 1번을 어긴다(SPT13에 적은 9개·12개가 아니다).
+
+### IP9. 흩어진 점 보간 — 완료·승인(위임, 2026-11-23)
+- 이 절의 `Delaunay` 위에 `sd.interpolate`의 세 이름을 세운다. 진행은 보간 영역의 [IP9 마일스톤](#ip9-마일스톤-흩어진-점-보간--완료승인위임-2026-11-23)에 적는다.
+- 결정(추천안, 사용자 위임 2026-11-23): docs/design/spatial_geometry.md §1.1 SPT196(IP9를 마침, 결정은 interpolate.md의 IP115–IP130), SPT197(`DelaunayObj`를 `delaunay2.hpp`로, `find_simplex`의 걷기를 점마다 부르는 `tri::locate_each`; spatial의 골든 493개 그대로).
 
 ---
 
@@ -1042,7 +1046,7 @@
 
 # 보간 영역 (sd.interpolate)
 
-> 상태: **완료** (IP0–IP8, 2026-11-23; 승인(위임)). 공개 이름은 배열 영역의 `sd.interp`와 `sd.interpolate`의 열여덟(조각 다항식과 3차 계열, B-스플라인, 다항식·유리식, 격자, 흩어진 점)이다. 설계는 [docs/design/interpolate.md](docs/design/interpolate.md)(확정), API는 [docs/api/interpolate.md](docs/api/interpolate.md)(확정)다.
+> 상태: **완료** (IP0–IP9, 2026-11-23; 승인(위임)). 공개 이름은 배열 영역의 `sd.interp`와 `sd.interpolate`의 스물하나(조각 다항식과 3차 계열, B-스플라인, 다항식·유리식, 격자, 흩어진 점, 삼각분할 위의 보간)이다. 설계는 [docs/design/interpolate.md](docs/design/interpolate.md)(확정), API는 [docs/api/interpolate.md](docs/api/interpolate.md)(확정)다.
 
 ## 진행 원칙
 - 다른 영역과 같다: 마일스톤마다 시작 전에 물을 것(docs/design/interpolate.md §9)을 정하고, 구현하고, 정확도·속도를 재고, 커밋하고, 결과를 전달한다. 해설과 안내서는 쓰지 않는다. 결정 번호와 마일스톤 이름이 같은 머리글자라서 마일스톤은 "IP2 마일스톤"처럼 적는다.
@@ -1062,6 +1066,7 @@
 | IP6 흩어진 점: `RBFInterpolator NearestNDInterpolator` | 완료·승인(위임, 2026-11-23) |
 | IP7 성능과 일관성 점검 | 완료·승인(위임, 2026-11-23) |
 | IP8 문서 | 완료·승인(위임, 2026-11-23) |
+| IP9 흩어진 점 보간: `LinearNDInterpolator CloughTocher2DInterpolator griddata`(`sd.spatial.Delaunay` 위) | 완료·승인(위임, 2026-11-23) |
 
 ## 마일스톤
 
@@ -1110,6 +1115,12 @@
 - 결정(추천안, 사용자 위임 2026-11-23): docs/design/interpolate.md §1.1 IP107(IP6 마일스톤이 더한 linalg의 내부 래퍼 `lapack::sytrs`는 IP101 뒤 부르는 곳이 없어 뺀다; `ggev`는 둔다).
 - 결과: csrc/linalg/lapack.hpp(`sytrs` 제거; 다시 빌드한 뒤 tests/linalg·tests/interpolate 통과), docs/api/interpolate.md 확정(상태, 절 제목과 대응표의 마일스톤 이름을 절 번호로), docs/design/interpolate.md 확정(상태, 절 제목의 "(안)", §1.1 IP107, §2.1의 complex·유한성 목록, §2.7의 scipy 반복 풀이 값, §3.1·§3.7의 잰 값을 §5의 값으로, §3.8의 대입, §3.9의 태스크 크기, §4의 평가 최대 0.49(akima), §5의 사례 수 48과 나중 후보, §6의 층(`vmath.hpp`, `metric.hpp`)과 파일(`_aaa.py`의 `FloaterHormannInterpolator`, `lerp.hpp`의 블록 꼴, `rbf.cpp`의 `ldlt_solve`), §7의 테스트 목록과 골든 사례 수 388, §8).
 - 찾은 것: 정확도 표(bench/interpolate/accuracy.md)에 `polynomial`·`aaa` 스윕의 행이 없다(스윕은 있으나 bench/accuracy/results/interpolate.json에 그 결과가 없다). 골든 388개 가운데 198개만 기록되어 있다(IP4–IP6의 190개는 아직 기록되지 않았다).
+
+### IP9 마일스톤. 흩어진 점 보간 — 완료·승인(위임, 2026-11-23)
+- 설계는 docs/design/spatial_geometry.md §2.6, §3.8, §3.9, §4이고 계산 기하의 마일스톤 표에도 같은 줄이 있다.
+- 결정(추천안, 사용자 위임 2026-11-23): docs/design/interpolate.md §1.1 IP115–IP130(범위·`fill_value`·같은 점·기울기·평가점·피클(docs/design/spatial_geometry.md §9의 20–25); 무게중심 좌표는 값 커널의 D_k/D, 무게 0인 항은 건너뛰어 자료점에서 자료 그대로, 범위 밖의 행렬식은 2의 거듭제곱 사본; g_k는 반올림한 무게중심 없이 행렬식 셋; `points`의 튜플(`NearestNDInterpolator`의 `x`도); 기울기 훑기의 미리 계산과 단위와 무관한 멈춤 판정, 2^±500 밖의 변은 옮겨서; 계약 γ_{d+5}Σλ\|f\|와 256u·K; Clough–Tocher는 유한한 값만; 위치 찾기와 평가를 한 번에; `griddata`의 1차원과 차원; spatial의 `DelaunayObj`와 `locate_each`를 읽음; `fill_value`의 형; 속성의 꼴).
+- 결과: 공개 이름 3개(`LinearNDInterpolator`(`__call__`, 속성 `points values tri fill_value`), `CloughTocher2DInterpolator`(같은 것과 `grad converged niter`), `griddata`), C++ csrc/interpolate/scattered.cpp(같은 점의 값 검사, `linear_nd`, `ct_gradients`, `ct_eval`), csrc/spatial/delaunay2.hpp(`DelaunayObj`)·triangulation.hpp(`locate_each`), Python src/stardust/interpolate/_scattered.py와 _rbf.py(`points`·`xi`·`rescale`의 정리를 함께 씀, `NearestNDInterpolator`의 튜플 `x`), 시험 데이터 samples.py의 삼각분할 점 집합 48벌, 참값 tools/interpolate_ref.py의 `scattered` → tests/interpolate/ref/scattered.npz(2,342점), refdata.py의 정확한 선형·Clough–Tocher 값과 한계, 테스트 test_scattered.py와 test_threads·test_pickle·test_api_surface·test_reference_data의 사례, 정확도 스윕 `scattered`(기준선과 표에 더함), 속도 사례 10개(묶음 `scattered`), 골든 30개, docs/api/interpolate.md §7, 설계 문서 둘.
+- 찾은 것: 계약 단위의 최대는 선형 0.40(2,342점, 2·3차원 48벌), Clough–Tocher 0.014(1,311점; 3.5u·K)이고 자료점은 모두 자료 그대로다. scipy를 제 삼각분할과 기울기로 같은 단위로 재면 선형 49, Clough–Tocher 7.5×10⁴(10⁶ + 10⁻³ × 균등)이고, 자료점의 값이 선형 67개·Clough–Tocher 51개에서 끝자리가 다르며, 극단 범위의 7벌을 `QhullError`로 거부하고, 버린 점이 있는 거의 퇴화한 벌에서 끝에서 끝 상대오차가 0.57까지다. scipy는 같은 점의 값이 다르면 말없이 하나를 쓰고, 껍질 밖 10⁻¹⁵의 점을 안으로 치며, 기울기의 멈춤 판정이 좌표의 단위에 따라 달라 점을 10⁶배 하면 8×10⁻⁴ 다른 값을 낸다(sd 9.5×10⁻⁹). 속도(1스레드 / 10스레드, scipy 대비): 선형 평가 2차원 10⁵점 56 / 425배, 3차원 10⁵점 16 / 97배, Clough–Tocher 평가 10⁵점 40 / 289배, 기울기 추정 10⁵점 2.1 / 2.4배, `griddata` 10⁴점 `'linear'` 7.6 / 20배. 1·3·10스레드에서 같은 바이트(골든 30개, test_threads). 기울기가 float64를 넘는 자료(점 사이가 비정상 수 크기)와 변의 비가 2¹⁰⁰⁰ 가까운 자료에서는 기울기가 ±inf·NaN이다(scipy는 그런 점 집합을 거부한다).
 
 # 푸리에 변환 영역 (sd.fft)
 

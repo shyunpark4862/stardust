@@ -67,6 +67,19 @@ IP6 brings (judged through tests/interpolate/refdata.py)
                has e2e_rel alone (each set is the global interpolant of its points to the bit, tests/interpolate/
                test_rbf.py). Comparator: scipy (its coefficients with its own system and scipy.linalg.ldl's factors).
 
+IP9 brings (judged through tests/interpolate/refdata.py)
+
+  scattered    LinearNDInterpolator and CloughTocher2DInterpolator on scattered.npz (the valid point sets of sd.spatial's
+               geometry tests with a smooth field): region `linear` in units of the linear contract gamma_{d+5} sum_k
+               lambda_k |f_k| (refdata.linear_nd_bound) against the exact value on the library's own triangulation and
+               `e2e_rel` against the reference (sd's triangulation) relative to max|f|; region `clough_tocher` (d = 2)
+               in units of the cubic's contract 256 u K (refdata.ct_bound) against the exact cubic of the library's
+               own triangulation and gradients, and `e2e_rel` against the reference. `exact_data`: the data points
+               whose value is not the data to the bit; `nonfinite`: the points inside the library's hull without a
+               finite value (or in a flat simplex of its triangulation), left out of the contract column.
+               Comparator: scipy 1.18.1 (its Qhull triangulation; the sets Qhull rejects are counted in `rejected`; on
+               sets where it leaves points out the e2e column shows it).
+
 IP5 brings (judged through tests/interpolate/refdata.py)
 
   grid         RegularGridInterpolator on grid.npz (the exact interpolant of the float data), one region per method:
@@ -743,6 +756,83 @@ def _grid_regions(lib):
     return out
 
 
+def _scattered_regions(lib):
+    if lib not in ("sd", "scipy"):
+        return None
+    from tests.interpolate import refdata
+    from tests.interpolate import samples as S
+
+    ref = refdata.ref("scattered")
+    sets = ref.inputs["set"]
+    acc = {m: {"where": [], "contract": [], "e2e": [], "data": [], "nan": 0, "rejected": 0}
+           for m in ("linear", "clough_tocher")}  # fmt: skip
+    for sid in sorted(set(sets.tolist())):
+        sc = S.tri_set(sid)
+        d = sc.y.shape[1]
+        scale = float(np.max(np.abs(sc.d)))
+        for meth in ("linear", "clough_tocher") if d == 2 else ("linear",):
+            m = ref.methods[meth]
+            pos = np.flatnonzero(sets[m.index] == sid)
+            if pos.size == 0:
+                continue
+            idx = ref.inputs["index"][m.index[pos]]
+            e = acc[meth]
+            try:
+                if lib == "sd":
+                    import stardust as sd
+
+                    IP = sd.interpolate
+                    obj = (IP.LinearNDInterpolator if meth == "linear" else IP.CloughTocher2DInterpolator)(sc.y, sc.d)
+                    simp, nb = np.asarray(obj.tri.simplices), np.asarray(obj.tri.neighbors)
+                    ts = np.asarray(obj.tri.find_simplex(sd.asarray(sc.xi)))
+                    grad = np.asarray(obj.grad) if meth != "linear" else None
+                else:
+                    import scipy.interpolate as si
+
+                    obj = (si.LinearNDInterpolator if meth == "linear" else si.CloughTocher2DInterpolator)(sc.y, sc.d)
+                    simp, nb = obj.tri.simplices, obj.tri.neighbors
+                    ts = obj.tri.find_simplex(sc.xi)
+                    grad = obj.grad[:, 0, :] if meth != "linear" else None
+                got = np.asarray(obj(sc.xi))
+            except Exception:  # Qhull rejects the set
+                e["rejected"] += 1
+                continue
+            for p, i in zip(pos, idx):
+                i = int(i)
+                hi, lo = float(m.hi[p]), float(m.lo[p])
+                g, t = float(got[i]), int(ts[i])
+                e["where"].append(f"{sid}#{i}")
+                e["e2e"].append(abs((g - hi) - lo) / scale if np.isfinite(g) else np.inf)
+                if i >= 64:
+                    e["data"].append(0.0 if g == sc.d[i - 64] else 1.0)
+                if t < 0:  # the library calls the point outside its hull (fill_value): no value to judge
+                    e["contract"].append(0.0)
+                    continue
+                if not np.isfinite(g):
+                    e["nan"] += 1
+                    e["contract"].append(0.0)
+                    continue
+                try:
+                    if meth == "linear":
+                        v, sc_ = refdata.scattered_linear_exact(sc.y, simp[t], sc.d, sc.xi[i])
+                        b = refdata.linear_nd_bound(sc_, d)
+                    else:
+                        v, K, _ = refdata.ct_exact(sc.y, simp, nb, t, sc.d, grad, sc.xi[i])
+                        b = refdata.ct_bound(K)
+                except ZeroDivisionError:  # a flat simplex of the library's triangulation
+                    e["nan"] += 1
+                    e["contract"].append(0.0)
+                    continue
+                err = abs(Fraction(g) - v)
+                e["contract"].append(0.0 if err == 0 else float(err) / b)
+    out = {}
+    for meth, e in acc.items():
+        out[meth] = region(e["where"], contract=np.array(e["contract"]), bound=1.0, e2e_rel=np.array(e["e2e"]),
+                           exact_data=np.array([float(np.sum(e["data"]))]), nonfinite=np.array([float(e["nan"])]),
+                           rejected=np.array([float(e["rejected"])]))  # fmt: skip
+    return out
+
+
 def sweeps():
     import stardust as sd
 
@@ -768,4 +858,7 @@ def sweeps():
     if "RBFInterpolator" in sd.interpolate.__all__:
         out.append(Custom("interpolate", "rbf", lambda: _rbf_regions("sd"),
                           compare_libs(_rbf_regions, ("scipy",), seconds=120.0)))  # fmt: skip
+    if "LinearNDInterpolator" in sd.interpolate.__all__:
+        out.append(Custom("interpolate", "scattered", lambda: _scattered_regions("sd"),
+                          compare_libs(_scattered_regions, ("scipy",), seconds=300.0)))  # fmt: skip
     return out

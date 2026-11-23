@@ -278,21 +278,18 @@ class NearestNDInterpolator:
 
     @method("NearestNDInterpolator")
     def __init__(self, x, y, /, *, rescale=False):
-        name = "NearestNDInterpolator"
-        sd = _sd
-        pts = _coords(x, name, "x")
+        self._build(x, y, rescale, "NearestNDInterpolator")
+
+    def _build(self, x, y, rescale, name):
+        pts = _coords(point_set(x, name, "x"), name, "x")
         n = pts.shape[0]
         self._y, self._rest = _values(y, n, name, "y")
         if rescale is not True and rescale is not False:
             raise TypeError(f"{name}(): 'rescale' must be True or False, not {C.type_name(rescale)}")
         self._x = pts
         self._offset = self._scale = None
-        if rescale:  # scipy's: the mean and the peak-to-peak range of each axis (a zero range is 1)
-            off = sd.mean(pts, axis=0)
-            span = sd.max(pts, axis=0) - sd.min(pts, axis=0)
-            self._offset = _readonly(C.contiguous(off))
-            self._scale = _readonly(C.contiguous(sd.where(span > 0, span, 1.0)))
-            pts = C.contiguous((pts - self._offset) / self._scale)
+        if rescale:
+            self._offset, self._scale, pts = rescaling(pts)
         from ..spatial import KDTree
 
         self._tree = KDTree(pts)
@@ -304,25 +301,11 @@ class NearestNDInterpolator:
     @call
     def __call__(self, xi, /):
         """The value of the nearest data point at each point of xi ((..., m), or a tuple of m coordinate arrays)."""
-        name = "NearestNDInterpolator"
+        return self._evaluate(xi, "NearestNDInterpolator")
+
+    def _evaluate(self, xi, name):
         sd = _sd
-        m = self._x.shape[1]
-        if isinstance(xi, tuple):
-            if len(xi) != m:
-                raise ValueError(f"{name}(): a tuple 'xi' must have {m} coordinate arrays, not {len(xi)}")
-            parts = [C.array(v, name, "xi") if not isinstance(v, (int, float)) else sd.asarray([float(v)])
-                     for v in xi]  # fmt: skip
-            scalar = all(isinstance(v, (int, float)) or C._is_numpy_scalar(v) for v in xi)
-            try:
-                parts = sd.broadcast_arrays(*parts)
-            except ValueError:
-                raise ValueError(f"{name}(): the arrays of a tuple 'xi' must broadcast together") from None
-            stacked = sd.stack([C.contiguous(p) for p in parts], axis=-1)
-            X, batch = _eval_points(stacked, m, name, "xi")
-            if scalar:
-                batch = ()
-        else:
-            X, batch = _eval_points(xi, m, name, "xi")
+        X, batch = xi_points(xi, self._x.shape[1], name)
         Xf, ok = _finite_rows(X)
         if self._offset is not None and Xf.shape[0]:
             Xf = C.contiguous((Xf - self._offset) / self._scale)
@@ -332,3 +315,49 @@ class NearestNDInterpolator:
             idx = sd.reshape(self._tree.query(Xf, k=1)[1], (Xf.shape[0],))
             out_f = C.contiguous(self._y[idx])
         return _finish(_scatter(out_f, ok, X.shape[0], self._y.dtype), batch, self._rest)
+
+
+# ---------------------------------------------------------------- shared with the triangulation's interpolants
+
+
+def point_set(x, name, arg):
+    """The data points as given, or a tuple of m 1-D coordinate arrays of one length stacked as (n, m) columns (scipy's
+    form for NearestNDInterpolator, LinearNDInterpolator, CloughTocher2DInterpolator and griddata)."""
+    if not isinstance(x, tuple):
+        return x
+    sd = _sd
+    cols = [C.array(v, name, arg) for v in x]
+    if not cols or any(c.ndim != 1 for c in cols) or len({c.shape[0] for c in cols}) != 1:
+        raise ValueError(f"{name}(): the coordinate arrays of a tuple '{arg}' must be 1-D and of one length")
+    return C.contiguous(sd.stack(cols, axis=1))
+
+
+def rescaling(pts):
+    """scipy's rescale: (offset, scale, (pts - offset) / scale) with the mean and the peak-to-peak range of each axis
+    (a zero range is 1); the mean is the array's pairwise sum."""
+    sd = _sd
+    off = sd.mean(pts, axis=0)
+    span = sd.max(pts, axis=0) - sd.min(pts, axis=0)
+    offset = _readonly(C.contiguous(off))
+    scale = _readonly(C.contiguous(sd.where(span > 0, span, 1.0)))
+    return offset, scale, C.contiguous((pts - offset) / scale)
+
+
+def xi_points(xi, m, name):
+    """Evaluation points (..., m) or a tuple of m coordinate arrays or numbers (broadcast) as (a C-contiguous (Q, m)
+    float64 array, the batch shape); a tuple of numbers is one point (batch ())."""
+    sd = _sd
+    if not isinstance(xi, tuple):
+        return _eval_points(xi, m, name, "xi")
+    if len(xi) != m:
+        raise ValueError(f"{name}(): a tuple 'xi' must have {m} coordinate arrays, not {len(xi)}")
+    parts = [C.array(v, name, "xi") if not isinstance(v, (int, float)) else sd.asarray([float(v)])
+             for v in xi]  # fmt: skip
+    scalar = all(isinstance(v, (int, float)) or C._is_numpy_scalar(v) for v in xi)
+    try:
+        parts = sd.broadcast_arrays(*parts)
+    except ValueError:
+        raise ValueError(f"{name}(): the arrays of a tuple 'xi' must broadcast together") from None
+    stacked = sd.stack([C.contiguous(p) for p in parts], axis=-1)
+    X, batch = _eval_points(stacked, m, name, "xi")
+    return X, () if scalar else batch

@@ -18,6 +18,7 @@ void bind_interpolate(nb::module_& core) {
     interpolate::bind_aaa(m);
     interpolate::bind_grid(m);
     interpolate::bind_rbf(m);
+    interpolate::bind_scattered(m);
 }
 
 }  // namespace sd

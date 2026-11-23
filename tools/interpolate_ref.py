@@ -39,6 +39,13 @@ for those doubles, rounded once (a double-double hi + lo).
     roots       one point per distinct real root of every piece of samples.pieces(), in [x[i], x[i+1]]:
                 the root (Arb isolation of the square-free factors, refined to 2^-110) with its piece
                 and multiplicity
+    scattered   one point per xi of samples.trisets() (the valid point sets of tests/spatial/geompoints.py
+                with a smooth field; 64 points in the box and the first 8 data points) inside the convex
+                hull: on sd.spatial.Delaunay's triangulation (the simplex find_simplex gives, checked exactly),
+                the exact value of the linear interpolant (method linear) and sum_k lambda_k |f_k| (linear_scale),
+                and for d = 2 the exact Clough-Tocher cubic of the gradients sd estimates (method clough_tocher,
+                the gradients kept per set as the group input grad; sets whose gradients are not finite are left
+                out) and its scale K (ct_scale; tests/interpolate/refdata.ct_exact)
 
 Settling: an exact rational is exact; an Arb value is settled to 2^-110 relative. Workers are forked,
 replaced every 8 tasks (maxtasksperchild), each task under a time limit (SIGALRM). No mpmath (the
@@ -863,6 +870,40 @@ def roots_task(pid):
     return out
 
 
+# ---------------------------------------------------------------- scattered (IP9)
+
+
+def scattered_task(sid):
+    """Per point of the set: (index, simplex, {method: (hi, lo)}) and the set's gradients (n, 2) (None for d = 3 or
+    gradients that are not finite)."""
+    import stardust as sd
+    from tests.interpolate import refdata as R
+    from tests.spatial import exactgeom as X
+
+    sc = S().tri_set(sid)
+    y, f, xi = sc.y, sc.d, sc.xi
+    d = y.shape[1]
+    D = sd.spatial.Delaunay(sd.asarray(y))
+    simp, nb = np.asarray(D.simplices), np.asarray(D.neighbors)
+    ts = np.asarray(D.find_simplex(sd.asarray(xi)))
+    grad = None
+    if d == 2:
+        g = np.asarray(sd.interpolate.CloughTocher2DInterpolator(y, f).grad)
+        grad = g if np.all(np.isfinite(g)) else None
+    out = []
+    for i, (x, t) in enumerate(zip(xi, ts)):
+        assert int(t) == X.find_simplex_reference(y, simp.tolist(), x), (sid, i)
+        if t < 0:
+            continue
+        v, scale = R.scattered_linear_exact(y, simp[t], f, x)
+        vals = {"linear": dd_of(v), "linear_scale": dd_of(scale)}
+        if grad is not None:
+            c, K, _ = R.ct_exact(y, simp, nb, int(t), f, grad, x)
+            vals["clough_tocher"], vals["ct_scale"] = dd_of(c), dd_of(K)
+        out.append((i, int(t), vals))
+    return out, grad
+
+
 # ---------------------------------------------------------------- driver
 
 
@@ -875,14 +916,15 @@ def _items(fam):
         "grid": grid_items,
         "rbf": rbf_items,
         "roots": lambda: list(M.PIECES_IDS),
+        "scattered": lambda: list(M.tri_ids()),
     }[fam]()
 
 
 TASKS = {"linear": linear_task, "curves": curve_task, "polynomial": poly_task, "grid": grid_task, "rbf": rbf_task,
-         "roots": roots_task}  # fmt: skip
+         "roots": roots_task, "scattered": scattered_task}  # fmt: skip
 # the files each task family writes
 FILES = {"linear": ("linear",), "curves": ("slopes", "bspline", "curves"), "polynomial": ("polynomial",),
-         "grid": ("grid",), "rbf": ("rbf",), "roots": ("roots",)}  # fmt: skip
+         "grid": ("grid",), "rbf": ("rbf",), "roots": ("roots",), "scattered": ("scattered",)}  # fmt: skip
 FAMILIES = tuple(f for fs in FILES.values() for f in fs)
 
 
@@ -1033,8 +1075,30 @@ def write_roots(items, results):
     _write("roots", inputs, _methods({"root": vals}, len(sets)), len(sets))
 
 
+def write_scattered(items, results):
+    M = S()
+    sets, idx, dig, xs, simplex, group, per = [], [], [], [], [], [], {}
+    gsets, grads = [], []
+    for g, k in enumerate(sorted(results)):
+        sc = M.tri_set(items[k])
+        rows, grad = results[k]
+        gsets.append(sc.id)
+        grads.append(np.zeros((0, 2)) if grad is None else np.ascontiguousarray(grad))
+        for i, t, vals in rows:
+            p = len(sets)
+            for m, v in vals.items():
+                per.setdefault(m, {})[p] = v
+            sets.append(sc.id), idx.append(i), dig.append(sc.digest), xs.append(sc.xi[i]), simplex.append(t)
+            group.append(g)
+    order = [m for m in ("linear", "linear_scale", "clough_tocher", "ct_scale") if m in per]
+    inputs = {"set": np.array(sets), "index": np.array(idx, np.int64), "digest": np.array(dig), "x": xs,
+              "simplex": np.array(simplex, np.int64)}  # fmt: skip
+    _write("scattered", inputs, _methods({m: per[m] for m in order}, len(sets)), len(sets),
+           group=np.array(group, np.int64), group_inputs={"set": np.array(gsets), "grad": grads})  # fmt: skip
+
+
 WRITERS = {"linear": write_linear, "curves": write_curves, "polynomial": write_polynomial, "grid": write_grid,
-           "rbf": write_rbf, "roots": write_roots}  # fmt: skip
+           "rbf": write_rbf, "roots": write_roots, "scattered": write_scattered}  # fmt: skip
 
 
 def build(names, jobs):

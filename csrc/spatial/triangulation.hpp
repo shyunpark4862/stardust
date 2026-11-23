@@ -547,24 +547,28 @@ inline void build_locator(Triangulation& T, bool split) {
 // they are taken cell by cell of the location grid (a counting sort; SPT188): the points of one cell walk over
 // the same simplices while those are in cache (10^5 3-D points: 29 ms -> 18 ms). On more threads the
 // counting's atomics cost more than the cache gains, and the points go in their order.
-template <int D>
-inline void find_simplex(const Triangulation& T, const double* x, std::int64_t q, std::int64_t* out, bool split) {
+//
+// locate_each calls done(i, t) once per point with that simplex (-1 outside or non-finite), in the order above,
+// from the task that located it: the scattered-data interpolants of sd.interpolate (interpolate/scattered.cpp)
+// evaluate each point there, while its simplex is in cache.
+template <int D, class Done>
+inline void locate_each(const Triangulation& T, const double* x, std::int64_t q, bool split, Done&& done) {
     const Locator<D>& L = detail::locator<D>(T);
     auto one = [&](std::int64_t i) {
         const double* p = x + i * D;
         bool finite = true;
         for (int k = 0; k < D; ++k) finite = finite && std::isfinite(p[k]);
         if (!finite) {
-            out[i] = -1;
+            done(i, std::int64_t{-1});
             return;
         }
         const std::int64_t t0 = L.start[static_cast<std::size_t>(detail::cell_of<D>(L, p))];
         if (detail::safe_with<D>(T, p)) {
             const std::int64_t t = detail::walk<D, true>(T, t0, p, nullptr);
-            out[i] = t < 0 ? -1 : detail::smallest_holding<D, true>(T, t, p);
+            done(i, t < 0 ? std::int64_t{-1} : detail::smallest_holding<D, true>(T, t, p));
         } else {
             const std::int64_t t = detail::walk<D, false>(T, t0, p, nullptr);
-            out[i] = t < 0 ? -1 : detail::smallest_holding<D, false>(T, t, p);
+            done(i, t < 0 ? std::int64_t{-1} : detail::smallest_holding<D, false>(T, t, p));
         }
     };
     const std::int64_t nb = chunks_of(q, kQueryBlock);
@@ -596,6 +600,11 @@ inline void find_simplex(const Triangulation& T, const double* x, std::int64_t q
         for (std::int64_t j = c * kQueryBlock, e = std::min(q, (c + 1) * kQueryBlock); j < e; ++j)
             one(order[static_cast<std::size_t>(j)]);
     });
+}
+
+template <int D>
+inline void find_simplex(const Triangulation& T, const double* x, std::int64_t q, std::int64_t* out, bool split) {
+    locate_each<D>(T, x, q, split, [out](std::int64_t i, std::int64_t t) { out[i] = t; });
 }
 
 // ---------------------------------------------------------------- the attributes made on first use

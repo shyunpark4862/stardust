@@ -16,6 +16,10 @@ Kinds, each with its own getter:
              decreasing axis, NaN values, trailing batch axes
     scatters scattered data (y, d, xi) in 2 and 3 dimensions: uniform, clustered, duplicated points,
              collinear points (the degree-1 monomials lose rank), a lattice with many equal distances
+    trisets  scattered data on a triangulation (y, d, xi): the valid point sets of sd.spatial's geometry tests
+             (tests/spatial/geompoints.py, at most 1000 rows: random, degenerate, almost degenerate, extreme
+             ranges) with a smooth field of the scaled coordinates, 64 points uniform in the box and the first 8
+             data points
     roots    piecewise polynomials (c, x) for roots and solve: a tangent root, two roots 2^-30 apart,
              a piece that is zero, a sign change at a breakpoint, random cubic and quintic pieces
     polys    nodes and values for the polynomial interpolants: Chebyshev and uniform nodes, nodes
@@ -422,6 +426,44 @@ def scatter(id_: str) -> Scatter:
     kind = id_.split("/", 1)[1]
     y, d, xi = _scatter_build(kind)
     return Scatter(id_, y, d, xi, frozenset(_SCATTER_TAGS[kind]))
+
+
+# ---------------------------------------------------------------- sets on a triangulation (milestone IP9)
+
+TRI_MAX = 1000  # rows
+
+
+def tri_field(y):
+    """sin(3 u0) + cos(2 u1) + 0.1 sum u of the coordinates scaled to the box, u = (y - lo) / (hi - lo) / 2 computed
+    without overflow (finite for every finite set)."""
+    lo, hi = y.min(axis=0), y.max(axis=0)
+    half = 0.5 * hi - 0.5 * lo
+    half[half == 0] = 1.0
+    u = (0.5 * y - 0.5 * lo) / half
+    return np.sin(3 * u[:, 0]) + np.cos(2 * u[:, -1]) + 0.1 * u.sum(axis=1)
+
+
+@functools.cache
+def tri_ids() -> tuple:
+    from tests.spatial import geompoints as G
+
+    out = []
+    for gid in G.IDS:
+        tags = G._BUILDERS[gid][0]
+        if "invalid" in tags or "large" in tags or G.get(gid).x.shape[0] > TRI_MAX:
+            continue
+        out.append(f"tri/{gid}")
+    return tuple(out)
+
+
+@functools.cache
+def tri_set(id_: str) -> Scatter:
+    from tests.spatial import geompoints as G
+
+    gid = id_.split("/", 1)[1]
+    y = G.get(gid).x
+    xi = np.vstack([G.queries(gid, 64), y[:8]])
+    return Scatter(id_, y, tri_field(y), xi, frozenset(G._BUILDERS[gid][0]), G._BUILDERS[gid][2])
 
 
 # ---------------------------------------------------------------- piecewise polynomials for roots

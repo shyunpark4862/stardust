@@ -14,5 +14,6 @@ void bind_polyint(nanobind::module_& m);
 void bind_aaa(nanobind::module_& m);
 void bind_grid(nanobind::module_& m);
 void bind_rbf(nanobind::module_& m);
+void bind_scattered(nanobind::module_& m);
 
 }  // namespace sd::interpolate

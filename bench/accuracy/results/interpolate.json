@@ -2,8 +2,8 @@
  "schema": 1,
  "area": "interpolate",
  "runs": {
-  "20261123-044551-5d6bfc9+": {
-   "commit": "5d6bfc9",
+  "20261123-044551-a5b4155+": {
+   "commit": "a5b4155",
    "dirty": true,
    "changed": [
     "API.md",
@@ -83,8 +83,8 @@
     "Boost in sd.special": "4682f44"
    }
   },
-  "20261123-070613-adbb372+": {
-   "commit": "adbb372",
+  "20261123-070613-3e69193+": {
+   "commit": "3e69193",
    "dirty": true,
    "changed": [
     "API.md",
@@ -180,8 +180,8 @@
     "Boost in sd.special": "4682f44"
    }
   },
-  "20261123-070259-adbb372+": {
-   "commit": "adbb372",
+  "20261123-070259-3e69193+": {
+   "commit": "3e69193",
    "dirty": true,
    "changed": [
     "API.md",
@@ -272,8 +272,8 @@
     "Boost in sd.special": "4682f44"
    }
   },
-  "20261123-080952-adbb372+": {
-   "commit": "adbb372",
+  "20261123-080952-3e69193+": {
+   "commit": "3e69193",
    "dirty": true,
    "changed": [
     "API.md",
@@ -373,6 +373,60 @@
     "regression": "d18611e3becf4d1273fb0aff2671ad314fe6bd66c918a6db28ce54d01acb18b0",
     "optimize": "28d5e52d860b54463697743fb86962197c0c4b7e5a4b9a670ca0518d9d3588e8"
    }
+  },
+  "20261123-232408-0459bdd+": {
+   "commit": "0459bdd",
+   "dirty": true,
+   "changed": [
+    "CMakeLists.txt",
+    "bench/accuracy/interpolate.py",
+    "bench/speed/cases/interpolate.py",
+    "csrc/bind/interpolate_bind.cpp",
+    "csrc/interpolate/interpolate.hpp",
+    "csrc/spatial/delaunay2.cpp",
+    "csrc/spatial/delaunay2.hpp",
+    "csrc/spatial/triangulation.hpp",
+    "docs/api/interpolate.md",
+    "src/stardust/interpolate/__init__.py",
+    "src/stardust/interpolate/_rbf.py",
+    "tests/golden/cases_interpolate.py",
+    "tests/golden/data/interpolate.json",
+    "tests/interpolate/refdata.py",
+    "tests/interpolate/samples.py",
+    "tests/interpolate/test_api_surface.py",
+    "tests/interpolate/test_pickle.py",
+    "tests/interpolate/test_reference_data.py",
+    "tests/interpolate/test_threads.py",
+    "tools/interpolate_ref.py"
+   ],
+   "date": "2026-11-23T23:24:08",
+   "machine": "arm64",
+   "python": "3.15.0",
+   "references": {
+    "array": "aef7e7bf22a5feb65a19c421f4d1b04d578dca8fd4e3122d503043afbc1c9638",
+    "linalg": "ba8d2d9b5e6767d51c11ec21fe26040320b31de4c06ccfe0562a6b1033ff2950",
+    "special": "241d3855ece237ebf086080118d4295238b54dc9b7b60a2822cef413e170064f",
+    "stats": "6f88d53afd2668510257ee4cc6e6ee9df3d20ef72ebfde263aacaefd1855586f",
+    "regression": "d18611e3becf4d1273fb0aff2671ad314fe6bd66c918a6db28ce54d01acb18b0",
+    "optimize": "28d5e52d860b54463697743fb86962197c0c4b7e5a4b9a670ca0518d9d3588e8"
+   },
+   "comparators": {
+    "scipy": "1.18.1",
+    "numpy": "2.5.4",
+    "statsmodels": "0.15.0",
+    "scikit-learn": "1.9.1",
+    "R": "4.6.2",
+    "R mvtnorm": "1.4.2",
+    "R reticulate": "1.47.0",
+    "R minpack.lm": "1.2.4",
+    "R car": "3.1.5",
+    "R lmtest": "0.9.40",
+    "R leaps": "3.2",
+    "R irlba": "2.4.1",
+    "R numDeriv": "2016.8.1.1",
+    "Boost": null,
+    "Boost in sd.special": "4682f44"
+   }
   }
  },
  "sweeps": [
@@ -419,7 +473,7 @@
      ]
     }
    },
-   "run": "20261123-080952-adbb372+"
+   "run": "20261123-080952-3e69193+"
   },
   {
    "id": "interpolate/coefficients",
@@ -593,7 +647,7 @@
      ]
     }
    },
-   "run": "20261123-080952-adbb372+",
+   "run": "20261123-080952-3e69193+",
    "comparators": {
     "scipy": {
      "natural": {
@@ -675,7 +729,7 @@
      }
     }
    },
-   "comparators_run": "20261123-044551-5d6bfc9+",
+   "comparators_run": "20261123-044551-a5b4155+",
    "comparator_seconds": 120.0
   },
   {
@@ -861,7 +915,7 @@
      ]
     }
    },
-   "run": "20261123-080952-adbb372+",
+   "run": "20261123-080952-3e69193+",
    "comparators": {
     "scipy": {
      "natural": {
@@ -963,7 +1017,7 @@
      }
     }
    },
-   "comparators_run": "20261123-044551-5d6bfc9+",
+   "comparators_run": "20261123-044551-a5b4155+",
    "comparator_seconds": 300.0
   },
   {
@@ -1028,7 +1082,7 @@
      ]
     }
    },
-   "run": "20261123-080952-adbb372+",
+   "run": "20261123-080952-3e69193+",
    "comparators": {
     "scipy": {
      "linear": {
@@ -1088,7 +1142,7 @@
      }
     }
    },
-   "comparators_run": "20261123-070613-adbb372+",
+   "comparators_run": "20261123-070613-3e69193+",
    "comparator_seconds": 120.0
   },
   {
@@ -1120,7 +1174,7 @@
      ]
     }
    },
-   "run": "20261123-080952-adbb372+",
+   "run": "20261123-080952-3e69193+",
    "comparators": {
     "numpy": {
      "curves": {
@@ -1201,7 +1255,7 @@
      }
     }
    },
-   "comparators_run": "20261123-044551-5d6bfc9+",
+   "comparators_run": "20261123-044551-a5b4155+",
    "comparator_seconds": 120.0
   },
   {
@@ -1274,7 +1328,7 @@
      ]
     }
    },
-   "run": "20261123-080952-adbb372+"
+   "run": "20261123-080952-3e69193+"
   },
   {
    "id": "interpolate/rbf",
@@ -1400,7 +1454,7 @@
      ]
     }
    },
-   "run": "20261123-080952-adbb372+",
+   "run": "20261123-080952-3e69193+",
    "comparators": {
     "scipy": {
      "linear": {
@@ -1522,7 +1576,7 @@
      }
     }
    },
-   "comparators_run": "20261123-070259-adbb372+",
+   "comparators_run": "20261123-070259-3e69193+",
    "comparator_seconds": 120.0
   },
   {
@@ -1544,7 +1598,7 @@
      ]
     }
    },
-   "run": "20261123-080952-adbb372+",
+   "run": "20261123-080952-3e69193+",
    "comparators": {
     "scipy": {
      "pieces": {
@@ -1561,8 +1615,71 @@
      }
     }
    },
-   "comparators_run": "20261123-044551-5d6bfc9+",
+   "comparators_run": "20261123-044551-a5b4155+",
    "comparator_seconds": 120.0
+  },
+  {
+   "id": "interpolate/scattered",
+   "area": "interpolate",
+   "name": "scattered",
+   "points": 3653,
+   "regions": {
+    "linear": {
+     "points": 2342,
+     "e2e_rel_max": 2.397860638806615e-16,
+     "exact_data_max": 0.0,
+     "nonfinite_max": 0.0,
+     "rejected_max": 0.0,
+     "contract": 0.4013653323596021,
+     "bound": 1.0,
+     "worst": [
+      "tri/far3/1e8grid#27"
+     ]
+    },
+    "clough_tocher": {
+     "points": 1311,
+     "e2e_rel_max": 5.563811667253177e-16,
+     "exact_data_max": 0.0,
+     "nonfinite_max": 0.0,
+     "rejected_max": 0.0,
+     "contract": 0.013509812818180315,
+     "bound": 1.0,
+     "worst": [
+      "tri/normal2/1000#63"
+     ]
+    }
+   },
+   "comparators": {
+    "scipy": {
+     "linear": {
+      "points": 2011,
+      "e2e_rel_max": Infinity,
+      "exact_data_max": 67.0,
+      "nonfinite_max": 0.0,
+      "rejected_max": 7.0,
+      "contract": 49.43639657079184,
+      "bound": 1.0,
+      "worst": [
+       "tri/uniform3/12#65"
+      ]
+     },
+     "clough_tocher": {
+      "points": 1201,
+      "e2e_rel_max": Infinity,
+      "exact_data_max": 51.0,
+      "nonfinite_max": 0.0,
+      "rejected_max": 2.0,
+      "contract": 74700.26519926618,
+      "bound": 1.0,
+      "worst": [
+       "tri/far2/1e6uniform#3"
+      ]
+     }
+    }
+   },
+   "comparator_seconds": 300.0,
+   "run": "20261123-232408-0459bdd+",
+   "comparators_run": "20261123-232408-0459bdd+"
   }
  ]
 }

@@ -1,12 +1,25 @@
 // The build of the 2-D Delaunay triangulation (delaunay2.cpp; docs/design/spatial_geometry.md §3.3, milestone
 // SPT9), called by the native class _Delaunay (delaunay2.cpp) and by the Voronoi diagram (voronoi.cpp,
-// milestone SPT12) for points with 2 columns.
+// milestone SPT12) for points with 2 columns; and the native class's object, which the scattered-data
+// interpolants of sd.interpolate read (interpolate/scattered.cpp, milestone IP9).
 #pragma once
 
 #include "spatial/triangulation.hpp"
 
+#include <nanobind/nanobind.h>
+
 #include <cstdint>
 #include <vector>
+
+namespace sd::spatial {
+
+// The object of the native class _Delaunay (d = 2 and 3): the result arrays and the triangulation over them.
+struct DelaunayObj {
+    nanobind::object points, simplices, neighbors, v2s;
+    tri::Triangulation T;
+};
+
+}  // namespace sd::spatial
 
 namespace sd::spatial::tri {
 

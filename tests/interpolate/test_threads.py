@@ -4,7 +4,8 @@ into many tasks (random and sorted points, a period, complex values, a batch of 
 of every member, evaluation and its derivatives, the antiderivative's prefix sums over several blocks, the pairwise
 integral and the roots; the B-splines' collocation solves of every kind, their evaluation and calculus; the
 barycentric weights, evaluation and nodal derivatives, Krogh's table and passes, Floater-Hormann at real and complex
-points, AAA's run, evaluation, poles and clean_up)."""
+points, AAA's run, evaluation, poles and clean_up; the triangulation's linear and Clough-Tocher interpolants, the
+gradients of a batch of columns)."""
 
 import numpy as np
 import pytest
@@ -141,12 +142,30 @@ def _polyint_results():
     return out
 
 
+def _scattered_results():
+    """The triangulation's interpolants (IP9): the located points by blocks, the gradients' columns as tasks."""
+    IP = sd.interpolate
+    g = np.random.default_rng(25)
+    out = []
+    p2, p3 = g.random((20_000, 2)), g.random((8_000, 3))
+    f2, f3 = np.sin(5 * p2[:, 0]) * p2[:, 1], np.cos(4 * p3.sum(1))
+    x2, x3 = g.random((100_000, 2)) * 1.1 - 0.05, g.random((50_000, 3))
+    x2[::991] = np.nan
+    cols = np.stack([f2, f2**2, -f2, f2 + 1], axis=1)
+    out += [IP.LinearNDInterpolator(p2, f2)(x2), IP.LinearNDInterpolator(p3, f3)(x3),
+            IP.LinearNDInterpolator(p2, cols + 1j * cols[:, ::-1])(x2[:20_000])]  # fmt: skip
+    c = IP.CloughTocher2DInterpolator(p2, f2)
+    cb = IP.CloughTocher2DInterpolator(p2, cols)
+    out += [c.grad, c(x2), cb.grad, cb(x2[:20_000]), IP.griddata(p2, f2, x2[:30_000], method="cubic")]
+    return out
+
+
 def test_thread_counts():
     sd.set_num_threads(1)
-    base = _results() + _cubic_results() + _bspline_results() + _polyint_results()
+    base = _results() + _cubic_results() + _bspline_results() + _polyint_results() + _scattered_results()
     for t in (2, 3, 7, 10):  # one thread count at a time against the first (the results of all five were 2 GB)
         sd.set_num_threads(t)
-        got = _results() + _cubic_results() + _bspline_results() + _polyint_results()
+        got = _results() + _cubic_results() + _bspline_results() + _polyint_results() + _scattered_results()
         for k, (x, y) in enumerate(zip(base, got)):
             assert bits_equal(x, y), (t, k)
         del got

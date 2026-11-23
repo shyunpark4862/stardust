@@ -60,7 +60,7 @@ def _object(sid):
         return next(L for L in S.lerps() if L.id == sid[5:])
     if kind == "curve":
         return S.curve(sid[6:])
-    getter = {"grid": S.grid, "scatter": S.scatter, "roots": S.pieces, "poly": S.poly}.get(kind)
+    getter = {"grid": S.grid, "scatter": S.scatter, "tri": S.tri_set, "roots": S.pieces, "poly": S.poly}.get(kind)
     return getter(sid) if getter else S.curve(sid)
 
 
@@ -90,6 +90,7 @@ def test_every_data_set_is_covered():
     assert covered["roots"] == set(S.PIECES_IDS) - {"roots/breakpoint"}  # constant pieces have no root
     assert covered["grid"] == {g for g in S.GRID_IDS if not ({"nan", "batch"} & S.grid(g).tags)}
     assert covered["rbf"] == set(S.SCATTER_IDS) - {"scatter/duplicate2d"}
+    assert covered["scattered"] == set(S.tri_ids())
 
 
 # ---- the references check themselves --------------------------------------------------------
@@ -220,6 +221,30 @@ def _poly_at(coeffs, s):
     for c in coeffs:
         v = v * s + c
     return v
+
+
+def test_scattered_references_meet_the_data():
+    """At a data point the linear and the Clough-Tocher references are the value itself; the linear scale bounds the
+    value; every set of 2-D points whose gradients are finite has its Clough-Tocher points, with its gradients."""
+    r = REFS["scattered"]
+    lin, ct = r.methods["linear"], r.methods["clough_tocher"]
+    for k in range(r.points):
+        sc = S.tri_set(str(r.inputs["set"][k]))
+        i = int(r.inputs["index"][k])
+        assert np.array_equal(r.inputs["x"][k], sc.xi[i])
+        if i >= 64:  # the data point i - 64
+            want = float(sc.d[i - 64])
+            assert lin.hi[k] == want and lin.lo[k] == 0.0
+            j = np.flatnonzero(ct.index == k)
+            assert j.size == 0 or (ct.hi[j[0]] == want and ct.lo[j[0]] == 0.0)
+    scale = r.methods["linear_scale"]
+    assert np.all(np.abs(lin.hi) <= scale.hi * (1 + 2**-50))
+    with_ct = set(r.inputs["set"][ct.index].tolist())
+    for g, sid in enumerate(r.group_inputs["set"].tolist()):
+        grad = r.group_inputs["grad"][g]
+        assert (grad.shape[0] > 0) == (sid in with_ct), sid
+        if grad.shape[0]:
+            assert grad.shape == (S.tri_set(sid).y.shape[0], 2) and np.all(np.isfinite(grad))
 
 
 def test_roots_are_roots():

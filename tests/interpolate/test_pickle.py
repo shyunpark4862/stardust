@@ -42,6 +42,9 @@ def _objects():
         (IP.RBFInterpolator(pts, d, kernel="gaussian", epsilon=2.0), q2),
         (IP.RBFInterpolator(pts, d, neighbors=10), q2),
         (IP.NearestNDInterpolator(pts, d, rescale=True), q2),
+        (IP.LinearNDInterpolator(pts, d, fill_value=-1.0), q2),
+        (IP.LinearNDInterpolator(g.random((30, 3)), d[:30] + 1j * d[10:], rescale=True), g.random((12, 3))),
+        (IP.CloughTocher2DInterpolator(pts, np.stack([d, d[::-1]], axis=1), rescale=True), q2),
     ]
 
 
@@ -70,6 +73,15 @@ def test_arrays_and_their_write_protection_come_back():
     t = pickle.loads(pickle.dumps(a))
     assert _bits(t.poles()) == _bits(poles) and t.converged == a.converged
     assert _bits(t.errors) == _bits(a.errors)
+
+
+def test_clough_tocher_keeps_its_gradients():
+    g = np.random.default_rng(4)
+    c = IP.CloughTocher2DInterpolator(g.random((50, 2)), g.standard_normal(50), maxiter=3)
+    twin = pickle.loads(pickle.dumps(c))
+    assert _bits(twin.grad) == _bits(c.grad) and twin.niter == c.niter == 3 and twin.converged is c.converged is False
+    assert _bits(twin.tri.simplices) == _bits(c.tri.simplices) and _bits(twin.points) == _bits(c.points)
+    assert not twin.grad._flags()["writeable"]
 
 
 def test_a_modified_copy_leaves_the_original():

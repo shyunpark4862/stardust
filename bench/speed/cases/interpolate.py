@@ -4,7 +4,7 @@ and R 4.6.2's stats::approx and splinefun (docs/design/interpolate.md §5, §7.5
 The plan of the area's cases, milestone by milestone: every spec below names its milestone and the names
 it needs, and cases() keeps a spec once its names are public (IP1 brings sd.interp, IP2 the piecewise
 polynomials and the cubic family, IP3 the B-splines, IP4 the polynomial and rational interpolants, IP5
-the grids, IP6 the scattered data). The sizes are those of docs/design/interpolate.md §5, where IP0 timed
+the grids, IP6 the scattered data, IP9 the interpolants on the Delaunay triangulation). The sizes are those of docs/design/interpolate.md §5, where IP0 timed
 the comparators. scipy's and numpy's interpolation kernels run on one thread; scipy's RBF solve and AAA's
 SVD use Accelerate (threads="follow"). R runs in the one R session.
 
@@ -363,7 +363,66 @@ def _rbf_specs():
     return out
 
 
-SPECS = _linear_specs() + _cubic_specs() + _bspline_specs() + _polynomial_specs() + _grid_specs() + _rbf_specs()
+def _triangulated(n, m, dim=2, seed=20261129):
+    """n data points and m evaluation points uniform in [0, 1)^dim with a smooth field, and both libraries'
+    Delaunay triangulations of the data points (built in the setup: the cases time the interpolants alone)."""
+
+    def setup():
+        import scipy.spatial as ss
+
+        import stardust as sd
+
+        g = np.random.Generator(np.random.PCG64([seed, n, m, dim]))
+        y, q = g.random((n, dim)), g.random((m, dim))
+        f = np.sin(3 * y[:, 0]) + np.cos(2 * y[:, -1]) + 0.1 * y.sum(axis=1)
+        return {"y": y, "d": f, "q": q, "sy": sd.asarray(y), "sd_": sd.asarray(f), "sq": sd.asarray(q),
+                "tri": ss.Delaunay(y), "stri": sd.spatial.Delaunay(sd.asarray(y))}  # fmt: skip
+
+    return setup
+
+
+def _triangulation_specs():
+    out = []
+    for n, dim in ((10**4, 2), (10**5, 2), (10**4, 3), (10**5, 3)):
+        setup = _with(_triangulated(n, n, dim), lambda d: _ip().LinearNDInterpolator(d["stri"], d["sd_"]),
+                      lambda d: _si().LinearNDInterpolator(d["tri"], d["d"]))  # fmt: skip
+        out.append(Spec("IP9", "scattered", f"LinearNDInterpolator eval {dim}-D ({_count(n)} nodes)",
+                        ("LinearNDInterpolator",), f"{_count(n)} points", setup, lambda d: lambda: d["sobj"](d["sq"]),
+                        (Ref("scipy", lambda d: lambda: d["obj"](d["q"])),), quick=(n, dim) == (10**4, 2),
+                        note="the triangulation built in the setup"))  # fmt: skip
+    for n in (10**4, 10**5):
+        out.append(Spec("IP9", "scattered", "CloughTocher2DInterpolator build", ("CloughTocher2DInterpolator",),
+                        f"{_count(n)} points", _triangulated(n, 1),
+                        lambda d: lambda: _ip().CloughTocher2DInterpolator(d["stri"], d["sd_"])(d["sq"]),
+                        (Ref("scipy", lambda d: lambda: _si().CloughTocher2DInterpolator(d["tri"], d["d"])(d["q"])),),
+                        quick=n == 10**4,
+                        note="the gradient estimate on a given triangulation, then one point (the result compared)"))  # fmt: skip
+        setup = _with(_triangulated(n, n), lambda d: _ip().CloughTocher2DInterpolator(d["stri"], d["sd_"]),
+                      lambda d: _si().CloughTocher2DInterpolator(d["tri"], d["d"]))  # fmt: skip
+        out.append(Spec("IP9", "scattered", f"CloughTocher2DInterpolator eval ({_count(n)} nodes)",
+                        ("CloughTocher2DInterpolator",), f"{_count(n)} points", setup,
+                        lambda d: lambda: d["sobj"](d["sq"]), (Ref("scipy", lambda d: lambda: d["obj"](d["q"])),)))  # fmt: skip
+    out.append(Spec("IP9", "scattered", "griddata linear (10^4 nodes)", ("griddata",), "10^4 points",
+                    _triangulated(10**4, 10**4), lambda d: lambda: _ip().griddata(d["sy"], d["sd_"], d["sq"]),
+                    (Ref("scipy", lambda d: lambda: _si().griddata(d["y"], d["d"], d["q"])),),
+                    note="the triangulation and the evaluation"))  # fmt: skip
+    out.append(Spec("IP9", "scattered", "griddata cubic (10^4 nodes)", ("griddata",), "10^4 points",
+                    _triangulated(10**4, 10**4),
+                    lambda d: lambda: _ip().griddata(d["sy"], d["sd_"], d["sq"], method="cubic"),
+                    (Ref("scipy", lambda d: lambda: _si().griddata(d["y"], d["d"], d["q"], method="cubic")),),
+                    note="the triangulation, the gradients and the evaluation"))  # fmt: skip
+    return out
+
+
+SPECS = (
+    _linear_specs()
+    + _cubic_specs()
+    + _bspline_specs()
+    + _polynomial_specs()
+    + _grid_specs()
+    + _rbf_specs()
+    + _triangulation_specs()
+)
 
 
 def _public(names) -> bool:

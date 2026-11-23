@@ -9,7 +9,7 @@ sd.interp of the array area.
 
 The public names come milestone by milestone (docs/design/interpolate.md §8): IP2 brought the piecewise
 polynomials and the cubic family, IP3 the B-splines, IP4 the polynomial and rational interpolants,
-IP5 the regular grids, IP6 the scattered-data interpolants.
+IP5 the regular grids, IP6 the scattered-data interpolants, IP9 the interpolants on sd.spatial's Delaunay triangulation.
 """
 
 from ._aaa import AAA, FloaterHormannInterpolator
@@ -25,6 +25,7 @@ from ._ppoly import (
     pchip_interpolate,
 )
 from ._rbf import NearestNDInterpolator, RBFInterpolator
+from ._scattered import CloughTocher2DInterpolator, LinearNDInterpolator, griddata
 
 __all__ = [
     "PPoly",
@@ -45,4 +46,7 @@ __all__ = [
     "interpn",
     "RBFInterpolator",
     "NearestNDInterpolator",
+    "LinearNDInterpolator",
+    "CloughTocher2DInterpolator",
+    "griddata",
 ]

@@ -77,12 +77,13 @@ from __future__ import annotations
 import json
 import math
 import pathlib
+from fractions import Fraction
 
 from .. import reffile
 
 REF = pathlib.Path(__file__).parent / "ref"
 DATA = pathlib.Path(__file__).parent / "data"
-FAMILIES = ("bspline", "curves", "grid", "linear", "polynomial", "rbf", "roots", "slopes")
+FAMILIES = ("bspline", "curves", "grid", "linear", "polynomial", "rbf", "roots", "scattered", "slopes")
 U = 2.0**-53
 ETA3 = 2.0**-1073  # 3 eta rounded up to a double (eta = 2^-1075 itself rounds to 0)
 
@@ -852,3 +853,113 @@ def tensor_collocation_bound(points, knots, k, values):
             e = _along(np.abs(invs[b]), e, b)
         total = total + e
     return 1.01 * total
+
+
+# ---------------------------------------------------------------- the triangulation's interpolants (IP9)
+#
+# LinearNDInterpolator: |y^ - y| <= gamma_{d+5} sum_k lambda_k |f_k| + (d + 2) 2^-1074 (scattered_linear_exact gives y
+# and the scale; docs/design/interpolate.md §4), y the exact value of the piecewise linear function on the given
+# triangulation. CloughTocher2DInterpolator with given gradients: |y^ - y| <= CT_C u K + 32 2^-1074 (ct_exact gives y
+# and K = (1 + max_k |g_k|) (max_k |f_k| + max over the triangle's six directional derivatives of
+# |dx f_i| |e_x| + |dy f_i| |e_y|)), y the exact piecewise cubic of the given values and gradients on the triangle with
+# its exact g_k (the neighbours' centroids, exact).
+
+CT_C = 256  # the Clough-Tocher constant (docs/design/interpolate.md §4, decision IP119)
+SUB = 2.0**-1074
+
+
+def _det_points(q):
+    """The determinant of the simplex q (d + 1 points of Fractions): det[q_0 - q_d, ..., q_(d-1) - q_d], the value
+    kernels' (det2(a, b, c) = det[a - c; b - c], det3(a, b, c, d) = det[a - d, b - d, c - d])."""
+    from tests.spatial import exactgeom as X
+
+    r = q[-1]
+    return X.det([[a - b for a, b in zip(p, r)] for p in q[:-1]])
+
+
+def barycentric_exact(V, x):
+    """lambda_k = D_k / D of the point x (Fractions) in the simplex V (d + 1 points of Fractions)."""
+    D = _det_points(V)
+    return [_det_points(V[:k] + [x] + V[k + 1 :]) / D for k in range(len(V))]
+
+
+def scattered_linear_exact(points, simplex, f, x):
+    """(the exact value, sum_k lambda_k |f_k|) of the linear interpolant at x in `simplex` (vertex indices into the
+    float64 points; f the float64 values of one column)."""
+    from tests.spatial import exactgeom as X
+
+    V = [X.frac(points[int(i)]) for i in simplex]
+    lam = barycentric_exact(V, X.frac(x))
+    fs = [Fraction(float(f[int(i)])) for i in simplex]
+    return sum((a * b for a, b in zip(lam, fs)), Fraction(0)), sum((a * abs(b) for a, b in zip(lam, fs)), Fraction(0))
+
+
+def linear_nd_bound(scale, d):
+    return gamma(d + 5) * float(scale) + (d + 2) * SUB
+
+
+def ct_exact(points, simplices, neighbors, t, f, grad, x):
+    """(the exact value, K, g) of the Clough-Tocher cubic at x in triangle t: points (n, 2), simplices and neighbors
+    (t, 3) of the triangulation, f (n,) values and grad (n, 2) gradients of one column, all read exactly."""
+    from tests.spatial import exactgeom as X
+
+    s = [int(i) for i in simplices[t]]
+    V = [X.frac(points[i]) for i in s]
+    fv = [Fraction(float(f[i])) for i in s]
+    dfv = [(Fraction(float(grad[i][0])), Fraction(float(grad[i][1]))) for i in s]
+    D = _det_points(V)
+    g = []
+    for k in range(3):
+        u = int(neighbors[t][k])
+        if u < 0:
+            g.append(Fraction(-1, 2))
+            continue
+        j = [int(v) for v in neighbors[u]].index(t)
+        w = X.frac(points[int(simplices[u][j])])
+        k2 = (k + 2) % 3
+        dk = _det_points(V[:k] + [w] + V[k + 1 :])
+        dk2 = _det_points(V[:k2] + [w] + V[k2 + 1 :])
+        g.append((D + dk2 - dk) / (3 * (dk - D)))
+    e12 = [V[1][i] - V[0][i] for i in range(2)]
+    e23 = [V[2][i] - V[1][i] for i in range(2)]
+    e31 = [V[0][i] - V[2][i] for i in range(2)]
+
+    def dot(a, b):
+        return a[0] * b[0] + b[1] * a[1]
+
+    def dot_abs(a, b):
+        return abs(a[0]) * abs(b[0]) + abs(a[1]) * abs(b[1])
+
+    df12, df21 = dot(dfv[0], e12), -dot(dfv[1], e12)
+    df23, df32 = dot(dfv[1], e23), -dot(dfv[2], e23)
+    df31, df13 = dot(dfv[2], e31), -dot(dfv[0], e31)
+    c3000, c0300, c0030 = fv
+    c2100, c2010 = (df12 + 3 * c3000) / 3, (df13 + 3 * c3000) / 3
+    c1200, c0210 = (df21 + 3 * c0300) / 3, (df23 + 3 * c0300) / 3
+    c1020, c0120 = (df31 + 3 * c0030) / 3, (df32 + 3 * c0030) / 3
+    c2001 = (c2100 + c2010 + c3000) / 3
+    c0201 = (c1200 + c0300 + c0210) / 3
+    c0021 = (c1020 + c0120 + c0030) / 3
+    c0111 = (g[0] * (-c0300 + 3 * c0210 - 3 * c0120 + c0030) + (-c0300 + 2 * c0210 - c0120 + c0021 + c0201)) / 2
+    c1011 = (g[1] * (-c0030 + 3 * c1020 - 3 * c2010 + c3000) + (-c0030 + 2 * c1020 - c2010 + c2001 + c0021)) / 2
+    c1101 = (g[2] * (-c3000 + 3 * c2100 - 3 * c1200 + c0300) + (-c3000 + 2 * c2100 - c1200 + c2001 + c0201)) / 2
+    c1002 = (c1101 + c1011 + c2001) / 3
+    c0102 = (c1101 + c0111 + c0201) / 3
+    c0012 = (c1011 + c0111 + c0021) / 3
+    c0003 = (c1002 + c0102 + c0012) / 3
+    b = barycentric_exact(V, X.frac(x))
+    m = min(b)
+    b1, b2, b3, b4 = b[0] - m, b[1] - m, b[2] - m, 3 * m
+    y = (b1**3 * c3000 + 3 * b1**2 * b2 * c2100 + 3 * b1**2 * b3 * c2010 + 3 * b1**2 * b4 * c2001
+         + 3 * b1 * b2**2 * c1200 + 6 * b1 * b2 * b4 * c1101 + 3 * b1 * b3**2 * c1020 + 6 * b1 * b3 * b4 * c1011
+         + 3 * b1 * b4**2 * c1002 + b2**3 * c0300 + 3 * b2**2 * b3 * c0210 + 3 * b2**2 * b4 * c0201
+         + 3 * b2 * b3**2 * c0120 + 6 * b2 * b3 * b4 * c0111 + 3 * b2 * b4**2 * c0102 + b3**3 * c0030
+         + 3 * b3**2 * b4 * c0021 + 3 * b3 * b4**2 * c0012 + b4**3 * c0003)  # fmt: skip
+    F = max(abs(v) for v in fv)
+    G = max(dot_abs(dfv[i], e) for i, e in ((0, e12), (1, e12), (1, e23), (2, e23), (2, e31), (0, e31)))
+    K = (1 + max(abs(v) for v in g)) * (F + G)
+    return y, K, g
+
+
+def ct_bound(K):
+    return CT_C * U * float(K) + 32 * SUB
