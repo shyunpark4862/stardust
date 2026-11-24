@@ -31,7 +31,11 @@ $f$가 주기 $2\pi$이고 $m$번 연속 미분 가능하면 $k\ne0$에서
 \end{proposition}
 
 \begin{proof}
-부분적분을 하면 경계항은 주기성 때문에 사라지므로 $\hat f_k=(2\pi)^{-1}\int fe^{-ikx}dx=(2\pi ik)^{-1}\int f'e^{-ikx}dx=\widehat{f'}_k/(ik)$이다. $m$번 되풀이하면 $\hat f_k=\widehat{f^{(m)}}_k/(ik)^m$이고, $|\widehat{f^{(m)}}_k|\le\|f^{(m)}\|_1/(2\pi)$이다.
+부분적분을 하면 경계항은 주기성 때문에 사라지므로
+\[
+\hat f_k=\frac1{2\pi}\int fe^{-ikx}dx=\frac1{2\pi ik}\int f'e^{-ikx}dx=\frac{\widehat{f'}_k}{ik}
+\]
+이다. $m$번 되풀이하면 $\hat f_k=\widehat{f^{(m)}}_k/(ik)^m$이고, $|\widehat{f^{(m)}}_k|\le\|f^{(m)}\|_1/(2\pi)$이다.
 \end{proof}
 
 $f$가 실수축을 포함하는 띠 $|\operatorname{Im}z|<a$에서 해석적이고 유계이면, 적분 경로를 $\operatorname{Im}z=\pm a'$ $(a'<a)$으로 옮겨 $|\hat f_k|=O(e^{-a'|k|})$를 얻는다. 29장에서 Bernstein 타원으로 Chebyshev 계수를 누른 것과 같은 논증이다. 세 함수의 계수를 재 보면 이 차이가 뚜렷하다. 불연속인 사각파 $\operatorname{sign}(\sin x)$는 홀수 $k=1,3,9,27,81$에서 $|\hat f_k|=2/(\pi k)$가 $0.64$, $0.21$, $0.071$, $0.024$, $0.0079$로 $1/k$을 따른다. 꺾인 점이 있는 $|\sin x|$는 짝수 $k$에서 정확히 $2/(\pi(k^2-1))$이어서 $k=2,6,18,54,162$에서 $0.21$, $1.8\times10^{-2}$, $2.0\times10^{-3}$, $2.2\times10^{-4}$, $2.4\times10^{-5}$로 $1/k^2$을 따르고, 전 평면에서 해석적인 $e^{\cos x}$는 $k=1,3,9$에서 $0.57$, $2.2\times10^{-2}$, $5.5\times10^{-9}$이며 $k=27$에서는 약 $7\times10^{-37}$이다.
