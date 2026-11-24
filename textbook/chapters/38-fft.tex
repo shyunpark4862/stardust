@@ -1,0 +1,154 @@
+%% 38장 고속 푸리에 변환
+\chapter{고속 푸리에 변환}
+\label{ch:fft}
+
+\abstract{길이 $n$의 이산 푸리에 변환을 정의대로 계산하면 곱셈이 $n^2$번 든다. 고속 푸리에 변환은 $n$이 합성수일 때 변환을 더 짧은 변환들로 쪼개 $O(n\log n)$에 계산한다. 이 장에서는 짝수와 홀수 번째 표본으로 나누는 기수 2의 Cooley--Tukey 알고리즘을 유도하고, 임의의 인수분해 $n=n_1n_2$에 대한 일반 꼴을 지수의 대수로 증명한다. 결과를 비트를 뒤집은 순서로 내는 제자리 알고리즘과 순서를 스스로 정리하는 Stockham 꼴, 캐시를 위해 행렬로 펼치는 4단계 알고리즘을 견주고, 큰 소수 길이를 합성곱으로 바꾸는 Bluestein의 chirp-z 변환을 본다. 실수 입력을 절반 길이의 복소 변환으로 계산하는 방법과 그 위에 세운 이산 코사인 변환을 유도하고, FFT의 반올림 오차가 노름으로 $\log n$에 비례한다는 것을 증명과 측정으로 보인다. 마지막으로 stardust가 Apple의 vDSP 대신 자체 FFT를 쓰기로 한 근거와 그 정확도 계약을 본다.}
+
+\section{분할 정복}
+\label{sec:cooley-tukey}
+
+\subsection{기수 2}
+
+$n$이 짝수이면 37장의 DFT $y_k=\sum_jx_j\omega_n^{jk}$의 합을 짝수 번째와 홀수 번째 표본으로 나눌 수 있다. $\omega_n^2=\omega_{n/2}$이므로
+\[
+y_k=\sum_{j<n/2}x_{2j}\omega_{n/2}^{jk}+\omega_n^k\sum_{j<n/2}x_{2j+1}\omega_{n/2}^{jk}=E_k+\omega_n^kO_k
+\]
+이다. 여기서 $E$와 $O$는 짝수와 홀수 표본의 길이 $n/2$ DFT이고, 주기가 $n/2$이므로 $k\ge n/2$에서도 그대로 쓸 수 있다. $\omega_n^{k+n/2}=-\omega_n^k$이므로
+\begin{equation}
+\label{eq:butterfly}
+y_k=E_k+\omega_n^kO_k,\qquad y_{k+n/2}=E_k-\omega_n^kO_k,\qquad0\le k<n/2
+\end{equation}
+이다. 두 출력을 곱 하나와 덧셈 둘로 만드는 이 계산을 그 그림의 모양 때문에 \term{나비}{butterfly}라 하고, 곱하는 $\omega_n^k$를 \term{회전 인자}{twiddle factor}라 한다. $n=2^m$이면 이것을 재귀적으로 되풀이할 수 있고, 일의 양은 $T(n)=2T(n/2)+O(n)$이므로 $T(n)=O(n\log n)$이다. 단마다 나비가 $n/2$개이고 단이 $\log_2n$개이므로, 복소 곱셈 $\tfrac n2\log_2n$번과 복소 덧셈 $n\log_2n$번, 실수 연산으로 약 $5n\log_2n$번이다. $n=2^{20}$이면 직접 계산의 $n^2$과 견주어 약 $5\times10^4$배 적다.
+
+\begin{algorithm}[t]
+\begin{algorithmic}[1]
+\Require 길이 $n=2^m$의 벡터 $x$
+\Ensure $y=F_nx$
+\Function{FFT}{$x$}
+  \If{$n=1$} \Return $x$
+  \EndIf
+  \State $E\gets$ \Call{FFT}{$x_0,x_2,\dots,x_{n-2}$}, $O\gets$ \Call{FFT}{$x_1,x_3,\dots,x_{n-1}$}
+  \For{$k=0,\dots,n/2-1$}
+    \State $t\gets\omega_n^kO_k$ \Comment{회전 인자}
+    \State $y_k\gets E_k+t$, $y_{k+n/2}\gets E_k-t$ \Comment{나비}
+  \EndFor
+  \State \Return $y$
+\EndFunction
+\end{algorithmic}
+\caption{기수 2의 재귀 FFT}
+\label{alg:fft-radix2}
+\end{algorithm}
+
+\begin{aside}[Gauss의 FFT]
+이 알고리즘은 1965년 Cooley와 Tukey의 논문으로 널리 알려졌고\cite{cooley1965}, 그 직후 디지털 신호 처리의 폭발을 일으켰다. 그러나 Heideman, Johnson, Burrus가 밝혔듯이 Gauss는 1805년 무렵 소행성 궤도의 삼각 보간을 계산하면서 이미 같은 분할 정복을 썼다\cite{heideman1984gauss}. 그 원고는 Gauss 사후에 라틴어로 출판된 전집에 묻혀 있었다. 1958년 Good은 서로소인 인수로 나누는 다른 분해를 발표했고\cite{good1958}, Cooley와 Tukey는 그 논문을 참고했다고 적었다. 좋은 알고리즘이 쓰일 때가 되기 전까지 여러 번 발견되고 잊힌 예이다.
+\end{aside}
+
+\subsection{일반 인수분해}
+
+기수 2의 분해는 일반적인 인수분해의 한 경우이다. $n=n_1n_2$이면 입력과 출력의 첨자를 각각 둘로 나누어 DFT를 2차원으로 펼칠 수 있다.
+
+\begin{proposition}
+\label{prop:mixed-radix}
+$j=n_2j_1+j_2$ $(0\le j_1<n_1,\ 0\le j_2<n_2)$, $k=k_1+n_1k_2$ $(0\le k_1<n_1,\ 0\le k_2<n_2)$로 쓰면
+\[
+y_{k_1+n_1k_2}=\sum_{j_2=0}^{n_2-1}\omega_{n_2}^{j_2k_2}\Bigl[\omega_n^{j_2k_1}\Bigl(\sum_{j_1=0}^{n_1-1}x_{n_2j_1+j_2}\,\omega_{n_1}^{j_1k_1}\Bigr)\Bigr]
+\]
+이다. 곧 길이 $n_1$의 DFT $n_2$개, 회전 인자의 곱 $n$번, 길이 $n_2$의 DFT $n_1$개로 계산된다.
+\end{proposition}
+
+\begin{proof}
+$jk=(n_2j_1+j_2)(k_1+n_1k_2)=n_2j_1k_1+nj_1k_2+j_2k_1+n_1j_2k_2$이다. $\omega_n^{n}=1$이므로 둘째 항은 사라지고, $\omega_n^{n_2}=\omega_{n_1}$, $\omega_n^{n_1}=\omega_{n_2}$이므로 $\omega_n^{jk}=\omega_{n_1}^{j_1k_1}\omega_n^{j_2k_1}\omega_{n_2}^{j_2k_2}$이다. 이것을 합에 넣고 $j_1$에 대한 합을 안으로 모으면 된다.
+\end{proof}
+
+이것을 되풀이하면 $n=r_1r_2\cdots r_s$의 어떤 인수분해에서도 단이 $s$개인 FFT를 얻는다. 단 $i$는 길이 $r_i$의 작은 DFT를 $n/r_i$번 하므로 전체 일은 $n\sum_ir_i$에 비례하는데, $\sum_ir_i$는 $n$의 소인수가 작을수록 작다. 그래서 FFT는 작은 소인수로만 이루어진 길이에서 가장 빠르다. 기수 4의 나비는 곱셈 없이 $\pm1,\pm i$만 쓰므로 기수 2 두 단보다 싸다. $n_1$과 $n_2$가 서로소이면 중국인의 나머지 정리로 첨자를 다시 잡아 가운데의 회전 인자 곱마저 없앨 수 있는데, 이것이 Good과 Thomas의 \term{소인수 알고리즘}{prime factor algorithm}이다\cite{good1958,duhamel1990}.
+
+\section{메모리와 순서}
+\label{sec:fft-memory}
+
+\subsection{비트 뒤집기와 Stockham 꼴}
+
+재귀를 풀어 반복으로 쓰면, \cref{alg:fft-radix2}가 입력을 짝홀로 거듭 나누는 순서 때문에 입력이 첨자의 이진 표현을 뒤집은 순서로 놓여야 한다. 그래서 고전적인 제자리 FFT는 먼저 \term{비트 뒤집기}{bit reversal} 순열로 입력을 섞은 뒤 나비를 단마다 제자리에서 계산한다. 메모리를 더 쓰지 않는 대신 순열 단계가 따로 있고, 그 접근은 캐시에 나쁘다.
+
+Stockham은 단마다 다른 버퍼에 결과를 쓰면서 순서를 조금씩 정리해, 마지막 단이 끝나면 출력이 자연스러운 순서가 되게 하는 꼴을 제안했다\cite{stockham1966}. 버퍼 두 개를 번갈아 쓰므로 메모리가 두 배이지만 비트 뒤집기가 없고, 모든 단의 접근이 연속이어서 벡터 명령에 잘 맞는다\cite{vanloan1992}.
+
+\subsection{4단계 알고리즘}
+
+$n$이 커서 데이터가 캐시에 들어가지 않으면, 단마다 배열 전체를 훑는 $\log n$번의 패스가 13장의 메모리 대역에 묶인다. Bailey의 \term{4단계 알고리즘}{four-step algorithm}은 \cref{prop:mixed-radix}에서 $n_1\approx n_2\approx\sqrt n$으로 잡아 데이터를 $n_1\times n_2$ 행렬로 보고, (i) 열마다 길이 $n_1$의 FFT, (ii) 회전 인자 곱, (iii) 행마다 길이 $n_2$의 FFT, (iv) 전치를 한다\cite{bailey1990fft}. 길이 $\sqrt n$의 변환은 캐시에 들어가므로 메모리를 훑는 횟수가 상수 번으로 준다. 열과 행이 서로 독립이므로 여러 스레드에 나누기도 쉽다.
+
+\section{큰 소수 길이}
+\label{sec:prime-length}
+
+$n$이 큰 소수이면 \cref{prop:mixed-radix}를 쓸 수 없다. 두 가지 방법이 소수 길이의 DFT를 합성곱으로 바꾼다. Rader는 $\mathbb Z_p^\times$가 순환군이라는 사실로 $k\ne0$의 출력을 길이 $p-1$의 순환 합성곱으로 다시 썼다\cite{rader1968}. 더 일반적인 것은 Bluestein의 방법이다.
+
+\begin{proposition}[Bluestein]
+\label{prop:bluestein}
+$w_j=e^{-\pi ij^2/n}$으로 두면
+\[
+y_k=w_k\sum_{j=0}^{n-1}(x_jw_j)\,\overline{w_{k-j}}
+\]
+이다. 곧 $y$는 수열 $x_jw_j$와 $\overline{w_l}$ $(|l|<n)$의 합성곱에 $w_k$를 곱한 것이다.
+\end{proposition}
+
+\begin{proof}
+$jk=\bigl(j^2+k^2-(k-j)^2\bigr)/2$이므로 $\omega_n^{jk}=e^{-\pi i(j^2+k^2-(k-j)^2)/n}=w_jw_k\overline{w_{k-j}}$이다. 이것을 DFT의 합에 넣으면 된다.
+\end{proof}
+
+이 합성곱은 길이가 $2n-1$ 이상인 순환 합성곱으로 계산할 수 있고, 그 길이 $m$은 작은 소인수만 가진 수로 마음대로 고를 수 있다. 그러면 37장의 합성곱 정리대로 길이 $m$의 FFT 세 번(하나는 미리 계산할 수 있다)과 원소별 곱 몇 번으로 끝난다. Rabiner, Schafer, Rader는 같은 생각을 복소평면의 나선 위에서 $z$-변환을 계산하는 \term{chirp-z 변환}{chirp-z transform}으로 일반화했다\cite{bluestein1970,rabiner1969chirpz}. 대가는 상수 인자이다. $m\ge2n-1$이므로 같은 크기의 매끄러운 길이보다 서너 배 느리다.
+
+\section{실수 입력과 코사인 변환}
+\label{sec:real-fft}
+
+\subsection{절반 길이의 복소 변환}
+
+입력이 실수이면 출력은 $y_{n-k}=\bar y_k$이므로 절반만 계산하면 된다. 짝수 $n$에서는 실수 $n$개를 길이 $h=n/2$의 복소수 $z_j=x_{2j}+ix_{2j+1}$로 읽어 복소 FFT $Z$를 한 번 하고, 짝수와 홀수 표본의 변환 $E$, $O$를
+\[
+E_k=\tfrac12\bigl(Z_k+\overline{Z_{h-k}}\bigr),\qquad O_k=-\tfrac i2\bigl(Z_k-\overline{Z_{h-k}}\bigr)
+\]
+로 되찾는다. $E$와 $O$가 실수 수열의 DFT여서 $\overline{E_{h-k}}=E_k$, $\overline{O_{h-k}}=O_k$이므로, $Z_k=E_k+iO_k$와 $\overline{Z_{h-k}}=E_k-iO_k$를 풀면 이 식이 나온다. 그러고 나서 \eqref{eq:butterfly}의 나비 한 번으로 $y_k=E_k+\omega_n^kO_k$를 만든다. 복소 FFT의 길이가 절반이므로 일이 거의 절반으로 준다. 역변환은 같은 단계를 거꾸로 한다.
+
+\subsection{이산 코사인 변환}
+
+신호를 짝 함수로 확장하면 푸리에 급수의 사인 항이 사라지고 코사인만 남는다. 확장하는 방식에 따라 여러 \term{이산 코사인 변환}{discrete cosine transform, DCT}이 생기는데, 가장 많이 쓰이는 형 II는 scipy의 정규화로
+\[
+y_k=2\sum_{j=0}^{N-1}x_j\cos\frac{\pi k(2j+1)}{2N},\qquad k=0,\dots,N-1
+\]
+이다\cite{ahmed1974dct}. 신호를 짝수 칸과 홀수 칸으로 나누어 $v=(x_0,x_2,x_4,\dots,x_5,x_3,x_1)$로 다시 늘어놓고 길이 $N$의 실수 FFT $V$를 하면 $y_k=2\operatorname{Re}\bigl(e^{-i\pi k/(2N)}V_k\bigr)$이다\cite{makhoul1980}. 확인하려면 $v$의 앞쪽 원소 $v_m=x_{2m}$은 $j=2m$으로, 뒤쪽 원소 $v_{N-1-m}=x_{2m+1}$은 $j=2m+1$로 대응시켜, $\cos(\pi k(2j+1)/2N)=\operatorname{Re}\bigl(e^{-i\pi k/(2N)}\omega_N^{mk}\bigr)$ 꼴이 되는 것을 각각 보이면 된다. 앞쪽은 $2j+1=4m+1$이고 뒤쪽은 $2j+1=4m+3=4N-(4(N-1-m)+1)$이어서 코사인의 주기성과 짝성으로 같은 꼴이 된다. 그래서 DCT도 $O(N\log N)$이다. DCT는 신호를 경계에서 매끄럽게 이어 붙이므로 37장의 누설이 적어서 JPEG 같은 압축의 바탕이 되었다.
+
+같은 생각을 로그 간격의 격자에 쓴 것이 \textbf{FFTLog}이다. Hankel 변환 $\int f(r)J_\mu(kr)\,r\,dr$에서 $r$과 $k$를 로그 변수로 바꾸면 변환이 합성곱이 되어 FFT로 계산된다\cite{talman1978,hamilton2000fftlog}. 우주론에서 상관 함수와 파워 스펙트럼을 오가는 데 쓰인다.
+
+\section{반올림 오차}
+\label{sec:fft-error}
+
+37장에서 본 대로 FFT의 정확도는 노름으로 말해야 한다. FFT의 각 단은 정확한 산술에서 유니터리 행렬의 상수배이다. 기수 $r$의 단은 길이 $r$의 DFT 여러 개와 크기 $1$인 회전 인자의 대각 행렬의 곱이므로 $\sqrt r$ 곱하기 유니터리이다. 그래서 한 단에서 생긴 상대오차는 뒤의 단을 지나며 커지지 않고 그대로 옮겨 간다.
+
+\begin{proposition}
+\label{prop:fft-error}
+$n=r_1\cdots r_s$의 FFT에서 단 $i$가 $\|\hat z_i-\text{단}_i(z)\|\le\eta_i\sqrt{r_i}\,\|z\|$를 만족하면, 계산한 결과는 $\|\hat y-y\|\le\bigl(\prod_i(1+\eta_i)-1\bigr)\|y\|$를 만족한다. 따라서 $\eta_i\le\kappa u\log_2r_i$이면 오차는 $(\kappa\log_2n+O(u))u\|y\|$ 이하이다.
+\end{proposition}
+
+\begin{proof}
+정확한 단의 곱을 $S_s\cdots S_1$, $S_i=\sqrt{r_i}U_i$로 쓰자. 단 $i$까지의 계산값을 $\hat z_i$, 정확한 값을 $z_i$라 하면 $\hat z_i-z_i=(\hat z_i-S_i\hat z_{i-1})+S_i(\hat z_{i-1}-z_{i-1})$이고, 첫 항은 $\eta_i\sqrt{r_i}\|\hat z_{i-1}\|$, 둘째 항은 $\sqrt{r_i}\|\hat z_{i-1}-z_{i-1}\|$ 이하이다. $\|z_i\|=\sqrt{r_1\cdots r_i}\,\|x\|$이므로 상대오차 $\delta_i=\|\hat z_i-z_i\|/\|z_i\|$는 $\delta_i\le\eta_i(1+\delta_{i-1})+\delta_{i-1}$, 곧 $1+\delta_i\le(1+\eta_i)(1+\delta_{i-1})$을 만족한다. 귀납법으로 $1+\delta_s\le\prod_i(1+\eta_i)$이다. 마지막 주장은 $\sum_i\log_2r_i=\log_2n$에서 나온다.
+\end{proof}
+
+남는 것은 나비 하나와 회전 인자의 곱이 $\eta_i\le\kappa u\log_2r_i$를 만족하는지인데, 이것은 기수마다 유한한 연산을 따라가는 계산으로 확인된다. 회전 인자 자체가 부정확하면 그 오차가 $\eta_i$에 그대로 들어가므로, $\omega_n^k$를 $k/n$에서 정확하게 계산하는 것이 중요하다. 각을 $2\pi k/n$의 binary64 값으로 만든 뒤 $\cos$, $\sin$을 부르면 각의 반올림이 그대로 오차가 된다. Schatzman은 FFT 오차의 대부분이 회전 인자의 부정확함에서 온다는 것을 분석으로 보였다\cite{schatzman1996}.
+
+이 상계는 최악의 경우이고, 반올림 오차가 무작위로 쌓이면 실제 오차는 대략 $\sqrt{\log n}$에 비례한다. 실수부와 허수부가 $[-1,1)$의 균등 난수인 신호를 numpy의 FFT로 변환하고, Python의 \code{decimal}로 34자리 정밀도에서 계산한 DFT와 견주면 노름 상대오차가 $n=16,64,256,1024$에서 $0.99u$, $1.61u$, $1.68u$, $1.96u$이다. 같은 입력의 DFT를 정확한 회전 인자로 정의대로 계산하되 합을 차례로 더하면 $1.50u$, $2.71u$, $4.73u$, $10.0u$로 대략 $\sqrt n$에 비례해 자란다. 흥미롭게도 같은 정의대로의 계산이라도 합을 9장의 쌍별 합으로 하면 오차가 FFT와 비슷하게 작다. FFT가 정확한 것은 빠르기 때문이 아니라, 그 계산이 쌍별 합과 같은 균형 잡힌 나무 구조이기 때문이다.
+
+\section{stardust의 FFT}
+\label{sec:fft-stardust}
+
+\begin{instardust}[\code{docs/design/fft.md} §3.1, §3.3]
+stardust의 \code{sd.fft}는 처음에 Apple Accelerate의 vDSP를 쓰기로 했다가, vDSP가 받는 여덟 가지 길이 꼴의 $121$개 길이를 잰 결과 자체 구현이 $113$개에서 더 빨라서 모든 길이를 자체 C++로 계산한다. 긴 길이에서는 $1.3$--$3$배 빨랐는데, 입력의 엮기와 풀기를 첫 단과 마지막 단에 합쳐 따로 도는 패스가 없기 때문이라고 설계 문서는 적는다. 혼합 기수 FFT는 Stockham 꼴이고 기수는 $4,2,3,5,7,11$과 $13$에서 $31$까지의 소수이며, $31$보다 큰 소인수가 있는 길이는 Bluestein으로 계산한다. $2^{15}$ 이상의 길이는 4단계 알고리즘으로 나누어 여러 스레드에서 돈다. 회전 인자는 $k\bmod n$을 정확한 정수 연산으로 $[0,\pi/4]$에 접은 뒤 double-double로 각을 만들어 계산하는데, Arb와 견준 오차가 $1.04u$ 이하였다.
+\end{instardust}
+
+\begin{instardust}[\code{docs/design/fft.md} §4]
+정확도 계약은 \cref{prop:fft-error}의 꼴 $\|\hat y-y\|\le(\kappa L(n)+c_0)u\|y\|$이다. 설계 문서는 기수마다 나비의 연산을 하나하나 따라가는 프로그램으로 $\eta/\log_2r$을 계산했는데, 기수 $2$--$11$은 $7.62u$ 이하여서 $\kappa=8$을 쓰고, 기수 $13$--$31$은 최대 $16.83u$여서 그런 기수가 있는 길이는 $\kappa=17$을 쓴다. 기수 $37$의 단은 $20u$를 넘을 것으로 보여 Bluestein으로 넘긴다. Arb의 구간 산술 DFT와 견준 측정에서 오차는 모든 길이 꼴에서 계약의 $0.06$배 이하였고, 균등 난수 입력만 보면 $0.04$배 아래였다. 한 줄의 결과는 배치의 모양, 메모리 배치, 스레드 수와 무관하게 같은 비트이고, \code{rfft(x)}는 \code{fft(x)}의 앞쪽 절반과 비트까지 같다. FFTLog에서는 scipy가 계수의 위상을 binary64의 $\log\Gamma$로 계산해 같은 계약의 $2743$배까지 틀린 반면, stardust는 double-double로 계수를 구해 $0.03$배였다.
+\end{instardust}
+
+\section{맺음}
+
+FFT는 DFT 행렬이 희소한 행렬들의 곱으로 인수분해된다는 사실을 계산으로 옮긴 것이다. 그 인수분해는 길이의 소인수분해를 그대로 따르고, 소수 길이조차 합성곱을 거쳐 매끄러운 길이의 FFT로 돌아온다. 각 인수가 유니터리의 배수이므로 오차는 단의 수, 곧 $\log n$에 비례할 뿐이다. 남은 문제는 메모리와 회전 인자로, 이 장의 설계는 대부분 데이터를 캐시와 레지스터에 맞게 흐르게 하고 회전 인자를 정확히 만드는 데 쓰인다. 다음 장부터는 수치해석의 다른 축인 특수함수로 넘어간다.
+
+FFT 알고리즘의 체계적인 설명은 Van Loan의 책\cite{vanloan1992}이, 실제 구현의 설계는 FFTW에 관한 Frigo와 Johnson의 논문\cite{frigo2005fftw}이 좋다.
+
+\chapterreferences
