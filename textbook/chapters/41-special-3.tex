@@ -1,0 +1,119 @@
+%% 41장 특수함수 III
+\chapter{특수함수 III: Bessel 함수와 그 밖의 함수들}
+\label{ch:special-3}
+
+\abstract{앞의 두 장의 함수들은 한 변수나 두 변수의 단조로운 함수였다. 이 장의 함수들은 진동하거나, 매개변수가 여럿이거나, 정의역의 영역마다 성격이 크게 다르다. Bessel 함수에서는 6장에서 본 점화식의 안정성이 계산 방향을 정한다는 것을 수치로 다시 확인하고, 작은 인자의 급수, 큰 인자의 Hankel 점근, 큰 차수의 Debye 균등 점근이 영역을 나누어 맡는 방식을 본다. 진동하는 함수에서 상대오차를 정의할 수 없는 영점 근처의 정확도를 포락선으로 재는 이유도 다룬다. 이어 Airy 함수, Hurwitz 제타와 폴리감마, 근 근처에서 소거가 생기는 지수적분, 산술--기하 평균으로 이차 수렴하는 완전 타원적분, 변환으로 수렴 영역을 옮기는 초기하 함수, Halley 반복으로 구하는 Lambert $W$ 함수를 차례로 본다.}
+
+\section{Bessel 함수}
+\label{sec:bessel}
+
+\subsection{정의와 점화식}
+
+\term{Bessel 방정식}{Bessel's equation} $x^2y''+xy'+(x^2-\nu^2)y=0$의 두 독립해가 제1종 Bessel 함수 $J_\nu$와 제2종 $Y_\nu$이고, $x^2-\nu^2$을 $-x^2-\nu^2$으로 바꾼 변형 Bessel 방정식의 해가 $I_\nu$와 $K_\nu$이다\cite{watson1944bessel}. $J_\nu$와 $Y_\nu$는 큰 $x$에서 $\sqrt{2/(\pi x)}$의 진폭으로 진동하고, $I_\nu$는 지수적으로 커지며 $K_\nu$는 지수적으로 준다. 네 함수는 모두 차수에 대한 세 항 점화식
+\[
+C_{\nu-1}(x)+C_{\nu+1}(x)=\frac{2\nu}xC_\nu(x)\qquad(C=J,Y)
+\]
+를 만족한다($I$와 $K$는 부호가 조금 다르다).
+
+6장에서 본 대로 세 항 점화식의 두 해는 한쪽이 다른 쪽에 비해 사라지는 최소해와 지배해로 나뉘고, 점화식은 지배해를 따라가는 방향으로만 안정하다\cite{gautschi1967recurrence}. 차수가 $x$보다 커지면 $J_n(x)$는 $(x/2)^n/n!$처럼 급속히 줄고 $Y_n(x)$는 커지므로, 차수를 올리는 방향에서 $J$는 최소해이고 $Y$는 지배해이다. 그래서 $Y$는 앞으로 점화해도 안정하지만 $J$는 그렇지 않다. $x=1$에서 정확한 $J_0(1)$, $J_1(1)$을 binary64로 반올림해 차수를 올려 가면 상대오차가 $n=5$에서 $6.2\times10^{-11}$, $n=10$에서 $27$, $n=15$에서 $2.4\times10^{15}$, $n=20$에서 $6.3\times10^{30}$이다. 시작값의 반올림 오차에 섞인 $Y$ 성분이 자라 $J$를 삼킨 것이다. 반대로 Miller의 방법대로 $n=40$에서 임의의 값으로 시작해 거꾸로 점화하고 $J_0+2\sum_kJ_{2k}=1$로 정규화하면, $n=5$부터 $25$까지 상대오차가 모두 $4\times10^{-16}$ 이하이다.
+
+\subsection{영역 나누기}
+
+Bessel 함수를 넓은 범위의 차수와 인자에서 계산하려면 영역마다 다른 방법을 써야 한다. 작은 $x$에서는 거듭제곱 급수
+\[
+J_\nu(x)=\sum_{k\ge0}\frac{(-1)^k(x/2)^{2k+\nu}}{k!\,\Gamma(\nu+k+1)}
+\]
+가 빠르게 수렴한다. 큰 $x$에서는 \term{Hankel 점근 전개}{Hankel asymptotic expansion}
+\[
+J_\nu(x)\sim\sqrt{\frac2{\pi x}}\Bigl(P(\nu,x)\cos\omega-Q(\nu,x)\sin\omega\Bigr),\qquad\omega=x-\frac{\nu\pi}2-\frac\pi4
+\]
+가 쓰인다. 여기서 $P$와 $Q$는 $1/x$의 점근급수이다. 위상 $\omega$를 계산할 때 $x$가 크면 $x-\nu\pi/2-\pi/4$의 반올림이 $\cos$의 값을 바꾸므로, 11장의 인자 축소처럼 $\cos x$와 $\sin x$를 따로 정확히 계산한 뒤 덧셈 정리로 위상을 더해야 한다. 차수가 크면 차수와 인자가 함께 커지는 영역을 다루는 \term{Debye 균등 점근 전개}{Debye uniform asymptotic expansion}가 필요하다\cite{dlmf}. 그 사이의 영역에서는 Temme의 급수로 작은 차수의 $Y_\mu$, $K_\mu$를 구하고\cite{temme1975bessel}, Steed의 연분수 방법으로 두 해의 비를 구한 뒤\cite{barnett1974,thompson1986coulomb}, 점화와 Wronskian $J_\nu Y_{\nu+1}-J_{\nu+1}Y_\nu=-2/(\pi x)$으로 맞춘다. 복소수 인자까지 다루는 Amos의 패키지가 이런 구조의 고전적인 구현이다\cite{amos1986}.
+
+\subsection{진동하는 함수의 정확도}
+
+$J_\nu$는 영점이 무한히 많다. 영점 근처에서는 값이 $0$에 가깝지만 $x$에 대한 기울기는 진폭 정도이므로, $x$를 상대적으로 $u$만큼 바꾸는 것만으로도 값이 진폭의 $ux$배쯤 변한다. 곧 영점 근처에서 $J_\nu$의 상대 조건수는 무한대로 간다. 입력이 정확하다고 보더라도, 계산 중의 어떤 반올림이 같은 효과를 낸다면 상대오차를 지킬 수 없다. Cephes는 처음 몇 개의 영점을 인수로 빼서 그 근처의 상대 정확도를 얻지만 모든 영점에 그렇게 할 수는 없다. 그래서 진동하는 함수의 정확도는 흔히 $|\text{오차}|\le c\,u\,A(x)$, 곧 \term{포락선}{envelope} $A(x)=\sqrt{2/(\pi x)}$에 대한 절대오차로 약속한다.
+
+\section{Airy 함수}
+\label{sec:airy}
+
+\term{Airy 함수}{Airy function} $\operatorname{Ai}$, $\operatorname{Bi}$는 $y''=xy$의 해이다. 양의 $x$에서는 $\operatorname{Ai}$가 $\exp(-\tfrac23x^{3/2})$처럼 줄고 $\operatorname{Bi}$가 커지며, 음의 $x$에서는 둘 다 $|x|^{-1/4}$의 진폭으로 진동한다. $\zeta=\tfrac23|x|^{3/2}$로 두면 Airy 함수는 차수 $\pm1/3$의 Bessel 함수로 쓸 수 있다. 예컨대 $x>0$에서 $\operatorname{Ai}(x)=\pi^{-1}\sqrt{x/3}\,K_{1/3}(\zeta)$이고, $x<0$에서는 $J_{\pm1/3}(\zeta)$의 조합이다\cite{dlmf,vallee2004airy}. 그래서 계산은 작은 $|x|$의 Maclaurin 급수, 중간의 Bessel 표현, 큰 $|x|$의 점근 전개로 나뉜다. 넷 $\operatorname{Ai},\operatorname{Ai}',\operatorname{Bi},\operatorname{Bi}'$를 한꺼번에 계산하면 같은 중간값을 함께 쓸 수 있다. 음의 $x$에서 정확도는 Bessel 함수처럼 포락선 $\pi^{-1/2}|x|^{-1/4}$로 잰다. 위상 $\zeta$는 $|x|^{3/2}$로 커지므로 그 반올림이 위상 오차가 되지 않게 두 binary64의 합으로 계산해야 한다.
+
+\section{제타 함수와 폴리감마}
+\label{sec:zeta}
+
+\term{Hurwitz 제타 함수}{Hurwitz zeta function} $\zeta(s,q)=\sum_{k\ge0}(q+k)^{-s}$ $(s>1)$는 Riemann 제타 함수 $\zeta(s)=\zeta(s,1)$을 넓힌 것이고, 39장의 디감마 함수의 도함수인 \term{폴리감마}{polygamma} 함수가 $\psi^{(n)}(x)=(-1)^{n+1}n!\,\zeta(n+1,x)$로 이것에 연결된다. 급수는 $s$가 $1$에 가까우면 아주 느리게 수렴하므로, 처음 $N$항을 직접 더하고 나머지를 36장의 Euler--Maclaurin 공식으로 어림한다.
+\begin{align*}
+\zeta(s,q)={}&\sum_{k=0}^{N-1}(q+k)^{-s}+\frac{(q+N)^{1-s}}{s-1}+\frac{(q+N)^{-s}}2\\
+&+\sum_{j=1}^{m}\frac{B_{2j}}{(2j)!}\frac{\Gamma(s+2j-1)}{\Gamma(s)}(q+N)^{-s-2j+1}+R
+\end{align*}
+Bernoulli 수의 항은 39장의 Stirling 급수처럼 점근적이지만, $N$을 키우면 원하는 만큼 정확해진다. Riemann 제타 함수의 $s<0$은 함수 방정식 $\zeta(s)=2^s\pi^{s-1}\sin(\pi s/2)\Gamma(1-s)\zeta(1-s)$로 옮긴다. 이 식의 $\sin(\pi s/2)$와 $\Gamma(1-s)$는 39장의 \code{sinpi}와 같은 주의가 필요하다. 여러 계산 방법의 개관은 Borwein, Bradley, Crandall에 있다\cite{borwein2000zeta}.
+
+\section{지수적분}
+\label{sec:expint}
+
+\term{지수적분}{exponential integral} $E_1(x)=\int_x^\infty e^{-t}/t\,dt$와 $\operatorname{Ei}(x)=-\operatorname{PV}\!\int_{-x}^\infty e^{-t}/t\,dt$는 39장의 불완전 감마 함수의 특수한 경우이다. 큰 $x$에서는 40장과 같은 연분수와 점근 전개가 쓰이고, Cody와 Thacher가 구간마다 유리 근사를 만들었다\cite{cody1968e1}. 양의 $x$의 $\operatorname{Ei}$는 거듭제곱 급수
+\[
+\operatorname{Ei}(x)=\gamma+\log x+\sum_{k\ge1}\frac{x^k}{k\cdot k!}
+\]
+로 계산할 수 있고 합의 항은 모두 양수이다. 그러나 $\operatorname{Ei}$는 $x_0\approx0.37250741$에서 $0$이 되고, 그 근처에서는 음수인 $\gamma+\log x\approx-0.41$과 양수인 급수의 합이 거의 상쇄된다. $x=x_0+\delta$에서 이 급수를 binary64로 계산하면 상대오차가 $\delta=10^{-3},10^{-6},10^{-9}$에서 $1.3\times10^{-15}$, $6.8\times10^{-12}$, $9.1\times10^{-11}$로 커진다. 39장의 $\log\Gamma$와 디감마 함수에서처럼, 근 근처에서는 $\delta=x-x_0$을 정확히 만들고 근을 중심으로 한 Taylor 급수를 쓰는 것이 처방이다.
+
+\section{완전 타원적분}
+\label{sec:elliptic}
+
+\subsection{산술--기하 평균}
+
+\term{완전 타원적분}{complete elliptic integral}
+\[
+K(m)=\int_0^{\pi/2}\frac{d\theta}{\sqrt{1-m\sin^2\theta}},\qquad E(m)=\int_0^{\pi/2}\sqrt{1-m\sin^2\theta}\,d\theta
+\]
+는 진자의 주기와 타원의 둘레에 나온다. Gauss는 $K$가 \term{산술--기하 평균}{arithmetic--geometric mean} $\operatorname{AGM}(a,b)$로 계산된다는 것을 발견했다. $a_0=a$, $b_0=b$에서 $a_{n+1}=(a_n+b_n)/2$, $b_{n+1}=\sqrt{a_nb_n}$을 되풀이하면 두 수열은 같은 극한으로 이차 수렴한다.
+
+\begin{proposition}
+\label{prop:agm-k}
+$I(a,b)=\int_0^{\pi/2}\bigl(a^2\cos^2\theta+b^2\sin^2\theta\bigr)^{-1/2}d\theta$는 $I(a,b)=I\bigl((a+b)/2,\sqrt{ab}\bigr)$를 만족한다. 따라서 $I(a,b)=\pi/\bigl(2\operatorname{AGM}(a,b)\bigr)$이고, $K(m)=\pi/\bigl(2\operatorname{AGM}(1,\sqrt{1-m})\bigr)$이다.
+\end{proposition}
+
+\begin{proof}
+$t=b\tan\theta$로 치환하면 $a^2\cos^2\theta+b^2\sin^2\theta=\cos^2\theta\,(a^2+t^2)$, $\cos^2\theta=b^2/(b^2+t^2)$, $d\theta=b\,dt/(b^2+t^2)$이므로
+\[
+I(a,b)=\int_0^\infty\frac{dt}{\sqrt{(a^2+t^2)(b^2+t^2)}}=\frac12\int_{-\infty}^\infty\frac{dt}{\sqrt{(a^2+t^2)(b^2+t^2)}}
+\]
+이다. $a_1=(a+b)/2$, $b_1=\sqrt{ab}$로 두고 $I(a_1,b_1)$의 둘째 꼴에 $t=(s-ab/s)/2$ $(s>0)$를 넣자. 이 치환은 $(0,\infty)$를 $(-\infty,\infty)$로 단조롭게 보내고 $dt=(s^2+ab)\,ds/(2s^2)$이다. 전개하면
+\[
+a_1^2+t^2=\frac{(s^2+a^2)(s^2+b^2)}{4s^2},\qquad b_1^2+t^2=\frac{(s^2+ab)^2}{4s^2}
+\]
+이므로 $dt/\sqrt{(a_1^2+t^2)(b_1^2+t^2)}=2\,ds/\sqrt{(s^2+a^2)(s^2+b^2)}$이고, $I(a_1,b_1)=\tfrac12\int_0^\infty2\,ds/\sqrt{(s^2+a^2)(s^2+b^2)}=I(a,b)$이다. 불변성을 되풀이하면 $I(a,b)=I(a_n,b_n)$이고, $a_n,b_n\to M=\operatorname{AGM}(a,b)$에서 피적분함수가 고르게 수렴하므로 $I(a,b)=I(M,M)=\pi/(2M)$이다. 마지막 주장은 $a=1$, $b=\sqrt{1-m}$으로 두면 $a^2\cos^2\theta+b^2\sin^2\theta=1-m\sin^2\theta$이기 때문이다\cite{cox1984agm,borwein1987pi}.
+\end{proof}
+
+이차 수렴하므로 반복이 아주 적다. 두 수가 상대 $2\times10^{-16}$ 안으로 모이기까지 $m=0.5$에서 $4$번, $m=0.99$에서 $5$번, $m=1-10^{-10}$에서 $7$번이다. $m\to1$에서 $K$는 로그로 발산하지만, $1-m$을 정확히 계산할 수 있으면 AGM이 그 특이점을 그대로 처리한다. $E$도 AGM 과정의 부산물로 계산할 수 있으나, $m\to1$에서 그 공식은 무한대와 $0$의 곱에 가까운 소거를 겪는다. Carlson의 대칭형 적분 $R_F$, $R_D$는 복제 정리로 수렴하는 일반적인 방법을 주어 이 문제가 없다\cite{carlson1995}.
+
+\section{초기하 함수}
+\label{sec:hypergeometric}
+
+합류 초기하 함수 $M(a,b,x)={}_1F_1(a;b;x)=\sum_k(a)_kx^k/((b)_kk!)$와 Gauss 초기하 함수 ${}_2F_1(a,b;c;z)=\sum_k(a)_k(b)_kz^k/((c)_kk!)$는 많은 특수함수를 특수한 경우로 품는다. 39장의 오차함수, 40장의 불완전 감마와 베타, 이 장의 Bessel 함수가 모두 그렇다. 계산의 어려움은 매개변수가 셋, 넷이라는 데 있다. Pearson, Olver, Porter의 개관이 방법들을 비교한다\cite{pearson2017hyp}.
+
+급수를 그대로 더하면 두 가지 문제가 생긴다. 첫째, $x<0$이면 항의 부호가 번갈아 소거가 일어난다. ${}_1F_1$에서는 Kummer 변환 $M(a,b,x)=e^xM(b-a,b,-x)$로 양의 인자로 옮겨 이것을 피한다. ${}_2F_1$에서는 $z\mapsto z/(z-1)$, $1-z$, $1/z$ 같은 선형 변환으로 $|z|$가 작은 곳으로 옮기는데, $c-a-b$ 같은 매개변수의 차가 정수이면 변환 공식의 감마 함수들이 극점에 걸려 $0/0$이 되므로 디감마 함수가 들어간 극한 공식을 따로 써야 한다. 둘째, 항의 비 $(a+k)(b+k)z/((c+k)(k+1))$를 곱해 나가면 걸음마다 반올림이 몇 번씩 들어가고, $a+k$의 반올림은 $k$가 같은 이진 자릿수에 있는 동안 같은 쪽으로 쌓인다. 수백 항의 급수에서는 그것만으로 수십 ulp가 된다. 8장의 FMA로 곱과 몫의 반올림 오차를 구해 1차까지 들고 가면 이 누적을 2차로 줄일 수 있다.
+
+\section{Lambert $W$ 함수}
+\label{sec:lambertw}
+
+\term{Lambert $W$ 함수}{Lambert $W$ function}는 $W(x)e^{W(x)}=x$의 해이다. 실수에서는 $x\ge-1/e$에서 정의되는 주가지 $W_0$과 $-1/e\le x<0$에서 정의되는 가지 $W_{-1}$이 있고, 둘은 분기점 $x=-1/e$에서 $W=-1$로 만난다\cite{corless1996lambert}. 계산은 34장의 Halley 반복이다. $f(w)=we^w-x$의 도함수가 $(w+1)e^w$, 2차 도함수가 $(w+2)e^w$이므로 Halley 걸음이 간단하다. 좋은 초기값이 관건인데, 큰 $x$에서는 점근식 $W\approx L_1-L_2+L_2/L_1$($L_1=\log x$, $L_2=\log L_1$)을, 분기점 근처에서는 $p=\sqrt{2(ex+1)}$에 대한 급수 $W=-1+p-p^2/3+11p^3/72-\cdots$를 쓴다. 분기점 근처에서 $ex+1$은 $x\approx-1/e$에서 소거가 일어나므로 $e$를 두 binary64의 합으로 들고 계산해야 한다. 분기점에서 $W$의 조건수가 무한대이므로, 근처의 정확도는 $x$를 정확히 다루는 데 달려 있다.
+
+\section{stardust의 특수함수}
+\label{sec:special3-stardust}
+
+\begin{instardust}[\code{docs/design/special.md} §2.3, §5.8]
+stardust는 진동하는 함수 $J$, $Y$와 음의 인자의 Airy 함수의 정확도를 포락선에 대한 절대오차 $10^{-14}A(x)$로 약속한다. 임의 차수의 Bessel 함수에는 차수 $500$ 미만에서 쓰는 빠른 binary64 경로가 있다. $J$는 작은 인자에서 급수, $x\ge25$에서 Hankel 전개, 차수가 $x$보다 작으면 위로의 점화, 그 밖에서는 Miller의 뒤로의 점화를 차수 $N=t+10t^{1/3}+8$($t=\max(\nu,x)$)에서 시작한다. 설계 문서는 이 시작 차수를 긴 시작과 견주어 쟀다. $8t^{1/3}+6$에서는 정규화의 합이 아직 $94$ulp 틀렸고, $9t^{1/3}+8$부터 차이가 없었다. $I$와 $K$는 차수 $30$ 이상에서 Debye 균등 점근 전개를 쓰는데, 그 전까지 쓰던 $O(\nu)$의 점화는 $\nu=10^9$에서 26초가 걸렸다고 한다.
+\end{instardust}
+
+\begin{instardust}[\code{docs/design/special.md} §5.6, §5.10, §5.11]
+\code{expi}는 근 $x_0$ 둘레 $[0.3,0.45]$에서 근을 중심으로 한 Taylor 급수를 쓴다. 설계 문서는 scipy가 거기서 거듭제곱 급수의 소거로 매우 큰 ulp 오차를 낸다고 적는다. 완전 타원적분 \code{ellipk}, \code{ellipe}는 AGM과 Carlson 형식을 구현해 견준 뒤, 같은 정확도에서 $4$--$7$배 빠른 Cephes의 다항식 근사 $P(y)-\log(y)Q(y)$($y=1-m$)를 골랐다. \code{hyp1f1}과 \code{hyp2f1}의 긴 급수는 위의 FMA 보정을 쓰고, 항이 처음부터 줄어 반올림 누적이 작다고 판정되는 입력만 보정 없이 빠르게 더한다. \code{lambertw}의 분기점 급수의 계수는 정의에서 정확히 생성했다.
+\end{instardust}
+
+\section{맺음}
+
+특수함수의 계산은 함수마다 다른 문제를 내놓지만 해법의 재료는 같다. 점화식은 안정한 방향으로만 쓰고, 정의역을 급수와 연분수와 점근 전개의 영역으로 나누며, 근 근처와 소거가 생기는 곳에서는 정확히 만든 작은 차를 중심으로 다시 전개한다. 진동하는 함수처럼 상대 정확도가 원리적으로 불가능한 곳에서는 무엇을 약속할지부터 다시 정해야 한다. 이것으로 근사와 해석의 부가 끝나고, 다음 부에서는 함수의 근 대신 최솟값을 찾는 최적화로 넘어간다.
+
+특수함수 전반의 표준 참고서는 DLMF\cite{dlmf}이고, Bessel 함수는 Watson의 고전\cite{watson1944bessel}이, 점근 전개는 Olver의 책\cite{olver1974asymptotics}이 자세하다.
+
+\chapterreferences
