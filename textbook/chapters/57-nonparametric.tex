@@ -1,0 +1,269 @@
+%% 57장 순서통계량과 비모수 검정
+\chapter{순서통계량과 비모수 검정}
+\label{ch:nonparametric}
+
+\abstract{분포의 모양을 가정하지 않는 검정을 다룬다. 바탕은 순서통계량과 경험분포함수이다. 균등 분포의 순서통계량이 베타 분포를 따른다는 것을 보이고 경험분포함수가 참 분포함수로 고르게 수렴한다는 Glivenko--Cantelli 정리를 증명한 뒤 그 속도를 지수적으로 묶는 Dvoretzky--Kiefer--Wolfowitz 부등식을 정리한다. 순위 검정은 귀무가설 아래 순위의 분포가 표본 분포와 무관하다는 데서 정확한 귀무 분포를 얻는다. Mann--Whitney 통계량의 평균과 분산을 계산하고 그 분포를 세는 점화식을 유도한 뒤 정확한 꼬리 확률과 정규 근사를 견주어 연속성 보정이 언제 돕고 언제 해치는지 본다. 동점이 있으면 관측한 중간 순위 위의 조건부 분포가 올바른 귀무 분포이고 분산도 그에 맞게 줄어든다는 것을 증명한다. 경험분포함수와 가설 분포의 거리를 재는 Kolmogorov--Smirnov 검정에서는 정확한 분포를 Durbin 행렬로 계산해 극한 분포가 작은 표본에서 보수적이라는 것을 확인하고 동점을 무시한 두 표본 정확 분포가 $p$값을 두 배 넘게 부풀리는 예를 본다. 끝으로 차이의 제곱을 적분하는 Cramér--von Mises와 Anderson--Darling 통계량을 순서통계량의 식으로 바꾼다.}
+
+\section{순서통계량}
+\label{sec:order-statistics}
+
+표본 $X_1,\dots,X_n$을 크기순으로 늘어놓은 $X_{(1)}\le\dots\le X_{(n)}$을 \term{순서통계량}{order statistics}이라 한다. 표본이 분포함수 $F$에서 독립으로 나왔다고 하자. 49장의 역변환 정리로 $X_i=F^{-}(U_i)$($U_i$는 $(0,1)$의 독립 균등)로 쓸 수 있고 일반화 역함수 $F^{-}$가 감소하지 않으므로 크기 순서가 보존되어 $X_{(k)}=F^{-}(U_{(k)})$이다. 그래서 순서통계량의 분포는 균등 표본의 경우로 돌아간다.
+
+\begin{proposition}
+\label{prop:uniform-order}
+$U_1,\dots,U_n$이 독립이고 $(0,1)$의 균등 분포를 따르면 $U_{(k)}\sim\mathrm{Beta}(k,n-k+1)$이다. 곧 $U_{(k)}$의 밀도는
+\[
+\frac{n!}{(k-1)!\,(n-k)!}\,u^{k-1}(1-u)^{n-k},\qquad0<u<1
+\]
+이다.
+\end{proposition}
+
+\begin{proof}
+$U_{(k)}\le u$인 것은 $u$ 이하인 표본이 $k$개 이상인 것과 같고 그 개수는 $\mathrm{Bin}(n,u)$를 따른다. 그러므로 $P(U_{(k)}\le u)=P(\mathrm{Bin}(n,u)\ge k)$이고 50장의 항등식으로 이것은 $I_u(k,n-k+1)$, 곧 $\mathrm{Beta}(k,n-k+1)$의 누적분포함수이다. 밀도는 그것을 미분한 베타 밀도이고 $B(k,n-k+1)=(k-1)!\,(n-k)!/n!$이다.
+\end{proof}
+
+베타 분포의 평균으로 $E[U_{(k)}]=k/(n+1)$이다. 정규 Q--Q 그림이 $k$번째 순서통계량을 $\Phi^{-1}(k/(n+1))$ 근처의 점에 대해 그리는 까닭이 여기에 있다. 표본 분위수는 순서통계량을 보간해 정의하는데 그 보간 방법이 여럿이어서 numpy만 해도 아홉 가지를 둔다. 분포함수가 연속이면 $X_i$들은 거의 확실히 서로 다르므로 순서통계량에 동점이 없다. 동점은 \cref{sec:rank-ties}에서 따로 다룬다.
+
+\section{경험분포함수}
+\label{sec:empirical-cdf}
+
+\term{경험분포함수}{empirical distribution function} $F_n(x)=n^{-1}\#\{i:X_i\le x\}$는 각 관측에 질량 $1/n$을 둔 이산 분포의 누적분포함수이다. 고정한 $x$에서 $nF_n(x)\sim\mathrm{Bin}(n,F(x))$이므로 큰 수의 강법칙으로 $F_n(x)\to F(x)$가 거의 확실히 성립한다. 이 수렴은 $x$에 대해 고르다.
+
+\begin{theorem}[Glivenko--Cantelli]
+\label{thm:glivenko-cantelli}
+$\sup_x|F_n(x)-F(x)|\to0$이 거의 확실히 성립한다.
+\end{theorem}
+
+\begin{proof}
+$\epsilon>0$을 고정하고 $-\infty=x_0\le x_1\le\dots\le x_m=\infty$를 모든 $j$에서 $F(x_j^-)-F(x_{j-1})\le\epsilon$이 되도록 잡는다. $m=\lceil1/\epsilon\rceil$로 두고 $0<j<m$에서 $x_j=\inf\{x:F(x)\ge j\epsilon\}$로 잡으면 $F(x_j^-)\le j\epsilon$이고 오른쪽 연속성으로 $F(x_{j-1})\ge(j-1)\epsilon$이므로 조건이 맞는다. 큰 수의 강법칙을 사건 $\{X\le x_j\}$와 $\{X<x_j\}$에 쓰면 유한 개의 점에서 $F_n(x_j)\to F(x_j)$와 $F_n(x_j^-)\to F(x_j^-)$가 동시에 거의 확실히 성립한다. $x\in[x_{j-1},x_j)$이면 $F_n$과 $F$가 감소하지 않으므로
+\[
+F_n(x)-F(x)\le F_n(x_j^-)-F(x_{j-1})\le F_n(x_j^-)-F(x_j^-)+\epsilon
+\]
+이고 마찬가지로
+\[
+F_n(x)-F(x)\ge F_n(x_{j-1})-F(x_j^-)\ge F_n(x_{j-1})-F(x_{j-1})-\epsilon
+\]
+이다. 그러므로
+\[
+\sup_x|F_n(x)-F(x)|\le\max_j\max\bigl(|F_n(x_j)-F(x_j)|,\,|F_n(x_j^-)-F(x_j^-)|\bigr)+\epsilon
+\]
+이고 오른쪽 첫 항은 거의 확실히 $0$으로 간다. 곧 $\limsup_n\sup_x|F_n-F|\le\epsilon$이 거의 확실히 성립한다. $\epsilon=1/k$($k=1,2,\dots$)에 대한 가산 개의 확률 $1$ 사건을 교차하면 정리가 나온다.
+\end{proof}
+
+수렴의 빠르기는 Dvoretzky--Kiefer--Wolfowitz 부등식이 준다. 원래 형태에는 정해지지 않은 상수가 있었고 Massart가 그 상수를 날카롭게 정했다\cite{massart1990}. 모든 $n$과 $\epsilon>0$에 대해
+\begin{equation}
+\label{eq:dkw}
+P\Bigl(\sup_x|F_n(x)-F(x)|>\epsilon\Bigr)\le2e^{-2n\epsilon^2}
+\end{equation}
+이다. 오른쪽이 $F$와 무관하므로 이 부등식을 뒤집으면 어떤 분포에도 성립하는 신뢰 띠 $F_n(x)\pm\sqrt{\log(2/\alpha)/(2n)}$이 나온다. $n=100$, $\alpha=0.05$에서 띠의 반폭은 $0.136$이다.
+
+\section{순위 검정}
+\label{sec:rank-tests}
+
+\subsection{순위의 분포}
+
+\begin{proposition}
+\label{prop:rank-uniform}
+$Z_1,\dots,Z_N$이 독립이고 같은 연속 분포를 따르면 순위 벡터 $(R_1,\dots,R_N)$은 $\{1,\dots,N\}$의 $N!$개 순열 위에서 균등하다.
+\end{proposition}
+
+\begin{proof}
+분포가 연속이므로 $i\ne j$이면 $P(Z_i=Z_j)=0$이고 순위는 거의 확실히 하나의 순열이다. 임의의 순열 $\pi$에 대해 $(Z_{\pi(1)},\dots,Z_{\pi(N)})$은 성분이 독립이고 분포가 같으므로 $(Z_1,\dots,Z_N)$과 결합 분포가 같다. 그런데 $Z$의 순위 벡터가 $r$이라는 사건은 재배열한 벡터의 순위 벡터가 $r\circ\pi$라는 사건과 같다. 그러므로 $P(R=r)=P(R=r\circ\pi)$가 모든 $\pi$에서 성립하고 $r\circ\pi$는 $\pi$를 바꾸며 모든 순열을 지나므로 각 순위 벡터의 확률은 $1/N!$이다.
+\end{proof}
+
+이 분포는 $F$에 의존하지 않으므로 순위만의 함수인 통계량은 귀무가설 아래 분포가 정해져 있고 그것을 정확히 계산할 수 있다. 순위 검정을 \term{분포에 무관}{distribution-free}하다고 부르는 까닭이다.
+
+\subsection{Mann--Whitney 검정}
+
+두 표본 $X_1,\dots,X_m$과 $Y_1,\dots,Y_n$이 같은 연속 분포에서 나왔다는 귀무가설을 생각하자. \term{Mann--Whitney 통계량}{Mann--Whitney statistic}
+\[
+U=\sum_{i=1}^m\sum_{j=1}^n\mathbf 1\{X_i>Y_j\}
+\]
+은 $X$가 $Y$보다 큰 쌍의 수이다\cite{mann1947}. 합친 표본 $N=m+n$개에서 $X$들의 순위 합을 $W$라 하자. $X_{(i)}$의 순위는 $i$에 그보다 작은 $Y$의 수를 더한 것이므로 $W=m(m+1)/2+U$이고 Wilcoxon의 순위합 검정\cite{wilcoxon1945}과 같은 검정이다.
+
+\begin{proposition}
+\label{prop:mw-moments}
+귀무가설 아래 $E[U]=mn/2$이고 $\operatorname{Var}U=mn(m+n+1)/12$이다.
+\end{proposition}
+
+\begin{proof}
+$I_{ij}=\mathbf 1\{X_i>Y_j\}$로 두면 대칭성으로 $P(I_{ij}=1)=1/2$이므로 평균은 $mn/2$이고 각 항의 분산은 $1/4$이다. 공분산은 두 쌍이 관측을 공유할 때만 $0$이 아니다. $j\ne j'$이면 $P(X_i>Y_j,X_i>Y_{j'})$는 세 관측 가운데 $X_i$가 가장 클 확률 $1/3$이므로 $\operatorname{Cov}(I_{ij},I_{ij'})=1/3-1/4=1/12$이고 이런 순서쌍이 $mn(n-1)$개 있다. $Y_j$를 공유하는 쌍도 같은 까닭으로 공분산이 $1/12$이고 $m(m-1)n$개 있다. 관측을 공유하지 않는 쌍은 독립이다. 그러므로
+\[
+\operatorname{Var}U=\frac{mn}4+\frac{mn(n-1)+mn(m-1)}{12}=\frac{mn(m+n+1)}{12}
+\]
+이다.
+\end{proof}
+
+정확한 분포는 점화식으로 센다. 귀무가설 아래 $X$와 $Y$의 상대 순서는 $\binom{m+n}m$가지 배치 위에서 균등하다(\cref{prop:rank-uniform}). $c(m,n,u)$를 $U=u$인 배치의 수라 하자. 가장 큰 관측이 $X$이면 그 $X$는 모든 $Y$보다 커서 $U$에 $n$을 보태고 나머지 $m-1$개의 $X$와 $n$개의 $Y$의 배치가 남는다. 가장 큰 관측이 $Y$이면 그 $Y$보다 큰 $X$가 없으므로 $U$에 보태는 것이 없다. 그러므로
+\[
+c(m,n,u)=c(m-1,n,u-n)+c(m,n-1,u)
+\]
+이고 경계는 $c(0,n,0)=c(m,0,0)=1$이며 범위 밖의 $u$에서는 $c=0$이다. $u$는 $0$부터 $mn$까지이므로 표 하나를 채우는 데 $O(m^2n^2)$번의 덧셈이 든다(\cref{alg:mw-count}). $\sum_uc(m,n,u)q^u$가 Gauss 이항 계수 $\prod_{k=1}^m(1-q^{n+k})/(1-q^k)$라는 것을 쓰면 다항식 곱셈과 나눗셈으로 더 빨리 셀 수도 있다.
+
+\begin{algorithm}[t]
+\begin{algorithmic}[1]
+\Require 표본 크기 $m$, $n$
+\Ensure $u=0,\dots,mn$에서 $P(U=u)$
+\State 범위 밖의 $c[a,b,u]$는 $0$으로 본다
+\For{$a=0,\dots,m$}
+  \For{$b=0,\dots,n$}
+    \For{$u=0,\dots,ab$}
+      \If{$a=0$ 또는 $b=0$} $c[a,b,u]\gets\mathbf 1\{u=0\}$
+      \Else\ $c[a,b,u]\gets c[a,b-1,u]+c[a-1,b,u-b]$
+      \EndIf
+    \EndFor
+  \EndFor
+\EndFor
+\State \Return $c[m,n,\cdot]/\binom{m+n}m$
+\end{algorithmic}
+\caption{Mann--Whitney 통계량의 정확 분포}
+\label{alg:mw-count}
+\end{algorithm}
+
+$m=5$, $n=7$에서 배치는 $\binom{12}5=792$가지이다. \cref{prop:mw-moments}로 $\mu=17.5$, $\sigma=\sqrt{35\cdot13/12}=6.158$이다. $U$는 정수이므로 $P(U\le u)$를 정규 분포로 어림할 때 $\Phi((u+1/2-\mu)/\sigma)$처럼 반 칸을 더하는 것이 \term{연속성 보정}{continuity correction}이다. \cref{tab:mw-normal}은 정확한 꼬리 확률을 두 근사와 견준다. 보정한 근사는 가운데에서 잘 맞지만 꼬리 끝 $P(U\le3)$에서는 정확값의 $1.3$배로 부풀고 오히려 보정하지 않은 근사가 가깝다. 정규 근사의 상대오차는 꼬리로 갈수록 커지므로 표본이 작으면 정확한 분포를 쓰는 것이 마땅하다.
+
+\begin{table}[t]
+\begin{sdtable}{colspec={cccc}, row{1}={font=\small\bfseries}}
+\toprule
+꼬리 & 정확 & 정규, 보정 & 정규, 보정 없음 \\
+\midrule
+$P(U\le3)$ & $0.00884$ & $0.01150$ & $0.00927$ \\
+$P(U\le6)$ & $0.03662$ & $0.03702$ & $0.03091$ \\
+$P(U\le10)$ & $0.13384$ & $0.12781$ & $0.11161$ \\
+\bottomrule
+\end{sdtable}
+\caption{$m=5$, $n=7$인 Mann--Whitney 통계량의 아래 꼬리 확률. 정확값은 $792$가지 배치를 센 것이다.}
+\label{tab:mw-normal}
+\end{table}
+
+\subsection{부호 순위 검정}
+
+짝지은 자료의 차이 $D_i$나 한 표본의 분포가 $0$에 대해 대칭인지를 검정할 때는 Wilcoxon의 \term{부호 순위 검정}{signed-rank test}을 쓴다\cite{wilcoxon1945}. 차이의 절댓값에 순위를 매기고 양수인 차이의 순위를 더한 $T^+$를 통계량으로 한다. 귀무가설 아래 연속이고 대칭인 분포에서는 $|D_i|$와 $D_i$의 부호가 독립이고 부호는 반반의 확률로 양수이다. 그래서 $T^+=\sum_{k=1}^nkB_k$이고 $B_k$는 독립인 $\mathrm{Bernoulli}(1/2)$이다. 평균은 $\sum_kk/2=n(n+1)/4$, 분산은 $\sum_kk^2/4=n(n+1)(2n+1)/24$이다. 분포는 $2^n$개의 부호 배치를 세는 동적 계획법 $c_k(t)=c_{k-1}(t)+c_{k-1}(t-k)$로 얻는다. $c_k$는 순위 $1,\dots,k$만 쓴 배치의 수이다. 각 $c_k$는 $t\mapsto k(k+1)/2-t$에 대해 대칭이므로 절반만 쌓아도 된다.
+
+\subsection{동점}
+\label{sec:rank-ties}
+
+실제 자료는 반올림되어 동점이 흔하다. 동점인 관측에는 그들이 차지할 순위의 평균, 곧 \term{중간 순위}{midrank}를 준다. Mann--Whitney 통계량으로는 쌍마다 $\mathbf 1\{X_i>Y_j\}+(1/2)\mathbf 1\{X_i=Y_j\}$를 더하는 것과 같다. 그러면 순위 벡터는 더 이상 $1,\dots,N$의 순열이 아니므로 앞의 정확 분포는 틀린다. 올바른 귀무 분포는 관측한 중간 순위들의 다중집합 $\{a_1,\dots,a_N\}$을 고정하고 그 가운데 어느 $m$개가 $X$에 갔는지가 균등하다는 조건부 분포이다. 귀무가설 아래 $N$개의 관측은 교환 가능하므로 값의 다중집합을 조건으로 걸어도 배정은 균등하다. 이 조건부 분포는 앞의 점화식을 정수 순위 대신 관측한 순위로 돌려서 센다.
+
+\begin{proposition}
+\label{prop:ties-variance}
+동점 묶음의 크기가 $t_1,\dots,t_g$이면 조건부 귀무 분포에서
+\[
+\operatorname{Var}U=\frac{mn}{12}\Bigl[(N+1)-\frac{\sum_l(t_l^3-t_l)}{N(N-1)}\Bigr]
+\]
+이다.
+\end{proposition}
+
+\begin{proof}
+$W=U+m(m+1)/2$는 다중집합 $\{a_i\}$에서 비복원으로 뽑은 $m$개의 합이다. 비복원 추출의 합의 분산은 $\sigma_a^2=N^{-1}\sum_i(a_i-\bar a)^2$에 대해 $m(N-m)\sigma_a^2/(N-1)$이다. 동점이 없으면 $\{a_i\}=\{1,\dots,N\}$이고 $\sum_i(a_i-\bar a)^2=(N^3-N)/12$이다. 연속한 정수 $t$개를 그들의 평균으로 바꾸면 전체 평균은 그대로이고 제곱합은 묶음 안의 편차 제곱합 $(t^3-t)/12$만큼 준다. 그러므로 $\sum_i(a_i-\bar a)^2=\{(N^3-N)-\sum_l(t_l^3-t_l)\}/12$이고
+\[
+\operatorname{Var}U=\frac{mn}{N(N-1)}\cdot\frac{(N^3-N)-\sum_l(t_l^3-t_l)}{12}
+\]
+이다. $N^3-N=N(N-1)(N+1)$로 정리하면 결론이 나온다.
+\end{proof}
+
+$x=(1,2,2,3)$, $y=(2,3,3,4,5)$이면 $N=9$이고 값 $2$와 $3$이 각각 크기 $3$의 묶음이다. 식은 $(20/12)(10-48/72)=15.556$이고 $\binom94=126$가지 배정을 직접 세어 얻은 분산과 같다.
+
+\section{Kolmogorov--Smirnov 검정}
+\label{sec:ks}
+
+한 표본이 연속 분포 $F_0$에서 나왔다는 가설은 $D_n=\sup_x|F_n(x)-F_0(x)|$로 검정한다\cite{kolmogorov1933ks}.
+
+\begin{proposition}
+\label{prop:ks-free}
+$F_0$이 연속이면 귀무가설 아래 $D_n$의 분포는 $F_0$에 의존하지 않는다. $U_{(i)}=F_0(X_{(i)})$로 두면
+\[
+D_n=\max_{1\le i\le n}\max\Bigl(\frac in-U_{(i)},\;U_{(i)}-\frac{i-1}n\Bigr)
+\]
+이다.
+\end{proposition}
+
+\begin{proof}
+49장의 확률 적분 변환으로 $U_i=F_0(X_i)$는 독립 균등이다. $F_0$이 감소하지 않으므로 $X_i\le x$이면 $U_i\le F_0(x)$이다. 역으로 $U_i\le F_0(x)$이지만 $X_i>x$이면 $F_0$이 $[x,X_i]$에서 상수이므로 $X_i$는 $F_0$이 평평한 구간에 떨어진 것이다. 그런 구간은 가산 개이고 각각의 확률이 $0$이므로 거의 확실히 모든 $x$에서 $F_n(x)=G_n(F_0(x))$이고 $G_n$은 $U_i$들의 경험분포함수이다. $F_0$이 연속이므로 $F_0(x)$는 $(0,1)$을 모두 지나고 $D_n=\sup_{0<u<1}|G_n(u)-u|$가 되어 분포가 $F_0$과 무관하다. $U_{(0)}=0$, $U_{(n+1)}=1$로 두면 $G_n$은 $[U_{(i)},U_{(i+1)})$에서 상수 $i/n$이고 $u$는 증가하므로 그 구간에서 $G_n(u)-u$의 상한은 왼쪽 끝의 값 $i/n-U_{(i)}$이고 하한은 오른쪽 끝으로 다가갈 때의 극한 $i/n-U_{(i+1)}$이다. 앞의 것은 $i=1,\dots,n$에서 $i/n-U_{(i)}$를, 뒤의 것의 부호를 바꾸면 $U_{(i)}-(i-1)/n$을 주고 $i=0$의 상한 $0$과 $i=n$의 하한 $0$은 최댓값을 바꾸지 않는다. 그러므로 식이 나온다.
+\end{proof}
+
+극한 분포는 Kolmogorov가 구했다.
+\[
+\lim_{n\to\infty}P(\sqrt nD_n>t)=2\sum_{j=1}^\infty(-1)^{j-1}e^{-2j^2t^2}
+\]
+이 급수의 첫 항 $2e^{-2t^2}$는 DKW 부등식 \eqref{eq:dkw}의 경계와 같고 $t$가 웬만큼 크면 둘째 항부터는 무시할 만하다. 두 표본에서 $\sup_x|F_m(x)-G_n(x)|$로 같은 생각을 쓰는 것이 Smirnov의 검정이다\cite{smirnov1948}.
+
+정확한 분포는 계산이 까다롭다. Durbin은 $P(D_n<d)$를 행렬 거듭제곱의 한 원소로 쓰는 방법을 보였다\cite{durbin1973}. $k=\lceil nd\rceil$, $h=k-nd\in[0,1)$, $s=2k-1$로 두고 $s\times s$ 행렬 $H$를 $i-j+1\ge0$이면 $H_{ij}=1/(i-j+1)!$, 아니면 $0$으로 채운 뒤 첫 열과 마지막 행을
+\[
+H_{i1}\gets H_{i1}-\frac{h^i}{i!},\qquad H_{sj}\gets H_{sj}-\frac{h^{s-j+1}}{(s-j+1)!},\qquad H_{s1}\gets H_{s1}+\frac{\max(0,2h-1)^s}{s!}
+\]
+로 고친다($H_{s1}$은 앞의 두 고침을 모두 받은 뒤 셋째 고침을 받는다). 그러면
+\[
+P(D_n<d)=\frac{n!}{n^n}\,(H^n)_{kk}
+\]
+이다. Marsaglia, Tsang, Wang은 거듭제곱을 제곱 반복으로 하고 원소가 넘치지 않도록 지수를 따로 들고 다니는 구현을 냈다\cite{marsaglia2003ks}. 행렬의 크기가 $nd$에 비례하므로 $n$과 $d$가 크면 이 방법도 무거워진다. Simard와 L'Ecuyer는 $n$과 $nd^2$의 영역에 따라 정확한 방법과 Pelz--Good 급수 같은 근사를 고르는 규칙을 정리했다\cite{simard2011}.
+
+\cref{tab:ks-exact}은 정확한 꼬리 확률을 극한 분포와 DKW 경계에 견준다. 작은 표본에서 극한 분포는 보수적이다. $n=10$, $d=0.4$에서 정확한 $p$값은 $0.059$인데 극한 분포는 $0.082$를 준다. $n$이 커지면 차이가 줄지만 표의 모든 경우에서 극한 분포의 $p$값이 더 크다.
+
+\begin{table}[t]
+\begin{sdtable}{colspec={ccccc}, row{1}={font=\small\bfseries}}
+\toprule
+$n$ & $d$ & 정확 & 극한 & DKW 경계 \\
+\midrule
+$10$ & $0.3$ & $0.27054$ & $0.32910$ & $0.33060$ \\
+$10$ & $0.4$ & $0.05899$ & $0.08152$ & $0.08152$ \\
+$100$ & $0.1$ & $0.25269$ & $0.27000$ & $0.27067$ \\
+$100$ & $0.15$ & $0.01984$ & $0.02222$ & $0.02222$ \\
+$1000$ & $0.04$ & $0.07934$ & $0.08152$ & $0.08152$ \\
+\bottomrule
+\end{sdtable}
+\caption{한 표본 Kolmogorov--Smirnov 통계량의 꼬리 확률 $P(D_n\ge d)$. 정확값은 Durbin 행렬로, 극한은 Kolmogorov 급수 $2\sum_j(-1)^{j-1}e^{-2j^2nd^2}$로, DKW 경계는 $2e^{-2nd^2}$로 계산했다.}
+\label{tab:ks-exact}
+\end{table}
+
+두 표본 검정의 정확 분포도 동점을 고려해야 한다. $x=(1,2,2,3,3,3)$, $y=(2,3,4,4,5)$이면 관측한 통계량은 $D=0.6$이다. 합친 값 $11$개를 고정하고 그 가운데 $6$개를 $x$에 주는 $\binom{11}6=462$가지 배정 가운데 $D\ge0.6$인 것은 $50$가지이므로 조건부 정확 $p$값은 $0.108$이다. 동점이 없다고 보고 서로 다른 $11$개 값의 배정으로 세면 $0.238$이 나와 두 배 넘게 부푼다. 동점이 있으면 $F_m-G_n$이 동점 값에서 한꺼번에 뛰므로 같은 배정에서도 $D$가 작아지고 $D$의 조건부 분포가 아래로 옮겨 가기 때문이다.
+
+\section{제곱을 적분하는 통계량}
+\label{sec:cvm-ad}
+
+Kolmogorov--Smirnov 통계량은 차이의 최댓값만 보므로 분포의 꼬리에서 생기는 차이에 둔하다. 차이의 제곱을 적분하는 \term{Cramér--von Mises 통계량}{Cramér--von Mises statistic}
+\[
+W^2=n\int_{-\infty}^\infty\bigl(F_n(x)-F_0(x)\bigr)^2\,dF_0(x)
+\]
+과 꼬리에 무게 $1/\{F_0(1-F_0)\}$를 주는 \term{Anderson--Darling 통계량}{Anderson--Darling statistic}\cite{anderson1952}
+\[
+A^2=n\int_{-\infty}^\infty\frac{\bigl(F_n(x)-F_0(x)\bigr)^2}{F_0(x)\bigl(1-F_0(x)\bigr)}\,dF_0(x)
+\]
+이 그것을 보완한다. \cref{prop:ks-free}와 같은 변환으로 둘 다 균등 표본의 문제가 되고 분포가 $F_0$과 무관하다.
+
+\begin{proposition}
+\label{prop:cvm-formula}
+$U_{(i)}=F_0(X_{(i)})$로 두면
+\[
+W^2=\frac1{12n}+\sum_{i=1}^n\Bigl(U_{(i)}-\frac{2i-1}{2n}\Bigr)^2
+\]
+이다.
+\end{proposition}
+
+\begin{proof}
+$U_{(0)}=0$, $U_{(n+1)}=1$로 두면 $[U_{(i)},U_{(i+1)})$에서 $G_n=i/n$이므로
+\[
+W^2=n\sum_{i=0}^n\int_{U_{(i)}}^{U_{(i+1)}}\Bigl(u-\frac in\Bigr)^2du=\frac n3\sum_{i=0}^n\Bigl[\Bigl(U_{(i+1)}-\frac in\Bigr)^3-\Bigl(U_{(i)}-\frac in\Bigr)^3\Bigr]
+\]
+이다. $i=0$의 아래 끝 $U_{(0)}^3$과 $i=n$의 위 끝 $(U_{(n+1)}-1)^3$은 $0$이고 나머지를 $U_{(i)}$별로 모으면
+\[
+W^2=\frac n3\sum_{i=1}^n\Bigl[\Bigl(U_{(i)}-\frac{i-1}n\Bigr)^3-\Bigl(U_{(i)}-\frac in\Bigr)^3\Bigr]
+\]
+이다. $a_i=U_{(i)}-(2i-1)/(2n)$, $\delta=1/(2n)$으로 두면 괄호 안은 $(a_i+\delta)^3-(a_i-\delta)^3=6a_i^2\delta+2\delta^3$이다. $(n/3)\cdot6\delta=1$이고 $(n/3)\cdot n\cdot2\delta^3=1/(12n)$이므로 $W^2=\sum_ia_i^2+1/(12n)$이다.
+\end{proof}
+
+같은 방식으로 적분하면
+\[
+A^2=-n-\frac1n\sum_{i=1}^n(2i-1)\bigl[\log U_{(i)}+\log\bigl(1-U_{(n+1-i)}\bigr)\bigr]
+\]
+을 얻는다. 무게 $1/\{u(1-u)\}$가 $0$과 $1$ 근처에서 커지므로 $\log U_{(1)}$이나 $\log(1-U_{(n)})$ 같은 항이 꼬리의 벗어남을 크게 반영한다. 두 통계량 모두 극한 분포는 독립 카이제곱의 무한 가중합이다. 두 표본의 Cramér--von Mises 통계량은 순위의 함수이므로 정확한 분포를 셀 수 있다\cite{anderson1962}. 합친 표본을 작은 것부터 훑으며 $x$와 $y$를 몇 개씩 지났는지를 격자 위의 경로로 보면 통계량은 경로를 따라 쌓이는 제곱 차이의 합이다. 그래서 격자점마다 지금까지 쌓인 합의 분포를 들고 가는 동적 계획법으로 정확 분포를 얻는다.
+
+\begin{instardust}[\code{docs/design/htest.md} H42, H45, H47, H55, H56, H58, H166, H167]
+\code{sd.htest}의 순위 검정(\code{mannwhitneyu}, \code{wilcoxon}, \code{ansari}, \code{page\_trend\_test})은 동점이 있을 때 \code{method='exact'}를 관측한 중간 순위의 조건부 정확 순열 분포로 계산한다. scipy 1.18.1의 \code{'exact'}는 동점을 무시하므로 일부러 다르게 한 곳이고 R의 \code{wilcox.test(exact = TRUE)}와 같은 분포이다. \code{ks\_2samp}과 \code{cramervonmises\_2samp}도 같은 규칙을 따른다. 위의 두 표본 예에서 scipy는 $0.238$, stardust와 R은 $0.108$이다. 두 표본 Cramér--von Mises의 정확 분포는 큰 $n$에서도 격자 경로의 동적 계획법으로 계산한다. \code{ks\_1samp}의 정확 분포는 Durbin 행렬이고 행 벡터와 행렬의 곱을 Ogita--Rump--Oishi의 \code{Dot2}(곱의 오차는 FMA로, 합의 오차는 TwoSum으로 잡는다)로 더해 정확도를 지킨다. 행렬이 상한보다 커지면 오류를 내지 않고 scipy처럼 Pelz--Good 근사로 넘어간다. 부호 순위의 동적 계획법은 분포가 반합에 대칭이라는 것을 써서 필요한 꼬리 쪽 절반만 쌓는다. 정규 근사를 쓴 때에는 \code{'auto'}가 고른 경우에도 결과에 \code{zstatistic}을 둔다.
+\end{instardust}
+
+\section{맺음}
+
+비모수 검정은 순위와 경험분포함수라는 두 도구로 분포의 모양에 대한 가정을 피한다. 균등 순서통계량이 베타 분포를 따르고 경험분포함수가 고르게 그리고 지수적으로 빠르게 참 분포로 수렴한다는 것이 그 이론적 바탕이다. 순위의 분포가 표본 분포와 무관하므로 귀무 분포를 정확히 셀 수 있고 점화식과 동적 계획법이 그 계산이다. 동점이 있으면 관측한 순위를 조건으로 거는 것이 올바른 정확 분포이고 그것을 무시하면 $p$값이 크게 틀릴 수 있다. 정규 근사와 극한 분포는 편리하지만 작은 표본의 꼬리에서는 수십 퍼센트씩 어긋나므로 정확한 계산이 가능하면 그것을 쓰는 것이 좋다. 다음 장에서는 범주 자료, 곧 분할표와 비율의 검정으로 넘어간다.
+
+\chapterreferences
