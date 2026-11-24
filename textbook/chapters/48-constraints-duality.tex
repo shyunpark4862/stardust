@@ -1,0 +1,185 @@
+%% 48장 제약과 쌍대성
+\chapter{제약과 쌍대성}
+\label{ch:constraints-duality}
+
+\abstract{변수가 마음대로 움직일 수 없는 최적화 문제는 흔하다. 확률은 음수일 수 없고, 비율의 합은 $1$이며, 예산에는 한도가 있다. 이 장에서는 제약이 있는 최적화의 바탕을 정리한다. 먼저 42장의 사영 정리로 Farkas 보조정리를 증명하고, 그것으로 선형 제약 아래 국소 최소점이 만족하는 Karush--Kuhn--Tucker 조건을 끌어낸다. 이어서 라그랑주 쌍대 문제를 세워 약한 쌍대성을 보이고, 선형계획에서는 강한 쌍대성과 상보 여유 조건이 성립함을 증명한다. 선형계획을 푸는 두 방법으로 꼭짓점을 따라가는 심플렉스 방법과 중심 경로를 따라가는 내부점법을 다루는데, Klee--Minty 입방체에서 Dantzig의 규칙이 $2^n-1$번 피벗하는 것과 무작위 문제에서 내부점법의 반복 수가 크기에 거의 무관한 것을 확인한다. 끝으로 통계에서 자주 만나는 상자 제약 최소제곱, 곧 음이 아닌 최소제곱(NNLS)과 상하한 최소제곱(BVLS)의 활성 집합 방법을 다룬다.}
+
+\section{제약 최적화와 KKT 조건}
+\label{sec:kkt}
+
+\subsection{문제와 라그랑주 함수}
+
+일반적인 제약 최적화 문제는
+\[
+\min_{x\in\mathbb R^n}f(x)\quad\text{조건: }c_i(x)=0\ (i\in\mathcal E),\qquad c_i(x)\ge0\ (i\in\mathcal I)
+\]
+의 꼴이다. 제약을 만족하는 점을 \term{가능해}{feasible point}라 하고, 가능해 $x$에서 $c_i(x)=0$인 부등식 제약을 \term{활성 제약}{active constraint}이라 한다. 등식 제약은 언제나 활성이다. 활성 제약의 첨자 집합을 $\mathcal A(x)$로 쓴다. 승수 $\lambda_i$를 붙인
+\[
+\mathcal L(x,\lambda)=f(x)-\sum_{i\in\mathcal E\cup\mathcal I}\lambda_ic_i(x)
+\]
+를 \term{라그랑주 함수}{Lagrangian}라 한다.
+
+제약이 없으면 최소점에서 $\nabla f=0$이었다(42장). 제약이 있으면 기울기가 $0$일 필요는 없고, 가능한 방향으로 움직여 $f$를 줄일 수 없기만 하면 된다. 이것을 식으로 옮기려면 가능한 방향의 집합을 대수적으로 표현해야 하는데, 제약이 선형이면 그것이 정확히 된다. 그 바탕이 Farkas의 보조정리이다.
+
+\subsection{Farkas의 보조정리}
+
+벡터 $a_1,\dots,a_k\in\mathbb R^n$의 음이 아닌 일차 결합 전체 $K=\{\sum_j\mu_ja_j:\mu_j\ge0\}$를 이 벡터들이 생성하는 \term{원뿔}{cone}이라 한다.
+
+\begin{lemma}
+\label{lem:cone-closed}
+유한 개의 벡터가 생성하는 원뿔은 닫힌 볼록 집합이다.
+\end{lemma}
+
+\begin{proof}
+볼록인 것은 정의에서 바로 나온다. 닫혀 있음을 보이려고 먼저 $K$의 모든 점이 일차 독립인 생성 벡터만으로 음이 아닌 결합으로 쓰임을 보인다(Carathéodory). $y=\sum_{j\in S}\mu_ja_j$, $\mu_j>0$에서 $\{a_j\}_{j\in S}$가 일차 종속이면 $\sum_{j\in S}\gamma_ja_j=0$인 $\gamma\ne0$이 있고, 부호를 바꾸어 어떤 $\gamma_j>0$이라 해도 된다. $t=\min_{\gamma_j>0}\mu_j/\gamma_j$로 두면 $\mu_j-t\gamma_j\ge0$이고 적어도 하나가 $0$이 되므로, $y$를 생성 벡터가 하나 적은 결합으로 쓸 수 있다. 이를 되풀이하면 된다. 그러므로 $K$는 일차 독립인 부분집합 $S$들이 생성하는 원뿔 $K_S$의 유한 합집합이다. 각 $K_S$는 일차 독립인 열을 가진 행렬 $A_S$에 대해 $\{A_S\mu:\mu\ge0\}$인데, $A_S$가 단사이고 그 상이 닫힌 부분공간이므로 $A_S$는 $\mathbb R^{|S|}$와 그 상 사이의 위상동형이고, 닫힌 집합 $\{\mu\ge0\}$의 상은 닫혀 있다. 닫힌 집합의 유한 합집합은 닫혀 있다.
+\end{proof}
+
+\begin{theorem}[Farkas]
+\label{thm:farkas}
+$A\in\mathbb R^{n\times k}$, $b\in\mathbb R^n$에 대해 다음 둘 가운데 정확히 하나가 성립한다.
+(i) $A\mu=b$, $\mu\ge0$인 $\mu$가 있다.
+(ii) $A^{\mathsf T}d\ge0$, $b^{\mathsf T}d<0$인 $d$가 있다.
+\end{theorem}
+
+\begin{proof}
+둘이 함께 성립하면 $0>b^{\mathsf T}d=\mu^{\mathsf T}A^{\mathsf T}d\ge0$이어서 모순이다. (i)이 성립하지 않는다고 하자. $A$의 열이 생성하는 원뿔 $K$는 \cref{lem:cone-closed}로 닫힌 볼록 집합이고 $b\notin K$이다. 42장의 사영 정리로 $b$의 사영 $p=P_K(b)$가 있고 모든 $y\in K$에 대해 $(b-p)^{\mathsf T}(y-p)\le0$이다. $d=p-b\ne0$으로 두자. $y=2p$와 $y=0$을 넣으면 $d^{\mathsf T}p=0$이다. 그러면 모든 $y\in K$에서 $d^{\mathsf T}y\ge d^{\mathsf T}p=0$이고, 특히 $A$의 열에 대해 $A^{\mathsf T}d\ge0$이다. 또 $b^{\mathsf T}d=(p-d)^{\mathsf T}d=-\|d\|^2<0$이다.
+\end{proof}
+
+기하적으로 (ii)는 $b$와 원뿔 $K$를 가르는 초평면이 원점을 지난다는 뜻이다. Farkas가 1902년에 증명한 이 보조정리\cite{farkas1902}는 선형 부등식의 이론 전체의 뿌리이다.
+
+\subsection{KKT 조건}
+
+\begin{theorem}[Karush--Kuhn--Tucker, 선형 제약]
+\label{thm:kkt-linear}
+제약이 모두 일차식 $c_i(x)=a_i^{\mathsf T}x-b_i$이고 $f$가 연속 미분 가능하다고 하자. $x_\ast$가 국소 최소점이면 다음을 만족하는 $\lambda^\ast$가 있다.
+\begin{align*}
+&\nabla f(x_\ast)=\sum_{i\in\mathcal E\cup\mathcal I}\lambda_i^\ast a_i,&&c_i(x_\ast)=0\ (i\in\mathcal E),\quad c_i(x_\ast)\ge0\ (i\in\mathcal I),\\
+&\lambda_i^\ast\ge0\ (i\in\mathcal I),&&\lambda_i^\ast c_i(x_\ast)=0\ (i\in\mathcal E\cup\mathcal I).
+\end{align*}
+\end{theorem}
+
+\begin{proof}
+$x_\ast$에서 움직일 수 있는 방향은 $a_i^{\mathsf T}d=0$($i\in\mathcal E$), $a_i^{\mathsf T}d\ge0$($i\in\mathcal A(x_\ast)\cap\mathcal I$)인 $d$이다. 그런 $d$와 작은 $t>0$에 대해 $x_\ast+td$는 활성 제약을 지키고, 활성이 아닌 부등식은 연속성으로 작은 $t$에서 여전히 만족되므로 가능해이다. 국소 최소이므로 $f(x_\ast+td)\ge f(x_\ast)$이고, $t\downarrow0$으로 보내면 $\nabla f(x_\ast)^{\mathsf T}d\ge0$이다. 등식 $a_i^{\mathsf T}d=0$을 두 부등식 $\pm a_i^{\mathsf T}d\ge0$으로 쓰면, 이것은 \cref{thm:farkas}의 (ii)가 행렬 $A=[a_i,-a_i\ (i\in\mathcal E);\ a_i\ (i\in\mathcal A\cap\mathcal I)]$와 $b=\nabla f(x_\ast)$에 대해 성립하지 않는다는 뜻이다. 따라서 (i)이 성립해 $\nabla f(x_\ast)$가 이 열들의 음이 아닌 결합이다. 등식 제약의 두 계수의 차를 $\lambda_i^\ast$로, 활성 부등식의 계수를 $\lambda_i^\ast\ge0$으로, 활성이 아닌 부등식의 승수를 $0$으로 두면 된다.
+\end{proof}
+
+마지막 조건 $\lambda_i^\ast c_i(x_\ast)=0$을 \term{상보 여유}{complementary slackness} 조건이라 한다. 활성이 아닌 제약의 승수는 $0$이다. 승수 $\lambda_i^\ast$는 제약 $c_i\ge0$을 조금 늦출 때 최솟값이 바뀌는 비율, 곧 그 제약의 그림자 가격이다. 비선형 제약에서는 가능한 방향의 집합을 제약의 선형화로 정확히 나타낼 수 있다는 가정이 더 필요하다. 활성 제약의 기울기가 일차 독립이라는 \term{LICQ}{linear independence constraint qualification}가 그 대표적인 조건이며, 그 아래서 같은 결론이 성립한다\cite{nocedal2006}. 이 조건들은 Karush가 1939년의 석사 논문에서\cite{karush1939}, Kuhn과 Tucker가 1951년에 독립적으로 얻었다\cite{kuhn1951}.
+
+\section{라그랑주 쌍대성}
+\label{sec:lagrange-duality}
+
+부등식 제약만 있는 문제 $\min f(x)$, $c(x)\ge0$에 대해 \term{쌍대 함수}{dual function}
+\[
+q(\lambda)=\inf_x\mathcal L(x,\lambda)=\inf_x\bigl(f(x)-\lambda^{\mathsf T}c(x)\bigr),\qquad\lambda\ge0
+\]
+를 정의하고, \term{쌍대 문제}{dual problem} $\max_{\lambda\ge0}q(\lambda)$를 생각한다. $q$는 $\lambda$의 일차 함수들의 하한이므로 언제나 오목이다. 원래 문제가 볼록이 아니어도 쌍대 문제는 볼록 문제이다.
+
+\begin{proposition}[약한 쌍대성]
+가능해 $x$와 $\lambda\ge0$에 대해 $q(\lambda)\le f(x)$이다.
+\end{proposition}
+
+\begin{proof}
+$q(\lambda)\le f(x)-\lambda^{\mathsf T}c(x)\le f(x)$이다. 앞의 부등식은 하한의 정의이고, 뒤의 것은 $\lambda\ge0$, $c(x)\ge0$에서 나온다.
+\end{proof}
+
+그래서 쌍대 문제의 최댓값은 원래 문제의 최솟값의 하한이다. 둘의 차를 \term{쌍대 간격}{duality gap}이라 한다. 쌍대 간격은 반복 알고리즘의 멈춤 판정으로 쓰인다. 지금의 가능해와 승수에서 계산한 $f(x)-q(\lambda)$가 작으면, 최솟값을 모르면서도 지금의 해가 그만큼 이내로 최적임을 안다. 64장의 lasso가 이것을 쓴다. $f$와 $-c_i$가 볼록이고 엄격한 가능해($c(x)>0$인 $x$)가 있으면 쌍대 간격이 $0$이라는 것이 Slater 조건 아래의 \term{강한 쌍대성}{strong duality}이다\cite{boyd2004convex}. 선형계획에서는 이 조건조차 필요 없다.
+
+\section{선형계획}
+\label{sec:linear-programming}
+
+\subsection{쌍대 정리}
+
+\term{선형계획}{linear programming}의 표준형은
+\[
+\text{(P)}\quad\min_xc^{\mathsf T}x\quad\text{조건: }Ax=b,\ x\ge0
+\]
+이고 $A\in\mathbb R^{m\times n}$이다. 라그랑주 함수 $c^{\mathsf T}x-y^{\mathsf T}(Ax-b)-s^{\mathsf T}x$의 하한은 $c-A^{\mathsf T}y-s=0$일 때만 유한하므로, 쌍대 문제는
+\[
+\text{(D)}\quad\max_{y,s}b^{\mathsf T}y\quad\text{조건: }A^{\mathsf T}y+s=c,\ s\ge0
+\]
+이다. 약한 쌍대성은 직접 보인다. $c^{\mathsf T}x-b^{\mathsf T}y=(A^{\mathsf T}y+s)^{\mathsf T}x-(Ax)^{\mathsf T}y=s^{\mathsf T}x\ge0$이다.
+
+\begin{theorem}[선형계획의 쌍대 정리]
+\label{thm:lp-duality}
+(P)에 최적해가 있으면 (D)에도 최적해가 있고 두 최적값이 같다. 이때 $x$와 $(y,s)$가 각각 최적인 것은 $x_is_i=0$($i=1,\dots,n$)인 것과 동치이다.
+\end{theorem}
+
+\begin{proof}
+최적값을 $p^\ast$라 하자. (P)의 최적해 $x_\ast$는 일차식 제약 아래의 국소 최소점이므로 \cref{thm:kkt-linear}에서 $c=A^{\mathsf T}y+s$, $s\ge0$, $s_ix_{\ast i}=0$인 승수 $y$, $s$가 있다. 그러면 $(y,s)$는 (D)의 가능해이고 $b^{\mathsf T}y=c^{\mathsf T}x_\ast-s^{\mathsf T}x_\ast=p^\ast$이다. 약한 쌍대성으로 (D)의 어느 가능해도 $p^\ast$를 넘지 못하므로 $(y,s)$가 (D)의 최적해이다. 마지막 주장은 $c^{\mathsf T}x-b^{\mathsf T}y=s^{\mathsf T}x=\sum x_is_i$이고 각 항이 음이 아니라는 데서 나온다.
+\end{proof}
+
+\subsection{심플렉스 방법}
+
+(P)의 가능 영역은 다면체이고, 일차 함수의 최솟값은 (있다면) 꼭짓점에서 얻어진다. $A$의 열 $m$개를 골라 정칙인 $B$를 만들고 나머지 변수를 $0$으로 둔 해 $x_B=B^{-1}b$가 $x_B\ge0$이면 \term{기저 가능해}{basic feasible solution}라 하는데, 이것이 정확히 다면체의 꼭짓점이다. Dantzig의 \term{심플렉스 방법}{simplex method}은 꼭짓점에서 이웃한 꼭짓점으로 목적 함수가 줄어드는 쪽으로 옮겨 간다\cite{dantzig1963}. 비기저 변수 $j$의 축소 비용 $\bar c_j=c_j-c_B^{\mathsf T}B^{-1}a_j$가 음수이면 그 변수를 $0$에서 늘려 목적 함수를 줄일 수 있다. 그 변수를 기저에 들이고, 늘리다가 가장 먼저 $0$이 되는 기저 변수를 내보낸다(비율 검사). 모든 $\bar c_j\ge0$이면 $y=B^{-\mathsf T}c_B$가 쌍대 가능해이고 상보 여유가 성립하므로 \cref{thm:lp-duality}로 최적이다.
+
+들일 변수를 고르는 규칙은 여럿이다. Dantzig의 원래 규칙은 $\bar c_j$가 가장 음수인 것을 고른다. 기저 변수가 $0$인 퇴화한 꼭짓점에서는 피벗해도 목적 함수가 줄지 않아 같은 기저들을 끝없이 돌 수 있는데, Bland는 들일 변수와 내보낼 변수 모두 번호가 가장 작은 것을 고르면 순환하지 않음을 보였다\cite{bland1977}. 기저가 유한하므로 그러면 방법은 유한 번에 끝난다.
+
+심플렉스 방법은 실제로는 대개 $m$의 몇 배 정도의 피벗으로 끝나지만, 최악의 경우는 지수적이다. Klee와 Minty는 1972년에 $n$차원 입방체를 찌그러뜨린 문제
+\[
+\max\sum_{j=1}^n2^{n-j}x_j\quad\text{조건: }2\sum_{j<i}2^{i-j}x_j+x_i\le5^i\ (i=1,\dots,n),\quad x\ge0
+\]
+에서 Dantzig의 규칙이 입방체의 꼭짓점 $2^n$개를 모두 지나는 것을 보였다\cite{klee1972}. 유리수로 정확히 계산해 보면 $n=2,\dots,10$에서 피벗 수가 정확히 $3,7,15,\dots,1023=2^n-1$이다. Bland의 규칙도 이 문제에서는 $3,5,9,15,25,41,67,109,177$로, 대략 $\varphi\approx1.62$배씩 늘어 역시 지수적이다.
+
+\subsection{내부점법}
+
+Karmarkar는 1984년에 다항 시간이면서 실제로도 빠른 \term{내부점법}{interior-point method}을 내놓았다\cite{karmarkar1984}. 오늘날 표준은 원-쌍대 내부점법이다\cite{wright1997pdipm}. \cref{thm:lp-duality}의 최적성 조건
+\[
+Ax=b,\qquad A^{\mathsf T}y+s=c,\qquad x_is_i=0,\qquad x,s\ge0
+\]
+에서 상보 조건을 $x_is_i=\tau$로 늦춘 계는 $\tau>0$마다 유일한 해 $(x(\tau),y(\tau),s(\tau))$를 가지며(원 문제와 쌍대 문제에 모두 $x>0$, $s>0$인 가능해가 있고 $A$의 행이 일차 독립일 때), $\tau\downarrow0$에 따라 이 해들이 그리는 곡선을 \term{중심 경로}{central path}라 한다. 내부점법은 $x,s>0$을 지키며 이 비선형 방정식계에 34장의 Newton 방법을 한 걸음씩 쓰고, 걸음마다 $\tau$를 줄인다. 이론적으로는 $O(\sqrt n\log(1/\epsilon))$번의 반복으로 정확도 $\epsilon$에 이르고, Mehrotra의 예측--교정 방법\cite{mehrotra1992}을 쓰면 실제로는 문제의 크기와 거의 상관없이 수십 번이면 된다. 반복마다 $m\times m$ 행렬 $AD A^{\mathsf T}$($D$는 대각)의 Cholesky 분해가 하나 드는 것이 비용이다.
+
+무작위로 만든 $m\times n$ 문제를 HiGHS(scipy 1.18.1의 \code{linprog})로 풀면 $(m,n)=(50,100)$, $(200,400)$, $(1000,2000)$에서 내부점법의 반복이 $12$, $16$, $21$번이고 쌍대 심플렉스의 피벗이 $68$, $348$, $2{,}627$번이다. 내부점법의 반복은 비싸지만 수가 거의 늘지 않는다. 66장의 분위 회귀는 선형계획이며, stardust는 그것을 Portnoy와 Koenker의 Frisch--Newton 내부점법으로 풀고\cite{portnoy1997} 마지막에 정확한 꼭짓점 해를 찾는다.
+
+\section{상자 제약 최소제곱}
+\label{sec:bounded-lsq}
+
+\subsection{음이 아닌 최소제곱}
+
+통계에서 자주 만나는 제약 문제는 선형 최소제곱에 부호나 범위의 제약을 단 것이다. 농도, 강도, 혼합 비율이 그렇다.
+\[
+\min_x\frac12\|Ax-b\|^2\quad\text{조건: }x\ge0
+\]
+을 \term{음이 아닌 최소제곱}{nonnegative least squares, NNLS}이라 한다. 목적 함수가 볼록이고 제약이 일차식이므로 \cref{thm:kkt-linear}의 조건이 최적의 필요충분조건이다(볼록 문제에서는 KKT 점이 전역 최소이다). $w=A^{\mathsf T}(b-Ax)$, 곧 음의 기울기로 쓰면 조건은
+\[
+x\ge0,\qquad w\le0,\qquad x_iw_i=0
+\]
+이다. 양수인 성분에서는 기울기가 $0$이고, $0$인 성분에서는 기울기가 그 성분을 늘리는 쪽으로 내리막이 아니다.
+
+Lawson과 Hanson의 알고리즘\cite{lawson1995}은 양수일 수 있는 변수의 집합 $P$(수동 집합)를 키워 가는 활성 집합 방법이다(\cref{alg:nnls}). 처음에는 $P=\varnothing$, $x=0$이다. $P$ 밖에서 $w_j$가 가장 큰 변수가 양수이면 그것을 $P$에 들이고, $P$의 열만으로 제약 없는 최소제곱 $z$를 푼다. $z$가 $P$에서 모두 양수이면 $x=z$로 받아들인다. 아니면 $x$에서 $z$ 쪽으로, 처음 $0$에 닿는 변수가 생길 때까지만 가고 그 변수를 $P$에서 뺀 뒤 다시 푼다.
+
+\begin{algorithm}[t]
+\begin{algorithmic}[1]
+\Require 행렬 $A$, 벡터 $b$
+\Ensure $\min\|Ax-b\|$, $x\ge0$의 해
+\State $P\gets\varnothing$, $x\gets0$, $w\gets A^{\mathsf T}b$
+\While{$P$ 밖에 $w_j>0$인 $j$가 있다}
+  \State $j\gets\arg\max_{j\notin P}w_j$, $P\gets P\cup\{j\}$
+  \Loop
+    \State $z_P\gets\arg\min\|A_Pz_P-b\|$, $z_j\gets0$ ($j\notin P$) \Comment{제약 없는 최소제곱}
+    \If{모든 $i\in P$에서 $z_i>0$} \State \textbf{break} \EndIf
+    \State $\alpha\gets\min_{i\in P,\,z_i\le0}x_i/(x_i-z_i)$, $x\gets x+\alpha(z-x)$
+    \State $x_i=0$인 $i$를 $P$에서 뺀다
+  \EndLoop
+  \State $x\gets z$, $w\gets A^{\mathsf T}(b-Ax)$
+\EndWhile
+\end{algorithmic}
+\caption{Lawson--Hanson의 NNLS}
+\label{alg:nnls}
+\end{algorithm}
+
+바깥 반복마다 목적 함수가 엄격히 줄고 그때의 $x$는 수동 집합 $P$에 대한 제약 없는 최소제곱의 해이므로, 같은 $P$가 두 번 나올 수 없다. $P$의 경우의 수가 유한하므로 알고리즘은 유한 번에 끝나고, 끝날 때는 KKT 조건이 성립한다. 실제 반복 수는 대개 $n$ 안팎이다. 무작위 $20\times10$ 문제에서 제약 없는 최소제곱 해의 음수 성분은 $6$개이고, NNLS의 해는 양수 성분이 $5$개이다. 그 해에서 $w$는 양수 성분에서 크기가 $2.9\times10^{-15}$ 이하이고 $0$인 성분에서 가장 큰 값이 $-1.69$이므로 KKT 조건이 반올림 수준으로 성립한다. 제약 없는 해의 음수를 $0$으로 자른 것과 NNLS의 해는 일반적으로 다르다는 데 주의하자. 성분 하나를 $0$으로 묶으면 나머지 성분의 최적값이 바뀐다.
+
+\subsection{상하한과 BVLS}
+
+제약을 $l\le x\le u$로 넓힌 문제를 Stark와 Parker의 \term{BVLS}{bounded-variable least squares}가 같은 생각으로 푼다\cite{stark1995}. 변수는 자유, 아래 경계에 묶임, 위 경계에 묶임의 세 상태 가운데 하나이고, 묶인 변수의 기울기가 경계 안쪽을 가리키면 풀어 주고, 자유 변수의 최소제곱 해가 경계를 넘으면 그 경계로 묶는다. 47장의 반사 신뢰 영역 방법도 이 문제에 쓸 수 있다. 위의 $20\times10$ 문제에 $-0.2\le x\le0.2$를 주면 BVLS는 $5$번, 반사 신뢰 영역은 $11$번 반복해 같은 최솟값 $4.3763$에 이르고, 네 변수가 경계에 묶인다. 활성 집합 방법은 변수가 수백 개 이하일 때 빠르고 정확한 해를 주며, 반사 신뢰 영역은 큰 희소 문제로 넓힐 수 있다.
+
+\begin{instardust}[\code{docs/design/optimize.md} §1.1, §3.4]
+stardust의 \code{sd.optimize}에는 선형계획(\code{linprog})과 일반 제약 최적화(SLSQP, \code{trust-constr})가 아직 없고(설계 문서는 이것들을 나중에 따로 정하기로 미루었다), 제약은 상자 제약만 다룬다. 상자 제약 최소제곱은 \code{lsq\_linear}(\code{'trf'}와 \code{'bvls'})과 \code{nnls}이다(\code{csrc/optimize/linear.cpp}). \code{lsq\_linear}은 scipy처럼 먼저 LAPACK \code{gelsd}로 제약 없는 해를 구해, 그것이 경계 안이면 반복 없이 끝낸다. \code{'bvls'}가 돌려주는 $x$는 언제나 경계 안이도록, 경계에 묶인 변수는 정확히 경계 값으로 두고 반올림만큼 넘은 값은 자른다. \code{nnls}는 scipy 1.18.1의 C 판 Lawson--Hanson을 옮겼는데, 짧은 내적에서 Accelerate를 부르는 비용이 시간을 지배해 쌍대 값의 내적과 열 하나의 Householder 반사를 누산기 네 개의 고리로 바꾸었다. 그래서 $x$는 $0$인 자리가 scipy와 같고 나머지는 끝자리가 다르다. 설계 문서는 그 차이가 남은 열의 조건수에 비례해 조건이 좋은 문제에서 $9$ ULP, 열이 비슷한 지수 함수 적합에서 $652$ ULP까지라고 적는다. 합의 순서는 길이로만 정해지므로 실행마다, 스레드 수와 무관하게 같다.
+\end{instardust}
+
+\section{맺음}
+
+제약 최적화의 이론은 Farkas 보조정리 하나에서 자란다. 그것이 KKT 조건을 주고, 승수는 쌍대 문제의 변수가 되며, 쌍대 문제는 원래 문제의 하한과 최적성의 증명서를 준다. 선형계획에서는 이 그림이 완전해서 원래 문제와 쌍대 문제의 최적값이 같고, 상보 여유 조건이 두 문제의 최적해를 잇는다. 심플렉스 방법은 꼭짓점을 따라 이 조건을 찾고, 내부점법은 중심 경로를 따라 다가간다. 최악의 경우 하나는 지수적이고 다른 하나는 다항적이지만, 실제로는 둘 다 쓰인다. 통계에서 가장 자주 만나는 제약은 상자 제약이고, NNLS와 BVLS의 활성 집합 방법은 KKT 조건을 하나씩 맞추어 가는 가장 직접적인 알고리즘이다. 이것으로 최적화의 부를 마치고, 다음 부에서는 확률과 통계적 추론으로 넘어간다.
+
+볼록 최적화와 쌍대성은 Boyd와 Vandenberghe의 책\cite{boyd2004convex}, 제약 최적화의 알고리즘은 Nocedal과 Wright의 책\cite{nocedal2006} 12--19장, 내부점법은 Wright의 책\cite{wright1997pdipm}이 자세하다.
+
+\chapterreferences
