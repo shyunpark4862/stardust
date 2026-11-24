@@ -96,7 +96,22 @@ A=\begin{pmatrix}A_{n-1}&c\\r^{\mathsf T}&\alpha\end{pmatrix}
 유일성: $L_1U_1=L_2U_2$이면 $L_2^{-1}L_1=U_2U_1^{-1}$이다. 왼쪽은 단위 하삼각이고 오른쪽은 상삼각이므로 둘 다 대각이어야 하며, 왼쪽의 대각이 모두 $1$이므로 단위행렬이다.
 \end{proof}
 
-이 정리는 피벗 없이 소거할 수 있는 행렬을 정확히 가려내지만 계산에는 쓸모가 적다. $A_k$가 정칙이어도 거의 특이하면 피벗이 작아지고, 다음 절에서 보듯 작은 피벗은 반올림 오차를 크게 키운다. 정칙이 아닌 $A$나 $m\ne n$인 직사각 행렬에도 소거는 그대로 할 수 있다. $m\times n$ 행렬을 $p=\min(m,n)$번 소거하면 $m\times p$ 단위 하사다리꼴 $L$과 $p\times n$ 상사다리꼴 $U$가 나오고, 피벗이 $0$인 단계에서는 그 열을 건너뛰면($\ell_k=0$) 분해는 여전히 존재한다. 이때 $U$의 대각에 $0$이 나타난다. stardust의 \code{lu}가 특이 행렬에도 에러를 내지 않는 것이 이 사실에 기대고 있다(\cref{sec:lu-stardust-family}).
+이 정리는 피벗 없이 소거할 수 있는 행렬을 정확히 가려내지만 계산에는 쓸모가 적다. $A_k$가 정칙이어도 거의 특이하면 피벗이 작아지고, 다음 절에서 보듯 작은 피벗은 반올림 오차를 크게 키운다. 정칙이 아닌 $A$나 $m\ne n$인 직사각 행렬은 피벗과 함께 다루는 것이 자연스럽다. 피벗 없이는 $\begin{pmatrix}0&1\\1&0\end{pmatrix}$처럼 정칙인 행렬조차 LU를 갖지 않지만, 부분 피벗을 쓰면 모든 행렬이 분해를 갖고(\cref{thm:lu-rectangular}) 특이성의 흔적은 $U$의 대각에 $0$으로 남는다. stardust의 \code{lu}가 특이 행렬에도 에러를 내지 않는 것이 이 사실에 기대고 있다(\cref{sec:lu-stardust-family}).
+
+\subsection{Rectangular and Singular Matrices}
+
+stardust의 \code{lu}는 직사각 행렬과 특이 행렬도 받는다. 그 근거가 되는 정리를 적어 둔다.
+
+\begin{theorem}
+\label{thm:lu-rectangular}
+모든 $A\in\mathbb C^{m\times n}$와 $p=\min(m,n)$에 대해 부분 피벗 소거는 $PA=LU$를 준다. $P$는 $m\times m$ 순열 행렬, $L$은 대각이 $1$이고 $|\ell_{ij}|\le1$인 $m\times p$ 하사다리꼴, $U$는 $p\times n$ 상사다리꼴이다.
+\end{theorem}
+
+\begin{proof}
+\cref{thm:lu-partial-pivoting}의 증명을 그대로 따라가되 $k=1,\dots,p$까지만 소거한다. $k$번째 단계에서 $k$열의 대각과 그 아래가 모두 $0$이면 교환 없이 $M_k=I$로 둔다. 그 증명의 순열 넘기기는 정사각성을 쓰지 않았으므로 $\tilde M_p\cdots\tilde M_1PA=\tilde U$이고 $\tilde U$는 $m\times n$ 행렬로서 $j\le p$인 열 $j$의 대각 아래가 $0$이다. $m>n$이면 $\tilde U$의 $n$행 아래가 모두 $0$이고, $m\le n$이면 $p=m$이라 $\tilde U$ 자체가 상사다리꼴이다. $\hat L=\tilde M_1^{-1}\cdots\tilde M_p^{-1}$은 $m\times m$ 단위 하삼각이고 $p+1$열부터는 단위 벡터 $e_j$이다. $PA=\hat L\tilde U$에서 $\tilde U$의 $p$행 아래가 $0$이므로 $\hat L$의 $p+1$열부터는 곱에 기여하지 않는다. $L=\hat L_{:,1:p}$, $U=\tilde U_{1:p,:}$로 두면 된다.
+\end{proof}
+
+특이 행렬의 분해는 유일하지 않다. $A=0$이면 어떤 단위 하삼각 $L$을 골라도 $U=0$으로 $A=LU$이고, 부분 피벗은 그 가운데 하나($L=I$)를 고를 뿐이다. 정칙인 $A$에서도 피벗의 동점을 깨는 규칙이 다르면 $P$가 달라진다. 그래서 stardust의 시험은 \code{lu}의 인수를 다른 라이브러리의 인수와 직접 견주지 않고 재구성 잔차 $\|A_{\mathit{perm},:}-LU\|_\infty/(n\epsilon\|A\|_\infty)$로 본다(\cref{sec:lu-testing}).
 
 \section{Pivoting and Growth}
 \label{sec:lu-pivoting}
@@ -107,7 +122,7 @@ A=\begin{pmatrix}A_{n-1}&c\\r^{\mathsf T}&\alpha\end{pmatrix}
 \[
 A=\begin{pmatrix}\epsilon&1\\1&1\end{pmatrix},\qquad b=\begin{pmatrix}1\\2\end{pmatrix}
 \]
-의 해는 $x_1=1/(1-\epsilon)$, $x_2=(1-2\epsilon)/(1-\epsilon)$로 둘 다 $1$에 매우 가깝다. 피벗 없이 소거하면 승수는 $\ell_{21}=10^{20}$이고 $u_{22}=1-10^{20}$은 binary64에서 $-10^{20}$으로 반올림된다. 뒤로 대입하면 $\hat x_2=\mathrm{fl}((2-10^{20})/(1-10^{20}))=1$은 맞지만 $\hat x_1=\mathrm{fl}((1-\hat x_2)/\epsilon)=0$이다. 오차는 $100\%$이다. 잃어버린 것은 $u_{22}$를 만들 때 $a_{22}=1$이 $10^{20}$에 묻혀 사라진 정보이다. 계산된 $\hat L\hat U$는 $\begin{pmatrix}\epsilon&1\\1&0\end{pmatrix}$이어서 $A$와 $(2,2)$ 원소가 $1$만큼 다르다. 이 차이는 $A$의 원소 크기만큼 크다. 반면 두 행을 바꾸고 소거하면 승수가 $\epsilon$이고 $u_{22}=1-\epsilon$이 정확하게 남아 $\hat x$가 해와 반올림 수준에서 같다.
+의 해는 $x_1=1/(1-\epsilon)$, $x_2=(1-2\epsilon)/(1-\epsilon)$로 둘 다 $1$에 매우 가깝다. 피벗 없이 소거하면 승수는 $\ell_{21}=10^{20}$이고 $u_{22}=1-10^{20}$은 binary64에서 $-10^{20}$으로 반올림된다. 뒤로 대입하면 $\hat x_2=\mathrm{fl}((2-10^{20})/(1-10^{20}))=1$은 맞지만 $\hat x_1=\mathrm{fl}((1-\hat x_2)/\epsilon)=0$이다. 오차는 $100\%$이다. 잃어버린 것은 $u_{22}$를 만들 때 $a_{22}=1$이 $10^{20}$에 묻혀 사라진 정보이다. 계산된 $\hat L\hat U$는 $\begin{pmatrix}\epsilon&1\\1&0\end{pmatrix}$이어서 $A$와 $(2,2)$ 원소가 $1$만큼 다르다. 이 차이는 $A$의 원소 크기만큼 크다. 반면 두 행을 바꾸고 소거하면 승수가 $\epsilon$이고 $u_{22}=\mathrm{fl}(1-\epsilon)=1$이 된다. 반올림으로 잃은 것은 $a_{22}$에 대한 상대 크기 $10^{-20}$의 섭동뿐이어서 $\hat x_2=1$, $\hat x_1=\mathrm{fl}(2-\hat x_2)=1$이 해와 반올림 수준에서 같다.
 
 \subsection{Partial Pivoting}
 
@@ -160,19 +175,19 @@ W_n=\begin{pmatrix}
 $|\ell_{ik}|\le1$이므로 $|a^{(k+1)}_{ij}|=|a^{(k)}_{ij}-\ell_{ik}a^{(k)}_{kj}|\le2\max|a^{(k)}|$이고, $n-1$번의 단계에서 최댓값이 매 단계 많아야 두 배가 된다. $W_n$에서는 $k$번째 단계에 $k$열의 대각 아래가 모두 $-1$이고 피벗이 $1$이다. 절댓값이 같은 후보 가운데 처음 것을 고르는 규칙(LAPACK의 \code{idamax})에서는 교환이 일어나지 않는다. 승수는 모두 $-1$이고 앞의 $n-1$열의 대각 아래가 $0$이 되는 동안 대각은 $1$로 남는다. 마지막 열은 $k$번째 단계에 대각 아래의 원소들이 모두 $a_{kn}^{(k)}$를 더해 받는다. 처음에 모두 $1$이므로 $k$번째 단계 뒤에 $a^{(k)}_{in}=2^{k}$($i>k$)이고 결국 $u_{nn}=2^{n-1}$이다.
 \end{proof}
 
-$n=64$이면 $2^{63}\approx9.2\times10^{18}$이고 binary64의 정밀도를 모두 잃는다. 그런데 실제 계산에서 이런 성장은 거의 보이지 않는다. \cref{fig:lu-growth}는 표준 정규 원소의 무작위 행렬에서 잰 성장이다. 소거 중 가장 큰 원소를 원소의 표준편차 $\sigma$로 나누면 중앙값이 $0.85\,n^{2/3}$ 곁에 놓인다(로그 축에서 맞춘 기울기는 $0.69$). Trefethen과 Schreiber가 관찰한 $n^{2/3}$ 법칙이다\cite{trefethen1990average}. 분모를 $\max|a_{ij}|$로 바꾼 $\rho_n$은 기울기가 $0.56$으로 조금 작은데, 정규 표본 $n^2$개의 최댓값이 $\sqrt{4\ln n}$처럼 자라 분모를 키우기 때문이다. 지수적 성장이 실제 응용에서 나타난 예(두 점 경계값 문제의 다중 사격법, Wright\cite{wright1993})가 있지만 드물고, 그 드묾을 설명하는 완결된 이론은 아직 없다. 이 간극이 부분 피벗이 ``이론상 불안정하지만 실제로는 안정한'' 알고리즘으로 불리는 까닭이다.
+$n=64$이면 $2^{63}\approx9.2\times10^{18}$이고 binary64의 정밀도를 모두 잃는다. 그런데 실제 계산에서 이런 성장은 거의 보이지 않는다. \cref{fig:lu-growth}는 표준 정규 원소의 무작위 행렬에서 잰 성장이다. 소거 중 가장 큰 원소를 원소의 표준편차 $\sigma$로 나누면 중앙값이 $0.94\,n^{2/3}$ 곁에 놓인다(지수를 $2/3$으로 두고 맞춘 계수이며 지수까지 맞추면 기울기는 $0.69$이다). Trefethen과 Schreiber가 관찰한 $n^{2/3}$ 법칙이다\cite{trefethen1990average}. 분모를 $\max|a_{ij}|$로 바꾼 $\rho_n$은 기울기가 $0.56$으로 조금 작은데, 정규 표본 $n^2$개의 최댓값이 $\sqrt{4\ln n}$처럼 자라 분모를 키우기 때문이다. 지수적 성장이 실제 응용에서 나타난 예(두 점 경계값 문제의 다중 사격법, Wright\cite{wright1993})가 있지만 드물다. 이 간극이 부분 피벗이 ``이론상 불안정하지만 실제로는 안정한'' 알고리즘으로 불리는 까닭이다. 이론은 최근에야 이 관찰을 따라잡기 시작했다. Sankar, Spielman, Teng은 임의의 행렬에 작은 무작위 섭동을 더하면 피벗 없는 소거의 성장 인자가 클 확률이 작다는 것을 보였고\cite{sankar2006smoothed}, Huang과 Tikhomirov는 표준 정규 원소의 행렬에서 부분 피벗의 성장 인자가 확률이 $1$에 가까운 사건에서 $n$의 다항식으로 묶인다는 것을 증명했다\cite{huang2024average}. 그래도 \cref{fig:lu-growth}의 $n^{2/3}$ 같은 정확한 차수는 아직 증명되지 않았다.
 
 \begin{figure}[t]
 \centering
 \begin{tikzpicture}
 \begin{loglogaxis}[width=0.86\textwidth,height=0.5\textwidth,
   xlabel={$n$},ylabel={성장},grid=major,grid style={gray!25},
-  legend pos=south east,legend style={font=\small,draw=none,fill=white,fill opacity=0.85,text opacity=1},
+  legend pos=north west,legend style={font=\small,draw=none,fill=white,fill opacity=0.85,text opacity=1},
   xmin=7,xmax=1400,ymin=1,ymax=200]
 \addplot[only marks,mark=*,mark size=1.3pt,black] table[x=n,y=sigmed]{figures/48/growth.dat};
 \addlegendentry{$\max|a^{(k)}_{ij}|/\sigma$의 중앙값}
-\addplot[domain=7:1400,samples=40,dashed,black] {0.85*x^(2/3)};
-\addlegendentry{$0.85\,n^{2/3}$}
+\addplot[domain=7:1400,samples=40,dashed,black] {0.94*x^(2/3)};
+\addlegendentry{$0.94\,n^{2/3}$}
 \addplot[only marks,mark=square*,mark size=1.2pt,black!55] table[x=n,y=median]{figures/48/growth.dat};
 \addlegendentry{$\rho_n$의 중앙값}
 \addplot[only marks,mark=triangle*,mark size=1.5pt,black!55] table[x=n,y=max]{figures/48/growth.dat};
@@ -183,13 +198,17 @@ $n=64$이면 $2^{63}\approx9.2\times10^{18}$이고 binary64의 정밀도를 모�
 \label{fig:lu-growth}
 \end{figure}
 
-부분 피벗 말고도 피벗 규칙이 있다. \term{완전 피벗}{complete pivoting}은 남은 부분행렬 전체에서 가장 큰 원소를 골라 행과 열을 함께 바꾼다. 성장 인자의 상한이 $n^{1/2+\ln n/4}$ 정도로 다항식에 가깝다는 Wilkinson의 결과가 있지만\cite{wilkinson1961error} 단계마다 $O((n-k)^2)$개의 원소를 훑어야 하므로 전체 비교 횟수가 $O(n^3)$이 되고, 그보다 나쁜 것은 블록 알고리즘으로 바꿀 수 없다는 점이다. 피벗을 고르려면 남은 행렬 전체가 최신이어야 하기 때문이다. 행과 열에서 번갈아 최대를 찾는 \term{룩 피벗}{rook pivoting}이 그 사이에 있다. LAPACK의 \code{getrf}와 그것을 부르는 stardust는 부분 피벗만 쓴다.
+부분 피벗 말고도 피벗 규칙이 있다. 완전 피벗은 남은 부분행렬 전체에서 가장 큰 원소를 골라 행과 열을 함께 바꾼다. Wilkinson은 이때 성장 인자가
+\[
+\rho_n\le\bigl(n\cdot2\cdot3^{1/2}\cdot4^{1/3}\cdots n^{1/(n-1)}\bigr)^{1/2}\sim n^{1/2+\ln n/4}
+\]
+을 넘지 않는다는 것을 보였다\cite{wilkinson1961error}. 줄거리는 이렇다. $k$번째 피벗의 절댓값을 $p_k$라 하면 완전 피벗에서는 남은 $(n-k+1)\times(n-k+1)$ Schur 보수의 모든 원소가 $p_k$ 이하이다. 그 행렬식은 남은 피벗들의 곱 $p_kp_{k+1}\cdots p_n$이므로 Hadamard 부등식으로 $p_k\cdots p_n\le(n-k+1)^{(n-k+1)/2}p_k^{\,n-k+1}$이다. 이 부등식들의 로그를 $k=1,\dots,n$에 대해 알맞은 무게로 더하면 가운데 피벗들이 사라지고 $\log(p_n/p_1)$의 상한이 남는다. 자세한 계산은 Higham의 책 9.4절에 있다\cite{higham2002accuracy}. 완전 피벗은 단계마다 $O((n-k)^2)$개의 원소를 훑어야 하므로 전체 비교 횟수가 $O(n^3)$이 되고, 그보다 나쁜 것은 블록 알고리즘으로 바꿀 수 없다는 점이다. 피벗을 고르려면 남은 행렬 전체가 최신이어야 하기 때문이다. 행과 열에서 번갈아 최대를 찾는 \term{룩 피벗}{rook pivoting}이 그 사이에 있다. LAPACK의 \code{getrf}와 그것을 부르는 stardust는 부분 피벗만 쓴다.
 
 복소 행렬에는 한 가지가 더 있다. LAPACK의 \code{izamax}는 계산을 아끼려고 $|z|$ 대신 $|\operatorname{Re}z|+|\operatorname{Im}z|$가 가장 큰 원소를 고른다. 그러면 $|\ell_{ik}|\le1$이 아니라 $|\ell_{ik}|\le\sqrt2$만 보장된다. $|z|\le|\operatorname{Re}z|+|\operatorname{Im}z|\le\sqrt2|z|$이므로
 \[
 |\ell_{ik}|=\frac{|a_{ik}|}{|a_{kk}|}\le\frac{|\operatorname{Re}a_{ik}|+|\operatorname{Im}a_{ik}|}{(|\operatorname{Re}a_{kk}|+|\operatorname{Im}a_{kk}|)/\sqrt2}\le\sqrt2
 \]
-이기 때문이다. stardust의 시험은 복소 \code{lu}의 $L$을 이 $\sqrt2$로 확인한다.
+이기 때문이다. stardust의 시험은 복소 \code{lu}의 $L$을 이 $\sqrt2$로 확인한다. 같은 이유로 복소 행렬의 성장 상한은 \cref{prop:lu-growth-bound}의 $2^{n-1}$이 아니라 $(1+\sqrt2)^{n-1}$이다.
 
 \section{Backward Error Analysis}
 \label{sec:lu-backward-error}
@@ -231,7 +250,7 @@ LU의 원소는 $u_{kj}=a_{kj}-\sum_{i<k}\ell_{ki}u_{ij}$($k\le j$)와 $\ell_{ik
 \end{theorem}
 
 \begin{proof}
-$k\le j$이면 \cref{lem:lu-recurrence}를 $c=a_{kj}$, $b_k=1$에 쓰면 $|a_{kj}-\sum_{i\le k}\hat\ell_{ki}\hat u_{ij}|\le\gamma_k\sum_{i\le k}|\hat\ell_{ki}||\hat u_{ij}|$이다($\hat\ell_{kk}=1$). $i>k$이면 $c=a_{ik}$, $b_k=\hat u_{kk}$에 써서 $|a_{ik}-\sum_{j\le k}\hat\ell_{ij}\hat u_{jk}|\le\gamma_k\sum_{j\le k}|\hat\ell_{ij}||\hat u_{jk}|$이다. 두 경우 모두 왼쪽 합은 $(\hat L\hat U)$의 해당 원소이고 오른쪽 합은 $(|\hat L||\hat U|)$의 해당 원소이며, $k\le n$이므로 $\gamma_k\le\gamma_n$이다. 부분 피벗은 소거 전에 행 순서를 정하는 것일 뿐 산술 연산을 바꾸지 않으므로 $PA$에 대해 같은 논증이 성립한다.
+$k\le j$이면 \cref{lem:lu-recurrence}를 $c=a_{kj}$, $b_k=1$에 쓰면 $|a_{kj}-\sum_{i\le k}\hat\ell_{ki}\hat u_{ij}|\le\gamma_k\sum_{i\le k}|\hat\ell_{ki}||\hat u_{ij}|$이다($\hat\ell_{kk}=1$). $i>k$이면 $c=a_{ik}$, $b_k=\hat u_{kk}$에 써서 $|a_{ik}-\sum_{j\le k}\hat\ell_{ij}\hat u_{jk}|\le\gamma_k\sum_{j\le k}|\hat\ell_{ij}||\hat u_{jk}|$이다. 두 경우 모두 왼쪽 합은 $(\hat L\hat U)$의 해당 원소이고 오른쪽 합은 $(|\hat L||\hat U|)$의 해당 원소이며, $k\le n$이므로 $\gamma_k\le\gamma_n$이다. 부분 피벗은 소거 전에 행 순서를 정하는 것일 뿐 산술 연산을 바꾸지 않으므로 $PA$에 대해 같은 논증이 성립한다. 승수를 나눗셈 대신 역수의 곱으로 구하면(\cref{sec:lu-unblocked}) 반올림이 한 번 늘어 상수가 $\gamma_{n+1}$이 된다.
 \end{proof}
 
 \subsection{The Error in the Solution}
@@ -270,25 +289,40 @@ $n^2$은 원소별 상한을 모두 같은 방향으로 더한 결과라 실제�
 \]
 는 계산할 수 있는 식을 가진다.
 
-\begin{theorem}[Rigal--Gaches]
+\begin{theorem}[Rigal--Gaches\cite{rigal1967}]
 \label{thm:lu-rigal-gaches}
-벡터의 2-노름과 그에 따른 행렬 노름에서 $r=b-A\hat x$로 두면 $\eta(\hat x)=\|r\|/(\|A\|\|\hat x\|+\|b\|)$이다.
+임의의 벡터 노름과 그에 따른 행렬 노름에서 $r=b-A\hat x$, $\hat x\ne0$으로 두면 $\eta(\hat x)=\|r\|/(\|A\|\|\hat x\|+\|b\|)$이다.
 \end{theorem}
 
 \begin{proof}
-$(A+\Delta A)\hat x=b+\Delta b$이면 $r=\Delta A\hat x-\Delta b$이므로 $\|r\|\le\epsilon(\|A\|\|\hat x\|+\|b\|)$이고 $\eta$는 적어도 오른쪽 값이다. 반대로 $\epsilon_\ast=\|r\|/(\|A\|\|\hat x\|+\|b\|)$에 대해
+$(A+\Delta A)\hat x=b+\Delta b$이면 $r=\Delta A\hat x-\Delta b$이므로 $\|r\|\le\epsilon(\|A\|\|\hat x\|+\|b\|)$이고 $\eta$는 적어도 오른쪽 값 $\epsilon_\ast$이다. 반대 방향을 위해 Hahn--Banach 정리로 $z^{\mathsf H}\hat x=\|\hat x\|$이고 쌍대 노름이 $\|z\|_D=1$인 $z$를 잡는다(2-노름이면 $z=\hat x/\|\hat x\|$). 그리고
 \[
-\Delta A=\frac{\|A\|\|\hat x\|}{\|A\|\|\hat x\|+\|b\|}\cdot\frac{r\hat x^{\mathsf H}}{\|\hat x\|^2},\qquad
+\Delta A=\frac{\|A\|\|\hat x\|}{\|A\|\|\hat x\|+\|b\|}\cdot\frac{rz^{\mathsf H}}{\|\hat x\|},\qquad
 \Delta b=-\frac{\|b\|}{\|A\|\|\hat x\|+\|b\|}\,r
 \]
-로 두면 $\Delta A\hat x-\Delta b=r$이어서 $(A+\Delta A)\hat x=b+\Delta b$이다. 계수 1인 $r\hat x^{\mathsf H}$의 2-노름은 $\|r\|\|\hat x\|$이므로 $\|\Delta A\|=\epsilon_\ast\|A\|$이고 $\|\Delta b\|=\epsilon_\ast\|b\|$이다. 그러므로 $\eta=\epsilon_\ast$이다.
+로 두면 $\Delta A\hat x-\Delta b=r$이어서 $(A+\Delta A)\hat x=b+\Delta b$이다. 랭크 1 행렬 $rz^{\mathsf H}$의 노름은 $\|r\|\|z\|_D=\|r\|$이므로 $\|\Delta A\|=\epsilon_\ast\|A\|$이고 $\|\Delta b\|=\epsilon_\ast\|b\|$이다. 그러므로 $\eta=\epsilon_\ast$이다.
+\end{proof}
+
+노름 대신 원소별로 섭동을 재면 성분마다 크기가 다른 행렬에서 더 날카로운 척도가 된다.
+
+\begin{theorem}[Oettli--Prager\cite{oettli1964}]
+\label{thm:lu-oettli-prager}
+음이 아닌 행렬 $E$와 벡터 $f$에 대해 $\omega(\hat x)=\min\{\epsilon:(A+\Delta A)\hat x=b+\Delta b,\ |\Delta A|\le\epsilon E,\ |\Delta b|\le\epsilon f\}$로 두고 $r=b-A\hat x$라 하면
+\[
+\omega(\hat x)=\max_i\frac{|r_i|}{(E|\hat x|+f)_i}
+\]
+이다($0/0=0$으로 본다). $E=|A|$, $f=|b|$이면 이것이 원소별 후진 오차이다.
+\end{theorem}
+
+\begin{proof}
+$(A+\Delta A)\hat x=b+\Delta b$이면 $r=\Delta A\hat x-\Delta b$이므로 $|r|\le\epsilon(E|\hat x|+f)$이고 $\omega$는 적어도 오른쪽 값 $\omega_\ast$이다. 반대로 $D_1=\operatorname{diag}(r_i/(E|\hat x|+f)_i)$, $D_2=\operatorname{diag}(\overline{\operatorname{sgn}\hat x_j})$($\operatorname{sgn}z=z/|z|$, $\operatorname{sgn}0=0$)로 두고 $\Delta A=D_1ED_2$, $\Delta b=-D_1f$로 놓는다. $ED_2\hat x=E|\hat x|$이므로 $\Delta A\hat x-\Delta b=D_1(E|\hat x|+f)=r$이고, $|D_1|\le\omega_\ast I$, $|D_2|\le I$에서 $|\Delta A|\le\omega_\ast E$, $|\Delta b|\le\omega_\ast f$이다.
 \end{proof}
 
 후진 오차가 작다고 해서 해가 정확한 것은 아니다. $(A+\Delta A)\hat x=b$이면 $\hat x-x=-A^{-1}\Delta A\hat x$이므로
 \[
 \frac{\|\hat x-x\|}{\|\hat x\|}\le\|A^{-1}\|\|\Delta A\|=\kappa(A)\frac{\|\Delta A\|}{\|A\|},\qquad\kappa(A)=\|A\|\|A^{-1}\|
 \]
-이다. 오른쪽의 $\hat x$를 $x$로 바꾼 꼴은 $\kappa\|\Delta A\|/\|A\|<1$일 때 분모에 $1-\kappa\|\Delta A\|/\|A\|$가 붙는다. 후진 안정한 알고리즘의 전진 오차는 조건수에 비례한다는 이 관계가 \cref{fig:lu-forward}에 그대로 나타난다. 후진 오차는 조건수와 상관없이 $u$ 근처에 머물고 전진 오차는 $\kappa(A)u$를 따라 오른다.
+이다. 왼쪽 분모의 $\|\hat x\|$를 $\|x\|$로 바꾼 꼴은 $\kappa\|\Delta A\|/\|A\|<1$일 때 분모에 $1-\kappa\|\Delta A\|/\|A\|$가 붙는다. 후진 안정한 알고리즘의 전진 오차는 조건수에 비례한다는 이 관계가 \cref{fig:lu-forward}에 그대로 나타난다. 후진 오차는 조건수와 상관없이 $u$ 근처에 머물고 전진 오차는 $\kappa(A)u$를 따라 오른다.
 
 \begin{figure}[t]
 \centering
@@ -311,8 +345,8 @@ $(A+\Delta A)\hat x=b+\Delta b$이면 $r=\Delta A\hat x-\Delta b$이므로 $\|r\
 
 \subsection{Iterative Refinement}
 
-후진 오차가 이미 작다면 해를 더 정확하게 만드는 길은 조건수를 피하는 것밖에 없다. \term{반복 개선}{iterative refinement}은 이미 있는 LU 인수를 다시 써서 그것을 한다. 잔차 $r_i=b-Ax_i$를 구하고 $Ad_i=r_i$를 같은 인수로 풀어 $x_{i+1}=x_i+d_i$로 고친다. 계산한 $d_i$가 $(A+\Delta A_i)\hat d_i=r_i$를 만족한다고 하면
+\term{반복 개선}{iterative refinement}은 이미 있는 LU 인수를 다시 써서 해를 고친다. Wilkinson이 처음 쓴 꼴은 잔차를 작업 정밀도보다 높은 정밀도로 구해 전진 오차를 줄이는 것이었고, 잔차를 작업 정밀도로 구하면 전진 오차는 조건수의 벽을 넘지 못하지만 원소별 후진 오차가 줄어든다. 잔차 $r_i=b-Ax_i$를 구하고 $Ad_i=r_i$를 같은 인수로 풀어 $x_{i+1}=x_i+d_i$로 고친다. 계산한 $d_i$가 $(A+\Delta A_i)\hat d_i=r_i$를 만족한다고 하면
 \[
 x_{i+1}-x=x_i-x+(A+\Delta A_i)^{-1}A(x-x_i)=(A+\Delta A_i)^{-1}\Delta A_i\,(x_i-x)
 \]
-이다. 그러므로 잔차를 정확히 구한다면 오차는 한 번에 $\|A^{-1}\Delta A_i\|\lesssim\kappa(A)n^2\rho_n\gamma_{3n}$배로 줄어들고, 이 값이 $1$보다 충분히 작으면 몇 번 만에 수렴한다. 실제로 잔차를 작업 정밀도로 구하면 잔차의 반올림 오차가 한계를 정한다. 그래도 Skeel은 한 번의 개선만으로 원소별 후진 오차 $\omega(\hat x)=\min\{\epsilon:(A+\Delta A)\hat x=b+\Delta b,\ |\Delta A|\le\epsilon|A|,\ |\Delta b|\le\epsilon|b|\}$가 $O(u)$가 된다는 것을 보였다\cite{skeel1980refinement}. 증명의 줄거리는 이렇다. (i) 작업 정밀도로 구한 잔차는 $\hat r_0=r_0+\Delta r$, $|\Delta r|\le\gamma_{n+1}(|A||x_0|+|b|)$를 만족한다(\cref{lem:lu-recurrence}를 내적 하나에 쓴 것). (ii) 보정은 $(A+\Delta A)\hat d=\hat r_0$이고 $|\Delta A|\le\gamma_{3n}|\hat L||\hat U|$이다. (iii) 새 잔차는 $r_1=b-A(x_0+\hat d)=\hat r_0-\Delta r-A\hat d=\Delta A\,\hat d-\Delta r$이다. (iv) 보정 $\hat d$ 자체가 이미 처음 해의 오차만큼만 작으므로 $\Delta A\,\hat d$는 $u$의 제곱 크기이고, $|\hat L||\hat U|$와 $|A|$의 비와 $A^{-1}$의 원소별 조건수가 적당히 작다는 가정 아래 무시된다. 그러면 $|r_1|\lesssim|\Delta r|\le\gamma_{n+1}(|A||x_1|+|b|)$가 남고, 원소별 후진 오차의 Oettli--Prager 공식 $\omega(x)=\max_i|r_i|/(|A||x|+|b|)_i$로 $\omega(x_1)=O(u)$이다. (iv)의 가정을 정확히 적고 확인하는 일이 증명의 대부분이며, Higham의 책 12.2절이 이 논증을 처음부터 끝까지 따라간다\cite{higham2002accuracy}. 위 식이 보여 주는 핵심은 개선의 효과가 인수의 후진 오차 $\Delta A_i$를 한 번 더 곱해 줄이는 데서 온다는 것이다. LAPACK은 이것을 \code{gerfs}로 제공하지만 stardust의 \code{solve}는 개선을 하지 않는다. numpy와 scipy의 \code{solve}도 하지 않으므로 결과의 정밀도는 같은 수준이고, 개선이 필요한 사용자는 \code{lu}와 \code{lu\_solve}로 위의 반복을 직접 짤 수 있다.
+이다. 그러므로 잔차를 정확히 구한다면 오차는 한 번에 $\|A^{-1}\Delta A_i\|\lesssim\kappa(A)n^2\rho_n\gamma_{3n}$배로 줄어들고, 이 값이 $1$보다 충분히 작으면 몇 번 만에 수렴한다. 실제로 잔차를 작업 정밀도로 구하면 잔차의 반올림 오차가 한계를 정한다. 그래도 Skeel은 한 번의 개선만으로 원소별 후진 오차 $\omega(\hat x)=\min\{\epsilon:(A+\Delta A)\hat x=b+\Delta b,\ |\Delta A|\le\epsilon|A|,\ |\Delta b|\le\epsilon|b|\}$가 $O(u)$가 된다는 것을 보였다\cite{skeel1980refinement}. 증명의 줄거리는 이렇다. (i) 작업 정밀도로 구한 잔차는 $\hat r_0=r_0+\Delta r$, $|\Delta r|\le\gamma_{n+1}(|A||x_0|+|b|)$를 만족한다(\cref{lem:lu-recurrence}를 내적 하나에 쓴 것). (ii) 보정은 $(A+\Delta A)\hat d=\hat r_0$이고 $|\Delta A|\le\gamma_{3n}|\hat L||\hat U|$이다. (iii) 갱신도 반올림되므로 $x_1=\mathrm{fl}(x_0+\hat d)=x_0+\hat d+\delta x$, $|\delta x|\le u|x_1|$로 두면 새 잔차는 $r_1=b-Ax_1=\hat r_0-\Delta r-A\hat d-A\,\delta x=\Delta A\,\hat d-\Delta r-A\,\delta x$이다. (iv) 보정 $\hat d$ 자체가 처음 해의 오차만큼 작으므로 $\Delta A\,\hat d$는 $u$의 제곱 크기이다. 이 항을 $\Delta r$에 견주어 무시하려면 $\Delta A$의 척도 $|\hat L||\hat U|$가 $|A|$보다 너무 크지 않고(성장이 작고) $\operatorname{cond}(A^{-1})\,\sigma(A,x)\,u$가 충분히 작아야 한다. 여기서 $\operatorname{cond}(A^{-1})=\|\,|A||A^{-1}|\,\|_\infty$이고 $\sigma(A,x)=\max_i(|A||x|)_i/\min_i(|A||x|)_i$는 $|A||x|$의 성분들이 얼마나 고르지 않은지를 잰다. 그러면 $|r_1|\lesssim|\Delta r|+u|A||x_1|\lesssim\gamma_{n+2}(|A||x_1|+|b|)$가 남고(마지막 부등식은 $\Delta r$의 상한에 있는 $|x_0|$를 $|x_1|$로 바꾼 근사이다), 원소별 후진 오차의 Oettli--Prager 공식 $\omega(x)=\max_i|r_i|/(|A||x|+|b|)_i$로 $\omega(x_1)=O(u)$이다. (iv)의 가정을 정확한 부등식으로 적고 확인하는 일이 증명의 대부분이며, Higham의 책 12.2절(정리 12.3)이 이 논증을 처음부터 끝까지 따라간다\cite{higham2002accuracy}. 위 식이 보여 주는 핵심은 개선의 효과가 인수의 후진 오차 $\Delta A_i$를 한 번 더 곱해 줄이는 데서 온다는 것이다. LAPACK은 이것을 \code{gerfs}로 제공하지만 stardust의 \code{solve}는 개선을 하지 않는다. numpy와 scipy의 \code{solve}도 하지 않으므로 결과의 정밀도는 같은 수준이고, 개선이 필요한 사용자는 \code{lu}와 \code{lu\_solve}로 위의 반복을 직접 짤 수 있다.
