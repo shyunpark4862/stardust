@@ -306,7 +306,7 @@
   \let\@fs@iftopcapt\iffalse}
 \newcommand\sd@algcapt[2]{{\small\textbf{#1}\quad #2\par}}
 \floatstyle{sdruled}
-\newfloat{algorithm}{tbp}{loa}[chapter]
+\newfloat{algorithm}{htbp}{loa}[chapter]
 \floatname{algorithm}{\algorithmname}
 \renewcommand\thealgorithm{\thechapter.\arabic{algorithm}}
 \newcommand\listofalgorithms{\listof{algorithm}{알고리즘 차례}}
@@ -349,9 +349,13 @@
     legend style={font=\scriptsize, draw=black, line width=0.4pt,
       fill=white, inner sep=2pt, row sep=-1pt},
     legend cell align=left,
+    % 범례는 패널 밖 오른쪽, 왼쪽 정렬 (2026-11-25 사용자 지시)
+    legend pos=outer north east,
+    % 세로축 이름은 눕히지 않고 축 위 왼쪽에 가로로 (한글이 옆으로 눕지 않게)
+    every axis y label/.style={at={(axis description cs:0,1)},anchor=south west,yshift=3pt,rotate=0},
     cycle list name=sdbw,
     mark size=1.6pt,
-    width=0.85\textwidth, height=0.55\textwidth},
+    width=0.6\textwidth, height=0.42\textwidth},
   % 도해: 축만, 화살표, 격자 없음
   sddiagram/.style={
     axis lines=middle, axis line style={-{Latex[length=1.6mm]}, line width=0.4pt},
@@ -359,6 +363,9 @@
     ylabel style={anchor=south, font=\scriptsize},
     every tick label/.append style={font=\scriptsize},
     tick style={black}, cycle list name=sdbw}}
+% 그림·표의 기본 위치: 그 자리를 먼저 시도한다 (2026-11-25 사용자 지시)
+\def\fps@figure{htbp}
+\def\fps@table{htbp}
 % 회색 칠: 넓이·영역
 \colorlet{sdfill}{black!12}
 

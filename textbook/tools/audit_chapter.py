@@ -59,6 +59,18 @@ def audit(path):
         if not m.group(2).strip():
             fails.append(f'\\term{{{m.group(1)}}}의 영어가 비었다')
 
+    # 인라인 행렬 (별행으로)
+    for m in re.finditer(r'(?<![\\$])\$([^$]+)\$', body):
+        if re.search(r'\\begin\{[pbvBV]?matrix\}', m.group(1)):
+            fails.append(f'인라인 행렬: ${m.group(1)[:50]}$')
+
+    # 본문이 없는 절 (표·그림·알고리즘만)
+    for m in re.finditer(r'\\section\{([^}]*)\}(.*?)(?=\\section\{|\\chapterreferences|\Z)', body, re.S):
+        seg = re.sub(r'\\begin\{(figure|table|algorithm)\*?\}.*?\\end\{\1\*?\}', '', m.group(2), flags=re.S)
+        seg = re.sub(r'\\(label|subsection)\{[^}]*\}', '', seg)
+        if len(HANGUL.findall(seg)) < 30:
+            fails.append(f'본문이 없는 절: {m.group(1)}')
+
     # 절과 그림·표·알고리즘
     sections = [m.start() for m in re.finditer(r'\\section\{', body)] + [len(body)]
     titles = [braced(body, m.end() - 1) for m in re.finditer(r'\\section\{', body)]
