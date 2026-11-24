@@ -23,7 +23,7 @@
 % 1. 글꼴
 % ---------------------------------------------------------------------------
 % 수식: newtxmath (mathptmx의 현대판). fontspec보다 먼저 부르고 no-math로 지킨다.
-\RequirePackage{amsmath,amssymb}
+\RequirePackage{amsmath,amssymb,mathtools}
 \let\Bbbk\relax
 \RequirePackage[varvw]{newtxmath}
 % 수식 안의 숫자·연산자 이름(sin, min, fl …)은 newtx의 Times 계열 글꼴로.
