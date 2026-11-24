@@ -335,6 +335,7 @@
 \algrenewcommand\algorithmicrequire{\textbf{Input}}
 \algrenewcommand\algorithmicensure{\textbf{Output}}
 \algrenewcommand\alglinenumber[1]{{\scriptsize #1}}
+\algrenewcommand\textproc{\textrm}
 \tikzset{algpxIndentLine/.style={draw=black, line width=0.3pt}}
 \AtBeginEnvironment{algorithmic}{\small}
 
