@@ -1,13 +1,13 @@
 %% 6장 미분방정식과 점화식
-\chapter{미분방정식과 점화식}
+\chapter{Differential Equations and Recurrences}
 \label{ch:recurrences}
 
 \abstract{Bessel 함수, Airy 함수, 초기하함수처럼 이름 붙은 특수함수의 대부분은 어떤 이계 선형 미분방정식의 해로 처음 나타났다. 이 함수들은 이웃한 차수끼리 삼항 점화식으로 이어지므로, 함수값 하나나 둘만 알면 점화식으로 나머지를 모두 얻을 수 있을 것처럼 보인다. 그러나 점화식을 어느 방향으로 돌리느냐에 따라 결과는 반올림 수준으로 정확할 수도, 몇 걸음 만에 완전히 쓸모없어질 수도 있다. 이 장에서는 먼저 이계 선형 미분방정식의 해 공간과 Wronskian을 정리하고 특수함수가 생기는 대표적인 방정식들을 살핀다. 이어서 삼항 점화식의 해를 최소해와 지배해로 나누어 점화의 방향이 안정성을 결정한다는 것을 증명하고, 최소해를 거꾸로 계산하는 Miller의 알고리즘과 그 바탕인 Pincherle의 정리를 다룬다. 마지막으로 선형 연립 미분방정식의 해인 행렬 지수를 소개한다.}
 
-\section{이계 선형 미분방정식}
+\section{Second-Order Linear Differential Equations}
 \label{sec:ode}
 
-\subsection{해 공간과 Wronskian}
+\subsection{The Solution Space and the Wronskian}
 
 구간 $I$에서 연속인 함수 $p$, $q$에 대해
 \begin{equation}
@@ -32,7 +32,7 @@ $W'=y_1y_2''-y_1''y_2$이고, 두 해가 \cref{eq:ode2}를 만족하므로 $y_i'
 
 \cref{thm:abel}은 Wronskian을 계산하지 않고도 그 꼴을 알려 준다는 점에서 특수함수 계산에 쓸모가 크다. 두 해의 값과 도함수 가운데 셋을 알면 Wronskian의 관계식으로 넷째를 얻을 수 있고, 또 계산한 값들이 Wronskian 관계를 얼마나 잘 만족하는지로 정확도를 검사할 수도 있다.
 
-\subsection{특수함수가 생기는 방정식}
+\subsection{Equations Giving Rise to Special Functions}
 
 \cref{eq:ode2}의 계수가 다항식이나 유리함수이면 해는 대개 초등함수로 나타나지 않으며, 물리학과 공학의 문제에서 되풀이해 나타나는 몇몇 방정식의 해에는 이름이 붙었다. 대표적인 것을 정리하면 다음과 같다.
 
@@ -49,10 +49,10 @@ J_\nu(x)=\sum_{k=0}^\infty\frac{(-1)^k}{k!\,\Gamma(k+\nu+1)}\Bigl(\frac x2\Bigr)
 \]
 을 얻는다. 이 급수는 모든 $x$에서 수렴하지만, $x$가 크면 항들이 크게 자랐다가 서로 지워지므로 수치적으로는 $x$가 작을 때만 쓸 수 있다. 큰 $x$에서는 3장의 점근 전개를, 그 사이에서는 다음 절의 점화식과 연분수를 쓴다.
 
-\section{삼항 점화식}
+\section{Three-Term Recurrences}
 \label{sec:three-term}
 
-\subsection{해 공간과 최소해}
+\subsection{The Solution Space and Minimal Solutions}
 
 Bessel 함수는 차수에 대해
 \begin{equation}
@@ -84,13 +84,13 @@ y_{n+1}+a_ny_n+b_ny_{n-1}=0\qquad(b_n\ne0)
 $y_n=\lambda^n$을 넣으면 $\lambda^{n-1}(\lambda^2+a\lambda+b)=0$이므로 특성근 $\lambda_i$의 거듭제곱은 해이고, $\lambda_1\ne\lambda_2$이므로 두 해는 독립이어서 해 공간을 이룬다. $c_2\ne0$이면 $\lambda_1^n/(c_1\lambda_1^n+c_2\lambda_2^n)=1/(c_1+c_2(\lambda_2/\lambda_1)^n)\to0$이다.
 \end{proof}
 
-\subsection{점화 방향과 안정성}
+\subsection{Direction of Recursion and Stability}
 
 최소해를 앞으로 계산하면 무슨 일이 생기는지 보자. 처음 두 값 $f_0$, $f_1$을 반올림해 넣으면 계산하는 수열은 참된 최소해 $f_n$이 아니라 $f_n+\epsilon g_n$ 꼴, 곧 지배해 성분이 아주 조금 섞인 해이다. 매 단계의 반올림도 같은 효과를 낸다. 그런데 정의에서 $g_n/f_n\to\infty$이므로, 처음에는 $\epsilon$만큼 작았던 지배해 성분의 \textbf{상대적인} 크기가 $\epsilon g_n/f_n$으로 자라 결국 최소해를 덮어 버린다. 따라서 최소해는 앞으로 계산하면 불안정하고, 지배해는 앞으로 계산해도 안정하다. 지배해에 섞여 드는 최소해 성분은 상대적으로 작아지기 때문이다.
 
 Bessel 점화식 \cref{eq:bessel-rec}에서 고정된 $x$와 $n\to\infty$에 대해 $J_n(x)\sim(x/2)^n/n!$이고 $Y_n(x)\sim-(n-1)!\,(2/x)^n/\pi$이므로, $J_n$이 최소해이고 $Y_n$이 지배해이다. 실제로 정확한 유리수 급수로 계산한 $J_0(1)$과 $J_1(1)$에서 출발해 \cref{eq:bessel-rec}를 배정밀도로 앞으로 돌려 보면, 상대오차가 $n=5$에서 $6\times10^{-11}$, $n=8$에서 $3\times10^{-4}$이고, $n=10$에서는 이미 계산값의 부호가 틀려 상대오차가 $27$에 이른다. $n=20$에서는 참값 $3.9\times10^{-25}$ 대신 $-2.4\times10^{6}$이 나온다. 점화식 자체에는 아무 잘못이 없는데도 방향 하나 때문에 계산이 망가졌다. 이 현상과 그 처방은 Gautschi의 고전적인 해설에 체계적으로 정리되어 있다\cite{gautschi1967recurrence}.
 
-\subsection{Miller의 알고리즘}
+\subsection{Miller's Algorithm}
 
 최소해를 안정하게 계산하려면 점화식을 \textbf{거꾸로} 돌리면 된다. 거꾸로 가는 방향에서는 역할이 바뀌어 최소해가 지배적으로 자라기 때문이다. 그러나 거꾸로 시작하려면 큰 $N$의 두 값이 필요한데, 그 값을 모르는 것이 처음의 문제였다. Miller의 해법은 놀라울 만큼 단순하다. 충분히 큰 $N$에서 아무 값, 예컨대 $\tilde f_{N+1}=0$과 $\tilde f_N=1$로 시작해 거꾸로 계산하고, 마지막에 알려진 관계식으로 전체의 척도를 맞추는 것이다(\cref{alg:miller}).
 
@@ -126,7 +126,7 @@ $\tilde f^{(N)}$은 \cref{eq:three-term}의 해이므로 $\tilde f^{(N)}=\alpha_
 
 \cref{thm:miller}에 따라 거꾸로 계산한 수열은 \textbf{비율}이 정확하므로, 척도 하나만 맞추면 된다. Bessel 함수에서는 생성함수 $e^{(x/2)(t-1/t)}=\sum_nJ_n(x)t^n$에 $t=1$을 넣어 얻는 $J_0(x)+2\sum_{k\ge1}J_{2k}(x)=1$이 정규화 관계로 쓰인다. 앞의 예에서 $N=30$으로 시작해 이 관계로 정규화하면 $J_0(1),\dots,J_{20}(1)$의 상대오차가 모두 $3.2\times10^{-16}$ 이하로, 사실상 반올림 수준이다. 이 방법은 J. C. P. Miller가 1950년대 영국 학술협회의 Bessel 함수 수표를 만들며 쓴 데서 이름이 붙었다\cite{gautschi1967recurrence}.
 
-\subsection{Pincherle 정리와 연분수}
+\subsection{Pincherle's Theorem and Continued Fractions}
 
 최소해와 3장의 연분수 사이에는 깊은 연결이 있다. \cref{eq:three-term}을 $y_n/y_{n-1}$에 대해 정리하면 $y_n/y_{n-1}=-b_n/(a_n+y_{n+1}/y_n)$이고, 이를 되풀이하면 비 $y_n/y_{n-1}$이 연분수
 \[
@@ -138,7 +138,7 @@ $\tilde f^{(N)}$은 \cref{eq:three-term}의 해이므로 $\tilde f^{(N)}=\alpha_
 stardust의 Bessel 함수는 이 장의 원리를 그대로 따른다. 최소해인 $J$와 $I$는 CF1 연분수(앞에서 항의 수를 세고, 같은 항을 거꾸로 다시 계산한다)와 Miller의 거꾸로 점화로 비를 얻은 뒤 Wronskian으로 척도를 맞추고, 지배해인 $Y$와 $K$는 위로 올라가는 점화식으로 원하는 차수까지 계산한다. 코드의 주석은 차수가 $x$보다 작은 동안에는 두 방향이 모두 중립적이라는 점도 적어 두는데, $n<x$에서는 \cref{eq:bessel-rec}의 계수 $2n/x$가 $2$보다 작아 두 해가 진동하며 어느 쪽도 다른 쪽을 지배하지 않기 때문이다.
 \end{instardust}
 
-\section{행렬 지수와 선형계}
+\section{The Matrix Exponential and Linear Systems of ODEs}
 \label{sec:matrix-exp}
 
 이계 방정식 \cref{eq:ode2}는 $u=(y,y')^{\mathsf T}$로 두면 일계 연립방정식 $u'=A(x)u$가 되고, 계수가 상수이면 그 해는 행렬 지수로 주어진다.

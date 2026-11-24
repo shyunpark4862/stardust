@@ -1,10 +1,10 @@
 %% 30장 유리 근사
-\chapter{유리 근사}
+\chapter{Rational Approximation}
 \label{ch:rational}
 
 \abstract{다항식은 극점을 가질 수 없으므로 복소평면에서 실수축 가까이에 특이점이 있는 함수를 근사하려면 차수가 아주 높아야 한다. 다항식의 몫인 유리함수는 극점을 스스로 둘 수 있어서 같은 함수를 훨씬 적은 계수로 근사한다. 이 장에서는 $|x|$를 다항식과 유리함수로 근사할 때 오차가 대수적으로 줄어드느냐 거의 지수적으로 줄어드느냐의 차이에서 시작한다. Taylor 계수를 맞추는 Padé 근사와 그 계산을 본 다음, Berrut와 Floater--Hormann의 무게중심 유리 보간을 증명과 함께 다룬다. 이 보간은 고른 간격의 자료에서도 극점 없이 안정하다. 마지막으로 AAA 알고리즘은 표본점에서 탐욕적으로 지지점을 고르고 최소제곱으로 무게를 정한다. 이 알고리즘이 어떻게 극점을 찾아내는지, 잡음이 섞인 자료에서는 어떻게 가짜 극점을 만드는지를 직접 계산으로 본다.}
 
-\section{유리함수의 힘}
+\section{The Power of Rational Functions}
 \label{sec:rational-power}
 
 차수가 각각 $m$, $n$ 이하인 다항식 $p$, $q$의 몫 $r=p/q$를 \term{유형}{type} $(m,n)$의 유리함수라 한다. 유리함수는 $q$의 근에 극점을 둘 수 있으므로 극점이나 가지 자름이 있는 함수를 그 특이점 근처에서도 근사할 수 있다. 앞 장의 Runge 함수 $1/(1+25x^2)$는 그 자체가 유형 $(0,2)$의 유리함수여서, 다항식으로는 수백 차가 필요한 정확도를 계수 몇 개로 정확히 나타낸다.
@@ -15,10 +15,10 @@ r(x)=x\,\frac{p(x)-p(-x)}{p(x)+p(-x)}
 \]
 로 두면, $n\ge5$일 때 $[-1,1]$에서 $\bigl||x|-r(x)\bigr|\le3e^{-\sqrt n}$이다. 직접 재어 보면 $n=16,64$에서 최대 오차는 $1.5\times10^{-3}$, $1.2\times10^{-5}$이어서 상계 $5.5\times10^{-2}$, $1.0\times10^{-3}$보다 훨씬 작다. 같은 $n=64$의 다항식은 오차가 $0.0044$ 정도에 머문다. Newman의 $r$에서 $p(\pm x)$의 근 $\mp a^k$는 원점 근처에 지수적으로 모여 있다. 유리함수의 극점과 영점이 특이점 근처에 기하급수적으로 몰리는 이 모양은 이 장의 실험에서 거듭 나타난다. 최선 유리 근사의 오차는 더 나아가 $e^{-\pi\sqrt n}$의 상수배로 줄어든다는 것이 Stahl의 깊은 결과이다\cite{trefethen2019atap,stahl2003}.
 
-\section{Padé 근사}
+\section{Padé Approximation}
 \label{sec:pade}
 
-\subsection{정의와 유일성}
+\subsection{Definition and Uniqueness}
 
 원점에서 전개한 $f$의 Taylor 급수 $f(x)=\sum_kc_kx^k$가 주어졌을 때, 유형 $(m,n)$의 유리함수 가운데 Taylor 급수가 가능한 한 많은 항까지 $f$와 같은 것을 \term{Padé 근사}{Padé approximant} $[m/n]$이라 한다\cite{pade1892,baker1996pade}. 미지수는 $p$의 계수 $m+1$개와 $q$의 계수 $n+1$개인데 공통 인수 하나를 뺄 수 있으므로 $m+n+1$개이다. 그래서 $m+n+1$개의 Taylor 계수를 맞추기를 기대한다. 그런데 $p/q-f=O(x^{m+n+1})$을 직접 요구하면 계가 비선형이므로 분모를 곱한 선형 조건
 \begin{equation}
@@ -46,7 +46,7 @@ p_1q_2-p_2q_1=(p_1-fq_1)q_2-(p_2-fq_2)q_1=O(x^{m+n+1})
 
 몫이 유일하다고 해서 $p/q-f=O(x^{m+n+1})$이 늘 성립하는 것은 아니다. 해의 $q$가 $q(0)=0$이면 $p$와 $q$가 공통 인수 $x$를 가질 수 있고 그 인수를 약분하면 맞추는 계수의 개수가 줄어든다. 이런 결함이 없는 경우를 \term{정상}{normal}이라 한다. $m$과 $n$을 바꾸어 가며 Padé 근사를 늘어놓은 표를 \term{Padé 표}{Padé table}라 한다. 이 표는 6장의 연분수와 깊이 연결되어 있다. Padé 표의 계단을 따라가면 연분수의 근사분수가 나온다\cite{gragg1972pade}.
 
-\subsection{지수함수의 Padé 근사}
+\subsection{Padé Approximants of the Exponential}
 
 $e^x$의 $[m/m]$ Padé 근사는 닫힌 꼴이 있다.
 \[
@@ -54,7 +54,7 @@ r_m(x)=\frac{N_m(x)}{N_m(-x)},\qquad N_m(x)=\sum_{k=0}^m\frac{(2m-k)!\,m!}{(2m)!
 \]
 25장의 행렬 지수가 쓰는 것이 바로 이것이다. 분모가 $N_m(-x)$여서 $r_m(-x)=1/r_m(x)$라는 지수함수의 성질을 그대로 물려받는다. 같은 개수의 계수를 쓰는 Taylor 다항식과 견주면, $x=1$에서 $[4/4]$의 오차는 $1.1\times10^{-7}$이고 차수 $8$의 Taylor 다항식은 $3.1\times10^{-6}$이다. $x=1/2$에서는 $1.3\times10^{-10}$ 대 $5.7\times10^{-9}$이다. 계수가 같아도 Padé 근사가 수십 배 정확하다.
 
-\subsection{가짜 극점}
+\subsection{Spurious Poles}
 
 Padé 근사에는 극점을 마음대로 둔다는 약점이 있다. 근사하려는 함수에 극점이 없는 곳에도 극점과 영점이 거의 같은 자리에 쌍으로 나타날 수 있는데, 이것을 \term{Froissart 쌍}{Froissart doublet}이라 한다\cite{froissart1969}. 극점과 영점이 거의 상쇄되므로 그 쌍에서 조금만 떨어지면 근사는 멀쩡하지만 쌍의 바로 곁에서는 값이 터진다. 정확한 산술에서도 생기고, 계수에 잡음이나 반올림이 섞이면 거의 언제나 생긴다. Gonnet, Pachón, Trefethen은 유리 보간과 최소제곱 근사를, Gonnet, Güttel, Trefethen은 Padé 근사를 SVD로 계산해 작은 특이값에 해당하는 자유도를 버림으로써 이런 쌍을 없애는 방법을 제시했다\cite{gonnet2011robust,gonnet2013pade}. 아래의 AAA에서 같은 현상을 수치로 본다.
 
@@ -62,10 +62,10 @@ Padé 근사에는 극점을 마음대로 둔다는 약점이 있다. 근사하�
 Henri Padé는 1892년 파리에서 Hermite의 지도로 학위 논문을 썼는데 그 주제가 바로 유리함수로 함수를 근사하는 표였다\cite{pade1892}. Padé 이전에도 Jacobi, Frobenius 같은 사람들이 같은 근사를 다루었지만, 표 전체의 구조를 체계적으로 연구한 것은 Padé가 처음이어서 그의 이름이 붙었다. 오늘날 Padé 근사는 수치해석보다 이론물리에서 더 많이 쓰이는데 섭동 급수의 처음 몇 항만으로 급수가 수렴하지 않는 곳까지 함수를 연장하는 도구이기 때문이다. Froissart도 입자물리학자였다.
 \end{aside}
 
-\section{무게중심 유리 보간}
+\section{Barycentric Rational Interpolation}
 \label{sec:bary-rational}
 
-\subsection{임의의 무게}
+\subsection{Arbitrary Weights}
 
 앞 장의 둘째 무게중심 공식
 \begin{equation}
@@ -85,7 +85,7 @@ r(x)=\frac{\sum_jw_jf_j/(x-x_j)}{\sum_jw_j/(x-x_j)}
 
 곧 무게는 보간 조건을 해치지 않고 고를 수 있는 자유도이다. 다항식 무게는 그 가운데 분자와 분모의 차수가 줄어드는 특별한 선택이고, 앞 장에서 본 대로 고른 간격에서는 무게가 $\binom nj$로 크게 들쭉날쭉해서 나빴다. 그렇다면 고른 간격에서 좋은 무게가 있을까?
 
-\subsection{극점 없는 보간}
+\subsection{Pole-Free Interpolation}
 
 Berrut는 가장 단순한 선택 $w_j=(-1)^j$를 제안했다\cite{berrut1988rational}. 놀랍게도 이 무게를 쓰면 실수축에 극점이 없다.
 
@@ -118,10 +118,10 @@ w_k=(-1)^{k-d}\sum_{i\in J_k}\ \prod_{\substack{j=i\\j\ne k}}^{i+d}\frac1{|x_k-x
 
 앞 장에서 다항식 보간이 발산하던 Runge 함수를 고른 간격의 노드로 다시 보간해 보자. $d=3$이면 $n=40,80,160,320$에서 최대 오차가 $4.3\times10^{-6}$, $5.1\times10^{-8}$, $3.0\times10^{-9}$, $1.8\times10^{-10}$이다. 노드가 두 배가 될 때마다 오차가 $2^4=16$배쯤 줄어든다는 $O(h^{d+1})$이 뒤의 두 단계에서 보인다. Lebesgue 상수는 $5.57$, $6.44$, $7.29$, $8.14$로 노드가 두 배가 될 때마다 $0.86$쯤씩 늘어 로그 증가를 따른다. $d=0$인 Berrut의 보간은 오차가 $1.5\times10^{-3}$, $7.5\times10^{-4}$, $3.8\times10^{-4}$, $1.9\times10^{-4}$로 정확히 $O(h)$이다. 반대로 $d=8$이면 $n=160$에서 $8.8\times10^{-15}$까지 가지만 Lebesgue 상수가 $122$로 커진다. $d$는 근사 차수와 안정성을 맞바꾸는 손잡이인 셈이다.
 
-\section{AAA 알고리즘}
+\section{The AAA Algorithm}
 \label{sec:aaa}
 
-\subsection{알고리즘}
+\subsection{The Algorithm}
 
 무게중심 유리 보간의 자유도를 근사에 쓰면 어떨까? Nakatsukasa, Sète, Trefethen의 \term{AAA 알고리즘}{adaptive Antoulas--Anderson algorithm}은 표본점 $Z$와 값 $F$가 주어졌을 때, \eqref{eq:bary-rational}의 노드를 표본 가운데서 하나씩 탐욕적으로 고르고 무게를 최소제곱으로 정한다\cite{nakatsukasa2018aaa}. 여기서 노드를 \term{지지점}{support point}이라 부른다. 지지점에서는 보간하고, 나머지 표본점에서는 근사한다.
 
@@ -165,7 +165,7 @@ $(E-\lambda B)v=0$을 $v=(v_0,v_1,\dots,v_m)$으로 쓰면 둘째 행부터는 $
 
 영점은 첫 행의 $w_j$를 $w_jf_j$로 바꾼 같은 문제이고, 극점 $\lambda$의 유수는 $N(\lambda)/D'(\lambda)$이다. $B$가 특이하므로 이 쌍은 무한대의 고유값을 가진다. Moler와 Stewart의 QZ 알고리즘\cite{moler1973qz}은 23장의 QR 알고리즘을 행렬 쌍으로 넓힌 것이다. 이 알고리즘은 $B$를 거꾸로 하지 않으므로 그런 고유값도 문제없이 다룬다.
 
-\subsection{적응성}
+\subsection{Adaptivity}
 
 AAA의 위력은 극점과 지지점을 스스로 알맞은 곳에 둔다는 데 있다. $[-1,1]$의 고른 표본점 $1000$개로 $\mathrm{rtol}=10^{-13}$까지 돌린 결과를 \cref{tab:aaa}에 모았다. 마지막 열은 같은 함수를 Chebyshev 점에서 다항식으로 보간해 같은 오차에 이르는 데 필요한 차수이다.
 
@@ -188,13 +188,13 @@ Runge 함수에서 AAA는 지지점 셋, 곧 유형 $(2,2)$로 함수를 정확�
 
 그러나 AAA가 보장하는 것은 표본점 위의 오차뿐이다. $|x|$에 같은 설정으로 AAA를 돌리면 표본 위의 오차는 지지점 $5,10,20,30,40$개에서 $3.8\times10^{-2}$, $3.2\times10^{-3}$, $7.0\times10^{-5}$, $2.8\times10^{-8}$, $1.0\times10^{-11}$로 Newman의 정리처럼 근지수적으로 줄고, $43$개에서 $2.6\times10^{-14}$에 이른다. 그런데 표본점 사이까지 재면 최대 오차는 $4.0\times10^{-4}$이다. 원점 근처에 허수부가 $1.5\times10^{-3}$밖에 안 되는 극점이 있는데 표본 간격이 $0.002$여서 표본점들은 그 극점의 영향을 보지 못했다. 특이점 근처에서 근사를 믿으려면 표본도 그만큼 촘촘해야 한다.
 
-\subsection{잡음과 가짜 극점}
+\subsection{Noise and Spurious Poles}
 
 자료에 잡음이 있으면 AAA는 잡음까지 맞추려 하고 그 과정에서 Froissart 쌍을 만든다. $e^x$의 표본에 표준편차 $10^{-10}$의 잡음을 더하고 $\mathrm{rtol}=10^{-13}$으로 돌리면, 깨끗한 자료에서는 $7$개면 되던 지지점이 상한인 $60$개까지 늘어난다. 극점 $59$개 가운데 $44$개가 구간 $[-1,1]$의 실수축 바로 곁(허수부 $10^{-3}$ 미만)에 놓이고, 그 유수의 크기는 모두 $7.7\times10^{-12}$ 이하이다. 유수가 작으므로 표본점에서는 거의 보이지 않지만 표본점 사이에서는 오차가 $2.9\times10^{-5}$까지 커진다. 잡음을 $10^{-6}$으로 키우면 그런 극점이 $34$개, 유수가 $1.6\times10^{-7}$ 이하이고, 표본점 사이의 오차는 $0.12$이다.
 
 이런 쌍의 표지는 작은 유수이다. Nakatsukasa, Sète, Trefethen이 제안한 \term{청소}{clean-up} 단계는 유수가 아주 작은 극점을 찾아 그 가장 가까운 지지점을 버리고 무게를 다시 계산한다\cite{nakatsukasa2018aaa}. 근본적으로는 허용오차를 자료의 잡음보다 작게 잡지 말아야 한다. 잡음 수준 아래까지 맞추라는 요구는 잡음을 보간하라는 요구와 같다.
 
-\section{stardust의 유리 근사}
+\section{Rational Approximation in stardust}
 \label{sec:rational-stardust}
 
 \begin{instardust}[\code{docs/design/interpolate.md} §2.6, §3.6]
@@ -205,7 +205,7 @@ stardust의 \code{FloaterHormannInterpolator}는 위의 무게 공식을 scipy�
 \code{AAA}는 scipy 1.18.1의 단계를 그대로 옮겼다. 실수 자료는 실수 산술의 \code{dgesdd}로, 복소 자료는 복소 산술로 분해하고 지지점을 고를 때 오차가 같으면 앞의 표본을 고른다(numpy의 \code{argmax}와 같다). 허용오차의 기본값은 $\varepsilon^{3/4}$이다. Loewner 행렬의 조건수가 $1/(3\varepsilon)$을 넘으면 열을 노름으로 나눈 행렬을 분해한다. 극점과 영점은 \cref{prop:aaa-poles}의 행렬 쌍을 LAPACK의 \code{ggev}로 풀고, 유수는 $N(\lambda)/D'(\lambda)$이다. 설계 문서에 따르면 오차가 기본 허용오차보다 낮은 반올림 수준까지 내려간 뒤에는 지지점 선택이 반올림에 따라 갈릴 수 있다. 그런 경우에만 scipy와 결과가 다를 수 있다. scipy와 달리 \code{max\_terms}에 이르러도 경고를 내지 않고 \code{converged} 속성을 \code{False}로 둔다.
 \end{instardust}
 
-\section{맺음}
+\section{Concluding Remarks}
 
 유리함수는 극점을 스스로 둘 수 있다는 한 가지 점에서 다항식과 갈라진다. 그 덕분에 실수축 가까이에 특이점이 있는 함수에서 다항식의 대수적 수렴을 지수적 수렴으로 바꾼다. 다만 같은 자유 때문에 극점이 엉뚱한 곳에 생길 위험도 진다. 이 장의 세 방법은 그 자유를 다루는 길이 다르다. Padé 근사는 한 점의 Taylor 계수를 맞추고 Floater--Hormann 보간은 극점을 아예 막는 무게를 쓰며 AAA는 표본 전체에 대한 최소제곱으로 무게를 정한다. 다음 장에서는 한 덩어리의 다항식이나 유리함수 대신, 짧은 구간마다 낮은 차수의 다항식을 이어 붙이는 스플라인을 본다.
 

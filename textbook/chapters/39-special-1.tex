@@ -1,13 +1,13 @@
 %% 39장 특수함수 I
-\chapter{특수함수 I: 감마와 오차함수}
+\chapter{Special Functions I: Gamma and Error Functions}
 \label{ch:special-1}
 
 \abstract{통계와 물리의 공식에는 기본 함수만으로는 나타낼 수 없는 함수들이 되풀이해 나타난다. 이 장과 다음 두 장에서는 그런 특수함수를 binary64에서 상대오차 $10^{-14}$ 안으로 계산하는 방법을 다룬다. 이 장의 주인공은 감마 함수와 오차함수이다. 감마 함수의 함수 방정식과 반사 공식, Weierstrass 곱에서 나오는 $\log\Gamma$의 거듭제곱 급수를 증명한다. 점근급수인 Stirling 급수가 항을 늘리면 언젠가 발산한다는 것을 정확한 계산으로 보인다. Lanczos 근사가 넓은 구간을 한 식으로 덮는 방식, $\log\Gamma$가 $0$이 되는 $1$과 $2$ 근처에서 상대 정확도를 지키는 급수, 베타 함수와 디감마 함수도 살핀다. 오차함수에서는 보수 함수를 따로 계산해야 하는 이유와, $e^{-x^2}$에서 $x^2$의 반올림 오차가 $x^2$배로 커지는 문제를 융합 곱셈--덧셈으로 푸는 방법을 본다.}
 
-\section{감마 함수}
+\section{The Gamma Function}
 \label{sec:gamma}
 
-\subsection{정의와 함수 방정식}
+\subsection{Definition and Functional Equation}
 
 $\operatorname{Re}z>0$에서 \term{감마 함수}{gamma function}는 Euler의 적분
 \[
@@ -24,7 +24,7 @@ $\operatorname{Re}z>0$에서 \term{감마 함수}{gamma function}는 Euler의 �
 
 실수 양의 반직선 위에서 감마 함수는 다음 성질로 완전히 특징지어진다. $\Gamma(1)=1$, $\Gamma(x+1)=x\Gamma(x)$이고 $\log\Gamma$가 볼록인 함수는 감마 함수뿐이다. 이것이 \term{Bohr--Mollerup 정리}{Bohr--Mollerup theorem}이다\cite{artin1964}.
 
-\subsection{Weierstrass 곱과 $\log\Gamma$의 급수}
+\subsection{The Weierstrass Product and the Series for $\log\Gamma$}
 
 해석 함수 $1/\Gamma$는 곱 표현
 \begin{equation}
@@ -52,10 +52,10 @@ $\Gamma(1+z)=z\Gamma(z)$이므로 \eqref{eq:weierstrass}에서 $-\log\Gamma(1+z)
 
 이 급수는 계산에서 특별한 쓸모가 있다. $\log\Gamma$는 $x=1$과 $x=2$에서 $0$이므로 그 근처에서 값은 작고 상대 정확도를 지키기 어렵다. $\log(\Gamma(x))$처럼 $\Gamma$를 먼저 계산하면 $\Gamma(x)\approx1$의 반올림 오차 $u$가 로그를 거쳐 절대오차 $u$로 남는데, 값 자체가 $(1-\gamma)(x-2)$ 정도이므로 상대오차는 $u/|x-2|$로 커진다. $x=2+10^{-12}$에서 $\log(\Gamma(x))$의 상대오차는 $1.2\times10^{-4}$이고, macOS의 C 수학 라이브러리의 \code{lgamma}도 $1.6\times10^{-4}$이다. \cref{prop:loggamma-series}의 둘째 식은 $\delta=x-2$의 배수로 시작하므로 상대 정확도를 그대로 지킨다. 게다가 $\zeta(k)-1\approx2^{-k}$이어서 $|\delta|\le1/2$이면 항이 빨리 준다.
 
-\section{점근 전개}
+\section{Asymptotic Expansions}
 \label{sec:stirling}
 
-\subsection{Stirling 급수}
+\subsection{The Stirling Series}
 
 큰 $z$에서는 \term{Stirling 급수}{Stirling series}
 \begin{equation}
@@ -66,7 +66,7 @@ $\Gamma(1+z)=z\Gamma(z)$이므로 \eqref{eq:weierstrass}에서 $-\log\Gamma(1+z)
 
 $z=5$에서 $\log\Gamma(5)=\log24$와 견주어 보자. Python의 \code{decimal}로 $50$자리에서 계산하면 항을 $1,2,4,8,12$개 쓸 때 오차가 $2.2\times10^{-5}$, $2.5\times10^{-7}$, $4.0\times10^{-10}$, $1.8\times10^{-13}$, $4.5\times10^{-15}$로 줄고, $16$개($\approx\pi z$)에서 $1.6\times10^{-15}$로 가장 작으며, $20$개에서 $4.1\times10^{-15}$, $24$개에서 $5.2\times10^{-14}$, $30$개에서 $2.7\times10^{-11}$로 다시 커진다. $z=5$에서는 binary64의 정확도에 이르지 못한다. 그래서 실제 구현은 점화식으로 $z$를 충분히 키운 뒤 몇 개의 항만 쓴다. 점화식으로 키우면 $\Gamma(z)=\Gamma(z+m)/(z(z+1)\cdots(z+m-1))$의 곱 $m$개가 반올림 오차를 더한다.
 
-\subsection{Lanczos 근사}
+\subsection{The Lanczos Approximation}
 
 Lanczos는 Stirling 급수의 앞부분에 유리함수를 곱한 꼴로 오른쪽 반평면 전체를 한 식으로 덮는 근사를 내놓았다\cite{lanczos1964}.
 \[
@@ -74,11 +74,11 @@ Lanczos는 Stirling 급수의 앞부분에 유리함수를 곱한 꼴로 오른�
 \]
 매개변수 $g$를 고르면 계수 $c_k$가 정해지고 적당한 $g$에서는 항 몇 개만으로 오차 $\epsilon$이 오른쪽 반평면 전체에서 아주 작다. Pugh는 $g$와 $n$의 선택과 오차를 체계적으로 분석했다\cite{pugh2004}. 널리 퍼진 $g=7$의 계수 아홉 개($n=8$)로 $[0.6,40]$에서 $\Gamma$를 계산해 위의 \code{decimal} 참값과 견주면 상대오차가 $3.8\times10^{-14}$ 이하이다. 계산이 고정된 수의 나눗셈과 지수, 거듭제곱 몇 번이므로 빠르다. 분기가 없어 벡터화하기도 쉽다. Boost.Math는 $g\approx6.02$의 $13$항 판을 쓴다\cite{boostmath}.
 
-\subsection{조건수}
+\subsection{Condition Numbers}
 
 정확도를 말하기 전에 문제 자체의 조건수를 보자. 상대 조건수는 $|x\Gamma'(x)/\Gamma(x)|=|x\psi(x)|$이고, 큰 $x$에서 $x\log x$ 정도로 자란다. $x=100$이면 약 $460$이므로 $x$에 $u$만큼의 오차가 있으면 $\Gamma(x)$는 $460u$만큼 틀린다. 반올림된 입력 $x$ 자체는 정확하다고 보므로 라이브러리의 목표는 그 입력의 정확한 $\Gamma$에 가까운 값이지만, 계산 중에 $x+g+1/2$ 같은 중간값을 반올림하면 그 오차가 이 조건수만큼 커진다. 그래서 정확한 구현은 그런 중간값을 두 binary64의 합으로 들고 간다. 극점 근처의 음수 $x$에서도 조건수가 커진다. 반사 공식의 $\sin\pi x$가 $0$에 가깝기 때문이다.
 
-\section{베타 함수와 디감마 함수}
+\section{The Beta and Digamma Functions}
 \label{sec:beta-digamma}
 
 \term{베타 함수}{beta function} $B(a,b)=\int_0^1t^{a-1}(1-t)^{b-1}dt=\Gamma(a)\Gamma(b)/\Gamma(a+b)$를 감마 함수 셋으로 계산하면 두 가지 문제가 생긴다. 큰 인자에서 분자와 분모가 따로 넘치고 세 감마 함수의 반올림 오차가 모인다. 로그를 써서 $\log\Gamma$ 셋의 합으로 계산하면 넘치지는 않지만 큰 값들의 뺄셈에서 9장의 소거가 일어난다. Lanczos 근사를 쓰면 세 식의 지수 인자들을 한 식에 모아 $c=a+b$에 대해 $\bigl((a+g-1/2)/(c+g-1/2)\bigr)^{a-1/2}$ 같은 비율의 거듭제곱으로 정리할 수 있어 두 문제를 함께 피한다.
@@ -89,20 +89,20 @@ Lanczos는 Stirling 급수의 앞부분에 유리함수를 곱한 꼴로 오른�
 \]
 를 쓴다. 다만 $\psi$는 양의 실수에서 $x_0=1.4616321449683623\dots$에 근이 하나 있다. 그 근처에서 상대 정확도를 지키려면 근을 중심으로 전개한 급수를 따로 써야 한다\cite{cody1973psi}. $\log\Gamma$가 $1$과 $2$에서 겪은 문제와 같다. 함수의 근 근처에서 상대오차를 지키는 문제는 특수함수 구현에서 거듭 나온다.
 
-\section{오차함수}
+\section{The Error Function}
 \label{sec:erf}
 
-\subsection{보수 함수를 따로}
+\subsection{Computing the Complement Separately}
 
 \term{오차함수}{error function} $\operatorname{erf}x=(2/\sqrt\pi)\int_0^xe^{-t^2}dt$는 정규분포의 누적분포함수 $\Phi(x)=\operatorname{erfc}(-x/\sqrt2)/2$의 바탕이다. 큰 $x$에서 $\operatorname{erf}x$는 $1$에 아주 가까우므로, \term{여오차함수}{complementary error function} $\operatorname{erfc}x=1-\operatorname{erf}x$를 $1$에서 빼서 계산하면 9장의 소거로 상대 정확도를 모두 잃는다. $x=6$이면 $\operatorname{erfc}6\approx2.2\times10^{-17}$이지만 $1-\operatorname{erf}6$을 binary64로 계산하면 $0$이 나온다. 그래서 $\operatorname{erfc}$는 따로 근사해야 한다. 큰 $x$에서는 $\operatorname{erfc}x=e^{-x^2}\cdot R(x)$ 꼴의 유리 근사를 쓴다. Cody는 세 구간에서 Chebyshev 유리 근사를 만들었고\cite{cody1969erf}, Cephes 라이브러리\cite{moshier1989}의 \code{erf}와 \code{erfc}도 비슷한 세 구간 구조이다. 꼬리의 정규 확률을 다루는 통계 계산에서는 이 구분이 꼭 필요하다. 정규분포의 분위수 함수 $\Phi^{-1}$은 Wichura의 AS 241이 가운데 구간과 두 꼬리 구간의 유리 근사로 binary64의 정확도를 낸다\cite{wichura1988}.
 
 \term{척도 여오차함수}{scaled complementary error function} $\operatorname{erfcx}x=e^{x^2}\operatorname{erfc}x$도 자주 필요하다. $\operatorname{erfc}$는 $x$가 $27$ 근처를 넘으면 아래로 넘치지만 $\operatorname{erfcx}$는 $1/(x\sqrt\pi)$처럼 천천히 줄므로 꼬리 확률의 로그나 비율을 넘침 없이 계산할 수 있다.
 
-\subsection{$e^{-x^2}$의 반올림}
+\subsection{Rounding in $e^{-x^2}$}
 
 $\operatorname{erfc}x=e^{-x^2}R(x)$에서 $x^2$을 binary64로 계산하면 상대오차 $u$, 곧 절대오차 $ux^2$가 생긴다. 이 오차가 지수 함수를 지나면 $e^{-x^2}$의 상대오차 $ux^2$로 커진다. $e^{-y}$의 상대 조건수가 $|y|$이기 때문이다. $x=26$이면 $ux^2\approx7.5\times10^{-14}$이어서 목표인 $10^{-14}$을 넘는다. 이 문제는 8장의 융합 곱셈--덧셈으로 풀 수 있다. $h=\operatorname{fl}(x\cdot x)$와 $l=\operatorname{fma}(x,x,-h)$로 $x^2=h+l$을 정확히 나누면 $e^{-x^2}=e^{-h}e^{-l}\approx e^{-h}(1-l)$이고, $|l|\le u h$이므로 $e^{-l}$의 1차 근사로 충분하다. 직접 재어 보면 $e^{-x^2}$의 상대오차가 $x=10.3$에서 $3.0\times10^{-15}$에서 $8.5\times10^{-17}$로, $x=26.2$에서 $2.2\times10^{-14}$에서 $9.0\times10^{-17}$로 준다. Cephes는 FMA가 흔하지 않던 시절 $x$를 정수 배의 $1/128$과 나머지로 나누어 같은 효과를 얻었다.
 
-\section{stardust의 감마와 오차함수}
+\section{Gamma and Error Functions in stardust}
 \label{sec:special1-stardust}
 
 \begin{instardust}[\code{docs/design/special.md} §2.3, §5.2]
@@ -113,7 +113,7 @@ stardust의 \code{sd.special}은 함수마다 보장 영역을 정하고 그 안
 \code{erf}와 \code{erfc}는 Cephes의 세 구간 유리식을 쓰되, $e^{-x^2}$는 위의 FMA 분해로 계산한다. \code{erfcx}는 $x\ge8$에서 Cephes의 유리식 대신 점근급수를 쓴다. 설계 문서에 따르면 그 유리식은 $x=26.64$까지 맞춘 식이어서 $x\approx10^4$에서 $21$ulp가 틀렸다. \code{ndtri}는 Wichura의 AS 241이고, \code{erfinv}는 그 가운데 구간의 식을 $q=y/2$로 바로 불러 작은 $y$에서 $(1+y)/2$의 소거를 피한다. \code{log\_ndtr}는 음수 $x$에서 $-x^2/2+\log(\operatorname{erfcx}(-x/\sqrt2)/2)$로 계산해 아래로 넘치지 않으면서 두 항의 부호가 같아 소거도 없다.
 \end{instardust}
 
-\section{맺음}
+\section{Concluding Remarks}
 
 특수함수를 정확히 계산하려면 공식 하나로는 부족하다. 정의역을 나누어 구간마다 알맞은 표현을 고르고 그 사이를 정확한 변환으로 이어야 한다. 점화식과 반사 공식은 정의역을 옮기고, 거듭제곱 급수와 점근급수와 유리 근사는 각자의 구간을 맡는다. 함수가 $0$이 되는 곳, 값이 $1$에 붙는 곳, 지수가 반올림을 키우는 곳마다 상대 정확도를 지키는 특별한 손질이 필요하다. 다음 장에서는 이 도구들을 불완전 감마 함수와 불완전 베타 함수로 넓히고 그 계산에 등장하는 연분수와 균등 점근 전개를 본다.
 

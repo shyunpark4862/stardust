@@ -1,10 +1,10 @@
 %% 55장 검정과 구간
-\chapter{검정과 구간}
+\chapter{Tests and Intervals}
 \label{ch:tests-intervals}
 
 \abstract{가설검정은 자료가 어떤 모수 값과 양립하는지를 묻고 신뢰구간은 자료와 양립하는 모수 값을 모두 모은다. 이 장에서는 둘을 같은 틀로 다룬다. 검정의 크기와 검정력, $p$값을 정의하고 $p$값이 귀무가설 아래 균등 분포보다 작아지지 않는다는 성질을 증명하고 통계량이 연속이면 49장의 확률 적분 변환으로 $p$값이 균등 분포를 따른다는 것을 보인다. 단순 가설 사이의 가장 강력한 검정이 우도비 검정이라는 Neyman--Pearson 보조정리를 증명하고 큰 표본에서 쓰는 우도비, Wald, 점수의 세 검정이 모두 같은 카이제곱 분포로 수렴한다는 것을 54장의 점근 정규성으로 설명한다. 이산 자료의 정확 검정에서 양측 $p$값을 정의하는 두 방법이 다른 답을 주는 예를 보고 장애 모수를 다루는 조건부 방법과 스튜던트화를 정리한다. 끝으로 검정을 뒤집어 구간을 만드는 쌍대성을 증명하고 이항 비율의 Wald, Wilson, Clopper--Pearson 구간의 실제 포함 확률을 정확히 계산해 명목 수준이 $95\%$인 Wald 구간의 포함 확률이 $p\in[0.05,0.95]$에서도 $80\%$까지, 양 끝 가까이에서는 훨씬 아래까지 떨어지는 것을 확인한다.}
 
-\section{가설검정의 틀}
+\section{The Framework of Hypothesis Testing}
 \label{sec:testing-framework}
 
 모수 공간을 \term{귀무가설}{null hypothesis} $H_0:\theta\in\Theta_0$과 \term{대립가설}{alternative hypothesis} $H_1:\theta\in\Theta_1$로 나눈다. 검정은 자료 $X$의 함수 $\phi(X)\in\{0,1\}$로, $1$이면 $H_0$을 기각한다. 확률화한 검정에서는 $\phi(X)\in[0,1]$이 기각 확률이다. 귀무가설 아래 기각 확률의 상한 $\sup_{\theta\in\Theta_0}E_\theta\phi$를 \term{크기}{size}라 하고 대립가설 아래의 기각 확률 $\beta(\theta)=E_\theta\phi$를 \term{검정력}{power}이라 한다. 크기를 수준 $\alpha$ 이하로 묶은 채 검정력을 크게 하는 것이 검정의 설계이다.
@@ -26,7 +26,7 @@ $\theta\in\Theta_0$이면 모든 $\alpha\in[0,1]$에 대해 $P_\theta(p\le\alpha
 
 이산 자료에서는 $p$값이 균등보다 \term{보수적}{conservative}이다. $\alpha$가 $p$값이 실제로 취하는 값 가운데 하나일 때만 크기가 정확히 $\alpha$이고 그 밖에서는 크기가 $\alpha$ 아래에서 계단을 이룬다.
 
-\section{Neyman--Pearson 보조정리}
+\section{The Neyman--Pearson Lemma}
 \label{sec:neyman-pearson}
 
 단순 귀무가설 $\theta_0$과 단순 대립가설 $\theta_1$ 사이에서는 가장 강력한 검정이 알려져 있다.
@@ -46,7 +46,7 @@ E_1\phi^\ast-E_1\phi\ge k(E_0\phi^\ast-E_0\phi)=k(\alpha-E_0\phi)\ge0
 
 이 정리는 Neyman과 Pearson이 1933년에 증명했다\cite{neyman1933}. 모든 $\theta_1>\theta_0$에서 우도비 $f_{\theta_1}/f_{\theta_0}$이 같은 통계량 $T$의 단조 증가 함수이면(\term{단조 우도비}{monotone likelihood ratio}) 기각역 $\{T>c\}$가 $\theta_1$에 의존하지 않으므로 단측 대립가설 $\theta>\theta_0$ 전체에 대해 고르게 가장 강력한 검정이 된다. 정규 평균의 단측 $z$ 검정과 지수족의 단측 검정이 그렇다.
 
-\section{큰 표본의 세 검정}
+\section{Three Large-Sample Tests}
 \label{sec:three-tests}
 
 $H_0:\theta=\theta_0$($p$차원)을 최대우도 추정량으로 검정하는 대표적인 방법은 셋이다.
@@ -59,12 +59,12 @@ $H_0:\theta=\theta_0$($p$차원)을 최대우도 추정량으로 검정하는 �
 
 세 검정은 모형을 어디서 적합하느냐가 다르다. Wald 검정은 제약 없는 적합 하나만, 점수 검정은 귀무가설 아래의 적합 하나만, 우도비 검정은 둘 다 필요하다. 유한 표본에서는 셋이 다른 답을 주는데 우도비 검정의 근사가 나은 경우가 많고 Wald 검정은 모수화에 의존한다는 약점이 있다. $g(\theta)$로 모수를 바꾸면 우도비 통계량과 기대 정보를 쓴 점수 통계량은 그대로지만 Wald 통계량은 바뀐다.
 
-\section{정확 검정}
+\section{Exact Tests}
 \label{sec:exact-tests}
 
 표본이 작고 분포가 이산이면 점근 분포 대신 귀무 분포를 정확히 계산한다. 이항 검정 $H_0:p=p_0$은 관측 $k$의 꼬리 확률을 50장의 불완전 베타 함수로 계산한다. 단측 $p$값은 정의가 하나뿐이지만 양측 $p$값은 이산 분포가 대칭이 아니어서 정의가 여럿이다. 하나는 작은 쪽 꼬리를 두 배로 하는 것($\min(1,2\min(P(X\le k),P(X\ge k)))$)이고 다른 하나는 관측보다 확률이 크지 않은 모든 결과의 확률을 더하는 것($\sum_{j:P(X=j)\le P(X=k)}P(X=j)$)이다. 뒤의 것이 scipy의 \code{binomtest}와 R의 \code{binom.test}가 쓰는 정의이다. $n=20$, $p_0=0.3$, $k=3$이면 앞의 것은 $0.2142$, 뒤의 것은 $0.2204$이다. 두 정의 모두 타당하다. 뒤의 것은 통계량을 $-P(X=j)$로 잡은 $p$값이므로 \cref{prop:pvalue-valid}가 그대로 적용된다. 앞의 것은 $p\le\alpha$이면 두 단측 $p$값 가운데 하나가 $\alpha/2$ 이하이고 각 사건의 확률이 $\alpha/2$ 이하이므로 합집합의 확률이 $\alpha$ 이하이다. 그래도 같은 자료로 다른 결론에 이를 수 있으므로 어느 정의를 썼는지 밝혀야 한다.
 
-\section{장애 모수}
+\section{Nuisance Parameters}
 \label{sec:nuisance}
 
 관심 있는 모수 $\psi$ 말고 다른 모수 $\lambda$가 분포에 들어 있으면, 귀무가설 $\psi=\psi_0$은 복합 가설이 되어 \cref{sec:testing-framework}의 $\sup$을 $\lambda$에 대해 취해야 한다. 이 \term{장애 모수}{nuisance parameter}를 다루는 방법은 셋이다.
@@ -74,7 +74,7 @@ $H_0:\theta=\theta_0$($p$차원)을 최대우도 추정량으로 검정하는 �
 \item 윤곽 우도: $\lambda$를 $\psi$마다 최대화한 $\ell_p(\psi)=\max_\lambda\ell(\psi,\lambda)$로 우도비 검정을 하며 이때도 Wilks의 정리가 그대로 성립한다.
 \end{enumerate}
 
-\section{검정을 뒤집어 만든 구간}
+\section{Confidence Intervals by Inverting Tests}
 \label{sec:test-inversion}
 
 \begin{proposition}
@@ -112,7 +112,7 @@ Clopper--Pearson & $0.951$ & $0.967$ & $0.986$ \\
 \code{sd.htest}는 scipy의 가설검정 전부와 statsmodels의 다중 비교 보정, 비율 검정을 담는다. 결과는 읽기 전용 객체이고 신뢰구간은 회귀 영역과 같은 꼴의 메서드 \code{r.conf\_int(alpha=0.05)}로 통일했다(scipy의 \code{confidence\_interval(confidence\_level=)} 대신). \code{method='auto'}는 실제로 쓴 방법(\code{'exact'}, \code{'asymptotic'} 등)을 결과의 \code{method}에 적고 정확한 방법의 작업량이 문서화한 상한을 넘으면 예외 메시지로 점근 방법이나 순열 방법을 알려 준다. 검정 통계량과 $p$값은 다른 영역처럼 보장 영역에서 Arb 참값과의 상대오차 $10^{-14}$ 이내를 약속한다. 꼬리 확률은 \code{sd.stats}의 \code{ccdf}로 계산하므로 아주 작은 $p$값도 상대 정확도를 잃지 않는다.
 \end{instardust}
 
-\section{맺음}
+\section{Concluding Remarks}
 
 검정은 한 모수 값이 자료와 양립하는지를 묻고 구간은 양립하는 값을 모은 것이어서 하나를 뒤집으면 다른 하나가 된다. $p$값은 귀무가설 아래 균등보다 작아지지 않아 오류율을 통제하고 Neyman--Pearson 보조정리는 우도비가 가장 강력한 기준임을 보인다. 큰 표본에서는 우도비, Wald, 점수의 세 검정이 같은 카이제곱 분포로 수렴하지만 유한 표본에서는 서로 다르고 이항 비율의 구간 비교에서 보았듯 그 차이가 실제로 크다. 정확한 계산이 가능하면 정확 검정과 그것을 뒤집은 구간을, 장애 모수가 있으면 스튜던트화나 조건부 방법을 쓴다. 다음 장에서는 이 틀로 평균과 분산에 관한 모수 검정을 다룬다.
 

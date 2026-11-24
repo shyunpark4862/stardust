@@ -1,10 +1,10 @@
 %% 49장 확률 공간과 확률변수
-\chapter{확률 공간과 확률변수}
+\chapter{Probability Spaces and Random Variables}
 \label{ch:probability-spaces}
 
-\abstract{이 부에서는 확률과 통계적 추론을 다룬다. 독자가 측도론을 안다고 보고 이 장은 확률론의 기본 대상을 측도의 언어로 빠르게 정리하고 계산과 맞닿는 곳에 머문다. 확률변수의 분포를 밀어낸 측도로 정의하고, 누적분포함수가 분포를 완전히 결정한다는 것과 그 일반화된 역함수인 분위수 함수가 균등 확률변수를 원하는 분포로 바꾼다는 것을 증명한다. 난수 생성(53장)과 이산 분포의 분위수 계산이 이 정리에 기댄다. 기댓값의 변수 바꾸기 공식과 꼬리 적분 공식, 독립성과 곱측도, 그리고 Radon--Nikodym 정리로 정의하는 조건부 기댓값을 다룬다. 끝으로 확률을 binary64로 계산할 때의 문제, 곧 $1-F(x)$의 소거와 로그 확률이 필요한 까닭을 정규분포의 꼬리로 확인한다.}
+\abstract{이 권에서는 확률과 통계적 추론을 다룬다. 독자가 측도론을 안다고 보고 이 장은 확률론의 기본 대상을 측도의 언어로 빠르게 정리하고 계산과 맞닿는 곳에 머문다. 확률변수의 분포를 밀어낸 측도로 정의하고, 누적분포함수가 분포를 완전히 결정한다는 것과 그 일반화된 역함수인 분위수 함수가 균등 확률변수를 원하는 분포로 바꾼다는 것을 증명한다. 난수 생성(53장)과 이산 분포의 분위수 계산이 이 정리에 기댄다. 기댓값의 변수 바꾸기 공식과 꼬리 적분 공식, 독립성과 곱측도, 그리고 Radon--Nikodym 정리로 정의하는 조건부 기댓값을 다룬다. 끝으로 확률을 binary64로 계산할 때의 문제, 곧 $1-F(x)$의 소거와 로그 확률이 필요한 까닭을 정규분포의 꼬리로 확인한다.}
 
-\section{확률 공간}
+\section{Probability Spaces}
 \label{sec:probability-space}
 
 \term{확률 공간}{probability space}은 측도 공간 $(\Omega,\mathcal F,P)$로서 $P(\Omega)=1$인 것이다. $\Omega$의 원소를 \term{표본}{outcome}, $\mathcal F$의 원소를 \term{사건}{event}이라 부른다. 측도의 성질이 그대로 확률의 성질이 된다. 서로소인 사건들의 확률은 더해지고, 늘어나는 사건열 $A_n\uparrow A$에서 $P(A_n)\uparrow P(A)$이며, 줄어드는 사건열 $A_n\downarrow A$에서 $P(A_n)\downarrow P(A)$이다(유한 측도이므로 뒤의 것도 성립한다). 이 공리 체계는 Kolmogorov가 1933년에 세웠다\cite{kolmogorov1933}.
@@ -20,10 +20,10 @@ $\sum_nP(A_n)<\infty$이면 $P(A_n\text{ 무한히 자주})=0$이다. 여기서 
 모든 $m$에 대해 $P(\bigcap_{m'}\bigcup_{n\ge m'}A_n)\le P(\bigcup_{n\ge m}A_n)\le\sum_{n\ge m}P(A_n)$이고, 오른쪽은 수렴하는 급수의 꼬리이므로 $m\to\infty$에서 $0$이다.
 \end{proof}
 
-\section{확률변수와 분포}
+\section{Random Variables and Distributions}
 \label{sec:random-variables}
 
-\subsection{분포와 누적분포함수}
+\subsection{Distributions and Cumulative Distribution Functions}
 
 가측 함수 $X:(\Omega,\mathcal F)\to(\mathbb R,\mathcal B)$를 \term{확률변수}{random variable}라 한다. $\mathcal B$는 Borel 집합족이다. $X$의 \term{분포}{distribution}는 밀어낸 측도
 \[
@@ -35,7 +35,7 @@ F(x)=P(X\le x)=P_X\bigl((-\infty,x]\bigr)
 \]
 로 정의하는 \term{누적분포함수}{cumulative distribution function, CDF}로 요약된다. $F$는 단조 증가하고, 오른쪽 연속이며($(-\infty,x+1/n]\downarrow(-\infty,x]$에 연속성을 쓴다), $F(-\infty)=0$, $F(\infty)=1$이다. 거꾸로 이 세 성질을 가진 함수는 모두 어떤 분포의 누적분포함수이고, 분포는 누적분포함수로 유일하게 정해진다. 유일성은 반직선 $(-\infty,x]$들이 곱에 닫힌 생성족이므로 $\pi$-$\lambda$ 정리에서 나온다\cite{billingsley1995}. 존재성은 다음 소절에서 구성으로 보인다.
 
-\subsection{분위수 함수}
+\subsection{The Quantile Function}
 
 누적분포함수는 단조이지만 엄격히 증가하지 않을 수도 있고(밀도가 $0$인 구간) 연속이 아닐 수도 있으므로(원자가 있는 점), 역함수를 다음처럼 일반화한다.
 
@@ -71,7 +71,7 @@ $U$가 $(0,1)$의 균등 분포를 따르면 $X=F^{-}(U)$의 누적분포함수�
 
 이산 분포에서는 $F$가 계단 함수여서 $F^{-}$의 값이 원자에서 정해지고, 정의의 부등호가 엄격한지 아닌지가 결과를 바꾼다. 정수에 실린 분포에서 $F^{-}(p)$는 $F(k)\ge p$인 가장 작은 정수 $k$이므로 $p$가 어떤 원자의 누적 확률과 정확히 같으면 그 원자가 답이고 $p$가 아주 조금만 커져도 다음 원자가 답이 된다. 평균 $3$인 Poisson 분포에서 $F(2)=0.42319\ldots$이고, $p=F(2)$이면 분위수가 $2$이지만 $p=F(2)(1+10^{-15})$이면 $3$이다. 실은 $F(2)$에 가장 가까운 binary64 수 $0.42319008112684353$이 참값보다 $1.6\times10^{-17}$ 커서, 그 수의 정확한 분위수부터가 $3$이다. 분위수 함수는 누적 확률값 $F(k)$마다 불연속이어서 계산한 $F$에 반올림 오차가 있으면 원자 근처의 $p$에서 답이 한 칸 어긋날 수 있다. 이 때문에 stardust의 이산 분포는 분위수의 정확도를 후방 오차로 약속하고 $p$를 상대 $10^{-14}$ 안에서 움직였을 때의 정확한 분위수 가운데 하나를 돌려준다.
 
-\subsection{분포의 분해}
+\subsection{Decomposition of Distributions}
 
 Lebesgue 분해 정리로 $\mathbb R$ 위의 확률 측도는
 \[
@@ -79,7 +79,7 @@ P_X=\alpha_dP_d+\alpha_{ac}P_{ac}+\alpha_sP_s,\qquad\alpha_d+\alpha_{ac}+\alpha_
 \]
 로 유일하게 나뉜다. $P_d$는 가산 개의 원자에 실린 \term{이산}{discrete} 부분, $P_{ac}$는 Lebesgue 측도에 대해 절대 연속인 부분, $P_s$는 원자가 없지만 Lebesgue 측도와 서로 특이한 부분이다. 절대 연속 부분에는 Radon--Nikodym 정리로 밀도 $f=dP_{ac}/d\lambda$가 있어 $P_{ac}(B)=\int_Bf\,d\lambda$이고, 이산 부분은 확률 질량 함수 $P(X=k)=\alpha_dP_d(\{k\})$로 쓴다. 특이 연속 부분의 예로 Cantor 함수를 누적분포함수로 가진 분포가 있지만 통계 모형에는 거의 나타나지 않으므로 실제로 다루는 분포는 밀도를 가진 연속 분포와 정수에 실린 이산 분포, 그리고 가끔 그 둘의 혼합이다.
 
-\section{기댓값}
+\section{Expectation}
 \label{sec:expectation}
 
 확률변수 $X$의 \term{기댓값}{expectation}은 적분 $E[X]=\int_\Omega X\,dP$이다($E|X|<\infty$일 때). 이 적분은 변수 바꾸기 공식으로 분포 위에서 계산한다.
@@ -105,7 +105,7 @@ E[X]=\int_0^\infty P(X>t)\,dt=\int_0^\infty\bigl(1-F(t)\bigr)\,dt
 
 $E[X^k]$를 $k$차 \term{모멘트}{moment}, $\operatorname{Var}X=E[(X-EX)^2]$를 \term{분산}{variance}이라 한다. 기댓값에 관한 두 부등식이 자주 쓰인다. 볼록 함수 $\varphi$에 대해 $\varphi(E X)\le E\varphi(X)$인 Jensen 부등식(볼록 함수는 $EX$에서 그래프 아래에 놓이는 지지선 $\ell$을 가지므로 $\varphi(X)\ge\ell(X)$의 기댓값을 취한다)과, $a>0$에서 $P(|X|\ge a)\le E|X|/a$인 Markov 부등식($\mathbf 1\{|X|\ge a\}\le|X|/a$의 기댓값)이다. Markov 부등식을 $(X-EX)^2$에 쓰면 Chebyshev 부등식 $P(|X-EX|\ge a)\le\operatorname{Var}X/a^2$가 된다.
 
-\section{독립성}
+\section{Independence}
 \label{sec:independence}
 
 $\sigma$-대수 $\mathcal G_1,\dots,\mathcal G_n\subset\mathcal F$가 \term{독립}{independent}이라는 것은 모든 $A_i\in\mathcal G_i$에 대해 $P(A_1\cap\dots\cap A_n)=P(A_1)\cdots P(A_n)$이라는 것이다. 무한히 많은 $\sigma$-대수는 그 가운데 유한 개가 언제나 독립일 때 독립이라 한다. 확률변수들이 독립이라는 것은 각각이 생성하는 $\sigma$-대수 $\sigma(X_i)=\{X_i^{-1}(B)\}$가 독립이라는 것이다.
@@ -127,10 +127,10 @@ P\Bigl(\bigcap_{n=m}^MA_n^c\Bigr)=\prod_{n=m}^M\bigl(1-P(A_n)\bigr)\le\exp\Bigl(
 이고, $M\to\infty$에서 오른쪽이 $0$으로 간다. 그러므로 각 $m$에서 $P(\bigcap_{n\ge m}A_n^c)=0$이고, 가산 합집합도 확률이 $0$이다.
 \end{proof}
 
-\section{조건부 기댓값}
+\section{Conditional Expectation}
 \label{sec:conditional-expectation}
 
-\subsection{정의와 존재}
+\subsection{Definition and Existence}
 
 $P(B)>0$인 사건으로 조건을 거는 것은 초등적이지만 $X=x$처럼 확률이 $0$인 사건으로 조건을 걸어야 할 때도 흔하며 이런 조건은 $\sigma$-대수로 조건을 거는 일반적인 정의를 거쳐야 엄밀해진다.
 
@@ -148,7 +148,7 @@ $E|X|<\infty$이고 $\mathcal G\subset\mathcal F$가 부분 $\sigma$-대수이�
 
 $Y$가 $\mathcal G$-가측이라는 것은 $\mathcal G$가 담은 정보만으로 정해진다는 뜻이고 (ii)는 그 정보로 구분되는 어느 사건에서든 $Y$를 평균하면 $X$를 평균한 것과 같다는 말이다. 확률변수 $Z$로 조건을 걸 때는 $\mathcal G=\sigma(Z)$로 두고 $E[X\mid Z]$로 쓴다. Doob--Dynkin 보조정리로 $\sigma(Z)$-가측인 확률변수는 어떤 Borel 함수 $h$에 대해 $h(Z)$의 꼴이므로 $E[X\mid Z]=h(Z)$이고 이 $h(z)$를 $E[X\mid Z=z]$로 쓴다. $h$는 $P_Z$-거의 어디서나만 정해진다.
 
-\subsection{성질과 사영}
+\subsection{Properties and Projection}
 
 다음 성질들은 정의에서 따라 나오며 대개 (ii)를 확인하고 유일성을 쓰면 증명된다. 단조성은 유일성의 증명과 같은 논법으로, 셋째 성질은 $Z=\mathbf 1_G$에서 시작해 단순 함수와 단조 수렴 정리로 넓혀 증명한다.
 \begin{enumerate}
@@ -162,7 +162,7 @@ $E[X^2]<\infty$이면 조건부 기댓값에 기하적인 뜻이 있다. $L^2(\O
 
 결합 밀도 $f(x,z)$가 있으면 $f_Z(z)=\int f(x,z)\,dx>0$인 곳에서 조건부 밀도 $f(x\mid z)=f(x,z)/f_Z(z)$를 두면 $E[g(X)\mid Z=z]=\int g(x)f(x\mid z)\,dx$이다. 이 식이 (ii)를 만족함은 Fubini 정리로 바로 확인된다.
 
-\section{확률의 수치 계산}
+\section{Numerical Computation of Probabilities}
 \label{sec:probability-numerics}
 
 수학적으로는 $P(X>x)=1-F(x)$이지만 binary64로 그렇게 계산하면 $F(x)$가 $1$에 가까울 때 9장의 소거가 일어난다. 표준 정규분포에서 $1-\Phi(5)$를 $\Phi(5)=0.9999997133484281$에서 빼면 $2.866515719235352\times10^{-7}$을 얻는데, 꼬리를 직접 계산한 값 $2.8665157187919\times10^{-7}$과 상대적으로 $1.5\times10^{-10}$ 다르다. $\Phi(5)$의 반올림 오차(많아야 $u$이고 여기서는 약 $0.4u$)가 $1/(1-\Phi(5))\approx3.5\times10^6$배로 커진 것이다. $x=10$이면 $\Phi(10)$이 binary64에서 정확히 $1$로 반올림되어 $1-\Phi(10)=0$이지만, 참값은 $7.62\times10^{-24}$이다. 그래서 수치 라이브러리는 누적분포함수와 따로 \term{생존 함수}{survival function} 또는 여누적분포함수 $\bar F(x)=1-F(x)$를 직접 계산한다. 두 쪽 가운데 작은 쪽을 정확히 계산하고, 큰 쪽이 필요하면 $1$에서 작은 쪽을 뺀다. 큰 쪽은 $1/2$ 이상이므로 $1$에서 정확한 작은 쪽을 빼도 상대오차가 커지지 않아 그 뺄셈은 해가 없다. 작은 쪽이 $u/2$보다 작으면 큰 쪽은 반올림해서 그냥 $1$이다.
@@ -175,7 +175,7 @@ $E[X^2]<\infty$이면 조건부 기댓값에 기하적인 뜻이 있다. $L^2(\O
 stardust의 분포 객체(\code{sd.stats})는 scipy의 새 분포 틀의 이름을 따라 \code{pdf}, \code{logpdf}(이산은 \code{pmf}, \code{logpmf}), \code{cdf}, \code{logcdf}, \code{ccdf}, \code{logccdf}, \code{icdf}, \code{iccdf}, \code{ilogcdf}, \code{ilogccdf}를 둔다. 이 장의 $\bar F$가 \code{ccdf}이고, \code{iccdf}가 역생존 함수이다. 설계 문서의 원칙은 이 절 그대로이다. \code{ccdf}는 $1-\text{cdf}$로 만들지 않고 두 쪽 가운데 작은 쪽을 직접 계산하며, 큰 쪽의 로그는 $\log1p(-\text{작은 쪽})$로 얻는다. 꼬리가 정규 수 아래로 내려가면 로그 확률을 정규분포는 \code{log\_ndtr}, 감마와 베타는 불완전 감마·베타 함수의 앞 인자의 로그(40장)에서 얻는다. 정확도 계약은 보장 영역에서 상대 $10^{-14}$이고, 꼬리의 \code{ccdf}와 \code{logccdf}도 상대 정확도이다. 이산 분포의 \code{icdf}(p)는 $\text{cdf}(k)\ge p$인 가장 작은 $k$로 이 장의 $F^{-}$와 같고, \code{iccdf}(p)는 $\text{ccdf}(k)\le p$인 가장 작은 $k$이다. 그 정확도는 앞에서 말한 후방 오차로 약속한다.
 \end{instardust}
 
-\section{맺음}
+\section{Concluding Remarks}
 
 확률론은 전체 측도가 $1$인 측도론에 독립성과 조건부 기댓값을 더한 것이다. 통계 계산이 주로 다루는 분포는 누적분포함수로 표현되고 누적분포함수는 다시 분위수 함수로 표현된다. 분위수 함수가 균등 확률변수를 원하는 분포로 바꾼다는 정리는 난수 생성에 쓰이고 그 역인 확률 적분 변환은 검정에 쓰인다. 조건부 기댓값은 Radon--Nikodym 도함수로 정의되지만 $L^2$에서는 직교 사영이어서 최적화와 회귀의 언어로 다시 읽힌다. 마지막으로 확률을 계산할 때는 수학적으로 같은 $1-F$와 $\bar F$, 계산한 확률의 로그와 직접 계산한 로그 확률이 binary64에서는 전혀 다르다. 다음 장에서는 stardust가 구현한 분포족들과 그 사이의 관계를 본다.
 

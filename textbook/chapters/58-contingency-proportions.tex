@@ -1,10 +1,10 @@
 %% 58장 분할표와 비율
-\chapter{분할표와 비율}
+\chapter{Contingency Tables and Proportions}
 \label{ch:contingency}
 
 \abstract{범주 자료의 검정과 구간을 다룬다. 두 범주 변수를 교차해 센 분할표에서 주변합으로 조건을 걸면 독립 가설 아래 표의 분포가 초기하 분포가 되고 독립이 아니면 오즈비 하나에만 의존하는 비중심 초기하 분포가 된다는 것을 보인다. 이 조건부 분포에서 Fisher 정확 검정과 조건부 최대우도 오즈비, 정확한 오즈비 구간이 나온다. Pearson 카이제곱 통계량이 독립 가설 아래 자유도 $(r-1)(c-1)$의 카이제곱으로 수렴한다는 것을 사영으로 증명하고 $r\times c$ 표의 정확 검정을 계산하는 망 알고리즘을 정리한다. 조건을 걸지 않고 장애 모수에 대해 상한을 취하는 Barnard와 Boschloo의 검정은 Fisher 검정보다 검정력이 크며 Boschloo의 $p$값이 Fisher의 $p$값을 넘지 않는다는 것을 증명한다. 끝으로 두 비율의 차의 구간 넷의 정확한 포함 확률을 계산해 Wald 구간이 명목 수준 $95\%$에서 $33\%$까지 떨어지는 것을 본다.}
 
-\section{분할표와 표집 모형}
+\section{Contingency Tables and Sampling Models}
 \label{sec:sampling-models}
 
 두 범주 변수를 교차해 센 $r\times c$ 표를 \term{분할표}{contingency table}라 한다. 칸 $(i,j)$의 개수를 $N_{ij}$, 행합을 $R_i$, 열합을 $C_j$, 총합을 $N$이라 하자. 같은 표라도 자료를 모은 방식에 따라 분포가 다르다.
@@ -35,10 +35,10 @@ P(N_{ij}=x_{ij}\ \forall i,j)=\frac{\prod_iR_i!\prod_jC_j!}{N!\prod_{i,j}x_{ij}!
 \end{equation}
 이다. 곱 다항 표집에서 행 $i$의 확률은 $R_i!\prod_j\pi_j^{x_{ij}}/x_{ij}!$이고 행들을 곱하면 $\prod_j\pi_j^{C_j}$가 표에 의존하지 않으므로 $\prod_{i,j}1/x_{ij}!$에 비례한다. 정규화 상수는 \cref{sec:network}에서 증명하는 항등식으로 $N!/(\prod_iR_i!\prod_jC_j!)$이다.
 
-\section{Fisher 정확 검정과 오즈비}
+\section{Fisher's Exact Test and the Odds Ratio}
 \label{sec:fisher-exact}
 
-\subsection{검정}
+\subsection{The Test}
 
 $2\times2$ 표의 독립 가설은 \cref{prop:hypergeometric}의 초기하 분포로 정확하게 검정한다. 이것이 \term{Fisher 정확 검정}{Fisher's exact test}이고 Fisher, Irwin, Yates가 1934--35년에 거의 같은 무렵 내놓았다\cite{fisher1935logic,yates1934}. 단측 $p$값은 초기하 꼬리 $P(X_1\ge x)$이다. 양측 $p$값은 55장에서 본 두 정의 가운데 관측 표보다 확률이 크지 않은 모든 표의 확률을 더하는 쪽이 표준이다. 부동소수 계산에서 확률이 같은 표를 놓치지 않도록 R은 관측 확률의 $1+10^{-7}$배 이하를 같다고 본다.
 
@@ -48,13 +48,13 @@ $2\times2$ 표의 독립 가설은 \cref{prop:hypergeometric}의 초기하 분�
 \]
 를 보자(행이 반응 여부, 열이 집단이라 하고 열합 $10$, $10$, 첫 행의 합 $9$로 조건을 건다). 왼쪽 위 칸은 $0$부터 $9$까지이고 초기하 분포가 $4$와 $5$를 가운데에 두고 대칭이다. 관측값 $7$의 확률은 $0.03215$이고 단측 $p$값은 $P(X\ge7)=0.03489$이다. 분포가 대칭이므로 양측 $p$값은 두 정의 모두 $0.06978$이다. 표본이 작고 분포가 이산이어서 이 검정의 실제 크기는 명목 수준보다 한참 작다(\cref{sec:unconditional}).
 
-\subsection{오즈비의 추정과 구간}
+\subsection{Estimation and Intervals for the Odds Ratio}
 
 표본 오즈비는 $\hat\psi=ad/(bc)=7\cdot8/(3\cdot2)=9.33$이다. 그 로그의 표준오차를 델타 방법(54장)으로 어림하면 $\sqrt{1/a+1/b+1/c+1/d}=1.049$이고 \term{Woolf 구간}{Woolf interval} $\exp(\log\hat\psi\pm1.96\cdot1.049)=(1.19,\,73.0)$을 얻는다\cite{woolf1955}. 이 구간은 $1$을 포함하지 않는다.
 
 조건부 분포를 우도로 쓸 수도 있다. \cref{prop:hypergeometric}에서 $\theta=\log\psi$로 두면 조건부 확률은 $h(x)e^{\theta x}/K(\theta)$ 꼴의 지수족이고 충분 통계량이 $X_1$이다. 54장에서 본 대로 지수족의 점수는 $x-E_\theta[X_1]$이므로 \term{조건부 최대우도 추정량}{conditional maximum likelihood estimator}은 비중심 초기하 분포의 평균을 관측값에 맞추는 방정식 $E_{\hat\psi}[X_1\mid S=s]=x$의 근이다. $\log K$가 볼록이어서 평균이 $\theta$의 증가 함수이므로 관측값이 받침의 끝이 아니면 근이 하나 있다. 위의 표에서 조건부 최대우도 추정값은 $8.15$로 표본 오즈비보다 작다. 정확한 구간은 단측 정확 검정 둘을 수준 $\alpha/2$로 뒤집어 얻는다(55장). 아래 끝은 $P_\psi(X_1\ge x)=\alpha/2$, 위 끝은 $P_\psi(X_1\le x)=\alpha/2$의 근이고 둘 다 $\psi$에 대해 단조이므로 근이 하나이다. 이 표에서는 $(0.882,\,127.0)$으로 $1$을 포함한다. Fisher 검정의 양측 $p$값 $0.070$과 맞는 결론이다. 같은 자료에서 근사 구간과 정확 구간이 다른 결론을 내는 것은 표본이 작을 때 흔하다.
 
-\section{카이제곱 검정}
+\section{Chi-Square Tests}
 \label{sec:chi-square}
 
 관측 개수 $O$와 귀무가설 아래의 기대 개수 $E$를 견주는 통계량
@@ -101,7 +101,7 @@ Z=(I-I\otimes Q-P\otimes I)W+o_p(1)=(I-P)\otimes(I-Q)\,W-(P\otimes Q)W+o_p(1)
 
 $2\times2$ 표에서는 자유도가 $1$이다. Yates는 이산 분포를 연속 분포로 어림하는 오차를 줄이려고 각 칸의 $|O-E|$에서 $1/2$을 빼는 \term{연속성 보정}{continuity correction}을 제안했다\cite{yates1934}. 앞의 표에서 보정하지 않은 $X^2=5.05$의 $p$값은 $0.025$이고 보정한 $X^2=3.23$의 $p$값은 $0.072$로 Fisher 검정의 $0.070$에 가깝다. 보정한 검정은 Fisher 검정을 어림하므로 Fisher 검정만큼 보수적이다.
 
-\section{\texorpdfstring{$r\times c$}{r x c} 표의 정확 검정과 망 알고리즘}
+\section{Exact Tests for \texorpdfstring{$r\times c$}{r x c} Tables and the Network Algorithm}
 \label{sec:network}
 
 $r\times c$ 표의 Fisher 검정은 주변합이 같은 모든 표 가운데 \eqref{eq:rxc-prob}의 확률이 관측 표의 확률 이하인 표의 확률을 더한다. 행합 $(4,6,6)$, 열합 $(4,5,7)$인 표
@@ -147,7 +147,7 @@ $r\times c$ 표의 Fisher 검정은 주변합이 같은 모든 표 가운데 \eq
 
 마지막 단계의 마디는 남은 행합이 모두 $0$인 마디 하나이고 그곳의 $\mathrm{LP}=\mathrm{SP}=1$이므로 모든 경로가 둘째 줄 이전의 분기에서 처리된다. 최악의 경우 작업량은 여전히 지수적이므로 구현은 작업량에 상한을 두고 그것을 넘으면 카이제곱 근사나 몬테카를로를 권한다.
 
-\section{조건을 걸지 않는 정확 검정}
+\section{Unconditional Exact Tests}
 \label{sec:unconditional}
 
 곱 이항 표집에서 실제로 정해진 것은 행합뿐인데 Fisher 검정은 열합까지 조건으로 걸어 표본 공간을 좁힌다. 그 결과 검정이 이산적이어서 보수적이다. 조건을 걸지 않고 공통 성공 확률 $\pi$를 장애 모수로 둔 채 55장의 정의대로 $p$값을 $\pi$에 대한 상한으로 잡으면
@@ -183,7 +183,7 @@ $(20,20)$ & $0.053$ & $0.025$ & $0.050$ & $0.046$ & $0.846$ & $0.901$ & $0.901$ 
 \label{tab:unconditional}
 \end{table}
 
-\section{두 비율의 차의 구간}
+\section{Intervals for the Difference of Two Proportions}
 \label{sec:difference-intervals}
 
 두 이항 비율의 차 $\delta=p_1-p_2$의 구간은 55장의 이항 구간과 같은 문제를 더 크게 겪는다. 대표적인 방법은 넷이다.
@@ -216,7 +216,7 @@ Miettinen--Nurminen & $0.922$ & $0.952$ & $0.1\%$ \\
 \code{sd.htest.fisher\_exact}는 $r\times c$ 표에서도 언제나 정확한 망 알고리즘을 쓰고 R \code{fisher.test}의 규칙(관측 확률의 $1+10^{-7}$배 이하)을 따른다. scipy 1.18.1의 기본은 시드 없는 몬테카를로이므로 일부러 다르게 한 곳이다. 마디는 남은 행합을 정렬한 다중집합이고 가장 긴·짧은 완성은 메모 동적 계획법으로 정확히 구한다. R의 FEXACT가 로그로 가까운 과거 값을 합쳐 작은 상대오차를 들이는 것과 달리 같은 유리수만 합치고 대신 가운데 열에서 앞뒤의 목록을 만나게 한다. 작업량이 $2\times10^8$을 넘으면 \code{chi2\_contingency}를 권하는 \code{ValueError}를 낸다. \code{barnard\_exact}와 \code{boschloo\_exact}의 상한은 Taylor 꼴의 구간별 상한으로 구간을 나누며 참 상한을 상대 $2^{-48}$ 안에서 찾으므로 결과가 scipy의 격자 크기 \code{n}과 무관하다. \code{odds\_ratio}의 조건부 최대우도는 비중심 초기하 분포의 평균 방정식을 괄호를 지키는 Newton 방법으로 푼다. 두 비율 차의 점수 검정은 제약된 참 최우추정을 쓴다. statsmodels 0.15.0은 삼차식의 계수 하나가 달라 $\delta\ne0$에서 다른 근을 낸다. 개수가 $(15,40)$, $(25,45)$이고 $\delta=0.1$이면 참 추정값은 $\tilde p_2=0.42495$이다. 정확 검정은 정수 개수만 받는다.
 \end{instardust}
 
-\section{맺음}
+\section{Concluding Remarks}
 
 분할표의 정확 추론은 주변합으로 조건을 걸어 장애 모수를 없애는 데서 시작한다. 그 조건부 분포는 독립이면 초기하 분포이고 아니면 오즈비만의 비중심 초기하 분포여서 Fisher 정확 검정과 조건부 최대우도 오즈비, 정확한 오즈비 구간이 한 틀에서 나온다. 카이제곱 통계량의 자유도는 추정한 주변 확률이 사영의 차원을 줄인 결과이다. $r\times c$ 표의 정확 검정은 남은 행합을 마디로 하는 그래프에서 경로의 합으로 계산하고 가장 긴·짧은 경로로 가지를 친다. 조건을 거는 것이 보수성을 낳으므로 곱 이항 표집에서는 장애 모수에 대한 상한을 취하는 Barnard와 Boschloo의 검정이 더 강력하다. 비율 차의 구간은 Wald 구간을 피하고 점수 구간이나 더한 자료의 구간을 쓴다. 다음 장에서는 여러 검정을 한꺼번에 할 때의 오류율을 다룬다.
 

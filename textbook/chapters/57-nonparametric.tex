@@ -1,10 +1,10 @@
 %% 57장 순서통계량과 비모수 검정
-\chapter{순서통계량과 비모수 검정}
+\chapter{Order Statistics and Nonparametric Tests}
 \label{ch:nonparametric}
 
 \abstract{분포의 모양을 가정하지 않는 검정을 다룬다. 바탕은 순서통계량과 경험분포함수이다. 균등 분포의 순서통계량이 베타 분포를 따른다는 것을 보이고 경험분포함수가 참 분포함수로 고르게 수렴한다는 Glivenko--Cantelli 정리를 증명한 뒤 고른 거리가 $\epsilon$을 넘을 확률을 $2e^{-2n\epsilon^2}$로 묶는 Dvoretzky--Kiefer--Wolfowitz 부등식을 정리한다. 순위 검정은 귀무가설 아래 순위의 분포가 표본 분포와 무관하다는 데서 정확한 귀무 분포를 얻는다. Mann--Whitney 통계량의 평균과 분산을 계산하고 그 분포를 세는 점화식을 유도한 뒤 정확한 꼬리 확률과 정규 근사를 견주어 연속성 보정이 언제 돕고 언제 해치는지 본다. 동점이 있으면 관측한 중간 순위 위의 조건부 분포가 올바른 귀무 분포이고 분산도 그에 맞게 줄어든다는 것을 증명한다. 경험분포함수와 가설 분포의 거리를 재는 Kolmogorov--Smirnov 검정에서는 정확한 분포를 Durbin 행렬로 계산해 극한 분포가 작은 표본에서 보수적이라는 것을 확인하고 동점을 무시한 두 표본 정확 분포가 $p$값을 두 배 넘게 부풀리는 예를 본다. 끝으로 차이의 제곱을 적분하는 Cramér--von Mises와 Anderson--Darling 통계량을 순서통계량의 식으로 바꾼다.}
 
-\section{순서통계량}
+\section{Order Statistics}
 \label{sec:order-statistics}
 
 표본 $X_1,\dots,X_n$을 크기순으로 늘어놓은 $X_{(1)}\le\dots\le X_{(n)}$을 \term{순서통계량}{order statistics}이라 한다. 표본이 분포함수 $F$에서 독립으로 나왔다고 하자. 49장의 역변환 정리로 분포를 바꾸지 않고 $X_i=F^{-}(U_i)$($U_i$는 $(0,1)$의 독립 균등)로 둘 수 있고 일반화 역함수 $F^{-}$가 감소하지 않으므로 크기 순서가 보존되어 $X_{(k)}=F^{-}(U_{(k)})$이다. 그래서 순서통계량의 분포는 균등 표본의 경우로 돌아간다.
@@ -24,7 +24,7 @@ $U_{(k)}\le u$인 것은 $u$ 이하인 표본이 $k$개 이상인 것과 같고 
 
 베타 분포의 평균으로 $E[U_{(k)}]=k/(n+1)$이다. 정규 Q--Q 그림이 $k$번째 순서통계량을 $\Phi^{-1}(k/(n+1))$ 근처의 점에 대해 그리는 까닭이 여기에 있다. 표본 분위수는 순서통계량을 보간해 정의하는데 그 보간 방법이 여럿이어서 Hyndman과 Fan이 정리한 것만 아홉 가지이고 numpy는 여기에 네 가지를 더해 열세 가지를 둔다. 분포함수가 연속이면 $X_i$들은 거의 확실히 서로 다르므로 순서통계량에 동점이 없다. 동점은 \cref{sec:rank-ties}에서 따로 다룬다.
 
-\section{경험분포함수}
+\section{The Empirical Distribution Function}
 \label{sec:empirical-cdf}
 
 \term{경험분포함수}{empirical distribution function} $F_n(x)=n^{-1}\#\{i:X_i\le x\}$는 각 관측에 질량 $1/n$을 둔 이산 분포의 누적분포함수이다. 고정한 $x$에서 $nF_n(x)\sim\mathrm{Bin}(n,F(x))$이므로 큰 수의 강법칙으로 $F_n(x)\to F(x)$가 거의 확실히 성립한다. 이 수렴은 $x$에 대해 고르다.
@@ -57,10 +57,10 @@ P\Bigl(\sup_x|F_n(x)-F(x)|>\epsilon\Bigr)\le2e^{-2n\epsilon^2}
 \end{equation}
 이다. 오른쪽이 $F$와 무관하므로 이 부등식을 뒤집으면 어떤 분포에도 성립하는 신뢰 띠 $F_n(x)\pm\sqrt{\log(2/\alpha)/(2n)}$이 나온다. $n=100$, $\alpha=0.05$에서 띠의 반폭은 $0.136$이다.
 
-\section{순위 검정}
+\section{Rank Tests}
 \label{sec:rank-tests}
 
-\subsection{순위의 분포}
+\subsection{The Distribution of Ranks}
 
 \begin{proposition}
 \label{prop:rank-uniform}
@@ -73,7 +73,7 @@ $Z_1,\dots,Z_N$이 독립이고 같은 연속 분포를 따르면 순위 벡터 
 
 이 분포는 $F$에 의존하지 않으므로 순위만의 함수인 통계량은 귀무가설 아래 분포가 정해져 있고 그것을 정확히 계산할 수 있다. 순위 검정을 \term{분포에 무관}{distribution-free}하다고 부르는 까닭이다.
 
-\subsection{Mann--Whitney 검정}
+\subsection{The Mann--Whitney Test}
 
 두 표본 $X_1,\dots,X_m$과 $Y_1,\dots,Y_n$이 같은 연속 분포에서 나왔다는 귀무가설을 생각하자. \term{Mann--Whitney 통계량}{Mann--Whitney statistic}
 \[
@@ -136,11 +136,11 @@ $P(U\le10)$ & $0.13384$ & $0.12781$ & $0.11161$ \\
 \label{tab:mw-normal}
 \end{table}
 
-\subsection{부호 순위 검정}
+\subsection{The Signed-Rank Test}
 
 짝지은 자료의 차이 $D_i$나 한 표본의 분포가 $0$에 대해 대칭인지를 검정할 때는 Wilcoxon의 \term{부호 순위 검정}{signed-rank test}을 쓴다\cite{wilcoxon1945}. 차이의 절댓값에 순위를 매기고 양수인 차이의 순위를 더한 $T^+$를 통계량으로 한다. 귀무가설 아래 연속이고 대칭인 분포에서는 $|D_i|$와 $D_i$의 부호가 독립이고 부호는 반반의 확률로 양수이다. 그래서 $T^+=\sum_{k=1}^nkB_k$이고 $B_k$는 독립인 $\mathrm{Bernoulli}(1/2)$이다. 평균은 $\sum_kk/2=n(n+1)/4$, 분산은 $\sum_kk^2/4=n(n+1)(2n+1)/24$이다. 분포는 $2^n$개의 부호 배치를 세는 동적 계획법 $c_k(t)=c_{k-1}(t)+c_{k-1}(t-k)$로 얻는다. $c_k$는 순위 $1,\dots,k$만 쓴 배치의 수이다. 각 $c_k$는 $t\mapsto k(k+1)/2-t$에 대해 대칭이므로 절반만 쌓아도 된다.
 
-\subsection{동점}
+\subsection{Ties}
 \label{sec:rank-ties}
 
 실제 자료는 반올림되어 동점이 흔하다. 동점인 관측에는 그들이 차지할 순위의 평균, 곧 \term{중간 순위}{midrank}를 준다. Mann--Whitney 통계량으로는 쌍마다 $\mathbf 1\{X_i>Y_j\}+(1/2)\mathbf 1\{X_i=Y_j\}$를 더하는 것과 같다. 그러면 순위 벡터는 더 이상 $1,\dots,N$의 순열이 아니므로 앞의 정확 분포는 틀린다. 올바른 귀무 분포는 관측한 중간 순위들의 다중집합 $\{a_1,\dots,a_N\}$을 고정하고 그 가운데 어느 $m$개가 $X$에 갔는지가 균등하다는 조건부 분포이다. 귀무가설 아래 $N$개의 관측은 교환 가능하므로 값의 다중집합을 조건으로 걸어도 배정은 균등하다. 이 조건부 분포는 앞의 점화식을 $W$에 대해 쓰고 가장 큰 관측이 보태는 정수 순위를 정렬한 중간 순위 $a_{(1)}\le\dots\le a_{(N)}$의 해당 값으로 바꾸어 센다. $X$ $a$개와 $Y$ $b$개가 남았을 때 가장 큰 관측이 $X$이면 $a_{(a+b)}$를 보탠다. 중간 순위는 반정수일 수 있으므로 두 배 해서 정수로 다룬다.
@@ -164,7 +164,7 @@ $W=U+m(m+1)/2$는 다중집합 $\{a_i\}$에서 비복원으로 뽑은 $m$개의 
 
 $x=(1,2,2,3)$, $y=(2,3,3,4,5)$이면 $N=9$이고 값 $2$와 $3$이 각각 크기 $3$의 묶음이다. 식은 $(20/12)(10-48/72)=15.556$이고 $\binom94=126$가지 배정을 직접 세어 얻은 분산과 같다.
 
-\section{Kolmogorov--Smirnov 검정}
+\section{The Kolmogorov--Smirnov Test}
 \label{sec:ks}
 
 한 표본이 연속 분포 $F_0$에서 나왔다는 가설은 $D_n=\sup_x|F_n(x)-F_0(x)|$로 검정한다\cite{kolmogorov1933ks}.
@@ -218,7 +218,7 @@ $1000$ & $0.04$ & $0.07934$ & $0.08152$ & $0.08152$ \\
 
 두 표본 검정의 정확 분포도 동점을 고려해야 한다. $x=(1,2,2,3,3,3)$, $y=(2,3,4,4,5)$이면 관측한 통계량은 $D=0.6$이다. 합친 값 $11$개를 고정하고 그 가운데 $6$개를 $x$에 주는 $\binom{11}6=462$가지 배정 가운데 $D\ge0.6$인 것은 $50$가지이므로 조건부 정확 $p$값은 $0.108$이다. 동점이 없다고 보고 서로 다른 $11$개 값의 배정으로 세면 $0.238$이 나와 두 배 넘게 부푼다. 동점이 있으면 $F_m-G_n$이 동점 값에서 한꺼번에 뛰므로 같은 배정에서도 $D$가 작아지고 $D$의 조건부 분포가 아래로 옮겨 가기 때문이다.
 
-\section{제곱을 적분하는 통계량}
+\section{Quadratic EDF Statistics}
 \label{sec:cvm-ad}
 
 Kolmogorov--Smirnov 통계량은 가장 큰 차이 하나만 본다. 또 $F_n(x)-F_0(x)$의 분산 $F_0(x)\{1-F_0(x)\}/n$이 꼬리에서 작으므로 꼬리의 벗어남은 최댓값을 키우기 어렵고 이 통계량은 꼬리의 차이에 둔하다. 차이의 제곱을 적분하는 \term{Cramér--von Mises 통계량}{Cramér--von Mises statistic}
@@ -262,7 +262,7 @@ A^2=-n-\frac1n\sum_{i=1}^n(2i-1)\bigl[\log U_{(i)}+\log\bigl(1-U_{(n+1-i)}\bigr)
 \code{sd.htest}의 순위 검정(\code{mannwhitneyu}, \code{wilcoxon}, \code{ansari}, \code{page\_trend\_test})은 동점이 있을 때 \code{method='exact'}를 관측한 중간 순위의 조건부 정확 순열 분포로 계산한다. scipy 1.18.1의 \code{'exact'}는 동점을 무시하므로 일부러 다르게 한 곳이고 R의 \code{wilcox.test(exact = TRUE)}와 같은 분포이다. \code{ks\_2samp}과 \code{cramervonmises\_2samp}도 같은 규칙을 따른다. 위의 두 표본 예에서 scipy는 $0.238$, stardust와 R은 $0.108$이다. 두 표본 Cramér--von Mises의 정확 분포는 큰 $n$에서도 격자 경로의 동적 계획법으로 계산한다. \code{ks\_1samp}의 정확 분포는 Durbin 행렬이고 행 벡터와 행렬의 곱을 Ogita--Rump--Oishi의 \code{Dot2}(곱의 오차는 FMA로, 합의 오차는 TwoSum으로 잡는다)로 더해 정확도를 지킨다. 행렬이 상한보다 커지면 오류를 내지 않고 scipy처럼 Pelz--Good 근사로 넘어간다. 부호 순위의 동적 계획법은 분포가 반합에 대칭이라는 것을 써서 필요한 꼬리 쪽 절반만 쌓는다. 정규 근사를 쓴 때에는 \code{'auto'}가 고른 경우에도 결과에 \code{zstatistic}을 둔다.
 \end{instardust}
 
-\section{맺음}
+\section{Concluding Remarks}
 
 비모수 검정은 순위와 경험분포함수라는 두 도구로 분포의 모양에 대한 가정을 피한다. 균등 순서통계량이 베타 분포를 따르고 경험분포함수가 참 분포로 고르게 수렴하고 그 거리가 $\epsilon$을 넘을 확률이 $n$에 대해 지수적으로 작아진다는 것이 그 이론적 바탕이다. 순위의 분포가 표본 분포와 무관하므로 귀무 분포를 정확히 셀 수 있고 점화식과 동적 계획법이 그 계산이다. 동점이 있으면 관측한 순위를 조건으로 거는 것이 올바른 정확 분포이고 그것을 무시하면 $p$값이 크게 틀릴 수 있다. 정규 근사와 극한 분포는 편리하지만 작은 표본의 꼬리에서는 수십 퍼센트씩 어긋나므로 정확한 계산이 가능하면 그것을 쓰는 것이 좋다. 다음 장에서는 범주 자료, 곧 분할표와 비율의 검정으로 넘어간다.
 

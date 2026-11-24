@@ -1,10 +1,10 @@
 %% 54장 추정
-\chapter{추정}
+\chapter{Estimation}
 \label{ch:estimation}
 
 \abstract{통계적 추론은 자료로부터 분포의 모수를 추정하고 그 불확실성을 재는 일이다. 이 장에서는 그 중심에 있는 최대우도 추정을 다룬다. 우도와 점수 함수를 정의하고 점수의 평균이 $0$이며 분산이 Fisher 정보라는 항등식, 그리고 불편 추정량의 분산이 Fisher 정보의 역수 아래로 내려갈 수 없다는 Cramér--Rao 부등식을 증명한다. 최대우도 추정량이 점근적으로 그 하계에 이르는 정규 분포를 따른다는 것을 점수의 Taylor 전개로 보이고 추정량의 점근 분산을 그 함수의 추정량으로 옮기는 델타 방법을 증명한다. 지수족에서는 로그 분할 함수가 볼록하여 최대우도 방정식이 모멘트 맞추기가 된다. 계산의 예로 감마 분포의 모양 모수를 디감마 함수의 방정식으로 풀고, Newton 반복이 세 번 만에 binary64의 끝자리까지 수렴하는 것을 본다. 지수 분포의 비율 추정량이 표본 크기 $5$에서는 분산이 점근 분산의 2.6배에 이르다가 $1000$에서는 점근 분산에 다가가는 것도 확인한다.}
 
-\section{우도}
+\section{Likelihood}
 \label{sec:likelihood}
 
 모수가 $\theta\in\Theta\subset\mathbb R^p$인 밀도(또는 확률 질량 함수)의 모형 $\{f(x;\theta)\}$가 있고 관측 $x_1,\dots,x_n$이 그 가운데 하나에서 독립으로 나왔다고 하자. 관측을 고정하고 $\theta$의 함수로 본
@@ -17,7 +17,7 @@ s(\theta)=\nabla_\theta\ell(\theta)=\sum_{i=1}^n\nabla_\theta\log f(x_i;\theta)=
 \]
 의 근이다. $s$를 \term{점수 함수}{score function}라 한다. 최대우도 추정량은 모수를 바꾸면 그대로 따라간다. $\eta=g(\theta)$가 일대일이면 같은 우도를 다른 좌표로 최대화하는 셈이므로 $\eta$의 최대우도 추정량은 $g(\hat\theta)$이다.
 
-\section{Fisher 정보}
+\section{Fisher Information}
 \label{sec:fisher-information}
 
 관측 하나의 점수 $u(\theta)=\nabla_\theta\log f(X;\theta)$를 생각하자. 적분과 미분의 순서를 바꿀 수 있는 정칙 조건 아래, 참값 $\theta$에서
@@ -47,10 +47,10 @@ I(\theta)=E_\theta\bigl[u(\theta)u(\theta)^{\mathsf T}\bigr]=-E_\theta\bigl[\nab
 
 이 하계는 Cramér와 Rao가 1940년대에 각각 얻었다\cite{cramer1946,rao1945}. 다변수에서는 $\operatorname{Cov}T-(nI)^{-1}$이 양반정치라는 꼴이 된다. 하계는 불편 추정량에만 걸리고 유한 표본에서 하계에 이르는 추정량은 지수족의 특별한 경우에만 있다.
 
-\section{최대우도 추정량의 점근 성질}
+\section{Asymptotic Properties of Maximum Likelihood Estimators}
 \label{sec:mle-asymptotics}
 
-\subsection{일치성}
+\subsection{Consistency}
 
 참값을 $\theta_0$이라 하자. 큰 수의 법칙으로 $n^{-1}\ell(\theta)\to E_{\theta_0}\log f(X;\theta)$이고 Jensen 부등식으로
 \[
@@ -58,7 +58,7 @@ E_{\theta_0}\log\frac{f(X;\theta)}{f(X;\theta_0)}\le\log E_{\theta_0}\frac{f(X;\
 \]
 이며(기댓값은 $f(\cdot;\theta_0)>0$인 곳에서 $f(\cdot;\theta)$를 적분한 값이므로 $1$을 넘지 않는다) 등호는 $f(\cdot;\theta)=f(\cdot;\theta_0)$일 때뿐이다. 왼쪽의 부호를 바꾼 값이 \term{Kullback--Leibler 발산}{Kullback--Leibler divergence}이다. 위 부등식에 따라 극한의 로그 우도는 모형이 식별 가능하면 $\theta_0$에서만 최대가 된다. 이 점별 수렴을 최대점의 수렴으로 바꾸려면 조건이 더 필요하다. Wald는 $f(x;\theta)$가 $\theta$에 대해 연속이고, 작은 근방과 무한대 근처에서 $\sup f(X;\theta')$의 로그 양의 부분의 기댓값이 유한하다는 조건 아래 최대점이 거의 확실히 $\theta_0$으로 감을 보였다\cite{wald1949}. 로그 우도가 오목하면 더 간단한 논증도 있다. 이런 조건 아래 $\hat\theta\to\theta_0$이 확률적으로(또는 거의 확실히) 성립한다. 이 성질을 \term{일치성}{consistency}이라 한다.
 
-\subsection{점근 정규성}
+\subsection{Asymptotic Normality}
 
 증명에는 \term{Slutsky 정리}{Slutsky's theorem}를 쓴다. $X_n\xrightarrow{d}X$이고 $Y_n$이 상수 $c$로 확률 수렴하면 $X_n+Y_n\xrightarrow{d}X+c$, $X_nY_n\xrightarrow{d}cX$이고 $c\ne0$이면 $X_n/Y_n\xrightarrow{d}X/c$이다. 또 정칙 조건에는 $\log f$와 그 도함수들의 기댓값이 유한하다는 조건이 들어 있어서 1차 모멘트만 가정하는 큰 수의 법칙(51장)을 쓸 수 있다.
 
@@ -87,7 +87,7 @@ E_{\theta_0}\log\frac{f(X;\theta)}{f(X;\theta_0)}\le\log E_{\theta_0}\frac{f(X;\
 
 유한 표본에서는 사정이 다르다. 비율 $\lambda$인 지수 분포의 최대우도 추정량은 $\hat\lambda=1/\bar X$이고, $n\bar X$가 감마 분포를 따르므로 정확히 $E\hat\lambda=n\lambda/(n-1)$, $\operatorname{Var}\hat\lambda=n^2\lambda^2/((n-1)^2(n-2))$이다. $\lambda=2$에서 $n\operatorname{Var}\hat\lambda$는 $n=5,20,100,1000$에서 $10.42$, $4.92$, $4.16$, $4.016$이 되어 점근 분산 $1/I(\lambda)=\lambda^2=4$에 $1/n$의 빠르기로 다가간다. $\hat\lambda$는 치우쳐 있으므로 Cramér--Rao 하계가 바로 걸리지는 않는다. 불편으로 고친 $(n-1)\hat\lambda/n$의 분산은 $\lambda^2/(n-2)$로, 이것도 하계 $\lambda^2/n$보다 크다. 모의실험을 $20$만 번 반복해 얻은 값 $10.35$, $4.88$, $4.15$, $4.016$이 이와 맞는다.
 
-\subsection{델타 방법}
+\subsection{The Delta Method}
 
 모수의 함수 $g(\theta)$를 추정할 때는 $g(\hat\theta)$를 쓰고 그 분산을 다음으로 어림한다.
 
@@ -106,7 +106,7 @@ $\sqrt n(\hat\theta-\theta_0)\xrightarrow{d}N(0,\Sigma)$이고 $g$가 $\theta_0$
 
 평균 $4$인 Poisson 표본의 평균 $\bar X$로 $\log\mu$를 추정하면 델타 방법의 표준편차는 $1/\sqrt{n\mu}$이다. $n=10$에서 $0.1581$, $n=100$에서 $0.0500$인데 모의실험의 표준편차는 $0.1616$과 $0.0501$이다. 비선형 함수일수록, 표본이 작을수록 근사가 나빠진다. stardust의 비선형 회귀 \code{nls}의 예측 구간(67장)이 이 방법으로 적합값의 분산을 계산한다.
 
-\section{지수족}
+\section{Exponential Families}
 \label{sec:exponential-family}
 
 밀도가
@@ -123,7 +123,7 @@ f(x;\eta)=h(x)\exp\bigl(\eta^{\mathsf T}T(x)-A(\eta)\bigr)
 \]
 로, 충분 통계량의 기댓값을 표본 평균에 맞추는 \term{모멘트 맞추기}{moment matching}이다. Fisher 정보는 $\nabla^2A(\eta)$, 곧 $T$의 공분산이다. 63장의 일반화 선형 모형이 이 구조 위에 서 있다.
 
-\section{최대우도의 계산}
+\section{Computing Maximum Likelihood Estimates}
 \label{sec:mle-computation}
 
 닫힌 꼴의 해가 없으면 점수 방정식을 수치적으로 푼다. 44장의 Newton 방법을 쓰면 Hessian이 $\ell''$이고 그 기댓값인 $-nI(\theta)$로 바꾸면 \term{Fisher 점수법}{Fisher scoring}이 된다. 지수족의 자연 모수에서는 둘이 같다. 기댓값 Hessian $-nI(\theta)$는 $I$가 양정치이면 언제나 음정치이므로 점수법의 방향은 늘 오르막이다. 다만 온걸음이 수렴을 보장하지는 않으므로 실제로는 걸음 줄이기를 함께 쓰며 63장의 반복 재가중 최소제곱(IRLS)이 일반화 선형 모형의 Fisher 점수법이다.
@@ -138,7 +138,7 @@ f(x;\eta)=h(x)\exp\bigl(\eta^{\mathsf T}T(x)-A(\eta)\bigr)
 설계 문서가 분포 맞추기를 범위 밖으로 두었으므로 stardust의 분포 객체에는 scipy의 \code{fit} 같은 기능이 없고 최대우도는 대신 회귀 영역에서 다룬다. 일반화 선형 모형은 IRLS로 우도를 최대화하고 결과에 로그 우도 \code{llf}를 두며 내포 모형의 비교 \code{compare\_lr\_test}가 두 모형의 로그 우도 차로 우도비 검정을 한다. 계수의 Wald 검정 \code{wald\_test}와 \code{t\_test}는 결과의 공분산, 곧 정보의 역행렬을 쓴다. 비선형 회귀 \code{nls}의 예측 구간은 해에서 구한 야코비안으로 델타 방법을 쓴다.
 \end{instardust}
 
-\section{맺음}
+\section{Concluding Remarks}
 
 최대우도는 모수 추정의 표준이다. 점수의 평균이 $0$이고 분산이 Fisher 정보라는 두 항등식에서 Cramér--Rao 하계가 나오고 점수의 Taylor 전개에 큰 수의 법칙과 중심극한정리를 쓰면 최대우도 추정량이 그 하계에 이르는 정규 분포를 점근적으로 따른다는 것이 나온다. 델타 방법은 그 정규성을 매끄러운 함수로 옮긴다. 지수족에서는 로그 우도가 오목이어서 최대우도가 모멘트 맞추기가 되고 계산이 안정적이다. 유한 표본에서는 점근 이론과 실제가 어긋날 수 있으므로 작은 표본의 분산과 치우침은 정확한 분포나 모의실험으로 확인해야 한다. 다음 장에서는 추정에서 검정과 구간으로 넘어간다.
 

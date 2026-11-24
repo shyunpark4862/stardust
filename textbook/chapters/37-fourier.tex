@@ -1,13 +1,13 @@
 %% 37장 푸리에 해석
-\chapter{푸리에 해석}
+\chapter{Fourier Analysis}
 \label{ch:fourier}
 
 \abstract{주기 함수를 삼각함수의 합으로 쓰는 푸리에 급수는 앞 장들에서 사다리꼴 규칙의 기하급수적 수렴, Chebyshev 계수의 감소, 보간의 에일리어싱으로 여러 번 모습을 보였다. 이 장에서는 그것을 정면으로 다룬다. $L^2$의 직교 기저로서의 푸리에 급수와 Parseval 등식, 함수의 매끄러움이 계수의 감소 속도를 정한다는 정리를 증명한다. 불연속점에서 부분합이 넘치는 Gibbs 현상도 정확한 상수와 함께 본다. 유한한 표본의 이산 푸리에 변환을 정의하고 그 행렬이 유니터리의 배수임을 증명한다. 이 변환이 순환 합성곱을 곱으로 바꾼다는 것과 표본의 변환이 푸리에 계수들의 에일리어싱 합이라는 것도 증명한다. 정수가 아닌 주파수에서 생기는 누설과 창 함수, 선형 합성곱을 위한 0 채우기를 다루고 이산 푸리에 변환의 결과가 원소마다는 정확할 수 없고 노름으로만 정확할 수 있는 이유를 본다.}
 
-\section{푸리에 급수}
+\section{Fourier Series}
 \label{sec:fourier-series}
 
-\subsection{직교 기저}
+\subsection{An Orthogonal Basis}
 
 주기 $2\pi$인 함수의 공간 $L^2(\mathbb T)$, $\mathbb T=[-\pi,\pi)$에 내적 $\langle f,g\rangle=(2\pi)^{-1}\int_{-\pi}^{\pi}f\bar g\,dx$를 두면, 함수 $e_k(x)=e^{ikx}$ $(k\in\mathbb Z)$는 정규직교계이다. $k\ne l$이면 $\int e^{i(k-l)x}dx=0$이기 때문이다. $f$의 \term{푸리에 계수}{Fourier coefficient}를 $\hat f_k=\langle f,e_k\rangle$로 두고 부분합 $S_Nf=\sum_{|k|\le N}\hat f_ke_k$를 만들면, 이것은 $\operatorname{span}\{e_k:|k|\le N\}$으로의 직교 사영이므로 그 부분공간의 모든 삼각다항식 가운데 $L^2$ 거리가 가장 가깝다. 22장의 최소제곱이 무한 차원에서 일어나는 셈이다. 더 나아가 이 정규직교계는 완비이다. 곧 $\|f-S_Nf\|_2\to0$이고 \term{Parseval 등식}{Parseval's identity}
 \[
@@ -17,7 +17,7 @@
 
 푸리에 급수는 열 방정식을 풀려던 Fourier가 도입했다\cite{fourier1822}. 그가 주장한 대로 모든 함수가 그 급수로 표현되는지는 이후 한 세기가 넘는 해석학의 주제가 되었다. Dirichlet는 구간마다 매끄러운 함수의 급수가 각 점에서 좌우 극한의 평균으로 수렴함을 증명했다\cite{dirichlet1829}. 반면 연속함수 가운데에도 어떤 점에서 급수가 발산하는 것이 있다. 그러나 $L^2$의 함수에서는 급수가 거의 모든 점에서 수렴함을 Carleson이 1966년에 증명했다\cite{carleson1966}.
 
-\subsection{매끄러움과 계수의 감소}
+\subsection{Smoothness and the Decay of Coefficients}
 
 수치 계산에서는 계수가 얼마나 빨리 줄어드는지가 중요하다. 그 속도가 함수를 몇 개의 항으로 나타낼 수 있는지, 앞 장의 사다리꼴 규칙이 얼마나 빨리 수렴하는지를 정한다.
 
@@ -40,7 +40,7 @@ $f$가 주기 $2\pi$이고 $m$번 연속 미분 가능하면 $k\ne0$에서
 
 $f$가 실수축을 포함하는 띠 $|\operatorname{Im}z|<a$에서 해석적이고 유계이면, 적분 경로를 $\operatorname{Im}z=\pm a'$ $(a'<a)$으로 옮겨 $|\hat f_k|=O(e^{-a'|k|})$를 얻는다. 29장에서 Bernstein 타원으로 Chebyshev 계수를 누른 것과 같은 논증이다. 세 함수의 계수를 재 보면 이 차이가 뚜렷하다. 불연속인 사각파 $\operatorname{sign}(\sin x)$는 홀수 $k=1,3,9,27,81$에서 $|\hat f_k|=2/(\pi k)$가 $0.64$, $0.21$, $0.071$, $0.024$, $0.0079$로 $1/k$을 따른다. 꺾인 점이 있는 $|\sin x|$는 짝수 $k$에서 정확히 $2/(\pi(k^2-1))$이어서 $k=2,6,18,54,162$에서 $0.21$, $1.8\times10^{-2}$, $2.0\times10^{-3}$, $2.2\times10^{-4}$, $2.4\times10^{-5}$로 $1/k^2$을 따르고, 전 평면에서 해석적인 $e^{\cos x}$는 $k=1,3,9$에서 $0.57$, $2.2\times10^{-2}$, $5.5\times10^{-9}$이며 $k=27$에서는 약 $7\times10^{-37}$이다.
 
-\subsection{Gibbs 현상}
+\subsection{The Gibbs Phenomenon}
 
 불연속점 근처에서 부분합은 기묘하게 행동한다. 사각파의 부분합 $S_N$은 불연속점 바로 옆에서 함숫값 $1$을 넘어 솟는데, $N$을 늘려도 솟는 높이가 줄지 않고 솟는 자리만 불연속점으로 다가간다. 부분합은 $S_N(x)=(4/\pi)\sum_{k\text{ 홀수}\le N}\sin(kx)/k$이고 그 최댓값은 첫 극대점 $x=\pi/(N+1)$ 근처에서 얻어진다. 합을 Riemann 합으로 보면
 \[
@@ -52,7 +52,7 @@ $f$가 실수축을 포함하는 띠 $|\operatorname{Im}z|<a$에서 해석적이
 1898년 Michelson은 80개의 항까지 푸리에 급수를 기계적으로 더하는 장치를 만들었다. 사각파를 넣자 불연속점 근처에 솟은 뿔이 나타났다. 그는 이것이 기계의 결함인지를 물었다. Gibbs는 1899년 Nature에 실린 짧은 편지에서 그 뿔이 수학적으로 사라지지 않음을 설명했다\cite{gibbs1899}. 그런데 같은 현상은 이미 1848년에 영국의 Wilbraham이 계산과 그림까지 곁들여 발표했었다\cite{wilbraham1848}. Hewitt 부부의 역사 연구가 이 잊힌 우선권을 되살렸다\cite{hewitt1979}.
 \end{aside}
 
-\section{푸리에 변환}
+\section{The Fourier Transform}
 \label{sec:fourier-transform}
 
 주기가 없는 함수 $f\in L^1(\mathbb R)$의 \term{푸리에 변환}{Fourier transform}은 $\hat f(\xi)=\int f(x)e^{-ix\xi}dx$이다. 이 장에서 쓰는 성질은 세 가지이다. 첫째, Plancherel 정리에 따라 변환은 $L^2$로 연장되며 $\|\hat f\|_2=\sqrt{2\pi}\,\|f\|_2$이다. 둘째, \term{합성곱}{convolution} $(f*g)(x)=\int f(y)g(x-y)dy$의 변환은 변환의 곱이다. 적분 순서를 바꾸면
@@ -62,10 +62,10 @@ $f$가 실수축을 포함하는 띠 $|\operatorname{Im}z|<a$에서 해석적이
 \end{align*}
 이기 때문이다($u=x-y$; $f,g\in L^1$이면 Fubini 정리로 정당화된다). 셋째, 32장에서 가우스 함수의 양정치성을 보일 때 썼듯이, 가우스 함수의 변환은 다시 가우스 함수이고 함수가 좁을수록 변환은 넓다. 함수와 그 변환을 동시에 좁게 만들 수 없다는 이 사실을 정량화한 것이 \term{불확정성 원리}{uncertainty principle}이다\cite{stein2003fourier}.
 
-\section{이산 푸리에 변환}
+\section{The Discrete Fourier Transform}
 \label{sec:dft}
 
-\subsection{정의와 역변환}
+\subsection{Definition and Inverse}
 
 길이 $n$의 수열 $x_0,\dots,x_{n-1}$의 \term{이산 푸리에 변환}{discrete Fourier transform, DFT}은
 \[
@@ -84,7 +84,7 @@ $(F_n^{\mathsf H}F_n)_{jl}=\sum_k\omega^{-jk}\omega^{lk}=\sum_k\omega^{(l-j)k}$�
 
 그러므로 $F_n/\sqrt n$은 유니터리 행렬이다. 라이브러리마다 $1/n$을 정변환과 역변환 가운데 어디에 붙이느냐가 다르다. numpy와 scipy의 기본은 역변환에 붙이는 것이고 \code{norm='ortho'}는 양쪽에 $1/\sqrt n$씩 붙여 유니터리로 만든다. 입력이 실수이면 $y_{n-k}=\bar y_k$이므로 출력의 절반 남짓만 계산하면 된다. 이 대칭을 쓰는 실수 변환은 다음 장에서 본다.
 
-\subsection{순환 합성곱}
+\subsection{Circular Convolution}
 
 두 길이 $n$의 수열의 \term{순환 합성곱}{circular convolution}을 $(x\circledast h)_j=\sum_lx_lh_{(j-l)\bmod n}$로 정의하면, 연속인 경우와 똑같이 변환이 곱으로 바뀐다.
 
@@ -99,10 +99,10 @@ $\sum_j\sum_lx_lh_{(j-l)\bmod n}\omega^{jk}$에서 $m=(j-l)\bmod n$으로 바꾸
 
 다시 말해 순환 합성곱을 나타내는 순환 행렬은 모두 $F_n$의 열을 고유벡터로 가진다. 그래서 순환 행렬 계를 푸는 일, 합성곱을 계산하는 일이 모두 DFT 세 번과 원소별 연산으로 줄어든다. 다음 장의 고속 푸리에 변환이 DFT를 $O(n\log n)$에 계산하므로 합성곱도 $O(n\log n)$이 된다. 길이 $n$과 $m$의 수열의 보통의 선형 합성곱이 필요하면, 두 수열을 길이 $n+m-1$ 이상으로 $0$을 채워 순환 합성곱의 감김이 겹치지 않게 하면 된다.
 
-\section{표본과 에일리어싱}
+\section{Sampling and Aliasing}
 \label{sec:sampling}
 
-\subsection{에일리어싱 공식}
+\subsection{The Aliasing Formula}
 
 주기 함수를 $n$개의 고른 점 $x_j=2\pi j/n$에서 표본으로 얻으면, 그 DFT는 푸리에 계수와 어떤 관계일까?
 
@@ -121,13 +121,13 @@ $f_j=\sum_l\hat f_le^{2\pi ijl/n}$을 대입하고 합의 순서를 바꾸면 $n
 
 표본의 DFT는 원하는 계수 $\hat f_k$에 $n$만큼 떨어진 모든 계수를 더한 것이다. 높은 주파수의 성분이 표본 위에서 낮은 주파수와 구별되지 않는 것으로, 29장의 Chebyshev 점에서 본 에일리어싱과 같다. $k=0$이면 이 공식은 35장의 사다리꼴 규칙의 오차가 $\sum_{m\ne0}\hat f_{mn}$이라는 말이 되고, 계수가 기하급수적으로 줄면 오차도 그렇다. 반대로 $|k|\ge n/2$의 계수가 모두 $0$인 함수, 곧 \term{대역 제한}{band-limited} 함수는 표본으로부터 정확히 되찾을 수 있다. 연속 신호의 같은 사실이 Shannon의 \term{표본화 정리}{sampling theorem}이다\cite{shannon1949}.
 
-\subsection{누설과 창 함수}
+\subsection{Leakage and Window Functions}
 
 유한한 길이의 신호를 DFT하는 것은 그 신호를 주기적으로 이어 붙인 것을 변환하는 것과 같다. 창의 길이가 신호의 주기의 정수배가 아니면 이어 붙인 곳에서 값이 끊기거나 기울기가 꺾인다. 부분적분을 한 번 하면 경계항이 남아 끊긴 곳의 계수는 $1/k$로, 두 번 하면 꺾인 곳의 계수는 $1/k^2$로 천천히 줄며 모든 주파수로 퍼진다. 이것을 \term{누설}{leakage}이라 한다. 길이 $64$의 $\sin(2\pi ft/64)$를 DFT하면 $f=8$일 때는 앞쪽 절반의 칸 가운데 $8$번째 칸에만 $32$가 있고(실수 신호라 대칭인 $56$번째 칸에도 같은 값이 있다) 나머지는 $0$이지만, $f=8.5$이면 이어 붙인 곳에서 값은 이어지지만 기울기가 꺾여서 $8$, $9$, $12$, $20$, $32$번째 칸의 크기가 $20.8$, $19.9$, $2.56$, $0.70$, $0.44$로 멀리까지 퍼진다.
 
 신호에 양 끝에서 매끄럽게 $0$으로 가는 \term{창 함수}{window function}를 곱하면 이어 붙인 곳이 매끄러워져 누설이 줄어든다. Hann 창 $w_t=\bigl(1-\cos(2\pi t/n)\bigr)/2$를 곱하면 같은 칸들의 크기가 $13.6$, $13.6$, $0.13$, $3.2\times10^{-3}$, $6.4\times10^{-4}$로 먼 칸에서 세 자리 가까이 준다. 대가는 봉우리가 넓어지는 것이다. $f=8$이면 창을 쓰지 않을 때 한 칸이던 봉우리가 $16$, $8$, $8$의 세 칸으로 퍼진다. 해상도와 누설 사이의 이 맞바꿈을 놓고 수많은 창 함수가 고안되었다\cite{harris1978}.
 
-\section{반올림과 노름}
+\section{Rounding Errors and Norms}
 \label{sec:dft-rounding}
 
 DFT의 출력 $y_k$는 항 $x_j\omega^{jk}$들의 합이므로, 항들이 거의 상쇄되면 $y_k$가 아주 작아질 수 있다. 그때 $y_k$의 원소별 조건수 $\sum_j|x_j|/|y_k|$에는 상한이 없다. 회전 인자 $\omega^{jk}$들을 모두 올바르게 반올림해도 각각의 상대오차 $u$가 쌓여 $y_k$를 $u\sum_j|x_j|$ 정도까지 움직일 수 있으므로, 어떤 알고리즘도 $y_k$를 원소마다 상대적으로 정확하게 계산할 수 없다. 예컨대 $(1,2,3,4)$에 $0$을 둘 채워 길이 $6$으로 변환하면 넷째 칸의 참값은 정확히 $-2$이지만 numpy는 허수부 $8.9\times10^{-16}$을 낸다. 상대오차로는 허수부가 무한히 틀린 것이다. 그래서 DFT의 정확도는 노름으로 말한다. 계산한 $\hat y$가 $\|\hat y-y\|\le c\,u\,\|y\|$를 만족하면 각 원소는 $\|y\|$에 대한 절대오차로만 정확하다. 다음 장에서 FFT가 이 노름 오차를 $\log n$에 비례하게 누른다는 것을 증명한다.
@@ -136,7 +136,7 @@ DFT의 출력 $y_k$는 항 $x_j\omega^{jk}$들의 합이므로, 항들이 거의
 stardust의 \code{sd.fft}는 numpy와 scipy의 정규화 관례를 그대로 따르되 \code{norm}의 기본을 \code{'backward'}로 두고 \code{None}은 받지 않는다. 정확도 계약은 원소별 오차가 아니라 위의 노름 상대오차이다. 설계 문서는 그 이유로 바로 이 $(1,2,3,4)$의 예를 든다. 계약의 참값은 Arb의 구간 산술 DFT로 구한다. 구간 산술은 알고리즘과 무관하게 참 변환을 담는 구간을 주므로 FFT의 결과를 견줄 엄밀한 기준이 된다.
 \end{instardust}
 
-\section{맺음}
+\section{Concluding Remarks}
 
 푸리에 해석은 함수를 주파수로 나누어 보는 관점이면서 합성곱을 곱으로 바꾸는 계산 도구이다. 함수의 매끄러움은 계수의 감소 속도로, 불연속은 $1/k$의 꼬리와 Gibbs 현상으로, 표본화는 에일리어싱으로 나타난다. 이산 푸리에 변환은 이 모든 것을 유한한 표본 위에서 재현한다. 그 행렬이 유니터리의 배수이므로 계산이 안정하고 역변환도 간단하다. 다음 장에서는 이 행렬과 벡터의 곱을 $O(n^2)$ 대신 $O(n\log n)$에 계산하는 고속 푸리에 변환을 본다.
 

@@ -1,13 +1,13 @@
 %% 28장 큰 고유값 문제
-\chapter{큰 고유값 문제}
+\chapter{Large Eigenvalue Problems}
 \label{ch:large-eigen}
 
 \abstract{23장의 QR 알고리즘은 행렬 전체를 Hessenberg 꼴로 바꾸므로 $O(n^3)$의 일과 $O(n^2)$의 저장이 든다. $n$이 수십만인 희소 행렬에서 몇 개의 고유값만 필요하다면 그 비용은 감당할 수 없다. 이 장에서는 앞 장의 Krylov 부분공간을 고유값 문제에 쓴다. Krylov 부분공간에 행렬을 사영한 작은 행렬의 고유값, 곧 Ritz 값이 스펙트럼의 바깥쪽 고유값으로 빠르게 수렴하는 이유를 Chebyshev 다항식으로 설명하고, 유한 정밀도의 Lanczos 과정이 같은 고유값을 여러 번 찾아내는 현상을 직접 계산으로 본다. 기저가 커지는 문제는 원하지 않는 Ritz 값을 이동으로 쓰는 암시적 재시작으로 해결하는데, 그 정당성은 23장의 암시적 Q 정리에서 나온다. 스펙트럼 안쪽의 고유값을 위한 스펙트럼 변환, 특이값을 위한 Golub--Kahan--Lanczos 이중대각화를 다루고, stardust가 Accelerate에 없는 ARPACK을 서브루틴 단위로 옮긴 방식을 본다.}
 
-\section{Krylov 부분공간의 Rayleigh--Ritz}
+\section{Rayleigh--Ritz on Krylov Subspaces}
 \label{sec:ritz}
 
-\subsection{Ritz 값과 잔차}
+\subsection{Ritz Values and Residuals}
 
 정규직교 열의 행렬 $V_k\in\mathbb R^{n\times k}$가 주어지면, $A$의 고유값을 $V_k$의 열공간 안에서 근사하는 자연스러운 방법은 사영 $H_k=V_k^{\mathsf T}AV_k$의 고유쌍 $H_ks=\theta s$를 구해 $(\theta,V_ks)$를 근사 고유쌍으로 쓰는 것이다. 이것을 \term{Rayleigh--Ritz 방법}{Rayleigh--Ritz method}이라 하고, $\theta$를 \term{Ritz 값}{Ritz value}, $y=V_ks$를 \term{Ritz 벡터}{Ritz vector}라 한다. 잔차 $Ay-\theta y$는 $V_k$의 열공간에 직교하므로 이 방법은 앞 장의 Galerkin 조건을 고유값 문제에 쓴 것이다.
 
@@ -29,7 +29,7 @@ $\theta$가 고유값이면 자명하다. 아니면 $A=Q\Lambda Q^{\mathsf T}$�
 
 비대칭 행렬에서는 4장의 Bauer--Fike 정리처럼 고유벡터 행렬의 조건수가 곱해지므로, 작은 잔차가 반드시 정확한 고유값을 뜻하지는 않는다.
 
-\subsection{바깥쪽 고유값의 수렴}
+\subsection{Convergence of Extreme Eigenvalues}
 
 대칭 행렬에서 Lanczos 과정의 Ritz 값은 스펙트럼의 양 끝에서 먼저 수렴한다. 이유는 가장 큰 Ritz 값이 Krylov 부분공간 위의 Rayleigh 몫의 최댓값이라는 데 있다. 앞 장의 CG처럼 Krylov 부분공간의 원소는 $p(A)v$로 쓸 수 있으므로 이 최댓값의 크기는 다시 다항식 근사의 문제가 된다. 이 결과는 Kaniel이 처음 보이고 Paige와 Saad가 다듬었다\cite{kaniel1966,saad1980rates}.
 
@@ -56,10 +56,10 @@ $\theta_1^{(k)}$는 $V_k^{\mathsf T}AV_k$의 가장 큰 고유값이므로, 4장
 
 반면 스펙트럼 안쪽의 고유값이나 바깥쪽이라도 서로 붙어 있는 고유값은 느리게 수렴한다. 1차원 Laplace 행렬 $\operatorname{tridiag}(-1,2,-1)$은 고유값이 $2-2\cos(j\pi/(n+1))$이어서, 가장 작은 고유값의 상대 간격이 $\gamma_1\approx3\pi^2/\bigl(4(n+1)^2\bigr)$ 정도로 작다. 이런 고유값을 어떻게 다루는지는 \cref{sec:spectral-transform}에서 본다.
 
-\section{유한 정밀도의 Lanczos 과정}
+\section{The Lanczos Process in Finite Precision}
 \label{sec:lanczos-finite}
 
-\subsection{가짜 고유값}
+\subsection{Spurious Eigenvalues}
 
 Lanczos 과정은 걸음마다 일이 $O(n)$이고 벡터 몇 개만 저장하면 되므로 원리적으로는 큰 대칭 행렬의 고유값을 구하는 이상적인 방법이다. Lanczos가 1950년에 이 방법을 발표했을 때도 그렇게 기대되었다\cite{lanczos1950}. 그러나 앞 장에서 보았듯이 유한 정밀도에서는 Lanczos 벡터의 직교성이 무너진다. 고유값 문제에서는 그 결과가 더 눈에 띈다. 이미 찾은 고유값이 Ritz 값으로 다시, 또다시 나타난다.
 
@@ -67,22 +67,22 @@ Lanczos 과정은 걸음마다 일이 $O(n)$이고 벡터 몇 개만 저장하�
 
 이 복사본을 \term{가짜 고유값}{ghost eigenvalue}이라 부르지만 사실은 가짜가 아니라 진짜 고유값의 정확한 근사이다. 다만 그 중복도가 틀렸다. Paige는 1970년대의 일련의 연구로 이 현상을 해명했다\cite{paige1976error}. 직교성은 아무렇게나 무너지지 않고, Ritz 값 하나가 고유값에 수렴하면 바로 그 Ritz 벡터 방향으로 무너진다. 수렴한 고유벡터 방향의 성분이 반올림으로 다시 생겨나 자라면 Lanczos 과정은 그 방향을 처음 보는 것처럼 다시 찾는다. 위의 실험에서 직교성이 무너진 시점이 가장 큰 고유값이 수렴한 직후였던 것이 그 증거이다.
 
-\subsection{다시 직교화하는 방법}
+\subsection{Reorthogonalization}
 
 해결책은 직교성을 다시 세우는 것이다. 가장 확실한 방법은 새 벡터를 앞의 모든 Lanczos 벡터에 대해 다시 직교화하는 \term{완전 재직교화}{full reorthogonalization}인데, 그러면 걸음마다 일이 $O(nk)$로 늘고 모든 벡터를 저장해야 해서 Arnoldi 과정과 비용이 같아진다. Paige의 해명은 더 싼 길을 열었다. 직교성이 수렴한 Ritz 벡터 방향으로만 무너진다면 그 방향들에 대해서만 직교화하면 되고, 이 방법이 Parlett와 Scott의 \term{선택적 재직교화}{selective orthogonalization}이다\cite{parlett1979selective}. 반대로 재직교화를 아예 하지 않고 복사본을 사후에 가려내는 Cullum과 Willoughby의 방법도 있다\cite{cullum1985}.
 
 재직교화를 한 번 하면 충분한가? 앞의 기저 벡터들에 대해 고전 Gram--Schmidt로 직교화한 벡터 $w$의 노름이 직교화 전보다 크게 줄었다면, 그것은 $w$가 거의 기저의 열공간 안에 있었다는 뜻이고 남은 작은 성분에는 상대적으로 큰 반올림이 섞여 있다. Daniel, Gragg, Kaufman, Stewart는 이때 한 번 더 직교화하는 기준을 세웠다\cite{daniel1976dgks}. 직교화 뒤의 노름이 직교화 전의 $\eta$배보다 작아졌을 때만 다시 하는데, 흔히 $\eta=1/\sqrt2\approx0.707$ 근처의 값을 쓰는데, ARPACK은 $0.717$을 쓴다. Kahan이 관찰하고 Parlett가 증명한 대로, 이렇게 두 번 하면 반올림 수준의 직교성을 얻기에 충분하다\cite{parlett1998}. 흔히 \term{두 번이면 충분하다}{twice is enough}고 줄여 말한다.
 
-\section{재시작}
+\section{Restarting}
 \label{sec:restart}
 
-\subsection{다항식 거르개}
+\subsection{Polynomial Filters}
 
 완전 재직교화를 하면 Lanczos도 Arnoldi처럼 $k$걸음에 $O(nk)$의 메모리를 쓰므로, 수렴이 느린 고유값을 기다리며 기저를 무한히 늘릴 수 없다. 앞 장의 재시작 GMRES처럼 $m$걸음마다 새로 시작해야 하는데, 문제는 무엇에서 다시 시작하느냐이다. 원하는 고유값이 $k$개라면 이상적인 시작 벡터는 그 $k$개의 고유벡터가 펼치는 공간 안에 있는 벡터이다. 그런 벡터에서 시작하면 Krylov 부분공간이 그 불변 부분공간에서 정확히 멈추기 때문이다. 그래서 시작 벡터 $v_1$을 $\psi(A)v_1$로 바꾸되, 다항식 $\psi$가 원하지 않는 고유값 근처에서 작아지도록 고른다. 이것을 \term{다항식 거르개}{polynomial filter}라 한다.
 
 원하지 않는 고유값의 위치는 모르지만 그 근사는 지금의 Krylov 부분공간이 이미 알려 준다. $m$개의 Ritz 값 가운데 원하지 않는 $p=m-k$개 $\mu_1,\dots,\mu_p$를 근으로 하는 $\psi(t)=\prod_j(t-\mu_j)$를 쓰면 된다. 이렇게 고른 이동을 \term{정확한 이동}{exact shifts}이라 한다. 다만 $\psi(A)v_1$을 계산하려면 곱이 $p$번 더 들고 거기서 Arnoldi를 처음부터 다시 해야 한다.
 
-\subsection{암시적 재시작}
+\subsection{Implicit Restarting}
 
 Sorensen은 이 일을 곱 없이, 작은 행렬의 QR 걸음만으로 할 수 있음을 보였다\cite{sorensen1992implicit}. $m$걸음의 Arnoldi 관계
 \[
@@ -115,10 +115,10 @@ AV_k^+=V_k^+H_k^++\bigl(h^+_{k+1,k}v_{k+1}^++Q_{mk}f_m\bigr)e_k^{\mathsf T}
 
 재시작이 얼마나 일을 하는지 보자. $n=1000$의 1차원 Laplace 행렬에서 가장 작은 고유값 $5$개를 상대 잔차 $10^{-10}$까지, 정확한 이동과 같은 두꺼운 재시작 Lanczos로 구하면, 기저의 크기 $m=20$에서는 곱이 $5500$번(재시작 $686$번), $m=40$에서는 $1624$번이 든다. 가장 큰 고유값 $5$개도 $5140$번과 $1642$번으로 비슷하다. 이 행렬의 스펙트럼은 양 끝 모두에서 고유값이 빽빽하기 때문이다. 기저를 두 배로 키우면 곱의 수가 $3.4$배 줄었다. 큰 기저가 좋은 거르개를 만들기 때문이다. 대신 기저의 저장과 직교화 비용이 늘어난다.
 
-\section{스펙트럼 변환}
+\section{Spectral Transformations}
 \label{sec:spectral-transform}
 
-\subsection{이동--역}
+\subsection{Shift-and-Invert}
 
 \Cref{thm:kps}에 따르면 Krylov 방법은 바깥쪽의 잘 떨어진 고유값을 빨리 찾는다. 그러므로 원하는 고유값을 행렬을 바꾸어 바깥쪽의 잘 떨어진 고유값으로 만들면 된다. \term{이동--역}{shift-invert} 변환은 $A$ 대신
 \[
@@ -128,11 +128,11 @@ AV_k^+=V_k^+H_k^++\bigl(h^+_{k+1,k}v_{k+1}^++Q_{mk}f_m\bigr)e_k^{\mathsf T}
 
 앞 절의 1차원 Laplace 행렬로 $\sigma=0$의 이동--역을 쓰면, 가장 작은 고유값들은 $\nu=1/\lambda$로 가장 큰 쪽에 간다. 가장 작은 두 고유값의 비가 $\lambda_2/\lambda_1\approx4$이므로 $\nu_2/\nu_1\approx1/4$이 되어, 가장 큰 $\nu$가 나머지에서 멀리 떨어진다. 기저의 크기 $m=20$의 첫 주기, 곧 삼중대각 풀이 $20$번 안에 가장 작은 고유값 $5$개가 상대 $10^{-11}$ 안으로 수렴한다. 곱 $5500$번과 풀이 $20$번의 차이이다. 분해가 가능하다면 안쪽의 고유값은 거의 언제나 이동--역으로 구하는 것이 맞다. 분해가 불가능하면 내부 반복으로 풀거나, Ritz 값 대신 $(A-\sigma I)^{-1}$의 Ritz 값에 해당하는 \term{조화 Ritz 값}{harmonic Ritz value}을 곱만으로 구하는 방법을 쓴다\cite{morgan1991harmonic}.
 
-\subsection{일반화 고유값 문제}
+\subsection{Generalized Eigenvalue Problems}
 
 구조 해석이나 진동 문제에서 흔한 것은 대칭 $A$와 대칭 양정치 $M$에 대한 \term{일반화 고유값 문제}{generalized eigenvalue problem} $Ax=\lambda Mx$이다. $M^{-1}A$는 대칭이 아니지만 $M$-내적 $\langle x,y\rangle_M=x^{\mathsf T}My$에 대해 자기수반이다. $\langle M^{-1}Ax,y\rangle_M=x^{\mathsf T}Ay=\langle x,M^{-1}Ay\rangle_M$이기 때문이다. 그래서 Lanczos 과정을 $M$-내적으로 하면 세 항의 점화식과 대칭 삼중대각 행렬이 그대로 살아난다. 이동--역도 $\mathrm{OP}=(A-\sigma M)^{-1}M$으로 같은 일을 한다. 이 밖에 좌굴 문제를 위한 $\mathrm{OP}=(A-\sigma M)^{-1}A$와 Cayley 변환 $\mathrm{OP}=(A-\sigma M)^{-1}(A+\sigma M)$도 쓰는데, 모두 $\lambda$를 $\nu$로 보내는 유리함수가 원하는 고유값을 바깥쪽으로 보내도록 고른 것이다\cite{lehoucq1998arpack}.
 
-\section{특이값}
+\section{Singular Values}
 \label{sec:large-svd}
 
 큰 희소 행렬의 큰 특이값 몇 개, 예컨대 주성분 분석이나 낮은 랭크 근사에 필요한 것은 $A^{\mathsf T}A$의 고유값 문제로 풀고 싶어진다. 그러나 24장에서 본 대로 $A^{\mathsf T}A$를 거치면 작은 특이값이 망가진다. 특이값이 $1$부터 $10^{-12}$까지 로그 간격인 $200\times50$ 행렬을 만들어 견주면, $A^{\mathsf T}A$의 고유값의 제곱근은 $\sigma=2.2\times10^{-5}$에서 상대오차가 $3.4\times10^{-9}$, $\sigma=7.9\times10^{-8}$에서 $1.8\times10^{-3}$이고, $\sigma=10^{-12}$에서는 $9.9\times10^3$이다. 계산한 $A^{\mathsf T}A$는 음의 고유값도 $7$개 가진다. 반면 밀집 SVD는 같은 특이값을 절대오차 $u\sigma_1$ 수준으로 구한다. $A^{\mathsf T}A$의 반올림은 $u\sigma_1^2$ 크기여서 $\sigma<\sqrt u\,\sigma_1$인 특이값을 덮는다.
@@ -141,7 +141,7 @@ AV_k^+=V_k^+H_k^++\bigl(h^+_{k+1,k}v_{k+1}^++Q_{mk}f_m\bigr)e_k^{\mathsf T}
 
 Golub--Kahan--Lanczos 과정에도 재시작이 필요하다. Baglama와 Reichel은 두꺼운 재시작을 이중대각화에 맞게 옮겨 원하는 Ritz 특이 삼중쌍을 남기고 $B$를 화살 꼴로 둔 채 다시 확장하는 방법을 만들었다\cite{baglama2005}. 가장 작은 특이값은 이 방법으로도 느리다. 1차원 Laplace 행렬의 가장 작은 고유값이 느렸던 것과 이유가 같다.
 
-\section{stardust의 ARPACK}
+\section{ARPACK in stardust}
 \label{sec:arpack-stardust}
 
 큰 고유값 문제의 사실상의 표준은 Lehoucq, Sorensen, Yang의 ARPACK이다\cite{lehoucq1998arpack}. 대칭 문제의 \code{dsaupd}와 비대칭 문제의 \code{dnaupd}가 암시적 재시작 Lanczos와 Arnoldi를 하고, \code{dseupd}와 \code{dneupd}가 수렴한 뒤 Ritz 벡터를 만든다. 사용자는 곱을 직접 하는데, ARPACK이 ``이 벡터에 OP를 곱해 달라''는 요청을 돌려주고 사용자가 결과를 넣어 다시 부르는 \term{역통신}{reverse communication} 방식이다. 그래서 ARPACK은 행렬의 저장 형식을 전혀 모르고, 이동--역의 풀이도 사용자가 한다. scipy의 \code{eigsh}, \code{eigs}는 이 ARPACK을 감싼 것이다.
@@ -158,9 +158,9 @@ Accelerate에는 ARPACK이 없다. 그래서 stardust는 scipy가 돌리는 ARPA
 \code{svds}는 scipy처럼 $A^{\mathsf T}A$에 \code{eigsh}를 쓰지 않고 Baglama--Reichel의 두꺼운 재시작 Golub--Kahan--Lanczos 이중대각화로 직접 짰다. Ritz 삼중쌍은 $\|A^{\mathsf T}u-\sigma v\|=\|f\|\,|(U_B)_{w,i}|$가 허용오차 안이면 수렴한 것으로 보는데, \eqref{eq:ritz-residual}의 이중대각화 판이다. 설계 문서의 정확도 측정에서 랭크가 부족한 $80\times30$ 행렬의 가장 작은 특이값은 scipy가 계약의 $2\times10^{12}$배나 틀렸고 stardust는 계약의 $0.009$배였다. 위에서 본 $A^{\mathsf T}A$의 반올림이 작은 특이값을 덮어 버렸다.
 \end{instardust}
 
-\section{맺음}
+\section{Concluding Remarks}
 
-큰 고유값 문제는 앞 장과 같은 Krylov 부분공간 위에서 풀린다. 다만 여기서는 해가 하나의 벡터가 아니라 불변 부분공간이어서 기저를 어떻게 지키고 무엇을 남기며 다시 시작하느냐가 핵심이 된다. Lanczos 과정의 직교성 상실은 처음에는 방법의 결함으로 보였지만 Paige의 해명 뒤에는 수렴의 신호로 이해되었다. 암시적 재시작은 23장의 QR 알고리즘을 작은 행렬에 쓰는 것만으로 큰 공간의 시작 벡터를 거르며, 스펙트럼 변환은 다항식으로 닿지 못하는 안쪽 고유값을 유리함수로 바깥에 끌어낸다. 수치선형대수를 다룬 이 부는 여기서 끝나고 다음 부에서는 함수를 다항식과 유리함수로 근사하는 문제로 넘어간다. Chebyshev 다항식은 그곳에서 다시 주인공이 된다.
+큰 고유값 문제는 앞 장과 같은 Krylov 부분공간 위에서 풀린다. 다만 여기서는 해가 하나의 벡터가 아니라 불변 부분공간이어서 기저를 어떻게 지키고 무엇을 남기며 다시 시작하느냐가 핵심이 된다. Lanczos 과정의 직교성 상실은 처음에는 방법의 결함으로 보였지만 Paige의 해명 뒤에는 수렴의 신호로 이해되었다. 암시적 재시작은 23장의 QR 알고리즘을 작은 행렬에 쓰는 것만으로 큰 공간의 시작 벡터를 거르며, 스펙트럼 변환은 다항식으로 닿지 못하는 안쪽 고유값을 유리함수로 바깥에 끌어낸다. 수치선형대수를 다룬 이 권은 여기서 끝나고 다음 권에서는 함수를 다항식과 유리함수로 근사하는 문제로 넘어간다. Chebyshev 다항식은 그곳에서 다시 주인공이 된다.
 
 큰 대칭 고유값 문제는 Parlett의 책\cite{parlett1998}이 고전이고, Lanczos 과정의 유한 정밀도 이론은 Meurant와 Strakoš의 개관\cite{meurant2006}에 정리되어 있다. ARPACK의 사용자 지침서\cite{lehoucq1998arpack}는 암시적 재시작과 스펙트럼 변환의 실제를 자세히 설명한다.
 

@@ -1,13 +1,13 @@
 %% 29장 다항식 보간
-\chapter{다항식 보간}
+\chapter{Polynomial Interpolation}
 \label{ch:poly-interp}
 
 \abstract{점 $n+1$개에서 주어진 값을 지나는 차수 $n$ 이하의 다항식은 하나뿐이다. 이 사실은 중학교 수학처럼 보이지만 그 다항식을 어떤 점에서 어떤 꼴로 계산하느냐에 따라 결과는 완전히 달라진다. 이 장에서는 보간 다항식의 오차 공식과 Lebesgue 상수로 시작한다. 고른 간격의 점에서는 차수를 올리면 오차가 오히려 폭발하는데(Runge 현상), Chebyshev 점에서는 해석 함수의 보간이 기하급수적으로 수렴한다는 것을 증명한다. 계산의 꼴로는 단항식 계수를 구하는 Vandermonde 방법이 왜 나쁜지 보고, 무게중심 꼴의 Lagrange 공식이 $O(n)$에 계산되면서 안정하다는 것을 반올림 오차의 상계로 보인다. 마지막으로 나눗셈 차분과 Newton 꼴, 도함수 값까지 맞추는 Hermite 보간을 다루고, stardust가 무게의 넘침을 지수를 따로 세는 곱으로 피하는 방식을 본다.}
 
-\section{보간 문제}
+\section{The Interpolation Problem}
 \label{sec:interp-problem}
 
-\subsection{존재와 유일성}
+\subsection{Existence and Uniqueness}
 
 서로 다른 실수 $x_0,\dots,x_n$과 값 $y_0,\dots,y_n$이 주어졌을 때, $p(x_j)=y_j$ $(j=0,\dots,n)$를 만족하는 차수 $n$ 이하의 다항식 $p$를 찾는 것이 \term{다항식 보간}{polynomial interpolation}이다. $x_j$를 \term{노드}{node}라 부른다. $y_j=f(x_j)$이면 $p$는 함수 $f$의 보간 다항식이다.
 
@@ -30,7 +30,7 @@ $\ell_j$를 \term{Lagrange 기저 다항식}{Lagrange basis polynomial}, $p=\sum
 보간 다항식을 $\ell_j$로 쓰는 공식에는 Lagrange의 이름이 붙어 있지만, Berrut와 Trefethen에 따르면 이 공식을 처음 발표한 사람은 1779년의 Waring이고, Euler가 1783년에 다시 찾았으며, Lagrange는 1795년에 발표했다\cite{berrut2004barycentric}. 이 장의 후반부에서 볼 무게중심 꼴도 오래전부터 알려져 있었지만 오랫동안 Newton 꼴보다 열등한 것으로 여겨졌다. 그 평판이 뒤집힌 것은 2000년대의 일이다.
 \end{aside}
 
-\subsection{오차 공식}
+\subsection{The Error Formula}
 
 함수를 보간할 때 노드 밖의 오차는 다음 공식으로 정확히 표현된다. \term{노드 다항식}{node polynomial} $\omega(x)=\prod_{k=0}^n(x-x_k)$를 쓰자.
 
@@ -49,10 +49,10 @@ $x$가 노드이면 양변이 $0$이다. 아니면 $K=(f(x)-p(x))/\omega(x)$로 
 
 오차는 두 인자의 곱이다. 앞의 인자는 함수가 얼마나 매끄러운가에 달려 있고, 뒤의 $\omega(x)$는 노드를 어디에 두느냐에만 달려 있다. $[-1,1]$에서 $\max|\omega|$를 최소로 하는 노드는 Chebyshev 다항식 $T_{n+1}$의 근이고 그때 최댓값은 $2^{-n}$이다. 이것은 $2^{-n}T_{n+1}$이 최고차 계수가 $1$인 다항식 가운데 $[-1,1]$에서 최대 크기가 가장 작은 다항식이라는 고전적인 사실에서 나온다\cite{trefethen2019atap}. 반면 고른 간격의 노드에서 $|\omega|$는 구간의 가운데보다 양 끝 근처에서 지수적으로 크다. 다음 절의 내용은 모두 이 차이에서 나온다.
 
-\section{Lebesgue 상수와 노드의 선택}
+\section{Lebesgue Constants and the Choice of Nodes}
 \label{sec:lebesgue}
 
-\subsection{Lebesgue 상수}
+\subsection{The Lebesgue Constant}
 
 보간은 함수 $f$에서 다항식 $p$로 가는 선형 사상 $\mathcal L_n$이다. 그 사상의 $\infty$-노름을 \term{Lebesgue 상수}{Lebesgue constant}
 \[
@@ -94,7 +94,7 @@ $40$ & $4.692\times10^{9}$ & $3.310$ & $3.364$ \\
 
 로그 증가조차 피할 수 없다는 데서 중요한 귀결이 나온다. Banach--Steinhaus 정리에 의해 $\Lambda_n\to\infty$이면 보간 다항식이 수렴하지 않는 연속함수가 존재한다. 어떤 노드 체계를 고르든 모든 연속함수에 대해 보간이 수렴하게 할 수는 없다. 이것이 \term{Faber의 정리}{Faber's theorem}이다\cite{faber1914}. Weierstrass의 근사 정리\cite{weierstrass1885}가 모든 연속함수를 다항식으로 고르게 근사할 수 있다고 말하는 것과 대조적이다. 근사 다항식은 존재하지만 고정된 노드에서 보간해서는 얻을 수 없는 함수가 있는 것이다. 다행히 함수가 조금만 매끄러워도 사정이 달라진다. \cref{prop:lebesgue-best}에 의해 $\|f-p^\ast\|\log n\to0$이기만 하면 Chebyshev 점의 보간은 수렴한다.
 
-\subsection{Runge 현상}
+\subsection{The Runge Phenomenon}
 
 Runge는 1901년에 매끄러운 함수
 \[
@@ -140,16 +140,16 @@ f-p_n=\sum_{k>n}a_k\bigl(T_k-T_{k'(k)}\bigr)
 
 이 정리는 Trefethen의 책\cite{trefethen2019atap}을 따른 것이다. Runge 함수의 극점 $i/5$를 지나는 Bernstein 타원은 짧은 반축이 $1/5$이므로 $(\rho-\rho^{-1})/2=1/5$, 곧 $\rho=1/5+\sqrt{1+1/25}\approx1.2198$이다. 정리에 따르면 오차는 $n$이 $20$ 늘 때마다 $\rho^{20}\approx53.0$배씩 줄어야 하는데, 위의 측정에서 $n=40$에서 $60$으로 갈 때 오차는 $3.4\times10^{-4}/6.38\times10^{-6}\approx53$배 줄었다. 고른 간격 노드에 대해 같은 역할을 하는 영역은 $\pm1$에서 뾰족하고 허수축 방향으로 약 $\pm0.53i$까지 부푼 모양이어서, 극점 $\pm i/5$가 그 영역의 안쪽에 들어가 버려서 보간이 발산한다.
 
-\section{계산의 꼴}
+\section{Forms of the Interpolant}
 \label{sec:interp-forms}
 
-\subsection{단항식 기저의 함정}
+\subsection{The Pitfalls of the Monomial Basis}
 
 보간 다항식을 계산하는 가장 순진한 방법은 Vandermonde 계 $Vc=y$를 풀어 단항식 계수를 얻는 것이다. 그러나 $V$는 지독하게 나쁜 조건의 행렬이다. Gautschi는 실수 노드에서 $\kappa(V)$가 $n$에 대해 지수적으로 자란다는 것을 보였는데\cite{gautschi1975vandermonde}, Chebyshev 점에서조차 그렇다. $[-1,1]$의 Chebyshev 점에서 $\kappa_2(V)$는 $n=20$에서 $1.8\times10^7$, $n=40$에서 $7.8\times10^{14}$, $n=80$에서는 binary64로 계산한 값이 $10^{19}$ 근처에서 포화되지만, 노드를 정확한 유리수로 보고 계산하면 $10^{29}$을 넘는다. 대략 $(1+\sqrt2)^n$의 속도로 자라는 것이다.
 
 그 결과는 함수에 따라 다르게 나타난다. Runge 함수를 Chebyshev 점에서 보간할 때, 단항식 계수를 풀어 평가한 다항식의 최대 오차는 $n=80$에서 $1.15\times10^{-2}$, $n=200$에서 $1.24\times10^{-2}$로 $10^{-2}$ 근처에서 멈춘다. 계수의 크기가 $10^{13}$에 이르므로, 계수의 작은 상대오차와 평가할 때의 소거가 그만큼 커져서 결과에 나타나기 때문이다. 같은 자료를 다음 절의 무게중심 꼴로 평가하면 오차는 $1.2\times10^{-7}$과 $8.9\times10^{-16}$으로 \cref{thm:cheb-interp-analytic}대로 줄어든다. 흥미롭게도 $e^x$처럼 단항식 계수가 빨리 작아지는 함수에서는 $n=80$에서도 단항식 방법의 오차가 $5.7\times10^{-15}$에 머문다. 조건수가 나쁘다는 것은 가장 나쁜 자료에 대한 말이고, 모든 자료가 나쁘다는 뜻은 아니다. 그러나 보간 루틴은 자료를 고를 수 없으므로 단항식 기저를 쓰지 않는다.
 
-\subsection{무게중심 꼴}
+\subsection{The Barycentric Form}
 
 Lagrange 꼴을 그대로 계산하면 점 하나마다 $O(n^2)$의 일이 든다. 그러나 조금만 고쳐 쓰면 $O(n)$이 된다. 노드 다항식 $\omega$와 \term{무게중심 무게}{barycentric weight}
 \[
@@ -169,7 +169,7 @@ p(x)=\frac{\displaystyle\sum_{j=0}^n\frac{w_j}{x-x_j}y_j}{\displaystyle\sum_{j=0
 
 \eqref{eq:bary2}는 $x$가 노드에 가까우면 분자와 분모의 한 항이 모두 커져서 위험해 보이지만, 실제로는 두 항이 같은 비율로 커지므로 몫은 $y_j$로 정확히 다가간다. $x$가 노드와 정확히 같을 때만 따로 처리하면 된다.
 
-\subsection{안정성}
+\subsection{Stability}
 
 무게중심 공식의 반올림 오차는 Higham이 분석했다\cite{higham2004barycentric}. 결론은 둘째 공식이 Lebesgue 함수가 작은 노드에서 전진 안정하다는 것이다. 9장의 표기 $\gamma_k=ku/(1-ku)$를 쓰고, 노드가 $N=n+1$개라 하자.
 
@@ -196,10 +196,10 @@ p(x)=\frac{\displaystyle\sum_{j=0}^n\frac{w_j}{x-x_j}y_j}{\displaystyle\sum_{j=0
 
 $\sum_j|\ell_jy_j|\le\lambda_n(x)\max|y_j|$이므로 오차는 대략 $3Nu\,\lambda_n(x)\max|y_j|$이다. 둘째 공식의 반올림 오차는 문제 자체의 조건수 $\lambda_n(x)$를 넘지 않는다. Chebyshev 점에서는 $\lambda_n$이 작으므로 결과가 거의 최선이다. 실제로 $f(x)=\sin(\pi x)+1/2$을 보간하고 분자와 분모를 정리의 순서대로 더해 계산한 값의 오차를 정확한 유리수 산술로 재면, 오차는 Chebyshev 점 $n=40$의 세 평가점에서 $8.9\times10^{-16}$ 이하이고 정리의 상계는 $5.7\times10^{-14}$ 이하였다. 고른 간격 $n=40$의 $x=-0.987$에서는 $\lambda_n(x)=4.6\times10^9$이어서 상계가 $6.1\times10^{-5}$로 커지고, 실제 오차는 $1.1\times10^{-7}$이었다. 상계는 최악의 반올림을 가정한 것이어서 실제 오차보다 크지만 조건수와 함께 커진다는 모양은 맞다. 고른 간격 노드의 문제는 계산 방법이 아니라 문제 자체에 있다. 첫째 공식은 후진 안정하지만 둘째 공식이 노드 밖의 외삽에서 불안정해질 수 있다는 것은 Webb, Trefethen, Gonnet이 분석했다\cite{webb2012extrapolation}.
 
-\section{나눗셈 차분과 Newton 꼴}
+\section{Divided Differences and the Newton Form}
 \label{sec:newton-form}
 
-\subsection{나눗셈 차분}
+\subsection{Divided Differences}
 
 노드를 하나씩 더해 가며 보간 다항식을 쌓는 꼴도 있다. $p_k$를 $x_0,\dots,x_k$의 보간 다항식이라 하면 $p_k-p_{k-1}$은 $x_0,\dots,x_{k-1}$에서 $0$인 차수 $k$ 이하의 다항식이므로 $c_k(x-x_0)\cdots(x-x_{k-1})$ 꼴이다. 이 계수 $c_k$를 \term{나눗셈 차분}{divided difference} $f[x_0,\dots,x_k]$라 쓴다. 정의상 이것은 $p_k$의 최고차 계수이고, 따라서 노드의 순서와 무관하다. 그러면
 \begin{equation}
@@ -227,13 +227,13 @@ p_k(x)=\frac{(x-x_0)q(x)-(x-x_k)r(x)}{x_k-x_0}
 
 점화식으로 나눗셈 차분의 표를 $O(n^2)$에 채우고, \eqref{eq:newton-form}을 중첩된 꼴 $c_0+(x-x_0)(c_1+(x-x_1)(c_2+\cdots))$로 평가하면 Horner 방법처럼 점 하나에 $O(n)$이다. 노드를 하나 더하면 계수 하나만 더 구하면 되는 것이 Newton 꼴의 장점이다. 다만 반올림에 대한 성질은 노드의 순서에 따라 달라지고, 차분표의 뺄셈은 9장의 소거를 일으킬 수 있다.
 
-\subsection{Hermite 보간}
+\subsection{Hermite Interpolation}
 
 노드에서 값뿐 아니라 도함수 값까지 맞추는 것이 \term{Hermite 보간}{Hermite interpolation}이다. 노드 $x_j$에서 $f(x_j),f'(x_j),\dots,f^{(s_j-1)}(x_j)$를 맞추는 차수 $\sum_js_j-1$ 이하의 다항식은 유일하게 존재한다. 증명은 \cref{thm:interp-unique}와 같다. 두 해의 차가 각 $x_j$에서 $s_j$중근을 가지므로 근이 차수보다 많다.
 
 나눗셈 차분은 \cref{prop:divided-difference}의 둘째 주장 덕분에 겹친 노드로 자연스럽게 이어진다. 노드들이 한 점 $x$로 모이면 $f[x,\dots,x]$($s+1$개)$=f^{(s)}(x)/s!$로 정의하는 것이 연속적인 연장이다. 그러면 같은 노드를 $s_j$번 되풀이해 적고, 같은 점끼리의 차분이 나오는 자리에 $f^{(s)}(x_j)/s!$를 넣어 차분표를 채우면 Hermite 보간 다항식의 Newton 꼴을 얻는다. 같은 점의 반복은 표에서 붙어 있어야 한다. 그래야 $0/0$이 되는 자리가 정확히 도함수 자료가 있는 자리가 된다. Krogh는 이 표와 평가, 그리고 보간 다항식의 도함수를 함께 구하는 효율적인 알고리즘을 만들었다\cite{krogh1970}. 평가점 $x$에서 Newton 꼴의 중심들을 차례로 $x$로 옮기면, 계수들이 $x$에서의 Taylor 계수 $p^{(m)}(x)/m!$이 된다.
 
-\section{stardust의 다항식 보간}
+\section{Polynomial Interpolation in stardust}
 \label{sec:interp-stardust}
 
 \begin{instardust}[\code{docs/design/interpolate.md} §2.6, §3.6]
@@ -244,7 +244,7 @@ stardust의 \code{BarycentricInterpolator}는 둘째 무게중심 공식이다. 
 평가 커널은 \cref{thm:bary-stability}의 연산 순서 그대로이다. 분자의 항마다 \code{fma} 하나를 쓰고 분모를 노드 순서로 더하며, 평가점이 노드와 같거나 $s_j$가 넘치면 가장 가까운 노드의 값을 낸다. 설계 문서는 이 정리의 상계를 정확도 계약으로 삼고, 테스트가 정확한 유리수로 잰 오차와 견준다. \code{KroghInterpolator}는 scipy와 같은 Hermite 나눗셈 차분표를 채우고(같은 점이 $s$번째로 반복되면 그 값을 $s!$로 나누어 시작한다), 도함수는 위의 중심 옮기기로 구한다. 이 두 클래스와 다음 장의 Floater--Hormann 보간, 실수 AAA가 같은 평가 커널을 나누어 쓴다.
 \end{instardust}
 
-\section{맺음}
+\section{Concluding Remarks}
 
 다항식 보간의 이론은 노드의 선택에서 시작해 노드의 선택으로 끝난다. 오차 공식의 $\omega(x)$, Lebesgue 상수, 해석 함수의 수렴 영역은 모두 같은 사실을 다른 방식으로 보여 준다. 고른 간격의 노드는 양 끝에서 너무 듬성하고, Chebyshev 점처럼 양 끝으로 갈수록 촘촘한 노드라야 다항식 보간이 제 힘을 낸다. 계산의 꼴도 그만큼 중요해서, 같은 다항식이라도 단항식 계수로는 $10^{-2}$에서 멈추고 무게중심 공식으로는 기계 정밀도까지 간다. 그러나 노드를 고를 수 없는 경우도 많다. 측정값은 대개 고른 간격으로 온다. 다음 장에서는 다항식 대신 유리함수를 써서 고른 간격에서도 안정한 보간과, 극점을 가진 함수를 효율적으로 근사하는 방법을 본다.
 

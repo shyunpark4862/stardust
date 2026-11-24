@@ -1,10 +1,10 @@
 %% 45장 신뢰 영역 방법
-\chapter{신뢰 영역 방법}
+\chapter{Trust-Region Methods}
 \label{ch:trust-region}
 
 \abstract{직선 탐색은 방향을 먼저 정하고 걸음의 길이를 찾는다. 신뢰 영역 방법은 순서를 뒤집어, 이차 모형을 믿을 수 있는 반지름을 먼저 정하고 그 공 안에서 모형을 최소화하는 걸음을 찾는다. 모형이 실제 함수를 얼마나 잘 예측했는지를 보고 반지름을 늘리거나 줄인다. 이 장에서는 먼저 Cauchy 점이 보장하는 모형 감소량을 유도하고, 걸음이 그만큼만 줄여도 기울기가 $0$으로 가는 부분열이 있다는 전역 수렴 정리를 증명한다. 이어서 부분문제의 해를 완전히 특징짓는 Moré--Sorensen의 정리를 하나의 항등식으로 증명하고, 그 해를 Cholesky 분해와 Newton 반복으로 찾는 거의 정확한 방법, 행렬 대신 곱만 쓰는 Steihaug의 공액 기울기 방법을 다룬다. 고유벡터가 기울기와 직교하는 어려운 경우, Newton 반복을 $\|p\|$가 아니라 $1/\|p\|$에 하는 까닭, 그리고 Rosenbrock 함수에서 신뢰 영역이 음의 곡률을 다루는 방식을 수치로 확인한다.}
 
-\section{신뢰 영역의 틀}
+\section{The Trust-Region Framework}
 \label{sec:tr-framework}
 
 $x_k$에서 이차 모형
@@ -43,10 +43,10 @@ m_k(p)=f(x_k)+g_k^{\mathsf T}p+\frac12p^{\mathsf T}B_kp
 \label{alg:trust-region}
 \end{algorithm}
 
-\section{Cauchy 점과 전역 수렴}
+\section{The Cauchy Point and Global Convergence}
 \label{sec:tr-cauchy}
 
-\subsection{Cauchy 점}
+\subsection{The Cauchy Point}
 
 부분문제를 정확히 풀지 않아도 되지만, 걸음은 최소한 가장 가파른 내리막 방향에서 얻을 수 있는 만큼은 모형을 줄여야 한다. 그 기준이 되는 \term{Cauchy 점}{Cauchy point}은 $-g_k$ 방향으로 공 안에서 모형을 최소화한 점으로, $g_k\ne0$이면
 \[
@@ -80,7 +80,7 @@ m(0)-m(p^{\mathrm C})=\Delta\|g\|-\frac{\Delta^2}{2\|g\|^2}\omega>\Delta\|g\|-\f
 이다. 세 경우 모두 주장의 오른쪽 이상이다.
 \end{proof}
 
-\subsection{전역 수렴}
+\subsection{Global Convergence}
 
 걸음이 Cauchy 점의 일정 비율만큼 모형을 줄이기만 하면 방법 전체가 수렴한다. 직선 탐색에서 Zoutendijk의 정리가 맡던 역할을 여기서는 다음 정리가 맡는다.
 
@@ -113,10 +113,10 @@ f(x_k)-f(x_{k+1})\ge\frac14\bigl(m_k(0)-m_k(p_k)\bigr)\ge\frac c4\,\epsilon\min\
 
 $\eta>0$이면 결론을 $\lim\|g_k\|=0$으로 강화할 수 있다\cite{nocedal2006,conn2000trust}. 이 정리에는 $B_k$가 양정치라는 가정이 없다. Cauchy 점의 감소량만 확보하면 모형이 아무리 나빠도 반지름이 알아서 줄어들어 기울기가 작아진다. 부분문제의 정확한 해는 모형을 Cauchy 점 이상으로 줄이므로 자동으로 이 조건을 만족한다.
 
-\section{부분문제의 해}
+\section{Solving the Subproblem}
 \label{sec:tr-subproblem}
 
-\subsection{Moré--Sorensen의 정리}
+\subsection{The Moré--Sorensen Theorem}
 
 부분문제는 볼록이 아닐 수도 있는 이차 함수를 공 위에서 최소화하는 문제이다. 일반적인 비볼록 최적화와 달리 이 문제의 전역 최소점은 완전히 특징지어진다.
 
@@ -155,7 +155,7 @@ m(p)-m(p_\ast)=\frac{s^2}2p_\ast^{\mathsf T}(B+\lambda I)p_\ast+\frac\lambda2\De
 \]
 를 만족하는 $\lambda>\max(0,-\lambda_1)$을 찾는다. 이 식을 \term{영년 방정식}{secular equation}이라 한다. $\lambda$는 47장에서 볼 Levenberg--Marquardt 감쇠와 같은 역할을 하며, $\lambda$가 커질수록 걸음은 짧아지고 가장 가파른 내리막 방향으로 돈다.
 
-\subsection{영년 방정식과 Newton 반복}
+\subsection{The Secular Equation and Newton Iteration}
 
 $B=Q\Lambda Q^{\mathsf T}$로 대각화하고 $\gamma_j=q_j^{\mathsf T}g$로 쓰면
 \[
@@ -171,7 +171,7 @@ $B=Q\Lambda Q^{\mathsf T}$로 대각화하고 $\gamma_j=q_j^{\mathsf T}g$로 쓰
 \]
 이다. $B=\operatorname{diag}(1,2,5)$, $g=(1,1,1)$, $\Delta=0.1$에서 $\lambda=0$으로 시작하면 해 $\lambda_\ast=14.8846$까지의 오차가 $\phi$의 Newton 반복으로는 $3.1$, $8.8\times10^{-3}$, $5.0\times10^{-8}$, $1.8\times10^{-15}$으로 네 번에 끝나지만, $\|p\|-\Delta$의 Newton 반복으로는 $14$, $12$, $8.6$, $4.4$, $1.2$, $7.9\times10^{-2}$, \dots로 아홉 번이 든다.
 
-\subsection{어려운 경우}
+\subsection{The Hard Case}
 
 $\lambda_1\le0$이고 $g$가 $\lambda_1$의 고유공간과 직교하면(고유값이 단순하면 $\gamma_1=q_1^{\mathsf T}g=0$이면) $\lambda\downarrow-\lambda_1$에서도 $\|p(\lambda)\|$가 유한한 값에 머문다. 그 값이 $\Delta$보다 작으면 영년 방정식에 해가 없고, 이것을 \term{어려운 경우}{hard case}라 한다. 이때 해는 $\lambda=-\lambda_1$이고
 \[
@@ -179,7 +179,7 @@ p_\ast=-(B-\lambda_1I)^+g+\tau q_1
 \]
 에서 $\|p_\ast\|=\Delta$가 되도록 $\tau$를 고른다. $(B-\lambda_1I)^+$는 의사역행렬이다. \cref{thm:more-sorensen}의 세 조건이 모두 성립하는 것은 바로 확인된다. 예컨대 $B=\operatorname{diag}(-1,1)$, $g=(0,1)$, $\Delta=2$이면 $\lambda>1$에서 $p(\lambda)=(0,-1/(1+\lambda))$의 길이가 $1/2$보다 작아 $\Delta$에 닿지 않는다. 해는 $\lambda=1$, $p_\ast=(\pm\sqrt{15}/2,\,-1/2)$로, 음의 곡률 방향 $q_1=e_1$을 따라 경계까지 간다. 정확히 $\gamma_1=0$인 일은 드물지만 $\gamma_1$이 아주 작으면 같은 수치적 어려움이 생기므로 실제 알고리즘은 이 경우를 따로 다룬다.
 
-\subsection{거의 정확한 방법}
+\subsection{Nearly Exact Methods}
 
 Moré와 Sorensen의 알고리즘\cite{more1983trust}은 영년 방정식의 Newton 반복에 안전 장치를 단 것이다. $\lambda$를 낀 구간 $[\lambda_L,\lambda_U]$를 유지하고, $B+\lambda I$의 Cholesky 분해가 실패하면 $\lambda$가 너무 작다는 뜻이므로 $\lambda_L$을 올린다. $\|p(\lambda)\|<\Delta$이면 어려운 경우일 수 있으므로 분해된 $R$에서 $\|Rz\|$가 작은 단위 벡터 $z$를 Cline, Moler, Stewart, Wilkinson의 방법\cite{cline1979}으로 어림하고 경계까지 $z$ 방향으로 간다. $z$는 $B+\lambda I$의 가장 작은 고유값의 고유벡터에 가까운 방향이다. 초기 구간은 Gershgorin 원판과 Frobenius·무한대 노름으로 잡는다. 정확히 풀지 않고
 \[
@@ -187,7 +187,7 @@ Moré와 Sorensen의 알고리즘\cite{more1983trust}은 영년 방정식의 New
 \]
 이면 멈춘다. scipy와 stardust의 기본값은 $k_{\mathrm{easy}}=0.1$, $k_{\mathrm{hard}}=0.2$이다. 반지름 자체가 어림이므로 경계를 정확히 맞추려고 분해를 더 해도 얻을 것이 없고 그래서 경계 조건을 $10\%$까지 느슨하게 두어도 된다. 반복마다 분해가 몇 번 들므로 이 방법은 $n$이 수백 이하인 문제에 알맞다.
 
-\section{공액 기울기 신뢰 영역}
+\section{The Conjugate Gradient Trust-Region Method}
 \label{sec:steihaug}
 
 $n$이 크면 분해가 너무 비싸다. Steihaug와 Toint는 27장의 공액 기울기법을 $Bp=-g$에 $p_0=0$부터 쓰되, 두 경우에 경계에서 멈추게 했다\cite{steihaug1983,toint1981}. 곡률 $d_j^{\mathsf T}Bd_j\le0$인 방향을 만나면 그 방향으로 경계까지 가고(두 교점 가운데 모형이 작은 쪽), 다음 반복점이 공을 벗어나면 그 방향과 경계의 교점에서 멈춘다. 그 밖에는 44장의 Newton-CG와 같은 꼴로, 잔차가 $\min(1/2,\sqrt{\|g\|})\|g\|$(여기서는 2-노름) 아래로 내려가면 멈춘다.
@@ -217,7 +217,7 @@ p_{i+1}^{\mathsf T}d_{i+1}=p_{i+1}^{\mathsf T}(-r_{i+1}+\beta_{i+1}d_i)=\beta_{i
 신뢰 영역의 생각은 Levenberg(1944)와 Marquardt(1963)의 비선형 최소제곱 방법\cite{levenberg1944,marquardt1963}에 이미 있었지만, 반지름을 늘리고 줄이는 일반적인 틀로 세운 것은 Powell이다. 그는 1970년에 비선형 방정식의 혼성법\cite{powell1970hybrid}과 제약 없는 최소화에 이 틀을 썼다. 혼성법은 34장의 MINPACK \code{hybrd}의 바탕이며, 부분문제를 $0$에서 $-g$ 방향의 모형 최소점 $-(g^{\mathsf T}g/g^{\mathsf T}Bg)\,g$까지, 거기서 Newton 걸음 $-B^{-1}g$까지 꺾인 두 선분 위에서 푼다. 그 모양이 개의 뒷다리를 닮아 dogleg이라 불린다. $B$가 양정치이면 이 경로를 따라 모형은 줄고 길이는 늘므로 경계와 많아야 한 번 만난다. scipy의 \code{minimize}에는 \code{dogleg} 방법도 있는데 $B$가 양정치여야 한다. stardust의 \code{minimize}에는 \code{'trust-ncg'}와 \code{'trust-exact'}만 있고, dogleg 걸음은 34장의 \code{root(method='hybr')}가 쓴다.
 \end{aside}
 
-\section{수치 비교}
+\section{Numerical Comparison}
 \label{sec:tr-numerics}
 
 2차원 Rosenbrock 함수를 $(-1.2,1)$에서 시작하면 scipy 1.18.1의 기본 설정($\|g\|<10^{-4}$에서 멈춤)으로 trust-exact가 $25$번, trust-ncg가 $29$번 반복한다. 44장에서 같은 문제의 Newton-CG는 $83$번이었다. 차이는 Hessian이 양정치가 아닌 영역에 들어간 뒤에 생긴다. 첫 걸음은 반지름 $1$보다 훨씬 짧은 절단 공액 기울기 걸음(길이 $0.155$)이어서 Newton-CG와 trust-ncg의 처음 두 반복점은 같고, 둘째 반복점 $(-1.031,1.069)$에서 이미 Hessian이 양정치가 아니다. Newton-CG는 그 영역의 $42$개 반복점에서 음의 곡률을 버리고 길이 $10^{-2}$ 안팎의 걸음으로 기어가지만, trust-ncg는 음의 곡률 방향으로 경계까지 가서 그 영역에 머무는 반복점이 $4$개뿐이다. trust-exact는 첫 걸음으로 공 안의 Newton 걸음을 그대로 가고, 그 경로의 반복점은 한 번도 그 영역에 들어가지 않는다.
@@ -228,7 +228,7 @@ p_{i+1}^{\mathsf T}d_{i+1}=p_{i+1}^{\mathsf T}(-r_{i+1}+\beta_{i+1}d_i)=\beta_{i
 stardust \code{minimize}의 두 신뢰 영역 방법 \code{'trust-ncg'}, \code{'trust-exact'}는 scipy 1.18.1의 \code{\_minimize\_trust\_region}과 두 부분문제(Steihaug--Toint의 공액 기울기, Moré--Sorensen의 반복)를 같은 연산 순서로 옮긴 것으로(\code{csrc/optimize/trust.cpp}), 성공 경로에서는 함수를 부르는 점이 scipy와 비트까지 같고 다른 것은 실패 경로뿐이다. scipy의 공액 기울기 부분문제에는 반복 상한이 없어 대칭이 아닌 Hessian에서 끝나지 않을 수 있으므로 stardust는 $20n$번에서 멈추고 status $3$을 돌려준다. trust-exact의 시험점에서 Hessian이 유한하지 않으면 scipy는 예외를 내지만, stardust는 그 걸음을 $\rho=-\infty$로 보고 거절해 반지름을 줄인다. $\rho$가 NaN일 때도 반지름을 $1/4$배로 줄인다. 분해는 LAPACK \code{potrf}이고, 어려운 경우의 $z$는 Cline--Moler--Stewart--Wilkinson의 어림이다. 두 방법 모두 기울기가 있어야 하며, trust-exact는 행렬을 분해해야 하므로 차분 Hessian을 받지 않는다.
 \end{instardust}
 
-\section{맺음}
+\section{Concluding Remarks}
 
 신뢰 영역 방법은 걸음의 크기를 모형의 신뢰도에 묶는다. 비 $\rho_k$가 그 신뢰도를 재고 반지름이 그에 따라 움직인다. Cauchy 점은 걸음이 모형을 적어도 얼마나 줄여야 하는지를 정하고 그만큼만 줄이면 $B_k$가 양정치가 아니어도 수렴한다. 부분문제 자체는 Moré--Sorensen의 정리 덕분에 완전히 풀리는 문제이고, 그 해는 $\lambda$로 감쇠한 Newton 걸음이다. 작은 문제에서는 Cholesky 분해와 영년 방정식으로 거의 정확히 풀고, 큰 문제에서는 공액 기울기 반복을 경계에서 끊는다. 다음 장에서는 기울기마저 쓰지 않는 방법으로 넘어가고, 47장에서는 같은 신뢰 영역의 틀이 비선형 최소제곱에서 Levenberg--Marquardt와 반사 신뢰 영역으로 다시 나타난다.
 

@@ -1,13 +1,13 @@
 %% 52장 다변량 분포
-\chapter{다변량 분포}
+\chapter{Multivariate Distributions}
 \label{ch:multivariate-distributions}
 
 \abstract{여러 확률변수를 함께 다루는 분포를 정리한다. 다변량 정규분포를 독립인 표준 정규의 선형 변환으로 정의하고 그 주변 분포와 조건부 분포가 다시 정규이며 조건부 공분산이 Schur 여행렬이라는 것을 증명한다. 정규 확률벡터의 이차 형식으로 카이제곱이 나오고 직교 변환으로 표본평균과 표본분산이 독립이라는 것을 보인다. 이어서 다변량 $t$, 디리클레와 다항 분포, 표본 공분산 행렬의 분포인 Wishart와 그 역, 행렬 정규 분포를 다룬다. 마지막 절은 계산이다. 밀도는 Cholesky 분해와 앞으로 대입으로 계산하는데, 공분산을 binary64로 분해하면 이차 형식의 오차가 상관 행렬의 조건수에 비례한다. 다변량 정규의 누적분포함수는 2차원과 3차원에서는 Plackett의 항등식으로 한 변수 적분이 되고 그 위에서는 Genz의 변수 분리 변환과 격자 규칙의 준몬테카를로로 계산한다. 상관이 $1/2$인 정규의 사분면 확률이 정확히 $1/(d+1)$인 예에서 격자 규칙의 표준오차가 $N^{-1}$에 가깝게 줄어드는 것을 확인한다.}
 
-\section{다변량 정규분포}
+\section{The Multivariate Normal Distribution}
 \label{sec:mvn}
 
-\subsection{정의와 밀도}
+\subsection{Definition and Density}
 
 $Z=(Z_1,\dots,Z_k)$가 독립인 표준 정규이면 $X=\mu+AZ$($A\in\mathbb R^{d\times k}$)의 분포를 평균 $\mu$, 공분산 $\Sigma=AA^{\mathsf T}$의 \term{다변량 정규분포}{multivariate normal distribution} $N_d(\mu,\Sigma)$라 한다. 분포는 $\mu$와 $\Sigma$에만 의존한다. $X$의 특성함수가
 \[
@@ -21,7 +21,7 @@ f(x)=\frac1{(2\pi)^{d/2}(\det\Sigma)^{1/2}}\exp\Bigl(-\frac12(x-\mu)^{\mathsf T}
 \]
 이다. 지수의 이차 형식 $Q=(x-\mu)^{\mathsf T}\Sigma^{-1}(x-\mu)=\|L^{-1}(x-\mu)\|^2$을 \term{Mahalanobis 거리}{Mahalanobis distance}의 제곱이라 한다. $\Sigma$가 특이이면 분포는 $\mu+\operatorname{range}\Sigma$인 아핀 부분공간에 실리고 Lebesgue 밀도가 없다.
 
-\subsection{주변 분포와 조건부 분포}
+\subsection{Marginal and Conditional Distributions}
 
 $X$를 $(X_1,X_2)$로 나누고 $\mu$, $\Sigma$도 그에 맞추어 나눈다.
 \[
@@ -47,7 +47,7 @@ N\bigl(\mu_1+\Sigma_{12}\Sigma_{22}^{-1}(x_2-\mu_2),\ \Sigma_{11}-\Sigma_{12}\Si
 
 조건부 공분산 $\Sigma_{11}-\Sigma_{12}\Sigma_{22}^{-1}\Sigma_{21}$은 $\Sigma$에서 $\Sigma_{22}$의 \term{Schur 여행렬}{Schur complement}이고 $x_2$에 의존하지 않는다. 조건부 평균은 $x_2$의 일차 함수이므로, 결합 정규에서는 49장의 조건부 기댓값이 곧 선형 회귀이다. 이것이 정규 모형의 회귀(61장)가 특별히 깔끔한 까닭이다.
 
-\subsection{이차 형식과 표본분산}
+\subsection{Quadratic Forms and the Sample Variance}
 
 $X\sim N_d(\mu,\Sigma)$이면 $L^{-1}(X-\mu)$가 표준 정규이므로 Mahalanobis 거리의 제곱 $(X-\mu)^{\mathsf T}\Sigma^{-1}(X-\mu)$은 $\chi^2_d$를 따른다. 더 일반적으로 $Z\sim N_n(0,I)$이고 $P$가 계수 $r$인 직교 사영 행렬($P^2=P=P^{\mathsf T}$)이면 $Z^{\mathsf T}PZ\sim\chi^2_r$이다. $P=U\operatorname{diag}(I_r,0)U^{\mathsf T}$로 대각화하면 $U^{\mathsf T}Z$도 표준 정규이기 때문이다. 서로 직교하는 사영들($P_iP_j=0$)로 만든 이차 형식들은 독립이다. Cochran 정리는 그 반대 방향으로, $\sum_iZ^{\mathsf T}A_iZ=Z^{\mathsf T}Z$에서 계수의 합이 $n$이면 $A_i$들이 서로 직교하는 사영이 되어 이차 형식들이 독립인 카이제곱이 된다는 것이다\cite{cochran1934}.
 
@@ -66,10 +66,10 @@ $\mu=0$, $\sigma=1$이라 해도 된다. 첫 행이 $n^{-1/2}(1,\dots,1)$인 직
 
 이 명제와 50장의 $t$ 분포의 정의를 합치면 $(\bar X-\mu)/(S/\sqrt n)\sim t_{n-1}$이다. 56장의 $t$ 검정은 이것으로 정확한 분포를 얻는다.
 
-\section{정규에서 나오는 다변량 분포}
+\section{Multivariate Distributions Derived from the Normal}
 \label{sec:mv-families}
 
-\subsection{다변량 $t$}
+\subsection{The Multivariate $t$ Distribution}
 
 $Y\sim N_d(0,\Sigma)$와 $V\sim\chi^2_\nu$가 독립일 때 $X=\mu+Y/\sqrt{V/\nu}$의 분포를 \term{다변량 $t$ 분포}{multivariate t distribution}라 한다. 50장의 $t$처럼 분산을 역감마에서 뽑은 정규의 혼합이며 밀도는
 \[
@@ -77,7 +77,7 @@ f(x)=\frac{\Gamma\bigl((\nu+d)/2\bigr)}{\Gamma(\nu/2)(\nu\pi)^{d/2}(\det\Sigma)^
 \]
 이다. $Q$는 위와 같은 Mahalanobis 거리의 제곱이다. 모든 성분이 같은 $V$를 나누어 가지므로, $\Sigma$가 대각이어도 성분들은 독립이 아니다. 하나가 크면 $V$가 작았을 가능성이 커서 나머지도 크기 쉽다. 강건한 다변량 모형과 59장의 다중 비교에서 동시 신뢰구간을 계산할 때 이 분포가 나온다.
 
-\subsection{Wishart와 행렬 분포}
+\subsection{Wishart and Matrix Distributions}
 
 $X_1,\dots,X_n$이 독립이고 $N_d(0,\Sigma)$를 따를 때 $W=\sum_iX_iX_i^{\mathsf T}$의 분포를 자유도 $n$의 \term{Wishart 분포}{Wishart distribution} $W_d(n,\Sigma)$라 한다\cite{wishart1928}. $d=1$이면 $\sigma^2\chi^2_n$이다. \cref{prop:mean-variance-independent}의 다변량 판으로, 정규 표본의 표본 공분산 행렬 $S$는 $(n-1)S\sim W_d(n-1,\Sigma)$를 따르고 표본평균과 독립이다. $\Sigma$가 양정치이고 $n\ge d$이면 $W$는 거의 확실히 양정치이고 밀도
 \[
@@ -87,7 +87,7 @@ f(W)=\frac{(\det W)^{(n-d-1)/2}\exp\bigl(-\operatorname{tr}(\Sigma^{-1}W)/2\bigr
 
 $W^{-1}$의 분포를 \term{역Wishart 분포}{inverse Wishart distribution}라 하며 다변량 정규의 공분산에 대한 켤레 사전분포이다. $r\times r$ 행 공분산 $\Sigma_r$와 $c\times c$ 열 공분산 $\Sigma_c$에 대해 $\operatorname{Cov}(X_{ij},X_{kl})=(\Sigma_r)_{ik}(\Sigma_c)_{jl}$인 $r\times c$ 확률행렬, 곧 $\operatorname{vec}X\sim N(\operatorname{vec}M,\Sigma_c\otimes\Sigma_r)$($\operatorname{vec}$은 4장처럼 열을 쌓는다)인 분포를 \term{행렬 정규 분포}{matrix normal distribution}라 한다. 행 사이의 공분산과 열 사이의 공분산이 곱으로 갈라진다는 가정으로, 다변량 회귀의 오차 모형에 나타난다.
 
-\subsection{디리클레와 다항}
+\subsection{Dirichlet and Multinomial Distributions}
 
 독립인 $G_i\sim\mathrm{Gamma}(a_i,1)$($i=1,\dots,k$)로 만든 $D=(G_1,\dots,G_k)/\sum_jG_j$의 분포를 \term{디리클레 분포}{Dirichlet distribution} $\mathrm{Dir}(a_1,\dots,a_k)$라 한다. 50장의 감마--베타 명제와 같은 변수 바꾸기로, 확률 단체 위의 밀도가
 \[
@@ -101,14 +101,14 @@ P(X=x)=\frac{n!}{\prod_ix_i!}\prod_ip_i^{x_i},\qquad\sum_ix_i=n
 \]
 이다. 디리클레는 다항의 켤레 사전분포여서 사전분포 $\mathrm{Dir}(a)$에 관측 $x$를 더한 사후분포가 $\mathrm{Dir}(a+x)$이다.
 
-\section{계산}
+\section{Computation}
 \label{sec:mv-computation}
 
-\subsection{밀도와 이차 형식}
+\subsection{Densities and Quadratic Forms}
 
 밀도의 계산은 이차 형식 $Q=\|L^{-1}(x-\mu)\|^2$과 $\log\det\Sigma=2\sum\log L_{jj}$로 귀결된다. $\Sigma^{-1}$을 만들지 않고 앞으로 대입으로 $z=L^{-1}(x-\mu)$를 푸는 것이 정석이다(19장). $L$ 자체의 오차가 문제이다. binary64로 계산한 Cholesky 인수는 $|E_{ij}|\lesssim d\,u\sqrt{\sigma_{ii}\sigma_{jj}}$인 $\Sigma+E$의 정확한 인수이므로(20장), 이차 형식은 상대적으로 대략 $d\,u\,\kappa(C)$만큼 움직인다. 여기서 $C=D^{-1}\Sigma D^{-1}$, $D=\operatorname{diag}(\sigma_{11},\dots,\sigma_{dd})^{1/2}$는 상관 행렬로, 대각 척도는 오차에 영향을 주지 않는다. 상관 행렬의 조건수가 $10^{10}$이면 로그 밀도의 지수에서 여섯 자리 남짓만 남는다.
 
-\subsection{2차원과 3차원의 누적분포함수}
+\subsection{Distribution Functions in Two and Three Dimensions}
 
 $P(X\le x)$는 $d$차원 적분이어서 닫힌 꼴이 없다. 다변량 정규에는 누적분포함수를 상관 계수 $\rho_{ij}$로 미분한 것이 $x_i$, $x_j$에 대한 이계 혼합 편미분과 같다는 Plackett의 항등식 $\partial\Phi_d/\partial\rho_{ij}=\partial^2\Phi_d/\partial x_i\partial x_j$가 있다\cite{plackett1954}. 2차원에서는 이것이 밀도이다. 표준화한 이변량 정규에서 $\Phi_2(h,k;\rho)=P(X_1\le h,X_2\le k)$이고 상관이 $\rho$일 때
 \[
@@ -116,7 +116,7 @@ $P(X\le x)$는 $d$차원 적분이어서 닫힌 꼴이 없다. 다변량 정규�
 \]
 이다. 그래서 $\rho=0$의 값 $\Phi(h)\Phi(k)$에서 출발해 $\rho$까지 밀도를 한 변수로 적분하면 된다. 적분 변수를 $\rho=\sin\theta$로 바꾸면 피적분 함수가 매끄러워진다(Drezner--Wesolowsky\cite{drezner1990}, Genz\cite{genz2004}). 3차원에서는 한 변수와 나머지 둘 사이의 두 상관을 함께 $t\rho_{21}$, $t\rho_{31}$($0\le t\le1$)로 줄이는 경로를 따라 같은 항등식을 쓴다. 그러면 $\Phi(h_1)\Phi_2(h_2,h_3;\rho_{32})$에서 출발해, 이변량 밀도와 일변량 $\Phi$의 곱을 $t$에 대해 적분하는 한 변수 적분이 된다. 다변량 $t$는 $V$에 대한 척도 혼합으로 이 값들을 적분한다.
 
-\subsection{4차원 이상: Genz의 방법}
+\subsection{Four or More Dimensions: Genz's Method}
 
 $d\ge4$에서는 Genz의 방법이 표준이다\cite{genz1992,genz2009}. 변수 분리 변환이 핵심이다. $\Sigma=LL^{\mathsf T}$로 $X=LZ$로 쓰면 사건 $X\le b$는
 \[
@@ -151,7 +151,7 @@ $6421$ & $4.2\times10^{-4}$ & $6.6\times10^{-7}$ \\
 stardust의 다변량 분포는 \code{MultivariateNormal}, \code{MultivariateT}, \code{Multinomial}, \code{Dirichlet}, \code{Wishart}, \code{InverseWishart}, \code{MatrixNormal}의 일곱 개이다. 공분산은 double-double Cholesky로 한 번 분해해 들고 있고 이차 형식은 Ogita--Rump--Oishi의 \code{Dot2}\cite{ogita2005accurate}로 계산한다. 그래서 binary64 분해에서 생기는 $\kappa u$의 오차가 생기지 않는다. 디리클레와 다항의 공분산 대각은 $m_i(1-m_i)$처럼 소거가 일어나는 꼴 대신 $m_i\sum_{j\ne i}m_j$처럼 뺄셈 없는 꼴로 계산한다. 누적분포함수는 $d=1$에서 \code{ndtr}, 정규의 $d=2$에서 Plackett 항등식의 각도 적분(적응 Gauss--Kronrod), $d=3$에서 Genz의 경로 적분이고 $t$의 $d=2,3$은 척도 혼합의 적응 구적이다. $d\ge4$는 Genz의 준몬테카를로로, 누적분포함수를 계산할 점마다 변수를 재배열하고 곱 무게 $0.8^j$의 fast-CBC 격자를 쓰며 이동 열두 개로 오차를 어림해 표준오차의 세 배를 \code{CdfResult}의 \code{error}로 돌려준다.
 \end{instardust}
 
-\section{맺음}
+\section{Concluding Remarks}
 
 다변량 정규분포는 선형 변환에 닫혀 있고 주변 분포와 조건부 분포가 다시 정규이며 조건부 평균이 선형이라는 성질 덕분에 통계 모형의 중심에 있다. 그 이차 형식에서 카이제곱이, 표본 공분산에서 Wishart가, 분산의 혼합에서 다변량 $t$가 나온다. 감마의 정규화로 만든 디리클레는 범주 자료의 다항 분포와 짝을 이룬다. 계산에서는 분해의 정확도가 이차 형식의 정확도를 정하고 누적분포함수는 낮은 차원에서는 Plackett의 항등식으로, 높은 차원에서는 변수 분리와 격자 규칙으로 계산한다. 다음 장에서는 이 모든 분포에서 표본을 뽑는 난수 생성으로 넘어간다.
 

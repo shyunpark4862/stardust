@@ -1,4 +1,4 @@
-%% sdbook.cls — 《계산하는 수학》 교과서 클래스
+%% sdbook.cls — Foundations of Scientific Computing 교과서 클래스
 %%
 %% Springer Nature의 SNmono(v6.00)를 그대로 불러 그 디자인(장·절 머리, 쪽 머리,
 %% 차례, 캡션)을 살리고, 그 위에 한글 조판만 얹는다.
@@ -112,33 +112,33 @@
 \tolerance=1000
 
 % ---------------------------------------------------------------------------
-% 3. 이름 (한글)
+% 3. 이름 — 제목·차례·환경 이름·캡션은 영어, 본문은 한글 (2026-11-25 사용자 지시)
 % ---------------------------------------------------------------------------
-\def\abstractname{개요}
-\def\ackname{감사의 글}
-\def\andname{·}
-\def\appendixname{부록}
-\def\bibname{참고 문헌}
-\def\refname{참고 문헌}
-\def\chaptername{장}
-\def\contentsname{차례}
+\def\abstractname{Abstract}
+\def\ackname{Acknowledgements}
+\def\andname{,}
+\def\appendixname{Appendix}
+\def\bibname{References}
+\def\refname{References}
+\def\chaptername{Chapter}
+\def\contentsname{Contents}
 \def\figurename{Figure}
 \def\tablename{Table}
-\def\indexname{찾아보기}
-\def\listfigurename{그림 차례}
-\def\listtablename{표 차례}
-\def\partname{부}
-\def\prefacename{머리말}
-\def\forewordname{추천의 글}
-\def\glossaryname{용어}
-\def\acronymname{약어}
+\def\indexname{Index}
+\def\listfigurename{List of Figures}
+\def\listtablename{List of Tables}
+\def\partname{Part}
+\def\prefacename{Preface}
+\def\forewordname{Foreword}
+\def\glossaryname{Glossary}
+\def\acronymname{Acronyms}
 \def\proofname{Proof}
-\def\seename{→}
+\def\seename{see}
 \def\algorithmname{Algorithm}
-% "I부", "1장" 꼴. 절 번호는 SNmono의 꼴 그대로: 1.1, 1.1.1
-\newcommand\sd@chaplabel[1]{#1장}
-\newcommand\sd@partlabel[1]{#1부}
-\def\thechapterend{장}
+% 장 머리는 "Chapter 1", 차례와 쪽 머리는 번호만. 절 번호는 SNmono의 꼴 그대로: 1.1, 1.1.1
+\newcommand\sd@chaplabel[1]{Chapter #1}
+\newcommand\sd@partlabel[1]{Part #1}
+\def\thechapterend{}
 % 제사(motto)는 이탤릭 없이
 \renewcommand\mottostyle{\normalfont\raggedright}
 \RequirePackage{etoolbox}
@@ -186,6 +186,7 @@
 \date{}
 \def\publisher#1{\gdef\@publisher{#1}}
 \def\@publisher{}
+\def\sd@volumeline{}
 \def\@maketitle{\newpage
  \null
  \vskip 2em
@@ -202,6 +203,7 @@
    {\LARGE\ignorespaces\@subtitle \par}%
    \vskip 1cm
   \fi
+  \ifx\sd@volumeline\@empty\else{\Large \sd@volumeline\par}\vskip 1cm\fi
   \ifx\@date\@empty\else {\large \@date}\par\vskip 1.5em\fi
  \vfill
  {\Large \@publisher\par}%
@@ -384,9 +386,9 @@
   aboveskip=6pt, belowskip=6pt, showstringspaces=false,
   extendedchars=true, xleftmargin=\parindent}
 
-% 차례: SNmono의 꼴(절은 장 번호 아래로 들여 1.1, 1.1.1). 장 번호 칸만 "57장"이 들어가게 넓힌다.
-\setcounter{tocdepth}{2}
-\tocchpnum=2.3em
+% 차례: SNmono의 꼴. 장과 절(1.1)까지만 싣는다(2026-11-25 사용자 지시).
+\setcounter{tocdepth}{1}
+\tocchpnum=1.6em
 \tocsecnum=2.6em
 \tocsubsecnum=3.4em
 \calctocindent

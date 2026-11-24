@@ -1,6 +1,6 @@
 # 교과서 기획안 (초안, 2026-11-25)
 
-가제: **《계산하는 수학 — stardust로 배우는 수학·통계·전산》**
+제목: **Foundations of Scientific Computing — Theory, Algorithms, and Implementation** (2026-11-25 확정, 옛 가제 《계산하는 수학》)
 
 이 폴더(`textbook/`)는 교과서 원고만 둔다. 라이브러리 코드(`csrc/`, `src/`, `tests/`, `bench/`, `tools/` 등)와 홈페이지(`site/`)는 읽기만 하고 고치거나 실행하지 않는다.
 

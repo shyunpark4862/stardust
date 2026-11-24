@@ -1,17 +1,17 @@
 %% 56장 모수 검정
-\chapter{모수 검정}
+\chapter{Parametric Tests}
 \label{ch:parametric-tests}
 
 \abstract{정규 모형을 바탕으로 하는 고전적인 검정들을 다룬다. 평균에 관한 $t$ 검정은 52장의 결과 덕분에 귀무 분포가 정확하지만 두 표본의 분산이 다르면 합동 분산을 쓰는 Student의 검정이 크게 틀린다. 크기가 작은 쪽의 표준편차가 세 배(분산이 아홉 배)이면 명목 수준 $5\%$의 검정이 $26\%$로 기각하는 것을 모의실험으로 확인하고 Welch--Satterthwaite 근사 자유도를 쓰는 Welch 검정이 이 왜곡을 바로잡는 까닭을 유도한다. 일원 분산분석의 제곱합 분해를 증명하고 분산이 같은지를 보는 검정들을 견준다. 정규성 아래의 우도비 검정을 고쳐 쓴 Bartlett 검정은 $t_3$ 분포에서 $41\%$, 지수 분포에서 $38\%$로 잘못 기각한다. 4차 적률이 유한하면 통계량의 극한이 카이제곱이 아니라 카이제곱을 초과 첨도 $\gamma_2$에 따라 $1+\gamma_2/2$배로 늘인 분포여서 생기는 일임을 본다. 끝으로 Shapiro--Wilk와 적률에 기초한 정규성 검정을 정리한다.}
 
-\section{평균의 $t$ 검정}
+\section{$t$ Tests for Means}
 \label{sec:t-tests}
 
-\subsection{한 표본과 짝지은 표본}
+\subsection{One-Sample and Paired Tests}
 
 $X_1,\dots,X_n$이 독립이고 $N(\mu,\sigma^2)$을 따르면 52장에서 $T=(\bar X-\mu)/(S/\sqrt n)\sim t_{n-1}$임을 보였다. 그래서 $H_0:\mu=\mu_0$의 검정은 $T_0=(\bar X-\mu_0)/(S/\sqrt n)$을 $t_{n-1}$의 분위수와 견주고 55장의 쌍대성으로 구간 $\bar X\pm t_{n-1,1-\alpha/2}S/\sqrt n$을 얻는다. 같은 개체를 두 번 잰 짝지은 자료는 차이 $D_i=X_i-Y_i$에 한 표본 검정을 쓴다. 짝 안의 두 측정이 양의 상관을 이루면 개체 사이의 변동이 차이에서 빠지므로 두 표본을 따로 다룰 때보다 검정력이 크다. 상관이 $0$에 가까우면 자유도만 $2n-2$에서 $n-1$로 줄어 검정력이 오히려 조금 작다.
 
-\subsection{두 표본: Student와 Welch}
+\subsection{Two Samples: Student and Welch}
 
 독립인 두 표본 $X_1,\dots,X_{n_1}\sim N(\mu_1,\sigma_1^2)$, $Y_1,\dots,Y_{n_2}\sim N(\mu_2,\sigma_2^2)$에서 $H_0:\mu_1=\mu_2$를 검정하자. 분산이 같다고 가정하면($\sigma_1=\sigma_2$) 합동 분산
 \[
@@ -47,7 +47,7 @@ T_W=\frac{\bar X-\bar Y}{\sqrt{S_1^2/n_1+S_2^2/n_2}}
 \]
 이다. 실제로는 $a_i$에 $S_i^2/n_i$를 넣는다. 이 자유도는 일반적으로 정수가 아니며 $\min(n_1,n_2)-1$과 $n_1+n_2-2$ 사이에 있다. \cref{tab:welch-student}에서 Welch 검정은 모든 경우에 명목 수준을 지킨다. 분산이 같은 경우에도 잃는 것이 거의 없으므로 분산이 같다는 확신이 없으면 Welch 검정을 쓰는 것이 낫다.
 
-\section{일원 분산분석}
+\section{One-Way Analysis of Variance}
 \label{sec:anova}
 
 $k$개 집단에서 각각 $n_j$개의 관측 $Y_{ij}$가 독립이고 $N(\mu_j,\sigma^2)$을 따를 때 $H_0:\mu_1=\dots=\mu_k$를 검정하는 것이 \term{일원 분산분석}{one-way analysis of variance}이다. 전체 평균을 $\bar Y$, 집단 평균을 $\bar Y_j$, 전체 관측 수를 $N$이라 하자.
@@ -67,7 +67,7 @@ F=\frac{\mathrm{SSB}/(k-1)}{\mathrm{SSW}/(N-k)}\sim F(k-1,N-k)
 \]
 이다. 평균이 다르면 SSB가 커지므로 $F$가 클 때 기각한다. $k=2$이면 $F$는 Student 두 표본 통계량의 제곱이다. 이 검정도 Student 검정처럼 등분산을 가정하므로 분산이 다르고 집단 크기가 다르면 같은 문제가 생긴다. Welch의 분산분석은 집단마다 무게 $w_j=n_j/S_j^2$를 주어 같은 생각을 $k$개 집단으로 넓힌다\cite{welch1951}.
 
-\section{분산이 같은지의 검정}
+\section{Tests for Equality of Variances}
 \label{sec:variance-homogeneity}
 
 분산분석의 가정을 확인하거나 분산 자체를 비교하려면 $H_0:\sigma_1^2=\dots=\sigma_k^2$을 검정한다. 정규 모형의 우도비 검정을 자유도로 고쳐 쓴 것이 \term{Bartlett 검정}{Bartlett's test}이다\cite{bartlett1937}. 통계량은 합동 분산과 집단 분산의 로그의 차
@@ -96,7 +96,7 @@ $t_3$ & $0.413$ & $0.038$ & $0.041$ \\
 \label{tab:variance-tests}
 \end{table}
 
-\section{정규성 검정}
+\section{Tests of Normality}
 \label{sec:normality}
 
 모수 검정의 정규성 가정을 확인하는 검정도 여럿이다. \term{Shapiro--Wilk 검정}{Shapiro--Wilk test}의 통계량은
@@ -113,7 +113,7 @@ W=\frac{\bigl(\sum_ia_iX_{(i)}\bigr)^2}{\sum_i(X_i-\bar X)^2}
 \code{sd.htest}의 $t$ 검정은 scipy의 이름(\code{ttest\_1samp}, \code{ttest\_ind}, \code{ttest\_rel})을 따르고 \code{ttest\_ind(equal\_var=False)}가 Welch 검정이다. 분산분석은 \code{f\_oneway}이고 \code{equal\_var=False}로 Welch의 분산분석을 한다. 자유도는 Welch처럼 정수가 아닐 수 있으므로 어디서나 float이고 $F$ 꼴 검정은 \code{df\_num}과 \code{df\_denom}을 결과에 둔다. 표준오차나 분산이 $0$인 퇴화한 입력의 통계량과 $p$값은 무한대가 아니라 NaN이다. 분산이 $0$인지는 기술통계의 \code{skew}와 같은 판정($m_2\le(\varepsilon\cdot\text{평균})^2$) 하나로 정한다. Shapiro--Wilk는 Royston의 AS R94를 따른다. Jarque--Bera의 커널은 htest 한곳에 두었으므로 회귀의 잔차 진단 \code{r.jarque\_bera()}도 같은 비트의 결과를 낸다.
 \end{instardust}
 
-\section{맺음}
+\section{Concluding Remarks}
 
 정규 모형의 고전 검정들은 52장의 표본 분포 결과로 정확한 귀무 분포를 얻는다. 그러나 정확성은 가정에 기대고 가정이 어긋나면 결과가 크게 틀릴 수 있다. 두 표본의 분산이 다를 때 Student 검정이, 꼬리가 무거울 때 Bartlett 검정이 그렇다. Welch의 근사 자유도와 Levene류의 강건한 검정은 가정을 약하게 해 이 위험을 줄이며 잃는 검정력은 대개 작다. 다음 장에서는 분포의 모양을 전혀 가정하지 않는 순위 검정과 경험분포에 기초한 검정으로 넘어간다.
 

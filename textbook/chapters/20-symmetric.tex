@@ -1,13 +1,13 @@
 %% 20장 대칭 행렬
-\chapter{대칭 행렬}
+\chapter{Symmetric Matrices}
 \label{ch:symmetric}
 
 \abstract{통계와 최적화에서 만나는 행렬은 대칭인 경우가 많다. 공분산 행렬, 정규방정식의 행렬, 이계도함수의 행렬이 모두 그렇다. 대칭성을 쓰면 LU 분해의 비용과 저장 공간을 절반으로 줄일 수 있고, 행렬이 양정치이면 피벗 없이도 안정한 Cholesky 분해가 있다. 이 장에서는 먼저 Cholesky 분해의 존재와 알고리즘을 보고, 왜 피벗 없이도 성장이 일어나지 않는지를 반올림 오차 해석으로 증명한다. 분해가 실패하는 것 자체가 양정치성의 판정이 된다는 점과, 다변량 정규분포의 밀도를 분해로 정확하게 계산하는 방법도 본다. 이어서 양정치가 아닌 대칭 행렬로 넘어가 대칭성을 지키면서 안정하게 분해하려면 $2\times2$ 블록 피벗이 왜 필요한지를 보이고, Bunch--Kaufman 피벗 전략과 그 상수 $(1+\sqrt{17})/8$의 유래를 설명한다.}
 
-\section{Cholesky 분해}
+\section{Cholesky Factorization}
 \label{sec:cholesky}
 
-\subsection{존재와 알고리즘}
+\subsection{Existence and Algorithm}
 
 4장에서 보았듯이 에르미트 행렬 $A$가 \term{양정치}{positive definite}라는 것은 모든 $x\ne0$에 대해 $x^{\mathsf H}Ax>0$이라는 것이고, 이것은 모든 고유값이 양수라는 것, 또 모든 앞쪽 주소행렬의 행렬식이 양수라는 것과 동치이다. 이 절에서는 실수 대칭 행렬로 이야기하지만 에르미트 행렬에도 그대로 성립한다.
 
@@ -26,7 +26,7 @@ l_{jj}=\Bigl(a_{jj}-\sum_{k<j}l_{jk}^2\Bigr)^{1/2},\qquad l_{ij}=\Bigl(a_{ij}-\s
 \]
 로 계산된다. 19장의 LU처럼 블록으로 다시 짜면 대부분의 연산이 3층 BLAS의 \code{gemm}, \code{syrk}, \code{trsm}으로 가고, LAPACK의 \code{potrf}가 이것이다.
 
-\subsection{피벗이 필요 없는 이유}
+\subsection{Why Pivoting Is Unnecessary}
 
 LU에서는 원소가 소거하는 동안 커지는 것이 불안정의 원인이었다. Cholesky에서는 그런 성장이 일어날 수 없다. $A=LL^{\mathsf T}$에서 $a_{ii}=\sum_k l_{ik}^2$이므로 $L$의 $i$번째 행의 크기가 $\sqrt{a_{ii}}$로 묶이기 때문이다. 이것을 오차 해석으로 옮기면 다음과 같다.
 
@@ -45,7 +45,7 @@ Cholesky 분해가 끝까지 진행되면 계산한 인수 $\hat L$은
 
 곧 Cholesky 분해의 후진 오차는 원소의 크기 $\sqrt{a_{ii}a_{jj}}$에 비례하고 성장 인수가 없다. 피벗 없이도 후진 안정인 것이다. 대칭성을 지키는 대각 피벗, 곧 행과 열을 함께 바꾸는 피벗은 반양정치 행렬의 랭크를 드러내는 데 쓰이지만, 안정성을 위해서는 필요하지 않다.
 
-\subsection{양정치성의 판정}
+\subsection{Testing for Positive Definiteness}
 
 분해가 \textbf{끝까지 진행되면}이라는 조건이 중요하다. $A$가 양정치가 아니면 어느 단계에서 제곱근 안의 값이 $0$ 이하가 되어 분해가 멈춘다. 거꾸로 분해가 끝까지 가면 $\hat L\hat L^{\mathsf T}$가 양정치이므로, Cholesky 분해를 시도하는 것은 양정치성을 판정하는 가장 싼 방법이다. 고유값을 구하는 것보다 훨씬 싸다. 반올림 때문에 경계선의 행렬, 곧 가장 작은 고유값이 $\|A\|u$ 정도인 행렬에서는 판정이 어느 쪽으로든 갈 수 있다. 대각을 $1$로 맞춘 행렬 $D^{-1/2}AD^{-1/2}$($D=\operatorname{diag}(A)$)의 조건수가 $1/(n^{3/2}u)$보다 충분히 작은 양정치 행렬이면 분해가 반드시 끝까지 간다는 것이 증명되어 있다\cite{higham2002accuracy}.
 
@@ -53,7 +53,7 @@ Cholesky 분해가 끝까지 진행되면 계산한 인수 $\hat L$은
 stardust의 \code{cholesky}는 LAPACK의 \code{potrf}로 하삼각 $L$을 구하고, \code{upper=True}이면 그 켤레 전치를 옮겨 쓴다. 위삼각 판을 따로 부르지 않으므로 두 결과가 비트까지 같다. 분해가 도중에 멈추면 ``matrix is not positive definite''라는 \code{LinAlgError}를 낸다. 19장의 LU와 마찬가지로 판정의 근거는 LAPACK이 보고하는 정확한 실패뿐이고, 조건수를 보고 따로 판정하지 않는다.
 \end{instardust}
 
-\subsection{다변량 정규분포}
+\subsection{The Multivariate Normal Distribution}
 
 Cholesky 분해가 가장 자주 쓰이는 곳 가운데 하나가 다변량 정규분포 $N(\mu,\Sigma)$이다. 그 로그 밀도는
 \[
@@ -61,16 +61,16 @@ Cholesky 분해가 가장 자주 쓰이는 곳 가운데 하나가 다변량 정
 \]
 인데, $\Sigma=LL^{\mathsf T}$로 분해하면 두 항이 모두 쉬워진다. 행렬식은 $\log\det\Sigma=2\sum_i\log l_{ii}$이므로 19장의 넘침 걱정 없이 로그로 바로 더해지고, 이차 형식은 하삼각 방정식 $Ly=x-\mu$ 하나를 풀어 $\|y\|_2^2$로 얻는다. 역행렬을 만들지 않으므로 연산이 적을 뿐 아니라, 삼각 풀기가 후진 안정이므로 정확하다. 반대로 표본을 만들 때는 표준 정규 벡터 $z$에 대해 $x=\mu+Lz$로 둔다. $\operatorname{Cov}(Lz)=LL^{\mathsf T}=\Sigma$이기 때문이다.
 
-\section{부정치 대칭 행렬}
+\section{Symmetric Indefinite Matrices}
 \label{sec:indefinite}
 
-\subsection{$2\times2$ 피벗이 필요한 이유}
+\subsection{Why $2\times2$ Pivots Are Needed}
 
 양정치가 아닌 대칭 행렬, 예컨대 제약이 있는 최적화의 KKT 행렬은 고유값의 부호가 섞여 있다. 이런 행렬도 대칭성을 지키며 $A=LDL^{\mathsf T}$로 분해하고 싶다. 여기서 $L$은 단위 하삼각이고 $D$는 대각이다. 문제는 피벗이다. 대칭성을 지키려면 행과 열을 함께 바꾸어야 하므로 피벗은 대각 원소에서만 고를 수 있는데, 대각이 모두 $0$이거나 작을 수 있다. $\begin{psmallmatrix}0&1\\1&0\end{psmallmatrix}$은 정칙이지만 대각이 $0$이어서 어떤 대칭 치환으로도 $1\times1$ 피벗을 얻을 수 없고, $\begin{psmallmatrix}\epsilon&1\\1&0\end{psmallmatrix}$은 $\epsilon=10^{-20}$이면 $d_2=-1/\epsilon=-10^{20}$이 되어 19장의 작은 피벗과 같은 재앙이 일어난다.
 
 해법은 $D$에 $1\times1$ 블록과 함께 $2\times2$ 블록을 허용하는 것이다\cite{bunch1971parlett}. 위의 두 행렬은 그 자체가 정칙인 $2\times2$ 블록 하나이므로 그대로 피벗으로 쓰면 된다. 그러면 $PAP^{\mathsf T}=LDL^{\mathsf T}$에서 $D$는 $1\times1$과 $2\times2$ 블록의 블록 대각 행렬이고, Sylvester의 관성 법칙에 따라 $D$의 양수, 음수, $0$인 고유값의 개수가 $A$의 것과 같으므로 분해가 행렬의 관성까지 알려 준다.
 
-\subsection{Bunch--Kaufman 피벗}
+\subsection{Bunch--Kaufman Pivoting}
 
 언제 $1\times1$ 피벗을 쓰고 언제 $2\times2$ 피벗을 쓸지를 정하는 규칙이 필요하다. 완전 피벗처럼 남은 행렬 전체를 뒤지면 비용이 $O(n^3)$이므로, Bunch와 Kaufman은 열 두 개만 보는 부분 피벗 전략을 만들었다\cite{bunch1977}. 첫 열에서 대각 아래 가장 큰 원소의 크기를 $\omega_1=|a_{r1}|$이라 하고, 그 행 $r$의 비대각 원소 가운데 가장 큰 크기를 $\omega_r$이라 하자. 상수 $\alpha\in(0,1)$을 정해 두고 다음 순서로 고른다.
 \begin{enumerate}
@@ -93,7 +93,7 @@ stardust의 \code{ldl}은 LAPACK의 \code{sytrf}, 곧 Bunch--Kaufman 분해이�
 André-Louis Cholesky는 프랑스 육군의 포병 장교이자 측지 기사였다. 그는 측량 자료의 최소제곱 문제에서 나오는 정규방정식을 손으로 빠르게 풀려고 이 분해를 고안했지만, 1918년 제1차 세계대전에서 전사할 때까지 이 방법을 발표하지 않았다. 방법은 동료 Benoît가 1924년에 측지학 학술지에 소개하면서 알려졌다\cite{benoit1924}. 수치선형대수에서 가장 많이 쓰이는 분해 가운데 하나가 이렇게 한 측지 기사의 유고로 세상에 나왔다.
 \end{aside}
 
-\section{맺음}
+\section{Concluding Remarks}
 
 대칭성은 공짜 이득이 아니라 구조이다. 양정치라는 구조가 있으면 Cholesky 분해는 LU의 절반 비용으로, 피벗 없이, 성장 인수 없이 안정하며, 분해의 실패마저 양정치성의 판정이 된다. 구조가 약해져 양정치가 아니게 되면 대칭성을 지키는 대가로 $2\times2$ 블록 피벗과 그 선택 규칙이 필요해진다. 다음 장에서는 다른 종류의 구조, 곧 직교성을 쓰는 분해로 넘어간다. 직교 변환은 노름을 보존하므로 성장 인수라는 걱정 자체가 없다.
 
