@@ -204,10 +204,10 @@ p(\lambda)=\frac{T_k(\ell(\lambda))}{T_k(\ell(0))}
 \[
 \sigma+\sqrt{\sigma^2-1}=\frac{\kappa+1+2\sqrt\kappa}{\kappa-1}=\frac{(\sqrt\kappa+1)^2}{(\sqrt\kappa+1)(\sqrt\kappa-1)}=\frac{\sqrt\kappa+1}{\sqrt\kappa-1}
 \]
-이므로 \eqref{eq:chebyshev-outside}에서 둘째 항을 버리면 $T_k(\sigma)\ge\frac12\bigl((\sqrt\kappa+1)/(\sqrt\kappa-1)\bigr)^k$이다. 역수를 취하면 정리의 부등식이다.
+이므로 \eqref{eq:chebyshev-outside}에서 둘째 항을 버리면 $T_k(\sigma)\ge\bigl((\sqrt\kappa+1)/(\sqrt\kappa-1)\bigr)^k/2$이다. 역수를 취하면 정리의 부등식이다.
 \end{proof}
 
-이 정리를 거꾸로 읽으면 오차를 $\epsilon$배로 줄이는 데 필요한 걸음 수는 대략 $\tfrac12\sqrt\kappa\ln(2/\epsilon)$이다. 22장의 정규방정식이나 단순한 경사 하강법의 수렴이 $\kappa$에 비례하는 걸음을 요구하는 것과 견주면 CG는 조건수의 제곱근만 치른다. 그래서 대칭 양정치 계에서는 CG가 표준이다.
+이 정리를 거꾸로 읽으면 오차를 $\epsilon$배로 줄이는 데 필요한 걸음 수는 대략 $(\sqrt\kappa/2)\ln(2/\epsilon)$이다. 22장의 정규방정식이나 단순한 경사 하강법의 수렴이 $\kappa$에 비례하는 걸음을 요구하는 것과 견주면 CG는 조건수의 제곱근만 치른다. 그래서 대칭 양정치 계에서는 CG가 표준이다.
 
 그러나 이 상계는 흔히 비관적이다. 26장의 $60\times60$ 격자 Laplace 행렬($n=3600$)은 $\kappa\approx1507.4$이어서 정리가 오차를 $10^{-8}$배로 줄이는 데 $371$걸음을 약속하지만 무작위 우변으로 실제로 돌리면 $188$걸음에 닿는다. $100$걸음에서 실제 오차 비는 $1.6\times10^{-3}$, 상계는 $1.2\times10^{-2}$이고, $150$걸음에서는 $3.7\times10^{-6}$ 대 $8.8\times10^{-4}$로 차이가 벌어진다. 걸음이 갈수록 수렴이 빨라지는 이 \term{초선형 수렴}{superlinear convergence}은 \eqref{eq:cg-minmax}의 최대가 구간 전체가 아니라 고유값 위에서만 취해지기 때문에 생긴다. CG의 다항식은 양 끝의 고유값을 근으로 잡아 먹고 나면 남은 좁은 구간의 유효 조건수로 수렴한다.
 

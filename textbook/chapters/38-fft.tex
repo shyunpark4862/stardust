@@ -18,7 +18,7 @@ y_k=\sum_{j<n/2}x_{2j}\omega_{n/2}^{jk}+\omega_n^k\sum_{j<n/2}x_{2j+1}\omega_{n/
 \label{eq:butterfly}
 y_k=E_k+\omega_n^kO_k,\qquad y_{k+n/2}=E_k-\omega_n^kO_k,\qquad0\le k<n/2
 \end{equation}
-이다. 두 출력을 곱 하나와 덧셈 둘로 만드는 이 계산을 그 그림의 모양 때문에 \term{나비}{butterfly}라 하고 곱하는 $\omega_n^k$를 \term{회전 인자}{twiddle factor}라 한다. $n=2^m$이면 이것을 재귀적으로 되풀이할 수 있고 일의 양은 $T(n)=2T(n/2)+O(n)$이므로 $T(n)=O(n\log n)$이다. 단마다 나비가 $n/2$개이고 단이 $\log_2n$개이므로, 복소 곱셈 $\tfrac n2\log_2n$번과 복소 덧셈 $n\log_2n$번, 실수 연산으로 약 $5n\log_2n$번이다. $n=2^{20}$이면 복소 곱셈의 수로 견주어 직접 계산의 $n^2$번보다 약 $10^5$배 적다.
+이다. 두 출력을 곱 하나와 덧셈 둘로 만드는 이 계산을 그 그림의 모양 때문에 \term{나비}{butterfly}라 하고 곱하는 $\omega_n^k$를 \term{회전 인자}{twiddle factor}라 한다. $n=2^m$이면 이것을 재귀적으로 되풀이할 수 있고 일의 양은 $T(n)=2T(n/2)+O(n)$이므로 $T(n)=O(n\log n)$이다. 단마다 나비가 $n/2$개이고 단이 $\log_2n$개이므로, 복소 곱셈 $(n/2)\log_2n$번과 복소 덧셈 $n\log_2n$번, 실수 연산으로 약 $5n\log_2n$번이다. $n=2^{20}$이면 복소 곱셈의 수로 견주어 직접 계산의 $n^2$번보다 약 $10^5$배 적다.
 
 \begin{algorithm}[t]
 \begin{algorithmic}[1]
@@ -60,7 +60,7 @@ y_{k_1+n_1k_2}=\sum_{j_2=0}^{n_2-1}\omega_{n_2}^{j_2k_2}\Bigl[\omega_n^{j_2k_1}\
 $jk=(n_2j_1+j_2)(k_1+n_1k_2)=n_2j_1k_1+nj_1k_2+j_2k_1+n_1j_2k_2$이다. $\omega_n^{n}=1$이므로 둘째 항은 사라지고, $\omega_n^{n_2}=\omega_{n_1}$, $\omega_n^{n_1}=\omega_{n_2}$이므로 $\omega_n^{jk}=\omega_{n_1}^{j_1k_1}\omega_n^{j_2k_1}\omega_{n_2}^{j_2k_2}$이다. 이것을 합에 넣고 $j_1$에 대한 합을 안으로 모으면 된다.
 \end{proof}
 
-이것을 되풀이하면 $n=r_1r_2\cdots r_s$의 어떤 인수분해에서도 단이 $s$개인 FFT를 얻는다. 단 $i$는 길이 $r_i$의 작은 DFT를 $n/r_i$번 하므로 전체 일은 $n\sum_ir_i$에 비례하는데, $\sum_ir_i$는 $n$의 소인수가 작을수록 작다. 그래서 FFT는 작은 소인수로만 이루어진 길이에서 가장 빠르다. 기수 4의 나비는 곱셈 없이 $\pm1,\pm i$만 쓰므로 기수 2 두 단보다 싸다. $n_1$과 $n_2$가 서로소이면 중국인의 나머지 정리로 첨자를 다시 잡아 가운데의 회전 인자 곱마저 없앨 수 있는데, 이것이 Good과 Thomas의 \term{소인수 알고리즘}{prime factor algorithm}이다\cite{good1958,duhamel1990}.
+이것을 되풀이하면 $n=r_1r_2\cdots r_s$의 어떤 인수분해에서도 단이 $s$개인 FFT를 얻는다. 단 $i$는 길이 $r_i$의 작은 DFT를 $n/r_i$번 하므로 전체 일은 $n\sum_ir_i$에 비례하는데, $\sum_ir_i$는 $n$의 소인수가 작을수록 작다. 그래서 FFT는 작은 소인수로만 이루어진 길이에서 가장 빠르다. 기수 4의 나비 안에서는 $\pm1,\pm i$의 곱만 쓰므로 자명하지 않은 회전 인자의 곱이 기수 2 두 단보다 적어서(대략 $n$번 대신 $3n/4$번) 더 싸다. $n_1$과 $n_2$가 서로소이면 중국인의 나머지 정리로 첨자를 다시 잡아 가운데의 회전 인자 곱마저 없앨 수 있는데, 이것이 Good과 Thomas의 \term{소인수 알고리즘}{prime factor algorithm}이다\cite{good1958,duhamel1990}.
 
 \section{메모리와 순서}
 \label{sec:fft-memory}
@@ -112,7 +112,7 @@ E_k=\tfrac12\bigl(Z_k+\overline{Z_{h-k}}\bigr),\qquad O_k=-\tfrac i2\bigl(Z_k-\o
 \[
 y_k=2\sum_{j=0}^{N-1}x_j\cos\frac{\pi k(2j+1)}{2N},\qquad k=0,\dots,N-1
 \]
-이다\cite{ahmed1974dct}. 신호를 짝수 칸과 홀수 칸으로 나누어 $v=(x_0,x_2,x_4,\dots,x_5,x_3,x_1)$로 다시 늘어놓고 길이 $N$의 실수 FFT $V$를 하면 $y_k=2\operatorname{Re}\bigl(e^{-i\pi k/(2N)}V_k\bigr)$이다\cite{makhoul1980}. 확인하려면 $v$의 앞쪽 원소 $v_m=x_{2m}$은 $j=2m$으로, 뒤쪽 원소 $v_{N-1-m}=x_{2m+1}$은 $j=2m+1$로 대응시켜, $\cos(\pi k(2j+1)/2N)=\operatorname{Re}\bigl(e^{-i\pi k/(2N)}\omega_N^{pk}\bigr)$이 되는 것을 각각 보이면 된다. 여기서 $p$는 그 원소의 자리, 곧 앞쪽은 $p=m$, 뒤쪽은 $p=N-1-m$이다. 앞쪽은 $2j+1=4m+1$이고 뒤쪽은 $2j+1=4m+3=4N-(4(N-1-m)+1)$이어서 코사인의 주기성과 짝성으로 같은 꼴이 된다. 그래서 DCT도 $O(N\log N)$이다. DCT는 신호를 경계에서 매끄럽게 이어 붙이므로 37장의 누설이 적어서 JPEG 같은 압축의 바탕이 되었다.
+이다\cite{ahmed1974dct}. 신호를 짝수 칸과 홀수 칸으로 나누어 $v=(x_0,x_2,x_4,\dots,x_5,x_3,x_1)$로 다시 늘어놓고 길이 $N$의 실수 FFT $V$를 하면 $y_k=2\operatorname{Re}\bigl(e^{-i\pi k/(2N)}V_k\bigr)$이다\cite{makhoul1980}. 확인하려면 $v$의 앞쪽 원소 $v_m=x_{2m}$은 $j=2m$으로, 뒤쪽 원소 $v_{N-1-m}=x_{2m+1}$은 $j=2m+1$로 대응시켜, $\cos(\pi k(2j+1)/2N)=\operatorname{Re}\bigl(e^{-i\pi k/(2N)}\omega_N^{pk}\bigr)$이 되는 것을 각각 보이면 된다. 여기서 $p$는 그 원소의 자리, 곧 앞쪽은 $p=m$, 뒤쪽은 $p=N-1-m$이다. 앞쪽은 $2j+1=4m+1$이고 뒤쪽은 $2j+1=4m+3=4N-(4(N-1-m)+1)$이어서 코사인의 주기성과 짝성으로 같은 꼴이 된다. 그래서 DCT도 $O(N\log N)$이다. DCT는 신호를 경계에서 끊김 없이 이어 붙이므로 37장의 누설이 적어서 JPEG 같은 압축의 바탕이 되었다.
 
 같은 생각을 로그 간격의 격자에 쓴 것이 \textbf{FFTLog}이다. Hankel 변환 $\int f(r)J_\mu(kr)\,r\,dr$에서 $r$과 $k$를 로그 변수로 바꾸면 변환이 합성곱이 되어 FFT로 계산된다\cite{talman1978,hamilton2000fftlog}. 우주론에서 상관 함수와 파워 스펙트럼을 오가는 데 쓰인다.
 

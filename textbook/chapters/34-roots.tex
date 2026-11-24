@@ -45,7 +45,7 @@ $f$가 근 $x_\ast$ 근처에서 두 번 연속 미분 가능하고 $f'(x_\ast)\
 \end{theorem}
 
 \begin{proof}
-Taylor 정리에 의해 $0=f(x_\ast)=f(x_k)-f'(x_k)e_k+\tfrac12f''(\xi_k)e_k^2$인 $\xi_k$가 $x_k$와 $x_\ast$ 사이에 있다. 양변을 $f'(x_k)$로 나누고 정리하면
+Taylor 정리에 의해 $0=f(x_\ast)=f(x_k)-f'(x_k)e_k+f''(\xi_k)e_k^2/2$인 $\xi_k$가 $x_k$와 $x_\ast$ 사이에 있다. 양변을 $f'(x_k)$로 나누고 정리하면
 \[
 e_{k+1}=e_k-\frac{f(x_k)}{f'(x_k)}=\frac{f''(\xi_k)}{2f'(x_k)}e_k^2
 \]
@@ -144,7 +144,7 @@ B_{k+1}-B_k=(B-B_k)\frac{s_ks_k^{\mathsf T}}{s_k^{\mathsf T}s_k}
 
 \subsection{Powell의 혼성법}
 
-Newton 방법과 Broyden 방법은 국소적이다. Powell은 $\tfrac12\|F\|^2$을 줄이는 방향으로 전역적인 안전장치를 더했다\cite{powell1970hybrid}. 걸음마다 신뢰 영역의 반지름 $\Delta$ 안에서, Newton 걸음이 들어가면 그것을 쓰고 아니면 Newton 걸음과 가장 가파른 내리막 걸음을 잇는 꺾은선(dogleg)이 반지름과 만나는 점을 쓴다. 실제로 줄어든 $\|F\|$와 선형 모형이 예측한 감소를 견주어 반지름을 늘리거나 줄인다. 야코비안은 Broyden 갱신으로 고치다가 진전이 없으면 다시 계산한다. 신뢰 영역과 dogleg은 45장에서 자세히 본다. Moré, Garbow, Hillstrom의 MINPACK이 이 방법을 \code{hybrd}와 \code{hybrj}로 구현했고\cite{more1980minpack} scipy의 \code{root}의 기본 방법이 그것이다.
+Newton 방법과 Broyden 방법은 국소적이다. Powell은 $\|F\|^2/2$을 줄이는 방향으로 전역적인 안전장치를 더했다\cite{powell1970hybrid}. 걸음마다 신뢰 영역의 반지름 $\Delta$ 안에서, Newton 걸음이 들어가면 그것을 쓰고 아니면 Newton 걸음과 가장 가파른 내리막 걸음을 잇는 꺾은선(dogleg)이 반지름과 만나는 점을 쓴다. 실제로 줄어든 $\|F\|$와 선형 모형이 예측한 감소를 견주어 반지름을 늘리거나 줄인다. 야코비안은 Broyden 갱신으로 고치다가 진전이 없으면 다시 계산한다. 신뢰 영역과 dogleg은 45장에서 자세히 본다. Moré, Garbow, Hillstrom의 MINPACK이 이 방법을 \code{hybrd}와 \code{hybrj}로 구현했고\cite{more1980minpack} scipy의 \code{root}의 기본 방법이 그것이다.
 
 \section{stardust의 근 찾기}
 \label{sec:roots-stardust}

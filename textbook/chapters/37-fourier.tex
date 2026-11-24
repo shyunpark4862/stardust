@@ -9,7 +9,7 @@
 
 \subsection{직교 기저}
 
-주기 $2\pi$인 함수의 공간 $L^2(\mathbb T)$, $\mathbb T=[-\pi,\pi)$에 내적 $\langle f,g\rangle=\frac1{2\pi}\int_{-\pi}^{\pi}f\bar g\,dx$를 두면, 함수 $e_k(x)=e^{ikx}$ $(k\in\mathbb Z)$는 정규직교계이다. $k\ne l$이면 $\int e^{i(k-l)x}dx=0$이기 때문이다. $f$의 \term{푸리에 계수}{Fourier coefficient}를 $\hat f_k=\langle f,e_k\rangle$로 두고 부분합 $S_Nf=\sum_{|k|\le N}\hat f_ke_k$를 만들면, 이것은 $\operatorname{span}\{e_k:|k|\le N\}$으로의 직교 사영이므로 그 부분공간의 모든 삼각다항식 가운데 $L^2$ 거리가 가장 가깝다. 22장의 최소제곱이 무한 차원에서 일어나는 셈이다. 더 나아가 이 정규직교계는 완비이다. 곧 $\|f-S_Nf\|_2\to0$이고 \term{Parseval 등식}{Parseval's identity}
+주기 $2\pi$인 함수의 공간 $L^2(\mathbb T)$, $\mathbb T=[-\pi,\pi)$에 내적 $\langle f,g\rangle=(2\pi)^{-1}\int_{-\pi}^{\pi}f\bar g\,dx$를 두면, 함수 $e_k(x)=e^{ikx}$ $(k\in\mathbb Z)$는 정규직교계이다. $k\ne l$이면 $\int e^{i(k-l)x}dx=0$이기 때문이다. $f$의 \term{푸리에 계수}{Fourier coefficient}를 $\hat f_k=\langle f,e_k\rangle$로 두고 부분합 $S_Nf=\sum_{|k|\le N}\hat f_ke_k$를 만들면, 이것은 $\operatorname{span}\{e_k:|k|\le N\}$으로의 직교 사영이므로 그 부분공간의 모든 삼각다항식 가운데 $L^2$ 거리가 가장 가깝다. 22장의 최소제곱이 무한 차원에서 일어나는 셈이다. 더 나아가 이 정규직교계는 완비이다. 곧 $\|f-S_Nf\|_2\to0$이고 \term{Parseval 등식}{Parseval's identity}
 \[
 \frac1{2\pi}\int_{-\pi}^{\pi}|f|^2dx=\sum_{k\in\mathbb Z}|\hat f_k|^2
 \]
@@ -31,14 +31,14 @@ $f$가 주기 $2\pi$이고 $m$번 연속 미분 가능하면 $k\ne0$에서
 \end{proposition}
 
 \begin{proof}
-부분적분을 하면 경계항은 주기성 때문에 사라지므로 $\hat f_k=\frac1{2\pi}\int fe^{-ikx}dx=\frac1{2\pi ik}\int f'e^{-ikx}dx=\widehat{f'}_k/(ik)$이다. $m$번 되풀이하면 $\hat f_k=\widehat{f^{(m)}}_k/(ik)^m$이고, $|\widehat{f^{(m)}}_k|\le\|f^{(m)}\|_1/(2\pi)$이다.
+부분적분을 하면 경계항은 주기성 때문에 사라지므로 $\hat f_k=(2\pi)^{-1}\int fe^{-ikx}dx=(2\pi ik)^{-1}\int f'e^{-ikx}dx=\widehat{f'}_k/(ik)$이다. $m$번 되풀이하면 $\hat f_k=\widehat{f^{(m)}}_k/(ik)^m$이고, $|\widehat{f^{(m)}}_k|\le\|f^{(m)}\|_1/(2\pi)$이다.
 \end{proof}
 
 $f$가 실수축을 포함하는 띠 $|\operatorname{Im}z|<a$에서 해석적이고 유계이면, 적분 경로를 $\operatorname{Im}z=\pm a'$ $(a'<a)$으로 옮겨 $|\hat f_k|=O(e^{-a'|k|})$를 얻는다. 29장에서 Bernstein 타원으로 Chebyshev 계수를 누른 것과 같은 논증이다. 세 함수의 계수를 재 보면 이 차이가 뚜렷하다. 불연속인 사각파 $\operatorname{sign}(\sin x)$는 홀수 $k=1,3,9,27,81$에서 $|\hat f_k|=2/(\pi k)$가 $0.64$, $0.21$, $0.071$, $0.024$, $0.0079$로 $1/k$을 따른다. 꺾인 점이 있는 $|\sin x|$는 짝수 $k$에서 정확히 $2/(\pi(k^2-1))$이어서 $k=2,6,18,54,162$에서 $0.21$, $1.8\times10^{-2}$, $2.0\times10^{-3}$, $2.2\times10^{-4}$, $2.4\times10^{-5}$로 $1/k^2$을 따르고, 전 평면에서 해석적인 $e^{\cos x}$는 $k=1,3,9$에서 $0.57$, $2.2\times10^{-2}$, $5.5\times10^{-9}$이며 $k=27$에서는 약 $7\times10^{-37}$이다.
 
 \subsection{Gibbs 현상}
 
-불연속점 근처에서 부분합은 기묘하게 행동한다. 사각파의 부분합 $S_N$은 불연속점 바로 옆에서 함숫값 $1$을 넘어 솟는데, $N$을 늘려도 솟는 높이가 줄지 않고 솟는 자리만 불연속점으로 다가간다. 부분합은 $S_N(x)=\frac4\pi\sum_{k\text{ 홀수}\le N}\sin(kx)/k$이고 그 최댓값은 첫 극대점 $x=\pi/(N+1)$ 근처에서 얻어진다. 합을 Riemann 합으로 보면
+불연속점 근처에서 부분합은 기묘하게 행동한다. 사각파의 부분합 $S_N$은 불연속점 바로 옆에서 함숫값 $1$을 넘어 솟는데, $N$을 늘려도 솟는 높이가 줄지 않고 솟는 자리만 불연속점으로 다가간다. 부분합은 $S_N(x)=(4/\pi)\sum_{k\text{ 홀수}\le N}\sin(kx)/k$이고 그 최댓값은 첫 극대점 $x=\pi/(N+1)$ 근처에서 얻어진다. 합을 Riemann 합으로 보면
 \[
 \lim_{N\to\infty}\max S_N=\frac2\pi\int_0^\pi\frac{\sin t}t\,dt=\frac2\pi\operatorname{Si}(\pi)\approx1.178980
 \]
@@ -71,7 +71,7 @@ y_k=\sum_{j=0}^{n-1}x_j\omega^{jk},\qquad\omega=e^{-2\pi i/n},\quad k=0,\dots,n-
 
 \begin{proposition}
 \label{prop:dft-unitary}
-$F_n^{\mathsf H}F_n=nI$이다. 따라서 역변환은 $x=\frac1nF_n^{\mathsf H}y$, 곧 $x_j=\frac1n\sum_ky_k\omega^{-jk}$이고, $\|y\|_2=\sqrt n\,\|x\|_2$이다.
+$F_n^{\mathsf H}F_n=nI$이다. 따라서 역변환은 $x=F_n^{\mathsf H}y/n$, 곧 $x_j=n^{-1}\sum_ky_k\omega^{-jk}$이고, $\|y\|_2=\sqrt n\,\|x\|_2$이다.
 \end{proposition}
 
 \begin{proof}
@@ -112,16 +112,16 @@ $f=\sum_k\hat f_ke^{ikx}$가 절대 수렴하면 표본 $f_j=f(2\pi j/n)$의 DFT
 \end{proposition}
 
 \begin{proof}
-$f_j=\sum_l\hat f_le^{2\pi ijl/n}$을 대입하고 합의 순서를 바꾸면 $\frac1n\sum_l\hat f_l\sum_je^{2\pi ij(l-k)/n}$이다. 안쪽 합은 \cref{prop:dft-unitary}의 증명대로 $l\equiv k\pmod n$이면 $n$이고 아니면 $0$이다.
+$f_j=\sum_l\hat f_le^{2\pi ijl/n}$을 대입하고 합의 순서를 바꾸면 $n^{-1}\sum_l\hat f_l\sum_je^{2\pi ij(l-k)/n}$이다. 안쪽 합은 \cref{prop:dft-unitary}의 증명대로 $l\equiv k\pmod n$이면 $n$이고 아니면 $0$이다.
 \end{proof}
 
 표본의 DFT는 원하는 계수 $\hat f_k$에 $n$만큼 떨어진 모든 계수를 더한 것이다. 높은 주파수의 성분이 표본 위에서 낮은 주파수와 구별되지 않는 것으로, 29장의 Chebyshev 점에서 본 에일리어싱과 같다. $k=0$이면 이 공식은 35장의 사다리꼴 규칙의 오차가 $\sum_{m\ne0}\hat f_{mn}$이라는 말이 되고, 계수가 기하급수적으로 줄면 오차도 그렇다. 반대로 $|k|\ge n/2$의 계수가 모두 $0$인 함수, 곧 \term{대역 제한}{band-limited} 함수는 표본으로부터 정확히 되찾을 수 있다. 연속 신호의 같은 사실이 Shannon의 \term{표본화 정리}{sampling theorem}이다\cite{shannon1949}.
 
 \subsection{누설과 창 함수}
 
-유한한 길이의 신호를 DFT하는 것은 그 신호를 주기적으로 이어 붙인 것을 변환하는 것과 같다. 창의 길이가 신호의 주기의 정수배가 아니면 이어 붙인 곳에서 불연속이 생기고, \cref{prop:fourier-decay}에 따라 그 불연속의 계수가 $1/k$로 천천히 줄며 모든 주파수로 퍼진다. 이것을 \term{누설}{leakage}이라 한다. 길이 $64$의 $\sin(2\pi ft/64)$를 DFT하면 $f=8$일 때는 앞쪽 절반의 칸 가운데 $8$번째 칸에만 $32$가 있고(실수 신호라 대칭인 $56$번째 칸에도 같은 값이 있다) 나머지는 $0$이지만, $f=8.5$이면 $8$, $9$, $12$, $20$, $32$번째 칸의 크기가 $20.8$, $19.9$, $2.56$, $0.70$, $0.44$로 멀리까지 퍼진다.
+유한한 길이의 신호를 DFT하는 것은 그 신호를 주기적으로 이어 붙인 것을 변환하는 것과 같다. 창의 길이가 신호의 주기의 정수배가 아니면 이어 붙인 곳에서 값이 끊기거나 기울기가 꺾인다. 부분적분을 한 번 하면 경계항이 남아 끊긴 곳의 계수는 $1/k$로, 두 번 하면 꺾인 곳의 계수는 $1/k^2$로 천천히 줄며 모든 주파수로 퍼진다. 이것을 \term{누설}{leakage}이라 한다. 길이 $64$의 $\sin(2\pi ft/64)$를 DFT하면 $f=8$일 때는 앞쪽 절반의 칸 가운데 $8$번째 칸에만 $32$가 있고(실수 신호라 대칭인 $56$번째 칸에도 같은 값이 있다) 나머지는 $0$이지만, $f=8.5$이면 이어 붙인 곳에서 값은 이어지지만 기울기가 꺾여서 $8$, $9$, $12$, $20$, $32$번째 칸의 크기가 $20.8$, $19.9$, $2.56$, $0.70$, $0.44$로 멀리까지 퍼진다.
 
-신호에 양 끝에서 매끄럽게 $0$으로 가는 \term{창 함수}{window function}를 곱하면 이어 붙인 곳의 불연속이 사라져 누설이 줄어든다. Hann 창 $w_t=\frac12-\frac12\cos(2\pi t/n)$을 곱하면 같은 칸들의 크기가 $13.6$, $13.6$, $0.13$, $3.2\times10^{-3}$, $6.4\times10^{-4}$로 먼 칸에서 세 자리 가까이 준다. 대가는 봉우리가 넓어지는 것이다. $f=8$이면 창을 쓰지 않을 때 한 칸이던 봉우리가 $16$, $8$, $8$의 세 칸으로 퍼진다. 해상도와 누설 사이의 이 맞바꿈을 놓고 수많은 창 함수가 고안되었다\cite{harris1978}.
+신호에 양 끝에서 매끄럽게 $0$으로 가는 \term{창 함수}{window function}를 곱하면 이어 붙인 곳이 매끄러워져 누설이 줄어든다. Hann 창 $w_t=\bigl(1-\cos(2\pi t/n)\bigr)/2$를 곱하면 같은 칸들의 크기가 $13.6$, $13.6$, $0.13$, $3.2\times10^{-3}$, $6.4\times10^{-4}$로 먼 칸에서 세 자리 가까이 준다. 대가는 봉우리가 넓어지는 것이다. $f=8$이면 창을 쓰지 않을 때 한 칸이던 봉우리가 $16$, $8$, $8$의 세 칸으로 퍼진다. 해상도와 누설 사이의 이 맞바꿈을 놓고 수많은 창 함수가 고안되었다\cite{harris1978}.
 
 \section{반올림과 노름}
 \label{sec:dft-rounding}

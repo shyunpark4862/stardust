@@ -78,7 +78,7 @@ Lebesgue 상수는 노드에만 달려 있고 노드에 따라 놀랄 만큼 다
 \begin{table}[t]
 \begin{sdtable}{colspec={cccc}, row{1}={font=\small\bfseries}}
 \toprule
-$n$ & 고른 간격 & Chebyshev 점 & $\tfrac2\pi\ln(n+1)+1$ \\
+$n$ & 고른 간격 & Chebyshev 점 & $(2/\pi)\ln(n+1)+1$ \\
 \midrule
 $5$ & $3.106$ & $1.989$ & $2.141$ \\
 $10$ & $29.90$ & $2.421$ & $2.527$ \\
@@ -90,7 +90,7 @@ $40$ & $4.692\times10^{9}$ & $3.310$ & $3.364$ \\
 \label{tab:lebesgue}
 \end{table}
 
-이 수치들은 다음의 고전적인 결과들과 맞는다\cite{trefethen2019atap,brutman1997}. Chebyshev 점에서는 $\Lambda_n\le\tfrac2\pi\ln(n+1)+1$이고, 어떤 노드를 고르더라도 $\Lambda_n\ge\tfrac2\pi\ln(n+1)+0.52$이다. 따라서 Chebyshev 점은 상수 차이를 빼면 최선이다. 모든 노드 체계에서 Lebesgue 상수가 적어도 로그로 자란다는 것은 Faber와 Bernstein이 보였고, 상수 $2/\pi$까지 맞는 날카로운 하계는 Erdős가 확립했다\cite{erdos1961}. 고른 간격에서는 $\Lambda_n\sim2^{n+1}/(en\ln n)$으로 지수적으로 자라는데\cite{schonhage1961}, $n=40$에서 이 근사식은 $5.48\times10^9$이다.
+이 수치들은 다음의 고전적인 결과들과 맞는다\cite{trefethen2019atap,brutman1997}. Chebyshev 점에서는 $\Lambda_n\le(2/\pi)\ln(n+1)+1$이고, 어떤 노드를 고르더라도 $\Lambda_n\ge(2/\pi)\ln(n+1)+0.52$이다. 따라서 Chebyshev 점은 상수 차이를 빼면 최선이다. 모든 노드 체계에서 Lebesgue 상수가 적어도 로그로 자란다는 것은 Faber와 Bernstein이 보였고, 상수 $2/\pi$까지 맞는 날카로운 하계는 Erdős가 확립했다\cite{erdos1961}. 고른 간격에서는 $\Lambda_n\sim2^{n+1}/(en\ln n)$으로 지수적으로 자라는데\cite{schonhage1961}, $n=40$에서 이 근사식은 $5.48\times10^9$이다.
 
 로그 증가조차 피할 수 없다는 데서 중요한 귀결이 나온다. Banach--Steinhaus 정리에 의해 $\Lambda_n\to\infty$이면 보간 다항식이 수렴하지 않는 연속함수가 존재한다. 어떤 노드 체계를 고르든 모든 연속함수에 대해 보간이 수렴하게 할 수는 없다. 이것이 \term{Faber의 정리}{Faber's theorem}이다\cite{faber1914}. Weierstrass의 근사 정리\cite{weierstrass1885}가 모든 연속함수를 다항식으로 고르게 근사할 수 있다고 말하는 것과 대조적이다. 근사 다항식은 존재하지만 고정된 노드에서 보간해서는 얻을 수 없는 함수가 있는 것이다. 다행히 함수가 조금만 매끄러워도 사정이 달라진다. \cref{prop:lebesgue-best}에 의해 $\|f-p^\ast\|\log n\to0$이기만 하면 Chebyshev 점의 보간은 수렴한다.
 
