@@ -9,7 +9,7 @@
 
 $A=U\Sigma V^{\mathsf T}$이면 $A^{\mathsf T}A=V\Sigma^2V^{\mathsf T}$이므로, $A^{\mathsf T}A$의 고유값 분해에서 특이값과 오른쪽 특이벡터를 얻을 수 있을 것 같다. 그러나 22장의 정규방정식과 같은 이유로 이 길은 정확도를 잃는다. $A^{\mathsf T}A$를 만드는 순간 반올림 오차가 $u\|A\|^2=u\sigma_1^2$ 정도 생기고, 대칭 고유값 문제는 4장의 Weyl 부등식에 따라 고유값을 절대오차 $u\sigma_1^2$ 정도로만 정하므로, 특이값 $\sigma_i$의 상대오차는 대략 $u(\sigma_1/\sigma_i)^2$이다.
 
-특이값이 $1$부터 $10^{-10}$까지 로그 간격으로 놓인 $50\times8$ 행렬에서 두 방법을 비교하면 \cref{tab:svd-ata}와 같다. 특이값 분해를 직접 계산하면 가장 작은 특이값도 유효숫자 일곱 자리가 맞지만, $A^{\mathsf T}A$의 고유값으로 구하면 $10^{-9}$ 아래의 특이값은 한 자리도 맞지 않는다.
+특이값이 $1$부터 $10^{-10}$까지 로그 간격으로 놓인 $50\times8$ 행렬에서 두 방법을 비교하면 \cref{tab:svd-ata}와 같다. 특이값 분해를 직접 계산하면 가장 작은 특이값도 유효숫자 일곱 자리가 맞지만, $A^{\mathsf T}A$의 고유값으로 구하면 대략 $\sqrt u\,\sigma_1\approx10^{-8}$ 아래의 특이값은 한 자리도 맞지 않는다.
 
 \begin{table}[t]
 \begin{sdtable}{colspec={ccc}, row{1}={font=\small\bfseries}}
@@ -41,7 +41,7 @@ A=U_1BV_1^{\mathsf T},\qquad B=\begin{pmatrix}d_1&e_1&&\\&d_2&\ddots&\\&&\ddots&
 
 \subsection{암시적 QR}
 
-이중대각 행렬 $B$의 특이값은 대칭 삼중대각 행렬 $T=B^{\mathsf T}B$의 고유값의 제곱근이다. $T$에 이동 QR 알고리즘을 적용하는 일을, $T$를 만들지 않고 $B$ 위에서 할 수 있다. 23장의 암시적 Q 정리에 따르면 한 걸음은 첫 열만으로 정해지므로, $T-\mu I$의 첫 열을 소거하는 Givens 회전 하나를 $B$의 오른쪽에 적용해 불룩한 원소를 만들고, 왼쪽과 오른쪽에서 Givens 회전을 번갈아 적용해 그 원소를 대각을 따라 아래로 밀어내면 된다\cite{golub1970reinsch}. 걸음 하나가 $O(n)$이고, 23장에서 본 Wilkinson 이동으로 수렴이 빠르다. 특이벡터가 필요하면 회전들을 $U$와 $V$에 누적한다.
+이중대각 행렬 $B$의 특이값은 대칭 삼중대각 행렬 $T=B^{\mathsf T}B$의 고유값의 제곱근이다. $T$에 이동 QR 알고리즘을 적용하는 일을, $T$를 만들지 않고 $B$ 위에서 할 수 있다. 23장의 암시적 Q 정리에 따르면 한 걸음은 첫 열만으로 정해지므로, 첫 열이 $T-\mu I$의 첫 열에 평행하게 되는 Givens 회전 하나를 $B$의 오른쪽에 적용해 불룩한 원소를 만들고, 왼쪽과 오른쪽에서 Givens 회전을 번갈아 적용해 그 원소를 대각을 따라 아래로 밀어내면 된다\cite{golub1970reinsch}. 걸음 하나가 $O(n)$이고, 23장에서 본 Wilkinson 이동으로 수렴이 빠르다. 특이벡터가 필요하면 회전들을 $U$와 $V$에 누적한다.
 
 \subsection{상대 정확도}
 
@@ -49,18 +49,18 @@ A=U_1BV_1^{\mathsf T},\qquad B=\begin{pmatrix}d_1&e_1&&\\&d_2&\ddots&\\&&\ddots&
 
 \begin{theorem}[Demmel--Kahan]
 \label{thm:bidiag-relative}
-$n\times n$ 이중대각 행렬 $B$의 각 원소를 상대적으로 $\epsilon$ 이하만큼 바꾼 행렬을 $\tilde B$라 하면, 대응하는 특이값은 $|\tilde\sigma_i-\sigma_i|\le\bigl((1+\epsilon)^{2n-1}-1\bigr)\sigma_i\approx(2n-1)\epsilon\,\sigma_i$를 만족한다.
+$n\times n$ 이중대각 행렬 $B$의 $2n-1$개 원소 $b_j$를 $\alpha_jb_j$ $(\alpha_j>0)$로 바꾼 행렬을 $\tilde B$라 하고 $\alpha=\prod_j\max(\alpha_j,\alpha_j^{-1})$로 두면, 크기 순으로 늘어놓은 특이값은 $\sigma_i/\alpha\le\tilde\sigma_i\le\alpha\sigma_i$를 만족한다. 특히 $|\alpha_j-1|\le\epsilon<1$이면 $|\tilde\sigma_i-\sigma_i|\le\bigl((1-\epsilon)^{-(2n-1)}-1\bigr)\sigma_i\approx(2n-1)\epsilon\,\sigma_i$이다.
 \end{theorem}
 
 \begin{proof}
-원소 하나를 $1+\epsilon_j$배 하는 것은, 이중대각 꼴 때문에 대각 행렬을 왼쪽과 오른쪽에 곱하는 것으로 나타낼 수 있다. 예컨대 $d_k$만 바꾸려면 앞쪽 행들과 열들에 적당한 배수를 나누어 곱하면 된다. 그래서 $\tilde B=D_1BD_2$이고, $D_1$과 $D_2$는 대각 원소가 $1$에서 상대적으로 $(1+\epsilon)^{2n-1}-1$ 이내인 대각 행렬이다. 그런 $D$에 대해 $\sigma_i(D_1BD_2)$는 $\sigma_i(B)$와 $\|D_1\|\|D_2\|$배 및 $\|D_1^{-1}\|^{-1}\|D_2^{-1}\|^{-1}$배 사이에 있다. 이것은 특이값의 최소최대 특징짓기에서 바로 나온다.
+원소를 하나씩 바꾸어도 되므로 원소 하나만 $\alpha$배 하는 경우를 보자. 이중대각 꼴 덕분에 이것은 대각 행렬을 양쪽에 곱하는 것으로 쓸 수 있다. 대각 원소 $d_k$를 바꾸려면 $D_1=\operatorname{diag}(1,\dots,1,\alpha,\dots,\alpha)$($\alpha$가 $k$번째부터)와 $D_2=\operatorname{diag}(1,\dots,1,\alpha^{-1},\dots,\alpha^{-1})$($\alpha^{-1}$이 $k+1$번째부터)로 $D_1BD_2$를 만들면, $k$번째 대각만 $\alpha$배 되고 나머지 원소는 $\alpha\cdot\alpha^{-1}=1$배이거나 그대로이다. 초대각 원소 $e_k$는 $D_1=\operatorname{diag}(1,\dots,1,\alpha^{-1},\dots)$, $D_2=\operatorname{diag}(1,\dots,1,\alpha,\dots)$(둘 다 $k+1$번째부터)로 같은 일을 한다. 어느 경우든 $\|D_1\|_2\|D_2\|_2=\|D_1^{-1}\|_2\|D_2^{-1}\|_2=\max(\alpha,\alpha^{-1})$이다. 그런데 정칙 행렬 $X$, $Y$에 대해 특이값의 최소최대 특징짓기에서 $\sigma_i(XMY)\le\|X\|\|Y\|\sigma_i(M)$이고, 이것을 $M=X^{-1}(XMY)Y^{-1}$에 쓰면 $\sigma_i(M)\le\|X^{-1}\|\|Y^{-1}\|\sigma_i(XMY)$이다. 그러므로 원소 하나를 바꿀 때마다 모든 특이값이 $\max(\alpha_j,\alpha_j^{-1})$배 이내로 움직이고, $2n-1$번을 거듭하면 정리의 부등식이다. 마지막 주장은 $\max(\alpha_j,\alpha_j^{-1})\le(1-\epsilon)^{-1}$에서 나온다.
 \end{proof}
 
 곧 $B$의 원소를 반올림 수준으로 바꾸어도 가장 작은 특이값까지 모든 특이값이 상대적으로 $nu$ 정도만 움직인다. 일반 행렬에서는 작은 특이값의 상대오차가 $u\sigma_1/\sigma_i$로 커지는 것과 대조적이다. 이 성질을 살리려면 알고리즘이 원소를 상대적으로 작게만 바꾸어야 하는데, 이동 QR은 이동을 빼는 순간 이 성질을 잃는다. Demmel과 Kahan은 이동이 $0$인 QR 걸음을 원소의 상대 정확도를 지키도록 다시 짜서 이중대각 행렬의 모든 특이값을 높은 상대 정확도로 구하는 방법을 만들었다\cite{demmel1990kahan}. \cref{tab:svd-ata}에서 특이값 분해의 오차가 가장 작은 특이값에서도 $10^{-8}$에 그친 것은, 이중대각화 단계가 $u\sigma_1$ 정도의 절대오차를 만들 뿐이고 그 뒤의 이중대각 단계가 정확도를 거의 잃지 않기 때문이다.
 
 \subsection{dqds}
 
-특이값만 필요하면 더 빠르고 더 정확한 방법이 있다. Rutishauser의 몫--차 알고리즘\cite{rutishauser1954qd}을 미분 꼴로 다시 쓴 \term{dqds}{differential quotient-difference with shifts} 알고리즘은 이중대각 행렬의 원소의 제곱을 직접 갱신하며, 뺄셈 없이 곱셈과 나눗셈과 덧셈만으로 한 걸음을 하므로 상대 정확도를 잃지 않는다\cite{fernando1994dqds}. 이동을 써서 빠르게 수렴하고, 특이벡터를 누적하지 않으므로 걸음 하나가 아주 싸다. LAPACK은 특이값만 구할 때 이 알고리즘을 쓴다.
+특이값만 필요하면 더 빠르고 더 정확한 방법이 있다. Rutishauser의 몫--차 알고리즘\cite{rutishauser1954qd}을 미분 꼴로 다시 쓴 \term{dqds}{differential quotient-difference with shifts} 알고리즘은 이중대각 행렬의 원소의 제곱을 직접 갱신하며, 이동을 빼는 자리 하나를 빼면 곱셈과 나눗셈과 덧셈만으로 한 걸음을 하고(이동이 없는 dqd에는 뺄셈이 전혀 없다), Fernando와 Parlett는 이동이 있어도 높은 상대 정확도가 지켜짐을 보였다\cite{fernando1994dqds}. 이동을 써서 빠르게 수렴하고, 특이벡터를 누적하지 않으므로 걸음 하나가 아주 싸다. LAPACK은 특이값만 구할 때 이 알고리즘을 쓴다.
 
 \section{분할 정복}
 \label{sec:svd-dc}
@@ -68,7 +68,7 @@ $n\times n$ 이중대각 행렬 $B$의 각 원소를 상대적으로 $\epsilon$ 
 특이벡터까지 모두 구할 때는 23장의 대칭 삼중대각 분할 정복과 같은 생각을 이중대각 행렬에 쓴다\cite{gu1995svd}. 이중대각 행렬을 한가운데에서 두 블록과 계수 하나짜리 보정으로 나누고 두 블록의 특이값 분해를 재귀적으로 구한 뒤, 계수 하나만큼 바뀐 문제의 특이값을 영년 방정식으로 푼다. 마지막에 특이벡터를 합치는 곱이 3층 BLAS의 행렬 곱이므로, 큰 행렬에서는 암시적 QR보다 몇 배 빠르다. LAPACK의 \code{gesdd}가 이것이고, \code{gesvd}는 암시적 QR이다.
 
 \begin{instardust}[\code{docs/design/linalg.md} §10.4, §10.5]
-stardust의 \code{svd}는 \code{gesdd}를, 특이값만 구하는 \code{svdvals}와 그 위의 \code{matrix\_rank}, \code{cond}, 2-노름은 \code{gesvd}의 특이값 전용 모드를 쓴다. 특이값 전용 모드는 $1.6$--$2$배 빠르지만 그 값이 \code{svd}가 주는 특이값과 $10^{-15}$ 수준에서 다를 수 있으므로, 특이값만 쓰는 함수들이 모두 같은 도우미를 거쳐 서로 비트까지 같은 값을 쓰게 했다. \code{svd}의 특이값은 numpy와 같지만 특이벡터는 다를 수 있는데, 설계 문서에 따르면 \code{gesdd}가 작업 공간의 크기를 보고 내부 경로를 고르고 numpy와 stardust가 그 크기를 다르게 정하기 때문이다. 유사역행렬 \code{pinv}에는 10장의 거듭제곱 조정이 등장한다. 남길 특이값이 $2^{-1022}$ 아래이면 그 역수가 넘쳐 무한대가 되고 특이벡터의 정확한 $0$과 곱해져 NaN이 된다. 그래서 그런 항만 특이값에 $2^{600}$을 곱해 따로 더한 뒤 마지막에 $2^{600}$을 곱해 되돌린다. $2$의 거듭제곱이라 이 조정은 정확하다.
+stardust의 \code{svd}는 \code{gesdd}를, 특이값만 구하는 \code{svdvals}와 그 위의 \code{matrix\_rank}, \code{cond}, 2-노름은 \code{gesvd}의 특이값 전용 모드를 쓴다. 특이값 전용 모드는 $1.6$--$2$배 빠르지만 그 값이 \code{svd}가 주는 특이값과 $10^{-15}$ 수준에서 다를 수 있으므로, 특이값만 쓰는 함수들이 모두 같은 도우미를 거쳐 서로 비트까지 같은 값을 쓰게 했다. \code{svd}의 특이값은 numpy와 같지만 특이벡터는 다를 수 있는데, 설계 문서에 따르면 \code{gesdd}가 작업 공간의 크기를 보고 내부 경로를 고르고 numpy와 stardust가 그 크기를 다르게 정하기 때문이다. 유사역행렬 \code{pinv}에는 10장의 거듭제곱 조정이 등장한다. 남길 특이값이 $2^{-1022}$ 아래의 비정규수이면 그 역수가 넘쳐 무한대가 될 수 있고 특이벡터의 정확한 $0$과 곱해져 NaN이 된다. 그래서 그런 항만 특이값에 $2^{600}$을 곱해 따로 더한 뒤 마지막에 $2^{600}$을 곱해 되돌린다. $2$의 거듭제곱이라 이 조정은 정확하다.
 \end{instardust}
 
 \begin{aside}[특이값 분해의 오랜 역사]
