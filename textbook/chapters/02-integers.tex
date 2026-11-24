@@ -1,0 +1,359 @@
+%% 2장 정수와 나머지 산술
+\chapter{정수와 나머지 산술}
+\label{ch:integers}
+
+\abstract{컴퓨터의 정수는 수학의 정수와 닮았지만 같지 않다. 64비트 레지스터에는 $2^{64}$가지의 비트 패턴만 담기므로 더하고 곱하다 보면 결과가 넘쳐 맨 위의 자리가 사라진다. 그런데 이 ``사라짐''은 무질서한 고장이 아니라 $2^{64}$로 나눈 나머지만 남기는 아주 규칙적인 현상이어서, 그 규칙을 이해하면 오히려 강력한 도구가 된다. 난수 생성기는 큰 홀수를 곱하는 연산이 비트 패턴을 뒤섞되 하나도 겹치게 하지 않는다는 사실에 기대고, 해시 함수는 같은 사실로 키를 고르게 흩으며, 배열의 메모리가 겹치는지 판정하는 일과 캐시가 어떻게 채워지는지 계산하는 일은 최대공약수로 풀린다. 이 장에서는 나눗셈 정리와 최대공약수, 합동과 나머지 환을 차례로 세운 뒤 그것을 $2^{64}$로 나눈 나머지의 세계, 곧 기계의 정수에 적용한다. 마지막으로 계수가 $0$과 $1$뿐인 다항식의 산술을 맛보는데 이 산술은 뒤에서 오류 검출 부호와 텍스트 파싱을 이해하는 바탕이 된다.}
+
+\section{나눗셈과 자릿수}
+\label{sec:division}
+
+\subsection{나눗셈 정리}
+
+정수론의 거의 모든 것은 다음의 소박한 정리에서 출발한다. 초등학교에서 배우는 ``몫과 나머지''를 정확히 말하면 이 정리가 된다.
+
+\begin{theorem}[나눗셈 정리]
+\label{thm:division}
+정수 $a$와 양의 정수 $b$에 대해 $a=qb+r$이고 $0\le r<b$인 정수 $q,r$가 정확히 한 쌍 존재한다. 이때 $q=\lfloor a/b\rfloor$이고 $r=a-b\lfloor a/b\rfloor=a\bmod b$이다.
+\end{theorem}
+
+\begin{proof}
+$q=\lfloor a/b\rfloor$로 두면 바닥의 정의에서 $q\le a/b<q+1$이고, 양변에 $b>0$을 곱하면 $qb\le a<qb+b$, 곧 $0\le a-qb<b$이다. 따라서 $r=a-qb$로 두면 존재가 보장된다. 유일성을 보이기 위해 $a=qb+r=q'b+r'$이고 $0\le r,r'<b$라 하자. 그러면 $(q-q')b=r'-r$인데, 오른쪽은 $-b$보다 크고 $b$보다 작으므로 $b$의 배수인 왼쪽은 $0$일 수밖에 없다. 곧 $q=q'$이고 $r=r'$이다.
+\end{proof}
+
+\cref{thm:division}의 나머지는 \cref{sec:notation}에서 $a\bmod b$를 정의한 방식과 같이 늘 음이 아니다. 그런데 C와 C++의 정수 나눗셈 \code{a / b}는 몫을 $0$ 쪽으로 자르도록 정해져 있어서, $a<0$이면 몫이 $\lfloor a/b\rfloor$보다 $1$ 크고 나머지 \code{a \% b}는 음수가 된다. 두 약속의 차이는 음수를 다루는 순간 드러나며, 예컨대 배열의 끝에서부터 세는 색인을 $n$으로 나눈 나머지로 감싸려 할 때 C의 \code{\%}를 그대로 쓰면 음수 색인이 나온다. 그래서 Python과 numpy의 약속(나머지의 부호가 나누는 수의 부호와 같다)을 C++로 옮길 때는 나머지가 음수이고 나누는 수가 양수이면 나머지에 나누는 수를 더하고 몫에서 $1$을 빼는 보정이 필요하다.
+
+\subsection{자릿수 표현과 혼합 기수}
+
+나눗셈 정리를 되풀이하면 수를 자릿수로 적는 방법이 나온다. 우리가 늘 쓰는 십진법은 그 가장 흔한 예일 뿐이며, 자리마다 다른 밑을 쓰는 것도 얼마든지 가능하다. 시각을 시·분·초로 적을 때 분과 초의 자리는 $60$을, 시의 자리는 $24$를 밑으로 쓰는 것이 그런 예이다.
+
+\begin{theorem}[혼합 기수 표현]
+\label{thm:mixed-radix}
+양의 정수 $n_1,\dots,n_m$에 대해 $N=n_1n_2\cdots n_m$이라 하자. 함수
+\[
+\phi(c_1,\dots,c_m)=(\cdots((c_1n_2+c_2)n_3+c_3)\cdots)n_m+c_m
+\]
+는 $[0\,..\,n_1-1]\times\cdots\times[0\,..\,n_m-1]$에서 $[0\,..\,N-1]$로 가는 전단사이고, 정의역의 사전식 순서를 정수의 대소로 옮긴다. 곧 $(c_1,\dots,c_m)$가 $(c'_1,\dots,c'_m)$보다 사전식으로 앞설 필요충분조건은 $\phi(c)<\phi(c')$이다.
+\end{theorem}
+
+\begin{proof}
+$m$에 대한 귀납법을 쓴다. $m=1$이면 $\phi(c_1)=c_1$이므로 자명하다. $m-1$개의 자리에 대해 성립한다고 하고 $\psi(c_1,\dots,c_{m-1})$을 그 함수, $N'=n_1\cdots n_{m-1}$이라 하자. 그러면 $\phi(c)=\psi(c_1,\dots,c_{m-1})\,n_m+c_m$이고, 귀납 가정에서 $\psi$의 값은 $[0\,..\,N'-1]$에 있으므로 $\phi(c)$는 $[0\,..\,N'n_m-1]=[0\,..\,N-1]$에 놓인다. 거꾸로 $k\in[0\,..\,N-1]$가 주어지면 \cref{thm:division}에서 $k=q\,n_m+r$, $0\le r<n_m$인 $q,r$가 유일하게 정해지고 $q\in[0\,..\,N'-1]$이므로, $c_m=r$로, $(c_1,\dots,c_{m-1})$을 $\psi^{-1}(q)$로 잡는 방법 하나뿐이다. 따라서 $\phi$는 전단사이다.
+
+순서를 보자. $c$와 $c'$가 사전식으로 처음 다른 자리가 $k$이고 $c_k<c'_k$라 하자. $k<m$이면 첫 $m-1$자리에서 $c$가 앞서므로 귀납 가정에서 $\psi(c)<\psi(c')$, 곧 $\psi(c)+1\le\psi(c')$이고, 따라서
+\[
+\phi(c)=\psi(c)\,n_m+c_m\le\psi(c)\,n_m+n_m-1<(\psi(c)+1)\,n_m\le\phi(c')
+\]
+이다. $k=m$이면 $\psi(c)=\psi(c')$이고 $c_m<c'_m$이므로 역시 $\phi(c)<\phi(c')$이다. $\phi$가 전단사이므로 역방향도 따라 나온다.
+\end{proof}
+
+\cref{thm:mixed-radix}는 여러 성분으로 된 키를 정수 하나로 접는 방법을 준다. 정수 키는 비교와 해시가 빠르고 기수 정렬로 정렬할 수도 있으므로, 이 접기는 데이터를 묶고 정렬하는 연산에서 자주 쓰인다. 다만 $N$이 정수의 범위를 넘으면 접을 수 없으므로 그 전에 대책을 세워야 한다.
+
+\begin{instardust}[\code{docs/design/frame.md} §8.6]
+데이터프레임의 \code{groupby}가 키 열을 여럿 받으면 먼저 열마다 값을 $0,1,2,\dots$의 번호로 바꾸고(\cref{thm:partition}의 몫집합에 번호를 매기는 일), 번호들을 \code{acc = acc}$\times n_j+$\code{code}$_j$로 혼합 기수로 합쳐 키 튜플마다 64비트 정수 하나를 얻는다. 곱 $N$이 $2^{62}$를 넘을 것 같으면 그때까지 합친 값을 다시 번호로 바꿔 실제로 나타난 조합의 수로 밑을 좁힌다. 나타난 조합은 행의 수를 넘을 수 없으므로 이 좁히기 뒤에는 늘 범위 안에 머문다.
+\end{instardust}
+
+\section{최대공약수}
+\label{sec:gcd}
+
+\subsection{유클리드 알고리즘}
+
+정수 $a$와 $b$가 둘 다 $0$은 아닐 때, 두 수를 모두 나누는 양의 정수 가운데 가장 큰 것을 \term{최대공약수}{greatest common divisor}라 하고 $\gcd(a,b)$로 쓴다. 편의상 $\gcd(a,0)=|a|$이고 $\gcd(0,0)=0$으로 둔다. 최대공약수를 구하는 방법은 기원전 300년 무렵 유클리드의 《원론》에 적힌 이래 거의 바뀌지 않았고 다음 관찰에 바탕을 둔다.
+
+\begin{lemma}
+\label{lem:gcd-step}
+정수 $a$와 양의 정수 $b$에 대해 $\gcd(a,b)=\gcd(b,a\bmod b)$이다.
+\end{lemma}
+
+\begin{proof}
+$a=qb+r$이고 $r=a\bmod b$라 하자. $d$가 $a$와 $b$를 나누면 $r=a-qb$도 나누고, 거꾸로 $d$가 $b$와 $r$을 나누면 $a=qb+r$도 나눈다. 따라서 두 쌍의 공약수 집합이 같고, 그 최댓값도 같다.
+\end{proof}
+
+\cref{lem:gcd-step}를 $b$가 $0$이 될 때까지 되풀이하면 \cref{alg:euclid}가 된다. 나머지는 매번 엄격히 줄어드는 음이 아닌 정수이므로 알고리즘은 반드시 끝나고, 끝날 때의 $a$가 처음 두 수의 최대공약수이다.
+
+\begin{algorithm}[t]
+\begin{algorithmic}[1]
+\Require 음이 아닌 정수 $a,b$
+\Ensure $\gcd(a,b)$
+\While{$b\ne0$}
+  \State $(a,b)\gets(b,\;a\bmod b)$ \Comment{\cref{lem:gcd-step}}
+\EndWhile
+\State \Return $a$
+\end{algorithmic}
+\caption{유클리드 알고리즘}
+\label{alg:euclid}
+\end{algorithm}
+
+알고리즘이 끝난다는 것만으로는 부족하고 얼마나 빨리 끝나는지를 알아야 한다. 나머지가 한 번에 $1$씩만 줄어든다면 $b$에 비례하는 단계가 필요하겠지만 실제로는 훨씬 빠르다.
+
+\begin{theorem}[Lamé]
+\label{thm:lame}
+$a>b>0$에 대해 \cref{alg:euclid}가 $k$번 반복한다면 $b\ge F_{k+1}$이다. 여기서 $F_1=F_2=1$, $F_{j+2}=F_{j+1}+F_j$는 Fibonacci 수열이다. 따라서 반복 횟수는 $O(\log b)$이다.
+\end{theorem}
+
+\begin{proof}
+$k$에 대한 귀납법으로 $a\ge F_{k+2}$이고 $b\ge F_{k+1}$임을 보인다. $k=1$이면 $b\ge1=F_2$이고 $a>b$에서 $a\ge2=F_3$이다. $k\ge2$이고 $k-1$에서 성립한다고 하자. 첫 반복 뒤의 쌍 $(b,\,a\bmod b)$로 알고리즘은 $k-1$번 더 반복하므로, 귀납 가정에서 $b\ge F_{k+1}$이고 $a\bmod b\ge F_k$이다. 또 $a>b$이므로 몫 $\lfloor a/b\rfloor$가 $1$ 이상이고, 따라서 $a\ge b+(a\bmod b)\ge F_{k+1}+F_k=F_{k+2}$이다. Fibonacci 수는 $F_j\ge\varphi^{\,j-2}$를 만족하므로(여기서 $\varphi=(1+\sqrt5)/2$), $b\ge F_{k+1}$에서 $k\le1+\log_\varphi b$를 얻는다.
+\end{proof}
+
+이웃한 두 Fibonacci 수, 예컨대 $89$와 $55$를 넣으면 나머지가 $34,21,13,\dots$로 한 칸씩만 내려가므로 이 한계는 정확히 도달된다. 실제로 $(89,55)$에서 \cref{alg:euclid}는 $9$번 반복한다.
+
+\begin{aside}[알고리즘의 복잡도를 처음 센 사람]
+Lamé는 1844년, 유클리드 알고리즘의 나눗셈 횟수가 작은 수의 십진 자릿수의 다섯 배를 넘지 않음을 보였다. 이 증명은 알고리즘이 끝난다는 것에 그치지 않고 \textbf{얼마나 오래 걸리는지}를 처음으로 엄밀하게 센 결과로 꼽히며, Fibonacci 수열이 수학 바깥의 실용적인 문제에 쓰인 이른 예로도 흔히 꼽힌다. Knuth의 책은 유클리드 알고리즘의 평균적인 단계 수까지 다루면서 이 문제가 생각보다 훨씬 깊은 수학으로 이어진다는 것을 보여 준다\cite{knuth1997taocp2}.
+\end{aside}
+
+\subsection{Bézout의 항등식과 확장 유클리드 알고리즘}
+
+최대공약수의 가장 중요한 성질은 두 수의 정수 계수 일차결합으로 나타난다는 것이다.
+
+\begin{theorem}[Bézout]
+\label{thm:bezout}
+정수 $a,b$에 대해 $ax+by=\gcd(a,b)$인 정수 $x,y$가 존재한다. 더 나아가 $\{ax+by:x,y\in\mathbb{Z}\}=\gcd(a,b)\,\mathbb{Z}$이다.
+\end{theorem}
+
+\begin{proof}
+$a=b=0$이면 자명하므로 그렇지 않다고 하자. $I=\{ax+by:x,y\in\mathbb{Z}\}$는 덧셈과 정수배에 닫혀 있고 양의 원소를 가지므로, 그 가운데 가장 작은 양수 $d=ax_0+by_0$을 잡을 수 있다. 나눗셈 정리로 $a=qd+r$, $0\le r<d$라 쓰면 $r=a-qd=a(1-qx_0)+b(-qy_0)\in I$인데, $d$가 $I$의 가장 작은 양수이므로 $r=0$이다. 곧 $d$는 $a$를 나누고, 같은 이유로 $b$도 나누므로 $d\le\gcd(a,b)$이다. 한편 $\gcd(a,b)$는 $a$와 $b$를 나누므로 $d=ax_0+by_0$도 나누고, 따라서 $\gcd(a,b)\le d$이다. 곧 $d=\gcd(a,b)$이다. 마지막으로 $I$의 원소는 모두 $d$의 배수이고(앞의 논증을 $a$ 대신 임의의 원소에 쓰면 된다) $d$의 배수는 모두 $I$에 있으므로 $I=d\mathbb{Z}$이다.
+\end{proof}
+
+\cref{thm:bezout}의 계수는 유클리드 알고리즘을 따라가며 함께 계산할 수 있다. 각 단계에서 현재의 두 수가 처음 두 수의 일차결합으로 어떻게 표현되는지를 계수 쌍으로 들고 다니다가 나머지를 구할 때 그 계수도 같은 방식으로 빼 주면 된다(\cref{alg:ext-euclid}).
+
+\begin{algorithm}[t]
+\begin{algorithmic}[1]
+\Require 음이 아닌 정수 $a,b$
+\Ensure $(g,x,y)$, $g=\gcd(a,b)=ax+by$
+\State $(r_0,x_0,y_0)\gets(a,1,0)$ \Comment{$r_0=a\cdot x_0+b\cdot y_0$}
+\State $(r_1,x_1,y_1)\gets(b,0,1)$ \Comment{$r_1=a\cdot x_1+b\cdot y_1$}
+\While{$r_1\ne0$}
+  \State $q\gets\lfloor r_0/r_1\rfloor$
+  \State $(r_0,r_1)\gets(r_1,\;r_0-qr_1)$
+  \State $(x_0,x_1)\gets(x_1,\;x_0-qx_1)$
+  \State $(y_0,y_1)\gets(y_1,\;y_0-qy_1)$ \Comment{두 불변식이 그대로 유지된다}
+\EndWhile
+\State \Return $(r_0,x_0,y_0)$
+\end{algorithmic}
+\caption{확장 유클리드 알고리즘}
+\label{alg:ext-euclid}
+\end{algorithm}
+
+\cref{alg:ext-euclid}의 정확성은 주석에 적은 두 불변식에서 나온다. 처음에는 분명히 성립하고 반복 한 번은 두 번째 식에서 첫 번째 식의 $q$배를 빼므로 일차결합의 꼴을 그대로 유지한다. 반복이 끝나면 $r_0$은 유클리드 알고리즘의 결과, 곧 최대공약수이고 불변식이 그 계수를 준다.
+
+\subsection{최대공약수와 메모리}
+
+\cref{thm:bezout}의 둘째 주장, 곧 정수 계수 일차결합 전체가 최대공약수의 배수 전체와 같다는 사실은 배열의 메모리를 다룰 때 뜻밖에 쓸모가 있다. 배열 원소의 주소는 시작 주소에 각 축의 색인과 보폭(stride)을 곱한 값을 더한 것인데, 이 합은 바로 보폭들의 정수 계수 일차결합이기 때문이다.
+
+\begin{proposition}
+\label{prop:overlap}
+두 배열 뷰 $A$와 $B$가 바이트 주소 $p_A$와 $p_B$에서 시작하고, 원소의 주소가 각각 $p_A+\sum_d k_d s_d$와 $p_B+\sum_d l_d t_d$ 꼴이라 하자. 크기가 $1$보다 큰 축의 보폭 $s_d$와 $t_d$를 모두 모아 그 최대공약수를 $g>0$이라 하고, $\delta=|p_A-p_B|\bmod g$라 하자. 원소 하나가 차지하는 바이트 수의 최댓값을 $w$라 할 때 $\delta\ge w$이고 $g-\delta\ge w$이면, $A$의 원소와 $B$의 원소는 한 바이트도 겹치지 않는다.
+\end{proposition}
+
+\begin{proof}
+\cref{thm:bezout}에서 모든 보폭은 $g$의 배수이므로, $A$의 원소 주소는 모두 $p_A+g\mathbb{Z}$에, $B$의 원소 주소는 모두 $p_B+g\mathbb{Z}$에 있다. 따라서 $A$의 원소 주소 $x$와 $B$의 원소 주소 $y$의 차 $x-y$는 $g$로 나눈 나머지가 $p_A-p_B$와 같고, $p_A\ge p_B$라 하면 $x-y\in\{\delta+jg:j\in\mathbb{Z}\}$이다. 이 집합에서 $0$에 가장 가까운 두 값은 $\delta$와 $\delta-g$인데, 가정에서 $|\delta|\ge w$이고 $|\delta-g|\ge w$이므로 모든 $j$에서 $|x-y|\ge w$이다. 두 원소는 각각 $w$바이트 이하를 차지하므로 겹치지 않는다. $p_A<p_B$이면 두 배열의 역할을 바꾸면 된다.
+\end{proof}
+
+\begin{instardust}[\code{csrc/array/ops/copy.cpp}]
+\code{x[::2] += x[1::2]}처럼 한 배열의 짝수 번째 원소와 홀수 번째 원소를 섞어 쓰는 연산에서, 두 뷰의 바이트 범위는 겹치지만 실제로 같은 바이트를 쓰는 원소는 없다. 범위만 비교하는 판정은 이런 경우를 겹친다고 보고 피연산자를 미리 복사하는데, stardust는 \cref{prop:overlap}의 판정을 덧붙여 이 복사를 피한다. 이 판정은 충분조건일 뿐이며, 두 뷰가 겹치는지를 정확히 가리는 일은 일반적으로 어려운 문제여서 numpy도 근사적인 판정과 비용이 큰 정확한 판정을 따로 둔다.
+\end{instardust}
+
+같은 생각은 캐시를 다룰 때도 나온다. 메모리 주소의 일부 비트가 캐시의 어느 ``집합''에 들어갈지를 정하는데, 일정한 보폭으로 메모리를 읽으면 그 주소들이 차지하는 집합의 수가 보폭에 따라 크게 달라진다.
+
+\begin{proposition}
+\label{prop:cyclic}
+양의 정수 $M$과 정수 $s$에 대해 $\{is\bmod M:i\in\mathbb{Z}\}=\{0,g,2g,\dots,M-g\}$이다. 여기서 $g=\gcd(s,M)$이다. 특히 이 집합의 원소는 $M/g$개이다.
+\end{proposition}
+
+\begin{proof}
+$is$는 $g$의 배수이고 $M$도 $g$의 배수이므로 $is\bmod M$은 $[0\,..\,M-1]$의 $g$의 배수이다. 거꾸로 \cref{thm:bezout}에서 $sx+My=g$인 정수 $x,y$가 있으므로 $xs\bmod M=g$이고, 임의의 $jg$는 $i=jx$로 얻는다. 따라서 두 집합은 같고 원소의 수는 $M/g$이다.
+\end{proof}
+
+주소의 캐시 집합이 주소를 $M$으로 나눈 나머지로 정해진다면, \cref{prop:cyclic}에 따라 보폭 $s$로 읽는 주소들은 $M/\gcd(s,M)$개의 집합에만 들어간다. 보폭이 $2$의 큰 거듭제곱이면 $\gcd(s,M)$이 커서 주소들이 몇 안 되는 집합으로 몰리고 집합마다 담을 수 있는 줄의 수를 곧 넘어서 서로를 밀어낸다. 푸리에 변환처럼 $2$의 거듭제곱 길이의 배열을 축 방향으로 훑는 계산이 이런 상황을 자주 만나며, stardust의 FFT는 이 계산으로 접근 방식을 고른다(\code{csrc/fft/driver.cpp}). 캐시의 구조는 컴퓨터 구조를 다루는 장에서 자세히 본다.
+
+\section{합동과 나머지 환}
+\label{sec:congruence}
+
+\subsection{합동}
+
+양의 정수 $m$에 대해 $m$이 $a-b$를 나누면 $a$와 $b$가 \term{법 $m$에 대해 합동}{congruent modulo $m$}이라 하고 $a\equiv b\pmod m$로 쓴다. $a\bmod m=b\bmod m$이라고 해도 같은 말이다. 합동은 반사적이고 대칭적이며 추이적이므로 동치관계이고 \cref{thm:partition}에 따라 정수를 $m$개의 동치류 $[0],[1],\dots,[m-1]$로 나눈다. 이 몫집합을 $\mathbb{Z}/m\mathbb{Z}$로 쓴다.
+
+합동은 덧셈과 곱셈이 동치류 위에서 잘 정의되기 때문에 쓸모가 있다. $a\equiv a'$이고 $b\equiv b'$이면
+\[
+(a+b)-(a'+b')=(a-a')+(b-b'),\qquad ab-a'b'=a(b-b')+(a-a')b'
+\]
+이 모두 $m$의 배수이므로 $a+b\equiv a'+b'$이고 $ab\equiv a'b'$이다. 따라서 $[a]+[b]=[a+b]$와 $[a][b]=[ab]$로 정의한 연산은 대표의 선택과 무관하며, 정수의 덧셈과 곱셈이 지닌 결합법칙, 교환법칙, 분배법칙을 그대로 물려받는다. 이런 구조를 \term{가환환}{commutative ring}이라 하고, $\mathbb{Z}/m\mathbb{Z}$를 \term{나머지 환}{ring of integers modulo $m$}이라 부른다.
+
+계산의 관점에서 이 사실은 다음을 뜻한다. 덧셈과 곱셈만으로 이루어진 계산의 결과를 $m$으로 나눈 나머지만 알고 싶다면 중간 결과를 언제 $m$으로 나누어 줄여도 답이 바뀌지 않는다. 이것이 정수 레지스터의 넘침을 이해하는 열쇠이며 \cref{sec:machine-int}의 주제이다.
+
+\subsection{가역원}
+
+$\mathbb{Z}/m\mathbb{Z}$에서 $[a][x]=[1]$인 $[x]$가 있으면 $[a]$를 \term{가역원}{unit}이라 하고 $[x]$를 그 역원이라 한다. 어떤 원소가 가역인지는 최대공약수가 정확히 알려 준다.
+
+\begin{theorem}
+\label{thm:unit}
+$[a]$가 $\mathbb{Z}/m\mathbb{Z}$의 가역원일 필요충분조건은 $\gcd(a,m)=1$이다. 이때 역원은 유일하며, \cref{alg:ext-euclid}가 돌려주는 $ax+my=1$의 계수 $x$로 $[x]$이다.
+\end{theorem}
+
+\begin{proof}
+$\gcd(a,m)=1$이면 \cref{thm:bezout}에서 $ax+my=1$인 $x,y$가 있고, 이를 법 $m$으로 보면 $ax\equiv1$이다. 거꾸로 $ax\equiv1\pmod m$이면 $ax-1=my$인 $y$가 있으므로 $ax-my=1$이고, $a$와 $m$의 공약수는 $1$을 나누어야 하므로 $\gcd(a,m)=1$이다. 유일성은 $ax\equiv ax'\equiv1$이면 $x\equiv x(ax')=(xa)x'\equiv x'$에서 나온다.
+\end{proof}
+
+$m$이 소수 $p$이면 $[0]$이 아닌 모든 원소가 가역이므로 $\mathbb{Z}/p\mathbb{Z}$에서는 $0$이 아닌 수로 나눌 수 있다. 덧셈, 뺄셈, 곱셈, $0$이 아닌 수로의 나눗셈이 모두 가능한 이런 구조를 \term{체}{field}라 하며, 유한한 체는 \cref{sec:gf2}에서 다시 만난다. 반대로 $m=2^{64}$이면 가역원은 정확히 홀수들이다. 이 단순한 사실이 다음 절에서 난수 생성기와 해시 함수의 설계를 떠받친다.
+
+\section{기계의 정수}
+\label{sec:machine-int}
+
+\subsection{넘침과 $2^{64}$의 나머지}
+
+64비트 레지스터는 $[0\,..\,2^{64}-1]$의 정수를 담는다. 두 수를 더하거나 곱한 참값이 이 범위를 넘으면 하드웨어는 넘친 위쪽 비트를 버리고 아래 64비트만 남기는데 남은 값은 정확히 참값을 $2^{64}$로 나눈 나머지이다. 그러므로 부호 없는 64비트 정수의 덧셈과 곱셈은 $\mathbb{Z}/2^{64}\mathbb{Z}$의 연산이며 앞 절에서 본 대로 환의 모든 법칙을 따른다. 특히 덧셈은 결합적이고 교환적이므로 정수의 합은 더하는 순서나 나누어 더하는 방식과 상관없이 같은 비트를 준다. 부동소수점 수의 합과 달리 정수의 합은 병렬로 계산해도 결과가 하나로 정해진다는 사실이 여기서 나온다.
+
+같은 비트 패턴을 다르게 읽으면 부호 있는 정수가 된다. \term{2의 보수}{two's complement} 표현에서는 동치류 $[v]\in\mathbb{Z}/2^{64}\mathbb{Z}$의 대표를 $[0\,..\,2^{64}-1]$ 대신 $[-2^{63}\,..\,2^{63}-1]$에서 고르므로, 음수 $v$는 비트 패턴 $v+2^{64}$로 저장되고 맨 위 비트가 $1$인 패턴이 음수를 나타낸다. 이 표현에서는 덧셈과 곱셈이 같은 동치류의 연산이어서 부호가 있든 없든 하드웨어의 덧셈기와 곱셈기를 그대로 쓸 수 있다는 장점이 있다. 다만 한 가지 함정이 있다. C와 C++ 표준은 부호 있는 정수의 넘침을 정의되지 않은 동작으로 두어서\cite{iso14882-2020}, 컴파일러가 ``넘침은 일어나지 않는다''고 가정하고 코드를 변형할 수 있다. 그래서 $2^{64}$의 나머지로 감기는 동작을 원하면 부호 없는 정수로 계산해야 한다.
+
+\begin{aside}[Ariane 5의 첫 비행]
+1996년 6월 4일, 유럽우주국의 Ariane 5 로켓은 첫 비행에서 발사 약 40초 만에 궤도를 벗어나 자폭했다. 조사 위원회는 관성 기준 장치의 소프트웨어가 수평 방향 속도와 관련된 64비트 부동소수점 값을 16비트 부호 있는 정수로 바꾸다가 값이 16비트 정수의 범위를 넘어 예외가 났다는 것을 밝혔다\cite{lions1996ariane}. 이 코드는 Ariane 4에서 가져온 것이었는데, Ariane 4의 비행 궤적에서는 그 값이 결코 범위를 넘지 않았기 때문에 넘침에 대한 보호가 빠져 있었다. 그 값의 범위는 계산으로 확인되지 않은 채 가정으로만 남아 있었고, 로켓이 바뀌자 그 가정이 깨졌다.
+\end{aside}
+
+\subsection{부호 있는 정수의 순서}
+
+1장에서 부동소수점 수를 정수 키로 바꿀 때 미루어 둔 사실을 이제 증명할 수 있다.
+
+\begin{proposition}
+\label{prop:signflip}
+부호 있는 64비트 정수 $v\in[-2^{63}\,..\,2^{63}-1]$의 2의 보수 비트 패턴을 $u=v\bmod2^{64}$라 하자. 맨 위 비트를 뒤집은 $u\oplus2^{63}$을 부호 없는 정수로 읽은 값은 $v+2^{63}$이다. 따라서 부호 있는 정수의 대소는 맨 위 비트를 뒤집은 패턴의 부호 없는 대소와 같다.
+\end{proposition}
+
+\begin{proof}
+$v\ge0$이면 $u=v<2^{63}$이므로 맨 위 비트가 $0$이고, 뒤집으면 $u+2^{63}=v+2^{63}$이다. $v<0$이면 $u=v+2^{64}\ge2^{63}$이므로 맨 위 비트가 $1$이고, 뒤집으면 $u-2^{63}=v+2^{63}$이다. 어느 경우든 결과는 $v+2^{63}$이고, 이는 $v$에 대해 증가한다.
+\end{proof}
+
+stardust의 정렬은 int64 값을 기수 정렬할 때 바로 이 변환으로 키를 만들며(\code{docs/design/array.md} §8.4), 1장의 \cref{prop:float-key}는 부동소수점 수에 대해 같은 생각을 한 걸음 더 밀고 나간다.
+
+\subsection{$2^{64}$을 법으로 한 역원}
+
+\cref{thm:unit}에서 홀수 $a$는 $\mathbb{Z}/2^{64}\mathbb{Z}$의 가역원이다. 역원은 \cref{alg:ext-euclid}로도 구할 수 있지만 $2$의 거듭제곱을 법으로 할 때는 곱셈 몇 번으로 끝나는 훨씬 빠른 방법이 있다. 실수에서 $1/a$를 구하는 Newton 방법을 그대로 정수에 옮기면 된다\cite{warren2012hackers}.
+
+\begin{proposition}
+\label{prop:hensel}
+홀수 $a$와 정수 $x$가 $ax\equiv1\pmod{2^k}$를 만족하면 $x'=x(2-ax)$는 $ax'\equiv1\pmod{2^{2k}}$를 만족한다. 또한 모든 홀수 $a$에 대해 $a\cdot a\equiv1\pmod8$이다.
+\end{proposition}
+
+\begin{proof}
+$ax=1+e$이고 $2^k$가 $e$를 나눈다고 하자. 그러면 $ax'=ax(2-ax)=(1+e)(1-e)=1-e^2$이고, $2^{2k}$가 $e^2$을 나누므로 $ax'\equiv1\pmod{2^{2k}}$이다. 둘째 주장은 $a=2j+1$로 쓰면 $a^2=4j(j+1)+1$이고 $j(j+1)$이 짝수라는 데서 나온다.
+\end{proof}
+
+\cref{prop:hensel}에 따라 $x_0=a$에서 시작하면 $x_0$은 아래 $3$비트가 맞고, 한 번 갱신할 때마다 맞는 비트의 수가 두 배가 되어 $6,12,24,48$을 거쳐 다섯 번 만에 $96\ge64$비트, 곧 $\mathbb{Z}/2^{64}\mathbb{Z}$의 정확한 역원에 이른다. 실제로 Philox 생성기의 곱수 \code{0xD2E7470EE14C6C93}에 이를 적용하면 다섯 번의 갱신 뒤에 역원을 얻는다. 이 방법은 \term{Hensel 올림}{Hensel lifting}의 가장 간단한 예이며 법을 $2$에서 $4$, $16$, $256$으로 차례로 키워 가며 해를 끌어올린다고 볼 수 있다.
+
+\subsection{곱의 위쪽 절반과 범위 안의 정수}
+
+두 64비트 정수의 곱은 최대 128비트이다. 하드웨어는 곱의 아래 64비트와 위 64비트를 따로 얻는 명령을 갖추고 있으며(AArch64에서는 \code{MUL}과 \code{UMULH}), 위쪽 절반은 곱을 $2^{64}$으로 나눈 몫이다. 이 몫이 쓰이는 대표적인 곳이 균등한 64비트 난수 $w$에서 $[0\,..\,r-1]$의 균등한 정수를 얻는 문제이다.
+
+가장 손쉬운 방법은 $w\bmod r$이지만 두 가지 문제가 있다. 정수 나눗셈은 곱셈보다 몇 배 느리고, $2^{64}$이 $r$의 배수가 아니면 작은 값들이 조금 더 자주 나와 분포가 치우친다. Lemire의 방법은 나눗셈 대신 곱의 위쪽 절반 $\lfloor wr/2^{64}\rfloor$를 쓰고 치우침을 없애기 위해 곱의 아래쪽 절반이 작은 경우만 골라 버린다\cite{lemire2019interval}.
+
+\begin{theorem}
+\label{thm:lemire}
+$1\le r\le2^{64}$이고 $t=2^{64}\bmod r$이라 하자. $w\in[0\,..\,2^{64}-1]$에 대해 $wr=j\,2^{64}+l$, $0\le l<2^{64}$로 쓸 때, $l\ge t$인 $w$만 받아들이고 $j$를 출력하면, 각 $j\in[0\,..\,r-1]$은 정확히 $\lfloor2^{64}/r\rfloor$개의 $w$에서 나온다. 따라서 $w$가 균등하면, 받아들여진 $w$가 주는 $j$도 균등하다.
+\end{theorem}
+
+\begin{proof}
+$j$를 고정하자. $\lfloor wr/2^{64}\rfloor=j$인 $w$는 $j\,2^{64}\le wr<(j+1)2^{64}$인 정수들이고, 그 아래쪽 절반 $l=wr-j\,2^{64}$은 $w$가 $1$ 늘 때마다 $r$씩 느는 등차수열을 이루며 $[0\,..\,2^{64}-1]$을 지나간다. 또 이 수열의 모든 항은 실제로 정의역 안의 $w$에서 나온다. $w<(j+1)2^{64}/r\le2^{64}$이기 때문이다. 이제 $2^{64}=qr+t$, $q=\lfloor2^{64}/r\rfloor$로 쓰면 받아들이는 구간 $[t,2^{64})$의 길이는 정확히 $qr$이다. 공차가 $r$인 등차수열은 길이가 $qr$인 반열린 구간에 정확히 $q$개의 항을 가지므로, 받아들여지는 $w$는 $j$에 상관없이 정확히 $q$개이다.
+\end{proof}
+
+\cref{tab:lemire}는 단어의 길이를 $64$비트가 아니라 $3$비트로 줄여 $r=3$에 대해 이 과정을 따라간다. $2^3=8=2\cdot3+2$이므로 $t=2$이고, 받아들여진 여섯 개의 $w$가 $0$, $1$, $2$를 두 번씩 낸다.
+
+\begin{table}[t]
+\begin{sdtable}{colspec={ccccccccc}, row{1}={font=\small\bfseries}}
+\toprule
+$w$ & 0 & 1 & 2 & 3 & 4 & 5 & 6 & 7 \\
+\midrule
+$wr$ & 0 & 3 & 6 & 9 & 12 & 15 & 18 & 21 \\
+$j=\lfloor wr/8\rfloor$ & 0 & 0 & 0 & 1 & 1 & 1 & 2 & 2 \\
+$l=wr\bmod8$ & 0 & 3 & 6 & 1 & 4 & 7 & 2 & 5 \\
+$l\ge t$ & 버림 & 받음 & 받음 & 버림 & 받음 & 받음 & 받음 & 받음 \\
+\bottomrule
+\end{sdtable}
+\caption{$3$비트 단어와 $r=3$에서 따라간 Lemire의 방법. $t=8\bmod3=2$이고, 받아들인 $w$는 $j=0,1,2$를 정확히 두 번씩 낸다.}
+\label{tab:lemire}
+\end{table}
+
+이제 $t=2^{64}\bmod r$을 계산하는 비용이 문제로 남는다. 여기에는 나눗셈이 한 번 필요하지만 $t<r$이므로, 먼저 $l<r$인지만 보고 그럴 때에만 $t$를 구하면 대부분의 경우 나눗셈을 아예 하지 않는다. 또한 $2^{64}$은 64비트에 담기지 않으므로 $t$를 그대로 적을 수 없는데, 부호 없는 산술에서 $0-r$은 $2^{64}-r$이고 $(2^{64}-r)\bmod r=2^{64}\bmod r$이므로 \code{(0 - r) \% r}로 계산하면 된다.
+
+\begin{instardust}[\code{csrc/random/philox.hpp}]
+stardust의 \code{integers}와 \code{permutation}은 \cref{thm:lemire}의 방법을 그대로 쓴다(\code{permutation}은 섞기의 각 단계에서 남은 원소 가운데 하나를 고를 때 쓴다). \code{bounded} 함수는 128비트 곱 $wr$의 아래쪽 절반이 $r$보다 작을 때에만 \code{(0 - r) \% r}로 $t$를 계산하고, 버려야 하면 그 원소에 따로 배정된 여분의 단어를 차례로 꺼내 다시 시도한다. 버리기가 일어나도 다른 원소가 받는 난수가 밀리지 않도록 여분의 단어를 원소마다 따로 두며, 이 설계는 난수 생성을 다루는 장에서 자세히 본다.
+\end{instardust}
+
+\section{전단사와 비트 섞기}
+\label{sec:bijection}
+
+난수 생성기와 해시 함수는 입력의 비트를 골고루 섞는 함수를 필요로 한다. 이때 섞는 함수가 \textbf{전단사}이면 큰 이점이 있다. 서로 다른 입력이 결코 같은 출력으로 가지 않으므로, 예컨대 서로 다른 계수기 값에서 같은 난수 블록이 나오는 일이 원리적으로 불가능하다. 64비트 단어 위의 전단사를 만드는 기본 부품은 둘이다.
+
+\begin{proposition}
+\label{prop:bijections}
+$\mathbb{Z}/2^{64}\mathbb{Z}$ 위에서 다음 함수들은 전단사이다.
+\begin{enumerate}
+\item 홀수 $a$를 곱하는 $x\mapsto ax$. 역함수는 $x\mapsto a^{-1}x$이다.
+\item 상수 $k$를 더하는 $x\mapsto x+k$, 그리고 상수와 비트별 배타적 논리합을 하는 $x\mapsto x\oplus k$.
+\item $1\le s\le63$에 대해 오른쪽으로 밀어 배타적 논리합을 하는 $x\mapsto x\oplus(x\gg s)$.
+\end{enumerate}
+또한 전단사의 합성은 전단사이다.
+\end{proposition}
+
+\begin{proof}
+(i)과 (ii)는 역함수가 분명하다. (iii)을 보자. $y=x\oplus(x\gg s)$라 하면 $y$의 맨 위 $s$비트는 $x\gg s$의 해당 비트가 $0$이므로 $x$의 맨 위 $s$비트와 같다. 그다음 $s$비트는 $x$의 해당 비트와, 이미 알아낸 맨 위 $s$비트의 배타적 논리합이므로 역시 알아낼 수 있다. 이렇게 위에서부터 $s$비트씩 차례로 $x$를 되찾을 수 있으므로 함수는 단사이고, 유한집합에서 자기 자신으로 가는 단사는 전단사이다.
+\end{proof}
+
+MurmurHash3의 마무리 함수 fmix64는 이 부품만으로 만든 함수의 좋은 예이다\cite{appleby-smhasher}.
+\begin{gather*}
+x\gets x\oplus(x\gg33),\quad x\gets x\cdot c_1,\quad x\gets x\oplus(x\gg33),\\
+x\gets x\cdot c_2,\quad x\gets x\oplus(x\gg33)
+\end{gather*}
+여기서 $c_1=\code{0xff51afd7ed558ccd}$과 $c_2=\code{0xc4ceb9fe1a85ec53}$은 홀수이므로 \cref{prop:bijections}에 따라 fmix64는 전단사이다. 곱셈은 낮은 비트를 높은 비트로 퍼뜨리고 오른쪽 밀기는 높은 비트를 낮은 비트로 끌어내리므로, 이 둘을 번갈아 쓰면 입력의 어느 비트든 출력의 모든 비트에 영향을 준다. stardust의 데이터프레임 해시 테이블은 정수 키를 이 함수로 섞은 뒤 아래 비트로 칸을 고른다(\code{csrc/frame/ops/hash.hpp}). 이 섞기 덕분에 키가 $0,1,2,\dots$처럼 규칙적이어도 칸이 고르게 흩어진다.
+
+난수 생성기 Philox의 한 라운드도 같은 원리로 전단사임을 보일 수 있다\cite{salmon2011random123}. 256비트 계수기를 64비트 단어 넷 $(c_0,c_1,c_2,c_3)$로 보고, 홀수 곱수 $M_0$, $M_1$과 열쇠 $k_0$, $k_1$에 대해 $M_0c_0$과 $M_1c_2$의 128비트 곱을 각각 위쪽 절반 $h_0,h_1$과 아래쪽 절반 $l_0,l_1$로 나누면, 한 라운드의 출력은
+\[
+(h_1\oplus c_1\oplus k_0,\;l_1,\;h_0\oplus c_3\oplus k_1,\;l_0)
+\]
+이다.
+
+\begin{proposition}
+\label{prop:philox-round}
+$M_0$과 $M_1$이 홀수이면 Philox의 한 라운드는 256비트 단어 위의 전단사이다.
+\end{proposition}
+
+\begin{proof}
+출력 $(o_0,o_1,o_2,o_3)$에서 입력을 되찾을 수 있음을 보이면 된다. $o_3=l_0=M_0c_0\bmod2^{64}$이고 $M_0$이 홀수이므로 $c_0=M_0^{-1}o_3$으로 $c_0$을 되찾는다. 그러면 곱 $M_0c_0$ 전체를 다시 계산해 $h_0$을 알 수 있고, $c_3=o_2\oplus h_0\oplus k_1$이다. 같은 방식으로 $o_1=l_1$에서 $c_2=M_1^{-1}o_1$을, 이어서 $h_1$과 $c_1=o_0\oplus h_1\oplus k_0$을 되찾는다. 단사이므로 전단사이다.
+\end{proof}
+
+라운드마다 열쇠를 바꾸어 열 번 합성한 Philox4$\times$64-10 전체도 따라서 전단사이고, 서로 다른 계수기는 반드시 서로 다른 출력을 낸다. 이 성질은 무엇보다 곱수가 홀수여야 한다는 조건에서 나오며, 곱수의 역원은 \cref{prop:hensel}로 구할 수 있다.
+
+\begin{instardust}[\code{src/stardust/random/\_\_init\_\_.py}]
+stardust는 사용자가 준 시드를 numpy와 같은 SeedSequence 해시로 생성기의 열쇠로 바꾼다. 이 해시의 핵심 단계 \code{hashmix}는 32비트 단어에 상수를 배타적 논리합하고 홀수 상수를 곱한 뒤 $16$비트 오른쪽 밀기와 배타적 논리합을 하는 함수이며, 곱하는 상수는 매번 홀수 곱수가 곱해져 갱신된다. 초기 상수 \code{0x43B0D7E5}와 곱수 \code{0x931E8875}가 모두 홀수이므로 곱해지는 상수도 늘 홀수이고, \cref{prop:bijections}에 따라 각 단계는 전단사이다. 그래서 서로 다른 시드 단어가 같은 열쇠로 뭉개지지 않는다.
+\end{instardust}
+
+\section{이진 다항식과 유한체}
+\label{sec:gf2}
+
+\subsection{캐리 없는 곱셈}
+
+지금까지는 비트 패턴을 정수로 읽었다. 같은 64비트를 \textbf{계수가 $0$과 $1$인 다항식}으로 읽으면 전혀 다른 산술이 생긴다. 비트 $b_{63}\cdots b_1b_0$을 다항식 $\sum_i b_ix^i$로 보고 계수의 덧셈을 $\mathbb{Z}/2\mathbb{Z}$에서 하면, $1+1=0$이므로 두 다항식의 덧셈은 비트별 배타적 논리합이 되고 자리올림이 생기지 않는다. 계수가 $\mathbb{Z}/2\mathbb{Z}$에 있는 다항식들의 환을 $\mathbb{F}_2[x]$로 쓰고 그 곱을 \term{캐리 없는 곱셈}{carry-less multiplication}이라 부른다. 두 다항식 $a(x)=\sum a_ix^i$와 $b(x)=\sum b_jx^j$의 곱의 계수는
+\[
+(ab)_k=\bigoplus_{i+j=k}a_ib_j
+\]
+이다. 정수의 곱셈과 달리 자리올림이 다음 자리로 번지지 않으므로 회로가 단순하고, 현대의 프로세서는 이를 한 명령으로 계산한다(AArch64의 \code{PMULL}, x86의 \code{PCLMULQDQ}).
+
+이 곱셈의 쓸모를 보여 주는 작은 예가 있다. 모든 계수가 $1$인 다항식 $1+x+\cdots+x^{63}$을 곱하면 접두사 배타적 논리합이 나온다.
+
+\begin{proposition}
+\label{prop:prefix-xor}
+$a(x)=\sum_{i=0}^{63}a_ix^i$에 $e(x)=\sum_{j=0}^{63}x^j$를 캐리 없이 곱한 결과의 $x^k$ 계수는 $0\le k\le63$에서 $a_0\oplus a_1\oplus\cdots\oplus a_k$이다.
+\end{proposition}
+
+\begin{proof}
+곱의 정의에서 $(ae)_k=\bigoplus_{i+j=k}a_i\cdot1$이고, $0\le k\le63$이면 $j=k-i$가 $[0\,..\,63]$에 들 조건은 $0\le i\le k$이므로 합은 $a_0\oplus\cdots\oplus a_k$이다.
+\end{proof}
+
+\begin{instardust}[\code{csrc/frame/io/csv.cpp}]
+CSV 파일을 빠르게 읽으려면 쉼표와 줄바꿈 가운데 어느 것이 따옴표 안에 있는지 가려야 한다. stardust의 CSV 읽기는 64바이트 묶음마다 따옴표 문자의 위치를 비트 마스크로 만들고 이 마스크에 \cref{prop:prefix-xor}의 캐리 없는 곱을 한 번 한다. 그러면 결과의 비트 $k$는 $k$번째 바이트까지 나온 따옴표 수의 홀짝, 곧 그 바이트가 따옴표 안에 있는지를 알려 준다. 연달아 나온 두 따옴표(\code{""})는 상태를 두 번 뒤집어 제자리로 돌아오므로 이스케이프된 따옴표도 저절로 처리된다. 이 생각은 JSON을 초당 기가바이트 단위로 읽는 simdjson에서 널리 알려졌다\cite{langdale2019simdjson}.
+\end{instardust}
+
+\subsection{유한체 맛보기}
+
+$\mathbb{Z}/p\mathbb{Z}$가 체였던 것처럼, $\mathbb{F}_2[x]$에서도 ``소수''에 해당하는 \term{기약다항식}{irreducible polynomial} $P(x)$로 나눈 나머지를 생각하면 체가 된다. 그 증명은 \cref{thm:unit}과 같다. $\mathbb{F}_2[x]$에도 나눗셈 정리와 유클리드 알고리즘이 그대로 성립하므로(나머지의 크기 대신 차수가 줄어든다), $P$와 서로소인 다항식은 Bézout의 항등식으로 역원을 갖는다. $P$의 차수가 $n$이면 나머지는 차수가 $n$보다 작은 다항식, 곧 $n$비트 패턴이므로 이렇게 얻은 체는 원소가 $2^n$개이고 $\mathbb{F}_{2^n}$으로 쓴다. 덧셈은 배타적 논리합이고 곱셈은 캐리 없는 곱셈 뒤에 $P$로 나눈 나머지이다.
+
+이 구조는 뒤에서 두 번 다시 나온다. 하나는 그림 파일 형식 PNG와 압축 형식 zlib가 데이터의 오류를 검출하는 데 쓰는 CRC로, 데이터를 $\mathbb{F}_2[x]$의 다항식으로 보고 정해진 다항식으로 나눈 나머지를 덧붙이는 방법이다. 다른 하나는 선형 되먹임 이동 레지스터(LFSR) 계열의 난수 생성기로, 그 주기와 성질을 $\mathbb{F}_{2^n}$의 산술로 분석한다. 두 주제는 각각 해당하는 장에서 이 절의 도구로 다룬다.
+
+\chapterreferences
+
