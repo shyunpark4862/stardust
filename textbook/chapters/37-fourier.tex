@@ -52,9 +52,10 @@ $f$가 실수축을 포함하는 띠 $|\operatorname{Im}z|<a$에서 해석적이
 \label{sec:fourier-transform}
 
 주기가 없는 함수 $f\in L^1(\mathbb R)$의 \term{푸리에 변환}{Fourier transform}은 $\hat f(\xi)=\int f(x)e^{-ix\xi}dx$이다. 이 장에서 쓰는 성질은 세 가지이다. 첫째, Plancherel 정리에 의해 변환은 $L^2$로 연장되며 $\|\hat f\|_2=\sqrt{2\pi}\,\|f\|_2$이다. 둘째, \term{합성곱}{convolution} $(f*g)(x)=\int f(y)g(x-y)dy$의 변환은 변환의 곱이다. 적분 순서를 바꾸면
-\[
-\widehat{f*g}(\xi)=\iint f(y)g(x-y)e^{-ix\xi}dy\,dx=\int f(y)e^{-iy\xi}dy\int g(u)e^{-iu\xi}du=\hat f(\xi)\hat g(\xi)
-\]
+\begin{align*}
+\widehat{f*g}(\xi)&=\iint f(y)g(x-y)e^{-ix\xi}\,dy\,dx\\
+&=\int f(y)e^{-iy\xi}dy\int g(u)e^{-iu\xi}du=\hat f(\xi)\hat g(\xi)
+\end{align*}
 이기 때문이다($u=x-y$; $f,g\in L^1$이면 Fubini 정리로 정당화된다). 셋째, 32장에서 가우스 함수의 양정치성을 보일 때 썼듯이, 가우스 함수의 변환은 다시 가우스 함수이고 함수가 좁을수록 변환은 넓다. 함수와 그 변환을 동시에 좁게 만들 수 없다는 이 사실을 정량화한 것이 \term{불확정성 원리}{uncertainty principle}이다\cite{stein2003fourier}.
 
 \section{이산 푸리에 변환}

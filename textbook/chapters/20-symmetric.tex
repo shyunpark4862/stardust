@@ -24,7 +24,7 @@ $n$에 대한 귀납법이다. $A=\begin{psmallmatrix}\alpha&a^{\mathsf T}\\a&A_
 \[
 l_{jj}=\Bigl(a_{jj}-\sum_{k<j}l_{jk}^2\Bigr)^{1/2},\qquad l_{ij}=\Bigl(a_{ij}-\sum_{k<j}l_{ik}l_{jk}\Bigr)\Bigm/l_{jj}\quad(i>j)
 \]
-로 계산된다. 19장의 LU처럼 블록으로 다시 짜면 대부분의 연산이 3층 BLAS의 대칭 갱신 \code{syrk}로 가고, LAPACK의 \code{potrf}가 이것이다.
+로 계산된다. 19장의 LU처럼 블록으로 다시 짜면 대부분의 연산이 3층 BLAS의 \code{gemm}, \code{syrk}, \code{trsm}으로 가고, LAPACK의 \code{potrf}가 이것이다.
 
 \subsection{피벗이 필요 없는 이유}
 
@@ -47,7 +47,7 @@ Cholesky 분해가 끝까지 진행되면 계산한 인수 $\hat L$은
 
 \subsection{양정치성의 판정}
 
-분해가 \textbf{끝까지 진행되면}이라는 조건이 중요하다. $A$가 양정치가 아니면 어느 단계에서 제곱근 안의 값이 $0$ 이하가 되어 분해가 멈춘다. 거꾸로 분해가 끝까지 가면 $\hat L\hat L^{\mathsf T}$가 양정치이므로, Cholesky 분해를 시도하는 것은 양정치성을 판정하는 가장 싼 방법이다. 고유값을 구하는 것보다 훨씬 싸다. 반올림 때문에 경계선의 행렬, 곧 가장 작은 고유값이 $\|A\|u$ 정도인 행렬에서는 판정이 어느 쪽으로든 갈 수 있다. 조건수가 $1/(n^{3/2}u)$보다 충분히 작은 양정치 행렬이면 분해가 반드시 끝까지 간다는 것이 증명되어 있다\cite{higham2002accuracy}.
+분해가 \textbf{끝까지 진행되면}이라는 조건이 중요하다. $A$가 양정치가 아니면 어느 단계에서 제곱근 안의 값이 $0$ 이하가 되어 분해가 멈춘다. 거꾸로 분해가 끝까지 가면 $\hat L\hat L^{\mathsf T}$가 양정치이므로, Cholesky 분해를 시도하는 것은 양정치성을 판정하는 가장 싼 방법이다. 고유값을 구하는 것보다 훨씬 싸다. 반올림 때문에 경계선의 행렬, 곧 가장 작은 고유값이 $\|A\|u$ 정도인 행렬에서는 판정이 어느 쪽으로든 갈 수 있다. 대각을 $1$로 맞춘 행렬 $D^{-1/2}AD^{-1/2}$($D=\operatorname{diag}(A)$)의 조건수가 $1/(n^{3/2}u)$보다 충분히 작은 양정치 행렬이면 분해가 반드시 끝까지 간다는 것이 증명되어 있다\cite{higham2002accuracy}.
 
 \begin{instardust}[\code{docs/design/linalg.md} §10.3]
 stardust의 \code{cholesky}는 LAPACK의 \code{potrf}로 하삼각 $L$을 구하고, \code{upper=True}이면 그 켤레 전치를 옮겨 쓴다. 위삼각 판을 따로 부르지 않으므로 두 결과가 비트까지 같다. 분해가 도중에 멈추면 ``matrix is not positive definite''라는 \code{LinAlgError}를 낸다. 19장의 LU와 마찬가지로 판정의 근거는 LAPACK이 보고하는 정확한 실패뿐이고, 조건수를 보고 따로 판정하지 않는다.
