@@ -34,7 +34,7 @@ $\|\cdot\|_\alpha$가 $\|\cdot\|_2$와 동치임을 보이면 충분하다. 표�
 
 \subsection{넘침 없는 Euclid 노름}
 
-$\|x\|_2$를 정의대로 계산하면 제곱하는 순간 문제가 생긴다. binary64가 담을 수 있는 가장 큰 수는 약 $1.8\times10^{308}$이므로, 원소가 $10^{155}$보다 크면 제곱이 넘쳐 $\infty$가 되고 $10^{-155}$보다 작으면 제곱이 아래로 넘쳐 $0$이 된다. 예컨대 $x=(3\times10^{200},4\times10^{200})$의 노름은 $5\times10^{200}$으로 얼마든지 표현할 수 있는 수인데, numpy 2의 \code{np.linalg.norm}으로 따로 계산해 보면 $\infty$가 나오고 $10^{-200}$배로 줄인 벡터에서는 $0$이 나온다.
+$\|x\|_2$를 정의대로 계산하면 제곱하는 순간 문제가 생긴다. binary64가 담을 수 있는 가장 큰 수는 약 $1.8\times10^{308}$이므로, 원소가 $10^{155}$보다 크면 제곱이 넘쳐 $\infty$가 되고 $1.5\times10^{-154}$보다 작으면 제곱이 비정규수가 되어 정밀도를 잃고 $2.2\times10^{-162}$보다 작으면 $0$이 된다. 예컨대 $x=(3\times10^{200},4\times10^{200})$의 노름은 $5\times10^{200}$으로 얼마든지 표현할 수 있는 수인데, numpy 2의 \code{np.linalg.norm}으로 따로 계산해 보면 $\infty$가 나오고 $(3\times10^{-200},4\times10^{-200})$에서는 $0$이 나온다.
 
 이 문제는 척도를 바꾸어 피한다. $s=\|x\|_\infty$라 하면 $\|x\|_2=s\,\|x/s\|_2$이고 $x/s$의 원소는 모두 절댓값이 $1$ 이하이므로 제곱이 넘치지 않는다. 다만 나눗셈은 곱셈보다 비싸고 $s$를 구하는 데 배열을 한 번 더 읽어야 하므로 실용적인 구현은 먼저 척도 없이 계산해 보고 결과가 넘치거나 너무 작을 때만 척도를 맞춰 다시 계산한다. Blue의 방법\cite{blue1978}은 원소를 크기에 따라 큰 것, 보통인 것, 작은 것으로 나누어 서로 다른 척도로 한 번에 누적함으로써 배열을 한 번만 읽으면서 같은 일을 하며, LAPACK의 노름 계산이 이 계열을 따른다. 척도를 $2$의 거듭제곱으로 고르면 척도를 곱하고 나누는 일이 지수만 바꾸므로 반올림 오차가 생기지 않는다는 점도 기억해 두자.
 
@@ -74,7 +74,7 @@ $m\times n$ 행렬 $A$에 대해 다음이 성립한다.
 (i) $\|x\|_1=1$이면 $\|Ax\|_1=\sum_i|\sum_ja_{ij}x_j|\le\sum_j|x_j|\sum_i|a_{ij}|\le\max_j\sum_i|a_{ij}|$이고, 등호는 $x$를 그 최댓값을 주는 열의 표준기저벡터로 잡으면 성립한다. (ii) $\|x\|_\infty=1$이면 각 행에서 $|\sum_ja_{ij}x_j|\le\sum_j|a_{ij}|$이고, 등호는 최댓값을 주는 행 $i$에 대해 $x_j=\overline{a_{ij}}/|a_{ij}|$($a_{ij}=0$이면 $x_j=1$)로 잡으면 성립한다. (iii) $\|Ax\|_2^2=x^{\mathsf H}(A^{\mathsf H}A)x$이고 $A^{\mathsf H}A$는 에르미트이며 양의 준정부호이므로, 고유값 $\lambda_1\ge\cdots\ge\lambda_n\ge0$과 정규직교 고유벡터 $v_i$가 있다. $x=\sum c_iv_i$, $\sum|c_i|^2=1$이면 $\|Ax\|_2^2=\sum\lambda_i|c_i|^2\le\lambda_1$이고, $x=v_1$에서 등호가 성립한다.
 \end{proof}
 
-\cref{thm:induced-formulas}의 (i)과 (ii)는 원소를 한 번 훑으면 계산되지만 (iii)은 특이값을 구해야 한다. 그래서 큰 행렬에서는 $\|A\|_2$ 대신 $\|A\|_1$이나 $\|A\|_\infty$를 쓰거나, $\|A\|_2$를 어림하는 경우가 많다. 이들 사이의 관계는 \cref{thm:norm-equiv}에서 나오며 예컨대 $\|A\|_2\le\sqrt{\|A\|_1\|A\|_\infty}$가 성립한다.
+\cref{thm:induced-formulas}의 (i)과 (ii)는 원소를 한 번 훑으면 계산되지만 (iii)은 특이값을 구해야 한다. 그래서 큰 행렬에서는 $\|A\|_2$ 대신 $\|A\|_1$이나 $\|A\|_\infty$를 쓰거나, $\|A\|_2$를 어림하는 경우가 많다. 이들 사이에는 \cref{thm:norm-equiv}에서 나오는 차원 상수의 관계 외에 $\|A\|_2\le\sqrt{\|A\|_1\|A\|_\infty}$도 성립한다. $\|A\|_2^2=\rho(A^{\mathsf H}A)\le\|A^{\mathsf H}A\|_1\le\|A^{\mathsf H}\|_1\|A\|_1=\|A\|_\infty\|A\|_1$이기 때문이다.
 
 \subsection{Frobenius 노름과 유니터리 불변성}
 
@@ -282,7 +282,7 @@ $m\times n$ 행렬 $A$와 $p\times q$ 행렬 $B$의 \term{Kronecker 곱}{Kroneck
 \[
 A\otimes B=(Q_A\otimes Q_B)(T_A\otimes T_B)(Q_A\otimes Q_B)^{\mathsf H}
 \]
-이고, $Q_A\otimes Q_B$는 (i)에서 유니터리이며 $T_A\otimes T_B$는 위삼각이고 대각 성분이 $\lambda_i\mu_j$이다. 합의 경우도 $I\otimes T_A+T_B\otimes I$가 같은 닮음 아래 위삼각이고 대각 성분이 $\lambda_i+\mu_j$라는 데서 같다.
+이고, $Q_A\otimes Q_B$는 (i)에서 유니터리이며 $T_A\otimes T_B$는 위삼각이고 대각 성분이 $\lambda_i\mu_j$이다. 합의 경우는 $I\otimes A+B\otimes I=(Q_B\otimes Q_A)(I\otimes T_A+T_B\otimes I)(Q_B\otimes Q_A)^{\mathsf H}$이고 가운데 행렬이 위삼각이며 대각 성분이 $\lambda_i+\mu_j$라는 데서 같다.
 \end{proof}
 
 \cref{prop:kron}의 (ii)를 쓰면 Sylvester 방정식 $AX+XB=C$는 $(I\otimes A+B^{\mathsf T}\otimes I)\operatorname{vec}X=\operatorname{vec}C$라는 보통의 연립방정식이 되고, (iii)에서 그 계수행렬의 고유값은 $\lambda_i(A)+\mu_j(B)$이므로 해가 유일할 조건은 앞 절의 결론과 같이 모든 쌍에서 $\lambda_i(A)+\mu_j(B)\ne0$이다. 다만 $mn\times mn$ 연립방정식을 그대로 풀면 비용이 $O((mn)^3)$이므로, 실제 계산은 Bartels--Stewart처럼 구조를 살린 알고리즘으로 한다.
