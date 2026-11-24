@@ -1,0 +1,121 @@
+%% 55장 검정과 구간
+\chapter{검정과 구간}
+\label{ch:tests-intervals}
+
+\abstract{가설검정은 자료가 어떤 모수 값과 양립하는지를 묻고, 신뢰구간은 양립하는 모수 값의 모임을 돌려준다. 이 장에서는 둘을 같은 틀로 다룬다. 검정의 크기와 검정력, $p$값을 정의하고 $p$값이 귀무가설 아래 균등 분포보다 작아지지 않는다는 성질을 49장의 확률 적분 변환으로 보인다. 단순 가설 사이의 가장 강력한 검정이 우도비 검정이라는 Neyman--Pearson 보조정리를 증명하고, 큰 표본에서 쓰는 우도비, Wald, 점수의 세 검정이 같은 카이제곱 극한을 가진다는 것을 54장의 점근 정규성으로 설명한다. 이산 자료의 정확 검정에서 양측 $p$값을 정의하는 두 방법이 다른 답을 주는 예를 보고, 장애 모수를 다루는 조건부와 스튜던트화의 생각을 정리한다. 끝으로 검정을 뒤집어 구간을 만드는 쌍대성을 증명하고, 이항 비율의 Wald, Wilson, Clopper--Pearson 구간의 실제 포함 확률을 정확히 계산해 Wald 구간이 명목 수준 $95\%$에서 $80\%$까지 떨어지는 것을 확인한다.}
+
+\section{가설검정의 틀}
+\label{sec:testing-framework}
+
+모수 공간을 \term{귀무가설}{null hypothesis} $H_0:\theta\in\Theta_0$과 \term{대립가설}{alternative hypothesis} $H_1:\theta\in\Theta_1$로 나눈다. 검정은 자료 $X$의 함수 $\phi(X)\in\{0,1\}$로, $1$이면 $H_0$을 기각한다. 확률화한 검정에서는 $\phi(X)\in[0,1]$이 기각 확률이다. 귀무가설 아래 기각 확률의 상한 $\sup_{\theta\in\Theta_0}E_\theta\phi$를 \term{크기}{size}라 하고, 대립가설 아래의 기각 확률 $\beta(\theta)=E_\theta\phi$를 \term{검정력}{power}이라 한다. 크기를 수준 $\alpha$ 이하로 묶은 채 검정력을 크게 하는 것이 검정의 설계이다.
+
+대부분의 검정은 통계량 $T(X)$가 클 때 기각한다. 관측값 $t$에 대해
+\[
+p=\sup_{\theta\in\Theta_0}P_\theta\bigl(T(X)\ge t\bigr)
+\]
+를 \term{$p$값}{p-value}이라 한다. 관측한 것보다 더 극단적인 값이 귀무가설 아래에서 나올 확률이다. $p\le\alpha$일 때 기각하면 크기 $\alpha$ 이하의 검정이 된다.
+
+\begin{proposition}
+\label{prop:pvalue-valid}
+$\theta\in\Theta_0$이면 모든 $\alpha\in[0,1]$에 대해 $P_\theta(p\le\alpha)\le\alpha$이다. $\Theta_0=\{\theta_0\}$이고 $T$의 분포가 연속이면 등호가 성립해 $p$는 균등 분포를 따른다.
+\end{proposition}
+
+\begin{proof}
+단순 귀무가설 $\{\theta_0\}$에서 $G(t)=P_{\theta_0}(T\ge t)$로 두면 $p=G(T)$이다. $G$는 감소하고 왼쪽 연속이다. $P(G(T)\le\alpha)\le\alpha$를 보이자. $t^\ast=\inf\{t:G(t)\le\alpha\}$로 두면 $\{G(T)\le\alpha\}\subset\{T\ge t^\ast\}$이고, $G$의 왼쪽 연속성으로 $P(T\ge t^\ast)=G(t^\ast)\le\alpha$이다(집합이 $T>t^\ast$로만 이루어지면 $P(T>t^\ast)=\lim_{t\downarrow t^\ast}G(t)\le\alpha$이다). $T$가 연속이면 49장의 확률 적분 변환으로 $1-G(T)=F(T)$가 균등이다. 복합 귀무가설에서는 $p$가 각 $\theta$에서의 $p$값보다 크거나 같으므로 부등식이 그대로 성립한다.
+\end{proof}
+
+이산 자료에서는 $p$값이 균등보다 \term{보수적}{conservative}이다. 크기가 정확히 $\alpha$가 되지 않고 그 아래에서 계단을 이룬다.
+
+\section{Neyman--Pearson 보조정리}
+\label{sec:neyman-pearson}
+
+단순 귀무가설 $\theta_0$과 단순 대립가설 $\theta_1$ 사이에서는 가장 강력한 검정이 알려져 있다.
+
+\begin{theorem}[Neyman--Pearson]
+\label{thm:neyman-pearson}
+밀도 $f_0$, $f_1$에 대해 $\phi^\ast=\mathbf 1\{f_1(x)>kf_0(x)\}$(경계 $f_1=kf_0$에서는 확률화해도 된다)의 크기가 $\alpha$라 하자. 크기가 $\alpha$ 이하인 모든 검정 $\phi$에 대해 $E_1\phi^\ast\ge E_1\phi$이다.
+\end{theorem}
+
+\begin{proof}
+모든 $x$에서 $(\phi^\ast(x)-\phi(x))(f_1(x)-kf_0(x))\ge0$이다. $f_1>kf_0$이면 $\phi^\ast=1\ge\phi$이고, $f_1<kf_0$이면 $\phi^\ast=0\le\phi$이기 때문이다. 적분하면
+\[
+E_1\phi^\ast-E_1\phi\ge k(E_0\phi^\ast-E_0\phi)=k(\alpha-E_0\phi)\ge0
+\]
+이다.
+\end{proof}
+
+Neyman과 Pearson은 1933년에 이것을 증명했다\cite{neyman1933}. 우도비 $f_1/f_0$이 충분 통계량 $T$의 단조 증가 함수이면 기각역 $\{T>c\}$가 $\theta_1$에 의존하지 않으므로, 단측 대립가설 전체에 대해 고르게 가장 강력한 검정이 된다. 정규 평균의 단측 $z$ 검정과 지수족의 단측 검정이 그렇다.
+
+\section{큰 표본의 세 검정}
+\label{sec:three-tests}
+
+$H_0:\theta=\theta_0$($p$차원)을 최대우도 추정량으로 검정하는 세 가지 표준 방법이 있다.
+\begin{itemize}
+\item \term{우도비 검정}{likelihood ratio test}: $\Lambda=2\bigl(\ell(\hat\theta)-\ell(\theta_0)\bigr)$.
+\item \term{Wald 검정}{Wald test}: $W=n(\hat\theta-\theta_0)^{\mathsf T}I(\hat\theta)(\hat\theta-\theta_0)$\cite{wald1943}.
+\item \term{점수 검정}{score test}: $S=n^{-1}s(\theta_0)^{\mathsf T}I(\theta_0)^{-1}s(\theta_0)$\cite{rao1948}.
+\end{itemize}
+54장의 정칙 조건 아래 셋은 모두 $\chi^2_p$로 분포 수렴하고, 서로의 차는 $0$으로 확률 수렴한다. 한 변수에서 보면, 54장의 증명에서 $\sqrt n(\hat\theta-\theta_0)\approx n^{-1/2}s(\theta_0)/I(\theta_0)$이므로 $W$와 $S$가 모두 $(n^{-1/2}s(\theta_0))^2/I(\theta_0)$에 가깝고, 이것은 표준 정규의 제곱이다. $\Lambda$는 로그 우도를 $\hat\theta$ 둘레에서 Taylor 전개하면 $\ell(\theta_0)=\ell(\hat\theta)-\frac n2I(\hat\theta-\theta_0)^2+o_p(1)$이므로 $W$와 같은 극한을 가진다. 복합 귀무가설에서 제약된 모수의 수가 $r$이면 극한이 $\chi^2_r$이라는 것이 Wilks의 정리이다\cite{wilks1938}.
+
+세 검정은 계산하는 곳이 다르다. Wald 검정은 대립가설 아래의 적합 하나만, 점수 검정은 귀무가설 아래의 적합 하나만, 우도비 검정은 둘 다 필요하다. 유한 표본에서는 셋이 다른 답을 주며, 일반적으로 우도비 검정의 근사가 가장 좋고, Wald 검정은 모수화에 의존한다는 약점이 있다. $g(\theta)$로 모수를 바꾸면 우도비와 점수 통계량은 그대로지만 Wald 통계량은 바뀐다.
+
+\section{정확 검정}
+\label{sec:exact-tests}
+
+표본이 작고 분포가 이산이면 점근 분포 대신 귀무 분포를 정확히 계산한다. 이항 검정 $H_0:p=p_0$은 관측 $k$의 꼬리 확률을 50장의 불완전 베타 함수로 계산한다. 단측 $p$값은 분명하지만, 양측 $p$값은 이산 분포가 대칭이 아니어서 정의가 여럿이다. 하나는 작은 쪽 꼬리를 두 배하는 것($\min(1,2\min(P(X\le k),P(X\ge k)))$)이고, 다른 하나는 관측보다 확률이 크지 않은 모든 결과의 확률을 더하는 것($\sum_{j:P(X=j)\le P(X=k)}P(X=j)$)이다. 뒤의 것이 scipy의 \code{binomtest}와 R의 \code{binom.test}가 쓰는 정의이다. $n=20$, $p_0=0.3$, $k=3$이면 앞의 것은 $0.2142$, 뒤의 것은 $0.2204$이다. 어느 정의든 \cref{prop:pvalue-valid}의 타당성을 가지지만, 같은 자료로 다른 결론에 이를 수 있으므로 방법을 밝혀야 한다.
+
+\section{장애 모수}
+\label{sec:nuisance}
+
+관심 있는 모수 $\psi$ 말고 다른 모수 $\lambda$가 분포에 들어 있으면, 귀무가설 $\psi=\psi_0$은 복합 가설이 되어 \cref{sec:testing-framework}의 $\sup$을 $\lambda$에 대해 취해야 한다. 이 \term{장애 모수}{nuisance parameter}를 다루는 방법은 셋이다.
+\begin{enumerate}
+\item 스튜던트화: 장애 모수를 추정값으로 나누어 분포가 그것에 의존하지 않는 통계량을 만든다. 정규 평균의 $t$ 통계량은 분산 $\sigma^2$을 $S^2$으로 바꾸어, 52장에서 본 것처럼 귀무 분포가 정확히 $t_{n-1}$이 된다.
+\item 조건부: $\lambda$의 충분 통계량으로 조건을 걸면 조건부 분포가 $\lambda$에 의존하지 않는다. 58장의 Fisher 정확 검정은 $2\times2$ 표의 주변 합으로 조건을 걸어 초기하 분포를 얻는다.
+\item 윤곽 우도: $\lambda$를 $\psi$마다 최대화한 $\ell_p(\psi)=\max_\lambda\ell(\psi,\lambda)$로 우도비 검정을 한다. Wilks의 정리가 그대로 성립한다.
+\end{enumerate}
+
+\section{검정을 뒤집어 만든 구간}
+\label{sec:test-inversion}
+
+\begin{proposition}
+\label{prop:test-inversion}
+모든 $\theta_0$에 대해 크기 $\alpha$ 이하인 검정 $\phi_{\theta_0}$이 있으면 $C(X)=\{\theta_0:\phi_{\theta_0}(X)=0\}$은 신뢰 수준 $1-\alpha$ 이상의 신뢰 집합이다. 곧 모든 $\theta$에서 $P_\theta(\theta\in C(X))\ge1-\alpha$이다.
+\end{proposition}
+
+\begin{proof}
+$\theta\in C(X)$인 것은 $\phi_\theta(X)=0$인 것과 같으므로 $P_\theta(\theta\in C(X))=1-E_\theta\phi_\theta\ge1-\alpha$이다.
+\end{proof}
+
+이 쌍대성 덕분에 좋은 검정에서 좋은 구간이 나온다. 이항 비율 $p$의 구간 셋을 견주어 보자.
+\begin{itemize}
+\item \term{Wald 구간}{Wald interval} $\hat p\pm z\sqrt{\hat p(1-\hat p)/n}$은 Wald 검정을 뒤집은 것이다.
+\item \term{Wilson 구간}{Wilson interval}은 점수 검정 $|\hat p-p_0|/\sqrt{p_0(1-p_0)/n}\le z$를 $p_0$에 대해 풀어 얻는 이차 부등식의 해이다\cite{wilson1927}.
+\item \term{Clopper--Pearson 구간}{Clopper--Pearson interval}은 단측 정확 검정 둘을 뒤집은 것이다\cite{clopper1934}. 50장의 항등식 $P(\mathrm{Bin}(n,p)\ge k)=I_p(k,n-k+1)$로, 끝점은 베타 분포의 분위수 $B^{-1}(\alpha/2;k,n-k+1)$과 $B^{-1}(1-\alpha/2;k+1,n-k)$이다.
+\end{itemize}
+$n=50$, 명목 수준 $95\%$에서 각 구간의 실제 포함 확률 $P_p(p\in C(X))=\sum_{k:p\in C(k)}\binom nkp^k(1-p)^{n-k}$를 $p$의 촘촘한 격자에서 정확히 계산하면 \cref{tab:binomial-coverage}이 된다. Wald 구간은 $p\in[0.05,0.95]$에서 포함 확률이 $0.80$까지 떨어지고, $p=0.01$에서는 $0.39$이다. Wilson 구간은 명목 수준 둘레에서 오르내리며 평균이 $0.95$에 가깝다. Clopper--Pearson 구간은 정확 검정을 뒤집었으므로 포함 확률이 언제나 $0.95$ 이상이지만, 그 대가로 평균 $0.967$로 보수적이다. Brown, Cai, DasGupta는 이 비교를 자세히 하고 Wald 구간을 쓰지 말 것을 권했다\cite{brown2001}.
+
+\begin{table}[t]
+\begin{sdtable}{colspec={lccc}, row{1}={font=\small\bfseries}}
+\toprule
+구간 & $p\in[0.05,0.95]$의 최소 & 같은 범위의 평균 & $p=0.01$에서 \\
+\midrule
+Wald & $0.799$ & $0.930$ & $0.395$ \\
+Wilson & $0.931$ & $0.952$ & $0.911$ \\
+Clopper--Pearson & $0.951$ & $0.967$ & $0.986$ \\
+\bottomrule
+\end{sdtable}
+\caption{$n=50$, 명목 수준 $95\%$인 이항 비율 구간의 정확한 포함 확률. $p$를 $0.001$부터 $0.999$까지 $9981$개의 격자에서 계산했다.}
+\label{tab:binomial-coverage}
+\end{table}
+
+\begin{instardust}[\code{docs/design/htest.md} §1.1]
+\code{sd.htest}는 scipy의 가설검정 전부와 statsmodels의 다중 비교 보정, 비율 검정을 담는다. 결과는 읽기 전용 객체이고, 신뢰구간은 회귀 영역과 같은 꼴의 메서드 \code{r.conf\_int(alpha=0.05)}로 통일했다(scipy의 \code{confidence\_interval(confidence\_level=)} 대신). \code{method='auto'}는 실제로 쓴 방법(\code{'exact'}, \code{'asymptotic'} 등)을 결과의 \code{method}에 적고, 정확한 방법의 작업량이 문서화한 상한을 넘으면 예외로 점근 방법이나 순열 방법을 알려 준다. 검정 통계량과 $p$값은 다른 영역처럼 보장 영역에서 Arb 참값 대비 상대 $10^{-14}$의 정확도를 약속한다. 꼬리 확률은 \code{sd.stats}의 \code{ccdf}로 계산하므로 아주 작은 $p$값도 상대 정확도를 가진다.
+\end{instardust}
+
+\section{맺음}
+
+검정과 구간은 같은 것의 두 얼굴이다. 검정은 한 모수 값이 자료와 양립하는지를 묻고, 구간은 양립하는 값의 모임이며, 하나를 뒤집으면 다른 하나가 된다. $p$값은 귀무가설 아래 균등보다 작아지지 않아 오류율을 통제하고, Neyman--Pearson 보조정리는 우도비가 가장 강력한 기준임을 보인다. 큰 표본에서는 우도비, Wald, 점수의 세 검정이 같은 카이제곱 극한을 가지지만 유한 표본에서는 다르며, 이항 비율의 구간 비교가 보여 주듯 그 차이는 실제로 크다. 정확한 계산이 가능하면 정확 검정과 그것을 뒤집은 구간을, 장애 모수가 있으면 스튜던트화나 조건부를 쓴다. 다음 장에서는 이 틀로 평균과 분산에 관한 모수 검정을 다룬다.
+
+검정 이론의 표준은 Lehmann과 Romano의 책\cite{lehmann2005}이고, 큰 표본의 세 검정은 van der Vaart\cite{vandervaart1998}에 자세하다.
+
+\chapterreferences
