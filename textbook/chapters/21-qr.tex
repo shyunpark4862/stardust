@@ -75,7 +75,7 @@ H_1H_2\cdots H_k=I-VTV^{\mathsf T}
 \[
 T_k=\begin{pmatrix}T_{k-1}&-\tau_kT_{k-1}V_{k-1}^{\mathsf T}v_k\\0&\tau_k\end{pmatrix}
 \]
-이다. 이 꼴에서 $Q^{\mathsf T}B=B-V(T^{\mathsf T}(V^{\mathsf T}B))$는 행렬 곱 셋이므로 3층 BLAS의 속도로 계산된다. 블록 QR은 폭 $b$의 패널을 Householder로 분해해 $V$와 $T$를 만들고, 나머지 열에 이 블록 반사를 한 번에 적용하는 일을 되풀이한다. $Q$를 명시적인 행렬로 만들 때도 같은 표현을 써서, 단위 행렬의 열들에 블록 반사를 뒤에서부터 적용한다. LAPACK의 \code{orgqr}가 이것이다.
+이다. 이 꼴에서 $Q^{\mathsf T}B=B-V(T^{\mathsf T}(V^{\mathsf T}B))$는 행렬 곱 셋이므로 3층 BLAS의 속도로 계산된다. 블록 QR은 폭 $b$의 패널을 Householder로 분해해 $V$와 $T$를 만들고, 나머지 열에 이 블록 반사를 한 번에 적용하는 일을 되풀이한다. $Q$를 명시적인 행렬로 만들 때도 같은 표현을 써서 단위 행렬의 열들에 블록 반사를 뒤에서부터 적용한다. LAPACK의 \code{orgqr}가 이것이다.
 
 \begin{instardust}[\code{docs/design/linalg.md} §10.4]
 stardust의 \code{qr}은 \code{geqrf}로 분해한 뒤 반사 벡터를 $Q$의 출력 자리에 복사하고, \code{orgqr}가 그 자리에서 $Q$를 만든다. numpy와 같은 호출 순서이므로 결과가 numpy와 비트까지 같다. 17장에서 본 패킹 덕분에 입력이 C 순서든 F 순서든 보폭이 어떻든 LAPACK에는 같은 F 순서 버퍼가 넘어가므로, 분해의 결과는 입력의 메모리 배치와 상관없이 비트까지 같다.
@@ -98,6 +98,6 @@ stardust의 \code{qr\_pivoted}는 LAPACK의 \code{geqp3}이고, 순열은 scipy�
 
 \section{맺음}
 
-직교 변환은 수치선형대수에서 안정성의 가장 확실한 원천이다. 길이를 보존하므로 오차가 증폭되지 않고, 그래서 Householder QR은 열마다 그 열의 크기에 비례하는 후진 오차만 남긴다. Gram--Schmidt가 정확한 산술에서는 같은 분해를 주면서도 반올림 앞에서 직교성을 잃는 것과 대조적이다. 다음 장에서는 QR 분해를 최소제곱 문제에 적용하고, 정규방정식이 왜 위험한지를 조건수로 설명한다.
+직교 변환은 수치선형대수에서 안정성의 가장 확실한 원천이다. 길이를 보존하므로 오차가 증폭되지 않고, 그래서 Householder QR은 열마다 그 열의 크기에 비례하는 후진 오차만 남긴다. Gram--Schmidt가 정확한 산술에서는 같은 분해를 주면서도 반올림 앞에서 직교성을 잃는 것과 대조적이다. 다음 장에서는 QR 분해를 최소제곱 문제에 적용하고 정규방정식이 왜 위험한지를 조건수로 설명한다.
 
 \chapterreferences
