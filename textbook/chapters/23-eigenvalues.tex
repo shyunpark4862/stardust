@@ -1,0 +1,84 @@
+%% 23장 고유값 문제
+\chapter{고유값 문제}
+\label{ch:eigenvalues}
+
+\abstract{고유값은 특성다항식의 근이지만, 수치적으로 고유값을 구할 때 특성다항식을 만드는 일은 없다. 다항식의 근은 계수의 작은 변화에 극도로 민감하기 때문이다. 대신 행렬에 상사 변환을 거듭 적용해 4장의 Schur 형식으로 다가간다. 이 장에서는 가장 단순한 반복인 거듭제곱법에서 시작해, 역반복과 Rayleigh 몫 반복으로 수렴을 가속하는 방법을 보고, 여러 벡터를 한꺼번에 반복하는 동시 반복이 QR 알고리즘과 같다는 것을 보인다. 이어서 QR 알고리즘을 실용적으로 만드는 세 가지 장치를 다룬다. 한 걸음의 비용을 $O(n^2)$로 줄이는 Hessenberg 축약, 수렴을 삼차로 가속하는 이동, 그리고 이동을 행렬을 만들지 않고 적용하게 해 주는 암시적 Q 정리이다. 마지막으로 대칭 삼중대각 행렬의 고유값을 분할 정복으로 구하는 방법을 본다.}
+
+\section{왜 특성다항식을 쓰지 않는가}
+\label{sec:why-not-poly}
+
+$n\times n$ 행렬의 고유값은 특성다항식 $\det(\lambda I-A)$의 근이다. 그러니 다항식의 계수를 구하고 근을 찾으면 될 것 같지만, 이 길은 수치적으로 막혀 있다. 다항식의 근은 계수에 대해 조건이 나쁜 경우가 많기 때문이다. Wilkinson이 든 예로, 근이 $1,2,\dots,20$인 다항식의 $x^{19}$ 계수를 $2^{-23}$만큼만 바꾸어도 여러 근이 복소수 쌍으로 갈라질 만큼 크게 움직인다\cite{wilkinson1965aep}. 대칭 행렬의 고유값은 4장의 Weyl 부등식에 따라 행렬의 변화에 대해 완벽하게 안정한데도, 계수를 거치는 순간 그 안정성을 잃는 것이다. 그래서 고유값 알고리즘은 행렬을 직접 다루며, 근을 찾는 문제는 거꾸로 동반 행렬의 고유값 문제로 바꾸어 푼다.
+
+4장에서 보았듯이 모든 정방 행렬은 유니터리 상사 변환으로 위삼각 행렬, 곧 Schur 형식 $A=UTU^{\mathsf H}$로 바꿀 수 있고, $T$의 대각이 고유값이다. 유니터리 변환은 21장에서 본 대로 오차를 키우지 않으므로, 고유값 알고리즘의 목표는 유니터리 상사 변환을 거듭해 $A$를 위삼각 형식으로 몰아가는 것이다. 5차 이상의 다항식의 근을 유한 번의 산술로 구하는 공식이 없으므로 이 과정은 반드시 반복이어야 한다.
+
+\section{거듭제곱법과 그 변형}
+\label{sec:power}
+
+\subsection{거듭제곱법}
+
+$A$가 대각화 가능하고 고유값이 $|\lambda_1|>|\lambda_2|\ge\cdots$이며 $x_0$이 $\lambda_1$의 고유벡터 방향 성분을 가지면, $x_{k+1}=Ax_k/\|Ax_k\|$는 그 고유벡터로 수렴한다. $x_0=\sum c_iv_i$로 쓰면 $A^kx_0=\lambda_1^k\bigl(c_1v_1+\sum_{i\ge2}c_i(\lambda_i/\lambda_1)^kv_i\bigr)$이기 때문이다. 수렴 속도는 비 $|\lambda_2/\lambda_1|$로 정해진다. 고유값의 근삿값으로는 \term{Rayleigh 몫}{Rayleigh quotient} $\rho(x)=x^{\mathsf H}Ax/x^{\mathsf H}x$를 쓰는데, 대칭 행렬에서 Rayleigh 몫의 오차는 벡터 오차의 제곱에 비례한다. 고유값이 $10,9,5,3,2,1$인 $6\times6$ 대칭 행렬에서 재어 보면, Rayleigh 몫의 오차는 $10$걸음 뒤 $2.7\times10^{-2}$, $20$걸음 뒤 $3.4\times10^{-3}$, $40$걸음 뒤 $5.0\times10^{-5}$으로, $20$걸음마다 정확히 $(0.9)^{20}\approx0.12$배씩 준다. 두 고유값이 가까우면 수렴이 느리다.
+
+\subsection{역반복과 Rayleigh 몫 반복}
+
+$(A-\mu I)^{-1}$의 고유값은 $1/(\lambda_i-\mu)$이므로, 이동 $\mu$에 가장 가까운 고유값이 가장 큰 고유값이 된다. 여기에 거듭제곱법을 적용하는 \term{역반복}{inverse iteration}은 $\mu$가 원하는 고유값에 가까울수록 빠르게 수렴한다. $A-\mu I$가 거의 특이해서 연립방정식이 나쁜 조건이 되는 것이 걱정스럽지만, 해의 큰 오차는 바로 원하는 고유벡터의 방향으로 생기므로 해가 없다.
+
+이동을 매 걸음 현재 벡터의 Rayleigh 몫으로 바꾸면 \term{Rayleigh 몫 반복}{Rayleigh quotient iteration}이 되고, 대칭 행렬에서는 수렴이 삼차이다. 위의 행렬에서 고유값 $5$의 고유벡터 근처에서 출발하면 Rayleigh 몫의 오차가 $3.6\times10^{-3}$, $1.9\times10^{-8}$, $1.8\times10^{-15}$으로, 매 걸음 자릿수가 세 배가 되어 두 걸음 만에 반올림 수준에 이른다.
+
+\section{QR 알고리즘}
+\label{sec:qr-algorithm}
+
+\subsection{동시 반복}
+
+벡터 하나 대신 $p$개를 함께 반복하면서 매번 QR 분해로 직교화하면, 처음 $p$개의 고유값이 차지하는 부분공간으로 수렴한다. 모든 $n$개의 벡터로 이렇게 하는 \term{동시 반복}{simultaneous iteration} $Z_k=AQ_{k-1}$, $Z_k=Q_kR_k$를 생각하자. 이것이 놀랍게도 다음의 \term{QR 알고리즘}{QR algorithm}과 같다.
+\[
+A_0=A,\qquad A_{k-1}=\hat Q_kR_k,\qquad A_k=R_k\hat Q_k.
+\]
+$A_k=\hat Q_k^{\mathsf H}A_{k-1}\hat Q_k$이므로 $A_k$는 $A$와 유니터리 상사이고, 귀납법으로 $Q_k=\hat Q_1\cdots\hat Q_k$, $A_k=Q_k^{\mathsf H}AQ_k$이며 $A^k=Q_k(R_k\cdots R_1)$임을 보일 수 있다. 곧 QR 알고리즘의 누적된 직교 인수는 $A^k$의 QR 분해의 $Q$이고, 동시 반복이 만드는 부분공간과 같다. 그래서 고유값의 절댓값이 모두 다르면 $A_k$는 위삼각으로 수렴하며, $(i+1,i)$ 원소는 대략 $|\lambda_{i+1}/\lambda_i|^k$에 비례해 줄어든다. Francis와 Kublanovskaya가 1961년 무렵 서로 독립적으로 이 알고리즘을 발표했고\cite{francis1961,kublanovskaya1962}, Rutishauser의 LR 알고리즘\cite{rutishauser1958}을 직교 변환으로 바꾼 것이었다.
+
+\subsection{Hessenberg 축약}
+
+QR 알고리즘의 한 걸음은 QR 분해 하나이므로 $O(n^3)$이다. 수렴에 $O(n)$걸음이 필요하면 전체가 $O(n^4)$가 되어 쓸 수 없다. 첫 번째 장치는 미리 $A$를 \term{Hessenberg 행렬}{Hessenberg matrix}, 곧 부대각 아래가 모두 $0$인 행렬로 바꾸어 두는 것이다. 21장의 Householder 반사를 왼쪽과 오른쪽에 함께 적용하는 상사 변환으로, 첫 열의 둘째 원소 아래를 소거하는 일을 열마다 되풀이하면 $O(n^3)$의 비용으로 $A=QHQ^{\mathsf H}$를 얻는다. 첫째 원소 아래가 아니라 둘째 원소 아래를 소거하는 이유는 오른쪽에서 같은 반사를 곱할 때 첫 열이 다시 채워지지 않게 하기 위해서이다. 이렇게 하면 유한 번의 단계로 완전한 삼각 형식에 이를 수는 없지만, 거기에 가장 가까운 꼴인 Hessenberg 형식에는 이를 수 있다.
+
+Hessenberg 형식은 QR 걸음에서 보존된다. $H=QR$을 21장의 Givens 회전 $n-1$개로 구하면 $Q$도 Hessenberg이고, $RQ$는 위삼각 곱하기 Hessenberg여서 다시 Hessenberg이다. 걸음 하나의 비용이 $O(n^2)$로 줄어드는 것이다. $A$가 대칭이면 Hessenberg 형식은 대칭이므로 \term{삼중대각}{tridiagonal}이 되고, 걸음 하나가 $O(n)$이다.
+
+\subsection{이동}
+
+두 번째 장치는 이동이다. $A_k-\mu_kI=\hat Q_kR_k$, $A_{k+1}=R_k\hat Q_k+\mu_kI$로 바꾸면 여전히 상사 변환이고, 그 걸음의 수렴 비율이 $|(\lambda_n-\mu_k)/(\lambda_{n-1}-\mu_k)|$가 된다. $\mu_k$가 $\lambda_n$에 가까우면 마지막 행의 부대각 원소가 빠르게 $0$으로 간다. 오른쪽 아래 구석 원소를 이동으로 쓰는 것은 마지막 단위벡터로 Rayleigh 몫 반복을 하는 것과 같아서 대칭 행렬에서 수렴이 삼차이다. 다만 이 선택은 대칭 구조 때문에 수렴하지 않는 예가 있으므로, 오른쪽 아래 $2\times2$ 블록의 두 고유값 가운데 구석 원소에 가까운 것을 쓰는 \term{Wilkinson 이동}{Wilkinson shift}을 쓴다. 이것은 대칭 삼중대각 행렬에서 언제나 수렴한다는 것이 증명되어 있다\cite{parlett1998}.
+
+효과를 재어 보자. 위의 $6\times6$ 대칭 행렬을 삼중대각으로 바꾼 뒤 마지막 부대각 원소가 $10^{-15}\|T\|$ 아래로 내려가기까지의 걸음 수는 이동이 없으면 $47$이고, Wilkinson 이동이 있으면 $3$이다. 그 세 걸음에서 부대각 원소는 $1.5\times10^{-4}$, $4.8\times10^{-13}$, $9.1\times10^{-38}$으로 줄어든다. 마지막 원소가 충분히 작아지면 $0$으로 보고 행렬을 $(n-1)\times(n-1)$로 줄이는 \term{감축}{deflation}을 한 뒤 같은 일을 계속한다. 그래서 고유값 하나에 평균 두세 걸음이면 되고, 대칭 삼중대각 행렬의 모든 고유값을 $O(n^2)$에 구한다.
+
+\subsection{암시적 Q 정리와 이중 이동}
+
+실수 비대칭 행렬은 켤레 복소수 쌍의 고유값을 가질 수 있는데, 실수 이동으로는 이런 쌍에 다가갈 수 없고 복소수 이동을 쓰면 복소수 산술이 필요해진다. Francis의 해법은 켤레인 두 이동 $\mu$, $\bar\mu$의 걸음 둘을 한꺼번에 하는 것이다. 두 걸음을 합치면 $(H-\mu I)(H-\bar\mu I)=H^2-2\operatorname{Re}\mu\,H+|\mu|^2I$의 QR 분해가 필요한데, 이것은 실수 행렬이지만 만드는 데 $O(n^3)$이 든다. 여기서 다음 정리가 결정적이다.
+
+\begin{theorem}[암시적 Q 정리]
+\label{thm:implicit-q}
+$Q^{\mathsf H}AQ=H$와 $V^{\mathsf H}AV=G$가 둘 다 부대각 원소가 $0$이 아닌 Hessenberg 행렬이고 $Q$와 $V$가 유니터리이며 첫 열이 같으면, $Q$와 $V$의 각 열은 크기 $1$인 수배만큼만 다르고 $H$와 $G$도 그에 맞추어 같다.
+\end{theorem}
+
+증명은 $AQ=QH$의 열을 차례로 비교하면 $Q$의 $k+1$번째 열이 앞의 $k$개 열과 $A$로 정해진다는 것, 곧 Arnoldi 과정(28장)과 같은 귀납이다\cite{golub2013matrix}. 이 정리에 따르면, 이중 이동 걸음의 결과는 $(H-\mu I)(H-\bar\mu I)$의 첫 열만 알면 정해진다. 첫 열은 $H$가 Hessenberg이므로 원소 셋뿐이고 $O(1)$에 계산된다. 그 세 원소를 소거하는 작은 반사를 $H$에 상사 변환으로 적용하면 Hessenberg 꼴에서 벗어난 \term{불룩한 부분}{bulge}이 생기고, 그것을 작은 반사들로 대각을 따라 아래로 밀어내 Hessenberg 꼴을 되찾으면 이중 이동 걸음 하나가 끝난다. 이 \term{불룩 쫓기}{bulge chasing}는 $O(n^2)$이고 실수 산술만 쓴다\cite{francis1962,watkins2011francis}. 결과는 실수 Schur 형식, 곧 대각에 $1\times1$과 $2\times2$ 블록이 놓인 준삼각 행렬이며, $2\times2$ 블록이 켤레 쌍을 담는다.
+
+\section{대칭 삼중대각 행렬의 분할 정복}
+\label{sec:divide-conquer}
+
+대칭 행렬의 고유값과 고유벡터를 모두 구할 때, QR 알고리즘은 고유벡터를 누적하는 데 걸음마다 $O(n^2)$이 들어 전체가 $O(n^3)$이고, 그 상수가 크다. Cuppen의 \term{분할 정복}{divide and conquer}은 삼중대각 행렬 $T$를 한가운데에서 두 블록과 계수 하나짜리 보정으로 나눈다\cite{cuppen1981}.
+\[
+T=\begin{pmatrix}T_1&0\\0&T_2\end{pmatrix}+\beta\,vv^{\mathsf T}.
+\]
+두 블록의 고유값 분해 $T_i=Q_iD_iQ_i^{\mathsf T}$를 재귀적으로 구하면, 문제는 대각 행렬에 계수 하나짜리 행렬을 더한 $D+\beta zz^{\mathsf T}$의 고유값 문제가 된다. 그 고유값 $\lambda$는 \term{영년 방정식}{secular equation}
+\[
+1+\beta\sum_i\frac{z_i^2}{d_i-\lambda}=0
+\]
+의 근이고, 이 방정식은 이웃한 $d_i$ 사이에 근이 하나씩 있어서 34장의 근 찾기로 빠르게 풀린다. 고유벡터는 $(D-\lambda I)^{-1}z$에 비례한다. 처음 제안된 판은 근이 서로 가까울 때 고유벡터의 직교성을 잃었는데, Gu와 Eisenstat는 계산한 고유값에 정확히 맞도록 $z$를 거꾸로 다시 구해 이 문제를 해결했다\cite{gu1995}. 고유벡터를 합치는 마지막 곱이 3층 BLAS의 행렬 곱이어서 분할 정복은 대개 QR 알고리즘보다 몇 배 빠르고, LAPACK의 \code{syevd}가 이것이다.
+
+\begin{instardust}[\code{docs/design/linalg.md} §10.5, §10.6]
+stardust의 \code{eigh}는 LAPACK의 \code{syevd}이고 numpy와 비트까지 같다. 고유값만 구하는 \code{eigvalsh}는 고유벡터를 만들지 않는 모드를 쓰는데, $1.6$--$2$배 빠른 대신 그 값이 \code{eigh}의 값과 $10^{-15}$ 수준에서 다르다. 일반 행렬의 \code{eig}는 \code{geev}이고, 결과는 언제나 복소수이며 실수부와 허수부의 사전식 순서로 안정 정렬한다. 실수 \code{geev}는 켤레 쌍의 고유벡터를 실수 열 두 개로 돌려주므로, 그것을 복소수 열 두 개로 조립한다. \code{schur}는 \code{gees}로 실수 Schur 형식을, \code{hessenberg}는 \code{gehrd}와 \code{orghr}로 Hessenberg 형식을 준다. 설계 문서는 $n\le2$인 복소 행렬의 \code{hessenberg}가 scipy와 다르다는 점을 적어 둔다. scipy는 LAPACK을 부르지 않고 원래 행렬을 돌려주지만, LAPACK은 부대각 원소를 실수로 만드는 길이 $1$짜리 반사를 적용하며, 둘 다 올바른 Hessenberg 형식이다.
+\end{instardust}
+
+\section{맺음}
+
+QR 알고리즘은 20세기 수치해석의 가장 큰 성취 가운데 하나로 꼽힌다. 동시 반복이라는 단순한 생각이 Hessenberg 축약, 이동, 감축, 암시적 이중 이동이라는 장치를 거쳐 고유값 하나에 평균 두세 걸음, 전체 $O(n^3)$의 알고리즘이 되었다. 다음 장에서는 같은 생각을 특이값 분해에 적용한다. 특이값은 $A^{\mathsf T}A$의 고유값의 제곱근이지만, 22장에서 본 대로 $A^{\mathsf T}A$를 만들면 정확도를 잃으므로, $A$ 자체를 직교 변환으로 다룬다.
+
+고유값 알고리즘의 고전은 Wilkinson의 책\cite{wilkinson1965aep}이고, 대칭 문제는 Parlett의 책\cite{parlett1998}, 현대적인 GR 알고리즘의 관점은 Watkins의 책\cite{watkins2007}이 자세하다.
+
+\chapterreferences
