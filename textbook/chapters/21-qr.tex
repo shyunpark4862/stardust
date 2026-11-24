@@ -1,0 +1,103 @@
+%% 21장 직교 변환과 QR
+\chapter{직교 변환과 QR}
+\label{ch:qr}
+
+\abstract{직교 행렬은 벡터의 길이를 바꾸지 않으므로, 직교 변환을 거듭해도 반올림 오차가 증폭되지 않는다. 그래서 직교 변환으로 만든 분해는 피벗이나 성장 인수 걱정 없이 안정하다. 이 장에서는 행렬을 직교 행렬과 위삼각 행렬의 곱 $A=QR$로 분해하는 방법들을 다룬다. 먼저 가장 자연스러운 방법인 Gram--Schmidt 직교화가 반올림 오차 앞에서 얼마나 취약한지를 직접 계산으로 보고, 반사로 열 하나를 한꺼번에 소거하는 Householder 변환과 원소 하나씩을 소거하는 Givens 회전을 차례로 본다. 이어서 Householder 반사 여러 개를 하나의 블록 연산으로 묶어 행렬 곱의 속도로 적용하는 compact WY 표현을 다루고, 마지막으로 열을 바꾸어 가며 분해해 행렬의 수치적 랭크를 드러내는 열 피벗 QR과 그 한계를 본다.}
+
+\section{직교 변환의 장점}
+\label{sec:orthogonal}
+
+$Q^{\mathsf T}Q=I$인 행렬 $Q$를 곱하면 $\|Qx\|_2=\|x\|_2$이므로, 직교 변환은 벡터의 길이도, 벡터에 섞여 있는 오차의 길이도 바꾸지 않는다. 2-노름 조건수는 $\kappa_2(Q)=1$로 가장 작다. 그래서 19장의 가우스 소거와 달리 직교 변환을 거듭 적용하는 알고리즘에는 성장 인수가 없고, 각 단계의 반올림 오차가 그대로 더해질 뿐 곱해지지 않는다.
+
+모든 $m\times n$ 행렬($m\ge n$)은 열이 정규직교인 $m\times n$ 행렬 $Q$와 $n\times n$ 위삼각 행렬 $R$로 $A=QR$로 쓸 수 있다. 이것을 \term{QR 분해}{QR factorization}라 한다. $A$의 열들이 일차독립이면 $R$의 대각이 양수라는 조건 아래 분해가 하나뿐이다. QR 분해는 22장의 최소제곱 문제와 23장의 고유값 알고리즘의 바탕이 된다.
+
+\section{Gram--Schmidt 직교화}
+\label{sec:gram-schmidt}
+
+$A$의 열 $a_1,\dots,a_n$에서 정규직교 기저를 차례로 만드는 \term{Gram--Schmidt 직교화}{Gram--Schmidt orthogonalization}는 QR 분해의 가장 직접적인 계산이다. $j$번째 열에서 앞서 만든 $q_1,\dots,q_{j-1}$ 방향의 성분을 빼고 남은 것을 정규화한다.
+\[
+v_j=a_j-\sum_{i<j}(q_i^{\mathsf T}a_j)\,q_i,\qquad q_j=v_j/\|v_j\|_2,\qquad r_{ij}=q_i^{\mathsf T}a_j,\quad r_{jj}=\|v_j\|_2.
+\]
+이것을 \term{고전적 Gram--Schmidt}{classical Gram--Schmidt}라 한다. 계수 $q_i^{\mathsf T}a_j$를 원래의 $a_j$로 계산하는 대신, 앞선 방향을 하나 뺄 때마다 그 결과로 다음 계수를 계산하는 판을 \term{수정 Gram--Schmidt}{modified Gram--Schmidt}라 한다. 정확한 산술에서는 둘이 같다.
+
+반올림이 있으면 둘은 크게 다르다. 조건수 $\kappa$인 $100\times20$ 행렬을 무작위로 만들어 계산한 $Q$의 직교성 $\|Q^{\mathsf T}Q-I\|_2$를 재어 보면 \cref{tab:gs}와 같다. 고전적 판의 직교성 손실은 대략 $\kappa^2u$에 비례해 $\kappa=10^8$에서 이미 직교성이 거의 사라지고, 수정 판은 대략 $\kappa u$에 비례하며\cite{bjorck1967mgs}, 다음 절의 Householder 방법은 $\kappa$와 상관없이 $u$ 수준이다. Gram--Schmidt가 직교성을 잃는 원인은 9장의 소거이다. $a_j$가 앞선 열들과 거의 평행하면 $v_j$는 큰 두 벡터의 차로 작게 남고, 그 상대오차가 커진다.
+
+\begin{table}[t]
+\begin{sdtable}{colspec={cccc}, row{1}={font=\small\bfseries}}
+\toprule
+$\kappa$ & 고전적 Gram--Schmidt & 수정 Gram--Schmidt & Householder \\
+\midrule
+$10^4$ & $5.4\times10^{-10}$ & $3.1\times10^{-13}$ & $9.2\times10^{-16}$ \\
+$10^8$ & $6.5\times10^{-2}$ & $9.7\times10^{-10}$ & $7.8\times10^{-16}$ \\
+$10^{12}$ & $5.8$ & $2.1\times10^{-5}$ & $1.6\times10^{-15}$ \\
+\bottomrule
+\end{sdtable}
+\caption{조건수 $\kappa$인 $100\times20$ 무작위 행렬에서 계산한 $Q$의 직교성 $\|Q^{\mathsf T}Q-I\|_2$. 세 방법 모두 numpy로 직접 구현해 binary64로 계산했다.}
+\label{tab:gs}
+\end{table}
+
+\section{Householder 반사}
+\label{sec:householder}
+
+\subsection{반사로 열을 소거하기}
+
+벡터 $v\ne0$에 대해
+\[
+H=I-\frac{2vv^{\mathsf T}}{v^{\mathsf T}v}
+\]
+는 $v$에 수직인 초평면에 대한 반사이고, 대칭이면서 직교인 행렬이다. 주어진 벡터 $x$를 $\pm\|x\|_2e_1$로 보내는 반사는 $v=x\mp\|x\|_2e_1$로 얻는다. 이것을 \term{Householder 반사}{Householder reflection}라 한다\cite{householder1958}. 부호의 선택이 중요하다. $x$가 $e_1$과 거의 평행하면 $x-\|x\|_2e_1$에서 소거가 일어나므로, $v_1=x_1+\operatorname{sign}(x_1)\|x\|_2$로 두어 같은 부호끼리 더한다. 그러면 $Hx=-\operatorname{sign}(x_1)\|x\|_2e_1$이다.
+
+$A$의 첫 열에 반사 $H_1$을 적용하면 첫 열의 대각 아래가 모두 $0$이 된다. 둘째 열부터는 아래쪽 $(m-1)\times(n-1)$ 블록에 같은 일을 되풀이한다. $n$번 뒤에 $H_n\cdots H_1A=R$이므로 $A=QR$, $Q=H_1\cdots H_n$이다. 반사를 적용할 때는 $H$를 만들지 않고 $HB=B-v\,(2v^{\mathsf T}B/v^{\mathsf T}v)$로 계산하면 행렬--벡터 곱 하나와 계수 하나 줄인 갱신 하나로 끝난다. 연산은 $2mn^2-2n^3/3$번으로, 정사각 행렬에서는 LU의 두 배이다. 반사 벡터 $v$는 첫 원소를 $1$로 정규화하면 나머지를 $A$의 대각 아래 자리에 저장할 수 있고, 계수 $\tau=2/v^{\mathsf T}v$만 따로 두면 된다. LAPACK의 \code{geqrf}가 이 형식으로 결과를 돌려준다.
+
+\begin{theorem}
+\label{thm:householder-backward}
+Householder QR이 계산한 $\hat R$에 대해, 정확히 직교인 $Q$가 있어서
+\[
+A+\Delta A=Q\hat R,\qquad\|\Delta a_j\|_2\le\gamma_{cmn}\|a_j\|_2\quad(j=1,\dots,n)
+\]
+이다. 여기서 $c$는 작은 상수이고 $a_j$는 $A$의 $j$번째 열이다.
+\end{theorem}
+
+증명은 반사 하나를 적용하는 것이 그 결과를 정확한 반사로 얻은 것과 상대적으로 $\gamma_{cm}$ 이내로 같다는 데서 출발해, $n$개의 반사를 차례로 합치는 것이다\cite{higham2002accuracy}. 열마다의 후진 오차가 그 열의 크기에 비례한다는 이 결과는 19장의 LU보다 강하다. 성장 인수가 없기 때문이다. \cref{tab:gs}의 마지막 열이 이 정리의 결과이다.
+
+\subsection{Givens 회전}
+
+열 전체가 아니라 원소 하나만 소거하고 싶을 때는 두 좌표 평면에서의 회전을 쓴다. $\begin{psmallmatrix}c&s\\-s&c\end{psmallmatrix}\begin{psmallmatrix}a\\b\end{psmallmatrix}=\begin{psmallmatrix}r\\0\end{psmallmatrix}$이 되도록 $c=a/r$, $s=b/r$, $r=\sqrt{a^2+b^2}$로 두는 것이 \term{Givens 회전}{Givens rotation}이다\cite{givens1958}. $r$은 $a^2$이나 $b^2$이 넘치지 않도록 4장에서 본 규모 조정으로 계산한다. Givens 회전으로 QR 분해를 하면 Householder보다 연산이 많지만, 소거할 원소가 몇 개뿐인 경우, 예컨대 23장에서 볼 Hessenberg 행렬이나 이미 분해한 행렬에 행 하나를 더하는 갱신에서는 필요한 원소만 건드리므로 훨씬 싸다.
+
+\section{블록 Householder}
+\label{sec:compact-wy}
+
+Householder 반사를 하나씩 적용하는 것은 2층 BLAS 연산이므로, 19장에서 본 대로 메모리에 묶인다. 반사 여러 개를 묶어 한꺼번에 적용하려면 그 곱을 다루기 좋은 꼴로 나타내야 한다. 반사 $k$개의 곱은
+\[
+H_1H_2\cdots H_k=I-VTV^{\mathsf T}
+\]
+로 쓸 수 있다. 여기서 $V=(v_1,\dots,v_k)$는 반사 벡터들을 열로 모은 행렬이고 $T$는 $k\times k$ 위삼각 행렬이다\cite{bischof1987wy,schreiber1989wy}. 이것을 \term{compact WY 표현}{compact WY representation}이라 한다. $T$는 반사를 하나씩 더할 때마다 귀납적으로 만들 수 있다. $Q_{k-1}=I-V_{k-1}T_{k-1}V_{k-1}^{\mathsf T}$에 $H_k=I-\tau_kv_kv_k^{\mathsf T}$를 곱하면
+\[
+T_k=\begin{pmatrix}T_{k-1}&-\tau_kT_{k-1}V_{k-1}^{\mathsf T}v_k\\0&\tau_k\end{pmatrix}
+\]
+이다. 이 꼴에서 $Q^{\mathsf T}B=B-V(T^{\mathsf T}(V^{\mathsf T}B))$는 행렬 곱 셋이므로 3층 BLAS의 속도로 계산된다. 블록 QR은 폭 $b$의 패널을 Householder로 분해해 $V$와 $T$를 만들고, 나머지 열에 이 블록 반사를 한 번에 적용하는 일을 되풀이한다. $Q$를 명시적인 행렬로 만들 때도 같은 표현을 써서, 단위 행렬의 열들에 블록 반사를 뒤에서부터 적용한다. LAPACK의 \code{orgqr}가 이것이다.
+
+\begin{instardust}[\code{docs/design/linalg.md} §10.4]
+stardust의 \code{qr}은 \code{geqrf}로 분해한 뒤 반사 벡터를 $Q$의 출력 자리에 복사하고, \code{orgqr}가 그 자리에서 $Q$를 만든다. numpy와 같은 호출 순서이므로 결과가 numpy와 비트까지 같다. 17장에서 본 패킹 덕분에 입력이 C 순서든 F 순서든 보폭이 어떻든 LAPACK에는 같은 F 순서 버퍼가 넘어가므로, 분해의 결과는 입력의 메모리 배치와 상관없이 비트까지 같다.
+\end{instardust}
+
+\section{열 피벗 QR}
+\label{sec:pivoted-qr}
+
+\subsection{랭크를 드러내기}
+
+$A$의 열들이 거의 일차종속이면, 곧 $A$의 수치적 랭크가 $n$보다 작으면 그 사실을 알아내고 싶다. Businger와 Golub은 각 단계에서 남은 열 가운데 노름이 가장 큰 열을 골라 맨 앞으로 바꾼 뒤 Householder 반사를 적용하는 \term{열 피벗 QR}{QR with column pivoting}을 제안했다\cite{businger1965}. 결과는 $A\Pi=QR$이고, $R$의 대각이 $|r_{11}|\ge|r_{22}|\ge\cdots\ge|r_{nn}|$으로 줄어든다. 각 단계에서 고른 열의 남은 노름이 $|r_{kk}|$이고, 다음 단계의 모든 열의 남은 노름은 그보다 크지 않기 때문이다. 수치적 랭크가 $k$이면 $r_{k+1,k+1}$ 이후가 작아지기를 기대하는 것이다. 매 단계에서 열들의 남은 노름을 새로 계산하지 않고 앞 단계의 값에서 한 성분을 빼 갱신하면 추가 비용이 거의 없지만, 이 뺄셈은 9장의 소거에 취약해서 갱신한 값이 부정확해지는 순간을 알아채 다시 계산해야 한다\cite{drmac2008}. LAPACK의 \code{geqp3}은 이 알고리즘을 3층 BLAS로 다시 짠 것이다\cite{quintana1998geqp3}.
+
+\subsection{한계}
+
+열 피벗 QR이 랭크를 드러내지 못하는 행렬도 있다. Kahan이 만든 행렬은 $c^2+s^2=1$에 대해 대각이 $1,s,s^2,\dots,s^{n-1}$이고 대각 위가 모두 $-c$를 곱한 위삼각 행렬로, 열 피벗이 열을 전혀 바꾸지 않는다\cite{kahan1966numerical}. $n=90$, $c=0.285$로 만들어 계산해 보면 $R$의 대각에서 가장 작은 값은 $s^{89}\approx0.023$이지만 가장 작은 특이값은 $8.8\times10^{-12}$으로, $R$의 대각은 행렬이 거의 특이하다는 사실을 $10^9$배 넘게 과소평가한다. 이런 예는 드물어서 열 피벗 QR은 실제로 널리 쓰이지만, 랭크를 확실히 알아야 하면 24장의 특이값 분해를 써야 한다.
+
+\begin{instardust}[\code{docs/design/linalg.md} §10.4]
+stardust의 \code{qr\_pivoted}는 LAPACK의 \code{geqp3}이고, 순열은 scipy와 같은 꼴로 돌려주어 \code{x[:, perm] = Q @ R}이며 $R$의 대각의 절댓값은 감소한다. 최소제곱 해법 \code{lstsq}는 열 피벗 QR을 쓰는 \code{gelsy}가 정칙인 정사각 문제에서 $2$--$4$배 빨랐지만 특이값을 돌려주지 않고 랭크가 부족한 문제에서 더 느렸으므로, 대신 특이값 분해를 쓰는 \code{gelsd}를 쓴다고 설계 문서는 적는다.
+\end{instardust}
+
+\section{맺음}
+
+직교 변환은 수치선형대수에서 안정성의 가장 확실한 원천이다. 길이를 보존하므로 오차가 증폭되지 않고, 그래서 Householder QR은 열마다 그 열의 크기에 비례하는 후진 오차만 남긴다. Gram--Schmidt가 정확한 산술에서는 같은 분해를 주면서도 반올림 앞에서 직교성을 잃는 것과 대조적이다. 다음 장에서는 QR 분해를 최소제곱 문제에 적용하고, 정규방정식이 왜 위험한지를 조건수로 설명한다.
+
+\chapterreferences
