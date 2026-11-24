@@ -135,35 +135,13 @@
 \def\proofname{Proof}
 \def\seename{→}
 \def\algorithmname{Algorithm}
-% "I부", "1장" 꼴. 장 아래는 1. → 가. → (1) → (가) 순서.
+% "I부", "1장" 꼴. 절 번호는 SNmono의 꼴 그대로: 1.1, 1.1.1
 \newcommand\sd@chaplabel[1]{#1장}
 \newcommand\sd@partlabel[1]{#1부}
 \def\thechapterend{장}
-\newcommand\sd@gana[1]{\ifcase#1\or 가\or 나\or 다\or 라\or 마\or 바\or 사\or 아\or
-  자\or 차\or 카\or 타\or 파\or 하\else\@ctrerr\fi}
-\def\gana#1{\expandafter\sd@gana\csname c@#1\endcsname}
-\setcounter{secnumdepth}{4}
-\AtEndOfClass{%
-  \renewcommand\thesection{\arabic{section}}%
-  \renewcommand\thesubsection{\gana{subsection}}%
-  \renewcommand\thesubsubsection{\arabic{subsubsection}}%
-  \renewcommand\theparagraph{\gana{paragraph}}%
-  % 참조할 때는 장과 절을 앞에 붙인다: "1장 2절", "1장 2절 나"
-  \renewcommand\p@section{\thechapter장\ }%
-  \renewcommand\p@subsection{\thechapter장\ \thesection절\ }%
-  \renewcommand\p@subsubsection{\thechapter장\ \thesection절\ \thesubsection\ }}
 % 제사(motto)는 이탤릭 없이
 \renewcommand\mottostyle{\normalfont\raggedright}
-% 쪽 머리의 절 번호도 "2." 꼴로 (\seccounterend는 제목 끝에도 붙으므로 비워 두고 직접 단다)
 \RequirePackage{etoolbox}
-\patchcmd{\ps@headings}{\thesection\seccounterend}{\thesection.}{}{\ClassWarning{sdbook}{running head patch failed}}
-\def\sectionmark#1{\markright{{\ifnum\c@secnumdepth>\z@\thesection.\hskip\betweenumberspace\fi #1}}}
-% 번호의 꼴: 1. / 가. / (1) / (가)
-\def\@seccntformat#1{\csname sd@fmt@#1\endcsname{\csname the#1\endcsname}\hskip 0.5em\relax}
-\def\sd@fmt@section#1{#1.}
-\def\sd@fmt@subsection#1{#1.}
-\def\sd@fmt@subsubsection#1{(#1)}
-\def\sd@fmt@paragraph#1{(#1)}
 
 
 % ---------------------------------------------------------------------------
@@ -235,6 +213,8 @@
 % ---------------------------------------------------------------------------
 % 5. 참조 (cleveref는 정리 환경을 만들기 전에 불러야 한다)
 % ---------------------------------------------------------------------------
+% xr-hyper: 다른 권의 장을 가리키는 참조(volumes.tex). hyperref보다 먼저 부른다.
+\RequirePackage{xr-hyper}
 \RequirePackage[hidelinks,bookmarksnumbered,pdfencoding=auto]{hyperref}
 \RequirePackage[noabbrev]{cleveref}
 \crefformat{chapter}{#2#1장#3}
@@ -243,10 +223,10 @@
 \Crefformat{part}{#2#1부#3}
 \crefformat{section}{#2#1절#3}
 \Crefformat{section}{#2#1절#3}
-\crefformat{subsection}{#2#1#3}
-\Crefformat{subsection}{#2#1#3}
-\crefformat{subsubsection}{#2#1#3}
-\Crefformat{subsubsection}{#2#1#3}
+\crefformat{subsection}{#2#1절#3}
+\Crefformat{subsection}{#2#1절#3}
+\crefformat{subsubsection}{#2#1절#3}
+\Crefformat{subsubsection}{#2#1절#3}
 \crefname{theorem}{Theorem}{Theorem}
 \crefname{lemma}{Lemma}{Lemma}
 \crefname{proposition}{Proposition}{Proposition}
@@ -404,21 +384,12 @@
   aboveskip=6pt, belowskip=6pt, showstringspaces=false,
   extendedchars=true, xleftmargin=\parindent}
 
-% 차례: 얕은 들여쓰기. 장은 "1장", 절은 "1.", 그 아래는 "가."
+% 차례: SNmono의 꼴(절은 장 번호 아래로 들여 1.1, 1.1.1). 장 번호 칸만 "57장"이 들어가게 넓힌다.
 \setcounter{tocdepth}{2}
 \tocchpnum=2.3em
-\tocsecnum=1.5em
-\tocsubsecnum=1.5em
+\tocsecnum=2.6em
+\tocsubsecnum=3.4em
 \calctocindent
-\newdimen\sd@tocsecindent \sd@tocsecindent=1em
-\newdimen\sd@tocsubindent \sd@tocsubindent=2.5em
-\let\sd@tocnum\@firstofone
-\def\numberline#1{\hb@xt@\@tempdima{\sd@tocnum{#1}\hfil}}
-\RequirePackage{etoolbox}
-\pretocmd{\l@chapter}{\let\sd@tocnum\@firstofone}{}{}
-\pretocmd{\l@part}{\let\sd@tocnum\@firstofone}{}{}
-\def\l@section{\def\sd@tocnum##1{##1.}\@dottedtocline{1}{\sd@tocsecindent}{\tocsecnum}}
-\def\l@subsection{\def\sd@tocnum##1{##1.}\@dottedtocline{2}{\sd@tocsubindent}{\tocsubsecnum}}
 
 % 참고문헌: IEEE 방식(본문 [1], 장 끝에 인용 순서대로). 장마다 끝에 (biblatex + biber).
 % 원고에서는 \cite{…}, 장 끝에 \chapterreferences.

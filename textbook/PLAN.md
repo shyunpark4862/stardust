@@ -152,7 +152,7 @@
 
 ## 5. 작업 방식
 
-- 원고: `textbook/` 안의 LaTeX. 장마다 파일 하나(`chapters/NN-이름.tex`), 본 파일 `main.tex`, 머리말 등은 `front/`.
+- 원고: `textbook/` 안의 LaTeX. 장마다 파일 하나(`chapters/NN-이름.tex`), 권별 본 파일 `volN.tex`(권 구성은 `volumes.tex`, 부 하나가 권 하나), 머리말 등은 `front/`.
 - 클래스: `sdbook.cls`가 Springer `SNmono.cls`(v6.00, 원본 그대로)를 불러 그 디자인을 살리고 한글 조판만 얹는다("Springer 한글판"). 디자인을 바꿀 때는 `sdbook.cls`만 고친다. 디자인·문체 지침은 GUIDE.md.
   - 판형 155×235 mm, 본문 틀 117×191 mm(Springer 그대로), 10/15 pt.
   - 글꼴: 영문 Times New Roman, 한글 KoPub World 바탕체 Pro Light(0.93배)·Bold, 수식 newtxmath(연산자·숫자도 newtx), 산세리프 Helvetica + Apple SD 산돌고딕 Neo, 고정폭 Cascadia Code. 강조는 볼드(`\emph`도 볼드), 한글 이탤릭은 곧은 글자로.
@@ -160,7 +160,7 @@
   - 환경(영어 이름, 굵은 머리): Theorem·Lemma·Proposition·Corollary·Definition·Assumption·Example·Remark, Proof(□), 상자 `aside`(Aside)·`instardust`(In stardust)·`summarybox`(Summary)는 위아래 가는 선만, `algorithm`(위아래 선, 머리에 여백)+`algorithmic`.
   - 캡션: 굵은 "Figure 1.1", 그림은 아래, 표는 위.
   - 그림: pgfplots 스타일 `sdplot`·`sddiagram`, 칠은 `sdfill`. 데이터는 `figures/data/`에 독립 계산으로.
-- 빌드: `textbook/`에서 `latexmk main.tex` → `build/main.pdf`.
+- 빌드: `textbook/`에서 `tools/build.sh` → `pdf/vol1.pdf`…`pdf/vol6.pdf`(중간 파일은 build/)(권 사이 참조 때문에 두 번 돈다).
 - 수치 예: 이 작업 폴더의 라이브러리는 실행하지 않는다. 수치오차나 속도를 보여 주려고 라이브러리를 돌려야 하면, 원격 저장소(https://github.com/shyunpark4862/stardust.git)에서 빌드되는 가장 최근 판을 따로 받아(작업 폴더 밖 별도 복제본) 그것을 빌드해 실행한다. 구현 글에 실린 수치는 믿지 않는다(그대로 인용하지 않는다). 책에 싣는 모든 수치는 직접 다시 얻는다: 라이브러리 동작은 별도 복제본을 실행해서, 수학적 값은 독립된 Python(정확한 유리수, 구간 산술)으로. mpmath는 쓰지 않는다.
 - git: `textbook/`은 `.git/info/exclude`에 넣어 라이브러리 저장소의 커밋에 섞이지 않게 했다.
 - 순서: 목차 확정 → 견본 장 하나로 문체·깊이 확인 → 부 순서대로 집필.
