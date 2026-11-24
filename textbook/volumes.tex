@@ -1,6 +1,6 @@
 %% volumes.tex — Foundations of Scientific Computing의 권 구성 (모든 권이 함께 쓴다)
 %%
-%% 부 하나가 권 하나이다. 장 번호는 책 전체에서 이어지므로 "49장"은 어느 권에서든 같은 장이다.
+%% 권 구성은 OUTLINE.md(14권 149장). 장 번호는 책 전체에서 이어지므로 "49장"은 어느 권에서든 같은 장이다.
 %% 각 권의 본 파일(volN.tex)은 \documentclass 다음에 이 파일을 \input하고 \sdsetvolume{N}을 부른다.
 %% 다른 권의 장을 \cref로 가리킬 수 있도록 그 장의 참조를 xr-hyper로 읽는다(링크는 그 권의 PDF로 간다).
 %% 읽는 것은 build/xref/의 사본이다: tools/build.sh가 장의 aux에서 biblatex의 refsection 라벨
@@ -12,40 +12,31 @@
 \newcommand\sd@voltitle[1]{\ifcase#1\or
   Mathematical Preliminaries\or
   Computer Arithmetic and Systems\or
-  Numerical Linear Algebra\or
-  Approximation and Analysis\or
+  Arrays\or
+  Data Frames\or
+  Dense Linear Algebra\or
+  Sparse and Iterative Methods\or
+  Approximation, Calculus, and Transforms\or
+  Special Functions\or
   Optimization\or
-  Probability and Statistical Inference\or
+  Probability and Distributions\or
+  Statistical Inference\or
   Statistical Models\or
-  Geometry, Graphs, and Graphics\fi}
+  Geometry and Graphs\or
+  Graphics\fi}
 \newcommand\sd@volrange[1]{\ifcase#1\or
-  Chapters 1--7\or Chapters 8--18\or Chapters 19--28\or Chapters 29--41\or
-  Chapters 42--48\or Chapters 49--60\or Chapters 61--69\or Chapters 70--78\fi}
-\newcommand\sd@volfirst[1]{\ifcase#1\or 1\or 8\or 19\or 29\or 42\or 49\or 61\or 70\fi}
-\def\sd@nvolumes{8}
+  Chapters 1--9\or Chapters 10--20\or Chapters 21--33\or Chapters 34--46\or
+  Chapters 47--57\or Chapters 58--67\or Chapters 68--83\or Chapters 84--94\or
+  Chapters 95--103\or Chapters 104--111\or Chapters 112--122\or Chapters 123--134\or
+  Chapters 135--142\or Chapters 143--149\fi}
+\newcommand\sd@volfirst[1]{\ifcase#1\or 1\or 10\or 21\or 34\or 47\or 58\or 68\or 84\or 95\or 104\or 112\or 123\or 135\or 143\fi}
+\def\sd@nvolumes{14}
 
-% 장 파일과 그 장이 속한 권. 다른 권의 장은 그 aux를 읽어 참조만 가져온다.
+% 쓴 장의 파일과 그 장이 속한 권(목차는 OUTLINE.md). 장을 하나 마칠 때마다 여기에 더한다.
+% 다른 권의 장은 그 aux를 읽어 참조만 가져온다. 장 번호는 파일 이름의 번호와 같아야 한다
+% (\sdvolumechapters가 장마다 카운터를 맞춘다).
 \newcommand\sd@chapters{%
-  \sd@ch{1}{01-order}\sd@ch{1}{02-integers}\sd@ch{1}{03-asymptotics}\sd@ch{1}{04-matrix-analysis}%
-  \sd@ch{1}{05-complex}\sd@ch{1}{06-recurrences}\sd@ch{1}{07-combinatorics}%
-  \sd@ch{2}{08-floating-point}\sd@ch{2}{09-rounding-error}\sd@ch{2}{10-exact-sums}%
-  \sd@ch{2}{11-elementary-functions}\sd@ch{2}{12-number-text}\sd@ch{2}{13-architecture}%
-  \sd@ch{2}{14-parallel}\sd@ch{2}{15-sorting}\sd@ch{2}{16-data-structures}%
-  \sd@ch{2}{17-memory-model}\sd@ch{2}{18-language-boundary}%
-  \sd@ch{3}{19-lu}\sd@ch{3}{20-symmetric}\sd@ch{3}{21-qr}\sd@ch{3}{22-least-squares}%
-  \sd@ch{3}{23-eigenvalues}\sd@ch{3}{24-svd}\sd@ch{3}{25-matrix-functions}\sd@ch{3}{26-sparse}%
-  \sd@ch{3}{27-krylov}\sd@ch{3}{28-large-eigen}%
-  \sd@ch{4}{29-polynomial-interpolation}\sd@ch{4}{30-rational-approximation}\sd@ch{4}{31-splines}%
-  \sd@ch{4}{32-multivariate-interpolation}\sd@ch{4}{33-numerical-differentiation}\sd@ch{4}{34-roots}%
-  \sd@ch{4}{35-quadrature-1}\sd@ch{4}{36-quadrature-2}\sd@ch{4}{37-fourier}\sd@ch{4}{38-fft}%
-  \sd@ch{4}{39-special-1}\sd@ch{4}{40-special-2}\sd@ch{4}{41-special-3}%
-  \sd@ch{5}{42-optimization-basics}\sd@ch{5}{43-scalar-minimization}%
-  \sd@ch{5}{44-line-search-quasi-newton}\sd@ch{5}{45-trust-region}\sd@ch{5}{46-derivative-free}%
-  \sd@ch{5}{47-nonlinear-least-squares}\sd@ch{5}{48-constraints-duality}%
-  \sd@ch{6}{49-probability-spaces}\sd@ch{6}{50-distribution-families}%
-  \sd@ch{6}{51-moments-limit-theorems}\sd@ch{6}{52-multivariate-distributions}%
-  \sd@ch{6}{53-random-numbers}\sd@ch{6}{54-estimation}\sd@ch{6}{55-tests-intervals}%
-  \sd@ch{6}{56-parametric-tests}\sd@ch{6}{57-nonparametric}\sd@ch{6}{58-contingency-proportions}%
+  \sd@ch{5}{48-lu}%
 }
 
 % \sdsetvolume{N}: 이 권의 번호를 정하고 다른 권의 장 참조를 읽는다(전문에서 부른다)
@@ -61,9 +52,11 @@
 
 % \sdvolumechapters: 이 권의 장을 차례로 넣는다(본문에서 부른다)
 \newcommand\sdvolumechapters{%
-  \setcounter{chapter}{\numexpr\sd@volfirst{\sd@thisvol}-1\relax}%
-  \def\sd@ch##1##2{\ifnum##1=\sd@thisvol\relax\expandafter\@firstofone\else\expandafter\@gobble\fi{\include{chapters/##2}}}%
+  \def\sd@ch##1##2{\ifnum##1=\sd@thisvol\relax\expandafter\@firstofone\else\expandafter\@gobble\fi
+    {\sd@setchapter##2\relax\include{chapters/##2}}}%
   \sd@chapters}
+% 파일 이름 앞의 번호(48-lu → 48)로 장 번호를 맞춘다: 아직 쓰지 않은 장이 사이에 있어도 번호가 맞다
+\def\sd@setchapter#1-#2\relax{\setcounter{chapter}{\numexpr#1-1\relax}}
 
 % \sdvolumefront: 속표지, 권 목록, 차례
 \newcommand\sdvolumefront{%

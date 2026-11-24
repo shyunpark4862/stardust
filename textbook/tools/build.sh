@@ -2,7 +2,8 @@
 # 모든 권을 빌드하고 PDF를 pdf/에 모은다. 권 사이의 참조(xr-hyper)가 서로의 aux를 읽으므로 두 번 돈다.
 # 쓰기: tools/build.sh [권 번호 ...]   (번호를 주면 그 권만 두 번)
 cd "$(dirname "$0")/.." || exit 1
-vols=${*:-"1 2 3 4 5 6"}
+# 기본은 장이 하나라도 있는 권 (volumes.tex의 \sd@ch 목록)
+vols=${*:-$(grep -o 'sd@ch{[0-9]*}' volumes.tex | grep -o '[0-9]*' | sort -nu | tr '\n' ' ')}
 for pass in 1 2; do
   for v in $vols; do
     latexmk -xelatex -interaction=nonstopmode "vol$v.tex" > "build/vol$v.build.log" 2>&1 \
