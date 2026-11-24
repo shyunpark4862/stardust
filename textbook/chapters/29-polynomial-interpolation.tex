@@ -2,7 +2,7 @@
 \chapter{다항식 보간}
 \label{ch:poly-interp}
 
-\abstract{점 $n+1$개에서 주어진 값을 지나는 차수 $n$ 이하의 다항식은 하나뿐이다. 이 사실은 중학교 수학처럼 보이지만, 그 다항식을 어떤 점에서 어떤 꼴로 계산하느냐에 따라 결과는 완전히 달라진다. 이 장에서는 보간 다항식의 오차 공식과 Lebesgue 상수로 시작해, 고른 간격의 점에서 차수를 올리면 오차가 오히려 폭발하는 Runge 현상과 Chebyshev 점에서는 해석 함수의 보간이 기하급수적으로 수렴한다는 정리를 증명한다. 계산의 꼴로는 단항식 계수를 구하는 Vandermonde 방법이 왜 나쁜지 보고, 무게중심 꼴의 Lagrange 공식이 $O(n)$에 계산되면서 안정하다는 것을 반올림 오차의 상계로 보인다. 마지막으로 나눗셈 차분과 Newton 꼴, 도함수 값까지 맞추는 Hermite 보간을 다루고, stardust가 무게의 넘침을 지수를 따로 세는 곱으로 피하는 방식을 본다.}
+\abstract{점 $n+1$개에서 주어진 값을 지나는 차수 $n$ 이하의 다항식은 하나뿐이다. 이 사실은 중학교 수학처럼 보이지만 그 다항식을 어떤 점에서 어떤 꼴로 계산하느냐에 따라 결과는 완전히 달라진다. 이 장에서는 보간 다항식의 오차 공식과 Lebesgue 상수로 시작한다. 고른 간격의 점에서는 차수를 올리면 오차가 오히려 폭발하는데(Runge 현상), Chebyshev 점에서는 해석 함수의 보간이 기하급수적으로 수렴한다는 것을 증명한다. 계산의 꼴로는 단항식 계수를 구하는 Vandermonde 방법이 왜 나쁜지 보고, 무게중심 꼴의 Lagrange 공식이 $O(n)$에 계산되면서 안정하다는 것을 반올림 오차의 상계로 보인다. 마지막으로 나눗셈 차분과 Newton 꼴, 도함수 값까지 맞추는 Hermite 보간을 다루고, stardust가 무게의 넘침을 지수를 따로 세는 곱으로 피하는 방식을 본다.}
 
 \section{보간 문제}
 \label{sec:interp-problem}
@@ -32,7 +32,7 @@ $\ell_j$를 \term{Lagrange 기저 다항식}{Lagrange basis polynomial}, $p=\sum
 
 \subsection{오차 공식}
 
-함수를 보간할 때 노드 밖에서의 오차는 다음 공식으로 정확히 표현된다. \term{노드 다항식}{node polynomial} $\omega(x)=\prod_{k=0}^n(x-x_k)$를 쓰자.
+함수를 보간할 때 노드 밖의 오차는 다음 공식으로 정확히 표현된다. \term{노드 다항식}{node polynomial} $\omega(x)=\prod_{k=0}^n(x-x_k)$를 쓰자.
 
 \begin{theorem}
 \label{thm:interp-error}
@@ -47,7 +47,7 @@ f(x)-p(x)=\frac{f^{(n+1)}(\xi)}{(n+1)!}\,\omega(x)
 $x$가 노드이면 양변이 $0$이다. 아니면 $K=(f(x)-p(x))/\omega(x)$로 두고 $g(t)=f(t)-p(t)-K\omega(t)$를 보자. $g$는 $x_0,\dots,x_n$과 $x$에서 $0$이므로 서로 다른 근이 $n+2$개이다. Rolle 정리를 거듭 쓰면 $g'$은 근이 적어도 $n+1$개, $g^{(n+1)}$은 적어도 하나 있다. 그 점을 $\xi$라 하면 $p^{(n+1)}=0$이고 $\omega^{(n+1)}=(n+1)!$이므로 $0=f^{(n+1)}(\xi)-K(n+1)!$이다.
 \end{proof}
 
-오차는 두 인자의 곱이다. 앞의 인자는 함수가 얼마나 매끄러운가에 달려 있고, 뒤의 $\omega(x)$는 노드를 어디에 두느냐에만 달려 있다. $[-1,1]$에서 $\max|\omega|$를 최소로 하는 노드는 Chebyshev 다항식 $T_{n+1}$의 근이고 그때 최댓값은 $2^{-n}$이다. 이것은 $2^{-n}T_{n+1}$이 최고차 계수가 $1$인 다항식 가운데 $[-1,1]$에서 최대 크기가 가장 작은 다항식이라는 고전적인 사실에서 나온다\cite{trefethen2019atap}. 반면 고른 간격의 노드에서 $|\omega|$는 구간의 가운데보다 양 끝 근처에서 지수적으로 크다. 이 차이가 다음 절의 모든 것을 설명한다.
+오차는 두 인자의 곱이다. 앞의 인자는 함수가 얼마나 매끄러운가에 달려 있고, 뒤의 $\omega(x)$는 노드를 어디에 두느냐에만 달려 있다. $[-1,1]$에서 $\max|\omega|$를 최소로 하는 노드는 Chebyshev 다항식 $T_{n+1}$의 근이고 그때 최댓값은 $2^{-n}$이다. 이것은 $2^{-n}T_{n+1}$이 최고차 계수가 $1$인 다항식 가운데 $[-1,1]$에서 최대 크기가 가장 작은 다항식이라는 고전적인 사실에서 나온다\cite{trefethen2019atap}. 반면 고른 간격의 노드에서 $|\omega|$는 구간의 가운데보다 양 끝 근처에서 지수적으로 크다. 다음 절의 내용은 모두 이 차이에서 나온다.
 
 \section{Lebesgue 상수와 노드의 선택}
 \label{sec:lebesgue}
@@ -58,7 +58,7 @@ $x$가 노드이면 양변이 $0$이다. 아니면 $K=(f(x)-p(x))/\omega(x)$로 
 \[
 \Lambda_n=\max_{x\in[-1,1]}\lambda_n(x),\qquad\lambda_n(x)=\sum_{j=0}^n|\ell_j(x)|
 \]
-라 하고, $\lambda_n$을 \term{Lebesgue 함수}{Lebesgue function}라 한다. 실제로 $|p(x)|\le\sum_j|y_j||\ell_j(x)|\le\lambda_n(x)\max_j|y_j|$이고, 등호는 $y_j=\operatorname{sign}\ell_j(x)$에서 성립한다. 그러므로 $\Lambda_n$은 자료의 오차가 보간 다항식에서 몇 배로 커지는지, 곧 보간의 조건수이다. 또 보간이 최선의 근사에 비해 얼마나 나쁜지도 말해 준다.
+라 하고, $\lambda_n$을 \term{Lebesgue 함수}{Lebesgue function}라 한다. 실제로 $|p(x)|\le\sum_j|y_j||\ell_j(x)|\le\lambda_n(x)\max_j|y_j|$이고, 등호는 $y_j=\operatorname{sign}\ell_j(x)$에서 성립한다. 그러므로 $\Lambda_n$은 자료의 오차가 보간 다항식에서 몇 배로 커지는지, 곧 보간의 조건수이다. 또 $\Lambda_n$으로 보간이 최선의 근사보다 얼마나 나쁜지도 잴 수 있다.
 
 \begin{proposition}
 \label{prop:lebesgue-best}
@@ -73,7 +73,7 @@ $x$가 노드이면 양변이 $0$이다. 아니면 $K=(f(x)-p(x))/\omega(x)$로 
 $p^\ast$는 차수 $n$ 이하이므로 자기 자신의 보간 다항식이다. 곧 $\mathcal L_np^\ast=p^\ast$이다. 따라서 $f-\mathcal L_nf=(f-p^\ast)-\mathcal L_n(f-p^\ast)$이고, 노름을 취하면 $\|f-\mathcal L_nf\|\le\|f-p^\ast\|+\Lambda_n\|f-p^\ast\|$이다.
 \end{proof}
 
-Lebesgue 상수는 노드에만 달려 있고, 노드에 따라 놀랄 만큼 다르다. $[-1,1]$의 고른 간격 노드 $x_j=-1+2j/n$과 \term{Chebyshev 점}{Chebyshev points} $x_j=\cos(j\pi/n)$, 곧 $T_n$의 극값점을 견주면 \cref{tab:lebesgue}와 같다. 고른 간격의 $\Lambda_{40}$은 정확한 유리수 산술로 첫 구간의 촘촘한 점에서 다시 계산해 확인했다.
+Lebesgue 상수는 노드에만 달려 있고 노드에 따라 놀랄 만큼 다르다. $[-1,1]$의 고른 간격 노드 $x_j=-1+2j/n$과 \term{Chebyshev 점}{Chebyshev points} $x_j=\cos(j\pi/n)$, 곧 $T_n$의 극값점을 견주면 \cref{tab:lebesgue}와 같다. 고른 간격의 $\Lambda_{40}$은 정확한 유리수 산술로 첫 구간의 촘촘한 점에서 다시 계산해 확인했다.
 
 \begin{table}[t]
 \begin{sdtable}{colspec={cccc}, row{1}={font=\small\bfseries}}
@@ -92,7 +92,7 @@ $40$ & $4.692\times10^{9}$ & $3.310$ & $3.364$ \\
 
 이 수치들은 다음의 고전적인 결과들과 맞는다\cite{trefethen2019atap,brutman1997}. Chebyshev 점에서는 $\Lambda_n\le\tfrac2\pi\ln(n+1)+1$이고, 어떤 노드를 고르더라도 $\Lambda_n\ge\tfrac2\pi\ln(n+1)+0.52$이다. 따라서 Chebyshev 점은 상수 차이를 빼면 최선이다. 이 하계의 로그 증가는 Erdős가 확립했다\cite{erdos1961}. 고른 간격에서는 $\Lambda_n\sim2^{n+1}/(en\ln n)$으로 지수적으로 자라는데\cite{schonhage1961}, $n=40$에서 이 근사식은 $5.48\times10^9$이다.
 
-로그 증가조차 피할 수 없다는 것은 깊은 귀결을 낳는다. Banach--Steinhaus 정리에 의해 $\Lambda_n\to\infty$이면 보간 다항식이 수렴하지 않는 연속함수가 존재한다. 곧 어떤 노드 체계를 고르든 모든 연속함수에 대해 보간이 수렴하게 할 수는 없다. 이것이 \term{Faber의 정리}{Faber's theorem}이다\cite{faber1914}. Weierstrass의 근사 정리\cite{weierstrass1885}가 모든 연속함수를 다항식으로 고르게 근사할 수 있다고 말하는 것과 대조적이다. 근사 다항식은 존재하지만, 고정된 노드에서 보간해서는 얻을 수 없는 함수가 있는 것이다. 다행히 함수가 조금만 매끄러워도 사정이 달라진다. \cref{prop:lebesgue-best}에 의해 $\|f-p^\ast\|$가 $\log n$보다 빨리 줄기만 하면 Chebyshev 점의 보간은 수렴한다.
+로그 증가조차 피할 수 없다는 데서 중요한 귀결이 나온다. Banach--Steinhaus 정리에 의해 $\Lambda_n\to\infty$이면 보간 다항식이 수렴하지 않는 연속함수가 존재한다. 어떤 노드 체계를 고르든 모든 연속함수에 대해 보간이 수렴하게 할 수는 없다. 이것이 \term{Faber의 정리}{Faber's theorem}이다\cite{faber1914}. Weierstrass의 근사 정리\cite{weierstrass1885}가 모든 연속함수를 다항식으로 고르게 근사할 수 있다고 말하는 것과 대조적이다. 근사 다항식은 존재하지만 고정된 노드에서 보간해서는 얻을 수 없는 함수가 있는 것이다. 다행히 함수가 조금만 매끄러워도 사정이 달라진다. \cref{prop:lebesgue-best}에 의해 $\|f-p^\ast\|$가 $\log n$보다 빨리 줄기만 하면 Chebyshev 점의 보간은 수렴한다.
 
 \subsection{Runge 현상}
 
@@ -100,7 +100,7 @@ Runge는 1901년에 매끄러운 함수
 \[
 f(x)=\frac1{1+25x^2}
 \]
-를 $[-1,1]$의 고른 간격 노드에서 보간하면, 차수를 올릴수록 구간의 양 끝에서 오차가 끝없이 커진다는 것을 보였다\cite{runge1901}. 이것을 \term{Runge 현상}{Runge phenomenon}이라 한다. 최대 오차를 직접 재면 고른 간격에서는 $n=5,10,20,40,60$에서 $0.433$, $1.92$, $59.8$, $1.05\times10^5$, $2.41\times10^8$로 폭발하고, Chebyshev 점에서는 $0.639$, $0.132$, $1.77\times10^{-2}$, $3.4\times10^{-4}$, $6.38\times10^{-6}$으로 줄어든다. $f$는 실수축 위에서 무한 번 미분 가능하므로, 문제는 매끄러움이 아니라 다른 데 있다.
+를 $[-1,1]$의 고른 간격 노드에서 보간하면, 차수를 올릴수록 구간의 양 끝에서 오차가 끝없이 커진다는 것을 보였다\cite{runge1901}. 이것을 \term{Runge 현상}{Runge phenomenon}이라 한다. 최대 오차를 직접 재면 고른 간격에서는 $n=5,10,20,40,60$에서 $0.433$, $1.92$, $59.8$, $1.05\times10^5$, $2.41\times10^8$로 폭발하고, Chebyshev 점에서는 $0.639$, $0.132$, $1.77\times10^{-2}$, $3.4\times10^{-4}$, $6.38\times10^{-6}$으로 줄어든다. $f$는 실수축 위에서 무한 번 미분 가능하므로 매끄러움이 부족해서 생기는 일은 아니다.
 
 원인은 복소평면에 있다. $f$는 $x=\pm i/5$에 극점을 가진다. 실수 구간의 보간이 수렴하는 속도는 $f$가 복소평면의 어느 영역까지 해석적인지로 정해지고, 그 영역의 모양은 노드의 분포에 따라 다르다. Chebyshev 점에 대해서는 그 영역이 타원이다. $\rho>1$에 대해 $[-1,1]$을 초점으로 하고 두 반축의 합이 $\rho$인 타원의 내부를 $E_\rho$라 하고 \term{Bernstein 타원}{Bernstein ellipse}이라 부른다. $E_\rho$는 Joukowsky 사상 $x=(z+z^{-1})/2$에 의한 원환 $\rho^{-1}<|z|<\rho$의 상이다.
 
@@ -113,7 +113,7 @@ Chebyshev 점 $x_j=\cos(j\pi/n)$ 위에서는 모든 정수 $m\ge0$과 $0\le k\l
 $x_j=\cos\theta_j$, $\theta_j=j\pi/n$으로 두면 $T_{2mn\pm k}(x_j)=\cos\bigl((2mn\pm k)j\pi/n\bigr)=\cos(2mj\pi\pm kj\pi/n)=\cos(k\theta_j)=T_k(x_j)$이다.
 \end{proof}
 
-곧 Chebyshev 점 위에서는 높은 차수의 Chebyshev 다항식이 낮은 차수의 것과 구별되지 않는다. 이것을 \term{에일리어싱}{aliasing}이라 하며, 37장의 이산 푸리에 변환에서 같은 현상을 다시 본다.
+Chebyshev 점 위에서는 높은 차수의 Chebyshev 다항식이 낮은 차수의 것과 구별되지 않는다. 이것을 \term{에일리어싱}{aliasing}이라 하며, 37장의 이산 푸리에 변환에서 같은 현상을 다시 본다.
 
 \begin{theorem}
 \label{thm:cheb-interp-analytic}
@@ -194,7 +194,7 @@ p(x)=\frac{\displaystyle\sum_{j=0}^n\frac{w_j}{x-x_j}y_j}{\displaystyle\sum_{j=0
 이다. 분자의 절댓값은 $\gamma_{3N}(1+u)\sum|\ell_jy_j|+u|p|+\gamma_{3N-1}\lambda_n|p|$ 이하이고, $\gamma_{3N}(1+u)\le\gamma_{3N+1}$, $u+\gamma_{3N-1}\lambda_n\le\gamma_{3N}\lambda_n$($\lambda_n\ge1$이므로)를 쓰면 정리의 부등식이다.
 \end{proof}
 
-$\sum_j|\ell_jy_j|\le\lambda_n(x)\max|y_j|$이므로 오차는 대략 $3Nu\,\lambda_n(x)\max|y_j|$이다. 곧 둘째 공식의 반올림 오차는 문제 자체의 조건수 $\lambda_n(x)$를 넘지 않는다. Chebyshev 점에서는 $\lambda_n$이 작으므로 결과가 거의 최선이다. 실제로 $f(x)=\sin(\pi x)+1/2$을 보간하고 분자와 분모를 정리의 순서대로 더해 계산한 값의 오차를 정확한 유리수 산술로 재면, 오차는 Chebyshev 점 $n=40$의 세 평가점에서 $8.9\times10^{-16}$ 이하이고 정리의 상계는 $5.7\times10^{-14}$ 이하였다. 고른 간격 $n=40$의 $x=-0.987$에서는 $\lambda_n(x)=4.6\times10^9$이어서 상계가 $6.1\times10^{-5}$로 커지고, 실제 오차는 $1.1\times10^{-7}$이었다. 상계는 최악의 반올림을 가정한 것이어서 실제 오차보다 크지만, 조건수와 함께 커진다는 모양은 맞다. 고른 간격 노드의 문제는 계산 방법이 아니라 문제 자체에 있다. 첫째 공식은 후진 안정하지만, 둘째 공식이 노드 밖의 외삽에서 불안정해질 수 있다는 것은 Webb, Trefethen, Gonnet이 분석했다\cite{webb2012extrapolation}.
+$\sum_j|\ell_jy_j|\le\lambda_n(x)\max|y_j|$이므로 오차는 대략 $3Nu\,\lambda_n(x)\max|y_j|$이다. 둘째 공식의 반올림 오차는 문제 자체의 조건수 $\lambda_n(x)$를 넘지 않는다. Chebyshev 점에서는 $\lambda_n$이 작으므로 결과가 거의 최선이다. 실제로 $f(x)=\sin(\pi x)+1/2$을 보간하고 분자와 분모를 정리의 순서대로 더해 계산한 값의 오차를 정확한 유리수 산술로 재면, 오차는 Chebyshev 점 $n=40$의 세 평가점에서 $8.9\times10^{-16}$ 이하이고 정리의 상계는 $5.7\times10^{-14}$ 이하였다. 고른 간격 $n=40$의 $x=-0.987$에서는 $\lambda_n(x)=4.6\times10^9$이어서 상계가 $6.1\times10^{-5}$로 커지고, 실제 오차는 $1.1\times10^{-7}$이었다. 상계는 최악의 반올림을 가정한 것이어서 실제 오차보다 크지만 조건수와 함께 커진다는 모양은 맞다. 고른 간격 노드의 문제는 계산 방법이 아니라 문제 자체에 있다. 첫째 공식은 후진 안정하지만 둘째 공식이 노드 밖의 외삽에서 불안정해질 수 있다는 것은 Webb, Trefethen, Gonnet이 분석했다\cite{webb2012extrapolation}.
 
 \section{나눗셈 차분과 Newton 꼴}
 \label{sec:newton}
@@ -231,7 +231,7 @@ p_k(x)=\frac{(x-x_0)q(x)-(x-x_k)r(x)}{x_k-x_0}
 
 노드에서 값뿐 아니라 도함수 값까지 맞추는 것이 \term{Hermite 보간}{Hermite interpolation}이다. 노드 $x_j$에서 $f(x_j),f'(x_j),\dots,f^{(s_j-1)}(x_j)$를 맞추는 차수 $\sum_js_j-1$ 이하의 다항식은 유일하게 존재한다. 증명은 \cref{thm:interp-unique}와 같다. 두 해의 차가 각 $x_j$에서 $s_j$중근을 가지므로 근이 차수보다 많다.
 
-나눗셈 차분은 \cref{prop:divided-difference}의 둘째 주장 덕분에 겹친 노드로 자연스럽게 이어진다. 노드들이 한 점 $x$로 모이면 $f[x,\dots,x]$($s+1$개)$=f^{(s)}(x)/s!$로 정의하는 것이 연속적인 연장이다. 그러면 같은 노드를 $s_j$번 되풀이해 적고, 같은 점끼리의 차분이 나오는 자리에 $f^{(s)}(x_j)/s!$를 넣어 차분표를 채우면 Hermite 보간 다항식의 Newton 꼴을 얻는다. 같은 점의 반복은 표에서 붙어 있어야 하는데, 그래야 $0/0$이 되는 자리가 정확히 도함수 자료가 있는 자리가 된다. Krogh는 이 표와 평가, 그리고 보간 다항식의 도함수를 함께 구하는 효율적인 알고리즘을 만들었다\cite{krogh1970}. 평가점 $x$에서 Newton 꼴의 중심들을 차례로 $x$로 옮기면, 계수들이 $x$에서의 Taylor 계수 $p^{(m)}(x)/m!$이 된다.
+나눗셈 차분은 \cref{prop:divided-difference}의 둘째 주장 덕분에 겹친 노드로 자연스럽게 이어진다. 노드들이 한 점 $x$로 모이면 $f[x,\dots,x]$($s+1$개)$=f^{(s)}(x)/s!$로 정의하는 것이 연속적인 연장이다. 그러면 같은 노드를 $s_j$번 되풀이해 적고, 같은 점끼리의 차분이 나오는 자리에 $f^{(s)}(x_j)/s!$를 넣어 차분표를 채우면 Hermite 보간 다항식의 Newton 꼴을 얻는다. 같은 점의 반복은 표에서 붙어 있어야 한다. 그래야 $0/0$이 되는 자리가 정확히 도함수 자료가 있는 자리가 된다. Krogh는 이 표와 평가, 그리고 보간 다항식의 도함수를 함께 구하는 효율적인 알고리즘을 만들었다\cite{krogh1970}. 평가점 $x$에서 Newton 꼴의 중심들을 차례로 $x$로 옮기면, 계수들이 $x$에서의 Taylor 계수 $p^{(m)}(x)/m!$이 된다.
 
 \section{stardust의 다항식 보간}
 \label{sec:interp-stardust}
@@ -246,7 +246,7 @@ stardust의 \code{BarycentricInterpolator}는 둘째 무게중심 공식이다. 
 
 \section{맺음}
 
-다항식 보간의 이론은 노드의 선택에서 시작해 노드의 선택으로 끝난다. 오차 공식의 $\omega(x)$, Lebesgue 상수, 해석 함수의 수렴 영역은 모두 같은 사실을 다른 언어로 말한다. 고른 간격의 노드는 양 끝에서 너무 듬성하고, Chebyshev 점처럼 양 끝으로 갈수록 촘촘한 노드라야 다항식 보간이 제 힘을 낸다. 계산의 꼴도 그만큼 중요해서, 같은 다항식이라도 단항식 계수로는 $10^{-2}$에서 멈추고 무게중심 공식으로는 기계 정밀도까지 간다. 그러나 노드를 고를 수 없는 경우도 많다. 측정값은 대개 고른 간격으로 온다. 다음 장에서는 다항식 대신 유리함수를 써서 고른 간격에서도 안정한 보간과, 극점을 가진 함수를 효율적으로 근사하는 방법을 본다.
+다항식 보간의 이론은 노드의 선택에서 시작해 노드의 선택으로 끝난다. 오차 공식의 $\omega(x)$, Lebesgue 상수, 해석 함수의 수렴 영역은 모두 같은 사실을 다른 방식으로 보여 준다. 고른 간격의 노드는 양 끝에서 너무 듬성하고, Chebyshev 점처럼 양 끝으로 갈수록 촘촘한 노드라야 다항식 보간이 제 힘을 낸다. 계산의 꼴도 그만큼 중요해서, 같은 다항식이라도 단항식 계수로는 $10^{-2}$에서 멈추고 무게중심 공식으로는 기계 정밀도까지 간다. 그러나 노드를 고를 수 없는 경우도 많다. 측정값은 대개 고른 간격으로 온다. 다음 장에서는 다항식 대신 유리함수를 써서 고른 간격에서도 안정한 보간과, 극점을 가진 함수를 효율적으로 근사하는 방법을 본다.
 
 다항식 보간과 근사를 현대적으로 다룬 책으로는 Trefethen\cite{trefethen2019atap}이 가장 읽기 좋고, 고전적인 이론은 Davis의 책\cite{davis1975interpolation}에 정리되어 있다.
 
