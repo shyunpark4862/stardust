@@ -1,0 +1,943 @@
+%% 48장 Gaussian Elimination and LU Factorization — Theory
+\chapter{Gaussian Elimination and LU Factorization}
+\label{ch:lu}
+
+\abstract{가우스 소거는 행렬을 단위 하삼각 $L$과 상삼각 $U$의 곱으로 나누는 일이다. 이 장은 LU 분해의 존재와 부분 피벗의 안정성 이론에서 시작해 블록 알고리즘과 재귀 알고리즘으로 가고, stardust의 \code{lu}, \code{solve}, \code{lu\_solve}, \code{inv}, \code{det}, \code{slogdet}이 LAPACK을 감싸 그것을 어떻게 구현하는지까지 따라간다.}
+
+\section{Elimination as Factorization}
+\label{sec:lu-factorization}
+
+\subsection{One Step of Elimination}
+
+$n\times n$ 행렬 $A$로 $Ax=b$를 푼다고 하자. 가우스 소거의 첫 단계는 첫 행의 배수를 아래 행들에서 빼서 첫 열의 대각 아래를 $0$으로 만든다. $a_{11}\ne0$이면 \term{승수}{multiplier} $\ell_{i1}=a_{i1}/a_{11}$($i=2,\dots,n$)를 쓰고 이 연산은 행렬
+\[
+M_1=I-\ell_1e_1^{\mathsf T},\qquad \ell_1=(0,\ell_{21},\dots,\ell_{n1})^{\mathsf T}
+\]
+을 왼쪽에서 곱하는 것과 같다. $A$를 첫 행과 첫 열로 나누어 쓰면 이 단계가 무엇을 남기는지가 분명해진다.
+\begin{equation}
+\label{eq:lu-schur-step}
+A=\begin{pmatrix}a_{11}&a_{12}^{\mathsf T}\\a_{21}&A_{22}\end{pmatrix}
+=\begin{pmatrix}1&0\\a_{21}/a_{11}&I\end{pmatrix}
+\begin{pmatrix}a_{11}&a_{12}^{\mathsf T}\\0&S\end{pmatrix},\qquad
+S=A_{22}-\frac{a_{21}a_{12}^{\mathsf T}}{a_{11}}.
+\end{equation}
+오른쪽의 곱을 직접 전개하면 왼쪽이 된다. $(2,2)$ 블록이 $(a_{21}/a_{11})a_{12}^{\mathsf T}+S=A_{22}$이기 때문이다. $S$를 $a_{11}$에 대한 \term{Schur 보수}{Schur complement}라 한다. 소거의 한 단계는 승수 열 하나를 $L$에 적고, 첫 행을 $U$에 적고, 남은 $(n-1)\times(n-1)$ 문제를 $S$로 바꾸는 일이다(\cref{fig:lu-step}). $S$의 원소 하나를 고치는 데 곱셈 하나와 뺄셈 하나가 드므로 한 단계의 비용은 $2(n-1)^2$ 플롭에 나눗셈 $n-1$번이다.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[x=0.36cm,y=0.36cm,font=\small]
+  % before
+  \draw (0,0) rectangle (6,6);
+  \fill[gray!45] (0,5) rectangle (1,6);
+  \fill[gray!20] (1,5) rectangle (6,6);
+  \fill[gray!20] (0,0) rectangle (1,5);
+  \node at (0.5,5.5) {$a_{11}$};
+  \node at (3.5,5.5) {$a_{12}^{\mathsf T}$};
+  \node at (0.5,2.5) {$a_{21}$};
+  \node at (3.5,2.5) {$A_{22}$};
+  \node at (3,-0.9) {$A$};
+  \draw[->,thick] (6.8,3) -- (8.6,3);
+  % after: L column, U row, S
+  \begin{scope}[xshift=8.1cm]
+  \draw (0,0) rectangle (6,6);
+  \fill[gray!45] (0,5) rectangle (1,6);
+  \fill[gray!45] (1,5) rectangle (6,6);
+  \fill[pattern=north east lines] (0,0) rectangle (1,5);
+  \draw (0,0) rectangle (1,5);
+  \fill[gray!10] (1,0) rectangle (6,5);
+  \node at (0.5,5.5) {$u_{11}$};
+  \node at (3.5,5.5) {$u_{12}^{\mathsf T}$};
+  \node[fill=white,inner sep=1pt] at (0.5,2.5) {$\ell_{1}$};
+  \node at (3.5,2.5) {$S$};
+  \node at (3,-0.9) {한 단계 뒤 (같은 자리)};
+  \end{scope}
+\end{tikzpicture}
+\caption{소거의 한 단계. 첫 행은 그대로 $U$의 첫 행이 되고, 첫 열의 대각 아래는 승수 $\ell_1=a_{21}/a_{11}$로 바뀌며, 나머지는 Schur 보수 $S=A_{22}-\ell_1u_{12}^{\mathsf T}$로 갱신된다. 구현은 이 셋을 모두 $A$의 자리에 덮어쓴다.}
+\label{fig:lu-step}
+\end{figure}
+
+$S$에 같은 일을 되풀이하면 $n-1$번의 단계 뒤에 상삼각 행렬 $U=M_{n-1}\cdots M_1A$가 남는다. 이것을 $A$에 대해 풀면 $A=M_1^{-1}\cdots M_{n-1}^{-1}U$이고, 다음 보조정리는 앞의 곱이 승수를 제자리에 늘어놓은 단위 하삼각 행렬이라는 것을 보인다.
+
+\begin{lemma}
+\label{lem:lu-multipliers}
+$\ell_k$의 처음 $k$개 성분이 $0$일 때 $M_k=I-\ell_ke_k^{\mathsf T}$의 역은 $I+\ell_ke_k^{\mathsf T}$이고
+\[
+M_1^{-1}M_2^{-1}\cdots M_{n-1}^{-1}=I+\sum_{k=1}^{n-1}\ell_ke_k^{\mathsf T}
+\]
+이다. 곧 이 곱의 $(i,k)$ 원소($i>k$)는 $k$번째 단계의 승수 $\ell_{ik}$이다.
+\end{lemma}
+
+\begin{proof}
+$e_k^{\mathsf T}\ell_k=0$이므로 $(I-\ell_ke_k^{\mathsf T})(I+\ell_ke_k^{\mathsf T})=I-\ell_k(e_k^{\mathsf T}\ell_k)e_k^{\mathsf T}=I$이다. 곱에 대해서는 $j<k$이면 $e_j^{\mathsf T}\ell_k=0$이라는 것을 쓴다. $(I+\ell_1e_1^{\mathsf T})\cdots(I+\ell_{n-1}e_{n-1}^{\mathsf T})$를 전개하면 둘 이상의 $\ell_je_j^{\mathsf T}$가 곱해진 항은 모두 $\ell_{j}e_{j}^{\mathsf T}\ell_{k}e_k^{\mathsf T}$($j<k$) 꼴의 인수를 품는다. 그런데 $e_j^{\mathsf T}\ell_k=0$이므로 그런 항은 모두 $0$이고 일차 항만 남는다.
+\end{proof}
+
+순서가 중요하다는 점을 짚어 둔다. 역순의 곱 $M_{n-1}\cdots M_1$은 승수가 깔끔하게 늘어서지 않는다. $L$을 따로 계산할 필요 없이 승수를 $A$의 대각 아래에 적어 두기만 하면 된다는 것이 위 보조정리의 실질적인 뜻이고, 모든 LU 구현이 $L$과 $U$를 $A$ 하나의 자리에 덮어쓰는 까닭이다.
+
+\subsection{Existence and Uniqueness}
+
+소거가 끝까지 가려면 단계마다 대각 원소, 곧 \term{피벗}{pivot}이 $0$이 아니어야 한다. 그 조건을 $A$로 말하면 다음과 같다. $A_k$는 $A$의 왼쪽 위 $k\times k$ 부분행렬, 곧 \term{선행 주부분행렬}{leading principal submatrix}이다.
+
+\begin{theorem}
+\label{thm:lu-existence}
+$A\in\mathbb C^{n\times n}$가 단위 하삼각 $L$과 정칙 상삼각 $U$의 곱 $A=LU$로 쓰일 필요충분조건은 모든 $k=1,\dots,n$에서 $A_k$가 정칙인 것이다. 이때 분해는 하나뿐이고 $u_{kk}=\det A_k/\det A_{k-1}$($\det A_0=1$)이다.
+\end{theorem}
+
+\begin{proof}
+$A=LU$이면 블록 곱으로 $A_k=L_kU_k$이다. $L$과 $U$가 삼각이어서 왼쪽 위 블록의 곱에 나머지 블록이 끼어들지 않기 때문이다. 그러므로 $\det A_k=\det L_k\det U_k=u_{11}\cdots u_{kk}\ne0$이고, 이웃한 두 $k$의 몫이 $u_{kk}=\det A_k/\det A_{k-1}$이다.
+
+역은 $n$에 대한 귀납법이다. $n=1$은 $L=1$, $U=a_{11}$이다. $n>1$이면 $A_{n-1}$의 모든 선행 주부분행렬이 정칙이므로 귀납 가정으로 $A_{n-1}=L_{n-1}U_{n-1}$이다. 이제
+\[
+A=\begin{pmatrix}A_{n-1}&c\\r^{\mathsf T}&\alpha\end{pmatrix}
+=\begin{pmatrix}L_{n-1}&0\\ \ell^{\mathsf T}&1\end{pmatrix}
+\begin{pmatrix}U_{n-1}&u\\0&\beta\end{pmatrix}
+\]
+가 되도록 $L_{n-1}u=c$, $\ell^{\mathsf T}U_{n-1}=r^{\mathsf T}$, $\beta=\alpha-\ell^{\mathsf T}u$로 놓는다. $L_{n-1}$과 $U_{n-1}$이 정칙이므로 $u$와 $\ell$은 하나로 정해지고, $\det A=\det U_{n-1}\,\beta\ne0$에서 $\beta\ne0$이다.
+
+유일성: $L_1U_1=L_2U_2$이면 $L_2^{-1}L_1=U_2U_1^{-1}$이다. 왼쪽은 단위 하삼각이고 오른쪽은 상삼각이므로 둘 다 대각이어야 하며, 왼쪽의 대각이 모두 $1$이므로 단위행렬이다.
+\end{proof}
+
+이 정리는 피벗 없이 소거할 수 있는 행렬을 정확히 가려내지만 계산에는 쓸모가 적다. $A_k$가 정칙이어도 거의 특이하면 피벗이 작아지고, 다음 절에서 보듯 작은 피벗은 반올림 오차를 크게 키운다. 정칙이 아닌 $A$나 $m\ne n$인 직사각 행렬에도 소거는 그대로 할 수 있다. $m\times n$ 행렬을 $p=\min(m,n)$번 소거하면 $m\times p$ 단위 하사다리꼴 $L$과 $p\times n$ 상사다리꼴 $U$가 나오고, 피벗이 $0$인 단계에서는 그 열을 건너뛰면($\ell_k=0$) 분해는 여전히 존재한다. 이때 $U$의 대각에 $0$이 나타난다. stardust의 \code{lu}가 특이 행렬에도 에러를 내지 않는 것이 이 사실에 기대고 있다(\cref{sec:lu-stardust-family}).
+
+\section{Pivoting and Growth}
+\label{sec:lu-pivoting}
+
+\subsection{Why Pivoting Is Needed}
+
+피벗이 정확히 $0$이 아니어도 작으면 문제가 생긴다. $\epsilon=10^{-20}$일 때
+\[
+A=\begin{pmatrix}\epsilon&1\\1&1\end{pmatrix},\qquad b=\begin{pmatrix}1\\2\end{pmatrix}
+\]
+의 해는 $x_1=1/(1-\epsilon)$, $x_2=(1-2\epsilon)/(1-\epsilon)$로 둘 다 $1$에 매우 가깝다. 피벗 없이 소거하면 승수는 $\ell_{21}=10^{20}$이고 $u_{22}=1-10^{20}$은 binary64에서 $-10^{20}$으로 반올림된다. 뒤로 대입하면 $\hat x_2=\mathrm{fl}((2-10^{20})/(1-10^{20}))=1$은 맞지만 $\hat x_1=\mathrm{fl}((1-\hat x_2)/\epsilon)=0$이다. 오차는 $100\%$이다. 잃어버린 것은 $u_{22}$를 만들 때 $a_{22}=1$이 $10^{20}$에 묻혀 사라진 정보이다. 계산된 $\hat L\hat U$는 $\begin{pmatrix}\epsilon&1\\1&0\end{pmatrix}$이어서 $A$와 $(2,2)$ 원소가 $1$만큼 다르다. 이 차이는 $A$의 원소 크기만큼 크다. 반면 두 행을 바꾸고 소거하면 승수가 $\epsilon$이고 $u_{22}=1-\epsilon$이 정확하게 남아 $\hat x$가 해와 반올림 수준에서 같다.
+
+\subsection{Partial Pivoting}
+
+\term{부분 피벗}{partial pivoting}은 $k$번째 단계에서 $k$열의 대각과 그 아래 원소 가운데 절댓값이 가장 큰 것을 찾아 그 행을 $k$번째 행과 바꾼 뒤에 소거한다. 그러면 모든 승수가 $|\ell_{ik}|\le1$이다. 행 교환을 순열 행렬 $P_k$로 쓰면 소거는 $U=M_{n-1}P_{n-1}\cdots M_1P_1A$이다.
+
+\begin{theorem}
+\label{thm:lu-partial-pivoting}
+모든 $A\in\mathbb C^{n\times n}$에 대해 부분 피벗 소거는 $PA=LU$를 준다. $P$는 순열 행렬, $L$은 $|\ell_{ij}|\le1$인 단위 하삼각, $U$는 상삼각이고, $A$가 정칙이면 $U$도 정칙이다. $L$의 $k$열은 $k$번째 단계의 승수를 그 뒤의 교환 $P_{n-1}\cdots P_{k+1}$로 섞은 것이다.
+\end{theorem}
+
+\begin{proof}
+$k$번째 단계에서 $k$열의 대각 아래가 모두 $0$이면 교환 없이 $\ell_k=0$으로 둔다($M_k=I$). 그렇지 않으면 가장 큰 원소를 고르므로 $|\ell_{ik}|\le1$이다. 이제
+\[
+\Pi_k=P_{n-1}\cdots P_{k+1}\quad(\Pi_{n-1}=I),\qquad\tilde M_k=\Pi_kM_k\Pi_k^{-1}
+\]
+로 두자. $P_j$($j>k$)는 행 $j$와 그 아래의 한 행을 바꾸므로 $\Pi_k$는 $k$ 이하의 행을 건드리지 않고 $\Pi_ke_k=e_k$, $e_k^{\mathsf T}\Pi_k^{-1}=(\Pi_ke_k)^{\mathsf T}=e_k^{\mathsf T}$이다(순열 행렬은 직교한다). 그러므로 $\tilde M_k=I-(\Pi_k\ell_k)e_k^{\mathsf T}$이고 $\tilde\ell_k=\Pi_k\ell_k$는 처음 $k$개 성분이 $0$인 채로 성분만 섞인 벡터이다. 이제 $\Pi_{k-1}=\Pi_kP_k$이므로 $\Pi_k^{-1}\Pi_{k-1}=P_k$이고
+\begin{align*}
+\tilde M_{n-1}\cdots\tilde M_1\,\Pi_0
+&=\Pi_{n-1}M_{n-1}(\Pi_{n-1}^{-1}\Pi_{n-2})M_{n-2}\cdots M_1(\Pi_1^{-1}\Pi_0)\\
+&=M_{n-1}P_{n-1}\cdots M_1P_1
+\end{align*}
+이다. 따라서 $P=\Pi_0=P_{n-1}\cdots P_1$, $L=\tilde M_1^{-1}\cdots\tilde M_{n-1}^{-1}$로 두면 $\tilde M_{n-1}\cdots\tilde M_1PA=U$, 곧 $PA=LU$이고 \cref{lem:lu-multipliers}로 $L$은 섞인 승수 $\tilde\ell_k$를 열로 가진 단위 하삼각이다. 섞어도 크기는 그대로이므로 $|\ell_{ij}|\le1$이다. $A$가 정칙이면 각 단계에서 $k$열의 대각과 그 아래가 모두 $0$일 수 없으므로(그러면 $M_{k-1}P_{k-1}\cdots M_1P_1A$의 앞 $k$열이 일차 종속이다) 피벗이 $0$이 아니고 $U$가 정칙이다.
+\end{proof}
+
+LAPACK은 $P$를 행렬로 들고 다니지 않고 정수 배열 \code{ipiv}로 기록한다. \code{ipiv(k)} $=p$는 ``$k$번째 단계에서 행 $k$와 행 $p$를 바꿨다''는 뜻이다(1부터 센다). 교환은 차례로 적용해야 뜻을 가지므로 \code{ipiv}는 순열 그 자체가 아니다. stardust의 \code{lu}는 이것을 ``$x$의 몇 번째 행이 $LU$의 $r$번째 행이 되는가''라는 순열 \code{perm}으로 바꿔 돌려준다(\cref{alg:lu-perm}).
+
+\subsection{Growth Factor}
+
+부분 피벗이 승수를 $1$ 이하로 묶는다고 해서 $U$의 원소까지 작게 묶이지는 않는다. 다음 절의 오차 해석에서 중요한 양은 소거 중에 나타나는 원소의 크기이며, 그 크기를 재는 것이 \term{성장 인자}{growth factor}
+\[
+\rho_n=\frac{\max_{i,j,k}|a^{(k)}_{ij}|}{\max_{i,j}|a_{ij}|}
+\]
+이다. $a^{(k)}_{ij}$는 $k$번째 단계 뒤의 원소이다.
+
+\begin{proposition}
+\label{prop:lu-growth-bound}
+부분 피벗에서 $\rho_n\le2^{n-1}$이고 이 상한은 다음 행렬에서 등호가 된다.
+\[
+W_n=\begin{pmatrix}
+1&&&&1\\
+-1&1&&&1\\
+-1&-1&1&&1\\
+\vdots&&&\ddots&\vdots\\
+-1&-1&\cdots&-1&1
+\end{pmatrix}
+\]
+\end{proposition}
+
+\begin{proof}
+$|\ell_{ik}|\le1$이므로 $|a^{(k+1)}_{ij}|=|a^{(k)}_{ij}-\ell_{ik}a^{(k)}_{kj}|\le2\max|a^{(k)}|$이고, $n-1$번의 단계에서 최댓값이 매 단계 많아야 두 배가 된다. $W_n$에서는 $k$번째 단계에 $k$열의 대각 아래가 모두 $-1$이고 피벗이 $1$이다. 절댓값이 같은 후보 가운데 처음 것을 고르는 규칙(LAPACK의 \code{idamax})에서는 교환이 일어나지 않는다. 승수는 모두 $-1$이고 앞의 $n-1$열의 대각 아래가 $0$이 되는 동안 대각은 $1$로 남는다. 마지막 열은 $k$번째 단계에 대각 아래의 원소들이 모두 $a_{kn}^{(k)}$를 더해 받는다. 처음에 모두 $1$이므로 $k$번째 단계 뒤에 $a^{(k)}_{in}=2^{k}$($i>k$)이고 결국 $u_{nn}=2^{n-1}$이다.
+\end{proof}
+
+$n=64$이면 $2^{63}\approx9.2\times10^{18}$이고 binary64의 정밀도를 모두 잃는다. 그런데 실제 계산에서 이런 성장은 거의 보이지 않는다. \cref{fig:lu-growth}는 표준 정규 원소의 무작위 행렬에서 잰 성장이다. 소거 중 가장 큰 원소를 원소의 표준편차 $\sigma$로 나누면 중앙값이 $0.85\,n^{2/3}$ 곁에 놓인다(로그 축에서 맞춘 기울기는 $0.69$). Trefethen과 Schreiber가 관찰한 $n^{2/3}$ 법칙이다\cite{trefethen1990average}. 분모를 $\max|a_{ij}|$로 바꾼 $\rho_n$은 기울기가 $0.56$으로 조금 작은데, 정규 표본 $n^2$개의 최댓값이 $\sqrt{4\ln n}$처럼 자라 분모를 키우기 때문이다. 지수적 성장이 실제 응용에서 나타난 예(두 점 경계값 문제의 다중 사격법, Wright\cite{wright1993})가 있지만 드물고, 그 드묾을 설명하는 완결된 이론은 아직 없다. 이 간극이 부분 피벗이 ``이론상 불안정하지만 실제로는 안정한'' 알고리즘으로 불리는 까닭이다.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}
+\begin{loglogaxis}[width=0.86\textwidth,height=0.5\textwidth,
+  xlabel={$n$},ylabel={성장},grid=major,grid style={gray!25},
+  legend pos=south east,legend style={font=\small,draw=none,fill=white,fill opacity=0.85,text opacity=1},
+  xmin=7,xmax=1400,ymin=1,ymax=200]
+\addplot[only marks,mark=*,mark size=1.3pt,black] table[x=n,y=sigmed]{figures/48/growth.dat};
+\addlegendentry{$\max|a^{(k)}_{ij}|/\sigma$의 중앙값}
+\addplot[domain=7:1400,samples=40,dashed,black] {0.85*x^(2/3)};
+\addlegendentry{$0.85\,n^{2/3}$}
+\addplot[only marks,mark=square*,mark size=1.2pt,black!55] table[x=n,y=median]{figures/48/growth.dat};
+\addlegendentry{$\rho_n$의 중앙값}
+\addplot[only marks,mark=triangle*,mark size=1.5pt,black!55] table[x=n,y=max]{figures/48/growth.dat};
+\addlegendentry{$\rho_n$의 최댓값}
+\end{loglogaxis}
+\end{tikzpicture}
+\caption{표준 정규 원소($\sigma=1$)의 무작위 행렬에서 잰 부분 피벗의 성장. $n=10$에서 $2000$개, $n=1000$에서 $12$개의 행렬을 썼다(\code{figures/48/growth.py}). 상한 $2^{n-1}$은 $n=64$에서 이미 $10^{18}$을 넘지만 관찰된 성장은 수십 배에 그친다.}
+\label{fig:lu-growth}
+\end{figure}
+
+부분 피벗 말고도 피벗 규칙이 있다. \term{완전 피벗}{complete pivoting}은 남은 부분행렬 전체에서 가장 큰 원소를 골라 행과 열을 함께 바꾼다. 성장 인자의 상한이 $n^{1/2+\ln n/4}$ 정도로 다항식에 가깝다는 Wilkinson의 결과가 있지만\cite{wilkinson1961error} 단계마다 $O((n-k)^2)$개의 원소를 훑어야 하므로 전체 비교 횟수가 $O(n^3)$이 되고, 그보다 나쁜 것은 블록 알고리즘으로 바꿀 수 없다는 점이다. 피벗을 고르려면 남은 행렬 전체가 최신이어야 하기 때문이다. 행과 열에서 번갈아 최대를 찾는 \term{룩 피벗}{rook pivoting}이 그 사이에 있다. LAPACK의 \code{getrf}와 그것을 부르는 stardust는 부분 피벗만 쓴다.
+
+복소 행렬에는 한 가지가 더 있다. LAPACK의 \code{izamax}는 계산을 아끼려고 $|z|$ 대신 $|\operatorname{Re}z|+|\operatorname{Im}z|$가 가장 큰 원소를 고른다. 그러면 $|\ell_{ik}|\le1$이 아니라 $|\ell_{ik}|\le\sqrt2$만 보장된다. $|z|\le|\operatorname{Re}z|+|\operatorname{Im}z|\le\sqrt2|z|$이므로
+\[
+|\ell_{ik}|=\frac{|a_{ik}|}{|a_{kk}|}\le\frac{|\operatorname{Re}a_{ik}|+|\operatorname{Im}a_{ik}|}{(|\operatorname{Re}a_{kk}|+|\operatorname{Im}a_{kk}|)/\sqrt2}\le\sqrt2
+\]
+이기 때문이다. stardust의 시험은 복소 \code{lu}의 $L$을 이 $\sqrt2$로 확인한다.
+
+\section{Backward Error Analysis}
+\label{sec:lu-backward-error}
+
+\subsection{The Error in the Factors}
+
+11장의 표준 모형 $\mathrm{fl}(a\mathbin{\mathrm{op}}b)=(a\mathbin{\mathrm{op}}b)(1+\delta)$, $|\delta|\le u$와 기호 $\gamma_k=ku/(1-ku)$($ku<1$)를 쓴다. 소거와 대입에 나오는 계산은 모두 다음 꼴이다.
+
+\begin{lemma}
+\label{lem:lu-recurrence}
+$y=(c-\sum_{i=1}^{k-1}a_ib_i)/b_k$를 $c$에서 차례로 $a_ib_i$를 빼고 마지막에 $b_k$로 나누어 계산하면 계산값 $\hat y$는
+\[
+\Bigl|c-\sum_{i=1}^{k-1}a_ib_i-b_k\hat y\Bigr|\le\gamma_k\Bigl(|b_k\hat y|+\sum_{i=1}^{k-1}|a_ib_i|\Bigr)
+\]
+을 만족한다. 나누지 않는 경우($b_k=1$)도 같다.
+\end{lemma}
+
+\begin{proof}
+$\hat s_0=c$, $\hat s_i=\mathrm{fl}(\hat s_{i-1}-\mathrm{fl}(a_ib_i))$로 두면 $\hat s_i=(\hat s_{i-1}-a_ib_i(1+\epsilon_i))(1+\delta_i)$이고 $\hat y=\hat s_{k-1}(1+\delta_k)/b_k$이다. 점화식을 펼치면
+\[
+\hat s_{k-1}=c\prod_{j=1}^{k-1}(1+\delta_j)-\sum_{i=1}^{k-1}a_ib_i(1+\epsilon_i)\prod_{j=i}^{k-1}(1+\delta_j)
+\]
+이다. 양변을 $\prod_{j=1}^{k-1}(1+\delta_j)$로 나누고 $\hat s_{k-1}=b_k\hat y/(1+\delta_k)$를 넣으면
+\[
+b_k\hat y\,(1+\delta_k)^{-1}\prod_{j=1}^{k-1}(1+\delta_j)^{-1}=c-\sum_{i=1}^{k-1}a_ib_i\,(1+\epsilon_i)\prod_{j=1}^{i-1}(1+\delta_j)^{-1}
+\]
+이다. 왼쪽의 인수는 $(1+\delta)^{-1}$ 꼴 $k$개의 곱이고 오른쪽 $i$번째 항의 인수는 $(1+\delta)^{\pm1}$ 꼴 $i$개의 곱이다. 11장의 보조정리로 그런 곱은 $1+\theta$, $|\theta|\le\gamma_k$로 쓸 수 있으므로 $b_k\hat y(1+\theta_0)=c-\sum_ia_ib_i(1+\theta_i)$이고 $|\theta_i|\le\gamma_k$이다. 옮겨 쓰면 $c-\sum_ia_ib_i-b_k\hat y=b_k\hat y\,\theta_0+\sum_ia_ib_i\,\theta_i$이고 절댓값을 취하면 결론이다. 나눗셈이 없으면 $\delta_k$가 없어 $\gamma_{k-1}$로도 충분하다. 빼는 순서를 바꿔도 각 항이 겪는 반올림은 $k$번을 넘지 않으므로 같은 상한이 성립한다.
+\end{proof}
+
+LU의 원소는 $u_{kj}=a_{kj}-\sum_{i<k}\ell_{ki}u_{ij}$($k\le j$)와 $\ell_{ik}=(a_{ik}-\sum_{j<k}\ell_{ij}u_{jk})/u_{kk}$($i>k$)로 정해진다. 루프를 어떤 순서로 돌리든(\cref{sec:lu-unblocked}) 원소 하나는 이 꼴의 빼기와 한 번의 나눗셈으로 만들어지고, 빼는 순서는 보조정리의 상한에 영향을 주지 않으므로 보조정리가 그대로 적용된다.
+
+\begin{theorem}[Wilkinson]
+\label{thm:lu-backward}
+피벗 없이 소거해 계산한 인수 $\hat L$, $\hat U$는
+\[
+\hat L\hat U=A+\Delta A,\qquad|\Delta A|\le\gamma_n|\hat L||\hat U|
+\]
+를 만족한다. 부분 피벗이면 $A$를 $PA$로 바꾸어 같은 식이 성립한다. 부등식과 절댓값은 원소별이다.
+\end{theorem}
+
+\begin{proof}
+$k\le j$이면 \cref{lem:lu-recurrence}를 $c=a_{kj}$, $b_k=1$에 쓰면 $|a_{kj}-\sum_{i\le k}\hat\ell_{ki}\hat u_{ij}|\le\gamma_k\sum_{i\le k}|\hat\ell_{ki}||\hat u_{ij}|$이다($\hat\ell_{kk}=1$). $i>k$이면 $c=a_{ik}$, $b_k=\hat u_{kk}$에 써서 $|a_{ik}-\sum_{j\le k}\hat\ell_{ij}\hat u_{jk}|\le\gamma_k\sum_{j\le k}|\hat\ell_{ij}||\hat u_{jk}|$이다. 두 경우 모두 왼쪽 합은 $(\hat L\hat U)$의 해당 원소이고 오른쪽 합은 $(|\hat L||\hat U|)$의 해당 원소이며, $k\le n$이므로 $\gamma_k\le\gamma_n$이다. 부분 피벗은 소거 전에 행 순서를 정하는 것일 뿐 산술 연산을 바꾸지 않으므로 $PA$에 대해 같은 논증이 성립한다.
+\end{proof}
+
+\subsection{The Error in the Solution}
+
+$Ax=b$는 $Ly=Pb$와 $Ux=y$ 두 번의 삼각 풀이로 푼다. 전진 대입 $y_i=(b_i-\sum_{j<i}\ell_{ij}y_j)/\ell_{ii}$에 \cref{lem:lu-recurrence}를 쓰면 같은 방법으로 계산값 $\hat y$가 $(L+\Delta L)\hat y=b$, $|\Delta L|\le\gamma_n|L|$을 만족한다. 후진 대입도 같다.
+
+\begin{theorem}
+\label{thm:lu-solve-backward}
+부분 피벗 LU와 두 번의 대입으로 계산한 해 $\hat x$는
+\[
+(A+\Delta A)\hat x=b,\qquad|\Delta A|\le\gamma_{3n}P^{\mathsf T}|\hat L||\hat U|
+\]
+를 만족한다.
+\end{theorem}
+
+\begin{proof}
+$P$를 $A$와 $b$에 미리 적용했다고 보고 $P=I$로 둔다. $(\hat L+\Delta L)\hat y=b$, $(\hat U+\Delta U)\hat x=\hat y$이므로
+\[
+b=(\hat L+\Delta L)(\hat U+\Delta U)\hat x=(A+\Delta A_1+\hat L\Delta U+\Delta L\hat U+\Delta L\Delta U)\hat x
+\]
+이고 $\Delta A_1=\hat L\hat U-A$이다. 원소별로 $|\Delta A_1|\le\gamma_n|\hat L||\hat U|$, $|\hat L\Delta U|+|\Delta L\hat U|\le2\gamma_n|\hat L||\hat U|$, $|\Delta L\Delta U|\le\gamma_n^2|\hat L||\hat U|$이다. $t=nu<1/3$으로 두면 $3\gamma_n+\gamma_n^2=(3t-2t^2)/(1-t)^2$이고, 이것이 $\gamma_{3n}=3t/(1-3t)$ 이하라는 것은 분모를 곱해 정리한 $3t(1-t)^2-(3t-2t^2)(1-3t)=5t^2-3t^3\ge0$에서 나온다.
+\end{proof}
+
+이 정리를 노름으로 바꾸면 성장 인자가 어디서 들어오는지 보인다. 부분 피벗이면 $|\hat\ell_{ij}|\le1$이고 $\hat U$의 원소는 소거 중의 원소이므로 $|\hat u_{ij}|\le\rho_n\max|a_{ij}|$이다. 그러면 $(|\hat L||\hat U|)_{ij}\le n\rho_n\max|a_{ij}|$이고 행의 합은 $n^2\rho_n\max|a_{ij}|\le n^2\rho_n\|A\|_\infty$ 이하이다. 곧
+\begin{equation}
+\label{eq:lu-normwise}
+\frac{\|\Delta A\|_\infty}{\|A\|_\infty}\le n^2\rho_n\gamma_{3n}.
+\end{equation}
+$n^2$은 원소별 상한을 모두 같은 방향으로 더한 결과라 실제로는 훨씬 작고, 결국 관건은 $\rho_n$이다. 부분 피벗 LU가 실제로 안정한 것은 $\rho_n$이 실제로 작기 때문이다.
+
+\subsection{Backward Error, Forward Error, and the Condition Number}
+
+계산한 해의 \term{후진 오차}{backward error}는 그 해를 정확한 해로 만드는 가장 작은 섭동이다. 정규화한 정의
+\[
+\eta(\hat x)=\min\{\epsilon:(A+\Delta A)\hat x=b+\Delta b,\ \|\Delta A\|\le\epsilon\|A\|,\ \|\Delta b\|\le\epsilon\|b\|\}
+\]
+는 계산할 수 있는 식을 가진다.
+
+\begin{theorem}[Rigal--Gaches]
+\label{thm:lu-rigal-gaches}
+벡터의 2-노름과 그에 따른 행렬 노름에서 $r=b-A\hat x$로 두면 $\eta(\hat x)=\|r\|/(\|A\|\|\hat x\|+\|b\|)$이다.
+\end{theorem}
+
+\begin{proof}
+$(A+\Delta A)\hat x=b+\Delta b$이면 $r=\Delta A\hat x-\Delta b$이므로 $\|r\|\le\epsilon(\|A\|\|\hat x\|+\|b\|)$이고 $\eta$는 적어도 오른쪽 값이다. 반대로 $\epsilon_\ast=\|r\|/(\|A\|\|\hat x\|+\|b\|)$에 대해
+\[
+\Delta A=\frac{\|A\|\|\hat x\|}{\|A\|\|\hat x\|+\|b\|}\cdot\frac{r\hat x^{\mathsf H}}{\|\hat x\|^2},\qquad
+\Delta b=-\frac{\|b\|}{\|A\|\|\hat x\|+\|b\|}\,r
+\]
+로 두면 $\Delta A\hat x-\Delta b=r$이어서 $(A+\Delta A)\hat x=b+\Delta b$이다. 계수 1인 $r\hat x^{\mathsf H}$의 2-노름은 $\|r\|\|\hat x\|$이므로 $\|\Delta A\|=\epsilon_\ast\|A\|$이고 $\|\Delta b\|=\epsilon_\ast\|b\|$이다. 그러므로 $\eta=\epsilon_\ast$이다.
+\end{proof}
+
+후진 오차가 작다고 해서 해가 정확한 것은 아니다. $(A+\Delta A)\hat x=b$이면 $\hat x-x=-A^{-1}\Delta A\hat x$이므로
+\[
+\frac{\|\hat x-x\|}{\|\hat x\|}\le\|A^{-1}\|\|\Delta A\|=\kappa(A)\frac{\|\Delta A\|}{\|A\|},\qquad\kappa(A)=\|A\|\|A^{-1}\|
+\]
+이다. 오른쪽의 $\hat x$를 $x$로 바꾼 꼴은 $\kappa\|\Delta A\|/\|A\|<1$일 때 분모에 $1-\kappa\|\Delta A\|/\|A\|$가 붙는다. 후진 안정한 알고리즘의 전진 오차는 조건수에 비례한다는 이 관계가 \cref{fig:lu-forward}에 그대로 나타난다. 후진 오차는 조건수와 상관없이 $u$ 근처에 머물고 전진 오차는 $\kappa(A)u$를 따라 오른다.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}
+\begin{loglogaxis}[width=0.86\textwidth,height=0.52\textwidth,
+  xlabel={$\kappa_2(A)$},ylabel={상대오차},grid=major,grid style={gray!25},
+  legend pos=north west,legend style={font=\small,draw=none,fill=none},
+  ymin=1e-18,ymax=1]
+\addplot[only marks,mark=*,mark size=1.1pt,black] table[x=kappa,y=fwd]{figures/48/errors.dat};
+\addlegendentry{전진 오차 $\|\hat x-x\|_2/\|x\|_2$}
+\addplot[only marks,mark=o,mark size=1.3pt,black!60] table[x=kappa,y=bwd]{figures/48/errors.dat};
+\addlegendentry{후진 오차 $\eta(\hat x)$}
+\addplot[domain=1:1e16,samples=20,dashed,black] {x*1.11e-16};
+\addlegendentry{$\kappa_2(A)\,u$}
+\end{loglogaxis}
+\end{tikzpicture}
+\caption{조건수를 정해 만든 $n=100$ 무작위 행렬에서 부분 피벗 LU로 푼 해의 오차. 만드는 방법은 \code{figures/48/errors.py}에 있다.}
+\label{fig:lu-forward}
+\end{figure}
+
+\subsection{Iterative Refinement}
+
+후진 오차가 이미 작다면 해를 더 정확하게 만드는 길은 조건수를 피하는 것밖에 없다. \term{반복 개선}{iterative refinement}은 이미 있는 LU 인수를 다시 써서 그것을 한다. 잔차 $r_i=b-Ax_i$를 구하고 $Ad_i=r_i$를 같은 인수로 풀어 $x_{i+1}=x_i+d_i$로 고친다. 계산한 $d_i$가 $(A+\Delta A_i)\hat d_i=r_i$를 만족한다고 하면
+\[
+x_{i+1}-x=x_i-x+(A+\Delta A_i)^{-1}A(x-x_i)=(A+\Delta A_i)^{-1}\Delta A_i\,(x_i-x)
+\]
+이다. 그러므로 잔차를 정확히 구한다면 오차는 한 번에 $\|A^{-1}\Delta A_i\|\lesssim\kappa(A)n^2\rho_n\gamma_{3n}$배로 줄어들고, 이 값이 $1$보다 충분히 작으면 몇 번 만에 수렴한다. 실제로 잔차를 작업 정밀도로 구하면 잔차의 반올림 오차가 한계를 정한다. 그래도 Skeel은 한 번의 개선만으로 원소별 후진 오차 $\omega(\hat x)=\min\{\epsilon:(A+\Delta A)\hat x=b+\Delta b,\ |\Delta A|\le\epsilon|A|,\ |\Delta b|\le\epsilon|b|\}$가 $O(u)$가 된다는 것을 보였다\cite{skeel1980refinement}. 증명의 줄거리는 이렇다. (i) 작업 정밀도로 구한 잔차는 $\hat r_0=r_0+\Delta r$, $|\Delta r|\le\gamma_{n+1}(|A||x_0|+|b|)$를 만족한다(\cref{lem:lu-recurrence}를 내적 하나에 쓴 것). (ii) 보정은 $(A+\Delta A)\hat d=\hat r_0$이고 $|\Delta A|\le\gamma_{3n}|\hat L||\hat U|$이다. (iii) 새 잔차는 $r_1=b-A(x_0+\hat d)=\hat r_0-\Delta r-A\hat d=\Delta A\,\hat d-\Delta r$이다. (iv) 보정 $\hat d$ 자체가 이미 처음 해의 오차만큼만 작으므로 $\Delta A\,\hat d$는 $u$의 제곱 크기이고, $|\hat L||\hat U|$와 $|A|$의 비와 $A^{-1}$의 원소별 조건수가 적당히 작다는 가정 아래 무시된다. 그러면 $|r_1|\lesssim|\Delta r|\le\gamma_{n+1}(|A||x_1|+|b|)$가 남고, 원소별 후진 오차의 Oettli--Prager 공식 $\omega(x)=\max_i|r_i|/(|A||x|+|b|)_i$로 $\omega(x_1)=O(u)$이다. (iv)의 가정을 정확히 적고 확인하는 일이 증명의 대부분이며, Higham의 책 12.2절이 이 논증을 처음부터 끝까지 따라간다\cite{higham2002accuracy}. 위 식이 보여 주는 핵심은 개선의 효과가 인수의 후진 오차 $\Delta A_i$를 한 번 더 곱해 줄이는 데서 온다는 것이다. LAPACK은 이것을 \code{gerfs}로 제공하지만 stardust의 \code{solve}는 개선을 하지 않는다. numpy와 scipy의 \code{solve}도 하지 않으므로 결과의 정밀도는 같은 수준이고, 개선이 필요한 사용자는 \code{lu}와 \code{lu\_solve}로 위의 반복을 직접 짤 수 있다.
+\section{Unblocked Algorithms}
+\label{sec:lu-unblocked}
+
+\subsection{Six Loop Orders}
+
+LU 분해의 산술은 세 겹의 루프 하나로 적힌다. 피벗을 잠시 잊으면
+\[
+\text{for } k,\ \text{for } i>k,\ \text{for } j>k:\quad a_{ij}\gets a_{ij}-\ell_{ik}a_{kj},\qquad \ell_{ik}=a_{ik}/a_{kk}
+\]
+이고 $(k,i,j)$의 여섯 가지 순서가 모두 같은 산술을 한다. 원소 $a_{ij}$가 받는 빼기는 언제나 $k=1,2,\dots$의 순서로 일어나므로 반올림까지 같은 결과가 나온다. 다른 것은 메모리를 읽고 쓰는 모양이다. \cref{fig:lu-looking}는 세 가지 대표 꼴을 보인다.
+\begin{itemize}
+\item \term{오른쪽 보기}{right-looking}($kij$, $kji$): $k$번째 단계에서 승수 열을 만들자마자 오른쪽 아래 남은 행렬 전체를 갱신한다. 갱신이 랭크 1 행렬 $\ell_ku_k^{\mathsf T}$를 빼는 것이어서 바깥곱 꼴이라고도 한다.
+\item \term{왼쪽 보기}{left-looking}($jki$, $jik$): $j$열을 만들 차례가 되어서야 왼쪽에 이미 만든 열들로 $j$열 하나를 갱신한다. 한 단계에 쓰는 것은 한 열뿐이다.
+\item \term{Crout 꼴}{Crout form}($ikj$, $ijk$ 등): $k$번째 단계에 $U$의 $k$행과 $L$의 $k$열을 이미 만든 부분과의 내적으로 만든다.
+\end{itemize}
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[x=0.36cm,y=0.36cm,font=\small]
+\foreach \xo/\name in {0/오른쪽 보기,9/왼쪽 보기,18/Crout 꼴}{
+  \draw (\xo,0) rectangle (\xo+7,7);
+  \node at (\xo+3.5,-1) {\name};
+}
+% right-looking: done L cols + U rows in light gray; current col/row dark; trailing updated hatched
+\fill[gray!15] (0,0) rectangle (3,7); \fill[gray!15] (3,4) rectangle (7,7);
+\fill[gray!55] (3,0) rectangle (4,4); \fill[gray!55] (3,3) rectangle (7,4);
+\fill[pattern=north east lines] (4,0) rectangle (7,3); \draw (4,0) rectangle (7,3);
+% left-looking: done cols light; read L part of done cols; column j written
+\fill[gray!15] (9,0) rectangle (12,7);
+\fill[gray!55] (12,0) rectangle (13,7);
+\draw[pattern=north east lines] (12,0) rectangle (13,7);
+% crout: row k of U and column k of L written; done rows/cols read
+\fill[gray!15] (18,0) rectangle (21,7); \fill[gray!15] (21,4) rectangle (25,7);
+\fill[gray!55] (21,0) rectangle (22,4); \fill[gray!55] (21,3) rectangle (25,4);
+\end{tikzpicture}
+\caption{세 가지 루프 꼴이 한 단계에 읽고 쓰는 곳. 연한 회색은 이미 끝난 $L$과 $U$, 진한 회색은 이 단계에 완성되는 부분, 빗금은 이 단계에 갱신되는 부분이다. 오른쪽 보기는 남은 행렬 전체를 매 단계 고치고, 왼쪽 보기는 한 열만 고치며, Crout 꼴은 남은 행렬을 건드리지 않는다.}
+\label{fig:lu-looking}
+\end{figure}
+
+열 우선(column-major) 배열에서는 같은 열의 원소가 메모리에 붙어 있으므로 가장 안쪽 루프가 $i$(행)를 돌아야 연속한 메모리를 훑는다. 그래서 LAPACK의 꼴은 $kji$(오른쪽 보기)와 $jki$(왼쪽 보기)이다. 부분 피벗을 넣으면 다음과 같다.
+
+\begin{algorithm}[t]
+\begin{algorithmic}[1]
+\Require $m\times n$ 행렬 $A$ (열 우선, 그 자리에 덮어씀)
+\Ensure $A$의 대각 아래에 $L$의 승수, 대각과 위에 $U$; 교환 기록 $\mathit{ipiv}$; 정확히 $0$인 첫 피벗의 번호 $\mathit{info}$
+\State $\mathit{info}\gets0$
+\For{$k=1,\dots,\min(m,n)$}
+  \State $p\gets\arg\max_{k\le i\le m}|a_{ik}|$ \Comment{같은 값이면 가장 앞의 $i$}
+  \State $\mathit{ipiv}_k\gets p$
+  \If{$a_{pk}=0$}
+    \State \textbf{if} $\mathit{info}=0$ \textbf{then} $\mathit{info}\gets k$ \Comment{특이: 이 열은 소거하지 않는다}
+    \State \textbf{continue}
+  \EndIf
+  \State 행 $k$와 행 $p$를 열 $1,\dots,n$ 전체에서 바꾼다
+  \State $a_{k+1:m,\,k}\gets a_{k+1:m,\,k}/a_{kk}$ \Comment{승수}
+  \For{$j=k+1,\dots,n$} \Comment{랭크 1 갱신, 열 하나씩}
+    \For{$i=k+1,\dots,m$}
+      \State $a_{ij}\gets a_{ij}-a_{ik}\,a_{kj}$
+    \EndFor
+  \EndFor
+\EndFor
+\end{algorithmic}
+\caption{부분 피벗을 쓰는 오른쪽 보기 LU ($kji$ 꼴, LAPACK \code{getf2}의 산술)}
+\label{alg:lu-right}
+\end{algorithm}
+
+\cref{alg:lu-right}의 줄마다 할 일을 짚는다.
+\begin{itemize}
+\item 피벗 찾기(3행)는 $k$열의 대각부터 아래를 훑는다. 절댓값이 같은 후보가 여럿이면 처음 것을 고르는 규칙은 결과를 정하는 규칙이기도 하다. \cref{prop:lu-growth-bound}의 $W_n$이 교환 없이 소거되는 것이 이 규칙 때문이다.
+\item 피벗이 정확히 $0$이면(5행) 그 열의 대각 아래도 모두 $0$이므로 소거할 것이 없다. 알고리즘은 멈추지 않고 첫 $0$ 피벗의 번호만 기록한다. 그래서 특이 행렬도 \cref{sec:lu-factorization}의 뜻에서 분해가 끝까지 나오고, 그것을 에러로 볼지는 부르는 쪽이 정한다.
+\item 행 교환(8행)은 이미 끝난 왼쪽 열들(승수)까지 바꾼다. \cref{thm:lu-partial-pivoting}의 증명에서 승수를 뒤의 교환으로 섞어야 했던 것이 바로 이 일이다. 이 덕분에 끝난 뒤 $A$의 대각 아래가 그대로 $PA=LU$의 $L$이 된다.
+\item 승수(9행)는 피벗으로 나눈다. LAPACK의 \code{getf2}는 $1/a_{kk}$를 한 번 구해 곱하는데, $|a_{kk}|$가 가장 작은 정규 수보다 작으면 역수가 넘치므로 그때만 원소마다 나눈다. 곱셈이 나눗셈보다 훨씬 빠르기 때문에 고른 길이며, 역수를 곱한 결과는 나눈 결과와 반올림 한 번만큼 다를 수 있다.
+\item 갱신(10--14행)은 열마다 \code{axpy} 한 번이다. LAPACK은 이 이중 루프를 BLAS의 랭크 1 갱신 \code{ger} 하나로 부른다.
+\end{itemize}
+
+\subsection{Operation Count and Memory Traffic}
+
+$k$번째 단계는 나눗셈 $m-k$번과 갱신 $(m-k)(n-k)$개 원소에 곱셈과 뺄셈 하나씩이다. 정사각이면
+\[
+\sum_{k=1}^{n-1}\bigl[(n-k)+2(n-k)^2\bigr]=\frac{n(n-1)}2+\frac{(n-1)n(2n-1)}3=\frac23n^3-\frac12n^2-\frac16n
+\]
+플롭이다. 이 $(2/3)n^3$이 LU의 비용으로 늘 인용되는 수이다.
+
+산술보다 중요한 것이 메모리이다. 오른쪽 보기의 $k$번째 단계는 남은 $(n-k)^2$개 원소를 모두 읽고 쓰는데 원소 하나에 플롭 둘이다. 남은 행렬이 캐시보다 크면 이 갱신은 메모리 대역폭에 묶이고, 산술 장치는 데이터를 기다리며 논다. \cref{fig:lu-gflops}의 맨 아래 곡선이 그것이다. 직접 짠 \cref{alg:lu-right}은 $n$이 커져도 초당 $12\times10^9$ 플롭 남짓에서 멈추고, 같은 산술을 하는 LAPACK의 \code{dgetf2}도 같은 곳에 있다. 이 상자의 처리기는 한 코어로도 그 열 배 넘게 계산할 수 있다. 왼쪽 보기는 쓰는 양이 적은 대신 매 단계 왼쪽의 모든 열을 읽으므로 메모리 이동의 총량은 같은 차수이다. 이 벽을 넘는 길은 루프 순서가 아니라 블록이다.
+
+\section{Blocked and Recursive LU}
+\label{sec:lu-blocked}
+
+\subsection{The BLAS Levels}
+
+BLAS(Basic Linear Algebra Subprograms)는 선형대수의 기본 연산을 셋으로 나눈다\cite{lawson1979blas1,dongarra1990blas3}. 1단계는 벡터 연산(\code{axpy}, \code{dot}; $O(n)$ 데이터에 $O(n)$ 연산), 2단계는 행렬–벡터 연산(\code{gemv}, \code{ger}, \code{trsv}; $O(n^2)$ 데이터에 $O(n^2)$ 연산), 3단계는 행렬–행렬 연산(\code{gemm}, \code{trsm}; $O(n^2)$ 데이터에 $O(n^3)$ 연산)이다. 데이터 하나를 메모리에서 가져와 몇 번의 연산에 쓰는지(산술 강도)가 1, 2단계에서는 상수이고 3단계에서만 $n$에 비례한다. 3단계 연산은 행렬을 캐시와 레지스터에 맞는 블록으로 잘라 블록 하나를 여러 번 재사용할 수 있으므로 산술 장치의 최고 속도에 가깝게 돈다. 빠른 LU란 산술의 대부분을 \code{gemm}으로 바꾼 LU이다.
+
+\subsection{Block Right-Looking LU}
+
+$A$의 앞 $b$열을 \term{패널}{panel}로 떼어 블록으로 나눈다.
+\[
+A=\begin{pmatrix}A_{11}&A_{12}\\A_{21}&A_{22}\end{pmatrix},\qquad A_{11}\in\mathbb C^{b\times b}.
+\]
+패널 $\binom{A_{11}}{A_{21}}$을 부분 피벗으로 분해해 $P_1\binom{A_{11}}{A_{21}}=\binom{L_{11}}{L_{21}}U_{11}$을 얻었다고 하자. 같은 교환을 오른쪽 열에도 적용한 뒤 $P_1A=LU$의 블록 식을 쓰면
+\[
+\begin{pmatrix}A_{11}&A_{12}\\A_{21}&A_{22}\end{pmatrix}
+=\begin{pmatrix}L_{11}&0\\L_{21}&I\end{pmatrix}
+\begin{pmatrix}U_{11}&U_{12}\\0&S\end{pmatrix},\qquad
+U_{12}=L_{11}^{-1}A_{12},\quad S=A_{22}-L_{21}U_{12}
+\]
+이다. 식 \eqref{eq:lu-schur-step}을 블록으로 바꾼 것이며 남은 일은 $S$를 같은 방법으로 분해하는 것이다(\cref{fig:lu-blocked}). $U_{12}$를 구하는 것은 단위 하삼각 행렬로 여러 우변을 푸는 \code{trsm}이고, $S$의 갱신은 $(n-b)\times b$와 $b\times(n-b)$의 곱인 \code{gemm}이다.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[x=0.42cm,y=0.42cm,font=\small]
+\draw (0,0) rectangle (9,9);
+\fill[gray!15] (0,0) rectangle (2,9); \fill[gray!15] (2,7) rectangle (9,9);
+\fill[gray!55] (2,0) rectangle (4,7);
+\fill[gray!35] (4,5) rectangle (9,7);
+\fill[pattern=north east lines] (4,0) rectangle (9,5); \draw (4,0) rectangle (9,5);
+\draw (2,0) -- (2,9) (4,0) -- (4,7) (2,7) -- (9,7) (2,5) -- (9,5);
+\node at (1,4.5) {끝남};
+\node[fill=white,inner sep=1pt] at (3,6) {$A_{11}$};
+\node[fill=white,inner sep=1pt] at (3,2.5) {$A_{21}$};
+\node at (6.5,6) {$A_{12}$};
+\node[fill=white,inner sep=1pt] at (6.5,2.5) {$A_{22}$};
+\begin{scope}[xshift=4.6cm]
+\node[anchor=west,align=left,font=\small] at (0,6.8) {(i) 패널 분해 \code{getrf2}: 진한 회색};
+\node[anchor=west,align=left,font=\small] at (0,5.3) {(ii) 교환을 좌우 열에 \code{laswp}};
+\node[anchor=west,align=left,font=\small] at (0,3.8) {(iii) $U_{12}=L_{11}^{-1}A_{12}$ \code{trsm}: 중간 회색};
+\node[anchor=west,align=left,font=\small] at (0,2.3) {(iv) $A_{22}\gets A_{22}-L_{21}U_{12}$ \code{gemm}: 빗금};
+\end{scope}
+\end{tikzpicture}
+\caption{블록 오른쪽 보기 LU의 한 단계. 패널은 폭 $b$의 열 묶음이고 이 단계의 산술 대부분은 빗금 친 부분의 \code{gemm}이다.}
+\label{fig:lu-blocked}
+\end{figure}
+
+\begin{algorithm}[t]
+\begin{algorithmic}[1]
+\Require $m\times n$ 행렬 $A$, 블록 폭 $b$ (LAPACK 참조 구현의 기본값 $64$)
+\Ensure \cref{alg:lu-right}과 같은 꼴의 $L$, $U$, $\mathit{ipiv}$, $\mathit{info}$
+\If{$b\le1$ \textbf{or} $b\ge\min(m,n)$}
+  \State \Return \Call{getrf2}{$A$} \Comment{작으면 블록 없이}
+\EndIf
+\For{$j=1,\,1+b,\,1+2b,\dots\le\min(m,n)$}
+  \State $j_b\gets\min(\min(m,n)-j+1,\ b)$
+  \State \Call{getrf2}{$A_{j:m,\,j:j+j_b-1}$} \Comment{패널; 피벗 번호는 패널 안에서 센다}
+  \State $\mathit{ipiv}_{j:j+j_b-1}\gets\mathit{ipiv}_{j:j+j_b-1}+j-1$; $\mathit{info}$도 같이 옮긴다
+  \State 행 교환 $\mathit{ipiv}_{j:j+j_b-1}$을 열 $1,\dots,j-1$에 적용 \Comment{\code{laswp}: 끝난 $L$}
+  \If{$j+j_b\le n$}
+    \State 같은 교환을 열 $j+j_b,\dots,n$에 적용 \Comment{\code{laswp}}
+    \State $A_{j:j+j_b-1,\,j+j_b:n}\gets L_{11}^{-1}A_{j:j+j_b-1,\,j+j_b:n}$ \Comment{\code{trsm}, $L_{11}$은 단위 하삼각}
+    \If{$j+j_b\le m$}
+      \State $A_{j+j_b:m,\,j+j_b:n}\gets A_{j+j_b:m,\,j+j_b:n}-A_{j+j_b:m,\,j:j+j_b-1}A_{j:j+j_b-1,\,j+j_b:n}$ \Comment{\code{gemm}}
+    \EndIf
+  \EndIf
+\EndFor
+\end{algorithmic}
+\caption{블록 오른쪽 보기 LU (LAPACK \code{dgetrf}의 구조를 그대로 옮김)}
+\label{alg:lu-blocked}
+\end{algorithm}
+
+\cref{alg:lu-blocked}은 LAPACK 참조 구현 \code{dgetrf}의 순서를 그대로 옮긴 것이다(\cite{anderson1999lapack}, 참조 구현의 소스로 확인). 몇 가지를 짚는다.
+\begin{itemize}
+\item 패널 분해는 $(m-j+1)\times j_b$의 길쭉한 행렬에 대한 LU이고 피벗을 패널 높이 전체에서 찾는다. 그래서 블록 알고리즘도 피벗 규칙은 \cref{alg:lu-right}과 같은 부분 피벗이며, 반올림을 빼면 같은 $P$, $L$, $U$를 낸다.
+\item 패널이 돌려준 피벗 번호는 패널의 첫 행을 $1$로 센 것이므로 7행에서 $j-1$을 더해 전체 행 번호로 바꾼다.
+\item 교환은 두 번에 나누어 적용한다. 패널 안의 열은 패널 분해가 이미 바꿨고, 왼쪽의 끝난 열(8행)과 오른쪽의 아직 손대지 않은 열(10행)을 따로 바꾼다.
+\item 산술량을 세 부분으로 나누면 패널 분해가 단계마다 약 $(n-j)j_b^2$, \code{trsm}이 약 $j_b^2(n-j)$이고 나머지가 모두 \code{gemm}이다. 단계들을 더하면 \code{gemm}이 아닌 부분이 약 $n^2b$이므로 \code{gemm}의 몫은
+\[
+1-\frac{n^2b}{2n^3/3}=1-\frac{3b}{2n}
+\]
+이다. $n=1024$, $b=64$이면 $91\%$이다. $b$를 키우면 이 몫이 줄고, 줄이면 \code{gemm} 하나하나가 납작해져(내적 길이 $b$) 재사용이 줄어든다. $b$는 이 둘 사이의 타협이고 하드웨어마다 다르다. 참조 구현은 \code{ilaenv}가 돌려주는 $64$를 쓴다.
+\end{itemize}
+
+\cref{fig:lu-gflops}는 이 차이를 보인다. 직접 짠 \cref{alg:lu-blocked}(패널은 \cref{alg:lu-right}, \code{trsm}과 \code{gemm}은 Accelerate)이 블록 없는 루프보다 $n=1536$에서 일곱 배 빠르다. 같은 그림에서 $n=256$, $512$, $1024$의 블록 곡선이 움푹 꺼지는 것은 우연이 아니다. 이때 열 하나의 길이가 $2^{k}$의 배수여서 같은 행의 원소들이 캐시의 같은 묶음(set)에 몰린다. leading dimension만 $512$에서 $520$으로 늘려 같은 분해를 하면 초당 $36\times10^9$에서 $85\times10^9$ 플롭으로, $1024$에서 $1032$로 늘리면 $59\times10^9$에서 $122\times10^9$ 플롭으로 뛴다. 같은 산술, 같은 메모리 양인데 주소의 모양만 바뀐 결과이다.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}
+\begin{semilogxaxis}[width=0.86\textwidth,height=0.55\textwidth,
+  xlabel={$n$},ylabel={$10^9$ 플롭/초},grid=major,grid style={gray!25},
+  legend pos=north west,legend style={font=\small,draw=none,fill=none},
+  xmin=28,xmax=2300,ymin=0,ymax=300,log basis x=2]
+\addplot[black,mark=*,mark size=1.2pt] table[x=n,y=getrf]{figures/48/flops.dat};
+\addlegendentry{Accelerate \code{dgetrf}}
+\addplot[black,dashed,mark=square*,mark size=1.2pt] table[x=n,y=blocked]{figures/48/flops.dat};
+\addlegendentry{\cref{alg:lu-blocked} ($b=64$)}
+\addplot[black!60,mark=triangle*,mark size=1.4pt] table[x=n,y=getf2]{figures/48/flops.dat};
+\addlegendentry{Accelerate \code{dgetf2}}
+\addplot[black!60,dotted,thick,mark=o,mark size=1.2pt] table[x=n,y=unblocked]{figures/48/flops.dat};
+\addlegendentry{\cref{alg:lu-right} (C 루프)}
+\end{semilogxaxis}
+\end{tikzpicture}
+\caption{정사각 LU의 속도(Apple M4 Pro, 플롭 수는 $(2/3)n^3$으로 셈). 측정 코드는 \code{figures/48/bench.c}이다. \code{dgetrf}는 $n\ge768$에서 Accelerate가 안에서 여러 코어를 쓴다.}
+\label{fig:lu-gflops}
+\end{figure}
+
+\subsection{Recursive LU}
+
+블록 알고리즘의 패널 분해는 여전히 2단계 BLAS이다. 패널은 높이가 $n$이고 폭이 $b$이므로 패널의 산술이 전체의 $3b/(2n)$밖에 안 돼도 메모리에 묶인 속도로 돌기 때문에 시간으로는 그보다 큰 몫을 차지한다. Toledo와 Gustavson은 패널을 다시 반으로 나누는 재귀로 이것을 없앴다\cite{toledo1997recursive}. 열을 반으로 나누어 왼쪽 반을 재귀로 분해하고, 오른쪽 반을 \code{trsm}과 \code{gemm}으로 갱신한 뒤, 남은 아래 오른쪽을 재귀로 분해한다. LAPACK 3.6부터 패널 분해 \code{getrf2}가 이 재귀이다.
+
+\begin{algorithm}[t]
+\begin{algorithmic}[1]
+\Function{getrf2}{$A\in\mathbb C^{m\times n}$}
+  \If{$m=1$}
+    \State $\mathit{ipiv}_1\gets1$; \textbf{if} $a_{11}=0$ \textbf{then} $\mathit{info}\gets1$
+  \ElsIf{$n=1$} \Comment{한 열: 피벗과 나눗셈뿐}
+    \State $p\gets\arg\max_i|a_{i1}|$; $\mathit{ipiv}_1\gets p$
+    \If{$a_{p1}\ne0$}
+      \State $a_{11}\leftrightarrow a_{p1}$
+      \State \textbf{if} $|a_{11}|\ge\mathrm{sfmin}$ \textbf{then} $a_{2:m,1}\gets a_{2:m,1}\cdot(1/a_{11})$ \textbf{else} $a_{2:m,1}\gets a_{2:m,1}/a_{11}$
+    \Else\ $\mathit{info}\gets1$
+    \EndIf
+  \Else
+    \State $n_1\gets\lfloor\min(m,n)/2\rfloor$; $n_2\gets n-n_1$
+    \State \Call{getrf2}{$A_{:,1:n_1}$} \Comment{왼쪽 반 $\binom{A_{11}}{A_{21}}$}
+    \State 교환 $\mathit{ipiv}_{1:n_1}$을 $A_{:,n_1+1:n}$에 적용 \Comment{\code{laswp}}
+    \State $A_{12}\gets L_{11}^{-1}A_{12}$ \Comment{\code{trsm}}
+    \State $A_{22}\gets A_{22}-A_{21}A_{12}$ \Comment{\code{gemm}}
+    \State \Call{getrf2}{$A_{22}$}; $\mathit{ipiv}_{n_1+1:\min(m,n)}\mathrel{+}=n_1$ \Comment{$\mathit{info}$도 $n_1$만큼 옮긴다}
+    \State 교환 $\mathit{ipiv}_{n_1+1:\min(m,n)}$을 $A_{:,1:n_1}$에 적용 \Comment{\code{laswp}: 왼쪽의 $L_{21}$}
+  \EndIf
+\EndFunction
+\end{algorithmic}
+\caption{재귀 LU (LAPACK \code{dgetrf2})}
+\label{alg:lu-recursive}
+\end{algorithm}
+
+\cref{alg:lu-recursive}의 기저 경우는 둘이다. 한 행($m=1$)이면 할 일이 없고, 한 열($n=1$)이면 피벗을 찾아 바꾸고 나누는 것이 전부이다. 여기서 $\mathrm{sfmin}$은 역수가 넘치지 않는 가장 작은 수(LAPACK의 \code{dlamch('S')})이고 \cref{alg:lu-right}의 승수 계산과 같은 이유로 둔다. 재귀의 모든 층에서 산술의 대부분이 \code{gemm}이고, 크기가 반씩 줄어드므로 어느 층의 부분행렬은 반드시 캐시에 맞는다. 그래서 블록 폭 $b$를 정할 필요가 없고(이런 알고리즘을 캐시를 모르는(cache-oblivious) 알고리즘이라 한다) 반올림을 빼면 결과는 다시 부분 피벗의 $P$, $L$, $U$이다. 나누는 기준이 $\min(m,n)/2$인 것은 길쭉한 패널($m\gg n$)에서도 열을 반으로 나누기 위해서이다.
+
+\subsection{What Accelerate Does}
+
+stardust는 LU를 직접 짜지 않고 Apple Accelerate의 LAPACK을 부른다. Accelerate의 \code{getrf}는 참조 구현과 같은 인터페이스와 같은 피벗 규칙(\code{ipiv}, 같은 값이면 앞의 행)을 가지지만 내부의 블록 크기, 재귀의 모양, 행렬 곱의 커널은 공개되어 있지 않다. 측정으로 알 수 있는 것은 이렇다. \cref{fig:lu-gflops}에서 \code{dgetrf}는 $n=1536$에 초당 $2.8\times10^{11}$ 플롭으로 직접 짠 블록 LU의 세 배이고, $n\ge768$에서 여러 코어를 쓴다. 블록 없는 \code{dgetf2}는 직접 짠 루프와 같은 메모리의 벽에 있다. 그리고 다음 절에서 보듯 작은 행렬에서 \code{getrf}는 이상한 행동을 한다. 그 행동이 stardust의 구현에 규칙 두 개를 더했다(\cref{sec:lu-batches}).
+
+\section{Using the Factors}
+\label{sec:lu-using}
+
+\subsection{Triangular Solves and Row Interchanges}
+
+$PA=LU$를 얻으면 $Ax=b$는 $Ly=Pb$, $Ux=y$이다. 전진 대입 $y_i=(Pb)_i-\sum_{j<i}\ell_{ij}y_j$와 후진 대입 $x_i=(y_i-\sum_{j>i}u_{ij}x_j)/u_{ii}$는 각각 $n^2$ 플롭이다(나눗셈 $n$번 포함). 우변이 $k$개면 $2kn^2$이고, 분해의 $(2/3)n^3$보다 작으므로 분해를 한 번 하고 여러 우변에 다시 쓰는 것이 이득이다. LAPACK의 \code{getrs}가 이 일을 한다.
+
+\begin{algorithm}[t]
+\begin{algorithmic}[1]
+\Require \code{getrf}의 결과($L$, $U$를 담은 $A$와 $\mathit{ipiv}$), $n\times k$ 우변 $B$
+\Ensure $B$에 $X=A^{-1}B$를 덮어씀
+\For{$i=1,\dots,n$} \Comment{\code{laswp}: 교환을 기록된 순서대로}
+  \State \textbf{if} $\mathit{ipiv}_i\ne i$ \textbf{then} $B$의 행 $i$와 행 $\mathit{ipiv}_i$를 바꾼다
+\EndFor
+\For{$j=1,\dots,k$} \Comment{열 우선: 우변 하나씩}
+  \For{$i=1,\dots,n$} \Comment{$Ly=Pb$, $\ell_{ii}=1$이라 나누지 않는다}
+    \State $b_{i+1:n,j}\gets b_{i+1:n,j}-b_{ij}\,a_{i+1:n,\,i}$
+  \EndFor
+  \For{$i=n,\dots,1$} \Comment{$Ux=y$}
+    \State $b_{ij}\gets b_{ij}/a_{ii}$; \ $b_{1:i-1,j}\gets b_{1:i-1,j}-b_{ij}\,a_{1:i-1,\,i}$
+  \EndFor
+\EndFor
+\end{algorithmic}
+\caption{인수로 풀기 (\code{getrs}의 \code{'N'} 경우; 열 지향의 대입)}
+\label{alg:lu-solve}
+\end{algorithm}
+
+\cref{alg:lu-solve}의 대입은 열 지향으로 적었다. $y_i$가 정해지는 순간 그 값을 $L$의 $i$열에 곱해 아래 원소들에서 한꺼번에 빼므로 안쪽 루프가 열 우선 배열의 연속한 메모리를 지난다. 산술은 행 지향($y_i=b_i-\sum_j\ell_{ij}y_j$)과 같고 빼는 순서만 다르다. 행 교환은 \code{ipiv}를 앞에서부터 차례로 적용해야 한다. 앞의 교환이 뒤의 교환이 가리키는 행의 내용을 바꾸기 때문이다.
+
+교환 목록을 순열로 바꾸는 것은 단위 순열에 같은 교환을 차례로 적용하는 것이다.
+
+\begin{algorithm}[t]
+\begin{algorithmic}[1]
+\Require 교환 목록 $\mathit{ipiv}_1,\dots,\mathit{ipiv}_p$ (1부터), 행 수 $m$
+\Ensure $x_{\mathit{perm}_r,:}=(LU)_{r,:}$인 순열 $\mathit{perm}$ (0부터)
+\State $\mathit{perm}_r\gets r$ ($r=0,\dots,m-1$)
+\For{$r=0,\dots,p-1$}
+  \State $\mathit{perm}_r\leftrightarrow\mathit{perm}_{\mathit{ipiv}_{r+1}-1}$
+\EndFor
+\end{algorithmic}
+\caption{교환 목록에서 순열로 (stardust \code{lu}의 \code{perm})}
+\label{alg:lu-perm}
+\end{algorithm}
+
+\cref{alg:lu-perm}이 맞는 까닭은 $PA$의 $r$번째 행이 원래 몇 번째 행이었는지를 따라가는 것이 바로 $A$의 행 번호들에 같은 교환을 적용하는 것이기 때문이다. 교환 $r\leftrightarrow\mathit{ipiv}_r$은 행렬의 행 내용을 바꾸고 동시에 ``지금 $r$번째 자리에 있는 원래 행의 번호''도 바꾼다. 결과는 numpy·scipy 관례의 \code{x[perm] = L @ U}이다.
+
+\subsection{The Inverse}
+
+역행렬은 $AX=I$를 푸는 것이다. 우변이 $n$개이므로 \cref{alg:lu-solve}을 그대로 쓰면 풀이에 $2n^3$ 플롭, 분해까지 $(8/3)n^3$이다. LAPACK의 \code{getri}는 다른 길을 간다. $U^{-1}$을 그 자리에서 구하고(\code{trtri}, $(1/3)n^3$), $XL=U^{-1}$을 오른쪽에서 풀고($n^3$), 마지막에 열을 \code{ipiv}의 역순으로 바꾼다. 그러면 분해를 더해 $2n^3$이고, 단위행렬의 $0$을 연산하지 않으니 풀이 쪽이 약 $(4/3)n^3$만큼 싸다. 반면 \code{getri}는 단계가 셋이어서 작은 행렬에서는 호출 비용이 크다. \cref{tab:lu-inverse}은 두 길을 직접 잰 것이다. $n\le1024$에서는 단위행렬을 우변으로 둔 풀이가 빠르거나 같고 $n=2048$에서 \code{getri}가 앞선다. stardust가 어느 쪽을 골랐고 왜 그랬는지는 \cref{sec:lu-stardust-family}에 있다.
+
+\begin{table}[t]
+\begin{sdtable}{colspec={rrrr}, row{1}={font=\small\bfseries}}
+\toprule
+$n$ & \code{getrf} & \code{getri} & \code{getrs}$(I)$ \\
+\midrule
+$8$ & $0.50$ & $1.21$ & $0.21$ \\
+$64$ & $13.3$ & $41.4$ & $11.6$ \\
+$256$ & $125$ & $187$ & $179$ \\
+$1024$ & $2769$ & $4954$ & $3825$ \\
+$2048$ & $14445$ & $34501$ & $38641$ \\
+\bottomrule
+\end{sdtable}
+\caption{역행렬의 두 길(Accelerate, 한 번의 호출 시간, 마이크로초, 여러 번 잰 최솟값). \code{getri}와 \code{getrs}$(I)$는 같은 \code{getrf} 결과에서 시작한다(\code{figures/48/bench.c}의 \code{inv}).}
+\label{tab:lu-inverse}
+\end{table}
+
+\subsection{Determinants}
+
+$PA=LU$에서 $\det P=(-1)^{s}$($s$는 실제로 일어난 교환의 수, 곧 $\mathit{ipiv}_i\ne i$인 $i$의 수)이고 $\det L=1$이므로
+\[
+\det A=(-1)^{s}\prod_{i=1}^nu_{ii}
+\]
+이다. 곱을 그대로 계산하면 쉽게 넘치거나 언더플로한다. $\operatorname{diag}(10^{200},10^{200},10^{-300})$의 행렬식은 $10^{100}$으로 binary64 안에 있지만 앞의 두 원소를 곱하는 순간 $10^{400}$이 넘쳐 $\infty$가 된다. 크기가 $1000$인 행렬에서 대각이 모두 $0.4$ 근처면 행렬식은 $10^{-400}$ 부근이어서 정말로 언더플로한다. 그래서 두 가지를 구분한다. 행렬식 자체가 범위를 벗어나는 경우와 중간 곱만 벗어나는 경우이다. 뒤의 경우를 정확히 처리하려면 지수를 따로 들고 다닌다.
+
+\begin{algorithm}[t]
+\begin{algorithmic}[1]
+\Require $U$의 대각 $u_1,\dots,u_n$, 교환 목록 $\mathit{ipiv}$, 특이 여부
+\Ensure $\det A$ (중간 곱이 범위를 벗어나도 결과가 범위 안이면 그 값)
+\If{특이} \Return $0$ \EndIf
+\State $d\gets1$; \textit{ok} $\gets$ \textbf{true}
+\For{$i=1,\dots,n$}
+  \State $d\gets d\cdot u_i$; \textbf{if} $\mathit{ipiv}_i\ne i$ \textbf{then} $d\gets-d$
+  \State \textit{ok} $\gets$ \textit{ok} \textbf{and} ($d$가 $0$이 아닌 정규 수)
+\EndFor
+\If{\textit{ok}} \Return $d$ \EndIf \Comment{대부분은 여기서 끝난다}
+\State $d\gets1$; $e\gets0$ \Comment{$\det A=d\cdot2^{e}$로 들고 다닌다}
+\For{$i=1,\dots,n$}
+  \State $u_i=m_i\cdot2^{k_i}$, $|m_i|\in[1/2,1)$로 나누고 $e\gets e+k_i$ \Comment{\code{frexp}: 정확}
+  \State $d\gets d\cdot m_i$; $d=m\cdot2^{k}$로 다시 나누어 $d\gets m$, $e\gets e+k$
+  \State \textbf{if} $\mathit{ipiv}_i\ne i$ \textbf{then} $d\gets-d$
+\EndFor
+\State \Return $d\cdot2^{\max(-4000,\min(e,4000))}$ \Comment{\code{ldexp}: 여기서만 넘치거나 언더플로}
+\end{algorithmic}
+\caption{넘침을 피하는 행렬식 (stardust \code{det}의 \code{det\_of})}
+\label{alg:lu-det}
+\end{algorithm}
+
+\cref{alg:lu-det}의 두 번째 루프는 첫 번째 루프와 정확히 같은 반올림을 한다. 2의 거듭제곱을 곱하거나 나누는 것은 결과가 정규 범위에 있는 한 정확하고, $|m_i|,|d|\in[1/2,1)$이면 곱도 $[1/4,1)$에 있어 정규 범위를 벗어나지 않기 때문이다. 그래서 첫 루프가 끝까지 정규 수였던 행렬에서는 두 루프의 가수가 비트까지 같고, 첫 루프가 중간에 넘쳤던 행렬에서는 두 번째 루프가 넘치지 않았다면 얻었을 값을 준다. 마지막 \code{ldexp}의 지수를 $\pm4000$으로 자르는 것은 정수 넘침을 막을 뿐 결과를 바꾸지 않는다. binary64의 지수 범위는 그보다 훨씬 좁아 $\pm4000$을 넘는 $e$는 어차피 $0$이나 $\infty$이기 때문이다. 복소수에서는 실수부와 허수부 가운데 큰 쪽의 지수로 둘을 함께 나눈다.
+
+행렬식이 정말로 범위를 벗어나는 응용(다변량 정규 분포의 로그 밀도처럼)에는 \code{slogdet}이 있다. $\log|\det A|=\sum_i\log|u_{ii}|$와 부호(복소수면 $\prod_iu_{ii}/|u_{ii}|$에 교환의 부호를 곱한 단위 복소수)를 따로 돌려준다. 로그의 합은 넘치지 않으며, 각 로그의 상대오차가 $u$ 정도라 합의 절대오차는 많아야 $u\sum_i|\log|u_{ii}||$에 $n$번의 덧셈 오차를 더한 정도이다. 특이 행렬이면 \code{det}은 $0$, \code{slogdet}은 $(0,-\infty)$이다.
+\section{From Arrays to LAPACK}
+\label{sec:lu-packing}
+
+\subsection{The Work Buffer}
+
+stardust의 배열은 임의의 바이트 간격(stride)을 가진다. C 순서(행 우선)가 기본이고, 전치하거나 잘라 낸 뷰는 열 우선이거나 띄엄띄엄하며, 간격이 음수이거나($x[::-1]$) $0$(브로드캐스트된 축)일 수도 있다. LAPACK은 열 우선으로 연속하고 열 사이 간격이 leading dimension $\mathit{ld}$인 행렬만 받는다. 게다가 \code{getrf}는 입력을 덮어쓴다. 그래서 LU 계열의 모든 함수는 행렬을 먼저 작업 버퍼에 옮기며, 이 일을 \term{패킹}{packing}이라 한다. 패킹은 한 번의 패스로 세 가지를 한다. (i) 임의의 간격으로 읽어 열 우선으로 쓴다. (ii) \code{bool}과 \code{int64}를 \code{float64}로 바꾼다. (iii) NaN과 $\pm\infty$가 있는지 본다. LAPACK은 유한하지 않은 입력에 대해 아무것도 약속하지 않으므로(무한 루프나 쓰레기 값이 날 수 있다) stardust는 LAPACK을 부르기 전에 반드시 검사한다.
+
+\begin{algorithm}[t]
+\begin{algorithmic}[1]
+\Require 원본 시작 $p$, 크기 $m\times n$, 행·열 간격 $r_s$, $c_s$ (바이트), 목적지 $D$와 $\mathit{ld}$
+\Ensure $D[j\cdot\mathit{ld}+i]=x_{ij}$ (변환 포함); 모든 원소가 유한한지
+\If{$r_s=$ 원소 크기} \Comment{열이 연속: 열마다 복사}
+  \For{$j=0,\dots,n-1$}
+    \State 열 $j$를 복사하면서 비트로 검사: $\mathit{bad}\gets\mathit{bad}\lor[(w\mathbin{\&}\mathtt{0x7ff0\ldots0})=\mathtt{0x7ff0\ldots0}]$
+  \EndFor
+\ElsIf{$c_s=$ 원소 크기} \Comment{행이 연속(C 순서): 타일 전치}
+  \For{행 타일 $i_0=0,32,64,\dots$} \For{열 타일 $j_0=0,32,64,\dots$}
+    \For{$j\in[j_0,j_0+32)$} \For{$i\in[i_0,i_0+32)$}
+      \State $D[j\cdot\mathit{ld}+i]\gets x_{ij}$
+    \EndFor\EndFor
+  \EndFor\EndFor
+  \State 써 넣은 열마다 비트 검사를 한 번 더 돈다
+\Else \Comment{그 밖: 원소마다}
+  \State 열마다, 행마다 읽고 검사하며 쓴다
+\EndIf
+\State \Return \textbf{not} $\mathit{bad}$
+\end{algorithmic}
+\caption{패킹 (stardust \code{pack}의 세 경로, 실수 \code{float64}의 경우)}
+\label{alg:lu-pack}
+\end{algorithm}
+
+\cref{alg:lu-pack}의 경로마다 고른 이유가 있다.
+\begin{itemize}
+\item \textbf{비트로 하는 유한성 검사.} binary64에서 NaN과 $\pm\infty$는 지수 11비트가 모두 $1$인 수이고 그 밖에는 없다(10장). 그래서 64비트 정수로 읽어 지수 마스크를 비교하고 그 결과를 \code{or}로 모은다. 정수의 \code{or}는 결합적이어서 컴파일러가 루프를 SIMD로 벡터화한다. 부동소수점 비교와 \code{and}로 쓰면 결과는 같지만, stardust가 켠 \code{-ffp-contract=off} 아래에서 컴파일러가 이것을 순서가 정해진 축약으로 보아 벡터화하지 않았다.
+\item \textbf{C 순서의 타일 전치.} 행 우선 원본을 열 순서로 그냥 읽으면 원소 하나를 읽을 때마다 행 하나($8n$바이트)를 건너뛴다. $1000\times1000$이면 원소마다 다른 캐시 줄이다. $32\times32$ 타일 하나는 읽는 쪽 32줄과 쓰는 쪽 32줄, 합쳐 $16$KB만 건드리므로 L1 캐시에 머문다(\cref{fig:lu-tile}). 원소가 $4096$개를 넘으면 타일 안을 다시 $4\times4$ 블록으로 나누어 NEON 레지스터 넷에 행 넷을 읽고 \code{trn1}·\code{trn2}로 열 넷을 만든다. 원소 루프의 약 $1.5$배이다. 원소가 $2^{17}$개를 넘는 C 순서 행렬은 열 $32$개 단위로 스레드 풀에 나누어 전치한다. 각 태스크가 자기 열만 쓰므로 결과는 직렬과 같다.
+\item \textbf{어느 경로든 같은 결과.} 원소 $(i,j)$는 언제나 $D[j\cdot\mathit{ld}+i]$로 가고 변환은 원소마다 같은 함수이므로, 입력의 배치(C, F, 띄엄띄엄, 음수 간격, 브로드캐스트)가 무엇이든 작업 버퍼는 바이트까지 같다. 그래서 패킹을 거치는 \code{lu}, \code{solve}, \code{inv}, \code{det}, \code{slogdet}의 결과는 입력의 메모리 배치와 무관하게 비트까지 같다.
+\end{itemize}
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[x=0.32cm,y=0.32cm,font=\small]
+\draw (0,0) rectangle (12,12); \node at (6,-1) {원본 (행 우선)};
+\fill[gray!40] (4,4) rectangle (8,8);
+\foreach \r in {4.5,5.5,6.5,7.5}{\draw[->] (4.2,\r) -- (7.8,\r);}
+\draw (15,0) rectangle (27,12); \node at (21,-1) {작업 버퍼 (열 우선)};
+\fill[gray!40] (19,4) rectangle (23,8);
+\foreach \c in {19.5,20.5,21.5,22.5}{\draw[->] (\c,7.8) -- (\c,4.2);}
+\draw[->,thick] (8.6,6) -- (18.4,6) node[midway,above] {타일 하나 $32\times32$};
+\end{tikzpicture}
+\caption{C 순서 원본의 타일 전치. 원본에서는 타일의 행을 따라(화살표) 연속으로 읽고 버퍼에서는 열을 따라 연속으로 쓴다. 한 타일이 건드리는 캐시 줄은 양쪽 합쳐 64줄이다.}
+\label{fig:lu-tile}
+\end{figure}
+
+패킹은 출력 자리를 작업 버퍼로 쓰기도 한다. \code{solve}는 우변 $b$를 처음부터 결과 배열의 자리에 열 우선으로 패킹하고, 그 자리에서 \code{getrs}(또는 대입)가 $b$를 해로 덮어쓴다. 행렬 $a$만 따로 작업 버퍼가 필요하다. 그래서 \code{solve} 한 번의 메모리 이동은 ``$a$의 복사 한 번, $b$의 복사 한 번, LAPACK''이 전부이다.
+
+\subsection{Leading Dimension and Alignment}
+
+작업 버퍼의 leading dimension은 $\mathit{ld}=n$이다. \cref{sec:lu-blocked}에서 직접 짠 블록 LU가 $\mathit{ld}$가 2의 거듭제곱일 때 느려지는 것을 보았는데 Accelerate의 \code{dgetrf}도 같다. $n=1024$에서 $\mathit{ld}=1024$이면 초당 $149\times10^9$ 플롭, $\mathit{ld}=1032$이면 $235\times10^9$ 플롭이다(\code{figures/48/lda2.c}). stardust는 $\mathit{ld}=n$으로 패킹하므로 $1024\times1024$의 \code{solve}는 이 손해를 그대로 본다. 버퍼의 $\mathit{ld}$를 몇 원소 늘리면 피할 수 있지만 그러면 결과의 끝 비트가 바뀔 수 있어 \cref{sec:lu-testing}의 비트 관계를 함께 다시 확인해야 한다.
+
+정렬은 더 미묘하다. Accelerate는 배열이 16바이트 경계에서 시작하는지에 따라 다른 코드 경로를 타고, 그러면 반올림이 달라진다. \code{float64}의 $3\times3$ 행렬들이 한 배열에 이어 있으면 행렬 사이 간격이 $72$바이트여서 홀수 번째 행렬은 16바이트 경계에서 8바이트 어긋난다(\cref{fig:lu-align}). 같은 행렬이 배치 안의 위치에 따라 다른 비트를 받는 것이다. stardust의 설계 문서는 $n=3,5,7,9$의 무작위 행렬 $120$개에서 \code{schur}, \code{svd}, \code{eigh}의 결과가 수십 개씩 달랐다고 적고 있다. 그래서 LAPACK이나 BLAS에 넘기는 모든 배열을 16바이트 경계에 둔다. 출력 자리가 어긋나 있으면 \code{LapackSlot}이 정렬된 임시 버퍼를 주고, 계산이 끝나면 그 내용을 출력 자리로 복사한다. 그 결과 배치의 어느 자리에 있든 같은 행렬은 같은 비트를 받는다.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[x=0.031cm,y=0.5cm,font=\small]
+\foreach \k in {0,...,4}{
+  \pgfmathsetmacro{\xa}{72*\k}
+  \pgfmathtruncatemacro{\odd}{mod(\k,2)}
+  \ifnum\odd=1 \fill[gray!35] (\xa,0) rectangle (\xa+72,1); \else \fill[gray!10] (\xa,0) rectangle (\xa+72,1); \fi
+  \draw (\xa,0) rectangle (\xa+72,1);
+  \node at (\xa+36,0.5) {행렬 \k};
+  \node[below] at (\xa,0) {\pgfmathprintnumber{\xa}};
+}
+\foreach \b in {0,16,...,352}{\draw[gray] (\b,1) -- (\b,1.35);}
+\node[anchor=west] at (0,1.75) {16바이트 경계(위의 눈금)};
+\end{tikzpicture}
+\caption{$3\times3$ \code{float64} 행렬 다섯 개가 이어진 배치. 행렬은 $72$바이트마다 시작하므로 홀수 번째(진한 칸)는 16바이트 경계에서 8바이트 어긋난다.}
+\label{fig:lu-align}
+\end{figure}
+
+\section{The LU Family in stardust}
+\label{sec:lu-stardust-family}
+
+\subsection{Factorization: \texorpdfstring{\code{lu}}{lu}}
+
+\code{sd.linalg.lu(x)}는 $m\times n$ 행렬(과 그 배치)을 받아 \code{LUResult(L, U, perm)}을 돌려준다. $p=\min(m,n)$이면 $L$은 $m\times p$, $U$는 $p\times n$이고 \code{x[..., perm, :] == L @ U}이다. 원소 하나의 몸체는 패킹, \code{getrf}(크기에 따라 \code{getf2}, \cref{sec:lu-batches}), 풀어 쓰기, 순열 만들기의 넷이다. \code{getrf}가 돌려주는 \code{info}$>0$(정확히 $0$인 피벗)은 무시한다. \cref{sec:lu-factorization}에서 보았듯 특이 행렬도 분해는 있고 그 흔적은 $U$의 대각에 남기 때문이다.
+
+풀어 쓰기는 \code{getrf}가 한 자리에 섞어 둔 $L$과 $U$를 두 결과 배열로 나누는 일이다. $L$에는 대각 위에 $0$, 대각에 $1$, 대각 아래에 승수를 쓰고 $U$에는 대각과 그 위를 쓰고 아래에 $0$을 쓴다. 원소가 $1024$개 이하이면 원소마다 조건을 보는 한 루프로 하고, 그보다 크면 열마다 ``$0$ 채우기, $1$, 복사''를 \code{fill}과 \code{copy}로 한다. 작은 행렬에서는 라이브러리 호출 몇 번의 고정비가 원소 루프보다 비싸고, 큰 행렬에서는 연속 구간의 복사가 훨씬 빠르기 때문이다. 마지막으로 \cref{alg:lu-perm}으로 \code{ipiv}를 \code{perm}으로 바꾼다.
+
+\subsection{Solving: \texorpdfstring{\code{solve}}{solve} and \texorpdfstring{\code{lu\_solve}}{lu\_solve}}
+
+\code{solve(a, b)}는 언제나 LU로 푼다. scipy의 \code{assume\_a=}처럼 행렬의 구조를 보고 방법을 고르는 일은 하지 않는다. 대칭 양정치 행렬은 \code{cholesky\_solve}, 삼각 행렬은 \code{solve\_triangular}처럼 구조는 함수 이름으로 고르는 것이 stardust의 규칙이다. $b$가 1차원이면 벡터 하나이고 그 밖에는 $(\dots,n,k)$의 행렬 묶음이다.
+
+\begin{algorithm}[t]
+\begin{algorithmic}[1]
+\Require 배치 원소 하나의 $a$ ($n\times n$), $b$ ($n\times k$)
+\Ensure 결과 자리에 $x=a^{-1}b$, 또는 실패 코드
+\State $a$를 작업 버퍼에 패킹; 유한하지 않으면 \Return \code{NonFinite}($a$)
+\State $\mathit{info}\gets$ \code{getrf} 또는 \code{getf2}$(a)$ \Comment{$32\le n\le46$이면 \code{getf2}}
+\State \textbf{if} $\mathit{info}>0$ \textbf{then return} \code{Singular}
+\State $b$를 결과 자리에 패킹; 유한하지 않으면 \Return \code{NonFinite}($b$)
+\If{$k\le2$}
+  \State 결과의 열마다 \code{ipiv}의 교환을 적용
+  \State \code{trsv}(단위 하삼각 $L$), \code{trsv}($U$)를 열마다
+\Else
+  \State \code{getrs}('N') \Comment{교환 + \code{trsm} 둘}
+\EndIf
+\end{algorithmic}
+\caption{\code{solve}의 배치 원소 하나}
+\label{alg:lu-solve-body}
+\end{algorithm}
+
+\cref{alg:lu-solve-body}의 순서는 에러의 순서이기도 하다. $a$가 NaN을 품고 있으면 $b$에 무엇이 있든 $a$에 대한 \code{ValueError}이고, $a$가 특이하면 $b$를 보기 전에 \code{LinAlgError}이다. 6--7행이 \code{getrs} 대신 \code{trsv}를 부르는 이유는 측정이다. Accelerate의 \code{trsm}은 우변이 하나일 때 \code{trsv}보다 크게 느리다. \cref{tab:lu-trsv}처럼 $n=1600$에서 세 배이다. \code{getrs}는 안에서 \code{trsm}을 부르므로 우변이 적을 때는 교환과 \code{trsv} 두 번을 직접 하는 편이 빠르다. 우변이 넷 이상이면 \code{trsm}이 블록으로 재사용을 얻어 앞서고, 경계는 $k\le2$에 두었다.
+
+\begin{table}[t]
+\begin{sdtable}{colspec={rrrrrrr}, row{1}={font=\small\bfseries}}
+\toprule
+$n$ & $50$ & $100$ & $200$ & $400$ & $800$ & $1600$ \\
+\midrule
+\code{trsv} & $0.42$ & $1.50$ & $5.04$ & $8.54$ & $37.4$ & $112$ \\
+\code{trsm} & $0.54$ & $3.33$ & $13.0$ & $22.3$ & $100$ & $342$ \\
+\bottomrule
+\end{sdtable}
+\caption{우변 하나의 하삼각 풀이(Accelerate, 마이크로초, \code{figures/48/bench.c}의 \code{trsv}).}
+\label{tab:lu-trsv}
+\end{table}
+
+\code{lu\_solve(l, u, perm, b, *, trans='N')}는 \code{lu}의 결과를 다시 받아 푼다. scipy의 \code{lu\_factor}가 돌려주는 \code{(lu, piv)} 같은 압축 형식이 아니라 \code{lu}의 결과 그대로를 받는다는 점이 다르고, 그래서 \code{perm}이 정말 순열인지부터 확인해야 한다.
+
+\begin{algorithm}[t]
+\begin{algorithmic}[1]
+\Require $l$ ($n\times n$, 대각 아래만 읽음), $u$ ($n\times n$, 대각과 위만 읽음), $\mathit{perm}$, $b$ ($n\times k$), $\mathit{trans}\in\{\mathrm N,\mathrm T,\mathrm H\}$
+\State $l$의 대각 아래가 유한한지; 아니면 \Return \code{NonFinite}($l$)
+\State $u$의 대각과 위가 유한한지; 아니면 \Return \code{NonFinite}($u$)
+\State $u$의 대각에 정확한 $0$이 있으면 \Return \code{Singular}
+\State $\mathit{seen}_{0:n}\gets0$
+\For{$r=0,\dots,n-1$} \Comment{순열 검증}
+  \State $v\gets\mathit{perm}_r$; \textbf{if} $v<0$ \textbf{or} $v\ge n$ \textbf{or} $\mathit{seen}_v$ \textbf{then return} \code{BadPerm}
+  \State $\mathit{seen}_v\gets1$
+\EndFor
+\If{$\mathit{trans}=\mathrm N$}
+  \State $x_{r,:}\gets b_{\mathit{perm}_r,:}$ (유한성 검사 포함) \Comment{행 모으기: 반올림 없음}
+  \State $x\gets L^{-1}x$ (단위 대각); $x\gets U^{-1}x$
+\Else
+  \State $z\gets b$ (유한성 검사 포함)
+  \State $z\gets\mathrm{op}(U)^{-1}z$; $z\gets\mathrm{op}(L)^{-1}z$ \Comment{$\mathrm{op}$은 전치 또는 켤레 전치}
+  \State $x_{\mathit{perm}_r,:}\gets z_{r,:}$ \Comment{흩기}
+\EndIf
+\end{algorithmic}
+\caption{\code{lu\_solve}의 배치 원소 하나}
+\label{alg:lu-lusolve}
+\end{algorithm}
+
+\cref{alg:lu-lusolve}의 전치 경우가 맞는 까닭은 이렇다. \code{perm}의 뜻에서 $PA=LU$이고 $(PA)_r=A_{\mathit{perm}_r}$이다. 그러면 $A=P^{\mathsf T}LU$이고 $A^{\mathsf T}=U^{\mathsf T}L^{\mathsf T}P$이다. $A^{\mathsf T}x=b$는 $U^{\mathsf T}w=b$, $L^{\mathsf T}z=w$, $Px=z$로 풀리고 마지막 식은 $x_{\mathit{perm}_r}=z_r$, 곧 흩기이다. \code{'N'}이면 반대로 $Pb$를 먼저 만드는데 이것은 $b$의 행을 \code{perm}의 순서로 모으는 것이어서 산술이 없다. 그 뒤의 두 삼각 풀이는 \code{solve}가 교환 뒤에 하는 것과 같은 호출이다. 그래서 $l$, $u$가 \code{lu}가 돌려준 열 우선 배열 그대로이면 \code{lu\_solve(*lu(a), b)}는 \code{solve(a, b)}와 비트까지 같다.
+
+$l$과 $u$는 LAPACK이 읽기만 하므로 복사하지 않고 그 자리에서 읽을 수 있다. 원소 타입이 계산 타입과 같고, 시작이 16바이트 경계이고, 열 우선이면서 열 간격이 16바이트의 배수이면 그대로 \code{trsv}·\code{trtrs}에 넘기고 읽을 삼각형만 유한성을 검사한다. C 순서(행 우선)인 삼각 행렬도 그 자리에서 읽는다. 행 우선의 하삼각은 열 우선으로 본 상삼각의 전치이므로, 우변이 둘 이하이면 \code{trsv}에 \code{CblasRowMajor}를 주고 셋 이상이면 \code{trtrs}에 반대쪽 삼각과 반대 연산(\code{'N'}$\leftrightarrow$\code{'T'})을 준다. 다만 이 길은 반올림 순서가 달라 열 우선 인수와 끝 비트가 다를 수 있다. 복소수의 켤레 전치(\code{'H'})에 우변이 셋 이상인 경우는 대응하는 연산이 없어서 패킹한다.
+
+\subsection{Inverse and Determinants}
+
+\code{inv(x)}는 \code{getrf} 뒤에 단위행렬을 우변으로 두고 \cref{alg:lu-solve-body}의 풀이를 그대로 한다. \code{getri}를 쓰지 않는 이유는 둘이다. 하나는 \cref{tab:lu-inverse}에서 보았듯 $n\le1024$에서 이 길이 빠르거나 같다는 것이고, 다른 하나는 \code{inv(a)}가 \code{solve(a, I)}와 비트까지 같아진다는 것이다. 두 함수가 같은 행렬에 대해 반올림 수준에서 다른 답을 주면 사용자가 의아해한다. 대신 $n=2048$처럼 큰 행렬에서는 \code{getri}보다 느리다. 설계 문서는 크기에 따라 길을 바꾸는 안을 남겨 두었다.
+
+\code{det}과 \code{slogdet}는 \code{getrf} 뒤에 \cref{alg:lu-det}과 로그 합을 한다. 특이(\code{info}$>0$)도 에러가 아니다. 빈 행렬($0\times0$)의 행렬식은 빈 곱의 관례대로 $1$, \code{slogdet}은 $(1,0)$이다. 배치가 없으면 결과는 Python 스칼라이고 배치가 있으면(크기가 1이어도) 배열이다.
+
+\subsection{Errors}
+
+LU 계열이 내는 에러는 둘이다. 입력이 NaN이나 무한대를 품으면 \code{ValueError}이고 특이 행렬로 풀거나 역행렬을 구하면 \code{LinAlgError}이다. 메시지는 함수 이름으로 시작한다.
+\begin{itemize}
+\item \code{solve(): 'a' contains NaN or infinity}
+\item \code{inv(): singular matrix (at batch index (1, 2))}
+\end{itemize}
+배치의 여러 원소가 실패하면 가장 작은 배치 인덱스를 보고한다. 한 원소 안에서는 인자의 순서대로 본다. 첫 행렬의 유한성, 그 행렬의 특이성, 다음 인자들의 유한성이다(\cref{alg:lu-solve-body,alg:lu-lusolve}). ``특이''는 정확히 $0$인 피벗만을 뜻한다. 피벗이 $10^{-300}$이어도 분해는 성공하고 답은 거대하거나 무한대가 되며, 조건수를 보는 것은 사용자의 몫이다(\code{cond}). 이 규칙은 numpy와 같다.
+
+\section{Batches, Threads, and Hardware}
+\label{sec:lu-batches}
+
+\subsection{The Batch Driver}
+
+모든 행렬 함수는 앞쪽 축을 \term{배치}{batch}로 본다. \code{solve(a, b)}에서 $a$가 $(2,1,n,n)$이고 $b$가 $(3,n,k)$이면 배치 축 $(2,1)$과 $(3,)$을 오른쪽 정렬로 브로드캐스트해 $(2,3)$개의 문제를 푼다. 원소마다 각 피연산자의 바이트 오프셋을 계산하고(브로드캐스트되는 축의 간격은 $0$) 같은 몸체를 부른다. 배치 원소는 서로 독립이므로 스레드에 나누어 돌릴 수 있다.
+
+\begin{algorithm}[t]
+\begin{algorithmic}[1]
+\Require 배치 크기 $N$, 원소 하나의 추정 시간 $t$ (ns), 몸체 $\mathit{body}(i)$ (실패 코드 또는 $0$), 태스크 상한 $c$
+\If{$N\ge2$ \textbf{and} $Nt\ge10^4$ \textbf{and} 풀이 쓸 수 있음}
+  \State $q\gets\max(1,\lfloor5000/t\rfloor)$ \Comment{태스크 하나가 약 $5\,\mu$s}
+  \State \textbf{if} $c>0$ \textbf{and} $\lceil N/q\rceil>c$ \textbf{then} $q\gets\lceil N/c\rceil$
+  \State $\mathit{first}\gets\infty$ (원자적)
+  \ForAll{태스크 $\tau=0,\dots,\lceil N/q\rceil-1$ \textbf{in parallel}}
+    \State 자기 작업 메모리를 만든다
+    \For{$i=\tau q,\dots,\min(N,(\tau+1)q)-1$}
+      \State \textbf{if} $i>\mathit{first}$ \textbf{then break} \Comment{더 작은 실패가 이미 있다}
+      \If{$\mathit{body}(i)\ne0$}
+        \State 기록 $(i,\text{코드})$; $\mathit{first}\gets\min(\mathit{first},i)$ (비교 후 교환); \textbf{break}
+      \EndIf
+    \EndFor
+  \EndFor
+  \State \Return 기록들 가운데 인덱스가 가장 작은 것
+\Else
+  \State GIL을 풀고(오래 걸리면) $i=0,1,\dots$ 차례로 $\mathit{body}(i)$; 첫 실패에서 멈추고 \Return
+\EndIf
+\end{algorithmic}
+\caption{배치 드라이버 (\code{run\_batch})}
+\label{alg:lu-batch}
+\end{algorithm}
+
+\cref{alg:lu-batch}에서 원소 하나의 추정 시간은 $t=a+c\,w$의 꼴이다. $w$는 행렬의 원소 수이고 LU 계열은 $a=70$ns, $c=3$ns로 $n=2..256$의 실측에 맞춘 상수이다. $n$이 크면 시간이 $n^3$으로 자라 이 식은 과소평가하지만, 그때는 원소 둘만 있어도 이미 나눌 가치가 있으므로 판단은 틀리지 않는다. 배치 전체의 추정 시간이 $10\,\mu$s 미만이면 스레드를 깨우는 비용이 이득보다 크므로 나누지 않는다.
+
+실패 보고는 직렬과 같아야 한다. 직렬로 돌면 처음 만난 실패가 가장 작은 인덱스이다. 나누어 돌릴 때 처음 발견한 실패에서 모두 멈추면 어느 인덱스가 보고될지가 스레드의 타이밍에 달린다. \cref{alg:lu-batch}은 이렇게 한다. 각 태스크는 자기 구간을 앞에서부터 돌다 첫 실패에서 멈추고 그 인덱스를 기록한다. 지금까지 알려진 가장 작은 실패보다 뒤의 원소는 건너뛴다. 끝나면 기록들 가운데 가장 작은 것을 고른다. 가장 작은 실패 인덱스 $i^\ast$를 품은 태스크는 $i^\ast$에 이르기 전에 멈추지 않는다. 그 앞의 원소들은 실패하지 않으므로 기록되지 않고, $\mathit{first}$는 언제나 어떤 실제 실패의 인덱스여서 $i^\ast$ 이상이므로 건너뛰기 조건도 걸리지 않는다. 그러므로 $i^\ast$는 반드시 기록되고, 보고되는 인덱스는 스레드 수와 상관없이 직렬과 같다.
+
+결과의 비트도 스레드 수와 상관없다. 원소 하나는 어디서 돌든 같은 몸체를 같은 순서로 돌고, 작업 메모리는 태스크마다 따로이며, LAPACK에 넘기는 배열은 모두 16바이트 경계에 있기 때문이다. 작업 메모리에도 두 가지 세부가 있다. 하나는 새 메모리를 $0$으로 채우지 않는 것이다. \code{std::vector}의 \code{resize}처럼 채우면 $1000\times1000$에서 그 비용이 패킹만큼 들었고, 모든 사용처가 읽기 전에 쓰므로 채울 필요가 없다. 다른 하나는 $4$KB보다 작은 버퍼를 $128$바이트 경계(이 처리기의 캐시 줄)에 두고 크기도 $128$의 배수로 올리는 것이다. 그러지 않으면 메모리 할당기가 여러 스레드의 작은 버퍼(\code{lu\_solve}의 $3$바이트짜리 \code{seen})를 같은 캐시 줄에 내주는 일이 생겼고, 원소마다 쓰는 그 줄이 코어 사이를 오가며 시간이 프로세스마다 30\%씩 달라졌다.
+
+\subsection{A Shared Matrix Unit}
+
+Apple의 처리기에는 행렬 곱을 위한 장치(AMX)가 코어 무리마다 하나씩 있고 Accelerate의 일부 경로가 이것을 쓴다. 이 장치는 코어들이 함께 쓰므로 여러 스레드가 동시에 그 경로를 타면 줄을 선다. \cref{fig:lu-amx}는 크기가 같은 행렬을 수천 개 분해하는 시간을 행렬 하나당으로 나타낸 것이다. 한 스레드에서는 \code{getrf}와 \code{getf2}가 비슷하다. 열 스레드에서 \code{getf2}는 $n$을 따라 고르게 늘지만 \code{getrf}는 $n=32$에서 갑자기 $1.5\,\mu$s로 뛰고 $n=64$까지 그 자리에 머문다. 스레드 수를 늘려도 빨라지지 않는 이 평평한 구간이 공유 장치에서 줄을 서는 모습이다. $n=36$에서 \code{getf2}는 \code{getrf}의 $4.2$배 빠르다.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}
+\begin{axis}[width=0.86\textwidth,height=0.5\textwidth,
+  xlabel={$n$},ylabel={행렬 하나당 시간 ($\mu$s)},grid=major,grid style={gray!25},
+  legend pos=north west,legend style={font=\small,draw=none,fill=none},
+  xmin=6,xmax=74,ymin=0,ymax=2.5]
+\addplot[black,mark=*,mark size=1.2pt] table[x=n,y=getrf10]{figures/48/batch.dat};
+\addlegendentry{\code{getrf}, 10스레드}
+\addplot[black,dashed,mark=square*,mark size=1.2pt] table[x=n,y=getf210]{figures/48/batch.dat};
+\addlegendentry{\code{getf2}, 10스레드}
+\draw[gray!60] (axis cs:32,0) -- (axis cs:32,2.5);
+\draw[gray!60] (axis cs:46,0) -- (axis cs:46,2.5);
+\node[font=\scriptsize,anchor=south] at (axis cs:39,2.05) {stardust의 \code{getf2} 구간};
+\end{axis}
+\end{tikzpicture}
+\caption{$n\times n$ 행렬 수천 개를 열 스레드로 분해할 때 행렬 하나당 시간(Apple M4 Pro, Accelerate). 한 스레드의 값과 측정 코드는 \code{figures/48/batch.dat}과 \code{bench.c}에 있다.}
+\label{fig:lu-amx}
+\end{figure}
+
+stardust는 이 측정을 두 규칙으로 바꿨다. 첫째, 행과 열이 모두 $32$에서 $46$ 사이인 행렬은 \code{getrf} 대신 블록 없는 \code{getf2}로 분해한다. 피벗 규칙과 특이의 판정은 같고 결과는 반올림 수준에서 같다. 둘째, 우변이 $8$개 이상인 삼각 풀이(\code{trsm})도 $n=24$--$40$에서 같은 장치를 타므로 이 경우 배치를 나누는 태스크의 수를 $3$이나 $5$로 제한한다(\cref{alg:lu-batch}의 $c$). 경계값은 stardust를 개발한 기계에서 잰 것이다. 우리 측정에서는 열 스레드의 \code{getf2}가 $n=64$까지 앞서므로 경계는 처리기마다 다르다. 이런 규칙은 하드웨어를 바꿀 때마다 다시 재야 한다는 점에서 알고리즘의 일부가 아니라 구현의 일부이다.
+
+\section{Testing and Accuracy}
+\label{sec:lu-testing}
+
+후진 오차 해석은 시험의 기준이 된다. stardust는 풀이의 \term{잔차 계약}{residual contract}을
+\[
+\|Ax-b\|_\infty\le c\,n\,\epsilon\,(\|A\|_\infty\|x\|_\infty+\|b\|_\infty),\qquad c=10
+\]
+으로 둔다. \cref{thm:lu-rigal-gaches}의 후진 오차를 $\infty$-노름으로 쓴 것에 $c\,n\,\epsilon$의 상한을 준 꼴이다. \eqref{eq:lu-normwise}의 이론 상한 $n^2\rho_n\gamma_{3n}$은 너무 비관적이어서 시험 기준으로 쓸 수 없고, 상수 $c=10$은 측정에서 정했다. \cref{tab:lu-residual}은 무작위 정규 행렬에서 잰 이 비율이다. 가장 나쁜 값도 계약의 $1/90$ 아래이다.
+
+\begin{table}[t]
+\begin{sdtable}{colspec={rrrr}, row{1}={font=\small\bfseries}}
+\toprule
+$n$ & 행렬 수 & 중앙값 & 최댓값 \\
+\midrule
+$10$ & $2000$ & $0.019$ & $0.112$ \\
+$100$ & $300$ & $0.0055$ & $0.0092$ \\
+$1000$ & $20$ & $0.0036$ & $0.0049$ \\
+\bottomrule
+\end{sdtable}
+\caption{$\|Ax-b\|_\infty/(n\epsilon(\|A\|_\infty\|x\|_\infty+\|b\|_\infty))$, 표준 정규 원소의 $A$와 $b$, 부분 피벗 LU(Accelerate)로 푼 해(\code{figures/48/residual.py}). 계약은 이 값이 $10$ 이하일 것을 요구한다.}
+\label{tab:lu-residual}
+\end{table}
+
+이 밖에 stardust의 시험은 다음을 확인한다.
+\begin{itemize}
+\item \textbf{조건수가 큰 행렬}: $\kappa_2=1$에서 $10^{12}$까지의 정사각 행렬에 대해 해와 행렬식의 참값을 구간 산술 라이브러리 Arb로 미리 계산해 두고, 잔차 계약과 함께 확인한다.
+\item \textbf{비트 관계}: \code{inv(a) == solve(a, I)}, \code{lu\_solve(*lu(a), b) == solve(a, b)}(열 우선 인수), \code{matrix\_power(x, -1) == inv(x)}가 바이트까지 같은지.
+\item \textbf{배치와 레이아웃}: 같은 행렬을 C, F, 띄엄띄엄, 음수 간격으로 넣었을 때, 배치의 홀수 자리($n=3,5,7,40$)에 두었을 때, 스레드를 $1$, $3$, $10$개로 바꿨을 때 결과가 같은 바이트인지.
+\item \textbf{경계 크기}: \code{getf2} 구간의 양 끝 $n=31,32,46,47$에서 답, 비트 재현성, 특이의 판정.
+\item \textbf{규칙}: 빈 행렬, 배치 크기 $0$, NaN 입력의 \code{ValueError}, 특이 행렬의 \code{LinAlgError}와 가장 작은 배치 인덱스, 에러의 순서, 넘치는 부분 곱이 있는 \code{det}(\code{diag(1e200, 1e200, 1e-300)}이 $10^{100}$), 복소 \code{lu}의 $|\ell_{ij}|\le\sqrt2$.
+\end{itemize}
+
+numpy와의 비교는 허용오차로 한다. Accelerate의 \code{gesv}는 \code{getrf}와 \code{getrs}를 따로 부를 때와 내부 계산 순서가 달라 $n\ge4$에서 끝 비트가 다르고, numpy의 \code{solve}는 \code{gesv}를 부르기 때문이다. 같은 기계와 같은 스레드 수에서 실행할 때마다 같은 비트를 내는 것이 stardust의 약속이고, 다른 라이브러리와 비트가 같은 것은 약속이 아니다.
+
+\section{APIs in This Chapter}
+\label{sec:lu-apis}
+
+\begin{table}[h]
+\begin{sdtable}{colspec={lXl}, row{1}={font=\small\bfseries}}
+\toprule
+API & 하는 일 & 설명한 곳 \\
+\midrule
+\code{lu(x)} & $x[\mathit{perm}]=LU$, 직사각·특이 허용 & \cref{sec:lu-pivoting,sec:lu-blocked,sec:lu-stardust-family}, \cref{alg:lu-blocked,alg:lu-recursive,alg:lu-perm} \\
+\code{solve(a, b)} & $ax=b$, 배치·브로드캐스트 & \cref{sec:lu-using,sec:lu-stardust-family}, \cref{alg:lu-solve,alg:lu-solve-body} \\
+\code{lu\_solve(l, u, perm, b, *, trans)} & \code{lu}의 결과로 풀기, 전치 & \cref{sec:lu-stardust-family}, \cref{alg:lu-lusolve} \\
+\code{inv(x)} & 역행렬, \code{solve(x, I)}와 같은 비트 & \cref{sec:lu-using,sec:lu-stardust-family}, \cref{tab:lu-inverse} \\
+\code{det(x)} & 넘침을 피하는 행렬식 & \cref{sec:lu-using}, \cref{alg:lu-det} \\
+\code{slogdet(x)} & 부호와 $\log|\det|$ & \cref{sec:lu-using} \\
+\bottomrule
+\end{sdtable}
+\caption{이 장이 구현까지 설명한 \code{sd.linalg}의 API. 패킹과 배치 드라이버(\cref{sec:lu-packing,sec:lu-batches})는 이 장의 모든 API가 함께 쓴다.}
+\label{tab:lu-apis}
+\end{table}
+
+\section{Concluding Remarks}
+
+가우스 소거를 행렬의 분해로 보는 순간 알고리즘은 세 층으로 갈린다. 산술의 층에서는 승수를 제자리에 적는 것만으로 $L$이 생기고, 부분 피벗과 성장 인자가 안정성을 정한다. 이론 상한 $2^{n-1}$과 실제 성장 $n^{2/3}$ 사이의 간극은 아직 완전히 설명되지 않았다. 메모리의 층에서는 같은 산술을 \code{gemm}으로 바꾸어 데이터 하나를 여러 번 쓰게 하는 것이 속도를 열 배 넘게 바꾸며, 블록과 재귀가 그 방법이다. 기계의 층에서는 leading dimension의 모양, 16바이트 정렬, 코어들이 함께 쓰는 행렬 장치처럼 알고리즘 책에 나오지 않는 것들이 속도와 비트 재현성을 좌우한다. stardust의 LU 계열은 산술을 LAPACK에 맡기는 대신 나머지 두 층에서 패킹, 정렬, 배치 드라이버, 크기별 경로라는 형태로 일을 한다. 다음 장에서는 삼각 행렬과 띠 행렬처럼 구조가 있는 연립방정식을 다룬다.
+
+LU와 그 오차 해석의 표준 참고서는 Higham의 책 9장과 Golub과 Van Loan의 책 3장이다\cite{higham2002accuracy,golub2013matrix}. 가우스 소거의 역사는 Grcar가 자세히 정리했다\cite{grcar2011}.
+
+\chapterreferences

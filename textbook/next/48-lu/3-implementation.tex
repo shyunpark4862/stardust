@@ -1,0 +1,296 @@
+\section{From Arrays to LAPACK}
+\label{sec:lu-packing}
+
+\subsection{The Work Buffer}
+
+stardust의 배열은 임의의 바이트 간격(stride)을 가진다. C 순서(행 우선)가 기본이고, 전치하거나 잘라 낸 뷰는 열 우선이거나 띄엄띄엄하며, 간격이 음수이거나($x[::-1]$) $0$(브로드캐스트된 축)일 수도 있다. LAPACK은 열 우선으로 연속하고 열 사이 간격이 leading dimension $\mathit{ld}$인 행렬만 받는다. 게다가 \code{getrf}는 입력을 덮어쓴다. 그래서 LU 계열의 모든 함수는 행렬을 먼저 작업 버퍼에 옮기며, 이 일을 \term{패킹}{packing}이라 한다. 패킹은 한 번의 패스로 세 가지를 한다. (i) 임의의 간격으로 읽어 열 우선으로 쓴다. (ii) \code{bool}과 \code{int64}를 \code{float64}로 바꾼다. (iii) NaN과 $\pm\infty$가 있는지 본다. LAPACK은 유한하지 않은 입력에 대해 아무것도 약속하지 않으므로(무한 루프나 쓰레기 값이 날 수 있다) stardust는 LAPACK을 부르기 전에 반드시 검사한다.
+
+\begin{algorithm}[t]
+\begin{algorithmic}[1]
+\Require 원본 시작 $p$, 크기 $m\times n$, 행·열 간격 $r_s$, $c_s$ (바이트), 목적지 $D$와 $\mathit{ld}$
+\Ensure $D[j\cdot\mathit{ld}+i]=x_{ij}$ (변환 포함); 모든 원소가 유한한지
+\If{$r_s=$ 원소 크기} \Comment{열이 연속: 열마다 복사}
+  \For{$j=0,\dots,n-1$}
+    \State 열 $j$를 복사하면서 비트로 검사: $\mathit{bad}\gets\mathit{bad}\lor[(w\mathbin{\&}\mathtt{0x7ff0\ldots0})=\mathtt{0x7ff0\ldots0}]$
+  \EndFor
+\ElsIf{$c_s=$ 원소 크기} \Comment{행이 연속(C 순서): 타일 전치}
+  \For{행 타일 $i_0=0,32,64,\dots$} \For{열 타일 $j_0=0,32,64,\dots$}
+    \For{$j\in[j_0,j_0+32)$} \For{$i\in[i_0,i_0+32)$}
+      \State $D[j\cdot\mathit{ld}+i]\gets x_{ij}$
+    \EndFor\EndFor
+  \EndFor\EndFor
+  \State 써 넣은 열마다 비트 검사를 한 번 더 돈다
+\Else \Comment{그 밖: 원소마다}
+  \State 열마다, 행마다 읽고 검사하며 쓴다
+\EndIf
+\State \Return \textbf{not} $\mathit{bad}$
+\end{algorithmic}
+\caption{패킹 (stardust \code{pack}의 세 경로, 실수 \code{float64}의 경우)}
+\label{alg:lu-pack}
+\end{algorithm}
+
+\cref{alg:lu-pack}의 경로마다 고른 이유가 있다.
+\begin{itemize}
+\item \textbf{비트로 하는 유한성 검사.} binary64에서 NaN과 $\pm\infty$는 지수 11비트가 모두 $1$인 수이고 그 밖에는 없다(10장). 그래서 64비트 정수로 읽어 지수 마스크를 비교하고 그 결과를 \code{or}로 모은다. 정수의 \code{or}는 결합적이어서 컴파일러가 루프를 SIMD로 벡터화한다. 부동소수점 비교와 \code{and}로 쓰면 결과는 같지만, stardust가 켠 \code{-ffp-contract=off} 아래에서 컴파일러가 이것을 순서가 정해진 축약으로 보아 벡터화하지 않았다.
+\item \textbf{C 순서의 타일 전치.} 행 우선 원본을 열 순서로 그냥 읽으면 원소 하나를 읽을 때마다 행 하나($8n$바이트)를 건너뛴다. $1000\times1000$이면 원소마다 다른 캐시 줄이다. $32\times32$ 타일 하나는 읽는 쪽 32줄과 쓰는 쪽 32줄, 합쳐 $16$KB만 건드리므로 L1 캐시에 머문다(\cref{fig:lu-tile}). 원소가 $4096$개를 넘으면 타일 안을 다시 $4\times4$ 블록으로 나누어 NEON 레지스터 넷에 행 넷을 읽고 \code{trn1}·\code{trn2}로 열 넷을 만든다. 원소 루프의 약 $1.5$배이다. 원소가 $2^{17}$개를 넘는 C 순서 행렬은 열 $32$개 단위로 스레드 풀에 나누어 전치한다. 각 태스크가 자기 열만 쓰므로 결과는 직렬과 같다.
+\item \textbf{어느 경로든 같은 결과.} 원소 $(i,j)$는 언제나 $D[j\cdot\mathit{ld}+i]$로 가고 변환은 원소마다 같은 함수이므로, 입력의 배치(C, F, 띄엄띄엄, 음수 간격, 브로드캐스트)가 무엇이든 작업 버퍼는 바이트까지 같다. 그래서 패킹을 거치는 \code{lu}, \code{solve}, \code{inv}, \code{det}, \code{slogdet}의 결과는 입력의 메모리 배치와 무관하게 비트까지 같다.
+\end{itemize}
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[x=0.32cm,y=0.32cm,font=\small]
+\draw (0,0) rectangle (12,12); \node at (6,-1) {원본 (행 우선)};
+\fill[gray!40] (4,4) rectangle (8,8);
+\foreach \r in {4.5,5.5,6.5,7.5}{\draw[->] (4.2,\r) -- (7.8,\r);}
+\draw (15,0) rectangle (27,12); \node at (21,-1) {작업 버퍼 (열 우선)};
+\fill[gray!40] (19,4) rectangle (23,8);
+\foreach \c in {19.5,20.5,21.5,22.5}{\draw[->] (\c,7.8) -- (\c,4.2);}
+\draw[->,thick] (8.6,6) -- (18.4,6) node[midway,above] {타일 하나 $32\times32$};
+\end{tikzpicture}
+\caption{C 순서 원본의 타일 전치. 원본에서는 타일의 행을 따라(화살표) 연속으로 읽고 버퍼에서는 열을 따라 연속으로 쓴다. 한 타일이 건드리는 캐시 줄은 양쪽 합쳐 64줄이다.}
+\label{fig:lu-tile}
+\end{figure}
+
+패킹은 출력 자리를 작업 버퍼로 쓰기도 한다. \code{solve}는 우변 $b$를 처음부터 결과 배열의 자리에 열 우선으로 패킹하고, 그 자리에서 \code{getrs}(또는 대입)가 $b$를 해로 덮어쓴다. 행렬 $a$만 따로 작업 버퍼가 필요하다. 그래서 \code{solve} 한 번의 메모리 이동은 ``$a$의 복사 한 번, $b$의 복사 한 번, LAPACK''이 전부이다.
+
+\subsection{Leading Dimension and Alignment}
+
+작업 버퍼의 leading dimension은 $\mathit{ld}=n$이다. \cref{sec:lu-blocked}에서 직접 짠 블록 LU가 $\mathit{ld}$가 2의 거듭제곱일 때 느려지는 것을 보았는데 Accelerate의 \code{dgetrf}도 같다. $n=1024$에서 $\mathit{ld}=1024$이면 초당 $149\times10^9$ 플롭, $\mathit{ld}=1032$이면 $235\times10^9$ 플롭이다(\code{figures/48/lda2.c}). stardust는 $\mathit{ld}=n$으로 패킹하므로 $1024\times1024$의 \code{solve}는 이 손해를 그대로 본다. 버퍼의 $\mathit{ld}$를 몇 원소 늘리면 피할 수 있지만 그러면 결과의 끝 비트가 바뀔 수 있어 \cref{sec:lu-testing}의 비트 관계를 함께 다시 확인해야 한다.
+
+정렬은 더 미묘하다. Accelerate는 배열이 16바이트 경계에서 시작하는지에 따라 다른 코드 경로를 타고, 그러면 반올림이 달라진다. \code{float64}의 $3\times3$ 행렬들이 한 배열에 이어 있으면 행렬 사이 간격이 $72$바이트여서 홀수 번째 행렬은 16바이트 경계에서 8바이트 어긋난다(\cref{fig:lu-align}). 같은 행렬이 배치 안의 위치에 따라 다른 비트를 받는 것이다. stardust의 설계 문서는 $n=3,5,7,9$의 무작위 행렬 $120$개에서 \code{schur}, \code{svd}, \code{eigh}의 결과가 수십 개씩 달랐다고 적고 있다. 그래서 LAPACK이나 BLAS에 넘기는 모든 배열을 16바이트 경계에 둔다. 출력 자리가 어긋나 있으면 \code{LapackSlot}이 정렬된 임시 버퍼를 주고, 계산이 끝나면 그 내용을 출력 자리로 복사한다. 그 결과 배치의 어느 자리에 있든 같은 행렬은 같은 비트를 받는다.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[x=0.031cm,y=0.5cm,font=\small]
+\foreach \k in {0,...,4}{
+  \pgfmathsetmacro{\xa}{72*\k}
+  \pgfmathtruncatemacro{\odd}{mod(\k,2)}
+  \ifnum\odd=1 \fill[gray!35] (\xa,0) rectangle (\xa+72,1); \else \fill[gray!10] (\xa,0) rectangle (\xa+72,1); \fi
+  \draw (\xa,0) rectangle (\xa+72,1);
+  \node at (\xa+36,0.5) {행렬 \k};
+  \node[below] at (\xa,0) {\pgfmathprintnumber{\xa}};
+}
+\foreach \b in {0,16,...,352}{\draw[gray] (\b,1) -- (\b,1.35);}
+\node[anchor=west] at (0,1.75) {16바이트 경계(위의 눈금)};
+\end{tikzpicture}
+\caption{$3\times3$ \code{float64} 행렬 다섯 개가 이어진 배치. 행렬은 $72$바이트마다 시작하므로 홀수 번째(진한 칸)는 16바이트 경계에서 8바이트 어긋난다.}
+\label{fig:lu-align}
+\end{figure}
+
+\section{The LU Family in stardust}
+\label{sec:lu-stardust-family}
+
+\subsection{Factorization: \texorpdfstring{\code{lu}}{lu}}
+
+\code{sd.linalg.lu(x)}는 $m\times n$ 행렬(과 그 배치)을 받아 \code{LUResult(L, U, perm)}을 돌려준다. $p=\min(m,n)$이면 $L$은 $m\times p$, $U$는 $p\times n$이고 \code{x[..., perm, :] == L @ U}이다. 원소 하나의 몸체는 패킹, \code{getrf}(크기에 따라 \code{getf2}, \cref{sec:lu-batches}), 풀어 쓰기, 순열 만들기의 넷이다. \code{getrf}가 돌려주는 \code{info}$>0$(정확히 $0$인 피벗)은 무시한다. \cref{sec:lu-factorization}에서 보았듯 특이 행렬도 분해는 있고 그 흔적은 $U$의 대각에 남기 때문이다.
+
+풀어 쓰기는 \code{getrf}가 한 자리에 섞어 둔 $L$과 $U$를 두 결과 배열로 나누는 일이다. $L$에는 대각 위에 $0$, 대각에 $1$, 대각 아래에 승수를 쓰고 $U$에는 대각과 그 위를 쓰고 아래에 $0$을 쓴다. 원소가 $1024$개 이하이면 원소마다 조건을 보는 한 루프로 하고, 그보다 크면 열마다 ``$0$ 채우기, $1$, 복사''를 \code{fill}과 \code{copy}로 한다. 작은 행렬에서는 라이브러리 호출 몇 번의 고정비가 원소 루프보다 비싸고, 큰 행렬에서는 연속 구간의 복사가 훨씬 빠르기 때문이다. 마지막으로 \cref{alg:lu-perm}으로 \code{ipiv}를 \code{perm}으로 바꾼다.
+
+\subsection{Solving: \texorpdfstring{\code{solve}}{solve} and \texorpdfstring{\code{lu\_solve}}{lu\_solve}}
+
+\code{solve(a, b)}는 언제나 LU로 푼다. scipy의 \code{assume\_a=}처럼 행렬의 구조를 보고 방법을 고르는 일은 하지 않는다. 대칭 양정치 행렬은 \code{cholesky\_solve}, 삼각 행렬은 \code{solve\_triangular}처럼 구조는 함수 이름으로 고르는 것이 stardust의 규칙이다. $b$가 1차원이면 벡터 하나이고 그 밖에는 $(\dots,n,k)$의 행렬 묶음이다.
+
+\begin{algorithm}[t]
+\begin{algorithmic}[1]
+\Require 배치 원소 하나의 $a$ ($n\times n$), $b$ ($n\times k$)
+\Ensure 결과 자리에 $x=a^{-1}b$, 또는 실패 코드
+\State $a$를 작업 버퍼에 패킹; 유한하지 않으면 \Return \code{NonFinite}($a$)
+\State $\mathit{info}\gets$ \code{getrf} 또는 \code{getf2}$(a)$ \Comment{$32\le n\le46$이면 \code{getf2}}
+\State \textbf{if} $\mathit{info}>0$ \textbf{then return} \code{Singular}
+\State $b$를 결과 자리에 패킹; 유한하지 않으면 \Return \code{NonFinite}($b$)
+\If{$k\le2$}
+  \State 결과의 열마다 \code{ipiv}의 교환을 적용
+  \State \code{trsv}(단위 하삼각 $L$), \code{trsv}($U$)를 열마다
+\Else
+  \State \code{getrs}('N') \Comment{교환 + \code{trsm} 둘}
+\EndIf
+\end{algorithmic}
+\caption{\code{solve}의 배치 원소 하나}
+\label{alg:lu-solve-body}
+\end{algorithm}
+
+\cref{alg:lu-solve-body}의 순서는 에러의 순서이기도 하다. $a$가 NaN을 품고 있으면 $b$에 무엇이 있든 $a$에 대한 \code{ValueError}이고, $a$가 특이하면 $b$를 보기 전에 \code{LinAlgError}이다. 6--7행이 \code{getrs} 대신 \code{trsv}를 부르는 이유는 측정이다. Accelerate의 \code{trsm}은 우변이 하나일 때 \code{trsv}보다 크게 느리다. \cref{tab:lu-trsv}처럼 $n=1600$에서 세 배이다. \code{getrs}는 안에서 \code{trsm}을 부르므로 우변이 적을 때는 교환과 \code{trsv} 두 번을 직접 하는 편이 빠르다. 우변이 넷 이상이면 \code{trsm}이 블록으로 재사용을 얻어 앞서고, 경계는 $k\le2$에 두었다.
+
+\begin{table}[t]
+\begin{sdtable}{colspec={rrrrrrr}, row{1}={font=\small\bfseries}}
+\toprule
+$n$ & $50$ & $100$ & $200$ & $400$ & $800$ & $1600$ \\
+\midrule
+\code{trsv} & $0.42$ & $1.50$ & $5.04$ & $8.54$ & $37.4$ & $112$ \\
+\code{trsm} & $0.54$ & $3.33$ & $13.0$ & $22.3$ & $100$ & $342$ \\
+\bottomrule
+\end{sdtable}
+\caption{우변 하나의 하삼각 풀이(Accelerate, 마이크로초, \code{figures/48/bench.c}의 \code{trsv}).}
+\label{tab:lu-trsv}
+\end{table}
+
+\code{lu\_solve(l, u, perm, b, *, trans='N')}는 \code{lu}의 결과를 다시 받아 푼다. scipy의 \code{lu\_factor}가 돌려주는 \code{(lu, piv)} 같은 압축 형식이 아니라 \code{lu}의 결과 그대로를 받는다는 점이 다르고, 그래서 \code{perm}이 정말 순열인지부터 확인해야 한다.
+
+\begin{algorithm}[t]
+\begin{algorithmic}[1]
+\Require $l$ ($n\times n$, 대각 아래만 읽음), $u$ ($n\times n$, 대각과 위만 읽음), $\mathit{perm}$, $b$ ($n\times k$), $\mathit{trans}\in\{\mathrm N,\mathrm T,\mathrm H\}$
+\State $l$의 대각 아래가 유한한지; 아니면 \Return \code{NonFinite}($l$)
+\State $u$의 대각과 위가 유한한지; 아니면 \Return \code{NonFinite}($u$)
+\State $u$의 대각에 정확한 $0$이 있으면 \Return \code{Singular}
+\State $\mathit{seen}_{0:n}\gets0$
+\For{$r=0,\dots,n-1$} \Comment{순열 검증}
+  \State $v\gets\mathit{perm}_r$; \textbf{if} $v<0$ \textbf{or} $v\ge n$ \textbf{or} $\mathit{seen}_v$ \textbf{then return} \code{BadPerm}
+  \State $\mathit{seen}_v\gets1$
+\EndFor
+\If{$\mathit{trans}=\mathrm N$}
+  \State $x_{r,:}\gets b_{\mathit{perm}_r,:}$ (유한성 검사 포함) \Comment{행 모으기: 반올림 없음}
+  \State $x\gets L^{-1}x$ (단위 대각); $x\gets U^{-1}x$
+\Else
+  \State $z\gets b$ (유한성 검사 포함)
+  \State $z\gets\mathrm{op}(U)^{-1}z$; $z\gets\mathrm{op}(L)^{-1}z$ \Comment{$\mathrm{op}$은 전치 또는 켤레 전치}
+  \State $x_{\mathit{perm}_r,:}\gets z_{r,:}$ \Comment{흩기}
+\EndIf
+\end{algorithmic}
+\caption{\code{lu\_solve}의 배치 원소 하나}
+\label{alg:lu-lusolve}
+\end{algorithm}
+
+\cref{alg:lu-lusolve}의 전치 경우가 맞는 까닭은 이렇다. \code{perm}의 뜻에서 $PA=LU$이고 $(PA)_r=A_{\mathit{perm}_r}$이다. 그러면 $A=P^{\mathsf T}LU$이고 $A^{\mathsf T}=U^{\mathsf T}L^{\mathsf T}P$이다. $A^{\mathsf T}x=b$는 $U^{\mathsf T}w=b$, $L^{\mathsf T}z=w$, $Px=z$로 풀리고 마지막 식은 $x_{\mathit{perm}_r}=z_r$, 곧 흩기이다. \code{'N'}이면 반대로 $Pb$를 먼저 만드는데 이것은 $b$의 행을 \code{perm}의 순서로 모으는 것이어서 산술이 없다. 그 뒤의 두 삼각 풀이는 \code{solve}가 교환 뒤에 하는 것과 같은 호출이다. 그래서 $l$, $u$가 \code{lu}가 돌려준 열 우선 배열 그대로이면 \code{lu\_solve(*lu(a), b)}는 \code{solve(a, b)}와 비트까지 같다.
+
+$l$과 $u$는 LAPACK이 읽기만 하므로 복사하지 않고 그 자리에서 읽을 수 있다. 원소 타입이 계산 타입과 같고, 시작이 16바이트 경계이고, 열 우선이면서 열 간격이 16바이트의 배수이면 그대로 \code{trsv}·\code{trtrs}에 넘기고 읽을 삼각형만 유한성을 검사한다. C 순서(행 우선)인 삼각 행렬도 그 자리에서 읽는다. 행 우선의 하삼각은 열 우선으로 본 상삼각의 전치이므로, 우변이 둘 이하이면 \code{trsv}에 \code{CblasRowMajor}를 주고 셋 이상이면 \code{trtrs}에 반대쪽 삼각과 반대 연산(\code{'N'}$\leftrightarrow$\code{'T'})을 준다. 다만 이 길은 반올림 순서가 달라 열 우선 인수와 끝 비트가 다를 수 있다. 복소수의 켤레 전치(\code{'H'})에 우변이 셋 이상인 경우는 대응하는 연산이 없어서 패킹한다.
+
+\subsection{Inverse and Determinants}
+
+\code{inv(x)}는 \code{getrf} 뒤에 단위행렬을 우변으로 두고 \cref{alg:lu-solve-body}의 풀이를 그대로 한다. \code{getri}를 쓰지 않는 이유는 둘이다. 하나는 \cref{tab:lu-inverse}에서 보았듯 $n\le1024$에서 이 길이 빠르거나 같다는 것이고, 다른 하나는 \code{inv(a)}가 \code{solve(a, I)}와 비트까지 같아진다는 것이다. 두 함수가 같은 행렬에 대해 반올림 수준에서 다른 답을 주면 사용자가 의아해한다. 대신 $n=2048$처럼 큰 행렬에서는 \code{getri}보다 느리다. 설계 문서는 크기에 따라 길을 바꾸는 안을 남겨 두었다.
+
+\code{det}과 \code{slogdet}는 \code{getrf} 뒤에 \cref{alg:lu-det}과 로그 합을 한다. 특이(\code{info}$>0$)도 에러가 아니다. 빈 행렬($0\times0$)의 행렬식은 빈 곱의 관례대로 $1$, \code{slogdet}은 $(1,0)$이다. 배치가 없으면 결과는 Python 스칼라이고 배치가 있으면(크기가 1이어도) 배열이다.
+
+\subsection{Errors}
+
+LU 계열이 내는 에러는 둘이다. 입력이 NaN이나 무한대를 품으면 \code{ValueError}이고 특이 행렬로 풀거나 역행렬을 구하면 \code{LinAlgError}이다. 메시지는 함수 이름으로 시작한다.
+\begin{itemize}
+\item \code{solve(): 'a' contains NaN or infinity}
+\item \code{inv(): singular matrix (at batch index (1, 2))}
+\end{itemize}
+배치의 여러 원소가 실패하면 가장 작은 배치 인덱스를 보고한다. 한 원소 안에서는 인자의 순서대로 본다. 첫 행렬의 유한성, 그 행렬의 특이성, 다음 인자들의 유한성이다(\cref{alg:lu-solve-body,alg:lu-lusolve}). ``특이''는 정확히 $0$인 피벗만을 뜻한다. 피벗이 $10^{-300}$이어도 분해는 성공하고 답은 거대하거나 무한대가 되며, 조건수를 보는 것은 사용자의 몫이다(\code{cond}). 이 규칙은 numpy와 같다.
+
+\section{Batches, Threads, and Hardware}
+\label{sec:lu-batches}
+
+\subsection{The Batch Driver}
+
+모든 행렬 함수는 앞쪽 축을 \term{배치}{batch}로 본다. \code{solve(a, b)}에서 $a$가 $(2,1,n,n)$이고 $b$가 $(3,n,k)$이면 배치 축 $(2,1)$과 $(3,)$을 오른쪽 정렬로 브로드캐스트해 $(2,3)$개의 문제를 푼다. 원소마다 각 피연산자의 바이트 오프셋을 계산하고(브로드캐스트되는 축의 간격은 $0$) 같은 몸체를 부른다. 배치 원소는 서로 독립이므로 스레드에 나누어 돌릴 수 있다.
+
+\begin{algorithm}[t]
+\begin{algorithmic}[1]
+\Require 배치 크기 $N$, 원소 하나의 추정 시간 $t$ (ns), 몸체 $\mathit{body}(i)$ (실패 코드 또는 $0$), 태스크 상한 $c$
+\If{$N\ge2$ \textbf{and} $Nt\ge10^4$ \textbf{and} 풀이 쓸 수 있음}
+  \State $q\gets\max(1,\lfloor5000/t\rfloor)$ \Comment{태스크 하나가 약 $5\,\mu$s}
+  \State \textbf{if} $c>0$ \textbf{and} $\lceil N/q\rceil>c$ \textbf{then} $q\gets\lceil N/c\rceil$
+  \State $\mathit{first}\gets\infty$ (원자적)
+  \ForAll{태스크 $\tau=0,\dots,\lceil N/q\rceil-1$ \textbf{in parallel}}
+    \State 자기 작업 메모리를 만든다
+    \For{$i=\tau q,\dots,\min(N,(\tau+1)q)-1$}
+      \State \textbf{if} $i>\mathit{first}$ \textbf{then break} \Comment{더 작은 실패가 이미 있다}
+      \If{$\mathit{body}(i)\ne0$}
+        \State 기록 $(i,\text{코드})$; $\mathit{first}\gets\min(\mathit{first},i)$ (비교 후 교환); \textbf{break}
+      \EndIf
+    \EndFor
+  \EndFor
+  \State \Return 기록들 가운데 인덱스가 가장 작은 것
+\Else
+  \State GIL을 풀고(오래 걸리면) $i=0,1,\dots$ 차례로 $\mathit{body}(i)$; 첫 실패에서 멈추고 \Return
+\EndIf
+\end{algorithmic}
+\caption{배치 드라이버 (\code{run\_batch})}
+\label{alg:lu-batch}
+\end{algorithm}
+
+\cref{alg:lu-batch}에서 원소 하나의 추정 시간은 $t=a+c\,w$의 꼴이다. $w$는 행렬의 원소 수이고 LU 계열은 $a=70$ns, $c=3$ns로 $n=2..256$의 실측에 맞춘 상수이다. $n$이 크면 시간이 $n^3$으로 자라 이 식은 과소평가하지만, 그때는 원소 둘만 있어도 이미 나눌 가치가 있으므로 판단은 틀리지 않는다. 배치 전체의 추정 시간이 $10\,\mu$s 미만이면 스레드를 깨우는 비용이 이득보다 크므로 나누지 않는다.
+
+실패 보고는 직렬과 같아야 한다. 직렬로 돌면 처음 만난 실패가 가장 작은 인덱스이다. 나누어 돌릴 때 처음 발견한 실패에서 모두 멈추면 어느 인덱스가 보고될지가 스레드의 타이밍에 달린다. \cref{alg:lu-batch}은 이렇게 한다. 각 태스크는 자기 구간을 앞에서부터 돌다 첫 실패에서 멈추고 그 인덱스를 기록한다. 지금까지 알려진 가장 작은 실패보다 뒤의 원소는 건너뛴다. 끝나면 기록들 가운데 가장 작은 것을 고른다. 가장 작은 실패 인덱스 $i^\ast$를 품은 태스크는 $i^\ast$에 이르기 전에 멈추지 않는다. 그 앞의 원소들은 실패하지 않으므로 기록되지 않고, $\mathit{first}$는 언제나 어떤 실제 실패의 인덱스여서 $i^\ast$ 이상이므로 건너뛰기 조건도 걸리지 않는다. 그러므로 $i^\ast$는 반드시 기록되고, 보고되는 인덱스는 스레드 수와 상관없이 직렬과 같다.
+
+결과의 비트도 스레드 수와 상관없다. 원소 하나는 어디서 돌든 같은 몸체를 같은 순서로 돌고, 작업 메모리는 태스크마다 따로이며, LAPACK에 넘기는 배열은 모두 16바이트 경계에 있기 때문이다. 작업 메모리에도 두 가지 세부가 있다. 하나는 새 메모리를 $0$으로 채우지 않는 것이다. \code{std::vector}의 \code{resize}처럼 채우면 $1000\times1000$에서 그 비용이 패킹만큼 들었고, 모든 사용처가 읽기 전에 쓰므로 채울 필요가 없다. 다른 하나는 $4$KB보다 작은 버퍼를 $128$바이트 경계(이 처리기의 캐시 줄)에 두고 크기도 $128$의 배수로 올리는 것이다. 그러지 않으면 메모리 할당기가 여러 스레드의 작은 버퍼(\code{lu\_solve}의 $3$바이트짜리 \code{seen})를 같은 캐시 줄에 내주는 일이 생겼고, 원소마다 쓰는 그 줄이 코어 사이를 오가며 시간이 프로세스마다 30\%씩 달라졌다.
+
+\subsection{A Shared Matrix Unit}
+
+Apple의 처리기에는 행렬 곱을 위한 장치(AMX)가 코어 무리마다 하나씩 있고 Accelerate의 일부 경로가 이것을 쓴다. 이 장치는 코어들이 함께 쓰므로 여러 스레드가 동시에 그 경로를 타면 줄을 선다. \cref{fig:lu-amx}는 크기가 같은 행렬을 수천 개 분해하는 시간을 행렬 하나당으로 나타낸 것이다. 한 스레드에서는 \code{getrf}와 \code{getf2}가 비슷하다. 열 스레드에서 \code{getf2}는 $n$을 따라 고르게 늘지만 \code{getrf}는 $n=32$에서 갑자기 $1.5\,\mu$s로 뛰고 $n=64$까지 그 자리에 머문다. 스레드 수를 늘려도 빨라지지 않는 이 평평한 구간이 공유 장치에서 줄을 서는 모습이다. $n=36$에서 \code{getf2}는 \code{getrf}의 $4.2$배 빠르다.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}
+\begin{axis}[width=0.86\textwidth,height=0.5\textwidth,
+  xlabel={$n$},ylabel={행렬 하나당 시간 ($\mu$s)},grid=major,grid style={gray!25},
+  legend pos=north west,legend style={font=\small,draw=none,fill=none},
+  xmin=6,xmax=74,ymin=0,ymax=2.5]
+\addplot[black,mark=*,mark size=1.2pt] table[x=n,y=getrf10]{figures/48/batch.dat};
+\addlegendentry{\code{getrf}, 10스레드}
+\addplot[black,dashed,mark=square*,mark size=1.2pt] table[x=n,y=getf210]{figures/48/batch.dat};
+\addlegendentry{\code{getf2}, 10스레드}
+\draw[gray!60] (axis cs:32,0) -- (axis cs:32,2.5);
+\draw[gray!60] (axis cs:46,0) -- (axis cs:46,2.5);
+\node[font=\scriptsize,anchor=south] at (axis cs:39,2.05) {stardust의 \code{getf2} 구간};
+\end{axis}
+\end{tikzpicture}
+\caption{$n\times n$ 행렬 수천 개를 열 스레드로 분해할 때 행렬 하나당 시간(Apple M4 Pro, Accelerate). 한 스레드의 값과 측정 코드는 \code{figures/48/batch.dat}과 \code{bench.c}에 있다.}
+\label{fig:lu-amx}
+\end{figure}
+
+stardust는 이 측정을 두 규칙으로 바꿨다. 첫째, 행과 열이 모두 $32$에서 $46$ 사이인 행렬은 \code{getrf} 대신 블록 없는 \code{getf2}로 분해한다. 피벗 규칙과 특이의 판정은 같고 결과는 반올림 수준에서 같다. 둘째, 우변이 $8$개 이상인 삼각 풀이(\code{trsm})도 $n=24$--$40$에서 같은 장치를 타므로 이 경우 배치를 나누는 태스크의 수를 $3$이나 $5$로 제한한다(\cref{alg:lu-batch}의 $c$). 경계값은 stardust를 개발한 기계에서 잰 것이다. 우리 측정에서는 열 스레드의 \code{getf2}가 $n=64$까지 앞서므로 경계는 처리기마다 다르다. 이런 규칙은 하드웨어를 바꿀 때마다 다시 재야 한다는 점에서 알고리즘의 일부가 아니라 구현의 일부이다.
+
+\section{Testing and Accuracy}
+\label{sec:lu-testing}
+
+후진 오차 해석은 시험의 기준이 된다. stardust는 풀이의 \term{잔차 계약}{residual contract}을
+\[
+\|Ax-b\|_\infty\le c\,n\,\epsilon\,(\|A\|_\infty\|x\|_\infty+\|b\|_\infty),\qquad c=10
+\]
+으로 둔다. \cref{thm:lu-rigal-gaches}의 후진 오차를 $\infty$-노름으로 쓴 것에 $c\,n\,\epsilon$의 상한을 준 꼴이다. \eqref{eq:lu-normwise}의 이론 상한 $n^2\rho_n\gamma_{3n}$은 너무 비관적이어서 시험 기준으로 쓸 수 없고, 상수 $c=10$은 측정에서 정했다. \cref{tab:lu-residual}은 무작위 정규 행렬에서 잰 이 비율이다. 가장 나쁜 값도 계약의 $1/90$ 아래이다.
+
+\begin{table}[t]
+\begin{sdtable}{colspec={rrrr}, row{1}={font=\small\bfseries}}
+\toprule
+$n$ & 행렬 수 & 중앙값 & 최댓값 \\
+\midrule
+$10$ & $2000$ & $0.019$ & $0.112$ \\
+$100$ & $300$ & $0.0055$ & $0.0092$ \\
+$1000$ & $20$ & $0.0036$ & $0.0049$ \\
+\bottomrule
+\end{sdtable}
+\caption{$\|Ax-b\|_\infty/(n\epsilon(\|A\|_\infty\|x\|_\infty+\|b\|_\infty))$, 표준 정규 원소의 $A$와 $b$, 부분 피벗 LU(Accelerate)로 푼 해(\code{figures/48/residual.py}). 계약은 이 값이 $10$ 이하일 것을 요구한다.}
+\label{tab:lu-residual}
+\end{table}
+
+이 밖에 stardust의 시험은 다음을 확인한다.
+\begin{itemize}
+\item \textbf{조건수가 큰 행렬}: $\kappa_2=1$에서 $10^{12}$까지의 정사각 행렬에 대해 해와 행렬식의 참값을 구간 산술 라이브러리 Arb로 미리 계산해 두고, 잔차 계약과 함께 확인한다.
+\item \textbf{비트 관계}: \code{inv(a) == solve(a, I)}, \code{lu\_solve(*lu(a), b) == solve(a, b)}(열 우선 인수), \code{matrix\_power(x, -1) == inv(x)}가 바이트까지 같은지.
+\item \textbf{배치와 레이아웃}: 같은 행렬을 C, F, 띄엄띄엄, 음수 간격으로 넣었을 때, 배치의 홀수 자리($n=3,5,7,40$)에 두었을 때, 스레드를 $1$, $3$, $10$개로 바꿨을 때 결과가 같은 바이트인지.
+\item \textbf{경계 크기}: \code{getf2} 구간의 양 끝 $n=31,32,46,47$에서 답, 비트 재현성, 특이의 판정.
+\item \textbf{규칙}: 빈 행렬, 배치 크기 $0$, NaN 입력의 \code{ValueError}, 특이 행렬의 \code{LinAlgError}와 가장 작은 배치 인덱스, 에러의 순서, 넘치는 부분 곱이 있는 \code{det}(\code{diag(1e200, 1e200, 1e-300)}이 $10^{100}$), 복소 \code{lu}의 $|\ell_{ij}|\le\sqrt2$.
+\end{itemize}
+
+numpy와의 비교는 허용오차로 한다. Accelerate의 \code{gesv}는 \code{getrf}와 \code{getrs}를 따로 부를 때와 내부 계산 순서가 달라 $n\ge4$에서 끝 비트가 다르고, numpy의 \code{solve}는 \code{gesv}를 부르기 때문이다. 같은 기계와 같은 스레드 수에서 실행할 때마다 같은 비트를 내는 것이 stardust의 약속이고, 다른 라이브러리와 비트가 같은 것은 약속이 아니다.
+
+\section{APIs in This Chapter}
+\label{sec:lu-apis}
+
+\begin{table}[h]
+\begin{sdtable}{colspec={lXl}, row{1}={font=\small\bfseries}}
+\toprule
+API & 하는 일 & 설명한 곳 \\
+\midrule
+\code{lu(x)} & $x[\mathit{perm}]=LU$, 직사각·특이 허용 & \cref{sec:lu-pivoting,sec:lu-blocked,sec:lu-stardust-family}, \cref{alg:lu-blocked,alg:lu-recursive,alg:lu-perm} \\
+\code{solve(a, b)} & $ax=b$, 배치·브로드캐스트 & \cref{sec:lu-using,sec:lu-stardust-family}, \cref{alg:lu-solve,alg:lu-solve-body} \\
+\code{lu\_solve(l, u, perm, b, *, trans)} & \code{lu}의 결과로 풀기, 전치 & \cref{sec:lu-stardust-family}, \cref{alg:lu-lusolve} \\
+\code{inv(x)} & 역행렬, \code{solve(x, I)}와 같은 비트 & \cref{sec:lu-using,sec:lu-stardust-family}, \cref{tab:lu-inverse} \\
+\code{det(x)} & 넘침을 피하는 행렬식 & \cref{sec:lu-using}, \cref{alg:lu-det} \\
+\code{slogdet(x)} & 부호와 $\log|\det|$ & \cref{sec:lu-using} \\
+\bottomrule
+\end{sdtable}
+\caption{이 장이 구현까지 설명한 \code{sd.linalg}의 API. 패킹과 배치 드라이버(\cref{sec:lu-packing,sec:lu-batches})는 이 장의 모든 API가 함께 쓴다.}
+\label{tab:lu-apis}
+\end{table}
+
+\section{Concluding Remarks}
+
+가우스 소거를 행렬의 분해로 보는 순간 알고리즘은 세 층으로 갈린다. 산술의 층에서는 승수를 제자리에 적는 것만으로 $L$이 생기고, 부분 피벗과 성장 인자가 안정성을 정한다. 이론 상한 $2^{n-1}$과 실제 성장 $n^{2/3}$ 사이의 간극은 아직 완전히 설명되지 않았다. 메모리의 층에서는 같은 산술을 \code{gemm}으로 바꾸어 데이터 하나를 여러 번 쓰게 하는 것이 속도를 열 배 넘게 바꾸며, 블록과 재귀가 그 방법이다. 기계의 층에서는 leading dimension의 모양, 16바이트 정렬, 코어들이 함께 쓰는 행렬 장치처럼 알고리즘 책에 나오지 않는 것들이 속도와 비트 재현성을 좌우한다. stardust의 LU 계열은 산술을 LAPACK에 맡기는 대신 나머지 두 층에서 패킹, 정렬, 배치 드라이버, 크기별 경로라는 형태로 일을 한다. 다음 장에서는 삼각 행렬과 띠 행렬처럼 구조가 있는 연립방정식을 다룬다.
+
+LU와 그 오차 해석의 표준 참고서는 Higham의 책 9장과 Golub과 Van Loan의 책 3장이다\cite{higham2002accuracy,golub2013matrix}. 가우스 소거의 역사는 Grcar가 자세히 정리했다\cite{grcar2011}.
+
+\chapterreferences

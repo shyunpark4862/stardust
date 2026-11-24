@@ -1,0 +1,318 @@
+%% 48장 Gaussian Elimination and LU Factorization — Theory
+\chapter{Gaussian Elimination and LU Factorization}
+\label{ch:lu}
+
+\abstract{가우스 소거는 행렬을 단위 하삼각 $L$과 상삼각 $U$의 곱으로 나누는 일이다. 이 장은 LU 분해의 존재와 부분 피벗의 안정성 이론에서 시작해 블록 알고리즘과 재귀 알고리즘으로 가고, stardust의 \code{lu}, \code{solve}, \code{lu\_solve}, \code{inv}, \code{det}, \code{slogdet}이 LAPACK을 감싸 그것을 어떻게 구현하는지까지 따라간다.}
+
+\section{Elimination as Factorization}
+\label{sec:lu-factorization}
+
+\subsection{One Step of Elimination}
+
+$n\times n$ 행렬 $A$로 $Ax=b$를 푼다고 하자. 가우스 소거의 첫 단계는 첫 행의 배수를 아래 행들에서 빼서 첫 열의 대각 아래를 $0$으로 만든다. $a_{11}\ne0$이면 \term{승수}{multiplier} $\ell_{i1}=a_{i1}/a_{11}$($i=2,\dots,n$)를 쓰고 이 연산은 행렬
+\[
+M_1=I-\ell_1e_1^{\mathsf T},\qquad \ell_1=(0,\ell_{21},\dots,\ell_{n1})^{\mathsf T}
+\]
+을 왼쪽에서 곱하는 것과 같다. $A$를 첫 행과 첫 열로 나누어 쓰면 이 단계가 무엇을 남기는지가 분명해진다.
+\begin{equation}
+\label{eq:lu-schur-step}
+A=\begin{pmatrix}a_{11}&a_{12}^{\mathsf T}\\a_{21}&A_{22}\end{pmatrix}
+=\begin{pmatrix}1&0\\a_{21}/a_{11}&I\end{pmatrix}
+\begin{pmatrix}a_{11}&a_{12}^{\mathsf T}\\0&S\end{pmatrix},\qquad
+S=A_{22}-\frac{a_{21}a_{12}^{\mathsf T}}{a_{11}}.
+\end{equation}
+오른쪽의 곱을 직접 전개하면 왼쪽이 된다. $(2,2)$ 블록이 $(a_{21}/a_{11})a_{12}^{\mathsf T}+S=A_{22}$이기 때문이다. $S$를 $a_{11}$에 대한 \term{Schur 보수}{Schur complement}라 한다. 소거의 한 단계는 승수 열 하나를 $L$에 적고, 첫 행을 $U$에 적고, 남은 $(n-1)\times(n-1)$ 문제를 $S$로 바꾸는 일이다(\cref{fig:lu-step}). $S$의 원소 하나를 고치는 데 곱셈 하나와 뺄셈 하나가 드므로 한 단계의 비용은 $2(n-1)^2$ 플롭에 나눗셈 $n-1$번이다.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[x=0.36cm,y=0.36cm,font=\small]
+  % before
+  \draw (0,0) rectangle (6,6);
+  \fill[gray!45] (0,5) rectangle (1,6);
+  \fill[gray!20] (1,5) rectangle (6,6);
+  \fill[gray!20] (0,0) rectangle (1,5);
+  \node at (0.5,5.5) {$a_{11}$};
+  \node at (3.5,5.5) {$a_{12}^{\mathsf T}$};
+  \node at (0.5,2.5) {$a_{21}$};
+  \node at (3.5,2.5) {$A_{22}$};
+  \node at (3,-0.9) {$A$};
+  \draw[->,thick] (6.8,3) -- (8.6,3);
+  % after: L column, U row, S
+  \begin{scope}[xshift=8.1cm]
+  \draw (0,0) rectangle (6,6);
+  \fill[gray!45] (0,5) rectangle (1,6);
+  \fill[gray!45] (1,5) rectangle (6,6);
+  \fill[pattern=north east lines] (0,0) rectangle (1,5);
+  \draw (0,0) rectangle (1,5);
+  \fill[gray!10] (1,0) rectangle (6,5);
+  \node at (0.5,5.5) {$u_{11}$};
+  \node at (3.5,5.5) {$u_{12}^{\mathsf T}$};
+  \node[fill=white,inner sep=1pt] at (0.5,2.5) {$\ell_{1}$};
+  \node at (3.5,2.5) {$S$};
+  \node at (3,-0.9) {한 단계 뒤 (같은 자리)};
+  \end{scope}
+\end{tikzpicture}
+\caption{소거의 한 단계. 첫 행은 그대로 $U$의 첫 행이 되고, 첫 열의 대각 아래는 승수 $\ell_1=a_{21}/a_{11}$로 바뀌며, 나머지는 Schur 보수 $S=A_{22}-\ell_1u_{12}^{\mathsf T}$로 갱신된다. 구현은 이 셋을 모두 $A$의 자리에 덮어쓴다.}
+\label{fig:lu-step}
+\end{figure}
+
+$S$에 같은 일을 되풀이하면 $n-1$번의 단계 뒤에 상삼각 행렬 $U=M_{n-1}\cdots M_1A$가 남는다. 이것을 $A$에 대해 풀면 $A=M_1^{-1}\cdots M_{n-1}^{-1}U$이고, 다음 보조정리는 앞의 곱이 승수를 제자리에 늘어놓은 단위 하삼각 행렬이라는 것을 보인다.
+
+\begin{lemma}
+\label{lem:lu-multipliers}
+$\ell_k$의 처음 $k$개 성분이 $0$일 때 $M_k=I-\ell_ke_k^{\mathsf T}$의 역은 $I+\ell_ke_k^{\mathsf T}$이고
+\[
+M_1^{-1}M_2^{-1}\cdots M_{n-1}^{-1}=I+\sum_{k=1}^{n-1}\ell_ke_k^{\mathsf T}
+\]
+이다. 곧 이 곱의 $(i,k)$ 원소($i>k$)는 $k$번째 단계의 승수 $\ell_{ik}$이다.
+\end{lemma}
+
+\begin{proof}
+$e_k^{\mathsf T}\ell_k=0$이므로 $(I-\ell_ke_k^{\mathsf T})(I+\ell_ke_k^{\mathsf T})=I-\ell_k(e_k^{\mathsf T}\ell_k)e_k^{\mathsf T}=I$이다. 곱에 대해서는 $j<k$이면 $e_j^{\mathsf T}\ell_k=0$이라는 것을 쓴다. $(I+\ell_1e_1^{\mathsf T})\cdots(I+\ell_{n-1}e_{n-1}^{\mathsf T})$를 전개하면 둘 이상의 $\ell_je_j^{\mathsf T}$가 곱해진 항은 모두 $\ell_{j}e_{j}^{\mathsf T}\ell_{k}e_k^{\mathsf T}$($j<k$) 꼴의 인수를 품는다. 그런데 $e_j^{\mathsf T}\ell_k=0$이므로 그런 항은 모두 $0$이고 일차 항만 남는다.
+\end{proof}
+
+순서가 중요하다는 점을 짚어 둔다. 역순의 곱 $M_{n-1}\cdots M_1$은 승수가 깔끔하게 늘어서지 않는다. $L$을 따로 계산할 필요 없이 승수를 $A$의 대각 아래에 적어 두기만 하면 된다는 것이 위 보조정리의 실질적인 뜻이고, 모든 LU 구현이 $L$과 $U$를 $A$ 하나의 자리에 덮어쓰는 까닭이다.
+
+\subsection{Existence and Uniqueness}
+
+소거가 끝까지 가려면 단계마다 대각 원소, 곧 \term{피벗}{pivot}이 $0$이 아니어야 한다. 그 조건을 $A$로 말하면 다음과 같다. $A_k$는 $A$의 왼쪽 위 $k\times k$ 부분행렬, 곧 \term{선행 주부분행렬}{leading principal submatrix}이다.
+
+\begin{theorem}
+\label{thm:lu-existence}
+$A\in\mathbb C^{n\times n}$가 단위 하삼각 $L$과 정칙 상삼각 $U$의 곱 $A=LU$로 쓰일 필요충분조건은 모든 $k=1,\dots,n$에서 $A_k$가 정칙인 것이다. 이때 분해는 하나뿐이고 $u_{kk}=\det A_k/\det A_{k-1}$($\det A_0=1$)이다.
+\end{theorem}
+
+\begin{proof}
+$A=LU$이면 블록 곱으로 $A_k=L_kU_k$이다. $L$과 $U$가 삼각이어서 왼쪽 위 블록의 곱에 나머지 블록이 끼어들지 않기 때문이다. 그러므로 $\det A_k=\det L_k\det U_k=u_{11}\cdots u_{kk}\ne0$이고, 이웃한 두 $k$의 몫이 $u_{kk}=\det A_k/\det A_{k-1}$이다.
+
+역은 $n$에 대한 귀납법이다. $n=1$은 $L=1$, $U=a_{11}$이다. $n>1$이면 $A_{n-1}$의 모든 선행 주부분행렬이 정칙이므로 귀납 가정으로 $A_{n-1}=L_{n-1}U_{n-1}$이다. 이제
+\[
+A=\begin{pmatrix}A_{n-1}&c\\r^{\mathsf T}&\alpha\end{pmatrix}
+=\begin{pmatrix}L_{n-1}&0\\ \ell^{\mathsf T}&1\end{pmatrix}
+\begin{pmatrix}U_{n-1}&u\\0&\beta\end{pmatrix}
+\]
+가 되도록 $L_{n-1}u=c$, $\ell^{\mathsf T}U_{n-1}=r^{\mathsf T}$, $\beta=\alpha-\ell^{\mathsf T}u$로 놓는다. $L_{n-1}$과 $U_{n-1}$이 정칙이므로 $u$와 $\ell$은 하나로 정해지고, $\det A=\det U_{n-1}\,\beta\ne0$에서 $\beta\ne0$이다.
+
+유일성: $L_1U_1=L_2U_2$이면 $L_2^{-1}L_1=U_2U_1^{-1}$이다. 왼쪽은 단위 하삼각이고 오른쪽은 상삼각이므로 둘 다 대각이어야 하며, 왼쪽의 대각이 모두 $1$이므로 단위행렬이다.
+\end{proof}
+
+이 정리는 피벗 없이 소거할 수 있는 행렬을 정확히 가려내지만 계산에는 쓸모가 적다. $A_k$가 정칙이어도 거의 특이하면 피벗이 작아지고, 다음 절에서 보듯 작은 피벗은 반올림 오차를 크게 키운다. 정칙이 아닌 $A$나 $m\ne n$인 직사각 행렬에도 소거는 그대로 할 수 있다. $m\times n$ 행렬을 $p=\min(m,n)$번 소거하면 $m\times p$ 단위 하사다리꼴 $L$과 $p\times n$ 상사다리꼴 $U$가 나오고, 피벗이 $0$인 단계에서는 그 열을 건너뛰면($\ell_k=0$) 분해는 여전히 존재한다. 이때 $U$의 대각에 $0$이 나타난다. stardust의 \code{lu}가 특이 행렬에도 에러를 내지 않는 것이 이 사실에 기대고 있다(\cref{sec:lu-stardust-family}).
+
+\section{Pivoting and Growth}
+\label{sec:lu-pivoting}
+
+\subsection{Why Pivoting Is Needed}
+
+피벗이 정확히 $0$이 아니어도 작으면 문제가 생긴다. $\epsilon=10^{-20}$일 때
+\[
+A=\begin{pmatrix}\epsilon&1\\1&1\end{pmatrix},\qquad b=\begin{pmatrix}1\\2\end{pmatrix}
+\]
+의 해는 $x_1=1/(1-\epsilon)$, $x_2=(1-2\epsilon)/(1-\epsilon)$로 둘 다 $1$에 매우 가깝다. 피벗 없이 소거하면 승수는 $\ell_{21}=10^{20}$이고 $u_{22}=1-10^{20}$은 binary64에서 $-10^{20}$으로 반올림된다. 뒤로 대입하면 $\hat x_2=\mathrm{fl}((2-10^{20})/(1-10^{20}))=1$은 맞지만 $\hat x_1=\mathrm{fl}((1-\hat x_2)/\epsilon)=0$이다. 오차는 $100\%$이다. 잃어버린 것은 $u_{22}$를 만들 때 $a_{22}=1$이 $10^{20}$에 묻혀 사라진 정보이다. 계산된 $\hat L\hat U$는 $\begin{pmatrix}\epsilon&1\\1&0\end{pmatrix}$이어서 $A$와 $(2,2)$ 원소가 $1$만큼 다르다. 이 차이는 $A$의 원소 크기만큼 크다. 반면 두 행을 바꾸고 소거하면 승수가 $\epsilon$이고 $u_{22}=1-\epsilon$이 정확하게 남아 $\hat x$가 해와 반올림 수준에서 같다.
+
+\subsection{Partial Pivoting}
+
+\term{부분 피벗}{partial pivoting}은 $k$번째 단계에서 $k$열의 대각과 그 아래 원소 가운데 절댓값이 가장 큰 것을 찾아 그 행을 $k$번째 행과 바꾼 뒤에 소거한다. 그러면 모든 승수가 $|\ell_{ik}|\le1$이다. 행 교환을 순열 행렬 $P_k$로 쓰면 소거는 $U=M_{n-1}P_{n-1}\cdots M_1P_1A$이다.
+
+\begin{theorem}
+\label{thm:lu-partial-pivoting}
+모든 $A\in\mathbb C^{n\times n}$에 대해 부분 피벗 소거는 $PA=LU$를 준다. $P$는 순열 행렬, $L$은 $|\ell_{ij}|\le1$인 단위 하삼각, $U$는 상삼각이고, $A$가 정칙이면 $U$도 정칙이다. $L$의 $k$열은 $k$번째 단계의 승수를 그 뒤의 교환 $P_{n-1}\cdots P_{k+1}$로 섞은 것이다.
+\end{theorem}
+
+\begin{proof}
+$k$번째 단계에서 $k$열의 대각 아래가 모두 $0$이면 교환 없이 $\ell_k=0$으로 둔다($M_k=I$). 그렇지 않으면 가장 큰 원소를 고르므로 $|\ell_{ik}|\le1$이다. 이제
+\[
+\Pi_k=P_{n-1}\cdots P_{k+1}\quad(\Pi_{n-1}=I),\qquad\tilde M_k=\Pi_kM_k\Pi_k^{-1}
+\]
+로 두자. $P_j$($j>k$)는 행 $j$와 그 아래의 한 행을 바꾸므로 $\Pi_k$는 $k$ 이하의 행을 건드리지 않고 $\Pi_ke_k=e_k$, $e_k^{\mathsf T}\Pi_k^{-1}=(\Pi_ke_k)^{\mathsf T}=e_k^{\mathsf T}$이다(순열 행렬은 직교한다). 그러므로 $\tilde M_k=I-(\Pi_k\ell_k)e_k^{\mathsf T}$이고 $\tilde\ell_k=\Pi_k\ell_k$는 처음 $k$개 성분이 $0$인 채로 성분만 섞인 벡터이다. 이제 $\Pi_{k-1}=\Pi_kP_k$이므로 $\Pi_k^{-1}\Pi_{k-1}=P_k$이고
+\begin{align*}
+\tilde M_{n-1}\cdots\tilde M_1\,\Pi_0
+&=\Pi_{n-1}M_{n-1}(\Pi_{n-1}^{-1}\Pi_{n-2})M_{n-2}\cdots M_1(\Pi_1^{-1}\Pi_0)\\
+&=M_{n-1}P_{n-1}\cdots M_1P_1
+\end{align*}
+이다. 따라서 $P=\Pi_0=P_{n-1}\cdots P_1$, $L=\tilde M_1^{-1}\cdots\tilde M_{n-1}^{-1}$로 두면 $\tilde M_{n-1}\cdots\tilde M_1PA=U$, 곧 $PA=LU$이고 \cref{lem:lu-multipliers}로 $L$은 섞인 승수 $\tilde\ell_k$를 열로 가진 단위 하삼각이다. 섞어도 크기는 그대로이므로 $|\ell_{ij}|\le1$이다. $A$가 정칙이면 각 단계에서 $k$열의 대각과 그 아래가 모두 $0$일 수 없으므로(그러면 $M_{k-1}P_{k-1}\cdots M_1P_1A$의 앞 $k$열이 일차 종속이다) 피벗이 $0$이 아니고 $U$가 정칙이다.
+\end{proof}
+
+LAPACK은 $P$를 행렬로 들고 다니지 않고 정수 배열 \code{ipiv}로 기록한다. \code{ipiv(k)} $=p$는 ``$k$번째 단계에서 행 $k$와 행 $p$를 바꿨다''는 뜻이다(1부터 센다). 교환은 차례로 적용해야 뜻을 가지므로 \code{ipiv}는 순열 그 자체가 아니다. stardust의 \code{lu}는 이것을 ``$x$의 몇 번째 행이 $LU$의 $r$번째 행이 되는가''라는 순열 \code{perm}으로 바꿔 돌려준다(\cref{alg:lu-perm}).
+
+\subsection{Growth Factor}
+
+부분 피벗이 승수를 $1$ 이하로 묶는다고 해서 $U$의 원소까지 작게 묶이지는 않는다. 다음 절의 오차 해석에서 중요한 양은 소거 중에 나타나는 원소의 크기이며, 그 크기를 재는 것이 \term{성장 인자}{growth factor}
+\[
+\rho_n=\frac{\max_{i,j,k}|a^{(k)}_{ij}|}{\max_{i,j}|a_{ij}|}
+\]
+이다. $a^{(k)}_{ij}$는 $k$번째 단계 뒤의 원소이다.
+
+\begin{proposition}
+\label{prop:lu-growth-bound}
+부분 피벗에서 $\rho_n\le2^{n-1}$이고 이 상한은 다음 행렬에서 등호가 된다.
+\[
+W_n=\begin{pmatrix}
+1&&&&1\\
+-1&1&&&1\\
+-1&-1&1&&1\\
+\vdots&&&\ddots&\vdots\\
+-1&-1&\cdots&-1&1
+\end{pmatrix}
+\]
+\end{proposition}
+
+\begin{proof}
+$|\ell_{ik}|\le1$이므로 $|a^{(k+1)}_{ij}|=|a^{(k)}_{ij}-\ell_{ik}a^{(k)}_{kj}|\le2\max|a^{(k)}|$이고, $n-1$번의 단계에서 최댓값이 매 단계 많아야 두 배가 된다. $W_n$에서는 $k$번째 단계에 $k$열의 대각 아래가 모두 $-1$이고 피벗이 $1$이다. 절댓값이 같은 후보 가운데 처음 것을 고르는 규칙(LAPACK의 \code{idamax})에서는 교환이 일어나지 않는다. 승수는 모두 $-1$이고 앞의 $n-1$열의 대각 아래가 $0$이 되는 동안 대각은 $1$로 남는다. 마지막 열은 $k$번째 단계에 대각 아래의 원소들이 모두 $a_{kn}^{(k)}$를 더해 받는다. 처음에 모두 $1$이므로 $k$번째 단계 뒤에 $a^{(k)}_{in}=2^{k}$($i>k$)이고 결국 $u_{nn}=2^{n-1}$이다.
+\end{proof}
+
+$n=64$이면 $2^{63}\approx9.2\times10^{18}$이고 binary64의 정밀도를 모두 잃는다. 그런데 실제 계산에서 이런 성장은 거의 보이지 않는다. \cref{fig:lu-growth}는 표준 정규 원소의 무작위 행렬에서 잰 성장이다. 소거 중 가장 큰 원소를 원소의 표준편차 $\sigma$로 나누면 중앙값이 $0.85\,n^{2/3}$ 곁에 놓인다(로그 축에서 맞춘 기울기는 $0.69$). Trefethen과 Schreiber가 관찰한 $n^{2/3}$ 법칙이다\cite{trefethen1990average}. 분모를 $\max|a_{ij}|$로 바꾼 $\rho_n$은 기울기가 $0.56$으로 조금 작은데, 정규 표본 $n^2$개의 최댓값이 $\sqrt{4\ln n}$처럼 자라 분모를 키우기 때문이다. 지수적 성장이 실제 응용에서 나타난 예(두 점 경계값 문제의 다중 사격법, Wright\cite{wright1993})가 있지만 드물고, 그 드묾을 설명하는 완결된 이론은 아직 없다. 이 간극이 부분 피벗이 ``이론상 불안정하지만 실제로는 안정한'' 알고리즘으로 불리는 까닭이다.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}
+\begin{loglogaxis}[width=0.86\textwidth,height=0.5\textwidth,
+  xlabel={$n$},ylabel={성장},grid=major,grid style={gray!25},
+  legend pos=south east,legend style={font=\small,draw=none,fill=white,fill opacity=0.85,text opacity=1},
+  xmin=7,xmax=1400,ymin=1,ymax=200]
+\addplot[only marks,mark=*,mark size=1.3pt,black] table[x=n,y=sigmed]{figures/48/growth.dat};
+\addlegendentry{$\max|a^{(k)}_{ij}|/\sigma$의 중앙값}
+\addplot[domain=7:1400,samples=40,dashed,black] {0.85*x^(2/3)};
+\addlegendentry{$0.85\,n^{2/3}$}
+\addplot[only marks,mark=square*,mark size=1.2pt,black!55] table[x=n,y=median]{figures/48/growth.dat};
+\addlegendentry{$\rho_n$의 중앙값}
+\addplot[only marks,mark=triangle*,mark size=1.5pt,black!55] table[x=n,y=max]{figures/48/growth.dat};
+\addlegendentry{$\rho_n$의 최댓값}
+\end{loglogaxis}
+\end{tikzpicture}
+\caption{표준 정규 원소($\sigma=1$)의 무작위 행렬에서 잰 부분 피벗의 성장. $n=10$에서 $2000$개, $n=1000$에서 $12$개의 행렬을 썼다(\code{figures/48/growth.py}). 상한 $2^{n-1}$은 $n=64$에서 이미 $10^{18}$을 넘지만 관찰된 성장은 수십 배에 그친다.}
+\label{fig:lu-growth}
+\end{figure}
+
+부분 피벗 말고도 피벗 규칙이 있다. \term{완전 피벗}{complete pivoting}은 남은 부분행렬 전체에서 가장 큰 원소를 골라 행과 열을 함께 바꾼다. 성장 인자의 상한이 $n^{1/2+\ln n/4}$ 정도로 다항식에 가깝다는 Wilkinson의 결과가 있지만\cite{wilkinson1961error} 단계마다 $O((n-k)^2)$개의 원소를 훑어야 하므로 전체 비교 횟수가 $O(n^3)$이 되고, 그보다 나쁜 것은 블록 알고리즘으로 바꿀 수 없다는 점이다. 피벗을 고르려면 남은 행렬 전체가 최신이어야 하기 때문이다. 행과 열에서 번갈아 최대를 찾는 \term{룩 피벗}{rook pivoting}이 그 사이에 있다. LAPACK의 \code{getrf}와 그것을 부르는 stardust는 부분 피벗만 쓴다.
+
+복소 행렬에는 한 가지가 더 있다. LAPACK의 \code{izamax}는 계산을 아끼려고 $|z|$ 대신 $|\operatorname{Re}z|+|\operatorname{Im}z|$가 가장 큰 원소를 고른다. 그러면 $|\ell_{ik}|\le1$이 아니라 $|\ell_{ik}|\le\sqrt2$만 보장된다. $|z|\le|\operatorname{Re}z|+|\operatorname{Im}z|\le\sqrt2|z|$이므로
+\[
+|\ell_{ik}|=\frac{|a_{ik}|}{|a_{kk}|}\le\frac{|\operatorname{Re}a_{ik}|+|\operatorname{Im}a_{ik}|}{(|\operatorname{Re}a_{kk}|+|\operatorname{Im}a_{kk}|)/\sqrt2}\le\sqrt2
+\]
+이기 때문이다. stardust의 시험은 복소 \code{lu}의 $L$을 이 $\sqrt2$로 확인한다.
+
+\section{Backward Error Analysis}
+\label{sec:lu-backward-error}
+
+\subsection{The Error in the Factors}
+
+11장의 표준 모형 $\mathrm{fl}(a\mathbin{\mathrm{op}}b)=(a\mathbin{\mathrm{op}}b)(1+\delta)$, $|\delta|\le u$와 기호 $\gamma_k=ku/(1-ku)$($ku<1$)를 쓴다. 소거와 대입에 나오는 계산은 모두 다음 꼴이다.
+
+\begin{lemma}
+\label{lem:lu-recurrence}
+$y=(c-\sum_{i=1}^{k-1}a_ib_i)/b_k$를 $c$에서 차례로 $a_ib_i$를 빼고 마지막에 $b_k$로 나누어 계산하면 계산값 $\hat y$는
+\[
+\Bigl|c-\sum_{i=1}^{k-1}a_ib_i-b_k\hat y\Bigr|\le\gamma_k\Bigl(|b_k\hat y|+\sum_{i=1}^{k-1}|a_ib_i|\Bigr)
+\]
+을 만족한다. 나누지 않는 경우($b_k=1$)도 같다.
+\end{lemma}
+
+\begin{proof}
+$\hat s_0=c$, $\hat s_i=\mathrm{fl}(\hat s_{i-1}-\mathrm{fl}(a_ib_i))$로 두면 $\hat s_i=(\hat s_{i-1}-a_ib_i(1+\epsilon_i))(1+\delta_i)$이고 $\hat y=\hat s_{k-1}(1+\delta_k)/b_k$이다. 점화식을 펼치면
+\[
+\hat s_{k-1}=c\prod_{j=1}^{k-1}(1+\delta_j)-\sum_{i=1}^{k-1}a_ib_i(1+\epsilon_i)\prod_{j=i}^{k-1}(1+\delta_j)
+\]
+이다. 양변을 $\prod_{j=1}^{k-1}(1+\delta_j)$로 나누고 $\hat s_{k-1}=b_k\hat y/(1+\delta_k)$를 넣으면
+\[
+b_k\hat y\,(1+\delta_k)^{-1}\prod_{j=1}^{k-1}(1+\delta_j)^{-1}=c-\sum_{i=1}^{k-1}a_ib_i\,(1+\epsilon_i)\prod_{j=1}^{i-1}(1+\delta_j)^{-1}
+\]
+이다. 왼쪽의 인수는 $(1+\delta)^{-1}$ 꼴 $k$개의 곱이고 오른쪽 $i$번째 항의 인수는 $(1+\delta)^{\pm1}$ 꼴 $i$개의 곱이다. 11장의 보조정리로 그런 곱은 $1+\theta$, $|\theta|\le\gamma_k$로 쓸 수 있으므로 $b_k\hat y(1+\theta_0)=c-\sum_ia_ib_i(1+\theta_i)$이고 $|\theta_i|\le\gamma_k$이다. 옮겨 쓰면 $c-\sum_ia_ib_i-b_k\hat y=b_k\hat y\,\theta_0+\sum_ia_ib_i\,\theta_i$이고 절댓값을 취하면 결론이다. 나눗셈이 없으면 $\delta_k$가 없어 $\gamma_{k-1}$로도 충분하다. 빼는 순서를 바꿔도 각 항이 겪는 반올림은 $k$번을 넘지 않으므로 같은 상한이 성립한다.
+\end{proof}
+
+LU의 원소는 $u_{kj}=a_{kj}-\sum_{i<k}\ell_{ki}u_{ij}$($k\le j$)와 $\ell_{ik}=(a_{ik}-\sum_{j<k}\ell_{ij}u_{jk})/u_{kk}$($i>k$)로 정해진다. 루프를 어떤 순서로 돌리든(\cref{sec:lu-unblocked}) 원소 하나는 이 꼴의 빼기와 한 번의 나눗셈으로 만들어지고, 빼는 순서는 보조정리의 상한에 영향을 주지 않으므로 보조정리가 그대로 적용된다.
+
+\begin{theorem}[Wilkinson]
+\label{thm:lu-backward}
+피벗 없이 소거해 계산한 인수 $\hat L$, $\hat U$는
+\[
+\hat L\hat U=A+\Delta A,\qquad|\Delta A|\le\gamma_n|\hat L||\hat U|
+\]
+를 만족한다. 부분 피벗이면 $A$를 $PA$로 바꾸어 같은 식이 성립한다. 부등식과 절댓값은 원소별이다.
+\end{theorem}
+
+\begin{proof}
+$k\le j$이면 \cref{lem:lu-recurrence}를 $c=a_{kj}$, $b_k=1$에 쓰면 $|a_{kj}-\sum_{i\le k}\hat\ell_{ki}\hat u_{ij}|\le\gamma_k\sum_{i\le k}|\hat\ell_{ki}||\hat u_{ij}|$이다($\hat\ell_{kk}=1$). $i>k$이면 $c=a_{ik}$, $b_k=\hat u_{kk}$에 써서 $|a_{ik}-\sum_{j\le k}\hat\ell_{ij}\hat u_{jk}|\le\gamma_k\sum_{j\le k}|\hat\ell_{ij}||\hat u_{jk}|$이다. 두 경우 모두 왼쪽 합은 $(\hat L\hat U)$의 해당 원소이고 오른쪽 합은 $(|\hat L||\hat U|)$의 해당 원소이며, $k\le n$이므로 $\gamma_k\le\gamma_n$이다. 부분 피벗은 소거 전에 행 순서를 정하는 것일 뿐 산술 연산을 바꾸지 않으므로 $PA$에 대해 같은 논증이 성립한다.
+\end{proof}
+
+\subsection{The Error in the Solution}
+
+$Ax=b$는 $Ly=Pb$와 $Ux=y$ 두 번의 삼각 풀이로 푼다. 전진 대입 $y_i=(b_i-\sum_{j<i}\ell_{ij}y_j)/\ell_{ii}$에 \cref{lem:lu-recurrence}를 쓰면 같은 방법으로 계산값 $\hat y$가 $(L+\Delta L)\hat y=b$, $|\Delta L|\le\gamma_n|L|$을 만족한다. 후진 대입도 같다.
+
+\begin{theorem}
+\label{thm:lu-solve-backward}
+부분 피벗 LU와 두 번의 대입으로 계산한 해 $\hat x$는
+\[
+(A+\Delta A)\hat x=b,\qquad|\Delta A|\le\gamma_{3n}P^{\mathsf T}|\hat L||\hat U|
+\]
+를 만족한다.
+\end{theorem}
+
+\begin{proof}
+$P$를 $A$와 $b$에 미리 적용했다고 보고 $P=I$로 둔다. $(\hat L+\Delta L)\hat y=b$, $(\hat U+\Delta U)\hat x=\hat y$이므로
+\[
+b=(\hat L+\Delta L)(\hat U+\Delta U)\hat x=(A+\Delta A_1+\hat L\Delta U+\Delta L\hat U+\Delta L\Delta U)\hat x
+\]
+이고 $\Delta A_1=\hat L\hat U-A$이다. 원소별로 $|\Delta A_1|\le\gamma_n|\hat L||\hat U|$, $|\hat L\Delta U|+|\Delta L\hat U|\le2\gamma_n|\hat L||\hat U|$, $|\Delta L\Delta U|\le\gamma_n^2|\hat L||\hat U|$이다. $t=nu<1/3$으로 두면 $3\gamma_n+\gamma_n^2=(3t-2t^2)/(1-t)^2$이고, 이것이 $\gamma_{3n}=3t/(1-3t)$ 이하라는 것은 분모를 곱해 정리한 $3t(1-t)^2-(3t-2t^2)(1-3t)=5t^2-3t^3\ge0$에서 나온다.
+\end{proof}
+
+이 정리를 노름으로 바꾸면 성장 인자가 어디서 들어오는지 보인다. 부분 피벗이면 $|\hat\ell_{ij}|\le1$이고 $\hat U$의 원소는 소거 중의 원소이므로 $|\hat u_{ij}|\le\rho_n\max|a_{ij}|$이다. 그러면 $(|\hat L||\hat U|)_{ij}\le n\rho_n\max|a_{ij}|$이고 행의 합은 $n^2\rho_n\max|a_{ij}|\le n^2\rho_n\|A\|_\infty$ 이하이다. 곧
+\begin{equation}
+\label{eq:lu-normwise}
+\frac{\|\Delta A\|_\infty}{\|A\|_\infty}\le n^2\rho_n\gamma_{3n}.
+\end{equation}
+$n^2$은 원소별 상한을 모두 같은 방향으로 더한 결과라 실제로는 훨씬 작고, 결국 관건은 $\rho_n$이다. 부분 피벗 LU가 실제로 안정한 것은 $\rho_n$이 실제로 작기 때문이다.
+
+\subsection{Backward Error, Forward Error, and the Condition Number}
+
+계산한 해의 \term{후진 오차}{backward error}는 그 해를 정확한 해로 만드는 가장 작은 섭동이다. 정규화한 정의
+\[
+\eta(\hat x)=\min\{\epsilon:(A+\Delta A)\hat x=b+\Delta b,\ \|\Delta A\|\le\epsilon\|A\|,\ \|\Delta b\|\le\epsilon\|b\|\}
+\]
+는 계산할 수 있는 식을 가진다.
+
+\begin{theorem}[Rigal--Gaches]
+\label{thm:lu-rigal-gaches}
+벡터의 2-노름과 그에 따른 행렬 노름에서 $r=b-A\hat x$로 두면 $\eta(\hat x)=\|r\|/(\|A\|\|\hat x\|+\|b\|)$이다.
+\end{theorem}
+
+\begin{proof}
+$(A+\Delta A)\hat x=b+\Delta b$이면 $r=\Delta A\hat x-\Delta b$이므로 $\|r\|\le\epsilon(\|A\|\|\hat x\|+\|b\|)$이고 $\eta$는 적어도 오른쪽 값이다. 반대로 $\epsilon_\ast=\|r\|/(\|A\|\|\hat x\|+\|b\|)$에 대해
+\[
+\Delta A=\frac{\|A\|\|\hat x\|}{\|A\|\|\hat x\|+\|b\|}\cdot\frac{r\hat x^{\mathsf H}}{\|\hat x\|^2},\qquad
+\Delta b=-\frac{\|b\|}{\|A\|\|\hat x\|+\|b\|}\,r
+\]
+로 두면 $\Delta A\hat x-\Delta b=r$이어서 $(A+\Delta A)\hat x=b+\Delta b$이다. 계수 1인 $r\hat x^{\mathsf H}$의 2-노름은 $\|r\|\|\hat x\|$이므로 $\|\Delta A\|=\epsilon_\ast\|A\|$이고 $\|\Delta b\|=\epsilon_\ast\|b\|$이다. 그러므로 $\eta=\epsilon_\ast$이다.
+\end{proof}
+
+후진 오차가 작다고 해서 해가 정확한 것은 아니다. $(A+\Delta A)\hat x=b$이면 $\hat x-x=-A^{-1}\Delta A\hat x$이므로
+\[
+\frac{\|\hat x-x\|}{\|\hat x\|}\le\|A^{-1}\|\|\Delta A\|=\kappa(A)\frac{\|\Delta A\|}{\|A\|},\qquad\kappa(A)=\|A\|\|A^{-1}\|
+\]
+이다. 오른쪽의 $\hat x$를 $x$로 바꾼 꼴은 $\kappa\|\Delta A\|/\|A\|<1$일 때 분모에 $1-\kappa\|\Delta A\|/\|A\|$가 붙는다. 후진 안정한 알고리즘의 전진 오차는 조건수에 비례한다는 이 관계가 \cref{fig:lu-forward}에 그대로 나타난다. 후진 오차는 조건수와 상관없이 $u$ 근처에 머물고 전진 오차는 $\kappa(A)u$를 따라 오른다.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}
+\begin{loglogaxis}[width=0.86\textwidth,height=0.52\textwidth,
+  xlabel={$\kappa_2(A)$},ylabel={상대오차},grid=major,grid style={gray!25},
+  legend pos=north west,legend style={font=\small,draw=none,fill=none},
+  ymin=1e-18,ymax=1]
+\addplot[only marks,mark=*,mark size=1.1pt,black] table[x=kappa,y=fwd]{figures/48/errors.dat};
+\addlegendentry{전진 오차 $\|\hat x-x\|_2/\|x\|_2$}
+\addplot[only marks,mark=o,mark size=1.3pt,black!60] table[x=kappa,y=bwd]{figures/48/errors.dat};
+\addlegendentry{후진 오차 $\eta(\hat x)$}
+\addplot[domain=1:1e16,samples=20,dashed,black] {x*1.11e-16};
+\addlegendentry{$\kappa_2(A)\,u$}
+\end{loglogaxis}
+\end{tikzpicture}
+\caption{조건수를 정해 만든 $n=100$ 무작위 행렬에서 부분 피벗 LU로 푼 해의 오차. 만드는 방법은 \code{figures/48/errors.py}에 있다.}
+\label{fig:lu-forward}
+\end{figure}
+
+\subsection{Iterative Refinement}
+
+후진 오차가 이미 작다면 해를 더 정확하게 만드는 길은 조건수를 피하는 것밖에 없다. \term{반복 개선}{iterative refinement}은 이미 있는 LU 인수를 다시 써서 그것을 한다. 잔차 $r_i=b-Ax_i$를 구하고 $Ad_i=r_i$를 같은 인수로 풀어 $x_{i+1}=x_i+d_i$로 고친다. 계산한 $d_i$가 $(A+\Delta A_i)\hat d_i=r_i$를 만족한다고 하면
+\[
+x_{i+1}-x=x_i-x+(A+\Delta A_i)^{-1}A(x-x_i)=(A+\Delta A_i)^{-1}\Delta A_i\,(x_i-x)
+\]
+이다. 그러므로 잔차를 정확히 구한다면 오차는 한 번에 $\|A^{-1}\Delta A_i\|\lesssim\kappa(A)n^2\rho_n\gamma_{3n}$배로 줄어들고, 이 값이 $1$보다 충분히 작으면 몇 번 만에 수렴한다. 실제로 잔차를 작업 정밀도로 구하면 잔차의 반올림 오차가 한계를 정한다. 그래도 Skeel은 한 번의 개선만으로 원소별 후진 오차 $\omega(\hat x)=\min\{\epsilon:(A+\Delta A)\hat x=b+\Delta b,\ |\Delta A|\le\epsilon|A|,\ |\Delta b|\le\epsilon|b|\}$가 $O(u)$가 된다는 것을 보였다\cite{skeel1980refinement}. 증명의 줄거리는 이렇다. (i) 작업 정밀도로 구한 잔차는 $\hat r_0=r_0+\Delta r$, $|\Delta r|\le\gamma_{n+1}(|A||x_0|+|b|)$를 만족한다(\cref{lem:lu-recurrence}를 내적 하나에 쓴 것). (ii) 보정은 $(A+\Delta A)\hat d=\hat r_0$이고 $|\Delta A|\le\gamma_{3n}|\hat L||\hat U|$이다. (iii) 새 잔차는 $r_1=b-A(x_0+\hat d)=\hat r_0-\Delta r-A\hat d=\Delta A\,\hat d-\Delta r$이다. (iv) 보정 $\hat d$ 자체가 이미 처음 해의 오차만큼만 작으므로 $\Delta A\,\hat d$는 $u$의 제곱 크기이고, $|\hat L||\hat U|$와 $|A|$의 비와 $A^{-1}$의 원소별 조건수가 적당히 작다는 가정 아래 무시된다. 그러면 $|r_1|\lesssim|\Delta r|\le\gamma_{n+1}(|A||x_1|+|b|)$가 남고, 원소별 후진 오차의 Oettli--Prager 공식 $\omega(x)=\max_i|r_i|/(|A||x|+|b|)_i$로 $\omega(x_1)=O(u)$이다. (iv)의 가정을 정확히 적고 확인하는 일이 증명의 대부분이며, Higham의 책 12.2절이 이 논증을 처음부터 끝까지 따라간다\cite{higham2002accuracy}. 위 식이 보여 주는 핵심은 개선의 효과가 인수의 후진 오차 $\Delta A_i$를 한 번 더 곱해 줄이는 데서 온다는 것이다. LAPACK은 이것을 \code{gerfs}로 제공하지만 stardust의 \code{solve}는 개선을 하지 않는다. numpy와 scipy의 \code{solve}도 하지 않으므로 결과의 정밀도는 같은 수준이고, 개선이 필요한 사용자는 \code{lu}와 \code{lu\_solve}로 위의 반복을 직접 짤 수 있다.

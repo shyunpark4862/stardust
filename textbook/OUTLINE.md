@@ -1,4 +1,4 @@
-# 새 목차안 (2026-11-25, 확정 전)
+# 목차 (2026-11-25 사용자 확정)
 
 **Foundations of Scientific Computing — Theory, Algorithms, and Implementation**
 

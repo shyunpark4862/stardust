@@ -1,0 +1,17 @@
+%% 시범 장 빌드: next/의 새 장 하나를 따로 묶는다 (새 목차의 장 번호로)
+%% 컴파일: latexmk -xelatex pilot.tex → build/pilot.pdf → pdf/pilot-48-lu.pdf
+\documentclass{sdbook}
+\addbibresource{references.bib}
+\title{Foundations of Scientific Computing}
+\subtitle{Theory, Algorithms, and Implementation}
+\makeatletter\def\sd@volumeline{Pilot Chapter (Volume V Dense Linear Algebra)}\makeatother
+\author{}
+\begin{document}
+\maketitle
+\frontmatter
+\tableofcontents
+\mainmatter
+\setcounter{chapter}{47}
+\input{next/48-lu}
+\backmatter
+\end{document}
