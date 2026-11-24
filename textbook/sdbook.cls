@@ -81,6 +81,28 @@
 \let\footnotesize\small
 \normalsize
 \setlength\footnotesep{9\p@}
+% 문단은 들여쓰지 않고 한 줄을 띄워 나눈다(parskip 패키지가 목록·차례의 간격을 함께 맞춘다)
+\RequirePackage[skip=15pt plus 2pt minus 1pt, indent=0pt]{parskip}
+\setlength\svparindent{0pt}
+% 제목 뒤에는 문단 간격(parskip)이 따로 붙으므로 Springer의 제목 뒤 간격을 그만큼 줄인다
+\AtEndOfClass{%
+\renewcommand\section{\@startsection{section}{1}{\z@}%
+   {-24\p@ \@plus -4\p@ \@minus -2\p@}{9\p@}%
+   {\normalfont\secsize\secstyle\rightskip=\z@ \@plus 8em\pretolerance=10000 }}%
+\renewcommand\subsection{\@startsection{subsection}{2}{\z@}%
+   {-20\p@ \@plus -4\p@ \@minus -2\p@}{6\p@}%
+   {\normalfont\subsecsize\subsecstyle\rightskip=\z@ \@plus 8em\pretolerance=10000 }}%
+\renewcommand\subsubsection{\@startsection{subsubsection}{3}{\z@}%
+   {-16\p@ \@plus -3\p@ \@minus -2\p@}{4\p@}%
+   {\normalfont\normalsize\subsubsecstyle\rightskip=\z@ \@plus 8em\pretolerance=10000 }}}
+% 목록의 항목 사이는 문단 간격을 물려받지 않고 좁게 둔다
+\RequirePackage{enumitem}
+% 목록 앞에는 문단 간격(15pt)이 이미 붙으므로 topsep으로 그만큼 빼서 앞 문장에 바짝 붙이고,
+% 목록 뒤에는 다시 더해 다음 문단과는 문단 간격만큼 띄운다.
+\setlist{itemsep=2pt, parsep=0pt, topsep=-11pt, partopsep=0pt}
+% 번호 목록은 (i), (ii), … 그 아래는 (a), (b), …
+\setlist[enumerate,1]{label=(\roman*), ref=(\roman*), leftmargin=*, widest=iii}
+\setlist[enumerate,2]{label=(\alph*), ref=(\alph*)}
 \RequirePackage{geometry}
 \geometry{paperwidth=155mm, paperheight=235mm,
   textwidth=117mm, textheight=520\p@,   % topskip 10pt + 34 x 15pt
@@ -142,12 +164,7 @@
 \def\sd@fmt@subsection#1{#1.}
 \def\sd@fmt@subsubsection#1{(#1)}
 \def\sd@fmt@paragraph#1{(#1)}
-% 목록: 1) → 가)
-\renewcommand\theenumi{\arabic{enumi}}
-\renewcommand\labelenumi{\theenumi)}
-\renewcommand\theenumii{\gana{enumii}}
-\renewcommand\labelenumii{\theenumii)}
-\renewcommand\p@enumii{\theenumi)\,}
+
 
 % ---------------------------------------------------------------------------
 % 4. 부와 장의 머리 — SNmono의 꼴 그대로, 번호 표기만 한국어 어순으로
@@ -250,7 +267,8 @@
 % ---------------------------------------------------------------------------
 % 6. 정리 환경 — Springer 꼴(굵은 이름과 번호, 곧은 본문)을 amsthm으로
 % ---------------------------------------------------------------------------
-\newtheoremstyle{sp}{7\p@ \@plus2\p@ \@minus4\p@}{7\p@ \@plus2\p@ \@minus4\p@}%
+% 앞뒤 간격은 문단 간격(parskip)이 맡는다
+\newtheoremstyle{sp}{0pt}{0pt}%
   {\upshape}{0pt}{\bfseries}{}{0.5em}%
   {\thmname{#1}\thmnumber{ #2}\thmnote{ (#3)}}
 \RequirePackage{aliascnt}
@@ -272,7 +290,7 @@
 \def\qedsymbol{\hbox{\rlap{$\sqcap$}$\sqcup$}}
 \renewenvironment{proof}[1][\proofname]{\par
   \pushQED{\qed}%
-  \normalfont \topsep6\p@\@plus6\p@\relax
+  \normalfont \topsep\z@\relax
   \trivlist
   \item[\hskip\labelsep\bfseries #1\@addpunct{.}]\ignorespaces
 }{\popQED\endtrivlist\@endpefalse}
@@ -283,11 +301,12 @@
 \RequirePackage{needspace}
 \newcommand\sd@boxhead[2]{\textbf{#1}\ifx\relax#2\relax\else\enspace{\mdseries#2}\fi}
 % 선 바로 뒤에는 행간이 붙지 않도록 \hrule과 \kern으로 간격을 직접 정한다
-\newenvironment{sdbox}[2]{\par\needspace{5\baselineskip}\addvspace{12\p@}%
+\newenvironment{sdbox}[2]{\par\needspace{5\baselineskip}\addvspace{6\p@}%
   \hrule height 0.6\p@\kern 5\p@
-  \noindent{\small\sd@boxhead{#1}{#2}}\par\nobreak\vskip 3\p@
+  {\parskip\z@\noindent{\small\sd@boxhead{#1}{#2}}\par}\nobreak
+  \parskip 5\p@ \@plus 1\p@\relax
   \small\@afterindentfalse\@afterheading\ignorespaces}%
- {\par\kern 4\p@\hrule height 0.4\p@\addvspace{12\p@}}
+ {\par\kern 4\p@\hrule height 0.4\p@\addvspace{6\p@}}
 % Aside: 역사, 인물, 사고, 여담
 \newenvironment{aside}[1][]{\begin{sdbox}{Aside}{#1}}{\end{sdbox}}
 % In stardust: 이론이 라이브러리의 어디에 어떻게 들어가는가
@@ -412,7 +431,12 @@
 % 11. 기타
 % ---------------------------------------------------------------------------
 % 용어 첫 등장: 굵은 한글(원어)
-\newcommand\term[2]{\textbf{#1}\,(#2)}
+% 원어 앞에 너비 0의 글루를 두어 영어 단어도 하이픈으로 끊을 수 있게 한다
+% (TeX는 글루 뒤에서 시작하는 단어만 하이픈 처리한다)
+\newcommand\term[2]{\textbf{#1}\,(\nobreak\hskip\z@ #2)}
+% 수식의 관계·이항 기호 둘레가 줄 맞춤 때문에 지나치게 벌어지지 않게 한다
+\thickmuskip=5mu plus 2mu minus 1mu
+\medmuskip=4mu plus 1.5mu minus 2mu
 \newcommand\code[1]{\texttt{#1}}
 % 반올림 사상 fl (합자 없이)
 \newcommand\fl{\mathop{\mathrm{f\kern0.03em l}}\nolimits}
