@@ -39,7 +39,7 @@
 % 영문: Times New Roman, 산세리프는 Helvetica, 고정폭은 Cascadia Code
 \setmainfont{Times New Roman}
 \setsansfont{Helvetica}[Scale=MatchLowercase]
-\setmonofont{Cascadia Code}[Scale=MatchLowercase]
+\setmonofont{Cascadia Code}[Scale=MatchLowercase, BoldFont=Cascadia Code, BoldFeatures={FakeBold=1.5}]
 % 한글: 본문 KoPub World 바탕체(명조), 산세리프 Apple SD 산돌고딕 Neo.
 % 한글에는 이탤릭이 없고 어울리지도 않으므로, 이탤릭을 청해도 곧은 글자로 둔다.
 \RequirePackage{kotex}
