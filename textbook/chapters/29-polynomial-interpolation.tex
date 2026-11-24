@@ -197,7 +197,7 @@ p(x)=\frac{\displaystyle\sum_{j=0}^n\frac{w_j}{x-x_j}y_j}{\displaystyle\sum_{j=0
 $\sum_j|\ell_jy_j|\le\lambda_n(x)\max|y_j|$이므로 오차는 대략 $3Nu\,\lambda_n(x)\max|y_j|$이다. 둘째 공식의 반올림 오차는 문제 자체의 조건수 $\lambda_n(x)$를 넘지 않는다. Chebyshev 점에서는 $\lambda_n$이 작으므로 결과가 거의 최선이다. 실제로 $f(x)=\sin(\pi x)+1/2$을 보간하고 분자와 분모를 정리의 순서대로 더해 계산한 값의 오차를 정확한 유리수 산술로 재면, 오차는 Chebyshev 점 $n=40$의 세 평가점에서 $8.9\times10^{-16}$ 이하이고 정리의 상계는 $5.7\times10^{-14}$ 이하였다. 고른 간격 $n=40$의 $x=-0.987$에서는 $\lambda_n(x)=4.6\times10^9$이어서 상계가 $6.1\times10^{-5}$로 커지고, 실제 오차는 $1.1\times10^{-7}$이었다. 상계는 최악의 반올림을 가정한 것이어서 실제 오차보다 크지만 조건수와 함께 커진다는 모양은 맞다. 고른 간격 노드의 문제는 계산 방법이 아니라 문제 자체에 있다. 첫째 공식은 후진 안정하지만 둘째 공식이 노드 밖의 외삽에서 불안정해질 수 있다는 것은 Webb, Trefethen, Gonnet이 분석했다\cite{webb2012extrapolation}.
 
 \section{나눗셈 차분과 Newton 꼴}
-\label{sec:newton}
+\label{sec:newton-form}
 
 \subsection{나눗셈 차분}
 

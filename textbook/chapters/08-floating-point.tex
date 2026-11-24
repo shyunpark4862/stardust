@@ -133,7 +133,7 @@ $2^e\le|x|<2^{e+1}$인 실수 $x$에 대해 $\operatorname{ulp}(x)=2^{\max(e,-10
 
 $\operatorname{ulp}(x)$는 $x$가 속한 이진 구간에서 이웃한 binary64 수의 간격이며, \cref{thm:standard-model}의 증명은 곧 $|\fl(x)-x|\le\operatorname{ulp}(x)/2$를 보인 것이다. ULP의 정의는 문헌마다 조금씩 다른데 차이는 $x$가 $2$의 거듭제곱에 걸릴 때 어느 쪽 간격을 쓰느냐에 있으며 여기의 정의는 Goldberg의 것에 해당한다\cite{goldberg1991,muller2018handbook}. 근삿값 $\hat y$와 참값 $y$의 오차를 $|\hat y-y|/\operatorname{ulp}(y)$로 재면 상대오차보다 흔들림의 영향이 적고 정수 근처의 값으로 나오므로 해석이 쉽다. ``$1$ ULP 이내''라는 말은 대략 상대오차 $2^{-52}$에서 $2^{-53}$ 이내라는 뜻이다.
 
-두 binary64 수 사이의 거리를 ULP로 잴 때는 더 단순한 방법이 있다. \cref{prop:fp-bits-monotone}과 1장의 정수 키 $\kappa$에서, 두 수 $a$와 $b$ 사이에 있는 binary64 수의 개수는 $|\kappa(a)-\kappa(b)|$이다. $0$을 사이에 둔 두 수에 대해서는 양쪽의 아주 작은 서브노멀 수들까지 모두 세어지는 점이 상대오차와 다르다.
+두 binary64 수 사이의 거리를 ULP로 잴 때는 더 단순한 방법이 있다. \cref{prop:fp-bits-monotone}과 1장의 정수 키 $\kappa$에서, $a$에서 $b$까지 이웃한 binary64 수로 건너가는 걸음의 수, 곧 $(a,b]$에 있는 binary64 수의 개수는 $|\kappa(a)-\kappa(b)|$이다. $0$을 사이에 둔 두 수에 대해서는 양쪽의 아주 작은 서브노멀 수들까지 모두 세어지는 점이 상대오차와 다르다.
 
 \begin{instardust}[\code{bench/accuracy/common.py}]
 stardust의 정확도 측정은 \code{ulp\_distance}로 두 값 사이의 binary64 수의 개수를 센다. 두 값을 순서를 보존하는 정수로 바꾼 뒤 큰 쪽에서 작은 쪽을 빼는데, $-\infty$에서 $+\infty$까지의 거리는 부호 있는 $64$비트 정수에 들어가지 않으므로 부호 없는 정수의 뺄셈을 쓴다. 2장에서 보았듯이 이 뺄셈은 $2^{64}$의 나머지로 감기지만 참값이 $2^{64}$보다 작으므로 결과는 정확하다. $+0$과 $-0$의 거리는 $0$이고 NaN 둘의 거리도 $0$으로 둔다. 각 영역의 정확도 약속은 ``Arb로 구한 참값을 binary64로 반올림한 값에서 $k$ ULP 이내''의 꼴로 적힌다.
