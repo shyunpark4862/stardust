@@ -21,7 +21,7 @@
 \end{enumerate}
 \end{definition}
 
-정의에서 $f=O(g)$의 등호는 진짜 등식이 아니라 ``$f$는 $g$로 위에서 눌리는 함수들의 모임에 속한다''는 뜻이다. 그래서 $x=O(x^2)$은 $x\to\infty$에서 참이지만 $x^2=O(x)$는 거짓이며, 등호의 양변을 바꾸어 쓸 수 없다. 이 기호를 쓸 때는 늘 어떤 극한에서의 말인지를 밝혀야 하는데, 같은 $x=O(x^2)$도 $x\to0$에서는 거짓이기 때문이다. 다음 성질들은 정의에서 바로 따라 나오며 계산에서 자주 쓴다.
+정의에서 $f=O(g)$의 등호는 진짜 등식이 아니라 ``$f$는 $g$로 위에서 눌리는 함수들의 모임에 속한다''는 뜻이다. 그래서 $x=O(x^2)$은 $x\to\infty$에서 참이지만 $x^2=O(x)$는 거짓이며, 등호의 양변을 바꾸어 쓸 수 없다. 이 기호를 쓸 때는 늘 어떤 극한을 두고 하는 말인지를 밝혀야 하는데 같은 $x=O(x^2)$도 $x\to0$에서는 거짓이기 때문이다. 다음 성질들은 정의에서 바로 따라 나오며 계산에서 자주 쓴다.
 
 \begin{proposition}
 \label{prop:big-o-rules}
@@ -38,7 +38,7 @@
 \end{proof}
 
 \begin{aside}[기호의 역사]
-$O$는 정수론 학자 Bachmann이 1894년에 처음 쓰고 Landau가 널리 퍼뜨려 흔히 Landau 기호라 불린다. 알고리즘의 분석에서는 하한을 나타내는 $\Omega$와, 위아래를 함께 누르는 $\Theta$가 필요했는데, Knuth는 1976년의 짧은 글에서 이 기호들의 뜻을 오늘날 쓰는 방식으로 정리하자고 제안했다\cite{knuth1976bigomicron}. 해석학자들은 $\Omega$를 ``$o$가 아니다''라는 다른 뜻으로 써 왔기에, 같은 기호가 분야마다 다른 뜻을 갖게 되었다. 이 책에서는 $\Omega$를 쓰지 않는다.
+$O$는 정수론 학자 Bachmann이 1894년에 처음 쓰고 Landau가 널리 퍼뜨려 흔히 Landau 기호라 불린다. 알고리즘의 분석에서는 하한을 나타내는 $\Omega$와, 위아래를 함께 누르는 $\Theta$가 필요했는데, Knuth는 1976년의 짧은 글에서 이 기호들의 뜻을 오늘날 쓰는 방식으로 정리하자고 제안했다\cite{knuth1976bigomicron}. 해석학자들은 $\Omega$를 ``$o$가 아니다''라는 다른 뜻으로 써 왔기에, 같은 기호가 분야마다 다른 뜻을 갖는다. 이 책에서는 $\Omega$를 쓰지 않는다.
 \end{aside}
 
 \section{점근 급수}
@@ -76,7 +76,7 @@ $f$의 점근 급수의 계수는 유일하다. 곧 $c_N=\lim_{x\to\infty}x^N\bi
 \[
 \operatorname{erfc}(x)=\frac{2}{\sqrt\pi}\int_x^\infty e^{-t^2}\,dt
 \]
-가 잘 보여 준다. $x$가 크면 $\operatorname{erfc}(x)$는 $e^{-x^2}$처럼 아주 작아지므로, 그 크기를 빼고 남는 부분 $\operatorname{erfcx}(x)=e^{x^2}\operatorname{erfc}(x)$, 곧 \term{척도를 맞춘 보오차함수}{scaled complementary error function}를 계산하는 것이 자연스럽다. $I_n(x)=\int_x^\infty t^{-n}e^{-t^2}\,dt$로 두고 $te^{-t^2}$이 $-e^{-t^2}/2$의 도함수라는 것을 써서 부분적분하면
+를 보면 알 수 있다. $x$가 크면 $\operatorname{erfc}(x)$는 $e^{-x^2}$처럼 아주 작아지므로, 그 크기를 빼고 남는 부분 $\operatorname{erfcx}(x)=e^{x^2}\operatorname{erfc}(x)$, 곧 \term{척도를 맞춘 보오차함수}{scaled complementary error function}를 계산하는 것이 자연스럽다. $I_n(x)=\int_x^\infty t^{-n}e^{-t^2}\,dt$로 두고 $te^{-t^2}$이 $-e^{-t^2}/2$의 도함수라는 것을 써서 부분적분하면
 \[
 I_n=\frac{e^{-x^2}}{2x^{n+1}}-\frac{n+1}{2}I_{n+2}
 \]
@@ -107,7 +107,7 @@ I_{2N}(x)\le x^{-2N-1}\int_x^\infty te^{-t^2}\,dt=\frac{e^{-x^2}}{2x^{2N+1}}
 이므로 $|R_N|\le(2N-1)!!/(x\sqrt\pi\,(2x^2)^N)$, 곧 첫 번째로 버린 항의 크기 이하이다.
 \end{proof}
 
-\cref{thm:erfc-asym}의 급수는 모든 $x$에서 발산한다. 이웃한 두 항의 비가 $(2k+1)/(2x^2)$이어서, $k$가 $x^2$을 넘으면 항이 다시 커지고 결국 무한히 자라기 때문이다. 그러나 정리는 \textbf{어디에서 멈추든} 오차가 버린 첫 항보다 작다고 보장하므로, 가장 좋은 전략은 항이 가장 작아지는 곳에서 멈추는 것이다. 이를 \term{최적 절단}{optimal truncation}이라 한다. 항의 크기는 $k\approx x^2$에서 가장 작고, 그때의 상대 크기는 대략 $e^{-x^2}$ 정도이다. \cref{tab:erfc-asym}은 몇 가지 $x$에서 항이 가장 작아지는 자리와 그 크기를 정확한 유리수 산술로 계산한 것이다.
+\cref{thm:erfc-asym}의 급수는 모든 $x$에서 발산하는데, 이웃한 두 항의 비가 $(2k+1)/(2x^2)$이어서 $k$가 $x^2$을 넘으면 항이 다시 커지고 결국 무한히 자라기 때문이다. 그러나 정리는 \textbf{어디에서 멈추든} 오차가 버린 첫 항보다 작다고 보장하므로, 항이 가장 작아지는 곳에서 멈추는 것이 가장 좋다. 이를 \term{최적 절단}{optimal truncation}이라 한다. 항의 크기는 $k\approx x^2$에서 가장 작고, 그때의 상대 크기는 대략 $e^{-x^2}$ 정도이다. \cref{tab:erfc-asym}은 몇 가지 $x$에서 항이 가장 작아지는 자리와 그 크기를 정확한 유리수 산술로 계산한 것이다.
 
 \begin{table}[t]
 \begin{sdtable}{colspec={ccc}, row{1}={font=\small\bfseries}}
@@ -124,10 +124,10 @@ $x$ & 가장 작은 항의 번호 $k$ & 그 항의 상대 크기 \\
 \label{tab:erfc-asym}
 \end{table}
 
-표가 보여 주는 교훈은 분명하다. $x=2$에서는 아무리 잘 잘라도 두 자리 정도밖에 얻지 못하므로 이 급수를 쓸 수 없지만, $x=8$에서는 배정밀도의 반올림 단위 $u\approx1.1\times10^{-16}$보다 열두 자리나 작은 오차까지 내려간다. 더구나 그만큼 갈 필요도 없어서, $x=8$에서는 $k=18$번째 항의 상대 크기가 이미 $2.6\times10^{-18}$으로 $u$보다 작으므로 $k=0,\dots,17$의 열여덟 항이면 충분하다.
+표에서 보듯 $x=2$에서는 아무리 잘 잘라도 두 자리 정도밖에 얻지 못하므로 이 급수를 쓸 수 없지만 $x=8$에서는 배정밀도의 반올림 단위 $u\approx1.1\times10^{-16}$보다 열두 자리나 작은 오차까지 내려간다. 더구나 그만큼 갈 필요도 없어서 $x=8$에서는 $k=18$번째 항의 상대 크기가 이미 $2.6\times10^{-18}$으로 $u$보다 작으므로 $k=0,\dots,17$의 열여덟 항이면 충분하다.
 
 \begin{instardust}[\code{csrc/special/ops/erf.hpp}]
-stardust의 \code{erfcx}는 정의역을 나누어, $|x|<1$에서는 $\operatorname{erf}$로부터, $1\le x<8$에서는 미리 맞춘 유리함수로 계산하고, $x\ge8$에서는 \cref{thm:erfc-asym}의 급수를 $k=17$까지 더한다. 급수는 $1-u(1-3u(1-5u(\cdots)))$처럼 안쪽부터 겹쳐 계산하는데($u=1/(2x^2)$), 이렇게 하면 곱셈과 뺄셈이 한 번씩만 필요하고 항의 크기가 작은 쪽부터 쌓여 반올림 오차도 줄어든다. 점근 급수가 정확해지는 영역에서만 그것을 쓰고, 나머지 영역은 다른 근사에 맡기는 이 구간 나누기는 특수함수 계산의 기본 전략이다.
+stardust의 \code{erfcx}는 정의역을 나누어 $|x|<1$에서는 $\operatorname{erf}$로부터, $1\le x<8$에서는 미리 맞춘 유리함수로 계산하고 $x\ge8$에서는 \cref{thm:erfc-asym}의 급수를 $k=17$까지 더한다. 급수는 $1-u(1-3u(1-5u(\cdots)))$처럼 안쪽부터 겹쳐 계산하는데($u=1/(2x^2)$), 이렇게 하면 곱셈과 뺄셈이 한 번씩만 필요하고 항의 크기가 작은 쪽부터 쌓여 반올림 오차도 줄어든다. 점근 급수가 정확해지는 영역에서만 그것을 쓰고 나머지 영역은 다른 근사에 맡기는데, 이렇게 구간을 나누는 것이 특수함수 계산의 기본 전략이다.
 \end{instardust}
 
 \section{Laplace의 방법}
@@ -181,7 +181,7 @@ $\lambda\to\infty$에서 $\Gamma(\lambda+1)\sim\sqrt{2\pi\lambda}\,(\lambda/e)^\
 
 \subsection{Watson의 보조정리}
 
-\cref{thm:laplace}는 첫째 항만 준다. 보정항까지 체계적으로 얻으려면 최솟값이 구간의 끝에 있는 경우의 다음 결과가 기본이 된다\cite{olver1974asymptotics}.
+\cref{thm:laplace}는 첫째 항만 준다. 보정항까지 체계적으로 얻으려면 최솟값이 구간의 끝에 있는 경우를 다룬 다음 결과가 기본이 된다\cite{olver1974asymptotics}.
 
 \begin{lemma}[Watson]
 \label{lem:watson}
@@ -196,14 +196,14 @@ $\alpha>0$이고 $\varphi$가 $0$ 근처에서 $\varphi(t)=\sum_{k=0}^{N-1}\varp
 $|t|\le\tau$에서 $|\varphi(t)-\sum_{k<N}\varphi_kt^k|\le Mt^N$인 $\tau,M$을 잡자. 각 단항식은 $\int_0^\infty t^{k+\alpha-1}e^{-\lambda t}\,dt=\Gamma(k+\alpha)\lambda^{-k-\alpha}$를 주고, 이를 $[0,\tau]$로 자르는 데서 생기는 차는 $e^{-\lambda\tau/2}$ 정도로 지수적으로 작다. $[0,\tau]$에서 나머지의 기여는 $M\int_0^\infty t^{N+\alpha-1}e^{-\lambda t}\,dt=M\Gamma(N+\alpha)\lambda^{-N-\alpha}$ 이하이고, $[\tau,\infty)$에서 $\varphi$ 자신의 기여는 \cref{thm:laplace}의 증명에서처럼 $e^{-(\lambda-\lambda_0)\tau}$ 정도로 지수적으로 작다. 지수적으로 작은 양은 모두 $O(\lambda^{-N-\alpha})$에 흡수된다.
 \end{proof}
 
-\cref{thm:laplace}의 적분에서 $h(x)-h(x_0)=t$로 변수를 바꾸면 $x_0$의 양쪽이 각각 \cref{lem:watson}의 꼴이 되므로, Laplace 근사의 모든 보정항은 이 보조정리로 차례로 계산된다. 피적분함수를 복소평면으로 넓혀 같은 일을 하는 안장점 방법은 복소함수를 다루는 장에서 본다.
+\cref{thm:laplace}의 적분에서 $h(x)-h(x_0)=t$로 변수를 바꾸면 $x_0$의 양쪽이 각각 \cref{lem:watson}의 꼴이 되므로, Laplace 근사의 모든 보정항은 이 보조정리로 차례로 계산된다. 안장점 방법은 피적분함수를 복소평면으로 넓혀 같은 일을 하는데, 복소함수를 다루는 장에서 본다.
 
 \section{Euler--Maclaurin 공식}
 \label{sec:euler-maclaurin}
 
 \subsection{Bernoulli 수와 Bernoulli 다항식}
 
-합 $\sum f(k)$와 적분 $\int f(x)\,dx$는 닮았지만 같지 않다. 그 차이를 $f$의 도함수들로 정확하게 적은 것이 Euler--Maclaurin 공식이며, 그 계수로 Bernoulli 수가 나온다.
+합 $\sum f(k)$와 적분 $\int f(x)\,dx$는 닮았지만 같지 않다. Euler--Maclaurin 공식은 그 차이를 $f$의 도함수들로 정확하게 적은 식이며 그 계수로 Bernoulli 수가 나온다.
 
 \begin{definition}[Bernoulli 수와 다항식]
 \label{def:bernoulli}
@@ -262,10 +262,10 @@ Euler--Maclaurin 공식은 수렴이 느린 급수를 빠르게 더하는 데 �
 \[
 B_{2j}=(-1)^{j+1}\frac{2\,(2j)!\,\zeta(2j)}{(2\pi)^{2j}}
 \]
-를 만족하여 계승처럼 자라기 때문에\cite{dlmf}, 보정항 $B_{2j}f^{(2j-1)}/(2j)!$의 크기는 처음에는 줄다가 언젠가 다시 커진다. 곧 Euler--Maclaurin의 보정 급수도 일반적으로 발산하는 점근 급수이며, \cref{sec:asym-series}에서처럼 항이 가장 작아지는 곳에서 멈추어야 한다. 실용적으로는 직접 더하는 항의 수를 늘려 끝점 $b$를 키우면 보정항이 훨씬 빨리 작아지므로, 직접 합과 보정항의 수를 함께 고르는 것이 요령이다.
+를 만족하여 계승처럼 자라기 때문에\cite{dlmf}, 보정항 $B_{2j}f^{(2j-1)}/(2j)!$의 크기는 처음에는 줄다가 언젠가 다시 커진다. 곧 Euler--Maclaurin의 보정 급수도 일반적으로 발산하는 점근 급수이며 \cref{sec:asym-series}에서처럼 항이 가장 작아지는 곳에서 멈추어야 한다. 실용적으로는 직접 더하는 항의 수를 늘려 끝점 $b$를 키우면 보정항이 훨씬 빨리 작아지므로, 직접 합과 보정항의 수를 함께 고르는 것이 요령이다.
 
 \begin{instardust}[\code{csrc/special/ops/zeta.hpp}]
-stardust의 Hurwitz 제타함수 $\zeta(s,q)=\sum_{k\ge0}(k+q)^{-s}$는 Cephes 라이브러리의 방법을 따라, 앞의 항들을 직접 더하다가 항이 충분히 작아지거나 일정한 개수에 이르면 남은 꼬리를 \cref{thm:euler-maclaurin}의 적분과 Bernoulli 보정으로 바꾼다. 꼬리의 적분은 $(q+N)^{1-s}/(s-1)$인데, $s$가 $1$에 가까우면 분모 $s-1$을 반올림한 값으로 계산하는 순간 그 반올림이 결과 전체를 망치므로, 함수는 $s-1$을 호출하는 쪽에서 정확히 받아 쓴다.
+stardust의 Hurwitz 제타함수 $\zeta(s,q)=\sum_{k\ge0}(k+q)^{-s}$는 Cephes 라이브러리의 방법을 따라 앞의 항들을 직접 더하다가 항이 충분히 작아지거나 일정한 개수에 이르면 남은 꼬리를 \cref{thm:euler-maclaurin}의 적분과 Bernoulli 보정으로 바꾼다. 꼬리의 적분은 $(q+N)^{1-s}/(s-1)$인데, $s$가 $1$에 가까우면 분모 $s-1$을 반올림한 값으로 계산하는 순간 그 반올림이 결과 전체를 망치므로, 함수는 $s-1$을 호출하는 쪽에서 정확히 받아 쓴다.
 \end{instardust}
 
 \subsection{로그 감마함수의 Stirling 급수}
@@ -278,7 +278,7 @@ stardust의 Hurwitz 제타함수 $\zeta(s,q)=\sum_{k\ge0}(k+q)^{-s}$는 Cephes �
 \[
 \log\Gamma(z+1)\sim\Bigl(z+\frac12\Bigr)\log z-z+\frac12\log2\pi+\frac{1}{12z}-\frac{1}{360z^3}+\frac{1}{1260z^5}-\cdots
 \]
-를 \term{Stirling 급수}{Stirling series}라 한다. $n=10$에서 보정항 없이는 $\log n!$의 오차가 $8.3\times10^{-3}$이지만 $1/(12n)$ 하나로 $2.8\times10^{-6}$, 셋까지 더하면 $5.9\times10^{-11}$로 줄어든다. 감마함수와 그 로그를 다루는 거의 모든 라이브러리는 인자가 큰 영역에서 이 급수를 쓰고, 인자가 작으면 $\Gamma(z+1)=z\Gamma(z)$로 인자를 키운 뒤 쓴다. 그 자세한 설계는 특수함수를 다루는 장에서 본다.
+를 \term{Stirling 급수}{Stirling series}라 한다. $n=10$에서 보정항 없이는 $\log n!$의 오차가 $8.3\times10^{-3}$이지만 $1/(12n)$ 하나로 $2.8\times10^{-6}$, 셋까지 더하면 $5.9\times10^{-11}$로 줄어든다. 감마함수와 그 로그를 다루는 거의 모든 라이브러리는 인자가 큰 영역에서 이 급수를 쓰고 인자가 작으면 $\Gamma(z+1)=z\Gamma(z)$로 인자를 키운 뒤 쓴다. 그 자세한 설계는 특수함수를 다루는 장에서 본다.
 
 \section{연분수}
 \label{sec:continued-fractions}
@@ -317,15 +317,15 @@ $n$에 대한 귀납법을 쓰되, 주장을 모든 수열에 대해 한꺼번�
 이고, 이는 $A_n/B_n$이다.
 \end{proof}
 
-간단한 예로 $\sqrt2=1+1/(2+1/(2+\cdots))$의 근사분수는 \cref{thm:cf-recurrence}에서 $1/1,3/2,7/5,17/12,41/29,99/70,\dots$이고, 오차는 한 단계마다 약 $(1+\sqrt2)^2\approx5.8$배씩 준다. 연분수가 진가를 보이는 곳은 특수함수이다. 18세기에 Lambert가 $\pi$의 무리성을 증명하는 데 쓴 탄젠트의 연분수
+간단한 예로 $\sqrt2=1+1/(2+1/(2+\cdots))$의 근사분수는 \cref{thm:cf-recurrence}에서 $1/1,3/2,7/5,17/12,41/29,99/70,\dots$이고, 오차는 한 단계마다 약 $(1+\sqrt2)^2\approx5.8$배씩 준다. 연분수는 특수함수에서 진가를 보인다. 18세기에 Lambert가 $\pi$의 무리성을 증명하는 데 쓴 탄젠트의 연분수
 \[
 \tan x=\cfrac{x}{1-\cfrac{x^2}{3-\cfrac{x^2}{5-\cdots}}}
 \]
-는 $x=1$에서 층을 하나 더할 때마다 오차가 두 자리 이상씩 줄어, 여덟 층이면 오차가 $5\times10^{-14}$ 아래로 내려간다. 불완전 감마함수, 불완전 베타함수, Bessel 함수의 비처럼 급수가 느린 영역에서 이런 연분수가 빠르게 수렴하는 경우가 많으며, 그 목록은 \cite{cuyt2008cf}에 정리되어 있다.
+는 $x=1$에서 층을 하나 더할 때마다 오차가 두 자리 이상씩 줄어 여덟 층이면 오차가 $5\times10^{-14}$ 아래로 내려간다. 불완전 감마함수, 불완전 베타함수, Bessel 함수의 비처럼 급수가 느린 영역에서 이런 연분수가 빠르게 수렴하는 경우가 많으며, 그 목록은 \cite{cuyt2008cf}에 정리되어 있다.
 
 \subsection{Lentz의 알고리즘}
 
-연분수를 계산하는 가장 단순한 방법은 몇 층에서 자를지 정한 뒤 맨 아래부터 거꾸로 계산하는 것이다. 그러나 필요한 층의 수를 미리 알기 어렵고, 층을 늘리면 처음부터 다시 계산해야 한다. \cref{thm:cf-recurrence}로 앞에서부터 계산하면 이 문제는 사라지지만, $A_n$과 $B_n$은 금세 넘치거나 아래로 넘쳐 부동소수점 수의 범위를 벗어난다. Lentz의 방법은 $A_n$과 $B_n$ 대신 그 비
+연분수를 계산하는 가장 단순한 방법은 몇 층에서 자를지 정한 뒤 맨 아래부터 거꾸로 계산하는 것이다. 그러나 필요한 층의 수를 미리 알기 어렵고 층을 늘리면 처음부터 다시 계산해야 한다. \cref{thm:cf-recurrence}로 앞에서부터 계산하면 이 문제는 사라지지만, $A_n$과 $B_n$은 금세 넘치거나 아래로 넘쳐 부동소수점 수의 범위를 벗어난다. Lentz의 방법은 $A_n$과 $B_n$ 대신 그 비
 \[
 C_n=\frac{A_n}{A_{n-1}},\qquad D_n=\frac{B_{n-1}}{B_n}
 \]
@@ -333,7 +333,7 @@ C_n=\frac{A_n}{A_{n-1}},\qquad D_n=\frac{B_{n-1}}{B_n}
 \[
 C_n=b_n+\frac{a_n}{C_{n-1}},\qquad D_n=\frac{1}{b_n+a_nD_{n-1}},\qquad f_n=f_{n-1}C_nD_n
 \]
-을 얻는다. 비는 넘치지 않으며, $C_nD_n$이 $1$에 충분히 가까워지면, 곧 한 층을 더해도 값이 거의 바뀌지 않으면 멈춘다. 중간에 $C_n$이나 $D_n$의 분모가 $0$이 될 수 있다는 것이 원래 방법의 약점인데, 수정된 Lentz 방법은 $0$ 대신 아주 작은 수를 넣고 계속한다. 그 작은 수는 다음 단계에서 지워지기 때문이다\cite{thompson1986coulomb,press2007nr}. \cref{alg:lentz}가 그 전체 과정이다.
+을 얻는다. 비는 넘치지 않으며, $C_nD_n$이 $1$에 충분히 가까워지면, 곧 한 층을 더해도 값이 거의 바뀌지 않으면 멈춘다. 중간에 $C_n$이나 $D_n$의 분모가 $0$이 될 수 있다는 것이 원래 방법의 약점이다. 수정된 Lentz 방법은 $0$ 대신 아주 작은 수를 넣고 계속하는데, 그 작은 수는 다음 단계에서 지워지기 때문이다\cite{thompson1986coulomb,press2007nr}. \cref{alg:lentz}가 그 전체 과정이다.
 
 \begin{algorithm}[t]
 \begin{algorithmic}[1]
@@ -356,9 +356,10 @@ C_n=b_n+\frac{a_n}{C_{n-1}},\qquad D_n=\frac{1}{b_n+a_nD_{n-1}},\qquad f_n=f_{n-
 \end{algorithm}
 
 \begin{instardust}[\code{csrc/special/cf.hpp}]
-stardust의 특수함수는 불완전 감마함수와 불완전 베타함수, Bessel 함수의 비를 \cref{alg:lentz}로 계산하며, 작은 수 $\tau$로 $2^{-1000}$을 쓴다. 코드의 주석은 이 방법의 함정 하나를 짚는다. $b_0=0$이면 \cref{alg:lentz}의 출발값이 $\tau$ 자체이고 이후의 모든 $f_n$이 $\tau$의 배수로 계산되는데, 답이 $\tau$보다 훨씬 작으면 그 곱셈이 아래로 넘쳐 결과가 틀린다. 그래서 $b_0=0$인 연분수는 꼬리 $b_1+a_2/(b_2+\cdots)$를 따로 계산한 뒤 $a_1$을 그것으로 나눈다. 또한 앞에서부터 곱해 가는 Lentz 방법은 층마다의 반올림 오차가 곱으로 쌓이므로, 필요한 층의 수를 Lentz로 알아낸 다음 같은 층의 연분수를 맨 아래부터 다시 계산해 정확도를 높이는 길도 마련해 두었다. 거꾸로 계산하면 층마다의 반올림이 다음 나눗셈에서 줄어들기 때문이다.
+stardust의 특수함수는 불완전 감마함수와 불완전 베타함수, Bessel 함수의 비를 \cref{alg:lentz}로 계산하며 작은 수 $\tau$로 $2^{-1000}$을 쓴다. 코드의 주석은 이 방법의 함정 하나를 일러 둔다. $b_0=0$이면 \cref{alg:lentz}의 출발값이 $\tau$ 자체이고 이후의 모든 $f_n$이 $\tau$의 배수로 계산되는데, 답이 $\tau$보다 훨씬 작으면 그 곱셈이 아래로 넘쳐 결과가 틀린다. 그래서 $b_0=0$인 연분수는 꼬리 $b_1+a_2/(b_2+\cdots)$를 따로 계산한 뒤 $a_1$을 그것으로 나눈다. 또한 앞에서부터 곱해 가는 Lentz 방법은 층마다의 반올림 오차가 곱으로 쌓이므로, 필요한 층의 수를 Lentz로 알아낸 다음 같은 층의 연분수를 맨 아래부터 다시 계산해 정확도를 높이는 길도 마련해 두었다. 거꾸로 계산하면 층마다의 반올림이 다음 나눗셈에서 줄어들기 때문이다.
 \end{instardust}
 
-연분수가 언제 수렴하는지에 대해서는 여러 충분조건이 알려져 있다. 대표적인 것이 모든 $n$에서 $|b_n|\ge|a_n|+1$이면 $b_0=0$인 연분수가 수렴한다는 Śleszyński--Pringsheim 정리이며, 이를 비롯한 수렴 이론과 특수함수별 연분수는 \cite{cuyt2008cf}에 자세하다. 실제 계산에서는 이런 조건이 성립하는 영역을 골라 연분수를 쓰고, 나머지 영역은 급수나 점근 급수에 맡긴다. 점근 급수, Euler--Maclaurin 공식, 연분수는 이처럼 정의역을 나누어 맡는 도구들이며, 특수함수를 다루는 장에서 이들이 실제로 어떻게 나뉘어 쓰이는지를 함수마다 보게 된다.
+연분수가 언제 수렴하는지에 대해서는 여러 충분조건이 알려져 있다. 대표적인 것이 모든 $n$에서 $|b_n|\ge|a_n|+1$이면 $b_0=0$인 연분수가 수렴한다는 Śleszyński--Pringsheim 정리이며, 이를 비롯한 수렴 이론과 특수함수별 연분수는 \cite{cuyt2008cf}에 자세하다. 실제 계산에서는 이런 조건이 성립하는 영역을 골라 연분수를 쓰고 나머지 영역은 급수나 점근 급수에 맡긴다. 점근 급수, Euler--Maclaurin 공식, 연분수는 이처럼 정의역을 나누어 맡는 도구들이며 특수함수를 다루는 장에서 이들이 실제로 어떻게 나뉘어 쓰이는지를 함수마다 본다.
 
 \chapterreferences
+

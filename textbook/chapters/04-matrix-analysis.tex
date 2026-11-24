@@ -1,0 +1,324 @@
+%% 4장 행렬 해석
+\chapter{행렬 해석}
+\label{ch:matrix-analysis}
+
+\abstract{선형대수학은 행렬이 정확하게 주어졌다고 보고 연립방정식의 해와 고유값을 구한다. 그러나 컴퓨터 안의 행렬은 처음부터 반올림된 값이고, 계산의 매 단계에서 다시 반올림된다. 그러니 수치 선형대수의 첫 질문은 ``해가 무엇인가''가 아니라 ``행렬이 조금 바뀌면 해가 얼마나 바뀌는가''이다. 이 질문에 답하려면 행렬의 크기를 재는 노름, 행렬을 가장 투명하게 드러내는 특이값 분해, 문제의 민감도를 하나의 수로 요약하는 조건수, 그리고 고유값과 특이값이 섭동에 어떻게 반응하는지를 말해 주는 섭동 이론이 필요하다. 이 장에서는 이것들을 차례로 세우고, 고유값 계산과 행렬 방정식의 바탕이 되는 Schur 분해, 행렬을 블록으로 쌓는 Kronecker 곱, 그리고 통계와 최적화 곳곳에 나오는 양정치 행렬을 다룬다. 독자가 선형대수학을 안다고 가정하므로, 익숙한 내용은 기호를 맞추는 정도로만 되짚는다.}
+
+\section{벡터 노름}
+\label{sec:vector-norms}
+
+\subsection{정의와 동치성}
+
+벡터공간 $\mathbb{F}^n$($\mathbb{F}$는 $\mathbb{R}$ 또는 $\mathbb{C}$) 위의 \term{노름}{norm}은 양의 정부호성($\|x\|=0\iff x=0$), 동차성($\|\alpha x\|=|\alpha|\|x\|$), 삼각부등식($\|x+y\|\le\|x\|+\|y\|$)을 만족하는 함수 $\|\cdot\|$이다. 이 책에서 가장 자주 쓰는 것은 $p\ge1$에 대한 $p$-노름
+\[
+\|x\|_p=\Bigl(\sum_{i=1}^n|x_i|^p\Bigr)^{1/p},\qquad\|x\|_\infty=\max_i|x_i|
+\]
+이며, 특히 $\|x\|_2$를 Euclid 노름이라 한다. $p$-노름이 삼각부등식을 만족한다는 것은 Minkowski 부등식이고, 이는 Hölder 부등식 $|x^{\mathsf H}y|\le\|x\|_p\|y\|_q$($1/p+1/q=1$)에서 나온다.
+
+유한차원에서는 어떤 노름을 쓰든 수렴이나 연속성 같은 질적인 성질은 같다. 다음 정리가 그 까닭이다.
+
+\begin{theorem}[노름의 동치성]
+\label{thm:norm-equiv}
+$\mathbb{F}^n$ 위의 두 노름 $\|\cdot\|_\alpha$와 $\|\cdot\|_\beta$에 대해 $c\|x\|_\alpha\le\|x\|_\beta\le C\|x\|_\alpha$가 모든 $x$에서 성립하는 양의 상수 $c,C$가 있다. 특히
+\[
+\|x\|_\infty\le\|x\|_2\le\|x\|_1\le\sqrt n\,\|x\|_2\le n\|x\|_\infty
+\]
+이다.
+\end{theorem}
+
+\begin{proof}
+$\|\cdot\|_\alpha$가 $\|\cdot\|_2$와 동치임을 보이면 충분하다. 표준기저 $e_i$로 $x=\sum x_ie_i$라 쓰면 삼각부등식과 Cauchy--Schwarz 부등식에서 $\|x\|_\alpha\le\sum|x_i|\|e_i\|_\alpha\le M\|x\|_2$, $M=(\sum\|e_i\|_\alpha^2)^{1/2}$이다. 이는 $\|\cdot\|_\alpha$가 $\|\cdot\|_2$에 대해 연속임을 뜻한다. 단위구면 $S=\{x:\|x\|_2=1\}$은 콤팩트하므로 $\|\cdot\|_\alpha$는 $S$ 위에서 최솟값 $m$을 갖고, $S$에 $0$이 없으므로 $m>0$이다. 동차성에서 모든 $x$에 대해 $m\|x\|_2\le\|x\|_\alpha\le M\|x\|_2$이다. 특정 부등식들은 $\max_i|x_i|^2\le\sum|x_i|^2\le(\sum|x_i|)^2$과 Cauchy--Schwarz 부등식 $\sum|x_i|\cdot1\le\sqrt n\|x\|_2$, 그리고 $\|x\|_2\le\sqrt n\|x\|_\infty$에서 나온다.
+\end{proof}
+
+\cref{thm:norm-equiv}의 상수에 $n$이 들어 있다는 사실은 무한차원에서 이 정리가 깨지는 이유이기도 하고, 차원이 큰 계산에서 노름의 선택이 오차 한계를 $\sqrt n$이나 $n$배 바꿀 수 있다는 경고이기도 하다.
+
+\subsection{넘침 없는 Euclid 노름}
+
+$\|x\|_2$를 정의대로 계산하면 제곱하는 순간 문제가 생긴다. binary64가 담을 수 있는 가장 큰 수는 약 $1.8\times10^{308}$이므로, 원소가 $10^{155}$보다 크면 제곱이 넘쳐 $\infty$가 되고, $10^{-155}$보다 작으면 제곱이 아래로 넘쳐 $0$이 된다. 예컨대 $x=(3\times10^{200},4\times10^{200})$의 노름은 $5\times10^{200}$으로 얼마든지 표현할 수 있는 수인데, 독립적으로 numpy 2의 \code{np.linalg.norm}으로 계산해 보면 $\infty$가 나오고, $10^{-200}$배로 줄인 벡터에서는 $0$이 나온다.
+
+이 문제는 척도를 바꾸어 피한다. $s=\|x\|_\infty$라 하면 $\|x\|_2=s\,\|x/s\|_2$이고, $x/s$의 원소는 모두 절댓값이 $1$ 이하이므로 제곱이 넘치지 않는다. 다만 나눗셈은 곱셈보다 비싸고 $s$를 구하는 데 배열을 한 번 더 읽어야 하므로, 실용적인 구현은 먼저 척도 없이 계산해 보고 결과가 넘치거나 너무 작을 때만 척도를 맞춰 다시 계산한다. 원소의 크기에 따라 큰 것, 보통인 것, 작은 것을 서로 다른 척도로 한 번에 누적하는 Blue의 방법\cite{blue1978}은 배열을 한 번만 읽으면서 같은 일을 하며, LAPACK의 노름 계산이 이 계열을 따른다. 척도를 $2$의 거듭제곱으로 고르면 척도를 곱하고 나누는 일이 지수만 바꾸므로 반올림 오차가 생기지 않는다는 점도 기억해 두자.
+
+\begin{instardust}[\code{csrc/linalg/ops/norms.cpp}]
+stardust의 \code{vector\_norm}은 $p$-노름을 먼저 척도 없이 빠르게 한 번 계산하고, 그 결과가 넘쳤거나 모든 원소의 크기가 아주 작았을 때에만 가장 큰 크기로 척도를 맞춘 두 번째 계산을 한다. 대부분의 입력에서는 첫 계산으로 끝나므로 척도의 비용을 치르지 않으면서, 극단적인 입력에서도 올바른 값을 준다. 복소수는 $|z|^2=(\operatorname{Re}z)^2+(\operatorname{Im}z)^2$로, 실수부와 허수부를 각각의 항으로 더한다.
+\end{instardust}
+
+\section{행렬 노름}
+\label{sec:matrix-norms}
+
+\subsection{유도 노름}
+
+행렬을 길이 $mn$인 벡터로 보면 벡터 노름을 그대로 쓸 수 있지만, 행렬은 벡터를 보내는 사상이므로 ``벡터를 얼마나 늘리는가''로 크기를 재는 편이 더 자연스럽다.
+
+\begin{definition}[유도 노름]
+\label{def:induced}
+$\mathbb{F}^n$과 $\mathbb{F}^m$의 벡터 노름에 대해 $m\times n$ 행렬 $A$의 \term{유도 노름}{induced norm}을
+\[
+\|A\|=\max_{x\ne0}\frac{\|Ax\|}{\|x\|}=\max_{\|x\|=1}\|Ax\|
+\]
+로 정의한다. 벡터 노름이 $p$-노름이면 $\|A\|_p$로 쓴다.
+\end{definition}
+
+정의에서 $\|Ax\|\le\|A\|\|x\|$이고, 이를 두 번 쓰면 \term{부분곱셈성}{submultiplicativity} $\|AB\|\le\|A\|\|B\|$를 얻는다. 최댓값이 존재하는 것은 단위구면이 콤팩트하고 $x\mapsto\|Ax\|$가 연속이기 때문이다. 세 가지 유도 노름은 원소로 간단히 계산된다.
+
+\begin{theorem}
+\label{thm:induced-formulas}
+$m\times n$ 행렬 $A$에 대해 다음이 성립한다.
+\begin{enumerate}
+\item $\|A\|_1=\max_j\sum_i|a_{ij}|$, 곧 열의 절댓값 합의 최댓값이다.
+\item $\|A\|_\infty=\max_i\sum_j|a_{ij}|$, 곧 행의 절댓값 합의 최댓값이다.
+\item $\|A\|_2$는 $A^{\mathsf H}A$의 가장 큰 고유값의 제곱근, 곧 $A$의 가장 큰 특이값이다.
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+(i) $\|x\|_1=1$이면 $\|Ax\|_1=\sum_i|\sum_ja_{ij}x_j|\le\sum_j|x_j|\sum_i|a_{ij}|\le\max_j\sum_i|a_{ij}|$이고, 등호는 $x$를 그 최댓값을 주는 열의 표준기저벡터로 잡으면 성립한다. (ii) $\|x\|_\infty=1$이면 각 행에서 $|\sum_ja_{ij}x_j|\le\sum_j|a_{ij}|$이고, 등호는 최댓값을 주는 행 $i$에 대해 $x_j=\overline{a_{ij}}/|a_{ij}|$($a_{ij}=0$이면 $x_j=1$)로 잡으면 성립한다. (iii) $\|Ax\|_2^2=x^{\mathsf H}(A^{\mathsf H}A)x$이고 $A^{\mathsf H}A$는 에르미트이며 양의 준정부호이므로, 고유값 $\lambda_1\ge\cdots\ge\lambda_n\ge0$과 정규직교 고유벡터 $v_i$가 있다. $x=\sum c_iv_i$, $\sum|c_i|^2=1$이면 $\|Ax\|_2^2=\sum\lambda_i|c_i|^2\le\lambda_1$이고, $x=v_1$에서 등호가 성립한다.
+\end{proof}
+
+\cref{thm:induced-formulas}의 (i)과 (ii)는 원소를 한 번 훑으면 계산되지만, (iii)은 특이값을 구해야 한다. 그래서 큰 행렬에서는 $\|A\|_2$ 대신 $\|A\|_1$이나 $\|A\|_\infty$를 쓰거나, $\|A\|_2$를 어림하는 경우가 많다. 이들 사이의 관계는 \cref{thm:norm-equiv}에서 나오며, 예컨대 $\|A\|_2\le\sqrt{\|A\|_1\|A\|_\infty}$가 성립한다.
+
+\subsection{Frobenius 노름과 유니터리 불변성}
+
+행렬을 벡터로 본 Euclid 노름 $\|A\|_F=(\sum_{i,j}|a_{ij}|^2)^{1/2}=(\operatorname{tr}A^{\mathsf H}A)^{1/2}$을 \term{Frobenius 노름}{Frobenius norm}이라 한다. 이는 유도 노름이 아니지만(단위행렬의 Frobenius 노름이 $\sqrt n$이므로) 부분곱셈적이며, $\|A\|_2\le\|A\|_F\le\sqrt{\operatorname{rank}A}\,\|A\|_2$를 만족한다. $\|\cdot\|_2$와 $\|\cdot\|_F$는 모두 유니터리 행렬 $U$, $V$에 대해 $\|UAV\|=\|A\|$인 \term{유니터리 불변}{unitarily invariant} 노름이다. 유니터리 변환은 Euclid 길이를 바꾸지 않으므로 $\|UAV\|_2=\|A\|_2$이고, $\operatorname{tr}((UAV)^{\mathsf H}UAV)=\operatorname{tr}(V^{\mathsf H}A^{\mathsf H}AV)=\operatorname{tr}(A^{\mathsf H}A)$이므로 $\|UAV\|_F=\|A\|_F$이다. 이 성질은 다음 절에서 특이값 분해와 만나, 두 노름을 특이값만으로 나타내게 해 준다.
+
+\section{특이값 분해}
+\label{sec:svd}
+
+\subsection{존재}
+
+\begin{theorem}[특이값 분해]
+\label{thm:svd}
+$m\times n$ 행렬 $A$에 대해 유니터리 행렬 $U\in\mathbb{F}^{m\times m}$, $V\in\mathbb{F}^{n\times n}$와 대각 성분이 $\sigma_1\ge\sigma_2\ge\cdots\ge\sigma_{\min(m,n)}\ge0$인 $m\times n$ 대각행렬 $\Sigma$가 있어 $A=U\Sigma V^{\mathsf H}$이다. $\sigma_i$를 $A$의 \term{특이값}{singular value}이라 하며, 특이값은 $A$로 유일하게 정해진다.
+\end{theorem}
+
+\begin{proof}
+$\min(m,n)$에 대한 귀납법을 쓴다. $A=0$이면 자명하므로 $A\ne0$이라 하자. $\sigma_1=\|A\|_2$로 두고 $\|v_1\|_2=1$, $\|Av_1\|_2=\sigma_1$인 $v_1$을 잡은 뒤 $u_1=Av_1/\sigma_1$로 두자. $v_1$과 $u_1$을 각각 유니터리 행렬 $V_1=[v_1\ \widetilde V]$, $U_1=[u_1\ \widetilde U]$로 넓히면
+\[
+U_1^{\mathsf H}AV_1=\begin{bmatrix}\sigma_1&w^{\mathsf H}\\0&B\end{bmatrix}
+\]
+꼴이다. 첫 열이 $(\sigma_1,0,\dots,0)^{\mathsf T}$인 것은 $Av_1=\sigma_1u_1$이고 $\widetilde U^{\mathsf H}u_1=0$이기 때문이다. 이제 $w=0$임을 보이자. 이 행렬을 $S$라 하면 $\|S\|_2=\|A\|_2=\sigma_1$이고,
+\[
+\Bigl\|S\begin{bmatrix}\sigma_1\\w\end{bmatrix}\Bigr\|_2\ge\sigma_1^2+w^{\mathsf H}w=(\sigma_1^2+\|w\|_2^2)^{1/2}\Bigl\|\begin{bmatrix}\sigma_1\\w\end{bmatrix}\Bigr\|_2
+\]
+이다. 왼쪽 부등호는 $S(\sigma_1,w)^{\mathsf T}$의 첫 성분이 $\sigma_1^2+w^{\mathsf H}w$라는 데서 나온다. 따라서 $\|S\|_2\ge(\sigma_1^2+\|w\|_2^2)^{1/2}$인데, $\|S\|_2=\sigma_1$이므로 $w=0$이다. 남은 블록 $B$에 귀납 가정을 쓰면 분해를 얻고, $\|B\|_2\le\|S\|_2=\sigma_1$이므로 특이값의 순서도 맞다. 유일성은 $A^{\mathsf H}A=V\Sigma^{\mathsf H}\Sigma V^{\mathsf H}$에서 $\sigma_i^2$이 $A^{\mathsf H}A$의 고유값이라는 데서 나온다.
+\end{proof}
+
+특이값 분해는 행렬에 관한 거의 모든 정보를 한눈에 보여 준다. $\sigma_r>0=\sigma_{r+1}$이면 $A$의 랭크는 $r$이고, $U$의 처음 $r$개 열은 치역의, $V$의 나머지 열은 영공간의 정규직교기저이다. 유니터리 불변성에서 $\|A\|_2=\sigma_1$이고 $\|A\|_F=(\sum\sigma_i^2)^{1/2}$이며, 특이값의 합 $\|A\|_*=\sum\sigma_i$를 \term{핵 노름}{nuclear norm}이라 한다. 정사각 가역행렬이면 $\|A^{-1}\|_2=1/\sigma_n$이다.
+
+\subsection{가장 좋은 낮은 랭크 근사}
+
+특이값 분해의 가장 유명한 응용은 행렬을 랭크가 낮은 행렬로 근사하는 문제의 정확한 답이다.
+
+\begin{theorem}[Eckart--Young]
+\label{thm:eckart-young}
+$A=\sum_{i}\sigma_iu_iv_i^{\mathsf H}$를 특이값 분해라 하고 $k<\operatorname{rank}A$에 대해 $A_k=\sum_{i=1}^k\sigma_iu_iv_i^{\mathsf H}$로 두면,
+\[
+\min_{\operatorname{rank}B\le k}\|A-B\|_2=\|A-A_k\|_2=\sigma_{k+1}
+\]
+이다.
+\end{theorem}
+
+\begin{proof}
+$A-A_k=\sum_{i>k}\sigma_iu_iv_i^{\mathsf H}$의 가장 큰 특이값은 $\sigma_{k+1}$이므로 등식의 오른쪽 부분은 분명하다. 이제 랭크가 $k$ 이하인 임의의 $B$에 대해 $\|A-B\|_2\ge\sigma_{k+1}$임을 보이자. $B$의 영공간은 차원이 $n-k$ 이상이고, $v_1,\dots,v_{k+1}$이 생성하는 공간은 차원이 $k+1$이므로, 두 공간의 차원의 합이 $n$을 넘어 $0$이 아닌 공통 원소 $z$가 있다. $\|z\|_2=1$로 잡으면 $Bz=0$이므로
+\[
+\|A-B\|_2^2\ge\|(A-B)z\|_2^2=\|Az\|_2^2=\sum_{i=1}^{k+1}\sigma_i^2|v_i^{\mathsf H}z|^2\ge\sigma_{k+1}^2
+\]
+이다. 마지막 부등호는 $\sum_{i\le k+1}|v_i^{\mathsf H}z|^2=\|z\|_2^2=1$에서 나온다.
+\end{proof}
+
+이 정리는 Eckart와 Young이 1936년 심리학 학술지에 Frobenius 노름의 경우로 발표했다\cite{eckart1936young}. 같은 $A_k$가 Frobenius 노름에서도 최적이며, 그때의 오차는 $(\sum_{i>k}\sigma_i^2)^{1/2}$이다. 주성분 분석, 잡음 제거, 추천 시스템의 행렬 완성이 모두 이 정리를 바탕으로 한다.
+
+\subsection{수치적 랭크와 의사역행렬}
+
+\cref{thm:eckart-young}을 뒤집어 읽으면 $\sigma_{k+1}$은 $A$와 ``랭크가 $k$ 이하인 가장 가까운 행렬'' 사이의 거리이다. 그런데 반올림된 행렬에서는 정확한 $0$인 특이값이 거의 나오지 않으므로, 랭크를 ``$0$이 아닌 특이값의 개수''로 정의하면 쓸모가 없다. 대신 허용오차 $\tau$를 정해 $\sigma_i>\tau$인 특이값의 개수를 \term{수치적 랭크}{numerical rank}로 삼는다. 이는 ``$\tau$ 안에서 $A$와 구별할 수 없는 행렬들 가운데 가장 낮은 랭크''라는 뜻이다.
+
+같은 생각으로 \term{의사역행렬}{pseudoinverse}을 정의한다. $A=U\Sigma V^{\mathsf H}$에서 $\Sigma^+$를 $\Sigma$의 전치에서 $0$이 아닌(또는 $\tau$보다 큰) 대각 성분을 그 역수로 바꾼 행렬이라 하면 $A^+=V\Sigma^+U^{\mathsf H}$이다. $x=A^+b$는 최소제곱 문제 $\min\|Ax-b\|_2$의 해 가운데 노름이 가장 작은 해이며, 이는 최소제곱을 다루는 장에서 증명한다.
+
+\begin{instardust}[\code{docs/api/linalg.md}]
+stardust의 \code{matrix\_rank}, \code{pinv}, \code{lstsq}는 허용오차를 $\tau=\mathrm{rtol}\cdot\sigma_1$로 잡고, \code{rtol}을 주지 않으면 $\max(M,N)\cdot\varepsilon$($\varepsilon=2^{-52}$)를 쓴다. 이 기본값은 numpy와 같으며, 특이값 분해를 반올림 오차 속에서 계산할 때 특이값의 오차가 대략 $\max(M,N)\varepsilon\sigma_1$의 크기라는 데서 나온 것이다. 그 크기 아래의 특이값은 참값이 $0$인지 아닌지 계산으로 가릴 수 없다.
+\end{instardust}
+
+\section{조건수}
+\label{sec:condition}
+
+\subsection{문제의 조건수}
+
+조건수는 ``입력이 조금 바뀔 때 답이 얼마나 바뀌는가''를 재는 수이며, 알고리즘이 아니라 \textbf{문제}의 성질이다. 미분가능한 $f$로 표현되는 문제에서 입력 $x$의 상대 섭동이 답에 주는 상대 변화의 비율을 \term{상대 조건수}{relative condition number}라 한다. 스칼라 함수라면 $\kappa_f(x)=|xf'(x)/f(x)|$이고, 이 값은 부동소수점 수를 다루는 장에서 오차가 어디서 커지는지를 판단하는 기준이 된다. 여기서는 선형 연립방정식의 조건수를 자세히 본다.
+
+\begin{definition}[행렬의 조건수]
+\label{def:cond}
+가역행렬 $A$와 행렬 노름 $\|\cdot\|$에 대해 $\kappa(A)=\|A\|\|A^{-1}\|$을 $A$의 \term{조건수}{condition number}라 한다. 2-노름에서는 $\kappa_2(A)=\sigma_1/\sigma_n$이다.
+\end{definition}
+
+\begin{theorem}
+\label{thm:linsys-perturb}
+가역행렬 $A$와 $b\ne0$에 대해 $Ax=b$라 하자. $\|A^{-1}\|\|\Delta A\|<1$이고 $(A+\Delta A)(x+\Delta x)=b+\Delta b$이면
+\[
+\frac{\|\Delta x\|}{\|x\|}\le\frac{\kappa(A)}{1-\kappa(A)\|\Delta A\|/\|A\|}\Bigl(\frac{\|\Delta A\|}{\|A\|}+\frac{\|\Delta b\|}{\|b\|}\Bigr)
+\]
+이다.
+\end{theorem}
+
+\begin{proof}
+두 식을 빼면 $A\Delta x=\Delta b-\Delta A(x+\Delta x)$이므로 $\Delta x=A^{-1}(\Delta b-\Delta Ax-\Delta A\Delta x)$이다. 노름을 취하면
+\[
+\|\Delta x\|\le\|A^{-1}\|\bigl(\|\Delta b\|+\|\Delta A\|\|x\|\bigr)+\|A^{-1}\|\|\Delta A\|\|\Delta x\|
+\]
+이고, $\|A^{-1}\|\|\Delta A\|<1$이므로 $\|\Delta x\|$를 정리할 수 있다. 양변을 $\|x\|$로 나누고 $\|b\|=\|Ax\|\le\|A\|\|x\|$, 곧 $1/\|x\|\le\|A\|/\|b\|$를 쓰면 주장이 나온다.
+\end{proof}
+
+\cref{thm:linsys-perturb}가 말하는 것은 다음과 같다. 입력의 상대오차가 $\epsilon$이면 해의 상대오차는 대략 $\kappa(A)\epsilon$까지 커질 수 있다. 반올림된 입력의 상대오차는 이미 $u\approx10^{-16}$ 정도이므로, $\kappa(A)\approx10^{k}$이면 어떤 알고리즘을 쓰더라도 해의 유효숫자를 대략 $k$자리 잃을 각오를 해야 한다. 악명 높은 예가 $h_{ij}=1/(i+j-1)$인 Hilbert 행렬로, 독립적으로 계산한 2-노름 조건수가 $n=4$에서 약 $1.6\times10^4$, $n=8$에서 약 $1.5\times10^{10}$이다. $8\times8$ Hilbert 행렬로 연립방정식을 풀면 열여섯 자리 가운데 열 자리 가까이를 잃는다.
+
+조건수에는 또 하나의 아름다운 해석이 있다. 조건수의 역수는 가역행렬과 가장 가까운 특이행렬 사이의 상대 거리이다.
+
+\begin{theorem}
+\label{thm:dist-singular}
+가역행렬 $A$에 대해 $\min\{\|\Delta A\|_2:A+\Delta A\text{가 특이}\}=\sigma_n=\|A\|_2/\kappa_2(A)$이다.
+\end{theorem}
+
+\begin{proof}
+\cref{thm:eckart-young}을 $k=n-1$에 적용하면, 랭크가 $n-1$ 이하인 행렬 $B$까지의 거리 $\|A-B\|_2$의 최솟값은 $\sigma_n$이다. 특이행렬은 랭크가 $n-1$ 이하인 행렬과 같으므로 주장이 나온다.
+\end{proof}
+
+\section{고유값과 특이값의 섭동}
+\label{sec:perturbation}
+
+\subsection{최소최대 원리와 Weyl의 부등식}
+
+에르미트 행렬의 고유값과 모든 행렬의 특이값은 섭동에 대해 아주 안정적이다. 그 바탕은 고유값을 최적화 문제의 값으로 나타내는 다음 정리이다.
+
+\begin{theorem}[Courant--Fischer]
+\label{thm:courant-fischer}
+$n\times n$ 에르미트 행렬 $H$의 고유값을 $\lambda_1\ge\cdots\ge\lambda_n$이라 하면
+\[
+\lambda_k=\max_{\dim S=k}\ \min_{x\in S,\ \|x\|_2=1}x^{\mathsf H}Hx
+\]
+이다. 여기서 최댓값은 $\mathbb{F}^n$의 $k$차원 부분공간 $S$에 대해 잡는다.
+\end{theorem}
+
+\begin{proof}
+정규직교 고유벡터 $v_1,\dots,v_n$을 잡자. $S=\operatorname{span}(v_1,\dots,v_k)$로 두면 $S$의 단위벡터 $x=\sum_{i\le k}c_iv_i$에서 $x^{\mathsf H}Hx=\sum_{i\le k}\lambda_i|c_i|^2\ge\lambda_k$이므로 오른쪽은 $\lambda_k$ 이상이다. 거꾸로 임의의 $k$차원 $S$와 $T=\operatorname{span}(v_k,\dots,v_n)$은 차원의 합이 $n+1$이므로 단위벡터 $x$를 공유하고, 그 $x$에서 $x^{\mathsf H}Hx=\sum_{i\ge k}\lambda_i|c_i|^2\le\lambda_k$이다. 따라서 어떤 $S$에서도 최솟값은 $\lambda_k$ 이하이다.
+\end{proof}
+
+\begin{corollary}[Weyl]
+\label{cor:weyl}
+에르미트 행렬 $H$와 $E$에 대해 $|\lambda_k(H+E)-\lambda_k(H)|\le\|E\|_2$이다. 또 모든 $m\times n$ 행렬 $A$, $E$에 대해 $|\sigma_k(A+E)-\sigma_k(A)|\le\|E\|_2$이다.
+\end{corollary}
+
+\begin{proof}
+모든 단위벡터 $x$에서 $|x^{\mathsf H}Ex|\le\|E\|_2$이므로 $x^{\mathsf H}(H+E)x\le x^{\mathsf H}Hx+\|E\|_2$이고, \cref{thm:courant-fischer}의 최대최소를 양변에 취하면 $\lambda_k(H+E)\le\lambda_k(H)+\|E\|_2$이다. $H$와 $H+E$의 역할을 바꾸면 반대쪽 부등식을 얻는다. 특이값에 대해서는 $\sigma_k(A)=\max_{\dim S=k}\min_{x\in S,\|x\|=1}\|Ax\|_2$라는 같은 꼴의 표현이 \cref{thm:courant-fischer}를 $A^{\mathsf H}A$에 쓰면 나오고, $\|(A+E)x\|_2\le\|Ax\|_2+\|E\|_2$에서 같은 논증이 성립한다.
+\end{proof}
+
+이 결과는 1912년 Weyl이 미분방정식의 고유값 분포를 연구하며 얻은 부등식에서 이름을 따왔다\cite{weyl1912}. 계산의 관점에서 \cref{cor:weyl}은 특이값의 \textbf{절대} 오차가 행렬의 섭동 크기를 넘지 않는다는 것을 뜻한다. 반올림 오차 속에서 역방향으로 안정한 알고리즘은 $\|E\|_2\approx u\|A\|_2$인 $A+E$의 특이값을 정확히 계산하므로, 특이값은 $u\sigma_1$ 정도의 절대 오차로 얻어진다. 큰 특이값은 상대적으로 정확하지만 $\sigma_1$보다 훨씬 작은 특이값은 상대오차가 클 수 있으며, 이것이 앞 절에서 수치적 랭크의 허용오차를 $\sigma_1$에 비례하게 잡은 이유이다.
+
+\subsection{비에르미트 행렬과 Bauer--Fike 정리}
+
+에르미트가 아닌 행렬의 고유값은 훨씬 민감할 수 있다. 크기가 $n$인 Jordan 블록, 곧 대각선 위에만 $1$이 있는 행렬의 고유값은 모두 $0$이지만, 왼쪽 아래 구석에 $\epsilon$을 더하면 특성다항식이 $\lambda^n-\epsilon$이 되어 고유값의 크기가 $\epsilon^{1/n}$으로 뛴다. $n=16$이면 $\epsilon=10^{-16}$의 섭동이 고유값을 $0.1$만큼 옮긴다. 대각화 가능한 행렬에서는 이 민감도를 고유벡터 행렬의 조건수로 잴 수 있다.
+
+\begin{theorem}[Bauer--Fike]
+\label{thm:bauer-fike}
+$A=X\Lambda X^{-1}$이 대각화 가능하고 $\mu$가 $A+E$의 고유값이면, $\min_i|\mu-\lambda_i|\le\kappa_p(X)\|E\|_p$이다.
+\end{theorem}
+
+\begin{proof}
+$\mu$가 $A$의 고유값이면 자명하므로 그렇지 않다고 하자. $A+E-\mu I$가 특이이므로 $X^{-1}(A+E-\mu I)X=(\Lambda-\mu I)+X^{-1}EX$도 특이이고, $\Lambda-\mu I$가 가역이므로 $I+(\Lambda-\mu I)^{-1}X^{-1}EX$가 특이이다. 그러면 $\|(\Lambda-\mu I)^{-1}X^{-1}EX\|_p\ge1$이어야 한다. 노름이 $1$보다 작은 행렬 $M$에 대해 $I+M$은 가역이기 때문이다. 대각행렬 $(\Lambda-\mu I)^{-1}$의 $p$-노름은 $1/\min_i|\lambda_i-\mu|$이므로 $1\le\|X^{-1}\|_p\|E\|_p\|X\|_p/\min_i|\lambda_i-\mu|$이고, 이를 정리하면 주장이다.
+\end{proof}
+
+에르미트 행렬은 유니터리 행렬로 대각화되어 $\kappa_2(X)=1$이므로, \cref{thm:bauer-fike}는 \cref{cor:weyl}과 같은 크기의 한계를 준다\cite{bauer1960fike}. 고유벡터들이 거의 평행해 $\kappa(X)$가 크면 고유값은 민감하고, Jordan 블록처럼 대각화가 안 되는 극한에서는 섭동의 $1/n$제곱으로 움직인다. 고유값 문제를 다루는 장에서는 이 차이 때문에 대칭 고유값 알고리즘과 비대칭 고유값 알고리즘이 정확도 보장에서 크게 다르다는 것을 보게 된다.
+
+\subsection{부분공간과 최소제곱의 섭동}
+
+고유값이나 특이값뿐 아니라 그에 대응하는 부분공간, 그리고 최소제곱 해가 섭동에 어떻게 반응하는지도 중요하다. 이 결과들은 Wedin이 체계적으로 정리했으며\cite{wedin1972}, 그 가운데 계산에 가장 직접적인 것은 최소제곱 해의 섭동이다. 열 랭크가 꽉 찬 $A$에 대한 문제 $\min\|Ax-b\|_2$에서 $A$와 $b$를 상대적으로 $\epsilon$만큼 바꾸면, 해의 상대 변화는 대략
+\[
+\epsilon\Bigl(\kappa_2(A)+\kappa_2(A)^2\frac{\|r\|_2}{\|A\|_2\|x\|_2}\Bigr)
+\]
+의 크기로 제한된다. 여기서 $r=b-Ax$는 잔차이다. 잔차가 크면 조건수의 \textbf{제곱}이 나타난다는 점이 핵심이며, 정규방정식 $A^{\mathsf H}Ax=A^{\mathsf H}b$로 풀면 잔차와 상관없이 $\kappa_2(A)^2$이 나타나 문제 자체보다 나쁜 알고리즘이 된다. 그 정확한 정리와 증명은 최소제곱을 다루는 장에서 직교 분해와 함께 다룬다. 섭동 이론 전반은 \cite{stewart1990perturbation}이 표준적인 참고서이다.
+
+\section{Schur 분해}
+\label{sec:schur}
+
+모든 정사각행렬이 대각화되지는 않지만, 유니터리 닮음으로 \textbf{삼각화}할 수는 있다. 이것이 수치 계산에서 고유값을 다루는 가장 안정한 출발점이다.
+
+\begin{theorem}[Schur]
+\label{thm:schur}
+모든 $n\times n$ 복소 행렬 $A$에 대해 유니터리 $Q$와 위삼각 $T$가 있어 $A=QTQ^{\mathsf H}$이다. $T$의 대각 성분은 $A$의 고유값이며, 순서는 원하는 대로 정할 수 있다.
+\end{theorem}
+
+\begin{proof}
+$n$에 대한 귀납법을 쓴다. 대수학의 기본정리에서 $A$는 고유값 $\lambda$와 단위 고유벡터 $q_1$을 가진다. $q_1$을 유니터리 $Q_1=[q_1\ \widetilde Q]$로 넓히면 $Q_1^{\mathsf H}AQ_1$의 첫 열은 $(\lambda,0,\dots,0)^{\mathsf T}$이므로
+\[
+Q_1^{\mathsf H}AQ_1=\begin{bmatrix}\lambda&*\\0&A_2\end{bmatrix}
+\]
+이다. $(n-1)\times(n-1)$ 행렬 $A_2$에 귀납 가정을 써서 $A_2=Q_2T_2Q_2^{\mathsf H}$를 얻고 $Q=Q_1\operatorname{diag}(1,Q_2)$로 두면 $Q^{\mathsf H}AQ$는 위삼각이다. 대각 성분이 고유값인 것은 닮음이 특성다항식을 보존하고 삼각행렬의 특성다항식이 $\prod(t_{ii}-\lambda)$이기 때문이다. 각 단계에서 어느 고유값을 먼저 잡을지 고를 수 있으므로 순서도 자유롭다.
+\end{proof}
+
+$A$가 정규행렬($AA^{\mathsf H}=A^{\mathsf H}A$)이면 $T$도 정규인 위삼각 행렬이고, 그런 행렬은 대각행렬뿐이다. 따라서 정규행렬은 유니터리로 대각화된다. 실수 행렬은 켤레 복소 고유값 쌍 때문에 실수 범위에서 삼각화되지 않지만, 대각선에 $1\times1$과 $2\times2$ 블록이 놓인 \term{실수 Schur 형식}{real Schur form}을 직교 행렬로 얻을 수 있다. 고유값 알고리즘은 바로 이 분해를 반복법으로 계산하며, 그 과정은 고유값 문제를 다루는 장에서 본다.
+
+Schur 분해의 대표적인 응용이 행렬 방정식 $AX+XB=C$, 곧 Sylvester 방정식이다. $A=Q_ATQ_A^{\mathsf H}$와 $B=Q_BSQ_B^{\mathsf H}$를 Schur 분해하고 $Y=Q_A^{\mathsf H}XQ_B$로 바꾸면 방정식은 $TY+YS=Q_A^{\mathsf H}CQ_B$가 되는데, $T$는 위삼각이고 $S$도 위삼각이므로 $Y$를 한 열씩, 앞쪽 열부터 차례로 삼각 방정식을 풀어 얻을 수 있다. 이것이 Bartels--Stewart 알고리즘이다\cite{bartels1972stewart}. 각 열을 풀 때 나오는 삼각 행렬의 대각 성분은 $t_{ii}+s_{jj}$이므로, 해가 유일하게 존재할 조건은 $A$의 고유값과 $-B$의 고유값이 겹치지 않는 것이다. 이 조건은 다음 절에서 Kronecker 곱으로 다시 얻는다.
+
+\begin{instardust}[\code{csrc/linalg/lapack.hpp}]
+stardust의 \code{solve\_sylvester}는 LAPACK의 Schur 분해와 삼각 Sylvester 풀이로 Bartels--Stewart 알고리즘을 따른다. 삼각 풀이 단계는 중간값이 넘치지 않도록 해에 곱할 척도 $\le1$을 함께 돌려주며, 두 행렬의 고유값이 겹치거나 아주 가까우면 그 사실을 알린다. 고유값이 가까우면 해는 존재하더라도 조건수가 매우 크다는 뜻이다.
+\end{instardust}
+
+\section{Kronecker 곱}
+\label{sec:kronecker}
+
+\begin{definition}[Kronecker 곱]
+\label{def:kron}
+$m\times n$ 행렬 $A$와 $p\times q$ 행렬 $B$의 \term{Kronecker 곱}{Kronecker product}은 $(i,j)$ 블록이 $a_{ij}B$인 $mp\times nq$ 블록 행렬 $A\otimes B$이다. 행렬 $X$의 열을 차례로 쌓은 벡터를 $\operatorname{vec}X$로 쓴다.
+\end{definition}
+
+\begin{proposition}
+\label{prop:kron}
+크기가 맞는 행렬들에 대해 다음이 성립한다.
+\begin{enumerate}
+\item $(A\otimes B)(C\otimes D)=(AC)\otimes(BD)$.
+\item $\operatorname{vec}(AXB)=(B^{\mathsf T}\otimes A)\operatorname{vec}X$.
+\item $A$가 $m\times m$이고 고유값이 $\lambda_i$, $B$가 $n\times n$이고 고유값이 $\mu_j$이면, $A\otimes B$의 고유값은 $\lambda_i\mu_j$이고 $I_n\otimes A+B\otimes I_m$의 고유값은 $\lambda_i+\mu_j$이다($i,j$의 모든 쌍).
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(i) 왼쪽의 $(i,k)$ 블록은 $\sum_ja_{ij}B\,c_{jk}D=(\sum_ja_{ij}c_{jk})BD=(AC)_{ik}BD$이다. (ii) $AXB$의 $k$번째 열은 $AXb_k=\sum_jb_{jk}Ax_j$이고($x_j$는 $X$의 $j$번째 열), 이는 $B^{\mathsf T}\otimes A$의 $k$번째 블록 행 $[b_{1k}A\ \cdots\ b_{nk}A]$를 $\operatorname{vec}X$에 곱한 것과 같다. (iii) Schur 분해 $A=Q_AT_AQ_A^{\mathsf H}$, $B=Q_BT_BQ_B^{\mathsf H}$와 (i)에서
+\[
+A\otimes B=(Q_A\otimes Q_B)(T_A\otimes T_B)(Q_A\otimes Q_B)^{\mathsf H}
+\]
+이고, $Q_A\otimes Q_B$는 (i)에서 유니터리이며 $T_A\otimes T_B$는 위삼각이고 대각 성분이 $\lambda_i\mu_j$이다. 합의 경우도 $I\otimes T_A+T_B\otimes I$가 같은 닮음 아래 위삼각이고 대각 성분이 $\lambda_i+\mu_j$라는 데서 같다.
+\end{proof}
+
+\cref{prop:kron}의 (ii)를 쓰면 Sylvester 방정식 $AX+XB=C$는 $(I\otimes A+B^{\mathsf T}\otimes I)\operatorname{vec}X=\operatorname{vec}C$라는 보통의 연립방정식이 되고, (iii)에서 그 계수행렬의 고유값은 $\lambda_i(A)+\mu_j(B)$이므로 해가 유일할 조건은 모든 쌍에서 $\lambda_i(A)+\mu_j(B)\ne0$이다. 앞 절의 조건과 같은 결론이다. 다만 $mn\times mn$ 연립방정식을 그대로 풀면 비용이 $O((mn)^3)$이므로, 실제 계산은 Bartels--Stewart처럼 구조를 살린 알고리즘으로 한다.
+
+행렬 $I_n\otimes A+B\otimes I_m$을 $A$와 $B$의 \term{Kronecker 합}{Kronecker sum}이라 한다. 그 대표적인 예가 격자 위의 라플라시안이다. 길이 $m$인 선 위의 이산 라플라시안 $L_m$(대각이 $2$, 바로 옆이 $-1$인 삼중대각 행렬)으로 $m\times n$ 격자의 라플라시안을 만들면 $I_n\otimes L_m+L_n\otimes I_m$이 되고, \cref{prop:kron}에서 그 고유값은 두 선의 고유값의 합이다. 격자 위의 편미분방정식과 영상 처리의 많은 빠른 풀이법이 이 분리 구조에 기댄다.
+
+\begin{instardust}[\code{docs/api/linalg.md}]
+stardust의 \code{kron}과 \code{kronsum}은 행렬 묶음(배치)에 대해서도 Kronecker 곱과 Kronecker 합을 계산한다. \code{kronsum(x1, x2)}는 \code{kron(I\_N, x1) + kron(x2, I\_M)}을 뜻하며, 이는 scipy의 희소 행렬 \code{kronsum}과 같은 약속이다. 같은 이름의 희소 함수와 비트까지 같은 결과를 내도록 맞춰 두었다.
+\end{instardust}
+
+\section{양정치 행렬}
+\label{sec:pd}
+
+에르미트 행렬 $H$가 모든 $x\ne0$에서 $x^{\mathsf H}Hx>0$이면 \term{양정치}{positive definite}, $\ge0$이면 \term{양반정치}{positive semidefinite}라 한다. 공분산 행렬, 헤시안의 최솟값 조건, 그람 행렬 $A^{\mathsf H}A$, 핵 방법의 핵 행렬이 모두 이 부류에 속하므로, 양정치성을 알아보는 여러 방법을 정리해 두자.
+
+\begin{theorem}
+\label{thm:pd}
+에르미트 행렬 $H$에 대해 다음은 서로 동치이다.
+\begin{enumerate}
+\item $H$는 양정치이다.
+\item $H$의 모든 고유값이 양수이다.
+\item 대각 성분이 양수인 하삼각 $L$이 있어 $H=LL^{\mathsf H}$이다(Cholesky 분해).
+\item $H$의 모든 선행 주소행렬식 $\det H_{1:k,1:k}$가 양수이다(Sylvester 판정법).
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+(i)$\Rightarrow$(ii): $Hv=\lambda v$, $v\ne0$이면 $0<v^{\mathsf H}Hv=\lambda\|v\|_2^2$이다. (ii)$\Rightarrow$(i): 스펙트럼 정리로 $H=V\Lambda V^{\mathsf H}$이고 $x^{\mathsf H}Hx=\sum\lambda_i|(V^{\mathsf H}x)_i|^2>0$이다. (iii)$\Rightarrow$(i): $x^{\mathsf H}Hx=\|L^{\mathsf H}x\|_2^2$이고 $L$이 가역이므로 $x\ne0$이면 양수이다. (i)$\Rightarrow$(iv): 선행 주소행렬 $H_k$도 양정치이므로(그 부분 벡터에 $0$을 덧붙여 생각하면 된다) (ii)에서 고유값의 곱인 행렬식이 양수이다. (iv)$\Rightarrow$(iii): $n$에 대한 귀납법을 쓴다. $H=\begin{bmatrix}H_{n-1}&h\\h^{\mathsf H}&\eta\end{bmatrix}$로 나누면 귀납 가정에서 $H_{n-1}=L_{n-1}L_{n-1}^{\mathsf H}$이다. $l=L_{n-1}^{-1}h$와 $\gamma=\eta-l^{\mathsf H}l$로 두면
+\[
+H=\begin{bmatrix}L_{n-1}&0\\l^{\mathsf H}&1\end{bmatrix}\begin{bmatrix}I&0\\0&\gamma\end{bmatrix}\begin{bmatrix}L_{n-1}^{\mathsf H}&l\\0&1\end{bmatrix}
+\]
+이고, 양변의 행렬식에서 $\det H=\gamma\det H_{n-1}$이다. 가정에서 두 행렬식이 양수이므로 $\gamma>0$이고, 가운데 대각행렬을 $\sqrt\gamma$로 나누어 바깥 두 인수에 붙이면 Cholesky 분해를 얻는다.
+\end{proof}
+
+증명의 마지막 단계에 나온 $\gamma=\eta-h^{\mathsf H}H_{n-1}^{-1}h$를 $H_{n-1}$에 대한 \term{Schur 보수}{Schur complement}라 한다. 블록 행렬 $\begin{bmatrix}P&Q\\Q^{\mathsf H}&R\end{bmatrix}$이 양정치일 필요충분조건은 $P$와 Schur 보수 $R-Q^{\mathsf H}P^{-1}Q$가 모두 양정치인 것이며, 이 사실은 다변량 정규분포의 조건부 분포를 다룰 때 다시 나온다. 다변량 정규분포의 조건부 공분산이 바로 Schur 보수이기 때문이다.
+
+수치 계산에서는 (iii)이 가장 실용적인 판정법이다. Cholesky 분해를 시도해 보고 도중에 대각 성분의 제곱근에 넣을 값이 양수가 아니면 양정치가 아니라고 판정하면 되며, 이 과정은 고유값을 구하는 것보다 훨씬 싸다. 또한 양정치 행렬 $\Sigma=LL^{\mathsf H}$에 대한 이차 형식 $x^{\mathsf H}\Sigma^{-1}x$는 $L$로 삼각 방정식 $Ly=x$를 하나 풀어 $\|y\|_2^2$으로 계산할 수 있어, 역행렬을 만들지 않고도 Mahalanobis 거리나 정규분포의 밀도를 정확하게 구할 수 있다. Cholesky 분해의 알고리즘과 그 안정성은 대칭 행렬을 다루는 장에서 자세히 본다. 이 장의 내용 전반은 \cite{horn2013matrix}와 \cite{golub2013matrix}에 더 자세하며, 반올림 오차와의 관계는 \cite{higham2002accuracy}가 기준이 되는 책이다.
+
+\chapterreferences

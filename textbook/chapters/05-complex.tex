@@ -1,0 +1,179 @@
+%% 5장 복소함수
+\chapter{복소함수}
+\label{ch:complex}
+
+\abstract{실수만 다루는 계산에도 복소수는 끊임없이 끼어든다. 푸리에 변환은 단위원 위의 복소수 $e^{2\pi i k/n}$으로 이루어지고, 특수함수의 근사가 얼마나 빨리 수렴하는지는 그 함수를 복소평면으로 넓혔을 때 특이점이 어디 있는지로 정해지며, 실수 적분을 계산하는 가장 효율적인 방법 가운데 하나인 사다리꼴 규칙이 놀랍도록 빨리 수렴하는 이유도 복소해석으로만 설명된다. 또한 로그와 제곱근처럼 여러 값을 갖는 함수를 계산하는 라이브러리는 어느 값을 돌려줄지, 곧 가지를 어떻게 자를지를 정해야 하는데, 이 결정이 부호 있는 영 같은 부동소수점의 세부와 맞물린다. 이 장에서는 해석함수와 Cauchy 정리, Laurent 급수와 유수 정리, 가지와 해석적 연속을 차례로 세우고, 마지막으로 해석 함수에 대한 사다리꼴 규칙의 지수 수렴을 증명한다.}
+
+\section{해석함수}
+\label{sec:holomorphic}
+
+\subsection{복소수와 단위근}
+
+복소수 $z=x+iy$는 극형식 $z=re^{i\theta}$로 쓸 수 있고, Euler의 공식 $e^{i\theta}=\cos\theta+i\sin\theta$에서 곱셈은 크기를 곱하고 각을 더하는 연산이 된다. 따라서 방정식 $z^n=1$의 해는 단위원을 $n$등분하는 점 $\omega^k$($\omega=e^{2\pi i/n}$, $k=0,\dots,n-1$)이고, 이를 $1$의 $n$제곱근, 곧 \term{단위근}{root of unity}이라 한다. 단위근의 다음 성질은 이산 푸리에 변환 전체의 바탕이다.
+
+\begin{proposition}
+\label{prop:roots-of-unity}
+$\omega=e^{2\pi i/n}$과 정수 $k$에 대해 $\sum_{j=0}^{n-1}\omega^{jk}$는 $n$이 $k$를 나누면 $n$이고 그렇지 않으면 $0$이다.
+\end{proposition}
+
+\begin{proof}
+$n$이 $k$를 나누면 $\omega^k=1$이므로 합은 $n$이다. 그렇지 않으면 $q=\omega^k\ne1$이고 등비급수의 합에서 $\sum_{j=0}^{n-1}q^j=(q^n-1)/(q-1)=0$이다. $q^n=\omega^{nk}=1$이기 때문이다.
+\end{proof}
+
+\subsection{복소미분과 Cauchy--Riemann 방정식}
+
+열린집합 $\Omega\subseteq\mathbb{C}$에서 정의된 함수 $f$가 각 점에서 극한 $f'(z)=\lim_{h\to0}(f(z+h)-f(z))/h$를 가지면 $f$를 $\Omega$에서 \term{해석적}{holomorphic, analytic}이라 한다. 여기서 $h$는 모든 방향의 복소수로 $0$에 다가가므로, 이 조건은 실변수 함수의 미분가능성보다 훨씬 강하다. 그 강함은 실수부와 허수부 사이의 관계로 드러난다.
+
+\begin{proposition}[Cauchy--Riemann]
+\label{prop:cauchy-riemann}
+$f=u+iv$가 $z_0=x_0+iy_0$에서 복소미분 가능하면 그 점에서 $u_x=v_y$이고 $u_y=-v_x$이다.
+\end{proposition}
+
+\begin{proof}
+$h$를 실수로 보내면 $f'(z_0)=u_x+iv_x$이고, $h=it$($t$ 실수)로 보내면 $f'(z_0)=\lim(f(z_0+it)-f(z_0))/(it)=(u_y+iv_y)/i=v_y-iu_y$이다. 두 극한이 같아야 하므로 실수부와 허수부를 비교하면 된다.
+\end{proof}
+
+다항식, $e^z$, $\sin z$, $\cos z$, 그리고 분모가 $0$이 아닌 곳에서의 유리함수는 모두 해석적이며, 수렴하는 거듭제곱급수는 수렴원 안에서 해석적이고 항별로 미분할 수 있다. 다음 절에서 보듯 그 역도 성립해서, 해석함수는 국소적으로 언제나 거듭제곱급수이다.
+
+\section{Cauchy 정리와 적분 공식}
+\label{sec:cauchy}
+
+\subsection{Cauchy 정리}
+
+조각마다 매끄러운 곡선 $\gamma:[a,b]\to\mathbb{C}$를 따른 적분은 $\int_\gamma f(z)\,dz=\int_a^bf(\gamma(t))\gamma'(t)\,dt$로 정의한다. 해석함수의 핵심 성질은 닫힌 곡선을 따른 적분이 $0$이라는 것이다.
+
+\begin{theorem}[Cauchy]
+\label{thm:cauchy}
+$f$가 단순연결인 열린집합 $\Omega$에서 해석적이면, $\Omega$ 안의 모든 닫힌 곡선 $\gamma$에 대해 $\oint_\gamma f(z)\,dz=0$이다.
+\end{theorem}
+
+\begin{proof}
+$f'$이 연속이고 $\gamma$가 영역 $D\subseteq\Omega$의 경계인 경우를 보이자. $f=u+iv$이고 $dz=dx+i\,dy$이므로
+\[
+\oint_\gamma f\,dz=\oint_\gamma(u\,dx-v\,dy)+i\oint_\gamma(v\,dx+u\,dy)
+\]
+이고, Green 정리에서 이는 $\iint_D(-v_x-u_y)\,dA+i\iint_D(u_x-v_y)\,dA$이다. \cref{prop:cauchy-riemann}에서 두 피적분함수가 모두 $0$이다. $f'$의 연속성 없이도 정리가 성립한다는 것은 Goursat이 삼각형을 잘게 나누는 논증으로 보였으며\cite{ahlfors1979complex,stein2003complex}, 일반적인 닫힌 곡선으로의 확장도 거기에 있다.
+\end{proof}
+
+\subsection{적분 공식과 그 귀결}
+
+\begin{theorem}[Cauchy 적분 공식]
+\label{thm:cauchy-formula}
+$f$가 닫힌 원판 $\overline{D}(z_0,r)$을 포함하는 열린집합에서 해석적이면, 원판 안의 모든 $z$에 대해
+\[
+f(z)=\frac{1}{2\pi i}\oint_{|\zeta-z_0|=r}\frac{f(\zeta)}{\zeta-z}\,d\zeta
+\]
+이다.
+\end{theorem}
+
+\begin{proof}
+$z$를 중심으로 하는 작은 원 $|\zeta-z|=\epsilon$을 생각하자. 두 원 사이의 영역에서 $f(\zeta)/(\zeta-z)$는 해석적이므로 \cref{thm:cauchy}(두 경계를 반대 방향으로 이어 붙인 닫힌 곡선에 적용)에서 큰 원의 적분은 작은 원의 적분과 같다. 작은 원에서 $\zeta=z+\epsilon e^{it}$로 두면
+\[
+\oint_{|\zeta-z|=\epsilon}\frac{f(\zeta)}{\zeta-z}\,d\zeta=\int_0^{2\pi}f(z+\epsilon e^{it})\,i\,dt\to2\pi if(z)\quad(\epsilon\to0)
+\]
+이다. $f$의 연속성에서 극한이 나온다.
+\end{proof}
+
+\cref{thm:cauchy-formula}의 피적분함수 $1/(\zeta-z)$를 $|z-z_0|<r$에서 등비급수 $\sum_n(z-z_0)^n/(\zeta-z_0)^{n+1}$로 펼쳐 항별로 적분하면 다음을 얻는다.
+
+\begin{corollary}
+\label{cor:cauchy-estimates}
+\cref{thm:cauchy-formula}의 가정에서 $f(z)=\sum_{n\ge0}c_n(z-z_0)^n$이 $|z-z_0|<r$에서 수렴하고, $c_n=f^{(n)}(z_0)/n!$이다. 또 원 위에서 $|f|\le M$이면 $|c_n|\le M/r^n$이다.
+\end{corollary}
+
+마지막 부등식, 곧 \term{Cauchy 부등식}{Cauchy estimate}은 이 장에서 가장 쓸모 있는 결과이다. 함수가 반지름 $r$인 원 위에서 해석적이고 유계이면 Taylor 계수가 $r^{-n}$처럼 기하급수적으로 줄어들므로, 다항식 근사의 정확도는 함수가 \textbf{얼마나 넓은 영역에서 해석적인지}로 정해진다. 실수 축 위에서는 매끄럽기 그지없는 함수 $1/(1+25x^2)$이 고른 점에서의 다항식 보간으로 잘 근사되지 않는 Runge 현상도, 이 함수가 복소평면의 $\pm i/5$에 극점을 가져 실수 축 둘레의 좁은 영역에서만 해석적이라는 데서 비롯한다. 이 관점은 보간과 구적을 다루는 장들에서 거듭 나온다.
+
+\section{Laurent 급수와 유수}
+\label{sec:residues}
+
+해석함수가 한 점에서만 정의되지 않는 경우를 생각하자. $f$가 $0<|z-z_0|<R$에서 해석적이면 음의 거듭제곱까지 허용한 \term{Laurent 급수}{Laurent series} $f(z)=\sum_{n=-\infty}^{\infty}c_n(z-z_0)^n$으로 나타나며, 계수는 $c_n=(2\pi i)^{-1}\oint f(\zeta)(\zeta-z_0)^{-n-1}\,d\zeta$로 주어진다. 음의 거듭제곱이 유한 개뿐이면 $z_0$을 \term{극점}{pole}이라 하고, 가장 낮은 거듭제곱이 $-m$이면 $m$차 극점이라 한다. 계수 $c_{-1}$을 $z_0$에서의 \term{유수}{residue}라 하고 $\operatorname{Res}_{z_0}f$로 쓴다.
+
+\begin{theorem}[유수 정리]
+\label{thm:residue}
+$f$가 닫힌 곡선 $\gamma$와 그 안쪽에서 유한 개의 점 $z_1,\dots,z_k$를 빼고 해석적이면 $\oint_\gamma f\,dz=2\pi i\sum_j\operatorname{Res}_{z_j}f$이다(곡선은 반시계 방향).
+\end{theorem}
+
+\begin{proof}
+각 $z_j$ 둘레에 작은 원을 그리고, $\gamma$에서 그 원들을 뺀 영역에 \cref{thm:cauchy}를 쓰면 $\gamma$의 적분은 작은 원들의 적분의 합과 같다. 작은 원에서 Laurent 급수를 항별로 적분하면 $\oint(z-z_j)^n\,dz$는 $n=-1$일 때만 $2\pi i$이고 나머지는 $0$이므로, 각 원의 적분은 $2\pi i\operatorname{Res}_{z_j}f$이다.
+\end{proof}
+
+$z_0$이 단순극점이고 $f=g/h$($g(z_0)\ne0$, $h(z_0)=0$, $h'(z_0)\ne0$)이면 유수는 $g(z_0)/h'(z_0)$이다. 유리함수의 부분분수 분해에서 각 단순극점의 계수가 바로 이 유수이며, 함수를 유리함수로 근사하는 AAA 알고리즘이 근사의 극점과 유수를 함께 돌려주는 것도 이 때문이다. 유수 정리는 또 실수 적분을 계산하는 강력한 도구이기도 한데, 예컨대 $\int_{-\infty}^\infty dx/(1+x^2)$은 위 반평면의 극점 $i$의 유수 $1/(2i)$로부터 $2\pi i\cdot1/(2i)=\pi$로 얻어진다.
+
+\section{가지와 가지 자름}
+\label{sec:branches}
+
+\subsection{로그와 거듭제곱의 주가지}
+
+실수에서 로그는 지수함수의 역함수로 깔끔하게 정의되지만, 복소수에서는 $e^{w}=z$를 만족하는 $w$가 $2\pi i$의 정수배만큼 다른 무한히 많은 값을 갖는다. 함수로 쓰려면 이 가운데 하나를 연속적으로 골라야 하는데, 원점을 한 바퀴 도는 곡선을 따라가면 값이 $2\pi i$만큼 늘어나므로 평면 전체에서 연속적인 선택은 불가능하다. 그래서 평면에서 원점과 무한대를 잇는 반직선 하나를 잘라 내고, 남은 영역에서 연속인 선택을 한다. 이 반직선을 \term{가지 자름}{branch cut}이라 하고, 선택한 함수를 \term{가지}{branch}라 한다.
+
+관례는 음의 실수 축을 자르고 $\operatorname{Im}\log z\in(-\pi,\pi]$로 두는 것이며, 이를 로그의 \term{주가지}{principal branch}라 한다. 이를 바탕으로 $z^a=e^{a\log z}$와 $\sqrt z=e^{(\log z)/2}$의 주가지도 같은 자름을 갖는다. 문제는 자름 위의 점, 예컨대 $z=-1$에서 어느 쪽 값을 줄 것인가이다. 위쪽에서 다가가면 $\log z\to i\pi$이고 아래쪽에서 다가가면 $-i\pi$이므로, 정의가 $(-\pi,\pi]$로 위쪽을 택했을 뿐 두 값 모두 자연스럽다.
+
+\begin{aside}[영의 부호 비트]
+IEEE~754 부동소수점에는 $+0$과 $-0$이 따로 있다. Kahan은 1987년의 글에서 이 부호가 복소 함수의 가지 자름 위에서 바로 쓸모를 찾는다고 주장했다\cite{kahan1987branch}. 허수부가 $+0$인 $-1+0i$는 자름의 위쪽에서, $-0$인 $-1-0i$는 아래쪽에서 다가온 점으로 보면 되기 때문이다. 이 약속을 따르는 C99와 Python에서 독립적으로 확인해 보면 \code{log(-1+0j)}는 $\pi i$, \code{log(complex(-1,-0.0))}은 $-\pi i$이고, $\sqrt{-4}$도 허수부의 부호에 따라 $2i$와 $-2i$로 갈린다. 덕분에 자름 근처에서 계산한 값이 반올림으로 자름을 살짝 넘어가도 함수값이 엉뚱한 가지로 튀지 않는다. Kahan은 이 글의 부제를 ``영의 부호 비트에 대한 헛소동''이라 붙였다.
+\end{aside}
+
+\subsection{로그 감마함수의 가지}
+
+가지의 문제는 초등함수에서 끝나지 않는다. 감마함수 $\Gamma(z)$는 음이 아닌 정수가 아닌 모든 복소수에서 해석적이고 영점이 없으므로 그 로그를 생각할 수 있는데, $\log(\Gamma(z))$를 로그의 주가지로 계산하면 $\Gamma(z)$가 음의 실수 축을 지날 때마다 값이 $2\pi i$만큼 뛴다. 그러나 $\Gamma$ 자체는 매끄러우므로, 이런 인위적인 불연속이 없는 로그 감마함수 $\operatorname{loggamma}(z)$를 정의하는 편이 자연스럽다. 관례는 음의 실수 축만 잘라 낸 평면에서 연속이고 양의 실수에서 실수값인 가지이며, 이 가지는 $\log\Gamma(z)$의 주가지와 $2\pi i$의 정수배만큼 다르다\cite{hare1997loggamma}.
+
+\begin{instardust}[\code{csrc/special/ops/loggamma.hpp}]
+stardust의 \code{loggamma}는 이 가지를 scipy와 같은 방식으로 계산한다. $\operatorname{Re}z$나 $|\operatorname{Im}z|$가 크면 3장의 Stirling 급수를 쓰고, $\operatorname{Re}z$가 작으면 반사 공식 $\log\pi-\log\sin(\pi z)-\operatorname{loggamma}(1-z)$에 가지를 맞추는 $2\pi ik$를 더하며, 그 밖에서는 점화식 $\Gamma(z+1)=z\Gamma(z)$로 인자를 옮기되 곱 $z(z+1)\cdots$가 음의 실수 축을 몇 번 넘는지를 세어 가지를 맞춘다. 허수부가 영인 입력에서는 그 영의 부호가 자름의 어느 쪽인지를 정한다.
+\end{instardust}
+
+\section{해석적 연속}
+\label{sec:continuation}
+
+해석함수는 아주 작은 집합에서의 값만으로 전체가 정해진다.
+
+\begin{theorem}[일치 정리]
+\label{thm:identity}
+연결된 열린집합 $\Omega$에서 해석적인 두 함수가 집적점을 갖는 부분집합에서 같으면 $\Omega$ 전체에서 같다.
+\end{theorem}
+
+\begin{proof}
+차 $g=f_1-f_2$의 영점들이 $\Omega$ 안의 점 $z_0$에 집적한다고 하자. 연속성에서 $g(z_0)=0$이다. $g$가 $z_0$ 근방에서 $0$이 아니라면 \cref{cor:cauchy-estimates}의 거듭제곱급수에서 처음으로 $0$이 아닌 계수 $c_m$을 잡아 $g(z)=(z-z_0)^m h(z)$, $h(z_0)=c_m\ne0$으로 쓸 수 있고, 연속성에서 $h$는 $z_0$ 근방에서 $0$이 아니므로 $z_0$ 근방에 다른 영점이 없어 모순이다. 따라서 $g$는 $z_0$ 근방에서 $0$이다. $g$가 어떤 근방에서 $0$인 점들의 집합은 열려 있고, 그 여집합도 같은 논증에서 열려 있으므로, 연결성에서 그 집합은 $\Omega$ 전체이다.
+\end{proof}
+
+이 정리 덕분에 한 영역에서 정의된 함수를 더 넓은 영역으로 넓히는 방법이 있다면 그 결과는 유일하며, 이를 \term{해석적 연속}{analytic continuation}이라 한다. 감마함수는 $\operatorname{Re}z>0$에서 적분 $\int_0^\infty t^{z-1}e^{-t}\,dt$로 정의되지만, 함수 방정식 $\Gamma(z)=\Gamma(z+1)/z$를 되풀이하면 음의 정수를 뺀 평면 전체로 넓어지고, 그렇게 넓힌 함수는 반사 공식 $\Gamma(z)\Gamma(1-z)=\pi/\sin(\pi z)$를 만족한다. 이 공식은 두 변이 $0<z<1$에서 같다는 것을 보이면(베타 적분으로 보일 수 있다) \cref{thm:identity}에서 평면 전체로 성립한다. 리만 제타함수가 $\operatorname{Re}s>1$의 급수에서 $s=1$을 뺀 평면 전체로 넓어지는 것도, 그리고 그 넓힌 함수가 $\zeta(s)$와 $\zeta(1-s)$를 잇는 함수 방정식을 만족하는 것도 같은 이야기이다. 수치 계산에서 이 공식들은 계산하기 어려운 영역의 값을 계산하기 쉬운 영역의 값으로 옮기는 도구가 된다.
+
+\section{사다리꼴 규칙의 지수 수렴}
+\label{sec:trapezoid}
+
+\subsection{주기 함수}
+
+구간 $[0,2\pi]$에서 주기 함수 $f$를 적분하는 가장 단순한 방법은 같은 간격의 점 $\theta_j=2\pi j/N$에서의 함수값을 평균하는 사다리꼴 규칙
+\[
+T_N=\frac{2\pi}{N}\sum_{j=0}^{N-1}f(\theta_j)
+\]
+이다. 주기가 아닌 매끄러운 함수에서 사다리꼴 규칙의 오차는 $O(N^{-2})$에 불과하지만, 주기 해석 함수에서는 사정이 완전히 달라진다.
+
+\begin{theorem}
+\label{thm:trapezoid-periodic}
+$f$가 주기 $2\pi$이고, 띠 $|\operatorname{Im}\theta|<a$에서 해석적이며 $|f|\le M$이라 하자. 그러면
+\[
+\Bigl|T_N-\int_0^{2\pi}f(\theta)\,d\theta\Bigr|\le\frac{4\pi M}{e^{aN}-1}
+\]
+이다.
+\end{theorem}
+
+\begin{proof}
+$f$의 Fourier 계수를 $c_k=(2\pi)^{-1}\int_0^{2\pi}f(\theta)e^{-ik\theta}\,d\theta$라 하자. $k>0$이면 적분 경로를 $\operatorname{Im}\theta=-b$($0<b<a$)로 옮겨도 \cref{thm:cauchy}와 주기성에서 값이 같고(직사각형의 두 세로변 적분은 주기성으로 지워진다), 그 경로에서 $|e^{-ik\theta}|=e^{-kb}$이므로 $|c_k|\le Me^{-kb}$이다. $b\to a$로 보내면 $|c_k|\le Me^{-a|k|}$이고, $k<0$도 위쪽으로 옮겨 같다. 이제 Fourier 급수 $f=\sum_kc_ke^{ik\theta}$를 $T_N$에 넣으면 \cref{prop:roots-of-unity}에서 $(2\pi/N)\sum_je^{ik\theta_j}$는 $N\mid k$일 때 $2\pi$, 그 밖에는 $0$이므로
+\[
+T_N=2\pi\sum_{l\in\mathbb{Z}}c_{lN}
+\]
+이다. 참값은 $2\pi c_0$이므로 오차는 $2\pi\sum_{l\ne0}c_{lN}$이고, 그 크기는 $2\pi\cdot2M\sum_{l\ge1}e^{-alN}=4\pi M/(e^{aN}-1)$ 이하이다.
+\end{proof}
+
+증명의 핵심은 사다리꼴 규칙이 Fourier 계수 가운데 $N$의 배수 번째 것들을 모두 $c_0$으로 착각한다는 것, 곧 표본화에서 생기는 \term{에일리어싱}{aliasing}이고, 해석성이 그 계수들을 지수적으로 작게 만든다는 것이다. 예컨대 $\int_0^{2\pi}e^{\cos\theta}\,d\theta=2\pi I_0(1)$을 계산해 보면 오차가 $N=4$에서 $3.4\times10^{-2}$, $N=8$에서 $1.3\times10^{-6}$, $N=12$에서 $6.5\times10^{-12}$, $N=16$에서 반올림 수준인 $1.8\times10^{-15}$으로 줄어든다. 점을 네 개 늘릴 때마다 대여섯 자리씩 정확해지는 셈이다. 같은 사다리꼴 규칙으로 주기가 아닌 $\int_0^1e^x\,dx$를 계산하면 $N=32$에서도 오차가 $1.4\times10^{-4}$에 머문다.
+
+\subsection{실수 축 전체와 변수 바꾸기}
+
+같은 현상은 실수 축 전체의 적분에서도 일어난다. $f$가 띠 $|\operatorname{Im}x|<a$에서 해석적이고 $\pm\infty$로 갈 때 충분히 빨리 작아지면, 간격 $h$의 무한 사다리꼴 합 $h\sum_{k\in\mathbb{Z}}f(kh)$의 오차는 대략 $e^{-2\pi a/h}$처럼 줄어든다. 증명은 \cref{thm:trapezoid-periodic}과 같은 생각을 Fourier 변환에 적용한 것이며, 정확한 상수와 함께 \cite{trefethen2014trapezoidal}에 정리되어 있다. 이 사실은 실제 적분 방법의 설계 원리가 된다. 끝점에 특이성이 있거나 구간이 유한한 적분을 변수 바꾸기로 실수 축 전체의 적분으로 바꾸되, 바뀐 피적분함수가 넓은 띠에서 해석적이고 양 끝에서 빨리 사라지게 만들면, 그다음에는 사다리꼴 규칙이 지수적으로 수렴한다. $x=\tanh((\pi/2)\sinh t)$로 바꾸는 tanh-sinh 구적이 그 대표이며, 수치 적분을 다루는 장에서 자세히 본다.
+
+\begin{instardust}[\code{csrc/special/ops/noncentral.hpp}]
+stardust의 비중심 $t$ 분포는 비중심 모수와 반대쪽 꼬리의 확률을 적분 하나로 나타내고, 그 적분을 사다리꼴 규칙으로 계산한다. 이때 피적분함수가 가장 큰 점을 중심으로 두고 $v-v_*=cA\sinh(u/A)$로 변수를 바꾸어, 봉우리 근처에서는 거의 선형인 간격을, 꼬리에서는 빠르게 넓어지는 간격을 쓴다. 바뀐 피적분함수가 해석적이고 양 끝에서 빨리 사라지므로, \cref{thm:trapezoid-periodic}의 실수 축 판에 따라 적은 점으로 정확한 값을 얻는다.
+\end{instardust}
+
+이 장에서 다룬 도구들은 뒤에서 거듭 쓰인다. 단위근은 고속 푸리에 변환의 바탕이고, Cauchy 부등식은 다항식 근사와 구적의 수렴 속도를 재는 자이며, 유수는 유리 근사의 극점을 해석하는 언어이고, 가지와 해석적 연속은 특수함수를 복소수 인자로 넓힐 때의 규칙이다. 3장의 Laplace 방법을 복소평면으로 넓혀 적분 경로를 가장 가파른 하강 방향으로 기울이는 안장점 방법도 이 도구들 위에 서 있으며, 특수함수의 균등 점근 전개를 다룰 때 다시 만난다.
+
+\chapterreferences
