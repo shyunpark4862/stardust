@@ -1,0 +1,197 @@
+%% 10장 합과 곱을 정확하게
+\chapter{합과 곱을 정확하게}
+\label{ch:exact-sums}
+
+\abstract{9장에서 본 오차의 상한은 반올림 오차를 피할 수 없는 손실로 보고 그 크기를 묶었다. 이 장은 다른 길을 간다. 덧셈과 곱셈의 반올림 오차는 그 자체로 부동소수점 수이고 몇 번의 연산으로 정확히 계산해 낼 수 있으므로, 버려지는 오차를 따로 모아 두면 정밀도를 되찾을 수 있다. 먼저 덧셈과 곱셈의 오차를 정확히 구하는 오차 없는 변환 Fast2Sum, TwoSum, TwoProd를 증명하고, 이것으로 합의 오차를 거의 없애는 Kahan과 Neumaier의 보상 합을 만든다. 이어서 두 부동소수점 수의 합으로 약 $106$비트의 정밀도를 얻는 double-double 산술을 소개하고, 부동소수점을 아예 떠나 정수로 정확히 더하는 방법과, 참값을 확실히 감싸는 구간 산술과 볼 산술을 다룬다. stardust는 이 도구들을 거의 모든 영역에서 쓴다.}
+
+\section{오차 없는 변환}
+\label{sec:eft}
+
+\subsection{덧셈의 오차는 부동소수점 수이다}
+
+$a,b\in\mathbb F$의 합을 반올림한 $s=\fl(a+b)$에서 버려진 부분 $r=a+b-s$는 일반적인 실수가 아니라 그 자체가 부동소수점 수이다. 이 사실이 이 장의 모든 기법의 출발점이다. 이 장에서는 넘침과 언더플로가 없고 반올림은 짝수로의 반올림이라고 가정한다.
+
+\begin{lemma}
+\label{lem:add-error}
+$a,b\in\mathbb F$, $s=\fl(a+b)$이면 $r=a+b-s\in\mathbb F$이고 $|r|\le\min(|a|,|b|)$이다.
+\end{lemma}
+
+\begin{proof}
+$a\in\mathbb F$이므로 가장 가까운 수 $s$는 $a$보다 $a+b$에 멀 수 없어서 $|r|=|a+b-s|\le|a+b-a|=|b|$이고, 같은 이유로 $|r|\le|a|$이다. 이제 $|b|\le|a|$라 하고 $b$가 속한 이진 구간의 간격을 $q$라 하자. $a$는 $b$보다 크거나 같은 이진 구간에 있으므로 $a$와 $b$는 모두 $q$의 정수배이다. $|a+b|$가 $b$의 이진 구간의 아래 끝 이상이면 $s$도 그 이상의 이진 구간에 놓이므로 $q$의 정수배이고, 그렇지 않으면 $a+b$는 $q$의 정수배이면서 그 이진 구간보다 작아 정확히 나타나므로 $s=a+b$, $r=0$이다. 어느 경우든 $r$은 $q$의 정수배이고 $|r|\le|b|<2^{53}q$이므로 유효숫자 $53$비트로 적히며, $r\in\mathbb F$이다.
+\end{proof}
+
+이 보조정리는 $r$이 존재한다는 것만 말한다. 그것을 실제로 계산하는 방법이 다음의 알고리즘들이다.
+
+\subsection{Fast2Sum과 TwoSum}
+
+\begin{theorem}[Dekker의 Fast2Sum]
+\label{thm:fast2sum}
+$a,b\in\mathbb F$, $|a|\ge|b|$일 때
+\[
+s=\fl(a+b),\qquad z=\fl(s-a),\qquad e=\fl(b-z)
+\]
+로 계산하면 $s+e=a+b$가 정확히 성립한다.
+\end{theorem}
+
+\begin{proof}
+먼저 $s-a\in\mathbb F$임을 보이자. 그러면 $z=s-a$가 정확하다. 부호를 바꿔도 같으므로 $a>0$이라 하자. $b\ge0$이면 $a\le a+b\le2a$이고, $a$와 $2a$가 $\mathbb F$에 있으며 반올림은 단조이므로 $a\le s\le2a$이다. 따라서 $s/2\le a\le s$이고 Sterbenz 보조정리(8장)에서 $s-a$는 정확하다. $b<0$이면 $0\le a+b\le a$이다. 이때 $|b|\le a/2$이면 $a/2\le a+b\le a$이므로 같은 논리로 $a/2\le s\le a$이고 $s-a$는 정확하다. $|b|>a/2$이면 $a/2<|b|\le a$이므로 Sterbenz 보조정리에서 $a+b=a-|b|$가 이미 정확하고, $s=a+b$, $s-a=b$로 역시 정확하다. 이제 $b-z=b-(s-a)=a+b-s=r$이고, \cref{lem:add-error}에서 $r\in\mathbb F$이므로 $e=\fl(r)=r$이다.
+\end{proof}
+
+Fast2Sum은 연산 세 번이지만 $|a|\ge|b|$라는 조건이 필요하다. 이 조건을 미리 알 수 없으면 두 수를 크기로 비교해 바꾸어 넣으면 되는데, 분기는 현대 프로세서에서 비싸고 벡터화를 방해한다. Møller와 Knuth는 분기 없이 연산 여섯 번으로 같은 일을 하는 방법을 찾았다\cite{moller1965,knuth1997taocp2}.
+
+\begin{algorithm}[t]
+\begin{algorithmic}[1]
+\Require $a,b\in\mathbb F$
+\Ensure $s=\fl(a+b)$, $e=a+b-s$
+\State $s\gets a\oplus b$
+\State $b'\gets s\ominus a$ \Comment{$s$에 실제로 들어간 $b$의 몫}
+\State $a'\gets s\ominus b'$ \Comment{$s$에 실제로 들어간 $a$의 몫}
+\State $\delta_b\gets b\ominus b'$, $\delta_a\gets a\ominus a'$
+\State $e\gets\delta_a\oplus\delta_b$
+\State \Return $(s,e)$
+\end{algorithmic}
+\caption{TwoSum}
+\label{alg:twosum}
+\end{algorithm}
+
+TwoSum이 $a$와 $b$의 크기와 상관없이 $s+e=a+b$를 정확히 낸다는 증명은 경우를 꼼꼼히 나누어야 해서 길다. Knuth의 책에 그 전부가 있고\cite{knuth1997taocp2}, 지금은 정리 증명기로 확인된 증명도 있다. 생각의 줄기만 보면, $b'$은 합 $s$에 실제로 반영된 $b$의 몫이고 $a'$은 반영된 $a$의 몫이어서, $\delta_a$와 $\delta_b$는 두 입력 각각에서 반올림으로 버려진 부분이다. 둘을 더한 $e$가 정확한지가 증명의 핵심이며, 어느 쪽 입력이 크든 Fast2Sum의 증명과 같은 종류의 Sterbenz 논법이 적용된다.
+
+\subsection{TwoProd}
+
+곱셈의 오차도 부동소수점 수이다. $a$와 $b$의 이진 구간 지수를 각각 $e_a$, $e_b$라 하면 두 수는 각각 $2^{e_a-52}$와 $2^{e_b-52}$의 정수배이므로 곱 $ab$는 $2^{e_a+e_b-104}$의 정수배이다. 반올림한 곱 $p=\fl(ab)$는 크기가 $2^{e_a+e_b}$ 이상이므로 같은 수의 정수배이고, 따라서 $r=ab-p$도 그렇다. 한편 $|r|\le\operatorname{ulp}(p)/2\le2^{e_a+e_b+1-53}$이므로 $r$은 $2^{e_a+e_b-104}$의 $2^{52}$배 이하이고, 유효숫자 $53$비트로 적힌다. 이 논증에는 $2^{e_a+e_b-104}$가 서브노멀의 간격 $2^{-1074}$ 이상이어야 한다는 조건, 곧 $e_a+e_b\ge-970$이 숨어 있는데, 이것이 곱셈에서 ``언더플로가 없다''는 가정의 정확한 내용이다.
+
+$r$을 계산하는 것은 FMA가 있으면 한 줄이다. FMA는 $ab-p$를 정확히 계산한 뒤 한 번 반올림하는데, 그 정확한 값 $r$이 이미 $\mathbb F$에 있으므로 반올림이 아무것도 바꾸지 않는다.
+
+\begin{proposition}[TwoProd]
+\label{prop:twoprod}
+$a,b\in\mathbb F$이고 $e_a+e_b\ge-970$이면 $p=\fl(ab)$, $e=\fl(ab-p)$(FMA 한 번)는 $p+e=ab$를 정확히 만족한다.
+\end{proposition}
+
+FMA가 없던 시절에는 Veltkamp의 분할로 각 인수를 $26$비트짜리 두 조각으로 나누어 조각끼리의 곱이 정확하도록 만든 뒤 오차를 모았는데, 이것이 Dekker의 1971년 논문의 핵심이었다\cite{dekker1971}. 이 방법은 연산 열일곱 번이 들지만 FMA로는 두 번이면 된다. Apple M4의 NEON에는 FMA가 있으므로 stardust는 언제나 FMA 판을 쓴다.
+
+\begin{instardust}[\code{csrc/special/dd.hpp}]
+특수함수 영역의 \code{two\_sum}, \code{quick\_two\_sum}, \code{two\_prod}가 각각 \cref{alg:twosum}, \cref{thm:fast2sum}, \cref{prop:twoprod}이다. 가설검정 영역의 \code{vdd.hpp}는 같은 연산들을 NEON 레지스터의 두 칸에 나란히 적용하는데, 칸마다 스칼라 판과 똑같은 IEEE 연산을 같은 순서로 하므로 벡터 루프와 스칼라 루프가 같은 비트를 낸다. 8장에서 본 \code{-ffp-contract=off}가 여기서 결정적인데, 컴파일러가 \code{s - a} 같은 식을 FMA와 합치거나 결합법칙으로 정리하면 오차 없는 변환은 그 순간 무너진다.
+\end{instardust}
+
+\section{보상 합}
+\label{sec:compensated}
+
+\subsection{Kahan의 합}
+
+TwoSum으로 합의 반올림 오차를 매 단계 정확히 얻을 수 있다면, 그 오차들을 따로 모아 마지막에 더하는 것이 자연스럽다. Kahan은 1965년에 이 생각을 연산 네 번짜리 반복으로 만들었다\cite{kahan1965}.
+
+\begin{algorithm}[t]
+\begin{algorithmic}[1]
+\Require $x_1,\dots,x_n\in\mathbb F$
+\Ensure 보상 합 $s$
+\State $s\gets0$, $c\gets0$ \Comment{$c$는 지금까지 잃은 몫의 음수}
+\For{$i\gets1$ \textbf{to} $n$}
+  \State $y\gets x_i\ominus c$ \Comment{지난번에 잃은 몫을 되돌려 넣는다}
+  \State $t\gets s\oplus y$
+  \State $c\gets(t\ominus s)\ominus y$ \Comment{이번 덧셈에서 잃은 몫}
+  \State $s\gets t$
+\EndFor
+\State \Return $s$
+\end{algorithmic}
+\caption{Kahan의 보상 합}
+\label{alg:kahan}
+\end{algorithm}
+
+$(t\ominus s)\ominus y$는 Fast2Sum의 둘째와 셋째 줄을 부호만 바꾼 것이므로, $|s|\ge|y|$인 한 $c$는 $s\oplus y$에서 잃은 몫을 정확히 담는다. 그 몫을 다음 항에서 빼 주므로 합에는 매 단계의 오차가 다시 들어간다. 이 알고리즘의 오차는
+\[
+|\hat s-s|\le\bigl(2u+O(nu^2)\bigr)\sum_{i=1}^n|x_i|
+\]
+로 묶인다\cite{goldberg1991,higham2002accuracy}. 9장의 재귀 합이 $\gamma_{n-1}\approx nu$였던 것과 비교하면 $n$에 비례하던 계수가 상수 $2$로 바뀌었다. 열 번 더한 \code{0.1}의 예를 보면, 재귀 합은 $0.9999999999999999$를 내지만 Kahan의 합은 $1.0$을 내는데, 이는 열 개의 binary64 값 \code{0.1}의 정확한 합 $1.000000000000000055\cdots$를 올바르게 반올림한 값이다.
+
+\subsection{Neumaier의 변형}
+
+Kahan의 합은 새 항이 지금까지의 합보다 클 때 약해진다. Fast2Sum의 조건 $|s|\ge|y|$가 깨지기 때문이다. 극단적인 예로 $1,10^{100},1,-10^{100}$을 더하면 참값은 $2$인데, 재귀 합도 Kahan의 합도 $0$을 낸다. 둘째 항 $10^{100}$이 들어올 때 앞의 $1$이 사라지는데, 그 순간의 $c$는 이 $1$을 붙잡지 못하기 때문이다. Neumaier는 매 단계에서 TwoSum이나 크기를 비교한 Fast2Sum으로 오차를 정확히 구하고, 그것을 합에 되돌려 넣지 않고 따로 쌓아 두었다가 마지막에 한 번 더하는 변형을 제안했다\cite{neumaier1974}. 이 방법은 위의 예에서 정확히 $2$를 낸다.
+
+$10^5$개의 항을 크기 $1$에서 $10^{12}$까지 섞어 무작위로 만든 예에서 정확한 유리수 합과 비교하면, 상대오차가 재귀 합 $3.9\times10^{-14}$, Kahan의 합 $1.5\times10^{-16}$, Neumaier의 합 $6.5\times10^{-17}$이다. 마지막 값은 정확한 합을 올바르게 반올림한 값과 같다.
+
+\begin{instardust}[\code{csrc/htest/moments.hpp}]
+가설검정 영역의 누산기 \code{Acc}는 Neumaier의 합에 낮은 부분을 더한 것이다. \code{hi}에는 보통의 합을 두고, 덧셈마다 TwoSum으로 얻은 오차와 더하는 값의 낮은 부분을 \code{lo}에 모은다. 마지막에 \code{two\_sum(hi, lo)}로 정규화하면 결과가 double-double이 된다. 통계 영역의 기술통계는 비용을 줄이려고 이것을 계층으로 나눈다. $128$개짜리 작은 블록 안에서는 사슬 여덟 개로 보통의 덧셈을 하고, 작은 블록의 결과는 $8192$개짜리 블록 안에서 Neumaier의 합으로, 블록의 결과는 다시 Neumaier의 합으로 모은다.
+\end{instardust}
+
+\section{double-double 산술}
+\label{sec:double-double}
+
+\subsection{표현}
+
+오차 없는 변환을 한 걸음 더 밀고 나가면, 부동소수점 수 두 개의 합 $x=x_{\mathrm{hi}}+x_{\mathrm{lo}}$로 하나의 수를 나타낼 수 있다. $x_{\mathrm{lo}}$가 $x_{\mathrm{hi}}$의 반올림 오차 크기 이하, 곧 $|x_{\mathrm{lo}}|\le\operatorname{ulp}(x_{\mathrm{hi}})/2$를 만족하도록 정규화하면 $x_{\mathrm{hi}}=\fl(x)$이고, 이 쌍은 약 $106$비트, 십진 $32$자리의 정밀도를 갖는다. 이것을 \term{double-double}{double-double} 수라 한다. 예컨대 십진수 $0.1$은 $x_{\mathrm{hi}}=\fl(0.1)$, $x_{\mathrm{lo}}=-5.551115123125783\times10^{-18}$으로 나타내고, 이 쌍의 합과 $0.1$의 차는 약 $3\times10^{-34}$이다.
+
+double-double의 지수 범위는 binary64와 같으므로 넘침과 언더플로의 경계는 그대로이다. 서브노멀 근처에서는 $x_{\mathrm{lo}}$가 먼저 정밀도를 잃으므로 그 영역의 정밀도는 binary64로 떨어진다는 점도 기억해 두자.
+
+\subsection{연산}
+
+double-double의 덧셈은 높은 부분끼리 TwoSum으로 더해 오차를 얻고, 그 오차에 낮은 부분들을 보탠 뒤 Fast2Sum으로 다시 정규화한다. 곱셈은 높은 부분끼리의 곱을 TwoProd로 정확히 만들고, 교차항 $x_{\mathrm{hi}}y_{\mathrm{lo}}+x_{\mathrm{lo}}y_{\mathrm{hi}}$를 보통의 산술로 보탠다. 낮은 부분끼리의 곱 $x_{\mathrm{lo}}y_{\mathrm{lo}}$는 약 $2^{-106}$배로 작아서 버린다.
+
+\begin{algorithm}[t]
+\begin{algorithmic}[1]
+\Require double-double $x=(x_h,x_l)$, $y=(y_h,y_l)$
+\Ensure $x+y$와 $xy$의 double-double 근삿값
+\Statex \textbf{덧셈}
+\State $(s,e)\gets\mathrm{TwoSum}(x_h,y_h)$, $(t,f)\gets\mathrm{TwoSum}(x_l,y_l)$
+\State $(s,e)\gets\mathrm{Fast2Sum}(s,e\oplus t)$
+\State $(s,e)\gets\mathrm{Fast2Sum}(s,e\oplus f)$
+\State \Return $(s,e)$
+\Statex \textbf{곱셈}
+\State $(p,e)\gets\mathrm{TwoProd}(x_h,y_h)$
+\State $e\gets e\oplus(x_h\otimes y_l\oplus x_l\otimes y_h)$
+\State \Return $\mathrm{Fast2Sum}(p,e)$
+\end{algorithmic}
+\caption{double-double의 덧셈과 곱셈}
+\label{alg:dd-ops}
+\end{algorithm}
+
+\cref{alg:dd-ops}의 덧셈은 낮은 부분끼리도 TwoSum을 쓰는 정확한 판인데, 낮은 부분을 그냥 더하는 판보다 연산이 많지만 두 입력의 부호가 달라 소거가 일어나도 상대오차가 약 $2^{-104}$ 정도로 유지된다\cite{hida2001qd}. 나눗셈은 몫의 첫 근삿값 $q_1=x_h/y_h$를 구한 뒤 나머지 $x-q_1y$를 FMA로 정확히 계산해 한 번 고친다. 연산의 비용은 덧셈이 binary64 연산 스무 번 남짓, 곱셈이 열 번 남짓이어서 하드웨어의 네 배 정밀도 연산보다 훨씬 빠르다.
+
+double-double을 어디에 쓰는지가 중요하다. 모든 계산을 double-double로 하는 것은 느리고 대개 필요도 없다. 효과가 큰 곳은 결과가 어떤 중간값의 오차를 크게 키우는 곳, 곧 9장의 말로 그 단계의 조건수가 큰 곳이다. 그런 중간값만 double-double로 만들고 나머지는 binary64로 계산하면 비용은 조금 들고 정확도는 크게 오른다.
+
+\begin{instardust}[\code{csrc/special/dd.hpp}]
+불완전 감마함수의 앞인수 $x^ae^{-x}/\Gamma(a)$는 $e^{-E}$에 적당한 크기의 인수를 곱한 꼴이고, 결과가 정규 수인 동안 $E$는 약 $745$까지 커진다. $E$에 상대오차 $\delta$가 있으면 결과에는 $E\delta$의 상대오차가 생기므로(지수함수의 조건수가 $|E|$였다), $E$를 binary64로 계산하면 오차가 최대 $745\cdot2^{-53}/2^{-52}\approx372$ ULP에 이를 수 있다. 그래서 \code{dd.hpp}는 $E$를 정확한 입력에서 double-double로 만들고, $e^{-E_{\mathrm{hi}}}(1-E_{\mathrm{lo}})$만 binary64로 반올림한다. 파일의 주석은 이 계산을 정확히 이렇게 설명하며, 필요한 연산이 합과 곱, 몫, 그리고 두 가지 로그뿐이라 그것만 구현했다고 밝힌다.
+\end{instardust}
+
+\section{정수로 정확하게}
+\label{sec:integer-accumulation}
+
+정수의 덧셈은 넘치지 않는 한 정확하고 결합법칙과 교환법칙을 만족한다. 그래서 정수로 할 수 있는 합은 정수로 하는 것이 가장 확실하다. 7장의 순위 통계량은 두 배 한 중간 순위로 모든 점수를 정수로 만들었고, 9장의 Kruskal--Wallis 통계량은 정수 편차에서 소거를 없앴다. 정수 배열의 평균도 같은 방식으로 다룰 수 있다.
+
+$64$비트 정수 $n$개를 더할 때 걱정할 것은 넘침뿐이다. $128$비트 정수 하나에 더하면 $2^{63}$개를 더해도 합이 $2^{126}$ 미만이므로 넘치지 않지만, $128$비트 덧셈은 벡터화가 잘 되지 않는다. 이것을 피하는 방법은 각 값 $v$를 위 $32$비트와 아래 $32$비트로 나누는 것이다. $v=h\cdot2^{32}+l$, $h=\lfloor v/2^{32}\rfloor$(부호 있음), $0\le l<2^{32}$로 쓰면 $|h|\le2^{31}$이므로, $2^{31}$개까지는 $h$들의 합이 $2^{62}$ 이하이고 $l$들의 합이 $2^{63}$ 미만이어서 각각 $64$비트 정수 하나에 넘치지 않고 들어간다. 그 두 합을 $2^{31}$개마다 $128$비트 정수에 옮겨 담으면 된다. 안쪽 반복은 $64$비트 정수 덧셈 두 개이므로 벡터 명령으로 빠르게 돌아간다.
+
+정수 합에는 또 하나의 장점이 있다. 순서와 무관하므로 합을 여러 조각으로 나누어 여러 스레드에서 계산하고 어떤 순서로 합쳐도 결과가 같다. 부동소수점 합은 9장에서 보았듯이 순서에 따라 결과의 비트가 달라지므로, 같은 결과를 보장하려면 나무의 모양을 고정해야 했다. 정수 합은 이런 제약 없이 결정적이다.
+
+\begin{instardust}[\code{csrc/base/int\_sum.hpp}]
+\code{IntSum}이 위의 방법 그대로이다. 각 값을 위 $32$비트와 아래 $32$비트로 나누어 $64$비트 정수 두 개에 더하고, $2^{31}$개마다 \code{\_\_int128}로 옮긴다. 정수 배열의 \code{mean}, 데이터프레임의 정수 열의 평균과 그룹별 평균이 모두 이것을 쓰며, 마지막에 정확한 합을 binary64로 한 번 반올림한 뒤 개수로 한 번 나눈다. 원소마다 binary64로 바꾸어 더하는 방법과 비교하면 합이 $2^{53}$을 넘어도 정확하고, 바꾸는 일이 없어 오히려 빠르다.
+\end{instardust}
+
+\section{구간 산술과 볼 산술}
+\label{sec:interval}
+
+\subsection{구간 산술}
+
+지금까지의 방법은 오차를 줄이지만, 결과가 얼마나 정확한지를 \textbf{보증}하지는 않는다. 보증이 필요하면 수 대신 참값을 확실히 담는 구간을 들고 계산하면 된다. 실수의 닫힌 구간 $X=[\underline x,\overline x]$와 $Y=[\underline y,\overline y]$에 대해
+\[
+X+Y=[\underline x+\underline y,\ \overline x+\overline y],\qquad XY=\bigl[\min S,\ \max S\bigr],\quad S=\{\underline x\underline y,\underline x\overline y,\overline x\underline y,\overline x\overline y\}
+\]
+로 정의하면 $x\in X$, $y\in Y$일 때 $x+y\in X+Y$, $xy\in XY$이다. 이 \term{포함 성질}{inclusion property}이 구간 산술의 핵심이다\cite{moore1966interval}. 컴퓨터에서는 아래 끝을 $-\infty$ 쪽으로, 위 끝을 $+\infty$ 쪽으로 반올림하면(8장의 방향 반올림) 반올림 오차까지 포함해 같은 성질이 유지된다. 그러면 계산의 마지막 구간이 참값을 확실히 담고, 그 폭이 오차의 보증된 상한이 된다.
+
+구간 산술의 약점은 구간이 필요 이상으로 넓어진다는 것이다. 같은 변수가 식에 두 번 나타나면 구간 산술은 그 둘을 독립된 값으로 다루므로, $X=[1,2]$에서 $X-X=[-1,1]$이 된다. 참값은 $0$이다. 이것을 \term{의존성 문제}{dependency problem}라 하고, 긴 계산에서는 구간이 기하급수적으로 넓어지기도 한다. 그래서 구간 산술은 식의 모양을 신중하게 골라야 쓸모가 있다.
+
+\subsection{볼 산술과 참값}
+
+구간을 아래 끝과 위 끝 대신 중심과 반지름 $[m\pm r]$으로 나타내는 것을 \term{볼 산술}{ball arithmetic}이라 한다. 중심은 임의 정밀도의 부동소수점 수로 두고 반지름은 낮은 정밀도로 두면, 정밀도가 높을 때 구간의 두 끝을 모두 높은 정밀도로 계산하는 것보다 훨씬 싸다. Johansson의 Arb 라이브러리가 이 방식으로 초월함수와 특수함수까지 보증된 값을 계산한다\cite{johansson2017arb}.
+
+볼 산술은 binary64 계산의 참값을 얻는 데 쓰인다. 어떤 함수의 binary64 결과가 올바르게 반올림되었는지 알려면 참값을 binary64로 반올림한 값이 필요하다. 충분히 높은 정밀도로 볼을 계산해서 볼 전체가 같은 binary64 수로 반올림되면 그 수가 정답이고, 볼이 두 binary64 수의 경계에 걸치면 정밀도를 올려 다시 계산한다. 참값이 경계에 정확히 걸리지 않는 한 이 과정은 끝나는데, 이것이 11장에서 다룰 ``표 만드는 사람의 딜레마''의 실용적인 해법이다.
+
+\begin{instardust}[\code{tests/array/test\_ufunc.py}]
+stardust의 정확도 계약은 모두 ``Arb로 구한 참값을 binary64로 반올림한 값에서 몇 ULP 이내''로 적힌다. 예컨대 배열 영역의 테스트는 Arb의 Python 바인딩인 python-flint를 $200$비트 정밀도로 불러 참값을 만든다. 보통의 임의 정밀도 산술과 달리 Arb의 볼은 결과의 정확도를 스스로 보증하므로, 그렇게 얻은 ``참값''이 정말로 참값인지를 따로 걱정할 필요가 없다.
+\end{instardust}
+
+\section{맺음}
+
+반올림 오차는 버려지는 것이 아니라 계산해 낼 수 있는 것이다. 이 관찰 하나에서 보상 합과 double-double 산술이 나왔고, 정수와 구간은 각각 정확한 계산과 보증된 계산이라는 또 다른 방향을 열었다. 실제 라이브러리는 이 도구들을 필요한 곳에만 골라 쓴다. 대부분의 계산은 binary64와 9장의 오차 해석으로 충분하고, 조건수가 큰 중간값과 정수로 바꿀 수 있는 합만 더 정확하게 다룬다. 다음 장에서는 이 도구들로 초월함수를 마지막 비트 가까이까지 정확하게 만드는 방법을 본다.
+
+오차 없는 변환과 보상 알고리즘은 Muller 등의 책\cite{muller2018handbook}과 Higham의 책\cite{higham2002accuracy} 4장에 자세하고, double-double 산술의 구현은 \cite{hida2001qd}가 표준적인 참고 문헌이다.
+
+\chapterreferences
