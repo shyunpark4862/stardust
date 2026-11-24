@@ -90,9 +90,9 @@ $40$ & $4.692\times10^{9}$ & $3.310$ & $3.364$ \\
 \label{tab:lebesgue}
 \end{table}
 
-이 수치들은 다음의 고전적인 결과들과 맞는다\cite{trefethen2019atap,brutman1997}. Chebyshev 점에서는 $\Lambda_n\le\tfrac2\pi\ln(n+1)+1$이고, 어떤 노드를 고르더라도 $\Lambda_n\ge\tfrac2\pi\ln(n+1)+0.52$이다. 따라서 Chebyshev 점은 상수 차이를 빼면 최선이다. 이 하계의 로그 증가는 Erdős가 확립했다\cite{erdos1961}. 고른 간격에서는 $\Lambda_n\sim2^{n+1}/(en\ln n)$으로 지수적으로 자라는데\cite{schonhage1961}, $n=40$에서 이 근사식은 $5.48\times10^9$이다.
+이 수치들은 다음의 고전적인 결과들과 맞는다\cite{trefethen2019atap,brutman1997}. Chebyshev 점에서는 $\Lambda_n\le\tfrac2\pi\ln(n+1)+1$이고, 어떤 노드를 고르더라도 $\Lambda_n\ge\tfrac2\pi\ln(n+1)+0.52$이다. 따라서 Chebyshev 점은 상수 차이를 빼면 최선이다. 모든 노드 체계에서 Lebesgue 상수가 적어도 로그로 자란다는 것은 Faber와 Bernstein이 보였고, 상수 $2/\pi$까지 맞는 날카로운 하계는 Erdős가 확립했다\cite{erdos1961}. 고른 간격에서는 $\Lambda_n\sim2^{n+1}/(en\ln n)$으로 지수적으로 자라는데\cite{schonhage1961}, $n=40$에서 이 근사식은 $5.48\times10^9$이다.
 
-로그 증가조차 피할 수 없다는 데서 중요한 귀결이 나온다. Banach--Steinhaus 정리에 의해 $\Lambda_n\to\infty$이면 보간 다항식이 수렴하지 않는 연속함수가 존재한다. 어떤 노드 체계를 고르든 모든 연속함수에 대해 보간이 수렴하게 할 수는 없다. 이것이 \term{Faber의 정리}{Faber's theorem}이다\cite{faber1914}. Weierstrass의 근사 정리\cite{weierstrass1885}가 모든 연속함수를 다항식으로 고르게 근사할 수 있다고 말하는 것과 대조적이다. 근사 다항식은 존재하지만 고정된 노드에서 보간해서는 얻을 수 없는 함수가 있는 것이다. 다행히 함수가 조금만 매끄러워도 사정이 달라진다. \cref{prop:lebesgue-best}에 의해 $\|f-p^\ast\|$가 $\log n$보다 빨리 줄기만 하면 Chebyshev 점의 보간은 수렴한다.
+로그 증가조차 피할 수 없다는 데서 중요한 귀결이 나온다. Banach--Steinhaus 정리에 의해 $\Lambda_n\to\infty$이면 보간 다항식이 수렴하지 않는 연속함수가 존재한다. 어떤 노드 체계를 고르든 모든 연속함수에 대해 보간이 수렴하게 할 수는 없다. 이것이 \term{Faber의 정리}{Faber's theorem}이다\cite{faber1914}. Weierstrass의 근사 정리\cite{weierstrass1885}가 모든 연속함수를 다항식으로 고르게 근사할 수 있다고 말하는 것과 대조적이다. 근사 다항식은 존재하지만 고정된 노드에서 보간해서는 얻을 수 없는 함수가 있는 것이다. 다행히 함수가 조금만 매끄러워도 사정이 달라진다. \cref{prop:lebesgue-best}에 의해 $\|f-p^\ast\|\log n\to0$이기만 하면 Chebyshev 점의 보간은 수렴한다.
 
 \subsection{Runge 현상}
 
@@ -138,14 +138,14 @@ f-p_n=\sum_{k>n}a_k\bigl(T_k-T_{k'(k)}\bigr)
 이고, $[-1,1]$에서 $|T_k|\le1$이므로 $\|f-p_n\|\le2\sum_{k>n}|a_k|\le4M\sum_{k>n}\rho^{-k}=4M\rho^{-n}/(\rho-1)$이다.
 \end{proof}
 
-이 정리는 Trefethen의 책\cite{trefethen2019atap}을 따른 것이다. Runge 함수의 극점 $i/5$를 지나는 Bernstein 타원은 짧은 반축이 $1/5$이므로 $(\rho-\rho^{-1})/2=1/5$, 곧 $\rho=1/5+\sqrt{1+1/25}\approx1.2198$이다. 정리에 따르면 오차는 $n$이 $20$ 늘 때마다 $\rho^{20}\approx53.0$배씩 줄어야 하는데, 위의 측정에서 $n=40$에서 $60$으로 갈 때 오차는 $3.4\times10^{-4}/6.38\times10^{-6}\approx53$배 줄었다. 고른 간격 노드에 대해 같은 역할을 하는 영역은 실수축 근처에서 훨씬 납작한 렌즈 모양이고, 극점 $\pm i/5$가 그 영역의 안쪽에 들어가 버려서 보간이 발산한다.
+이 정리는 Trefethen의 책\cite{trefethen2019atap}을 따른 것이다. Runge 함수의 극점 $i/5$를 지나는 Bernstein 타원은 짧은 반축이 $1/5$이므로 $(\rho-\rho^{-1})/2=1/5$, 곧 $\rho=1/5+\sqrt{1+1/25}\approx1.2198$이다. 정리에 따르면 오차는 $n$이 $20$ 늘 때마다 $\rho^{20}\approx53.0$배씩 줄어야 하는데, 위의 측정에서 $n=40$에서 $60$으로 갈 때 오차는 $3.4\times10^{-4}/6.38\times10^{-6}\approx53$배 줄었다. 고른 간격 노드에 대해 같은 역할을 하는 영역은 $\pm1$에서 뾰족하고 허수축 방향으로 약 $\pm0.53i$까지 부푼 모양이어서, 극점 $\pm i/5$가 그 영역의 안쪽에 들어가 버려서 보간이 발산한다.
 
 \section{계산의 꼴}
 \label{sec:interp-forms}
 
 \subsection{단항식 기저의 함정}
 
-보간 다항식을 계산하는 가장 순진한 방법은 Vandermonde 계 $Vc=y$를 풀어 단항식 계수를 얻는 것이다. 그러나 $V$는 지독하게 나쁜 조건의 행렬이다. Gautschi는 실수 노드에서 $\kappa(V)$가 $n$에 대해 지수적으로 자란다는 것을 보였는데\cite{gautschi1975vandermonde}, Chebyshev 점에서조차 그렇다. $[-1,1]$의 Chebyshev 점에서 $\kappa_2(V)$는 $n=20$에서 $1.8\times10^7$, $n=40$에서 $7.8\times10^{14}$, $n=80$에서 $1.4\times10^{19}$이다.
+보간 다항식을 계산하는 가장 순진한 방법은 Vandermonde 계 $Vc=y$를 풀어 단항식 계수를 얻는 것이다. 그러나 $V$는 지독하게 나쁜 조건의 행렬이다. Gautschi는 실수 노드에서 $\kappa(V)$가 $n$에 대해 지수적으로 자란다는 것을 보였는데\cite{gautschi1975vandermonde}, Chebyshev 점에서조차 그렇다. $[-1,1]$의 Chebyshev 점에서 $\kappa_2(V)$는 $n=20$에서 $1.8\times10^7$, $n=40$에서 $7.8\times10^{14}$, $n=80$에서는 binary64로 계산한 값이 $10^{19}$ 근처에서 포화되지만, 노드를 정확한 유리수로 보고 계산하면 $10^{29}$을 넘는다. 대략 $(1+\sqrt2)^n$의 속도로 자라는 것이다.
 
 그 결과는 함수에 따라 다르게 나타난다. Runge 함수를 Chebyshev 점에서 보간할 때, 단항식 계수를 풀어 평가한 다항식의 최대 오차는 $n=80$에서 $1.15\times10^{-2}$, $n=200$에서 $1.24\times10^{-2}$로 $10^{-2}$ 근처에서 멈춘다. 계수의 크기가 $10^{13}$에 이르므로, 계수의 작은 상대오차와 평가할 때의 소거가 그만큼 커져서 결과에 나타나기 때문이다. 같은 자료를 다음 절의 무게중심 꼴로 평가하면 오차는 $1.2\times10^{-7}$과 $8.9\times10^{-16}$으로 \cref{thm:cheb-interp-analytic}대로 줄어든다. 흥미롭게도 $e^x$처럼 단항식 계수가 빨리 작아지는 함수에서는 $n=80$에서도 단항식 방법의 오차가 $5.7\times10^{-15}$에 머문다. 조건수가 나쁘다는 것은 가장 나쁜 자료에 대한 말이고, 모든 자료가 나쁘다는 뜻은 아니다. 그러나 보간 루틴은 자료를 고를 수 없으므로 단항식 기저를 쓰지 않는다.
 
@@ -165,7 +165,7 @@ p(x)=\omega(x)\sum_{j=0}^n\frac{w_j}{x-x_j}y_j
 \label{eq:bary2}
 p(x)=\frac{\displaystyle\sum_{j=0}^n\frac{w_j}{x-x_j}y_j}{\displaystyle\sum_{j=0}^n\frac{w_j}{x-x_j}}
 \end{equation}
-이것이 \term{둘째 무게중심 공식}{second barycentric formula}, 흔히 그냥 무게중심 공식이라 부르는 것이다\cite{berrut2004barycentric}. 분자와 분모가 같은 무게를 쓰므로 무게에 공통 인수를 곱해도 결과가 같다. Chebyshev 점에서는 공통 인수를 빼면 $w_j=(-1)^j\delta_j$이고, $\delta_j$는 양 끝에서 $1/2$, 나머지에서 $1$이다\cite{salzer1972}. 고른 간격 노드에서는 $w_j=(-1)^j\binom nj$이다. 이 이항계수가 가운데와 양 끝에서 $2^n$배쯤 차이 나는 것이 Lebesgue 상수의 지수적 증가와 같은 현상이다.
+이것이 \term{둘째 무게중심 공식}{second barycentric formula}, 흔히 그냥 무게중심 공식이라 부르는 것이다\cite{berrut2004barycentric}. 분자와 분모가 같은 무게를 쓰므로 무게에 공통 인수를 곱해도 결과가 같다. Chebyshev 점에서는 공통 인수를 빼면 $w_j=(-1)^j\delta_j$이고, $\delta_j$는 양 끝에서 $1/2$, 나머지에서 $1$이다\cite{salzer1972}. 고른 간격 노드에서는 $w_j=(-1)^j\binom nj$이다. 이 이항계수가 가운데와 양 끝에서 $2^n/\sqrt n$배쯤 차이 나는 것이 Lebesgue 상수의 지수적 증가와 같은 현상이다.
 
 \eqref{eq:bary2}는 $x$가 노드에 가까우면 분자와 분모의 한 항이 모두 커져서 위험해 보이지만, 실제로는 두 항이 같은 비율로 커지므로 몫은 $y_j$로 정확히 다가간다. $x$가 노드와 정확히 같을 때만 따로 처리하면 된다.
 

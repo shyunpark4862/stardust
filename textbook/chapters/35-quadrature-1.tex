@@ -110,17 +110,17 @@ $J_n$의 고유값 $x_i$와 단위 고유벡터 $v_i$에 대해 Gauss 무게는 
 \end{proposition}
 
 \begin{proof}
-$P_{ki}=\hat p_k(x_i)$인 $n\times n$ 행렬 $P$를 두자. Gauss 구적은 차수 $2n-2$ 이하인 $\hat p_k\hat p_l$을 정확히 적분하므로 $\sum_iw_i\hat p_k(x_i)\hat p_l(x_i)=\delta_{kl}$, 곧 $PWP^{\mathsf T}=I$이다($W=\operatorname{diag}(w_i)$). $P$는 정칙이므로 $W=(P^{\mathsf T}P)^{-1}$이다. 그런데 $P$의 열은 대칭 행렬 $J_n$의 서로 다른 고유값에 속하는 고유벡터이므로 서로 직교하고, $P^{\mathsf T}P$는 대각 행렬 $\operatorname{diag}(\|\hat p(x_i)\|^2)$이다. 따라서 $w_i=1/\|\hat p(x_i)\|^2$이다. 단위 고유벡터는 $v_i=\hat p(x_i)/\|\hat p(x_i)\|$이고 첫 성분은 $\hat p_0=1/\sqrt{\mu_0}$을 나눈 것이므로 $(v_i)_1^2=1/(\mu_0\|\hat p(x_i)\|^2)=w_i/\mu_0$이다.
+$P_{ki}=\hat p_k(x_i)$인 $n\times n$ 행렬 $P$를 두자. Gauss 구적은 차수 $2n-2$ 이하인 $\hat p_k\hat p_l$을 정확히 적분하므로 $\sum_iw_i\hat p_k(x_i)\hat p_l(x_i)=\delta_{kl}$, 곧 $PWP^{\mathsf T}=I$이다($W=\operatorname{diag}(w_i)$). $P$는 정칙이므로 $W=(P^{\mathsf T}P)^{-1}$이다. 그런데 $P$의 열은 대칭 행렬 $J_n$의 서로 다른 고유값에 속하는 고유벡터이므로 서로 직교하고, $P^{\mathsf T}P$는 대각 행렬 $\operatorname{diag}(\|\hat p(x_i)\|^2)$이다. 따라서 $w_i=1/\|\hat p(x_i)\|^2$이다. 단위 고유벡터는 $v_i=\hat p(x_i)/\|\hat p(x_i)\|$이고 첫 성분은 $\hat p_0=1/\sqrt{\mu_0}$을 $\|\hat p(x_i)\|$로 나눈 것이므로 $(v_i)_1^2=1/(\mu_0\|\hat p(x_i)\|^2)=w_i/\mu_0$이다.
 \end{proof}
 
-이 정리에 따라 Gauss 규칙은 23장의 대칭 삼중대각 고유값 문제 하나로 계산된다\cite{golub1969welsch}. 그러나 무게를 고유벡터의 첫 성분의 제곱에서 얻는 것은 정확도의 함정이다. 양 끝 근처의 노드에 대한 무게는 아주 작은데, 고유벡터의 작은 성분은 절대오차로만 정확하므로 그 제곱의 상대오차가 커진다. $n=100$의 Gauss--Legendre 규칙을 Python의 \code{decimal}로 $60$자리 Newton 반복을 해 만든 참값과 견주면, numpy의 \code{leggauss}는 노드가 $0.7$ulp 안이지만 무게는 최대 $6.3\times10^4$ulp 틀리고, scipy의 \code{roots\_legendre}는 노드가 $8.2$ulp, 무게가 $8.4\times10^4$ulp 틀린다. $n=5$에서도 무게가 $11$, $17$ulp 틀린다. Legendre 다항식처럼 점화식의 계수를 아는 경우에는 근의 점근 근사에서 시작해 점화식으로 $p_n$과 $p_n'$을 계산하는 Newton 반복이 더 정확하고, $n$이 아주 크면 반복 없이 점근 전개만으로 노드와 무게를 $O(n)$에 구하는 방법도 있다\cite{hale2013legendre,bogaert2014}.
+이 정리에 따라 Gauss 규칙은 23장의 대칭 삼중대각 고유값 문제 하나로 계산된다\cite{golub1969welsch}. 그러나 무게를 고유벡터의 첫 성분의 제곱에서 그대로 얻으면 정확도를 잃는다. 양 끝 근처의 노드에 대한 무게는 아주 작은데, 고유벡터의 작은 성분은 절대오차로만 정확하므로 그 제곱의 상대오차가 커진다. 그래서 실제 라이브러리는 고유값으로 얻은 노드를 Newton 걸음으로 다듬고 무게는 $p_n'$을 쓰는 공식으로 다시 계산하는데, 그래도 무게의 마지막 자리들을 지키기는 쉽지 않다. $n=100$의 Gauss--Legendre 규칙을 Python의 \code{decimal}로 $60$자리 Newton 반복을 해 만든 참값과 견주면, numpy의 \code{leggauss}는 노드가 $0.7$ulp 안이지만 무게는 최대 $6.3\times10^4$ulp 틀리고, scipy의 \code{roots\_legendre}는 노드가 $8.2$ulp, 무게가 $8.4\times10^4$ulp 틀린다. $n=5$에서도 무게가 numpy는 $11$ulp, scipy는 $17$ulp 틀린다. Legendre 다항식처럼 점화식의 계수를 아는 경우에는 근의 점근 근사에서 시작해 점화식으로 $p_n$과 $p_n'$을 계산하는 Newton 반복이 더 정확하고, $n$이 아주 크면 반복 없이 점근 전개만으로 노드와 무게를 $O(n)$에 구하는 방법도 있다\cite{hale2013legendre,bogaert2014}.
 
 \section{Clenshaw--Curtis 규칙}
 \label{sec:clenshaw-curtis}
 
-29장의 Chebyshev 점 $x_j=\cos(j\pi/n)$를 노드로 하는 보간형 구적이 \term{Clenshaw--Curtis 규칙}{Clenshaw--Curtis rule}이다\cite{clenshaw1960}. 정확도의 차수는 $n$으로 같은 개수의 점을 쓰는 Gauss 구적의 약 절반이지만, 무게가 모두 양수이고 FFT로 $O(n\log n)$에 계산된다\cite{waldvogel2006}. 놀라운 것은 실제 정확도이다. Trefethen은 대부분의 함수에서 Clenshaw--Curtis가 Gauss 구적에 거의 뒤지지 않음을 보였다\cite{trefethen2008gauss}. 정확도의 차수가 정하는 것은 다항식에서의 정확성뿐이고, 일반적인 함수의 오차는 Chebyshev 계수가 줄어드는 속도로 정해지기 때문이다.
+29장의 Chebyshev 점 $x_j=\cos(j\pi/n)$를 노드로 하는 보간형 구적이 \term{Clenshaw--Curtis 규칙}{Clenshaw--Curtis rule}이다\cite{clenshaw1960}. 정확도의 차수는 적어도 $n$($n$이 짝수면 $n+1$)으로 같은 개수의 점을 쓰는 Gauss 구적의 약 절반이지만, 무게가 모두 양수이고 FFT로 $O(n\log n)$에 계산된다\cite{waldvogel2006}. 놀라운 것은 실제 정확도이다. Trefethen은 대부분의 함수에서 Clenshaw--Curtis가 Gauss 구적에 거의 뒤지지 않음을 보였다\cite{trefethen2008gauss}. 정확도의 차수가 정하는 것은 다항식에서의 정확성뿐이고, 일반적인 함수의 오차는 Chebyshev 계수가 줄어드는 속도로 정해지기 때문이다.
 
-$n+1$개의 점으로 $[-1,1]$의 세 함수를 적분하면 \cref{tab:gauss-cc}와 같다. $e^x$처럼 전 평면에서 해석적인 함수에서는 Gauss가 압도적이지만, 극점이 실수축 가까이 있는 Runge 함수에서는 두 배 남짓, 매끄러움이 유한한 $|x|^3$에서는 거의 같다.
+$n+1$개의 점으로 $[-1,1]$의 세 함수를 적분하면 \cref{tab:gauss-cc}와 같다. $e^x$처럼 전 평면에서 해석적인 함수에서는 Gauss가 압도적이지만, 극점이 실수축 가까이 있는 Runge 함수에서는 두 배에서 다섯 배쯤, 매끄러움이 유한한 $|x|^3$에서는 거의 같다.
 
 \begin{table}[t]
 \begin{sdtable}{colspec={ccccccc}, row{1-2}={font=\small\bfseries}}
@@ -142,7 +142,7 @@ $64$ & $2.7\times10^{-15}$ & $4.4\times10^{-16}$ & $6.2\times10^{-12}$ & $2.9\ti
 \section{오차의 어림: Gauss--Kronrod}
 \label{sec:kronrod}
 
-적분 루틴은 값과 함께 오차의 어림을 내야 한다. 가장 단순한 방법은 서로 다른 두 규칙의 차이를 보는 것인데, 두 규칙이 노드를 공유하지 않으면 함수 호출이 두 배로 든다. Kronrod는 $n$점 Gauss 규칙의 노드에 $n+1$개의 노드를 더해, 원래 노드를 그대로 쓰면서 정확도의 차수를 $3n+1$로 올리는 규칙을 만들었다\cite{kronrod1965}. 더한 노드는 Stieltjes 다항식이라 부르는 특별한 다항식의 근이고, Laurie는 그 노드와 무게를 Golub--Welsch와 비슷한 고유값 문제로 계산하는 방법을 내놓았다\cite{laurie1997kronrod}. 이렇게 만든 \term{Gauss--Kronrod 쌍}{Gauss--Kronrod pair}은 $2n+1$번의 호출로 두 값 $G_n$과 $K_{2n+1}$을 주고, 더 정확한 $K$를 결과로 쓰며 $|K-G|$를 오차의 어림으로 쓴다.
+적분 루틴은 값과 함께 오차의 어림을 내야 한다. 가장 단순한 방법은 서로 다른 두 규칙의 차이를 보는 것인데, 두 규칙이 노드를 공유하지 않으면 함수 호출이 두 배로 든다. Kronrod는 $n$점 Gauss 규칙의 노드에 $n+1$개의 노드를 더해, 원래 노드를 그대로 쓰면서 정확도의 차수를 적어도 $3n+1$($n$이 홀수면 $3n+2$)로 올리는 규칙을 만들었다\cite{kronrod1965}. 더한 노드는 Stieltjes 다항식이라 부르는 특별한 다항식의 근이고, Laurie는 그 노드와 무게를 Golub--Welsch와 비슷한 고유값 문제로 계산하는 방법을 내놓았다\cite{laurie1997kronrod}. 이렇게 만든 \term{Gauss--Kronrod 쌍}{Gauss--Kronrod pair}은 $2n+1$번의 호출로 두 값 $G_n$과 $K_{2n+1}$을 주고, 더 정확한 $K$를 결과로 쓰며 $|K-G|$를 오차의 어림으로 쓴다.
 
 $|K-G|$는 사실 덜 정확한 $G$의 오차의 어림이므로 $K$의 오차에 대해서는 지나치게 비관적이다. Piessens 등의 QUADPACK은 경험적인 보정 $\mathrm{err}=I_{|f|}\min\bigl(1,(200|K-G|/I_{|f|})^{3/2}\bigr)$을 쓴다\cite{piessens1983quadpack}. 여기서 $I_{|f|}$는 $|f-\bar f|$를 같은 규칙으로 적분한 값이다. 오차가 작을수록 $3/2$제곱이 어림을 더 줄여 실제 오차에 가깝게 한다. 그래도 어림은 대개 실제 오차보다 크다. scipy의 \code{quad}로 $[0,1]$의 $e^x$를 적분하면 21점 규칙 하나로 끝나고 실제 오차가 $2.2\times10^{-16}$, 어림이 $1.9\times10^{-14}$이다. $[0,1]$의 $\cos100x$는 구간 $8$개로 나누어 실제 오차 $6.6\times10^{-16}$, 어림 $5.9\times10^{-10}$이다.
 

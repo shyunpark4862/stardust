@@ -71,7 +71,7 @@ Lanczos 과정은 걸음마다 일이 $O(n)$이고 벡터 몇 개만 저장하�
 
 해결책은 직교성을 다시 세우는 것이다. 가장 확실한 방법은 새 벡터를 앞의 모든 Lanczos 벡터에 대해 다시 직교화하는 \term{완전 재직교화}{full reorthogonalization}인데, 그러면 걸음마다 일이 $O(nk)$로 늘고 모든 벡터를 저장해야 해서 Arnoldi 과정과 비용이 같아진다. Paige의 해명은 더 싼 길을 열었다. 직교성이 수렴한 Ritz 벡터 방향으로만 무너진다면 그 방향들에 대해서만 직교화하면 되고, 이 방법이 Parlett와 Scott의 \term{선택적 재직교화}{selective orthogonalization}이다\cite{parlett1979selective}. 반대로 재직교화를 아예 하지 않고 복사본을 사후에 가려내는 Cullum과 Willoughby의 방법도 있다\cite{cullum1985}.
 
-재직교화를 한 번 하면 충분한가? 앞 장의 수정 Gram--Schmidt로 직교화한 벡터 $w$의 노름이 직교화 전보다 크게 줄었다면, 그것은 $w$가 거의 기저의 열공간 안에 있었다는 뜻이고 남은 작은 성분에는 상대적으로 큰 반올림이 섞여 있다. Daniel, Gragg, Kaufman, Stewart는 이때 한 번 더 직교화하는 기준을 세웠다\cite{daniel1976dgks}. 직교화 뒤의 노름이 직교화 전의 $\eta$배보다 작아졌을 때만 다시 하는데, 흔히 $\eta=1/\sqrt2\approx0.717$을 쓴다. Kahan이 관찰하고 Parlett가 증명한 대로, 이렇게 두 번 하면 반올림 수준의 직교성을 얻기에 충분하다\cite{parlett1998}. 흔히 \term{두 번이면 충분하다}{twice is enough}고 줄여 말한다.
+재직교화를 한 번 하면 충분한가? 앞의 기저 벡터들에 대해 고전 Gram--Schmidt로 직교화한 벡터 $w$의 노름이 직교화 전보다 크게 줄었다면, 그것은 $w$가 거의 기저의 열공간 안에 있었다는 뜻이고 남은 작은 성분에는 상대적으로 큰 반올림이 섞여 있다. Daniel, Gragg, Kaufman, Stewart는 이때 한 번 더 직교화하는 기준을 세웠다\cite{daniel1976dgks}. 직교화 뒤의 노름이 직교화 전의 $\eta$배보다 작아졌을 때만 다시 하는데, 흔히 $\eta=1/\sqrt2\approx0.707$ 근처의 값을 쓰는데, ARPACK은 $0.717$을 쓴다. Kahan이 관찰하고 Parlett가 증명한 대로, 이렇게 두 번 하면 반올림 수준의 직교성을 얻기에 충분하다\cite{parlett1998}. 흔히 \term{두 번이면 충분하다}{twice is enough}고 줄여 말한다.
 
 \section{재시작}
 \label{sec:restart}
@@ -137,7 +137,7 @@ AV_k^+=V_k^+H_k^++\bigl(h^+_{k+1,k}v_{k+1}^++Q_{mk}f_m\bigr)e_k^{\mathsf T}
 
 큰 희소 행렬의 큰 특이값 몇 개, 예컨대 주성분 분석이나 낮은 랭크 근사에 필요한 것은 $A^{\mathsf T}A$의 고유값 문제로 풀고 싶어진다. 그러나 24장에서 본 대로 $A^{\mathsf T}A$를 거치면 작은 특이값이 망가진다. 특이값이 $1$부터 $10^{-12}$까지 로그 간격인 $200\times50$ 행렬을 만들어 견주면, $A^{\mathsf T}A$의 고유값의 제곱근은 $\sigma=2.2\times10^{-5}$에서 상대오차가 $3.4\times10^{-9}$, $\sigma=7.9\times10^{-8}$에서 $1.8\times10^{-3}$이고, $\sigma=10^{-12}$에서는 $9.9\times10^3$이다. 계산한 $A^{\mathsf T}A$는 음의 고유값도 $7$개 가진다. 반면 밀집 SVD는 같은 특이값을 절대오차 $u\sigma_1$ 수준으로 구한다. $A^{\mathsf T}A$의 반올림은 $u\sigma_1^2$ 크기여서 $\sigma<\sqrt u\,\sigma_1$인 특이값을 덮는다.
 
-대안은 앞 장의 LSQR과 같은 Golub--Kahan 이중대각화이다\cite{golub1965kahan}. $A$와 $A^{\mathsf T}$를 번갈아 곱해 $AV_k=U_{k+1}B_k$와 $A^{\mathsf T}U_k=V_kB_k^{\mathsf T}+\cdots$를 만들고, 작은 이중대각 행렬 $B_k$의 특이값 분해 $B_k=U_B\Sigma V_B^{\mathsf T}$에서 Ritz 특이값과 Ritz 특이벡터 $U_kU_B$, $V_kV_B$를 얻는다. $A^{\mathsf T}A$를 만들지 않으므로 작은 특이값의 정보가 반올림에 덮이지 않고, 24장의 이중대각 행렬의 상대 정확도도 살릴 수 있다. 이 과정은 수학적으로 $A^{\mathsf T}A$에 대한 Lanczos와 같고, Ritz 값이 같은 방식으로 바깥쪽부터 수렴한다. 수학적으로 같은 정보를 갖는 대칭 행렬 $\begin{psmallmatrix}0&A\\A^{\mathsf T}&0\end{psmallmatrix}$의 고유값은 $\pm\sigma_i$이므로 정확도는 지키지만, 작은 특이값은 스펙트럼의 한가운데에 놓여 찾기 어렵다.
+대안은 앞 장의 LSQR과 같은 Golub--Kahan 이중대각화이다\cite{golub1965kahan}. $A$와 $A^{\mathsf T}$를 번갈아 곱해 $AV_k=U_{k+1}B_k$와 $A^{\mathsf T}U_{k+1}=V_kB_k^{\mathsf T}+\alpha_{k+1}v_{k+1}e_{k+1}^{\mathsf T}$를 만들고, 작은 이중대각 행렬 $B_k$의 특이값 분해 $B_k=U_B\Sigma V_B^{\mathsf T}$에서 Ritz 특이값과 Ritz 특이벡터 $U_{k+1}U_B$, $V_kV_B$를 얻는다. $A^{\mathsf T}A$를 만들지 않으므로 작은 특이값의 정보가 반올림에 덮이지 않고, 24장의 이중대각 행렬의 상대 정확도도 살릴 수 있다. 이 과정은 수학적으로 $A^{\mathsf T}A$에 대한 Lanczos와 같고, Ritz 값이 같은 방식으로 바깥쪽부터 수렴한다. 수학적으로 같은 정보를 갖는 대칭 행렬 $\begin{psmallmatrix}0&A\\A^{\mathsf T}&0\end{psmallmatrix}$의 고유값은 $\pm\sigma_i$이므로 정확도는 지키지만, 작은 특이값은 스펙트럼의 한가운데에 놓여 찾기 어렵다.
 
 Golub--Kahan--Lanczos 과정에도 재시작이 필요하다. Baglama와 Reichel은 두꺼운 재시작을 이중대각화에 맞게 옮겨 원하는 Ritz 특이 삼중쌍을 남기고 $B$를 화살 꼴로 둔 채 다시 확장하는 방법을 만들었다\cite{baglama2005}. 가장 작은 특이값은 이 방법으로도 느리다. 1차원 Laplace 행렬의 가장 작은 고유값이 느렸던 것과 이유가 같다.
 
