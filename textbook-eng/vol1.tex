@@ -32,12 +32,11 @@ The symbols used in this volume are collected here. Each is defined again, with 
 \item[\qedsymbol] the end of a proof
 \end{symbols}
 
-\symbolgroup{Numbers, sets and limits}
+\symbolgroup{Numbers and limits}
 \begin{symbols}
 \item[$\mathbb N$] the natural numbers $0,1,2,\ldots$ (zero included)
 \item[$\mathbb Z$, $\mathbb Q$, $\mathbb R$] the integers, the rational numbers and the real numbers
-\item[$x\in S$] $x$ is an element of the set $S$
-\item[$\{x\in S: P(x)\}$] the set of the elements $x$ of $S$ for which $P(x)$ holds
+\item[{$[a,b]$, $(a,b)$}] the closed interval $a\le x\le b$ and the open interval $a<x<b$; similarly $[a,b)$, $(a,b]$, $[a,\infty)$, \ldots
 \item[$a\mid b$] the integer $a$ divides the integer $b$
 \item[$|x|$] the absolute value of the real number $x$
 \item[$\max(a,b)$] the larger of the real numbers $a$ and $b$
@@ -48,9 +47,70 @@ The symbols used in this volume are collected here. Each is defined again, with 
 \item[$a_n\to L$] the sequence $(a_n)$ converges to $L$
 \end{symbols}
 
+\symbolgroup{Sets}
+\begin{symbols}
+\item[$x\in S$, $x\notin S$] $x$ is, or is not, an element of the set $S$
+\item[$\{a,b,c\}$] the set whose elements are $a$, $b$ and $c$
+\item[$\{x\in S: P(x)\}$] the set of the elements $x$ of $S$ for which $P(x)$ holds
+\item[$\{t(x): x\in S\}$] the set of the values $t(x)$ for $x$ in $S$
+\item[$A\subseteq B$] $A$ is a subset of $B$ ($A=B$ allowed)
+\item[$A\subset B$] $A$ is a proper subset of $B$ ($A\subseteq B$ and $A\ne B$)
+\item[$\emptyset$] the empty set
+\item[$A\cup B$, $A\cap B$] the union and the intersection of $A$ and $B$
+\item[$A\setminus B$] the difference, the elements of $A$ that are not in $B$
+\item[$A^{\mathrm c}$] the complement $U\setminus A$ of $A$ in the universe $U$
+\item[$A\mathbin{\triangle}B$] the symmetric difference $(A\setminus B)\cup(B\setminus A)$
+\item[$\bigcup_{i\in I}A_i$, $\bigcap_{i\in I}A_i$] the union and the intersection of a family of sets
+\item[$\mathcal P(A)$] the power set of $A$, the set of all subsets of $A$
+\item[$d\mathbb Z$] the set of integer multiples of $d$
+\item[$(a,b)$] the ordered pair with components $a$ and $b$
+\item[$A\times B$] the Cartesian product, the set of pairs $(a,b)$ with $a\in A$, $b\in B$
+\item[$A^n$] the set of $n$-tuples $(a_1,\ldots,a_n)$ of elements of $A$
+\end{symbols}
+
+\symbolgroup{Functions}
+\begin{symbols}
+\item[$f\colon A\to B$] $f$ is a function with domain $A$ and codomain $B$
+\item[$a\mapsto f(a)$] the rule of a function: $a$ is sent to $f(a)$
+\item[$\Gamma_f$] the graph $\{(a,f(a)): a\in A\}$ of $f$
+\item[$\operatorname{id}_A$] the identity function of $A$
+\item[$\mathbf 1_S$] the indicator function of a subset $S$: $1$ on $S$, $0$ elsewhere
+\item[$B^A$] the set of all functions from $A$ to $B$
+\item[$f(S)$] the image $\{f(s): s\in S\}$ of a set $S$ under $f$
+\item[$f^{-1}(T)$] the preimage $\{a: f(a)\in T\}$ of a set $T$ under $f$
+\item[$f|_S$] the restriction of $f$ to a subset $S$ of its domain
+\item[$g\circ f$] the composition, $(g\circ f)(a)=g(f(a))$
+\item[$f^{-1}$] the inverse function of a bijection $f$
+\end{symbols}
+
+\symbolgroup{Relations and orders}
+\begin{symbols}
+\item[$a\mathrel{R}b$] $a$ is related to $b$ by the relation $R$, that is, $(a,b)\in R$
+\item[$R^{-1}$, $S\circ R$] the inverse relation and the composition of relations
+\item[$R^+$] the transitive closure of $R$
+\item[$a\equiv b\pmod n$] $a$ and $b$ are congruent modulo $n$: $n\mid a-b$
+\item[$a\sim b$] $a$ and $b$ are equivalent under an equivalence relation $\sim$
+\item[{$[a]$}] the equivalence class of $a$
+\item[$A/{\sim}$] the quotient set, the set of equivalence classes
+\item[$a\le b$, $a<b$] a partial order and the corresponding strict order
+\item[$\max S$, $\min S$] the greatest and the least element of $S$
+\item[$\sup S$, $\inf S$] the supremum (least upper bound) and infimum (greatest lower bound) of $S$
+\item[$\le_{\mathrm{lex}}$] the lexicographic order
+\end{symbols}
+
+\symbolgroup{Cardinality}
+\begin{symbols}
+\item[$|A|$] the number of elements of a finite set $A$
+\item[$|A|=|B|$] $A$ and $B$ are equinumerous: there is a bijection between them
+\item[$|A|\le|B|$] there is an injection from $A$ to $B$
+\item[$|A|<|B|$] $|A|\le|B|$ but not $|A|=|B|$
+\item[$\Sigma^*$] the set of words over the alphabet $\Sigma$
+\end{symbols}
+
 \mainmatter
 \part{Foundations}
 \input{chapters/v1-01-logic-and-proof}
+\input{chapters/v1-02-sets-functions-relations}
 
 \backmatter
 \end{document}
