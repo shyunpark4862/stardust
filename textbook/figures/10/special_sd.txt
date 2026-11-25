@@ -1,0 +1,23 @@
+add(-0, +0)              0.0
+add(-0, -0)              -0.0
+subtract(1, 1)           0.0
+sqrt(-0)                 -0.0
+divide(1, -0)            -inf
+maximum(-0, +0)          0.0
+minimum(+0, -0)          -0.0
+maximum(nan, 1)          nan
+max([1, nan, 3])         nan
+nanmax([1, nan, 3])      3.0
+sum([-0.0])              0.0
+nextafter(0, -1)         -5e-324
+nextafter(max, inf)      inf
+round(2.5)               2.0
+round(-2.5)              -2.0
+round(0.5)               0.0
+round(1.5)               2.0
+astype int64: [9223372036854775807, -9223372036854775808, 0, 2, -2, 9223372036854775807, 9223372036854775807]
+int64 2^53+1 -> float64: 9007199254740992.0
+mean of [2^53+1]*3+[0] = 6755399441055745.0  exact 6755399441055745.0
+multiply normal: 0.68 ms for 1e7
+multiply subnormal: 0.66 ms for 1e7
+subnormal kept: [1.49999999999997e-310]  2^-1074 * 0.5 -> [0.0]

@@ -141,3 +141,19 @@
 
 - 관찰(`textbook/figures/09/mvn_cover.py`): 무작위 300문제에서 실제 오차는 모두 보고 오차와 atol 안(비율 중앙값 0.23, 최대 0.97). 따로 잰 d = 4, ρ = 1/2, b = 0, atol = 1e-6에서는 실제 4.43e-7 대 보고 4.13e-7(비율 1.07). 이동 12개의 표준오차 3배는 t₁₁에서 약 99퍼센트 구간이다.
 - 제안(고치지 않음): 문서에 "약 99퍼센트(이동 12개의 t 분포)"라고 적기.
+
+## array: 신호 NaN에서 maximum·minimum의 스칼라 경로와 NEON 경로가 다르다 (2026-11-25, 10장 깊이·수학 검토, 우선순위 중간)
+
+- 위치: `csrc/array/kernels/scalar_ops.hpp` 114–125행 `fmax_nan`·`fmin_nan`(받은 NaN을 그대로 돌려줌)과 NEON `vmaxq_f64`·`vminq_f64`(FMAX·FMIN: 신호 NaN을 먼저 고르고 조용하게 바꿈). `NanMaximum`·`NanMinimum`과 FMAXNM·FMINNM도 신호 NaN에서 다르다.
+- 관찰(`textbook/figures/10/review_sd.py`, 복제본): x[0] = 신호 NaN 0x7FF0000000000001에서 `sd.maximum(x, 0)`은 n ≤ 3이면 0x7FF0000000000001, n = 5의 첫 원소(벡터)는 0x7FF8000000000001, 마지막 원소(스칼라 꼬리)는 0x7FF0000000000001. f(x)[i] == f(x[i]) 약속이 깨진다. (조용한 NaN a, 신호 NaN b)에서는 fmax_nan이 a를, FMAX가 quiet(b)를 낸다. numpy에서 가져온 배열이 신호 NaN 비트를 그대로 지니므로 실제로 들어올 수 있다.
+- 제안(고치지 않음): 스칼라 쪽을 ProcessNaNs(신호 NaN 우선, 조용하게 바꾸기)로 맞추기. 시험의 특수값 목록(test_ufunc.py 등)에 신호 NaN·페이로드 NaN·음의 NaN을 넣기.
+
+## array: nextafter 주석의 "약 8배"가 지금 측정과 다르다 (2026-11-25, 10장 깊이 검토, 문서)
+
+- 위치: `csrc/array/kernels/scalar_ops.hpp` 369–370행.
+- 관찰(`textbook/figures/10/review_sd.py`): 10⁶개, 1스레드 sd 581 µs 대 numpy 1450 µs(약 2.5배), 기본 10스레드 78 µs.
+- 제안(고치지 않음): 주석의 수치를 고치거나 측정 조건을 적기.
+
+## array: sd.log(-1)의 NaN 페이로드가 numpy와 다르다 (2026-11-25, 10장 깊이 검토, 참고)
+
+- 관찰: sd.log(-1)은 vForce가 만든 0x7FF8000000000033, numpy는 기본 NaN 0x7FF8000000000000. 비트 정책상 문제는 아니다(NaN 규칙은 "NaN이다"까지만 같음).

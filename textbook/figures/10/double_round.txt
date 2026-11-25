@@ -1,0 +1,26 @@
+mul q=54 bad=49775 frac=2.49e-01
+mul q=56 bad=12432 frac=6.22e-02
+mul q=60 bad=765 frac=3.82e-03
+mul q=64 bad=48 frac=2.40e-04
+mul q=70 bad=0 frac=0.00e+00
+mul q=80 bad=0 frac=0.00e+00
+mul q=100 bad=0 frac=0.00e+00
+mul q=105 bad=0 frac=0.00e+00
+mul q=106 bad=0 frac=0.00e+00
+add q=54 bad=32162 frac=1.61e-01
+add q=60 bad=497 frac=2.48e-03
+add q=64 bad=24 frac=1.20e-04
+add q=80 bad=0 frac=0.00e+00
+add q=100 bad=0 frac=0.00e+00
+add q=105 bad=0 frac=0.00e+00
+add q=106 bad=0 frac=0.00e+00
+4 + failing q: [5, 6, 7, 8]
+4 - failing q: [5, 6, 7, 8]
+4 * failing q: [5, 6, 7]
+4 / failing q: [5, 6, 7]
+4 s failing q: [5, 6, 7, 8, 9]
+5 + failing q: [6, 7, 8, 9, 10]
+5 - failing q: [6, 7, 8, 9, 10]
+5 * failing q: [6, 7, 8, 9]
+5 / failing q: [6, 7, 8, 9]
+5 s failing q: [6, 7, 8, 9, 10, 11]
