@@ -404,7 +404,7 @@ By induction on $n$. For $n=0$ both sides equal $1$. Suppose the formula holds f
 \]
 In the first sum we replace $k$ by $k-1$, so that it becomes $\sum_{k=1}^{n+1}\binom n{k-1}x^ky^{n+1-k}$. Since $\binom n{-1}=0$ and $\binom n{n+1}=0$, both sums may be taken over $k=0,\ldots,n+1$, and Pascal's rule gives
 \[
-(x+y)^{n+1}=\sum_{k=0}^{n+1}\Bigl(\binom n{k-1}+\binom nk\Bigr)x^ky^{n+1-k}=\sum_{k=0}^{n+1}\binom{n+1}{k}x^ky^{n+1-k}. \qedhere
+(x+y)^{n+1}=\sum_{k=0}^{n+1}\Bigl(\binom n{k-1}+\binom nk\Bigr)x^ky^{n+1-k}=\sum_{k=0}^{n+1}\binom{n+1}{k}x^ky^{n+1-k}.
 \]
 \end{proof}
 
@@ -631,7 +631,7 @@ D_n=\sum_{j=0}^{n}(-1)^j\binom nj(n-j)!=\sum_{j=0}^{n}(-1)^j\frac{n!}{j!}.
 \]
 For the first recurrence, split off the last term: $D_n=n\cdot(n-1)!\sum_{j=0}^{n-1}(-1)^j/j!+(-1)^n=nD_{n-1}+(-1)^n$. For the second, apply the first recurrence to $n$ and to $n-1$:
 \[
-D_n-(n-1)(D_{n-1}+D_{n-2})=D_{n-1}-(n-1)D_{n-2}+(-1)^n=(-1)^{n-1}+(-1)^n=0. \qedhere
+D_n-(n-1)(D_{n-1}+D_{n-2})=D_{n-1}-(n-1)D_{n-2}+(-1)^n=(-1)^{n-1}+(-1)^n=0.
 \]
 \end{proof}
 

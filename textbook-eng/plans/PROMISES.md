@@ -6,7 +6,7 @@
 - 6장 (Differentiation): Newton 방법과 Heron 방법의 관계; sin의 도함수; 평균값 정리로 Lipschitz 상수 얻기 (5장)
 - 7장 (Integration): 고른 연속에서 Riemann 적분 가능성으로 (5장)
 - 8장 (Sequences, Series, and Approximation): e = Σ 1/k!; H_n이 ln n처럼 자람; Stirling 공식; sin x / x의 편차 x²/6을 Taylor로 설명 (5장). 급수의 수렴·비교와 기하급수 (2장). 무한합의 극한 (3장 1223행 부근). 교란 순열 비율의 극한 1/e, 가운데 이항 계수의 Stirling 어림 (4장)
-- 9장 (Elementary Transcendental Functions): 삼각함수의 엄밀한 정의와 Assumption(3장의 삼각 가정, 5장 asm:trig-geometry: 홀짝성, sin(π/2)=1, sin(kπ)=0, 주기, π>3, 부채꼴 넓이 x/2, 단조성)의 증명; 부채꼴 넓이를 적분으로; ln을 exp의 역함수로; e^{iθ}의 정의 (3·5장). 1 − t ≤ e^{−t} (4장)
+- 9장 (Elementary Transcendental Functions): 삼각함수의 엄밀한 정의와 Assumption(3장의 삼각 가정, 5장 asm:trig-geometry: 홀짝성, sin(π/2)=1, sin(kπ)=0, 주기, π>3, (0,π/2)에서 sin·cos>0, 부채꼴 넓이 x/2, 단조성)의 증명; 0<x<π/2에서 sin x < x < tan x를 정의에서 직접(5장 lem:sin-bounds가 삼각형 넓이·넓이의 단조성을 학교 기하로 썼으므로); 부채꼴 넓이를 적분으로; ln을 exp의 역함수로; e^{iθ}의 정의 (3·5장). 1 − t ≤ e^{−t} (4장)
 - 27장 (Difference Equations and Recurrences): k계 선형 점화식의 일반 풀이 (4장)
 
 ## 다른 권
