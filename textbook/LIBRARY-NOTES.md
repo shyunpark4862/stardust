@@ -56,3 +56,25 @@
 - 위치: `csrc/linalg/ops/vnorm.hpp` `finish_pnorm`의 `out[k] / amax`. 넘치거나 아주 작은 입력에서만 타는 경로이다.
 - 관찰: a_max 대신 그에 가까운 2의 거듭제곱(예: `ldexp(1, -ilogb(amax))`)을 곱하면 나눗셈과 그 반올림이 없어지고 곱셈이 정확하다. 결과의 끝 비트가 바뀔 수 있다. 측정한 정확도 문제는 없다(`textbook/figures/04/measure.py`: 2^-1070–2^1010 척도에서 모두 올바르게 반올림).
 - 제안(고치지 않음, 우선순위 낮음): 2의 거듭제곱 척도. 골든 갱신 필요.
+
+## array: 복소 sqrt가 시스템 csqrt를 그대로 써서 |y| < 2^-511이면 작은 부분을 0으로 돌려준다 (2026-11-25, 5장 측정)
+
+- 위치: `csrc/array/kernels/scalar_ops.hpp`의 `SD_FLOAT_FN(Sqrt, …, call(csqrt, z))`. Apple libm의 `csqrt(x + iy)`는 x > 0이고 |y| < 2^-511(≈1.49e-154)이면 허수부를 0으로, x < 0이면 실수부를 0으로 돌려준다(y²이 정규수 아래로 내려가는 곳). numpy도 같은 libm을 써서 같다. Python `cmath.sqrt`와 `special/cplx.hpp`의 Kahan 식은 정확하다.
+- 관찰(`textbook/figures/05/branch.py`, `cauchy.py`; 공개 저장소 복제본): `sd.sqrt(1 + 1e-160j)`의 허수부가 0(참값 5e-161). 그 결과 복소 단계 미분 `Im f(x+ih)/h`가 h < 1.5e-154에서 0.11만큼 틀린다(시험 함수 e^x/√(sin³x+cos³x)).
+- 제안(고치지 않음): numpy와 비트를 맞추는 것이 설계 목표라면 그대로 두되 문서에 적기. 정확도를 택한다면 Kahan 식(x ≥ 0: (t, y/(2t)), t = √((|x|+|z|)/2), 넘침 쪽 척도 맞춤 포함).
+
+## array: 복소 log1p가 numpy 식이라 작은 |w|에서 실수부의 상대 정확도를 잃는다 (2026-11-25, 5장 측정)
+
+- 위치: `csrc/array/kernels/scalar_ops.hpp` `complex_log1p`: Re = log(hypot(1 + a, b)). 1 + a를 먼저 반올림하므로 상대오차가 약 u/|w|이다.
+- 관찰(`textbook/figures/05/branch.py`, w = |w|e^{2i}, 십진 참값): |w| = 1e-8에서 1.2e-8, |w| < 1e-16이면 실수부가 0. `special/cplx.hpp`의 `clog1p`(Re = log1p(fma(a, a+2, b²))/2)는 전 범위에서 1e-16 아래.
+- 제안(고치지 않음): `clog1p`와 같은 식으로 바꾸기. numpy와 결과가 달라지므로 설계 결정이 필요.
+
+## special: cplx.hpp의 csqrt는 |z|가 최댓값의 절반을 넘으면 넘친다 (2026-11-25, 5장)
+
+- 위치: `csrc/special/cplx.hpp` `csqrt`의 `0.5 * (fabs(x) + hypot(x, y))`. |x| + |z|가 2^1024를 넘으면 inf가 된다. 지금 쓰는 곳(lambertw의 √(2(ez+1)), 가지점 근처)은 인자가 작아 문제가 없다.
+- 제안(고치지 않음, 우선순위 낮음): 일반용으로 쓰게 되면 |z| > 2^1020에서 z/4의 제곱근에 2를 곱하는 척도 맞춤. 같은 파일의 `clog`는 |z| ≈ 1에서 log(hypot)라 상대 정확도를 잃는다(1 + 1e-10i에서 0, 참값 5e-21). 지금 쓰는 곳은 절대오차면 충분하다.
+
+## interpolate: aaa.cpp의 복소 나눗셈은 fma가 없는 Smith 식이다 (2026-11-25, 5장 깊이 검토)
+
+- 위치: `csrc/interpolate/aaa.cpp` 88–98행의 `cdiv`(주석 "numpy's complex quotient")는 `(ar + ai * rat) * scl`처럼 곱과 합을 따로 반올림한다. `csrc/array/kernels/scalar_ops.hpp`의 `cdiv`는 같은 식을 `fma`로 쓴다. 둘 다 "numpy의 것"이라 하지만 끝 비트가 다를 수 있다.
+- 제안(고치지 않음): 하나로 모으기(scipy와 비트를 맞추려는 의도라면 주석에 그 이유를 적기).
