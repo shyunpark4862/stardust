@@ -8,7 +8,7 @@
 
 The chapter is organised as follows. \Cref{sec:derivative} defines the derivative as a limit of difference quotients and, equivalently, as the slope of the best linear approximation, and it shows what can go wrong at a point where a function is not differentiable. \Cref{sec:rules} proves the rules of differentiation, among them the chain rule and the rule for inverse functions, and computes the derivatives of powers, roots and trigonometric functions. \Cref{sec:extrema,sec:mvt} contain the theory: Fermat's theorem on extrema, the theorems of Rolle, Lagrange and Cauchy, and their consequences for monotonicity, Lipschitz constants and inequalities. The next three sections apply this theory. \Cref{sec:conditioning} measures how errors in the data propagate through a function and how accurately a derivative can be approximated by a difference quotient; \cref{sec:lhopital} proves l'H\^opital's rule; \cref{sec:convexity} treats higher derivatives and convex functions. \Cref{sec:newton} analyses Newton's method, of which Heron's method of \cref{sec:completeness} is a special case, and proves that it converges quadratically. \Cref{sec:darboux} ends the chapter with a surprising property of derivatives, the intermediate value property, and with the classes $C^k$ of functions with continuous derivatives.
 
-Two topics are postponed. Taylor's theorem, which approximates a function by polynomials of higher degree and refines several estimates of this chapter, is the subject of Chapter~8; the exponential function and the logarithm, whose derivatives we mention but do not prove, are defined in Chapter~9. Functions of several variables follow in Chapter~10. As in the preceding chapters this is a review: every result is stated precisely, and the important ones are proved.
+Two topics are postponed. Taylor's theorem, which approximates a function by polynomials of higher degree and refines several estimates of this chapter, is the subject of \cref{ch:series}; the exponential function and the logarithm, whose derivatives we mention but do not prove, are defined in Chapter~9. Functions of several variables follow in Chapter~10. As in the preceding chapters this is a review: every result is stated precisely, and the important ones are proved.
 
 \section{The Derivative}
 \label{sec:derivative}
@@ -101,7 +101,7 @@ Let $r$ be a function defined for all $h\ne0$ in some set that has $0$ as an acc
 \end{enumerate}
 \end{definition}
 
-Thus $r(h)=o(h)$ means that $r(h)$ tends to zero faster than $h$: the ratio $r(h)/h$ becomes arbitrarily small. For example, $h^2=o(h)$, and more generally $h^q=o(h^p)$ whenever $q>p$, since $h^q/h^p=h^{q-p}\to0$; but $h=O(h)$ is not $o(h)$, and $|h|^{1/2}$ is neither $o(h)$ nor $O(h)$. Every $O(h^q)$ with $q>p$ is $o(h^p)$. Chapter~8 develops these symbols systematically, also for limits at infinity, and here we need only the two cases of the definition. An equation such as $f(a+h)=f(a)+mh+o(h)$ is shorthand for the statement that the difference $f(a+h)-f(a)-mh$ is $o(h)$.
+Thus $r(h)=o(h)$ means that $r(h)$ tends to zero faster than $h$: the ratio $r(h)/h$ becomes arbitrarily small. For example, $h^2=o(h)$, and more generally $h^q=o(h^p)$ whenever $q>p$, since $h^q/h^p=h^{q-p}\to0$; but $h=O(h)$ is not $o(h)$, and $|h|^{1/2}$ is neither $o(h)$ nor $O(h)$. Every $O(h^q)$ with $q>p$ is $o(h^p)$. \Cref{ch:series} develops these symbols systematically, also for limits at infinity, and here we need only the two cases of the definition. An equation such as $f(a+h)=f(a)+mh+o(h)$ is shorthand for the statement that the difference $f(a+h)-f(a)-mh$ is $o(h)$.
 
 \begin{theorem}[Linear approximation]
 \label{thm:linear-approx}
@@ -231,7 +231,7 @@ In 1872 Weierstrass presented to the Berlin Academy a function that is continuou
 \[
 W(x)=\sum_{n=0}^\infty a^n\cos(b^n\pi x),
 \]
-where $0<a<1$ and $b$ is an odd integer with $ab>1+\frac32\pi$; the example was published by du Bois-Reymond in 1875~\cite{duboisreymond1875}. The series converges so fast, because of the factor $a^n$, that its sum is continuous (Chapter~8 and Volume~II treat such series), but its terms oscillate ever faster, because of the factor $b^n$, and with growing slopes, because $ab>1$; near every point the graph has oscillations on all scales, and no secant settles down. Hardy proved in 1916 that the conditions $0<a<1$, $b>1$ and $ab\ge1$ suffice, without $b$ being an integer~\cite{hardy1916}. Abbott constructs a simpler example from rescaled copies of the function $|x|$, extended periodically~\cite{abbott2015}. Such functions are not rare exceptions: by a theorem of Banach~\cite{banach1931}, which Volume~II derives from the Baire category theorem, the nowhere differentiable functions form, in a precise sense, the ``typical'' case among continuous functions. Differentiability is a strong additional property, and the functions of applied mathematics have it because they are built from simple pieces, not because continuity provides it.
+where $0<a<1$ and $b$ is an odd integer with $ab>1+\frac32\pi$; the example was published by du Bois-Reymond in 1875~\cite{duboisreymond1875}. The series converges so fast, because of the factor $a^n$, that its sum is continuous (\cref{ch:series} and Volume~II treat such series), but its terms oscillate ever faster, because of the factor $b^n$, and with growing slopes, because $ab>1$; near every point the graph has oscillations on all scales, and no secant settles down. Hardy proved in 1916 that the conditions $0<a<1$, $b>1$ and $ab\ge1$ suffice, without $b$ being an integer~\cite{hardy1916}. Abbott constructs a simpler example from rescaled copies of the function $|x|$, extended periodically~\cite{abbott2015}. Such functions are not rare exceptions: by a theorem of Banach~\cite{banach1931}, which Volume~II derives from the Baire category theorem, the nowhere differentiable functions form, in a precise sense, the ``typical'' case among continuous functions. Differentiability is a strong additional property, and the functions of applied mathematics have it because they are built from simple pieces, not because continuity provides it.
 \end{note}
 
 \section{Rules of Differentiation}
@@ -483,7 +483,7 @@ where $\cos a=\sqrt{1-\sin^2a}$ because $\cos a>0$ and $\cos^2a+\sin^2a=1$. At $
 \[
 \frac d{dx}\,x\sin(x^2)=\sin(x^2)+x\cdot\cos(x^2)\cdot2x=\sin(x^2)+2x^2\cos(x^2),
 \]
-by the product rule and the chain rule. The arcsine and the arctangent show something remarkable: their derivatives are built from $x$ by arithmetic operations and a square root alone, although the functions themselves cannot be written in this way. This connection between the inverse trigonometric functions and the algebraic functions $1/\sqrt{1-x^2}$ and $1/(1+x^2)$ becomes the basis of their integrals in \cref{ch:integration} and of their power series in Chapter~8.
+by the product rule and the chain rule. The arcsine and the arctangent show something remarkable: their derivatives are built from $x$ by arithmetic operations and a square root alone, although the functions themselves cannot be written in this way. This connection between the inverse trigonometric functions and the algebraic functions $1/\sqrt{1-x^2}$ and $1/(1+x^2)$ becomes the basis of their integrals in \cref{ch:integration} and of their power series in \cref{ch:series}.
 
 \begin{table}
 \sdfloat{%
@@ -784,7 +784,7 @@ We apply \cref{lem:comparison} four times on intervals $[0,b]$, each time using 
 The functions in (ii) and (iv) are even, so these inequalities extend to $x<0$.
 \end{proof}
 
-The first two inequalities were obtained in \cref{ch:limits} from the geometry of the unit circle, and indeed the derivatives of the sine and cosine rest on that geometry, so the proof above does not make them independent of it. What is new is the method, and the last two inequalities. With $x=1$ they give $0.8333\ldots\le\sin1\le1$ and $0.5\le\cos1\le0.5416\ldots$, while $\sin1=0.8414\ldots$ and $\cos1=0.5403\ldots$. The polynomials that appear, $x$, $x-x^3/6$, $1-x^2/2$ and $1-x^2/2+x^4/24$, are the first Taylor polynomials of the sine and the cosine, and continuing the ladder gives the whole Taylor series; Chapter~8 develops this systematically. The inequality $1-x^2/2\le\cos x$ is \eqref{eq:one-minus-cos} once more, and $\sin x\ge x-x^3/6$ explains the deviation of $(\sin x)/x$ from $1$ observed in \cref{sec:function-limits}: for $0<x$ it lies between $1-x^2/6$ and $1$.
+The first two inequalities were obtained in \cref{ch:limits} from the geometry of the unit circle, and indeed the derivatives of the sine and cosine rest on that geometry, so the proof above does not make them independent of it. What is new is the method, and the last two inequalities. With $x=1$ they give $0.8333\ldots\le\sin1\le1$ and $0.5\le\cos1\le0.5416\ldots$, while $\sin1=0.8414\ldots$ and $\cos1=0.5403\ldots$. The polynomials that appear, $x$, $x-x^3/6$, $1-x^2/2$ and $1-x^2/2+x^4/24$, are the first Taylor polynomials of the sine and the cosine, and continuing the ladder gives the whole Taylor series; \cref{ch:series} develops this systematically. The inequality $1-x^2/2\le\cos x$ is \eqref{eq:one-minus-cos} once more, and $\sin x\ge x-x^3/6$ explains the deviation of $(\sin x)/x$ from $1$ observed in \cref{sec:function-limits}: for $0<x$ it lies between $1-x^2/6$ and $1$.
 
 The same method extends Bernoulli's inequality (\cref{thm:bernoulli}) from natural to rational exponents~\cite{mitrinovic1993bernoulli}.
 
@@ -893,7 +893,7 @@ When $f$ is available only as a program, its derivative is often approximated by
 \[
 D_h^+f(x)\coloneqq\frac{f(x+h)-f(x)}h,\qquad D_h^0f(x)\coloneqq\frac{f(x+h)-f(x-h)}{2h}
 \]
-for the \term{forward difference quotient} and the \term{central difference quotient}. Both tend to $f'(x)$ as $h\to0$ if $f$ is differentiable at $x$; for the central one, write it as the average of $D_h^+f(x)$ and $D_{-h}^+f(x)$. The question is how fast. A Taylor expansion, as in Chapter~8, answers it most quickly, but the comparison lemma suffices and gives sharp constants. Everything rests on an estimate that bounds the error of the linear approximation when the derivative is Lipschitz continuous.
+for the \term{forward difference quotient} and the \term{central difference quotient}. Both tend to $f'(x)$ as $h\to0$ if $f$ is differentiable at $x$; for the central one, write it as the average of $D_h^+f(x)$ and $D_{-h}^+f(x)$. The question is how fast. A Taylor expansion, as in \cref{ch:series}, answers it most quickly, but the comparison lemma suffices and gives sharp constants. Everything rests on an estimate that bounds the error of the linear approximation when the derivative is Lipschitz continuous.
 
 \begin{lemma}[Remainder of the linear approximation]
 \label{lem:linear-remainder}
@@ -1088,7 +1088,7 @@ with the falling factorial of \cref{def:falling-factorial}, and the derivatives 
 \[
 p(x)=\sum_{k=0}^m\frac{p^{(k)}(0)}{k!}\,x^k .
 \]
-Chapter~8 asks to what extent other functions can be represented in this way, and this is the question of Taylor series. For $f(x)=1/x$ on $(0,\infty)$, induction gives $f^{(n)}(x)=(-1)^nn!/x^{n+1}$. For the sine, $\sin'=\cos$ and $\cos'=-\sin$ give the periodic pattern $\sin,\cos,-\sin,-\cos,\sin,\ldots$, which can be written as
+\Cref{ch:series} asks to what extent other functions can be represented in this way, and this is the question of Taylor series. For $f(x)=1/x$ on $(0,\infty)$, induction gives $f^{(n)}(x)=(-1)^nn!/x^{n+1}$. For the sine, $\sin'=\cos$ and $\cos'=-\sin$ give the periodic pattern $\sin,\cos,-\sin,-\cos,\sin,\ldots$, which can be written as
 \[
 \sin^{(n)}x=\sin\Bigl(x+\frac{n\pi}2\Bigr),
 \]
@@ -1429,7 +1429,7 @@ where we have used $f(c)=0$ and brought everything to the denominator $f'(x_k)$.
 so $x_{k+1}\in I$; and $K|e_{k+1}|\le(K|e_k|)^2\le q^2\le q$. By induction, all iterates are defined and lie in $I$, and $|e_{k+1}|\le Ke_k^2$ and $|e_{k+1}|\le q|e_k|$ for every $k$, which gives the third inequality. Squaring step by step, $K|e_k|\le(K|e_0|)^{2^k}=q^{2^k}$. Finally, if $x\in I$ and $x\ne c$, the mean value theorem gives $f(x)=f(x)-f(c)=f'(\xi)(x-c)\ne0$, since $f'(\xi)\ne0$.
 \end{proof}
 
-The constant $K=M/(2m)$ has a clear meaning. The error of the tangent is controlled by the curvature of the graph, measured by $M$, and turning this error in the value $f$ into an error in the position $x$ divides it by the slope, at least $m$. Steep functions with little curvature are easy for Newton's method; flat functions with strong curvature are hard. A computation with Taylor's theorem in Chapter~8 shows that, if $f''$ is continuous, the ratio $(x_{k+1}-c)/(x_k-c)^2$ tends to $f''(c)/(2f'(c))$; for $x^3-2x-5$ this is $6c/(2(3c^2-2))=0.56297\ldots$, the value observed above. For Heron's method, \eqref{eq:heron-error} gives this ratio exactly, $1/(2x_k)$, which tends to $1/(2\sqrt2)$.
+The constant $K=M/(2m)$ has a clear meaning. The error of the tangent is controlled by the curvature of the graph, measured by $M$, and turning this error in the value $f$ into an error in the position $x$ divides it by the slope, at least $m$. Steep functions with little curvature are easy for Newton's method; flat functions with strong curvature are hard. A computation with Taylor's theorem in \cref{ch:series} shows that, if $f''$ is continuous, the ratio $(x_{k+1}-c)/(x_k-c)^2$ tends to $f''(c)/(2f'(c))$; for $x^3-2x-5$ this is $6c/(2(3c^2-2))=0.56297\ldots$, the value observed above. For Heron's method, \eqref{eq:heron-error} gives this ratio exactly, $1/(2x_k)$, which tends to $1/(2\sqrt2)$.
 
 The hypotheses of the theorem hold near every simple zero of a function with a bounded second derivative.
 
@@ -1629,10 +1629,10 @@ Why distinguish these classes? Every error bound of this chapter assumed some sm
 \[
 D_h^0f(0)=\frac{h|h|-(-h)|h|}{2h}=|h| ,
 \]
-so its error is $|h|$, of first order only, not $O(h^2)$. In numerical analysis ``smooth'' therefore usually means ``having as many bounded derivatives as the method in question needs''. Volumes~XI and~XII state the precise smoothness each algorithm requires, and Chapter~8 shows, through Taylor's theorem, how the order of smoothness determines the attainable order of accuracy.
+so its error is $|h|$, of first order only, not $O(h^2)$. In numerical analysis ``smooth'' therefore usually means ``having as many bounded derivatives as the method in question needs''. Volumes~XI and~XII state the precise smoothness each algorithm requires, and \cref{ch:series} shows, through Taylor's theorem, how the order of smoothness determines the attainable order of accuracy.
 
 \bigskip
-With the derivative and the mean value theorem in hand, the next chapter turns to the inverse problem: recovering a function from its rate of change. The integral of \cref{ch:integration} is defined as a limit of sums, as the derivative is a limit of quotients, and the fundamental theorem of calculus, whose uniqueness half is \cref{cor:zero-derivative}, links the two. Chapter~8 then refines the mean value theorem into Taylor's theorem, which approximates a function by polynomials of any degree and quantifies the error.
+With the derivative and the mean value theorem in hand, the next chapter turns to the inverse problem: recovering a function from its rate of change. The integral of \cref{ch:integration} is defined as a limit of sums, as the derivative is a limit of quotients, and the fundamental theorem of calculus, whose uniqueness half is \cref{cor:zero-derivative}, links the two. \Cref{ch:series} then refines the mean value theorem into Taylor's theorem, which approximates a function by polynomials of any degree and quantifies the error.
 
 \chapternotes
 

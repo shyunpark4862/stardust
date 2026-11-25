@@ -214,6 +214,22 @@ The symbols used in this volume are collected here. Each is defined again, with 
 \item[$E(Q)$] the error $\int_a^bf-Q$ of a quadrature rule $Q$
 \end{symbols}
 
+\symbolgroup{Series and approximation}
+\begin{symbols}
+\item[$\sum_{k=m}^\infty a_k$] a series, the sequence of its partial sums $s_n=\sum_{k=m}^na_k$; also its sum $\lim_{n\to\infty}s_n$
+\item[$r_n$] the remainder $\sum_{k>n}a_k$ of a convergent series after the term $a_n$
+\item[$\limsup a_n$, $\liminf a_n$] the limit superior $\lim_{n\to\infty}\sup_{k\ge n}a_k$ and the limit inferior of $(a_n)$
+\item[$\gamma$] Euler's constant $\lim_{n\to\infty}(H_n-\Lambda(n))=0.57721\ldots$
+\item[$\zeta(p)$] the sum $\sum_{k\ge1}k^{-p}$, $p>1$
+\item[$R$] the radius of convergence of a power series
+\item[$E(x)$, $e^x$] the exponential series $\sum_{k\ge0}x^k/k!$
+\item[$P_nf(x;a)$] the Taylor polynomial $\sum_{k=0}^nf^{(k)}(a)(x-a)^k/k!$ of degree $n$ of $f$ at $a$
+\item[$R_nf(x;a)$] the remainder $f(x)-P_nf(x;a)$
+\item[$f=O(g)$, $f=o(g)$] $|f|\le C|g|$ near the limit point, and $|f|\le\varepsilon|g|$ near it for every $\varepsilon>0$
+\item[$f=\Omega(g)$, $f=\Theta(g)$] $|f|\ge c|g|$ with $c>0$ near the limit point, and both $f=O(g)$ and $f=\Omega(g)$
+\item[$f\sim g$] $f$ is asymptotically equal to $g$: $f-g=o(g)$; with a series on the right, an asymptotic expansion
+\end{symbols}
+
 \mainmatter
 \part{Foundations}
 \input{chapters/v1-01-logic-and-proof}
@@ -225,6 +241,7 @@ The symbols used in this volume are collected here. Each is defined again, with 
 \input{chapters/v1-05-limits-continuity}
 \input{chapters/v1-06-differentiation}
 \input{chapters/v1-07-integration}
+\input{chapters/v1-08-series-approximation}
 
 \backmatter
 \end{document}

@@ -1015,7 +1015,7 @@ so $I_{2m}/I_{2m+1}\to1$ by the squeeze theorem. By the product formulas,
 and the claim follows.
 \end{proof}
 
-Wallis found this product in 1656 by an interpolation argument of his own, long before integration by parts was available~\cite{edwards1979}. It converges slowly: the product up to $m=10$ is $1.53385\ldots$ and up to $m=1000$ it is $1.57040\ldots$, while $\pi/2=1.57079\ldots$; the error is about $\pi/(8m)$. Its importance is theoretical. Chapter~8 uses it to determine the constant $\sqrt{2\pi}$ in Stirling's formula for $n!$.
+Wallis found this product in 1656 by an interpolation argument of his own, long before integration by parts was available~\cite{edwards1979}. It converges slowly: the product up to $m=10$ is $1.53385\ldots$ and up to $m=1000$ it is $1.57040\ldots$, while $\pi/2=1.57079\ldots$; the error is about $\pi/(8m)$. Its importance is theoretical. \Cref{ch:series} uses it to determine the constant $\sqrt{2\pi}$ in Stirling's formula for $n!$.
 
 \subsection{Rational Functions and Partial Fractions}
 
@@ -1268,7 +1268,7 @@ With $f(x)=1/x$ the proposition gives $H_n-1\le\Lambda(n)\le H_{n-1}$ for the ha
 \[
 \Lambda(n)+\frac1n\le H_n\le\Lambda(n)+1 .
 \]
-So the harmonic numbers grow like the logarithm, $\Lambda(n)=\ln n$, and the difference $H_n-\ln n$ stays between $0$ and $1$; Chapter~8 shows that it converges, to Euler's constant $0.5772\ldots$. The proposition also shows that a series $\sum f(k)$ of a decreasing nonnegative function converges if and only if the integral $\int_1^\infty f$ does. This is the \term{integral test} of Chapter~8, and with \cref{prop:p-integrals} it settles the convergence of $\sum1/k^p$: convergent for $p>1$, divergent for $p\le1$.
+So the harmonic numbers grow like the logarithm, $\Lambda(n)=\ln n$, and the difference $H_n-\ln n$ stays between $0$ and $1$; \cref{ch:series} shows that it converges, to Euler's constant $0.5772\ldots$. The proposition also shows that a series $\sum f(k)$ of a decreasing nonnegative function converges if and only if the integral $\int_1^\infty f$ does. This is the \term{integral test} of \cref{ch:series}, and with \cref{prop:p-integrals} it settles the convergence of $\sum1/k^p$: convergent for $p>1$, divergent for $p\le1$.
 
 \subsection{The Gamma Function}
 
@@ -1703,7 +1703,7 @@ P(a\le X\le b)=\int_a^bp(x)\,dx .
 Probabilities are thus areas under the graph of $p$, and the total area is $1$. The uniform density on $[0,1]$ is $\mathbf 1_{[0,1]}$; the density $p(x)=\frac1\pi\cdot\frac1{1+x^2}$, the \term{Cauchy density}, has total area $1$ by the computation of \cref{sec:improper}, and $P(-1\le X\le1)=\frac1\pi(\arctan1-\arctan(-1))=\frac12$. Improper integrals are unavoidable in this setting. The expected value of $X$ is $\int_{-\infty}^\infty xp(x)\,dx$, provided this integral converges absolutely, and for the Cauchy density it does not: $\int_0^Rx\,dx/(1+x^2)=\frac12\Lambda(1+R^2)\to\infty$, by the substitution $u=1+x^2$ and \cref{prop:log-additive}. So a Cauchy-distributed quantity has no mean, a fact with consequences for the statistics of heavy-tailed data. The most important density, the normal density $e^{-x^2/2}/\sqrt{2\pi}$, involves the integral $\int_{-\infty}^\infty e^{-x^2/2}dx=\sqrt{2\pi}$, whose integrand has no elementary antiderivative, by \cref{thm:liouville} and the substitution $x=\sqrt2\,t$, but which can be evaluated with a double integral in Chapter~11. Volume~III builds probability theory on these ideas, with the Lebesgue integral of Volume~II in place of the Riemann integral.
 
 \bigskip
-With the derivative and the integral in hand, and the fundamental theorem linking them, the basic machinery of calculus is complete. Chapter~8 turns to infinite sums: it uses the integral test of \cref{sec:improper} to decide the convergence of series, and integration by parts to prove Taylor's theorem with an integral form of the remainder, which measures how well a function is approximated by polynomials. Chapter~9 then constructs the exponential function, the logarithm and the trigonometric functions rigorously, and shows that the function $\Lambda$ of this chapter is the natural logarithm.
+With the derivative and the integral in hand, and the fundamental theorem linking them, the basic machinery of calculus is complete. \Cref{ch:series} turns to infinite sums: it uses the integral test of \cref{sec:improper} to decide the convergence of series, and integration by parts to prove Taylor's theorem with an integral form of the remainder, which measures how well a function is approximated by polynomials. Chapter~9 then constructs the exponential function, the logarithm and the trigonometric functions rigorously, and shows that the function $\Lambda$ of this chapter is the natural logarithm.
 
 \chapternotes
 

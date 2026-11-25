@@ -8,7 +8,7 @@
 
 The chapter has three parts. The first part, \cref{sec:counting-principles,sec:perm-comb,sec:binomial,sec:ie-pigeonhole}, establishes the basic principles (the sum rule, the product rule, counting by bijections and counting in two ways), applies them to arrangements and selections, studies the binomial coefficients that arise and proves the principle of inclusion and exclusion and the pigeonhole principle. The second part, \cref{sec:recurrences,sec:gf}, turns to sequences of counts. A count that depends on a parameter $n$ often satisfies a recurrence, and \cref{sec:recurrences} shows how to solve the simplest recurrences; \cref{sec:gf} packs a whole sequence into a single formal power series, the generating function, so that recurrences and counting problems become algebra. The third part, \cref{sec:graphs,sec:trees}, introduces graphs and trees. A final section, \cref{sec:counting-probability}, shows that probabilities in models with equally likely outcomes are ratios of counts.
 
-The results of this chapter return throughout the series. The number of steps of an algorithm is a count (Volume~IV); the exact distribution of a rank statistic is a count of orderings (Volume~XIV); a sparse matrix is a graph with numbers on its edges (Volume~IX). As in the previous chapters, this is a review: every result is stated precisely, most are proved, and for the others we give the idea of the proof and a reference. Two topics that need analysis are deferred to Part~II: the growth of $n!$, described by Stirling's formula, and the precise behaviour of sums such as $1+\frac12+\cdots+\frac1n$; both are treated in Chapter~8.
+The results of this chapter return throughout the series. The number of steps of an algorithm is a count (Volume~IV); the exact distribution of a rank statistic is a count of orderings (Volume~XIV); a sparse matrix is a graph with numbers on its edges (Volume~IX). As in the previous chapters, this is a review: every result is stated precisely, most are proved, and for the others we give the idea of the proof and a reference. Two topics that need analysis are deferred to Part~II: the growth of $n!$, described by Stirling's formula, and the precise behaviour of sums such as $1+\frac12+\cdots+\frac1n$; both are treated in \cref{ch:series}.
 
 \section{Basic Counting Principles}
 \label{sec:counting-principles}
@@ -156,7 +156,7 @@ In the matrix picture of a relation (\cref{fig:relation}B), $r(a)$ is the number
 \sum_{n=1}^{N}\tau(n)=\sum_{k=1}^{N}\Bigl\lfloor\frac Nk\Bigr\rfloor ,
 \label{eq:divisor-sum}
 \end{equation}
-because, for a fixed $k$, the numbers $n\le N$ divisible by $k$ are the $\lfloor N/k\rfloor$ multiples $k,2k,\ldots$ of $k$ (\cref{sec:division}). For $N=10$ the left side is $1+2+2+3+2+4+2+4+3+4=27$ and the right side is $10+5+3+2+2+1+1+1+1+1=27$. The function $\tau$ jumps around irregularly, while the right side is easy to estimate: since $\lfloor N/k\rfloor\le N/k$, the average of $\tau(1),\ldots,\tau(N)$ is at most $1+\frac12+\cdots+\frac1N$, a sum that grows only like the natural logarithm of $N$ (Chapter~8). A typical number has few divisors, a fact that is far from evident when one looks at the divisors one number at a time.
+because, for a fixed $k$, the numbers $n\le N$ divisible by $k$ are the $\lfloor N/k\rfloor$ multiples $k,2k,\ldots$ of $k$ (\cref{sec:division}). For $N=10$ the left side is $1+2+2+3+2+4+2+4+3+4=27$ and the right side is $10+5+3+2+2+1+1+1+1+1=27$. The function $\tau$ jumps around irregularly, while the right side is easy to estimate: since $\lfloor N/k\rfloor\le N/k$, the average of $\tau(1),\ldots,\tau(N)$ is at most $1+\frac12+\cdots+\frac1N$, a sum that grows only like the natural logarithm of $N$ (\cref{ch:series}). A typical number has few divisors, a fact that is far from evident when one looks at the divisors one number at a time.
 
 \section{Permutations and Combinations}
 \label{sec:perm-comb}
@@ -507,7 +507,7 @@ Let $n\ge1$.
 and note that $(n-j)/(k-j)\ge n/k$ for $0\le j<k$, because $(n-j)k-n(k-j)=j(n-k)\ge0$.
 \end{proof}
 
-The bounds in (ii) are far apart on an absolute scale but close on a logarithmic one: they say that $\log_2\binom n{\lfloor n/2\rfloor}$ lies between $n-\log_2(n+1)$ and $n$. In Chapter~8, Stirling's formula will show that $\binom{2m}{m}$ is approximately $4^m/\sqrt{\pi m}$, so that the middle coefficient of row $n$ is close to $2^n\sqrt{2/(\pi n)}$ for even $n$. \Cref{fig:binomial-size} shows a row of the triangle and the ratio of the middle coefficient to $2^n$ together with these estimates. A consequence that is surprising at first is that the subsets of size close to $n/2$ make up almost all subsets: the row has the shape of a bell, and its mass concentrates in a band of width about $\sqrt n$ around the middle, a first glimpse of the central limit theorem of Volume~III.
+The bounds in (ii) are far apart on an absolute scale but close on a logarithmic one: they say that $\log_2\binom n{\lfloor n/2\rfloor}$ lies between $n-\log_2(n+1)$ and $n$. In \cref{ch:series}, Stirling's formula will show that $\binom{2m}{m}$ is approximately $4^m/\sqrt{\pi m}$, so that the middle coefficient of row $n$ is close to $2^n\sqrt{2/(\pi n)}$ for even $n$. \Cref{fig:binomial-size} shows a row of the triangle and the ratio of the middle coefficient to $2^n$ together with these estimates. A consequence that is surprising at first is that the subsets of size close to $n/2$ make up almost all subsets: the row has the shape of a bell, and its mass concentrates in a band of width about $\sqrt n$ around the middle, a first glimpse of the central limit theorem of Volume~III.
 
 \begin{figure}
 \sdpanel{A}{\begin{tikzpicture}
@@ -635,7 +635,7 @@ D_n-(n-1)(D_{n-1}+D_{n-2})=D_{n-1}-(n-1)D_{n-2}+(-1)^n=(-1)^{n-1}+(-1)^n=0.
 \]
 \end{proof}
 
-The second recurrence also has a combinatorial proof: in a derangement, the element $n$ goes to some $i\ne n$, which can be chosen in $n-1$ ways; either $i$ goes back to $n$, and the remaining $n-2$ elements form a derangement, or it does not, and then a slight modification yields a derangement of $n-1$ elements~\cite[Sect.~2.2]{stanley2012ec1}. \Cref{tab:derangements} lists the first values. The fraction $D_n/n!$ of permutations that are derangements settles down very quickly. The sum in the theorem is a partial sum of the series $\sum_{j\ge0}(-1)^j/j!$, which Chapter~8 shows to converge to $1/e\approx0.367879$, where $e\approx2.718282$ is the base of the natural logarithm. The error after the term $j=n$ is less than $1/(n+1)!$, so for $n\ge1$ the number $D_n$ is the integer nearest to $n!/e$. Whether there are $5$ hats or $500$, the probability that nobody gets their own hat is about $37$ per cent.
+The second recurrence also has a combinatorial proof: in a derangement, the element $n$ goes to some $i\ne n$, which can be chosen in $n-1$ ways; either $i$ goes back to $n$, and the remaining $n-2$ elements form a derangement, or it does not, and then a slight modification yields a derangement of $n-1$ elements~\cite[Sect.~2.2]{stanley2012ec1}. \Cref{tab:derangements} lists the first values. The fraction $D_n/n!$ of permutations that are derangements settles down very quickly. The sum in the theorem is a partial sum of the series $\sum_{j\ge0}(-1)^j/j!$, which \cref{ch:series} shows to converge to $1/e\approx0.367879$, where $e\approx2.718282$ is the base of the natural logarithm. The error after the term $j=n$ is less than $1/(n+1)!$, so for $n\ge1$ the number $D_n$ is the integer nearest to $n!/e$. Whether there are $5$ hats or $500$, the probability that nobody gets their own hat is about $37$ per cent.
 
 \begin{table}
 \sdfloat{%
@@ -958,7 +958,7 @@ provide an example. They begin $H_1=1$, $H_2=\frac32$, $H_3=\frac{11}6$, $H_4=\f
 \[
 \sum_{k=1}^{n}H_k=\sum_{k=1}^{n}\sum_{j=1}^{k}\frac1j=\sum_{j=1}^{n}\frac{n-j+1}{j}=(n+1)H_n-n .
 \]
-Harmonic numbers occur constantly in the analysis of algorithms: if quicksort spends $m-1$ comparisons on partitioning a list of $m$ keys, its average number of comparisons on $n$ distinct keys is $2(n+1)H_n-4n$ (Volume~IV), and the average number of divisors in \eqref{eq:divisor-sum} is at most $H_N$. Chapter~8 shows that $H_n$ differs from $\ln n$ by a quantity that tends to a constant, so that $H_n$ grows without bound, but very slowly.
+Harmonic numbers occur constantly in the analysis of algorithms: if quicksort spends $m-1$ comparisons on partitioning a list of $m$ keys, its average number of comparisons on $n$ distinct keys is $2(n+1)H_n-4n$ (Volume~IV), and the average number of divisors in \eqref{eq:divisor-sum} is at most $H_N$. \Cref{ch:series} shows that $H_n$ differs from $\ln n$ by a quantity that tends to a constant, so that $H_n$ grows without bound, but very slowly.
 
 \section{Generating Functions}
 \label{sec:gf}
@@ -967,7 +967,7 @@ A sequence $a_0,a_1,a_2,\ldots$ of numbers is an infinite object, and a recurren
 
 \subsection{Formal Power Series}
 
-In calculus, a power series is a function of $x$, defined where the series converges (Chapter~8). In counting, convergence is beside the point: the series is merely a convenient way of writing the sequence of its coefficients, and $x$ is a placeholder.
+In calculus, a power series is a function of $x$, defined where the series converges (\cref{ch:series}). In counting, convergence is beside the point: the series is merely a convenient way of writing the sequence of its coefficients, and $x$ is a placeholder.
 
 \begin{definition}[Formal power series]
 \label{def:fps}
@@ -1011,7 +1011,7 @@ The inverse of $A(x)$ is written $1/A(x)$. The most important example is the geo
 \frac1{1-x}=\sum_{n\ge0}x^n,\qquad\text{and more generally}\qquad\frac1{1-cx}=\sum_{n\ge0}c^nx^n\quad(c\in\mathbb C).
 \label{eq:geometric-series}
 \end{equation}
-These are identities in $\mathbb C[[x]]$, valid without any condition on $x$, which is not a number. When $|x|<1$ is a number, the series also converges to $1/(1-x)$ in the sense of calculus, and Chapter~8 shows that formal and analytic computations agree wherever the series converge; but the formal theory does not need this.
+These are identities in $\mathbb C[[x]]$, valid without any condition on $x$, which is not a number. When $|x|<1$ is a number, the series also converges to $1/(1-x)$ in the sense of calculus, and \cref{ch:series} shows that formal and analytic computations agree wherever the series converge; but the formal theory does not need this.
 
 \begin{proposition}
 \label{prop:gf-rules}
