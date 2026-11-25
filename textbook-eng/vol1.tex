@@ -184,6 +184,17 @@ The symbols used in this volume are collected here. Each is defined again, with 
 \item[$\arcsin$, $\arccos$, $\arctan$] the inverses of $\sin$ on $[-\pi/2,\pi/2]$, $\cos$ on $[0,\pi]$, $\tan$ on $(-\pi/2,\pi/2)$
 \end{symbols}
 
+\symbolgroup{Differentiation}
+\begin{symbols}
+\item[$f'(a)$, $\frac{df}{dx}(a)$] the derivative of $f$ at $a$; $f'$ is the derivative as a function
+\item[$f'_+(a)$, $f'_-(a)$] the right and the left derivative of $f$ at $a$
+\item[$f''$, $f^{(n)}$, $\frac{d^nf}{dx^n}$] the second and the $n$th derivative of $f$, with $f^{(0)}=f$
+\item[$o(h^p)$, $O(h^p)$] a quantity $r(h)$ with $r(h)/h^p\to0$, and one with $|r(h)|\le C|h|^p$ for small $h\ne0$ (as $h\to0$)
+\item[$\kappa_f(x)$] the relative condition number $|xf'(x)/f(x)|$ of $f$ at $x$
+\item[$D_h^+f(x)$, $D_h^0f(x)$] the forward and the central difference quotient, $(f(x+h)-f(x))/h$ and $(f(x+h)-f(x-h))/(2h)$
+\item[$C^k(I)$, $C^\infty(I)$] the $k$ times continuously differentiable functions and the smooth functions on the interval $I$
+\end{symbols}
+
 \mainmatter
 \part{Foundations}
 \input{chapters/v1-01-logic-and-proof}
@@ -193,6 +204,7 @@ The symbols used in this volume are collected here. Each is defined again, with 
 
 \part{Calculus}
 \input{chapters/v1-05-limits-continuity}
+\input{chapters/v1-06-differentiation}
 
 \backmatter
 \end{document}

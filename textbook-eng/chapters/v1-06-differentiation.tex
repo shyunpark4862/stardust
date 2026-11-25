@@ -1,0 +1,1633 @@
+%% Volume I, Chapter 6: Differentiation
+\chapter{Differentiation}
+\label{ch:differentiation}
+
+\abstract{Seen through a strong enough magnifying glass, the graph of a smooth function looks like a straight line. The derivative is the slope of that line, and replacing a function by the line near a point is perhaps the most productive idea in calculus. Newton's method finds a root by solving the linear problem instead of the real one, and repeating; error analysis asks by how much the slope amplifies a small change in the data; optimisation looks for the points at which the line is horizontal. This chapter defines the derivative, derives its rules, and proves the mean value theorem, which turns information about slopes into the inequalities between values that the error estimates of later volumes need.}
+
+\Cref{ch:limits} studied functions that change only a little when their argument changes a little. This chapter asks \emph{how much} a function changes. The answer, for the functions that matter most, is that near a point $a$ the change $f(a+h)-f(a)$ is very nearly proportional to $h$, and the constant of proportionality is the derivative $f'(a)$. Most readers have computed many derivatives and know the rules for doing so. We state these rules precisely and prove them, but the weight of the chapter lies elsewhere: on the mean value theorem and its consequences. The theorem says that a difference quotient $(f(b)-f(a))/(b-a)$ equals the derivative at some intermediate point. It converts a bound on a derivative into a bound on a difference of function values, and almost every error estimate in numerical analysis is obtained in this way.
+
+The chapter is organised as follows. \Cref{sec:derivative} defines the derivative as a limit of difference quotients and, equivalently, as the slope of the best linear approximation, and it shows what can go wrong at a point where a function is not differentiable. \Cref{sec:rules} proves the rules of differentiation, among them the chain rule and the rule for inverse functions, and computes the derivatives of powers, roots and trigonometric functions. \Cref{sec:extrema,sec:mvt} contain the theory: Fermat's theorem on extrema, the theorems of Rolle, Lagrange and Cauchy, and their consequences for monotonicity, Lipschitz constants and inequalities. The next three sections apply this theory. \Cref{sec:conditioning} measures how errors in the data propagate through a function and how accurately a derivative can be approximated by a difference quotient; \cref{sec:lhopital} proves l'H\^opital's rule; \cref{sec:convexity} treats higher derivatives and convex functions. \Cref{sec:newton} analyses Newton's method, of which Heron's method of \cref{sec:completeness} is a special case, and proves that it converges quadratically. \Cref{sec:darboux} ends the chapter with a surprising property of derivatives, the intermediate value property, and with the classes $C^k$ of functions with continuous derivatives.
+
+Two topics are postponed. Taylor's theorem, which approximates a function by polynomials of higher degree and refines several estimates of this chapter, is the subject of Chapter~8; the exponential function and the logarithm, whose derivatives we mention but do not prove, are defined in Chapter~9. Functions of several variables follow in Chapter~10. As in the preceding chapters this is a review: every result is stated precisely, and the important ones are proved.
+
+\section{The Derivative}
+\label{sec:derivative}
+
+\subsection{Difference Quotients and Their Limit}
+
+Let $f$ be a function and $a$ a point of its domain. If the argument changes from $a$ to $a+h$, the value changes from $f(a)$ to $f(a+h)$, and the ratio
+\[
+\frac{f(a+h)-f(a)}{h}\qquad(h\ne0)
+\]
+is the \term{difference quotient} of $f$ at $a$ with increment $h$. Geometrically, it is the slope of the \term{secant} through the points $(a,f(a))$ and $(a+h,f(a+h))$ of the graph. Physically, if $f(t)$ is the position of a moving body at time $t$, it is the average velocity during the time interval between $a$ and $a+h$. As $h$ shrinks, the secant turns about the point $(a,f(a))$ and, for a well-behaved function, approaches a limiting line, the tangent; the average velocity approaches the velocity at the instant $a$. \Cref{fig:secants} shows three secants of the parabola $y=x^2$ through the point $(1,1)$ and the tangent they approach.
+
+\begin{figure}
+\sdfloat{%
+\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.6\textwidth, height=0.46\textwidth, xmin=0, xmax=2.5, ymin=0, ymax=6.2,
+  xtick={0,1,1.25,1.6,2.2}, xticklabels={0,$a$,,,$a+h$}, ytick={0,1,2,4,6}, xlabel={$x$}, ylabel={$y$}]
+\addplot[black!45, dashed, line width=0.5pt, domain=0.6875:2.4, samples=2] {1+3.2*(x-1)};
+\addplot[black!45, dashed, line width=0.5pt, domain=0.6154:2.4, samples=2] {1+2.6*(x-1)};
+\addplot[black!45, dashed, line width=0.5pt, domain=0.5556:2.4, samples=2] {1+2.25*(x-1)};
+\addplot[black, line width=0.5pt, domain=0.5:2.4, samples=2] {1+2*(x-1)};
+\addplot[black, line width=0.9pt, domain=0:2.45, samples=80] {x^2};
+\fill[black] (axis cs:1,1) circle (1.6pt);
+\fill[black] (axis cs:2.2,4.84) circle (1.3pt) (axis cs:1.6,2.56) circle (1.3pt) (axis cs:1.25,1.5625) circle (1.3pt);
+\end{axis}
+\end{tikzpicture}}{Secants and the tangent of $f(x)=x^2$ at $a=1$. The secants (dashed) through $(1,1)$ and $(1+h,(1+h)^2)$ for $h=1.2$, $0.6$ and $0.25$ have slopes $2+h=3.2$, $2.6$ and $2.25$. As $h\to0$ they approach the tangent (thin solid line), whose slope is the derivative $f'(1)=2$.\label{fig:secants}}
+\end{figure}
+
+For $f(x)=x^2$ the computation is short:
+\[
+\frac{(a+h)^2-a^2}{h}=\frac{2ah+h^2}{h}=2a+h ,
+\]
+and as $h\to0$ this tends to $2a$. The slope of the tangent at $(a,a^2)$ is therefore $2a$; at $a=1$ it is $2$, as in the figure. The value $h=0$ itself is excluded, since the difference quotient is then the meaningless expression $0/0$; this is why derivatives are limits and not values, and why \cref{ch:limits} had to come first.
+
+We work with functions on intervals. Throughout this chapter an \term{interval} is assumed to contain more than one point; then every point of it is an accumulation point of it, in the sense of \cref{def:accumulation}, and limits at its points make sense.
+
+\begin{definition}[Derivative]
+\label{def:derivative}
+Let $I$ be an interval, $f\colon I\to\mathbb R$ and $a\in I$. The function $f$ is \term{differentiable at} $a$ if the limit
+\begin{equation}
+f'(a)\coloneqq\lim_{h\to0}\frac{f(a+h)-f(a)}{h}
+\label{eq:derivative}
+\end{equation}
+exists as a real number, where $h$ ranges over the numbers $h\ne0$ with $a+h\in I$. The number $f'(a)$ is the \term{derivative} of $f$ at $a$. The function $f$ is \term{differentiable on} a subset $S$ of $I$ if it is differentiable at every point of $S$, and \term{differentiable} if it is differentiable on $I$; the function $f'\colon a\mapsto f'(a)$, defined on the set of points at which $f$ is differentiable, is the \term{derivative} of $f$.
+\end{definition}
+
+Substituting $x=a+h$ gives the equivalent form
+\begin{equation}
+f'(a)=\lim_{x\to a}\frac{f(x)-f(a)}{x-a},
+\label{eq:derivative-x}
+\end{equation}
+in which the difference quotient is a function of $x\in I\setminus\{a\}$; the two limits exist together and are equal, by the definition of a limit. We shall use whichever form is more convenient. If $a$ is an end of $I$, for example $a$ the left end, then only increments $h>0$ are allowed, and the derivative is a limit from one side; we return to this in \cref{subsec:one-sided}. The \term{tangent} of the graph of $f$ at $a$ is the line
+\[
+y=f(a)+f'(a)(x-a)
+\]
+through $(a,f(a))$ with slope $f'(a)$. For a body moving along a line with position $s(t)$ at time $t$, the derivative $s'(t)$ is its \term{velocity}. A body falling from rest covers the distance $s(t)=\frac g2t^2$ in time $t$, where $g\approx9.81\,\mathrm{m/s^2}$; by the computation above, with $a=t$, its velocity is $s'(t)=gt$.
+
+Several notations are in use. Besides $f'(a)$, which goes back to Lagrange~\cite{lagrange1797}, one writes
+\[
+\frac{df}{dx}(a),\qquad\frac{df}{dx}\Big|_{x=a},\qquad\frac{d}{dx}f(x)\Big|_{x=a},
+\]
+a notation introduced by Leibniz in the first publication on the differential calculus~\cite{leibniz1684,edwards1979}. In Leibniz's notation the derivative of the function $x\mapsto x^2$ is written $\frac d{dx}x^2=2x$, without naming the function; this is convenient, and we use it freely, but it should be read as a statement about the function $x\mapsto x^2$, not about a number $x^2$. Physicists write $\dot s(t)$ for the derivative with respect to time, following Newton~\cite{edwards1979}. None of these notations is a fraction: $df/dx$ is a single symbol, the limit of the quotients $\Delta f/\Delta x$ of the increments $\Delta f=f(a+h)-f(a)$ and $\Delta x=h$. That it often behaves like a fraction, as in the chain rule of \cref{sec:rules}, is a theorem in each case.
+
+\emph{Examples.} The following derivatives are computed directly from the definition.
+\begin{itemize}
+\item A constant function $f(x)=c$ has $f'(a)=0$ at every point, since all difference quotients are $0$. The identity $f(x)=x$ has $f'(a)=1$, since all difference quotients are $1$.
+\item For $f(x)=1/x$ on $(0,\infty)$ or on $(-\infty,0)$, and $a$ in the same interval,
+\[
+\frac1h\Bigl(\frac1{a+h}-\frac1a\Bigr)=\frac{a-(a+h)}{h\,a(a+h)}=-\frac1{a(a+h)}\to-\frac1{a^2}
+\]
+as $h\to0$, by the limit laws (\cref{thm:function-limit-laws}).
+\item For $f(x)=\sqrt x$ on $[0,\infty)$ and $a>0$, multiplying numerator and denominator by $\sqrt{a+h}+\sqrt a$ gives
+\[
+\frac{\sqrt{a+h}-\sqrt a}h=\frac{(a+h)-a}{h\,(\sqrt{a+h}+\sqrt a)}=\frac1{\sqrt{a+h}+\sqrt a}\to\frac1{2\sqrt a},
+\]
+because the square root is continuous at $a$ (\cref{sec:continuity}). At $a=0$, however, the difference quotient is $\sqrt h/h=1/\sqrt h$ for $h>0$, which tends to $\infty$. The square root is not differentiable at $0$; its graph has a vertical tangent there.
+\item The absolute value $f(x)=|x|$ is differentiable at every $a\ne0$, with $f'(a)=1$ for $a>0$ and $f'(a)=-1$ for $a<0$, because it agrees with $x$ or with $-x$ on an interval around $a$, and the limit \eqref{eq:derivative} only involves values near $a$. At $a=0$ the difference quotient is $|h|/h=\operatorname{sign}h$, which has no limit as $h\to0$ (\cref{sec:function-limits}). So $|x|$ is not differentiable at $0$, the standard example already mentioned in \cref{sec:existence}.
+\end{itemize}
+
+\subsection{The Best Linear Approximation}
+
+The definition of the derivative as a limit of slopes is natural for computation. For theory, and for the generalisation to several variables in Chapter~10, a second description is more useful: the derivative is the coefficient of the best linear approximation. To state it we need a way of saying that a quantity is small compared with $h$.
+
+\begin{definition}[Landau symbols]
+\label{def:landau}
+Let $r$ be a function defined for all $h\ne0$ in some set that has $0$ as an accumulation point, and let $p\ge0$. We write
+\begin{enumerate}
+\item $r(h)=o(h^p)$ as $h\to0$, read ``$r(h)$ is little-oh of $h^p$'', if $\lim_{h\to0}r(h)/h^p=0$;
+\item $r(h)=O(h^p)$ as $h\to0$, read ``$r(h)$ is big-oh of $h^p$'', if there are constants $C\ge0$ and $\delta>0$ with $|r(h)|\le C|h|^p$ for all $h$ in the domain of $r$ with $0<|h|<\delta$.
+\end{enumerate}
+\end{definition}
+
+Thus $r(h)=o(h)$ means that $r(h)$ tends to zero faster than $h$: the ratio $r(h)/h$ becomes arbitrarily small. For example, $h^2=o(h)$, and more generally $h^q=o(h^p)$ whenever $q>p$, since $h^q/h^p=h^{q-p}\to0$; but $h=O(h)$ is not $o(h)$, and $|h|^{1/2}$ is neither $o(h)$ nor $O(h)$. Every $O(h^q)$ with $q>p$ is $o(h^p)$. Chapter~8 develops these symbols systematically, also for limits at infinity, and here we need only the two cases of the definition. An equation such as $f(a+h)=f(a)+mh+o(h)$ is shorthand for the statement that the difference $f(a+h)-f(a)-mh$ is $o(h)$.
+
+\begin{theorem}[Linear approximation]
+\label{thm:linear-approx}
+Let $I$ be an interval, $f\colon I\to\mathbb R$, $a\in I$ and $m\in\mathbb R$. Then $f$ is differentiable at $a$ with $f'(a)=m$ if and only if
+\begin{equation}
+f(a+h)=f(a)+mh+r(h)\qquad\text{with}\qquad r(h)=o(h)\ \text{as }h\to0 .
+\label{eq:linear-approx}
+\end{equation}
+In particular, at most one number $m$ has this property.
+\end{theorem}
+
+\begin{proof}
+Define $r(h)\coloneqq f(a+h)-f(a)-mh$ for $h\ne0$ with $a+h\in I$. Then
+\[
+\frac{r(h)}h=\frac{f(a+h)-f(a)}h-m ,
+\]
+so $r(h)/h\to0$ if and only if the difference quotient tends to $m$. The uniqueness follows from the uniqueness of limits (\cref{prop:function-limit-unique}).
+\end{proof}
+
+The theorem says that the affine function $h\mapsto f(a)+f'(a)h$, whose graph is the tangent, approximates $f(a+h)$ with an error that is negligible compared with $h$, and that no other line does so. Indeed, a line $f(a)+m'h$ through the same point with a different slope $m'\ne f'(a)$ has the error $f(a+h)-f(a)-m'h=(f'(a)-m')h+o(h)$, whose ratio to $h$ tends to $f'(a)-m'\ne0$; and a line $c+m'h$ with $c\ne f(a)$ has an error that does not even tend to zero, once we know that differentiable functions are continuous (\cref{prop:diff-continuous} below). In this sense the tangent is the \emph{best linear approximation} of $f$ near $a$. For $f(x)=x^2$ the error is exactly $r(h)=(a+h)^2-a^2-2ah=h^2$. For $f(x)=\sqrt x$ at $a=1$, the approximation $\sqrt{1+h}\approx1+\frac h2$ gives $\sqrt{1.1}\approx1.05$, while $\sqrt{1.1}=1.0488\ldots$; the error $0.0012$ is about $h^2/8$, and halving $h$ divides it by about four.
+
+This is the precise meaning of the picture in the abstract. If we look at the graph of $f$ near $(a,f(a))$ through a magnifying glass that enlarges by a factor $1/h$, the deviation of the graph from the tangent, which is $o(h)$, is enlarged to $o(h)/h$, which tends to zero; the stronger the magnification, the straighter the graph appears. The graph of $|x|$ at $0$ looks the same at every magnification: it never straightens out.
+
+A variant of \eqref{eq:linear-approx} avoids the remainder altogether. It is due in this form to Carath\'eodory~\cite{bartle2011} and makes several proofs below particularly simple.
+
+\begin{lemma}[Carath\'eodory's form of the derivative]
+\label{lem:caratheodory}
+Let $I$ be an interval, $f\colon I\to\mathbb R$ and $a\in I$. Then $f$ is differentiable at $a$ if and only if there is a function $\varphi\colon I\to\mathbb R$ that is continuous at $a$ and satisfies
+\begin{equation}
+f(x)-f(a)=\varphi(x)\,(x-a)\qquad\text{for all }x\in I .
+\label{eq:caratheodory}
+\end{equation}
+In this case $\varphi(a)=f'(a)$.
+\end{lemma}
+
+\begin{proof}
+If $f$ is differentiable at $a$, define $\varphi(x)$ as the difference quotient $(f(x)-f(a))/(x-a)$ for $x\ne a$ and $\varphi(a)\coloneqq f'(a)$. Then \eqref{eq:caratheodory} holds for $x\ne a$ by construction and for $x=a$ because both sides are $0$, and $\varphi$ is continuous at $a$ by \eqref{eq:derivative-x} and \cref{thm:continuity-forms}. Conversely, if $\varphi$ exists, then for $x\ne a$ the difference quotient equals $\varphi(x)$, which tends to $\varphi(a)$ as $x\to a$ because $\varphi$ is continuous at $a$.
+\end{proof}
+
+The function $\varphi$ is the \emph{slope function} of $f$ at $a$: $\varphi(x)$ is the slope of the secant from $a$ to $x$, completed at $x=a$ by the slope of the tangent. Differentiability means that this completion can be made continuously.
+
+\subsection{Differentiability and Continuity}
+
+\begin{proposition}
+\label{prop:diff-continuous}
+If $f$ is differentiable at $a$, then $f$ is continuous at $a$.
+\end{proposition}
+
+\begin{proof}
+By \cref{lem:caratheodory}, $f(x)=f(a)+\varphi(x)(x-a)$ with $\varphi$ continuous at $a$. The right side is continuous at $a$ by \cref{thm:continuity-algebra}, and its value at $a$ is $f(a)$.
+\end{proof}
+
+The proof can also be written with limits: $f(x)-f(a)=\frac{f(x)-f(a)}{x-a}(x-a)\to f'(a)\cdot0=0$ as $x\to a$. Either way, the point is that the difference $f(x)-f(a)$ is the product of a bounded quantity, the slope, and a small one, the increment.
+
+The converse is false, as $|x|$ at $0$ shows: continuity says that the change of $f$ tends to zero with $h$, differentiability that it does so proportionally to $h$. By contraposition, a function that is discontinuous at a point is not differentiable there; the step function $H$ of \cref{prop:step-limit} has no derivative at $0$. The implication ``differentiable $\Rightarrow$ continuous'' was used in \cref{sec:implication} as an example of the phrase ``only if''.
+
+\subsection{One-Sided Derivatives and Failure of Differentiability}
+\label{subsec:one-sided}
+
+The examples of $|x|$ and $\sqrt x$ suggest looking at the difference quotient on each side of the point separately.
+
+\begin{definition}[One-sided derivatives]
+\label{def:one-sided-derivative}
+Let $I$ be an interval, $f\colon I\to\mathbb R$ and $a\in I$. If $a$ is not the right end of $I$, the \term{right derivative} of $f$ at $a$ is
+\[
+f'_+(a)\coloneqq\lim_{h\to0^+}\frac{f(a+h)-f(a)}h ,
+\]
+provided this one-sided limit exists as a real number. If $a$ is not the left end of $I$, the \term{left derivative} $f'_-(a)$ is defined in the same way with $h\to0^-$.
+\end{definition}
+
+\begin{proposition}
+\label{prop:one-sided-derivatives}
+Let $a$ be an interior point of the interval $I$. Then $f$ is differentiable at $a$ if and only if both one-sided derivatives exist and are equal, and then $f'(a)=f'_+(a)=f'_-(a)$. If $a$ is the left end of $I$, then $f$ is differentiable at $a$ if and only if $f'_+(a)$ exists, and $f'(a)=f'_+(a)$; similarly at the right end.
+\end{proposition}
+
+\begin{proof}
+This is \cref{prop:one-sided-limits} applied to the difference quotient as a function of $h$. At the left end only positive $h$ occur in \eqref{eq:derivative}, so the derivative is the right derivative.
+\end{proof}
+
+A function on a closed interval $[a,b]$ that is differentiable in the sense of \cref{def:derivative} therefore has one-sided derivatives at the ends. Many theorems below require only differentiability on the open interval $(a,b)$ together with continuity on $[a,b]$; this allows functions such as $\sqrt x$ on $[0,1]$, which has no derivative at $0$.
+
+A function on an interval can fail to be differentiable at an interior point in several characteristic ways, shown in \cref{fig:nondiff}.
+\begin{itemize}
+\item A \term{corner}: both one-sided derivatives exist but differ. For $|x|$ at $0$, $f'_+(0)=1$ and $f'_-(0)=-1$. The function $\max(x,x^2)$ has corners at $0$ and $1$.
+\item A \term{vertical tangent}: the difference quotient tends to $\infty$, or to $-\infty$, from both sides. For the real cube root $f(x)=x^{1/3}$, defined on all of $\mathbb R$ for odd roots as in \cref{sec:monotone-functions}, the difference quotient at $0$ is $h^{1/3}/h=1/h^{2/3}\to\infty$ as $h\to0$.
+\item A \term{cusp}: the difference quotient tends to $\infty$ from one side and to $-\infty$ from the other. For $f(x)=x^{2/3}=(x^{1/3})^2$, the difference quotient at $0$ is $h^{2/3}/h=1/h^{1/3}$, which tends to $\infty$ as $h\to0^+$ and to $-\infty$ as $h\to0^-$.
+\item An \term{oscillation}: the difference quotient has no limit, finite or infinite, from either side. The function $f(x)=x\sin(1/x)$, with $f(0)=0$, is continuous at $0$ (\cref{sec:continuity}), but its difference quotient at $0$ is $\sin(1/h)$, which oscillates between $-1$ and $1$ and has no limit.
+\end{itemize}
+
+\begin{figure}
+\sdpanel{A}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.49\textwidth, height=0.34\textwidth, xmin=-1.1, xmax=1.1, ymin=-0.05, ymax=1.1,
+  xtick={-1,0,1}, ytick={0,0.5,1}, xlabel={$x$}]
+\addplot[black, line width=0.7pt, domain=-1:1, samples=3] {abs(x)};
+\end{axis}
+\end{tikzpicture}}\hfill
+\sdpanel{B}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.49\textwidth, height=0.34\textwidth, xmin=-1.1, xmax=1.1, ymin=-1.15, ymax=1.15,
+  xtick={-1,0,1}, ytick={-1,0,1}, xlabel={$x$}]
+\addplot[black, line width=0.7pt, domain=-1:1, samples=201] {sign(x)*abs(x)^(1/3)};
+\end{axis}
+\end{tikzpicture}}
+\sdpanelrow
+\sdpanel{C}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.49\textwidth, height=0.34\textwidth, xmin=-1.1, xmax=1.1, ymin=-0.05, ymax=1.1,
+  xtick={-1,0,1}, ytick={0,0.5,1}, xlabel={$x$}]
+\addplot[black, line width=0.7pt, domain=-1:1, samples=201] {abs(x)^(2/3)};
+\end{axis}
+\end{tikzpicture}}\hfill
+\sdpanel{D}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.49\textwidth, height=0.34\textwidth, xmin=-0.32, xmax=0.32, ymin=-0.32, ymax=0.32,
+  xtick={-0.3,0,0.3}, xticklabels={$-0.3$,0,$0.3$}, ytick={-0.3,0,0.3}, yticklabels={$-0.3$,0,$0.3$}, xlabel={$x$}]
+\addplot[black!45, densely dotted, line width=0.5pt, domain=-0.3:0.3, samples=3] {abs(x)};
+\addplot[black!45, densely dotted, line width=0.5pt, domain=-0.3:0.3, samples=3] {-abs(x)};
+\addplot[black, line width=0.4pt, domain=3.4:150, samples=1500] ({1/x},{sin(deg(x))/x});
+\addplot[black, line width=0.4pt, domain=3.4:150, samples=1500] ({-1/x},{sin(deg(x))/x});
+\end{axis}
+\end{tikzpicture}}
+\caption{Four ways of failing to be differentiable at $0$. (A) A corner: $|x|$ has the one-sided derivatives $-1$ and $1$. (B) A vertical tangent: the difference quotient of $x^{1/3}$ tends to $\infty$. (C) A cusp: the difference quotient of $x^{2/3}$ tends to $\infty$ from the right and to $-\infty$ from the left. (D) An oscillation: the difference quotient $\sin(1/h)$ of $x\sin(1/x)$ has no limit; the graph oscillates between the lines $y=\pm x$ (dotted) and is drawn for $|x|\ge1/150$.}
+\label{fig:nondiff}
+\end{figure}
+
+In all four examples the function fails to be differentiable at one point only, and the functions met so far, built from polynomials, roots, the absolute value and the trigonometric functions, are differentiable except at isolated points. One might therefore believe that a continuous function must be differentiable at most points. This belief is wrong, as the following note explains.
+
+\begin{note}{Continuous functions that are nowhere differentiable}
+In 1872 Weierstrass presented to the Berlin Academy a function that is continuous at every point and differentiable at none,
+\[
+W(x)=\sum_{n=0}^\infty a^n\cos(b^n\pi x),
+\]
+where $0<a<1$ and $b$ is an odd integer with $ab>1+\frac32\pi$; the example was published by du Bois-Reymond in 1875~\cite{duboisreymond1875}. The series converges so fast, because of the factor $a^n$, that its sum is continuous (Chapter~8 and Volume~II treat such series), but its terms oscillate ever faster, because of the factor $b^n$, and with growing slopes, because $ab>1$; near every point the graph has oscillations on all scales, and no secant settles down. Hardy proved in 1916 that the conditions $0<a<1$, $b>1$ and $ab\ge1$ suffice, without $b$ being an integer~\cite{hardy1916}. Abbott constructs a simpler example from rescaled copies of the function $|x|$, extended periodically~\cite{abbott2015}. Such functions are not rare exceptions: by a theorem of Banach~\cite{banach1931}, which Volume~II derives from the Baire category theorem, the nowhere differentiable functions form, in a precise sense, the ``typical'' case among continuous functions. Differentiability is a strong additional property, and the functions of applied mathematics have it because they are built from simple pieces, not because continuity provides it.
+\end{note}
+
+\section{Rules of Differentiation}
+\label{sec:rules}
+
+Computing derivatives from the definition, as in the previous section, quickly becomes laborious. In practice one proves the derivatives of a few basic functions from the definition and obtains all others by rules that describe how derivatives behave under sums, products, quotients, compositions and inverses. These rules go back to Leibniz~\cite{leibniz1684}; the proofs below follow the modern treatment by limits, which Cauchy introduced in his lectures of 1823~\cite{cauchy1823,grabiner1981}.
+
+\subsection{Sums, Products and Quotients}
+
+\begin{theorem}[Algebraic rules]
+\label{thm:diff-algebra}
+Let $I$ be an interval, let $f,g\colon I\to\mathbb R$ be differentiable at $a\in I$, and let $c\in\mathbb R$. Then:
+\begin{enumerate}
+\item $f+g$ and $cf$ are differentiable at $a$, with $(f+g)'(a)=f'(a)+g'(a)$ and $(cf)'(a)=cf'(a)$;
+\item (product rule) $fg$ is differentiable at $a$, with $(fg)'(a)=f'(a)g(a)+f(a)g'(a)$;
+\item (quotient rule) if $g(a)\ne0$, there is an interval $J=I\cap(a-\delta,a+\delta)$, $\delta>0$, on which $g$ has no zero, and $f/g\colon J\to\mathbb R$ is differentiable at $a$, with
+\[
+\Bigl(\frac fg\Bigr)'(a)=\frac{f'(a)g(a)-f(a)g'(a)}{g(a)^2} .
+\]
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+(i) The difference quotient of $f+g$ is the sum of those of $f$ and $g$, and that of $cf$ is $c$ times that of $f$; apply the limit laws, \cref{thm:function-limit-laws}.
+
+(ii) As in the proof of the product rule for limits (\cref{thm:limit-laws}), we change one factor at a time:
+\[
+\frac{f(x)g(x)-f(a)g(a)}{x-a}=f(x)\,\frac{g(x)-g(a)}{x-a}+g(a)\,\frac{f(x)-f(a)}{x-a}.
+\]
+As $x\to a$, the first difference quotient tends to $g'(a)$ and the second to $f'(a)$, and $f(x)\to f(a)$ because $f$ is continuous at $a$ by \cref{prop:diff-continuous}. The limit laws give $f(a)g'(a)+g(a)f'(a)$.
+
+(iii) Since $g$ is continuous at $a$ and $g(a)\ne0$, persistence of sign (\cref{lem:sign-persistence}) gives a $\delta>0$ such that $g$ has no zero on $J$. Consider first $1/g$. For $x\in J$, $x\ne a$,
+\[
+\frac1{x-a}\Bigl(\frac1{g(x)}-\frac1{g(a)}\Bigr)=-\frac{g(x)-g(a)}{x-a}\cdot\frac1{g(x)g(a)}\to-\frac{g'(a)}{g(a)^2},
+\]
+again because $g(x)\to g(a)$. Now $f/g=f\cdot(1/g)$, and the product rule gives
+\[
+\Bigl(\frac fg\Bigr)'(a)=\frac{f'(a)}{g(a)}-f(a)\frac{g'(a)}{g(a)^2}=\frac{f'(a)g(a)-f(a)g'(a)}{g(a)^2} .
+\]
+\end{proof}
+
+Part (i) says that differentiation is \emph{linear}: $(\alpha f+\beta g)'=\alpha f'+\beta g'$ for all constants $\alpha$ and $\beta$. Linear maps between spaces of functions are a central theme of Part~III, and differentiation is one of the first examples. The product rule has an instructive form in terms of increments. If $\Delta f$ and $\Delta g$ denote the changes of $f$ and $g$ from $a$ to $a+h$, then
+\[
+\Delta(fg)=(f+\Delta f)(g+\Delta g)-fg=f\,\Delta g+g\,\Delta f+\Delta f\,\Delta g ,
+\]
+with $f$ and $g$ evaluated at $a$. The first two terms are proportional to $h$ to first order; the last is a product of two quantities each of size about $h$, so it is $O(h^2)$ and disappears from the derivative. Leibniz wrote the rule as $d(xv)=x\,dv+v\,dx$~\cite{leibniz1684}, the product $dx\,dv$ of two ``infinitely small'' quantities being negligible compared with the other terms~\cite{edwards1979}; the limit argument makes this precise.
+
+\begin{proposition}[Powers]
+\label{prop:power-rule}
+For every integer $n$, the function $x\mapsto x^n$ is differentiable, with derivative $nx^{n-1}$, on $\mathbb R$ if $n\ge0$ and on $(-\infty,0)$ and $(0,\infty)$ if $n<0$.
+\end{proposition}
+
+\begin{proof}
+For $n=0$ the function is constant, with derivative $0$. For $n\ge1$ we use the identity \eqref{eq:power-difference} of \cref{ch:numbers}:
+\[
+\frac{x^n-a^n}{x-a}=\sum_{k=0}^{n-1}x^ka^{n-1-k}\qquad(x\ne a).
+\]
+The right side is a polynomial in $x$, hence continuous, and at $x=a$ each of its $n$ terms equals $a^{n-1}$; so the limit as $x\to a$ is $na^{n-1}$. For $n=-m<0$, the quotient rule applied to $1/x^m$ gives
+\[
+\frac{0\cdot x^m-1\cdot mx^{m-1}}{x^{2m}}=-mx^{-m-1}=nx^{n-1}.
+\]
+\end{proof}
+
+With the linearity of differentiation, every polynomial $p(x)=\sum_{k=0}^nc_kx^k$ is differentiable on $\mathbb R$, with derivative $p'(x)=\sum_{k=1}^nkc_kx^{k-1}$, again a polynomial, of degree one less. Every rational function is differentiable at every point at which its denominator does not vanish, by the quotient rule. For example,
+\[
+\frac d{dx}(3x^4-2x+7)=12x^3-2,\qquad\frac d{dx}\,\frac x{1+x^2}=\frac{(1+x^2)-x\cdot2x}{(1+x^2)^2}=\frac{1-x^2}{(1+x^2)^2}.
+\]
+
+\subsection{The Chain Rule}
+
+Most functions of interest are compositions, such as $(1+x^2)^{10}$ or $\sin(x^2)$, and the chain rule says how to differentiate them: the derivative of a composition is the product of the derivatives of its parts, each evaluated at the appropriate point.
+
+\begin{theorem}[Chain rule]
+\label{thm:chain-rule}
+Let $I$ and $J$ be intervals, $f\colon I\to\mathbb R$ with $f(I)\subseteq J$, and $g\colon J\to\mathbb R$. If $f$ is differentiable at $a\in I$ and $g$ is differentiable at $b\coloneqq f(a)$, then $g\circ f$ is differentiable at $a$, and
+\[
+(g\circ f)'(a)=g'\bigl(f(a)\bigr)\,f'(a).
+\]
+\end{theorem}
+
+\begin{proof}
+By \cref{lem:caratheodory} there are functions $\varphi\colon I\to\mathbb R$, continuous at $a$, and $\psi\colon J\to\mathbb R$, continuous at $b$, such that
+\[
+f(x)-f(a)=\varphi(x)(x-a)\quad(x\in I),\qquad g(y)-g(b)=\psi(y)(y-b)\quad(y\in J),
+\]
+with $\varphi(a)=f'(a)$ and $\psi(b)=g'(b)$. Substituting $y=f(x)$, which lies in $J$, in the second equation and then using the first,
+\[
+g(f(x))-g(f(a))=\psi(f(x))\bigl(f(x)-f(a)\bigr)=\psi(f(x))\,\varphi(x)\,(x-a)\qquad(x\in I).
+\]
+The function $x\mapsto\psi(f(x))\varphi(x)$ is continuous at $a$: $f$ is continuous at $a$ by \cref{prop:diff-continuous}, so $\psi\circ f$ is continuous at $a$ by \cref{thm:composition-continuous}, and products of functions continuous at $a$ are continuous at $a$. By \cref{lem:caratheodory}, $g\circ f$ is differentiable at $a$, with derivative $\psi(f(a))\varphi(a)=g'(b)f'(a)$.
+\end{proof}
+
+The theorem is easy to guess and slightly delicate to prove. The obvious argument writes
+\[
+\frac{g(f(x))-g(f(a))}{x-a}=\frac{g(f(x))-g(f(a))}{f(x)-f(a)}\cdot\frac{f(x)-f(a)}{x-a}
+\]
+and lets $x\to a$. It fails when $f(x)=f(a)$ for points $x$ arbitrarily close to $a$, where the first factor is undefined. This happens for constant functions, and also for less trivial ones: the function $x^2\sin(1/x)$ of \cref{sec:darboux}, with the value $0$ at $0$, vanishes at all the points $1/(k\pi)$, which accumulate at $0$. The slope function of \cref{lem:caratheodory} avoids the division altogether, because it is defined at $a$ as well.
+
+In Leibniz's notation, with $y=f(x)$ and $z=g(y)$, the chain rule reads
+\[
+\frac{dz}{dx}=\frac{dz}{dy}\,\frac{dy}{dx},
+\]
+which looks like the cancellation of $dy$ in a product of fractions and is easy to remember for that reason; but it is a theorem, not a cancellation, and the two derivatives on the right are evaluated at different points, $dz/dy$ at $y=f(a)$ and $dy/dx$ at $x=a$. For a chain of three or more functions the rule applies repeatedly: $(h\circ g\circ f)'(a)=h'(g(f(a)))\,g'(f(a))\,f'(a)$. The derivative of a composition is thus the product of the rates of change of its stages, a fact that becomes the basis of error propagation in \cref{sec:conditioning} and of automatic differentiation in the note at the end of this section.
+
+\emph{Examples.} With $f(x)=1+x^2$ and $g(y)=y^{10}$,
+\[
+\frac d{dx}(1+x^2)^{10}=10(1+x^2)^9\cdot2x=20x(1+x^2)^9 ,
+\]
+which is much quicker than expanding the tenth power. With $g(y)=\sqrt y$, which is differentiable for $y>0$, and the same $f$, whose values are at least $1$,
+\[
+\frac d{dx}\sqrt{1+x^2}=\frac{2x}{2\sqrt{1+x^2}}=\frac x{\sqrt{1+x^2}} .
+\]
+Similarly, the upper half of the unit circle, $y=\sqrt{1-x^2}$ for $-1<x<1$, has the slope $-x/\sqrt{1-x^2}=-x/y$. The radius to the point $(x,y)$ has slope $y/x$, and the product of the two slopes is $-1$: the tangent of a circle is perpendicular to the radius, as it should be.
+
+\subsection{Inverse Functions}
+
+\Cref{thm:inverse-continuous} showed that a continuous strictly monotone function on an interval has a continuous inverse. Its graph is the mirror image of the graph of $f$ in the diagonal $y=x$, and the mirror image of a line with slope $m\ne0$ is a line with slope $1/m$. So one expects the inverse to be differentiable with the reciprocal derivative, except where the tangent of $f$ is horizontal and its mirror image vertical. \Cref{fig:inverse-tangent} shows this for the square and the square root.
+
+\begin{theorem}[Derivative of the inverse function]
+\label{thm:inverse-derivative}
+Let $I$ be an interval, $f\colon I\to\mathbb R$ continuous and strictly monotone, $J\coloneqq f(I)$, and $f^{-1}\colon J\to I$ its inverse. Let $f$ be differentiable at $a\in I$, and let $b\coloneqq f(a)$.
+\begin{enumerate}
+\item If $f'(a)\ne0$, then $f^{-1}$ is differentiable at $b$, and
+\[
+(f^{-1})'(b)=\frac1{f'(a)}=\frac1{f'\bigl(f^{-1}(b)\bigr)} .
+\]
+\item If $f'(a)=0$, then $f^{-1}$ is not differentiable at $b$.
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+By \cref{thm:inverse-continuous}, $J$ is an interval, $f\colon I\to J$ is a bijection, and $f^{-1}$ is continuous; $J$ has more than one point because $f$ is injective.
+
+(i) Let $Q(x)\coloneqq(f(x)-f(a))/(x-a)$ for $x\in I\setminus\{a\}$ be the difference quotient of $f$ at $a$; it is never zero, since $f$ is injective. For $y\in J\setminus\{b\}$ put $x\coloneqq f^{-1}(y)$, so that $x\ne a$ and $y=f(x)$. Then
+\[
+\frac{f^{-1}(y)-f^{-1}(b)}{y-b}=\frac{x-a}{f(x)-f(a)}=\frac1{Q(f^{-1}(y))}.
+\]
+We use the sequential characterisation of limits (\cref{thm:sequential-limit}). Let $(y_n)$ be a sequence in $J\setminus\{b\}$ with $y_n\to b$, and let $x_n\coloneqq f^{-1}(y_n)$. Then $x_n\ne a$, and $x_n\to a$ because $f^{-1}$ is continuous at $b$. Hence $Q(x_n)\to f'(a)$, and since $f'(a)\ne0$, the limit laws give $1/Q(x_n)\to1/f'(a)$. As the sequence was arbitrary, the difference quotient of $f^{-1}$ at $b$ tends to $1/f'(a)$.
+
+(ii) Suppose $f^{-1}$ were differentiable at $b$. Since $f^{-1}(f(x))=x$ for all $x\in I$, the chain rule would give $(f^{-1})'(b)\,f'(a)=1$, which is impossible if $f'(a)=0$.
+\end{proof}
+
+\begin{figure}
+\sdfloat{%
+\begin{tikzpicture}
+\begin{axis}[sdplot, width=5.8cm, height=5.8cm, xmin=0, xmax=5.2, ymin=0, ymax=5.2,
+  xtick={0,1,2,3,4,5}, ytick={0,1,2,3,4,5}, xlabel={$x$}, ylabel={$y$},
+  legend style={at={(0.03,0.97)}, anchor=north west}]
+\addplot[black!45, line width=0.5pt, domain=0:5.2, samples=2, forget plot] {x};
+\addplot[black, line width=0.8pt, domain=0:2.28, samples=60] {x^2};
+\addlegendentry{$x^2$}
+\addplot[black, dashed, line width=0.8pt, domain=0:5.2, samples=100] {sqrt(x)};
+\addlegendentry{$\sqrt x$}
+\addplot[black, line width=0.4pt, domain=1.2:2.3, samples=2, forget plot] {4*x-4};
+\addplot[black, line width=0.4pt, domain=0.8:5.2, samples=2, forget plot] {2+(x-4)/4};
+\fill[black] (axis cs:2,4) circle (1.5pt) (axis cs:4,2) circle (1.5pt);
+\end{axis}
+\end{tikzpicture}}{The derivative of an inverse function. The graphs of $x^2$ on $[0,\infty)$ and of its inverse $\sqrt x$ are mirror images in the diagonal (grey), and so are their tangents (thin lines) at the corresponding points $(2,4)$ and $(4,2)$. The slopes are $4$ and $\frac14$. At the origin the tangent of $x^2$ is horizontal, and that of $\sqrt x$ is vertical.\label{fig:inverse-tangent}}
+\end{figure}
+
+In Leibniz's notation, with $y=f(x)$ and $x=f^{-1}(y)$, the theorem reads $dx/dy=1/(dy/dx)$. The second part explains the vertical tangents of \cref{sec:derivative}: $x^3$ has a horizontal tangent at $0$, so its inverse, the cube root, cannot be differentiable at $0$. The theorem gives the derivatives of all roots and rational powers.
+
+\begin{corollary}[Roots and rational powers]
+\label{cor:root-derivative}
+Let $n\ge1$ be an integer.
+\begin{enumerate}
+\item The function $x\mapsto x^{1/n}$ is differentiable on $(0,\infty)$, with derivative $\frac1nx^{1/n-1}$. For $n\ge2$ it is not differentiable at $0$.
+\item For odd $n$, the real $n$th root $x\mapsto x^{1/n}$ on $\mathbb R$ is differentiable at every $x\ne0$, with derivative $\frac1n\bigl(x^{1/n}\bigr)^{1-n}$.
+\item For every rational number $r$, the function $x\mapsto x^r$ is differentiable on $(0,\infty)$, with derivative $rx^{r-1}$.
+\end{enumerate}
+\end{corollary}
+
+\begin{proof}
+(i) The function $f(y)=y^n$ is continuous and strictly increasing on $[0,\infty)$, with image $[0,\infty)$ and inverse $x\mapsto x^{1/n}$ (\cref{sec:monotone-functions}). For $x>0$ let $y\coloneqq x^{1/n}>0$; then $f'(y)=ny^{n-1}\ne0$, and \cref{thm:inverse-derivative} gives the derivative
+\[
+\frac1{ny^{n-1}}=\frac1n\,x^{-(n-1)/n}=\frac1nx^{1/n-1}.
+\]
+For $n\ge2$, $f'(0)=0$, and the second part of the theorem applies.
+
+(ii) For odd $n$, $f(y)=y^n$ is continuous and strictly increasing on $\mathbb R$, with image $\mathbb R$, and $f'(y)=ny^{n-1}\ne0$ for $y\ne0$. The derivative of the inverse at $x=y^n\ne0$ is $1/(ny^{n-1})=\frac1n y^{1-n}$ with $y=x^{1/n}$.
+
+(iii) Write $r=p/q$ with integers $p$ and $q\ge1$, so that $x^r=(x^{1/q})^p$ for $x>0$. By the chain rule, (i) and \cref{prop:power-rule},
+\[
+\frac d{dx}(x^{1/q})^p=p\,(x^{1/q})^{p-1}\cdot\frac1qx^{1/q-1}=\frac pq\,x^{(p-1)/q+1/q-1}=rx^{r-1},
+\]
+by the laws of exponents for rational exponents (\cref{sec:reals}).
+\end{proof}
+
+For $n=2$ this is the derivative $1/(2\sqrt x)$ found in \cref{sec:derivative}. So the rule $\frac d{dx}x^r=rx^{r-1}$, proved in \cref{prop:power-rule} for integers, holds for every rational exponent $r$ and every $x>0$. Chapter~9 defines $x^s$ for every real $s$ and $x>0$ and shows that the same rule holds.
+
+\subsection{Trigonometric Functions}
+
+\Cref{ch:limits} prepared the derivatives of the sine and cosine by computing $\lim_{x\to0}(\sin x)/x=1$ and $\lim_{x\to0}(1-\cos x)/x^2=\frac12$ (\cref{prop:sin-limit}). These limits are the derivatives of the sine and of the cosine at $0$, and the addition formulas carry them to every point.
+
+\begin{theorem}[Derivatives of the sine and cosine]
+\label{thm:trig-derivatives}
+The sine and cosine are differentiable on $\mathbb R$, and
+\[
+\sin'=\cos,\qquad\cos'=-\sin .
+\]
+\end{theorem}
+
+\begin{proof}
+Let $a\in\mathbb R$ and $h\ne0$. By the addition formulas of \cref{asm:trig}\,(ii),
+\begin{align*}
+\frac{\sin(a+h)-\sin a}h&=\sin a\cdot\frac{\cos h-1}h+\cos a\cdot\frac{\sin h}h,\\
+\frac{\cos(a+h)-\cos a}h&=\cos a\cdot\frac{\cos h-1}h-\sin a\cdot\frac{\sin h}h.
+\end{align*}
+By \cref{prop:sin-limit}, $(\sin h)/h\to1$, and
+\[
+\frac{\cos h-1}h=-h\cdot\frac{1-\cos h}{h^2}\to-0\cdot\frac12=0 .
+\]
+The limit laws give $\sin'(a)=\cos a$ and $\cos'(a)=-\sin a$.
+\end{proof}
+
+The theorem depends on measuring angles in radians, because \cref{prop:sin-limit} does. If $\operatorname{sind}x$ denotes the sine of $x$ degrees, then $\operatorname{sind}x=\sin(\pi x/180)$, and the chain rule gives $\operatorname{sind}'x=\frac\pi{180}\cos(\pi x/180)$; the factor $\pi/180$ would appear in every formula of calculus. This is why mathematics uses radians.
+
+\begin{corollary}[Tangent and inverse trigonometric functions]
+\label{cor:inverse-trig-derivatives}
+\leavevmode
+\begin{enumerate}
+\item The tangent is differentiable at every $x$ with $\cos x\ne0$, and $\tan'x=1/\cos^2x=1+\tan^2x$.
+\item The arcsine and arccosine are differentiable on $(-1,1)$, with
+\[
+\arcsin'x=\frac1{\sqrt{1-x^2}},\qquad\arccos'x=-\frac1{\sqrt{1-x^2}},
+\]
+and neither is differentiable at $\pm1$.
+\item The arctangent is differentiable on $\mathbb R$, with $\arctan'x=1/(1+x^2)$.
+\end{enumerate}
+\end{corollary}
+
+\begin{proof}
+(i) By the quotient rule and \cref{thm:trig-derivatives},
+\[
+\tan'x=\frac{\cos x\cos x-\sin x\,(-\sin x)}{\cos^2x}=\frac{\cos^2x+\sin^2x}{\cos^2x},
+\]
+which equals $1/\cos^2x$ by \cref{asm:trig}\,(i), and also $1+\tan^2x$.
+
+(ii) The sine is continuous and strictly increasing on $[-\pi/2,\pi/2]$ (\cref{asm:trig-geometry}\,(iv)), with inverse $\arcsin$. For $-\pi/2<a<\pi/2$ we have $\cos a>0$: for $0<a<\pi/2$ by \cref{asm:trig-geometry}\,(iii), for $a=0$ because $\cos0=1$, and for negative $a$ because the cosine is even. So $\sin'(a)=\cos a\ne0$, and with $b=\sin a\in(-1,1)$, \cref{thm:inverse-derivative} gives
+\[
+\arcsin'b=\frac1{\cos a}=\frac1{\sqrt{1-\sin^2a}}=\frac1{\sqrt{1-b^2}},
+\]
+where $\cos a=\sqrt{1-\sin^2a}$ because $\cos a>0$ and $\cos^2a+\sin^2a=1$. At $a=\pm\pi/2$, $\cos a=0$, since $\sin^2(\pm\pi/2)=1$, so the arcsine is not differentiable at $\pm1$. The arccosine is treated in the same way, with the cosine on $[0,\pi]$, its derivative $-\sin a$, and the fact that $\sin a>0$ for $0<a<\pi$. (For $0<a<\pi/2$ this is \cref{asm:trig-geometry}\,(iii); since $\cos\pi=\cos^2\frac\pi2-\sin^2\frac\pi2=-1$, the addition formula gives $\sin(\pi-a)=\sin a$, which covers $\pi/2\le a<\pi$.)
+
+(iii) The tangent is continuous and strictly increasing on $(-\pi/2,\pi/2)$, with image $\mathbb R$ and inverse $\arctan$ (\cref{sec:monotone-functions}), and its derivative $1/\cos^2a$ never vanishes. With $b=\tan a$, \cref{thm:inverse-derivative} gives $\arctan'b=\cos^2a=1/(1+\tan^2a)=1/(1+b^2)$.
+\end{proof}
+
+\Cref{tab:derivatives} collects the derivatives obtained so far, together with those of the exponential function and the natural logarithm, which Chapter~9 proves. With the rules of this section, they give the derivative of every function that can be written as a formula in these functions. As an example of the rules working together,
+\[
+\frac d{dx}\,x\sin(x^2)=\sin(x^2)+x\cdot\cos(x^2)\cdot2x=\sin(x^2)+2x^2\cos(x^2),
+\]
+by the product rule and the chain rule. The arcsine and the arctangent show something remarkable: their derivatives are built from $x$ by arithmetic operations and a square root alone, although the functions themselves cannot be written in this way. This connection between the inverse trigonometric functions and the algebraic functions $1/\sqrt{1-x^2}$ and $1/(1+x^2)$ becomes the basis of their integrals in Chapter~7 and of their power series in Chapter~8.
+
+\begin{table}
+\sdfloat{%
+\begin{sdtable}{colspec={lll}, row{1}={font=\small\bfseries}}
+\toprule
+$f(x)$ & $f'(x)$ & where \\
+\midrule
+$c$ (constant) & $0$ & $x\in\mathbb R$ \\
+$x^n$, $n\in\mathbb Z$ & $nx^{n-1}$ & $x\in\mathbb R$; $x\ne0$ if $n<0$ \\
+$x^r$, $r\in\mathbb Q$ & $rx^{r-1}$ & $x>0$ \\
+$\sqrt x$ & $1/(2\sqrt x)$ & $x>0$ \\
+$|x|$ & $\operatorname{sign}x$ & $x\ne0$ \\
+$\sin x$ & $\cos x$ & $x\in\mathbb R$ \\
+$\cos x$ & $-\sin x$ & $x\in\mathbb R$ \\
+$\tan x$ & $1/\cos^2x=1+\tan^2x$ & $\cos x\ne0$ \\
+$\arcsin x$ & $1/\sqrt{1-x^2}$ & $-1<x<1$ \\
+$\arccos x$ & $-1/\sqrt{1-x^2}$ & $-1<x<1$ \\
+$\arctan x$ & $1/(1+x^2)$ & $x\in\mathbb R$ \\
+$e^x$ & $e^x$ & $x\in\mathbb R$ (Chapter~9) \\
+$\ln x$ & $1/x$ & $x>0$ (Chapter~9) \\
+\bottomrule
+\end{sdtable}}{Derivatives of the elementary functions. The entries for $e^x$ and $\ln x$ are proved in Chapter~9; all others in this section.\label{tab:derivatives}}
+\end{table}
+
+\begin{note}{Automatic differentiation}
+There are three ways to let a computer differentiate a function given by a program. \emph{Symbolic} differentiation manipulates formulas by the rules of this section, as a computer algebra system does; the formulas can grow very large. \emph{Numerical} differentiation replaces the derivative by a difference quotient; \cref{sec:conditioning} shows that this sacrifices a large part of the available digits, about half of them for the simplest formula. \emph{Automatic} (or algorithmic) differentiation applies the chain rule to the individual operations of the program, with numbers rather than formulas~\cite{wengert1964,griewank2008}. In its forward mode, every intermediate quantity $u$ is replaced by the pair $(u,u')$ of its value and its derivative with respect to the input, and every operation acts on pairs according to the rules of this section: $(u,u')+(v,v')=(u+v,u'+v')$, $(u,u')\cdot(v,v')=(uv,u'v+uv')$, $\sin(u,u')=(\sin u,\cos u\cdot u')$, and so on. Starting from the pair $(x,1)$ for the input, the program then delivers $(f(x),f'(x))$ at a small multiple of the cost of computing $f(x)$, and the derivative is exact up to rounding errors. For functions of many variables the reverse mode, which runs through the chain rule from the output back to the inputs, computes all partial derivatives at once; in machine learning it is called backpropagation. Chapter~10 provides the chain rule in several variables that these methods need, and Volume~XI treats numerical differentiation as the library implements it.
+\end{note}
+
+\section{Local Extrema and Fermat's Theorem}
+\label{sec:extrema}
+
+The extreme value theorem (\cref{thm:evt}) guarantees that a continuous function on a closed bounded interval attains a largest and a smallest value, but it does not say where. For differentiable functions the derivative narrows the search to a few candidate points. The idea goes back to Fermat, who in the 1630s found maxima and minima of polynomials by a method that amounts to setting the derivative equal to zero~\cite{edwards1979}.
+
+\begin{definition}[Extrema]
+\label{def:extremum}
+Let $f\colon D\to\mathbb R$ and $c\in D$. The function $f$ has a \term{global maximum} (or absolute maximum) at $c$ if $f(x)\le f(c)$ for all $x\in D$, and a \term{local maximum} (or relative maximum) at $c$ if there is $\delta>0$ such that $f(x)\le f(c)$ for all $x\in D$ with $|x-c|<\delta$. The maximum is \term{strict} if $f(x)<f(c)$ for the points $x\ne c$ in question. \term{Minima} are defined with the reverse inequalities, and an \term{extremum} is a maximum or a minimum.
+\end{definition}
+
+A global maximum is a local one, but not conversely: a function may have many local maxima, of which at most one value is the largest. A point of an interval $I$ that is not an end of $I$ is an \term{interior point} of $I$; around an interior point $c$ there is an open interval $(c-\delta,c+\delta)$ contained in $I$.
+
+\begin{theorem}[Fermat]
+\label{thm:fermat-extremum}
+Let $I$ be an interval and $f\colon I\to\mathbb R$. If $f$ has a local extremum at an interior point $c$ of $I$ and is differentiable at $c$, then $f'(c)=0$.
+\end{theorem}
+
+\begin{proof}
+Suppose $f$ has a local maximum at $c$; for a minimum apply the argument to $-f$. Choose $\delta>0$ with $(c-\delta,c+\delta)\subseteq I$ and $f(x)\le f(c)$ for $|x-c|<\delta$. For $0<h<\delta$ the difference quotient $(f(c+h)-f(c))/h$ has a numerator $\le0$ and a positive denominator, so it is $\le0$; by \cref{thm:function-limit-laws}\,(iii) its limit $f'_+(c)$ is $\le0$. For $-\delta<h<0$ the numerator is $\le0$ and the denominator negative, so the quotient is $\ge0$, and $f'_-(c)\ge0$. Both one-sided derivatives equal $f'(c)$ (\cref{prop:one-sided-derivatives}), so $0\le f'(c)\le0$.
+\end{proof}
+
+Geometrically, the tangent at an interior extremum is horizontal. The theorem has three hypotheses, and each matters.
+\begin{itemize}
+\item \emph{The point must be interior.} The function $f(x)=x$ on $[0,1]$ has its maximum at $1$, where $f'(1)=1$. At an end of the interval only one sign of the difference quotient is controlled: at a maximum at the left end, $f'_+\le0$, and at a maximum at the right end, $f'_-\ge0$.
+\item \emph{The function must be differentiable at the point.} The function $|x|$ has a minimum at $0$, where it has no derivative.
+\item \emph{The converse is false.} The function $x^3$ has $f'(0)=0$, but it is strictly increasing, so it has no extremum at $0$. A horizontal tangent is necessary for an interior extremum of a differentiable function, not sufficient.
+\end{itemize}
+
+\begin{definition}[Critical point]
+\label{def:critical}
+Let $I$ be an interval and $f\colon I\to\mathbb R$. An interior point $c$ of $I$ is a \term{critical point} of $f$ if either $f$ is differentiable at $c$ with $f'(c)=0$, or $f$ is not differentiable at $c$. A point with $f'(c)=0$ is also called a \term{stationary point}.
+\end{definition}
+
+\begin{proposition}
+\label{prop:candidates}
+Let $f\in C[a,b]$. Then $f$ attains a maximum and a minimum on $[a,b]$, and every point at which it attains one of them is an end of the interval or a critical point of $f$ in $(a,b)$.
+\end{proposition}
+
+\begin{proof}
+The extrema exist by the extreme value theorem. If a global extremum is attained at an interior point $c$, it is a local extremum, and either $f$ is not differentiable at $c$ or $f'(c)=0$ by \cref{thm:fermat-extremum}; in both cases $c$ is a critical point.
+\end{proof}
+
+The proposition yields the \term{closed interval method} for finding the extrema of a continuous function $f$ on $[a,b]$ that has finitely many critical points:
+\begin{enumerate}
+\item find the critical points of $f$ in $(a,b)$: the zeros of $f'$ and the points where $f$ is not differentiable;
+\item evaluate $f$ at these points and at $a$ and $b$;
+\item the largest of these values is the maximum of $f$ on $[a,b]$, and the smallest is the minimum.
+\end{enumerate}
+The method works because the maximum exists and must be one of the finitely many values computed. It needs no information about the behaviour of $f$ between the candidate points. Its weak step is the first: the equation $f'(x)=0$ may be impossible to solve exactly, and \cref{sec:newton} gives a method for solving it approximately.
+
+\emph{Examples.} Let $f(x)=x^3-3x$ on $[-2,\frac52]$. Then $f'(x)=3x^2-3$ vanishes at $x=\pm1$, and $f$ is differentiable everywhere. The candidates give $f(-2)=-2$, $f(-1)=2$, $f(1)=-2$ and $f(\frac52)=\frac{125}8-\frac{15}2=\frac{65}8$. So the maximum is $\frac{65}8$, attained at the end $\frac52$, and the minimum is $-2$, attained at $-2$ and at $1$. The point $-1$ is a local maximum but not a global one. \Cref{fig:extrema} shows the graph.
+
+\begin{figure}
+\sdfloat{%
+\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.6\textwidth, height=0.44\textwidth, xmin=-2.2, xmax=2.7, ymin=-2.9, ymax=8.6,
+  xtick={-2,-1,0,1,2.5}, xticklabels={$-2$,$-1$,0,1,$\frac52$}, ytick={-2,0,2,4,6,8}, xlabel={$x$}]
+\draw[black!45, line width=0.4pt] (axis cs:-2.2,0) -- (axis cs:2.7,0);
+\addplot[black, line width=0.8pt, domain=-2:2.5, samples=100] {x^3-3*x};
+\draw[black, line width=0.4pt] (axis cs:-1.5,2) -- (axis cs:-0.5,2);
+\draw[black, line width=0.4pt] (axis cs:0.5,-2) -- (axis cs:1.5,-2);
+\fill[black] (axis cs:-1,2) circle (1.6pt) (axis cs:1,-2) circle (1.6pt) (axis cs:-2,-2) circle (1.6pt) (axis cs:2.5,8.125) circle (1.6pt);
+\end{axis}
+\end{tikzpicture}}{The closed interval method for $f(x)=x^3-3x$ on $[-2,\frac52]$. The tangent is horizontal at the critical points $\pm1$ (thin segments). Of the four candidates (dots), the end $\frac52$ gives the maximum $\frac{65}8$, and the end $-2$ and the critical point $1$ give the minimum $-2$. The critical point $-1$ is only a local maximum.\label{fig:extrema}}
+\end{figure}
+
+A square sheet of side $1$ is made into an open box by cutting a square of side $x$ from each corner and folding up the sides. The volume is $V(x)=x(1-2x)^2$ for $0\le x\le\frac12$. Its derivative,
+\[
+V'(x)=(1-2x)^2-4x(1-2x)=(1-2x)(1-6x),
+\]
+vanishes in $(0,\frac12)$ only at $x=\frac16$. Since $V(0)=V(\frac12)=0$ and $V(\frac16)=\frac16\cdot\frac49=\frac2{27}$, the largest box has volume $\frac2{27}\approx0.074$, obtained by cutting squares of side $\frac16$.
+
+Critical points at which $f$ is not differentiable occur in practice. Given data points $x_1\le x_2\le\cdots\le x_n$, the function $f(x)=\sum_{i=1}^n|x-x_i|$ measures the total distance from $x$ to the data. It is differentiable except at the data points, and between them its derivative is the number of data points to the left of $x$ minus the number to the right. For the data $1,3,4$, the derivative is $-3$, $-1$, $1$ and $3$ on the four intervals cut out by the data, so there is no stationary point at all, and the candidates are the corners: $f(1)=5$, $f(3)=3$ and $f(4)=4$, while at the ends of, say, $[0,5]$ we find $f(0)=8$ and $f(5)=7$. The minimum is attained at the median $3$ of the data. By contrast, the sum of squared distances $g(x)=\sum_i(x-x_i)^2$ is differentiable, with $g'(x)=2\sum_i(x-x_i)$, which vanishes exactly at the mean $\frac1n\sum_ix_i$; since $g$ is a quadratic polynomial with positive leading coefficient, this is its minimum. That the median minimises absolute deviations and the mean minimises squared deviations is the starting point of robust statistics and of least squares, respectively (Volumes~III and~XV).
+
+\section{The Mean Value Theorem}
+\label{sec:mvt}
+
+The derivative is defined by a limit and so describes the function only near a single point. To draw conclusions about the function on a whole interval, such as ``a function with positive derivative is increasing'' or ``a function with bounded derivative changes slowly'', we need a bridge from the local to the global. The mean value theorem is this bridge. Its proof combines the two main theorems of \cref{ch:limits} that concern whole intervals, the extreme value theorem and, through Fermat's theorem, the local information carried by the derivative.
+
+\subsection{The Theorems of Rolle, Lagrange and Cauchy}
+
+\begin{theorem}[Rolle]
+\label{thm:rolle}
+Let $f$ be continuous on $[a,b]$ and differentiable on $(a,b)$, and suppose $f(a)=f(b)$. Then there is a point $\xi\in(a,b)$ with $f'(\xi)=0$.
+\end{theorem}
+
+\begin{proof}
+By the extreme value theorem, $f$ attains a maximum $M$ at some point $c$ and a minimum $m$ at some point $d$ of $[a,b]$. If both $c$ and $d$ are ends of the interval, then $M=m=f(a)$ because $f(a)=f(b)$, so $f$ is constant, and $f'(\xi)=0$ for every $\xi\in(a,b)$. Otherwise one of the two points, say $\xi$, lies in $(a,b)$. The function has a global, hence local, extremum at the interior point $\xi$, where it is differentiable, so $f'(\xi)=0$ by \cref{thm:fermat-extremum}.
+\end{proof}
+
+The theorem bears the name of Michel Rolle, who stated a version of it for polynomials in 1691~\cite{barrowgreen2009}. Between two points at which a differentiable function takes the same value, its graph must turn around, and at the turning point the tangent is horizontal. Both hypotheses are needed: $|x|$ on $[-1,1]$ takes the value $1$ at both ends, but its derivative is never $0$, because the turning point is a corner; and the function equal to $x$ on $[0,1)$ and to $0$ at $1$ is differentiable on $(0,1)$ with derivative $1$, but it is not continuous at $1$.
+
+The mean value theorem removes the condition $f(a)=f(b)$ by tilting the picture.
+
+\begin{theorem}[Mean value theorem]
+\label{thm:mvt}
+Let $f$ be continuous on $[a,b]$ and differentiable on $(a,b)$. Then there is a point $\xi\in(a,b)$ with
+\[
+f(b)-f(a)=f'(\xi)\,(b-a),\qquad\text{that is,}\qquad\frac{f(b)-f(a)}{b-a}=f'(\xi).
+\]
+\end{theorem}
+
+\begin{proof}
+Let $s\coloneqq(f(b)-f(a))/(b-a)$ be the slope of the secant, and let
+\[
+g(x)\coloneqq f(x)-f(a)-s\,(x-a)\qquad(a\le x\le b)
+\]
+be the vertical distance between the graph and the secant. Then $g$ is continuous on $[a,b]$ and differentiable on $(a,b)$, with $g'(x)=f'(x)-s$, and $g(a)=0=g(b)$. Rolle's theorem gives $\xi\in(a,b)$ with $g'(\xi)=0$, that is, $f'(\xi)=s$.
+\end{proof}
+
+Geometrically, somewhere between $a$ and $b$ the tangent is parallel to the secant (\cref{fig:mvt}). Physically, a car that covers $100$ kilometres in $50$ minutes, at an average speed of $120$ kilometres per hour, was driving at exactly $120$ kilometres per hour at some moment. Some speed checks on motorways measure the average speed between two cameras, and the mean value theorem justifies treating it as a speed that was actually reached.
+
+\begin{figure}
+\sdfloat{%
+\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.6\textwidth, height=0.42\textwidth, xmin=0, xmax=4.6, ymin=0.8, ymax=4.2,
+  xtick={0.2,0.7903,3.2097,4.3}, xticklabels={$a$,$\xi_1$,$\xi_2$,$b$}, ytick=\empty, xlabel={$x$}]
+\addplot[black, line width=0.8pt, domain=0.2:4.3, samples=100] {0.25*x^3-1.5*x^2+2.5*x+1};
+\addplot[black!45, dashed, line width=0.5pt, domain=0.2:4.3, samples=2] {1.442+0.5975*(x-0.2)};
+\addplot[black, line width=0.4pt, domain=0.1:1.5, samples=2] {2.1623+0.5975*(x-0.7903)};
+\addplot[black, line width=0.4pt, domain=2.5:3.9, samples=2] {1.8377+0.5975*(x-3.2097)};
+\draw[black!45, densely dotted, line width=0.4pt] (axis cs:0.7903,0.8) -- (axis cs:0.7903,2.1623);
+\draw[black!45, densely dotted, line width=0.4pt] (axis cs:3.2097,0.8) -- (axis cs:3.2097,1.8377);
+\fill[black] (axis cs:0.2,1.442) circle (1.5pt) (axis cs:4.3,3.8917) circle (1.5pt);
+\fill[black] (axis cs:0.7903,2.1623) circle (1.3pt) (axis cs:3.2097,1.8377) circle (1.3pt);
+\end{axis}
+\end{tikzpicture}}{The mean value theorem. The secant (dashed) from $(a,f(a))$ to $(b,f(b))$ has slope $(f(b)-f(a))/(b-a)$. At the points $\xi_1$ and $\xi_2$ the tangents (thin lines) are parallel to it. The theorem asserts that there is at least one such point.\label{fig:mvt}}
+\end{figure}
+
+The theorem says nothing about where $\xi$ lies, except that it is strictly between $a$ and $b$, and in the figure there are two such points. This is less of a limitation than it seems. In applications one rarely needs $\xi$ itself; one needs only that $f'(\xi)$ lies in the range of the derivative on the interval, and that range can often be bounded. It is convenient to write the theorem in the form
+\begin{equation}
+f(x+h)=f(x)+f'(x+\theta h)\,h\qquad\text{for some }\theta\in(0,1),
+\label{eq:mvt-theta}
+\end{equation}
+which holds for $h$ of either sign, provided $f$ is continuous on the closed interval between $x$ and $x+h$ and differentiable inside it. Compare it with the linear approximation \eqref{eq:linear-approx}, $f(x+h)=f(x)+f'(x)h+o(h)$: that statement uses the derivative at the known point $x$ but has an error term that is only known to be small in the limit, while \eqref{eq:mvt-theta} is exact for every $h$ but evaluates the derivative at an unknown point. Estimates of errors are obtained from \eqref{eq:mvt-theta}.
+
+The theorem in this form is due to Lagrange~\cite{lagrange1797}, and it is often named after him. Cauchy based his proofs on an inequality instead: if $m\le f'(x)\le M$ on $(a,b)$, then $m\le(f(b)-f(a))/(b-a)\le M$~\cite{cauchy1823,grabiner1981}. This is exactly what the mean value theorem yields in applications, and it is the form that survives for vector-valued functions, for which no single intermediate point need exist (Chapter~10). The following generalisation, which involves two functions, is also due to Cauchy~\cite{grabiner1981}.
+
+\begin{theorem}[Cauchy's mean value theorem]
+\label{thm:cauchy-mvt}
+Let $f$ and $g$ be continuous on $[a,b]$ and differentiable on $(a,b)$. Then there is a point $\xi\in(a,b)$ with
+\[
+\bigl(f(b)-f(a)\bigr)\,g'(\xi)=\bigl(g(b)-g(a)\bigr)\,f'(\xi).
+\]
+If moreover $g'(x)\ne0$ for all $x\in(a,b)$, then $g(b)\ne g(a)$, and
+\[
+\frac{f(b)-f(a)}{g(b)-g(a)}=\frac{f'(\xi)}{g'(\xi)} .
+\]
+\end{theorem}
+
+\begin{proof}
+Let $h(x)\coloneqq\bigl(f(b)-f(a)\bigr)g(x)-\bigl(g(b)-g(a)\bigr)f(x)$. It is continuous on $[a,b]$ and differentiable on $(a,b)$, and expanding gives
+\[
+h(a)=f(b)g(a)-g(b)f(a)=h(b).
+\]
+By Rolle's theorem, $h'(\xi)=0$ for some $\xi\in(a,b)$, which is the first claim. If $g'$ has no zero in $(a,b)$, then $g(b)\ne g(a)$, for otherwise Rolle's theorem applied to $g$ would give a zero of $g'$; dividing by $(g(b)-g(a))g'(\xi)$ gives the second claim.
+\end{proof}
+
+With $g(x)=x$ the theorem reduces to the mean value theorem. Its geometric meaning concerns curves in the plane. As $t$ runs from $a$ to $b$, the point $(g(t),f(t))$ traces a curve; the chord from its starting point to its end point has slope $(f(b)-f(a))/(g(b)-g(a))$, and the tangent of the curve at the parameter $t$ has slope $f'(t)/g'(t)$. The theorem says that some tangent is parallel to the chord. Its main application is l'H\^opital's rule in \cref{sec:lhopital}.
+
+\subsection{Consequences: Constancy, Monotonicity and Lipschitz Constants}
+
+The following corollaries are the reason why the mean value theorem is so important. Each turns a hypothesis about the derivative at every point of an interval into a conclusion about the function on the whole interval. All of them fail if the interval is replaced by a set with gaps.
+
+\begin{corollary}
+\label{cor:zero-derivative}
+Let $I$ be an interval and $f\colon I\to\mathbb R$ continuous, and suppose $f$ is differentiable at every interior point of $I$ with $f'(x)=0$. Then $f$ is constant. Consequently, if $f$ and $g$ are continuous on $I$ and $f'=g'$ at every interior point, then $f-g$ is constant.
+\end{corollary}
+
+\begin{proof}
+Let $x<y$ be points of $I$. The closed interval $[x,y]$ lies in $I$, its interior points are interior points of $I$, and the mean value theorem gives $f(y)-f(x)=f'(\xi)(y-x)=0$. The second statement follows by applying the first to $f-g$.
+\end{proof}
+
+This corollary is less obvious than it looks: it is false over the rational numbers, where a function can have derivative zero everywhere without being constant, and its proof needs completeness through the extreme value theorem. It is also false on a domain that is not an interval: the function equal to $0$ on $(0,1)$ and to $1$ on $(2,3)$ has derivative $0$ everywhere. The second statement says that a function is determined by its derivative up to an additive constant, which is the uniqueness half of the fundamental theorem of calculus in Chapter~7.
+
+Identities between functions can be proved in this way. For $-1<x<1$,
+\[
+\frac d{dx}\bigl(\arcsin x+\arccos x\bigr)=\frac1{\sqrt{1-x^2}}-\frac1{\sqrt{1-x^2}}=0
+\]
+by \cref{cor:inverse-trig-derivatives}, and the function is continuous on $[-1,1]$. So it is constant there, and its value at $0$ is $\arcsin0+\arccos0=0+\frac\pi2$, because $\sin0=0$ and $\cos\frac\pi2=0$. Hence $\arcsin x+\arccos x=\frac\pi2$ for all $x\in[-1,1]$.
+
+\begin{corollary}[Monotonicity]
+\label{cor:monotone-derivative}
+Let $I$ be an interval, $f\colon I\to\mathbb R$ continuous and differentiable at every interior point of $I$.
+\begin{enumerate}
+\item $f$ is increasing if and only if $f'(x)\ge0$ for every interior point $x$.
+\item If $f'(x)>0$ for every interior point $x$, then $f$ is strictly increasing.
+\end{enumerate}
+The same holds for decreasing functions with the reverse inequalities.
+\end{corollary}
+
+\begin{proof}
+If $f'\ge0$ in the interior and $x<y$ are points of $I$, the mean value theorem gives $f(y)-f(x)=f'(\xi)(y-x)\ge0$, and $>0$ if $f'>0$. Conversely, if $f$ is increasing and $x$ is an interior point, all difference quotients $(f(x+h)-f(x))/h$ are $\ge0$, since numerator and denominator have the same sign or the numerator is $0$; so their limit $f'(x)$ is $\ge0$.
+\end{proof}
+
+The converse of (ii) is false: $x^3$ is strictly increasing, but its derivative vanishes at $0$. A useful strengthening covers such cases: if $f'\ge0$ in the interior and $f'$ vanishes at only finitely many points, then $f$ is strictly increasing. Indeed, by (i) $f$ is increasing, and if it were not strictly increasing, there would be points $x<y$ with $f(x)=f(y)$, so $f$ would be constant on $[x,y]$ and $f'$ would vanish at infinitely many points.
+
+The corollary needs the sign of $f'$ on a whole interval. A positive derivative at a single point says much less: if $f'(a)>0$, the difference quotient is positive for $h$ near $0$, so $f(x)<f(a)$ for $x$ slightly less than $a$ and $f(x)>f(a)$ for $x$ slightly greater; but $f$ need not be increasing on any interval around $a$. The function
+\[
+f(x)\coloneqq x+2x^2\sin\frac1x\quad(x\ne0),\qquad f(0)\coloneqq0,
+\]
+has the difference quotient $1+2h\sin(1/h)\to1$ at $0$, so $f'(0)=1>0$. For $x\ne0$ the rules of \cref{sec:rules} give $f'(x)=1+4x\sin(1/x)-2\cos(1/x)$, and at the points $x_k=1/(2k\pi)$ this is $1+0-2=-1$. Since $f'$ is continuous at $x_k$, it is negative on a small interval around $x_k$, where $f$ is therefore strictly decreasing; and such intervals occur arbitrarily close to $0$.
+
+The next corollary fulfils the promise of \cref{sec:uniform}: a bound on the derivative is a Lipschitz constant.
+
+\begin{corollary}[Lipschitz constants from derivatives]
+\label{cor:lipschitz-derivative}
+Let $I$ be an interval and $f\colon I\to\mathbb R$ continuous and differentiable at every interior point of $I$. If $|f'(x)|\le L$ for every interior point $x$, then
+\[
+|f(x)-f(y)|\le L\,|x-y|\qquad\text{for all }x,y\in I .
+\]
+Conversely, if $f$ is differentiable on $I$ and Lipschitz continuous with constant $L$, then $|f'(x)|\le L$ for all $x\in I$. Hence for a differentiable function on an interval, the smallest Lipschitz constant is $\sup_{x\in I}|f'(x)|$, finite or not.
+\end{corollary}
+
+\begin{proof}
+For $x<y$ in $I$ the mean value theorem gives $|f(y)-f(x)|=|f'(\xi)|\,(y-x)\le L(y-x)$. Conversely, if $f$ is Lipschitz with constant $L$, every difference quotient has absolute value at most $L$, and so has their limit, by \cref{thm:function-limit-laws}\,(iii). The last statement combines the two parts: $\sup|f'|$ is a Lipschitz constant by the first, and no smaller number is by the second.
+\end{proof}
+
+\emph{Examples.} Since $|\sin'x|=|\cos x|\le1$ and $|\cos'x|=|\sin x|\le1$, the sine and the cosine are Lipschitz continuous with constant $1$ on $\mathbb R$; this is \eqref{eq:sin-lipschitz}, now obtained without the trigonometric identities used in \cref{sec:continuity}. The arctangent has derivative $1/(1+x^2)\le1$, so $|\arctan x-\arctan y|\le|x-y|$. The function $\sin(10x)$ has derivative $10\cos(10x)$ and best Lipschitz constant $10$, the constant used in \cref{prop:grid-max}. The square root has derivative $1/(2\sqrt x)$, which is at most $\frac12$ on $[1,\infty)$ but unbounded on $(0,1]$; so it is Lipschitz with constant $\frac12$ on $[1,\infty)$ and not Lipschitz on $[0,1]$, as found in \cref{sec:uniform} by a direct computation. In the same way the corollary shows that every function with a bounded derivative on an interval is uniformly continuous there.
+
+Lipschitz constants smaller than $1$ decide whether an iteration converges. \Cref{thm:fixed-point} guarantees a fixed point of a continuous map of $[a,b]$ into itself, but, as the cosine showed, not that the iteration $x_{k+1}=g(x_k)$ finds it. A bound on the derivative closes the gap.
+
+\begin{proposition}[Contractions of an interval]
+\label{prop:fixed-point-contraction}
+Let $g\colon[a,b]\to[a,b]$ be continuous, differentiable on $(a,b)$, with $|g'(x)|\le q$ for all $x\in(a,b)$, where $q<1$. Then $g$ has exactly one fixed point $c$, and for every $x_0\in[a,b]$ the iterates $x_{k+1}\coloneqq g(x_k)$ satisfy
+\[
+|x_k-c|\le q^k\,|x_0-c|\le q^k(b-a)\qquad(k\in\mathbb N),
+\]
+so that $x_k\to c$.
+\end{proposition}
+
+\begin{proof}
+A fixed point exists by \cref{thm:fixed-point}. By \cref{cor:lipschitz-derivative}, $|g(x)-g(y)|\le q|x-y|$ for all $x,y\in[a,b]$. If $c$ and $d$ are fixed points, then $|c-d|=|g(c)-g(d)|\le q|c-d|$, which forces $|c-d|=0$ since $q<1$. The iterates lie in $[a,b]$, and $|x_{k+1}-c|=|g(x_k)-g(c)|\le q|x_k-c|$; the bound follows by induction, and $q^k\to0$ by \cref{thm:standard-limits}\,(ii).
+\end{proof}
+
+The cosine maps $[0,1]$ into itself, as shown in \cref{sec:ivt}, and $|\cos'x|=\sin x\le\sin1=0.8414\ldots$ on $[0,1]$, because the sine is increasing on $[0,\pi/2]$. The proposition therefore guarantees that the iteration $x_{k+1}=\cos x_k$ converges from every starting point in $[0,1]$, with error at most $0.85^k$ after $k$ steps. The actual convergence is somewhat faster. By the mean value theorem, $x_{k+1}-c=\cos x_k-\cos c=-\sin(\xi_k)(x_k-c)$ for some $\xi_k$ between $x_k$ and $c$, and since $\xi_k\to c$, the ratio of successive errors tends to $\sin c=0.6736\ldots$ in absolute value. Each step reduces the error by about a third, and about $5.8$ steps are needed per decimal digit; the error after $30$ steps from $x_0=1$ is $1.9\times10^{-6}$, as observed in \cref{sec:ivt}. A proposition of this kind is the one-dimensional case of the contraction mapping theorem of Volume~II. \Cref{sec:newton} shows how to construct, for a given equation, an iteration whose ratio of errors tends to $0$.
+
+\subsection{Proving Inequalities with Derivatives}
+
+The monotonicity corollary is a powerful tool for proving inequalities. To show $\varphi\le\psi$ on an interval starting at $a$, it suffices to show the inequality at $a$ and to compare the rates of change.
+
+\begin{lemma}[Comparison]
+\label{lem:comparison}
+Let $\varphi$ and $\psi$ be continuous on $[a,b]$ and differentiable on $(a,b)$, with $\varphi(a)\le\psi(a)$ and $\varphi'(x)\le\psi'(x)$ for all $x\in(a,b)$. Then $\varphi(x)\le\psi(x)$ for all $x\in[a,b]$. If $\varphi'(x)<\psi'(x)$ for all $x\in(a,b)$, then $\varphi(x)<\psi(x)$ for all $x\in(a,b]$.
+\end{lemma}
+
+\begin{proof}
+The function $\psi-\varphi$ has a nonnegative derivative on $(a,b)$, so it is increasing on $[a,b]$ by \cref{cor:monotone-derivative}, and $(\psi-\varphi)(x)\ge(\psi-\varphi)(a)\ge0$. With strict inequality of the derivatives it is strictly increasing.
+\end{proof}
+
+In words: if $\psi$ starts no lower than $\varphi$ and grows at least as fast, it stays no lower. Applied repeatedly, the lemma produces a whole ladder of inequalities from a single one.
+
+\begin{proposition}
+\label{prop:sin-cos-ladder}
+For every $x\ge0$,
+\[
+x-\frac{x^3}6\le\sin x\le x\qquad\text{and}\qquad1-\frac{x^2}2\le\cos x\le1-\frac{x^2}2+\frac{x^4}{24}.
+\]
+The two inequalities for the cosine hold for every real $x$.
+\end{proposition}
+
+\begin{proof}
+We apply \cref{lem:comparison} four times on intervals $[0,b]$, each time using the previous inequality to compare the derivatives; all functions involved vanish at $0$, except the cosine terms, which are checked at $0$ directly.
+\begin{enumerate}
+\item $\sin x\le x$: the derivatives satisfy $\cos x\le1$, and $\sin0=0$.
+\item $1-\frac{x^2}2\le\cos x$: the derivatives satisfy $-x\le-\sin x$ by (i), and both sides equal $1$ at $0$.
+\item $x-\frac{x^3}6\le\sin x$: the derivatives satisfy $1-\frac{x^2}2\le\cos x$ by (ii).
+\item $\cos x\le1-\frac{x^2}2+\frac{x^4}{24}$: the derivatives satisfy $-\sin x\le-x+\frac{x^3}6$ by (iii), and both sides equal $1$ at $0$.
+\end{enumerate}
+The functions in (ii) and (iv) are even, so these inequalities extend to $x<0$.
+\end{proof}
+
+The first two inequalities were obtained in \cref{ch:limits} from the geometry of the unit circle, and indeed the derivatives of the sine and cosine rest on that geometry, so the proof above does not make them independent of it. What is new is the method, and the last two inequalities. With $x=1$ they give $0.8333\ldots\le\sin1\le1$ and $0.5\le\cos1\le0.5416\ldots$, while $\sin1=0.8414\ldots$ and $\cos1=0.5403\ldots$. The polynomials that appear, $x$, $x-x^3/6$, $1-x^2/2$ and $1-x^2/2+x^4/24$, are the first Taylor polynomials of the sine and the cosine, and continuing the ladder gives the whole Taylor series; Chapter~8 develops this systematically. The inequality $1-x^2/2\le\cos x$ is \eqref{eq:one-minus-cos} once more, and $\sin x\ge x-x^3/6$ explains the deviation of $(\sin x)/x$ from $1$ observed in \cref{sec:function-limits}: for $0<x$ it lies between $1-x^2/6$ and $1$.
+
+The same method extends Bernoulli's inequality (\cref{thm:bernoulli}) from natural to rational exponents~\cite{mitrinovic1993bernoulli}.
+
+\begin{proposition}[Bernoulli's inequality for rational exponents]
+\label{prop:bernoulli-rational}
+Let $r$ be a rational number and $x\ge-1$. If $r>1$, then $(1+x)^r\ge1+rx$; if $0<r<1$, then $(1+x)^r\le1+rx$. In both cases equality holds only for $x=0$.
+\end{proposition}
+
+\begin{proof}
+Let $h(x)\coloneqq(1+x)^r-1-rx$ on $[-1,\infty)$. It is continuous there (\cref{sec:monotone-functions}), and by \cref{cor:root-derivative} and the chain rule it is differentiable on $(-1,\infty)$, with
+\[
+h'(x)=r\bigl((1+x)^{r-1}-1\bigr).
+\]
+Let $r>1$. The power $t\mapsto t^{r-1}$ with the positive exponent $r-1$ is strictly increasing on $[0,\infty)$, so $(1+x)^{r-1}<1$ for $-1<x<0$ and $(1+x)^{r-1}>1$ for $x>0$. Hence $h'<0$ on $(-1,0)$ and $h'>0$ on $(0,\infty)$. By \cref{cor:monotone-derivative}, $h$ is strictly decreasing on $[-1,0]$ and strictly increasing on $[0,\infty)$, so $h(x)>h(0)=0$ for all $x\ne0$. For $0<r<1$ the exponent $r-1$ is negative, the signs of $h'$ are reversed, and $h(x)<h(0)=0$ for $x\ne0$.
+\end{proof}
+
+For example, with $r=\frac12$ the proposition gives $\sqrt{1+x}\le1+\frac x2$, the inequality between $\sqrt{1+h}$ and its linear approximation found in \cref{sec:derivative}, and with $r=\frac32$ it gives $(1+x)^{3/2}\ge1+\frac32x$. Geometrically, both statements compare the graph of $(1+x)^r$ with its tangent at $x=0$, which is the line $1+rx$; \cref{sec:convexity} explains why the graph lies above its tangents when $r>1$ and below them when $0<r<1$. Once Chapter~9 has defined $x^s$ for real exponents, the same proof establishes the inequality for every real $r$.
+
+\section{Error Propagation and Conditioning: A First Look}
+\label{sec:conditioning}
+
+Every number that enters a computation carries an error: a measurement is accurate to a few digits, a constant such as $\pi$ is stored to finitely many digits, and every arithmetic operation on a computer rounds its result. If $x$ is known only approximately, how accurately is $f(x)$ known? And how accurately can the derivative itself be computed when only values of $f$ are available? Both questions have first answers in terms of derivatives, and both return in Volumes~V and~XI in full generality. This section treats them with the tools of the chapter, as pure mathematics.
+
+\subsection{Absolute and Relative Errors}
+
+Suppose that instead of $x$ we use $\tilde x=x+\delta$. If $f$ is differentiable at $x$, \cref{thm:linear-approx} gives
+\[
+f(x+\delta)-f(x)=f'(x)\,\delta+o(\delta),
+\]
+so for small $\delta$ the error in the output is approximately $f'(x)$ times the error in the input. If $f$ is differentiable on the interval between $x$ and $x+\delta$, the mean value theorem makes this exact, $f(x+\delta)-f(x)=f'(\xi)\delta$, at the price of an unknown point $\xi$, and \cref{cor:lipschitz-derivative} gives the rigorous bound $|f(x+\delta)-f(x)|\le L|\delta|$ with $L$ a bound for $|f'|$ near $x$. Thus $|f'(x)|$ is the factor by which absolute errors are amplified. For $f(x)=x^2$ at $x=1000$, an error of $0.001$ in $x$ produces an error of about $2000\cdot0.001=2$ in $x^2=10^6$.
+
+In this example the error $2$ is large in absolute terms but small compared with the result $10^6$, and the input error $0.001$ is small compared with $1000$. In scientific computing relative errors are usually the relevant ones, because floating-point arithmetic represents every number with a fixed number of significant digits: rounding a real number to the nearest binary64 floating-point number commits a relative error of at most $2^{-53}\approx1.1\times10^{-16}$ (Volume~V). The relative error of the input is $\delta/x$ and that of the output is $(f(x+\delta)-f(x))/f(x)$, and their ratio is
+\[
+\frac{\bigl(f(x+\delta)-f(x)\bigr)/f(x)}{\delta/x}=\frac{f(x+\delta)-f(x)}{\delta}\cdot\frac x{f(x)}\ \longrightarrow\ \frac{x\,f'(x)}{f(x)}\qquad(\delta\to0).
+\]
+This limit deserves a name.
+
+\begin{definition}[Condition number]
+\label{def:condition-number}
+Let $f$ be differentiable at a point $x\ne0$ with $f(x)\ne0$. The \term{relative condition number} of $f$ at $x$ is
+\[
+\kappa_f(x)\coloneqq\Bigl|\frac{x\,f'(x)}{f(x)}\Bigr| .
+\]
+\end{definition}
+
+\begin{proposition}
+\label{prop:condition-number}
+Under the hypotheses of \cref{def:condition-number},
+\[
+\lim_{\delta\to0}\frac{|f(x+\delta)-f(x)|/|f(x)|}{|\delta|/|x|}=\kappa_f(x).
+\]
+\end{proposition}
+
+\begin{proof}
+The quotient equals $\bigl|(f(x+\delta)-f(x))/\delta\bigr|\cdot|x|/|f(x)|$, and the first factor tends to $|f'(x)|$ by the definition of the derivative and the continuity of the absolute value.
+\end{proof}
+
+So for small relative perturbations of size $\varepsilon$ in the input, the relative change in the output is about $\kappa_f(x)\varepsilon$. A function is called \term{well conditioned} at $x$ if $\kappa_f(x)$ is of moderate size and \term{ill conditioned} if it is large; what counts as large depends on the accuracy of the data and the accuracy required. Roughly, $\log_{10}\kappa_f(x)$ decimal digits are lost: if the input is correct to $16$ significant digits and $\kappa_f(x)=10^4$, the output can be trusted to about $12$. The condition number is a property of the function, that is, of the mathematical problem; it says nothing about how $f(x)$ is computed. \Cref{tab:condition} lists the condition numbers of some elementary functions.
+
+\begin{table}
+\sdfloat{%
+\begin{sdtable}{colspec={lll}, row{1}={font=\small\bfseries}}
+\toprule
+$f(x)$ & $\kappa_f(x)$ & ill conditioned near \\
+\midrule
+$x^p$, $p\in\mathbb Q$ & $|p|$ & never \\
+$\sqrt x$ & $\frac12$ & never \\
+$x-1$ & $|x|/|x-1|$ & $x=1$ \\
+$\sin x$ & $|x\cos x/\sin x|$ & $x=k\pi$, $k\ne0$ \\
+$\cos x$ & $|x\sin x/\cos x|$ & $x=\frac\pi2+k\pi$ \\
+$\arcsin x$ & $|x|/\bigl(\sqrt{1-x^2}\,|\arcsin x|\bigr)$ & $x=\pm1$ \\
+$e^x$ & $|x|$ & $|x|$ large \\
+$\ln x$ & $1/|\ln x|$ & $x=1$ \\
+\bottomrule
+\end{sdtable}}{Relative condition numbers $\kappa_f(x)=|xf'(x)/f(x)|$ of some elementary functions, from the derivatives of \cref{tab:derivatives}; $k$ is an integer. Near the points in the last column, small relative errors in $x$ are greatly magnified in $f(x)$.\label{tab:condition}}
+\end{table}
+
+The table holds several lessons. Powers and roots are harmless: the square root even halves relative errors. The function $x-1$ is the simplest case of \term{cancellation}, the subtraction of nearly equal numbers. At $x=1.001$ its condition number is $1001$: changing $x$ by the relative amount $10^{-6}$, to $1.001001001$, changes $x-1$ from $0.001$ to $0.001001001$, a relative change of about $10^{-3}$. The leading digits, which $x$ and $1$ have in common, cancel, and what remains is determined by the trailing digits of $x$, where its errors live. The sine is ill conditioned near its nonzero zeros: at $x=3.14$, close to $\pi$, the condition number is about $1972$, because a relative change of $x$ is a large relative change of the small number $\sin x$. The exponential function has the condition number $|x|$, which is large for large $|x|$ although nothing is wrong with the function: a relative error $\varepsilon$ in $x=100$ is an absolute error of $100\varepsilon$ in the exponent, and $e^{x+100\varepsilon}=e^x\,e^{100\varepsilon}\approx e^x(1+100\varepsilon)$. The logarithm, conversely, is ill conditioned near $1$, where its value is small.
+
+Condition numbers multiply under composition, which is the chain rule in another guise.
+
+\begin{proposition}
+\label{prop:condition-composition}
+Let $f$ be differentiable at $x$ and $g$ differentiable at $f(x)$, and suppose that $x$, $f(x)$ and $g(f(x))$ are nonzero. Then
+\[
+\kappa_{g\circ f}(x)=\kappa_g\bigl(f(x)\bigr)\,\kappa_f(x).
+\]
+\end{proposition}
+
+\begin{proof}
+By the chain rule,
+\[
+\Bigl|\frac{x\,g'(f(x))\,f'(x)}{g(f(x))}\Bigr|=\Bigl|\frac{f(x)\,g'(f(x))}{g(f(x))}\Bigr|\cdot\Bigl|\frac{x\,f'(x)}{f(x)}\Bigr| .
+\]
+\end{proof}
+
+A computation is a long composition of simple steps, and the proposition suggests why the order and choice of the steps matter even when the overall problem is well conditioned: an ill-conditioned intermediate step amplifies the rounding errors committed before it. A classical example is $f(x)=\sqrt{x+1}-\sqrt x$ for large $x$. Since
+\[
+f(x)=\frac{(\sqrt{x+1}-\sqrt x)(\sqrt{x+1}+\sqrt x)}{\sqrt{x+1}+\sqrt x}=\frac1{\sqrt{x+1}+\sqrt x},
+\]
+a short computation gives $\kappa_f(x)=\frac12\sqrt{x/(x+1)}<\frac12$: the problem is well conditioned for every $x>0$. Yet if $f(10^{12})$ is evaluated in binary64 arithmetic as written, by computing the two square roots and subtracting, the result is $5.00003807\ldots\times10^{-7}$, while the true value is $4.99999999999875\times10^{-7}$; the relative error, $7.6\times10^{-6}$, is about $10^{11}$ times the rounding unit. The two square roots are close to $10^6$ and are computed with absolute errors of order $10^{-10}$; the subtraction, which is ill conditioned here, turns these into errors of the same absolute size in a result of size $5\times10^{-7}$. The second formula, which adds instead of subtracting, gives the result to full accuracy. The problem is the same; the algorithms differ. Distinguishing the condition of a problem from the stability of an algorithm that solves it is a central theme of Volume~V.
+
+\subsection{Approximating Derivatives by Difference Quotients}
+
+When $f$ is available only as a program, its derivative is often approximated by a difference quotient with a small but nonzero $h$. We write
+\[
+D_h^+f(x)\coloneqq\frac{f(x+h)-f(x)}h,\qquad D_h^0f(x)\coloneqq\frac{f(x+h)-f(x-h)}{2h}
+\]
+for the \term{forward difference quotient} and the \term{central difference quotient}. Both tend to $f'(x)$ as $h\to0$ if $f$ is differentiable at $x$; for the central one, write it as the average of $D_h^+f(x)$ and $D_{-h}^+f(x)$. The question is how fast. A Taylor expansion, as in Chapter~8, answers it most quickly, but the comparison lemma suffices and gives sharp constants. The key estimate bounds the error of the linear approximation when the derivative is Lipschitz continuous.
+
+\begin{lemma}[Remainder of the linear approximation]
+\label{lem:linear-remainder}
+Let $I$ be an interval and $f\colon I\to\mathbb R$ differentiable, with $|f'(s)-f'(t)|\le M|s-t|$ for all $s,t\in I$. Then for all $x,y\in I$,
+\[
+\bigl|f(y)-f(x)-f'(x)(y-x)\bigr|\le\frac M2\,(y-x)^2 .
+\]
+If $f$ is twice differentiable with $|f''|\le M$ on $I$, the hypothesis holds.
+\end{lemma}
+
+\begin{proof}
+Suppose first $y>x$, and let $g(t)\coloneqq f(x+t)-f(x)-f'(x)\,t$ for $0\le t\le y-x$. Then $g(0)=0$ and $g'(t)=f'(x+t)-f'(x)$, so $-Mt\le g'(t)\le Mt$. The functions $\pm Mt^2/2$ vanish at $0$ and have the derivatives $\pm Mt$, so \cref{lem:comparison}, applied twice, gives $-Mt^2/2\le g(t)\le Mt^2/2$; with $t=y-x$ this is the claim. If $y<x$, apply the same argument to $g(t)\coloneqq f(x-t)-f(x)+f'(x)\,t$ for $0\le t\le x-y$, whose derivative $-f'(x-t)+f'(x)$ again lies between $-Mt$ and $Mt$. The last statement is \cref{cor:lipschitz-derivative} applied to $f'$.
+\end{proof}
+
+The constant $\frac12$ cannot be improved: for $f(x)=x^2$, with $M=2$, the left side is exactly $(y-x)^2$.
+
+\begin{proposition}[Errors of difference quotients]
+\label{prop:difference-errors}
+Let $I$ be an interval and $x\in I$.
+\begin{enumerate}
+\item If $f$ is differentiable on $I$ and $f'$ is Lipschitz continuous with constant $M$ on $I$, for instance if $|f''|\le M$, then for $h\ne0$ with $x+h\in I$,
+\[
+\bigl|D_h^+f(x)-f'(x)\bigr|\le\frac M2|h| .
+\]
+\item If $f$ is twice differentiable on $I$ and $f''$ is Lipschitz continuous with constant $M$ on $I$, for instance if $|f'''|\le M$, then for $h\ne0$ with $x\pm h\in I$,
+\[
+\bigl|D_h^0f(x)-f'(x)\bigr|\le\frac M6h^2 .
+\]
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(i) Divide the inequality of \cref{lem:linear-remainder}, with $y=x+h$, by $|h|$.
+
+(ii) Since $D_{-h}^0f=D_h^0f$, we may assume $h>0$. Let $g(t)\coloneqq f(x+t)-f(x-t)-2f'(x)\,t$ for $0\le t\le h$. Then $g(0)=0$, $g'(t)=f'(x+t)+f'(x-t)-2f'(x)$, so $g'(0)=0$, and $g''(t)=f''(x+t)-f''(x-t)$, so $|g''(t)|\le M\cdot2t$. The comparison lemma, applied to $\pm g'$ and $Mt^2$, gives $|g'(t)|\le Mt^2$, and applied once more, to $\pm g$ and $Mt^3/3$, it gives $|g(t)|\le Mt^3/3$. Since $D_h^0f(x)-f'(x)=g(h)/(2h)$, the claim follows.
+\end{proof}
+
+Again the constants are sharp: for $f(x)=x^3$, whose second derivative $6x$ has the Lipschitz constant $6$, one computes $D_h^0f(x)-f'(x)=h^2$, which is the bound. The forward quotient is said to be \term{first-order accurate}, since its error is $O(h)$, and the central quotient \term{second-order accurate}, with error $O(h^2)$. Halving $h$ halves the error of the first and divides that of the second by four. The difference is visible on the right of \cref{fig:finite-differences}, which shows the errors of both quotients for $f=\sin$ at $x=1$. For large $h$ the errors follow the lines $(\frac12\sin1)\,h$ and $(\frac16\cos1)\,h^2$, of slopes $1$ and $2$ in the logarithmic plot, close to the bounds $h/2$ and $h^2/6$ of the proposition with $M=1$.
+
+\begin{figure}
+\sdfloat{%
+\begin{tikzpicture}
+\begin{axis}[sdplot, xmode=log, ymode=log, width=0.62\textwidth, height=0.46\textwidth,
+  xmin=5e-16, xmax=0.2, ymin=1e-13, ymax=0.1,
+  xtick={1e-15,1e-12,1e-9,1e-6,1e-3}, ytick={1e-12,1e-9,1e-6,1e-3},
+  xlabel={$h$}, ylabel={error}, sdlegendtop]
+\addplot[black, only marks, mark=o, mark size=1.3pt] coordinates {(0.1,0.0429) (0.03162,0.0134) (0.01,0.00422) (0.003162,0.00133) (0.001,0.000421) (0.0003162,0.000133) (0.0001,4.21e-05) (3.162e-05,1.33e-05) (1e-05,4.21e-06) (3.162e-06,1.33e-06) (1e-06,4.21e-07) (3.162e-07,1.33e-07) (1e-07,4.18e-08) (3.162e-08,1.23e-08) (1e-08,1.41e-08) (3.162e-09,2.63e-08) (1e-09,5.25e-08) (3.162e-10,1.32e-07) (1e-10,5.85e-08) (3.162e-11,9.22e-07) (1e-11,1.17e-06) (3.162e-12,1.5e-05) (1e-12,4.32e-05) (3.162e-13,1.5e-05) (1e-13,0.000734) (3.162e-14,0.000366) (1e-14,0.00371) (3.162e-15,0.0137) (1e-15,0.0148)};
+\addlegendentry{forward}
+\addplot[black, only marks, mark=*, mark size=1.2pt] coordinates {(0.1,0.0009) (0.03162,9e-05) (0.01,9e-06) (0.003162,9.01e-07) (0.001,9.01e-08) (0.0003162,9.01e-09) (0.0001,9e-10) (3.162e-05,8.89e-11) (1e-05,1.11e-11) (3.162e-06,6.01e-13) (1e-06,2.77e-11) (3.162e-07,1.82e-11) (1e-07,1.94e-10) (3.162e-08,1.82e-11) (1e-08,2.97e-09) (3.162e-09,8.76e-09) (1e-09,2.97e-09) (3.162e-10,1.32e-07) (1e-10,5.85e-08) (3.162e-11,9.22e-07) (1e-11,1.17e-06) (3.162e-12,2.59e-06) (1e-12,1.23e-05) (3.162e-13,1.5e-05) (1e-13,0.000179) (3.162e-14,0.000366) (1e-14,0.00371) (3.162e-15,0.0137) (1e-15,0.0148)};
+\addlegendentry{central}
+\addplot[black!50, dashed, line width=0.5pt, domain=1e-8:0.2, samples=2, forget plot] {0.4207*x};
+\addplot[black!50, dashed, line width=0.5pt, domain=1e-6:0.2, samples=2, forget plot] {0.09005*x^2};
+\end{axis}
+\end{tikzpicture}}{Errors $|D_h^+f(1)-f'(1)|$ (open circles) and $|D_h^0f(1)-f'(1)|$ (filled circles) for $f=\sin$, computed in binary64 arithmetic, against $h$ on logarithmic scales. For large $h$ they follow the lines $0.42\,h$ and $0.090\,h^2$ (dashed) predicted by \cref{prop:difference-errors}. For small $h$ rounding errors dominate and grow like $1/h$; the smallest errors are about $10^{-8}$ and $10^{-11}$.\label{fig:finite-differences}}
+\end{figure}
+
+The left half of the figure shows what the proposition does not: for $h$ below about $10^{-8}$ the forward quotient becomes \emph{worse} as $h$ decreases, and for $h=10^{-15}$ it has no correct digit beyond the first. The reason is cancellation once more. The values $f(x+h)$ and $f(x)$ are computed with relative errors of about $u=2^{-53}\approx1.1\times10^{-16}$, so their difference carries an absolute error of up to about $2u|f(x)|$, and dividing by $h$ turns this into an error of about $2u|f(x)|/h$ in the quotient. The total error of the forward quotient is therefore roughly bounded by
+\[
+\frac M2h+\frac{2u|f(x)|}h ,
+\]
+a sum of a term that decreases and a term that increases as $h$ decreases. By the closed interval method, or the inequality of the means, it is smallest for $h=2\sqrt{u|f(x)|/M}$, where it equals $2\sqrt{u|f(x)|M}$. For the sine at $1$ this gives $h\approx2\times10^{-8}$ and an error of about $2\times10^{-8}$, in agreement with the figure: the best forward quotient is correct to only about half of the $16$ available digits. The same balance for the central quotient, between $Mh^2/6$ and $u|f(x)|/h$, gives the optimal $h=(3u|f(x)|/M)^{1/3}\approx7\times10^{-6}$ and an error of order $10^{-11}$, about two thirds of the digits~\cite{nocedal2006}. Higher-order formulas and extrapolation improve on this, and Volume~XI treats them together with the routines of the library that implement them; the rounding errors themselves are analysed in Volume~V.
+
+\section{L'H\^opital's Rule}
+\label{sec:lhopital}
+
+Limits of quotients $f(x)/g(x)$ in which numerator and denominator both tend to $0$, or both to $\infty$, are the indeterminate forms of \cref{sec:limit-laws}: the limit laws do not apply, and the outcome depends on how fast the two parts change. Since the derivatives measure how fast functions change, it is natural to compare $f'$ and $g'$ instead. L'H\^opital's rule says that this is legitimate. The rule appeared in 1696 in the first textbook of the differential calculus, written by the Marquis de l'H\^opital~\cite{lhopital1696}, who had learnt it from Johann Bernoulli~\cite{edwards1979}.
+
+\subsection{The Form \texorpdfstring{$0/0$}{0/0}}
+
+\begin{theorem}[L'H\^opital's rule, form $0/0$]
+\label{thm:lhopital}
+Let $a<b$, and let $f$ and $g$ be differentiable on $(a,b)$ with $g'(x)\ne0$ for all $x\in(a,b)$. Suppose that
+\[
+\lim_{x\to a^+}f(x)=0,\qquad\lim_{x\to a^+}g(x)=0,\qquad\lim_{x\to a^+}\frac{f'(x)}{g'(x)}=L,
+\]
+where $L$ is a real number, $\infty$ or $-\infty$. Then $g(x)\ne0$ for all $x\in(a,b)$, and
+\[
+\lim_{x\to a^+}\frac{f(x)}{g(x)}=L .
+\]
+The same holds for left-hand limits at $b$, and, by combining the two, for two-sided limits at an interior point.
+\end{theorem}
+
+\begin{proof}
+Define $f(a)\coloneqq0$ and $g(a)\coloneqq0$. Then $f$ and $g$ are continuous on $[a,x]$ for every $x\in(a,b)$ and differentiable on $(a,x)$. If $g(x)=0$ for some $x\in(a,b)$, Rolle's theorem on $[a,x]$ would give a zero of $g'$ in $(a,x)$; so $g$ has no zero in $(a,b)$. For $x\in(a,b)$, Cauchy's mean value theorem (\cref{thm:cauchy-mvt}) on $[a,x]$ gives a point $\xi_x\in(a,x)$ with
+\[
+\frac{f(x)}{g(x)}=\frac{f(x)-f(a)}{g(x)-g(a)}=\frac{f'(\xi_x)}{g'(\xi_x)} .
+\]
+Suppose $L$ is real, and let $\varepsilon>0$. Choose $\delta>0$ with $\delta\le b-a$ such that $|f'(t)/g'(t)-L|<\varepsilon$ for $a<t<a+\delta$. For $a<x<a+\delta$ we have $a<\xi_x<x<a+\delta$, and therefore $|f(x)/g(x)-L|<\varepsilon$. If $L=\infty$, choose for a given $K$ a $\delta$ with $f'(t)/g'(t)>K$ for $a<t<a+\delta$, and conclude in the same way that $f(x)/g(x)>K$ for $a<x<a+\delta$; the case $L=-\infty$ is symmetric.
+\end{proof}
+
+The proof shows the role of Cauchy's mean value theorem: the quotient of the values equals a quotient of derivatives at an intermediate point $\xi_x$, which is squeezed towards $a$ together with $x$. Note that the rule uses the quotient $f'/g'$ of the derivatives, not the derivative of the quotient.
+
+\emph{Examples.} By \cref{prop:sin-limit},
+\[
+\lim_{x\to0}\frac{x-\sin x}{x^3}=\lim_{x\to0}\frac{1-\cos x}{3x^2}=\frac13\cdot\frac12=\frac16 ;
+\]
+the second limit exists, so the first exists and has the same value. (The hypotheses hold on each side of $0$: the derivative $3x^2$ of the denominator vanishes only at $0$.) This confirms the observation of \cref{sec:function-limits} that $(\sin x)/x$ deviates from $1$ by about $x^2/6$, since $1-(\sin x)/x=(x-\sin x)/x$. The rule can be applied repeatedly, as long as the hypotheses hold at each stage:
+\[
+\lim_{x\to0}\frac{\sqrt{1+x}-1-x/2}{x^2}=\lim_{x\to0}\frac{\frac12(1+x)^{-1/2}-\frac12}{2x}=\lim_{x\to0}\frac{-\frac14(1+x)^{-3/2}}2=-\frac18 .
+\]
+Here the existence of the last limit gives that of the middle one, which gives that of the first; the order of the reasoning runs from right to left. The result refines the linear approximation $\sqrt{1+x}\approx1+\frac x2$ of \cref{sec:derivative}: its error is about $-x^2/8$, which is the $h^2/8$ observed there.
+
+Limits as $x\to\infty$ reduce to limits at $0$ through the substitution $x=1/t$.
+
+\begin{corollary}
+\label{cor:lhopital-infinity}
+Let $f$ and $g$ be differentiable on $(c,\infty)$, $c>0$, with $g'(x)\ne0$ there, $f(x)\to0$ and $g(x)\to0$ as $x\to\infty$, and $f'(x)/g'(x)\to L$ as $x\to\infty$. Then $f(x)/g(x)\to L$ as $x\to\infty$.
+\end{corollary}
+
+\begin{proof}
+Let $F(t)\coloneqq f(1/t)$ and $G(t)\coloneqq g(1/t)$ for $0<t<1/c$. By the chain rule, $F'(t)=-f'(1/t)/t^2$ and $G'(t)=-g'(1/t)/t^2\ne0$, so $F'(t)/G'(t)=f'(1/t)/g'(1/t)$. As $t\to0^+$, $1/t\to\infty$, so $F$ and $G$ tend to $0$ and $F'/G'$ tends to $L$. By \cref{thm:lhopital}, $F(t)/G(t)\to L$ as $t\to0^+$, which is the claim, since $x\to\infty$ corresponds to $t=1/x\to0^+$.
+\end{proof}
+
+\subsection{The Form \texorpdfstring{$\infty/\infty$}{infinity/infinity}}
+
+The rule also holds when the denominator grows without bound; remarkably, nothing needs to be assumed about the numerator.
+
+\begin{theorem}[L'H\^opital's rule, form $\infty/\infty$]
+\label{thm:lhopital-infinite}
+Let $a<b$, and let $f$ and $g$ be differentiable on $(a,b)$ with $g'(x)\ne0$ for all $x\in(a,b)$. Suppose that $|g(x)|\to\infty$ and $f'(x)/g'(x)\to L$ as $x\to a^+$, where $L$ is a real number, $\infty$ or $-\infty$. Then $f(x)/g(x)\to L$ as $x\to a^+$. The analogous statements hold for $x\to b^-$ and for $x\to\infty$.
+\end{theorem}
+
+\begin{proof}
+We give the proof for real $L$. Let $0<\varepsilon\le1$, and choose $c\in(a,b)$ such that $|f'(t)/g'(t)-L|<\varepsilon$ for all $t\in(a,c)$. Since $|g(x)|\to\infty$, there is $d\in(a,c)$ such that $|g(x)|>|g(c)|$ for all $x\in(a,d)$, and moreover
+\[
+\Bigl|\frac{g(c)}{g(x)}\Bigr|\le1\qquad\text{and}\qquad\frac{|L|\,|g(c)|+|f(c)|}{|g(x)|}<\varepsilon\qquad(a<x<d).
+\]
+Let $a<x<d$. Then $g(x)\ne g(c)$, and Cauchy's mean value theorem on $[x,c]$ gives $\xi\in(x,c)$ with
+\[
+R(x)\coloneqq\frac{f(x)-f(c)}{g(x)-g(c)}=\frac{f'(\xi)}{g'(\xi)},\qquad\text{so}\qquad|R(x)-L|<\varepsilon .
+\]
+Solving the definition of $R(x)$ for $f(x)$ and dividing by $g(x)$,
+\[
+\frac{f(x)}{g(x)}=R(x)\Bigl(1-\frac{g(c)}{g(x)}\Bigr)+\frac{f(c)}{g(x)} ,
+\]
+and hence
+\[
+\frac{f(x)}{g(x)}-L=\bigl(R(x)-L\bigr)\Bigl(1-\frac{g(c)}{g(x)}\Bigr)-\frac{L\,g(c)}{g(x)}+\frac{f(c)}{g(x)} .
+\]
+The first term has absolute value less than $2\varepsilon$, and the last two together less than $\varepsilon$. So $|f(x)/g(x)-L|<3\varepsilon$ for all $x\in(a,d)$, which proves the claim by \cref{prop:limit-variants}\,(iii) in its form for functions. For $L=\infty$ the same identity shows that $f(x)/g(x)$ exceeds $K\cdot\frac12-1$ once $R(x)>K$, $1-g(c)/g(x)>\frac12$ and $|f(c)/g(x)|<1$, which hold for $x$ close enough to $a$; since $K$ is arbitrary, $f(x)/g(x)\to\infty$. The case $L=-\infty$ is symmetric, and $x\to\infty$ is reduced to $t\to0^+$ as in \cref{cor:lhopital-infinity}.
+\end{proof}
+
+The idea of the proof is that for $x$ very close to $a$ the values $f(c)$ and $g(c)$ at the fixed point $c$ become negligible compared with $g(x)$, so that $f(x)/g(x)$ is close to $(f(x)-f(c))/(g(x)-g(c))$, to which Cauchy's mean value theorem applies. The most important applications involve the logarithm and the exponential function and must wait for Chapter~9. There, the rule gives for every rational $p>0$
+\[
+\lim_{x\to\infty}\frac{\ln x}{x^p}=\lim_{x\to\infty}\frac{1/x}{p\,x^{p-1}}=\lim_{x\to\infty}\frac1{p\,x^p}=0 ,
+\]
+so the logarithm grows more slowly than every positive power, and, applied $k$ times, $\lim_{x\to\infty}x^k/e^x=0$, the continuous counterpart of the hierarchy of \cref{thm:standard-limits}.
+
+\subsection{Using the Rule Correctly}
+
+L'H\^opital's rule is easy to apply and easy to misapply. Four warnings cover most mistakes.
+
+\emph{The rule applies only to indeterminate forms.} For $\lim_{x\to0}(1+x)/(2+x)$, the quotient of the derivatives is $1$ for every $x$, but the limit is $\frac12$, by continuity. Before applying the rule one must check that numerator and denominator both tend to $0$, or that the denominator tends to $\pm\infty$.
+
+\emph{The rule is a sufficient condition, not a necessary one.} If $f'/g'$ has no limit, $f/g$ may still have one. As $x\to\infty$,
+\[
+\frac{x+\sin x}x=1+\frac{\sin x}x\to1,\qquad\text{while}\qquad\frac{(x+\sin x)'}{x'}=1+\cos x
+\]
+oscillates between $0$ and $2$. Similarly, $x^2\sin(1/x)/x=x\sin(1/x)\to0$ as $x\to0$, while the quotient of the derivatives, $2x\sin(1/x)-\cos(1/x)$, has no limit. In such cases the rule is simply silent.
+
+\emph{The hypothesis $g'\ne0$ matters.} It was used in the proof, through Rolle's theorem and Cauchy's mean value theorem, and it cannot be dropped: Stolz gave a pair of functions with $g'$ vanishing at points arbitrarily close to the limit point for which $f'/g'$ has a limit but $f/g$ does not~\cite{boas1986}. In the formula for $f'/g'$ a common factor of $f'$ and $g'$ that vanishes at such points cancels, which conceals the problem.
+
+\emph{The rule must not be used to prove the limits it depends on.} As noted in \cref{sec:existence} and \cref{sec:function-limits}, computing $\lim_{x\to0}(\sin x)/x$ with l'H\^opital's rule, as $\lim\cos x/1=1$, is circular, since the derivative of the sine was obtained in \cref{thm:trig-derivatives} from that very limit.
+
+Finally, the rule is often not the quickest route. The limit $\lim_{x\to0}(\sin x)^2/x^2=1$ follows at once from the limit laws, and many limits of rational functions are simpler by factoring. Other indeterminate forms, such as $0\cdot\infty$ and $\infty-\infty$, are first rewritten as quotients: for example, $(\frac\pi2-x)\tan x=(\frac\pi2-x)/\cos x\cdot\sin x$, and as $x\to\frac\pi2$ the rule gives $(\frac\pi2-x)/\cos x\to(-1)/(-\sin\frac\pi2)=1$, so $(\frac\pi2-x)\tan x\to1$.
+
+\section{Higher Derivatives and Convexity}
+\label{sec:convexity}
+
+\subsection{Higher Derivatives}
+
+The derivative $f'$ of a differentiable function is again a function, and it may itself be differentiable. Its derivative, the \term{second derivative} $f''=(f')'$, measures how fast the slope changes. For a moving body with position $s(t)$, $s''(t)$ is the \term{acceleration}; the falling body of \cref{sec:derivative}, with $s(t)=\frac g2t^2$ and $s'(t)=gt$, has the constant acceleration $s''(t)=g$.
+
+\begin{definition}[Higher derivatives]
+\label{def:higher-derivative}
+Let $I$ be an interval and $f\colon I\to\mathbb R$. Set $f^{(0)}\coloneqq f$. If $f^{(n)}$ is defined on $I$ and differentiable at $a\in I$, we set $f^{(n+1)}(a)\coloneqq(f^{(n)})'(a)$. The function $f$ is \term{$n$ times differentiable} on $I$ if $f^{(n)}$ is defined on all of $I$. We write $f''=f^{(2)}$, $f'''=f^{(3)}$, and in Leibniz's notation $f^{(n)}=d^nf/dx^n$.
+\end{definition}
+
+\emph{Examples.} For a natural number $m$ and $k\le m$, repeated application of \cref{prop:power-rule} gives
+\[
+\frac{d^k}{dx^k}x^m=m(m-1)\cdots(m-k+1)\,x^{m-k}=m^{\underline k}\,x^{m-k},
+\]
+with the falling factorial of \cref{def:falling-factorial}, and the derivatives of order $k>m$ vanish. In particular, if $p(x)=\sum_{j=0}^mc_jx^j$, then $p^{(k)}(0)=k!\,c_k$, so the coefficients of a polynomial are determined by its derivatives at $0$:
+\[
+p(x)=\sum_{k=0}^m\frac{p^{(k)}(0)}{k!}\,x^k .
+\]
+Chapter~8 asks to what extent other functions can be represented in this way, and this is the question of Taylor series. For $f(x)=1/x$ on $(0,\infty)$, induction gives $f^{(n)}(x)=(-1)^nn!/x^{n+1}$. For the sine, $\sin'=\cos$ and $\cos'=-\sin$ give the periodic pattern $\sin,\cos,-\sin,-\cos,\sin,\ldots$, which can be written as
+\[
+\sin^{(n)}x=\sin\Bigl(x+\frac{n\pi}2\Bigr),
+\]
+by induction, since $\frac d{dx}\sin(x+\frac{n\pi}2)=\cos(x+\frac{n\pi}2)=\sin(x+\frac{n\pi}2+\frac\pi2)$ by the addition formula and the values $\sin\frac\pi2=1$, $\cos\frac\pi2=0$.
+
+The product rule extends to higher derivatives in a form that mirrors the binomial theorem (\cref{thm:binomial}).
+
+\begin{theorem}[Leibniz rule]
+\label{thm:leibniz-rule}
+If $f$ and $g$ are $n$ times differentiable on an interval $I$, then so is $fg$, and
+\[
+(fg)^{(n)}=\sum_{k=0}^n\binom nk f^{(k)}g^{(n-k)} .
+\]
+\end{theorem}
+
+\begin{proof}
+By induction on $n$. For $n=0$ both sides equal $fg$. Suppose the formula holds for $n$, and let $f$ and $g$ be $n+1$ times differentiable. By the inductive hypothesis, $(fg)^{(n)}$ is a sum of products $f^{(k)}g^{(n-k)}$ of differentiable functions, so it is differentiable, and the product rule gives
+\[
+(fg)^{(n+1)}=\sum_{k=0}^n\binom nk\Bigl(f^{(k+1)}g^{(n-k)}+f^{(k)}g^{(n+1-k)}\Bigr).
+\]
+This is exactly the expression in the proof of the binomial theorem, with $x^ky^{n-k}$ replaced by $f^{(k)}g^{(n-k)}$: shifting the index in the first part and applying Pascal's rule gives $\sum_{k=0}^{n+1}\binom{n+1}kf^{(k)}g^{(n+1-k)}$.
+\end{proof}
+
+The rule is efficient when one factor has few nonzero derivatives. For instance, since the derivatives of $x^2$ beyond the second vanish and $\sin^{(10)}=-\sin$, $\sin^{(9)}=\cos$, $\sin^{(8)}=\sin$,
+\begin{align*}
+\frac{d^{10}}{dx^{10}}\bigl(x^2\sin x\bigr)&=x^2\cdot(-\sin x)+\binom{10}1\,2x\cos x+\binom{10}2\,2\sin x\\
+&=(90-x^2)\sin x+20x\cos x .
+\end{align*}
+
+\subsection{Convex Functions}
+
+The sign of the first derivative tells whether a function increases or decreases (\cref{cor:monotone-derivative}). The sign of the second derivative tells whether the first derivative increases or decreases, that is, whether the graph bends upwards or downwards. The precise notion is convexity, which is defined without any derivatives and is important far beyond this chapter: convex functions are the functions that optimisation methods can minimise reliably, as Volume~XII explains.
+
+\begin{definition}[Convex function]
+\label{def:convex}
+Let $I$ be an interval. A function $f\colon I\to\mathbb R$ is \term{convex} if
+\[
+f\bigl((1-\lambda)x+\lambda y\bigr)\le(1-\lambda)f(x)+\lambda f(y)\qquad\text{for all }x,y\in I\text{ and }\lambda\in[0,1],
+\]
+and \term{strictly convex} if the inequality is strict whenever $x\ne y$ and $0<\lambda<1$. It is \term{concave}, or strictly concave, if $-f$ is convex, or strictly convex.
+\end{definition}
+
+As $\lambda$ runs through $[0,1]$, the point $(1-\lambda)x+\lambda y$ runs through the segment between $x$ and $y$, and $(1-\lambda)f(x)+\lambda f(y)$ is the height above it of the chord joining $(x,f(x))$ and $(y,f(y))$. So $f$ is convex if every chord of its graph lies on or above the graph between its end points (\cref{fig:convex}A). Linear functions $mx+c$ are convex and concave, with equality in the definition. The absolute value is convex, by the triangle inequality: $|(1-\lambda)x+\lambda y|\le(1-\lambda)|x|+\lambda|y|$.
+
+The definition compares three points of the graph, and it is equivalent to an ordering of the slopes of the three chords between them (\cref{fig:convex}B). For $u<v$ in $I$ write
+\[
+s(u,v)\coloneqq\frac{f(v)-f(u)}{v-u}
+\]
+for the slope of the chord from $u$ to $v$.
+
+\begin{lemma}[Three chords]
+\label{lem:slopes}
+A function $f$ on an interval $I$ is convex if and only if
+\[
+s(x,y)\le s(x,z)\le s(y,z)\qquad\text{for all }x<y<z\text{ in }I .
+\]
+Each of the three inequalities $s(x,y)\le s(x,z)$, $s(x,z)\le s(y,z)$ and $s(x,y)\le s(y,z)$, required for all $x<y<z$ in $I$, is already equivalent to convexity.
+\end{lemma}
+
+\begin{proof}
+Let $x<y<z$ and write $y=(1-\lambda)x+\lambda z$ with $\lambda=(y-x)/(z-x)\in(0,1)$, so that $1-\lambda=(z-y)/(z-x)$. Since
+\[
+f(z)-f(x)=\bigl(f(y)-f(x)\bigr)+\bigl(f(z)-f(y)\bigr)=s(x,y)(y-x)+s(y,z)(z-y),
+\]
+division by $z-x$ gives $s(x,z)=\lambda\,s(x,y)+(1-\lambda)\,s(y,z)$: the middle slope is a weighted average of the other two, and so lies between them. Hence the three inequalities in the statement are equivalent to one another for each triple. The convexity condition at the point $y$ reads $f(y)\le(1-\lambda)f(x)+\lambda f(z)$, that is, $f(y)-f(x)\le\lambda\bigl(f(z)-f(x)\bigr)$; dividing by $y-x=\lambda(z-x)$ turns it into $s(x,y)\le s(x,z)$. Since every point strictly between two points of $I$ is of the form $y$ for some triple, and the cases $\lambda\in\{0,1\}$ and $x=z$ of the definition are trivial, the lemma follows; the case $x>z$ of the definition is the same with the roles of $x$ and $z$ exchanged.
+\end{proof}
+
+\begin{figure}
+\sdpanel{A}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.49\textwidth, height=0.4\textwidth, xmin=0, xmax=3.7, ymin=0, ymax=2.7,
+  xtick={0.5,1.5,3}, xticklabels={$x$,$m$,$y$}, ytick=\empty, xlabel={}]
+\addplot[black, line width=0.8pt, domain=0.37:3.6, samples=100] {1/x};
+\addplot[black!45, dashed, line width=0.5pt, domain=0.5:3, samples=2] {2-0.66667*(x-0.5)};
+\addplot[black, line width=0.4pt, domain=0.6:3, samples=2] {0.66667-0.44444*(x-1.5)};
+\draw[black!45, densely dotted, line width=0.4pt] (axis cs:1.5,0) -- (axis cs:1.5,1.3333);
+\fill[black] (axis cs:0.5,2) circle (1.4pt) (axis cs:3,0.33333) circle (1.4pt) (axis cs:1.5,0.66667) circle (1.4pt) (axis cs:1.5,1.3333) circle (1.1pt);
+\end{axis}
+\end{tikzpicture}}\hfill
+\sdpanel{B}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.49\textwidth, height=0.4\textwidth, xmin=0, xmax=4.1, ymin=0, ymax=3.9,
+  xtick={0.5,2,3.5}, xticklabels={$x$,$y$,$z$}, ytick=\empty, xlabel={}]
+\addplot[black, line width=0.8pt, domain=0:4, samples=60] {x^2/4};
+\addplot[black!45, line width=0.5pt, domain=0.5:2, samples=2] {0.0625+0.625*(x-0.5)};
+\addplot[black!45, dashed, line width=0.5pt, domain=0.5:3.5, samples=2] {0.0625+1.0*(x-0.5)};
+\addplot[black!45, densely dotted, line width=0.7pt, domain=2:3.5, samples=2] {1+1.375*(x-2)};
+\fill[black] (axis cs:0.5,0.0625) circle (1.4pt) (axis cs:2,1) circle (1.4pt) (axis cs:3.5,3.0625) circle (1.4pt);
+\end{axis}
+\end{tikzpicture}}
+\caption{Convexity. (A) For the convex function $1/x$, the chord from $x$ to $y$ (dashed) lies above the graph, and the tangent at a point $m$ between them (thin line) lies below it; at $m=(1-\lambda)x+\lambda y$ the graph is squeezed between the two. (B) The three chords between points $x<y<z$ of the graph of the convex function $x^2/4$ have increasing slopes: $s(x,y)=0.625$ (solid grey), $s(x,z)=1$ (dashed), $s(y,z)=1.375$ (dotted).}
+\label{fig:convex}
+\end{figure}
+
+For differentiable functions, convexity is a property of the derivative.
+
+\begin{theorem}[Convexity and the derivative]
+\label{thm:convex-derivative}
+Let $f$ be differentiable on an interval $I$. Then $f$ is convex if and only if $f'$ is increasing. If $f'$ is strictly increasing, $f$ is strictly convex.
+\end{theorem}
+
+\begin{proof}
+Suppose $f$ is convex, and let $x<z$ be points of $I$. For every $y\in(x,z)$, \cref{lem:slopes} gives $s(x,y)\le s(x,z)\le s(y,z)$. As $y\to x^+$, $s(x,y)\to f'(x)$, so $f'(x)\le s(x,z)$; as $y\to z^-$, $s(y,z)\to f'(z)$, so $s(x,z)\le f'(z)$. Hence
+\begin{equation}
+f'(x)\le s(x,z)\le f'(z)\qquad(x<z),
+\label{eq:convex-slopes}
+\end{equation}
+and $f'$ is increasing.
+
+Conversely, suppose $f'$ is increasing, and let $x<y<z$ in $I$. By the mean value theorem, $s(x,y)=f'(\xi)$ and $s(y,z)=f'(\eta)$ with $x<\xi<y<\eta<z$, so $s(x,y)\le s(y,z)$, and $f$ is convex by \cref{lem:slopes}. If $f'$ is strictly increasing, then $s(x,y)<s(y,z)$, hence $s(x,y)<s(x,z)$, which is the strict convexity condition at $y$.
+\end{proof}
+
+\begin{corollary}
+\label{cor:convex-second}
+Let $f$ be twice differentiable on an interval $I$. Then $f$ is convex if and only if $f''(x)\ge0$ for all $x\in I$. If $f''(x)>0$ for all $x$ in the interior of $I$, then $f$ is strictly convex.
+\end{corollary}
+
+\begin{proof}
+Combine \cref{thm:convex-derivative} with \cref{cor:monotone-derivative} applied to $f'$.
+\end{proof}
+
+The converse of the last statement fails: $x^4$ is strictly convex, since its derivative $4x^3$ is strictly increasing, but its second derivative vanishes at $0$.
+
+\emph{Examples.} The function $x^2$ is strictly convex, with $f''=2$. For a rational number $p\ge1$, the power $x^p$ is convex on $[0,\infty)$, because its derivative $px^{p-1}$ is increasing there (for $p>1$ it is differentiable at $0$ with derivative $0$, the difference quotient $h^{p-1}$ tending to $0$); for $0<p<1$ it is concave on $(0,\infty)$, since $p(p-1)x^{p-2}<0$ there. This explains \cref{prop:bernoulli-rational}, as we shall see in a moment. The function $1/x$ is strictly convex on $(0,\infty)$, with second derivative $2/x^3>0$, and strictly concave on $(-\infty,0)$. The sine is concave on $[0,\pi]$, where $\sin''=-\sin\le0$. Chapter~9 shows that the exponential function is strictly convex on $\mathbb R$ and the logarithm strictly concave on $(0,\infty)$.
+
+\subsection{Tangents, Minima and Jensen's Inequality}
+
+The chord of a convex function lies above the graph; its tangents lie below it (\cref{fig:convex}A).
+
+\begin{proposition}[Tangents of convex functions]
+\label{prop:tangent-below}
+Let $f$ be differentiable on an interval $I$. Then $f$ is convex if and only if
+\begin{equation}
+f(y)\ge f(x)+f'(x)(y-x)\qquad\text{for all }x,y\in I .
+\label{eq:tangent-below}
+\end{equation}
+\end{proposition}
+
+\begin{proof}
+Let $f$ be convex. If $y>x$, \eqref{eq:convex-slopes} gives $s(x,y)\ge f'(x)$, which is \eqref{eq:tangent-below} after multiplication by $y-x>0$. If $y<x$, it gives $s(y,x)\le f'(x)$, that is, $f(x)-f(y)\le f'(x)(x-y)$, which is again \eqref{eq:tangent-below}.
+
+Conversely, suppose \eqref{eq:tangent-below} holds, and let $x,z\in I$, $\lambda\in[0,1]$ and $y\coloneqq(1-\lambda)x+\lambda z$. Applying \eqref{eq:tangent-below} at the point $y$ gives $f(x)\ge f(y)+f'(y)(x-y)$ and $f(z)\ge f(y)+f'(y)(z-y)$. Multiplying by $1-\lambda$ and by $\lambda$ and adding,
+\[
+(1-\lambda)f(x)+\lambda f(z)\ge f(y)+f'(y)\bigl((1-\lambda)x+\lambda z-y\bigr)=f(y).
+\]
+\end{proof}
+
+Many classical inequalities are tangent inequalities of convex functions. Bernoulli's inequality $(1+x)^r\ge1+rx$ for $r>1$ (\cref{prop:bernoulli-rational}) says that the convex function $(1+x)^r$ lies above its tangent $1+rx$ at $0$; for $0<r<1$ the function is concave and lies below its tangent. In Chapter~9, the inequality $e^x\ge1+x$ is the tangent inequality of the exponential function at $0$.
+
+For optimisation, the tangent inequality has a striking consequence: for a convex function, the first-order condition of Fermat's theorem is not only necessary but sufficient for a global minimum.
+
+\begin{corollary}
+\label{cor:convex-minimum}
+Let $f$ be convex and differentiable on an interval $I$, and let $c\in I$ with $f'(c)=0$. Then $f$ has a global minimum at $c$. If $f$ is strictly convex, $c$ is the only point at which the minimum is attained.
+\end{corollary}
+
+\begin{proof}
+By \eqref{eq:tangent-below} with $x=c$, $f(y)\ge f(c)$ for all $y\in I$. If $f$ is strictly convex and $f(d)=f(c)$ for some $d\ne c$, then at the midpoint $\frac{c+d}2$ strict convexity would give $f(\frac{c+d}2)<\frac12f(c)+\frac12f(d)=f(c)$, contradicting the minimality of $f(c)$.
+\end{proof}
+
+For a function that is not convex, a point with $f'(c)=0$ may be a local minimum, a local maximum, or neither, and a local minimum need not be global; \cref{fig:extrema} shows all of this. For convex functions none of these complications arise: every local minimum is global, and the set of minimum points is an interval. This is why convex optimisation problems can be solved reliably and nonconvex ones in general cannot, a distinction that runs through Volume~XII. The sum of squared distances $g(x)=\sum_i(x-x_i)^2$ of \cref{sec:extrema} is strictly convex, with $g''=2n>0$, which proves once more that the mean is its unique minimum point.
+
+The defining inequality of convexity involves two points. It extends to any finite number of points, a result due to Jensen~\cite{jensen1906}.
+
+\begin{theorem}[Jensen's inequality]
+\label{thm:jensen}
+Let $f$ be convex on an interval $I$, let $x_1,\ldots,x_n\in I$, and let $\lambda_1,\ldots,\lambda_n\ge0$ with $\lambda_1+\cdots+\lambda_n=1$. Then $\sum_{i=1}^n\lambda_ix_i\in I$ and
+\[
+f\Bigl(\sum_{i=1}^n\lambda_ix_i\Bigr)\le\sum_{i=1}^n\lambda_if(x_i) .
+\]
+If $f$ is strictly convex and all $\lambda_i$ are positive, equality holds only if $x_1=\cdots=x_n$.
+\end{theorem}
+
+\begin{proof}
+The point $\bar x\coloneqq\sum_i\lambda_ix_i$ satisfies $\min_ix_i\le\bar x\le\max_ix_i$, because the weights are nonnegative and add up to $1$, and an interval contains every point between two of its points (\cref{prop:intervals}); so $\bar x\in I$. The inequality is proved by induction on $n$. For $n=1$ it is an equality. Suppose it holds for $n$ points, and consider $n+1$ points with weights $\lambda_1,\ldots,\lambda_{n+1}$. If $\lambda_{n+1}=1$, all other weights vanish and there is nothing to prove. Otherwise $\mu\coloneqq1-\lambda_{n+1}=\lambda_1+\cdots+\lambda_n>0$, and the point $y\coloneqq\sum_{i=1}^n(\lambda_i/\mu)x_i$ lies in $I$, with weights $\lambda_i/\mu$ that add up to $1$. Then $\sum_{i=1}^{n+1}\lambda_ix_i=\mu y+\lambda_{n+1}x_{n+1}$, and convexity followed by the inductive hypothesis gives
+\[
+f\Bigl(\sum_{i=1}^{n+1}\lambda_ix_i\Bigr)\le\mu f(y)+\lambda_{n+1}f(x_{n+1})\le\mu\sum_{i=1}^n\frac{\lambda_i}\mu f(x_i)+\lambda_{n+1}f(x_{n+1})=\sum_{i=1}^{n+1}\lambda_if(x_i).
+\]
+If $f$ is strictly convex, all weights are positive and equality holds, then equality holds in both steps: in the first, strict convexity forces $y=x_{n+1}$, and in the second, the inductive hypothesis forces $x_1=\cdots=x_n$, so that $y=x_1$; hence all $n+1$ points are equal.
+\end{proof}
+
+In the language of probability (Volume~III), the weights $\lambda_i$ describe a random variable $X$ that takes the value $x_i$ with probability $\lambda_i$, and Jensen's inequality says that $f$ evaluated at the expected value of $X$ is at most the expected value of $f(X)$: the value at the mean is at most the mean of the values. In this form it is one of the most frequently used inequalities of probability and statistics. Here are two applications to means of numbers.
+
+\begin{corollary}[Inequalities between means]
+\label{cor:power-means}
+Let $x_1,\ldots,x_n$ be positive numbers with arithmetic mean $A\coloneqq\frac1n\sum_ix_i$.
+\begin{enumerate}
+\item For every rational $p\ge1$, $A^p\le\frac1n\sum_ix_i^p$, that is, $A\le\bigl(\frac1n\sum_ix_i^p\bigr)^{1/p}$.
+\item The harmonic mean $H\coloneqq n\big/\sum_i(1/x_i)$ satisfies $H\le A$.
+\end{enumerate}
+In (ii), and in (i) for $p>1$, equality holds only if all $x_i$ are equal.
+\end{corollary}
+
+\begin{proof}
+(i) Apply \cref{thm:jensen} with $\lambda_i=\frac1n$ to the convex function $x^p$ on $(0,\infty)$, which is strictly convex for $p>1$ because its derivative is strictly increasing; then take $p$th roots, using that $t\mapsto t^{1/p}$ is increasing on $[0,\infty)$. (ii) Apply it to the strictly convex function $1/x$: $1/A\le\frac1n\sum_i1/x_i=1/H$.
+\end{proof}
+
+For $p=2$, (i) says that the arithmetic mean is at most the \emph{quadratic mean} $\bigl(\frac1n\sum x_i^2\bigr)^{1/2}$, also called the root mean square. The inequality of the arithmetic and geometric means (\cref{thm:amgm}) is also an instance of Jensen's inequality, for the concave function $\ln$. Chapter~9 shows that $\ln''x=-1/x^2<0$; Jensen's inequality for the concave function then gives
+\[
+\ln\Bigl(\frac{x_1+\cdots+x_n}n\Bigr)\ge\frac{\ln x_1+\cdots+\ln x_n}n=\ln\bigl((x_1\cdots x_n)^{1/n}\bigr),
+\]
+and since $\ln$ is increasing, the arithmetic mean is at least the geometric mean. The same argument with general weights gives the weighted form $x_1^{\lambda_1}\cdots x_n^{\lambda_n}\le\lambda_1x_1+\cdots+\lambda_nx_n$, with real exponents, which Chapter~9 makes available. Together, $H\le G\le A\le Q$ for the harmonic, geometric, arithmetic and quadratic means; Hardy, Littlewood and P\'olya develop the whole family of such inequalities from convexity~\cite{hardy1952inequalities}.
+
+\subsection{The Second Derivative Test}
+
+Fermat's theorem gives a necessary condition for an extremum. The second derivative gives a sufficient one.
+
+\begin{theorem}[Second derivative test]
+\label{thm:second-derivative-test}
+Let $f$ be differentiable on an open interval containing $c$, with $f'(c)=0$, and suppose $f''(c)$ exists. If $f''(c)>0$, then $f$ has a strict local minimum at $c$; if $f''(c)<0$, a strict local maximum.
+\end{theorem}
+
+\begin{proof}
+Let $f''(c)>0$. Since $f'(c)=0$,
+\[
+f''(c)=\lim_{x\to c}\frac{f'(x)-f'(c)}{x-c}=\lim_{x\to c}\frac{f'(x)}{x-c}>0 .
+\]
+By the definition of the limit with $\varepsilon=f''(c)/2$, there is $\delta>0$ such that $f'(x)/(x-c)>0$ for $0<|x-c|<\delta$, with $[c-\delta,c+\delta]$ inside the interval. So $f'(x)<0$ for $c-\delta<x<c$ and $f'(x)>0$ for $c<x<c+\delta$. By \cref{cor:monotone-derivative}, $f$ is strictly decreasing on $[c-\delta,c]$ and strictly increasing on $[c,c+\delta]$, so $f(x)>f(c)$ for $0<|x-c|\le\delta$. For $f''(c)<0$ apply this to $-f$.
+\end{proof}
+
+For the box of \cref{sec:extrema}, $V'(x)=(1-2x)(1-6x)=1-8x+12x^2$ and $V''(x)=-8+24x$, so $V''(\frac16)=-4<0$, confirming the maximum. For $f(x)=x^3-3x$ the test classifies both critical points: $f''(x)=6x$ is negative at $-1$, a local maximum, and positive at $1$, a local minimum. When $f''(c)=0$ the test says nothing: $x^4$, $-x^4$ and $x^3$ all have $f'(0)=f''(0)=0$, and they have at $0$ a minimum, a maximum, and no extremum at all. A point at which a function changes from convex to concave, or conversely, such as $0$ for $x^3$, is called an \term{inflection point}.
+
+\section{Newton's Method}
+\label{sec:newton}
+
+The bisection method of \cref{sec:ivt} solves an equation $f(x)=0$ using nothing but the signs of function values, and it gains one binary digit per step. Heron's method for $\sqrt2$ in \cref{sec:completeness} roughly doubled the number of correct digits in each step. This section shows that Heron's method is a special case of a general method that uses the derivative, explains where its speed comes from, and shows how it can fail.
+
+\subsection{The Method}
+
+Let $x_k$ be an approximation of a zero $c$ of a differentiable function $f$. Near $x_k$ the function is approximately equal to its linear approximation, $f(x)\approx f(x_k)+f'(x_k)(x-x_k)$. The zero of the linear approximation is easy to find: if $f'(x_k)\ne0$, it is
+\begin{equation}
+x_{k+1}\coloneqq x_k-\frac{f(x_k)}{f'(x_k)} .
+\label{eq:newton}
+\end{equation}
+Geometrically, $x_{k+1}$ is the point where the tangent at $(x_k,f(x_k))$ crosses the $x$-axis (\cref{fig:newton}). The iteration defined by \eqref{eq:newton} is \term{Newton's method}, also called the Newton--Raphson method. Newton described a version of it for polynomial equations in 1669, Raphson simplified it in 1690, and Simpson stated it in 1740 for general equations in the language of fluxions, that is, of derivatives~\cite{ypma1995}.
+
+\begin{figure}
+\sdfloat{%
+\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.6\textwidth, height=0.44\textwidth, xmin=1, xmax=3.25, ymin=-1.3, ymax=7.8,
+  xtick={1,1.4621,1.8333,3}, xticklabels={1,$x_2$,$x_1$,$x_0$}, ytick={0,2,4,6}, xlabel={$x$}]
+\draw[black!45, line width=0.4pt] (axis cs:1,0) -- (axis cs:3.25,0);
+\addplot[black, line width=0.8pt, domain=1:3.15, samples=80] {x^2-2};
+\draw[black, line width=0.45pt] (axis cs:3,7) -- (axis cs:1.83333,0);
+\draw[black, line width=0.45pt] (axis cs:1.83333,1.36111) -- (axis cs:1.46212,0);
+\draw[black!55, dashed, line width=0.4pt] (axis cs:1.83333,0) -- (axis cs:1.83333,1.36111);
+\draw[black!55, dashed, line width=0.4pt] (axis cs:1.46212,0) -- (axis cs:1.46212,0.13780);
+\fill[black] (axis cs:3,7) circle (1.4pt) (axis cs:1.83333,1.36111) circle (1.4pt) (axis cs:1.46212,0.13780) circle (1.4pt);
+\end{axis}
+\end{tikzpicture}}{Newton's method for $f(x)=x^2-2$, started at $x_0=3$. The tangent at $(x_k,f(x_k))$ meets the axis at $x_{k+1}$; from there one goes up to the graph (dashed) and repeats. The iterates $3$, $1.8333$, $1.4621$, $1.4150$, \ldots\ are those of Heron's method and approach $\sqrt2$ from the right.\label{fig:newton}}
+\end{figure}
+
+For $f(x)=x^2-a$ with $a>0$, the step \eqref{eq:newton} becomes
+\[
+x_{k+1}=x_k-\frac{x_k^2-a}{2x_k}=\frac12\Bigl(x_k+\frac a{x_k}\Bigr),
+\]
+which for $a=2$ is Heron's method \eqref{eq:heron-def}. So the ancient method, which \cref{sec:completeness} motivated by averaging $x$ and $2/x$, is Newton's method for the equation $x^2=2$; this fulfils the promise made there. For $f(x)=1/x-a$, whose zero is $1/a$, the step becomes
+\[
+x_{k+1}=x_k-\frac{1/x_k-a}{-1/x_k^2}=x_k(2-ax_k),
+\]
+which computes the reciprocal of $a$ using only multiplications and subtractions. Iterations of this kind are used to implement division in floating-point hardware and software~\cite{muller2018handbook}.
+
+\Cref{alg:newton} states the method with a stopping rule. It stops when the correction $d=f(x)/f'(x)$ is smaller than a tolerance $\tau$; we justify this test after \cref{thm:newton-quadratic}. Since the method may fail to converge, the number of steps is limited.
+
+\begin{algorithm}
+\begin{algorithmic}[1]
+\Require a differentiable function $f$ and its derivative $f'$; a starting point $x_0$; a tolerance $\tau>0$; a maximum number $K$ of steps
+\Ensure an approximation $x$ of a zero of $f$, or a report of failure
+\Name{Newton}{f,f',x_0,\tau,K}
+\State $x\gets x_0$
+\For{$k=1,\ldots,K$}
+  \If{$f'(x)=0$} \Return failure \Comment{horizontal tangent}
+  \EndIf
+  \State $d\gets f(x)/f'(x)$
+  \State $x\gets x-d$
+  \If{$|d|\le\tau$} \Return $x$
+  \EndIf
+\EndFor
+\State \Return failure \Comment{no convergence within $K$ steps}
+\end{algorithmic}
+\caption{Newton's method. Each step replaces $f$ by its tangent at the current point and moves to the zero of the tangent.}
+\label{alg:newton}
+\end{algorithm}
+
+\Cref{tab:newton} applies the method to Newton's own example $x^3-2x-5=0$, for which \cref{tab:bisection} showed bisection. From $x_0=2$, the first step gives $x_1=2-(-1)/10=2.1$, and the next gives $x_2=\frac{11761}{5615}=2.0945681\ldots$; the errors are $9.5\times10^{-2}$, $5.5\times10^{-3}$, $1.7\times10^{-5}$, $1.6\times10^{-10}$, $1.4\times10^{-20}$, $1.1\times10^{-40}$. Five steps give forty correct digits, more than twice as many as a binary64 number can hold, whereas bisection needs about $3.3$ steps for each decimal digit.
+
+\begin{table}
+\sdfloat{%
+\begin{sdtable}{colspec={rlll}, row{1}={font=\small\bfseries}}
+\toprule
+$k$ & Newton $x_k$ & $|x_k-c|$ & bisection $|m_k-c|$ \\
+\midrule
+0 & $2$ & $9.5\times10^{-2}$ & $4.1\times10^{-1}$ \\
+1 & $2.1$ & $5.5\times10^{-3}$ & $1.6\times10^{-1}$ \\
+2 & $2.0945681211\ldots$ & $1.7\times10^{-5}$ & $3.0\times10^{-2}$ \\
+3 & $2.0945514816982\ldots$ & $1.6\times10^{-10}$ & $3.2\times10^{-2}$ \\
+4 & $2.0945514815423\ldots$ & $1.4\times10^{-20}$ & $8.0\times10^{-4}$ \\
+5 & $2.0945514815423\ldots$ & $1.1\times10^{-40}$ & $1.5\times10^{-2}$ \\
+\bottomrule
+\end{sdtable}}{Newton's method and bisection for $x^3-2x-5=0$, whose real zero is $c=2.09455148154232659\ldots$. Newton's method starts at $x_0=2$; the bisection column repeats the midpoints of \cref{tab:bisection}, started on $[2,3]$. The number of correct digits of Newton's method roughly doubles in each step.\label{tab:newton}}
+\end{table}
+
+\subsection{Order of Convergence}
+
+The table shows a pattern: each error is roughly a constant times the square of the previous one. In fact $|x_{k+1}-c|/|x_k-c|^2$ takes the values $0.61$, $0.56$, $0.563$, $0.5630$, \ldots. The following definition gives names to the possible speeds.
+
+\begin{definition}[Order of convergence]
+\label{def:convergence-order}
+Let $x_k\to c$. The convergence is \term{linear} if there are $q\in[0,1)$ and $N$ such that $|x_{k+1}-c|\le q|x_k-c|$ for all $k\ge N$. It is \term{of order} $p>1$ if there are $C\ge0$ and $N$ such that $|x_{k+1}-c|\le C|x_k-c|^p$ for all $k\ge N$; for $p=2$ it is called \term{quadratic}.
+\end{definition}
+
+With linear convergence the error decreases at least geometrically, by a factor $q$ per step, and each step gains at least $\log_{10}(1/q)$ decimal digits; the iteration $x_{k+1}=\cos x_k$ of \cref{sec:mvt} converges linearly with $q$ close to $0.674$. With quadratic convergence, if $C|x_k-c|=10^{-m}$, then $C|x_{k+1}-c|\le10^{-2m}$: the number of correct digits roughly doubles in each step, once it has become positive. Bisection fits the definition only loosely: its midpoints need not approach the zero monotonically, as \cref{tab:bisection} shows, but its error bound $(b-a)/2^{k+1}$ converges linearly with $q=\frac12$.
+
+\subsection{Quadratic Convergence near a Simple Zero}
+
+A zero $c$ of a differentiable function $f$ is \term{simple} if $f'(c)\ne0$. The following theorem shows that Newton's method converges quadratically to a simple zero, provided it starts close enough. Its proof needs only the estimate of the linear approximation in \cref{lem:linear-remainder}, which in turn rested on the mean value theorem.
+
+\begin{theorem}[Quadratic convergence of Newton's method]
+\label{thm:newton-quadratic}
+Let $r>0$, $I\coloneqq[c-r,c+r]$, and let $f\colon I\to\mathbb R$ be differentiable with $f(c)=0$. Suppose there are constants $m>0$ and $M\ge0$ with
+\[
+|f'(x)|\ge m\qquad\text{and}\qquad|f'(x)-f'(y)|\le M|x-y|\qquad\text{for all }x,y\in I,
+\]
+and put $K\coloneqq M/(2m)$. If $x_0\in I$ and $q\coloneqq K|x_0-c|<1$, then all Newton iterates $x_k$ are defined and lie in $I$, and
+\[
+|x_{k+1}-c|\le K|x_k-c|^2,\qquad K|x_k-c|\le q^{2^k},\qquad|x_k-c|\le q^k|x_0-c|
+\]
+for every $k\in\mathbb N$. In particular, $x_k\to c$ quadratically. Moreover, $c$ is the only zero of $f$ in $I$.
+\end{theorem}
+
+\begin{proof}
+Write $e_k\coloneqq x_k-c$. Suppose that $x_k\in I$ and $K|e_k|\le q$, which holds for $k=0$. Since $|f'(x_k)|\ge m>0$, the next iterate is defined, and
+\[
+e_{k+1}=x_k-c-\frac{f(x_k)}{f'(x_k)}=\frac{f(c)-f(x_k)-f'(x_k)(c-x_k)}{f'(x_k)},
+\]
+where we have used $f(c)=0$ and brought everything to the denominator $f'(x_k)$. By \cref{lem:linear-remainder}, applied with $x=x_k$ and $y=c$, the numerator has absolute value at most $\frac M2e_k^2$, and the denominator at least $m$. Hence
+\[
+|e_{k+1}|\le\frac M{2m}e_k^2=K|e_k|\cdot|e_k|\le q|e_k|\le|e_k|\le r ,
+\]
+so $x_{k+1}\in I$; and $K|e_{k+1}|\le(K|e_k|)^2\le q^2\le q$. By induction, all iterates are defined and lie in $I$, and $|e_{k+1}|\le Ke_k^2$ and $|e_{k+1}|\le q|e_k|$ for every $k$, which gives the third inequality. Squaring step by step, $K|e_k|\le(K|e_0|)^{2^k}=q^{2^k}$. Finally, if $x\in I$ and $x\ne c$, the mean value theorem gives $f(x)=f(x)-f(c)=f'(\xi)(x-c)\ne0$, since $f'(\xi)\ne0$.
+\end{proof}
+
+The constant $K=M/(2m)$ has a clear meaning. The error of the tangent is controlled by the curvature of the graph, measured by $M$, and turning this error in the value $f$ into an error in the position $x$ divides it by the slope, at least $m$. Steep functions with little curvature are easy for Newton's method; flat functions with strong curvature are hard. A computation with Taylor's theorem in Chapter~8 shows that, if $f''$ is continuous, the ratio $(x_{k+1}-c)/(x_k-c)^2$ tends to $f''(c)/(2f'(c))$; for $x^3-2x-5$ this is $6c/(2(3c^2-2))=0.56297\ldots$, the value observed above. For Heron's method, \eqref{eq:heron-error} gives this ratio exactly, $1/(2x_k)$, which tends to $1/(2\sqrt2)$.
+
+The hypotheses of the theorem hold near every simple zero of a function with a bounded second derivative.
+
+\begin{corollary}[Local convergence]
+\label{cor:newton-local}
+Let $f$ be twice differentiable on an open interval $J$, with $f''$ bounded on $J$, and let $c\in J$ be a simple zero of $f$. Then there is $\rho>0$ such that Newton's method converges quadratically to $c$ from every starting point $x_0$ with $|x_0-c|\le\rho$.
+\end{corollary}
+
+\begin{proof}
+The derivative $f'$ is continuous, since it is differentiable, and $f'(c)\ne0$. By persistence of sign (\cref{lem:sign-persistence}) applied to $|f'|$, there is $r>0$ with $I=[c-r,c+r]\subseteq J$ and $|f'(x)|\ge m\coloneqq|f'(c)|/2$ on $I$. If $|f''|\le M$ on $J$, then $f'$ is Lipschitz continuous with constant $M$ by \cref{cor:lipschitz-derivative}. \Cref{thm:newton-quadratic} applies with $\rho\coloneqq\min(r,1/(2K))$ if $M>0$, and with $\rho=r$ if $M=0$.
+\end{proof}
+
+The theorem also justifies the stopping rule of \cref{alg:newton}. The correction in step $k$ is $d_k=x_k-x_{k+1}=e_k-e_{k+1}$. If $K|e_k|\le\frac12$, then $|e_k|\le|d_k|+|e_{k+1}|\le|d_k|+K|e_k|^2\le|d_k|+\frac12|e_k|$, so $|e_k|\le2|d_k|$, and the new error satisfies
+\[
+|e_{k+1}|\le K|e_k|^2\le4K\,d_k^2 .
+\]
+Near a simple zero, the error after a step is therefore far smaller than the step itself, and a small correction certifies a small error. \Cref{sec:completeness} warned that a test on the difference of consecutive terms is unreliable in general, as the harmonic numbers show; for Newton's method near a simple zero it is justified by this estimate.
+
+\subsection{When Newton's Method Fails}
+
+The theorem is local: it promises convergence only from starting points close enough to the zero, and its hypotheses can fail in several ways.
+
+\emph{Multiple zeros.} If $f'(c)=0$, no constant $m>0$ exists. For $f(x)=(x-c)^n$ with $n\ge2$, the step is $x_{k+1}-c=(x_k-c)-(x_k-c)/n=(1-\frac1n)(x_k-c)$: the convergence is only linear, with ratio $\frac12$ for a double zero. Modified methods restore quadratic convergence when the multiplicity is known (Volume~XII).
+
+\emph{Horizontal tangents.} If $f'(x_k)=0$, the tangent never meets the axis, and the step is undefined; if $f'(x_k)$ is merely small, the step is huge and may throw the iterate far away. For $f(x)=x^3-3x+1$, starting at $x_0=1$ fails at once, since $f'(1)=0$.
+
+\emph{Cycles.} For $f(x)=x^3-2x+2$ and $x_0=0$, the step gives $x_1=0-2/(-2)=1$, and then $x_2=1-1/1=0$: the iterates alternate between $0$ and $1$ forever, while the only real zero, $-1.7693\ldots$, is never approached (\cref{fig:newton-fail}A).
+
+\emph{Divergence.} The arctangent has the simple zero $0$, but its derivative $1/(1+x^2)$ becomes small for large $|x|$, so the tangents are flat far from the zero. The step is $x_{k+1}=x_k-(1+x_k^2)\arctan x_k$. From $x_0=1$ the iterates $-0.5708$, $0.1169$, $-0.0011$, $8\times10^{-10}$ converge rapidly, but from $x_0=1.5$ they are $-1.694$, $2.321$, $-5.114$, $32.30$, $-1575$: each step overshoots further, and the iteration diverges (\cref{fig:newton-fail}B). The boundary between the two behaviours is the number $1.3917\ldots$ from which the iteration alternates between it and its negative, the positive solution of $2x=(1+x^2)\arctan x$.
+
+\begin{figure}
+\sdpanel{A}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.49\textwidth, height=0.4\textwidth, xmin=-2.3, xmax=1.8, ymin=-4.6, ymax=4.6,
+  xtick={-2,-1,0,1}, ytick={-4,-2,0,2,4}, xlabel={$x$}]
+\draw[black!45, line width=0.4pt] (axis cs:-2.3,0) -- (axis cs:1.8,0);
+\addplot[black, line width=0.8pt, domain=-2.25:1.8, samples=100] {x^3-2*x+2};
+\draw[black, line width=0.45pt] (axis cs:0,2) -- (axis cs:1,0);
+\draw[black, line width=0.45pt] (axis cs:1,1) -- (axis cs:0,0);
+\draw[black!55, dashed, line width=0.4pt] (axis cs:1,0) -- (axis cs:1,1);
+\draw[black!55, dashed, line width=0.4pt] (axis cs:0,0) -- (axis cs:0,2);
+\fill[black] (axis cs:0,2) circle (1.4pt) (axis cs:1,1) circle (1.4pt);
+\draw[black, line width=0.6pt, fill=white] (axis cs:-1.7693,0) circle (1.6pt);
+\end{axis}
+\end{tikzpicture}}\hfill
+\sdpanel{B}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.49\textwidth, height=0.4\textwidth, xmin=-5.6, xmax=3, ymin=-1.6, ymax=1.6,
+  xtick={-5.1141,-1.6941,0,1.5,2.3211}, xticklabels={$x_3$,$x_1$,0,$x_0$,$x_2$}, ytick={-1,0,1}, xlabel={$x$}]
+\draw[black!45, line width=0.4pt] (axis cs:-5.6,0) -- (axis cs:3,0);
+\addplot[black, line width=0.8pt, domain=-5.6:3, samples=120] {rad(atan(x))};
+\draw[black, line width=0.45pt] (axis cs:1.5,0.98279) -- (axis cs:-1.69408,0);
+\draw[black, line width=0.45pt] (axis cs:-1.69408,-1.03755) -- (axis cs:2.32113,0);
+\draw[black, line width=0.45pt] (axis cs:2.32113,1.16400) -- (axis cs:-5.11409,0);
+\draw[black!55, dashed, line width=0.4pt] (axis cs:-1.69408,0) -- (axis cs:-1.69408,-1.03755);
+\draw[black!55, dashed, line width=0.4pt] (axis cs:2.32113,0) -- (axis cs:2.32113,1.16400);
+\draw[black!55, dashed, line width=0.4pt] (axis cs:-5.11409,0) -- (axis cs:-5.11409,-1.37769);
+\fill[black] (axis cs:1.5,0.98279) circle (1.4pt) (axis cs:-1.69408,-1.03755) circle (1.4pt) (axis cs:2.32113,1.16400) circle (1.4pt) (axis cs:-5.11409,-1.37769) circle (1.4pt);
+\end{axis}
+\end{tikzpicture}}
+\caption{Two failures of Newton's method. (A) For $x^3-2x+2$ started at $x_0=0$, the tangents lead to $1$ and back to $0$, and the iteration cycles; the zero $-1.7693\ldots$ (open circle) is never approached. (B) For $\arctan x$ started at $x_0=1.5$, the flat tangents overshoot ever further, and the iterates $x_1=-1.694$, $x_2=2.321$, $x_3=-5.114$, \ldots\ diverge.}
+\label{fig:newton-fail}
+\end{figure}
+
+Newton's method and bisection thus have complementary strengths. Bisection needs only continuity and a change of sign, and it always converges, but slowly; Newton's method needs the derivative and a good starting point, and then converges very fast. Practical root finders combine them, taking Newton steps, or steps of a derivative-free variant, when these stay inside a bracketing interval and reduce it sufficiently, and bisection steps otherwise. The best-known derivative-free variant is the \term{secant method}, which replaces $f'(x_k)$ by the slope $(f(x_k)-f(x_{k-1}))/(x_k-x_{k-1})$ of the secant through the last two iterates. It converges near a simple zero with order $\phi=(1+\sqrt5)/2\approx1.618$, the golden ratio of \cref{sec:recurrences}, and needs one new function value per step instead of a value and a derivative~\cite{suli2003}. Volume~XII treats these methods, and their extension to systems of equations, for the root finders of the library.
+
+\begin{note}{Convergence without knowing the zero}
+\Cref{thm:newton-quadratic} assumes that a zero $c$ exists and bounds the derivative on an interval around it, which is unknown. A theorem of Kantorovich turns the situation around: it assumes only information at the starting point and proves that a zero exists. In one dimension it says the following. Let $f'$ be Lipschitz continuous with constant $M$, let $f'(x_0)\ne0$, let $\eta\coloneqq|f(x_0)/f'(x_0)|$ be the length of the first step, and suppose
+\[
+h\coloneqq\frac{M\eta}{|f'(x_0)|}\le\frac12 .
+\]
+Then $f$ has a zero within distance $t^*\coloneqq\eta\,(1-\sqrt{1-2h})/h$ of $x_0$, and Newton's method started at $x_0$ converges to it, quadratically if $h<\frac12$. The theorem holds in the same form for systems of equations, and Kantorovich stated it even for equations in infinite-dimensional spaces; the bound $t^*$ cannot be improved, as the example of a quadratic polynomial shows. Ortega and Rheinboldt give the proof and its many variants~\cite{ortega2000}. The theorem needs no knowledge of the zero, only quantities that can be computed or bounded at $x_0$, and so it can certify that a zero exists.
+\end{note}
+
+\section{Darboux's Theorem and the Limits of the Derivative}
+\label{sec:darboux}
+
+\subsection{A Derivative That Is Not Continuous}
+
+Every function we have differentiated so far had a continuous derivative. It is natural to ask whether this is always the case. It is not.
+
+\begin{proposition}
+\label{prop:x2sin}
+The function
+\[
+f(x)\coloneqq x^2\sin\frac1x\quad(x\ne0),\qquad f(0)\coloneqq0,
+\]
+is differentiable on $\mathbb R$, with $f'(0)=0$ and $f'(x)=2x\sin(1/x)-\cos(1/x)$ for $x\ne0$. The derivative $f'$ is not continuous at $0$; it has no limit there, not even a one-sided one.
+\end{proposition}
+
+\begin{proof}
+For $x\ne0$ the formula follows from the product rule and the chain rule. At $0$ the difference quotient is $h\sin(1/h)$, and $|h\sin(1/h)|\le|h|$, so it tends to $0$ by the squeeze theorem. For $k\ge1$, at $x_k=1/(2k\pi)$ we have $f'(x_k)=0-\cos(2k\pi)=-1$, and at $y_k=1/((2k+1)\pi)$ we have $f'(y_k)=0-\cos((2k+1)\pi)=1$. Both sequences tend to $0$ from the right, so by \cref{thm:sequential-limit} the right-hand limit of $f'$ at $0$ does not exist; since $f'$ is even, neither does the left-hand limit.
+\end{proof}
+
+\Cref{fig:x2sin} shows the function and its derivative. The function is squeezed between $-x^2$ and $x^2$, which forces a horizontal tangent at $0$. Its slopes, however, oscillate between about $-1$ and $1$ in every neighbourhood of $0$, because the graph wiggles faster and faster while its amplitude shrinks only like $x^2$. The function is differentiable, but in an extreme way. It is also the example promised in \cref{sec:rules}: $f(x)=f(0)$ at all the points $1/(k\pi)$, which accumulate at $0$.
+
+\begin{figure}
+\sdpanel{A}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.49\textwidth, height=0.38\textwidth, xmin=-0.21, xmax=0.21, ymin=-0.045, ymax=0.045,
+  xtick={-0.2,0,0.2}, xticklabels={$-0.2$,0,$0.2$}, ytick={-0.04,0,0.04}, yticklabels={$-0.04$,0,$0.04$}, scaled y ticks=false, xlabel={$x$}]
+\addplot[black!45, densely dotted, line width=0.5pt, domain=-0.2:0.2, samples=60] {x^2};
+\addplot[black!45, densely dotted, line width=0.5pt, domain=-0.2:0.2, samples=60] {-x^2};
+\addplot[black, line width=0.5pt, domain=5:120, samples=1500] ({1/x},{sin(deg(x))/x^2});
+\addplot[black, line width=0.5pt, domain=5:120, samples=1500] ({-1/x},{-sin(deg(x))/x^2});
+\end{axis}
+\end{tikzpicture}}\hfill
+\sdpanel{B}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.49\textwidth, height=0.38\textwidth, xmin=-0.21, xmax=0.21, ymin=-1.5, ymax=1.5,
+  xtick={-0.2,0,0.2}, xticklabels={$-0.2$,0,$0.2$}, ytick={-1,0,1}, xlabel={$x$}]
+\addplot[black, line width=0.4pt, domain=5:120, samples=1500] ({1/x},{2*sin(deg(x))/x-cos(deg(x))});
+\addplot[black, line width=0.4pt, domain=5:120, samples=1500] ({-1/x},{2*sin(deg(x))/x-cos(deg(x))});
+\filldraw[black, draw=white, line width=0.7pt] (axis cs:0,0) circle (2pt);
+\end{axis}
+\end{tikzpicture}}
+\caption{A differentiable function with a discontinuous derivative. (A) The function $x^2\sin(1/x)$, squeezed between $\pm x^2$ (dotted), has derivative $0$ at $0$. (B) Its derivative $2x\sin(1/x)-\cos(1/x)$ oscillates between values near $-1$ and $1$ arbitrarily close to $0$, where its value is $0$ (dot). Both graphs are drawn for $|x|\ge1/120$.}
+\label{fig:x2sin}
+\end{figure}
+
+\subsection{The Intermediate Value Property of Derivatives}
+
+Although a derivative need not be continuous, it cannot be arbitrary. Darboux proved in 1875 that every derivative has the intermediate value property, which \cref{sec:ivt} established for continuous functions~\cite{darboux1875}.
+
+\begin{theorem}[Darboux]
+\label{thm:darboux}
+Let $f$ be differentiable on $[a,b]$, with one-sided derivatives at the ends, and let $y$ be a number strictly between $f'(a)$ and $f'(b)$. Then there is $c\in(a,b)$ with $f'(c)=y$.
+\end{theorem}
+
+\begin{proof}
+Suppose $f'(a)<y<f'(b)$; otherwise apply the argument to $-f$ and $-y$. The function $g(x)\coloneqq f(x)-yx$ is differentiable on $[a,b]$, with $g'(a)=f'(a)-y<0$ and $g'(b)=f'(b)-y>0$. Being continuous, it attains a minimum on $[a,b]$ at some point $c$. Since $g'(a)<0$, the difference quotients $(g(a+h)-g(a))/h$ are negative for all sufficiently small $h>0$, so $g(a+h)<g(a)$ for such $h$, and the minimum is not attained at $a$. Since $g'(b)>0$, the difference quotients $(g(b-h)-g(b))/(-h)$ are positive for small $h>0$, so $g(b-h)<g(b)$, and the minimum is not attained at $b$. Hence $c\in(a,b)$, and Fermat's theorem gives $g'(c)=0$, that is, $f'(c)=y$.
+\end{proof}
+
+The proof uses neither continuity of $f'$ nor the intermediate value theorem; it uses the extreme value theorem and Fermat's theorem, like the proof of Rolle's theorem. Its consequences restrict the discontinuities that a derivative can have.
+
+\begin{corollary}
+\label{cor:darboux}
+Let $f$ be differentiable on an interval $I$.
+\begin{enumerate}
+\item The image $f'(I)$ is an interval.
+\item If $f'(x)\ne0$ for all $x\in I$, then $f'$ has constant sign on $I$, and $f$ is strictly monotone.
+\item A function with a jump discontinuity, such as the step function $H$, is not the derivative of any function on an interval containing the jump.
+\end{enumerate}
+\end{corollary}
+
+\begin{proof}
+(i) If $y$ lies strictly between two values $f'(s)$ and $f'(t)$ with $s<t$, the theorem applied on $[s,t]$ gives $y\in f'(I)$; so $f'(I)$ is an interval by \cref{prop:intervals}. (ii) By (i), $f'(I)$ is an interval not containing $0$, so it lies in $(0,\infty)$ or in $(-\infty,0)$, and \cref{cor:monotone-derivative} applies. (iii) The step function takes the values $0$ and $1$ but not $\frac12$ on every interval containing $0$, so its image is not an interval.
+\end{proof}
+
+Part (ii) was used implicitly in Newton's method: on an interval on which $f'$ has no zero, $f$ is strictly monotone and has at most one zero. The theorem also excludes removable discontinuities of derivatives, by the following proposition, which is useful in its own right for computing derivatives at exceptional points.
+
+\begin{proposition}
+\label{prop:derivative-limit}
+Let $f$ be continuous on $[a,b)$ and differentiable on $(a,b)$, and suppose $\lim_{x\to a^+}f'(x)=L$, where $L$ is a real number, $\infty$ or $-\infty$. Then the difference quotient $(f(x)-f(a))/(x-a)$ tends to $L$ as $x\to a^+$; in particular, if $L$ is real, $f'_+(a)$ exists and equals $L$. The analogous statement holds at a right end.
+\end{proposition}
+
+\begin{proof}
+For $a<x<b$ the mean value theorem gives $(f(x)-f(a))/(x-a)=f'(\xi_x)$ with $a<\xi_x<x$. As $x\to a^+$, also $\xi_x\to a^+$, and $f'(\xi_x)\to L$, by the argument used in the proof of \cref{thm:lhopital}.
+\end{proof}
+
+Consequently, if $f$ is differentiable on an interval and $c$ is an interior point, the derivative $f'$ cannot have a removable discontinuity at $c$ (if $\lim_{x\to c}f'(x)$ exists, it equals $f'(c)$), nor a jump (by \cref{cor:darboux}, or by applying the proposition on both sides), nor an infinite discontinuity (an infinite one-sided limit of $f'$ would make the difference quotient tend to $\pm\infty$, contradicting the existence of $f'(c)$). Of the four kinds of discontinuity of \cref{sec:continuity}, only oscillation remains, as in \cref{prop:x2sin}. The proposition is also a convenient tool: for $f(x)=x|x|$, the derivative is $2|x|$ for $x\ne0$, which tends to $0$ as $x\to0$, so $f'(0)=0$ without a separate computation.
+
+\begin{note}{Which functions are derivatives?}
+Darboux's theorem gives a necessary condition for a function to be a derivative, but not a sufficient one: there are functions with the intermediate value property that are not derivatives. No simple characterisation of derivatives is known. Derivatives can be very irregular: Volterra constructed in 1881 a differentiable function whose derivative is bounded but so discontinuous that it cannot be integrated in the sense of Riemann. For such a function the fundamental theorem of calculus, $\int_a^bf'(x)\,dx=f(b)-f(a)$, cannot even be stated with the Riemann integral of Chapter~7, which is why that theorem must assume that the derivative is integrable; this is one of the motivations for the Lebesgue integral of Volume~II. On the other hand, every derivative is continuous at the points of a dense set. Bruckner's monograph surveys these results~\cite{bruckner1994}.
+\end{note}
+
+\subsection{Classes of Smooth Functions}
+
+Many theorems of numerical analysis require not only differentiability but continuity of derivatives, often of several orders. The following classes provide a vocabulary.
+
+\begin{definition}[The classes $C^k$]
+\label{def:ck}
+Let $I$ be an interval and $k\in\mathbb N$. A function $f\colon I\to\mathbb R$ is \term{$k$ times continuously differentiable}, written $f\in C^k(I)$, if it is $k$ times differentiable on $I$ and $f^{(k)}$ is continuous on $I$. In particular $C^0(I)=C(I)$ is the set of continuous functions. A function is \term{smooth}, written $f\in C^\infty(I)$, if it belongs to $C^k(I)$ for every $k$. A function in $C^1(I)$ is also called \term{continuously differentiable}.
+\end{definition}
+
+If $f\in C^k(I)$, the lower derivatives $f,f',\ldots,f^{(k-1)}$ are continuous as well, since each is differentiable. So the classes are nested:
+\[
+C^\infty(I)\subseteq\cdots\subseteq C^2(I)\subseteq C^1(I)\subseteq\{\text{differentiable functions on }I\}\subseteq C^0(I).
+\]
+All these inclusions are strict. The function $|x|$ is continuous but not differentiable at $0$; the function $x^2\sin(1/x)$ of \cref{prop:x2sin} is differentiable but not in $C^1(\mathbb R)$; and for every $k\in\mathbb N$ the function $x^k|x|$ belongs to $C^k(\mathbb R)$ but not to $C^{k+1}(\mathbb R)$. For the last claim, note that for $x\ne0$ its derivatives of order $j\le k$ are $(k+1)^{\underline j}\,x^{k-j}|x|$, which also holds at $0$ by \cref{prop:derivative-limit}, so that its $k$th derivative is $(k+1)!\,|x|$, continuous but not differentiable at $0$. Polynomials, the sine and the cosine belong to $C^\infty(\mathbb R)$, since their derivatives are again polynomials, or $\pm$ sines and cosines; rational functions and rational powers $x^r$ are smooth on every interval on which they are defined.
+
+\begin{proposition}
+\label{prop:ck-algebra}
+Let $k\in\mathbb N\cup\{\infty\}$, let $I$ and $J$ be intervals, and let $f,g\in C^k(I)$ and $h\in C^k(J)$. Then:
+\begin{enumerate}
+\item $f+g$ and $fg$ belong to $C^k(I)$;
+\item if $g$ has no zero on $I$, then $f/g\in C^k(I)$;
+\item if $f(I)\subseteq J$, then $h\circ f\in C^k(I)$.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+It suffices to treat finite $k$, by induction on $k$; for $k=0$ the statements are those of \cref{thm:continuity-algebra,thm:composition-continuous}. Suppose they hold for $k$, and let the functions belong to $C^{k+1}$. Then $(f+g)'=f'+g'$ and $(fg)'=f'g+fg'$ are built from $f',g'\in C^k$ and $f,g\in C^{k+1}\subseteq C^k$ by sums and products, so they belong to $C^k$ by the inductive hypothesis, and $f+g$, $fg$ belong to $C^{k+1}$. For (iii), $(h\circ f)'=(h'\circ f)\cdot f'$, where $h'\circ f\in C^k$ by the inductive hypothesis for compositions, and the product with $f'\in C^k$ is in $C^k$. For (ii), $g(I)$ is an interval without $0$ (\cref{cor:interval-image}), so it lies in $(0,\infty)$ or in $(-\infty,0)$, on which $y\mapsto1/y$ is smooth; by (iii), $1/g\in C^{k+1}$, and $f/g=f\cdot(1/g)$ by (i).
+\end{proof}
+
+With the same induction, \cref{thm:inverse-derivative} shows that the inverse of a $C^k$ function with nonvanishing derivative is $C^k$, since $(f^{-1})'=1/(f'\circ f^{-1})$.
+
+Why distinguish these classes? Every error bound of this chapter assumed some smoothness: the estimate of the forward difference quotient (\cref{prop:difference-errors}) needed a Lipschitz continuous first derivative, that of the central quotient a Lipschitz continuous second derivative, and the quadratic convergence of Newton's method again a Lipschitz continuous first derivative. When the smoothness is missing, the methods still run, but they lose their accuracy. For $f(x)=x|x|$, which is $C^1$ but not $C^2$, the central difference quotient at $0$ is
+\[
+D_h^0f(0)=\frac{h|h|-(-h)|h|}{2h}=|h| ,
+\]
+so its error is $|h|$, of first order only, not $O(h^2)$. In numerical analysis ``smooth'' therefore usually means ``having as many bounded derivatives as the method in question needs''. Volumes~XI and~XII state the precise smoothness each algorithm requires, and Chapter~8 shows, through Taylor's theorem, how the order of smoothness determines the attainable order of accuracy.
+
+\bigskip
+With the derivative and the mean value theorem in hand, the next chapter turns to the inverse problem: recovering a function from its rate of change. The integral of Chapter~7 is defined as a limit of sums, as the derivative is a limit of quotients, and the fundamental theorem of calculus, whose uniqueness half is \cref{cor:zero-derivative}, links the two. Chapter~8 then refines the mean value theorem into Taylor's theorem, which approximates a function by polynomials of any degree and quantifies the error.
+
+\section*{Notes}
+
+The differential calculus was created independently by Newton, in manuscripts from the 1660s, and by Leibniz, whose paper of 1684 was the first publication on the subject and introduced the notation $dy/dx$~\cite{leibniz1684}. The first textbook, by l'H\^opital, followed in 1696~\cite{lhopital1696}. Neither founder possessed a definition of the derivative that would satisfy a modern reader; the definition as a limit of difference quotients, and proofs of the mean value theorem and its consequences based on it, are due to Cauchy's lectures of 1823~\cite{cauchy1823}. Grabiner~\cite{grabiner1981} reconstructs how Cauchy turned the inequalities of eighteenth-century approximation methods into the foundation of the subject, and Edwards~\cite{edwards1979} and Hairer and Wanner~\cite{hairer1996analysis} tell the longer history, from Fermat's method of maxima and minima to Weierstrass. The notation $f'$ is Lagrange's~\cite{lagrange1797}. The history of Newton's method, from Newton's cubic to the modern formula, is told by Ypma~\cite{ypma1995}, and that of Rolle's theorem by Barrow-Green~\cite{barrowgreen2009}.
+
+Among textbooks at the level of this chapter, Spivak~\cite{spivak2008calculus} (Chapters~9 to~12) and Apostol~\cite{apostol1967calculus} treat differentiation rigorously and with many examples; Spivak's chapter on the significance of the derivative covers the material of \cref{sec:mvt,sec:convexity} in the same spirit. Abbott~\cite{abbott2015} (Chapter~5) discusses Darboux's theorem and constructs a continuous nowhere-differentiable function, and Bartle and Sherbert~\cite{bartle2011} (Chapter~6) give Carath\'eodory's form of the derivative and l'H\^opital's rules in full generality; Rudin~\cite{rudin1976} (Chapter~5) is concise and leads on to Volume~II. For convex functions and the inequalities they generate, Hardy, Littlewood and P\'olya~\cite{hardy1952inequalities} remain the classical reference; Jensen's paper~\cite{jensen1906} is short and readable. Newton's method and the secant method as numerical methods are treated by S\"uli and Mayers~\cite{suli2003}, and their convergence theory, including the theorem of Kantorovich, by Ortega and Rheinboldt~\cite{ortega2000}. The choice of the step size in difference quotients is discussed by Nocedal and Wright~\cite{nocedal2006}, and Griewank and Walther~\cite{griewank2008} is the standard account of automatic differentiation. Higham~\cite{higham2002accuracy} develops condition numbers and the analysis of rounding errors that \cref{sec:conditioning} only previews.
+
+\chapterreferences

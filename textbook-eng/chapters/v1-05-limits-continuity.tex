@@ -427,7 +427,7 @@ so the sequence decreases from $k=1$ on. By the monotone convergence theorem, ap
 
 The proof has the structure of almost every convergence proof for an iteration $x_{k+1}=g(x_k)$: first show that the limit exists, then pass to the limit in the recursion to find an equation that the limit must satisfy, here $L=g(L)$. The first step cannot be skipped. The recursion $x_{k+1}=-x_k$ with $x_0=1$ has the equation $L=-L$, whose only solution is $L=0$, but the sequence $1,-1,1,\ldots$ does not converge; passing to the limit in a recursion only shows what the limit must be \emph{if} there is one.
 
-\Cref{tab:heron} shows the iterates from $x_0=1$. They are rational numbers, as their definition shows, so in $\mathbb Q$ this would be a decreasing sequence, bounded below, without a limit; it is the standard example of the failure of completeness in $\mathbb Q$. The table also shows how fast the method is. The number of correct digits roughly doubles in each step, and \eqref{eq:heron-error} explains why: the new error is, up to the factor $1/(2x_k)\approx0.35$, the square of the old one. An error of $10^{-6}$ becomes one of about $10^{-12}$. This behaviour is called \term{quadratic convergence}. Heron's method is the special case for the function $x^2-2$ of Newton's method, which Chapter~6 introduces, and the analysis of its speed belongs there.
+\Cref{tab:heron} shows the iterates from $x_0=1$. They are rational numbers, as their definition shows, so in $\mathbb Q$ this would be a decreasing sequence, bounded below, without a limit; it is the standard example of the failure of completeness in $\mathbb Q$. The table also shows how fast the method is. The number of correct digits roughly doubles in each step, and \eqref{eq:heron-error} explains why: the new error is, up to the factor $1/(2x_k)\approx0.35$, the square of the old one. An error of $10^{-6}$ becomes one of about $10^{-12}$. This behaviour is called \term{quadratic convergence}. Heron's method is the special case for the function $x^2-2$ of Newton's method, which \cref{ch:differentiation} introduces, and the analysis of its speed belongs there.
 
 \begin{table}
 \sdfloat{%
@@ -752,7 +752,7 @@ The sequential characterisation also holds in these settings, with the same proo
 
 \subsection{The Limit of \texorpdfstring{$(\sin x)/x$}{sin(x)/x}}
 
-The derivative of the sine at $0$ is the limit of $(\sin x)/x$ as $x\to0$, and the derivatives of all trigonometric functions are derived from this limit in Chapter~6. A rigorous treatment of the trigonometric functions must wait until Chapter~9, which defines them by power series; here, as in \cref{ch:numbers}, we take the following facts from school geometry.
+The derivative of the sine at $0$ is the limit of $(\sin x)/x$ as $x\to0$, and the derivatives of all trigonometric functions are derived from this limit in \cref{ch:differentiation}. A rigorous treatment of the trigonometric functions must wait until Chapter~9, which defines them by power series; here, as in \cref{ch:numbers}, we take the following facts from school geometry.
 
 \begin{assumption}[Trigonometric facts from geometry]
 \label{asm:trig-geometry}
@@ -1129,7 +1129,7 @@ $k$ & $a_k$ & $b_k$ & $m_k$ & $\operatorname{sign}f(m_k)$ & $|m_k-c|$ & bound \\
 \end{sdtable}}{Bisection for $f(x)=x^3-2x-5$ on $[2,3]$. The interval $[a_k,b_k]$ contains the zero $c=2.0945514815\ldots$, and its midpoint $m_k$ satisfies $|m_k-c|\le(b-a)/2^{k+1}$ (last column).\label{tab:bisection}}
 \end{table}
 
-Bisection gains one binary digit of accuracy per step, so about $3.3$ steps are needed for each decimal digit. Compared with Heron's method this is slow, and the methods of Chapter~6 and of Volume~XII are much faster when they work. The strength of bisection lies elsewhere. It needs nothing but continuity and a change of sign, it evaluates $f$ only once per step, it cannot fail to converge, and its error bound is known in advance. Practical root finders combine it with faster methods: they take fast steps when these behave well and fall back on bisection when they do not, which keeps the guarantee of \cref{prop:bisection} while usually converging much faster. In floating-point arithmetic the halving cannot go on forever: after $51$ steps on $[2,3]$, where neighbouring floating-point numbers are $2^{-51}$ apart, the endpoints are neighbours and the computed midpoint coincides with one of them, so the loop must also stop when the interval no longer shrinks. Volume~XII treats these matters for the root finders of the library.
+Bisection gains one binary digit of accuracy per step, so about $3.3$ steps are needed for each decimal digit. Compared with Heron's method this is slow, and the methods of \cref{ch:differentiation} and of Volume~XII are much faster when they work. The strength of bisection lies elsewhere. It needs nothing but continuity and a change of sign, it evaluates $f$ only once per step, it cannot fail to converge, and its error bound is known in advance. Practical root finders combine it with faster methods: they take fast steps when these behave well and fall back on bisection when they do not, which keeps the guarantee of \cref{prop:bisection} while usually converging much faster. In floating-point arithmetic the halving cannot go on forever: after $51$ steps on $[2,3]$, where neighbouring floating-point numbers are $2^{-51}$ apart, the endpoints are neighbours and the computed midpoint coincides with one of them, so the loop must also stop when the interval no longer shrinks. Volume~XII treats these matters for the root finders of the library.
 
 \subsection{Applications}
 
@@ -1390,7 +1390,7 @@ A Lipschitz continuous function is uniformly continuous, with $\delta=\varepsilo
 \[
 \text{Lipschitz continuous}\ \Longrightarrow\ \text{uniformly continuous}\ \Longrightarrow\ \text{continuous},
 \]
-with $\sqrt x$ on $[0,1]$ and $x^2$ on $\mathbb R$ showing that neither implication can be reversed. Chapter~6 shows, with the mean value theorem, that a differentiable function whose derivative satisfies $|f'|\le K$ on an interval is Lipschitz continuous there with constant $K$; this is how Lipschitz constants are found in practice.
+with $\sqrt x$ on $[0,1]$ and $x^2$ on $\mathbb R$ showing that neither implication can be reversed. \Cref{ch:differentiation} shows, with the mean value theorem, that a differentiable function whose derivative satisfies $|f'|\le K$ on an interval is Lipschitz continuous there with constant $K$; this is how Lipschitz constants are found in practice.
 
 The Lipschitz condition is the simplest quantitative form of the statement that small errors in the input cause small errors in the output. If an input $x$ is known only up to an error $\eta$, so that we compute with some $\tilde x$ satisfying $|\tilde x-x|\le\eta$, then the computed output satisfies $|f(\tilde x)-f(x)|\le K\eta$. The constant $K$ is an amplification factor for absolute errors. Its counterpart for relative errors, the condition number, is one of the central notions of Volume~V, and the Lipschitz condition reappears in Volume~II as the hypothesis of the contraction mapping theorem and of the existence theorem for differential equations.
 
@@ -1528,7 +1528,7 @@ which is continuous and strictly increasing by \cref{thm:inverse-continuous}; \c
 \label{fig:monotone}
 \end{figure}
 
-With continuity understood, the next step is to measure how fast a function changes, not merely that its changes are small. The derivative, defined in Chapter~6 as the limit of difference quotients, does this, and the theorems of this chapter, in particular the extreme value theorem and the intermediate value theorem, are the foundation on which the mean value theorem and the rest of differential calculus are built.
+With continuity understood, the next step is to measure how fast a function changes, not merely that its changes are small. The derivative, defined in \cref{ch:differentiation} as the limit of difference quotients, does this, and the theorems of this chapter, in particular the extreme value theorem and the intermediate value theorem, are the foundation on which the mean value theorem and the rest of differential calculus are built.
 
 \section*{Notes}
 
