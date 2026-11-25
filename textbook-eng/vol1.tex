@@ -247,6 +247,37 @@ The symbols used in this volume are collected here. Each is defined again, with 
 \item[$u$] the unit roundoff $2^{-53}$ of binary64 floating-point arithmetic
 \end{symbols}
 
+\symbolgroup{Vectors, matrices and several variables}
+\begin{symbols}
+\item[$\mathbf x=(x_1,\ldots,x_n)$] a vector (point) of $\mathbb R^n$, in bold lower case; a column vector in products with matrices
+\item[$\mathbf 0$, $\mathbf e_i$] the zero vector and the $i$th standard basis vector
+\item[$\langle\mathbf x,\mathbf y\rangle$] the inner product $\sum_ix_iy_i$; equal to $\mathbf x^{\mathsf T}\mathbf y$
+\item[$\|\mathbf x\|$] the Euclidean norm $\langle\mathbf x,\mathbf x\rangle^{1/2}$; $\|\mathbf x-\mathbf y\|$ is the distance
+\item[$\mathbf x\perp\mathbf y$] $\mathbf x$ and $\mathbf y$ are orthogonal: $\langle\mathbf x,\mathbf y\rangle=0$
+\item[$A=(a_{ij})$, $\mathbb R^{m\times n}$] a matrix, in upper case, with entries $a_{ij}$; the set of $m\times n$ matrices
+\item[$A\mathbf x$, $AB$] the matrix--vector and the matrix--matrix product
+\item[$A^{\mathsf T}$] the transpose, $(A^{\mathsf T})_{ji}=a_{ij}$
+\item[$I$, $I_n$] the identity matrix
+\item[$\operatorname{diag}(d_1,\ldots,d_n)$] the diagonal matrix with diagonal entries $d_i$
+\item[$A^{-1}$, $\det A$] the inverse and the determinant of a square matrix
+\item[$\|A\|_2$, $\|A\|_{\mathrm F}$] the operator norm and the Frobenius norm of a matrix $A$
+\item[$B(\mathbf a,r)$, $\bar B(\mathbf a,r)$] the open and the closed ball with centre $\mathbf a$ and radius $r$
+\item[{$[\mathbf a,\mathbf b]$}] the segment $\{\mathbf a+t(\mathbf b-\mathbf a): 0\le t\le1\}$
+\item[$\mathbf f=(f_1,\ldots,f_m)$] a vector-valued function, in bold, with component functions $f_i$
+\item[$\frac{\partial f}{\partial x_i}$, $\partial_if$, $f_{x_i}$] the partial derivative with respect to $x_i$; $f_x$, $f_y$ for functions of $(x,y)$
+\item[$\partial_i\partial_jf$, $f_{xy}$] second partial derivatives: $\partial_i(\partial_jf)$, and $f_{xy}=(f_x)_y$
+\item[$C^k(U)$, $C^\infty(U)$] functions on the open set $U$ whose partial derivatives up to order $k$, or of all orders, exist and are continuous
+\item[$D\mathbf f(\mathbf a)$, $J_{\mathbf f}(\mathbf a)$] the derivative of $\mathbf f$ at $\mathbf a$, the $m\times n$ Jacobian matrix $(\partial_jf_i(\mathbf a))$
+\item[$\nabla f(\mathbf a)$] the gradient $(\partial_1f(\mathbf a),\ldots,\partial_nf(\mathbf a))=Df(\mathbf a)^{\mathsf T}$ of a real-valued $f$
+\item[$D_{\mathbf v}f(\mathbf a)$] the directional derivative of $f$ at $\mathbf a$ in the direction $\mathbf v$
+\item[$\nabla^2f(\mathbf a)$] the Hessian matrix $(\partial_i\partial_jf(\mathbf a))$
+\item[$\boldsymbol\gamma'(t)$] the velocity vector of a curve $\boldsymbol\gamma$
+\item[$o(\|\mathbf h\|)$] a quantity $\mathbf r(\mathbf h)$ with $\|\mathbf r(\mathbf h)\|/\|\mathbf h\|\to0$ as $\mathbf h\to\mathbf0$
+\item[$|\alpha|$, $\alpha!$, $\mathbf h^\alpha$, $\partial^\alpha f$] for a multi-index $\alpha\in\mathbb N^n$: $\sum\alpha_i$, $\prod\alpha_i!$, $\prod h_i^{\alpha_i}$, $\partial_1^{\alpha_1}\cdots\partial_n^{\alpha_n}f$
+\item[$D_{\mathbf x}\mathbf F$, $D_{\mathbf y}\mathbf F$] the blocks of $D\mathbf F$ with the partial derivatives with respect to the variables $\mathbf x$ and $\mathbf y$
+\item[$\mathcal L(\mathbf x,\lambda)$] the Lagrangian $f(\mathbf x)-\lambda g(\mathbf x)$ of a problem with a constraint
+\end{symbols}
+
 \mainmatter
 \part{Foundations}
 \input{chapters/v1-01-logic-and-proof}
@@ -260,6 +291,7 @@ The symbols used in this volume are collected here. Each is defined again, with 
 \input{chapters/v1-07-integration}
 \input{chapters/v1-08-series-approximation}
 \input{chapters/v1-09-transcendental-functions}
+\input{chapters/v1-10-several-variables-differential}
 
 \backmatter
 \end{document}

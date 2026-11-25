@@ -1,0 +1,1763 @@
+%% Volume I, Chapter 10: Differential Calculus in Several Variables
+\chapter{Differential Calculus in Several Variables}
+\label{ch:several-variables}
+
+\abstract{Few quantities in science depend on a single number. The error of a fitted model depends on all its parameters, the state of a physical system on many coordinates, and a system of nonlinear equations has as many unknowns as equations. Yet the idea that made the calculus of one variable so effective survives intact: near a point, a smooth function is almost a linear map, and the linear problem can be solved where the real one cannot. Only the slope becomes a matrix. The gradient, the Jacobian matrix and the Hessian, which carry this idea, are the everyday language of the optimisation, root finding, regression and differentiation routines in later volumes, and this chapter makes that language precise.}
+
+\Cref{ch:differentiation} studied functions $f\colon I\to\mathbb R$ of one real variable and found that, near a point $a$, the change $f(a+h)-f(a)$ is approximately $f'(a)h$: a number times the increment. This chapter studies functions of several variables, such as the temperature $T(x,y,z)$ at a point of space, the sum of squared residuals $S(a,b)$ of a straight line fitted to data, or a map $\mathbf F\colon\mathbb R^n\to\mathbb R^n$ whose zeros are the solutions of a system of $n$ equations. The increment is now a vector $\mathbf h$, the change of the value is a number or a vector, and the best linear approximation of the change is a linear map, given by a matrix. Almost every definition and theorem of \cref{ch:differentiation} has a counterpart here, and we shall point out each correspondence. A few things are genuinely new: a function can have partial derivatives in every coordinate direction and still fail to be continuous; the mean value theorem survives only as an inequality for vector-valued functions; and a point at which the derivative vanishes can be a saddle, a minimum in some directions and a maximum in others.
+
+There is a difficulty of order. The natural language for derivatives of functions of several variables is linear algebra, the subject of Part~III, which comes later in this volume. We do not postpone the calculus of several variables until then, since many readers meet it first in a calculus course, and the ideas are geometric and can be understood with a modest amount of algebra. Instead, \cref{sec:vectors-rn} develops just the linear algebra that the chapter needs: vectors in $\mathbb R^n$, the inner product and the Euclidean norm, matrices and the linear maps they define, and the determinant and the inverse of small matrices. Deeper facts, such as the general theory of determinants and inverses or the characterisation of positive definite matrices by eigenvalues, are stated where they are needed and proved in Part~III; each such statement says where.
+
+The chapter is organised as follows. \Cref{sec:vectors-rn} introduces vectors and matrices, and \cref{sec:limits-rn} extends limits and continuity to $\mathbb R^n$, including the extreme value theorem on closed bounded sets. \Cref{sec:partial-derivatives} defines partial derivatives and proves that mixed partial derivatives of a smooth function do not depend on the order of differentiation. \Cref{sec:differentiability} defines the derivative as the best linear approximation, introduces the Jacobian matrix, the gradient and directional derivatives, and shows that the gradient points in the direction of steepest ascent. \Cref{sec:chain-rule-n} proves the chain rule, the most important computational rule of the chapter, and explains the idea behind the reverse mode of automatic differentiation. \Cref{sec:mvt-taylor-n} proves the mean value theorem, the mean value inequality and Taylor's theorem in several variables, with the Hessian matrix as the second derivative. \Cref{sec:extrema-n} applies them to maxima, minima and saddle points, to convex functions and to the fitting of a straight line by least squares. \Cref{sec:inverse-implicit} states the inverse and implicit function theorems, which say when a system of equations can be solved locally, and \cref{sec:lagrange} uses the implicit function theorem to justify the method of Lagrange multipliers for extrema under constraints. \Cref{sec:newton-n} closes the chapter with Newton's method for systems of equations and proves that it converges quadratically, as in one variable. Integration in several variables follows in Chapter~11 and vector calculus in Chapter~12. As in the preceding chapters this is a review: every result is stated precisely, and the important ones are proved.
+
+\section{Vectors and Linear Maps in \texorpdfstring{$\mathbb R^n$}{R\^{}n}}
+\label{sec:vectors-rn}
+
+\subsection{Vectors}
+
+For a natural number $n\ge1$, the set $\mathbb R^n$ is the Cartesian product of $n$ copies of $\mathbb R$ (\cref{sec:products}): its elements are the $n$-tuples $(x_1,\ldots,x_n)$ of real numbers. In this chapter, and throughout the series, we call them \term{vectors} or \term{points} and denote them by bold lower-case letters,
+\[
+\mathbf x=(x_1,x_2,\ldots,x_n),
+\]
+and the number $x_i$ is the $i$th \term{component} or \term{coordinate} of $\mathbf x$. Vectors are added and multiplied by real numbers, which in this context are called \term{scalars}, component by component:
+\[
+\mathbf x+\mathbf y\coloneqq(x_1+y_1,\ldots,x_n+y_n),\qquad t\mathbf x\coloneqq(tx_1,\ldots,tx_n)\qquad(t\in\mathbb R).
+\]
+The \term{zero vector} is $\mathbf 0\coloneqq(0,\ldots,0)$, and $-\mathbf x\coloneqq(-1)\mathbf x$, $\mathbf x-\mathbf y\coloneqq\mathbf x+(-\mathbf y)$. Since the operations act on each component separately, they inherit the rules of arithmetic of the real numbers: addition is commutative and associative, $\mathbf 0$ is neutral, $\mathbf x+(-\mathbf x)=\mathbf 0$, and $s(t\mathbf x)=(st)\mathbf x$, $(s+t)\mathbf x=s\mathbf x+t\mathbf x$, $t(\mathbf x+\mathbf y)=t\mathbf x+t\mathbf y$ and $1\mathbf x=\mathbf x$. These eight rules define a \term{vector space}, the abstract notion that Chapter~15 develops. The vectors
+\[
+\mathbf e_1\coloneqq(1,0,\ldots,0),\quad\mathbf e_2\coloneqq(0,1,0,\ldots,0),\quad\ldots,\quad\mathbf e_n\coloneqq(0,\ldots,0,1)
+\]
+form the \term{standard basis}: every vector is the combination $\mathbf x=x_1\mathbf e_1+\cdots+x_n\mathbf e_n=\sum_{i=1}^nx_i\mathbf e_i$ of them, with its components as coefficients.
+
+For $n=2$ and $n=3$ these definitions have a familiar geometric meaning. A vector $\mathbf x\in\mathbb R^2$ is a point of the plane with Cartesian coordinates $(x_1,x_2)$, or the arrow from the origin to that point; the sum $\mathbf x+\mathbf y$ is the fourth vertex of the parallelogram spanned by $\mathbf x$ and $\mathbf y$, and $t\mathbf x$ stretches the arrow by the factor $|t|$, reversing it if $t<0$. In $\mathbb R^2$ and $\mathbb R^3$ we often write $(x,y)$ and $(x,y,z)$ instead of $(x_1,x_2)$ and $(x_1,x_2,x_3)$. For $n>3$ there is no picture, but the algebra is the same, and the geometric language of the plane, lengths, angles and lines, carries over with the definitions below.
+
+For typographical convenience we write vectors as rows, $(x_1,\ldots,x_n)$, in the running text. When vectors are multiplied by matrices, however, they are always \emph{column} vectors, that is, $n\times1$ matrices, and a row is obtained from a column by transposition (\cref{subsec:matrix-algebra}). The two conventions never clash, because a formula always makes clear which is meant.
+
+\subsection{The Inner Product and the Norm}
+
+\begin{definition}[Inner product and norm]
+\label{def:inner-product}
+The \term{inner product} of $\mathbf x,\mathbf y\in\mathbb R^n$ is the number
+\[
+\langle\mathbf x,\mathbf y\rangle\coloneqq\sum_{i=1}^nx_iy_i=x_1y_1+\cdots+x_ny_n ,
+\]
+and the \term{Euclidean norm}, or \term{length}, of $\mathbf x$ is
+\[
+\|\mathbf x\|\coloneqq\sqrt{\langle\mathbf x,\mathbf x\rangle}=\bigl(x_1^2+\cdots+x_n^2\bigr)^{1/2}.
+\]
+The \term{distance} between $\mathbf x$ and $\mathbf y$ is $\|\mathbf x-\mathbf y\|$.
+\end{definition}
+
+The inner product is also called the scalar product or the dot product and is then written $\mathbf x\cdot\mathbf y$, especially in physics. We use the angle brackets throughout the series, because they extend without change to the inner products of functions in Part~III and Volume~II. The norm is the Euclidean length $\|a\|$ of a tuple that \cref{sec:inequalities} introduced, and in the plane it is the length of the arrow, by the theorem of Pythagoras: $\|(3,4)\|=5$. When other norms appear in later volumes, the Euclidean norm is written $\|\mathbf x\|_2$; in this volume $\|\mathbf x\|$ always means the Euclidean norm.
+
+\begin{proposition}[Properties of the inner product]
+\label{prop:inner-product}
+For all $\mathbf x,\mathbf y,\mathbf z\in\mathbb R^n$ and $s,t\in\mathbb R$:
+\begin{enumerate}
+\item $\langle\mathbf x,\mathbf y\rangle=\langle\mathbf y,\mathbf x\rangle$;
+\item $\langle s\mathbf x+t\mathbf y,\mathbf z\rangle=s\langle\mathbf x,\mathbf z\rangle+t\langle\mathbf y,\mathbf z\rangle$, and likewise in the second argument;
+\item $\langle\mathbf x,\mathbf x\rangle\ge0$, with equality only for $\mathbf x=\mathbf 0$.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(i) and (ii) follow from the commutative and distributive laws of the real numbers, applied to each term of the sum. (iii) $\langle\mathbf x,\mathbf x\rangle=\sum x_i^2$ is a sum of squares, which vanishes only if every $x_i$ vanishes.
+\end{proof}
+
+Property (ii) says that the inner product is linear in each argument when the other is fixed; it is \term{bilinear}. Expanding with (i) and (ii) gives the identity
+\begin{equation}
+\|\mathbf x+\mathbf y\|^2=\|\mathbf x\|^2+2\langle\mathbf x,\mathbf y\rangle+\|\mathbf y\|^2 ,
+\label{eq:norm-expansion}
+\end{equation}
+the vector form of $(a+b)^2=a^2+2ab+b^2$, which is used constantly. The central inequality is \cref{thm:cauchy-schwarz}, now read for vectors.
+
+\begin{theorem}[Cauchy--Schwarz inequality]
+\label{thm:cauchy-schwarz-vectors}
+For all $\mathbf x,\mathbf y\in\mathbb R^n$,
+\[
+|\langle\mathbf x,\mathbf y\rangle|\le\|\mathbf x\|\,\|\mathbf y\| ,
+\]
+with equality if and only if one of the two vectors is a scalar multiple of the other.
+\end{theorem}
+
+\begin{proof}
+This is \cref{thm:cauchy-schwarz} with $a_i=x_i$ and $b_i=y_i$, after taking square roots of both sides.
+\end{proof}
+
+\begin{proposition}[Properties of the norm]
+\label{prop:norm}
+For all $\mathbf x,\mathbf y\in\mathbb R^n$ and $t\in\mathbb R$:
+\begin{enumerate}
+\item $\|\mathbf x\|\ge0$, with equality only for $\mathbf x=\mathbf 0$;
+\item $\|t\mathbf x\|=|t|\,\|\mathbf x\|$;
+\item $\|\mathbf x+\mathbf y\|\le\|\mathbf x\|+\|\mathbf y\|$ (the triangle inequality);
+\item $\bigl|\|\mathbf x\|-\|\mathbf y\|\bigr|\le\|\mathbf x-\mathbf y\|$;
+\item $|x_i|\le\|\mathbf x\|\le\sum_{j=1}^n|x_j|\le\sqrt n\,\|\mathbf x\|$ for every $i$, and $\|\mathbf x\|\le\sqrt n\,\max_j|x_j|$.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(i) is \cref{prop:inner-product}\,(iii), and (ii) holds because $\sum(tx_i)^2=t^2\sum x_i^2$. (iii) By \eqref{eq:norm-expansion} and the Cauchy--Schwarz inequality, $\|\mathbf x+\mathbf y\|^2\le\|\mathbf x\|^2+2\|\mathbf x\|\|\mathbf y\|+\|\mathbf y\|^2=(\|\mathbf x\|+\|\mathbf y\|)^2$; this is \eqref{eq:minkowski}. (iv) By (iii), $\|\mathbf x\|=\|(\mathbf x-\mathbf y)+\mathbf y\|\le\|\mathbf x-\mathbf y\|+\|\mathbf y\|$, so $\|\mathbf x\|-\|\mathbf y\|\le\|\mathbf x-\mathbf y\|$, and exchanging $\mathbf x$ and $\mathbf y$ gives the same bound for $\|\mathbf y\|-\|\mathbf x\|$. (v) The first inequality holds because $x_i^2\le\sum_jx_j^2$. The second is (iii) and (ii) applied to $\mathbf x=\sum_jx_j\mathbf e_j$, since $\|\mathbf e_j\|=1$. The third is the Cauchy--Schwarz inequality for the vectors $(|x_1|,\ldots,|x_n|)$ and $(1,\ldots,1)$, whose norms are $\|\mathbf x\|$ and $\sqrt n$. Finally $\sum_jx_j^2\le n\max_jx_j^2$.
+\end{proof}
+
+Part (v) is the bridge between the norm and the components, and it will be used repeatedly: a vector is small in norm if and only if all its components are small. In terms of distances, (iii) gives $\|\mathbf x-\mathbf z\|\le\|\mathbf x-\mathbf y\|+\|\mathbf y-\mathbf z\|$: in a triangle with vertices $\mathbf x$, $\mathbf y$ and $\mathbf z$, one side is never longer than the sum of the other two.
+
+\subsection{Angles and Orthogonal Projection}
+
+By the Cauchy--Schwarz inequality, for nonzero vectors $\mathbf x$ and $\mathbf y$ the quotient $\langle\mathbf x,\mathbf y\rangle/(\|\mathbf x\|\|\mathbf y\|)$ lies in $[-1,1]$, so there is exactly one number $\theta\in[0,\pi]$ with
+\begin{equation}
+\cos\theta=\frac{\langle\mathbf x,\mathbf y\rangle}{\|\mathbf x\|\,\|\mathbf y\|},
+\label{eq:angle}
+\end{equation}
+namely $\theta=\arccos\bigl(\langle\mathbf x,\mathbf y\rangle/(\|\mathbf x\|\|\mathbf y\|)\bigr)$ (\cref{def:inverse-trig}). We call it the \term{angle} between $\mathbf x$ and $\mathbf y$. The name is justified by \eqref{eq:norm-expansion} with $-\mathbf y$ in place of $\mathbf y$, which now reads
+\[
+\|\mathbf x-\mathbf y\|^2=\|\mathbf x\|^2+\|\mathbf y\|^2-2\|\mathbf x\|\,\|\mathbf y\|\cos\theta ,
+\]
+the law of cosines for the triangle with vertices $\mathbf 0$, $\mathbf x$ and $\mathbf y$. In the plane, writing $\mathbf x=\|\mathbf x\|(\cos\alpha,\sin\alpha)$ and $\mathbf y=\|\mathbf y\|(\cos\beta,\sin\beta)$ by \cref{prop:circle-points}, the addition formula gives $\langle\mathbf x,\mathbf y\rangle=\|\mathbf x\|\|\mathbf y\|\cos(\alpha-\beta)$, so that $\theta$ is the usual angle between the two arrows.
+
+Two vectors are \term{orthogonal}, written $\mathbf x\perp\mathbf y$, if $\langle\mathbf x,\mathbf y\rangle=0$; for nonzero vectors this means $\theta=\pi/2$. For orthogonal vectors, \eqref{eq:norm-expansion} becomes the theorem of Pythagoras, $\|\mathbf x+\mathbf y\|^2=\|\mathbf x\|^2+\|\mathbf y\|^2$. The vectors of the standard basis are pairwise orthogonal and have length $1$. Orthogonality is the key to the following construction, which recurs in least squares problems throughout the series.
+
+\begin{proposition}[Orthogonal projection onto a line]
+\label{prop:projection-line}
+Let $\mathbf u\ne\mathbf 0$ and $\mathbf x$ be vectors in $\mathbb R^n$, and let
+\[
+\mathbf p\coloneqq t^*\mathbf u,\qquad t^*\coloneqq\frac{\langle\mathbf x,\mathbf u\rangle}{\|\mathbf u\|^2}.
+\]
+Then $\mathbf x-\mathbf p$ is orthogonal to $\mathbf u$, and for every real $t$,
+\[
+\|\mathbf x-t\mathbf u\|^2=\|\mathbf x-\mathbf p\|^2+(t-t^*)^2\|\mathbf u\|^2 .
+\]
+In particular, $\mathbf p$ is the unique point of the line $\{t\mathbf u: t\in\mathbb R\}$ closest to $\mathbf x$.
+\end{proposition}
+
+\begin{proof}
+$\langle\mathbf x-\mathbf p,\mathbf u\rangle=\langle\mathbf x,\mathbf u\rangle-t^*\|\mathbf u\|^2=0$. Since $\mathbf x-t\mathbf u=(\mathbf x-\mathbf p)+(t^*-t)\mathbf u$ is the sum of two orthogonal vectors, the theorem of Pythagoras gives the identity, and its right side is smallest exactly for $t=t^*$.
+\end{proof}
+
+The vector $\mathbf p$ is the \term{orthogonal projection} of $\mathbf x$ onto the line spanned by $\mathbf u$. \Cref{fig:projection} shows the example $\mathbf x=(1,3)$ and $\mathbf u=(4,2)$: here $\langle\mathbf x,\mathbf u\rangle=10$ and $\|\mathbf u\|^2=20$, so $\mathbf p=\frac12\mathbf u=(2,1)$, and the residual $\mathbf x-\mathbf p=(-1,2)$ is indeed orthogonal to $\mathbf u$. The angle between $\mathbf x$ and $\mathbf u$ satisfies $\cos\theta=10/(\sqrt{10}\sqrt{20})=1/\sqrt2$, so $\theta=\pi/4$. For a unit vector $\mathbf u$, that is, $\|\mathbf u\|=1$, the projection is simply $\langle\mathbf x,\mathbf u\rangle\mathbf u$, and the inner product $\langle\mathbf x,\mathbf u\rangle=\|\mathbf x\|\cos\theta$ is the signed length of the shadow that $\mathbf x$ casts on the line. Chapter~18 generalises the proposition from lines to subspaces of any dimension.
+
+\begin{figure}
+\sdfloat{%
+\begin{tikzpicture}[font=\scriptsize, scale=1.15]
+\draw[line width=0.4pt, -{Latex[length=1.6mm]}] (-0.4,0) -- (4.6,0) node[below] {$x_1$};
+\draw[line width=0.4pt, -{Latex[length=1.6mm]}] (0,-0.4) -- (0,3.4) node[left] {$x_2$};
+\draw[black!45, dashed, line width=0.4pt] (-0.6,-0.3) -- (4.6,2.3);
+\draw[line width=0.8pt, -{Latex[length=2mm]}] (0,0) -- (4,2);
+\draw[line width=0.8pt, -{Latex[length=2mm]}] (0,0) -- (1,3);
+\draw[line width=1.4pt, -{Latex[length=2mm]}] (0,0) -- (2,1);
+\draw[black!60, line width=0.5pt, -{Latex[length=1.6mm]}] (2,1) -- (1,3);
+\draw[line width=0.4pt] (1.821,0.911) -- (1.732,1.089) -- (1.911,1.179);
+\draw[line width=0.4pt] (0.5,0.25) arc[start angle=26.565, end angle=71.565, radius=0.559];
+\fill (1,3) circle (1.2pt) (4,2) circle (1.2pt) (2,1) circle (1.2pt);
+\node[above] at (1,3) {$\mathbf x=(1,3)$};
+\node[below right] at (4,2) {$\mathbf u=(4,2)$};
+\node[below right] at (2,1) {$\mathbf p=(2,1)$};
+\node[left] at (1.45,2.05) {$\mathbf x-\mathbf p$};
+\node at (0.62,0.62) {$\theta$};
+\end{tikzpicture}}{Orthogonal projection (\cref{prop:projection-line}). The projection $\mathbf p$ of $\mathbf x$ onto the line spanned by $\mathbf u$ (dashed) is the point of the line closest to $\mathbf x$, and the residual $\mathbf x-\mathbf p$ is orthogonal to $\mathbf u$. The length of $\mathbf p$ is $\|\mathbf x\|\cos\theta=\sqrt5$, where $\theta=\pi/4$ is the angle between $\mathbf x$ and $\mathbf u$.\label{fig:projection}}
+\end{figure}
+
+\subsection{Matrices and Linear Maps}
+
+\begin{definition}[Matrix]
+\label{def:matrix}
+Let $m,n\ge1$. An $m\times n$ \term{matrix} $A$ is a rectangular array of real numbers $a_{ij}$, $1\le i\le m$, $1\le j\le n$, with $m$ rows and $n$ columns:
+\[
+A=\begin{pmatrix}a_{11}&a_{12}&\cdots&a_{1n}\\a_{21}&a_{22}&\cdots&a_{2n}\\\vdots&\vdots&&\vdots\\a_{m1}&a_{m2}&\cdots&a_{mn}\end{pmatrix}.
+\]
+The number $a_{ij}$ is the \term{entry} in row $i$ and column $j$, also written $(A)_{ij}$. The set of $m\times n$ matrices is $\mathbb R^{m\times n}$. A matrix with $m=n$ is \term{square}. The \term{product} of $A\in\mathbb R^{m\times n}$ and a column vector $\mathbf x\in\mathbb R^n$ is the vector $A\mathbf x\in\mathbb R^m$ with the components
+\[
+(A\mathbf x)_i\coloneqq\sum_{j=1}^na_{ij}x_j\qquad(i=1,\ldots,m).
+\]
+\end{definition}
+
+Matrices are denoted by upper-case letters, and their entries by the corresponding lower-case letters with two indices. Matrices of the same shape are added and multiplied by scalars entry by entry, so that $\mathbb R^{m\times n}$ is a vector space like $\mathbb R^{mn}$. A column vector in $\mathbb R^n$ is an $n\times1$ matrix.
+
+The product $A\mathbf x$ can be read in two ways, and both are useful. Row by row, the $i$th component of $A\mathbf x$ is the inner product of the $i$th row of $A$ with $\mathbf x$. Column by column, if $\mathbf a_1,\ldots,\mathbf a_n\in\mathbb R^m$ denote the columns of $A$, then
+\[
+A\mathbf x=x_1\mathbf a_1+x_2\mathbf a_2+\cdots+x_n\mathbf a_n ,
+\]
+a combination of the columns with the components of $\mathbf x$ as coefficients. For example,
+\[
+\begin{pmatrix}1&2&0\\3&-1&4\end{pmatrix}\begin{pmatrix}2\\1\\-1\end{pmatrix}=\begin{pmatrix}1\cdot2+2\cdot1+0\cdot(-1)\\3\cdot2-1\cdot1+4\cdot(-1)\end{pmatrix}=\begin{pmatrix}4\\1\end{pmatrix}=2\begin{pmatrix}1\\3\end{pmatrix}+1\begin{pmatrix}2\\-1\end{pmatrix}-1\begin{pmatrix}0\\4\end{pmatrix}.
+\]
+In particular $A\mathbf e_j=\mathbf a_j$: the $j$th column of a matrix is its product with the $j$th standard basis vector.
+
+\begin{definition}[Linear map]
+\label{def:linear-map}
+A function $L\colon\mathbb R^n\to\mathbb R^m$ is \term{linear} if $L(\mathbf x+\mathbf y)=L(\mathbf x)+L(\mathbf y)$ and $L(t\mathbf x)=tL(\mathbf x)$ for all $\mathbf x,\mathbf y\in\mathbb R^n$ and $t\in\mathbb R$.
+\end{definition}
+
+A linear map satisfies $L(\mathbf 0)=\mathbf 0$ and, by induction, $L(\sum_jt_j\mathbf x_j)=\sum_jt_jL(\mathbf x_j)$: it preserves combinations. For $n=m=1$ the linear maps are the functions $x\mapsto cx$; the affine functions $x\mapsto cx+d$ with $d\ne0$, whose graphs are also lines, are not linear in this sense. The next proposition says that matrices and linear maps are the same thing.
+
+\begin{proposition}
+\label{prop:linear-matrix}
+For every $A\in\mathbb R^{m\times n}$ the map $\mathbf x\mapsto A\mathbf x$ is linear. Conversely, for every linear map $L\colon\mathbb R^n\to\mathbb R^m$ there is exactly one matrix $A\in\mathbb R^{m\times n}$ with $L(\mathbf x)=A\mathbf x$ for all $\mathbf x$, namely the matrix whose $j$th column is $L(\mathbf e_j)$.
+\end{proposition}
+
+\begin{proof}
+Linearity of $\mathbf x\mapsto A\mathbf x$ follows from the distributive law in each component. Conversely, let $L$ be linear and let $A$ have the columns $L(\mathbf e_1),\ldots,L(\mathbf e_n)$. For every $\mathbf x=\sum_jx_j\mathbf e_j$, linearity gives $L(\mathbf x)=\sum_jx_jL(\mathbf e_j)=A\mathbf x$, by the column reading of the product. If also $L(\mathbf x)=B\mathbf x$ for all $\mathbf x$, then the $j$th columns of $A$ and $B$ are $A\mathbf e_j=B\mathbf e_j=L(\mathbf e_j)$, so $A=B$.
+\end{proof}
+
+We shall therefore often identify a matrix with the linear map it defines. \emph{Examples.} The \term{identity matrix} $I=I_n\in\mathbb R^{n\times n}$, with ones on the diagonal and zeros elsewhere, defines the identity map. A \term{diagonal matrix} $\operatorname{diag}(d_1,\ldots,d_n)$, with the entries $d_i$ on the diagonal and zeros elsewhere, stretches the $i$th coordinate by the factor $d_i$. The rotation of the plane by the angle $\varphi$ about the origin maps $\mathbf e_1=(1,0)$ to $(\cos\varphi,\sin\varphi)$ and $\mathbf e_2=(0,1)$ to $(-\sin\varphi,\cos\varphi)$, so it is given by the matrix
+\[
+R_\varphi=\begin{pmatrix}\cos\varphi&-\sin\varphi\\\sin\varphi&\cos\varphi\end{pmatrix};
+\]
+conversely, the matrix rotates every vector, since $R_\varphi(r\cos\alpha,r\sin\alpha)=(r\cos(\alpha+\varphi),r\sin(\alpha+\varphi))$ by the addition formulas of \cref{thm:addition}.
+
+\subsection{Matrix Algebra}
+\label{subsec:matrix-algebra}
+
+Composing two linear maps gives a linear map, and the corresponding matrix is the product of the two matrices.
+
+\begin{definition}[Matrix product and transpose]
+\label{def:matrix-product}
+The \term{product} of $A\in\mathbb R^{m\times n}$ and $B\in\mathbb R^{n\times p}$ is the matrix $AB\in\mathbb R^{m\times p}$ with the entries
+\[
+(AB)_{ik}\coloneqq\sum_{j=1}^na_{ij}b_{jk}\qquad(1\le i\le m,\ 1\le k\le p).
+\]
+The \term{transpose} of $A\in\mathbb R^{m\times n}$ is the matrix $A^{\mathsf T}\in\mathbb R^{n\times m}$ with $(A^{\mathsf T})_{ji}\coloneqq a_{ij}$. A square matrix is \term{symmetric} if $A^{\mathsf T}=A$.
+\end{definition}
+
+So the $k$th column of $AB$ is $A$ times the $k$th column of $B$, and the entry $(AB)_{ik}$ is the inner product of the $i$th row of $A$ with the $k$th column of $B$; the product is defined only when the number of columns of $A$ equals the number of rows of $B$. The transpose turns rows into columns, and the transpose of a column vector $\mathbf x$ is the row vector $\mathbf x^{\mathsf T}=(x_1\ \cdots\ x_n)$, a $1\times n$ matrix.
+
+\begin{proposition}[Rules of matrix algebra]
+\label{prop:matrix-algebra}
+Let $A\in\mathbb R^{m\times n}$, $B\in\mathbb R^{n\times p}$, $C\in\mathbb R^{p\times q}$ and $\mathbf x\in\mathbb R^p$, $\mathbf y\in\mathbb R^m$, $\mathbf z\in\mathbb R^n$.
+\begin{enumerate}
+\item $A(B\mathbf x)=(AB)\mathbf x$: the linear map of $AB$ is the composition of those of $A$ and $B$.
+\item $(AB)C=A(BC)$, $AI_n=I_mA=A$, and $A(B+B')=AB+AB'$, $(A+A')B=AB+A'B$ whenever the shapes fit.
+\item $(AB)^{\mathsf T}=B^{\mathsf T}A^{\mathsf T}$ and $(A^{\mathsf T})^{\mathsf T}=A$.
+\item $\langle A\mathbf z,\mathbf y\rangle=\langle\mathbf z,A^{\mathsf T}\mathbf y\rangle$.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(i) The $i$th component of $A(B\mathbf x)$ is $\sum_ja_{ij}\sum_kb_{jk}x_k=\sum_k\bigl(\sum_ja_{ij}b_{jk}\bigr)x_k$, the $i$th component of $(AB)\mathbf x$. (ii) By (i), $(AB)C$ and $A(BC)$ both define the linear map $\mathbf x\mapsto A(B(C\mathbf x))$, and a matrix is determined by its linear map (\cref{prop:linear-matrix}); the other rules are checked entry by entry. (iii) $((AB)^{\mathsf T})_{ki}=(AB)_{ik}=\sum_ja_{ij}b_{jk}=\sum_j(B^{\mathsf T})_{kj}(A^{\mathsf T})_{ji}=(B^{\mathsf T}A^{\mathsf T})_{ki}$. (iv) Both sides equal $\sum_{i,j}a_{ij}z_jy_i$.
+\end{proof}
+
+The product is not commutative. For
+\[
+A=\begin{pmatrix}0&1\\0&0\end{pmatrix},\qquad B=\begin{pmatrix}0&0\\1&0\end{pmatrix}\qquad\text{we find}\qquad AB=\begin{pmatrix}1&0\\0&0\end{pmatrix},\qquad BA=\begin{pmatrix}0&0\\0&1\end{pmatrix};
+\]
+in terms of maps, applying two operations in a different order generally gives a different result. Two rotations of the plane commute, $R_\alpha R_\beta=R_{\alpha+\beta}=R_\beta R_\alpha$, but a rotation and a stretching of one coordinate do not.
+
+Two products of vectors are special cases of the matrix product. For column vectors $\mathbf x,\mathbf y\in\mathbb R^n$, the product $\mathbf x^{\mathsf T}\mathbf y$ is a $1\times1$ matrix, which we identify with its single entry, the inner product: $\mathbf x^{\mathsf T}\mathbf y=\langle\mathbf x,\mathbf y\rangle$. The product $\mathbf x\mathbf y^{\mathsf T}$, by contrast, is the $n\times n$ matrix with the entries $x_iy_j$, the \term{outer product}. With it, the projection of \cref{prop:projection-line} becomes a matrix: $\mathbf p=\mathbf u\langle\mathbf u,\mathbf x\rangle/\|\mathbf u\|^2=P\mathbf x$ with $P\coloneqq\mathbf u\mathbf u^{\mathsf T}/\|\mathbf u\|^2$, by (ii). The rule (iv) says that the transpose moves a matrix from one side of an inner product to the other; for a symmetric matrix it may move freely, $\langle A\mathbf z,\mathbf y\rangle=\langle\mathbf z,A\mathbf y\rangle$.
+
+\subsection{Determinants and Inverses of Small Matrices}
+
+A square matrix $A\in\mathbb R^{n\times n}$ is \term{invertible} if there is a matrix $B$ with $AB=BA=I$. Such a $B$ is unique, since $B'=B'(AB)=(B'A)B=B$ for any other $B'$ with the same property, and it is called the \term{inverse} $A^{-1}$. If $A$ is invertible, the linear system $A\mathbf x=\mathbf b$ has exactly one solution for every $\mathbf b\in\mathbb R^n$, namely $\mathbf x=A^{-1}\mathbf b$: it is a solution because $A(A^{-1}\mathbf b)=\mathbf b$, and every solution satisfies $\mathbf x=A^{-1}A\mathbf x=A^{-1}\mathbf b$. For $2\times2$ matrices everything can be made explicit.
+
+\begin{proposition}[The $2\times2$ case]
+\label{prop:inverse-2x2}
+Let $A=\begin{pmatrix}a&b\\c&d\end{pmatrix}$ and $\det A\coloneqq ad-bc$, the \term{determinant} of $A$. Then $A$ is invertible if and only if $\det A\ne0$, and in that case
+\[
+A^{-1}=\frac1{ad-bc}\begin{pmatrix}d&-b\\-c&a\end{pmatrix}.
+\]
+\end{proposition}
+
+\begin{proof}
+Multiplying out shows $\begin{pmatrix}a&b\\c&d\end{pmatrix}\begin{pmatrix}d&-b\\-c&a\end{pmatrix}=\begin{pmatrix}d&-b\\-c&a\end{pmatrix}\begin{pmatrix}a&b\\c&d\end{pmatrix}=(ad-bc)I$; if $\det A\ne0$, dividing by it gives the inverse. Conversely, suppose $\det A=0$. The vectors $\mathbf v\coloneqq(d,-c)$ and $\mathbf w\coloneqq(-b,a)$ then satisfy $A\mathbf v=(ad-bc,0)=\mathbf 0$ and $A\mathbf w=(0,ad-bc)=\mathbf 0$. If $A=0$, it is not invertible. Otherwise one of $\mathbf v,\mathbf w$ is nonzero, and a nonzero solution of $A\mathbf x=\mathbf 0$ rules out an inverse, since it would give $\mathbf x=A^{-1}A\mathbf x=\mathbf 0$.
+\end{proof}
+
+The determinant has a geometric meaning: $|ad-bc|$ is the area of the parallelogram spanned by the columns $(a,c)$ and $(b,d)$ of $A$, and the sign of $ad-bc$ says whether the map $A$ preserves or reverses orientation. For instance, $\det R_\varphi=\cos^2\varphi+\sin^2\varphi=1$: rotations preserve areas and orientation. A matrix with $\det A=0$ squeezes the plane onto a line or a point, and such a map cannot be undone. For $3\times3$ matrices the determinant is
+\[
+\det\begin{pmatrix}a_{11}&a_{12}&a_{13}\\a_{21}&a_{22}&a_{23}\\a_{31}&a_{32}&a_{33}\end{pmatrix}\coloneqq a_{11}(a_{22}a_{33}-a_{23}a_{32})-a_{12}(a_{21}a_{33}-a_{23}a_{31})+a_{13}(a_{21}a_{32}-a_{22}a_{31}),
+\]
+the expansion along the first row into $2\times2$ determinants, and its absolute value is the volume of the parallelepiped spanned by the columns. For general $n$, Chapter~17 defines the determinant of an $n\times n$ matrix and proves the following facts, which we state now because the chapter needs them.
+
+\begin{theorem}[Invertible matrices]
+\label{thm:invertible-matrices}
+For $A\in\mathbb R^{n\times n}$ there is a number $\det A$, a polynomial in the entries of $A$ that agrees with the formulas above for $n=2,3$, such that the following hold.
+\begin{enumerate}
+\item The following are equivalent: $A$ is invertible; $\det A\ne0$; the only solution of $A\mathbf x=\mathbf 0$ is $\mathbf x=\mathbf 0$; the system $A\mathbf x=\mathbf b$ has a solution for every $\mathbf b\in\mathbb R^n$.
+\item $\det(AB)=\det A\det B$ for all $A,B\in\mathbb R^{n\times n}$, and $\det A^{\mathsf T}=\det A$.
+\item If $A$ is invertible, every entry of $A^{-1}$ is a polynomial in the entries of $A$ divided by $\det A$. Consequently the entries of $A^{-1}$ depend continuously on those of $A$ on the set of invertible matrices.
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+The determinant is defined as the sum $\sum_\pi\operatorname{sign}(\pi)\,a_{1\pi(1)}\cdots a_{n\pi(n)}$ over all permutations $\pi$ of $\{1,\ldots,n\}$, where the sign is $\pm1$ according to the parity of the number of inversions of $\pi$; for $n=2$ and $n=3$ this is the formula above. Its key properties, linearity in each column, the change of sign when two columns are exchanged, and $\det I=1$, characterise it. Gaussian elimination, which Chapter~14 develops, reduces $A$ by row operations of known effect on the determinant to a triangular matrix, whose determinant is the product of the diagonal entries; this proves (i) and the product rule (ii). Part (iii) is Cramer's rule: the inverse is the transpose of the matrix of cofactors divided by $\det A$. Chapters~14 and~17 give the details; see also Horn and Johnson~\cite[Sects.~0.3 and~0.5]{horn2013}.
+\end{proof}
+
+In computations one almost never forms $A^{-1}$ or $\det A$ by these formulas, whose cost grows like $n!$; one solves the system $A\mathbf x=\mathbf b$ by Gaussian elimination in about $\frac23n^3$ operations, which Volume~VIII studies as the LU factorisation~\cite{golub2013}. In this chapter the inverse appears mostly as a theoretical device, and the systems that actually have to be solved, in Newton's method of \cref{sec:newton-n}, are of size $2\times2$.
+
+\subsection{Norms of Matrices}
+
+How much can a matrix stretch a vector? The answer is a number attached to the matrix, and it plays the role that $|c|$ plays for the linear function $x\mapsto cx$ of one variable.
+
+\begin{proposition}[Bounds for matrix--vector products]
+\label{prop:matrix-norms}
+For $A\in\mathbb R^{m\times n}$ let
+\[
+\|A\|_{\mathrm F}\coloneqq\Bigl(\sum_{i=1}^m\sum_{j=1}^na_{ij}^2\Bigr)^{1/2},\qquad\|A\|_2\coloneqq\sup\bigl\{\|A\mathbf x\|: \mathbf x\in\mathbb R^n,\ \|\mathbf x\|=1\bigr\},
+\]
+the \term{Frobenius norm} and the \term{operator norm}, or spectral norm, of $A$. Then for all $\mathbf x\in\mathbb R^n$ and $B\in\mathbb R^{n\times p}$:
+\begin{enumerate}
+\item $\|A\mathbf x\|\le\|A\|_2\,\|\mathbf x\|\le\|A\|_{\mathrm F}\,\|\mathbf x\|$, and $\|A\|_2$ is the smallest number $L$ with $\|A\mathbf x\|\le L\|\mathbf x\|$ for all $\mathbf x$;
+\item $\|AB\|_2\le\|A\|_2\|B\|_2$ and $\|AB\|_{\mathrm F}\le\|A\|_{\mathrm F}\|B\|_{\mathrm F}$;
+\item both are norms on $\mathbb R^{m\times n}$: they satisfy (i) to (iii) of \cref{prop:norm}, and $|a_{ij}|\le\|A\|_2$ for all $i,j$;
+\item $\|\mathbf u\mathbf v^{\mathsf T}\|_{\mathrm F}=\|\mathbf u\|\,\|\mathbf v\|$ for $\mathbf u\in\mathbb R^m$, $\mathbf v\in\mathbb R^n$.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(i) The $i$th component of $A\mathbf x$ is the inner product of the $i$th row $\mathbf r_i$ of $A$ with $\mathbf x$, so by the Cauchy--Schwarz inequality
+\[
+\|A\mathbf x\|^2=\sum_{i=1}^m\langle\mathbf r_i,\mathbf x\rangle^2\le\sum_{i=1}^m\|\mathbf r_i\|^2\|\mathbf x\|^2=\|A\|_{\mathrm F}^2\|\mathbf x\|^2 .
+\]
+Hence the set in the definition of $\|A\|_2$ is bounded by $\|A\|_{\mathrm F}$, the supremum exists, and $\|A\|_2\le\|A\|_{\mathrm F}$. For $\mathbf x\ne\mathbf 0$, the vector $\mathbf x/\|\mathbf x\|$ has norm $1$, so $\|A\mathbf x\|/\|\mathbf x\|=\|A(\mathbf x/\|\mathbf x\|)\|\le\|A\|_2$. If $\|A\mathbf x\|\le L\|\mathbf x\|$ for all $\mathbf x$, then $L$ is an upper bound of the set, so $\|A\|_2\le L$. (ii) $\|AB\mathbf x\|\le\|A\|_2\|B\mathbf x\|\le\|A\|_2\|B\|_2\|\mathbf x\|$, and (i) gives the first claim. For the second, the $k$th column of $AB$ is $A\mathbf b_k$, where $\mathbf b_k$ is the $k$th column of $B$, and $\|AB\|_{\mathrm F}^2=\sum_k\|A\mathbf b_k\|^2\le\|A\|_{\mathrm F}^2\sum_k\|\mathbf b_k\|^2=\|A\|_{\mathrm F}^2\|B\|_{\mathrm F}^2$. (iii) The Frobenius norm is the Euclidean norm of the $mn$ entries. For the operator norm, positivity and homogeneity are clear, and $\|(A+B)\mathbf x\|\le\|A\mathbf x\|+\|B\mathbf x\|\le(\|A\|_2+\|B\|_2)\|\mathbf x\|$ gives the triangle inequality by (i). Finally $|a_{ij}|=|(A\mathbf e_j)_i|\le\|A\mathbf e_j\|\le\|A\|_2$. (iv) $\sum_{i,j}u_i^2v_j^2=\sum_iu_i^2\sum_jv_j^2$.
+\end{proof}
+
+For the diagonal matrix $A=\operatorname{diag}(3,1)$, $\|A\mathbf x\|^2=9x_1^2+x_2^2\le9\|\mathbf x\|^2$ with equality for $\mathbf x=\mathbf e_1$, so $\|A\|_2=3$, while $\|A\|_{\mathrm F}=\sqrt{10}$. A rotation preserves lengths, so $\|R_\varphi\|_2=1$, while $\|R_\varphi\|_{\mathrm F}=\sqrt2$. The operator norm is the natural one, since it measures exactly the largest stretching factor, but it is not given by a simple formula: Chapter~21 shows that it is the largest singular value of $A$. The Frobenius norm is easy to compute and bounds it from above, which is all we need in this chapter. By (i), every linear map is Lipschitz continuous, $\|A\mathbf x-A\mathbf y\|\le\|A\|_2\|\mathbf x-\mathbf y\|$, in analogy with \cref{def:lipschitz}.
+
+\section{Limits and Continuity in \texorpdfstring{$\mathbb R^n$}{R\^{}n}}
+\label{sec:limits-rn}
+
+The definitions of \cref{ch:limits} used the absolute value $|x-a|$ to measure how close $x$ is to $a$. In $\mathbb R^n$ the norm takes its place, and with this one change the definitions and most of the proofs carry over word for word. This section collects what the rest of the chapter needs: convergence of sequences of vectors, the Bolzano--Weierstrass theorem, open and closed sets, limits and continuity of functions of several variables, and the extreme value theorem.
+
+\subsection{Sequences of Vectors}
+
+\begin{definition}[Convergence in $\mathbb R^n$]
+\label{def:convergence-rn}
+A sequence $(\mathbf x_k)_{k\in\mathbb N}$ of vectors in $\mathbb R^n$ \term{converges} to $\mathbf a\in\mathbb R^n$, written $\mathbf x_k\to\mathbf a$ or $\lim_{k\to\infty}\mathbf x_k=\mathbf a$, if $\|\mathbf x_k-\mathbf a\|\to0$, that is, if
+\[
+\forall\varepsilon>0,\ \exists N\in\mathbb N,\ \forall k\ge N:\quad\|\mathbf x_k-\mathbf a\|<\varepsilon .
+\]
+\end{definition}
+
+The subscript $k$ now numbers the terms of the sequence, and we write $(\mathbf x_k)_i$ for the $i$th component of $\mathbf x_k$. As for real sequences, the limit is unique, by the triangle inequality.
+
+\begin{proposition}[Convergence is componentwise]
+\label{prop:componentwise}
+$\mathbf x_k\to\mathbf a$ if and only if $(\mathbf x_k)_i\to a_i$ for every $i=1,\ldots,n$.
+\end{proposition}
+
+\begin{proof}
+By \cref{prop:norm}\,(v), $|(\mathbf x_k)_i-a_i|\le\|\mathbf x_k-\mathbf a\|\le\sum_{j=1}^n|(\mathbf x_k)_j-a_j|$. If the middle term tends to $0$, so does the left one, by the squeeze theorem (\cref{thm:squeeze}). If every component converges, the right side is a sum of $n$ null sequences, which tends to $0$, and so does the middle term.
+\end{proof}
+
+The proposition reduces convergence in $\mathbb R^n$ to the convergence of $n$ real sequences, and with it the results of \cref{ch:limits} transfer at once. If $\mathbf x_k\to\mathbf a$, $\mathbf y_k\to\mathbf b$ and $t_k\to t$, then $\mathbf x_k+\mathbf y_k\to\mathbf a+\mathbf b$, $t_k\mathbf x_k\to t\mathbf a$, $\langle\mathbf x_k,\mathbf y_k\rangle\to\langle\mathbf a,\mathbf b\rangle$, $\|\mathbf x_k\|\to\|\mathbf a\|$ and $A\mathbf x_k\to A\mathbf a$ for every matrix $A$ of matching size, by the limit laws (\cref{thm:limit-laws}) applied to the components. A sequence is a \term{Cauchy sequence} if $\|\mathbf x_k-\mathbf x_l\|<\varepsilon$ for all $k,l\ge N(\varepsilon)$; by \cref{prop:norm}\,(v) this happens exactly when all component sequences are Cauchy sequences, and so, by \cref{thm:cauchy-criterion}, a sequence in $\mathbb R^n$ converges if and only if it is a Cauchy sequence. This \term{completeness} of $\mathbb R^n$ is inherited from that of $\mathbb R$. A sequence is \term{bounded} if $\|\mathbf x_k\|\le M$ for some $M$ and all $k$; convergent sequences are bounded.
+
+\begin{theorem}[Bolzano--Weierstrass in $\mathbb R^n$]
+\label{thm:bolzano-weierstrass-rn}
+Every bounded sequence in $\mathbb R^n$ has a convergent subsequence.
+\end{theorem}
+
+\begin{proof}
+Let $\|\mathbf x_k\|\le M$ for all $k$. The first components $(\mathbf x_k)_1$ form a bounded real sequence, since $|(\mathbf x_k)_1|\le\|\mathbf x_k\|\le M$, so by \cref{thm:bolzano-weierstrass} there is a subsequence along which the first components converge. Along this subsequence the second components are bounded, and a further subsequence makes them converge as well; the first components still converge along it, since a subsequence of a convergent sequence converges to the same limit (\cref{prop:subsequence}). After $n$ such steps we have a subsequence along which all components converge, and by \cref{prop:componentwise} it converges in $\mathbb R^n$.
+\end{proof}
+
+\subsection{Open and Closed Sets}
+
+In one variable, theorems were stated on intervals, and the open intervals were those that contain an interval around each of their points. In $\mathbb R^n$ the role of the intervals around a point is played by balls.
+
+\begin{definition}[Balls, open and closed sets]
+\label{def:open-closed}
+Let $\mathbf a\in\mathbb R^n$ and $r>0$. The \term{open ball} and the \term{closed ball} with centre $\mathbf a$ and radius $r$ are
+\[
+B(\mathbf a,r)\coloneqq\{\mathbf x\in\mathbb R^n: \|\mathbf x-\mathbf a\|<r\},\qquad\bar B(\mathbf a,r)\coloneqq\{\mathbf x\in\mathbb R^n: \|\mathbf x-\mathbf a\|\le r\}.
+\]
+Let $S\subseteq\mathbb R^n$. A point $\mathbf a\in S$ is an \term{interior point} of $S$ if $B(\mathbf a,r)\subseteq S$ for some $r>0$. The set $S$ is \term{open} if every point of $S$ is an interior point, and \term{closed} if its complement $\mathbb R^n\setminus S$ is open. A point $\mathbf a\in\mathbb R^n$ is a \term{boundary point} of $S$ if every ball $B(\mathbf a,r)$ contains points of $S$ and points of its complement. The set $S$ is \term{bounded} if $S\subseteq\bar B(\mathbf 0,M)$ for some $M$. A \term{neighbourhood} of $\mathbf a$ is a set that contains a ball $B(\mathbf a,r)$.
+\end{definition}
+
+In $\mathbb R$ the balls are intervals, $B(a,r)=(a-r,a+r)$; in $\mathbb R^2$ they are discs and in $\mathbb R^3$ solid spheres. An open ball is an open set: if $\mathbf x\in B(\mathbf a,r)$ and $\rho\coloneqq r-\|\mathbf x-\mathbf a\|>0$, then every $\mathbf y\in B(\mathbf x,\rho)$ satisfies $\|\mathbf y-\mathbf a\|\le\|\mathbf y-\mathbf x\|+\|\mathbf x-\mathbf a\|<\rho+\|\mathbf x-\mathbf a\|=r$, by the triangle inequality. In the same way the complement of a closed ball is open, so closed balls are closed. The whole space $\mathbb R^n$ and the empty set are both open and closed. The square $[0,1]^2$ is closed and bounded, its boundary points are the points of its four edges, and its interior points are those of $(0,1)^2$; the half-open strip $(0,1)\times[0,1]$ is neither open nor closed. Sets that are open or closed are the natural domains of the theorems that follow: derivatives are defined at interior points, where the function is defined in all directions, and maxima are guaranteed on closed bounded sets.
+
+\begin{proposition}[Closed sets contain their limits]
+\label{prop:closed-sequences}
+A set $S\subseteq\mathbb R^n$ is closed if and only if the limit of every convergent sequence of points of $S$ lies in $S$.
+\end{proposition}
+
+\begin{proof}
+Let $S$ be closed, $\mathbf x_k\in S$ and $\mathbf x_k\to\mathbf a$. If $\mathbf a$ were not in $S$, it would lie in the open complement, and some ball $B(\mathbf a,r)$ would contain no point of $S$; but $\|\mathbf x_k-\mathbf a\|<r$ for large $k$, a contradiction. Conversely, suppose $S$ contains the limits of its convergent sequences, and let $\mathbf a\notin S$. If no ball $B(\mathbf a,r)$ were contained in the complement, then for every $k$ there would be a point $\mathbf x_k\in S$ with $\|\mathbf x_k-\mathbf a\|<1/(k+1)$, and $\mathbf x_k\to\mathbf a\notin S$, a contradiction. So the complement is open.
+\end{proof}
+
+\subsection{Limits of Functions}
+
+Let $D\subseteq\mathbb R^n$. As in \cref{def:accumulation}, a point $\mathbf a\in\mathbb R^n$ is an \term{accumulation point} of $D$ if every ball $B(\mathbf a,\delta)$ contains a point of $D$ other than $\mathbf a$; every point of an open set, and every point of a closed ball of positive radius, is an accumulation point of that set.
+
+\begin{definition}[Limit of a function of several variables]
+\label{def:limit-rn}
+Let $\mathbf f\colon D\to\mathbb R^m$ with $D\subseteq\mathbb R^n$, let $\mathbf a$ be an accumulation point of $D$, and let $\mathbf L\in\mathbb R^m$. Then $\mathbf f(\mathbf x)$ \term{tends to} $\mathbf L$ as $\mathbf x\to\mathbf a$, written $\lim_{\mathbf x\to\mathbf a}\mathbf f(\mathbf x)=\mathbf L$, if
+\[
+\forall\varepsilon>0,\ \exists\delta>0,\ \forall\mathbf x\in D:\quad0<\|\mathbf x-\mathbf a\|<\delta\ \Rightarrow\ \|\mathbf f(\mathbf x)-\mathbf L\|<\varepsilon .
+\]
+\end{definition}
+
+We write vector-valued functions in bold, $\mathbf f=(f_1,\ldots,f_m)$, with real-valued \term{component functions} $f_i$, and real-valued functions in ordinary type. The proof of \cref{thm:sequential-limit} applies word for word with norms in place of absolute values, and gives the \emph{sequential characterisation}: $\mathbf f(\mathbf x)\to\mathbf L$ as $\mathbf x\to\mathbf a$ if and only if $\mathbf f(\mathbf x_k)\to\mathbf L$ for every sequence $(\mathbf x_k)$ in $D\setminus\{\mathbf a\}$ with $\mathbf x_k\to\mathbf a$. With \cref{prop:componentwise}, it follows that $\mathbf f(\mathbf x)\to\mathbf L$ if and only if $f_i(\mathbf x)\to L_i$ for every component, and that the limit laws hold for sums, products with scalar functions and inner products.
+
+What is new is the variety of ways in which $\mathbf x$ can approach $\mathbf a$. On the real line a point can be approached only from the left and from the right; in the plane it can be approached along infinitely many lines, along spirals and along curves of every kind, and the limit exists only if all these approaches give the same result. Two examples show what can happen; \cref{fig:path-limits} shows their level sets.
+
+\emph{A limit that depends on the direction.} Let $f(x,y)\coloneqq xy/(x^2+y^2)$ for $(x,y)\ne(0,0)$. On the line $y=mx$, with $x\ne0$,
+\[
+f(x,mx)=\frac{mx^2}{x^2+m^2x^2}=\frac m{1+m^2},
+\]
+a constant that depends on the slope $m$: it is $0$ on the axes, $\frac12$ on the diagonal $y=x$ and $-\frac12$ on $y=-x$. So $f$ has no limit at the origin, by the sequential characterisation applied to the sequences $(1/k,0)$ and $(1/k,1/k)$. In polar coordinates $x=r\cos\theta$, $y=r\sin\theta$ the function is $f=\cos\theta\sin\theta=\frac12\sin2\theta$, which depends only on the direction $\theta$; its level sets are the lines through the origin.
+
+\emph{Every line gives the same limit, and still there is none.} Let $g(x,y)\coloneqq x^2y/(x^4+y^2)$ for $(x,y)\ne(0,0)$. On the line $y=mx$ with $m\ne0$,
+\[
+g(x,mx)=\frac{mx^3}{x^4+m^2x^2}=\frac{mx}{x^2+m^2}\to0\qquad(x\to0),
+\]
+and on the axes $g=0$. So $g$ tends to $0$ along every straight line through the origin. On the parabola $y=x^2$, however, $g(x,x^2)=x^4/(2x^4)=\frac12$ for all $x\ne0$, and $g$ has no limit at the origin. The level sets of $g$ are the parabolas $y=tx^2$, on which $g=t/(1+t^2)$. A point of the line $y=mx$, $m\ne0$, lies on the parabola with $t=y/x^2=m/x$, so on its way to the origin the line crosses ever steeper parabolas, with $|t|\to\infty$, on which $g$ is ever closer to $0$; the parabolas with moderate $t$, where $g$ is large, are tangent to the $x$-axis and slip between all the lines.
+
+\begin{figure}
+\sdpanel{A}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.49\textwidth, height=0.49\textwidth, xmin=-1.1, xmax=1.1, ymin=-1.1, ymax=1.1,
+  xtick={-1,0,1}, ytick={-1,0,1}, xlabel={$x$}, ylabel={$y$}]
+\pgfplotsinvokeforeach{15,30,60,75,105,120,150,165}{
+  \addplot[black!60, line width=0.45pt, domain=-1.6:1.6, samples=2] ({x*cos(#1)},{x*sin(#1)});}
+\addplot[black, line width=1.0pt, domain=-1.1:1.1, samples=2] {x};
+\addplot[black, dashed, line width=1.0pt, domain=-1.1:1.1, samples=2] {-x};
+\addplot[black, line width=0.45pt, domain=-1.1:1.1, samples=2] {0};
+\addplot[black, line width=0.45pt] coordinates {(0,-1.1) (0,1.1)};
+\node[font=\scriptsize, fill=white, inner sep=1pt] at (axis cs:0.97,0.82) {$\frac12$};
+\node[font=\scriptsize, fill=white, inner sep=1pt] at (axis cs:-0.95,0.82) {$-\frac12$};
+\node[font=\scriptsize, anchor=south, fill=white, inner sep=1pt] at (axis cs:0.95,0.02) {$0$};
+\end{axis}
+\end{tikzpicture}}\hfill
+\sdpanel{B}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.49\textwidth, height=0.49\textwidth, xmin=-1.1, xmax=1.1, ymin=-1.1, ymax=1.1,
+  xtick={-1,0,1}, ytick={-1,0,1}, xlabel={$x$}, ylabel={$y$}]
+\pgfplotsinvokeforeach{0.25,0.5,2,4}{
+  \addplot[black!60, line width=0.45pt, domain=-1.1:1.1, samples=80] {#1*x^2};
+  \addplot[black!60, line width=0.45pt, domain=-1.1:1.1, samples=80] {-#1*x^2};}
+\addplot[black, line width=1.0pt, domain=-1.1:1.1, samples=80] {x^2};
+\addplot[black, dashed, line width=1.0pt, domain=-1.1:1.1, samples=80] {-x^2};
+\addplot[black, line width=0.45pt, domain=-1.1:1.1, samples=2] {0};
+\addplot[black!45, densely dotted, line width=0.7pt, domain=-1.1:1.1, samples=2] {0.8*x};
+\node[font=\scriptsize, anchor=west, fill=white, inner sep=1pt] at (axis cs:0.78,0.6) {$\frac12$};
+\node[font=\scriptsize, anchor=west, fill=white, inner sep=1pt] at (axis cs:0.78,-0.6) {$-\frac12$};
+\end{axis}
+\end{tikzpicture}}
+\caption{Level sets of two functions without a limit at the origin. (A) $f(x,y)=xy/(x^2+y^2)$ is constant on every line through the origin, with the value $\frac12\sin2\theta$ on the line of angle $\theta$: $\frac12$ on the diagonal (thick), $-\frac12$ on the other diagonal (dashed), $0$ on the axes, and intermediate values on the grey lines. (B) $g(x,y)=x^2y/(x^4+y^2)$ is constant on the parabolas $y=tx^2$, with the value $t/(1+t^2)$: $\frac12$ on $y=x^2$ (thick), $-\frac12$ on $y=-x^2$ (dashed), and smaller values on the grey parabolas ($t=\pm\frac14,\pm\frac12,\pm2,\pm4$). A line through the origin, such as the dotted one, crosses ever steeper parabolas as it approaches the origin, and $g$ tends to $0$ along it.}
+\label{fig:path-limits}
+\end{figure}
+
+The examples show that a limit in several variables cannot be established by checking lines, or any family of curves; one needs an estimate that holds for all points near $\mathbf a$ at once. Polar coordinates often provide one. For $h(x,y)\coloneqq x^2y/(x^2+y^2)$ we have $h(r\cos\theta,r\sin\theta)=r\cos^2\theta\sin\theta$, so $|h(x,y)|\le r=\|(x,y)\|$, and $h(x,y)\to0$ as $(x,y)\to(0,0)$, with $\delta=\varepsilon$; the bound holds uniformly in $\theta$, which is what makes it work. The same bound follows without polar coordinates from $x^2\le x^2+y^2$, so that $|h(x,y)|\le|y|$.
+
+\subsection{Continuity}
+
+\begin{definition}[Continuity]
+\label{def:continuity-rn}
+Let $\mathbf f\colon D\to\mathbb R^m$ with $D\subseteq\mathbb R^n$. The function $\mathbf f$ is \term{continuous at} $\mathbf a\in D$ if for every $\varepsilon>0$ there is $\delta>0$ with $\|\mathbf f(\mathbf x)-\mathbf f(\mathbf a)\|<\varepsilon$ for all $\mathbf x\in D$ with $\|\mathbf x-\mathbf a\|<\delta$, and \term{continuous} if it is continuous at every point of $D$.
+\end{definition}
+
+As in \cref{thm:continuity-forms}, $\mathbf f$ is continuous at an accumulation point $\mathbf a$ of $D$ if and only if $\lim_{\mathbf x\to\mathbf a}\mathbf f(\mathbf x)=\mathbf f(\mathbf a)$, and if and only if $\mathbf f(\mathbf x_k)\to\mathbf f(\mathbf a)$ for every sequence $\mathbf x_k\to\mathbf a$ in $D$; a vector-valued function is continuous if and only if all its components are. The rules of \cref{thm:continuity-algebra,thm:composition-continuous} hold with the same proofs: sums, products and quotients (where the denominator does not vanish) of continuous real-valued functions are continuous, and so are compositions of continuous functions. The coordinate functions $\mathbf x\mapsto x_i$ are continuous, since $|x_i-a_i|\le\|\mathbf x-\mathbf a\|$, and therefore every \term{polynomial in $n$ variables}, a finite sum of terms $cx_1^{k_1}\cdots x_n^{k_n}$, is continuous on $\mathbb R^n$, and every rational function is continuous where its denominator does not vanish. The norm is continuous, by \cref{prop:norm}\,(iv), and linear maps are continuous, being Lipschitz continuous. Functions such as $e^{-\|\mathbf x\|^2}$, $\sin(x_1x_2)+x_3$ and $\ln(1+x^2+y^2)$ are continuous on all of $\mathbb R^n$ as compositions of continuous functions.
+
+The functions $f$ and $g$ of \cref{fig:path-limits} are continuous everywhere except at the origin, whatever value they are given there. The function $h$ above, with $h(0,0)\coloneqq0$, is continuous everywhere. A function of several variables can be continuous in each variable separately without being continuous: $f(x,0)=0$ and $f(0,y)=0$, so $f$ is continuous along both axes at the origin, if we set $f(0,0)\coloneqq0$, but it is not continuous there.
+
+\begin{proposition}[Sets defined by inequalities]
+\label{prop:level-sets-closed}
+Let $f\colon\mathbb R^n\to\mathbb R$ be continuous and $c\in\mathbb R$. Then the sets $\{\mathbf x: f(\mathbf x)<c\}$ and $\{\mathbf x: f(\mathbf x)>c\}$ are open, and the sets $\{\mathbf x: f(\mathbf x)\le c\}$, $\{\mathbf x: f(\mathbf x)\ge c\}$ and $\{\mathbf x: f(\mathbf x)=c\}$ are closed.
+\end{proposition}
+
+\begin{proof}
+If $\mathbf x_k\to\mathbf a$ and $f(\mathbf x_k)\le c$ for all $k$, then $f(\mathbf a)=\lim f(\mathbf x_k)\le c$ by \cref{prop:limit-order}, so the set $\{f\le c\}$ is closed by \cref{prop:closed-sequences}; the same argument applies to $\{f\ge c\}$ and $\{f=c\}$. The set $\{f<c\}$ is the complement of the closed set $\{f\ge c\}$, so it is open; similarly for $\{f>c\}$.
+\end{proof}
+
+The \term{level set} $\{f=c\}$ of a function of two variables is usually a curve, the \term{contour line} of the height $c$ on a map whose height above sea level is $f(x,y)$; the level sets of a function of three variables are usually surfaces. Contour plots such as \cref{fig:path-limits} are the most practical way of drawing a function of two variables, and we shall use them often. By the proposition the \term{unit sphere} $\{\mathbf x\in\mathbb R^n: \|\mathbf x\|=1\}$ is closed, and it is bounded; the half-space $\{\mathbf x: \langle\mathbf u,\mathbf x\rangle<c\}$ is open.
+
+\subsection{The Extreme Value Theorem}
+
+\begin{theorem}[Extreme value theorem in $\mathbb R^n$]
+\label{thm:evt-rn}
+Let $K\subseteq\mathbb R^n$ be nonempty, closed and bounded, and let $f\colon K\to\mathbb R$ be continuous. Then $f$ attains a maximum and a minimum on $K$: there are $\mathbf c,\mathbf d\in K$ with $f(\mathbf d)\le f(\mathbf x)\le f(\mathbf c)$ for all $\mathbf x\in K$.
+\end{theorem}
+
+\begin{proof}
+The proofs of \cref{thm:bounded,thm:evt} apply verbatim, with the Bolzano--Weierstrass theorem in $\mathbb R^n$ (\cref{thm:bolzano-weierstrass-rn}) in place of the one-dimensional theorem and \cref{prop:closed-sequences} in place of the closedness of $[a,b]$. In brief: if $f$ were unbounded above, there would be $\mathbf x_k\in K$ with $f(\mathbf x_k)>k$, and a subsequence would converge to a point $\mathbf c\in K$, at which $f$ would be continuous but unbounded on every neighbourhood. So $M\coloneqq\sup f(K)$ is finite, and points $\mathbf x_k\in K$ with $f(\mathbf x_k)>M-1/(k+1)$ have a subsequence converging to some $\mathbf c\in K$, where $f(\mathbf c)=M$ by continuity. The minimum is the maximum of $-f$.
+\end{proof}
+
+All three hypotheses are needed, for the reasons illustrated by \cref{fig:evt-fail}. The closed bounded subsets of $\mathbb R^n$ are the \term{compact} sets of Volume~II, where the theorem is proved in greater generality~\cite{rudin1976}. In this chapter the theorem has two kinds of use. It proves that optimisation problems on closed bounded sets have solutions, as for the problems with constraints in \cref{sec:lagrange}; and it turns a strict inequality on the unit sphere into a uniform one. For instance, the supremum in the definition of $\|A\|_2$ is a maximum: the function $\mathbf x\mapsto\|A\mathbf x\|$ is continuous on the unit sphere, which is closed and bounded, so it attains its largest value at some unit vector $\mathbf x$, and $\|A\mathbf x\|=\|A\|_2$.
+
+\section{Partial Derivatives}
+\label{sec:partial-derivatives}
+
+\subsection{Definition and Computation}
+
+The simplest way to differentiate a function of several variables is to let only one variable change at a time. Throughout the rest of the chapter, $U$ denotes an open subset of $\mathbb R^n$, so that a function on $U$ is defined in a whole ball around each point of $U$, and the difference quotients below make sense for all small increments.
+
+\begin{definition}[Partial derivative]
+\label{def:partial-derivative}
+Let $f\colon U\to\mathbb R$, $\mathbf a\in U$ and $1\le i\le n$. The \term{partial derivative} of $f$ with respect to $x_i$ at $\mathbf a$ is
+\[
+\frac{\partial f}{\partial x_i}(\mathbf a)\coloneqq\lim_{t\to0}\frac{f(\mathbf a+t\mathbf e_i)-f(\mathbf a)}t ,
+\]
+if this limit exists. Other notations are $\partial_if(\mathbf a)$ and $f_{x_i}(\mathbf a)$; for a function $f(x,y)$ of two variables we also write $f_x$ and $f_y$. For a vector-valued function $\mathbf f=(f_1,\ldots,f_m)$, the partial derivative $\partial_i\mathbf f(\mathbf a)\in\mathbb R^m$ is the vector of the partial derivatives $\partial_if_1(\mathbf a),\ldots,\partial_if_m(\mathbf a)$.
+\end{definition}
+
+In other words, $\partial_if(\mathbf a)$ is the ordinary derivative at $t=a_i$ of the function of one variable
+\[
+t\mapsto f(a_1,\ldots,a_{i-1},t,a_{i+1},\ldots,a_n),
+\]
+obtained by freezing all variables except the $i$th. It is computed with the rules of \cref{ch:differentiation}, treating the other variables as constants. For $f(x,y)=x^2y^3+\sin(xy)$,
+\[
+f_x(x,y)=2xy^3+y\cos(xy),\qquad f_y(x,y)=3x^2y^2+x\cos(xy).
+\]
+Geometrically, the graph of a function of two variables is a surface in $\mathbb R^3$, and the plane $y=b$ cuts it in the curve $z=f(x,b)$; the partial derivative $f_x(a,b)$ is the slope of this curve at $x=a$. The symbol $\partial$, a rounded $d$, distinguishes partial derivatives from ordinary ones; it came into general use through Jacobi in the nineteenth century~\cite{jacobi1841}. The notation $\partial f/\partial x_i$ hides the point at which the derivative is taken and, more dangerously, the variables that are being held fixed: if $z=f(x,y)$ and the variables are changed, say to $x$ and $u=x+y$, the derivative of $z$ with respect to $x$ with $u$ fixed differs from $f_x$, the derivative with $y$ fixed. The chain rule of \cref{sec:chain-rule-n} sorts this out.
+
+\emph{Examples.} For the norm $f(\mathbf x)=\|\mathbf x\|=(x_1^2+\cdots+x_n^2)^{1/2}$ and $\mathbf x\ne\mathbf 0$, the chain rule of one variable gives $\partial_if(\mathbf x)=x_i/\|\mathbf x\|$. At $\mathbf x=\mathbf 0$ the difference quotient is $\|t\mathbf e_i\|/t=|t|/t$, which has no limit, so no partial derivative of the norm exists at the origin; its graph for $n=2$ is a cone with its tip there. For the function $f(x,y)=xy/(x^2+y^2)$ of \cref{fig:path-limits}, with $f(0,0)\coloneqq0$, both partial derivatives exist at the origin and vanish, since $f(t,0)=f(0,t)=0$ for all $t$. Yet $f$ is not even continuous at the origin.
+
+The last example is the first warning of this chapter: partial derivatives look only along the coordinate axes, and a function can behave well along the axes and badly in between. Their existence implies neither continuity nor, as \cref{sec:differentiability} shows, the existence of a tangent plane. This is the main difference between functions of one and of several variables, and the reason why the derivative of a function of several variables must be defined in a different way.
+
+\subsection{Higher Partial Derivatives}
+
+If $\partial_jf$ exists at every point of $U$, it is again a function on $U$, and it may have partial derivatives of its own. We write
+\[
+\partial_i\partial_jf\coloneqq\partial_i(\partial_jf)=\frac{\partial^2f}{\partial x_i\,\partial x_j},\qquad\partial_i^2f\coloneqq\partial_i\partial_if=\frac{\partial^2f}{\partial x_i^2},
+\]
+and similarly for higher orders. In $\partial_i\partial_jf$ the derivative with respect to $x_j$ is taken first, as the order of the operators suggests. The subscript notation reverses the order on paper: $f_{xy}\coloneqq(f_x)_y=\partial_y\partial_xf$ is the derivative of $f_x$ with respect to $y$. The theorem below shows that for the functions met in practice the distinction does not matter, but the conventions are worth keeping straight.
+
+For $f(x,y)=x^2y^3+\sin(xy)$ we find
+\[
+\partial_y\partial_xf=6xy^2+\cos(xy)-xy\sin(xy)=\partial_x\partial_yf,
+\]
+and also $\partial_x^2f=2y^3-y^2\sin(xy)$ and $\partial_y^2f=6x^2y-x^2\sin(xy)$. The two mixed derivatives agree, as they do for every polynomial: for a monomial $x^py^q$ both are $pq\,x^{p-1}y^{q-1}$. That they always agree for sufficiently smooth functions was used freely by Euler and Clairaut in the 1730s and 1740s; the first proof generally accepted as rigorous is due to Schwarz in 1873~\cite{schwarz1873,hairer1996analysis}.
+
+\begin{theorem}[Symmetry of mixed partial derivatives]
+\label{thm:schwarz}
+Let $f\colon U\to\mathbb R$, $\mathbf a\in U$ and $i\ne j$. Suppose that $\partial_if$, $\partial_jf$, $\partial_j\partial_if$ and $\partial_i\partial_jf$ exist in a ball around $\mathbf a$, and that $\partial_j\partial_if$ and $\partial_i\partial_jf$ are continuous at $\mathbf a$. Then
+\[
+\partial_i\partial_jf(\mathbf a)=\partial_j\partial_if(\mathbf a).
+\]
+\end{theorem}
+
+\begin{proof}
+Only the variables $x_i$ and $x_j$ change, so we may assume that $n=2$, $i=1$, $j=2$, and write $f(x,y)$ and $\mathbf a=(a,b)$. Let $B(\mathbf a,r)\subseteq U$ be a ball in which the four partial derivatives exist. For $0<|h|<r/2$ consider the \emph{second difference}
+\[
+\Delta(h)\coloneqq f(a+h,b+h)-f(a+h,b)-f(a,b+h)+f(a,b),
+\]
+which involves the four corners of a small square. We evaluate it in two ways. First, with $\varphi(s)\coloneqq f(s,b+h)-f(s,b)$ we have $\Delta(h)=\varphi(a+h)-\varphi(a)$. The function $\varphi$ is differentiable on the interval between $a$ and $a+h$, with $\varphi'(s)=f_x(s,b+h)-f_x(s,b)$, so the mean value theorem gives a point $\xi$ between $a$ and $a+h$ with
+\[
+\Delta(h)=h\,\bigl(f_x(\xi,b+h)-f_x(\xi,b)\bigr).
+\]
+The function $y\mapsto f_x(\xi,y)$ is differentiable with derivative $\partial_y\partial_xf(\xi,y)$, and a second application of the mean value theorem gives $\eta$ between $b$ and $b+h$ with
+\[
+\Delta(h)=h^2\,\partial_y\partial_xf(\xi,\eta).
+\]
+As $h\to0$, the point $(\xi,\eta)$ tends to $(a,b)$, and by continuity $\Delta(h)/h^2\to\partial_y\partial_xf(a,b)$. Second, with $\psi(t)\coloneqq f(a+h,t)-f(a,t)$ we have $\Delta(h)=\psi(b+h)-\psi(b)$, and the same argument with the roles of the variables exchanged gives $\Delta(h)/h^2\to\partial_x\partial_yf(a,b)$. A limit is unique, so the two mixed derivatives agree at $\mathbf a$.
+\end{proof}
+
+The proof shows where the symmetry comes from: the second difference $\Delta(h)$ is symmetric in the two variables, and each mixed derivative is the limit of $\Delta(h)/h^2$ computed in a different order. Without continuity the conclusion can fail. The standard counterexample, due to Peano~\cite{genocchi1884}, is
+\[
+f(x,y)\coloneqq\frac{xy(x^2-y^2)}{x^2+y^2}\quad((x,y)\ne(0,0)),\qquad f(0,0)\coloneqq0 .
+\]
+For $y\ne0$ the difference quotient $f(h,y)/h=y(h^2-y^2)/(h^2+y^2)$ tends to $-y$ as $h\to0$, so $f_x(0,y)=-y$, which also holds for $y=0$; hence $\partial_y\partial_xf(0,0)=-1$. In the same way $f_y(x,0)=x$ for all $x$, and $\partial_x\partial_yf(0,0)=1$. The function is continuous, it has first partial derivatives everywhere, and the mixed second derivatives exist everywhere, but they differ at the origin, where they are not continuous.
+
+\begin{definition}[The classes $C^k(U)$]
+\label{def:ck-rn}
+Let $k\in\mathbb N$. A function $f\colon U\to\mathbb R$ belongs to $C^k(U)$ if all its partial derivatives of order at most $k$ exist and are continuous on $U$; $C^0(U)$ is the set of continuous functions. It belongs to $C^\infty(U)$ if it belongs to $C^k(U)$ for every $k$. A vector-valued function belongs to $C^k(U)$ if each of its components does.
+\end{definition}
+
+For $n=1$ this is \cref{def:ck}. Polynomials in $n$ variables belong to $C^\infty(\mathbb R^n)$, since their partial derivatives are again polynomials, and sums, products, quotients with nonvanishing denominators and compositions of $C^k$ functions are $C^k$, as the chain rule will show (\cref{cor:ck-composition}). By \cref{thm:schwarz}, for a function in $C^2(U)$ the order of two differentiations does not matter. For $f\in C^k(U)$ the same holds for all partial derivatives of order at most $k$: any order of the differentiations can be turned into any other by exchanging adjacent pairs, and each exchange is allowed by the theorem applied to a partial derivative of $f$ of lower order. A partial derivative of order $k$ of a function in $C^k$ is therefore determined by how many times it differentiates with respect to each variable, a fact that the multi-index notation of \cref{sec:mvt-taylor-n} exploits.
+
+\section{Differentiability and the Derivative}
+\label{sec:differentiability}
+
+\subsection{The Best Linear Approximation}
+
+\Cref{thm:linear-approx} characterised the derivative of a function of one variable as the coefficient of the best linear approximation: $f(a+h)=f(a)+f'(a)h+o(h)$. This form, unlike the limit of difference quotients, makes sense when $h$ is a vector, provided the number $f'(a)$ is replaced by a linear map and the error is compared with the length $\|\mathbf h\|$ of the increment. It is the right definition of the derivative in several variables.
+
+\begin{definition}[Differentiability]
+\label{def:differentiable-rn}
+Let $U\subseteq\mathbb R^n$ be open, $\mathbf f\colon U\to\mathbb R^m$ and $\mathbf a\in U$. The function $\mathbf f$ is \term{differentiable at} $\mathbf a$ if there is a matrix $A\in\mathbb R^{m\times n}$ such that
+\begin{equation}
+\lim_{\mathbf h\to\mathbf0}\frac{\|\mathbf f(\mathbf a+\mathbf h)-\mathbf f(\mathbf a)-A\mathbf h\|}{\|\mathbf h\|}=0 .
+\label{eq:differentiable-rn}
+\end{equation}
+The matrix $A$ is then unique (\cref{prop:derivative-unique}); it is called the \term{derivative} of $\mathbf f$ at $\mathbf a$ and written $D\mathbf f(\mathbf a)$. The function $\mathbf f$ is \term{differentiable} if it is differentiable at every point of $U$.
+\end{definition}
+
+With the remainder $\mathbf r(\mathbf h)\coloneqq\mathbf f(\mathbf a+\mathbf h)-\mathbf f(\mathbf a)-D\mathbf f(\mathbf a)\mathbf h$, the definition says
+\[
+\mathbf f(\mathbf a+\mathbf h)=\mathbf f(\mathbf a)+D\mathbf f(\mathbf a)\mathbf h+\mathbf r(\mathbf h),\qquad\frac{\|\mathbf r(\mathbf h)\|}{\|\mathbf h\|}\to0\quad(\mathbf h\to\mathbf0),
+\]
+which we abbreviate as $\mathbf r(\mathbf h)=o(\|\mathbf h\|)$, extending \cref{def:landau} to vector-valued remainders and vector increments. The affine map $\mathbf x\mapsto\mathbf f(\mathbf a)+D\mathbf f(\mathbf a)(\mathbf x-\mathbf a)$ is the \term{linearisation} of $\mathbf f$ at $\mathbf a$; it approximates $\mathbf f$ near $\mathbf a$ with an error that is small compared with the distance from $\mathbf a$, and it is the several-variable counterpart of the tangent line. For $n=m=1$ the definition is \cref{thm:linear-approx}, with the $1\times1$ matrix $D f(a)=(f'(a))$. By \cref{prop:norm}\,(v), applied to the remainder, a vector-valued function is differentiable at $\mathbf a$ if and only if each component $f_i$ is, and then the $i$th row of $D\mathbf f(\mathbf a)$ is $Df_i(\mathbf a)$.
+
+\begin{proposition}[Uniqueness of the derivative]
+\label{prop:derivative-unique}
+At most one matrix $A$ satisfies \eqref{eq:differentiable-rn}.
+\end{proposition}
+
+\begin{proof}
+If $A$ and $B$ both satisfy it, the triangle inequality gives $\|(A-B)\mathbf h\|/\|\mathbf h\|\to0$ as $\mathbf h\to\mathbf0$. Take $\mathbf h=t\mathbf e_j$ with $t\to0^+$: then $\|(A-B)\mathbf h\|/\|\mathbf h\|=\|(A-B)\mathbf e_j\|$ is constant, so it is $0$, and the $j$th columns of $A$ and $B$ agree.
+\end{proof}
+
+\begin{theorem}[Differentiability, continuity and partial derivatives]
+\label{thm:jacobian}
+Let $\mathbf f\colon U\to\mathbb R^m$ be differentiable at $\mathbf a\in U$. Then:
+\begin{enumerate}
+\item $\mathbf f$ is continuous at $\mathbf a$;
+\item all partial derivatives $\partial_jf_i(\mathbf a)$ exist, and $D\mathbf f(\mathbf a)$ is the matrix of the partial derivatives,
+\[
+D\mathbf f(\mathbf a)=\begin{pmatrix}\partial_1f_1(\mathbf a)&\cdots&\partial_nf_1(\mathbf a)\\\vdots&&\vdots\\\partial_1f_m(\mathbf a)&\cdots&\partial_nf_m(\mathbf a)\end{pmatrix};
+\]
+its $j$th column is the partial derivative $\partial_j\mathbf f(\mathbf a)$ and its $i$th row contains the partial derivatives of the $i$th component.
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+(i) By \cref{prop:matrix-norms}, $\|\mathbf f(\mathbf a+\mathbf h)-\mathbf f(\mathbf a)\|\le\|D\mathbf f(\mathbf a)\|_2\|\mathbf h\|+\|\mathbf r(\mathbf h)\|$, and both terms tend to $0$ as $\mathbf h\to\mathbf0$. (ii) Let $A\coloneqq D\mathbf f(\mathbf a)$ and $\mathbf h=t\mathbf e_j$ with $t\ne0$. Then
+\[
+\Bigl\|\frac{\mathbf f(\mathbf a+t\mathbf e_j)-\mathbf f(\mathbf a)}t-A\mathbf e_j\Bigr\|=\frac{\|\mathbf r(t\mathbf e_j)\|}{|t|}=\frac{\|\mathbf r(t\mathbf e_j)\|}{\|t\mathbf e_j\|}\to0\qquad(t\to0),
+\]
+so the difference quotient in the direction $\mathbf e_j$ tends to the $j$th column $A\mathbf e_j$ of $A$. By \cref{prop:componentwise} this means that $\partial_jf_i(\mathbf a)$ exists and equals $a_{ij}$.
+\end{proof}
+
+The matrix of partial derivatives is the \term{Jacobian matrix} of $\mathbf f$ at $\mathbf a$, also written $J_{\mathbf f}(\mathbf a)$, especially when it appears as data in an algorithm; for $m=n$ its determinant $\det D\mathbf f(\mathbf a)$ is the \term{Jacobian determinant}, often simply called the Jacobian. Both are named after Jacobi, who studied such determinants systematically in 1841~\cite{jacobi1841}. The theorem gives a practical recipe, compute the partial derivatives and arrange them in a matrix, but the recipe produces the derivative only if the function is known to be differentiable. The converse of (ii) is false: the function $xy/(x^2+y^2)$ has both partial derivatives at the origin but is not continuous there, so by (i) it is not differentiable there.
+
+\emph{Examples.} (i) An affine map $\mathbf f(\mathbf x)=A\mathbf x+\mathbf b$ satisfies $\mathbf f(\mathbf a+\mathbf h)-\mathbf f(\mathbf a)=A\mathbf h$ exactly, so $D\mathbf f(\mathbf a)=A$ at every point: the best linear approximation of a linear map is the map itself.
+
+(ii) Let $A\in\mathbb R^{n\times n}$ and $q(\mathbf x)\coloneqq\langle\mathbf x,A\mathbf x\rangle=\sum_{i,j}a_{ij}x_ix_j$, a \term{quadratic form}. Expanding with \cref{prop:inner-product,prop:matrix-algebra},
+\[
+q(\mathbf a+\mathbf h)=q(\mathbf a)+\langle\mathbf a,A\mathbf h\rangle+\langle\mathbf h,A\mathbf a\rangle+\langle\mathbf h,A\mathbf h\rangle=q(\mathbf a)+\langle(A+A^{\mathsf T})\mathbf a,\mathbf h\rangle+\langle\mathbf h,A\mathbf h\rangle .
+\]
+The last term is bounded by $\|A\|_2\|\mathbf h\|^2$, by the Cauchy--Schwarz inequality, so it is $o(\|\mathbf h\|)$, and $Dq(\mathbf a)\mathbf h=\langle(A+A^{\mathsf T})\mathbf a,\mathbf h\rangle$. For symmetric $A$ this is $2\langle A\mathbf a,\mathbf h\rangle$, and for $A=I$, $q(\mathbf x)=\|\mathbf x\|^2$, it is $2\langle\mathbf a,\mathbf h\rangle$: the counterparts of $\frac d{dx}ax^2=2ax$ and $\frac d{dx}x^2=2x$.
+
+(iii) The function $h(x,y)=x^2y/(x^2+y^2)$, with $h(0,0)=0$, is continuous (\cref{sec:limits-rn}), and its partial derivatives at the origin vanish, since $h(t,0)=h(0,t)=0$. If it were differentiable there, its derivative would be the zero matrix, and $h(\mathbf v)/\|\mathbf v\|\to0$ as $\mathbf v\to\mathbf0$. But on the diagonal, $h(t,t)/\|(t,t)\|=(t/2)/(\sqrt2|t|)=\pm1/(2\sqrt2)$. So $h$ is continuous, has partial derivatives, and is not differentiable at the origin; its graph has no tangent plane there, although it has tangent lines in the two coordinate directions.
+
+Fortunately, the functions met in practice are differentiable, and the following theorem, which has no counterpart in one variable, where differentiability is the existence of a single limit, shows why: continuity of the partial derivatives suffices.
+
+\begin{theorem}[Continuous partial derivatives imply differentiability]
+\label{thm:c1-differentiable}
+Let $\mathbf f\colon U\to\mathbb R^m$ and $\mathbf a\in U$. Suppose that all partial derivatives $\partial_jf_i$ exist in a ball around $\mathbf a$ and are continuous at $\mathbf a$. Then $\mathbf f$ is differentiable at $\mathbf a$. In particular, every function in $C^1(U)$ is differentiable on $U$, and its derivative $\mathbf x\mapsto D\mathbf f(\mathbf x)$ is continuous.
+\end{theorem}
+
+\begin{proof}
+It suffices to treat a real-valued component $f$. Let $B(\mathbf a,r)\subseteq U$ be a ball in which the partial derivatives exist, and let $\mathbf h=(h_1,\ldots,h_n)$ with $\|\mathbf h\|<r$. We move from $\mathbf a$ to $\mathbf a+\mathbf h$ along the edges of a box, one coordinate at a time, through the points
+\[
+\mathbf p_0\coloneqq\mathbf a,\qquad\mathbf p_k\coloneqq\mathbf a+h_1\mathbf e_1+\cdots+h_k\mathbf e_k\qquad(k=1,\ldots,n),
+\]
+so that $\mathbf p_n=\mathbf a+\mathbf h$; all of them, and the segments between consecutive ones, lie in the ball, since $\|\mathbf p_k-\mathbf a\|\le\|\mathbf h\|$ and the same holds for every point between $\mathbf p_{k-1}$ and $\mathbf p_k$. Then
+\[
+f(\mathbf a+\mathbf h)-f(\mathbf a)=\sum_{k=1}^n\bigl(f(\mathbf p_k)-f(\mathbf p_{k-1})\bigr).
+\]
+On the $k$th segment only the $k$th coordinate changes. The function $g_k(t)\coloneqq f(\mathbf p_{k-1}+t\mathbf e_k)$ is differentiable on the interval between $0$ and $h_k$, with $g_k'(t)=\partial_kf(\mathbf p_{k-1}+t\mathbf e_k)$, by the definition of the partial derivative. If $h_k\ne0$, the mean value theorem gives a point $\mathbf q_k$ on the segment with $f(\mathbf p_k)-f(\mathbf p_{k-1})=\partial_kf(\mathbf q_k)\,h_k$; if $h_k=0$, this holds with $\mathbf q_k\coloneqq\mathbf p_k$. Hence, with $\mathbf g\coloneqq(\partial_1f(\mathbf a),\ldots,\partial_nf(\mathbf a))$,
+\[
+\begin{aligned}
+\bigl|f(\mathbf a+\mathbf h)-f(\mathbf a)-\langle\mathbf g,\mathbf h\rangle\bigr|&=\Bigl|\sum_{k=1}^n\bigl(\partial_kf(\mathbf q_k)-\partial_kf(\mathbf a)\bigr)h_k\Bigr|\\
+&\le\Bigl(\sum_{k=1}^n\bigl(\partial_kf(\mathbf q_k)-\partial_kf(\mathbf a)\bigr)^2\Bigr)^{1/2}\|\mathbf h\|,
+\end{aligned}
+\]
+by the Cauchy--Schwarz inequality. As $\mathbf h\to\mathbf0$, every $\mathbf q_k$ tends to $\mathbf a$, and the continuity of the partial derivatives at $\mathbf a$ makes the bracket tend to $0$. So the remainder is $o(\|\mathbf h\|)$, and $f$ is differentiable at $\mathbf a$ with $Df(\mathbf a)\mathbf h=\langle\mathbf g,\mathbf h\rangle$. If $\mathbf f\in C^1(U)$, the entries of $D\mathbf f(\mathbf x)$ are continuous functions of $\mathbf x$, by \cref{thm:jacobian}, and so is the matrix, entry by entry.
+\end{proof}
+
+The hypothesis is stronger than necessary but easy to check: polynomials, rational functions away from the zeros of their denominators, and all functions built from the elementary functions of \cref{ch:transcendental} by arithmetic operations and composition belong to $C^1$ wherever their formulas make sense, and so they are differentiable there. The implications between the notions of this section are summarised as follows:
+\[
+\mathbf f\in C^1\ \Longrightarrow\ \mathbf f\text{ differentiable}\ \Longrightarrow\ \mathbf f\text{ continuous, and all partial derivatives exist};
+\]
+none of the converses holds. Example (iii) above shows that continuity and partial derivatives together do not give differentiability, and a function of one variable such as $x^2\sin(1/x)$ of \cref{prop:x2sin}, viewed as a function on $\mathbb R^n$ that depends on $x_1$ only, is differentiable without being $C^1$.
+
+\emph{Example: polar coordinates.} The map $\mathbf P(r,\theta)\coloneqq(r\cos\theta,r\sin\theta)$ from the $(r,\theta)$-plane to the $(x,y)$-plane has the partial derivatives
+\[
+D\mathbf P(r,\theta)=\begin{pmatrix}\cos\theta&-r\sin\theta\\\sin\theta&r\cos\theta\end{pmatrix},\qquad\det D\mathbf P(r,\theta)=r\cos^2\theta+r\sin^2\theta=r ,
+\]
+which are continuous, so $\mathbf P$ is differentiable everywhere, with this Jacobian matrix. The first column is the velocity of the point when $r$ increases, a unit vector pointing away from the origin; the second is the velocity when $\theta$ increases, a vector of length $r$ tangent to the circle of radius $r$. \Cref{sec:inverse-implicit} returns to this map.
+
+\emph{A numerical example.} For $f(x,y)=\sqrt{x^2+y^2}$ at $\mathbf a=(3,4)$ we have $f(\mathbf a)=5$ and $\partial_xf=x/f$, $\partial_yf=y/f$, so $Df(3,4)=(\frac35\ \ \frac45)$. The linearisation at $\mathbf a$ predicts, for $\mathbf h=(0.02,-0.03)$,
+\[
+f(3.02,3.97)\approx5+\tfrac35\cdot0.02+\tfrac45\cdot(-0.03)=4.988 ,
+\]
+while the true value is $4.988116\ldots$; the error $1.2\times10^{-4}$ is small compared with $\|\mathbf h\|=0.036$, and of the order of $\|\mathbf h\|^2=0.0013$, as Taylor's theorem in \cref{sec:mvt-taylor-n} will explain.
+
+\subsection{The Gradient and Directional Derivatives}
+
+For a real-valued function $f$ the derivative $Df(\mathbf a)$ is a $1\times n$ matrix, a row. Its transpose is a column vector, which deserves a name and a symbol of its own.
+
+\begin{definition}[Gradient]
+\label{def:gradient}
+Let $f\colon U\to\mathbb R$ be differentiable at $\mathbf a$. The \term{gradient} of $f$ at $\mathbf a$ is the vector
+\[
+\nabla f(\mathbf a)\coloneqq Df(\mathbf a)^{\mathsf T}=\bigl(\partial_1f(\mathbf a),\ldots,\partial_nf(\mathbf a)\bigr)\in\mathbb R^n .
+\]
+\end{definition}
+
+The symbol $\nabla$ is read ``nabla'' or ``del''. With it the linear approximation reads
+\[
+f(\mathbf a+\mathbf h)=f(\mathbf a)+\langle\nabla f(\mathbf a),\mathbf h\rangle+o(\|\mathbf h\|),
+\]
+and the examples above give $\nabla\|\mathbf x\|^2=2\mathbf x$, $\nabla\langle\mathbf x,A\mathbf x\rangle=(A+A^{\mathsf T})\mathbf x$ and $\nabla\|\mathbf x\|=\mathbf x/\|\mathbf x\|$ for $\mathbf x\ne\mathbf0$. The gradient is a vector in the same space as the point $\mathbf a$, and this makes a geometric interpretation possible. To find it, we look at the rate of change of $f$ in an arbitrary direction.
+
+\begin{definition}[Directional derivative]
+\label{def:directional-derivative}
+Let $f\colon U\to\mathbb R$, $\mathbf a\in U$ and $\mathbf v\in\mathbb R^n$. The \term{directional derivative} of $f$ at $\mathbf a$ in the direction $\mathbf v$ is
+\[
+D_{\mathbf v}f(\mathbf a)\coloneqq\lim_{t\to0}\frac{f(\mathbf a+t\mathbf v)-f(\mathbf a)}t ,
+\]
+if the limit exists.
+\end{definition}
+
+For $\mathbf v=\mathbf e_i$ this is the partial derivative $\partial_if(\mathbf a)$. If $\mathbf v$ is a unit vector, $D_{\mathbf v}f(\mathbf a)$ is the slope of the graph of $f$ above the line through $\mathbf a$ in the direction $\mathbf v$; some authors admit only unit vectors in the definition. Since $D_{s\mathbf v}f(\mathbf a)=sD_{\mathbf v}f(\mathbf a)$ for every scalar $s$, nothing is lost by admitting all vectors.
+
+\begin{proposition}
+\label{prop:directional}
+If $f$ is differentiable at $\mathbf a$, then $D_{\mathbf v}f(\mathbf a)$ exists for every $\mathbf v\in\mathbb R^n$, and
+\[
+D_{\mathbf v}f(\mathbf a)=Df(\mathbf a)\mathbf v=\langle\nabla f(\mathbf a),\mathbf v\rangle=\sum_{i=1}^n\partial_if(\mathbf a)\,v_i .
+\]
+\end{proposition}
+
+\begin{proof}
+For $\mathbf v=\mathbf0$ both sides vanish. Otherwise, with $\mathbf h=t\mathbf v$,
+\[
+\frac{f(\mathbf a+t\mathbf v)-f(\mathbf a)}t-\langle\nabla f(\mathbf a),\mathbf v\rangle=\frac{r(t\mathbf v)}t ,\qquad\Bigl|\frac{r(t\mathbf v)}t\Bigr|=\frac{|r(t\mathbf v)|}{\|t\mathbf v\|}\,\|\mathbf v\|\to0 .
+\]
+\end{proof}
+
+So for a differentiable function the directional derivative depends linearly on the direction, and the $n$ partial derivatives determine the directional derivatives in all directions. For the function $h(x,y)=x^2y/(x^2+y^2)$ of example (iii) this fails: for a unit vector $\mathbf v=(v_1,v_2)$, $h(t\mathbf v)/t=v_1^2v_2$, so $D_{\mathbf v}h(\mathbf0)=v_1^2v_2$ exists in every direction but is not linear in $\mathbf v$, another proof that $h$ is not differentiable. The function $g(x,y)=x^2y/(x^4+y^2)$ of \cref{fig:path-limits}, with $g(0,0)=0$, even has directional derivatives in all directions at the origin, namely $v_1^2/v_2$ for $v_2\ne0$ and $0$ for $v_2=0$, although it is not continuous there. Directional derivatives, like partial derivatives, look only along straight lines.
+
+\begin{theorem}[The gradient is the direction of steepest ascent]
+\label{thm:steepest-ascent}
+Let $f$ be differentiable at $\mathbf a$ with $\nabla f(\mathbf a)\ne\mathbf0$. Among all unit vectors $\mathbf v$, the directional derivative $D_{\mathbf v}f(\mathbf a)$ is largest for $\mathbf v=\nabla f(\mathbf a)/\|\nabla f(\mathbf a)\|$, where it equals $\|\nabla f(\mathbf a)\|$, and smallest for the opposite direction, where it equals $-\|\nabla f(\mathbf a)\|$. It vanishes exactly for the unit vectors orthogonal to $\nabla f(\mathbf a)$.
+\end{theorem}
+
+\begin{proof}
+By \cref{prop:directional} and the Cauchy--Schwarz inequality,
+\[
+|D_{\mathbf v}f(\mathbf a)|=|\langle\nabla f(\mathbf a),\mathbf v\rangle|\le\|\nabla f(\mathbf a)\|\qquad\text{for }\|\mathbf v\|=1,
+\] with equality exactly when $\mathbf v$ is a multiple of $\nabla f(\mathbf a)$, that is, $\mathbf v=\pm\nabla f(\mathbf a)/\|\nabla f(\mathbf a)\|$. The two signs give the values $\pm\|\nabla f(\mathbf a)\|$. The last statement is the definition of orthogonality.
+\end{proof}
+
+The theorem gives the gradient a meaning that does not depend on coordinates: its direction is the direction in which $f$ increases fastest, and its length is the rate of increase in that direction. On a topographic map, the gradient of the height points straight uphill, and its length is the steepness of the slope. Moving orthogonally to the gradient, to first order, does not change $f$; \cref{sec:chain-rule-n} turns this into the statement that the gradient is orthogonal to the level sets. \Cref{fig:gradient-contours} shows both facts for the function $f(x,y)=x^2+3y^2$, whose level sets are ellipses and whose gradient is $\nabla f(x,y)=(2x,6y)$.
+
+The theorem also suggests the oldest method for minimising a function of several variables: from the current point, take a step in the direction $-\nabla f$ of steepest descent, and repeat. Cauchy proposed this \term{method of steepest descent} in 1847~\cite{cauchy1847}. The figure shows its weakness: the direction of steepest descent is orthogonal to the level set, and for elongated level sets it points far away from the minimum. A curve that always follows it, such as the curve $y=0.6\,(x/1.9)^3$ drawn in the figure, first heads for the long axis of the ellipses and then creeps along it towards the centre, and a method that takes steps of finite length in these directions zigzags across the valley. Volume~XII treats the method and the better methods that replaced it.
+
+\begin{figure}
+\sdfloat{%
+\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.62\textwidth, height=0.46\textwidth, xmin=-2.4, xmax=2.4, ymin=-1.5, ymax=1.5,
+  axis equal image, xtick={-2,-1,0,1,2}, ytick={-1,0,1}, xlabel={$x$}, ylabel={$y$}]
+\pgfplotsinvokeforeach{0.5,1,1.5,2}{
+  \addplot[black!60, line width=0.5pt, domain=0:360, samples=120] ({#1*cos(x)},{#1/sqrt(3)*sin(x)});}
+\addplot[black, line width=0.9pt, domain=0:1.9, samples=60] {0.6*(x/1.9)^3};
+\fill[black] (axis cs:1.9,0.6) circle (1.3pt);
+\pgfplotsinvokeforeach{20,60,100,145,200,250,300,335}{
+  \draw[black, line width=0.6pt, -{Latex[length=1.5mm]}] (axis cs:{2*cos(#1)},{2/sqrt(3)*sin(#1)}) -- (axis cs:{2*cos(#1)*1.08},{2/sqrt(3)*sin(#1)*1.24});}
+\pgfplotsinvokeforeach{40,130,220,310}{
+  \draw[black, line width=0.6pt, -{Latex[length=1.5mm]}] (axis cs:{cos(#1)},{1/sqrt(3)*sin(#1)}) -- (axis cs:{cos(#1)*1.08},{1/sqrt(3)*sin(#1)*1.24});}
+\end{axis}
+\end{tikzpicture}}{Level sets and gradients of $f(x,y)=x^2+3y^2$. The ellipses are the level sets $f=\frac14,1,\frac94,4$. The arrows show the gradient $\nabla f=(2x,6y)$, scaled down, at points of two level sets: it is orthogonal to the level set and points towards higher values. The thick curve $y=0.6\,(x/1.9)^3$, started at the dot, follows the direction of steepest descent $-\nabla f$ and crosses every level set at a right angle.\label{fig:gradient-contours}}
+\end{figure}
+
+\subsection{The Tangent Plane}
+
+For a function $f$ of two variables, differentiable at $(a,b)$, the graph $z=f(x,y)$ is a surface in $\mathbb R^3$, and the graph of the linearisation,
+\[
+z=f(a,b)+f_x(a,b)(x-a)+f_y(a,b)(y-b),
+\]
+is a plane through the point $(a,b,f(a,b))$ of the surface: the \term{tangent plane}. It contains the tangent lines of the two curves cut out of the surface by the planes $y=b$ and $x=a$, whose slopes are the partial derivatives, and by \cref{prop:directional} it contains the tangent line of every curve cut out by a vertical plane through the point. The definition of differentiability says that the surface and the plane differ by $o(\|(x-a,y-b)\|)$: seen through a magnifying glass centred at the point, the surface becomes indistinguishable from its tangent plane, as the graph of a function of one variable becomes indistinguishable from its tangent line. \Cref{fig:tangent-plane} shows the paraboloid $z=2-\frac12x^2-\frac14y^2$ with its tangent plane at the point above $(1,1)$, where $z=\frac54$ and the partial derivatives are $-1$ and $-\frac12$.
+
+In the language of vectors, the tangent plane is the set of points $(\mathbf x,z)$ with $z-f(\mathbf a)=\langle\nabla f(\mathbf a),\mathbf x-\mathbf a\rangle$, that is, the points orthogonal to the vector $(\nabla f(\mathbf a),-1)\in\mathbb R^3$ through the point of tangency; this vector is \term{normal} to the surface. For $n>2$ the graph of $f$ is a subset of $\mathbb R^{n+1}$, and its tangent \emph{hyperplane} is described by the same formula.
+
+\begin{figure}
+\sdfloat{%
+\begin{tikzpicture}
+\begin{axis}[view={50}{28}, hide axis, width=0.66\textwidth, height=0.52\textwidth,
+  xmin=-2, xmax=2.4, ymin=-2, ymax=2.4, zmin=-0.6, zmax=2.6, clip=false]
+\addplot3[mesh, draw=black!45, line width=0.35pt, domain=-2:2, y domain=-2:2, samples=17, samples y=17] {2-0.5*x^2-0.25*y^2};
+\addplot3[surf, shader=flat, fill=black!12, draw=black!75, line width=0.4pt, fill opacity=0.85, domain=0.35:1.65, y domain=0.35:1.65, samples=4, samples y=4] {1.25-(x-1)-0.5*(y-1)};
+\addplot3[black, line width=1.0pt, domain=-2:2, samples=60, samples y=0] (x,1,{2-0.5*x^2-0.25});
+\addplot3[black, line width=1.0pt, domain=-2:2, samples=60, samples y=0] (1,x,{2-0.5-0.25*x^2});
+\addplot3[black, only marks, mark=*, mark size=1.6pt] coordinates {(1,1,1.25)};
+\draw[-{Latex[length=1.6mm]}, line width=0.4pt] (axis cs:0,0,-0.6) -- (axis cs:2.4,0,-0.6) node[below] {\scriptsize$x$};
+\draw[-{Latex[length=1.6mm]}, line width=0.4pt] (axis cs:0,0,-0.6) -- (axis cs:0,2.4,-0.6) node[below right] {\scriptsize$y$};
+\draw[-{Latex[length=1.6mm]}, line width=0.4pt] (axis cs:0,0,-0.6) -- (axis cs:0,0,2.6) node[left] {\scriptsize$z$};
+\end{axis}
+\end{tikzpicture}}{The paraboloid $z=2-\frac12x^2-\frac14y^2$ (grey mesh) and its tangent plane (shaded) at the point $(1,1,\frac54)$ (dot). The two curves through the point (thick) are cut out by the planes $y=1$ and $x=1$; their slopes at the point are the partial derivatives $-1$ and $-\frac12$, and their tangent lines lie in the tangent plane $z=\frac54-(x-1)-\frac12(y-1)$.\label{fig:tangent-plane}}
+\end{figure}
+
+\begin{note}{Derivatives in infinite dimensions}
+\Cref{def:differentiable-rn} uses only the norms of $\mathbb R^n$ and $\mathbb R^m$ and the notion of a linear map, and it therefore makes sense for maps between any normed vector spaces, including spaces of functions; one requires in addition that the linear map be continuous, which is automatic in finite dimensions. This is the \emph{Fr\'echet derivative}. It is the basis of the calculus of variations, where one differentiates a functional such as the length $\int_a^b\sqrt{1+y'(x)^2}\,dx$ of a curve with respect to the function $y$, and of the analysis of operators in numerical analysis, where one differentiates the map that sends a matrix to its inverse: its derivative at $A$ is the linear map $H\mapsto-A^{-1}HA^{-1}$. The weaker notion that asks only for directional derivatives $D_{\mathbf v}\mathbf f(\mathbf a)$ depending linearly and continuously on $\mathbf v$ is the \emph{G\^ateaux derivative}; the function $g$ of \cref{fig:path-limits} shows that even the existence of all directional derivatives does not imply continuity. Dieudonn\'e develops the differential calculus in normed spaces in this generality~\cite{dieudonne1960}, and Volume~II returns to it.
+\end{note}
+
+\section{The Chain Rule}
+\label{sec:chain-rule-n}
+
+\subsection{The Theorem}
+
+In one variable the derivative of a composition is the product of the derivatives (\cref{thm:chain-rule}). In several variables the derivatives are matrices, and the product becomes a matrix product. The proof in \cref{ch:differentiation} used Carath\'eodory's form of the derivative (\cref{lem:caratheodory}), and the same idea works here, with the slope function replaced by a matrix-valued function~\cite{acosta1994}.
+
+\begin{lemma}[Carath\'eodory's form in several variables]
+\label{lem:caratheodory-rn}
+Let $\mathbf f\colon U\to\mathbb R^m$ and $\mathbf a\in U$. Then $\mathbf f$ is differentiable at $\mathbf a$ if and only if there is a function $\Phi\colon U\to\mathbb R^{m\times n}$ that is continuous at $\mathbf a$ and satisfies
+\[
+\mathbf f(\mathbf x)-\mathbf f(\mathbf a)=\Phi(\mathbf x)(\mathbf x-\mathbf a)\qquad\text{for all }\mathbf x\in U .
+\]
+In this case $\Phi(\mathbf a)=D\mathbf f(\mathbf a)$.
+\end{lemma}
+
+\begin{proof}
+Continuity of a matrix-valued function means continuity of each entry, or equivalently, by \cref{prop:norm}\,(v) applied to the entries, $\|\Phi(\mathbf x)-\Phi(\mathbf a)\|_{\mathrm F}\to0$. Suppose $\mathbf f$ is differentiable at $\mathbf a$, with remainder $\mathbf r(\mathbf h)$, and define
+\[
+\Phi(\mathbf x)\coloneqq D\mathbf f(\mathbf a)+\frac{\mathbf r(\mathbf x-\mathbf a)\,(\mathbf x-\mathbf a)^{\mathsf T}}{\|\mathbf x-\mathbf a\|^2}\quad(\mathbf x\ne\mathbf a),\qquad\Phi(\mathbf a)\coloneqq D\mathbf f(\mathbf a).
+\]
+Since $(\mathbf x-\mathbf a)^{\mathsf T}(\mathbf x-\mathbf a)=\|\mathbf x-\mathbf a\|^2$, we get $\Phi(\mathbf x)(\mathbf x-\mathbf a)=D\mathbf f(\mathbf a)(\mathbf x-\mathbf a)+\mathbf r(\mathbf x-\mathbf a)=\mathbf f(\mathbf x)-\mathbf f(\mathbf a)$, and by \cref{prop:matrix-norms}\,(iv)
+\[
+\|\Phi(\mathbf x)-\Phi(\mathbf a)\|_{\mathrm F}=\frac{\|\mathbf r(\mathbf x-\mathbf a)\|\,\|\mathbf x-\mathbf a\|}{\|\mathbf x-\mathbf a\|^2}=\frac{\|\mathbf r(\mathbf x-\mathbf a)\|}{\|\mathbf x-\mathbf a\|}\to0\qquad(\mathbf x\to\mathbf a).
+\]
+Conversely, if $\Phi$ exists, then $\mathbf f(\mathbf x)-\mathbf f(\mathbf a)-\Phi(\mathbf a)(\mathbf x-\mathbf a)=(\Phi(\mathbf x)-\Phi(\mathbf a))(\mathbf x-\mathbf a)$, whose norm is at most $\|\Phi(\mathbf x)-\Phi(\mathbf a)\|_{\mathrm F}\|\mathbf x-\mathbf a\|$, which is $o(\|\mathbf x-\mathbf a\|)$. So $\mathbf f$ is differentiable at $\mathbf a$ with derivative $\Phi(\mathbf a)$.
+\end{proof}
+
+Unlike the slope function of one variable, $\Phi$ is not unique when $n>1$: the equation prescribes only the product $\Phi(\mathbf x)(\mathbf x-\mathbf a)$, not the whole matrix. Only its value at $\mathbf a$ is determined. This does not matter for the following proof.
+
+\begin{theorem}[Chain rule]
+\label{thm:chain-rule-rn}
+Let $U\subseteq\mathbb R^n$ and $V\subseteq\mathbb R^m$ be open, $\mathbf f\colon U\to\mathbb R^m$ with $\mathbf f(U)\subseteq V$, and $\mathbf g\colon V\to\mathbb R^p$. If $\mathbf f$ is differentiable at $\mathbf a$ and $\mathbf g$ is differentiable at $\mathbf b\coloneqq\mathbf f(\mathbf a)$, then $\mathbf g\circ\mathbf f$ is differentiable at $\mathbf a$, and
+\[
+D(\mathbf g\circ\mathbf f)(\mathbf a)=D\mathbf g\bigl(\mathbf f(\mathbf a)\bigr)\,D\mathbf f(\mathbf a),
+\]
+a product of a $p\times m$ and an $m\times n$ matrix.
+\end{theorem}
+
+\begin{proof}
+By \cref{lem:caratheodory-rn} there are $\Phi\colon U\to\mathbb R^{m\times n}$, continuous at $\mathbf a$, and $\Psi\colon V\to\mathbb R^{p\times m}$, continuous at $\mathbf b$, with
+\[
+\mathbf f(\mathbf x)-\mathbf f(\mathbf a)=\Phi(\mathbf x)(\mathbf x-\mathbf a),\qquad\mathbf g(\mathbf y)-\mathbf g(\mathbf b)=\Psi(\mathbf y)(\mathbf y-\mathbf b),
+\]
+and $\Phi(\mathbf a)=D\mathbf f(\mathbf a)$, $\Psi(\mathbf b)=D\mathbf g(\mathbf b)$. Substituting $\mathbf y=\mathbf f(\mathbf x)$ and using the first equation,
+\[
+\mathbf g(\mathbf f(\mathbf x))-\mathbf g(\mathbf f(\mathbf a))=\Psi(\mathbf f(\mathbf x))\bigl(\mathbf f(\mathbf x)-\mathbf f(\mathbf a)\bigr)=\Psi(\mathbf f(\mathbf x))\,\Phi(\mathbf x)\,(\mathbf x-\mathbf a).
+\]
+The matrix-valued function $\mathbf x\mapsto\Psi(\mathbf f(\mathbf x))\Phi(\mathbf x)$ is continuous at $\mathbf a$: $\mathbf f$ is continuous at $\mathbf a$ by \cref{thm:jacobian}, so $\Psi\circ\mathbf f$ is continuous at $\mathbf a$, and the entries of a product of matrices are sums of products of entries. By \cref{lem:caratheodory-rn}, $\mathbf g\circ\mathbf f$ is differentiable at $\mathbf a$, with derivative $\Psi(\mathbf b)\Phi(\mathbf a)=D\mathbf g(\mathbf b)D\mathbf f(\mathbf a)$.
+\end{proof}
+
+The theorem is the reason why derivatives of functions of several variables are matrices: the linearisation of a composition is the composition of the linearisations, and composing linear maps means multiplying matrices (\cref{prop:matrix-algebra}). Written out entry by entry, with $\mathbf h\coloneqq\mathbf g\circ\mathbf f$ and $\mathbf y=\mathbf f(\mathbf x)$, the matrix product reads
+\begin{equation}
+\frac{\partial h_i}{\partial x_j}(\mathbf a)=\sum_{k=1}^m\frac{\partial g_i}{\partial y_k}\bigl(\mathbf f(\mathbf a)\bigr)\,\frac{\partial f_k}{\partial x_j}(\mathbf a).
+\label{eq:chain-coordinates}
+\end{equation}
+In words: to find the rate of change of $h_i$ with respect to $x_j$, add, over all intermediate variables $y_k$, the rate of change of $h_i$ with respect to $y_k$ times the rate of change of $y_k$ with respect to $x_j$. In Leibniz's notation, for $z=g(u,v)$ with $u=u(x,y)$ and $v=v(x,y)$,
+\[
+\frac{\partial z}{\partial x}=\frac{\partial z}{\partial u}\frac{\partial u}{\partial x}+\frac{\partial z}{\partial v}\frac{\partial v}{\partial x},\qquad\frac{\partial z}{\partial y}=\frac{\partial z}{\partial u}\frac{\partial u}{\partial y}+\frac{\partial z}{\partial v}\frac{\partial v}{\partial y},
+\]
+each path from $z$ to $x$ through an intermediate variable contributing one term. The formula looks like a cancellation of fractions only if one forgets that there is a sum.
+
+Two special cases are used constantly. For a differentiable \term{curve} $\boldsymbol\gamma\colon I\to\mathbb R^n$ on an open interval $I$, the derivative $D\boldsymbol\gamma(t)$ is the $n\times1$ matrix of the derivatives of the components, which we write as the \term{velocity vector} $\boldsymbol\gamma'(t)=(\gamma_1'(t),\ldots,\gamma_n'(t))$. For a real-valued $f$, the chain rule gives
+\begin{equation}
+\frac d{dt}f(\boldsymbol\gamma(t))=Df(\boldsymbol\gamma(t))\,\boldsymbol\gamma'(t)=\bigl\langle\nabla f(\boldsymbol\gamma(t)),\boldsymbol\gamma'(t)\bigr\rangle ,
+\label{eq:chain-curve}
+\end{equation}
+the rate of change of $f$ seen by a point moving along the curve. With the straight line $\boldsymbol\gamma(t)=\mathbf a+t\mathbf v$ it gives back \cref{prop:directional}. Second, for a real-valued $g$ and $\mathbf f\colon U\to\mathbb R^m$, transposing the chain rule gives
+\begin{equation}
+\nabla(g\circ\mathbf f)(\mathbf a)=D\mathbf f(\mathbf a)^{\mathsf T}\,\nabla g\bigl(\mathbf f(\mathbf a)\bigr),
+\label{eq:chain-gradient}
+\end{equation}
+by \cref{prop:matrix-algebra}\,(iii); the gradient is pulled back through the transposed Jacobian matrix. Formula \eqref{eq:chain-gradient} is the form of the chain rule that the reverse mode of automatic differentiation uses, as explained at the end of this section.
+
+\begin{corollary}
+\label{cor:ck-composition}
+Let $k\ge1$. Sums and products of functions in $C^k(U)$ belong to $C^k(U)$, and so do quotients when the denominator has no zero in $U$. If $\mathbf f\in C^k(U)$, $\mathbf f(U)\subseteq V$ and $\mathbf g\in C^k(V)$, then $\mathbf g\circ\mathbf f\in C^k(U)$.
+\end{corollary}
+
+\begin{proof}
+For $k=1$: by \eqref{eq:chain-coordinates}, the partial derivatives of $\mathbf g\circ\mathbf f$ are sums of products of the continuous functions $\partial_kg_i\circ\mathbf f$ and $\partial_jf_k$, so they are continuous. Sums, products and quotients are compositions of $\mathbf f$ with the functions $(u,v)\mapsto u+v$, $uv$ and $u/v$, which are $C^\infty$ where they are defined. The step from $k$ to $k+1$ is the same induction as in \cref{prop:ck-algebra}: the first partial derivatives of the composition are built from functions in $C^k$ by sums, products and compositions.
+\end{proof}
+
+\subsection{Examples}
+
+\emph{Along a curve.} Let $f(x,y)=x^2y$ and $\boldsymbol\gamma(t)=(\cos t,\sin t)$. By \eqref{eq:chain-curve},
+\[
+\frac d{dt}f(\cos t,\sin t)=2xy\cdot(-\sin t)+x^2\cdot\cos t=-2\cos t\sin^2t+\cos^3t ,
+\]
+evaluated at $x=\cos t$, $y=\sin t$; differentiating $\cos^2t\sin t$ directly gives the same result.
+
+\emph{Polar coordinates.} Let $f\in C^2$ on an open set in the plane, and let $u(r,\theta)\coloneqq f(r\cos\theta,r\sin\theta)$ be the same function expressed in polar coordinates. With the Jacobian matrix of $\mathbf P(r,\theta)=(r\cos\theta,r\sin\theta)$ computed in \cref{sec:differentiability}, the chain rule gives, writing $c=\cos\theta$ and $s=\sin\theta$ and evaluating $f_x$, $f_y$ at $\mathbf P(r,\theta)$,
+\[
+u_r=cf_x+sf_y,\qquad u_\theta=-rsf_x+rcf_y .
+\]
+Differentiating once more with the chain rule and the product rule, and using $f_{xy}=f_{yx}$ (\cref{thm:schwarz}),
+\begin{align*}
+u_{rr}&=c^2f_{xx}+2csf_{xy}+s^2f_{yy},\\
+u_{\theta\theta}&=-r(cf_x+sf_y)+r^2\bigl(s^2f_{xx}-2csf_{xy}+c^2f_{yy}\bigr).
+\end{align*}
+The first term of the second line is $-ru_r$. Dividing the second line by $r^2$ and adding it to the first line and to $u_r/r$ gives the classical formula
+\[
+f_{xx}+f_{yy}=u_{rr}+\frac1ru_r+\frac1{r^2}u_{\theta\theta}\qquad(r>0)
+\]
+for the \term{Laplacian} $f_{xx}+f_{yy}$ in polar coordinates. For $f(x,y)=\ln(x^2+y^2)$, that is, $u=2\ln r$, the right side is $-2/r^2+2/r^2=0$ without any computation in Cartesian coordinates. The Laplacian is the most important differential operator of mathematical physics, and formulas of this kind convert it to the coordinates that suit the symmetry of a problem.
+
+\emph{Homogeneous functions.} A function $f$ on $\mathbb R^n\setminus\{\mathbf0\}$ is \term{homogeneous of degree} $p$ if $f(t\mathbf x)=t^pf(\mathbf x)$ for all $t>0$ and $\mathbf x$; examples are $\|\mathbf x\|$ ($p=1$), quadratic forms ($p=2$) and $x/y$ on $y\ne0$ ($p=0$). If $f$ is differentiable, differentiating both sides with respect to $t$ at $t=1$, by \eqref{eq:chain-curve} with $\boldsymbol\gamma(t)=t\mathbf x$, gives \term{Euler's relation}
+\[
+\langle\mathbf x,\nabla f(\mathbf x)\rangle=p\,f(\mathbf x).
+\]
+For $q(\mathbf x)=\langle\mathbf x,A\mathbf x\rangle$ with symmetric $A$ this reads $\langle\mathbf x,2A\mathbf x\rangle=2q(\mathbf x)$.
+
+\subsection{Gradients and Level Sets}
+
+The chain rule proves the geometric fact announced in \cref{sec:differentiability}.
+
+\begin{theorem}[The gradient is orthogonal to level sets]
+\label{thm:gradient-level}
+Let $f\colon U\to\mathbb R$ be differentiable and $c\in\mathbb R$. If $\boldsymbol\gamma\colon I\to U$ is a differentiable curve that lies in the level set $\{f=c\}$, that is, $f(\boldsymbol\gamma(t))=c$ for all $t\in I$, then
+\[
+\bigl\langle\nabla f(\boldsymbol\gamma(t)),\boldsymbol\gamma'(t)\bigr\rangle=0\qquad\text{for all }t\in I .
+\]
+\end{theorem}
+
+\begin{proof}
+The function $t\mapsto f(\boldsymbol\gamma(t))$ is constant, so its derivative, which is the left side by \eqref{eq:chain-curve}, vanishes.
+\end{proof}
+
+The velocity $\boldsymbol\gamma'(t)$ of a curve in the level set is tangent to the level set, so the theorem says that the gradient is orthogonal to every tangent direction of the level set: it is a \term{normal vector} of the level set, as \cref{fig:gradient-contours} shows. For the circle $x^2+y^2=r^2$, the gradient $(2x,2y)$ of $x^2+y^2$ points along the radius, and the tangent vector $(-y,x)$ is orthogonal to it, the fact found in \cref{sec:rules} by computing slopes. For a function of three variables, the level set $\{f=c\}$ is a surface, and its tangent plane at a point $\mathbf a$ with $\nabla f(\mathbf a)\ne\mathbf0$ is $\{\mathbf x: \langle\nabla f(\mathbf a),\mathbf x-\mathbf a\rangle=0\}$; the tangent plane of a graph $z=f(x,y)$ is the special case of the level set $\{z-f(x,y)=0\}$ in $\mathbb R^3$. Whether a level set near a point really is a smooth curve or surface, and so has tangent vectors in all the directions orthogonal to the gradient, is the question of the implicit function theorem in \cref{sec:inverse-implicit}.
+
+\subsection{Long Chains and Backpropagation}
+
+A function computed by a program is a long composition of simple steps. Suppose $F=\mathbf f_L\circ\cdots\circ\mathbf f_2\circ\mathbf f_1$, where $\mathbf f_\ell\colon\mathbb R^{n_{\ell-1}}\to\mathbb R^{n_\ell}$, the input has $n_0=n$ components and the output is a single number, $n_L=1$, as for the error of a model as a function of its parameters. Writing $\mathbf x_0\coloneqq\mathbf x$ and $\mathbf x_\ell\coloneqq\mathbf f_\ell(\mathbf x_{\ell-1})$ for the intermediate results and $J_\ell\coloneqq D\mathbf f_\ell(\mathbf x_{\ell-1})$, the chain rule applied $L-1$ times gives
+\[
+DF(\mathbf x)=J_LJ_{L-1}\cdots J_2J_1 ,
+\]
+a $1\times n$ row whose transpose is $\nabla F(\mathbf x)$. Matrix multiplication is associative, so the product can be evaluated in any order, but the costs of the orders differ greatly. Multiplying from the right, $J_2J_1$ first, carries matrices with $n$ columns through the whole chain. Multiplying from the left carries only a row vector: $\bar{\mathbf x}_L^{\mathsf T}\coloneqq J_L$, then $\bar{\mathbf x}_{\ell-1}^{\mathsf T}\coloneqq\bar{\mathbf x}_\ell^{\mathsf T}J_\ell$, that is,
+\[
+\bar{\mathbf x}_{\ell-1}=J_\ell^{\mathsf T}\,\bar{\mathbf x}_\ell\qquad(\ell=L,\ldots,2),
+\]
+which is \eqref{eq:chain-gradient} applied step by step, and finally $\nabla F(\mathbf x)=J_1^{\mathsf T}\bar{\mathbf x}_1$. The vector $\bar{\mathbf x}_\ell$ is the gradient of the output with respect to the intermediate result $\mathbf x_\ell$. One forward pass computes and stores the intermediate results, and one backward pass, from the output to the input, multiplies by the transposed Jacobian matrices, never forming any matrix product. The cost of the backward pass is a small multiple of the cost of evaluating $F$, however large $n$ is. This is the \term{reverse mode} of automatic differentiation, described by Linnainmaa in 1970 and published in 1976~\cite{linnainmaa1976,griewank2008}; applied to neural networks it is called \term{backpropagation}~\cite{rumelhart1986}.
+
+\begin{note}{Forward and reverse mode}
+\Cref{fig:computational-graph} shows the function $F(x_1,x_2)=x_1x_2+\sin x_1$ as a graph of elementary operations, with intermediate quantities $v_3=x_1x_2$, $v_4=\sin x_1$ and $v_5=v_3+v_4=F$. The \emph{forward mode} of the note in \cref{sec:rules} propagates, together with each value $v$, its derivative $\dot v$ with respect to one chosen input: starting from $(\dot x_1,\dot x_2)=(1,0)$ it computes $\dot v_3=\dot x_1x_2+x_1\dot x_2=x_2$, $\dot v_4=\cos x_1\,\dot x_1=\cos x_1$ and $\dot v_5=\dot v_3+\dot v_4=x_2+\cos x_1=\partial_1F$, and a second pass with $(0,1)$ gives $\partial_2F$. One pass per input gives a Jacobian--vector product $DF(\mathbf x)\mathbf v$. The \emph{reverse mode} propagates instead the \emph{adjoint} $\bar v\coloneqq\partial F/\partial v$ of each quantity, from the output backwards, by \eqref{eq:chain-coordinates}: $\bar v_5=1$, then $\bar v_3=\bar v_5=1$ and $\bar v_4=\bar v_5=1$, since $v_5=v_3+v_4$; then $\bar x_2=\bar v_3\,x_1=x_1$, and $\bar x_1$ collects a contribution from each edge that leaves $x_1$, $\bar x_1=\bar v_3\,x_2+\bar v_4\cos x_1=x_2+\cos x_1$. One reverse pass gives the whole gradient, or in general a vector--Jacobian product $\mathbf w^{\mathsf T}DF(\mathbf x)$. For $F\colon\mathbb R^n\to\mathbb R^m$ the forward mode needs $n$ passes for the full Jacobian matrix and the reverse mode $m$, which is why the reverse mode is used for gradients of functions of many parameters; its price is the memory for the stored intermediate values. Griewank and Walther~\cite{griewank2008} and the survey of Baydin and others~\cite{baydin2018} treat both modes; Volume~XI compares them with the difference quotients used for numerical differentiation.
+\end{note}
+
+\begin{figure}
+\sdfloat{%
+\begin{tikzpicture}[font=\scriptsize, node distance=12mm,
+  op/.style={circle, draw, line width=0.5pt, minimum size=8.5mm, inner sep=0pt},
+  inp/.style={rectangle, draw, line width=0.5pt, minimum size=7mm, inner sep=1pt}]
+\node[inp] (x1) at (0,1.2) {$x_1$};
+\node[inp] (x2) at (0,-0.2) {$x_2$};
+\node[op] (v3) at (2.3,0.05) {$v_3$};
+\node[op] (v4) at (2.3,1.75) {$v_4$};
+\node[op] (v5) at (4.6,0.9) {$v_5$};
+\draw[-{Latex[length=1.6mm]}, line width=0.5pt] (x1) -- node[above left, pos=0.55, inner sep=1pt] {$\cos x_1$} (v4);
+\draw[-{Latex[length=1.6mm]}, line width=0.5pt] (x1) -- node[above right, pos=0.45, inner sep=1pt] {$x_2$} (v3);
+\draw[-{Latex[length=1.6mm]}, line width=0.5pt] (x2) -- node[below, inner sep=2pt] {$x_1$} (v3);
+\draw[-{Latex[length=1.6mm]}, line width=0.5pt] (v3) -- node[below right, inner sep=1pt] {$1$} (v5);
+\draw[-{Latex[length=1.6mm]}, line width=0.5pt] (v4) -- node[above right, inner sep=1pt] {$1$} (v5);
+\node[anchor=south] at (2.3,2.2) {$\sin x_1$};
+\node[anchor=north] at (2.3,-0.4) {$x_1x_2$};
+\node[anchor=west] at (5.1,0.9) {$F=v_3+v_4$};
+\end{tikzpicture}}{The computational graph of $F(x_1,x_2)=x_1x_2+\sin x_1$. Each edge carries the partial derivative of its head with respect to its tail. A partial derivative of the output with respect to an input is the sum, over all paths from the input to the output, of the products of the labels along the path, which is the chain rule \eqref{eq:chain-coordinates}: $\partial F/\partial x_1=x_2\cdot1+\cos x_1\cdot1$. The reverse mode accumulates these sums from the output backwards.\label{fig:computational-graph}}
+\end{figure}
+
+\section{The Mean Value Theorem and Taylor's Theorem}
+\label{sec:mvt-taylor-n}
+
+\subsection{Mean Values on a Segment}
+
+The mean value theorem of one variable compares the values of a function at two points with its derivative in between. In several variables the natural path between two points $\mathbf a$ and $\mathbf b$ is the \term{segment}
+\[
+[\mathbf a,\mathbf b]\coloneqq\{\mathbf a+t(\mathbf b-\mathbf a): 0\le t\le1\},
+\]
+and we assume that it lies in the domain. A set $C\subseteq\mathbb R^n$ is \term{convex} if it contains the segment between any two of its points; balls are convex, by the triangle inequality, and so are half-spaces and boxes $[a_1,b_1]\times\cdots\times[a_n,b_n]$.
+
+\begin{theorem}[Mean value theorem]
+\label{thm:mvt-rn}
+Let $f\colon U\to\mathbb R$ be differentiable, and let the segment $[\mathbf a,\mathbf b]$ lie in $U$. Then there is a point $\boldsymbol\xi=\mathbf a+\tau(\mathbf b-\mathbf a)$ with $0<\tau<1$ such that
+\[
+f(\mathbf b)-f(\mathbf a)=\bigl\langle\nabla f(\boldsymbol\xi),\mathbf b-\mathbf a\bigr\rangle .
+\]
+\end{theorem}
+
+\begin{proof}
+The set $I$ of all real $t$ with $\mathbf a+t(\mathbf b-\mathbf a)\in U$ contains $[0,1]$, and it is open: if $B(\mathbf a+t(\mathbf b-\mathbf a),\rho)\subseteq U$, then every $s$ with $|s-t|\,\|\mathbf b-\mathbf a\|<\rho$ belongs to $I$. The function $g(t)\coloneqq f(\mathbf a+t(\mathbf b-\mathbf a))$ is differentiable on $I$, by the chain rule, with $g'(t)=\langle\nabla f(\mathbf a+t(\mathbf b-\mathbf a)),\mathbf b-\mathbf a\rangle$. The mean value theorem of one variable (\cref{thm:mvt}) gives $\tau\in(0,1)$ with $g(1)-g(0)=g'(\tau)$.
+\end{proof}
+
+\begin{corollary}
+\label{cor:zero-gradient}
+Let $C\subseteq U$ be convex and $f\colon U\to\mathbb R$ differentiable with $\nabla f(\mathbf x)=\mathbf0$ for all $\mathbf x\in C$. Then $f$ is constant on $C$. If $|D_{\mathbf v}f|$ is bounded by $L$ on $C$ for all unit vectors $\mathbf v$, that is, $\|\nabla f\|\le L$ on $C$, then $|f(\mathbf x)-f(\mathbf y)|\le L\|\mathbf x-\mathbf y\|$ for all $\mathbf x,\mathbf y\in C$.
+\end{corollary}
+
+\begin{proof}
+For $\mathbf x,\mathbf y\in C$ the segment between them lies in $C$, and the theorem with the Cauchy--Schwarz inequality gives $|f(\mathbf y)-f(\mathbf x)|=|\langle\nabla f(\boldsymbol\xi),\mathbf y-\mathbf x\rangle|\le\|\nabla f(\boldsymbol\xi)\|\,\|\mathbf y-\mathbf x\|$.
+\end{proof}
+
+The first statement holds more generally on every open set that is \emph{connected}, in the sense that any two of its points can be joined by a broken line inside the set: apply the corollary to each segment of the broken line. It fails on sets that fall apart into pieces, for the same reason as in one variable.
+
+For vector-valued functions the theorem is false. The curve $\boldsymbol\gamma(t)=(\cos t,\sin t)$ on $[0,2\pi]$ has $\boldsymbol\gamma(2\pi)-\boldsymbol\gamma(0)=\mathbf0$, but its velocity $(-\sin t,\cos t)$ is a unit vector for every $t$; no intermediate point $\tau$ satisfies $\boldsymbol\gamma(2\pi)-\boldsymbol\gamma(0)=2\pi\,\boldsymbol\gamma'(\tau)$. The theorem can be applied to each component, but with a different intermediate point for each, and these points cannot in general be chosen equal. What survives is the inequality that Cauchy took as the basis of his calculus (\cref{sec:mvt}).
+
+\begin{theorem}[Mean value inequality]
+\label{thm:mean-value-inequality}
+Let $\mathbf f\colon U\to\mathbb R^m$ be differentiable, let $[\mathbf a,\mathbf b]\subseteq U$, and suppose $\|D\mathbf f(\mathbf x)\|_2\le M$ for all $\mathbf x\in[\mathbf a,\mathbf b]$. Then
+\[
+\|\mathbf f(\mathbf b)-\mathbf f(\mathbf a)\|\le M\,\|\mathbf b-\mathbf a\| .
+\]
+Consequently, a differentiable map on a convex set $C$ with $\|D\mathbf f\|_2\le M$ on $C$ is Lipschitz continuous on $C$ with constant $M$.
+\end{theorem}
+
+\begin{proof}
+Let $\mathbf w\coloneqq\mathbf f(\mathbf b)-\mathbf f(\mathbf a)$, and apply \cref{thm:mvt-rn} to the real-valued function $\varphi(\mathbf x)\coloneqq\langle\mathbf w,\mathbf f(\mathbf x)\rangle$, whose gradient is $D\mathbf f(\mathbf x)^{\mathsf T}\mathbf w$ by \eqref{eq:chain-gradient}. For some $\boldsymbol\xi$ on the segment,
+\[
+\|\mathbf w\|^2=\varphi(\mathbf b)-\varphi(\mathbf a)=\bigl\langle D\mathbf f(\boldsymbol\xi)^{\mathsf T}\mathbf w,\mathbf b-\mathbf a\bigr\rangle=\bigl\langle\mathbf w,D\mathbf f(\boldsymbol\xi)(\mathbf b-\mathbf a)\bigr\rangle\le\|\mathbf w\|\,M\,\|\mathbf b-\mathbf a\| ,
+\]
+by \cref{prop:matrix-algebra}\,(iv), the Cauchy--Schwarz inequality and \cref{prop:matrix-norms}. If $\mathbf w\ne\mathbf0$, divide by $\|\mathbf w\|$.
+\end{proof}
+
+The trick of the proof is to choose the one direction, that of $\mathbf w$, in which the change matters, and to apply the scalar theorem there. Since $\|D\mathbf f\|_2\le\|D\mathbf f\|_{\mathrm F}$, a bound on the Frobenius norm, which is easy to compute from the partial derivatives, may be used instead. The theorem is the several-variable counterpart of \cref{cor:lipschitz-derivative}, and it is the tool for proving that iterations $\mathbf x_{k+1}=\mathbf g(\mathbf x_k)$ in $\mathbb R^n$ converge, by the contraction argument of \cref{prop:fixed-point-contraction}.
+
+For functions with continuous derivatives there is also an exact form, in which the unknown intermediate point is replaced by an average. Integrals of vector- and matrix-valued functions of one variable are taken entry by entry: $\int_a^b\mathbf v(t)\,dt$ is the vector of the integrals of the components.
+
+\begin{proposition}[Integral form of the mean value theorem]
+\label{prop:mvt-integral-rn}
+Let $\mathbf f\in C^1(U)$ with values in $\mathbb R^m$, and let $[\mathbf a,\mathbf b]\subseteq U$. Then
+\[
+\mathbf f(\mathbf b)-\mathbf f(\mathbf a)=\int_0^1D\mathbf f\bigl(\mathbf a+t(\mathbf b-\mathbf a)\bigr)(\mathbf b-\mathbf a)\,dt .
+\]
+Moreover, for every continuous $\mathbf v\colon[a,b]\to\mathbb R^m$, $\bigl\|\int_a^b\mathbf v(t)\,dt\bigr\|\le\int_a^b\|\mathbf v(t)\|\,dt$.
+\end{proposition}
+
+\begin{proof}
+The $i$th component of the integrand is $g_i'(t)$ for $g_i(t)\coloneqq f_i(\mathbf a+t(\mathbf b-\mathbf a))$, a continuous function by \cref{cor:ck-composition}, and the fundamental theorem of calculus (\cref{thm:ftc2}) gives $\int_0^1g_i'=g_i(1)-g_i(0)$. For the inequality, let $\mathbf w\coloneqq\int_a^b\mathbf v$. By the linearity and monotonicity of the integral and the Cauchy--Schwarz inequality,
+\[
+\|\mathbf w\|^2=\sum_iw_i\int_a^bv_i(t)\,dt=\int_a^b\langle\mathbf w,\mathbf v(t)\rangle\,dt\le\|\mathbf w\|\int_a^b\|\mathbf v(t)\|\,dt ,
+\]
+and division by $\|\mathbf w\|$, if it is not zero, gives the claim.
+\end{proof}
+
+The integral form gives the several-variable version of the estimate of \cref{lem:linear-remainder}, on which the analysis of Newton's method rests.
+
+\begin{lemma}[Remainder of the linear approximation]
+\label{lem:linear-remainder-rn}
+Let $C\subseteq U$ be convex, $\mathbf f\in C^1(U)$, and suppose $\|D\mathbf f(\mathbf x)-D\mathbf f(\mathbf y)\|_2\le\gamma\|\mathbf x-\mathbf y\|$ for all $\mathbf x,\mathbf y\in C$. Then for all $\mathbf x,\mathbf y\in C$,
+\[
+\bigl\|\mathbf f(\mathbf y)-\mathbf f(\mathbf x)-D\mathbf f(\mathbf x)(\mathbf y-\mathbf x)\bigr\|\le\frac\gamma2\,\|\mathbf y-\mathbf x\|^2 .
+\]
+\end{lemma}
+
+\begin{proof}
+By \cref{prop:mvt-integral-rn}, with $\mathbf h\coloneqq\mathbf y-\mathbf x$, the left side is the norm of $\int_0^1\bigl(D\mathbf f(\mathbf x+t\mathbf h)-D\mathbf f(\mathbf x)\bigr)\mathbf h\,dt$, which is at most $\int_0^1\gamma t\|\mathbf h\|\,\|\mathbf h\|\,dt=\frac\gamma2\|\mathbf h\|^2$.
+\end{proof}
+
+\subsection{The Hessian and Taylor's Theorem of Second Order}
+
+The second derivative of a function of one variable describes how its graph bends away from the tangent. In several variables the bending depends on the direction, and it is described by a matrix.
+
+\begin{definition}[Hessian matrix]
+\label{def:hessian}
+Let $f\in C^2(U)$ and $\mathbf a\in U$. The \term{Hessian matrix} of $f$ at $\mathbf a$ is the $n\times n$ matrix of the second partial derivatives,
+\[
+\nabla^2f(\mathbf a)\coloneqq\begin{pmatrix}\partial_1\partial_1f(\mathbf a)&\cdots&\partial_1\partial_nf(\mathbf a)\\\vdots&&\vdots\\\partial_n\partial_1f(\mathbf a)&\cdots&\partial_n\partial_nf(\mathbf a)\end{pmatrix},\qquad\bigl(\nabla^2f(\mathbf a)\bigr)_{ij}=\partial_i\partial_jf(\mathbf a).
+\]
+\end{definition}
+
+By \cref{thm:schwarz} the Hessian of a $C^2$ function is symmetric. It is the Jacobian matrix of the gradient, $\nabla^2f=D(\nabla f)$: its $i$th row consists of the partial derivatives of $\partial_if$. For the quadratic function
+\[
+f(\mathbf x)=c+\langle\mathbf b,\mathbf x\rangle+\tfrac12\langle\mathbf x,A\mathbf x\rangle,\qquad A\text{ symmetric},
+\]
+the examples of \cref{sec:differentiability} give $\nabla f(\mathbf x)=\mathbf b+A\mathbf x$ and $\nabla^2f(\mathbf x)=A$ at every point: the Hessian plays the role of the constant second derivative of a quadratic polynomial. Taylor's theorem says that every $C^2$ function is approximately of this form near a point.
+
+\begin{theorem}[Taylor's theorem of second order]
+\label{thm:taylor-rn}
+Let $f\in C^2(U)$, $\mathbf a\in U$, and let $\mathbf h$ be such that $[\mathbf a,\mathbf a+\mathbf h]\subseteq U$. Then:
+\begin{enumerate}
+\item (Lagrange's form) there is $\tau\in(0,1)$ with
+\[
+f(\mathbf a+\mathbf h)=f(\mathbf a)+\langle\nabla f(\mathbf a),\mathbf h\rangle+\tfrac12\bigl\langle\mathbf h,\nabla^2f(\mathbf a+\tau\mathbf h)\mathbf h\bigr\rangle ;
+\]
+\item (integral form) $f(\mathbf a+\mathbf h)=f(\mathbf a)+\langle\nabla f(\mathbf a),\mathbf h\rangle+\int_0^1(1-t)\bigl\langle\mathbf h,\nabla^2f(\mathbf a+t\mathbf h)\mathbf h\bigr\rangle\,dt$;
+\item (Peano's form) as $\mathbf h\to\mathbf0$,
+\[
+f(\mathbf a+\mathbf h)=f(\mathbf a)+\langle\nabla f(\mathbf a),\mathbf h\rangle+\tfrac12\langle\mathbf h,\nabla^2f(\mathbf a)\mathbf h\rangle+o(\|\mathbf h\|^2).
+\]
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+As in the proof of \cref{thm:mvt-rn}, the function $g(t)\coloneqq f(\mathbf a+t\mathbf h)$ is defined on an open set of real numbers containing $[0,1]$. By \eqref{eq:chain-curve}, $g'(t)=\sum_{i=1}^n\partial_if(\mathbf a+t\mathbf h)\,h_i$. Each $\partial_if$ is in $C^1$, so the chain rule applies again and gives
+\[
+g''(t)=\sum_{i=1}^n\sum_{j=1}^n\partial_j\partial_if(\mathbf a+t\mathbf h)\,h_jh_i=\bigl\langle\mathbf h,\nabla^2f(\mathbf a+t\mathbf h)\mathbf h\bigr\rangle ,
+\]
+a continuous function of $t$; so $g\in C^2$. In particular $g(0)=f(\mathbf a)$ and $g'(0)=\langle\nabla f(\mathbf a),\mathbf h\rangle$. Taylor's theorem of one variable with $n=1$, in Lagrange's form (\cref{thm:taylor-lagrange}) and in the integral form (\cref{thm:taylor-integral}), gives $g(1)=g(0)+g'(0)+\frac12g''(\tau)$ and $g(1)=g(0)+g'(0)+\int_0^1(1-t)g''(t)\,dt$, which are (i) and (ii). For (iii), (i) gives
+\[
+\begin{aligned}
+\Bigl|f(\mathbf a+\mathbf h)-f(\mathbf a)-\langle\nabla f(\mathbf a),\mathbf h\rangle-\tfrac12\langle\mathbf h,\nabla^2f(\mathbf a)\mathbf h\rangle\Bigr|&=\tfrac12\bigl|\bigl\langle\mathbf h,\bigl(\nabla^2f(\mathbf a+\tau\mathbf h)-\nabla^2f(\mathbf a)\bigr)\mathbf h\bigr\rangle\bigr|\\
+&\le\tfrac12\bigl\|\nabla^2f(\mathbf a+\tau\mathbf h)-\nabla^2f(\mathbf a)\bigr\|_{\mathrm F}\|\mathbf h\|^2 ,
+\end{aligned}
+\]
+and the norm tends to $0$ as $\mathbf h\to\mathbf0$, by the continuity of the second partial derivatives.
+\end{proof}
+
+The proof is the method of the whole section: restrict the function to the line through $\mathbf a$ in the direction $\mathbf h$ and apply the theorem of one variable. Along that line the second derivative is the number $\langle\mathbf h,\nabla^2f\,\mathbf h\rangle$, the \term{quadratic form} of the Hessian evaluated at $\mathbf h$, which measures the curvature of the graph in the direction $\mathbf h$. Written out for two variables, with $\mathbf h=(h,k)$ and all derivatives evaluated at $(a,b)$, Peano's form reads
+\[
+f(a+h,b+k)=f+f_xh+f_yk+\tfrac12\bigl(f_{xx}h^2+2f_{xy}hk+f_{yy}k^2\bigr)+o(h^2+k^2).
+\]
+
+\emph{Example.} For $f(x,y)=e^x\cos y$ at the origin, $f=1$, $f_x=1$, $f_y=0$, $f_{xx}=1$, $f_{xy}=0$ and $f_{yy}=-1$, so
+\[
+e^x\cos y\approx1+x+\tfrac12(x^2-y^2).
+\]
+At $(0.1,0.2)$ the true value is $1.0831411\ldots$, the linear approximation $1.1$ has the error $-1.7\times10^{-2}$, and the quadratic one $1.085$ has the error $-1.9\times10^{-3}$. The next terms of the expansion, $\frac16x^3-\frac12xy^2=-0.00183$, account for most of the remaining difference. The quadratic approximation could also be obtained by multiplying the series $e^x=1+x+\frac12x^2+\cdots$ and $\cos y=1-\frac12y^2+\cdots$ of \cref{ch:series} and keeping the terms of degree at most two, a shortcut that is often quicker than computing derivatives; by the uniqueness of the expansion in Peano's form, which follows as in one variable, the two methods must agree.
+
+\subsection{Higher Orders and Multi-Indices}
+
+Expansions of higher order need a notation for partial derivatives of high order, which, for smooth functions, are determined by the number of differentiations with respect to each variable (\cref{sec:partial-derivatives}). A \term{multi-index} is a tuple $\alpha=(\alpha_1,\ldots,\alpha_n)\in\mathbb N^n$, with
+\[
+|\alpha|\coloneqq\alpha_1+\cdots+\alpha_n,\quad\ \alpha!\coloneqq\alpha_1!\cdots\alpha_n!,\quad\ \mathbf h^\alpha\coloneqq h_1^{\alpha_1}\cdots h_n^{\alpha_n},\quad\ \partial^\alpha f\coloneqq\partial_1^{\alpha_1}\cdots\partial_n^{\alpha_n}f .
+\]
+For example, with $n=2$ and $\alpha=(2,1)$, $|\alpha|=3$, $\alpha!=2$, $\mathbf h^\alpha=h_1^2h_2$ and $\partial^\alpha f=\partial_x^2\partial_yf$. The multinomial theorem (\cref{thm:multinomial}) becomes $(h_1+\cdots+h_n)^k=\sum_{|\alpha|=k}\frac{k!}{\alpha!}\mathbf h^\alpha$.
+
+\begin{theorem}[Taylor's theorem in several variables]
+\label{thm:taylor-multi}
+Let $k\in\mathbb N$, $f\in C^{k+1}(U)$, and $[\mathbf a,\mathbf a+\mathbf h]\subseteq U$. Then there is $\tau\in(0,1)$ with
+\[
+f(\mathbf a+\mathbf h)=\sum_{|\alpha|\le k}\frac{\partial^\alpha f(\mathbf a)}{\alpha!}\,\mathbf h^\alpha+\sum_{|\alpha|=k+1}\frac{\partial^\alpha f(\mathbf a+\tau\mathbf h)}{\alpha!}\,\mathbf h^\alpha .
+\]
+\end{theorem}
+
+\begin{proof}
+Let $g(t)\coloneqq f(\mathbf a+t\mathbf h)$. Applying \eqref{eq:chain-curve} $j$ times, as in the proof of \cref{thm:taylor-rn},
+\[
+g^{(j)}(t)=\sum_{i_1=1}^n\cdots\sum_{i_j=1}^n\partial_{i_1}\cdots\partial_{i_j}f(\mathbf a+t\mathbf h)\,h_{i_1}\cdots h_{i_j}\qquad(j\le k+1).
+\]
+By \cref{thm:schwarz}, the term for a sequence $(i_1,\ldots,i_j)$ depends only on how often each index occurs; if index $i$ occurs $\alpha_i$ times, the term is $\partial^\alpha f\,\mathbf h^\alpha$, and there are $j!/\alpha!$ such sequences, the multinomial coefficient of \cref{thm:multinomial}. Hence $g^{(j)}(t)=\sum_{|\alpha|=j}\frac{j!}{\alpha!}\partial^\alpha f(\mathbf a+t\mathbf h)\mathbf h^\alpha$, and Taylor's theorem of one variable (\cref{thm:taylor-lagrange}), $g(1)=\sum_{j=0}^kg^{(j)}(0)/j!+g^{(k+1)}(\tau)/(k+1)!$, gives the claim.
+\end{proof}
+
+For $k=1$ the theorem is \cref{thm:taylor-rn}\,(i): the terms with $|\alpha|=2$ are $\frac12f_{xx}h^2+f_{xy}hk+\frac12f_{yy}k^2$ in two variables, since $\alpha!=2$ for $\alpha=(2,0)$ and $(0,2)$ and $\alpha!=1$ for $\alpha=(1,1)$. As in one variable, the remainder is $O(\|\mathbf h\|^{k+1})$ when the derivatives of order $k+1$ are bounded, and a Peano form with $o(\|\mathbf h\|^k)$ holds for $f\in C^k$. The number of terms grows quickly with the dimension: there are $\binom{n+k}k$ multi-indices with $|\alpha|\le k$, which for $n=10$ and $k=4$ is already $1001$. Expansions beyond the second order are therefore rarely used in high dimensions, and the methods of later volumes rely almost exclusively on the gradient and the Hessian.
+
+\section{Extrema}
+\label{sec:extrema-n}
+
+\subsection{Critical Points}
+
+Maxima and minima of functions of several variables are defined as in \cref{def:extremum}, with balls in place of intervals: $f\colon D\to\mathbb R$ has a \term{local minimum} at $\mathbf c\in D$ if there is $r>0$ with $f(\mathbf x)\ge f(\mathbf c)$ for all $\mathbf x\in D\cap B(\mathbf c,r)$, a \term{global minimum} if $f(\mathbf x)\ge f(\mathbf c)$ for all $\mathbf x\in D$, and similarly for maxima; an extremum is \term{strict} if the inequality is strict for $\mathbf x\ne\mathbf c$.
+
+\begin{theorem}[First-order condition]
+\label{thm:first-order}
+If $f\colon U\to\mathbb R$ has a local extremum at $\mathbf c\in U$ and is differentiable at $\mathbf c$, then $\nabla f(\mathbf c)=\mathbf0$.
+\end{theorem}
+
+\begin{proof}
+For each $i$, the function $t\mapsto f(\mathbf c+t\mathbf e_i)$ is defined on an open interval around $0$, because $U$ is open, and it has a local extremum at $t=0$, where its derivative is $\partial_if(\mathbf c)$. By Fermat's theorem (\cref{thm:fermat-extremum}), $\partial_if(\mathbf c)=0$.
+\end{proof}
+
+A point $\mathbf c\in U$ with $\nabla f(\mathbf c)=\mathbf0$ is a \term{critical point}, or stationary point, of $f$: the tangent plane is horizontal there. The theorem requires $\mathbf c$ to be an interior point of the domain; on a closed domain, extrema on the boundary must be found separately, as in the closed interval method of \cref{sec:extrema}. As in one variable, the converse fails, but in a new and more interesting way. A critical point $\mathbf c$ is a \term{saddle point} if every ball around $\mathbf c$ contains points where $f$ is larger than $f(\mathbf c)$ and points where it is smaller. The function $f(x,y)=x^2-y^2$ has a critical point at the origin, since $\nabla f=(2x,-2y)$, and it is a saddle point: along the $x$-axis $f$ has a minimum at $0$, along the $y$-axis a maximum. The graph looks like a saddle, or a mountain pass, in which the path along the ridge rises on both sides while the valley falls away on both sides (\cref{fig:saddle}). In one variable, a critical point that is not an extremum is an inflection point like $0$ for $x^3$; in several variables the typical critical point that is not an extremum is a saddle.
+
+\begin{figure}
+\sdfloat{%
+\begin{tikzpicture}
+\begin{axis}[view={35}{30}, hide axis, width=0.78\textwidth, height=0.62\textwidth,
+  xmin=-1.2, xmax=1.35, ymin=-1.2, ymax=1.35, zmin=-1.2, zmax=1.3, clip=false]
+\addplot3[mesh, draw=black!45, line width=0.35pt, domain=-1:1, y domain=-1:1, samples=17, samples y=17] {x^2-y^2};
+\addplot3[black, line width=1.0pt, domain=-1:1, samples=40, samples y=0] (x,0,{x^2});
+\addplot3[black, dashed, line width=1.0pt, domain=-1:1, samples=40, samples y=0] (0,x,{-x^2});
+\addplot3[black, only marks, mark=*, mark size=1.6pt] coordinates {(0,0,0)};
+\draw[-{Latex[length=1.6mm]}, line width=0.4pt] (axis cs:1,0,1) -- (axis cs:1.4,0,1) node[below] {\scriptsize$x$};
+\draw[-{Latex[length=1.6mm]}, line width=0.4pt] (axis cs:0,1,-1) -- (axis cs:0,1.4,-1) node[right] {\scriptsize$y$};
+\end{axis}
+\end{tikzpicture}}{The saddle $z=x^2-y^2$ over the square $[-1,1]^2$. The origin (dot) is a critical point. Along the $x$-axis (solid curve) the function has a minimum there, and along the $y$-axis (dashed curve) a maximum, so the origin is neither a local minimum nor a local maximum.\label{fig:saddle}}
+\end{figure}
+
+\subsection{The Second-Derivative Test}
+
+At a critical point the linear term of Taylor's expansion vanishes, and by \cref{thm:taylor-rn}\,(iii)
+\[
+f(\mathbf c+\mathbf h)=f(\mathbf c)+\tfrac12\langle\mathbf h,\nabla^2f(\mathbf c)\mathbf h\rangle+o(\|\mathbf h\|^2).
+\]
+The behaviour of $f$ near $\mathbf c$ is therefore governed, unless something degenerate happens, by the quadratic form of the Hessian. The following terms describe the possible signs of a quadratic form.
+
+\begin{definition}[Definiteness]
+\label{def:definite}
+A symmetric matrix $A\in\mathbb R^{n\times n}$ is \term{positive definite} if $\langle\mathbf h,A\mathbf h\rangle>0$ for all $\mathbf h\ne\mathbf0$, \term{positive semidefinite} if $\langle\mathbf h,A\mathbf h\rangle\ge0$ for all $\mathbf h$, \term{negative definite} or \term{negative semidefinite} if $-A$ is positive definite or semidefinite, and \term{indefinite} if $\langle\mathbf h,A\mathbf h\rangle$ takes both positive and negative values.
+\end{definition}
+
+For a diagonal matrix, $\langle\mathbf h,\operatorname{diag}(d_1,\ldots,d_n)\mathbf h\rangle=\sum d_ih_i^2$, and definiteness can be read off from the signs of the $d_i$: positive definite if all are positive, indefinite if there are positive and negative ones. The Hessians of $x^2+y^2$, $-x^2-y^2$ and $x^2-y^2$ are $\operatorname{diag}(2,2)$, $\operatorname{diag}(-2,-2)$ and $\operatorname{diag}(2,-2)$.
+
+\begin{lemma}
+\label{lem:definite-bound}
+If $A$ is positive definite, there is $\mu>0$ with $\langle\mathbf h,A\mathbf h\rangle\ge\mu\|\mathbf h\|^2$ for all $\mathbf h\in\mathbb R^n$.
+\end{lemma}
+
+\begin{proof}
+The quadratic form $q(\mathbf h)=\langle\mathbf h,A\mathbf h\rangle$ is continuous and positive on the unit sphere, which is closed and bounded (\cref{prop:level-sets-closed}). By the extreme value theorem (\cref{thm:evt-rn}) it attains a minimum $\mu$ there, at some unit vector, so $\mu>0$. For $\mathbf h\ne\mathbf0$, $q(\mathbf h)=\|\mathbf h\|^2q(\mathbf h/\|\mathbf h\|)\ge\mu\|\mathbf h\|^2$, since $q(t\mathbf h)=t^2q(\mathbf h)$.
+\end{proof}
+
+The lemma is a good example of the use of the extreme value theorem: positivity at each point of the sphere becomes a positive lower bound on the whole sphere. Without the compactness of the sphere this step would fail, as $x\mapsto x$ on $(0,1)$ shows.
+
+\begin{theorem}[Second-derivative test]
+\label{thm:second-derivative-test-rn}
+Let $f\in C^2(U)$ and let $\mathbf c\in U$ be a critical point of $f$.
+\begin{enumerate}
+\item If $\nabla^2f(\mathbf c)$ is positive definite, $f$ has a strict local minimum at $\mathbf c$.
+\item If $\nabla^2f(\mathbf c)$ is negative definite, $f$ has a strict local maximum at $\mathbf c$.
+\item If $\nabla^2f(\mathbf c)$ is indefinite, $\mathbf c$ is a saddle point.
+\end{enumerate}
+If $f$ has a local minimum at $\mathbf c$, then $\nabla^2f(\mathbf c)$ is positive semidefinite, and if a local maximum, negative semidefinite.
+\end{theorem}
+
+\begin{proof}
+Write $A\coloneqq\nabla^2f(\mathbf c)$ and $f(\mathbf c+\mathbf h)-f(\mathbf c)=\frac12\langle\mathbf h,A\mathbf h\rangle+\rho(\mathbf h)$ with $\rho(\mathbf h)=o(\|\mathbf h\|^2)$, by \cref{thm:taylor-rn}\,(iii). (i) Choose $\mu$ by \cref{lem:definite-bound} and $r>0$ with $B(\mathbf c,r)\subseteq U$ and $|\rho(\mathbf h)|\le\frac\mu4\|\mathbf h\|^2$ for $\|\mathbf h\|<r$. Then for $0<\|\mathbf h\|<r$,
+\[
+f(\mathbf c+\mathbf h)-f(\mathbf c)\ge\tfrac\mu2\|\mathbf h\|^2-\tfrac\mu4\|\mathbf h\|^2=\tfrac\mu4\|\mathbf h\|^2>0 .
+\]
+(ii) Apply (i) to $-f$. (iii) Choose $\mathbf v,\mathbf w$ with $\langle\mathbf v,A\mathbf v\rangle>0>\langle\mathbf w,A\mathbf w\rangle$. Along the line through $\mathbf c$ in the direction $\mathbf v$,
+\[
+\frac{f(\mathbf c+t\mathbf v)-f(\mathbf c)}{t^2}=\tfrac12\langle\mathbf v,A\mathbf v\rangle+\frac{\rho(t\mathbf v)}{t^2}\to\tfrac12\langle\mathbf v,A\mathbf v\rangle>0\qquad(t\to0),
+\]
+so $f(\mathbf c+t\mathbf v)>f(\mathbf c)$ for all small $t\ne0$, and in the same way $f(\mathbf c+t\mathbf w)<f(\mathbf c)$; every ball around $\mathbf c$ contains such points. Finally, if $f$ has a local minimum at $\mathbf c$ but $\langle\mathbf w,A\mathbf w\rangle<0$ for some $\mathbf w$, the last argument gives points arbitrarily close to $\mathbf c$ with smaller values, a contradiction.
+\end{proof}
+
+The test says nothing when the Hessian is only semidefinite, and then higher-order terms decide. The functions $x^2+y^4$, $x^2-y^4$ and $x^2+y^3$ all have the Hessian $\operatorname{diag}(2,0)$ at the critical point $(0,0)$; the first has a strict minimum there, and the other two have saddle points, since $-y^4$ and $y^3$ take negative values on the $y$-axis. A critical point with a singular Hessian, $\det\nabla^2f(\mathbf c)=0$, is called \term{degenerate}. Degenerate critical points are exceptional, and at a nondegenerate one the test always decides, because a symmetric matrix with nonzero determinant is either definite or indefinite: a semidefinite matrix $A\ne0$ with $\langle\mathbf w,A\mathbf w\rangle=0$ for some $\mathbf w\ne\mathbf0$ has $A\mathbf w=\mathbf0$, a fact proved in Chapter~20.
+
+\subsection{Deciding Definiteness}
+
+For $2\times2$ matrices definiteness can be decided by completing the square, and this gives the classical second-derivative test for functions of two variables.
+
+\begin{proposition}[Definiteness of $2\times2$ matrices]
+\label{prop:definite-2x2}
+Let $A=\begin{pmatrix}a&b\\b&c\end{pmatrix}$ be symmetric, with $\det A=ac-b^2$. Then
+\begin{enumerate}
+\item $A$ is positive definite if and only if $a>0$ and $\det A>0$;
+\item $A$ is negative definite if and only if $a<0$ and $\det A>0$;
+\item $A$ is indefinite if and only if $\det A<0$.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+Let $q(h,k)\coloneqq\langle(h,k),A(h,k)\rangle=ah^2+2bhk+ck^2$. If $a\ne0$, completing the square gives
+\begin{equation}
+a\,q(h,k)=(ah+bk)^2+(ac-b^2)k^2 .
+\label{eq:complete-square}
+\end{equation}
+(i) If $a>0$ and $\det A>0$, the right side of \eqref{eq:complete-square} is a sum of two nonnegative terms, which vanishes only if $k=0$ and then $ah=0$, that is, only for $(h,k)=\mathbf0$; so $q>0$ away from $\mathbf0$. Conversely, if $A$ is positive definite, then $a=q(1,0)>0$, and $q(-b,a)=a(ac-b^2)$ by \eqref{eq:complete-square} with $(h,k)=(-b,a)$, so $\det A>0$. (ii) Apply (i) to $-A$, whose determinant is again $ac-b^2$. (iii) Suppose $\det A<0$. If $a\ne0$, then $q(1,0)=a$ and $q(-b,a)=a\det A$, by \eqref{eq:complete-square}, have opposite signs. If $a=0$, then $b\ne0$, because $\det A=-b^2<0$, and $q(1,t)=2bt+ct^2$ has the sign of $bt$ for small $t\ne0$, so it takes both signs. Conversely, let $A$ be indefinite. If $\det A>0$, then $a\ne0$, since $a=0$ would give $\det A=-b^2\le0$, and $A$ is definite by (i) or (ii). If $\det A=0$ and $a\ne0$, then $a\,q(h,k)=(ah+bk)^2\ge0$ by \eqref{eq:complete-square}, so $q$ never has the sign opposite to that of $a$; if $\det A=0$ and $a=0$, then $b=0$ and $q=ck^2$ has the sign of $c$ or vanishes. In neither case is $A$ indefinite, so $\det A<0$.
+\end{proof}
+
+Applied to the Hessian of a $C^2$ function of two variables at a critical point, with $D\coloneqq f_{xx}f_{yy}-f_{xy}^2$ evaluated there, the proposition and \cref{thm:second-derivative-test-rn} give the test found in every calculus book: a local minimum if $D>0$ and $f_{xx}>0$, a local maximum if $D>0$ and $f_{xx}<0$, a saddle point if $D<0$, and no conclusion if $D=0$. The test goes back to Lagrange~\cite{lagrange1797}.
+
+\emph{Example.} Let $f(x,y)=x^3-3xy+y^3$. The critical points solve $f_x=3x^2-3y=0$ and $f_y=3y^2-3x=0$, so $y=x^2$ and $x=y^2=x^4$, which gives $x=0$ or $x=1$: the critical points are $(0,0)$ and $(1,1)$. The Hessian is
+\[
+\nabla^2f(x,y)=\begin{pmatrix}6x&-3\\-3&6y\end{pmatrix}.
+\]
+At $(0,0)$ its determinant is $-9<0$, a saddle point. At $(1,1)$ it is $36-9=27>0$ with $f_{xx}=6>0$, a strict local minimum, with $f(1,1)=-1$. The minimum is not global: $f(x,0)=x^3\to-\infty$ as $x\to-\infty$. In two variables something stranger can happen. A differentiable function of one variable on $\mathbb R$ whose only critical point is a local minimum has a global minimum there, since by Rolle's theorem it cannot turn around elsewhere. In two variables this fails: $f(x,y)=x^2+y^2(1-x)^3$ has the single critical point $(0,0)$, because $f_y=2y(1-x)^3$ vanishes only for $y=0$ or $x=1$, and $f_x=2x-3y^2(1-x)^2$ then vanishes only at the origin; its Hessian there is $\operatorname{diag}(2,2)$, so the origin is a strict local minimum; and yet $f(4,1)=16-27=-11<0=f(0,0)$.
+
+For larger matrices completing the square becomes laborious, and definiteness is decided by other means, which Part~III develops. We state the two most important criteria. An \term{eigenvalue} of $A\in\mathbb R^{n\times n}$ is a number $\lambda$ for which $A\mathbf x=\lambda\mathbf x$ has a solution $\mathbf x\ne\mathbf0$, an \term{eigenvector}; and the \term{leading principal minors} of $A$ are the determinants $\Delta_k$ of the upper left $k\times k$ submatrices, $k=1,\ldots,n$.
+
+\begin{theorem}[Criteria for definiteness]
+\label{thm:definiteness-criteria}
+Let $A\in\mathbb R^{n\times n}$ be symmetric.
+\begin{enumerate}
+\item All eigenvalues of $A$ are real, and $A$ is positive definite if and only if all of them are positive, positive semidefinite if and only if all are nonnegative, and indefinite if and only if it has a positive and a negative eigenvalue.
+\item (Sylvester's criterion) $A$ is positive definite if and only if $\Delta_k>0$ for $k=1,\ldots,n$, and negative definite if and only if $(-1)^k\Delta_k>0$ for $k=1,\ldots,n$.
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+Part (i) rests on the spectral theorem of Chapter~20: there is a matrix $Q$ with $Q^{\mathsf T}Q=I$, whose columns are eigenvectors, such that $Q^{\mathsf T}AQ=\operatorname{diag}(\lambda_1,\ldots,\lambda_n)$. With $\mathbf h=Q\mathbf y$ the quadratic form becomes $\sum_i\lambda_iy_i^2$, whose sign behaviour is read off from the signs of the $\lambda_i$, as for diagonal matrices above. Part (ii) follows from Gaussian elimination without pivoting, which, when all $\Delta_k$ are positive, writes $A=LDL^{\mathsf T}$ with $L$ lower triangular with ones on the diagonal and $D$ diagonal with the positive entries $\Delta_k/\Delta_{k-1}$; this is completing the square in $n$ variables, as \eqref{eq:complete-square} is for $n=2$. Chapters~17 and~20 give the proofs; see also Horn and Johnson~\cite[Thms.~4.1.5 and~7.2.5]{horn2013}.
+\end{proof}
+
+For example, $f(x,y,z)=x^2+y^2+z^2+xy+yz$ has the single critical point $\mathbf0$, where $\nabla f=(2x+y,\,x+2y+z,\,y+2z)$ vanishes only for $(x,y,z)=\mathbf0$, and its Hessian
+\[
+\begin{pmatrix}2&1&0\\1&2&1\\0&1&2\end{pmatrix}
+\]
+has the leading principal minors $2$, $3$ and $4$, all positive. So $\mathbf0$ is a strict local minimum; by \cref{thm:convex-c2} below it is even the global minimum. For $2\times2$ matrices, (ii) is \cref{prop:definite-2x2}\,(i), since $\Delta_1=a$ and $\Delta_2=\det A$.
+
+\subsection{Extrema on Closed Bounded Sets}
+
+On a closed bounded set $K$ a continuous function attains its maximum and minimum (\cref{thm:evt-rn}), and if $f$ is differentiable in the interior, \cref{thm:first-order} shows that every extremum is attained either at a critical point in the interior or at a boundary point. This generalises the closed interval method of \cref{sec:extrema}, but the boundary, which consisted of two points for an interval, is now a curve or a surface, and the extrema on it form a problem in their own right, an extremum problem under a constraint.
+
+\emph{Example.} Find the extrema of $f(x,y)=x^2-y^2$ on the closed disc $x^2+y^2\le1$. In the interior the only critical point is the saddle $(0,0)$, which is not an extremum. On the boundary circle, parametrised as $(\cos t,\sin t)$, the function is $\cos^2t-\sin^2t=\cos2t$, with maximum $1$ at $(\pm1,0)$ and minimum $-1$ at $(0,\pm1)$. These are the global extrema. In this example the boundary could be parametrised explicitly; \cref{sec:lagrange} gives a method that does not need a parametrisation.
+
+\subsection{Convex Functions}
+
+Convex functions of one variable were the functions for which a critical point is automatically a global minimum (\cref{cor:convex-minimum}). The same holds in several variables, and the proofs reduce to one variable by restriction to lines.
+
+\begin{definition}[Convex function]
+\label{def:convex-rn}
+Let $C\subseteq\mathbb R^n$ be convex. A function $f\colon C\to\mathbb R$ is \term{convex} if
+\[
+f\bigl((1-\lambda)\mathbf x+\lambda\mathbf y\bigr)\le(1-\lambda)f(\mathbf x)+\lambda f(\mathbf y)\qquad\text{for all }\mathbf x,\mathbf y\in C,\ \lambda\in[0,1],
+\]
+and \term{strictly convex} if the inequality is strict whenever $\mathbf x\ne\mathbf y$ and $0<\lambda<1$.
+\end{definition}
+
+Equivalently, $f$ is convex if and only if, for all $\mathbf x,\mathbf y\in C$, the function $g(t)\coloneqq f(\mathbf x+t(\mathbf y-\mathbf x))$ is convex on $[0,1]$: the definition involves only the points of one segment at a time. Norms are convex, by the triangle inequality and homogeneity, and so is $\|\mathbf x\|^2$; linear functions are convex.
+
+\begin{theorem}[Convexity and derivatives]
+\label{thm:convex-c2}
+Let $U\subseteq\mathbb R^n$ be open and convex.
+\begin{enumerate}
+\item A differentiable $f\colon U\to\mathbb R$ is convex if and only if
+\[
+f(\mathbf y)\ge f(\mathbf x)+\langle\nabla f(\mathbf x),\mathbf y-\mathbf x\rangle\qquad\text{for all }\mathbf x,\mathbf y\in U .
+\]
+\item A function $f\in C^2(U)$ is convex if and only if $\nabla^2f(\mathbf x)$ is positive semidefinite for every $\mathbf x\in U$. If $\nabla^2f(\mathbf x)$ is positive definite for every $\mathbf x\in U$, then $f$ is strictly convex.
+\item If $f$ is convex and differentiable and $\nabla f(\mathbf c)=\mathbf0$, then $f$ has a global minimum at $\mathbf c$; if $f$ is strictly convex, $\mathbf c$ is the only minimum point.
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+For $\mathbf x,\mathbf y\in U$ let $\mathbf h\coloneqq\mathbf y-\mathbf x$ and $g(t)\coloneqq f(\mathbf x+t\mathbf h)$, defined on an open interval containing $[0,1]$ because $U$ is open and convex. By the chain rule $g'(t)=\langle\nabla f(\mathbf x+t\mathbf h),\mathbf h\rangle$, and for $f\in C^2$, $g''(t)=\langle\mathbf h,\nabla^2f(\mathbf x+t\mathbf h)\mathbf h\rangle$, as in the proof of \cref{thm:taylor-rn}.
+
+(i) If $f$ is convex, $g$ is convex, and the tangent inequality of one variable (\cref{prop:tangent-below}) at $t=0$ gives $g(1)\ge g(0)+g'(0)$, which is the claim. Conversely, suppose the inequality holds. For $s,t$ in the interval of $g$ with $\mathbf x+s\mathbf h,\mathbf x+t\mathbf h\in U$, applying it to these two points gives $g(s)\ge g(t)+g'(t)(s-t)$, since $(\mathbf x+s\mathbf h)-(\mathbf x+t\mathbf h)=(s-t)\mathbf h$; so $g$ satisfies the tangent inequality of one variable and is convex by \cref{prop:tangent-below}. As $\mathbf x$ and $\mathbf y$ were arbitrary, $f$ is convex.
+
+(ii) If $\nabla^2f$ is positive semidefinite everywhere, $g''\ge0$, so $g$ is convex by \cref{cor:convex-second} for every pair $\mathbf x,\mathbf y$, and $f$ is convex; if it is positive definite and $\mathbf x\ne\mathbf y$, then $g''>0$ and $g$ is strictly convex. Conversely, let $f$ be convex, $\mathbf x\in U$ and $\mathbf h\in\mathbb R^n$. For small $\varepsilon>0$ the point $\mathbf x+\varepsilon\mathbf h$ lies in $U$, the function $t\mapsto f(\mathbf x+t\mathbf h)$ is convex on an interval around $0$, and its second derivative at $0$, which is $\langle\mathbf h,\nabla^2f(\mathbf x)\mathbf h\rangle$, is nonnegative by \cref{cor:convex-second}.
+
+(iii) By (i) with $\mathbf x=\mathbf c$, $f(\mathbf y)\ge f(\mathbf c)$ for all $\mathbf y$. If $f$ is strictly convex and $f(\mathbf d)=f(\mathbf c)$ with $\mathbf d\ne\mathbf c$, the midpoint would give $f(\frac12(\mathbf c+\mathbf d))<f(\mathbf c)$, as in \cref{cor:convex-minimum}.
+\end{proof}
+
+Part (i) says that the graph of a differentiable convex function lies above all its tangent planes, and part (iii) that for convex functions the first-order condition is sufficient for a global minimum. A convex quadratic function $f(\mathbf x)=c+\langle\mathbf b,\mathbf x\rangle+\frac12\langle\mathbf x,A\mathbf x\rangle$ with $A$ positive definite is strictly convex, and its unique minimum point is the solution of the linear system $A\mathbf x=-\mathbf b$, which is unique because a positive definite matrix is invertible: $A\mathbf x=\mathbf0$ gives $\langle\mathbf x,A\mathbf x\rangle=0$, hence $\mathbf x=\mathbf0$, and \cref{thm:invertible-matrices} applies. Minimising a convex quadratic function and solving a linear system with a positive definite matrix are therefore the same problem, an equivalence on which the conjugate gradient method of Volume~IX is built. Volume~XII develops the theory of convex functions in several variables, and the reliable algorithms that it makes possible.
+
+\subsection{Fitting a Straight Line}
+
+The most important minimisation problem of applied mathematics is that of least squares. Given data points $(x_1,y_1),\ldots,(x_N,y_N)$ with $N\ge2$, find the line $y=a+bx$ that fits them best, in the sense that the sum of the squared vertical deviations
+\[
+S(a,b)\coloneqq\sum_{i=1}^N(y_i-a-bx_i)^2
+\]
+is as small as possible. The method was published by Legendre in 1805 and justified probabilistically by Gauss in 1809, who claimed to have used it since 1795; the dispute is told by Stigler~\cite{legendre1805,gauss1809,stigler1981}. In \cref{sec:extrema} we saw that the mean minimises the sum of squared deviations from a single number; the line generalises the constant.
+
+The function $S$ is a quadratic polynomial in $(a,b)$, and its partial derivatives are
+\[
+\frac{\partial S}{\partial a}=-2\sum_i(y_i-a-bx_i),\qquad\frac{\partial S}{\partial b}=-2\sum_ix_i(y_i-a-bx_i).
+\]
+Setting them to zero gives the \term{normal equations}
+\begin{equation}
+Na+\Bigl(\sum_ix_i\Bigr)b=\sum_iy_i,\qquad\Bigl(\sum_ix_i\Bigr)a+\Bigl(\sum_ix_i^2\Bigr)b=\sum_ix_iy_i ,
+\label{eq:normal-equations}
+\end{equation}
+a linear system of two equations for the two unknowns. Its matrix is half the Hessian of $S$,
+\[
+\nabla^2S=2\begin{pmatrix}N&\sum x_i\\\sum x_i&\sum x_i^2\end{pmatrix},\qquad\det\tfrac12\nabla^2S=N\sum_ix_i^2-\Bigl(\sum_ix_i\Bigr)^2=N\sum_i(x_i-\bar x)^2 ,
+\]
+where $\bar x\coloneqq\frac1N\sum x_i$ is the mean; the last identity follows by expanding $(x_i-\bar x)^2$. If the $x_i$ are not all equal, the determinant is positive, and with $N>0$ the Hessian is positive definite by \cref{prop:definite-2x2}, at every point. By \cref{thm:convex-c2}, $S$ is strictly convex, and the unique solution of \eqref{eq:normal-equations} is its global minimum point. Solving the system by \cref{prop:inverse-2x2}, or by subtracting $\bar x$ times the first equation from the second, gives
+\[
+b=\frac{\sum_i(x_i-\bar x)(y_i-\bar y)}{\sum_i(x_i-\bar x)^2},\qquad a=\bar y-b\bar x ,
+\]
+with $\bar y\coloneqq\frac1N\sum y_i$; the fitted line passes through the centre of mass $(\bar x,\bar y)$ of the data. The first normal equation says that the residuals $r_i\coloneqq y_i-a-bx_i$ add up to zero, and the second that they are orthogonal to the vector $(x_1,\ldots,x_N)$: the vector of residuals is orthogonal to the two vectors $(1,\ldots,1)$ and $(x_1,\ldots,x_N)$ of $\mathbb R^N$, the geometric fact behind least squares that Chapter~18 develops.
+
+\begin{figure}
+\sdfloat{%
+\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.56\textwidth, height=0.44\textwidth, xmin=-0.4, xmax=5.4, ymin=0, ymax=9.6,
+  xtick={0,1,2,3,4,5}, ytick={0,2,4,6,8}, xlabel={$x$}, ylabel={$y$}]
+\addplot[black, line width=0.8pt, domain=-0.4:5.4, samples=2] {36/35+521/350*x};
+\draw[black!55, line width=0.5pt] (axis cs:0,1.1) -- (axis cs:0,1.028571);
+\draw[black!55, line width=0.5pt] (axis cs:1,2.3) -- (axis cs:1,2.517143);
+\draw[black!55, line width=0.5pt] (axis cs:2,4.3) -- (axis cs:2,4.005714);
+\draw[black!55, line width=0.5pt] (axis cs:3,5.2) -- (axis cs:3,5.494286);
+\draw[black!55, line width=0.5pt] (axis cs:4,7.2) -- (axis cs:4,6.982857);
+\draw[black!55, line width=0.5pt] (axis cs:5,8.4) -- (axis cs:5,8.471429);
+\addplot[black, only marks, mark=*, mark size=1.5pt] coordinates {(0,1.1) (1,2.3) (2,4.3) (3,5.2) (4,7.2) (5,8.4)};
+\draw[black, line width=0.5pt] (axis cs:2.5,4.75) circle (2.2pt);
+\end{axis}
+\end{tikzpicture}}{The least squares line $y=\frac{36}{35}+\frac{521}{350}x$ for six data points. The vertical segments are the residuals $r_i$, whose squares add up to the minimum $0.2777\ldots$ of $S(a,b)$. The residuals sum to zero, and the line passes through the centre of mass $(\bar x,\bar y)=(2.5,4.75)$ of the data (open circle).\label{fig:least-squares}}
+\end{figure}
+
+\Cref{fig:least-squares} shows the fit for the six points $(0,1.1)$, $(1,2.3)$, $(2,4.3)$, $(3,5.2)$, $(4,7.2)$, $(5,8.4)$. Here $\sum x_i=15$, $\sum x_i^2=55$, $\sum y_i=28.5$ and $\sum x_iy_i=97.3$, the determinant of the normal equations is $6\cdot55-15^2=105$, and the solution is $a=\frac{36}{35}=1.0286\ldots$ and $b=\frac{521}{350}=1.4886\ldots$. In matrix form, with the $N\times2$ matrix $X$ whose rows are $(1,x_i)$ and the vector $\mathbf y$ of the $y_i$, the normal equations read $X^{\mathsf T}X\boldsymbol\beta=X^{\mathsf T}\mathbf y$ for $\boldsymbol\beta=(a,b)$, and in this form they describe the fitting of any model that depends linearly on its parameters. Chapter~18 derives them for general $X$, Volume~VIII solves them stably, without forming $X^{\mathsf T}X$, and Volume~XV builds the statistics of linear regression on them.
+
+\section{The Inverse and Implicit Function Theorems}
+\label{sec:inverse-implicit}
+
+\subsection{Solving Equations Locally}
+
+A system of $n$ linear equations in $n$ unknowns, $A\mathbf x=\mathbf b$, has exactly one solution for every right side if and only if $A$ is invertible (\cref{thm:invertible-matrices}). For a nonlinear system $\mathbf f(\mathbf x)=\mathbf y$ no such global statement holds, but the linearisation suggests a local one: near a point $\mathbf a$, the equation $\mathbf f(\mathbf x)=\mathbf y$ is approximately the linear equation $\mathbf f(\mathbf a)+D\mathbf f(\mathbf a)(\mathbf x-\mathbf a)=\mathbf y$, which can be solved uniquely if $D\mathbf f(\mathbf a)$ is invertible. The inverse function theorem says that the nonlinear equation then behaves like the linear one, at least near $\mathbf a$. In one variable this is the content of \cref{thm:inverse-derivative} together with the observation that a function with $f'(a)\ne0$ and continuous derivative is strictly monotone near $a$.
+
+\begin{theorem}[Inverse function theorem]
+\label{thm:inverse-function}
+Let $U\subseteq\mathbb R^n$ be open, $\mathbf f\in C^1(U)$ with values in $\mathbb R^n$, and $\mathbf a\in U$ with $D\mathbf f(\mathbf a)$ invertible. Then there are open sets $V\ni\mathbf a$ and $W\ni\mathbf f(\mathbf a)$ such that $\mathbf f$ maps $V$ bijectively onto $W$, the inverse $\mathbf g\coloneqq(\mathbf f|_V)^{-1}\colon W\to V$ belongs to $C^1(W)$, and
+\[
+D\mathbf g(\mathbf y)=\bigl(D\mathbf f(\mathbf g(\mathbf y))\bigr)^{-1}\qquad(\mathbf y\in W).
+\]
+If $\mathbf f\in C^k(U)$, then $\mathbf g\in C^k(W)$.
+\end{theorem}
+
+\begin{proof}
+The proof turns the equation into a fixed point problem. Let $A\coloneqq D\mathbf f(\mathbf a)$. For a given $\mathbf y$, the solutions of $\mathbf f(\mathbf x)=\mathbf y$ are the fixed points of
+\[
+\boldsymbol\varphi_{\mathbf y}(\mathbf x)\coloneqq\mathbf x+A^{-1}\bigl(\mathbf y-\mathbf f(\mathbf x)\bigr),
+\]
+whose derivative $I-A^{-1}D\mathbf f(\mathbf x)$ vanishes at $\mathbf a$. By continuity of $D\mathbf f$ there is a ball $\bar B(\mathbf a,r)$ on which $\|I-A^{-1}D\mathbf f(\mathbf x)\|_2\le\frac12$, and by the mean value inequality (\cref{thm:mean-value-inequality}) $\boldsymbol\varphi_{\mathbf y}$ is a contraction there with constant $\frac12$. For $\mathbf y$ close enough to $\mathbf f(\mathbf a)$ it maps the ball into itself, and the contraction mapping theorem of Volume~II, the $n$-dimensional version of \cref{prop:fixed-point-contraction}, gives exactly one fixed point in the ball. This defines the inverse on a neighbourhood $W$ of $\mathbf f(\mathbf a)$. The contraction estimate shows that the inverse is Lipschitz continuous, the definition of the derivative then shows that it is differentiable with the stated derivative, and the continuity of matrix inversion (\cref{thm:invertible-matrices}\,(iii)) shows that this derivative is continuous; an induction gives the statement for $C^k$. Rudin gives the proof in full~\cite[Thm.~9.24]{rudin1976}.
+\end{proof}
+
+Once the inverse is known to be differentiable, the formula for its derivative follows from the chain rule: differentiating $\mathbf f(\mathbf g(\mathbf y))=\mathbf y$ gives $D\mathbf f(\mathbf g(\mathbf y))\,D\mathbf g(\mathbf y)=I$. In one variable this is $(f^{-1})'(b)=1/f'(a)$.
+
+The theorem is local in two senses. The hypothesis is about a single point, and so is the conclusion: even if $D\mathbf f$ is invertible everywhere, $\mathbf f$ need not be injective. The map $\mathbf f(x,y)\coloneqq(e^x\cos y,e^x\sin y)$, which is $z\mapsto e^z$ for $z=x+iy$ in real coordinates (\cref{cor:euler-consequences}), has
+\[
+D\mathbf f(x,y)=\begin{pmatrix}e^x\cos y&-e^x\sin y\\e^x\sin y&e^x\cos y\end{pmatrix},\qquad\det D\mathbf f(x,y)=e^{2x}>0 ,
+\]
+so it is invertible near every point, but it takes the same value at $(x,y)$ and $(x,y+2\pi)$. Each local inverse is a branch of the complex logarithm of \cref{sec:complex-exp}, and no inverse exists on all of $\mathbb R^2\setminus\{\mathbf0\}$. And the hypothesis cannot be dropped: $f(x)=x^3$ is a bijection of $\mathbb R$, but $f'(0)=0$ and its inverse, the cube root, is not differentiable at $0$.
+
+\subsection{Coordinate Systems}
+
+A change of coordinates is a map whose local inverses describe the old coordinates in terms of the new ones, and the inverse function theorem says where it is legitimate. For polar coordinates, $\mathbf P(r,\theta)=(r\cos\theta,r\sin\theta)$ has the Jacobian determinant $r$ (\cref{sec:differentiability}), so it is locally invertible at every point with $r\ne0$. On the strip $r>0$, $-\pi<\theta<\pi$, it is a bijection onto the plane without the half-line $\{(x,0): x\le0\}$, with the inverse
+\[
+r=\sqrt{x^2+y^2},\qquad\theta=\operatorname{atan2}(y,x)
+\]
+of \cref{def:atan2}, and the theorem predicts the derivative of the inverse without differentiating $\operatorname{atan2}$:
+\[
+D\mathbf P^{-1}(x,y)=\begin{pmatrix}\cos\theta&-r\sin\theta\\\sin\theta&r\cos\theta\end{pmatrix}^{-1}=\begin{pmatrix}\cos\theta&\sin\theta\\-\frac1r\sin\theta&\frac1r\cos\theta\end{pmatrix}=\begin{pmatrix}\frac xr&\frac yr\\-\frac y{r^2}&\frac x{r^2}\end{pmatrix},
+\]
+by \cref{prop:inverse-2x2}. The second row says $\partial\theta/\partial x=-y/(x^2+y^2)$ and $\partial\theta/\partial y=x/(x^2+y^2)$, which one can check from $\theta=\arctan(y/x)$ for $x>0$. At the origin the theorem fails, and so does the coordinate system: all values of $\theta$ give the same point.
+
+The Jacobian determinant also measures how the map changes areas. A small rectangle $[r,r+\Delta r]\times[\theta,\theta+\Delta\theta]$ is mapped onto a piece of an annulus of area $\frac12((r+\Delta r)^2-r^2)\Delta\theta=(r+\frac12\Delta r)\Delta r\,\Delta\theta$, which is approximately $r\,\Delta r\,\Delta\theta=|\det D\mathbf P|\,\Delta r\,\Delta\theta$ (\cref{fig:polar-map}). This is the reason why the factor $r$ appears in integrals in polar coordinates, $dx\,dy=r\,dr\,d\theta$, and Chapter~11 proves the general rule, in which $|\det D\mathbf f|$ is the local factor by which a change of variables multiplies volumes.
+
+\begin{figure}
+\sdpanel{A}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.47\textwidth, height=0.47\textwidth, xmin=0, xmax=2.3, ymin=0, ymax=1.7,
+  xtick={0,1,2}, ytick={0,0.5,1,1.5}, xlabel={$r$}, ylabel={$\theta$}]
+\pgfplotsinvokeforeach{1,1.25,1.5,1.75,2}{\addplot[black!60, line width=0.4pt] coordinates {(#1,0.2) (#1,1.4)};}
+\pgfplotsinvokeforeach{0.2,0.5,0.8,1.1,1.4}{\addplot[black!60, line width=0.4pt] coordinates {(1,#1) (2,#1)};}
+\fill[sdfill] (axis cs:1.5,0.8) rectangle (axis cs:1.75,1.1);
+\draw[black, line width=0.6pt] (axis cs:1.5,0.8) rectangle (axis cs:1.75,1.1);
+\end{axis}
+\end{tikzpicture}}\hfill
+\sdpanel{B}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.47\textwidth, height=0.47\textwidth, xmin=0, xmax=2.1, ymin=0, ymax=2.1,
+  axis equal image, xtick={0,1,2}, ytick={0,1,2}, xlabel={$x$}, ylabel={$y$}]
+\addplot[draw=none, fill=sdfill] coordinates {(1.2192,1.2554) (1.2003,1.2735) (1.1810,1.2914) (1.1615,1.3089) (1.1418,1.3262) (1.1217,1.3432) (1.1015,1.3599) (1.0809,1.3762) (1.0602,1.3923) (1.0392,1.4080) (1.0179,1.4235) (0.9965,1.4386) (0.9748,1.4534) (0.9529,1.4678) (0.9308,1.4820) (0.9084,1.4957) (0.8859,1.5092) (0.8631,1.5223) (0.8402,1.5351) (0.8171,1.5475) (0.7938,1.5596) (0.6804,1.3368) (0.7004,1.3265) (0.7202,1.3158) (0.7398,1.3049) (0.7593,1.2936) (0.7786,1.2821) (0.7978,1.2702) (0.8168,1.2581) (0.8355,1.2457) (0.8541,1.2331) (0.8725,1.2201) (0.8907,1.2069) (0.9087,1.1934) (0.9265,1.1796) (0.9441,1.1656) (0.9615,1.1513) (0.9787,1.1368) (0.9956,1.1220) (1.0123,1.1069) (1.0288,1.0916) (1.0451,1.0760)} -- cycle;
+\pgfplotsinvokeforeach{1,1.25,1.5,1.75,2}{\addplot[black!60, line width=0.4pt, domain=0.2:1.4, samples=40] ({#1*cos(deg(x))},{#1*sin(deg(x))});}
+\pgfplotsinvokeforeach{0.2,0.5,0.8,1.1,1.4}{\addplot[black!60, line width=0.4pt, domain=1:2, samples=2] ({x*cos(deg(#1))},{x*sin(deg(#1))});}
+\addplot[black, line width=0.6pt, domain=0.8:1.1, samples=20] ({1.5*cos(deg(x))},{1.5*sin(deg(x))});
+\addplot[black, line width=0.6pt, domain=0.8:1.1, samples=20] ({1.75*cos(deg(x))},{1.75*sin(deg(x))});
+\addplot[black, line width=0.6pt, domain=1.5:1.75, samples=2] ({x*cos(deg(0.8))},{x*sin(deg(0.8))});
+\addplot[black, line width=0.6pt, domain=1.5:1.75, samples=2] ({x*cos(deg(1.1))},{x*sin(deg(1.1))});
+\end{axis}
+\end{tikzpicture}}
+\caption{Polar coordinates as a map. (A) A grid in the $(r,\theta)$-plane, $1\le r\le2$, $0.2\le\theta\le1.4$, with one cell of size $\Delta r\times\Delta\theta=0.25\times0.3$ shaded. (B) Its image under $\mathbf P(r,\theta)=(r\cos\theta,r\sin\theta)$: the lines $r=\text{const}$ become arcs and the lines $\theta=\text{const}$ rays. The shaded cell becomes a piece of an annulus whose area, $0.122$, is close to $r\,\Delta r\,\Delta\theta=0.1125$ with $r=1.5$, and equal to it with the midpoint $r=1.625$; the factor $r$ is the Jacobian determinant of $\mathbf P$.}
+\label{fig:polar-map}
+\end{figure}
+
+For \term{spherical coordinates} in $\mathbb R^3$ we use the convention, standard in physics and fixed in the international standard ISO~80000-2~\cite{iso80000-2}, that $r\ge0$ is the distance from the origin, $\theta\in[0,\pi]$ the angle from the positive $z$-axis and $\varphi\in(-\pi,\pi]$ the angle of the projection to the $(x,y)$-plane:
+\[
+\mathbf S(r,\theta,\varphi)\coloneqq(r\sin\theta\cos\varphi,\ r\sin\theta\sin\varphi,\ r\cos\theta).
+\]
+Expanding the $3\times3$ determinant of the Jacobian matrix along its last row, which Chapter~17 shows to be as valid as the expansion along the first, gives
+\[
+\det D\mathbf S(r,\theta,\varphi)=\det\begin{pmatrix}\sin\theta\cos\varphi&r\cos\theta\cos\varphi&-r\sin\theta\sin\varphi\\\sin\theta\sin\varphi&r\cos\theta\sin\varphi&r\sin\theta\cos\varphi\\\cos\theta&-r\sin\theta&0\end{pmatrix}=r^2\sin\theta ,
+\]
+so $\mathbf S$ is locally invertible except on the $z$-axis, where $r=0$ or $\sin\theta=0$ and the angle $\varphi$ is undetermined. Many mathematics texts exchange the names of $\theta$ and $\varphi$; the formulas are the same up to this renaming.
+
+\subsection{The Implicit Function Theorem}
+
+Often an equation does not have the form $\mathbf f(\mathbf x)=\mathbf y$ but relates several variables, and one asks whether it determines some of them as functions of the others. The equation $x^2+y^2=1$ of the unit circle defines $y=\sqrt{1-x^2}$ near the point $(0,1)$ and $y=-\sqrt{1-x^2}$ near $(0,-1)$, but near $(1,0)$ it defines no function $y(x)$ at all: to the left of $x=1$ there are two values of $y$, to the right none (\cref{fig:implicit}A). Near $(1,0)$ the equation defines instead $x$ as a function of $y$, $x=\sqrt{1-y^2}$. What distinguishes the bad points is that the tangent of the curve is vertical there, which in terms of $F(x,y)\coloneqq x^2+y^2-1$ means $\partial_yF=2y=0$. We first treat a single equation, where the proof is elementary.
+
+\begin{theorem}[Implicit function theorem for one equation]
+\label{thm:implicit-scalar}
+Let $W\subseteq\mathbb R^n\times\mathbb R$ be open and $F\in C^1(W)$, and write the points of $W$ as $(\mathbf x,y)$ with $\mathbf x\in\mathbb R^n$ and $y\in\mathbb R$. Let $(\mathbf a,b)\in W$ with
+\[
+F(\mathbf a,b)=0\qquad\text{and}\qquad\partial_yF(\mathbf a,b)\ne0 .
+\]
+Then there are $r,\delta>0$ and a function $\varphi\in C^1(B(\mathbf a,r))$ with values in $(b-\delta,b+\delta)$ such that, for $\mathbf x\in B(\mathbf a,r)$ and $|y-b|<\delta$,
+\[
+F(\mathbf x,y)=0\quad\Longleftrightarrow\quad y=\varphi(\mathbf x).
+\]
+Moreover,
+\begin{equation}
+\partial_i\varphi(\mathbf x)=-\frac{\partial_{x_i}F(\mathbf x,\varphi(\mathbf x))}{\partial_yF(\mathbf x,\varphi(\mathbf x))}\qquad(i=1,\ldots,n).
+\label{eq:implicit-derivative}
+\end{equation}
+\end{theorem}
+
+\begin{proof}
+Replacing $F$ by $-F$ if necessary, we may assume $\partial_yF(\mathbf a,b)>0$. By continuity there are $r_0,\delta>0$ such that the set $Q\coloneqq B(\mathbf a,r_0)\times(b-2\delta,b+2\delta)$ lies in $W$ and $\partial_yF>0$ on $Q$. Then for every $\mathbf x\in B(\mathbf a,r_0)$ the function $y\mapsto F(\mathbf x,y)$ is strictly increasing on $(b-2\delta,b+2\delta)$, by \cref{cor:monotone-derivative}.
+
+\emph{Existence and uniqueness.} Since $F(\mathbf a,b)=0$ and $F(\mathbf a,\cdot)$ is strictly increasing, $F(\mathbf a,b-\delta)<0<F(\mathbf a,b+\delta)$. The functions $\mathbf x\mapsto F(\mathbf x,b\pm\delta)$ are continuous, so there is $r\in(0,r_0]$ with $F(\mathbf x,b-\delta)<0<F(\mathbf x,b+\delta)$ for all $\mathbf x\in B(\mathbf a,r)$, by persistence of sign. For each such $\mathbf x$, the intermediate value theorem gives a zero of $F(\mathbf x,\cdot)$ in $(b-\delta,b+\delta)$, and strict monotonicity makes it unique. Call it $\varphi(\mathbf x)$. This proves the equivalence.
+
+\emph{Continuity.} Let $\mathbf x_0\in B(\mathbf a,r)$ and $0<\varepsilon<\delta-|\varphi(\mathbf x_0)-b|$. The argument just given, applied at the point $(\mathbf x_0,\varphi(\mathbf x_0))$ with $\varepsilon$ in place of $\delta$, gives $\rho>0$ such that for $\|\mathbf x-\mathbf x_0\|<\rho$ the function $F(\mathbf x,\cdot)$ has a zero within $\varepsilon$ of $\varphi(\mathbf x_0)$. This zero lies in $(b-\delta,b+\delta)$, so by uniqueness it is $\varphi(\mathbf x)$. Hence $|\varphi(\mathbf x)-\varphi(\mathbf x_0)|<\varepsilon$, and $\varphi$ is continuous at $\mathbf x_0$.
+
+\emph{Differentiability.} Let $\mathbf x\in B(\mathbf a,r)$ and $t\ne0$ so small that $\mathbf x+t\mathbf e_i\in B(\mathbf a,r)$, and put $y\coloneqq\varphi(\mathbf x)$, $y_t\coloneqq\varphi(\mathbf x+t\mathbf e_i)$. The segment between $(\mathbf x,y)$ and $(\mathbf x+t\mathbf e_i,y_t)$ lies in the convex set $Q$, and $F$ vanishes at both ends. By the mean value theorem (\cref{thm:mvt-rn}) there is a point $\mathbf q_t$ on the segment with
+\[
+0=\partial_{x_i}F(\mathbf q_t)\,t+\partial_yF(\mathbf q_t)\,(y_t-y),\qquad\text{so}\qquad\frac{\varphi(\mathbf x+t\mathbf e_i)-\varphi(\mathbf x)}t=-\frac{\partial_{x_i}F(\mathbf q_t)}{\partial_yF(\mathbf q_t)} .
+\]
+As $t\to0$, $y_t\to y$ by continuity of $\varphi$, so $\mathbf q_t\to(\mathbf x,y)$, and the continuity of the partial derivatives of $F$ gives \eqref{eq:implicit-derivative}. The right side of \eqref{eq:implicit-derivative} is continuous in $\mathbf x$, so $\varphi\in C^1(B(\mathbf a,r))$.
+\end{proof}
+
+The formula \eqref{eq:implicit-derivative} can be remembered by differentiating the identity $F(\mathbf x,\varphi(\mathbf x))=0$ with the chain rule, which gives $\partial_{x_i}F+\partial_yF\,\partial_i\varphi=0$; this is \term{implicit differentiation}. It computes the derivative of the implicitly defined function without solving for it. For the circle at a point with $y\ne0$ it gives $y'=-x/y$, as found in \cref{sec:rules}. The theorem also explains when a level set is a smooth curve or surface: if $\nabla F(\mathbf p)\ne\mathbf0$ at a point $\mathbf p$ with $F(\mathbf p)=0$, some partial derivative is nonzero, and near $\mathbf p$ the level set $\{F=0\}$ is the graph of a $C^1$ function of the remaining variables.
+
+\emph{The folium of Descartes.} The equation $F(x,y)\coloneqq x^3+y^3-3xy=0$ defines the curve of \cref{fig:implicit}B. Its gradient is $\nabla F=(3x^2-3y,\,3y^2-3x)$. At the point $(\frac32,\frac32)$ of the curve, $\nabla F=(\frac94,\frac94)$, so the curve is the graph of a function $y=\varphi(x)$ near this point, with slope $\varphi'(\frac32)=-\partial_xF/\partial_yF=-1$. On the curve the gradient vanishes only at the origin, since $x^2=y$ and $y^2=x$ give $x=x^4$, and the point $(1,1)$ is not on the curve. At the origin the theorem does not apply, and indeed the curve crosses itself there: near the origin it is neither a graph over the $x$-axis nor over the $y$-axis. The curve has the parametrisation $x=3t/(1+t^3)$, $y=3t^2/(1+t^3)$, $t\ne-1$, which passes through the origin twice, for $t=0$ and as $t\to\pm\infty$.
+
+\begin{figure}
+\sdpanel{A}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.46\textwidth, height=0.46\textwidth, xmin=-1.35, xmax=1.35, ymin=-1.35, ymax=1.35,
+  axis equal image, xtick={-1,0,1}, ytick={-1,0,1}, xlabel={$x$}, ylabel={$y$}]
+\addplot[black!45, line width=0.5pt, domain=0:360, samples=120] ({cos(x)},{sin(x)});
+\addplot[black, line width=1.1pt, domain=-0.6:0.6, samples=40] {sqrt(1-x^2)};
+\addplot[black, line width=1.1pt, domain=-35:35, samples=40] ({cos(x)},{sin(x)});
+\addplot[black, densely dotted, line width=0.6pt] coordinates {(1,-1.25) (1,1.25)};
+\fill[black] (axis cs:0,1) circle (1.4pt) (axis cs:1,0) circle (1.4pt);
+\end{axis}
+\end{tikzpicture}}\hfill
+\sdpanel{B}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.46\textwidth, height=0.46\textwidth, xmin=-2.3, xmax=2.3, ymin=-2.3, ymax=2.3,
+  axis equal image, xtick={-2,-1,0,1,2}, ytick={-2,-1,0,1,2}, xlabel={$x$}, ylabel={$y$}]
+\addplot[black!45, dashed, line width=0.5pt, domain=-2.3:1.3, samples=2] {-1-x};
+\addplot[black, line width=0.8pt, domain=-0.62:30, samples=400] ({3*x/(1+x^3)},{3*x^2/(1+x^3)});
+\addplot[black, line width=0.8pt, domain=-30:-1.6, samples=200] ({3*x/(1+x^3)},{3*x^2/(1+x^3)});
+\addplot[black, line width=0.5pt, domain=0.9:2.1, samples=2] {3-x};
+\fill[black] (axis cs:1.5,1.5) circle (1.4pt);
+\draw[black, line width=0.6pt, fill=white] (axis cs:0,0) circle (1.6pt);
+\end{axis}
+\end{tikzpicture}}
+\caption{Curves defined implicitly. (A) Near $(0,1)$ the unit circle is the graph of $y=\sqrt{1-x^2}$ (thick), and near $(1,0)$, where the tangent is vertical (dotted), it is the graph of $x=\sqrt{1-y^2}$ (thick) but not of any function of $x$. (B) The folium of Descartes $x^3+y^3=3xy$ with its asymptote $x+y+1=0$ (dashed). Near $(\frac32,\frac32)$ (dot) it is the graph of a function with slope $-1$ (thin line). At the origin (open circle), where $\nabla F=\mathbf0$, the curve crosses itself.}
+\label{fig:implicit}
+\end{figure}
+
+For systems of equations the theorem has the same form, with the partial derivative $\partial_yF$ replaced by a matrix of partial derivatives. We split the variables of $\mathbb R^{n+m}$ as $(\mathbf x,\mathbf y)$ with $\mathbf x\in\mathbb R^n$ and $\mathbf y\in\mathbb R^m$, and for $\mathbf F$ with values in $\mathbb R^m$ we write $D_{\mathbf x}\mathbf F$ and $D_{\mathbf y}\mathbf F$ for the $m\times n$ and $m\times m$ blocks of $D\mathbf F$ formed by the partial derivatives with respect to the $x_j$ and the $y_k$.
+
+\begin{theorem}[Implicit function theorem]
+\label{thm:implicit-function}
+Let $W\subseteq\mathbb R^n\times\mathbb R^m$ be open, $\mathbf F\in C^1(W)$ with values in $\mathbb R^m$, and $(\mathbf a,\mathbf b)\in W$ with $\mathbf F(\mathbf a,\mathbf b)=\mathbf0$ and $D_{\mathbf y}\mathbf F(\mathbf a,\mathbf b)$ invertible. Then there are open sets $V\ni\mathbf a$ in $\mathbb R^n$ and $V'\ni\mathbf b$ in $\mathbb R^m$ and a function $\boldsymbol\varphi\in C^1(V)$ with values in $V'$ such that, for $\mathbf x\in V$ and $\mathbf y\in V'$, $\mathbf F(\mathbf x,\mathbf y)=\mathbf0$ if and only if $\mathbf y=\boldsymbol\varphi(\mathbf x)$. Moreover
+\[
+D\boldsymbol\varphi(\mathbf x)=-\bigl(D_{\mathbf y}\mathbf F(\mathbf x,\boldsymbol\varphi(\mathbf x))\bigr)^{-1}D_{\mathbf x}\mathbf F(\mathbf x,\boldsymbol\varphi(\mathbf x)),
+\]
+and $\boldsymbol\varphi\in C^k(V)$ if $\mathbf F\in C^k(W)$.
+\end{theorem}
+
+\begin{proof}
+Apply the inverse function theorem to $\mathbf G(\mathbf x,\mathbf y)\coloneqq(\mathbf x,\mathbf F(\mathbf x,\mathbf y))$, a map from $W$ to $\mathbb R^{n+m}$. Its Jacobian matrix has the block form $\begin{pmatrix}I&0\\D_{\mathbf x}\mathbf F&D_{\mathbf y}\mathbf F\end{pmatrix}$, which is invertible at $(\mathbf a,\mathbf b)$ because $D_{\mathbf y}\mathbf F(\mathbf a,\mathbf b)$ is. The local inverse of $\mathbf G$ has the form $(\mathbf x,\mathbf z)\mapsto(\mathbf x,\boldsymbol\psi(\mathbf x,\mathbf z))$, and $\boldsymbol\varphi(\mathbf x)\coloneqq\boldsymbol\psi(\mathbf x,\mathbf0)$ is the required function; it is $C^k$ when $\mathbf G$ is. The formula for $D\boldsymbol\varphi$ follows by differentiating $\mathbf F(\mathbf x,\boldsymbol\varphi(\mathbf x))=\mathbf0$ with the chain rule, which gives $D_{\mathbf x}\mathbf F+D_{\mathbf y}\mathbf F\,D\boldsymbol\varphi=0$. Details are in Rudin~\cite[Thm.~9.28]{rudin1976} and, with the history of the theorem, in Krantz and Parks~\cite{krantz2002ift}.
+\end{proof}
+
+The theorem says that $m$ equations in $n+m$ unknowns generically determine $m$ of the unknowns as smooth functions of the other $n$, near a point where they hold, so that the solution set is locally an $n$-dimensional surface. Cauchy proved a version for analytic functions, and Dini gave the first proof for real functions with continuous derivatives in his lectures at Pisa in the 1870s~\cite{krantz2002ift}. The theorem is the foundation of the method of Lagrange multipliers in the next section, and it guarantees that the solutions of equations that depend on parameters, $\mathbf F(\mathbf x,\mathbf p)=\mathbf0$, depend smoothly on the parameters near a solution where the Jacobian matrix with respect to $\mathbf x$ is invertible. Volume~XII uses it in this form to study the sensitivity of solutions of optimisation problems.
+
+\section{Constrained Extrema and Lagrange Multipliers}
+\label{sec:lagrange}
+
+\subsection{The Idea}
+
+Many optimisation problems restrict the admissible points by equations. A box of given surface area should have the largest volume; a vector of length one should make a quadratic form as large as possible; a portfolio should minimise risk at a given expected return. In the simplest case we seek the extrema of $f(x,y)$ on a curve $g(x,y)=0$. \Cref{fig:lagrange} shows the level curves of $f(x,y)=xy$ and the unit circle $g(x,y)=x^2+y^2-1=0$. Moving along the circle, one crosses the level curves of $f$, and $f$ increases or decreases. Where the circle crosses a level curve transversally, $f$ cannot have an extremum on the circle, since moving along the circle in one direction increases $f$ and in the other decreases it. At an extremum the circle must therefore touch a level curve of $f$: the two curves have a common tangent, and since gradients are orthogonal to level curves (\cref{thm:gradient-level}), the gradients of $f$ and $g$ are parallel there,
+\[
+\nabla f(\mathbf c)=\lambda\nabla g(\mathbf c)\qquad\text{for some }\lambda\in\mathbb R .
+\]
+The number $\lambda$ is a \term{Lagrange multiplier}. Lagrange introduced the method in his \emph{M\'echanique analitique} of 1788 for mechanical systems with constraints and applied it to maxima and minima in 1797~\cite{lagrange1788,lagrange1797}.
+
+\begin{figure}
+\sdfloat{%
+\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.56\textwidth, height=0.56\textwidth, xmin=-1.6, xmax=1.6, ymin=-1.6, ymax=1.6,
+  axis equal image, xtick={-1,0,1}, ytick={-1,0,1}, xlabel={$x$}, ylabel={$y$}]
+\pgfplotsinvokeforeach{0.15,1}{
+  \addplot[black!55, line width=0.45pt, domain=#1/1.6:1.6, samples=80] {#1/x};
+  \addplot[black!55, line width=0.45pt, domain=-1.6:-#1/1.6, samples=80] {#1/x};
+  \addplot[black!55, dashed, line width=0.45pt, domain=#1/1.6:1.6, samples=80] {-#1/x};
+  \addplot[black!55, dashed, line width=0.45pt, domain=-1.6:-#1/1.6, samples=80] {-#1/x};}
+\addplot[black, line width=0.8pt, domain=0.3125:1.6, samples=80] {0.5/x};
+\addplot[black, line width=0.8pt, domain=-1.6:-0.3125, samples=80] {0.5/x};
+\addplot[black, dashed, line width=0.8pt, domain=0.3125:1.6, samples=80] {-0.5/x};
+\addplot[black, dashed, line width=0.8pt, domain=-1.6:-0.3125, samples=80] {-0.5/x};
+\addplot[black, line width=1.2pt, domain=0:360, samples=120] ({cos(x)},{sin(x)});
+\draw[black, line width=0.7pt, -{Latex[length=1.6mm]}] (axis cs:0.7071,0.7071) -- (axis cs:1.0607,1.0607);
+\draw[black!60, line width=0.7pt, -{Latex[length=1.6mm]}] (axis cs:0.7071,0.7071) -- (axis cs:1.2374,1.2374);
+\fill[black] (axis cs:0.7071,0.7071) circle (1.5pt) (axis cs:-0.7071,-0.7071) circle (1.5pt);
+\draw[black, line width=0.6pt, fill=white] (axis cs:-0.7071,0.7071) circle (1.6pt) (axis cs:0.7071,-0.7071) circle (1.6pt);
+\end{axis}
+\end{tikzpicture}}{Extrema of $f(x,y)=xy$ on the unit circle (thick). The level curves $xy=c$ are hyperbolas, solid for $c>0$ and dashed for $c<0$; the black ones, $c=\pm\frac12$, touch the circle. At the maximum points (dots) and the minimum points (open circles) the circle is tangent to a level curve, and the gradients $\nabla f=(y,x)$ (black arrow) and $\nabla g=(2x,2y)$ (grey arrow, scaled) are parallel. Elsewhere the circle crosses the level curves, and $f$ changes along it.\label{fig:lagrange}}
+\end{figure}
+
+\subsection{The Theorem}
+
+To turn the picture into a proof, the constraint curve near $\mathbf c$ must be a genuine curve, which the implicit function theorem guarantees when $\nabla g(\mathbf c)\ne\mathbf0$. We state the theorem for one constraint in any number of variables, and then for several constraints.
+
+\begin{theorem}[Lagrange multipliers, one constraint]
+\label{thm:lagrange-one}
+Let $U\subseteq\mathbb R^n$ be open, $f,g\in C^1(U)$, and $M\coloneqq\{\mathbf x\in U: g(\mathbf x)=0\}$. If the restriction of $f$ to $M$ has a local extremum at $\mathbf c\in M$, and $\nabla g(\mathbf c)\ne\mathbf0$, then there is a number $\lambda$ with
+\[
+\nabla f(\mathbf c)=\lambda\nabla g(\mathbf c).
+\]
+\end{theorem}
+
+\begin{proof}
+Some partial derivative of $g$ is nonzero at $\mathbf c$; renumbering the variables, we may assume $\partial_ng(\mathbf c)\ne0$, and we write $\mathbf x=(\mathbf x',x_n)$ with $\mathbf x'\in\mathbb R^{n-1}$, $\mathbf c=(\mathbf c',c_n)$. By \cref{thm:implicit-scalar}, near $\mathbf c$ the set $M$ is the graph of a $C^1$ function: there are $r,\delta>0$ and $\varphi\in C^1(B(\mathbf c',r))$ such that for $\|\mathbf x'-\mathbf c'\|<r$ and $|x_n-c_n|<\delta$, $g(\mathbf x',x_n)=0$ if and only if $x_n=\varphi(\mathbf x')$, and $\varphi(\mathbf c')=c_n$. The function
+\[
+h(\mathbf x')\coloneqq f(\mathbf x',\varphi(\mathbf x'))
+\]
+on the open ball $B(\mathbf c',r)$ takes the values of $f$ on $M$ near $\mathbf c$, so it has a local extremum at $\mathbf c'$, and its gradient vanishes there by \cref{thm:first-order}. By the chain rule and \eqref{eq:implicit-derivative}, for $i<n$,
+\[
+0=\partial_ih(\mathbf c')=\partial_if(\mathbf c)+\partial_nf(\mathbf c)\,\partial_i\varphi(\mathbf c')=\partial_if(\mathbf c)-\partial_nf(\mathbf c)\,\frac{\partial_ig(\mathbf c)}{\partial_ng(\mathbf c)} .
+\]
+With $\lambda\coloneqq\partial_nf(\mathbf c)/\partial_ng(\mathbf c)$ this says $\partial_if(\mathbf c)=\lambda\,\partial_ig(\mathbf c)$ for $i<n$, and for $i=n$ it holds by the definition of $\lambda$.
+\end{proof}
+
+The theorem converts a constrained problem in $n$ variables into an unconstrained-looking system of $n+1$ equations in the $n+1$ unknowns $\mathbf x$ and $\lambda$:
+\[
+\nabla f(\mathbf x)=\lambda\nabla g(\mathbf x),\qquad g(\mathbf x)=0 .
+\]
+These are exactly the conditions $\nabla\mathcal L=\mathbf0$ for the \term{Lagrangian} $\mathcal L(\mathbf x,\lambda)\coloneqq f(\mathbf x)-\lambda g(\mathbf x)$, whose gradient with respect to $\lambda$ is $-g$. The constrained extrema are among the critical points of the Lagrangian, but they are typically saddle points of $\mathcal L$, not extrema. Like \cref{thm:first-order}, the theorem gives a necessary condition only; to decide which candidates are maxima, minima or neither, one compares values, often with the help of the extreme value theorem. The condition $\nabla g(\mathbf c)\ne\mathbf0$ cannot be dropped: on the set $g(x,y)=y^3-x^2=0$, a curve with a cusp at the origin, the function $f(x,y)=y$ has its minimum $0$ at the origin, where $\nabla f=(0,1)$ but $\nabla g=\mathbf0$, and no $\lambda$ satisfies $\nabla f=\lambda\nabla g$.
+
+\begin{theorem}[Lagrange multipliers, several constraints]
+\label{thm:lagrange}
+Let $U\subseteq\mathbb R^n$ be open, $f\in C^1(U)$ and $\mathbf g=(g_1,\ldots,g_m)\in C^1(U)$ with $m<n$, and $M\coloneqq\{\mathbf x\in U: \mathbf g(\mathbf x)=\mathbf0\}$. Suppose the restriction of $f$ to $M$ has a local extremum at $\mathbf c$, and the gradients $\nabla g_1(\mathbf c),\ldots,\nabla g_m(\mathbf c)$ are linearly independent, that is, $\sum_kt_k\nabla g_k(\mathbf c)=\mathbf0$ only for $t_1=\cdots=t_m=0$. Then there are numbers $\lambda_1,\ldots,\lambda_m$ with
+\[
+\nabla f(\mathbf c)=\lambda_1\nabla g_1(\mathbf c)+\cdots+\lambda_m\nabla g_m(\mathbf c),\qquad\text{that is,}\qquad\nabla f(\mathbf c)=D\mathbf g(\mathbf c)^{\mathsf T}\boldsymbol\lambda .
+\]
+\end{theorem}
+
+\begin{proof}
+The proof follows that of \cref{thm:lagrange-one}. By the linear independence of the rows of $D\mathbf g(\mathbf c)$, some $m$ of its columns form an invertible $m\times m$ matrix, a fact about the rank of matrices that Chapters~15 and~16 prove. Renumbering, these are the last $m$ columns, and the implicit function theorem (\cref{thm:implicit-function}) writes $M$ near $\mathbf c$ as the graph $\mathbf y=\boldsymbol\varphi(\mathbf x)$ over the first $n-m$ variables $\mathbf x$, with $D\boldsymbol\varphi=-(D_{\mathbf y}\mathbf g)^{-1}D_{\mathbf x}\mathbf g$. The function $\mathbf x\mapsto f(\mathbf x,\boldsymbol\varphi(\mathbf x))$ has an unconstrained local extremum, so its gradient vanishes, which gives $\nabla_{\mathbf x}f-(D_{\mathbf x}\mathbf g)^{\mathsf T}(D_{\mathbf y}\mathbf g)^{-\mathsf T}\nabla_{\mathbf y}f=\mathbf0$ at $\mathbf c$. With $\boldsymbol\lambda\coloneqq(D_{\mathbf y}\mathbf g)^{-\mathsf T}\nabla_{\mathbf y}f$, where $B^{-\mathsf T}$ denotes $(B^{-1})^{\mathsf T}$, this says $\nabla_{\mathbf x}f=(D_{\mathbf x}\mathbf g)^{\mathsf T}\boldsymbol\lambda$, and $\nabla_{\mathbf y}f=(D_{\mathbf y}\mathbf g)^{\mathsf T}\boldsymbol\lambda$ holds by the definition of $\boldsymbol\lambda$. Together these are the claim; see also Apostol~\cite{apostol1969calculus}.
+\end{proof}
+
+Geometrically, the gradients $\nabla g_k(\mathbf c)$ span the directions normal to the constraint set $M$, which near $\mathbf c$ is a surface of dimension $n-m$, and the theorem says that at an extremum $\nabla f(\mathbf c)$ has no component tangent to $M$: moving along $M$ does not change $f$ to first order.
+
+\subsection{Examples}
+
+\emph{The product on the circle.} For $f(x,y)=xy$ and $g(x,y)=x^2+y^2-1$, the conditions are $y=2\lambda x$, $x=2\lambda y$ and $x^2+y^2=1$. Multiplying the first two equations by $y$ and $x$ gives $y^2=2\lambda xy=x^2$, so $x^2=y^2=\frac12$, and the candidates are the four points $(\pm\frac1{\sqrt2},\pm\frac1{\sqrt2})$, with $f=\pm\frac12$. Since $\nabla g=(2x,2y)\ne\mathbf0$ on the circle, and $f$ attains a maximum and a minimum on the closed bounded circle, the maximum $\frac12$ is attained at $\pm(\frac1{\sqrt2},\frac1{\sqrt2})$ and the minimum $-\frac12$ at $\pm(\frac1{\sqrt2},-\frac1{\sqrt2})$, as \cref{fig:lagrange} shows; the multipliers are $\lambda=\pm\frac12$.
+
+\emph{The inequality of the means once more.} Let $s>0$ and maximise $f(\mathbf x)=x_1x_2\cdots x_n$ on the set $K\coloneqq\{\mathbf x: x_i\ge0,\ x_1+\cdots+x_n=s\}$, which is closed and bounded; so a maximum exists by \cref{thm:evt-rn}. It is positive, since $f(s/n,\ldots,s/n)>0$, so it is attained at a point $\mathbf c$ with all $c_i>0$, which lies in the open set $U=\{\mathbf x: x_i>0\}$ where the only constraint is $g(\mathbf x)=x_1+\cdots+x_n-s=0$, with $\nabla g=(1,\ldots,1)\ne\mathbf0$. By \cref{thm:lagrange-one}, $\partial_if(\mathbf c)=\prod_{j\ne i}c_j=\lambda$ for every $i$. Multiplying by $c_i$ gives $f(\mathbf c)=\lambda c_i$ for every $i$, so all $c_i$ are equal, $c_i=s/n$, and the maximum is $(s/n)^n$. For positive $x_i$ with sum $s$ this says $x_1\cdots x_n\le(s/n)^n$, which is the inequality of the arithmetic and geometric means (\cref{thm:amgm,thm:amgm-log}), now derived from the calculus of several variables; equality holds only at the maximum point, where all $x_i$ are equal.
+
+\emph{Quadratic forms on the sphere.} Let $A\in\mathbb R^{n\times n}$ be symmetric, and seek the extrema of $q(\mathbf x)=\langle\mathbf x,A\mathbf x\rangle$ on the unit sphere $g(\mathbf x)=\|\mathbf x\|^2-1=0$. Both exist, since the sphere is closed and bounded. By the examples of \cref{sec:differentiability}, $\nabla q=2A\mathbf x$ and $\nabla g=2\mathbf x\ne\mathbf0$ on the sphere, so at every extremum
+\[
+A\mathbf x=\lambda\mathbf x,\qquad\|\mathbf x\|=1 :
+\]
+the extremal points are eigenvectors of $A$, and the multipliers are eigenvalues. At such a point $q(\mathbf x)=\langle\mathbf x,\lambda\mathbf x\rangle=\lambda$, so the maximum of $q$ on the sphere is the largest eigenvalue of $A$ and the minimum the smallest. In particular every symmetric matrix has a real eigenvalue, the first step of the spectral theorem that Chapter~20 proves along these lines; the quotient $\langle\mathbf x,A\mathbf x\rangle/\|\mathbf x\|^2$ is the \term{Rayleigh quotient}. For the matrix with the rows $(2,1)$ and $(1,2)$, the equations $2x+y=\lambda x$, $x+2y=\lambda y$ give $(\lambda-2)x=y$ and $(\lambda-2)y=x$, so $(\lambda-2)^2=1$ for a nonzero solution, $\lambda=3$ or $\lambda=1$, with the eigenvectors $\pm(1,1)/\sqrt2$ and $\pm(1,-1)/\sqrt2$; the quadratic form $2x^2+2xy+2y^2$ has the maximum $3$ and the minimum $1$ on the unit circle.
+
+\subsection{The Meaning of the Multiplier}
+
+The multiplier is not merely an auxiliary unknown; it measures how the optimal value responds to a change of the constraint. Consider the problem with the constraint $g(\mathbf x)=b$, and suppose that it has a solution $\mathbf c(b)$ with multiplier $\lambda(b)$ that depends differentiably on $b$. Then the optimal value $v(b)\coloneqq f(\mathbf c(b))$ satisfies
+\[
+v'(b)=\langle\nabla f(\mathbf c(b)),\mathbf c'(b)\rangle=\lambda(b)\,\langle\nabla g(\mathbf c(b)),\mathbf c'(b)\rangle=\lambda(b),
+\]
+by the chain rule, the Lagrange condition, and the derivative of the identity $g(\mathbf c(b))=b$. So $\lambda$ is the rate at which the optimal value changes per unit change of the constraint level. In economics, where $f$ is a profit and $g(\mathbf x)=b$ a budget, $\lambda$ is called the \term{shadow price} of the resource. For the product $x_1\cdots x_n$ with sum $s$, $v(s)=(s/n)^n$ and $v'(s)=(s/n)^{n-1}$, which is indeed the multiplier $\lambda=\prod_{j\ne i}c_j$ found above.
+
+\begin{note}{Inequality constraints}
+Most constraints in practice are inequalities: a quantity must be nonnegative, a budget must not be exceeded. For the problem of minimising $f(\mathbf x)$ subject to $g_k(\mathbf x)\le0$, $k=1,\ldots,m$, the conditions of \cref{thm:lagrange} are replaced by the \emph{Karush--Kuhn--Tucker conditions}: under a suitable regularity assumption, at a local minimum $\mathbf c$ there are multipliers $\mu_k\ge0$ with
+\[
+\nabla f(\mathbf c)+\sum_k\mu_k\nabla g_k(\mathbf c)=\mathbf0\qquad\text{and}\qquad\mu_kg_k(\mathbf c)=0\ \text{ for every }k .
+\]
+The second condition, complementary slackness, says that only the active constraints, those with $g_k(\mathbf c)=0$, carry a nonzero multiplier; inactive constraints are irrelevant near $\mathbf c$, as if they were absent. The sign condition $\mu_k\ge0$ says that $-\nabla f(\mathbf c)$, the direction of steepest descent, points out of the admissible set. The conditions were found by Karush in 1939 and, independently, by Kuhn and Tucker in 1951~\cite{karush1939,kuhn1951}. Volume~XII develops them with the duality theory of convex optimisation.
+\end{note}
+
+\section{Newton's Method in Several Variables}
+\label{sec:newton-n}
+
+\subsection{The Method}
+
+Newton's method for one equation replaced the function by its tangent and moved to the zero of the tangent (\cref{sec:newton}). For a system of $n$ equations in $n$ unknowns, $\mathbf F(\mathbf x)=\mathbf0$ with $\mathbf F\colon U\to\mathbb R^n$, the tangent is replaced by the linearisation: near an approximation $\mathbf x_k$,
+\[
+\mathbf F(\mathbf x)\approx\mathbf F(\mathbf x_k)+D\mathbf F(\mathbf x_k)(\mathbf x-\mathbf x_k),
+\]
+and the zero of the right side is the next approximation. If the Jacobian matrix $D\mathbf F(\mathbf x_k)$ is invertible, the \term{Newton step} $\mathbf d_k$ is the solution of the linear system
+\begin{equation}
+D\mathbf F(\mathbf x_k)\,\mathbf d_k=-\mathbf F(\mathbf x_k),\qquad\mathbf x_{k+1}\coloneqq\mathbf x_k+\mathbf d_k ,
+\label{eq:newton-n}
+\end{equation}
+that is, $\mathbf x_{k+1}=\mathbf x_k-D\mathbf F(\mathbf x_k)^{-1}\mathbf F(\mathbf x_k)$, which for $n=1$ is \eqref{eq:newton}. In practice the inverse is never formed: each step solves one linear system, by Gaussian elimination, at a cost of about $\frac23n^3$ operations, in addition to evaluating $\mathbf F$ and its $n^2$ partial derivatives. Geometrically, for $n=2$, the zero set of each linearised component is a straight line, the tangent of the zero curve of that component, and $\mathbf x_{k+1}$ is the intersection of the two lines (\cref{fig:newton-2d}). Simpson already treated systems of two equations in this way in 1740~\cite{ypma1995}. \Cref{alg:newton-n} states the method with the stopping rule of \cref{alg:newton}.
+
+\begin{algorithm}
+\begin{algorithmic}[1]
+\Require a differentiable map $\mathbf F\colon U\to\mathbb R^n$ and its Jacobian matrix $D\mathbf F$; a starting point $\mathbf x_0$; a tolerance $\tau>0$; a maximum number $K$ of steps
+\Ensure an approximation $\mathbf x$ of a zero of $\mathbf F$, or a report of failure
+\Name{NewtonSystem}{\mathbf F,D\mathbf F,\mathbf x_0,\tau,K}
+\State $\mathbf x\gets\mathbf x_0$
+\For{$k=1,\ldots,K$}
+  \State $J\gets D\mathbf F(\mathbf x)$
+  \If{$J$ is singular} \Return failure \Comment{no unique Newton step}
+  \EndIf
+  \State solve $J\mathbf d=-\mathbf F(\mathbf x)$ for $\mathbf d$ \Comment{Gaussian elimination}
+  \State $\mathbf x\gets\mathbf x+\mathbf d$
+  \If{$\|\mathbf d\|\le\tau$} \Return $\mathbf x$
+  \EndIf
+\EndFor
+\State \Return failure \Comment{no convergence within $K$ steps}
+\end{algorithmic}
+\caption{Newton's method for a system of $n$ equations in $n$ unknowns. Each step replaces $\mathbf F$ by its linearisation at the current point and moves to the zero of the linearisation.}
+\label{alg:newton-n}
+\end{algorithm}
+
+\subsection{An Example}
+
+Consider the intersection of the circle $x^2+y^2=4$ with the hyperbola $xy=1$, the zeros of
+\[
+\mathbf F(x,y)=\begin{pmatrix}x^2+y^2-4\\xy-1\end{pmatrix},\qquad D\mathbf F(x,y)=\begin{pmatrix}2x&2y\\y&x\end{pmatrix},\qquad\det D\mathbf F(x,y)=2(x^2-y^2).
+\]
+The intersection point in the first quadrant with $x>y$ can be found exactly: substituting $y=1/x$ gives $x^4-4x^2+1=0$, so $x^2=2+\sqrt3$ and $\mathbf c=\bigl(\frac{\sqrt6+\sqrt2}2,\frac{\sqrt6-\sqrt2}2\bigr)=(1.93185\ldots,0.51764\ldots)$. Starting from $\mathbf x_0=(2,0)$, where $\mathbf F=(0,-1)$ and $D\mathbf F=\operatorname{diag}(4,2)$, the first step is $\mathbf d_0=(0,\frac12)$, so $\mathbf x_1=(2,\frac12)$. There $\mathbf F=(\frac14,0)$ and
+\[
+D\mathbf F(\mathbf x_1)=\begin{pmatrix}4&1\\\frac12&2\end{pmatrix},\qquad\mathbf d_1=-D\mathbf F(\mathbf x_1)^{-1}\mathbf F(\mathbf x_1)=-\frac2{15}\begin{pmatrix}2&-1\\-\frac12&4\end{pmatrix}\begin{pmatrix}\frac14\\0\end{pmatrix}=\begin{pmatrix}-\frac1{15}\\\frac1{60}\end{pmatrix},
+\]
+by \cref{prop:inverse-2x2}, so $\mathbf x_2=(\frac{29}{15},\frac{31}{60})=(1.9333\ldots,0.51666\ldots)$. \Cref{tab:newton-2d} continues the iteration. As in one variable, the number of correct digits roughly doubles in each step, and the ratio $\|\mathbf e_{k+1}\|/\|\mathbf e_k\|^2$ of the errors $\mathbf e_k\coloneqq\mathbf x_k-\mathbf c$ settles down, here to $0.5000$.
+
+\begin{table}
+\sdfloat{%
+\begin{sdtable}{colspec={rlll}, row{1}={font=\small\bfseries}}
+\toprule
+$k$ & $\mathbf x_k$ & $\|\mathbf e_k\|$ & $\|\mathbf e_k\|/\|\mathbf e_{k-1}\|^2$ \\
+\midrule
+0 & $(2,\ 0)$ & $5.2\times10^{-1}$ & \\
+1 & $(2,\ 0.5)$ & $7.0\times10^{-2}$ & $0.258$ \\
+2 & $(1.93333333,\ 0.51666667)$ & $1.8\times10^{-3}$ & $0.358$ \\
+3 & $(1.93185274,\ 0.51763705)$ & $1.5\times10^{-6}$ & $0.479$ \\
+4 & $(1.93185165,\ 0.51763809)$ & $1.1\times10^{-12}$ & $0.4997$ \\
+5 & $(1.93185165,\ 0.51763809)$ & $6.4\times10^{-25}$ & $0.5000$ \\
+6 & $(1.93185165,\ 0.51763809)$ & $2.0\times10^{-49}$ & $0.5000$ \\
+\bottomrule
+\end{sdtable}}{Newton's method for $x^2+y^2=4$, $xy=1$, started at $(2,0)$, computed in exact rational arithmetic; the errors are measured against the exact zero $\mathbf c=\bigl(\frac{\sqrt6+\sqrt2}2,\frac{\sqrt6-\sqrt2}2\bigr)$ and the iterates are rounded to eight decimals. The number of correct digits roughly doubles in each step.\label{tab:newton-2d}}
+\end{table}
+
+\begin{figure}
+\sdfloat{%
+\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.56\textwidth, height=0.5\textwidth, xmin=1.55, xmax=2.25, ymin=-0.15, ymax=0.8,
+  xtick={1.6,1.8,2,2.2}, ytick={0,0.2,0.4,0.6}, xlabel={$x$}, ylabel={$y$}]
+\addplot[black, line width=0.9pt, domain=-10:25, samples=80] ({2*cos(x)},{2*sin(x)});
+\addplot[black, dashed, line width=0.9pt, domain=1.3:2.3, samples=60] {1/x};
+\addplot[black!55, line width=0.5pt] coordinates {(2,-0.15) (2,0.8)};
+\addplot[black!55, line width=0.5pt, domain=1.55:2.25, samples=2] {0.5};
+\addplot[black!55, line width=0.5pt, domain=1.75:2.15, samples=2] {0.5-4*(x-2)-0.25};
+\addplot[black!55, line width=0.5pt, domain=1.55:2.25, samples=2] {0.5-0.25*(x-2)};
+\addplot[black, only marks, mark=*, mark size=1.5pt] coordinates {(2,0) (2,0.5) (1.933333,0.516667)};
+\node[font=\scriptsize, anchor=west] at (axis cs:2.01,0.0) {$\mathbf x_0$};
+\node[font=\scriptsize, anchor=south west] at (axis cs:2.0,0.5) {$\mathbf x_1$};
+\node[font=\scriptsize, anchor=north east] at (axis cs:1.93,0.51) {$\mathbf x_2$};
+\end{axis}
+\end{tikzpicture}}{Newton's method for the intersection of the circle $x^2+y^2=4$ (solid) and the hyperbola $xy=1$ (dashed). At $\mathbf x_0=(2,0)$ the linearised equations have the zero sets $x=2$ and $y=\frac12$ (grey), which meet at $\mathbf x_1$. At $\mathbf x_1$, which lies on the hyperbola, they are the tangent of the hyperbola, of slope $-\frac14$, and a line of slope $-4$ parallel to the tangent of the circle through $\mathbf x_1$ about the origin (grey); they meet at $\mathbf x_2$, already very close to the intersection of the curves.\label{fig:newton-2d}}
+\end{figure}
+
+\subsection{Quadratic Convergence}
+
+The analysis of \cref{thm:newton-quadratic} carries over almost word for word, with norms in place of absolute values. The hypothesis $|f'|\ge m$ becomes a bound on the inverse of the Jacobian matrix, and the Lipschitz condition on $f'$ becomes one on $D\mathbf F$.
+
+\begin{theorem}[Quadratic convergence of Newton's method]
+\label{thm:newton-n}
+Let $\mathbf c\in\mathbb R^n$, $r>0$, $B\coloneqq\bar B(\mathbf c,r)$, and let $\mathbf F$ be $C^1$ on an open set containing $B$, with $\mathbf F(\mathbf c)=\mathbf0$. Suppose there are constants $\beta,\gamma>0$ such that for all $\mathbf x,\mathbf y\in B$ the matrix $D\mathbf F(\mathbf x)$ is invertible and
+\[
+\|D\mathbf F(\mathbf x)^{-1}\|_2\le\beta,\qquad\|D\mathbf F(\mathbf x)-D\mathbf F(\mathbf y)\|_2\le\gamma\|\mathbf x-\mathbf y\| ,
+\]
+and put $K\coloneqq\beta\gamma/2$. If $\mathbf x_0\in B$ and $q\coloneqq K\|\mathbf x_0-\mathbf c\|<1$, then all Newton iterates are defined and lie in $B$, and their errors $\mathbf e_k\coloneqq\mathbf x_k-\mathbf c$ satisfy
+\[
+\|\mathbf e_{k+1}\|\le K\|\mathbf e_k\|^2,\qquad K\|\mathbf e_k\|\le q^{2^k},\qquad\|\mathbf e_k\|\le q^k\|\mathbf e_0\| .
+\]
+Moreover, $\mathbf c$ is the only zero of $\mathbf F$ in $B\cap B(\mathbf c,1/K)$.
+\end{theorem}
+
+\begin{proof}
+Suppose $\mathbf x_k\in B$ and $K\|\mathbf e_k\|\le q$, which holds for $k=0$. Then $D\mathbf F(\mathbf x_k)$ is invertible, the step is defined, and
+\[
+\mathbf e_{k+1}=\mathbf x_k-\mathbf c-D\mathbf F(\mathbf x_k)^{-1}\mathbf F(\mathbf x_k)=D\mathbf F(\mathbf x_k)^{-1}\bigl(\mathbf F(\mathbf c)-\mathbf F(\mathbf x_k)-D\mathbf F(\mathbf x_k)(\mathbf c-\mathbf x_k)\bigr),
+\]
+using $\mathbf F(\mathbf c)=\mathbf0$. The ball $B$ is convex, so \cref{lem:linear-remainder-rn} bounds the norm of the bracket by $\frac\gamma2\|\mathbf e_k\|^2$, and \cref{prop:matrix-norms} gives
+\[
+\|\mathbf e_{k+1}\|\le\beta\cdot\tfrac\gamma2\|\mathbf e_k\|^2=K\|\mathbf e_k\|\cdot\|\mathbf e_k\|\le q\|\mathbf e_k\|\le\|\mathbf e_k\|\le r .
+\]
+So $\mathbf x_{k+1}\in B$, and $K\|\mathbf e_{k+1}\|\le(K\|\mathbf e_k\|)^2\le q$. By induction all iterates are defined and lie in $B$, the first and third inequalities hold, and squaring step by step gives the second. Finally, if $\mathbf F(\mathbf d)=\mathbf0$ with $\mathbf d\in B$, the same computation with $\mathbf c$ as the base point gives
+\[
+\|\mathbf d-\mathbf c\|=\bigl\|D\mathbf F(\mathbf c)^{-1}\bigl(\mathbf F(\mathbf d)-\mathbf F(\mathbf c)-D\mathbf F(\mathbf c)(\mathbf d-\mathbf c)\bigr)\bigr\|\le K\|\mathbf d-\mathbf c\|^2 ,
+\]
+so either $\mathbf d=\mathbf c$ or $\|\mathbf d-\mathbf c\|\ge1/K$.
+\end{proof}
+
+As in one variable, the constant $K=\beta\gamma/2$ combines the curvature of $\mathbf F$, measured by $\gamma$, with the size of the inverse of the Jacobian matrix, which converts errors in the value of $\mathbf F$ into errors in the position. Newton's method is fast for well-conditioned Jacobian matrices and slow, or unreliable, when they are nearly singular; in the example, $\det D\mathbf F=2(x^2-y^2)$ vanishes on the diagonals $y=\pm x$, and starting points near them produce huge steps. The hypotheses hold near every zero at which the Jacobian matrix is invertible.
+
+\begin{corollary}[Local convergence]
+\label{cor:newton-n-local}
+Let $\mathbf F\in C^2(U)$ and let $\mathbf c\in U$ be a zero of $\mathbf F$ with $D\mathbf F(\mathbf c)$ invertible. Then there is $\rho>0$ such that Newton's method converges quadratically to $\mathbf c$ from every starting point $\mathbf x_0$ with $\|\mathbf x_0-\mathbf c\|\le\rho$.
+\end{corollary}
+
+\begin{proof}
+Choose $r>0$ with $\bar B(\mathbf c,r)\subseteq U$. The function $\det D\mathbf F$ is continuous, as a polynomial in the entries of $D\mathbf F$, and nonzero at $\mathbf c$, so it remains nonzero on a smaller closed ball $B=\bar B(\mathbf c,r')$; on $B$ the entries of $D\mathbf F(\mathbf x)^{-1}$ are continuous functions of $\mathbf x$, by \cref{thm:invertible-matrices}\,(iii), so $\|D\mathbf F(\mathbf x)^{-1}\|_2\le\|D\mathbf F(\mathbf x)^{-1}\|_{\mathrm F}$ is bounded by some $\beta$, by the extreme value theorem. The second partial derivatives of $\mathbf F$ are continuous and hence bounded on $B$, so each entry of $D\mathbf F$ is Lipschitz continuous on the convex set $B$ by \cref{cor:zero-gradient}, and $\|D\mathbf F(\mathbf x)-D\mathbf F(\mathbf y)\|_2\le\|D\mathbf F(\mathbf x)-D\mathbf F(\mathbf y)\|_{\mathrm F}\le\gamma\|\mathbf x-\mathbf y\|$ for a suitable $\gamma$. \Cref{thm:newton-n} applies with $\rho\coloneqq\min(r',1/(2K))$.
+\end{proof}
+
+The theorem assumes that a zero exists. The theorem of Kantorovich in the note at the end of \cref{sec:newton} holds in the same form for systems, and proves the existence of a zero from information at the starting point alone~\cite{ortega2000}. Far from a zero, Newton's method can fail in all the ways of one variable, and in more, since the iterates can wander in $n$ dimensions; practical solvers safeguard it by controlling the length of the steps, as Volume~XII explains.
+
+\subsection{Newton's Method for Minimisation}
+
+The critical points of a function $f\in C^2(U)$ are the zeros of $\mathbf F=\nabla f$, whose Jacobian matrix is the Hessian $\nabla^2f$. Newton's method for $\nabla f(\mathbf x)=\mathbf0$ is therefore
+\[
+\nabla^2f(\mathbf x_k)\,\mathbf d_k=-\nabla f(\mathbf x_k),\qquad\mathbf x_{k+1}=\mathbf x_k+\mathbf d_k .
+\]
+It has a second interpretation: $\mathbf x_{k+1}$ is the critical point of the quadratic Taylor model $f(\mathbf x_k)+\langle\nabla f(\mathbf x_k),\mathbf d\rangle+\frac12\langle\mathbf d,\nabla^2f(\mathbf x_k)\mathbf d\rangle$ of \cref{thm:taylor-rn}, which is its minimum if the Hessian is positive definite. Near a local minimum with positive definite Hessian, \cref{cor:newton-n-local} guarantees quadratic convergence. Far from it, the method looks only for critical points, and it may move uphill or towards a saddle point. On Rosenbrock's function $f(x,y)=(1-x)^2+100(y-x^2)^2$, a standard test with its minimum at $(1,1)$ at the bottom of a narrow curved valley~\cite{rosenbrock1960}, Newton's method started at $(-1.2,1)$ reaches the minimum to $24$ digits after $7$ steps; but on the way, the value of $f$ rises at the second step from $4.7$ to $1412$, before falling to $0.056$ at the third. Methods for minimisation therefore combine the Newton step with safeguards that enforce descent.
+
+For least squares problems, in which $f(\mathbf x)=\frac12\|\mathbf r(\mathbf x)\|^2$ is half the sum of the squares of the components of a residual map $\mathbf r\colon\mathbb R^n\to\mathbb R^N$, the chain rule gives $\nabla f=D\mathbf r^{\mathsf T}\mathbf r$ and $\nabla^2f=D\mathbf r^{\mathsf T}D\mathbf r+\sum_ir_i\nabla^2r_i$. The \term{Gauss--Newton method} drops the second sum, which is small when the residuals are small, and so needs only the Jacobian matrix of $\mathbf r$; each step solves the normal equations $D\mathbf r^{\mathsf T}D\mathbf r\,\mathbf d=-D\mathbf r^{\mathsf T}\mathbf r$ of a linear least squares problem, those of \cref{sec:extrema-n} for the linearised residual. Volume~XII develops Newton, quasi-Newton and Gauss--Newton methods, and the safeguards that make them robust, for the optimisation and root-finding routines of the library~\cite{dennis1996,nocedal2006}.
+
+\bigskip
+The derivative of a function of several variables is a matrix, and almost everything in this chapter followed from that single fact, combined with the theorems of one variable applied along lines. The gradient points uphill and is orthogonal to level sets, the chain rule multiplies Jacobian matrices, the Hessian describes the curvature, and its definiteness classifies critical points. The inverse and implicit function theorems say when equations can be solved locally, Lagrange multipliers handle constraints, and Newton's method solves systems with quadratic convergence. Chapter~11 integrates functions of several variables, with the Jacobian determinant as the factor in the change of variables, and Chapter~12 integrates along curves and surfaces. Part~III then builds the linear algebra that this chapter has used: the determinants and inverses of Chapters~14 and~17, the projections and least squares problems of Chapter~18, and the eigenvalues and positive definite matrices of Chapters~19 and~20, which complete the theory of the second-derivative test.
+
+\chapternotes
+
+The differential calculus of several variables grew in the eighteenth century from mechanics and geometry. Euler and Clairaut computed with partial derivatives and assumed the symmetry of mixed derivatives, which Schwarz proved in 1873~\cite{schwarz1873}; Peano's counterexample appeared in his edition of Genocchi's lectures~\cite{genocchi1884}, and Hairer and Wanner~\cite{hairer1996analysis} tell this history with many other episodes. Lagrange introduced the multipliers for constrained problems in mechanics~\cite{lagrange1788} and gave the second-derivative test~\cite{lagrange1797}; Cauchy treated the differential of a function of several variables in his lectures of 1823~\cite{cauchy1823} and proposed the method of steepest descent in 1847~\cite{cauchy1847}; Jacobi studied functional determinants in 1841~\cite{jacobi1841}. The method of least squares goes back to Legendre and Gauss~\cite{legendre1805,gauss1809}, and Stigler~\cite{stigler1981} discusses its invention. Krantz and Parks~\cite{krantz2002ift} tell the history of the implicit function theorem, from Newton and Lagrange through Cauchy and Dini to the modern versions. The definition of the derivative as a linear map in normed spaces, used in the note in \cref{sec:differentiability}, is the starting point of Dieudonn\'e's treatment~\cite{dieudonne1960}, and Acosta and Delgado~\cite{acosta1994} develop Carath\'eodory's form of the derivative in several variables, which our proof of the chain rule uses.
+
+Among textbooks at the level of this chapter, Apostol's second volume~\cite{apostol1969calculus} treats the calculus of several variables together with linear algebra, Marsden and Tromba~\cite{marsden2012vector} emphasise the geometry, with many figures, and Hubbard and Hubbard~\cite{hubbard2015vector} develop linear algebra and calculus side by side and prove the inverse and implicit function theorems through Newton's method and Kantorovich's theorem. Spivak's \emph{Calculus on Manifolds}~\cite{spivak1965manifolds} and Rudin~\cite{rudin1976} (Chapter~9) are concise and rigorous and lead on to Volume~II. For positive definite matrices and Sylvester's criterion see Horn and Johnson~\cite{horn2013}, and for the computational side of linear algebra Golub and Van Loan~\cite{golub2013}. Newton's method for systems and its convergence theory are treated by Ortega and Rheinboldt~\cite{ortega2000} and by Dennis and Schnabel~\cite{dennis1996}, and its use in optimisation by Nocedal and Wright~\cite{nocedal2006}; Rosenbrock's function comes from~\cite{rosenbrock1960}. The conditions for inequality constraints are due to Karush~\cite{karush1939} and to Kuhn and Tucker~\cite{kuhn1951}. Griewank and Walther~\cite{griewank2008} is the standard account of automatic differentiation, Linnainmaa~\cite{linnainmaa1976} the original source of the reverse mode, Rumelhart, Hinton and Williams~\cite{rumelhart1986} the paper that made backpropagation known in machine learning, and Baydin and others~\cite{baydin2018} a survey for that audience.
+
+\chapterreferences
