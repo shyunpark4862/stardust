@@ -328,6 +328,7 @@
 \RequirePackage{tikz}
 \RequirePackage{pgfplots}
 \pgfplotsset{compat=1.18}
+\usepgfplotslibrary{groupplots}
 \usetikzlibrary{arrows.meta,calc,positioning,decorations.pathreplacing,patterns}
 % 선 모양으로 계열을 가른다: 실선, 파선, 점선, 일점쇄선, 옅은 실선
 \pgfplotscreateplotcyclelist{sdbw}{%
