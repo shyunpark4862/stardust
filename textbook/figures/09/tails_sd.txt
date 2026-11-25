@@ -1,0 +1,12 @@
+x=3.0: ccdf rel 4.4e-16, 1-cdf rel 6.6e-15
+x=5.0: ccdf rel 1.9e-16, 1-cdf rel 1.5e-10
+x=8.0: ccdf rel 1.2e-16, 1-cdf rel 7.1e-02
+x=20.0: ccdf rel 3.6e-16, 1-cdf rel 1.0e+00
+x=37.0: ccdf rel 3.0e-16, 1-cdf rel 1.0e+00
+logccdf(40.0) = -804.6084420137538, exact -804.6084420137538, rel 1.7e-17, ccdf = 0.0
+logccdf(100.0) = -5005.524208694205, exact -5005.524208694205, rel 4.2e-17, ccdf = 0.0
+Poisson(3).icdf(0.4231900811268435) = 2.0, exact quantile 2
+Poisson(3).icdf(0.42319008112684353) = 2.0, exact quantile 3
+Poisson(3).icdf(0.4231900811268436) = 3.0, exact quantile 3
+Poisson(3).icdf(0.423190081126844) = 3.0, exact quantile 3
+Poisson cdf(2) = 0.42319008112684353 exact 0.423190081126843515324410533025525101369446533601597332324835684651515675706696176309461076011383428474411293532596296583
