@@ -78,3 +78,9 @@
 
 - 위치: `csrc/interpolate/aaa.cpp` 88–98행의 `cdiv`(주석 "numpy's complex quotient")는 `(ar + ai * rat) * scl`처럼 곱과 합을 따로 반올림한다. `csrc/array/kernels/scalar_ops.hpp`의 `cdiv`는 같은 식을 `fma`로 쓴다. 둘 다 "numpy의 것"이라 하지만 끝 비트가 다를 수 있다.
 - 제안(고치지 않음): 하나로 모으기(scipy와 비트를 맞추려는 의도라면 주석에 그 이유를 적기).
+
+## special: bessel.hpp의 "86 ULP" 주석과 단위 (2026-11-25, 6장 측정, 우선순위 낮음)
+
+- 위치: `csrc/special/ops/bessel.hpp` 91–92행 주석 "over n steps float64 loses ~n/2 ULP (86 ULP at nu = 286, x = 100, measured)".
+- 관찰(`textbook/figures/06/downrec.py`, `threeway.py`; 십진 참값에서 출발한 같은 점화): ν = 286.3, x = 100에서 J를 아래로 binary64로 점화하면 오차가 짝의 크기 max(|J_v|, |J_v+1|) 기준으로 최대 47u, double-double이면 1.03u. 400걸음에서는 보통 binary64 40u, 빠른 경로 식(계수를 double-double 1/x로 한 번 반올림, fma 한 번) 32u(J)·43u(Y). 주석의 86 ULP와 n/2는 무엇을 기준으로 잰 것인지(값 자체의 ULP인지, 정규화를 거친 최종값인지) 적혀 있지 않다.
+- 제안(고치지 않음): 주석에 측정 기준과 스크립트를 적기. 동작 변경은 없음.

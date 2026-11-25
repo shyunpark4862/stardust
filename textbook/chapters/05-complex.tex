@@ -118,7 +118,7 @@ $e^z=\sum z^n/n!$, $\cos z$, $\sin z$는 수렴 반지름이 $\infty$인 급수�
 
 \cref{alg:twiddle}의 단계를 보자. 1행의 $o$는 $k/n$이 어느 팔분원에 있는지이고 $r/n\in[0,1)$은 그 팔분원 안의 위치이다. $8k$가 넘치지 않도록 $n<2^{50}$을 요구한다. 짝수 팔분원은 사분원 $o/2$의 시작에서 $\theta$만큼 간 자리이고 홀수 팔분원은 다음 사분원 $(o+1)/2$의 시작에서 $\theta'=(\pi/4)((n-r)/n)$만큼 거꾸로 온 자리여서 5행은 $\sin(-\theta')=-\sin\theta'$로 부호만 바꾼다. 어느 쪽이든 사인과 코사인을 계산하는 각은 $[0,\pi/4]$에 있다. 7행은 사분원 회전 $e^{iq\pi/2}=i^q$를 곱한다. $i$를 곱하면 $(c,s)\mapsto(-s,c)$로 맞바꾸고 부호만 바뀌므로 반올림이 없다. $e^{-i\phi}$의 허수부는 $-\sin\phi$이므로 8행에서 부호를 바꾼다.
 
-함수 \textsc{OctantSinCos}는 $\theta=(\pi/4)(a/b)$를 double-double(두 double의 합으로 나타낸 수, 12장)로 만든다. 여기서 $\mathrm{RN}$은 가장 가까운 double로 반올림한 값, $\mathrm{ulp}$은 마지막 자리 하나의 크기(10장)이고 \code{fma}는 곱과 합을 한 번만 반올림하는 연산이다. 첫 단계는 다음 보조정리에 기댄다.
+함수 \textrm{OctantSinCos}는 $\theta=(\pi/4)(a/b)$를 double-double(두 double의 합으로 나타낸 수, 12장)로 만든다. 여기서 $\mathrm{RN}$은 가장 가까운 double로 반올림한 값, $\mathrm{ulp}$은 마지막 자리 하나의 크기(10장)이고 \code{fma}는 곱과 합을 한 번만 반올림하는 연산이다. 첫 단계는 다음 보조정리에 기댄다.
 
 \begin{lemma}[나눗셈의 나머지]
 \label{lem:div-remainder}
@@ -664,7 +664,7 @@ stardust의 \code{special} 영역에 있는 \cref{alg:csqrt}는 넘침을 따로
 \label{alg:clog}
 \end{algorithm}
 
-\cref{alg:clog}의 3--4행은 넘침과 정밀도 손실을 막는 척도 맞춤이다. $|z|$가 binary64의 최댓값 근처이면 $\operatorname{hypot}$이 넘치고 $|z|$가 비정규수이면 몇 비트밖에 남지 않는다. $2$의 거듭제곱을 곱하는 것은 정확하므로 척도를 맞춰 계산하고 로그에서 $k\ln2$를 더하면 된다. 5행의 허수부는 \code{atan2}이고 이 함수가 $y=\pm0$, $x<0$에서 $\pm\pi$를 내므로 자름의 쪽이 저절로 지켜진다. \textsc{CLog1p}의 실수부는 $|1+w|^2=1+2a+a^2+b^2$에서 $1$을 미리 뺀 양 $a(a+2)+b^2$을 \code{fma} 하나로 만들어 \code{log1p}에 넘긴다. $1+w$를 반올림하는 일이 없으므로 $|1+w|$가 $1$에 아주 가깝지 않은 한, 예컨대 $w$가 작고 $\operatorname{Re}w$가 $-|w|^2/2$ 근처가 아니면 실수부가 상대 정확도를 잃지 않는다. 그 근처에서는 $2a$와 $b^2$이 상쇄하지만 \code{loggamma}가 쓰는 자리에서는 절대오차면 충분하다.
+\cref{alg:clog}의 3--4행은 넘침과 정밀도 손실을 막는 척도 맞춤이다. $|z|$가 binary64의 최댓값 근처이면 $\operatorname{hypot}$이 넘치고 $|z|$가 비정규수이면 몇 비트밖에 남지 않는다. $2$의 거듭제곱을 곱하는 것은 정확하므로 척도를 맞춰 계산하고 로그에서 $k\ln2$를 더하면 된다. 5행의 허수부는 \code{atan2}이고 이 함수가 $y=\pm0$, $x<0$에서 $\pm\pi$를 내므로 자름의 쪽이 저절로 지켜진다. \textrm{CLog1p}의 실수부는 $|1+w|^2=1+2a+a^2+b^2$에서 $1$을 미리 뺀 양 $a(a+2)+b^2$을 \code{fma} 하나로 만들어 \code{log1p}에 넘긴다. $1+w$를 반올림하는 일이 없으므로 $|1+w|$가 $1$에 아주 가깝지 않은 한, 예컨대 $w$가 작고 $\operatorname{Re}w$가 $-|w|^2/2$ 근처가 아니면 실수부가 상대 정확도를 잃지 않는다. 그 근처에서는 $2a$와 $b^2$이 상쇄하지만 \code{loggamma}가 쓰는 자리에서는 절대오차면 충분하다.
 
 \begin{figure}[htbp]
 \centering
@@ -681,7 +681,7 @@ stardust의 \code{special} 영역에 있는 \cref{alg:csqrt}는 넘침을 따로
 \addplot[black,mark=*,mark size=0.8pt] table[x=t,y expr={max(\thisrow{lib},1e-16)}]{figures/05/log1p_small.dat};
 \addlegendentry{\code{log1p}}
 \addplot[black,dashed,thick] table[x=t,y expr={max(\thisrow{cx},1e-16)}]{figures/05/log1p_small.dat};
-\addlegendentry{\textsc{CLog1p}}
+\addlegendentry{\textrm{CLog1p}}
 \end{groupplot}
 \end{tikzpicture}
 \caption{작은 부분의 상대오차. 위는 $\sqrt{1+iy}$의 허수부(stardust \code{sqrt}, \cref{alg:csqrt}, 교과서 식), 아래는 $w=|w|e^{2i}$일 때 $\operatorname{Log}(1+w)$의 실수부(stardust \code{log1p}, \cref{alg:clog}). $10^{-16}$은 그 이하를 뜻한다(\code{figures/05/branch.py}).}
@@ -693,7 +693,7 @@ stardust의 \code{special} 영역에 있는 \cref{alg:csqrt}는 넘침을 따로
 
 stardust에는 복소 초등 함수가 두 층으로 있다. 하나는 배열의 원소별 함수(\code{sd.sqrt}, \code{sd.log} 등, 27장)이다. 이 층은 numpy와 같은 결과를 내려고 하므로 numpy처럼 시스템 수학 라이브러리의 C99 함수 \code{csqrt}, \code{clog}, \code{cexp}, \code{csin}, \code{casin}, \code{catanh} 등을 그대로 부른다(\code{csrc/array/kernels/scalar\_ops.hpp}). C99에 없는 \code{expm1}, \code{log1p}, \code{log2}, \code{log10}은 numpy의 식을 그대로 옮겼다. \code{expm1}은 $\operatorname{Re}=\operatorname{expm1}(x)\cos y-2\sin^2(y/2)$, $\operatorname{Im}=e^x\sin y$이고 \code{log1p}는 $(\ln\operatorname{hypot}(1+a,b),\ \operatorname{atan2}(b,1+a))$, \code{log2}와 \code{log10}은 \code{clog}에 상수를 곱한 것이다. \code{pow}도 numpy를 따라 지수가 $|n|<100$인 정수이면 \code{csrc/array/kernels/scalar\_ops.hpp}의 복소 곱셈으로 이진 거듭제곱을 하고(음수이면 마지막에 역수) 그 밖에서만 \code{cpow}를 부른다. 다른 하나는 특수 함수 영역의 도우미(\code{csrc/special/cplx.hpp})이다. \code{loggamma}, \code{wofz}, \code{lambertw}가 쓰며 \cref{alg:csqrt,alg:clog}와 numpy의 Smith 나눗셈(27장)으로 이루어진다. 자름 위에서 $0$의 부호를 지키는 것은 두 층이 같다.
 
-두 층은 작은 부분에서 다르게 동작한다(\cref{fig:small-parts}). 시스템의 \code{csqrt}는 $|y|\ge2^{-511}$에서 Kahan의 식과 같은 정확도(최대 상대오차 $1.4\times10^{-16}$)를 내지만 $|y|<2^{-511}$이면 허수부를 $0$으로 돌려준다. $x<0$이면 같은 범위에서 실수부가 $0$이 된다($\sqrt{-1+2^{-520}i}$가 $0+1i$). 교과서 식은 $|y|<10^{-8}$쯤에서 이미 완전히 틀린다. numpy의 \code{log1p} 식은 $1+a$를 먼저 반올림하므로 $\operatorname{Re}\operatorname{Log}(1+w)$의 상대오차가 약 $u/|w|$로 자란다. $|w|=10^{-8}$에서 $1.2\times10^{-8}$이고 $|w|<10^{-16}$이면 $0$이 된다. \textsc{CLog1p}는 전 범위에서 $10^{-16}$ 아래이다. 원소별 층은 numpy와 같은 비트를 내려고 이 동작을 그대로 물려받았다. 정확한 식으로 바꾸면 numpy와 결과가 달라지므로 설계를 바꾸지 않고는 고칠 수 없다. 이 차이는 이 책의 측정으로 확인한 개선 여지로 기록해 두었다.
+두 층은 작은 부분에서 다르게 동작한다(\cref{fig:small-parts}). 시스템의 \code{csqrt}는 $|y|\ge2^{-511}$에서 Kahan의 식과 같은 정확도(최대 상대오차 $1.4\times10^{-16}$)를 내지만 $|y|<2^{-511}$이면 허수부를 $0$으로 돌려준다. $x<0$이면 같은 범위에서 실수부가 $0$이 된다($\sqrt{-1+2^{-520}i}$가 $0+1i$). 교과서 식은 $|y|<10^{-8}$쯤에서 이미 완전히 틀린다. numpy의 \code{log1p} 식은 $1+a$를 먼저 반올림하므로 $\operatorname{Re}\operatorname{Log}(1+w)$의 상대오차가 약 $u/|w|$로 자란다. $|w|=10^{-8}$에서 $1.2\times10^{-8}$이고 $|w|<10^{-16}$이면 $0$이 된다. \textrm{CLog1p}는 전 범위에서 $10^{-16}$ 아래이다. 원소별 층은 numpy와 같은 비트를 내려고 이 동작을 그대로 물려받았다. 정확한 식으로 바꾸면 numpy와 결과가 달라지므로 설계를 바꾸지 않고는 고칠 수 없다. 이 차이는 이 책의 측정으로 확인한 개선 여지로 기록해 두었다.
 
 \subsection{Complex Division}
 \label{sec:smith}
@@ -811,12 +811,12 @@ $\operatorname{Im}z\ge0$이고 $z\notin(-\infty,0]$이라 하자. $P_0=1$, $P_{j
 \If{$x>7$ \textbf{or} $|y|>7$} \Return Stirling 급수 $8$항 (\cref{prop:stirling-complex}) \EndIf
 \If{$x<0.1$} \Comment{\cref{prop:loggamma}(iii)}
   \State $k\gets\operatorname{sgn}(y)\lfloor x/2+1/4\rfloor$ ($y=\pm0$이면 $0$의 부호)
-  \State \Return $(\ln\pi+2\pi ik)-\textsc{LogSinPi}(z)-\operatorname{loggamma}(1-x-iy)$ \Comment{$1-z$는 $x>0.9$}
+  \State \Return $(\ln\pi+2\pi ik)-\textrm{LogSinPi}(z)-\operatorname{loggamma}(1-x-iy)$ \Comment{$1-z$는 $x>0.9$}
 \EndIf
-\If{$x\le4$ \textbf{and} $|y|\le3$} \Return \textsc{Blob}$(z)$ \Comment{$\operatorname{loggamma}$의 영점 $1,2$ 근처}
+\If{$x\le4$ \textbf{and} $|y|\le3$} \Return \textrm{Blob}$(z)$ \Comment{$\operatorname{loggamma}$의 영점 $1,2$ 근처}
 \EndIf
-\If{$y<0$ (부호 비트)} \Return $\overline{\textsc{Rec}(\bar z)}$ \EndIf
-\State \Return \textsc{Rec}$(z)$
+\If{$y<0$ (부호 비트)} \Return $\overline{\textrm{Rec}(\bar z)}$ \EndIf
+\State \Return \textrm{Rec}$(z)$
 \Statex
 \Function{Rec}{$z$} \Comment{$\operatorname{Im}z\ge+0$, $0.1\le x\le7$}
   \State $P\gets z$; $c\gets0$; $\nu\gets$ \textbf{false}; $z\gets z+1$
@@ -825,11 +825,11 @@ $\operatorname{Im}z\ge0$이고 $z\notin(-\infty,0]$이라 하자. $P_0=1$, $P_{j
     \State \textbf{if} $n$ \textbf{and not} $\nu$ \textbf{then} $c\gets c+1$ \Comment{\cref{lem:crossings}}
     \State $\nu\gets n$; $z\gets z+1$
   \EndWhile
-  \State \Return $\mathrm{Stirling}(z)-\textsc{CLog}(P)-2\pi ic$
+  \State \Return $\mathrm{Stirling}(z)-\textrm{CLog}(P)-2\pi ic$
 \EndFunction
 \Statex
 \Function{Blob}{$z$} \Comment{$0.1\le x\le4$, $|y|\le3$}
-  \State $A\gets0$; \textbf{while} $\operatorname{Re}z>1.5$: $A\gets A+\textsc{CLog1p}(z-2)$, $z\gets z-1$
+  \State $A\gets0$; \textbf{while} $\operatorname{Re}z>1.5$: $A\gets A+\textrm{CLog1p}(z-2)$, $z\gets z-1$
   \State $w\gets z-1$; \textbf{if} $\operatorname{signbit}(\operatorname{Im}w)$ \textbf{then} 켤레로 계산해 켤레를 취한다
   \State $J\gets\min(6,\lfloor4(|\operatorname{Re}w|+|\operatorname{Im}w|)\rfloor)$; $T\gets0$; $P\gets1$; $q\gets0$; $c\gets0$; $\nu\gets$ \textbf{false}
   \For{$j=1,\dots,J$}
@@ -837,7 +837,7 @@ $\operatorname{Im}z\ge0$이고 $z\notin(-\infty,0]$이라 하자. $P_0=1$, $P_{j
     \State $n\gets\operatorname{signbit}(\operatorname{Im}P)$; \textbf{if} $n$ \textbf{and not} $\nu$ \textbf{then} $c\gets c+1$; $\nu\gets n$
   \EndFor
   \State $\tau\gets w^2\sum_kd^{(J)}_kw^k$ \Comment{$\sum_{j>J}\mu(w/j)$의 표 다항식}
-  \State $L\gets\textsc{CLog1p}(q)$ ($|q|_1<1/2$), 아니면 $\textsc{CLog}(P)$
+  \State $L\gets\textrm{CLog1p}(q)$ ($|q|_1<1/2$), 아니면 $\textrm{CLog}(P)$
   \State \Return $A-\gamma w+T-(L+2\pi ic)+\tau$
 \EndFunction
 \end{algorithmic}
@@ -867,13 +867,13 @@ $\operatorname{Re}z>0$이면 $\operatorname{loggamma}(z)=S_m(z)+R_m(z)$이고
 이다($x=\operatorname{Re}z$, $|e^{-zt}|=e^{-xt}$). $x=|z|\cos(\arg z)$이다.
 \end{proof}
 
-이 한계는 $\operatorname{Re}z$에만 의존하고 $y$와는 무관하다. $m=8$이면 $x=7$에서 $7.7\times10^{-16}$, $x=7.5$에서 $2.4\times10^{-16}$이다. $x>7$인 영역에서 $|\operatorname{loggamma}(z)|$는 $6$보다 크므로 상대오차로는 $u$ 근처이다. 적분 반직선을 $te^{-i\varphi}$($|\varphi|<\pi/2$)로 돌리면 같은 논증이 $|\arg z|<\pi$로 넓어지고 인자 $\sec$의 거듭제곱이 $\arg z$가 $\pm\pi$에 가까워질수록 커진다(\cite{olver1974asymptotics} 8장, \cite{dlmf} §5.11(ii)). 그러나 $\operatorname{Re}z$가 음으로 아주 크고 $|y|>7$인 곳에서는 이 한계가 쓸모없을 만큼 커지는데도 급수가 정확하다. 그 근거는 반사 공식이다. $y>0$에서 $\sin\pi z=(i/2)e^{-i\pi z}(1-e^{2\pi iz})$이므로 $\operatorname{Log}\sin\pi z$는 $-i\pi z$와 상수에 $\operatorname{Log}(1-e^{2\pi iz})$를 더한 것이다. 반사 공식의 나머지 항 $\operatorname{loggamma}(1-z)$는 오른쪽 반평면의 Stirling 급수로 쓸 수 있다. 그래서 $\operatorname{loggamma}(z)$와 $S_m(z)$의 차는 오른쪽 반평면에서처럼 줄어드는 항과 크기 $e^{-2\pi y}$의 항 $\operatorname{Log}(1-e^{2\pi iz})$로 이루어진다. 이 줄거리를 엄밀하게 쓰려면 Binet 적분을 왼쪽 반평면으로 해석적으로 연속할 때 피적분 함수의 특이점이 경로를 건너며 남기는 기여를 계산해야 한다. 그 기여가 바로 이 지수적으로 작은 항이다(Stokes 현상). $|y|>7$이면 그 크기는 $e^{-14\pi}\approx10^{-19}$이어서 음의 축 위의 극들이 Stirling 급수에 보이지 않는다. 실제로 $-300<x<0$, $7<|y|<12$의 무작위 점 $300$개에서 오차는 최대 $3.6\times10^{-16}$이었다(\code{figures/05/loggamma\_ref.py}). 3--5행은 반사이다. $1-z$의 실수부는 $0.9$보다 크므로 재귀는 한 번으로 끝난다. $\textsc{LogSinPi}$는 $\sin\pi z=\sin(\pi x)\cosh(\pi y)+i\cos(\pi x)\sinh(\pi y)$를 $x$의 정수 부분을 정확히 떼어 내는 \code{sinpi}, \code{cospi}로 만들고 로그를 취한다. $z$가 정수 $n$에서 $2^{-500}$ 안에 있으면 $\sin\pi z\approx(-1)^n\pi(z-n)$이고 $\pi$를 비정규수에 곱하면 반올림이 몇 퍼센트에 이르므로 $\ln\pi+\operatorname{Log}((-1)^n(z-n))$로 따로 계산한다. 따로 계산하기 전에는 $\operatorname{loggamma}(-34-5\times10^{-324}i)$가 $0.046$만큼 틀렸다.
+이 한계는 $\operatorname{Re}z$에만 의존하고 $y$와는 무관하다. $m=8$이면 $x=7$에서 $7.7\times10^{-16}$, $x=7.5$에서 $2.4\times10^{-16}$이다. $x>7$인 영역에서 $|\operatorname{loggamma}(z)|$는 $6$보다 크므로 상대오차로는 $u$ 근처이다. 적분 반직선을 $te^{-i\varphi}$($|\varphi|<\pi/2$)로 돌리면 같은 논증이 $|\arg z|<\pi$로 넓어지고 인자 $\sec$의 거듭제곱이 $\arg z$가 $\pm\pi$에 가까워질수록 커진다(\cite{olver1974asymptotics} 8장, \cite{dlmf} §5.11(ii)). 그러나 $\operatorname{Re}z$가 음으로 아주 크고 $|y|>7$인 곳에서는 이 한계가 쓸모없을 만큼 커지는데도 급수가 정확하다. 그 근거는 반사 공식이다. $y>0$에서 $\sin\pi z=(i/2)e^{-i\pi z}(1-e^{2\pi iz})$이므로 $\operatorname{Log}\sin\pi z$는 $-i\pi z$와 상수에 $\operatorname{Log}(1-e^{2\pi iz})$를 더한 것이다. 반사 공식의 나머지 항 $\operatorname{loggamma}(1-z)$는 오른쪽 반평면의 Stirling 급수로 쓸 수 있다. 그래서 $\operatorname{loggamma}(z)$와 $S_m(z)$의 차는 오른쪽 반평면에서처럼 줄어드는 항과 크기 $e^{-2\pi y}$의 항 $\operatorname{Log}(1-e^{2\pi iz})$로 이루어진다. 이 줄거리를 엄밀하게 쓰려면 Binet 적분을 왼쪽 반평면으로 해석적으로 연속할 때 피적분 함수의 특이점이 경로를 건너며 남기는 기여를 계산해야 한다. 그 기여가 바로 이 지수적으로 작은 항이다(Stokes 현상). $|y|>7$이면 그 크기는 $e^{-14\pi}\approx10^{-19}$이어서 음의 축 위의 극들이 Stirling 급수에 보이지 않는다. 실제로 $-300<x<0$, $7<|y|<12$의 무작위 점 $300$개에서 오차는 최대 $3.6\times10^{-16}$이었다(\code{figures/05/loggamma\_ref.py}). 3--5행은 반사이다. $1-z$의 실수부는 $0.9$보다 크므로 재귀는 한 번으로 끝난다. $\textrm{LogSinPi}$는 $\sin\pi z=\sin(\pi x)\cosh(\pi y)+i\cos(\pi x)\sinh(\pi y)$를 $x$의 정수 부분을 정확히 떼어 내는 \code{sinpi}, \code{cospi}로 만들고 로그를 취한다. $z$가 정수 $n$에서 $2^{-500}$ 안에 있으면 $\sin\pi z\approx(-1)^n\pi(z-n)$이고 $\pi$를 비정규수에 곱하면 반올림이 몇 퍼센트에 이르므로 $\ln\pi+\operatorname{Log}((-1)^n(z-n))$로 따로 계산한다. 따로 계산하기 전에는 $\operatorname{loggamma}(-34-5\times10^{-324}i)$가 $0.046$만큼 틀렸다.
 
-7행의 \textsc{Blob}은 $\operatorname{loggamma}$의 영점, 곧 $\Gamma(z)=1$인 $z=1,2$ 근처의 영역($0.1\le x\le4$, $|y|\le3$)이다. 여기서 점화식을 쓰면 $\operatorname{loggamma}(z+k)$와 $\sum\operatorname{Log}$이 거의 같은 크기로 상쇄해 상대오차가 수백 ulp에 이르므로 먼저 $\operatorname{Log}(z-1)=\textsc{CLog1p}(z-2)$로 $\operatorname{Re}z\le1.5$까지 내려온다. 그다음 $w=z-1$의 Weierstrass 급수
+7행의 \textrm{Blob}은 $\operatorname{loggamma}$의 영점, 곧 $\Gamma(z)=1$인 $z=1,2$ 근처의 영역($0.1\le x\le4$, $|y|\le3$)이다. 여기서 점화식을 쓰면 $\operatorname{loggamma}(z+k)$와 $\sum\operatorname{Log}$이 거의 같은 크기로 상쇄해 상대오차가 수백 ulp에 이르므로 먼저 $\operatorname{Log}(z-1)=\textrm{CLog1p}(z-2)$로 $\operatorname{Re}z\le1.5$까지 내려온다. 그다음 $w=z-1$의 Weierstrass 급수
 \[
 \operatorname{loggamma}(1+w)=-\gamma w+\sum_{j\ge1}\Bigl(\frac wj-\operatorname{Log}\Bigl(1+\frac wj\Bigr)\Bigr)
 \]
-를 쓴다. $j$번째 항은 $w\notin(-\infty,-j]$에서 해석적이므로 급수 전체는 $w\notin(-\infty,-1]$, 곧 $z=1+w\in\Omega_-$에서 해석적이고 양의 실수축에서 실수이므로 주가지와 같다. 앞의 $J\le6$개 항은 직접 더하되 로그를 한 번만 부르려고 곱 $\prod(1+w/j)$를 만들고 \cref{lem:crossings}로 교차를 센다. 이 영역에서 $\operatorname{Re}w>-1$이므로 인자 $1+w/j$의 실수부가 양수이고 허수부의 부호가 $w$와 같아 보조정리의 조건이 맞는다. 곱이 $1$에 가까우면 $\operatorname{Log}P$의 실수부가 작아 상대 정확도를 잃으므로 $q=P-1$을 $q\gets q+t+qt$로 따로 들고 다니다가 $|q|_1<1/2$이면 $\textsc{CLog1p}(q)$를 쓴다. $1+q$와 $P$는 같은 수이므로 편각도 같고 센 교차 수가 그대로 맞는다. $J=\min(6,\lfloor4|w|_1\rfloor)$은 떼어 낸 $t=w/j$가 모두 $|t|_1\ge1/4$이 되게 고른 수이다. 그러면 남은 꼬리의 비 $|w|/(J+1)$이 $J<6$에서 $1/4$ 아래이고 꼬리 다항식이 짧아진다. 나머지 항은 $\sum_{j>J}=\sum_{k\ge2}(-1)^k\zeta(k,J+1)w^k/k$($|w|<J+1$)로 바꾸어 미리 계산한 계수의 다항식으로 더한다. 이 급수의 정확도 분석과 계수의 계산은 86장에서 다룬다. 이 장에서 중요한 것은 가지가 어디서든 \cref{prop:loggamma}로 정해지고 \cref{lem:crossings}로 센다는 점이다.
+를 쓴다. $j$번째 항은 $w\notin(-\infty,-j]$에서 해석적이므로 급수 전체는 $w\notin(-\infty,-1]$, 곧 $z=1+w\in\Omega_-$에서 해석적이고 양의 실수축에서 실수이므로 주가지와 같다. 앞의 $J\le6$개 항은 직접 더하되 로그를 한 번만 부르려고 곱 $\prod(1+w/j)$를 만들고 \cref{lem:crossings}로 교차를 센다. 이 영역에서 $\operatorname{Re}w>-1$이므로 인자 $1+w/j$의 실수부가 양수이고 허수부의 부호가 $w$와 같아 보조정리의 조건이 맞는다. 곱이 $1$에 가까우면 $\operatorname{Log}P$의 실수부가 작아 상대 정확도를 잃으므로 $q=P-1$을 $q\gets q+t+qt$로 따로 들고 다니다가 $|q|_1<1/2$이면 $\textrm{CLog1p}(q)$를 쓴다. $1+q$와 $P$는 같은 수이므로 편각도 같고 센 교차 수가 그대로 맞는다. $J=\min(6,\lfloor4|w|_1\rfloor)$은 떼어 낸 $t=w/j$가 모두 $|t|_1\ge1/4$이 되게 고른 수이다. 그러면 남은 꼬리의 비 $|w|/(J+1)$이 $J<6$에서 $1/4$ 아래이고 꼬리 다항식이 짧아진다. 나머지 항은 $\sum_{j>J}=\sum_{k\ge2}(-1)^k\zeta(k,J+1)w^k/k$($|w|<J+1$)로 바꾸어 미리 계산한 계수의 다항식으로 더한다. 이 급수의 정확도 분석과 계수의 계산은 86장에서 다룬다. 이 장에서 중요한 것은 가지가 어디서든 \cref{prop:loggamma}로 정해지고 \cref{lem:crossings}로 센다는 점이다.
 
 \cref{lem:crossings}는 정확한 곱에 대한 것이지만 알고리즘은 반올림된 곱 $\widehat P_j$로 센다. 그래도 세는 일과 마지막 로그가 같은 $\widehat P_j$에서 나오므로 결과는 어긋나지 않는다. 반올림은 각 단계의 곱을 상대적으로 $u$ 남짓 움직일 뿐이어서 인자의 편각은 여전히 $[0,\pi)$에 있고 보조정리가 계산된 수열에 그대로 적용된다. 계산된 곱이 반올림 때문에 음의 실수축의 반대쪽에 떨어지는 경우도 있다. 그러면 $c$가 하나 늘거나 줄고 $\operatorname{Log}\widehat P_k$의 허수부가 $\pi$ 근처에서 $-\pi$ 근처로 함께 바뀌므로 합 $\operatorname{Log}\widehat P_k+2\pi ic$는 연속이다. 그래서 $2\pi$가 어긋나는 일은 없고 반올림 크기의 오차만 남는다.
 
