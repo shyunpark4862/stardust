@@ -1,0 +1,51 @@
+%% Foundations of Scientific Computing, Volume 1. Build: tools/build.sh vol1 (output pdf/vol1.pdf)
+\documentclass{sdbook-eng}
+
+\addbibresource{references.bib}
+
+\title{Foundations of\\Scientific Computing}
+\subtitle{Volume 1: Calculus, Linear Algebra, and Differential Equations}
+\author{}
+\date{}
+
+\begin{document}
+\frontmatter
+\maketitle
+\tableofcontents
+
+\notationchapter
+The symbols used in this volume are collected here. Each is defined again, with examples, where it first appears.
+
+\symbolgroup{Logic}
+\begin{symbols}
+\item[$\mathrm{T}$, $\mathrm{F}$] the truth values true and false
+\item[$\neg P$] the negation of $P$, ``not $P$''
+\item[$P\wedge Q$] the conjunction, ``$P$ and $Q$''
+\item[$P\vee Q$] the disjunction, ``$P$ or $Q$'' (or both)
+\item[$P\Rightarrow Q$] the conditional, ``if $P$, then $Q$''
+\item[$P\Leftrightarrow Q$] the biconditional, ``$P$ if and only if $Q$''
+\item[$A\equiv B$] the formulas $A$ and $B$ are logically equivalent
+\item[$\forall x\in S,\ P(x)$] for every $x$ in $S$, $P(x)$ holds
+\item[$\exists x\in S,\ P(x)$] there is at least one $x$ in $S$ for which $P(x)$ holds
+\item[$\exists!\,x\in S,\ P(x)$] there is exactly one $x$ in $S$ for which $P(x)$ holds
+\item[$a\coloneqq b$] $a$ is defined to be $b$
+\item[\qedsymbol] the end of a proof
+\end{symbols}
+
+\symbolgroup{Numbers and sets}
+\begin{symbols}
+\item[$\mathbb N$] the natural numbers $0,1,2,\ldots$ (zero included)
+\item[$\mathbb Z$, $\mathbb Q$, $\mathbb R$] the integers, the rational numbers and the real numbers
+\item[$x\in S$] $x$ is an element of the set $S$
+\item[$\{x\in S: P(x)\}$] the set of the elements $x$ of $S$ for which $P(x)$ holds
+\item[$a\mid b$] the integer $a$ divides the integer $b$
+\item[$|x|$] the absolute value of the real number $x$
+\item[$\sum_{k=m}^{n}a_k$] the sum $a_m+a_{m+1}+\cdots+a_n$, and $0$ when $n<m$
+\end{symbols}
+
+\mainmatter
+\part{Foundations}
+\input{chapters/v1-01-logic-and-proof}
+
+\backmatter
+\end{document}
