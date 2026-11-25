@@ -1340,7 +1340,7 @@ By \cref{prop:fractions}, the relation $(p,q)\sim(r,s)\iff ps=qr$ is an equivale
 
 \begin{definition}[Rational numbers]
 \label{def:rationals}
-The set of \term{rational numbers} is $\mathbb Q\coloneqq\bigl(\mathbb Z\times(\mathbb Z\setminus\{0\})\bigr)/{\sim}$. The class of $(p,q)$ is written $p/q$ or $\frac pq$, and
+The set of \term{rational numbers} is $\mathbb Q\coloneqq\bigl(\mathbb Z\times(\mathbb Z\setminus\{0\})\bigr)/{\sim}$. The class of $(p,q)$ is written $p/q$ or $p/q$, and
 \[
 \frac pq+\frac rs\coloneqq\frac{ps+qr}{qs},\qquad\frac pq\cdot\frac rs\coloneqq\frac{pr}{qs}.
 \]
@@ -1400,7 +1400,7 @@ In every ordered field, for all elements $x$ and $y$:
 \begin{enumerate}
 \item if $x>0$, then $1/x>0$;
 \item if $0<x<y$, then $0<1/y<1/x$;
-\item if $x<y$, then $x<\frac{x+y}2<y$.
+\item if $x<y$, then $x<(x+y)/2<y$.
 \end{enumerate}
 \end{proposition}
 
@@ -1509,13 +1509,13 @@ If $c$ is a lower bound of $S$, then $-c$ is an upper bound of $-S$, so $\sigma\
 \fill[sdfill] (0.85,-0.13) rectangle (1.41421,0.13);
 \draw[line width=0.4pt] (0.85,0) -- (2.1,0);
 \foreach \v/\l in {1/$1$, 2/$2$} {\draw[line width=0.4pt] (\v,-0.08) -- (\v,0.08); \node[below] at (\v,-0.14) {\l};}
-\foreach \v/\l in {1.33333/$\tfrac43$, 1.5/$\tfrac32$} {\draw[line width=0.4pt] (\v,0) -- (\v,0.2); \node[above] at (\v,0.2) {\l};}
+\foreach \v/\l in {1.33333/{$4/3$}, 1.5/{$3/2$}} {\draw[line width=0.4pt] (\v,0) -- (\v,0.2); \node[above] at (\v,0.2) {\l};}
 \draw[line width=0.5pt, fill=white] (1.41421,0) circle (2pt);
 \node[below] at (1.41421,-0.14) {$\sqrt2$};
 \node[above] at (1.08,0.2) {$A$};
 \node[above] at (1.8,0.2) {$\mathbb Q\setminus A$};
 \end{tikzpicture}}
-\caption{Suprema and gaps. (A) A set $S$ (thick segments and dots) and its supremum $s$; the upper bounds form the shaded ray $[s,\infty)$. For every $\varepsilon>0$ some element of $S$ lies above $s-\varepsilon$ (\cref{lem:sup-approx}). (B) The set $A$ of \cref{prop:q-gap} (shaded; only its part near $\sqrt2$ is shown) divides the rational numbers into two parts, here represented by $\tfrac43\in A$ and $\tfrac32\notin A$. The rational numbers of $A$ come arbitrarily close to the open circle from the left, and those of $\mathbb Q\setminus A$ from the right, but the circle itself is not a rational number. In $\mathbb R$ the point $\sqrt2=\sup A$ fills the gap.}
+\caption{Suprema and gaps. (A) A set $S$ (thick segments and dots) and its supremum $s$; the upper bounds form the shaded ray $[s,\infty)$. For every $\varepsilon>0$ some element of $S$ lies above $s-\varepsilon$ (\cref{lem:sup-approx}). (B) The set $A$ of \cref{prop:q-gap} (shaded; only its part near $\sqrt2$ is shown) divides the rational numbers into two parts, here represented by $4/3\in A$ and $3/2\notin A$. The rational numbers of $A$ come arbitrarily close to the open circle from the left, and those of $\mathbb Q\setminus A$ from the right, but the circle itself is not a rational number. In $\mathbb R$ the point $\sqrt2=\sup A$ fills the gap.}
 \label{fig:sup-cut}
 \end{figure}
 
@@ -1750,7 +1750,7 @@ The imaginary part is the real number $b$, not $bi$. For a real number $z=a$, th
 For all complex numbers $z$ and $w$:
 \begin{enumerate}
 \item $\overline{z+w}=\bar z+\bar w$, $\overline{zw}=\bar z\,\bar w$ and $\bar{\bar z}=z$;
-\item $z\bar z=|z|^2$, $\operatorname{Re}z=\frac12(z+\bar z)$ and $\operatorname{Im}z=\frac1{2i}(z-\bar z)$;
+\item $z\bar z=|z|^2$, $\operatorname{Re}z=(z+\bar z)/2$ and $\operatorname{Im}z=(z-\bar z)/(2i)$;
 \item $z$ is real if and only if $z=\bar z$;
 \item if $z\ne0$, then $z^{-1}=\bar z/|z|^2$.
 \end{enumerate}
@@ -1800,7 +1800,7 @@ Let $z\ne0$. Then $z/|z|$ has modulus $1$, so by (iii) there is a real number $\
 z=r(\cos\theta+i\sin\theta),\qquad r=|z| .
 \label{eq:polar}
 \end{equation}
-This is the \term{polar form} of $z$. Any such $\theta$ is an \term{argument} of $z$, written $\arg z$; it is determined up to an integer multiple of $2\pi$. The arguments of $z$ form a set $\theta+2\pi\mathbb Z$, and exactly one of them lies in the interval $(-\pi,\pi]$ of length $2\pi$, namely $\theta-2\pi k$ with $k=\lceil(\theta-\pi)/(2\pi)\rceil$; it is the \term{principal argument} $\operatorname{Arg}z$. On the unit circle, $\operatorname{Arg}$ is a right inverse, in the sense of \cref{sec:injections}, of the surjection $\theta\mapsto\cos\theta+i\sin\theta$ from $\mathbb R$ onto the circle: it picks one preimage of each point. For example, $1+i=\sqrt2\,(\cos\frac\pi4+i\sin\frac\pi4)$, $-2=2(\cos\pi+i\sin\pi)$ and $-i=\cos(-\frac\pi2)+i\sin(-\frac\pi2)$. The number $0$ has modulus $0$ and no argument. Numerical libraries compute the principal argument of $a+bi$ by a two-argument arctangent function, which Volume~X describes.
+This is the \term{polar form} of $z$. Any such $\theta$ is an \term{argument} of $z$, written $\arg z$; it is determined up to an integer multiple of $2\pi$. The arguments of $z$ form a set $\theta+2\pi\mathbb Z$, and exactly one of them lies in the interval $(-\pi,\pi]$ of length $2\pi$, namely $\theta-2\pi k$ with $k=\lceil(\theta-\pi)/(2\pi)\rceil$; it is the \term{principal argument} $\operatorname{Arg}z$. On the unit circle, $\operatorname{Arg}$ is a right inverse, in the sense of \cref{sec:injections}, of the surjection $\theta\mapsto\cos\theta+i\sin\theta$ from $\mathbb R$ onto the circle: it picks one preimage of each point. For example, $1+i=\sqrt2\,(\cos(\pi/4)+i\sin(\pi/4))$, $-2=2(\cos\pi+i\sin\pi)$ and $-i=\cos(-\pi/2)+i\sin(-\pi/2)$. The number $0$ has modulus $0$ and no argument. Numerical libraries compute the principal argument of $a+bi$ by a two-argument arctangent function, which Volume~X describes.
 
 The polar form makes multiplication transparent.
 
@@ -1823,7 +1823,7 @@ Multiplying out and using \cref{asm:trig}\,(ii),
 For the quotient, the formula for the product shows that $(r/s)\bigl(\cos(\alpha-\beta)+i\sin(\alpha-\beta)\bigr)\cdot w=z$.
 \end{proof}
 
-So multiplication by $w$ stretches the plane by the factor $|w|$ and rotates it about the origin by the angle $\arg w$: moduli multiply and arguments add. Multiplication by $i=\cos\frac\pi2+i\sin\frac\pi2$ is the rotation by a right angle, and multiplying twice by $i$ turns $1$ into $-1$, which is the geometric content of $i^2=-1$. \Cref{fig:complex}B shows a product. Repeating the multiplication gives a formula named after Abraham de Moivre.
+So multiplication by $w$ stretches the plane by the factor $|w|$ and rotates it about the origin by the angle $\arg w$: moduli multiply and arguments add. Multiplication by $i=\cos(\pi/2)+i\sin(\pi/2)$ is the rotation by a right angle, and multiplying twice by $i$ turns $1$ into $-1$, which is the geometric content of $i^2=-1$. \Cref{fig:complex}B shows a product. Repeating the multiplication gives a formula named after Abraham de Moivre.
 
 \begin{theorem}[De Moivre's formula]
 \label{thm:de-moivre}
@@ -1841,7 +1841,7 @@ For $n\ge0$ we use induction. For $n=0$ both sides equal $1$ by \cref{asm:trig}\
 For $n=-m<0$, the quotient rule of \cref{prop:polar-mult} with $z=1$ and $w=\cos m\theta+i\sin m\theta$ gives $(\cos\theta+i\sin\theta)^{-m}=1/w=\cos(-m\theta)+i\sin(-m\theta)$.
 \end{proof}
 
-For example, $(1+i)^8=(\sqrt2)^8(\cos2\pi+i\sin2\pi)=16$, and $(1+i\sqrt3)^6=2^6(\cos2\pi+i\sin2\pi)=64$, since $1+i\sqrt3=2(\cos\frac\pi3+i\sin\frac\pi3)$. The formula also produces trigonometric identities. Expanding $(\cos\theta+i\sin\theta)^3$ by the binomial formula and comparing real parts gives
+For example, $(1+i)^8=(\sqrt2)^8(\cos2\pi+i\sin2\pi)=16$, and $(1+i\sqrt3)^6=2^6(\cos2\pi+i\sin2\pi)=64$, since $1+i\sqrt3=2(\cos(\pi/3)+i\sin(\pi/3))$. The formula also produces trigonometric identities. Expanding $(\cos\theta+i\sin\theta)^3$ by the binomial formula and comparing real parts gives
 \[
 \cos3\theta=\cos^3\theta-3\cos\theta\sin^2\theta=4\cos^3\theta-3\cos\theta .
 \]
@@ -1873,7 +1873,7 @@ For $w=1$ the solutions are the \term{$n$th roots of unity}
 \[
 1,\ \omega,\ \omega^2,\ \ldots,\ \omega^{n-1},\qquad\omega\coloneqq e^{2\pi i/n},
 \]
-which are the vertices of a regular $n$-gon inscribed in the unit circle, with one vertex at $1$ (\cref{fig:complex}C). For $n=3$ they are $1$ and $-\frac12\pm\frac{\sqrt3}2i$. Multiplying by $\omega$ rotates the polygon onto itself, and since the powers of $\omega$ repeat with period $n$, the exponents of the roots of unity are added modulo $n$: the roots of unity are a multiplicative copy of $\mathbb Z/n\mathbb Z$. For $n\ge2$ their sum is zero,
+which are the vertices of a regular $n$-gon inscribed in the unit circle, with one vertex at $1$ (\cref{fig:complex}C). For $n=3$ they are $1$ and $-1/2\pm(\sqrt3/2)i$. Multiplying by $\omega$ rotates the polygon onto itself, and since the powers of $\omega$ repeat with period $n$, the exponents of the roots of unity are added modulo $n$: the roots of unity are a multiplicative copy of $\mathbb Z/n\mathbb Z$. For $n\ge2$ their sum is zero,
 \[
 1+\omega+\cdots+\omega^{n-1}=\frac{\omega^n-1}{\omega-1}=0 ,
 \]

@@ -4,7 +4,7 @@
 
 \abstract{A computer cannot evaluate the sine or the exponential function. It can only add and multiply, finitely many times, and the value it returns is an approximation, often a partial sum of an infinite series cut off where the remaining terms are believed to be negligible. When may an infinite sum be cut off, and how large is the error made by cutting it? This chapter answers both questions. It decides when series converge, represents functions by power series, proves Taylor's theorem with explicit remainders, introduces the notation in which errors and costs are compared, derives Stirling's formula for $n!$, and ends with the practical art of summing a series to a prescribed accuracy.}
 
-An infinite sum $a_0+a_1+a_2+\cdots$ is not a sum in the sense of arithmetic, which adds finitely many numbers, but a limit: the limit of the finite sums $a_0+\cdots+a_n$ as $n\to\infty$. \Cref{ch:limits} provided the theory of such limits, and several earlier chapters used infinite sums informally: the decimal expansion $0.333\ldots$ of $\frac13$ in \cref{ch:numbers}, the formal power series of \cref{ch:counting}, the sum $\sum1/k^2$ in \cref{ch:limits}, and the comparison of sums with integrals in \cref{ch:integration}. This chapter develops the theory of series systematically and applies it to the central problem of approximation: how to represent a function, or a number, by finitely many arithmetic operations, and how to bound the error.
+An infinite sum $a_0+a_1+a_2+\cdots$ is not a sum in the sense of arithmetic, which adds finitely many numbers, but a limit: the limit of the finite sums $a_0+\cdots+a_n$ as $n\to\infty$. \Cref{ch:limits} provided the theory of such limits, and several earlier chapters used infinite sums informally: the decimal expansion $0.333\ldots$ of $1/3$ in \cref{ch:numbers}, the formal power series of \cref{ch:counting}, the sum $\sum1/k^2$ in \cref{ch:limits}, and the comparison of sums with integrals in \cref{ch:integration}. This chapter develops the theory of series systematically and applies it to the central problem of approximation: how to represent a function, or a number, by finitely many arithmetic operations, and how to bound the error.
 
 The chapter is organised as follows. \Cref{sec:series} defines convergence of series and proves the rules for computing with them. \Cref{sec:nonnegative-series} gives the tests for series with nonnegative terms: comparison with known series, the integral test, which also yields Euler's constant, and the ratio and root tests. \Cref{sec:absolute} treats series whose terms change sign, the distinction between absolute and conditional convergence, and the surprising fact that rearranging the terms of a series can change its sum. \Cref{sec:power-series} studies power series, which are the polynomials of infinite degree, and proves that they can be differentiated and integrated term by term. \Cref{sec:taylor} proves Taylor's theorem, which approximates a smooth function by a polynomial and gives the error in three forms, and uses it to settle several questions left open in \cref{ch:differentiation}. \Cref{sec:expansions} derives the power series of the exponential function, the sine and the cosine, the logarithm, the inverse tangent and sine, and the binomial series. \Cref{sec:asymptotic-notation} introduces the symbols $O$, $o$, $\Theta$, $\Omega$ and $\sim$ for comparing the sizes of functions, and \cref{sec:asymptotic-expansions} uses them for asymptotic expansions, for the approximation of sums by integrals, and for Stirling's formula. \Cref{sec:summing} closes with the practical questions of how many terms of a series are needed and how convergence can be accelerated.
 
@@ -13,7 +13,7 @@ The exponential function and the logarithm are defined rigorously in \cref{ch:tr
 \section{Infinite Series}
 \label{sec:series}
 
-Zeno of Elea argued that a runner can never reach the end of a course, because he must first cover half of it, then half of the rest, then half of what remains, and so on without end~\cite{boyer1959}. The paradox dissolves once one accepts that infinitely many distances can add up to a finite one: $\frac12+\frac14+\frac18+\cdots=1$. This section makes such statements precise.
+Zeno of Elea argued that a runner can never reach the end of a course, because he must first cover half of it, then half of the rest, then half of what remains, and so on without end~\cite{boyer1959}. The paradox dissolves once one accepts that infinitely many distances can add up to a finite one: $1/2+1/4+1/8+\cdots=1$. This section makes such statements precise.
 
 \subsection{Partial Sums and Convergence}
 
@@ -52,7 +52,7 @@ Let $r$ be a real number. The \term{geometric series} $\sum_{k=0}^\infty r^k$ co
 For $r\ne1$ the partial sums are $s_n=\sum_{k=0}^nr^k=(1-r^{n+1})/(1-r)$, by \eqref{eq:sum-geom}. If $|r|<1$, then $r^{n+1}\to0$ by \cref{thm:standard-limits}\,(ii), and the limit laws give $s_n\to1/(1-r)$; the remainder is $s-s_n=r^{n+1}/(1-r)$. If $r=1$, then $s_n=n+1\to\infty$. If $r>1$ or $r\le-1$, the sequence $(r^{n+1})$ diverges by \cref{thm:standard-limits}\,(ii), and so does $s_n=(1-r^{n+1})/(1-r)$, since otherwise $r^{n+1}=1-(1-r)s_n$ would converge.
 \end{proof}
 
-\emph{Examples.} With $r=\frac12$, $\sum_{k=0}^\infty2^{-k}=2$, and so $\frac12+\frac14+\frac18+\cdots=1$: Zeno's runner covers the course. The remainder after the term $2^{-n}$ is $2^{-n}$; it halves with each term, so that every term adds about $0.3$ correct decimal digits. With $r=-\frac12$, $1-\frac12+\frac14-\frac18+\cdots=\frac23$, and with $r=\frac1{10}$, $0.111\ldots=\sum_{k=1}^\infty10^{-k}=\frac1{10}\cdot\frac1{1-1/10}=\frac19$, which explains the decimal expansions of \cref{ch:numbers}: $0.999\ldots=9\cdot\frac19=1$. The series $1-1+1-1+\cdots$ diverges, although its partial sums $1,0,1,0,\ldots$ stay bounded.
+For example, with $r=1/2$, $\sum_{k=0}^\infty2^{-k}=2$, and so $1/2+1/4+1/8+\cdots=1$: Zeno's runner covers the course. The remainder after the term $2^{-n}$ is $2^{-n}$; it halves with each term, so that every term adds about $0.3$ correct decimal digits. With $r=-1/2$, $1-1/2+1/4-1/8+\cdots=2/3$, and with $r=1/10$, $0.111\ldots=\sum_{k=1}^\infty10^{-k}=(1/10)/(1-1/10)=1/9$, which explains the decimal expansions of \cref{ch:numbers}: $0.999\ldots=9\cdot1/9=1$. The series $1-1+1-1+\cdots$ diverges, although its partial sums $1,0,1,0,\ldots$ stay bounded.
 
 The geometric series is the standard of comparison for many others, and its partial sum formula is exact: the error of the approximation $1/(1-r)\approx\sum_{k=0}^nr^k$ is known in closed form. A series whose remainders decrease like the powers of a fixed number $r$ with $|r|<1$ is said to converge \term{geometrically}, or \term{linearly}, in analogy with \cref{def:convergence-order}.
 
@@ -98,7 +98,7 @@ The harmonic series diverges to infinity, although its terms tend to zero. More 
 \end{proposition}
 
 \begin{proof}
-For $m\ge1$, the terms of $H_{2^m}-H_{2^{m-1}}$ are the $2^{m-1}$ numbers $1/k$ with $2^{m-1}<k\le2^m$, each at least $2^{-m}$, so this difference is at least $2^{m-1}\cdot2^{-m}=\frac12$. Adding these inequalities for $1,\ldots,m$ gives $H_{2^m}\ge H_1+m/2=1+m/2$. The partial sums increase and are unbounded, so they diverge to infinity by \cref{cor:monotone-dichotomy}.
+For $m\ge1$, the terms of $H_{2^m}-H_{2^{m-1}}$ are the $2^{m-1}$ numbers $1/k$ with $2^{m-1}<k\le2^m$, each at least $2^{-m}$, so this difference is at least $2^{m-1}\cdot2^{-m}=1/2$. Adding these inequalities for $1,\ldots,m$ gives $H_{2^m}\ge H_1+m/2=1+m/2$. The partial sums increase and are unbounded, so they diverge to infinity by \cref{cor:monotone-dichotomy}.
 \end{proof}
 
 This grouping argument, in which the terms are collected in blocks
@@ -123,11 +123,15 @@ Let $(b_k)_{k\ge m}$ be a sequence. The series $\sum_{k=m}^\infty(b_k-b_{k+1})$ 
 By \cref{prop:telescoping}, the partial sums are $s_n=b_m-b_{n+1}$, which converge if and only if $(b_{n+1})$ does.
 \end{proof}
 
-\emph{Examples.} Since $\frac1{k(k+1)}=\frac1k-\frac1{k+1}$ and $1/k\to0$,
+Since $1/(k(k+1))=1/k-1/(k+1)$ and $1/k\to0$,
 \[
 \sum_{k=1}^\infty\frac1{k(k+1)}=\frac12+\frac16+\frac1{12}+\frac1{20}+\cdots=1 .
 \]
-The same idea gave the bound $\sum_{k=1}^n1/k^2<2$ in \cref{sec:completeness}. Partial fractions often produce telescoping sums: $\frac1{k(k+2)}=\frac12\bigl(\frac1k-\frac1{k+2}\bigr)$, and writing the right side as $\frac12\bigl((\frac1k-\frac1{k+1})+(\frac1{k+1}-\frac1{k+2})\bigr)$ gives
+The same idea gave the bound $\sum_{k=1}^n1/k^2<2$ in \cref{sec:completeness}. Partial fractions often produce telescoping sums: $1/(k(k+2))=(1/2)\bigl(1/k-1/(k+2)\bigr)$, and writing the right side as
+\[
+\frac12\Bigl(\Bigl(\frac1k-\frac1{k+1}\Bigr)+\Bigl(\frac1{k+1}-\frac1{k+2}\Bigr)\Bigr)
+\]
+gives
 \[
 \sum_{k=1}^\infty\frac1{k(k+2)}=\frac12\Bigl(1+\frac12\Bigr)=\frac34 .
 \]
@@ -170,7 +174,7 @@ A series $\sum a_k$ converges if and only if for every $\varepsilon>0$ there is 
 The condition says that $(s_n)$ is a Cauchy sequence, which by \cref{thm:cauchy-criterion} is equivalent to its convergence.
 \end{proof}
 
-In words: a series converges if and only if all sufficiently late blocks of consecutive terms have small sums, however long the blocks are. The harmonic series fails this test, because the blocks $\sum_{k=n+1}^{2n}1/k$ of \cref{sec:completeness} have sums at least $\frac12$. The criterion is the basis of the theory of absolute convergence in \cref{sec:absolute}.
+In words: a series converges if and only if all sufficiently late blocks of consecutive terms have small sums, however long the blocks are. The harmonic series fails this test, because the blocks $\sum_{k=n+1}^{2n}1/k$ of \cref{sec:completeness} have sums at least $1/2$. The criterion is the basis of the theory of absolute convergence in \cref{sec:absolute}.
 
 \subsection{Grouping Terms}
 
@@ -189,7 +193,7 @@ converges to $s$ as well.
 The partial sums of the grouped series are $s_{n_0},s_{n_1},s_{n_2},\ldots$, a subsequence of $(s_n)$, which converges to $s$ by \cref{prop:subsequence}.
 \end{proof}
 
-The converse is false: removing brackets can destroy convergence. The grouped series $(1-1)+(1-1)+\cdots$ has all its terms equal to $0$ and converges to $0$, but $1-1+1-1+\cdots$ diverges. Ignoring this was a source of paradoxes in the eighteenth century, when the series $1-1+1-\cdots$ was assigned the values $0$, $1$ and $\frac12$ by different groupings and arguments; the note on divergent series in \cref{sec:asymptotic-expansions} explains in which sense the value $\frac12$ can be justified.
+The converse is false: removing brackets can destroy convergence. The grouped series $(1-1)+(1-1)+\cdots$ has all its terms equal to $0$ and converges to $0$, but $1-1+1-1+\cdots$ diverges. Ignoring this was a source of paradoxes in the eighteenth century, when the series $1-1+1-\cdots$ was assigned the values $0$, $1$ and $1/2$ by different groupings and arguments; the note on divergent series in \cref{sec:asymptotic-expansions} explains in which sense the value $1/2$ can be justified.
 
 Everything in this section holds, with the same proofs, for series of complex numbers, with the modulus $|z|$ of \cref{sec:complex} in place of the absolute value, except the statements that involve order, such as \cref{thm:series-rules}\,(ii). In particular the geometric series $\sum z^k$ converges to $1/(1-z)$ for every complex $z$ with $|z|<1$. Complex series are needed for the exponential function $e^{i\theta}$ of \cref{ch:transcendental} and are studied in depth in Volume~II.
 
@@ -225,7 +229,7 @@ If $0\le a_k\le b_k$ for all $k\ge m$ and $\sum_{k=m}^\infty b_k$ converges, the
 By \cref{thm:series-rules}\,(iii) we may assume that $0\le a_k\le b_k$ for all $k\ge m$. Then $\sum_{k=m}^na_k\le\sum_{k=m}^nb_k\le\sum_{k=m}^\infty b_k$ for every $n$, so the partial sums of $\sum a_k$ are bounded, and the series converges by \cref{prop:nonnegative-series}. The inequality between the sums follows from \cref{thm:series-rules}\,(ii), and that between the remainders from the same argument applied to the series that start at $n+1$. Part (ii) is the contrapositive of (i).
 \end{proof}
 
-\emph{Examples.} The series $\sum_{k\ge1}1/k^2$ converges, by comparison with the telescoping series $\sum_{k\ge2}1/(k(k-1))=1$: this is the argument of \cref{sec:completeness}, now seen as an instance of a general test. The series $\sum_{k\ge1}1/\sqrt k$ diverges, since $1/\sqrt k\ge1/k$ and the harmonic series diverges. The series $\sum_{k\ge0}1/(2^k+k)$ converges, since its terms are at most $2^{-k}$. The series $\sum_{k\ge1}(\sin k)^2/k^2$ converges, since its terms lie between $0$ and $1/k^2$.
+The series $\sum_{k\ge1}1/k^2$ converges, by comparison with the telescoping series $\sum_{k\ge2}1/(k(k-1))=1$: this is the argument of \cref{sec:completeness}, now seen as an instance of a general test. The series $\sum_{k\ge1}1/\sqrt k$ diverges, since $1/\sqrt k\ge1/k$ and the harmonic series diverges. The series $\sum_{k\ge0}1/(2^k+k)$ converges, since its terms are at most $2^{-k}$. The series $\sum_{k\ge1}(\sin k)^2/k^2$ converges, since its terms lie between $0$ and $1/k^2$.
 
 In practice the inequality $a_k\le b_k$ is often awkward to verify, while the ratio $a_k/b_k$ has an obvious limit. The following corollary is then more convenient; it is the counterpart of \cref{cor:limit-comparison} for integrals.
 
@@ -235,10 +239,10 @@ Let $a_k>0$ and $b_k>0$, and suppose that $a_k/b_k\to\lambda$ with $0<\lambda<\i
 \end{corollary}
 
 \begin{proof}
-Eventually $\frac\lambda2b_k\le a_k\le2\lambda b_k$, by \cref{prop:limit-order}\,(i). Apply \cref{thm:comparison-series} in both directions, using \cref{thm:series-rules}\,(i) for the constant factors.
+Eventually $(\lambda/2)b_k\le a_k\le2\lambda b_k$, by \cref{prop:limit-order}\,(i). Apply \cref{thm:comparison-series} in both directions, using \cref{thm:series-rules}\,(i) for the constant factors.
 \end{proof}
 
-For instance, $\sum_{k\ge1}\frac{2k+1}{k^3+5}$ converges, because the ratio of its terms to $2/k^2$ tends to $1$; and $\sum_{k\ge1}\frac{k}{k^2+100}$ diverges, because its terms behave like $1/k$. The rule of thumb is the same as for integrals in \cref{sec:improper}: only the behaviour of the terms for large $k$ matters, and it is to be compared with a power of $k$ or with a geometric sequence. To make this rule effective we need to know exactly which powers of $k$ give convergent series.
+For instance, $\sum_{k\ge1}(2k+1)/(k^3+5)$ converges, because the ratio of its terms to $2/k^2$ tends to $1$; and $\sum_{k\ge1}k/(k^2+100)$ diverges, because its terms behave like $1/k$. The rule of thumb is the same as for integrals in \cref{sec:improper}: only the behaviour of the terms for large $k$ matters, and it is to be compared with a power of $k$ or with a geometric sequence. To make this rule effective we need to know exactly which powers of $k$ give convergent series.
 
 \subsection{The Integral Test}
 
@@ -288,7 +292,7 @@ Let $p$ be a rational number. The series $\sum_{k=1}^\infty1/k^p$ converges if a
 For $p\le0$ the terms do not tend to zero, and the series diverges by the term test. For $p>0$ the function $x^{-p}$ is positive and decreasing on $[1,\infty)$, and \cref{prop:p-integrals} says that $\int_1^\infty x^{-p}dx$ converges if and only if $p>1$; the theorem applies. For the bounds, $\int_n^\infty x^{-p}dx=n^{1-p}/(p-1)$ by the computation in the proof of \cref{prop:p-integrals}.
 \end{proof}
 
-Once \cref{ch:transcendental} has defined real powers, the corollary holds for every real $p$, with the same proof. The sum $\zeta(p)\coloneqq\sum_{k=1}^\infty k^{-p}$, as a function of $p>1$, is the \term{Riemann zeta function}, which plays a central role in number theory and is computed as a special function in Volume~X. For $p=2$ the corollary gives $\frac1{n+1}\le\zeta(2)-\sum_{k=1}^n\frac1{k^2}\le\frac1n$; with $n=10$ the partial sum is $1.549767\ldots$, and the bounds locate $\zeta(2)$ in $[1.640676,1.649768]$. The true value, $\pi^2/6=1.644934\ldots$, was found by Euler (\cref{sec:completeness}). The series converges slowly: the remainder after $n$ terms is about $1/n$, so that each additional correct digit costs ten times as many terms. \Cref{sec:summing} shows how the integral bounds themselves can be used to do much better.
+Once \cref{ch:transcendental} has defined real powers, the corollary holds for every real $p$, with the same proof. The sum $\zeta(p)\coloneqq\sum_{k=1}^\infty k^{-p}$, as a function of $p>1$, is the \term{Riemann zeta function}, which plays a central role in number theory and is computed as a special function in Volume~X. For $p=2$ the corollary gives $1/(n+1)\le\zeta(2)-\sum_{k=1}^n1/k^2\le1/n$; with $n=10$ the partial sum is $1.549767\ldots$, and the bounds locate $\zeta(2)$ in $[1.640676,1.649768]$. The true value, $\pi^2/6=1.644934\ldots$, was found by Euler (\cref{sec:completeness}). The series converges slowly: the remainder after $n$ terms is about $1/n$, so that each additional correct digit costs ten times as many terms. \Cref{sec:summing} shows how the integral bounds themselves can be used to do much better.
 
 \begin{figure}
 \sdpanel{A}{\begin{tikzpicture}
@@ -316,7 +320,7 @@ Once \cref{ch:transcendental} has defined real powers, the corollary holds for e
 \addplot[black, line width=0.8pt, domain=0.9:7.4, samples=100] {1/x};
 \end{axis}
 \end{tikzpicture}}
-\caption{The integral test. (A) For $f(x)=1/x^2$, the shaded rectangles of heights $f(3),f(4),\ldots$ over $[2,3],[3,4],\ldots$ lie under the graph, and the outlined rectangles of the same heights over $[3,4],[4,5],\ldots$ lie above it. Continued to infinity, they show $\int_3^\infty f\le\sum_{k\ge3}f(k)\le\int_2^\infty f$, that is, $\frac13\le\sum_{k\ge3}k^{-2}\le\frac12$; the true value is $0.3949\ldots$ (B) For $f(x)=1/x$, the rectangle over $[k,k+1]$ of height $1/k$ exceeds the area under the graph by the shaded sliver. The slivers for $k=1,\ldots,n$ have total area $H_n-\Lambda(n+1)$, which increases to Euler's constant $\gamma=0.5772\ldots$ (\cref{thm:euler-constant}). Slid horizontally into the square $[1,2]\times[0,1]$, the slivers do not overlap, which shows again that $\gamma<1$.}
+\caption{The integral test. (A) For $f(x)=1/x^2$, the shaded rectangles of heights $f(3),f(4),\ldots$ over $[2,3],[3,4],\ldots$ lie under the graph, and the outlined rectangles of the same heights over $[3,4],[4,5],\ldots$ lie above it. Continued to infinity, they show $\int_3^\infty f\le\sum_{k\ge3}f(k)\le\int_2^\infty f$, that is, $1/3\le\sum_{k\ge3}k^{-2}\le1/2$; the true value is $0.3949\ldots$ (B) For $f(x)=1/x$, the rectangle over $[k,k+1]$ of height $1/k$ exceeds the area under the graph by the shaded sliver. The slivers for $k=1,\ldots,n$ have total area $H_n-\Lambda(n+1)$, which increases to Euler's constant $\gamma=0.5772\ldots$ (\cref{thm:euler-constant}). Slid horizontally into the square $[1,2]\times[0,1]$, the slivers do not overlap, which shows again that $\gamma<1$.}
 \label{fig:integral-test}
 \end{figure}
 
@@ -352,7 +356,7 @@ The theorem says that $H_n-\Lambda(n)\to\gamma$, and in particular that $H_n/\La
 \sdfloat{%
 \begin{sdtable}{colspec={rlll}, row{1}={font=\small\bfseries}}
 \toprule
-$n$ & $H_n-\Lambda(n+1)$ & $H_n-\Lambda(n)$ & $H_n-\Lambda(n)-\frac1{2n}$ \\
+$n$ & $H_n-\Lambda(n+1)$ & $H_n-\Lambda(n)$ & $H_n-\Lambda(n)-1/(2n)$ \\
 \midrule
 1 & 0.30685 & 1 & 0.5 \\
 10 & 0.53107 & 0.62638 & 0.576383 \\
@@ -361,7 +365,7 @@ $n$ & $H_n-\Lambda(n+1)$ & $H_n-\Lambda(n)$ & $H_n-\Lambda(n)-\frac1{2n}$ \\
 10\,000 & 0.5771657 & 0.5772657 & 0.577215664068 \\
 1\,000\,000 & 0.5772152 & 0.5772162 & 0.57721566490145 \\
 \bottomrule
-\end{sdtable}}{Bounds for Euler's constant $\gamma=0.57721566490153\ldots$ from \cref{thm:euler-constant}, computed in exact rational arithmetic and with the logarithm to $50$ digits. The lower bounds increase, the upper bounds decrease, and their difference is less than $1/n$. The correction $-\frac1{2n}$ in the last column reduces the error from about $1/(2n)$ to about $1/(12n^2)$.\label{tab:euler-constant}}
+\end{sdtable}}{Bounds for Euler's constant $\gamma=0.57721566490153\ldots$ from \cref{thm:euler-constant}, computed in exact rational arithmetic and with the logarithm to $50$ digits. The lower bounds increase, the upper bounds decrease, and their difference is less than $1/n$. The correction $-1/(2n)$ in the last column reduces the error from about $1/(2n)$ to about $1/(12n^2)$.\label{tab:euler-constant}}
 \end{table}
 
 Euler introduced the constant in a paper written in 1731 and presented to the St Petersburg Academy in 1734, where he gave its value as $0.577218$; in his textbook on the differential calculus of 1755 he computed it to fifteen decimal places. It is not known to this day whether $\gamma$ is rational~\cite{lagarias2013gamma,havil2003gamma}. Its value is known to many billions of digits, and it appears throughout analysis and number theory: in the expansion of the gamma function, in the average number of divisors of an integer (the sum \eqref{eq:divisor-sum} is $N\Lambda(N)+(2\gamma-1)N+O(\sqrt N)$, in the notation of \cref{sec:asymptotic-notation}, by a theorem of Dirichlet~\cite{hardywright2008}), and in the average cost of algorithms whose analysis involves harmonic numbers (Volume~IV).
@@ -423,11 +427,11 @@ If $L<1$, choose $q$ with $L<q<1$. By \cref{lem:limsup}\,(i), eventually $a_k^{1
 
 Both tests are in Cauchy's \emph{Cours d'analyse} of 1821~\cite{cauchy1821,knopp1990}; the ratio test is also known as d'Alembert's test. Both compare the series with a geometric series, and so they can only detect convergence that is at least geometric. They therefore say nothing about the $p$-series: for $a_k=1/k^p$ the ratios $(k/(k+1))^p$ and the roots $k^{-p/k}$ tend to $1$ for every $p$, by \cref{thm:standard-limits}\,(iv), and the tests are inconclusive, while the integral test decides at once.
 
-\emph{Examples.} For $\sum_{k\ge1}k/2^k$, the ratios $(k+1)/(2k)$ tend to $\frac12$, so the series converges; its sum, $2$, is computed in \cref{sec:power-series}. For every real $x$, the series $\sum_{k\ge0}|x|^k/k!$ converges, because the ratios $|x|/(k+1)$ tend to $0$; this series defines the exponential function in \cref{sec:expansions}. For $\sum_{k\ge1}k!/k^k$ the ratios are
+For $\sum_{k\ge1}k/2^k$, the ratios $(k+1)/(2k)$ tend to $1/2$, so the series converges; its sum, $2$, is computed in \cref{sec:power-series}. For every real $x$, the series $\sum_{k\ge0}|x|^k/k!$ converges, because the ratios $|x|/(k+1)$ tend to $0$; this series defines the exponential function in \cref{sec:expansions}. For $\sum_{k\ge1}k!/k^k$ the ratios are
 \[
 \frac{(k+1)!\,k^k}{(k+1)^{k+1}\,k!}=\frac{k^k}{(k+1)^k}=\frac1{(1+1/k)^k}\to\frac1e<1 ,
 \]
-by \cref{thm:e}, so the series converges, and \cref{thm:standard-limits}\,(vii) is recovered in a stronger form. The root test is the stronger of the two: whenever the ratios converge to $\lambda$, so do the roots, but not conversely. For $a_k\coloneqq2^{-k+(-1)^k}$ the ratios alternate between $\frac18$ and $2$, so the ratio test fails, while $a_k^{1/k}=2^{-1+(-1)^k/k}\to\frac12$, and the root test shows convergence; the sum is $\frac83+\frac13=3$, as one finds by adding the even and the odd terms separately as geometric series.
+by \cref{thm:e}, so the series converges, and \cref{thm:standard-limits}\,(vii) is recovered in a stronger form. The root test is the stronger of the two: whenever the ratios converge to $\lambda$, so do the roots, but not conversely. For $a_k\coloneqq2^{-k+(-1)^k}$ the ratios alternate between $1/8$ and $2$, so the ratio test fails, while $a_k^{1/k}=2^{-1+(-1)^k/k}\to1/2$, and the root test shows convergence; the sum is $8/3+1/3=3$, as one finds by adding the even and the odd terms separately as geometric series.
 
 \section{Absolute and Conditional Convergence}
 \label{sec:absolute}
@@ -497,9 +501,9 @@ The test is due to Leibniz, who stated it in letters of 1705 and 1714~\cite{knop
 \[
 1-\frac12+\frac13-\frac14+\cdots=\sum_{k=1}^\infty\frac{(-1)^{k+1}}k ,
 \]
-which converges by the theorem but not absolutely, since the harmonic series diverges. Its sum is $\Lambda(2)=\ln2$, as \cref{sec:expansions} proves. The same theorem shows the convergence of the series $1-\frac13+\frac15-\frac17+\cdots$, whose sum is $\pi/4$ (\cref{sec:expansions}), and of $\sum_k(-1)^k/k!$, whose sum is $1/e$; for the last one it also proves the claim of \cref{sec:ie-pigeonhole} about the fraction of derangements, as \cref{sec:expansions} explains.
+which converges by the theorem but not absolutely, since the harmonic series diverges. Its sum is $\Lambda(2)=\ln2$, as \cref{sec:expansions} proves. The same theorem shows the convergence of the series $1-1/3+1/5-1/7+\cdots$, whose sum is $\pi/4$ (\cref{sec:expansions}), and of $\sum_k(-1)^k/k!$, whose sum is $1/e$; for the last one it also proves the claim of \cref{sec:ie-pigeonhole} about the fraction of derangements, as \cref{sec:expansions} explains.
 
-The bound $|s-s_n|\le b_{n+1}$ also shows how slowly a conditionally convergent alternating series may converge. For the alternating harmonic series it gives $|\Lambda(2)-s_n|\le1/(n+1)$, and this is nearly sharp: the error after $1000$ terms is $5.0\times10^{-4}$. Averaging two consecutive partial sums is much better, because the errors have opposite signs and nearly equal size: $\frac12(s_{999}+s_{1000})$ differs from $\Lambda(2)$ by $2.5\times10^{-7}$. Systematic versions of this idea are the subject of \cref{sec:summing}.
+The bound $|s-s_n|\le b_{n+1}$ also shows how slowly a conditionally convergent alternating series may converge. For the alternating harmonic series it gives $|\Lambda(2)-s_n|\le1/(n+1)$, and this is nearly sharp: the error after $1000$ terms is $5.0\times10^{-4}$. Averaging two consecutive partial sums is much better, because the errors have opposite signs and nearly equal size: $(1/2)(s_{999}+s_{1000})$ differs from $\Lambda(2)$ by $2.5\times10^{-7}$. Systematic versions of this idea are the subject of \cref{sec:summing}.
 
 \subsection{Rearrangements}
 
@@ -571,7 +575,11 @@ A rearrangement can also be computed exactly. Take the alternating harmonic seri
 \[
 1-\frac12-\frac14+\frac13-\frac16-\frac18+\frac15-\frac1{10}-\frac1{12}+\cdots .
 \]
-The $j$th group of three terms is $\frac1{2j-1}-\frac1{4j-2}-\frac1{4j}=\frac1{4j-2}-\frac1{4j}=\frac12\bigl(\frac1{2j-1}-\frac1{2j}\bigr)$, so the partial sum after $3m$ terms is half the partial sum $s_{2m}$ of the original series, and it tends to $\frac12\Lambda(2)$. The partial sums after $3m+1$ and $3m+2$ terms differ from it by terms that tend to zero. The rearranged series therefore converges to $\frac12\Lambda(2)$, half the sum of the original series, although it consists of exactly the same terms.
+The $j$th group of three terms is
+\[
+\frac1{2j-1}-\frac1{4j-2}-\frac1{4j}=\frac1{4j-2}-\frac1{4j}=\frac12\Bigl(\frac1{2j-1}-\frac1{2j}\Bigr),
+\]
+so the partial sum after $3m$ terms is half the partial sum $s_{2m}$ of the original series, and it tends to $(1/2)\Lambda(2)$. The partial sums after $3m+1$ and $3m+2$ terms differ from it by terms that tend to zero. The rearranged series therefore converges to $(1/2)\Lambda(2)$, half the sum of the original series, although it consists of exactly the same terms.
 
 The lesson for computation is that a conditionally convergent series is a fragile object. Its sum is a property of the terms together with their order, and any method that reorders terms, such as summing in parallel blocks, or sorting by size to reduce rounding errors, may change the result unless the series converges absolutely. For absolutely convergent series every order gives the same sum, and the order may be chosen to suit the computation.
 
@@ -600,7 +608,7 @@ Let $A_n$, $B_n$ and $C_n$ be the partial sums of the three series, and let $\ba
 As $N\to\infty$, also $m\to\infty$, the right side tends to $0$, and $A_mB_m\to AB$; so $C_N\to AB$. The same estimate applied to $\sum|c_n|\le\sum_n\sum_{i+j=n}|a_i||b_j|$ shows that the partial sums of $\sum|c_n|$ are bounded by $\bar A\bar B$, so the convergence is absolute.
 \end{proof}
 
-The theorem is due to Cauchy~\cite{cauchy1821}. Mertens showed in 1875 that it suffices for one of the two series to converge absolutely~\cite{mertens1875}, but some absolute convergence is needed. Cauchy's own example is the square of the conditionally convergent series $\sum_{k\ge0}(-1)^k/\sqrt{k+1}$. The terms of its Cauchy product with itself are $c_n=(-1)^n\sum_{k=0}^n1/\sqrt{(k+1)(n-k+1)}$, and since $\sqrt{(k+1)(n-k+1)}\le\frac{n+2}2$ by the inequality of the means, $|c_n|\ge2(n+1)/(n+2)\ge1$. The terms do not tend to zero, and the product series diverges.
+The theorem is due to Cauchy~\cite{cauchy1821}. Mertens showed in 1875 that it suffices for one of the two series to converge absolutely~\cite{mertens1875}, but some absolute convergence is needed. Cauchy's own example is the square of the conditionally convergent series $\sum_{k\ge0}(-1)^k/\sqrt{k+1}$. The terms of its Cauchy product with itself are $c_n=(-1)^n\sum_{k=0}^n1/\sqrt{(k+1)(n-k+1)}$, and since $\sqrt{(k+1)(n-k+1)}\le(n+2)/2$ by the inequality of the means, $|c_n|\ge2(n+1)/(n+2)\ge1$. The terms do not tend to zero, and the product series diverges.
 
 \subsection{The Order of Summation in Floating-Point Arithmetic}
 
@@ -674,7 +682,7 @@ with the conventions $1/0=\infty$ and $1/\infty=0$. If $a_k\ne0$ for all suffici
 Let $L\coloneqq\limsup|a_k|^{1/k}$, and let $x\ne c$. Then $|a_k(x-c)^k|^{1/k}=|a_k|^{1/k}|x-c|$, whose limit superior is $L|x-c|$ (read as $\infty$ if $L=\infty$). If $|x-c|<1/L$, then $L|x-c|<1$, and the series converges absolutely by the root test; its terms are then bounded, so $|x-c|\le R$. Since this holds for every $|x-c|<1/L$, we get $1/L\le R$. If $|x-c|>1/L$, then $L|x-c|>1$, and $|a_k(x-c)^k|>1$ for infinitely many $k$, so the series diverges; by \cref{thm:radius}\,(i), $|x-c|\ge R$. Hence $R\le1/L$. The second statement is proved in the same way with the ratio test: $|a_{k+1}(x-c)^{k+1}|/|a_k(x-c)^k|$ tends to $|x-c|/\lim|a_k/a_{k+1}|$.
 \end{proof}
 
-\emph{Examples.} The following power series, all with centre $0$, show the possible behaviours at the ends of the interval of convergence.
+The following power series, all with centre $0$, show the possible behaviours at the ends of the interval of convergence.
 \begin{itemize}
 \item $\sum x^k$: $R=1$, divergent at both ends, since the terms do not tend to zero there.
 \item $\sum_{k\ge1}x^k/k$: the ratios $|a_k/a_{k+1}|=(k+1)/k$ tend to $1$, so $R=1$. At $x=1$ it is the harmonic series, which diverges; at $x=-1$ it is the negative of the alternating harmonic series, which converges.
@@ -717,7 +725,7 @@ A polynomial is differentiated term by term. The central theorem about power ser
 
 \begin{lemma}
 \label{lem:derived-radius}
-The power series $\sum_{k\ge1}ka_kx^{k-1}$ and $\sum_{k\ge0}\frac{a_k}{k+1}x^{k+1}$, obtained from $\sum a_kx^k$ by differentiating and by integrating each term, have the same radius of convergence as $\sum a_kx^k$.
+The power series $\sum_{k\ge1}ka_kx^{k-1}$ and $\sum_{k\ge0}(a_k/(k+1))x^{k+1}$, obtained from $\sum a_kx^k$ by differentiating and by integrating each term, have the same radius of convergence as $\sum a_kx^k$.
 \end{lemma}
 
 \begin{proof}
@@ -777,11 +785,11 @@ Let $\sum a_k(x-c)^k$ and $\sum b_k(x-c)^k$ have positive radii of convergence, 
 The series $\sum d_k(x-c)^k$ with $d_k\coloneqq a_k-b_k$ has a positive radius, at least the smaller of the two radii, and its sum $D$ vanishes at every $x_j$. Suppose not all $d_k$ vanish, and let $d_m$ be the first that does not. Then $D(x)=(x-c)^mG(x)$ with $G(x)\coloneqq\sum_{k\ge0}d_{m+k}(x-c)^k$, a power series with the same radius, which is continuous at $c$ by \cref{thm:termwise-diff}. Since $G(x_j)=0$ for all $j$ and $x_j\to c$, $G(c)=d_m=0$, a contradiction.
 \end{proof}
 
-\emph{Examples.} Differentiating the geometric series term by term gives, for $|x|<1$,
+Differentiating the geometric series term by term gives, for $|x|<1$,
 \[
 \frac1{(1-x)^2}=\sum_{k=1}^\infty kx^{k-1},\qquad\text{hence}\qquad\sum_{k=1}^\infty kx^k=\frac x{(1-x)^2},
 \]
-and with $x=\frac12$ the sum $\sum k/2^k=2$ announced in \cref{sec:nonnegative-series}. Integrating the geometric series $\sum(-t)^k=1/(1+t)$ term by term from $0$ to $x$ gives
+and with $x=1/2$ the sum $\sum k/2^k=2$ announced in \cref{sec:nonnegative-series}. Integrating the geometric series $\sum(-t)^k=1/(1+t)$ term by term from $0$ to $x$ gives
 \[
 \Lambda(1+x)=\int_0^x\frac{dt}{1+t}=x-\frac{x^2}2+\frac{x^3}3-\cdots\qquad(|x|<1),
 \]
@@ -849,7 +857,7 @@ $P_nf(\cdot\,;a)$ is the only polynomial $p$ of degree at most $n$ with $p^{(k)}
 Every polynomial of degree at most $n$ can be written as $p(x)=\sum_{k=0}^nc_k(x-a)^k$, by expanding the powers of $x=(x-a)+a$ with the binomial theorem. Differentiating $j$ times and putting $x=a$ kills every term except the one with $k=j$, and gives $p^{(j)}(a)=j!\,c_j$, as in \cref{sec:convexity}. So the conditions $p^{(j)}(a)=f^{(j)}(a)$ hold if and only if $c_j=f^{(j)}(a)/j!$ for every $j$. Differentiating the sum that defines $P_nf$ term by term gives the last statement.
 \end{proof}
 
-\emph{Examples.} A polynomial of degree at most $n$ is its own Taylor polynomial of degree $n$, at every point. For $f(x)=1/(1-x)$, the derivatives are $f^{(k)}(x)=k!/(1-x)^{k+1}$, so $f^{(k)}(0)=k!$ and $P_n(x)=1+x+\cdots+x^n$, the partial sum of the geometric series; here the remainder is known exactly, $R_n(x)=x^{n+1}/(1-x)$, by \cref{prop:geometric-series}. For the sine at $0$, the derivatives $\sin^{(k)}0=\sin(k\pi/2)$ (\cref{sec:convexity}) are $0,1,0,-1,0,1,\ldots$, so
+A polynomial of degree at most $n$ is its own Taylor polynomial of degree $n$, at every point. For $f(x)=1/(1-x)$, the derivatives are $f^{(k)}(x)=k!/(1-x)^{k+1}$, so $f^{(k)}(0)=k!$ and $P_n(x)=1+x+\cdots+x^n$, the partial sum of the geometric series; here the remainder is known exactly, $R_n(x)=x^{n+1}/(1-x)$, by \cref{prop:geometric-series}. For the sine at $0$, the derivatives $\sin^{(k)}0=\sin(k\pi/2)$ (\cref{sec:convexity}) are $0,1,0,-1,0,1,\ldots$, so
 \[
 P_1(x)=P_2(x)=x,\qquad P_3(x)=P_4(x)=x-\frac{x^3}6,\qquad P_5(x)=x-\frac{x^3}6+\frac{x^5}{120},
 \]
@@ -859,7 +867,7 @@ the polynomials of the inequalities of \cref{prop:sin-cos-ladder}. \Cref{fig:sin
 \sdfloat{%
 \begin{tikzpicture}
 \begin{axis}[sdplot, width=0.66\textwidth, height=0.44\textwidth, xmin=0, xmax=7.2, ymin=-2.2, ymax=2.2,
-  xtick={0,1.5708,3.1416,4.7124,6.2832}, xticklabels={0,$\frac\pi2$,$\pi$,$\frac{3\pi}2$,$2\pi$},
+  xtick={0,1.5708,3.1416,4.7124,6.2832}, xticklabels={0,$\pi/2$,$\pi$,$3\pi/2$,$2\pi$},
   ytick={-2,-1,0,1,2}, xlabel={$x$}, restrict y to domain=-3:3, unbounded coords=jump]
 \addplot[black, line width=1.2pt, domain=0:7.2, samples=150] {sin(deg(x))};
 \addplot[black, dashed, line width=0.6pt, domain=0:7.2, samples=40] {x};
@@ -978,7 +986,7 @@ By \cref{thm:taylor-lagrange} with $n=1$, centre $x_k$ and point $c$, there is $
 \[
 0=f(c)=f(x_k)+f'(x_k)(c-x_k)+\frac{f''(\xi_k)}2(c-x_k)^2 .
 \]
-For large $k$, $f'(x_k)\ne0$ by continuity, and dividing by $f'(x_k)$ gives $x_{k+1}-c=x_k-c-f(x_k)/f'(x_k)=\frac{f''(\xi_k)}{2f'(x_k)}(x_k-c)^2$. Since $\xi_k\to c$ and $x_k\to c$, the continuity of $f''$ and $f'$ gives the limit.
+For large $k$, $f'(x_k)\ne0$ by continuity, and dividing by $f'(x_k)$ gives $x_{k+1}-c=x_k-c-f(x_k)/f'(x_k)=\bigl(f''(\xi_k)/(2f'(x_k))\bigr)(x_k-c)^2$. Since $\xi_k\to c$ and $x_k\to c$, the continuity of $f''$ and $f'$ gives the limit.
 \end{proof}
 
 For the cubic $x^3-2x-5$ of \cref{sec:newton}, with zero $c=2.0945514815\ldots$, the limit is $6c/(2(3c^2-2))=0.56297\ldots$, the value observed there. The proposition also explains what happens at a zero where $f''(c)=0$: the leading error term vanishes, and the convergence is faster than quadratic, as for the cubic $x^3-x$ at its zero $0$.
@@ -991,8 +999,8 @@ For the cubic $x^3-2x-5$ of \cref{sec:newton}, with zero $c=2.0945514815\ldots$,
 \label{prop:difference-taylor}
 Let $h>0$ and let $f$ be defined on $[x-h,x+h]$.
 \begin{enumerate}
-\item If $f\in C^2$, then $D_h^+f(x)-f'(x)=\frac h2f''(\xi)$ for some $\xi\in(x,x+h)$.
-\item If $f\in C^3$, then $D_h^0f(x)-f'(x)=\frac{h^2}6f'''(\xi)$ for some $\xi\in(x-h,x+h)$.
+\item If $f\in C^2$, then $D_h^+f(x)-f'(x)=(h/2)f''(\xi)$ for some $\xi\in(x,x+h)$.
+\item If $f\in C^3$, then $D_h^0f(x)-f'(x)=(h^2/6)f'''(\xi)$ for some $\xi\in(x-h,x+h)$.
 \item If $f\in C^4$, the \term{second difference quotient} satisfies
 \[
 \frac{f(x+h)-2f(x)+f(x-h)}{h^2}=f''(x)+\frac{h^2}{12}f^{(4)}(\xi)\qquad\text{for some }\xi\in(x-h,x+h).
@@ -1006,14 +1014,14 @@ with $|O(h^{2m})|\le h^{2m}\max|f^{(2m+1)}|/(2m+1)!$, the maximum taken over $[x
 \end{proposition}
 
 \begin{proof}
-(i) Lagrange's form with $n=1$ gives $f(x+h)=f(x)+hf'(x)+\frac{h^2}2f''(\xi)$; subtract $f(x)$ and divide by $h$. (ii) With $n=2$, $f(x\pm h)=f(x)\pm hf'(x)+\frac{h^2}2f''(x)\pm\frac{h^3}6f'''(\xi_\pm)$ with $\xi_\pm$ between $x$ and $x\pm h$. Subtracting the two expansions and dividing by $2h$,
+(i) Lagrange's form with $n=1$ gives $f(x+h)=f(x)+hf'(x)+(h^2/2)f''(\xi)$; subtract $f(x)$ and divide by $h$. (ii) With $n=2$, $f(x\pm h)=f(x)\pm hf'(x)+(h^2/2)f''(x)\pm(h^3/6)f'''(\xi_\pm)$ with $\xi_\pm$ between $x$ and $x\pm h$. Subtracting the two expansions and dividing by $2h$,
 \[
 D_h^0f(x)-f'(x)=\frac{h^2}6\cdot\frac{f'''(\xi_+)+f'''(\xi_-)}2 ,
 \]
-and the average of two values of the continuous function $f'''$ is a value $f'''(\xi)$ at a point between them, by the intermediate value theorem. (iii) In the same way with $n=3$: adding the expansions of $f(x\pm h)$, the odd terms cancel, and $f(x+h)+f(x-h)=2f(x)+h^2f''(x)+\frac{h^4}{24}(f^{(4)}(\xi_+)+f^{(4)}(\xi_-))$. (iv) With $n=2m$, subtracting the expansions of $f(x\pm h)$ cancels the even terms and leaves twice the odd ones, up to the two remainders $\pm h^{2m+1}f^{(2m+1)}(\xi_\pm)/(2m+1)!$; divide by $2h$.
+and the average of two values of the continuous function $f'''$ is a value $f'''(\xi)$ at a point between them, by the intermediate value theorem. (iii) In the same way with $n=3$: adding the expansions of $f(x\pm h)$, the odd terms cancel, and $f(x+h)+f(x-h)=2f(x)+h^2f''(x)+(h^4/24)(f^{(4)}(\xi_+)+f^{(4)}(\xi_-))$. (iv) With $n=2m$, subtracting the expansions of $f(x\pm h)$ cancels the even terms and leaves twice the odd ones, up to the two remainders $\pm h^{2m+1}f^{(2m+1)}(\xi_\pm)/(2m+1)!$; divide by $2h$.
 \end{proof}
 
-The constants $\frac12$ and $\frac16$ are those of \cref{prop:difference-errors}, which assumed only Lipschitz continuity of $f'$ or $f''$; the Taylor versions assume one more continuous derivative and give in return the exact form of the error. For $f=\sin$ at $x=1$ and $h=0.1$, (iii) predicts that the second difference quotient exceeds $f''(1)=-\sin1$ by about $\frac{h^2}{12}\sin1=7.012\times10^{-4}$, and the actual excess is $7.010\times10^{-4}$. The second difference quotient is the basic approximation of second derivatives, used to discretise differential equations in Part~IV and in Volume~XI.
+The constants $1/2$ and $1/6$ are those of \cref{prop:difference-errors}, which assumed only Lipschitz continuity of $f'$ or $f''$; the Taylor versions assume one more continuous derivative and give in return the exact form of the error. For $f=\sin$ at $x=1$ and $h=0.1$, (iii) predicts that the second difference quotient exceeds $f''(1)=-\sin1$ by about $(h^2/12)\sin1=7.012\times10^{-4}$, and the actual excess is $7.010\times10^{-4}$. The second difference quotient is the basic approximation of second derivatives, used to discretise differential equations in Part~IV and in Volume~XI.
 
 \subsection{Smoothness and Order of Accuracy}
 
@@ -1021,7 +1029,7 @@ The constants $\frac12$ and $\frac16$ are those of \cref{prop:difference-errors}
 \[
 D_hf(x)\coloneqq\frac1h\sum_{j=1}^mw_jf(x+c_jh)
 \]
-with fixed nodes $c_j$ and weights $w_j$, intended to approximate $f'(x)$. Applied to a polynomial $p$ of degree at most $d$, the formula is $D_hp(x)=\frac1h\sum_jw_jp(x+c_jh)$, a polynomial in $h$ and $1/h$; we say that the formula is \term{exact for degree $d$} if $D_hp(x)=p'(x)$ for every such $p$, every $x$ and every $h>0$. The forward quotient, with nodes $0,1$ and weights $-1,1$, is exact for degree $1$; the central quotient, with nodes $\pm1$ and weights $\pm\frac12$, is exact for degree $2$, since $\bigl((x+h)^2-(x-h)^2\bigr)/(2h)=2x$, but not for degree $3$.
+with fixed nodes $c_j$ and weights $w_j$, intended to approximate $f'(x)$. Applied to a polynomial $p$ of degree at most $d$, the formula is $D_hp(x)=(1/h)\sum_jw_jp(x+c_jh)$, a polynomial in $h$ and $1/h$; we say that the formula is \term{exact for degree $d$} if $D_hp(x)=p'(x)$ for every such $p$, every $x$ and every $h>0$. The forward quotient, with nodes $0,1$ and weights $-1,1$, is exact for degree $1$; the central quotient, with nodes $\pm1$ and weights $\pm1/2$, is exact for degree $2$, since $\bigl((x+h)^2-(x-h)^2\bigr)/(2h)=2x$, but not for degree $3$.
 
 \begin{proposition}[Degree of exactness and order of accuracy]
 \label{prop:exactness-order}
@@ -1032,10 +1040,10 @@ Let $D_h$ be exact for degree $d$, and let $f\in C^{d+1}$ on an interval $J$ tha
 \end{proposition}
 
 \begin{proof}
-Let $p\coloneqq P_df(\cdot\,;x)$ be the Taylor polynomial of degree $d$ at $x$. By exactness, $D_hp(x)=p'(x)=f'(x)$, using \cref{lem:taylor-matching}. Hence $D_hf(x)-f'(x)=D_h(f-p)(x)=\frac1h\sum_jw_jR_df(x+c_jh;x)$, and by Lagrange's form each remainder is at most $\max_J|f^{(d+1)}|\,|c_jh|^{d+1}/(d+1)!$ in absolute value.
+Let $p\coloneqq P_df(\cdot\,;x)$ be the Taylor polynomial of degree $d$ at $x$. By exactness, $D_hp(x)=p'(x)=f'(x)$, using \cref{lem:taylor-matching}. Hence $D_hf(x)-f'(x)=D_h(f-p)(x)=(1/h)\sum_jw_jR_df(x+c_jh;x)$, and by Lagrange's form each remainder is at most $\max_J|f^{(d+1)}|\,|c_jh|^{d+1}/(d+1)!$ in absolute value.
 \end{proof}
 
-For the forward quotient $K=\frac12$ and $d=1$, and for the central quotient $K=\frac16$ and $d=2$, which are the bounds of \cref{prop:difference-errors}. The proposition has two readings. First, the order of accuracy, the power of $h$ in the error, is the degree of exactness: to construct a more accurate formula, one chooses nodes and weights that are exact for polynomials of higher degree, which is the method of Volume~XI. Second, the order is limited by the smoothness of $f$. A formula that is exact for degree $d$ is exact for every lower degree $d'$, so if $f$ has only $d'+1\le d$ continuous derivatives, the proposition applies with $d'$ in place of $d$, and only the order $h^{d'}$ is guaranteed; the example $x|x|$ of \cref{sec:darboux} shows that this loss really occurs. The same principle governs quadrature: the trapezoidal rule is exact for degree $1$ and has error $O(h^2)$, Simpson's rule is exact for degree $3$ and has error $O(h^4)$ (\cref{thm:quadrature-errors}), and both fall back to the order $h^{3/2}$ for $\sqrt x$, whose derivatives are unbounded at $0$ (\cref{sec:quadrature}).
+For the forward quotient $K=1/2$ and $d=1$, and for the central quotient $K=1/6$ and $d=2$, which are the bounds of \cref{prop:difference-errors}. The proposition has two readings. First, the order of accuracy, the power of $h$ in the error, is the degree of exactness: to construct a more accurate formula, one chooses nodes and weights that are exact for polynomials of higher degree, which is the method of Volume~XI. Second, the order is limited by the smoothness of $f$. A formula that is exact for degree $d$ is exact for every lower degree $d'$, so if $f$ has only $d'+1\le d$ continuous derivatives, the proposition applies with $d'$ in place of $d$, and only the order $h^{d'}$ is guaranteed; the example $x|x|$ of \cref{sec:darboux} shows that this loss really occurs. The same principle governs quadrature: the trapezoidal rule is exact for degree $1$ and has error $O(h^2)$, Simpson's rule is exact for degree $3$ and has error $O(h^4)$ (\cref{thm:quadrature-errors}), and both fall back to the order $h^{3/2}$ for $\sqrt x$, whose derivatives are unbounded at $0$ (\cref{sec:quadrature}).
 
 \subsection{Taylor Series and Analytic Functions}
 
@@ -1043,7 +1051,7 @@ If $f$ has derivatives of all orders at $a$, the Taylor polynomials of all degre
 
 \begin{definition}[Taylor series]
 \label{def:taylor-series}
-Let $f\in C^\infty(I)$ and $a\in I$. The \term{Taylor series} of $f$ at $a$ is the power series $\sum_{k=0}^\infty\frac{f^{(k)}(a)}{k!}(x-a)^k$. The function $f$ is \term{analytic} at $a$ if its Taylor series at $a$ has a positive radius of convergence and its sum equals $f(x)$ for all $x$ in some open interval around $a$.
+Let $f\in C^\infty(I)$ and $a\in I$. The \term{Taylor series} of $f$ at $a$ is the power series $\sum_{k=0}^\infty(f^{(k)}(a)/k!)(x-a)^k$. The function $f$ is \term{analytic} at $a$ if its Taylor series at $a$ has a positive radius of convergence and its sum equals $f(x)$ for all $x$ in some open interval around $a$.
 \end{definition}
 
 The Taylor series converges to $f(x)$ exactly when the remainders $R_nf(x;a)$ tend to zero, since they are the differences between $f(x)$ and the partial sums. By \cref{thm:termwise-diff}, the sum of a power series with positive radius is its own Taylor series at the centre; so if a function has a power series expansion at all, it is the Taylor series. Two things can go wrong for a function in $C^\infty$: the Taylor series may have radius $0$, or it may converge to the wrong function. \Cref{sec:expansions} gives an example of the second kind; the first occurs too, since every sequence of real numbers is the sequence of derivatives at $0$ of some smooth function, by a theorem of Borel~\cite{borel1895}. The remainder formulas give a criterion that excludes both.
@@ -1058,7 +1066,11 @@ Then the Taylor series of $f$ at $a$ converges to $f(x)$ for every $x\in I$ with
 \end{theorem}
 
 \begin{proof}
-By \eqref{eq:taylor-bound}, $|R_nf(x;a)|\le M\frac{(n+1)!}{\rho^{n+1}}\cdot\frac{|x-a|^{n+1}}{(n+1)!}=M\bigl(|x-a|/\rho\bigr)^{n+1}$, which tends to $0$ if $|x-a|<\rho$. In the second case, $|R_nf(x;a)|\le M\,(C|x-a|)^{n+1}/(n+1)!$, which tends to $0$ for every $x$ by \cref{thm:standard-limits}\,(vi).
+By \eqref{eq:taylor-bound},
+\[
+|R_nf(x;a)|\le M\frac{(n+1)!}{\rho^{n+1}}\cdot\frac{|x-a|^{n+1}}{(n+1)!}=M\Bigl(\frac{|x-a|}\rho\Bigr)^{n+1},
+\]
+which tends to $0$ if $|x-a|<\rho$. In the second case, $|R_nf(x;a)|\le M\,(C|x-a|)^{n+1}/(n+1)!$, which tends to $0$ for every $x$ by \cref{thm:standard-limits}\,(vi).
 \end{proof}
 
 The second case applies to the sine and the cosine, all of whose derivatives are bounded by $1$, and to the exponential function on bounded intervals; \cref{sec:expansions} carries this out. For the logarithm the criterion is too crude near the end of the interval of convergence, and a direct argument does better. Sums of power series are analytic not only at their centre but at every point of their interval of convergence, as one shows by expanding $(x-c)^k=((x-b)+(b-c))^k$ binomially and rearranging the resulting double series, which converges absolutely~\cite{krantz2002primer}; Volume~II proves this in the setting of complex analysis, where analytic functions have a far richer theory.
@@ -1077,7 +1089,7 @@ This section derives the power series of the elementary functions. Each derivati
 \[
 e=\sum_{k=0}^\infty\frac1{k!}=1+1+\frac12+\frac16+\frac1{24}+\cdots ,
 \]
-and the partial sums $s_n\coloneqq\sum_{k=0}^n1/k!$ satisfy $0<e-s_n<\dfrac1{n\cdot n!}$ for every $n\ge1$.
+and the partial sums $s_n\coloneqq\sum_{k=0}^n1/k!$ satisfy $0<e-s_n<1/(n\cdot n!)$ for every $n\ge1$.
 \end{theorem}
 
 \begin{proof}
@@ -1085,7 +1097,7 @@ The series converges by the ratio test, since the ratios $1/(k+1)$ tend to $0$; 
 \[
 t_n=\sum_{k=0}^n\binom nk\frac1{n^k}=\sum_{k=0}^n\frac1{k!}\cdot\frac{n(n-1)\cdots(n-k+1)}{n^k}=\sum_{k=0}^n\frac1{k!}\prod_{j=0}^{k-1}\Bigl(1-\frac jn\Bigr).
 \]
-Every product is at most $1$, so $t_n\le s_n\le s$, and in the limit $e\le s$. Conversely, fix $m$. For $n\ge m$, dropping the terms with $k>m$, which are nonnegative, gives $t_n\ge\sum_{k=0}^m\frac1{k!}\prod_{j<k}(1-j/n)$. As $n\to\infty$ with $m$ fixed, each of the finitely many products tends to $1$, so $e\ge s_m$. This holds for every $m$, so $e\ge s$. Hence $e=s$.
+Every product is at most $1$, so $t_n\le s_n\le s$, and in the limit $e\le s$. Conversely, fix $m$. For $n\ge m$, dropping the terms with $k>m$, which are nonnegative, gives $t_n\ge\sum_{k=0}^m(1/k!)\prod_{j<k}(1-j/n)$. As $n\to\infty$ with $m$ fixed, each of the finitely many products tends to $1$, so $e\ge s_m$. This holds for every $m$, so $e\ge s$. Hence $e=s$.
 
 For the remainder, $e-s_n=\sum_{k>n}1/k!$, and for $k=n+1+j$ we have $k!\ge(n+1)!\,(n+1)^j$, with strict inequality for $j\ge1$. Comparison with a geometric series gives
 \[
@@ -1186,7 +1198,7 @@ For every $n\in\mathbb N$, $\bigl|D_n/n!-1/e\bigr|<1/(n+1)!$. Consequently $D_n/
 \end{proposition}
 
 \begin{proof}
-The fraction $D_n/n!$ is the $n$th partial sum of $E(-1)=\sum_j(-1)^j/j!$, and $E(-1)=1/E(1)=1/e$ by \cref{thm:exp-series}. The numbers $1/j!$ decrease to $0$, so the alternating series test (\cref{thm:leibniz}) gives $|D_n/n!-1/e|\le1/(n+1)!$, with strict inequality because the remainder is an alternating series whose terms strictly decrease, so that it lies strictly between $0$ and its first term. Multiplying by $n!$ gives $|D_n-n!/e|<1/(n+1)\le\frac12$ for $n\ge1$.
+The fraction $D_n/n!$ is the $n$th partial sum of $E(-1)=\sum_j(-1)^j/j!$, and $E(-1)=1/E(1)=1/e$ by \cref{thm:exp-series}. The numbers $1/j!$ decrease to $0$, so the alternating series test (\cref{thm:leibniz}) gives $|D_n/n!-1/e|\le1/(n+1)!$, with strict inequality because the remainder is an alternating series whose terms strictly decrease, so that it lies strictly between $0$ and its first term. Multiplying by $n!$ gives $|D_n-n!/e|<1/(n+1)\le1/2$ for $n\ge1$.
 \end{proof}
 
 For instance, $10!/e=1\,334\,960.916\ldots$, and $D_{10}=1\,334\,961$. The probability that a random permutation of $n$ elements has no fixed point is $0.367879\ldots$ to six digits as soon as $n\ge9$.
@@ -1232,7 +1244,7 @@ and the remainders satisfy $|\sin x-S_n(x)|\le|x|^{2n+3}/(2n+3)!$ and $|\cos x-C
 All derivatives of the sine and the cosine are $\pm\sin$ or $\pm\cos$, bounded by $1$, so \cref{thm:taylor-convergence} applies with $M=C=1$. The bounds on the remainders are \eqref{eq:taylor-bound}, since $S_n$ is also the Taylor polynomial of degree $2n+2$ of the sine and $C_n$ that of degree $2n+1$ of the cosine.
 \end{proof}
 
-For $x\ge0$, the ladder adds information that the bound does not give: the partial sums lie alternately above and below the function, as \cref{fig:sin-taylor} shows, so that two consecutive partial sums enclose the value. For $x=1$, $S_3(1)=1-\frac16+\frac1{120}-\frac1{5040}=0.8414682\ldots$ and $S_4(1)=0.8414710\ldots$ enclose $\sin1=0.8414709848\ldots$, and the bound $1/9!=2.8\times10^{-6}$ is nearly the actual error of $S_3(1)$.
+For $x\ge0$, the ladder adds information that the bound does not give: the partial sums lie alternately above and below the function, as \cref{fig:sin-taylor} shows, so that two consecutive partial sums enclose the value. For $x=1$, $S_3(1)=1-1/6+1/120-1/5040=0.8414682\ldots$ and $S_4(1)=0.8414710\ldots$ enclose $\sin1=0.8414709848\ldots$, and the bound $1/9!=2.8\times10^{-6}$ is nearly the actual error of $S_3(1)$.
 
 The derivation rests on the derivatives of the sine and the cosine, and thus on the geometric facts of \cref{asm:trig-geometry}. \Cref{ch:transcendental} reverses the logic. It defines the sine and the cosine as the sums of these series, which converge everywhere by the ratio test, derives the derivatives by \cref{thm:termwise-diff}, and proves the geometric facts as theorems. This is how the circularity noted in \cref{sec:function-limits,sec:existence} is removed.
 
@@ -1250,7 +1262,7 @@ Consequently
 \[
 \Lambda(1+x)=x-\frac{x^2}2+\frac{x^3}3-\frac{x^4}4+\cdots\qquad(-1<x\le1),
 \]
-and in particular $\Lambda(2)=1-\frac12+\frac13-\frac14+\cdots$, the sum of the alternating harmonic series.
+and in particular $\Lambda(2)=1-1/2+1/3-1/4+\cdots$, the sum of the alternating harmonic series.
 \end{theorem}
 
 \begin{proof}
@@ -1266,9 +1278,9 @@ At $x=1$ the convergence is slow: the error after $n$ terms is about $1/(2n)$, a
 \Lambda\Bigl(\frac{1+x}{1-x}\Bigr)=2\Bigl(x+\frac{x^3}3+\frac{x^5}5+\cdots\Bigr)=2\sum_{k=0}^\infty\frac{x^{2k+1}}{2k+1}.
 \label{eq:log-ratio-series}
 \end{equation}
-Every $y>0$ is $(1+x)/(1-x)$ for $x=(y-1)/(y+1)\in(-1,1)$, so this series computes the logarithm of every positive number, and it converges fast when $y$ is close to $1$. For $y=2$, $x=\frac13$, and five terms of \eqref{eq:log-ratio-series} give $\Lambda(2)$ with an error of $1.1\times10^{-6}$, an accuracy for which the alternating harmonic series needs about half a million terms; \cref{ch:transcendental} carries out such computations. Series \eqref{eq:log-ratio-series} is also the basis of the error bounds in Stirling's formula in \cref{sec:asymptotic-expansions}.
+Every $y>0$ is $(1+x)/(1-x)$ for $x=(y-1)/(y+1)\in(-1,1)$, so this series computes the logarithm of every positive number, and it converges fast when $y$ is close to $1$. For $y=2$, $x=1/3$, and five terms of \eqref{eq:log-ratio-series} give $\Lambda(2)$ with an error of $1.1\times10^{-6}$, an accuracy for which the alternating harmonic series needs about half a million terms; \cref{ch:transcendental} carries out such computations. Series \eqref{eq:log-ratio-series} is also the basis of the error bounds in Stirling's formula in \cref{sec:asymptotic-expansions}.
 
-The Taylor criterion of \cref{thm:taylor-convergence} would have given less. The derivatives of $\Lambda(1+x)$ are $(-1)^{n-1}(n-1)!/(1+x)^n$, and Lagrange's form of the remainder proves convergence only for $-\frac12\le x\le1$; on $(-1,-\frac12)$ it fails, although the series converges there. Cauchy's form covers the whole interval, which is one reason why several forms of the remainder are worth knowing~\cite{apostol1967calculus}.
+The Taylor criterion of \cref{thm:taylor-convergence} would have given less. The derivatives of $\Lambda(1+x)$ are $(-1)^{n-1}(n-1)!/(1+x)^n$, and Lagrange's form of the remainder proves convergence only for $-1/2\le x\le1$; on $(-1,-1/2)$ it fails, although the series converges there. Cauchy's form covers the whole interval, which is one reason why several forms of the remainder are worth knowing~\cite{apostol1967calculus}.
 
 \subsection{The Inverse Tangent}
 
@@ -1287,7 +1299,7 @@ and the error after the term with $k=n$ is at most $|x|^{2n+3}/(2n+3)$. In parti
 \end{theorem}
 
 \begin{proof}
-By \eqref{eq:sum-geom} with $r=-t^2$, $\frac1{1+t^2}=\sum_{k=0}^n(-1)^kt^{2k}+\frac{(-1)^{n+1}t^{2n+2}}{1+t^2}$. Integrating from $0$ to $x$ and using \cref{prop:arctan-integral} gives the partial sum plus the remainder $(-1)^{n+1}\int_0^xt^{2n+2}/(1+t^2)\,dt$, whose absolute value is at most $\bigl|\int_0^xt^{2n+2}dt\bigr|=|x|^{2n+3}/(2n+3)$, which tends to $0$ for $|x|\le1$. For $x=1$, $\arctan1=\pi/4$ by the proof of \cref{prop:arctan-integral}.
+By \eqref{eq:sum-geom} with $r=-t^2$, $1/(1+t^2)=\sum_{k=0}^n(-1)^kt^{2k}+(-1)^{n+1}t^{2n+2}/(1+t^2)$. Integrating from $0$ to $x$ and using \cref{prop:arctan-integral} gives the partial sum plus the remainder $(-1)^{n+1}\int_0^xt^{2n+2}/(1+t^2)\,dt$, whose absolute value is at most $\bigl|\int_0^xt^{2n+2}dt\bigr|=|x|^{2n+3}/(2n+3)$, which tends to $0$ for $|x|\le1$. For $x=1$, $\arctan1=\pi/4$ by the proof of \cref{prop:arctan-integral}.
 \end{proof}
 
 The series for $\pi/4$ was found in India by the school of Madhava in the fourteenth or fifteenth century, and in Europe by Gregory in 1671 and Leibniz in 1673~\cite{roy1990,edwards1979}. It is beautiful and useless for computation: by the alternating series test its error after $n$ terms is at most $1/(2n+1)$, and in fact close to half of that, so a million terms give only six or seven digits. Arguments close to $0$ converge much faster, and the formula
@@ -1321,15 +1333,15 @@ g'(x)=(1+x)^{-r-1}\bigl((1+x)f'(x)-rf(x)\bigr)=0 ,
 so $g$ is constant, equal to $g(0)=1$, and $f(x)=(1+x)^r$.
 \end{proof}
 
-The formal identity $N_r(x)N_s(x)=N_{r+s}(x)$ of \cref{thm:newton} now becomes the law of exponents $(1+x)^r(1+x)^s=(1+x)^{r+s}$, as \cref{prop:formal-analytic} predicted, and the formal square root $N_{1/2}(x)$, which solved the Catalan equation in \cref{sec:gf}, is the function $\sqrt{1+x}=1+\frac x2-\frac{x^2}8+\frac{x^3}{16}-\cdots$. Newton found the series around 1665 by interpolation and used it without proof~\cite{edwards1979}; Abel's paper of 1826 settled its convergence, including the behaviour at $x=\pm1$, for all real and complex exponents~\cite{abel1826}. Once \cref{ch:transcendental} has defined real powers, the theorem holds for every real $r$, with the same proof.
+The formal identity $N_r(x)N_s(x)=N_{r+s}(x)$ of \cref{thm:newton} now becomes the law of exponents $(1+x)^r(1+x)^s=(1+x)^{r+s}$, as \cref{prop:formal-analytic} predicted, and the formal square root $N_{1/2}(x)$, which solved the Catalan equation in \cref{sec:gf}, is the function $\sqrt{1+x}=1+x/2-x^2/8+x^3/16-\cdots$. Newton found the series around 1665 by interpolation and used it without proof~\cite{edwards1979}; Abel's paper of 1826 settled its convergence, including the behaviour at $x=\pm1$, for all real and complex exponents~\cite{abel1826}. Once \cref{ch:transcendental} has defined real powers, the theorem holds for every real $r$, with the same proof.
 
 \subsection{The Inverse Sine}
 
-With $r=-\frac12$ and $-t^2$ in place of $x$, the binomial series gives
+With $r=-1/2$ and $-t^2$ in place of $x$, the binomial series gives
 \[
 \frac1{\sqrt{1-t^2}}=\sum_{k=0}^\infty\binom{-1/2}k(-1)^kt^{2k}=\sum_{k=0}^\infty\binom{2k}k\frac{t^{2k}}{4^k}\qquad(|t|<1),
 \]
-where we used $\binom{-1/2}k(-1)^k=\frac{1\cdot3\cdots(2k-1)}{2^kk!}=\frac{(2k)!}{4^k(k!)^2}$. The central binomial coefficients appear, and \cref{sec:asymptotic-expansions} estimates them. Integrating term by term with \cref{cor:termwise-int} and \cref{prop:arctan-integral},
+where we used $\binom{-1/2}k(-1)^k=(1\cdot3\cdots(2k-1))/(2^kk!)=(2k)!/(4^k(k!)^2)$. The central binomial coefficients appear, and \cref{sec:asymptotic-expansions} estimates them. Integrating term by term with \cref{cor:termwise-int} and \cref{prop:arctan-integral},
 \[
 \arcsin x=\sum_{k=0}^\infty\binom{2k}k\frac{x^{2k+1}}{4^k(2k+1)}=x+\frac{x^3}6+\frac{3x^5}{40}+\frac{5x^7}{112}+\cdots\qquad(|x|<1).
 \]
@@ -1373,15 +1385,15 @@ by \cref{thm:exp-series}\,(v), since $y\to\infty$; so $p(1/x)e^{-1/x^2}\to0$ as 
 \toprule
 function & power series at $0$ & valid for \\
 \midrule
-$\dfrac1{1-x}$ & $\sum_{k\ge0}x^k$ & $|x|<1$ \\
-$e^x$ & $\sum_{k\ge0}\dfrac{x^k}{k!}$ & all $x$ \\
-$\sin x$ & $\sum_{k\ge0}\dfrac{(-1)^kx^{2k+1}}{(2k+1)!}$ & all $x$ \\
-$\cos x$ & $\sum_{k\ge0}\dfrac{(-1)^kx^{2k}}{(2k)!}$ & all $x$ \\
-$\Lambda(1+x)=\ln(1+x)$ & $\sum_{k\ge1}\dfrac{(-1)^{k+1}x^k}k$ & $-1<x\le1$ \\
-$\Lambda\Bigl(\dfrac{1+x}{1-x}\Bigr)$ & $2\sum_{k\ge0}\dfrac{x^{2k+1}}{2k+1}$ & $|x|<1$ \\
-$\arctan x$ & $\sum_{k\ge0}\dfrac{(-1)^kx^{2k+1}}{2k+1}$ & $|x|\le1$ \\
-$\arcsin x$ & $\sum_{k\ge0}\dbinom{2k}k\dfrac{x^{2k+1}}{4^k(2k+1)}$ & $|x|\le1$ \\
-$(1+x)^r$, $r\in\mathbb Q$ & $\sum_{k\ge0}\dbinom rkx^k$ & $|x|<1$ \\
+$1/(1-x)$ & $\sum_{k\ge0}x^k$ & $|x|<1$ \\
+$e^x$ & $\sum_{k\ge0}x^k/k!$ & all $x$ \\
+$\sin x$ & $\sum_{k\ge0}(-1)^kx^{2k+1}/(2k+1)!$ & all $x$ \\
+$\cos x$ & $\sum_{k\ge0}(-1)^kx^{2k}/(2k)!$ & all $x$ \\
+$\Lambda(1+x)=\ln(1+x)$ & $\sum_{k\ge1}(-1)^{k+1}x^k/k$ & $-1<x\le1$ \\
+$\Lambda\bigl((1+x)/(1-x)\bigr)$ & $2\sum_{k\ge0}x^{2k+1}/(2k+1)$ & $|x|<1$ \\
+$\arctan x$ & $\sum_{k\ge0}(-1)^kx^{2k+1}/(2k+1)$ & $|x|\le1$ \\
+$\arcsin x$ & $\sum_{k\ge0}\binom{2k}kx^{2k+1}/(4^k(2k+1))$ & $|x|\le1$ \\
+$(1+x)^r$, $r\in\mathbb Q$ & $\sum_{k\ge0}\binom rkx^k$ & $|x|<1$ \\
 \bottomrule
 \end{sdtable}}{The standard power series of \cref{sec:expansions}. The radius of convergence is $1$ in all cases except $e^x$, $\sin x$ and $\cos x$, where it is $\infty$, and $(1+x)^r$ with $r\in\mathbb N$, which is a polynomial. The last column includes the ends of the interval at which the series converges to the function.\label{tab:expansions}}
 \end{table}
@@ -1442,12 +1454,12 @@ Let $f$, $g$, $f_1$, $g_1$, $f_2$, $g_2$ be functions on $D$, and let all statem
 \end{proposition}
 
 \begin{proof}
-We prove representative cases; the others are similar. (i) If $|u|\le C_1|f|$ and $|v|\le C_2|g|$ near $a$, then $|u+v|\le\max(C_1,C_2)(|f|+|g|)$ near $a$, where ``near $a$'' refers to the smaller of the two neighbourhoods. (ii) If $|u|\le\varepsilon|f|$ near $a$ for every $\varepsilon>0$ and $|v|\le C|g|$ near $a$, then $|uv|\le\varepsilon C|fg|$ near $a$, and $\varepsilon C$ is arbitrarily small. (iii) If $|u|\le C|v|$ and $|v|\le\varepsilon|f|$ near $a$, then $|u|\le C\varepsilon|f|$. (iv) If $|f-g|\le\frac12|g|$ near $a$, then $\frac12|g|\le|f|\le\frac32|g|$, so $f=\Theta(g)$, and $|g-f|\le\frac12|g|\le|f|$; given $\varepsilon\in(0,\frac12]$, $|f-g|\le\varepsilon|g|\le2\varepsilon|f|$ near $a$, so $g\sim f$. Transitivity follows from $f-h=(f-g)+(g-h)=o(g)+o(h)=o(h)$, using $g=O(h)$ and (iii). (v) $f_1f_2-g_1g_2=(f_1-g_1)f_2+g_1(f_2-g_2)=o(g_1)O(g_2)+g_1\,o(g_2)=o(g_1g_2)$, using $f_2=O(g_2)$ from (iv); quotients are treated in the same way, using $1/f_2=O(1/g_2)$.
+We prove representative cases; the others are similar. (i) If $|u|\le C_1|f|$ and $|v|\le C_2|g|$ near $a$, then $|u+v|\le\max(C_1,C_2)(|f|+|g|)$ near $a$, where ``near $a$'' refers to the smaller of the two neighbourhoods. (ii) If $|u|\le\varepsilon|f|$ near $a$ for every $\varepsilon>0$ and $|v|\le C|g|$ near $a$, then $|uv|\le\varepsilon C|fg|$ near $a$, and $\varepsilon C$ is arbitrarily small. (iii) If $|u|\le C|v|$ and $|v|\le\varepsilon|f|$ near $a$, then $|u|\le C\varepsilon|f|$. (iv) If $|f-g|\le(1/2)|g|$ near $a$, then $(1/2)|g|\le|f|\le(3/2)|g|$, so $f=\Theta(g)$, and $|g-f|\le(1/2)|g|\le|f|$; given $\varepsilon\in(0,1/2]$, $|f-g|\le\varepsilon|g|\le2\varepsilon|f|$ near $a$, so $g\sim f$. Transitivity follows from $f-h=(f-g)+(g-h)=o(g)+o(h)=o(h)$, using $g=O(h)$ and (iii). (v) $f_1f_2-g_1g_2=(f_1-g_1)f_2+g_1(f_2-g_2)=o(g_1)O(g_2)+g_1\,o(g_2)=o(g_1g_2)$, using $f_2=O(g_2)$ from (iv); quotients are treated in the same way, using $1/f_2=O(1/g_2)$.
 \end{proof}
 
 The rules make asymptotic calculations mechanical, but two warnings are in order. First, $\sim$ is compatible with products and quotients but not with sums or differences: as $n\to\infty$, $n+1\sim n$ and $-n\sim-n+1/n$, but the sums are $1$ and $1/n$, which are not asymptotically equal. Subtracting asymptotically equal quantities is the asymptotic version of cancellation (\cref{sec:conditioning}), and it destroys all relative information. Second, asymptotic equality is not preserved by functions that magnify differences: $n+1\sim n$, but $2^{n+1}=2\cdot2^n$ is not asymptotically equal to $2^n$. In general $e^{f}\sim e^{g}$ requires $f-g\to0$, not merely $f\sim g$, because $e^f/e^g=e^{f-g}$.
 
-\emph{Examples.} A polynomial $p(n)=c_dn^d+\cdots+c_0$ with $c_d\ne0$ satisfies $p(n)\sim c_dn^d$ and $p(n)=\Theta(n^d)$ as $n\to\infty$, since $p(n)/(c_dn^d)\to1$. As $x\to0$, $\sin x\sim x$ and $1-\cos x\sim x^2/2$ by \cref{prop:sin-limit}, and $\sin x=x-x^3/6+O(x^5)$ by \cref{thm:sin-cos-series}. As $n\to\infty$, $H_n\sim\Lambda(n)$, and the constant $\gamma$ is invisible at this level of precision: asymptotic equality only asserts that the relative error tends to zero, while $H_n=\Lambda(n)+\gamma+O(1/n)$ describes the absolute error. The quotient $\sum_{k=1}^nk^2/n^3$ tends to $\frac13$, by the formula \eqref{eq:sum-k2}, so $\sum_{k=1}^nk^2\sim n^3/3$, in agreement with the integral $\int_0^nx^2\,dx=n^3/3$.
+A polynomial $p(n)=c_dn^d+\cdots+c_0$ with $c_d\ne0$ satisfies $p(n)\sim c_dn^d$ and $p(n)=\Theta(n^d)$ as $n\to\infty$, since $p(n)/(c_dn^d)\to1$. As $x\to0$, $\sin x\sim x$ and $1-\cos x\sim x^2/2$ by \cref{prop:sin-limit}, and $\sin x=x-x^3/6+O(x^5)$ by \cref{thm:sin-cos-series}. As $n\to\infty$, $H_n\sim\Lambda(n)$, and the constant $\gamma$ is invisible at this level of precision: asymptotic equality only asserts that the relative error tends to zero, while $H_n=\Lambda(n)+\gamma+O(1/n)$ describes the absolute error. The quotient $\sum_{k=1}^nk^2/n^3$ tends to $1/3$, by the formula \eqref{eq:sum-k2}, so $\sum_{k=1}^nk^2\sim n^3/3$, in agreement with the integral $\int_0^nx^2\,dx=n^3/3$.
 
 \subsection{A Scale of Growth}
 
@@ -1556,7 +1568,7 @@ and $R_n(x)$ has the sign $(-1)^n$ or vanishes. Consequently $F(x)\sim\sum_{k=0}
 \end{proposition}
 
 \begin{proof}
-By \eqref{eq:sum-geom} with $r=-xt$, $\frac1{1+xt}=\sum_{k=0}^{n-1}(-xt)^k+\frac{(-xt)^n}{1+xt}$ for $t\ge0$. Multiplying by $e^{-t}$ and integrating over $[0,\infty)$, using $\int_0^\infty t^ke^{-t}\,dt=\Gamma(k+1)=k!$ (\cref{thm:gamma}), gives the formula with
+By \eqref{eq:sum-geom} with $r=-xt$, $1/(1+xt)=\sum_{k=0}^{n-1}(-xt)^k+(-xt)^n/(1+xt)$ for $t\ge0$. Multiplying by $e^{-t}$ and integrating over $[0,\infty)$, using $\int_0^\infty t^ke^{-t}\,dt=\Gamma(k+1)=k!$ (\cref{thm:gamma}), gives the formula with
 \[
 R_n(x)=(-1)^nx^n\int_0^\infty\frac{t^ne^{-t}}{1+xt}\,dt ,\qquad0\le\int_0^\infty\frac{t^ne^{-t}}{1+xt}\,dt\le\int_0^\infty t^ne^{-t}\,dt=n!.
 \]
@@ -1580,16 +1592,16 @@ For a fixed small $x$, the bound $n!\,x^n$ on the error first decreases, as long
 \end{figure}
 
 \begin{note}{Sums of divergent series}
-Euler did not hesitate to assign the value $F(x)$ to the divergent series $\sum(-1)^kk!\,x^k$, and the value $\frac12$ to $1-1+1-1+\cdots$. Such assignments can be made consistent by summation methods that extend the ordinary sum. Cesàro's method takes the limit of the averages $(s_0+\cdots+s_n)/(n+1)$ of the partial sums; for $1-1+1-\cdots$ the averages tend to $\frac12$. Abel's method takes $\lim_{x\to1^-}\sum a_kx^k$ when the power series converges for $|x|<1$; for the same series it gives $\lim1/(1+x)=\frac12$. Borel's method, which uses the integral $\int_0^\infty e^{-t}\sum_ka_kt^k/k!\,dt$, assigns to Euler's series exactly the value $F(x)$, since $\sum(-xt)^k=1/(1+xt)$. Every convergent series is summable by these methods, to its ordinary sum, so they are genuine extensions. Hardy's book~\cite{hardy1949divergent} is the classical account; in physics, Borel summation of divergent asymptotic series is a working tool.
+Euler did not hesitate to assign the value $F(x)$ to the divergent series $\sum(-1)^kk!\,x^k$, and the value $1/2$ to $1-1+1-1+\cdots$. Such assignments can be made consistent by summation methods that extend the ordinary sum. Cesàro's method takes the limit of the averages $(s_0+\cdots+s_n)/(n+1)$ of the partial sums; for $1-1+1-\cdots$ the averages tend to $1/2$. Abel's method takes $\lim_{x\to1^-}\sum a_kx^k$ when the power series converges for $|x|<1$; for the same series it gives $\lim1/(1+x)=1/2$. Borel's method, which uses the integral $\int_0^\infty e^{-t}\sum_ka_kt^k/k!\,dt$, assigns to Euler's series exactly the value $F(x)$, since $\sum(-xt)^k=1/(1+xt)$. Every convergent series is summable by these methods, to its ordinary sum, so they are genuine extensions. Hardy's book~\cite{hardy1949divergent} is the classical account; in physics, Borel summation of divergent asymptotic series is a working tool.
 \end{note}
 
 \subsection{Sums and Integrals: The Euler--Maclaurin Formula}
 
-\Cref{thm:integral-test} bracketed a sum $\sum f(k)$ between two integrals, with a difference of up to $f(1)$. A much more precise comparison follows from the error of the trapezoidal rule. On $[k,k+1]$, the trapezoidal approximation of $\int_k^{k+1}f$ is $\frac12(f(k)+f(k+1))$, and adding these over $k=a,\ldots,b-1$ gives $\sum_{k=a}^bf(k)-\frac12(f(a)+f(b))$. So a sum equals an integral plus end corrections plus the total trapezoidal error, which \cref{lem:local-errors} showed to be about $-\frac1{12}\sum_kf''(\eta_k)\approx-\frac1{12}(f'(b)-f'(a))$. The following theorem makes this exact, with a remainder that involves the third derivative. Its proof integrates by parts three times, against the periodic functions
+\Cref{thm:integral-test} bracketed a sum $\sum f(k)$ between two integrals, with a difference of up to $f(1)$. A much more precise comparison follows from the error of the trapezoidal rule. On $[k,k+1]$, the trapezoidal approximation of $\int_k^{k+1}f$ is $(1/2)(f(k)+f(k+1))$, and adding these over $k=a,\ldots,b-1$ gives $\sum_{k=a}^bf(k)-(1/2)(f(a)+f(b))$. So a sum equals an integral plus end corrections plus the total trapezoidal error, which \cref{lem:local-errors} showed to be about $-(1/12)\sum_kf''(\eta_k)\approx-(1/12)(f'(b)-f'(a))$. The following theorem makes this exact, with a remainder that involves the third derivative. Its proof integrates by parts three times, against the periodic functions
 \[
 p_1(x)\coloneqq t-\tfrac12,\qquad p_2(x)\coloneqq\tfrac12\bigl(t^2-t+\tfrac16\bigr),\qquad p_3(x)\coloneqq\tfrac16\,t\bigl(t-\tfrac12\bigr)(t-1),\qquad t\coloneqq x-\lfloor x\rfloor .
 \]
-On each interval $[k,k+1)$ they are polynomials in $x$ with $p_2'=p_1$ and $p_3'=p_2$; moreover $p_2$ and $p_3$ are continuous on $\mathbb R$, because $P_2(t)\coloneqq\frac12(t^2-t+\frac16)$ takes the value $\frac1{12}$ at both $t=0$ and $t=1$, and $P_3(t)\coloneqq\frac16t(t-\frac12)(t-1)$ vanishes at both. Elementary calculus shows that $|P_3(t)|\le\sqrt3/216=0.0080\ldots$ on $[0,1]$, the maximum being attained at $t=\frac12\pm\frac1{2\sqrt3}$.
+On each interval $[k,k+1)$ they are polynomials in $x$ with $p_2'=p_1$ and $p_3'=p_2$; moreover $p_2$ and $p_3$ are continuous on $\mathbb R$, because $P_2(t)\coloneqq(1/2)(t^2-t+1/6)$ takes the value $1/12$ at both $t=0$ and $t=1$, and $P_3(t)\coloneqq(1/6)t(t-1/2)(t-1)$ vanishes at both. Elementary calculus shows that $|P_3(t)|\le\sqrt3/216=0.0080\ldots$ on $[0,1]$, the maximum being attained at $t=1/2\pm1/(2\sqrt3)$.
 
 \begin{theorem}[Euler--Maclaurin formula, first terms]
 \label{thm:euler-maclaurin}
@@ -1597,16 +1609,16 @@ Let $a<b$ be integers and $f\in C^3[a,b]$. Then
 \[
 \sum_{k=a}^bf(k)=\int_a^bf(x)\,dx+\frac{f(a)+f(b)}2+\frac{f'(b)-f'(a)}{12}+\rho
 \]
-with $\rho\coloneqq\int_a^bp_3(x)f'''(x)\,dx$, and $|\rho|\le\frac{\sqrt3}{216}\int_a^b|f'''(x)|\,dx$.
+with $\rho\coloneqq\int_a^bp_3(x)f'''(x)\,dx$, and $|\rho|\le(\sqrt3/216)\int_a^b|f'''(x)|\,dx$.
 \end{theorem}
 
 \begin{proof}
-Fix an integer $k$ with $a\le k<b$, and write $P_j$ for the polynomials above, so that $p_j(x)=P_j(x-k)$ on $[k,k+1)$; on the closed interval $[k,k+1]$ we integrate the polynomials $P_j(x-k)$, which agree with $p_j$ except possibly at the right end. Integrating by parts with $u=f$ and $v=P_1(x-k)=x-k-\frac12$,
+Fix an integer $k$ with $a\le k<b$, and write $P_j$ for the polynomials above, so that $p_j(x)=P_j(x-k)$ on $[k,k+1)$; on the closed interval $[k,k+1]$ we integrate the polynomials $P_j(x-k)$, which agree with $p_j$ except possibly at the right end. Integrating by parts with $u=f$ and $v=P_1(x-k)=x-k-1/2$,
 \begin{align*}
 \int_k^{k+1}f&=\Bigl[\bigl(x-k-\tfrac12\bigr)f(x)\Bigr]_k^{k+1}-\int_k^{k+1}P_1(x-k)f'(x)\,dx\\
 &=\frac{f(k)+f(k+1)}2-\int_k^{k+1}P_1(x-k)f'(x)\,dx .
 \end{align*}
-Integrating by parts twice more, with $P_2(0)=P_2(1)=\frac1{12}$ and $P_3(0)=P_3(1)=0$,
+Integrating by parts twice more, with $P_2(0)=P_2(1)=1/12$ and $P_3(0)=P_3(1)=0$,
 \begin{align*}
 \int_k^{k+1}P_1(x-k)f'(x)\,dx&=\frac{f'(k+1)-f'(k)}{12}-\int_k^{k+1}P_2(x-k)f''(x)\,dx\\
 &=\frac{f'(k+1)-f'(k)}{12}+\int_k^{k+1}P_3(x-k)f'''(x)\,dx .
@@ -1618,7 +1630,7 @@ Adding over $k=a,\ldots,b-1$, the boundary terms telescope, and
 which is the formula. The bound on $\rho$ follows from $|p_3|\le\sqrt3/216$ and \cref{thm:integral-monotone}.
 \end{proof}
 
-Two checks are reassuring. For $f(x)=x^2$ on $[0,n]$, $f'''=0$ and the formula gives $\sum_{k=0}^nk^2=\frac{n^3}3+\frac{n^2}2+\frac{2n}{12}$, which is \eqref{eq:sum-k2}. And applied to $g(t)\coloneqq f(a+th)$ on $[0,n]$ with $h=(b-a)/n$, after multiplying by $h$, the formula becomes a statement about the trapezoidal rule of \cref{sec:quadrature}:
+Two checks are reassuring. For $f(x)=x^2$ on $[0,n]$, $f'''=0$ and the formula gives $\sum_{k=0}^nk^2=n^3/3+n^2/2+2n/12$, which is \eqref{eq:sum-k2}. And applied to $g(t)\coloneqq f(a+th)$ on $[0,n]$ with $h=(b-a)/n$, after multiplying by $h$, the formula becomes a statement about the trapezoidal rule of \cref{sec:quadrature}:
 \[
 T_n(f)-\int_a^bf=\frac{h^2}{12}\bigl(f'(b)-f'(a)\bigr)+O(h^3),
 \]
@@ -1628,7 +1640,7 @@ with an explicit constant in the $O$-term, which makes \cref{cor:asymptotic-erro
 \[
 H_n=\Lambda(n)+\frac12+\frac1{2n}+\frac1{12}-\frac1{12n^2}-6\int_1^n\frac{p_3(x)}{x^4}\,dx .
 \]
-The integral converges absolutely as $n\to\infty$, since $|p_3(x)/x^4|\le0.0081/x^4$. Letting $n\to\infty$ and comparing with \cref{thm:euler-constant} gives $\gamma=\frac7{12}-6\int_1^\infty p_3(x)x^{-4}\,dx$, and subtracting,
+The integral converges absolutely as $n\to\infty$, since $|p_3(x)/x^4|\le0.0081/x^4$. Letting $n\to\infty$ and comparing with \cref{thm:euler-constant} gives $\gamma=7/12-6\int_1^\infty p_3(x)x^{-4}\,dx$, and subtracting,
 \begin{equation}
 H_n=\Lambda(n)+\gamma+\frac1{2n}-\frac1{12n^2}+\varepsilon_n,\qquad|\varepsilon_n|=\Bigl|6\int_n^\infty\frac{p_3(x)}{x^4}\,dx\Bigr|\le\frac{\sqrt3}{108\,n^3}<\frac{0.017}{n^3}.
 \label{eq:harmonic-expansion}
@@ -1645,7 +1657,7 @@ As $n\to\infty$,
 \[
 n!\sim\sqrt{2\pi n}\,\Bigl(\frac ne\Bigr)^n,
 \]
-and more precisely $\Lambda(n!)=\bigl(n+\frac12\bigr)\Lambda(n)-n+\Lambda\bigl(\sqrt{2\pi}\bigr)+\frac1{12n}+O\bigl(\frac1{n^2}\bigr)$.
+and more precisely $\Lambda(n!)=\bigl(n+1/2\bigr)\Lambda(n)-n+\Lambda\bigl(\sqrt{2\pi}\bigr)+1/(12n)+O\bigl(1/n^2\bigr)$.
 \end{theorem}
 
 \begin{proof}
@@ -1653,14 +1665,14 @@ and more precisely $\Lambda(n!)=\bigl(n+\frac12\bigr)\Lambda(n)-n+\Lambda\bigl(\
 \[
 \Lambda(n!)=n\Lambda(n)-n+1+\frac{\Lambda(n)}2+\frac1{12}\Bigl(\frac1n-1\Bigr)+2\int_1^n\frac{p_3(x)}{x^3}\,dx .
 \]
-The last integral converges absolutely as $n\to\infty$, and $\bigl|2\int_n^\infty p_3(x)x^{-3}dx\bigr|\le\frac{\sqrt3}{216}\cdot\frac1{n^2}$. Hence, with the constant $C\coloneqq\frac{11}{12}+2\int_1^\infty p_3(x)x^{-3}\,dx$,
+The last integral converges absolutely as $n\to\infty$, and $\bigl|2\int_n^\infty p_3(x)x^{-3}dx\bigr|\le(\sqrt3/216)\cdot1/n^2$. Hence, with the constant $C\coloneqq11/12+2\int_1^\infty p_3(x)x^{-3}\,dx$,
 \begin{equation}
 \Lambda(n!)=\Bigl(n+\frac12\Bigr)\Lambda(n)-n+C+\frac1{12n}+O\Bigl(\frac1{n^2}\Bigr).
 \label{eq:stirling-log}
 \end{equation}
-In terms of $a_n\coloneqq n!\,e^n/n^{n+1/2}$ this says $\Lambda(a_n)=C+\frac1{12n}+O(1/n^2)\to C$, and since the exponential function is continuous and inverse to $\Lambda$ (\cref{prop:log-exp}), $a_n\to\sigma\coloneqq e^C>0$.
+In terms of $a_n\coloneqq n!\,e^n/n^{n+1/2}$ this says $\Lambda(a_n)=C+1/(12n)+O(1/n^2)\to C$, and since the exponential function is continuous and inverse to $\Lambda$ (\cref{prop:log-exp}), $a_n\to\sigma\coloneqq e^C>0$.
 
-\emph{Step 2: the constant.} By \cref{prop:wallis}, the products $W_m\coloneqq\prod_{k=1}^m\frac{(2k)^2}{(2k-1)(2k+1)}$ tend to $\pi/2$. Since $\prod_{k=1}^m2k=2^mm!$ and $\prod_{k=1}^m(2k-1)=(2m)!/(2^mm!)$,
+\emph{Step 2: the constant.} By \cref{prop:wallis}, the products $W_m\coloneqq\prod_{k=1}^m(2k)^2/((2k-1)(2k+1))$ tend to $\pi/2$. Since $\prod_{k=1}^m2k=2^mm!$ and $\prod_{k=1}^m(2k-1)=(2m)!/(2^mm!)$,
 \[
 W_m=\frac{(2^mm!)^4}{(2m)!\,(2m+1)!}=\frac1{2m+1}\Bigl(\frac{2^{2m}(m!)^2}{(2m)!}\Bigr)^2 .
 \]
@@ -1668,7 +1680,7 @@ Substituting $m!=a_mm^{m+1/2}e^{-m}$ and $(2m)!=a_{2m}(2m)^{2m+1/2}e^{-2m}$, the
 \[
 \frac{2^{2m}(m!)^2}{(2m)!}=\frac{a_m^2}{a_{2m}}\cdot\frac{2^{2m}m^{2m+1}}{2^{2m+1/2}m^{2m+1/2}}=\frac{a_m^2}{a_{2m}}\sqrt{\frac m2},\qquad W_m=\frac{a_m^4}{a_{2m}^2}\cdot\frac m{2(2m+1)} .
 \]
-As $m\to\infty$, the right side tends to $\sigma^4/\sigma^2\cdot\frac14=\sigma^2/4$, and the left side to $\pi/2$. Hence $\sigma^2=2\pi$, $\sigma=\sqrt{2\pi}$, and $C=\Lambda(\sqrt{2\pi})$. Finally $n!/(\sqrt{2\pi n}(n/e)^n)=a_n/\sigma\to1$.
+As $m\to\infty$, the right side tends to $(\sigma^4/\sigma^2)\cdot(1/4)=\sigma^2/4$, and the left side to $\pi/2$. Hence $\sigma^2=2\pi$, $\sigma=\sqrt{2\pi}$, and $C=\Lambda(\sqrt{2\pi})$. Finally $n!/(\sqrt{2\pi n}(n/e)^n)=a_n/\sigma\to1$.
 \end{proof}
 
 The theorem is named after James Stirling, who found the constant $\sqrt{2\pi}$ in 1730; de Moivre had found the form $n!\approx Cn^{n+1/2}e^{-n}$ shortly before~\cite{tweddle2003,feller1968}. The relative error of the approximation is about $1/(12n)$, so it is already within $1\%$ for $n=10$ and within $0.1\%$ for $n=100$, as \cref{tab:stirling} shows; and including the factor $e^{1/(12n)}$, or simply $1+1/(12n)$, makes it far better. The following refinement, due to Robbins~\cite{robbins1955}, gives two-sided bounds that hold for every $n$, not just asymptotically.
@@ -1682,11 +1694,11 @@ For every $n\ge1$,
 \end{theorem}
 
 \begin{proof}
-With $a_n$ as in the proof of \cref{thm:stirling}, let $d_n\coloneqq\Lambda(a_n)-\Lambda(a_{n+1})$. Since $\Lambda(a_n)=\Lambda(n!)+n-(n+\frac12)\Lambda(n)$ and $\Lambda((n+1)!)=\Lambda(n!)+\Lambda(n+1)$, a short computation gives
+With $a_n$ as in the proof of \cref{thm:stirling}, let $d_n\coloneqq\Lambda(a_n)-\Lambda(a_{n+1})$. Since $\Lambda(a_n)=\Lambda(n!)+n-(n+1/2)\Lambda(n)$ and $\Lambda((n+1)!)=\Lambda(n!)+\Lambda(n+1)$, a short computation gives
 \[
 d_n=\Bigl(n+\frac12\Bigr)\Lambda\Bigl(\frac{n+1}n\Bigr)-1 .
 \]
-With $x\coloneqq1/(2n+1)$ we have $\frac{n+1}n=\frac{1+x}{1-x}$ and $n+\frac12=\frac1{2x}$, so \eqref{eq:log-ratio-series} gives
+With $x\coloneqq1/(2n+1)$ we have $(n+1)/n=(1+x)/(1-x)$ and $n+1/2=1/(2x)$, so \eqref{eq:log-ratio-series} gives
 \[
 d_n=\frac1{2x}\cdot2\Bigl(x+\frac{x^3}3+\frac{x^5}5+\cdots\Bigr)-1=\frac{x^2}3+\frac{x^4}5+\frac{x^6}7+\cdots .
 \]
@@ -1694,19 +1706,23 @@ All terms are positive, and replacing the denominators $5,7,\ldots$ by $3$ gives
 \[
 \frac{x^2}3<d_n<\frac13\bigl(x^2+x^4+\cdots\bigr)=\frac{x^2}{3(1-x^2)}=\frac1{12n(n+1)}=\frac1{12n}-\frac1{12(n+1)} ,
 \]
-since $1-x^2=4n(n+1)/(2n+1)^2$. For the lower bound, $\frac{x^2}3=\frac1{3(2n+1)^2}$ exceeds $\frac1{12n+1}-\frac1{12(n+1)+1}=\frac{12}{(12n+1)(12n+13)}$, because $(12n+1)(12n+13)-36(2n+1)^2=24n-23>0$. Consequently the sequence $\Lambda(a_n)-\frac1{12n}$ is strictly increasing, and $\Lambda(a_n)-\frac1{12n+1}$ is strictly decreasing. Both converge to $\lim\Lambda(a_n)=\Lambda(\sqrt{2\pi})$, by \cref{thm:stirling}, so
+since $1-x^2=4n(n+1)/(2n+1)^2$. For the lower bound, $x^2/3=1/(3(2n+1)^2)$ exceeds
+\[
+\frac1{12n+1}-\frac1{12(n+1)+1}=\frac{12}{(12n+1)(12n+13)},
+\]
+because $(12n+1)(12n+13)-36(2n+1)^2=24n-23>0$. Consequently the sequence $\Lambda(a_n)-1/(12n)$ is strictly increasing, and $\Lambda(a_n)-1/(12n+1)$ is strictly decreasing. Both converge to $\lim\Lambda(a_n)=\Lambda(\sqrt{2\pi})$, by \cref{thm:stirling}, so
 \[
 \Lambda(a_n)-\frac1{12n}<\Lambda(\sqrt{2\pi})<\Lambda(a_n)-\frac1{12n+1},
 \]
-that is, $\frac1{12n+1}<\Lambda\bigl(a_n/\sqrt{2\pi}\bigr)<\frac1{12n}$.
+that is, $1/(12n+1)<\Lambda\bigl(a_n/\sqrt{2\pi}\bigr)<1/(12n)$.
 Applying the increasing function $y\mapsto e^y$ and using \cref{prop:log-exp} gives $e^{1/(12n+1)}<a_n/\sqrt{2\pi}<e^{1/(12n)}$, which is the claim.
 \end{proof}
 
 \begin{table}
 \sdfloat{%
-\begin{sdtable}{colspec={rlllll}, row{1}={font=\small\bfseries}, colsep=4pt}
+\begin{sdtable}{colspec={rlllll}, row{1}={font=\small\bfseries}, colsep=3.5pt}
 \toprule
-$n$ & $n!$ & $s_n$ & $n!/s_n$ & $e^{1/(12n)}$ & $1-\dfrac{s_n(1+\frac1{12n})}{n!}$ \\
+$n$ & $n!$ & $s_n$ & $n!/s_n$ & $e^{1/(12n)}$ & $1-s_n(1+1/(12n))/n!$ \\
 \midrule
 1 & 1 & 0.92214 & 1.08444 & 1.08690 & $1.0\times10^{-3}$ \\
 2 & 2 & 1.91900 & 1.04221 & 1.04255 & $5.2\times10^{-4}$ \\
@@ -1716,7 +1732,7 @@ $n$ & $n!$ & $s_n$ & $n!/s_n$ & $e^{1/(12n)}$ & $1-\dfrac{s_n(1+\frac1{12n})}{n!
 50 & $3.041409\times10^{64}$ & $3.036345\times10^{64}$ & 1.00166803 & 1.00166806 & $1.4\times10^{-6}$ \\
 100 & $9.332622\times10^{157}$ & $9.324848\times10^{157}$ & 1.00083368 & 1.00083368 & $3.4\times10^{-7}$ \\
 \bottomrule
-\end{sdtable}}{Stirling's approximation $s_n\coloneqq\sqrt{2\pi n}\,(n/e)^n$, computed with $60$ significant digits. The ratio $n!/s_n$ lies below the upper bound $e^{1/(12n)}$ of \cref{thm:stirling-bounds} and approaches it; the relative error of $s_n$ itself is about $1/(12n)$, and that of the corrected value $s_n(1+\frac1{12n})$, in the last column, about $1/(288n^2)$.\label{tab:stirling}}
+\end{sdtable}}{Stirling's approximation $s_n\coloneqq\sqrt{2\pi n}\,(n/e)^n$, computed with $60$ significant digits. The ratio $n!/s_n$ lies below the upper bound $e^{1/(12n)}$ of \cref{thm:stirling-bounds} and approaches it; the relative error of $s_n$ itself is about $1/(12n)$, and that of the corrected value $s_n(1+1/(12n))$, in the last column, about $1/(288n^2)$.\label{tab:stirling}}
 \end{table}
 
 \Cref{tab:stirling} illustrates both theorems. Stirling's formula is the basis of almost every estimate of factorials, binomial coefficients and gamma function values in this series. Taking logarithms, it gives $\Lambda(n!)=n\Lambda(n)-n+O(\Lambda(n))$, so that $\Lambda(n!)\sim n\Lambda(n)$; this is the form in which Volume~IV uses it to show that sorting $n$ items by comparisons needs about $n\log_2n$ comparisons. Applied to Euler's series above, it shows that the smallest term $n!\,x^n$, at $n\approx1/x$, is about $\sqrt{2\pi n}\,(nx/e)^n\approx\sqrt{2\pi/x}\,e^{-1/x}$.
@@ -1734,21 +1750,25 @@ For every $n\ge1$,
 \end{corollary}
 
 \begin{proof}
-With $a_n$ as before, $\binom{2n}n=\frac{(2n)!}{(n!)^2}=\frac{a_{2n}}{a_n^2}\cdot\frac{(2n)^{2n+1/2}}{n^{2n+1}}=\frac{a_{2n}}{a_n^2}\cdot\frac{4^n\sqrt2}{\sqrt n}$. Writing $b_n\coloneqq\Lambda(a_n/\sqrt{2\pi})$, which lies in $(\frac1{12n+1},\frac1{12n})$ by the proof of \cref{thm:stirling-bounds}, we get
+With $a_n$ as before,
+\[
+\binom{2n}n=\frac{(2n)!}{(n!)^2}=\frac{a_{2n}}{a_n^2}\cdot\frac{(2n)^{2n+1/2}}{n^{2n+1}}=\frac{a_{2n}}{a_n^2}\cdot\frac{4^n\sqrt2}{\sqrt n}.
+\]
+Writing $b_n\coloneqq\Lambda(a_n/\sqrt{2\pi})$, which lies in $(1/(12n+1),1/(12n))$ by the proof of \cref{thm:stirling-bounds}, we get
 \[
 \Lambda\Bigl(\binom{2n}n\frac{\sqrt{\pi n}}{4^n}\Bigr)=b_{2n}-2b_n ,
 \]
-because $\sqrt{2}\cdot\sqrt{2\pi}/(2\pi)\cdot\sqrt\pi=1$. Now $b_{2n}-2b_n<\frac1{24n}-\frac2{12n+1}<0$, since $48n>12n+1$, and $b_{2n}-2b_n>-\frac2{12n}=-\frac1{6n}$. Applying the exponential function gives the bounds, and the asymptotic statement follows because both bounds are asymptotically equal to $4^n/\sqrt{\pi n}$.
+because $\sqrt{2}\cdot\sqrt{2\pi}/(2\pi)\cdot\sqrt\pi=1$. Now $b_{2n}-2b_n<1/(24n)-2/(12n+1)<0$, since $48n>12n+1$, and $b_{2n}-2b_n>-2/(12n)=-1/(6n)$. Applying the exponential function gives the bounds, and the asymptotic statement follows because both bounds are asymptotically equal to $4^n/\sqrt{\pi n}$.
 \end{proof}
 
-For $n=10$, $\binom{20}{10}=184\,756$ and $4^{10}/\sqrt{10\pi}=187\,079.0\ldots$; the ratio $0.98758$ is close to $1-\frac1{8n}=0.9875$, the first term of a finer expansion. For the middle coefficient of row $n=2m$ of Pascal's triangle the corollary gives $\binom n{n/2}\sim2^n\sqrt{2/(\pi n)}$, the estimate shown in \cref{fig:binomial-size}: the middle coefficient is a fraction of about $\sqrt{2/(\pi n)}$ of the total $2^n$, which tends to zero, but only like $1/\sqrt n$. In probability, $\binom{2n}n/4^n$ is the chance of exactly $n$ heads in $2n$ tosses of a fair coin, and the corollary says that it is about $1/\sqrt{\pi n}$: a first instance of the normal approximation of Volume~III. The same estimate shows that the coefficients $\binom{2k}k/(4^k(2k+1))$ of the arcsine series behave like $1/(2\sqrt\pi\,k^{3/2})$, as used in \cref{sec:expansions}.
+For $n=10$, $\binom{20}{10}=184\,756$ and $4^{10}/\sqrt{10\pi}=187\,079.0\ldots$; the ratio $0.98758$ is close to $1-1/(8n)=0.9875$, the first term of a finer expansion. For the middle coefficient of row $n=2m$ of Pascal's triangle the corollary gives $\binom n{n/2}\sim2^n\sqrt{2/(\pi n)}$, the estimate shown in \cref{fig:binomial-size}: the middle coefficient is a fraction of about $\sqrt{2/(\pi n)}$ of the total $2^n$, which tends to zero, but only like $1/\sqrt n$. In probability, $\binom{2n}n/4^n$ is the chance of exactly $n$ heads in $2n$ tosses of a fair coin, and the corollary says that it is about $1/\sqrt{\pi n}$: a first instance of the normal approximation of Volume~III. The same estimate shows that the coefficients $\binom{2k}k/(4^k(2k+1))$ of the arcsine series behave like $1/(2\sqrt\pi\,k^{3/2})$, as used in \cref{sec:expansions}.
 
 \begin{note}{The Euler--Maclaurin formula and Bernoulli numbers}
 Integrating by parts further in the proof of \cref{thm:euler-maclaurin} gives the general formula
 \[
 \sum_{k=a}^bf(k)=\int_a^bf+\frac{f(a)+f(b)}2+\sum_{j=1}^m\frac{B_{2j}}{(2j)!}\bigl(f^{(2j-1)}(b)-f^{(2j-1)}(a)\bigr)+\rho_m ,
 \]
-with a remainder $\rho_m$ that involves $f^{(2m+1)}$ and a periodic polynomial. The \emph{Bernoulli numbers} $B_{2j}$ are rational: $B_2=\frac16$, $B_4=-\frac1{30}$, $B_6=\frac1{42}$, $B_8=-\frac1{30}$, $B_{10}=\frac5{66}$, $B_{12}=-\frac{691}{2730}$; they are defined by the power series $x/(e^x-1)=\sum_kB_kx^k/k!$. The first correction is $B_2/2!=\frac1{12}$, as in the theorem, and only odd derivatives appear. Applied to $1/x$ and to $\Lambda$, the formula gives the asymptotic expansions
+with a remainder $\rho_m$ that involves $f^{(2m+1)}$ and a periodic polynomial. The \emph{Bernoulli numbers} $B_{2j}$ are rational: $B_2=1/6$, $B_4=-1/30$, $B_6=1/42$, $B_8=-1/30$, $B_{10}=5/66$, $B_{12}=-691/2730$; they are defined by the power series $x/(e^x-1)=\sum_kB_kx^k/k!$. The first correction is $B_2/2!=1/12$, as in the theorem, and only odd derivatives appear. Applied to $1/x$ and to $\Lambda$, the formula gives the asymptotic expansions
 \begin{align*}
 H_n&\sim\Lambda(n)+\gamma+\frac1{2n}-\frac1{12n^2}+\frac1{120n^4}-\frac1{252n^6}+\cdots,\\
 \Lambda(n!)&\sim\Bigl(n+\frac12\Bigr)\Lambda(n)-n+\Lambda\bigl(\sqrt{2\pi}\bigr)+\frac1{12n}-\frac1{360n^3}+\frac1{1260n^5}-\cdots .
@@ -1808,7 +1828,7 @@ Let $f$ be positive, decreasing, convex and differentiable on $[n,\infty)$, with
 \end{proposition}
 
 \begin{proof}
-By \cref{prop:convex-quadrature} with a single subinterval, the midpoint rule underestimates and the trapezoidal rule overestimates the integral of a convex function: $f(k)\le\int_{k-1/2}^{k+1/2}f$ and $\int_k^{k+1}f\le\frac12(f(k)+f(k+1))$. Adding the first inequality over $k>n$ gives the upper bound. Adding the second over $k\ge n+1$ gives $\int_{n+1}^\infty f\le\sum_{k>n}f(k)-\frac12f(n+1)$, the lower bound.
+By \cref{prop:convex-quadrature} with a single subinterval, the midpoint rule underestimates and the trapezoidal rule overestimates the integral of a convex function: $f(k)\le\int_{k-1/2}^{k+1/2}f$ and $\int_k^{k+1}f\le(1/2)(f(k)+f(k+1))$. Adding the first inequality over $k>n$ gives the upper bound. Adding the second over $k\ge n+1$ gives $\int_{n+1}^\infty f\le\sum_{k>n}f(k)-(1/2)f(n+1)$, the lower bound.
 \end{proof}
 
 For $\sum1/k^2$, with $f(x)=1/x^2$, the proposition gives
@@ -1864,7 +1884,7 @@ $t^pA(h/t)=t^pA+ch^p+O(h^q)$, and subtracting $A(h)=A+ch^p+O(h^q)$ gives $(t^p-1
 
 The constant $c$ need not be known, only the exponent $p$. If the error has an expansion with several powers, the extrapolation can be repeated, each time removing the leading term. The idea is due to Richardson~\cite{richardson1911}.
 
-\emph{Examples.} (i) For the trapezoidal rule, $T_n=\int_a^bf+ch^2+O(h^3)$ by the Euler--Maclaurin formula, and extrapolation with $t=2$ and $p=2$ gives $\frac13(4T_{2n}-T_n)$, which is Simpson's rule $S_{2n}$ by \eqref{eq:rule-relations}: the observation at the end of \cref{sec:quadrature} is an instance of the proposition. (ii) For the central difference quotient, \cref{prop:difference-taylor}\,(iv) gives $D_h^0f(x)=f'(x)+\frac{h^2}6f'''(x)+O(h^4)$, and $\frac13(4D_{h/2}^0f(x)-D_h^0f(x))=f'(x)+O(h^4)$. For $f=\sin$ at $x=1$ and $h=0.1$, the errors of $D_{0.1}^0$ and $D_{0.05}^0$ are $-9.0\times10^{-4}$ and $-2.3\times10^{-4}$, and that of the extrapolated value is $-1.1\times10^{-7}$; halving $h$ divides this last error by about $16$, as the order $4$ predicts. (iii) For $\sum1/k^2$, the Euler--Maclaurin formula gives $s_n=\pi^2/6-\frac1n+\frac1{2n^2}+O(n^{-3})$, an expansion in $h=1/n$ with $p=1$. With $t=2$, $2s_{2n}-s_n=\pi^2/6+O(1/n^2)$: for $n=100$ its error is $2.5\times10^{-5}$, while $s_{200}$ is off by $5.0\times10^{-3}$.
+Three applications illustrate the proposition. (i) For the trapezoidal rule, $T_n=\int_a^bf+ch^2+O(h^3)$ by the Euler--Maclaurin formula, and extrapolation with $t=2$ and $p=2$ gives $(1/3)(4T_{2n}-T_n)$, which is Simpson's rule $S_{2n}$ by \eqref{eq:rule-relations}: the observation at the end of \cref{sec:quadrature} is an instance of the proposition. (ii) For the central difference quotient, \cref{prop:difference-taylor}\,(iv) gives $D_h^0f(x)=f'(x)+(h^2/6)f'''(x)+O(h^4)$, and $(1/3)(4D_{h/2}^0f(x)-D_h^0f(x))=f'(x)+O(h^4)$. For $f=\sin$ at $x=1$ and $h=0.1$, the errors of $D_{0.1}^0$ and $D_{0.05}^0$ are $-9.0\times10^{-4}$ and $-2.3\times10^{-4}$, and that of the extrapolated value is $-1.1\times10^{-7}$; halving $h$ divides this last error by about $16$, as the order $4$ predicts. (iii) For $\sum1/k^2$, the Euler--Maclaurin formula gives $s_n=\pi^2/6-1/n+1/(2n^2)+O(n^{-3})$, an expansion in $h=1/n$ with $p=1$. With $t=2$, $2s_{2n}-s_n=\pi^2/6+O(1/n^2)$: for $n=100$ its error is $2.5\times10^{-5}$, while $s_{200}$ is off by $5.0\times10^{-3}$.
 
 Extrapolation has a cost, which the examples hide. It assumes the form of the error, which holds only if the function is smooth enough, and it combines approximations with coefficients of opposite signs, which amplifies their rounding errors. For difference quotients, where rounding errors limit the useful $h$ from below (\cref{sec:conditioning}), extrapolation raises the attainable accuracy but does not remove this limit. Volume~XI develops extrapolation systematically, for differentiation and in Romberg's integration method, and treats the summation of series by more powerful transformations.
 
@@ -1873,7 +1893,7 @@ If the remainders of a sequence $s_n$ decrease geometrically, $s_n\approx s+Cq^n
 \[
 s\approx s_{n+2}-\frac{(s_{n+2}-s_{n+1})^2}{(s_{n+2}-s_{n+1})-(s_{n+1}-s_n)} ,
 \]
-which is exact when $s_n=s+Cq^n$ with $q\ne1$. The formula, named after Aitken~\cite{aitken1926}, can be applied to any sequence and often accelerates convergence greatly, even when the hypothesis holds only approximately. For the partial sums of $1-\frac13+\frac15-\cdots$, whose remainders alternate in sign with $q\approx-1$, the twelfth partial sum has the error $2.1\times10^{-2}$; one application of the formula to the last three partial sums reduces the error to $4.6\times10^{-5}$, and applying the formula three times in succession to the sequence of the twelve partial sums and its transforms reduces it to $1.0\times10^{-8}$. Aitken's process is the simplest member of a family of nonlinear sequence transformations, which includes the transformations of Shanks, Wynn and Levin; Brezinski and Redivo Zaglia~\cite{brezinski1991} survey them. No such transformation accelerates every convergent sequence, and each works for a class of sequences whose remainders have a known structure.
+which is exact when $s_n=s+Cq^n$ with $q\ne1$. The formula, named after Aitken~\cite{aitken1926}, can be applied to any sequence and often accelerates convergence greatly, even when the hypothesis holds only approximately. For the partial sums of $1-1/3+1/5-\cdots$, whose remainders alternate in sign with $q\approx-1$, the twelfth partial sum has the error $2.1\times10^{-2}$; one application of the formula to the last three partial sums reduces the error to $4.6\times10^{-5}$, and applying the formula three times in succession to the sequence of the twelve partial sums and its transforms reduces it to $1.0\times10^{-8}$. Aitken's process is the simplest member of a family of nonlinear sequence transformations, which includes the transformations of Shanks, Wynn and Levin; Brezinski and Redivo Zaglia~\cite{brezinski1991} survey them. No such transformation accelerates every convergent sequence, and each works for a class of sequences whose remainders have a known structure.
 \end{note}
 
 \bigskip

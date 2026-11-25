@@ -14,271 +14,98 @@
 \tableofcontents
 
 \notationchapter
-The symbols used in this volume are collected here. Each is defined again, with examples, where it first appears.
+This list collects the symbols that are used in several chapters, and the conventions that differ from book to book. Every symbol, including those not listed here, is defined, with examples, where it first appears.
 
-\symbolgroup{Logic}
+\symbolgroup{Logic and sets}
 \begin{symbols}
-\item[$\mathrm{T}$, $\mathrm{F}$] the truth values true and false
-\item[$\neg P$] the negation of $P$, ``not $P$''
-\item[$P\wedge Q$] the conjunction, ``$P$ and $Q$''
-\item[$P\vee Q$] the disjunction, ``$P$ or $Q$'' (or both)
-\item[$P\Rightarrow Q$] the conditional, ``if $P$, then $Q$''
-\item[$P\Leftrightarrow Q$] the biconditional, ``$P$ if and only if $Q$''
-\item[$A\equiv B$] the formulas $A$ and $B$ are logically equivalent
-\item[$\forall x\in S,\ P(x)$] for every $x$ in $S$, $P(x)$ holds
-\item[$\exists x\in S,\ P(x)$] there is at least one $x$ in $S$ for which $P(x)$ holds
-\item[$\exists!\,x\in S,\ P(x)$] there is exactly one $x$ in $S$ for which $P(x)$ holds
+\item[$\neg P$, $P\wedge Q$, $P\vee Q$] not $P$; $P$ and $Q$; $P$ or $Q$ (or both)
+\item[$P\Rightarrow Q$, $P\Leftrightarrow Q$] if $P$, then $Q$; $P$ if and only if $Q$
+\item[$A\equiv B$] the formulas $A$ and $B$ are logically equivalent (for congruence see below)
+\item[$\forall$, $\exists$, $\exists!$] for every; there is at least one; there is exactly one
 \item[$a\coloneqq b$] $a$ is defined to be $b$
-\item[\qedsymbol] the end of a proof
+\item[$\{x\in S: P(x)\}$] the set of the elements $x$ of $S$ for which $P(x)$ holds; $\{t(x): x\in S\}$ is the set of the values $t(x)$
+\item[$A\subseteq B$, $A\subset B$] $A$ is a subset of $B$; $A$ is a \emph{proper} subset of $B$ ($A\subseteq B$ and $A\ne B$)
+\item[$A\setminus B$, $A^{\mathrm c}$] the elements of $A$ not in $B$; the complement $U\setminus A$ in the universe $U$
+\item[$(a,b)$, $A\times B$, $A^n$] an ordered pair; the Cartesian product; the set of $n$-tuples $(a_1,\ldots,a_n)$ of elements of $A$
+\item[$|A|$] the number of elements of a finite set $A$; $|A|=|B|$ means that there is a bijection between $A$ and $B$
+\item[$\sum_{k=m}^{n}a_k$, $\prod_{k=m}^{n}a_k$] sum and product; an empty sum ($n<m$) is $0$, an empty product is $1$
+\item[$x^{\underline k}$, $\binom rk$] the falling factorial $x(x-1)\cdots(x-k+1)$, with $x^{\underline 0}=1$; the binomial coefficient $r^{\underline k}/k!$, for real $r$ and $k\in\mathbb N$
 \end{symbols}
 
-\symbolgroup{Numbers and limits}
+\symbolgroup{Numbers}
 \begin{symbols}
-\item[$\mathbb N$] the natural numbers $0,1,2,\ldots$ (zero included)
+\item[$\mathbb N$] the natural numbers $0,1,2,\ldots$ (\emph{zero included})
 \item[$\mathbb Z$, $\mathbb Q$, $\mathbb R$, $\mathbb C$] the integers, the rational, the real and the complex numbers
-\item[{$[a,b]$, $(a,b)$}] the closed interval $a\le x\le b$ and the open interval $a<x<b$; similarly $[a,b)$, $(a,b]$, $[a,\infty)$, \ldots
-\item[$|x|$] the absolute value of the real number $x$
-\item[$\max(a,b)$] the larger of the real numbers $a$ and $b$
-\item[$\lfloor x\rfloor$, $\lceil x\rceil$] the floor and the ceiling of $x$: the integer $n$ with $n\le x<n+1$, and the integer $n$ with $n-1<x\le n$
-\item[$\operatorname{trunc}(x)$] $x$ rounded towards zero
-\item[{$\sqrt[n]x$, $x^{1/n}$}] the $n$th root of $x\ge0$, the number $y\ge0$ with $y^n=x$
-\item[$\sum_{k=m}^{n}a_k$] the sum $a_m+a_{m+1}+\cdots+a_n$, and $0$ when $n<m$
-\item[$\prod_{k=m}^{n}a_k$] the product $a_ma_{m+1}\cdots a_n$, and $1$ when $n<m$
-\item[$n!$] the factorial $1\cdot2\cdots n$, with $0!=1$
-\item[$(d_k\cdots d_0)_b$] the number $\sum_{i=0}^{k}d_ib^i$ with digits $d_i\in\{0,\ldots,b-1\}$ in base $b$; $(b_k\cdots b_0)_2$ in binary
-\item[$(0.d_1d_2\ldots)_b$] the number with the base-$b$ expansion $d_1,d_2,\ldots$ after the point
-\item[$\|a\|$] the Euclidean length $(a_1^2+\cdots+a_n^2)^{1/2}$ of a tuple of real numbers
-\item[$\lim_{x\to a}f(x)$] the limit of $f(x)$ as $x$ tends to $a$
-\item[$a_n\to L$] the sequence $(a_n)$ converges to $L$
-\end{symbols}
-
-\symbolgroup{Integers and divisibility}
-\begin{symbols}
-\item[$S(n)$] the successor $n+1$ of a natural number $n$
+\item[{$[a,b]$, $(a,b)$}] the closed interval $a\le x\le b$ and the open interval $a<x<b$; similarly $[a,b)$, $(a,\infty)$, \ldots
+\item[$\lfloor x\rfloor$, $\lceil x\rceil$] the floor and the ceiling: the integers $n$ with $n\le x<n+1$ and with $n-1<x\le n$
+\item[$\operatorname{sign}x$] $-1$, $0$ or $1$ according as $x<0$, $x=0$ or $x>0$
 \item[$a\mid b$] the integer $a$ divides the integer $b$
-\item[$a\bmod b$] the remainder, $0\le a\bmod b<b$, of the integer $a$ on division by the integer $b>0$
-\item[$\gcd(a,b)$] the greatest common divisor of $a$ and $b$
-\item[$\operatorname{lcm}(a,b)$] the least common multiple of $a$ and $b$
-\item[$F_n$] the $n$th Fibonacci number: $F_0=0$, $F_1=1$, $F_{n+2}=F_{n+1}+F_n$
-\item[$\phi$] the golden ratio $(1+\sqrt5)/2$
-\item[$v_p(n)$] the exponent of the prime $p$ in the factorisation of $n$
-\item[$\mathbb Z/n\mathbb Z$] the integers modulo $n$, the ring of residue classes modulo $n$
-\item[$\varphi(n)$] Euler's function, the number of $k\in\{1,\ldots,n\}$ coprime to $n$
-\item[$x^{-1}$] the inverse of an invertible element $x$
+\item[$a\bmod b$] the remainder of $a$ on division by $b>0$, rounded down: $0\le a\bmod b<b$ also for negative $a$
+\item[$a\equiv b\pmod n$, $\mathbb Z/n\mathbb Z$] $n\mid a-b$; the integers modulo $n$
+\item[$(d_k\cdots d_0)_b$] the number $\sum_{i=0}^{k}d_ib^i$ written with the digits $d_i\in\{0,\ldots,b-1\}$ in base $b$
+\item[$\phi$, $H_n$] the golden ratio $(1+\sqrt5)/2$; the harmonic number $1+1/2+\cdots+1/n$
+\item[$\bar z$, $|z|$] the conjugate $a-bi$ and the modulus $\sqrt{a^2+b^2}$ of $z=a+bi$; $\operatorname{Re}z=a$, $\operatorname{Im}z=b$
+\item[$\arg z$, $\operatorname{Arg}z$] an argument of $z\ne0$, and the principal argument, which lies in $(-\pi,\pi]$
 \end{symbols}
 
-\symbolgroup{Complex numbers}
+\symbolgroup{Functions and relations}
 \begin{symbols}
-\item[$i$] the imaginary unit, $i^2=-1$
-\item[$\operatorname{Re}z$, $\operatorname{Im}z$] the real part $a$ and the imaginary part $b$ of $z=a+bi$
-\item[$\bar z$] the complex conjugate $a-bi$ of $z=a+bi$
-\item[$|z|$] the modulus $\sqrt{a^2+b^2}$ of $z=a+bi$
-\item[$\arg z$, $\operatorname{Arg}z$] an argument of $z\ne0$, and the principal argument in $(-\pi,\pi]$
-\item[$e^{i\theta}$] the number $\cos\theta+i\sin\theta$ on the unit circle
-\end{symbols}
-
-\symbolgroup{Sets}
-\begin{symbols}
-\item[$x\in S$, $x\notin S$] $x$ is, or is not, an element of the set $S$
-\item[$\{a,b,c\}$] the set whose elements are $a$, $b$ and $c$
-\item[$\{x\in S: P(x)\}$] the set of the elements $x$ of $S$ for which $P(x)$ holds
-\item[$\{t(x): x\in S\}$] the set of the values $t(x)$ for $x$ in $S$
-\item[$A\subseteq B$] $A$ is a subset of $B$ ($A=B$ allowed)
-\item[$A\subset B$] $A$ is a proper subset of $B$ ($A\subseteq B$ and $A\ne B$)
-\item[$\emptyset$] the empty set
-\item[$A\cup B$, $A\cap B$] the union and the intersection of $A$ and $B$
-\item[$A\setminus B$] the difference, the elements of $A$ that are not in $B$
-\item[$A^{\mathrm c}$] the complement $U\setminus A$ of $A$ in the universe $U$
-\item[$A\mathbin{\triangle}B$] the symmetric difference $(A\setminus B)\cup(B\setminus A)$
-\item[$\bigcup_{i\in I}A_i$, $\bigcap_{i\in I}A_i$] the union and the intersection of a family of sets
-\item[$\mathcal P(A)$] the power set of $A$, the set of all subsets of $A$
-\item[$d\mathbb Z$] the set of integer multiples of $d$
-\item[$(a,b)$] the ordered pair with components $a$ and $b$
-\item[$A\times B$] the Cartesian product, the set of pairs $(a,b)$ with $a\in A$, $b\in B$
-\item[$A^n$] the set of $n$-tuples $(a_1,\ldots,a_n)$ of elements of $A$
-\end{symbols}
-
-\symbolgroup{Functions}
-\begin{symbols}
-\item[$f\colon A\to B$] $f$ is a function with domain $A$ and codomain $B$
-\item[$a\mapsto f(a)$] the rule of a function: $a$ is sent to $f(a)$
-\item[$\Gamma_f$] the graph $\{(a,f(a)): a\in A\}$ of $f$
-\item[$\operatorname{id}_A$] the identity function of $A$
-\item[$\mathbf 1_S$] the indicator function of a subset $S$: $1$ on $S$, $0$ elsewhere
-\item[$B^A$] the set of all functions from $A$ to $B$
-\item[$f(S)$] the image $\{f(s): s\in S\}$ of a set $S$ under $f$
-\item[$f^{-1}(T)$] the preimage $\{a: f(a)\in T\}$ of a set $T$ under $f$
-\item[$f|_S$] the restriction of $f$ to a subset $S$ of its domain
-\item[$g\circ f$] the composition, $(g\circ f)(a)=g(f(a))$
+\item[$f\colon A\to B$, $a\mapsto f(a)$] a function with domain $A$ and codomain $B$; its rule
+\item[$f(S)$, $f^{-1}(T)$] the image of a set $S$ and the preimage of a set $T$; the preimage exists for every $f$
 \item[$f^{-1}$] the inverse function of a bijection $f$
+\item[$g\circ f$] the composition, $(g\circ f)(a)=g(f(a))$: first $f$, then $g$
+\item[$f|_S$, $\operatorname{id}_A$] the restriction of $f$ to $S$; the identity function of $A$
+\item[$\mathbf 1_S$] the indicator function of $S$: $1$ on $S$, $0$ elsewhere
+\item[$a\sim b$, {$[a]$}, $A/{\sim}$] equivalence under an equivalence relation; the class of $a$; the set of classes (for $\sim$ between functions see below)
+\item[$\sup S$, $\inf S$] the least upper bound and the greatest lower bound of $S$; $\max S$, $\min S$ when they belong to $S$
 \end{symbols}
 
-\symbolgroup{Relations and orders}
+\symbolgroup{Calculus}
 \begin{symbols}
-\item[$a\mathrel{R}b$] $a$ is related to $b$ by the relation $R$, that is, $(a,b)\in R$
-\item[$R^{-1}$, $S\circ R$] the inverse relation and the composition of relations
-\item[$R^+$] the transitive closure of $R$
-\item[$a\equiv b\pmod n$] $a$ and $b$ are congruent modulo $n$: $n\mid a-b$
-\item[$a\sim b$] $a$ and $b$ are equivalent under an equivalence relation $\sim$
-\item[{$[a]$}] the equivalence class of $a$
-\item[$A/{\sim}$] the quotient set, the set of equivalence classes
-\item[$a\le b$, $a<b$] a partial order and the corresponding strict order
-\item[$\max S$, $\min S$] the greatest and the least element of $S$
-\item[$\sup S$, $\inf S$] the supremum (least upper bound) and infimum (greatest lower bound) of $S$
-\item[$\le_{\mathrm{lex}}$] the lexicographic order
-\end{symbols}
-
-\symbolgroup{Cardinality}
-\begin{symbols}
-\item[$|A|$] the number of elements of a finite set $A$
-\item[$|A|=|B|$] $A$ and $B$ are equinumerous: there is a bijection between them
-\item[$|A|\le|B|$] there is an injection from $A$ to $B$
-\item[$|A|<|B|$] $|A|\le|B|$ but not $|A|=|B|$
-\item[$\Sigma^*$] the set of words over the alphabet $\Sigma$
-\end{symbols}
-
-\symbolgroup{Counting}
-\begin{symbols}
-\item[$\binom Sk$] the set of $k$-element subsets of a set $S$
-\item[$x^{\underline k}$] the falling factorial $x(x-1)\cdots(x-k+1)$, with $x^{\underline 0}=1$
-\item[$\binom nk$] the binomial coefficient, the number of $k$-element subsets of a set of $n$ elements; $\binom rk=r^{\underline k}/k!$ for real $r$ and $k\in\mathbb N$
-\item[$\binom{n}{k_1,\ldots,k_m}$] the multinomial coefficient $n!/(k_1!\cdots k_m!)$
-\item[$\genfrac\{\}{0pt}{}{n}{m}$, $B_n$] the Stirling numbers of the second kind and the Bell numbers
-\item[$\tau(n)$] the number of positive divisors of $n$
-\item[$D_n$] the number of derangements of $n$ elements
-\item[$\hat\phi$] the conjugate $(1-\sqrt5)/2$ of the golden ratio
-\item[$C_n$] the $n$th Catalan number $\binom{2n}{n}/(n+1)$
-\item[$H_n$] the $n$th harmonic number $1+\frac12+\cdots+\frac1n$
-\item[{$\mathbb C[[x]]$}] the ring of formal power series in $x$ with complex coefficients
-\item[{$[x^n]A(x)$}] the coefficient of $x^n$ in the power series $A(x)$
-\item[$p(n)$] the number of partitions of the natural number $n$
-\item[$P(E)$] the probability of an event $E$; in the classical model $|E|/|\Omega|$
-\end{symbols}
-
-\symbolgroup{Graphs}
-\begin{symbols}
-\item[$G=(V,E)$] a graph with vertex set $V$ and edge set $E$
-\item[$uv$] the edge $\{u,v\}$
-\item[$\deg(v)$] the degree of the vertex $v$
-\item[$K_n$, $K_{m,n}$] the complete graph on $n$ vertices and the complete bipartite graph
-\item[$Q_d$] the hypercube of dimension $d$
-\item[{$G[W]$}] the subgraph of $G$ induced by the vertex set $W$
-\item[$G-v$, $G-e$] $G$ with the vertex $v$, or the edge $e$, removed
-\item[$d(u,v)$] the distance between the vertices $u$ and $v$
-\item[$D=(V,A)$] a directed graph with vertex set $V$ and arc set $A$
-\end{symbols}
-
-\symbolgroup{Limits and continuity}
-\begin{symbols}
-\item[$(a_n)$, $(a_n)_{n\in\mathbb N}$] a sequence with terms $a_0,a_1,a_2,\ldots$; $(a_n)_{n\ge1}$ starts at $a_1$
-\item[$\lim_{n\to\infty}a_n$] the limit of a convergent sequence $(a_n)$
-\item[$a_n\to\infty$, $a_n\to-\infty$] the sequence $(a_n)$ diverges to infinity, to minus infinity
-\item[$\infty$, $-\infty$] symbols used in limits; they are not real numbers
-\item[$(a_{n_k})_{k\in\mathbb N}$] a subsequence of $(a_n)$, with $n_0<n_1<\cdots$
-\item[$e$] the number $\lim_{n\to\infty}(1+1/n)^n=2.71828\ldots$
-\item[$\lim_{x\to a^+}f(x)$, $f(a^+)$] the right-hand limit of $f$ at $a$
-\item[$\lim_{x\to a^-}f(x)$, $f(a^-)$] the left-hand limit of $f$ at $a$
-\item[$\lim_{x\to\infty}f(x)$] the limit of $f(x)$ as $x$ grows without bound; similarly $x\to-\infty$
-\item[$C(D)$, $C{[a,b]}$] the set of continuous real functions on $D$, on $[a,b]$
-\item[$\operatorname{sign}x$] the sign of $x$: $-1$, $0$ or $1$ according as $x<0$, $x=0$ or $x>0$
-\item[$\arcsin$, $\arccos$, $\arctan$] the inverses of $\sin$ on $[-\pi/2,\pi/2]$, $\cos$ on $[0,\pi]$, $\tan$ on $(-\pi/2,\pi/2)$
-\end{symbols}
-
-\symbolgroup{Differentiation}
-\begin{symbols}
-\item[$f'(a)$, $\frac{df}{dx}(a)$] the derivative of $f$ at $a$; $f'$ is the derivative as a function
-\item[$f'_+(a)$, $f'_-(a)$] the right and the left derivative of $f$ at $a$
-\item[$f''$, $f^{(n)}$, $\frac{d^nf}{dx^n}$] the second and the $n$th derivative of $f$, with $f^{(0)}=f$
-\item[$o(h^p)$, $O(h^p)$] a quantity $r(h)$ with $r(h)/h^p\to0$, and one with $|r(h)|\le C|h|^p$ for small $h\ne0$ (as $h\to0$)
+\item[$(a_n)$, $(a_n)_{n\ge1}$] a sequence $a_0,a_1,\ldots$ (indexed from $0$ unless stated); one that starts at $a_1$
+\item[$x\to a^+$, $f(a^+)$] $x$ tends to $a$ from the right, and the right-hand limit of $f$ at $a$; similarly $a^-$
+\item[$C(D)$, $C^k(I)$, $C^\infty(I)$] the continuous functions on $D$; the $k$ times continuously differentiable and the smooth functions on $I$
+\item[$f'$, $f^{(n)}$, $df/dx$] derivatives, with $f^{(0)}=f$
+\item[$D_h^+f(x)$, $D_h^0f(x)$] the forward and the central difference quotient $(f(x+h)-f(x))/h$ and $(f(x+h)-f(x-h))/(2h)$
 \item[$\kappa_f(x)$] the relative condition number $|xf'(x)/f(x)|$ of $f$ at $x$
-\item[$D_h^+f(x)$, $D_h^0f(x)$] the forward and the central difference quotient, $(f(x+h)-f(x))/h$ and $(f(x+h)-f(x-h))/(2h)$
-\item[$C^k(I)$, $C^\infty(I)$] the $k$ times continuously differentiable functions and the smooth functions on the interval $I$
-\end{symbols}
-
-\symbolgroup{Integration}
-\begin{symbols}
-\item[$P=\{x_0,\ldots,x_n\}$] a partition $a=x_0<x_1<\cdots<x_n=b$ of $[a,b]$, with subintervals $I_k=[x_{k-1},x_k]$ of lengths $\Delta x_k$
-\item[$\|P\|$] the mesh $\max_k\Delta x_k$ of the partition $P$
-\item[$L(f,P)$, $U(f,P)$] the lower and the upper sum of $f$ with respect to $P$
-\item[$\underline{\int}_a^bf$, $\overline{\int}_a^bf$] the lower and the upper integral of $f$ over $[a,b]$
-\item[$S(f,P,\xi)$] the Riemann sum $\sum_kf(\xi_k)\Delta x_k$ with tags $\xi_k\in I_k$
-\item[$\int_a^bf$, $\int_a^bf(x)\,dx$] the Riemann integral of $f$ over $[a,b]$; $\int_b^af=-\int_a^bf$
-\item[$\bar f$] the mean value $\frac1{b-a}\int_a^bf$ of $f$ on $[a,b]$
-\item[$F(x)\big|_a^b$, {$[F(x)]_a^b$}] the difference $F(b)-F(a)$
-\item[$\int f(x)\,dx$] the indefinite integral, the antiderivatives of $f$ on an interval
-\item[$\Lambda(x)$] the function $\int_1^x dt/t$, $x>0$, the natural logarithm $\ln x$ of \cref{ch:transcendental}
-\item[$f^+$, $f^-$] the positive and the negative part $\max(f,0)$ and $\max(-f,0)$ of $f$
+\item[$\int_a^bf$, $\int_a^bf(x)\,dx$] the integral of $f$ over $[a,b]$; $\int_b^af=-\int_a^bf$
+\item[$\Lambda(x)$] the function $\int_1^x dt/t$ ($x>0$) of \cref{ch:integration,ch:series}, which \cref{ch:transcendental} identifies with $\ln x$
 \item[$\Gamma(s)$] the gamma function $\int_0^\infty t^{s-1}e^{-t}\,dt$, $s>0$
-\item[$R^{\mathrm{left}}_n$, $R^{\mathrm{right}}_n$] the left and the right rectangle rule with $n$ subintervals
-\item[$M_n$, $T_n$, $S_n$] the midpoint, the trapezoidal and Simpson's rule with $n$ subintervals
-\item[$E(Q)$] the error $\int_a^bf-Q$ of a quadrature rule $Q$
+\item[$f=O(g)$, $f=o(g)$] $|f|\le C|g|$ near the limit point; $|f|\le\varepsilon|g|$ near it for every $\varepsilon>0$ (the limit point is stated or clear from the context)
+\item[$f=\Omega(g)$, $f=\Theta(g)$] $|f|\ge c|g|$ with $c>0$ near the limit point; both $f=O(g)$ and $f=\Omega(g)$
+\item[$f\sim g$] $f$ is asymptotically equal to $g$: $f-g=o(g)$
 \end{symbols}
 
-\symbolgroup{Series and approximation}
-\begin{symbols}
-\item[$\sum_{k=m}^\infty a_k$] a series, the sequence of its partial sums $s_n=\sum_{k=m}^na_k$; also its sum $\lim_{n\to\infty}s_n$
-\item[$r_n$] the remainder $\sum_{k>n}a_k$ of a convergent series after the term $a_n$
-\item[$\limsup a_n$, $\liminf a_n$] the limit superior $\lim_{n\to\infty}\sup_{k\ge n}a_k$ and the limit inferior of $(a_n)$
-\item[$\gamma$] Euler's constant $\lim_{n\to\infty}(H_n-\Lambda(n))=0.57721\ldots$
-\item[$\zeta(p)$] the sum $\sum_{k\ge1}k^{-p}$, $p>1$
-\item[$R$] the radius of convergence of a power series
-\item[$E(x)$, $e^x$] the exponential series $\sum_{k\ge0}x^k/k!$
-\item[$P_nf(x;a)$] the Taylor polynomial $\sum_{k=0}^nf^{(k)}(a)(x-a)^k/k!$ of degree $n$ of $f$ at $a$
-\item[$R_nf(x;a)$] the remainder $f(x)-P_nf(x;a)$
-\item[$f=O(g)$, $f=o(g)$] $|f|\le C|g|$ near the limit point, and $|f|\le\varepsilon|g|$ near it for every $\varepsilon>0$
-\item[$f=\Omega(g)$, $f=\Theta(g)$] $|f|\ge c|g|$ with $c>0$ near the limit point, and both $f=O(g)$ and $f=\Omega(g)$
-\item[$f\sim g$] $f$ is asymptotically equal to $g$: $f-g=o(g)$; with a series on the right, an asymptotic expansion
-\end{symbols}
-
-\symbolgroup{Elementary transcendental functions}
+\symbolgroup{Elementary functions}
 \begin{symbols}
 \item[$\exp x$, $e^x$] the exponential function $\sum_{k\ge0}x^k/k!$, for real or complex $x$
-\item[$\ln x$] the natural logarithm, the inverse of $\exp$ on $(0,\infty)$; it equals $\Lambda(x)$
-\item[$a^x$] the power $e^{x\ln a}$ for $a>0$ and real $x$; $0^x=0$ for $x>0$, and $0^0=1$
-\item[$\log_ax$] the logarithm $\ln x/\ln a$ to the base $a$; $\log_2$ binary, $\log_{10}$ common; $\log$ without a base only where the base does not matter, as in $O(n\log n)$
-\item[$\sin x$, $\cos x$] the sine and the cosine, defined by their power series
-\item[$\pi$] twice the smallest positive zero of the cosine, $3.14159\ldots$
-\item[$\tan x$] the tangent $\sin x/\cos x$
-\item[$\operatorname{atan2}(y,x)$] the angle $\theta\in(-\pi,\pi]$ with $(x,y)=r(\cos\theta,\sin\theta)$, $r>0$
-\item[$\operatorname{Log}w$, $w^s$] the principal logarithm $\ln|w|+i\operatorname{Arg}w$ and the principal power $e^{s\operatorname{Log}w}$ of a complex number $w\ne0$
-\item[$\cosh x$, $\sinh x$, $\tanh x$] the hyperbolic cosine $\frac12(e^x+e^{-x})$, sine $\frac12(e^x-e^{-x})$ and tangent
-\item[$\operatorname{arsinh}$, $\operatorname{arcosh}$, $\operatorname{artanh}$] the inverse hyperbolic functions
-\item[$\sigma(x)$] the logistic function $1/(1+e^{-x})$
+\item[$\ln x$, $\log_ax$] the natural logarithm; the logarithm $\ln x/\ln a$ to the base $a$; $\log$ without a base only where the base does not matter, as in $O(n\log n)$
+\item[$a^x$] the power $e^{x\ln a}$ for $a>0$; $0^x=0$ for $x>0$, and $0^0=1$
+\item[$\arcsin$, $\arccos$, $\arctan$] the inverses of $\sin$ on $[-\pi/2,\pi/2]$, of $\cos$ on $[0,\pi]$ and of $\tan$ on $(-\pi/2,\pi/2)$
+\item[$\operatorname{atan2}(y,x)$] the angle $\theta\in(-\pi,\pi]$ with $(x,y)=r(\cos\theta,\sin\theta)$, $r>0$ (note the order of the arguments)
+\item[$\operatorname{Log}w$, $w^s$] the principal logarithm $\ln|w|+i\operatorname{Arg}w$ and the principal power $e^{s\operatorname{Log}w}$, for complex $w\ne0$
+\item[$\operatorname{arsinh}$, $\operatorname{arcosh}$, $\operatorname{artanh}$] the inverses of the hyperbolic functions $\sinh$, $\cosh$ (on $[0,\infty)$) and $\tanh$
 \item[$u$] the unit roundoff $2^{-53}$ of binary64 floating-point arithmetic
 \end{symbols}
 
 \symbolgroup{Vectors, matrices and several variables}
 \begin{symbols}
-\item[$\mathbf x=(x_1,\ldots,x_n)$] a vector (point) of $\mathbb R^n$, in bold lower case; a column vector in products with matrices
-\item[$\mathbf 0$, $\mathbf e_i$] the zero vector and the $i$th standard basis vector
-\item[$\langle\mathbf x,\mathbf y\rangle$] the inner product $\sum_ix_iy_i$; equal to $\mathbf x^{\mathsf T}\mathbf y$
-\item[$\|\mathbf x\|$] the Euclidean norm $\langle\mathbf x,\mathbf x\rangle^{1/2}$, written $\|\mathbf x\|_2$ where other norms appear; $\|\mathbf x-\mathbf y\|$ is the distance
-\item[$\mathbf x\perp\mathbf y$] $\mathbf x$ and $\mathbf y$ are orthogonal: $\langle\mathbf x,\mathbf y\rangle=0$
-\item[$A=(a_{ij})$, $\mathbb R^{m\times n}$] a matrix, in upper case, with entries $a_{ij}$; the set of $m\times n$ matrices
-\item[$A\mathbf x$, $AB$] the matrix--vector and the matrix--matrix product
-\item[$A^{\mathsf T}$] the transpose, $(A^{\mathsf T})_{ji}=a_{ij}$
-\item[$I$, $I_n$] the identity matrix
-\item[$\operatorname{diag}(d_1,\ldots,d_n)$] the diagonal matrix with diagonal entries $d_i$
-\item[$A^{-1}$, $\det A$] the inverse and the determinant of a square matrix
-\item[$\|A\|_2$, $\|A\|_{\mathrm F}$] the operator norm and the Frobenius norm of a matrix $A$
+\item[$\mathbf x=(x_1,\ldots,x_n)$] a vector of $\mathbb R^n$, in bold lower case; a column vector in products with matrices
+\item[$\mathbf 0$, $\mathbf e_i$] the zero vector; the $i$th standard basis vector
+\item[$\langle\mathbf x,\mathbf y\rangle$] the inner product $\sum_ix_iy_i=\mathbf x^{\mathsf T}\mathbf y$
+\item[$\|\mathbf x\|$] the Euclidean norm $\langle\mathbf x,\mathbf x\rangle^{1/2}$, written $\|\mathbf x\|_2$ where other norms appear
+\item[$A=(a_{ij})$, $\mathbb R^{m\times n}$] a matrix, in italic upper case, with entries $a_{ij}$; the $m\times n$ real matrices
+\item[$A^{\mathsf T}$, $I_n$] the transpose; the $n\times n$ identity matrix ($I$ when $n$ is clear)
+\item[$\|A\|_2$, $\|A\|_{\mathrm F}$] the operator norm and the Frobenius norm of a matrix
 \item[$B(\mathbf a,r)$, $\bar B(\mathbf a,r)$] the open and the closed ball with centre $\mathbf a$ and radius $r$
-\item[{$[\mathbf a,\mathbf b]$}] the segment $\{\mathbf a+t(\mathbf b-\mathbf a): 0\le t\le1\}$
 \item[$\mathbf f=(f_1,\ldots,f_m)$] a vector-valued function, in bold, with component functions $f_i$
-\item[$\frac{\partial f}{\partial x_i}$, $\partial_if$, $f_{x_i}$] the partial derivative with respect to $x_i$; $f_x$, $f_y$ for functions of $(x,y)$
-\item[$\partial_i\partial_jf$, $f_{xy}$] second partial derivatives: $\partial_i(\partial_jf)$, and $f_{xy}=(f_x)_y$
-\item[$C^k(U)$, $C^\infty(U)$] functions on the open set $U$ whose partial derivatives up to order $k$, or of all orders, exist and are continuous
-\item[$D\mathbf f(\mathbf a)$, $J_{\mathbf f}(\mathbf a)$] the derivative of $\mathbf f$ at $\mathbf a$, the $m\times n$ Jacobian matrix $(\partial_jf_i(\mathbf a))$
-\item[$\nabla f(\mathbf a)$] the gradient $(\partial_1f(\mathbf a),\ldots,\partial_nf(\mathbf a))=Df(\mathbf a)^{\mathsf T}$ of a real-valued $f$
-\item[$D_{\mathbf v}f(\mathbf a)$] the directional derivative of $f$ at $\mathbf a$ in the direction $\mathbf v$
+\item[$\partial_if$, $\partial f/\partial x_i$, $f_{x_i}$] the partial derivative with respect to $x_i$; $f_{xy}=(f_x)_y$
+\item[$D\mathbf f(\mathbf a)$] the derivative of $\mathbf f$ at $\mathbf a$, the $m\times n$ Jacobian matrix $(\partial_jf_i(\mathbf a))$
+\item[$\nabla f(\mathbf a)$] the gradient of a real-valued $f$, a \emph{column} vector: $\nabla f(\mathbf a)=Df(\mathbf a)^{\mathsf T}$
 \item[$\nabla^2f(\mathbf a)$] the Hessian matrix $(\partial_i\partial_jf(\mathbf a))$
-\item[$\boldsymbol\gamma'(t)$] the velocity vector of a curve $\boldsymbol\gamma$
-\item[$o(\|\mathbf h\|)$] a quantity $\mathbf r(\mathbf h)$ with $\|\mathbf r(\mathbf h)\|/\|\mathbf h\|\to0$ as $\mathbf h\to\mathbf0$
+\item[$D_{\mathbf v}f(\mathbf a)$] the directional derivative of $f$ at $\mathbf a$ in the direction $\mathbf v$
 \item[$|\alpha|$, $\alpha!$, $\mathbf h^\alpha$, $\partial^\alpha f$] for a multi-index $\alpha\in\mathbb N^n$: $\sum\alpha_i$, $\prod\alpha_i!$, $\prod h_i^{\alpha_i}$, $\partial_1^{\alpha_1}\cdots\partial_n^{\alpha_n}f$
-\item[$D_{\mathbf x}\mathbf F$, $D_{\mathbf y}\mathbf F$] the blocks of $D\mathbf F$ with the partial derivatives with respect to the variables $\mathbf x$ and $\mathbf y$
-\item[$\Delta_k$] the $k$th leading principal minor, the determinant of the upper left $k\times k$ submatrix
-\item[$\mathcal L(\mathbf x,\lambda)$] the Lagrangian $f(\mathbf x)-\lambda g(\mathbf x)$ of a problem with a constraint
-\item[$(r,\theta)$] polar coordinates: $(x,y)=(r\cos\theta,r\sin\theta)$
-\item[$(r,\theta,\varphi)$] spherical coordinates (ISO 80000-2): radius $r$, polar angle $\theta\in[0,\pi]$ from the positive $z$-axis, azimuth $\varphi$; $(x,y,z)=(r\sin\theta\cos\varphi,r\sin\theta\sin\varphi,r\cos\theta)$
+\item[$(r,\theta,\varphi)$] spherical coordinates (ISO 80000-2): $\theta\in[0,\pi]$ is the polar angle from the positive $z$-axis, $\varphi$ the azimuth; $(x,y,z)=(r\sin\theta\cos\varphi,r\sin\theta\sin\varphi,r\cos\theta)$
 \end{symbols}
 
 \mainmatter

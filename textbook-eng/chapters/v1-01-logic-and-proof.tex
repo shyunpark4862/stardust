@@ -939,14 +939,14 @@ Cases also appear in formulas that avoid them. The following identity expresses 
 
 \begin{proposition}
 \label{prop:max}
-For all real numbers $a$ and $b$, $\max(a,b)=\tfrac12\bigl(a+b+|a-b|\bigr)$, where $\max(a,b)$ is $a$ if $a\ge b$ and $b$ otherwise.
+For all real numbers $a$ and $b$, $\max(a,b)=(1/2)\bigl(a+b+|a-b|\bigr)$, where $\max(a,b)$ is $a$ if $a\ge b$ and $b$ otherwise.
 \end{proposition}
 
 \begin{proof}
-If $a\ge b$, then $|a-b|=a-b$ and the right side is $\tfrac12(a+b+a-b)=a=\max(a,b)$. If $a<b$, then $|a-b|=-(a-b)=b-a$ and the right side is $\tfrac12(a+b+b-a)=b=\max(a,b)$.
+If $a\ge b$, then $|a-b|=a-b$ and the right side is $(1/2)(a+b+a-b)=a=\max(a,b)$. If $a<b$, then $|a-b|=-(a-b)=b-a$ and the right side is $(1/2)(a+b+b-a)=b=\max(a,b)$.
 \end{proof}
 
-The expression $\tfrac12(a+b+|a-b|)$ is symmetric in $a$ and $b$, and so is $\max(a,b)$. In such a situation one often writes ``without loss of generality, $a\ge b$'' and treats only the first case: the second case is the first with the names $a$ and $b$ exchanged, and exchanging the names changes neither side of the identity.
+The expression $(1/2)(a+b+|a-b|)$ is symmetric in $a$ and $b$, and so is $\max(a,b)$. In such a situation one often writes ``without loss of generality, $a\ge b$'' and treats only the first case: the second case is the first with the names $a$ and $b$ exchanged, and exchanging the names changes neither side of the identity.
 
 \section{Contrapositive and Contradiction}
 \label{sec:contradiction}
@@ -1242,7 +1242,7 @@ We can now also prove the proposition on parity that was stated in \cref{sec:dir
 \begin{proof}[Proof of \cref{prop:parity}]
 First let $n\in\mathbb N$; we show by induction that $n$ is even or odd. For $n=0$ we have $0=2\cdot0$. Suppose that $n$ is even or odd. If $n=2k$, then $n+1=2k+1$ is odd; if $n=2k+1$, then $n+1=2(k+1)$ is even. In both cases $n+1$ is even or odd, which completes the induction. Next let $n<0$ be an integer. Then $-n\in\mathbb N$ is even or odd. If $-n=2k$, then $n=2(-k)$ is even; if $-n=2k+1$, then $n=2(-k-1)+1$ is odd.
 
-Finally, suppose that some integer $n$ is both even and odd, say $n=2a=2b+1$ with integers $a$ and $b$. Then $2(a-b)=1$, so the integer $a-b$ equals $\tfrac12$ and lies strictly between $0$ and $1$. This contradicts \cref{asm:numbers}\,(iii).
+Finally, suppose that some integer $n$ is both even and odd, say $n=2a=2b+1$ with integers $a$ and $b$. Then $2(a-b)=1$, so the integer $a-b$ equals $1/2$ and lies strictly between $0$ and $1$. This contradicts \cref{asm:numbers}\,(iii).
 \end{proof}
 
 \subsection{Strong Induction}
@@ -1559,7 +1559,7 @@ For the function $H$ of \cref{prop:step-limit}, there is no real number $L$ with
 \end{proposition}
 
 \begin{proof}
-Suppose, for a contradiction, that $\lim_{x\to0}H(x)=L$. Apply \eqref{eq:limit} with $\varepsilon\coloneqq\tfrac12$: there is $\delta>0$ such that $|H(x)-L|<\tfrac12$ whenever $0<|x|<\delta$. Taking $x=\delta/2$ gives $|1-L|<\tfrac12$, and taking $x=-\delta/2$ gives $|0-L|<\tfrac12$. By the triangle inequality,
+Suppose, for a contradiction, that $\lim_{x\to0}H(x)=L$. Apply \eqref{eq:limit} with $\varepsilon\coloneqq1/2$: there is $\delta>0$ such that $|H(x)-L|<1/2$ whenever $0<|x|<\delta$. Taking $x=\delta/2$ gives $|1-L|<1/2$, and taking $x=-\delta/2$ gives $|0-L|<1/2$. By the triangle inequality,
 \[
 1=|(1-L)+(L-0)|\le|1-L|+|L-0|<\tfrac12+\tfrac12=1,
 \]

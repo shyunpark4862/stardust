@@ -8,7 +8,7 @@
 
 The chapter has three parts. The first part, \cref{sec:counting-principles,sec:perm-comb,sec:binomial,sec:ie-pigeonhole}, establishes the basic principles (the sum rule, the product rule, counting by bijections and counting in two ways), applies them to arrangements and selections, studies the binomial coefficients that arise and proves the principle of inclusion and exclusion and the pigeonhole principle. The second part, \cref{sec:recurrences,sec:gf}, turns to sequences of counts. A count that depends on a parameter $n$ often satisfies a recurrence, and \cref{sec:recurrences} shows how to solve the simplest recurrences; \cref{sec:gf} packs a whole sequence into a single formal power series, the generating function, so that recurrences and counting problems become algebra. The third part, \cref{sec:graphs,sec:trees}, introduces graphs and trees. A final section, \cref{sec:counting-probability}, shows that probabilities in models with equally likely outcomes are ratios of counts.
 
-The results of this chapter return throughout the series. The number of steps of an algorithm is a count (Volume~IV); the exact distribution of a rank statistic is a count of orderings (Volume~XIV); a sparse matrix is a graph with numbers on its edges (Volume~IX). As in the previous chapters, this is a review: every result is stated precisely, most are proved, and for the others we give the idea of the proof and a reference. Two topics that need analysis are deferred to Part~II: the growth of $n!$, described by Stirling's formula, and the precise behaviour of sums such as $1+\frac12+\cdots+\frac1n$; both are treated in \cref{ch:series}.
+The results of this chapter return throughout the series. The number of steps of an algorithm is a count (Volume~IV); the exact distribution of a rank statistic is a count of orderings (Volume~XIV); a sparse matrix is a graph with numbers on its edges (Volume~IX). As in the previous chapters, this is a review: every result is stated precisely, most are proved, and for the others we give the idea of the proof and a reference. Two topics that need analysis are deferred to Part~II: the growth of $n!$, described by Stirling's formula, and the precise behaviour of sums such as $1+1/2+\cdots+1/n$; both are treated in \cref{ch:series}.
 
 \section{Basic Counting Principles}
 \label{sec:counting-principles}
@@ -156,7 +156,7 @@ In the matrix picture of a relation (\cref{fig:relation}B), $r(a)$ is the number
 \sum_{n=1}^{N}\tau(n)=\sum_{k=1}^{N}\Bigl\lfloor\frac Nk\Bigr\rfloor ,
 \label{eq:divisor-sum}
 \end{equation}
-because, for a fixed $k$, the numbers $n\le N$ divisible by $k$ are the $\lfloor N/k\rfloor$ multiples $k,2k,\ldots$ of $k$ (\cref{sec:division}). For $N=10$ the left side is $1+2+2+3+2+4+2+4+3+4=27$ and the right side is $10+5+3+2+2+1+1+1+1+1=27$. The function $\tau$ jumps around irregularly, while the right side is easy to estimate: since $\lfloor N/k\rfloor\le N/k$, the average of $\tau(1),\ldots,\tau(N)$ is at most $1+\frac12+\cdots+\frac1N$, a sum that grows only like the natural logarithm of $N$ (\cref{ch:series}). A typical number has few divisors, a fact that is far from evident when one looks at the divisors one number at a time.
+because, for a fixed $k$, the numbers $n\le N$ divisible by $k$ are the $\lfloor N/k\rfloor$ multiples $k,2k,\ldots$ of $k$ (\cref{sec:division}). For $N=10$ the left side is $1+2+2+3+2+4+2+4+3+4=27$ and the right side is $10+5+3+2+2+1+1+1+1+1=27$. The function $\tau$ jumps around irregularly, while the right side is easy to estimate: since $\lfloor N/k\rfloor\le N/k$, the average of $\tau(1),\ldots,\tau(N)$ is at most $1+1/2+\cdots+1/N$, a sum that grows only like the natural logarithm of $N$ (\cref{ch:series}). A typical number has few divisors, a fact that is far from evident when one looks at the divisors one number at a time.
 
 \section{Permutations and Combinations}
 \label{sec:perm-comb}
@@ -236,7 +236,7 @@ For a real number $r$ and an integer $k$, put
 \]
 \end{definition}
 
-By \cref{thm:binomial-formula}, this agrees with \cref{def:binomial} when $r$ and $k$ are natural numbers. For example, $\binom{1/2}{2}=\frac12\cdot\bigl(-\frac12\bigr)/2=-\frac18$ and $\binom{-1}{k}=(-1)(-2)\cdots(-k)/k!=(-1)^k$. More generally, for $n\in\mathbb N$, reversing the order of the factors gives the rule of \term{upper negation},
+By \cref{thm:binomial-formula}, this agrees with \cref{def:binomial} when $r$ and $k$ are natural numbers. For example, $\binom{1/2}{2}=(1/2)\cdot\bigl(-1/2\bigr)/2=-1/8$ and $\binom{-1}{k}=(-1)(-2)\cdots(-k)/k!=(-1)^k$. More generally, for $n\in\mathbb N$, reversing the order of the factors gives the rule of \term{upper negation},
 \begin{align}
 \binom{-n}{k}&=\frac{(-n)(-n-1)\cdots(-n-k+1)}{k!}\notag\\
 &=(-1)^k\frac{(n+k-1)\cdots(n+1)n}{k!}=(-1)^k\binom{n+k-1}{k} .
@@ -490,8 +490,8 @@ Each row of Pascal's triangle rises to a maximum in the middle and falls again. 
 Let $n\ge1$.
 \begin{enumerate}
 \item For $0\le k<n$, $\binom n{k+1}\big/\binom nk=(n-k)/(k+1)$. Hence $\binom nk<\binom n{k+1}$ if $k<(n-1)/2$, and $\binom nk>\binom n{k+1}$ if $k>(n-1)/2$, so that the largest coefficients in row $n$ are $\binom n{\lfloor n/2\rfloor}=\binom n{\lceil n/2\rceil}$.
-\item $\dfrac{2^n}{n+1}\le\dbinom n{\lfloor n/2\rfloor}\le2^n$.
-\item For $1\le k\le n$, $\Bigl(\dfrac nk\Bigr)^k\le\dbinom nk\le\dfrac{n^k}{k!}$.
+\item $2^n/(n+1)\le\binom n{\lfloor n/2\rfloor}\le2^n$.
+\item For $1\le k\le n$, $(n/k)^k\le\binom nk\le n^k/k!$.
 \end{enumerate}
 \end{proposition}
 
@@ -677,7 +677,7 @@ An integer $k$ is coprime to $n$ if and only if no prime divides both, that is, 
 where the last step is the expansion of the product: multiplying out $\prod_i(1-1/p_i)$ produces, for every subset $J$, the term $\prod_{j\in J}(-1/p_j)=(-1)^{|J|}/P_J$, by the argument of the combinatorial proof of \cref{thm:binomial}.
 \end{proof}
 
-For example, $360=2^3\cdot3^2\cdot5$, so $\varphi(360)=360\cdot\frac12\cdot\frac23\cdot\frac45=96$. Since the formula depends only on the set of prime divisors, two consequences are immediate: $\varphi(p^a)=p^a-p^{a-1}$ for a prime power, and $\varphi(mn)=\varphi(m)\varphi(n)$ if $\gcd(m,n)=1$, because then the prime divisors of $mn$ are those of $m$ together with those of $n$, and the two sets are disjoint. Double counting gives a further identity, due to Gauss~\cite{gauss1801,hardywright2008}.
+For example, $360=2^3\cdot3^2\cdot5$, so $\varphi(360)=360\cdot(1/2)\cdot(2/3)\cdot(4/5)=96$. Since the formula depends only on the set of prime divisors, two consequences are immediate: $\varphi(p^a)=p^a-p^{a-1}$ for a prime power, and $\varphi(mn)=\varphi(m)\varphi(n)$ if $\gcd(m,n)=1$, because then the prime divisors of $mn$ are those of $m$ together with those of $n$, and the two sets are disjoint. Double counting gives a further identity, due to Gauss~\cite{gauss1801,hardywright2008}.
 
 \begin{proposition}
 \label{prop:gauss-phi}
@@ -815,7 +815,7 @@ The number $\phi$ is the golden ratio, which already appeared in Lam\'e's theore
 F_n=\frac{\phi^n-\hat\phi^n}{\sqrt5}\qquad(n\in\mathbb N).
 \label{eq:binet}
 \end{equation}
-This is \term{Binet's formula}, published by Jacques Binet in 1843 and known to de Moivre more than a century earlier~\cite[Sect.~1.2.8]{knuth1997taocp1}. The irrational numbers on the right combine to an integer for every $n$, which is far from evident at first sight. Since $|\hat\phi|<1$, the second term satisfies $|\hat\phi^n/\sqrt5|<1/2$, so $F_n$ is the integer nearest to $\phi^n/\sqrt5$; for instance $\phi^{30}/\sqrt5=832\,040.00000024\ldots$ and $F_{30}=832\,040$. In particular $F_n$ grows like $\phi^n$, by a factor of about $1.618$ per step, and $F_{n+1}/F_n\to\phi$. The formula is a poor way to compute $F_n$ in floating-point arithmetic. Evaluated in the standard $64$-bit format, with $\phi$ and $\sqrt5$ rounded to that format, $\phi^n/\sqrt5$ rounds to the wrong integer for the first time at $n=71$. The relative error committed in rounding $\phi$, here about $3\times10^{-17}$, is multiplied roughly by $n$ in $\phi^n$; near $n=70$ the computed value therefore has a relative error of about $2\times10^{-15}$, and since $F_{71}\approx3.1\times10^{14}$, the absolute error exceeds $\frac12$ (Volume~V). The recurrence itself, in integer arithmetic, is exact until the values overflow; $F_{92}=7\,540\,113\,804\,746\,346\,429$ is the largest Fibonacci number below $2^{63}$.
+This is \term{Binet's formula}, published by Jacques Binet in 1843 and known to de Moivre more than a century earlier~\cite[Sect.~1.2.8]{knuth1997taocp1}. The irrational numbers on the right combine to an integer for every $n$, which is far from evident at first sight. Since $|\hat\phi|<1$, the second term satisfies $|\hat\phi^n/\sqrt5|<1/2$, so $F_n$ is the integer nearest to $\phi^n/\sqrt5$; for instance $\phi^{30}/\sqrt5=832\,040.00000024\ldots$ and $F_{30}=832\,040$. In particular $F_n$ grows like $\phi^n$, by a factor of about $1.618$ per step, and $F_{n+1}/F_n\to\phi$. The formula is a poor way to compute $F_n$ in floating-point arithmetic. Evaluated in the standard $64$-bit format, with $\phi$ and $\sqrt5$ rounded to that format, $\phi^n/\sqrt5$ rounds to the wrong integer for the first time at $n=71$. The relative error committed in rounding $\phi$, here about $3\times10^{-17}$, is multiplied roughly by $n$ in $\phi^n$; near $n=70$ the computed value therefore has a relative error of about $2\times10^{-15}$, and since $F_{71}\approx3.1\times10^{14}$, the absolute error exceeds $1/2$ (Volume~V). The recurrence itself, in integer arithmetic, is exact until the values overflow; $F_{92}=7\,540\,113\,804\,746\,346\,429$ is the largest Fibonacci number below $2^{63}$.
 
 Complex roots occur as well. The recurrence $a_n=a_{n-1}-a_{n-2}$ with $a_0=0$ and $a_1=1$ produces $0,1,1,0,-1,-1,0,1,1,\ldots$, which repeats with period $6$. Its characteristic polynomial $x^2-x+1$ has the roots $r_{1,2}=(1\pm i\sqrt3)/2=e^{\pm i\pi/3}$, on the unit circle (\cref{sec:complex}), and the theorem gives $A=-B=1/(r_1-r_2)=1/(i\sqrt3)$, so that
 \[
@@ -884,7 +884,7 @@ C_n=\binom{2n}{n}-\binom{2n}{n+1}=\frac1{n+1}\binom{2n}{n}.
 \begin{proof}
 Translate a word into a lattice path, as in \cref{prop:lattice-paths}, by reading ``$($'' as a step to the right and ``$)$'' as a step upwards. The words with $n$ letters of each kind become the $\binom{2n}{n}$ lattice paths from $(0,0)$ to $(n,n)$, and the balanced words become those paths that never rise above the diagonal $y=x$, since a prefix with more closing than opening parentheses ends at a point with $y>x$. Call the other paths \emph{bad}. A bad path reaches a point with $y=x+1$; let $P$ be the first such point. Reflect the part of the path after $P$ in the line $y=x+1$, which maps $(x,y)$ to $(y-1,x+1)$ and exchanges steps to the right with steps upwards. The reflected path ends at $(n-1,n+1)$, the mirror image of $(n,n)$.
 
-Conversely, every lattice path from $(0,0)$ to $(n-1,n+1)$ reaches the line $y=x+1$, because $y-x$ changes by $\pm1$ at each step, starts at $0$ and ends at $2$. Reflecting the part after its first point on the line gives a bad path to $(n,n)$, with the same first point on the line. The two reflections are inverse to each other, so the bad paths are in bijection with all lattice paths from $(0,0)$ to $(n-1,n+1)$, of which there are $\binom{2n}{n-1}=\binom{2n}{n+1}$ by \cref{prop:lattice-paths}. Hence $C_n=\binom{2n}{n}-\binom{2n}{n+1}$. Finally, $\binom{2n}{n+1}=\binom{2n}{n}\cdot\frac{n}{n+1}$ by \cref{prop:binomial-size}\,(i), and $\binom{2n}{n}\bigl(1-\frac{n}{n+1}\bigr)=\binom{2n}{n}/(n+1)$; for $n=0$ the formula is checked directly.
+Conversely, every lattice path from $(0,0)$ to $(n-1,n+1)$ reaches the line $y=x+1$, because $y-x$ changes by $\pm1$ at each step, starts at $0$ and ends at $2$. Reflecting the part after its first point on the line gives a bad path to $(n,n)$, with the same first point on the line. The two reflections are inverse to each other, so the bad paths are in bijection with all lattice paths from $(0,0)$ to $(n-1,n+1)$, of which there are $\binom{2n}{n-1}=\binom{2n}{n+1}$ by \cref{prop:lattice-paths}. Hence $C_n=\binom{2n}{n}-\binom{2n}{n+1}$. Finally, $\binom{2n}{n+1}=\binom{2n}{n}\cdot n/(n+1)$ by \cref{prop:binomial-size}\,(i), and $\binom{2n}{n}\bigl(1-n/(n+1)\bigr)=\binom{2n}{n}/(n+1)$; for $n=0$ the formula is checked directly.
 \end{proof}
 
 \Cref{fig:reflection} shows the reflection for $n=5$. The argument is the \term{reflection principle}, a standard tool in the study of random walks~\cite{feller1968}. The probabilistic literature, Feller included, attributes it to D\'esir\'e Andr\'e (1887), but Andr\'e's own proof used a different bijection, and the reflection itself appears to have been introduced by Dmitry Mirimanoff in 1923~\cite{stanley2015catalan}. For $n=3$ the theorem gives $\binom63-\binom64=20-15=5$, in agreement with the list above.
@@ -927,7 +927,7 @@ For every sequence $(a_k)$ of complex numbers and all integers $m\le n+1$,
 By induction on $n$, starting at $n=m-1$, where both sides are $0$. If the identity holds for $n$, adding $a_{n+2}-a_{n+1}$ to both sides gives it for $n+1$.
 \end{proof}
 
-The art lies in recognising a term as a difference. Since $\frac1{k(k+1)}=\frac1k-\frac1{k+1}$ and $k\cdot k!=(k+1)!-k!$,
+The art lies in recognising a term as a difference. Since $1/(k(k+1))=1/k-1/(k+1)$ and $k\cdot k!=(k+1)!-k!$,
 \[
 \sum_{k=1}^{n}\frac1{k(k+1)}=1-\frac1{n+1},\qquad\sum_{k=1}^{n}k\cdot k!=(n+1)!-1 .
 \]
@@ -954,7 +954,7 @@ Both sides add the numbers $a_{j,k}$ over the same finite set of index pairs $\{
 \[
 H_n\coloneqq\sum_{k=1}^{n}\frac1k=1+\frac12+\cdots+\frac1n
 \]
-provide an example. They begin $H_1=1$, $H_2=\frac32$, $H_3=\frac{11}6$, $H_4=\frac{25}{12}$, and $H_{10}=\frac{7381}{2520}\approx2.929$. With $a_{j,k}=1/j$, \eqref{eq:exchange} gives
+provide an example. They begin $H_1=1$, $H_2=3/2$, $H_3=11/6$, $H_4=25/12$, and $H_{10}=7381/2520\approx2.929$. With $a_{j,k}=1/j$, \eqref{eq:exchange} gives
 \[
 \sum_{k=1}^{n}H_k=\sum_{k=1}^{n}\sum_{j=1}^{k}\frac1j=\sum_{j=1}^{n}\frac{n-j+1}{j}=(n+1)H_n-n .
 \]
@@ -1018,8 +1018,8 @@ These are identities in $\mathbb C[[x]]$, valid without any condition on $x$, wh
 Let $A(x)=\sum a_nx^n$ and $m\in\mathbb N$.
 \begin{enumerate}
 \item $x^mA(x)=\sum_{n\ge m}a_{n-m}x^n$ (shift).
-\item $\dfrac{A(x)}{1-x}=\sum_{n\ge0}(a_0+a_1+\cdots+a_n)x^n$ (partial sums).
-\item $\dfrac1{(1-x)^k}=\sum_{n\ge0}\dbinom{n+k-1}{k-1}x^n$ for every $k\ge1$.
+\item $A(x)/(1-x)=\sum_{n\ge0}(a_0+a_1+\cdots+a_n)x^n$ (partial sums).
+\item $1/(1-x)^k=\sum_{n\ge0}\binom{n+k-1}{k-1}x^n$ for every $k\ge1$.
 \item If $a_n$ counts the objects of size $n$ in a class $\mathcal A$ and $b_n$ the objects of size $n$ in a class $\mathcal B$, then $[x^n]A(x)B(x)$ counts the pairs $(\alpha,\beta)$ with $\alpha\in\mathcal A$, $\beta\in\mathcal B$ and total size $n$.
 \end{enumerate}
 \end{proposition}
@@ -1066,7 +1066,7 @@ The coefficient of $x^n$ in $N_r(x)N_s(x)=N_{r+s}(x)$ is the identity
 Fix $n$ and a natural number $s$. Both sides are polynomials in $r$, since $\binom rk=r^{\underline k}/k!$ is a polynomial in $r$ of degree $k$, and by Vandermonde's identity (\cref{thm:vandermonde}) they agree for every $r\in\mathbb N$. Their difference is therefore a polynomial with infinitely many roots, which must be the zero polynomial by \cref{cor:factor}\,(ii); so the identity holds for every real $r$ and every natural $s$. Now fix a real $r$. Both sides are polynomials in $s$ that agree for every $s\in\mathbb N$, so the same argument shows that they agree for every real $s$. For $n\in\mathbb N$, $\binom nk=0$ for $k>n$, and $N_n(x)=(1+x)^n$ is the binomial theorem. Finally $N_{1/2}^2=N_1=1+x$ and $N_{-n}N_n=N_0=1$.
 \end{proof}
 
-For a negative integer the theorem gives back \cref{prop:gf-rules}\,(iii): by \eqref{eq:upper-negation}, $[x^n]N_{-k}(-x)=(-1)^n\binom{-k}{n}=\binom{n+k-1}{n}$, the coefficient of $x^n$ in $1/(1-x)^k$. For $r=\frac12$ it provides a square root of $1+x$, and replacing $x$ by $cx$, which multiplies the coefficient of $x^n$ by $c^n$ in every series and therefore respects products, a square root $N_{1/2}(cx)$ of $1+cx$. We can now solve \eqref{eq:catalan-gf}. By \eqref{eq:catalan-gf},
+For a negative integer the theorem gives back \cref{prop:gf-rules}\,(iii): by \eqref{eq:upper-negation}, $[x^n]N_{-k}(-x)=(-1)^n\binom{-k}{n}=\binom{n+k-1}{n}$, the coefficient of $x^n$ in $1/(1-x)^k$. For $r=1/2$ it provides a square root of $1+x$, and replacing $x$ by $cx$, which multiplies the coefficient of $x^n$ by $c^n$ in every series and therefore respects products, a square root $N_{1/2}(cx)$ of $1+cx$. We can now solve \eqref{eq:catalan-gf}. By \eqref{eq:catalan-gf},
 \[
 \bigl(1-2xC(x)\bigr)^2=1-4xC(x)+4x^2C(x)^2=1-4x\bigl(C(x)-xC(x)^2\bigr)=1-4x .
 \]
@@ -1614,7 +1614,7 @@ The whole difficulty lies in the choice of $\Omega$: its outcomes must be equall
 \[
 q_k=\frac{365^{\underline k}}{365^k}=\prod_{j=1}^{k-1}\Bigl(1-\frac{j}{365}\Bigr),
 \]
-and the probability of a shared birthday is $1-q_k$. It exceeds $\frac12$ from $k=23$ on, where $1-q_{23}\approx0.507$, and $0.99$ from $k=57$ on. Most people find these numbers surprisingly small~\cite{feller1968}. The explanation is that $k$ people form $\binom k2$ pairs, each of which may share a birthday: $23$ people form $253$ pairs. \Cref{fig:birthday} shows the probability as a function of $k$ together with the approximation $1-e^{-k(k-1)/(2\cdot365)}$, which follows from the inequality $1-t\le e^{-t}$ of \cref{ch:transcendental} and is a lower bound for it.
+and the probability of a shared birthday is $1-q_k$. It exceeds $1/2$ from $k=23$ on, where $1-q_{23}\approx0.507$, and $0.99$ from $k=57$ on. Most people find these numbers surprisingly small~\cite{feller1968}. The explanation is that $k$ people form $\binom k2$ pairs, each of which may share a birthday: $23$ people form $253$ pairs. \Cref{fig:birthday} shows the probability as a function of $k$ together with the approximation $1-e^{-k(k-1)/(2\cdot365)}$, which follows from the inequality $1-t\le e^{-t}$ of \cref{ch:transcendental} and is a lower bound for it.
 
 \begin{figure}
 \sdfloat{%
@@ -1629,7 +1629,7 @@ and the probability of a shared birthday is $1-q_k$. It exceeds $\frac12$ from $
 \addplot[black, dashed, line width=0.7pt, domain=0:72, samples=100] {1-exp(-x*(x-1)/730)};
 \addlegendentry{$1-e^{-k(k-1)/730}$}
 \end{axis}
-\end{tikzpicture}}{The probability $1-q_k$ that among $k$ people two share a birthday (solid), and the approximation $1-e^{-k(k-1)/730}$ (dashed), which lies slightly below it. The dotted lines mark $k=23$, the smallest number of people for which the probability exceeds $\frac12$.\label{fig:birthday}}
+\end{tikzpicture}}{The probability $1-q_k$ that among $k$ people two share a birthday (solid), and the approximation $1-e^{-k(k-1)/730}$ (dashed), which lies slightly below it. The dotted lines mark $k=23$, the smallest number of people for which the probability exceeds $1/2$.\label{fig:birthday}}
 \end{figure}
 
 The birthday problem is a problem about collisions, and it has a direct bearing on computing. If $k$ keys are hashed into $N$ slots by a hash function that behaves like a random assignment, the probability that the $k$ keys land in $k$ different slots is $N^{\underline k}/N^k$, and the approximation above shows that a collision becomes more likely than not once $k$ is about $\sqrt{2N\ln2}\approx1.18\sqrt N$. For $N=365$ this gives $22.5$; for hash values of $32$ bits, $N=2^{32}$, it gives about $77\,000$ keys, far fewer than the four billion slots. The same estimate governs the repetition of values drawn at random from a large finite set, for instance by a random number generator (Volume~XIII).

@@ -19,7 +19,7 @@ The area of a rectangle is the product of its sides, and the area of every polyg
 
 \subsection{The Area under a Parabola}
 
-We carry out the method for the region under the parabola $y=x^2$ between $x=0$ and $x=1$, with rectangles in place of Archimedes' triangles. Divide $[0,1]$ into $n$ intervals of length $1/n$, with the points $k/n$, $k=0,1,\ldots,n$. Over the $k$th interval $[\frac{k-1}n,\frac kn]$ the function $x^2$ increases from $(k-1)^2/n^2$ to $k^2/n^2$. The rectangle of height $(k-1)^2/n^2$ over this interval lies under the graph, and the rectangle of height $k^2/n^2$ contains the part of the region above the interval (\cref{fig:parabola-sums}). Adding up the areas of the rectangles gives the two sums
+We carry out the method for the region under the parabola $y=x^2$ between $x=0$ and $x=1$, with rectangles in place of Archimedes' triangles. Divide $[0,1]$ into $n$ intervals of length $1/n$, with the points $k/n$, $k=0,1,\ldots,n$. Over the $k$th interval $[(k-1)/n,k/n]$ the function $x^2$ increases from $(k-1)^2/n^2$ to $k^2/n^2$. The rectangle of height $(k-1)^2/n^2$ over this interval lies under the graph, and the rectangle of height $k^2/n^2$ contains the part of the region above the interval (\cref{fig:parabola-sums}). Adding up the areas of the rectangles gives the two sums
 \begin{align*}
 L_n&\coloneqq\sum_{k=1}^n\frac{(k-1)^2}{n^2}\cdot\frac1n=\frac1{n^3}\sum_{j=0}^{n-1}j^2=\frac{(n-1)n(2n-1)}{6n^3},\\
 U_n&\coloneqq\sum_{k=1}^n\frac{k^2}{n^2}\cdot\frac1n=\frac1{n^3}\sum_{k=1}^{n}k^2=\frac{n(n+1)(2n+1)}{6n^3},
@@ -30,7 +30,7 @@ where we have used the formula \eqref{eq:sum-k2} for the sum of the first square
 \sdfloat{%
 \begin{tikzpicture}
 \begin{axis}[sdplot, width=0.56\textwidth, height=0.46\textwidth, xmin=0, xmax=1.08, ymin=0, ymax=1.08,
-  xtick={0,0.16667,0.33333,0.5,0.66667,0.83333,1}, xticklabels={0,,,$\frac12$,,,1}, ytick={0,0.5,1}, xlabel={$x$}, ylabel={$y$}]
+  xtick={0,0.16667,0.33333,0.5,0.66667,0.83333,1}, xticklabels={0,,,$1/2$,,,1}, ytick={0,0.5,1}, xlabel={$x$}, ylabel={$y$}]
 \fill[sdfill] (axis cs:0.16667,0) rectangle (axis cs:0.33333,0.02778);
 \fill[sdfill] (axis cs:0.33333,0) rectangle (axis cs:0.50000,0.11111);
 \fill[sdfill] (axis cs:0.50000,0) rectangle (axis cs:0.66667,0.25000);
@@ -44,14 +44,14 @@ where we have used the formula \eqref{eq:sum-k2} for the sum of the first square
 \draw[black!60, line width=0.4pt] (axis cs:0.83333,0) rectangle (axis cs:1.00000,1.00000);
 \addplot[black, line width=0.8pt, domain=0:1.04, samples=60] {x^2};
 \end{axis}
-\end{tikzpicture}}{The area under $y=x^2$ on $[0,1]$, squeezed between rectangles, for $n=6$. The shaded inner rectangles, of heights $(k-1)^2/36$, lie under the graph and have total area $L_6=\frac{55}{216}=0.2546\ldots$; the outlined outer rectangles, of heights $k^2/36$, cover the region and have total area $U_6=\frac{91}{216}=0.4213\ldots$. The difference $U_6-L_6=\frac16$ is the area of the white parts of the outer rectangles.\label{fig:parabola-sums}}
+\end{tikzpicture}}{The area under $y=x^2$ on $[0,1]$, squeezed between rectangles, for $n=6$. The shaded inner rectangles, of heights $(k-1)^2/36$, lie under the graph and have total area $L_6=55/216=0.2546\ldots$; the outlined outer rectangles, of heights $k^2/36$, cover the region and have total area $U_6=91/216=0.4213\ldots$. The difference $U_6-L_6=1/6$ is the area of the white parts of the outer rectangles.\label{fig:parabola-sums}}
 \end{figure}
 
 \Cref{tab:parabola-sums} shows the two sums for several values of $n$. Their difference is
 \[
 U_n-L_n=\frac1{n^3}\bigl(n^2-0^2\bigr)=\frac1n ,
 \]
-because all terms of the two sums of squares cancel except the last term $n^2$ of the second. As $n$ grows, $L_n$ increases and $U_n$ decreases, and both tend to $\frac13$: expanding the products, $L_n=\frac13-\frac1{2n}+\frac1{6n^2}$ and $U_n=\frac13+\frac1{2n}+\frac1{6n^2}$, and the limit laws of \cref{sec:limit-laws} apply. Only one number can lie between $L_n$ and $U_n$ for every $n$: if $L_n\le A\le U_n$ for all $n$, then $L_n\to\frac13$ and $U_n\to\frac13$ force $A=\frac13$ by \cref{prop:limit-order}. So if the region has an area at all, that area is $\frac13$. This is the method of exhaustion in modern form, and it contains all the ideas of the Riemann integral: sums of rectangles from below and from above, and a limit that forces them together.
+because all terms of the two sums of squares cancel except the last term $n^2$ of the second. As $n$ grows, $L_n$ increases and $U_n$ decreases, and both tend to $1/3$: expanding the products, $L_n=1/3-1/(2n)+1/(6n^2)$ and $U_n=1/3+1/(2n)+1/(6n^2)$, and the limit laws of \cref{sec:limit-laws} apply. Only one number can lie between $L_n$ and $U_n$ for every $n$: if $L_n\le A\le U_n$ for all $n$, then $L_n\to1/3$ and $U_n\to1/3$ force $A=1/3$ by \cref{prop:limit-order}. So if the region has an area at all, that area is $1/3$. This is the method of exhaustion in modern form, and it contains all the ideas of the Riemann integral: sums of rectangles from below and from above, and a limit that forces them together.
 
 \begin{table}
 \sdfloat{%
@@ -64,7 +64,7 @@ $n$ & $L_n$ & $U_n$ & $U_n-L_n$ \\
 100 & 0.32835 & 0.33835 & 0.01 \\
 1\,000 & 0.3328335 & 0.3338335 & 0.001 \\
 \bottomrule
-\end{sdtable}}{Lower and upper sums for the area under $y=x^2$ on $[0,1]$ with $n$ equal intervals. The difference is exactly $1/n$, and both sums approach $\frac13$.\label{tab:parabola-sums}}
+\end{sdtable}}{Lower and upper sums for the area under $y=x^2$ on $[0,1]$ with $n$ equal intervals. The difference is exactly $1/n$, and both sums approach $1/3$.\label{tab:parabola-sums}}
 \end{table}
 
 Two features of the computation deserve attention, because they recur throughout the chapter. First, the argument needs no prior notion of area: it shows that the inner and outer sums have a common limit, and the theory below simply \emph{defines} the area to be this limit. Second, the difference $U_n-L_n$ measures how well we know the area after a finite computation: with $n$ rectangles the area is known to within $1/n$. A computer that evaluates $U_n$ and $L_n$ for some $n$ therefore produces an interval guaranteed to contain the answer. Much of \cref{sec:quadrature} is devoted to sums that approach the integral far faster than $1/n$.
@@ -255,7 +255,7 @@ Let $f\colon[a,b]\to\mathbb R$ be bounded, and let $(P_n)$ be a sequence of part
 For every $\varepsilon>0$ some $P_n$ satisfies the condition of \cref{thm:riemann-criterion}, so $f$ is integrable. Its integral $I$ satisfies $L(f,P_n)\le I\le U(f,P_n)$, hence $0\le I-L(f,P_n)\le U(f,P_n)-L(f,P_n)\to0$, and $L(f,P_n)\to I$ by the squeeze theorem; then $U(f,P_n)=L(f,P_n)+(U(f,P_n)-L(f,P_n))\to I$.
 \end{proof}
 
-\emph{Examples.} By the computation of \cref{sec:area}, the uniform partitions of $[0,1]$ satisfy $U(x^2,P_n)-L(x^2,P_n)=1/n\to0$, so $x^2$ is integrable on $[0,1]$ and
+By the computation of \cref{sec:area}, the uniform partitions of $[0,1]$ satisfy $U(x^2,P_n)-L(x^2,P_n)=1/n\to0$, so $x^2$ is integrable on $[0,1]$ and
 \[
 \int_0^1x^2\,dx=\lim_{n\to\infty}L_n=\frac13 .
 \]
@@ -357,13 +357,13 @@ In the same way, with tags at which $f$ is close to its infimum, $L(f,P)>I-2\var
 
 The first half of the proof shows a little more, which we record for later use: if $f$ is integrable, then $U(f,P)-L(f,P)\to0$ as $\|P\|\to0$, in the sense that for every $\varepsilon>0$ there is $\delta>0$ with $U(f,P)-L(f,P)<\varepsilon$ whenever $\|P\|<\delta$. Since $L(f,P)\le\int_a^bf\le U(f,P)$, the integral is then the limit of the lower and of the upper sums along every sequence of partitions whose meshes tend to zero.
 
-The theorem has a consequence for the simplest sums one might compute. Let $f$ be integrable on $[a,b]$, let $h\coloneqq(b-a)/n$, and evaluate $f$ at the left ends $a+(k-1)h$, the right ends $a+kh$ or the midpoints $a+(k-\frac12)h$ of the uniform partition. The corresponding Riemann sums
+The theorem has a consequence for the simplest sums one might compute. Let $f$ be integrable on $[a,b]$, let $h\coloneqq(b-a)/n$, and evaluate $f$ at the left ends $a+(k-1)h$, the right ends $a+kh$ or the midpoints $a+(k-1/2)h$ of the uniform partition. The corresponding Riemann sums
 \[
 h\sum_{k=1}^nf\bigl(a+(k-1)h\bigr),\qquad h\sum_{k=1}^nf(a+kh),\qquad h\sum_{k=1}^nf\Bigl(a+\Bigl(k-\frac12\Bigr)h\Bigr)
 \]
 all converge to $\int_a^bf$ as $n\to\infty$, since the mesh $h$ tends to $0$. The theorem guarantees convergence but says nothing about its speed; \cref{sec:quadrature} shows that the speed depends on the choice of the points and on the smoothness of $f$, and that it can differ enormously between sums that look almost the same.
 
-The sums have a second reading that is used constantly in statistics: $\frac1n\sum_{k=1}^nf(a+kh)$ is the average of $n$ equally spaced samples of $f$, and the theorem says that these averages converge to $\frac1{b-a}\int_a^bf$, the mean value of $f$ (\cref{sec:integral-properties}).
+The sums have a second reading that is used constantly in statistics: $(1/n)\sum_{k=1}^nf(a+kh)$ is the average of $n$ equally spaced samples of $f$, and the theorem says that these averages converge to $(1/(b-a))\int_a^bf$, the mean value of $f$ (\cref{sec:integral-properties}).
 
 \begin{note}{Riemann--Stieltjes integrals}
 The sums $\sum f(\xi_k)\Delta x_k$ weight each subinterval by its length. Stieltjes replaced the length by the increment $\Delta\alpha_k\coloneqq\alpha(x_k)-\alpha(x_{k-1})$ of an increasing function $\alpha$, and defined $\int_a^bf\,d\alpha$ as the limit of the sums $\sum f(\xi_k)\,\Delta\alpha_k$~\cite{stieltjes1894}. Upper and lower sums, Riemann's criterion and the integrability of continuous functions carry over with the same proofs~\cite{rudin1976}. For $\alpha(x)=x$ one recovers the Riemann integral, and if $\alpha$ is continuously differentiable, then $\int_a^bf\,d\alpha=\int_a^bf\alpha'$ for continuous $f$. But $\alpha$ may also jump: if $\alpha$ is $0$ to the left of a point $c\in(a,b)$ and $1$ from $c$ on, then $\int_a^bf\,d\alpha=f(c)$ for every function $f$ continuous at $c$, and a step function $\alpha$ with jumps $p_j$ at points $c_j$ turns the integral into the weighted sum $\sum_jp_jf(c_j)$. A single notation thus covers sums and integrals. This is the natural language of probability, where $\alpha$ is the distribution function of a random variable, a weighted sum describes a discrete random variable and an integral with a density a continuous one, and the expectation of $f(X)$ is $\int f\,d\alpha$ in both cases (Volume~III). The Lebesgue integral of Volume~II absorbs this construction into the integral with respect to a measure.
@@ -400,7 +400,7 @@ U(f,P_n)-L(f,P_n)=\sum_{k=1}^n\bigl(f(x_k)-f(x_{k-1})\bigr)h=h\bigl(f(b)-f(a)\bi
 because the sum telescopes. This tends to $0$, and \cref{cor:riemann-sequence} applies.
 \end{proof}
 
-\Cref{fig:monotone-integrable} explains the telescoping: the strips between the upper and the lower rectangles, each of width $h$, can be slid sideways into a single column of width $h$ and height $f(b)-f(a)$. The theorem needs no continuity at all. A monotone function can have infinitely many jumps, at most countably many by \cref{prop:monotone-countable}; the increasing function equal to $1/n$ on $(\frac1{n+1},\frac1n]$ for every $n\ge1$, with the value $0$ at $0$, jumps at every point $1/n$, and it is integrable on $[0,1]$ all the same.
+\Cref{fig:monotone-integrable} explains the telescoping: the strips between the upper and the lower rectangles, each of width $h$, can be slid sideways into a single column of width $h$ and height $f(b)-f(a)$. The theorem needs no continuity at all. A monotone function can have infinitely many jumps, at most countably many by \cref{prop:monotone-countable}; the increasing function equal to $1/n$ on $(1/(n+1),1/n]$ for every $n\ge1$, with the value $0$ at $0$, jumps at every point $1/n$, and it is integrable on $[0,1]$ all the same.
 
 \begin{figure}
 \sdfloat{%
@@ -495,7 +495,7 @@ Throughout, $P$ is a partition, $I_k$ its subintervals, and $\operatorname{osc}_
 
 (i) For $x,y\in I_k$, $|(f+g)(x)-(f+g)(y)|\le|f(x)-f(y)|+|g(x)-g(y)|$, so $\operatorname{osc}_k(f+g)\le\operatorname{osc}_k(f)+\operatorname{osc}_k(g)$, and $U(f+g,P)-L(f+g,P)<2\varepsilon$. Similarly $\operatorname{osc}_k(cf)=|c|\operatorname{osc}_k(f)$.
 
-(ii) By the reverse triangle inequality, $\bigl||f(x)|-|f(y)|\bigr|\le|f(x)-f(y)|$, so $\operatorname{osc}_k(|f|)\le\operatorname{osc}_k(f)$, and $|f|$ is integrable. Then $\max(f,g)=\frac12(f+g+|f-g|)$ and $\min(f,g)=\frac12(f+g-|f-g|)$ are integrable by (i) and what was just shown.
+(ii) By the reverse triangle inequality, $\bigl||f(x)|-|f(y)|\bigr|\le|f(x)-f(y)|$, so $\operatorname{osc}_k(|f|)\le\operatorname{osc}_k(f)$, and $|f|$ is integrable. Then $\max(f,g)=(1/2)(f+g+|f-g|)$ and $\min(f,g)=(1/2)(f+g-|f-g|)$ are integrable by (i) and what was just shown.
 
 (iii) Let $|f|\le K$ and $|g|\le K$. For $x,y\in I_k$,
 \begin{align*}
@@ -623,7 +623,7 @@ The \term{mean value}, or average, of an integrable function $f$ on $[a,b]$ is
 \]
 \end{definition}
 
-The mean value is the height of the rectangle over $[a,b]$ that has the same area as the region under the graph (\cref{fig:mvt-integral}). By the remark after \cref{thm:riemann-sums}, it is the limit of the averages $\frac1n\sum_kf(\xi_k)$ of values of $f$ at the tags of the uniform partitions, which justifies the name. For continuous functions it is a value of the function.
+The mean value is the height of the rectangle over $[a,b]$ that has the same area as the region under the graph (\cref{fig:mvt-integral}). By the remark after \cref{thm:riemann-sums}, it is the limit of the averages $(1/n)\sum_kf(\xi_k)$ of values of $f$ at the tags of the uniform partitions, which justifies the name. For continuous functions it is a value of the function.
 
 \begin{theorem}[Mean value theorem for integrals]
 \label{thm:mvt-integral}
@@ -653,10 +653,10 @@ If $\int_a^bg=0$, then $\int_a^bfg=0$ as well, and any $\xi$ will do. Otherwise 
 \addplot[black, line width=0.8pt, domain=0.2:3.0, samples=100] {1+0.6*sin(deg(2*x))+0.25*x};
 \fill[black] (axis cs:0.2856,1.3958) circle (1.4pt) (axis cs:1.5675,1.3958) circle (1.4pt) (axis cs:2.8609,1.3958) circle (1.4pt);
 \end{axis}
-\end{tikzpicture}}{The mean value theorem for integrals. The rectangle of height $\bar f=\frac1{b-a}\int_a^bf$ over $[a,b]$ (dashed) has the same area as the shaded region under the graph: what the graph loses below $\bar f$ it gains above. The continuous function takes the value $\bar f$ at least once; here it does so three times (dots), at the points marked $\xi$ and near the two ends.\label{fig:mvt-integral}}
+\end{tikzpicture}}{The mean value theorem for integrals. The rectangle of height $\bar f=(1/(b-a))\int_a^bf$ over $[a,b]$ (dashed) has the same area as the shaded region under the graph: what the graph loses below $\bar f$ it gains above. The continuous function takes the value $\bar f$ at least once; here it does so three times (dots), at the points marked $\xi$ and near the two ends.\label{fig:mvt-integral}}
 \end{figure}
 
-The theorem also gives a direct proof that the integral of a continuous function depends continuously on the interval: $\bigl|\int_c^df\bigr|=|f(\xi)|\,|d-c|$ is small when $d$ is close to $c$. With a weight $g$, the theorem says that a weighted average of a continuous function is one of its values; this form is used in \cref{sec:quadrature} to write the errors of quadrature rules compactly. Both the continuity of $f$ and the sign condition on $g$ are needed: for the step function equal to $0$ on $[0,1)$ and $1$ on $[1,2]$, the mean value is $\frac12$, which is not a value, and for $f(x)=g(x)=x$ on $[-1,1]$, $\int fg=\frac23$ while $\int g=0$.
+The theorem also gives a direct proof that the integral of a continuous function depends continuously on the interval: $\bigl|\int_c^df\bigr|=|f(\xi)|\,|d-c|$ is small when $d$ is close to $c$. With a weight $g$, the theorem says that a weighted average of a continuous function is one of its values; this form is used in \cref{sec:quadrature} to write the errors of quadrature rules compactly. Both the continuity of $f$ and the sign condition on $g$ are needed: for the step function equal to $0$ on $[0,1)$ and $1$ on $[1,2]$, the mean value is $1/2$, which is not a value, and for $f(x)=g(x)=x$ on $[-1,1]$, $\int fg=2/3$ while $\int g=0$.
 
 \subsection{The Cauchy--Schwarz Inequality}
 
@@ -762,11 +762,11 @@ So the difference quotient tends to $f(c)$.
 \addplot[black, line width=0.8pt, domain=1:2, samples=2, forget plot] {0.5+1.5*(x-1)};
 \end{axis}
 \end{tikzpicture}}
-\caption{The area function $F(x)=\int_a^xf$. (A) The increment $F(x+h)-F(x)$ is the area of the dark strip; for continuous $f$ it is approximately $f(x)\,h$, so that $F'(x)=f(x)$. (B) For the step function $f$ (dashed), equal to $\frac12$ on $[0,1)$ and $\frac32$ on $[1,2]$, the area function $F$ (solid) is continuous, with slope $\frac12$ to the left of $1$ and $\frac32$ to the right. At the jump of $f$, the graph of $F$ has a corner, and $F$ is not differentiable there.}
+\caption{The area function $F(x)=\int_a^xf$. (A) The increment $F(x+h)-F(x)$ is the area of the dark strip; for continuous $f$ it is approximately $f(x)\,h$, so that $F'(x)=f(x)$. (B) For the step function $f$ (dashed), equal to $1/2$ on $[0,1)$ and $3/2$ on $[1,2]$, the area function $F$ (solid) is continuous, with slope $1/2$ to the left of $1$ and $3/2$ to the right. At the jump of $f$, the graph of $F$ has a corner, and $F$ is not differentiable there.}
 \label{fig:area-function}
 \end{figure}
 
-Continuity of $f$ at $c$ cannot be dropped. For the step function of \cref{fig:area-function}B, $F(x)=x/2$ for $x\le1$ and $F(x)=\frac12+\frac32(x-1)$ for $x\ge1$, so $F'_-(1)=\frac12$ and $F'_+(1)=\frac32$, the two one-sided values of $f$: the jump of $f$ becomes a corner of $F$, and $F$ is not differentiable at $1$. At every other point $f$ is continuous and $F'=f$. Thus integrating turns jumps into corners, as differentiating turns corners into jumps.
+Continuity of $f$ at $c$ cannot be dropped. For the step function of \cref{fig:area-function}B, $F(x)=x/2$ for $x\le1$ and $F(x)=1/2+(3/2)(x-1)$ for $x\ge1$, so $F'_-(1)=1/2$ and $F'_+(1)=3/2$, the two one-sided values of $f$: the jump of $f$ becomes a corner of $F$, and $F$ is not differentiable at $1$. At every other point $f$ is continuous and $F'=f$. Thus integrating turns jumps into corners, as differentiating turns corners into jumps.
 
 A function $F$ with $F'=f$ is called an antiderivative of $f$, and the first part of the theorem shows that continuous functions always have one.
 
@@ -810,7 +810,7 @@ F(x)\Big|_a^b\coloneqq\bigl[F(x)\bigr]_a^b\coloneqq F(b)-F(a).
 \]
 For a continuous function $f$ on $[a,b]$, the two parts combine: $F(x)=\int_a^xf$ is an antiderivative, every antiderivative $G$ differs from it by a constant, and $\int_a^bf=G(b)-G(a)$.
 
-\emph{Examples.} The area under the parabola, which took a page in \cref{sec:area}, now takes a line: $x^3/3$ is an antiderivative of $x^2$, so
+The area under the parabola, which took a page in \cref{sec:area}, now takes a line: $x^3/3$ is an antiderivative of $x^2$, so
 \[
 \int_0^1x^2\,dx=\frac{x^3}3\Big|_0^1=\frac13 .
 \]
@@ -852,7 +852,7 @@ G'(x)=f\bigl(v(x)\bigr)\,v'(x)-f\bigl(u(x)\bigr)\,u'(x).
 Fix $a\in J$ and let $F(y)\coloneqq\int_a^yf$, an antiderivative of $f$ on $J$ by \cref{cor:antiderivative}. By additivity, $G(x)=F(v(x))-F(u(x))$, and the chain rule (\cref{thm:chain-rule}) gives the formula.
 \end{proof}
 
-For example, $\frac d{dx}\int_0^{x^2}\sin t\,dt=2x\sin(x^2)$, as one can confirm by computing the integral, $1-\cos(x^2)$, and differentiating.
+For example, $(d/dx)\int_0^{x^2}\sin t\,dt=2x\sin(x^2)$, as one can confirm by computing the integral, $1-\cos(x^2)$, and differentiating.
 
 \subsection{Functions Defined by Integrals}
 
@@ -864,11 +864,11 @@ For every real $x$ and every $x\in(-1,1)$, respectively,
 \[
 \arctan x=\int_0^x\frac{dt}{1+t^2},\qquad\arcsin x=\int_0^x\frac{dt}{\sqrt{1-t^2}} .
 \]
-In particular, $\pi=4\int_0^1\frac{dt}{1+t^2}$.
+In particular, $\pi=4\int_0^1dt/(1+t^2)$.
 \end{proposition}
 
 \begin{proof}
-The integrands are continuous on $\mathbb R$ and on $(-1,1)$, respectively. By \cref{cor:inverse-trig-derivatives}, $\arctan$ and $\arcsin$ are antiderivatives of them, and both vanish at $0$. By \cref{thm:ftc2}, applied on the interval between $0$ and $x$, $\int_0^x dt/(1+t^2)=\arctan x-\arctan0=\arctan x$, and similarly for the arcsine. For the last statement, $\tan(\pi/4)=1$, because $\cos(\pi/4)$ and $\sin(\pi/4)$ are positive (\cref{asm:trig-geometry}) and satisfy $\cos^2\frac\pi4-\sin^2\frac\pi4=\cos\frac\pi2=0$ by the addition formula; so $\arctan1=\pi/4$.
+The integrands are continuous on $\mathbb R$ and on $(-1,1)$, respectively. By \cref{cor:inverse-trig-derivatives}, $\arctan$ and $\arcsin$ are antiderivatives of them, and both vanish at $0$. By \cref{thm:ftc2}, applied on the interval between $0$ and $x$, $\int_0^x dt/(1+t^2)=\arctan x-\arctan0=\arctan x$, and similarly for the arcsine. For the last statement, $\tan(\pi/4)=1$, because $\cos(\pi/4)$ and $\sin(\pi/4)$ are positive (\cref{asm:trig-geometry}) and satisfy $\cos^2(\pi/4)-\sin^2(\pi/4)=\cos(\pi/2)=0$ by the addition formula; so $\arctan1=\pi/4$.
 \end{proof}
 
 The proposition could serve as a definition: one could define $\arctan x$ as the integral on the right, derive its properties from those of the integral, and define $\pi$ as $4\arctan1$. Some treatments of the trigonometric functions proceed in this way~\cite{spivak2008calculus}. The same idea applied to the function $1/t$ gives the logarithm. For $x>0$ let
@@ -895,7 +895,7 @@ $\sin x$ & $-\cos x$ & $x\in\mathbb R$ \\
 $\cos x$ & $\sin x$ & $x\in\mathbb R$ \\
 $1/\cos^2x$ & $\tan x$ & $\cos x\ne0$ \\
 $1/(1+x^2)$ & $\arctan x$ & $x\in\mathbb R$ \\
-$1/(c^2+x^2)$, $c>0$ & $\frac1c\arctan(x/c)$ & $x\in\mathbb R$ \\
+$1/(c^2+x^2)$, $c>0$ & $(1/c)\arctan(x/c)$ & $x\in\mathbb R$ \\
 $1/\sqrt{1-x^2}$ & $\arcsin x$ & $-1<x<1$ \\
 $1/\sqrt{c^2-x^2}$, $c>0$ & $\arcsin(x/c)$ & $-c<x<c$ \\
 $e^x$ & $e^x$ & $x\in\mathbb R$ (\cref{ch:transcendental}) \\
@@ -921,7 +921,7 @@ Let $F$ be an antiderivative of $f$ on $J$, which exists by \cref{cor:antideriva
 
 In Leibniz's notation the rule is a mechanical substitution: put $x=g(t)$, replace $dx$ by $g'(t)\,dt$, as if $dx/dt=g'(t)$ were an equation between fractions, and change the limits from $t=\alpha,\beta$ to $x=g(\alpha),g(\beta)$. The function $g$ need not be monotone or injective, and $g(\alpha)$ may be larger than $g(\beta)$; the conventions for reversed limits take care of the orientation.
 
-\emph{Examples.} With $x=1+t^2$, $dx=2t\,dt$,
+For example, with $x=1+t^2$, $dx=2t\,dt$,
 \[
 \int_0^12t\,(1+t^2)^{10}\,dt=\int_1^2x^{10}\,dx=\frac{2^{11}-1}{11}=\frac{2047}{11} ,
 \]
@@ -955,7 +955,7 @@ When the substitution is made in the other direction, writing the old variable a
 \[
 \int_0^1\sqrt{1-x^2}\,dx=\int_0^{\pi/2}\cos^2t\,dt=\int_0^{\pi/2}\frac{1+\cos2t}2\,dt=\Bigl[\frac t2+\frac{\sin2t}4\Bigr]_0^{\pi/2}=\frac\pi4 ,
 \]
-using $\cos2t=2\cos^2t-1$ from the addition formula. The quarter disc of radius $1$ therefore has area $\frac\pi4$, and the unit disc has area $\pi$, in agreement with the area of a sector assumed in \cref{asm:trig-geometry}\,(iii). The computation is not an independent proof of that assumption, since the derivatives of the trigonometric functions rest on it; \cref{ch:transcendental} removes the circularity. Similar \term{trigonometric substitutions} handle the other square roots of quadratics: $x=c\sin t$ for $\sqrt{c^2-x^2}$, $x=c\tan t$ for $\sqrt{c^2+x^2}$ and $x=c/\cos t$ for $\sqrt{x^2-c^2}$; and the substitution $t=\tan(x/2)$, for which $\sin x=2t/(1+t^2)$, $\cos x=(1-t^2)/(1+t^2)$ and $dx=2\,dt/(1+t^2)$, turns every rational expression in $\sin x$ and $\cos x$ into a rational function of $t$~\cite{spivak2008calculus}.
+using $\cos2t=2\cos^2t-1$ from the addition formula. The quarter disc of radius $1$ therefore has area $\pi/4$, and the unit disc has area $\pi$, in agreement with the area of a sector assumed in \cref{asm:trig-geometry}\,(iii). The computation is not an independent proof of that assumption, since the derivatives of the trigonometric functions rest on it; \cref{ch:transcendental} removes the circularity. Similar \term{trigonometric substitutions} handle the other square roots of quadratics: $x=c\sin t$ for $\sqrt{c^2-x^2}$, $x=c\tan t$ for $\sqrt{c^2+x^2}$ and $x=c/\cos t$ for $\sqrt{x^2-c^2}$; and the substitution $t=\tan(x/2)$, for which $\sin x=2t/(1+t^2)$, $\cos x=(1-t^2)/(1+t^2)$ and $dx=2\,dt/(1+t^2)$, turns every rational expression in $\sin x$ and $\cos x$ into a rational function of $t$~\cite{spivak2008calculus}.
 
 \subsection{Integration by Parts}
 
@@ -1004,7 +1004,7 @@ since the boundary term vanishes and $\cos^2x=1-\sin^2x$. Solving for $I_n$ give
 \[
 I_{2m}=\frac\pi2\prod_{k=1}^m\frac{2k-1}{2k},\qquad I_{2m+1}=\prod_{k=1}^m\frac{2k}{2k+1} .
 \]
-On $[0,\pi/2]$ we have $0\le\sin x\le1$, so $\sin^{n+1}x\le\sin^nx$, and monotonicity of the integral gives $I_{2m+1}\le I_{2m}\le I_{2m-1}$. Dividing by $I_{2m+1}>0$ and using the recursion $I_{2m+1}=\frac{2m}{2m+1}I_{2m-1}$,
+On $[0,\pi/2]$ we have $0\le\sin x\le1$, so $\sin^{n+1}x\le\sin^nx$, and monotonicity of the integral gives $I_{2m+1}\le I_{2m}\le I_{2m-1}$. Dividing by $I_{2m+1}>0$ and using the recursion $I_{2m+1}=(2m/(2m+1))I_{2m-1}$,
 \[
 1\le\frac{I_{2m}}{I_{2m+1}}\le\frac{I_{2m-1}}{I_{2m+1}}=\frac{2m+1}{2m}\to1 ,
 \]
@@ -1042,13 +1042,13 @@ The coefficients are found in practice by multiplying out and comparing coeffici
 \[
 \int\frac{dx}{x-\alpha}=\ln|x-\alpha|+C,\qquad\int\frac{dx}{(x-\alpha)^\mu}=-\frac1{(\mu-1)(x-\alpha)^{\mu-1}}+C\quad(\mu\ge2).
 \]
-For a quadratic factor, completing the square gives $x^2+px+q=(x+\frac p2)^2+\beta^2$ with $\beta\coloneqq\sqrt{q-p^2/4}>0$, and
+For a quadratic factor, completing the square gives $x^2+px+q=(x+p/2)^2+\beta^2$ with $\beta\coloneqq\sqrt{q-p^2/4}>0$, and
 \[
 \int\frac{Bx+C}{x^2+px+q}\,dx=\frac B2\ln(x^2+px+q)+\frac{C-Bp/2}\beta\arctan\frac{x+p/2}\beta+C' ,
 \]
 as one checks by differentiation; higher powers $\nu\ge2$ are reduced to $\nu=1$ by a recursion obtained from integration by parts~\cite{spivak2008calculus}. Consequently, the antiderivative of every rational function is a sum of a rational function and of terms $\ln|x-\alpha|$, $\ln(x^2+px+q)$ and $\arctan((x+p/2)/\beta)$, with constant coefficients.
 
-\emph{Examples.} Since $x^2-1=(x-1)(x+1)$,
+Since $x^2-1=(x-1)(x+1)$,
 \[
 \frac1{x^2-1}=\frac12\Bigl(\frac1{x-1}-\frac1{x+1}\Bigr),\qquad\int_2^3\frac{dx}{x^2-1}=\frac12\ln\Bigl|\frac{x-1}{x+1}\Bigr|\,\Big|_2^3=\frac12\ln\frac32=0.20273\ldots
 \]
@@ -1060,7 +1060,7 @@ For a mixed case, the decomposition
 \[
 \frac1{(x+1)(x^2+1)}=\frac12\cdot\frac1{x+1}+\frac12\cdot\frac{1-x}{x^2+1}
 \]
-is found as follows. Multiplying the ansatz $\frac A{x+1}+\frac{Bx+C}{x^2+1}$ by $x+1$ and putting $x=-1$ gives $A=1/((-1)^2+1)=\frac12$; then $\frac12(x^2+1)+(Bx+C)(x+1)=1$ for all $x$, and comparing the coefficients of $x^2$ and of $1$ gives $B=-\frac12$ and $C=\frac12$. Integrating,
+is found as follows. Multiplying the ansatz $A/(x+1)+(Bx+C)/(x^2+1)$ by $x+1$ and putting $x=-1$ gives $A=1/((-1)^2+1)=1/2$; then $(1/2)(x^2+1)+(Bx+C)(x+1)=1$ for all $x$, and comparing the coefficients of $x^2$ and of $1$ gives $B=-1/2$ and $C=1/2$. Integrating,
 \[
 \int_0^1\frac{dx}{(x+1)(x^2+1)}=\frac12\ln2-\frac14\ln2+\frac12\arctan1=\frac14\ln2+\frac\pi8=0.56598\ldots
 \]
@@ -1082,7 +1082,7 @@ have no elementary antiderivative on any interval.
 The theory behind this theorem was created by Liouville in the 1830s and given an algebraic form by Ritt and by Rosenlicht~\cite{ritt1948,rosenlicht1972}. Its central result is a criterion: if $g$ and $h$ are rational functions and $g$ is not constant, then $h\,e^g$ has an elementary antiderivative if and only if the differential equation $R'+g'R=h$ has a rational solution $R$, in which case $Re^g$ is an antiderivative. For $e^{-x^2}$, with $h=1$ and $g=-x^2$, the equation $R'-2xR=1$ has no rational solution, by an argument about degrees and poles given in the note below. The other two functions reduce to the same kind of criterion, after writing $\sin x$ through complex exponentials and substituting $x=e^u$ in $1/\ln x$, which becomes $e^u/u$. Rosenlicht's paper gives a complete and short account~\cite{rosenlicht1972}.
 \end{proof}
 
-The theorem does not say that the integrals in question do not exist; by \cref{cor:antiderivative} each of the three continuous functions has an antiderivative, for instance $\int_0^xe^{-t^2}dt$. It says that the antiderivative is a new function, not expressible by the old ones. Such integrals define many of the special functions of Volume~X: the \term{error function} $\operatorname{erf}x\coloneqq\frac2{\sqrt\pi}\int_0^xe^{-t^2}dt$, basic to the normal distribution of probability; the \term{sine integral} $\operatorname{Si}x\coloneqq\int_0^x\frac{\sin t}t\,dt$; and the \term{logarithmic integral} $\operatorname{Li}x\coloneqq\int_2^x\frac{dt}{\ln t}$, which, by the prime number theorem, grows like the number of primes up to $x$~\cite{hardywright2008}. Their values must be computed by other means than antiderivatives: by series, by continued fractions, or by approximating the integral directly with finite sums. \Cref{sec:quadrature} begins the study of the last of these.
+The theorem does not say that the integrals in question do not exist; by \cref{cor:antiderivative} each of the three continuous functions has an antiderivative, for instance $\int_0^xe^{-t^2}dt$. It says that the antiderivative is a new function, not expressible by the old ones. Such integrals define many of the special functions of Volume~X: the \term{error function} $\operatorname{erf}x\coloneqq(2/\sqrt\pi)\int_0^xe^{-t^2}dt$, basic to the normal distribution of probability; the \term{sine integral} $\operatorname{Si}x\coloneqq\int_0^x(\sin t/t)\,dt$; and the \term{logarithmic integral} $\operatorname{Li}x\coloneqq\int_2^xdt/\ln t$, which, by the prime number theorem, grows like the number of primes up to $x$~\cite{hardywright2008}. Their values must be computed by other means than antiderivatives: by series, by continued fractions, or by approximating the integral directly with finite sums. \Cref{sec:quadrature} begins the study of the last of these.
 
 \begin{note}{Why $e^{-x^2}$ has no elementary antiderivative}
 Granting Liouville's criterion, the argument for $e^{-x^2}$ is short. Suppose $R=P/Q$ is a rational function with $R'-2xR=1$. The zero function is not a solution. If $R$ were a nonzero polynomial of degree $d$, then $R'-2xR$ would be a polynomial of degree $d+1\ge1$, since $-2xR$ has degree $d+1$ and $R'$ a smaller degree; it could not equal the constant $1$. So $R$ has a pole, at some complex number $c$, of some order $k\ge1$: near $c$, $R(x)=(x-c)^{-k}\varphi(x)$ with $\varphi$ rational, finite and nonzero at $c$. Then $R'$ has a pole of order $k+1$ at $c$, while $2xR$ has a pole of order at most $k$, so $R'-2xR$ has a pole at $c$ and cannot equal $1$. The same reasoning, applied to $R'+R=1/u$ for $e^u/u$, shows that $1/\ln x$ has no elementary antiderivative. The criterion itself, and the precise definition of elementary functions as a tower of field extensions, belong to differential algebra; Rosenlicht~\cite{rosenlicht1972} and Ritt~\cite{ritt1948} develop them. Computer algebra systems decide in this way whether an elementary antiderivative exists, by the Risch algorithm~\cite{bronstein2005}.
@@ -1115,7 +1115,7 @@ exists as a real number, the improper integral $\int_a^bf$ converges, and its va
 
 By additivity, the splitting points in (iii) may be chosen arbitrarily, and neither convergence nor the value depends on the choice: moving a splitting point changes one piece by a proper integral and the neighbouring piece by its negative. Nor is the definition in conflict with the Riemann integral: if $f$ is integrable on $[a,b]$, then $\int_c^bf\to\int_a^bf$ as $c\to a^+$ by \cref{prop:area-function-lipschitz}, so the improper integral converges to the ordinary one. The notation $\int_a^bf$ is therefore unambiguous. If $f\ge0$, an improper integral can be interpreted as the area of an unbounded region, and it converges exactly when that area is finite.
 
-\emph{Examples.} For $R>0$, $\int_0^Rdx/(1+x^2)=\arctan R\to\pi/2$ as $R\to\infty$, because the arctangent is continuous and increasing with $\tan x\to\infty$ as $x\to\pi/2^-$. So
+For $R>0$, $\int_0^Rdx/(1+x^2)=\arctan R\to\pi/2$ as $R\to\infty$, because the arctangent is continuous and increasing with $\tan x\to\infty$ as $x\to\pi/2^-$. So
 \[
 \int_0^\infty\frac{dx}{1+x^2}=\frac\pi2,\qquad\int_{-\infty}^\infty\frac{dx}{1+x^2}=\frac\pi2+\frac\pi2=\pi ,
 \]
@@ -1159,7 +1159,7 @@ The integral $\int_0^\infty x^{-p}\,dx$ therefore diverges for every $p$: near $
 \addplot[black, densely dotted, line width=0.9pt, domain=0.488:4, samples=150] {1/x^2};
 \addlegendentry{$x^{-2}$}
 \end{axis}
-\end{tikzpicture}}{The powers $x^{-p}$ for $p=\frac12$, $1$ and $2$. On $(0,1]$ the area under $x^{-1/2}$ is finite, equal to $2$, while those under $x^{-1}$ and $x^{-2}$ are infinite. On $[1,\infty)$ the area under $x^{-2}$ is finite, equal to $1$, while those under $x^{-1/2}$ and $x^{-1}$ are infinite. The curves are drawn up to the height $4.2$.\label{fig:p-integrals}}
+\end{tikzpicture}}{The powers $x^{-p}$ for $p=1/2$, $1$ and $2$. On $(0,1]$ the area under $x^{-1/2}$ is finite, equal to $2$, while those under $x^{-1}$ and $x^{-2}$ are infinite. On $[1,\infty)$ the area under $x^{-2}$ is finite, equal to $1$, while those under $x^{-1/2}$ and $x^{-1}$ are infinite. The curves are drawn up to the height $4.2$.\label{fig:p-integrals}}
 \end{figure}
 
 \subsection{Comparison and Absolute Convergence}
@@ -1197,7 +1197,7 @@ Let $f$ and $g$ be positive and integrable on $[a,R]$ for every $R>a$, and suppo
 \end{corollary}
 
 \begin{proof}
-There is $R_0\ge a$ with $\frac\lambda2g(x)\le f(x)\le2\lambda g(x)$ for $x\ge R_0$. Apply \cref{thm:comparison-test} on $[R_0,\infty)$, in both directions; the proper integrals over $[a,R_0]$ do not affect convergence.
+There is $R_0\ge a$ with $(\lambda/2)g(x)\le f(x)\le2\lambda g(x)$ for $x\ge R_0$. Apply \cref{thm:comparison-test} on $[R_0,\infty)$, in both directions; the proper integrals over $[a,R_0]$ do not affect convergence.
 \end{proof}
 
 For instance, $\int_1^\infty dx/\sqrt{1+x^3}$ converges, because the integrand behaves like $x^{-3/2}$ for large $x$; and $\int_1^\infty x\,dx/(1+x^2)$ diverges, because the integrand behaves like $1/x$. The rule of thumb is that only the behaviour of the integrand near the trouble spot matters, and that it is to be compared with a power.
@@ -1218,7 +1218,7 @@ An absolutely convergent improper integral converges, and $\bigl|\int_a^\infty f
 Let $f^+\coloneqq\max(f,0)$ and $f^-\coloneqq\max(-f,0)$ be the positive and the negative part of $f$, so that $f=f^+-f^-$ and $|f|=f^++f^-$. Both parts are integrable on every $[a,R]$ by \cref{thm:integrable-algebra}, and $0\le f^\pm\le|f|$. By the comparison test, $\int_a^\infty f^+$ and $\int_a^\infty f^-$ converge, and by the limit laws so does $\int_a^\infty f=\int_a^\infty f^+-\int_a^\infty f^-$. The inequality follows from $\bigl|\int_a^Rf\bigr|\le\int_a^R|f|$ in the limit.
 \end{proof}
 
-\emph{Examples.} The integral $\int_1^\infty\frac{\sin x}{x^2}\,dx$ converges absolutely, since $|\sin x|/x^2\le1/x^2$. The integral $\int_1^\infty\frac{\sin x}x\,dx$ converges, but only conditionally. Integrating by parts on $[1,R]$,
+The integral $\int_1^\infty(\sin x/x^2)\,dx$ converges absolutely, since $|\sin x|/x^2\le1/x^2$. The integral $\int_1^\infty(\sin x/x)\,dx$ converges, but only conditionally. Integrating by parts on $[1,R]$,
 \[
 \int_1^R\frac{\sin x}x\,dx=-\frac{\cos x}x\Big|_1^R-\int_1^R\frac{\cos x}{x^2}\,dx=\cos1-\frac{\cos R}R-\int_1^R\frac{\cos x}{x^2}\,dx ,
 \]
@@ -1226,7 +1226,7 @@ and as $R\to\infty$ the middle term tends to $0$ and the last integral converges
 \[
 \int_\pi^{(n+1)\pi}\frac{|\sin x|}x\,dx\ge\frac2\pi\sum_{k=1}^n\frac1{k+1}=\frac2\pi\,(H_{n+1}-1)\to\infty ,
 \]
-by the divergence of the harmonic numbers (\cref{sec:completeness}). The integrand is bounded near $0$, where $(\sin x)/x\to1$, so $\int_0^\infty\frac{\sin x}x\,dx$ converges as well; its value is $\pi/2$, which Volume~II computes with the residue theorem. Conditional convergence rests on cancellation between positive and negative parts, and it is fragile: it is lost when the integrand is replaced by its absolute value, and numerical methods for such integrals need special care (Volume~XI).
+by the divergence of the harmonic numbers (\cref{sec:completeness}). The integrand is bounded near $0$, where $(\sin x)/x\to1$, so $\int_0^\infty(\sin x/x)\,dx$ converges as well; its value is $\pi/2$, which Volume~II computes with the residue theorem. Conditional convergence rests on cancellation between positive and negative parts, and it is fragile: it is lost when the integrand is replaced by its absolute value, and numerical methods for such integrals need special care (Volume~XI).
 
 \subsection{Sums and Integrals}
 
@@ -1261,7 +1261,7 @@ For the partition $\{1,2,\ldots,n\}$ of $[1,n]$, a decreasing function has $m_k=
 \draw[black!60, line width=0.4pt] (axis cs:5,0) rectangle (axis cs:6,0.2);
 \addplot[black, line width=0.8pt, domain=0.9:6.2, samples=100] {1/x};
 \end{axis}
-\end{tikzpicture}}{Sums and integrals for $f(x)=1/x$ on $[1,6]$. The shaded rectangles, of heights $\frac12,\ldots,\frac16$, lie under the graph; the outlined ones, of heights $1,\ldots,\frac15$, cover it. Hence $H_6-1\le\int_1^6dx/x\le H_5$: numerically, $1.45\le1.7917\ldots\le2.2833\ldots$.\label{fig:sum-integral}}
+\end{tikzpicture}}{Sums and integrals for $f(x)=1/x$ on $[1,6]$. The shaded rectangles, of heights $1/2,\ldots,1/6$, lie under the graph; the outlined ones, of heights $1,\ldots,1/5$, cover it. Hence $H_6-1\le\int_1^6dx/x\le H_5$: numerically, $1.45\le1.7917\ldots\le2.2833\ldots$.\label{fig:sum-integral}}
 \end{figure}
 
 With $f(x)=1/x$ the proposition gives $H_n-1\le\Lambda(n)\le H_{n-1}$ for the harmonic numbers $H_n=\sum_{k=1}^n1/k$, that is,
@@ -1304,7 +1304,7 @@ As $c\to0^+$, $c^se^{-c}\to0$ because $s>0$; as $R\to\infty$, $R^se^{-R}\to0$. P
 (iii) $\Gamma(1)=\lim_{R\to\infty}\int_0^Re^{-t}\,dt=\lim_{R\to\infty}(1-e^{-R})=1$, and then $\Gamma(n+1)=n\Gamma(n)=\cdots=n!\,\Gamma(1)$ by induction.
 \end{proof}
 
-So $\Gamma(n+1)=n!$ interpolates the factorials, and the recursion $\Gamma(s+1)=s\Gamma(s)$ continues the recursion $(n+1)!=(n+1)\,n!$ to real arguments (\cref{fig:gamma}). The function is due to Euler, who interpolated the factorials, first by an infinite product and then by an integral, in two letters to Goldbach of 1729 and 1730; the notation $\Gamma$ and the shift by one, $\Gamma(n+1)=n!$, are Legendre's~\cite{davis1959gamma}. A value at a non-integer argument is $\Gamma(\frac12)=\sqrt\pi$, which follows from the Gaussian integral $\int_{-\infty}^\infty e^{-x^2}dx=\sqrt\pi$ of Chapter~11; then the recursion gives $\Gamma(\frac32)=\frac12\sqrt\pi$, $\Gamma(\frac52)=\frac34\sqrt\pi$, and so on. The gamma function is everywhere in probability and statistics, where it normalises the gamma, chi-squared and Student distributions (Volume~III), and Volume~X studies it and its relatives as special functions.
+So $\Gamma(n+1)=n!$ interpolates the factorials, and the recursion $\Gamma(s+1)=s\Gamma(s)$ continues the recursion $(n+1)!=(n+1)\,n!$ to real arguments (\cref{fig:gamma}). The function is due to Euler, who interpolated the factorials, first by an infinite product and then by an integral, in two letters to Goldbach of 1729 and 1730; the notation $\Gamma$ and the shift by one, $\Gamma(n+1)=n!$, are Legendre's~\cite{davis1959gamma}. A value at a non-integer argument is $\Gamma(1/2)=\sqrt\pi$, which follows from the Gaussian integral $\int_{-\infty}^\infty e^{-x^2}dx=\sqrt\pi$ of Chapter~11; then the recursion gives $\Gamma(3/2)=(1/2)\sqrt\pi$, $\Gamma(5/2)=(3/4)\sqrt\pi$, and so on. The gamma function is everywhere in probability and statistics, where it normalises the gamma, chi-squared and Student distributions (Volume~III), and Volume~X studies it and its relatives as special functions.
 
 \begin{figure}
 \sdfloat{%
@@ -1347,7 +1347,7 @@ with the weight $4$ at the odd and $2$ at the even interior nodes.
 
 All five rules are old. The area of a trapezoid under a graph was used long before the calculus: between 350 and 50 BC, Babylonian astronomers computed the distance travelled by Jupiter along the ecliptic as the area of the trapezoid under a graph of its daily motion, which they took to decrease linearly in time, against time~\cite{ossendrijver2016}. Simpson's rule is named after Thomas Simpson, who published it in 1743, although it was known before him. The trapezoidal and Simpson's rules belong to the family of Newton--Cotes rules, which integrate the polynomial that interpolates $f$ at equally spaced nodes~\cite{goldstine1977,davis1984}.
 
-We write simply $T_n$, $M_n$, and so on, when the function is clear. The rectangle and midpoint rules are the Riemann sums with left, right and middle tags. The trapezoidal rule is the average of the two rectangle rules, $T_n=\frac12(R^{\mathrm{left}}_n+R^{\mathrm{right}}_n)$, and it has a geometric meaning of its own: on the $k$th subinterval, the term $\frac h2(f_{k-1}+f_k)$ is the area of the trapezoid under the chord from $(x_{k-1},f_{k-1})$ to $(x_k,f_k)$ (\cref{fig:rules-geometry}A). So $T_n$ is the exact integral of the broken line that joins the points of the graph above the nodes, the \term{piecewise linear interpolant} of $f$. The midpoint rule has a similar meaning: the rectangle of height $f(m_k)$ has the same area as every trapezoid whose top is a line through $(m_k,f(m_k))$, because such a line lies above the rectangle on one half of the subinterval by exactly as much as it lies below it on the other. In particular, if $f$ is differentiable, $hf(m_k)$ is the integral of the tangent at the midpoint (\cref{fig:rules-geometry}B).
+We write simply $T_n$, $M_n$, and so on, when the function is clear. The rectangle and midpoint rules are the Riemann sums with left, right and middle tags. The trapezoidal rule is the average of the two rectangle rules, $T_n=(1/2)(R^{\mathrm{left}}_n+R^{\mathrm{right}}_n)$, and it has a geometric meaning of its own: on the $k$th subinterval, the term $(h/2)(f_{k-1}+f_k)$ is the area of the trapezoid under the chord from $(x_{k-1},f_{k-1})$ to $(x_k,f_k)$ (\cref{fig:rules-geometry}A). So $T_n$ is the exact integral of the broken line that joins the points of the graph above the nodes, the \term{piecewise linear interpolant} of $f$. The midpoint rule has a similar meaning: the rectangle of height $f(m_k)$ has the same area as every trapezoid whose top is a line through $(m_k,f(m_k))$, because such a line lies above the rectangle on one half of the subinterval by exactly as much as it lies below it on the other. In particular, if $f$ is differentiable, $hf(m_k)$ is the integral of the tangent at the midpoint (\cref{fig:rules-geometry}B).
 
 \begin{figure}
 \sdpanel{A}{\begin{tikzpicture}
@@ -1393,17 +1393,17 @@ For every polynomial $p$ of degree at most $3$ and every $c\in\mathbb R$, $h>0$,
 \end{lemma}
 
 \begin{proof}
-By the translation rule \eqref{eq:linear-substitution}, we may assume $c=0$. Both sides are linear in $p$, so it suffices to check the formula for $p=1,x,x^2,x^3$. For $1$: $2h=\frac h3\cdot6$. For $x$ and $x^3$: both sides are $0$, by oddness. For $x^2$: $\frac23h^3=\frac h3(h^2+0+h^2)$.
+By the translation rule \eqref{eq:linear-substitution}, we may assume $c=0$. Both sides are linear in $p$, so it suffices to check the formula for $p=1,x,x^2,x^3$. For $1$: $2h=(h/3)\cdot6$. For $x$ and $x^3$: both sides are $0$, by oddness. For $x^2$: $(2/3)h^3=(h/3)(h^2+0+h^2)$.
 \end{proof}
 
-The parabola through the three points has degree at most $2$, so its integral over $[x_{k-1},x_{k+1}]$ is $\frac h3(f_{k-1}+4f_k+f_{k+1})$; adding these over the pairs $[x_0,x_2],[x_2,x_4],\ldots$ gives $S_n$, which is why $n$ must be even. The lemma reveals a bonus: the rule is exact not only for quadratics but also for cubics. A rule is said to have \term{degree of exactness} $d$ if it integrates all polynomials of degree at most $d$ exactly but not all of degree $d+1$. The rectangle rules have degree $0$; the midpoint and the trapezoidal rule have degree $1$, being exact for lines but not for $x^2$; and Simpson's rule has degree $3$.
+The parabola through the three points has degree at most $2$, so its integral over $[x_{k-1},x_{k+1}]$ is $(h/3)(f_{k-1}+4f_k+f_{k+1})$; adding these over the pairs $[x_0,x_2],[x_2,x_4],\ldots$ gives $S_n$, which is why $n$ must be even. The lemma reveals a bonus: the rule is exact not only for quadratics but also for cubics. A rule is said to have \term{degree of exactness} $d$ if it integrates all polynomials of degree at most $d$ exactly but not all of degree $d+1$. The rectangle rules have degree $0$; the midpoint and the trapezoidal rule have degree $1$, being exact for lines but not for $x^2$; and Simpson's rule has degree $3$.
 
 The rules are related by simple identities. The midpoints of the partition with $n$ subintervals are the new nodes of the partition with $2n$, and comparing the definitions gives
 \begin{equation}
 T_{2n}=\frac12\bigl(T_n+M_n\bigr),\qquad S_{2n}=\frac13\bigl(T_n+2M_n\bigr)=\frac13\bigl(4T_{2n}-T_n\bigr).
 \label{eq:rule-relations}
 \end{equation}
-For the second identity, note that $S_{2n}$ has step $h/2$, the weight $\frac h6\cdot4=\frac23h$ at every midpoint and $\frac h6\cdot2=\frac13h$ at every interior node $x_k$. The first identity means that halving the step of the trapezoidal rule costs only the $n$ new function values at the midpoints; all previous values are reused.
+For the second identity, note that $S_{2n}$ has step $h/2$, the weight $(h/6)\cdot4=(2/3)h$ at every midpoint and $(h/6)\cdot2=(1/3)h$ at every interior node $x_k$. The first identity means that halving the step of the trapezoidal rule costs only the $n$ new function values at the midpoints; all previous values are reused.
 
 \subsection{Errors}
 
@@ -1436,7 +1436,7 @@ Let $c\in\mathbb R$ and $h>0$.
 \[
 \int_c^{c+h}f-\frac h2\bigl(f(c)+f(c+h)\bigr)=-\frac{h^3}{12}\,f''(\eta).
 \]
-\item If $f$ is twice continuously differentiable on $[c-\frac h2,c+\frac h2]$, there is $\eta$ in this interval with
+\item If $f$ is twice continuously differentiable on $[c-h/2,c+h/2]$, there is $\eta$ in this interval with
 \[
 \int_{c-h/2}^{c+h/2}f-hf(c)=\frac{h^3}{24}\,f''(\eta).
 \]
@@ -1450,7 +1450,7 @@ Let $c\in\mathbb R$ and $h>0$.
 \begin{proof}
 In each case we let the width vary, write the error as a function $E(t)$ of a parameter $t\in[0,h]$ or $[0,h/2]$, differentiate it with \cref{thm:ftc1} until a derivative of $f$ of the right order appears, and integrate the resulting inequalities back with \cref{lem:comparison}. Let $m$ and $M$ denote the minimum and the maximum, on the interval in question, of $f''$ in (i) and (ii) and of $f^{(4)}$ in (iii).
 
-(i) Let $E(t)\coloneqq\int_c^{c+t}f-\frac t2\bigl(f(c)+f(c+t)\bigr)$ for $0\le t\le h$. Then $E(0)=0$,
+(i) Let $E(t)\coloneqq\int_c^{c+t}f-(t/2)\bigl(f(c)+f(c+t)\bigr)$ for $0\le t\le h$. Then $E(0)=0$,
 \[
 E'(t)=f(c+t)-\frac12\bigl(f(c)+f(c+t)\bigr)-\frac t2f'(c+t)=\frac12\bigl(f(c+t)-f(c)\bigr)-\frac t2f'(c+t),
 \]
@@ -1458,20 +1458,20 @@ so $E'(0)=0$, and
 \[
 E''(t)=\frac12f'(c+t)-\frac12f'(c+t)-\frac t2f''(c+t)=-\frac t2f''(c+t).
 \]
-Hence $-\frac M2t\le E''(t)\le-\frac m2t$. The functions $-\frac M4t^2$ and $-\frac m4t^2$ vanish at $0$ and have the derivatives $-\frac M2t$ and $-\frac m2t$, so \cref{lem:comparison}, applied to $E'$, gives $-\frac M4t^2\le E'(t)\le-\frac m4t^2$; applied once more, to $E$, it gives $-\frac M{12}t^3\le E(t)\le-\frac m{12}t^3$. So $E(h)=-\frac{h^3}{12}\mu$ with $m\le\mu\le M$, and since $f''$ is continuous, $\mu=f''(\eta)$ for some $\eta$, by \cref{cor:image-closed-interval}.
+Hence $-(M/2)t\le E''(t)\le-(m/2)t$. The functions $-(M/4)t^2$ and $-(m/4)t^2$ vanish at $0$ and have the derivatives $-(M/2)t$ and $-(m/2)t$, so \cref{lem:comparison}, applied to $E'$, gives $-(M/4)t^2\le E'(t)\le-(m/4)t^2$; applied once more, to $E$, it gives $-(M/12)t^3\le E(t)\le-(m/12)t^3$. So $E(h)=-(h^3/12)\mu$ with $m\le\mu\le M$, and since $f''$ is continuous, $\mu=f''(\eta)$ for some $\eta$, by \cref{cor:image-closed-interval}.
 
-(ii) Let $E(t)\coloneqq\int_{c-t}^{c+t}f-2tf(c)$ for $0\le t\le h/2$. By \cref{cor:variable-limits}, $E'(t)=f(c+t)+f(c-t)-2f(c)$, and $E''(t)=f'(c+t)-f'(c-t)$; so $E(0)=E'(0)=0$. By the mean value theorem, $E''(t)=2t\,f''(\theta)$ for some $\theta$ between $c-t$ and $c+t$, so $2mt\le E''(t)\le2Mt$. Integrating twice with \cref{lem:comparison} gives $\frac m3t^3\le E(t)\le\frac M3t^3$, and with $t=h/2$, $E(h/2)=\frac{h^3}{24}\mu$ with $m\le\mu\le M$. Conclude as in (i).
+(ii) Let $E(t)\coloneqq\int_{c-t}^{c+t}f-2tf(c)$ for $0\le t\le h/2$. By \cref{cor:variable-limits}, $E'(t)=f(c+t)+f(c-t)-2f(c)$, and $E''(t)=f'(c+t)-f'(c-t)$; so $E(0)=E'(0)=0$. By the mean value theorem, $E''(t)=2t\,f''(\theta)$ for some $\theta$ between $c-t$ and $c+t$, so $2mt\le E''(t)\le2Mt$. Integrating twice with \cref{lem:comparison} gives $(m/3)t^3\le E(t)\le(M/3)t^3$, and with $t=h/2$, $E(h/2)=(h^3/24)\mu$ with $m\le\mu\le M$. Conclude as in (i).
 
-(iii) Let $E(t)\coloneqq\int_{c-t}^{c+t}f-\frac t3\bigl(f(c-t)+4f(c)+f(c+t)\bigr)$ for $0\le t\le h$. Differentiating three times,
+(iii) Let $E(t)\coloneqq\int_{c-t}^{c+t}f-(t/3)\bigl(f(c-t)+4f(c)+f(c+t)\bigr)$ for $0\le t\le h$. Differentiating three times,
 \begin{align*}
 E'(t)&=\frac23\bigl(f(c+t)+f(c-t)\bigr)-\frac43f(c)-\frac t3\bigl(f'(c+t)-f'(c-t)\bigr),\\
 E''(t)&=\frac13\bigl(f'(c+t)-f'(c-t)\bigr)-\frac t3\bigl(f''(c+t)+f''(c-t)\bigr),\\
 E'''(t)&=-\frac t3\bigl(f'''(c+t)-f'''(c-t)\bigr),
 \end{align*}
-and $E(0)=E'(0)=E''(0)=0$. By the mean value theorem, $f'''(c+t)-f'''(c-t)=2t\,f^{(4)}(\theta)$ for some $\theta$, so $-\frac{2M}3t^2\le E'''(t)\le-\frac{2m}3t^2$. Integrating three times with \cref{lem:comparison} gives $-\frac{2M}9t^3\le E''\le-\frac{2m}9t^3$, then $-\frac M{18}t^4\le E'\le-\frac m{18}t^4$, and finally $-\frac M{90}t^5\le E(t)\le-\frac m{90}t^5$. Conclude as in (i).
+and $E(0)=E'(0)=E''(0)=0$. By the mean value theorem, $f'''(c+t)-f'''(c-t)=2t\,f^{(4)}(\theta)$ for some $\theta$, so $-(2M/3)t^2\le E'''(t)\le-(2m/3)t^2$. Integrating three times with \cref{lem:comparison} gives $-(2M/9)t^3\le E''\le-(2m/9)t^3$, then $-(M/18)t^4\le E'\le-(m/18)t^4$, and finally $-(M/90)t^5\le E(t)\le-(m/90)t^5$. Conclude as in (i).
 \end{proof}
 
-Adding the local errors over the subintervals gives the errors of the composite rules. To write the sum compactly we use the following consequence of the intermediate value theorem: if $g$ is continuous on $[a,b]$ and $\eta_1,\ldots,\eta_N\in[a,b]$, then the average $\frac1N\sum_jg(\eta_j)$ lies between the minimum and the maximum of $g$, so it equals $g(\xi)$ for some $\xi\in[a,b]$, by \cref{cor:image-closed-interval}.
+Adding the local errors over the subintervals gives the errors of the composite rules. To write the sum compactly we use the following consequence of the intermediate value theorem: if $g$ is continuous on $[a,b]$ and $\eta_1,\ldots,\eta_N\in[a,b]$, then the average $(1/N)\sum_jg(\eta_j)$ lies between the minimum and the maximum of $g$, so it equals $g(\xi)$ for some $\xi\in[a,b]$, by \cref{cor:image-closed-interval}.
 
 \begin{theorem}[Errors of the composite rules]
 \label{thm:quadrature-errors}
@@ -1486,7 +1486,11 @@ Let $h=(b-a)/n$.
 \int_a^bf-S_n=-\frac{(b-a)h^4}{180}\,f^{(4)}(\xi).
 \]
 \end{enumerate}
-Consequently $|\int_a^bf-T_n|\le\frac{(b-a)h^2}{12}\max|f''|$, $|\int_a^bf-M_n|\le\frac{(b-a)h^2}{24}\max|f''|$ and $|\int_a^bf-S_n|\le\frac{(b-a)h^4}{180}\max|f^{(4)}|$.
+Consequently
+\begin{gather*}
+\Bigl|\int_a^bf-T_n\Bigr|\le\frac{(b-a)h^2}{12}\max|f''|,\qquad\Bigl|\int_a^bf-M_n\Bigr|\le\frac{(b-a)h^2}{24}\max|f''|,\\
+\Bigl|\int_a^bf-S_n\Bigr|\le\frac{(b-a)h^4}{180}\max|f^{(4)}|.
+\end{gather*}
 \end{theorem}
 
 \begin{proof}
@@ -1494,7 +1498,7 @@ Consequently $|\int_a^bf-T_n|\le\frac{(b-a)h^2}{12}\max|f''|$, $|\int_a^bf-M_n|\
 \[
 \int_a^bf-T_n=\sum_{k=1}^n\Bigl(-\frac{h^3}{12}f''(\eta_k)\Bigr)=-\frac{nh^3}{12}\cdot\frac1n\sum_{k=1}^nf''(\eta_k)=-\frac{(b-a)h^2}{12}f''(\xi),
 \]
-by the remark before the theorem and $nh=b-a$. The midpoint rule is treated in the same way with \cref{lem:local-errors}\,(ii). (ii) The interval consists of $n/2$ panels $[x_{2j-2},x_{2j}]$ of width $2h$, and \cref{lem:local-errors}\,(iii) gives the error $-\frac{h^5}{90}f^{(4)}(\eta_j)$ on each; the sum is $-\frac n2\cdot\frac{h^5}{90}$ times an average of values of $f^{(4)}$, and $\frac n2\cdot\frac{h^5}{90}=\frac{(b-a)h^4}{180}$.
+by the remark before the theorem and $nh=b-a$. The midpoint rule is treated in the same way with \cref{lem:local-errors}\,(ii). (ii) The interval consists of $n/2$ panels $[x_{2j-2},x_{2j}]$ of width $2h$, and \cref{lem:local-errors}\,(iii) gives the error $-(h^5/90)f^{(4)}(\eta_j)$ on each; the sum is $-(n/2)\cdot h^5/90$ times an average of values of $f^{(4)}$, and $(n/2)\cdot h^5/90=(b-a)h^4/180$.
 \end{proof}
 
 The trapezoidal and the midpoint rule are thus \term{second-order accurate}: halving $h$ divides their errors by about $4$. Simpson's rule is \term{fourth-order accurate}: halving $h$ divides its error by about $16$. The theorem says more than these orders. The errors of the trapezoidal and the midpoint rule have opposite signs if $f''$ does not change sign, and the trapezoidal error is about twice as large. For convex functions the opposite signs are guaranteed without any smoothness assumption beyond differentiability, by the geometry of \cref{fig:rules-geometry}.
@@ -1505,10 +1509,10 @@ If $f$ is convex and differentiable on $[a,b]$, then $M_n\le\int_a^bf\le T_n$ fo
 \end{proposition}
 
 \begin{proof}
-On each subinterval, the chord through the end points of the graph lies on or above the graph, by \cref{def:convex}, and the tangent at the midpoint lies on or below it, by \cref{prop:tangent-below}. The integral of the chord is the trapezoid $\frac h2(f_{k-1}+f_k)$, and that of the tangent is $hf(m_k)$, by the remark after \cref{def:quadrature-rules}. Monotonicity of the integral gives the inequalities on each subinterval, and adding them gives the claim.
+On each subinterval, the chord through the end points of the graph lies on or above the graph, by \cref{def:convex}, and the tangent at the midpoint lies on or below it, by \cref{prop:tangent-below}. The integral of the chord is the trapezoid $(h/2)(f_{k-1}+f_k)$, and that of the tangent is $hf(m_k)$, by the remark after \cref{def:quadrature-rules}. Monotonicity of the integral gives the inequalities on each subinterval, and adding them gives the claim.
 \end{proof}
 
-For a convex function, therefore, a midpoint sum and a trapezoidal sum enclose the integral, just as a lower and an upper sum do, but the enclosure is far tighter. The relation between the two errors also explains Simpson's rule. If the error of $T_n$ is about $-2\epsilon$ and that of $M_n$ about $\epsilon$, then the combination $\frac13(T_n+2M_n)$ cancels the leading errors, and this combination is $S_{2n}$ by \eqref{eq:rule-relations}. The following corollary makes the leading error terms precise.
+For a convex function, therefore, a midpoint sum and a trapezoidal sum enclose the integral, just as a lower and an upper sum do, but the enclosure is far tighter. The relation between the two errors also explains Simpson's rule. If the error of $T_n$ is about $-2\epsilon$ and that of $M_n$ about $\epsilon$, then the combination $(1/3)(T_n+2M_n)$ cancels the leading errors, and this combination is $S_{2n}$ by \eqref{eq:rule-relations}. The following corollary makes the leading error terms precise.
 
 \begin{corollary}[Asymptotic errors]
 \label{cor:asymptotic-errors}
@@ -1520,7 +1524,7 @@ If $f\in C^4[a,b]$, then $\bigl(\int_a^bf-S_n\bigr)/h^4\to-\bigl(f'''(b)-f'''(a)
 \end{corollary}
 
 \begin{proof}
-By the proof of \cref{thm:quadrature-errors}, $(\int_a^bf-T_n)/h^2=-\frac1{12}\sum_{k=1}^nf''(\eta_k)\,h$ with $\eta_k\in[x_{k-1},x_k]$. The sum is a Riemann sum of the continuous function $f''$ for a partition of mesh $h$, so it tends to $\int_a^bf''=f'(b)-f'(a)$, by \cref{thm:riemann-sums,thm:ftc2}. The other two limits are obtained in the same way; for Simpson's rule the Riemann sum is $\sum_jf^{(4)}(\eta_j)\cdot2h$ over the panels.
+By the proof of \cref{thm:quadrature-errors}, $(\int_a^bf-T_n)/h^2=-(1/12)\sum_{k=1}^nf''(\eta_k)\,h$ with $\eta_k\in[x_{k-1},x_k]$. The sum is a Riemann sum of the continuous function $f''$ for a partition of mesh $h$, so it tends to $\int_a^bf''=f'(b)-f'(a)$, by \cref{thm:riemann-sums,thm:ftc2}. The other two limits are obtained in the same way; for Simpson's rule the Riemann sum is $\sum_jf^{(4)}(\eta_j)\cdot2h$ over the panels.
 \end{proof}
 
 The corollary shows that the orders of \cref{thm:quadrature-errors} are attained unless $f'(b)=f'(a)$, or $f'''(b)=f'''(a)$ for Simpson's rule. When they coincide the leading error term vanishes and the rule converges faster than its order suggests, a phenomenon that the note at the end of this section explores.
@@ -1558,7 +1562,7 @@ $n$ & $E(R^{\mathrm{left}}_n)$ & ratio & $E(M_n)$ & ratio & $E(T_n)$ & ratio & $
 \end{sdtable}}{Errors $E(Q)\coloneqq\int_1^2dx/x-Q$ of the left rectangle, midpoint, trapezoidal and Simpson rules with $n$ subintervals, computed in exact rational arithmetic, and the ratios of consecutive errors. The ratios approach $2$, $4$, $4$ and $16$, the factors predicted for first-, second- and fourth-order rules when $n$ is doubled.\label{tab:quadrature}}
 \end{table}
 
-The ratios in the table approach $2$, $4$ and $16$, the factors predicted when $n$ is doubled, and \cref{fig:quadrature-errors} shows the errors on logarithmic scales, where the orders appear as slopes. The asymptotic constants of \cref{cor:asymptotic-errors} can be checked as well. Here $f'(x)=-1/x^2$ and $f'''(x)=-6/x^4$, so $f'(2)-f'(1)=\frac34$ and $f'''(2)-f'''(1)=\frac{45}8$, and the corollary predicts $E(T_n)\approx-\frac{h^2}{16}$, $E(M_n)\approx\frac{h^2}{32}$ and $E(S_n)\approx-\frac{h^4}{32}$. For $n=128$, with $h=2^{-7}$, these give $-3.81\times10^{-6}$, $1.91\times10^{-6}$ and $-1.16\times10^{-10}$, in agreement with the table. The bounds of \cref{thm:quadrature-errors} are somewhat larger, because they use the maximum of the derivative instead of its average: with $\max|f''|=2$ and $\max|f^{(4)}|=24$, they give $|E(T_n)|\le h^2/6$ and $|E(S_n)|\le h^4/7.5$.
+The ratios in the table approach $2$, $4$ and $16$, the factors predicted when $n$ is doubled, and \cref{fig:quadrature-errors} shows the errors on logarithmic scales, where the orders appear as slopes. The asymptotic constants of \cref{cor:asymptotic-errors} can be checked as well. Here $f'(x)=-1/x^2$ and $f'''(x)=-6/x^4$, so $f'(2)-f'(1)=3/4$ and $f'''(2)-f'''(1)=45/8$, and the corollary predicts $E(T_n)\approx-h^2/16$, $E(M_n)\approx h^2/32$ and $E(S_n)\approx-h^4/32$. For $n=128$, with $h=2^{-7}$, these give $-3.81\times10^{-6}$, $1.91\times10^{-6}$ and $-1.16\times10^{-10}$, in agreement with the table. The bounds of \cref{thm:quadrature-errors} are somewhat larger, because they use the maximum of the derivative instead of its average: with $\max|f''|=2$ and $\max|f^{(4)}|=24$, they give $|E(T_n)|\le h^2/6$ and $|E(S_n)|\le h^4/7.5$.
 
 \begin{figure}
 \sdfloat{%
@@ -1599,11 +1603,11 @@ The ratios in the table approach $2$, $4$ and $16$, the factors predicted when $
 \label{alg:trapezoid}
 \end{algorithm}
 
-In practice one rarely knows in advance how many subintervals are needed for a given accuracy, since the derivatives in \cref{thm:quadrature-errors} are seldom known. The identity $T_{2n}=\frac12(T_n+M_n)$ of \eqref{eq:rule-relations} suggests a better strategy: start with one subinterval and halve the step repeatedly, reusing all previous function values, until the approximations agree to the desired accuracy. The stopping test needs an estimate of the error, and \cref{cor:asymptotic-errors} provides one. If $\int f-T_n\approx Ch^2$, then $\int f-T_{2n}\approx Ch^2/4$, and subtracting,
+In practice one rarely knows in advance how many subintervals are needed for a given accuracy, since the derivatives in \cref{thm:quadrature-errors} are seldom known. The identity $T_{2n}=(1/2)(T_n+M_n)$ of \eqref{eq:rule-relations} suggests a better strategy: start with one subinterval and halve the step repeatedly, reusing all previous function values, until the approximations agree to the desired accuracy. The stopping test needs an estimate of the error, and \cref{cor:asymptotic-errors} provides one. If $\int f-T_n\approx Ch^2$, then $\int f-T_{2n}\approx Ch^2/4$, and subtracting,
 \[
 T_{2n}-T_n\approx\frac34Ch^2\approx3\Bigl(\int_a^bf-T_{2n}\Bigr).
 \]
-So the computable quantity $(T_{2n}-T_n)/3$ estimates the error of $T_{2n}$, and adding it to $T_{2n}$ gives $\frac13(4T_{2n}-T_n)=S_{2n}$, Simpson's rule once more. \Cref{alg:trapezoid-halving} implements this strategy.
+So the computable quantity $(T_{2n}-T_n)/3$ estimates the error of $T_{2n}$, and adding it to $T_{2n}$ gives $(1/3)(4T_{2n}-T_n)=S_{2n}$, Simpson's rule once more. \Cref{alg:trapezoid-halving} implements this strategy.
 
 \begin{algorithm}
 \begin{algorithmic}[1]
@@ -1612,7 +1616,7 @@ So the computable quantity $(T_{2n}-T_n)/3$ estimates the error of $T_{2n}$, and
 \Name{TrapezoidHalving}{f,a,b,\tau,K}
 \State $n\gets1$;\quad $h\gets b-a$;\quad $T\gets h\bigl(f(a)+f(b)\bigr)/2$
 \For{$j=1,\ldots,K$}
-  \State $M\gets h\sum_{k=1}^{n}f\bigl(a+(k-\frac12)h\bigr)$ \Comment{midpoint rule $M_n$}
+  \State $M\gets h\sum_{k=1}^{n}f\bigl(a+(k-1/2)h\bigr)$ \Comment{midpoint rule $M_n$}
   \State $T_{\mathrm{new}}\gets(T+M)/2$ \Comment{$T_{2n}$}
   \State $e\gets(T_{\mathrm{new}}-T)/3$ \Comment{estimated error of $T_{2n}$}
   \State $T\gets T_{\mathrm{new}}$;\quad $n\gets2n$;\quad $h\gets h/2$
@@ -1629,14 +1633,14 @@ The error estimate is a heuristic, not a bound: it rests on the asymptotic state
 
 \subsection{Smoothness, Rounding and What Lies Beyond}
 
-The error bounds assume bounded derivatives of order $2$ or $4$, and without them the rules lose their speed. For $\int_0^1\sqrt x\,dx=\frac23$, whose integrand has an unbounded derivative at $0$, the errors of the trapezoidal rule for $n=8,16,32,64,128$ are $8.5\times10^{-3}$, $3.1\times10^{-3}$, $1.1\times10^{-3}$, $4.0\times10^{-4}$ and $1.4\times10^{-4}$, and those of Simpson's rule are smaller by a factor between $2.4$ and $2.5$ but decrease at the same rate: doubling $n$ divides both errors by about $2.8\approx2^{3/2}$, so they behave like $h^{3/2}$. The higher order of Simpson's rule is wasted, because the error is dominated by the first subinterval, where the function is not smooth. A substitution can restore the smoothness: with $x=t^2$, the integral becomes $\int_0^12t^2\,dt$, which Simpson's rule computes exactly. This is the integral counterpart of the observation at the end of \cref{ch:differentiation} that numerical methods are only as accurate as the function is smooth.
+The error bounds assume bounded derivatives of order $2$ or $4$, and without them the rules lose their speed. For $\int_0^1\sqrt x\,dx=2/3$, whose integrand has an unbounded derivative at $0$, the errors of the trapezoidal rule for $n=8,16,32,64,128$ are $8.5\times10^{-3}$, $3.1\times10^{-3}$, $1.1\times10^{-3}$, $4.0\times10^{-4}$ and $1.4\times10^{-4}$, and those of Simpson's rule are smaller by a factor between $2.4$ and $2.5$ but decrease at the same rate: doubling $n$ divides both errors by about $2.8\approx2^{3/2}$, so they behave like $h^{3/2}$. The higher order of Simpson's rule is wasted, because the error is dominated by the first subinterval, where the function is not smooth. A substitution can restore the smoothness: with $x=t^2$, the integral becomes $\int_0^12t^2\,dt$, which Simpson's rule computes exactly. This is the integral counterpart of the observation at the end of \cref{ch:differentiation} that numerical methods are only as accurate as the function is smooth.
 
 Rounding errors, which made difference quotients useless for small $h$ (\cref{sec:conditioning}), are harmless here. The reason is that integration is a well-conditioned operation: if every value $f(x)$ is perturbed by at most $\delta$, the integral changes by at most $(b-a)\delta$, by \cref{thm:integral-monotone}, and the same holds for every rule with positive weights adding up to $b-a$. Differentiation divides small differences by small numbers, integration multiplies values by small weights and adds them; the first amplifies errors, the second averages them. The rounding errors committed in forming the sum itself grow with $n$ but slowly, and Volume~V analyses them and the summation methods that reduce them.
 
 The rules of this section use equally spaced nodes and weights chosen afterwards. Allowing the nodes to be chosen as well leads to Gaussian quadrature, which with $n$ function values integrates polynomials of degree $2n-1$ exactly and converges extremely fast for smooth integrands; and an expansion of the trapezoidal error in powers of $h^2$, the Euler--Maclaurin formula, explains both Romberg integration and the behaviour described in the following note~\cite{davis1984}. These methods, and the routines of the library that implement them, are the subject of Volume~XI.
 
 \begin{note}{The trapezoidal rule for periodic functions}
-\Cref{cor:asymptotic-errors} has a surprising consequence. If $f$ is smooth and periodic with period $b-a$, then $f'(b)=f'(a)$, and the leading error term of the trapezoidal rule vanishes. By the Euler--Maclaurin formula, the same happens to all the further terms, which involve $f'''(b)-f'''(a)$, $f^{(5)}(b)-f^{(5)}(a)$, and so on, and the trapezoidal rule then converges faster than any power of $h$. For $\int_0^{2\pi}\frac{dx}{2+\cos x}=\frac{2\pi}{\sqrt3}=3.62759\ldots$, computed in binary64 arithmetic, the absolute errors of $T_n$ for $n=4,8,16,32$ are $3.8\times10^{-2}$, $1.9\times10^{-4}$, $5.1\times10^{-9}$ and $4\times10^{-16}$, the last at the level of rounding: each doubling of $n$ roughly squares the error, which is the signature of exponential convergence. For this integrand Simpson's rule is much worse than the trapezoidal rule with the same points. The explanation lies in complex analysis: the error of the trapezoidal rule for a periodic function is controlled by how far into the complex plane the function can be continued analytically. Trefethen and Weideman survey the theory and its many applications~\cite{trefethen2014}, which include the computation of Fourier coefficients (Volume~XI) and of special functions given by periodic integrals (Volume~X).
+\Cref{cor:asymptotic-errors} has a surprising consequence. If $f$ is smooth and periodic with period $b-a$, then $f'(b)=f'(a)$, and the leading error term of the trapezoidal rule vanishes. By the Euler--Maclaurin formula, the same happens to all the further terms, which involve $f'''(b)-f'''(a)$, $f^{(5)}(b)-f^{(5)}(a)$, and so on, and the trapezoidal rule then converges faster than any power of $h$. For $\int_0^{2\pi}dx/(2+\cos x)=2\pi/\sqrt3=3.62759\ldots$, computed in binary64 arithmetic, the absolute errors of $T_n$ for $n=4,8,16,32$ are $3.8\times10^{-2}$, $1.9\times10^{-4}$, $5.1\times10^{-9}$ and $4\times10^{-16}$, the last at the level of rounding: each doubling of $n$ roughly squares the error, which is the signature of exponential convergence. For this integrand Simpson's rule is much worse than the trapezoidal rule with the same points. The explanation lies in complex analysis: the error of the trapezoidal rule for a periodic function is controlled by how far into the complex plane the function can be continued analytically. Trefethen and Weideman survey the theory and its many applications~\cite{trefethen2014}, which include the computation of Fourier coefficients (Volume~XI) and of special functions given by periodic integrals (Volume~X).
 \end{note}
 
 \section{Applications}
@@ -1646,11 +1650,11 @@ Integrals measure quantities that accumulate: areas, lengths, volumes, masses, p
 
 \subsection{Average Values}
 
-The mean value $\bar f=\frac1{b-a}\int_a^bf$ of \cref{def:mean-value} is the continuous counterpart of the arithmetic mean of finitely many numbers, and by \cref{thm:riemann-sums} it is the limit of the averages of $f$ at the tags of finer and finer uniform partitions. The average of $\sin x$ over one arch is
+The mean value $\bar f=(1/(b-a))\int_a^bf$ of \cref{def:mean-value} is the continuous counterpart of the arithmetic mean of finitely many numbers, and by \cref{thm:riemann-sums} it is the limit of the averages of $f$ at the tags of finer and finer uniform partitions. The average of $\sin x$ over one arch is
 \[
 \frac1\pi\int_0^\pi\sin x\,dx=\frac2\pi=0.6366\ldots ,
 \]
-and the average of $x^2$ over $[0,1]$ is $\frac13$. In physics, the average velocity of a body over the time interval $[a,b]$ is $\frac1{b-a}\int_a^bv(t)\,dt=\frac{s(b)-s(a)}{b-a}$, the displacement divided by the time, and the mean value theorem for integrals says, like that of differential calculus, that the velocity takes this average value at some instant. In probability, the mean value of a function of a random variable distributed uniformly on $[a,b]$ is its expected value (Volume~III), and the averages of samples in Monte Carlo integration estimate the same quantity with random instead of equally spaced points (Volume~XIII).
+and the average of $x^2$ over $[0,1]$ is $1/3$. In physics, the average velocity of a body over the time interval $[a,b]$ is $(1/(b-a))\int_a^bv(t)\,dt=(s(b)-s(a))/(b-a)$, the displacement divided by the time, and the mean value theorem for integrals says, like that of differential calculus, that the velocity takes this average value at some instant. In probability, the mean value of a function of a random variable distributed uniformly on $[a,b]$ is its expected value (Volume~III), and the averages of samples in Monte Carlo integration estimate the same quantity with random instead of equally spaced points (Volume~XIII).
 
 \subsection{Length of a Curve}
 
@@ -1676,7 +1680,7 @@ Let $g\coloneqq\sqrt{1+(f')^2}$, a continuous function, hence integrable. For an
 a Riemann sum of $g$. Let $I\coloneqq\int_a^bg$ and $\varepsilon>0$, and let $\delta$ be as in \cref{thm:riemann-sums}. If $\|P\|<\delta$, then $\ell(f,P)<I+\varepsilon$. For an arbitrary partition $P$, choose any partition $Q$ with $\|Q\|<\delta$; then $P\cup Q$ has mesh less than $\delta$ and refines $P$, so $\ell(f,P)\le\ell(f,P\cup Q)<I+\varepsilon$. Hence $\sup_P\ell(f,P)\le I$. Conversely, $\ell(f,Q)>I-\varepsilon$ for every $Q$ with $\|Q\|<\delta$, so the supremum is at least $I-\varepsilon$ for every $\varepsilon$, and it equals $I$.
 \end{proof}
 
-The formula has a simple meaning: over a short interval of length $dx$ the curve is nearly a straight segment of slope $f'(x)$, whose length is $\sqrt{dx^2+(f'(x)\,dx)^2}=\sqrt{1+f'(x)^2}\,dx$ by Pythagoras. For $f(x)=x^{3/2}$ on $[0,1]$, $f'(x)=\frac32x^{1/2}$, and the substitution $u=1+\frac94x$ gives the length
+The formula has a simple meaning: over a short interval of length $dx$ the curve is nearly a straight segment of slope $f'(x)$, whose length is $\sqrt{dx^2+(f'(x)\,dx)^2}=\sqrt{1+f'(x)^2}\,dx$ by Pythagoras. For $f(x)=x^{3/2}$ on $[0,1]$, $f'(x)=(3/2)x^{1/2}$, and the substitution $u=1+(9/4)x$ gives the length
 \[
 \int_0^1\sqrt{1+\tfrac94x}\,dx=\frac8{27}\Bigl(1+\frac94x\Bigr)^{3/2}\Big|_0^1=\frac{13\sqrt{13}-8}{27}=1.4397\ldots
 \]
@@ -1700,7 +1704,7 @@ A random quantity $X$ that can take any real value, such as a measurement error,
 \[
 P(a\le X\le b)=\int_a^bp(x)\,dx .
 \]
-Probabilities are thus areas under the graph of $p$, and the total area is $1$. The uniform density on $[0,1]$ is $\mathbf 1_{[0,1]}$; the density $p(x)=\frac1\pi\cdot\frac1{1+x^2}$, the \term{Cauchy density}, has total area $1$ by the computation of \cref{sec:improper}, and $P(-1\le X\le1)=\frac1\pi(\arctan1-\arctan(-1))=\frac12$. Improper integrals are unavoidable in this setting. The expected value of $X$ is $\int_{-\infty}^\infty xp(x)\,dx$, provided this integral converges absolutely, and for the Cauchy density it does not: $\int_0^Rx\,dx/(1+x^2)=\frac12\Lambda(1+R^2)\to\infty$, by the substitution $u=1+x^2$ and \cref{prop:log-additive}. So a Cauchy-distributed quantity has no mean, a fact with consequences for the statistics of heavy-tailed data. The most important density, the normal density $e^{-x^2/2}/\sqrt{2\pi}$, involves the integral $\int_{-\infty}^\infty e^{-x^2/2}dx=\sqrt{2\pi}$, whose integrand has no elementary antiderivative, by \cref{thm:liouville} and the substitution $x=\sqrt2\,t$, but which can be evaluated with a double integral in Chapter~11. Volume~III builds probability theory on these ideas, with the Lebesgue integral of Volume~II in place of the Riemann integral.
+Probabilities are thus areas under the graph of $p$, and the total area is $1$. The uniform density on $[0,1]$ is $\mathbf 1_{[0,1]}$; the density $p(x)=1/(\pi(1+x^2))$, the \term{Cauchy density}, has total area $1$ by the computation of \cref{sec:improper}, and $P(-1\le X\le1)=(1/\pi)(\arctan1-\arctan(-1))=1/2$. Improper integrals are unavoidable in this setting. The expected value of $X$ is $\int_{-\infty}^\infty xp(x)\,dx$, provided this integral converges absolutely, and for the Cauchy density it does not: $\int_0^Rx\,dx/(1+x^2)=(1/2)\Lambda(1+R^2)\to\infty$, by the substitution $u=1+x^2$ and \cref{prop:log-additive}. So a Cauchy-distributed quantity has no mean, a fact with consequences for the statistics of heavy-tailed data. The most important density, the normal density $e^{-x^2/2}/\sqrt{2\pi}$, involves the integral $\int_{-\infty}^\infty e^{-x^2/2}dx=\sqrt{2\pi}$, whose integrand has no elementary antiderivative, by \cref{thm:liouville} and the substitution $x=\sqrt2\,t$, but which can be evaluated with a double integral in Chapter~11. Volume~III builds probability theory on these ideas, with the Lebesgue integral of Volume~II in place of the Riemann integral.
 
 \bigskip
 With the derivative and the integral in hand, and the fundamental theorem linking them, the basic machinery of calculus is complete. \Cref{ch:series} turns to infinite sums: it uses the integral test of \cref{sec:improper} to decide the convergence of series, and integration by parts to prove Taylor's theorem with an integral form of the remainder, which measures how well a function is approximated by polynomials. \Cref{ch:transcendental} then constructs the exponential function, the logarithm and the trigonometric functions rigorously, and shows that the function $\Lambda$ of this chapter is the natural logarithm.

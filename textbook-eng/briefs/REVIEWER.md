@@ -14,6 +14,7 @@ Four passes.
 3. Compliance with GUIDE.md, rule by rule (reader level and patient explanation, review-mode or full-proof mode as the volume requires, abstract one paragraph of at most about 120 words, no exercises, footnotes avoided, advanced material only in note boxes, no language syntax, no stardust API explanations in Volumes I–IV, every figure and table referred to, thorough citations, Notes section, design rules of §7). Fix violations.
    Also enforce the inline-fraction rule of GUIDE.md §3: no \frac (or \tfrac, \dfrac) inside inline mathematics; rewrite with a solidus and the parentheses needed to keep the meaning, or move a crowded formula to a display.
    Likewise no written-out matrix or column vector inline: move it to a display.
+   Remove run-in pseudo-environment labels (\emph{Example.}, \emph{Examples.}, \emph{Remark.}, \paragraph{...}) and make the sentence lead in by itself.
 4. Prose. Formal academic English, clear and unhurried, British spelling. Remove filler, repeated phrasings, inflated wording, mechanical parallelism, overused words ("crucial", "key", "fundamental", "it is worth noting") and excess dashes; vary sentence openings; keep terminology consistent. Keep all content; never shorten explanations for brevity.
 
 Then `tools/build.sh volN` until warnings 0, render every page with a figure, table, algorithm or box (pdftoppm -r 80 into a temp directory outside the repository, deleted afterwards) and confirm margins, placement, overlaps, fills and axes on top.
