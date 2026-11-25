@@ -25,7 +25,7 @@ Work only inside /Users/sanghyunpark/Desktop/stardust/textbook-eng/. The rest of
 - Citations must be thorough: every result with a known origin, every historical claim and every standard fact gets a source (original paper or standard text). Never guess bibliographic data; list every entry you are not certain of in your report under "서지 확인 필요".
 - No exercises, avoid footnotes, material beyond a standard first course goes in a `note` box, no explanation of any particular language's syntax.
 - The natural numbers include 0. Other volumes are "Volume IV" (roman). Chapters not yet written are named in words ("Chapter 3") rather than with \cref.
-- End the chapter with an unnumbered section "Notes" (reading guide and sources), then \chapterreferences.
+- End the chapter with \chapternotes (the unnumbered section "Notes": reading guide and sources), then \chapterreferences.
 - Every figure and table is referred to in the text. In plots, axes are drawn over fills and curves.
 - Numbers: compute them yourself (plain python3, fractions/decimal). When the library must be run, use only the shared build described in BUILD.md, and never trust numbers quoted in the library's documentation.
 

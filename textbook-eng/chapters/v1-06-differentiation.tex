@@ -70,7 +70,7 @@ Several notations are in use. Besides $f'(a)$, which goes back to Lagrange~\cite
 \[
 \frac{df}{dx}(a),\qquad\frac{df}{dx}\Big|_{x=a},\qquad\frac{d}{dx}f(x)\Big|_{x=a},
 \]
-a notation introduced by Leibniz in the first publication on the differential calculus~\cite{leibniz1684,edwards1979}. In Leibniz's notation the derivative of the function $x\mapsto x^2$ is written $\frac d{dx}x^2=2x$, without naming the function; this is convenient, and we use it freely, but it should be read as a statement about the function $x\mapsto x^2$, not about a number $x^2$. Physicists write $\dot s(t)$ for the derivative with respect to time, following Newton~\cite{edwards1979}. None of these notations is a fraction: $df/dx$ is a single symbol, the limit of the quotients $\Delta f/\Delta x$ of the increments $\Delta f=f(a+h)-f(a)$ and $\Delta x=h$. That it often behaves like a fraction, as in the chain rule of \cref{sec:rules}, is a theorem in each case.
+notations that go back to the differentials $dx$ and $dy$ with which Leibniz wrote the first publication on the differential calculus~\cite{leibniz1684,edwards1979}. In Leibniz's notation the derivative of the function $x\mapsto x^2$ is written $\frac d{dx}x^2=2x$, without naming the function; this is convenient, and we use it freely, but it should be read as a statement about the function $x\mapsto x^2$, not about a number $x^2$. Physicists write $\dot s(t)$ for the derivative with respect to time, following Newton~\cite{edwards1979}. None of these notations is a fraction: $df/dx$ is a single symbol, the limit of the quotients $\Delta f/\Delta x$ of the increments $\Delta f=f(a+h)-f(a)$ and $\Delta x=h$. That it often behaves like a fraction, as in the chain rule of \cref{sec:rules}, is a theorem in each case.
 
 \emph{Examples.} The following derivatives are computed directly from the definition.
 \begin{itemize}
@@ -622,7 +622,7 @@ g(x)\coloneqq f(x)-f(a)-s\,(x-a)\qquad(a\le x\le b)
 be the vertical distance between the graph and the secant. Then $g$ is continuous on $[a,b]$ and differentiable on $(a,b)$, with $g'(x)=f'(x)-s$, and $g(a)=0=g(b)$. Rolle's theorem gives $\xi\in(a,b)$ with $g'(\xi)=0$, that is, $f'(\xi)=s$.
 \end{proof}
 
-Geometrically, somewhere between $a$ and $b$ the tangent is parallel to the secant (\cref{fig:mvt}). Physically, a car that covers $100$ kilometres in $50$ minutes, at an average speed of $120$ kilometres per hour, was driving at exactly $120$ kilometres per hour at some moment. Some speed checks on motorways measure the average speed between two cameras, and the mean value theorem justifies treating it as a speed that was actually reached.
+Geometrically, somewhere between $a$ and $b$ the tangent is parallel to the secant (\cref{fig:mvt}). Physically, a car that covers $100$ kilometres in $50$ minutes, at an average speed of $120$ kilometres per hour, was driving at exactly $120$ kilometres per hour at some moment. An average speed computed from the times at which a vehicle passes two checkpoints is therefore not merely an average: it is a speed that the vehicle actually had at some instant in between.
 
 \begin{figure}
 \sdfloat{%
@@ -648,7 +648,7 @@ f(x+h)=f(x)+f'(x+\theta h)\,h\qquad\text{for some }\theta\in(0,1),
 \end{equation}
 which holds for $h$ of either sign, provided $f$ is continuous on the closed interval between $x$ and $x+h$ and differentiable inside it. Compare it with the linear approximation \eqref{eq:linear-approx}, $f(x+h)=f(x)+f'(x)h+o(h)$: that statement uses the derivative at the known point $x$ but has an error term that is only known to be small in the limit, while \eqref{eq:mvt-theta} is exact for every $h$ but evaluates the derivative at an unknown point. Estimates of errors are obtained from \eqref{eq:mvt-theta}.
 
-The theorem in this form is due to Lagrange~\cite{lagrange1797}, and it is often named after him. Cauchy based his proofs on an inequality instead: if $m\le f'(x)\le M$ on $(a,b)$, then $m\le(f(b)-f(a))/(b-a)\le M$~\cite{cauchy1823,grabiner1981}. This is exactly what the mean value theorem yields in applications, and it is the form that survives for vector-valued functions, for which no single intermediate point need exist (Chapter~10). The following generalisation, which involves two functions, is also due to Cauchy~\cite{grabiner1981}.
+The theorem in this form is due to Lagrange~\cite{lagrange1797}, and it is often named after him. Cauchy based his proofs on an inequality instead: if $m\le f'(x)\le M$ on $(a,b)$, then $m\le(f(b)-f(a))/(b-a)\le M$~\cite{cauchy1823,grabiner1981}. This is exactly what the mean value theorem yields in applications, and it is the form that survives for vector-valued functions, for which no single intermediate point need exist (Chapter~10). The following generalisation, which involves two functions, is also due to Cauchy, who gave it in an addition to the same lectures~\cite{cauchy1823,grabiner1981}.
 
 \begin{theorem}[Cauchy's mean value theorem]
 \label{thm:cauchy-mvt}
@@ -751,7 +751,7 @@ The cosine maps $[0,1]$ into itself, as shown in \cref{sec:ivt}, and $|\cos'x|=\
 
 \subsection{Proving Inequalities with Derivatives}
 
-The monotonicity corollary is a powerful tool for proving inequalities. To show $\varphi\le\psi$ on an interval starting at $a$, it suffices to show the inequality at $a$ and to compare the rates of change.
+The monotonicity corollary is an effective tool for proving inequalities. To show $\varphi\le\psi$ on an interval starting at $a$, it suffices to show the inequality at $a$ and to compare the rates of change.
 
 \begin{lemma}[Comparison]
 \label{lem:comparison}
@@ -862,7 +862,7 @@ $\ln x$ & $1/|\ln x|$ & $x=1$ \\
 \end{sdtable}}{Relative condition numbers $\kappa_f(x)=|xf'(x)/f(x)|$ of some elementary functions, from the derivatives of \cref{tab:derivatives}; $k$ is an integer. Near the points in the last column, small relative errors in $x$ are greatly magnified in $f(x)$.\label{tab:condition}}
 \end{table}
 
-The table holds several lessons. Powers and roots are harmless: the square root even halves relative errors. The function $x-1$ is the simplest case of \term{cancellation}, the subtraction of nearly equal numbers. At $x=1.001$ its condition number is $1001$: changing $x$ by the relative amount $10^{-6}$, to $1.001001001$, changes $x-1$ from $0.001$ to $0.001001001$, a relative change of about $10^{-3}$. The leading digits, which $x$ and $1$ have in common, cancel, and what remains is determined by the trailing digits of $x$, where its errors live. The sine is ill conditioned near its nonzero zeros: at $x=3.14$, close to $\pi$, the condition number is about $1972$, because a relative change of $x$ is a large relative change of the small number $\sin x$. The exponential function has the condition number $|x|$, which is large for large $|x|$ although nothing is wrong with the function: a relative error $\varepsilon$ in $x=100$ is an absolute error of $100\varepsilon$ in the exponent, and $e^{x+100\varepsilon}=e^x\,e^{100\varepsilon}\approx e^x(1+100\varepsilon)$. The logarithm, conversely, is ill conditioned near $1$, where its value is small.
+The table holds several lessons. Powers and roots are harmless: the square root even halves relative errors. The function $x-1$ is the simplest case of \term{cancellation}, the subtraction of nearly equal numbers. At $x=1.001$ its condition number is $1001$: changing $x$ by the relative amount $10^{-6}$, to $1.001001001$, changes $x-1$ from $0.001$ to $0.001001001$, a relative change of about $10^{-3}$. The leading digits, which $x$ and $1$ have in common, cancel, and what remains is determined by the trailing digits of $x$, where its errors live. The sine is ill conditioned near its nonzero zeros: at $x=3.14$, close to $\pi$, the condition number is about $1972$, because a relative change of $x$ is a large relative change of the small number $\sin x$. The exponential function has the condition number $|x|$, which is large for large $|x|$ although nothing is wrong with the function: a relative error $\varepsilon$ in $x=100$ is an absolute error of $100\varepsilon$ in the exponent, and $e^{x+100\varepsilon}=e^x\,e^{100\varepsilon}\approx e^x(1+100\varepsilon)$. For the same reason the sine and the cosine are, in general, ill conditioned for large $|x|$ as well: their condition numbers contain the factor $|x|$, and a relative error $\varepsilon$ in $x=10^6$ is an absolute error of $10^6\varepsilon$ in the angle. The logarithm, conversely, is ill conditioned near $1$, where its value is small.
 
 Condition numbers multiply under composition, which is the chain rule in another guise.
 
@@ -885,7 +885,7 @@ A computation is a long composition of simple steps, and the proposition suggest
 \[
 f(x)=\frac{(\sqrt{x+1}-\sqrt x)(\sqrt{x+1}+\sqrt x)}{\sqrt{x+1}+\sqrt x}=\frac1{\sqrt{x+1}+\sqrt x},
 \]
-a short computation gives $\kappa_f(x)=\frac12\sqrt{x/(x+1)}<\frac12$: the problem is well conditioned for every $x>0$. Yet if $f(10^{12})$ is evaluated in binary64 arithmetic as written, by computing the two square roots and subtracting, the result is $5.00003807\ldots\times10^{-7}$, while the true value is $4.99999999999875\times10^{-7}$; the relative error, $7.6\times10^{-6}$, is about $10^{11}$ times the rounding unit. The two square roots are close to $10^6$ and are computed with absolute errors of order $10^{-10}$; the subtraction, which is ill conditioned here, turns these into errors of the same absolute size in a result of size $5\times10^{-7}$. The second formula, which adds instead of subtracting, gives the result to full accuracy. The problem is the same; the algorithms differ. Distinguishing the condition of a problem from the stability of an algorithm that solves it is a central theme of Volume~V.
+a short computation gives $\kappa_f(x)=\frac12\sqrt{x/(x+1)}<\frac12$: the problem is well conditioned for every $x>0$. Yet if $f(10^{12})$ is evaluated in binary64 arithmetic as written, by computing the two square roots and subtracting, the result is $5.00003807\ldots\times10^{-7}$, while the true value is $4.99999999999875\ldots\times10^{-7}$; the relative error, $7.6\times10^{-6}$, is about $7\times10^{10}$ times the rounding unit $2^{-53}$. The two square roots are close to $10^6$, where consecutive binary64 numbers are $2^{-33}\approx1.2\times10^{-10}$ apart, so rounding them can cause absolute errors of up to about $6\times10^{-11}$; here $\sqrt{10^{12}}=10^6$ is exact, and the rounded value of $\sqrt{10^{12}+1}$ is wrong by $3.8\times10^{-12}$. The subtraction, which is ill conditioned here, commits no new error, but it passes this absolute error on unchanged to a result of size $5\times10^{-7}$. The second formula, which adds instead of subtracting, gives the result to full accuracy. The problem is the same; the algorithms differ. Distinguishing the condition of a problem from the stability of an algorithm that solves it is a central theme of Volume~V.
 
 \subsection{Approximating Derivatives by Difference Quotients}
 
@@ -893,7 +893,7 @@ When $f$ is available only as a program, its derivative is often approximated by
 \[
 D_h^+f(x)\coloneqq\frac{f(x+h)-f(x)}h,\qquad D_h^0f(x)\coloneqq\frac{f(x+h)-f(x-h)}{2h}
 \]
-for the \term{forward difference quotient} and the \term{central difference quotient}. Both tend to $f'(x)$ as $h\to0$ if $f$ is differentiable at $x$; for the central one, write it as the average of $D_h^+f(x)$ and $D_{-h}^+f(x)$. The question is how fast. A Taylor expansion, as in Chapter~8, answers it most quickly, but the comparison lemma suffices and gives sharp constants. The key estimate bounds the error of the linear approximation when the derivative is Lipschitz continuous.
+for the \term{forward difference quotient} and the \term{central difference quotient}. Both tend to $f'(x)$ as $h\to0$ if $f$ is differentiable at $x$; for the central one, write it as the average of $D_h^+f(x)$ and $D_{-h}^+f(x)$. The question is how fast. A Taylor expansion, as in Chapter~8, answers it most quickly, but the comparison lemma suffices and gives sharp constants. Everything rests on an estimate that bounds the error of the linear approximation when the derivative is Lipschitz continuous.
 
 \begin{lemma}[Remainder of the linear approximation]
 \label{lem:linear-remainder}
@@ -931,7 +931,7 @@ Let $I$ be an interval and $x\in I$.
 (ii) Since $D_{-h}^0f=D_h^0f$, we may assume $h>0$. Let $g(t)\coloneqq f(x+t)-f(x-t)-2f'(x)\,t$ for $0\le t\le h$. Then $g(0)=0$, $g'(t)=f'(x+t)+f'(x-t)-2f'(x)$, so $g'(0)=0$, and $g''(t)=f''(x+t)-f''(x-t)$, so $|g''(t)|\le M\cdot2t$. The comparison lemma, applied to $\pm g'$ and $Mt^2$, gives $|g'(t)|\le Mt^2$, and applied once more, to $\pm g$ and $Mt^3/3$, it gives $|g(t)|\le Mt^3/3$. Since $D_h^0f(x)-f'(x)=g(h)/(2h)$, the claim follows.
 \end{proof}
 
-Again the constants are sharp: for $f(x)=x^3$, whose second derivative $6x$ has the Lipschitz constant $6$, one computes $D_h^0f(x)-f'(x)=h^2$, which is the bound. The forward quotient is said to be \term{first-order accurate}, since its error is $O(h)$, and the central quotient \term{second-order accurate}, with error $O(h^2)$. Halving $h$ halves the error of the first and divides that of the second by four. The difference is visible on the right of \cref{fig:finite-differences}, which shows the errors of both quotients for $f=\sin$ at $x=1$. For large $h$ the errors follow the lines $(\frac12\sin1)\,h$ and $(\frac16\cos1)\,h^2$, of slopes $1$ and $2$ in the logarithmic plot, close to the bounds $h/2$ and $h^2/6$ of the proposition with $M=1$.
+Again the constants are sharp: for $f(x)=x^3$, whose second derivative $6x$ has the Lipschitz constant $6$, one computes $D_h^0f(x)-f'(x)=h^2$, which is the bound. The forward quotient is said to be \term{first-order accurate}, since its error is $O(h)$, and the central quotient \term{second-order accurate}, with error $O(h^2)$. Halving $h$ halves the error of the first and divides that of the second by four. The difference is visible on the right of \cref{fig:finite-differences}, which shows the errors of both quotients for $f=\sin$ at $x=1$. For the larger values of $h$ the errors follow the lines $(\frac12\sin1)\,h$ and $(\frac16\cos1)\,h^2$, of slopes $1$ and $2$ in the logarithmic plot, close to the bounds $h/2$ and $h^2/6$ of the proposition with $M=1$.
 
 \begin{figure}
 \sdfloat{%
@@ -947,7 +947,7 @@ Again the constants are sharp: for $f(x)=x^3$, whose second derivative $6x$ has 
 \addplot[black!50, dashed, line width=0.5pt, domain=1e-8:0.2, samples=2, forget plot] {0.4207*x};
 \addplot[black!50, dashed, line width=0.5pt, domain=1e-6:0.2, samples=2, forget plot] {0.09005*x^2};
 \end{axis}
-\end{tikzpicture}}{Errors $|D_h^+f(1)-f'(1)|$ (open circles) and $|D_h^0f(1)-f'(1)|$ (filled circles) for $f=\sin$, computed in binary64 arithmetic, against $h$ on logarithmic scales. For large $h$ they follow the lines $0.42\,h$ and $0.090\,h^2$ (dashed) predicted by \cref{prop:difference-errors}. For small $h$ rounding errors dominate and grow like $1/h$; the smallest errors are about $10^{-8}$ and $10^{-11}$.\label{fig:finite-differences}}
+\end{tikzpicture}}{Errors $|D_h^+f(1)-f'(1)|$ (open circles) and $|D_h^0f(1)-f'(1)|$ (filled circles) for $f=\sin$, computed in binary64 arithmetic, against $h$ on logarithmic scales. For the larger values of $h$ they follow the lines $0.42\,h$ and $0.090\,h^2$ (dashed) predicted by \cref{prop:difference-errors}. For small $h$ rounding errors dominate and grow like $1/h$. Near the best $h$ the errors are about $10^{-8}$ and $10^{-11}$; single values scatter, because rounding errors sometimes partly cancel.\label{fig:finite-differences}}
 \end{figure}
 
 The left half of the figure shows what the proposition does not: for $h$ below about $10^{-8}$ the forward quotient becomes \emph{worse} as $h$ decreases, and for $h=10^{-15}$ it has no correct digit beyond the first. The reason is cancellation once more. The values $f(x+h)$ and $f(x)$ are computed with relative errors of about $u=2^{-53}\approx1.1\times10^{-16}$, so their difference carries an absolute error of up to about $2u|f(x)|$, and dividing by $h$ turns this into an error of about $2u|f(x)|/h$ in the quotient. The total error of the forward quotient is therefore roughly bounded by
@@ -959,7 +959,7 @@ a sum of a term that decreases and a term that increases as $h$ decreases. By th
 \section{L'H\^opital's Rule}
 \label{sec:lhopital}
 
-Limits of quotients $f(x)/g(x)$ in which numerator and denominator both tend to $0$, or both to $\infty$, are the indeterminate forms of \cref{sec:limit-laws}: the limit laws do not apply, and the outcome depends on how fast the two parts change. Since the derivatives measure how fast functions change, it is natural to compare $f'$ and $g'$ instead. L'H\^opital's rule says that this is legitimate. The rule appeared in 1696 in the first textbook of the differential calculus, written by the Marquis de l'H\^opital~\cite{lhopital1696}, who had learnt it from Johann Bernoulli~\cite{edwards1979}.
+Limits of quotients $f(x)/g(x)$ in which numerator and denominator both tend to $0$, or both to $\infty$, are the indeterminate forms of \cref{sec:limit-laws}: the limit laws do not apply, and the outcome depends on how fast the two parts change. Since the derivatives measure how fast functions change, it is natural to compare $f'$ and $g'$ instead. L'H\^opital's rule says that this is legitimate. The rule appeared in 1696 in the first textbook of the differential calculus, published anonymously by the Marquis de l'H\^opital~\cite{lhopital1696}. L'H\^opital had learnt the calculus, and this rule with it, from Johann Bernoulli, in lessons and letters~\cite{edwards1979}.
 
 \subsection{The Form \texorpdfstring{$0/0$}{0/0}}
 
@@ -1054,7 +1054,15 @@ L'H\^opital's rule is easy to apply and easy to misapply. Four warnings cover mo
 \]
 oscillates between $0$ and $2$. Similarly, $x^2\sin(1/x)/x=x\sin(1/x)\to0$ as $x\to0$, while the quotient of the derivatives, $2x\sin(1/x)-\cos(1/x)$, has no limit. In such cases the rule is simply silent.
 
-\emph{The hypothesis $g'\ne0$ matters.} It was used in the proof, through Rolle's theorem and Cauchy's mean value theorem, and it cannot be dropped: Stolz gave a pair of functions with $g'$ vanishing at points arbitrarily close to the limit point for which $f'/g'$ has a limit but $f/g$ does not~\cite{boas1986}. In the formula for $f'/g'$ a common factor of $f'$ and $g'$ that vanishes at such points cancels, which conceals the problem.
+\emph{The hypothesis $g'\ne0$ matters.} It was used in the proof, through Rolle's theorem and Cauchy's mean value theorem, and it cannot be dropped. Stolz observed this with a pair of functions of the following kind~\cite{boas1986}. As $x\to\infty$, let
+\[
+f(x)\coloneqq x+\sin x\cos x,\qquad g(x)\coloneqq e^{\sin x}f(x).
+\]
+Both tend to $\infty$, and $f(x)/g(x)=e^{-\sin x}$ oscillates between $e^{-1}$ and $e$, so it has no limit. But $f'(x)=1+\cos^2x-\sin^2x=2\cos^2x$ and $g'(x)=e^{\sin x}\cos x\,\bigl(f(x)+2\cos x\bigr)$, and after cancelling the common factor $\cos x$,
+\[
+\frac{f'(x)}{g'(x)}=\frac{2\cos x\,e^{-\sin x}}{x+\sin x\cos x+2\cos x}\ \longrightarrow\ 0 .
+\]
+The hypothesis that fails is $g'\ne0$: the factor $\cos x$ vanishes at the points $\frac\pi2+k\pi$, which are arbitrarily large. Cancelling it in the formula for $f'/g'$ conceals the problem. (The exponential function is used here ahead of Chapter~9.)
 
 \emph{The rule must not be used to prove the limits it depends on.} As noted in \cref{sec:existence} and \cref{sec:function-limits}, computing $\lim_{x\to0}(\sin x)/x$ with l'H\^opital's rule, as $\lim\cos x/1=1$, is circular, since the derivative of the sine was obtained in \cref{thm:trig-derivatives} from that very limit.
 
@@ -1228,7 +1236,7 @@ Conversely, suppose \eqref{eq:tangent-below} holds, and let $x,z\in I$, $\lambda
 
 Many classical inequalities are tangent inequalities of convex functions. Bernoulli's inequality $(1+x)^r\ge1+rx$ for $r>1$ (\cref{prop:bernoulli-rational}) says that the convex function $(1+x)^r$ lies above its tangent $1+rx$ at $0$; for $0<r<1$ the function is concave and lies below its tangent. In Chapter~9, the inequality $e^x\ge1+x$ is the tangent inequality of the exponential function at $0$.
 
-For optimisation, the tangent inequality has a striking consequence: for a convex function, the first-order condition of Fermat's theorem is not only necessary but sufficient for a global minimum.
+For optimisation, the tangent inequality has an important consequence: for a convex function, the first-order condition of Fermat's theorem is not only necessary but sufficient for a global minimum.
 
 \begin{corollary}
 \label{cor:convex-minimum}
@@ -1239,7 +1247,7 @@ Let $f$ be convex and differentiable on an interval $I$, and let $c\in I$ with $
 By \eqref{eq:tangent-below} with $x=c$, $f(y)\ge f(c)$ for all $y\in I$. If $f$ is strictly convex and $f(d)=f(c)$ for some $d\ne c$, then at the midpoint $\frac{c+d}2$ strict convexity would give $f(\frac{c+d}2)<\frac12f(c)+\frac12f(d)=f(c)$, contradicting the minimality of $f(c)$.
 \end{proof}
 
-For a function that is not convex, a point with $f'(c)=0$ may be a local minimum, a local maximum, or neither, and a local minimum need not be global; \cref{fig:extrema} shows all of this. For convex functions none of these complications arise: every local minimum is global, and the set of minimum points is an interval. This is why convex optimisation problems can be solved reliably and nonconvex ones in general cannot, a distinction that runs through Volume~XII. The sum of squared distances $g(x)=\sum_i(x-x_i)^2$ of \cref{sec:extrema} is strictly convex, with $g''=2n>0$, which proves once more that the mean is its unique minimum point.
+For a function that is not convex, a point with $f'(c)=0$ may be a local minimum, a local maximum, or neither, as for $x^3$ at $0$, and a local extremum need not be global, as the local maximum at $-1$ in \cref{fig:extrema} shows. For convex functions none of these complications arise. Every local minimum $c$ is global: if $f(d)<f(c)$ for some $d$, convexity would give $f\bigl((1-\lambda)c+\lambda d\bigr)\le(1-\lambda)f(c)+\lambda f(d)<f(c)$ for every $\lambda\in(0,1]$, and for small $\lambda$ these points lie arbitrarily close to $c$, contradicting the local minimum. And the set of minimum points, if it is not empty, is a single point or an interval, since by convexity every point between two minimum points is again one. This is why convex optimisation problems can be solved reliably and nonconvex ones in general cannot, a distinction that runs through Volume~XII. The sum of squared distances $g(x)=\sum_i(x-x_i)^2$ of \cref{sec:extrema} is strictly convex, with $g''=2n>0$, which proves once more that the mean is its unique minimum point.
 
 The defining inequality of convexity involves two points. It extends to any finite number of points, a result due to Jensen~\cite{jensen1906}.
 
@@ -1363,7 +1371,7 @@ which computes the reciprocal of $a$ using only multiplications and subtractions
 \label{alg:newton}
 \end{algorithm}
 
-\Cref{tab:newton} applies the method to Newton's own example $x^3-2x-5=0$, for which \cref{tab:bisection} showed bisection. From $x_0=2$, the first step gives $x_1=2-(-1)/10=2.1$, and the next gives $x_2=\frac{11761}{5615}=2.0945681\ldots$; the errors are $9.5\times10^{-2}$, $5.5\times10^{-3}$, $1.7\times10^{-5}$, $1.6\times10^{-10}$, $1.4\times10^{-20}$, $1.1\times10^{-40}$. Five steps give forty correct digits, more than twice as many as a binary64 number can hold, whereas bisection needs about $3.3$ steps for each decimal digit.
+\Cref{tab:newton} applies the method to Newton's own example $x^3-2x-5=0$, for which \cref{tab:bisection} showed bisection. From $x_0=2$, the first step gives $x_1=2-(-1)/10=2.1$, and the next gives $x_2=\frac{11761}{5615}=2.0945681\ldots$; the errors are $9.5\times10^{-2}$, $5.4\times10^{-3}$, $1.7\times10^{-5}$, $1.6\times10^{-10}$, $1.4\times10^{-20}$, $1.1\times10^{-40}$. Five steps give forty correct digits, more than twice as many as a binary64 number can hold, whereas bisection needs about $3.3$ steps for each decimal digit.
 
 \begin{table}
 \sdfloat{%
@@ -1372,7 +1380,7 @@ which computes the reciprocal of $a$ using only multiplications and subtractions
 $k$ & Newton $x_k$ & $|x_k-c|$ & bisection $|m_k-c|$ \\
 \midrule
 0 & $2$ & $9.5\times10^{-2}$ & $4.1\times10^{-1}$ \\
-1 & $2.1$ & $5.5\times10^{-3}$ & $1.6\times10^{-1}$ \\
+1 & $2.1$ & $5.4\times10^{-3}$ & $1.6\times10^{-1}$ \\
 2 & $2.0945681211\ldots$ & $1.7\times10^{-5}$ & $3.0\times10^{-2}$ \\
 3 & $2.0945514816982\ldots$ & $1.6\times10^{-10}$ & $3.2\times10^{-2}$ \\
 4 & $2.0945514815423\ldots$ & $1.4\times10^{-20}$ & $8.0\times10^{-4}$ \\
@@ -1487,11 +1495,11 @@ The theorem is local: it promises convergence only from starting points close en
 Newton's method and bisection thus have complementary strengths. Bisection needs only continuity and a change of sign, and it always converges, but slowly; Newton's method needs the derivative and a good starting point, and then converges very fast. Practical root finders combine them, taking Newton steps, or steps of a derivative-free variant, when these stay inside a bracketing interval and reduce it sufficiently, and bisection steps otherwise. The best-known derivative-free variant is the \term{secant method}, which replaces $f'(x_k)$ by the slope $(f(x_k)-f(x_{k-1}))/(x_k-x_{k-1})$ of the secant through the last two iterates. It converges near a simple zero with order $\phi=(1+\sqrt5)/2\approx1.618$, the golden ratio of \cref{sec:recurrences}, and needs one new function value per step instead of a value and a derivative~\cite{suli2003}. Volume~XII treats these methods, and their extension to systems of equations, for the root finders of the library.
 
 \begin{note}{Convergence without knowing the zero}
-\Cref{thm:newton-quadratic} assumes that a zero $c$ exists and bounds the derivative on an interval around it, which is unknown. A theorem of Kantorovich turns the situation around: it assumes only information at the starting point and proves that a zero exists. In one dimension it says the following. Let $f'$ be Lipschitz continuous with constant $M$, let $f'(x_0)\ne0$, let $\eta\coloneqq|f(x_0)/f'(x_0)|$ be the length of the first step, and suppose
+\Cref{thm:newton-quadratic} assumes that a zero $c$ exists and bounds the derivative on an interval around it, which is unknown. A theorem of Kantorovich turns the situation around: it assumes only information at the starting point and proves that a zero exists. In one dimension it says the following. Let $f$ be differentiable on an interval containing $[x_0-2\eta,x_0+2\eta]$, with $f'$ Lipschitz continuous with constant $M$ there, let $f'(x_0)\ne0$, let $\eta\coloneqq|f(x_0)/f'(x_0)|$ be the length of the first step, and suppose
 \[
 h\coloneqq\frac{M\eta}{|f'(x_0)|}\le\frac12 .
 \]
-Then $f$ has a zero within distance $t^*\coloneqq\eta\,(1-\sqrt{1-2h})/h$ of $x_0$, and Newton's method started at $x_0$ converges to it, quadratically if $h<\frac12$. The theorem holds in the same form for systems of equations, and Kantorovich stated it even for equations in infinite-dimensional spaces; the bound $t^*$ cannot be improved, as the example of a quadratic polynomial shows. Ortega and Rheinboldt give the proof and its many variants~\cite{ortega2000}. The theorem needs no knowledge of the zero, only quantities that can be computed or bounded at $x_0$, and so it can certify that a zero exists.
+Then $f$ has a zero within distance $t^*\coloneqq\eta\,(1-\sqrt{1-2h})/h\le2\eta$ of $x_0$ (with $t^*\coloneqq\eta$ if $h=0$), and Newton's method started at $x_0$ converges to it, quadratically if $h<\frac12$. The theorem holds in the same form for systems of equations, and Kantorovich stated it even for equations in infinite-dimensional spaces; the bound $t^*$ cannot be improved, as the example of a quadratic polynomial shows. Ortega and Rheinboldt give the proof and its many variants~\cite{ortega2000}. The theorem needs no knowledge of the zero, only quantities that can be computed or bounded at $x_0$, and so it can certify that a zero exists.
 \end{note}
 
 \section{Darboux's Theorem and the Limits of the Derivative}
@@ -1529,12 +1537,14 @@ For $x\ne0$ the formula follows from the product rule and the chain rule. At $0$
 \sdpanel{B}{\begin{tikzpicture}
 \begin{axis}[sdplot, width=0.49\textwidth, height=0.38\textwidth, xmin=-0.21, xmax=0.21, ymin=-1.5, ymax=1.5,
   xtick={-0.2,0,0.2}, xticklabels={$-0.2$,0,$0.2$}, ytick={-1,0,1}, xlabel={$x$}]
-\addplot[black, line width=0.4pt, domain=5:120, samples=1500] ({1/x},{2*sin(deg(x))/x-cos(deg(x))});
-\addplot[black, line width=0.4pt, domain=5:120, samples=1500] ({-1/x},{2*sin(deg(x))/x-cos(deg(x))});
+\addplot[black!45, densely dotted, line width=0.5pt, domain=-0.2:0.2, samples=3] {1+2*abs(x)};
+\addplot[black!45, densely dotted, line width=0.5pt, domain=-0.2:0.2, samples=3] {-1-2*abs(x)};
+\addplot[black, line width=0.5pt, domain=5:40, samples=700] ({1/x},{2*sin(deg(x))/x-cos(deg(x))});
+\addplot[black, line width=0.5pt, domain=5:40, samples=700] ({-1/x},{2*sin(deg(x))/x-cos(deg(x))});
 \filldraw[black, draw=white, line width=0.7pt] (axis cs:0,0) circle (2pt);
 \end{axis}
 \end{tikzpicture}}
-\caption{A differentiable function with a discontinuous derivative. (A) The function $x^2\sin(1/x)$, squeezed between $\pm x^2$ (dotted), has derivative $0$ at $0$. (B) Its derivative $2x\sin(1/x)-\cos(1/x)$ oscillates between values near $-1$ and $1$ arbitrarily close to $0$, where its value is $0$ (dot). Both graphs are drawn for $|x|\ge1/120$.}
+\caption{A differentiable function with a discontinuous derivative. (A) The function $x^2\sin(1/x)$, squeezed between $\pm x^2$ (dotted), has derivative $0$ at $0$. (B) Its derivative $2x\sin(1/x)-\cos(1/x)$ oscillates between values near $-1$ and $1$ arbitrarily close to $0$, where its value is $0$ (dot); it stays between the lines $y=\pm(1+2|x|)$ (dotted). The graph in (A) is drawn for $|x|\ge1/120$; in (B), where the oscillations are much steeper, only for $|x|\ge1/40$, closer to $0$ they continue ever faster.}
 \label{fig:x2sin}
 \end{figure}
 
@@ -1567,7 +1577,7 @@ Let $f$ be differentiable on an interval $I$.
 (i) If $y$ lies strictly between two values $f'(s)$ and $f'(t)$ with $s<t$, the theorem applied on $[s,t]$ gives $y\in f'(I)$; so $f'(I)$ is an interval by \cref{prop:intervals}. (ii) By (i), $f'(I)$ is an interval not containing $0$, so it lies in $(0,\infty)$ or in $(-\infty,0)$, and \cref{cor:monotone-derivative} applies. (iii) The step function takes the values $0$ and $1$ but not $\frac12$ on every interval containing $0$, so its image is not an interval.
 \end{proof}
 
-Part (ii) was used implicitly in Newton's method: on an interval on which $f'$ has no zero, $f$ is strictly monotone and has at most one zero. The theorem also excludes removable discontinuities of derivatives, by the following proposition, which is useful in its own right for computing derivatives at exceptional points.
+Part (ii) sharpens the uniqueness statement of \cref{thm:newton-quadratic}: on an interval on which $f'$ has no zero, $f$ is strictly monotone and so has at most one zero, even when $|f'|$ has no positive lower bound. Removable discontinuities of derivatives are excluded as well, by the following proposition, which is useful in its own right for computing derivatives at exceptional points.
 
 \begin{proposition}
 \label{prop:derivative-limit}
@@ -1581,7 +1591,7 @@ For $a<x<b$ the mean value theorem gives $(f(x)-f(a))/(x-a)=f'(\xi_x)$ with $a<\
 Consequently, if $f$ is differentiable on an interval and $c$ is an interior point, the derivative $f'$ cannot have a removable discontinuity at $c$ (if $\lim_{x\to c}f'(x)$ exists, it equals $f'(c)$), nor a jump (by \cref{cor:darboux}, or by applying the proposition on both sides), nor an infinite discontinuity (an infinite one-sided limit of $f'$ would make the difference quotient tend to $\pm\infty$, contradicting the existence of $f'(c)$). Of the four kinds of discontinuity of \cref{sec:continuity}, only oscillation remains, as in \cref{prop:x2sin}. The proposition is also a convenient tool: for $f(x)=x|x|$, the derivative is $2|x|$ for $x\ne0$, which tends to $0$ as $x\to0$, so $f'(0)=0$ without a separate computation.
 
 \begin{note}{Which functions are derivatives?}
-Darboux's theorem gives a necessary condition for a function to be a derivative, but not a sufficient one: there are functions with the intermediate value property that are not derivatives. No simple characterisation of derivatives is known. Derivatives can be very irregular: Volterra constructed in 1881 a differentiable function whose derivative is bounded but so discontinuous that it cannot be integrated in the sense of Riemann. For such a function the fundamental theorem of calculus, $\int_a^bf'(x)\,dx=f(b)-f(a)$, cannot even be stated with the Riemann integral of Chapter~7, which is why that theorem must assume that the derivative is integrable; this is one of the motivations for the Lebesgue integral of Volume~II. On the other hand, every derivative is continuous at the points of a dense set. Bruckner's monograph surveys these results~\cite{bruckner1994}.
+Darboux's theorem gives a necessary condition for a function to be a derivative, but not a sufficient one: there are functions with the intermediate value property that are not derivatives. No simple characterisation of derivatives is known. Derivatives can be very irregular: Volterra constructed in 1881 a differentiable function whose derivative is bounded but so discontinuous that it cannot be integrated in the sense of Riemann~\cite{volterra1881}. For such a function the fundamental theorem of calculus, $\int_a^bf'(x)\,dx=f(b)-f(a)$, cannot even be stated with the Riemann integral of Chapter~7, which is why that theorem must assume that the derivative is integrable; this is one of the motivations for the Lebesgue integral of Volume~II. On the other hand, every derivative is continuous at the points of a dense set. Bruckner's monograph surveys these results~\cite{bruckner1994}.
 \end{note}
 
 \subsection{Classes of Smooth Functions}
@@ -1597,7 +1607,7 @@ If $f\in C^k(I)$, the lower derivatives $f,f',\ldots,f^{(k-1)}$ are continuous a
 \[
 C^\infty(I)\subseteq\cdots\subseteq C^2(I)\subseteq C^1(I)\subseteq\{\text{differentiable functions on }I\}\subseteq C^0(I).
 \]
-All these inclusions are strict. The function $|x|$ is continuous but not differentiable at $0$; the function $x^2\sin(1/x)$ of \cref{prop:x2sin} is differentiable but not in $C^1(\mathbb R)$; and for every $k\in\mathbb N$ the function $x^k|x|$ belongs to $C^k(\mathbb R)$ but not to $C^{k+1}(\mathbb R)$. For the last claim, note that for $x\ne0$ its derivatives of order $j\le k$ are $(k+1)^{\underline j}\,x^{k-j}|x|$, which also holds at $0$ by \cref{prop:derivative-limit}, so that its $k$th derivative is $(k+1)!\,|x|$, continuous but not differentiable at $0$. Polynomials, the sine and the cosine belong to $C^\infty(\mathbb R)$, since their derivatives are again polynomials, or $\pm$ sines and cosines; rational functions and rational powers $x^r$ are smooth on every interval on which they are defined.
+All these inclusions are strict. The function $|x|$ is continuous but not differentiable at $0$; the function $x^2\sin(1/x)$ of \cref{prop:x2sin} is differentiable but not in $C^1(\mathbb R)$; and for every $k\in\mathbb N$ the function $x^k|x|$ belongs to $C^k(\mathbb R)$ but not to $C^{k+1}(\mathbb R)$. For the last claim, note that for $x\ne0$ its derivatives of order $j\le k$ are $(k+1)^{\underline j}\,x^{k-j}|x|$, which also holds at $0$ by \cref{prop:derivative-limit}, so that its $k$th derivative is $(k+1)!\,|x|$, continuous but not differentiable at $0$. Polynomials, the sine and the cosine belong to $C^\infty(\mathbb R)$, since their derivatives are again polynomials, or $\pm$ sines and cosines; rational functions are smooth on every interval on which their denominators have no zero, and the rational powers $x^r$ are smooth on $(0,\infty)$.
 
 \begin{proposition}
 \label{prop:ck-algebra}
@@ -1624,9 +1634,9 @@ so its error is $|h|$, of first order only, not $O(h^2)$. In numerical analysis 
 \bigskip
 With the derivative and the mean value theorem in hand, the next chapter turns to the inverse problem: recovering a function from its rate of change. The integral of Chapter~7 is defined as a limit of sums, as the derivative is a limit of quotients, and the fundamental theorem of calculus, whose uniqueness half is \cref{cor:zero-derivative}, links the two. Chapter~8 then refines the mean value theorem into Taylor's theorem, which approximates a function by polynomials of any degree and quantifies the error.
 
-\section*{Notes}
+\chapternotes
 
-The differential calculus was created independently by Newton, in manuscripts from the 1660s, and by Leibniz, whose paper of 1684 was the first publication on the subject and introduced the notation $dy/dx$~\cite{leibniz1684}. The first textbook, by l'H\^opital, followed in 1696~\cite{lhopital1696}. Neither founder possessed a definition of the derivative that would satisfy a modern reader; the definition as a limit of difference quotients, and proofs of the mean value theorem and its consequences based on it, are due to Cauchy's lectures of 1823~\cite{cauchy1823}. Grabiner~\cite{grabiner1981} reconstructs how Cauchy turned the inequalities of eighteenth-century approximation methods into the foundation of the subject, and Edwards~\cite{edwards1979} and Hairer and Wanner~\cite{hairer1996analysis} tell the longer history, from Fermat's method of maxima and minima to Weierstrass. The notation $f'$ is Lagrange's~\cite{lagrange1797}. The history of Newton's method, from Newton's cubic to the modern formula, is told by Ypma~\cite{ypma1995}, and that of Rolle's theorem by Barrow-Green~\cite{barrowgreen2009}.
+The differential calculus was created independently by Newton, in manuscripts from the 1660s, and by Leibniz, whose paper of 1684 was the first publication on the subject and introduced the differentials $dx$ and $dy$ from which the notation $dy/dx$ derives~\cite{leibniz1684}. The first textbook, by l'H\^opital, followed in 1696~\cite{lhopital1696}. Neither founder possessed a definition of the derivative that would satisfy a modern reader; the definition as a limit of difference quotients, and proofs based on it of the mean value inequality and its consequences, are due to Cauchy's lectures of 1823~\cite{cauchy1823}. Grabiner~\cite{grabiner1981} reconstructs how Cauchy turned the inequalities of eighteenth-century approximation methods into the foundation of the subject, and Edwards~\cite{edwards1979} and Hairer and Wanner~\cite{hairer1996analysis} tell the longer history, from Fermat's method of maxima and minima to Weierstrass. The notation $f'$ is Lagrange's~\cite{lagrange1797}. The history of Newton's method, from Newton's cubic to the modern formula, is told by Ypma~\cite{ypma1995}, and that of Rolle's theorem by Barrow-Green~\cite{barrowgreen2009}.
 
 Among textbooks at the level of this chapter, Spivak~\cite{spivak2008calculus} (Chapters~9 to~12) and Apostol~\cite{apostol1967calculus} treat differentiation rigorously and with many examples; Spivak's chapter on the significance of the derivative covers the material of \cref{sec:mvt,sec:convexity} in the same spirit. Abbott~\cite{abbott2015} (Chapter~5) discusses Darboux's theorem and constructs a continuous nowhere-differentiable function, and Bartle and Sherbert~\cite{bartle2011} (Chapter~6) give Carath\'eodory's form of the derivative and l'H\^opital's rules in full generality; Rudin~\cite{rudin1976} (Chapter~5) is concise and leads on to Volume~II. For convex functions and the inequalities they generate, Hardy, Littlewood and P\'olya~\cite{hardy1952inequalities} remain the classical reference; Jensen's paper~\cite{jensen1906} is short and readable. Newton's method and the secant method as numerical methods are treated by S\"uli and Mayers~\cite{suli2003}, and their convergence theory, including the theorem of Kantorovich, by Ortega and Rheinboldt~\cite{ortega2000}. The choice of the step size in difference quotients is discussed by Nocedal and Wright~\cite{nocedal2006}, and Griewank and Walther~\cite{griewank2008} is the standard account of automatic differentiation. Higham~\cite{higham2002accuracy} develops condition numbers and the analysis of rounding errors that \cref{sec:conditioning} only previews.
 

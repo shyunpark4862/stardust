@@ -267,7 +267,11 @@
 \RequirePackage[backend=biber, style=ieee, refsection=chapter,
   doi=true, url=false, isbn=false, eprint=false]{biblatex}
 \renewcommand*{\bibfont}{\small}
-\newcommand\chapterreferences{\printbibliography[heading=subbibliography, title=References]}
+% \chapternotes opens the unnumbered Notes section that ends a chapter; it and the
+% reference list set the odd-page running head, which would otherwise keep the last
+% numbered section.
+\newcommand\chapternotes{\section*{Notes}\markright{Notes}}
+\newcommand\chapterreferences{\printbibliography[heading=subbibliography, title=References]\markright{References}}
 
 % ---------------------------------------------------------------------------
 % 7a. Running heads: SNmono's, but the chapter title without its number (2026-11-25);
