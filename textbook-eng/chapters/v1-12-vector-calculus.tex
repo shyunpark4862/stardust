@@ -1,0 +1,1497 @@
+%% Volume I, Chapter 12: Vector Calculus
+\chapter{Vector Calculus}
+\label{ch:vector-calculus}
+
+\abstract{The fundamental theorem of calculus says that the total change of a quantity inside an interval is recorded at the two ends: $\int_a^bf'=f(b)-f(a)$. This chapter shows that the same is true in the plane and in space. What happens inside a region, the spreading out or the swirling of a flow, adds up to what can be measured on its boundary, and the theorems of Green, Gauss and Stokes say how. They are the common language of complex analysis, of the field theories of physics and of geometric computation: the area of a polygon, its centre of mass and the question whether a point lies inside it are all boundary integrals in disguise.}
+
+\Cref{ch:several-variables,ch:multiple-integrals} differentiated and integrated functions of several variables. Integration took place over solid regions: intervals, rectangles, discs and balls, sets with interior points in every direction. Many quantities, however, are spread along curves or over surfaces. The mass of a bent wire, the work done by a force on a particle moving along a path, the area of a sphere and the amount of fluid flowing through a membrane in a second are integrals over a one- or two-dimensional object sitting in a higher-dimensional space. This chapter defines such integrals. Curves are described by parametrisations, maps from an interval into $\mathbb R^n$, and surfaces by maps from a region of the plane into $\mathbb R^3$; the integrals are then pulled back to ordinary integrals over the parameter domain, with the length of the velocity vector, or the area of a small parallelogram of tangent vectors, as the factor that converts parameter length into geometric length or area. This is the same idea as the Jacobian determinant in the change of variables formula of \cref{sec:change-variables}, now for maps between spaces of different dimensions.
+
+The main results of the chapter relate integrals over a region to integrals over its boundary. The simplest of them is already familiar: the integral of a gradient along a curve is the difference of the values of the function at the end points, the fundamental theorem of calculus once more. Green's theorem relates a double integral over a plane region to a line integral around its boundary, the divergence theorem a triple integral over a solid to a surface integral over its boundary, and Stokes' theorem a surface integral to a line integral around the edge of the surface. The integrands on the two sides are linked by two differential operators, the divergence and the curl, which measure how much a vector field spreads out and how much it rotates.
+
+The results are used throughout the later volumes, mostly behind the scenes. Volume~II proves Cauchy's theorem of complex analysis, on which the residue calculus rests, from Green's theorem. The computational geometry of Volume~XVI starts from the boundary formulas for the areas and orientations of polygons in \cref{sec:vector-numerics}, and integrals over curves are evaluated by the quadrature rules of \cref{sec:quadrature} and of Volume~XI.
+
+The chapter is organised as follows. \Cref{sec:curves} treats parametrised curves, their velocity, their length and the parametrisation by arc length. \Cref{sec:line-integrals} defines line integrals of functions and of vector fields and shows how they depend on the parametrisation. \Cref{sec:conservative} proves the fundamental theorem for line integrals, characterises the vector fields that are gradients, and shows by the field that winds around the origin that a hole in the domain can spoil the obvious test. \Cref{sec:green} proves Green's theorem and derives the area formula for polygons. \Cref{sec:surfaces} introduces the cross product, parametrised surfaces, surface area and surface integrals, and computes the area of the sphere in every dimension. \Cref{sec:div-curl} defines the divergence, the curl and the Laplacian and proves the basic identities between them. \Cref{sec:divergence-theorem,sec:stokes} prove the divergence theorem and Stokes' theorem and collect the fundamental theorems in a single table. \Cref{sec:vector-numerics} closes with numerical evaluation: line integrals by quadrature, the area and centroid of a polygon, and the winding number of a closed polygon around a point. As in the preceding chapters this is a review: every result is stated precisely, and the important ones are proved; Green's theorem, on which Volume~II builds, is proved in full.
+
+\section{Curves}
+\label{sec:curves}
+
+\subsection{Parametrised Curves}
+
+A curve in the plane or in space can be given in several ways: as the graph of a function, $y=f(x)$, as a level set, $x^2+y^2=1$, or as the path of a moving point, whose position at time $t$ is $(\cos t,\sin t)$. The last description is the most flexible, because it allows curves that turn back, cross themselves or wind around, and it is the one that the integrals of this chapter need. \Cref{ch:several-variables} called a differentiable map from an open interval to $\mathbb R^n$ a curve and its derivative the velocity vector. We now admit closed intervals, so that curves have end points.
+
+\begin{definition}[Paths]
+\label{def:path}
+A \term{path}, or \term{parametrised curve}, in $\mathbb R^n$ is a continuous map $\boldsymbol\gamma\colon[a,b]\to\mathbb R^n$, $a<b$. The points $\boldsymbol\gamma(a)$ and $\boldsymbol\gamma(b)$ are its \term{initial} and \term{terminal point}, and the set $\boldsymbol\gamma([a,b])$ is its \term{trace}. The path is \term{closed} if $\boldsymbol\gamma(a)=\boldsymbol\gamma(b)$, and \term{simple} if it is injective on $[a,b)$ and on $(a,b]$, so that the only point that can be visited twice is the common end point of a closed path.
+\begin{enumerate}
+\item The path is \term{continuously differentiable}, or $C^1$, if its components have continuous derivatives on $[a,b]$, one-sided at the end points (\cref{def:one-sided-derivative}). Its derivative $\boldsymbol\gamma'(t)=(\gamma_1'(t),\ldots,\gamma_n'(t))$ is the \term{velocity}, and $\|\boldsymbol\gamma'(t)\|$ the \term{speed}, at time $t$.
+\item A $C^1$ path is \term{regular} if $\boldsymbol\gamma'(t)\ne\mathbf0$ for every $t\in[a,b]$. Its \term{unit tangent vector} is then $\mathbf T(t)\coloneqq\boldsymbol\gamma'(t)/\|\boldsymbol\gamma'(t)\|$.
+\item The path is \term{piecewise $C^1$} if there is a partition $a=t_0<t_1<\cdots<t_m=b$ such that the restriction of $\boldsymbol\gamma$ to each interval $[t_{k-1},t_k]$ is $C^1$.
+\end{enumerate}
+\end{definition}
+
+The word \emph{curve} is used loosely in the literature, sometimes for the map and sometimes for its trace. We call the map a path whenever the distinction matters, and we write $C$ for a trace that has been given a direction of travel. A $C^1$ path on $[a,b]$ can always be extended to a $C^1$ map on an open interval containing $[a,b]$, for instance by $\boldsymbol\gamma(t)\coloneqq\boldsymbol\gamma(b)+(t-b)\boldsymbol\gamma'(b)$ for $t>b$ and similarly to the left of $a$; this lets us apply the chain rule of \cref{sec:chain-rule-n} at the end points as well. In particular, for a function $f$ that is differentiable on an open set containing the trace,
+\begin{equation}
+\frac d{dt}f\bigl(\boldsymbol\gamma(t)\bigr)=\bigl\langle\nabla f\bigl(\boldsymbol\gamma(t)\bigr),\boldsymbol\gamma'(t)\bigr\rangle\qquad(a\le t\le b),
+\label{eq:chain-path}
+\end{equation}
+which is \eqref{eq:chain-curve}, with one-sided derivatives at $a$ and $b$.
+
+At a time $t_0$ with $\boldsymbol\gamma'(t_0)\ne\mathbf0$, the line $s\mapsto\boldsymbol\gamma(t_0)+s\boldsymbol\gamma'(t_0)$ is the \term{tangent line} of the path. It is the best linear approximation of the path near $t_0$, in the sense of \cref{def:differentiable-rn}: $\boldsymbol\gamma(t_0+h)=\boldsymbol\gamma(t_0)+h\boldsymbol\gamma'(t_0)+o(h)$. The velocity is the limit of the secant vectors $(\boldsymbol\gamma(t_0+h)-\boldsymbol\gamma(t_0))/h$, and it points in the direction of motion.
+
+The following examples show what the definitions allow.
+\begin{itemize}
+\item The \term{circle} of radius $R$ about the origin, $\boldsymbol\gamma(t)=(R\cos t,R\sin t)$ on $[0,2\pi]$, is a closed, simple, regular path, with velocity $(-R\sin t,R\cos t)$ and constant speed $R$. It runs counterclockwise. The path $(R\cos t,-R\sin t)$ has the same trace and runs clockwise, and $(R\cos2t,R\sin2t)$ on $[0,2\pi]$ runs around the circle twice; it is closed but not simple.
+\item The graph of a $C^1$ function $f\colon[a,b]\to\mathbb R$ is the trace of the path $\boldsymbol\gamma(t)=(t,f(t))$, which is regular, since its velocity $(1,f'(t))$ never vanishes.
+\item The \term{helix} $\boldsymbol\gamma(t)=(\cos t,\sin t,ct)$, $c>0$, winds around the cylinder $x^2+y^2=1$ and rises by $2\pi c$ in each turn. Its speed is $\|(-\sin t,\cos t,c)\|=\sqrt{1+c^2}$.
+\item The \term{cycloid} $\boldsymbol\gamma(t)=(t-\sin t,1-\cos t)$ is the path of a point on the rim of a wheel of radius $1$ rolling along the $x$-axis: at time $t$ the wheel has turned by the angle $t$, its centre is at $(t,1)$, and the point, which started at the bottom of the wheel, has been carried around the centre by the angle $t$. Its velocity $(1-\cos t,\sin t)$ has the length $\sqrt{2-2\cos t}=2|\sin(t/2)|$, by the double angle formula $1-\cos t=2\sin^2(t/2)$. The speed vanishes at $t=0,2\pi,4\pi,\ldots$, when the point touches the ground, and there the trace has a cusp (\cref{fig:curves}A).
+\item The path $\boldsymbol\gamma(t)=(t^2,t^3)$ on $[-1,1]$ is $C^1$, even infinitely differentiable, but its velocity $(2t,3t^2)$ vanishes at $t=0$, and the trace, the \term{semicubical parabola} $y^2=x^3$, has a sharp point at the origin (\cref{fig:curves}B).
+\end{itemize}
+
+The last two examples show that a smooth parametrisation can trace a curve with a corner: the moving point can stop, turn, and leave in another direction. Regularity rules this out, because a regular path has a well-defined tangent direction $\mathbf T(t)$ that depends continuously on $t$. Conversely, a path that is not regular may trace a perfectly smooth set: $(t^3,t^3)$ traces a segment of the diagonal but stops at the origin. Regularity is therefore a property of the parametrisation, not of the trace.
+
+\begin{figure}
+\sdpanel{A}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.6\textwidth, height=0.36\textwidth, xmin=-0.3, xmax=6.9, ymin=-0.35, ymax=2.75,
+  axis equal image, xtick={0,3.14159,6.28319}, xticklabels={$0$,$\pi$,$2\pi$}, ytick={0,1,2}, xlabel={$x$}, ylabel={$y$}]
+\addplot[black!60, line width=0.8pt, domain=0:6.28319, samples=120] ({x-sin(deg(x))},{1-cos(deg(x))});
+\addplot[black!45, dashed, line width=0.5pt, domain=0:360, samples=60] ({2.0944+cos(x)},{1+sin(x)});
+\pgfplotsinvokeforeach{1.0472,2.0944,3.14159,4.18879,5.23599}{
+  \draw[black, line width=0.8pt, -{Latex[length=1.7mm]}] (axis cs:{#1-sin(deg(#1))},{1-cos(deg(#1))}) -- (axis cs:{#1-sin(deg(#1))+0.75*(1-cos(deg(#1)))},{1-cos(deg(#1))+0.75*sin(deg(#1))});}
+\fill[black] (axis cs:0,0) circle (1.4pt) (axis cs:6.28319,0) circle (1.4pt) (axis cs:2.0944,1) circle (1pt);
+\end{axis}
+\end{tikzpicture}}\hfill
+\sdpanel{B}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.34\textwidth, height=0.42\textwidth, xmin=-0.2, xmax=1.25, ymin=-1, ymax=1.25,
+  axis equal image, xtick={0,1}, ytick={-1,0,1}, xlabel={$x$}, ylabel={$y$}]
+\addplot[black!60, line width=0.8pt, domain=-0.98:0.98, samples=80] ({x^2},{x^3});
+\pgfplotsinvokeforeach{-0.85,-0.45,0.45,0.85}{
+  \draw[black, line width=0.8pt, -{Latex[length=1.7mm]}] (axis cs:{#1^2},{#1^3}) -- (axis cs:{#1^2+0.25*2*#1},{#1^3+0.25*3*#1^2});}
+\fill[black] (axis cs:0,0) circle (1.4pt);
+\end{axis}
+\end{tikzpicture}}
+\caption{Paths (grey) and their velocities (arrows, scaled down). (A) One arch of the cycloid $(t-\sin t,1-\cos t)$, $0\le t\le2\pi$, traced by a point on a rolling wheel (dashed, drawn at $t=2\pi/3$, with its centre). The velocity is shown at $t=\pi/3,2\pi/3,\ldots,5\pi/3$; it is largest at the top and vanishes at the cusps (dots), where the point touches the ground. (B) The path $(t^2,t^3)$, with the velocity at $t=\pm0.45$ and $t=\pm0.85$: a smooth parametrisation that slows down, stops at the origin at $t=0$ and leaves in the opposite direction, so that the trace has a sharp point.}
+\label{fig:curves}
+\end{figure}
+
+\subsection{Length}
+
+\Cref{sec:integral-applications} defined the length of the graph of a function as the supremum of the lengths of inscribed broken lines. The definition makes sense for every path.
+
+\begin{definition}[Length of a path]
+\label{def:path-length}
+Let $\boldsymbol\gamma\colon[a,b]\to\mathbb R^n$ be a path. For a partition $P=\{t_0,\ldots,t_m\}$ of $[a,b]$, the broken line through $\boldsymbol\gamma(t_0),\ldots,\boldsymbol\gamma(t_m)$ has the length
+\[
+\ell(\boldsymbol\gamma,P)\coloneqq\sum_{k=1}^m\bigl\|\boldsymbol\gamma(t_k)-\boldsymbol\gamma(t_{k-1})\bigr\| .
+\]
+The \term{length} of $\boldsymbol\gamma$ is $L(\boldsymbol\gamma)\coloneqq\sup_P\ell(\boldsymbol\gamma,P)$. The path is \term{rectifiable} if its length is finite.
+\end{definition}
+
+Inserting a point into $P$ replaces one side of a triangle by the other two, which by the triangle inequality (\cref{prop:norm}) cannot decrease $\ell(\boldsymbol\gamma,P)$; so refining a partition can only increase the length of the broken line. For the graph path $(t,f(t))$ the definition is that of \cref{sec:integral-applications}. If $a<c<b$, then $L(\boldsymbol\gamma)$ is the sum of the lengths of the restrictions of $\boldsymbol\gamma$ to $[a,c]$ and to $[c,b]$, by the argument used for arcs of the circle in the proof of \cref{prop:arc-length}: the supremum may be taken over partitions containing $c$, and such a partition consists of independent partitions of the two subintervals.
+
+\begin{theorem}[Length of a piecewise $C^1$ path]
+\label{thm:path-length}
+Every piecewise $C^1$ path $\boldsymbol\gamma\colon[a,b]\to\mathbb R^n$ is rectifiable, and
+\[
+L(\boldsymbol\gamma)=\int_a^b\|\boldsymbol\gamma'(t)\|\,dt ,
+\]
+where the integral is the sum of the integrals over the intervals on which $\boldsymbol\gamma$ is $C^1$.
+\end{theorem}
+
+\begin{proof}
+By the additivity of length just noted, it suffices to treat a $C^1$ path. The function $\|\boldsymbol\gamma'\|$ is continuous, hence integrable; let $I$ be its integral. For every partition $P$, the fundamental theorem of calculus, applied to each component, and the inequality of \cref{prop:mvt-integral-rn} give
+\[
+\bigl\|\boldsymbol\gamma(t_k)-\boldsymbol\gamma(t_{k-1})\bigr\|=\Bigl\|\int_{t_{k-1}}^{t_k}\boldsymbol\gamma'(t)\,dt\Bigr\|\le\int_{t_{k-1}}^{t_k}\|\boldsymbol\gamma'(t)\|\,dt ,
+\]
+and adding over $k$ yields $\ell(\boldsymbol\gamma,P)\le I$. So $\boldsymbol\gamma$ is rectifiable, and $L(\boldsymbol\gamma)\le I$.
+
+For the reverse inequality let $\varepsilon>0$. Each component of $\boldsymbol\gamma'$ is uniformly continuous on $[a,b]$ (\cref{thm:heine-cantor}), so by \cref{prop:norm}\,(v) there is $\delta>0$ with $\|\boldsymbol\gamma'(s)-\boldsymbol\gamma'(t)\|<\varepsilon$ whenever $|s-t|<\delta$. Let $P$ be a partition with mesh less than $\delta$. Then
+\[
+\boldsymbol\gamma(t_k)-\boldsymbol\gamma(t_{k-1})=\boldsymbol\gamma'(t_k)\,\Delta t_k+\int_{t_{k-1}}^{t_k}\bigl(\boldsymbol\gamma'(s)-\boldsymbol\gamma'(t_k)\bigr)\,ds ,
+\]
+and the integral has norm at most $\varepsilon\,\Delta t_k$, again by \cref{prop:mvt-integral-rn}. By the triangle inequality, $\|\boldsymbol\gamma(t_k)-\boldsymbol\gamma(t_{k-1})\|\ge\|\boldsymbol\gamma'(t_k)\|\Delta t_k-\varepsilon\Delta t_k$, and adding over $k$,
+\[
+L(\boldsymbol\gamma)\ge\ell(\boldsymbol\gamma,P)\ge\sum_{k=1}^m\|\boldsymbol\gamma'(t_k)\|\,\Delta t_k-\varepsilon(b-a).
+\]
+The sum is a Riemann sum of $\|\boldsymbol\gamma'\|$, which lies within $\varepsilon$ of $I$ if the mesh is small enough (\cref{thm:riemann-sums}). Hence $L(\boldsymbol\gamma)\ge I-\varepsilon-\varepsilon(b-a)$ for every $\varepsilon>0$, and $L(\boldsymbol\gamma)\ge I$.
+\end{proof}
+
+The formula says that length is the integral of speed, the distance travelled. For the graph path $(t,f(t))$ the speed is $\sqrt{1+f'(t)^2}$, and the theorem contains \cref{thm:arc-length}. The proof of that theorem used the mean value theorem, which is not available for vector-valued functions (\cref{sec:mvt-taylor-n}); uniform continuity of the velocity takes its place.
+
+The theorem gives the circumference $\int_0^{2\pi}R\,dt=2\pi R$ of the circle of radius $R$, in agreement with \cref{prop:arc-length}, and the length $2\pi\sqrt{1+c^2}$ of one turn of the helix. One arch of the cycloid has the length
+\[
+\int_0^{2\pi}2\sin\frac t2\,dt=\Bigl[-4\cos\frac t2\Bigr]_0^{2\pi}=8 ,
+\]
+four times the diameter of the wheel; the path is piecewise $C^1$, and even $C^1$, although it is not regular at the ends. The ellipse $(a\cos t,b\sin t)$ with $a>b>0$ has the length $\int_0^{2\pi}(a^2\sin^2t+b^2\cos^2t)^{1/2}\,dt$, an elliptic integral without an elementary antiderivative; \cref{sec:vector-numerics} computes it numerically.
+
+\subsection{Reparametrisation and Arc Length}
+
+A trace can be traversed in many ways, fast or slow, forwards or backwards. Lengths and, as \cref{sec:line-integrals} shows, integrals depend on the trace and on the direction, but not on the speed.
+
+\begin{definition}[Reparametrisation]
+\label{def:reparametrisation}
+Let $\boldsymbol\gamma\colon[a,b]\to\mathbb R^n$ be a path, and let $\varphi\colon[c,d]\to[a,b]$ be a continuous bijection. The path $\boldsymbol\gamma\circ\varphi\colon[c,d]\to\mathbb R^n$ is a \term{reparametrisation} of $\boldsymbol\gamma$. It is \term{orientation-preserving} if $\varphi$ is increasing and \term{orientation-reversing} if $\varphi$ is decreasing. A reparametrisation of a $C^1$ path is called a $C^1$ reparametrisation if $\varphi$ is $C^1$ with $\varphi'(s)\ne0$ for all $s$.
+\end{definition}
+
+A continuous bijection of intervals is strictly monotone (\cref{prop:injective-monotone}), so every reparametrisation either preserves or reverses the orientation. The \term{reverse} of $\boldsymbol\gamma$ is the orientation-reversing reparametrisation $(-\boldsymbol\gamma)(t)\coloneqq\boldsymbol\gamma(a+b-t)$, which traverses the trace in the opposite direction. By the chain rule of one variable, a $C^1$ reparametrisation has the velocity $(\boldsymbol\gamma\circ\varphi)'(s)=\boldsymbol\gamma'(\varphi(s))\,\varphi'(s)$: the direction of motion is kept or reversed, and the speed is multiplied by $|\varphi'(s)|$. In particular a $C^1$ reparametrisation of a regular path is regular.
+
+\begin{proposition}[Length does not depend on the parametrisation]
+\label{prop:length-invariant}
+Every reparametrisation $\boldsymbol\gamma\circ\varphi$ of a path $\boldsymbol\gamma$ has the same length as $\boldsymbol\gamma$.
+\end{proposition}
+
+\begin{proof}
+Let $\varphi$ be increasing. Then $\varphi$ maps partitions $\{s_0<\cdots<s_m\}$ of $[c,d]$ bijectively onto partitions $\{\varphi(s_0)<\cdots<\varphi(s_m)\}$ of $[a,b]$, and the corresponding broken lines are the same, since they pass through the same points in the same order. So the two sets of lengths of broken lines coincide, and so do their suprema. If $\varphi$ is decreasing, the image partition is traversed in the opposite order, which does not change the length of the broken line.
+\end{proof}
+
+For $C^1$ reparametrisations the proposition can also be read off from \cref{thm:path-length}: the substitution $t=\varphi(s)$ turns $\int_a^b\|\boldsymbol\gamma'(t)\|\,dt$ into $\int_c^d\|\boldsymbol\gamma'(\varphi(s))\|\,|\varphi'(s)|\,ds$. Among all parametrisations of a regular path, one is distinguished: the one with unit speed, in which the parameter is the distance travelled along the trace.
+
+\begin{proposition}[Parametrisation by arc length]
+\label{prop:arc-length-param}
+Let $\boldsymbol\gamma\colon[a,b]\to\mathbb R^n$ be a regular $C^1$ path of length $L$, and let
+\[
+\sigma(t)\coloneqq\int_a^t\|\boldsymbol\gamma'(\tau)\|\,d\tau\qquad(a\le t\le b)
+\]
+be the \term{arc length} from $\boldsymbol\gamma(a)$ to $\boldsymbol\gamma(t)$. Then $\sigma$ is a $C^1$ bijection of $[a,b]$ onto $[0,L]$ with $\sigma'>0$, its inverse $\tau\coloneqq\sigma^{-1}$ is $C^1$, and the reparametrisation $\tilde{\boldsymbol\gamma}\coloneqq\boldsymbol\gamma\circ\tau\colon[0,L]\to\mathbb R^n$ has unit speed, $\|\tilde{\boldsymbol\gamma}'(s)\|=1$ for all $s$.
+\end{proposition}
+
+\begin{proof}
+By the first part of the fundamental theorem (\cref{thm:ftc1}), $\sigma$ is differentiable with $\sigma'(t)=\|\boldsymbol\gamma'(t)\|>0$, a continuous function. So $\sigma$ is strictly increasing, with $\sigma(a)=0$ and $\sigma(b)=L$ by \cref{thm:path-length}, and by \cref{thm:inverse-derivative} its inverse is differentiable with $\tau'(s)=1/\sigma'(\tau(s))$, which is continuous. By the chain rule, $\|\tilde{\boldsymbol\gamma}'(s)\|=\|\boldsymbol\gamma'(\tau(s))\|\,\tau'(s)=1$.
+\end{proof}
+
+The proposition is mostly of theoretical use, because $\sigma$ is rarely an elementary function and its inverse even more rarely. For the helix, $\sigma(t)=\sqrt{1+c^2}\,t$, and the parametrisation by arc length is $\bigl(\cos(s/k),\sin(s/k),cs/k\bigr)$ with $k\coloneqq\sqrt{1+c^2}$. For the circle of radius $R$ it is $\bigl(R\cos(s/R),R\sin(s/R)\bigr)$, $0\le s\le2\pi R$.
+
+In the parametrisation by arc length, the velocity is the unit tangent vector $\mathbf T(s)=\tilde{\boldsymbol\gamma}'(s)$, and how fast it turns measures how much the curve bends. If $\tilde{\boldsymbol\gamma}$ is $C^2$, the number $\kappa(s)\coloneqq\|\mathbf T'(s)\|$ is the \term{curvature} of the curve at the point $\tilde{\boldsymbol\gamma}(s)$. A straight line, with constant $\mathbf T$, has curvature $0$. The circle of radius $R$ has $\mathbf T(s)=(-\sin(s/R),\cos(s/R))$ and $\mathbf T'(s)=-(\cos(s/R),\sin(s/R))/R$, so its curvature is $1/R$ everywhere: a small circle bends sharply, a large one gently. In general $1/\kappa$ is the radius of the circle that fits the curve best at the point, the \term{osculating circle}. For a curve given in an arbitrary parametrisation the chain rule leads to formulas such as $\kappa=|f''|/(1+f'^2)^{3/2}$ for the graph of a $C^2$ function $f$; the differential geometry of curves, which studies curvature and its companion in space, the torsion, is developed by do~Carmo~\cite{docarmo1976}.
+
+\section{Line Integrals}
+\label{sec:line-integrals}
+
+\subsection{Integrals with Respect to Arc Length}
+
+A thin wire bent along a curve $C$ has a density $f$, mass per unit length, that may vary from point to point. Cut the wire into short pieces; a piece of length $\Delta s$ near the point $\mathbf x$ has a mass of about $f(\mathbf x)\,\Delta s$, and the total mass is the limit of the sums of these masses. If the wire is the trace of a $C^1$ path $\boldsymbol\gamma$, a parameter interval of length $\Delta t$ near $t$ corresponds to a piece of length about $\|\boldsymbol\gamma'(t)\|\,\Delta t$, by \cref{thm:path-length}, and the limit is an ordinary integral over the parameter interval.
+
+\begin{definition}[Line integral of a function]
+\label{def:scalar-line-integral}
+Let $\boldsymbol\gamma\colon[a,b]\to\mathbb R^n$ be a piecewise $C^1$ path, and let $f$ be a real-valued function that is continuous on its trace. The \term{line integral} of $f$ along $\boldsymbol\gamma$ with respect to arc length is
+\[
+\int_{\boldsymbol\gamma}f\,ds\coloneqq\int_a^bf\bigl(\boldsymbol\gamma(t)\bigr)\,\|\boldsymbol\gamma'(t)\|\,dt ,
+\]
+where, as in \cref{thm:path-length}, the right side is the sum of the integrals over the intervals on which $\boldsymbol\gamma$ is $C^1$.
+\end{definition}
+
+The symbol $ds$ stands for the element of arc length, $ds=\|\boldsymbol\gamma'(t)\|\,dt$, and the integrand on the right is continuous on each of these intervals, so the integral exists. With $f=1$ the line integral is the length of $\boldsymbol\gamma$. As for length, the value does not depend on the parametrisation, nor even on the direction of travel.
+
+\begin{proposition}
+\label{prop:scalar-line-invariant}
+If $\boldsymbol\gamma\circ\varphi$ is a $C^1$ reparametrisation of a $C^1$ path $\boldsymbol\gamma$, preserving or reversing the orientation, then $\int_{\boldsymbol\gamma\circ\varphi}f\,ds=\int_{\boldsymbol\gamma}f\,ds$.
+\end{proposition}
+
+\begin{proof}
+Let $\varphi\colon[c,d]\to[a,b]$. The integral along $\boldsymbol\gamma\circ\varphi$ is
+\[
+\int_c^df\bigl(\boldsymbol\gamma(\varphi(s))\bigr)\,\bigl\|\boldsymbol\gamma'(\varphi(s))\bigr\|\,|\varphi'(s)|\,ds .
+\] If $\varphi'>0$, this is $\int_a^bf(\boldsymbol\gamma(t))\|\boldsymbol\gamma'(t)\|\,dt$ by the substitution $t=\varphi(s)$ (\cref{thm:substitution}). If $\varphi'<0$, then $|\varphi'|=-\varphi'$, $\varphi(c)=b$ and $\varphi(d)=a$, and the substitution gives $-\int_b^a=\int_a^b$ of the same integrand.
+\end{proof}
+
+The upper half of the unit circle, $\boldsymbol\gamma(t)=(\cos t,\sin t)$ with $0\le t\le\pi$, has unit speed, and the line integral of $f(x,y)=y$ along it is $\int_0^\pi\sin t\,dt=2$. A semicircular wire of constant density therefore has its centre of mass at the height $\bar y=2/\pi=0.637$, the integral of $y$ divided by the length $\pi$; the half disc of \cref{sec:general-regions}, whose mass is spread over the interior, has its centroid lower, at $4/(3\pi)=0.424$. The line integral of $f(x,y,z)=z$ along one turn of the helix $(\cos t,\sin t,ct)$, $0\le t\le2\pi$, is $\int_0^{2\pi}ct\sqrt{1+c^2}\,dt=2\pi^2c\sqrt{1+c^2}$; divided by the length $2\pi\sqrt{1+c^2}$ it gives the average height $\pi c$, the height at the middle of the turn, as symmetry suggests.
+
+\subsection{Vector Fields and Work}
+
+\begin{definition}[Vector field]
+\label{def:vector-field}
+A \term{vector field} on a set $U\subseteq\mathbb R^n$ is a function $\mathbf F\colon U\to\mathbb R^n$. We picture it by attaching to each point $\mathbf x\in U$ the arrow $\mathbf F(\mathbf x)$ with its tail at $\mathbf x$.
+\end{definition}
+
+Formally a vector field is just a vector-valued function whose values lie in the same space as its arguments; the name signals the picture, and the questions asked of it. The velocity field of a flowing fluid assigns to each point the velocity of the fluid there. The gravitational field of a mass $M$ at the origin is $\mathbf F(\mathbf x)=-GM\mathbf x/\|\mathbf x\|^3$ on $\mathbb R^3\setminus\{\mathbf0\}$, a field of arrows pointing towards the origin whose length decreases like the inverse square of the distance. The gradient of a function $f$ is a vector field, $\nabla f$, which at each point points uphill (\cref{thm:steepest-ascent}). And the field $\mathbf F(x,y)=(-y,x)$ is the velocity field of a rigid rotation of the plane about the origin with angular velocity $1$; its arrows are tangent to the circles about the origin (\cref{fig:paths}).
+
+A force field $\mathbf F$ acting on a particle that moves along a straight segment from $\mathbf p$ to $\mathbf p+\mathbf d$ does the \term{work} $\langle\mathbf F,\mathbf d\rangle$ if the force is constant: only the component of the force in the direction of motion counts, and a force perpendicular to the motion does no work. Along a curved path in a varying field, cut the path into short pieces, on each of which the displacement is about $\boldsymbol\gamma'(t)\,\Delta t$ and the force about $\mathbf F(\boldsymbol\gamma(t))$, and add.
+
+\begin{definition}[Line integral of a vector field]
+\label{def:vector-line-integral}
+Let $\boldsymbol\gamma\colon[a,b]\to\mathbb R^n$ be a piecewise $C^1$ path, and let $\mathbf F$ be a vector field that is continuous on its trace. The \term{line integral} of $\mathbf F$ along $\boldsymbol\gamma$ is
+\[
+\int_{\boldsymbol\gamma}\mathbf F\cdot d\mathbf r\coloneqq\int_a^b\bigl\langle\mathbf F\bigl(\boldsymbol\gamma(t)\bigr),\boldsymbol\gamma'(t)\bigr\rangle\,dt ,
+\]
+again summed over the intervals on which $\boldsymbol\gamma$ is $C^1$. If $\boldsymbol\gamma$ is closed, the integral is also written $\oint_{\boldsymbol\gamma}\mathbf F\cdot d\mathbf r$.
+\end{definition}
+
+The notation needs a comment. The symbol $d\mathbf r$ stands for the displacement $\boldsymbol\gamma'(t)\,dt$ of the moving point $\mathbf r=\boldsymbol\gamma(t)$, and the dot is the inner product, written in the traditional way of vector calculus; elsewhere in the series we write $\langle\cdot,\cdot\rangle$, and inside integrands we do so here as well. In the plane, with $\mathbf F=(P,Q)$ and $\boldsymbol\gamma=(x,y)$, the integrand is $P\,x'(t)+Q\,y'(t)$, and one writes
+\[
+\int_{\boldsymbol\gamma}P\,dx+Q\,dy\coloneqq\int_a^b\Bigl(P\bigl(\boldsymbol\gamma(t)\bigr)\,x'(t)+Q\bigl(\boldsymbol\gamma(t)\bigr)\,y'(t)\Bigr)\,dt ,
+\]
+with $dx=x'(t)\,dt$ and $dy=y'(t)\,dt$; in space, $\int P\,dx+Q\,dy+R\,dz$ is defined in the same way. Expressions such as $P\,dx+Q\,dy$ are called \term{differential forms}; for us they are only a notation for the integrand, but the note at the end of \cref{sec:stokes} indicates that they can be given a meaning of their own. For a regular path, $\langle\mathbf F(\boldsymbol\gamma),\boldsymbol\gamma'\rangle=\langle\mathbf F(\boldsymbol\gamma),\mathbf T\rangle\|\boldsymbol\gamma'\|$, so
+\begin{equation}
+\int_{\boldsymbol\gamma}\mathbf F\cdot d\mathbf r=\int_{\boldsymbol\gamma}\langle\mathbf F,\mathbf T\rangle\,ds :
+\label{eq:tangential-component}
+\end{equation}
+the line integral of a vector field is the line integral, with respect to arc length, of its tangential component $\langle\mathbf F,\mathbf T\rangle$.
+
+Unlike the integral with respect to arc length, the line integral of a vector field depends on the direction of travel. A force that pushes a particle forwards along a path pushes it backwards when the path is traversed the other way.
+
+\begin{proposition}[Properties of line integrals]
+\label{prop:line-integral-properties}
+Let $\boldsymbol\gamma$ be a piecewise $C^1$ path and $\mathbf F$, $\mathbf G$ continuous on its trace.
+\begin{enumerate}
+\item The integral is linear: $\int_{\boldsymbol\gamma}(\alpha\mathbf F+\beta\mathbf G)\cdot d\mathbf r=\alpha\int_{\boldsymbol\gamma}\mathbf F\cdot d\mathbf r+\beta\int_{\boldsymbol\gamma}\mathbf G\cdot d\mathbf r$.
+\item An orientation-preserving $C^1$ reparametrisation does not change the integral, and an orientation-reversing one changes its sign. In particular $\int_{-\boldsymbol\gamma}\mathbf F\cdot d\mathbf r=-\int_{\boldsymbol\gamma}\mathbf F\cdot d\mathbf r$.
+\item If $\boldsymbol\gamma$ is the restriction of a path to $[a,c]$ followed by its restriction to $[c,b]$, the integral is the sum of the two integrals.
+\item $\bigl|\int_{\boldsymbol\gamma}\mathbf F\cdot d\mathbf r\bigr|\le M\,L(\boldsymbol\gamma)$, where $M$ is the maximum of $\|\mathbf F\|$ on the trace.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(i) and (iii) follow from the corresponding properties of the integral of one variable. (ii) For a $C^1$ path and $\varphi\colon[c,d]\to[a,b]$, the integrand along $\boldsymbol\gamma\circ\varphi$ is $\langle\mathbf F(\boldsymbol\gamma(\varphi(s))),\boldsymbol\gamma'(\varphi(s))\rangle\varphi'(s)$, and the substitution $t=\varphi(s)$ turns $\int_c^d$ into $\int_{\varphi(c)}^{\varphi(d)}\langle\mathbf F(\boldsymbol\gamma(t)),\boldsymbol\gamma'(t)\rangle\,dt$. This is the original integral if $\varphi$ is increasing, and its negative if $\varphi$ is decreasing, when $\varphi(c)=b$ and $\varphi(d)=a$. For a piecewise $C^1$ path apply this to each piece. (iv) By the Cauchy--Schwarz inequality, $|\langle\mathbf F(\boldsymbol\gamma(t)),\boldsymbol\gamma'(t)\rangle|\le M\|\boldsymbol\gamma'(t)\|$, and \cref{thm:path-length} gives the integral of the right side.
+\end{proof}
+
+Paths can be joined end to end. If $\boldsymbol\gamma_1\colon[a,b]\to\mathbb R^n$ ends where $\boldsymbol\gamma_2\colon[c,d]\to\mathbb R^n$ starts, the \term{concatenation} $\boldsymbol\gamma_1+\boldsymbol\gamma_2$ is the path on $[a,b+d-c]$ that equals $\boldsymbol\gamma_1(t)$ for $t\le b$ and $\boldsymbol\gamma_2(t-b+c)$ for $t\ge b$; it is piecewise $C^1$ if both parts are, and by (ii) and (iii) the line integral along it is the sum of the line integrals along $\boldsymbol\gamma_1$ and $\boldsymbol\gamma_2$. The plus sign is a convenient notation, not an addition of functions. Part (iv) is the estimate that complex analysis calls the \emph{ML-inequality}; it bounds an integral along a short path, or of a small field, without computing it.
+
+\subsection{Examples}
+
+The line integral of a vector field depends in general on the path, not only on its end points. Consider the rotation field $\mathbf F(x,y)=(-y,x)$ and three paths from $(0,0)$ to $(1,1)$ (\cref{fig:paths}).
+\begin{itemize}
+\item Along the diagonal $\boldsymbol\gamma_1(t)=(t,t)$, $0\le t\le1$, the field $(-t,t)$ is orthogonal to the velocity $(1,1)$, and the integral is $0$.
+\item Along the parabola $\boldsymbol\gamma_2(t)=(t,t^2)$, the integrand is $\langle(-t^2,t),(1,2t)\rangle=t^2$, and the integral is $1/3$.
+\item Along the broken path $\boldsymbol\gamma_3$, which first runs along the $x$-axis to $(1,0)$ and then straight up to $(1,1)$, the first part contributes $\int_0^1\langle(0,t),(1,0)\rangle\,dt=0$ and the second $\int_0^1\langle(-t,1),(0,1)\rangle\,dt=1$, a total of $1$.
+\end{itemize}
+Three paths with the same end points give three different values. For the field $\mathbf G(x,y)=(y,x)$, on the other hand, the same three paths give
+\[
+\int_0^1\bigl\langle(t,t),(1,1)\bigr\rangle\,dt,\qquad\int_0^1\bigl\langle(t^2,t),(1,2t)\bigr\rangle\,dt,\qquad0+\int_0^1\bigl\langle(t,1),(0,1)\bigr\rangle\,dt ,
+\]
+that is, $\int_0^12t\,dt$, $\int_0^13t^2\,dt$ and $\int_0^11\,dt$: the same value $1$ each time. \Cref{sec:conservative} explains the difference: $\mathbf G$ is the gradient of $xy$, and $\mathbf F$ is not a gradient.
+
+Around the unit circle $\boldsymbol\gamma(t)=(\cos t,\sin t)$, $0\le t\le2\pi$, the rotation field equals the velocity, $\mathbf F(\boldsymbol\gamma(t))=(-\sin t,\cos t)=\boldsymbol\gamma'(t)$, so
+\[
+\oint_{\boldsymbol\gamma}(-y\,dx+x\,dy)=\int_0^{2\pi}(\sin^2t+\cos^2t)\,dt=2\pi .
+\]
+A particle carried around the circle by the rotating field gains work at every moment. The value $2\pi$ is twice the area of the unit disc, which is no coincidence (\cref{sec:green}). The field $\mathbf x\mapsto\mathbf x$, by contrast, is orthogonal to the circle everywhere, and its line integral around it is $0$.
+
+\begin{figure}
+\sdfloat{%
+\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.5\textwidth, height=0.5\textwidth, xmin=-0.08, xmax=1.12, ymin=-0.08, ymax=1.12,
+  axis equal image, xtick={0,0.5,1}, ytick={0,0.5,1}, xlabel={$x$}, ylabel={$y$}]
+\addplot[black!35, line width=0.45pt, quiver={u=\thisrow{u},v=\thisrow{v}}, -{Latex[length=1.1mm]}] table[row sep=\\] {x y u v\\
+0.125 0.125 -0.016 0.016\\ 0.125 0.375 -0.049 0.016\\ 0.125 0.625 -0.081 0.016\\ 0.125 0.875 -0.114 0.016\\ 0.375 0.125 -0.016 0.049\\ 0.375 0.375 -0.049 0.049\\ 0.375 0.625 -0.081 0.049\\ 0.375 0.875 -0.114 0.049\\ 0.625 0.125 -0.016 0.081\\ 0.625 0.375 -0.049 0.081\\ 0.625 0.625 -0.081 0.081\\ 0.625 0.875 -0.114 0.081\\ 0.875 0.125 -0.016 0.114\\ 0.875 0.375 -0.049 0.114\\ 0.875 0.625 -0.081 0.114\\ 0.875 0.875 -0.114 0.114\\};
+\addplot[black, line width=0.9pt, domain=0:1, samples=2] {x};
+\addplot[black, dashed, line width=0.9pt, domain=0:1, samples=40] {x^2};
+\draw[black, densely dotted, line width=1.1pt] (axis cs:0,0) -- (axis cs:1,0) -- (axis cs:1,1);
+\draw[black, line width=0.9pt, -{Latex[length=1.8mm]}] (axis cs:0.45,0.45) -- (axis cs:0.5,0.5);
+\draw[black, line width=0.9pt, -{Latex[length=1.8mm]}] (axis cs:0.66,0.4356) -- (axis cs:0.7,0.49);
+\draw[black, line width=0.9pt, -{Latex[length=1.8mm]}] (axis cs:1,0.45) -- (axis cs:1,0.52);
+\draw[black, line width=0.9pt, -{Latex[length=1.8mm]}] (axis cs:0.45,0) -- (axis cs:0.52,0);
+\node[font=\scriptsize, anchor=south east] at (axis cs:0.25,0.27) {$\boldsymbol\gamma_1$};
+\node[font=\scriptsize, anchor=north west] at (axis cs:0.55,0.28) {$\boldsymbol\gamma_2$};
+\node[font=\scriptsize, anchor=west] at (axis cs:1.01,0.25) {$\boldsymbol\gamma_3$};
+\fill[black] (axis cs:0,0) circle (1.3pt) (axis cs:1,1) circle (1.3pt);
+\end{axis}
+\end{tikzpicture}}{Three paths from $(0,0)$ to $(1,1)$: the diagonal $\boldsymbol\gamma_1$ (solid), the parabola $\boldsymbol\gamma_2$ (dashed) and the broken path $\boldsymbol\gamma_3$ along the edges of the square (dotted). The grey arrows show the rotation field $\mathbf F(x,y)=(-y,x)$, scaled down. Its line integrals along the three paths are $0$, $1/3$ and $1$; those of $\nabla(xy)=(y,x)$ are all $1$.\label{fig:paths}}
+\end{figure}
+
+A line integral is a limit of sums, as an integral should be. For a $C^1$ path and a partition $P$ of $[a,b]$, the sums
+\[
+\sum_{k=1}^m\bigl\langle\mathbf F\bigl(\boldsymbol\gamma(t_k)\bigr),\boldsymbol\gamma(t_k)-\boldsymbol\gamma(t_{k-1})\bigr\rangle
+\]
+of the work done by constant forces along the chords tend to $\int_{\boldsymbol\gamma}\mathbf F\cdot d\mathbf r$ as the mesh of $P$ tends to $0$; this is proved like the second half of \cref{thm:path-length}, by writing each chord as $\boldsymbol\gamma'(t_k)\Delta t_k$ plus a small error. The sums show that the line integral depends only on the points of the path in their order of traversal, which is \cref{prop:line-integral-properties}\,(ii) from another point of view, and they are the basis of the numerical methods of \cref{sec:vector-numerics}.
+
+\section{Conservative Fields and Potentials}
+\label{sec:conservative}
+
+\subsection{The Fundamental Theorem for Line Integrals}
+
+The fundamental theorem of calculus computes the integral of a derivative from the values of the antiderivative at the two ends. For line integrals the role of the derivative is played by the gradient.
+
+\begin{definition}[Potential, conservative field]
+\label{def:potential}
+Let $U\subseteq\mathbb R^n$ be open and $\mathbf F\colon U\to\mathbb R^n$ continuous. A \term{potential} of $\mathbf F$ is a function $\varphi\in C^1(U)$ with $\nabla\varphi=\mathbf F$ on $U$. A vector field that has a potential is a \term{gradient field}, or \term{conservative}.
+\end{definition}
+
+In physics the potential energy is usually taken to be $-\varphi$, so that the force points downhill in energy; the sign is a matter of convention and plays no role here. The name \emph{conservative} comes from mechanics: in a conservative force field the sum of the kinetic and the potential energy of a particle is conserved, because the work done by the force along any path is the change of $\varphi$, as the next theorem shows.
+
+\begin{theorem}[Fundamental theorem for line integrals]
+\label{thm:ftc-line}
+Let $U\subseteq\mathbb R^n$ be open, $\varphi\in C^1(U)$, and let $\boldsymbol\gamma$ be a piecewise $C^1$ path in $U$ from $\mathbf p$ to $\mathbf q$. Then
+\[
+\int_{\boldsymbol\gamma}\nabla\varphi\cdot d\mathbf r=\varphi(\mathbf q)-\varphi(\mathbf p).
+\]
+In particular, the line integral of a gradient field along a closed path vanishes.
+\end{theorem}
+
+\begin{proof}
+Let $a=t_0<\cdots<t_m=b$ be a partition such that $\boldsymbol\gamma$ is $C^1$ on each $[t_{k-1},t_k]$. On such an interval the function $g(t)\coloneqq\varphi(\boldsymbol\gamma(t))$ has the continuous derivative $g'(t)=\langle\nabla\varphi(\boldsymbol\gamma(t)),\boldsymbol\gamma'(t)\rangle$, by \eqref{eq:chain-path}, so the fundamental theorem of calculus (\cref{thm:ftc2}) gives
+\[
+\int_{t_{k-1}}^{t_k}\bigl\langle\nabla\varphi\bigl(\boldsymbol\gamma(t)\bigr),\boldsymbol\gamma'(t)\bigr\rangle\,dt=\varphi\bigl(\boldsymbol\gamma(t_k)\bigr)-\varphi\bigl(\boldsymbol\gamma(t_{k-1})\bigr).
+\]
+Adding over $k$, the sum telescopes to $\varphi(\boldsymbol\gamma(b))-\varphi(\boldsymbol\gamma(a))$.
+\end{proof}
+
+The field $\mathbf G(x,y)=(y,x)$ of \cref{sec:line-integrals} is the gradient of $\varphi(x,y)=xy$, and the theorem explains why its line integrals along the three paths of \cref{fig:paths} all equal $\varphi(1,1)-\varphi(0,0)=1$. The gravitational field $\mathbf F(\mathbf x)=-GM\mathbf x/\|\mathbf x\|^3$ is the gradient of $\varphi(\mathbf x)=GM/\|\mathbf x\|$ on $\mathbb R^3\setminus\{\mathbf0\}$, since $\nabla\|\mathbf x\|=\mathbf x/\|\mathbf x\|$ (\cref{sec:differentiability}) and the chain rule give $\nabla\|\mathbf x\|^{-1}=-\mathbf x/\|\mathbf x\|^3$. The work done by gravity on a unit mass that moves from $\mathbf p$ to $\mathbf q$ along any path avoiding the origin is therefore $GM(1/\|\mathbf q\|-1/\|\mathbf p\|)$. It depends only on the distances from the centre, and as $\|\mathbf q\|\to\infty$ it tends to $-GM/\|\mathbf p\|$: a body leaving the surface of a planet must bring the kinetic energy $GM/\|\mathbf p\|$ per unit mass to escape.
+
+\subsection{Path Independence}
+
+The theorem has a converse: a continuous field whose line integrals depend only on the end points is a gradient field. The domain must allow any two of its points to be joined by a path.
+
+\begin{definition}[Connected open set]
+\label{def:connected-open}
+An open set $U\subseteq\mathbb R^n$ is \term{connected} if any two points of $U$ can be joined by a broken line in $U$, that is, by a piecewise $C^1$ path consisting of finitely many straight segments.
+\end{definition}
+
+Balls, boxes and every convex open set are connected, and so are the plane without a point and space without a line. The union of two disjoint open balls is not. On a connected open set, a $C^1$ function with vanishing gradient is constant, by \cref{cor:zero-gradient} applied to the segments of a broken line, as remarked after that corollary.
+
+\begin{theorem}[Path independence]
+\label{thm:path-independence}
+Let $U\subseteq\mathbb R^n$ be open and connected, and let $\mathbf F\colon U\to\mathbb R^n$ be continuous. The following statements are equivalent.
+\begin{enumerate}
+\item The line integral $\int_{\boldsymbol\gamma}\mathbf F\cdot d\mathbf r$ along a piecewise $C^1$ path $\boldsymbol\gamma$ in $U$ depends only on the initial and the terminal point of $\boldsymbol\gamma$.
+\item $\oint_{\boldsymbol\gamma}\mathbf F\cdot d\mathbf r=0$ for every closed piecewise $C^1$ path $\boldsymbol\gamma$ in $U$.
+\item $\mathbf F$ has a potential on $U$.
+\end{enumerate}
+In this case any two potentials of $\mathbf F$ differ by a constant, and for a fixed $\mathbf p\in U$ the function $\varphi(\mathbf x)\coloneqq\int_{\boldsymbol\gamma}\mathbf F\cdot d\mathbf r$, with $\boldsymbol\gamma$ any piecewise $C^1$ path in $U$ from $\mathbf p$ to $\mathbf x$, is the potential with $\varphi(\mathbf p)=0$.
+\end{theorem}
+
+\begin{proof}
+(iii)$\Rightarrow$(i) is \cref{thm:ftc-line}.
+
+(i)$\Rightarrow$(ii). A closed path $\boldsymbol\gamma$ starting and ending at $\mathbf p$ has the same end points as the constant path at $\mathbf p$, whose velocity is $\mathbf0$ and whose line integral is $0$.
+
+(ii)$\Rightarrow$(i). If $\boldsymbol\gamma_1$ and $\boldsymbol\gamma_2$ both run from $\mathbf p$ to $\mathbf q$, then $\boldsymbol\gamma_1+(-\boldsymbol\gamma_2)$ is a closed path, and by \cref{prop:line-integral-properties} its line integral is $\int_{\boldsymbol\gamma_1}\mathbf F\cdot d\mathbf r-\int_{\boldsymbol\gamma_2}\mathbf F\cdot d\mathbf r$, which vanishes by (ii).
+
+(i)$\Rightarrow$(iii). Fix $\mathbf p\in U$. Every $\mathbf x\in U$ can be reached from $\mathbf p$ by a broken line in $U$, since $U$ is connected, and by (i) the function $\varphi$ of the statement is well defined. Let $\mathbf x\in U$, choose $r>0$ with $B(\mathbf x,r)\subseteq U$, and let $0<|h|<r$. To reach $\mathbf x+h\mathbf e_i$, follow a path from $\mathbf p$ to $\mathbf x$ and then the segment $\boldsymbol\sigma(s)\coloneqq\mathbf x+sh\mathbf e_i$, $0\le s\le1$, which lies in the ball. By (i),
+\[
+\varphi(\mathbf x+h\mathbf e_i)-\varphi(\mathbf x)=\int_{\boldsymbol\sigma}\mathbf F\cdot d\mathbf r=\int_0^1\bigl\langle\mathbf F(\mathbf x+sh\mathbf e_i),h\mathbf e_i\bigr\rangle\,ds=\int_0^hF_i(\mathbf x+\tau\mathbf e_i)\,d\tau ,
+\]
+the last step by the substitution $\tau=sh$. The function $\tau\mapsto F_i(\mathbf x+\tau\mathbf e_i)$ is continuous, so by \cref{thm:ftc1} the difference quotient $(\varphi(\mathbf x+h\mathbf e_i)-\varphi(\mathbf x))/h$ tends to $F_i(\mathbf x)$ as $h\to0$. Hence $\partial_i\varphi=F_i$ exists and is continuous on $U$ for every $i$, and $\varphi\in C^1(U)$ with $\nabla\varphi=\mathbf F$, by \cref{thm:c1-differentiable}.
+
+Finally, if $\varphi$ and $\psi$ are potentials, then $\nabla(\varphi-\psi)=\mathbf0$ on the connected set $U$, so $\varphi-\psi$ is constant.
+\end{proof}
+
+The theorem is a criterion, not a test: checking (i) or (ii) would require infinitely many integrals. A practical test comes from the symmetry of mixed partial derivatives.
+
+\begin{proposition}[A necessary condition]
+\label{prop:closed-condition}
+Let $U\subseteq\mathbb R^n$ be open and $\mathbf F\in C^1(U)$. If $\mathbf F$ has a potential on $U$, then
+\begin{equation}
+\partial_iF_j=\partial_jF_i\qquad\text{on }U\text{ for all }i,j .
+\label{eq:closed-condition}
+\end{equation}
+\end{proposition}
+
+\begin{proof}
+If $\nabla\varphi=\mathbf F$, then $\partial_i\varphi=F_i$ is $C^1$, so $\varphi\in C^2(U)$, and $\partial_iF_j=\partial_i\partial_j\varphi=\partial_j\partial_i\varphi=\partial_jF_i$ by \cref{thm:schwarz}.
+\end{proof}
+
+In other words, the Jacobian matrix $D\mathbf F$ of a gradient field is symmetric, as it must be, since it is the Hessian of the potential. A $C^1$ field that satisfies \eqref{eq:closed-condition} is called \term{closed}, or, in space, \term{irrotational}, for a reason that \cref{sec:div-curl} explains. In the plane the condition is the single equation $\partial_xQ=\partial_yP$ for $\mathbf F=(P,Q)$. The rotation field $(-y,x)$ fails it, since $\partial_x(x)=1\ne-1=\partial_y(-y)$, which confirms that it has no potential; the field $(y,x)$ satisfies it.
+
+\subsection{A Closed Field without a Potential}
+
+The condition \eqref{eq:closed-condition} is not sufficient. The standard counterexample is the field
+\begin{equation}
+\mathbf A(x,y)\coloneqq\Bigl(\frac{-y}{x^2+y^2},\frac x{x^2+y^2}\Bigr)\qquad\text{on }U\coloneqq\mathbb R^2\setminus\{\mathbf0\},
+\label{eq:angle-field}
+\end{equation}
+the rotation field divided by the squared distance from the origin (\cref{fig:angle-field}). It is closed:
+\[
+\frac{\partial}{\partial x}\,\frac x{x^2+y^2}=\frac{y^2-x^2}{(x^2+y^2)^2}=\frac{\partial}{\partial y}\,\frac{-y}{x^2+y^2} .
+\]
+But on the unit circle $\boldsymbol\gamma(t)=(\cos t,\sin t)$ it equals the velocity $(-\sin t,\cos t)$, so $\oint_{\boldsymbol\gamma}\mathbf A\cdot d\mathbf r=\int_0^{2\pi}1\,dt=2\pi\ne0$, and by \cref{thm:path-independence} it has no potential on $U$.
+
+The explanation lies in polar coordinates. \Cref{sec:inverse-implicit} computed the partial derivatives of the polar angle $\theta=\operatorname{atan2}(y,x)$: $\partial_x\theta=-y/(x^2+y^2)$ and $\partial_y\theta=x/(x^2+y^2)$. So $\mathbf A=\nabla\theta$ wherever the angle is a $C^1$ function, for instance on the plane slit along the negative $x$-axis, where $\theta$ takes values in $(-\pi,\pi)$. By \cref{thm:ftc-line}, the line integral of $\mathbf A$ along a path in the slit plane is the change of the angle between its end points. A path around the origin, however, must cross the slit, where $\operatorname{atan2}$ jumps from $\pi$ to $-\pi$; following the angle continuously instead, one finds that it has increased by $2\pi$ after one turn. No continuous function on $U$ can measure the angle, since it would have to return to its initial value after a full turn, and this is exactly why $\mathbf A$ has no potential on $U$. For this reason $\mathbf A$ is called the \term{angle field}, and the integral $\oint\mathbf A\cdot d\mathbf r/(2\pi)$ along a closed path counts how often the path winds around the origin; \cref{sec:vector-numerics} turns this into an algorithm.
+
+\begin{figure}
+\sdfloat{%
+\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.56\textwidth, height=0.56\textwidth, xmin=-2.35, xmax=2.35, ymin=-2.35, ymax=2.35,
+  axis equal image, xtick={-2,-1,0,1,2}, ytick={-2,-1,0,1,2}, xlabel={$x$}, ylabel={$y$}]
+\addplot[black!50, line width=0.45pt, quiver={u=\thisrow{u},v=\thisrow{v}}, -{Latex[length=1.1mm]}] table[row sep=\\] {x y u v\\
+-2 -2 0.075 -0.075\\ -2 -1.5 0.072 -0.096\\ -2 -1 0.060 -0.120\\ -2 -0.5 0.035 -0.141\\ -2 0 0 -0.150\\ -2 0.5 -0.035 -0.141\\ -2 1 -0.060 -0.120\\ -2 1.5 -0.072 -0.096\\ -2 2 -0.075 -0.075\\ -1.5 -2 0.096 -0.072\\ -1.5 -1.5 0.100 -0.100\\ -1.5 -1 0.092 -0.138\\ -1.5 -0.5 0.060 -0.180\\ -1.5 0 0 -0.200\\ -1.5 0.5 -0.060 -0.180\\ -1.5 1 -0.092 -0.138\\ -1.5 1.5 -0.100 -0.100\\ -1.5 2 -0.096 -0.072\\ -1 -2 0.120 -0.060\\ -1 -1.5 0.138 -0.092\\ -1 -1 0.150 -0.150\\ -1 -0.5 0.120 -0.240\\ -1 0 0 -0.300\\ -1 0.5 -0.120 -0.240\\ -1 1 -0.150 -0.150\\ -1 1.5 -0.138 -0.092\\ -1 2 -0.120 -0.060\\ -0.5 -2 0.141 -0.035\\ -0.5 -1.5 0.180 -0.060\\ -0.5 -1 0.240 -0.120\\ -0.5 -0.5 0.297 -0.297\\ -0.5 0 0 -0.420\\ -0.5 0.5 -0.297 -0.297\\ -0.5 1 -0.240 -0.120\\ -0.5 1.5 -0.180 -0.060\\ -0.5 2 -0.141 -0.035\\ 0 -2 0.150 0\\ 0 -1.5 0.200 0\\ 0 -1 0.300 0\\ 0 -0.5 0.420 0\\ 0 0.5 -0.420 0\\ 0 1 -0.300 0\\ 0 1.5 -0.200 0\\ 0 2 -0.150 0\\ 0.5 -2 0.141 0.035\\ 0.5 -1.5 0.180 0.060\\ 0.5 -1 0.240 0.120\\ 0.5 -0.5 0.297 0.297\\ 0.5 0 0 0.420\\ 0.5 0.5 -0.297 0.297\\ 0.5 1 -0.240 0.120\\ 0.5 1.5 -0.180 0.060\\ 0.5 2 -0.141 0.035\\ 1 -2 0.120 0.060\\ 1 -1.5 0.138 0.092\\ 1 -1 0.150 0.150\\ 1 -0.5 0.120 0.240\\ 1 0 0 0.300\\ 1 0.5 -0.120 0.240\\ 1 1 -0.150 0.150\\ 1 1.5 -0.138 0.092\\ 1 2 -0.120 0.060\\ 1.5 -2 0.096 0.072\\ 1.5 -1.5 0.100 0.100\\ 1.5 -1 0.092 0.138\\ 1.5 -0.5 0.060 0.180\\ 1.5 0 0 0.200\\ 1.5 0.5 -0.060 0.180\\ 1.5 1 -0.092 0.138\\ 1.5 1.5 -0.100 0.100\\ 1.5 2 -0.096 0.072\\ 2 -2 0.075 0.075\\ 2 -1.5 0.072 0.096\\ 2 -1 0.060 0.120\\ 2 -0.5 0.035 0.141\\ 2 0 0 0.150\\ 2 0.5 -0.035 0.141\\ 2 1 -0.060 0.120\\ 2 1.5 -0.072 0.096\\ 2 2 -0.075 0.075\\};
+\draw[black, line width=1.4pt, dashed] (axis cs:-2.35,0) -- (axis cs:0,0);
+\addplot[black, line width=0.8pt, domain=0:360, samples=90] ({1.25*cos(x)},{1.25*sin(x)});
+\draw[black, line width=0.8pt, -{Latex[length=1.9mm]}] (axis cs:{1.25*cos(40)},{1.25*sin(40)}) -- (axis cs:{1.25*cos(44)},{1.25*sin(44)});
+\draw[black, line width=0.6pt, fill=white] (axis cs:0,0) circle (1.6pt);
+\node[font=\scriptsize, anchor=south, fill=white, inner sep=1pt] at (axis cs:-1.75,0.07) {$\theta\to\pi$};
+\node[font=\scriptsize, anchor=north, fill=white, inner sep=1pt] at (axis cs:-1.75,-0.07) {$\theta\to-\pi$};
+\end{axis}
+\end{tikzpicture}}{The angle field $\mathbf A=(-y,x)/(x^2+y^2)$ (arrows, scaled down, and shortened near the origin, where the field is large). It is closed, $\partial_xA_2=\partial_yA_1$, but its line integral around the circle (thick) is $2\pi$. On the plane slit along the negative $x$-axis (dashed) it is the gradient of the polar angle $\theta=\operatorname{atan2}(y,x)$, which jumps by $2\pi$ across the slit.\label{fig:angle-field}}
+\end{figure}
+
+\subsection{Star-Shaped Domains}
+
+On domains without holes, the condition \eqref{eq:closed-condition} does suffice. The simplest class of such domains is the following.
+
+\begin{definition}[Star-shaped set]
+\label{def:star-shaped}
+A set $U\subseteq\mathbb R^n$ is \term{star-shaped} with respect to a point $\mathbf a\in U$ if for every $\mathbf x\in U$ the segment $[\mathbf a,\mathbf x]$ lies in $U$.
+\end{definition}
+
+Every convex set is star-shaped with respect to each of its points. The plane slit along the negative $x$-axis, $\mathbb R^2\setminus\{(x,0): x\le0\}$, is star-shaped with respect to $(1,0)$: the segment from $(1,0)$ to a point $(x,y)$ with $y\ne0$ meets the $x$-axis only at $(1,0)$, and the segment to a point $(x,0)$ with $x>0$ stays on the positive $x$-axis. The plane without the origin is not star-shaped with respect to any point $\mathbf a$, since the segment from $\mathbf a$ to $-\mathbf a$ passes through the origin.
+
+\begin{theorem}[Poincar\'e's lemma for star-shaped domains]
+\label{thm:poincare-lemma}
+Let $U\subseteq\mathbb R^n$ be open and star-shaped with respect to $\mathbf a$, and let $\mathbf F\in C^1(U)$ satisfy $\partial_iF_j=\partial_jF_i$ on $U$ for all $i,j$. Then $\mathbf F$ has the potential
+\[
+\varphi(\mathbf x)\coloneqq\int_0^1\bigl\langle\mathbf F\bigl(\mathbf a+t(\mathbf x-\mathbf a)\bigr),\mathbf x-\mathbf a\bigr\rangle\,dt ,
+\]
+the line integral of $\mathbf F$ along the segment from $\mathbf a$ to $\mathbf x$.
+\end{theorem}
+
+\begin{proof}
+Let $\mathbf x\in U$ and $1\le i\le n$. Choose $\delta>0$ with $\bar B(\mathbf x,\delta)\subseteq U$; for $|s|\le\delta$ the point $\mathbf x+s\mathbf e_i$ lies in $U$, and so does the segment from $\mathbf a$ to it. The function
+\[
+g(s,t)\coloneqq\bigl\langle\mathbf F\bigl(\mathbf a+t(\mathbf x+s\mathbf e_i-\mathbf a)\bigr),\mathbf x+s\mathbf e_i-\mathbf a\bigr\rangle
+\]
+is continuous on $[-\delta,\delta]\times[0,1]$, with the continuous partial derivative
+\[
+\partial_sg(s,t)=t\sum_{j=1}^n\partial_iF_j(\mathbf y)\,(x_j+s\delta_{ij}-a_j)+F_i(\mathbf y),\qquad\mathbf y\coloneqq\mathbf a+t(\mathbf x+s\mathbf e_i-\mathbf a),
+\]
+by the chain rule and the product rule, where $\delta_{ij}$ is $1$ for $i=j$ and $0$ otherwise. By differentiation under the integral sign (\cref{thm:diff-under-integral}), $\partial_i\varphi(\mathbf x)=\int_0^1\partial_sg(0,t)\,dt$. Write $\mathbf h\coloneqq\mathbf x-\mathbf a$. At $s=0$, the hypothesis $\partial_iF_j=\partial_jF_i$ turns the integrand into
+\[
+t\sum_{j=1}^n\partial_jF_i(\mathbf a+t\mathbf h)\,h_j+F_i(\mathbf a+t\mathbf h)=t\,\frac d{dt}F_i(\mathbf a+t\mathbf h)+F_i(\mathbf a+t\mathbf h)=\frac d{dt}\Bigl(t\,F_i(\mathbf a+t\mathbf h)\Bigr),
+\]
+by \eqref{eq:chain-curve} applied to $F_i$ along the segment. By the fundamental theorem of calculus,
+\[
+\partial_i\varphi(\mathbf x)=\Bigl[t\,F_i(\mathbf a+t\mathbf h)\Bigr]_{t=0}^{t=1}=F_i(\mathbf x).
+\]
+The partial derivatives of $\varphi$ are the continuous functions $F_i$, so $\varphi\in C^1(U)$ and $\nabla\varphi=\mathbf F$.
+\end{proof}
+
+The proof shows where the symmetry of $D\mathbf F$ enters: it converts the derivative of the integrand with respect to the end point into a derivative along the segment, which the fundamental theorem of calculus integrates. The name refers to the general version of the theorem for differential forms (see the note at the end of \cref{sec:stokes}), which goes back to Henri Poincar\'e; its usual proofs follow the one above~\cite{spivak1965manifolds}. On the slit plane, the theorem gives back the potential $\theta$ of the angle field, up to a constant. On the plane without the origin, which is not star-shaped, it does not apply, and the angle field shows that its conclusion can fail there.
+
+The formula of the theorem is a practical way of finding potentials. The field $\mathbf F(x,y)=(2xy,x^2+3y^2)$ satisfies $\partial_y(2xy)=2x=\partial_x(x^2+3y^2)$ on the plane, which is star-shaped with respect to the origin, and
+\[
+\varphi(x,y)=\int_0^1\Bigl(2t^2xy\cdot x+(t^2x^2+3t^2y^2)\,y\Bigr)\,dt=(3x^2y+3y^3)\int_0^1t^2\,dt=x^2y+y^3 ,
+\]
+whose gradient is indeed $(2xy,x^2+3y^2)$. Equivalently, one can integrate $F_1=2xy$ with respect to $x$, which gives $x^2y+c(y)$, and choose the function $c(y)$ so that the derivative with respect to $y$ equals $F_2$; this gives $c'(y)=3y^2$ and the same result.
+
+\begin{note}{Holes and topology}
+Whether every closed field on an open set $U$ is a gradient field depends only on the shape of $U$, not on the field. It is so if $U$ is \emph{simply connected}, meaning that every closed path in $U$ can be shrunk continuously to a point without leaving $U$: the line integral of a closed field does not change when the path is deformed continuously, and a path shrunk to a point has integral $0$. Star-shaped sets are simply connected, and so is a spherical shell in $\mathbb R^3$; the plane without a point and space without a line are not. The angle field measures the obstruction. On the plane with finitely many points removed, for instance, a closed $C^1$ field is a gradient field if and only if its line integrals around small circles about the removed points vanish, and every closed field is a gradient field plus a combination of angle fields centred at these points. In general, the closed fields on $U$ modulo the gradient fields form a vector space, the first de Rham cohomology of $U$, whose dimension counts the holes; this is one of the starting points of algebraic topology~\cite{spivak1965manifolds}. Complex analysis is built on the same phenomenon. For a complex-differentiable function $f=u+iv$, the integral $\oint f(z)\,dz$ splits into the line integrals of the fields $(u,-v)$ and $(v,u)$, and the Cauchy--Riemann equations $u_x=v_y$, $u_y=-v_x$ say exactly that both fields are closed. On star-shaped domains, or simply connected ones, this gives Cauchy's theorem $\oint f(z)\,dz=0$; the function $1/z$ on the plane without the origin gives $\oint dz/z=2\pi i$ around the unit circle, the angle field in complex form. Volume~II develops these ideas.
+\end{note}
+
+\section{Green's Theorem}
+\label{sec:green}
+
+\subsection{Regions and Their Oriented Boundaries}
+
+Green's theorem relates the double integral of $\partial_xQ-\partial_yP$ over a region of the plane to the line integral of $P\,dx+Q\,dy$ around its boundary, the boundary being traversed so that the region lies on the left. We first describe the regions and the boundary paths for which we prove it; they are built from the elementary regions of \cref{sec:general-regions}.
+
+\begin{definition}[Standard region]
+\label{def:standard-region}
+A closed bounded set $D\subseteq\mathbb R^2$ is a \term{standard region} if it is both $y$-simple and $x$-simple (\cref{def:elementary-region}),
+\[
+\begin{aligned}
+D&=\{(x,y): a\le x\le b,\ \varphi_1(x)\le y\le\varphi_2(x)\}\\
+&=\{(x,y): c\le y\le d,\ \psi_1(y)\le x\le\psi_2(y)\},
+\end{aligned}
+\]
+with continuous functions satisfying $\varphi_1<\varphi_2$ on $(a,b)$ and $\psi_1<\psi_2$ on $(c,d)$, and if its boundary $\partial D$ is the trace of a simple closed piecewise $C^1$ path $\boldsymbol\gamma$ that runs around $D$ counterclockwise in the following sense. Started at the point $(a,\varphi_1(a))$, the path runs along the graph of $\varphi_1$ with $x$ increasing to $(b,\varphi_1(b))$, then up the segment from $(b,\varphi_1(b))$ to $(b,\varphi_2(b))$, then along the graph of $\varphi_2$ with $x$ decreasing to $(a,\varphi_2(a))$, and finally down the segment back to the start. Started at $(\psi_1(c),c)$, the same path runs along the segment to $(\psi_2(c),c)$, then along the graph of $\psi_2$ with $y$ increasing to $(\psi_2(d),d)$, then along the segment to $(\psi_1(d),d)$, and finally along the graph of $\psi_1$ with $y$ decreasing back to the start. Segments of length zero are omitted. Such a path is a \term{positively oriented boundary path} of $D$.
+\end{definition}
+
+Here \emph{started at} a point means that the closed path is cut at that point and its two parts are joined in the other order; by \cref{prop:line-integral-properties}\,(iii) and the remarks after it, this does not change any line integral along the path, so we may compute with whichever starting point is convenient. The definition looks complicated, but it only makes precise the picture of \cref{fig:green}A: the boundary of a region that every vertical and every horizontal line meets in a segment, traversed counterclockwise. Discs, ellipses, rectangles and triangles are standard regions. For the unit disc, $\varphi_{1,2}(x)=\mp\sqrt{1-x^2}$ and $\psi_{1,2}(y)=\mp\sqrt{1-y^2}$, the segments have length zero, and the path $(\cos t,\sin t)$, $0\le t\le2\pi$, started at $(-1,0)$, that is, taken on $[\pi,3\pi]$, runs along the lower semicircle with $x=\cos t$ increasing and back along the upper one with $x$ decreasing, as required, and similarly for the second description.
+
+\begin{lemma}[Boundary integrals of $P\,dx$ and $Q\,dy$]
+\label{lem:green-boundary}
+Let $D$ be a standard region with a positively oriented boundary path $\boldsymbol\gamma$, and let $P$ and $Q$ be continuous on $D$. Then
+\[
+\begin{aligned}
+\oint_{\boldsymbol\gamma}P\,dx&=\int_a^b\Bigl(P\bigl(x,\varphi_1(x)\bigr)-P\bigl(x,\varphi_2(x)\bigr)\Bigr)\,dx ,\\
+\oint_{\boldsymbol\gamma}Q\,dy&=\int_c^d\Bigl(Q\bigl(\psi_2(y),y\bigr)-Q\bigl(\psi_1(y),y\bigr)\Bigr)\,dy .
+\end{aligned}
+\]
+\end{lemma}
+
+\begin{proof}
+Write $\boldsymbol\gamma=(x,y)$ and start the path at $(a,\varphi_1(a))$. On the parameter interval $[t_0,t_1]$ on which it runs along the graph of $\varphi_1$, the first component $x(t)$ increases from $a$ to $b$, and $\boldsymbol\gamma(t)=(x(t),\varphi_1(x(t)))$. With the continuous function $g(x)\coloneqq P(x,\varphi_1(x))$, the substitution rule (\cref{thm:substitution}), applied on each subinterval on which $\boldsymbol\gamma$ is $C^1$, gives
+\[
+\int_{t_0}^{t_1}P\bigl(\boldsymbol\gamma(t)\bigr)\,x'(t)\,dt=\int_{t_0}^{t_1}g\bigl(x(t)\bigr)\,x'(t)\,dt=\int_{x(t_0)}^{x(t_1)}g(x)\,dx=\int_a^bP\bigl(x,\varphi_1(x)\bigr)\,dx .
+\]
+Along the graph of $\varphi_2$, where $x(t)$ runs from $b$ to $a$, the same computation gives $\int_b^aP(x,\varphi_2(x))\,dx$, and along the two vertical segments $x(t)$ is constant, so $x'(t)=0$ and they contribute nothing. Adding the four contributions proves the first formula. The second is proved in the same way from the second description of the path: the graph of $\psi_2$, traversed with $y$ increasing, contributes $\int_c^dQ(\psi_2(y),y)\,dy$, the graph of $\psi_1$ contributes $\int_d^cQ(\psi_1(y),y)\,dy$, and the horizontal segments contribute nothing, because $y'(t)=0$ there.
+\end{proof}
+
+The lemma shows in passing that the line integrals along a positively oriented boundary path depend only on $D$, not on the path chosen, since the right sides do not involve the path. We therefore write $\oint_{\partial D}P\,dx+Q\,dy$ for them.
+
+\subsection{The Theorem}
+
+\begin{theorem}[Green's theorem for standard regions]
+\label{thm:green-standard}
+Let $D$ be a standard region, and let $P$ and $Q$ be continuously differentiable on an open set containing $D$. Then
+\[
+\oint_{\partial D}(P\,dx+Q\,dy)=\iint_D\Bigl(\frac{\partial Q}{\partial x}-\frac{\partial P}{\partial y}\Bigr)\,dA .
+\]
+\end{theorem}
+
+\begin{proof}
+The function $\partial_yP$ is continuous on $D$, and $D$ is $y$-simple, so \cref{thm:elementary-regions} and the fundamental theorem of calculus in the variable $y$ give
+\[
+\begin{aligned}
+\iint_D\frac{\partial P}{\partial y}\,dA&=\int_a^b\int_{\varphi_1(x)}^{\varphi_2(x)}\frac{\partial P}{\partial y}(x,y)\,dy\,dx\\
+&=\int_a^b\Bigl(P\bigl(x,\varphi_2(x)\bigr)-P\bigl(x,\varphi_1(x)\bigr)\Bigr)\,dx=-\oint_{\partial D}P\,dx ,
+\end{aligned}
+\]
+the last step by \cref{lem:green-boundary}. In the same way, since $D$ is $x$-simple,
+\[
+\begin{aligned}
+\iint_D\frac{\partial Q}{\partial x}\,dA&=\int_c^d\int_{\psi_1(y)}^{\psi_2(y)}\frac{\partial Q}{\partial x}(x,y)\,dx\,dy\\
+&=\int_c^d\Bigl(Q\bigl(\psi_2(y),y\bigr)-Q\bigl(\psi_1(y),y\bigr)\Bigr)\,dy=\oint_{\partial D}Q\,dy .
+\end{aligned}
+\]
+Subtracting the first identity from the second proves the theorem.
+\end{proof}
+
+The proof is two applications of the fundamental theorem of calculus, one along vertical lines and one along horizontal lines, glued together by Fubini's theorem. The minus sign in the integrand comes from the orientation: travelling counterclockwise, the path runs rightwards along the bottom of $D$ and leftwards along the top.
+
+As a check, take the unit disc $D$, $P=-y^3$ and $Q=x^3$. The right side is $\iint_D3(x^2+y^2)\,dA=3\int_0^{2\pi}\int_0^1r^3\,dr\,d\theta=3\pi/2$, by polar coordinates. On the boundary, $\boldsymbol\gamma(t)=(\cos t,\sin t)$, the integrand is $\sin^3t\sin t+\cos^3t\cos t=\sin^4t+\cos^4t=1-2\sin^2t\cos^2t=1-\sin^2(2t)/2$, whose integral over $[0,2\pi]$ is $2\pi-\pi/2=3\pi/2$.
+
+\begin{figure}
+\sdpanel{A}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.5\textwidth, height=0.42\textwidth, xmin=0, xmax=3, ymin=0, ymax=2.3,
+  xtick={0.5,2.5}, xticklabels={$a$,$b$}, ytick=\empty, xlabel={$x$}, ylabel={$y$}]
+\addplot[draw=none, fill=sdfill, domain=0.5:2.5, samples=60] {1.9-0.25*(x-1.5)^2} \closedcycle;
+\addplot[draw=none, fill=white, domain=0.5:2.5, samples=60] {0.5+0.15*(x-1.5)^2} \closedcycle;
+\addplot[black, line width=0.8pt, domain=0.5:2.5, samples=60] {1.9-0.25*(x-1.5)^2};
+\addplot[black, line width=0.8pt, domain=0.5:2.5, samples=60] {0.5+0.15*(x-1.5)^2};
+\draw[black, line width=0.8pt] (axis cs:0.5,0.65) -- (axis cs:0.5,1.65);
+\draw[black, line width=0.8pt] (axis cs:2.5,0.65) -- (axis cs:2.5,1.65);
+\draw[black, line width=0.8pt, -{Latex[length=1.9mm]}] (axis cs:1.45,0.5004) -- (axis cs:1.55,0.5004);
+\draw[black, line width=0.8pt, -{Latex[length=1.9mm]}] (axis cs:1.55,1.8994) -- (axis cs:1.45,1.8994);
+\draw[black, line width=0.8pt, -{Latex[length=1.9mm]}] (axis cs:2.5,1.1) -- (axis cs:2.5,1.2);
+\draw[black, line width=0.8pt, -{Latex[length=1.9mm]}] (axis cs:0.5,1.2) -- (axis cs:0.5,1.1);
+\node[font=\scriptsize, anchor=north] at (axis cs:1.5,0.45) {$y=\varphi_1(x)$};
+\node[font=\scriptsize, anchor=south] at (axis cs:1.5,1.95) {$y=\varphi_2(x)$};
+\node[font=\scriptsize] at (axis cs:1.5,1.2) {$D$};
+\end{axis}
+\end{tikzpicture}}\hfill
+\sdpanel{B}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.44\textwidth, height=0.44\textwidth, xmin=-2.25, xmax=2.25, ymin=-2.25, ymax=2.25,
+  axis equal image, xtick={-2,-1,0,1,2}, ytick={-2,-1,0,1,2}, xlabel={$x$}, ylabel={$y$}]
+\addplot[draw=none, fill=sdfill, domain=0:360, samples=120] ({2*cos(x)},{2*sin(x)});
+\addplot[draw=none, fill=white, domain=0:360, samples=90] ({cos(x)},{sin(x)});
+\addplot[black, line width=0.8pt, domain=0:360, samples=120] ({2*cos(x)},{2*sin(x)});
+\addplot[black, line width=0.8pt, domain=0:360, samples=90] ({cos(x)},{sin(x)});
+\pgfplotsinvokeforeach{45,135,225,315}{
+  \draw[black, line width=0.8pt, -{Latex[length=1.7mm]}] (axis cs:{2*cos(#1-4)},{2*sin(#1-4)}) -- (axis cs:{2*cos(#1+1)},{2*sin(#1+1)});
+  \draw[black, line width=0.8pt, -{Latex[length=1.7mm]}] (axis cs:{cos(#1+7)},{sin(#1+7)}) -- (axis cs:{cos(#1-2)},{sin(#1-2)});}
+\draw[black!70, line width=0.5pt] (axis cs:1,0) -- (axis cs:2,0) (axis cs:-1,0) -- (axis cs:-2,0) (axis cs:0,1) -- (axis cs:0,2) (axis cs:0,-1) -- (axis cs:0,-2);
+\draw[black!70, line width=0.5pt, -{Latex[length=1.3mm]}] (axis cs:1.25,0.09) -- (axis cs:1.75,0.09);
+\draw[black!70, line width=0.5pt, -{Latex[length=1.3mm]}] (axis cs:1.75,-0.09) -- (axis cs:1.25,-0.09);
+\draw[black!70, line width=0.5pt, -{Latex[length=1.3mm]}] (axis cs:-1.25,-0.09) -- (axis cs:-1.75,-0.09);
+\draw[black!70, line width=0.5pt, -{Latex[length=1.3mm]}] (axis cs:-1.75,0.09) -- (axis cs:-1.25,0.09);
+\draw[black!70, line width=0.5pt, -{Latex[length=1.3mm]}] (axis cs:-0.09,1.25) -- (axis cs:-0.09,1.75);
+\draw[black!70, line width=0.5pt, -{Latex[length=1.3mm]}] (axis cs:0.09,1.75) -- (axis cs:0.09,1.25);
+\draw[black!70, line width=0.5pt, -{Latex[length=1.3mm]}] (axis cs:0.09,-1.25) -- (axis cs:0.09,-1.75);
+\draw[black!70, line width=0.5pt, -{Latex[length=1.3mm]}] (axis cs:-0.09,-1.75) -- (axis cs:-0.09,-1.25);
+\end{axis}
+\end{tikzpicture}}
+\caption{Regions for Green's theorem. (A) A standard region $D$ between the graphs of $\varphi_1$ and $\varphi_2$ over $[a,b]$, with its positively oriented boundary path: rightwards along the bottom, up the right side, leftwards along the top, down the left side; the region lies on the left. Every horizontal line also meets $D$ in a segment. (B) The annulus $1\le x^2+y^2\le4$, cut by the axes into four standard regions. Their positively oriented boundary paths traverse each cut twice, in opposite directions (grey arrows, drawn apart for clarity), so the cuts cancel. What remains is the outer circle counterclockwise and the inner circle clockwise.}
+\label{fig:green}
+\end{figure}
+
+\subsection{Regions with Holes}
+
+Most regions of interest are not standard but can be cut into standard pieces. When Green's theorem is applied to each piece and the results are added, the double integrals add up to the integral over the whole region, and the line integrals over the cuts cancel, because each cut belongs to two pieces and is traversed in opposite directions (\cref{fig:green}B). What remains is the line integral over the boundary of the whole region, traversed so that the region lies on the left: the outer boundary counterclockwise and the boundaries of the holes clockwise.
+
+\begin{definition}[Admissible region]
+\label{def:admissible-region}
+A closed bounded set $D\subseteq\mathbb R^2$ is an \term{admissible region}, with \term{positively oriented boundary} given by the closed piecewise $C^1$ paths $\boldsymbol\Gamma_1,\ldots,\boldsymbol\Gamma_r$, if $\partial D$ is the union of the traces of the $\boldsymbol\Gamma_j$, and if $D$ is the union of finitely many standard regions $D_1,\ldots,D_m$, any two of which intersect in a set of content zero, whose positively oriented boundary paths can be cut into finitely many $C^1$ pieces with the following property: every piece is either a piece of some $\boldsymbol\Gamma_j$, traversed in the same direction, or a piece of a cut that occurs exactly twice, in opposite directions; and every piece of every $\boldsymbol\Gamma_j$ occurs exactly once. We then write
+\[
+\oint_{\partial D}(P\,dx+Q\,dy)\coloneqq\sum_{j=1}^r\oint_{\boldsymbol\Gamma_j}(P\,dx+Q\,dy).
+\]
+\end{definition}
+
+\begin{theorem}[Green's theorem]
+\label{thm:green}
+Let $D$ be an admissible region, and let $P$ and $Q$ be continuously differentiable on an open set containing $D$. Then
+\[
+\oint_{\partial D}(P\,dx+Q\,dy)=\iint_D\Bigl(\frac{\partial Q}{\partial x}-\frac{\partial P}{\partial y}\Bigr)\,dA .
+\]
+\end{theorem}
+
+\begin{proof}
+Apply \cref{thm:green-standard} to each $D_i$ and add. The double integrals add up to the integral over $D$, by \cref{thm:integral-over-region}\,(ii), since the pieces intersect in sets of content zero. The line integrals along the boundary paths of the $D_i$ are sums of the line integrals along their $C^1$ pieces (\cref{prop:line-integral-properties}\,(iii)). The two traversals of each piece of a cut contribute opposite amounts, by \cref{prop:line-integral-properties}\,(ii), and cancel; the remaining pieces make up the paths $\boldsymbol\Gamma_j$, each traversed once in its own direction.
+\end{proof}
+
+The annulus $1\le x^2+y^2\le4$ is admissible, with $\boldsymbol\Gamma_1(t)=(2\cos t,2\sin t)$ and $\boldsymbol\Gamma_2(t)=(\cos t,-\sin t)$, $0\le t\le2\pi$: the four quarter annuli are standard regions (the one in the first quadrant, for instance, lies between the graphs of $\varphi_1(x)=\sqrt{1-x^2}$ for $x\le1$, $\varphi_1(x)=0$ for $x\ge1$, and $\varphi_2(x)=\sqrt{4-x^2}$ over $[0,2]$, and symmetrically as an $x$-simple region), and the four cuts along the axes cancel. In the same way, every polygon, and every region bounded by finitely many circular arcs and segments, can be cut into standard regions; we shall apply the theorem to such regions without checking the cuts each time. The theorem extends to every region bounded by finitely many simple closed piecewise $C^1$ paths~\cite{apostol1969calculus}, but the proof of that generality requires more topology than we want to develop.
+
+The name of the theorem honours George Green, a self-taught miller from Nottingham, whose \emph{Essay} of 1828 on electricity and magnetism contains closely related identities for integrals over solids~\cite{green1828}. The two-dimensional statement appears, without reference to Green, in work of Cauchy from 1846 and in Riemann's dissertation of 1851, where it serves as a tool of complex analysis; Katz tells the history of this and of the related theorems of \cref{sec:divergence-theorem,sec:stokes}~\cite{katz1979}.
+
+The angle field \eqref{eq:angle-field} now explains itself. It is closed, so $\partial_xA_2-\partial_yA_1=0$ wherever it is defined. If $D$ is an admissible region that does not contain the origin, Green's theorem gives $\oint_{\partial D}\mathbf A\cdot d\mathbf r=0$. If the origin is an interior point of a region bounded by a closed path $\boldsymbol\Gamma$, Green's theorem cannot be applied directly, since $\mathbf A$ is not defined at the origin; but it can be applied to the region between $\boldsymbol\Gamma$ and a small circle of radius $\varepsilon$ about the origin, if that region is admissible, with the circle traversed clockwise. Then
+\[
+\oint_{\boldsymbol\Gamma}\mathbf A\cdot d\mathbf r-\oint_{|\mathbf x|=\varepsilon}\mathbf A\cdot d\mathbf r=0 ,\qquad\text{so}\qquad\oint_{\boldsymbol\Gamma}\mathbf A\cdot d\mathbf r=\oint_{|\mathbf x|=\varepsilon}\mathbf A\cdot d\mathbf r=2\pi ,
+\]
+the circle now traversed counterclockwise, and the last integral computed as for the unit circle. Every positively oriented boundary of a region around the origin, however irregular, picks up the same value $2\pi$ as the circle: a line integral of a closed field can be moved across any part of the plane where the field is defined, but not across a point where it is not.
+
+\subsection{Area}
+
+With $P=0$ and $Q=x$, or $P=-y$ and $Q=0$, or half of the sum of these two, the integrand $\partial_xQ-\partial_yP$ is $1$, and Green's theorem computes the area of a region from its boundary.
+
+\begin{corollary}[Area as a boundary integral]
+\label{cor:green-area}
+For every admissible region $D$,
+\[
+\operatorname{vol}(D)=\oint_{\partial D}x\,dy=-\oint_{\partial D}y\,dx=\frac12\oint_{\partial D}(x\,dy-y\,dx).
+\]
+\end{corollary}
+
+The symmetric form is the most useful. For the ellipse with semi-axes $a$ and $b$, parametrised by $(a\cos t,b\sin t)$, the integrand $x\,y'-y\,x'$ is $ab\cos^2t+ab\sin^2t=ab$, and the area is $2\pi ab/2=\pi ab$, as found in \cref{sec:change-variables}. For a region bounded by a curve given in polar form, $\boldsymbol\gamma(\theta)=(r(\theta)\cos\theta,r(\theta)\sin\theta)$, the integrand is
+\[
+x\,y'-y\,x'=r\cos\theta\,(r'\sin\theta+r\cos\theta)-r\sin\theta\,(r'\cos\theta-r\sin\theta)=r^2 ,
+\]
+so the area is $\int_\alpha^\beta r(\theta)^2/2\,d\theta$, the formula of \cref{sec:change-variables} for regions between the origin and a polar curve; for the cardioid $r=1+\cos\theta$ it gives $3\pi/2$ again. The region under one arch of the cycloid is bounded by the segment $[0,2\pi]$ of the $x$-axis, traversed to the right, and by the arch, traversed backwards. On the segment $y=0$, and along the arch traversed forwards $-y\,x'=-(1-\cos t)^2$; so the area is
+\[
+-\oint_{\partial D}y\,dx=\int_0^{2\pi}(1-\cos t)^2\,dt=\int_0^{2\pi}(1-2\cos t+\cos^2t)\,dt=2\pi+\pi=3\pi ,
+\]
+three times the area of the rolling wheel, the backward traversal of the arch having supplied the sign.
+
+The area formula is particularly effective for polygons, whose boundary consists of segments. On the segment $\boldsymbol\sigma(t)=\mathbf p+t(\mathbf q-\mathbf p)$, $0\le t\le1$, from $\mathbf p=(x_p,y_p)$ to $\mathbf q=(x_q,y_q)$, the integrand of $x\,dy-y\,dx$ is
+\[
+\begin{aligned}
+&\bigl(x_p+t(x_q-x_p)\bigr)(y_q-y_p)-\bigl(y_p+t(y_q-y_p)\bigr)(x_q-x_p)\\
+&\qquad=x_p(y_q-y_p)-y_p(x_q-x_p)=x_py_q-x_qy_p ,
+\end{aligned}
+\]
+the terms with $t$ cancelling, so that $\int_{\boldsymbol\sigma}(x\,dy-y\,dx)=x_py_q-x_qy_p$.
+
+We say that the vertices of a simple polygon are listed in \term{counterclockwise order} if the closed broken line through them, in this order, traverses every edge with the polygon on its left, that is, if it is a positively oriented boundary of the polygon region in the sense of \cref{def:admissible-region}; for a triangle this is the orientation of \cref{def:standard-region}.
+
+\begin{theorem}[Area of a polygon]
+\label{thm:shoelace}
+Let $\mathbf p_0,\ldots,\mathbf p_{N-1}$, $\mathbf p_k=(x_k,y_k)$, be the vertices of a simple polygon, listed in counterclockwise order, and let $\mathbf p_N\coloneqq\mathbf p_0$. Then the area of the polygon is
+\[
+A=\frac12\sum_{k=0}^{N-1}\bigl(x_ky_{k+1}-x_{k+1}y_k\bigr).
+\]
+If the vertices are listed in clockwise order, the sum equals $-A$.
+\end{theorem}
+
+\begin{proof}
+Every simple polygon with at least four vertices has a diagonal, a segment between two vertices that lies inside the polygon, and cutting along it produces two polygons with fewer vertices; by induction, the polygon is cut by diagonals into triangles~\cite{meisters1975}. Each triangle is a standard region, and each diagonal is traversed twice, in opposite directions, by the boundary paths of the two triangles adjacent to it. So the polygon is an admissible region whose positively oriented boundary is the closed broken line through $\mathbf p_0,\mathbf p_1,\ldots,\mathbf p_N$, and \cref{cor:green-area} together with the computation for segments gives the formula. Listing the vertices in the other order reverses the path and changes the sign.
+\end{proof}
+
+The formula is known as the \term{surveyor's formula} or the \term{shoelace formula}, the latter because the products $x_ky_{k+1}$ and $x_{k+1}y_k$, written in two columns, are connected by crossing lines like the laces of a shoe; Braden traces its history back to the eighteenth century~\cite{braden1986}. For a triangle it reduces to the formula $\bigl((x_1-x_0)(y_2-y_0)-(x_2-x_0)(y_1-y_0)\bigr)/2$ of \cref{sec:change-variables}, now with a sign that reveals the orientation: the expression is positive exactly when $\mathbf p_0,\mathbf p_1,\mathbf p_2$ are in counterclockwise order. For the square with vertices $(0,0)$, $(1,0)$, $(1,1)$, $(0,1)$ the four terms are $0$, $1$, $1$ and $0$, and the area is $1$. The formula needs only the coordinates of the vertices, one pass over them and a handful of operations per vertex, and \cref{sec:vector-numerics} turns it into an algorithm.
+
+\subsection{Circulation and Flux}
+
+Green's theorem has two vector forms, which anticipate the theorems of Stokes and Gauss. Let $\boldsymbol\gamma=(x,y)$ be a positively oriented boundary path of $D$, regular on each piece. Its unit tangent is $\mathbf T=(x',y')/\|\boldsymbol\gamma'\|$, and the vector $\mathbf n\coloneqq(y',-x')/\|\boldsymbol\gamma'\|$ is the unit tangent turned clockwise by a right angle. Since $D$ lies to the left of the direction of travel, $\mathbf n$ points out of $D$; it is the \term{outward unit normal}. On the bottom of the standard region of \cref{fig:green}A, for instance, $x'>0$, so $\mathbf n$ has a negative second component and points downwards. For a vector field $\mathbf F=(F_1,F_2)$, the integral $\oint\langle\mathbf F,\mathbf T\rangle\,ds$ of the tangential component is called the \term{circulation} of $\mathbf F$ around $\partial D$, and the integral $\oint\langle\mathbf F,\mathbf n\rangle\,ds$ of the normal component is the \term{flux} of $\mathbf F$ out of $D$: for the velocity field of a fluid flowing in the plane, it is the amount of fluid leaving $D$ per unit time.
+
+\begin{corollary}[Green's theorem in vector form]
+\label{cor:green-vector}
+Let $D$ be an admissible region whose positively oriented boundary paths are regular on each piece, and let $\mathbf F=(F_1,F_2)$ be continuously differentiable on an open set containing $D$. Then
+\[
+\oint_{\partial D}\langle\mathbf F,\mathbf T\rangle\,ds=\iint_D\Bigl(\frac{\partial F_2}{\partial x}-\frac{\partial F_1}{\partial y}\Bigr)\,dA,\qquad\oint_{\partial D}\langle\mathbf F,\mathbf n\rangle\,ds=\iint_D\Bigl(\frac{\partial F_1}{\partial x}+\frac{\partial F_2}{\partial y}\Bigr)\,dA .
+\]
+\end{corollary}
+
+\begin{proof}
+The first identity is Green's theorem with $P=F_1$ and $Q=F_2$, by \eqref{eq:tangential-component}. For the second, $\langle\mathbf F,\mathbf n\rangle\|\boldsymbol\gamma'\|=F_1y'-F_2x'$, which is the integrand of $-F_2\,dx+F_1\,dy$; Green's theorem with $P=-F_2$ and $Q=F_1$ gives the integrand $\partial_xF_1+\partial_yF_2$.
+\end{proof}
+
+The two integrands, $\partial_xF_2-\partial_yF_1$ and $\partial_xF_1+\partial_yF_2$, are the curl and the divergence of the field, which \cref{sec:div-curl} studies. The corollary says that the circulation around the boundary is the integral of the curl over the region, and the flux out of the boundary is the integral of the divergence.
+
+\section{Surfaces and Surface Integrals}
+\label{sec:surfaces}
+
+\subsection{The Cross Product}
+
+The area of a small piece of surface will be the area of a parallelogram spanned by two tangent vectors. In $\mathbb R^3$ that area, together with a direction perpendicular to the parallelogram, is encoded in a single vector.
+
+\begin{definition}[Cross product]
+\label{def:cross-product}
+The \term{cross product} of $\mathbf x=(x_1,x_2,x_3)$ and $\mathbf y=(y_1,y_2,y_3)$ in $\mathbb R^3$ is the vector
+\[
+\mathbf x\times\mathbf y\coloneqq\bigl(x_2y_3-x_3y_2,\ x_3y_1-x_1y_3,\ x_1y_2-x_2y_1\bigr).
+\]
+\end{definition}
+
+Each component is a $2\times2$ determinant formed from the other two coordinates, and the definition is often remembered as a formal expansion along the first row,
+\[
+\mathbf x\times\mathbf y=\det\begin{pmatrix}\mathbf e_1&\mathbf e_2&\mathbf e_3\\x_1&x_2&x_3\\y_1&y_2&y_3\end{pmatrix},
+\]
+in which the first row contains vectors rather than numbers. For example, $(1,2,0)\times(0,1,3)=(6,-3,1)$, a vector orthogonal to both factors, as one checks: $6-6+0=0$ and $0-3+3=0$. The cross product is particular to $\mathbb R^3$; in the plane, the number $x_1y_2-x_2y_1$, the third component of $(x_1,x_2,0)\times(y_1,y_2,0)$, takes its place.
+
+\begin{proposition}[Properties of the cross product]
+\label{prop:cross-product}
+For all $\mathbf x,\mathbf y,\mathbf z\in\mathbb R^3$ and $s,t\in\mathbb R$:
+\begin{enumerate}
+\item $\mathbf x\times\mathbf y$ is linear in each factor, $\mathbf y\times\mathbf x=-\mathbf x\times\mathbf y$, and $\mathbf x\times\mathbf x=\mathbf0$;
+\item $\langle\mathbf x\times\mathbf y,\mathbf z\rangle=\det(\mathbf x,\mathbf y,\mathbf z)$, the determinant of the matrix with the columns $\mathbf x$, $\mathbf y$, $\mathbf z$; in particular $\mathbf x\times\mathbf y$ is orthogonal to $\mathbf x$ and to $\mathbf y$, and $\langle\mathbf x\times\mathbf y,\mathbf z\rangle=\langle\mathbf y\times\mathbf z,\mathbf x\rangle=\langle\mathbf z\times\mathbf x,\mathbf y\rangle$;
+\item $\|\mathbf x\times\mathbf y\|^2=\|\mathbf x\|^2\|\mathbf y\|^2-\langle\mathbf x,\mathbf y\rangle^2$, so that $\|\mathbf x\times\mathbf y\|=\|\mathbf x\|\,\|\mathbf y\|\sin\theta$, where $\theta$ is the angle between $\mathbf x$ and $\mathbf y$; this is the area of the parallelogram spanned by $\mathbf x$ and $\mathbf y$, and it vanishes if and only if one of the vectors is a multiple of the other;
+\item $\mathbf e_1\times\mathbf e_2=\mathbf e_3$, $\mathbf e_2\times\mathbf e_3=\mathbf e_1$ and $\mathbf e_3\times\mathbf e_1=\mathbf e_2$.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(i) Each component is linear in $\mathbf x$ for fixed $\mathbf y$ and vice versa, and changes sign when $\mathbf x$ and $\mathbf y$ are exchanged; for $\mathbf y=\mathbf x$ it is therefore zero. (ii) Expanding,
+\[
+\langle\mathbf x\times\mathbf y,\mathbf z\rangle=z_1(x_2y_3-x_3y_2)-z_2(x_1y_3-x_3y_1)+z_3(x_1y_2-x_2y_1),
+\]
+which is the expansion of the determinant of the matrix with the rows $\mathbf z$, $\mathbf x$, $\mathbf y$ along its first row (\cref{sec:vectors-rn}). Multiplying out the $3\times3$ formula of \cref{sec:vectors-rn} shows that this equals the determinant with the rows $\mathbf x$, $\mathbf y$, $\mathbf z$, which is the determinant with these columns, since $\det A^{\mathsf T}=\det A$ (\cref{thm:invertible-matrices}). The same expansion with $\mathbf z=\mathbf x$ shows that the terms cancel in pairs, so $\langle\mathbf x\times\mathbf y,\mathbf x\rangle=0$, and likewise for $\mathbf y$. The cyclic identities hold because the expression in the display is unchanged when $(\mathbf x,\mathbf y,\mathbf z)$ is replaced by $(\mathbf y,\mathbf z,\mathbf x)$, as one checks term by term. (iii) For any $\mathbf x,\mathbf y\in\mathbb R^n$, \term{Lagrange's identity}
+\[
+\|\mathbf x\|^2\|\mathbf y\|^2-\langle\mathbf x,\mathbf y\rangle^2=\sum_{i,j}x_i^2y_j^2-\sum_{i,j}x_iy_ix_jy_j=\frac12\sum_{i,j}\bigl(x_iy_j-x_jy_i\bigr)^2=\sum_{i<j}\bigl(x_iy_j-x_jy_i\bigr)^2
+\]
+holds, as one sees by expanding the squares in the middle sum. For $n=3$ the three terms with $i<j$ are the squares of the components of $\mathbf x\times\mathbf y$, up to order and sign. With \eqref{eq:angle}, the right side of (iii) is $\|\mathbf x\|^2\|\mathbf y\|^2(1-\cos^2\theta)$, and $\sin\theta\ge0$ for $\theta\in[0,\pi]$. The parallelogram has the base $\|\mathbf x\|$ and the height $\|\mathbf y\|\sin\theta$. Finally, $\|\mathbf x\times\mathbf y\|=0$ means equality in the Cauchy--Schwarz inequality, which by \cref{thm:cauchy-schwarz-vectors} happens exactly when one vector is a multiple of the other. (iv) is the definition.
+\end{proof}
+
+So $\mathbf x\times\mathbf y$ is a vector perpendicular to the plane spanned by $\mathbf x$ and $\mathbf y$ whose length is the area of the parallelogram they span. Of the two vectors with these properties it is the one for which $\det(\mathbf x,\mathbf y,\mathbf x\times\mathbf y)=\|\mathbf x\times\mathbf y\|^2$ is positive, by (ii): the triple $\mathbf x$, $\mathbf y$, $\mathbf x\times\mathbf y$ has the same orientation as $\mathbf e_1$, $\mathbf e_2$, $\mathbf e_3$. This is the \term{right-hand rule}: if the fingers of the right hand curl from $\mathbf x$ towards $\mathbf y$, the thumb points along $\mathbf x\times\mathbf y$. The number $\langle\mathbf x\times\mathbf y,\mathbf z\rangle=\det(\mathbf x,\mathbf y,\mathbf z)$ is the \term{triple product}; its absolute value is the volume of the parallelepiped spanned by the three vectors, by \cref{thm:linear-volume}. The cross product is not associative: $(\mathbf e_1\times\mathbf e_1)\times\mathbf e_2=\mathbf0$, while $\mathbf e_1\times(\mathbf e_1\times\mathbf e_2)=\mathbf e_1\times\mathbf e_3=-\mathbf e_2$.
+
+\subsection{Parametrised Surfaces}
+
+\begin{definition}[Parametrised surface]
+\label{def:parametrised-surface}
+Let $K\subseteq\mathbb R^2$ be closed, bounded and Jordan measurable. A \term{parametrised surface} in $\mathbb R^3$ is a map $\mathbf r\colon K\to\mathbb R^3$, $(u,v)\mapsto\mathbf r(u,v)$, that is the restriction of a $C^1$ map on an open set containing $K$, is injective on the interior of $K$, and satisfies
+\[
+\mathbf r_u(u,v)\times\mathbf r_v(u,v)\ne\mathbf0
+\]
+at every interior point $(u,v)$ of $K$, where $\mathbf r_u\coloneqq\partial_u\mathbf r$ and $\mathbf r_v\coloneqq\partial_v\mathbf r$. Its trace $S\coloneqq\mathbf r(K)$ is called a \term{surface}, and $\mathbf N\coloneqq\mathbf r_u\times\mathbf r_v$ is the \term{normal vector} of the parametrisation.
+\end{definition}
+
+The curves $u\mapsto\mathbf r(u,v_0)$ and $v\mapsto\mathbf r(u_0,v)$ on the surface are the images of the lines $v=v_0$ and $u=u_0$ of the parameter plane, and $\mathbf r_u$ and $\mathbf r_v$ are their velocities. The condition $\mathbf r_u\times\mathbf r_v\ne\mathbf0$ says that these two tangent vectors are not parallel, equivalently that the $3\times2$ Jacobian matrix $D\mathbf r=(\mathbf r_u\ \mathbf r_v)$ has linearly independent columns; by \cref{prop:cross-product}\,(iii) it is the analogue of the regularity of a path. The plane through $\mathbf r(u_0,v_0)$ spanned by $\mathbf r_u$ and $\mathbf r_v$ is the \term{tangent plane}, and $\mathbf N$ is orthogonal to it. As for the change of variables in \cref{thm:change-variables}, the conditions may fail on the boundary of $K$, where the parametrisation of a sphere, for instance, collapses an edge to a pole.
+
+The following surfaces recur below.
+\begin{itemize}
+\item The \term{graph} of a $C^1$ function $g$ on $K$, parametrised by $\mathbf r(x,y)=(x,y,g(x,y))$. Here $\mathbf r_x=(1,0,g_x)$ and $\mathbf r_y=(0,1,g_y)$, so
+\[
+\mathbf r_x\times\mathbf r_y=\bigl(-g_x,-g_y,1\bigr),\qquad\|\mathbf r_x\times\mathbf r_y\|=\sqrt{1+g_x^2+g_y^2} .
+\]
+The normal points upwards, and it is the vector $(\nabla g,-1)$ of \cref{sec:differentiability} with the opposite sign.
+\item The \term{sphere} of radius $R$ about the origin, in spherical coordinates (ISO 80000-2, as in \cref{sec:inverse-implicit}): $\mathbf r(\theta,\varphi)=R(\sin\theta\cos\varphi,\sin\theta\sin\varphi,\cos\theta)$ on $K=[0,\pi]\times[-\pi,\pi]$. Here the partial derivatives are $\mathbf r_\theta=R(\cos\theta\cos\varphi,\cos\theta\sin\varphi,-\sin\theta)$ and $\mathbf r_\varphi=R(-\sin\theta\sin\varphi,\sin\theta\cos\varphi,0)$, and a computation of the three components gives
+\[
+\mathbf r_\theta\times\mathbf r_\varphi=R^2\sin\theta\,\bigl(\sin\theta\cos\varphi,\sin\theta\sin\varphi,\cos\theta\bigr)=R\sin\theta\;\mathbf r(\theta,\varphi),
+\]
+so that $\|\mathbf r_\theta\times\mathbf r_\varphi\|=R^2\sin\theta$.
+The normal points away from the centre and vanishes only at the poles, $\theta=0$ and $\theta=\pi$, which belong to the boundary of $K$. The map is injective on the interior of $K$.
+\item The \term{torus} obtained by rotating a circle of radius $\rho$, whose centre lies at distance $R>\rho$ from the $z$-axis, about that axis: $\mathbf r(u,v)=\bigl((R+\rho\cos v)\cos u,(R+\rho\cos v)\sin u,\rho\sin v\bigr)$ on $[0,2\pi]^2$. A computation of the cross product gives $\mathbf r_u\times\mathbf r_v=\rho(R+\rho\cos v)(\cos u\cos v,\sin u\cos v,\sin v)$, of length $\rho(R+\rho\cos v)$.
+\end{itemize}
+
+\subsection{Surface Area}
+
+Cut the parameter domain $K$ into small rectangles. The rectangle $[u,u+h]\times[v,v+k]$ is mapped onto a small curved quadrilateral on the surface, which is approximately the parallelogram spanned by $h\,\mathbf r_u(u,v)$ and $k\,\mathbf r_v(u,v)$, since $\mathbf r(u+s,v+t)\approx\mathbf r(u,v)+s\mathbf r_u+t\mathbf r_v$ (\cref{fig:surface-patch}). By \cref{prop:cross-product}\,(iii) the parallelogram has the area $\|\mathbf r_u\times\mathbf r_v\|\,hk$. Adding up these areas and refining the grid leads to the following definition, which is the two-dimensional analogue of \cref{thm:path-length}.
+
+\begin{definition}[Surface area]
+\label{def:surface-area}
+The \term{area} of a parametrised surface $\mathbf r\colon K\to\mathbb R^3$ is
+\[
+\operatorname{area}(\mathbf r)\coloneqq\iint_K\|\mathbf r_u\times\mathbf r_v\|\,dA .
+\]
+\end{definition}
+
+For curves, length was defined first, as a supremum over inscribed broken lines, and the integral formula was proved. For surfaces the analogous definition, by inscribed polyhedra, fails: Schwarz observed that a cylinder of radius $1$ and height $1$ admits inscribed polyhedra with triangular faces whose total area tends to infinity as the triangles become small, because the triangles can be made to stand almost perpendicular to the surface~\cite{schwarz1890}. The integral is therefore taken as the definition. It is justified by the computation above, by its agreement with the familiar areas, and by the fact that it does not depend on the parametrisation.
+
+\begin{figure}
+\sdpanel{A}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.36\textwidth, height=0.44\textwidth, xmin=0.2, xmax=1.4, ymin=0, ymax=1.7,
+  xtick={0.35,0.65,0.95,1.25}, ytick={0.15,0.5,0.85,1.2,1.55}, xlabel={$\theta$}, ylabel={$\varphi$}]
+\fill[sdfill] (axis cs:0.65,0.5) rectangle (axis cs:0.95,0.85);
+\pgfplotsinvokeforeach{0.35,0.65,0.95,1.25}{\draw[black!60, line width=0.4pt] (axis cs:#1,0.15) -- (axis cs:#1,1.55);}
+\pgfplotsinvokeforeach{0.15,0.5,0.85,1.2,1.55}{\draw[black!60, line width=0.4pt] (axis cs:0.35,#1) -- (axis cs:1.25,#1);}
+\draw[black, line width=0.8pt] (axis cs:0.65,0.5) rectangle (axis cs:0.95,0.85);
+\node[font=\scriptsize, anchor=north] at (axis cs:0.8,0.5) {$h$};
+\node[font=\scriptsize, anchor=west] at (axis cs:0.95,0.675) {$k$};
+\end{axis}
+\end{tikzpicture}}\hfill
+\sdpanel{B}{\begin{tikzpicture}
+\begin{axis}[view={{108}{18}}, hide axis, width=0.6\textwidth, height=0.6\textwidth,
+  xmin=0, xmax=1.1, ymin=0, ymax=1.1, zmin=0, zmax=1.3, clip=false]
+\addplot3[black!35, line width=0.4pt, domain=0:90, samples=40, samples y=0] ({cos(x)},{sin(x)},0);
+\addplot3[black!35, line width=0.4pt, domain=0:90, samples=40, samples y=0] ({sin(x)},0,{cos(x)});
+\addplot3[black!35, line width=0.4pt, domain=0:90, samples=40, samples y=0] (0,{sin(x)},{cos(x)});
+\addplot3[surf, shader=flat, fill=white, draw=black!45, line width=0.3pt, z buffer=sort, domain=0.35:1.25, y domain=0.15:1.55, samples=4, samples y=5] ({sin(deg(x))*cos(deg(y))},{sin(deg(x))*sin(deg(y))},{cos(deg(x))});
+\addplot3[fill=black!25, draw=black, line width=0.6pt] coordinates {(0.5311,0.2901,0.7961) (0.5654,0.3089,0.7648) (0.5982,0.3268,0.7317) (0.6295,0.3439,0.6967) (0.6593,0.3602,0.6600) (0.6874,0.3755,0.6216) (0.7138,0.3900,0.5817) (0.6899,0.4309,0.5817) (0.6636,0.4704,0.5817) (0.6350,0.5083,0.5817) (0.6043,0.5445,0.5817) (0.5716,0.5788,0.5817) (0.5368,0.6111,0.5817) (0.5170,0.5885,0.6216) (0.4958,0.5644,0.6600) (0.4734,0.5389,0.6967) (0.4499,0.5121,0.7317) (0.4252,0.4840,0.7648) (0.3994,0.4547,0.7961) (0.4252,0.4306,0.7961) (0.4496,0.4051,0.7961) (0.4725,0.3782,0.7961) (0.4937,0.3500,0.7961) (0.5133,0.3206,0.7961)} -- cycle;
+\draw[black, dashed, line width=0.5pt] (axis cs:0.7407,0.4046,0.6145) -- (axis cs:0.6391,0.5905,0.6145) -- (axis cs:0.4296,0.4760,0.7961);
+\draw[black, line width=0.8pt, -{Latex[length=1.7mm]}] (axis cs:0.5311,0.2901,0.7961) -- (axis cs:0.7407,0.4046,0.6145);
+\draw[black, line width=0.8pt, -{Latex[length=1.7mm]}] (axis cs:0.5311,0.2901,0.7961) -- (axis cs:0.4296,0.4760,0.7961);
+\draw[black, line width=0.8pt, -{Latex[length=1.7mm]}] (axis cs:0.5311,0.2901,0.7961) -- (axis cs:0.8232,0.4497,1.2339);
+\node[font=\scriptsize, anchor=north east] at (axis cs:0.7407,0.4046,0.6145) {$h\mathbf r_\theta$};
+\node[font=\scriptsize, anchor=south west] at (axis cs:0.4296,0.4760,0.7961) {$k\mathbf r_\varphi$};
+\node[font=\scriptsize, anchor=south] at (axis cs:0.8232,0.4497,1.2339) {$\mathbf N$};
+\node[font=\scriptsize, anchor=north] at (axis cs:1,0,0) {$x$};
+\node[font=\scriptsize, anchor=north] at (axis cs:0,1,0) {$y$};
+\node[font=\scriptsize, anchor=south] at (axis cs:0,0,1) {$z$};
+\end{axis}
+\end{tikzpicture}}
+\caption{Surface area. (A) A grid in the parameter domain of the sphere $\mathbf r(\theta,\varphi)=(\sin\theta\cos\varphi,\sin\theta\sin\varphi,\cos\theta)$, with the cell $[0.65,0.95]\times[0.5,0.85]$ shaded, of sides $h=0.3$ and $k=0.35$. (B) The image of the grid on the part of the unit sphere in the first octant (outlined). The shaded cell is a curved quadrilateral, approximately the parallelogram (dashed) spanned by $h\mathbf r_\theta$ and $k\mathbf r_\varphi$ at its corner $\mathbf r(0.65,0.5)$, whose area is $\|\mathbf r_\theta\times\mathbf r_\varphi\|\,hk=hk\sin0.65=0.0635$; the cell itself has the area $k(\cos0.65-\cos0.95)=0.0750$. The normal $\mathbf N=\mathbf r_\theta\times\mathbf r_\varphi$ (scaled up) points away from the centre.}
+\label{fig:surface-patch}
+\end{figure}
+
+\begin{proposition}[Change of parameters]
+\label{prop:surface-reparam}
+Let $\mathbf r\colon K\to\mathbb R^3$ be a parametrised surface, and let $\mathbf g\colon K'\to K$ satisfy the hypotheses of \cref{thm:change-variables}, with $\mathbf g(K')=K$. Then $\tilde{\mathbf r}\coloneqq\mathbf r\circ\mathbf g$ satisfies
+\[
+\tilde{\mathbf r}_s\times\tilde{\mathbf r}_t=\det D\mathbf g\;(\mathbf r_u\times\mathbf r_v)\circ\mathbf g ,
+\]
+where $(s,t)$ are the coordinates of $K'$. Consequently $\operatorname{area}(\tilde{\mathbf r})=\operatorname{area}(\mathbf r)$, and the normal vectors of the two parametrisations point in the same direction where $\det D\mathbf g>0$ and in opposite directions where $\det D\mathbf g<0$.
+\end{proposition}
+
+\begin{proof}
+Write $\mathbf g=(g_1,g_2)$. By the chain rule, $\tilde{\mathbf r}_s=\mathbf r_u\,\partial_sg_1+\mathbf r_v\,\partial_sg_2$ and $\tilde{\mathbf r}_t=\mathbf r_u\,\partial_tg_1+\mathbf r_v\,\partial_tg_2$, with $\mathbf r_u$ and $\mathbf r_v$ evaluated at $\mathbf g(s,t)$. Expanding the cross product by \cref{prop:cross-product}\,(i), the terms $\mathbf r_u\times\mathbf r_u$ and $\mathbf r_v\times\mathbf r_v$ vanish, and $\mathbf r_v\times\mathbf r_u=-\mathbf r_u\times\mathbf r_v$, so
+\[
+\tilde{\mathbf r}_s\times\tilde{\mathbf r}_t=\bigl(\partial_sg_1\,\partial_tg_2-\partial_sg_2\,\partial_tg_1\bigr)\,\mathbf r_u\times\mathbf r_v=\det D\mathbf g\;\mathbf r_u\times\mathbf r_v .
+\]
+Taking norms and applying \cref{thm:change-variables} to the continuous function $\|\mathbf r_u\times\mathbf r_v\|$ gives the equality of the areas.
+\end{proof}
+
+The sphere of radius $R$ has the area
+\[
+\iint_{[0,\pi]\times[-\pi,\pi]}R^2\sin\theta\,dA=R^2\int_{-\pi}^\pi\int_0^\pi\sin\theta\,d\theta\,d\varphi=4\pi R^2 ,
+\]
+which is the derivative of its volume $4\pi R^3/3$, as \cref{sec:gaussian} predicted. The part of the sphere between the heights $z_1<z_2$, a spherical zone, corresponds to $\theta$ between $\theta_2$ and $\theta_1$ with $R\cos\theta_i=z_i$, and its area is $2\pi R^2(\cos\theta_2-\cos\theta_1)$, that is,
+\[
+2\pi R\,(z_2-z_1).
+\]
+It depends only on the height of the zone, not on its position: a zone near the equator, which is wide but steep, has the same area as an equally high zone near a pole, which is narrow but flat. The area of the zone equals that of the part of the circumscribed cylinder between the same heights, a theorem of Archimedes in \emph{On the Sphere and Cylinder}~\cite{heath1897archimedes}; it is the reason why the projection of the sphere onto the cylinder, horizontally away from the axis, preserves areas.
+
+The paraboloid $z=x^2+y^2$ over the unit disc $D$, the graph of $g(x,y)=x^2+y^2$, has $\|\mathbf r_x\times\mathbf r_y\|=\sqrt{1+4x^2+4y^2}$, and in polar coordinates its area is
+\[
+\begin{aligned}
+\iint_D\sqrt{1+4(x^2+y^2)}\,dA&=\int_0^{2\pi}\int_0^1\sqrt{1+4r^2}\,r\,dr\,d\theta=2\pi\Bigl[\frac{(1+4r^2)^{3/2}}{12}\Bigr]_0^1\\
+&=\frac\pi6\bigl(5\sqrt5-1\bigr)=5.330\ldots
+\end{aligned}
+\]
+The torus has the area $\int_0^{2\pi}\int_0^{2\pi}\rho(R+\rho\cos v)\,dv\,du=4\pi^2R\rho$, the length $2\pi\rho$ of the rotated circle times the length $2\pi R$ of the circle described by its centre; this is the second centroid theorem of Pappus, the counterpart for areas of the theorem on volumes in \cref{sec:multiple}~\cite{heath1921}.
+
+The definition extends to hypersurfaces in $\mathbb R^n$, and with it we can confirm what \cref{sec:gaussian} suggested: the area of the sphere of radius $R$ in $\mathbb R^n$ is the derivative $nV_nR^{n-1}$ of the volume of the ball. For the graph of a $C^1$ function $g$ on an open set $A\subseteq\mathbb R^{n-1}$, the tangent vectors $(\mathbf e_i,\partial_ig)$, $i=1,\ldots,n-1$, span a parallelepiped whose $(n-1)$-dimensional volume is $\sqrt{1+\|\nabla g\|^2}$; for $n=3$ this is $\|\mathbf r_x\times\mathbf r_y\|$, and for general $n$ it is the square root of the determinant of the matrix of inner products of the tangent vectors, the \term{Gram determinant}, which Chapter~17 computes. We take
+\begin{equation}
+\operatorname{area}(\operatorname{graph}g)\coloneqq\int_A\sqrt{1+\|\nabla g(\mathbf u)\|^2}\,d\mathbf u ,
+\label{eq:graph-area}
+\end{equation}
+an improper integral in the sense of \cref{sec:improper-multiple} if necessary, as the definition.
+
+\begin{proposition}[Area of the sphere in $\mathbb R^n$]
+\label{prop:sphere-area}
+Let $n\ge2$ and $R>0$. The sphere $\{\mathbf x\in\mathbb R^n: \|\mathbf x\|=R\}$ consists of the graphs of $\pm g$, $g(\mathbf u)\coloneqq\sqrt{R^2-\|\mathbf u\|^2}$, over the open ball $\|\mathbf u\|<R$ of $\mathbb R^{n-1}$, together with the equator $\{\|\mathbf u\|=R,\ x_n=0\}$. The sum of the areas \eqref{eq:graph-area} of the two graphs is
+\[
+nV_nR^{n-1}=\frac{2\pi^{n/2}}{\Gamma(n/2)}\,R^{n-1},
+\]
+with $V_n$ the volume of the unit ball (\cref{thm:ball-volume}). For $n=2$ it is the circumference $2\pi R$ and for $n=3$ the area $4\pi R^2$.
+\end{proposition}
+
+\begin{proof}
+On the open ball, $\nabla g(\mathbf u)=-\mathbf u/g(\mathbf u)$, so $1+\|\nabla g\|^2=(g^2+\|\mathbf u\|^2)/g^2=R^2/g^2$, and the integrand of \eqref{eq:graph-area} is $R/\sqrt{R^2-\|\mathbf u\|^2}$, a positive continuous function of $\|\mathbf u\|$. Exhausting the open ball by the closed balls of radius $R-1/j$ (\cref{def:exhaustion}) and applying \cref{prop:radial} in $\mathbb R^{n-1}$, the area of each graph is
+\[
+\begin{aligned}
+(n-1)V_{n-1}\int_0^R\frac{R\,r^{n-2}}{\sqrt{R^2-r^2}}\,dr&=(n-1)V_{n-1}R^{n-1}\int_0^{\pi/2}\sin^{n-2}\alpha\,d\alpha\\
+&=(n-1)V_{n-1}R^{n-1}\cdot\frac12\,\mathrm B\Bigl(\frac{n-1}2,\frac12\Bigr),
+\end{aligned}
+\]
+by the substitution $r=R\sin\alpha$ and the trigonometric form of the beta integral after \cref{thm:beta-gamma}, with $2a-1=n-2$ and $2b-1=0$. (For $n=2$, $(n-1)V_{n-1}=V_1=2$, and the radial formula reduces to $\int_{-s}^sh(|u|)\,du=2\int_0^sh$.) By \cref{thm:ball-volume} and $\Gamma(s+1)=s\Gamma(s)$,
+\[
+(n-1)V_{n-1}=\frac{(n-1)\pi^{(n-1)/2}}{\Gamma((n+1)/2)}=\frac{2\pi^{(n-1)/2}}{\Gamma((n-1)/2)},
+\]
+and by \cref{thm:beta-gamma}, $\mathrm B((n-1)/2,1/2)=\Gamma((n-1)/2)\sqrt\pi/\Gamma(n/2)$. Twice the area of one graph is therefore
+\[
+\begin{aligned}
+2\cdot\frac{2\pi^{(n-1)/2}}{\Gamma((n-1)/2)}\cdot\frac{\Gamma((n-1)/2)\sqrt\pi}{2\,\Gamma(n/2)}\,R^{n-1}&=\frac{2\pi^{n/2}}{\Gamma(n/2)}\,R^{n-1}\\
+&=\frac{n\,\pi^{n/2}}{\Gamma(n/2+1)}\,R^{n-1}=nV_nR^{n-1}.
+\end{aligned}
+\]
+\end{proof}
+
+The equator, of lower dimension, contributes nothing to the area. The proposition gives a second view of \cref{prop:radial}: the shell between the radii $r$ and $r+dr$ is a thin layer over the sphere of radius $r$, and its volume $nV_nr^{n-1}\,dr$ is the area of that sphere times the thickness.
+
+\subsection{Surface Integrals}
+
+\begin{definition}[Surface integral of a function]
+\label{def:surface-integral}
+Let $\mathbf r\colon K\to\mathbb R^3$ be a parametrised surface with trace $S$, and let $f$ be continuous on $S$. The \term{surface integral} of $f$ over $S$ is
+\[
+\iint_Sf\,dS\coloneqq\iint_Kf\bigl(\mathbf r(u,v)\bigr)\,\|\mathbf r_u\times\mathbf r_v\|\,dA .
+\]
+\end{definition}
+
+The symbol $dS=\|\mathbf r_u\times\mathbf r_v\|\,dA$ is the \term{element of area} of the surface. By \cref{prop:surface-reparam} and \cref{thm:change-variables}, the integral does not change under a change of parameters, so the notation $\iint_S$, which mentions only the trace, is justified for traces that are given by an injective parametrisation. With $f=1$ the integral is the area. A thin shell of density $f$ has the mass $\iint_Sf\,dS$, and its centre of mass is defined as for plates in \cref{sec:general-regions}. For the upper hemisphere of radius $R$, symmetry gives $\bar x=\bar y=0$, and
+\[
+\iint_Sz\,dS=\int_{-\pi}^\pi\int_0^{\pi/2}R\cos\theta\cdot R^2\sin\theta\,d\theta\,d\varphi=2\pi R^3\cdot\frac12=\pi R^3 ,
+\]
+so $\bar z=\pi R^3/(2\pi R^2)=R/2$: the centroid of a hemispherical shell lies halfway between the centre and the pole, another consequence of Archimedes' theorem on zones, since the area is spread uniformly in height. The solid hemisphere, whose mass is concentrated nearer the base, has its centroid lower, at $3R/8$.
+
+Many surfaces of interest, such as the surface of a cube or of a closed cylinder, are not the trace of a single parametrisation but the union of finitely many such traces, the \term{faces}, which meet along curves. Integrals over such \term{piecewise smooth surfaces} are defined as the sums of the integrals over the faces. The curves along which the faces meet have area zero, being images of sets of content zero, and the value does not depend on how the surface is cut into faces; we use this without proof.
+
+\subsection{Orientation and Flux}
+
+A curve has two directions of travel, and a surface has two sides. At each point of a parametrised surface, the unit normal $\mathbf n\coloneqq\mathbf N/\|\mathbf N\|=\mathbf r_u\times\mathbf r_v/\|\mathbf r_u\times\mathbf r_v\|$ points to one side, and it depends continuously on the point. A choice of a continuous unit normal field on a surface is an \term{orientation} of the surface, and a surface with an orientation is \term{oriented}. Every parametrised surface is oriented by its parametrisation; exchanging the roles of $u$ and $v$, or any change of parameters with $\det D\mathbf g<0$, reverses the orientation, by \cref{prop:surface-reparam}. The surface of a solid, such as a sphere or the surface of a cube, is oriented by the \term{outward normal}, which points away from the solid; the spherical coordinates above give the outward normal of the sphere. Not every surface can be oriented: on the M\"obius strip, obtained by gluing the ends of a long paper strip after half a twist, a normal vector carried once around the strip comes back pointing to the other side~\cite{docarmo1976}.
+
+\begin{definition}[Flux]
+\label{def:flux}
+Let $S$ be a surface oriented by the unit normal $\mathbf n$ of a parametrisation $\mathbf r\colon K\to\mathbb R^3$, and let $\mathbf F$ be a vector field that is continuous on $S$. The \term{flux} of $\mathbf F$ through $S$ is
+\[
+\iint_S\langle\mathbf F,\mathbf n\rangle\,dS=\iint_K\bigl\langle\mathbf F\bigl(\mathbf r(u,v)\bigr),\mathbf r_u\times\mathbf r_v\bigr\rangle\,dA .
+\]
+\end{definition}
+
+The two expressions agree because $\mathbf n\,\|\mathbf r_u\times\mathbf r_v\|=\mathbf r_u\times\mathbf r_v$; the second is the one used in computations, and it shows that the flux needs no square roots. Physics texts often write $\iint_S\mathbf F\cdot d\mathbf S$, with the vector element of area $d\mathbf S=\mathbf n\,dS$. If $\mathbf F$ is the velocity field of a fluid, a small piece of surface of area $\Delta S$ lets through, in unit time, the fluid in a slanted prism with base $\Delta S$ and height $\langle\mathbf F,\mathbf n\rangle$, the normal component of the velocity; the flux is therefore the volume of fluid crossing $S$ per unit time, counted positive in the direction of $\mathbf n$ and negative in the opposite direction. By \cref{prop:surface-reparam}, the flux does not change under a change of parameters that preserves the orientation, and it changes sign under one that reverses it. For a piecewise smooth surface with an orientation, the flux is the sum of the fluxes through its faces.
+
+Two examples with the sphere $S_R$ of radius $R$ about the origin, oriented outwards, prepare the next sections. The field $\mathbf F(\mathbf x)=\mathbf x$ has, on the sphere, the normal component $\langle\mathbf x,\mathbf x/R\rangle=R$, so its flux is $R\cdot4\pi R^2=4\pi R^3$, three times the volume of the ball. The field $\mathbf E(\mathbf x)=\mathbf x/\|\mathbf x\|^3$, which describes the electric field of a point charge and, with a minus sign, the gravitational field of a point mass, has the normal component $1/R^2$, so its flux is $4\pi$, whatever the radius: the field weakens with the square of the distance exactly as fast as the area of the sphere grows. Both facts are explained by the divergence theorem in \cref{sec:divergence-theorem}.
+
+\section{Divergence and Curl}
+\label{sec:div-curl}
+
+\subsection{Definitions}
+
+Green's theorem in vector form, \cref{cor:green-vector}, produced two combinations of partial derivatives of a plane vector field. In $\mathbb R^3$ there are corresponding combinations, and they are the main characters of the rest of the chapter.
+
+\begin{definition}[Divergence and curl]
+\label{def:div-curl}
+Let $U\subseteq\mathbb R^n$ be open and $\mathbf F\in C^1(U)$ a vector field. The \term{divergence} of $\mathbf F$ is the function
+\[
+\operatorname{div}\mathbf F\coloneqq\sum_{i=1}^n\frac{\partial F_i}{\partial x_i}=\frac{\partial F_1}{\partial x_1}+\cdots+\frac{\partial F_n}{\partial x_n} .
+\]
+For $n=3$, the \term{curl} of $\mathbf F=(F_1,F_2,F_3)$ is the vector field
+\[
+\operatorname{curl}\mathbf F\coloneqq\Bigl(\frac{\partial F_3}{\partial y}-\frac{\partial F_2}{\partial z},\ \frac{\partial F_1}{\partial z}-\frac{\partial F_3}{\partial x},\ \frac{\partial F_2}{\partial x}-\frac{\partial F_1}{\partial y}\Bigr),
+\]
+and for $n=2$ the \term{curl} of $\mathbf F=(F_1,F_2)$ is the function $\operatorname{curl}\mathbf F\coloneqq\partial_xF_2-\partial_yF_1$.
+\end{definition}
+
+The plane curl is the third component of the curl of the field $(F_1,F_2,0)$, when $F_1$ and $F_2$ do not depend on $z$. With the symbolic vector $\nabla=(\partial_1,\partial_2,\partial_3)$ of partial derivatives, the definitions can be remembered as $\operatorname{div}\mathbf F=\nabla\cdot\mathbf F$, a formal inner product, and $\operatorname{curl}\mathbf F=\nabla\times\mathbf F$, a formal cross product: the components of the curl are the $2\times2$ determinants of \cref{def:cross-product} with $(\partial_1,\partial_2,\partial_3)$ in place of $\mathbf x$ and $\mathbf F$ in place of $\mathbf y$. This notation, which goes back to Gibbs's lectures on vector analysis~\cite{crowe1967}, is the most common one, and we use it alongside $\operatorname{div}$ and $\operatorname{curl}$; some books write $\operatorname{rot}\mathbf F$ for the curl. The dot and the cross are mnemonics, not operations on vectors: $\nabla\cdot\mathbf F$ is a function and $\mathbf F\cdot\nabla$ would be a differential operator. The divergence is also the trace of the Jacobian matrix $D\mathbf F$, the sum of its diagonal entries. The curl collects the differences $\partial_iF_j-\partial_jF_i$ of the off-diagonal entries; by \cref{prop:closed-condition}, they vanish for a gradient field, and so
+\[
+\operatorname{curl}\mathbf F=\mathbf0\quad\text{if and only if}\quad\partial_iF_j=\partial_jF_i\text{ for all }i,j ,
+\]
+which is the reason for the name \emph{irrotational} in \cref{sec:conservative}.
+
+Three fields in the plane show what the two quantities measure (\cref{fig:div-curl}). The radial field $\mathbf F(x,y)=(x,y)$ has divergence $2$ and curl $0$: it streams out of every point, as from a source, without rotating. The rotation field $(-y,x)$ has divergence $0$ and curl $2$: it neither spreads out nor converges, and it rotates rigidly with angular velocity $1$. In space, the rotation with angular velocity $\omega$ about the $z$-axis, $\mathbf F=(-\omega y,\omega x,0)=\boldsymbol\omega\times\mathbf x$ with $\boldsymbol\omega=(0,0,\omega)$, has curl $(0,0,2\omega)=2\boldsymbol\omega$: the curl of the velocity field of a rigid rotation is twice its angular velocity vector. The shear flow $(y,0)$ has divergence $0$ and curl $-1$, although all its streamlines are straight: a small paddle wheel placed in it is turned clockwise, because the fluid moves faster above it than below. The field $(x,-y)$, finally, has divergence $0$ and curl $0$; it is the gradient of $(x^2-y^2)/2$ and describes a flow that is squeezed in one direction and stretched in the other, without sources and without rotation.
+
+\begin{figure}
+\sdpanel{A}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.335\textwidth, height=0.335\textwidth, xmin=-1.25, xmax=1.25, ymin=-1.25, ymax=1.25,
+  axis equal image, xtick={-1,0,1}, ytick={-1,0,1}]
+\addplot[black, line width=0.5pt, quiver={u=\thisrow{u},v=\thisrow{v}}, -{Latex[length=1.1mm]}] table[row sep=\\] {x y u v\\
+-0.8 -0.8 -0.320 -0.320\\ -0.8 -0.4 -0.320 -0.160\\ -0.8 0 -0.320 0.000\\ -0.8 0.4 -0.320 0.160\\ -0.8 0.8 -0.320 0.320\\ -0.4 -0.8 -0.160 -0.320\\ -0.4 -0.4 -0.160 -0.160\\ -0.4 0 -0.160 0.000\\ -0.4 0.4 -0.160 0.160\\ -0.4 0.8 -0.160 0.320\\ 0 -0.8 0.000 -0.320\\ 0 -0.4 0.000 -0.160\\ 0 0.4 0.000 0.160\\ 0 0.8 0.000 0.320\\ 0.4 -0.8 0.160 -0.320\\ 0.4 -0.4 0.160 -0.160\\ 0.4 0 0.160 0.000\\ 0.4 0.4 0.160 0.160\\ 0.4 0.8 0.160 0.320\\ 0.8 -0.8 0.320 -0.320\\ 0.8 -0.4 0.320 -0.160\\ 0.8 0 0.320 0.000\\ 0.8 0.4 0.320 0.160\\ 0.8 0.8 0.320 0.320\\};
+\end{axis}
+\end{tikzpicture}}\hfill
+\sdpanel{B}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.335\textwidth, height=0.335\textwidth, xmin=-1.25, xmax=1.25, ymin=-1.25, ymax=1.25,
+  axis equal image, xtick={-1,0,1}, ytick={-1,0,1}]
+\addplot[black, line width=0.5pt, quiver={u=\thisrow{u},v=\thisrow{v}}, -{Latex[length=1.1mm]}] table[row sep=\\] {x y u v\\
+-0.8 -0.8 0.320 -0.320\\ -0.8 -0.4 0.160 -0.320\\ -0.8 0 -0.000 -0.320\\ -0.8 0.4 -0.160 -0.320\\ -0.8 0.8 -0.320 -0.320\\ -0.4 -0.8 0.320 -0.160\\ -0.4 -0.4 0.160 -0.160\\ -0.4 0 -0.000 -0.160\\ -0.4 0.4 -0.160 -0.160\\ -0.4 0.8 -0.320 -0.160\\ 0 -0.8 0.320 0.000\\ 0 -0.4 0.160 0.000\\ 0 0.4 -0.160 0.000\\ 0 0.8 -0.320 0.000\\ 0.4 -0.8 0.320 0.160\\ 0.4 -0.4 0.160 0.160\\ 0.4 0 -0.000 0.160\\ 0.4 0.4 -0.160 0.160\\ 0.4 0.8 -0.320 0.160\\ 0.8 -0.8 0.320 0.320\\ 0.8 -0.4 0.160 0.320\\ 0.8 0 -0.000 0.320\\ 0.8 0.4 -0.160 0.320\\ 0.8 0.8 -0.320 0.320\\};
+\end{axis}
+\end{tikzpicture}}\hfill
+\sdpanel{C}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.335\textwidth, height=0.335\textwidth, xmin=-1.25, xmax=1.25, ymin=-1.25, ymax=1.25,
+  axis equal image, xtick={-1,0,1}, ytick={-1,0,1}]
+\addplot[black, line width=0.5pt, quiver={u=\thisrow{u},v=\thisrow{v}}, -{Latex[length=1.1mm]}] table[row sep=\\] {x y u v\\
+-0.8 -0.8 -0.320 0.000\\ -0.8 -0.4 -0.160 0.000\\ -0.8 0.4 0.160 0.000\\ -0.8 0.8 0.320 0.000\\ -0.4 -0.8 -0.320 0.000\\ -0.4 -0.4 -0.160 0.000\\ -0.4 0.4 0.160 0.000\\ -0.4 0.8 0.320 0.000\\ 0 -0.8 -0.320 0.000\\ 0 -0.4 -0.160 0.000\\ 0 0.4 0.160 0.000\\ 0 0.8 0.320 0.000\\ 0.4 -0.8 -0.320 0.000\\ 0.4 -0.4 -0.160 0.000\\ 0.4 0.4 0.160 0.000\\ 0.4 0.8 0.320 0.000\\ 0.8 -0.8 -0.320 0.000\\ 0.8 -0.4 -0.160 0.000\\ 0.8 0.4 0.160 0.000\\ 0.8 0.8 0.320 0.000\\};
+\draw[black!60, line width=0.6pt] (axis cs:0.6,0) circle (0.18);
+\draw[black!60, line width=0.6pt, -{Latex[length=1.3mm]}] (axis cs:0.58,0.18) -- (axis cs:0.63,0.178);
+\end{axis}
+\end{tikzpicture}}
+\caption{Divergence and curl of three plane fields, shown on the square $[-1,1]^2$ (arrows scaled down). (A) The radial field $(x,y)$: divergence $2$, curl $0$. (B) The rotation field $(-y,x)$: divergence $0$, curl $2$. (C) The shear flow $(y,0)$: divergence $0$, curl $-1$; a small wheel (grey circle) placed in the flow is turned clockwise, because the flow above it is faster than below.}
+\label{fig:div-curl}
+\end{figure}
+
+The pictures can be made precise in the plane, where Green's theorem is available: the divergence is the flux out of a small disc per unit area, and the curl the circulation around it per unit area.
+
+\begin{proposition}[Divergence and curl as densities]
+\label{prop:div-curl-limits}
+Let $\mathbf F$ be a $C^1$ vector field on an open set of the plane containing the point $\mathbf a$, and let $D_r$ be the closed disc of radius $r$ about $\mathbf a$, with outward normal $\mathbf n$ and positively oriented unit tangent $\mathbf T$ on its boundary. Then
+\[
+\operatorname{div}\mathbf F(\mathbf a)=\lim_{r\to0^+}\frac1{\pi r^2}\oint_{\partial D_r}\langle\mathbf F,\mathbf n\rangle\,ds,\qquad\operatorname{curl}\mathbf F(\mathbf a)=\lim_{r\to0^+}\frac1{\pi r^2}\oint_{\partial D_r}\langle\mathbf F,\mathbf T\rangle\,ds .
+\]
+\end{proposition}
+
+\begin{proof}
+By \cref{cor:green-vector}, the first quotient is the mean value $\iint_{D_r}\operatorname{div}\mathbf F\,dA/(\pi r^2)$ of $\operatorname{div}\mathbf F$ over $D_r$. Its distance from $\operatorname{div}\mathbf F(\mathbf a)$ is the mean value of $\operatorname{div}\mathbf F-\operatorname{div}\mathbf F(\mathbf a)$ over $D_r$, which is at most the maximum of $|\operatorname{div}\mathbf F(\mathbf x)-\operatorname{div}\mathbf F(\mathbf a)|$ over $D_r$ in absolute value, by \cref{thm:integral-over-region}\,(i); this tends to $0$ by the continuity of $\operatorname{div}\mathbf F$. The second limit is proved in the same way.
+\end{proof}
+
+A point where $\operatorname{div}\mathbf F>0$ is a \term{source} of the flow, more fluid leaving each small disc around it than entering; a point where $\operatorname{div}\mathbf F<0$ is a \term{sink}; and a flow with $\operatorname{div}\mathbf F=0$ everywhere, such as that of an incompressible fluid, is \term{divergence-free}. The curl measures the rotation of the flow near a point, twice the angular velocity of a small paddle wheel carried along. \Cref{sec:divergence-theorem,sec:stokes} prove the same statements in space.
+
+\subsection{Identities}
+
+Derivatives of derivatives can vanish identically, by the symmetry of mixed partial derivatives. Two such identities are the backbone of vector calculus.
+
+\begin{proposition}[Vector identities]
+\label{prop:vector-identities}
+Let $U\subseteq\mathbb R^3$ be open, $\varphi$ a real-valued function and $\mathbf F$, $\mathbf G$ vector fields on $U$.
+\begin{enumerate}
+\item If $\varphi\in C^2(U)$, then $\operatorname{curl}\nabla\varphi=\mathbf0$.
+\item If $\mathbf F\in C^2(U)$, then $\operatorname{div}\operatorname{curl}\mathbf F=0$.
+\item If $\varphi$, $\mathbf F$ and $\mathbf G$ are $C^1$, then
+\begin{align*}
+\operatorname{div}(\varphi\mathbf F)&=\varphi\operatorname{div}\mathbf F+\langle\nabla\varphi,\mathbf F\rangle ,\\
+\operatorname{curl}(\varphi\mathbf F)&=\varphi\operatorname{curl}\mathbf F+\nabla\varphi\times\mathbf F ,\\
+\operatorname{div}(\mathbf F\times\mathbf G)&=\langle\mathbf G,\operatorname{curl}\mathbf F\rangle-\langle\mathbf F,\operatorname{curl}\mathbf G\rangle .
+\end{align*}
+\end{enumerate}
+The first product rule holds in $\mathbb R^n$ for every $n$.
+\end{proposition}
+
+\begin{proof}
+(i) The first component of $\operatorname{curl}\nabla\varphi$ is $\partial_2\partial_3\varphi-\partial_3\partial_2\varphi=0$, by \cref{thm:schwarz}, and the other two are similar. (ii) Expanding,
+\[
+\operatorname{div}\operatorname{curl}\mathbf F=\partial_1(\partial_2F_3-\partial_3F_2)+\partial_2(\partial_3F_1-\partial_1F_3)+\partial_3(\partial_1F_2-\partial_2F_1),
+\]
+and the six terms cancel in pairs, $\partial_1\partial_2F_3$ against $-\partial_2\partial_1F_3$ and so on, again by \cref{thm:schwarz}. (iii) The first rule is the product rule applied to each term $\partial_i(\varphi F_i)=\varphi\,\partial_iF_i+\partial_i\varphi\,F_i$. For the second, the first component of $\operatorname{curl}(\varphi\mathbf F)$ is
+\[
+\partial_2(\varphi F_3)-\partial_3(\varphi F_2)=\varphi(\partial_2F_3-\partial_3F_2)+(\partial_2\varphi\,F_3-\partial_3\varphi\,F_2),
+\]
+whose last bracket is the first component of $\nabla\varphi\times\mathbf F$; the other components follow by cyclic permutation of the indices. The third rule is checked in the same way, by writing out $\operatorname{div}(\mathbf F\times\mathbf G)$ as a sum of six products and applying the product rule to each.
+\end{proof}
+
+The identities (i) and (ii) have converses on star-shaped domains. A $C^1$ field with $\operatorname{curl}\mathbf F=\mathbf0$ on a star-shaped open set is a gradient, by \cref{thm:poincare-lemma}, since $\operatorname{curl}\mathbf F=\mathbf0$ is the condition \eqref{eq:closed-condition}. Similarly, a $C^1$ field with $\operatorname{div}\mathbf G=0$ on a star-shaped open set is a curl, $\mathbf G=\operatorname{curl}\mathbf F$ for a \term{vector potential} $\mathbf F$, which can be given by an explicit integral formula similar to that of \cref{thm:poincare-lemma}~\cite{apostol1969calculus}. The vector potential is far from unique: adding the gradient of any $C^2$ function does not change its curl, by (i).
+
+\subsection{The Laplacian and Harmonic Functions}
+
+The divergence of a gradient is the most important second-order differential operator.
+
+\begin{definition}[Laplacian, harmonic function]
+\label{def:laplacian}
+For $f\in C^2(U)$, $U\subseteq\mathbb R^n$ open, the \term{Laplacian} of $f$ is
+\[
+\Delta f\coloneqq\operatorname{div}\nabla f=\sum_{i=1}^n\frac{\partial^2f}{\partial x_i^2} .
+\]
+A function $f\in C^2(U)$ with $\Delta f=0$ on $U$ is \term{harmonic}, and the equation $\Delta f=0$ is \term{Laplace's equation}.
+\end{definition}
+
+The Laplacian is the sum of the diagonal entries of the Hessian $\nabla^2f$ of \cref{sec:mvt-taylor-n}. Many books, especially in physics, write $\nabla^2f$ for the Laplacian, from $\nabla\cdot\nabla$; in this series $\nabla^2f$ always denotes the Hessian matrix, and the Laplacian is $\Delta f$. For $n=2$, \cref{sec:chain-rule-n} expressed it in polar coordinates as $u_{rr}+u_r/r+u_{\theta\theta}/r^2$ and found that $\ln(x^2+y^2)$ is harmonic on the plane without the origin.
+
+Affine functions are harmonic, and so are $x^2-y^2$ and $xy$ in the plane; the quadratic polynomial $x^2+y^2$ is not, since its Laplacian is $4$. The function $e^x\cos y$ is harmonic, since $\partial_x^2$ and $\partial_y^2$ produce $e^x\cos y$ and $-e^x\cos y$; it is the real part of $e^z$ for $z=x+iy$, and Volume~II shows that the real and imaginary parts of every complex-differentiable function are harmonic. The most important harmonic functions are the powers of the distance from the origin. For $\mathbf x\ne\mathbf0$ and real $p$, the chain rule gives $\partial_i\|\mathbf x\|^p=p\|\mathbf x\|^{p-2}x_i$, and then
+\[
+\partial_i^2\|\mathbf x\|^p=p(p-2)\|\mathbf x\|^{p-4}x_i^2+p\|\mathbf x\|^{p-2},\qquad\Delta\|\mathbf x\|^p=p(p+n-2)\,\|\mathbf x\|^{p-2},
+\]
+after adding over $i$, since $\sum_ix_i^2=\|\mathbf x\|^2$. For $n\ge3$, the function $\|\mathbf x\|^{2-n}$ is therefore harmonic on $\mathbb R^n\setminus\{\mathbf0\}$; in $\mathbb R^3$ this is the \term{Newtonian potential} $1/\|\mathbf x\|$ of a point mass or a point charge, whose gradient is the field $-\mathbf x/\|\mathbf x\|^3$ of \cref{sec:surfaces}. In the plane, $\ln\|\mathbf x\|$ plays the same role.
+
+Laplace's equation describes the gravitational and electrostatic potential in regions free of mass or charge, the steady temperature in a body without heat sources, and the velocity potential of an incompressible flow without rotation, for which $\operatorname{div}\nabla\varphi=0$ and $\operatorname{curl}\nabla\varphi=\mathbf0$. The partial differential equations built on the Laplacian, such as the heat equation $\partial_tu=\Delta u$ and the wave equation $\partial_t^2u=\Delta u$, lie outside the scope of this volume; \cref{sec:divergence-theorem} proves two basic facts about harmonic functions with the divergence theorem.
+
+\section{The Divergence Theorem}
+\label{sec:divergence-theorem}
+
+\subsection{Statement and Proof}
+
+The flux form of Green's theorem says that the flux of a plane vector field out of a region equals the integral of its divergence over the region. The divergence theorem says the same in space: what flows out through the surface of a solid is what the sources inside produce. We prove it for solids that are simple in all three coordinate directions, by the method of \cref{thm:green-standard}, and the computation on the top and the bottom of the solid rests on the following lemma.
+
+\begin{lemma}[Projected flux]
+\label{lem:projected-flux}
+Let $D\subseteq\mathbb R^2$ be closed, bounded and Jordan measurable, let $\psi$ be continuous on $D$, and let the graph $S$ of $\psi$ be the trace of a parametrised surface $\mathbf r=(x,y,z)\colon K\to\mathbb R^3$ whose projection $\mathbf p\coloneqq(x,y)\colon K\to D$ satisfies the hypotheses of \cref{thm:change-variables}, with $\mathbf p(K)=D$ and $\det D\mathbf p>0$ at the interior points of $K$. Then, for every continuous function $f$ on $S$,
+\[
+\iint_Sf\,n_3\,dS=\iint_Df\bigl(x,y,\psi(x,y)\bigr)\,dA ,
+\]
+where $n_3$ is the third component of the unit normal $\mathbf n$ of $\mathbf r$.
+\end{lemma}
+
+\begin{proof}
+By the definitions, the left side is $\iint_Kf(\mathbf r)\,(\mathbf r_u\times\mathbf r_v)_3\,dA$, and the third component of the cross product is $x_uy_v-x_vy_u=\det D\mathbf p$. Since $S$ is the graph of $\psi$, $\mathbf r(u,v)=(\mathbf p(u,v),\psi(\mathbf p(u,v)))$, so the integrand is $h(\mathbf p(u,v))\,|\det D\mathbf p(u,v)|$ with $h(x,y)\coloneqq f(x,y,\psi(x,y))$, and \cref{thm:change-variables} gives $\iint_Dh\,dA$.
+\end{proof}
+
+In words, $n_3\,dS$ is the area of the shadow of a small piece of surface on the $(x,y)$-plane, counted positive when the normal points upwards. For the graph parametrisation $\mathbf r(x,y)=(x,y,\psi(x,y))$ of a $C^1$ function, $\mathbf p$ is the identity, and the lemma reduces to the definitions. For the upper hemisphere of radius $R$ in spherical coordinates, $\mathbf p(\theta,\varphi)=R\sin\theta\,(\cos\varphi,\sin\varphi)$ on $[0,\pi/2]\times[-\pi,\pi]$ is polar coordinates with radius $R\sin\theta$, and $\det D\mathbf p=R^2\sin\theta\cos\theta>0$ in the interior; the lemma applies, although the graph function $\sqrt{R^2-x^2-y^2}$ is not differentiable on the boundary circle.
+
+\begin{definition}[Standard solid]
+\label{def:standard-solid}
+A closed bounded set $V\subseteq\mathbb R^3$ is \term{simple in the $z$-direction} if
+\[
+V=\bigl\{(x,y,z): (x,y)\in D,\ \psi_1(x,y)\le z\le\psi_2(x,y)\bigr\}
+\]
+for a standard region $D$ of the $(x,y)$-plane and continuous functions $\psi_1\le\psi_2$ on $D$. Its boundary then consists of the \term{top} $\{z=\psi_2\}$, the \term{bottom} $\{z=\psi_1\}$ and the \term{wall} $\{(x,y)\in\partial D,\ \psi_1\le z\le\psi_2\}$. We say that $V$ is a \term{standard solid} if it is simple in each of the three coordinate directions, and if its boundary is a piecewise smooth surface, oriented by the outward normal, whose faces can be chosen, for each of the three directions, so that each face lies in the top, the bottom or the wall; on the top and the bottom the faces satisfy the hypothesis of \cref{lem:projected-flux}, with the normal pointing upwards on the top and downwards on the bottom, and the faces in the wall have horizontal normals.
+\end{definition}
+
+The definition is a long way of saying something simple: every line parallel to an axis meets $V$ in a segment or not at all, and the boundary is smooth enough to integrate over. Balls, boxes, circular cylinders, ellipsoids and tetrahedra are standard solids, and so is every convex polyhedron.
+
+\begin{theorem}[Divergence theorem]
+\label{thm:divergence}
+Let $V\subseteq\mathbb R^3$ be a standard solid, or a union of finitely many standard solids that intersect only along their boundaries, oriented by the outward normal $\mathbf n$, and let $\mathbf F$ be continuously differentiable on an open set containing $V$. Then
+\[
+\iint_{\partial V}\langle\mathbf F,\mathbf n\rangle\,dS=\iiint_V\operatorname{div}\mathbf F\,dV .
+\]
+\end{theorem}
+
+\begin{proof}
+Let $V$ be a standard solid, and consider first the field $(0,0,F_3)$. Describe $V$ as simple in the $z$-direction, with base $D$ and functions $\psi_1\le\psi_2$. By \cref{cor:triple-elementary} and the fundamental theorem of calculus in the variable $z$,
+\[
+\begin{aligned}
+\iiint_V\frac{\partial F_3}{\partial z}\,dV&=\iint_D\int_{\psi_1(x,y)}^{\psi_2(x,y)}\frac{\partial F_3}{\partial z}\,dz\,dA\\
+&=\iint_D\Bigl(F_3\bigl(x,y,\psi_2(x,y)\bigr)-F_3\bigl(x,y,\psi_1(x,y)\bigr)\Bigr)\,dA .
+\end{aligned}
+\]
+On the other hand, the flux of $(0,0,F_3)$ through $\partial V$ is $\iint_{\partial V}F_3\,n_3\,dS$, the sum of the contributions of the faces. On the faces in the wall, $n_3=0$, and they contribute nothing. On the faces of the top, \cref{lem:projected-flux} applies, and since the faces of the top project onto pieces of $D$ that overlap only in sets of content zero, their contributions add up to $\iint_DF_3(x,y,\psi_2(x,y))\,dA$. On the bottom the outward normal points downwards; reversing the orientation of the faces there, which changes the sign of their flux, the lemma gives $-\iint_DF_3(x,y,\psi_1(x,y))\,dA$. So
+\[
+\iint_{\partial V}F_3\,n_3\,dS=\iiint_V\frac{\partial F_3}{\partial z}\,dV .
+\]
+In the same way, describing $V$ as simple in the $x$- and in the $y$-direction, $\iint_{\partial V}F_1n_1\,dS=\iiint_V\partial_xF_1\,dV$ and $\iint_{\partial V}F_2n_2\,dS=\iiint_V\partial_yF_2\,dV$. Adding the three identities proves the theorem for a standard solid. For a union of standard solids, add the identities for the pieces: the volume integrals add up, and each common face of two pieces is traversed with opposite normals, so its two contributions to the flux cancel, leaving the flux through $\partial V$.
+\end{proof}
+
+The proof uses the independence of the flux through $\partial V$ of the way the boundary is cut into faces, which we accepted in \cref{sec:surfaces}: each coordinate direction uses its own decomposition. As in the plane, the theorem holds for far more general solids, those bounded by finitely many piecewise smooth closed surfaces~\cite{apostol1969calculus,marsden2012vector}, and in $\mathbb R^n$ for every $n$, with the same proof, one coordinate direction at a time.
+
+The theorem was found several times in the early nineteenth century, in work on gravitation, heat and electricity: by Gauss in 1813 in special cases, by Ostrogradsky, who gave a general statement and proof in a memoir presented to the Paris Academy in 1826, and by Green in his \emph{Essay} of 1828~\cite{green1828,katz1979}. It is therefore called Gauss's theorem, Ostrogradsky's theorem or the divergence theorem, depending on the tradition.
+
+As a check, take the ball $B_R$ of radius $R$ about the origin and $\mathbf F=(x^3,y^3,z^3)$. The divergence is $3(x^2+y^2+z^2)$, and in spherical coordinates
+\[
+\iiint_{B_R}3r^2\,dV=3\int_{-\pi}^\pi\int_0^\pi\int_0^Rr^2\cdot r^2\sin\theta\,dr\,d\theta\,d\varphi=3\cdot\frac{R^5}5\cdot2\cdot2\pi=\frac{12\pi R^5}5 .
+\]
+On the sphere, $\langle\mathbf F,\mathbf n\rangle=(x^4+y^4+z^4)/R$. The integral of $z^4$ over the sphere is $\int_{-\pi}^\pi\int_0^\pi R^4\cos^4\theta\,R^2\sin\theta\,d\theta\,d\varphi=2\pi R^6\cdot2/5=4\pi R^6/5$, and by the symmetry of the sphere under the exchange of coordinates the integrals of $x^4$ and $y^4$ are the same; so the flux is $3\cdot4\pi R^6/(5R)=12\pi R^5/5$. Here the volume integral was the easier side; often it is the other way round.
+
+\subsection{Applications}
+
+\emph{Volume as a surface integral.} The field $\mathbf F(\mathbf x)=\mathbf x$ has divergence $3$, so
+\begin{equation}
+\operatorname{vol}(V)=\frac13\iint_{\partial V}\langle\mathbf x,\mathbf n\rangle\,dS ,
+\label{eq:volume-flux}
+\end{equation}
+the three-dimensional counterpart of \cref{cor:green-area}. For the ball of radius $R$, $\langle\mathbf x,\mathbf n\rangle=R$ on the sphere, and the formula gives $4\pi R^3/3=R\cdot\operatorname{area}/3$, so the area of the sphere is $4\pi R^2$ once more; in $\mathbb R^n$ the same argument, with $\operatorname{div}\mathbf x=n$, gives $V_nR^n=R\cdot\operatorname{area}/n$, in agreement with \cref{prop:sphere-area}. For a pyramid or a cone with its apex at the origin and a plane base $B$ at distance $h$ from the origin, the vector $\mathbf x$ is tangent to the lateral surface, which consists of segments through the origin, so $\langle\mathbf x,\mathbf n\rangle=0$ there; on the base, $\langle\mathbf x,\mathbf n\rangle=h$, the distance of the base plane from the origin. Formula \eqref{eq:volume-flux} gives the volume $h\operatorname{area}(B)/3$, one third of the base times the height, for every shape of the base.
+
+\emph{Gauss's law.} The field $\mathbf E(\mathbf x)=\mathbf x/\|\mathbf x\|^3$ on $\mathbb R^3\setminus\{\mathbf0\}$ is divergence-free: by \cref{prop:vector-identities}\,(iii),
+\[
+\operatorname{div}\mathbf E=\frac{\operatorname{div}\mathbf x}{\|\mathbf x\|^3}+\bigl\langle\nabla\|\mathbf x\|^{-3},\mathbf x\bigr\rangle=\frac3{\|\mathbf x\|^3}-\frac{3\langle\mathbf x,\mathbf x\rangle}{\|\mathbf x\|^5}=0 ,
+\]
+or equivalently, $\mathbf E=-\nabla(1/\|\mathbf x\|)$ and $1/\|\mathbf x\|$ is harmonic (\cref{sec:div-curl}). If $V$ is a solid as in \cref{thm:divergence} that does not contain the origin, the flux of $\mathbf E$ out of $V$ is therefore $0$. If the origin lies in the interior of $V$, the theorem cannot be applied to $V$, but it can be applied to the solid between $\partial V$ and a small sphere of radius $\varepsilon$ about the origin, when that solid can be cut into standard solids; its boundary consists of $\partial V$ and of the small sphere with the normal pointing towards the origin, so
+\[
+\iint_{\partial V}\langle\mathbf E,\mathbf n\rangle\,dS=\iint_{\|\mathbf x\|=\varepsilon}\langle\mathbf E,\mathbf n\rangle\,dS=4\pi ,
+\]
+the last integral, with the outward normal of the small sphere, computed in \cref{sec:surfaces}. This is the situation of the angle field in \cref{sec:green}, one dimension higher. In electrostatics, the field of a point charge $q$ is $\mathbf E$ times $q/(4\pi\varepsilon_0)$, and the computation shows that the flux of the electric field out of any closed surface is the enclosed charge divided by $\varepsilon_0$, whatever the shape of the surface and the position of the charge inside it. This is \term{Gauss's law}; by superposition it extends to any number of charges and to continuous distributions of charge~\cite{marsden2012vector}.
+
+\emph{Divergence as a density.} As in the plane (\cref{prop:div-curl-limits}), the divergence at a point $\mathbf a$ is the flux out of a small ball per unit volume,
+\[
+\operatorname{div}\mathbf F(\mathbf a)=\lim_{r\to0^+}\frac1{\operatorname{vol}(B(\mathbf a,r))}\iint_{\partial B(\mathbf a,r)}\langle\mathbf F,\mathbf n\rangle\,dS ,
+\]
+with the same proof: by the divergence theorem the quotient is the mean value of $\operatorname{div}\mathbf F$ over the ball, which tends to the value at the centre. This limit does not mention coordinates at all, which shows that the divergence of a field does not depend on the Cartesian coordinate system in which it is computed.
+
+\subsection{Green's Identities}
+
+Applied to fields of the form $u\nabla v$, the divergence theorem becomes an integration by parts in several variables. For a function $v$ that is $C^1$ near $\partial V$, the derivative in the direction of the outward normal, $\partial_{\mathbf n}v\coloneqq\langle\nabla v,\mathbf n\rangle$, is the \term{normal derivative} of $v$ on $\partial V$.
+
+\begin{corollary}[Green's identities]
+\label{cor:green-identities}
+Let $V$ be as in \cref{thm:divergence}, and let $u$ and $v$ be functions on an open set containing $V$.
+\begin{enumerate}
+\item If $u\in C^1$ and $v\in C^2$, then
+\[
+\iiint_V\bigl(u\,\Delta v+\langle\nabla u,\nabla v\rangle\bigr)\,dV=\iint_{\partial V}u\,\partial_{\mathbf n}v\,dS .
+\]
+\item If $u,v\in C^2$, then
+\[
+\iiint_V\bigl(u\,\Delta v-v\,\Delta u\bigr)\,dV=\iint_{\partial V}\bigl(u\,\partial_{\mathbf n}v-v\,\partial_{\mathbf n}u\bigr)\,dS .
+\]
+\end{enumerate}
+\end{corollary}
+
+\begin{proof}
+(i) The field $u\nabla v$ is $C^1$, and by the first product rule of \cref{prop:vector-identities}, $\operatorname{div}(u\nabla v)=u\,\Delta v+\langle\nabla u,\nabla v\rangle$; its normal component on $\partial V$ is $u\,\partial_{\mathbf n}v$. Apply \cref{thm:divergence}. (ii) Subtract (i) with $u$ and $v$ exchanged.
+\end{proof}
+
+These identities appear, in this form, in Green's \emph{Essay}~\cite{green1828}. With $u=1$, the first says that $\iiint_V\Delta v\,dV=\iint_{\partial V}\partial_{\mathbf n}v\,dS$: the flux of the gradient of a harmonic function out of any solid vanishes. With $u=v$ it gives the uniqueness of the solutions of Laplace's equation with prescribed boundary values.
+
+\begin{proposition}[Uniqueness for Laplace's equation]
+\label{prop:dirichlet-unique}
+Let $V$ be a standard solid, and let $u_1,u_2\in C^2$ on an open set containing $V$ be harmonic in the interior of $V$ and equal on $\partial V$. Then $u_1=u_2$ on $V$.
+\end{proposition}
+
+\begin{proof}
+The difference $u\coloneqq u_1-u_2$ is $C^2$, harmonic in the interior of $V$, hence on $V$ by continuity of $\Delta u$, and zero on $\partial V$. \Cref{cor:green-identities}\,(i) with $v=u$ gives $\iiint_V\|\nabla u\|^2\,dV=\iint_{\partial V}u\,\partial_{\mathbf n}u\,dS=0$. The integrand $\|\nabla u\|^2$ is continuous and nonnegative; if it were positive at an interior point of $V$, it would be positive on a small ball around that point, and the integral would be positive (\cref{thm:integral-over-region}\,(i)). So $\nabla u=\mathbf0$ in the interior of $V$. Describe $V$ as simple in the $z$-direction, with base $D$ and functions $\psi_1\le\psi_2$. For $(x,y)$ in the interior of $D$, the points $(x,y,z)$ with $\psi_1(x,y)<z<\psi_2(x,y)$ are interior points of $V$, by the continuity of $\psi_1$ and $\psi_2$; on this vertical segment $\partial_zu=0$, so $u$ is constant there, and by continuity it equals its value $0$ at the end point $(x,y,\psi_2(x,y))\in\partial V$. The remaining points of $V$ are limits of such points, so $u=0$ on all of $V$.
+\end{proof}
+
+The proposition says that the temperature in a body in thermal equilibrium, or the electrostatic potential in a region free of charge, is determined by its values on the boundary. Whether such a solution exists for arbitrary continuous boundary values, the \term{Dirichlet problem}, is a much harder question, which potential theory answers for a large class of regions.
+
+\begin{note}{The mean value property of harmonic functions}
+Let $u$ be harmonic on an open set containing the closed ball $\bar B(\mathbf a,R)\subseteq\mathbb R^3$, and let $m(r)$ be the mean value of $u$ over the sphere of radius $r\le R$ about $\mathbf a$. Writing the sphere as $\mathbf a+r\boldsymbol\omega$ with $\boldsymbol\omega$ on the unit sphere and differentiating under the integral sign, $m'(r)$ is the mean value of $\langle\nabla u(\mathbf a+r\boldsymbol\omega),\boldsymbol\omega\rangle$, which is the flux of $\nabla u$ out of the ball of radius $r$ divided by $4\pi r^2$. By the divergence theorem this flux is the integral of $\Delta u=0$, so $m$ is constant, and as $r\to0$ it tends to $u(\mathbf a)$. Hence the value of a harmonic function at the centre of any ball is the mean of its values on the sphere, and also over the ball. It follows that a harmonic function cannot have a strict local maximum or minimum in the interior of its domain, the \emph{maximum principle}, which gives a second proof of \cref{prop:dirichlet-unique} and much more. The same holds in the plane and in every dimension. Volume~II develops these properties for harmonic functions of two variables, where they are tied to complex analysis.
+\end{note}
+
+\section{Stokes' Theorem}
+\label{sec:stokes}
+
+\subsection{Statement and Proof}
+
+Green's theorem relates the circulation around a closed curve in the plane to the integral of the curl over the region inside it. Stokes' theorem does the same for a curve in space that bounds a surface: the circulation around the edge equals the flux of the curl through the surface. The proof transports the problem to the parameter domain, where Green's theorem applies, and the only new ingredient is an identity of linear algebra.
+
+\begin{lemma}
+\label{lem:antisymmetric-curl}
+Let $A=(a_{ij})\in\mathbb R^{3\times3}$ and $\mathbf w\coloneqq(a_{32}-a_{23},\,a_{13}-a_{31},\,a_{21}-a_{12})$. Then $(A-A^{\mathsf T})\mathbf x=\mathbf w\times\mathbf x$ for every $\mathbf x\in\mathbb R^3$, and consequently
+\[
+\langle A\mathbf x,\mathbf y\rangle-\langle A\mathbf y,\mathbf x\rangle=\langle\mathbf w,\mathbf x\times\mathbf y\rangle\qquad\text{for all }\mathbf x,\mathbf y\in\mathbb R^3 .
+\]
+For the Jacobian matrix $A=D\mathbf F(\mathbf p)$ of a $C^1$ vector field, $\mathbf w=\operatorname{curl}\mathbf F(\mathbf p)$.
+\end{lemma}
+
+\begin{proof}
+The first component of $(A-A^{\mathsf T})\mathbf x$ is $(a_{12}-a_{21})x_2+(a_{13}-a_{31})x_3=-w_3x_2+w_2x_3$, which is the first component of $\mathbf w\times\mathbf x$; the other two components are checked in the same way. Then, by \cref{prop:matrix-algebra}\,(iv) and \cref{prop:cross-product}\,(ii),
+\[
+\langle A\mathbf x,\mathbf y\rangle-\langle A\mathbf y,\mathbf x\rangle=\langle A\mathbf x,\mathbf y\rangle-\langle A^{\mathsf T}\mathbf x,\mathbf y\rangle=\langle\mathbf w\times\mathbf x,\mathbf y\rangle=\langle\mathbf x\times\mathbf y,\mathbf w\rangle .
+\]
+For $A=D\mathbf F$, the entries are $a_{ij}=\partial_jF_i$, and $\mathbf w=(\partial_2F_3-\partial_3F_2,\partial_3F_1-\partial_1F_3,\partial_1F_2-\partial_2F_1)$ is the curl.
+\end{proof}
+
+\begin{theorem}[Stokes' theorem]
+\label{thm:stokes}
+Let $K$ be a standard region of the $(u,v)$-plane with a positively oriented boundary path $\boldsymbol\gamma$, and let $\mathbf r$ be a $C^2$ map from an open set containing $K$ to $\mathbb R^3$. Let $\mathbf F$ be a $C^1$ vector field on an open set containing $\mathbf r(K)$. Then
+\[
+\oint_{\mathbf r\circ\boldsymbol\gamma}\mathbf F\cdot d\mathbf r=\iint_K\bigl\langle\operatorname{curl}\mathbf F\bigl(\mathbf r(u,v)\bigr),\mathbf r_u\times\mathbf r_v\bigr\rangle\,dA .
+\]
+In particular, if $\mathbf r$ is a parametrised surface with trace $S$ and unit normal $\mathbf n$, then $\oint_{\partial S}\mathbf F\cdot d\mathbf r=\iint_S\langle\operatorname{curl}\mathbf F,\mathbf n\rangle\,dS$, where $\partial S$ denotes the boundary path $\mathbf r\circ\boldsymbol\gamma$.
+\end{theorem}
+
+\begin{proof}
+Write $\boldsymbol\gamma(t)=(u(t),v(t))$. By the chain rule, $(\mathbf r\circ\boldsymbol\gamma)'(t)=\mathbf r_u\,u'(t)+\mathbf r_v\,v'(t)$, with $\mathbf r_u$ and $\mathbf r_v$ evaluated at $\boldsymbol\gamma(t)$, so
+\[
+\oint_{\mathbf r\circ\boldsymbol\gamma}\mathbf F\cdot d\mathbf r=\oint_{\boldsymbol\gamma}(P\,du+Q\,dv),\qquad P\coloneqq\langle\mathbf F\circ\mathbf r,\mathbf r_u\rangle,\quad Q\coloneqq\langle\mathbf F\circ\mathbf r,\mathbf r_v\rangle .
+\]
+The functions $P$ and $Q$ are $C^1$ on an open set containing $K$, since $\mathbf F$ is $C^1$ and $\mathbf r$ is $C^2$, so Green's theorem (\cref{thm:green-standard}) gives $\iint_K(\partial_uQ-\partial_vP)\,dA$. By the product rule and the chain rule, with $A\coloneqq D\mathbf F(\mathbf r(u,v))$,
+\[
+\partial_uQ=\langle A\mathbf r_u,\mathbf r_v\rangle+\langle\mathbf F\circ\mathbf r,\mathbf r_{vu}\rangle,\qquad\partial_vP=\langle A\mathbf r_v,\mathbf r_u\rangle+\langle\mathbf F\circ\mathbf r,\mathbf r_{uv}\rangle .
+\]
+The mixed derivatives $\mathbf r_{uv}$ and $\mathbf r_{vu}$ agree by \cref{thm:schwarz}, since $\mathbf r$ is $C^2$, and by \cref{lem:antisymmetric-curl}
+\[
+\partial_uQ-\partial_vP=\langle A\mathbf r_u,\mathbf r_v\rangle-\langle A\mathbf r_v,\mathbf r_u\rangle=\bigl\langle\operatorname{curl}\mathbf F(\mathbf r),\mathbf r_u\times\mathbf r_v\bigr\rangle .
+\]
+This proves the formula. If $\mathbf r$ is a parametrised surface, the right side is the flux of $\operatorname{curl}\mathbf F$ through $S$ by \cref{def:flux}.
+\end{proof}
+
+The theorem does not require $\mathbf r$ to be injective or regular, which makes it flexible. The boundary path $\mathbf r\circ\boldsymbol\gamma$ consists of the edge of the surface, traversed so that the surface lies on the left when one walks along it with the head in the direction of $\mathbf n$, and possibly of further pieces: edges of $K$ that $\mathbf r$ collapses to a point, which contribute nothing, and seams along which two edges of $K$ are glued together and which are traversed twice in opposite directions, so that their contributions cancel. The spherical coordinates on $K=[0,\pi/2]\times[-\pi,\pi]$ show both effects for the upper unit hemisphere. The positively oriented boundary path of the rectangle $K$ runs, in the coordinates $(\theta,\varphi)$, along the edge $\varphi=-\pi$ from the pole to the equator, along the equator $\theta=\pi/2$ with $\varphi$ increasing, back along the edge $\varphi=\pi$, which is mapped onto the same meridian as the edge $\varphi=-\pi$, and along the edge $\theta=0$, which is mapped to the north pole. The two traversals of the meridian cancel, the pole contributes nothing, and what remains is the equator, traversed counterclockwise as seen from above, while the normal $\mathbf r_\theta\times\mathbf r_\varphi$ points outwards, that is, upwards.
+
+As an example, let $\mathbf F=(z,x,y)$, whose curl is $(1,1,1)$, and let $S$ be the upper unit hemisphere. On the equator $(\cos t,\sin t,0)$ the field is $(0,\cos t,\sin t)$, and its inner product with the velocity $(-\sin t,\cos t,0)$ is $\cos^2t$, so the circulation is $\int_0^{2\pi}\cos^2t\,dt=\pi$. The flux of $(1,1,1)$ through the hemisphere is $\iint_S(n_1+n_2+n_3)\,dS$; the terms $n_1$ and $n_2$ integrate to zero, because the hemisphere is symmetric under $x\mapsto-x$ and $y\mapsto-y$, which changes the signs of $n_1$ and $n_2$, and $\iint_Sn_3\,dS$ is the area $\pi$ of the shadow of the hemisphere, the unit disc, by \cref{lem:projected-flux}. Both sides equal $\pi$, as the theorem asserts. The flat unit disc, oriented upwards, has the same boundary, and the flux of $(1,1,1)$ through it is also $\pi$.
+
+The last observation is general. If two surfaces $S_1$ and $S_2$ have the same oriented boundary curve, the fluxes of $\operatorname{curl}\mathbf F$ through them are equal, since both equal the circulation around the boundary. For a closed surface, which has no boundary, the flux of a curl vanishes; for the surface of a standard solid this also follows from the divergence theorem and the identity $\operatorname{div}\operatorname{curl}\mathbf F=0$ of \cref{prop:vector-identities}.
+
+The theorem was stated by William Thomson, later Lord Kelvin, in a letter to Stokes in 1850, and Stokes set it as a problem in the Smith's Prize examination at Cambridge in 1854, which is how it came to bear his name~\cite{katz1979}.
+
+\subsection{Curl as a Density and Irrotational Fields}
+
+Applied to small flat discs, Stokes' theorem gives the curl a meaning that is independent of coordinates.
+
+\begin{proposition}[Curl as circulation density]
+\label{prop:curl-limit}
+Let $\mathbf F$ be a $C^1$ vector field on an open set of $\mathbb R^3$ containing $\mathbf a$, and let $\mathbf n$ be a unit vector. For small $r>0$ let $C_r$ be the circle of radius $r$ about $\mathbf a$ in the plane through $\mathbf a$ orthogonal to $\mathbf n$, traversed counterclockwise as seen from the tip of $\mathbf n$. Then
+\[
+\bigl\langle\operatorname{curl}\mathbf F(\mathbf a),\mathbf n\bigr\rangle=\lim_{r\to0^+}\frac1{\pi r^2}\oint_{C_r}\mathbf F\cdot d\mathbf r .
+\]
+\end{proposition}
+
+\begin{proof}
+Choose unit vectors $\mathbf e$ and $\mathbf e'$ orthogonal to each other and to $\mathbf n$ with $\mathbf e\times\mathbf e'=\mathbf n$; for instance, take any unit vector $\mathbf e$ orthogonal to $\mathbf n$ and $\mathbf e'\coloneqq\mathbf n\times\mathbf e$. The disc bounded by $C_r$ is parametrised by $\mathbf r(u,v)=\mathbf a+u\mathbf e+v\mathbf e'$ on the disc $K_r$ of radius $r$ about the origin of the $(u,v)$-plane, with $\mathbf r_u\times\mathbf r_v=\mathbf n$, and the image of the counterclockwise boundary of $K_r$ is $C_r$ with the stated orientation. By \cref{thm:stokes}, the quotient is the mean value of $\langle\operatorname{curl}\mathbf F(\mathbf r(u,v)),\mathbf n\rangle$ over $K_r$, which tends to its value at the centre, as in the proof of \cref{prop:div-curl-limits}.
+\end{proof}
+
+The component of the curl in the direction $\mathbf n$ is therefore the circulation per unit area around small circles in the plane orthogonal to $\mathbf n$, and it is largest when $\mathbf n$ points in the direction of the curl. A small paddle wheel with its axis along $\mathbf n$, carried by a fluid with velocity field $\mathbf F$, turns with the angular velocity $\langle\operatorname{curl}\mathbf F,\mathbf n\rangle/2$.
+
+A field with $\operatorname{curl}\mathbf F=\mathbf0$ has no circulation around small circles, and on a star-shaped domain it is a gradient field, by \cref{thm:poincare-lemma}, since $\operatorname{curl}\mathbf F=\mathbf0$ is the condition \eqref{eq:closed-condition}. More generally, by the remarks in the note at the end of \cref{sec:conservative}, the same holds on every simply connected open set, such as a spherical shell. On domains with holes it fails, exactly as in the plane. The field
+\[
+\mathbf B(x,y,z)\coloneqq\Bigl(\frac{-y}{x^2+y^2},\frac x{x^2+y^2},0\Bigr)
+\]
+on space without the $z$-axis is the angle field \eqref{eq:angle-field} extended to be independent of $z$. Its curl vanishes: the first two components because $B_3=0$ and $B_1,B_2$ do not depend on $z$, and the third because the angle field is closed. Yet its circulation around every horizontal circle about the $z$-axis is $2\pi$. Up to a constant factor, $\mathbf B$ is the magnetic field of an electric current flowing along the $z$-axis, and the circulation of the magnetic field around a closed curve measures the current that passes through any surface bounded by the curve, a law of electromagnetism named after Amp\`ere~\cite{marsden2012vector}.
+
+\subsection{One Theorem, Several Faces}
+
+The fundamental theorem of calculus, the fundamental theorem for line integrals, Green's theorem, Stokes' theorem and the divergence theorem all have the same structure, which \cref{tab:fundamental-theorems} displays. Each relates the integral of a derivative over a region to the integral of the original object over the boundary of the region, and in each the boundary carries the orientation induced by the region. Two of the identities of \cref{prop:vector-identities} fit the same pattern: the boundary of a region has no boundary of its own, and correspondingly a gradient has no curl and a curl has no divergence.
+
+\begin{table}
+\sdfloat{%
+\begin{sdtable}{colspec={lll}, row{1}={font=\small\bfseries}}
+\toprule
+theorem & region; boundary & formula \\
+\midrule
+calculus & interval; end points & $\int_a^bf'\,dx=f(b)-f(a)$ \\
+line integrals & path; end points & $\int_{\boldsymbol\gamma}\nabla\varphi\cdot d\mathbf r=\varphi(\mathbf q)-\varphi(\mathbf p)$ \\
+Green & plane region; curves & $\iint_D(Q_x-P_y)\,dA=\oint_{\partial D}P\,dx+Q\,dy$ \\
+Stokes & surface; curves & $\iint_S\langle\nabla\times\mathbf F,\mathbf n\rangle\,dS=\oint_{\partial S}\mathbf F\cdot d\mathbf r$ \\
+divergence & solid; surfaces & $\iiint_V\nabla\cdot\mathbf F\,dV=\iint_{\partial V}\langle\mathbf F,\mathbf n\rangle\,dS$ \\
+\bottomrule
+\end{sdtable}}{The fundamental theorems of vector calculus. In each, the integral of a derivative over an oriented region (left side) equals the integral over the boundary with the induced orientation (right side): end points with signs, the counterclockwise boundary, the edge with the surface on its left, the outward normal.\label{tab:fundamental-theorems}}
+\end{table}
+
+\begin{note}{Differential forms and the general Stokes theorem}
+The analogy of \cref{tab:fundamental-theorems} becomes an identity in the language of differential forms. A differential $k$-form on an open set of $\mathbb R^n$ is an expression such as $P\,dx+Q\,dy+R\,dz$ ($k=1$), $F_1\,dy\wedge dz+F_2\,dz\wedge dx+F_3\,dx\wedge dy$ ($k=2$) or $f\,dx\wedge dy\wedge dz$ ($k=3$), which can be integrated over oriented $k$-dimensional surfaces; the antisymmetric product $\wedge$ encodes the orientation, as the cross product does. The \emph{exterior derivative} $d$ turns $k$-forms into $(k+1)$-forms: on functions it is the gradient, on $1$-forms in space the curl, on $2$-forms the divergence. All the theorems of the table become the single statement
+\[
+\int_Md\omega=\int_{\partial M}\omega
+\]
+for a $(k-1)$-form $\omega$ and an oriented $k$-dimensional manifold $M$ with boundary $\partial M$, in any dimension $n$, and the identities $\operatorname{curl}\nabla\varphi=\mathbf0$ and $\operatorname{div}\operatorname{curl}\mathbf F=0$ become $d(d\omega)=0$. The formalism goes back to \'Elie Cartan at the turn of the twentieth century~\cite{katz1979}. Spivak~\cite{spivak1965manifolds} and Munkres~\cite{munkres1991} develop it rigorously, and Hubbard and Hubbard~\cite{hubbard2015vector} with many examples and with attention to computation.
+\end{note}
+
+\section{Numerical Evaluation of Line and Surface Integrals: A First Look}
+\label{sec:vector-numerics}
+
+\subsection{Line Integrals by Quadrature}
+
+A line integral is, by definition, an ordinary integral over the parameter interval, and the quadrature rules of \cref{sec:quadrature} apply to it directly. For a closed path, whose integrand is periodic, the trapezoidal rule is the natural choice, and it is far more accurate than its error bound in \cref{thm:quadrature-errors} suggests. The length of the ellipse $(2\cos t,\sin t)$, $0\le t\le2\pi$, is the integral of the speed $\sqrt{4\sin^2t+\cos^2t}$, and \cref{tab:ellipse} shows the trapezoidal rule with $N$ equally spaced nodes on $[0,2\pi)$, that is,
+\[
+T_N=\frac{2\pi}N\sum_{k=0}^{N-1}\sqrt{4\sin^2t_k+\cos^2t_k},\qquad t_k=\frac{2\pi k}N .
+\]
+The exact value can be computed independently from the series of Gauss and Kummer for the length of the ellipse with semi-axes $a\ge b>0$,
+\begin{equation}
+L=\pi(a+b)\sum_{k=0}^\infty\binom{1/2}k^2h^k,\qquad h\coloneqq\Bigl(\frac{a-b}{a+b}\Bigr)^2 ,
+\label{eq:gauss-kummer}
+\end{equation}
+which converges quickly when the ellipse is not too elongated; for $a=2$ and $b=1$, $h=1/9$, and twenty terms give $L=9.68844822054767\ldots$ to full double precision~\cite{almkvist1988}. With $8$ nodes the error is already below $10^{-2}$, with $32$ nodes about $2\times10^{-9}$, and with $64$ nodes the error is $2\times10^{-15}$, the size of the rounding errors of double precision. Each doubling of $N$ roughly squares the error, a geometric rate instead of the factor $1/4$ that \cref{thm:quadrature-errors} predicts for each halving of the step. The reason is that the endpoint corrections of the Euler--Maclaurin formula cancel for periodic integrands; for smooth periodic integrands the error decreases faster than any power of $1/N$, and for analytic ones geometrically~\cite{trefethen2014}. Volume~XI proves this and uses it.
+
+\begin{table}
+\sdfloat{%
+\begin{sdtable}{colspec={rll}, row{1}={font=\small\bfseries}}
+\toprule
+$N$ & $T_N$ & $|T_N-L|$ \\
+\midrule
+4 & 9.424777961 & $2.6\times10^{-1}$ \\
+8 & 9.679683113 & $8.8\times10^{-3}$ \\
+16 & 9.688412390 & $3.6\times10^{-5}$ \\
+24 & 9.688447985 & $2.4\times10^{-7}$ \\
+32 & 9.688448219 & $1.9\times10^{-9}$ \\
+48 & 9.688448221 & $1.6\times10^{-13}$ \\
+\bottomrule
+\end{sdtable}}{The trapezoidal rule with $N$ nodes for the length $L=9.68844822054767\ldots$ of the ellipse with semi-axes $2$ and $1$, computed in binary64 arithmetic. The reference value was computed from the series \eqref{eq:gauss-kummer}.\label{tab:ellipse}}
+\end{table}
+
+For paths that are only piecewise $C^1$, such as the boundary of a polygon or of a region bounded by arcs, the rule should be applied to each smooth piece separately; across a corner the integrand of the parameter integral is discontinuous, and the accuracy of any rule degrades to that of a rule for a discontinuous function. For the same reason, a non-regular parametrisation, whose speed vanishes somewhere, should be avoided, since the speed then has a square-root behaviour, as $2|\sin(t/2)|$ for the cycloid at $t=0$, which slows down the convergence.
+
+\subsection{Area and Centroid of a Polygon}
+
+\Cref{thm:shoelace} computes the area of a simple polygon from its vertices. Green's theorem gives the centroid in the same way, and the formulas combine into one pass over the vertices.
+
+\begin{proposition}[Centroid of a polygon]
+\label{prop:polygon-centroid}
+Let $\mathbf p_0,\ldots,\mathbf p_{N-1}$ be the vertices of a simple polygon $D$ of area $A$, listed counterclockwise, with $\mathbf p_N\coloneqq\mathbf p_0$, and let $c_k\coloneqq x_ky_{k+1}-x_{k+1}y_k$. Then the centroid of $D$ is
+\[
+\bar x=\frac1{6A}\sum_{k=0}^{N-1}(x_k+x_{k+1})\,c_k,\qquad\bar y=\frac1{6A}\sum_{k=0}^{N-1}(y_k+y_{k+1})\,c_k .
+\]
+\end{proposition}
+
+\begin{proof}
+By Green's theorem with $P=0$ and $Q=x^2/2$, for which $\partial_xQ-\partial_yP=x$, the integral $\iint_Dx\,dA$ is the line integral of $x^2\,dy/2$ around $\partial D$. On the segment from $\mathbf p_k$ to $\mathbf p_{k+1}$, parametrised by $x=x_k+t(x_{k+1}-x_k)$, $y=y_k+t(y_{k+1}-y_k)$, it is
+\[
+\frac{y_{k+1}-y_k}2\int_0^1\bigl(x_k+t(x_{k+1}-x_k)\bigr)^2\,dt=\frac{(y_{k+1}-y_k)(x_k^2+x_kx_{k+1}+x_{k+1}^2)}6 .
+\]
+Expanding shows that this differs from $(x_k+x_{k+1})c_k/6$ by $(x_{k+1}^2y_{k+1}-x_k^2y_k)/6$, and these differences telescope to zero around the closed polygon. So $\iint_Dx\,dA=\sum_k(x_k+x_{k+1})c_k/6$, and dividing by $A$ gives $\bar x$. The formula for $\bar y$ follows in the same way from $P=-y^2/2$ and $Q=0$, for which $\partial_xQ-\partial_yP=y$.
+\end{proof}
+
+The formulas have a direct geometric reading. The number $c_k/2$ is the signed area of the triangle with the vertices $\mathbf0$, $\mathbf p_k$, $\mathbf p_{k+1}$, whose centroid is $(\mathbf p_k+\mathbf p_{k+1})/3$. The polygon is, with signs, the sum of these triangles, as Green's theorem shows: triangles traversed counterclockwise count positively and the others negatively, and the parts outside the polygon cancel. Its area and its centroid are the corresponding sums, the centroid being the area-weighted mean of the centroids of the triangles.
+
+For the L-shaped hexagon with the vertices $(0,0)$, $(4,0)$, $(4,1)$, $(1,1)$, $(1,3)$, $(0,3)$, the numbers $c_k$ are $0$, $4$, $3$, $2$, $3$, $0$, so the area is $12/2=6$; the sums in the proposition are $0+8\cdot4+5\cdot3+2\cdot2+1\cdot3+0=54$ and $0+1\cdot4+2\cdot3+4\cdot2+6\cdot3+0=36$, so the centroid is $(54/36,36/36)=(3/2,1)$. Cutting the hexagon into the rectangles $[0,4]\times[0,1]$ and $[0,1]\times[1,3]$, of areas $4$ and $2$ and with centroids $(2,1/2)$ and $(1/2,2)$, gives the same result: $\bigl(4\cdot(2,1/2)+2\cdot(1/2,2)\bigr)/6=(3/2,1)$.
+
+\Cref{alg:polygon} implements the formulas. It first moves the vertex $\mathbf p_0$ to the origin, which does not change the area and translates the centroid, and the reason is numerical. In the shoelace sum, the products $x_ky_{k+1}$ and $x_{k+1}y_k$ can be much larger than the area, and their difference then suffers cancellation. For the unit square translated to $[10^8,10^8+1]^2$, the products are about $10^{16}$, beyond the range $2^{53}\approx9.0\times10^{15}$ in which binary64 represents all integers, and the shoelace sum evaluated in binary64 returns the area $0$; after the translation it returns $1$ exactly. For the quadrilateral with the vertices $(0,0)$, $(0.3,0.1)$, $(0.7,0.9)$, $(0.1,0.6)$, of area $0.265$, translated by $10^6$ in both coordinates, the untranslated sum gives $0.2650146\ldots$, wrong in the fifth digit, while the translated sum gives $0.26500000002$, whose remaining error comes only from rounding the translated coordinates themselves. Volume~V analyses such cancellations.
+
+\begin{algorithm}
+\begin{algorithmic}[1]
+\Require the vertices $(x_k,y_k)$, $k=0,\ldots,N-1$, of a simple polygon, $N\ge3$, in counterclockwise order
+\Ensure the area $A$ and the centroid $(\bar x,\bar y)$
+\Name{PolygonAreaCentroid}{x,y,N}
+\State $a\gets0$;\quad $s_x\gets0$;\quad $s_y\gets0$
+\For{$k=0,\ldots,N-1$}
+  \State $j\gets(k+1)\bmod N$
+  \State $u_0\gets x_k-x_0$;\quad $v_0\gets y_k-y_0$;\quad $u_1\gets x_j-x_0$;\quad $v_1\gets y_j-y_0$ \Comment{shift}
+  \State $c\gets u_0v_1-u_1v_0$ \Comment{twice the signed area of the triangle $\mathbf p_0,\mathbf p_k,\mathbf p_j$}
+  \State $a\gets a+c$;\quad $s_x\gets s_x+(u_0+u_1)\,c$;\quad $s_y\gets s_y+(v_0+v_1)\,c$
+\EndFor
+\State $A\gets a/2$
+\State \Return $\bigl(A,\ x_0+s_x/(6A),\ y_0+s_y/(6A)\bigr)$
+\end{algorithmic}
+\caption{Area and centroid of a simple polygon by the shoelace formula and \cref{prop:polygon-centroid}, after translating the first vertex to the origin. The cost is $O(N)$. For vertices in clockwise order, $A$ comes out negative and the centroid is still correct.}
+\label{alg:polygon}
+\end{algorithm}
+
+Polygons are also the simplest approximations of curved regions. The regular polygon with $n$ vertices on the unit circle consists of $n$ triangles with two sides of length $1$ and the angle $2\pi/n$ between them, so its area and half its perimeter are
+\[
+A_n=\frac n2\sin\frac{2\pi}n ,\qquad\frac{L_n}2=n\sin\frac\pi n .
+\]
+By the Taylor expansion $\sin x=x-x^3/6+O(x^5)$, both tend to $\pi$, with the errors $\pi-A_n=2\pi^3/(3n^2)+O(n^{-4})$ and $\pi-L_n/2=\pi^3/(6n^2)+O(n^{-4})$. \Cref{tab:polygon-circle} shows the values: doubling the number of sides divides both errors by $4$, and the scaled errors $n^2(\pi-A_n)$ and $n^2(\pi-L_n/2)$ settle down at $2\pi^3/3=20.67$ and $\pi^3/6=5.168$. Archimedes, starting from the hexagon and doubling four times, used the perimeters of the inscribed and the circumscribed $96$-gons to prove $223/71<\pi<22/7$~\cite{heath1897archimedes}; the inscribed value $3.14103$ in the table lies above his lower bound $3.14085$. The $1/n^2$ behaviour of the errors is the same as that of the trapezoidal rule, and for the same reason: the polygon replaces each arc by its chord, and the trapezoidal rule replaces the graph by chords. Extrapolation, as in Richardson's method of \cref{ch:series}, removes the leading error term and accelerates the convergence.
+
+\begin{table}
+\sdfloat{%
+\begin{sdtable}{colspec={rlllll}, row{1}={font=\small\bfseries}}
+\toprule
+$n$ & $A_n$ & $\pi-A_n$ & $n^2(\pi-A_n)$ & $L_n/2$ & $\pi-L_n/2$ \\
+\midrule
+6 & 2.59807621 & $5.4\times10^{-1}$ & 19.567 & 3.00000000 & $1.4\times10^{-1}$ \\
+12 & 3.00000000 & $1.4\times10^{-1}$ & 20.389 & 3.10582854 & $3.6\times10^{-2}$ \\
+24 & 3.10582854 & $3.6\times10^{-2}$ & 20.600 & 3.13262861 & $9.0\times10^{-3}$ \\
+48 & 3.13262861 & $9.0\times10^{-3}$ & 20.653 & 3.13935020 & $2.2\times10^{-3}$ \\
+96 & 3.13935020 & $2.2\times10^{-3}$ & 20.666 & 3.14103195 & $5.6\times10^{-4}$ \\
+192 & 3.14103195 & $5.6\times10^{-4}$ & 20.670 & 3.14145247 & $1.4\times10^{-4}$ \\
+384 & 3.14145247 & $1.4\times10^{-4}$ & 20.671 & 3.14155761 & $3.5\times10^{-5}$ \\
+768 & 3.14155761 & $3.5\times10^{-5}$ & 20.671 & 3.14158389 & $8.8\times10^{-6}$ \\
+\bottomrule
+\end{sdtable}}{Area $A_n$ and half the perimeter $L_n/2$ of the regular $n$-gon inscribed in the unit circle, and their errors as approximations of $\pi$. The scaled error $n^2(\pi-A_n)$ tends to $2\pi^3/3=20.671$. Note that $A_{2n}=L_n/2$: the $2n$-gon consists of $n$ kites, each with diagonals $1$ and one side of the $n$-gon.\label{tab:polygon-circle}}
+\end{table}
+
+\subsection{The Winding Number}
+
+The angle field of \cref{sec:conservative} counts how often a closed path winds around the origin. For a closed polygon the count can be computed exactly from the vertices, and it answers a basic question of computational geometry: does a given point lie inside a given polygon?
+
+Let $P$ be a closed polygon with the vertices $\mathbf p_0,\ldots,\mathbf p_{N-1}$ and $\mathbf p_N\coloneqq\mathbf p_0$, not necessarily simple, and let $\mathbf a$ be a point that does not lie on any of its edges. The vectors $\mathbf d_k\coloneqq\mathbf p_k-\mathbf a$ are nonzero. For each $k$, let $\alpha_k\in(-\pi,\pi]$ be the signed angle from $\mathbf d_k$ to $\mathbf d_{k+1}$, that is, the angle with
+\[
+\cos\alpha_k=\frac{\langle\mathbf d_k,\mathbf d_{k+1}\rangle}{\|\mathbf d_k\|\,\|\mathbf d_{k+1}\|},\qquad\sin\alpha_k=\frac{\mathbf d_k\wedge\mathbf d_{k+1}}{\|\mathbf d_k\|\,\|\mathbf d_{k+1}\|},
+\]
+where $\mathbf u\wedge\mathbf v\coloneqq u_1v_2-u_2v_1$ for vectors of the plane; it exists and is unique by Lagrange's identity, which says that the two quotients have squares adding up to $1$, and by \cref{prop:circle-points}. In terms of the function of \cref{def:atan2}, $\alpha_k=\operatorname{atan2}(\mathbf d_k\wedge\mathbf d_{k+1},\langle\mathbf d_k,\mathbf d_{k+1}\rangle)$. The value $\alpha_k=\pi$ cannot occur: it would mean that $\mathbf d_{k+1}$ is a negative multiple of $\mathbf d_k$, so that $\mathbf a$ lies on the segment between $\mathbf p_k$ and $\mathbf p_{k+1}$. The sign of $\alpha_k$ is that of $\mathbf d_k\wedge\mathbf d_{k+1}$, which is twice the signed area of the triangle $\mathbf a,\mathbf p_k,\mathbf p_{k+1}$: positive if the edge is seen from $\mathbf a$ to run counterclockwise.
+
+\begin{definition}[Winding number]
+\label{def:winding-number}
+The \term{winding number} of the closed polygon $P$ around the point $\mathbf a$ is $w(P,\mathbf a)\coloneqq\bigl(\alpha_0+\alpha_1+\cdots+\alpha_{N-1}\bigr)/(2\pi)$.
+\end{definition}
+
+\begin{proposition}[Properties of the winding number]
+\label{prop:winding}
+\leavevmode
+\begin{enumerate}
+\item $w(P,\mathbf a)$ is an integer.
+\item $2\pi\,w(P,\mathbf a)=\oint_P\mathbf A_{\mathbf a}\cdot d\mathbf r$, where $\mathbf A_{\mathbf a}(\mathbf x)\coloneqq\mathbf A(\mathbf x-\mathbf a)$ is the angle field \eqref{eq:angle-field} centred at $\mathbf a$ and $P$ is traversed as a closed broken line.
+\item If all vertices lie in an open half-plane whose boundary line passes through $\mathbf a$, then $w(P,\mathbf a)=0$.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(i) By \cref{prop:circle-points} there is $\theta_0$ with $\mathbf d_0=\|\mathbf d_0\|(\cos\theta_0,\sin\theta_0)$. Let $\theta_{k+1}\coloneqq\theta_k+\alpha_k$. By induction, $\mathbf d_k=\|\mathbf d_k\|(\cos\theta_k,\sin\theta_k)$ for every $k$: if this holds for $k$, the rotation of the unit vector $\mathbf d_k/\|\mathbf d_k\|$ by the angle $\alpha_k$, which by the addition formulas (\cref{thm:addition}) is the unit vector of angle $\theta_k+\alpha_k$, is $\mathbf d_{k+1}/\|\mathbf d_{k+1}\|$, as one checks by inserting the formulas for $\cos\alpha_k$ and $\sin\alpha_k$ into the rotation matrix of \cref{sec:vectors-rn} and using $\|\mathbf d_k\|^2=d_{k,1}^2+d_{k,2}^2$. Since $\mathbf d_N=\mathbf d_0$, the angles $\theta_N$ and $\theta_0$ have the same cosine and sine, so they differ by an integer multiple of $2\pi$ (\cref{thm:trig-periodic}), and $\theta_N-\theta_0=\sum_k\alpha_k$.
+
+(ii) Fix $k$. The vector $\mathbf u\coloneqq\mathbf d_k/\|\mathbf d_k\|+\mathbf d_{k+1}/\|\mathbf d_{k+1}\|$ is nonzero, since $\alpha_k\ne\pi$, and $\langle\mathbf d_k,\mathbf u\rangle=\|\mathbf d_k\|(1+\cos\alpha_k)>0$, and likewise $\langle\mathbf d_{k+1},\mathbf u\rangle>0$; by linearity, $\langle\mathbf x-\mathbf a,\mathbf u\rangle>0$ for every point $\mathbf x$ of the edge from $\mathbf p_k$ to $\mathbf p_{k+1}$. So the edge lies in the open half-plane $H$ of the points $\mathbf x$ with $\langle\mathbf x-\mathbf a,\mathbf u\rangle>0$. Let $\beta$ be the angle of $\mathbf u$. On $H$, the angle of $\mathbf x-\mathbf a$ can be chosen continuously in $(\beta-\pi/2,\beta+\pi/2)$; in coordinates centred at $\mathbf a$ and rotated by $\beta$, it is $\beta+\arctan(y'/x')$ on the right half-plane $x'>0$, and by the computation in \cref{sec:conservative}, which is not affected by the rotation, it is a potential of $\mathbf A_{\mathbf a}$ on $H$. By \cref{thm:ftc-line}, the line integral along the edge is the difference of the angles of $\mathbf d_{k+1}$ and $\mathbf d_k$ chosen in this interval, a number in $(-\pi,\pi)$ whose cosine and sine are those of $\alpha_k$; so it is $\alpha_k$. Adding over $k$ gives (ii).
+
+(iii) If all $\mathbf d_k$ lie in an open half-plane $\langle\mathbf x,\mathbf u\rangle>0$, the argument of (ii) shows that the angles $\theta_k$ of (i) can all be chosen in the interval $(\beta-\pi/2,\beta+\pi/2)$, in which case $\theta_{k+1}-\theta_k=\alpha_k$ for every $k$ and $\theta_N=\theta_0$; so the sum of the $\alpha_k$ is $0$.
+\end{proof}
+
+For a simple polygon, the winding number says on which side a point lies. That a simple closed polygon divides the plane into two regions, a bounded one, the polygon region, and an unbounded one, is the polygonal case of the \term{Jordan curve theorem}; for polygons it has an elementary proof, while for general continuous closed curves it is a famous and surprisingly hard theorem~\cite{hales2007}.
+
+\begin{theorem}[Inside and outside]
+\label{thm:point-in-polygon}
+Let $P$ be a simple closed polygon whose vertices are listed in counterclockwise order, and let $D$ be the polygon region. Then $w(P,\mathbf a)=1$ for every interior point $\mathbf a$ of $D$ and $w(P,\mathbf a)=0$ for every point $\mathbf a$ outside $D$.
+\end{theorem}
+
+\begin{proof}
+The angle field $\mathbf A_{\mathbf a}$ is closed on the plane without $\mathbf a$. If $\mathbf a\notin D$, it is $C^1$ on an open set containing $D$, and Green's theorem with \cref{prop:winding}\,(ii) gives $w(P,\mathbf a)=0$. If $\mathbf a$ is an interior point of $D$, choose $\varepsilon>0$ so small that the closed disc of radius $\varepsilon$ about $\mathbf a$ lies in the interior of $D$. The region between $P$ and the circle can be cut into standard regions by segments (we omit the routine details), and Green's theorem gives, as for the angle field in \cref{sec:green}, $\oint_P\mathbf A_{\mathbf a}\cdot d\mathbf r=2\pi$.
+\end{proof}
+
+\Cref{alg:winding} computes the winding number from \cref{def:winding-number}, and \cref{fig:winding} shows it at work. For the point $\mathbf a$ inside the nonconvex hexagon of \cref{fig:winding}A, the six angles are, in degrees, $95.1$, $48.6$, $-34.0$, $88.1$, $60.9$ and $101.3$, adding up to $360$; one of them is negative, because the notch of the hexagon is seen from $\mathbf a$ to run backwards. For the point $\mathbf b$ in the notch, outside the hexagon, the angles $72.0$, $74.3$, $-130.8$, $-91.3$, $32.4$ and $43.4$ add up to $0$. The rounding in the last line of the algorithm only removes the rounding errors of the floating-point sum, which is an integer multiple of $2\pi$ in exact arithmetic.
+
+\begin{algorithm}
+\begin{algorithmic}[1]
+\Require the vertices $\mathbf p_k=(x_k,y_k)$, $k=0,\ldots,N-1$, of a closed polygon; a point $\mathbf a=(a_1,a_2)$ on none of its edges
+\Ensure the winding number $w$ of the polygon around $\mathbf a$
+\Name{WindingNumber}{\mathbf p,N,\mathbf a}
+\State $\theta\gets0$
+\For{$k=0,\ldots,N-1$}
+  \State $j\gets(k+1)\bmod N$
+  \State $d_1\gets x_k-a_1$;\quad $d_2\gets y_k-a_2$;\quad $e_1\gets x_j-a_1$;\quad $e_2\gets y_j-a_2$
+  \State $\theta\gets\theta+\operatorname{atan2}(d_1e_2-d_2e_1,\ d_1e_1+d_2e_2)$ \Comment{signed angle $\alpha_k$ in $(-\pi,\pi)$}
+\EndFor
+\State \Return the integer nearest to $\theta/(2\pi)$
+\end{algorithmic}
+\caption{The winding number of a closed polygon around a point, as the sum of the angles under which its edges are seen (\cref{def:winding-number}). By \cref{thm:point-in-polygon}, for a simple polygon in counterclockwise order the result is $1$ for points inside and $0$ for points outside. The cost is $N$ evaluations of $\operatorname{atan2}$.}
+\label{alg:winding}
+\end{algorithm}
+
+\begin{figure}
+\sdpanel{A}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.5\textwidth, height=0.46\textwidth, xmin=-0.3, xmax=3.3, ymin=-0.3, ymax=2.9,
+  axis equal image, xtick={0,1,2,3}, ytick={0,1,2}, xlabel={$x$}, ylabel={$y$}]
+\fill[sdfill] (axis cs:0,0) -- (axis cs:3,0) -- (axis cs:3,2) -- (axis cs:1.6,1) -- (axis cs:1.2,2.6) -- (axis cs:0,2) -- cycle;
+\draw[black!50, line width=0.35pt] (axis cs:0.8,1.2) -- (axis cs:0,0) (axis cs:0.8,1.2) -- (axis cs:3,0) (axis cs:0.8,1.2) -- (axis cs:3,2) (axis cs:0.8,1.2) -- (axis cs:1.6,1) (axis cs:0.8,1.2) -- (axis cs:1.2,2.6) (axis cs:0.8,1.2) -- (axis cs:0,2);
+\draw[black!50, dashed, line width=0.35pt] (axis cs:2.2,1.9) -- (axis cs:0,0) (axis cs:2.2,1.9) -- (axis cs:3,0) (axis cs:2.2,1.9) -- (axis cs:3,2) (axis cs:2.2,1.9) -- (axis cs:1.6,1) (axis cs:2.2,1.9) -- (axis cs:1.2,2.6) (axis cs:2.2,1.9) -- (axis cs:0,2);
+\draw[black, line width=0.8pt] (axis cs:0,0) -- (axis cs:3,0) -- (axis cs:3,2) -- (axis cs:1.6,1) -- (axis cs:1.2,2.6) -- (axis cs:0,2) -- cycle;
+\draw[black, line width=0.8pt, -{Latex[length=1.8mm]}] (axis cs:1.4,0) -- (axis cs:1.6,0);
+\draw[black, line width=0.8pt, -{Latex[length=1.8mm]}] (axis cs:1.44,1.64) -- (axis cs:1.39,1.84);
+\fill[black] (axis cs:0.8,1.2) circle (1.5pt) (axis cs:2.2,1.9) circle (1.5pt);
+\node[font=\scriptsize, anchor=north] at (axis cs:0.8,1.15) {$\mathbf a$};
+\node[font=\scriptsize, anchor=south west] at (axis cs:2.22,1.92) {$\mathbf b$};
+\end{axis}
+\end{tikzpicture}}\hfill
+\sdpanel{B}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.44\textwidth, height=0.46\textwidth, xmin=-1.15, xmax=1.15, ymin=-1.05, ymax=1.15,
+  axis equal image, xtick={-1,0,1}, ytick={-1,0,1}, xlabel={$x$}, ylabel={$y$}]
+\fill[black!10] (axis cs:0,1) -- (axis cs:-0.5878,-0.8090) -- (axis cs:0.9511,0.3090) -- (axis cs:-0.9511,0.3090) -- (axis cs:0.5878,-0.8090) -- cycle;
+\fill[black!28] (axis cs:0,-0.3820) -- (axis cs:0.3633,-0.1180) -- (axis cs:0.2245,0.3090) -- (axis cs:-0.2245,0.3090) -- (axis cs:-0.3633,-0.1180) -- cycle;
+\draw[black, line width=0.8pt] (axis cs:0,1) -- (axis cs:-0.5878,-0.8090) -- (axis cs:0.9511,0.3090) -- (axis cs:-0.9511,0.3090) -- (axis cs:0.5878,-0.8090) -- cycle;
+\draw[black, line width=0.8pt, -{Latex[length=1.8mm]}] (axis cs:-0.2939,0.0955) -- (axis cs:-0.3527,-0.0854);
+\node[font=\scriptsize] at (axis cs:0,0) {$2$};
+\node[font=\scriptsize] at (axis cs:0,0.62) {$1$};
+\node[font=\scriptsize] at (axis cs:0.65,0.75) {$0$};
+\end{axis}
+\end{tikzpicture}}
+\caption{Winding numbers. (A) A nonconvex hexagon, traversed counterclockwise (arrows). The edges are seen from the inner point $\mathbf a$ under angles that add up to $2\pi$ (grey rays), and from the outer point $\mathbf b$, in the notch, under angles that add up to $0$ (dashed rays). (B) The pentagram, the closed polygon through every second vertex of a regular pentagon, winds twice around the points of the inner pentagon (dark), once around those of the five tips (light), and not at all around the points outside; the numbers are the winding numbers.}
+\label{fig:winding}
+\end{figure}
+
+For polygons that are not simple, the winding number can take other values. The pentagram of \cref{fig:winding}B, with its vertices on the unit circle, winds twice around the points of its inner pentagon. Its shoelace sum is $5\sin(4\pi/5)/2=1.4695$, which is not its area $1.1226$ but the area of the five tips, $0.7757$, plus twice the area of the inner pentagon, $0.3469$. This is a general fact: for every closed polygon, the shoelace sum is the integral of the winding number $w(P,\mathbf x)$ over the plane, each point counted as often as the polygon winds around it. It follows from the decomposition of the plane by the edges of the polygon into regions on which $w$ is constant.
+
+The algorithm uses the trigonometric function $\operatorname{atan2}$, but the answer is an integer and should not require transcendental functions. Indeed, only the edges that cross a ray from $\mathbf a$, say the horizontal ray to the right, change the winding number, and each crossing contributes $+1$ or $-1$ according to its direction; the signs are decided by comparisons of coordinates and by the sign of $\mathbf d_k\wedge\mathbf d_{k+1}$. This \term{crossing number} form of the algorithm is the one used in practice, and Hormann and Agathos discuss its details, including points on the boundary and polygons with self-intersections~\cite{hormann2001}. The sign of $\mathbf d_k\wedge\mathbf d_{k+1}$, the \term{orientation} of the triangle $\mathbf a,\mathbf p_k,\mathbf p_{k+1}$, is the basic primitive of computational geometry: convex hulls, triangulations and point location are built on it. In floating-point arithmetic it can come out with the wrong sign when the three points are nearly collinear, and Shewchuk showed how to evaluate it exactly at little extra cost~\cite{shewchuk1997}. Volume~XVI takes up these questions.
+
+\bigskip
+The integrals of this chapter live on curves and surfaces, and they are computed by pulling them back to the parameter domain, where the length of the velocity or the area of the parallelogram of tangent vectors supplies the factor that the Jacobian determinant supplied in \cref{ch:multiple-integrals}. The fundamental theorem for line integrals, Green's theorem, Stokes' theorem and the divergence theorem all say that the integral of a derivative over a region equals an integral over its boundary, and the divergence and the curl are the derivatives that make this work in space. Closed fields that are not gradients, such as the angle field, detect holes in their domain; this is the germ of Cauchy's theorem and the residue calculus of Volume~II, and of the winding numbers that decide whether a point lies inside a polygon. With this chapter Part~II, the calculus, comes to an end. Part~III turns to linear algebra, which this part has used without developing it systematically: the determinants behind the change of variables and the cross product, the Gram determinant behind the area of a hypersurface, and the symmetric matrices behind the Hessian and the definiteness of quadratic forms. Chapters~17 and~20 prove the facts that this part has borrowed.
+
+\chapternotes
+
+The history of the integral theorems is told by Katz~\cite{katz1979}, who follows them from Lagrange, Gauss and Ostrogradsky through Green, Thomson and Stokes to the formulation with differential forms; Crowe~\cite{crowe1967} describes how the vector notation of Gibbs and Heaviside replaced the quaternions of Hamilton and became the language of physics. Green's \emph{Essay}~\cite{green1828} contains the identities of \cref{sec:divergence-theorem}. Archimedes' results on the sphere and on the measurement of the circle are in Heath's edition~\cite{heath1897archimedes}, Pappus's centroid theorems in Heath's history~\cite{heath1921}, and Schwarz's example of inscribed polyhedra with unbounded area in~\cite{schwarz1890}.
+
+Among textbooks at the level of this chapter, Apostol's second volume~\cite{apostol1969calculus} proves Green's theorem for regions bounded by piecewise smooth Jordan curves and treats surface integrals with care, Marsden and Tromba~\cite{marsden2012vector} give many physical applications, among them Gauss's and Amp\`ere's laws, and Hubbard and Hubbard~\cite{hubbard2015vector} develop the integral theorems with differential forms and with attention to computation. Spivak~\cite{spivak1965manifolds} and Munkres~\cite{munkres1991} prove the general Stokes theorem on manifolds, and do~Carmo~\cite{docarmo1976} is the standard introduction to the differential geometry of curves and surfaces, including curvature and orientability. The periodic trapezoidal rule is surveyed by Trefethen and Weideman~\cite{trefethen2014}. The surveyor's formula and its history are discussed by Braden~\cite{braden1986}, the triangulation of polygons by Meisters~\cite{meisters1975}, the point-in-polygon problem by Hormann and Agathos~\cite{hormann2001}, exact geometric predicates by Shewchuk~\cite{shewchuk1997}, and the Jordan curve theorem, with its proofs, by Hales~\cite{hales2007}.
+
+\chapterreferences
