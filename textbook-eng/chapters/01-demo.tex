@@ -1,0 +1,273 @@
+%% Design demo: a condensed chapter on floating-point numbers.
+\newcommand\sddemorows{%
+\code{nextafter} & 581 & 78 & 1450 \\
+\code{astype(int64)} & 118 & 28 & 247 \\
+\code{isinf} & 65.0 & 17.2 & 65.1 \\}
+\chapter{Floating-Point Numbers}
+\label{ch:floating-point}
+
+\abstract{Almost every real number in a scientific program is an IEEE~754 binary64 number. This chapter describes the set of such numbers, the rounding rule that maps the reals onto it, and the error bound that every later analysis builds on. It then shows how the ordering of bit patterns turns two common kernels, the successor function and the distance in units in the last place, into integer arithmetic, and how the stardust library implements them.}
+
+In Python the expression \code{0.1 + 0.2 == 0.3} evaluates to \code{False}, and \code{0.1 + 0.2} prints as \code{0.30000000000000004}. This is not a defect of the language. The literal \code{0.1} denotes the binary64 number nearest to $1/10$, which is
+\[
+\frac{3602879701896397}{2^{55}}=0.1000000000000000055511151231257827\ldots,
+\]
+and the same holds for \code{0.2} and \code{0.3}. The exact sum of the first two approximations lies precisely halfway between the approximation of $0.3$ and its successor, and the tie is broken towards the successor. Every step follows a single rule, rounding to the nearest representable number; the purpose of this chapter is to make that rule precise enough that results such as this one can be predicted by hand.
+
+\section{The Set of Floating-Point Numbers}
+\label{sec:fp-set}
+
+\begin{definition}[Floating-point numbers]
+\label{def:fp-set}
+Let $\beta\ge2$, $p\ge1$ and $e_{\min}<e_{\max}$ be integers. The set $\mathbb F=\mathbb F(\beta,p,e_{\min},e_{\max})$ consists of the real numbers
+\[
+x=\pm\,m\cdot\beta^{e-p+1},\qquad m\in\mathbb Z,\quad 0\le m<\beta^p,\quad e_{\min}\le e\le e_{\max}.
+\]
+The integer $m$ is the \term{significand} and $e$ the \term{exponent}. A number that can be written with $m\ge\beta^{p-1}$ is \term{normal}; a nonzero number that cannot is \term{subnormal}.
+\end{definition}
+
+Throughout this book $\mathbb F$ denotes binary64, for which $\beta=2$, $p=53$, $e_{\min}=-1022$ and $e_{\max}=1023$; it is the \code{double} of C and C++, the \code{float} of Python and the \code{float64} of NumPy and stardust~\cite{ieee754-2019}. The normal numbers with exponent $e$ fill the \term{binade} $[2^e,2^{e+1})$ with the constant spacing $2^{e-52}$, and the spacing doubles from one binade to the next. The relative spacing therefore falls from $2^{-52}$ at the bottom of a binade to nearly $2^{-53}$ at its top (\cref{fig:spacing}). This variation by a factor of $\beta$ is called \term{wobble}, and it is smallest for $\beta=2$~\cite{goldberg1991}.
+
+\begin{figure}
+\sdfigure{%
+\begin{tikzpicture}
+\begin{semilogxaxis}[sdplot,sdlegendtop,xlabel={$x$},ylabel={$\operatorname{ulp}(x)/x$},xmin=0.25,xmax=16,ymin=0,ymax=3.1e-16,
+  log basis x=2,scaled y ticks=false,ytick={0,1e-16,2e-16,3e-16},
+  yticklabels={$0$,$10^{-16}$,$2\cdot10^{-16}$,$3\cdot10^{-16}$}]
+\addplot[black,line width=0.7pt] table[x=x,y=rel]{figures/demo/spacing.dat};
+\addlegendentry{relative spacing}
+\addplot[black!60,dashed,line width=0.6pt,domain=0.25:16] {2^(-52)};
+\addlegendentry{$2^{-52}$}
+\addplot[black!60,densely dotted,line width=0.8pt,domain=0.25:16] {2^(-53)};
+\addlegendentry{$2^{-53}$}
+\end{semilogxaxis}
+\end{tikzpicture}}{Relative spacing of binary64 numbers. Within each binade it decreases from $2^{-52}$ towards $2^{-53}$ and jumps back at the next power of two.\label{fig:spacing}}
+\end{figure}
+
+\begin{proposition}
+\label{prop:fp-integers}
+Every integer $n$ with $|n|\le2^{53}$ belongs to binary64, whereas $2^{53}+1$ does not.
+\end{proposition}
+
+\begin{proof}
+For $|n|<2^{53}$ take $m=|n|$ and $e=52$, so that $n=\pm m\cdot2^0$; for $|n|=2^{53}$ take $m=2^{52}$ and $e=53$. In the binade $[2^{53},2^{54})$ the spacing is $2$, so all of its elements are even and the odd integer $2^{53}+1$ is not among them.
+\end{proof}
+
+\subsection{The Bit Layout}
+
+A binary64 number occupies $64$ bits: a sign bit $s$, an $11$-bit \term{biased exponent} $E$ and a $52$-bit \term{fraction} $f$. The bits are read in one of three ways, according to $E$:
+\begin{enumerate}
+\item for $1\le E\le2046$ they encode the normal number $(-1)^s(1+f\,2^{-52})\,2^{E-1023}$, whose leading significand bit is implicit;
+\item for $E=0$ they encode
+  \begin{enumerate}
+  \item $\pm0$ if $f=0$, and
+  \item the subnormal number $(-1)^sf\,2^{-1074}$ otherwise;
+  \end{enumerate}
+\item for $E=2047$ they encode $\pm\infty$ if $f=0$ and NaN otherwise.
+\end{enumerate}
+The bias makes the encoding monotone.
+
+\begin{proposition}
+\label{prop:fp-bits-monotone}
+For a binary64 number $x$ that is not a NaN, let $\mu(x)=2^{52}E+f$ be the integer formed by its low $63$ bits. Then $|x|<|y|$ if and only if $\mu(x)<\mu(y)$, and increasing $\mu$ by one moves $|x|$ to the next binary64 number.
+\end{proposition}
+
+\begin{proof}
+While $E=0$ we have $|x|=f\,2^{-1074}$, which grows in steps of $2^{-1074}$; the step from $(E,f)=(0,2^{52}-1)$ to $(1,0)$ is also $2^{-1074}$. For $E\ge1$ we have $|x|=(2^{52}+f)\,2^{E-1075}$, which grows in steps of $2^{E-1075}$ within the binade and by the same step across its upper end. After the largest finite number comes $(E,f)=(2047,0)$, which is $+\infty$. Hence $\mu\mapsto|x|$ is strictly increasing and consecutive values of $\mu$ correspond to neighbouring numbers.
+\end{proof}
+
+By \cref{prop:fp-bits-monotone} the successor and predecessor functions reduce to adding $\pm1$ to the bit pattern, as \cref{alg:nextafter} shows. Only zero, NaN and equal arguments need separate treatment.
+
+\begin{algorithm}
+\begin{algorithmic}[1]
+\Require binary64 numbers $a$ and $b$
+\Ensure the binary64 number adjacent to $a$ in the direction of $b$
+\Name{NextAfter}{a,b}
+\If{$a$ or $b$ is NaN} \Return $a+b$ \Comment{propagate the NaN}
+\EndIf
+\If{$a=b$} \Return $b$
+\EndIf
+\If{$a=0$} \Return $2^{-1074}$ with the sign of $b$
+\EndIf
+\State $n\gets$ the bits of $a$ read as a signed $64$-bit integer
+\If{$(a<b)=(a>0)$}
+  \State $n\gets n+1$ \Comment{away from zero}
+\Else
+  \State $n\gets n-1$
+\EndIf
+\State \Return $n$ read as binary64 \Comment{the largest finite number steps to $\infty$}
+\end{algorithmic}
+\caption{The successor function by a step on the bit pattern.}
+\label{alg:nextafter}
+\end{algorithm}
+
+\section{Rounding}
+\label{sec:rounding}
+
+The default rounding of IEEE~754 maps a real number to the nearest element of $\mathbb F$ and, in case of a tie, to the one whose significand is even; we write $\fl(x)$ for the result. The standard requires the basic operations $+$, $-$, $\times$, $\div$, $\sqrt{\ }$ and the fused multiply--add to be \term{correctly rounded}, that is, $a\oplus b=\fl(a+b)$ for all $a,b\in\mathbb F$ and likewise for the other operations~\cite{ieee754-2019}. Ties are not rare: adding two numbers or converting an integer often discards exactly half a unit in the last place, and always rounding such ties upward makes the errors drift in one direction. Rounding them to even sends about half of the ties up and half down, so the accumulated error stays small (\cref{fig:bias}). The error of a single operation is then governed by the following result.
+
+\begin{figure}
+\sdfigure{%
+\begin{tikzpicture}
+\begin{axis}[sdplot, legend pos=north west, xlabel={number of roundings}, ylabel={accumulated error},
+  xmin=0, xmax=2000, ymin=-50, ymax=560, width=0.52\textwidth, height=0.4\textwidth]
+\addplot[black, line width=0.7pt] table[x=k,y=up]{figures/demo/bias.dat};
+\addlegendentry{ties upward}
+\addplot[black!55, line width=0.7pt] table[x=k,y=even]{figures/demo/bias.dat};
+\addlegendentry{ties to even}
+\end{axis}
+\end{tikzpicture}}{Accumulated error when $2000$ random multiples of $1/2$ in $[0,100]$ are rounded to integers, computed in exact rational arithmetic. Rounding ties upward drifts to $508.5$; rounding them to even stays at $11.5$.\label{fig:bias}}
+\end{figure}
+
+\begin{theorem}[Standard model]
+\label{thm:standard-model}
+If $x\in\mathbb R$ satisfies $2^{-1022}\le|x|\le\max\mathbb F$, then
+\begin{equation}
+\fl(x)=x(1+\delta),\qquad|\delta|\le u=2^{-53}.
+\label{eq:standard-model}
+\end{equation}
+\end{theorem}
+
+\begin{proof}
+Let $2^e\le|x|<2^{e+1}$ with $e\ge-1022$. The spacing in this binade is $2^{e-52}$, so the nearest element lies within half of it: $|\fl(x)-x|\le2^{e-53}$. The bound also holds when $x$ rounds up to $2^{e+1}$. Dividing by $|x|\ge2^e$ gives $|\delta|\le2^{-53}$.
+\end{proof}
+
+The bound \eqref{eq:standard-model} is approached only near the bottom of a binade; towards the top the relative error is at most about $u/2$. \Cref{fig:relerr} confirms this for $3000$ random reals rounded with exact rational arithmetic, and \cref{tab:binary64} lists the constants that follow from the encoding.\footnote{All numbers in this chapter were computed with Python's \code{fractions} module, so they carry no rounding error of their own.}
+
+\begin{figure}
+\sdfigure{%
+\begin{tikzpicture}
+\begin{axis}[sdplot,sdlegendtop,xlabel={$x$},ylabel={$|\fl(x)-x|/(x\,u)$},xmin=0.25,xmax=8.25,ymin=0,ymax=1.3,
+  ytick={0,0.5,1}]
+\addplot[black!45,only marks,mark=*,mark size=0.35pt] table[x=x,y=rel]{figures/demo/relerr.dat};
+\addlegendentry{random reals}
+\addplot[black,line width=0.7pt,domain=0.25:0.5,samples=40] {0.25/x};
+\addlegendentry{bound $2^e/x$}
+\addplot[black,line width=0.7pt,domain=0.5:1,samples=40,forget plot] {0.5/x};
+\addplot[black,line width=0.7pt,domain=1:2,samples=40,forget plot] {1/x};
+\addplot[black,line width=0.7pt,domain=2:4,samples=40,forget plot] {2/x};
+\addplot[black,line width=0.7pt,domain=4:8,samples=40,forget plot] {4/x};
+\addplot[black,line width=0.7pt,domain=8:8.25,samples=10,forget plot] {8/x};
+\end{axis}
+\end{tikzpicture}}{Relative rounding error in units of $u$. The bound $2^e/x$ equals $1$ at the bottom of the binade $[2^e,2^{e+1})$ and $1/2$ at its top.\label{fig:relerr}}
+\end{figure}
+
+\begin{table}
+\sdfloat{%
+\begin{sdtable}{colspec={lll}, row{1}={font=\small\bfseries}}
+\toprule
+Quantity & Exact value & Decimal approximation \\
+\midrule
+largest finite number & $(2-2^{-52})\,2^{1023}$ & $1.7976931348623157\times10^{308}$ \\
+smallest positive normal & $2^{-1022}$ & $2.2250738585072014\times10^{-308}$ \\
+smallest positive subnormal & $2^{-1074}$ & $4.9406564584124654\times10^{-324}$ \\
+machine epsilon $\epsilon$ & $2^{-52}$ & $2.220446049250313\times10^{-16}$ \\
+unit roundoff $u$ & $2^{-53}$ & $1.1102230246251565\times10^{-16}$ \\
+\bottomrule
+\end{sdtable}}{Constants of binary64. Machine epsilon is the gap between $1$ and its successor; the unit roundoff is half of it.\label{tab:binary64}}
+\end{table}
+
+\Cref{fig:panels} collects the quantities of this section in one place: the spacing and the rounding error describe a single rounding, and the accumulated error and the error bounds describe many.
+
+\begin{figure}
+\pgfplotsset{panel/.style={sdplot, width=0.5\textwidth, height=0.38\textwidth}}
+\sdpanel{A}{\begin{tikzpicture}
+\begin{semilogxaxis}[panel, xlabel={$x$}, ylabel={$\operatorname{ulp}(x)/x$}, xmin=0.25, xmax=16, ymin=0, ymax=2.5e-16,
+  log basis x=2, scaled y ticks=false, ytick={0,1e-16,2e-16}, yticklabels={$0$,$10^{-16}$,$2\cdot10^{-16}$}]
+\addplot[black, line width=0.6pt] table[x=x,y=rel]{figures/demo/spacing.dat};
+\end{semilogxaxis}
+\end{tikzpicture}}\hfill
+\sdpanel{B}{\begin{tikzpicture}
+\begin{axis}[panel, xlabel={$x$}, ylabel={$|\fl(x)-x|/(x\,u)$}, xmin=0.25, xmax=8.25, ymin=0, ymax=1.05, ytick={0,0.5,1}]
+\addplot[black!45, only marks, mark=*, mark size=0.25pt] table[x=x,y=rel]{figures/demo/relerr.dat};
+\end{axis}
+\end{tikzpicture}}
+\sdpanelrow
+\sdpanel{C}{\begin{tikzpicture}
+\begin{axis}[panel, legend pos=north west, xlabel={number of roundings}, ylabel={accumulated error}, xmin=0, xmax=2000, ymin=-50, ymax=560]
+\addplot[black, line width=0.6pt] table[x=k,y=up]{figures/demo/bias.dat};
+\addlegendentry{ties upward}
+\addplot[black!55, line width=0.6pt] table[x=k,y=even]{figures/demo/bias.dat};
+\addlegendentry{ties to even}
+\end{axis}
+\end{tikzpicture}}\hfill
+\sdpanel{D}{\begin{tikzpicture}
+\begin{loglogaxis}[panel, legend pos=north west, xlabel={$n$}, ylabel={error bound$/u$}, xmin=10, xmax=1e7, ymin=1, ymax=1e9, ytick={1,1e3,1e6,1e9}]
+\addplot+[mark=*, mark size=1pt, samples at={10,100,1000,10000,100000,1000000,10000000}] {x-1};
+\addlegendentry{recursive}
+\addplot+[mark=square*, mark size=1pt, samples at={10,100,1000,10000,100000,1000000,10000000}] {ceil(ln(x)/ln(2))};
+\addlegendentry{pairwise}
+\end{loglogaxis}
+\end{tikzpicture}}
+\caption{Rounding in binary64. (A) Relative spacing of binary64 numbers. (B) Relative error of $3000$ random reals rounded to nearest, in units of $u$. (C) Accumulated error of $2000$ roundings of multiples of $1/2$ to integers. (D) First-order error bounds of recursive and pairwise summation of $n$ terms.}
+\label{fig:panels}
+\end{figure}
+
+Rounding does not always introduce an error. The following lemma identifies a case that is used repeatedly in later chapters.
+
+\begin{lemma}[Sterbenz]
+\label{lem:sterbenz}
+If $x,y\in\mathbb F$ satisfy $y/2\le x\le2y$, then $x-y\in\mathbb F$; consequently $x\ominus y=x-y$.
+\end{lemma}
+
+\begin{proof}
+Both numbers have the same sign, so we may assume $0<y\le x\le2y$. Let $e$ be the exponent of $y$. Both $x$ and $y$ are integer multiples of $2^{\max(e,-1022)-52}$, and so is $x-y$. Since $0\le x-y\le y<2^{e+1}$, the quotient of $x-y$ by this unit is less than $2^{53}$, so $x-y$ has a $53$-bit significand.
+\end{proof}
+
+\Cref{lem:sterbenz} shows that the subtraction of nearby numbers is itself exact. Cancellation is harmful only because it exposes errors already present in the operands; the next chapter makes this distinction precise.
+
+\begin{note}{Kahan and IEEE 754}
+In the 1970s every manufacturer used its own floating-point format and its own rounding rules, and a program that was moved to another machine often produced different results. The IEEE working group that began in 1977 debated gradual underflow longer than any other question: several manufacturers argued that subnormal numbers would make hardware slower and more complicated, while Kahan and his colleagues held that properties such as $x\ominus y\ne0$ for $x\ne y$ make programs provable~\cite{coonen1981underflow}. The standard of 1985 adopted Kahan's proposal almost unchanged.
+\end{note}
+
+\section{Implementation}
+\label{sec:fp-implementation}
+
+The stardust library implements \cref{alg:nextafter} as a branch-light scalar function that the compiler vectorizes. In the code the comparison \code{(a < b) == (a > 0)} is true exactly when the step moves away from zero.
+
+
+Applied to $a=0$ and $b=-1$, \cref{alg:nextafter} returns $-2^{-1074}$; applied to the largest finite number and $b=+\infty$, it adds one to the bit pattern and obtains $(E,f)=(2047,0)$, that is, $+\infty$. Both results agree with the C library function \code{nextafter}.
+
+The kernel departs from a literal transcription of the algorithm in two respects:
+\begin{itemize}
+\item it reads the bit pattern as a signed integer, which is valid because the sign bit lies above the $63$ bits that the step changes;
+\item it never calls the C library, so that
+  \begin{itemize}
+  \item the loop over an array contains no function call, and
+  \item the compiler can vectorize it.
+  \end{itemize}
+\end{itemize}
+Measured on one thread of an Apple M4 Pro, the kernel processes $10^6$ elements in $581\,\mu$s, against $1450\,\mu$s for NumPy, which calls the C library once per element; \cref{tab:time} adds two other kernels of this chapter and the effect of the thread pool.
+
+\begin{table}
+\sdfloat{%
+\begin{sdtable}[expand=\sddemorows]{colspec={lrrr}, row{1,2}={font=\small\bfseries}, cell{1}{2}={c=2}{c}}
+\toprule
+Kernel & stardust & & NumPy \\
+\cmidrule[lr]{2-3}
+ & 1 thread & 10 threads & \\
+\midrule
+\sddemorows
+\bottomrule
+\end{sdtable}}{Time in microseconds for $10^6$ elements, best of $30$ runs; NumPy runs on one thread.\label{tab:time}}
+\end{table} The stardust results for a selection of special arguments are listed in \cref{tab:special}.
+
+\begin{table}
+\sdfloat{%
+\begin{sdtable}{colspec={llll}, row{1}={font=\small\bfseries}, column{3}={leftsep=14pt}}
+\toprule
+Expression & Result & Expression & Result \\
+\midrule
+\code{add(-0.0, +0.0)} & $+0$ & \code{maximum(-0.0, +0.0)} & $+0$ \\
+\code{sqrt(-0.0)} & $-0$ & \code{maximum(nan, 1.0)} & NaN \\
+\code{divide(1.0, -0.0)} & $-\infty$ & \code{nanmax([1, nan, 3])} & $3$ \\
+\code{nextafter(0.0, -1.0)} & $-2^{-1074}$ & \code{nextafter(max, inf)} & $+\infty$ \\
+\bottomrule
+\end{sdtable}}{Special values in stardust. Each scalar was passed as a one-element array.\label{tab:special}}
+\end{table}
+
+\section*{Notes}
+
+Goldberg~\cite{goldberg1991} remains the classical introduction to floating-point arithmetic, Overton~\cite{overton2001} gives a short and careful textbook account, and Muller et al.~\cite{muller2018handbook} is the standard reference. \Cref{lem:sterbenz} goes back to Sterbenz~\cite{sterbenz1974}, and the error analysis built on \cref{thm:standard-model} is developed at length by Higham~\cite{higham2002accuracy}.
+
+\chapterreferences
