@@ -113,7 +113,7 @@ def audit(path):
             notes.append(f'증명·설명을 인용으로 넘긴 듯한 곳: "{m.group(0)[:60]}"')
 
     # 증명을 싣지 않는다는 변명 (GUIDE §5: 줄거리와 참고할 곳을 쓴다)
-    for m in re.finditer(r'[^.]{0,40}(싣지 않는다|싣지 않았다|다루지 않는다|범위 밖이다|생략한다)[^.]{0,20}', body):
+    for m in re.finditer(r'[^.]{0,40}(증명은[^.]{0,20}싣지 않|싣지 않는다|싣지 않았다|범위 밖이다|증명을 생략)[^.]{0,20}', body):
         fails.append(f'증명·설명을 빼는 변명: "{m.group(0).strip()[:70]}" → 핵심 아이디어·줄거리·참고할 곳으로')
     print(f'== {path}')
     for n in notes:
