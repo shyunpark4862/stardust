@@ -110,7 +110,7 @@ f(0)=a\qquad\text{and}\qquad f(S(n))=g(f(n))\quad\text{for every }n\in\mathbb N.
 \begin{proof}
 \emph{Uniqueness.} If $f$ and $f'$ both have the two properties, then $f(0)=a=f'(0)$, and $f(n)=f'(n)$ implies $f(S(n))=g(f(n))=g(f'(n))=f'(S(n))$. By induction, $f(n)=f'(n)$ for all $n$.
 
-\emph{Existence.} The function is built from its graph. Call a set $R\subseteq\mathbb N\times X$ \emph{admissible} if $(0,a)\in R$ and $(n,x)\in R$ implies $(S(n),g(x))\in R$; the set $\mathbb N\times X$ itself is admissible. Let $F$ be the intersection of all admissible sets. Then $F$ is admissible, and it is the smallest admissible set, as in the construction of the transitive closure in \cref{prop:transitive-closure}. One shows by induction on $n$ that for each $n$ there is exactly one $x$ with $(n,x)\in F$. That there is at least one follows by induction from admissibility. If there were a second pair $(n,y)$, removing this single pair from $F$ would leave a set that is still admissible, contradicting minimality: for $n=0$ because $0$ is not a successor (axiom (i)), and in the inductive step because $S(m)=S(n)$ only for $m=n$ (axiom (ii)). Hence $F$ is the graph of a function $f$, and admissibility says exactly that $f(0)=a$ and $f(S(n))=g(f(n))$. Complete proofs are given by Enderton~\cite{enderton1977sets} and by Landau~\cite{landau1930}.
+\emph{Existence.} The function is built from its graph. Call a set $R\subseteq\mathbb N\times X$ \emph{admissible} if $(0,a)\in R$ and $(n,x)\in R$ implies $(S(n),g(x))\in R$; the set $\mathbb N\times X$ itself is admissible. Let $F$ be the intersection of all admissible sets. Then $F$ is admissible, and it is the smallest admissible set, as in the construction of the transitive closure in \cref{prop:transitive-closure}. One shows by induction on $n$ that for each $n$ there is exactly one $x$ with $(n,x)\in F$. That there is at least one follows by induction from admissibility. If there were a second pair, removing it from $F$ would leave a set that is still admissible, contradicting minimality. For $n=0$ this holds because $0$ is not a successor (axiom (i)), so admissibility never forces a pair $(0,y)$ with $y\ne a$. In the inductive step a pair $(S(n),y)$ with $y\ne g(x)$, where $x$ is the unique value paired with $n$, is never forced either, because $S(m)=S(n)$ only for $m=n$ (axiom (ii)). Hence $F$ is the graph of a function $f$, and admissibility says precisely that $f(0)=a$ and $f(S(n))=g(f(n))$. Complete proofs are given by Enderton~\cite{enderton1977sets} and by Hrbacek and Jech~\cite{hrbacek1999}.
 \end{proof}
 
 The theorem is less obvious than it looks, and the axioms are needed for it. On the cycle of \cref{fig:peano}B, for instance, the ``definition'' $f(0)=0$, $f(S(n))=f(n)+1$ with values in $\mathbb N$ would require $f(0)=f(S(7))=f(7)+1=8$, which contradicts $f(0)=0$. A useful variant allows $g$ to depend on $n$ as well: there is exactly one $f$ with $f(0)=a$ and $f(S(n))=g(n,f(n))$ for a given function $g\colon\mathbb N\times X\to X$. It is proved in the same way, and it covers definitions such as $0!\coloneqq1$, $(n+1)!\coloneqq(n+1)\cdot n!$.
@@ -158,7 +158,7 @@ For all $k,m,n\in\mathbb N$:
 \end{theorem}
 
 \begin{proof}
-We prove the associative law of addition, the commutative law of addition and the cancellation law; the others are proved by similar inductions~\cite{landau1930}.
+We prove the associative law of addition, the commutative law of addition and the cancellation law. The others are proved by similar inductions on one of the variables. For the laws of multiplication, the distributive law $k(m+n)=km+kn$ comes first, by induction on $n$; the associative law follows from it, and the commutative law, like that of addition, needs the two auxiliary rules $0\cdot n=0$ and $S(m)\cdot n=mn+n$. Part (vi) follows from \cref{prop:peano-basic}\,(i): if $n\ne0$, then $n=S(j)$, so $m+n=S(m+j)\ne0$, and $mn=mj+m\ne0$ when also $m\ne0$. Landau carries out all these proofs in full~\cite{landau1930}, with the minor difference that his natural numbers start at $1$.
 
 \emph{Associativity of addition.} Fix $k$ and $m$, and use induction on $n$. For $n=0$, both sides equal $k+m$ by \eqref{eq:peano-add}. Suppose $(k+m)+n=k+(m+n)$. Then, using \eqref{eq:peano-add} three times and the inductive hypothesis once,
 \[
@@ -170,7 +170,7 @@ We prove the associative law of addition, the commutative law of addition and th
 \emph{Cancellation.} By induction on $k$. For $k=0$ there is nothing to prove. If the law holds for $k$ and $m+S(k)=n+S(k)$, then $S(m+k)=S(n+k)$, so $m+k=n+k$ by axiom (ii), and $m=n$ by the inductive hypothesis.
 \end{proof}
 
-The proof of commutativity is worth a second look: the law that every child knows from counting objects in two different orders requires two auxiliary inductions when only the successor function is available. This is the price of starting from so little, and the reward is that nothing has been assumed that could turn out to be false.
+The proof of commutativity deserves a second look: the law that every child knows from counting objects in two different orders requires two auxiliary inductions when only the successor function is available. This is the price of starting from so little, and the reward is that nothing has been assumed that could turn out to be false.
 
 \subsection{Order}
 
@@ -199,7 +199,7 @@ The number $k$ in the definition is unique by the cancellation law; it is the di
 
 (iii) If $n=m+j$, then $n+k=(m+k)+j$ and $nk=mk+jk$.
 
-(iv) This is the well-ordering principle, \cref{thm:well-ordering}. Its proof in \cref{ch:logic} used induction and the fact that $m<n$ implies $m+1\le n$, which is (ii); so it now rests on Peano's axioms alone.
+(iv) This is the well-ordering principle, \cref{thm:well-ordering}. Its proof in \cref{ch:logic} used strong induction (\cref{thm:strong-induction}), which follows from ordinary induction, together with the facts that $0$ is the least natural number, that the order is total and that $m<n$ implies $m+1\le n$. These are (i) and (ii), so the principle now rests on Peano's axioms alone.
 \end{proof}
 
 From here on, the natural numbers have all the properties used in \cref{ch:logic} that concern addition, multiplication and order alone. What they lack is subtraction: the equation $m+x=n$ has a solution $x\in\mathbb N$ only when $m\le n$.
@@ -252,7 +252,7 @@ The formulas are what the rules of algebra predict if $[(a,b)]$ stands for $a-b$
   \pgfmathsetmacro\xe{min(5,5+\k)}
   \pgfmathsetmacro\ye{min(5,5-\k)}
   \draw[black!45, line width=0.4pt] (\xs,\ys) -- (\xe,\ye);}
-\draw[line width=0.4pt] (-0.4,0) -- (5.5,0); \draw[line width=0.4pt] (0,-0.4) -- (0,5.5);
+\draw[line width=0.4pt] (0,0) -- (5.5,0); \draw[line width=0.4pt] (0,0) -- (0,5.5);
 \foreach \i in {0,...,5} {\node[below] at (\i,-0.12) {$\i$}; \node[left] at (-0.12,\i) {$\i$};}
 \foreach \a in {0,...,5} \foreach \b in {0,...,5} {\fill (\a,\b) circle (1.5pt);}
 \foreach \k in {-4,...,-1} {\pgfmathtruncatemacro\yy{5+\k}\node[anchor=south west, inner sep=1pt] at (\yy+0.05,5.05) {$\k$};}
@@ -472,7 +472,7 @@ The theorem extends to negative divisors: for $b\ne0$ there are unique $q$ and $
 
 \subsection{Floor and Ceiling}
 
-The quotient in \cref{thm:division} is the result of rounding the fraction $a/b$ down to an integer. Rounding down and rounding up occur so often that they have names and symbols, introduced by Iverson and popularised by Knuth~\cite{graham1994concrete}.
+The quotient in \cref{thm:division} is the result of rounding the fraction $a/b$ down to an integer. Rounding down and rounding up occur so often that they have names and symbols, both introduced by Kenneth Iverson in the early 1960s~\cite[Sect.~3.1]{graham1994concrete}.
 
 \begin{definition}[Floor, ceiling]
 \label{def:floor}
@@ -613,7 +613,7 @@ For all natural numbers $a$ and $b$, \cref{alg:euclid} stops and returns $\gcd(a
 \begin{proof}
 \emph{Invariant.} Write $a_0$ and $b_0$ for the input. Each pass replaces $(a,b)$ by $(b,a\bmod b)$ with $b>0$, which by \cref{lem:gcd-basic}\,(ii) does not change the greatest common divisor; by induction on the number of passes, $\gcd(a,b)=\gcd(a_0,b_0)$ whenever the loop condition is tested. Both values stay natural numbers.
 
-\emph{Termination.} Each pass replaces $b$ by $a\bmod b<b$. The successive values of $b$ therefore form a strictly decreasing sequence of natural numbers, which must end by the well-ordering principle, exactly as in the proof of \cref{prop:tobinary}. The loop stops only when $b=0$.
+\emph{Termination.} Each pass replaces $b$ by $a\bmod b<b$. The successive values of $b$ therefore form a strictly decreasing sequence of natural numbers, which must end by the well-ordering principle, as in the proof of \cref{prop:tobinary}. The loop stops only when $b=0$.
 
 \emph{Result.} When the loop stops, $b=0$ and the invariant gives $\gcd(a_0,b_0)=\gcd(a,0)=a$ by \cref{lem:gcd-basic}\,(i).
 \end{proof}
@@ -669,7 +669,7 @@ First, $e$ divides $a$. By \cref{thm:division}, $a=eq+r$ with $0\le r<e$, and
 \[
 r=a-eq=a-(ax_0+by_0)q=a(1-qx_0)+b(-qy_0)
 \]
-lies in $L$. Since $r<e$ and $e$ is the least positive element of $L$, we must have $r=0$. In the same way $e$ divides $b$. So $e$ is a common divisor and $e\le d$. Conversely, $d$ divides $a$ and $b$, hence $ax_0+by_0=e$ by \cref{prop:divisibility}\,(iii), and $d\le e$ because $e>0$. Thus $d=e$, which proves (i).
+lies in $L$. Since $r<e$ and $e$ is the least positive element of $L$, we must have $r=0$. In the same way $e$ divides $b$. So $e$ is a common divisor and $e\le d$. Conversely, $d$ divides $a$ and $b$, hence it divides $ax_0+by_0=e$ by \cref{prop:divisibility}\,(iii), and $d\le e$ by \cref{prop:divisibility}\,(iv), because $e>0$. Thus $d=e$, which proves (i).
 
 For (ii), every multiple $dk$ equals $a(x_0k)+b(y_0k)\in L$, and every element $ax+by$ of $L$ is a multiple of $d$, because $d$ divides $a$ and $b$. For (iii), a common divisor $c$ of $a$ and $b$ divides $ax_0+by_0=d$.
 \end{proof}
@@ -797,7 +797,7 @@ F_{k+3}=F_{k+2}+F_{k+1}\ge\varphi^k+\varphi^{k-1}=\varphi^{k-1}(\varphi+1)=\varp
 Hence $b\ge F_{n+1}\ge\varphi^{n-1}$, that is, $n\le1+\log_\varphi b$. Finally, if $b$ has $D$ decimal digits, then $b<10^D$ and $\log_\varphi b<D\log_\varphi10<4.79\,D$, so $n<1+4.79\,D\le1+5D$, and $n\le5D$ because $n$ is an integer.
 \end{proof}
 
-The bound is attained: for $a=F_{n+2}$ and $b=F_{n+1}$ every quotient except the last equals $1$, and the algorithm performs exactly $n$ passes. \Cref{fig:lame} compares the bound with the true worst case for small $b$. The logarithmic growth is what makes the algorithm practical: two numbers of a hundred decimal digits need at most $500$ passes, while trying all candidate divisors one by one would take longer than the age of the universe. The average number of passes is smaller still, about $0.84\ln b$; Knuth gives the full analysis~\cite[Sect.~4.5.3]{knuth1997taocp2}.
+The bound is attained: for $a=F_{n+2}$ and $b=F_{n+1}$ every quotient except the last equals $1$, and the algorithm performs exactly $n$ passes. \Cref{fig:lame} compares the bound with the true worst case for small $b$. The logarithmic growth is what makes the algorithm practical: two numbers of a hundred decimal digits need at most $500$ passes, while trying all candidate divisors one by one would take longer than the age of the universe. The average number of passes is smaller still: for a fixed $b$ and $a$ chosen at random, it is about $(12\ln2/\pi^2)\ln b\approx0.84\ln b$ plus a small constant. Knuth gives the full analysis~\cite[Sect.~4.5.3]{knuth1997taocp2}.
 
 \begin{figure}
 \sdfloat{%
@@ -1023,7 +1023,7 @@ Finite fields of this kind are used in error-correcting codes, in cryptography a
 
 \subsection{Fermat's Little Theorem}
 
-Powers in $\mathbb Z/n\mathbb Z$ repeat: since there are only $n$ classes, the sequence $a,a^2,a^3,\ldots$ modulo $n$ must eventually return to a value it has taken before. For a prime modulus the period is controlled by a theorem that Fermat stated in 1640 and Euler first proved~\cite{hardywright2008,ribenboim1996}.
+Powers in $\mathbb Z/n\mathbb Z$ repeat: since there are only $n$ classes, the sequence $a,a^2,a^3,\ldots$ modulo $n$ must eventually return to a value it has taken before. For a prime modulus the period is controlled by a theorem that Fermat stated in 1640 and of which Euler published the first proof~\cite{hardywright2008,ribenboim1996}.
 
 \begin{theorem}[Fermat's little theorem]
 \label{thm:fermat}
@@ -1085,7 +1085,7 @@ For $2^{340}\bmod341$ the exponent $340=(101010100)_2$ has nine binary digits, s
 
 \subsection{The Chinese Remainder Theorem}
 
-A problem from the Chinese mathematical text \emph{Sunzi Suanjing}, written between the third and the fifth century, asks for a number that leaves the remainder $2$ when divided by $3$, the remainder $3$ when divided by $5$ and the remainder $2$ when divided by $7$~\cite[Sect.~4.3.2]{knuth1997taocp2}. The general answer is the following theorem.
+The Chinese \emph{Sunzi Suanjing} (Master Sun's Mathematical Manual), a text more than fifteen hundred years old, contains a problem that asks for a number leaving the remainder $2$ when divided by $3$, the remainder $3$ when divided by $5$ and the remainder $2$ when divided by $7$~\cite{shen1988}. The general answer is the following theorem.
 
 \begin{theorem}[Chinese remainder theorem]
 \label{thm:crt}
@@ -1302,7 +1302,7 @@ Let $0<p<q$ with $\gcd(p,q)=1$ and $\gcd(b,q)=1$. Then the base-$b$ expansion of
 By \eqref{eq:long-division}, $r_j\equiv br_{j-1}\pmod q$, so $r_t\equiv b^tp\pmod q$. Both $r_t$ and $p=r_0$ lie in $\{0,\ldots,q-1\}$, so $r_t=r_0$ if and only if $b^tp\equiv p$, which, after multiplying by the inverse of $p$ modulo $q$ (\cref{thm:zn-units}), means $b^t\equiv1\pmod q$. If $r_t=r_0$, the remainders and hence the digits repeat with period $t$ from the start. Conversely, if the digits are purely periodic with period $t'$, the proof of \cref{thm:rational-expansion}\,(ii) gives $(b^{t'}-1)p/q=C$, an integer, so $q\mid(b^{t'}-1)p$, hence $q\mid b^{t'}-1$ by \cref{cor:euclid-lemma}\,(i); thus $t'\ge t$. A least $t$ exists, because $b^{\varphi(q)}\equiv1$ by \cref{thm:euler-phi}. Finally, write $\varphi(q)=ut+v$ with $0\le v<t$. Then $1\equiv b^{\varphi(q)}=(b^t)^ub^v\equiv b^v$, so $v=0$ by the minimality of $t$.
 \end{proof}
 
-For $q=7$ and $b=10$ the powers of $10$ modulo $7$ are $3,2,6,4,5,1$, so $t=6$; these are exactly the remainders in \cref{tab:long-division}. Which rational numbers have a finite expansion? This is the question behind $0.1+0.2$.
+For $q=7$ and $b=10$ the powers of $10$ modulo $7$ are $3,2,6,4,5,1$, so $t=6$; these are the remainders in \cref{tab:long-division}. Which rational numbers have a finite expansion? This is the question behind $0.1+0.2$.
 
 \begin{proposition}
 \label{prop:terminating}
@@ -1310,16 +1310,16 @@ Let $x=p/q$ be a rational number in $[0,1)$ in lowest terms. Its base-$b$ expans
 \end{proposition}
 
 \begin{proof}
-If the expansion terminates after $m$ digits, then $x=s_m=A/b^m$ with an integer $A$, so $pb^m=Aq$ and $q\mid pb^m$. Since $\gcd(q,p)=1$, \cref{cor:euclid-lemma}\,(i) gives $q\mid b^m$, and every prime factor of $q$ divides $b^m$, hence $b$. Conversely, if every prime factor of $q$ divides $b$, then $q\mid b^m$ for large $m$ by \cref{prop:valuations}\,(ii), since $v_\ell(b^m)=m\,v_\ell(b)\ge v_\ell(q)$ for each prime $\ell\mid q$ once $m$ is large. Then $xb^m$ is an integer, and so is $s_mb^m$; by \cref{thm:rational-expansion}\,(i), $r_m/q=xb^m-s_mb^m$ is an integer in $[0,1)$, so $r_m=0$, and all later remainders and digits are $0$.
+If the expansion terminates after $m$ digits, then it is also an expansion of $s_m$, so $x=s_m$ by \cref{lem:expansion-basic}\,(i), and $x=A/b^m$ with an integer $A$, so $pb^m=Aq$ and $q\mid pb^m$. Since $\gcd(q,p)=1$, \cref{cor:euclid-lemma}\,(i) gives $q\mid b^m$, and every prime factor of $q$ divides $b^m$, hence $b$. Conversely, if every prime factor of $q$ divides $b$, then $q\mid b^m$ for large $m$ by \cref{prop:valuations}\,(ii), since $v_\ell(b^m)=m\,v_\ell(b)\ge v_\ell(q)$ for each prime $\ell\mid q$ once $m$ is large. Then $xb^m$ is an integer, and so is $s_mb^m$; by \cref{thm:rational-expansion}\,(i), $r_m/q=xb^m-s_mb^m$ is an integer in $[0,1)$, so $r_m=0$, and all later remainders and digits are $0$.
 \end{proof}
 
 In base $10$, whose prime factors are $2$ and $5$, the fractions $1/2=0.5$, $1/8=0.125$ and $3/20=0.15$ terminate, while $1/3$, $1/7$ and $1/6=0.1\overline6$ do not. In base $2$ only fractions whose denominator is a power of $2$ terminate, and $1/10$, with the prime factor $5$ in its denominator, does not: $1/10=(0.0\overline{0011})_2$, as \cref{tab:long-division} shows.
 
-A floating-point number in the binary64 format stores $53$ significant binary digits (Volume~V). It cannot store the infinite expansion of $1/10$, and it holds instead the nearest number of the form $m/2^e$ with an integer $m<2^{53}$, which is
+A floating-point number in the binary64 format stores $53$ significant binary digits (Volume~V). It cannot store the infinite expansion of $1/10$, and it holds instead the number nearest to $1/10$ among all numbers $m/2^e$ with integers $0\le m<2^{53}$ and $e$, which is
 \[
-\frac{3602879701896397}{2^{55}}=0.1000000000000000055511151231\ldots,
+\frac{3602879701896397}{2^{55}}=0.1000000000000000055511151231\ldots.
 \]
-The literals $0.2$ and $0.3$ are rounded in the same way, to numbers slightly above $0.2$ and slightly below $0.3$. Adding the stored values of $0.1$ and $0.2$ and rounding the exact sum gives
+(Near $1/10$ these numbers are spaced $2^{-56}$ apart, since $m<2^{53}$ and $m/2^e\approx1/10$ force $e\le56$; the multiple of $2^{-56}$ nearest to $1/10$ is $7205759403792794/2^{56}$, the fraction above.) The literals $0.2$ and $0.3$ are rounded in the same way, to numbers slightly above $0.2$ and slightly below $0.3$. Adding the stored values of $0.1$ and $0.2$ and rounding the exact sum gives
 \[
 0.3000000000000000444089209850\ldots,
 \]
@@ -1463,7 +1463,7 @@ If $F$ and $F'$ are complete ordered fields, there is exactly one bijection $\va
 \end{theorem}
 
 \begin{proof}
-Let $\varphi$ be a bijection that preserves sums and products. Then $\varphi(0)$ and $\varphi(1)$ are the zero and the one of $F'$, so $\varphi$ maps the elements $1+\cdots+1$ of $F$ to the corresponding elements of $F'$, and, since it preserves negatives and quotients, it maps each rational element $q$ of $F$ to the corresponding rational element $q'$ of $F'$. It preserves the order, because in a complete ordered field the elements $x\ge0$ are exactly the squares, by \cref{prop:order-rules}\,(iv) and \cref{thm:roots} below, whose proof uses only the axioms, and $\varphi$ maps squares to squares. If $\varphi$ preserves the order and fixes the rational elements in this sense, then $\varphi(x)=\sup\{q': q\text{ rational},\ q<x\}$ for every $x\in F$, by the density of the rational elements (\cref{thm:q-dense} below); this proves uniqueness. For existence one defines $\varphi$ by this formula and checks, with the Archimedean property and the density proved below, that it is a bijection that preserves sums and products. Complete proofs are given by Spivak~\cite{spivak2008calculus} and in the book of Ebbinghaus and others~\cite{ebbinghaus1991}.
+Let $\varphi$ be a bijection that preserves sums and products. Then $\varphi(0)$ and $\varphi(1)$ are the zero and the one of $F'$, so $\varphi$ maps the elements $1+\cdots+1$ of $F$ to the corresponding elements of $F'$, and, since it preserves negatives and quotients, it maps each rational element $q$ of $F$ to the corresponding rational element $q'$ of $F'$. It preserves the order, because in a complete ordered field the elements $x\ge0$ are exactly the squares, by \cref{prop:order-rules}\,(iv) and \cref{thm:roots} below, whose proof uses only the axioms, and $\varphi$ maps squares to squares. If $\varphi$ preserves the order and fixes the rational elements in this sense, then $\varphi(x)=\sup\{q': q\text{ rational},\ q<x\}$ for every $x\in F$, by the density of the rational elements (\cref{thm:q-dense} below); this proves uniqueness. For existence one defines $\varphi$ by this formula and checks, with the Archimedean property and the density proved below, that it is a bijection that preserves sums and products. Spivak gives the complete proof in the last part of his \emph{Calculus}~\cite{spivak2008calculus}.
 \end{proof}
 
 So it does not matter which complete ordered field \cref{asm:reals} fixes, and from now on all properties of the real numbers are derived from the axioms of an ordered field (\cref{tab:axioms}) and the completeness axiom. The ordered field axioms give the algebra and the rules for inequalities, including those of the absolute value: the proofs of \cref{prop:abs} and \cref{cor:reverse-triangle} used nothing else. Everything that distinguishes $\mathbb R$ from $\mathbb Q$ comes from completeness.
@@ -1663,7 +1663,7 @@ a fact used constantly in the analysis of iterative methods. Chapter~8 builds th
 Let $b\ge2$.
 \begin{enumerate}
 \item Every sequence of digits $d_1,d_2,\ldots$ in $\{0,\ldots,b-1\}$ is the base-$b$ expansion of exactly one real number $x\in[0,1]$, namely $x=\sup_ms_m$, and $s_m\to x$.
-\item Every $x\in[0,1)$ has the expansion with digits $d_m\coloneqq\lfloor b^mx\rfloor-b\lfloor b^{m-1}x\rfloor$, whose truncations are $s_m=\lfloor b^mx\rfloor/b^m$ and satisfy $s_m\le x<s_m+b^{-m}$.
+\item Every $x\in[0,1)$ has the expansion with digits $d_m\coloneqq\lfloor b^mx\rfloor-b\lfloor b^{m-1}x\rfloor$, whose truncations are $s_m=\lfloor b^mx\rfloor/b^m$ and satisfy $s_m\le x<s_m+b^{-m}$. The number $1$ has the expansion whose digits all equal $b-1$.
 \item A number $x\in[0,1]$ has two different expansions if $x=k/b^m$ with integers $m\ge1$ and $0<k<b^m$, one ending in zeros and one ending in the digit $b-1$; every other $x\in[0,1]$ has exactly one expansion.
 \end{enumerate}
 \end{theorem}
@@ -1675,13 +1675,13 @@ Let $b\ge2$.
 \]
 by \eqref{eq:sum-geom}, so $s_k\le s_m\le s_k+b^{-k}$. Hence the set $\{s_m\}$ is bounded above, $x\coloneqq\sup_ms_m$ exists, and $s_k\le x\le s_k+b^{-k}$ for every $k$. So the digits are an expansion of $x$, which is unique by \cref{lem:expansion-basic}\,(i). Since $0\le x-s_m\le b^{-m}\le2^{-m}$ and $2^{-m}\to0$ by \eqref{eq:rn-zero}, $s_m\to x$.
 
-(ii) With $y\coloneqq b^{m-1}x$, the digit is $d_m=\lfloor by\rfloor-b\lfloor y\rfloor$. From $b\lfloor y\rfloor\le by<b\lfloor y\rfloor+b$ and \cref{prop:floor}\,(v) we get $b\lfloor y\rfloor\le\lfloor by\rfloor\le b\lfloor y\rfloor+b-1$, so $d_m\in\{0,\ldots,b-1\}$. The sum of $d_jb^{-j}$ for $j=1,\ldots,m$ telescopes to $\lfloor b^mx\rfloor b^{-m}-\lfloor x\rfloor=\lfloor b^mx\rfloor/b^m$, since $\lfloor x\rfloor=0$, and $\lfloor b^mx\rfloor\le b^mx<\lfloor b^mx\rfloor+1$ gives the inequalities.
+(ii) With $y\coloneqq b^{m-1}x$, the digit is $d_m=\lfloor by\rfloor-b\lfloor y\rfloor$. From $b\lfloor y\rfloor\le by<b\lfloor y\rfloor+b$ and \cref{prop:floor}\,(v) we get $b\lfloor y\rfloor\le\lfloor by\rfloor\le b\lfloor y\rfloor+b-1$, so $d_m\in\{0,\ldots,b-1\}$. The sum of $d_jb^{-j}$ for $j=1,\ldots,m$ telescopes to $\lfloor b^mx\rfloor b^{-m}-\lfloor x\rfloor=\lfloor b^mx\rfloor/b^m$, since $\lfloor x\rfloor=0$, and $\lfloor b^mx\rfloor\le b^mx<\lfloor b^mx\rfloor+1$ gives the inequalities. For $x=1$ and the digits $b-1$, \eqref{eq:sum-geom} gives $s_m=1-b^{-m}$, so $s_m\le1\le s_m+b^{-m}$.
 
 (iii) Let $(d_j)$ and $(d'_j)$ be two expansions of $x$ that first differ at position $m$, say $d_m<d'_m$, with truncations $s_k$ and $s'_k$. Then $s'_m-s_m=(d'_m-d_m)b^{-m}\ge b^{-m}$, and
 \[
 x\le s_m+b^{-m}\le s'_m\le x ,
 \]
-so all three are equal: $d'_m=d_m+1$ and $x=s'_m=k/b^m$ with an integer $k$. Here $k>0$ because $s'_m>s_m\ge0$, and $k<b^m$ because $x=1$ would force $s_m=1-b^{-m}$, that is, $d_1=\cdots=d_m=b-1$, and then $d'_m=b$ would not be a digit. For $k>m$, the condition $s'_k\le x=s'_m$ forces the digits of the second expansion after position $m$ to vanish, and the condition $x\le s_k+b^{-k}$, that is, $\sum_{j=m+1}^kd_jb^{-j}\ge b^{-m}-b^{-k}=\sum_{j=m+1}^k(b-1)b^{-j}$, forces the digits of the first to equal $b-1$. Conversely, a number $k/b^m$ with $0<k<b^m$ does have these two expansions: the finite one from \cref{thm:base}, and the one obtained from it by lowering the last nonzero digit by $1$ and appending the digit $b-1$ forever, which satisfies \cref{def:expansion} by the computation just made.
+so all three are equal: $d'_m=d_m+1$ and $x=s'_m=k/b^m$ with an integer $k$. Here $k>0$ because $s'_m>s_m\ge0$, and $k<b^m$ because $x=1$ would force $s_m=1-b^{-m}$, that is, $d_1=\cdots=d_m=b-1$, and then $d'_m=b$ would not be a digit. For $l>m$, the condition $s'_l\le x=s'_m$ forces the digits of the second expansion after position $m$ to vanish, and the condition $x\le s_l+b^{-l}$, that is, $\sum_{j=m+1}^ld_jb^{-j}\ge b^{-m}-b^{-l}=\sum_{j=m+1}^l(b-1)b^{-j}$, forces the digits of the first to equal $b-1$. Conversely, a number $k/b^m$ with $0<k<b^m$ does have these two expansions: the finite one from \cref{thm:base}, and the one obtained from it by lowering the last nonzero digit by $1$ and appending the digit $b-1$ forever, which satisfies \cref{def:expansion} by the computation just made.
 \end{proof}
 
 Part (i) shows that the decimal expansion of a real number really is a sequence of approximations converging to it, and part (iii) explains the identities $1=(0.\overline9)_{10}$ and $(0.1)_2=(0.0\overline1)_2$ met in \cref{sec:cardinality}. Since every real number $x\ge0$ is $\lfloor x\rfloor+(x-\lfloor x\rfloor)$ with $0\le x-\lfloor x\rfloor<1$, combining \cref{thm:base,thm:real-expansion} gives every nonnegative real number an expansion $(d_k\cdots d_0.d_1d_2\ldots)_b$, which is how numbers are written.
@@ -1776,7 +1776,7 @@ For all complex numbers $z$ and $w$:
 \[
 |z+w|^2=(z+w)(\bar z+\bar w)=|z|^2+z\bar w+\overline{z\bar w}+|w|^2=|z|^2+2\operatorname{Re}(z\bar w)+|w|^2 ,
 \]
-and by (iii) and (ii), $\operatorname{Re}(z\bar w)\le|z\bar w|=|z|\,|w|$. Hence $|z+w|^2\le(|z|+|w|)^2$, and taking square roots gives the triangle inequality. The second inequality follows from the first exactly as \cref{cor:reverse-triangle} follows from \cref{prop:abs}\,(iv).
+and by (iii) and (ii), $\operatorname{Re}(z\bar w)\le|z\bar w|=|z|\,|w|$. Hence $|z+w|^2\le(|z|+|w|)^2$, and taking square roots gives the triangle inequality. The second inequality follows from the first in the same way as \cref{cor:reverse-triangle} follows from \cref{prop:abs}\,(iv).
 \end{proof}
 
 For the example above, $|3+4i|=5$ and $|1-2i|=\sqrt5$, and indeed $|11-2i|=\sqrt{125}=5\sqrt5$. Geometrically, $|z-w|$ is the distance between the points $z$ and $w$ of the plane, and the triangle inequality says that one side of a triangle is no longer than the sum of the other two, which explains its name.
@@ -1800,7 +1800,7 @@ Let $z\ne0$. Then $z/|z|$ has modulus $1$, so by (iii) there is a real number $\
 z=r(\cos\theta+i\sin\theta),\qquad r=|z| .
 \label{eq:polar}
 \end{equation}
-This is the \term{polar form} of $z$. Any such $\theta$ is an \term{argument} of $z$, written $\arg z$; it is determined up to an integer multiple of $2\pi$. The argument in $(-\pi,\pi]$ is the \term{principal argument} $\operatorname{Arg}z$, a right inverse in the sense of \cref{sec:injections}. For example, $1+i=\sqrt2\,(\cos\frac\pi4+i\sin\frac\pi4)$, $-2=2(\cos\pi+i\sin\pi)$ and $-i=\cos(-\frac\pi2)+i\sin(-\frac\pi2)$. The number $0$ has modulus $0$ and no argument. Numerical libraries compute the principal argument of $a+bi$ by a two-argument arctangent function, which Volume~X describes.
+This is the \term{polar form} of $z$. Any such $\theta$ is an \term{argument} of $z$, written $\arg z$; it is determined up to an integer multiple of $2\pi$. The arguments of $z$ form a set $\theta+2\pi\mathbb Z$, and exactly one of them lies in the interval $(-\pi,\pi]$ of length $2\pi$, namely $\theta-2\pi k$ with $k=\lceil(\theta-\pi)/(2\pi)\rceil$; it is the \term{principal argument} $\operatorname{Arg}z$. On the unit circle, $\operatorname{Arg}$ is a right inverse, in the sense of \cref{sec:injections}, of the surjection $\theta\mapsto\cos\theta+i\sin\theta$ from $\mathbb R$ onto the circle: it picks one preimage of each point. For example, $1+i=\sqrt2\,(\cos\frac\pi4+i\sin\frac\pi4)$, $-2=2(\cos\pi+i\sin\pi)$ and $-i=\cos(-\frac\pi2)+i\sin(-\frac\pi2)$. The number $0$ has modulus $0$ and no argument. Numerical libraries compute the principal argument of $a+bi$ by a two-argument arctangent function, which Volume~X describes.
 
 The polar form makes multiplication transparent.
 
@@ -1932,7 +1932,7 @@ Every polynomial $p(z)=a_nz^n+a_{n-1}z^{n-1}+\cdots+a_0$ of degree $n\ge1$ with 
 \end{theorem}
 
 \begin{proof}
-The proof uses a property of continuous functions that belongs to analysis. Since the leading term dominates for large $|z|$, $|p(z)|\to\infty$ as $|z|\to\infty$, and one deduces from the compactness of closed discs that $|p|$ attains a smallest value at some point $z_0$. Suppose $p(z_0)\ne0$. Expanding $p$ around $z_0$ gives $p(z_0+h)=p(z_0)+ch^k+h^{k+1}g(h)$ with $c\ne0$, some $k\ge1$ and a polynomial $g$. By \cref{thm:complex-roots} there is $u$ with $u^k=-p(z_0)/c$. For $h=tu$ with small $t>0$, the term $ch^k=-t^kp(z_0)$ points from $p(z_0)$ towards $0$, and the remainder is too small to undo this, so $|p(z_0+tu)|<|p(z_0)|$, contradicting the minimality. Hence $p(z_0)=0$. The details are carried out in Volume~II, which also gives the shortest proof, by Liouville's theorem of complex analysis; the argument sketched here and several others are presented by Aigner and Ziegler~\cite{aigner2018proofs} and in the book of Ebbinghaus and others~\cite{ebbinghaus1991}.
+The proof uses a property of continuous functions that belongs to analysis. Since the leading term dominates for large $|z|$, $|p(z)|\to\infty$ as $|z|\to\infty$, and one deduces from the compactness of closed discs that $|p|$ attains a smallest value at some point $z_0$. Suppose $p(z_0)\ne0$. Expanding $p$ around $z_0$ gives $p(z_0+h)=p(z_0)+ch^k+h^{k+1}g(h)$ with $c\ne0$, some $k\ge1$ and a polynomial $g$. By \cref{thm:complex-roots} there is $u$ with $u^k=-p(z_0)/c$. For $h=tu$ with small $t>0$, the term $ch^k=-t^kp(z_0)$ points from $p(z_0)$ towards $0$, and the remainder is too small to undo this, so $|p(z_0+tu)|<|p(z_0)|$, contradicting the minimality. Hence $p(z_0)=0$. The details are carried out in Volume~II, which also gives the shortest proof, by Liouville's theorem of complex analysis. Aigner and Ziegler present the argument sketched here in full~\cite{aigner2018proofs}, and Remmert's chapter in the book of Ebbinghaus and others discusses it together with several other proofs and their history~\cite{ebbinghaus1991}.
 \end{proof}
 
 Gauss gave a proof in his doctoral dissertation of 1799, and the argument above goes back to d'Alembert and Argand~\cite{ebbinghaus1991}. A root can be split off as a linear factor, and repeating this factors every polynomial completely.
