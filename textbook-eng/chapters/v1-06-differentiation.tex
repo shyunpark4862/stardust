@@ -483,7 +483,7 @@ where $\cos a=\sqrt{1-\sin^2a}$ because $\cos a>0$ and $\cos^2a+\sin^2a=1$. At $
 \[
 \frac d{dx}\,x\sin(x^2)=\sin(x^2)+x\cdot\cos(x^2)\cdot2x=\sin(x^2)+2x^2\cos(x^2),
 \]
-by the product rule and the chain rule. The arcsine and the arctangent show something remarkable: their derivatives are built from $x$ by arithmetic operations and a square root alone, although the functions themselves cannot be written in this way. This connection between the inverse trigonometric functions and the algebraic functions $1/\sqrt{1-x^2}$ and $1/(1+x^2)$ becomes the basis of their integrals in Chapter~7 and of their power series in Chapter~8.
+by the product rule and the chain rule. The arcsine and the arctangent show something remarkable: their derivatives are built from $x$ by arithmetic operations and a square root alone, although the functions themselves cannot be written in this way. This connection between the inverse trigonometric functions and the algebraic functions $1/\sqrt{1-x^2}$ and $1/(1+x^2)$ becomes the basis of their integrals in \cref{ch:integration} and of their power series in Chapter~8.
 
 \begin{table}
 \sdfloat{%
@@ -685,7 +685,7 @@ Let $I$ be an interval and $f\colon I\to\mathbb R$ continuous, and suppose $f$ i
 Let $x<y$ be points of $I$. The closed interval $[x,y]$ lies in $I$, its interior points are interior points of $I$, and the mean value theorem gives $f(y)-f(x)=f'(\xi)(y-x)=0$. The second statement follows by applying the first to $f-g$.
 \end{proof}
 
-This corollary is less obvious than it looks: it is false over the rational numbers, where a function can have derivative zero everywhere without being constant, and its proof needs completeness through the extreme value theorem. It is also false on a domain that is not an interval: the function equal to $0$ on $(0,1)$ and to $1$ on $(2,3)$ has derivative $0$ everywhere. The second statement says that a function is determined by its derivative up to an additive constant, which is the uniqueness half of the fundamental theorem of calculus in Chapter~7.
+This corollary is less obvious than it looks: it is false over the rational numbers, where a function can have derivative zero everywhere without being constant, and its proof needs completeness through the extreme value theorem. It is also false on a domain that is not an interval: the function equal to $0$ on $(0,1)$ and to $1$ on $(2,3)$ has derivative $0$ everywhere. The second statement says that a function is determined by its derivative up to an additive constant, which is the uniqueness half of the fundamental theorem of calculus in \cref{ch:integration}.
 
 Identities between functions can be proved in this way. For $-1<x<1$,
 \[
@@ -1591,7 +1591,7 @@ For $a<x<b$ the mean value theorem gives $(f(x)-f(a))/(x-a)=f'(\xi_x)$ with $a<\
 Consequently, if $f$ is differentiable on an interval and $c$ is an interior point, the derivative $f'$ cannot have a removable discontinuity at $c$ (if $\lim_{x\to c}f'(x)$ exists, it equals $f'(c)$), nor a jump (by \cref{cor:darboux}, or by applying the proposition on both sides), nor an infinite discontinuity (an infinite one-sided limit of $f'$ would make the difference quotient tend to $\pm\infty$, contradicting the existence of $f'(c)$). Of the four kinds of discontinuity of \cref{sec:continuity}, only oscillation remains, as in \cref{prop:x2sin}. The proposition is also a convenient tool: for $f(x)=x|x|$, the derivative is $2|x|$ for $x\ne0$, which tends to $0$ as $x\to0$, so $f'(0)=0$ without a separate computation.
 
 \begin{note}{Which functions are derivatives?}
-Darboux's theorem gives a necessary condition for a function to be a derivative, but not a sufficient one: there are functions with the intermediate value property that are not derivatives. No simple characterisation of derivatives is known. Derivatives can be very irregular: Volterra constructed in 1881 a differentiable function whose derivative is bounded but so discontinuous that it cannot be integrated in the sense of Riemann~\cite{volterra1881}. For such a function the fundamental theorem of calculus, $\int_a^bf'(x)\,dx=f(b)-f(a)$, cannot even be stated with the Riemann integral of Chapter~7, which is why that theorem must assume that the derivative is integrable; this is one of the motivations for the Lebesgue integral of Volume~II. On the other hand, every derivative is continuous at the points of a dense set. Bruckner's monograph surveys these results~\cite{bruckner1994}.
+Darboux's theorem gives a necessary condition for a function to be a derivative, but not a sufficient one: there are functions with the intermediate value property that are not derivatives. No simple characterisation of derivatives is known. Derivatives can be very irregular: Volterra constructed in 1881 a differentiable function whose derivative is bounded but so discontinuous that it cannot be integrated in the sense of Riemann~\cite{volterra1881}. For such a function the fundamental theorem of calculus, $\int_a^bf'(x)\,dx=f(b)-f(a)$, cannot even be stated with the Riemann integral of \cref{ch:integration}, which is why that theorem must assume that the derivative is integrable; this is one of the motivations for the Lebesgue integral of Volume~II. On the other hand, every derivative is continuous at the points of a dense set. Bruckner's monograph surveys these results~\cite{bruckner1994}.
 \end{note}
 
 \subsection{Classes of Smooth Functions}
@@ -1632,7 +1632,7 @@ D_h^0f(0)=\frac{h|h|-(-h)|h|}{2h}=|h| ,
 so its error is $|h|$, of first order only, not $O(h^2)$. In numerical analysis ``smooth'' therefore usually means ``having as many bounded derivatives as the method in question needs''. Volumes~XI and~XII state the precise smoothness each algorithm requires, and Chapter~8 shows, through Taylor's theorem, how the order of smoothness determines the attainable order of accuracy.
 
 \bigskip
-With the derivative and the mean value theorem in hand, the next chapter turns to the inverse problem: recovering a function from its rate of change. The integral of Chapter~7 is defined as a limit of sums, as the derivative is a limit of quotients, and the fundamental theorem of calculus, whose uniqueness half is \cref{cor:zero-derivative}, links the two. Chapter~8 then refines the mean value theorem into Taylor's theorem, which approximates a function by polynomials of any degree and quantifies the error.
+With the derivative and the mean value theorem in hand, the next chapter turns to the inverse problem: recovering a function from its rate of change. The integral of \cref{ch:integration} is defined as a limit of sums, as the derivative is a limit of quotients, and the fundamental theorem of calculus, whose uniqueness half is \cref{cor:zero-derivative}, links the two. Chapter~8 then refines the mean value theorem into Taylor's theorem, which approximates a function by polynomials of any degree and quantifies the error.
 
 \chapternotes
 

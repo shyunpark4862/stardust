@@ -195,6 +195,24 @@ The symbols used in this volume are collected here. Each is defined again, with 
 \item[$C^k(I)$, $C^\infty(I)$] the $k$ times continuously differentiable functions and the smooth functions on the interval $I$
 \end{symbols}
 
+\symbolgroup{Integration}
+\begin{symbols}
+\item[$P=\{x_0,\ldots,x_n\}$] a partition $a=x_0<x_1<\cdots<x_n=b$ of $[a,b]$, with subintervals $I_k=[x_{k-1},x_k]$ of lengths $\Delta x_k$
+\item[$\|P\|$] the mesh $\max_k\Delta x_k$ of the partition $P$
+\item[$L(f,P)$, $U(f,P)$] the lower and the upper sum of $f$ with respect to $P$
+\item[$\underline{\int}_a^bf$, $\overline{\int}_a^bf$] the lower and the upper integral of $f$ over $[a,b]$
+\item[$S(f,P,\xi)$] the Riemann sum $\sum_kf(\xi_k)\Delta x_k$ with tags $\xi_k\in I_k$
+\item[$\int_a^bf$, $\int_a^bf(x)\,dx$] the Riemann integral of $f$ over $[a,b]$; $\int_b^af=-\int_a^bf$
+\item[$\bar f$] the mean value $\frac1{b-a}\int_a^bf$ of $f$ on $[a,b]$
+\item[$F(x)\big|_a^b$, {$[F(x)]_a^b$}] the difference $F(b)-F(a)$
+\item[$\int f(x)\,dx$] the indefinite integral, the antiderivatives of $f$ on an interval
+\item[$\Lambda(x)$] the function $\int_1^x dt/t$, $x>0$, the natural logarithm $\ln x$ of Chapter~9
+\item[$f^+$, $f^-$] the positive and the negative part $\max(f,0)$ and $\max(-f,0)$ of $f$
+\item[$\Gamma(s)$] the gamma function $\int_0^\infty t^{s-1}e^{-t}\,dt$, $s>0$
+\item[$R^{\mathrm{left}}_n$, $R^{\mathrm{right}}_n$] the left and the right rectangle rule with $n$ subintervals
+\item[$M_n$, $T_n$, $S_n$] the midpoint, the trapezoidal and Simpson's rule with $n$ subintervals
+\end{symbols}
+
 \mainmatter
 \part{Foundations}
 \input{chapters/v1-01-logic-and-proof}
@@ -205,6 +223,7 @@ The symbols used in this volume are collected here. Each is defined again, with 
 \part{Calculus}
 \input{chapters/v1-05-limits-continuity}
 \input{chapters/v1-06-differentiation}
+\input{chapters/v1-07-integration}
 
 \backmatter
 \end{document}
