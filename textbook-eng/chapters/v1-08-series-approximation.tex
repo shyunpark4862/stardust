@@ -105,7 +105,7 @@ This grouping argument, in which the terms are collected in blocks
 \[
 1+\frac12+\Bigl(\frac13+\frac14\Bigr)+\Bigl(\frac15+\frac16+\frac17+\frac18\Bigr)+\cdots\ge1+\frac12+\frac12+\frac12+\cdots,
 \]
-goes back to Nicole Oresme in the fourteenth century~\cite{boyer1959}. \Cref{sec:completeness} gave another proof, by the Cauchy criterion. The divergence is extremely slow: $H_{2^{10}}=H_{1024}=7.509\ldots$, and \cref{sec:nonnegative-series} shows that $H_n$ grows like $\Lambda(n)=\ln n$, so that about $1.5\times10^{43}$ terms are needed for the partial sums to exceed $100$. No computer could detect the divergence by adding terms; it is a fact of mathematics, not of observation.
+goes back to Nicole Oresme, around 1350~\cite{edwards1979,hairer1996analysis}. \Cref{sec:completeness} gave another proof, by the Cauchy criterion. The divergence is extremely slow: $H_{2^{10}}=H_{1024}=7.509\ldots$, and \cref{sec:nonnegative-series} shows that $H_n$ grows like $\Lambda(n)=\ln n$, so that about $1.5\times10^{43}$ terms are needed for the partial sums to exceed $100$. No computer could detect the divergence by adding terms; it is a fact of mathematics, not of observation.
 
 \subsection{Telescoping Series}
 
@@ -274,7 +274,7 @@ The function $f$ is integrable on every bounded interval by \cref{thm:monotone-i
 (iii) We have $\delta_n-\delta_{n+1}=\int_n^{n+1}f-f(n+1)\ge0$, because $f\ge f(n+1)$ on $[n,n+1]$; so $(\delta_n)$ decreases from $\delta_1=f(1)$. By \eqref{eq:sum-integral-pq} with $p=1$ and $q=n$, $\int_1^nf\le\sum_{k=1}^{n-1}f(k)$, so $\delta_n\ge f(n)\ge0$. A decreasing sequence that is bounded below converges.
 \end{proof}
 
-Part (ii) brackets the remainder between two integrals whose difference, $\int_n^{n+1}f$, is at most $f(n)$; it is one of the main tools of \cref{sec:summing}. Part (iii) says that the sum and the integral differ by a quantity that settles down, even when both grow without bound. \Cref{fig:integral-test} illustrates (ii) and (iii). The test is due to Maclaurin, who used it in 1742, and to Cauchy~\cite{knopp1990}.
+Part (ii) brackets the remainder between two integrals whose difference, $\int_n^{n+1}f$, is at most $f(n)$; it is one of the main tools of \cref{sec:summing}. Part (iii) says that the sum and the integral differ by a quantity that settles down, even when both grow without bound. \Cref{fig:integral-test} illustrates (ii) and (iii). The test appears in Maclaurin's \emph{Treatise of Fluxions} of 1742~\cite{maclaurin1742}, and Cauchy stated it in general form in 1827~\cite{knopp1990}.
 
 \begin{corollary}[$p$-series]
 \label{cor:p-series}
@@ -346,7 +346,7 @@ u_n-u_{n+1}=\int_n^{n+1}\frac{dt}t-\frac1{n+1}>0,\qquad\ell_{n+1}-\ell_n=\frac1{
 the first because $1/t>1/(n+1)$ on $[n,n+1)$, the second because $1/t<1/(n+1)$ on $(n+1,n+2]$. Moreover $\ell_n<u_n$, since $\Lambda$ is increasing. So $(u_n)$ is decreasing and bounded below by $\ell_1$, and $(\ell_n)$ is increasing and bounded above by $u_1$; both converge. Their difference is $u_n-\ell_n=\Lambda(n+1)-\Lambda(n)=\int_n^{n+1}dt/t\le1/n$, which tends to $0$, so the limits coincide. A strictly decreasing sequence lies strictly above its limit and a strictly increasing one strictly below, which gives $\ell_n<\gamma<u_n$. Then $\varepsilon_n=u_n-\gamma$ lies strictly between $0$ and $u_n-\ell_n\le1/n$. Finally, $\gamma<u_1=1$ and $\gamma>\ell_1=1-\Lambda(2)$, where $\Lambda(2)\le T_4<0.698$ by \cref{prop:convex-quadrature} and the computation of \cref{sec:quadrature}.
 \end{proof}
 
-The theorem says that $H_n-\Lambda(n)\to\gamma$, and in particular that $H_n/\Lambda(n)\to1$: the harmonic numbers grow exactly as fast as the logarithm. \Cref{tab:euler-constant} shows how the bounds close in on $\gamma=0.5772156649\ldots$ The error $\varepsilon_n$ is about $1/(2n)$, and subtracting $1/(2n)$ improves the approximation dramatically, as the last column shows; \cref{sec:asymptotic-expansions} explains why, and gives the next terms.
+The theorem says that $H_n-\Lambda(n)\to\gamma$, and in particular that $H_n/\Lambda(n)\to1$: the harmonic numbers grow exactly as fast as the logarithm. \Cref{tab:euler-constant} shows how the bounds close in on $\gamma=0.5772156649\ldots$ The error $\varepsilon_n$ is about $1/(2n)$, and subtracting $1/(2n)$ improves the approximation by orders of magnitude, as the last column shows; \cref{sec:asymptotic-expansions} explains why, and gives the next terms.
 
 \begin{table}
 \sdfloat{%
@@ -364,7 +364,7 @@ $n$ & $H_n-\Lambda(n+1)$ & $H_n-\Lambda(n)$ & $H_n-\Lambda(n)-\frac1{2n}$ \\
 \end{sdtable}}{Bounds for Euler's constant $\gamma=0.57721566490153\ldots$ from \cref{thm:euler-constant}, computed in exact rational arithmetic and with the logarithm to $50$ digits. The lower bounds increase, the upper bounds decrease, and their difference is less than $1/n$. The correction $-\frac1{2n}$ in the last column reduces the error from about $1/(2n)$ to about $1/(12n^2)$.\label{tab:euler-constant}}
 \end{table}
 
-Euler introduced the constant in 1734, computed it to six decimal places, and later to sixteen; it is not known to this day whether $\gamma$ is rational~\cite{lagarias2013gamma,havil2003gamma}. Its value is known to many billions of digits, and it appears throughout analysis and number theory: in the expansion of the gamma function, in the average number of divisors of an integer (the sum \eqref{eq:divisor-sum} is $N\Lambda(N)+(2\gamma-1)N+O(\sqrt N)$, in the notation of \cref{sec:asymptotic-notation}, by a theorem of Dirichlet~\cite{hardywright2008}), and in the average cost of algorithms whose analysis involves harmonic numbers (Volume~IV).
+Euler introduced the constant in a paper written in 1731 and presented to the St Petersburg Academy in 1734, where he gave its value as $0.577218$; in his textbook on the differential calculus of 1755 he computed it to fifteen decimal places. It is not known to this day whether $\gamma$ is rational~\cite{lagarias2013gamma,havil2003gamma}. Its value is known to many billions of digits, and it appears throughout analysis and number theory: in the expansion of the gamma function, in the average number of divisors of an integer (the sum \eqref{eq:divisor-sum} is $N\Lambda(N)+(2\gamma-1)N+O(\sqrt N)$, in the notation of \cref{sec:asymptotic-notation}, by a theorem of Dirichlet~\cite{hardywright2008}), and in the average cost of algorithms whose analysis involves harmonic numbers (Volume~IV).
 
 \subsection{The Ratio and Root Tests}
 
@@ -421,7 +421,7 @@ Let $a_k\ge0$ for all $k$, and let $L\coloneqq\limsup_{k\to\infty}a_k^{1/k}$. If
 If $L<1$, choose $q$ with $L<q<1$. By \cref{lem:limsup}\,(i), eventually $a_k^{1/k}<q$, that is, $a_k<q^k$, and the series converges by comparison with $\sum q^k$; the bound on the remainder follows from the same comparison. If $L>1$, then $a_k^{1/k}>1$, that is, $a_k>1$, for infinitely many $k$, by \cref{lem:limsup}\,(ii), so the terms do not tend to zero.
 \end{proof}
 
-Both tests are in Cauchy's \emph{Cours d'analyse} of 1821~\cite{cauchy1821}; the ratio test is often named after d'Alembert, who used a form of it in 1768~\cite{knopp1990}. Both compare the series with a geometric series, and so they can only detect convergence that is at least geometric. They therefore say nothing about the $p$-series: for $a_k=1/k^p$ the ratios $(k/(k+1))^p$ and the roots $k^{-p/k}$ tend to $1$ for every $p$, by \cref{thm:standard-limits}\,(iv), and the tests are inconclusive, while the integral test decides at once.
+Both tests are in Cauchy's \emph{Cours d'analyse} of 1821~\cite{cauchy1821,knopp1990}; the ratio test is also known as d'Alembert's test. Both compare the series with a geometric series, and so they can only detect convergence that is at least geometric. They therefore say nothing about the $p$-series: for $a_k=1/k^p$ the ratios $(k/(k+1))^p$ and the roots $k^{-p/k}$ tend to $1$ for every $p$, by \cref{thm:standard-limits}\,(iv), and the tests are inconclusive, while the integral test decides at once.
 
 \emph{Examples.} For $\sum_{k\ge1}k/2^k$, the ratios $(k+1)/(2k)$ tend to $\frac12$, so the series converges; its sum, $2$, is computed in \cref{sec:power-series}. For every real $x$, the series $\sum_{k\ge0}|x|^k/k!$ converges, because the ratios $|x|/(k+1)$ tend to $0$; this series defines the exponential function in \cref{sec:expansions}. For $\sum_{k\ge1}k!/k^k$ the ratios are
 \[
@@ -493,7 +493,7 @@ s_{2m+2}-s_{2m}=-b_{2m+1}+b_{2m+2}\le0,\qquad s_{2m+1}-s_{2m-1}=b_{2m}-b_{2m+1}\
 and $s_{2m+1}=s_{2m}-b_{2m+1}\le s_{2m}$. So the intervals $[s_{2m+1},s_{2m}]$ are nested, and their lengths $b_{2m+1}$ tend to zero. By the nested interval theorem (\cref{thm:nested}), the even and the odd partial sums converge to a common limit $s$, which lies in all these intervals; so the whole sequence $(s_n)$ converges to $s$. Since $s$ lies between any two consecutive partial sums $s_n$ and $s_{n+1}$, whose difference is $\pm b_{n+1}$, we have $|s-s_n|\le b_{n+1}$, and $s-s_n$ has the sign of $s_{n+1}-s_n=(-1)^{n+1}b_{n+1}$ or vanishes.
 \end{proof}
 
-The test is due to Leibniz, who stated it in letters of 1713 and 1714~\cite{knopp1990}. Its error bound is as simple as an error bound can be: the error of a partial sum is at most the first omitted term, and has its sign. \Cref{fig:alternating}A shows the partial sums of the \term{alternating harmonic series}
+The test is due to Leibniz, who stated it in letters of 1705 and 1714~\cite{knopp1990}. Its error bound is as simple as an error bound can be: the error of a partial sum is at most the first omitted term, and has its sign. \Cref{fig:alternating}A shows the partial sums of the \term{alternating harmonic series}
 \[
 1-\frac12+\frac13-\frac14+\cdots=\sum_{k=1}^\infty\frac{(-1)^{k+1}}k ,
 \]
@@ -537,7 +537,7 @@ Let $p_0,p_1,p_2,\ldots$ be the terms $a_k\ge0$ and $-q_0,-q_1,-q_2,\ldots$ the 
 
 Build the rearrangement in stages. Take terms $p_0,p_1,\ldots$ in order until the partial sum first exceeds $L$; then take terms $-q_0,-q_1,\ldots$ in order until the partial sum first falls below $L$; then continue with the next unused $p_j$ until the partial sum exceeds $L$ again; and so on. Each stage ends after finitely many terms, because the remaining $p_j$, and likewise the remaining $q_j$, still add up to infinity. Each stage uses at least one term, so there are infinitely many stages, and every $p_j$ and every $q_j$ is used exactly once. The new series is therefore a rearrangement of $\sum a_k$.
 
-Let $t_n$ be its partial sums. At the end of a stage, the partial sum has just crossed $L$, so its distance from $L$ is at most the last term added. Within a stage, the partial sums move monotonically from the value at the end of the previous stage towards and across $L$. Hence, for every $n$ after the end of the $m$th stage, $|t_n-L|$ is at most the largest of the $p_j$ and $q_j$ used from the $m$th stage on. These terms have indices tending to infinity as $m\to\infty$, and $p_j,q_j\to0$; so $t_n\to L$.
+Let $t_n$ be its partial sums. At the end of every stage after the first, the partial sum has just crossed $L$, so its distance from $L$ is at most the last term added. Within a stage, the partial sums move monotonically from the value at the end of the previous stage towards and across $L$. Hence, for every $m\ge2$ and every $n$ after the end of the $m$th stage, $|t_n-L|$ is at most the largest of the $p_j$ and $q_j$ used from the $m$th stage on. These terms have indices tending to infinity as $m\to\infty$, and $p_j,q_j\to0$; so $t_n\to L$.
 
 For divergence to $\infty$, change the construction: in the $m$th stage take positive terms until the partial sum exceeds $m$, and then a single negative term. Let $C$ be a bound for the convergent sequence $(q_j)$. Within the later stages the partial sums only increase, apart from single negative terms, so after the $m$th stage they never fall below $m-C$, and they tend to infinity. The case $-\infty$ is symmetric.
 \end{proof}
@@ -604,7 +604,7 @@ The theorem is due to Cauchy~\cite{cauchy1821}. Mertens showed in 1875 that it s
 
 \subsection{The Order of Summation in Floating-Point Arithmetic}
 
-Even an absolutely convergent series, whose sum does not depend on the order of the terms, gives different results in different orders when it is summed on a computer. Floating-point addition rounds each result, and the rounding errors depend on the sizes of the numbers added (Volume~V). An extreme case is the harmonic series in the binary32 format, which carries $24$ significant bits. Added from left to right, its partial sums stop changing after $2\,097\,152=2^{21}$ terms, at the value $15.403683$: from then on, each new term $1/k\le2^{-21}$ is at most half the spacing $2^{-20}$ of binary32 numbers between $8$ and $16$, and adding it to the partial sum rounds back to the partial sum. In floating-point arithmetic the divergent harmonic series converges, and to a wrong value, since $H_{2^{21}}=15.133\ldots$ The cure, adding small terms before large ones, and the analysis of summation errors are discussed in \cref{sec:summing} and in Volume~V.
+Even an absolutely convergent series, whose sum does not depend on the order of the terms, gives different results in different orders when it is summed on a computer. Floating-point addition rounds each result, and the rounding errors depend on the sizes of the numbers added (Volume~V). An extreme case is the harmonic series in the binary32 format, which carries $24$ significant bits. Added from left to right, its partial sums stop changing at the term $k=2^{21}=2\,097\,152$, at the value $15.403683$: from then on, each new term $1/k\le2^{-21}$ is at most half the spacing $2^{-20}$ of binary32 numbers between $8$ and $16$, and adding it to the partial sum rounds back to the partial sum (at $k=2^{21}$ the exact sum lies halfway between two neighbours, and the rule of rounding to even selects the partial sum). In floating-point arithmetic the divergent harmonic series converges, and to a wrong value, since $H_{2^{21}}=15.133\ldots$ The cure, adding small terms before large ones, and the analysis of summation errors are discussed in \cref{sec:summing} and in Volume~V.
 
 \section{Power Series}
 \label{sec:power-series}
@@ -860,22 +860,21 @@ the polynomials of the inequalities of \cref{prop:sin-cos-ladder}. \Cref{fig:sin
 \begin{tikzpicture}
 \begin{axis}[sdplot, width=0.66\textwidth, height=0.44\textwidth, xmin=0, xmax=7.2, ymin=-2.2, ymax=2.2,
   xtick={0,1.5708,3.1416,4.7124,6.2832}, xticklabels={0,$\frac\pi2$,$\pi$,$\frac{3\pi}2$,$2\pi$},
-  ytick={-2,-1,0,1,2}, xlabel={$x$}, restrict y to domain=-3:3, unbounded coords=jump,
-  legend style={at={(0.02,0.03)}, anchor=south west}, legend columns=2]
+  ytick={-2,-1,0,1,2}, xlabel={$x$}, restrict y to domain=-3:3, unbounded coords=jump]
 \addplot[black, line width=1.2pt, domain=0:7.2, samples=150] {sin(deg(x))};
-\addlegendentry{$\sin x$}
 \addplot[black, dashed, line width=0.6pt, domain=0:7.2, samples=40] {x};
-\addlegendentry{$P_1$}
 \addplot[black, densely dotted, line width=0.8pt, domain=0:7.2, samples=100] {x-x^3/6};
-\addlegendentry{$P_3$}
 \addplot[black, dashdotted, line width=0.6pt, domain=0:7.2, samples=100] {x-x^3/6+x^5/120};
-\addlegendentry{$P_5$}
 \addplot[black!45, line width=0.7pt, domain=0:7.2, samples=120] {x-x^3/6+x^5/120-x^7/5040};
-\addlegendentry{$P_7$}
 \addplot[black!45, dashed, line width=0.7pt, domain=0:7.2, samples=120] {x-x^3/6+x^5/120-x^7/5040+x^9/362880};
-\addlegendentry{$P_9$}
+\node[font=\scriptsize, anchor=west] at (axis cs:2.08,2.0) {$P_1$};
+\node[font=\scriptsize, anchor=west] at (axis cs:4.12,2.0) {$P_5$};
+\node[font=\scriptsize, anchor=west] at (axis cs:5.55,2.0) {$P_9$};
+\node[font=\scriptsize, anchor=west] at (axis cs:3.22,-2.0) {$P_3$};
+\node[font=\scriptsize, anchor=west] at (axis cs:4.35,-2.0) {$P_7$};
+\node[font=\scriptsize, anchor=north west] at (axis cs:5.0,-1.12) {$\sin x$};
 \end{axis}
-\end{tikzpicture}}{The sine (thick) and its Taylor polynomials $P_1,P_3,P_5,P_7,P_9$ at $0$. The polynomials of degrees $1,5,9$ lie above the sine for $x>0$, those of degrees $3,7$ below it (\cref{prop:sin-cos-series}). Each additional pair of degrees extends the range of good agreement by roughly $\pi/2$, and by \cref{thm:sin-cos-series} the polynomials converge to the sine at every $x$.\label{fig:sin-taylor}}
+\end{tikzpicture}}{The sine (thick) and its Taylor polynomials $P_1,P_3,P_5,P_7,P_9$ at $0$. The polynomials of degrees $1,5,9$ lie above the sine for $x>0$, those of degrees $3,7$ below it (\cref{prop:sin-cos-series}). Each additional pair of degrees extends the range of good agreement by about $0.8$: the error stays below $0.1$ up to $x\approx0.85$, $1.67$, $2.46$, $3.24$ and $4.02$, respectively. By \cref{thm:sin-cos-series} the polynomials converge to the sine at every $x$.\label{fig:sin-taylor}}
 \end{figure}
 
 \subsection{The Remainder}
@@ -891,7 +890,7 @@ f(x)=P_nf(x;a)+o\bigl((x-a)^n\bigr)\qquad\text{as }x\to a .
 \end{theorem}
 
 \begin{proof}
-Let $g\coloneqq R_nf(\cdot\,;a)$; we show that $g(x)/(x-a)^n\to0$, by induction on $n$. For $n=1$, $g(x)/(x-a)=(f(x)-f(a))/(x-a)-f'(a)$, which tends to $0$ by the definition of the derivative. Let $n\ge2$, and suppose the claim holds for $n-1$. By \cref{lem:taylor-matching}, $g'=f'-P_{n-1}(f')$ is the remainder of degree $n-1$ of $f'$, which is $n-1$ times differentiable at $a$; by the inductive hypothesis, for every $\varepsilon>0$ there is $\delta>0$ with $|g'(t)|\le\varepsilon|t-a|^{n-1}$ for all $t\in I$ with $0<|t-a|<\delta$. Let $x\in I$ with $0<|x-a|<\delta$. The function $g$ is differentiable between $a$ and $x$, and $g(a)=0$, so the mean value theorem gives $g(x)=g'(\xi)(x-a)$ for some $\xi$ strictly between $a$ and $x$, and
+Let $g\coloneqq R_nf(\cdot\,;a)$; we show that $g(x)/(x-a)^n\to0$, by induction on $n$. For $n=1$, $g(x)/(x-a)=(f(x)-f(a))/(x-a)-f'(a)$, which tends to $0$ by the definition of the derivative. Let $n\ge2$, and suppose the claim holds for $n-1$. By \cref{lem:taylor-matching}, $g'=f'-P_{n-1}(f')$ is the remainder of degree $n-1$ of $f'$, which is $n-1$ times differentiable at $a$; by the inductive hypothesis, for every $\varepsilon>0$ there is $\delta>0$ with $|g'(t)|\le\varepsilon|t-a|^{n-1}$ for all $t\in I$ with $0<|t-a|<\delta$, where $\delta$ is also taken so small that $f'$ exists at every point of $I$ within distance $\delta$ of $a$. Let $x\in I$ with $0<|x-a|<\delta$. The function $g$ is differentiable between $a$ and $x$, and $g(a)=0$, so the mean value theorem gives $g(x)=g'(\xi)(x-a)$ for some $\xi$ strictly between $a$ and $x$, and
 \[
 |g(x)|\le\varepsilon|\xi-a|^{n-1}|x-a|\le\varepsilon|x-a|^n .
 \]
@@ -1026,7 +1025,7 @@ with fixed nodes $c_j$ and weights $w_j$, intended to approximate $f'(x)$. Appli
 
 \begin{proposition}[Degree of exactness and order of accuracy]
 \label{prop:exactness-order}
-Let $D_h$ be exact for degree $d$, and let $f\in C^{d+1}$ on an interval $J$ that contains the points $x+c_jh$. Then
+Let $D_h$ be exact for degree $d$, and let $f\in C^{d+1}$ on an interval $J$ that contains $x$ and the points $x+c_jh$. Then
 \[
 \bigl|D_hf(x)-f'(x)\bigr|\le K\,h^d\max_J\bigl|f^{(d+1)}\bigr|,\qquad K\coloneqq\frac1{(d+1)!}\sum_{j=1}^m|w_j|\,|c_j|^{d+1}.
 \]
@@ -1047,7 +1046,7 @@ If $f$ has derivatives of all orders at $a$, the Taylor polynomials of all degre
 Let $f\in C^\infty(I)$ and $a\in I$. The \term{Taylor series} of $f$ at $a$ is the power series $\sum_{k=0}^\infty\frac{f^{(k)}(a)}{k!}(x-a)^k$. The function $f$ is \term{analytic} at $a$ if its Taylor series at $a$ has a positive radius of convergence and its sum equals $f(x)$ for all $x$ in some open interval around $a$.
 \end{definition}
 
-The Taylor series converges to $f(x)$ exactly when the remainders $R_nf(x;a)$ tend to zero, since they are the differences between $f(x)$ and the partial sums. By \cref{thm:termwise-diff}, the sum of a power series with positive radius is its own Taylor series at the centre; so if a function has a power series expansion at all, it is the Taylor series. Two things can go wrong for a function in $C^\infty$: the Taylor series may have radius $0$, or it may converge to the wrong function. \Cref{sec:expansions} gives an example of the second kind; the first occurs too, since every sequence of real numbers is the sequence of derivatives at $0$ of some smooth function, by a theorem of Borel~\cite{krantz2002primer}. The remainder formulas give a criterion that excludes both.
+The Taylor series converges to $f(x)$ exactly when the remainders $R_nf(x;a)$ tend to zero, since they are the differences between $f(x)$ and the partial sums. By \cref{thm:termwise-diff}, the sum of a power series with positive radius is its own Taylor series at the centre; so if a function has a power series expansion at all, it is the Taylor series. Two things can go wrong for a function in $C^\infty$: the Taylor series may have radius $0$, or it may converge to the wrong function. \Cref{sec:expansions} gives an example of the second kind; the first occurs too, since every sequence of real numbers is the sequence of derivatives at $0$ of some smooth function, by a theorem of Borel~\cite{borel1895}. The remainder formulas give a criterion that excludes both.
 
 \begin{theorem}
 \label{thm:taylor-convergence}
@@ -1094,7 +1093,7 @@ For the remainder, $e-s_n=\sum_{k>n}1/k!$, and for $k=n+1+j$ we have $k!\ge(n+1)
 \]
 \end{proof}
 
-The bound is nearly sharp, and it falls very fast. With $n=10$ it is $2.76\times10^{-8}$, and the actual error of $s_{10}=2.7182818011\ldots$ is $2.73\times10^{-8}$; with $n=15$ the error is $5.1\times10^{-14}$. Sixteen terms of the series give as many correct digits as binary64 arithmetic holds, while $(1+1/n)^n$ would need $n$ of the order of $10^{16}$, and fails in floating point long before (the note in \cref{sec:completeness}). The rapid convergence also proves that $e$ is irrational.
+The bound is nearly sharp, and it falls very fast. With $n=10$ it is $2.76\times10^{-8}$, and the actual error of $s_{10}=2.7182818011\ldots$ is $2.73\times10^{-8}$; with $n=15$ the error is $5.1\times10^{-14}$. Eighteen terms of the series, up to $1/17!$, give as many correct digits as binary64 arithmetic holds, while $(1+1/n)^n$ would need $n$ of the order of $10^{16}$, and fails in floating point long before (the note in \cref{sec:completeness}). The rapid convergence also proves that $e$ is irrational.
 
 \begin{theorem}
 \label{thm:e-irrational}
@@ -1105,7 +1104,7 @@ The number $e$ is irrational.
 Suppose $e=p/q$ with integers $p$ and $q\ge1$. Then $q!\,e$ is an integer, and so is $q!\,s_q=\sum_{k=0}^qq!/k!$. Hence $q!\,(e-s_q)$ is an integer. By \cref{thm:e-series}, $0<q!\,(e-s_q)<q!/(q\cdot q!)=1/q\le1$, and there is no integer strictly between $0$ and $1$.
 \end{proof}
 
-Euler proved the irrationality of $e$ in 1737 with continued fractions; the short proof above was published in 1815 and is attributed to Fourier~\cite{aigner2018proofs}. Hermite proved in 1873 that $e$ is even transcendental, a root of no polynomial with integer coefficients~\cite{hardywright2008}.
+Euler proved the irrationality of $e$ in 1737 with continued fractions~\cite{lagarias2013gamma}; the short proof above was published in 1815 and is attributed to Fourier~\cite{aigner2018proofs}. Hermite proved in 1873 that $e$ is even transcendental, a root of no polynomial with integer coefficients~\cite{hardywright2008}.
 
 \subsection{The Exponential Series}
 
@@ -1167,7 +1166,7 @@ $\Lambda(e^x)=x$ for every real $x$, and $e^{\Lambda(y)}=y$ for every $y>0$. In 
 The function $g(x)\coloneqq\Lambda(e^x)-x$ is differentiable, with $g'(x)=e^x/e^x-1=0$ by the chain rule, since $\Lambda'(y)=1/y$; and $g(0)=\Lambda(1)=0$. By \cref{cor:zero-derivative}, $g=0$. For $y>0$, $\Lambda(e^{\Lambda(y)})=\Lambda(y)$, and $\Lambda$ is injective because it is strictly increasing, so $e^{\Lambda(y)}=y$. The last statement follows: every real $x$ is the value $\Lambda(e^x)$.
 \end{proof}
 
-So $\Lambda$ is the natural logarithm $\ln$, the inverse of $x\mapsto e^x$; Chapter~9 builds the theory of both functions on this relation. A consequence used below is that Stirling-type statements about $\Lambda(n!)$ can be translated into statements about $n!$ itself: an equation $\Lambda(a)=\Lambda(b)+\delta$ is equivalent to $a=b\,e^\delta$.
+So $\Lambda$ is the natural logarithm $\ln$, the inverse of $x\mapsto e^x$; Chapter~9 builds the theory of both functions on this relation. Two consequences are used below. First, $\Lambda(x^r)=r\Lambda(x)$ for $x>0$ and every rational $r=p/q$ with $q\ge1$: \cref{prop:log-additive} and induction give $\Lambda(x^m)=m\Lambda(x)$ for every integer $m$, and then $q\Lambda(x^{p/q})=\Lambda\bigl((x^{p/q})^q\bigr)=\Lambda(x^p)=p\Lambda(x)$. Second, Stirling-type statements about $\Lambda(n!)$ can be translated into statements about $n!$ itself: an equation $\Lambda(a)=\Lambda(b)+\delta$ is equivalent to $a=b\,e^\delta$.
 
 \begin{note}{The complex exponential}
 The series $E(z)=\sum z^k/k!$ converges absolutely for every complex number $z$, by the same ratio test, and the proof of (ii) holds verbatim for complex $z$ and $w$. Substituting $z=i\theta$ and separating the even and the odd powers of $i$, which are $\pm1$ and $\pm i$, gives formally
@@ -1267,7 +1266,7 @@ At $x=1$ the convergence is slow: the error after $n$ terms is about $1/(2n)$, a
 \Lambda\Bigl(\frac{1+x}{1-x}\Bigr)=2\Bigl(x+\frac{x^3}3+\frac{x^5}5+\cdots\Bigr)=2\sum_{k=0}^\infty\frac{x^{2k+1}}{2k+1}.
 \label{eq:log-ratio-series}
 \end{equation}
-Every $y>0$ is $(1+x)/(1-x)$ for $x=(y-1)/(y+1)\in(-1,1)$, so this series computes the logarithm of every positive number, and it converges fast when $y$ is close to $1$. For $y=2$, $x=\frac13$, and five terms of \eqref{eq:log-ratio-series} give $\Lambda(2)$ with an error of $1.1\times10^{-6}$, an accuracy for which the alternating harmonic series needs about half a million terms; Chapter~9 carries out such computations. Series \eqref{eq:log-ratio-series} is also the key to the error bounds in Stirling's formula in \cref{sec:asymptotic-expansions}.
+Every $y>0$ is $(1+x)/(1-x)$ for $x=(y-1)/(y+1)\in(-1,1)$, so this series computes the logarithm of every positive number, and it converges fast when $y$ is close to $1$. For $y=2$, $x=\frac13$, and five terms of \eqref{eq:log-ratio-series} give $\Lambda(2)$ with an error of $1.1\times10^{-6}$, an accuracy for which the alternating harmonic series needs about half a million terms; Chapter~9 carries out such computations. Series \eqref{eq:log-ratio-series} is also the basis of the error bounds in Stirling's formula in \cref{sec:asymptotic-expansions}.
 
 The Taylor criterion of \cref{thm:taylor-convergence} would have given less. The derivatives of $\Lambda(1+x)$ are $(-1)^{n-1}(n-1)!/(1+x)^n$, and Lagrange's form of the remainder proves convergence only for $-\frac12\le x\le1$; on $(-1,-\frac12)$ it fails, although the series converges there. Cauchy's form covers the whole interval, which is one reason why several forms of the remainder are worth knowing~\cite{apostol1967calculus}.
 
@@ -1291,7 +1290,7 @@ and the error after the term with $k=n$ is at most $|x|^{2n+3}/(2n+3)$. In parti
 By \eqref{eq:sum-geom} with $r=-t^2$, $\frac1{1+t^2}=\sum_{k=0}^n(-1)^kt^{2k}+\frac{(-1)^{n+1}t^{2n+2}}{1+t^2}$. Integrating from $0$ to $x$ and using \cref{prop:arctan-integral} gives the partial sum plus the remainder $(-1)^{n+1}\int_0^xt^{2n+2}/(1+t^2)\,dt$, whose absolute value is at most $\bigl|\int_0^xt^{2n+2}dt\bigr|=|x|^{2n+3}/(2n+3)$, which tends to $0$ for $|x|\le1$. For $x=1$, $\arctan1=\pi/4$ by the proof of \cref{prop:arctan-integral}.
 \end{proof}
 
-The series for $\pi/4$ was found in India by the school of Madhava in the fourteenth or fifteenth century, and in Europe by Gregory in 1671 and Leibniz in 1674~\cite{roy1990}. It is beautiful and useless for computation: by the alternating series test its error after $n$ terms is about $1/(2n)$, so a million terms give six digits. Arguments close to $0$ converge much faster, and the formula
+The series for $\pi/4$ was found in India by the school of Madhava in the fourteenth or fifteenth century, and in Europe by Gregory in 1671 and Leibniz in 1673~\cite{roy1990,edwards1979}. It is beautiful and useless for computation: by the alternating series test its error after $n$ terms is at most $1/(2n+1)$, and in fact close to half of that, so a million terms give only six or seven digits. Arguments close to $0$ converge much faster, and the formula
 \[
 \frac\pi4=4\arctan\frac15-\arctan\frac1{239},
 \]
@@ -1366,7 +1365,7 @@ by \cref{thm:exp-series}\,(v), since $y\to\infty$; so $p(1/x)e^{-1/x^2}\to0$ as 
 \end{tikzpicture}}{The function $\varphi(x)=e^{-1/x^2}$ of \cref{prop:flat-function}. Near $0$ it is flatter than every power of $x$: $\varphi(0.5)=e^{-4}=0.018$, $\varphi(0.2)=e^{-25}=1.4\times10^{-11}$, $\varphi(0.1)=e^{-100}=3.7\times10^{-44}$. All its derivatives vanish at $0$, so its Taylor series at $0$ is the zero series, although $\varphi$ is positive away from $0$ and tends to $1$ (dashed) as $|x|\to\infty$.\label{fig:flat-function}}
 \end{figure}
 
-\Cref{fig:flat-function} shows the function. It is so flat at $0$ that no polynomial can tell it apart from the zero function there, in the sense of \cref{thm:taylor-peano}: $\varphi(x)=o(x^n)$ for every $n$. Derivatives at a single point therefore do not determine a smooth function, even on a small interval, and analytic functions are a much smaller class than smooth ones. The example has a practical side as well. Functions such as $\varphi$, and products of them, are used to build smooth functions that vanish outside a given interval, which are indispensable in analysis (Volume~II); no analytic function except $0$ can vanish on an interval, by \cref{cor:power-series-unique}.
+\Cref{fig:flat-function} shows the function. It is so flat at $0$ that no polynomial can tell it apart from the zero function there, in the sense of \cref{thm:taylor-peano}: $\varphi(x)=o(x^n)$ for every $n$. Derivatives at a single point therefore do not determine a smooth function, even on a small interval, and analytic functions are a much smaller class than smooth ones. The example has a practical side as well. Functions such as $\varphi$, and products of them, are used to build smooth functions that vanish outside a given interval, which are indispensable in analysis (Volume~II). No analytic function can do this: a function that is analytic at a point $a$ and vanishes at all points to the left of $a$ has the zero series as its Taylor series at $a$, by \cref{cor:power-series-unique}, and so vanishes on a whole neighbourhood of $a$.
 
 \begin{table}
 \sdfloat{%
@@ -1564,7 +1563,7 @@ R_n(x)=(-1)^nx^n\int_0^\infty\frac{t^ne^{-t}}{1+xt}\,dt ,\qquad0\le\int_0^\infty
 So $R_n(x)=O(x^n)$, which is $o(x^{n-1})$, as $x\to0^+$, and the expansion holds. The series diverges for $x\ne0$, because the ratio of consecutive terms is $(k+1)x\to\infty$; its radius of convergence is $0$.
 \end{proof}
 
-For a fixed small $x$, the bound $n!\,x^n$ on the error first decreases, as long as the ratio $(n+1)x$ of consecutive bounds is less than $1$, and then increases without limit. The best approximation is obtained by truncating near the smallest term, at $n\approx1/x$, and by Stirling's formula below the error there is about $n!\,x^n\approx\sqrt{2\pi/x}\,e^{-1/x}$. \Cref{fig:euler-series} shows the actual errors for $x=0.1$, where $F(0.1)=0.9156333\ldots$ and the best partial sum, with $n=10$ terms, has the error $1.8\times10^{-4}$, and for $x=0.05$, where the best error is $1.1\times10^{-8}$, at $n=20$. The smaller $x$, the better the best truncation, and in the limit $x\to0^+$ the error vanishes faster than any power of $x$. But at a fixed $x$ the accuracy is limited: a divergent asymptotic series is a tool for small $x$, to be used with a judiciously chosen number of terms, and for larger $x$ the function must be computed in another way, here for instance by quadrature.
+For a fixed small $x$, the bound $n!\,x^n$ on the error first decreases, as long as the ratio $(n+1)x$ of consecutive bounds is less than $1$, and then increases without limit. The best approximation is obtained by truncating near the smallest term, at $n\approx1/x$, where the bound is $n!\,x^n\approx\sqrt{2\pi/x}\,e^{-1/x}$ by Stirling's formula below; the actual error there is about half of the bound. \Cref{fig:euler-series} shows the actual errors for $x=0.1$, where $F(0.1)=0.9156333\ldots$ and the best partial sum, with $n=10$ terms, has the error $1.8\times10^{-4}$, and for $x=0.05$, where the best error is $1.1\times10^{-8}$, at $n=20$. The smaller $x$, the better the best truncation, and in the limit $x\to0^+$ the error vanishes faster than any power of $x$. But at a fixed $x$ the accuracy is limited: a divergent asymptotic series is a tool for small $x$, to be used with a judiciously chosen number of terms, and for larger $x$ the function must be computed in another way, here for instance by quadrature.
 
 \begin{figure}
 \sdfloat{%
@@ -1577,7 +1576,7 @@ For a fixed small $x$, the bound $n!\,x^n$ on the error first decreases, as long
 \addplot[black, mark=*, mark size=1.1pt, line width=0.4pt, densely dotted] coordinates {(1,4.563e-02) (2,4.371e-03) (3,6.291e-04) (4,1.209e-04) (5,2.909e-05) (6,8.410e-06) (7,2.840e-06) (8,1.097e-06) (9,4.776e-07) (10,2.312e-07) (11,1.232e-07) (12,7.170e-08) (13,4.524e-08) (14,3.077e-08) (15,2.244e-08) (16,1.747e-08) (17,1.446e-08) (18,1.268e-08) (19,1.174e-08) (20,1.146e-08) (21,1.174e-08) (22,1.262e-08) (23,1.418e-08) (24,1.664e-08) (25,2.034e-08) (26,2.588e-08) (27,3.421e-08) (28,4.692e-08) (29,6.666e-08) (30,9.803e-08) (31,1.490e-07) (32,2.339e-07) (33,3.788e-07) (34,6.321e-07) (35,1.086e-06)};
 \addlegendentry{$x=0.05$}
 \end{axis}
-\end{tikzpicture}}{Errors $|F(x)-\sum_{k<n}(-1)^kk!\,x^k|$ of the partial sums of Euler's divergent series for $F(x)=\int_0^\infty e^{-t}/(1+xt)\,dt$, against the number $n$ of terms, computed with $50$ significant digits. The errors decrease until $n\approx1/x$ and then grow without limit. The smallest error, about $\sqrt{2\pi/x}\,e^{-1/x}$, falls rapidly as $x\to0$.\label{fig:euler-series}}
+\end{tikzpicture}}{Errors $|F(x)-\sum_{k<n}(-1)^kk!\,x^k|$ of the partial sums of Euler's divergent series for $F(x)=\int_0^\infty e^{-t}/(1+xt)\,dt$, against the number $n$ of terms, computed with $50$ significant digits. The errors decrease until $n\approx1/x$ and then grow without limit. The smallest error, about half of $\sqrt{2\pi/x}\,e^{-1/x}$, falls rapidly as $x\to0$.\label{fig:euler-series}}
 \end{figure}
 
 \begin{note}{Sums of divergent series}
@@ -1874,7 +1873,7 @@ If the remainders of a sequence $s_n$ decrease geometrically, $s_n\approx s+Cq^n
 \[
 s\approx s_{n+2}-\frac{(s_{n+2}-s_{n+1})^2}{(s_{n+2}-s_{n+1})-(s_{n+1}-s_n)} ,
 \]
-which is exact when $s_n=s+Cq^n$ with $q\ne1$. The formula, named after Aitken~\cite{aitken1926}, can be applied to any sequence and often accelerates convergence dramatically, even when the hypothesis holds only approximately. For the partial sums of $1-\frac13+\frac15-\cdots$, whose remainders alternate in sign with $q\approx-1$, the twelfth partial sum has the error $2.1\times10^{-2}$; one application of the formula to the last three partial sums reduces the error to $4.7\times10^{-5}$, and applying the formula three times in succession to the sequence of the twelve partial sums and its transforms reduces it to $1.0\times10^{-8}$. Aitken's process is the simplest member of a family of nonlinear sequence transformations, which includes the transformations of Shanks, Wynn and Levin; Brezinski and Redivo Zaglia~\cite{brezinski1991} survey them. No such transformation accelerates every convergent sequence, and each works for a class of sequences whose remainders have a known structure.
+which is exact when $s_n=s+Cq^n$ with $q\ne1$. The formula, named after Aitken~\cite{aitken1926}, can be applied to any sequence and often accelerates convergence greatly, even when the hypothesis holds only approximately. For the partial sums of $1-\frac13+\frac15-\cdots$, whose remainders alternate in sign with $q\approx-1$, the twelfth partial sum has the error $2.1\times10^{-2}$; one application of the formula to the last three partial sums reduces the error to $4.6\times10^{-5}$, and applying the formula three times in succession to the sequence of the twelve partial sums and its transforms reduces it to $1.0\times10^{-8}$. Aitken's process is the simplest member of a family of nonlinear sequence transformations, which includes the transformations of Shanks, Wynn and Levin; Brezinski and Redivo Zaglia~\cite{brezinski1991} survey them. No such transformation accelerates every convergent sequence, and each works for a class of sequences whose remainders have a known structure.
 \end{note}
 
 \bigskip
