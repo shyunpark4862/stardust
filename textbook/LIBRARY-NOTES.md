@@ -84,3 +84,15 @@
 - 위치: `csrc/special/ops/bessel.hpp` 91–92행 주석 "over n steps float64 loses ~n/2 ULP (86 ULP at nu = 286, x = 100, measured)".
 - 관찰(`textbook/figures/06/downrec.py`, `threeway.py`; 십진 참값에서 출발한 같은 점화): ν = 286.3, x = 100에서 J를 아래로 binary64로 점화하면 오차가 짝의 크기 max(|J_v|, |J_v+1|) 기준으로 최대 47u, double-double이면 1.03u. 400걸음에서는 보통 binary64 40u, 빠른 경로 식(계수를 double-double 1/x로 한 번 반올림, fma 한 번) 32u(J)·43u(Y). 주석의 86 ULP와 n/2는 무엇을 기준으로 잰 것인지(값 자체의 ULP인지, 정규화를 거친 최종값인지) 적혀 있지 않다.
 - 제안(고치지 않음): 주석에 측정 기준과 스크립트를 적기. 동작 변경은 없음.
+
+## htest: 동점 없는 큰 Mann–Whitney는 일이 큰 Grouped 동적 계획으로 떨어진다 (2026-11-25, 7장 측정)
+
+- 위치: `csrc/htest/rank.cpp` `mwu_lane`. 동점이 없어도 log2 C(N, c) ≥ 124이면 정수 곱 공식(일 c(b+1)) 대신 `Grouped`(일 max(N c (s_max+1), 100·상태 수))로 간다. 곱 공식은 뺄셈 때문에 부동소수점으로 옮길 수 없어서이다.
+- 관찰(`textbook/figures/07/worklim.py`): c = d이면 135까지만 정확 계산이 상한 1e9 안에 든다(0.11초). (300, 3000)의 'exact'는 9.35e11로 거절된다. 정수 곱 공식이라면 약 1.35e8이다.
+- 제안(고치지 않음): 동점이 없을 때는 확률을 쌓는 양수 점화(Mann–Whitney의 f(c,d,u) 볼록결합, 꼬리 b까지만)나 정수 경로를 넓히는 방법(256비트, 또는 꼬리만 세는 모듈러 계산)을 검토할 만하다.
+
+## htest: Mann–Whitney 정수 경로에 칸 수 상한 검사가 없다 (2026-11-25, 7장 깊이 검토)
+
+- 위치: `csrc/htest/rank.cpp` 273행 근처. 정수 경로의 일 c(b+1)만 상한과 견주고 i128 배열 P[0..b]의 칸 수(b+1, 다른 커널은 1e7로 묶음)는 보지 않는다.
+- 관찰(검토 때 복제본으로 측정): c = 3, d = 4×10^6에서 일은 상한 안이지만 RSS가 약 446MB였다.
+- 제안(고치지 않음): 다른 커널처럼 kStateCap(1e7) 검사를 더하기.

@@ -1,0 +1,1197 @@
+%% 7장 조합론과 생성함수 (새 목차, 2026-11-25)
+\chapter{Combinatorics and Generating Functions}
+\label{ch:combinatorics}
+
+\providecommand\qbinom[2]{\genfrac{[}{]}{0pt}{}{#1}{#2}_{q}}
+
+\abstract{순위 검정의 정확한 p값은 적분이 아니라 경우의 수를 세어 얻는다. 이 장은 그 수를 세는 수학과 알고리즘을 다룬다. 이항계수와 초기하 확률, 형식적 멱급수의 생성 함수, $q$-이항계수와 Mann--Whitney 분포, 부분집합 합, 순열의 역순, 동점의 두 변수 생성 함수, 격자 경로의 반사 원리를 세운다. 구현으로는 stardust의 정확 분포 커널과 정규 근사로 넘어가는 문턱, 무작위 순열을 본다.}
+
+두 가지 처리를 받은 실험 단위가 각각 $3$개와 $4$개 있다. 처리 효과를 측정한 일곱 값을 크기 순으로 늘어놓았더니 첫째 처리의 값이 $1$번째, $2$번째, $4$번째 자리에 왔다고 하자. 첫째 처리가 값을 낮추는 효과가 있다는 증거로 볼 수 있을까? 두 처리에 차이가 없다면 일곱 값은 한 분포에서 나온 셈이므로 첫째 처리의 세 값이 일곱 자리 가운데 어느 세 자리를 차지할지는 $\binom73=35$가지가 모두 같은 확률로 일어난다. 관측한 배치보다 첫째 처리가 더 앞쪽에 몰린 배치는 자리 $\{1,2,3\}$ 하나뿐이고 관측한 배치 자체도 있으므로 ``이만큼 또는 이보다 더 앞에 몰리는'' 확률은 $2/35\approx0.057$이다. 이 계산에는 분포를 가정할 필요도, 적분할 필요도 없었고 경우를 센 것이 전부였다. 다만 ``더 앞쪽에 몰렸다''를 재는 통계량을 정해야 하고 표본이 커지면 일일이 나열할 수 없으므로 세는 방법이 필요하다. 이 장은 바로 그것을 다룬다. 각 검정의 API(대립가설, 동점 처리의 선택, 근사)는 116--119장으로 미루고 여기서는 그 밑에 깔린 세는 수학과 커널을 본다.
+
+\section{Basic Counting}
+\label{sec:counting}
+
+\subsection{Permutations and Binomial Coefficients}
+
+서로 다른 $n$개의 대상을 한 줄로 늘어놓는 방법의 수는 첫 자리에 $n$가지, 둘째 자리에 남은 $n-1$가지를 놓는 식으로 곱해 $n!=n(n-1)\cdots1$이다. 여러 단계에 걸쳐 고르고 각 단계의 선택지 수가 앞 단계의 선택에 상관없이 일정하면 전체 경우의 수는 단계별 수의 곱이다. 이것을 \term{곱의 법칙}{rule of product}이라 한다. $n$개 가운데 $k$개를 골라 순서 있게 늘어놓는 수는 같은 원리로 $n(n-1)\cdots(n-k+1)$이다. 고른 $k$개의 순서를 잊으면 같은 집합이 $k!$번씩 세어지므로 순서 없이 $k$개를 고르는 수는
+\[
+\binom nk=\frac{n(n-1)\cdots(n-k+1)}{k!}=\frac{n!}{k!\,(n-k)!}
+\]
+이다. 이것이 \term{이항계수}{binomial coefficient}이고 $k<0$이나 $k>n$이면 $0$으로 둔다.
+
+이항계수의 기본 성질은 모두 ``무엇을 세는가''에서 바로 나온다. 고른 $k$개와 고르지 않은 $n-k$개는 서로를 결정하므로 $\binom nk=\binom n{n-k}$이다. 원소 $n$을 고르는 경우와 고르지 않는 경우로 나누면 Pascal의 공식
+\begin{equation}
+\label{eq:pascal}
+\binom nk=\binom{n-1}{k-1}+\binom{n-1}k
+\end{equation}
+을 얻는다. $(1+t)^n$을 $n$개의 인수 $(1+t)$의 곱으로 보고 전개하면 각 인수에서 $1$과 $t$ 가운데 하나를 고르게 되고 $t$를 고른 인수가 $k$개인 항이 $t^k$를 주므로 \term{이항정리}{binomial theorem} $(1+t)^n=\sum_k\binom nkt^k$가 성립한다. 같은 방식으로 $(1+t)^{m+n}=(1+t)^m(1+t)^n$의 $t^k$ 계수를 비교하면 Vandermonde의 항등식
+\begin{equation}
+\label{eq:vandermonde}
+\binom{m+n}k=\sum_{i}\binom mi\binom n{k-i}
+\end{equation}
+을 얻는다. $m+n$개에서 $k$개를 고를 때 앞쪽 $m$개에서 몇 개를 고르는지로 경우를 나누면 바로 이 식이 나온다. 생성 함수의 곱이 계수들의 합성곱을 준다는 사실도 여기서 처음 만난다.
+
+이항계수는 빨리 자란다. Stirling 공식(\cref{sec:stirling-series})이나 3장의 \cref{thm:saddle-binomial}에서 $\binom{2n}n\sim4^n/\sqrt{\pi n}$이므로 $\binom{2000}{1000}$은 약 $2.0\times10^{600}$으로 \code{double}이 나타낼 수 있는 가장 큰 수 약 $1.8\times10^{308}$을 훌쩍 넘는다. 표본 크기가 수천인 검정에서 경우의 수를 그대로 세면 곧바로 넘침을 만나므로 이 장의 알고리즘들은 정확한 정수로 셀 수 있는 범위에서는 정수로 세고 그 너머에서는 확률로 바꾸어 쌓는 두 길을 함께 갖춘다.
+
+\subsection{Computing Binomial Coefficients without Overflow}
+
+$\binom nk$를 정수로 정확히 구할 때 $n!/(k!(n-k)!)$을 그대로 계산하면 분자가 답보다 훨씬 먼저 넘친다. 곱셈 공식 $\binom ni=\binom n{i-1}\cdot(n-i+1)/i$를 $i=1,\dots,k$로 되풀이하면 중간값이 모두 이항계수이므로 낫다. 그래도 곱 $\binom n{i-1}(n-i+1)=i\binom ni$는 답의 $i$배여서 마지막 걸음에서는 $k$배까지 커진다. 2장의 최대공약수(\cref{alg:euclid})를 쓰면 이 곱셈마저 답 이하로 묶어 둘 수 있다.
+
+\begin{proposition}
+\label{prop:binom-gcd}
+$c=\binom n{i-1}$, $g=\gcd(c,i)$라 하자. 그러면 $i/g$는 $n-i+1$을 나누고
+\[
+\binom ni=\frac cg\cdot\frac{n-i+1}{i/g}
+\]
+이다. 우변의 두 인수는 모두 $\binom ni$ 이하의 양의 정수이다.
+\end{proposition}
+
+\begin{proof}
+$\binom ni=c(n-i+1)/i$가 정수이므로 $i$는 $c(n-i+1)$을 나눈다. 양변을 $g$로 나누면 $i/g$가 $(c/g)(n-i+1)$을 나누는데 $\gcd(c/g,i/g)=\gcd(c,i)/g=1$이므로 Euclid 보조정리(\cref{lem:euclid})에서 $i/g$가 $n-i+1$을 나눈다. 따라서 두 인수 $c/g$와 $(n-i+1)/(i/g)$는 양의 정수이고 그 곱이 $\binom ni$이므로 각 인수는 $\binom ni$를 넘지 않는다.
+\end{proof}
+
+\begin{algorithm}[htbp]
+\begin{algorithmic}[1]
+\Require $0\le k\le n$, $\binom nk<2^{126}$ (호출자의 약속)
+\Ensure $\binom nk$ ($128$비트 부호 없는 정수)
+\State $k\gets\min(k,n-k)$; $c\gets1$
+\For{$i=1,\dots,k$}
+  \State $g\gets\gcd(c,i)$ \Comment{Euclid, $O(\log i)$}
+  \State $c\gets(c/g)\cdot((n-i+1)/(i/g))$ \Comment{두 나눗셈 모두 나누어떨어진다}
+\EndFor
+\State \Return $c$
+\end{algorithmic}
+\caption{넘치지 않는 이항계수 (stardust \code{csrc/htest/rank\_exact.hpp}의 \code{binom\_u128})}
+\label{alg:binom-gcd}
+\end{algorithm}
+
+\cref{alg:binom-gcd}의 모든 중간값은 \cref{prop:binom-gcd}에서 최종 답 이하이므로 답이 들어가는 정수형이라면 계산 도중에 넘치는 일이 없다. 대가는 단계마다 최대공약수 하나인데 $i\le k$이므로 Euclid 알고리즘은 $O(\log k)$번의 나눗셈으로 끝난다. stardust의 순위 검정은 경우의 수가 $2^{124}$ 아래일 때 정확한 $128$비트 정수로 센다. 코드는 경우의 수와 그 두 배까지 $2^{126}$ 아래에 두도록 예산을 잡는데 이 경로를 탈지는 계산 전에 $\log_2\binom nk$를 \code{lgamma}로 어림해 정한다. $2^{124}$는 어림이 조금 틀려도 예산을 넘지 않도록 두 비트를 더 남겨 둔 경계이고 그 위에서는 뒤에서 볼 double-double 확률로 넘어간다.
+
+\subsection{Hypergeometric Probabilities}
+
+$R$개의 자리 가운데 $r$개에 표시가 있다고 하자. $R$개 가운데 $t$개를 무작위로 뽑을 때 표시된 자리가 $k$개 들어 있을 확률은 뽑은 $t$개 중 표시된 $k$개와 표시되지 않은 $t-k$개를 각각 고르는 수의 곱을 전체로 나눈
+\begin{equation}
+\label{eq:hypergeom}
+h(k)=\binom rk\binom{R-r}{t-k}\Bigm/\binom Rt
+\end{equation}
+이다. 이 분포를 \term{초기하 분포}{hypergeometric distribution}라 하고 Vandermonde 항등식 \cref{eq:vandermonde}이 곧 $\sum_kh(k)=1$이다. 뽑힌 자리와 표시된 자리의 역할을 바꾸어 세면 $\binom tk\binom{R-t}{r-k}/\binom Rr$로도 쓸 수 있다.
+
+세 이항계수는 각각 넘칠 수 있지만 확률 자체는 $1$ 이하이므로 계수를 따로 구하지 않고 이웃한 항의 비로 항들을 차례로 만드는 것이 좋다.
+
+\begin{proposition}
+\label{prop:hypergeom-mode}
+\[
+\frac{h(k+1)}{h(k)}=\frac{(t-k)(r-k)}{(k+1)(R-t-r+k+1)}
+\]
+이고 이 비는 $k$에 대해 감소한다. 따라서 $h$는 단봉이고 최빈값은 $\lfloor(t+1)(r+1)/(R+2)\rfloor$이다.
+\end{proposition}
+
+\begin{proof}
+비의 식은 \cref{eq:hypergeom}의 계승을 약분하면 나온다. 분자 $(t-k)(r-k)$는 $k$가 늘면 줄고 분모 $(k+1)(R-t-r+k+1)$은 늘므로 비가 감소한다. 비가 $1$ 이상인 것은 $(t-k)(r-k)\ge(k+1)(R-t-r+k+1)$, 전개해 정리하면 $(k+1)(R+2)\le(t+1)(r+1)$과 같다. 그러므로 $h(k+1)\ge h(k)$인 마지막 $k$가 $\lfloor(t+1)(r+1)/(R+2)\rfloor-1$이고 최빈값은 그다음인 $\lfloor(t+1)(r+1)/(R+2)\rfloor$이다.
+\end{proof}
+
+\begin{algorithm}[htbp]
+\begin{algorithmic}[1]
+\Require $R,r,t$
+\Ensure $h(k)$, $k=k_{\min},\dots,k_{\max}$ (정규화된 초기하 확률)
+\State $k_{\min}\gets\max(0,t-(R-r))$; $k_{\max}\gets\min(t,r)$ \Comment{$h(k)>0$인 범위}
+\State $m\gets\lfloor(t+1)(r+1)/(R+2)\rfloor$를 $[k_{\min},k_{\max}]$로 자른다; $w_m\gets1$
+\For{$k=m,\dots,k_{\max}-1$} $w_{k+1}\gets w_k\cdot\rho(k)$; $0$이 되면 멈춘다 \Comment{$\rho(k)=h(k+1)/h(k)$}
+\EndFor
+\For{$k=m$ \textbf{downto} $k_{\min}+1$} $w_{k-1}\gets w_k/\rho(k-1)$; $0$이 되면 멈춘다
+\EndFor
+\State $W\gets\sum_kw_k$ \Comment{양수만 더한다}
+\State \Return $w_k/W$
+\end{algorithmic}
+\caption{최빈값에서 바깥으로 만드는 초기하 확률 (stardust \code{csrc/htest/ks2.hpp}의 \code{hypergeometric})}
+\label{alg:hypergeom}
+\end{algorithm}
+
+\cref{alg:hypergeom}에서 최빈값에 임시로 $1$을 놓고 양쪽으로 비를 곱해 나가면 모든 값이 $1$ 이하로 줄어들기만 하므로 넘침이 없고 아래로 넘쳐 $0$이 된 항에서 멈출 수 있다. 정규화는 전체 합으로 한 번 나누면 끝난다. 합이 모두 양수의 덧셈이어서 상대오차는 덧셈 횟수에 비례해 늘 뿐이다(\cref{lem:positive-accum}). stardust의 두 표본 Kolmogorov--Smirnov 검정(\cref{sec:lattice})은 같은 값들의 묶음마다 이 확률을 쓴다. 비의 분자와 분모를 각각 오차 없는 곱(12장의 TwoProd)으로 만든 double-double의 몫으로 계산하므로 한 걸음의 상대오차가 약 $2^{-104}$이다. \cref{fig:hypergeom}은 $R=40$, $r=15$, $t=12$의 예이다. 이산 분포의 확률 질량 함수 전반은 108장에서, 큰 이항계수의 로그를 안장점으로 어림하는 방법은 3장의 \cref{alg:binom-saddle}에서 다룬다.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}
+\begin{axis}[sdplot,xlabel={$k$},ylabel={$h(k)$},xmin=-0.7,xmax=12.7,ymin=0,ymax=0.3,ybar,bar width=7pt,scaled y ticks=false,yticklabel style={/pgf/number format/fixed,/pgf/number format/precision=2}]
+\addplot[black,fill=black!40] table[x=k,y=p]{figures/07/hypergeom.dat};
+\addlegendentry{$R=40$, $r=15$, $t=12$}
+\end{axis}
+\end{tikzpicture}
+\caption{초기하 확률 $h(k)$. 최빈값은 \cref{prop:hypergeom-mode}의 $\lfloor13\cdot16/42\rfloor=4$이고 \cref{alg:hypergeom}은 여기에 $1$을 놓고 양쪽으로 비를 곱해 나간다(\code{figures/07/extras.py}).}
+\label{fig:hypergeom}
+\end{figure}
+
+\subsection{Accumulating Positive Terms}
+
+이 장의 확률 커널은 거의 모두 음이 아닌 수의 덧셈과 음이 아닌 상수의 곱셈만 쓰고 정확도의 보증도 이 사실 하나에서 나온다. 연산마다 반올림이 결과에 $(1+\delta)$, $|\delta|\le u$를 곱한다고 하자. binary64라면 $u=2^{-53}$이고 double-double이라면 $u$는 약 $2^{-104}$이다(12장).
+
+\begin{lemma}
+\label{lem:positive-accum}
+값 $y$를 정확한 음이 아닌 입력에서 출발해 음이 아닌 두 값의 덧셈과 음이 아닌 상수의 곱셈만으로 계산한다고 하자. 입력에서 $y$까지 가는 어느 경로에도 반올림이 $d$번 이하로 들어가면 계산한 값 $\hat y$는
+\[
+(1-u)^dy\le\hat y\le(1+u)^dy
+\]
+를 만족한다. 따라서 상대오차는 $(1+u)^d-1\le du/(1-du)$ 이하이다.
+\end{lemma}
+
+\begin{proof}
+$d$에 대한 귀납법을 쓴다. 입력은 정확하다. $y=a+b$이고 $\hat a$와 $\hat b$가 각각 반올림 $d-1$번 이하의 경로로 얻어졌다면 귀납 가정에서 $(1-u)^{d-1}a\le\hat a\le(1+u)^{d-1}a$이고 $\hat b$도 같다. $a,b\ge0$이므로 두 부등식을 더해 $(1-u)^{d-1}y\le\hat a+\hat b\le(1+u)^{d-1}y$를 얻는다. 덧셈의 반올림이 $(1+\delta)$를 곱하므로 $\hat y$는 $(1-u)^dy$와 $(1+u)^dy$ 사이에 있다. 음이 아닌 상수를 곱하는 경우도 같다. 마지막 부등식은 $(1+u)^d\le1/(1-du)$에서 나온다.
+\end{proof}
+
+증명은 두 부등식을 더하는 단계에서 $a,b\ge0$에 결정적으로 기댄다. $a$와 $b$의 부호가 다르면 $\hat a+\hat b$의 오차는 $u(|a|+|b|)$ 정도이고 이것을 $|a+b|$로 나눈 비는 얼마든지 커진다(11장의 소거). 6장의 \cref{prop:first-order}는 이 보조정리의 가장 단순한 경우이다. 이 장의 동적 계획에서 경로의 반올림 수 $d$는 대개 걸음의 수와 같으므로 상대오차는 걸음 수에 비례하는 만큼만 쌓인다.
+
+double-double의 덧셈은 일반적으로 높은 부분과 낮은 부분에 TwoSum을 한 번씩 써야 한다(12장). 두 수가 모두 음이 아니면 더 싼 방법으로 충분하다.
+
+\begin{lemma}
+\label{lem:add-pos}
+binary64의 단위 반올림을 $u$라 하고 $a=a_h+a_\ell$, $b=b_h+b_\ell$이 음이 아닌 double-double($|a_\ell|\le ua_h$, $|b_\ell|\le ub_h$)이라 하자. $(s_h,s_\ell)=\mathrm{TwoSum}(a_h,b_h)$, $t=\mathrm{fl}(s_\ell+\mathrm{fl}(a_\ell+b_\ell))$, $(c_h,c_\ell)=\mathrm{QuickTwoSum}(s_h,t)$로 두면 $c_h+c_\ell$의 상대오차는 $3u^2+O(u^3)$ 이하이다.
+\end{lemma}
+
+\begin{proof}
+TwoSum은 $s_h+s_\ell=a_h+b_h$를 정확히 주고 $|s_\ell|\le us_h$이다. $a_h,b_h\ge0$이므로 $|a_\ell+b_\ell|\le u(a_h+b_h)$이다. $t$를 만드는 두 번의 반올림 가운데 첫째는 $u|a_\ell+b_\ell|\le u^2(a_h+b_h)$ 이하, 둘째는 $u(|s_\ell|+|a_\ell+b_\ell|)(1+u)\le2u^2(a_h+b_h)(1+u)^2$ 이하의 오차를 내므로 오차의 합은 $3u^2(a_h+b_h)+O(u^3)(a_h+b_h)$ 이하이다. $|t|\le s_h$이므로 QuickTwoSum은 $c_h+c_\ell=s_h+t$를 정확히 준다. 끝으로 $a+b\ge(1-u)(a_h+b_h)$이므로 오차를 $a+b$로 나누면 $3u^2+O(u^3)$이다.
+\end{proof}
+
+stardust는 이 덧셈을 \code{add\_pos}(\code{rank\_exact.hpp})로 두고 이 장의 동적 계획에서 쓴다. 양수끼리의 합이라 낮은 부분의 TwoSum 하나를 아낀다. \cref{lem:positive-accum}의 $u$ 자리에 약 $3u^2\approx2^{-104}$가 들어가므로 $d$걸음 뒤의 상대오차는 $d\cdot2^{-104}$ 정도이다.
+
+\subsection{Tables with Fixed Margins}
+
+초기하 분포를 표로 넓히면 Fisher의 정확 검정이 나온다. $r\times c$ 분할표의 행합 $R_1,\dots,R_r$과 열합 $C_1,\dots,C_c$를 고정하면($n=\sum_iR_i=\sum_jC_j$) 행과 열이 독립이라는 귀무가설 아래에서 표 $x=(x_{ij})$의 확률은
+\[
+P(x)=\frac{\prod_iR_i!\,\prod_jC_j!}{n!\,\prod_{i,j}x_{ij}!}
+\]
+이다. $r=c=2$이면 이것이 \cref{eq:hypergeom}이다. 이 확률들의 합이 $1$임을 다시 쓰면 다음 항등식이 된다.
+
+\begin{proposition}
+\label{prop:multinomial-vandermonde}
+행합이 $R_i$이고 열합이 $C_j$인 음이 아닌 정수 표 $x$ 전체에 걸쳐
+\[
+\sum_x\prod_{i,j}\frac1{x_{ij}!}=\frac{n!}{\prod_iR_i!\,\prod_jC_j!}
+\]
+이다.
+\end{proposition}
+
+\begin{proof}
+번호가 붙은 공 $n$개를 크기 $R_1,\dots,R_r$의 행으로 나누어 두고 각 공에 색 $1,\dots,c$를 칠하되 색 $j$를 정확히 $C_j$번 쓰는 방법을 두 가지로 센다. 색만 보면 다항계수 $n!/\prod_jC_j!$가지이다. 행 $i$에서 색 $j$를 받은 공의 수를 $x_{ij}$로 적으면 표 $x$는 행합과 열합의 조건을 만족하고 표가 정해졌을 때 행 $i$ 안에서 색을 배치하는 방법은 $R_i!/\prod_jx_{ij}!$가지이다. 표마다 더하면 $\sum_x\prod_iR_i!/\prod_{i,j}x_{ij}!=n!/\prod_jC_j!$이고 양변을 $\prod_iR_i!$로 나누면 된다.
+\end{proof}
+
+stardust의 \code{fisher\_exact}(\code{csrc/htest/fexact.hpp})는 Mehta와 Patel의 망 알고리즘\cite{mehta1983}으로 관측한 표보다 확률이 크지 않은 표들의 확률을 더한다. 열을 하나씩 채우며 남은 행합들의 다중집합을 마디로 삼는다. 한 마디에서 나머지 열을 채우는 모든 완성에 걸친 $\prod1/x!$의 합은 \cref{prop:multinomial-vandermonde}를 남은 표에 적용하면 닫힌 꼴 $n'!/(\prod_iR_i'!\prod_{j>k}C_j!)$로 한 번에 나온다. 그래서 모든 완성이 세어질 마디에서는 그 아래를 나열하지 않고 건너뛴다. 망의 탐색은 119장에서 다룬다.
+
+\section{Generating Functions}
+\label{sec:gf}
+
+\subsection{Power Series That Encode Sequences}
+
+수열 $a_0,a_1,a_2,\dots$를 멱급수 $A(q)=\sum_ka_kq^k$의 계수로 담은 것을 그 수열의 \term{생성 함수}{generating function}라 한다. 이렇게 하는 첫째 이유는 곱셈에 있다. 두 생성 함수의 곱은
+\[
+A(q)B(q)=\sum_s\Bigl(\sum_{k}a_kb_{s-k}\Bigr)q^s
+\]
+이므로 곱의 계수는 두 수열의 \term{합성곱}{convolution}이다. 경우의 수로 읽으면 크기가 $k$인 대상이 $a_k$가지이고 크기가 $l$인 대상이 $b_l$가지일 때 둘을 하나씩 짝지어 크기를 더한 것이 $s$인 경우의 수가 곱의 $q^s$ 계수이다.
+
+확률로 읽으면 더 쓸모가 크다. 음이 아닌 정수 값을 갖는 확률변수 $X$에 대해 $G_X(q)=E[q^X]=\sum_kP(X=k)q^k$를 $X$의 \term{확률 생성 함수}{probability generating function}라 한다. $X$와 $Y$가 독립이면 $E[q^{X+Y}]=E[q^X]E[q^Y]$이므로 독립인 확률변수의 합의 분포는 확률 생성 함수의 곱으로 얻는다. 주사위 두 개의 합이라면 $((q+q^2+\cdots+q^6)/6)^2$을 전개해 $q^7$의 계수 $6/36$을 읽으면 된다. 이 장의 순위 통계량들은 거의 모두 독립이거나 독립에 가까운 조각들의 합이므로 분포를 구하려면 곱 꼴의 생성 함수를 찾아 그 계수를 효율적으로 전개하면 된다.
+
+\subsection{The Ring of Formal Power Series}
+
+생성 함수를 다룰 때 $q$에 수를 넣거나 수렴을 따질 필요는 없다. 계수의 수열 자체를 대상으로 보고 덧셈과 곱셈을 위의 규칙으로 정의하면 된다.
+
+\begin{definition}[형식적 멱급수]
+\label{def:formal-power-series}
+가환환 $K$의 원소로 이루어진 수열 $(a_k)_{k\ge0}$을 $\sum_ka_kq^k$로 적고 \term{형식적 멱급수}{formal power series}라 한다. 덧셈은 계수별로, 곱셈은 합성곱으로 정의하며 이 연산으로 이루는 환을 $K[[q]]$로 적는다. $q^s$의 계수를 $[q^s]A$로 쓴다.
+\end{definition}
+
+곱의 각 계수 $\sum_{k=0}^sa_kb_{s-k}$는 유한합이므로 정의에는 아무런 수렴 문제가 없고 결합법칙과 분배법칙은 다항식에서처럼 성립한다. 다항식은 계수가 유한개만 $0$이 아닌 형식적 멱급수이다. 우리가 쓰는 계수환은 정수 $\mathbb Z$나 유리수 $\mathbb Q$이다. 생성 함수가 $0$ 근처에서 수렴하면 형식적 멱급수와 5장의 해석 함수는 같은 대상이고 그때는 \cref{cor:cauchy-estimates}의 Cauchy 부등식으로 계수의 크기를 어림할 수도 있다.
+
+\begin{proposition}
+\label{prop:fps-inverse}
+$A=\sum_ka_kq^k\in K[[q]]$가 곱셈의 역원을 가질 필요충분조건은 $a_0$이 $K$의 가역원인 것이다. 특히 양의 정수 $j$에 대해 $\mathbb Z[[q]]$에서
+\[
+\frac1{1-q^j}=\sum_{m\ge0}q^{jm}=1+q^j+q^{2j}+\cdots
+\]
+이다.
+\end{proposition}
+
+\begin{proof}
+$AB=1$이면 상수항에서 $a_0b_0=1$이므로 $a_0$은 가역원이다. 거꾸로 $a_0$이 가역원이면 $b_0=a_0^{-1}$로 두고 $s\ge1$에 대해 $b_s=-a_0^{-1}\sum_{k=1}^sa_kb_{s-k}$로 차례로 정의하자. 그러면 $[q^s](AB)=a_0b_s+\sum_{k=1}^sa_kb_{s-k}=0$이 모든 $s\ge1$에서 성립하므로 $AB=1$이다. 둘째 주장은 $(1-q^j)\sum_mq^{jm}$을 전개하면 $q^{jm}$들이 이웃끼리 지워져 $1$만 남는다는 것으로 확인된다.
+\end{proof}
+
+이 증명의 점화식은 그대로 알고리즘이다. $b_s$를 정하는 데는 $a_0,\dots,a_s$와 $b_0,\dots,b_{s-1}$만 필요하므로 역원의 처음 $s+1$개 계수는 $A$의 처음 $s+1$개 계수만으로 정해진다. 같은 성질을 곱셈에 대해 정리해 두자.
+
+\begin{proposition}
+\label{prop:fps-truncate}
+$\pi_b:K[[q]]\to K[[q]]/(q^{b+1})$를 차수 $b$ 이하의 계수만 남기는 사상이라 하면 $\pi_b$는 환 준동형사상이다. 따라서 곱셈과 가역원의 역원을 거듭해 얻는 어떤 식이든 각 단계에서 차수 $b$ 위를 버리고 계산해도 마지막 결과의 차수 $b$ 이하 계수는 버리지 않고 계산한 것과 같다.
+\end{proposition}
+
+\begin{proof}
+$[q^s](AB)$는 $a_0,\dots,a_s$와 $b_0,\dots,b_s$에만 의존하므로 $\pi_b(AB)$는 $\pi_b(A)$와 $\pi_b(B)$로 정해지고 덧셈은 계수별이다. 따라서 $\pi_b$는 준동형이다. $\pi_b(A^{-1})=\pi_b(A)^{-1}$은 준동형이 단위원을 보존한다는 데서 나온다.
+\end{proof}
+
+검정의 p값에는 분포 전체가 필요하지 않고 관측값 쪽 꼬리만 필요하다. \cref{prop:fps-truncate}에 따라 그 꼬리가 끝나는 차수 $b$에서 모든 다항식을 잘라 계산해도 되고 이 장의 알고리즘들은 이를 근거로 일의 양을 꼬리의 길이에 비례하게 줄인다.
+
+\subsection{Moments from Generating Functions}
+
+확률 생성 함수는 분포의 모멘트도 준다. 정확한 계산이 너무 클 때 쓰는 정규 근사(\cref{sec:normal-approx})에는 평균과 분산이 필요하므로 여기서 정리해 두자.
+
+\begin{proposition}
+\label{prop:pgf-moments}
+$X$가 음이 아닌 정수 값을 갖고 $G=G_X$이면 $E[X]=G'(1)$, $\operatorname{Var}X=G''(1)+G'(1)-G'(1)^2$이다. $X=\sum_iX_i$이고 $X_i$들이 독립이어서 $G=\prod_iG_i$($G_i=G_{X_i}$, $G_i(1)=1$)이면 $E[X]=\sum_iG_i'(1)$, $\operatorname{Var}X=\sum_i\operatorname{Var}X_i=\sum_i\bigl(G_i''(1)+G_i'(1)-G_i'(1)^2\bigr)$이다.
+\end{proposition}
+
+\begin{proof}
+$G'(q)=\sum_kkP(X=k)q^{k-1}$, $G''(q)=\sum_kk(k-1)P(X=k)q^{k-2}$을 $q=1$에서 계산하면 $E[X]$와 $E[X(X-1)]$이 나온다(유한한 분포이므로 수렴은 문제가 없다). 곱의 경우 $\ln G=\sum\ln G_i$를 두 번 미분해 $q=1$을 넣으면 $(\ln G)'(1)=G'(1)$, $(\ln G)''(1)=G''(1)-G'(1)^2$이므로 $\operatorname{Var}X=(\ln G)''(1)+(\ln G)'(1)$이고 이 값은 인수별 값의 합이다. 이 계산은 $G(1)=1$이기만 하면 $G=\prod_iH_i$의 인수 $H_i$가 확률 생성 함수가 아니어도($H_i(1)\ne0$) 그대로 성립하고 그때 $\operatorname{Var}X=\sum_i\bigl((\ln H_i)''(1)+(\ln H_i)'(1)\bigr)$이다.
+\end{proof}
+
+이 장의 통계량에 쓰면 다음과 같다. 부호 순위의 $G=\prod_{i=1}^n(1+q^i)/2$는 인수마다 평균 $i/2$, 분산 $i^2/4$이므로 $E[T^+]=n(n+1)/4$, $\operatorname{Var}T^+=n(n+1)(2n+1)/24$이다. 역순의 수의 $G=\prod_{j=1}^n[j]_q/j$는 인수마다 $\{0,\dots,j-1\}$의 균등분포이므로 평균 $(j-1)/2$, 분산 $(j^2-1)/12$이고 $E[K]=n(n-1)/4$, $\operatorname{Var}K=n(n-1)(2n+5)/72$이다. Mann--Whitney의 $U$는 독립인 인수의 곱으로 바로 쓰이지 않는다. 그러나 뒤에 나올 \cref{cor:mwu}와 \cref{eq:qbinom-product}에서
+\[
+E[q^U]=\prod_{j=1}^c\frac{[N-j+1]_q/(N-j+1)}{[j]_q/j}
+\]
+이고 각 인수는 균등분포 두 개의 확률 생성 함수의 몫이다. $\{0,\dots,a-1\}$의 균등분포에서 로그 미분은 $(a-1)/2$와 $(a^2-1)/12$를 주므로 증명 끝에서 말한 대로
+\[
+E[U]=\sum_{j=1}^c\frac{(N-j)-(j-1)}2=\frac{c(N-c)}2
+\]
+이고
+\[
+\operatorname{Var}U=\sum_{j=1}^c\frac{(N-j+1)^2-j^2}{12}=\frac{(N+1)c(N-c)}{12}
+\]
+이다. 마지막 합은 $(N-j+1)^2-j^2=(N+1)(N+1-2j)$를 $j=1,\dots,c$에 대해 더한 것이다. $d=N-c$로 쓰면 $E[U]=cd/2$, $\operatorname{Var}U=cd(c+d+1)/12$이다.
+
+\subsection{Multiplying and Dividing by a Single Factor}
+
+이 장에서 만나는 생성 함수는 대부분 $(1-q^a)$꼴 인수들의 곱과 몫이므로 계수 배열 $P[0..b]$에 이런 인수 하나를 곱하거나 나누는 연산이 기본 단위이다. $(1-q^a)$를 곱하면 $[q^v]$ 계수가 $P[v]-P[v-a]$로 바뀐다. 제자리에서 계산하려면 $v$를 위에서부터 내려와야 $P[v-a]$가 아직 바뀌지 않은 값으로 남는다. \cref{prop:fps-inverse}에서 $(1-q^j)$로 나누는 것은 $\sum_mq^{jm}$을 곱하는 것이고 결과 $Q$는 $Q(1-q^j)=P$, 곧 $Q[v]=P[v]+Q[v-j]$를 만족한다. 이번에는 $v$를 아래에서부터 올라가며 $P[v]\gets P[v]+P[v-j]$를 하면 $P[v-j]$가 이미 새 값 $Q[v-j]$로 바뀌어 있다. 나눗셈은 보폭 $j$의 누적합이다. 두 연산 모두 차수 $b$까지의 덧셈 또는 뺄셈 $b$번 남짓이다.
+
+\begin{algorithm}[htbp]
+\begin{algorithmic}[1]
+\Require 계수 배열 $P[0..b]$, 양의 정수 $a$, $j$
+\Ensure $P\gets P\cdot(1-q^a)/(1-q^j)\bmod q^{b+1}$
+\For{$v\gets b$ \textbf{downto} $a$} \Comment{$(1-q^a)$를 곱한다}
+  \State $P[v]\gets P[v]-P[v-a]$
+\EndFor
+\For{$v\gets j$ \textbf{to} $b$} \Comment{$(1-q^j)$로 나눈다: 보폭 $j$의 누적합}
+  \State $P[v]\gets P[v]+P[v-j]$
+\EndFor
+\end{algorithmic}
+\caption{$(1-q^a)/(1-q^j)$를 제자리에서 곱하기 (stardust \code{rank\_exact.hpp}의 \code{qbinom\_step})}
+\label{alg:factor-step}
+\end{algorithm}
+
+\subsection{Partitions}
+
+생성 함수는 정수의 분할에서 처음으로 큰 힘을 보였다. 양의 정수 $s$를 순서를 무시하고 양의 정수들의 합으로 쓰는 방법을 $s$의 \term{분할}{partition}이라 하고 그 수를 $p(s)$로 쓴다. 예컨대 $4=3+1=2+2=2+1+1=1+1+1+1$이므로 $p(4)=5$이다. 분할은 각 크기 $k$를 몇 번 쓰는지 $m_k\ge0$을 정하는 것과 같다. 크기 $k$를 $m_k$번 쓰면 합에 $km_k$가 보태지므로
+\[
+\sum_{s\ge0}p(s)q^s=\prod_{k\ge1}\bigl(1+q^k+q^{2k}+\cdots\bigr)=\prod_{k\ge1}\frac1{1-q^k}
+\]
+이다. 곱의 각 인수가 ``크기 $k$를 몇 번 쓸지''라는 독립적인 선택 하나를 나타내고 곱셈이 그 선택들을 모두 조합한다. 계산으로 옮기면 보폭 $k$의 누적합(\cref{alg:factor-step}의 둘째 반복문)을 $k=1,2,\dots,S$로 되풀이하면 된다. 차수 $S$까지 일은 $S^2/2$번의 덧셈이고 $p(100)=190569292$, $p(400)\approx6.73\times10^{18}$이다.
+
+분할 수가 얼마나 빨리 느는지는 생성 함수의 특이점에서 읽어 낼 수 있다. $\prod1/(1-q^k)$는 $|q|<1$에서 해석적이고 $q\to1$에서 $\exp(\pi^2/(6(1-q)))$처럼 커진다. Hardy와 Ramanujan\cite{hardy1918}은 5장의 원 위 Cauchy 적분을 $q=1$ 가까이 있는 안장점 부근에서 계산해 $p(s)\sim e^{\pi\sqrt{2s/3}}/(4s\sqrt3)$을 얻었다. 증명의 줄거리는 이렇다. 적분 경로를 반지름 $e^{-\pi/\sqrt{6s}}$인 원으로 잡으면 피적분 함수의 크기가 $q=1$ 근처에 몰린다. 그곳에서는 Dedekind 에타 함수 $\eta(\tau)=e^{\pi i\tau/12}\prod_{k\ge1}(1-e^{2\pi ik\tau})$의 모듈러 변환식 $\eta(-1/\tau)=\sqrt{-i\tau}\,\eta(\tau)$가 $q=e^{2\pi i\tau}$의 생성 함수를 $1$ 근처에서 $0$ 근처의 값으로 바꾸어 정확히 써 준다. 그 뒤 3장의 Laplace 방법(\cref{thm:laplace})을 적용한다. 자세한 계산은 Andrews\cite{andrews1998partitions}의 5장에 있다. \cref{fig:partitions}에 이 주항을 정확한 $p(s)$로 나눈 비를 그렸다. 비는 $s=100$에서 $1.046$, $400$에서 $1.023$으로 $1$에 다가가고 그 차는 $O(1/\sqrt s)$로 준다. 주항의 지수만이라면 초등적인 논법으로도 얻을 수 있다.
+
+\begin{proposition}
+\label{prop:partition-bound}
+모든 $s\ge1$에서 $\ln p(s)\le\pi\sqrt{2s/3}$이다.
+\end{proposition}
+
+\begin{proof}
+$0<q<1$이면 $p(s)q^s$는 $P(q)=\prod_k(1-q^k)^{-1}=\sum_sp(s)q^s$의 한 항이므로 $p(s)\le q^{-s}P(q)$이다. $-\ln(1-x)=\sum_{m\ge1}x^m/m$으로 전개하고 합의 순서를 바꾸면
+\[
+\ln P(q)=\sum_{k\ge1}\sum_{m\ge1}\frac{q^{km}}m=\sum_{m\ge1}\frac1m\,\frac{q^m}{1-q^m}
+\]
+이다. $1-q^m=(1-q)(1+q+\cdots+q^{m-1})\ge(1-q)\,mq^{m-1}$이므로 $q^m/(1-q^m)\le q/(m(1-q))$이고 $\ln P(q)\le\zeta(2)\,q/(1-q)=\pi^2q/(6(1-q))$이다. $q=e^{-t}$로 두면 $q/(1-q)=1/(e^t-1)\le1/t$이므로 $\ln p(s)\le st+\pi^2/(6t)$이다. 우변을 가장 작게 하는 $t=\pi/\sqrt{6s}$를 넣으면 $\ln p(s)\le2\pi\sqrt{s/6}=\pi\sqrt{2s/3}$이다.
+\end{proof}
+
+이 증명에서 고른 $q=e^{-\pi/\sqrt{6s}}$가 바로 Hardy와 Ramanujan의 원의 반지름이다. 이 한계는 주항에서 분모 $4s\sqrt3$을 뗀 꼴이어서 그만큼 크다.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}
+\begin{axis}[sdplot,xlabel={$s$},ylabel={주항$/p(s)$},xmin=0,xmax=400,ymin=1,ymax=1.5]
+\addplot[black,thick] table[x=s,y=ratio]{figures/07/partitions.dat};
+\addlegendentry{$e^{\pi\sqrt{2s/3}}/(4s\sqrt3)$}
+\end{axis}
+\end{tikzpicture}
+\caption{분할 수 $p(s)$(\cref{alg:factor-step}의 누적합으로 정확히 센 값)에 대한 Hardy--Ramanujan 주항의 비(\code{figures/07/partitions.py}).}
+\label{fig:partitions}
+\end{figure}
+
+\begin{aside}[Euler와 분할]
+1740년 무렵 Philippe Naudé가 Euler에게 편지를 보내 정수를 정해진 개수의 부분으로 나누는 방법이 몇 가지인지 물었다. Euler는 그 답을 무한곱의 전개로 구하는 방법을 고안했고 이 방법으로 서로 다른 부분으로 나눈 분할의 수와 홀수 부분으로 나눈 분할의 수가 같다는 것을 $\prod(1+q^k)=\prod(1-q^{2k})/(1-q^k)=\prod1/(1-q^{2k-1})$라는 한 줄로 보였다. 같은 사실을 대응 관계로 직접 증명하는 것은 훨씬 까다롭다. 오늘날의 생성 함수 방법은 수열을 멱급수에 실어 대수로 셈하는 이 발상에서 출발한다\cite{andrews1998partitions}.
+\end{aside}
+
+
+\section{Gaussian Binomial Coefficients}
+\label{sec:qbinom}
+
+\subsection{Definition and the $q$-Pascal Formula}
+
+정수 $m\ge0$에 대해 $[m]_q=1+q+\cdots+q^{m-1}=(1-q^m)/(1-q)$로 두고 $[m]_q!=[1]_q[2]_q\cdots[m]_q$($[0]_q!=1$)라 하자. $q\to1$이면 $[m]_q\to m$이므로 이것들은 정수와 계승의 $q$-판이다.
+
+\begin{definition}[가우스 이항계수]
+\label{def:qbinom}
+$0\le k\le n$에 대해
+\[
+\qbinom nk=\frac{[n]_q!}{[k]_q!\,[n-k]_q!}=\frac{(1-q^n)(1-q^{n-1})\cdots(1-q^{n-k+1})}{(1-q)(1-q^2)\cdots(1-q^k)}
+\]
+를 \term{가우스 이항계수}{Gaussian binomial coefficient} 또는 $q$-이항계수라 하고 그 밖의 $k$에서는 $0$으로 둔다.
+\end{definition}
+
+정의는 $\mathbb Q(q)$의 유리 함수이지만 실제로는 음이 아닌 정수 계수의 다항식이다. 이 사실은 다음의 $q$-Pascal 공식에서 귀납법으로 바로 나온다.
+
+\begin{proposition}
+\label{prop:qpascal}
+$1\le k\le n$에 대해
+\begin{equation}
+\label{eq:qpascal}
+\qbinom nk=\qbinom{n-1}k+q^{n-k}\qbinom{n-1}{k-1}
+\end{equation}
+이다. 따라서 $\qbinom nk$는 음이 아닌 정수 계수를 갖는 차수 $k(n-k)$의 다항식이고 $q=1$에서 $\binom nk$와 같다.
+\end{proposition}
+
+\begin{proof}
+우변의 두 항을 공통 인수 $[n-1]_q!/([k]_q!\,[n-k]_q!)$로 묶으면
+\[
+\qbinom{n-1}k+q^{n-k}\qbinom{n-1}{k-1}=\frac{[n-1]_q!}{[k]_q!\,[n-k]_q!}\bigl([n-k]_q+q^{n-k}[k]_q\bigr)
+\]
+이다. 괄호 안은 $(1+\cdots+q^{n-k-1})+(q^{n-k}+\cdots+q^{n-1})=[n]_q$이므로 우변은 $\qbinom nk$이다. $\qbinom n0=\qbinom nn=1$에서 시작해 $n$에 대한 귀납법을 쓰면 계수가 음이 아닌 정수라는 것과 차수가 $\max(k(n-1-k),\,(n-k)+(k-1)(n-k))=k(n-k)$라는 것을 얻는다. $q=1$을 넣으면 \cref{eq:pascal}로 돌아간다.
+\end{proof}
+
+괄호 안을 $[k]_q+q^k[n-k]_q=[n]_q$로 묶는 같은 계산으로 짝이 되는 공식을 얻고 정의에서 대칭도 바로 보인다.
+\[
+\qbinom nk=q^k\qbinom{n-1}k+\qbinom{n-1}{k-1},\qquad\qbinom nk=\qbinom n{n-k}
+\]
+
+\subsection{Combinatorial Interpretation}
+
+$\{1,\dots,n\}$의 $k$원소 부분집합 $S=\{s_1<s_2<\cdots<s_k\}$에 대해
+\[
+a(S)=\sum_{i=1}^k(s_i-i)
+\]
+라 하자. $S$를 길이 $n$의 $0$과 $1$의 낱말 $w$로 바꾸어 $s_i$번째 글자만 $1$로 두면 $s_i-i$는 $i$번째 $1$보다 앞에 있는 $0$의 개수이므로 $a(S)$는 $0$이 $1$보다 앞에 오는 쌍 $(0,1)$의 수이다. 또 $s_i-i$들은 $0\le s_1-1\le s_2-2\le\cdots\le s_k-k\le n-k$를 만족하므로 $S$는 부분이 $k$개 이하이고 각 부분이 $n-k$ 이하인 분할(크기 $a(S)$)과 일대일로 대응한다. 그림으로는 $k\times(n-k)$ 상자 안에 들어가는 Young 그림이다(\cref{fig:young}).
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[x=6mm,y=6mm]
+\fill[black!25] (0,1) rectangle (2,2) (0,2) rectangle (3,3);
+\draw[black!30] (0,0) grid (4,3);
+\draw[thick] (0,0) rectangle (4,3);
+\draw[line width=1.6pt] (0,0) -- (0,1) -- (2,1) -- (2,2) -- (3,2) -- (3,3) -- (4,3);
+\node[font=\scriptsize,anchor=east] at (-0.1,1.5) {$k=3$};
+\node[font=\scriptsize,anchor=north] at (2,-0.1) {$n-k=4$};
+\node[font=\scriptsize,align=left,anchor=west] at (4.6,1.5) {$S=\{1,4,6\}$, $n=7$\\낱말 $w=1\,0\,0\,1\,0\,1\,0$: $1$은 위로, $0$은 오른쪽으로\\칠한 칸 $0+2+3=5=a(S)$};
+\end{tikzpicture}
+\caption{$S\subseteq\{1,\dots,n\}$과 $k\times(n-k)$ 상자 안의 격자 경로. 경로 왼쪽 위의 칸 수가 $a(S)$, 곧 $(0,1)$ 쌍의 수이고 칠한 칸들이 Young 그림 $(3,2,0)$이다.}
+\label{fig:young}
+\end{figure}
+
+\begin{theorem}
+\label{thm:qbinom-count}
+\[
+\qbinom nk=\sum_{\substack{S\subseteq\{1,\dots,n\}\\|S|=k}}q^{a(S)}
+\]
+이다. 곧 $[q^u]\qbinom nk$는 $0$이 $1$보다 앞에 오는 쌍이 정확히 $u$개인, $1$이 $k$개 든 길이 $n$의 낱말의 수이다.
+\end{theorem}
+
+\begin{proof}
+우변을 $G(n,k)$라 하자. $G(n,0)=G(n,n)=1$이고 $1\le k<n$일 때 $n\in S$인지로 경우를 나눈다. $n\notin S$이면 $S$는 $\{1,\dots,n-1\}$의 $k$원소 부분집합이고 $a(S)$는 그대로이므로 이런 $S$의 기여는 $G(n-1,k)$이다. $n\in S$이면 $s_k=n$이고 그 항이 $a(S)$에 $n-k$를 보태며 나머지 $S\setminus\{n\}$은 $\{1,\dots,n-1\}$의 $(k-1)$원소 부분집합이므로 기여는 $q^{n-k}G(n-1,k-1)$이다. 따라서 $G$는 \cref{eq:qpascal}과 같은 점화식과 같은 경곗값을 가지므로 $G(n,k)=\qbinom nk$이다.
+\end{proof}
+
+이 정리에서 대칭성 $[q^u]\qbinom nk=[q^{k(n-k)-u}]\qbinom nk$도 곧바로 나온다. 낱말을 거꾸로 읽으면 $1$의 개수는 그대로 $k$이고 $(0,1)$ 쌍과 $(1,0)$ 쌍의 역할이 바뀌는데 두 종류의 쌍은 합쳐서 $k(n-k)$개이기 때문이다. 계수가 가운데까지 증가하다가 감소한다는 단봉성도 성립한다(Sylvester, 1878). 그 증명은 $\mathfrak{sl}_2$의 표현을 쓰는 것이 가장 짧고 Stanley\cite{stanley2012ec1}에 있다. 이 장의 알고리즘은 단봉성을 쓰지 않는다.
+
+\subsection{The Exact Distribution of the Mann--Whitney Statistic}
+
+크기 $c$인 표본 $x_1,\dots,x_c$와 크기 $d=N-c$인 표본 $y_1,\dots,y_d$를 합쳐 정렬하고 $x$들이 받은 순위를 $r_1<\cdots<r_c$라 하자. 동점이 없을 때
+\[
+U=\#\{(i,j):x_i>y_j\}=\sum_{i=1}^cr_i-\frac{c(c+1)}2
+\]
+를 \term{Mann--Whitney 통계량}{Mann--Whitney statistic}이라 한다\cite{mannwhitney1947}. 두 식이 같은 것은 $r_i-i$가 $i$번째로 작은 $x$보다 작은 $y$의 개수이기 때문이다. 순위합에서 상수를 뺀 꼴이므로 Wilcoxon의 순위합 검정\cite{wilcoxon1945}과 같은 검정이다. 순위의 집합 $S=\{r_1,\dots,r_c\}$에 대해 $U=a(S)$이다.
+
+두 표본이 같은 연속 분포에서 독립으로 나왔다는 귀무가설 아래에서는 $N$개 값의 순서를 이루는 $N!$가지 배치가 모두 같은 확률이다. 그러면 $x$들이 차지하는 자리의 집합 $S$는 $\binom Nc$가지가 모두 같은 확률이고 \cref{thm:qbinom-count}에서 곧바로 다음을 얻는다.
+
+\begin{corollary}
+\label{cor:mwu}
+귀무가설 아래에서 $U$의 확률 생성 함수는
+\[
+E[q^U]=\qbinom Nc\Bigm/\binom Nc
+\]
+이다. 곧 $P(U=u)=[q^u]\qbinom Nc\big/\binom Nc$이다.
+\end{corollary}
+
+이 장을 연 예는 $N=7$, $c=3$, $S=\{1,2,4\}$였으므로 $U=0+0+1=1$이다. $\qbinom73$의 계수는 \cref{tab:qbinom73}의 마지막 줄과 같고 합이 $\binom73=35$이므로 $P(U\le1)=(1+1)/35=2/35$로 처음의 계산이 확인된다. 분포가 $cd/2$를 중심으로 대칭이므로 위쪽 꼬리는 $P(U\ge u)=P(U\le cd-u)$로 아래쪽 꼬리로 바꿀 수 있다. 그러니 언제나 관측값에 가까운 쪽, 길이가 $cd/2$ 이하인 아래쪽 꼬리 하나만 세면 된다. \cref{fig:mwu-dist}는 $N=20$, $c=8$의 분포이다.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}
+\begin{axis}[sdplot,xlabel={$u$},ylabel={$P(U=u)$},xmin=-1,xmax=97,ymin=0,ymax=0.035,scaled y ticks=false,yticklabel style={/pgf/number format/fixed,/pgf/number format/precision=2}]
+\addplot[black,only marks,mark=*,mark size=0.9pt] table[x=k,y=p]{figures/07/dists_u.dat};
+\addlegendentry{정확}
+\addplot[black!50,thick,domain=0:96,samples=200] {exp(-(x-48)^2/(2*168))/sqrt(2*pi*168)};
+\addlegendentry{정규 밀도}
+\end{axis}
+\end{tikzpicture}
+\caption{$N=20$, $c=8$의 Mann--Whitney $U$의 정확한 분포(\cref{cor:mwu})와 평균 $48$, 분산 $168$의 정규 밀도(\code{figures/07/windows.py}).}
+\label{fig:mwu-dist}
+\end{figure}
+
+Mann과 Whitney는 원래 논문에서 이 분포를 확률의 점화식으로 계산했다. 가장 큰 관측값이 $x$일 확률은 $c/N$이고 그러면 그 $x$가 모든 $y$보다 크므로 $U$에 $d$가 보태진 뒤 나머지는 크기 $(c-1,d)$의 같은 문제이다. 가장 큰 값이 $y$이면 $U$에 보태지는 것이 없다. 크기 $(c,d)$에서 $U=u$일 확률을 $f(c,d,u)$로 쓰면
+\[
+f(c,d,u)=\frac c{c+d}\,f(c-1,d,u-d)+\frac d{c+d}\,f(c,d-1,u)
+\]
+이다\cite{mannwhitney1947}. 우변이 두 확률의 볼록결합이라 뺄셈이 없다는 점은 뒤에서 다시 중요해진다. 다만 이 점화식은 $(c,d,u)$의 세 첨자 전체에 걸친 표를 채워야 하므로 한 표본이 작을 때에는 다음의 곱 공식이 훨씬 빠르다.
+
+\subsection{Coefficients from the Product Formula}
+
+\cref{def:qbinom}의 둘째 꼴에서 이웃한 두 계수 사이의 관계
+\begin{equation}
+\label{eq:qbinom-product}
+\qbinom nj=\qbinom n{j-1}\cdot\frac{1-q^{n-j+1}}{1-q^j}
+\end{equation}
+를 얻는다. 이 관계대로 $P=1$에서 출발해 $j=1,\dots,c$에 대해 \cref{alg:factor-step}을 $a=N-j+1$로 되풀이하면 $P=\qbinom Nc$가 된다(\cref{alg:mwu}). 꼬리의 끝 $b$에서 잘라도 된다는 것은 \cref{prop:fps-truncate}가 보증하고 일의 양은 $c(b+1)$번 남짓의 정수 덧셈과 뺄셈이다. \cref{tab:qbinom73}은 $N=7$, $c=3$에서 이 과정을 따라간다. $(1-q^a)$를 곱한 직후의 배열에는 음수가 나타나지만 이어지는 나눗셈 뒤에는 다시 $\qbinom7j$의 음이 아닌 계수가 된다.
+
+\begin{algorithm}[htbp]
+\begin{algorithmic}[1]
+\Require $N$, $c\le N-c$ (작은 쪽 표본), 꼬리의 끝 $b\le c(N-c)/2$, $\binom Nc<2^{124}$
+\Ensure $\#\{U\le b\}$
+\State $P[0..b]\gets(1,0,\dots,0)$ ($128$비트 부호 있는 정수)
+\For{$j=1,\dots,c$} \cref{alg:factor-step}$(P,\ a=N-j+1,\ j)$ \Comment{$P=\qbinom Nj\bmod q^{b+1}$}
+\EndFor
+\State \Return $\sum_{v\le b}P[v]$ \Comment{p값은 이것을 $\binom Nc$(\cref{alg:binom-gcd})로 나눈 몫}
+\end{algorithmic}
+\caption{Mann--Whitney의 정확한 꼬리 (stardust \code{rank\_exact.hpp}의 \code{mwu\_lower})}
+\label{alg:mwu}
+\end{algorithm}
+
+\begin{table}[htbp]
+\begin{sdtable}{colspec={lccccccccccccc}, row{1}={font=\small\bfseries}}
+\toprule
+단계 & 0 & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 & 9 & 10 & 11 & 12 \\
+\midrule
+$\times(1-q^7)$ & 1 & 0 & 0 & 0 & 0 & 0 & 0 & $-1$ & 0 & 0 & 0 & 0 & 0 \\
+$\div(1-q)$ & 1 & 1 & 1 & 1 & 1 & 1 & 1 & 0 & 0 & 0 & 0 & 0 & 0 \\
+$\times(1-q^6)$ & 1 & 1 & 1 & 1 & 1 & 1 & 0 & $-1$ & $-1$ & $-1$ & $-1$ & $-1$ & $-1$ \\
+$\div(1-q^2)$ & 1 & 1 & 2 & 2 & 3 & 3 & 3 & 2 & 2 & 1 & 1 & 0 & 0 \\
+$\times(1-q^5)$ & 1 & 1 & 2 & 2 & 3 & 2 & 2 & 0 & 0 & $-2$ & $-2$ & $-3$ & $-2$ \\
+$\div(1-q^3)$ & 1 & 1 & 2 & 3 & 4 & 4 & 5 & 4 & 4 & 3 & 2 & 1 & 1 \\
+\bottomrule
+\end{sdtable}
+\caption{곱 공식 \cref{eq:qbinom-product}로 $\qbinom73$을 만드는 과정. 열의 머리는 $q$의 차수이고 둘째·넷째·마지막 줄은 각각 $\qbinom71$, $\qbinom72$, $\qbinom73$의 계수이다. 마지막 줄의 합은 $\binom73=35$이다.}
+\label{tab:qbinom73}
+\end{table}
+
+정확한 정수로 계산할 때는 중간값의 크기를 따져 두어야 한다. 나눗셈의 누적합을 아래에서부터 진행하므로 갱신이 끝난 칸은 이미 $\qbinom Nj$의 계수이다. 갱신 전의 칸은 $\qbinom N{j-1}(1-q^a)$의 계수로서 절댓값이 $\qbinom N{j-1}$의 가장 큰 계수 이하이다. 계수들은 모두 $\binom Nj$나 $\binom N{j-1}$ 이하이므로 $c$를 작은 쪽 표본의 크기로 잡으면 모든 중간값과 꼬리의 합이 $\binom Nc$ 이하이다. 부호 있는 $128$비트 정수는 $2^{127}$ 미만을 담으므로 $\binom Nc<2^{127}$이면 계산 전체가 정확하다. stardust는 \cref{sec:counting}에서 말한 \code{lgamma} 판정의 여유를 두어 $2^{124}$를 경계로 쓴다. 이 범위는 꽤 넓어서 한 표본이 $8$개일 때 $\binom N8<2^{124}$인 $N$은 $174447$까지이므로 다른 표본이 $17$만 개를 넘어도 정확한 정수로 셀 수 있다. 그 너머에서는 $(1-q^a)$를 곱하는 단계의 뺄셈이 큰 계수끼리의 차로 작은 계수를 만들어 소거를 일으키므로 곱 공식을 부동소수점으로 옮길 수 없다. 이때는 동점이 있는 경우와 함께 \cref{sec:perm-ties}의 동적 계획으로 넘어간다. 이 동적 계획은 Mann--Whitney의 점화식처럼 뺄셈 없이 양수만 더하므로 \cref{lem:positive-accum}을 그대로 쓸 수 있다. 대신 일이 늘어난다. 곱 공식의 일은 꼬리의 길이에 비례하는 $c(b+1)$이지만 동적 계획은 분포 전체를 만들어서 일이 대략 $Nc\,s_{\max}$($s_{\max}=c(2N-c-1)/2$)이다(\cref{tab:work}).
+
+\subsection{The $q$-Binomial Theorem}
+
+이항정리의 $q$-판은 다음과 같다.
+
+\begin{theorem}[$q$-이항정리]
+\label{thm:qbinomial-theorem}
+\[
+\prod_{i=0}^{n-1}\bigl(1+q^it\bigr)=\sum_{k=0}^nq^{k(k-1)/2}\qbinom nk\,t^k.
+\]
+\end{theorem}
+
+\begin{proof}
+좌변을 전개하면 각 인수에서 $1$과 $q^it$ 가운데 하나를 고르므로 $q^it$를 고른 첨자들의 집합 $T=\{t_1<\cdots<t_k\}\subseteq\{0,\dots,n-1\}$마다 항 $q^{t_1+\cdots+t_k}t^k$가 하나씩 나온다. $S=\{t_1+1,\dots,t_k+1\}$로 두면 $\sum_it_i=\sum_i(s_i-i)+\sum_i(i-1)=a(S)+k(k-1)/2$이다. 그러므로 $t^k$의 계수는 $q^{k(k-1)/2}\sum_{|S|=k}q^{a(S)}$이고 \cref{thm:qbinom-count}에서 이것은 $q^{k(k-1)/2}\qbinom nk$이다.
+\end{proof}
+
+$t=q$를 넣으면 $\prod_{i=1}^n(1+q^i)=\sum_kq^{k(k+1)/2}\qbinom nk$를 얻는다. 좌변은 $\{1,\dots,n\}$의 부분집합을 원소의 합으로 센 생성 함수이고 우변은 같은 부분집합을 원소의 개수 $k$별로 나누어 센 것이다. 다음 절의 부호 순위 통계량과 Mann--Whitney 통계량은 이렇게 한 뿌리에서 나온다.
+
+같은 생각으로 다른 순위 점수도 다룰 수 있다. 척도의 차이를 보는 Ansari--Bradley 검정\cite{ansari1960}은 합친 표본에서 순위 $r$에 점수 $\min(r,N+1-r)$을 주고 한 표본의 점수합을 통계량으로 쓴다. $N=2k$이면 점수는 $1,\dots,k$가 두 번씩 나타난다. 크기 $c$인 표본이 첫째 사본에서 $j$개, 둘째 사본에서 $c-j$개를 차지한다면 한 사본 안에서 $j$개를 고른 점수합은 $j(j+1)/2$에 $\qbinom kj$를 따르는 양을 더한 것이다(\cref{thm:qbinom-count}). 따라서 점수합의 생성 함수는
+\[
+\sum_jq^{j(j+1)/2+(c-j)(c-j+1)/2}\qbinom kj\qbinom k{c-j}
+\]
+이다. $N=2k+1$이면 가운데 점수 $k+1$이 하나 더 있고 그것을 고르면 나머지 $c-1$개를 두 사본에서 고르므로
+\[
+q^{k+1}\sum_jq^{j(j+1)/2+(c-1-j)(c-j)/2}\qbinom kj\qbinom k{c-1-j}
+\]
+가 더해진다. stardust의 \code{AnsariCounts}(\cref{alg:ansari})는 $j=0,\dots,k$의 $\qbinom kj$를 \cref{alg:factor-step}을 이어 가며 한 번씩만 만들고 각각의 누적합을 함께 둔다. 그러면 꼬리 $\#\{\text{점수합}\le b\}$는 $j$마다 한 계수열과 다른 계수열의 누적합을 곱해 더한 이중합으로 나온다. 계수표는 $k$에만 의존하므로 같은 $k$의 호출 사이에 저장해 두고 다시 쓴다.
+
+\begin{algorithm}[htbp]
+\begin{algorithmic}[1]
+\Require $N=2k$ 또는 $2k+1$, 한 표본의 크기 $c$, 꼬리의 끝 $b$, $\binom Nc<2^{124}$
+\Ensure $\#\{\text{점수합}\le b\}$ ($128$비트 정수)
+\State $P[0..\lfloor k^2/4\rfloor]\gets(1,0,\dots,0)$ \Comment{$\qbinom kj$의 차수 $j(k-j)$는 $k^2/4$ 이하}
+\For{$j=0,\dots,k$} \Comment{$k$마다 한 번 만들어 저장한다}
+  \State \textbf{if} $j>0$ \textbf{then} \cref{alg:factor-step}$(P,\ a=k-j+1,\ j)$
+  \State $A_j\gets P[0..j(k-j)]$; $\mathit{cum}_j\gets A_j$의 누적합
+\EndFor
+\Function{Even}{$c',b'$} \Comment{점수 $1,\dots,k$의 두 사본에서 $c'$개}
+  \State $s\gets0$
+  \For{$j=\max(0,c'-k),\dots,\min(c',k)$}
+    \State $\beta\gets j(j+1)/2+(c'-j)(c'-j+1)/2$
+    \For{$v=0,\dots,j(k-j)$ ($b'-\beta-v\ge0$인 동안)}
+      \State $s\gets s+A_j[v]\cdot\mathit{cum}_{c'-j}[\min(b'-\beta-v,\ (c'-j)(k-c'+j))]$
+    \EndFor
+  \EndFor
+  \State \Return $s$
+\EndFunction
+\State \Return \Call{Even}{$c,b$} $+$ ($N$이 홀수이면) \Call{Even}{$c-1,\ b-k-1$}
+\end{algorithmic}
+\caption{Ansari--Bradley 점수합의 꼬리 (stardust \code{AnsariCounts})}
+\label{alg:ansari}
+\end{algorithm}
+
+계수표를 만드는 일은 $k\cdot k^2/4$이고 꼬리 하나는 $j$와 $v$의 이중 반복으로 $(k+1)k^2/4$ 정도이다. stardust는 이를 $(k+1)^3$으로 어림해 일의 상한과 견준다. 곱 $A_j[v]\cdot\mathit{cum}_{c'-j}[\cdot]$은 점수합이 $b$ 이하인 선택의 일부를 센 수이므로 $\binom Nc$를 넘지 않고 합도 마찬가지여서 $128$비트 안에서 정확하다.
+
+\section{Subset Sums}
+\label{sec:signed-rank}
+
+짝지은 관측 $(x_i,y_i)$의 차 $d_i=x_i-y_i$가 $0$이 아닌 $n$개라 하고 $|d_i|$들의 순위를 매겨 차가 양수인 것들의 순위만 더한 값
+\[
+T^+=\sum_{i:\,d_i>0}\operatorname{rank}|d_i|
+\]
+를 \term{Wilcoxon 부호 순위 통계량}{Wilcoxon signed-rank statistic}이라 한다\cite{wilcoxon1945}. 차의 분포가 $0$에 대해 대칭이라는 귀무가설 아래에서는 각 차의 부호가 크기와 독립이고 반반의 확률로 양과 음이므로 순위 $1,\dots,n$은 저마다 독립적으로 반의 확률로 합에 들어간다. 따라서
+\begin{equation}
+\label{eq:signed-rank-gf}
+E[q^{T^+}]=\prod_{i=1}^n\frac{1+q^i}2
+\end{equation}
+이고 $2^nP(T^+=s)$는 합이 $s$인 $\{1,\dots,n\}$의 부분집합의 수이다. $n=5$이면 $s=0,1,\dots,15$에 대해 이 수는
+\[
+1,1,1,2,2,3,3,3,3,3,3,2,2,1,1,1
+\]
+이고 합은 $2^5=32$이다. $n=10$에서 $P(T^+\le8)=25/1024\approx0.0244$인데 열 쌍 가운데 차가 양수인 쌍의 순위합이 $8$ 이하일 확률이다(\cref{fig:signed-dist}).
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}
+\begin{axis}[sdplot,xlabel={$s$},ylabel={$P(T^+=s)$},xmin=-1,xmax=56,ymin=0,ymax=0.05,ybar,bar width=1.5pt,scaled y ticks=false,yticklabel style={/pgf/number format/fixed,/pgf/number format/precision=2}]
+\addplot[black,fill=black!40] table[x=k,y=p]{figures/07/dists_t.dat};
+\addlegendentry{$n=10$}
+\end{axis}
+\end{tikzpicture}
+\caption{$n=10$의 Wilcoxon 부호 순위 통계량의 정확한 분포(\code{figures/07/windows.py}).}
+\label{fig:signed-dist}
+\end{figure}
+
+\cref{eq:signed-rank-gf}의 전개는 전산학에서 \term{부분집합 합}{subset sum} 문제라 부르는 것의 세기 판이고 동적 계획으로 푼다. 계수 배열을 $C[0]=1$, 나머지 $0$으로 두고 인수 $(1+q^a)$를 하나씩 곱하면 되는데 곱셈은 $C[s]\gets C[s]+C[s-a]$이다. 제자리에서 하려면 $s$를 위에서부터 내려와야 한다. 아래에서부터 올라가면 이미 $q^a$가 곱해진 값을 다시 써서 원소 $a$를 두 번 넣는 셈이 되기 때문이다. 이 내려가는 순서는 각 원소를 한 번만 쓰는 0-1 배낭 문제의 표준 기법과 같다.
+
+\begin{algorithm}[htbp]
+\begin{algorithmic}[1]
+\Require 양의 정수 점수 $a_1,\dots,a_n$
+\Ensure $C[s]=\#\{I\subseteq\{1,\dots,n\}:\sum_{i\in I}a_i=s\}$, $s=0,\dots,\sum_ia_i$
+\State $C[0]\gets1$, 나머지 $C[s]\gets0$; $\mathit{top}\gets0$
+\For{$i\gets1$ \textbf{to} $n$}
+  \State $\mathit{top}\gets\mathit{top}+a_i$
+  \For{$s\gets\mathit{top}$ \textbf{downto} $a_i$} \Comment{내려가야 $a_i$를 한 번만 쓴다}
+    \State $C[s]\gets C[s]+C[s-a_i]$
+  \EndFor
+\EndFor
+\end{algorithmic}
+\caption{부분집합 합의 개수 (stardust \code{rank\_exact.hpp}의 \code{signed\_rank\_counts})}
+\label{alg:subset-sum}
+\end{algorithm}
+
+점수가 $1,\dots,n$이면 합의 범위가 $n(n+1)/2$이므로 일은 $O(n^3)$이다. 개수의 합이 $2^n$이므로 stardust는 $n\le124$이면 \cref{alg:subset-sum}으로 분포 전체를 $128$비트 정수로 센다. 그보다 큰 $n$에서는 개수 대신 확률을 쌓는다. 곱하는 인수가 $(1+q^a)/2$이므로 갱신은 $x(s)\gets(x(s)+x(s-a))/2$가 된다. 이진 부동소수점에서 $2$로 나누는 것은 아래로 넘치지 않는 한 정확하고 두 양수의 합은 상대오차 하나만 보태므로 $n$단계 뒤의 상대오차는 단위 반올림의 $n$배 정도로 묶인다(\cref{lem:positive-accum}).
+
+대칭을 쓰면 일을 반으로 줄일 수 있다.
+
+\begin{lemma}
+\label{lem:subset-half}
+양의 정수 점수 $a_1,\dots,a_i$(무엇이든 좋다)까지 곱한 분포 $x_i(s)$는 $\sigma_i=a_1+\cdots+a_i$에 대해 $x_i(s)=x_i(\sigma_i-s)$를 만족한다. 따라서 다음 단계의 $x_{i+1}(s)=(x_i(s)+x_i(s-a_{i+1}))/2$를 $s\le H_{i+1}=\min(L,\lfloor\sigma_{i+1}/2\rfloor)$에서 계산할 때 필요한 값 가운데 $\lfloor\sigma_i/2\rfloor$ 위에 있는 것은 $x_i(\sigma_i-s)$로 읽을 수 있다. $\sigma_i-s<0$이면 그 값은 $0$이다.
+\end{lemma}
+
+\begin{proof}
+고른 집합 $I$와 그 여집합 $\{1,\dots,i\}\setminus I$의 대응이 합 $s$를 $\sigma_i-s$로 보내는 전단사이고 두 집합은 같은 확률 $2^{-i}$를 갖는다. 이 대응은 점수의 값을 보지 않으므로 점수가 무엇이든 성립한다. $s>\sigma_i$인 합은 나올 수 없어 $x_i(s)=0$이고 이것이 거울 첨자 $\sigma_i-s$가 음수인 경우이다.
+\end{proof}
+
+\begin{algorithm}[htbp]
+\begin{algorithmic}[1]
+\Require 점수 $a_1,\dots,a_n$, 꼬리의 끝 $L\le\sum a_i/2$
+\Ensure $P(T=s)$, $s=0,\dots,L$ (double-double)
+\State $x[0]\gets1$; $\sigma\gets0$; $H\gets0$
+\For{$i=1,\dots,n$}
+  \State $\sigma'\gets\sigma+a_i$; $H'\gets\min(L,\lfloor\sigma'/2\rfloor)$
+  \For{$s=H'$ \textbf{downto} $0$} \Comment{위에서 아래로: 입력은 같거나 아래에}
+    \State $m\gets s$ ($s\le H$), 아니면 $\sigma-s$; $m<0$이면 $x[m]=0$으로 본다 \Comment{\cref{lem:subset-half}의 거울}
+    \State $x[s]\gets(x[m]+x[s-a_i])/2$ \Comment{양수끼리, $1/2$은 정확, 음수 첨자는 $0$}
+  \EndFor
+  \State $\sigma\gets\sigma'$; $H\gets H'$
+\EndFor
+\end{algorithmic}
+\caption{부호 순위 분포의 아래쪽 반 (stardust \code{rank\_exact.hpp}의 \code{signed\_rank\_lower})}
+\label{alg:signed-half}
+\end{algorithm}
+
+\cref{alg:signed-half}의 일은 $n\min(L,\sum a/2)$으로 \cref{alg:subset-sum}의 절반 아래이고 꼬리만 계산하면 더 준다. stardust의 구현에는 세 가지 세부가 더 있다. 첫째, double-double의 높은 부분과 낮은 부분을 서로 다른 배열에 두고(배열의 구조) NEON 레지스터 하나에 이웃한 두 칸의 높은 부분이나 낮은 부분을 담아 네 칸씩 처리한다. 두 양수를 더할 때는 높은 부분의 오차 없는 합(TwoSum)과 낮은 부분들의 합을 한 번 정규화하면 충분하다(\cref{lem:add-pos}). 둘째, 범위가 아주 길면(위 반이 $2^{15}$칸 이상) 한 단계를 $2^{13}$칸 조각으로 나누어 스레드 풀에서 돌린다. 이때는 제자리가 아니라 다른 배열에 쓴다. 조각마다 칸별 연산이 같으므로 스레드 수와 상관없이 같은 비트가 나온다. 셋째, 동점이 있어도 알고리즘은 같다. 점수가 두 배 한 중간 순위(\cref{sec:perm-ties})라는 정수가 되고 stardust는 이 정수들을 최대공약수로 나눈 뒤 같은 커널에 넣는다. \cref{lem:subset-half}는 점수가 무엇이든 성립하므로 부호 순위의 분포는 동점이 있어도 대칭이고 가까운 쪽 꼬리 하나만 세면 된다. 큰 점수가 먼저 오면 거울 첨자 $\sigma-s$가 음수가 될 수 있는데 그 칸은 $0$으로 읽는다. 대칭은 두 표본에서 $c$개를 고르는 통계량에서만 깨진다.
+
+\section{Inversions}
+\label{sec:inversions}
+
+\subsection{Inversions of Permutations and Mahonian Numbers}
+
+$\{1,\dots,n\}$의 순열 $\pi=(\pi_1,\dots,\pi_n)$에서 $i<j$이면서 $\pi_i>\pi_j$인 쌍을 \term{역순}{inversion}이라 하고 그 수를 $\operatorname{inv}\pi$로 쓴다. 쌍을 이룬 관측 $(x_i,y_i)$를 $x$의 순서로 정렬하면 $y$의 순위가 순열 하나를 이루는데 그 역순의 수가 $x$와 $y$의 순서가 엇갈리는 \textbf{불일치 쌍}의 수 $K$이다. 동점이 없으면 Kendall의 순위상관계수는 $\tau=1-4K/(n(n-1))$이다\cite{kendall1938}. $x$와 $y$가 독립인 연속 확률변수라는 귀무가설 아래에서는 $n!$개의 순열이 모두 같은 확률이므로 $\tau$의 분포를 구하려면 역순의 수의 분포를 구하면 된다.
+
+\begin{theorem}
+\label{thm:mahonian}
+\[
+\sum_{\pi\in S_n}q^{\operatorname{inv}\pi}=\prod_{j=1}^n[j]_q=[n]_q!.
+\]
+\end{theorem}
+
+\begin{proof}
+순열 $\pi$에 대해 $c_j=\#\{i<j:\pi_i>\pi_j\}$라 하면 $0\le c_j\le j-1$이고 $\operatorname{inv}\pi=\sum_jc_j$이다. 거꾸로 $0\le c_j\le j-1$인 수열 $(c_1,\dots,c_n)$이 주어지면 $\pi$를 오른쪽 끝부터 하나로 정할 수 있다. 위치 $n$의 값 $\pi_n$보다 왼쪽에 있으면서 큰 값이 $c_n$개이고 $\pi_n$보다 큰 값은 모두 $\pi_n$의 왼쪽에 있으므로 $\pi_n$은 전체에서 $(c_n+1)$번째로 큰 값이다. 그 값을 지우면 남은 $n-1$개의 값과 위치에 같은 논리가 적용되어 위치 $j$의 값은 남은 $j$개 가운데 $(c_j+1)$번째로 큰 값이다. $c_j\le j-1$이므로 이 선택은 언제나 가능하다. 따라서 $\pi\mapsto(c_1,\dots,c_n)$은 $S_n$에서 $\prod_j\{0,\dots,j-1\}$로 가는 전단사이고 생성 함수는 $\prod_j(1+q+\cdots+q^{j-1})$이다.
+\end{proof}
+
+증명의 수열 $(c_j)$를 \term{Lehmer 부호}{Lehmer code}라 하고 계수 $M_n(k)=[q^k][n]_q!$는 \term{Mahonian 수}{Mahonian numbers}라 부른다. 이름은 MacMahon에게서 왔는데 그는 역순의 수와 major index라는 다른 통계량이 같은 분포를 따른다는 것을 보였다\cite{macmahon1915}. 생성 함수 자체는 그보다 훨씬 앞서 Rodrigues가 1839년에 얻었다\cite{knuth1998taocp3}. $n=4$와 $n=5$의 Mahonian 수는
+\[
+1,3,5,6,5,3,1\qquad\text{와}\qquad1,4,9,15,20,22,20,15,9,4,1
+\]
+이고 합은 각각 $4!=24$와 $5!=120$이다. \cref{fig:mahonian-dist}에 $n=8$의 분포를 그렸다.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}
+\begin{axis}[sdplot,xlabel={$k$},ylabel={$P(K=k)$},xmin=-1,xmax=29,ymin=0,ymax=0.08,ybar,bar width=2.5pt,scaled y ticks=false,yticklabel style={/pgf/number format/fixed,/pgf/number format/precision=2}]
+\addplot[black,fill=black!40] table[x=k,y=p]{figures/07/dists_k.dat};
+\addlegendentry{$n=8$}
+\end{axis}
+\end{tikzpicture}
+\caption{$n=8$의 무작위 순열의 역순의 수의 분포(Mahonian 수$/8!$; \code{figures/07/windows.py}).}
+\label{fig:mahonian-dist}
+\end{figure}
+
+\subsection{Sliding-Window Sums}
+
+\cref{thm:mahonian}에서 $[j]_q=(1-q^j)/(1-q)$를 하나씩 곱하는 것이 점화식
+\[
+M_j(k)=\sum_{i=0}^{j-1}M_{j-1}(k-i)
+\]
+이다. 우변은 길이 $j$의 \term{미끄러지는 창}{sliding window} 위의 합이다. 정수라면 $k$를 하나씩 늘리며 들어오는 항을 더하고 나가는 항을 빼는 누적값 하나로 단계마다 $O(1)$에 계산한다. \cref{alg:factor-step}에서 $(1-q^j)$를 곱한 뒤 $(1-q)$로 나누는 것과 같은 계산이다. 꼬리 $k\le b$만 필요하므로 일은 $n(b+1)$이다. 누적값은 들어오는 항을 먼저 더하고 나가는 항을 빼므로 음수가 되지 않고 $2\cdot n!$을 넘지 않는다. stardust는 $n!<2^{127}$을 경계로 잡아 부호 없는 $128$비트 정수로 센다(\cref{alg:int-window}). $33!/2^{127}\approx0.051$이고 $34!/2^{127}\approx1.74$이므로 정수로 셀 수 있는 가장 큰 $n$은 $33$이다.
+
+\begin{algorithm}[htbp]
+\begin{algorithmic}[1]
+\Require $n\le33$, 꼬리의 끝 $b$
+\Ensure $M_n(k)$, $k=0,\dots,b$ ($128$비트 부호 없는 정수)
+\State $m[0..b]\gets(1,0,\dots,0)$
+\For{$j=2,\dots,n$}
+  \State $\mathit{run}\gets0$
+  \For{$k=0,\dots,b$}
+    \State $\mathit{run}\gets\mathit{run}+m[k]$; \textbf{if} $k\ge j$ \textbf{then} $\mathit{run}\gets\mathit{run}-m[k-j]$
+    \State $m'[k]\gets\mathit{run}$ \Comment{창 $[k-j+1,k]$의 합}
+  \EndFor
+  \State $m\gets m'$
+\EndFor
+\end{algorithmic}
+\caption{정수의 미끄러지는 창 (stardust \code{kendall.hpp}의 \code{exact\_tail\_int})}
+\label{alg:int-window}
+\end{algorithm}
+
+더 큰 $n$에서는 확률 $g_j(k)=M_j(k)/j!$를 직접 쌓는다. 위 점화식을 $j!$로 나누면
+\[
+g_j(k)=\frac1j\sum_{i=0}^{j-1}g_{j-1}(k-i)
+\]
+이다. $j$번째 원소가 들어갈 자리가 $j$곳 가운데 균등하게 정해지면서 역순을 $0$개에서 $j-1$개까지 보탠다는 확률적 해석 그대로이다. 그런데 부동소수점에서 미끄러지는 창의 누적값을 쓰면 문제가 생긴다. 누적값은 사실상 두 누적합의 차 $\sum_{i\le k}g-\sum_{i\le k-j}g$이고 반올림 오차는 창의 합이 아니라 누적합의 크기에 비례해 쌓인다. 창의 합이 누적합보다 훨씬 작은 곳에서는 상대 정확도를 잃는다. 뺄셈에서 생기는 이런 소거는 11장에서 자세히 다룬다. 6장의 말로 하면 누적값의 갱신 $r_k=r_{k-1}+g(k)-g(k-j)$는 계수가 $1$인 일계 점화식이라 한 번 생긴 오차가 줄지 않고 실려 간다. 더구나 창의 합이 누적값보다 훨씬 작은 꼬리에서는 \cref{prop:first-order}의 거꾸로 가는 방향처럼 큰 수들의 차로 작은 수를 만드는 꼴이 된다.
+
+뺄셈 없이 창의 합을 구하는 방법이 있다. 첨자를 길이 $j$의 블록 $[0,j)$, $[j,2j)$, $\dots$로 나누고 블록마다 앞에서부터의 누적합 $\mathit{pre}$와 뒤에서부터의 누적합 $\mathit{suf}$를 만들어 두자. 길이가 $j$인 창 $[k-j+1,k]$는 블록 경계와 일치하거나 정확히 이웃한 두 블록에 걸친다. 앞의 경우 창의 합은 $\mathit{pre}[k]$이다. 뒤의 경우는 창의 왼쪽 끝이 든 블록의 뒷부분과 오른쪽 끝이 든 블록의 앞부분의 합이므로 $\mathit{suf}[k-j+1]+\mathit{pre}[k]$이다. 블록 누적합을 만드는 데 칸마다 덧셈 두 번, 창 하나에 덧셈 한 번이면 되고 모든 덧셈은 양수끼리이다. 이 기법은 영상 처리에서 쓰는 van Herk와 Gil--Werman의 알고리즘과 같은 구조이다\cite{vanherk1992,gil1993}. 그 알고리즘은 창 위의 최댓값과 최솟값을 원소마다 상수 번의 비교로 구하는데 최댓값에는 역연산이 없어서 같은 고안이 필요했다. \cref{fig:block-window}에 한 걸음을 그렸다.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[x=7mm,y=7mm,every node/.style={font=\scriptsize}]
+\fill[black!20] (6,0) rectangle (8,1);
+\fill[black!45] (8,0) rectangle (10,1);
+\foreach \i in {0,...,11} {\draw (\i,0) rectangle (\i+1,1); \node at (\i+0.5,-0.35) {$\i$};}
+\draw[line width=1.4pt] (0,0) rectangle (4,1) (4,0) rectangle (8,1) (8,0) rectangle (12,1);
+\draw[decorate,decoration={brace,amplitude=4pt}] (6,1.15) -- (10,1.15) node[midway,above=4pt] {창 $[6,9]$};
+\node[anchor=west,align=left] at (12.4,0.5) {연한 칸: $\mathit{suf}[6]$\\진한 칸: $\mathit{pre}[9]$};
+\end{tikzpicture}
+\caption{블록 창(\cref{alg:block-window})의 한 걸음. 길이 $j=4$의 블록(굵은 테두리)마다 앞에서부터의 누적합 $\mathit{pre}$와 뒤에서부터의 누적합 $\mathit{suf}$를 만들어 두면 두 블록에 걸친 창 $[6,9]$의 합은 $\mathit{suf}[6]+\mathit{pre}[9]$이다. 블록 경계에서 시작하는 창 $[4,7]$의 합은 $\mathit{pre}[7]$ 하나이다.}
+\label{fig:block-window}
+\end{figure}
+
+\begin{algorithm}[htbp]
+\begin{algorithmic}[1]
+\Require 확률 배열 $g[0..b]$ ($g_{j-1}$), 창의 길이 $j$
+\Ensure $g[k]\gets(1/j)\sum_{i=0}^{j-1}g[k-i]$, $k=0,\dots,b$ ($g_j$, 음수 첨자는 $0$; 척도 지수 $e$는 처음에 $0$이고 걸음 사이에 이어진다)
+\For{블록의 시작 $s\gets0,j,2j,\dots\le b$} \Comment{블록 $[s,\min(b,s+j-1)]$}
+  \State $\mathit{pre}[s..e]\gets$ 앞에서부터의 누적합, $\mathit{suf}[s..e]\gets$ 뒤에서부터의 누적합
+\EndFor
+\For{$k\gets0$ \textbf{to} $b$}
+  \State $l\gets k-j+1$ \Comment{창 $[l,k]$}
+  \If{$l>0$ \textbf{and} $l\bmod j\ne0$}
+    \State $w\gets\mathit{suf}[l]+\mathit{pre}[k]$ \Comment{이웃한 두 블록에 걸친 창}
+  \Else
+    \State $w\gets\mathit{pre}[k]$
+  \EndIf
+  \State $g[k]\gets w/j$ \Comment{$j$가 $2$의 거듭제곱이면 곱하기로 정확}
+\EndFor
+\If{$0<\max_kg[k]<2^{-600}$} $g\gets2^{600}g$; $e\gets e+600$ \Comment{척도: 지수만 바뀌어 정확, 결과는 $2^{-e}g$}
+\EndIf
+\end{algorithmic}
+\caption{뺄셈 없는 창의 합으로 Mahonian 확률을 한 단계 넘기기 (stardust \code{csrc/htest/kendall.hpp})}
+\label{alg:block-window}
+\end{algorithm}
+
+\cref{fig:windows}에서는 두 방법을 binary64로 $n=200$까지 돌려 분포의 아래쪽 반을 정확한 유리수와 견주었다. 차를 쓰는 창은 상대오차가 최대 $2.3\times10^{-14}$이고 블록 창은 $2.8\times10^{-15}$이다. 블록 창의 오차 약 $25u$는 걸음 $200$개에서 쌓일 수 있는 $200u\approx2.2\times10^{-14}$보다 한 자릿수 작다. \cref{lem:positive-accum}은 최악의 경우의 한계이고 반올림 오차는 서로 상쇄되기도 한다. stardust는 같은 계산을 double-double로 하므로 실제 오차는 이보다 훨씬 작다.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}
+\begin{semilogyaxis}[sdplot,xlabel={$k$},ylabel={상대오차},xmin=0,xmax=10000,ymin=1e-18,ymax=1e-13,ytick={1e-17,1e-16,1e-15,1e-14,1e-13}]
+\addplot[black,only marks,mark=*,mark size=0.6pt] table[x=k,y=diff]{figures/07/windows200.dat};
+\addlegendentry{차를 쓰는 창}
+\addplot[black!45,only marks,mark=square*,mark size=0.6pt] table[x=k,y=block]{figures/07/windows200.dat};
+\addlegendentry{블록 창}
+\end{semilogyaxis}
+\end{tikzpicture}
+\caption{$n=200$의 Mahonian 확률 $g_{200}(k)$를 binary64로 계산한 상대오차(가운데 $k=9950$까지, $10^{-290}$ 아래의 값은 뺐다; \code{figures/07/windows2.py}).}
+\label{fig:windows}
+\end{figure}
+
+확률을 쌓다 보면 마지막으로 아래로 넘침을 만난다. $P(K=0)=1/n!$인데 $n=200$일 때의 $1/200!\approx1.27\times10^{-375}$은 \code{double}의 가장 작은 비정규수 약 $4.9\times10^{-324}$보다도 작다. 그래서 가장 큰 항이 $2^{-600}$ 아래로 내려가면 배열 전체에 $2^{600}$을 곱해 두고 곱한 횟수를 기억했다가 마지막에 되돌린다. $2$의 거듭제곱을 곱하는 것은 지수만 바꾸는 정확한 연산이므로 이 조정은 오차를 보태지 않으며 마지막 결과는 \code{double}로 나타낼 수 있는 범위에서 올바르게 비정규수나 $0$이 된다.
+
+stardust의 \code{kendalltau}(118장)는 $n\le33$이면 \cref{alg:int-window}로 세고 그보다 크면 \cref{alg:block-window}를 double-double로 돌린다. $j$가 $2$의 거듭제곱이면 $1/j$를 곱하는 것이 정확하므로 두 부분에 그대로 곱하고 그 밖에는 double-double 나눗셈을 쓴다. 분포가 대칭이므로 관측값에 가까운 쪽 꼬리만 계산한다. \code{method='exact'}라도 일의 양 $n(b+1)$이 $10^9$을 넘거나 들고 있는 칸이 $10^7$을 넘으면 계산하지 않고 오류를 낸다. \code{method='auto'}는 scipy를 따라 동점이 없고 $n\le33$일 때(또는 가까운 쪽 꼬리가 $1$ 이하일 때)만 정확한 계산을 고른다(\cref{sec:normal-approx}). 따로 빌드한 stardust로 $n=200$과 $400$의 꼬리를 정수 참값과 견주었더니 $p=3.6\times10^{-17}$에서 상대오차 $6.4\times10^{-17}$, $p=1.7\times10^{-47}$에서 $5.2\times10^{-17}$이었다(\code{figures/07/kendall\_dd.py}).
+
+
+\section{The Case of Ties}
+\label{sec:perm-ties}
+
+\subsection{Bivariate Generating Functions}
+
+관측값에 같은 값이 있으면 순위가 하나로 정해지지 않는다. 표준적인 처리에서는 같은 값들이 차지하는 순위의 평균을 그 값들에 똑같이 주고 이것을 \term{중간 순위}{midrank}라 한다. 위치 $b+1$부터 $b+t$까지를 같은 값 $t$개가 차지하면 중간 순위는 $b+(t+1)/2$이고 그 두 배 $2b+t+1$은 정수이다. 이제 귀무분포는 관측한 점수들을 고정해 둔 \textbf{조건부} 분포로 정의한다. $N$개의 점수가 정해진 상태에서 한 표본이 그 가운데 어느 $c$개를 차지할지가 $\binom Nc$가지 모두 같은 확률이라고 본다.
+
+점수가 서로 다른 값 $v_1,\dots,v_G$로 묶이고 값 $v_g$가 $t_g$번 나타난다고 하자. 묶음 $g$에서 $k$개를 고르는 방법은 $\binom{t_g}k$가지이고 점수합에 $kv_g$를 보탠다. 그러므로 고른 개수를 $z$로, 점수합을 $q$로 표시한 두 변수 생성 함수는
+\[
+F(z,q)=\prod_{g=1}^G\sum_{k=0}^{t_g}\binom{t_g}kz^kq^{kv_g}
+\]
+이고 $[z^cq^s]F$가 점수합이 $s$인 선택의 수이다. 동점이 없으면 모든 $t_g=1$이고 $F=\prod_g(1+zq^{v_g})$인데 점수가 $0,1,\dots,N-1$이면 이것이 바로 \cref{thm:qbinomial-theorem}의 좌변이다.
+
+\begin{algorithm}[htbp]
+\begin{algorithmic}[1]
+\Require 묶음의 점수 $v_1<\dots<v_G$와 개수 $t_g$, 고를 개수 $c$
+\Ensure $D[s]=[z^cq^s]F$ (double-double), 옮기고 줄인 합 $s=0,\dots,s_{\max}$
+\State $\mathit{base}\gets c\,v_1$; $g\gets\gcd_h(v_h-v_1)$; $v_h\gets(v_h-v_1)/g$ \Comment{원래 합 $=\mathit{base}+g\,s$}
+\State $s_{\max}\gets$ 위쪽 묶음부터 채워 $c$개를 고른 합 \Comment{탐욕으로 구한 가장 큰 합}
+\State $D[0][0]\gets1$; $\mathit{reach}[0]\gets0$, 나머지 $-1$ \Comment{$\mathit{reach}[j]$: $j$개로 닿은 가장 큰 합}
+\For{$g=1,\dots,G$}
+  \State $w_k\gets\binom{t_g}k$ ($k=1..\min(t_g,c)$, double-double)
+  \For{$j=c$ \textbf{downto} $1$} \Comment{내려가야 한 묶음을 두 번 쓰지 않는다}
+    \For{$k=1,\dots,\min(t_g,j)$ ($\mathit{reach}[j-k]\ge0$)}
+      \State $D[j][s+kv_g]\mathrel{+}=w_k\,D[j-k][s]$ \Comment{$s\le\min(s_{\max}-kv_g,\mathit{reach}[j-k])$, \code{dd\_axpy}}
+    \EndFor
+    \State $\mathit{reach}[j]$를 갱신한다
+  \EndFor
+\EndFor
+\State \Return $D[c][\cdot]$
+\end{algorithmic}
+\caption{동점이 있는 점수합의 분포 (stardust \code{rank\_exact.hpp}의 \code{grouped\_counts})}
+\label{alg:grouped}
+\end{algorithm}
+
+전개는 고른 개수 $j$와 합 $s$를 첨자로 갖는 두 차원 배열 $D[j][s]$ 위의 동적 계획이다(\cref{alg:grouped}). 묶음을 하나씩 들이며 $j$를 위에서부터 내려오면서 그 묶음에서 $k\ge1$개를 더 고르는 경우를 보탠다. 이번에도 위에서부터 내려가기 때문에 한 묶음을 두 번 쓰지 않는다. 일의 양은 대략 (전체 관측 수)$\times c\times$(합의 범위)이다. 정확히 $c$개를 고르므로 모든 점수에서 가장 작은 점수 $v_{\min}$을 빼면 합이 $c\cdot v_{\min}$만큼 옮겨질 뿐이다. 옮긴 점수 $v_g-v_{\min}$들의 최대공약수 $g$로 나누면 합의 범위가 $g$분의 $1$로 준다. 동점이 없으면 두 배 중간 순위는 짝수 $2,4,\dots,2N$이므로 $g=2$이고 옮긴 점수는 $0,1,\dots,N-1$이다. $\mathit{reach}$를 두면 아직 $0$인 넓은 구간을 건너뛸 수 있다. 모든 갱신이 양수의 곱과 덧셈이므로 단계마다의 상대오차는 약 $2^{-104}$이다(\cref{lem:positive-accum,lem:add-pos}). p값은 $\binom Nc$가 아니라 계산한 $D[c][\cdot]$ 전체의 합으로 나누므로 분자와 분모가 같은 계산에서 나온다. 한 행에서 다음 행으로 옮겨 더하는 \code{dd\_axpy}는 \code{vld2q\_f64}로 double-double 두 개의 높은 부분과 낮은 부분을 갈라 읽어 NEON 레지스터 하나에 두 칸씩 처리한다. 높은 부분과 낮은 부분을 다른 배열에 두는 \cref{alg:signed-half}와 달리 여기서는 double-double을 쌍으로 늘어놓은 행(구조의 배열)을 읽으면서 갈라 담는다.
+
+동점이 있으면 분포가 더는 대칭이 아닐 수 있다. 값 $1,1,2,3,4$의 두 배 중간 순위는 $3,3,6,8,10$인데 이 가운데 두 개를 고르는 $10$가지의 점수합은
+\[
+6,\ 9,\ 9,\ 11,\ 11,\ 13,\ 13,\ 14,\ 16,\ 18
+\]
+이다. 평균은 $12$인데 $P(S\le9)=3/10$이고 $P(S\ge15)=2/10$이므로 평균에서 같은 거리만큼 떨어진 두 꼬리의 확률이 다르다. 그래서 동점이 있으면 대칭을 빌려 한쪽 꼬리로 다른 쪽을 얻을 수 없고 두 꼬리를 따로 세어야 한다. \cref{fig:ties-dist}에 그린 $N=12$개 가운데 가장 작은 $6$개가 같은 값이고 $c=4$인 경우에도 두 배 순위합의 평균 $52$에서 같은 거리에 있는 두 꼬리가 $P(S\le28)=1/33$과 $P(S\ge76)=1/55$로 다르다.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}
+\begin{axis}[sdplot,xlabel={두 배 순위합 $s$},ylabel={$P(S=s)$},xmin=18,xmax=86,ymin=0,ymax=0.1,scaled y ticks=false,yticklabel style={/pgf/number format/fixed,/pgf/number format/precision=2}]
+\addplot[black,only marks,mark=*,mark size=1.2pt] table[x=s,y=p]{figures/07/ties.dat};
+\addlegendentry{분포}
+\addplot[black!50,only marks,mark=o,mark size=2.2pt] table[x=m,y=p]{figures/07/ties.dat};
+\addlegendentry{평균 $52$에 대해 뒤집은 것}
+\end{axis}
+\end{tikzpicture}
+\caption{동점이 있는 Mann--Whitney 순위합의 조건부 분포($N=12$, 가장 작은 $6$개가 같은 값, $c=4$). 분포와 그 거울상이 겹치지 않으므로 대칭이 아니다(\code{figures/07/extras.py}).}
+\label{fig:ties-dist}
+\end{figure} stardust는 scipy와 달리 동점을 이렇게 조건부로 다루는 쪽을 골랐다. scipy의 \code{mannwhitneyu}는 동점이 있을 때 정확한 방법을 고르면 동점이 없는 분포에 통계량을 넣으므로 그렇게 얻은 p값은 주어진 데이터의 귀무분포에서 나온 값이 아니다. 이 선택과 그 결과는 116장에서 다룬다.
+
+\subsection{Counting Row Permutations by Subsets}
+
+Page의 순서 대립 검정\cite{page1963}은 $m$개의 블록(행) 각각에서 $n$개의 처리(열)에 순위를 매기고 처리에 미리 정한 순서 $1,\dots,n$을 가중치로 곱한 $L=\sum_jj\,R_j$($R_j$는 열 $j$의 순위합)를 통계량으로 쓴다. 귀무가설 아래에서 각 행의 값들이 열에 놓이는 순서는 $n!$가지가 모두 같은 확률이고 행끼리는 독립이므로 행 하나의 통계량 $\sum_jj\,r_{\pi(j)}$의 생성 함수를 구해 $m$개를 곱하면 된다.
+
+행 하나의 분포를 $n!$개의 순열을 나열해 구하려 하면 $n=12$에서 벌써 $4.8$억 가지를 훑어야 한다. 그러나 순열을 왼쪽 열부터 채워 간다고 보면 다음 열에 놓을 값을 고를 때는 지금까지 어떤 값들을 썼는지만 중요하고 그것들을 어떤 순서로 놓았는지는 상관없다.
+
+\begin{proposition}
+\label{prop:bitmask}
+값 $r_1,\dots,r_n$의 부분집합 $A$마다 ``$A$의 값들을 열 $1,\dots,|A|$에 놓는 순열들의 가중합 $\sum_{j\le|A|}j\,r_{\pi(j)}$의 분포'' $D_A$를 두면 $D_\emptyset=\delta_0$이고
+\[
+D_B=\sum_{i\in B}\bigl(D_{B\setminus\{i\}}\text{를 }|B|\,r_i\text{만큼 민 것}\bigr)
+\]
+이다. 행의 분포는 $D_{\{1..n\}}$이다.
+\end{proposition}
+
+\begin{proof}
+$B$의 값들을 열 $1..|B|$에 놓는 순열은 마지막 열 $|B|$에 놓을 값 $i\in B$와 나머지 $B\setminus\{i\}$를 열 $1..|B|-1$에 놓는 순열의 짝과 일대일로 대응한다. 마지막 열의 기여는 $|B|r_i$이고 나머지의 가중합은 $B\setminus\{i\}$의 순열의 가중합이다. 경우를 $i$로 나누어 더하면 식이 나온다.
+\end{proof}
+
+\begin{algorithm}[htbp]
+\begin{algorithmic}[1]
+\Require 한 행의 값 $r_1,\dots,r_n$ (정수, $n\le20$)
+\Ensure $\#\{\pi:\sum_jj\,r_{\pi(j)}=s\}$ ($64$비트 정수)
+\State $D[\emptyset][0]\gets1$
+\For{층 $\ell=0,\dots,n-1$}
+  \For{$|A|=\ell$인 모든 비트마스크 $A$}
+    \For{$i\notin A$} $D[A\cup\{i\}][s+(\ell+1)r_i]\mathrel{+}=D[A][s]$ (모든 $s$)
+    \EndFor
+    \State $D[A]$를 비운다 \Comment{다음 층은 이 층만 쓴다}
+  \EndFor
+\EndFor
+\State \Return $D[\{1..n\}]$
+\end{algorithmic}
+\caption{행 하나의 Page 통계량 분포를 세는 비트마스크 동적 계획 (stardust \code{rank\_exact.hpp}의 \code{page\_row\_counts})}
+\label{alg:page}
+\end{algorithm}
+
+부분집합은 $2^n$개이고 각각에서 다음 값을 $n$가지로 고르므로 일은 $2^n\cdot n\cdot$(합의 범위)이다. $n!$이 $2^n$으로 줄어든 셈이다. 부분집합을 $n$비트 정수의 비트로 나타내는 이런 동적 계획을 \term{비트마스크 동적 계획}{bitmask dynamic programming}이라 하고 순열 위의 최적화나 세기 문제에서 널리 쓰인다. stardust는 같은 크기의 부분집합을 한 층으로 처리하고 다음 층으로 넘긴 상태의 배열은 바로 비워 기억 공간을 아낀다. 개수의 합이 $n!$이므로 $n!<2^{63}$인 $n\le20$까지 $64$비트 정수로 정확하다. 행들의 분포는 double-double로 합성곱해 생성 함수의 곱을 만들고 동점이 없으면 모든 행의 분포가 같으므로 꼬리의 누적을 $(m,n)$마다 한 번 만든다.
+
+\section{Lattice Paths and the Reflection Principle}
+\label{sec:lattice}
+
+\subsection{The Two-Sample Kolmogorov--Smirnov Statistic}
+
+크기 $m$과 $n$인 두 표본의 경험 분포 함수를 $F_m$, $G_n$이라 할 때 $D=\sup_x|F_m(x)-G_n(x)|$를 두 표본 Kolmogorov--Smirnov 통계량이라 한다. 합친 표본을 정렬해 왼쪽부터 읽어 가며 \term{격자 경로}{lattice path}를 그리자. 첫째 표본의 값을 만나면 오른쪽으로, 둘째 표본의 값을 만나면 위로 한 칸씩 간다. 첫째 표본 $i$개와 둘째 표본 $j$개를 지난 점 $(i,j)$에서 두 함수의 차는 $i/m-j/n$이다. $L=\operatorname{lcm}(m,n)$, $\alpha=L/m$, $\beta=L/n$으로 두면 이 차는 $(i\alpha-j\beta)/L$로서 $1/L$의 정수배이다. 그러니 $D\ge h/L$인지는 경로가 정수 조건 $|i\alpha-j\beta|\ge h$를 만족하는 점을 지나는지만 보면 알 수 있다. 실수의 비교를 정수의 비교로 바꾸었으므로 수학적으로 같은 두 값이 반올림 때문에 갈려 경우 하나를 빠뜨리거나 더 세는 일이 없다.
+
+동점이 없고 귀무가설이 참이면 $\binom{m+n}m$개의 경로가 모두 같은 확률이므로 p값은 경계에 닿는 경로의 수를 전체 경로의 수로 나눈 값이다. 크기가 같은 $m=n$이면 $L=n$, $\alpha=\beta=1$이므로 경로를 높이 $g=i-j$가 한 걸음마다 $\pm1$씩 바뀌는 길이 $2n$의 걸음으로 볼 수 있고 이 경우에는 개수를 닫힌 꼴로 얻는다.
+
+\subsection{The Reflection Principle}
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[x=8mm, y=5mm, every node/.style={font=\small}]
+  \draw[black!25, very thin] (0,-1) grid (10,6);
+  \draw[->] (0,0) -- (10.5,0) node[right] {걸음};
+  \draw[->] (0,-1) -- (0,6.5) node[above] {$g$};
+  \draw[dashed] (0,3) -- (10,3) node[right] {$h$};
+  \foreach \y in {0,3,6} \node[left] at (0,\y) {$\y$};
+  \draw[thick] (0,0)--(1,1)--(2,2)--(3,1)--(4,2)--(5,3)--(6,2)--(7,1)--(8,0)--(9,1)--(10,0);
+  \draw[thick, dashed] (5,3)--(6,4)--(7,5)--(8,6)--(9,5)--(10,6);
+  \fill (5,3) circle (1.6pt);
+  \fill (10,0) circle (1.6pt);
+  \fill (10,6) circle (1.6pt);
+\end{tikzpicture}
+\caption{반사 원리. 실선은 $0$에서 출발해 $0$으로 돌아오는 길이 $10$의 경로로 다섯째 걸음에서 처음으로 높이 $h=3$에 닿는다. 그 뒤의 부분을 직선 $g=h$에 대해 뒤집으면(점선) 끝점이 $2h=6$인 경로가 되고 이 대응은 일대일이다.}
+\label{fig:reflection}
+\end{figure}
+
+\begin{theorem}[반사 원리]
+\label{thm:reflection-principle}
+양의 정수 $h\le n$에 대해 $\pm1$ 걸음 $2n$개로 $0$에서 $0$으로 가는 경로 가운데 높이 $h$에 닿는 것의 수는 $\binom{2n}{n-h}$이다.
+\end{theorem}
+
+\begin{proof}
+높이 $h$에 닿는 경로가 처음으로 $h$에 닿는 걸음을 $\tau$라 하고 $\tau$ 뒤의 모든 걸음의 부호를 바꾸자. 바뀐 경로는 $\tau$ 뒤에 직선 $g=h$에 대해 원래 경로와 대칭이므로 끝점이 $h+(h-0)=2h$이다(\cref{fig:reflection}). 거꾸로 $0$에서 $2h$로 가는 경로는 $h>0$이므로 반드시 $h$를 지나고 처음으로 $h$에 닿은 뒤의 걸음을 다시 뒤집으면 $0$으로 끝나면서 $h$에 닿는 경로가 된다. 두 변환은 서로의 역이므로 구하는 수는 $0$에서 $2h$로 가는 경로의 수이다. 그런 경로는 올라가는 걸음이 $n+h$개, 내려가는 걸음이 $n-h$개이므로 그 수는 $\binom{2n}{n+h}=\binom{2n}{n-h}$이다.
+\end{proof}
+
+이 정리를 확률로 바꾸면 $m=n$이고 동점이 없을 때 한쪽 통계량 $D^+=\sup(F_n-G_n)$에 대해
+\[
+P\bigl(D^+\ge h/n\bigr)=\binom{2n}{n-h}\Bigm/\binom{2n}n
+\]
+이다. 양쪽 통계량은 $h$와 $-h$ 둘 가운데 하나에 닿는 경로를 세야 하는데 두 사건이 겹치므로 포함과 배제가 필요하다.
+
+\begin{proposition}
+\label{prop:two-sided-reflection}
+같은 조건에서 높이 $h$나 $-h$ 가운데 적어도 하나에 닿는 경로의 수는
+\[
+2\sum_{k\ge1}(-1)^{k-1}\binom{2n}{n-kh}
+\]
+이다.
+\end{proposition}
+
+\begin{proof}
+$A_k^+$를 시각의 순서대로 $h,-h,h,\dots$의 높이를 번갈아 $k$번 거치는(사이에 다른 방문이 있어도 된다) 경로의 집합이라 하고 부호를 바꾼 $A_k^-$도 같은 식으로 정의하자. 먼저 $|A_k^\pm|=\binom{2n}{n-kh}$임을 보인다. $A_k^+$의 경로를 처음으로 $h$에 닿은 뒤로 직선 $g=h$에 대해 뒤집으면 원래의 $-h$ 방문은 $3h$ 방문이 된다. 다시 처음으로 $3h$에 닿은 뒤로 직선 $g=3h$에 대해 뒤집는 식으로 $k$번 반사하면 끝점이 $2kh$인 경로를 얻는다. 끝점이 $2kh$인 경로는 반드시 $h,3h,\dots,(2k-1)h$를 차례로 지나므로 같은 반사를 거꾸로 적용할 수 있고 따라서 이 대응은 전단사이다. 끝점이 $2kh$인 경로의 수는 $\binom{2n}{n-kh}$이다.
+
+이제 경로마다 경계에 닿는 순서를 기록하되 같은 경계에 연이어 닿은 것은 하나로 합친 교대 수열을 생각하고 그 길이를 $\ell$이라 하자. 이 수열이 $+h$로 시작하는 경로는 $k\le\ell$인 $A_k^+$와 $k\le\ell-1$인 $A_k^-$에 속하므로 $\sum_k(-1)^{k-1}(|A_k^+|+|A_k^-|)$에서 $\sum_{k=1}^\ell(-1)^{k-1}+\sum_{k=1}^{\ell-1}(-1)^{k-1}$번 세어진다. $\ell$이 홀수이면 첫 합이 $1$, 둘째 합이 $0$이고 짝수이면 그 반대이므로 언제나 정확히 한 번이다. $-h$로 시작하는 경로도 마찬가지이고 경계에 닿지 않는 경로는 어느 집합에도 속하지 않는다. 따라서 구하는 수는 $\sum_k(-1)^{k-1}\cdot2\binom{2n}{n-kh}$이다.
+\end{proof}
+
+Hodges는 두 표본 검정의 유의확률을 정리하면서 이 두 식을 닫힌 꼴로 썼다\cite{hodges1958}. $n=5$에서 직접 나열해 확인하면 $h=3$일 때 한쪽 확률은 $\binom{10}2/\binom{10}5=45/252=5/28\approx0.179$이고 양쪽 확률은 $2(45-0)/252=5/14\approx0.357$이다. $h=2$이면 양쪽 확률이 $2(\binom{10}3-\binom{10}1)/252=55/63$이다. 이 경우에는 두 경계에 모두 닿는 경로가 있어서 포함과 배제의 둘째 항이 실제로 필요하다.
+
+\begin{algorithm}[htbp]
+\begin{algorithmic}[1]
+\Require $n$, $1\le h\le n$, 양쪽인지
+\Ensure $P(D\ge h/n)$ ($m=n$, 동점 없음)
+\State $\rho\gets1$; $l\gets0$; $S\gets0$; $\epsilon\gets+1$; $k\gets1$
+\While{$kh\le n$}
+  \For{$i=l,\dots,kh-1$} $\rho\gets\rho\cdot(n-i)/(n+i+1)$ \Comment{$\rho=\binom{2n}{n-kh}/\binom{2n}n$, double-double}
+  \EndFor
+  \State $l\gets kh$
+  \State \textbf{if} 한쪽 \textbf{then} \Return $\rho$
+  \State $S\gets S+\epsilon\cdot2\rho$; $\epsilon\gets-\epsilon$; $k\gets k+1$
+\EndWhile
+\State \Return $S$
+\end{algorithmic}
+\caption{같은 크기 두 표본의 닫힌 꼴 (stardust \code{csrc/htest/ks2.hpp}의 \code{equal\_tail})}
+\label{alg:ks-equal}
+\end{algorithm}
+
+\cref{alg:ks-equal}은 이항계수 대신 비 $\binom{2n}{n-l}/\binom{2n}n=\prod_{i=0}^{l-1}(n-i)/(n+i+1)$을 차례로 곱하므로 넘침이 없고 일은 $O(n)$이다. 교대합의 항은 대략 $e^{-(kh)^2/n}$이므로 이웃한 두 항의 비는 $e^{-(2k+1)h^2/n}$ 정도이다. $h\gtrsim\sqrt n$이면 둘째 항부터 빠르게 작아져 첫 항이 합을 지배하고 뺄셈이 소거를 일으키지 않는다. $h$가 $\sqrt n$보다 훨씬 작으면 항들이 천천히 줄지만 그때는 p값이 $1$에 가깝고 항들의 합은 대략 $\int_0^\infty e^{-(xh)^2/n}dx=\sqrt{\pi n}/(2h)$이므로 상대오차는 한 항의 오차의 $\sqrt n/h$배를 넘지 않는다. 항은 double-double로 만들므로 이 배수도 문제가 되지 않는다.
+
+\begin{aside}[투표 문제]
+반사 원리는 1887년의 \term{투표 문제}{ballot problem}에서 나왔다. Bertrand는 후보 $A$가 $a$표, $B$가 $b$표($a>b$)를 얻었을 때 표를 무작위 순서로 하나씩 열면서 $A$가 처음부터 끝까지 앞설 확률이 $(a-b)/(a+b)$라는 결과를 냈다. 같은 해 André가 나쁜 순서를 다른 순서와 짝지어 세는 증명을 붙였다. 위 증명의 ``처음 닿은 뒤를 뒤집는다''는 반사 논법은 흔히 그의 이름으로 불리지만 그의 원래 짝짓기와는 다르다. Feller의 확률론 교과서가 이것을 무작위 걸음 이론의 출발점으로 삼은 뒤로 널리 퍼졌다\cite{feller1968}.
+\end{aside}
+
+\subsection{Dynamic Programming with Absorbing Boundaries}
+
+크기가 다르거나 동점이 있으면 닫힌 꼴이 없으므로 경로를 동적 계획으로 센다. 경계 안에 머무는 경로의 수를 세어 전체에서 빼는 방법이 가장 자연스럽지만 두 가지 이유로 좋지 않다. 경로의 수 $\binom{m+n}m$은 금세 \code{double}을 넘는다. 또 p값이 아주 작을 때 $1-P(\text{안})$을 계산하면 $1$에 가까운 수에서 $1$에 가까운 수를 빼는 소거로 자릿수를 거의 모두 잃는다. 그래서 경우의 수 대신 확률을 들고 경계 밖으로 나간 확률을 그 자리에서 따로 모은다.
+
+작은 쪽 표본을 첫째 표본이라 하고 크기를 $m$이라 하자. 합친 표본에서 $p$개를 읽은 뒤의 상태를 그때까지 읽은 첫째 표본의 개수 $c$로 잡고 상태 $c$에 ``지금까지 경계에 닿지 않고 이 상태에 올 확률'' $w(c)$를 붙인다. 남은 자리가 $R=N-p$개이고 그 가운데 첫째 표본이 $m-c$개이므로 다음 값이 첫째 표본일 확률은 $(m-c)/R$이고 둘째 표본일 확률은 $(R-m+c)/R$이다. 한 걸음 옮긴 새 상태가 경계에 닿거나 넘으면 그 확률을 꼬리의 합 $\mathit{tail}$에 더하고 상태에서 지운다. 이렇게 하면 마지막 $\mathit{tail}$이 곧 $P(D\ge h/L)$이며 모든 무게와 모든 덧셈이 양수이므로 \cref{lem:positive-accum}에 따라 상대오차는 걸음 수에 비례하는 데 그친다. 동점이 있을 때의 갈래는 뒤에서 본다.
+
+\begin{algorithm}[htbp]
+\begin{algorithmic}[1]
+\Require 크기 $m\le n$, $N=m+n$, 같은 값 묶음의 크기 $t_1,\dots,t_B$(동점이 없으면 모두 $1$), 상태 $(c,p)$가 경계 밖인지 판정하는 함수 $\mathrm{out}(c,p)$
+\Ensure $\mathit{tail}=P(D\ge h/L)$
+\State $w[0]\gets1$, 나머지 $w[c]\gets0$; $\mathit{tail}\gets0$; $p\gets0$
+\For{$\ell=1,\dots,B$}
+  \State $t\gets t_\ell$; $R\gets N-p$; $w'[\cdot]\gets0$
+  \For{$w[c]>0$인 모든 $c$}
+    \State $(h_k)_{k_{\min}\le k\le k_{\max}}\gets$ \cref{alg:hypergeom}$(R,\ m-c,\ t)$ \Comment{$t=1$이면 $h_1=(m-c)/R$, $h_0=1-h_1$}
+    \For{$k=k_{\min},\dots,k_{\max}$} \Comment{묶음이 첫째 표본의 값을 $k$개 가진다}
+      \State $u\gets w[c]\,h_k$
+      \State \textbf{if} $\mathrm{out}(c+k,p+t)$ \textbf{then} $\mathit{tail}\gets\mathit{tail}+u$ \textbf{else} $w'[c+k]\gets w'[c+k]+u$
+    \EndFor
+  \EndFor
+  \State $w\gets w'$; $p\gets p+t$; 살아 있는($w[c]\ne0$) 범위로 줄이고 비었으면 멈춘다
+\EndFor
+\State \Return $\mathit{tail}$
+\end{algorithmic}
+\caption{흡수 경계가 있는 두 표본 Kolmogorov--Smirnov 분포 (stardust \code{ks2.hpp}의 \code{tail})}
+\label{alg:ks-absorb}
+\end{algorithm}
+
+\begin{lemma}
+\label{lem:ks-band}
+양쪽 검정에서 $p$걸음 뒤에 살아 있는 상태 $c$는 $|c(\alpha+\beta)-p\beta|<h$를 만족한다. 따라서 살아 있는 상태의 수는 $2h/(\alpha+\beta)+1$ 이하이다.
+\end{lemma}
+
+\begin{proof}
+상태 $c$는 첫째 표본 $i=c$개, 둘째 표본 $j=p-c$개를 지난 점이므로 $g=i\alpha-j\beta=c(\alpha+\beta)-p\beta$이다. 살아 있으려면 $|g|<h$이어야 하고 이 조건을 만족하는 정수 $c$는 길이 $2h/(\alpha+\beta)$의 구간 안에 있다.
+\end{proof}
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[x=9mm,y=6mm,every node/.style={font=\scriptsize}]
+\draw[black!20] (0,0) grid (4,6);
+\draw[dashed] (2,0) -- (4,3);
+\draw[dashed] (0,3) -- (2,6);
+\draw[thick] (0,0)--(1,0)--(1,2)--(2,2)--(2,3)--(4,3);
+\draw[thick,dotted] (4,3)--(4,6);
+\foreach \i in {0,...,4} \foreach \j in {0,...,6} {
+  \pgfmathtruncatemacro\g{abs(3*\i-2*\j)}
+  \ifnum\g<6 \fill (\i,\j) circle (2pt); \else \draw[fill=white] (\i,\j) circle (2pt); \fi}
+\node[below] at (2,-0.3) {첫째 표본 $i$ ($m=4$)};
+\node[rotate=90] at (-0.8,3) {둘째 표본 $j$ ($n=6$)};
+\node[anchor=west] at (4.15,3) {$(4,3)$: 흡수};
+\end{tikzpicture}
+\caption{$m=4$, $n=6$($L=12$, $\alpha=3$, $\beta=2$)에서 $D\ge1/2$, 곧 $h=6$의 띠. 검은 점은 $|3i-2j|<6$인 살아 있는 상태이고 흰 점은 흡수되는 상태이며 점선은 $3i-2j=\pm6$이다. 굵은 경로는 $(4,3)$에서 경계에 닿아 그 확률이 꼬리에 더해진다. 같은 대각선 $i+j=p$ 위의 살아 있는 점은 \cref{lem:ks-band}의 $2h/(\alpha+\beta)+1=3.4$개 이하이다.}
+\label{fig:ks-band}
+\end{figure}
+
+\cref{lem:ks-band}에 따라 일은 $N$에 띠의 폭을 곱한 정도이다. 무게가 아래로 넘쳐 $0$이 된 상태는 띠에서 빼도 결과에 영향이 없으므로 실제로 살아 있는 상태는 더 적다. stardust의 \code{tail}은 \cref{alg:ks-absorb}를 double-double로 한다. 동점이 없을 때는 새 상태 $c$가 $w(c-1)$에서 첫째 표본으로 받는 기여와 $w(c)$에서 둘째 표본으로 받는 기여를 한꺼번에 계산하고 경계 안의 연속 구간과 밖으로 흡수되는 양 끝을 나누어 처리한다. \code{work}는 계산에 앞서 곱셈--덧셈의 상한을 센다. 묶음마다 닿을 수 있는 상태의 수(양쪽 검정이면 \cref{lem:ks-band}의 띠의 폭에 끝점의 반올림에 대비한 한 칸을 더한 $2h/(\alpha+\beta)+2$ 이하로 자른다)에 갈래의 수 $\min(t,m)+1$을 곱해 더한 값이고 이 값을 \cref{sec:normal-approx}의 상한과 견준다.
+
+동점이 있으면 같은 값 $t$개가 한 덩어리로 들어오고 경험 분포 함수는 덩어리의 끝에서만 관측된다. 덩어리가 첫째 표본의 값을 $k$개 가질 확률은 남은 $R$자리에 첫째 표본이 $r=m-c$개 남은 상황의 초기하 확률 $\binom tk\binom{R-t}{r-k}/\binom Rr$이다. \cref{alg:ks-absorb}에서는 이때 $t>1$인 묶음이 여러 갈래로 갈라지고 갈래의 확률은 \cref{alg:hypergeom}으로 만든다. 이렇게 얻는 분포도 Mann--Whitney에서처럼 관측한 동점 구조에 조건부이다. scipy는 경로의 수를 \code{double}로 세기 때문에 $\binom Nm$이 약 $10^{308}$을 넘으면 정확한 계산을 포기하고 점근식으로 넘어가지만 확률로 쌓는 이 방법에는 그런 한계가 없다.
+
+\subsection{Squared Increments: The Two-Sample Cram\'er--von Mises Statistic}
+
+같은 격자 경로에 다른 통계량을 실을 수도 있다. 두 표본 Cram\'er--von Mises 통계량은 $T=U/(kN)-(4k-1)/(6N)$($k=mn$)이고
+\[
+U=m\sum_{i=1}^m(r_i-i)^2+n\sum_{j=1}^n(s_j-j)^2
+\]
+이다\cite{anderson1962}. 여기서 $r_i$와 $s_j$는 첫째 표본의 $i$번째와 둘째 표본의 $j$번째로 작은 값이 합친 표본에서 받는 순위이다. $r_i-i$는 첫째 표본의 $i$번째 값 앞에 있는 둘째 표본 값의 수이므로 $U$는 경로가 걸음마다 음이 아닌 증가분을 더해 간 값이고 그 증가분은 그때의 위치로 정해진다. 동점이 있으면 한 묶음이 한 표본의 값을 $k$개 가질 때 그 표본의 크기를 곱한 제곱들의 합이 한꺼번에 더해지고 갈래의 확률은 다시 초기하 확률이다. 중간 순위가 반정수이므로 $4U$는 정수이고 비교는 정수로 한다.
+
+KS와 달리 같은 상태 $c$에 서로 다른 부분합이 여럿 도착하므로 상태마다 (부분합, 확률)의 목록을 들고 다녀야 한다. 상태마다 (부분합, 확률)의 목록을 들고 다녀야 하고 그 목록이 길어지는 것을 막는 열쇠는 증가분이 음이 아니라는 데 있다. 묶음마다 앞으로 남은 증가분의 최솟값과 최댓값을 미리 $(\min,+)$와 $(\max,+)$의 동적 계획으로 구해 두자. 그러면 앞으로 무엇이 오든 관측값 $v$에 닿을 부분합은 그 자리에서 꼬리에 더하고 무엇이 와도 닿지 못할 부분합은 버릴 수 있다(\cref{alg:cvm2}). 상태마다 아직 정해지지 않은 부분합의 창만 남는다.
+
+\begin{algorithm}[htbp]
+\begin{algorithmic}[1]
+\Require 묶음 $\ell=1,\dots,B$, 관측값 $v$, 묶음 $\ell$ 뒤 상태 $c$에서 남은 증가분의 최소 $\mathit{lo}_\ell(c)$와 최대 $\mathit{hi}_\ell(c)$
+\Ensure $P(U\ge v)$
+\State $W[0]\gets\{(0,1)\}$; $\mathit{tail}\gets0$
+\For{$\ell=1,\dots,B$}
+  \For{각 상태 $c$, 각 $(x,\pi)\in W[c]$, 각 갈래 $k$ (확률 $h_k$, 증가분 $\Delta_k$)}
+    \State $x'\gets x+\Delta_k$; $c'\gets c+k$
+    \If{$x'+\mathit{lo}_\ell(c')\ge v$} $\mathit{tail}\gets\mathit{tail}+\pi h_k$ \Comment{무엇이 와도 닿는다}
+    \ElsIf{$x'+\mathit{hi}_\ell(c')\ge v$} $W'[c']$의 부분합 $x'$에 $\pi h_k$를 더한다 \Comment{아직 모른다}
+    \EndIf \Comment{그 밖은 버린다}
+  \EndFor
+  \State $W\gets W'$
+\EndFor
+\State \Return $\mathit{tail}$
+\end{algorithmic}
+\caption{두 표본 Cram\'er--von Mises의 정확한 꼬리 (stardust \code{csrc/htest/cvm2.hpp}의 \code{tail})}
+\label{alg:cvm2}
+\end{algorithm}
+
+동점이 없으면 이것은 Burr가 쓴 격자 경로의 세기이고 동점이 있으면 KS에서처럼 관측한 묶음에 조건부인 분포이다. 확률이 모두 양수의 double-double이니 여기에도 \cref{lem:positive-accum}을 쓸 수 있다. \code{plan}은 두 번의 사전 계산을 하면서 목록 칸 수의 상한도 미리 세어 일의 상한과 견준다.
+
+\section{Normal Approximation and Work Bounds}
+\label{sec:normal-approx}
+
+정확한 계산의 일은 표본 크기의 다항식으로 자란다. stardust는 계산하기 전에 커널마다 일의 양을 세어(\cref{tab:work}) $10^9$번의 연산이나 $10^7$칸의 기억 공간을 넘으면 \code{method='exact'}에서도 계산하지 않고 오류를 내고 그 덕에 모든 호출이 정해진 시간 안에 끝난다. \code{method='auto'}는 이와 별개로 scipy의 크기 문턱을 먼저 본다. scipy가 정확한 방법을 고르는 작은 표본에서만 정확히 세고(그때도 일의 상한 안이어야 한다) 그 밖에서는 정규 근사를 쓴다. 그래서 \code{'auto'}가 근사를 고르는 크기에서도 정확한 계산은 대개 가능하다. 예컨대 $c=d=20$의 Mann--Whitney에서 \code{'auto'}는 근사 $p=0.01794$를 주지만 \code{'exact'}로 센 값은 $0.01674$이다.
+
+\begin{table}[htbp]
+\begin{sdtable}{colspec={X[1.45,l]X[2.5,l]X[1.65,l]X[2.1,l]}, row{1}={font=\small\bfseries}, cells={font=\small}}
+\toprule
+API & 일의 양 & \code{'auto'}가 정확을 고르는 범위 & 상한 안에서 계산한 큰 크기(측정) \\
+\midrule
+\code{mannwhitneyu} & 정수 경로 $c(b+1)$; 동점이 있거나 $2^{124}$를 넘으면 $\max(Nc(s_{\max}+1),\,100(c+1)(s_{\max}+1))$ & 작은 표본 $\le8$, 동점 없음 & $c=8$이면 $N=174447$(정수 경로); $c=d$이면 $135$, $0.11$초 \\
+\code{wilcoxon} & $\max(n,100)\cdot(S+1)$, $S$는 줄인 점수의 합 & $n\le50$, 동점과 $0$이 없거나 $n\le13$ & $n=1250$에서 $0.02$초, $1270$은 거절 \\
+\code{kendalltau} & $n(b+1)$, 칸 $b+1\le10^7$ & 동점 없음, $n\le33$ & $n=1593$(독립 자료); $1000$에서 $3.0$초, $1500$에서 $10.2$초 \\
+\code{ansari} & 정수 경로 $(k+1)^3$; 그 밖은 \code{mannwhitneyu}와 같은 동적 계획 & 두 표본 모두 $55$ 미만, 동점 없음 & 크기가 같으면 $N=321$ \\
+\code{ks\_2samp} & 묶음마다 (상태 수)$\times(\min(t,m)+1)$의 합 & $\max(m,n)\le10^4$ & $(10^4,\,10^4+1)$에서 $0.02$초 \\
+\bottomrule
+\end{sdtable}
+\caption{커널별 일의 양과 \code{'auto'}의 문턱, 그리고 $10^9$ 상한 안에서 따로 빌드한 stardust가 정확히 계산한 큰 크기(무작위 자료, 이 기계의 시간; \code{figures/07/worklim.py}). $b$는 꼬리의 끝, $s_{\max}$는 \cref{alg:grouped}의 줄인 합의 최댓값이다.}
+\label{tab:work}
+\end{table}
+
+근사의 근거는 중심극한정리이다. 평균과 분산은 \cref{prop:pgf-moments}에서 구했고 $\sigma$는 각 통계량의 표준편차이다.
+
+\begin{proposition}
+\label{prop:rank-clt}
+귀무가설 아래에서 $n\to\infty$이면 $(T^+-ET^+)/\sigma$와 $(K-EK)/\sigma$는 표준정규분포로 분포수렴한다. $\min(c,d)\to\infty$이면 $(U-EU)/\sigma$도 그렇다.
+\end{proposition}
+
+\begin{proof}
+$T^+$는 독립인 $iB_i$($B_i$는 공정한 동전)의 합이고 $K$는 독립인 $\{0,\dots,j-1\}$ 균등 변수의 합이다(\cref{thm:mahonian}의 Lehmer 부호). 두 경우 모두 각 항을 중심화한 절댓값은 $M=n/2$ 이하이고 $\sigma^2$은 $n^3$의 상수배로 자란다. Lyapunov 비는
+\[
+\frac1{\sigma^3}\sum_iE|X_i-EX_i|^3\le\frac M{\sigma^3}\sum_i\operatorname{Var}X_i=\frac M\sigma=O(n^{-1/2})
+\]
+이므로 $0$으로 가고 Lyapunov의 중심극한정리가 적용된다.
+
+$U=\sum_{i,j}\mathbf 1\{x_i>y_j\}$는 독립인 항의 합이 아니다. 공통의 연속 분포 함수를 $F$라 하면 $E[U\mid x_i]-EU=d(F(x_i)-1/2)$이고 $E[U\mid y_j]-EU=c(1/2-F(y_j))$이므로 Hoeffding의 사영
+\[
+\hat U-\frac{cd}2=d\sum_{i=1}^c\Bigl(F(x_i)-\frac12\Bigr)+c\sum_{j=1}^d\Bigl(\frac12-F(y_j)\Bigr)
+\]
+은 독립인 항들의 합이다. $F(x_i)$와 $F(y_j)$는 $[0,1]$의 균등분포이므로 $\operatorname{Var}\hat U=cd(c+d)/12$이다. 또 $\operatorname{Cov}(U,E[U\mid x_i])=\operatorname{Var}E[U\mid x_i]$이고 사영의 항들이 서로 독립이므로 $\operatorname{Cov}(U,\hat U)=\operatorname{Var}\hat U$이다. 따라서
+\[
+\operatorname{Var}(U-\hat U)=\operatorname{Var}U-\operatorname{Var}\hat U=\frac{cd}{12},\qquad\frac{\operatorname{Var}(U-\hat U)}{\operatorname{Var}U}=\frac1{c+d+1}\to0
+\]
+이고 $(U-\hat U)/\sigma$는 $0$으로 확률수렴한다. $\hat U$의 항은 $\max(c,d)/2$ 이하이므로 Lyapunov 비는 $\max(c,d)/\sqrt{cd(c+d)}$ 정도이고 $\min(c,d)\to\infty$이면 $0$으로 간다. Slutsky의 정리에 따라 $U$의 표준화도 표준정규분포로 수렴한다.
+\end{proof}
+
+$\min(c,d)\to\infty$라는 조건은 빠뜨릴 수 없다. $c=1$이면 $U$는 $\{0,\dots,d\}$의 균등분포여서 $d$가 아무리 커도 정규분포에 가까워지지 않는다. 순위 통계량의 점근 이론 전반은 H\'ajek 등\cite{hajek1999rank}에 있다. 정수 값을 갖는 분포의 꼬리 $P(U\le u)$에는 연속성 보정을 써서 $\Phi((u+1/2-\mu)/\sigma)$로 근사한다.
+
+근사의 상대오차는 꼬리로 갈수록 커진다. 중심극한정리는 분포 함수의 절대오차가 작다는 정리이다. Berry--Esseen 정리에 따르면 독립인 합에서 그 크기는 위의 Lyapunov 비와 같은 차수, 여기서는 표본 크기 $n$에 대해 $O(n^{-1/2})$이다. 분포가 대칭이면 Edgeworth 전개에서 비대칭도의 보정 항이 사라지고 격자 분포의 연속성 보정까지 하면 $O(1/n)$이 된다\cite{petrov1975}. 그러나 꼬리의 확률 자체는 지수적으로 작아지므로 절대오차가 작아도 상대오차는 크다. \cref{fig:normal}에서는 $c=d=20$과 $c=d=100$에서 $P(U\le u)$의 정확한 값(\cref{alg:mwu}과 같은 정수 계산)과 연속성 보정한 정규 근사를 견주었다. 근사의 상대오차는 $z=-3$ 근처에서 $c=d=20$이면 $30$퍼센트, $c=d=100$이면 $5$퍼센트이다. $P\approx1.2\times10^{-6}$에서는 $c=d=20$이면 $4.9$배 틀리고 $P=10^{-6}$ 근처에서 $c=d=100$이어도 $42$퍼센트 틀린다. 그러므로 작은 p값을 보고하려면 \code{'auto'}에 맡기지 말고 \code{method='exact'}를 지정하는 것이 안전하다.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}
+\begin{semilogyaxis}[sdplot,xlabel={$z=(u+1/2-\mu)/\sigma$},ylabel={정규 근사의 상대오차},xmin=-7,xmax=0,ymin=1e-4,ymax=1e3,ytick={1e-4,1e-2,1,1e2}]
+\addplot[black,mark=*,mark size=0.8pt] table[x=z,y=rel,restrict expr to domain={\thisrow{N}}{39:41}]{figures/07/normal.dat};
+\addlegendentry{$c=d=20$}
+\addplot[black!50,mark=square*,mark size=0.6pt] table[x=z,y=rel,restrict expr to domain={\thisrow{N}}{199:201}]{figures/07/normal.dat};
+\addlegendentry{$c=d=100$}
+\end{semilogyaxis}
+\end{tikzpicture}
+\caption{Mann--Whitney의 아래쪽 꼬리 $P(U\le u)$에 대한 연속성 보정 정규 근사의 상대오차(정확한 정수와 견줌; \code{figures/07/windows.py}).}
+\label{fig:normal}
+\end{figure}
+
+\section{Random Permutations}
+\label{sec:random-perm}
+
+순위 검정의 귀무분포는 ``모든 순열이 같은 확률''이라는 가정 위에 있다. 거꾸로 그런 순열을 만들어야 할 때도 있다. 순열 검정(122장)과 \code{random.Generator.permutation}, 비복원 추출이 그렇다. 표준적인 방법은 Fisher--Yates의 뒤섞기이다(Durstenfeld\cite{durstenfeld1964}의 제자리 판; Knuth\cite{knuth1997taocp2} §3.4.2).
+
+\begin{algorithm}[htbp]
+\begin{algorithmic}[1]
+\Require $n$, $k\le n$, 균등한 정수 난수 \textrm{Bounded}$(m)\in\{0,\dots,m-1\}$
+\Ensure $0,\dots,n-1$의 균등한 무작위 순열의 처음 $k$개
+\State $a\gets(0,1,\dots,n-1)$ \Comment{$k\ll n$이면 건드린 칸만 해시 표에}
+\For{$i=0,\dots,k-1$}
+  \State $j\gets i+\textrm{Bounded}(n-i)$
+  \State $a_i\leftrightarrow a_j$
+\EndFor
+\State \Return $a_0,\dots,a_{k-1}$
+\end{algorithmic}
+\caption{Fisher--Yates 뒤섞기의 처음 $k$개 (stardust \code{csrc/random/random.cpp})}
+\label{alg:fisher-yates}
+\end{algorithm}
+
+\begin{theorem}
+\label{thm:fisher-yates}
+\cref{alg:fisher-yates}의 결과 $(a_0,\dots,a_{k-1})$는 $\{0,\dots,n-1\}$의 서로 다른 $k$개를 순서 있게 늘어놓은 $n!/(n-k)!$가지에서 균등하다. $k=n$이면 균등한 무작위 순열이다.
+\end{theorem}
+
+\begin{proof}
+걸음 $i$를 시작할 때 $a_0,\dots,a_{i-1}$은 이미 고른 원소이고 $a_i,\dots,a_{n-1}$은 아직 고르지 않은 $n-i$개 원소라는 불변식이 성립한다. 교환은 고른 원소를 자리 $i$로 옮기고 원래의 $a_i$를 빈 자리 $j$로 보내므로 불변식을 지킨다. 따라서 $i$번째 걸음은 아직 고르지 않은 $n-i$개 가운데 하나를 균등하게 골라 자리 $i$에 놓는다. 걸음마다의 선택은 독립이고 선택지의 수가 $n,n-1,\dots,n-k+1$이므로 곱의 법칙에서 각 결과가 나올 확률은 $1/(n(n-1)\cdots(n-k+1))$이다. 서로 다른 선택의 수열은 서로 다른 결과를 주므로 이 대응은 일대일이다.
+\end{proof}
+
+정리는 \textrm{Bounded}$(m)$이 정확히 균등하다고 전제한다. 난수 비트에서 $m$으로 나눈 나머지를 그냥 쓰면 $2^{64}$가 $m$의 배수가 아닐 때 작은 값이 조금 더 자주 나와 순열이 균등하지 않다. stardust는 Lemire의 곱셈 방법에 거절을 더한 정확히 균등한 정수를 쓴다(2장 \cref{thm:lemire}). $k\le n/16$이면 $n$칸 배열 대신 자기 첨자와 다른 값을 가진 칸만 개방 주소법의 해시 표(Fibonacci 해싱, 선형 탐사)에 둔다. 걸음마다 열쇠가 많아야 하나씩 늘므로 칸 수를 $2k$ 이상의 $2$의 거듭제곱으로 잡으면 적재율이 $1/2$ 이하로 머물고 시간과 기억 공간은 $O(k)$이다. 난수는 표의 내용과 무관하므로 $16$걸음 앞의 난수를 먼저 뽑아 그 칸을 미리 읽어 오게 한다. 걸음 $i$의 난수는 난수열의 위치 $\mathit{pos}+i$에서 꺼내고 거절이 나면 같은 위치의 여분 단어를 쓰므로 결과가 $(\text{열쇠},\mathit{pos},n,k)$에만 의존하고 스레드 수와 무관하다. 결과가 실제로 균등한지는 \cref{tab:fy-chi2}에서 카이제곱 시험으로 확인한다.
+
+\begin{table}[htbp]
+\begin{sdtable}{colspec={X[2]ccccc}, row{1}={font=\small\bfseries}}
+\toprule
+호출 & $n$ & $k$ & 칸 & 뽑은 수 & $\chi^2$ (자유도), p값 \\
+\midrule
+\code{permutation} & $5$ & $5$ & $120$ & $6\times10^5$ & $94.0$ ($119$), $0.96$ \\
+\code{choice} & $10$ & $3$ & $720$ & $7.2\times10^5$ & $724.0$ ($719$), $0.44$ \\
+\code{choice} (해시 표) & $64$ & $2$ & $4032$ & $2.016\times10^6$ & $4080.4$ ($4031$), $0.29$ \\
+\bottomrule
+\end{sdtable}
+\caption{따로 빌드한 stardust의 Fisher--Yates 결과가 순서 있는 $n!/(n-k)!$가지 배치 위에서 균등한지 본 카이제곱 시험(\code{choice}는 비복원, p값은 Wilson--Hilferty 근사; \code{figures/07/fisher\_yates.py}). 세 경우 모두 균등하다는 가설을 기각할 근거가 없다.}
+\label{tab:fy-chi2}
+\end{table}
+
+가중치 $p_i$가 있는 비복원 추출(\code{choice}에 \code{p}를 줄 때)은 Fisher--Yates가 아니라 지수 경주로 한다. 원소마다 독립인 표준 지수 난수 $E_i$로 열쇠 $E_i/p_i$를 만들고 열쇠가 작은 $k$개를 순서대로 고른다\cite{efraimidis2006}.
+
+\begin{proposition}
+\label{prop:race}
+$E_i$가 독립인 표준 지수분포이고 $p_i>0$이면 $E_i/p_i$들 가운데 가장 작은 것이 $i$일 확률은 $p_i/\sum_lp_l$이고, 그 조건 아래에서 나머지 열쇠들은 다시 같은 꼴의 경주를 이룬다. 따라서 열쇠의 순서는 가중치에 비례해 하나씩 비복원으로 뽑는 순서와 같은 분포를 따른다.
+\end{proposition}
+
+\begin{proof}
+$E_i/p_i$는 비율이 $p_i$인 지수분포를 따른다. 그러므로
+\[
+P(\text{최소가 }i)=\int_0^\infty p_ie^{-p_ix}\prod_{l\ne i}e^{-p_lx}\,dx=\frac{p_i}{\sum_lp_l}
+\]
+이다. 최소가 $i$이고 그 값이 $x$라는 조건 아래에서 다른 열쇠 $X_l$은 $x$보다 크다는 조건이 붙은 지수 변수인데 지수분포의 무기억성에서 $X_l-x$는 다시 비율 $p_l$의 독립인 지수분포를 따른다. 남은 원소들에 같은 논리를 되풀이하면 된다.
+\end{proof}
+
+stardust(\code{random.cpp}의 \code{race\_choice})는 $n$개 열쇠를 모두 정렬하지 않고 지금까지의 가장 작은 $k$개와 그 가운데 가장 큰 열쇠 $T$만 들고 지나간다. $E=-\ln u\ge1-u$이므로 $1-u>Tp_i$이면 로그를 계산하지 않고도 열쇠가 $T$보다 크다고 판정할 수 있어 대부분의 원소를 건너뛴다. 반올림에 대비해 $Tp_i$에 $1+2^{-40}$을 곱한 여유를 둔다.
+
+\section{Testing Counting Code}
+\label{sec:comb-testing}
+
+세는 코드의 시험은 정확한 정수에서 시작한다. 이 장의 모든 분포는 작은 크기에서 파이썬의 임의 정밀도 정수로 직접 셀 수 있다(\code{figures/07/exact.py}: $q$-이항계수, 부분집합 합, Mahonian 수, KS 경로). 그다음은 합의 항등식이다. 개수의 합은 $\binom Nc$, $2^n$, $n!$, $\binom{m+n}m$이어야 하고 분포는 대칭이어야 한다(동점이 없을 때). 마지막으로 정규 근사와의 차가 표본 크기에 따라 줄어드는지를 본다. \cref{tab:comb-tests}에는 따로 빌드한 stardust의 정확한 p값을 정수 참값과 견준 결과를 실었다. p값이 $10^{-34}$ 근처인 아주 작은 꼬리까지 모든 경우의 상대오차가 $2.2\times10^{-16}$ 이하였다. stardust 자신의 시험(\code{tests/htest/})은 작은 크기에서 전수 나열과 견주고(동점이 없을 때와 있을 때 모두) 스레드 수를 바꿔도 같은 비트가 나오는지 확인한다. R의 \code{coin} 패키지와 \code{psmirnov}가 준 값과도 견주며 KS의 동적 계획은 \cref{alg:ks-equal}의 닫힌 꼴과, Kendall의 정수 경로는 double-double 경로와 $n\le33$에서 맞대 본다.
+
+\begin{table}[htbp]
+\begin{sdtable}{colspec={llX}, row{1}={font=\small\bfseries}}
+\toprule
+API & 크기 & 정확한 p값과 정수 참값의 상대오차 \\
+\midrule
+\code{mannwhitneyu} & $(5,7)$--$(60,90)$ & $5.5\times10^{-17}$ 이하; 꼬리 $p=3.9\times10^{-25}$에서 $9.2\times10^{-18}$ \\
+\code{wilcoxon} & $n=10$--$130$ & $5.5\times10^{-17}$ 이하; 꼬리 $p=1.3\times10^{-14}$에서 $0$ \\
+\code{kendalltau} & $n=10$--$80$ & $2.2\times10^{-16}$ 이하; 꼬리 $p=8.8\times10^{-34}$에서 $3.4\times10^{-18}$ \\
+\code{ks\_2samp} & $(10,10)$--$(50,70)$ & $6.6\times10^{-17}$ 이하; 꼬리 $p=1.7\times10^{-13}$에서 $6.6\times10^{-17}$ \\
+\code{kendalltau} (double-double) & $n=200$, $400$ & $p=3.6\times10^{-17}$에서 $6.4\times10^{-17}$; $p=1.7\times10^{-47}$에서 $5.2\times10^{-17}$ \\
+\code{mannwhitneyu} (동점) & $(6,8)$ & 전수 나열과 같은 값 $p=0.055278$ \\
+\code{wilcoxon} (동점) & $n=15$ & 전수 나열과 같은 값 $p=0.899261$ \\
+\code{ks\_2samp} (동점) & $(8,10)$ & 전수 나열과 같은 값 $p=0.169409$ \\
+\code{ansari} & $(7,6)$ & 전수 나열과 같은 값 $p=0.252914$ \\
+\code{page\_trend\_test} & $3\times4$ & 전수 나열과 같은 값 $p=0.538050$ \\
+\bottomrule
+\end{sdtable}
+\caption{따로 빌드한 stardust의 \code{method='exact'} p값(무작위 자료; 위의 네 줄은 동점이 없는 경우이고 \code{figures/07/library.py}, 아래 줄들은 \code{kendall\_dd.py}와 \code{ties\_check.py}).}
+\label{tab:comb-tests}
+\end{table}
+
+\section{APIs in This Chapter}
+\label{sec:comb-apis}
+
+\cref{tab:comb-apis}에 이 장의 커널을 쓰는 stardust API와 그 커널을 설명한 곳을 모았다. 각 검정의 인자, 대립가설, 동점 정책, 근사의 세부는 116--119장, 무작위 순열의 난수열은 X권에서 다룬다.
+
+\begin{table}[htbp]
+\begin{sdtable}{colspec={X[2]X[3]X[1.5]}, row{1}={font=\small\bfseries}}
+\toprule
+API & 이 장에서 다룬 것 & 설명한 곳 \\
+\midrule
+\code{htest.mannwhitneyu} & $q$-이항계수의 곱 공식, 128비트 경계, 동점의 조건부 분포 & \cref{alg:mwu,alg:grouped} \\
+\code{htest.ranksums} & 정규 근사만(정확한 방법 없음) & \cref{sec:normal-approx} \\
+\code{htest.ansari} & 점수 반쪽의 $q$-이항계수 이중합 & \cref{alg:ansari} \\
+\code{htest.wilcoxon} & 부분집합 합, 대칭 반쪽(동점에도), NEON·스레드 & \cref{alg:subset-sum,alg:signed-half} \\
+\code{htest.kendalltau} & Mahonian 수, 정수 창, 블록 창, $2^{600}$ 척도 & \cref{alg:int-window,alg:block-window} \\
+\code{htest.page\_trend\_test} & 비트마스크 동적 계획 & \cref{alg:page} \\
+\code{htest.ks\_2samp} & 정수 경계, 반사 원리, 흡수 경계, 초기하 갈래 & \cref{alg:ks-equal,alg:ks-absorb,alg:hypergeom} \\
+\code{htest.}\allowbreak\code{cramervonmises\_2samp} & 제곱 증가분, 흡수와 버림의 창 & \cref{alg:cvm2} \\
+\code{htest.fisher\_exact} & 고정된 주변합의 표, 완성의 합 & \cref{prop:multinomial-vandermonde} \\
+위의 \code{method='auto'} & 일의 상한과 정규 근사 & \cref{sec:normal-approx} \\
+\code{random} 생성기의 \code{permutation}, 비복원 \code{choice} & Fisher--Yates의 처음 $k$개, 해시 표 & \cref{alg:fisher-yates} \\
+가중치가 있는 비복원 \code{choice} & 지수 경주 & \cref{prop:race} \\
+\bottomrule
+\end{sdtable}
+\caption{이 장의 커널을 쓰는 stardust API.}
+\label{tab:comb-apis}
+\end{table}
+
+\section{Concluding Remarks}
+
+이 장에서 본 정확 분포들은 모두 같은 틀을 따른다. 귀무가설이 관측의 배치를 균등하게 만들면 p값은 개수의 몫이 되고 통계량이 독립적인 선택들의 합이면 그 분포의 생성 함수는 인수들의 곱이 된다. Mann--Whitney는 $q$-이항계수, 부호 순위는 $\prod(1+q^i)$, Kendall은 $\prod[j]_q$, 동점이 있는 경우는 두 변수 곱이었고 격자 경로는 반사 원리와 흡수 경계로 다루었다. 계산에서는 세 가지 원칙이 거듭 나왔다. p값에 필요한 꼬리의 차수에서 자르고(\cref{prop:fps-truncate}), 대칭이 있으면 가까운 쪽 꼬리만 세며 정수의 범위를 넘으면 뺄셈 없는 양수의 합으로 확률을 쌓는다. \cref{lem:positive-accum}에서 보였듯이 마지막 원칙은 상대오차를 걸음 수에 비례하게 묶어 둔다. 반올림 오차의 일반적인 해석은 11장에서 한다. 조합론의 생성 함수 방법은 Wilf\cite{wilf2006gf}가 가장 친절한 입문이고 $q$-이항계수와 분할은 Andrews\cite{andrews1998partitions}, 세기 문제 전반은 Stanley\cite{stanley2012ec1}와 Flajolet--Sedgewick\cite{flajolet2009analytic}이 표준적인 참고서이다. 다음 장에서는 볼록성과 최적성 조건을 다룬다.
+
+\chapterreferences
