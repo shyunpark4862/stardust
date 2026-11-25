@@ -2,11 +2,11 @@
 \chapter{Logic and Proof}
 \label{ch:logic}
 
-\abstract{A program that has passed a thousand tests may still fail on the next input, and even the arithmetic we learned as children is not safe from surprises: in almost every programming language the comparison \code{0.1 + 0.2 == 0.3} comes out false, although every calculation we have ever done by hand says that it should be true. When a claim concerns every input of an algorithm, every real number or every size of a matrix, no amount of checking individual cases can settle it, because the cases never run out. What can settle it is an argument that covers all the cases at once, and such an argument is called a proof. This book makes many claims of that kind, that an error stays below a stated bound, that an iteration converges, that a factorization exists, and it justifies each of them by a proof. This chapter provides the means of reading and writing those proofs: a precise language for statements, and a small number of techniques that, in various combinations, account for almost every argument in the chapters that follow.}
+\abstract{A program that has passed a thousand tests may still fail on the next input, and even the arithmetic we learned as children is not safe from surprises: in almost every programming language the comparison \code{0.1 + 0.2 == 0.3} comes out false, although every calculation we have ever done by hand says that it should be true. When a claim concerns every input of an algorithm, every real number or every size of a matrix, no amount of checking individual cases can settle it, because the cases never run out. What can settle it is an argument that covers all the cases at once, and such an argument is called a proof. This book makes many claims of that kind (that an error stays below a stated bound, that an iteration converges, that a factorisation exists), and it justifies each of them by a proof. This chapter provides the means of reading and writing those proofs: a precise language for statements, and a small number of techniques that, in various combinations, account for almost every argument in the chapters that follow.}
 
 Most readers of this book have met proofs only in passing, perhaps as a derivation in a calculus lecture that was to be followed rather than reproduced. This chapter starts from the beginning and assumes nothing beyond school algebra and the calculus of one variable. It has two parts. The first part, \cref{sec:statements,sec:implication,sec:quantifiers}, describes the language in which mathematical claims are written: statements and the connectives that combine them, the conditional ``if \ldots, then \ldots'', and the quantifiers ``for every'' and ``there exists''. Much of this part is close to mechanical, and its purpose is precision. Everyday language tolerates words such as ``or'' and ``if'' with several meanings, whereas a proof needs each word to have exactly one. The second part, \cref{sec:anatomy,sec:direct,sec:contradiction,sec:induction,sec:existence}, explains what a proof is and presents the standard techniques: direct proof, proof by cases, proof by contrapositive, proof by contradiction and mathematical induction, together with the proofs of existence and uniqueness, the refutation of a claim by a counterexample, and the errors that most often spoil an argument.
 
-Throughout the chapter we use the familiar number systems: the natural numbers $\mathbb N=\{0,1,2,\ldots\}$ (in this book zero is a natural number), the integers $\mathbb Z$, the rational numbers $\mathbb Q$ and the real numbers $\mathbb R$. Their arithmetic and their ordering are used freely; the facts that we rely on are listed in \cref{asm:numbers}, and the next two chapters build them up properly. We also speak informally of sets: $x\in S$ means that $x$ is an element of the set $S$, and $\{x\in S: P(x)\}$ denotes the set of those elements of $S$ that have the property $P$. Sets are the subject of the next chapter.
+Throughout the chapter we use the familiar number systems: the natural numbers $\mathbb N=\{0,1,2,\ldots\}$ (in this book zero is a natural number), the integers $\mathbb Z$, the rational numbers $\mathbb Q$ and the real numbers $\mathbb R$. Their arithmetic and their ordering are used freely; the facts that we rely on are listed in \cref{asm:numbers}, and Chapter~3 builds them up properly. We also speak informally of sets: $x\in S$ means that $x$ is an element of the set $S$, and $\{x\in S: P(x)\}$ denotes the set of those elements of $S$ that have the property $P$. Sets are the subject of the next chapter.
 
 A proof is not read like a story. It is best read with a pencil, checking each step, asking which earlier fact justifies it, and trying the claim on a small example when a step seems obscure. The examples in this chapter are chosen to be easy so that the reader's attention can go to the form of the argument rather than to its content.
 
@@ -20,7 +20,7 @@ Mathematics is written in sentences. Some of them, such as ``let $x$ be a real n
 A \term{statement} is a sentence that is either true or false, but not both. Its \term{truth value} is \emph{true}, written $\mathrm T$, or \emph{false}, written $\mathrm F$.
 \end{definition}
 
-The sentences ``$7$ is a prime number'' and ``$2+2=5$'' are statements; the first is true and the second is false. The sentence ``every even integer greater than $2$ is the sum of two prime numbers'' is also a statement, although nobody knows at present whether it is true: it is the Goldbach conjecture, which has been checked for an enormous range of even integers but has never been proved~\cite{hardywright2008,ribenboim1996}. To be a statement a sentence must have a truth value; we do not have to know it. On the other hand, the question ``is $7$ prime?'', the command ``compute $x^2$'' and the sentence ``$x>3$'' are not statements. The last one becomes true or false only after a value of $x$ is chosen; sentences of this kind are called predicates and are treated in \cref{sec:quantifiers}. Logic textbooks often call statements \emph{propositions}. We avoid that word for them because in this book a proposition is a kind of theorem (\cref{sec:anatomy}).
+The sentences ``$7$ is a prime number'' and ``$2+2=5$'' are statements; the first is true and the second is false. The sentence ``every even integer greater than $2$ is the sum of two prime numbers'' is also a statement, although nobody knows at present whether it is true: it is the Goldbach conjecture, which has been checked by computer for every even integer up to $4\cdot10^{18}$~\cite{oliveiraesilva2014goldbach} but has never been proved~\cite{hardywright2008,ribenboim1996}. To be a statement a sentence must have a truth value; we do not have to know it. On the other hand, the question ``is $7$ prime?'', the command ``compute $x^2$'' and the sentence ``$x>3$'' are not statements. The last one becomes true or false only after a value of $x$ is chosen; sentences of this kind are called predicates and are treated in \cref{sec:quantifiers}. Logic textbooks often call statements \emph{propositions}. We avoid that word for them because in this book a proposition is a kind of theorem (\cref{sec:anatomy}).
 
 \subsection{Negation, Conjunction, and Disjunction}
 
@@ -54,7 +54,7 @@ F & F & T & F & F \\
 
 The word ``or'' deserves a comment. In everyday speech ``tea or coffee'' usually means one of the two but not both. This is the \term{exclusive or}. In mathematics ``or'' is always the \term{inclusive or} of \cref{def:connectives}: $P\vee Q$ is true also when both $P$ and $Q$ are true. Thus ``$x\le 2$ or $x\ge 1$'' is true for every real number $x$, including $x=1.5$, which satisfies both inequalities. When the exclusive meaning is intended, a mathematician says so explicitly (``$P$ or $Q$, but not both''). Similarly, the logical ``and'' ignores the shades of meaning that ``but'', ``although'' and ``while'' carry in English; ``$3$ is odd, but $3$ is prime'' and ``$3$ is odd and $3$ is prime'' are the same statement.
 
-Programming languages provide the same three connectives: \code{not}, \code{and} and \code{or} in Python, and \code{!}, \code{\&\&} and \code{||} in C and C++. A condition in an \code{if} statement is evaluated exactly as in \cref{tab:truth-basic}. The bitwise operators of these languages apply the connectives to each binary digit of an integer separately; binary digits appear in \cref{sec:induction}.
+Programming languages provide the same three connectives, as the words \code{not}, \code{and} and \code{or} or as short symbols, and the condition of a conditional statement in a program is evaluated according to \cref{tab:truth-basic}. The bitwise operators of these languages apply the connectives to each binary digit of an integer separately; binary digits appear in \cref{sec:induction}.
 
 \subsection{Formulas and Logical Equivalence}
 
@@ -97,7 +97,7 @@ F & F & T & T & T & T & T & T \\
 \end{sdtable}}{Truth table proving De Morgan's laws (\cref{thm:de-morgan}). Columns five and six agree, and so do columns seven and eight.\label{tab:de-morgan}}
 \end{table}
 
-In words, De Morgan's laws say that ``not both'' means ``at least one fails'', and that ``neither'' means ``both fail''. They are used constantly to negate statements: to deny a conjunction, one denies one of its parts, and to deny a disjunction, one denies both. The negation of ``$x>0$ and $x<1$'' is ``$x\le 0$ or $x\ge 1$'', and the negation of ``$n$ is even or $n$ is prime'' is ``$n$ is odd and $n$ is not prime''.
+In words, De Morgan's laws say that ``not both'' means ``at least one fails'', and that ``neither'' means ``both fail''. Their main use is in negating statements: to deny a conjunction, one denies one of its parts, and to deny a disjunction, one denies both. The negation of ``$x>0$ and $x<1$'' is ``$x\le 0$ or $x\ge 1$'', and the negation of ``$n$ is even or $n$ is prime'' is ``$n$ is odd and $n$ is not prime''.
 
 De Morgan's laws are two members of a larger family of equivalences, collected in the next proposition. These laws allow formulas to be manipulated algebraically, much as the laws of arithmetic allow polynomials to be manipulated.
 
@@ -154,7 +154,7 @@ by the first distributive law (read from right to left) and parts (vii) and (vii
 
 \subsection{A Picture of the Connectives}
 
-A useful picture of the connectives is the following. Imagine all possible situations as the points of a rectangle, and represent a statement $P$ by the region of situations in which it is true. Then $\neg P$ is represented by the part of the rectangle outside that region, $P\wedge Q$ by the overlap of the two regions, and $P\vee Q$ by their combined extent. Two formulas are logically equivalent exactly when they are represented by the same region. \Cref{fig:venn} shows the connectives in this form, which is known as a \term{Venn diagram}. Panel~D shows the region of $\neg(P\wedge Q)$: everything except the overlap, which is visibly the same as the region covered by the outside of $P$ together with the outside of $Q$, that is, $\neg P\vee\neg Q$. This is the first of De Morgan's laws.
+The connectives also have a geometric picture. Imagine all possible situations as the points of a rectangle, and represent a statement $P$ by the region of situations in which it is true. Then $\neg P$ is represented by the part of the rectangle outside that region, $P\wedge Q$ by the overlap of the two regions, and $P\vee Q$ by their combined extent. Two formulas are logically equivalent exactly when they are represented by the same region. \Cref{fig:venn} shows the connectives in this form, which is known as a \term{Venn diagram}. Panel~D shows the region of $\neg(P\wedge Q)$: everything except the overlap. This is visibly the region covered by the outside of $P$ together with the outside of $Q$, that is, the region of $\neg P\vee\neg Q$, and so the picture displays the first of De Morgan's laws.
 
 \begin{figure}
 \tikzset{venn/.pic={
@@ -188,13 +188,13 @@ A useful picture of the connectives is the following. Imagine all possible situa
 The picture becomes literal in \cref{sec:quantifiers}, where a statement depends on a variable $x$ and the region of a statement is the set of values of $x$ for which it is true. Negation then corresponds to the complement of a set, conjunction to the intersection of two sets and disjunction to their union, and the laws of \cref{prop:laws} turn into laws of set operations, which are studied in the next chapter.
 
 \begin{note}{Boolean algebra and logic circuits}
-The laws of \cref{prop:laws} were first treated as an algebra by George Boole~\cite{boole1854}, who wrote truth values as $1$ and $0$ and the connectives as operations on them; for instance $P\wedge Q$ becomes the product $PQ$ and $\neg P$ becomes $1-P$. A set with two operations and a complement obeying these laws is now called a \emph{Boolean algebra}. In 1938 Claude Shannon observed that circuits of electrical switches obey the same laws, so that the design of a switching circuit can be carried out by manipulating formulas~\cite{shannon1938}. Every digital computer is built on this observation. Its circuits are assembled from \emph{gates}, small circuits that compute $\neg$, $\wedge$ and $\vee$ on voltages representing $0$ and $1$, and its arithmetic on integers and floating-point numbers is assembled from gates in turn. Volume~4 of this series builds an adder from gates; Volume~5 treats floating-point arithmetic, including the rounding that makes \code{0.1 + 0.2 == 0.3} false.
+The laws of \cref{prop:laws} were first treated as an algebra by George Boole~\cite{boole1847,boole1854}, who wrote truth values as $1$ and $0$ and the connectives as operations on them; for instance $P\wedge Q$ becomes the product $PQ$ and $\neg P$ becomes $1-P$. A set with two operations and a complement obeying these laws is now called a \emph{Boolean algebra}. In 1938 Claude Shannon observed that circuits of electrical switches obey the same laws, so that the design of a switching circuit can be carried out by manipulating formulas~\cite{shannon1938}. Digital computers are designed on this principle. Their circuits are assembled from \emph{gates}, small circuits that compute $\neg$, $\wedge$ and $\vee$ on voltages representing $0$ and $1$, and their arithmetic on integers and floating-point numbers is assembled from gates in turn. Volume~4 of this series builds an adder from gates; Volume~5 treats floating-point arithmetic, including the rounding that makes \code{0.1 + 0.2 == 0.3} false.
 \end{note}
 
 \section{Implication}
 \label{sec:implication}
 
-Almost every theorem in mathematics has the form ``if \ldots, then \ldots''. The connective that expresses this form is the most important one, and also the one whose definition surprises beginners.
+Almost every theorem in mathematics has the form ``if \ldots, then \ldots''. The connective that expresses this form is used more than any other, and its definition is also the one that surprises beginners.
 
 \begin{definition}[Conditional]
 \label{def:conditional}
@@ -224,7 +224,7 @@ The mathematical reason is stronger. Consider the claim that, for every integer 
 \text{if } n>2, \text{ then } n^2>4.
 \label{eq:n-greater-two}
 \end{equation}
-Everybody agrees that this claim is true, and it is reasonable to require that a claim made ``for every integer $n$'' be true for each particular integer. Now look at particular values. For $n=3$ the hypothesis and the conclusion are both true ($9>4$). For $n=1$ both are false. For $n=-3$ the hypothesis is false and the conclusion is true ($9>4$). No integer makes the hypothesis true and the conclusion false. If we declared the conditional false whenever its hypothesis is false, the instances $n=1$ and $n=-3$ of \eqref{eq:n-greater-two} would be false, and a perfectly good theorem would be false too. Definition~\ref{def:conditional} is exactly the convention that makes ``for every $n$, if $P(n)$, then $Q(n)$'' mean what mathematicians intend: the conclusion holds in every case in which the hypothesis does, and nothing at all is claimed about the other cases.
+Everybody agrees that this claim is true, and it is reasonable to require that a claim made ``for every integer $n$'' be true for each particular integer. Now look at particular values. For $n=3$ the hypothesis and the conclusion are both true ($9>4$). For $n=1$ both are false. For $n=-3$ the hypothesis is false and the conclusion is true ($9>4$). No integer makes the hypothesis true and the conclusion false. If we declared the conditional false whenever its hypothesis is false, the instances $n=1$ and $n=-3$ of \eqref{eq:n-greater-two} would be false, and a perfectly good theorem would be false too. \Cref{def:conditional} is precisely the convention that makes ``for every $n$, if $P(n)$, then $Q(n)$'' mean what mathematicians intend: the conclusion holds in every case in which the hypothesis does, and nothing at all is claimed about the other cases.
 
 A conditional whose hypothesis is false is said to be \term{vacuously true}. A consequence of the definition is that $P\Rightarrow Q$ asserts no connection of cause or meaning between $P$ and $Q$: ``if $2+2=4$, then $7$ is prime'' is true, simply because both parts are true, and ``if $2+2=5$, then the moon is made of cheese'' is true because its hypothesis is false. Mathematicians do not write such sentences, but the definition must give them some truth value, and the one it gives is consistent with the use of conditionals inside general statements such as \eqref{eq:n-greater-two}. This reading of ``if \ldots, then \ldots'' is called \term{material implication}~\cite{enderton2001}.
 
@@ -285,7 +285,7 @@ From a conditional $P\Rightarrow Q$ three related conditionals can be formed by 
 The \term{converse} of $P\Rightarrow Q$ is $Q\Rightarrow P$, its \term{inverse} is $\neg P\Rightarrow\neg Q$, and its \term{contrapositive} is $\neg Q\Rightarrow\neg P$.
 \end{definition}
 
-The four statements do not all mean the same thing. Take the true statement ``if $n$ is divisible by $4$, then $n$ is even''. Its converse, ``if $n$ is even, then $n$ is divisible by $4$'', is false: $n=2$ is even but not divisible by $4$. Its inverse, ``if $n$ is not divisible by $4$, then $n$ is odd'', is false for the same $n=2$. Its contrapositive, ``if $n$ is odd, then $n$ is not divisible by $4$'', is true. The next proposition shows that this pattern is general: a conditional always agrees with its contrapositive, but not, in general, with its converse or its inverse. The relationships are summarised in \cref{fig:square}. Confusing a statement with its converse is the most common logical error of all, and \cref{sec:existence} returns to it.
+The four statements do not all mean the same thing. Take the true statement ``if $n$ is divisible by $4$, then $n$ is even''. Its converse, ``if $n$ is even, then $n$ is divisible by $4$'', is false: $n=2$ is even but not divisible by $4$. Its inverse, ``if $n$ is not divisible by $4$, then $n$ is odd'', is false for the same $n=2$. Its contrapositive, ``if $n$ is odd, then $n$ is not divisible by $4$'', is true. The next proposition shows that this pattern is general: a conditional always agrees with its contrapositive, but not, in general, with its converse or its inverse. The relationships are summarised in \cref{fig:square}. Confusing a statement with its converse is among the most common logical errors, and \cref{sec:existence} returns to it. In the proposition, as everywhere in this book, the sign $\equiv$ separates two complete formulas: $P\Rightarrow Q\equiv\neg P\vee Q$ says that the formula $P\Rightarrow Q$ is logically equivalent to the formula $\neg P\vee Q$.
 
 \begin{proposition}
 \label{prop:implication-laws}
@@ -366,9 +366,9 @@ For all statements $P$ and $Q$, $P\Leftrightarrow Q\equiv(P\Rightarrow Q)\wedge(
 The conjunction $(P\Rightarrow Q)\wedge(Q\Rightarrow P)$ is false exactly when one of the two conditionals is false, that is, when $P$ is true and $Q$ false, or $Q$ true and $P$ false. These are exactly the assignments in which $P$ and $Q$ have different truth values, which by \cref{def:biconditional} are the assignments in which $P\Leftrightarrow Q$ is false (compare columns three to five of \cref{tab:truth-implication}). For the second claim, $A\Leftrightarrow B$ is true under an assignment exactly when $A$ and $B$ have the same truth value under it; so it is true under every assignment exactly when $A\equiv B$.
 \end{proof}
 
-By \cref{prop:biconditional}, a theorem of the form ``$P$ if and only if $Q$'' contains two theorems, $P\Rightarrow Q$ and $Q\Rightarrow P$, and its proof usually has two parts, often labelled ``($\Rightarrow$)'' and ``($\Leftarrow$)''. Note the difference between the symbols $\Leftrightarrow$ and $\equiv$: the first is a connective that builds a new formula, the second is a relation between two formulas that we assert about them.
+By \cref{prop:biconditional}, a theorem of the form ``$P$ if and only if $Q$'' contains two theorems, $P\Rightarrow Q$ and $Q\Rightarrow P$, and its proof usually has two parts, often labelled ``($\Rightarrow$)'' and ``($\Leftarrow$)''. The symbols $\Leftrightarrow$ and $\equiv$ must be kept apart: the first is a connective that builds a new formula, the second is a relation between two formulas that we assert about them.
 
-To save parentheses we agree that $\neg$ binds most tightly, then $\wedge$ and $\vee$, and then $\Rightarrow$ and $\Leftrightarrow$; thus $P\wedge Q\Rightarrow R$ means $(P\wedge Q)\Rightarrow R$. A chain such as $P\Rightarrow Q\Rightarrow R$ is never written without parentheses, because the two readings differ. When $P$ and $R$ are false, $P\Rightarrow(Q\Rightarrow R)$ is true, since its hypothesis is false, whereas $(P\Rightarrow Q)\Rightarrow R$ is false, since its hypothesis $P\Rightarrow Q$ is true and its conclusion $R$ is false.
+To save parentheses we agree that $\neg$ binds most tightly, then $\wedge$ and $\vee$, and then $\Rightarrow$ and $\Leftrightarrow$; thus $P\wedge Q\Rightarrow R$ means $(P\wedge Q)\Rightarrow R$. Since $\wedge$ and $\vee$ are on the same level, a formula that combines them, such as $(P\wedge Q)\vee R$, always keeps its parentheses. A chain such as $P\Rightarrow Q\Rightarrow R$ is never written without parentheses, because the two readings differ. When $P$ and $R$ are false, $P\Rightarrow(Q\Rightarrow R)$ is true, since its hypothesis is false, whereas $(P\Rightarrow Q)\Rightarrow R$ is false, since its hypothesis $P\Rightarrow Q$ is true and its conclusion $R$ is false.
 
 \section{Predicates and Quantifiers}
 \label{sec:quantifiers}
@@ -401,7 +401,7 @@ The comma after the quantifier separates it from the formula that it governs, it
 
 For example, $\forall x\in\mathbb R,\ x^2\ge 0$ is true, $\forall x\in\mathbb R,\ x^2>0$ is false (it fails for $x=0$), $\exists x\in\mathbb R,\ x^2=2$ is true (take $x=\sqrt2$), and $\exists x\in\mathbb Q,\ x^2=2$ is false, as we prove in \cref{sec:contradiction}. The last two examples differ only in the domain, which shows that the domain is an essential part of a quantified statement.
 
-A programmer may find the following reading helpful. If $S$ is a finite list, $\forall x\in S,\ P(x)$ is what a loop computes that runs through $S$ and returns false as soon as it finds an element failing $P$, and true if it reaches the end; in Python this is \code{all(P(x) for x in S)}. Likewise $\exists x\in S,\ P(x)$ is \code{any(P(x) for x in S)}. For a finite domain $S=\{a_1,\ldots,a_n\}$ the quantifiers are nothing but long conjunctions and disjunctions,
+Programmers may recognise the quantifiers as loops. If $S$ is a finite list, $\forall x\in S,\ P(x)$ is what a loop computes that runs through $S$, returns false as soon as it finds an element failing $P$, and returns true if it reaches the end. Likewise $\exists x\in S,\ P(x)$ is computed by a loop that returns true as soon as it finds an element satisfying $P$, and false if it reaches the end. Many languages provide these two loops as library functions, commonly named \code{all} and \code{any}. For a finite domain $S=\{a_1,\ldots,a_n\}$ the quantifiers are nothing but long conjunctions and disjunctions,
 \[
 \forall x\in S,\ P(x)\equiv P(a_1)\wedge\cdots\wedge P(a_n),
 \qquad
@@ -409,7 +409,7 @@ A programmer may find the following reading helpful. If $S$ is a finite list, $\
 \]
 The quantifiers are indispensable because domains such as $\mathbb N$ and $\mathbb R$ are infinite: the loop never ends, and the truth of a universal statement over an infinite domain can be established only by an argument that applies to every element at once. Producing such arguments is what the rest of this chapter is about.
 
-Two further remarks complete the picture. First, the variable of a quantified statement is a placeholder, like the index of a sum or the variable of integration: $\forall x\in S,\ P(x)$ and $\forall t\in S,\ P(t)$ are the same statement. Such a variable is said to be \term{bound} by the quantifier, while a variable that is not bound, like $x$ in the predicate ``$x>3$'', is \term{free}. A formula with no free variables is a statement. Second, when $S$ is empty, $\forall x\in S,\ P(x)$ is true, because no element of $S$ fails $P$, and $\exists x\in S,\ P(x)$ is false, because no element of $S$ satisfies it. This agrees with the vacuous truth of conditionals and also with Python, where \code{all([])} is \code{True} and \code{any([])} is \code{False}.
+Two further remarks complete the picture. First, the variable of a quantified statement is a placeholder, like the index of a sum or the variable of integration: $\forall x\in S,\ P(x)$ and $\forall t\in S,\ P(t)$ are the same statement. Such a variable is said to be \term{bound} by the quantifier, while a variable that is not bound, like $x$ in the predicate ``$x>3$'', is \term{free}. A formula with no free variables is a statement. Second, when $S$ is empty, $\forall x\in S,\ P(x)$ is true, because no element of $S$ fails $P$, and $\exists x\in S,\ P(x)$ is false, because no element of $S$ satisfies it. This agrees with the vacuous truth of conditionals, and also with the two loops described above: on an empty list, the loop for $\forall$ reaches the end at once and returns true, and the loop for $\exists$ returns false.
 
 A quantifier is frequently restricted to the elements satisfying a condition, as in ``for every $x>0$'' or ``there is an even $n$ such that \ldots''. Expressed with the connectives, the two restricted forms read
 \begin{equation}
@@ -418,11 +418,11 @@ A quantifier is frequently restricted to the elements satisfying a condition, as
 \exists x\in S,\ \bigl(Q(x)\wedge P(x)\bigr),
 \label{eq:restricted}
 \end{equation}
-and we abbreviate them as $\forall x\in S$ with $Q(x),\ P(x)$, or, when $Q$ is an inequality, as $\forall x>0,\ P(x)$ and $\exists x>0,\ P(x)$. Note that the universal form uses $\Rightarrow$ and the existential form uses $\wedge$. Writing $\forall x\,(Q(x)\wedge P(x))$ would claim that every $x$ satisfies $Q$, and writing $\exists x\,(Q(x)\Rightarrow P(x))$ would be satisfied by any $x$ that fails $Q$; neither is what is meant.
+and we abbreviate them as $\forall x\in S$ with $Q(x),\ P(x)$, or, when $Q$ is an inequality, as $\forall x>0,\ P(x)$ and $\exists x>0,\ P(x)$. The universal form uses $\Rightarrow$ and the existential form uses $\wedge$, and the difference matters. Writing $\forall x\,(Q(x)\wedge P(x))$ would claim that every $x$ satisfies $Q$, and writing $\exists x\,(Q(x)\Rightarrow P(x))$ would be satisfied by any $x$ that fails $Q$; neither is what is meant.
 
 \subsection{Negating Quantified Statements}
 
-To say that not every element has a property is to say that some element lacks it. This simple observation is the most frequently used fact of logic.
+To say that not every element has a property is to say that some element lacks it. This observation is used in almost every proof that involves a negation.
 
 \begin{theorem}[Negation of quantifiers]
 \label{thm:quantifier-negation}
@@ -442,7 +442,7 @@ By \cref{def:quantifiers}, $\forall x\in S,\ P(x)$ is false exactly when $P(a)$ 
 For the second equivalence, $\exists x\in S,\ P(x)$ is false exactly when there is no element $a$ of $S$ for which $P(a)$ is true, that is, when $P(a)$ is false, and $\neg P(a)$ true, for every $a\in S$; this is the condition for $\forall x\in S,\ \neg P(x)$ to be true.
 \end{proof}
 
-For a finite domain, \cref{thm:quantifier-negation} is just De Morgan's law applied to the long conjunction and disjunction displayed above, and for this reason it is sometimes called De Morgan's law for quantifiers~\cite{enderton2001}. In ordinary language the theorem guards against a common slip: the negation of ``every student passed the examination'' is ``some student did not pass'', and not ``every student failed''.
+For a finite domain, \cref{thm:quantifier-negation} is just De Morgan's law applied to the long conjunction and disjunction displayed above, and for this reason it is sometimes called De Morgan's law for quantifiers. In ordinary language the theorem guards against a common slip: the negation of ``every student passed the examination'' is ``some student did not pass'', and not ``every student failed''.
 
 Combining \cref{thm:quantifier-negation} with De Morgan's laws and \cref{prop:implication-laws}\,(iii), any quantified statement can be negated by a mechanical procedure: move the negation inwards step by step, exchanging $\forall$ and $\exists$ each time it passes a quantifier, exchanging $\wedge$ and $\vee$ each time it passes one of them, and replacing $\neg(P\Rightarrow Q)$ by $P\wedge\neg Q$. As an example, consider the true statement that every positive real number has a real square root,
 \[
@@ -455,7 +455,7 @@ Its negation is transformed as follows:
 &\equiv\exists x\in\mathbb R,\ \bigl(x>0\wedge\neg\,\exists y\in\mathbb R,\ y^2=x\bigr)\\
 &\equiv\exists x\in\mathbb R,\ \bigl(x>0\wedge\forall y\in\mathbb R,\ y^2\ne x\bigr).
 \end{align*}
-The result reads: there is a positive real number that is not the square of any real number. Exactly one of the original statement and its negation is true; in this case it is the original. Replacing $\mathbb R$ by $\mathbb Q$ in both places reverses this: the negation becomes true, with $x=2$ as a witness.
+The result reads: there is a positive real number that is not the square of any real number. Exactly one of the original statement and its negation is true; in this case it is the original. Replacing $\mathbb R$ by $\mathbb Q$ in both places reverses this: the negation becomes true, with $x=2$ as a witness, because no rational number has the square $2$ (we prove this in \cref{sec:contradiction}).
 
 \subsection{Several Quantifiers}
 
@@ -511,7 +511,7 @@ The difference between the two orders is the difference between ``everyone has s
 \label{fig:quantifier-grid}
 \end{figure}
 
-A helpful way to read a statement with alternating quantifiers is as a game between two players. One player, the sceptic, chooses the values of the universally quantified variables and tries to make the final formula false; the other, the prover, chooses the values of the existentially quantified variables and tries to make it true. The players move in the order in which the quantifiers are written, and each sees the moves already made. The statement is true exactly when the prover has a strategy that wins against every sequence of moves by the sceptic. In $\forall x,\ \exists y,\ y>x$ the sceptic names an integer $x$ and the prover answers $x+1$, and the prover always wins. In $\exists y,\ \forall x,\ y>x$ the prover must commit to $y$ first, and the sceptic answers with $x=y$.
+A statement with alternating quantifiers can also be read as a game between two players. One player, the sceptic, chooses the values of the universally quantified variables and tries to make the final formula false; the other, the prover, chooses the values of the existentially quantified variables and tries to make it true. The players move in the order in which the quantifiers are written, and each sees the moves already made. The statement is true exactly when the prover has a strategy that wins against every sequence of moves by the sceptic. In $\forall x,\ \exists y,\ y>x$ the sceptic names an integer $x$ and the prover answers $x+1$, and the prover always wins. In $\exists y,\ \forall x,\ y>x$ the prover must commit to $y$ first, and the sceptic answers with $x=y$.
 
 \subsection{Unique Existence}
 
@@ -533,7 +533,7 @@ holds (\term{uniqueness}, or ``at most one''). Proofs of unique existence almost
 
 \subsection{From English to Symbols}
 
-Mathematical writing seldom uses the symbols $\forall$ and $\exists$ in running text, and it often leaves quantifiers implicit. The identity ``$x^2-1=(x-1)(x+1)$'' is a claim about every real number $x$; ``a differentiable function is continuous'' is a claim about every function; ``$\sqrt2$ is irrational'' is the claim that no pair of integers has the ratio $\sqrt2$. Before trying to prove a statement, it is worth writing it with all its quantifiers explicit, because the form of the statement determines the form of the proof. \Cref{tab:translations} gives some examples.
+Mathematical writing seldom uses the symbols $\forall$ and $\exists$ in running text, and it often leaves quantifiers implicit. The identity ``$x^2-1=(x-1)(x+1)$'' is a claim about every real number $x$; ``a differentiable function is continuous'' is a claim about every function; ``$\sqrt2$ is irrational'' is the claim that no pair of integers has the ratio $\sqrt2$. Before trying to prove a statement, it pays to write it with all its quantifiers explicit, because the form of the statement determines the form of the proof. \Cref{tab:translations} gives some examples.
 
 \begin{table}
 \sdfloat{%
@@ -556,7 +556,7 @@ Two of the rows deserve comment. ``No integer is both even and odd'' is literall
 
 \subsection{Reading the Definition of a Limit}
 
-The most famous statement with alternating quantifiers in elementary mathematics is the definition of a limit, which most readers will have met in a calculus course. For a real number $t$ we write $|t|$ for its absolute value, which is $t$ if $t\ge 0$ and $-t$ if $t<0$; the number $|x-a|$ is the distance between $x$ and $a$ on the real line. The properties of the absolute value are proved in \cref{sec:direct}.
+The best-known statement with alternating quantifiers in elementary mathematics is the definition of a limit, which most readers will have met in a calculus course. For a real number $t$ we write $|t|$ for its absolute value, which is $t$ if $t\ge 0$ and $-t$ if $t<0$; the number $|x-a|$ is the distance between $x$ and $a$ on the real line. The properties of the absolute value are proved in \cref{sec:direct}.
 
 \begin{definition}[Limit of a function]
 \label{def:limit}
@@ -568,7 +568,7 @@ Let $f$ be a real function defined at every point of an open interval containing
 where $x$ ranges over the points at which $f$ is defined.
 \end{definition}
 
-This definition is discussed at length in rigorous calculus texts~\cite{spivak2008calculus}. Read as a game, it says the following. The sceptic chooses a tolerance $\varepsilon>0$, as small as desired. The prover answers with a distance $\delta>0$. The sceptic then picks any $x$ within distance $\delta$ of $a$, other than $a$ itself, and the prover wins if $f(x)$ lies within $\varepsilon$ of $L$. The limit is $L$ if the prover can always win, however small the tolerance. \Cref{fig:epsilon-delta} shows one round of the game. Three features of \eqref{eq:limit} are worth noticing. First, $\delta$ comes after $\varepsilon$ and may depend on it; typically a smaller $\varepsilon$ requires a smaller $\delta$. Second, the condition $0<|x-a|$ excludes $x=a$, so the value $f(a)$, if it exists at all, has no influence on the limit. Third, the inequalities are about distances: $|f(x)-L|<\varepsilon$ says that $L-\varepsilon<f(x)<L+\varepsilon$.
+This definition is discussed at length in rigorous calculus texts~\cite{spivak2008calculus}. Read as a game, it says the following. The sceptic chooses a tolerance $\varepsilon>0$, as small as desired. The prover answers with a distance $\delta>0$. The sceptic then picks any $x$ within distance $\delta$ of $a$, other than $a$ itself, and the prover wins if $f(x)$ lies within $\varepsilon$ of $L$. The limit is $L$ if the prover can always win, however small the tolerance. \Cref{fig:epsilon-delta} shows one round of the game. Three features of \eqref{eq:limit} deserve attention. First, $\delta$ comes after $\varepsilon$ and may depend on it; typically a smaller $\varepsilon$ requires a smaller $\delta$. Second, the condition $0<|x-a|$ excludes $x=a$, so the value $f(a)$, if it exists at all, has no influence on the limit. Third, the inequalities are about distances: $|f(x)-L|<\varepsilon$ says that $L-\varepsilon<f(x)<L+\varepsilon$.
 
 \begin{figure}
 \sdfloat{%
@@ -604,7 +604,7 @@ Let $\varepsilon>0$ be arbitrary, and put $\delta\coloneqq\varepsilon/3$, which 
 Since $\varepsilon$ was arbitrary, \eqref{eq:limit} holds with $f(x)=3x+1$, $a=2$ and $L=7$.
 \end{proof}
 
-The symbol $\coloneqq$ in the proof means ``is defined to be''; it introduces a new name rather than asserting an equation. Notice how the proof follows the quantifiers of \eqref{eq:limit} from left to right: ``let $\varepsilon>0$ be arbitrary'' answers $\forall\varepsilon>0$, ``put $\delta\coloneqq\varepsilon/3$'' answers $\exists\delta>0$, and ``let $x$ be a real number with \ldots'' answers $\forall x$ together with the hypothesis of the conditional.
+The symbol $\coloneqq$ in the proof means ``is defined to be''; it introduces a new name rather than asserting an equation. The proof follows the quantifiers of \eqref{eq:limit} from left to right: ``let $\varepsilon>0$ be arbitrary'' answers $\forall\varepsilon>0$, ``put $\delta\coloneqq\varepsilon/3$'' answers $\exists\delta>0$, and ``let $x$ be a real number with \ldots'' answers $\forall x$ together with the hypothesis of the conditional.
 
 To show that a limit is \emph{not} $L$, we negate \eqref{eq:limit} by the procedure described above:
 \begin{equation}
@@ -635,11 +635,11 @@ A mathematical text consists mainly of three kinds of statements.
 
 A \term{definition} gives a precise meaning to a word or a symbol. ``An integer $n$ is \emph{even} if $n=2k$ for some integer $k$'' is a definition. Once it is made, ``even'' means exactly this and nothing more, whatever associations the word may have in everyday language. A definition is always an ``if and only if'', even when, by long-standing custom, it is written with ``if'': an integer that is not of the form $2k$ is not even. In this book the word being defined is set in italics.
 
-An \term{axiom} is a statement that is accepted without proof as a starting point. Every chain of reasoning must start somewhere, and the axioms are where it starts. In this chapter the axioms are the familiar properties of numbers, which we now list. They are taken for granted here and examined in the next two chapters, where the real numbers are characterised by a short list of axioms and the other facts are derived from them.
+An \term{axiom} is a statement that is accepted without proof as a starting point. Every chain of reasoning must start somewhere, and the axioms are where it starts. In this chapter the axioms are the familiar properties of numbers, which we now list. They are taken for granted here and examined in Chapter~3, where the real numbers are characterised by a short list of axioms and the other facts are derived from them.
 
 \begin{assumption}[Arithmetic and order of numbers]
 \label{asm:numbers}
-We use without proof the following properties of $\mathbb N\subset\mathbb Z\subset\mathbb Q\subset\mathbb R$.
+We use without proof the following properties of the number systems $\mathbb N$, $\mathbb Z$, $\mathbb Q$ and $\mathbb R$, each of which contains the one before it.
 \begin{enumerate}
 \item The usual laws of addition, subtraction, multiplication and of division by nonzero numbers hold, together with the usual rules for inequalities; for instance, $a<b$ implies $a+c<b+c$, and $a<b$ and $c>0$ imply $ac<bc$.
 \item Sums, differences and products of integers are integers. The natural numbers are the integers $n\ge 0$.
@@ -711,7 +711,7 @@ Each rule corresponds to a way of reasoning. Modus ponens is the basic step of e
 
 Two further rules concern quantifiers, and they are used in almost every proof in this book.
 \begin{itemize}
-\item To prove $\forall x\in S,\ P(x)$, let $x$ be an \emph{arbitrary} element of $S$, about which nothing is assumed except that it belongs to $S$, and prove $P(x)$. Since the argument used no property of $x$ beyond membership in $S$, it applies equally to every element of $S$. This is how the proofs of \cref{prop:quantifier-order,prop:limit-example} began.
+\item To prove $\forall x\in S,\ P(x)$, let $x$ be an \emph{arbitrary} element of $S$, about which nothing is assumed except that it belongs to $S$, and prove $P(x)$. Since the argument used no property of $x$ beyond membership in $S$, it applies equally to every element of $S$. The step ``let $a\in X$ be arbitrary'' in the proof of \cref{prop:quantifier-order}\,(ii) and the first line of the proof of \cref{prop:limit-example} are of this kind.
 \item To prove $\exists x\in S,\ P(x)$, it suffices to exhibit one element $a$ of $S$ and prove $P(a)$. Conversely, when $\exists x\in S,\ P(x)$ is known, we may give a name to one such element and use it, as long as we assume nothing about it except that it lies in $S$ and satisfies $P$.
 \end{itemize}
 
@@ -740,18 +740,18 @@ Let $x$ be a real number with $x>2$. Then $x>0$, and multiplying the inequality 
 \sdfloat{%
 \begin{sdtable}{colspec={Q[l,wd=2.9cm]Q[l,wd=3.0cm]Q[l,wd=3.9cm]}, row{1}={font=\small\bfseries}}
 \toprule
-Step & Givens & Goal \\
+Step & New givens & Goal \\
 \midrule
 start & none & $\forall x\in\mathbb R,\ (x>2\Rightarrow x^2>4)$ \\
 let $x\in\mathbb R$ be arbitrary & $x\in\mathbb R$ & $x>2\Rightarrow x^2>4$ \\
-assume the hypothesis & $x\in\mathbb R$, $x>2$ & $x^2>4$ \\
+assume the hypothesis & $x>2$ & $x^2>4$ \\
 derive consequences & $x>0$, $x^2>2x$, $2x>4$ & $x^2>4$ \\
 chain the inequalities & $x^2>4$ & reached \\
 \bottomrule
-\end{sdtable}}{Givens and goal during the proof of \cref{prop:x-greater-two}. The first two steps are dictated by the form of the statement; only the third requires an idea.\label{tab:givens-goal}}
+\end{sdtable}}{Givens and goal during the proof of \cref{prop:x-greater-two}. Each row lists the givens added at that step; the earlier givens remain available. The steps ``let'' and ``assume'' are dictated by the form of the statement; only the derivation of consequences requires an idea.\label{tab:givens-goal}}
 \end{table}
 
-The table shows how little of a typical proof requires an idea. The first two steps are dictated by the logical form of the statement; only the step ``multiply by $x$'' needs insight. As statements grow more complex, the form dictates more and more of the proof, and recognising the form is a large part of the skill of proving theorems. P\'olya's classic book~\cite{polya1945} discusses the other part, finding the ideas, at length.
+The table shows how little of a typical proof requires an idea. Introducing $x$ and assuming the hypothesis are dictated by the logical form of the statement; only the step ``multiply by $x$'' needs insight. As statements grow more complex, the form dictates more and more of the proof, and recognising the form is a large part of the skill of proving theorems. P\'olya's classic book~\cite{polya1945} discusses the other part, finding the ideas, at length.
 
 \subsection{The Language of Proofs}
 
@@ -765,7 +765,7 @@ Proofs use a small vocabulary of set phrases, each with a precise logical role.
 \end{itemize}
 
 \begin{note}{Formal proofs and the limits of proof}
-In mathematical logic a proof is a formal object: a finite sequence of formulas in a fixed symbolic language, each obtained from earlier ones by a fixed list of rules, so that checking a proof is a purely mechanical task~\cite{enderton2001}. Computer programs called proof assistants perform this check, and substantial parts of mathematics have been formalised with them. Two theorems of Kurt G\"odel describe what formal proof can and cannot do. The completeness theorem~\cite{godel1930} states that in first-order logic, the logic of the quantifiers $\forall$ and $\exists$ over a single domain, every statement that is true in every structure satisfying a set of axioms has a formal proof from those axioms. The incompleteness theorem~\cite{godel1931} states that any consistent system of axioms that can be listed by a computer program and that includes the basic arithmetic of $\mathbb N$ leaves some statements about natural numbers that it can neither prove nor refute. Neither theorem affects the everyday practice of mathematics described in this chapter, but together they show that ``true'' and ``provable'' are different notions.
+In mathematical logic a proof is a formal object: a finite sequence of formulas in a fixed symbolic language, each obtained from earlier ones by a fixed list of rules, so that checking a proof is a purely mechanical task~\cite{enderton2001}. Computer programs called proof assistants perform this check, and substantial parts of mathematics have been formalised with them. Two theorems of Kurt G\"odel describe what formal proof can and cannot do. The completeness theorem~\cite{godel1930} states that in first-order logic, the logic of the quantifiers $\forall$ and $\exists$ over a single domain, every statement that is true in every structure satisfying a set of axioms has a formal proof from those axioms. The incompleteness theorem~\cite{godel1931}, in the form later strengthened by Rosser~\cite{rosser1936}, states that any consistent system of axioms that can be listed by a computer program and that includes the basic arithmetic of $\mathbb N$ leaves some statements about natural numbers that it can neither prove nor refute. Neither theorem affects the everyday practice of mathematics described in this chapter, but together they show that ``true'' and ``provable'' are different notions.
 \end{note}
 
 \section{Direct Proof and Proof by Cases}
@@ -780,7 +780,7 @@ The simplest way to prove a conditional $P\Rightarrow Q$ is to assume $P$ and to
 An integer $n$ is \term{even} if there is an integer $k$ with $n=2k$, and \term{odd} if there is an integer $k$ with $n=2k+1$. For integers $a$ and $b$, we say that $a$ \term{divides} $b$, or that $b$ is a \term{multiple} of $a$, and write $a\mid b$, if there is an integer $k$ with $b=ak$.
 \end{definition}
 
-Thus $0=2\cdot0$ is even, $-7=2\cdot(-4)+1$ is odd, $3\mid 12$, $-3\mid 12$ and $5\mid 0$. Every integer divides $0$, while $0$ divides only $0$. An integer is even exactly when $2$ divides it. Note that $a\mid b$ is a statement, true or false, while $a/b$ is a number; the two must not be confused.
+Thus $0=2\cdot0$ is even, $-7=2\cdot(-4)+1$ is odd, $3\mid 12$, $-3\mid 12$ and $5\mid 0$. Every integer divides $0$, while $0$ divides only $0$. An integer is even exactly when $2$ divides it. The expression $a\mid b$ is a statement, true or false, while $a/b$ is a number; the two must not be confused.
 
 The following proposition is intuitively obvious, and we shall use it throughout. We prove it in \cref{sec:induction}, once mathematical induction is available.
 
@@ -843,7 +843,7 @@ Let $a$, $b$ and $c$ be integers.
 (iv) Write $b=ak$. Since $b\ne0$, also $k\ne0$, so $|k|\ge1$ by \cref{asm:numbers}\,(iii), and $|b|=|a|\,|k|\ge|a|$, using the rule $|xy|=|x|\,|y|$ proved below in \cref{prop:abs}.
 \end{proof}
 
-A slightly longer chain of steps gives a less obvious fact about odd squares; for instance, $8\mid 3^2-1=8$, $8\mid 5^2-1=24$ and $8\mid 7^2-1=48$.
+A slightly longer chain of steps gives a less obvious fact about odd squares. For instance, $3^2-1=8$, $5^2-1=24$ and $7^2-1=48$ are all multiples of $8$.
 
 \begin{proposition}
 \label{prop:odd-square}
@@ -994,7 +994,7 @@ Again the contrapositive replaces a negative hypothesis (``$x$ is irrational'', 
 
 A \term{proof by contradiction} establishes a statement $P$ by assuming $\neg P$ and deducing a contradiction, that is, a statement of the form $R\wedge\neg R$. The justification is the last rule of \cref{prop:inference}: if $\neg P$ implies something impossible, then $\neg P$ is false and $P$ is true. To prove a conditional $P\Rightarrow Q$ by contradiction, one assumes its negation, which by \cref{prop:implication-laws}\,(iii) is $P\wedge\neg Q$, and derives a contradiction. In other words, one assumes the hypothesis and the denial of the conclusion together. The statement $R$ that leads to the contradiction is not given in advance; finding it is part of the proof.
 
-The classic example is the irrationality of $\sqrt2$, a fact known to the mathematicians of ancient Greece~\cite{hardywright2008}. The proof needs one auxiliary fact about fractions, which we prove in \cref{sec:induction} with the well-ordering principle.
+The standard first example of a proof by contradiction is the irrationality of $\sqrt2$, a fact known to the mathematicians of ancient Greece~\cite{hardywright2008}. The proof needs one auxiliary fact about fractions, which we prove in \cref{sec:induction} with the well-ordering principle.
 
 \begin{lemma}[Lowest terms]
 \label{lem:lowest-terms}
@@ -1038,7 +1038,7 @@ In this proof $R$ is the statement ``some integer $d\ge2$ divides both $p$ and $
 \end{tikzpicture}}{The structure of a proof by contradiction (left) and its instance in the proof of \cref{thm:sqrt2} (right).\label{fig:contradiction}}
 \end{figure}
 
-The second classic example is Euclid's theorem on prime numbers, which appears as Proposition~20 of Book~IX of the \emph{Elements}~\cite{heath1956euclid} and has since been proved in many other ways~\cite{aigner2018proofs,hardywright2008}.
+A second example of the same age is Euclid's theorem on prime numbers, which appears as Proposition~20 of Book~IX of the \emph{Elements}~\cite{heath1956euclid} and has since been proved in many other ways~\cite{aigner2018proofs,hardywright2008}.
 
 \begin{definition}[Prime number]
 \label{def:prime}
@@ -1080,7 +1080,7 @@ There is no smallest positive real number.
 Suppose, for a contradiction, that $\varepsilon$ is a smallest positive real number. Then $\varepsilon/2$ is a real number with $0<\varepsilon/2<\varepsilon$, so it is positive and smaller than $\varepsilon$. This contradicts the choice of $\varepsilon$.
 \end{proof}
 
-The proposition is a statement about real numbers and not about the numbers in a computer. The binary64 floating-point format used by almost all scientific software contains a smallest positive number, $2^{-1074}\approx4.9\times10^{-324}$, and halving it gives zero~\cite{ieee754-2019}. Facts about $\mathbb R$ hold for floating-point numbers only when they have been proved for them; Volume~5 of this series is devoted to such proofs.
+The proposition is a statement about real numbers and not about the numbers in a computer. The binary64 floating-point format used by almost all scientific software contains a smallest positive number, $2^{-1074}\approx4.9\times10^{-324}$, and halving it gives zero under the default rounding rule~\cite{ieee754-2019}. Facts about $\mathbb R$ hold for floating-point numbers only when they have been proved for them; Volume~5 of this series is devoted to such proofs.
 
 \subsection{Choosing Between the Techniques}
 
@@ -1130,7 +1130,7 @@ Imagine an endless row of dominoes standing on end, numbered $0$, $1$, $2$, \ldo
 \label{fig:dominoes}
 \end{figure}
 
-For the natural numbers, the dominoes are the statements $P(n)$ and falling is being true. The following principle cannot be derived from the properties listed in \cref{asm:numbers}; it expresses what it means that the natural numbers are exactly $0$, $1$, $2$, \ldots, reached from $0$ by adding $1$ again and again, and nothing else. It was made one of the axioms of the natural numbers by Peano~\cite{peano1889}, and we adopt it as an axiom too.
+For the natural numbers, the dominoes are the statements $P(n)$ and falling is being true. The following principle is not among the properties listed in \cref{asm:numbers}, and we do not derive it from them; it expresses what it means that the natural numbers are exactly $0$, $1$, $2$, \ldots, reached from $0$ by adding $1$ again and again, and nothing else. It was made one of the axioms of the natural numbers by Peano~\cite{peano1889}, and we adopt it as an axiom too.
 
 \begin{assumption}[Principle of mathematical induction]
 \label{asm:induction}
@@ -1220,7 +1220,7 @@ A typical consequence is the formula for an arithmetic progression with first te
 
 \subsection{Inequalities}
 
-Induction proves inequalities as well as identities. The following inequality, named after Jacob Bernoulli, is a basic tool of analysis~\cite{hardy1952inequalities}.
+Induction proves inequalities as well as identities. The following inequality, named after Jacob Bernoulli, is a basic tool of analysis.
 
 \begin{theorem}[Bernoulli's inequality]
 \label{thm:bernoulli}
@@ -1287,7 +1287,7 @@ For $n\ge n_0$ let $Q(n)$ be the statement ``$P(k)$ is true for every integer $k
 We use strong induction with $n_0=2$, where $P(n)$ is the statement ``$n$ has a prime divisor''. The number $2$ is prime, because a positive divisor $d$ of $2$ satisfies $1\le d\le2$ by \cref{prop:divisibility}\,(iv), and $2\mid2$; so $P(2)$ holds. Now let $n\ge2$ and assume that $P(2),\ldots,P(n)$ are true. If $n+1$ is prime, it is a prime divisor of itself. Otherwise $n+1$ has a divisor $d$ with $1<d<n+1$, so $2\le d\le n$, and by the inductive hypothesis $d$ has a prime divisor $p$. Since $p\mid d$ and $d\mid n+1$, we get $p\mid n+1$ by \cref{prop:divisibility}\,(ii). In both cases $P(n+1)$ holds.
 \end{proof}
 
-Note that ordinary induction would not have sufficed: the inductive hypothesis was applied to $d$, which can be any number between $2$ and $n$, not only to $n$. The same argument gives a familiar result about factorisation.
+The hypothesis $P(n)$ of an ordinary inductive step would not have sufficed here: the inductive hypothesis was applied to $d$, which can be any number between $2$ and $n$, not only to $n$. The same argument gives a familiar result about factorisation.
 
 \begin{corollary}
 \label{cor:factorisation}
@@ -1336,7 +1336,7 @@ is nonempty, and by \cref{thm:well-ordering} it has a least element $s_0$; let $
 
 \subsection{Binary Representation}
 
-Computers store integers as sequences of binary digits. That this is possible for every positive integer, and that each integer has only one such representation, is a theorem whose proof uses both forms of induction~\cite{knuth1997taocp2}.
+Computers store integers as sequences of binary digits~\cite{knuth1997taocp2}. That this is possible for every positive integer, and that each integer has only one such representation, is a theorem whose proof uses strong induction twice.
 
 \begin{theorem}[Binary representation]
 \label{thm:binary}
@@ -1388,7 +1388,7 @@ $i$ & $m$ & $b_i=m\bmod2$ & $(m-b_i)/2$ \\
 
 \subsection{Induction and Loops}
 
-A loop in a program repeats a step, and the method of proving that a loop does what it should is induction in disguise. \Cref{alg:sum} computes $1+2+\cdots+n$ by adding one term at a time. To show that it returns $n(n+1)/2$, we find a statement that holds before the loop starts and is preserved by each pass through it. Such a statement is called a \term{loop invariant}~\cite{floyd1967,hoare1969,cormen2022}. Here it is ``$s=k(k+1)/2$'', where $k$ is the number of completed passes. Before the first pass $k=0$ and $s=0$, so the invariant holds; this is the base case. If it holds after $k$ passes, the next pass adds $k+1$ and gives $s=k(k+1)/2+(k+1)=(k+1)(k+2)/2$; this is the inductive step. After the last pass $k=n$, and the invariant says $s=n(n+1)/2$.
+A loop in a program repeats a step, and the method of proving that a loop does what it should is induction in disguise. \Cref{alg:sum} computes $1+2+\cdots+n$ by adding one term at a time. To show that it returns $n(n+1)/2$, we find a statement that holds before the loop starts and is preserved by each pass through it. Such a statement is called a \term{loop invariant}~\cite{floyd1967,hoare1969,cormen2022}. Here it is ``$s=k(k+1)/2$'', where $k$ is the number of completed passes. Before the first pass $k=0$ and $s=0$, so the invariant holds; this is the base case. If it holds after $k$ passes, the next pass adds $k+1$ and gives $s=k(k+1)/2+(k+1)=(k+1)(k+2)/2$; this is the inductive step. After the last pass $k=n$, and the invariant says $s=n(n+1)/2$. In the algorithm the invariant is written in terms of the loop variable $k$: before the pass with loop variable $k$, exactly $k-1$ passes have been completed, so $s=(k-1)k/2$.
 
 \begin{algorithm}
 \begin{algorithmic}[1]
@@ -1405,7 +1405,7 @@ A loop in a program repeats a step, and the method of proving that a loop does w
 \label{alg:sum}
 \end{algorithm}
 
-\Cref{alg:binary} turns the existence proof of \cref{thm:binary} into a loop. A loop of the form ``while \ldots'' raises a second question besides correctness: whether it stops at all. Both questions are answered by the two forms of induction.
+\Cref{alg:binary} turns the existence proof of \cref{thm:binary} into a loop. A loop of the form ``while \ldots'' raises a second question besides correctness: whether it stops at all. Induction answers the first question, and the well-ordering principle the second.
 
 \begin{algorithm}
 \begin{algorithmic}[1]
@@ -1445,7 +1445,7 @@ The pattern of this proof, an invariant established by induction and termination
 
 \subsection{A Faulty Induction}
 
-Because an induction proof is short, its flaws can be hard to see. The following example, a variant of one given by P\'olya~\cite{polya1954induction}, proves something absurd.
+Because an induction proof is short, its flaws can be hard to see. The following example proves something absurd. It is a variant of an argument given by P\'olya~\cite[p.~120]{polya1954induction}, who used the eye colours of girls where we use horses.
 
 \emph{Claim.} In every set of $n\ge1$ horses, all horses have the same colour.
 
@@ -1456,7 +1456,7 @@ The base case is correct, and the inductive step is correct for $n\ge2$. It fail
 \section{Existence, Uniqueness, and Counterexamples}
 \label{sec:existence}
 
-The techniques of the previous sections prove conditionals and universal statements. This section treats the other forms that occur constantly: statements that something exists, statements that it is unique, and the refutation of false universal statements. It ends with a catalogue of common errors and a summary of which technique suits which form of statement.
+The techniques of the previous sections prove conditionals and universal statements. This section treats the other forms that occur just as often: statements that something exists, statements that it is unique, and the refutation of false universal statements. It ends with a catalogue of common errors and a summary of which technique suits which form of statement.
 
 \subsection{Existence Proofs}
 
@@ -1468,12 +1468,12 @@ There is an irrational number between $0$ and $1$.
 \end{proposition}
 
 \begin{proof}
-Let $a\coloneqq\sqrt2/2$. Since $1<2<4$ and the square root is increasing on $[0,\infty)$, we have $1<\sqrt2<2$, hence $0<a<1$. If $a$ were rational, then $\sqrt2=2a$ would be rational, contradicting \cref{thm:sqrt2}. So $a$ is irrational.
+Let $a\coloneqq\sqrt2/2$. First, $1<\sqrt2<2$. Indeed, if $\sqrt2\le1$, multiplying this inequality by the nonnegative number $\sqrt2$ would give $2=\sqrt2\cdot\sqrt2\le\sqrt2\le1$, and if $\sqrt2\ge2$, multiplying by $\sqrt2$ would give $2\ge2\sqrt2\ge4$; both conclusions are false. Hence $0<a<1$. If $a$ were rational, then $\sqrt2=2a$ would be rational, contradicting \cref{thm:sqrt2}. So $a$ is irrational.
 \end{proof}
 
 An existence proof may also simply display a solution that has been found by any means at all; the proof does not need to explain how. For example, there are integers $x$ and $y$ with $7x+4y=1$, because $x=-1$ and $y=2$ work. How such solutions are found in general is the subject of Euclid's algorithm in Chapter~3~\cite{hardywright2008}.
 
-A \term{nonconstructive} proof shows that an object exists without exhibiting it, typically by cases or by contradiction. The following example is a famous one~\cite{jarden1953}.
+A \term{nonconstructive} proof shows that an object exists without exhibiting it, typically by cases or by contradiction. The following example is well known~\cite{jarden1953}.
 
 \begin{theorem}
 \label{thm:irrational-power}
@@ -1508,7 +1508,7 @@ Since $2^b=9>1$, we have $b>0$. Suppose $b=p/q$ with integers $p$ and $q$, where
 With $a=\sqrt2$ and $b=\log_29$, \cref{prop:log-irrational} gives an explicit pair as in \cref{thm:irrational-power}. In calculus the most important existence theorems are nonconstructive in a milder sense. The intermediate value theorem of Chapter~5, for instance, asserts that a continuous function $f$ on $[a,b]$ with $f(a)<0<f(b)$ has a zero in $(a,b)$, without saying where. Numerical methods are, to a large extent, constructive versions of such theorems: the bisection method, which halves an interval containing a sign change again and again, turns the intermediate value theorem into an algorithm that locates the zero to any desired accuracy.
 
 \begin{note}{Constructive mathematics}
-Some mathematicians accept an existence statement only if its proof provides, at least in principle, a method of computing the object. In such constructive mathematics the law of excluded middle (\cref{prop:laws}\,(vii)) is not used without restriction, so that the proof of \cref{thm:irrational-power}, which splits on whether $c$ is rational, is not accepted, while the proof of \cref{prop:log-irrational} is. Bishop showed that a large part of analysis can be developed on this basis~\cite{bishop1967}. Constructive proofs have an obvious appeal for scientific computing, where an object that cannot be computed is of limited use; but the mainstream mathematics used in this book is classical and accepts both kinds of proof.
+Some mathematicians accept an existence statement only if its proof provides, at least in principle, a method of computing the object. In such constructive mathematics the law of excluded middle (\cref{prop:laws}\,(vii)) is not used without restriction, so that the proof of \cref{thm:irrational-power}, which splits on whether $c$ is rational, is not accepted, while the proof of \cref{prop:log-irrational} is. Bishop showed that a large part of analysis can be developed on this basis~\cite{bishop1967}. Constructive proofs have a clear appeal for scientific computing, where an object that cannot be computed is of limited use; but the mainstream mathematics used in this book is classical and accepts both kinds of proof.
 \end{note}
 
 \subsection{Uniqueness Proofs}
@@ -1551,7 +1551,7 @@ Let $\varepsilon>0$ be arbitrary. Since $a_n\to L$, there is $N_1\in\mathbb N$ s
 Thus $|L-M|<2\varepsilon$ for every $\varepsilon>0$. Suppose, for a contradiction, that $L\ne M$. Then $|L-M|>0$, and the choice $\varepsilon\coloneqq|L-M|/2$ gives $|L-M|<|L-M|$, which is impossible. Hence $L=M$.
 \end{proof}
 
-The proof contains a device that is used again and again in analysis: to show that two numbers are equal, show that their distance is smaller than every positive number. The same device, applied to functions, proves that the step function $H$ of \cref{prop:step-limit} has no limit at $0$ at all.
+The proof contains a device that is used again and again in analysis: to show that two numbers are equal, show that their distance is smaller than every positive number. A related argument, which again combines two estimates by the triangle inequality, proves that the step function $H$ of \cref{prop:step-limit} has no limit at $0$ at all.
 
 \begin{proposition}
 \label{prop:step-no-limit}
@@ -1596,11 +1596,11 @@ $n$ & $n^2+n+41$ & prime? \\
 \end{sdtable}}{Values of $n^2+n+41$. The values are prime for all $n$ from $0$ to $39$, and the first failure occurs at $n=40$.\label{tab:euler-polynomial}}
 \end{table}
 
-Counterexamples are also the standard way to show that the converse of a theorem is false. Every function that is differentiable at a point is continuous there, but the function $f(x)=|x|$ is continuous at $0$ and not differentiable there, because its difference quotient $|h|/h$ equals $1$ for $h>0$ and $-1$ for $h<0$ and so has no limit as $h\to0$, by the argument of \cref{prop:step-no-limit}~\cite{spivak2008calculus}. Similarly, at an interior maximum or minimum of a differentiable function the derivative vanishes, but $f(x)=x^3$ has $f'(0)=0$ without having a maximum or minimum at $0$, since $f(x)<0$ for $x<0$ and $f(x)>0$ for $x>0$. When a theorem has a hypothesis that seems unnecessary, searching for a counterexample that violates only that hypothesis is the best way to understand why it is there.
+Counterexamples are also the standard way to show that the converse of a theorem is false. Every function that is differentiable at a point is continuous there, but the function $f(x)=|x|$ is continuous at $0$ and not differentiable there, because its difference quotient $|h|/h$ equals $1$ for $h>0$ and $-1$ for $h<0$ and so has no limit as $h\to0$, by the same argument as in the proof of \cref{prop:step-no-limit}~\cite{spivak2008calculus}. Similarly, at an interior maximum or minimum of a differentiable function the derivative vanishes, but $f(x)=x^3$ has $f'(0)=0$ without having a maximum or minimum at $0$, since $f(x)<0$ for $x<0$ and $f(x)>0$ for $x>0$. When a theorem has a hypothesis that seems unnecessary, searching for a counterexample that violates only that hypothesis is the best way to understand why it is there.
 
 \subsection{Common Errors}
 
-The following errors account for most incorrect proofs, in student work and elsewhere.
+The following errors are among the most frequent in incorrect proofs, in student work and elsewhere.
 
 \emph{Proving the converse.} An argument that starts from the statement to be proved and arrives at something true proves nothing, since a false statement can also imply a true one. For example, ``assume $1=-1$; squaring both sides gives $1=1$, which is true'' does not show that $1=-1$. The error is often less visible. To prove that $x^2+1\ge2x$ for every real number $x$, one might write: $x^2+1\ge2x$, hence $x^2-2x+1\ge0$, hence $(x-1)^2\ge0$, which is true. This establishes only that the claim implies a true statement. In this case every step can be reversed, and a correct proof runs the chain in the other direction.
 
@@ -1649,6 +1649,6 @@ $\neg\,\forall x\in S,\ P(x)$ & exhibit a counterexample \\
 
 \section*{Notes}
 
-The approach of \cref{sec:anatomy}, in which the logical form of a statement determines the outline of its proof, is developed in detail by Velleman~\cite{velleman2019}, whose book is a good companion to this chapter for readers who want more practice. P\'olya's book~\cite{polya1945} is the classic account of how to find the ideas in a proof. Mathematical logic proper, including the formal notion of proof and G\"odel's theorems, is treated in Enderton's textbook~\cite{enderton2001}. Euclid's theorem and the irrationality of $\sqrt2$ open the classic text of Hardy and Wright on number theory~\cite{hardywright2008}, and many further proofs of Euclid's theorem are collected by Aigner and Ziegler~\cite{aigner2018proofs}. Sums and the induction proofs that establish them are the subject of the first chapters of Graham, Knuth and Patashnik~\cite{graham1994concrete}. The method of loop invariants goes back to Floyd~\cite{floyd1967} and Hoare~\cite{hoare1969}, and it is used throughout the algorithms textbook of Cormen, Leiserson, Rivest and Stein~\cite{cormen2022}.
+The approach of \cref{sec:anatomy}, in which the logical form of a statement determines the outline of its proof, is developed in detail by Velleman~\cite{velleman2019}, whose book is a good companion to this chapter for readers who want more practice. P\'olya's book~\cite{polya1945} remains the standard account of how to find the ideas in a proof. Mathematical logic proper, including the formal notion of proof and G\"odel's theorems, is treated in Enderton's textbook~\cite{enderton2001}. The classic text of Hardy and Wright on number theory~\cite{hardywright2008} treats Euclid's theorem in its first two chapters and the irrationality of $\sqrt2$ in its fourth, and many further proofs of Euclid's theorem are collected by Aigner and Ziegler~\cite{aigner2018proofs}. Sums and the induction proofs that establish them are the subject of the first chapters of Graham, Knuth and Patashnik~\cite{graham1994concrete}. The method of loop invariants goes back to Floyd~\cite{floyd1967} and Hoare~\cite{hoare1969}, and it is used throughout the algorithms textbook of Cormen, Leiserson, Rivest and Stein~\cite{cormen2022}.
 
 \chapterreferences
