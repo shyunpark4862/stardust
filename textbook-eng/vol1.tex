@@ -206,7 +206,7 @@ The symbols used in this volume are collected here. Each is defined again, with 
 \item[$\bar f$] the mean value $\frac1{b-a}\int_a^bf$ of $f$ on $[a,b]$
 \item[$F(x)\big|_a^b$, {$[F(x)]_a^b$}] the difference $F(b)-F(a)$
 \item[$\int f(x)\,dx$] the indefinite integral, the antiderivatives of $f$ on an interval
-\item[$\Lambda(x)$] the function $\int_1^x dt/t$, $x>0$, the natural logarithm $\ln x$ of Chapter~9
+\item[$\Lambda(x)$] the function $\int_1^x dt/t$, $x>0$, the natural logarithm $\ln x$ of \cref{ch:transcendental}
 \item[$f^+$, $f^-$] the positive and the negative part $\max(f,0)$ and $\max(-f,0)$ of $f$
 \item[$\Gamma(s)$] the gamma function $\int_0^\infty t^{s-1}e^{-t}\,dt$, $s>0$
 \item[$R^{\mathrm{left}}_n$, $R^{\mathrm{right}}_n$] the left and the right rectangle rule with $n$ subintervals
@@ -230,6 +230,23 @@ The symbols used in this volume are collected here. Each is defined again, with 
 \item[$f\sim g$] $f$ is asymptotically equal to $g$: $f-g=o(g)$; with a series on the right, an asymptotic expansion
 \end{symbols}
 
+\symbolgroup{Elementary transcendental functions}
+\begin{symbols}
+\item[$\exp x$, $e^x$] the exponential function $\sum_{k\ge0}x^k/k!$, for real or complex $x$
+\item[$\ln x$] the natural logarithm, the inverse of $\exp$ on $(0,\infty)$; it equals $\Lambda(x)$
+\item[$a^x$] the power $e^{x\ln a}$ for $a>0$ and real $x$
+\item[$\log_ax$] the logarithm $\ln x/\ln a$ to the base $a$; $\log_2$ binary, $\log_{10}$ common; $\log$ without a base only where the base does not matter, as in $O(n\log n)$
+\item[$\sin x$, $\cos x$] the sine and the cosine, defined by their power series
+\item[$\pi$] twice the smallest positive zero of the cosine, $3.14159\ldots$
+\item[$\tan x$] the tangent $\sin x/\cos x$
+\item[$\operatorname{atan2}(y,x)$] the angle $\theta\in(-\pi,\pi]$ with $(x,y)=r(\cos\theta,\sin\theta)$, $r>0$
+\item[$\operatorname{Log}w$, $w^s$] the principal logarithm $\ln|w|+i\operatorname{Arg}w$ and the principal power $e^{s\operatorname{Log}w}$ of a complex number $w\ne0$
+\item[$\cosh x$, $\sinh x$, $\tanh x$] the hyperbolic cosine $\frac12(e^x+e^{-x})$, sine $\frac12(e^x-e^{-x})$ and tangent
+\item[$\operatorname{arsinh}$, $\operatorname{arcosh}$, $\operatorname{artanh}$] the inverse hyperbolic functions
+\item[$\sigma(x)$] the logistic function $1/(1+e^{-x})$
+\item[$u$] the unit roundoff $2^{-53}$ of binary64 floating-point arithmetic
+\end{symbols}
+
 \mainmatter
 \part{Foundations}
 \input{chapters/v1-01-logic-and-proof}
@@ -242,6 +259,7 @@ The symbols used in this volume are collected here. Each is defined again, with 
 \input{chapters/v1-06-differentiation}
 \input{chapters/v1-07-integration}
 \input{chapters/v1-08-series-approximation}
+\input{chapters/v1-09-transcendental-functions}
 
 \backmatter
 \end{document}

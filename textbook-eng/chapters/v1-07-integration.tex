@@ -876,7 +876,7 @@ The proposition could serve as a definition: one could define $\arctan x$ as the
 \Lambda(x)\coloneqq\int_1^x\frac{dt}t .
 \label{eq:log-integral}
 \end{equation}
-By \cref{thm:ftc1}, $\Lambda$ is differentiable on $(0,\infty)$ with $\Lambda'(x)=1/x>0$, so it is strictly increasing, and $\Lambda(1)=0$. \Cref{sec:techniques} shows that $\Lambda(xy)=\Lambda(x)+\Lambda(y)$, the defining property of a logarithm, and Chapter~9 shows that $\Lambda$ is the natural logarithm $\ln$, the inverse of the exponential function. Until then we write $\Lambda$ for this function, so as not to use properties of $\ln$ that have not been proved. Many functions of applied mathematics are defined by integrals in this way, because no other description is available; \cref{sec:techniques} explains why, and Volume~X computes them.
+By \cref{thm:ftc1}, $\Lambda$ is differentiable on $(0,\infty)$ with $\Lambda'(x)=1/x>0$, so it is strictly increasing, and $\Lambda(1)=0$. \Cref{sec:techniques} shows that $\Lambda(xy)=\Lambda(x)+\Lambda(y)$, the defining property of a logarithm, and \cref{ch:transcendental} shows that $\Lambda$ is the natural logarithm $\ln$, the inverse of the exponential function. Until then we write $\Lambda$ for this function, so as not to use properties of $\ln$ that have not been proved. Many functions of applied mathematics are defined by integrals in this way, because no other description is available; \cref{sec:techniques} explains why, and Volume~X computes them.
 
 \section{Techniques of Integration}
 \label{sec:techniques}
@@ -890,7 +890,7 @@ By the fundamental theorem, computing $\int_a^bf$ amounts to finding an antideri
 $f(x)$ & antiderivative $F(x)$ & where \\
 \midrule
 $x^r$, $r\in\mathbb Q$, $r\ne-1$ & $x^{r+1}/(r+1)$ & $x>0$; all $x$ if $r\in\mathbb N$ \\
-$1/x$ & $\ln|x|$ & $x\ne0$ (Chapter~9) \\
+$1/x$ & $\ln|x|$ & $x\ne0$ (\cref{ch:transcendental}) \\
 $\sin x$ & $-\cos x$ & $x\in\mathbb R$ \\
 $\cos x$ & $\sin x$ & $x\in\mathbb R$ \\
 $1/\cos^2x$ & $\tan x$ & $\cos x\ne0$ \\
@@ -898,9 +898,9 @@ $1/(1+x^2)$ & $\arctan x$ & $x\in\mathbb R$ \\
 $1/(c^2+x^2)$, $c>0$ & $\frac1c\arctan(x/c)$ & $x\in\mathbb R$ \\
 $1/\sqrt{1-x^2}$ & $\arcsin x$ & $-1<x<1$ \\
 $1/\sqrt{c^2-x^2}$, $c>0$ & $\arcsin(x/c)$ & $-c<x<c$ \\
-$e^x$ & $e^x$ & $x\in\mathbb R$ (Chapter~9) \\
+$e^x$ & $e^x$ & $x\in\mathbb R$ (\cref{ch:transcendental}) \\
 \bottomrule
-\end{sdtable}}{Antiderivatives of elementary functions, from the derivatives of \cref{tab:derivatives} and the chain rule. On each interval of the domain, every antiderivative differs from the one listed by a constant. The entries for $1/x$ and $e^x$ rest on Chapter~9; until then, $\Lambda(|x|)$ with $\Lambda$ from \eqref{eq:log-integral} serves as an antiderivative of $1/x$.\label{tab:integrals}}
+\end{sdtable}}{Antiderivatives of elementary functions, from the derivatives of \cref{tab:derivatives} and the chain rule. On each interval of the domain, every antiderivative differs from the one listed by a constant. The entries for $1/x$ and $e^x$ rest on \cref{ch:transcendental}; until then, $\Lambda(|x|)$ with $\Lambda$ from \eqref{eq:log-integral} serves as an antiderivative of $1/x$.\label{tab:integrals}}
 \end{table}
 
 \subsection{Substitution}
@@ -955,7 +955,7 @@ When the substitution is made in the other direction, writing the old variable a
 \[
 \int_0^1\sqrt{1-x^2}\,dx=\int_0^{\pi/2}\cos^2t\,dt=\int_0^{\pi/2}\frac{1+\cos2t}2\,dt=\Bigl[\frac t2+\frac{\sin2t}4\Bigr]_0^{\pi/2}=\frac\pi4 ,
 \]
-using $\cos2t=2\cos^2t-1$ from the addition formula. The quarter disc of radius $1$ therefore has area $\frac\pi4$, and the unit disc has area $\pi$, in agreement with the area of a sector assumed in \cref{asm:trig-geometry}\,(iii). The computation is not an independent proof of that assumption, since the derivatives of the trigonometric functions rest on it; Chapter~9 removes the circularity. Similar \term{trigonometric substitutions} handle the other square roots of quadratics: $x=c\sin t$ for $\sqrt{c^2-x^2}$, $x=c\tan t$ for $\sqrt{c^2+x^2}$ and $x=c/\cos t$ for $\sqrt{x^2-c^2}$; and the substitution $t=\tan(x/2)$, for which $\sin x=2t/(1+t^2)$, $\cos x=(1-t^2)/(1+t^2)$ and $dx=2\,dt/(1+t^2)$, turns every rational expression in $\sin x$ and $\cos x$ into a rational function of $t$~\cite{spivak2008calculus}.
+using $\cos2t=2\cos^2t-1$ from the addition formula. The quarter disc of radius $1$ therefore has area $\frac\pi4$, and the unit disc has area $\pi$, in agreement with the area of a sector assumed in \cref{asm:trig-geometry}\,(iii). The computation is not an independent proof of that assumption, since the derivatives of the trigonometric functions rest on it; \cref{ch:transcendental} removes the circularity. Similar \term{trigonometric substitutions} handle the other square roots of quadratics: $x=c\sin t$ for $\sqrt{c^2-x^2}$, $x=c\tan t$ for $\sqrt{c^2+x^2}$ and $x=c/\cos t$ for $\sqrt{x^2-c^2}$; and the substitution $t=\tan(x/2)$, for which $\sin x=2t/(1+t^2)$, $\cos x=(1-t^2)/(1+t^2)$ and $dx=2\,dt/(1+t^2)$, turns every rational expression in $\sin x$ and $\cos x$ into a rational function of $t$~\cite{spivak2008calculus}.
 
 \subsection{Integration by Parts}
 
@@ -981,7 +981,7 @@ With $u=\arctan x$ and $v'=1$, and then the substitution $s=1+x^2$,
 \[
 \int_0^1\arctan x\,dx=x\arctan x\Big|_0^1-\int_0^1\frac x{1+x^2}\,dx=\frac\pi4-\frac12\Lambda(2)=0.43882\ldots,
 \]
-where $\Lambda(2)=\ln2=0.69314\ldots$ by Chapter~9. Applied repeatedly, integration by parts gives recursions, and these yield a classical formula for $\pi$.
+where $\Lambda(2)=\ln2=0.69314\ldots$ by \cref{ch:transcendental}. Applied repeatedly, integration by parts gives recursions, and these yield a classical formula for $\pi$.
 
 \begin{proposition}[Wallis's product]
 \label{prop:wallis}
@@ -1038,7 +1038,7 @@ for all $x$ with $s(x)\ne0$.
 We outline the argument. If $s=s_1s_2$ with coprime polynomials $s_1$ and $s_2$, the extended Euclidean algorithm for polynomials, which works as the one for integers in \cref{ch:numbers}, gives polynomials $a_1,a_2$ with $a_1s_1+a_2s_2=1$; then $\rho/s=\rho a_2/s_1+\rho a_1/s_2$, and after division with remainder the problem splits into the two factors. For a power $(x-\alpha)^m$ or $(x^2+px+q)^n$ of a single factor, expanding the numerator in powers of $x-\alpha$, or dividing it repeatedly by $x^2+px+q$, gives the terms of the decomposition. Uniqueness follows by comparing the behaviour of both sides near the roots of $s$, real and complex. Spivak treats the decomposition in detail~\cite{spivak2008calculus}.
 \end{proof}
 
-The coefficients are found in practice by multiplying out and comparing coefficients, which gives a system of linear equations (Part~III), or by substituting the roots of $s$. Each piece has an elementary antiderivative. As in \cref{tab:integrals}, we write $\ln|x|$ for the function $\Lambda(|x|)$ of \eqref{eq:log-integral}; Chapter~9 shows that the two agree, and the computations below use only the derivative $1/x$ and the additivity of \cref{prop:log-additive}. For the linear factors,
+The coefficients are found in practice by multiplying out and comparing coefficients, which gives a system of linear equations (Part~III), or by substituting the roots of $s$. Each piece has an elementary antiderivative. As in \cref{tab:integrals}, we write $\ln|x|$ for the function $\Lambda(|x|)$ of \eqref{eq:log-integral}; \cref{ch:transcendental} shows that the two agree, and the computations below use only the derivative $1/x$ and the additivity of \cref{prop:log-additive}. For the linear factors,
 \[
 \int\frac{dx}{x-\alpha}=\ln|x-\alpha|+C,\qquad\int\frac{dx}{(x-\alpha)^\mu}=-\frac1{(\mu-1)(x-\alpha)^{\mu-1}}+C\quad(\mu\ge2).
 \]
@@ -1067,7 +1067,7 @@ is found as follows. Multiplying the ansatz $\frac A{x+1}+\frac{Bx+C}{x^2+1}$ by
 
 \subsection{Integrals without Elementary Antiderivatives}
 
-The techniques of this section succeed for rational functions and for many other integrands, but not for all, and the failures are not due to lack of skill. To state this precisely we need a name for the functions that formulas can express. A function is \term{elementary} if it can be built from the variable $x$ and constants by finitely many arithmetic operations, compositions, exponential functions, logarithms, and solutions of polynomial equations whose coefficients are functions already built; the trigonometric functions and their inverses are elementary, because they can be expressed through the complex exponential function and logarithm (Chapter~9). The derivative of an elementary function is elementary, by the rules of \cref{sec:rules}. For antiderivatives the analogous statement is false.
+The techniques of this section succeed for rational functions and for many other integrands, but not for all, and the failures are not due to lack of skill. To state this precisely we need a name for the functions that formulas can express. A function is \term{elementary} if it can be built from the variable $x$ and constants by finitely many arithmetic operations, compositions, exponential functions, logarithms, and solutions of polynomial equations whose coefficients are functions already built; the trigonometric functions and their inverses are elementary, because they can be expressed through the complex exponential function and logarithm (\cref{ch:transcendental}). The derivative of an elementary function is elementary, by the rules of \cref{sec:rules}. For antiderivatives the analogous statement is false.
 
 \begin{theorem}[Liouville]
 \label{thm:liouville}
@@ -1144,7 +1144,7 @@ Let $p$ be a rational number.
 Let $p\ne1$. By \cref{tab:integrals}, $\int_1^Rx^{-p}\,dx=(R^{1-p}-1)/(1-p)$ for $R>0$. If $p>1$, then $R^{1-p}=1/R^{p-1}\to0$ as $R\to\infty$, because $R\mapsto1/R^{p-1}$ is decreasing and $1/n^{p-1}\to0$ by \cref{thm:standard-limits}\,(i); so the integral over $[1,R]$ tends to $1/(p-1)$. If $p<1$, then $R^{1-p}\to\infty$, and the integral diverges. Similarly $\int_c^1x^{-p}\,dx=(1-c^{1-p})/(1-p)$, and as $c\to0^+$, $c^{1-p}\to0$ if $p<1$ and $c^{1-p}\to\infty$ if $p>1$. For $p=1$, $\int_1^R dx/x=\Lambda(R)\to\infty$ and $\int_c^1dx/x=-\Lambda(c)\to\infty$ by \cref{prop:log-additive}, so both integrals diverge.
 \end{proof}
 
-The integral $\int_0^\infty x^{-p}\,dx$ therefore diverges for every $p$: near $0$ it needs $p<1$, near $\infty$ it needs $p>1$ (\cref{fig:p-integrals}). The borderline function $1/x$ fails at both ends, though only just: its area grows like the logarithm, more slowly than every power. Once Chapter~9 has defined $x^p$ for real exponents, the proposition holds with the same proof for every real $p$.
+The integral $\int_0^\infty x^{-p}\,dx$ therefore diverges for every $p$: near $0$ it needs $p<1$, near $\infty$ it needs $p>1$ (\cref{fig:p-integrals}). The borderline function $1/x$ fails at both ends, though only just: its area grows like the logarithm, more slowly than every power. Once \cref{ch:transcendental} has defined $x^p$ for real exponents, the proposition holds with the same proof for every real $p$.
 
 \begin{figure}
 \sdfloat{%
@@ -1272,7 +1272,7 @@ So the harmonic numbers grow like the logarithm, $\Lambda(n)=\ln n$, and the dif
 
 \subsection{The Gamma Function}
 
-The most important function defined by an improper integral is the gamma function, which extends the factorial from the natural numbers to real arguments. Its definition uses the exponential function and real powers ahead of Chapter~9. We need only the following facts, which Chapter~9 proves. The function $t\mapsto e^{-t}$ is positive, with $e^0=1$ and derivative $-e^{-t}$, so that it decreases; and $t^ke^{-t}\to0$ as $t\to\infty$ for every $k\in\mathbb N$, as noted after \cref{thm:lhopital-infinite}. For real $s$ and $t>0$ the power $t^s$ is defined and obeys the rule $t^rt^s=t^{r+s}$; as a function of $t$ it is continuous, with derivative $st^{s-1}$, increasing for $s>0$, and tends to $0$ as $t\to0^+$ when $s>0$. Consequently $t^se^{-t}\to0$ as $t\to\infty$ for every real $s$, since $t^s\le t^k$ for $t\ge1$ and any $k\in\mathbb N$ with $k\ge s$. Finally, \cref{prop:p-integrals} holds for real $p$.
+The most important function defined by an improper integral is the gamma function, which extends the factorial from the natural numbers to real arguments. Its definition uses the exponential function and real powers ahead of \cref{ch:transcendental}. We need only the following facts, which \cref{ch:transcendental} proves. The function $t\mapsto e^{-t}$ is positive, with $e^0=1$ and derivative $-e^{-t}$, so that it decreases; and $t^ke^{-t}\to0$ as $t\to\infty$ for every $k\in\mathbb N$, as noted after \cref{thm:lhopital-infinite}. For real $s$ and $t>0$ the power $t^s$ is defined and obeys the rule $t^rt^s=t^{r+s}$; as a function of $t$ it is continuous, with derivative $st^{s-1}$, increasing for $s>0$, and tends to $0$ as $t\to0^+$ when $s>0$. Consequently $t^se^{-t}\to0$ as $t\to\infty$ for every real $s$, since $t^s\le t^k$ for $t\ge1$ and any $k\in\mathbb N$ with $k\ge s$. Finally, \cref{prop:p-integrals} holds for real $p$.
 
 \begin{definition}[Gamma function]
 \label{def:gamma}
@@ -1531,7 +1531,7 @@ The corollary shows that the orders of \cref{thm:quadrature-errors} are attained
 \[
 \int_1^2\frac{dx}x=\Lambda(2)=\ln2=0.693147180559945\ldots,
 \]
-a convenient test because the exact value is known to any desired accuracy (Chapter~9 computes it from a series) and because all derivatives of $1/x$ are easy to bound on $[1,2]$. For $n=4$ the rules give
+a convenient test because the exact value is known to any desired accuracy (\cref{ch:transcendental} computes it from a series) and because all derivatives of $1/x$ are easy to bound on $[1,2]$. For $n=4$ the rules give
 \[
 R^{\mathrm{left}}_4=0.75952\ldots,\qquad M_4=0.69121\ldots,\qquad T_4=0.69702\ldots,
 \]
@@ -1703,7 +1703,7 @@ P(a\le X\le b)=\int_a^bp(x)\,dx .
 Probabilities are thus areas under the graph of $p$, and the total area is $1$. The uniform density on $[0,1]$ is $\mathbf 1_{[0,1]}$; the density $p(x)=\frac1\pi\cdot\frac1{1+x^2}$, the \term{Cauchy density}, has total area $1$ by the computation of \cref{sec:improper}, and $P(-1\le X\le1)=\frac1\pi(\arctan1-\arctan(-1))=\frac12$. Improper integrals are unavoidable in this setting. The expected value of $X$ is $\int_{-\infty}^\infty xp(x)\,dx$, provided this integral converges absolutely, and for the Cauchy density it does not: $\int_0^Rx\,dx/(1+x^2)=\frac12\Lambda(1+R^2)\to\infty$, by the substitution $u=1+x^2$ and \cref{prop:log-additive}. So a Cauchy-distributed quantity has no mean, a fact with consequences for the statistics of heavy-tailed data. The most important density, the normal density $e^{-x^2/2}/\sqrt{2\pi}$, involves the integral $\int_{-\infty}^\infty e^{-x^2/2}dx=\sqrt{2\pi}$, whose integrand has no elementary antiderivative, by \cref{thm:liouville} and the substitution $x=\sqrt2\,t$, but which can be evaluated with a double integral in Chapter~11. Volume~III builds probability theory on these ideas, with the Lebesgue integral of Volume~II in place of the Riemann integral.
 
 \bigskip
-With the derivative and the integral in hand, and the fundamental theorem linking them, the basic machinery of calculus is complete. \Cref{ch:series} turns to infinite sums: it uses the integral test of \cref{sec:improper} to decide the convergence of series, and integration by parts to prove Taylor's theorem with an integral form of the remainder, which measures how well a function is approximated by polynomials. Chapter~9 then constructs the exponential function, the logarithm and the trigonometric functions rigorously, and shows that the function $\Lambda$ of this chapter is the natural logarithm.
+With the derivative and the integral in hand, and the fundamental theorem linking them, the basic machinery of calculus is complete. \Cref{ch:series} turns to infinite sums: it uses the integral test of \cref{sec:improper} to decide the convergence of series, and integration by parts to prove Taylor's theorem with an integral form of the remainder, which measures how well a function is approximated by polynomials. \Cref{ch:transcendental} then constructs the exponential function, the logarithm and the trigonometric functions rigorously, and shows that the function $\Lambda$ of this chapter is the natural logarithm.
 
 \chapternotes
 

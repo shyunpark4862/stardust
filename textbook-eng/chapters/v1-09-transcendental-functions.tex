@@ -1,0 +1,1640 @@
+%% Volume I, Chapter 9: Elementary Transcendental Functions
+\chapter{Elementary Transcendental Functions}
+\label{ch:transcendental}
+
+\abstract{The exponential function, the logarithm, the sine and the cosine look as familiar as the keys of a pocket calculator, and the preceding chapters have used them freely, partly on credit. This chapter settles the account. It defines each function precisely, by a power series or as an inverse, and proves from the definition alone every property that was borrowed: the laws of exponents, the derivatives, the periodicity of the sine and the area of a circular sector. The proofs are not idle. The identities they establish are exactly the tools with which a computer reduces an arbitrary argument to a small one, where a short polynomial gives the value to full accuracy.}
+
+The functions of this chapter have appeared in every chapter since \cref{ch:numbers}, and each time some of their properties were taken for granted. \Cref{ch:numbers} used the sine and the cosine to write complex numbers in polar form and introduced $e^{i\theta}$ as a mere notation. \Cref{ch:limits} took the periodicity of the sine, the value of $\pi$ and the area of a circular sector from school geometry (\cref{asm:trig-geometry}) to compute the limit of $(\sin x)/x$, on which \cref{ch:differentiation} built the derivatives of all trigonometric functions. \Cref{ch:differentiation} listed the derivatives of $e^x$ and $\ln x$ without proof, and \cref{ch:integration} used real powers $t^s$ and the function $e^{-t}$ to define the gamma function. \Cref{ch:integration,ch:series} were more careful with the logarithm: they worked with the function $\Lambda(x)=\int_1^xdt/t$, and \cref{ch:series} proved the main properties of the exponential series $E(x)=\sum x^k/k!$ directly. This chapter pays all these debts.
+
+The order of the definitions matters, because a careless order makes the arguments circular, as \cref{sec:function-limits} warned for the limit of $(\sin x)/x$. We proceed as follows. \Cref{sec:exp-function} adopts the exponential series of \cref{ch:series} as the definition of $e^x$ and derives the properties of the exponential function, among them its characterisation by the differential equation $f'=f$, the tangent inequality $e^x\ge1+x$ and the limit $(1+x/n)^n\to e^x$. \Cref{sec:log-function} defines the natural logarithm as the inverse of the exponential function and proves that it coincides with $\Lambda$; its concavity yields the inequality of the arithmetic and geometric means. \Cref{sec:general-powers} defines $a^x$ for every base $a>0$ and every real exponent $x$, proves the laws of exponents and the derivative of $x^s$, and thereby completes several results of \cref{ch:differentiation,ch:integration,ch:series} that were stated for rational exponents only. \Cref{sec:exp-log-numerics} turns to computation: the loss of accuracy in $e^x-1$ and $\ln(1+x)$ for small $x$, the reduction of the argument of $e^x$ and $\ln x$ to a short interval, and exponential growth and decay. \Cref{sec:trig-functions} defines the sine and the cosine by their power series, defines $\pi$ through the first positive zero of the cosine, and proves every geometric fact that \cref{asm:trig,asm:trig-geometry} assumed, including the length of an arc and the area of a sector, which are computed by integrals. \Cref{sec:inverse-trig} treats the inverse trigonometric functions and the two-argument arctangent, \cref{sec:complex-exp} extends the exponential function to complex arguments and proves Euler's formula $e^{i\theta}=\cos\theta+i\sin\theta$, and \cref{sec:hyperbolic} introduces the hyperbolic functions. \Cref{sec:identities-reduction} closes with the trigonometric identities and their use in reducing the argument of the sine and the cosine, and explains why this reduction needs $\pi$ to far more digits than the result.
+
+Throughout, a result of an earlier chapter may be used only if its proof did not rest on the facts that this chapter is about to prove. The results on power series in \cref{sec:power-series}, the alternating series test, the mean value theorem, the fundamental theorem of calculus and the rules of integration are of this kind; the derivatives of the sine and the cosine in \cref{thm:trig-derivatives} and the series of \cref{thm:sin-cos-series} are not, and we prove them afresh. The implementation of these functions in floating-point arithmetic, with the accuracy that a numerical library guarantees, is the subject of Volume~X. As in the preceding chapters this is a review: every result is stated precisely, and the important ones are proved.
+
+\section{The Exponential Function}
+\label{sec:exp-function}
+
+\subsection{The Definition}
+
+\Cref{sec:expansions} studied the power series $E(x)=\sum_{k\ge0}x^k/k!$ and showed that it converges for every real $x$, that it satisfies $E'=E$ and $E(x+y)=E(x)E(y)$, and that $E(r)=e^r$ for every rational number $r$, where $e^r$ is the rational power of the number $e=\lim_{n\to\infty}(1+1/n)^n$ of \cref{def:e} in the sense of \cref{ch:numbers}. For an irrational $x$ no meaning had been given to $e^x$ before, and $E(x)$ is the natural candidate: it is the only continuous function that agrees with $e^r$ at every rational $r$, since a continuous function is determined by its values on the dense set $\mathbb Q$. We adopt it as the definition.
+
+\begin{definition}[Exponential function]
+\label{def:exp}
+The \term{exponential function} $\exp\colon\mathbb R\to\mathbb R$ is
+\[
+\exp x\coloneqq e^x\coloneqq\sum_{k=0}^\infty\frac{x^k}{k!}=1+x+\frac{x^2}{2!}+\frac{x^3}{3!}+\cdots .
+\]
+\end{definition}
+
+By \cref{thm:exp-series}\,(iv), the new meaning of $e^x$ agrees with the old one whenever $x$ is rational, so no formula proved earlier for rational exponents changes its meaning. The notation $\exp x$ is convenient when the exponent is a long expression, as in $\exp(-x^2/2)$. We collect the basic properties.
+
+\begin{theorem}[Properties of the exponential function]
+\label{thm:exp-properties}
+\leavevmode
+\begin{enumerate}
+\item $e^0=1$ and $e^1=e$.
+\item $e^{x+y}=e^xe^y$ for all real $x$ and $y$.
+\item $e^x>0$ and $e^{-x}=1/e^x$ for every real $x$.
+\item The exponential function is differentiable, with $(e^x)'=e^x$; it belongs to $C^\infty(\mathbb R)$, and all its derivatives equal $e^x$.
+\item It is strictly increasing and strictly convex, and $e^x\to\infty$ as $x\to\infty$, $e^x\to0$ as $x\to-\infty$.
+\item Its image is $(0,\infty)$: for every $y>0$ there is exactly one real $x$ with $e^x=y$.
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+Parts (i) to (iii), the derivative in (iv) and the monotonicity in (v) are \cref{thm:exp-series} together with \cref{thm:e-series}. By induction, every derivative of $e^x$ is $e^x$, and a differentiable function is continuous, so $e^x\in C^\infty(\mathbb R)$. The second derivative $e^x$ is positive, so the function is strictly convex by \cref{cor:convex-second}. For $x\ge0$ all terms of the series are nonnegative, so $e^x\ge1+x$, which tends to $\infty$; and $e^{-x}=1/e^x\le1/(1+x)\to0$ as $x\to\infty$. For (vi), the image of $\mathbb R$ under the continuous function $\exp$ is an interval, by \cref{cor:interval-image}. It contains only positive numbers, by (iii), and by (v) it contains numbers larger than any given $M$ and positive numbers smaller than any given $\varepsilon>0$; so it is $(0,\infty)$. Uniqueness follows from strict monotonicity.
+\end{proof}
+
+Part (ii) is the \term{functional equation} of the exponential function, and it is the property that makes the function so useful: it turns addition into multiplication. With (iii) it gives $e^{x-y}=e^x/e^y$ and, by induction, $e^{nx}=(e^x)^n$ for every integer $n$. \Cref{fig:exp-log} shows the graph, which rises slowly to the left of $0$ and steeply to the right of it: $e^{-10}=4.5\times10^{-5}$, $e^{10}=22\,026.47\ldots$, and $e^{100}=2.7\times10^{43}$.
+
+\subsection{A Differential Equation}
+
+The proof of the functional equation in \cref{thm:exp-series} multiplied two series. There is a second proof, which uses only the equation $E'=E$, and it reveals a property that characterises the exponential function completely.
+
+\begin{theorem}[The equation $f'=\lambda f$]
+\label{thm:exp-ode}
+Let $\lambda$ and $c$ be real numbers, and let $I$ be an interval containing $0$. A differentiable function $f\colon I\to\mathbb R$ satisfies
+\[
+f'(x)=\lambda f(x)\quad\text{for all }x\in I,\qquad f(0)=c,
+\]
+if and only if $f(x)=c\,e^{\lambda x}$ for all $x\in I$. In particular, $\exp$ is the only differentiable function on $\mathbb R$ with $f'=f$ and $f(0)=1$.
+\end{theorem}
+
+\begin{proof}
+The function $ce^{\lambda x}$ has the derivative $\lambda ce^{\lambda x}$, by the chain rule, and the value $c$ at $0$. Conversely, let $f$ satisfy the conditions, and let $g(x)\coloneqq f(x)e^{-\lambda x}$. By the product rule,
+\[
+g'(x)=f'(x)e^{-\lambda x}-\lambda f(x)e^{-\lambda x}=\bigl(f'(x)-\lambda f(x)\bigr)e^{-\lambda x}=0 ,
+\]
+so $g$ is constant on $I$ by \cref{cor:zero-derivative}, equal to $g(0)=c$. Hence $f(x)=c\,e^{\lambda x}$, by \cref{thm:exp-properties}\,(ii) and (iii).
+\end{proof}
+
+The functional equation follows at once. Fix $y$, and let $f(x)\coloneqq e^{x+y}$. Then $f'=f$ and $f(0)=e^y$, so $f(x)=e^ye^x$ by the theorem. The same argument shows that any differentiable $f$ with $f'=f$ satisfies $f(x+y)f(0)=f(x)f(y)$.
+
+The theorem is the simplest result about differential equations, the subject of Part~IV. It says that a quantity whose rate of change is proportional to its size, $f'=\lambda f$, grows or decays exponentially, and that its value at one instant determines it at all others. Populations with unlimited resources, capital under continuously compounded interest and the amount of a radioactive substance obey this law, with $\lambda>0$ in the first two cases and $\lambda<0$ in the last; \cref{sec:exp-log-numerics} returns to them. The proof has a pattern that recurs: to show that a solution of a differential equation is unique, one finds a combination of the solution with known functions whose derivative vanishes. \Cref{sec:trig-functions} uses the same pattern for the equation $f''=-f$, and Chapter~25 extends the theorem to systems $\mathbf f'=A\mathbf f$, whose solutions involve the exponential $e^{tA}$ of a matrix.
+
+\subsection{The Tangent Inequality}
+
+A convex function lies above its tangents (\cref{prop:tangent-below}). For the exponential function, the tangent at $0$ is the line $1+x$, and the resulting inequality is one of the most useful in analysis.
+
+\begin{proposition}
+\label{prop:exp-tangent}
+For every real $x$,
+\[
+e^x\ge1+x ,
+\]
+with equality only for $x=0$. Equivalently, $1-t\le e^{-t}$ for every real $t$, with equality only for $t=0$; and $e^x\le1/(1-x)$ for $x<1$.
+\end{proposition}
+
+\begin{proof}
+Let $g(x)\coloneqq e^x-1-x$. Then $g'(x)=e^x-1$, which is negative for $x<0$ and positive for $x>0$, because $\exp$ is strictly increasing with $e^0=1$. By \cref{cor:monotone-derivative}, $g$ is strictly decreasing on $(-\infty,0]$ and strictly increasing on $[0,\infty)$, so $g(x)>g(0)=0$ for $x\ne0$. The second form is the first with $x=-t$, and the third follows from $e^{-x}\ge1-x>0$ by taking reciprocals.
+\end{proof}
+
+The inequality $1-t\le e^{-t}$ is the one announced in \cref{ch:counting} for the birthday problem. There, the probability that $k$ people have $k$ different birthdays was found to be $q_k=\prod_{j=1}^{k-1}(1-j/365)$. Applying the inequality to each factor and using the functional equation,
+\[
+q_k\le\prod_{j=1}^{k-1}e^{-j/365}=\exp\Bigl(-\frac1{365}\sum_{j=1}^{k-1}j\Bigr)=\exp\Bigl(-\frac{k(k-1)}{730}\Bigr),
+\]
+so the probability $1-q_k$ of a shared birthday is at least $1-e^{-k(k-1)/730}$, the curve of \cref{fig:birthday}. For $k=23$ the exponent is $-506/730=-0.693150\ldots$, which is slightly below $-\ln2=-0.693147\ldots$ (\cref{sec:log-function}), so the bound alone shows that among $23$ people a shared birthday is more likely than not. The approximation is good because $1-t$ and $e^{-t}$ differ only by about $t^2/2$ for small $t$, by the exponential series.
+
+\subsection{The Exponential as a Limit}
+
+\Cref{def:e} introduced $e$ through compound interest, as the limit of $(1+1/n)^n$. The same limit with $x$ in place of $1$ gives $e^x$, and the tangent inequality yields an explicit error bound.
+
+\begin{theorem}
+\label{thm:exp-limit}
+For every real $x$,
+\[
+\lim_{n\to\infty}\Bigl(1+\frac xn\Bigr)^n=e^x .
+\]
+More precisely, for every integer $n>|x|$,
+\[
+\exp\Bigl(\frac{nx}{n+x}\Bigr)\le\Bigl(1+\frac xn\Bigr)^n\le e^x
+\qquad\text{and}\qquad
+0\le e^x-\Bigl(1+\frac xn\Bigr)^n\le e^x\,\frac{x^2}{n+x} .
+\]
+\end{theorem}
+
+\begin{proof}
+Let $u>-1$. By \cref{prop:exp-tangent}, $1+u\le e^u$. Applying the same inequality to $v\coloneqq-u/(1+u)$ gives $e^{-u/(1+u)}\ge1-u/(1+u)=1/(1+u)$, that is, $1+u\ge e^{u/(1+u)}$. Hence
+\[
+e^{u/(1+u)}\le1+u\le e^u\qquad(u>-1).
+\]
+Put $u\coloneqq x/n$, which is greater than $-1$ because $n>|x|$. All three members are positive, and raising them to the $n$th power preserves the inequalities; by the functional equation, $(e^u)^n=e^{nu}=e^x$ and $(e^{u/(1+u)})^n=e^{nu/(1+u)}=e^{nx/(n+x)}$. This is the first claim. For the second, $x-\frac{nx}{n+x}=\frac{x^2}{n+x}$, so
+\[
+e^x-\exp\Bigl(\frac{nx}{n+x}\Bigr)=e^x\Bigl(1-e^{-x^2/(n+x)}\Bigr)\le e^x\,\frac{x^2}{n+x},
+\]
+by the inequality $1-e^{-t}\le t$, which is \cref{prop:exp-tangent} once more. The right side tends to $0$ as $n\to\infty$, and the limit follows.
+\end{proof}
+
+With $x=1$ the theorem recovers \cref{def:e}, now with the bound $e-(1+1/n)^n\le e/(n+1)$; the actual error is about half of this, $e/(2n)$, as \cref{ch:limits} observed. With a rate $x$ of interest compounded $n$ times a year, a capital grows in a year by the factor $(1+x/n)^n$, which increases towards $e^x$ as the compounding becomes continuous. Euler took the limit as the definition of $e^x$ and derived the series from it by the binomial theorem~\cite{euler1748introductio}; our proof of \cref{thm:e-series} did the same for $x=1$.
+
+\subsection{Growth}
+
+The exponential function grows faster than every power. \Cref{thm:exp-series}\,(v) proved this directly from the series; l'H\^opital's rule gives a second proof, as \cref{ch:differentiation} announced.
+
+\begin{proposition}
+\label{prop:exp-growth}
+For every $k\in\mathbb N$, $\lim_{x\to\infty}x^k/e^x=0$ and $\lim_{x\to-\infty}|x|^ke^x=0$.
+\end{proposition}
+
+\begin{proof}
+By induction on $k$. For $k=0$, $1/e^x\to0$ by \cref{thm:exp-properties}\,(v). For $k\ge1$, the denominator $e^x$ tends to $\infty$ and has the nonvanishing derivative $e^x$, and the quotient of the derivatives is $kx^{k-1}/e^x$, which tends to $0$ by the inductive hypothesis; \cref{thm:lhopital-infinite} gives $x^k/e^x\to0$. The second limit is the first with $x$ replaced by $-x$, since $e^{-x}=1/e^x$.
+\end{proof}
+
+Consequently $p(x)e^{-x}\to0$ as $x\to\infty$ for every polynomial $p$, the fact behind the flat function $e^{-1/x^2}$ of \cref{prop:flat-function}. \Cref{sec:general-powers} extends the proposition to real powers $x^s$.
+
+\section{The Natural Logarithm}
+\label{sec:log-function}
+
+\subsection{The Definition}
+
+By \cref{thm:exp-properties}, the exponential function is a continuous, strictly increasing bijection from $\mathbb R$ onto $(0,\infty)$. It therefore has an inverse function.
+
+\begin{definition}[Natural logarithm]
+\label{def:ln}
+The \term{natural logarithm} $\ln\colon(0,\infty)\to\mathbb R$ is the inverse of the exponential function: for $y>0$, $\ln y$ is the unique real number $x$ with $e^x=y$. Thus
+\[
+e^{\ln y}=y\quad(y>0),\qquad\ln e^x=x\quad(x\in\mathbb R).
+\]
+\end{definition}
+
+By \cref{thm:inverse-continuous}, $\ln$ is continuous and strictly increasing, as \cref{sec:monotone-functions} anticipated. Its graph is the mirror image of the graph of $\exp$ in the diagonal $y=x$ (\cref{fig:exp-log}). \Cref{ch:integration} reached a logarithm by a different route, as the integral $\Lambda(x)=\int_1^xdt/t$ of \eqref{eq:log-integral}. The two routes lead to the same function.
+
+\begin{theorem}
+\label{thm:ln-lambda}
+For every $x>0$,
+\[
+\ln x=\Lambda(x)=\int_1^x\frac{dt}t .
+\]
+\end{theorem}
+
+\begin{proof}
+By \cref{prop:log-exp}, $\Lambda(e^x)=x$ for every real $x$, so $\Lambda$ is a left inverse of $\exp\colon\mathbb R\to(0,\infty)$. Since $\exp$ is a bijection onto $(0,\infty)$, its left inverse is its inverse, which is $\ln$: for $y>0$, $\Lambda(y)=\Lambda(e^{\ln y})=\ln y$.
+\end{proof}
+
+From now on we write $\ln$ for $\Lambda$, and every statement of \cref{ch:integration,ch:series} about $\Lambda$ becomes a statement about the natural logarithm. In particular, Euler's constant is $\gamma=\lim_{n\to\infty}(H_n-\ln n)$ (\cref{thm:euler-constant}), Stirling's formula reads $\ln n!=(n+\frac12)\ln n-n+\ln\sqrt{2\pi}+\frac1{12n}+O(n^{-2})$ (\cref{thm:stirling}), and the entry $\ln|x|$ of \cref{tab:integrals}, which stood for $\Lambda(|x|)$, is an antiderivative of $1/x$ on each of the intervals $(-\infty,0)$ and $(0,\infty)$: for $x<0$, the chain rule gives $\frac d{dx}\ln(-x)=\frac{-1}{-x}=\frac1x$. The antiderivatives found by partial fractions in \cref{sec:techniques} are thus expressed by the natural logarithm, as written there.
+
+\subsection{Properties}
+
+\begin{theorem}[Properties of the natural logarithm]
+\label{thm:ln-properties}
+\leavevmode
+\begin{enumerate}
+\item $\ln1=0$ and $\ln e=1$.
+\item $\ln(xy)=\ln x+\ln y$, $\ln(1/x)=-\ln x$ and $\ln(x/y)=\ln x-\ln y$ for all $x,y>0$.
+\item $\ln(x^r)=r\ln x$ for every $x>0$ and every rational number $r$.
+\item $\ln$ is differentiable, with $\ln'x=1/x$; it belongs to $C^\infty(0,\infty)$.
+\item $\ln$ is strictly increasing and strictly concave, and $\ln x\to\infty$ as $x\to\infty$, $\ln x\to-\infty$ as $x\to0^+$.
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+(i) $e^0=1$ and $e^1=e$. (ii) By the functional equation, $e^{\ln x+\ln y}=e^{\ln x}e^{\ln y}=xy$, so $\ln(xy)=\ln x+\ln y$; with $y=1/x$ this gives $\ln(1/x)=\ln1-\ln x=-\ln x$, and the quotient rule follows. (iii) is the remark after \cref{prop:log-exp}, proved there for $\Lambda$, which is $\ln$. (iv) By \cref{thm:ftc1}, $\Lambda'(x)=1/x$; alternatively, by the rule for inverse functions (\cref{thm:inverse-derivative}), $\ln'y=1/\exp'(\ln y)=1/e^{\ln y}=1/y$. The derivative $1/x$ is itself in $C^\infty(0,\infty)$. (v) Monotonicity holds because $\ln'>0$, and strict concavity because $\ln''x=-1/x^2<0$, by \cref{cor:convex-second}. The limits are those of \cref{prop:log-additive}.
+\end{proof}
+
+Part (ii) is the property for which logarithms were invented. Napier published the first tables of logarithms in 1614, and Briggs those to base $10$ in 1617 and 1624; with them, a multiplication of two many-digit numbers became an addition of their logarithms and two lookups in a table, and for three centuries logarithm tables and the slide rule, which adds logarithms mechanically, were the principal aids to calculation in science~\cite{napier1614,maor1994}. The connection with the area under the hyperbola $y=1/t$, that is, with $\Lambda$, was recognised in the middle of the seventeenth century by Gr\'egoire de Saint-Vincent and Alphonse Antonio de Sarasa, and Euler was the first to define the exponential function and the logarithm as inverse functions of each other~\cite{maor1994,euler1748introductio}.
+
+\begin{figure}
+\sdfloat{%
+\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.56\textwidth, height=0.56\textwidth, xmin=-3.2, xmax=4.2, ymin=-3.2, ymax=4.2,
+  xtick={-3,-2,-1,0,1,2,3,4}, ytick={-3,-2,-1,0,1,2,3,4}, xlabel={$x$}, legend style={at={(0.03,0.97)}, anchor=north west}]
+\addplot[black!40, densely dotted, line width=0.5pt, domain=-3.2:4.2, samples=2, forget plot] {x};
+\addplot[black, line width=0.8pt, domain=-3.2:1.435, samples=120] {exp(x)};
+\addlegendentry{$e^x$}
+\addplot[black, dashed, line width=0.8pt, domain=0.041:4.2, samples=160] {ln(x)};
+\addlegendentry{$\ln x$}
+\addplot[black!45, line width=0.5pt, domain=-3.2:3.2, samples=2, forget plot] {1+x};
+\addplot[black!45, line width=0.5pt, domain=-2.2:4.2, samples=2, forget plot] {x-1};
+\fill[black] (axis cs:0,1) circle (1.4pt) (axis cs:1,0) circle (1.4pt);
+\node[font=\scriptsize, anchor=south east] at (axis cs:2.6,3.75) {$1+x$};
+\node[font=\scriptsize, anchor=north west] at (axis cs:3.0,2.0) {$x-1$};
+\end{axis}
+\end{tikzpicture}}{The exponential function and the natural logarithm. Each graph is the mirror image of the other in the diagonal $y=x$ (dotted). The exponential function lies above its tangent $1+x$ at $(0,1)$, and the logarithm below its tangent $x-1$ at $(1,0)$ (grey lines); these are the inequalities $e^x\ge1+x$ and $\ln x\le x-1$ of \cref{prop:exp-tangent,prop:ln-inequalities}.\label{fig:exp-log}}
+\end{figure}
+
+\subsection{Inequalities}
+
+The concave logarithm lies below its tangents, and the tangent at $(1,0)$ is the line $x-1$ (\cref{fig:exp-log}).
+
+\begin{proposition}
+\label{prop:ln-inequalities}
+For every $y>0$,
+\[
+1-\frac1y\le\ln y\le y-1 ,
+\]
+with equality only for $y=1$. Equivalently, for every $x>-1$,
+\[
+\frac x{1+x}\le\ln(1+x)\le x ,
+\]
+with equality only for $x=0$. Consequently $\ln(1+x)/x\to1$ as $x\to0$.
+\end{proposition}
+
+\begin{proof}
+With $x\coloneqq\ln y$, the inequality $e^x\ge1+x$ of \cref{prop:exp-tangent} reads $y\ge1+\ln y$, with equality only for $\ln y=0$, that is, $y=1$. Applied to $1/y$ it gives $\ln(1/y)\le1/y-1$, that is, $\ln y\ge1-1/y$. The second form follows with $y=1+x$. For the limit, divide by $x$: for $x>0$, $1/(1+x)\le\ln(1+x)/x\le1$, and for $-1<x<0$ the inequalities are reversed; in both cases the squeeze theorem applies as $x\to0$.
+\end{proof}
+
+The limit is the derivative of $\ln$ at $1$, and the inequality pins it down without any computation. Together with the functional equation it shows how slowly the logarithm grows: doubling $x$ adds only $\ln2=0.693\ldots$ to $\ln x$.
+
+\subsection{The Inequality of the Means Revisited}
+
+\Cref{thm:amgm} proved the inequality between the arithmetic and the geometric mean by induction, with Bernoulli's inequality. The concavity of the logarithm gives a proof in one line, as \cref{ch:differentiation} indicated.
+
+\begin{theorem}[Inequality of arithmetic and geometric means]
+\label{thm:amgm-log}
+For positive numbers $x_1,\ldots,x_n$,
+\[
+(x_1x_2\cdots x_n)^{1/n}\le\frac{x_1+\cdots+x_n}n ,
+\]
+with equality only if $x_1=\cdots=x_n$.
+\end{theorem}
+
+\begin{proof}
+Let $A$ be the arithmetic mean. Jensen's inequality (\cref{thm:jensen}), applied with the weights $\frac1n$ to the strictly convex function $-\ln$, gives
+\[
+\ln A\ge\frac1n\sum_{i=1}^n\ln x_i=\frac1n\ln(x_1\cdots x_n)=\ln\bigl((x_1\cdots x_n)^{1/n}\bigr),
+\]
+by \cref{thm:ln-properties}\,(ii) and (iii), with equality only if all $x_i$ are equal. Since $\ln$ is strictly increasing, the claim follows.
+\end{proof}
+
+\Cref{sec:general-powers} extends the theorem to weighted means.
+
+\subsection{Growth}
+
+The logarithm grows more slowly than every positive power. \Cref{prop:growth-scale} proved this for $\ln n$ with a bound; l'H\^opital's rule gives the limit directly.
+
+\begin{proposition}
+\label{prop:ln-growth}
+For every rational number $p>0$,
+\[
+\lim_{x\to\infty}\frac{\ln x}{x^p}=0\qquad\text{and}\qquad\lim_{x\to0^+}x^p\ln x=0 .
+\]
+\end{proposition}
+
+\begin{proof}
+The denominator $x^p$ tends to $\infty$ and has the nonvanishing derivative $px^{p-1}$ on $(0,\infty)$, by \cref{cor:root-derivative}, and $(1/x)/(px^{p-1})=1/(px^p)\to0$. By \cref{thm:lhopital-infinite}, $\ln x/x^p\to0$. For the second limit substitute $x=1/t$: $x^p\ln x=-\ln t/t^p\to0$ as $t\to\infty$.
+\end{proof}
+
+So $x\ln x\to0$ as $x\to0^+$, although $\ln x\to-\infty$: the factor $x$ wins. This limit lets one extend $x\ln x$ continuously to $[0,\infty)$ with the value $0$ at $0$, the convention behind the entropy $-\sum_ip_i\ln p_i$ of a probability distribution, in which terms with $p_i=0$ are omitted.
+
+\subsection{Computing Logarithms}
+
+The logarithm has the power series of \cref{thm:log-series}, now written with $\ln$:
+\[
+\ln(1+x)=x-\frac{x^2}2+\frac{x^3}3-\cdots\quad(-1<x\le1),\qquad\ln\frac{1+x}{1-x}=2\sum_{k=0}^\infty\frac{x^{2k+1}}{2k+1}\quad(|x|<1).
+\]
+The first series converges slowly near $x=1$; at $x=1$ it is the alternating harmonic series, which needs about half a million terms for six correct digits. The second series converges for the argument $y=(1+x)/(1-x)$, which can be any positive number, and it converges fast when $y$ is close to $1$, because then $x=(y-1)/(y+1)$ is small. For $y=2$ we have $x=\frac13$, and
+\begin{equation}
+\ln2=2\sum_{k=0}^\infty\frac1{(2k+1)\,3^{2k+1}}=\frac23+\frac2{81}+\frac2{1215}+\frac2{15309}+\cdots .
+\label{eq:ln2-series}
+\end{equation}
+All terms are positive, and the remainder after the term with $k=n$ is at most a geometric series with ratio $\frac19$:
+\[
+2\sum_{k>n}\frac1{(2k+1)\,3^{2k+1}}\le\frac2{(2n+3)\,3^{2n+3}}\sum_{j=0}^\infty\frac1{9^j}=\frac9{4\,(2n+3)\,3^{2n+3}} .
+\]
+\Cref{tab:ln2} shows the partial sums: each term adds almost one correct decimal digit, since the terms shrink by a factor of nearly $9$, and eight terms give $\ln2$ with an error of $1.0\times10^{-9}$.
+
+\begin{table}
+\sdfloat{%
+\begin{sdtable}{colspec={rlll}, row{1}={font=\small\bfseries}}
+\toprule
+$n$ & partial sum & error & bound \\
+\midrule
+0 & 0.6666666667 & $2.6\times10^{-2}$ & $2.8\times10^{-2}$ \\
+1 & 0.6913580247 & $1.8\times10^{-3}$ & $1.9\times10^{-3}$ \\
+2 & 0.6930041152 & $1.4\times10^{-4}$ & $1.5\times10^{-4}$ \\
+3 & 0.6931347573 & $1.2\times10^{-5}$ & $1.3\times10^{-5}$ \\
+4 & 0.6931460474 & $1.1\times10^{-6}$ & $1.2\times10^{-6}$ \\
+5 & 0.6931470738 & $1.1\times10^{-7}$ & $1.1\times10^{-7}$ \\
+6 & 0.6931471703 & $1.0\times10^{-8}$ & $1.0\times10^{-8}$ \\
+7 & 0.6931471795 & $1.0\times10^{-9}$ & $1.0\times10^{-9}$ \\
+\bottomrule
+\end{sdtable}}{The partial sums $2\sum_{k=0}^n(2k+1)^{-1}3^{-2k-1}$ of \eqref{eq:ln2-series}, their errors $\ln2-s_n$ and the bound $9/(4(2n+3)3^{2n+3})$ for them, computed in exact rational arithmetic and with $\ln2=0.69314718055994530942\ldots$ to $100$ digits.\label{tab:ln2}}
+\end{table}
+
+The logarithms of other numbers follow from that of $2$ and the functional equation. For instance, $\frac32=(1+\frac15)/(1-\frac15)$, so $\ln\frac32$ is the series with $x=\frac15$, whose terms shrink by a factor of $25$, and $\ln3=\ln2+\ln\frac32$. In general, a number $y>0$ can first be divided by a power of $2$, which changes its logarithm by a multiple of $\ln2$, until it lies close to $1$; \cref{sec:exp-log-numerics} makes this precise.
+
+\section{General Powers and Logarithms}
+\label{sec:general-powers}
+
+\subsection{Real Exponents}
+
+\Cref{ch:numbers} defined $a^{p/q}$ for $a>0$ and rational exponents through roots, and promised a meaning for irrational exponents such as $2^{\sqrt2}$. Since $a=e^{\ln a}$, the law $(e^u)^x=e^{ux}$, which holds for rational $x$, suggests the definition.
+
+\begin{definition}[Real powers]
+\label{def:real-power}
+For $a>0$ and real $x$,
+\[
+a^x\coloneqq e^{x\ln a} .
+\]
+Moreover $0^x\coloneqq0$ for $x>0$, and $0^0\coloneqq1$.
+\end{definition}
+
+Two consistency checks are needed, because $a^x$ had a meaning before in two cases. For $a=e$ the definition gives $e^{x\ln e}=e^x$, the exponential function of \cref{def:exp}, so the notation $e^x$ is unambiguous. For rational exponents the definition agrees with that of \cref{ch:numbers}.
+
+\begin{proposition}
+\label{prop:power-consistent}
+Let $a>0$, and let $p$ and $q\ge1$ be integers. Then $e^{(p/q)\ln a}$ is the number $a^{p/q}=(a^{1/q})^p$ of \cref{ch:numbers}.
+\end{proposition}
+
+\begin{proof}
+By the functional equation, $e^{n\ln a}=(e^{\ln a})^n=a^n$ for every integer $n$. The number $b\coloneqq e^{(1/q)\ln a}$ is positive and satisfies $b^q=e^{\ln a}=a$, so it is the unique positive $q$th root $a^{1/q}$ of \cref{thm:roots}. Hence $e^{(p/q)\ln a}=(e^{(1/q)\ln a})^p=(a^{1/q})^p$.
+\end{proof}
+
+For example, $2^{\sqrt2}=e^{\sqrt2\ln2}=2.6651441426\ldots$, and since $x\mapsto2^x$ is continuous, this is the limit of $2^{r_n}$ for every sequence of rationals $r_n\to\sqrt2$, such as $2^{1.4}$, $2^{1.41}$, $2^{1.414},\ldots$ The definition is the only continuous extension of the rational powers.
+
+\begin{theorem}[Laws of exponents]
+\label{thm:exponent-laws}
+For $a,b>0$ and real $x,y$:
+\begin{enumerate}
+\item $a^{x+y}=a^xa^y$, $a^{-x}=1/a^x$ and $a^0=1$;
+\item $(a^x)^y=a^{xy}$;
+\item $(ab)^x=a^xb^x$;
+\item $\ln(a^x)=x\ln a$.
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+(iv) is the definition, since $\ln e^u=u$. (i) $a^{x+y}=e^{(x+y)\ln a}=e^{x\ln a}e^{y\ln a}$, and the other two statements follow. (ii) By (iv), $(a^x)^y=e^{y\ln a^x}=e^{yx\ln a}=a^{xy}$. (iii) $(ab)^x=e^{x(\ln a+\ln b)}=e^{x\ln a}e^{x\ln b}$.
+\end{proof}
+
+The laws hold for positive bases only. The real cube root of $-8$ is $-2$, but if the law (ii) held for the base $-8$, it would give $(-8)^{1/3}=(-8)^{2\cdot(1/6)}=\bigl((-8)^2\bigr)^{1/6}=64^{1/6}=2$, which is not a cube root of $-8$; so no definition of $a^x$ for $a<0$ and all rational $x$ can satisfy the laws. Negative and complex bases are treated with the complex logarithm in \cref{sec:complex-exp}.
+
+\begin{theorem}[Monotonicity, limits and derivatives of powers]
+\label{thm:power-derivatives}
+\leavevmode
+\begin{enumerate}
+\item For $a>0$, the function $x\mapsto a^x$ is differentiable on $\mathbb R$, with
+\[
+\frac d{dx}a^x=a^x\ln a ;
+\]
+it is strictly increasing if $a>1$, strictly decreasing if $0<a<1$, and constant if $a=1$.
+\item For real $s$, the function $t\mapsto t^s$ is differentiable on $(0,\infty)$, with
+\[
+\frac d{dt}t^s=s\,t^{s-1} ;
+\]
+it is strictly increasing if $s>0$ and strictly decreasing if $s<0$.
+\item If $s>0$, then $t^s\to0$ as $t\to0^+$ and $t^s\to\infty$ as $t\to\infty$, so $t\mapsto t^s$ is continuous on $[0,\infty)$; if $s>1$ it has the right derivative $0$ at $0$. If $s<0$, then $t^s\to\infty$ as $t\to0^+$ and $t^s\to0$ as $t\to\infty$.
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+(i) By the chain rule, $\frac d{dx}e^{x\ln a}=e^{x\ln a}\ln a$, which has the sign of $\ln a$. (ii) By the chain rule, $\frac d{dt}e^{s\ln t}=e^{s\ln t}\cdot\frac st=s\,t^s\,t^{-1}=s\,t^{s-1}$, using \cref{thm:exponent-laws}\,(i); its sign is that of $s$. (iii) If $s>0$, then $s\ln t\to-\infty$ as $t\to0^+$ and $s\ln t\to\infty$ as $t\to\infty$, and $e^u\to0$ as $u\to-\infty$, $e^u\to\infty$ as $u\to\infty$. If $s>1$, the difference quotient $(h^s-0)/h=h^{s-1}$ tends to $0$ as $h\to0^+$. The case $s<0$ follows from $t^s=1/t^{-s}$.
+\end{proof}
+
+Part (ii) is the power rule $\frac d{dx}x^s=sx^{s-1}$ of \cref{tab:derivatives}, now for every real exponent, as \cref{ch:differentiation} promised for \cref{cor:root-derivative}. Part (i) shows why $e$ is the natural base: among all exponential functions $a^x$, only $e^x$ is its own derivative, because only for $a=e$ is $\ln a=1$. A further rule follows from the chain rule. If $f>0$ and $g$ are differentiable, then $f^g=e^{g\ln f}$ and
+\[
+\bigl(f^g\bigr)'=f^g\Bigl(g'\ln f+g\,\frac{f'}f\Bigr).
+\]
+For instance, $\frac d{dx}x^x=x^x(\ln x+1)$, which vanishes only at $x=1/e$; so $x^x$ has its minimum on $(0,\infty)$ at $1/e$, with the value $e^{-1/e}=0.6922\ldots$, and $x^x\to1$ as $x\to0^+$, because $x\ln x\to0$ (\cref{prop:ln-growth}). The quotient $f'/f=(\ln f)'$ is the \term{logarithmic derivative} of $f$, and computing it first is often the easiest way to differentiate a product of many factors.
+
+\subsection{Inequalities with Real Exponents}
+
+With real exponents available, the inequalities of \cref{ch:differentiation} extend with the same proofs.
+
+\begin{proposition}[Bernoulli's inequality for real exponents]
+\label{prop:bernoulli-real}
+Let $r$ be a real number and $x>-1$. If $r>1$ or $r<0$, then $(1+x)^r\ge1+rx$; if $0<r<1$, then $(1+x)^r\le1+rx$. In all three cases equality holds only for $x=0$.
+\end{proposition}
+
+\begin{proof}
+Let $h(x)\coloneqq(1+x)^r-1-rx$ on $(-1,\infty)$. By \cref{thm:power-derivatives}\,(ii) and the chain rule, $h'(x)=r\bigl((1+x)^{r-1}-1\bigr)$. If $r>1$, the power with the positive exponent $r-1$ is strictly increasing, so $(1+x)^{r-1}-1$ is negative for $x<0$ and positive for $x>0$; so is $h'$, since $r>0$. If $r<0$, the exponent $r-1$ is negative, the bracket has the opposite signs, and so has its multiple by the negative number $r$; again $h'<0$ on $(-1,0)$ and $h'>0$ on $(0,\infty)$. In both cases $h$ is strictly decreasing on $(-1,0]$ and strictly increasing on $[0,\infty)$, by \cref{cor:monotone-derivative}, so $h(x)>h(0)=0$ for $x\ne0$. If $0<r<1$, the exponent $r-1$ is negative and $r$ positive, the signs of $h'$ are reversed, and $h(x)<0$ for $x\ne0$.
+\end{proof}
+
+For $r>1$ the inequality also holds at $x=-1$, where both sides are defined. The proposition is the tangent inequality for the function $(1+x)^r$, whose second derivative $r(r-1)(1+x)^{r-2}$ is positive when $r>1$ or $r<0$ and negative when $0<r<1$; for the same reason $x^p$ is strictly convex on $(0,\infty)$ for real $p>1$ and $p<0$, and strictly concave for $0<p<1$.
+
+The inequality of the means extends to weights, as \cref{ch:differentiation} announced after \cref{cor:power-means}.
+
+\begin{theorem}[Weighted inequality of the means]
+\label{thm:weighted-amgm}
+Let $x_1,\ldots,x_n>0$ and $\lambda_1,\ldots,\lambda_n\ge0$ with $\lambda_1+\cdots+\lambda_n=1$. Then
+\[
+x_1^{\lambda_1}x_2^{\lambda_2}\cdots x_n^{\lambda_n}\le\lambda_1x_1+\lambda_2x_2+\cdots+\lambda_nx_n ,
+\]
+with equality only if all $x_i$ with $\lambda_i>0$ are equal.
+\end{theorem}
+
+\begin{proof}
+Omit the terms with $\lambda_i=0$, which contribute the factor $x_i^0=1$ on the left and nothing on the right. Jensen's inequality for the strictly concave function $\ln$ with the positive weights that remain gives
+\[
+\ln\Bigl(\sum_i\lambda_ix_i\Bigr)\ge\sum_i\lambda_i\ln x_i=\ln\prod_ix_i^{\lambda_i},
+\]
+by \cref{thm:exponent-laws}\,(iv) and \cref{thm:ln-properties}\,(ii), with equality only if the remaining $x_i$ are equal. Apply the increasing function $\exp$.
+\end{proof}
+
+With $\lambda_i=\frac1n$ this is \cref{thm:amgm-log}. With two terms it gives an inequality that is used constantly in analysis.
+
+\begin{corollary}[Young's inequality]
+\label{cor:young}
+Let $p,q>1$ with $\frac1p+\frac1q=1$. For all $a,b\ge0$,
+\[
+ab\le\frac{a^p}p+\frac{b^q}q .
+\]
+\end{corollary}
+
+\begin{proof}
+If $a=0$ or $b=0$ there is nothing to prove. Otherwise apply \cref{thm:weighted-amgm} to $x_1=a^p$, $x_2=b^q$ with the weights $\frac1p$ and $\frac1q$: $(a^p)^{1/p}(b^q)^{1/q}=ab$, by \cref{thm:exponent-laws}\,(ii).
+\end{proof}
+
+For $p=q=2$ Young's inequality is $ab\le\frac12(a^2+b^2)$, which follows from $(a-b)^2\ge0$. In general it is the key step in the proof of H\"older's inequality $\sum|a_kb_k|\le(\sum|a_k|^p)^{1/p}(\sum|b_k|^q)^{1/q}$, which generalises the Cauchy--Schwarz inequality and underlies the $L^p$ spaces of Volume~II~\cite{hardy1952inequalities}.
+
+\subsection{Growth with Real Exponents}
+
+\begin{proposition}
+\label{prop:real-growth}
+For all real $s$ and all $c>0$, $p>0$,
+\[
+\lim_{x\to\infty}x^se^{-cx}=0\qquad\text{and}\qquad\lim_{x\to\infty}\frac{(\ln x)^s}{x^p}=0 .
+\]
+\end{proposition}
+
+\begin{proof}
+Choose an integer $k\ge\max(s,0)$. For $x\ge1$, $0<x^s\le x^k$ by \cref{thm:power-derivatives}\,(i) applied to the base $x\ge1$, and with $y=cx$, $x^ke^{-cx}=c^{-k}y^ke^{-y}\to0$ by \cref{prop:exp-growth}. For the second limit, put $x=e^y$; for $x>1$, $(\ln x)^s/x^p=y^se^{-py}$, which tends to $0$ as $y\to\infty$ by the first limit.
+\end{proof}
+
+The facts about real powers and the exponential function that \cref{sec:improper} used ahead of time for the gamma function are now all proved: $t^s$ is defined for $t>0$ and real $s$, obeys $t^rt^s=t^{r+s}$, is continuous and differentiable with derivative $st^{s-1}$, increases for $s>0$ and tends to $0$ as $t\to0^+$ when $s>0$ (\cref{thm:exponent-laws,thm:power-derivatives}); $e^{-t}$ is positive and decreasing with derivative $-e^{-t}$; and $t^se^{-t}\to0$ as $t\to\infty$ for every real $s$ (\cref{prop:real-growth}). The definition of $\Gamma(s)$ and \cref{thm:gamma} therefore stand on firm ground. Three further results of the preceding chapters extend from rational to real exponents.
+
+\begin{corollary}
+\label{cor:real-exponent-extensions}
+\leavevmode
+\begin{enumerate}
+\item \Cref{prop:p-integrals} holds for every real $p$: $\int_1^\infty x^{-p}dx$ converges if and only if $p>1$, with value $1/(p-1)$, and $\int_0^1x^{-p}dx$ converges if and only if $p<1$, with value $1/(1-p)$.
+\item \Cref{cor:p-series} holds for every real $p$: $\sum_{k\ge1}k^{-p}$ converges if and only if $p>1$, with the stated bounds on the remainders.
+\item \Cref{thm:binomial-series} holds for every real $r$: $(1+x)^r=\sum_{k\ge0}\binom rkx^k$ for $-1<x<1$.
+\end{enumerate}
+\end{corollary}
+
+\begin{proof}
+The proofs of the three results used, besides general theorems, only the following properties of the powers: the derivative of $x^{1-p}$ is $(1-p)x^{-p}$; $R^{1-p}\to0$ or $\infty$ as $R\to\infty$, and $c^{1-p}\to0$ or $\infty$ as $c\to0^+$, according to the sign of $1-p$; $x^{-p}$ is positive and decreasing on $[1,\infty)$ for $p>0$; and $(1+x)^{-r}$ is differentiable with derivative $-r(1+x)^{-r-1}$, and $(1+x)^{-r}(1+x)^r=1$. By \cref{thm:exponent-laws,thm:power-derivatives} all of them hold for real exponents, and the proofs carry over word for word.
+\end{proof}
+
+\begin{note}{The gamma function and the factorials}
+\Cref{thm:gamma} showed that $\Gamma(n+1)=n!$, so the gamma function interpolates the factorials. Infinitely many smooth functions do this, for instance $\Gamma(s)+\sin(\pi s)\,\varphi(s)$ for every smooth $\varphi$, and one may ask what singles out $\Gamma$. The answer, due to Bohr and Mollerup, involves the logarithm: $\Gamma$ is the only function $f\colon(0,\infty)\to(0,\infty)$ with $f(1)=1$ and $f(s+1)=sf(s)$ for which $\ln f$ is convex~\cite{artin1964gamma}. That $\ln\Gamma$ is convex follows from H\"older's inequality applied to the integral of \cref{def:gamma}. The characterisation leads to Gauss's formula $\Gamma(s)=\lim_{n\to\infty}n!\,n^s/(s(s+1)\cdots(s+n))$, which defines $\Gamma$ for all complex $s$ other than $0,-1,-2,\ldots$, and to the reflection formula $\Gamma(s)\Gamma(1-s)=\pi/\sin(\pi s)$, which gives $\Gamma(\frac12)=\sqrt\pi$. Artin's short book develops this theory from log-convexity alone; Davis tells its history~\cite{artin1964gamma,davis1959gamma}. Volume~X computes $\Gamma$, $\ln\Gamma$ and their relatives.
+\end{note}
+
+\subsection{Functional Equations}
+
+The exponential function turns sums into products and the logarithm turns products into sums. These two properties, together with continuity, determine the functions up to a constant. The underlying result, for functions that turn sums into sums, is due to Cauchy~\cite{cauchy1821}.
+
+\begin{theorem}[Cauchy's functional equation]
+\label{thm:cauchy-functional}
+Let $f\colon\mathbb R\to\mathbb R$ be continuous with $f(x+y)=f(x)+f(y)$ for all real $x,y$. Then $f(x)=cx$ for all $x$, with $c=f(1)$.
+\end{theorem}
+
+\begin{proof}
+With $x=y=0$, $f(0)=2f(0)$, so $f(0)=0$, and with $y=-x$, $f(-x)=-f(x)$. By induction, $f(nx)=nf(x)$ for every $n\in\mathbb N$ and real $x$, hence for every integer $n$. For a rational $r=p/q$ with $q\ge1$, $qf(r)=f(qr)=f(p)=pf(1)$, so $f(r)=cr$. Every real $x$ is the limit of a sequence of rationals $r_n$ (\cref{thm:q-dense}), and continuity gives $f(x)=\lim f(r_n)=\lim cr_n=cx$.
+\end{proof}
+
+\begin{corollary}
+\label{cor:exp-log-functional}
+\leavevmode
+\begin{enumerate}
+\item If $g\colon\mathbb R\to\mathbb R$ is continuous, not identically zero, and $g(x+y)=g(x)g(y)$ for all $x,y$, then $a\coloneqq g(1)>0$ and $g(x)=a^x$ for all $x$.
+\item If $h\colon(0,\infty)\to\mathbb R$ is continuous and $h(xy)=h(x)+h(y)$ for all $x,y>0$, then $h(x)=c\ln x$ for all $x>0$, with $c=h(e)$.
+\end{enumerate}
+\end{corollary}
+
+\begin{proof}
+(i) $g(x)=g(x/2)^2\ge0$ for every $x$. If $g(x_0)=0$ for some $x_0$, then $g(x)=g(x_0)g(x-x_0)=0$ for every $x$, which is excluded; so $g>0$. The function $f\coloneqq\ln\circ g$ is continuous and additive, so $f(x)=xf(1)=x\ln a$ by the theorem, and $g(x)=e^{x\ln a}=a^x$. (ii) The function $f(t)\coloneqq h(e^t)$ is continuous and additive, since $e^{s+t}=e^se^t$; so $h(e^t)=tc$ with $c=h(e)$, and with $t=\ln x$, $h(x)=c\ln x$.
+\end{proof}
+
+So every continuous \emph{homomorphism} from the additive group of real numbers to the multiplicative group of positive numbers is an exponential function $a^x$, and every continuous homomorphism in the opposite direction is a multiple of the logarithm. Among all of them, $e^x$ and $\ln x$ are singled out by their derivatives at $0$ and at $1$, both equal to $1$. Continuity cannot be dropped altogether: with the axiom of choice one can construct additive functions $\mathbb R\to\mathbb R$ that are not of the form $cx$, but their graphs are dense in the plane, and no such function is continuous at a single point, or even bounded on an interval~\cite{aczel1966}.
+
+\subsection{Logarithms to Other Bases}
+
+For $a>0$ with $a\ne1$, the function $x\mapsto a^x$ is a strictly monotone continuous bijection from $\mathbb R$ onto $(0,\infty)$, by \cref{thm:power-derivatives}, since $a^x=e^{x\ln a}$ and $x\ln a$ runs through all of $\mathbb R$.
+
+\begin{definition}[Logarithm to base $a$]
+\label{def:log-base}
+For $a>0$ with $a\ne1$, the \term{logarithm to base $a$} is the inverse of $x\mapsto a^x$:
+\[
+\log_ay\coloneqq\frac{\ln y}{\ln a}\qquad(y>0).
+\]
+\end{definition}
+
+Indeed, $a^{\ln y/\ln a}=e^{\ln y}=y$. The logarithm to base $a$ obeys the same rules as $\ln$, $\log_a(xy)=\log_ax+\log_ay$ and $\log_a(x^s)=s\log_ax$, and any two logarithms differ by a constant factor:
+\[
+\log_by=\frac{\log_ay}{\log_ab}\qquad\text{(change of base)}.
+\]
+The \term{binary logarithm} $\log_2$ and the \term{common logarithm} $\log_{10}$ are the ones used most besides $\ln$. Because logarithms to different bases differ by constant factors, statements such as $T(n)=O(n\log n)$ do not depend on the base, and in such statements we write $\log$ without a base; elsewhere in this book $\log$ always carries its base, and the natural logarithm is written $\ln$. Since $\log_2y=\ln y/\ln2$ and $\ln2=0.693\ldots$, one has $\log_2y\approx1.4427\ln y$, and $\log_{10}y\approx0.4343\ln y$.
+
+The binary logarithm measures the length of binary numbers, as the common logarithm measures that of decimal ones.
+
+\begin{proposition}
+\label{prop:digit-count}
+Let $b\ge2$ be an integer. A natural number $n\ge1$ has exactly $\lfloor\log_bn\rfloor+1$ digits in base $b$. In particular, $n$ has $\lfloor\log_2n\rfloor+1$ binary digits.
+\end{proposition}
+
+\begin{proof}
+The number $n$ has $k+1$ digits in base $b$, that is, $n=(d_k\cdots d_0)_b$ with $d_k\ne0$, if and only if $b^k\le n<b^{k+1}$, by \cref{thm:base}. Since $\log_b$ is strictly increasing, this is equivalent to $k\le\log_bn<k+1$, that is, $k=\lfloor\log_bn\rfloor$.
+\end{proof}
+
+For example, $2^{100}$ has $\lfloor100\log_{10}2\rfloor+1=\lfloor30.103\ldots\rfloor+1=31$ decimal digits, and the largest $64$-bit unsigned integer $2^{64}-1=18\,446\,744\,073\,709\,551\,615$ has $\lfloor64\log_{10}2\rfloor+1=20$, since $64\log_{10}2=19.27\ldots$ and $2^{64}-1$ is not a power of $10$. Conversely, a $d$-digit decimal number needs about $d\log_210\approx3.32\,d$ bits. The binary logarithm also counts halvings: an interval of length $L$ must be halved $\lceil\log_2(L/\varepsilon)\rceil$ times to reach a length at most $\varepsilon$, which is the number of steps of the bisection method of \cref{sec:ivt}, and a sorted list of $n$ items can be searched in about $\log_2n$ comparisons. Volume~IV measures the cost of algorithms in this way, and Volume~V the precision of floating-point numbers, whose exponent is essentially $\lfloor\log_2|x|\rfloor$.
+
+\section{Numerical Aspects of the Exponential and the Logarithm}
+\label{sec:exp-log-numerics}
+
+The definitions of this chapter are also recipes: the exponential series can be summed, and the logarithm can be computed from the series of \cref{sec:log-function}. But a recipe that is exact in real arithmetic may be poor in floating-point arithmetic, and a series that converges for every argument may need impractically many terms for most of them. This section examines both problems for the exponential function and the logarithm with the tools of the preceding chapters: condition numbers, series with remainder bounds, and the functional equations. The analysis of rounding errors themselves belongs to Volume~V, and the implementation of the functions to Volume~X. In the numerical examples, $u=2^{-53}\approx1.1\times10^{-16}$ is the unit roundoff of binary64 arithmetic: every real number of moderate size is represented with a relative error at most $u$.
+
+\subsection{Cancellation near Zero}
+
+For small $x$ the functions
+\[
+f(x)\coloneqq e^x-1\qquad\text{and}\qquad g(x)\coloneqq\ln(1+x)
+\]
+are both close to $x$. They are well conditioned there: by \cref{def:condition-number},
+\[
+\kappa_f(x)=\Bigl|\frac{xe^x}{e^x-1}\Bigr|,\qquad\kappa_g(x)=\Bigl|\frac x{(1+x)\ln(1+x)}\Bigr|,
+\]
+and both tend to $1$ as $x\to0$, by the derivatives of $e^x$ and $\ln(1+x)$ at $0$. A small relative change of $x$ thus causes a relative change of the same size in $f(x)$ and $g(x)$, and a good algorithm should compute them with a relative error of a few units of $u$.
+
+The obvious algorithms are not good. Computing $e^x$ and then subtracting $1$ is a composition of two steps, and by \cref{prop:condition-composition} the condition numbers multiply. The first step, $x\mapsto e^x$, has condition number $|x|$, which is tiny; the second, $y\mapsto y-1$ at $y=e^x$, has the condition number $|y/(y-1)|\approx1/|x|$, which is huge (\cref{tab:condition}). Even if $e^x$ is computed with the smallest possible error, rounded correctly to the nearest binary64 number, its absolute error is up to $u\,e^x\approx u$, and after the exact subtraction of $1$ this absolute error is a relative error of about $u/|x|$ in a result of size $|x|$. For $\ln(1+x)$ the trouble lies in the first step: the sum $1+x$ is rounded before the logarithm is taken, which destroys the trailing digits of $x$, and the logarithm, being nearly the identity near $1$ in absolute terms, cannot restore them. \Cref{tab:expm1} shows the effect. At $x=10^{-8}$ half of the sixteen digits are lost, and at $x=10^{-16}$ the computed $1+x$ is exactly $1$ and both results are $0$.
+
+\begin{table}
+\sdfloat{%
+\begin{sdtable}{colspec={lllll}, row{1-2}={font=\small\bfseries}}
+\toprule
+ & \SetCell[c=2]{c} $e^x-1$ & & \SetCell[c=2]{c} $\ln(1+x)$ & \\
+\cmidrule[lr]{2-3}\cmidrule[lr]{4-5}
+$x$ & direct & series & direct & series \\
+\midrule
+$10^{-1}$ & $7.7\times10^{-16}$ & $4.0\times10^{-5}$ & $7.3\times10^{-16}$ & $2.4\times10^{-4}$ \\
+$10^{-4}$ & $4.3\times10^{-13}$ & $4.2\times10^{-14}$ & $1.1\times10^{-13}$ & $2.5\times10^{-13}$ \\
+$10^{-8}$ & $1.1\times10^{-8}$ & $9.8\times10^{-17}$ & $6.1\times10^{-9}$ & $4.8\times10^{-17}$ \\
+$10^{-12}$ & $8.9\times10^{-5}$ & $2.4\times10^{-17}$ & $8.9\times10^{-5}$ & $2.4\times10^{-17}$ \\
+$10^{-15}$ & $1.1\times10^{-1}$ & $9.2\times10^{-17}$ & $1.1\times10^{-1}$ & $9.2\times10^{-17}$ \\
+$10^{-16}$ & $1$ & $5.0\times10^{-17}$ & $1$ & $5.0\times10^{-17}$ \\
+\bottomrule
+\end{sdtable}}{Relative errors in computing $e^x-1$ and $\ln(1+x)$ in binary64 arithmetic. \emph{Direct}: the correctly rounded value of $e^x$, minus $1$; the correctly rounded value of $\ln(\fl(1+x))$. \emph{Series}: the three terms $x+x^2/2+x^3/6$ and $x-x^2/2+x^3/3$, evaluated in binary64. Here $x$ is the binary64 number nearest to the power of $10$, and the errors are measured against values computed with $80$ digits.\label{tab:expm1}}
+\end{table}
+
+The table also shows the remedy. For small $|x|$ the series $x+x^2/2+x^3/6+\cdots$ and $x-x^2/2+x^3/3-\cdots$ involve no cancellation, since their leading term dominates, and a few terms are accurate to the last digit; for larger $|x|$ the truncation error of three terms takes over, and there the direct formulas are fine. A good implementation combines the two regimes, or uses identities that avoid the cancellation altogether. One such identity, for the logarithm, is due to Kahan: if $w\coloneqq\fl(1+x)$ is the rounded sum, then $\ln(1+x)$ is computed accurately as $x$ if $w=1$ and as $\ln(w)\cdot x/(w-1)$ otherwise, because the factor $x/(w-1)$ corrects for the rounding of $1+x$, the subtraction $w-1$ being exact~\cite{goldberg1991}. Numerical libraries provide the two functions under the names \code{expm1} and \code{log1p}; Volume~X describes those of the library, and Higham~\cite{higham2002accuracy} analyses the errors. The lesson recurs throughout scientific computing: a function that is well conditioned may still be computed badly, because the condition of the intermediate steps, not of the function, determines the error of a naive formula.
+
+A related problem occurs at the other end of the range. The largest binary64 number is about $1.8\times10^{308}$, and $e^x$ overflows for $x>709.78\ldots$, the logarithm of that number. Sums of exponentials, which occur in probability and statistics, are therefore computed through an identity. If $m\coloneqq\max_ix_i$, then
+\[
+\ln\sum_{i=1}^ne^{x_i}=m+\ln\sum_{i=1}^ne^{x_i-m},
+\]
+by the functional equation, and on the right every exponent is at most $0$ and one term equals $1$, so that nothing overflows and the sum is at least $1$. This is the \term{log-sum-exp} computation of Volume~X.
+
+\subsection{Argument Reduction}
+
+By \eqref{eq:exp-remainder}, the partial sum of degree $n$ of the exponential series has an error at most $e^{|x|}|x|^{n+1}/(n+1)!$, which is small only when $n$ is considerably larger than $|x|$. For $x=-20$ the series is useless in floating point, as \cref{sec:expansions} showed, and even for $x=20$ the bound falls below $u\,e^x$ only after more than eighty terms. The functional equation removes the difficulty by reducing the argument.
+
+\begin{proposition}[Argument reduction for $\exp$]
+\label{prop:exp-reduction}
+Every real $x$ can be written as $x=k\ln2+r$ with an integer $k$ and $|r|\le\frac12\ln2=0.3465\ldots$, namely with $k$ an integer nearest to $x/\ln2$, and then $e^x=2^ke^r$. For $|r|\le\frac12\ln2$,
+\[
+\Bigl|e^r-\sum_{j=0}^{13}\frac{r^j}{j!}\Bigr|<8.3\times10^{-18}\,e^r<u\,e^r .
+\]
+\end{proposition}
+
+\begin{proof}
+If $k$ is an integer nearest to $x/\ln2$, then $|x/\ln2-k|\le\frac12$, so $r\coloneqq x-k\ln2$ satisfies $|r|\le\frac12\ln2$, and $e^x=e^{k\ln2}e^r=2^ke^r$ by the functional equation and \cref{prop:power-consistent}. By \eqref{eq:exp-remainder} with $n=13$, the error is at most $e^{|r|}|r|^{14}/14!$, and $e^{|r|}\le e^{2|r|}e^r\le2e^r$ because $e^{2|r|}\le e^{\ln2}=2$. Hence the relative error is at most $2(\frac12\ln2)^{14}/14!=8.27\ldots\times10^{-18}$.
+\end{proof}
+
+In binary floating-point arithmetic the multiplication by $2^k$ is exact, apart from overflow and underflow: it only changes the exponent of the number (Volume~V). The whole computation of $e^x$ is thus reduced to a fixed polynomial of degree $13$ on a fixed short interval. \Cref{alg:exp} states the method; it evaluates the polynomial by Horner's scheme (\cref{ch:numbers}) in the nested form
+\[
+\sum_{j=0}^{13}\frac{r^j}{j!}=1+r\Bigl(1+\frac r2\Bigl(1+\frac r3\Bigl(1+\cdots\Bigl(1+\frac r{13}\Bigr)\cdots\Bigr)\Bigr)\Bigr).
+\]
+
+\begin{algorithm}
+\begin{algorithmic}[1]
+\Require a real number $x$
+\Ensure an approximation of $e^x$ with relative error less than $u$, in exact arithmetic
+\Name{Exp}{x}
+\State $k\gets$ an integer nearest to $x/\ln2$
+\State $r\gets x-k\ln2$ \Comment{$|r|\le\frac12\ln2$}
+\State $s\gets1$
+\For{$j=13,12,\ldots,1$}
+  \State $s\gets1+s\cdot r/j$ \Comment{Horner's scheme}
+\EndFor
+\State \Return $2^k\cdot s$
+\end{algorithmic}
+\caption{The exponential function by argument reduction and a truncated series (\cref{prop:exp-reduction}). In floating-point arithmetic, line 2 needs $\ln2$ to more digits than the working precision when $|k|$ is large, for the reason explained in \cref{sec:identities-reduction}.}
+\label{alg:exp}
+\end{algorithm}
+
+The logarithm is reduced in the same way, with the roles of sums and products exchanged. Every $x>0$ can be written as $x=2^km$ with an integer $k$ and $m\in[1/\sqrt2,\sqrt2)$, and then $\ln x=k\ln2+\ln m$. For $m$ in this interval, $t\coloneqq(m-1)/(m+1)$ satisfies $|t|\le3-2\sqrt2=0.1716\ldots$, because $t$ is an increasing function of $m$ and $(\sqrt2-1)/(\sqrt2+1)=(\sqrt2-1)^2=3-2\sqrt2$, and
+\[
+\ln m=\ln\frac{1+t}{1-t}=2\Bigl(t+\frac{t^3}3+\frac{t^5}5+\cdots\Bigr).
+\]
+The remainder after the term $t^{2n+1}/(2n+1)$ is at most $2|t|^{2n+3}/((2n+3)(1-t^2))$, by comparison with a geometric series, and relative to $|\ln m|\ge2|t|$ it is below $u$ for $n=9$: ten terms suffice. The constant $\ln2$ itself is computed once and for all, for instance by \eqref{eq:ln2-series}.
+
+Both reductions express the same idea, which is the main theme of the implementation of elementary functions: an identity of the function, here the functional equation, maps an arbitrary argument to a small interval, where a polynomial of low degree is accurate. Practical implementations refine every step. They reduce further with tables of precomputed values, such as $e^{j/32}$ for $j=0,\ldots,31$, so that a polynomial of much lower degree suffices, and they replace the Taylor polynomial by the polynomial of the same degree with the smallest maximum error on the interval, which is the subject of approximation theory~\cite{muller2016elementary,cody1980}. Volume~X develops these methods.
+
+\subsection{Exponential Growth and Decay}
+
+By \cref{thm:exp-ode}, a quantity $y(t)$ with $y'=\lambda y$ is $y(t)=y(0)e^{\lambda t}$. For $\lambda>0$ it doubles in every time interval of length
+\[
+T_2\coloneqq\frac{\ln2}\lambda ,
+\]
+since $e^{\lambda(t+T_2)}=2e^{\lambda t}$, whatever $t$ is; for $\lambda<0$ it halves in every interval of length $T_{1/2}\coloneqq\ln2/|\lambda|$, the \term{half-life}, and after the time $t$ the fraction $2^{-t/T_{1/2}}$ remains. A capital that earns interest at the rate of $3\%$ a year, compounded continuously, satisfies $y'=0.03\,y$ and doubles in $\ln2/0.03=23.1$ years; since $\ln2\approx0.69$, the doubling time is about $70$ divided by the rate in percent, a rule of thumb of finance. A radioactive substance decays at a rate proportional to the amount present, and its half-life, which does not depend on the amount, characterises it.
+
+On a logarithmic scale, exponential growth and decay become linear: $\ln y(t)=\ln y(0)+\lambda t$ is a linear function of $t$, with slope $\lambda$. A graph with a logarithmic vertical axis therefore shows exponential functions as straight lines, and a power law $y=cx^p$ becomes a straight line with slope $p$ when both axes are logarithmic, since $\ln y=\ln c+p\ln x$. This is how the orders of convergence were read off in \cref{fig:quadrature-errors}. \Cref{fig:exp-decay} compares an exponential decay with a power law: on linear axes the two curves look alike, while the logarithmic axis separates them clearly, the exponential falling along a straight line and eventually far below the power law, as \cref{prop:real-growth} predicts.
+
+\begin{figure}
+\sdpanel{A}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.49\textwidth, height=0.4\textwidth, xmin=0, xmax=8.4, ymin=0, ymax=1.08,
+  xtick={0,1,2,3,4,5,6,7,8}, ytick={0,0.25,0.5,1}, yticklabels={0,$\frac14$,$\frac12$,1}, xlabel={$t$},
+  legend style={at={(0.97,0.97)}, anchor=north east}]
+\addplot[black, line width=0.8pt, domain=0:8.4, samples=100] {2^(-x)};
+\addlegendentry{$2^{-t}$}
+\addplot[black, dashed, line width=0.8pt, domain=0:8.4, samples=100] {1/(1+x)^2};
+\addlegendentry{$(1+t)^{-2}$}
+\draw[black!45, densely dotted, line width=0.4pt] (axis cs:0,0.5) -- (axis cs:1,0.5) -- (axis cs:1,0);
+\draw[black!45, densely dotted, line width=0.4pt] (axis cs:0,0.25) -- (axis cs:2,0.25) -- (axis cs:2,0);
+\draw[black!45, densely dotted, line width=0.4pt] (axis cs:0,0.125) -- (axis cs:3,0.125) -- (axis cs:3,0);
+\end{axis}
+\end{tikzpicture}}\hfill
+\sdpanel{B}{\begin{tikzpicture}
+\begin{axis}[sdplot, ymode=log, width=0.49\textwidth, height=0.4\textwidth, xmin=0, xmax=20.5, ymin=5e-7, ymax=1.5,
+  xtick={0,5,10,15,20}, ytick={1e-6,1e-4,1e-2,1}, xlabel={$t$},
+  legend style={at={(0.03,0.03)}, anchor=south west}]
+\addplot[black, line width=0.8pt, domain=0:20.5, samples=2] {2^(-x)};
+\addlegendentry{$2^{-t}$}
+\addplot[black, dashed, line width=0.8pt, domain=0:20.5, samples=100] {1/(1+x)^2};
+\addlegendentry{$(1+t)^{-2}$}
+\end{axis}
+\end{tikzpicture}}
+\caption{Exponential decay and a power law. (A) On linear axes, the exponential $2^{-t}$, with half-life $1$ (dotted: it halves in every unit of time), and the power $(1+t)^{-2}$ both decrease towards $0$ and look much alike. (B) With a logarithmic vertical axis, the exponential becomes a straight line of slope $-\ln2$, while the power law flattens out; at $t=20$ the exponential has fallen to $9.5\times10^{-7}$, the power only to $2.3\times10^{-3}$.}
+\label{fig:exp-decay}
+\end{figure}
+
+\section{The Trigonometric Functions}
+\label{sec:trig-functions}
+
+School mathematics defines the sine and the cosine geometrically: an angle $x$ determines a point $(\cos x,\sin x)$ on the unit circle. Made precise, this definition needs the length of an arc, because the radian measure of an angle is the length of the arc it cuts from the unit circle, and the length of a curve is an integral (\cref{thm:arc-length}). The derivatives of the functions so defined would then depend on the properties of such integrals, which in turn are computed with the functions; this is the circle that \cref{ch:limits,ch:differentiation} avoided by assuming the geometric facts. We break it by starting from the other end. The sine and the cosine are defined by their power series, which require nothing but arithmetic and limits; their derivatives follow from the theory of power series, the number $\pi$ is defined through the cosine, and the geometric facts, including the length of an arc and the area of a sector, become theorems. The functions so defined are the familiar ones, as the theorems show.
+
+\subsection{The Definition}
+
+\begin{definition}[Sine and cosine]
+\label{def:sin-cos}
+For real $x$,
+\begin{align*}
+\sin x&\coloneqq\sum_{k=0}^\infty\frac{(-1)^kx^{2k+1}}{(2k+1)!}=x-\frac{x^3}{3!}+\frac{x^5}{5!}-\cdots,\\
+\cos x&\coloneqq\sum_{k=0}^\infty\frac{(-1)^kx^{2k}}{(2k)!}=1-\frac{x^2}{2!}+\frac{x^4}{4!}-\cdots .
+\end{align*}
+\end{definition}
+
+These are the series that \cref{thm:sin-cos-series} derived from the geometric functions. Here they are the starting point, and nothing about the sine and the cosine may be used below unless it is proved from the definition. We write $S_n$ and $C_n$, as in \cref{sec:expansions}, for the partial sums up to the terms with $k=n$.
+
+\begin{proposition}
+\label{prop:sin-cos-basic}
+\leavevmode
+\begin{enumerate}
+\item Both series converge absolutely for every real $x$; $\sin0=0$ and $\cos0=1$.
+\item The sine is odd and the cosine is even: $\sin(-x)=-\sin x$ and $\cos(-x)=\cos x$.
+\item Both functions are differentiable on $\mathbb R$, with
+\[
+\sin'=\cos,\qquad\cos'=-\sin ,
+\]
+and they belong to $C^\infty(\mathbb R)$.
+\item $\displaystyle\lim_{x\to0}\frac{\sin x}x=1$ and $\displaystyle\lim_{x\to0}\frac{1-\cos x}{x^2}=\frac12$.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(i) For fixed $x\ne0$, the absolute values of consecutive terms have the ratios $x^2/((2k+2)(2k+3))$ and $x^2/((2k+1)(2k+2))$, which tend to $0$; the ratio test applies. The values at $0$ are the constant terms. (ii) Replacing $x$ by $-x$ changes the sign of every odd power and of no even power. (iii) Both are power series with infinite radius of convergence, so \cref{thm:termwise-diff} allows differentiation term by term:
+\begin{align*}
+\sin'x&=\sum_{k=0}^\infty\frac{(-1)^k(2k+1)x^{2k}}{(2k+1)!}=\sum_{k=0}^\infty\frac{(-1)^kx^{2k}}{(2k)!}=\cos x,\\
+\cos'x&=\sum_{k=1}^\infty\frac{(-1)^kx^{2k-1}}{(2k-1)!}=-\sum_{j=0}^\infty\frac{(-1)^jx^{2j+1}}{(2j+1)!}=-\sin x ,
+\end{align*}
+with $j=k-1$ in the last step. By induction all derivatives exist. (iv) For $x\ne0$, $(\sin x)/x=\sum_k(-1)^kx^{2k}/(2k+1)!$ and $(1-\cos x)/x^2=\sum_{k\ge1}(-1)^{k+1}x^{2k-2}/(2k)!$ are power series in $x$ with infinite radius, hence continuous at $0$ by \cref{thm:termwise-diff}, where their values are $1$ and $\frac12$.
+\end{proof}
+
+The logic of \cref{ch:limits,ch:differentiation} is now reversed. There the limit of $(\sin x)/x$ was computed from the area of a sector, and the derivatives were computed from the limit. Here the derivatives come first, from the series, and the limit is simply the derivative of the sine at $0$. \Cref{thm:trig-derivatives} and \cref{prop:sin-limit} hold, and their content no longer rests on \cref{asm:trig-geometry}.
+
+\subsection{The Pythagorean Identity and the Addition Formulas}
+
+\begin{theorem}[Pythagorean identity]
+\label{thm:pythagorean}
+For every real $x$, $\cos^2x+\sin^2x=1$. In particular $|\sin x|\le1$ and $|\cos x|\le1$.
+\end{theorem}
+
+\begin{proof}
+The function $h(x)\coloneqq\cos^2x+\sin^2x$ has the derivative $2\cos x\,(-\sin x)+2\sin x\cos x=0$, so it is constant by \cref{cor:zero-derivative}, equal to $h(0)=1$.
+\end{proof}
+
+The derivative formulas say that the sine and the cosine solve the differential equation $f''=-f$. The following lemma, the counterpart of \cref{thm:exp-ode} for this equation, says that they generate all its solutions; it is the key to every identity between the trigonometric functions.
+
+\begin{lemma}
+\label{lem:harmonic-unique}
+Let $f\colon\mathbb R\to\mathbb R$ be twice differentiable with $f''=-f$. Then
+\[
+f(x)=f(0)\cos x+f'(0)\sin x\qquad\text{for all real }x .
+\]
+\end{lemma}
+
+\begin{proof}
+The function $g(x)\coloneqq f(x)-f(0)\cos x-f'(0)\sin x$ satisfies $g''=-g$, $g(0)=0$ and $g'(0)=f'(0)-f'(0)=0$. Let $\varphi\coloneqq g^2+(g')^2$. Then $\varphi'=2gg'+2g'g''=2g'(g+g'')=0$, so $\varphi$ is constant, equal to $\varphi(0)=0$. Hence $g^2\le\varphi=0$, and $g=0$.
+\end{proof}
+
+\begin{theorem}[Addition formulas]
+\label{thm:addition}
+For all real $x$ and $y$,
+\[
+\sin(x+y)=\sin x\cos y+\cos x\sin y,\qquad\cos(x+y)=\cos x\cos y-\sin x\sin y .
+\]
+\end{theorem}
+
+\begin{proof}
+Fix $y$, and let $f(x)\coloneqq\sin(x+y)$. By the chain rule, $f'(x)=\cos(x+y)$ and $f''(x)=-\sin(x+y)=-f(x)$, with $f(0)=\sin y$ and $f'(0)=\cos y$. \Cref{lem:harmonic-unique} gives $\sin(x+y)=\sin y\cos x+\cos y\sin x$. For the cosine, $f(x)\coloneqq\cos(x+y)$ satisfies $f''=-f$, $f(0)=\cos y$ and $f'(0)=-\sin y$, and the lemma gives the second formula.
+\end{proof}
+
+With $-y$ in place of $y$ the theorem gives $\sin(x-y)=\sin x\cos y-\cos x\sin y$ and $\cos(x-y)=\cos x\cos y+\sin x\sin y$, and with $y=x$ the \term{double-angle formulas}
+\[
+\sin2x=2\sin x\cos x,\qquad\cos2x=\cos^2x-\sin^2x=2\cos^2x-1=1-2\sin^2x .
+\]
+\Cref{thm:pythagorean,thm:addition} and \cref{prop:sin-cos-basic} are the parts (i) and (ii) of \cref{asm:trig} and part (i) of \cref{asm:trig-geometry}. The differential equation $f''=-f$ describes an oscillation: a mass on a spring, with the restoring force proportional to the displacement, moves according to $f''=-\omega^2f$, and the lemma, applied to $x\mapsto f(x/\omega)$, shows that its motion is $f(0)\cos\omega t+(f'(0)/\omega)\sin\omega t$. Chapter~24 treats such equations systematically.
+
+\subsection{The Number \texorpdfstring{$\pi$}{pi}}
+
+The cosine starts at $\cos0=1$ and decreases. The next lemma shows that it reaches $0$ before $2$, and locates the zero between $\frac32$ and $\frac85$, using only the alternating series test.
+
+\begin{lemma}
+\label{lem:sin-cos-estimates}
+For $0\le x\le2$,
+\[
+x-\frac{x^3}6\le\sin x\le x\qquad\text{and}\qquad1-\frac{x^2}2+\frac{x^4}{24}-\frac{x^6}{720}\le\cos x\le1-\frac{x^2}2+\frac{x^4}{24}.
+\]
+\end{lemma}
+
+\begin{proof}
+For $0<x\le2$, the absolute values $b_k\coloneqq x^{2k+1}/(2k+1)!$ of the terms of the sine series decrease to $0$, since $b_{k+1}/b_k=x^2/((2k+2)(2k+3))\le\frac46<1$. By the alternating series test (\cref{thm:leibniz}), the sum lies between the partial sums $b_0-b_1$ and $b_0$, which is the first claim. For the cosine, $1-\cos x=\sum_{k\ge0}(-1)^kc_k$ with $c_k\coloneqq x^{2k+2}/(2k+2)!$, and again $c_{k+1}/c_k=x^2/((2k+3)(2k+4))\le\frac4{12}<1$. By the same test, the sum $1-\cos x$ lies between $c_0-c_1$ and $c_0-c_1+c_2$, which gives the second claim. At $x=0$ all members are equal.
+\end{proof}
+
+\begin{theorem}[The first zero of the cosine]
+\label{thm:first-zero}
+The cosine is strictly decreasing on $[0,2]$ and has exactly one zero in $[0,2]$. This zero lies strictly between $\frac32$ and $\frac85$.
+\end{theorem}
+
+\begin{proof}
+For $0<x\le2$, \cref{lem:sin-cos-estimates} gives $\sin x\ge x(1-x^2/6)\ge x/3>0$, so $\cos'=-\sin<0$ on $(0,2]$, and the cosine is strictly decreasing on $[0,2]$ by \cref{cor:monotone-derivative}. By the lemma, with exact arithmetic,
+\[
+\cos\frac32\ge1-\frac98+\frac{81}{384}-\frac{729}{46\,080}=\frac{3231}{46\,080}>0,\qquad\cos\frac85\le1-\frac{32}{25}+\frac{512}{1875}=-\frac{13}{1875}<0 .
+\]
+By the intermediate value theorem the cosine has a zero in $(\frac32,\frac85)$, and since it is strictly decreasing on $[0,2]$, it has no other zero there.
+\end{proof}
+
+\begin{definition}[The number $\pi$]
+\label{def:pi}
+The number $\pi$ is twice the zero of the cosine in $[0,2]$. Thus $\cos\frac\pi2=0$, $\cos x>0$ for $0\le x<\frac\pi2$, and
+\[
+3<\pi<3.2 .
+\]
+\end{definition}
+
+The definition looks arbitrary, but it is not: \cref{prop:arc-length,prop:sector-area} below show that this number is half the circumference and the area of the unit circle, so that it is the $\pi$ of geometry. The bounds $3<\pi<3.2$ came from four terms of the cosine series, and more terms would locate the zero more precisely, by bisection for instance (\cref{sec:ivt}); \cref{sec:inverse-trig} computes $\pi$ far more efficiently with the arctangent series. \Cref{fig:cos-zero}A shows how the bounds of \cref{lem:sin-cos-estimates} trap the zero of the cosine. This construction of $\pi$ through the first positive zero of the cosine is the one used by Rudin~\cite{rudin1976}; Spivak instead defines $\pi$ first, as the area of the unit disc, and the trigonometric functions through the integrals of \cref{sec:inverse-trig}~\cite{spivak2008calculus}. Both routes arrive at the same functions.
+
+\begin{figure}
+\sdpanel{A}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.49\textwidth, height=0.42\textwidth, xmin=0, xmax=2.08, ymin=-0.5, ymax=1.08,
+  xtick={0,0.5,1,1.5,1.6,2}, xticklabels={0,0.5,1,,,2}, ytick={-0.5,0,0.5,1}, xlabel={$x$},
+  legend style={at={(0.03,0.03)}, anchor=south west}]
+\draw[black!35, line width=0.4pt] (axis cs:0,0) -- (axis cs:2.08,0);
+\addplot[black, line width=0.9pt, domain=0:2, samples=100] {cos(deg(x))};
+\addlegendentry{$\cos x$}
+\addplot[black, dashed, line width=0.6pt, domain=0:2, samples=100] {1-x^2/2+x^4/24};
+\addlegendentry{$C_2(x)$}
+\addplot[black, densely dotted, line width=0.8pt, domain=0:2, samples=100] {1-x^2/2+x^4/24-x^6/720};
+\addlegendentry{$C_3(x)$}
+\draw[black!55, line width=0.4pt] (axis cs:1.5,-0.5) -- (axis cs:1.5,0.15);
+\draw[black!55, line width=0.4pt] (axis cs:1.6,-0.5) -- (axis cs:1.6,0.15);
+\fill[black] (axis cs:1.5708,0) circle (1.3pt);
+\node[font=\scriptsize, anchor=south east] at (axis cs:1.52,0.15) {$\frac32$};
+\node[font=\scriptsize, anchor=south west] at (axis cs:1.58,0.15) {$\frac85$};
+\draw[black!55, line width=0.3pt] (axis cs:1.36,-0.2) -- (axis cs:1.555,-0.015);
+\node[font=\scriptsize, anchor=north east] at (axis cs:1.38,-0.17) {$\frac\pi2$};
+\end{axis}
+\end{tikzpicture}}\hfill
+\sdpanel{B}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.49\textwidth, height=0.42\textwidth, xmin=-3.3, xmax=6.5, ymin=-1.15, ymax=1.35,
+  xtick={-3.14159,-1.5708,0,1.5708,3.14159,4.71239,6.28319}, xticklabels={$-\pi$,$-\frac\pi2$,0,$\frac\pi2$,$\pi$,$\frac{3\pi}2$,$2\pi$},
+  ytick={-1,0,1}, xlabel={$x$}, legend style={at={(0.5,0.99)}, anchor=north}, legend columns=-1]
+\draw[black!35, line width=0.4pt] (axis cs:-3.3,0) -- (axis cs:6.5,0);
+\addplot[black, line width=0.8pt, domain=-3.3:6.5, samples=160] {sin(deg(x))};
+\addlegendentry{$\sin x$}
+\addplot[black, dashed, line width=0.8pt, domain=-3.3:6.5, samples=160] {cos(deg(x))};
+\addlegendentry{$\cos x$}
+\end{axis}
+\end{tikzpicture}}
+\caption{The definition of $\pi$. (A) On $[0,2]$ the cosine is enclosed between the polynomials $C_3(x)=1-\frac{x^2}2+\frac{x^4}{24}-\frac{x^6}{720}$ and $C_2(x)=1-\frac{x^2}2+\frac{x^4}{24}$ of \cref{lem:sin-cos-estimates}; the lower bound is positive at $\frac32$ and the upper bound negative at $\frac85$, so the zero $\frac\pi2=1.5707\ldots$ (dot) of the cosine lies between the two vertical lines. (B) The sine and the cosine on $[-\pi,2\pi]$. The cosine is the sine shifted by $\frac\pi2$ to the left, and both have period $2\pi$ (\cref{thm:trig-periodic}).}
+\label{fig:cos-zero}
+\end{figure}
+
+\begin{theorem}[Shifts, special values and periodicity]
+\label{thm:trig-periodic}
+For all real $x$ and all integers $k$:
+\begin{enumerate}
+\item $\sin\frac\pi2=1$ and $\cos\frac\pi2=0$;
+\item $\sin(x+\frac\pi2)=\cos x$ and $\cos(x+\frac\pi2)=-\sin x$;
+\item $\sin(x+\pi)=-\sin x$, $\cos(x+\pi)=-\cos x$, $\sin(\pi-x)=\sin x$ and $\cos(\pi-x)=-\cos x$;
+\item $\sin(x+2\pi)=\sin x$ and $\cos(x+2\pi)=\cos x$;
+\item $\sin k\pi=0$ and $\cos k\pi=(-1)^k$.
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+(i) $\sin^2\frac\pi2=1-\cos^2\frac\pi2=1$, and $\sin\frac\pi2>0$ because $\sin x\ge x/3$ on $[0,2]$ (proof of \cref{thm:first-zero}); so $\sin\frac\pi2=1$. (ii) is \cref{thm:addition} with $y=\frac\pi2$. Applying (ii) twice gives the first two formulas of (iii), and with them $\sin(\pi-x)=\sin(-x+\pi)=-\sin(-x)=\sin x$ and similarly for the cosine. Applying (iii) twice gives (iv). (v) holds for $k=0$, and (iii) carries it from $k$ to $k+1$ and to $k-1$.
+\end{proof}
+
+\begin{theorem}[Signs, zeros and monotonicity]
+\label{thm:trig-signs}
+\leavevmode
+\begin{enumerate}
+\item $\sin x>0$ for $0<x<\pi$, and $\cos x>0$ for $-\frac\pi2<x<\frac\pi2$.
+\item $\sin x=0$ if and only if $x\in\pi\mathbb Z$; $\cos x=0$ if and only if $x\in\frac\pi2+\pi\mathbb Z$; and $\cos x=1$ if and only if $x\in2\pi\mathbb Z$.
+\item The sine is strictly increasing on $[-\frac\pi2,\frac\pi2]$, and the cosine is strictly decreasing on $[0,\pi]$; both map these intervals onto $[-1,1]$.
+\item The \term{tangent} $\tan x\coloneqq\sin x/\cos x$, defined for $x\notin\frac\pi2+\pi\mathbb Z$, satisfies $\tan(x+\pi)=\tan x$ and
+\[
+\tan'x=\frac1{\cos^2x}=1+\tan^2x ;
+\]
+it is strictly increasing on $(-\frac\pi2,\frac\pi2)$, with $\tan x\to\infty$ as $x\to\frac\pi2^-$ and $\tan x\to-\infty$ as $x\to-\frac\pi2^+$.
+\item The smallest positive period of the sine and of the cosine is $2\pi$, and that of the tangent is $\pi$.
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+(i) By \cref{def:pi}, $\cos x>0$ for $0\le x<\frac\pi2$, and since the cosine is even also for $-\frac\pi2<x\le0$. Hence $\sin'=\cos>0$ on $[0,\frac\pi2)$, so the sine is strictly increasing on $[0,\frac\pi2]$ and $\sin x>\sin0=0$ for $0<x\le\frac\pi2$. For $\frac\pi2\le x<\pi$, $\sin x=\sin(\pi-x)$ with $0<\pi-x\le\frac\pi2$.
+
+(ii) By (i) the sine has no zero in $(0,\pi)$, and by $\sin(x+\pi)=-\sin x$ none in $(\pi,2\pi)$; its zeros in $[0,2\pi)$ are $0$ and $\pi$. Every real $x$ is $x'+2\pi m$ with $m=\lfloor x/(2\pi)\rfloor$ and $x'\in[0,2\pi)$, and $\sin x=\sin x'$ by periodicity; so the zeros of the sine are the numbers $k\pi$. Since $\cos x=\sin(x+\frac\pi2)$, the cosine vanishes exactly when $x+\frac\pi2\in\pi\mathbb Z$. Finally, $\cos x=1$ implies $\sin x=0$, so $x=k\pi$, and $\cos k\pi=(-1)^k=1$ forces $k$ to be even.
+
+(iii) The derivative of the sine is $\cos x>0$ on $(-\frac\pi2,\frac\pi2)$, and that of the cosine is $-\sin x<0$ on $(0,\pi)$; \cref{cor:monotone-derivative} gives strict monotonicity on the closed intervals. The end values are $\mp1$ and $\pm1$, by \cref{thm:trig-periodic}, and by the intermediate value theorem every value in between is attained.
+
+(iv) The periodicity follows from \cref{thm:trig-periodic}\,(iii). By the quotient rule, $\tan'=(\cos^2+\sin^2)/\cos^2=1/\cos^2$, which is positive. As $x\to\frac\pi2^-$, $\sin x\to1$ and $\cos x\to0$ through positive values, so $\tan x\to\infty$; the other limit follows because the tangent is odd.
+
+(v) If $p>0$ is a period of the cosine, then $\cos p=\cos0=1$, so $p\in2\pi\mathbb Z$ by (ii), and $p\ge2\pi$. If $p>0$ is a period of the sine, then $\cos p=\sin(p+\frac\pi2)=\sin\frac\pi2=1$, and again $p\ge2\pi$. If $p>0$ is a period of the tangent, then $\tan p=\tan0=0$, so $\sin p=0$ and $p\ge\pi$.
+\end{proof}
+
+The cosine is thus the sine shifted by $\frac\pi2$, and both repeat after $2\pi$ (\cref{fig:cos-zero}B). The next result is part (iii) of \cref{asm:trig}: every point of the unit circle has the form $(\cos\theta,\sin\theta)$, with $\theta$ determined up to a multiple of $2\pi$. It is the basis of the polar form of complex numbers in \cref{ch:numbers}.
+
+\begin{proposition}[Points of the unit circle]
+\label{prop:circle-points}
+Let $u,v$ be real numbers with $u^2+v^2=1$. There is exactly one $\theta\in(-\pi,\pi]$ with $\cos\theta=u$ and $\sin\theta=v$. Moreover, $(\cos\theta,\sin\theta)=(\cos\theta',\sin\theta')$ holds exactly when $\theta-\theta'\in2\pi\mathbb Z$.
+\end{proposition}
+
+\begin{proof}
+By \cref{thm:trig-signs}\,(iii) there is a $\theta_0\in[0,\pi]$ with $\cos\theta_0=u$. Then $\sin\theta_0\ge0$, by \cref{thm:trig-signs}\,(i) and $\sin0=\sin\pi=0$, and $\sin^2\theta_0=1-u^2=v^2$, so $\sin\theta_0=|v|$. If $v\ge0$, then $\theta\coloneqq\theta_0$ has the required properties. If $v<0$, then $\sin\theta_0=|v|>0$, so $\theta_0\in(0,\pi)$, and $\theta\coloneqq-\theta_0\in(-\pi,0)$ has $\cos\theta=u$ and $\sin\theta=-|v|=v$. For the second statement, if $\cos\theta=\cos\theta'$ and $\sin\theta=\sin\theta'$, then by \cref{thm:addition}
+\[
+\cos(\theta-\theta')=\cos\theta\cos\theta'+\sin\theta\sin\theta'=\cos^2\theta+\sin^2\theta=1 ,
+\]
+so $\theta-\theta'\in2\pi\mathbb Z$ by \cref{thm:trig-signs}\,(ii); the converse is periodicity. Two numbers in $(-\pi,\pi]$ that differ by a multiple of $2\pi$ are equal, which gives the uniqueness.
+\end{proof}
+
+\Cref{lem:sin-bounds} proved $\sin x<x<\tan x$ for $0<x<\frac\pi2$ by comparing areas, with facts from school geometry. The inequality now follows from the derivatives alone, as \cref{ch:limits} announced.
+
+\begin{proposition}
+\label{prop:sin-x-tan}
+For $0<x<\frac\pi2$,
+\[
+\sin x<x<\tan x .
+\]
+Consequently $|\sin x|\le|x|$ for every real $x$, with equality only for $x=0$.
+\end{proposition}
+
+\begin{proof}
+On $(0,\frac\pi2)$ we have $0<\cos x<1$, because the cosine is strictly decreasing on $[0,\pi]$ with $\cos0=1$. The function $x-\sin x$ has the derivative $1-\cos x>0$ there and vanishes at $0$, and $\tan x-x$ has the derivative $1/\cos^2x-1>0$ there and vanishes at $0$. By \cref{lem:comparison}, both are positive on $(0,\frac\pi2)$. The consequence follows as in the proof of \cref{lem:sin-bounds}, using $|\sin x|\le1<\frac\pi2$.
+\end{proof}
+
+A few values of the trigonometric functions can be found exactly, and they are collected in \cref{tab:special-values}. At $\frac\pi4$, the double-angle formula gives $0=\cos\frac\pi2=2\cos^2\frac\pi4-1$, so $\cos\frac\pi4=1/\sqrt2$, the positive root, and then $\sin\frac\pi4=1/\sqrt2$ and $\tan\frac\pi4=1$. At $\frac\pi6$, the addition formulas give $\sin3x=3\sin x-4\sin^3x$, and with $x=\frac\pi6$ and $s\coloneqq\sin\frac\pi6\in(0,1)$ this becomes $1=3s-4s^3$, that is, $(2s-1)^2(s+1)=0$; so $s=\frac12$. The values at $\frac\pi3$ follow from $\sin\frac\pi3=\cos(\frac\pi2-\frac\pi3)=\cos\frac\pi6$.
+
+\begin{table}
+\sdfloat{%
+\begin{sdtable}{colspec={llllll}, row{1}={font=\small\bfseries}}
+\toprule
+$x$ & $0$ & $\frac\pi6$ & $\frac\pi4$ & $\frac\pi3$ & $\frac\pi2$ \\
+\midrule
+$\sin x$ & $0$ & $\frac12$ & $\frac1{\sqrt2}$ & $\frac{\sqrt3}2$ & $1$ \\
+$\cos x$ & $1$ & $\frac{\sqrt3}2$ & $\frac1{\sqrt2}$ & $\frac12$ & $0$ \\
+$\tan x$ & $0$ & $\frac1{\sqrt3}$ & $1$ & $\sqrt3$ & undefined \\
+\bottomrule
+\end{sdtable}}{Exact values of the sine, the cosine and the tangent. The values at the other multiples of $\frac\pi6$ and $\frac\pi4$ follow from \cref{thm:trig-periodic}.\label{tab:special-values}}
+\end{table}
+
+\subsection{Arc Length and the Area of a Sector}
+
+It remains to connect $\pi$ and the trigonometric functions with the geometry of the circle. Both connections are integrals: the length of an arc is defined in \cref{sec:integral-applications} as the supremum of the lengths of inscribed broken lines, and the area of a region under a graph as an integral.
+
+\begin{proposition}[Length of an arc]
+\label{prop:arc-length}
+Let $0\le\alpha<\beta\le\pi$. The arc $\{(\cos t,\sin t): \alpha\le t\le\beta\}$ of the unit circle is the graph of $f(u)\coloneqq\sqrt{1-u^2}$ over $[\cos\beta,\cos\alpha]$, and its length is $\beta-\alpha$. In particular the upper unit semicircle has length $\pi$, and the unit circle, made of two such semicircles, has circumference $2\pi$.
+\end{proposition}
+
+\begin{proof}
+For $t\in[\alpha,\beta]$ we have $\sin t\ge0$, so $(\cos t,\sin t)=(u,f(u))$ with $u=\cos t$; and since the cosine maps $[\alpha,\beta]$ bijectively onto $[\cos\beta,\cos\alpha]$, the arc is the whole graph. Write $\ell(a,b)$ for the length of the graph of $f$ over $[a,b]$.
+
+Suppose first that $0<\alpha<\beta<\pi$. Then $[\cos\beta,\cos\alpha]\subset(-1,1)$, where $f$ is continuously differentiable with $f'(u)=-u/\sqrt{1-u^2}$ and $\sqrt{1+f'(u)^2}=1/\sqrt{1-u^2}$. By \cref{thm:arc-length} and the substitution $u=\cos t$ (\cref{thm:substitution}),
+\[
+\ell(\cos\beta,\cos\alpha)=\int_{\cos\beta}^{\cos\alpha}\frac{du}{\sqrt{1-u^2}}=\int_\beta^\alpha\frac{-\sin t}{\sqrt{1-\cos^2t}}\,dt=\int_\alpha^\beta\frac{\sin t}{\sin t}\,dt=\beta-\alpha ,
+\]
+because $\sqrt{1-\cos^2t}=\sin t$ for $0<t<\pi$.
+
+At the ends $u=\pm1$ the derivative of $f$ is unbounded, and we argue directly. First, $\ell(a,b)=\ell(a,c)+\ell(c,b)$ for $a<c<b$: inserting $c$ into a partition does not decrease the length of the broken line, so the supremum may be taken over partitions containing $c$, and such a partition consists of a partition of $[a,c]$ and one of $[c,b]$, which can be chosen independently. Second, if $f$ is monotone on $[a,b]$, then $\ell(a,b)\le(b-a)+|f(b)-f(a)|$, since each segment of a broken line is no longer than the sum of its horizontal and vertical extents, and these extents add up to $b-a$ and $|f(b)-f(a)|$. Now let $\alpha=0<\beta<\pi$, and let $0<\varepsilon<\min(\beta,\frac\pi2)$. The function $f$ is decreasing on $[\cos\varepsilon,1]$, so
+\[
+\ell(\cos\beta,1)=\ell(\cos\beta,\cos\varepsilon)+\ell(\cos\varepsilon,1)=(\beta-\varepsilon)+\delta_\varepsilon,\qquad0\le\delta_\varepsilon\le(1-\cos\varepsilon)+\sin\varepsilon .
+\]
+The left side does not depend on $\varepsilon$, and the right side tends to $\beta$ as $\varepsilon\to0^+$; so $\ell(\cos\beta,1)=\beta$. The end $\beta=\pi$ is treated in the same way, with $f$ increasing on $[-1,\cos(\pi-\varepsilon)]$, and the case $\alpha=0$, $\beta=\pi$ combines both.
+\end{proof}
+
+The proposition justifies the radian measure of angles: the number $t$ with $(\cos t,\sin t)=P$ is the length of the arc from $(1,0)$ to $P$, measured counterclockwise. It also completes the computation of \cref{sec:integral-applications}, which found the length $\pi$ of the semicircle through the arcsine but could not yet tell which number $\pi$ was. Next comes the area of a sector, the fact on which \cref{lem:sin-bounds} rested.
+
+\begin{proposition}[Area of a sector]
+\label{prop:sector-area}
+Let $0<x<\frac\pi2$. The sector $\{(r\cos t,r\sin t): 0\le r\le1,\ 0\le t\le x\}$ of the unit disc is the region $\{(u,y): 0\le u\le1,\ 0\le y\le g(u)\}$ under the graph of
+\[
+g(u)\coloneqq\min\Bigl(u\tan x,\sqrt{1-u^2}\Bigr)\qquad(0\le u\le1),
+\]
+and its area $\int_0^1g$ is $x/2$. The quarter disc, the region under $\sqrt{1-u^2}$ over $[0,1]$, has area $\pi/4$.
+\end{proposition}
+
+\begin{proof}
+A point $(r\cos t,r\sin t)$ of the sector has $u\coloneqq r\cos t\ge0$ and $y\coloneqq r\sin t\ge0$, satisfies $u^2+y^2=r^2\le1$, so $y\le\sqrt{1-u^2}$, and $y=u\tan t\le u\tan x$ because the tangent is increasing; so it lies under the graph of $g$. Conversely, let $0\le u\le1$ and $0\le y\le g(u)$, with $(u,y)\ne(0,0)$; the origin is in the sector, with $r=0$. If $u=0$, then $y\le0\cdot\tan x$ forces $y=0$; so $u>0$. Let $r\coloneqq\sqrt{u^2+y^2}\in(0,1]$. By \cref{prop:circle-points} there is $t\in(-\pi,\pi]$ with $(u,y)=(r\cos t,r\sin t)$; since $\cos t>0$ and $\sin t\ge0$, $t\in[0,\frac\pi2)$, and $\tan t=y/u\le\tan x$ gives $t\le x$.
+
+The line $u\tan x$ and the circle $\sqrt{1-u^2}$ cross at $u=\cos x$, because $u^2\tan^2x\le1-u^2$ is equivalent to $u^2(1+\tan^2x)\le1$, that is, $u^2\le\cos^2x$. Hence
+\[
+\int_0^1g=\int_0^{\cos x}u\tan x\,du+\int_{\cos x}^1\sqrt{1-u^2}\,du .
+\]
+The first integral is $\frac12\cos^2x\tan x=\frac12\sin x\cos x$. In the second, the substitution $u=\cos t$ with $t\in[0,x]$ and the double-angle formula $\sin^2t=\frac12(1-\cos2t)$ give
+\[
+\int_{\cos x}^1\sqrt{1-u^2}\,du=\int_0^x\sin^2t\,dt=\frac x2-\frac{\sin2x}4=\frac x2-\frac12\sin x\cos x .
+\]
+The sum is $x/2$. The same substitution with $x=\frac\pi2$ gives $\int_0^1\sqrt{1-u^2}\,du=\int_0^{\pi/2}\sin^2t\,dt=\frac\pi4$.
+\end{proof}
+
+\begin{figure}
+\sdfloat{%
+\begin{tikzpicture}[font=\scriptsize, scale=3.4]
+\fill[sdfill] (0,0) -- (0.6428,0.7660) arc[start angle=50, end angle=0, radius=1] -- cycle;
+\draw[line width=0.4pt] (-0.08,0) -- (1.15,0);
+\draw[line width=0.4pt] (0,-0.08) -- (0,1.1);
+\draw[line width=0.5pt] (1,0) arc[start angle=0, end angle=90, radius=1];
+\draw[line width=0.7pt] (0,0) -- (0.6428,0.7660);
+\draw[black!55, dashed, line width=0.4pt] (0.6428,0.7660) -- (0.8392,1.0001);
+\draw[black!55, dashed, line width=0.4pt] (0.6428,0.7660) -- (0.6428,0);
+\fill (0.6428,0.7660) circle (0.4pt) (1,0) circle (0.4pt);
+\node[below left] at (0,0) {$0$};
+\node[below] at (1,0) {$1$};
+\node[below] at (0.6428,0) {$\cos x$};
+\node[anchor=south] at (0.57,0.86) {$P$};
+\node[anchor=west] at (0.86,0.98) {$y=u\tan x$};
+\node[anchor=west] at (0.87,0.62) {$y=\sqrt{1-u^2}$};
+\draw[line width=0.4pt] (0.2,0) arc[start angle=0, end angle=50, radius=0.2];
+\node at (0.26,0.11) {$x$};
+\node at (0.55,0.3) {$\frac x2$};
+\draw[black!55, line width=0.3pt, ->] (0.86,0.62) -- (0.92,0.42);
+\end{tikzpicture}}{The sector of the unit disc between the angles $0$ and $x$ (shaded) is the region under the graph of $g(u)=\min(u\tan x,\sqrt{1-u^2})$: the line through the origin and $P$ up to $u=\cos x$, and the circle from there to $u=1$. Its area is $x/2$, and the arc from $(1,0)$ to $P=(\cos x,\sin x)$ has length $x$ (\cref{prop:arc-length,prop:sector-area}); here $x=50^\circ$.\label{fig:sector}}
+\end{figure}
+
+\Cref{fig:sector} shows the decomposition. By the substitution $u=\rho v$, the disc of radius $\rho$ has area $\pi\rho^2$ and circumference $2\pi\rho$, so that the area of a disc equals that of a triangle whose height is the radius and whose base is the circumference, $\frac12\cdot\rho\cdot2\pi\rho$; this is a theorem of Archimedes~\cite{heath1897archimedes}, and the two meanings of $\pi$, as the ratio of circumference to diameter and as the ratio of area to the square of the radius, agree. The geometric proof of \cref{lem:sin-bounds} is now rigorous as well: the triangle $OAP$, the sector and the triangle $OAT$ of \cref{fig:sin-area} are the regions under three graphs, each lying below the next, with integrals $\frac12\sin x$, $\frac12x$ and $\frac12\tan x$, and the monotonicity of the integral (\cref{thm:integral-monotone}) compares them.
+
+\subsection{The Assumptions as Theorems}
+
+Every fact about the trigonometric functions that \cref{ch:numbers,ch:limits} assumed is now a theorem, proved from \cref{def:sin-cos,def:pi}. \Cref{tab:assumptions} lists where.
+
+\begin{table}
+\sdfloat{%
+\begin{sdtable}{colspec={lX[l]l}, width=\linewidth, row{1}={font=\small\bfseries}}
+\toprule
+assumed in & statement & proved in \\
+\midrule
+\Cref{asm:trig}\,(i) & $\cos^2\alpha+\sin^2\alpha=1$, $\cos0=1$, $\sin0=0$ & \Cref{thm:pythagorean}, \cref{prop:sin-cos-basic} \\
+\Cref{asm:trig}\,(ii) & addition formulas & \Cref{thm:addition} \\
+\Cref{asm:trig}\,(iii) & every point of the unit circle is $(\cos\theta,\sin\theta)$, with $\theta$ unique modulo $2\pi$ & \Cref{prop:circle-points} \\
+\Cref{asm:trig-geometry}\,(i) & the sine is odd, the cosine even & \Cref{prop:sin-cos-basic} \\
+\Cref{asm:trig-geometry}\,(ii) & $\sin\frac\pi2=1$, $\sin k\pi=0$, period $2\pi$, $\pi>3$ & \Cref{thm:trig-periodic}, \cref{def:pi} \\
+\Cref{asm:trig-geometry}\,(iii) & $\sin x>0$, $\cos x>0$ on $(0,\frac\pi2)$; sector area $x/2$ & \Cref{thm:trig-signs}, \cref{prop:sector-area} \\
+\Cref{asm:trig-geometry}\,(iv) & monotonicity of $\sin$, $\cos$, $\tan$ & \Cref{thm:trig-signs} \\
+\Cref{lem:sin-bounds} & $\sin x<x<\tan x$ on $(0,\frac\pi2)$ & \Cref{prop:sin-x-tan} \\
+\Cref{prop:sin-limit} & $(\sin x)/x\to1$, $(1-\cos x)/x^2\to\frac12$ & \Cref{prop:sin-cos-basic} \\
+\Cref{thm:trig-derivatives} & $\sin'=\cos$, $\cos'=-\sin$ & \Cref{prop:sin-cos-basic} \\
+\Cref{sec:integral-applications} & the semicircle has length $\pi$ & \Cref{prop:arc-length} \\
+\bottomrule
+\end{sdtable}}{The trigonometric facts used in \cref{ch:numbers,ch:limits,ch:differentiation,ch:integration}, and the results of this section that prove them from the definitions by power series.\label{tab:assumptions}}
+\end{table}
+
+The results of the earlier chapters that used these facts, such as the polar form and de Moivre's formula (\cref{prop:polar-mult,thm:de-moivre}), the derivatives of the inverse trigonometric functions (\cref{cor:inverse-trig-derivatives}), the inequalities of \cref{prop:sin-cos-ladder,prop:sin-cos-series}, the series of \cref{thm:sin-cos-series} and Wallis's product (\cref{prop:wallis}), therefore hold without any assumption. The argument is not circular. The proofs of this section used only the theory of power series and the alternating series test from \cref{ch:series}, the mean value theorem and its corollaries from \cref{ch:differentiation}, the intermediate value theorem from \cref{ch:limits}, and the fundamental theorem of calculus, the rule of substitution and the definition of arc length from \cref{ch:integration}, and none of these depends on the trigonometric functions.
+
+\begin{note}{Irrationality and transcendence of $e$ and $\pi$}
+A real number is \emph{algebraic} if it is a root of a nonzero polynomial with integer coefficients, and \emph{transcendental} otherwise; $\sqrt2$ is algebraic, as a root of $x^2-2$. \Cref{thm:e-irrational} showed that $e$ is irrational. Lambert proved in 1761 that $\pi$ is irrational, with continued fractions for $\tan x$~\cite{lambert1768}; a short proof using only calculus was found by Niven~\cite{niven1947}. Transcendence lies deeper. Hermite proved in 1873 that $e$ is transcendental~\cite{hermite1873}, and Lindemann in 1882, by an extension of Hermite's method, that $\pi$ is~\cite{lindemann1882}. Lindemann's theorem settled a problem of Greek geometry: a square with the area of a given circle cannot be constructed with ruler and compass, because all lengths so constructible are algebraic. A consequence of the Lindemann--Weierstrass theorem, which contains both results, is that $e^\alpha$ is transcendental for every nonzero algebraic $\alpha$, real or complex; with Euler's formula of \cref{sec:complex-exp}, $e^{i\pi}=-1$ shows that $i\pi$, and hence $\pi$, cannot be algebraic. The Gelfond--Schneider theorem of 1934 shows that $a^b$ is transcendental for algebraic $a\ne0,1$ and algebraic irrational $b$, so that $2^{\sqrt2}$ and $e^\pi=(-1)^{-i}$ are transcendental. Much remains unknown: it is not known whether $e+\pi$, $e\pi$ or Euler's constant $\gamma$ are irrational. Hardy and Wright prove the transcendence of $e$ and $\pi$, and Baker's book gives the theory~\cite{hardywright2008,baker1975}.
+\end{note}
+
+\section{Inverse Trigonometric Functions}
+\label{sec:inverse-trig}
+
+\subsection{Definitions and Derivatives}
+
+The trigonometric functions are periodic and therefore not injective. To invert them, one restricts them to intervals on which they are strictly monotone, as \cref{sec:monotone-functions} did on the basis of \cref{asm:trig-geometry}; by \cref{thm:trig-signs} the construction now rests on proved facts.
+
+\begin{definition}[Inverse trigonometric functions]
+\label{def:inverse-trig}
+The \term{arcsine} $\arcsin\colon[-1,1]\to[-\frac\pi2,\frac\pi2]$, the \term{arccosine} $\arccos\colon[-1,1]\to[0,\pi]$ and the \term{arctangent} $\arctan\colon\mathbb R\to(-\frac\pi2,\frac\pi2)$ are the inverses of the restrictions of $\sin$ to $[-\frac\pi2,\frac\pi2]$, of $\cos$ to $[0,\pi]$ and of $\tan$ to $(-\frac\pi2,\frac\pi2)$.
+\end{definition}
+
+By \cref{thm:trig-signs} these restrictions are strictly monotone and continuous, and their images are $[-1,1]$, $[-1,1]$ and $\mathbb R$; the image of the tangent is all of $\mathbb R$ by the intermediate value theorem and its limits at $\pm\frac\pi2$. By \cref{thm:inverse-continuous}, the three inverse functions are continuous; the arcsine and the arctangent are strictly increasing and the arccosine is strictly decreasing. Their values are called \term{principal values}: among all solutions $\theta$ of $\sin\theta=x$, which differ by multiples of $2\pi$ or are reflected by $\theta\mapsto\pi-\theta$, the arcsine selects the one in $[-\frac\pi2,\frac\pi2]$. In the language of \cref{sec:injections}, each is a right inverse of a surjection, chosen by a convention. \Cref{fig:inverse-trig} shows the graphs.
+
+\begin{proposition}
+\label{prop:inverse-trig-identities}
+For $-1\le x\le1$,
+\begin{gather*}
+\arcsin(-x)=-\arcsin x,\qquad\arccos(-x)=\pi-\arccos x,\\
+\arcsin x+\arccos x=\frac\pi2,\qquad\cos(\arcsin x)=\sin(\arccos x)=\sqrt{1-x^2}.
+\end{gather*}
+For real $x$, $\arctan(-x)=-\arctan x$, $\cos(\arctan x)=1/\sqrt{1+x^2}$ and $\sin(\arctan x)=x/\sqrt{1+x^2}$; and for $x\ne0$, $\arctan x+\arctan(1/x)=\frac\pi2\operatorname{sign}x$.
+\end{proposition}
+
+\begin{proof}
+Each identity is checked by applying the function whose inverse appears and verifying that the value lies in the right interval. For instance, let $\theta\coloneqq\arcsin x\in[-\frac\pi2,\frac\pi2]$. Then $\frac\pi2-\theta\in[0,\pi]$ and $\cos(\frac\pi2-\theta)=\sin\theta=x$, by \cref{thm:addition}, so $\arccos x=\frac\pi2-\theta$. Moreover $\cos\theta\ge0$ on $[-\frac\pi2,\frac\pi2]$ and $\cos^2\theta=1-x^2$, so $\cos\theta=\sqrt{1-x^2}$. For the arctangent, $\cos\theta>0$ for $\theta=\arctan x$, and $1+\tan^2\theta=1/\cos^2\theta$ gives $\cos\theta=1/\sqrt{1+x^2}$ and $\sin\theta=\tan\theta\cos\theta=x/\sqrt{1+x^2}$. If $x>0$, then $\theta\in(0,\frac\pi2)$, and $\frac\pi2-\theta\in(0,\frac\pi2)$ has the tangent $\cos\theta/\sin\theta=1/x$; the case $x<0$ follows by oddness. The remaining identities are proved in the same way.
+\end{proof}
+
+\begin{theorem}[Derivatives and integrals]
+\label{thm:inverse-trig-calculus}
+\leavevmode
+\begin{enumerate}
+\item The arcsine and the arccosine are differentiable on $(-1,1)$, and the arctangent on $\mathbb R$, with
+\[
+\arcsin'x=\frac1{\sqrt{1-x^2}},\qquad\arccos'x=-\frac1{\sqrt{1-x^2}},\qquad\arctan'x=\frac1{1+x^2} .
+\]
+\item For real $x$ and for $-1<x<1$, respectively,
+\[
+\arctan x=\int_0^x\frac{dt}{1+t^2},\qquad\arcsin x=\int_0^x\frac{dt}{\sqrt{1-t^2}} .
+\]
+\item $\displaystyle\pi=4\int_0^1\frac{dt}{1+t^2}=\int_{-\infty}^\infty\frac{dt}{1+t^2}=\int_{-1}^1\frac{dt}{\sqrt{1-t^2}}$, the last two integrals being improper.
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+(i) and (ii) are \cref{cor:inverse-trig-derivatives} and \cref{prop:arctan-integral}, whose proofs used only properties of the trigonometric functions that are now proved: the derivatives of \cref{prop:sin-cos-basic}, the positivity and monotonicity of \cref{thm:trig-signs}, and the Pythagorean identity. (iii) By \cref{tab:special-values}, $\tan\frac\pi4=1$, so $\arctan1=\frac\pi4$, and (ii) gives the first integral. The other two follow as in \cref{sec:improper}: $\int_{-R}^Rdt/(1+t^2)=2\arctan R\to\pi$ as $R\to\infty$, and $\int_{-c}^cdt/\sqrt{1-t^2}=2\arcsin c\to2\arcsin1=\pi$ as $c\to1^-$.
+\end{proof}
+
+The theorem shows that the trigonometric functions could equally have been built from integrals, as \cref{ch:integration} remarked: define $\arctan x$ as $\int_0^xdt/(1+t^2)$, $\pi$ as twice its limit at infinity, and the tangent as the inverse function. The relation $\arccos'=-\arcsin'$ also follows from the identity $\arcsin x+\arccos x=\frac\pi2$. The arcsine and the arccosine are not differentiable at $\pm1$, where their graphs have vertical tangents, because the sine and the cosine have horizontal tangents at $\pm\frac\pi2$ and at $0$, $\pi$.
+
+\begin{figure}
+\sdpanel{A}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.44\textwidth, height=0.44\textwidth, xmin=-1.25, xmax=1.25, ymin=-1.75, ymax=3.3,
+  xtick={-1,0,1}, ytick={-1.5708,0,1.5708,3.14159}, yticklabels={$-\frac\pi2$,0,$\frac\pi2$,$\pi$}, xlabel={$x$},
+  legend style={at={(0.97,0.97)}, anchor=north east}]
+\draw[black!35, line width=0.4pt] (axis cs:-1.25,0) -- (axis cs:1.25,0);
+\addplot[black, line width=0.8pt, domain=-90:90, samples=120] ({sin(x)},{x*pi/180});
+\addlegendentry{$\arcsin x$}
+\addplot[black, dashed, line width=0.8pt, domain=0:180, samples=120] ({cos(x)},{x*pi/180});
+\addlegendentry{$\arccos x$}
+\end{axis}
+\end{tikzpicture}}\hfill
+\sdpanel{B}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.53\textwidth, height=0.44\textwidth, xmin=-4.75, xmax=4.75, ymin=-3.3, ymax=3.3,
+  xtick={-4.71239,-1.5708,0,1.5708,4.71239}, xticklabels={$-\frac{3\pi}2$,$-\frac\pi2$,0,$\frac\pi2$,$\frac{3\pi}2$},
+  ytick={-1.5708,0,1.5708}, yticklabels={$-\frac\pi2$,0,$\frac\pi2$}, xlabel={$x$},
+  restrict y to domain=-4:4, unbounded coords=jump]
+\draw[black!35, line width=0.4pt] (axis cs:-4.75,0) -- (axis cs:4.75,0);
+\draw[black!35, densely dotted, line width=0.4pt] (axis cs:-4.75,1.5708) -- (axis cs:4.75,1.5708) (axis cs:-4.75,-1.5708) -- (axis cs:4.75,-1.5708);
+\addplot[black!45, line width=0.7pt, domain=-4.5:-1.88, samples=80] {tan(deg(x))};
+\addplot[black!45, line width=0.7pt, domain=1.88:4.5, samples=80] {tan(deg(x))};
+\addplot[black, line width=0.8pt, domain=-1.27:1.27, samples=80] {tan(deg(x))};
+\addplot[black, dashed, line width=0.8pt, domain=-4.75:4.75, samples=120] {rad(atan(x))};
+\node[font=\scriptsize, anchor=west] at (axis cs:1.3,3.0) {$\tan x$};
+\node[font=\scriptsize, anchor=north] at (axis cs:2.6,0.95) {$\arctan x$};
+\end{axis}
+\end{tikzpicture}}
+\caption{The inverse trigonometric functions. (A) The arcsine increases from $-\frac\pi2$ to $\frac\pi2$ and the arccosine decreases from $\pi$ to $0$ on $[-1,1]$; their sum is the constant $\frac\pi2$, and both have vertical tangents at $\pm1$. (B) The tangent has infinitely many branches (grey); the principal branch on $(-\frac\pi2,\frac\pi2)$ (black) is inverted by the arctangent (dashed), which approaches the horizontal asymptotes $\pm\frac\pi2$ (dotted).}
+\label{fig:inverse-trig}
+\end{figure}
+
+\subsection{Series and the Computation of \texorpdfstring{$\pi$}{pi}}
+
+The power series of the arctangent and the arcsine were derived in \cref{sec:expansions} from the integrals of \cref{thm:inverse-trig-calculus}\,(ii), and they now hold without any assumption:
+\[
+\arctan x=x-\frac{x^3}3+\frac{x^5}5-\cdots\quad(|x|\le1),\qquad\arcsin x=x+\frac{x^3}6+\frac{3x^5}{40}+\cdots\quad(|x|\le1).
+\]
+At $x=1$ the first gives Leibniz's series $\frac\pi4=1-\frac13+\frac15-\cdots$, which converges far too slowly to be useful. Arguments close to $0$ are much better, and the addition formula for the tangent provides them. If $\cos a$, $\cos b$ and $\cos(a+b)$ are nonzero, dividing the addition formulas of \cref{thm:addition} by $\cos a\cos b$ gives
+\begin{equation}
+\tan(a+b)=\frac{\tan a+\tan b}{1-\tan a\tan b} .
+\label{eq:tan-addition}
+\end{equation}
+
+\begin{proposition}[Machin's formula]
+\label{prop:machin}
+\[
+\frac\pi4=4\arctan\frac15-\arctan\frac1{239} .
+\]
+\end{proposition}
+
+\begin{proof}
+Let $a\coloneqq\arctan\frac15$. Since $0<\frac15<1=\tan\frac\pi4$ and the tangent is increasing, $0<a<\frac\pi4$. By \eqref{eq:tan-addition} with $b=a$,
+\[
+\tan2a=\frac{2/5}{1-1/25}=\frac5{12},\qquad\tan4a=\frac{2\cdot5/12}{1-25/144}=\frac{120}{119} ,
+\]
+where $2a\in(0,\frac\pi2)$, and $\tan2a=\frac5{12}<1$ shows $2a<\frac\pi4$, so that $4a\in(0,\frac\pi2)$ as well. Since $\tan4a=\frac{120}{119}>1$, $4a>\frac\pi4$, and $4a-\frac\pi4\in(0,\frac\pi4)$ has the tangent
+\[
+\tan\Bigl(4a-\frac\pi4\Bigr)=\frac{120/119-1}{1+120/119}=\frac{1/119}{239/119}=\frac1{239} ,
+\]
+by \eqref{eq:tan-addition} with $b=-\frac\pi4$. Hence $4a-\frac\pi4=\arctan\frac1{239}$.
+\end{proof}
+
+John Machin found the formula in 1706 and computed $\pi$ to $100$ decimal places with it~\cite{berggren2004pi}. The series for $\arctan\frac15$ gains about $1.4$ decimal digits per term, since its terms shrink by a factor of about $25$, and that for $\arctan\frac1{239}$ about $4.8$ digits. \Cref{tab:machin} compares the partial sums with those of Leibniz's series: ten terms of each arctangent series give $\pi$ to fifteen digits, while ten terms of Leibniz's series do not give the first decimal correctly. Formulas of Machin's type were used for record computations of $\pi$ until the 1970s, when they gave way to faster methods, among them iterations that double the number of correct digits at every step~\cite{berggren2004pi}.
+
+\begin{table}
+\sdfloat{%
+\begin{sdtable}{colspec={rlll}, row{1}={font=\small\bfseries}}
+\toprule
+$n$ & Machin & error & Leibniz \\
+\midrule
+1 & 3.1832635983263598 & $-4.2\times10^{-2}$ & 4 \\
+2 & 3.1405970293260603 & $1.0\times10^{-3}$ & 2.6667 \\
+3 & 3.1416210293250344 & $-2.8\times10^{-5}$ & 3.4667 \\
+4 & 3.1415917721821773 & $8.8\times10^{-7}$ & 2.8952 \\
+5 & 3.1415926824043995 & $-2.9\times10^{-8}$ & 3.3397 \\
+6 & 3.1415926526153086 & $9.7\times10^{-10}$ & 2.9760 \\
+8 & 3.1415926535886022 & $1.2\times10^{-12}$ & 3.0171 \\
+10 & 3.1415926535897917 & $1.5\times10^{-15}$ & 3.0418 \\
+\bottomrule
+\end{sdtable}}{The value $4\bigl(4A_n(\frac15)-A_n(\frac1{239})\bigr)$ from Machin's formula, where $A_n(x)$ is the sum of the first $n$ terms of the arctangent series, its error $\pi-\text{value}$, and the partial sum $4A_n(1)$ of Leibniz's series; computed in exact rational arithmetic.\label{tab:machin}}
+\end{table}
+
+\subsection{The Two-Argument Arctangent}
+
+A point $(x,y)\ne(0,0)$ of the plane lies at the distance $r=\sqrt{x^2+y^2}$ from the origin, and by \cref{prop:circle-points}, applied to $(x/r,y/r)$, there is exactly one angle $\theta\in(-\pi,\pi]$ with $(x,y)=(r\cos\theta,r\sin\theta)$. Computing this angle is a basic task, from the conversion to polar coordinates to the argument of a complex number, and the arctangent alone does not accomplish it, since $y/x$ does not distinguish $(x,y)$ from $(-x,-y)$.
+
+\begin{definition}[Two-argument arctangent]
+\label{def:atan2}
+For $(x,y)\ne(0,0)$, $\operatorname{atan2}(y,x)$ is the unique $\theta\in(-\pi,\pi]$ with
+\[
+x=\sqrt{x^2+y^2}\,\cos\theta,\qquad y=\sqrt{x^2+y^2}\,\sin\theta .
+\]
+\end{definition}
+
+The order of the arguments, $y$ before $x$, follows the convention of programming languages and reflects the quotient $y/x$.
+
+\begin{proposition}
+\label{prop:atan2}
+For $(x,y)\ne(0,0)$ and $r\coloneqq\sqrt{x^2+y^2}$,
+\[
+\operatorname{atan2}(y,x)=\begin{cases}
+\arctan(y/x)&\text{if }x>0,\\
+\arctan(y/x)+\pi&\text{if }x<0\text{ and }y\ge0,\\
+\arctan(y/x)-\pi&\text{if }x<0\text{ and }y<0,\\
+\pm\frac\pi2&\text{if }x=0\text{ and }\pm y>0 .
+\end{cases}
+\]
+Moreover, $\operatorname{atan2}(y,x)=2\arctan\bigl(y/(r+x)\bigr)$ unless $y=0$ and $x<0$.
+\end{proposition}
+
+\begin{proof}
+Let $\theta\coloneqq\operatorname{atan2}(y,x)$, so that $\cos\theta=x/r$ and $\sin\theta=y/r$. If $x>0$, then $\cos\theta>0$, so $\theta\in(-\frac\pi2,\frac\pi2)$ by \cref{thm:trig-signs}, and $\theta=\arctan(\tan\theta)=\arctan(y/x)$. If $x<0$ and $y\ge0$, then $\theta\in(\frac\pi2,\pi]$, so $\theta-\pi\in(-\frac\pi2,0]$, and $\tan(\theta-\pi)=\tan\theta=y/x$. If $x<0$ and $y<0$, then $\theta\in(-\pi,-\frac\pi2)$, $\theta+\pi\in(0,\frac\pi2)$, and $\tan(\theta+\pi)=y/x$. If $x=0$, then $\sin\theta=\pm1$. For the last formula, let $\theta\ne\pi$, so that $\theta\in(-\pi,\pi)$ and $\frac\theta2\in(-\frac\pi2,\frac\pi2)$. By the double-angle formulas, $\sin\theta=2\sin\frac\theta2\cos\frac\theta2$ and $1+\cos\theta=2\cos^2\frac\theta2>0$, so
+\[
+\tan\frac\theta2=\frac{\sin\theta}{1+\cos\theta}=\frac{y/r}{1+x/r}=\frac y{r+x},
+\]
+and $\frac\theta2=\arctan\bigl(y/(r+x)\bigr)$. The excluded case $\theta=\pi$ is exactly $y=0$, $x<0$.
+\end{proof}
+
+The principal argument of a complex number $z\ne0$, which \cref{ch:numbers} defined through \cref{asm:trig}\,(iii), is therefore given by a formula:
+\[
+\operatorname{Arg}z=\operatorname{atan2}(\operatorname{Im}z,\operatorname{Re}z).
+\]
+The function is continuous except on the negative real axis, where it jumps from values near $\pi$ just above the axis to values near $-\pi$ just below it. No choice of the interval of length $2\pi$ avoids such a jump somewhere, since going once around the origin increases a continuously varying angle by $2\pi$; the half-line on which the jump is placed is called a \term{branch cut}, and it reappears with the complex logarithm in \cref{sec:complex-exp}. Numerical libraries provide $\operatorname{atan2}$ as a basic function, with careful treatment of the cases $x=0$, of signed zeros and of very large or small quotients $y/x$; Volume~X describes it.
+
+\begin{note}{Chebyshev polynomials}
+For $x\in[-1,1]$ and $n\in\mathbb N$, let $T_n(x)\coloneqq\cos(n\arccos x)$. The addition formulas give $\cos((n+1)\theta)+\cos((n-1)\theta)=2\cos\theta\cos n\theta$, and with $\theta=\arccos x$ this becomes the recurrence $T_{n+1}(x)=2xT_n(x)-T_{n-1}(x)$, with $T_0(x)=1$ and $T_1(x)=x$. So $T_n$ is a polynomial of degree $n$, the \emph{Chebyshev polynomial}: $T_2(x)=2x^2-1$, $T_3(x)=4x^3-3x$, $T_4(x)=8x^4-8x^2+1$, with leading coefficient $2^{n-1}$ for $n\ge1$. On $[-1,1]$ it oscillates between $-1$ and $1$, taking these values alternately at the $n+1$ points $\cos(k\pi/n)$, and Chebyshev proved that $2^{1-n}T_n$ has the smallest maximum on $[-1,1]$ among all polynomials of degree $n$ with leading coefficient $1$. This extremal property makes the Chebyshev polynomials the basis of polynomial approximation: expansions $\sum c_kT_k(x)$, which are Fourier cosine series in disguise, converge rapidly for smooth functions, and interpolation at the points $\cos(k\pi/n)$ avoids the instability of equally spaced points. Trefethen's book develops the theory and its computational use~\cite{trefethen2013atap}; Volume~X uses it for the approximation of special functions and Volume~XI for interpolation.
+\end{note}
+
+\section{The Complex Exponential}
+\label{sec:complex-exp}
+
+\Cref{ch:numbers} wrote $e^{i\theta}$ for the number $\cos\theta+i\sin\theta$ on the unit circle and observed that the rule $e^{i\alpha}e^{i\beta}=e^{i(\alpha+\beta)}$ is a disguised form of the addition formulas. The exponential series makes sense for complex arguments, and with it the notation becomes a theorem, Euler's formula.
+
+\subsection{Complex Series}
+
+The theory of series in \cref{ch:series} was developed for real numbers, but its parts that do not involve order hold for complex numbers with the same proofs, as \cref{sec:series} remarked. We need two of them.
+
+\begin{lemma}
+\label{lem:complex-series}
+Let $(a_k)$ and $(b_k)$ be sequences of complex numbers.
+\begin{enumerate}
+\item If $\sum|a_k|$ converges, then $\sum a_k$ converges, and $|\sum a_k|\le\sum|a_k|$.
+\item If $\sum|a_k|$ and $\sum|b_k|$ converge, then the Cauchy product of $\sum a_k$ and $\sum b_k$ converges absolutely, and its sum is $(\sum a_k)(\sum b_k)$.
+\end{enumerate}
+\end{lemma}
+
+\begin{proof}
+(i) Since $|\operatorname{Re}a_k|\le|a_k|$ and $|\operatorname{Im}a_k|\le|a_k|$, the real series $\sum\operatorname{Re}a_k$ and $\sum\operatorname{Im}a_k$ converge absolutely, by comparison, and hence converge by \cref{thm:absolute-series}; so the partial sums of $\sum a_k$ converge, in real and imaginary parts and therefore in modulus. The inequality holds for the partial sums by the triangle inequality of \cref{prop:modulus}, and passes to the limit because the modulus is continuous. (ii) The proof of \cref{thm:cauchy-product} uses only the triangle inequality, the absolute convergence of the two series and the convergence of their partial sums, and holds verbatim for complex numbers.
+\end{proof}
+
+\subsection{Euler's Formula}
+
+\begin{definition}[Complex exponential]
+\label{def:complex-exp}
+For a complex number $z$,
+\[
+\exp z\coloneqq e^z\coloneqq\sum_{k=0}^\infty\frac{z^k}{k!} .
+\]
+\end{definition}
+
+The series converges absolutely for every $z$, by the ratio test applied to $\sum|z|^k/k!$, and \cref{lem:complex-series}\,(i) gives its convergence; for real $z$ it is the exponential series of \cref{def:exp}.
+
+\begin{theorem}
+\label{thm:complex-exp-properties}
+For all complex $z$ and $w$:
+\begin{enumerate}
+\item $e^{z+w}=e^ze^w$;
+\item $e^z\ne0$ and $e^{-z}=1/e^z$;
+\item $\overline{e^z}=e^{\bar z}$.
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+(i) By \cref{lem:complex-series}\,(ii) and the binomial theorem, which holds for complex numbers because its proof (\cref{thm:binomial}) uses only the commutative, associative and distributive laws, the Cauchy product has the terms $\sum_{k=0}^nz^kw^{n-k}/(k!(n-k)!)=(z+w)^n/n!$, as in the proof of \cref{thm:exp-series}. (ii) $e^ze^{-z}=e^0=1$. (iii) Conjugation respects sums and products, so the partial sums of $e^{\bar z}$ are the conjugates of those of $e^z$, and the conjugate of a limit is the limit of the conjugates.
+\end{proof}
+
+\begin{theorem}[Euler's formula]
+\label{thm:euler-formula}
+For every real $\theta$,
+\[
+e^{i\theta}=\cos\theta+i\sin\theta .
+\]
+\end{theorem}
+
+\begin{proof}
+The powers of $i$ are $i^{2k}=(-1)^k$ and $i^{2k+1}=(-1)^ki$. The partial sum of the exponential series with the terms up to $k=2n+1$ is therefore
+\[
+\sum_{k=0}^{2n+1}\frac{(i\theta)^k}{k!}=\sum_{k=0}^n\frac{(-1)^k\theta^{2k}}{(2k)!}+i\sum_{k=0}^n\frac{(-1)^k\theta^{2k+1}}{(2k+1)!}=C_n(\theta)+iS_n(\theta).
+\]
+As $n\to\infty$, the left side tends to $e^{i\theta}$, because a subsequence of a convergent sequence has the same limit, and the right side tends to $\cos\theta+i\sin\theta$ by \cref{def:sin-cos}.
+\end{proof}
+
+The theorem identifies the notation \eqref{eq:euler} of \cref{ch:numbers} with the exponential series. Euler published the formula in his \emph{Introductio} of 1748~\cite{euler1748introductio}; an equivalent statement in logarithmic form had been found by Roger Cotes in 1714~\cite{maor1994}. With $\theta=\pi$ it gives $e^{i\pi}=-1$, an equation that connects $e$, $\pi$ and $i$. Several consequences follow at once.
+
+\begin{corollary}
+\label{cor:euler-consequences}
+For real $x$, $y$, $\theta$ and complex $z$, $w$:
+\begin{enumerate}
+\item $e^{x+iy}=e^x(\cos y+i\sin y)$; in particular $|e^z|=e^{\operatorname{Re}z}$, and $\operatorname{Im}z$ is an argument of $e^z$;
+\item $|e^{i\theta}|=1$, $e^{i\pi/2}=i$, $e^{i\pi}=-1$ and $e^{2\pi i}=1$;
+\item $e^z=1$ if and only if $z\in2\pi i\mathbb Z$, and $e^z=e^w$ if and only if $z-w\in2\pi i\mathbb Z$;
+\item $\displaystyle\cos\theta=\frac{e^{i\theta}+e^{-i\theta}}2$ and $\displaystyle\sin\theta=\frac{e^{i\theta}-e^{-i\theta}}{2i}$.
+\end{enumerate}
+\end{corollary}
+
+\begin{proof}
+(i) $e^{x+iy}=e^xe^{iy}$, and $|e^{iy}|^2=\cos^2y+\sin^2y=1$. (ii) follows from (i) and \cref{thm:trig-periodic}. (iii) If $e^{x+iy}=1$, then $e^x=|e^{x+iy}|=1$, so $x=0$, and $\cos y=1$, so $y\in2\pi\mathbb Z$ by \cref{thm:trig-signs}; the converse is (ii). The second statement follows with $e^z/e^w=e^{z-w}$. (iv) $e^{-i\theta}=\cos\theta-i\sin\theta$, since the cosine is even and the sine odd; add and subtract.
+\end{proof}
+
+Euler's formula unifies the exponential function and the trigonometric functions: the addition formulas of \cref{thm:addition} are the real and imaginary parts of $e^{i(\alpha+\beta)}=e^{i\alpha}e^{i\beta}$, de Moivre's formula (\cref{thm:de-moivre}) is the rule $(e^{i\theta})^n=e^{in\theta}$, and the polar form of \cref{sec:complex} is $z=re^{i\theta}$. Many authors take the complex exponential as the starting point and define $\cos x\coloneqq\operatorname{Re}e^{ix}$ and $\sin x\coloneqq\operatorname{Im}e^{ix}$ for real $x$, as \cref{ch:series} foreshadowed~\cite{rudin1976}; by Euler's formula, this definition and \cref{def:sin-cos} produce the same functions. The map $\theta\mapsto e^{i\theta}$ winds the real line around the unit circle, each interval of length $2\pi$ once (\cref{fig:unit-circle}A).
+
+\subsection{Roots of Unity}
+
+\begin{proposition}[Roots of unity]
+\label{prop:roots-of-unity}
+Let $n\ge1$ and $\omega\coloneqq e^{2\pi i/n}$. The equation $z^n=1$ has exactly the $n$ solutions $1,\omega,\omega^2,\ldots,\omega^{n-1}$, and for every integer $j$,
+\[
+\sum_{k=0}^{n-1}\omega^{jk}=\begin{cases}n&\text{if }n\mid j,\\0&\text{otherwise.}\end{cases}
+\]
+\end{proposition}
+
+\begin{proof}
+The solutions are given by \cref{thm:complex-roots} with $w=1$, $s=1$ and $\beta=0$: they are $e^{2\pi ik/n}=\omega^k$ for $k=0,\ldots,n-1$. For the sum, $\omega^j=1$ exactly when $n\mid j$, by \cref{cor:euler-consequences}\,(iii); then every term is $1$. Otherwise the geometric sum formula gives $\sum_k(\omega^j)^k=(\omega^{jn}-1)/(\omega^j-1)=0$, since $\omega^{jn}=e^{2\pi ij}=1$.
+\end{proof}
+
+The $n$th roots of unity are the vertices of a regular $n$-gon inscribed in the unit circle (\cref{fig:unit-circle}B). The orthogonality relation of the proposition is the foundation of the discrete Fourier transform, which writes $n$ numbers as combinations of the sequences $(\omega^{jk})_k$, and of the fast Fourier transform, which computes it with about $n\log_2n$ operations by exploiting $\omega^{n/2}=-1$ when $n$ is even; Volume~XI develops both.
+
+\begin{figure}
+\sdpanel{A}{\begin{tikzpicture}[font=\scriptsize, scale=1.75]
+\draw[line width=0.4pt, -{Latex[length=1.6mm]}] (-1.25,0) -- (1.35,0) node[below] {$\operatorname{Re}$};
+\draw[line width=0.4pt, -{Latex[length=1.6mm]}] (0,-1.25) -- (0,1.35) node[left] {$\operatorname{Im}$};
+\draw[line width=0.6pt] (0,0) circle (1);
+\draw[line width=1.2pt] (1,0) arc[start angle=0, end angle=55, radius=1];
+\draw[line width=0.6pt] (0,0) -- (0.5736,0.8192);
+\draw[black!55, dashed, line width=0.4pt] (0.5736,0.8192) -- (0.5736,0);
+\draw[black!55, dashed, line width=0.4pt] (0.5736,0.8192) -- (0,0.8192);
+\fill (0.5736,0.8192) circle (0.9pt) (1,0) circle (0.7pt) (-1,0) circle (0.7pt) (0,1) circle (0.7pt);
+\node[above right] at (0.5736,0.8192) {$e^{i\theta}$};
+\node[below] at (0.5736,0) {$\cos\theta$};
+\node[left] at (0,0.8192) {$\sin\theta$};
+\node[below right] at (1,0) {$1$};
+\node[below left] at (-1,0) {$-1=e^{i\pi}$};
+\node[above right] at (0,1) {$i$};
+\draw[line width=0.4pt] (0.25,0) arc[start angle=0, end angle=55, radius=0.25];
+\node at (0.33,0.15) {$\theta$};
+\end{tikzpicture}}\hfill
+\sdpanel{B}{\begin{tikzpicture}[font=\scriptsize, scale=1.75]
+\draw[line width=0.4pt, -{Latex[length=1.6mm]}] (-1.25,0) -- (1.35,0) node[below] {$\operatorname{Re}$};
+\draw[line width=0.4pt, -{Latex[length=1.6mm]}] (0,-1.25) -- (0,1.35) node[left] {$\operatorname{Im}$};
+\draw[black!45, line width=0.4pt] (0,0) circle (1);
+\draw[line width=0.6pt] (1,0) -- (0.7071,0.7071) -- (0,1) -- (-0.7071,0.7071) -- (-1,0) -- (-0.7071,-0.7071) -- (0,-1) -- (0.7071,-0.7071) -- cycle;
+\foreach \k in {0,...,7} {\fill ({cos(45*\k)},{sin(45*\k)}) circle (0.9pt);}
+\node[above right] at (1,0) {$1$};
+\node[above right] at (0.7071,0.7071) {$\omega$};
+\node[above right] at (0,1) {$\omega^2=i$};
+\node[above left] at (-0.7071,0.7071) {$\omega^3$};
+\node[below right] at (0.7071,-0.7071) {$\omega^7$};
+\end{tikzpicture}}
+\caption{The complex exponential on the imaginary axis. (A) The point $e^{i\theta}=\cos\theta+i\sin\theta$ lies on the unit circle, and the arc from $1$ to it (thick) has length $\theta$ (\cref{prop:arc-length}); its projections on the axes are $\cos\theta$ and $\sin\theta$. (B) The eighth roots of unity $\omega^k$, $\omega=e^{2\pi i/8}=(1+i)/\sqrt2$, are the vertices of a regular octagon.}
+\label{fig:unit-circle}
+\end{figure}
+
+\subsection{The Complex Logarithm}
+
+By \cref{cor:euler-consequences}\,(i), $e^{x+iy}$ has modulus $e^x$ and argument $y$. Since every positive modulus and every argument occur, the complex exponential maps $\mathbb C$ onto $\mathbb C\setminus\{0\}$, but it is not injective: by (iii) of the corollary it takes every value on a sequence of points spaced $2\pi i$ apart. Inverting it therefore requires a choice, exactly as for the trigonometric functions.
+
+\begin{proposition}
+\label{prop:complex-log}
+Let $w\ne0$ be a complex number. The solutions of $e^z=w$ are the numbers
+\[
+z=\ln|w|+i\bigl(\operatorname{Arg}w+2\pi k\bigr),\qquad k\in\mathbb Z .
+\]
+\end{proposition}
+
+\begin{proof}
+Write $z=x+iy$. By \cref{cor:euler-consequences}\,(i), $e^z=w$ means $e^x=|w|$, that is, $x=\ln|w|$, and $\cos y+i\sin y=w/|w|$, that is, $y$ is an argument of $w$, by \cref{prop:circle-points} of the form $\operatorname{Arg}w+2\pi k$.
+\end{proof}
+
+\begin{definition}[Principal logarithm]
+\label{def:complex-log}
+For $w\ne0$, the \term{principal logarithm} is $\operatorname{Log}w\coloneqq\ln|w|+i\operatorname{Arg}w$, the solution of $e^z=w$ with imaginary part in $(-\pi,\pi]$. For $w\ne0$ and complex $s$, the \term{principal power} is $w^s\coloneqq e^{s\operatorname{Log}w}$.
+\end{definition}
+
+For positive real $w$, $\operatorname{Log}w=\ln w$ and $w^s$ is the power of \cref{def:real-power}. For instance, $\operatorname{Log}(-1)=i\pi$, $\operatorname{Log}i=i\pi/2$, and
+\[
+i^i=e^{i\operatorname{Log}i}=e^{i\cdot i\pi/2}=e^{-\pi/2}=0.2078795763\ldots,
+\]
+a real number. The principal logarithm satisfies $e^{\operatorname{Log}w}=w$, but the functional equation of the real logarithm fails: $\operatorname{Log}((-1)(-1))=\operatorname{Log}1=0$, while $\operatorname{Log}(-1)+\operatorname{Log}(-1)=2\pi i$. In general $\operatorname{Log}(zw)$ and $\operatorname{Log}z+\operatorname{Log}w$ are both logarithms of $zw$ and differ by $2\pi ik$ for some integer $k$, and likewise the laws of exponents hold for complex powers only up to such factors. The function $\operatorname{Log}$ is continuous except on the negative real axis, where $\operatorname{Arg}$ jumps by $2\pi$. These phenomena are the first glimpse of the theory of multivalued functions and their branches, which Volume~II develops with the tools of complex analysis.
+
+\subsection{Elementary Functions}
+
+\Cref{sec:techniques} called a function elementary if it can be built from the variable and constants by arithmetic operations, compositions, exponential functions, logarithms and the solution of polynomial equations, and claimed that the trigonometric functions and their inverses belong to this class. The claim is now proved for the trigonometric functions by \cref{cor:euler-consequences}\,(iv), which expresses them through the complex exponential, and for their inverses by the following formulas.
+
+\begin{proposition}
+\label{prop:inverse-trig-log}
+For real $x$ and for $-1\le x\le1$, respectively,
+\[
+\arctan x=\frac1{2i}\operatorname{Log}\frac{1+ix}{1-ix},\qquad\arcsin x=-i\operatorname{Log}\Bigl(ix+\sqrt{1-x^2}\Bigr).
+\]
+\end{proposition}
+
+\begin{proof}
+Let $\theta\coloneqq\arctan x\in(-\frac\pi2,\frac\pi2)$. By \cref{prop:inverse-trig-identities}, $\cos\theta=1/\sqrt{1+x^2}$ and $\sin\theta=x/\sqrt{1+x^2}$, so $1+ix=\sqrt{1+x^2}\,e^{i\theta}$ and $1-ix=\sqrt{1+x^2}\,e^{-i\theta}$. Their quotient is $e^{2i\theta}$ with $2\theta\in(-\pi,\pi)$, whose principal logarithm is $2i\theta$. For the arcsine, let $\theta\coloneqq\arcsin x\in[-\frac\pi2,\frac\pi2]$; then $\cos\theta=\sqrt{1-x^2}$, so $ix+\sqrt{1-x^2}=e^{i\theta}$, whose principal logarithm is $i\theta$.
+\end{proof}
+
+So the familiar functions of calculus, the powers, exponentials, logarithms, trigonometric and inverse trigonometric functions, all derive from a single function, the exponential series, together with its inverse and the algebraic operations. This economy is one reason why complex numbers, introduced in \cref{ch:numbers} to solve polynomial equations, turn out to be indispensable in analysis.
+
+\section{Hyperbolic Functions}
+\label{sec:hyperbolic}
+
+By \cref{cor:euler-consequences}\,(iv), the cosine and the sine are the even and the odd part of $\theta\mapsto e^{i\theta}$, up to a factor $i$. The even and the odd part of the real exponential function $e^x$ form a second pair of functions with closely analogous properties.
+
+\begin{definition}[Hyperbolic functions]
+\label{def:hyperbolic}
+For real $x$, the \term{hyperbolic cosine}, \term{sine} and \term{tangent} are
+\[
+\cosh x\coloneqq\frac{e^x+e^{-x}}2,\qquad\sinh x\coloneqq\frac{e^x-e^{-x}}2,\qquad\tanh x\coloneqq\frac{\sinh x}{\cosh x}=\frac{e^x-e^{-x}}{e^x+e^{-x}} .
+\]
+\end{definition}
+
+\begin{proposition}
+\label{prop:hyperbolic-properties}
+\leavevmode
+\begin{enumerate}
+\item $\cosh$ is even and $\sinh$ and $\tanh$ are odd; $\cosh x\ge1$, with equality only at $x=0$, and
+\[
+\cosh^2x-\sinh^2x=1 .
+\]
+\item $\sinh'=\cosh$, $\cosh'=\sinh$ and $\tanh'=1/\cosh^2=1-\tanh^2$.
+\item $\displaystyle\cosh x=\sum_{k=0}^\infty\frac{x^{2k}}{(2k)!}$ and $\displaystyle\sinh x=\sum_{k=0}^\infty\frac{x^{2k+1}}{(2k+1)!}$ for every real $x$.
+\item $\sinh(x+y)=\sinh x\cosh y+\cosh x\sinh y$ and $\cosh(x+y)=\cosh x\cosh y+\sinh x\sinh y$.
+\item $\sinh$ is a strictly increasing bijection of $\mathbb R$ onto $\mathbb R$; $\cosh$ is strictly increasing on $[0,\infty)$, with image $[1,\infty)$; $\tanh$ is a strictly increasing bijection of $\mathbb R$ onto $(-1,1)$.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(i) The symmetries are clear. Expanding the squares, $(e^x+e^{-x})^2-(e^x-e^{-x})^2=4e^xe^{-x}=4$, which gives the identity, and $\cosh x-1=(e^{x/2}-e^{-x/2})^2/2\ge0$, with equality only when $e^{x/2}=e^{-x/2}$, that is, $x=0$. (ii) follows from $(e^{\pm x})'=\pm e^{\pm x}$ and the quotient rule with (i). (iii) Adding and subtracting the series of $e^x$ and $e^{-x}$ term by term (\cref{thm:series-rules}), the odd powers cancel in the first case and the even powers in the second. (iv) Expand the right sides with the definitions and the functional equation. (v) $\sinh'=\cosh>0$, and $\sinh x\to\pm\infty$ as $x\to\pm\infty$; $\cosh'=\sinh>0$ on $(0,\infty)$ and $\cosh x\to\infty$; $\tanh'>0$, and $\tanh x=(1-e^{-2x})/(1+e^{-2x})\to1$ as $x\to\infty$. The images are intervals by the intermediate value theorem.
+\end{proof}
+
+The parallel with the trigonometric functions is close but not exact: the signs differ, as in $\cosh^2-\sinh^2=1$ and $\cosh'=+\sinh$, and the hyperbolic functions are not periodic. The reason for both is that they are the trigonometric functions of an imaginary argument. For complex $z$ let
+\begin{gather*}
+\cos z\coloneqq\frac{e^{iz}+e^{-iz}}2,\qquad\sin z\coloneqq\frac{e^{iz}-e^{-iz}}{2i},\\
+\cosh z\coloneqq\frac{e^z+e^{-z}}2,\qquad\sinh z\coloneqq\frac{e^z-e^{-z}}2;
+\end{gather*}
+for real $z$ these are the functions defined before, by \cref{cor:euler-consequences}\,(iv), and by the same argument as in (iii) they are the sums of the power series of \cref{def:sin-cos} and of \cref{prop:hyperbolic-properties}\,(iii) with complex $z$. Directly from the formulas, for every complex $z$,
+\[
+\cos(iz)=\cosh z,\qquad\sin(iz)=i\sinh z,\qquad\cosh(iz)=\cos z,\qquad\sinh(iz)=i\sin z .
+\]
+Every identity between the trigonometric functions that follows from the addition formulas therefore becomes an identity between the hyperbolic functions when $\cos$ is replaced by $\cosh$ and $\sin$ by $i\sinh$, so that a product of two sines changes its sign. \Cref{tab:trig-hyperbolic} sets the two families side by side. The formulas also show that the complex sine and cosine are unbounded: $\cos(iy)=\cosh y$ grows like $\frac12e^{|y|}$, so the bound $|\sin x|\le1$ holds on the real line only.
+
+\begin{table}
+\sdfloat{%
+\begin{sdtable}{colspec={ll}, row{1}={font=\small\bfseries}}
+\toprule
+trigonometric & hyperbolic \\
+\midrule
+$\cos x=\frac12(e^{ix}+e^{-ix})$ & $\cosh x=\frac12(e^x+e^{-x})$ \\
+$\sin x=\frac1{2i}(e^{ix}-e^{-ix})$ & $\sinh x=\frac12(e^x-e^{-x})$ \\
+$\cos^2x+\sin^2x=1$ & $\cosh^2x-\sinh^2x=1$ \\
+$\sin'=\cos$, $\cos'=-\sin$ & $\sinh'=\cosh$, $\cosh'=\sinh$ \\
+$\tan'=1+\tan^2$ & $\tanh'=1-\tanh^2$ \\
+$\sin(x+y)=\sin x\cos y+\cos x\sin y$ & $\sinh(x+y)=\sinh x\cosh y+\cosh x\sinh y$ \\
+$\cos(x+y)=\cos x\cos y-\sin x\sin y$ & $\cosh(x+y)=\cosh x\cosh y+\sinh x\sinh y$ \\
+$\cos2x=1-2\sin^2x$ & $\cosh2x=1+2\sinh^2x$ \\
+$\sin x=\sum_k(-1)^kx^{2k+1}/(2k+1)!$ & $\sinh x=\sum_kx^{2k+1}/(2k+1)!$ \\
+$f''=-f$ & $f''=f$ \\
+$(\cos t,\sin t)$ on $x^2+y^2=1$ & $(\cosh t,\sinh t)$ on $x^2-y^2=1$ \\
+period $2\pi$ & no real period; period $2\pi i$ \\
+\bottomrule
+\end{sdtable}}{The trigonometric and the hyperbolic functions compared. Each hyperbolic identity is obtained from the trigonometric one by $\cos z=\cosh(iz)$ and $\sin z=-i\sinh(iz)$.\label{tab:trig-hyperbolic}}
+\end{table}
+
+\subsection{Inverse Hyperbolic Functions}
+
+Since the hyperbolic functions are built from the exponential function, their inverses are built from the logarithm.
+
+\begin{proposition}
+\label{prop:inverse-hyperbolic}
+The inverses of $\sinh\colon\mathbb R\to\mathbb R$, of $\cosh\colon[0,\infty)\to[1,\infty)$ and of $\tanh\colon\mathbb R\to(-1,1)$ are
+\[
+\operatorname{arsinh}x=\ln\bigl(x+\sqrt{x^2+1}\bigr),\qquad\operatorname{arcosh}x=\ln\bigl(x+\sqrt{x^2-1}\bigr),\qquad\operatorname{artanh}x=\frac12\ln\frac{1+x}{1-x},
+\]
+for $x\in\mathbb R$, $x\ge1$ and $|x|<1$, respectively. Their derivatives are $1/\sqrt{x^2+1}$, $1/\sqrt{x^2-1}$ for $x>1$, and $1/(1-x^2)$, and
+\[
+\operatorname{artanh}x=x+\frac{x^3}3+\frac{x^5}5+\cdots\qquad(|x|<1).
+\]
+\end{proposition}
+
+\begin{proof}
+The equation $\sinh t=x$ means $e^t-e^{-t}=2x$, that is, $(e^t)^2-2x\,e^t-1=0$, a quadratic equation for $e^t$ whose roots are $x\pm\sqrt{x^2+1}$. Only the root with the plus sign is positive, so $e^t=x+\sqrt{x^2+1}$. Similarly, $\cosh t=x$ with $t\ge0$ means $e^t=x\pm\sqrt{x^2-1}$, and the root with $e^t\ge1$ is the one with the plus sign; and $\tanh t=x$ means $(e^{2t}-1)/(e^{2t}+1)=x$, that is, $e^{2t}=(1+x)/(1-x)$. The derivatives follow from the rule for inverse functions: for instance, $\operatorname{arsinh}'x=1/\cosh t=1/\sqrt{1+\sinh^2t}=1/\sqrt{1+x^2}$ with $t=\operatorname{arsinh}x$. The series is \eqref{eq:log-ratio-series} divided by $2$.
+\end{proof}
+
+The series for $\ln\frac{1+x}{1-x}$, which computed $\ln2$ in \cref{sec:log-function} and reduced the logarithm in \cref{sec:exp-log-numerics}, is thus the series of the inverse hyperbolic tangent; compare it with the arctangent series, which differs only in the signs. The formulas of the proposition are exact but not always good for computation: for large negative $x$, the argument $x+\sqrt{x^2+1}$ of the logarithm in $\operatorname{arsinh}x$ is a difference of nearly equal numbers, and the oddness $\operatorname{arsinh}x=-\operatorname{arsinh}(-x)$ avoids the cancellation; for small $|x|$ the functions $\ln(1+\cdot)$ of \cref{sec:exp-log-numerics} are needed. Volume~X treats these matters.
+
+\subsection{The Hyperbola and the Catenary}
+
+As $(\cos t,\sin t)$ runs around the circle $x^2+y^2=1$, the point $(\cosh t,\sinh t)$ runs along the right branch of the hyperbola $x^2-y^2=1$, by \cref{prop:hyperbolic-properties}\,(i); since $\sinh$ is a bijection of $\mathbb R$, it passes every point of that branch exactly once. The parameter $t$ is not an arc length, but it has the same meaning as the angle in \cref{prop:sector-area}: it is twice the area of a sector.
+
+\begin{proposition}
+\label{prop:hyperbolic-sector}
+Let $t>0$, $P\coloneqq(\cosh t,\sinh t)$ and $P'\coloneqq(\cosh t,0)$. The region bounded by the segment from the origin $O$ to $P$, the arc of the hyperbola from $(1,0)$ to $P$, and the segment of the horizontal axis from $O$ to $(1,0)$ has the area $t/2$.
+\end{proposition}
+
+\begin{proof}
+The region is the triangle $OP'P$ without the region under the hyperbola $y=\sqrt{u^2-1}$ over $[1,\cosh t]$; the latter lies inside the triangle, because $u^2-1<u^2\tanh^2t$ is equivalent to $u^2<\cosh^2t$. The triangle has the area $\frac12\cosh t\sinh t$. In the integral $\int_1^{\cosh t}\sqrt{u^2-1}\,du$, substitute $u=\cosh s$ with $s\in[0,t]$; since $\sqrt{\cosh^2s-1}=\sinh s$ for $s\ge0$ and $\sinh^2s=\frac12(\cosh2s-1)$,
+\[
+\int_1^{\cosh t}\sqrt{u^2-1}\,du=\int_0^t\sinh^2s\,ds=\frac{\sinh2t}4-\frac t2=\frac12\sinh t\cosh t-\frac t2 .
+\]
+The difference of the two areas is $t/2$.
+\end{proof}
+
+The proposition explains the names of the functions and the analogy of \cref{tab:trig-hyperbolic}: the circular functions parametrise the circle by twice the area of a circular sector, the hyperbolic functions the hyperbola by twice the area of a hyperbolic sector (\cref{fig:hyperbolic}B). The hyperbolic functions were introduced in the 1750s and 1760s by Vincenzo Riccati and by Lambert, who developed this analogy~\cite{maor1994}.
+
+\begin{figure}
+\sdpanel{A}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.49\textwidth, height=0.44\textwidth, xmin=-2.6, xmax=2.6, ymin=-3.2, ymax=3.8,
+  xtick={-2,-1,0,1,2}, ytick={-3,-2,-1,0,1,2,3}, xlabel={$x$}, legend style={at={(0.97,0.03)}, anchor=south east}]
+\draw[black!35, line width=0.4pt] (axis cs:-2.6,0) -- (axis cs:2.6,0);
+\draw[black!35, densely dotted, line width=0.4pt] (axis cs:-2.6,1) -- (axis cs:2.6,1) (axis cs:-2.6,-1) -- (axis cs:2.6,-1);
+\addplot[black, line width=0.8pt, domain=-2.6:2.6, samples=100] {cosh(x)};
+\addlegendentry{$\cosh x$}
+\addplot[black, dashed, line width=0.8pt, domain=-2.6:2.6, samples=100] {sinh(x)};
+\addlegendentry{$\sinh x$}
+\addplot[black!45, line width=0.8pt, domain=-2.6:2.6, samples=100] {tanh(x)};
+\addlegendentry{$\tanh x$}
+\end{axis}
+\end{tikzpicture}}\hfill
+\sdpanel{B}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.49\textwidth, height=0.44\textwidth, xmin=0, xmax=3.0, ymin=-0.2, ymax=2.3,
+  xtick={0,1,2,3}, ytick={0,1,2}, xlabel={$x$}, ylabel={$y$}]
+\addplot[draw=none, fill=sdfill] coordinates {(0,0) (1.0000,0.0000) (1.0050,0.1002) (1.0201,0.2013) (1.0453,0.3045) (1.0811,0.4108) (1.1276,0.5211) (1.1855,0.6367) (1.2552,0.7586) (1.3374,0.8881) (1.4331,1.0265) (1.5431,1.1752) (1.6685,1.3356) (1.8107,1.5095) (1.9709,1.6984) (2.1509,1.9043) (0,0)} -- cycle;
+\addplot[black, line width=0.8pt, domain=0:1.5, samples=80] ({cosh(x)},{sinh(x)});
+\addplot[black, line width=0.8pt, domain=-0.2:0, samples=20] ({cosh(x)},{sinh(x)});
+\draw[black, line width=0.5pt] (axis cs:0,0) -- (axis cs:2.1509,1.9043);
+\draw[black!55, dashed, line width=0.4pt] (axis cs:2.1509,1.9043) -- (axis cs:2.1509,0);
+\fill[black] (axis cs:2.1509,1.9043) circle (1.4pt) (axis cs:1,0) circle (1.4pt);
+\node[font=\scriptsize, anchor=south east] at (axis cs:2.12,1.92) {$P$};
+\node[font=\scriptsize] at (axis cs:0.8,0.33) {$\frac t2$};
+\node[font=\scriptsize, anchor=south west] at (axis cs:2.17,0.02) {$\cosh t$};
+\end{axis}
+\end{tikzpicture}}
+\caption{The hyperbolic functions. (A) The hyperbolic cosine is even and at least $1$, the hyperbolic sine is odd and increasing, and the hyperbolic tangent (grey) increases from $-1$ to $1$ (dotted lines); for large $|x|$, $\cosh x$ and $|\sinh x|$ are both close to $\frac12e^{|x|}$. (B) The point $P=(\cosh t,\sinh t)$ lies on the hyperbola $x^2-y^2=1$, and the shaded hyperbolic sector has the area $t/2$ (\cref{prop:hyperbolic-sector}); here $t=1.4$.}
+\label{fig:hyperbolic}
+\end{figure}
+
+The hyperbolic cosine also describes a shape that everyone has seen. A flexible chain of uniform density, suspended at both ends, hangs in the curve $y=a\cosh(x/a)$, with a constant $a>0$ that depends on the tension; this curve is the \term{catenary}. Galileo had thought the curve to be a parabola, which it resembles near its lowest point, since $a\cosh(x/a)=a+x^2/(2a)+O(x^4)$; the correct curve was found in 1691 by Leibniz, Huygens and Johann Bernoulli~\cite{maor1994}. The derivation is a differential equation, $y''=\frac1a\sqrt{1+y'^2}$, and Part~IV provides the tools to solve it. Another close relative of the hyperbolic tangent is the \term{logistic function}
+\[
+\sigma(x)\coloneqq\frac1{1+e^{-x}}=\frac12\Bigl(1+\tanh\frac x2\Bigr),
+\]
+which increases from $0$ to $1$ and is used throughout statistics and machine learning to turn a real number into a probability; it satisfies $\sigma'=\sigma(1-\sigma)$ and $\sigma(-x)=1-\sigma(x)$. Volume~X computes it, and Volume~XV uses it in logistic regression.
+
+\section{Identities and Argument Reduction}
+\label{sec:identities-reduction}
+
+\subsection{A Catalogue of Identities}
+
+All identities between the trigonometric functions follow from the addition formulas, the Pythagorean identity and the special values. The following are used most often; each is proved by expanding the right side with \cref{thm:addition}, or, for the half-angle formulas, from the double-angle formulas with $x/2$ in place of $x$.
+
+\begin{proposition}
+\label{prop:trig-identities}
+For all real $x$ and $y$:
+\begin{enumerate}
+\item (half angles) $\cos^2\dfrac x2=\dfrac{1+\cos x}2$, $\sin^2\dfrac x2=\dfrac{1-\cos x}2$, and $\tan\dfrac x2=\dfrac{\sin x}{1+\cos x}=\dfrac{1-\cos x}{\sin x}$ where the denominators do not vanish;
+\item (products to sums) $2\sin x\cos y=\sin(x+y)+\sin(x-y)$, $2\cos x\cos y=\cos(x-y)+\cos(x+y)$ and $2\sin x\sin y=\cos(x-y)-\cos(x+y)$;
+\item (sums to products) $\sin x+\sin y=2\sin\dfrac{x+y}2\cos\dfrac{x-y}2$ and $\cos x-\cos y=-2\sin\dfrac{x+y}2\sin\dfrac{x-y}2$;
+\item (rational parametrisation) if $t\coloneqq\tan\frac x2$ is defined, then $\sin x=\dfrac{2t}{1+t^2}$ and $\cos x=\dfrac{1-t^2}{1+t^2}$.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(i) The double-angle formulas give $\cos x=2\cos^2\frac x2-1=1-2\sin^2\frac x2$ and $\sin x=2\sin\frac x2\cos\frac x2$; so $\frac{\sin x}{1+\cos x}=\frac{2\sin(x/2)\cos(x/2)}{2\cos^2(x/2)}=\tan\frac x2$, and similarly for the second form. (ii) Add or subtract the addition formulas for $x+y$ and $x-y$. (iii) Apply (ii) to $\frac{x+y}2$ and $\frac{x-y}2$. (iv) Divide $\sin x=2\sin\frac x2\cos\frac x2$ and $\cos x=\cos^2\frac x2-\sin^2\frac x2$ by $1=\cos^2\frac x2+\sin^2\frac x2$, and then numerator and denominator by $\cos^2\frac x2$.
+\end{proof}
+
+Part (iv) is the substitution that \cref{sec:techniques} used to integrate rational expressions in $\sin x$ and $\cos x$; geometrically, it parametrises the unit circle by rational functions, $t\mapsto\bigl((1-t^2)/(1+t^2),\,2t/(1+t^2)\bigr)$, the point $(-1,0)$ excepted. The identities matter for computation as well, because algebraically equivalent formulas can differ greatly in accuracy, as \cref{sec:exp-log-numerics} showed for $e^x-1$. For small $x$, the difference $1-\cos x$ suffers from cancellation, while the equal expression $2\sin^2\frac x2$ of part (i) does not; and for nearby $x$ and $y$, the difference $\cos x-\cos y$ is computed accurately in the form of part (iii), whose factors $\sin\frac{x-y}2$ and $\sin\frac{x+y}2$ involve no subtraction of nearly equal values, provided $x-y$ is known accurately.
+
+\subsection{Reducing the Argument}
+
+The sine and cosine series converge for every $x$, but, as for the exponential function, the number of terms needed grows with $|x|$, and for large $|x|$ the terms are huge and cancel. Periodicity and symmetry reduce every argument to a short interval.
+
+\begin{proposition}[Argument reduction for $\sin$ and $\cos$]
+\label{prop:trig-reduction}
+Every real $x$ can be written as $x=k\frac\pi2+r$ with an integer $k$ and $|r|\le\frac\pi4$, namely with $k$ an integer nearest to $2x/\pi$. Then $\sin x$ and $\cos x$ are given by \cref{tab:trig-reduction} in terms of $\sin r$, $\cos r$ and the residue of $k$ modulo $4$. Moreover, for $|r|\le\frac\pi4$,
+\[
+|\sin r-S_7(r)|\le6.6\times10^{-17}|\sin r|,\qquad|\cos r-C_8(r)|\le2.9\times10^{-18}|\cos r| ,
+\]
+where $S_7$ and $C_8$ are the partial sums of degrees $15$ and $16$.
+\end{proposition}
+
+\begin{proof}
+If $|2x/\pi-k|\le\frac12$, then $r\coloneqq x-k\frac\pi2$ satisfies $|r|\le\frac\pi4$. By \cref{thm:trig-periodic}\,(ii), each shift by $\frac\pi2$ maps the pair $(\sin,\cos)$ to $(\cos,-\sin)$, so four shifts restore it, and applying (ii) $k\bmod4$ times gives the table; negative $k$ are covered by the periodicity of (iv). For the bounds, \cref{thm:sin-cos-series} gives $|\sin r-S_7(r)|\le|r|^{17}/17!$ and $|\cos r-C_8(r)|\le|r|^{18}/18!$. The sine is concave on $[0,\pi]$, since $\sin''=-\sin\le0$ there, so on $[0,\frac\pi4]$ it lies above the chord from $(0,0)$ to $(\frac\pi4,\sin\frac\pi4)$: $\sin r\ge r\sin\frac\pi4/\frac\pi4=\frac{2\sqrt2}\pi r$; by oddness $|\sin r|\ge\frac{2\sqrt2}\pi|r|$ for $|r|\le\frac\pi4$. Hence $|\sin r-S_7(r)|/|\sin r|\le\frac\pi{2\sqrt2}\,|r|^{16}/17!\le\frac\pi{2\sqrt2}(\frac\pi4)^{16}/17!=6.55\ldots\times10^{-17}$. For the cosine, $\cos r\ge\cos\frac\pi4=1/\sqrt2$, and $\sqrt2\,(\frac\pi4)^{18}/18!=2.86\ldots\times10^{-18}$.
+\end{proof}
+
+\begin{table}
+\sdfloat{%
+\begin{sdtable}{colspec={lll}, row{1}={font=\small\bfseries}}
+\toprule
+$k\bmod4$ & $\sin x$ & $\cos x$ \\
+\midrule
+0 & $\sin r$ & $\cos r$ \\
+1 & $\cos r$ & $-\sin r$ \\
+2 & $-\sin r$ & $-\cos r$ \\
+3 & $-\cos r$ & $\sin r$ \\
+\bottomrule
+\end{sdtable}}{The reduction of $\sin x$ and $\cos x$ for $x=k\frac\pi2+r$, $|r|\le\frac\pi4$ (\cref{prop:trig-reduction}).\label{tab:trig-reduction}}
+\end{table}
+
+By the oddness of the sine and the evenness of the cosine, the polynomials are needed only for $0\le r\le\frac\pi4$. So the sine and the cosine of every real number are obtained from two fixed polynomials on the interval $[0,\frac\pi4]$, and \cref{alg:sincos} states the method. As for the exponential function, practical implementations use polynomials of lower degree, chosen to minimise the maximum error rather than to match derivatives at $0$, and reduce further with tables~\cite{muller2016elementary}.
+
+\begin{algorithm}
+\begin{algorithmic}[1]
+\Require a real number $x$
+\Ensure $(\sin x,\cos x)$, each with relative error less than $u$, in exact arithmetic
+\Name{SinCos}{x}
+\State $k\gets$ an integer nearest to $2x/\pi$
+\State $r\gets x-k\pi/2$ \Comment{$|r|\le\pi/4$}
+\State $s\gets S_7(|r|)$;\quad $c\gets C_8(|r|)$ \Comment{Horner's scheme in $r^2$}
+\If{$r<0$} $s\gets-s$
+\EndIf
+\State $m\gets k\bmod4$
+\If{$m=0$} \Return $(s,c)$
+\ElsIf{$m=1$} \Return $(c,-s)$
+\ElsIf{$m=2$} \Return $(-s,-c)$
+\Else\ \Return $(-c,s)$
+\EndIf
+\end{algorithmic}
+\caption{The sine and the cosine by argument reduction (\cref{prop:trig-reduction}). The polynomials are evaluated as $S_7(r)=r\,p(r^2)$ and $C_8(r)=q(r^2)$ with polynomials $p$ and $q$ of degrees $7$ and $8$. Line 2 is exact only if $\pi$ is; in floating-point arithmetic it requires $\pi$ to many more digits than the working precision.}
+\label{alg:sincos}
+\end{algorithm}
+
+\subsection{Why \texorpdfstring{$\pi$}{pi} Must Be Known to Many Digits}
+
+In exact arithmetic the reduction is harmless. A computer, however, can only store an approximation $\tilde\pi$ of $\pi$, and the reduced argument $x-k\tilde\pi/2$ differs from the true one by $k(\pi-\tilde\pi)/2$. The error is multiplied by $k\approx2x/\pi$, which can be enormous.
+
+\begin{proposition}
+\label{prop:reduction-error}
+Let $\tilde\pi$ be a number with $|\tilde\pi-\pi|\le\delta$, let $x=k\frac\pi2+r$ as in \cref{prop:trig-reduction}, and let $\tilde r\coloneqq x-k\frac{\tilde\pi}2$. Then $|\tilde r-r|\le\frac12|k|\delta$, and the values computed from $\tilde r$ with \cref{tab:trig-reduction} differ from $\sin x$ and $\cos x$ by at most $\frac12|k|\delta\approx|x|\delta/\pi$.
+\end{proposition}
+
+\begin{proof}
+$\tilde r-r=k(\pi-\tilde\pi)/2$. The sine and the cosine are Lipschitz continuous with constant $1$, by the mean value theorem and $|\sin'|,|\cos'|\le1$, so $|\sin\tilde r-\sin r|$ and $|\cos\tilde r-\cos r|$ are at most $|\tilde r-r|$.
+\end{proof}
+
+The binary64 number nearest to $\pi$ is $\tilde\pi=3.141592653589793115997\ldots$, with $\delta=\pi-\tilde\pi=1.22\times10^{-16}$. \Cref{tab:large-sin} shows what this error does: for $x=10^6$ only ten of the sixteen digits are correct, for $x=10^{15}$ only the first, and for $x=10^{22}$, a number that binary64 represents exactly, the computed value has the wrong sign. Since each binary64 number is an exact real number, its sine is well defined, and a library that claims an error of a fraction of a unit in the last place must deliver it: $\sin(10^{22})=-0.8522008497671888017\ldots$ The remedy is to store $2/\pi$ to so many digits that the product $x\cdot2/\pi$ is known accurately enough to determine both $k$ and the fractional part, even for the largest binary64 numbers; this is the method of Payne and Hanek~\cite{payne1983}. For arguments of moderate size, a cheaper method of Cody and Waite splits $\pi/2$ into a sum of two or three numbers with few significant bits, so that the products with $k$ are exact~\cite{cody1980}. Muller's book describes both, and Volume~X their use in the library~\cite{muller2016elementary}.
+
+\begin{table}
+\sdfloat{%
+\begin{sdtable}{colspec={llll}, row{1}={font=\small\bfseries}}
+\toprule
+$x$ & $\sin x$ & with $\tilde\pi$ & error \\
+\midrule
+$10$ & $-0.544021110889370$ & $-0.544021110889370$ & $3.1\times10^{-16}$ \\
+$10^{3}$ & $\phantom-0.826879540532003$ & $\phantom-0.826879540532025$ & $2.2\times10^{-14}$ \\
+$10^{6}$ & $-0.349993502171293$ & $-0.349993502134777$ & $3.7\times10^{-11}$ \\
+$10^{10}$ & $-0.487506025087511$ & $-0.487505684730442$ & $3.4\times10^{-7}$ \\
+$10^{15}$ & $\phantom-0.858272793170236$ & $\phantom-0.837620663516705$ & $2.1\times10^{-2}$ \\
+$10^{22}$ & $-0.852200849767189$ & $\phantom-0.874028061200760$ & $1.7$ \\
+\bottomrule
+\end{sdtable}}{The sine of large arguments, computed with $\pi$ to $120$ digits, and the value obtained when the reduction of \cref{prop:trig-reduction} uses the binary64 number $\tilde\pi$ nearest to $\pi$ and is otherwise carried out exactly. The error grows in proportion to $x$, as \cref{prop:reduction-error} predicts; for $x=10^{22}$ even the quadrant $k\bmod4$ is wrong.\label{tab:large-sin}}
+\end{table}
+
+Whether such accuracy is meaningful is a separate question, and the condition number answers it. By \cref{tab:condition}, the sine has the condition number $|x\cos x/\sin x|$, which is of the order of $|x|$ for large $|x|$: if $x=10^{22}$ is itself the result of an earlier computation with a relative error of $10^{-16}$, it is uncertain by about $10^6$, and its sine is entirely unknown. A library cannot know where its input came from, and it computes the sine of the number it is given; it is the user who must judge, with the condition number, whether the problem is well posed. The distinction between the accuracy of an algorithm and the condition of a problem, met in \cref{sec:conditioning,sec:exp-log-numerics}, is developed in Volume~V.
+
+\bigskip
+The elementary transcendental functions now rest on definitions, and the facts that earlier chapters borrowed are theorems. All of them were obtained from power series, the exponential series and the series of the sine and the cosine, which Euler's formula shows to be one, together with the construction of inverse functions in \cref{thm:inverse-continuous}. The single-variable calculus of Part~II is thereby complete. Chapters~10 to~12 extend it to functions of several variables, where the exponential function reappears in the Gaussian integral of Chapter~11. Part~IV returns to the differential equations $f'=\lambda f$ and $f''=-f$ that characterised the exponential and the trigonometric functions, and extends them to systems through the exponential of a matrix. The computation of the functions of this chapter in floating-point arithmetic, which \cref{sec:exp-log-numerics,sec:identities-reduction} have only sketched, is the subject of Volume~X.
+
+\chapternotes
+
+The definition of the exponential function by its power series, of the logarithm as its inverse and of the trigonometric functions by their series, with $\pi$ defined through the first positive zero of the cosine, follows Rudin~\cite{rudin1976} (Chapter~8), who derives the trigonometric functions from the complex exponential. Spivak~\cite{spivak2008calculus} (Chapters~15, 16 and~18) takes the other route, defining $\pi$ as an area and the logarithm, the arctangent and hence the trigonometric functions through integrals, and proves the irrationality of $\pi$; Apostol~\cite{apostol1967calculus} (Chapter~6) treats the logarithm, the exponential and the inverse trigonometric functions in a similar way. The history of $e$, of the logarithm from Napier~\cite{napier1614} and Briggs to Euler, of the hyperbolic functions and of the catenary is told by Maor~\cite{maor1994}; Euler's \emph{Introductio}~\cite{euler1748introductio} is the source of the modern view of these functions, including the formula $e^{i\theta}=\cos\theta+i\sin\theta$. Berggren, Borwein and Borwein~\cite{berggren2004pi} collect the classical papers on the computation of $\pi$, from Archimedes to the modern iterations. Lambert's proof of the irrationality of $\pi$~\cite{lambert1768}, Hermite's proof of the transcendence of $e$~\cite{hermite1873} and Lindemann's proof of the transcendence of $\pi$~\cite{lindemann1882} are presented in modern form by Hardy and Wright~\cite{hardywright2008}, and Baker~\cite{baker1975} develops transcendental number theory; Niven~\cite{niven1947} gives the shortest proof that $\pi$ is irrational.
+
+Cauchy's functional equation appears in his \emph{Cours d'analyse}~\cite{cauchy1821}, and Acz\'el~\cite{aczel1966} treats functional equations in general. The gamma function and its characterisation by log-convexity are the subject of Artin's short book~\cite{artin1964gamma}. Young's inequality and the inequalities of means derived from convexity are treated by Hardy, Littlewood and P\'olya~\cite{hardy1952inequalities}, and Chebyshev polynomials and their role in approximation by Trefethen~\cite{trefethen2013atap}. For the numerical side, Goldberg~\cite{goldberg1991} and Higham~\cite{higham2002accuracy} discuss the accurate computation of $\ln(1+x)$, and Higham also that of $e^x-1$, and Muller~\cite{muller2016elementary} is the standard reference on the implementation of elementary functions, including the argument reductions of Cody and Waite~\cite{cody1980} and of Payne and Hanek~\cite{payne1983}.
+
+\chapterreferences

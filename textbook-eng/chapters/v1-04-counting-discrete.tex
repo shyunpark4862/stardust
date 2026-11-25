@@ -1614,7 +1614,7 @@ The whole difficulty lies in the choice of $\Omega$: its outcomes must be equall
 \[
 q_k=\frac{365^{\underline k}}{365^k}=\prod_{j=1}^{k-1}\Bigl(1-\frac{j}{365}\Bigr),
 \]
-and the probability of a shared birthday is $1-q_k$. It exceeds $\frac12$ from $k=23$ on, where $1-q_{23}\approx0.507$, and $0.99$ from $k=57$ on. Most people find these numbers surprisingly small~\cite{feller1968}. The explanation is that $k$ people form $\binom k2$ pairs, each of which may share a birthday: $23$ people form $253$ pairs. \Cref{fig:birthday} shows the probability as a function of $k$ together with the approximation $1-e^{-k(k-1)/(2\cdot365)}$, which follows from the inequality $1-t\le e^{-t}$ of Chapter~9 and is a lower bound for it.
+and the probability of a shared birthday is $1-q_k$. It exceeds $\frac12$ from $k=23$ on, where $1-q_{23}\approx0.507$, and $0.99$ from $k=57$ on. Most people find these numbers surprisingly small~\cite{feller1968}. The explanation is that $k$ people form $\binom k2$ pairs, each of which may share a birthday: $23$ people form $253$ pairs. \Cref{fig:birthday} shows the probability as a function of $k$ together with the approximation $1-e^{-k(k-1)/(2\cdot365)}$, which follows from the inequality $1-t\le e^{-t}$ of \cref{ch:transcendental} and is a lower bound for it.
 
 \begin{figure}
 \sdfloat{%

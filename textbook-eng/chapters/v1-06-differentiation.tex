@@ -8,7 +8,7 @@
 
 The chapter is organised as follows. \Cref{sec:derivative} defines the derivative as a limit of difference quotients and, equivalently, as the slope of the best linear approximation, and it shows what can go wrong at a point where a function is not differentiable. \Cref{sec:rules} proves the rules of differentiation, among them the chain rule and the rule for inverse functions, and computes the derivatives of powers, roots and trigonometric functions. \Cref{sec:extrema,sec:mvt} contain the theory: Fermat's theorem on extrema, the theorems of Rolle, Lagrange and Cauchy, and their consequences for monotonicity, Lipschitz constants and inequalities. The next three sections apply this theory. \Cref{sec:conditioning} measures how errors in the data propagate through a function and how accurately a derivative can be approximated by a difference quotient; \cref{sec:lhopital} proves l'H\^opital's rule; \cref{sec:convexity} treats higher derivatives and convex functions. \Cref{sec:newton} analyses Newton's method, of which Heron's method of \cref{sec:completeness} is a special case, and proves that it converges quadratically. \Cref{sec:darboux} ends the chapter with a surprising property of derivatives, the intermediate value property, and with the classes $C^k$ of functions with continuous derivatives.
 
-Two topics are postponed. Taylor's theorem, which approximates a function by polynomials of higher degree and refines several estimates of this chapter, is the subject of \cref{ch:series}; the exponential function and the logarithm, whose derivatives we mention but do not prove, are defined in Chapter~9. Functions of several variables follow in Chapter~10. As in the preceding chapters this is a review: every result is stated precisely, and the important ones are proved.
+Two topics are postponed. Taylor's theorem, which approximates a function by polynomials of higher degree and refines several estimates of this chapter, is the subject of \cref{ch:series}; the exponential function and the logarithm, whose derivatives we mention but do not prove, are defined in \cref{ch:transcendental}. Functions of several variables follow in Chapter~10. As in the preceding chapters this is a review: every result is stated precisely, and the important ones are proved.
 
 \section{The Derivative}
 \label{sec:derivative}
@@ -420,7 +420,7 @@ For $n\ge2$, $f'(0)=0$, and the second part of the theorem applies.
 by the laws of exponents for rational exponents (\cref{sec:reals}).
 \end{proof}
 
-For $n=2$ this is the derivative $1/(2\sqrt x)$ found in \cref{sec:derivative}. So the rule $\frac d{dx}x^r=rx^{r-1}$, proved in \cref{prop:power-rule} for integers, holds for every rational exponent $r$ and every $x>0$. Chapter~9 defines $x^s$ for every real $s$ and $x>0$ and shows that the same rule holds.
+For $n=2$ this is the derivative $1/(2\sqrt x)$ found in \cref{sec:derivative}. So the rule $\frac d{dx}x^r=rx^{r-1}$, proved in \cref{prop:power-rule} for integers, holds for every rational exponent $r$ and every $x>0$. \Cref{ch:transcendental} defines $x^s$ for every real $s$ and $x>0$ and shows that the same rule holds.
 
 \subsection{Trigonometric Functions}
 
@@ -479,7 +479,7 @@ where $\cos a=\sqrt{1-\sin^2a}$ because $\cos a>0$ and $\cos^2a+\sin^2a=1$. At $
 (iii) The tangent is continuous and strictly increasing on $(-\pi/2,\pi/2)$, with image $\mathbb R$ and inverse $\arctan$ (\cref{sec:monotone-functions}), and its derivative $1/\cos^2a$ never vanishes. With $b=\tan a$, \cref{thm:inverse-derivative} gives $\arctan'b=\cos^2a=1/(1+\tan^2a)=1/(1+b^2)$.
 \end{proof}
 
-\Cref{tab:derivatives} collects the derivatives obtained so far, together with those of the exponential function and the natural logarithm, which Chapter~9 proves. With the rules of this section, they give the derivative of every function that can be written as a formula in these functions. As an example of the rules working together,
+\Cref{tab:derivatives} collects the derivatives obtained so far, together with those of the exponential function and the natural logarithm, which \cref{ch:transcendental} proves. With the rules of this section, they give the derivative of every function that can be written as a formula in these functions. As an example of the rules working together,
 \[
 \frac d{dx}\,x\sin(x^2)=\sin(x^2)+x\cdot\cos(x^2)\cdot2x=\sin(x^2)+2x^2\cos(x^2),
 \]
@@ -502,10 +502,10 @@ $\tan x$ & $1/\cos^2x=1+\tan^2x$ & $\cos x\ne0$ \\
 $\arcsin x$ & $1/\sqrt{1-x^2}$ & $-1<x<1$ \\
 $\arccos x$ & $-1/\sqrt{1-x^2}$ & $-1<x<1$ \\
 $\arctan x$ & $1/(1+x^2)$ & $x\in\mathbb R$ \\
-$e^x$ & $e^x$ & $x\in\mathbb R$ (Chapter~9) \\
-$\ln x$ & $1/x$ & $x>0$ (Chapter~9) \\
+$e^x$ & $e^x$ & $x\in\mathbb R$ (\cref{ch:transcendental}) \\
+$\ln x$ & $1/x$ & $x>0$ (\cref{ch:transcendental}) \\
 \bottomrule
-\end{sdtable}}{Derivatives of the elementary functions. The entries for $e^x$ and $\ln x$ are proved in Chapter~9; all others in this section.\label{tab:derivatives}}
+\end{sdtable}}{Derivatives of the elementary functions. The entries for $e^x$ and $\ln x$ are proved in \cref{ch:transcendental}; all others in this section.\label{tab:derivatives}}
 \end{table}
 
 \begin{note}{Automatic differentiation}
@@ -801,7 +801,7 @@ h'(x)=r\bigl((1+x)^{r-1}-1\bigr).
 Let $r>1$. The power $t\mapsto t^{r-1}$ with the positive exponent $r-1$ is strictly increasing on $[0,\infty)$, so $(1+x)^{r-1}<1$ for $-1<x<0$ and $(1+x)^{r-1}>1$ for $x>0$. Hence $h'<0$ on $(-1,0)$ and $h'>0$ on $(0,\infty)$. By \cref{cor:monotone-derivative}, $h$ is strictly decreasing on $[-1,0]$ and strictly increasing on $[0,\infty)$, so $h(x)>h(0)=0$ for all $x\ne0$. For $0<r<1$ the exponent $r-1$ is negative, the signs of $h'$ are reversed, and $h(x)<h(0)=0$ for $x\ne0$.
 \end{proof}
 
-For example, with $r=\frac12$ the proposition gives $\sqrt{1+x}\le1+\frac x2$, the inequality between $\sqrt{1+h}$ and its linear approximation found in \cref{sec:derivative}, and with $r=\frac32$ it gives $(1+x)^{3/2}\ge1+\frac32x$. Geometrically, both statements compare the graph of $(1+x)^r$ with its tangent at $x=0$, which is the line $1+rx$; \cref{sec:convexity} explains why the graph lies above its tangents when $r>1$ and below them when $0<r<1$. Once Chapter~9 has defined $x^s$ for real exponents, the same proof establishes the inequality for every real $r$.
+For example, with $r=\frac12$ the proposition gives $\sqrt{1+x}\le1+\frac x2$, the inequality between $\sqrt{1+h}$ and its linear approximation found in \cref{sec:derivative}, and with $r=\frac32$ it gives $(1+x)^{3/2}\ge1+\frac32x$. Geometrically, both statements compare the graph of $(1+x)^r$ with its tangent at $x=0$, which is the line $1+rx$; \cref{sec:convexity} explains why the graph lies above its tangents when $r>1$ and below them when $0<r<1$. Once \cref{ch:transcendental} has defined $x^s$ for real exponents, the same proof establishes the inequality for every real $r$.
 
 \section{Error Propagation and Conditioning: A First Look}
 \label{sec:conditioning}
@@ -1036,7 +1036,7 @@ and hence
 The first term has absolute value less than $2\varepsilon$, and the last two together less than $\varepsilon$. So $|f(x)/g(x)-L|<3\varepsilon$ for all $x\in(a,d)$, which proves the claim by \cref{prop:limit-variants}\,(iii) in its form for functions. For $L=\infty$ the same identity shows that $f(x)/g(x)$ exceeds $K\cdot\frac12-1$ once $R(x)>K$, $1-g(c)/g(x)>\frac12$ and $|f(c)/g(x)|<1$, which hold for $x$ close enough to $a$; since $K$ is arbitrary, $f(x)/g(x)\to\infty$. The case $L=-\infty$ is symmetric, and $x\to\infty$ is reduced to $t\to0^+$ as in \cref{cor:lhopital-infinity}.
 \end{proof}
 
-The idea of the proof is that for $x$ very close to $a$ the values $f(c)$ and $g(c)$ at the fixed point $c$ become negligible compared with $g(x)$, so that $f(x)/g(x)$ is close to $(f(x)-f(c))/(g(x)-g(c))$, to which Cauchy's mean value theorem applies. The most important applications involve the logarithm and the exponential function and must wait for Chapter~9. There, the rule gives for every rational $p>0$
+The idea of the proof is that for $x$ very close to $a$ the values $f(c)$ and $g(c)$ at the fixed point $c$ become negligible compared with $g(x)$, so that $f(x)/g(x)$ is close to $(f(x)-f(c))/(g(x)-g(c))$, to which Cauchy's mean value theorem applies. The most important applications involve the logarithm and the exponential function and must wait for \cref{ch:transcendental}. There, the rule gives for every rational $p>0$
 \[
 \lim_{x\to\infty}\frac{\ln x}{x^p}=\lim_{x\to\infty}\frac{1/x}{p\,x^{p-1}}=\lim_{x\to\infty}\frac1{p\,x^p}=0 ,
 \]
@@ -1062,7 +1062,7 @@ Both tend to $\infty$, and $f(x)/g(x)=e^{-\sin x}$ oscillates between $e^{-1}$ a
 \[
 \frac{f'(x)}{g'(x)}=\frac{2\cos x\,e^{-\sin x}}{x+\sin x\cos x+2\cos x}\ \longrightarrow\ 0 .
 \]
-The hypothesis that fails is $g'\ne0$: the factor $\cos x$ vanishes at the points $\frac\pi2+k\pi$, which are arbitrarily large. Cancelling it in the formula for $f'/g'$ conceals the problem. (The exponential function is used here ahead of Chapter~9.)
+The hypothesis that fails is $g'\ne0$: the factor $\cos x$ vanishes at the points $\frac\pi2+k\pi$, which are arbitrarily large. Cancelling it in the formula for $f'/g'$ conceals the problem. (The exponential function is used here ahead of \cref{ch:transcendental}.)
 
 \emph{The rule must not be used to prove the limits it depends on.} As noted in \cref{sec:existence} and \cref{sec:function-limits}, computing $\lim_{x\to0}(\sin x)/x$ with l'H\^opital's rule, as $\lim\cos x/1=1$, is circular, since the derivative of the sine was obtained in \cref{thm:trig-derivatives} from that very limit.
 
@@ -1210,7 +1210,7 @@ Combine \cref{thm:convex-derivative} with \cref{cor:monotone-derivative} applied
 
 The converse of the last statement fails: $x^4$ is strictly convex, since its derivative $4x^3$ is strictly increasing, but its second derivative vanishes at $0$.
 
-\emph{Examples.} The function $x^2$ is strictly convex, with $f''=2$. For a rational number $p\ge1$, the power $x^p$ is convex on $[0,\infty)$, because its derivative $px^{p-1}$ is increasing there (for $p>1$ it is differentiable at $0$ with derivative $0$, the difference quotient $h^{p-1}$ tending to $0$); for $0<p<1$ it is concave on $(0,\infty)$, since $p(p-1)x^{p-2}<0$ there. This explains \cref{prop:bernoulli-rational}, as we shall see in a moment. The function $1/x$ is strictly convex on $(0,\infty)$, with second derivative $2/x^3>0$, and strictly concave on $(-\infty,0)$. The sine is concave on $[0,\pi]$, where $\sin''=-\sin\le0$. Chapter~9 shows that the exponential function is strictly convex on $\mathbb R$ and the logarithm strictly concave on $(0,\infty)$.
+\emph{Examples.} The function $x^2$ is strictly convex, with $f''=2$. For a rational number $p\ge1$, the power $x^p$ is convex on $[0,\infty)$, because its derivative $px^{p-1}$ is increasing there (for $p>1$ it is differentiable at $0$ with derivative $0$, the difference quotient $h^{p-1}$ tending to $0$); for $0<p<1$ it is concave on $(0,\infty)$, since $p(p-1)x^{p-2}<0$ there. This explains \cref{prop:bernoulli-rational}, as we shall see in a moment. The function $1/x$ is strictly convex on $(0,\infty)$, with second derivative $2/x^3>0$, and strictly concave on $(-\infty,0)$. The sine is concave on $[0,\pi]$, where $\sin''=-\sin\le0$. \Cref{ch:transcendental} shows that the exponential function is strictly convex on $\mathbb R$ and the logarithm strictly concave on $(0,\infty)$.
 
 \subsection{Tangents, Minima and Jensen's Inequality}
 
@@ -1234,7 +1234,7 @@ Conversely, suppose \eqref{eq:tangent-below} holds, and let $x,z\in I$, $\lambda
 \]
 \end{proof}
 
-Many classical inequalities are tangent inequalities of convex functions. Bernoulli's inequality $(1+x)^r\ge1+rx$ for $r>1$ (\cref{prop:bernoulli-rational}) says that the convex function $(1+x)^r$ lies above its tangent $1+rx$ at $0$; for $0<r<1$ the function is concave and lies below its tangent. In Chapter~9, the inequality $e^x\ge1+x$ is the tangent inequality of the exponential function at $0$.
+Many classical inequalities are tangent inequalities of convex functions. Bernoulli's inequality $(1+x)^r\ge1+rx$ for $r>1$ (\cref{prop:bernoulli-rational}) says that the convex function $(1+x)^r$ lies above its tangent $1+rx$ at $0$; for $0<r<1$ the function is concave and lies below its tangent. In \cref{ch:transcendental}, the inequality $e^x\ge1+x$ is the tangent inequality of the exponential function at $0$.
 
 For optimisation, the tangent inequality has an important consequence: for a convex function, the first-order condition of Fermat's theorem is not only necessary but sufficient for a global minimum.
 
@@ -1284,11 +1284,11 @@ In (ii), and in (i) for $p>1$, equality holds only if all $x_i$ are equal.
 (i) Apply \cref{thm:jensen} with $\lambda_i=\frac1n$ to the convex function $x^p$ on $(0,\infty)$, which is strictly convex for $p>1$ because its derivative is strictly increasing; then take $p$th roots, using that $t\mapsto t^{1/p}$ is increasing on $[0,\infty)$. (ii) Apply it to the strictly convex function $1/x$: $1/A\le\frac1n\sum_i1/x_i=1/H$.
 \end{proof}
 
-For $p=2$, (i) says that the arithmetic mean is at most the \emph{quadratic mean} $\bigl(\frac1n\sum x_i^2\bigr)^{1/2}$, also called the root mean square. The inequality of the arithmetic and geometric means (\cref{thm:amgm}) is also an instance of Jensen's inequality, for the concave function $\ln$. Chapter~9 shows that $\ln''x=-1/x^2<0$; Jensen's inequality for the concave function then gives
+For $p=2$, (i) says that the arithmetic mean is at most the \emph{quadratic mean} $\bigl(\frac1n\sum x_i^2\bigr)^{1/2}$, also called the root mean square. The inequality of the arithmetic and geometric means (\cref{thm:amgm}) is also an instance of Jensen's inequality, for the concave function $\ln$. \Cref{ch:transcendental} shows that $\ln''x=-1/x^2<0$; Jensen's inequality for the concave function then gives
 \[
 \ln\Bigl(\frac{x_1+\cdots+x_n}n\Bigr)\ge\frac{\ln x_1+\cdots+\ln x_n}n=\ln\bigl((x_1\cdots x_n)^{1/n}\bigr),
 \]
-and since $\ln$ is increasing, the arithmetic mean is at least the geometric mean. The same argument with general weights gives the weighted form $x_1^{\lambda_1}\cdots x_n^{\lambda_n}\le\lambda_1x_1+\cdots+\lambda_nx_n$, with real exponents, which Chapter~9 makes available. Together, $H\le G\le A\le Q$ for the harmonic, geometric, arithmetic and quadratic means; Hardy, Littlewood and P\'olya develop the whole family of such inequalities from convexity~\cite{hardy1952inequalities}.
+and since $\ln$ is increasing, the arithmetic mean is at least the geometric mean. The same argument with general weights gives the weighted form $x_1^{\lambda_1}\cdots x_n^{\lambda_n}\le\lambda_1x_1+\cdots+\lambda_nx_n$, with real exponents, which \cref{ch:transcendental} makes available. Together, $H\le G\le A\le Q$ for the harmonic, geometric, arithmetic and quadratic means; Hardy, Littlewood and P\'olya develop the whole family of such inequalities from convexity~\cite{hardy1952inequalities}.
 
 \subsection{The Second Derivative Test}
 

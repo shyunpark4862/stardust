@@ -478,7 +478,7 @@ Since $b_n=a_n(1+1/n)>a_n$, we have $2=a_1\le a_n<b_n\le b_1=4$ for all $n$. So 
 The number $e$ is the limit $\lim_{n\to\infty}(1+1/n)^n$.
 \end{definition}
 
-The bounds of the theorem with $n=1000$ give $2.71692<e<2.71965$, and the value is $e=2.718281828459045\ldots$. The convergence of $(1+1/n)^n$ is slow: the error $e-(1+1/n)^n$ is about $e/(2n)$ for large $n$, so each additional correct digit costs a tenfold increase of $n$, as \cref{tab:compound} shows. \Cref{ch:series} proves that $e=\sum_{k=0}^\infty1/k!$, a series from which $e$ is computed far more quickly, and Chapter~9 makes $e$ the base of the exponential function and of the natural logarithm. The letter $e$ for this number was introduced by Euler~\cite{maor1994}.
+The bounds of the theorem with $n=1000$ give $2.71692<e<2.71965$, and the value is $e=2.718281828459045\ldots$. The convergence of $(1+1/n)^n$ is slow: the error $e-(1+1/n)^n$ is about $e/(2n)$ for large $n$, so each additional correct digit costs a tenfold increase of $n$, as \cref{tab:compound} shows. \Cref{ch:series} proves that $e=\sum_{k=0}^\infty1/k!$, a series from which $e$ is computed far more quickly, and \cref{ch:transcendental} makes $e$ the base of the exponential function and of the natural logarithm. The letter $e$ for this number was introduced by Euler~\cite{maor1994}.
 
 \begin{note}{Limits on a computer}
 A limit is a statement about all sufficiently large $n$, and a computer can only ever evaluate finitely many terms, each with rounding errors. The two limitations interact, and the interaction is easy to observe. Evaluated in the binary64 floating-point arithmetic used by almost all scientific software (Volume~V), $(1+1/n)^n$ approaches $e$ at first as \cref{tab:compound} predicts: the error is $-1.4\times10^{-6}$ for $n=10^6$. For $n=10^9$ the computed value is $2.7182820520\ldots$, which is already \emph{larger} than $e$ by $2.2\times10^{-7}$, contradicting \cref{thm:e}; for $n=10^{15}$ it is $3.035\ldots$, and for $n=10^{16}$ and beyond it is exactly $1$. The cause is the first operation. The computer cannot represent $1+1/n$ exactly; just above $1$ the representable numbers are spaced $2^{-52}\approx2.2\times10^{-16}$ apart, and $1+10^{-15}$ is replaced by the nearest of them, $1+5\cdot2^{-52}\approx1+1.11\times10^{-15}$. Raised to the power $10^{15}$, this number gives approximately $e^{1.11}\approx3.035$. For $n\ge10^{16}$ the sum $1+1/n$ is rounded to $1$, and every power of $1$ is $1$. The lesson is general: a sequence that converges in exact arithmetic need not produce better and better approximations when its terms are computed in floating point, and an algorithm based on a limit must control the rounding errors as well as the distance to the limit. The analysis of such errors is the subject of Volume~V.
@@ -752,7 +752,7 @@ The sequential characterisation also holds in these settings, with the same proo
 
 \subsection{The Limit of \texorpdfstring{$(\sin x)/x$}{sin(x)/x}}
 
-The derivative of the sine at $0$ is the limit of $(\sin x)/x$ as $x\to0$, and the derivatives of all trigonometric functions are derived from this limit in \cref{ch:differentiation}. A rigorous treatment of the trigonometric functions must wait until Chapter~9, which defines them by power series; here, as in \cref{ch:numbers}, we take the following facts from school geometry.
+The derivative of the sine at $0$ is the limit of $(\sin x)/x$ as $x\to0$, and the derivatives of all trigonometric functions are derived from this limit in \cref{ch:differentiation}. A rigorous treatment of the trigonometric functions must wait until \cref{ch:transcendental}, which defines them by power series; here, as in \cref{ch:numbers}, we take the following facts from school geometry.
 
 \begin{assumption}[Trigonometric facts from geometry]
 \label{asm:trig-geometry}
@@ -765,7 +765,7 @@ In addition to \cref{asm:trig}, the sine and cosine satisfy:
 \end{enumerate}
 \end{assumption}
 
-Chapter~9 proves all of these from the definitions; in particular, the area of a sector, which school geometry takes for granted, is computed there by an integral.
+\Cref{ch:transcendental} proves all of these from the definitions; in particular, the area of a sector, which school geometry takes for granted, is computed there by an integral.
 
 \begin{lemma}
 \label{lem:sin-bounds}
@@ -777,7 +777,7 @@ Consequently $|\sin x|\le|x|$ for every real number $x$, with equality only for 
 \end{lemma}
 
 \begin{proof}
-Let $O=(0,0)$, $A=(1,0)$, $P=(\cos x,\sin x)$ and $T=(1,\tan x)$, as in \cref{fig:sin-area}. The point $P$ lies on the unit circle at angle $x$, and $T$ is the point where the ray from $O$ through $P$ meets the vertical line through $A$, since $T=P/\cos x$. The triangle $OAP$ lies inside the sector $OAP$, which lies inside the triangle $OAT$, and each region is strictly smaller than the next. The triangle $OAP$ has base $OA=1$ and height $\sin x$, the sector has area $x/2$ by \cref{asm:trig-geometry}\,(iii), and the triangle $OAT$ has base $1$ and height $\tan x$. Hence $\frac12\sin x<\frac12x<\frac12\tan x$. (Besides \cref{asm:trig-geometry}\,(iii), the argument uses two further facts of school geometry: the area of a triangle is half its base times its height, and a region that lies inside another and misses part of it has the smaller area. Chapter~9 proves the inequality $\sin x<x<\tan x$ directly from the definitions.)
+Let $O=(0,0)$, $A=(1,0)$, $P=(\cos x,\sin x)$ and $T=(1,\tan x)$, as in \cref{fig:sin-area}. The point $P$ lies on the unit circle at angle $x$, and $T$ is the point where the ray from $O$ through $P$ meets the vertical line through $A$, since $T=P/\cos x$. The triangle $OAP$ lies inside the sector $OAP$, which lies inside the triangle $OAT$, and each region is strictly smaller than the next. The triangle $OAP$ has base $OA=1$ and height $\sin x$, the sector has area $x/2$ by \cref{asm:trig-geometry}\,(iii), and the triangle $OAT$ has base $1$ and height $\tan x$. Hence $\frac12\sin x<\frac12x<\frac12\tan x$. (Besides \cref{asm:trig-geometry}\,(iii), the argument uses two further facts of school geometry: the area of a triangle is half its base times its height, and a region that lies inside another and misses part of it has the smaller area. \Cref{ch:transcendental} proves the inequality $\sin x<x<\tan x$ directly from the definitions.)
 
 For the consequence, the case $0<x<\pi/2$ has just been shown, with strict inequality. If $x\ge\pi/2$, then $|\sin x|\le1<\pi/2\le x$ by \cref{asm:trig}\,(i) and $\pi>3$. For $x<0$ apply these cases to $-x$ and use $|\sin(-x)|=|\sin x|$; and $\sin0=0$.
 \end{proof}
@@ -831,7 +831,7 @@ If $x_n\to0$ with $x_n\ne0$, then $x_n/2\to0$, so $\sin(x_n/2)/(x_n/2)\to1$ by t
 
 Numerically, $\sin(0.1)/0.1=0.998334\ldots$ and $\sin(0.01)/0.01=0.99998333\ldots$; the deviation from $1$ is about $x^2/6$, as the Taylor expansion of \cref{ch:series} will explain. The two limits say that, for small $x$ measured in radians, $\sin x\approx x$ and $\cos x\approx1-x^2/2$, approximations used throughout physics and engineering. They depend on measuring angles in radians: with $x$ in degrees, $\sin x/x$ tends to $\pi/180$.
 
-A word on logic. \Cref{sec:existence} warned that proving $\lim_{x\to0}(\sin x)/x=1$ with l'H\^opital's rule is circular, because the rule needs the derivative of the sine, which is computed from this very limit. The geometric proof above is not circular, provided that the area of a sector is known independently of the derivative of the sine; Chapter~9 provides such a foundation.
+A word on logic. \Cref{sec:existence} warned that proving $\lim_{x\to0}(\sin x)/x=1$ with l'H\^opital's rule is circular, because the rule needs the derivative of the sine, which is computed from this very limit. The geometric proof above is not circular, provided that the area of a sector is known independently of the derivative of the sine; \cref{ch:transcendental} provides such a foundation.
 
 \section{Continuity}
 \label{sec:continuity}
@@ -1496,7 +1496,7 @@ We sketch the argument; Spivak gives the details~\cite{spivak2008calculus}. If $
 \[
 \arcsin\colon[-1,1]\to[-\pi/2,\pi/2],
 \]
-which is continuous and strictly increasing by \cref{thm:inverse-continuous}; \cref{fig:monotone}B shows both graphs. In the same way the restriction of the cosine to $[0,\pi]$, which is strictly decreasing from $1$ to $-1$, has the continuous inverse $\arccos\colon[-1,1]\to[0,\pi]$, and the restriction of the tangent to $(-\pi/2,\pi/2)$, which is strictly increasing with $\tan x\to\mp\infty$ as $x\to\mp\pi/2$, has the continuous inverse $\arctan\colon\mathbb R\to(-\pi/2,\pi/2)$. Similarly, Chapter~9 defines the natural logarithm as the inverse of the exponential function, and its continuity comes from \cref{thm:inverse-continuous}. Chapter~9 also proves the monotonicity properties assumed here.
+which is continuous and strictly increasing by \cref{thm:inverse-continuous}; \cref{fig:monotone}B shows both graphs. In the same way the restriction of the cosine to $[0,\pi]$, which is strictly decreasing from $1$ to $-1$, has the continuous inverse $\arccos\colon[-1,1]\to[0,\pi]$, and the restriction of the tangent to $(-\pi/2,\pi/2)$, which is strictly increasing with $\tan x\to\mp\infty$ as $x\to\mp\pi/2$, has the continuous inverse $\arctan\colon\mathbb R\to(-\pi/2,\pi/2)$. Similarly, \cref{ch:transcendental} defines the natural logarithm as the inverse of the exponential function, and its continuity comes from \cref{thm:inverse-continuous}. \Cref{ch:transcendental} also proves the monotonicity properties assumed here.
 
 \begin{figure}
 \sdpanel{A}{\begin{tikzpicture}
