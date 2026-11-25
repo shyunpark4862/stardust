@@ -19,7 +19,7 @@
 | 12 | Optimization | 〃 | `sd.optimize` |
 | 13 | Random Numbers and Distributions | 〃 | `sd.random`, `sd.stats` |
 | 14 | Statistical Inference | 〃 | `sd.htest` |
-| 15 | Statistical Models and Learning | 〃 | `sd.regression`, `sd.cluster`, (embed, classify) |
+| 15 | Statistical Models | 〃 | `sd.regression` |
 | 16 | Geometry and Graphics | 〃 | `sd.spatial`, `sd.plot` |
 
 ## 예비 권의 과목 구성 — 과목 하나가 부(Part) 하나
@@ -55,7 +55,7 @@
 4. Error-Free Transformations — TwoSum, TwoProduct, FMA, double-double 산술
 5. Summation — 재귀·쌍별·보상 합, 정확한 누산, 내적
 6. Polynomial and Series Evaluation — Horner, 보상 Horner, 급수 절단
-7. Decimal Conversion — 십진수 읽기(Eisel–Lemire), 최단 왕복 출력(Ryū)
+7. Decimal Conversion — 십진수 읽기(Eisel–Lemire), 최단 왕복 출력(Ryū; stardust는 libc++의 `std::to_chars`에 맡긴다)
 8. Compilers and Reproducibility — 결합법칙, 축약, 스레드와 비트 재현성
 
 ### 6권 Arrays (14장) — `sd`
@@ -82,7 +82,7 @@
 5. Selection, Alignment, and Assignment — `[] .loc .iloc`
 6. Elementwise Operations — 산술·비교, `astype`, 문자열 열
 7. Reductions and Descriptive Methods
-8. Uniqueness and Counting — `unique duplicated drop_duplicates value_counts`
+8. Uniqueness and Counting — `unique_values duplicated drop_duplicates value_counts`
 9. Group-By — 키 인코딩, 해시 집계, `agg`
 10. Sorting Tables — `sort_values sort_index`
 11. Joins and Concatenation — `merge`, `concat`
@@ -208,16 +208,13 @@ Part II Methods
 9. Multiple Comparisons — `tukey_hsd dunnett multipletests combine_pvalues`
 10. Resampling and Monte Carlo — `permutation_test monte_carlo_test bootstrap`
 
-### 15권 Statistical Models and Learning (9장+) — `sd.regression`, `sd.cluster`, (embed, classify)
+### 15권 Statistical Models (6장) — `sd.regression`
 1. Linear Models — `ols wls gls`, 추론, 샌드위치 공분산
 2. Model Diagnostics and Comparison — `anova`, 영향력
 3. Generalized Linear Models — `glm`, IRLS
 4. Regularized Regression — `ridge lasso elastic_net *_cv`, 좌표 하강
 5. Robust and Quantile Regression — `rlm theilslopes quantreg`
 6. Nonlinear Regression and Variable Selection — `nls stepwise best_subset`
-7. Hierarchical Clustering (영역 완성 뒤)
-8. Partitioning and Density-Based Clustering (영역 완성 뒤)
-9. Embedding and Classification (영역이 생긴 뒤)
 
 ### 16권 Geometry and Graphics (11장) — `sd.spatial`, `sd.plot`
 Part I Geometry
@@ -233,6 +230,19 @@ Part II Graphics
 9. Statistical Graphics — `histogram density boxplot qq ecdf`
 10. Three-Dimensional Graphics — `surface scatter3d curve3d`
 11. File Formats — PNG, PDF, SVG
+
+## API 대조 결과 (2026-11-25, 기준 커밋 66fe52e, 전체는 API-INVENTORY.md)
+- 완료 영역 17개(공개 이름 738개)는 모두 권이 있다. `sd.cluster`·embed·classify는 구현 중·예정이라 뺐다.
+- 장 줄의 API 이름은 대표만 적은 것이다. 장의 얼개를 짤 때 API-INVENTORY.md의 "목차 대조 (a)" 목록으로 빠짐없이 채운다.
+- 내용 자체가 목차에 없어 넣을 자리를 정해 둔 것:
+  - 배열 `diff`, `logaddexp` → 6권 8·11장. 배열과 프레임의 경계(`to_array`, `to_numpy`) → 7권 3장
+  - 복소 인자의 특수 함수 → 10권 해당 장마다 절로. `nbdtr` 계열 → 10권 17장
+  - FFT 도우미(`fftfreq fftshift next_fast_len`) → 11권 12장. FITPACK 계열 스플라인(`make_lsq_spline make_splrep make_splprep generate_knots`) → 11권 4·16장
+  - `approx_fprime`, `check_grad` → 11권 6장
+  - 다변량 cdf의 Genz 준몬테카를로 → 13권 8장
+  - 영역 공통의 결과 객체와 `summary()` → 15권 1장에서 소개, 각 권에서 사용
+  - plot의 기본 표시(`scatter bar errorbar area step text annotate`), 벡터장(`phase vectorfield streamlines`), 모형 그림 → 16권 6·8·9장에 절 추가
+  - htest 32개, regression의 명세 검정·`penalized_glm`·`siegelslopes`, graph 6개 → 해당 장에 이름 보충
 
 ## 주제 권 앞머리로 보낸 이론 (완전 증명)
 - 반올림 오차 해석, 조건수와 안정성, 오차 없는 변환 → 5권
