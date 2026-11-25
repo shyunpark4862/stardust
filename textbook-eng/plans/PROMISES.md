@@ -14,7 +14,7 @@
 - 18장 (Inner Products and Orthogonality): (10장에서) prop:projection-line(직선 위 정사영)을 부분공간으로 일반화, 일반 X에 대한 정규방정식 X^T X β = X^T y(10장은 직선 맞춤 eq:normal-equations만), 잔차가 X의 열들과 직교
 - 19장 (Eigenvalues and Eigenvectors): (10장에서) 고윳값·고유벡터(thm:definiteness-criteria 앞에서 정의만)
 - 20장 (Symmetric Matrices and Quadratic Forms): (10장에서) 스펙트럼 정리와 양정치의 고윳값 판정(thm:definiteness-criteria (i)), Sylvester 판정과 LDL^T(thm:definiteness-criteria (ii)), 반정치 A와 ⟨w,Aw⟩=0 ⇒ Aw=0(degenerate 임계점 문단), 구면 위 이차 형식의 최대·최소가 최대·최소 고윳값이고 Rayleigh 몫(sec:lagrange 예; 대칭 행렬에 실수 고윳값이 있다는 것을 Lagrange 승수로 보이는 길)
-- 21장 (The Singular Value Decomposition): (10장에서) ‖A‖_2가 최대 특이값(prop:matrix-norms 뒤 문단), ‖A‖_2 ≤ ‖A‖_F
+- 21장 (The Singular Value Decomposition): (10장에서) ‖A‖_2가 최대 특이값(prop:matrix-norms 뒤 문단; ‖A‖_2 ≤ ‖A‖_F는 10장 prop:matrix-norms (i)에서 이미 증명)
 - 22·25장 (Canonical Forms and Matrix Functions / Linear Systems): (9장에서) f'=λf의 유일성(thm:exp-ode)을 연립계 f'=Af와 행렬 지수 e^{tA}로 확장
 - 23장 (First-Order Equations): (9장에서) 지수적 성장·감쇠와 반감기(sec:exp-log-numerics), 현수선의 미분방정식 y''=(1/a)√(1+y'^2)의 풀이(sec:hyperbolic 문단)
 - 24장 (Linear Equations of Higher Order): (9장에서) f''=−ω²f의 해 공간(lem:harmonic-unique를 일반화), 진동

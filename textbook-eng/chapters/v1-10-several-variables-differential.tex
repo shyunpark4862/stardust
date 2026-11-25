@@ -115,7 +115,7 @@ namely $\theta=\arccos\bigl(\langle\mathbf x,\mathbf y\rangle/(\|\mathbf x\|\|\m
 \]
 the law of cosines for the triangle with vertices $\mathbf 0$, $\mathbf x$ and $\mathbf y$. In the plane, writing $\mathbf x=\|\mathbf x\|(\cos\alpha,\sin\alpha)$ and $\mathbf y=\|\mathbf y\|(\cos\beta,\sin\beta)$ by \cref{prop:circle-points}, the addition formula gives $\langle\mathbf x,\mathbf y\rangle=\|\mathbf x\|\|\mathbf y\|\cos(\alpha-\beta)$, so that $\theta$ is the usual angle between the two arrows.
 
-Two vectors are \term{orthogonal}, written $\mathbf x\perp\mathbf y$, if $\langle\mathbf x,\mathbf y\rangle=0$; for nonzero vectors this means $\theta=\pi/2$. For orthogonal vectors, \eqref{eq:norm-expansion} becomes the theorem of Pythagoras, $\|\mathbf x+\mathbf y\|^2=\|\mathbf x\|^2+\|\mathbf y\|^2$. The vectors of the standard basis are pairwise orthogonal and have length $1$. Orthogonality is the key to the following construction, which recurs in least squares problems throughout the series.
+Two vectors are \term{orthogonal}, written $\mathbf x\perp\mathbf y$, if $\langle\mathbf x,\mathbf y\rangle=0$; for nonzero vectors this means $\theta=\pi/2$. For orthogonal vectors, \eqref{eq:norm-expansion} becomes the theorem of Pythagoras, $\|\mathbf x+\mathbf y\|^2=\|\mathbf x\|^2+\|\mathbf y\|^2$. The vectors of the standard basis are pairwise orthogonal and have length $1$. The following construction rests on orthogonality, and it recurs in least squares problems throughout the series.
 
 \begin{proposition}[Orthogonal projection onto a line]
 \label{prop:projection-line}
@@ -277,7 +277,7 @@ For $A\in\mathbb R^{n\times n}$ there is a number $\det A$, a polynomial in the 
 \end{theorem}
 
 \begin{proof}
-The determinant is defined as the sum $\sum_\pi\operatorname{sign}(\pi)\,a_{1\pi(1)}\cdots a_{n\pi(n)}$ over all permutations $\pi$ of $\{1,\ldots,n\}$, where the sign is $\pm1$ according to the parity of the number of inversions of $\pi$; for $n=2$ and $n=3$ this is the formula above. Its key properties, linearity in each column, the change of sign when two columns are exchanged, and $\det I=1$, characterise it. Gaussian elimination, which Chapter~14 develops, reduces $A$ by row operations of known effect on the determinant to a triangular matrix, whose determinant is the product of the diagonal entries; this proves (i) and the product rule (ii). Part (iii) is Cramer's rule: the inverse is the transpose of the matrix of cofactors divided by $\det A$. Chapters~14 and~17 give the details; see also Horn and Johnson~\cite[Sects.~0.3 and~0.5]{horn2013}.
+The determinant is defined as the sum $\sum_\pi\operatorname{sign}(\pi)\,a_{1\pi(1)}\cdots a_{n\pi(n)}$ over all permutations $\pi$ of $\{1,\ldots,n\}$, where the sign is $\pm1$ according to the parity of the number of inversions of $\pi$; for $n=2$ and $n=3$ this is the formula above. It is characterised by three properties: it is linear in each column, it changes sign when two columns are exchanged, and $\det I=1$. Gaussian elimination, which Chapter~14 develops, reduces $A$ by row operations of known effect on the determinant to a triangular matrix, whose determinant is the product of the diagonal entries; this proves (i) and the product rule (ii). Part (iii) is the adjugate formula, the matrix form of Cramer's rule: the inverse is the transpose of the matrix of cofactors divided by $\det A$, and each cofactor is, up to sign, the determinant of a submatrix. Chapters~14 and~17 give the details; see also Horn and Johnson~\cite[Sects.~0.3 and~0.5]{horn2013}.
 \end{proof}
 
 In computations one almost never forms $A^{-1}$ or $\det A$ by these formulas, whose cost grows like $n!$; one solves the system $A\mathbf x=\mathbf b$ by Gaussian elimination in about $\frac23n^3$ operations, which Volume~VIII studies as the LU factorisation~\cite{golub2013}. In this chapter the inverse appears mostly as a theoretical device, and the systems that actually have to be solved, in Newton's method of \cref{sec:newton-n}, are of size $2\times2$.
@@ -384,7 +384,7 @@ Let $\mathbf f\colon D\to\mathbb R^m$ with $D\subseteq\mathbb R^n$, let $\mathbf
 \]
 \end{definition}
 
-We write vector-valued functions in bold, $\mathbf f=(f_1,\ldots,f_m)$, with real-valued \term{component functions} $f_i$, and real-valued functions in ordinary type. The proof of \cref{thm:sequential-limit} applies word for word with norms in place of absolute values, and gives the \emph{sequential characterisation}: $\mathbf f(\mathbf x)\to\mathbf L$ as $\mathbf x\to\mathbf a$ if and only if $\mathbf f(\mathbf x_k)\to\mathbf L$ for every sequence $(\mathbf x_k)$ in $D\setminus\{\mathbf a\}$ with $\mathbf x_k\to\mathbf a$. With \cref{prop:componentwise}, it follows that $\mathbf f(\mathbf x)\to\mathbf L$ if and only if $f_i(\mathbf x)\to L_i$ for every component, and that the limit laws hold for sums, products with scalar functions and inner products.
+We write vector-valued functions in bold, $\mathbf f=(f_1,\ldots,f_m)$, with real-valued \term{component functions} $f_i$, and real-valued functions in ordinary type. The proof of \cref{thm:sequential-limit} applies unchanged, with norms in place of absolute values, and gives the \emph{sequential characterisation}: $\mathbf f(\mathbf x)\to\mathbf L$ as $\mathbf x\to\mathbf a$ if and only if $\mathbf f(\mathbf x_k)\to\mathbf L$ for every sequence $(\mathbf x_k)$ in $D\setminus\{\mathbf a\}$ with $\mathbf x_k\to\mathbf a$. With \cref{prop:componentwise}, it follows that $\mathbf f(\mathbf x)\to\mathbf L$ if and only if $f_i(\mathbf x)\to L_i$ for every component, and that the limit laws hold for sums, products with scalar functions and inner products.
 
 What is new is the variety of ways in which $\mathbf x$ can approach $\mathbf a$. On the real line a point can be approached only from the left and from the right; in the plane it can be approached along infinitely many lines, along spirals and along curves of every kind, and the limit exists only if all these approaches give the same result. Two examples show what can happen; \cref{fig:path-limits} shows their level sets.
 
@@ -424,7 +424,7 @@ and on the axes $g=0$. So $g$ tends to $0$ along every straight line through the
 \addplot[black, line width=1.0pt, domain=-1.1:1.1, samples=80] {x^2};
 \addplot[black, dashed, line width=1.0pt, domain=-1.1:1.1, samples=80] {-x^2};
 \addplot[black, line width=0.45pt, domain=-1.1:1.1, samples=2] {0};
-\addplot[black!45, densely dotted, line width=0.7pt, domain=-1.1:1.1, samples=2] {0.8*x};
+\addplot[black!80, densely dotted, line width=0.8pt, domain=-1.1:1.1, samples=2] {0.8*x};
 \node[font=\scriptsize, anchor=west, fill=white, inner sep=1pt] at (axis cs:0.78,0.6) {$\frac12$};
 \node[font=\scriptsize, anchor=west, fill=white, inner sep=1pt] at (axis cs:0.78,-0.6) {$-\frac12$};
 \end{axis}
@@ -468,7 +468,7 @@ Let $K\subseteq\mathbb R^n$ be nonempty, closed and bounded, and let $f\colon K\
 The proofs of \cref{thm:bounded,thm:evt} apply verbatim, with the Bolzano--Weierstrass theorem in $\mathbb R^n$ (\cref{thm:bolzano-weierstrass-rn}) in place of the one-dimensional theorem and \cref{prop:closed-sequences} in place of the closedness of $[a,b]$. In brief: if $f$ were unbounded above, there would be $\mathbf x_k\in K$ with $f(\mathbf x_k)>k$, and a subsequence would converge to a point $\mathbf c\in K$, at which $f$ would be continuous but unbounded on every neighbourhood. So $M\coloneqq\sup f(K)$ is finite, and points $\mathbf x_k\in K$ with $f(\mathbf x_k)>M-1/(k+1)$ have a subsequence converging to some $\mathbf c\in K$, where $f(\mathbf c)=M$ by continuity. The minimum is the maximum of $-f$.
 \end{proof}
 
-All three hypotheses are needed, for the reasons illustrated by \cref{fig:evt-fail}. The closed bounded subsets of $\mathbb R^n$ are the \term{compact} sets of Volume~II, where the theorem is proved in greater generality~\cite{rudin1976}. In this chapter the theorem has two kinds of use. It proves that optimisation problems on closed bounded sets have solutions, as for the problems with constraints in \cref{sec:lagrange}; and it turns a strict inequality on the unit sphere into a uniform one. For instance, the supremum in the definition of $\|A\|_2$ is a maximum: the function $\mathbf x\mapsto\|A\mathbf x\|$ is continuous on the unit sphere, which is closed and bounded, so it attains its largest value at some unit vector $\mathbf x$, and $\|A\mathbf x\|=\|A\|_2$.
+All three hypotheses are needed, for the reasons illustrated by \cref{fig:evt-fail}. The closed bounded subsets of $\mathbb R^n$ are the \term{compact} sets of Volume~II, where the theorem is proved in greater generality~\cite[Thm.~4.16]{rudin1976}. In this chapter the theorem has two kinds of use. It proves that optimisation problems on closed bounded sets have solutions, as for the problems with constraints in \cref{sec:lagrange}; and it turns a strict inequality on the unit sphere into a uniform one. For instance, the supremum in the definition of $\|A\|_2$ is a maximum: the function $\mathbf x\mapsto\|A\mathbf x\|$ is continuous on the unit sphere, which is closed and bounded, so it attains its largest value at some unit vector $\mathbf x$, and $\|A\mathbf x\|=\|A\|_2$.
 
 \section{Partial Derivatives}
 \label{sec:partial-derivatives}
@@ -512,7 +512,7 @@ For $f(x,y)=x^2y^3+\sin(xy)$ we find
 \[
 \partial_y\partial_xf=6xy^2+\cos(xy)-xy\sin(xy)=\partial_x\partial_yf,
 \]
-and also $\partial_x^2f=2y^3-y^2\sin(xy)$ and $\partial_y^2f=6x^2y-x^2\sin(xy)$. The two mixed derivatives agree, as they do for every polynomial: for a monomial $x^py^q$ both are $pq\,x^{p-1}y^{q-1}$. That they always agree for sufficiently smooth functions was used freely by Euler and Clairaut in the 1730s and 1740s; the first proof generally accepted as rigorous is due to Schwarz in 1873~\cite{schwarz1873,hairer1996analysis}.
+and also $\partial_x^2f=2y^3-y^2\sin(xy)$ and $\partial_y^2f=6x^2y-x^2\sin(xy)$. The two mixed derivatives agree, as they do for every polynomial: for a monomial $x^py^q$ both are $pq\,x^{p-1}y^{q-1}$. That they always agree for sufficiently smooth functions was asserted, with supporting arguments, by Euler and by Clairaut around 1740, and many later authors offered proofs; the early arguments had gaps, and the first proof generally accepted as rigorous is due to Schwarz in 1873~\cite{schwarz1873}\cite[pp.~317--318]{hairer1996analysis}.
 
 \begin{theorem}[Symmetry of mixed partial derivatives]
 \label{thm:schwarz}
@@ -616,7 +616,7 @@ The last term is bounded by $\|A\|_2\|\mathbf h\|^2$, by the Cauchy--Schwarz ine
 
 (iii) The function $h(x,y)=x^2y/(x^2+y^2)$, with $h(0,0)=0$, is continuous (\cref{sec:limits-rn}), and its partial derivatives at the origin vanish, since $h(t,0)=h(0,t)=0$. If it were differentiable there, its derivative would be the zero matrix, and $h(\mathbf v)/\|\mathbf v\|\to0$ as $\mathbf v\to\mathbf0$. But on the diagonal, $h(t,t)/\|(t,t)\|=(t/2)/(\sqrt2|t|)=\pm1/(2\sqrt2)$. So $h$ is continuous, has partial derivatives, and is not differentiable at the origin; its graph has no tangent plane there, although it has tangent lines in the two coordinate directions.
 
-Fortunately, the functions met in practice are differentiable, and the following theorem, which has no counterpart in one variable, where differentiability is the existence of a single limit, shows why: continuity of the partial derivatives suffices.
+Fortunately, the functions met in practice are differentiable, and the following theorem shows why: continuity of the partial derivatives suffices. It has no counterpart in one variable, where differentiability is the existence of a single limit.
 
 \begin{theorem}[Continuous partial derivatives imply differentiability]
 \label{thm:c1-differentiable}
@@ -754,16 +754,17 @@ In the language of vectors, the tangent plane is the set of points $(\mathbf x,z
 \begin{tikzpicture}
 \begin{axis}[view={50}{28}, hide axis, width=0.66\textwidth, height=0.52\textwidth,
   xmin=-2, xmax=2.4, ymin=-2, ymax=2.4, zmin=-0.6, zmax=2.6, clip=false]
-\addplot3[mesh, draw=black!45, line width=0.35pt, domain=-2:2, y domain=-2:2, samples=17, samples y=17] {2-0.5*x^2-0.25*y^2};
-\addplot3[surf, shader=flat, fill=black!12, draw=black!75, line width=0.4pt, fill opacity=0.85, domain=0.35:1.65, y domain=0.35:1.65, samples=4, samples y=4] {1.25-(x-1)-0.5*(y-1)};
-\addplot3[black, line width=1.0pt, domain=-2:2, samples=60, samples y=0] (x,1,{2-0.5*x^2-0.25});
+% opaque surface with hidden lines removed; the curve y=1 is drawn only where it is visible (x>-0.25)
+\addplot3[surf, shader=flat, fill=white, draw=black!40, line width=0.3pt, z buffer=sort, domain=-2:2, y domain=-2:2, samples=13, samples y=13] {2-0.5*x^2-0.25*y^2};
+\addplot3[surf, shader=flat, fill=black!18, draw=black!70, line width=0.4pt, fill opacity=0.9, domain=0.3:1.7, y domain=0.3:1.7, samples=3, samples y=3] {1.25-(x-1)-0.5*(y-1)};
+\addplot3[black, line width=1.0pt, domain=-0.25:2, samples=50, samples y=0] (x,1,{2-0.5*x^2-0.25});
 \addplot3[black, line width=1.0pt, domain=-2:2, samples=60, samples y=0] (1,x,{2-0.5-0.25*x^2});
 \addplot3[black, only marks, mark=*, mark size=1.6pt] coordinates {(1,1,1.25)};
-\draw[-{Latex[length=1.6mm]}, line width=0.4pt] (axis cs:0,0,-0.6) -- (axis cs:2.4,0,-0.6) node[below] {\scriptsize$x$};
-\draw[-{Latex[length=1.6mm]}, line width=0.4pt] (axis cs:0,0,-0.6) -- (axis cs:0,2.4,-0.6) node[below right] {\scriptsize$y$};
-\draw[-{Latex[length=1.6mm]}, line width=0.4pt] (axis cs:0,0,-0.6) -- (axis cs:0,0,2.6) node[left] {\scriptsize$z$};
+\draw[-{Latex[length=1.6mm]}, line width=0.4pt] (axis cs:2.4,-2.4,-0.9) -- (axis cs:3.2,-2.4,-0.9) node[below] {\scriptsize$x$};
+\draw[-{Latex[length=1.6mm]}, line width=0.4pt] (axis cs:2.4,-2.4,-0.9) -- (axis cs:2.4,-1.6,-0.9) node[right] {\scriptsize$y$};
+\draw[-{Latex[length=1.6mm]}, line width=0.4pt] (axis cs:2.4,-2.4,-0.9) -- (axis cs:2.4,-2.4,-0.1) node[left] {\scriptsize$z$};
 \end{axis}
-\end{tikzpicture}}{The paraboloid $z=2-\frac12x^2-\frac14y^2$ (grey mesh) and its tangent plane (shaded) at the point $(1,1,\frac54)$ (dot). The two curves through the point (thick) are cut out by the planes $y=1$ and $x=1$; their slopes at the point are the partial derivatives $-1$ and $-\frac12$, and their tangent lines lie in the tangent plane $z=\frac54-(x-1)-\frac12(y-1)$.\label{fig:tangent-plane}}
+\end{tikzpicture}}{The paraboloid $z=2-\frac12x^2-\frac14y^2$ (white with a grey grid) and its tangent plane (shaded) at the point $(1,1,\frac54)$ (dot). The two curves through the point (thick) are cut out by the planes $y=1$ and $x=1$; their slopes at the point are the partial derivatives $-1$ and $-\frac12$, and their tangent lines lie in the tangent plane $z=\frac54-(x-1)-\frac12(y-1)$. The arrows show the directions of the coordinate axes.\label{fig:tangent-plane}}
 \end{figure}
 
 \begin{note}{Derivatives in infinite dimensions}
@@ -832,7 +833,7 @@ In words: to find the rate of change of $h_i$ with respect to $x_j$, add, over a
 \]
 each path from $z$ to $x$ through an intermediate variable contributing one term. The formula looks like a cancellation of fractions only if one forgets that there is a sum.
 
-Two special cases are used constantly. For a differentiable \term{curve} $\boldsymbol\gamma\colon I\to\mathbb R^n$ on an open interval $I$, the derivative $D\boldsymbol\gamma(t)$ is the $n\times1$ matrix of the derivatives of the components, which we write as the \term{velocity vector} $\boldsymbol\gamma'(t)=(\gamma_1'(t),\ldots,\gamma_n'(t))$. For a real-valued $f$, the chain rule gives
+Two special cases recur throughout the book. For a differentiable \term{curve} $\boldsymbol\gamma\colon I\to\mathbb R^n$ on an open interval $I$, the derivative $D\boldsymbol\gamma(t)$ is the $n\times1$ matrix of the derivatives of the components, which we write as the \term{velocity vector} $\boldsymbol\gamma'(t)=(\gamma_1'(t),\ldots,\gamma_n'(t))$. For a real-valued $f$, the chain rule gives
 \begin{equation}
 \frac d{dt}f(\boldsymbol\gamma(t))=Df(\boldsymbol\gamma(t))\,\boldsymbol\gamma'(t)=\bigl\langle\nabla f(\boldsymbol\gamma(t)),\boldsymbol\gamma'(t)\bigr\rangle ,
 \label{eq:chain-curve}
@@ -874,9 +875,9 @@ The first term of the second line is $-ru_r$. Dividing the second line by $r^2$ 
 \[
 f_{xx}+f_{yy}=u_{rr}+\frac1ru_r+\frac1{r^2}u_{\theta\theta}\qquad(r>0)
 \]
-for the \term{Laplacian} $f_{xx}+f_{yy}$ in polar coordinates. For $f(x,y)=\ln(x^2+y^2)$, that is, $u=2\ln r$, the right side is $-2/r^2+2/r^2=0$ without any computation in Cartesian coordinates. The Laplacian is the most important differential operator of mathematical physics, and formulas of this kind convert it to the coordinates that suit the symmetry of a problem.
+for the \term{Laplacian} $f_{xx}+f_{yy}$ in polar coordinates. For $f(x,y)=\ln(x^2+y^2)$, that is, $u=2\ln r$, the right side is $-2/r^2+2/r^2=0$ without any computation in Cartesian coordinates. The Laplacian is one of the central differential operators of mathematical physics, and formulas of this kind convert it to the coordinates that suit the symmetry of a problem.
 
-\emph{Homogeneous functions.} A function $f$ on $\mathbb R^n\setminus\{\mathbf0\}$ is \term{homogeneous of degree} $p$ if $f(t\mathbf x)=t^pf(\mathbf x)$ for all $t>0$ and $\mathbf x$; examples are $\|\mathbf x\|$ ($p=1$), quadratic forms ($p=2$) and $x/y$ on $y\ne0$ ($p=0$). If $f$ is differentiable, differentiating both sides with respect to $t$ at $t=1$, by \eqref{eq:chain-curve} with $\boldsymbol\gamma(t)=t\mathbf x$, gives \term{Euler's relation}
+\emph{Homogeneous functions.} Let $f$ be defined on an open set $U$ that contains $t\mathbf x$ whenever it contains $\mathbf x$ and $t>0$, such as $\mathbb R^n\setminus\{\mathbf0\}$. The function is \term{homogeneous of degree} $p$ if $f(t\mathbf x)=t^pf(\mathbf x)$ for all $t>0$ and $\mathbf x\in U$; examples are $\|\mathbf x\|$ ($p=1$), quadratic forms ($p=2$) and $x/y$ on the half-plane $y>0$ ($p=0$). If $f$ is differentiable, differentiating both sides with respect to $t$ at $t=1$, by \eqref{eq:chain-curve} with $\boldsymbol\gamma(t)=t\mathbf x$, gives \term{Euler's relation}
 \[
 \langle\mathbf x,\nabla f(\mathbf x)\rangle=p\,f(\mathbf x).
 \]
@@ -1134,14 +1135,16 @@ A point $\mathbf c\in U$ with $\nabla f(\mathbf c)=\mathbf0$ is a \term{critical
 \begin{tikzpicture}
 \begin{axis}[view={35}{30}, hide axis, width=0.78\textwidth, height=0.62\textwidth,
   xmin=-1.2, xmax=1.35, ymin=-1.2, ymax=1.35, zmin=-1.2, zmax=1.3, clip=false]
-\addplot3[mesh, draw=black!45, line width=0.35pt, domain=-1:1, y domain=-1:1, samples=17, samples y=17] {x^2-y^2};
-\addplot3[black, line width=1.0pt, domain=-1:1, samples=40, samples y=0] (x,0,{x^2});
-\addplot3[black, dashed, line width=1.0pt, domain=-1:1, samples=40, samples y=0] (0,x,{-x^2});
+% opaque surface; the two curves are drawn only where they are visible from this viewpoint
+\addplot3[surf, shader=flat, fill=white, draw=black!40, line width=0.3pt, z buffer=sort, domain=-1:1, y domain=-1:1, samples=13, samples y=13] {x^2-y^2};
+\addplot3[black, line width=1.0pt, domain=-1:0.5, samples=40, samples y=0] (x,0,{x^2});
+\addplot3[black, dashed, line width=1.0pt, domain=-1:0.36, samples=40, samples y=0] (0,x,{-x^2});
 \addplot3[black, only marks, mark=*, mark size=1.6pt] coordinates {(0,0,0)};
-\draw[-{Latex[length=1.6mm]}, line width=0.4pt] (axis cs:1,0,1) -- (axis cs:1.4,0,1) node[below] {\scriptsize$x$};
-\draw[-{Latex[length=1.6mm]}, line width=0.4pt] (axis cs:0,1,-1) -- (axis cs:0,1.4,-1) node[right] {\scriptsize$y$};
+\draw[-{Latex[length=1.6mm]}, line width=0.4pt] (axis cs:1.15,-1.45,-1.1) -- (axis cs:1.6,-1.45,-1.1) node[below] {\scriptsize$x$};
+\draw[-{Latex[length=1.6mm]}, line width=0.4pt] (axis cs:1.15,-1.45,-1.1) -- (axis cs:1.15,-1.0,-1.1) node[right] {\scriptsize$y$};
+\draw[-{Latex[length=1.6mm]}, line width=0.4pt] (axis cs:1.15,-1.45,-1.1) -- (axis cs:1.15,-1.45,-0.65) node[left] {\scriptsize$z$};
 \end{axis}
-\end{tikzpicture}}{The saddle $z=x^2-y^2$ over the square $[-1,1]^2$. The origin (dot) is a critical point. Along the $x$-axis (solid curve) the function has a minimum there, and along the $y$-axis (dashed curve) a maximum, so the origin is neither a local minimum nor a local maximum.\label{fig:saddle}}
+\end{tikzpicture}}{The saddle $z=x^2-y^2$ over the square $[-1,1]^2$. The origin (dot) is a critical point. Along the $x$-axis (solid curve) the function has a minimum there, and along the $y$-axis (dashed curve) a maximum, so the origin is neither a local minimum nor a local maximum. The curves are drawn where they are visible, and the arrows show the directions of the coordinate axes.\label{fig:saddle}}
 \end{figure}
 
 \subsection{The Second-Derivative Test}
@@ -1218,13 +1221,13 @@ a\,q(h,k)=(ah+bk)^2+(ac-b^2)k^2 .
 (i) If $a>0$ and $\det A>0$, the right side of \eqref{eq:complete-square} is a sum of two nonnegative terms, which vanishes only if $k=0$ and then $ah=0$, that is, only for $(h,k)=\mathbf0$; so $q>0$ away from $\mathbf0$. Conversely, if $A$ is positive definite, then $a=q(1,0)>0$, and $q(-b,a)=a(ac-b^2)$ by \eqref{eq:complete-square} with $(h,k)=(-b,a)$, so $\det A>0$. (ii) Apply (i) to $-A$, whose determinant is again $ac-b^2$. (iii) Suppose $\det A<0$. If $a\ne0$, then $q(1,0)=a$ and $q(-b,a)=a\det A$, by \eqref{eq:complete-square}, have opposite signs. If $a=0$, then $b\ne0$, because $\det A=-b^2<0$, and $q(1,t)=2bt+ct^2$ has the sign of $bt$ for small $t\ne0$, so it takes both signs. Conversely, let $A$ be indefinite. If $\det A>0$, then $a\ne0$, since $a=0$ would give $\det A=-b^2\le0$, and $A$ is definite by (i) or (ii). If $\det A=0$ and $a\ne0$, then $a\,q(h,k)=(ah+bk)^2\ge0$ by \eqref{eq:complete-square}, so $q$ never has the sign opposite to that of $a$; if $\det A=0$ and $a=0$, then $b=0$ and $q=ck^2$ has the sign of $c$ or vanishes. In neither case is $A$ indefinite, so $\det A<0$.
 \end{proof}
 
-Applied to the Hessian of a $C^2$ function of two variables at a critical point, with $D\coloneqq f_{xx}f_{yy}-f_{xy}^2$ evaluated there, the proposition and \cref{thm:second-derivative-test-rn} give the test found in every calculus book: a local minimum if $D>0$ and $f_{xx}>0$, a local maximum if $D>0$ and $f_{xx}<0$, a saddle point if $D<0$, and no conclusion if $D=0$. The test goes back to Lagrange~\cite{lagrange1797}.
+Applied to the Hessian of a $C^2$ function of two variables at a critical point, whose determinant is $\det\nabla^2f=f_{xx}f_{yy}-f_{xy}^2$ evaluated there, the proposition and \cref{thm:second-derivative-test-rn} give the test found in every calculus book: a strict local minimum if $\det\nabla^2f>0$ and $f_{xx}>0$, a strict local maximum if $\det\nabla^2f>0$ and $f_{xx}<0$, a saddle point if $\det\nabla^2f<0$, and no conclusion if $\det\nabla^2f=0$. The test goes back to Lagrange, who derived the condition $f_{xx}f_{yy}-f_{xy}^2>0$, with the sign of $f_{xx}$ deciding between maximum and minimum, in his \emph{Th\'eorie des fonctions analytiques}~\cite[pp.~188--189]{lagrange1797}.
 
 \emph{Example.} Let $f(x,y)=x^3-3xy+y^3$. The critical points solve $f_x=3x^2-3y=0$ and $f_y=3y^2-3x=0$, so $y=x^2$ and $x=y^2=x^4$, which gives $x=0$ or $x=1$: the critical points are $(0,0)$ and $(1,1)$. The Hessian is
 \[
 \nabla^2f(x,y)=\begin{pmatrix}6x&-3\\-3&6y\end{pmatrix}.
 \]
-At $(0,0)$ its determinant is $-9<0$, a saddle point. At $(1,1)$ it is $36-9=27>0$ with $f_{xx}=6>0$, a strict local minimum, with $f(1,1)=-1$. The minimum is not global: $f(x,0)=x^3\to-\infty$ as $x\to-\infty$. In two variables something stranger can happen. A differentiable function of one variable on $\mathbb R$ whose only critical point is a local minimum has a global minimum there, since by Rolle's theorem it cannot turn around elsewhere. In two variables this fails: $f(x,y)=x^2+y^2(1-x)^3$ has the single critical point $(0,0)$, because $f_y=2y(1-x)^3$ vanishes only for $y=0$ or $x=1$, and $f_x=2x-3y^2(1-x)^2$ then vanishes only at the origin; its Hessian there is $\operatorname{diag}(2,2)$, so the origin is a strict local minimum; and yet $f(4,1)=16-27=-11<0=f(0,0)$.
+At $(0,0)$ its determinant is $-9<0$, a saddle point. At $(1,1)$ it is $36-9=27>0$ with $f_{xx}=6>0$, a strict local minimum, with $f(1,1)=-1$. The minimum is not global: $f(x,0)=x^3\to-\infty$ as $x\to-\infty$. In two variables something stranger can happen. A differentiable function of one variable on $\mathbb R$ whose only critical point is a local minimum has a global minimum there: a smaller value elsewhere would force the function to turn around between the two points, and by the extreme value theorem and Fermat's theorem the turning point would be a second critical point. In two variables this fails: $f(x,y)=x^2+y^2(1-x)^3$ has the single critical point $(0,0)$, because $f_y=2y(1-x)^3$ vanishes only for $y=0$ or $x=1$, and $f_x=2x-3y^2(1-x)^2$ then vanishes only at the origin; its Hessian there is $\operatorname{diag}(2,2)$, so the origin is a strict local minimum; and yet $f(4,1)=16-27=-11<0=f(0,0)$.
 
 For larger matrices completing the square becomes laborious, and definiteness is decided by other means, which Part~III develops. We state the two most important criteria. An \term{eigenvalue} of $A\in\mathbb R^{n\times n}$ is a number $\lambda$ for which $A\mathbf x=\lambda\mathbf x$ has a solution $\mathbf x\ne\mathbf0$, an \term{eigenvector}; and the \term{leading principal minors} of $A$ are the determinants $\Delta_k$ of the upper left $k\times k$ submatrices, $k=1,\ldots,n$.
 
@@ -1238,7 +1241,7 @@ Let $A\in\mathbb R^{n\times n}$ be symmetric.
 \end{theorem}
 
 \begin{proof}
-Part (i) rests on the spectral theorem of Chapter~20: there is a matrix $Q$ with $Q^{\mathsf T}Q=I$, whose columns are eigenvectors, such that $Q^{\mathsf T}AQ=\operatorname{diag}(\lambda_1,\ldots,\lambda_n)$. With $\mathbf h=Q\mathbf y$ the quadratic form becomes $\sum_i\lambda_iy_i^2$, whose sign behaviour is read off from the signs of the $\lambda_i$, as for diagonal matrices above. Part (ii) follows from Gaussian elimination without pivoting, which, when all $\Delta_k$ are positive, writes $A=LDL^{\mathsf T}$ with $L$ lower triangular with ones on the diagonal and $D$ diagonal with the positive entries $\Delta_k/\Delta_{k-1}$; this is completing the square in $n$ variables, as \eqref{eq:complete-square} is for $n=2$. Chapters~17 and~20 give the proofs; see also Horn and Johnson~\cite[Thms.~4.1.5 and~7.2.5]{horn2013}.
+Part (i) rests on the spectral theorem of Chapter~20: there is a matrix $Q$ with $Q^{\mathsf T}Q=I$, whose columns are eigenvectors, such that $Q^{\mathsf T}AQ=\operatorname{diag}(\lambda_1,\ldots,\lambda_n)$. With $\mathbf h=Q\mathbf y$ the quadratic form becomes $\sum_i\lambda_iy_i^2$, whose sign behaviour is read off from the signs of the $\lambda_i$, as for diagonal matrices above. Part (ii) follows from Gaussian elimination without pivoting, which, when all $\Delta_k$ are positive, writes $A=LDL^{\mathsf T}$ with $L$ lower triangular with ones on the diagonal and $D$ diagonal with the positive entries $\Delta_k/\Delta_{k-1}$; this is completing the square in $n$ variables, as \eqref{eq:complete-square} is for $n=2$. Chapters~17 and~20 give the proofs; see also Horn and Johnson~\cite[Sects.~4.1 and~7.2]{horn2013}.
 \end{proof}
 
 For example, $f(x,y,z)=x^2+y^2+z^2+xy+yz$ has the single critical point $\mathbf0$, where $\nabla f=(2x+y,\,x+2y+z,\,y+2z)$ vanishes only for $(x,y,z)=\mathbf0$, and its Hessian
@@ -1412,7 +1415,7 @@ The Jacobian determinant also measures how the map changes areas. A small rectan
 \label{fig:polar-map}
 \end{figure}
 
-For \term{spherical coordinates} in $\mathbb R^3$ we use the convention, standard in physics and fixed in the international standard ISO~80000-2~\cite{iso80000-2}, that $r\ge0$ is the distance from the origin, $\theta\in[0,\pi]$ the angle from the positive $z$-axis and $\varphi\in(-\pi,\pi]$ the angle of the projection to the $(x,y)$-plane:
+For \term{spherical coordinates} in $\mathbb R^3$ we follow the convention that is standard in physics and fixed in the international standard ISO~80000-2~\cite{iso80000-2}: $r\ge0$ is the distance from the origin, $\theta\in[0,\pi]$ the \term{polar angle}, measured from the positive $z$-axis, and $\varphi$ the \term{azimuth}, the angle of the projection to the $(x,y)$-plane, which we take in $(-\pi,\pi]$ as for $\operatorname{atan2}$ (the range $[0,2\pi)$ is equally common):
 \[
 \mathbf S(r,\theta,\varphi)\coloneqq(r\sin\theta\cos\varphi,\ r\sin\theta\sin\varphi,\ r\cos\theta).
 \]
@@ -1499,7 +1502,7 @@ and $\boldsymbol\varphi\in C^k(V)$ if $\mathbf F\in C^k(W)$.
 \end{theorem}
 
 \begin{proof}
-Apply the inverse function theorem to $\mathbf G(\mathbf x,\mathbf y)\coloneqq(\mathbf x,\mathbf F(\mathbf x,\mathbf y))$, a map from $W$ to $\mathbb R^{n+m}$. Its Jacobian matrix has the block form $\begin{pmatrix}I&0\\D_{\mathbf x}\mathbf F&D_{\mathbf y}\mathbf F\end{pmatrix}$, which is invertible at $(\mathbf a,\mathbf b)$ because $D_{\mathbf y}\mathbf F(\mathbf a,\mathbf b)$ is. The local inverse of $\mathbf G$ has the form $(\mathbf x,\mathbf z)\mapsto(\mathbf x,\boldsymbol\psi(\mathbf x,\mathbf z))$, and $\boldsymbol\varphi(\mathbf x)\coloneqq\boldsymbol\psi(\mathbf x,\mathbf0)$ is the required function; it is $C^k$ when $\mathbf G$ is. The formula for $D\boldsymbol\varphi$ follows by differentiating $\mathbf F(\mathbf x,\boldsymbol\varphi(\mathbf x))=\mathbf0$ with the chain rule, which gives $D_{\mathbf x}\mathbf F+D_{\mathbf y}\mathbf F\,D\boldsymbol\varphi=0$. Details are in Rudin~\cite[Thm.~9.28]{rudin1976} and, with the history of the theorem, in Krantz and Parks~\cite{krantz2002ift}.
+Apply the inverse function theorem to $\mathbf G(\mathbf x,\mathbf y)\coloneqq(\mathbf x,\mathbf F(\mathbf x,\mathbf y))$, a map from $W$ to $\mathbb R^{n+m}$. Its Jacobian matrix has the block form $\begin{pmatrix}I&0\\D_{\mathbf x}\mathbf F&D_{\mathbf y}\mathbf F\end{pmatrix}$, which is invertible at $(\mathbf a,\mathbf b)$ because $D_{\mathbf y}\mathbf F(\mathbf a,\mathbf b)$ is: multiplying out shows that, with $P\coloneqq D_{\mathbf x}\mathbf F(\mathbf a,\mathbf b)$ and $Q\coloneqq D_{\mathbf y}\mathbf F(\mathbf a,\mathbf b)$, its inverse is $\begin{pmatrix}I&0\\-Q^{-1}P&Q^{-1}\end{pmatrix}$. The local inverse of $\mathbf G$ has the form $(\mathbf x,\mathbf z)\mapsto(\mathbf x,\boldsymbol\psi(\mathbf x,\mathbf z))$, and $\boldsymbol\varphi(\mathbf x)\coloneqq\boldsymbol\psi(\mathbf x,\mathbf0)$ is the required function; it is $C^k$ when $\mathbf G$ is. The formula for $D\boldsymbol\varphi$ follows by differentiating $\mathbf F(\mathbf x,\boldsymbol\varphi(\mathbf x))=\mathbf0$ with the chain rule, which gives $D_{\mathbf x}\mathbf F+D_{\mathbf y}\mathbf F\,D\boldsymbol\varphi=0$. Details are in Rudin~\cite[Thm.~9.28]{rudin1976} and, with the history of the theorem, in Krantz and Parks~\cite{krantz2002ift}.
 \end{proof}
 
 The theorem says that $m$ equations in $n+m$ unknowns generically determine $m$ of the unknowns as smooth functions of the other $n$, near a point where they hold, so that the solution set is locally an $n$-dimensional surface. Cauchy proved a version for analytic functions, and Dini gave the first proof for real functions with continuous derivatives in his lectures at Pisa in the 1870s~\cite{krantz2002ift}. The theorem is the foundation of the method of Lagrange multipliers in the next section, and it guarantees that the solutions of equations that depend on parameters, $\mathbf F(\mathbf x,\mathbf p)=\mathbf0$, depend smoothly on the parameters near a solution where the Jacobian matrix with respect to $\mathbf x$ is invertible. Volume~XII uses it in this form to study the sensitivity of solutions of optimisation problems.
@@ -1513,7 +1516,7 @@ Many optimisation problems restrict the admissible points by equations. A box of
 \[
 \nabla f(\mathbf c)=\lambda\nabla g(\mathbf c)\qquad\text{for some }\lambda\in\mathbb R .
 \]
-The number $\lambda$ is a \term{Lagrange multiplier}. Lagrange introduced the method in his \emph{M\'echanique analitique} of 1788 for mechanical systems with constraints and applied it to maxima and minima in 1797~\cite{lagrange1788,lagrange1797}.
+The number $\lambda$ is a \term{Lagrange multiplier}. Lagrange introduced the method in his \emph{M\'echanique analitique} of 1788 for mechanical systems with constraints and applied it to maxima and minima in 1797~\cite{lagrange1788}\cite[pp.~190--198]{lagrange1797}.
 
 \begin{figure}
 \sdfloat{%
@@ -1577,7 +1580,7 @@ Let $U\subseteq\mathbb R^n$ be open, $f\in C^1(U)$ and $\mathbf g=(g_1,\ldots,g_
 \end{theorem}
 
 \begin{proof}
-The proof follows that of \cref{thm:lagrange-one}. By the linear independence of the rows of $D\mathbf g(\mathbf c)$, some $m$ of its columns form an invertible $m\times m$ matrix, a fact about the rank of matrices that Chapters~15 and~16 prove. Renumbering, these are the last $m$ columns, and the implicit function theorem (\cref{thm:implicit-function}) writes $M$ near $\mathbf c$ as the graph $\mathbf y=\boldsymbol\varphi(\mathbf x)$ over the first $n-m$ variables $\mathbf x$, with $D\boldsymbol\varphi=-(D_{\mathbf y}\mathbf g)^{-1}D_{\mathbf x}\mathbf g$. The function $\mathbf x\mapsto f(\mathbf x,\boldsymbol\varphi(\mathbf x))$ has an unconstrained local extremum, so its gradient vanishes, which gives $\nabla_{\mathbf x}f-(D_{\mathbf x}\mathbf g)^{\mathsf T}(D_{\mathbf y}\mathbf g)^{-\mathsf T}\nabla_{\mathbf y}f=\mathbf0$ at $\mathbf c$. With $\boldsymbol\lambda\coloneqq(D_{\mathbf y}\mathbf g)^{-\mathsf T}\nabla_{\mathbf y}f$, where $B^{-\mathsf T}$ denotes $(B^{-1})^{\mathsf T}$, this says $\nabla_{\mathbf x}f=(D_{\mathbf x}\mathbf g)^{\mathsf T}\boldsymbol\lambda$, and $\nabla_{\mathbf y}f=(D_{\mathbf y}\mathbf g)^{\mathsf T}\boldsymbol\lambda$ holds by the definition of $\boldsymbol\lambda$. Together these are the claim; see also Apostol~\cite{apostol1969calculus}.
+The proof follows that of \cref{thm:lagrange-one}. By the linear independence of the rows of $D\mathbf g(\mathbf c)$, some $m$ of its columns form an invertible $m\times m$ matrix, a fact about the rank of matrices that Chapters~15 and~16 prove. Renumbering, these are the last $m$ columns, and the implicit function theorem (\cref{thm:implicit-function}) writes $M$ near $\mathbf c$ as the graph $\mathbf y=\boldsymbol\varphi(\mathbf x)$ over the first $n-m$ variables $\mathbf x$, with $D\boldsymbol\varphi=-(D_{\mathbf y}\mathbf g)^{-1}D_{\mathbf x}\mathbf g$. The function $\mathbf x\mapsto f(\mathbf x,\boldsymbol\varphi(\mathbf x))$ has an unconstrained local extremum, so its gradient vanishes, which gives $\nabla_{\mathbf x}f-(D_{\mathbf x}\mathbf g)^{\mathsf T}(D_{\mathbf y}\mathbf g)^{-\mathsf T}\nabla_{\mathbf y}f=\mathbf0$ at $\mathbf c$. With $\boldsymbol\lambda\coloneqq(D_{\mathbf y}\mathbf g)^{-\mathsf T}\nabla_{\mathbf y}f$, where $B^{-\mathsf T}$ denotes $(B^{-1})^{\mathsf T}$, this says $\nabla_{\mathbf x}f=(D_{\mathbf x}\mathbf g)^{\mathsf T}\boldsymbol\lambda$, and $\nabla_{\mathbf y}f=(D_{\mathbf y}\mathbf g)^{\mathsf T}\boldsymbol\lambda$ holds by the definition of $\boldsymbol\lambda$. Together these are the claim. Hubbard and Hubbard~\cite[Sect.~3.7]{hubbard2015vector} treat constrained critical points in this generality.
 \end{proof}
 
 Geometrically, the gradients $\nabla g_k(\mathbf c)$ span the directions normal to the constraint set $M$, which near $\mathbf c$ is a surface of dimension $n-m$, and the theorem says that at an extremum $\nabla f(\mathbf c)$ has no component tangent to $M$: moving along $M$ does not change $f$ to first order.
@@ -1624,7 +1627,26 @@ and the zero of the right side is the next approximation. If the Jacobian matrix
 D\mathbf F(\mathbf x_k)\,\mathbf d_k=-\mathbf F(\mathbf x_k),\qquad\mathbf x_{k+1}\coloneqq\mathbf x_k+\mathbf d_k ,
 \label{eq:newton-n}
 \end{equation}
-that is, $\mathbf x_{k+1}=\mathbf x_k-D\mathbf F(\mathbf x_k)^{-1}\mathbf F(\mathbf x_k)$, which for $n=1$ is \eqref{eq:newton}. In practice the inverse is never formed: each step solves one linear system, by Gaussian elimination, at a cost of about $\frac23n^3$ operations, in addition to evaluating $\mathbf F$ and its $n^2$ partial derivatives. Geometrically, for $n=2$, the zero set of each linearised component is a straight line, the tangent of the zero curve of that component, and $\mathbf x_{k+1}$ is the intersection of the two lines (\cref{fig:newton-2d}). Simpson already treated systems of two equations in this way in 1740~\cite{ypma1995}. \Cref{alg:newton-n} states the method with the stopping rule of \cref{alg:newton}.
+that is, $\mathbf x_{k+1}=\mathbf x_k-D\mathbf F(\mathbf x_k)^{-1}\mathbf F(\mathbf x_k)$, which for $n=1$ is \eqref{eq:newton}. In practice the inverse is never formed: each step solves one linear system, by Gaussian elimination, at a cost of about $\frac23n^3$ operations, in addition to evaluating $\mathbf F$ and its $n^2$ partial derivatives. Geometrically, for $n=2$, the zero set of each linearised component is a straight line that approximates the zero curve of that component near $\mathbf x_k$; it is parallel to the tangent of the level curve of the component through $\mathbf x_k$, and it is the tangent of the zero curve itself when $\mathbf x_k$ lies on that curve. The next approximation $\mathbf x_{k+1}$ is the intersection of the two lines (\cref{fig:newton-2d}). Simpson already treated systems of two equations in this way in 1740~\cite{ypma1995}. \Cref{alg:newton-n} states the method with the stopping rule of \cref{alg:newton}.
+
+\begin{figure}
+\sdfloat{%
+\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.56\textwidth, height=0.5\textwidth, xmin=1.55, xmax=2.25, ymin=-0.15, ymax=0.8,
+  xtick={1.6,1.8,2,2.2}, ytick={0,0.2,0.4,0.6}, xlabel={$x$}, ylabel={$y$}]
+\addplot[black, line width=0.9pt, domain=-10:25, samples=80] ({2*cos(x)},{2*sin(x)});
+\addplot[black, dashed, line width=0.9pt, domain=1.3:2.3, samples=60] {1/x};
+\addplot[black!70, densely dotted, line width=0.7pt] coordinates {(2,-0.15) (2,0.8)};
+\addplot[black!70, densely dotted, line width=0.7pt, domain=1.55:2.25, samples=2] {0.5};
+\addplot[black!55, line width=0.5pt, domain=1.75:2.15, samples=2] {0.5-4*(x-2)-0.25};
+\addplot[black!55, line width=0.5pt, domain=1.55:2.25, samples=2] {0.5-0.25*(x-2)};
+\addplot[black, only marks, mark=*, mark size=1.5pt] coordinates {(2,0) (2,0.5) (1.933333,0.516667)};
+\node[font=\scriptsize, anchor=west] at (axis cs:2.01,0.0) {$\mathbf x_0$};
+\node[font=\scriptsize, anchor=south west] at (axis cs:2.0,0.5) {$\mathbf x_1$};
+\node[font=\scriptsize, anchor=north east] at (axis cs:1.93,0.51) {$\mathbf x_2$};
+\end{axis}
+\end{tikzpicture}}{Newton's method for the intersection of the circle $x^2+y^2=4$ (solid) and the hyperbola $xy=1$ (dashed). At $\mathbf x_0=(2,0)$ the linearised equations have the zero sets $x=2$ and $y=\frac12$ (dotted); the first is the tangent of the circle at $\mathbf x_0$, and the two meet at $\mathbf x_1$. At $\mathbf x_1$, which lies on the hyperbola, the zero sets are the tangent of the hyperbola, of slope $-\frac14$, and a line of slope $-4$ parallel to the tangent of the circle through $\mathbf x_1$ about the origin (grey); they meet at $\mathbf x_2$, already very close to the intersection of the curves.\label{fig:newton-2d}}
+\end{figure}
 
 \begin{algorithm}
 \begin{algorithmic}[1]
@@ -1676,28 +1698,9 @@ $k$ & $\mathbf x_k$ & $\|\mathbf e_k\|$ & $\|\mathbf e_k\|/\|\mathbf e_{k-1}\|^2
 \end{sdtable}}{Newton's method for $x^2+y^2=4$, $xy=1$, started at $(2,0)$, computed in exact rational arithmetic; the errors are measured against the exact zero $\mathbf c=\bigl(\frac{\sqrt6+\sqrt2}2,\frac{\sqrt6-\sqrt2}2\bigr)$ and the iterates are rounded to eight decimals. The number of correct digits roughly doubles in each step.\label{tab:newton-2d}}
 \end{table}
 
-\begin{figure}
-\sdfloat{%
-\begin{tikzpicture}
-\begin{axis}[sdplot, width=0.56\textwidth, height=0.5\textwidth, xmin=1.55, xmax=2.25, ymin=-0.15, ymax=0.8,
-  xtick={1.6,1.8,2,2.2}, ytick={0,0.2,0.4,0.6}, xlabel={$x$}, ylabel={$y$}]
-\addplot[black, line width=0.9pt, domain=-10:25, samples=80] ({2*cos(x)},{2*sin(x)});
-\addplot[black, dashed, line width=0.9pt, domain=1.3:2.3, samples=60] {1/x};
-\addplot[black!55, line width=0.5pt] coordinates {(2,-0.15) (2,0.8)};
-\addplot[black!55, line width=0.5pt, domain=1.55:2.25, samples=2] {0.5};
-\addplot[black!55, line width=0.5pt, domain=1.75:2.15, samples=2] {0.5-4*(x-2)-0.25};
-\addplot[black!55, line width=0.5pt, domain=1.55:2.25, samples=2] {0.5-0.25*(x-2)};
-\addplot[black, only marks, mark=*, mark size=1.5pt] coordinates {(2,0) (2,0.5) (1.933333,0.516667)};
-\node[font=\scriptsize, anchor=west] at (axis cs:2.01,0.0) {$\mathbf x_0$};
-\node[font=\scriptsize, anchor=south west] at (axis cs:2.0,0.5) {$\mathbf x_1$};
-\node[font=\scriptsize, anchor=north east] at (axis cs:1.93,0.51) {$\mathbf x_2$};
-\end{axis}
-\end{tikzpicture}}{Newton's method for the intersection of the circle $x^2+y^2=4$ (solid) and the hyperbola $xy=1$ (dashed). At $\mathbf x_0=(2,0)$ the linearised equations have the zero sets $x=2$ and $y=\frac12$ (grey), which meet at $\mathbf x_1$. At $\mathbf x_1$, which lies on the hyperbola, they are the tangent of the hyperbola, of slope $-\frac14$, and a line of slope $-4$ parallel to the tangent of the circle through $\mathbf x_1$ about the origin (grey); they meet at $\mathbf x_2$, already very close to the intersection of the curves.\label{fig:newton-2d}}
-\end{figure}
-
 \subsection{Quadratic Convergence}
 
-The analysis of \cref{thm:newton-quadratic} carries over almost word for word, with norms in place of absolute values. The hypothesis $|f'|\ge m$ becomes a bound on the inverse of the Jacobian matrix, and the Lipschitz condition on $f'$ becomes one on $D\mathbf F$.
+The analysis of \cref{thm:newton-quadratic} carries over with little change, norms taking the place of absolute values. The hypothesis $|f'|\ge m$ becomes a bound on the inverse of the Jacobian matrix, and the Lipschitz condition on $f'$ becomes one on $D\mathbf F$.
 
 \begin{theorem}[Quadratic convergence of Newton's method]
 \label{thm:newton-n}
@@ -1747,7 +1750,7 @@ The critical points of a function $f\in C^2(U)$ are the zeros of $\mathbf F=\nab
 \[
 \nabla^2f(\mathbf x_k)\,\mathbf d_k=-\nabla f(\mathbf x_k),\qquad\mathbf x_{k+1}=\mathbf x_k+\mathbf d_k .
 \]
-It has a second interpretation: $\mathbf x_{k+1}$ is the critical point of the quadratic Taylor model $f(\mathbf x_k)+\langle\nabla f(\mathbf x_k),\mathbf d\rangle+\frac12\langle\mathbf d,\nabla^2f(\mathbf x_k)\mathbf d\rangle$ of \cref{thm:taylor-rn}, which is its minimum if the Hessian is positive definite. Near a local minimum with positive definite Hessian, \cref{cor:newton-n-local} guarantees quadratic convergence. Far from it, the method looks only for critical points, and it may move uphill or towards a saddle point. On Rosenbrock's function $f(x,y)=(1-x)^2+100(y-x^2)^2$, a standard test with its minimum at $(1,1)$ at the bottom of a narrow curved valley~\cite{rosenbrock1960}, Newton's method started at $(-1.2,1)$ reaches the minimum to $24$ digits after $7$ steps; but on the way, the value of $f$ rises at the second step from $4.7$ to $1412$, before falling to $0.056$ at the third. Methods for minimisation therefore combine the Newton step with safeguards that enforce descent.
+It has a second interpretation: $\mathbf x_{k+1}$ is the critical point of the quadratic Taylor model $f(\mathbf x_k)+\langle\nabla f(\mathbf x_k),\mathbf d\rangle+\frac12\langle\mathbf d,\nabla^2f(\mathbf x_k)\mathbf d\rangle$ of \cref{thm:taylor-rn}, which is its minimum if the Hessian is positive definite. Near a local minimum with positive definite Hessian, \cref{cor:newton-n-local} guarantees quadratic convergence. Far from it, the method looks only for critical points, and it may move uphill or towards a saddle point. On Rosenbrock's function $f(x,y)=(1-x)^2+100(y-x^2)^2$, a standard test with its minimum at $(1,1)$ at the bottom of a narrow curved valley~\cite{rosenbrock1960}, Newton's method started at $(-1.2,1)$ reaches the minimum to $24$ digits after $7$ steps; but on the way, the value of $f$ rises at the second step from $4.7$ to $1412$, falls to $0.056$ at the third and rises again, to $0.31$, at the fourth. Methods for minimisation therefore combine the Newton step with safeguards that enforce descent.
 
 For least squares problems, in which $f(\mathbf x)=\frac12\|\mathbf r(\mathbf x)\|^2$ is half the sum of the squares of the components of a residual map $\mathbf r\colon\mathbb R^n\to\mathbb R^N$, the chain rule gives $\nabla f=D\mathbf r^{\mathsf T}\mathbf r$ and $\nabla^2f=D\mathbf r^{\mathsf T}D\mathbf r+\sum_ir_i\nabla^2r_i$. The \term{Gauss--Newton method} drops the second sum, which is small when the residuals are small, and so needs only the Jacobian matrix of $\mathbf r$; each step solves the normal equations $D\mathbf r^{\mathsf T}D\mathbf r\,\mathbf d=-D\mathbf r^{\mathsf T}\mathbf r$ of a linear least squares problem, those of \cref{sec:extrema-n} for the linearised residual. Volume~XII develops Newton, quasi-Newton and Gauss--Newton methods, and the safeguards that make them robust, for the optimisation and root-finding routines of the library~\cite{dennis1996,nocedal2006}.
 
@@ -1756,7 +1759,7 @@ The derivative of a function of several variables is a matrix, and almost everyt
 
 \chapternotes
 
-The differential calculus of several variables grew in the eighteenth century from mechanics and geometry. Euler and Clairaut computed with partial derivatives and assumed the symmetry of mixed derivatives, which Schwarz proved in 1873~\cite{schwarz1873}; Peano's counterexample appeared in his edition of Genocchi's lectures~\cite{genocchi1884}, and Hairer and Wanner~\cite{hairer1996analysis} tell this history with many other episodes. Lagrange introduced the multipliers for constrained problems in mechanics~\cite{lagrange1788} and gave the second-derivative test~\cite{lagrange1797}; Cauchy treated the differential of a function of several variables in his lectures of 1823~\cite{cauchy1823} and proposed the method of steepest descent in 1847~\cite{cauchy1847}; Jacobi studied functional determinants in 1841~\cite{jacobi1841}. The method of least squares goes back to Legendre and Gauss~\cite{legendre1805,gauss1809}, and Stigler~\cite{stigler1981} discusses its invention. Krantz and Parks~\cite{krantz2002ift} tell the history of the implicit function theorem, from Newton and Lagrange through Cauchy and Dini to the modern versions. The definition of the derivative as a linear map in normed spaces, used in the note in \cref{sec:differentiability}, is the starting point of Dieudonn\'e's treatment~\cite{dieudonne1960}, and Acosta and Delgado~\cite{acosta1994} develop Carath\'eodory's form of the derivative in several variables, which our proof of the chain rule uses.
+The differential calculus of several variables grew in the eighteenth century from mechanics and geometry. Euler and Clairaut computed with partial derivatives and argued for the symmetry of mixed derivatives, which Schwarz was the first to prove rigorously, in 1873~\cite{schwarz1873}; Peano's counterexample appeared in his edition of Genocchi's lectures~\cite{genocchi1884}, and Hairer and Wanner~\cite{hairer1996analysis} tell this history with many other episodes. Lagrange introduced the multipliers for constrained problems in mechanics~\cite{lagrange1788} and gave the second-derivative test~\cite{lagrange1797}; Cauchy treated the differential of a function of several variables in his lectures of 1823~\cite{cauchy1823} and proposed the method of steepest descent in 1847~\cite{cauchy1847}; Jacobi studied functional determinants in 1841~\cite{jacobi1841}. The method of least squares goes back to Legendre and Gauss~\cite{legendre1805,gauss1809}, and Stigler~\cite{stigler1981} discusses its invention. Krantz and Parks~\cite{krantz2002ift} tell the history of the implicit function theorem, from Newton and Lagrange through Cauchy and Dini to the modern versions. The definition of the derivative as a linear map in normed spaces, used in the note in \cref{sec:differentiability}, is the starting point of Dieudonn\'e's treatment~\cite{dieudonne1960}, and Acosta and Delgado~\cite{acosta1994} develop Carath\'eodory's form of the derivative in several variables, which our proof of the chain rule uses.
 
 Among textbooks at the level of this chapter, Apostol's second volume~\cite{apostol1969calculus} treats the calculus of several variables together with linear algebra, Marsden and Tromba~\cite{marsden2012vector} emphasise the geometry, with many figures, and Hubbard and Hubbard~\cite{hubbard2015vector} develop linear algebra and calculus side by side and prove the inverse and implicit function theorems through Newton's method and Kantorovich's theorem. Spivak's \emph{Calculus on Manifolds}~\cite{spivak1965manifolds} and Rudin~\cite{rudin1976} (Chapter~9) are concise and rigorous and lead on to Volume~II. For positive definite matrices and Sylvester's criterion see Horn and Johnson~\cite{horn2013}, and for the computational side of linear algebra Golub and Van Loan~\cite{golub2013}. Newton's method for systems and its convergence theory are treated by Ortega and Rheinboldt~\cite{ortega2000} and by Dennis and Schnabel~\cite{dennis1996}, and its use in optimisation by Nocedal and Wright~\cite{nocedal2006}; Rosenbrock's function comes from~\cite{rosenbrock1960}. The conditions for inequality constraints are due to Karush~\cite{karush1939} and to Kuhn and Tucker~\cite{kuhn1951}. Griewank and Walther~\cite{griewank2008} is the standard account of automatic differentiation, Linnainmaa~\cite{linnainmaa1976} the original source of the reverse mode, Rumelhart, Hinton and Williams~\cite{rumelhart1986} the paper that made backpropagation known in machine learning, and Baydin and others~\cite{baydin2018} a survey for that audience.
 

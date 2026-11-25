@@ -14,6 +14,7 @@ Work only inside /Users/sanghyunpark/Desktop/stardust/textbook-eng/. The rest of
 
 ## What to write
 - The chapter file, and the edits to the volume's main file (volN.tex): \input the chapter in its place (start a new \part where OUTLINE.md starts one) and add the chapter's new symbols to the Notation chapter.
+- Notation chapter: add ONLY symbols that later chapters will also use, or conventions that differ between books and that a reader must be able to look up. Do not list symbols used in one section and defined there, universally known symbols, or variants of an entry already present. The whole Notation chapter of a volume must stay within two or three pages; when in doubt, leave it out.
 - Figures as TikZ/pgfplots inside the chapter. No external images.
 - references.bib: add the entries you cite.
 
@@ -23,6 +24,8 @@ Work only inside /Users/sanghyunpark/Desktop/stardust/textbook-eng/. The rest of
 - Volumes I–IV are review volumes: state every result formally, prove the important ones, others may go unproved — but explanation, examples and figures are never cut. Pure mathematics/computer science: do not explain stardust APIs there (a forward-looking mention is fine). Topical volumes (V–XVI): prove everything.
 - A proof omitted for length: state the result, give the storyline and key idea inside the proof environment and cite a reference, without saying why it is omitted.
 - Citations must be thorough: every result with a known origin, every historical claim and every standard fact gets a source (original paper or standard text). Never guess bibliographic data; list every entry you are not certain of in your report under "서지 확인 필요".
+- Inline mathematics ($...$) writes fractions with a solidus, not \frac: $a/b$, $(x+1)/(x-1)$, $1/2$, also inside exponents and subscripts; add parentheses so the meaning cannot change. \frac (and \binom-style stacked forms that raise the line) belong in displayed equations.
+- Matrices written out entry by entry (pmatrix, bmatrix, column vectors) go in displayed equations, not inline; inline text refers to them by name or in row form (x_1, …, x_n). Anything else that would stretch the line spacing also goes in a display.
 - No exercises, avoid footnotes, material beyond a standard first course goes in a `note` box, no explanation of any particular language's syntax.
 - The natural numbers include 0. Other volumes are "Volume IV" (roman). Chapters not yet written are named in words ("Chapter 3") rather than with \cref.
 - End the chapter with \chapternotes (the unnumbered section "Notes": reading guide and sources), then \chapterreferences.
